@@ -1,0 +1,215 @@
+# Operation registry (TEST_ARCHITECTURE.md §2). Every workflow is composed of these.
+# A new operation enters only with summary, inputs, outputs, oracle, mrs and tests filled.
+# inputs/outputs name tables from src/biobox/registry/schemas.py, tables listed in
+# pending_tables.yaml, or external artifacts listed in `external` below.
+
+external:
+  - source_object        # downloaded FASTA/GFF/metadata (L0)
+  - source_fasta
+  - fasta_export         # bgzip FASTA + .fai/.gzi from `seq extract`
+  - recipe               # search recipe YAML (SEARCH_PLAN §4)
+  - search_pack          # per-release search targets (SEARCH_PLAN §3.2)
+  - tool_output          # raw domtblout/tblout/GFF from tools
+  - genbank_export       # --format domainator-gb
+  - json_export          # --json NDJSON
+  - catalog              # generated read-only DuckDB file
+  - release_manifest
+  - query_result
+
+operations:
+  O-INGEST:
+    summary: source object to L0 manifest, contig occurrences and sequence chunks
+    inputs: [source_object]
+    outputs: [l0_manifest, contig_occurrence, seq_chunks, contig_index, seq_locator]
+    oracle: re-parse the source independently; sha256 of every record
+    mrs: [MR-01, MR-02, MR-14]
+    tests: [R-01, R-02, C-01, L-01, L-02]
+  O-IDENT:
+    summary: identity resolution and dedup
+    inputs: [contig_occurrence, contig_index]
+    outputs: [genome_identity, contig_member]
+    oracle: brute-force pairwise containment on the micro-corpus
+    mrs: [MR-06, MR-07, MR-01]
+    tests: [C-02, A-01, D-01]
+  O-SLICE:
+    summary: seq get by contig, region and strand; seq_slice macro
+    inputs: [seq_chunks, contig_index, seq_locator]
+    outputs: [query_result]
+    oracle: Python slicing of the source FASTA
+    mrs: [MR-03, MR-04, MR-14]
+    tests: [R-03, R-05, R-08]
+  O-TRANSLATE:
+    summary: region and six-frame translation under genetic codes
+    inputs: [seq_chunks, slot_protein]
+    outputs: [query_result]
+    oracle: Biopython translation tables
+    mrs: [MR-03, MR-13]
+    tests: [R-04]
+  O-EXTRACT:
+    summary: bulk FASTA export, members and segments
+    inputs: [seq_chunks, protein_seq, contig_member]
+    outputs: [fasta_export]
+    oracle: re-ingest the export and compare digests
+    mrs: [MR-01, MR-16]
+    tests: [R-07]
+  O-CALL:
+    summary: gene calling, smORFs, split-gene arbitration
+    inputs: [seq_chunks]
+    outputs: [slot_protein, protein_seq, l1_genes]
+    oracle: planted genes in synthetic worlds; golden GFF
+    mrs: [MR-03, MR-04, MR-13]
+    tests: [G-01, G-02, R-04, A-02]
+  O-SCAN:
+    summary: library HMM and CM scans under the fixed Z policy
+    inputs: [protein_seq, igr, seq_chunks]
+    outputs: [l1_domains, l1_ncrna]
+    oracle: hmmsearch and cmsearch binaries on the same inputs
+    mrs: [MR-12, MR-15, MR-16]
+    tests: [G-04, A-02, S-03]
+  O-ARRAY:
+    summary: CRISPR arrays and spacers
+    inputs: [seq_chunks]
+    outputs: [l1_ncrna]
+    oracle: planted arrays; MinCED vs CRISPRCasFinder union
+    mrs: [MR-03, MR-04]
+    tests: [NEW]
+  O-SYS:
+    summary: DefenseFinder, PADLOC, CRISPRCasTyper sidecars
+    inputs: [l1_domains, l1_genes]
+    outputs: [l1_systems]
+    oracle: the tool's own test data; planted systems
+    mrs: [MR-01]
+    tests: [S-11]
+  O-CLUSTER:
+    summary: NR90, NR50, subfamily clustering with member alignments
+    inputs: [protein_seq]
+    outputs: [cluster_member, cluster_member_aln, id_history]
+    oracle: full recluster on the micro-corpus; pairwise identity check of members
+    mrs: [MR-01, MR-08, MR-16]
+    tests: [A-03, C-11, D-02]
+  O-PROJECT:
+    summary: representative-to-member hit projection and near-cutoff re-score
+    inputs: [cluster_member_aln, l1_domains, search_hit]
+    outputs: [l1_domains_projected, search_hit]
+    oracle: exact re-score on all members (micro) or a sample (stage)
+    mrs: [MR-08, MR-12]
+    tests: [S-08, A-03]
+  O-TAPE:
+    summary: contig tapes, segments, junction topology, directons
+    inputs: [l1_genes, l1_domains, l1_ncrna, protein_occurrence]
+    outputs: [contig_tapes]
+    oracle: brute-force rebuild from L1 in Python
+    mrs: [MR-03, MR-04, MR-05, MR-11]
+    tests: [Q2, G-03, A-04, A-05]
+  O-PAIRS:
+    summary: slot_pairs window enumeration
+    inputs: [contig_tapes]
+    outputs: [slot_pairs]
+    oracle: brute-force window enumeration
+    mrs: [MR-03, MR-05, MR-11]
+    tests: [Q1, Q4]
+  O-SEARCH:
+    summary: recipe search against a search-pack target
+    inputs: [recipe, search_pack]
+    outputs: [search_run, search_hit, search_profile]
+    oracle: hmmsearch, mmseqs and diamond binaries; exhaustive search on `unique`
+    mrs: [MR-09, MR-10, MR-12, MR-16]
+    tests: [S-01, S-02, S-03, S-04]
+  O-ITER:
+    summary: iteration controller
+    inputs: [recipe, search_pack, search_hit, l1_domains]
+    outputs: [search_hit, search_profile]
+    oracle: hand-built rounds on the micro-corpus; planted divergent members
+    mrs: [MR-09, MR-10]
+    tests: [S-07]
+  O-NBR:
+    summary: neighborhood fetch with window, strand, operon, edge and circular rules
+    inputs: [contig_tapes, protein_occurrence, search_hit]
+    outputs: [neighborhoods]
+    oracle: brute-force Python over coordinates
+    mrs: [MR-03, MR-04, MR-05]
+    tests: [S-09, S-02d]
+  O-NBRSCORE:
+    summary: positive-set enrichment over clusters
+    inputs: [contig_tapes, cluster_member]
+    outputs: [query_result]
+    oracle: brute-force counting on the micro-corpus
+    mrs: [MR-06, MR-18]
+    tests: [NEW]
+  O-ARCH:
+    summary: fusion and architecture classification
+    inputs: [contig_tapes, search_hit]
+    outputs: [arch_calls]
+    oracle: planted fusions and splits
+    mrs: [MR-11, MR-03]
+    tests: [NEW]
+  O-STATS:
+    summary: pair statistics, nulls, FDR, modules
+    inputs: [slot_pairs, background_rates]
+    outputs: [pair_stats]
+    oracle: brute-force score test; simulation calibration
+    mrs: [MR-06, MR-08, MR-18, MR-19]
+    tests: [Q3, A-06, A-07, G-05, B1, B-NULL]
+  O-ANCHORSTATS:
+    summary: on-demand statistics for one anchor or user token
+    inputs: [user_token_overlay, contig_tapes, background_rates]
+    outputs: [query_result]
+    oracle: equals O-STATS when the anchor is a library token
+    mrs: [MR-06, MR-18]
+    tests: [NEW]
+  O-PROMOTE:
+    summary: user token overlay from a run's final hits
+    inputs: [search_hit, protein_occurrence]
+    outputs: [user_token_overlay]
+    oracle: overlay rows equal the run's final hit slots
+    mrs: [MR-01, MR-08]
+    tests: [C-03]
+  O-PROF:
+    summary: presence profiles and pangenome planes
+    inputs: [contig_tapes, genome_identity]
+    outputs: [pangenome_planes]
+    oracle: brute-force presence matrix
+    mrs: [MR-06, MR-07]
+    tests: [Q5, Q6]
+  O-SSN:
+    summary: hit-set network, MSF plus kNN, threshold table
+    inputs: [search_hit, protein_seq]
+    outputs: [search_ssn, search_ssn_thresholds]
+    oracle: full graph and union-find on the micro-corpus; Domainator build_ssn
+    mrs: [MR-01, MR-16]
+    tests: [NEW]
+  O-EXPORT:
+    summary: --json, --format domainator-gb, TSV exports
+    inputs: [search_hit, neighborhoods]
+    outputs: [genbank_export, json_export]
+    oracle: parse back and compare; Domainator reads it
+    mrs: [MR-01]
+    tests: [S-13]
+  O-CATALOG:
+    summary: manifest to catalog, atomic swap, read-only open
+    inputs: [release_manifest]
+    outputs: [catalog]
+    oracle: list files independently; compare views
+    mrs: [MR-01]
+    tests: [C-01, K-05, K-06, K-08, K-09]
+  O-SERVE:
+    summary: query classes Q1 to Q8
+    inputs: [catalog]
+    outputs: [query_result]
+    oracle: brute-force oracle per class
+    mrs: [MR-01, MR-08, MR-16]
+    tests: [Q1, Q2, Q3, Q4, Q5, Q6, Q7, Q8]
+  O-ACCRETE:
+    summary: append stage, recluster, rescore, compact, remap
+    inputs: [release_manifest]
+    outputs: [release_manifest]
+    oracle: from-scratch rebuild
+    mrs: [MR-08, MR-01, MR-19]
+    tests: [A-01, L-03]
+  O-RUN:
+    summary: runner provenance, guardrails, failure states
+    inputs: [recipe]
+    outputs: [search_run, test_run]
+    oracle: fault injection
+    mrs: [MR-16, MR-17]
+    tests: [S-05, S-06]

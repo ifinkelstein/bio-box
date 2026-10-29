@@ -81,16 +81,16 @@ Each operation has an ID, inputs and outputs (registered schemas), its oracle, i
 | O-NBR | neighborhood fetch with window, strand, operon, edge, circular rules | brute-force Python over coordinates | MR-03, MR-04, MR-05 | S-09, S-02d |
 | O-NBRSCORE | positive-set enrichment | brute-force counting on micro-corpus | MR-06, MR-18 | (new) |
 | O-ARCH | fusion and architecture classification | planted fusions and splits | MR-11, MR-03 | (new) |
-| O-STATS | pair statistics, nulls, FDR, modules | brute-force score test; simulation calibration | MR-06, MR-08, MR-18 | Q3 oracle, B1–B6 |
+| O-STATS | pair statistics, nulls, FDR, modules | brute-force score test; simulation calibration | MR-06, MR-08, MR-18, MR-19 | Q3 oracle, B1–B6 |
 | O-ANCHORSTATS | on-demand statistics for one anchor or user token | equals O-STATS when the anchor is a library token | MR-06, MR-18 | (new) |
 | O-PROMOTE | user token overlay | overlay rows equal the run's final hit slots | MR-01, MR-08 | C-03 |
 | O-PROF | presence profiles and pangenome planes | brute-force presence matrix | MR-06, MR-07 | Q5/Q6 oracles |
 | O-SSN | hit-set network, MSF ∪ kNN, threshold table | full graph and union-find on micro-corpus; Domainator `build_ssn` | MR-01, MR-16 | (new) |
 | O-EXPORT | `--json`, `--format domainator-gb`, TSV | parse back and compare; Domainator reads it | MR-01 | S-13 |
 | O-CATALOG | manifest → catalog, atomic swap, read-only open | list files independently; compare views | MR-01 | C-*, K-05, K-06, K-08, K-09 |
-| O-SERVE | query classes Q1–Q8 | brute-force oracle per class | per class | Q1–Q8, SLOs |
-| O-ACCRETE | append stage, recluster, rescore, compact, remap | from-scratch rebuild | MR-08, MR-01 | A-01..A-07, L-* |
-| O-RUN | runner: provenance, guardrails, failure states | fault injection | none | S-05, S-06 |
+| O-SERVE | query classes Q1–Q8 | brute-force oracle per class | MR-01, MR-08, MR-16 (plus per-class relations) | Q1–Q8, SLOs |
+| O-ACCRETE | append stage, recluster, rescore, compact, remap | from-scratch rebuild | MR-08, MR-01, MR-19 | A-01..A-07, L-* |
+| O-RUN | runner: provenance, guardrails, failure states | fault injection | MR-16 (results independent of shard and thread count), MR-17 | S-05, S-06 |
 
 A new operation enters the registry only with all four columns filled. The registry lives as data (`tests/registry/operations.yaml`) and the coverage matrix (§5.3) is computed from it.
 

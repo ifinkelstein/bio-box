@@ -1,0 +1,39 @@
+# Metamorphic relations (TEST_ARCHITECTURE.md §4) and failure modes (§3).
+
+mrs:
+  MR-01: permute input order; byte-identical outputs at fixed DuckDB version and threads
+  MR-02: rename accessions or headers; identical UIDs and annotations, only occurrence rows change
+  MR-03: reverse-complement a contig; same hits and neighborhoods, coordinates mirrored, strands flipped
+  MR-04: rotate a circular contig; same genes and neighborhoods, no edge flags
+  MR-05: cut a contig at p; only windows crossing p change and gain edge flags
+  MR-06: add an exact duplicate genome; deduplicated counts, Z and q-values unchanged
+  MR-07: add a 99.9% ANI near-duplicate; collapsed for counting, kept in storage
+  MR-08: add unrelated genomes; exact hits on existing targets unchanged, stats change only where stale
+  MR-09: shuffle the seed; hits no more than expected false positives at Z_ref
+  MR-10: plant one more family member; recall includes it, counts rise by one
+  MR-11: split a fused ORF; architecture flips fused to split-adjacent, topology counts move by one
+  MR-12: search a subset of the target; a subset of hits with identical bitscores
+  MR-13: recode to genetic code 4 or 25; translation follows the code, detection picks it
+  MR-14: soft-mask or IUPAC variants; same contig_uid, different raw_digest, exact round trip
+  MR-15: search the reverse complement with a nucleotide model; same hits on the other strand
+  MR-16: change shard or thread count; identical results
+  MR-17: rerun a recipe on a later release; same results on unchanged targets
+  MR-18: null world; p-values uniform, FDR at nominal level
+  MR-19: add a contamination mask; only statistics involving masked contigs change
+
+failures:
+  F-01: {severity: S1, summary: coordinate or strand error, caught_by: [MR-03, MR-04, R-03, R-05]}
+  F-02: {severity: S1, summary: ID mismatch across releases, caught_by: [C-02, C-03, LY-01, MR-08]}
+  F-03: {severity: S1, summary: dedup over- or under-collapse, caught_by: [MR-06, MR-07]}
+  F-04: {severity: S1, summary: projection error, caught_by: [S-08]}
+  F-05: {severity: S1, summary: E-value drift with database size, caught_by: [S-03, MR-12]}
+  F-06: {severity: S1, summary: stale statistics served as current, caught_by: [A-01, MR-08]}
+  F-07: {severity: S1, summary: null too easy, caught_by: [MR-18, B5]}
+  F-08: {severity: S1, summary: gene-call errors create false fusions or absences, caught_by: [MR-11]}
+  F-09: {severity: S1, summary: contig-edge censoring wrong, caught_by: [MR-05, S-09, B3]}
+  F-10: {severity: S1, summary: tool failure read as zero hits, caught_by: [S-05]}
+  F-11: {severity: S2, summary: partial write visible to readers, caught_by: [K-09, LY-10]}
+  F-12: {severity: S2, summary: non-redistributable data in an edition, caught_by: [NEW]}  # the STAGES.md S4 license-flag test has no ID yet
+  F-13: {severity: S2, summary: nondeterminism, caught_by: [D-01, MR-01, MR-16]}
+  F-14: {severity: S3, summary: layout regression, caught_by: [LY-02, LY-03, LY-04]}
+  F-15: {severity: S3, summary: envelope breach, caught_by: [S-06]}

@@ -26,11 +26,11 @@ Source of facts: `WILKECOMP.org` (probed 2026-09-30) and the watchdog notes of 2
 | CPU | 4× Xeon E7-4850 v3 (Haswell, 2.2 GHz), 56 physical / 112 logical, AVX2, no AVX-512 | Build every binary with AVX2 dispatch. Per-thread speed is about one third of a modern core, so every rate must be measured here, not extrapolated. |
 | RAM | 1,007 GB physical, shared | Stay under 20% by day and under 65% only overnight for a few hours. Default cap: `systemd-run --user --scope -p MemoryMax=200G`. |
 | GPU | None | No ProstT5, no gLM training, no predicted 3Di. GPU stages run elsewhere (wilkcomp03 by arrangement, or a GEX130). |
-| Local disk | `/tmp` ~940 GB free, local ext4, volatile | All tool temp directories, MMseqs2 indices and DuckDB `temp_directory` go here. Never hold the only copy of anything. |
+| Local disk | `/tmp` on the 1.1 TB root disk, 740 GB free when checked 2026-10-29 (~940 GB in earlier notes), volatile; home `/stor/home/if2453` is NFS with a 100 GB quota (project checkout `~/bio-box`) | All tool temp directories, MMseqs2 indices and DuckDB `temp_directory` go here. Never hold the only copy of anything. |
 | Shared storage | `/stor/work/Wilke` (75 TB, backed up) and `/stor/scratch/Wilke` (30 TB, not backed up), one NFS server over 10 GbE shared by three hosts | Durable small outputs go to `/stor/work/Wilke/if2453/`: manifests, ledgers, release tables, `sources.yaml`, and the sequence-store manifest (§3.10). Regenerable bulk data goes to `/stor/scratch/Wilke/if2453/`: source snapshots, Parquet shards, MMseqs2 DBs, and the sequence store itself, which can be rebuilt from L0 snapshots and the manifest. |
 | Scheduler | None. No SLURM, no modules, no cgroup quotas | Orchestration supplies its own resource caps (§0.3). |
 | Limits | `ulimit -v` 500 GB soft; open files 4,096 hard (8,192 allowed) | Chunk MMseqs2 targets; raise `ulimit -n` in the launcher. |
-| Containers | Apptainer/Singularity present; Docker group use not confirmed | Run `bio-box` as an Apptainer `.sif` only. |
+| Containers | SingularityCE 4.3.0 (`/usr/bin/singularity`; no `apptainer` command). The account is in the `docker` group (verified 2026-10-29) | Run `bio-box` as a `.sif` with `singularity`; commands written as `apptainer` in this plan map to `singularity`. Docker is available but not used on the pod, to keep one runtime and the house rules. |
 | Network | Outbound internet works; storage server reachable from campus/VPN only | Fetch sources directly on the host; large transfers go to the storage server from campus. |
 
 ### 0.2 House rules, as the launcher enforces them

@@ -368,7 +368,7 @@ $ATD_ROOT/                                   # /stor/scratch/Wilke/if2453/all-th
 
 Sort keys and row-group sizes above are starting values. LY-06 row-group counts on the micro-corpus and S0 data decide them at S0 (§4.11); LY-02..LY-04 then check them on every stage.
 
-All Parquet is written by DuckDB `COPY ... (FORMAT parquet, COMPRESSION zstd, ROW_GROUP_SIZE n)` with explicit `ORDER BY`, so files are reproducible given the same DuckDB version and thread count. Determinism is tested in §4.5. Partitions use hive layout so DuckDB prunes on partition keys ("filters on the partition keys are automatically pushed down into the files"). Row-group pruning relies on Parquet min/max statistics (zonemaps), which DuckDB uses to skip row groups. Page-index skipping is not assumed.
+All Parquet is written by DuckDB `COPY ... (FORMAT parquet, COMPRESSION zstd, ROW_GROUP_SIZE n)` with explicit `ORDER BY`, so files are reproducible given the same DuckDB version and thread count. Determinism is tested in §4.5. Partitions use hive layout so DuckDB prunes on partition keys ("filters on the partition keys are automatically pushed down into the files"). Partition keys (`stage`, `gene_call_version`, `igr_version`, `digest_prefix`, ...) live only in the path, never as file columns, so readers never see two copies that could disagree; a primary key may include a partition key. The schema registry (`src/biobox/registry/schemas.py`) enforces this in ring R0. Row-group pruning relies on Parquet min/max statistics (zonemaps), which DuckDB uses to skip row groups. Page-index skipping is not assumed.
 
 ### 3.3 Catalog: generated read-only DuckDB file (chosen), DuckLake as a gated alternative
 
