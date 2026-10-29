@@ -136,7 +136,7 @@ Preflight: every row has version, URL, sha256, measured size, and license filled
 | Data engineer | to assign (postdoc or staff) | Repo, CI, wrapper, data layer, tests, releases |
 | Bioinformatician | to assign (may be the same person) | Tool versions, refdb, golden set, annotation rules |
 | Independent curator | someone not tuning scores | Trap panels, B5/B6 sets (pre-registered) |
-| Test harness owners (gap #29) | data engineer (schema and operation registries, manifests, rings R0–R4, `test_run`, CI host, mutation testing) + bioinformatician (`synthworld` spec and Zombi/ALF fit, truth tables, oracles, null-world calibration of O-STATS) | Harness spec sign-off at S−1; S0 harness gate (R0–R3, LY-06 layout calls with the data engineer) |
+| Test harness owners (gap #29) | data engineer (schema and operation registries, manifests, rings R0–R4, `test_run`, CI host, mutation testing) + bioinformatician (`synthworld` spec and the ZOMBI2 fit spike, truth tables, oracles, null-world calibration of O-STATS) | Harness spec sign-off at S−1; S0 harness gate (R0–R3, LY-06 layout calls with the data engineer) |
 | Flexibility-check lab member | to assign; not a harness author (TEST_ARCHITECTURE §11 item 4) | None; adds one workflow from a manifest and recipe only |
 | Pod owner | Claus Wilke | Footprint exceptions, wilkcomp03 access, second account |
 | Facility | rctf-support | Watchdog, `/tmp` policy, quotas |
@@ -206,7 +206,7 @@ Infrastructure
 Test harness, on paper (gap #29; `STAGES.md` S−1 item 15; § numbers in this group are `planning/tests/TEST_ARCHITECTURE.md`'s)
 - [ ] Schema registry specified: pyarrow schema plus semantic constraints for every L0–L4 and search table, 16-byte UIDs as FIXED_LEN_BYTE_ARRAY (R0, LY-01). **v0 done** (`src/biobox/registry/schemas.py`, 17 tables); the rest are listed in `tests/registry/pending_tables.yaml`.
 - [x] Operation registry (`tests/registry/operations.yaml`): every O-* row with inputs and outputs, oracle, MRs and existing tests (§2); R0 lint green.
-- [ ] Synthetic-world generator (`synthworld`) spec: planted features and truth tables (§6.2), null worlds with phylogeny and HGT; Zombi fit checked at micro-corpus size, ALF fallback decided (§11 item 1).
+- [ ] Synthetic-world generator (`synthworld`) spec: planted features and truth tables (§6.2), null worlds with phylogeny and HGT. **Spec written** (`planning/tests/synthworld_spec.md`; ZOMBI2 backbone plus custom code, Zombi 1 and ALF not used); S−1 fit spike (§1.4 of that file) still to run.
 - [x] CI host for R2 chosen: GitHub Actions on private `ifinkelstein/bio-box` (DEC-06).
 - [x] `test_run` schema registered (fields in §8).
 - [ ] S0 gate written as a SQL query over `test_run`.

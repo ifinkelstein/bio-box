@@ -27,7 +27,7 @@ Status: **planning only** (2026-10-29). Nothing here is implemented. This file o
 - A schema registry as code (pyarrow schemas plus semantic constraints) checked with Pandera and plain DuckDB SQL assertions (dbt-duckdb is not used; `data_layer_and_tests.md` §4).
 - Brute-force oracles in pure Python/SQL on the micro-corpus (already the Q family's approach).
 - Differential testing against independent implementations: pyhmmer vs the `hmmsearch` binary, DuckDB vs pyarrow vs polars readers, `bio-box nbr` vs Domainator (S-02d), MMseqs2 vs DIAMOND vs pyhmmer (S-02).
-- Simulation: Zombi (species trees, genome evolution with duplication, transfer, loss, inversion and transposition; sequence mode via Pyvolve) for gene order and families; `hmmemit` from real Pfam HMMs for family members at controlled divergence; `cmemit` from Rfam CMs for planted RNA motifs; planted CRISPR arrays with spacers matching planted phage contigs; a fragmenter for assembly quality; a mutator for gene-call errors (frameshifts, wrong starts). Fit of Zombi to be checked at S−1 (ALF is the fallback).
+- Simulation: ZOMBI2 (pinned `zombi2==0.54.0`, MIT; species tree, gene families, gene trees, signed gene order, HGT, rearrangements, replicons, and co-transferred groups as planted modules) as the evolutionary backbone, with the custom `synthworld` realization (`synthworld_spec.md`): family sequences evolved along gene trees under the source Pfam HMM emissions at a set identity target (`hmmemit` as a cross-check only, since it cannot set divergence); `cmemit` from Rfam CMs for planted RNA motifs; planted CRISPR arrays with spacers matching planted phage contigs; a fragmenter for assembly quality; a mutator for gene-call errors (frameshifts, wrong starts). Verdict 2026-10-29 (`synthworld_spec.md` §1): ZOMBI2 plus custom code; Zombi 1 and ALF are not used; an S−1 fit spike remains (§1.4 of that file).
 - Statistical calibration: simulation-based checks that null p-values are uniform (KS test, QQ against permutation), FDR at nominal level, power curves under planted signal; tolerance bands from binomial CIs with fixed seeds.
 - DuckDB `EXPLAIN ANALYZE` and profiling JSON to count files and row groups read; `parquet-tools`/pyarrow metadata to check sort order, statistics and sizes.
 - Fault injection: low `MemoryMax` scopes, `timeout`, `kill -9` during write and during catalog rename, `/tmp` filled to quota, a read-only NFS mount, the STOP file, a simulated watchdog renice.
@@ -187,7 +187,7 @@ Computed from the registry and manifests: rows are workflows, columns are operat
 
 ### 6.1 Micro-corpus (CI, minutes)
 
-- About 50 synthetic genomes from one Zombi species tree, plus three small real genomes (λ, T4, *M. genitalium*), built end to end in under 15 minutes on a laptop with a reduced model set (about 200 Pfam HMMs, 20 Rfam CMs).
+- About 50 synthetic genomes from one ZOMBI2 species tree (`synthworld_spec.md` §5 micro preset), plus three small real genomes (λ, T4, *M. genitalium*), built end to end in under 15 minutes on a laptop with a reduced model set (about 200 Pfam HMMs, 20 Rfam CMs).
 - Every layer, the search pack, and every query class are built; brute-force oracles run on all of it.
 - Seeded and deterministic; outputs hashed and recorded as the micro-corpus manifest.
 
@@ -197,7 +197,7 @@ The generator (`synthworld`, versioned, seeded) writes genomes plus truth tables
 
 | planted feature | how | truth table |
 |---|---|---|
-| gene families | Zombi gene trees; sequences by `hmmemit` from real Pfam HMMs at set divergence | `truth_family` |
+| gene families | ZOMBI2 gene trees; sequences evolved along them under real Pfam HMM emissions at a set identity target (`synthworld_spec.md` §2.3) | `truth_family` |
 | modules (true coupling) | co-transferred gene blocks with set strength | `truth_module` |
 | fusions and splits | ORF merge and split events on chosen lineages | `truth_fusion` |
 | RNA motifs in IGRs | `cmemit` from Rfam CMs upstream of chosen families | `truth_rna` |
@@ -249,7 +249,7 @@ LY-06 replaces latency arguments in the open layout decisions (K-13 sequence-sto
 | R4 stage gate | sampled oracles, accretion, determinism, K tests, S tests, SLOs; one scaling-fit point per stage (S1, S2, S3 included) | stage data | pod or Hetzner | per stage | as in STAGES |
 | R5 calibration and benchmark | null-world calibration at stage scale where the statistics change scale (S2C, S5, S6; other tiers rerun it at micro-corpus scale), B1–B6, replays, the scaling fit over the R4 points | synthetic worlds at stage scale; real | pod or Hetzner | per tier | as in SEARCH_PLAN |
 
-**Where the tooling lives.** Test tooling (pytest, Hypothesis, pandera, mutmut, asv, Zombi with Pyvolve, ALF as fallback) ships in a separate `bio-box-test` image layered on `bio-box:3.1`, so the runtime image stays unchanged; `hmmemit` and `cmemit` come from the HMMER and Infernal already in the runtime image (`DEPLOYMENT-AND-MALLEABILITY.md` §2.1). R0–R2 run on the CI host (open item §11.2); R3 runs nightly on the pod at nice 19 inside the run-step envelope; R4–R5 run on the stage host; multi-client tests run at night (`planning/preflight_gaps.md` #20).
+**Where the tooling lives.** Test tooling (pytest, Hypothesis, pandera, mutmut, asv, `zombi2==0.54.0` and `synthworld`) ships in a separate `bio-box-test` image layered on `bio-box:3.1`, so the runtime image stays unchanged; `hmmemit` and `cmemit` come from the HMMER and Infernal already in the runtime image (`DEPLOYMENT-AND-MALLEABILITY.md` §2.1). R0–R2 run on the CI host (open item §11.2); R3 runs nightly on the pod at nice 19 inside the run-step envelope; R4–R5 run on the stage host; multi-client tests run at night (`planning/preflight_gaps.md` #20).
 
 **Results table.** Every test run writes `test_run` rows: `test_id`, ring, operation, workflow, params hash, outcome, metrics (JSON), duration, code commit, `runtime_image_digest` (the `bio-box:3.1` binaries under test), `test_image_digest` (the `bio-box-test` layer), `release_id`, host, seed. Stored as packed Parquet under `$ATD_ROOT/tests/`. Rows from an off-pod CI host are written as Parquet artifacts and pulled by the pod-side single writer (rsync over SSH from the pod), then registered; the transport is fixed with the CI-host choice (§11 item 2). A stage gate is a SQL query over `test_run` (all blocking tests for the stage pass on the stage's release and image). Regressions are diffs between runs.
 
@@ -299,7 +299,7 @@ Further columns and rules (first written in `data_layer_and_tests.md` §4.12, ad
 
 ## 11. Open items
 
-1. Zombi fit for gene-order and sequence simulation at micro-corpus size (fallback ALF); owner S−1.
+1. ~~Zombi fit~~ **Decided 2026-10-29:** ZOMBI2 backbone plus custom `synthworld` code (`synthworld_spec.md` §1); Zombi 1 and ALF not used. Remaining: the S−1 fit spike (`synthworld_spec.md` §1.4: group co-orientation after inversions, copy-to-leaf mapping, serial engine, runtime at 2,000–4,000 genes per genome).
 2. ~~CI host for R2~~ **Decided 2026-10-29 (DEC-06):** GitHub Actions on the private repo `ifinkelstein/bio-box`. R0–R1 run there now; R2 runs there once the micro-corpus exists. `test_run` rows from Actions are uploaded as workflow artifacts and pulled by the pod-side writer.
 3. Mutation-score target confirmed after the first measurement at S0.
 4. Which lab member runs the flexibility check, and on which workflow.

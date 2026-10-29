@@ -133,7 +133,7 @@ Each card lists six things:
   12. Confirm the Z constants as an ADR (SD-04): `Z_prot = 1e8`, `domZ = 1e8`, `Z_nt = 1e5` Mb, fixed for the release line.
   13. Fix the `bio-box:3.1` tool list (SD-13, SD-17): `3.0` plus HH-suite3, BLAST+, DIAMOND, CMfinder, R-scape, PADLOC, CRISPRCasTyper, CRISPRCasFinder, reseek and Domainator; ProstT5 and the ESM-2 3B 3Di encoder in the CUDA image only. Write the three Domainator case studies and five synteny hypotheses as recipes on paper (S-12).
   14. Record the synteny corpus repair as a dependency ([SEARCH_PLAN §9.4](planning/search/SEARCH_PLAN.md)): about 46 `lit/` files hold a different paper than their name. Replays use supplements and are not blocked; hypotheses drawn from mislabeled texts are re-extracted before they drive experiments.
-  15. Specify the test harness before the layout ([`planning/tests/TEST_ARCHITECTURE.md`](planning/tests/TEST_ARCHITECTURE.md)): the schema registry, the operation registry with every O-* entry's contract, oracle and MRs, the workflow manifests for the S-12 recipes, the synthetic-world generator spec (check Zombi fit; ALF fallback), the `test_run` schema, and the CI host for ring R2. Layout choices still open (K-13, row-group sizes, sort keys) are decided at S0 by LY-06 row-group counts on the micro-corpus.
+  15. Specify the test harness before the layout ([`planning/tests/TEST_ARCHITECTURE.md`](planning/tests/TEST_ARCHITECTURE.md)): the schema registry, the operation registry with every O-* entry's contract, oracle and MRs, the workflow manifests for the S-12 recipes, the synthetic-world generator spec (written: `planning/tests/synthworld_spec.md`, ZOMBI2 backbone plus custom code; S−1 fit spike in its §1.4), the `test_run` schema, and the CI host for ring R2. Layout choices still open (K-13, row-group sizes, sort keys) are decided at S0 by LY-06 row-group counts on the micro-corpus.
 - **Gate:** the checklist in `preflight_gaps.md` §7 is all green (its test-harness group is item 15), plus items 10–13 and 15 done and item 14 owned. Time box: 3–4 weeks (*estimate*; the earlier 2–3 weeks predates item 15).
 
 ### S0: Golden genomes, harness, and the decisions that cannot be revisited cheaply
@@ -451,7 +451,7 @@ Every edition carries the sequence store for its stages. Sources that cannot be 
 |---|---|
 | Sequence-store primary format (Parquet chunks vs bgzip+faidx) | S0 (K-13, by LY-06 row-group counts) |
 | Row-group sizes and sort keys | S0 (LY-06) |
-| Zombi fit for gene-order and sequence simulation at micro-corpus size, or ALF fallback ([TEST_ARCHITECTURE §11](planning/tests/TEST_ARCHITECTURE.md) item 1) | S−1 |
+| ~~Zombi fit~~ **Decided 2026-10-29:** ZOMBI2 plus custom `synthworld` ([synthworld_spec.md](planning/tests/synthworld_spec.md) §1); fit spike remaining | S−1 (spike) |
 | ~~CI host for ring R2~~ **Decided 2026-10-29 (DEC-06):** GitHub Actions on private `ifinkelstein/bio-box` | done |
 | Mutation-score target (≥ 80%, *target*) confirmed after the first measurement (TEST_ARCHITECTURE §11 item 3) | S0 |
 | Which lab member runs the flexibility check, and on which workflow (TEST_ARCHITECTURE §11 item 4) | S0 (named; TEST_ARCHITECTURE gives no owner) |
