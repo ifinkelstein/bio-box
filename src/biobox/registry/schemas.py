@@ -57,7 +57,7 @@ _SPECS = [
             _f("bytes", pa.int64()),
             _f("license", pa.string()),
             _f("redistributable", pa.bool_()),
-            _f("retrieved_at", pa.timestamp("s", tz="UTC")),
+            _f("retrieved_at", pa.timestamp("ms", tz="UTC")),
         ]),
         primary_key=("source_uid", "object_path"),
         sort_key=("source_uid", "object_path"),
@@ -108,7 +108,11 @@ _SPECS = [
         ]),
         primary_key=("contig_uid", "raw_digest"),
         sort_key=("contig_uid", "raw_digest"),
-        doc="data_layer_and_tests.md §2A.3 (contig_uid -> raw_digest; default = earliest occurrence by precedence)",
+        partition_keys=("stage",),
+        doc=(
+            "data_layer_and_tests.md §2A.3 (contig_uid -> raw_digest). Default variant: lowest "
+            "(source precedence, l0_object_sha256, record_ordinal), so it does not depend on input order (MR-01)"
+        ),
     ),
     TableSpec(
         name="seq_locator",
@@ -308,7 +312,7 @@ _SPECS = [
             _f("z_prot", pa.float64()),
             _f("z_nt_mb", pa.float64()),
             _f("query_hash", pa.string()),
-            _f("submitted_at", pa.timestamp("s", tz="UTC")),
+            _f("submitted_at", pa.timestamp("ms", tz="UTC")),
             _f("wall_s", pa.float64(), nullable=True),
             _f("peak_rss_bytes", pa.int64(), nullable=True),
             _f("cpu_min_max_pid", pa.float64(), nullable=True),

@@ -1,0 +1,71 @@
+"""Exact-byte FASTA reading and writing for the sequence store.
+
+Records keep their header line and sequence bytes exactly as in the source
+(case and IUPAC codes preserved). `line_width` is the wrap width of the record,
+or 0 when the wrapping is irregular, in which case round trips compare the
+unwrapped sequence.
+"""
+
+from __future__ import annotations
+
+import gzip
+from dataclasses import dataclass
+from pathlib import Path
+
+
+@dataclass(frozen=True)
+class Record:
+    header: str  # without the leading '>'
+    seq: bytes
+    line_width: int
+
+    @property
+    def accession(self) -> str:
+        return self.header.split(None, 1)[0] if self.header else ""
+
+
+def _open(path: Path):
+    return gzip.open(path, "rb") if str(path).endswith(".gz") else open(path, "rb")
+
+
+def normalized_lines(path: Path) -> list[bytes]:
+    """Decompressed lines with CRLF folded to LF and blank lines dropped."""
+    with _open(path) as fh:
+        return [ln.rstrip(b"\r\n") for ln in fh if ln.strip()]
+
+
+def _width(lines: list[bytes]) -> int:
+    if not lines:
+        return 0
+    w = len(lines[0])
+    if all(len(ln) == w for ln in lines[:-1]) and len(lines[-1]) <= w:
+        return w
+    return 0
+
+
+def read(path: Path) -> list[Record]:
+    records: list[Record] = []
+    header: str | None = None
+    seq_lines: list[bytes] = []
+    for ln in normalized_lines(path):
+        if ln.startswith(b">"):
+            if header is not None:
+                records.append(Record(header, b"".join(seq_lines), _width(seq_lines)))
+            header = ln[1:].decode()
+            seq_lines = []
+        else:
+            if header is None:
+                raise ValueError(f"{path}: sequence before the first header")
+            seq_lines.append(ln)
+    if header is not None:
+        records.append(Record(header, b"".join(seq_lines), _width(seq_lines)))
+    return records
+
+
+def format_record(header: str, seq: bytes, line_width: int) -> list[bytes]:
+    lines = [b">" + header.encode()]
+    if line_width <= 0:
+        lines.append(seq)
+    else:
+        lines.extend(seq[i : i + line_width] for i in range(0, len(seq), line_width))
+    return lines

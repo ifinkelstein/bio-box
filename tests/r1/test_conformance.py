@@ -4,7 +4,20 @@ from __future__ import annotations
 
 import pyarrow as pa
 
-from biobox.registry.schemas import conformance_problems, table
+import pyarrow.parquet as pq
+import pytest
+
+from biobox.registry.schemas import TABLES, conformance_problems, table
+
+
+@pytest.mark.parametrize("name", sorted(TABLES))
+def test_registry_schema_survives_parquet_round_trip(name, tmp_path):
+    # Parquet cannot hold some Arrow types (e.g. timestamp[s]); a schema that changes on
+    # write would fail C-01 on every file we produce.
+    spec = TABLES[name]
+    path = tmp_path / f"{name}.parquet"
+    pq.write_table(spec.schema.empty_table(), path)
+    assert pq.read_table(path).schema.equals(spec.schema, check_metadata=False)
 
 
 def _igr(strands):

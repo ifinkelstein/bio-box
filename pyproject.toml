@@ -4,12 +4,15 @@ version = "0.0.1"
 description = "Staged, content-addressed corpus of prokaryotic and viral genomes for neighborhood, fusion and search workflows"
 requires-python = ">=3.11"
 dependencies = [
+    "blake3>=1",
+    "duckdb>=1.1",
     "pyarrow>=17",
     "pyyaml>=6",
 ]
 
 [dependency-groups]
 dev = [
+    "hypothesis>=6",
     "pytest>=8",
 ]
 
@@ -24,4 +27,5 @@ packages = ["src/biobox"]
 testpaths = ["tests"]
 markers = [
     "r0: static checks on registries, recipes and manifests (TEST_ARCHITECTURE §8)",
+    "r2: micro-corpus and micro-S0 fixture builds (TEST_ARCHITECTURE §8)",
 ]
