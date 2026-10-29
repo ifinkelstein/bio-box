@@ -8,7 +8,7 @@ This file is authoritative for stage numbering. Detail lives in:
 - [`PLAN.md`](PLAN.md): pipeline and schema.
 - [`DEPLOYMENT-AND-MALLEABILITY.md`](DEPLOYMENT-AND-MALLEABILITY.md): hosts, images, contract.
 - [`planning/search/SEARCH_PLAN.md`](planning/search/SEARCH_PLAN.md): ad hoc search design (SD-01..SD-21), search pack, tiers ST0–ST5, S-tests (S-01..S-13, plus S-02d).
-- [`planning/tests/TEST_ARCHITECTURE.md`](planning/tests/TEST_ARCHITECTURE.md): operation registry (O-*), failures F-01..F-15, MR-01..MR-18, workflow manifests, micro-corpus, synthetic and null worlds, LY-01..LY-10, rings R0–R5, `test_run`.
+- [`planning/tests/TEST_ARCHITECTURE.md`](planning/tests/TEST_ARCHITECTURE.md): operation registry (O-*), failures F-01..F-15, MR-01..MR-19, workflow manifests, micro-corpus, synthetic and null worlds, LY-01..LY-10, rings R0–R5, `test_run`.
 - [`audits/SYNTHESIS_2.md`](audits/SYNTHESIS_2.md): decision record D-01..D-28.
 
 ---
@@ -122,7 +122,7 @@ Each card lists six things:
   1. Sign off the first-10 questions, each with an existing-tool baseline.
   2. Assign roles, time boxes and kill criteria K1–K7.
   3. Send the footprint request to the pod owner, covering wilkcomp03 GPU access and a second account.
-  4. Commit the ADRs: IDs (BLAKE3-128), the FCS-GX route, the human-data rule, the upgrade policy, L0 durability, and the license and name.
+  4. Commit the ADRs: IDs (BLAKE3-128), the FCS-GX route (**decided 2026-10-29**: deferred and accreted later as a QC sidecar when ≥512 GB RAM is available; human/vertebrate host screen from S0; `preflight_gaps.md` #4), the human-data rule, the upgrade policy, L0 durability, and the license and name.
   5. Set up the repo and CI with a micro-S0 fixture.
   6. Pull the `.sif` by digest and record `bio-box doctor`.
   7. Port `run-step` from `homology_pod.sh`.
@@ -242,7 +242,7 @@ Each card lists six things:
 
 ### S2C: Complete prokaryotic genomes (GTDB R226, assembly level `Complete Genome`)
 
-Inserted 2026-10-29 ([SEARCH_PLAN SD-16, §6.1](planning/search/SEARCH_PLAN.md)). Releases are `rS2C.<n>`; no other stage is renumbered.
+Inserted and approved 2026-10-29 ([SEARCH_PLAN SD-16, §6.1](planning/search/SEARCH_PLAN.md)): ≤20 complete genomes per GTDB species, chosen by CheckM2 quality then ANI diversity. Releases are `rS2C.<n>`; no other stage is renumbered. Optional follow-on **S2C-b** (the remaining complete genomes, uncapped; est. 7,500–54,000 core-h for all complete genomes together) is appended after the S2C gate only if the signed-off first-10 questions include strain-level work (defense hotspots, pangenome turnover); it costs an L2/L4 recompute and exercises accretion at scale.
 
 - **Adds:**
   - GTDB R226 genomes, representatives and members, whose `ncbi_assembly_level` is `Complete Genome`, at most 20 per species, chosen by CheckM2 completeness and contamination, then by ANI diversity (skani).
@@ -384,7 +384,7 @@ Inserted 2026-10-29 ([SEARCH_PLAN SD-16, §6.1](planning/search/SEARCH_PLAN.md))
 - **Logan:** compute-to-data on AWS us-east-1. Accessions are preselected by SRA metadata and STAT profiles, and only the reduced outputs (L1 Parquet plus the sequence-store shards for kept contigs) leave AWS.
 - **Gate (at every substage):**
   - Identity resolution against S0–S6.
-  - Screening: FCS-GX, GUNC, CheckM2.
+  - Screening: GUNC, CheckM2, human/vertebrate host screen; FCS-GX added when ≥512 GB RAM is available (deferred 2026-10-29, `preflight_gaps.md` #4).
   - A rarefaction check: novel NR50 clusters per Tbp stays above a pre-set threshold, otherwise stop.
   - Harness: R4 at every substage plus R5 for ST5, as a `test_run` query; new workflows arrive with manifests.
 - **Search gate (ST5):** compute-to-data; reduction-only searches (cluster, then score by context); Logan-Search and Serratus as external nucleotide services. Replays: Altae-Tran 2023 FLSHclust subset; Domainator 2024 workflows. S-tests: S-01, S-03..S-06 and S-08 at every substage.
@@ -464,6 +464,6 @@ Every edition carries the sequence store for its stages. Sources that cannot be 
 | Whether any L5 index is built | S5 |
 | Whether S5's global steps run on the pod or on Hetzner | S3 scaling fit |
 | GTDB taxonomy license, PLSDB redistribution terms, INPHARED current count | Before S1–S3 respectively |
-| Approve S2C (complete genomes, ≤20 per species) as the first prokaryotic-chromosome stage ([SEARCH_PLAN §9.1](planning/search/SEARCH_PLAN.md)) | S−1 (with the complete-genome count) |
+| ~~Approve S2C~~ **Approved 2026-10-29** (≤20 per species; S2C-b optional, decided by the first-10 questions). Complete-genome count still to pin | S−1 (count) |
 | Z constants: `Z_prot = 1e8`, `Z_nt = 1e5` Mb (recommended), or another convention (SEARCH_PLAN §9.2) | S−1 (ADR; must hold from S0, since S-03 compares stages) |
 | Search host for ST4: size and timing of a Hetzner box that holds the S6 search pack (SEARCH_PLAN §9.3) | S5 gate (from the measured S5 pack), before S6 |

@@ -54,6 +54,7 @@ bio-box run --profile wilkcomp02 --stage S1 --release rS1.1
 ```
 
 - The workflow profile (`profiles/wilkcomp02/`) encodes the caps: `max_threads_day=40`, `max_threads_night=56`, `mem_scope=200G`, `tmp=/tmp/if2453/bio-box`, `durable=/stor/work/Wilke/if2453/all-the-data`, `bulk=/stor/scratch/Wilke/if2453/all-the-data`, `nice_monolithic=19`, `nice_fanout=15`.
+- **Project checkout on the pod: `~/bio-box`** (decided 2026-10-29). It holds the git repository (plan docs, code, registries, recipes, `profiles/`) and the `.sif` images. It holds no data: bulk data stays under `bulk=` and durable small outputs under `durable=`, so home-directory quota and the NFS small-file rule are not at risk.
 - **No public network service.** `bio-box serve` binds to `127.0.0.1` only. Users reach it through an SSH tunnel (`ssh -L 8420:127.0.0.1:8420 if2453@wilkcomp02.ccbb.utexas.edu`). There is no Docker daemon, no exposed port, and no MCP server reachable from outside the host. The Domainator GUI (`domainator_server`, image 3.1) follows the same rule: started per user on a `127.0.0.1` port with `--data-dir` pointing at an exported subset in the user's project directory, reached through the same SSH tunnel, never at the store itself.
 - Interactive queries use DuckDB directly against the read-only catalog (§3.8), with `threads` and `memory_limit` set to the daytime caps.
 

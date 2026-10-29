@@ -144,6 +144,7 @@ A metamorphic relation (MR) states how the output must change when the input is 
 | MR-16 | change shard count or thread count | identical results |
 | MR-17 | rerun a recipe on a later release | same results on unchanged targets (generalizes S-03) |
 | MR-18 | null world: relabel genes within phylogenetic and HGT constraints | p-values uniform; FDR at nominal level |
+| MR-19 | add a contamination mask (an FCS-GX or host-screen sidecar flags contigs) | sequences, tapes and UIDs unchanged; only statistics involving masked contigs change, and they change exactly as if those contigs had been excluded at ingest; `fcs_gx_status` updated |
 
 ---
 
@@ -280,7 +281,7 @@ Further columns and rules (first written in `data_layer_and_tests.md` §4.12, ad
 | SLOs | R4 | performance history across commits (`asv`) |
 | B1–B6 benchmarks | R5 | null-world calibration complements B5 |
 
-**New in this file:** the operation registry; the failure ranking; MR-01..MR-18; workflow manifests and the coverage matrix; the micro-corpus and the synthetic-world generator with null worlds; LY-01..LY-10; rings; the `test_run` table; mutation testing; deliberate fault injection for every S1 failure; the flexibility check.
+**New in this file:** the operation registry; the failure ranking; MR-01..MR-19; workflow manifests and the coverage matrix; the micro-corpus and the synthetic-world generator with null worlds; LY-01..LY-10; rings; the `test_run` table; mutation testing; deliberate fault injection for every S1 failure; the flexibility check.
 
 ---
 

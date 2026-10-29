@@ -262,13 +262,13 @@ Rings (TEST_ARCHITECTURE §8): R0 static lint; R1 unit and property; R2 micro-co
 | `PRIOR-ART.md` | FLSHclust, Domainator 2024 (uncovered-segment clustering is published; the novelty is the combination with RNA features and dependence-aware statistics), Rousset 2022 framework bracketing. Domainator replay stages corrected (case 1 at ST2, case 3 at ST3/ST4, case 2 at ST4) and its role as the candidate workbench (SD-17). |
 | Domainator round (2026-10-29) | SD-17..SD-21 and S-12, S-13 added here; `data_layer_and_tests.md` gets the `search_hit` profile coordinates, SSN threshold table, guardrail fields and S-12/S-13; `DEPLOYMENT-AND-MALLEABILITY.md` gets Domainator in the image, the `--json`/`--top_n`/`--format domainator-gb` conventions and `bio-box search ssn`. |
 | `planning/preflight_gaps.md` | Add search gaps G-23..G-28. |
-| Test-architecture round (2026-10-29) | `planning/tests/TEST_ARCHITECTURE.md` added (operations O-*, failures F-*, MR-01..MR-18, manifests, micro-corpus and synthetic worlds, LY-*, rings R0–R5, `test_run`). Here: §7 gains op and ring columns; S-12 recipes become the first manifests; §4 recipes get a sibling manifest and controls it reuses (synthetic preferred); ST0 tests first on the micro-corpus. `DEPLOYMENT-AND-MALLEABILITY.md` gets the `bio-box-test` image, test hosts per ring and `test_run` storage. |
+| Test-architecture round (2026-10-29) | `planning/tests/TEST_ARCHITECTURE.md` added (operations O-*, failures F-*, MR-01..MR-19, manifests, micro-corpus and synthetic worlds, LY-*, rings R0–R5, `test_run`). Here: §7 gains op and ring columns; S-12 recipes become the first manifests; §4 recipes get a sibling manifest and controls it reuses (synthetic preferred); ST0 tests first on the micro-corpus. `DEPLOYMENT-AND-MALLEABILITY.md` gets the `bio-box-test` image, test hosts per ring and `test_run` storage. |
 
 ---
 
 ## 9. Open items for the user
 
-1. **Approve S2C** (complete genomes, ≤20 per species) as the first prokaryotic-chromosome stage.
+1. ~~Approve S2C~~ **Approved 2026-10-29:** ≤20 complete genomes per species. Optional S2C-b (the remaining complete genomes) only if the first-10 questions include strain-level work.
 2. **Z constants:** `Z_prot = 1e8`, `Z_nt = 1e5` Mb (recommended), or another convention.
 3. **Search host for ST4:** size and timing of a Hetzner box that holds the S6 pack.
 4. **Synteny corpus repair:** about 46 `lit/` files hold a different paper than their name (9 in 2022–2026, ~25 in 2017–2021, 12 in 1993–2016), and the synteny audit counts are zero for all 365 rows. Replays use supplements, which are unaffected, but the hypotheses drawn from mislabeled texts need re-extraction before they drive experiments.

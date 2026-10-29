@@ -52,7 +52,7 @@ The build accretes stage by stage, smallest data first. The order (authoritative
 - Data-layer layout, identifiers and the per-layer test suite: [`planning/data_layer_and_tests.md`](planning/data_layer_and_tests.md)
 
 ### 0.4 Acceptance gates common to every stage
-Tests are organized per [`planning/tests/TEST_ARCHITECTURE.md`](planning/tests/TEST_ARCHITECTURE.md) (authoritative): registered operations (O-*) with a contract, an oracle and metamorphic relations (MR-01..MR-18); workflows as manifests over those operations; test rings R0–R5. Every test run writes rows to the `test_run` table (test, ring, operation, workflow, params hash, outcome, metrics, code commit, image digest, `release_id`, seed). **A gate is a SQL query over `test_run`:** all blocking tests for the stage pass on the stage's `release_id` and image digest. A regression is a diff between runs. Blocking tests use fixed seeds and are never retried into passing. Items 1–8 keep their numbering; TEST_ARCHITECTURE §9 maps their test families onto operations and rings.
+Tests are organized per [`planning/tests/TEST_ARCHITECTURE.md`](planning/tests/TEST_ARCHITECTURE.md) (authoritative): registered operations (O-*) with a contract, an oracle and metamorphic relations (MR-01..MR-19); workflows as manifests over those operations; test rings R0–R5. Every test run writes rows to the `test_run` table (test, ring, operation, workflow, params hash, outcome, metrics, code commit, image digest, `release_id`, seed). **A gate is a SQL query over `test_run`:** all blocking tests for the stage pass on the stage's `release_id` and image digest. A regression is a diff between runs. Blocking tests use fixed seeds and are never retried into passing. Items 1–8 keep their numbering; TEST_ARCHITECTURE §9 maps their test families onto operations and rings.
 
 1. **Ledger balances.** For every object, `n_in = kept + merged + Σ rejected_by_reason`, reconciled against the source manifest (DQ-08).
 2. **Determinism.** The same inputs in shuffled order give identical BLAKE3 hashes for every L0, L1 and L3 table (AR-07, DB-04).
@@ -144,7 +144,7 @@ Each row is a per-unit rate multiplied by a number of units. Every rate stays un
 
 | Stage | Work unit | Rate | Units (per stage) | Notes |
 |---|---|---|---|---|
-| Identity resolution + screening (§2.3) | Mbp screened (FCS-adaptor, FCS-GX, CheckM2, GUNC, geNomad) | unmeasured (S0) | Mbp of new input | FCS-GX needs a large in-memory DB. Check it against the 200 GB cgroup in S0. |
+| Identity resolution + screening (§2.3) | Mbp screened (FCS-adaptor, FCS-GX, CheckM2, GUNC, geNomad) | unmeasured (S0) | Mbp of new input | FCS-GX deferred (needs ~470 GB in RAM); accreted later as a QC sidecar (§2.3). |
 | Gene calling | Mbp per thread (pyrodigal single, -gv, meta; × number of codes tested) | unmeasured (S0) | Mbp kept | Codetta per Tier 1 genome is an extra cost. |
 | smORF promotion | smORF clusters × RNAcode | unmeasured (S0) | candidate smORFs | Unbudgeted in v2.0 (BX-07). |
 | Protein clustering | `mmseqs linclust` / `clusterupdate` core-h per 10⁹ sequences | unmeasured (S0) | proteins | Linclust scaled from its paper is about 1,490 core-h per pass at 8.5×10⁹ sequences (derived, AR-02). v2.0 budgeted 105 CPU-h. |
@@ -214,8 +214,14 @@ Stage 0a  Run/sample preselection (SRA-derived inputs only)
   • Select runs by SRA metadata (library_strategy, organism, STAT taxonomy profile)
     before any download. Replaces the 64 MB eukaryotic-repeat Bloom filter (BX-02).
 Stage 0b  Screening (per contig; rejects recorded with reason codes)
-  • FCS-adaptor + UniVec; phiX / lambda / ERCC spike-ins; FCS-GX (domain of life,
-    human); length/complexity (DUST).
+  • FCS-adaptor + UniVec; phiX / lambda / ERCC spike-ins; human/vertebrate host
+    screen (minimap2 or sketch containment vs GRCh38/T2T + common hosts; low RAM);
+    length/complexity (DUST).
+  • FCS-GX (domain of life) deferred (decided 2026-10-29): it needs ~470 GB RAM
+    (verify), above the 200 GB scope. It is accreted later as a QC sidecar when a
+    ≥512 GB host is available; flagged contigs are masked from counting at the
+    next release. Each genome records fcs_gx_status (ncbi_screened |
+    screened_here | not_screened); MR-19 tests the mask.
   • CheckM2 + GUNC on every MAG/SAG; GTDB-Tk or skani placement for non-GTDB genomes.
   • geNomad (replicon_class, ICTV taxonomy) on every contig.
   • Chimera flags: coverage breaks where available, mixed lineage along the contig.
