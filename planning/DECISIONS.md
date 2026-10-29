@@ -1,0 +1,18 @@
+# Decision log
+
+One line per decision the PI has made, newest last. Plan files point here; when a decision changes, add a new row rather than editing an old one.
+
+| ID | date | decision | where it applies |
+|---|---|---|---|
+| DEC-01 | 2026-10-29 | **S2C approved**: GTDB R226 `Complete Genome` assemblies, ≤20 per species (CheckM2 quality, then ANI diversity). S2C-b (the rest, uncapped) only if the first-10 questions need strain-level work. | `STAGES.md` S2C; `planning/search/SEARCH_PLAN.md` §6.1 |
+| DEC-02 | 2026-10-29 | **FCS-GX deferred**, accreted later as a QC sidecar when a ≥512 GB host is available; low-RAM human/vertebrate host screen from S0; `fcs_gx_status` per genome; test MR-19. | `planning/preflight_gaps.md` #4; `00-spec.md` invariant 3; `PLAN.md` §2.3 |
+| DEC-03 | 2026-10-29 | **Pod checkout at `~/bio-box`**: code, registries, recipes and images only; data stays on `/stor/scratch` and `/stor/work`. | `DEPLOYMENT-AND-MALLEABILITY.md` §1 |
+| DEC-04 | 2026-10-29 | **Z constants fixed for the release line**: `Z_prot = domZ = 1e8` sequences, `Z_nt = 1e5` Mb. Bitscores always stored. | `planning/search/SEARCH_PLAN.md` SD-04; `planning/data_layer_and_tests.md` §2B.4 |
+| DEC-05 | 2026-10-29 | **First-10 questions deferred**; ask the PI again before the S1 gate. S2C-b and question-driven priorities wait on it. | `planning/preflight_gaps.md` §3 |
+| DEC-06 | 2026-10-29 | **Code repo: private GitHub `ifinkelstein/bio-box`**, with GitHub Actions as the CI host for rings R0–R2. The pod checkout `~/bio-box` is updated by pushing from the laptop (git remote `pod`), so the pod needs no GitHub credentials. | `planning/tests/TEST_ARCHITECTURE.md` §11 item 2; `planning/preflight_gaps.md` #2 |
+| DEC-07 | 2026-10-29 | **No licence** for now (private repo, all rights reserved). Project name `bio-box`. Data packs follow each source's licence and redistribution flag. | `planning/preflight_gaps.md` #18 |
+| DEC-08 | 2026-10-29 | **Roles and time boxes accepted as drafted** (`preflight_gaps.md` §5): S−1 3–4 weeks, S0 6–8 weeks, one person at ~60%. | `planning/preflight_gaps.md` §5 |
+| DEC-09 | 2026-10-29 | **Kill criteria K1–K7 accepted.** | `planning/preflight_gaps.md` §6 |
+| DEC-10 | 2026-10-29 | **Footprint request approved**; a draft is in `planning/footprint_request.md` for the PI to send to Claus Wilke. | `planning/preflight_gaps.md` #5 |
+| DEC-11 | 2026-10-29 | **L0 durability**: manifests and checksums on `/stor/work` (backed up); raw source snapshots backed up by the PI to the lab NAS (date to set). Sources that version away (no stable archive URL) get first priority for the NAS copy. Until then, L0 snapshots are re-downloadable except those sources. | `planning/preflight_gaps.md` #6 / §7 |
+| DEC-12 | 2026-10-29 | **Reference databases frozen for S0–S3** (`refdb.yaml`); upgrades only at release boundaries. | `planning/preflight_gaps.md` #7; `STAGES.md` S−1 item 8 |

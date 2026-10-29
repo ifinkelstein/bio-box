@@ -452,7 +452,7 @@ Every edition carries the sequence store for its stages. Sources that cannot be 
 | Sequence-store primary format (Parquet chunks vs bgzip+faidx) | S0 (K-13, by LY-06 row-group counts) |
 | Row-group sizes and sort keys | S0 (LY-06) |
 | Zombi fit for gene-order and sequence simulation at micro-corpus size, or ALF fallback ([TEST_ARCHITECTURE §11](planning/tests/TEST_ARCHITECTURE.md) item 1) | S−1 |
-| CI host for ring R2: laptop, GitHub Actions or a pod-side runner (TEST_ARCHITECTURE §11 item 2) | S−1 |
+| ~~CI host for ring R2~~ **Decided 2026-10-29 (DEC-06):** GitHub Actions on private `ifinkelstein/bio-box` | done |
 | Mutation-score target (≥ 80%, *target*) confirmed after the first measurement (TEST_ARCHITECTURE §11 item 3) | S0 |
 | Which lab member runs the flexibility check, and on which workflow (TEST_ARCHITECTURE §11 item 4) | S0 (named; TEST_ARCHITECTURE gives no owner) |
 | Golden-set accessions marked "pin" (SR1, Lak, Obelisk) | S0 |
@@ -465,5 +465,5 @@ Every edition carries the sequence store for its stages. Sources that cannot be 
 | Whether S5's global steps run on the pod or on Hetzner | S3 scaling fit |
 | GTDB taxonomy license, PLSDB redistribution terms, INPHARED current count | Before S1–S3 respectively |
 | ~~Approve S2C~~ **Approved 2026-10-29** (≤20 per species; S2C-b optional, decided by the first-10 questions). Complete-genome count still to pin | S−1 (count) |
-| Z constants: `Z_prot = 1e8`, `Z_nt = 1e5` Mb (recommended), or another convention (SEARCH_PLAN §9.2) | S−1 (ADR; must hold from S0, since S-03 compares stages) |
+| ~~Z constants~~ **Decided 2026-10-29 (DEC-04):** `Z_prot = domZ = 1e8`, `Z_nt = 1e5` Mb | done |
 | Search host for ST4: size and timing of a Hetzner box that holds the S6 search pack (SEARCH_PLAN §9.3) | S5 gate (from the measured S5 pack), before S6 |

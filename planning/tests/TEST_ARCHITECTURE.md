@@ -300,6 +300,6 @@ Further columns and rules (first written in `data_layer_and_tests.md` §4.12, ad
 ## 11. Open items
 
 1. Zombi fit for gene-order and sequence simulation at micro-corpus size (fallback ALF); owner S−1.
-2. CI host for R2: laptop, GitHub Actions or a pod-side runner (licenses and image size decide); owner S−1.
+2. ~~CI host for R2~~ **Decided 2026-10-29 (DEC-06):** GitHub Actions on the private repo `ifinkelstein/bio-box`. R0–R1 run there now; R2 runs there once the micro-corpus exists. `test_run` rows from Actions are uploaded as workflow artifacts and pulled by the pod-side writer.
 3. Mutation-score target confirmed after the first measurement at S0.
 4. Which lab member runs the flexibility check, and on which workflow.

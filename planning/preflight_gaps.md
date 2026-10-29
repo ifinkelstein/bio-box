@@ -1,6 +1,6 @@
 # Pre-mortem and preflight gaps (before S0)
 
-Status: plan only. Date: 2026-10-28. Search gaps #23–#28 and §1.1 added 2026-10-29 from `planning/search/` (`SEARCH_PLAN.md` calls them G-23..G-28). Test gap #29, K7 and the §7 test-harness group added 2026-10-29 from `planning/tests/TEST_ARCHITECTURE.md`.
+Status: plan only. Date: 2026-10-28. Search gaps #23–#28 and §1.1 added 2026-10-29 from `planning/search/` (`SEARCH_PLAN.md` calls them G-23..G-28). Test gap #29, K7 and the §7 test-harness group added 2026-10-29 from `planning/tests/TEST_ARCHITECTURE.md`. PI decisions DEC-01..DEC-12 recorded 2026-10-29 in `planning/DECISIONS.md`.
 
 Premise: it is April 2027 and S0–S3 failed or stalled. This file lists the most likely causes that the current plan documents do not cover, and the preflight item that closes each one. Inputs read: `STAGES.md`, `00-spec.md` (v3.0), `PLAN.md` (v3.0), `DEPLOYMENT-AND-MALLEABILITY.md` (v3.0), `PRIOR-ART.md`, `planning/sources_and_sizing.md`, `planning/data_layer_and_tests.md`, `audits/SYNTHESIS_2.md`, and the pod notes (`WILKECOMP.org`, `fragment-defense/old-plan.2026-10-18.bak` §9).
 
@@ -19,7 +19,7 @@ Severity: **B** means it blocks S0 from starting; **H** means S0–S3 likely fai
 | 3 | **Cross-document contradictions** (§2). Stage labels in `PLAN.md` still follow the pre-STAGES order. ID hash width and algorithm differ across three files. The sequence-store format is stated three ways. | The implementer builds the wrong schema or gates the wrong stage. IDs are the one decision that can't be changed cheaply. | Resolve every row of §2 in one ADR pass. Add a CI doc-lint that greps stage labels, hash algorithm and ID width against `STAGES.md` and the ID ADR. | Data engineer + PI | S0 |
 | 4 | **FCS-GX memory vs the 200 GB cgroup.** `00-spec.md:47` and `PLAN.md:114` put FCS-GX screening in Stage 0b. The FCS-GX database is about 470 GB and is meant to be held in RAM/shared memory *(verify)*. | Stage 0b can't run on wilkcomp02 under the house rules. It is noted as "check in S0" with no fallback. | **Decided 2026-10-29: deferred, accreted later.** FCS-GX runs when a host with ≥512 GB RAM is available (rented box or later hardware) and lands as a per-genome QC sidecar (flagged contigs and regions with taxon and reason code). The next release recomputes statistics with those contigs masked; sequences, tapes and IDs are unchanged. Until then: CheckM2 + GUNC for quality and chimerism, plus a low-RAM human/vertebrate host screen from S0 (minimap2 or sketch containment against GRCh38/T2T and common hosts), so gap #16 holds. Every genome carries `fcs_gx_status` (`ncbi_screened`, `screened_here`, `not_screened`), and results from releases with unscreened genomes carry the flag. One-off check: FCS-GX on a few hundred older NCBI assemblies on a rented box, to measure what deferral misses. Test MR-19 (TEST_ARCHITECTURE §4). | PI + pod owner | S0 (S3 for non-NCBI sources) |
 | 5 | **Pod approvals not requested.** The plan assumes multi-week runs, TB-scale scratch, a possible memory exception (S5), and that wilkcomp02 is free. Under the house rules, anything beyond the agreed footprint is "a request to Claus, not a notice". | A stop request mid-S5, or watchdog mail to rctf-support every hour, which damages the relationship. | Send one written footprint request covering S0–S5: threads, memory, scratch growth to about 2 TB, run lengths, a STOP-file pause guarantee, and a README per large directory. Also ask about the wilkcomp03 GPU for Stage 2c (#9) and a second account for a postdoc. File the reply in the repo. | PI | S0 (memory exception: S5) |
-| 6 | **L0 snapshots live only on unbacked scratch.** `DEPLOYMENT-AND-MALLEABILITY.md:30` treats source snapshots and the sequence store as "regenerable" on `/stor/scratch`. But upstreams change: INPHARED is rolling, IMG/VR needs a login, and GTDB retires releases. | A scratch loss or upstream change makes a stage unreproducible, and the accretion-equivalence test can no longer be run. | Classify L0 as **durable**. Keep a second copy of L0 snapshots and `contig_occurrence` on `/stor/work` while small (under about 50 GB through S4), and on object storage from S5. Only L1+ is "regenerable". | Data engineer | S0 |
+| 6 | **L0 snapshots live only on unbacked scratch.** `DEPLOYMENT-AND-MALLEABILITY.md:30` treats source snapshots and the sequence store as "regenerable" on `/stor/scratch`. But upstreams change: INPHARED is rolling, IMG/VR needs a login, and GTDB retires releases. | A scratch loss or upstream change makes a stage unreproducible, and the accretion-equivalence test can no longer be run. | Classify L0 as **durable**; only L1+ is "regenerable". **Decided 2026-10-29 (DEC-11):** manifests, checksums and `contig_occurrence` on `/stor/work`; the PI backs L0 snapshots up to the lab NAS (date to set), sources that version away first (INPHARED is rolling, IMG/VR needs a login, GTDB retires releases). The earlier proposal (second copy on `/stor/work` while under ~50 GB, object storage from S5) remains available if the NAS copy is late. | Data engineer | S0 |
 | 7 | **Reference databases not inventoried or pinned** (§4). Sizes, licenses, versions and RAM needs for Pfam, NCBIfam, PHROGs, Rfam, eggNOG, the CheckM2 DB, the geNomad DB, iPHoP, Foldseek AFDB/ESMAtlas30 and FCS-GX are not in any file. | Surprise downloads in the hundreds of GB. A database version bump mid-stage changes `annot_version` and breaks accretion equivalence. | Fill `refdb.yaml` (§4) with version, URL, sha256, size, RAM, license and redistribution flag. Download and checksum into `l0/refdb/` during preflight. Freeze for S0–S3. | Bioinformatician | S0 |
 | 8 | **No owners, calendar or time box.** STAGES gives core-hours but no weeks, people or decision rights. | Stages drift; nobody can say "stop". | Use the role table and calendar in §5. Each stage gets a time box; overrunning it by 50% triggers the kill review (#12). | PI | S0 |
 | 9 | **The GPU on the pod is ignored.** `00-spec.md:31` says "No GPU: ProstT5 and gLM stages are out of scope here", but wilkcomp03 has 4× RTX 6000 Ada (WILKECOMP §2). | Renting a GEX130 for Stage 2c is unnecessary cost, and dark-fold assignment is delayed to S6+. | Add wilkcomp03 to the target table as "GPU, by request". Ask in the #5 request. Probe its disk and load before relying on it. | PI | S3 (first dark-segment set) |
@@ -49,7 +49,7 @@ Severity: **B** means it blocks S0 from starting; **H** means S0–S3 likely fai
 | Item | What is open | Decides | Needed by |
 |---|---|---|---|
 | S2C approval | **Approved 2026-10-29:** stage S2C (GTDB R226 `Complete Genome` assemblies, ≤20 per species by CheckM2 quality then ANI diversity; *estimate* 15–30k assemblies, 60–120 Gbp) between S2 and S3 (`SEARCH_PLAN.md` §6.1). Optional follow-on S2C-b (the remaining complete genomes, uncapped) is added after the S2C gate only if the signed-off first-10 questions include strain-level work (defense hotspots, pangenome turnover). The exact count is still an S−1 task. | PI | S−1 (count) |
-| Z constants | `Z_prot = domZ = 1e8` sequences and `Z_nt = 1e5` Mb (recommended), or another convention; one constant across the release line (SD-04) | PI + bioinformatician | S0 |
+| Z constants | **Decided 2026-10-29 (DEC-04):** `Z_prot = domZ = 1e8` sequences and `Z_nt = 1e5` Mb, one constant across the release line (SD-04) | PI + bioinformatician | done |
 | ST4 search host | Size and timing of a Hetzner search host for the S6 pack: ≥512 GB RAM, ≥4 TB NVMe (*estimate*). Quote it with P1 (#10). | PI | S4 / S6 (ST4) |
 | Synteny corpus repair | About 46 `lit/` files hold a different paper than their name (9 in 2022–2026, ~25 in 2017–2021, 12 in 1993–2016), and the synteny audit counts are zero for all 365 rows. Replays use supplements and are unaffected; hypotheses drawn from mislabeled texts need re-extraction before they drive experiments. | Bioinformatician | before any hypothesis drives experiments |
 | Replay supplement fetch list | Doron 2018 S1–S3, Gao 2020 S1–S3, Altae-Tran Data S1–S4, Millman Table S1, Brewer 2021 files 1–2, CRISPR-Cas 2025 Zenodo PSSMs, Domainator Zenodo; each pinned as an L0 source | Bioinformatician | S−1 (each tier's gate uses them) |
@@ -149,10 +149,12 @@ Calendar (time boxes, assuming one person at ~60% time; revise after S0):
 | S0 | 6–8 weeks (*estimate*: 4 for the S0 build plus 2–4 for the TEST_ARCHITECTURE §10 harness build) | `rS0.1`, `sizing.yaml` refit, ADRs frozen, harness gate (R0–R3, LY-06, mutation score, null-world calibration) as a `test_run` query |
 | S1 | 2 weeks | `rS1.1`, Q1 answered |
 | S2 | 2–3 weeks | `rS2.1`, Q4 answered, DuckLake/LIST decisions |
+| S2C | 2–5 weeks (*estimate*: 3,000–22,000 core-h at ~800 core-h/day, plus gates) | `rS2C.1`, ST2 search replays, first stage-scale null-world calibration (K7) |
 | P1 | 1 week | cross-host hash equality |
 | S3 | 3 weeks | `rS3.1`, Q3/Q10 answered, S5 go/no-go from scaling fit |
 | S4 | 3 weeks | `rS4.1` |
 | S5 | 6–14 weeks (CPU-bound) | `rS5.1`, B1 with CI, `lite` edition |
+| S6 | not boxed yet (split pod/Hetzner; set at the S5 gate from the scaling fit) | `rS6.1`, `core` edition |
 
 Overrunning any time box by 50% triggers a kill review.
 
@@ -175,10 +177,10 @@ Overrunning any time box by 50% triggers a kill review.
 ## 7. Stage −1 preflight checklist (all green before S0 starts)
 
 Governance
-- [ ] First-10 questions signed off by PI, each mapped to a stage and an existing-tool baseline (§3).
-- [ ] Roles assigned; calendar and time boxes accepted (§5).
-- [ ] Kill criteria K1–K7 accepted (§6).
-- [ ] Written footprint request sent to Claus Wilke (threads, memory, scratch to ~2 TB, run lengths, STOP guarantee, wilkcomp03 GPU, second account) and reply filed; `/tmp` cleanup policy asked of rctf-support.
+- [ ] First-10 questions signed off by PI, each mapped to a stage and an existing-tool baseline (§3). **Deferred** (DEC-05): ask again before the S1 gate; the draft Q1/Q4 stand as provisional S1/S2 gate items until then.
+- [x] Calendar and time boxes accepted (DEC-08). Role holders still to name in §5.
+- [x] Kill criteria K1–K7 accepted (DEC-09).
+- [ ] Footprint request approved (DEC-10); draft in `planning/footprint_request.md`. Still to do: send it to Claus Wilke (threads, memory, scratch to ~2 TB, run lengths, STOP guarantee, wilkcomp03 GPU, second account) and reply filed; `/tmp` cleanup policy asked of rctf-support.
 
 Decisions (ADRs committed)
 - [ ] Contradictions C1–C10 resolved; doc-lint added to CI.
@@ -186,11 +188,13 @@ Decisions (ADRs committed)
 - [x] FCS-GX decision: deferred, accreted later as a QC sidecar; human/vertebrate host screen from S0 (gap #4, 2026-10-29).
 - [ ] Human-data rule written into `sources.yaml` (no retention of human-classified contigs).
 - [ ] Upgrade policy (frozen per release train; bumps only at stage boundaries).
-- [ ] L0 durability rule (second copy of L0 on `/stor/work` or object storage).
-- [ ] Code license chosen; name collision checked.
+- [x] L0 durability rule (DEC-11): manifests and checksums on `/stor/work`; snapshots to the lab NAS by the PI (date to set), sources that version away first.
+- [x] Code license: none for now, private repo (DEC-07).
+- [ ] Name collision checked (`bio-box` vs Bioboxes, PyPI, registries); needed before any public release.
 - [x] S2C approved, ≤20 per species (2026-10-29).
 - [ ] Complete-genome count from GTDB R226 metadata recorded (§1.1).
-- [ ] Z constants fixed for the release line (SEARCH_PLAN SD-04; §1.1).
+- [x] Z constants fixed for the release line: `Z_prot = domZ = 1e8`, `Z_nt = 1e5` Mb (DEC-04).
+- [x] Reference databases frozen for S0–S3, upgrades only at release boundaries (DEC-12); `refdb.yaml` still to fill.
 
 Infrastructure
 - [ ] Git repo created with `golden.yaml`, `sources.yaml`, `refdb.yaml`, `params.yaml` stubs, ADR folder, `RUNBOOK.md` skeleton.
@@ -200,11 +204,12 @@ Infrastructure
 - [ ] Directories created with setgid and README (what, who, until when, safe to delete): `/stor/work/Wilke/if2453/all-the-data`, `/stor/scratch/Wilke/if2453/all-the-data`.
 
 Test harness, on paper (gap #29; `STAGES.md` S−1 item 15; § numbers in this group are `planning/tests/TEST_ARCHITECTURE.md`'s)
-- [ ] Schema registry specified: pyarrow schema plus semantic constraints for every L0–L4 and search table, 16-byte UIDs as FIXED_LEN_BYTE_ARRAY (R0, LY-01).
-- [ ] Operation registry (`tests/registry/operations.yaml`): every O-* row with inputs and outputs, oracle, MRs and existing tests (§2).
+- [ ] Schema registry specified: pyarrow schema plus semantic constraints for every L0–L4 and search table, 16-byte UIDs as FIXED_LEN_BYTE_ARRAY (R0, LY-01). **v0 done** (`src/biobox/registry/schemas.py`, 17 tables); the rest are listed in `tests/registry/pending_tables.yaml`.
+- [x] Operation registry (`tests/registry/operations.yaml`): every O-* row with inputs and outputs, oracle, MRs and existing tests (§2); R0 lint green.
 - [ ] Synthetic-world generator (`synthworld`) spec: planted features and truth tables (§6.2), null worlds with phylogeny and HGT; Zombi fit checked at micro-corpus size, ALF fallback decided (§11 item 1).
-- [ ] CI host for R2 chosen: laptop, GitHub Actions or a pod-side runner (§11 item 2).
-- [ ] `test_run` schema registered (fields in §8) and the S0 gate written as a SQL query over it.
+- [x] CI host for R2 chosen: GitHub Actions on private `ifinkelstein/bio-box` (DEC-06).
+- [x] `test_run` schema registered (fields in §8).
+- [ ] S0 gate written as a SQL query over `test_run`.
 - [ ] S-12 manifests on paper: the three Domainator case studies and five synteny hypotheses as recipes, each with a workflow manifest (§5.1).
 
 Data

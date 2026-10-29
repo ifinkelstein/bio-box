@@ -739,8 +739,8 @@ The image is built once per version from a recipe, and its digest is the identit
 - Which stage first introduces geNomad/CheckM2 (needs their DBs in L0) depends on runtime measured on Haswell.
 - Whether `contig_tapes` stays `LIST<T>` or becomes an exploded slot table is decided at S2 by K-07 (LY-06 bytes decoded per Q2 fetch; latency checked afterwards). Whether Q2 needs an L5 offset index is decided by K-12 against the SLO.
 - DuckLake adoption is decided at S2 from the §3.3 spike criteria.
-- The Z constants (§2B.4) and stage S2C await user approval (SEARCH_PLAN §9 items 1–2). NR90/NR50 counts and all search-pack sizes in §2B.7 are estimates until S0–S3 measure them.
-- Test-architecture items owned in TEST_ARCHITECTURE §11: (1) Zombi fit at micro-corpus size, fallback ALF (S−1); (2) CI host for R2 (S−1); (3) mutation-score target confirmed after the first S0 measurement; (4) who runs the flexibility check, on which workflow.
+- The Z constants (§2B.4) and stage S2C are approved (`planning/DECISIONS.md` DEC-01, DEC-04). NR90/NR50 counts and all search-pack sizes in §2B.7 are estimates until S0–S3 measure them.
+- Test-architecture items owned in TEST_ARCHITECTURE §11: (1) Zombi fit at micro-corpus size, fallback ALF (S−1); (2) CI host for R2: GitHub Actions (DEC-06); (3) mutation-score target confirmed after the first S0 measurement; (4) who runs the flexibility check, on which workflow.
 - LY-04 waivers: resolved in TEST_ARCHITECTURE §7 (metadata files declared `small_ok: true` in the schema registry, each bounded to a declared count per release). The registry entries are written at S−1.
 - `gate_spec` (`tests/registry/gates.yaml`), quarantine (`tests/registry/quarantine.yaml`) and the `test_run` columns from §4.12 are adopted in TEST_ARCHITECTURE §8.
 

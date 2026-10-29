@@ -269,7 +269,7 @@ Rings (TEST_ARCHITECTURE §8): R0 static lint; R1 unit and property; R2 micro-co
 ## 9. Open items for the user
 
 1. ~~Approve S2C~~ **Approved 2026-10-29:** ≤20 complete genomes per species. Optional S2C-b (the remaining complete genomes) only if the first-10 questions include strain-level work.
-2. **Z constants:** `Z_prot = 1e8`, `Z_nt = 1e5` Mb (recommended), or another convention.
+2. ~~Z constants~~ **Decided 2026-10-29 (DEC-04):** `Z_prot = domZ = 1e8`, `Z_nt = 1e5` Mb.
 3. **Search host for ST4:** size and timing of a Hetzner box that holds the S6 pack.
 4. **Synteny corpus repair:** about 46 `lit/` files hold a different paper than their name (9 in 2022–2026, ~25 in 2017–2021, 12 in 1993–2016), and the synteny audit counts are zero for all 365 rows. Replays use supplements, which are unaffected, but the hypotheses drawn from mislabeled texts need re-extraction before they drive experiments.
 5. **Fetch list for replays:** Doron 2018 S1–S3, Gao 2020 S1–S3, Altae-Tran Data S1–S4, Millman Table S1, Brewer 2021 files 1–2, CRISPR-Cas 2025 Zenodo PSSMs, Domainator Zenodo data (10.5281/zenodo.10989173) and analysis scripts (Zenodo 14056380, GitHub `nebiolabs/domainator_examples`) (`03` §9, `02` §9, `05` §f).
