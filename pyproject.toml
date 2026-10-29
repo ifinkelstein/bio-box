@@ -7,6 +7,7 @@ dependencies = [
     "blake3>=1",
     "duckdb>=1.1",
     "pyarrow>=17",
+    "pyrodigal>=3",
     "pyyaml>=6",
 ]
 

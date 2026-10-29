@@ -262,6 +262,7 @@ Every annotation records its tool, version, database release, parameters and evi
    - **Complete and HQ genomes:** pyrodigal in single mode per genome. The genetic code is chosen by Codetta, or by genome-level comparison of coding density over codes 11, 4, 15 and 25.
    - **Viral contigs:** pyrodigal-gv, with geNomad's code call.
    - **Fragments:** meta mode. The code is inherited from the contig's taxonomy, because meta mode cannot detect codes 15 or 25.
+   - **S0 implementation (2026-10-29), gene-call policy `p1`:** single mode trained per genome when the genome is ≥100 kb (Prodigal's training minimum), meta mode below that, until geNomad regimes route viral contigs to pyrodigal-gv. On the micro-S0 fixture: λ 61 genes (meta), T4 261, *M. genitalium* 527 under code 4 (995 much shorter genes under code 11). Every complete gene matches an independent translation (R-04), and ≥98% of genes are recovered at mirrored coordinates on the reverse complement (MR-03).
    - **Host labels, corrected from v2.0:** code 4 applies to Mycoplasmatota and Spiroplasma. Code 15 applies to some phages (e.g. Crassvirales); Absconditabacteriales use their own code. Code 25 applies to SR1 / BD1-5 lineages, not all CPR, since most Patescibacteria use code 11. The v2.0 claim of code 4 in Hodarchaeales is unverified and removed.
    - **Recorded fields:** `partial_5prime`, `partial_3prime`, `orfs_to_contig_start`, `orfs_to_contig_end`.
 2. **smORFs, 15–75 aa (D-07, BX-07).** This range replaces the four inconsistent ranges in v2.0.

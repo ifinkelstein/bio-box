@@ -12,16 +12,19 @@ objects:
     length: 48502
     sha256_gz: a0276ea1d31d4c42ba9723be8ba0ad06f921e39f739d6a0513560a04ff27cd17
     sha256_fna: 78a78913d3585570fa28b7cec05e4fcf067c1aaa3740d37a377f2babda70618c
+    genetic_code: 11
   - file: NC_000866.4.fna.gz
     accession: NC_000866.4
     organism: Enterobacteria phage T4
     length: 168903
     sha256_gz: 0cc562545694b7cc1fdee3c6f359f5ae0db2969b355d6bc6dc95108864b0ebda
     sha256_fna: f6b1007e7b61656f630f5b392fa0b4118d7d9e02c8c1d981ececefc33a9e5b43
+    genetic_code: 11
   - file: NC_000908.2.fna.gz
     accession: NC_000908.2
     organism: Mycoplasmoides genitalium G37
     length: 580076
     sha256_gz: 99c319cf6d8b06115d4fa2b9027609f054c785809addc06d6fca470564a4324c
     sha256_fna: cc21ace789ae96213ab10a595b5f52c870b8218581a0420ba13cee0409d8ccc9
+    genetic_code: 4
 fetch: "https://eutils.ncbi.nlm.nih.gov/entrez/eutils/efetch.fcgi?db=nuccore&id={accession}&rettype=fasta&retmode=text"
