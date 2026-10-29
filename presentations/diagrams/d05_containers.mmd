@@ -1,0 +1,22 @@
+flowchart LR
+  classDef img fill:#e8eef7,stroke:#2f5d9b,color:#14213d
+  classDef data fill:#eef6ee,stroke:#3c7d40,color:#14213d
+  classDef host fill:#fdf1e3,stroke:#c26a1b,color:#14213d
+  classDef lock fill:#ffffff,stroke:#55607a,color:#14213d
+
+  lock["one lockfile<br/>pixi.lock + uv.lock<br/>+ binary digests"]:::lock
+  cpu["<b>bio-box:3.0-cpu</b><br/>all annotation tools<br/>DuckDB + bio-box CLI"]:::img
+  cuda["<b>bio-box:3.0-cuda</b><br/>CPU image + CUDA<br/>ProstT5, Foldseek GPU"]:::img
+  pack[("<b>data pack /data</b><br/>ref_models, sequences,<br/>releases, catalog, sidecars")]:::data
+
+  pod["wilkcomp02<br/>Apptainer .sif<br/>56 Haswell cores"]:::host
+  hz["Hetzner AX162<br/>Docker<br/>48 Zen 4 cores"]:::host
+  gpu["GEX130 / wilkcomp03<br/>RTX 6000 Ada<br/>GPU stages only"]:::host
+
+  lock --> cpu
+  lock --> cuda
+  pod --> cpu
+  hz --> cpu
+  gpu --> cuda
+  cpu -- "mount" --> pack
+  cuda -- "mount" --> pack

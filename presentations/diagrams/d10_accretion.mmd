@@ -1,0 +1,14 @@
+flowchart LR
+  classDef ok fill:#eef6ee,stroke:#3c7d40,color:#14213d
+  subgraph INC["incremental path"]
+    direction LR
+    a0["release S0..k-1"] --> a1["+ delta S_k<br/>append L0 / L1 / L3,<br/>clusterupdate L2"] --> a2["recompute L4"]
+  end
+  subgraph FULL["from-scratch path"]
+    direction LR
+    b0["L0 for S0..k"] --> b1["full build<br/>L1-L4"]
+  end
+  a2 --> cmp{"A-01..A-07<br/>L0/L1/L3 hash-equal<br/>L2 equal via crosswalk, ARI >= 0.99<br/>L4 equal after recompute"}
+  b1 --> cmp
+  cmp -->|pass| go["cut release"]:::ok
+  cmp -->|fail| stop["stop, find the non-additive step"]

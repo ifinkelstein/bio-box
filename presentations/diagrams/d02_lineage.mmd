@@ -1,0 +1,16 @@
+flowchart LR
+  slot["slot_uid<br/>(contig_uid, ordinal)<br/>start, end, strand"]
+  prot["protein_seq<br/>protein_uid"]
+  contig["contig_uid<br/>digest of sequence"]
+  chunks["seq_chunks<br/>64 KB Parquet chunks<br/>byte-exact"]
+  occ["contig_occurrence<br/>1..n rows per source record"]
+  src["source accession<br/>+ original header"]
+  obj["L0 object sha256"]
+  contract["sources.yaml<br/>license, redistribution"]
+  member["contig_member<br/>member to representative<br/>(counting only)"]
+
+  slot -- slot_protein --> prot
+  slot --> contig
+  contig --> chunks
+  contig --> occ --> src --> obj --> contract
+  contig --> member

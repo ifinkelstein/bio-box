@@ -1,0 +1,16 @@
+flowchart TB
+  classDef w fill:#fdf1e3,stroke:#c26a1b,color:#14213d
+  classDef r fill:#e8eef7,stroke:#2f5d9b,color:#14213d
+  subgraph R1["build (one writer)"]
+    direction LR
+    orch["orchestrator<br/>+ lock file"]:::w --> man["manifest rS&lt;k&gt;.json<br/>files, sha256, schema hash"] --> gen["generator: views + macros<br/>over explicit file lists"] --> cat["catalog rS&lt;k&gt;.duckdb<br/>swap current.json by rename"]
+  end
+  subgraph R2["read (many readers)"]
+    direction LR
+    copy["copy catalog to local /tmp<br/>open READ_ONLY"] --> s["bio-box serve<br/>127.0.0.1"]:::r
+    copy --> u1["analysts<br/>DuckDB CLI / Python"]:::r
+    pq[("Parquet partitions<br/>NFS or NVMe")]
+  end
+  R1 --> R2
+  style R1 fill:#fbfbfd,stroke:#d6dbe5
+  style R2 fill:#fbfbfd,stroke:#d6dbe5

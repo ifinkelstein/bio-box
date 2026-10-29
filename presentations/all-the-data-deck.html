@@ -1,0 +1,764 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>bio-box staged build</title>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/reveal.js/5.1.0/reset.min.css">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/reveal.js/5.1.0/reveal.min.css">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/reveal.js/5.1.0/theme/white.min.css">
+<style>
+  :root {
+    --ink: #14213d; --muted: #55607a; --rule: #d6dbe5;
+    --blue: #2f5d9b; --blue-bg: #e8eef7;
+    --green: #3c7d40; --green-bg: #eef6ee;
+    --amber: #c26a1b; --amber-bg: #fdf1e3;
+    --red: #b23a48; --red-bg: #fbecee;
+    --panel: #f7f8fb;
+  }
+  .reveal { font-family: Inter, "Helvetica Neue", Helvetica, Arial, sans-serif; color: var(--ink); font-size: 26px; }
+  .reveal h1, .reveal h2, .reveal h3 { font-family: inherit; color: var(--ink); text-transform: none; letter-spacing: -0.01em; }
+  .reveal h1 { font-size: 1.9em; }
+  .reveal h2 { font-size: 1.15em; font-weight: 700; text-align: left; margin-bottom: 0.5em; line-height: 1.25; }
+  .reveal h3 { font-size: 0.8em; font-weight: 700; color: var(--blue); text-align: left; margin: 0 0 0.3em; }
+  .reveal section { text-align: left; }
+  .reveal ul, .reveal ol { margin-left: 1em; }
+  .reveal li { margin: 0.12em 0; line-height: 1.3; }
+  .reveal small, .small { font-size: 0.62em; color: var(--muted); }
+  .reveal code { font-size: 0.85em; background: var(--panel); padding: 0 0.2em; border-radius: 3px; }
+  .kicker { font-size: 0.55em; font-weight: 700; color: var(--amber); text-transform: uppercase; letter-spacing: 0.08em; margin-bottom: 0.2em; }
+  .src { position: absolute; bottom: -30px; left: 0; font-size: 0.45em; color: var(--muted); }
+  .diagram { display: block; margin: 0.3em auto 0; max-width: 100%; max-height: 470px; }
+  .diagram.wide { max-height: 330px; }
+  .cols { display: grid; grid-template-columns: 1fr 1fr; gap: 28px; }
+  .cols3 { display: grid; grid-template-columns: repeat(3, 1fr); gap: 18px; }
+  .cols4 { display: grid; grid-template-columns: repeat(4, 1fr); gap: 14px; }
+  .box { background: var(--panel); border: 1px solid var(--rule); border-radius: 8px; padding: 12px 16px; font-size: 0.68em; line-height: 1.35; }
+  .box ul { margin: 0.2em 0 0 1em; }
+  .box.blue { background: var(--blue-bg); border-color: var(--blue); }
+  .box.green { background: var(--green-bg); border-color: var(--green); }
+  .box.amber { background: var(--amber-bg); border-color: var(--amber); }
+  .box.red { background: var(--red-bg); border-color: var(--red); }
+  .big { font-size: 2.1em; font-weight: 800; color: var(--blue); line-height: 1; }
+  .reveal table { font-size: 0.56em; border-collapse: collapse; width: 100%; margin: 0.2em 0; }
+  .reveal table th { background: var(--blue-bg); color: var(--ink); font-weight: 700; border-bottom: 2px solid var(--blue); padding: 5px 8px; text-align: left; }
+  .reveal table td { border-bottom: 1px solid var(--rule); padding: 4px 8px; vertical-align: top; }
+  .tag { display: inline-block; font-size: 0.75em; font-weight: 700; padding: 1px 7px; border-radius: 10px; margin-right: 4px; }
+  .tag.pod { background: var(--green-bg); color: var(--green); border: 1px solid var(--green); }
+  .tag.edge { background: var(--amber-bg); color: var(--amber); border: 1px solid var(--amber); }
+  .tag.off { background: var(--blue-bg); color: var(--blue); border: 1px solid var(--blue); }
+  .tag.lic { background: var(--red-bg); color: var(--red); border: 1px solid var(--red); }
+  .card { display: grid; grid-template-columns: 1fr 1fr; grid-template-rows: auto auto; gap: 12px; }
+  .card .box { font-size: 0.8em; padding: 14px 18px; min-height: 190px; }
+  .card .box h3 { font-size: 1.05em; margin-bottom: 0.25em; }
+  .card .box ul { margin-top: 0.2em; }
+  .strip { margin-top: 12px; display: flex; gap: 10px; flex-wrap: wrap; font-size: 0.55em; }
+  .strip span { background: #fff; border: 1px solid var(--rule); border-radius: 6px; padding: 4px 10px; }
+  .strip b { color: var(--blue); }
+  .ask li { margin: 0.35em 0; }
+  .num { font-weight: 800; color: var(--blue); }
+  .strike { text-decoration: line-through; color: var(--muted); }
+  .section-title { background: var(--ink); }
+  .section-title h2, .section-title p { color: #fff !important; }
+  .reveal table.roomy { font-size: 0.74em; }
+  .reveal table.roomy td, .reveal table.roomy th { padding: 8px 10px; }
+  .reveal table.mid { font-size: 0.64em; }
+  .reveal table.mid td { padding: 6px 8px; }
+  .tools td:first-child { font-weight: 700; white-space: nowrap; }
+  .legend { display: flex; gap: 10px; justify-content: center; font-size: 0.5em; margin-top: 6px; }
+  .legend span { padding: 2px 10px; border-radius: 4px; border: 1px solid; }
+</style>
+</head>
+<body>
+<div class="reveal"><div class="slides">
+
+<!-- 1 TITLE -->
+<section>
+  <div class="kicker">Group meeting · 2026-10-28 · plan only, nothing executed</div>
+  <h1 style="text-align:left">all-the-data / <span style="color:var(--blue)">bio-box</span></h1>
+  <p style="font-size:0.9em">Gene-neighbourhood, domain and ncRNA context across public prokaryote, phage and plasmid assemblies, built in gated stages from 14 genomes upward.</p>
+  <p class="small">Current host: wilkcomp02 (CPU only). Target: rented bare metal (Hetzner). Source docs: STAGES.md, PLAN.md v3, 00-spec.md v3, DEPLOYMENT v3, planning/*, audits/critique_4–8, SYNTHESIS_2.</p>
+  <aside class="notes">One sentence: we are asking to start the preflight, not to build the planet. Everything shown is a plan; numbers are labelled measured, derived, or estimate.</aside>
+</section>
+
+<!-- 2 BLUF -->
+<section>
+  <h2>Bottom line: approve a 2–3 week preflight, then S0 on 14 genomes. No large compute until S0 has measured real rates.</h2>
+  <div class="cols">
+    <div>
+      <h3>What we ask today</h3>
+      <ol class="ask" style="font-size:0.72em">
+        <li>Sign off the first-10 questions (the lab's, not the engine's)</li>
+        <li>Send a written footprint request to the pod owner: threads, scratch growth to ~2 TB, multi-week runs, wilkcomp03 GPU, a second account</li>
+        <li>Name a data engineer and a bioinformatician (may be one person, ~60%)</li>
+        <li>Accept kill criteria K1–K6</li>
+        <li>Budget a one-week Hetzner rehearsal after S2 (quote pending)</li>
+      </ol>
+    </div>
+    <div>
+      <h3>What we are not asking for</h3>
+      <ul style="font-size:0.72em">
+        <li>No planetary build, no Logan, no GPU training</li>
+        <li>No public service: localhost + SSH tunnel only</li>
+        <li>No custom indexes until a measured SLO fails</li>
+      </ul>
+      <div class="box green" style="margin-top:14px">
+        <b>Exit of S0:</b> pipeline reproduces curated annotations on 14 reference genomes; every unit rate measured on Haswell; the size model is refit from data instead of guesses.
+      </div>
+    </div>
+  </div>
+  <aside class="notes">Lead with the ask. The deck afterwards explains why the ask is this small: v2 numbers did not survive arithmetic.</aside>
+</section>
+
+<!-- 3 QUESTION & PRIOR ART -->
+<section>
+  <h2>Existing tools each cover one slice. The new part is narrow: sub-ORF tapes with ncRNA, mobility-aware statistics, and raw sequence lineage in one queryable store.</h2>
+  <table class="mid">
+    <tr><th>Slice</th><th>Already covered by</th><th>Plan</th></tr>
+    <tr><td>Neighbourhood viewing for one query</td><td>webFlaGs, GCsnap2, EFI-GNT, IMG/VR</td><td>Baseline for Q1/Q5; reuse, don't rebuild</td></tr>
+    <tr><td>Genomic-context language models</td><td>gLM2 + OMG corpus + Gaia (Tatta Bio), Evo 2, Bacformer</td><td>gLM deferred; gLM2 is the baseline</td></tr>
+    <tr><td>Dark families with context</td><td>FESNov (2024), Pavlopoulos 2023, Durairaj 2023</td><td>Cite; compare family sets</td></tr>
+    <tr><td>Structure for dark proteins</td><td>Foldseek, AFDB / ESMAtlas30, ProstT5</td><td>Transfer at ≥90% ID only; ProstT5 on GPU later</td></tr>
+    <tr><td>Pangenome co-occurrence</td><td>Coinfinder, STRING neighbourhood channel</td><td>External baselines in B-EXT</td></tr>
+    <tr><td>Planetary sequence search</td><td>Logan-Search, MetaGraph</td><td>Logan last, compute-to-data on AWS</td></tr>
+    <tr><td>MGE / defense calls</td><td>geNomad, CheckV, DefenseFinder, PADLOC</td><td>Run as tools; system calls stored as sidecars</td></tr>
+  </table>
+  <div class="src">PRIOR-ART.md v3</div>
+</section>
+
+<!-- 4 WHAT CHANGED -->
+<section>
+  <h2>Five independent audits rewrote the v2 plan: its scale numbers, dedup, statistics and benchmarks did not survive arithmetic.</h2>
+  <div class="cols">
+    <div>
+      <table style="font-size:0.5em">
+        <tr><th>v2 claim</th><th>Finding</th></tr>
+        <tr><td>40.8 TB Logan, 68 h</td><td>Hundreds of TB; 40.8 TB at 400 MB/s is 28 h anyway</td></tr>
+        <tr><td>2.5×10⁹ contigs, 3.6×10⁹ slots</td><td>1.44 slots/contig, impossible under the ≥2-feature gate</td></tr>
+        <tr><td>POPCNT ≤ 6 = 95% ANI</td><td>≈99.3% ANI; 95% is E[popcnt] ≈ 22</td></tr>
+        <tr><td>Syncmer hash "90% invariant"</td><td>Jaccard ≈ 0.21 at 90% AA ID</td></tr>
+        <tr><td>LLR_func primary metric</td><td>Not a likelihood ratio (P_obs undefined)</td></tr>
+        <tr><td>Recall 48/50 known systems</td><td>Circular: DefenseFinder/PADLOC models are inputs</td></tr>
+        <tr><td>"0% / 100%" criteria</td><td>0/200 still allows ≈1.5% (95% UB)</td></tr>
+        <tr><td>4.7-day build</td><td>Withdrawn; replaced by a measured capacity model</td></tr>
+      </table>
+    </div>
+    <div>
+      <div class="cols" style="gap:10px">
+        <div class="box blue"><b>Bioinformatics</b><br>20 findings</div>
+        <div class="box blue"><b>Data science</b><br>17 findings</div>
+        <div class="box blue"><b>Architecture</b><br>16 findings + roadmap</div>
+        <div class="box blue"><b>Database</b><br>20 findings</div>
+        <div class="box blue"><b>Data quality</b><br>19 findings + golden set</div>
+        <div class="box green"><b>Synthesis</b><br>28 decisions, D-01..D-28</div>
+      </div>
+      <p class="small" style="margin-top:10px">Each auditor first rewrote its own brief: what a top professional would add, rawest material, methods, outside proof.</p>
+    </div>
+  </div>
+  <div class="src">audits/critique_4..8, audits/SYNTHESIS_2.md</div>
+</section>
+
+<!-- 5 PRINCIPLES -->
+<section>
+  <h2>Six rules make the build accretable instead of a one-shot planetary run.</h2>
+  <div class="cols3">
+    <div class="box blue"><h3>1 · Stage = one release</h3>One data increment, one capability, one science question, one gate, release <code>rS&lt;k&gt;.&lt;n&gt;</code>.</div>
+    <div class="box blue"><h3>2 · Shards, not genomes</h3>500–2,000 genomes per job; idempotent, content-addressed, pausable by STOP file.</div>
+    <div class="box blue"><h3>3 · Layers have update rules</h3>Append-only L0/L1/L3 coords; L2 incremental with crosswalk; L4 recomputed; L5 only if needed.</div>
+    <div class="box green"><h3>4 · Nothing discarded</h3>Every contig incl. dedup members stays retrievable. Dedup changes counting weights only.</div>
+    <div class="box green"><h3>5 · Accretion is proven</h3>Incremental build of stage k must hash-equal a from-scratch build of 0..k.</div>
+    <div class="box amber"><h3>6 · Measure, then predict</h3>Each stage writes unit rates to <code>sizing.yaml</code>; a stage missing its estimate by &gt;2× stops for review.</div>
+  </div>
+  <p class="small" style="margin-top:12px">Every number in the docs is labelled <b>measured</b> (stage, date), <b>derived</b> (formula) or <b>estimate ±40%</b>.</p>
+</section>
+
+<!-- SECTION: DATA LAYERS -->
+<section class="section-title" data-background-color="#14213d">
+  <div class="kicker" style="color:#f2b880">Part 1</div>
+  <h2 style="font-size:1.8em">Data layers</h2>
+  <p>What is stored, how it changes, and how any slot traces back to raw sequence.</p>
+</section>
+
+<!-- 6 LAYERS -->
+<section>
+  <h2>Seven layers, each reading only from below. A bug in statistics never forces re-running annotation.</h2>
+  <img class="diagram wide" src="diagrams/d01_layers.svg" alt="Layer diagram L0 to L5">
+  <div class="legend">
+    <span style="background:var(--green-bg);border-color:var(--green)">append-only</span>
+    <span style="background:var(--amber-bg);border-color:var(--amber)">incremental + crosswalk</span>
+    <span style="background:var(--blue-bg);border-color:var(--blue)">recomputed per release</span>
+    <span style="border-color:#9aa5b8;border-style:dashed">optional</span>
+  </div>
+  <table style="margin-top:10px">
+    <tr><th>Layer</th><th>Recompute trigger</th><th>Truth key</th></tr>
+    <tr><td>L0 / L0-seq</td><td>never; new source release = new snapshot</td><td>sha256 per object; BLAKE3-128 per sequence</td></tr>
+    <tr><td>L1 annotation</td><td>tool or reference-DB bump → new <code>annot_version</code></td><td>(genome_uid, annot_version)</td></tr>
+    <tr><td>L2 clusters</td><td>&gt;20% new sequences, parameter change, or drift test fails</td><td>cluster_uid + id_history</td></tr>
+    <tr><td>L4 statistics</td><td>any change below; deltas flagged <code>stale</code></td><td>stats_release_id</td></tr>
+  </table>
+  <div class="src">planning/data_layer_and_tests.md §1</div>
+</section>
+
+<!-- 7 SEQUENCE STORE -->
+<section>
+  <h2>Raw sequences stay available to every project: each slot resolves to bases and to the source record it came from.</h2>
+  <img class="diagram wide" src="diagrams/d02_lineage.svg" alt="Lineage from slot to source contract">
+  <div class="cols3" style="margin-top:10px">
+    <div class="box green"><h3>Stored</h3>Every source contig byte-exact (64 KB Parquet chunks), incl. dedup members and screening rejects. Proteins incl. Sec/Pyl/frameshift reconstructions. IGRs as coordinates.</div>
+    <div class="box blue"><h3>Retrieved</h3><code>bio-box seq get|extract|lineage</code>; DuckDB macros <code>seq_slice</code>, <code>seq_get</code>; bgzip + .fai generated on demand.</div>
+    <div class="box amber"><h3>Exceptions</h3>Human / vertebrate-host contigs: digest + reason code only. Non-redistributable sources ship as fetch recipes.</div>
+  </div>
+  <div class="src">PLAN §4.0 · data_layer_and_tests §2A · tests R-01..R-09, K-13</div>
+</section>
+
+<!-- 8 IDS -->
+<section>
+  <h2>Two kinds of ID: content-derived UIDs that never change, and dense integers that live inside one release.</h2>
+  <div class="cols">
+    <div>
+      <table class="roomy">
+        <tr><th>ID</th><th>Definition</th><th>Lifetime</th></tr>
+        <tr><td>contig_uid</td><td>BLAKE3-128(uppercase sequence)</td><td>forever</td></tr>
+        <tr><td>protein_uid</td><td>BLAKE3-128(AA sequence)</td><td>forever</td></tr>
+        <tr><td>raw_digest</td><td>sha256(exact source bytes)</td><td>forever</td></tr>
+        <tr><td>cluster_uid</td><td>BLAKE3-128(members at creation, params)</td><td>until split/merge</td></tr>
+        <tr><td>token_uid</td><td>(level, library, accession, version)</td><td>forever</td></tr>
+        <tr><td>dense_contig_id</td><td>release-local uint64</td><td>one release only</td></tr>
+      </table>
+    </div>
+    <div>
+      <div class="box blue"><h3>Why it matters</h3>v2 keyed sidecars by dense IDs, so every rebuild silently re-pointed them at the wrong rows.</div>
+      <div class="box green" style="margin-top:10px"><h3>id_history</h3>Per release transition: same / split / merged / retired. Sidecars declare <code>key_type</code> and <code>key_release</code>; registration refuses mismatches.</div>
+      <div class="box" style="margin-top:10px">128-bit UIDs: collision risk negligible at 10¹² items. 64-bit would reach ≈1 collision near 6×10⁹, which S7 could reach.</div>
+    </div>
+  </div>
+</section>
+
+<!-- SECTION: PIPELINE -->
+<section class="section-title" data-background-color="#14213d">
+  <div class="kicker" style="color:#f2b880">Part 2</div>
+  <h2 style="font-size:1.8em">Pipeline and statistics</h2>
+  <p>Per-genome work fans out; global steps are explicit barriers.</p>
+</section>
+
+<!-- 9 GENOME PIPELINE -->
+<section>
+  <h2>Per-genome annotation is embarrassingly parallel and fixes v2's biology errors with off-the-shelf tools.</h2>
+  <img class="diagram wide" src="diagrams/d03_genome_pipeline.svg" alt="Per-genome pipeline">
+  <div class="cols" style="margin-top:8px">
+    <ul style="font-size:0.6em">
+      <li>Genetic code per genome (Codetta); pyrodigal-gv for phages. Code 25 = SR1/BD1-5, not "all CPR"</li>
+      <li>smORFs are candidates until a cluster appears in ≥3 orders with RNAcode or dN/dS &lt; 0.5</li>
+      <li>Split-gene merges need a slippery motif, Sec/Pyl machinery or an intron call; else <code>CANDIDATE_INDEL</code></li>
+    </ul>
+    <ul style="font-size:0.6em">
+      <li><code>cmsearch</code> with Infernal's own filters; riboswitch pocket subtype per member, not per IGR90 rep</li>
+      <li>Each HMM library keeps its own curated cutoffs; HMMER Z fixed per release</li>
+      <li>Mobility regime from geNomad, CheckV, IntegronFinder, ISEScan, not ±15-ORF rules</li>
+    </ul>
+  </div>
+  <div class="src">PLAN §2.3, §3 · D-04, D-06..D-11</div>
+</section>
+
+<!-- 10 BARRIERS -->
+<section>
+  <h2>Global steps run only on complete inputs; every stage ends in a gate and an atomic release cut.</h2>
+  <img class="diagram wide" src="diagrams/d04_barriers.svg" alt="Barriers and release cut">
+  <div class="cols3" style="margin-top:10px">
+    <div class="box"><h3>Dedup is deterministic</h3>Two-pass sort-merge; ≥1,024-bit containment sketch; skani verifies. Same inputs in any order give the same representatives.</div>
+    <div class="box"><h3>Clusters update</h3><code>mmseqs clusterupdate</code> (≥18-8cc5c); full recluster at &gt;20% growth, with crosswalk.</div>
+    <div class="box"><h3>Release cut</h3>Manifest written, catalog regenerated, <code>current.json</code> swapped by rename.</div>
+  </div>
+</section>
+
+<!-- 11 STATS -->
+<section>
+  <h2>Coupling is ranked by a score test with proper nulls and FDR; parameters can be changed later without the base build.</h2>
+  <img class="diagram wide" src="diagrams/d09_stats.svg" alt="Statistics pipeline">
+  <div class="cols" style="margin-top:8px">
+    <ul style="font-size:0.6em">
+      <li>Geometry, entropy and vehicle terms are separate columns, never ad-hoc subtractions</li>
+      <li><code>powered</code> and <code>min_detectable_count</code> columns: absence of signal is reported as absence of power where true</li>
+      <li>Tier 2: replicon-matched geometry test (a 12-ORF plasmid makes co-presence uninformative)</li>
+    </ul>
+    <ul style="font-size:0.6em">
+      <li>Weights fitted on split gold sets into <code>params.yaml</code>, not chosen to clear the benchmark</li>
+      <li>Per-pair sufficient statistics stored, so <code>bio-box rescore</code> recomputes Z and FDR</li>
+      <li>Gene-tree homoplasy on demand for top-N pairs only</li>
+    </ul>
+  </div>
+  <div class="src">PLAN §4.3 · D-13, D-14 · critique_5</div>
+</section>
+
+<!-- SECTION: CONTAINER -->
+<section class="section-title" data-background-color="#14213d">
+  <div class="kicker" style="color:#f2b880">Part 3</div>
+  <h2 style="font-size:1.8em">Container composition and runtime</h2>
+  <p>One lockfile, two images, one data pack, same commands on the pod and on Hetzner.</p>
+</section>
+
+<!-- 12 CONTAINERS -->
+<section>
+  <h2>Software and data ship separately: images hold tools, the data pack holds everything that changes with a release.</h2>
+  <img class="diagram" style="max-height:420px" src="diagrams/d05_containers.svg" alt="Container composition">
+  <p class="small" style="text-align:center">Weights, HMM/CM libraries and Foldseek DBs live in the data pack, never in image layers. Image digest is recorded in every release manifest.</p>
+  <div class="src">DEPLOYMENT-AND-MALLEABILITY.md §1–2 · D-26</div>
+</section>
+
+<!-- 13 TOOLS -->
+<section>
+  <h2>The CPU image bundles about 25 established tools; the custom code is the glue, the data layer and the tests.</h2>
+  <table class="tools mid">
+    <tr><th>Function</th><th>Tools (pinned in pixi.lock / uv.lock)</th><th>Where results go</th></tr>
+    <tr><td>Identity, QC, screen</td><td>skani, FCS-adaptor, FCS-GX*, CheckM2, GUNC</td><td>L0.5, quarantine, ledger</td></tr>
+    <tr><td>Taxonomy</td><td>MMseqs2 taxonomy / CAT (GTDB R226), iPHoP</td><td>L1 tax_* columns</td></tr>
+    <tr><td>Genes</td><td>pyrodigal, pyrodigal-gv, Codetta</td><td>L1 genes, protein_seq</td></tr>
+    <tr><td>ncRNA, repeats</td><td>Infernal 1.1.5 cmsearch, tRNAscan-SE 2, Aragorn, MinCED, TransTermHP, IntegronFinder 2</td><td>L1 ncrna</td></tr>
+    <tr><td>Domains</td><td>pyhmmer / HMMER 3.4 (Pfam, NCBIfam, PHROGs, arCOG), cath-resolve-hits; COG via eggNOG</td><td>L1 domains</td></tr>
+    <tr><td>Mobility, systems</td><td>geNomad, CheckV, ISEScan, MacSyFinder (DefenseFinder, CONJScan, TXSScan), PADLOC</td><td>L1 regime; sidecars</td></tr>
+    <tr><td>Clustering, structure</td><td>MMseqs2 ≥18 (AVX2), Foldseek CPU; ProstT5 in the CUDA image</td><td>L2; fold_source</td></tr>
+    <tr><td>Trees</td><td>FAMSA, VeryFastTree (top-N pairs)</td><td>on demand</td></tr>
+    <tr><td>Data, API</td><td>DuckDB (pinned), Snakemake, bio-box CLI / run-step / serve / doctor</td><td>L3–L4, catalog</td></tr>
+  </table>
+  <p class="small">*FCS-GX needs ~470 GB in RAM (verify) against a 200 GB cgroup: route decided in preflight (skip for NCBI-screened sources, rented box, or exception).</p>
+</section>
+
+<!-- 14 RUNSTEP -->
+<section>
+  <h2>On wilkcomp02 every job goes through one wrapper that enforces the house rules, so the watchdog never fires.</h2>
+  <img class="diagram" style="max-height:330px" src="diagrams/d06_runstep.svg" alt="run-step sequence">
+  <div class="cols4" style="margin-top:10px">
+    <div class="box"><b>Threads</b><br>40 day / 56 night, physical cores only</div>
+    <div class="box"><b>Memory</b><br>systemd-run MemoryMax=200G</div>
+    <div class="box"><b>Priority</b><br>nice 19 monolithic, 15 fan-out; watchdog renices a PID past ~369 CPU-min</div>
+    <div class="box"><b>Disk</b><br>stage on local /tmp, one rsync back; no NFS dir &gt;1,000 files</div>
+    <div class="box"><b>Pause</b><br>STOP file → exit 75, resumable</div>
+    <div class="box"><b>Network</b><br>serve on 127.0.0.1 via SSH tunnel</div>
+    <div class="box"><b>Ledger</b><br>in / kept / rejected, peak RSS, CPU-s, versions per job</div>
+    <div class="box amber"><b>Lesson</b><br><code>defense-finder -w 1</code> drove load to 67: thread env vars always set</div>
+  </div>
+  <p class="small">Ported from <code>homology_pod.sh</code> and the fragment-defense pod scripts.</p>
+</section>
+
+<!-- 15 CATALOG -->
+<section>
+  <h2>DuckDB is the query engine, used read-only. One writer builds a manifest; readers open a generated catalog from local disk.</h2>
+  <div class="cols" style="grid-template-columns: 1.25fr 1fr; align-items:start">
+    <img src="diagrams/d07_catalog.svg" alt="Catalog generation" style="width:100%; max-height:470px; margin:0">
+    <div>
+      <div class="box"><h3>Why not a shared read-write catalog</h3>DuckDB allows one read-write process or many read-only ones, and warns about database files on network storage. v2 had serve, append and sidecar registration all writing.</div>
+      <div class="box" style="margin-top:10px"><h3>DuckDB tests K-01..K-13 (every stage, every new host)</h3>Version pin · memory_limit spills inside the cgroup · temp_directory local · thread cap · partition and row-group pruning (EXPLAIN ANALYZE) · LIST cost · 1–16 read-only clients · second writer fails fast · NFS vs local · sort determinism · sequence-store format bake-off.</div>
+    </div>
+  </div>
+  <p class="small">DuckLake v1.0 evaluated at S2 against four pass criteria; adopted only if it beats the generated catalog.</p>
+</section>
+
+<!-- SECTION: TESTING -->
+<section class="section-title" data-background-color="#14213d">
+  <div class="kicker" style="color:#f2b880">Part 4</div>
+  <h2 style="font-size:1.8em">Tests and gates</h2>
+  <p>A stage is done when outside truth agrees, not when the job exits 0.</p>
+</section>
+
+<!-- 16 GATES -->
+<section>
+  <h2>Seven gates apply to every stage; failing any one stops the next stage.</h2>
+  <table class="roomy">
+    <tr><th>#</th><th>Gate</th><th>Check</th><th>Tests</th></tr>
+    <tr><td>1</td><td>Ledger balances</td><td>n_in = kept + merged + Σ rejected_by_reason, vs source manifest</td><td>L-01..03</td></tr>
+    <tr><td>2</td><td>Determinism</td><td>shuffled input order, other thread counts, kill-resume: identical hashes</td><td>D-01..05</td></tr>
+    <tr><td>3</td><td>Accretion equivalence</td><td>incremental = from scratch (L0/L1/L3 hash; L2 via crosswalk, ARI ≥ 0.99)</td><td>A-01..07</td></tr>
+    <tr><td>4</td><td>Oracle agreement</td><td>every query class equals a brute-force scan, incl. window-edge pairs</td><td>Q1–Q8</td></tr>
+    <tr><td>5</td><td>Golden regression</td><td>codes, starts, introns, frameshifts, operons, riboswitches vs curated truth</td><td>G-01..05, B-G</td></tr>
+    <tr><td>6</td><td>Sequence round trip</td><td>digest = source checksum; 10k random slices = samtools faidx</td><td>R-01..09</td></tr>
+    <tr><td>7</td><td>SLOs</td><td>p50/p95, warm and cold, 8 clients, hub/mid/tail tokens</td><td>§1.2 table</td></tr>
+  </table>
+  <p class="small">Plus schema contracts C-01..C-09 on every table: keys unique, foreign keys resolve, list lengths equal, coordinates in bounds, enums mapped to Sequence Ontology.</p>
+</section>
+
+<!-- 17 ACCRETION -->
+<section>
+  <h2>Accretion is proven, not assumed: the incremental path and the rebuild path must agree before a release is cut.</h2>
+  <img class="diagram wide" src="diagrams/d10_accretion.svg" alt="Accretion equivalence">
+  <div class="cols3" style="margin-top:10px">
+    <div class="box">Additive counts merge across epochs.</div>
+    <div class="box">Medians, entropies, Z and q-values never "add"; they are flagged stale until recompute.</div>
+    <div class="box">Token remap is merge-only; splits go through a new release.</div>
+  </div>
+</section>
+
+<!-- 18 SLOs -->
+<section>
+  <h2>Latency targets are per query class and measured on the host, replacing v2's 4 ms claims.</h2>
+  <table class="mid">
+    <tr><th>Class</th><th>Example</th><th>Served by</th><th>Warm p50 / p95</th><th>Cold p95</th></tr>
+    <tr><td>Q1 count</td><td>loci with A and B within ±k ORFs</td><td>slot_pairs</td><td>0.5 / 2 s</td><td>10 s</td></tr>
+    <tr><td>Q2 neighbourhoods</td><td>fetch 1,000 contig tapes</td><td>contig_tapes</td><td>0.3 / 1 s</td><td>5 s</td></tr>
+    <tr><td>Q3 anchor profile</td><td>partners of A by Z</td><td>pair_stats</td><td>0.1 / 0.5 s</td><td>3 s</td></tr>
+    <tr><td>Q4 drill-down</td><td>loci of (A, B) with geometry</td><td>slot_pairs</td><td>0.5 / 2 s</td><td>10 s</td></tr>
+    <tr><td>Q5 pathway hole</td><td>core(A)&amp;core(B)&amp;~pan(C)&amp;masks</td><td>pangenome planes</td><td>0.2 / 1 s</td><td>5 s</td></tr>
+    <tr><td>Q6 co-transmission</td><td>top-k X for C</td><td>transition edges</td><td>1 / 5 s</td><td>20 s</td></tr>
+    <tr><td>Q7 sequence slice</td><td>(uid, start, end, strand)</td><td>sequence store</td><td>0.05 / 0.2 s</td><td>1 s</td></tr>
+    <tr><td>Q8 ad-hoc SQL</td><td>analytics</td><td>DuckDB read-only</td><td colspan="2">no SLO; memory-capped, cancellable</td></tr>
+  </table>
+  <p class="small">A miss is fixed by an L5 index (Roaring slot-level bitmaps, offset index) or a revised target with a written reason. Hub anchors are 6–12 GB, not 5–80 MB.</p>
+</section>
+
+<!-- SECTION: STAGES -->
+<section class="section-title" data-background-color="#14213d">
+  <div class="kicker" style="color:#f2b880">Part 5</div>
+  <h2 style="font-size:1.8em">Stage cards</h2>
+  <p>Smallest data first. Each stage adds one capability and answers one question.</p>
+</section>
+
+<!-- 19 LADDER -->
+<section>
+  <h2>Eight stages after preflight; wilkcomp02 carries S0–S5, rented hardware takes over global work from S6.</h2>
+  <img class="diagram wide" src="diagrams/d08_ladder.svg" alt="Stage ladder">
+  <table style="margin-top:6px">
+    <tr><th>Stage</th><th>Adds</th><th>n</th><th>Gbp</th><th>Core-h (est.)</th><th>Seq store</th><th>Host</th></tr>
+    <tr><td>S0</td><td>golden set + CAMI subset</td><td>~14</td><td>0.05</td><td>100–1.5k</td><td>0.03 GB</td><td><span class="tag pod">pod</span></td></tr>
+    <tr><td>S1</td><td>INPHARED phages</td><td>30–40k</td><td>~2</td><td>250–2.5k</td><td>0.9 GB</td><td><span class="tag pod">pod</span></td></tr>
+    <tr><td>S2</td><td>PLSDB plasmids</td><td>72,360</td><td>5–7</td><td>0.8–6k</td><td>2.8 GB</td><td><span class="tag pod">pod</span></td></tr>
+    <tr><td>S3</td><td>GTDB reps &lt;2 Mbp</td><td>9–12k</td><td>10–13</td><td>1–10k</td><td>5.2 GB</td><td><span class="tag pod">pod</span></td></tr>
+    <tr><td>S4</td><td>IMG/VR HQ vOTUs</td><td>0.23M</td><td>~12</td><td>4.5–17k</td><td>5.5–19 GB</td><td><span class="tag pod">pod</span><span class="tag lic">local-only</span></td></tr>
+    <tr><td>S5</td><td>all GTDB species reps</td><td>143,614</td><td>400–450</td><td>20–80k</td><td>207 GB</td><td><span class="tag edge">borderline</span></td></tr>
+    <tr><td>S6</td><td>all GTDB genomes</td><td>732,475</td><td>2.7–3.1k</td><td>60k–1.6M</td><td>+1.34 TB</td><td><span class="tag edge">split</span></td></tr>
+    <tr><td>S7+</td><td>AllTheBacteria, SPIRE, Logan</td><td>millions</td><td>Tbp–Pbp</td><td>—</td><td>—</td><td><span class="tag off">Hetzner / AWS</span></td></tr>
+  </table>
+  <div class="src">Estimates: planning/sources_and_sizing.md; pod ≈ 800 core-h/day; all rates unmeasured until S0</div>
+</section>
+
+<!-- S-1 -->
+<section>
+  <div class="kicker">Stage card · S−1 · 2–3 weeks · no data, no compute</div>
+  <h2>Preflight closes the gaps that would stall S0–S3: questions, approvals, IDs, reference DBs, repo and CI.</h2>
+  <div class="card">
+    <div class="box amber"><h3>Governance</h3><ul><li>First-10 questions signed off, each with a baseline tool</li><li>Roles, time boxes, kill criteria K1–K6</li><li>Footprint request to pod owner; reply filed</li></ul></div>
+    <div class="box blue"><h3>Decisions (ADRs)</h3><ul><li>BLAKE3-128 UIDs, dense IDs per release</li><li>FCS-GX route; human-data rule</li><li>Upgrade policy: bumps only at stage boundaries</li><li>L0 kept durable; code license and name check</li></ul></div>
+    <div class="box blue"><h3>Infrastructure</h3><ul><li>Git repo, CI with a 3-genome micro-S0 fixture</li><li>Image by digest; <code>.sif</code> on the pod; <code>bio-box doctor</code></li><li>run-step ported, kill-resume incl. wiped /tmp</li></ul></div>
+    <div class="box green"><h3>Data</h3><ul><li><code>golden.yaml</code> pinned (SR1, Lak, Obelisk)</li><li><code>refdb.yaml</code>: version, sha256, size, RAM, license</li><li><code>sources.yaml</code> for S0–S3; <code>costs.md</code> quotes</li></ul></div>
+  </div>
+  <div class="src">planning/preflight_gaps.md §7</div>
+</section>
+
+<!-- S0 -->
+<section>
+  <div class="kicker">Stage card · S0 · ~4 weeks</div>
+  <h2>S0 runs the full stack on 14 reference genomes and freezes the decisions that are expensive to change later.</h2>
+  <div class="card">
+    <div class="box green"><h3>Adds</h3>MG1655, B. subtilis 168, T4, λ, M. genitalium, SR1, Lak phage, M. acetivorans, H. volcanii, S. acidocaldarius, H37Rv, B. theta, SF370, an Obelisk; CAMI II subset; spike-in panel.</div>
+    <div class="box blue"><h3>Capability</h3>Every layer at toy scale; read-only catalog; run-step, ledger, doctor. ADRs: schema v1, badge layout, enums → SO terms, sequence-store format (K-13).</div>
+    <div class="box amber"><h3>Science check</h3>Gene starts vs EcoCyc/SubtiWiki; operons vs RegulonDB; T4 introns stitched; λ gpG-T merged; code 4 and 25 detected; leaderless starts in Haloferax; production Infernal recall ≥0.98 of full Rfam.</div>
+    <div class="box"><h3>Gate</h3>All seven gates at full oracle scale; K-01..K-13. Measures R_pyro, r_pfam, s_cm, geNomad rate, MMseqs2 RSS/tmp, bytes/bp. If S5 &gt;150 days predicted: re-plan before S1.</div>
+  </div>
+  <div class="strip"><span><b>n</b> ~14 + subset</span><span><b>Gbp</b> 0.05</span><span><b>core-h</b> 100–1,500</span><span><b>disk</b> &lt;20 GB</span><span><b>release</b> rS0.1</span></div>
+</section>
+
+<!-- S1 -->
+<section>
+  <div class="kicker">Stage card · S1 · ~2 weeks</div>
+  <h2>S1 adds ~35k complete phages: first real pair tables, first clusters, first accretion-equivalence test.</h2>
+  <div class="card">
+    <div class="box green"><h3>Adds</h3>INPHARED complete phage genomes (count read from <code>*_data.tsv</code> at freeze). Open sequences; INPHARED scripts AGPL, called as a tool, not vendored.</div>
+    <div class="box blue"><h3>Capability</h3>pyrodigal-gv codes 11/15; PHROGs; intron/HEG and frameshift stitching at scale; viral regime; first <code>slot_pairs</code> and <code>pair_stats</code>; <code>clusterupdate</code> exercised.</div>
+    <div class="box amber"><h3>Science check</h3>Lysis cassettes, Acr–Aca loci and the tail-chaperone frameshift rank as top modules with defense annotations held out. Lab Q1 (retron RT neighbourhoods with FASTA) answered.</div>
+    <div class="box"><h3>Gate</h3>Everything in S0 plus A-01..A-07: S0→S1 incremental equals S0+S1 from scratch. First scaling-fit point. Cross-check against fragment-defense phage DefenseFinder/PADLOC runs.</div>
+  </div>
+  <div class="strip"><span><b>n</b> 30–40k</span><span><b>Gbp</b> 1.7–2.2</span><span><b>core-h</b> 250–2,500</span><span><b>seq store</b> 0.9 GB</span><span><b>release</b> rS1.1</span></div>
+</section>
+
+<!-- S2 -->
+<section>
+  <div class="kicker">Stage card · S2 · 2–3 weeks · then P1 rehearsal</div>
+  <h2>S2 adds 72k plasmids and is the first real test of passenger versus coupling.</h2>
+  <div class="card">
+    <div class="box green"><h3>Adds</h3>PLSDB 2024_05_31_v2 (72,360). Redistribution terms not stated: check before any pack.</div>
+    <div class="box blue"><h3>Capability</h3>Backbone vs cargo; CONJScan and IntegronFinder sidecars; vehicle clustering on real MGEs; replicon-matched geometry test. Decisions: DuckLake, LIST vs exploded tapes, offset index.</div>
+    <div class="box amber"><h3>Science check</h3>parAB, ccdAB, hok/sok rank; blaTEM–tnpA does not. First pre-registered, hash-committed slice of the B5 trap panel; FPR with exact-binomial CI. Lab Q4 answered.</div>
+    <div class="box"><h3>Gate</h3>Everything in S1; data-layer decisions recorded as ADRs; 2-point scaling fit. K4 kill review if trap FPR upper bound &gt;10%.</div>
+  </div>
+  <div class="strip"><span><b>n</b> 72,360</span><span><b>Gbp</b> 5–7</span><span><b>core-h</b> 800–6,000</span><span><b>seq store</b> 2.8 GB</span><span><b>release</b> rS2.1</span></div>
+</section>
+
+<!-- S3 -->
+<section>
+  <div class="kicker">Stage card · S3 · ~3 weeks</div>
+  <h2>S3 adds ~10k small genomes, where genetic codes, reduced pathways and taxonomy get hard.</h2>
+  <div class="card">
+    <div class="box green"><h3>Adds</h3>GTDB R226 species reps under 2 Mbp: Patescibacteria, DPANN, Mycoplasmatota, endosymbionts, selected by <code>genome_size</code>.</div>
+    <div class="box blue"><h3>Capability</h3>Codetta at scale; taxonomy with confidence feeding <code>tax_order_id</code>; first tree-ordered presence bitmaps and transition edges on the R226 tree; smORF promotion.</div>
+    <div class="box amber"><h3>Science check</h3>Buchnera-type pathway losses called as losses, not holes; code reassignments in BD1-5/SR1 detected. Lab Q3 and Q10 answered.</div>
+    <div class="box"><h3>Gate</h3>Everything in S2 on a stratified sample. The 3-point scaling fit decides whether S5's global steps run on the pod or on Hetzner.</div>
+  </div>
+  <div class="strip"><span><b>n</b> 9–12k</span><span><b>Gbp</b> 10–13</span><span><b>core-h</b> 1k–10k</span><span><b>seq store</b> 5.2 GB</span><span><b>release</b> rS3.1</span></div>
+</section>
+
+<!-- S4 -->
+<section>
+  <div class="kicker">Stage card · S4 · ~3 weeks · local-only</div>
+  <h2>S4 adds uncultivated viruses; their sequences never leave the lab because of JGI policy.</h2>
+  <div class="card">
+    <div class="box green"><h3>Adds</h3>IMG/VR v4 HQ vOTU reps (231,408), optionally IMG/PR (~0.7M). Rows flagged <code>redistributable = false</code>; packs carry fetch recipes.</div>
+    <div class="box blue"><h3>Capability</h3>Host predictions with confidence; provirus boundaries; spacer–protospacer links; L2 drift test (incremental vs full recluster ARI).</div>
+    <div class="box amber"><h3>Science check</h3>Anti-defense hotspots and counter-defense modules rank above prophage moron–structural passengers (prophage slice of the trap panel, with CI).</div>
+    <div class="box"><h3>Gate</h3>Everything in S3, plus drift test and license-flag test: no non-redistributable UID in any exportable pack.</div>
+  </div>
+  <div class="strip"><span><b>n</b> 0.23M (+0.7M)</span><span><b>Gbp</b> ~12 (+10–30)</span><span><b>core-h</b> 4.5k–17k</span><span><b>seq store</b> 5.5–19 GB</span><span><b>release</b> rS4.1</span></div>
+</section>
+
+<!-- S5 -->
+<section>
+  <div class="kicker">Stage card · S5 · 6–14 weeks · borderline on the pod</div>
+  <h2>S5 adds all 143,614 GTDB species reps: the first tree-wide answers and the first honest benchmark.</h2>
+  <div class="card">
+    <div class="box green"><h3>Adds</h3>GTDB R226 species representatives (127 GB tarball, 400–450 Gbp).</div>
+    <div class="box blue"><h3>Capability</h3>Full token dictionary; tree-wide dispersion; core plane over species reps; L5 decision per query class. Becomes the <code>lite</code> edition.</div>
+    <div class="box amber"><h3>Science check</h3>B1 temporal holdout: dictionary frozen at a 2013 snapshot, scored on systems published later, Wilson CI. STRING and Coinfinder baselines. First hash-timestamped prospective prediction file.</div>
+    <div class="box red"><h3>Envelope</h3>MMseqs2 ≈160 GB vs 200 GB cap; /tmp peak 0.5–0.9 TB vs 940 GB; 25–100 days. Mitigate: exact dedup first, per-phylum linclust + clusterupdate, short HMMER shards; else move L2 to Hetzner.</div>
+  </div>
+  <div class="strip"><span><b>n</b> 143,614</span><span><b>Gbp</b> 400–450</span><span><b>core-h</b> 20k–80k</span><span><b>seq store</b> 207 GB</span><span><b>release</b> rS5.1 = lite</span></div>
+</section>
+
+<!-- S6 -->
+<section>
+  <div class="kicker">Stage card · S6 · split across hosts</div>
+  <h2>S6 adds all 732k GTDB genomes for pangenome planes; per-genome work stays on the pod, global work moves to rented metal.</h2>
+  <div class="card">
+    <div class="box green"><h3>Adds</h3>588,861 non-representative members; RefSeq <code>Complete Genome</code> flag from <code>assembly_summary_refseq.txt</code>.</div>
+    <div class="box blue"><h3>Capability</h3>Three-valued pangenome planes with shrinkage; closed-or-multi-strain mask; strain-level vehicle dedup. Becomes the <code>core</code> edition.</div>
+    <div class="box amber"><h3>Science check</h3>Missing-step search with quality masks recovers ThyA/ThyX, MetE/MetH, FolB/PTPS-III with CIs. B3 fragmentation test under its pre-registered false-hole bound.</div>
+    <div class="box"><h3>Split</h3>Pod: per-genome L1, sequence store, per-species planes. Hetzner (P2): global L2 clustering, geNomad on new members. Results return as L2 Parquet with crosswalk; cross-host hash equality (D-05).</div>
+  </div>
+  <div class="strip"><span><b>n</b> 732,475</span><span><b>Gbp</b> 2.7–3.1k</span><span><b>core-h</b> 60k–1.6M</span><span><b>seq store</b> +1.34 TB</span><span><b>release</b> rS6.1 = core</span></div>
+</section>
+
+<!-- S7 -->
+<section>
+  <div class="kicker">Stage card · S7+ · off the pod by design</div>
+  <h2>S7 adds metagenomic and SRA-derived contigs in order of cost, and stops when novelty per Tbp falls below a preset threshold.</h2>
+  <div class="cols3">
+    <div class="box blue"><h3>1 · AllTheBacteria</h3>2.44M isolate assemblies, MIT. Identity resolution against S0–S6 first: most overlap GTDB.</div>
+    <div class="box blue"><h3>2 · SPIRE, GlobDB extras</h3>Unbinned and MAG contigs; CheckM2, GUNC, FCS-GX on every MAG/SAG.</div>
+    <div class="box red"><h3>3 · Logan, last</h3>AWS us-east-1, compute-to-data. Runs preselected by SRA metadata and STAT. Only L1 Parquet and kept sequences leave AWS.</div>
+  </div>
+  <div class="box amber" style="margin-top:14px"><b>Gate at every substage:</b> identity resolution, screening, and a rarefaction check: novel NR50 clusters per Tbp above the preset threshold, else stop. Cost per novel cluster within budget (P3).</div>
+</section>
+
+<!-- ENVELOPE -->
+<section>
+  <h2>The pod runs out on memory and local disk at S5 and on CPU-years at S6; each limit has a planned response.</h2>
+  <table class="roomy">
+    <tr><th>Limit</th><th>First stage that strains it</th><th>Planned response</th></tr>
+    <tr><td>200 GB memory cgroup</td><td>S5 (MMseqs2 ≈160 GB)</td><td>Exact dedup first; per-phylum linclust; written exception; else L2 to Hetzner</td></tr>
+    <tr><td>~940 GB local /tmp</td><td>S5 (0.5–0.9 TB peak)</td><td>--split-memory-limit; shard-wise passes; clear tmp between passes</td></tr>
+    <tr><td>Watchdog, ~369 CPU-min per PID</td><td>every MMseqs2 run from S1</td><td>nice 19 from launch; HMMER/Infernal in short shard processes</td></tr>
+    <tr><td>Shared NFS, 10 GbE</td><td>S6 (~2 TB through NFS)</td><td>one throttled stream; off-hours bulk sync</td></tr>
+    <tr><td>Scratch not backed up</td><td>S0 for L0; S6 for the sequence store</td><td>L0 second copy on /stor/work; object storage from S5</td></tr>
+    <tr><td>FCS-GX ~470 GB DB (verify)</td><td>S0 / S3</td><td>skip for NCBI-screened sources, rented box, or one-night exception</td></tr>
+    <tr><td>geNomad CPU-years</td><td>S6</td><td>Hetzner; reuse IMG/VR- and GTDB-shipped calls</td></tr>
+  </table>
+</section>
+
+<!-- PORTABILITY -->
+<section>
+  <h2>Rapid deployment is rehearsed early on small data, and measured from bare rental to first correct query.</h2>
+  <div class="cols">
+    <table>
+      <tr><th>Step</th><th>When</th><th>What</th></tr>
+      <tr><td>P0</td><td>S0</td><td>one OCI image → .sif (pod), Docker (Hetzner); doctor probe; ref DBs as L0</td></tr>
+      <tr><td>P1</td><td>after S2</td><td>rent one AX-class box; bootstrap; pull image by digest and rS2.1 pack; rebuild S0–S2 from manifests</td></tr>
+      <tr><td>P2</td><td>S5/S6</td><td>Hetzner runs L2 and geNomad; object storage is the system of record</td></tr>
+      <tr><td>P3</td><td>S7</td><td>AWS compute-to-data for Logan; Hetzner serves planetary</td></tr>
+    </table>
+    <div>
+      <div class="box green"><h3>P1 pass criteria</h3>Hash equality across hosts on L0/L1/L3, L2 via crosswalk; K-tests re-run; time from rental to first oracle-checked query under 2 h for S0–S2.</div>
+      <div class="box" style="margin-top:10px"><h3>Timed breakdown</h3>OS bootstrap · image pull · pack download at 1 and 10 Gbps · catalog open · first query.</div>
+      <div class="box amber" style="margin-top:10px"><h3>Facts corrected</h3>AX162: EPYC 9454P, 48 cores, 2×1.92 TB base. GEX130: 128 GB RAM. 1 Gbps default; 10 G add-on.</div>
+    </div>
+  </div>
+</section>
+
+<!-- EDITIONS -->
+<section>
+  <h2>Editions are cuts of stage releases, not designed top-down.</h2>
+  <table class="roomy">
+    <tr><th>Edition</th><th>Stages</th><th>Size (estimate)</th><th>Download 1 / 10 Gbps</th><th>Notes</th></tr>
+    <tr><td><b>lite</b></td><td>S0–S5</td><td>~0.3–1.0 TB</td><td>40 min–2.2 h / 4–13 min</td><td>IMG/VR as statistics only; v2's 85 GB withdrawn</td></tr>
+    <tr><td><b>core</b></td><td>S0–S6</td><td>~4–6 TB</td><td>9–13 h / 53–80 min</td><td>multi-strain planes and masks</td></tr>
+    <tr><td><b>planetary</b></td><td>S0–S7+</td><td>unknown until S7 rarefaction</td><td>—</td><td>built and served on Hetzner</td></tr>
+  </table>
+  <p class="small">Every edition carries its stages' sequence store. Non-redistributable sources (IMG/VR, ISfinder, JGI data) ship as fetch recipes; GSA-Human is never ingested.</p>
+</section>
+
+<!-- SECTION: RISKS -->
+<section class="section-title" data-background-color="#14213d">
+  <div class="kicker" style="color:#f2b880">Part 6</div>
+  <h2 style="font-size:1.8em">Risks, kill criteria, first questions</h2>
+  <p>Pre-mortem: it is April 2027 and S0–S3 stalled. Why?</p>
+</section>
+
+<!-- GAPS -->
+<section>
+  <h2>The likeliest failure is building plumbing nobody asked for; the pre-mortem's top gaps are about users and approvals, not code.</h2>
+  <table class="mid">
+    <tr><th>#</th><th>Gap</th><th>Closes with</th><th>Blocks</th></tr>
+    <tr><td>1</td><td>No signed-off first questions</td><td>First-10 list, two of them in S1/S3 gates</td><td>S0</td></tr>
+    <tr><td>2</td><td>No repo, CI, image pipeline</td><td>Repo + micro-S0 fixture in CI</td><td>S0</td></tr>
+    <tr><td>3</td><td>10 cross-doc contradictions</td><td>Resolved 2026-10-28; doc-lint in CI</td><td>S0</td></tr>
+    <tr><td>4</td><td>FCS-GX ~470 GB vs 200 GB cap</td><td>ADR: skip / rent / exception</td><td>S0</td></tr>
+    <tr><td>5</td><td>Pod footprint not requested</td><td>Written request to the pod owner</td><td>S0</td></tr>
+    <tr><td>6</td><td>L0 only on unbacked scratch</td><td>L0 durable: second copy</td><td>S0</td></tr>
+    <tr><td>7</td><td>Reference DBs not pinned</td><td><code>refdb.yaml</code> filled and frozen</td><td>S0</td></tr>
+    <tr><td>9</td><td>Pod GPU (wilkcomp03) ignored</td><td>Ask in footprint request</td><td>S3</td></tr>
+    <tr><td>15</td><td>Bus factor 1, account not shareable</td><td>Second account, RUNBOOK, cookbook</td><td>S1</td></tr>
+    <tr><td>16</td><td>Human-derived contigs in quarantine</td><td>Digest + reason only</td><td>S0</td></tr>
+  </table>
+  <div class="src">planning/preflight_gaps.md (22 gaps)</div>
+</section>
+
+<!-- KILL -->
+<section>
+  <h2>Six kill criteria say when to stop, so the project cannot drift on sunk cost.</h2>
+  <table class="roomy">
+    <tr><th>ID</th><th>Trigger</th><th>Action</th></tr>
+    <tr><td>K1</td><td>S0 rates predict S5 &gt;150 days on the pod and no Hetzner budget</td><td>Stop at S4; ship lite without S5</td></tr>
+    <tr><td>K2</td><td>Golden gene-calling or ncRNA targets fail after two fixes</td><td>Adopt PGAP/Bakta outputs for Tier 1</td></tr>
+    <tr><td>K3</td><td>By end of S4, no first-10 question beats its baseline</td><td>Stop building; keep sequence store + L1 as a lab resource</td></tr>
+    <tr><td>K4</td><td>S2 trap FPR 95% UB &gt;10%</td><td>Ship as a retrieval tool only</td></tr>
+    <tr><td>K5</td><td>Accretion equivalence fails by S2</td><td>Rebuild L2 per release; re-budget</td></tr>
+    <tr><td>K6</td><td>Pod footprint withdrawn</td><td>Move to P1 host early</td></tr>
+  </table>
+  <p class="small">Any time box overrun by 50% triggers a kill review.</p>
+</section>
+
+<!-- FIRST 10 -->
+<section>
+  <h2>Draft first-10 questions, tied to the lab's defense, retron and repair work; each has a baseline to beat.</h2>
+  <table class="mid">
+    <tr><th>#</th><th>Question</th><th>First answerable</th><th>Baseline</th></tr>
+    <tr><td>Q1</td><td>Every ±10-gene neighbourhood of a retron RT, with raw FASTA</td><td>S1</td><td>webFlaGs, GCsnap2</td></tr>
+    <tr><td>Q2</td><td>Phage genes near anti-defense genes beyond passenger expectation</td><td>S1</td><td>manual DefenseFinder/PADLOC</td></tr>
+    <tr><td>Q3</td><td>Uncharacterized conserved neighbours of RecBCD/AddAB across orders</td><td>S3</td><td>STRING</td></tr>
+    <tr><td>Q4</td><td>Plasmid pairs: coupled modules vs AMR–transposon passengers</td><td>S2</td><td>Coinfinder</td></tr>
+    <tr><td>Q5</td><td>Export a subfamily with neighbourhoods, sequences, taxonomy</td><td>S1</td><td>EFI-GNT</td></tr>
+    <tr><td>Q6</td><td>Strain-variable defense cassettes and their vehicles</td><td>S6</td><td>per-genome PADLOC</td></tr>
+    <tr><td>Q7</td><td>Reduced genomes: pathway lost vs holed with replacement</td><td>S3</td><td>GapMind</td></tr>
+    <tr><td>Q8</td><td>Riboswitch subtypes upstream of a transporter family</td><td>S3</td><td>Rfam + manual</td></tr>
+    <tr><td>Q9</td><td>Intron/HEG insertions in phage core genes, by lineage</td><td>S1</td><td>manual</td></tr>
+    <tr><td>Q10</td><td>Tree-ordered distribution of a module with closed-genome support</td><td>S3</td><td>AnnoTree</td></tr>
+  </table>
+  <p class="small">Draft for PI sign-off. Q1/Q4 join the S1/S2 gates; Q3/Q10 join S3.</p>
+</section>
+
+<!-- CALENDAR -->
+<section>
+  <h2>About six months to the lite edition at ~60% of one person, if S0 rates hold.</h2>
+  <table class="roomy">
+    <tr><th>Phase</th><th>Time box</th><th>Ends with</th></tr>
+    <tr><td>S−1 preflight</td><td>2–3 weeks</td><td>checklist green</td></tr>
+    <tr><td>S0</td><td>4 weeks</td><td>rS0.1, sizing refit, ADRs frozen</td></tr>
+    <tr><td>S1</td><td>2 weeks</td><td>rS1.1, Q1 answered</td></tr>
+    <tr><td>S2</td><td>2–3 weeks</td><td>rS2.1, Q4 answered, data-layer decisions</td></tr>
+    <tr><td>P1</td><td>1 week</td><td>cross-host hash equality, timed deploy</td></tr>
+    <tr><td>S3</td><td>3 weeks</td><td>rS3.1, Q3/Q10, S5 go/no-go</td></tr>
+    <tr><td>S4</td><td>3 weeks</td><td>rS4.1</td></tr>
+    <tr><td>S5</td><td>6–14 weeks (CPU-bound)</td><td>rS5.1, B1 with CI, lite</td></tr>
+  </table>
+  <p class="small">Estimate. Revised after S0 measures real rates; 50% overrun of any box triggers kill review.</p>
+</section>
+
+<!-- DECISIONS -->
+<section>
+  <h2>Decisions needed this month</h2>
+  <div class="cols">
+    <div class="box amber" style="font-size:0.75em">
+      <h3>From the PI</h3>
+      <ol>
+        <li>Rank or replace the first-10 questions</li>
+        <li>Approve the footprint request text</li>
+        <li>Name owners (engineer, bioinformatician, independent curator)</li>
+        <li>FCS-GX route</li>
+        <li>Accept K1–K6</li>
+        <li>OK to get Hetzner quotes for P1</li>
+      </ol>
+    </div>
+    <div class="box blue" style="font-size:0.75em">
+      <h3>From the pod owner and facility</h3>
+      <ol>
+        <li>Scratch growth to ~2 TB; multi-week runs at nice 19</li>
+        <li>Possible overnight memory exception at S5</li>
+        <li>wilkcomp03 GPU by arrangement</li>
+        <li>Second account for a postdoc</li>
+        <li>/tmp cleanup policy on reboot</li>
+      </ol>
+    </div>
+  </div>
+  <aside class="notes">Close on the asks. Everything else in the deck is supporting detail.</aside>
+</section>
+
+<!-- APPENDIX -->
+<section class="section-title" data-background-color="#55607a">
+  <div class="kicker" style="color:#f2b880">Appendix</div>
+  <h2 style="font-size:1.6em">Reference material</h2>
+</section>
+
+<section>
+  <h2>Appendix A · Audit findings to decisions</h2>
+  <table class="mid">
+    <tr><th>Decision</th><th>Topic</th><th>From</th></tr>
+    <tr><td>D-02</td><td>One sizing model; labels on every number</td><td>BX-01, AR-02, DB-01, DQ-09, DS-03</td></tr>
+    <tr><td>D-04</td><td>Identity resolution, screening, deterministic dedup</td><td>BX-15/18, DQ-01..03, DB-04, AR-03, DS-02</td></tr>
+    <tr><td>D-06</td><td>Explicit contig taxonomy with confidence</td><td>BX-03, DQ-04</td></tr>
+    <tr><td>D-07..D-11</td><td>Gene calling, ncRNA, domains, structure, regimes</td><td>BX-04..13</td></tr>
+    <tr><td>D-13</td><td>Score test, permutation nulls, hierarchical FDR, rescore</td><td>DS-01, DS-06..08, DS-12, DS-14</td></tr>
+    <tr><td>D-17</td><td>Parquet + DuckDB first; indexes only on SLO failure</td><td>AR-06, DB-02..08</td></tr>
+    <tr><td>D-19..D-21</td><td>Stable IDs, staleness contract, read-only catalog</td><td>AR-04/05/11, DB-10..12, DQ-13</td></tr>
+    <tr><td>D-23</td><td>Per-source license contracts; fetch recipes</td><td>AR-13, DQ-05</td></tr>
+    <tr><td>D-24</td><td>Temporal holdout, CIs, simulation, pre-registration</td><td>DS-04/10/11/16, DQ-10, BX-20</td></tr>
+    <tr><td>D-27</td><td>Staged accretion</td><td>all five audits</td></tr>
+  </table>
+</section>
+
+<section>
+  <h2>Appendix B · Source and license blockers</h2>
+  <table class="roomy">
+    <tr><th>Source</th><th>Stage</th><th>Terms</th><th>Handling</th></tr>
+    <tr><td>GTDB R226</td><td>S3, S5, S6</td><td>CC BY-SA (verify)</td><td>attribution file per release</td></tr>
+    <tr><td>INPHARED</td><td>S1</td><td>INSDC sequences; scripts AGPL</td><td>call as tool, do not vendor</td></tr>
+    <tr><td>PLSDB</td><td>S2</td><td>no license stated</td><td>derived tables only until checked</td></tr>
+    <tr><td>IMG/VR, IMG/PR</td><td>S4</td><td>JGI data policy</td><td>local-only; fetch recipes</td></tr>
+    <tr><td>ISfinder</td><td>—</td><td>no download without authorization</td><td>bring your own data</td></tr>
+    <tr><td>Logan</td><td>S7</td><td>no license; NIH GDS policy</td><td>preselect runs; human screen</td></tr>
+    <tr><td>GSA-Human</td><td>never</td><td>controlled access</td><td>do not ingest</td></tr>
+    <tr><td>AllTheBacteria</td><td>S7</td><td>MIT</td><td>public packs OK</td></tr>
+  </table>
+</section>
+
+<section>
+  <h2>Appendix C · Where things live</h2>
+  <table class="roomy">
+    <tr><th>File</th><th>Authoritative for</th></tr>
+    <tr><td>STAGES.md</td><td>stage numbering, cards, portability track, editions</td></tr>
+    <tr><td>planning/preflight_gaps.md</td><td>pre-mortem, contradictions, first-10, refdb list, roles, kill criteria, checklist</td></tr>
+    <tr><td>planning/data_layer_and_tests.md</td><td>layers, IDs, sequence store, layout, catalog, all test IDs, orchestration</td></tr>
+    <tr><td>planning/sources_and_sizing.md</td><td>sources, versions, unit-rate formulas, envelope</td></tr>
+    <tr><td>PLAN.md v3</td><td>pipeline, schema, statistics, benchmarks</td></tr>
+    <tr><td>00-spec.md v3</td><td>scope and 14 invariants</td></tr>
+    <tr><td>DEPLOYMENT-AND-MALLEABILITY.md v3</td><td>hosts, images, malleability contract, security, licensing</td></tr>
+    <tr><td>audits/SYNTHESIS_2.md</td><td>decision record D-01..D-28</td></tr>
+  </table>
+  <p class="small">Diagrams: presentations/diagrams/*.mmd, rendered by presentations/render.sh (mermaid-cli 11.12).</p>
+</section>
+
+</div></div>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/reveal.js/5.1.0/reveal.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/reveal.js/5.1.0/plugin/notes/notes.min.js"></script>
+<script>
+  Reveal.initialize({
+    hash: true, slideNumber: 'c/t', width: 1280, height: 720, margin: 0.04,
+    transition: 'none', center: false, plugins: [ RevealNotes ]
+  });
+</script>
+</body>
+</html>

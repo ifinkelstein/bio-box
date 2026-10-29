@@ -1,0 +1,14 @@
+flowchart TB
+  classDef bar fill:#14213d,stroke:#14213d,color:#ffffff
+  classDef rel fill:#eef6ee,stroke:#3c7d40,color:#14213d
+  subgraph R1[" "]
+    direction LR
+    s1["L1 shards<br/>1..n, any order"] --> b2{{"barrier_L2"}}:::bar --> l2["L2 clustering<br/>linclust / clusterupdate<br/>nice 19, local /tmp"] --> l3["L3 tapes + pairs<br/>DuckDB COPY ORDER BY"]
+  end
+  subgraph R2[" "]
+    direction LR
+    b4{{"barrier_L4"}}:::bar --> l4["L4 statistics<br/>score test, nulls, FDR"] --> tests["stage gate<br/>C L R Q A D G K tests"] --> cut["cut release rS&lt;k&gt;.&lt;n&gt;<br/>manifest + catalog swap"]:::rel
+  end
+  R1 --> R2
+  style R1 fill:none,stroke:none
+  style R2 fill:none,stroke:none

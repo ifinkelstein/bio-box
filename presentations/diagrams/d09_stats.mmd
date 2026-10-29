@@ -1,0 +1,15 @@
+flowchart TB
+  classDef k fill:#e8eef7,stroke:#2f5d9b,color:#14213d
+  classDef x fill:#ffffff,stroke:#b23a48,color:#b23a48,stroke-dasharray: 4 3
+  subgraph R1[" "]
+    direction LR
+    pairs["slot_pairs<br/>(A, B, offset, topology)"] --> veh["vehicle dedup<br/>MinHash-LSH on flanks<br/>1 count / BioProject / vehicle"] --> suff["sufficient statistics<br/>per regime x tier<br/>(enables bio-box rescore)"]:::k
+  end
+  subgraph R2[" "]
+    direction LR
+    z["Poisson-binomial<br/>score test Z<br/>+ beta_hat, se"]:::k --> nulls["nulls: block permutation<br/>(>=25 ORFs), curveball,<br/>Efron empirical null"] --> fdr["local fdr +<br/>hierarchical FDR"]:::k --> mod["modules,<br/>not pairs"]
+  end
+  R1 --> R2
+  old["v2 LLR_func: not a likelihood ratio"]:::x -. replaced by .-> R2
+  style R1 fill:none,stroke:none
+  style R2 fill:none,stroke:none

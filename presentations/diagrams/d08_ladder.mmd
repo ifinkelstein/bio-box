@@ -1,0 +1,19 @@
+flowchart LR
+  classDef pod fill:#eef6ee,stroke:#3c7d40,color:#14213d
+  classDef border fill:#fdf1e3,stroke:#c26a1b,color:#14213d
+  classDef off fill:#e8eef7,stroke:#2f5d9b,color:#14213d
+  classDef port fill:#ffffff,stroke:#55607a,stroke-dasharray: 5 4,color:#14213d
+
+  pre["S-1<br/>preflight"]:::pod --> S0["S0<br/>14 golden genomes<br/>+ harness"]:::pod
+  S0 --> S1["S1<br/>~35k phages"]:::pod
+  S1 --> S2["S2<br/>72k plasmids"]:::pod
+  S2 --> S3["S3<br/>~10k small<br/>genomes"]:::pod
+  S3 --> S4["S4<br/>IMG/VR HQ<br/>(local-only)"]:::pod
+  S4 --> S5["S5<br/>143,614 GTDB<br/>species reps"]:::border
+  S5 --> S6["S6<br/>732k GTDB<br/>genomes"]:::border
+  S6 --> S7["S7+<br/>Tier 3, Logan"]:::off
+
+  P0["P0 image + .sif"]:::port -.-> S0
+  S2 -.-> P1["P1 Hetzner rehearsal<br/>rebuild S0-S2, hash-equal"]:::port
+  P2["P2 L2 + geNomad<br/>on Hetzner"]:::port -.-> S6
+  P3["P3 AWS compute-to-data"]:::port -.-> S7

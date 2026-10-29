@@ -1,0 +1,21 @@
+flowchart LR
+  classDef append fill:#eef6ee,stroke:#3c7d40,color:#14213d
+  classDef incr fill:#fdf1e3,stroke:#c26a1b,color:#14213d
+  classDef recompute fill:#e8eef7,stroke:#2f5d9b,color:#14213d
+  classDef optional fill:#ffffff,stroke:#9aa5b8,stroke-dasharray: 5 4,color:#55607a
+
+  L0["<b>L0</b> sources<br/>as fetched + contract"]:::append
+  SEQ["<b>L0-seq</b><br/>sequence store<br/>nothing discarded"]:::append
+  ID["<b>L0.5</b> identity<br/>member_of rows"]:::incr
+  L1["<b>L1</b> per-genome<br/>annotation shards"]:::append
+  L2["<b>L2</b> clusters<br/>+ crosswalk"]:::incr
+  L3["<b>L3</b> tapes + pairs<br/>coords stable,<br/>tokens per release"]:::recompute
+  L4["<b>L4</b> statistics<br/>+ sufficient stats"]:::recompute
+  L5["<b>L5</b> indexes<br/>only if SLO fails"]:::optional
+
+  L0 --> SEQ --> L1
+  L0 --> ID --> L1
+  L1 --> L2 --> L3
+  L1 --> L3
+  L3 --> L4
+  L4 -.-> L5

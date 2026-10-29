@@ -1,0 +1,14 @@
+flowchart TB
+  classDef gate fill:#fdf1e3,stroke:#c26a1b,color:#14213d
+  classDef out fill:#eef6ee,stroke:#3c7d40,color:#14213d
+  subgraph R1[" "]
+    direction LR
+    in(["source batch"]) --> idr["identity<br/>skani"] --> scr["screen<br/>FCS, CheckM2,<br/>GUNC, geNomad"]:::gate --> tax["taxonomy<br/>MMseqs2 / CAT,<br/>iPHoP"] --> genes["genes<br/>pyrodigal(-gv),<br/>Codetta"]
+  end
+  subgraph R2[" "]
+    direction LR
+    nc["ncRNA + repeats<br/>cmsearch, tRNAscan,<br/>MinCED, IntegronFinder"] --> arb["arbitration<br/>split genes,<br/>evidence_level"] --> dom["domains<br/>pyhmmer libs,<br/>own cutoffs"] --> mge["regime + systems<br/>geNomad, CheckV,<br/>MacSyFinder"] --> shard(["L1 shard<br/>Parquet"]):::out
+  end
+  R1 --> R2
+  style R1 fill:none,stroke:none
+  style R2 fill:none,stroke:none

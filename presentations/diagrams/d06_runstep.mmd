@@ -1,0 +1,16 @@
+%%{init: {"sequence": {"actorFontSize": 26, "messageFontSize": 24, "noteFontSize": 22, "actorMargin": 40, "messageMargin": 34, "width": 150, "height": 56}}}%%
+sequenceDiagram
+  autonumber
+  participant SM as Snakemake
+  participant RS as run-step
+  participant SD as systemd scope
+  participant T as tool (.sif)
+  participant TMP as local /tmp
+  participant NFS as NFS scratch
+  SM->>RS: shard job
+  RS->>RS: STOP? day/night cap? load?
+  RS->>SD: MemoryMax 200G, nice 19/15
+  SD->>T: explicit --threads, OMP caps
+  T->>TMP: stage, compute, pack Parquet
+  TMP->>NFS: one rsync, atomic rename
+  RS->>SM: ledger row, exit 0 or 75
