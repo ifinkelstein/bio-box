@@ -31,6 +31,7 @@ _BASES = "TCAG"
 _AA = {
     11: "FFLLSSSSYY**CC*WLLLLPPPPHHQQRRRRIIIMTTTTNNKKSSRRVVVVAAAADDEEGGGG",
     4: "FFLLSSSSYY**CCWWLLLLPPPPHHQQRRRRIIIMTTTTNNKKSSRRVVVVAAAADDEEGGGG",
+    15: "FFLLSSSSYY*QCC*WLLLLPPPPHHQQRRRRIIIMTTTTNNKKSSRRVVVVAAAADDEEGGGG",
 }
 
 
@@ -46,8 +47,18 @@ def _translate(nt: bytes, code: int) -> str:
     return "".join(out)
 
 
+def _genome(o, seq=None):
+    seq = seq if seq is not None else fasta.read(FIX / o["file"])[0].seq
+    cu = ids.contig_uid(seq)
+    circ = (cu,) if o["topology"] == "circular" else ()
+    return GenomeInput((cu,), o["genetic_code"], kind=o["kind"], circular=circ)
+
+
 def _genomes():
-    return [GenomeInput((ids.contig_uid(fasta.read(FIX / o["file"])[0].seq),), o["genetic_code"]) for o in OBJS]
+    return [_genome(o) for o in OBJS]
+
+
+CIRCULAR = {ids.contig_uid(fasta.read(FIX / o["file"])[0].seq) for o in OBJS if o["topology"] == "circular"}
 
 
 def _build(root: Path):
@@ -109,7 +120,7 @@ def test_r04_proteins_match_independent_translation(root):
     for r in _read(root, GLOBS["protein_occurrence"]).to_pylist():
         if r["dist_to_contig_end_bp"] == 0:
             continue  # partial gene at a contig edge
-        nt = store.get(r["contig_uid"], r["start"], r["end"], r["strand"])
+        nt = store.get(r["contig_uid"], r["start"], r["end"], r["strand"], circular=r["contig_uid"] in CIRCULAR)
         assert len(nt) % 3 == 0
         aa = _translate(nt, codes[(r["contig_uid"], r["slot_ordinal"])])
         assert aa.endswith("*"), "complete gene must end in a stop codon"
@@ -135,8 +146,8 @@ def test_gene_counts_are_plausible(root):
 def test_mycoplasma_needs_code_4(root):
     store = SeqStore(root)
     mg = ids.contig_uid(fasta.read(FIX / "NC_000908.2.fna.gz")[0].seq)
-    c4 = call_genome(store, GenomeInput((mg,), 4))
-    c11 = call_genome(store, GenomeInput((mg,), 11))
+    c4 = call_genome(store, GenomeInput((mg,), 4, circular=(mg,)))
+    c11 = call_genome(store, GenomeInput((mg,), 11, circular=(mg,)))
     mean = lambda cs: sum(len(c["aa"]) for c in cs) / len(cs)  # noqa: E731
     assert mean(c4) > 1.8 * mean(c11)
     assert len(c11) > 1.5 * len(c4)
@@ -164,11 +175,73 @@ def test_mr03_reverse_complement_keeps_proteins(tmp_path, acc):
     root = tmp_path / "s"
     ingest([SourceObject(FIX / o["file"], "a", "1"), SourceObject(rc_file, "b", "1")], root, "S0")
     store = SeqStore(root)
-    fwd = call_genome(store, GenomeInput((ids.contig_uid(seq),), o["genetic_code"]))
-    rev = call_genome(store, GenomeInput((ids.contig_uid(revcomp(seq)),), o["genetic_code"]))
+    fwd = call_genome(store, _genome(o, seq))
+    rev = call_genome(store, _genome(o, revcomp(seq)))
     pf, pr = {c["aa"] for c in fwd}, {c["aa"] for c in rev}
     assert len(pf & pr) / max(len(pf), len(pr)) >= 0.98
     n = len(seq)
-    mirrored = {(n - c["end"], n - c["start"], -c["strand"]) for c in rev}
-    fwd_coords = {(c["start"], c["end"], c["strand"]) for c in fwd}
+
+    def canon(s, e, strand):  # circular coordinates mod n
+        return (s % n, e - s, strand) if o["topology"] == "circular" else (s, e - s, strand)
+
+    mirrored = {canon(n - c["end"], n - c["start"], -c["strand"]) for c in rev}
+    fwd_coords = {canon(c["start"], c["end"], c["strand"]) for c in fwd}
     assert len(fwd_coords & mirrored) / len(fwd_coords) >= 0.98
+
+
+def test_viruses_route_to_gv_and_mycoplasma_to_single(root):
+    store = SeqStore(root)
+    modes = {}
+    for o in OBJS:
+        calls = call_genome(store, _genome(o))
+        modes[o["accession"]] = {c["mode"] for c in calls}
+        codes = {c["genetic_code"] for c in calls}
+        if o["kind"] == "prokaryote":
+            assert codes == {o["genetic_code"]}
+    assert modes == {"NC_001416.1": {"gv-meta"}, "NC_000866.4": {"gv-meta"}, "NC_000908.2": {"single"}}
+
+
+def test_mr04_rotating_a_circular_genome_keeps_genes(tmp_path):
+    # Rotate M. genitalium so that the new origin falls inside a gene; that gene must be called
+    # once, wrapping the origin, and the gene set must match the unrotated genome.
+    o = next(o for o in OBJS if o["accession"] == "NC_000908.2")
+    seq = fasta.read(FIX / o["file"])[0].seq
+    n = len(seq)
+    src = tmp_path / "src"
+    src.mkdir()
+    root = tmp_path / "s"
+    ingest([SourceObject(FIX / o["file"], "a", "1")], root, "S0")
+    base = call_genome(SeqStore(root), _genome(o, seq))
+    target = base[len(base) // 2]
+    r = (target["start"] + target["end"]) // 2  # inside a mid-genome gene
+    rotated = seq[r:] + seq[:r]
+    rot_file = src / "rot.fna"
+    rot_file.write_bytes(b"\n".join(fasta.format_record("rot", rotated, 70)) + b"\n")
+    ingest([SourceObject(rot_file, "b", "1")], root, "S1")
+    rot = call_genome(SeqStore(root), _genome(o, rotated))
+    wrap = [c for c in rot if c["wraps_origin"]]
+    assert any(c["aa"] == target["aa"] for c in wrap), "the split gene must be called whole across the origin"
+    key = lambda cs, shift: {((c["start"] + shift) % n, c["end"] - c["start"], c["strand"], c["aa"]) for c in cs}  # noqa: E731
+    a, b = key(base, 0), key(rot, r)
+    assert len(a & b) / len(a) >= 0.99
+    assert len([c for c in rot if c["aa"] == target["aa"]]) == 1
+
+
+def test_wrapping_slice_round_trips():
+    import random
+
+    root_seq = fasta.read(FIX / "NC_000908.2.fna.gz")[0].seq
+    n = len(root_seq)
+    rng = random.Random(7)
+    import tempfile
+
+    with tempfile.TemporaryDirectory() as d:
+        ingest([SourceObject(FIX / "NC_000908.2.fna.gz", "a", "1")], Path(d), "S0", chunk_size=4096, row_group_chunks=16)
+        store = SeqStore(Path(d))
+        cu = ids.contig_uid(root_seq)
+        doubled = root_seq + root_seq
+        for _ in range(100):
+            s = rng.randrange(0, n)
+            e = rng.randrange(n + 1, s + n + 1) if s + n > n else n
+            assert store.get(cu, s, e, 1, circular=True) == doubled[s:e]
+            assert store.get(cu, s, e, -1, circular=True) == revcomp(doubled[s:e])

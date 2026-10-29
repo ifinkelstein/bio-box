@@ -8,6 +8,7 @@ dependencies = [
     "duckdb>=1.1",
     "pyarrow>=17",
     "pyrodigal>=3",
+    "pyrodigal-gv>=0.3",
     "pyyaml>=6",
 ]
 

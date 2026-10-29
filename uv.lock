@@ -20,6 +20,7 @@ dependencies = [
     { name = "duckdb" },
     { name = "pyarrow" },
     { name = "pyrodigal" },
+    { name = "pyrodigal-gv" },
     { name = "pyyaml" },
 ]
 
@@ -35,6 +36,7 @@ requires-dist = [
     { name = "duckdb", specifier = ">=1.1" },
     { name = "pyarrow", specifier = ">=17" },
     { name = "pyrodigal", specifier = ">=3" },
+    { name = "pyrodigal-gv", specifier = ">=0.3" },
     { name = "pyyaml", specifier = ">=6" },
 ]
 
@@ -404,6 +406,18 @@ wheels = [
     { url = "https://files.pythonhosted.org/packages/d4/f8/cdf204e9ad38e6898743254e86195ef59194f7b751b68e650adaf3b866e0/pyrodigal-3.7.1-cp314-cp314t-manylinux2014_aarch64.manylinux_2_17_aarch64.manylinux_2_28_aarch64.whl", hash = "sha256:38b01b8d5ca3a90cf9f6b0828179cb4ea03114cc6c7e6d767b3f860b15641306", size = 2876324, upload-time = "2026-03-07T19:39:01.423Z" },
     { url = "https://files.pythonhosted.org/packages/6b/0c/698d460f3c669b4573fe5b8ab64e34e532477fd2c512ec98ccc59d13e8c8/pyrodigal-3.7.1-cp314-cp314t-manylinux2014_x86_64.manylinux_2_17_x86_64.manylinux_2_28_x86_64.whl", hash = "sha256:2299fcc3c643fb3b7090d2a3496107ddc720661606d6388180874dd615b0a76d", size = 2947161, upload-time = "2026-03-07T19:39:02.99Z" },
     { url = "https://files.pythonhosted.org/packages/0c/d1/51be2119a5a392f8aa0c44d68a3163e66105a6707abbcf3656a47a72207c/pyrodigal-3.7.1-cp314-cp314t-win_amd64.whl", hash = "sha256:74ad25e695230a8d02c5d5112e062ec83eaf0ef48619c0571ea9740f81f55e79", size = 3368306, upload-time = "2026-03-07T19:39:04.484Z" },
+]
+
+[[package]]
+name = "pyrodigal-gv"
+version = "0.3.2"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "pyrodigal" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/39/7a/07567d680f418f8fc42ff7ce38752f312fd622744755afc11fa21555d265/pyrodigal_gv-0.3.2.tar.gz", hash = "sha256:aeeff43daec2c4aec7830ae2400799aa90bf273bcca86656ef239bee8d7e5ea5", size = 851457, upload-time = "2024-08-15T14:43:43.076Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/d6/8f/e78b92bc836a7b50a3497ee655983561dec4ac2df06136f0c55e59a00144/pyrodigal_gv-0.3.2-py2.py3-none-any.whl", hash = "sha256:cd6d922d7495ff853a7385ef8abe68498113c177a5ded3d07f93c28b8c990120", size = 849921, upload-time = "2024-08-15T14:43:41.176Z" },
 ]
 
 [[package]]

@@ -281,9 +281,18 @@ class SeqStore:
         base = first_ix * cs
         return joined[start - base : end - base]
 
-    def get(self, contig_uid: bytes, start: int = 0, end: int | None = None, strand: int = 1) -> bytes:
+    def get(
+        self, contig_uid: bytes, start: int = 0, end: int | None = None, strand: int = 1, circular: bool = False
+    ) -> bytes:
+        """Slice the default variant. On a circular contig `end` may exceed the length (origin wrap)."""
         rd = self._default[contig_uid]
-        seq = self.raw(rd, start, end)
+        n = self.length_of(rd)
+        if circular and end is not None and end > n:
+            if not 0 <= start < n < end <= start + n:
+                raise ValueError(f"wrapping slice {start}:{end} invalid for length {n}")
+            seq = self.raw(rd, start, n) + self.raw(rd, 0, end - n)
+        else:
+            seq = self.raw(rd, start, end)
         if strand == -1:
             return revcomp(seq)
         if strand != 1:

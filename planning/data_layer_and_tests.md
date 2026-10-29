@@ -407,7 +407,7 @@ Tests run under `pytest`, with DuckDB SQL assertions and `pandera` schemas. dbt-
 | C-02 | O-IDENT, O-CATALOG | Non-null, unique primary keys; full-digest uniqueness for truncated UIDs (collision check) | B |
 | C-03 | O-CATALOG, O-PROMOTE | Every foreign key resolves (slot→contig→genome→source; segment→protein; member→cluster; `search_hit`→`search_run`; `user_token_overlay`→slot, run) | B |
 | C-04 | O-TAPE | Parallel `LIST` columns in a tape row have equal lengths | B |
-| C-05 | O-CALL, O-TAPE, O-SCAN | Coordinate bounds: `0 ≤ start < end ≤ contig_len`; `env_end ≤ protein_len`; strands in {+1,−1} | B |
+| C-05 | O-CALL, O-TAPE, O-SCAN | Coordinate bounds: `0 ≤ start < end ≤ contig_len` on linear contigs; on circular contigs an origin-wrapping feature has `0 ≤ start < contig_len < end ≤ start + contig_len` (DEC-13); `env_end ≤ protein_len`; strands in {+1,−1} | B |
 | C-06 | all writers (LY-01) | Enum columns hold only registered values (feature kinds mapped to Sequence Ontology terms) | B |
 | C-07 | O-PAIRS | Saturating fields (e.g., `delta_bp` if narrowed) carry an overflow flag whenever clipped; share of clipped values < 0.1% | W |
 | C-08 | all writers, O-RUN | Every row carries `annot_version`/`release_id` provenance, and the tool versions in it equal the container lock | B |
