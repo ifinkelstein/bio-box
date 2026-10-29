@@ -107,6 +107,8 @@ Physical layout:
 l0seq/seq_chunks/stage=<S>/digest_prefix=<00..ff>/part-<k>.parquet   # 256 MB–1 GB files; prefix buckets keep files balanced
 l0seq/contig_occurrence/stage=<S>/source=<name>/part-<k>.parquet
 l0seq/protein_seq/gene_call_version=<v>/stage=<S>/protein_prefix=<00..ff>/part-<k>.parquet
+l1/slot_protein/gene_call_version=<v>/stage=<S>/part-<k>.parquet         # (contig_uid, slot_ordinal) -> protein_uid, genetic code, edit type
+l1/protein_occurrence/gene_call_version=<v>/stage=<S>/part-<k>.parquet   # protein-first index, sorted by protein_uid (§2B.1)
 l0seq/igr/igr_version=<v>/stage=<S>/part-<k>.parquet
 l0seq/seq_locator.parquet   # (raw_digest → file, row_group, first_chunk_row): rebuilt per stage, tiny, keeps slice reads to one row group
 ```
