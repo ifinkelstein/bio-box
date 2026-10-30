@@ -1,0 +1,129 @@
+version: 1
+retrieved: '2026-10-29'
+files:
+  ecoli_mg1655:
+    path: ecoli_mg1655/ecoli_mg1655.fna.gz
+    sha256_fna: 03c41475639fe8de50f23f2b9456402668411ccaf488d39d8f99cafea6552ced
+    sha256_gz: a574c3182e4fd378427a4ce212391cb7decf6744f48ae0b4e661cb82262fb709
+    records:
+    - header: NC_000913.3 Escherichia coli str. K-12 substr. MG1655, complete genome
+      length: 4641652
+  bsub_168:
+    path: bsub_168/bsub_168.fna.gz
+    sha256_fna: 28637c8680080c063e14d46110fd6aed173a000339523cd8c11d280129919207
+    sha256_gz: 88d3dda43df2031f484f75a5cfd128b913cc610ad97de3c7a18d8a9999e42d7f
+    records:
+    - header: NC_000964.3 Bacillus subtilis subsp. subtilis str. 168 complete genome
+      length: 4215606
+  lambda:
+    path: lambda/lambda.fna.gz
+    sha256_fna: 80897a7ee6b8aaffbab5442e0daad292592ac74701dbdf35af4b400ae0770ef3
+    sha256_gz: b104378a9adbc478c956ed133ee5670d6c297f148126633c3a1cf9260e12ec46
+    records:
+    - header: NC_001416.1 Enterobacteria phage lambda, complete genome
+      length: 48502
+  t4:
+    path: t4/t4.fna.gz
+    sha256_fna: 318993240401ac73497e71b400c7fb1f06fdb0fbaf11416b002bc4628ab7f4c1
+    sha256_gz: b5a7a704d9522bdd7b6a251c4709d3e4afe95dd982b01ffa95243328d862c578
+    records:
+    - header: NC_000866.4 Enterobacteria phage T4, complete genome
+      length: 168903
+  mgenitalium:
+    path: mgenitalium/mgenitalium.fna.gz
+    sha256_fna: da6686d43d8d75da36f25c75d8e9a07a26db927a12f8ade4d4c7a6d3917f89f2
+    sha256_gz: 68f10f99b25768fec5ce56375458437c8e6a5e01f190c6274ee931513dfbd7fe
+    records:
+    - header: NC_000908.2 Mycoplasmoides genitalium G37, complete sequence
+      length: 580076
+  sr1_raac1:
+    path: sr1_raac1/sr1_raac1.fna.gz
+    sha256_fna: 72858edf38d9a8b87238ca1d9982b09288f5bfddc94c22c36ea6309b4da27dad
+    sha256_gz: e9814b584ab9ca9fef12e6fe7c1b1f90fdd4decbe4268032d3965c7307a76403
+    records:
+    - header: CP006913.1 Candidate division SR1 bacterium RAAC1_SR1_1 chromosome,
+        complete genome
+      length: 1177760
+  lak_a1:
+    path: lak_a1/lak_a1.fna.gz
+    sha256_fna: 7c8385b8a257f2c888bd0d37e0a57053369ed5203d02b74991f89f19bb8d475c
+    sha256_gz: c99a5d01896027d912b53fed626bdf1f7871aa7fd8257732436b74f96a4e603a
+    records:
+    - header: 'MK250018.1 MAG: Prevotella phage Lak-A1, complete genome'
+      length: 541644
+  lak_b8:
+    path: lak_b8/lak_b8.fna.gz
+    sha256_fna: 6e2f50eef7fd6371a3b5b6388b7af93a1ca4078c14fcecf4f80682d27acee97a
+    sha256_gz: 37dbe1e37e1b70cfda8298200884e87dcfebd587d994a4ea3c8ee52ffdd75ff1
+    records:
+    - header: 'MK250027.1 MAG: Prevotella phage Lak-B8, complete genome'
+      length: 551627
+  macetivorans_c2a:
+    path: macetivorans_c2a/macetivorans_c2a.fna.gz
+    sha256_fna: e5de4e548ac18634fcede7863696a4851c27c17b778b699ffd69a7e517e61557
+    sha256_gz: 518ff88f3791144a15211fc033bf094d5546099426e1382b4f23b05359a8b914
+    records:
+    - header: NC_003552.1 Methanosarcina acetivorans C2A, complete sequence
+      length: 5751492
+  hvolcanii_ds2:
+    path: hvolcanii_ds2/hvolcanii_ds2.fna.gz
+    sha256_fna: 5a30772f58b8862e702624867ae6a7e25d4e6ac90c8cabcfda8ffbc761069ec1
+    sha256_gz: e009e2d455dd89563b591e84eccd7e9f870d0913d9ce52d2124866727796d9f4
+    records:
+    - header: NC_013967.1 Haloferax volcanii DS2, complete sequence
+      length: 2847757
+    - header: NC_013968.1 Haloferax volcanii DS2 plasmid pHV1, complete sequence
+      length: 85092
+    - header: NC_013965.1 Haloferax volcanii DS2 plasmid pHV2, complete sequence
+      length: 6359
+    - header: NC_013964.1 Haloferax volcanii DS2 plasmid pHV3, complete sequence
+      length: 437906
+    - header: NC_013966.1 Haloferax volcanii DS2 plasmid pHV4, complete sequence
+      length: 635786
+  sacidocaldarius_dsm639:
+    path: sacidocaldarius_dsm639/sacidocaldarius_dsm639.fna.gz
+    sha256_fna: 3f718bfe7e8b6c688bc4b29ea430a32d87ba96490af1f49c89fb35bcb4e308d0
+    sha256_gz: 57764f43c5c5541558953d449536ee23a5678c5bcb4dabf71452406ed435d1b3
+    records:
+    - header: NC_007181.1 Sulfolobus acidocaldarius DSM 639, complete sequence
+      length: 2225959
+  mtb_h37rv:
+    path: mtb_h37rv/mtb_h37rv.fna.gz
+    sha256_fna: f7c8f77c7b52354741d3215336704c765ae259861ebeca3a90972d6dd2f156b3
+    sha256_gz: 06918b80a938387d7170f05202b23782816c7e00de96f30810373d0139fbe9a0
+    records:
+    - header: NC_000962.3 Mycobacterium tuberculosis H37Rv, complete genome
+      length: 4411532
+  btheta_vpi5482:
+    path: btheta_vpi5482/btheta_vpi5482.fna.gz
+    sha256_fna: 1312d2f9d81a954ce141dd8133c9f4b15ac0f2b3b5ae2b8c1e74e8ea876fffbe
+    sha256_gz: bedcf332d8d7f0d8653bd47c4c6f67909ca944ea1c2c721322f54663380807e3
+    records:
+    - header: NC_004663.1 Bacteroides thetaiotaomicron VPI-5482, complete sequence
+      length: 6260361
+    - header: NC_004703.1 Bacteroides thetaiotaomicron VPI-5482 plasmid p5482, complete
+        sequence
+      length: 33038
+  spyogenes_sf370:
+    path: spyogenes_sf370/spyogenes_sf370.fna.gz
+    sha256_fna: da24e37db157a56a32b7aa6fa6bbcfbd7ba80b73a55edce7117d76b1a871a451
+    sha256_gz: dce0f4394de67d6bf2917d06593e58beb39710861fc52ed1f80102791cec06b6
+    records:
+    - header: NC_002737.2 Streptococcus pyogenes M1 GAS, complete sequence
+      length: 1852433
+  obelisk_ss:
+    path: obelisk_ss/obelisk_ss.fna.gz
+    sha256_fna: d2662e165e7b4902ba98b809952afba6cc9ecade7ce81fc754374ea12b67951e
+    sha256_gz: 4b136cf05a1e67f2fe8a7c2e575c6f8c1350edc06f82b522ce543c3e1bbcc783
+    records:
+    - header: "Obelisk_000003_000001_000001\tSsanguinis\tfull_nt"
+      length: 1137
+    - header: "Obelisk_000001_000001_000001\talpha\tfull_nt"
+      length: 1167
+  phix174:
+    path: phix174/phix174.fna.gz
+    sha256_fna: a0d9bfd990c62c0908392b962bb65b574466ad9fba3777681e40f7fb3debf3a2
+    sha256_gz: 728f278f414ab9d087394f4453adb0cf7157edd690265a946c35ae7308acf199
+    records:
+    - header: NC_001422.1 Escherichia phage phiX174, complete genome
+      length: 5386

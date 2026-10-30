@@ -235,6 +235,19 @@ class SeqStore:
             if r["is_default_variant"]:
                 self._default[r["contig_uid"]] = r["raw_digest"]
         self._files: dict[str, pq.ParquetFile] = {}
+        self._rg_cache: dict[tuple[str, int], list[str]] = {}  # small LRU of decoded row groups
+
+    _RG_CACHE_MAX = 64
+
+    def _row_group_seqs(self, rel: str, rg: int) -> list[str]:
+        key = (rel, rg)
+        hit = self._rg_cache.pop(key, None)
+        if hit is None:
+            hit = self._file(rel).read_row_group(rg, columns=["seq"]).column(0).to_pylist()
+            if len(self._rg_cache) >= self._RG_CACHE_MAX:
+                self._rg_cache.pop(next(iter(self._rg_cache)))
+        self._rg_cache[key] = hit
+        return hit
 
     def _file(self, rel: str) -> pq.ParquetFile:
         if rel not in self._files:
@@ -274,9 +287,9 @@ class SeqStore:
             offset = hi
             if hi <= rows_wanted.start or lo >= rows_wanted.stop:
                 continue
-            col = pf.read_row_group(rg, columns=["seq"]).column(0)
+            seqs = self._row_group_seqs(loc["file"], rg)
             for row in range(max(lo, rows_wanted.start), min(hi, rows_wanted.stop)):
-                parts.append(col[row - lo].as_py())
+                parts.append(seqs[row - lo])
         joined = "".join(parts).encode("ascii")
         base = first_ix * cs
         return joined[start - base : end - base]

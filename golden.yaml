@@ -1,0 +1,143 @@
+# Golden set (STAGES.md S0; planning/preflight_gaps.md #13).
+# Accessions, lengths, topology and NCBI genetic codes verified with NCBI E-utilities esummary
+# on 2026-10-29. Topology is the biological one; where the NCBI record differs it is noted.
+# `kind` drives gene-calling policy p2 (DEC-13). File checksums are pinned in golden.lock.yaml
+# by `python -m biobox.fetch`.
+version: 1
+fetch:
+  ncbi: "https://eutils.ncbi.nlm.nih.gov/entrez/eutils/efetch.fcgi?db=nuccore&id={accession}&rettype=fasta&retmode=text"
+  sdr: "https://stacks.stanford.edu/file/druid:{druid}/{path}"
+
+genomes:
+  - id: ecoli_mg1655
+    organism: Escherichia coli K-12 MG1655
+    kind: prokaryote
+    genetic_code: 11
+    records: [{accession: NC_000913.3, length: 4641652, topology: circular}]
+    checks: [gene starts vs EcoCyc, operons vs RegulonDB transcription units]
+    truth: [EcoCyc gene coordinates, RegulonDB transcription units]
+  - id: bsub_168
+    organism: Bacillus subtilis 168
+    kind: prokaryote
+    genetic_code: 11
+    records: [{accession: NC_000964.3, length: 4215606, topology: circular}]
+    checks: [gene starts vs SubtiWiki, riboswitches vs Rfam seeds]
+    truth: [SubtiWiki gene coordinates]
+  - id: lambda
+    organism: Escherichia phage lambda
+    kind: virus
+    genetic_code: 11
+    records: [{accession: NC_001416.1, length: 48502, topology: linear}]
+    checks: [gpG-T programmed frameshift merged into one gene]
+  - id: t4
+    organism: Escherichia phage T4
+    kind: virus
+    genetic_code: 11
+    records: [{accession: NC_000866.4, length: 168903, topology: linear}]
+    checks: [self-splicing introns (td, nrdB, nrdD) and homing-endonuclease genes stitched]
+  - id: mgenitalium
+    organism: Mycoplasmoides genitalium G37
+    kind: prokaryote
+    genetic_code: 4
+    records: [{accession: NC_000908.2, length: 580076, topology: circular}]
+    checks: [genetic code 4 detected]
+  - id: sr1_raac1
+    organism: candidate division SR1 bacterium RAAC1_SR1_1
+    kind: prokaryote
+    genetic_code: 25
+    records: [{accession: CP006913.1, length: 1177760, topology: circular}]
+    checks: [genetic code 25 (UGA = Gly) detected]
+    note: Kantor et al. 2013 mBio, aquifer sediment; NCBI records code 25. Pinned 2026-10-29.
+  - id: lak_a1
+    organism: Prevotella phage Lak-A1 (megaphage)
+    kind: virus
+    genetic_code: 15
+    records: [{accession: MK250018.1, length: 541644, topology: circular}]
+    checks: [pyrodigal-gv selects code 15 (TAG reassigned)]
+    note: Devoto et al. 2019 Nat Microbiol; NCBI records code 15. MK250015-MK250017 are further Lak-A1 genomes. Pinned 2026-10-29.
+  - id: lak_b8
+    organism: Prevotella phage Lak-B8 (megaphage)
+    kind: virus
+    genetic_code: 15
+    ncbi_genetic_code: 11
+    records: [{accession: MK250027.1, length: 551627, topology: circular}]
+    checks: [code detected from sequence even when the source metadata says otherwise]
+    note: >-
+      Added 2026-10-29 as a supposed code-11 contrast to lak_a1, because the NCBI record says
+      code 11. Sequence evidence says code 15. Trained Prodigal under code 11 gives 862 genes,
+      mean 146 aa, coding density 0.690, and 379 genes ending at TAG. Under code 15 it gives
+      600 genes, mean 273 aa, coding density 0.895, and none ending at TAG, the same signature
+      as lak_a1. pyrodigal-gv picks code 15 for all 604 genes. Kept as a case of source
+      metadata contradicting the sequence; lambda and t4 are the code-11 controls.
+  - id: macetivorans_c2a
+    organism: Methanosarcina acetivorans C2A
+    kind: prokaryote
+    genetic_code: 11
+    records: [{accession: NC_003552.1, length: 5751492, topology: circular}]
+    checks: [large archaeal genome; arCOG concordance with Wolf 2012]
+  - id: hvolcanii_ds2
+    organism: Haloferax volcanii DS2
+    kind: prokaryote
+    genetic_code: 11
+    records:
+      - {accession: NC_013967.1, length: 2847757, topology: circular, replicon: chromosome}
+      - {accession: NC_013968.1, length: 85092, topology: circular, replicon: pHV1}
+      - {accession: NC_013965.1, length: 6359, topology: circular, replicon: pHV2}
+      - {accession: NC_013964.1, length: 437906, topology: circular, replicon: pHV3}
+      - {accession: NC_013966.1, length: 635786, topology: circular, replicon: pHV4}
+    checks: [leaderless starts; plasmids trained together with the chromosome]
+  - id: sacidocaldarius_dsm639
+    organism: Sulfolobus acidocaldarius DSM 639
+    kind: prokaryote
+    genetic_code: 11
+    records: [{accession: NC_007181.1, length: 2225959, topology: circular}]
+    checks: [CRISPR and defense islands (Makarova 2011, Shmakov 2018 replays)]
+  - id: mtb_h37rv
+    organism: Mycobacterium tuberculosis H37Rv
+    kind: prokaryote
+    genetic_code: 11
+    records: [{accession: NC_000962.3, length: 4411532, topology: circular, ncbi_topology: linear}]
+    checks: [high-GC genome; Rv2191 Uri-DnaQ fusion (SYN-143)]
+  - id: btheta_vpi5482
+    organism: Bacteroides thetaiotaomicron VPI-5482
+    kind: prokaryote
+    genetic_code: 11
+    records:
+      - {accession: NC_004663.1, length: 6260361, topology: circular, replicon: chromosome}
+      - {accession: NC_004703.1, length: 33038, topology: circular, replicon: p5482}
+    checks: [polysaccharide-utilization loci]
+  - id: spyogenes_sf370
+    organism: Streptococcus pyogenes SF370 (M1 GAS)
+    kind: prokaryote
+    genetic_code: 11
+    records: [{accession: NC_002737.2, length: 1852433, topology: circular}]
+    checks: [CRISPR-Cas and prophages]
+  - id: obelisk_ss
+    organism: Obelisk-S.s (viroid-like circular RNA of Streptococcus sanguinis SK36)
+    kind: virus
+    genetic_code: 11
+    source:
+      fetch: sdr
+      druid: wb363nt3637
+      path: Obelisk_MS_Oct2024/revisions/alpha_sanguinis.fa
+      license: CC BY 4.0
+      citation: Zheludev et al. 2024 Cell, doi:10.1016/j.cell.2024.09.033; data doi:10.25740/wb363nt3637
+    records:
+      - {header_prefix: "Obelisk_000003_000001_000001\tSsanguinis\tfull_nt", length: 1137, topology: circular}
+      - {header_prefix: "Obelisk_000001_000001_000001\talpha\tfull_nt", length: 1167, topology: circular, name: Obelisk-alpha}
+    checks: [small-circle rescue branch; Oblin-1 called on the circular cDNA]
+    truth:
+      - {feature: Oblin-1, record: Ssanguinis, coords_1based_inclusive: [51, 743], verify: coordinate convention}
+      - {feature: Oblin-1, record: alpha, coords_1based_inclusive: [51, 659], verify: coordinate convention}
+    note: Not in GenBank; taken from the authors' Stanford Digital Repository deposit (version 4). RNA elements, given as DNA letters.
+
+spike_ins:
+  - id: phix174
+    records: [{accession: NC_001422.1, length: 5386, topology: circular}]
+    checks: [phiX removal in Stage 0b screening]
+
+pending:
+  - id: cami2_marine_subset
+    note: CAMI II marine dataset; choose samples and pin file checksums at S0
+  - id: synthetic_spike_panel
+    note: adaptors (UniVec), planted riboswitches; defined with synthworld

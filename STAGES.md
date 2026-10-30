@@ -451,11 +451,11 @@ Every edition carries the sequence store for its stages. Sources that cannot be 
 |---|---|
 | Sequence-store primary format (Parquet chunks vs bgzip+faidx) | S0 (K-13, by LY-06 row-group counts) |
 | Row-group sizes and sort keys | S0 (LY-06) |
-| ~~Zombi fit~~ **Decided 2026-10-29:** ZOMBI2 plus custom `synthworld` ([synthworld_spec.md](planning/tests/synthworld_spec.md) §1); fit spike remaining | S−1 (spike) |
+| ~~Zombi fit~~ **Decided 2026-10-29:** ZOMBI2 plus custom `synthworld` ([synthworld_spec.md](planning/tests/synthworld_spec.md) §1); fit spike GO with conditions ([synthworld_spike.md](planning/tests/synthworld_spike.md), DEC-15) | done |
 | ~~CI host for ring R2~~ **Decided 2026-10-29 (DEC-06):** GitHub Actions on private `ifinkelstein/bio-box` | done |
 | Mutation-score target (≥ 80%, *target*) confirmed after the first measurement (TEST_ARCHITECTURE §11 item 3) | S0 |
 | Which lab member runs the flexibility check, and on which workflow (TEST_ARCHITECTURE §11 item 4) | S0 (named; TEST_ARCHITECTURE gives no owner) |
-| Golden-set accessions marked "pin" (SR1, Lak, Obelisk) | S0 |
+| ~~Golden-set accessions marked "pin"~~ **Pinned 2026-10-29** in `golden.yaml`: SR1 RAAC1_SR1_1 CP006913.1 (code 25), Lak-A1 MK250018.1 (code 15) plus Lak-B8 MK250027.1 (code 11 contrast), Obelisk-S.s and Obelisk-α from the authors' Stanford deposit (doi:10.25740/wb363nt3637). CAMI II marine samples still to choose | S0 (CAMI) |
 | Infernal production-mode recall and cost | S0 |
 | geNomad rate on Haswell; whether to rerun or trust shipped calls | S0, then S4 |
 | DuckLake vs generated read-only catalog | S2 |

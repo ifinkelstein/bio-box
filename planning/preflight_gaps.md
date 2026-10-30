@@ -206,14 +206,15 @@ Infrastructure
 Test harness, on paper (gap #29; `STAGES.md` S−1 item 15; § numbers in this group are `planning/tests/TEST_ARCHITECTURE.md`'s)
 - [ ] Schema registry specified: pyarrow schema plus semantic constraints for every L0–L4 and search table, 16-byte UIDs as FIXED_LEN_BYTE_ARRAY (R0, LY-01). **v0 done** (`src/biobox/registry/schemas.py`, 17 tables); the rest are listed in `tests/registry/pending_tables.yaml`.
 - [x] Operation registry (`tests/registry/operations.yaml`): every O-* row with inputs and outputs, oracle, MRs and existing tests (§2); R0 lint green.
-- [ ] Synthetic-world generator (`synthworld`) spec: planted features and truth tables (§6.2), null worlds with phylogeny and HGT. **Spec written** (`planning/tests/synthworld_spec.md`; ZOMBI2 backbone plus custom code, Zombi 1 and ALF not used); S−1 fit spike (§1.4 of that file) still to run.
+- [ ] Synthetic-world generator (`synthworld`) spec: planted features and truth tables (§6.2), null worlds with phylogeny and HGT. **Spec written** (`planning/tests/synthworld_spec.md`; ZOMBI2 backbone plus custom code, Zombi 1 and ALF not used); S−1 fit spike done 2026-10-29: GO with conditions (`planning/tests/synthworld_spike.md`, DEC-15).
 - [x] CI host for R2 chosen: GitHub Actions on private `ifinkelstein/bio-box` (DEC-06).
 - [x] `test_run` schema registered (fields in §8).
 - [ ] S0 gate written as a SQL query over `test_run`.
 - [ ] S-12 manifests on paper: the three Domainator case studies and five synteny hypotheses as recipes, each with a workflow manifest (§5.1).
 
 Data
-- [ ] `golden.yaml` fully pinned (SR1, Lak, Obelisk accessions chosen); truth extracts downloaded as L0 sources with contracts.
+- [x] `golden.yaml` pinned (2026-10-29): 15 genomes and phiX verified against NCBI; SR1, Lak (A1 plus a B8 contrast) and Obelisk chosen; checksums in `golden.lock.yaml`.
+- [ ] CAMI II marine samples chosen; truth extracts (EcoCyc, SubtiWiki, RegulonDB, M-CSA) downloaded as L0 sources with contracts.
 - [ ] `refdb.yaml` filled for every S0–S3 database; downloads checksummed and frozen (§4).
 - [ ] `sources.yaml` contracts drafted for S0–S3 sources, with license and redistribution flags (GTDB taxonomy, PLSDB terms checked).
 - [ ] Replay supplements on the fetch list (§1.1) downloaded and pinned as L0 sources.
