@@ -13,7 +13,9 @@ COPY --chown=$MAMBA_USER:$MAMBA_USER pyproject.toml uv.lock README.md ./
 COPY --chown=$MAMBA_USER:$MAMBA_USER src ./src
 ENV UV_PROJECT_ENVIRONMENT=/opt/bio-box/.venv UV_LINK_MODE=copy UV_PYTHON_DOWNLOADS=never
 RUN uv sync --frozen --no-dev --python /opt/conda/bin/python
-ENV PATH=/opt/bio-box/.venv/bin:/opt/conda/bin:$PATH
+# Skip micromamba's entrypoint activation: it would put /opt/conda/bin ahead of the venv.
+# Singularity `exec` never runs the entrypoint, so this keeps Docker and the pod identical.
+ENV PATH=/opt/bio-box/.venv/bin:/opt/conda/bin:$PATH MAMBA_SKIP_ACTIVATE=1
 LABEL org.opencontainers.image.source=https://github.com/ifinkelstein/bio-box
 
 FROM runtime AS test

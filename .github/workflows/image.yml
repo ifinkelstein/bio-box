@@ -49,5 +49,10 @@ jobs:
         run: docker run --rm ${{ env.IMAGE }}-test:${{ github.sha }} pytest -q
       - name: doctor inside the image
         run: docker run --rm ${{ env.IMAGE }}:${{ github.sha }} python -m biobox.doctor
+      - name: native tools inside the image
+        run: |
+          docker run --rm ${{ env.IMAGE }}:${{ github.sha }} mmseqs version
+          docker run --rm ${{ env.IMAGE }}:${{ github.sha }} hmmsearch -h
+          docker run --rm ${{ env.IMAGE }}:${{ github.sha }} cmsearch -h
       - name: record digest
         run: echo "runtime digest ${{ steps.runtime.outputs.digest }}" >> "$GITHUB_STEP_SUMMARY"
