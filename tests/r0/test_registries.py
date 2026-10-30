@@ -108,6 +108,13 @@ def test_locations_are_unambiguous():
                 assert not (oloc + "/").startswith(loc.removesuffix(".parquet") + "/"), f"{name} and {other} overlap"
 
 
+def test_c08_version_partitions_are_registered():
+    from biobox.provenance import VERSION_PARTITION
+
+    for name, key in VERSION_PARTITION.items():
+        assert key in TABLES[name].partition_keys, f"{name}: provenance partition {key} is not a partition key"
+
+
 def test_specified_and_pending_are_disjoint():
     both = set(TABLES) & set(PENDING)
     assert not both, f"tables both specified and pending: {both}"

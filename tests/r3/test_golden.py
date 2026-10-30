@@ -17,7 +17,7 @@ import pyarrow.parquet as pq
 import pytest
 import yaml
 
-from biobox import catalog, contracts, fasta, ids, ledger
+from biobox import catalog, contracts, fasta, ids, ledger, provenance
 from biobox.l0seq import SeqStore, SourceObject, ingest
 from biobox.l1 import igr
 from biobox.l1.genecall import GENE_CALL_VERSION, GenomeInput, call_genome, run
@@ -196,6 +196,12 @@ def test_golden_ly04(golden_catalog):
     problems = contracts.check_file_sizes(man)
     print("\nLY-04:", problems)
     assert problems == []  # one shard and one protein_prefix=all file for the golden stage
+
+
+@pytest.mark.covers("C-08")
+def test_golden_provenance(golden_catalog):
+    man, _ = golden_catalog
+    assert provenance.check_provenance(man) == []
 
 
 @pytest.mark.covers("C-03", "LY-02")

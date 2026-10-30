@@ -35,7 +35,7 @@ import pyarrow.parquet as pq
 import pyrodigal
 import pyrodigal_gv
 
-from biobox import ids, layout, ledger
+from biobox import ids, layout, ledger, provenance
 from biobox.l0seq.store import SeqStore
 from biobox.registry.schemas import table
 
@@ -211,8 +211,9 @@ def run(root: Path, stage: str, genomes: list[GenomeInput], version: str = GENE_
         if r["protein_uid"] not in seen:
             seen.add(r["protein_uid"])
             c[1] += 1
+    tools = provenance.tool_versions("pyrodigal", "pyrodigal-gv", "pyarrow")
     ledger.write(root, stage, "genecall",
-                 [ledger.row(cu, "contig", n, k, n - k) for cu, (n, k) in per.items()])
+                 [ledger.row(cu, "contig", n, k, n - k, tools=tools) for cu, (n, k) in per.items()])
     return {
         "genes": len(calls),
         "distinct_proteins": len(distinct),

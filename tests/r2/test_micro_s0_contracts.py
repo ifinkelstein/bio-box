@@ -18,7 +18,7 @@ import pyhmmer
 import pytest
 import yaml
 
-from biobox import catalog, contracts, fasta, ids, ledger
+from biobox import catalog, contracts, fasta, ids, ledger, provenance
 from biobox.l0seq import SourceObject, ingest
 from biobox.l1 import domains
 from biobox.l1.genecall import GENE_CALL_VERSION, GenomeInput, run as call_genes
@@ -202,6 +202,41 @@ def test_injected_faults_are_caught(built):
     # an occurrence row lost, so a stored sequence is orphaned (R-06)
     co = con.sql("SELECT * FROM contig_occurrence").to_arrow_table()
     assert contracts.check_lineage(_fault_con(con, contig_occurrence=co.slice(1)))
+
+
+@pytest.mark.covers("C-08")
+def test_c08_provenance_matches_the_container_lock(built):
+    _, man, _ = built
+    assert provenance.check_provenance(man) == []
+    steps = {f["partitions"]["step"] for f in man["files"] if f["table"] == "ledger"}
+    assert {"ingest", "genecall", "domains-test-1"} <= steps
+
+
+@pytest.mark.covers("C-08")
+def test_c08_faults_are_caught(built, tmp_path):
+    _, man, _ = built
+    lock = provenance.locked_versions()
+    # a pyrodigal upgrade in the image that the gene-call version string does not name
+    assert any("differs from the lock" in p for p in provenance.check_provenance(man, {**lock, "pyrodigal": "0.0.1"}))
+    # a step that ran with a tool other than the locked one
+    root = tmp_path / "s"
+    shutil.copytree(man["root"], root)
+    rows = ledger.read(root, "S0", "domains-test-1")
+    for r in rows:
+        r["tool_versions_json"] = '{"pyarrow": "1.0", "pyhmmer": "0.0.1"}'
+    ledger.write(root, "S0", "domains-test-1", rows)
+    probs = provenance.check_provenance({**man, "root": str(root)})
+    assert any("domains-test-1 tool versions" in p for p in probs)
+    # a step that recorded no versions
+    rows = ledger.read(root, "S0", "genecall")
+    for r in rows:
+        r["tool_versions_json"] = None
+    ledger.write(root, "S0", "genecall", rows)
+    assert any("genecall ledger row without tool versions" in p for p in provenance.check_provenance({**man, "root": str(root)}))
+    # a versioned table outside its version partition
+    f = next(x for x in man["files"] if x["table"] == "protein_seq")
+    bad = {**f, "partitions": {k: v for k, v in f["partitions"].items() if k != "gene_call_version"}}
+    assert provenance.check_provenance({**man, "files": [bad]})
 
 
 # --- append-only and determinism -----------------------------------------------------------

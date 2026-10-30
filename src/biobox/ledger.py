@@ -18,6 +18,7 @@ The DAG edges L-03 checks are `CHAIN`: a downstream n_in equals the upstream n_k
 
 from __future__ import annotations
 
+import json
 from pathlib import Path
 
 import pyarrow as pa
@@ -34,9 +35,11 @@ CHAIN = [
 
 
 def row(object_key: bytes, kind: str, n_in: int, n_kept: int, n_merged: int = 0, n_rejected: int = 0,
-        reason: str = "ok") -> dict:
+        reason: str = "ok", tools: dict[str, str] | None = None) -> dict:
+    """`tools`: versions of the tools that made this step's output (C-08, `provenance.tool_versions`)."""
     return {"object_key": object_key, "object_kind": kind, "n_in": n_in, "n_kept": n_kept,
-            "n_merged": n_merged, "n_rejected": n_rejected, "reason_code": reason}
+            "n_merged": n_merged, "n_rejected": n_rejected, "reason_code": reason,
+            "tool_versions_json": json.dumps(tools, sort_keys=True) if tools is not None else None}
 
 
 def write(root: Path, stage: str, step: str, rows: list[dict]) -> Path:

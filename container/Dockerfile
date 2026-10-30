@@ -10,6 +10,8 @@ RUN micromamba install -y -n base -f /tmp/environment.yml && micromamba clean -a
 ARG MAMBA_DOCKERFILE_ACTIVATE=1
 WORKDIR /opt/bio-box
 COPY --chown=$MAMBA_USER:$MAMBA_USER pyproject.toml uv.lock README.md ./
+# the conda pins are half of the container lock that C-08 checks tool versions against
+COPY --chown=$MAMBA_USER:$MAMBA_USER container/environment.yml ./container/environment.yml
 COPY --chown=$MAMBA_USER:$MAMBA_USER src ./src
 ENV UV_PROJECT_ENVIRONMENT=/opt/bio-box/.venv UV_LINK_MODE=copy UV_PYTHON_DOWNLOADS=never
 RUN uv sync --frozen --no-dev --python /opt/conda/bin/python

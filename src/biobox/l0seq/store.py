@@ -29,7 +29,7 @@ from pathlib import Path
 import pyarrow as pa
 import pyarrow.parquet as pq
 
-from biobox import fasta, ids, ledger
+from biobox import fasta, ids, ledger, provenance
 from biobox.l0seq.bgzf import BgzfFasta, write_bgzf_fasta
 from biobox.registry.schemas import table
 
@@ -107,6 +107,7 @@ def ingest(
         else set()
     )
 
+    tools = provenance.tool_versions("pyarrow")
     manifest_rows, occ_rows, ledger_rows = [], [], []
     new_seqs: dict[bytes, bytes] = {}
     variants: dict[tuple[bytes, bytes], tuple] = {}  # (contig_uid, raw_digest) -> best precedence key
@@ -147,7 +148,7 @@ def ingest(
             key = (obj.precedence, obj_sha, ordinal)
             if (cu, rd) not in variants or key < variants[(cu, rd)]:
                 variants[(cu, rd)] = key
-        ledger_rows.append(ledger.row(obj_sha, "l0_object", n_in, n_kept, n_in - n_kept))
+        ledger_rows.append(ledger.row(obj_sha, "l0_object", n_in, n_kept, n_in - n_kept, tools=tools))
 
     # seq_shards: new sequences sorted by raw_digest, cut into shards of about shard_bases
     groups: list[list[bytes]] = [[]]

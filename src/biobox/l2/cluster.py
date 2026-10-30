@@ -30,7 +30,7 @@ import pyarrow as pa
 import pyarrow.parquet as pq
 from blake3 import blake3
 
-from biobox import ledger
+from biobox import ledger, provenance
 from biobox.registry.schemas import table
 
 # UniRef-style: member covered >= 80% by the alignment to its representative (cov-mode 1,
@@ -146,7 +146,9 @@ def run(root: Path, release: str, gene_call_version: str, threads: int = 1, tmp:
     counts = {lvl: len({r["cluster_uid"] for r in mem_rows if r["level"] == lvl}) for lvl in LEVELS}
     # ledger under the release's stage (rS0.1 -> S0): NR90 sees every protein, NR50 the NR90 representatives
     n_in = {"nr90": len(prots), "nr50": counts["nr90"]}
+    tools = provenance.tool_versions("mmseqs2", "pyarrow")
     ledger.write(root, ledger_stage(release), "cluster",
-                 [ledger.row(lvl.encode(), "level", n_in[lvl], counts[lvl], n_in[lvl] - counts[lvl]) for lvl in LEVELS])
+                 [ledger.row(lvl.encode(), "level", n_in[lvl], counts[lvl], n_in[lvl] - counts[lvl], tools=tools)
+                  for lvl in LEVELS])
     return {"proteins": len(prots), "clusters": counts,
             "aligned": {lvl: sum(1 for r in aln_rows if r["level"] == lvl) for lvl in LEVELS}}

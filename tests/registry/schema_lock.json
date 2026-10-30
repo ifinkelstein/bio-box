@@ -474,6 +474,11 @@
    "reason_code",
    "string",
    false
+  ],
+  [
+   "tool_versions_json",
+   "string",
+   true
   ]
  ],
  "protein_occurrence": [

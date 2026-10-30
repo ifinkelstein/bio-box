@@ -428,9 +428,11 @@ Tests run under `pytest`, with DuckDB SQL assertions and `pandera` schemas. dbt-
 | C-11 | O-CLUSTER, O-PROJECT | `cluster_member_aln` coverage: every member at each level (`nr90`, `nr50`, `subfam`) of `cluster_member` has exactly one alignment row to its representative, representatives included as self rows; alignment coordinates within both sequence lengths; CIGAR length equals `alnlen` | B |
 | C-12 | O-SEARCH (pack), O-CATALOG | Search pack manifest verification (`bio-box pack verify`): every shard's sha256 and byte count equal `pack_manifest.json`; `pack_id` equals the manifest hash; per-target sequence counts equal their source (`nr50` = NR50 clusters, `nr90` = NR90 clusters, `unique` = distinct `protein_uid`, `igr` = IGRs ≥ 30 nt, `spacers` = spacer calls); every shard ≥ 256 MB except the last of each target; no file on disk outside the manifest | B |
 
+**C-08 at S0 (2026-10-30, `src/biobox/provenance.py`).** Provenance lives in the path: every versioned table sits under its version partition (`gene_call_version` for the protein tables, `igr_version`, `library=<name>-<version>`, `release` for clusters), checked per file. `gene_call_version` (`pyrodigal-<v>-gv-<v>-p2`) and `igr_version` name the gene caller's versions, which must equal `uv.lock`. Each step's ledger rows carry `tool_versions_json` (a nullable column appended under LY-09): `ingest` and every step record `pyarrow` (it writes the bytes, LY-08), `genecall` adds `pyrodigal` and `pyrodigal-gv`, `domains-*` adds `pyhmmer`, `cluster` adds `mmseqs2` (from `mmseqs version`). The container lock is `uv.lock` plus the conda pins of `container/environment.yml`, which the runtime image now carries at `/opt/bio-box/container/`. R2 checks the micro-S0 build and four injected faults; R3 the golden set.
+
 ### 4.2 Ledger reconciliation
 
-Every step writes `ledger/stage=S/step=X.parquet` with rows `(object_uid, n_in, n_kept, n_merged, n_rejected, reason_code)`.
+Every step writes `ledger/stage=S/step=X/part-0.parquet` with rows `(object_key, object_kind, n_in, n_kept, n_merged, n_rejected, reason_code, tool_versions_json)`.
 
 | ID | op (MR) | check | gate |
 |---|---|---|---|

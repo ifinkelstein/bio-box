@@ -19,7 +19,7 @@ import pyarrow as pa
 import pyarrow.parquet as pq
 import pyhmmer
 
-from biobox import ledger
+from biobox import ledger, provenance
 from biobox.registry.schemas import table
 
 Z_PROT = 1e8
@@ -116,9 +116,11 @@ def run(root: Path, stage: str, gene_call_version: str, library: str, library_ve
                    compression="zstd", row_group_size=122_880)
     hit = len({r["protein_uid"] for r in rows})
     lib = f"{library}-{library_version}".encode()
+    tools = provenance.tool_versions("pyhmmer", "pyarrow")
     ledger.write(root, stage, f"domains-{library}-{library_version}",
-                 [ledger.row(lib, "library", len(proteins), hit),
-                  ledger.row(lib, "library", len(proteins), hit, n_rejected=len(proteins) - hit, reason="no_hit")])
+                 [ledger.row(lib, "library", len(proteins), hit, tools=tools),
+                  ledger.row(lib, "library", len(proteins), hit, n_rejected=len(proteins) - hit, reason="no_hit",
+                             tools=tools)])
     return {"proteins": len(proteins), "domains": len(rows),
             "proteins_with_hit": hit,
             "models_with_hit": len({r["model_acc"] for r in rows})}
