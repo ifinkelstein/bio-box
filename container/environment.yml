@@ -10,3 +10,4 @@ dependencies:
   - mmseqs2=18.8cc5c   # >= 18-8cc5c required for the clusterupdate fix (issue #961)
   - hmmer=3.4
   - infernal=1.1.5
+  - samtools=1.25      # with htslib bgzip; oracle for R-03 slices and R-07 (.fai/.gzi accepted)

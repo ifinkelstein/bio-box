@@ -148,7 +148,7 @@ Each card lists six things:
   - ID scheme: blake3 content UIDs + dense per-release IDs + `id_history`.
   - Schema v1, including the corrected badge layout, int32 `delta_bp` and namespaced token IDs.
   - Enum registry mapped to Sequence Ontology terms.
-  - Sequence store format: Parquet chunks vs bgzip+faidx, decided by bake-off test K-13, scored by LY-06 row-group counts.
+  - Sequence store format: Parquet chunks vs bgzip+faidx, decided by bake-off test K-13, scored by LY-06 row-group counts. First run 2026-10-30: bgzip wins on gene and neighbourhood slices (13–17× fewer bytes read); flip pending the PI (`planning/measurements/2026-10-30_k13_bakeoff.md`).
   - Partition keys, file sizes, row-group sizes and sort keys (LY-04, LY-06).
   - Release naming.
   - License flags.

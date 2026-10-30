@@ -29,7 +29,7 @@ from biobox import fasta, ids
 from biobox.registry.schemas import table
 
 CHUNK_SIZE = 65_536
-ROW_GROUP_CHUNKS = 1_024
+ROW_GROUP_CHUNKS = 16  # 1 MiB of sequence per row group; K-13 / LY-06 (2026-10-30): 1,024 decoded 36 MB per 1 kb slice
 
 _COMP = bytes.maketrans(b"ACGTRYKMBVDHNacgtrykmbvdhn", b"TGCAYRMKVBHDNtgcayrmkvbhdn")
 
@@ -49,9 +49,14 @@ class SourceObject:
     retrieved_at: datetime = field(default_factory=lambda: datetime(1970, 1, 1, tzinfo=timezone.utc))
 
 
-def _write(tbl: pa.Table, path: Path, row_group_size: int) -> None:
+# Min/max statistics only on key columns: on the 64 KB `seq` strings they bloat the footer
+# (4.8 MB for one golden-set file with 4 KB chunks, K-13) and never prune anything.
+SEQ_CHUNK_STATS = ["raw_digest", "chunk_ix", "contig_len"]
+
+
+def _write(tbl: pa.Table, path: Path, row_group_size: int, statistics: list[str] | bool = True) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
-    pq.write_table(tbl, path, compression="zstd", row_group_size=row_group_size)
+    pq.write_table(tbl, path, compression="zstd", row_group_size=row_group_size, write_statistics=statistics)
 
 
 def _existing_locator(root: Path) -> pa.Table | None:
@@ -155,7 +160,7 @@ def ingest(
                 rows["seq"].append(seq[ix * chunk_size : (ix + 1) * chunk_size].decode("ascii"))
                 rows["contig_len"].append(len(seq))
         rel = f"l0seq/seq_chunks/stage={stage}/digest_prefix={prefix}/part-0.parquet"
-        _write(pa.table(rows, schema=spec.schema), root / rel, row_group_chunks)
+        _write(pa.table(rows, schema=spec.schema), root / rel, row_group_chunks, SEQ_CHUNK_STATS)
         for rd, first in firsts:
             new_loc.append({"raw_digest": rd, "file": rel, "row_group": first // row_group_chunks, "first_chunk_row": first})
 
