@@ -1,6 +1,6 @@
 # Footprint request to the pod owner (draft for the PI to send)
 
-Status: draft, approved in principle (DEC-10, 2026-10-29). Not sent. File the reply here when it arrives.
+Status: **approved by Claus Wilke** (reported by the PI, 2026-10-29; DEC-16). File the written reply here if one exists. Still open from the asks: wilkcomp03 GPU terms, the second account, and the S5 memory exception (to be raised at the S5 gate); the `/tmp` policy question to rctf-support.
 
 **To:** Claus Wilke
 **Cc:** rctf-support (only for the `/tmp` question at the end)

@@ -180,7 +180,7 @@ Governance
 - [ ] First-10 questions signed off by PI, each mapped to a stage and an existing-tool baseline (§3). **Deferred** (DEC-05): ask again before the S1 gate; the draft Q1/Q4 stand as provisional S1/S2 gate items until then.
 - [x] Calendar and time boxes accepted (DEC-08). Role holders still to name in §5.
 - [x] Kill criteria K1–K7 accepted (DEC-09).
-- [ ] Footprint request approved (DEC-10); draft in `planning/footprint_request.md`. Still to do: send it to Claus Wilke (threads, memory, scratch to ~2 TB, run lengths, STOP guarantee, wilkcomp03 GPU, second account) and reply filed; `/tmp` cleanup policy asked of rctf-support.
+- [x] Footprint request sent and **approved by Claus Wilke** (2026-10-29, DEC-16; `planning/footprint_request.md`). Still open: wilkcomp03 GPU terms, the second account, the S5 memory exception (at the S5 gate), and the `/tmp` cleanup policy question to rctf-support.
 
 Decisions (ADRs committed)
 - [ ] Contradictions C1–C10 resolved; doc-lint added to CI.

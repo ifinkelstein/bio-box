@@ -1,0 +1,12 @@
+# Conda layer of the bio-box image: native binaries that pip cannot provide.
+# Versions are the newest on conda-forge/bioconda as of 2026-10-29. Python
+# packages come from uv.lock (see Dockerfile).
+channels:
+  - conda-forge
+  - bioconda
+dependencies:
+  - python=3.14
+  - uv
+  - mmseqs2=18.8cc5c   # >= 18-8cc5c required for the clusterupdate fix (issue #961)
+  - hmmer=3.4
+  - infernal=1.1.5
