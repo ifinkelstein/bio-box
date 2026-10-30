@@ -55,10 +55,10 @@ operations:
   O-CALL:
     summary: gene calling, smORFs, split-gene arbitration
     inputs: [seq_chunks]
-    outputs: [slot_protein, protein_seq, l1_genes]
+    outputs: [slot_protein, protein_seq, igr, l1_genes]
     oracle: planted genes in synthetic worlds; golden GFF
     mrs: [MR-03, MR-04, MR-13]
-    tests: [G-01, G-02, R-04, A-02]
+    tests: [G-01, G-02, R-04, R-05, A-02]
   O-SCAN:
     summary: library HMM and CM scans under the fixed Z policy
     inputs: [protein_seq, igr, seq_chunks]

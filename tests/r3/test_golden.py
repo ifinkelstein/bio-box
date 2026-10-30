@@ -19,6 +19,7 @@ import yaml
 
 from biobox import catalog, contracts, fasta, ids
 from biobox.l0seq import SeqStore, SourceObject, ingest
+from biobox.l1 import igr
 from biobox.l1.genecall import GENE_CALL_VERSION, GenomeInput, call_genome, run
 
 pytestmark = pytest.mark.r3
@@ -70,9 +71,11 @@ def store_root(tmp_path_factory):
     t0 = time.perf_counter()
     ingest(objs, root, "S0")
     t1 = time.perf_counter()
-    report = run(root, "S0", [_input(e) for e in GOLDEN["genomes"]])
+    inputs = [_input(e) for e in GOLDEN["genomes"]]
+    report = run(root, "S0", inputs)
     t2 = time.perf_counter()
-    print(f"\ngolden: ingest {t1 - t0:.1f}s, gene calling {t2 - t1:.1f}s, {report}")
+    igrs = igr.run(root, "S0", {u for gi in inputs for u in gi.circular})
+    print(f"\ngolden: ingest {t1 - t0:.1f}s, gene calling {t2 - t1:.1f}s, {report}, igr {igrs}")
     return root
 
 

@@ -141,7 +141,7 @@ def _fault_con(con, **replace) -> duckdb.DuckDBPyConnection:
     """An in-memory copy of the catalog's tables with some replaced by Arrow tables (fault injection)."""
     c = duckdb.connect()
     for name in ("protein_occurrence", "contig_index", "slot_protein", "protein_seq", "l1_domains", "contig_occurrence",
-                 "seq_chunks", "l0_manifest", "seq_locator", "cluster_member", "cluster_member_aln"):
+                 "seq_chunks", "l0_manifest", "seq_locator", "cluster_member", "cluster_member_aln", "igr"):
         tbl = replace.get(name)
         if tbl is None:
             tbl = con.sql(f"SELECT * FROM {name}").to_arrow_table()

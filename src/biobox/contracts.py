@@ -99,6 +99,7 @@ FOREIGN_KEYS = [
     ("cluster_member", ("member_uid",), "protein_seq", ("protein_uid",)),
     ("cluster_member", ("rep_uid",), "protein_seq", ("protein_uid",)),
     ("cluster_member_aln", ("member_uid", "level", "release"), "cluster_member", ("member_uid", "level", "release")),
+    ("igr", ("contig_uid",), "contig_index", ("contig_uid",)),
 ]
 
 
@@ -131,6 +132,14 @@ def check_coordinates(con: duckdb.DuckDBPyConnection) -> list[str]:
     """).fetchall()[0][0]
     if bad:
         problems.append(f"protein_occurrence: {bad} slots outside contig bounds")
+    bad = con.execute("""
+        SELECT count(*) FROM igr i JOIN contig_index ci
+          ON i.contig_uid = ci.contig_uid AND ci.is_default_variant
+        WHERE NOT (0 <= i.start AND i.start < i."end" AND i.start < ci.contig_len
+                   AND i."end" <= i.start + ci.contig_len AND i.strand = 1)
+    """).fetchall()[0][0]
+    if bad:
+        problems.append(f"igr: {bad} regions outside contig bounds")
     bad = con.execute("""
         SELECT count(*) FROM l1_domains d JOIN protein_seq p USING (protein_uid)
         WHERE NOT (d.env_start < d.env_end AND d.env_end <= length(replace(p.seq, '*', ''))
