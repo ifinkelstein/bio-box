@@ -246,12 +246,13 @@ _SPECS = [
             _f("level", pa.string()),
             _f("cluster_uid", UID),
             _f("rep_uid", UID),
-            _f("release_id", pa.string()),
+            _f("cluster_params_hash", pa.string()),
         ]),
-        primary_key=("member_uid", "level", "release_id"),
+        primary_key=("member_uid", "level", "release"),
         sort_key=("level", "cluster_uid", "member_uid"),
+        partition_keys=("release",),
         enums={"level": ("nr90", "nr50", "subfam")},
-        doc="data_layer_and_tests.md §1 (L2), §2 (cluster_uid)",
+        doc="data_layer_and_tests.md §1 (L2), §2 (cluster_uid); one row per protein per level, reps included",
     ),
     TableSpec(
         name="cluster_member_aln",
@@ -267,12 +268,16 @@ _SPECS = [
             _f("pident", pa.float32()),
             _f("alnlen", pa.uint32()),
             _f("cigar", pa.binary()),
-            _f("release_id", pa.string()),
         ]),
-        primary_key=("member_uid", "level", "release_id"),
+        primary_key=("member_uid", "level", "release"),
         sort_key=("level", "rep_uid", "member_uid"),
+        partition_keys=("release",),
         enums={"level": ("nr90", "nr50", "subfam")},
-        doc="data_layer_and_tests.md §2B.1; representatives carry a self row",
+        doc=(
+            "data_layer_and_tests.md §2B.1; representatives carry a self row. q* are member coordinates, "
+            "t* representative coordinates, 0-based half-open; pident is the identity fraction (0-1) over "
+            "the alignment; cigar is the MMseqs2 CIGAR as ASCII bytes"
+        ),
     ),
     TableSpec(
         name="id_history",

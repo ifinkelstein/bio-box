@@ -338,7 +338,8 @@ $ATD_ROOT/                                   # /stor/scratch/Wilke/if2453/all-th
   l1/annot_version=<v>/kind=<genes|domains|ncrna|mge|qc|tax>/stage=<S>/shard=<nnnnn>.parquet
   l1/domains_projected/release=<R>/shard=<nnnnn>.parquet  # projected hits from S3 on (§2B.5)
   l1/protein_occurrence/gene_call_version=<v>/stage=<S>/part-<k>.parquet
-  l2/release=<R>/{nr90,nr50,subfam,igr}/...parquet; cluster_member/; cluster_member_aln/; id_history.parquet
+  l2/cluster_member/release=<R>/part-<k>.parquet; l2/cluster_member_aln/release=<R>/part-<k>.parquet   # one row per protein per level (nr90, nr50; subfam later); release in the path only
+  l2/igr/release=<R>/...parquet; id_history.parquet
   l3/tapes/stage=<S>/shard=<nnnnn>.parquet               # coordinates (stable)
   l3/tokens/release=<R>/shard=<nnnnn>.parquet            # token projection (versioned)
   l3/slot_pairs/release=<R>/anchor_bucket=<bb>/part-<k>.parquet
