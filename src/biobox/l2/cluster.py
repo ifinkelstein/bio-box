@@ -68,7 +68,7 @@ class MMseqs:
 
 
 def _read_proteins(root: Path, gene_call_version: str) -> dict[bytes, str]:
-    files = sorted((root / "l0seq/protein_seq").glob(f"gene_call_version={gene_call_version}/stage=*/protein_prefix=*/part-0.parquet"))
+    files = sorted((root / "l0seq/protein_seq").glob(f"gene_call_version={gene_call_version}/stage=*/protein_prefix=*/part-*.parquet"))
     if not files:
         raise FileNotFoundError(f"no protein_seq files for gene_call_version={gene_call_version}")
     out: dict[bytes, str] = {}

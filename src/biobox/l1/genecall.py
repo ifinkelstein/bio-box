@@ -15,7 +15,7 @@ planning/DECISIONS.md DEC-13):
 
 Writes, per gene-calling version and stage (paths under `<root>/`):
 
-    l0seq/protein_seq/gene_call_version=<v>/stage=<S>/protein_prefix=<xx>/part-0.parquet
+    l0seq/protein_seq/gene_call_version=<v>/stage=<S>/protein_prefix=<all|h|hh>/part-<k>.parquet  (biobox.layout)
     l1/slot_protein/gene_call_version=<v>/stage=<S>/part-0.parquet
     l1/protein_occurrence/gene_call_version=<v>/stage=<S>/part-0.parquet
 
@@ -35,10 +35,11 @@ import pyarrow.parquet as pq
 import pyrodigal
 import pyrodigal_gv
 
-from biobox import ids, ledger
+from biobox import ids, layout, ledger
 from biobox.l0seq.store import SeqStore
 from biobox.registry.schemas import table
 
+PROTEIN_BYTES_PER_AA = 0.6  # zstd estimate (data_layer_and_tests.md §2A.4); sizes buckets only
 SINGLE_MODE_MIN_BP = 100_000  # Prodigal: below this, use anonymous/meta mode
 WRAP_FLANK = 50_000
 GENE_CALL_VERSION = f"pyrodigal-{pyrodigal.__version__}-gv-{pyrodigal_gv.__version__}-p2"
@@ -125,7 +126,9 @@ def call_genome(store: SeqStore, genome: GenomeInput) -> list[dict]:
     return calls
 
 
-def run(root: Path, stage: str, genomes: list[GenomeInput], version: str = GENE_CALL_VERSION) -> dict:
+def run(root: Path, stage: str, genomes: list[GenomeInput], version: str = GENE_CALL_VERSION,
+        prefix_width: int | None = None, max_file_bytes: int = layout.MAX_FILE_BYTES) -> dict:
+    """Call genes and write the stage's tables. `prefix_width` (0, 1, 2) overrides the size rule."""
     root = Path(root)
     store = SeqStore(root)
     calls = [c for g in genomes for c in call_genome(store, g)]
@@ -177,23 +180,28 @@ def run(root: Path, stage: str, genomes: list[GenomeInput], version: str = GENE_
 
     prot_spec = table("protein_seq")
     distinct = {ids.protein_uid(c["aa"]): c["aa"] for c in calls}
+    est = {pu: 40 + PROTEIN_BYTES_PER_AA * len(aa) for pu, aa in distinct.items()}
+    width = layout.prefix_width(sum(est.values())) if prefix_width is None else prefix_width
     by_prefix: dict[str, list[bytes]] = defaultdict(list)
     for pu in distinct:
-        by_prefix[pu[:1].hex()].append(pu)
+        by_prefix[layout.bucket(pu, width)].append(pu)
     for prefix in sorted(by_prefix):
-        rows = [
-            {
-                "protein_uid": pu,
-                "protein_digest": ids.raw_digest(distinct[pu].encode("ascii")),
-                "length": len(distinct[pu]),
-                "seq": distinct[pu],
-            }
-            for pu in sorted(by_prefix[prefix])
-        ]
-        _write(
-            pa.Table.from_pylist(rows, schema=prot_spec.schema),
-            root / f"l0seq/protein_seq/gene_call_version={version}/stage={stage}/protein_prefix={prefix}/part-0.parquet",
-        )
+        uids = sorted(by_prefix[prefix])
+        starts = layout.cut([est[pu] for pu in uids], max_file_bytes)
+        for k, (a, b) in enumerate(zip(starts, starts[1:] + [len(uids)])):
+            rows = [
+                {
+                    "protein_uid": pu,
+                    "protein_digest": ids.raw_digest(distinct[pu].encode("ascii")),
+                    "length": len(distinct[pu]),
+                    "seq": distinct[pu],
+                }
+                for pu in uids[a:b]
+            ]
+            _write(
+                pa.Table.from_pylist(rows, schema=prot_spec.schema),
+                root / f"l0seq/protein_seq/gene_call_version={version}/stage={stage}/protein_prefix={prefix}/part-{k}.parquet",
+            )
     # ledger: per contig, genes in; kept = first gene of its protein sequence in (contig, slot) order
     seen: set[bytes] = set()
     per: dict[bytes, list[int]] = {cu: [0, 0] for g in genomes for cu in g.contig_uids}

@@ -45,7 +45,7 @@ def iter_hmms(path: Path):
 
 def load_proteins(root: Path, gene_call_version: str, stage: str) -> dict[bytes, str]:
     files = sorted((Path(root) / "l0seq/protein_seq").glob(
-        f"gene_call_version={gene_call_version}/stage={stage}/protein_prefix=*/part-0.parquet"))
+        f"gene_call_version={gene_call_version}/stage={stage}/protein_prefix=*/part-*.parquet"))
     out: dict[bytes, str] = {}
     for f in files:
         t = pq.read_table(f, columns=["protein_uid", "seq"])

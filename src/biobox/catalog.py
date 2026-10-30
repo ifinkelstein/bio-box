@@ -35,13 +35,13 @@ import duckdb
 import pyarrow as pa
 import pyarrow.parquet as pq
 
-from biobox import ids
+from biobox import ids, layout
 from biobox.registry.schemas import ARTIFACTS, TABLES, ArtifactSpec, TableSpec
 
 MANIFEST_VERSION = 2
 
-# Partitions whose value is derived from a file column: (column, number of leading bytes as hex).
-DERIVED_PARTITIONS = {"protein_prefix": ("protein_uid", 1)}
+# Partitions whose value is derived from a file column's key prefix (biobox.layout buckets).
+DERIVED_PARTITIONS = {"protein_prefix": "protein_uid"}
 
 
 class LayoutError(ValueError):
@@ -132,20 +132,23 @@ def _artifact_entries(root: Path) -> list[dict]:
 
 
 def _check_derived_partitions(rel: str, parts: dict[str, str], md: pq.FileMetaData) -> None:
-    """LY-05: a derived partition value equals the key prefix of every row (from row-group min/max)."""
+    """LY-05: every row's key prefix matches the derived partition value (from row-group min/max).
+
+    Rows are sorted by key, so checking each row group's min and max checks every row.
+    """
     names = md.schema.to_arrow_schema().names
     for key, value in parts.items():
         if key not in DERIVED_PARTITIONS:
             continue
-        col, nbytes = DERIVED_PARTITIONS[key]
+        col = DERIVED_PARTITIONS[key]
         ci = names.index(col)
         for rg in range(md.num_row_groups):
             st = md.row_group(rg).column(ci).statistics
             if st is None or not st.has_min_max:
                 raise LayoutError(f"{rel}: row group {rg} has no min/max on {col} (LY-03)")
             for v in (st.min, st.max):
-                if bytes(v)[:nbytes].hex() != value:
-                    raise LayoutError(f"{rel}: {key}={value} but {col} starts with {bytes(v)[:nbytes].hex()} (LY-05)")
+                if not layout.bucket_matches(value, bytes(v)):
+                    raise LayoutError(f"{rel}: {key}={value} but {col} starts with {bytes(v)[:1].hex()} (LY-05)")
 
 
 def build_manifest(root: Path, release_id: str) -> dict:
@@ -336,7 +339,9 @@ def macro_sql() -> list[str]:
               FROM (SELECT _n, seq_slice(_cuid, _s, least(_e, _n)) || seq_slice(_cuid, 0, greatest(_e - _n, 0)) AS _x
                     FROM (SELECT contig_len_of(_cuid) AS _n)))""",
         "CREATE MACRO protein_of(_puid) AS (SELECT any_value(seq) FROM protein_seq "
-        "WHERE protein_prefix = lower(hex((_puid)[1:1])) AND protein_uid = _puid)",
+        # the key's bucket at every width a stage may use (biobox.layout); prunes files
+        "WHERE protein_prefix IN ('all', left(lower(hex((_puid)[1:1])), 1), lower(hex((_puid)[1:1]))) "
+        "AND protein_uid = _puid)",
         "CREATE MACRO slots_of(_puid) AS TABLE SELECT * FROM protein_occurrence WHERE protein_uid = _puid",
         "CREATE MACRO domains_of(_puid) AS TABLE SELECT * FROM l1_domains WHERE protein_uid = _puid ORDER BY env_start, model_acc",
     ]

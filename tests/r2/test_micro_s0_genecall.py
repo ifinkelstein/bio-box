@@ -82,7 +82,7 @@ V = GENE_CALL_VERSION
 GLOBS = {
     "slot_protein": f"l1/slot_protein/gene_call_version={V}/stage=S0/part-0.parquet",
     "protein_occurrence": f"l1/protein_occurrence/gene_call_version={V}/stage=S0/part-0.parquet",
-    "protein_seq": f"l0seq/protein_seq/gene_call_version={V}/stage=S0/protein_prefix=*/part-0.parquet",
+    "protein_seq": f"l0seq/protein_seq/gene_call_version={V}/stage=S0/protein_prefix=*/part-*.parquet",
 }
 
 

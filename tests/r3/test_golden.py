@@ -190,12 +190,12 @@ def test_golden_contracts(golden_catalog):
     assert wraps >= 1  # origin-wrapping genes exist, so C-05's wrap rule is exercised
 
 
-def test_golden_ly04_report(golden_catalog):
+@pytest.mark.covers("LY-04")
+def test_golden_ly04(golden_catalog):
     man, _ = golden_catalog
     problems = contracts.check_file_sizes(man)
     print("\nLY-04:", problems)
-    assert not any("seq_shards" in p for p in problems)  # one shard holds the golden stage (DEC-17)
-    assert any("protein_seq" in p for p in problems)  # the known prefix-bucket finding (see R2 xfail)
+    assert problems == []  # one shard and one protein_prefix=all file for the golden stage
 
 
 @pytest.mark.covers("C-03", "LY-02")

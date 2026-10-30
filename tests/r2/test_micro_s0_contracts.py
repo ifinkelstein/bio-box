@@ -107,8 +107,7 @@ def test_ly03_catches_missing_statistics(built, tmp_path):
     assert contracts.check_statistics({"root": str(tmp_path), "files": [{**f, "path": "x.parquet"}]})
 
 
-@pytest.mark.xfail(strict=True, reason="LY-04 finding (2026-10-30): 256 fixed protein prefix buckets split "
-                   "a small stage into many tiny files; the bucket count has to scale with the stage")
+@pytest.mark.covers("LY-04")
 def test_ly04_no_small_files_outside_waivers(built):
     _, man, _ = built
     assert contracts.check_file_sizes(man) == []

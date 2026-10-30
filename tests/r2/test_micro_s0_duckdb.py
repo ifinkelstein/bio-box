@@ -110,16 +110,34 @@ def test_ly06_slice_reads_one_shard_and_only_the_blocks_it_needs(built, where):
         c.close()
 
 
-def test_ly06_protein_lookup_reads_one_protein_file(built, con):
-    root, man, _ = built
-    f = next(x for x in man["files"] if x["table"] == "protein_seq")
+@pytest.mark.covers("LY-06", "LY-04")
+@pytest.mark.parametrize("width", [0, 1, 2])
+def test_ly06_protein_lookup_reads_one_file_per_stage(tmp_path, width):
+    """A small stage is one `protein_prefix=all` file (LY-04); forced wider buckets still prune to one file."""
+    root = tmp_path / "s"
+    objs = CONTRACT["objects"]
+    ingest([_obj(o) for o in objs], root, "S0", shard_bases=SHARD_BASES)
+    genomes = []
+    for o in objs:
+        cu = ids.contig_uid(fasta.read(FIX / o["file"])[0].seq)
+        genomes.append(GenomeInput((cu,), o["genetic_code"], kind=o["kind"],
+                                   circular=(cu,) if o["topology"] == "circular" else ()))
+    call_genes(root, "S0", genomes, prefix_width=None if width == 0 else width, max_file_bytes=40_000)
+    man = catalog.build_manifest(root, "x")  # LY-05 holds for every width
+    files = [x for x in man["files"] if x["table"] == "protein_seq"]
+    assert {x["partitions"]["protein_prefix"] for x in files} <= ({"all"} if width == 0 else
+                                                                   {f"{i:02x}"[:width] for i in range(256)})
+    f = files[len(files) // 2]
     t = pq.read_table(root / f["path"])
-    puid, want = t.column("protein_uid")[0].as_py(), t.column("seq")[0].as_py()
-    prof = catalog.profile_query(con, "SELECT protein_of(?)", [puid])
+    puid, want = t.column("protein_uid")[t.num_rows // 2].as_py(), t.column("seq")[t.num_rows // 2].as_py()
+    c = catalog.open_catalog(catalog.generate_catalog(man, tmp_path / "c.duckdb"))
+    prof = catalog.profile_query(c, "SELECT protein_of(?)", [puid])
+    c.close()
     assert prof["result"][0][0] == want
     scan = _seq_scan(prof, "/protein_seq/")
-    n_files = sum(1 for x in man["files"] if x["table"] == "protein_seq")
-    assert n_files > 1 and scan["files_read"] == 1 and scan["row_groups_scanned"] == 1
+    bucket_files = [x for x in files if x["partitions"]["protein_prefix"] == f["partitions"]["protein_prefix"]]
+    assert len(files) > len(bucket_files) or width == 0
+    assert scan["files_read"] <= len(bucket_files) and scan["row_groups_scanned"] == 1
 
 
 def test_ly06_reverse_lookup_reads_one_row_group_per_file(built, con):

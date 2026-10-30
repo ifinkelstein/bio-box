@@ -245,7 +245,8 @@ def test_catalog_is_read_only(con):
 def test_partition_columns_come_from_paths(con):
     stages = {r[0] for r in con.execute("SELECT DISTINCT stage FROM contig_index").fetchall()}
     assert stages == {"S0"}
-    bad = con.execute("SELECT count(*) FROM protein_seq WHERE protein_prefix <> lower(hex(protein_uid[1:1]))").fetchall()[0][0]
+    bad = con.execute("SELECT count(*) FROM protein_seq WHERE protein_prefix <> 'all' "
+                      "AND NOT starts_with(lower(hex(protein_uid[1:1])), protein_prefix)").fetchall()[0][0]
     assert bad == 0
 
 

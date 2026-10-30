@@ -64,7 +64,7 @@ def built(tmp_path_factory):
     mem = pq.read_table(root / f"l2/cluster_member/release={RELEASE}/part-0.parquet")
     aln = pq.read_table(root / f"l2/cluster_member_aln/release={RELEASE}/part-0.parquet")
     prot = {}
-    for f in root.glob(f"l0seq/protein_seq/gene_call_version={GENE_CALL_VERSION}/stage=*/protein_prefix=*/part-0.parquet"):
+    for f in root.glob(f"l0seq/protein_seq/gene_call_version={GENE_CALL_VERSION}/stage=*/protein_prefix=*/part-*.parquet"):
         t = pq.read_table(f)
         prot.update(zip(t.column("protein_uid").to_pylist(), t.column("seq").to_pylist()))
     return root, report, mem, aln, prot
