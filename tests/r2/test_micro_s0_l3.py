@@ -166,8 +166,9 @@ def test_q1_count_equals_nested_loop(built, k):
     anchors = _sample_tokens(con, 12, k)
     checked = nonzero = 0
     for a in anchors:
-        partners = {b for _, b in con.execute("SELECT DISTINCT 0, partner_token FROM slot_pairs WHERE anchor_token = ?",
-                                              [a]).fetchall()}
+        # partners within k of A, plus A itself (often absent): both zero and non-zero counts are checked
+        partners = {b for (b,) in con.execute("SELECT DISTINCT partner_token FROM slot_pairs "
+                                              "WHERE anchor_token = ? AND abs(orf_offset) <= ?", [a, k]).fetchall()}
         for b in sorted(partners)[:6] + [anchors[0]]:
             for tier in (None, 1):
                 want = len({(c, i) for c, i, _ in _oracle_instances(rows, a, b, k, tier)})
