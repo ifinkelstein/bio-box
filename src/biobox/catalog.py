@@ -2,10 +2,16 @@
 
 The manifest is the system of record (data_layer_and_tests.md §3.3): every
 Parquet file of a release with its table, partitions, sha256, bytes, rows,
-row groups and schema hash. The catalog is disposable: a DuckDB file holding
-only views over explicit file lists (no globs, LY-10) and the sequence macros
-of §2A.3. It is built under a temporary name and moved into place with
-rename(2); `current.json` is a symlink swapped the same way.
+row groups and schema hash, and every artifact file (the bgzip sequence shards
+and their indexes) with its sha256 and bytes. The catalog is disposable: a
+DuckDB file holding only views over explicit file lists (no globs, LY-10) and
+the sequence macros of §2A.3. It is built under a temporary name and moved into
+place with rename(2); `current.json` is a symlink swapped the same way.
+
+DuckDB cannot read BGZF, so `seq_raw` calls `bb_seq_raw`, a Python function that
+`open_catalog` registers on each connection (DEC-17). A catalog opened with plain
+`duckdb` has every view and macro, but the sequence macros fail with "bb_seq_raw
+does not exist".
 
     manifest = build_manifest(root, "rS0.1")
     write_manifest(manifest, root / "manifests/release=rS0.1.json")
@@ -19,6 +25,7 @@ from __future__ import annotations
 import hashlib
 import json
 import os
+import re
 import shutil
 import tempfile
 from pathlib import Path
@@ -29,13 +36,12 @@ import pyarrow as pa
 import pyarrow.parquet as pq
 
 from biobox import ids
-from biobox.registry.schemas import TABLES, TableSpec
+from biobox.registry.schemas import ARTIFACTS, TABLES, ArtifactSpec, TableSpec
 
-MANIFEST_VERSION = 1
-DEFAULT_CHUNK_SIZE = 65_536
+MANIFEST_VERSION = 2
 
 # Partitions whose value is derived from a file column: (column, number of leading bytes as hex).
-DERIVED_PARTITIONS = {"digest_prefix": ("raw_digest", 1), "protein_prefix": ("protein_uid", 1)}
+DERIVED_PARTITIONS = {"protein_prefix": ("protein_uid", 1)}
 
 
 class LayoutError(ValueError):
@@ -85,6 +91,46 @@ def classify(rel: str) -> tuple[TableSpec, dict[str, str]] | None:
     return None
 
 
+def classify_artifact(rel: str) -> tuple[ArtifactSpec, dict[str, str], str] | None:
+    """Map a path under an artifact location to (artifact, partitions, companion suffix or "")."""
+    for spec in ARTIFACTS.values():
+        if not rel.startswith(spec.location + "/"):
+            continue
+        parts = rel[len(spec.location) + 1 :].split("/")
+        dirs, fname = parts[:-1], parts[-1]
+        kv = [d.split("=", 1) for d in dirs]
+        if any(len(x) != 2 for x in kv) or tuple(k for k, _ in kv) != spec.partition_keys:
+            raise LayoutError(f"{rel}: partition path {dirs} does not match {spec.name} keys {spec.partition_keys} (LY-05)")
+        for suffix in ("",) + spec.companions:
+            if re.fullmatch(spec.pattern + re.escape(suffix), fname):
+                return spec, dict(kv), suffix
+        raise LayoutError(f"{rel}: not a {spec.name} file (LY-10)")
+    return None
+
+
+def _artifact_entries(root: Path) -> list[dict]:
+    out = []
+    for spec in ARTIFACTS.values():
+        base = root / spec.location
+        if not base.exists():
+            continue
+        found = {}
+        for path in sorted(p for p in base.rglob("*") if p.is_file()):
+            rel = path.relative_to(root).as_posix()
+            _, parts, suffix = classify_artifact(rel)
+            found[rel] = suffix
+            out.append({"path": rel, "artifact": spec.name, "partitions": parts,
+                        "sha256": ids.sha256_file(path).hex(), "bytes": path.stat().st_size})
+        for rel, suffix in found.items():
+            if suffix == "":
+                missing = [s for s in spec.companions if rel + s not in found]
+                if missing:
+                    raise LayoutError(f"{rel}: {spec.name} file without {', '.join(missing)}")
+            elif rel.removesuffix(suffix) not in found:
+                raise LayoutError(f"{rel}: index without its {spec.name} file")
+    return out
+
+
 def _check_derived_partitions(rel: str, parts: dict[str, str], md: pq.FileMetaData) -> None:
     """LY-05: a derived partition value equals the key prefix of every row (from row-group min/max)."""
     names = md.schema.to_arrow_schema().names
@@ -103,7 +149,7 @@ def _check_derived_partitions(rel: str, parts: dict[str, str], md: pq.FileMetaDa
 
 
 def build_manifest(root: Path, release_id: str) -> dict:
-    """Scan every .parquet file under `root`; refuse strays, bad paths and schema drift."""
+    """Scan every .parquet file and artifact file under `root`; refuse strays, bad paths and schema drift."""
     root = Path(root).resolve()
     files = []
     for path in sorted(root.rglob("*.parquet")):
@@ -138,6 +184,7 @@ def build_manifest(root: Path, release_id: str) -> dict:
         "params": params,
         "tables": {name: schema_hash(spec.schema) for name, spec in sorted(TABLES.items())},
         "files": files,
+        "artifacts": _artifact_entries(root),
     }
 
 
@@ -167,11 +214,11 @@ def read_manifest(path: Path) -> dict:
 
 
 def verify_manifest(manifest: dict, root: Path | None = None) -> list[str]:
-    """LY-10: every listed file exists with its sha256 and size, and no unlisted .parquet file exists."""
+    """LY-10: every listed file exists with its sha256 and size, and no unlisted .parquet or artifact file exists."""
     root = Path(root or manifest["root"])
     problems = []
     listed = set()
-    for f in manifest["files"]:
+    for f in manifest["files"] + manifest.get("artifacts", []):
         listed.add(f["path"])
         p = root / f["path"]
         if not p.exists():
@@ -181,7 +228,11 @@ def verify_manifest(manifest: dict, root: Path | None = None) -> list[str]:
             problems.append(f"size differs: {f['path']}")
         elif ids.sha256_file(p).hex() != f["sha256"]:
             problems.append(f"sha256 differs: {f['path']}")
-    for p in sorted(root.rglob("*.parquet")):
+    present = list(root.rglob("*.parquet"))
+    for spec in ARTIFACTS.values():
+        if (root / spec.location).exists():
+            present += [p for p in (root / spec.location).rglob("*") if p.is_file()]
+    for p in sorted(set(present)):
         rel = p.relative_to(root).as_posix()
         if rel not in listed:
             problems.append(f"not in manifest: {rel}")
@@ -249,32 +300,29 @@ def _view_sql(spec: TableSpec, paths: list[str], n_columns: int | None = None) -
 COMPLEMENT = ("ACGTRYKMBVDHNacgtrykmbvdhn", "TGCAYRMKVBHDNtgcayrmkvbhdn")
 
 
-def macro_sql(chunk_size: int) -> list[str]:
+def macro_sql() -> list[str]:
     """Sequence macros (data_layer_and_tests.md §2A.3). 0-based half-open; strand +1/-1.
 
-    Parameter names start with an underscore so they never collide with column names.
+    Parameter names start with an underscore so they never collide with column names. Bounds
+    are checked in SQL; `bb_seq_raw` (registered by `open_catalog`) only reads the shard.
     """
-    cs = int(chunk_size)
     return [
         f"CREATE MACRO revcomp(_x) AS reverse(translate(_x, '{COMPLEMENT[0]}', '{COMPLEMENT[1]}'))",
         "CREATE MACRO default_digest(_cuid) AS "
         "(SELECT raw_digest FROM contig_index WHERE contig_uid = _cuid AND is_default_variant)",
-        "CREATE MACRO digest_len(_rd) AS (SELECT any_value(contig_len) FROM contig_index WHERE raw_digest = _rd)",
+        "CREATE MACRO digest_len(_rd) AS (SELECT contig_len FROM seq_locator WHERE raw_digest = _rd)",
         "CREATE MACRO contig_len_of(_cuid) AS "
         "(SELECT contig_len FROM contig_index WHERE contig_uid = _cuid AND is_default_variant)",
         # forward bytes of one stored variant
-        f"""CREATE MACRO seq_raw(_rd, _s, _e) AS CASE
+        """CREATE MACRO seq_raw(_rd, _s, _e) AS CASE
               WHEN digest_len(_rd) IS NULL THEN error('seq_raw: unknown raw_digest')
               WHEN _s < 0 OR _e < _s OR _e > digest_len(_rd) THEN error('seq_raw: slice outside 0:contig_len')
               WHEN _s = _e THEN ''
-              ELSE (SELECT substr(string_agg(seq, '' ORDER BY chunk_ix), _s - min(chunk_ix) * {cs} + 1, _e - _s)
-                    FROM seq_chunks
-                    WHERE digest_prefix = lower(hex((_rd)[1:1]))  -- prunes files, not just row groups
-                      AND raw_digest = _rd AND chunk_ix BETWEEN _s // {cs} AND (_e - 1) // {cs})
+              ELSE bb_seq_raw(_rd, _s, _e)
             END""",
         "CREATE MACRO seq_slice(_cuid, _s, _e) AS seq_raw(default_digest(_cuid), _s, _e)",
         # each macro below evaluates its slice once: a macro argument is substituted as an
-        # expression, so passing seq_slice(...) to two CASE branches would scan seq_chunks twice
+        # expression, so passing seq_slice(...) to two CASE branches would read the shard twice
         """CREATE MACRO seq_get(_cuid, _s, _e, _strand) AS (
               SELECT CASE WHEN _strand = 1 THEN _x WHEN _strand = -1 THEN revcomp(_x)
                           ELSE error('seq_get: strand must be 1 or -1') END
@@ -313,7 +361,10 @@ def generate_catalog(manifest: dict, out_path: Path, root: Path | None = None) -
             widest[f["table"]] = max(widest.get(f["table"], 0), f.get("n_columns", len(TABLES[f["table"]].schema)))
         for name in sorted(TABLES):
             con.execute(_view_sql(TABLES[name], sorted(by_table[name]), widest.get(name)))
-        for stmt in macro_sql(manifest["params"].get("chunk_size", DEFAULT_CHUNK_SIZE)):
+        # DuckDB binds a macro's functions when it is created: a stand-in lets the macros be
+        # stored; open_catalog registers the real reader
+        _register_seq_udf(con, None)
+        for stmt in macro_sql():
             con.execute(stmt)
         con.execute("CREATE TABLE catalog_info (key VARCHAR, value VARCHAR)")
         con.executemany("INSERT INTO catalog_info VALUES (?, ?)", [
@@ -326,6 +377,11 @@ def generate_catalog(manifest: dict, out_path: Path, root: Path | None = None) -
                     "t(path, \"table\", sha256, \"rows\", row_groups) WHERE false")
         con.executemany("INSERT INTO catalog_files VALUES (?, ?, ?, ?, ?)",
                         [(f["path"], f["table"], f["sha256"], f["rows"], f["row_groups"]) for f in manifest["files"]])
+        con.execute("CREATE TABLE catalog_artifacts (path VARCHAR, artifact VARCHAR, sha256 VARCHAR, bytes BIGINT)")
+        arts = manifest.get("artifacts", [])
+        if arts:
+            con.executemany("INSERT INTO catalog_artifacts VALUES (?, ?, ?, ?)",
+                            [(a["path"], a["artifact"], a["sha256"], a["bytes"]) for a in arts])
         con.execute("CHECKPOINT")
     finally:
         con.close()
@@ -333,9 +389,34 @@ def generate_catalog(manifest: dict, out_path: Path, root: Path | None = None) -
     return out_path
 
 
+_READERS: dict[int, object] = {}
+
+
+def _register_seq_udf(con: duckdb.DuckDBPyConnection, store) -> None:
+    def bb_seq_raw(rd: pa.Array, s: pa.Array, e: pa.Array) -> pa.Array:
+        if store is None:
+            raise RuntimeError("bb_seq_raw: open the catalog with biobox.catalog.open_catalog to read sequence")
+        out = [None if None in (r, a, b) else store.raw(r, a, b).decode("ascii")
+               for r, a, b in zip(rd.to_pylist(), s.to_pylist(), e.to_pylist())]
+        return pa.array(out, pa.string())
+
+    con.create_function("bb_seq_raw", bb_seq_raw, ["BLOB", "BIGINT", "BIGINT"], "VARCHAR",
+                        type="arrow", null_handling="special", side_effects=False)
+
+
+def seq_reader(con: duckdb.DuckDBPyConnection):
+    """The SeqStore behind a connection's `bb_seq_raw`, for its LY-06 counters."""
+    return _READERS.get(id(con))
+
+
 def open_catalog(path: Path, local_dir: Path | None = None, threads: int | None = None,
-                 memory_limit: str | None = None, temp_directory: Path | None = None) -> duckdb.DuckDBPyConnection:
-    """Open read-only, optionally from a copy on local disk (never open a DuckDB file over NFS)."""
+                 memory_limit: str | None = None, temp_directory: Path | None = None,
+                 root: Path | None = None, cache_blocks: int = 64) -> duckdb.DuckDBPyConnection:
+    """Open read-only, optionally from a copy on local disk (never open a DuckDB file over NFS).
+
+    Registers `bb_seq_raw` over the shards under `root` (default: the root the catalog was
+    built from, in `catalog_info`), with an LRU of `cache_blocks` decoded blocks per shard.
+    """
     path = Path(path)
     if local_dir is not None:
         local = Path(local_dir) / path.name
@@ -352,7 +433,15 @@ def open_catalog(path: Path, local_dir: Path | None = None, threads: int | None 
         config["memory_limit"] = memory_limit
     if temp_directory is not None:
         config["temp_directory"] = str(temp_directory)
-    return duckdb.connect(str(path), read_only=True, config=config)
+    con = duckdb.connect(str(path), read_only=True, config=config)
+    if root is None:
+        root = Path(con.execute("SELECT value FROM catalog_info WHERE key = 'root'").fetchall()[0][0])
+    from biobox.l0seq.store import SeqStore
+
+    store = SeqStore(root, cache_blocks) if (Path(root) / "l0seq/seq_locator.parquet").exists() else None
+    _register_seq_udf(con, store)
+    _READERS[id(con)] = store
+    return con
 
 
 # --- LY-06: storage units read per query -------------------------------------
@@ -362,9 +451,12 @@ def profile_query(con: duckdb.DuckDBPyConnection, sql: str, params: list | None 
     """Run `sql` with profiling and return what it read, from DuckDB's own profiler.
 
     `scans` has one entry per Parquet scan: files read, row groups scanned and the total the
-    scan could have read. `bytes_read` is DuckDB's I/O counter for the query. Counts, not time,
-    decide layouts (LY-06).
+    scan could have read. `bytes_read` is DuckDB's I/O counter for the query. `bgzf` is what
+    `bb_seq_raw` read from the shards (blocks decompressed, compressed bytes read, bytes
+    decoded), zero when the query reads no sequence. Counts, not time, decide layouts (LY-06).
     """
+    store = seq_reader(con)
+    before = store.counters() if store is not None else None
     with tempfile.TemporaryDirectory() as d:
         out = Path(d) / "profile.json"
         con.execute("PRAGMA enable_profiling = 'json'")
@@ -396,4 +488,6 @@ def profile_query(con: duckdb.DuckDBPyConnection, sql: str, params: list | None 
         walk(op)
     for c in info.get("children", []):
         walk(c)
-    return {"result": result, "scans": scans, "bytes_read": info.get("io", {}).get("total_bytes_read")}
+    bgzf = ({k: v - before[k] for k, v in store.counters().items()} if store is not None
+            else {"blocks_read": 0, "compressed_bytes_read": 0, "uncompressed_bytes_decoded": 0})
+    return {"result": result, "scans": scans, "bytes_read": info.get("io", {}).get("total_bytes_read"), "bgzf": bgzf}

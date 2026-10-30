@@ -71,21 +71,6 @@ _SPECS = [
         doc="data_layer_and_tests.md §1 (L0)",
     ),
     TableSpec(
-        name="seq_chunks",
-        location="l0seq/seq_chunks",
-        layer="L0-seq",
-        schema=pa.schema([
-            _f("raw_digest", SHA256),
-            _f("chunk_ix", pa.uint32()),
-            _f("seq", pa.string()),
-            _f("contig_len", COORD),
-        ]),
-        primary_key=("raw_digest", "chunk_ix"),
-        sort_key=("raw_digest", "chunk_ix"),
-        partition_keys=("stage", "digest_prefix"),
-        doc="data_layer_and_tests.md §2A.1",
-    ),
-    TableSpec(
         name="contig_occurrence",
         location="l0seq/contig_occurrence",
         layer="L0-seq",
@@ -129,14 +114,13 @@ _SPECS = [
         layer="L0-seq",
         schema=pa.schema([
             _f("raw_digest", SHA256),
-            _f("file", pa.string()),
-            _f("row_group", pa.uint32()),
-            _f("first_chunk_row", pa.uint64()),
+            _f("shard", pa.string()),  # root-relative path of the .fa.gz; the record name is raw_digest hex
+            _f("contig_len", COORD),
         ]),
         primary_key=("raw_digest",),
         sort_key=("raw_digest",),
         small_ok=True,
-        doc="data_layer_and_tests.md §2A.1",
+        doc="data_layer_and_tests.md §2A.1; DEC-17",
     ),
     TableSpec(
         name="protein_seq",
@@ -480,6 +464,37 @@ TABLES: dict[str, TableSpec] = {s.name: s for s in _SPECS}
 
 def table(name: str) -> TableSpec:
     return TABLES[name]
+
+
+@dataclass(frozen=True)
+class ArtifactSpec:
+    """Non-Parquet files of a release, listed in the manifest like tables (LY-10).
+
+    Files live at `<location>/<k>=<v>/.../<name>` in partition_keys order; `<name>` matches
+    `pattern`, and each such file has one companion per suffix in `companions`.
+    """
+
+    name: str
+    layer: str
+    location: str
+    partition_keys: tuple[str, ...]
+    pattern: str
+    companions: tuple[str, ...] = ()
+    doc: str = ""
+
+
+ARTIFACTS: dict[str, ArtifactSpec] = {
+    "seq_shards": ArtifactSpec(
+        name="seq_shards",
+        layer="L0-seq",
+        location="l0seq/seq_shards",
+        partition_keys=("stage",),
+        pattern=r"shard-\d{4}\.fa\.gz",
+        companions=(".fai", ".gzi"),
+        doc="bgzip FASTA of every stored byte sequence, records named by raw_digest hex and sorted "
+            "by it (data_layer_and_tests.md §2A.1; DEC-17)",
+    ),
+}
 
 
 def conformance_problems(data: pa.Table, spec: TableSpec) -> list[str]:

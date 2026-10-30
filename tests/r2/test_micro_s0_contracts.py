@@ -1,7 +1,7 @@
 """Ring R2: contracts, layout and determinism over the whole micro-S0 build.
 
 The build is O-INGEST, O-CALL, O-SCAN (a 6-model library made from lambda proteins) and,
-where MMseqs2 is on PATH, O-CLUSTER. Covers LY-02, LY-03, LY-04, C-03, C-05, R-06, R-09,
+where MMseqs2 is on PATH, O-CLUSTER. Covers LY-02, LY-03, LY-04, C-03 (tables and shards), C-05, R-06, R-09,
 D-01 (same inputs twice), D-02 (thread counts) and D-04 (input order), each with an
 injected fault that the check must catch.
 """
@@ -49,7 +49,7 @@ def _library(root: Path, path: Path) -> None:
 def build(root: Path, order: int = 1, threads: int = 1) -> dict:
     objs = CONTRACT["objects"][::order]
     ingest([SourceObject(FIX / o["file"], CONTRACT["source_name"], CONTRACT["source_release"], CONTRACT["license"], True)
-            for o in objs], root, "S0", chunk_size=4096, row_group_chunks=16)
+            for o in objs], root, "S0", shard_bases=10**6)
     genomes = []
     for o in objs:
         cu = ids.contig_uid(fasta.read(FIX / o["file"])[0].seq)
@@ -102,12 +102,12 @@ def test_ly03_sort_keys_have_statistics(built):
 
 def test_ly03_catches_missing_statistics(built, tmp_path):
     _, man, _ = built
-    f = next(x for x in man["files"] if x["table"] == "seq_chunks")
+    f = next(x for x in man["files"] if x["table"] == "contig_occurrence")
     pq.write_table(pq.read_table(Path(man["root"]) / f["path"]), tmp_path / "x.parquet", write_statistics=False)
     assert contracts.check_statistics({"root": str(tmp_path), "files": [{**f, "path": "x.parquet"}]})
 
 
-@pytest.mark.xfail(strict=True, reason="LY-04 finding (2026-10-30): 256 fixed digest/protein prefix buckets split "
+@pytest.mark.xfail(strict=True, reason="LY-04 finding (2026-10-30): 256 fixed protein prefix buckets split "
                    "a small stage into many tiny files; the bucket count has to scale with the stage")
 def test_ly04_no_small_files_outside_waivers(built):
     _, man, _ = built
@@ -128,6 +128,43 @@ def test_c03_foreign_keys_resolve(built):
     assert contracts.check_foreign_keys(con) == []
 
 
+@pytest.mark.covers("C-03", "LY-02")
+def test_c03_shards_agree_with_the_locator(built):
+    _, man, _ = built
+    assert contracts.check_shards(man) == []
+
+
+@pytest.mark.covers("C-03", "LY-02")
+@pytest.mark.parametrize("fault", ["dropped fai line", "wrong length", "unsorted", "bad gzi", "locator row lost"])
+def test_c03_shard_faults_are_caught(built, tmp_path, fault):
+    import struct
+
+    from biobox.l0seq.bgzf import read_fai, read_gzi
+
+    _, man, _ = built
+    root = tmp_path / "s"
+    shutil.copytree(man["root"], root)
+    shard = next(a["path"] for a in man["artifacts"] if a["path"].endswith(".fa.gz") and
+                 len(read_fai(root / (a["path"] + ".fai"))) > 1)
+    fai = root / (shard + ".fai")
+    lines = fai.read_text().splitlines(keepends=True)
+    if fault == "dropped fai line":
+        fai.write_text("".join(lines[1:]))
+    elif fault == "wrong length":
+        f = lines[0].split("\t")
+        fai.write_text("".join(["\t".join([f[0], str(int(f[1]) + 1)] + f[2:])] + lines[1:]))
+    elif fault == "unsorted":
+        fai.write_text("".join(lines[::-1]))
+    elif fault == "bad gzi":
+        gzi = root / (shard + ".gzi")
+        pairs = read_gzi(gzi)[1:]  # a block start missing
+        gzi.write_bytes(struct.pack("<Q", len(pairs)) + b"".join(struct.pack("<QQ", c, u) for c, u in pairs))
+    else:
+        loc = next(f for f in man["files"] if f["table"] == "seq_locator")
+        pq.write_table(pq.read_table(root / loc["path"]).slice(1), root / loc["path"])
+    assert contracts.check_shards({**man, "root": str(root)})
+
+
 def test_c05_coordinates_in_bounds(built):
     _, _, con = built
     assert contracts.check_coordinates(con) == []  # the wrap rule is exercised on the golden set (R3)
@@ -142,7 +179,7 @@ def _fault_con(con, **replace) -> duckdb.DuckDBPyConnection:
     """An in-memory copy of the catalog's tables with some replaced by Arrow tables (fault injection)."""
     c = duckdb.connect()
     for name in ("protein_occurrence", "contig_index", "slot_protein", "protein_seq", "l1_domains", "contig_occurrence",
-                 "seq_chunks", "l0_manifest", "seq_locator", "cluster_member", "cluster_member_aln", "igr"):
+                 "l0_manifest", "seq_locator", "cluster_member", "cluster_member_aln", "igr"):
         tbl = replace.get(name)
         if tbl is None:
             tbl = con.sql(f"SELECT * FROM {name}").to_arrow_table()
@@ -163,7 +200,7 @@ def test_injected_faults_are_caught(built):
     # a slot whose protein is missing (C-03)
     ps = con.sql("SELECT * FROM protein_seq").to_arrow_table()
     assert contracts.check_foreign_keys(_fault_con(con, protein_seq=ps.slice(1)))
-    # an occurrence row lost, so a chunk is orphaned (R-06)
+    # an occurrence row lost, so a stored sequence is orphaned (R-06)
     co = con.sql("SELECT * FROM contig_occurrence").to_arrow_table()
     assert contracts.check_lineage(_fault_con(con, contig_occurrence=co.slice(1)))
 
@@ -183,13 +220,17 @@ def test_r09_a_later_stage_keeps_earlier_files(built, tmp_path):
     lam = fasta.read(FIX / "NC_001416.1.fna.gz")[0].seq
     lam_masked.write_bytes(b"\n".join(fasta.format_record("lam_variant", lam[:2000].lower() + lam[2000:], 70)) + b"\n")
     ingest([SourceObject(dup, "s1_source", "1"), SourceObject(lam_masked, "s1_source", "1")], root, "S1",
-           chunk_size=4096, row_group_chunks=16)
+           shard_bases=10**6)
     after = catalog.build_manifest(root, "rS1.test")
     assert contracts.check_append_only(before, after) == []
     assert len(after["files"]) > len(before["files"])
     # and the check notices a rewrite
-    f = next(x for x in after["files"] if x["table"] == "seq_chunks")
-    assert contracts.check_append_only(before, {"files": [g for g in after["files"] if g["path"] != f["path"]]})
+    assert len(after["artifacts"]) > len(before["artifacts"])  # the lambda variant is a new S1 shard
+    f = next(x for x in after["files"] if x["table"] == "contig_occurrence")
+    assert contracts.check_append_only(before, {**after, "files": [g for g in after["files"] if g["path"] != f["path"]]})
+    shard = next(a for a in after["artifacts"] if "stage=S0" in a["path"])
+    rewritten = [{**a, "sha256": "0" * 64} if a is shard else a for a in after["artifacts"]]
+    assert contracts.check_append_only(before, {**after, "artifacts": rewritten}) == [f"{shard['path']}: rewritten"]
 
 
 def test_d01_same_inputs_same_content(built, tmp_path):
@@ -219,6 +260,7 @@ def test_content_hash_sees_a_changed_row(built, tmp_path):
     assert changed["l1_domains"] != contracts.content_hashes(man)["l1_domains"]
     assert {k: v for k, v in changed.items() if k != "l1_domains"} == \
         {k: v for k, v in contracts.content_hashes(man).items() if k != "l1_domains"}
+    assert "seq_shards" in changed
 
 
 # --- ledger (L-01..L-03) --------------------------------------------------------------------

@@ -232,10 +232,10 @@ v2.0 claimed full malleability. That claim was wrong. Appends, family remaps and
 ├── l0/refdb/<name>/<version>/            # reference DBs: pressed HMMs, calibrated CMs, Foldseek DBs, weights; sha256, treated as L0 sources
 ├── l0seq/                                # raw sequence store (§3.10); append-only, shared by all releases
 │   ├── manifest.json                     # durable copy also kept on /stor/work on wilkcomp02
-│   ├── seq_chunks/stage=<S>/digest_prefix=<00..ff>/part-<k>.parquet       # (raw_digest, chunk_ix, seq), 64 KB chunks, incl. all dedup members
+│   ├── seq_shards/stage=<S>/shard-<NNNN>.fa.gz (+ .fai, .gzi)            # bgzip FASTA, one record per raw_digest, incl. all dedup members
 │   ├── contig_occurrence/stage=<S>/source=<name>/part-<k>.parquet         # one row per source record
 │   ├── protein_seq/gene_call_version=<v>/stage=<S>/protein_prefix=<00..ff>/part-<k>.parquet
-│   ├── igr/igr_version=<v>/stage=<S>/part-<k>.parquet                     # coordinates only; bases sliced from seq_chunks
+│   ├── igr/igr_version=<v>/stage=<S>/part-<k>.parquet                     # coordinates only; bases sliced from the shards
 │   ├── seq_locator.parquet               # raw_digest → file, row_group, first_chunk_row; rebuilt per stage
 │   └── recipes/<source>.yaml             # fetch recipes for sequences not redistributable (§6)
 ├── releases/<release_id>/
@@ -257,7 +257,7 @@ Tool-interop FASTA (bgzip + `.fai` + `.gzi`) is not part of the store. `bio-box 
 Requirement: the nucleotide sequence of every ingested contig, including members collapsed by deduplication, stays retrievable, along with every protein and IGR sequence. Any downstream project can then re-annotate, re-cluster or re-assemble without going back to the original sources.
 
 - **Keying.** Contig bytes are stored once per `raw_digest` (sha256 of the exact bytes) and mapped to `contig_uid` (§3.2); proteins once per `protein_uid`. IGRs are coordinates `(contig_uid, start, end, strand, left_slot, right_slot, igr_version)`, not a second copy of the bases. The same sequence arriving from several sources is stored once. `contig_occurrence` records every source occurrence, and `contig_member` records dedup membership. Dedup decides what is *counted*, never what is *kept*.
-- **Format.** The primary store is Parquet: `seq_chunks` holds 65,536-byte chunks sorted by `(raw_digest, chunk_ix)`, zstd, 16 chunks (1 MiB) per row group (K-13, 2026-10-30); `protein_seq` is sorted by `protein_uid`. `seq_locator.parquet` maps each `raw_digest` to its file and row group, so a slice reads one row group. bgzip FASTA with `.fai`/`.gzi` is generated on demand for tools that need FASTA; zstd-seekable is not used (no samtools/pysam support). The S0 bake-off (test K-13, `planning/measurements/2026-10-30_k13_bakeoff.md`) found bgzip reads 13–17× fewer bytes per gene-sized slice; whether to flip the primary is with the PI.
+- **Format.** The primary sequence store is bgzip FASTA shards with `.fai`/`.gzi` (DEC-17, after the S0 bake-off K-13, `planning/measurements/2026-10-30_k13_bakeoff.md`: 13–17× fewer bytes read per gene-sized slice than Parquet chunks). Records are named by `raw_digest` hex and sorted by it, ~2^30 bases per shard; `seq_locator.parquet` maps each `raw_digest` to its shard, and a slice decompresses only the BGZF blocks it spans. `protein_seq` stays Parquet, sorted by `protein_uid`. samtools, pysam and MMseqs2 read the shards directly; zstd-seekable is not used (no samtools/pysam support).
 - **Immutability.** The store is append-only and shared across releases. A release references sequences by UID and never copies them. Sequences are removed only for licensing or human-read removal, and such removals are logged in the manifest.
 - **Access.** `bio-box seq get` handles point lookups. `bio-box seq extract` handles bulk export by UID list or `--sql` query, including dedup members and region slices. DuckDB views (`v_seq_contig`, `v_seq_protein`, `v_seq_igr`) join sequences to any table by UID.
 - **Integrity.** On write and in `bio-box verify`, the digest of each stored sequence must equal its UID. The test suite includes a round-trip check: extract, re-digest, compare.

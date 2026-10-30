@@ -237,7 +237,7 @@ def test_wrapping_slice_round_trips():
     import tempfile
 
     with tempfile.TemporaryDirectory() as d:
-        ingest([SourceObject(FIX / "NC_000908.2.fna.gz", "a", "1")], Path(d), "S0", chunk_size=4096, row_group_chunks=16)
+        ingest([SourceObject(FIX / "NC_000908.2.fna.gz", "a", "1")], Path(d), "S0", shard_bases=200_000)
         store = SeqStore(Path(d))
         cu = ids.contig_uid(root_seq)
         doubled = root_seq + root_seq

@@ -20,7 +20,7 @@ CONTRACT = yaml.safe_load((FIX / "sources.yaml").read_text())
 
 
 def _build(root: Path) -> set[bytes]:
-    ingest([SourceObject(FIX / o["file"], "s", "1") for o in CONTRACT["objects"]], root, "S0", chunk_size=4096, row_group_chunks=16)
+    ingest([SourceObject(FIX / o["file"], "s", "1") for o in CONTRACT["objects"]], root, "S0", shard_bases=200_000)
     genomes, circular = [], set()
     for o in CONTRACT["objects"]:
         cu = ids.contig_uid(fasta.read(FIX / o["file"])[0].seq)

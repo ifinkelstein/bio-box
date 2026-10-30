@@ -27,8 +27,9 @@ import yaml
 
 from biobox import fasta, ids
 from biobox.catalog import profile_query
-from biobox.l0seq.extract import BgzfFasta, write_bgzf_fasta
-from biobox.l0seq.store import SEQ_CHUNK_STATS
+from biobox.l0seq.bgzf import BgzfFasta, write_bgzf_fasta
+
+SEQ_CHUNK_STATS = ["raw_digest", "chunk_ix", "contig_len"]  # the Parquet layout's stats as measured (K-13)
 
 REPO = Path(__file__).resolve().parents[1]
 PARQUET_LAYOUTS = [  # (chunk bytes, chunks per row group)

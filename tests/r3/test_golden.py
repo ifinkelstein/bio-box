@@ -194,7 +194,16 @@ def test_golden_ly04_report(golden_catalog):
     man, _ = golden_catalog
     problems = contracts.check_file_sizes(man)
     print("\nLY-04:", problems)
-    assert any("seq_chunks" in p for p in problems)  # the known prefix-bucket finding (see R2 xfail)
+    assert not any("seq_shards" in p for p in problems)  # one shard holds the golden stage (DEC-17)
+    assert any("protein_seq" in p for p in problems)  # the known prefix-bucket finding (see R2 xfail)
+
+
+@pytest.mark.covers("C-03", "LY-02")
+def test_golden_shards(golden_catalog):
+    man, _ = golden_catalog
+    assert contracts.check_shards(man) == []
+    shards = [a for a in man["artifacts"] if a["path"].endswith(".fa.gz")]
+    assert len(shards) == 1
 
 
 @pytest.mark.covers("L-01", "L-02", "L-03")

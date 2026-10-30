@@ -769,28 +769,6 @@
    false
   ]
  ],
- "seq_chunks": [
-  [
-   "raw_digest",
-   "fixed_size_binary[32]",
-   false
-  ],
-  [
-   "chunk_ix",
-   "uint32",
-   false
-  ],
-  [
-   "seq",
-   "string",
-   false
-  ],
-  [
-   "contig_len",
-   "int64",
-   false
-  ]
- ],
  "seq_locator": [
   [
    "raw_digest",
@@ -798,18 +776,13 @@
    false
   ],
   [
-   "file",
+   "shard",
    "string",
    false
   ],
   [
-   "row_group",
-   "uint32",
-   false
-  ],
-  [
-   "first_chunk_row",
-   "uint64",
+   "contig_len",
+   "int64",
    false
   ]
  ],

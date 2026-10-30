@@ -40,14 +40,16 @@ def _fixture_paths():
 
 
 def _files(root: Path) -> dict[str, bytes]:
-    return {str(p.relative_to(root)): p.read_bytes() for p in sorted(root.rglob("*.parquet"))}
+    """Every data file: Parquet tables and the bgzip shards with their indexes."""
+    return {str(p.relative_to(root)): p.read_bytes() for p in sorted(root.rglob("*"))
+            if p.is_file() and (p.suffix == ".parquet" or "/seq_shards/" in p.as_posix())}
 
 
 @pytest.fixture(scope="module")
 def store_root(tmp_path_factory):
     root = tmp_path_factory.mktemp("micro_s0")
-    # small chunks and row groups so slices cross chunk and row-group boundaries
-    ingest(_objects(_fixture_paths()), root, stage="S0", chunk_size=4096, row_group_chunks=16)
+    # small shards so the three genomes span several shards and slices cross BGZF blocks
+    ingest(_objects(_fixture_paths()), root, stage="S0", shard_bases=200_000)
     return root
 
 
@@ -69,7 +71,6 @@ def test_fixture_matches_contract():
 @pytest.mark.parametrize(
     "name,glob",
     [
-        ("seq_chunks", "l0seq/seq_chunks/stage=*/digest_prefix=*/part-0.parquet"),
         ("contig_occurrence", "l0seq/contig_occurrence/stage=*/source=*/part-0.parquet"),
         ("contig_index", "l0seq/contig_index/stage=*/part-0.parquet"),
         ("seq_locator", "l0seq/seq_locator.parquet"),
@@ -127,22 +128,32 @@ def test_slice_out_of_bounds_raises(store_root):
 
 
 def test_ly07_duckdb_reads_the_same_rows(store_root):
-    files = sorted(str(f) for f in store_root.glob("l0seq/seq_chunks/stage=*/digest_prefix=*/part-0.parquet"))
+    files = sorted(str(f) for f in store_root.glob("l0seq/contig_occurrence/stage=*/source=*/part-0.parquet"))
     con = duckdb.connect()
     n_duck, bytes_duck = con.execute(
-        "SELECT count(*), sum(length(seq)) FROM read_parquet(?)", [files]
-    ).fetchone()
+        "SELECT count(*), sum(length(original_header)) FROM read_parquet(?)", [files]
+    ).fetchall()[0]
     arrow = [pq.read_table(f) for f in files]
     assert n_duck == sum(t.num_rows for t in arrow)
-    assert bytes_duck == sum(sum(len(s) for s in t.column("seq").to_pylist()) for t in arrow)
-    typ = con.execute("SELECT typeof(raw_digest) FROM read_parquet(?) LIMIT 1", [files]).fetchone()[0]
+    assert bytes_duck == sum(sum(len(s) for s in t.column("original_header").to_pylist()) for t in arrow)
+    typ = con.execute("SELECT typeof(raw_digest) FROM read_parquet(?) LIMIT 1", [files]).fetchall()[0][0]
     assert typ == "BLOB"
+
+
+def test_shards_hold_each_sequence_once_sorted_by_digest(store_root):
+    from biobox.l0seq.bgzf import read_fai
+
+    shards = sorted(store_root.glob("l0seq/seq_shards/stage=S0/shard-*.fa.gz"))
+    assert len(shards) > 1  # shard_bases=200_000 splits the micro set
+    names = [e.name for s in shards for e in read_fai(str(s) + ".fai")]
+    want = sorted(ids.raw_digest(r.seq).hex() for p in _fixture_paths() for r in fasta.read(p))
+    assert names == want
 
 
 def test_ly08_rewrite_is_byte_identical(tmp_path):
     a, b = tmp_path / "a", tmp_path / "b"
     for r in (a, b):
-        ingest(_objects(_fixture_paths()), r, stage="S0", chunk_size=4096, row_group_chunks=16)
+        ingest(_objects(_fixture_paths()), r, stage="S0", shard_bases=200_000)
     assert _files(a) == _files(b)
 
 
@@ -151,8 +162,8 @@ def test_ly08_rewrite_is_byte_identical(tmp_path):
 
 def test_mr01_input_order_does_not_matter(tmp_path):
     a, b = tmp_path / "a", tmp_path / "b"
-    ingest(_objects(_fixture_paths()), a, stage="S0", chunk_size=4096, row_group_chunks=16)
-    ingest(_objects(list(reversed(_fixture_paths()))), b, stage="S0", chunk_size=4096, row_group_chunks=16)
+    ingest(_objects(_fixture_paths()), a, stage="S0", shard_bases=200_000)
+    ingest(_objects(list(reversed(_fixture_paths()))), b, stage="S0", shard_bases=200_000)
     assert _files(a) == _files(b)
 
 
@@ -167,11 +178,11 @@ def test_mr02_renamed_header_keeps_uids_and_chunks(tmp_path):
     src.mkdir()
     renamed = _write_fasta(src / "renamed.fna", "XX_000001.1 renamed lambda", lam.seq)
     a, b = tmp_path / "a", tmp_path / "b"
-    ingest(_objects([_fixture_paths()[0]]), a, stage="S0", chunk_size=4096, row_group_chunks=16)
-    ingest(_objects([renamed]), b, stage="S0", chunk_size=4096, row_group_chunks=16)
+    ingest(_objects([_fixture_paths()[0]]), a, stage="S0", shard_bases=200_000)
+    ingest(_objects([renamed]), b, stage="S0", shard_bases=200_000)
     fa, fb = _files(a), _files(b)
     for k in fa:
-        if "seq_chunks" in k or "contig_index" in k or "seq_locator" in k:
+        if "seq_shards" in k or "contig_index" in k or "seq_locator" in k:
             assert fa[k] == fb[k], k
     occ_a = pq.read_table(next(a.glob("l0seq/contig_occurrence/**/*.parquet"))).to_pylist()[0]
     occ_b = pq.read_table(next(b.glob("l0seq/contig_occurrence/**/*.parquet"))).to_pylist()[0]
@@ -185,7 +196,7 @@ def test_mr03_reverse_complement_slices_mirror(tmp_path):
     src.mkdir()
     rc_path = _write_fasta(src / "lambda_rc.fna", "lambda_rc", revcomp(lam.seq))
     root = tmp_path / "s"
-    ingest(_objects([_fixture_paths()[0], rc_path]), root, stage="S0", chunk_size=4096, row_group_chunks=16)
+    ingest(_objects([_fixture_paths()[0], rc_path]), root, stage="S0", shard_bases=200_000)
     store = SeqStore(root)
     fwd, rc = ids.contig_uid(lam.seq), ids.contig_uid(revcomp(lam.seq))
     n = len(lam.seq)
@@ -205,7 +216,7 @@ def test_mr14_soft_mask_keeps_contig_uid(tmp_path):
     objs = _objects([_fixture_paths()[0]]) + [
         SourceObject(mpath, "other_source", "1", "INSDC (public)", True, precedence=200)
     ]
-    ingest(objs, root, stage="S0", chunk_size=4096, row_group_chunks=16)
+    ingest(objs, root, stage="S0", shard_bases=200_000)
     store = SeqStore(root)
     assert ids.contig_uid(masked) == ids.contig_uid(lam.seq)
     assert ids.raw_digest(masked) != ids.raw_digest(lam.seq)
@@ -215,19 +226,19 @@ def test_mr14_soft_mask_keeps_contig_uid(tmp_path):
 
 def test_identical_sequence_stored_once_across_sources_and_stages(tmp_path):
     root = tmp_path / "s"
-    ingest(_objects([_fixture_paths()[0]]), root, stage="S0", chunk_size=4096, row_group_chunks=16)
+    ingest(_objects([_fixture_paths()[0]]), root, stage="S0", shard_bases=200_000)
     before = _files(root)
     copy_dir = tmp_path / "copy"
     copy_dir.mkdir()
     dup = copy_dir / "lambda_again.fna.gz"
     shutil.copy(_fixture_paths()[0], dup)
     report = ingest(
-        [SourceObject(dup, "second_source", "1", "INSDC (public)", True)], root, stage="S1", chunk_size=4096, row_group_chunks=16
+        [SourceObject(dup, "second_source", "1", "INSDC (public)", True)], root, stage="S1", shard_bases=200_000
     )
     assert report["new_sequences"] == 0 and report["index_rows"] == 0
     after = _files(root)
     for k, v in before.items():
-        if "seq_chunks" in k or "contig_index" in k or "contig_occurrence" in k:
+        if "seq_shards" in k or "contig_index" in k or "contig_occurrence" in k:
             assert after[k] == v, f"S1 rewrote an S0 file: {k}"
-    assert not list(root.glob("l0seq/seq_chunks/stage=S1/**/*.parquet"))
+    assert not list(root.glob("l0seq/seq_shards/stage=S1/*"))
     assert list(root.glob("l0seq/contig_occurrence/stage=S1/source=second_source/part-0.parquet"))

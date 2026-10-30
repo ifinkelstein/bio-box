@@ -16,7 +16,7 @@ Labels: **plan** = stated in a plan file; **derived** = arithmetic on plan numbe
 |---|---|---|
 | Invariant | Every contig (dedup members and screening rejects included), every protein, and every IGR as coordinates. Retrievable by UID and by `uid:start-end:strand`. UIDs are BLAKE3-128. Any project may read the store directly. | `spec:43`; `PLAN:347`; `STAGES:69` |
 | Exception | Human or vertebrate-host contigs keep only their digest and reason code | `STAGES:69`; `PF:32` |
-| Contig storage | `seq_chunks(raw_digest, chunk_ix, seq)`: 64 KB chunks, sorted, zstd, about 1,024 chunks per row group | `DL:80`; `PLAN:350` |
+| Contig storage | bgzip FASTA shards with `.fai`/`.gzi`, records named by `raw_digest` (DEC-17, 2026-10-30; was `seq_chunks` Parquet) | `DL` §2A.1 |
 | Occurrence | `contig_occurrence` (source, accession, header, `raw_digest`, `contig_uid`) | `DL:81` |
 | Proteins | `protein_seq(protein_uid, protein_digest, length, seq, gene_call_version)`, sorted by `protein_uid`; U/O and frameshift-stitched sequences stored as reconstructed | `DL:83` |
 | Slot → protein | `slot_protein (slot_uid, gene_call_version) → protein_uid`, plus code and edit type | `DL:83` |

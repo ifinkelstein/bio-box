@@ -9,7 +9,7 @@ import pyarrow as pa
 import pytest
 import yaml
 
-from biobox.registry.schemas import SHA256, TABLES, UID
+from biobox.registry.schemas import ARTIFACTS, SHA256, TABLES, UID
 
 pytestmark = pytest.mark.r0
 
@@ -97,11 +97,12 @@ def test_small_ok_tables_match_ly04_list():
 def test_locations_are_unambiguous():
     # the manifest builder classifies files by location (O-CATALOG, LY-10)
     placed = {n: s.location for n, s in TABLES.items() if s.location}
+    placed |= {n: a.location for n, a in ARTIFACTS.items()}
+    assert not set(TABLES) & set(ARTIFACTS)
     for name, loc in placed.items():
-        spec = TABLES[name]
         assert not loc.startswith("/") and ".." not in loc, f"{name}: location must be root-relative"
         if loc.endswith(".parquet"):
-            assert not spec.partition_keys, f"{name}: a single-file location cannot have partitions"
+            assert not TABLES[name].partition_keys, f"{name}: a single-file location cannot have partitions"
         for other, oloc in placed.items():
             if other != name:
                 assert not (oloc + "/").startswith(loc.removesuffix(".parquet") + "/"), f"{name} and {other} overlap"
@@ -122,7 +123,7 @@ def test_every_operation_is_complete():
 
 
 def test_operation_tables_are_known():
-    known = set(TABLES) | set(PENDING) | set(OPS["external"])
+    known = set(TABLES) | set(ARTIFACTS) | set(PENDING) | set(OPS["external"])
     for op, entry in OPS["operations"].items():
         for t in entry["inputs"] + entry["outputs"]:
             assert t in known, f"{op}: unknown table or artifact {t}"

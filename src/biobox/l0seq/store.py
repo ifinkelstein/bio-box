@@ -4,10 +4,14 @@ Layout under `<root>/` (planning/data_layer_and_tests.md §2A.1, §3.1):
 
     l0/l0_manifest.parquet
     l0seq/store_params.json
-    l0seq/seq_chunks/stage=<S>/digest_prefix=<xx>/part-0.parquet
+    l0seq/seq_shards/stage=<S>/shard-<NNNN>.fa.gz   (+ .fa.gz.fai, .fa.gz.gzi)
     l0seq/contig_occurrence/stage=<S>/source=<name>/part-0.parquet
     l0seq/contig_index/stage=<S>/part-0.parquet
     l0seq/seq_locator.parquet
+
+Sequences are bgzip FASTA shards (DEC-17, after K-13): each stored byte sequence once,
+named by its `raw_digest` hex, records sorted by `raw_digest`, a shard closed once it
+holds `shard_bases` bases. samtools, pysam and MMseqs2 read the shards as they are.
 
 A stage never rewrites an earlier stage's files: a sequence already stored adds
 only occurrence rows. `seq_locator`, `l0_manifest` and `store_params.json` are
@@ -26,10 +30,13 @@ import pyarrow as pa
 import pyarrow.parquet as pq
 
 from biobox import fasta, ids, ledger
+from biobox.l0seq.bgzf import BgzfFasta, write_bgzf_fasta
 from biobox.registry.schemas import table
 
-CHUNK_SIZE = 65_536
-ROW_GROUP_CHUNKS = 16  # 1 MiB of sequence per row group; K-13 / LY-06 (2026-10-30): 1,024 decoded 36 MB per 1 kb slice
+STORE_FORMAT = "bgzf-fasta-1"
+SHARD_BASES = 2**30  # ~0.33 GB on disk at 0.31 bytes/bp: inside the 256 MB-1 GB band (LY-04)
+LINE_WIDTH = 80
+BGZF_LEVEL = 6
 
 _COMP = bytes.maketrans(b"ACGTRYKMBVDHNacgtrykmbvdhn", b"TGCAYRMKVBHDNtgcayrmkvbhdn")
 
@@ -49,11 +56,6 @@ class SourceObject:
     retrieved_at: datetime = field(default_factory=lambda: datetime(1970, 1, 1, tzinfo=timezone.utc))
 
 
-# Min/max statistics only on key columns: on the 64 KB `seq` strings they bloat the footer
-# (4.8 MB for one golden-set file with 4 KB chunks, K-13) and never prune anything.
-SEQ_CHUNK_STATS = ["raw_digest", "chunk_ix", "contig_len"]
-
-
 def _write(tbl: pa.Table, path: Path, row_group_size: int, statistics: list[str] | bool = True) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     pq.write_table(tbl, path, compression="zstd", row_group_size=row_group_size, write_statistics=statistics)
@@ -68,26 +70,28 @@ def _existing_index(root: Path) -> pa.Table | None:
     d = root / "l0seq" / "contig_index"
     if not d.exists():
         return None
-    return pa.concat_tables(pq.read_table(f) for f in sorted(d.glob("stage=*/part-0.parquet")))
+    # only the columns the store uses, so files from before an appended column still concatenate (LY-09)
+    cols = ["contig_uid", "raw_digest", "contig_len", "is_default_variant"]
+    return pa.concat_tables(pq.read_table(f, columns=cols) for f in sorted(d.glob("stage=*/part-0.parquet")))
 
 
 def ingest(
     objects: list[SourceObject],
     root: Path,
     stage: str,
-    chunk_size: int = CHUNK_SIZE,
-    row_group_chunks: int = ROW_GROUP_CHUNKS,
+    shard_bases: int = SHARD_BASES,
+    line_width: int = LINE_WIDTH,
 ) -> dict:
     """Ingest FASTA source objects for one stage. Returns counts for the ledger."""
     root = Path(root)
     params_path = root / "l0seq" / "store_params.json"
+    params = {"format": STORE_FORMAT, "shard_bases": shard_bases, "line_width": line_width, "bgzf_level": BGZF_LEVEL}
     if params_path.exists():
-        params = json.loads(params_path.read_text())
-        if params["chunk_size"] != chunk_size:
-            raise ValueError("chunk_size differs from the existing store")
+        if json.loads(params_path.read_text()) != params:
+            raise ValueError("store parameters differ from the existing store")
     else:
         params_path.parent.mkdir(parents=True, exist_ok=True)
-        params_path.write_text(json.dumps({"chunk_size": chunk_size}, sort_keys=True))
+        params_path.write_text(json.dumps(params, sort_keys=True))
 
     locator = _existing_locator(root)
     known = set(locator.column("raw_digest").to_pylist()) if locator is not None else set()
@@ -145,28 +149,21 @@ def ingest(
                 variants[(cu, rd)] = key
         ledger_rows.append(ledger.row(obj_sha, "l0_object", n_in, n_kept, n_in - n_kept))
 
-    # seq_chunks: one file per digest prefix, sorted by (raw_digest, chunk_ix)
-    by_prefix: dict[str, list[bytes]] = defaultdict(list)
-    for rd in new_seqs:
-        by_prefix[rd[:1].hex()].append(rd)
-    spec = table("seq_chunks")
+    # seq_shards: new sequences sorted by raw_digest, cut into shards of about shard_bases
+    groups: list[list[bytes]] = [[]]
+    held = 0
+    for rd in sorted(new_seqs):
+        n = len(new_seqs[rd])
+        if groups[-1] and held + n > shard_bases:
+            groups.append([])
+            held = 0
+        groups[-1].append(rd)
+        held += n
     new_loc = []
-    for prefix in sorted(by_prefix):
-        rows = {"raw_digest": [], "chunk_ix": [], "seq": [], "contig_len": []}
-        firsts = []
-        for rd in sorted(by_prefix[prefix]):
-            seq = new_seqs[rd]
-            firsts.append((rd, len(rows["raw_digest"])))
-            n = max(1, -(-len(seq) // chunk_size))
-            for ix in range(n):
-                rows["raw_digest"].append(rd)
-                rows["chunk_ix"].append(ix)
-                rows["seq"].append(seq[ix * chunk_size : (ix + 1) * chunk_size].decode("ascii"))
-                rows["contig_len"].append(len(seq))
-        rel = f"l0seq/seq_chunks/stage={stage}/digest_prefix={prefix}/part-0.parquet"
-        _write(pa.table(rows, schema=spec.schema), root / rel, row_group_chunks, SEQ_CHUNK_STATS)
-        for rd, first in firsts:
-            new_loc.append({"raw_digest": rd, "file": rel, "row_group": first // row_group_chunks, "first_chunk_row": first})
+    for i, group in enumerate(g for g in groups if g):
+        rel = f"l0seq/seq_shards/stage={stage}/shard-{i:04d}.fa.gz"
+        write_bgzf_fasta(((rd.hex(), new_seqs[rd]) for rd in group), root / rel, line_width, BGZF_LEVEL)
+        new_loc += [{"raw_digest": rd, "shard": rel, "contig_len": len(new_seqs[rd])} for rd in group]
 
     # contig_occurrence: partitioned by source, sorted by (object sha, ordinal)
     occ_spec = table("contig_occurrence")
@@ -186,7 +183,7 @@ def ingest(
             best[cu] = (key, rd)
     lengths = {rd: len(s) for rd, s in new_seqs.items()}
     if locator is not None:
-        lengths.update(_lengths_from_store(root, locator, set(rd for _, rd in variants) - set(lengths)))
+        lengths.update(zip(locator.column("raw_digest").to_pylist(), locator.column("contig_len").to_pylist()))
     idx_rows = [
         {
             "contig_uid": cu,
@@ -224,85 +221,53 @@ def ingest(
     return {"objects": len(objects), "records": len(occ_rows), "new_sequences": len(new_seqs), "index_rows": len(idx_rows)}
 
 
-def _lengths_from_store(root: Path, locator: pa.Table, digests: set[bytes]) -> dict[bytes, int]:
-    store = SeqStore(root)
-    return {rd: store.length_of(rd) for rd in digests}
-
-
 class SeqStore:
-    """Reader: slices by (contig_uid, start, end, strand), 0-based half-open."""
+    """Reader: slices by (contig_uid, start, end, strand), 0-based half-open.
 
-    def __init__(self, root: Path):
+    `seq_locator` maps a raw_digest to its shard; the shard's `.fai` and `.gzi` find the
+    blocks. `counters()` sums blocks decompressed and bytes read over all shards (LY-06).
+    """
+
+    def __init__(self, root: Path, cache_blocks: int = 64):
         self.root = Path(root)
-        self.chunk_size = json.loads((self.root / "l0seq/store_params.json").read_text())["chunk_size"]
-        loc = pq.read_table(self.root / "l0seq/seq_locator.parquet").to_pylist()
-        self._loc = {r["raw_digest"]: r for r in loc}
+        loc = pq.read_table(self.root / "l0seq/seq_locator.parquet")
+        self._loc: dict[bytes, tuple[str, int]] = dict(zip(
+            loc.column("raw_digest").to_pylist(),
+            zip(loc.column("shard").to_pylist(), loc.column("contig_len").to_pylist())))
         idx = _existing_index(self.root)
-        self._default: dict[bytes, bytes] = {}
-        self._len: dict[bytes, int] = {}
-        for r in idx.to_pylist():
-            self._len[r["raw_digest"]] = r["contig_len"]
-            if r["is_default_variant"]:
-                self._default[r["contig_uid"]] = r["raw_digest"]
-        self._files: dict[str, pq.ParquetFile] = {}
-        self._rg_cache: dict[tuple[str, int], list[str]] = {}  # small LRU of decoded row groups
+        self._default: dict[bytes, bytes] = {
+            r["contig_uid"]: r["raw_digest"] for r in idx.to_pylist() if r["is_default_variant"]}
+        self._cache_blocks = cache_blocks
+        self._shards: dict[str, BgzfFasta] = {}
 
-    _RG_CACHE_MAX = 64
+    def _shard(self, rel: str) -> BgzfFasta:
+        if rel not in self._shards:
+            self._shards[rel] = BgzfFasta(self.root / rel, cache_blocks=self._cache_blocks)
+        return self._shards[rel]
 
-    def _row_group_seqs(self, rel: str, rg: int) -> list[str]:
-        key = (rel, rg)
-        hit = self._rg_cache.pop(key, None)
-        if hit is None:
-            hit = self._file(rel).read_row_group(rg, columns=["seq"]).column(0).to_pylist()
-            if len(self._rg_cache) >= self._RG_CACHE_MAX:
-                self._rg_cache.pop(next(iter(self._rg_cache)))
-        self._rg_cache[key] = hit
-        return hit
+    def shard_of(self, rd: bytes) -> str:
+        return self._loc[rd][0]
 
-    def _file(self, rel: str) -> pq.ParquetFile:
-        if rel not in self._files:
-            self._files[rel] = pq.ParquetFile(self.root / rel)
-        return self._files[rel]
+    def counters(self) -> dict[str, int]:
+        s = self._shards.values()
+        return {"blocks_read": sum(b.blocks_read for b in s),
+                "compressed_bytes_read": sum(b.compressed_bytes_read for b in s),
+                "uncompressed_bytes_decoded": sum(b.uncompressed_bytes_decoded for b in s)}
+
+    def close(self) -> None:
+        for b in self._shards.values():
+            b.close()
 
     def length_of(self, rd: bytes) -> int:
-        if rd in self._len:
-            return self._len[rd]
-        loc = self._loc[rd]
-        pf = self._file(loc["file"])
-        rg = pf.read_row_group(loc["row_group"], columns=["contig_len"])
-        return rg.column(0)[loc["first_chunk_row"] - self._rg_start(pf, loc["row_group"])].as_py()
-
-    @staticmethod
-    def _rg_start(pf: pq.ParquetFile, rg: int) -> int:
-        return sum(pf.metadata.row_group(i).num_rows for i in range(rg))
+        return self._loc[rd][1]
 
     def raw(self, rd: bytes, start: int = 0, end: int | None = None) -> bytes:
         """Forward-strand bytes of one stored variant."""
-        loc = self._loc[rd]
-        length = self.length_of(rd)
+        rel, length = self._loc[rd]
         end = length if end is None else end
         if not 0 <= start <= end <= length:
             raise ValueError(f"slice {start}:{end} outside 0:{length}")
-        if start == end:
-            return b""
-        cs = self.chunk_size
-        first_ix, last_ix = start // cs, (end - 1) // cs
-        pf = self._file(loc["file"])
-        rows_wanted = range(loc["first_chunk_row"] + first_ix, loc["first_chunk_row"] + last_ix + 1)
-        parts: list[str] = []
-        offset = 0
-        for rg in range(pf.metadata.num_row_groups):
-            n = pf.metadata.row_group(rg).num_rows
-            lo, hi = offset, offset + n
-            offset = hi
-            if hi <= rows_wanted.start or lo >= rows_wanted.stop:
-                continue
-            seqs = self._row_group_seqs(loc["file"], rg)
-            for row in range(max(lo, rows_wanted.start), min(hi, rows_wanted.stop)):
-                parts.append(seqs[row - lo])
-        joined = "".join(parts).encode("ascii")
-        base = first_ix * cs
-        return joined[start - base : end - base]
+        return self._shard(rel).fetch(rd.hex(), start, end)
 
     def get(
         self, contig_uid: bytes, start: int = 0, end: int | None = None, strand: int = 1, circular: bool = False

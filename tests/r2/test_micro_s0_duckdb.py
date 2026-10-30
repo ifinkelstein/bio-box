@@ -3,9 +3,10 @@
 These are the micro-scale forms. The pod forms (K-02 at 150 GB inside the 200 GB scope,
 K-04 CPU tracking at 8/20/40 threads, K-10 NFS vs local) run in ring R4 on wilkcomp02.
 
-LY-06 counts storage units, not time: row groups scanned and files read per canonical
-query, from DuckDB's profiler (`catalog.profile_query`), against the count expected from
-the Parquet min/max statistics.
+LY-06 counts storage units, not time: for Parquet, row groups scanned and files read per
+canonical query, from DuckDB's profiler (`catalog.profile_query`), against the count
+expected from the min/max statistics; for sequence, BGZF blocks decompressed by
+`bb_seq_raw`, against the blocks the `.fai`/`.gzi` say the slice spans.
 """
 
 from __future__ import annotations
@@ -26,7 +27,7 @@ import pytest
 import yaml
 
 from biobox import catalog, fasta, ids
-from biobox.l0seq import SourceObject, ingest
+from biobox.l0seq import SeqStore, SourceObject, ingest
 from biobox.l1.genecall import GENE_CALL_VERSION, GenomeInput, run as call_genes
 
 pytestmark = pytest.mark.r2
@@ -34,7 +35,7 @@ pytestmark = pytest.mark.r2
 REPO = Path(__file__).resolve().parents[2]
 FIX = REPO / "tests" / "fixtures" / "micro_s0"
 CONTRACT = yaml.safe_load((FIX / "sources.yaml").read_text())
-CHUNK, RG_CHUNKS = 4096, 16
+SHARD_BASES = 200_000
 
 
 def _obj(o):
@@ -48,8 +49,8 @@ def built(tmp_path_factory):
     objs = CONTRACT["objects"]
     s0 = [o for o in objs if o["accession"] != "NC_000866.4"]
     s1 = [o for o in objs if o["accession"] == "NC_000866.4"]
-    ingest([_obj(o) for o in s0], root, "S0", chunk_size=CHUNK, row_group_chunks=RG_CHUNKS)
-    ingest([_obj(o) for o in s1], root, "S1", chunk_size=CHUNK, row_group_chunks=RG_CHUNKS)
+    ingest([_obj(o) for o in s0], root, "S0", shard_bases=SHARD_BASES)
+    ingest([_obj(o) for o in s1], root, "S1", shard_bases=SHARD_BASES)
     for stage, group in (("S0", s0), ("S1", s1)):
         genomes = []
         for o in group:
@@ -75,39 +76,38 @@ def _seq_scan(prof: dict, table_dir: str) -> dict:
     return scans[0]
 
 
-def _expected_row_groups(root: Path, man: dict, rd: bytes, first_ix: int, last_ix: int) -> int:
-    """Row groups whose (raw_digest, chunk_ix) min/max range overlaps the wanted chunks."""
-    n = 0
-    for f in man["files"]:
-        if f["table"] != "seq_chunks" or f["partitions"]["digest_prefix"] != rd[:1].hex():
-            continue
-        md = pq.ParquetFile(root / f["path"]).metadata
-        for rg in range(md.num_row_groups):
-            d, c = md.row_group(rg).column(0).statistics, md.row_group(rg).column(1).statistics
-            lo, hi = (bytes(d.min), c.min), (bytes(d.max), c.max)
-            if lo <= (rd, last_ix) and (rd, first_ix) <= hi:
-                n += 1
-    return n
+def _edge(root: Path, rd: bytes, k: int) -> int:
+    """Sequence position of the k-th BGZF block boundary inside the record."""
+    store = SeqStore(root)
+    bg = store._shard(store.shard_of(rd))
+    e = bg.fai[rd.hex()]
+    rel = [u - e.offset for u in bg._ustart if u > e.offset][k]
+    return rel - rel // e.line_width
 
 
-# --- LY-06 / K-06: canonical point queries --------------------------------------------
-
-
-@pytest.mark.parametrize("start,end", [
-    (300_000, 301_000),                                   # inside one chunk
-    (CHUNK * RG_CHUNKS * 3 - 10, CHUNK * RG_CHUNKS * 3 + 10),  # across a row-group boundary
-    (0, 1),
-    (580_000, 580_076),                                   # last chunk
-])
-def test_ly06_slice_reads_one_file_and_only_the_row_groups_it_needs(built, con, start, end):
-    root, man, _ = built
+@pytest.mark.covers("LY-06", "K-06")
+@pytest.mark.parametrize("where", ["inside a block", "across a block boundary", "first base", "last bases"])
+def test_ly06_slice_reads_one_shard_and_only_the_blocks_it_needs(built, where):
+    root, man, cat = built
     seq = fasta.read(FIX / "NC_000908.2.fna.gz")[0].seq
     cu, rd = ids.contig_uid(seq), ids.raw_digest(seq)
-    prof = catalog.profile_query(con, "SELECT seq_get(?, ?, ?, 1)", [cu, start, end])
-    assert prof["result"][0][0].encode() == seq[start:end]
-    scan = _seq_scan(prof, "/seq_chunks/")
-    assert scan["files_read"] == 1  # digest_prefix pruning (K-05)
-    assert scan["row_groups_scanned"] == _expected_row_groups(root, man, rd, start // CHUNK, (end - 1) // CHUNK)
+    edge = _edge(root, rd, 3)
+    start, end = {"inside a block": (edge + 1_000, edge + 2_000), "across a block boundary": (edge - 10, edge + 10),
+                  "first base": (0, 1), "last bases": (len(seq) - 76, len(seq))}[where]
+    c = catalog.open_catalog(cat, cache_blocks=0)  # count every block decompressed
+    try:
+        prof = catalog.profile_query(c, "SELECT seq_get(?, ?, ?, 1)", [cu, start, end])
+        reader = catalog.seq_reader(c)
+        assert prof["result"][0][0].encode() == seq[start:end]
+        want = reader._shard(reader.shard_of(rd)).units_for(rd.hex(), start, end)
+        assert want == (2 if where == "across a block boundary" else 1)
+        assert prof["bgzf"]["blocks_read"] == want
+        assert list(reader._shards) == [reader.shard_of(rd)]  # one shard opened
+        assert prof["bgzf"]["compressed_bytes_read"] < 70_000 * want
+        # the Parquet side is metadata lookups only: one locator file, one index row group
+        assert all(not any("/seq_shards/" in f for f in s["files"]) for s in prof["scans"])
+    finally:
+        c.close()
 
 
 def test_ly06_protein_lookup_reads_one_protein_file(built, con):
@@ -137,12 +137,12 @@ def test_ly06_reverse_lookup_reads_one_row_group_per_file(built, con):
 
 def test_k05_stage_filter_reads_only_that_stage(built, con):
     _, man, _ = built
-    s1 = [f for f in man["files"] if f["table"] == "seq_chunks" and f["partitions"]["stage"] == "S1"]
-    allf = [f for f in man["files"] if f["table"] == "seq_chunks"]
+    s1 = [f for f in man["files"] if f["table"] == "contig_occurrence" and f["partitions"]["stage"] == "S1"]
+    allf = [f for f in man["files"] if f["table"] == "contig_occurrence"]
     assert 0 < len(s1) < len(allf)
-    prof = catalog.profile_query(con, "SELECT count(chunk_ix) FROM seq_chunks WHERE stage = 'S1'")
+    prof = catalog.profile_query(con, "SELECT count(record_ordinal) FROM contig_occurrence WHERE stage = 'S1'")
     assert prof["result"][0][0] == sum(f["rows"] for f in s1)
-    assert _seq_scan(prof, "/seq_chunks/")["files_read"] == len(s1)
+    assert _seq_scan(prof, "/contig_occurrence/")["files_read"] == len(s1)
 
 
 def test_k05_gene_call_version_and_stage_filter(built, con):

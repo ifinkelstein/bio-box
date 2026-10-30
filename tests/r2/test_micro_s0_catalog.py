@@ -2,8 +2,9 @@
 
 Covers LY-05 (partition paths and derived partition values), LY-07 (DuckDB, pyarrow and
 polars read identical rows from every table), LY-10 (explicit file lists, sha256 per file,
-strays refused), C-01 (schema drift refused at manifest time), R-03 (the DuckDB macros
-return the same bytes as the Python path, both strands, chunk edges, origin wrap), MR-01
+strays refused, shards with their indexes), C-01 (schema drift refused at manifest time),
+R-03 (the DuckDB macros return the same bytes as the Python path, both strands, BGZF block
+and shard edges, origin wrap), MR-01
 (manifest hash independent of input order and of the data root) and the atomic swap of
 `current.json` (data_layer_and_tests.md §3.3).
 """
@@ -30,13 +31,13 @@ pytestmark = pytest.mark.r2
 
 FIX = Path(__file__).resolve().parents[1] / "fixtures" / "micro_s0"
 CONTRACT = yaml.safe_load((FIX / "sources.yaml").read_text())
-CHUNK = 4096
+SHARD_BASES = 200_000  # the micro set spans several shards
 
 
 def _build(root: Path, order=1) -> Path:
     objs = CONTRACT["objects"][::order]
     ingest([SourceObject(FIX / o["file"], CONTRACT["source_name"], CONTRACT["source_release"], CONTRACT["license"], True)
-            for o in objs], root, "S0", chunk_size=CHUNK, row_group_chunks=16)
+            for o in objs], root, "S0", shard_bases=SHARD_BASES)
     genomes = []
     for o in objs:
         cu = ids.contig_uid(fasta.read(FIX / o["file"])[0].seq)
@@ -82,7 +83,13 @@ def test_manifest_lists_every_parquet_file_and_verifies(built):
     assert catalog.verify_manifest(man) == []
     for f in man["files"]:
         assert f["rows"] == pq.ParquetFile(root / f["path"]).metadata.num_rows
-    assert {f["table"] for f in man["files"]} >= {"seq_chunks", "contig_index", "protein_seq", "slot_protein", "protein_occurrence"}
+    assert {f["table"] for f in man["files"]} >= {"seq_locator", "contig_index", "protein_seq", "slot_protein", "protein_occurrence"}
+    shard_files = sorted(p.relative_to(root).as_posix() for p in (root / "l0seq/seq_shards").rglob("*") if p.is_file())
+    assert [a["path"] for a in man["artifacts"]] == shard_files
+    assert len(shard_files) == 3 * len([a for a in shard_files if a.endswith(".fa.gz")]) > 3
+    from biobox import contracts
+
+    assert contracts.check_shards(man) == []  # order across several shards (LY-02)
 
 
 @pytest.mark.covers("LY-10")
@@ -95,32 +102,41 @@ def test_verify_detects_tampering_and_strays(built, tmp_path):
     data[-20] ^= 0xFF
     (copy / f["path"]).write_bytes(bytes(data))
     shutil.copy(copy / f["path"], copy / "l0seq/stray.parquet")
+    shard = next(a for a in man["artifacts"] if a["path"].endswith(".fa.gz"))
+    data = bytearray((copy / shard["path"]).read_bytes())
+    data[100] ^= 0xFF
+    (copy / shard["path"]).write_bytes(bytes(data))
+    extra = shard["path"].replace("shard-0000", "shard-0099")
+    shutil.copy(copy / shard["path"], copy / extra)
     problems = catalog.verify_manifest(man, copy)
     assert f"sha256 differs: {f['path']}" in problems
     assert "not in manifest: l0seq/stray.parquet" in problems
+    assert f"sha256 differs: {shard['path']}" in problems
+    assert f"not in manifest: {extra}" in problems
 
 
 @pytest.mark.covers("C-01", "LY-05", "LY-10")
 def test_stray_wrong_partition_and_schema_drift_are_refused(built, tmp_path):
     root, man, _ = built
-    chunk = next(x for x in man["files"] if x["table"] == "seq_chunks")
+    occ = next(x for x in man["files"] if x["table"] == "contig_occurrence")
     cases = {
         "stray": "l9/unknown/part-0.parquet",
-        "missing partition": "l0seq/seq_chunks/stage=S0/part-0.parquet",
-        "partition order": f"l0seq/seq_chunks/digest_prefix={chunk['partitions']['digest_prefix']}/stage=S0/part-0.parquet",
+        "missing partition": "l0seq/contig_occurrence/stage=S0/part-0.parquet",
+        "partition order": f"l0seq/contig_occurrence/source={occ['partitions']['source']}/stage=S0/part-0.parquet",
     }
     for why, rel in cases.items():
         d = tmp_path / why.replace(" ", "_")
         (d / rel).parent.mkdir(parents=True)
-        shutil.copy(root / chunk["path"], d / rel)
+        shutil.copy(root / occ["path"], d / rel)
         with pytest.raises(catalog.LayoutError):
             catalog.build_manifest(d, "x")
-    # a seq_chunks file under the wrong digest_prefix (LY-05)
+    # a protein_seq file under the wrong protein_prefix (LY-05)
+    prot = next(x for x in man["files"] if x["table"] == "protein_seq")
     d = tmp_path / "prefix"
-    wrong = "ff" if chunk["partitions"]["digest_prefix"] != "ff" else "00"
-    rel = f"l0seq/seq_chunks/stage=S0/digest_prefix={wrong}/part-0.parquet"
+    have = prot["partitions"]["protein_prefix"]
+    rel = prot["path"].replace(f"protein_prefix={have}", f"protein_prefix={'ff' if have != 'ff' else '00'}")
     (d / rel).parent.mkdir(parents=True)
-    shutil.copy(root / chunk["path"], d / rel)
+    shutil.copy(root / prot["path"], d / rel)
     with pytest.raises(catalog.LayoutError, match="LY-05"):
         catalog.build_manifest(d, "x")
     # a file whose schema is not the registered one (C-01)
@@ -141,6 +157,27 @@ def test_mr01_manifest_hash_ignores_input_order_and_root(built, tmp_path):
     assert catalog.manifest_hash(m2) == catalog.manifest_hash(man)
 
 
+@pytest.mark.covers("LY-05", "LY-10")
+@pytest.mark.parametrize("case", ["no gzi", "orphan fai", "misnamed", "no stage", "parquet in shards"])
+def test_bad_shard_layouts_are_refused(built, tmp_path, case):
+    root, man, _ = built
+    shard = next(a["path"] for a in man["artifacts"] if a["path"].endswith(".fa.gz"))
+    d = tmp_path / "s"
+    shutil.copytree(root / "l0seq/seq_shards", d / "l0seq/seq_shards")
+    if case == "no gzi":
+        (d / (shard + ".gzi")).unlink()
+    elif case == "orphan fai":
+        (d / shard).unlink()
+    elif case == "misnamed":
+        shutil.copy(d / shard, d / shard.replace("shard-0000", "contigs"))
+    elif case == "no stage":
+        shutil.copy(d / shard, d / "l0seq/seq_shards/shard-0000.fa.gz")
+    else:
+        shutil.copy(root / man["files"][0]["path"], d / "l0seq/seq_shards/stage=S0/part-0.parquet")
+    with pytest.raises(catalog.LayoutError):
+        catalog.build_manifest(d, "x")
+
+
 # --- catalog views (LY-10, LY-07) ---------------------------------------------------
 
 
@@ -155,6 +192,7 @@ def test_views_use_explicit_file_lists(built, con):
     for f in man["files"]:
         assert f"/{f['path']}'" in views[f["table"]]
     assert len(listed) == con.execute("SELECT count(*) FROM catalog_files").fetchone()[0]
+    assert len(man["artifacts"]) == con.execute("SELECT count(*) FROM catalog_artifacts").fetchall()[0][0]
     info = dict(con.execute("SELECT * FROM catalog_info").fetchall())
     assert info["manifest_hash"] == catalog.manifest_hash(man)
     assert info["duckdb_version"] == duckdb.__version__
@@ -205,24 +243,39 @@ def test_catalog_is_read_only(con):
 
 @pytest.mark.covers("LY-05")
 def test_partition_columns_come_from_paths(con):
-    stages = {r[0] for r in con.execute("SELECT DISTINCT stage FROM seq_chunks").fetchall()}
+    stages = {r[0] for r in con.execute("SELECT DISTINCT stage FROM contig_index").fetchall()}
     assert stages == {"S0"}
-    bad = con.execute("SELECT count(*) FROM seq_chunks WHERE digest_prefix <> lower(hex(raw_digest[1:1]))").fetchone()[0]
+    bad = con.execute("SELECT count(*) FROM protein_seq WHERE protein_prefix <> lower(hex(protein_uid[1:1]))").fetchall()[0][0]
     assert bad == 0
 
 
 # --- macros vs the Python path (R-03) ------------------------------------------------
 
 
+def _block_edges(store: SeqStore, rd: bytes) -> list[int]:
+    """Sequence positions where one BGZF block of the record's shard ends and the next begins."""
+    bg = store._shard(store.shard_of(rd))
+    e = bg.fai[rd.hex()]
+    out = []
+    for u in bg._ustart[1:]:
+        rel = u - e.offset
+        if 0 < rel < e.byte_of(e.length - 1) - e.offset:
+            out.append(rel - rel // e.line_width)  # newlines before the edge are not bases
+    return out
+
+
 def test_r03_macros_equal_python_path(built, con):
     root, _, _ = built
     store = SeqStore(root)
     rng = random.Random(20261030)
+    n_edges = 0
     for cu, seq, _ in _contigs():
         n = len(seq)
-        cases = [(0, n), (0, 0), (n, n), (0, 1), (n - 1, n), (CHUNK - 1, CHUNK + 1), (CHUNK, 2 * CHUNK),
-                 (CHUNK * 16 - 5, CHUNK * 16 + 5)]
-        cases = [c for c in cases if c[1] <= n]  # the row-group edge case needs a contig > 64 kb
+        edges = _block_edges(store, ids.raw_digest(seq))
+        n_edges += len(edges)
+        cases = [(0, n), (0, 0), (n, n), (0, 1), (n - 1, n)]
+        cases += [(max(0, p - k), min(n, p + k)) for p in edges for k in (1, 81)]
+        cases += [(p, p) for p in edges]
         cases += [tuple(sorted(rng.randrange(0, n + 1) for _ in range(2))) for _ in range(60)]
         for a, b in cases:
             for strand in (1, -1):
@@ -230,6 +283,7 @@ def test_r03_macros_equal_python_path(built, con):
                 assert got.encode() == store.get(cu, a, b, strand), (a, b, strand)
                 want = seq[a:b] if strand == 1 else revcomp(seq[a:b])
                 assert got.encode() == want
+    assert n_edges > 5
 
 
 def test_r03_origin_wrap_on_circular_contig(built, con):
@@ -256,7 +310,7 @@ def test_mr14_macro_reads_only_the_default_variant(tmp_path):
     root = tmp_path / "s"
     ingest([SourceObject(lam_path, CONTRACT["source_name"], CONTRACT["source_release"], CONTRACT["license"], True),
             SourceObject(mpath, "other_source", "1", "INSDC (public)", True, precedence=200)],
-           root, "S0", chunk_size=CHUNK, row_group_chunks=16)
+           root, "S0", shard_bases=SHARD_BASES)
     cat = catalog.generate_catalog(catalog.build_manifest(root, "x"), tmp_path / "c.duckdb")
     c = catalog.open_catalog(cat)
     cu = ids.contig_uid(lam.seq)
@@ -270,6 +324,33 @@ def test_macro_rejects_bad_slices(con, args):
     cu = _contigs()[0][0]
     with pytest.raises(duckdb.Error):
         con.execute("SELECT seq_get(?, ?, ?, ?)", [cu, *args]).fetchone()
+
+
+def test_sequence_macros_need_open_catalog(built):
+    _, _, cat = built
+    plain = duckdb.connect(str(cat), read_only=True)
+    cu = _contigs()[0][0]
+    with pytest.raises(duckdb.Error, match="bb_seq_raw"):
+        plain.execute("SELECT seq_get(?, 0, 10, 1)", [cu]).fetchall()
+    assert plain.execute("SELECT contig_len_of(?)", [cu]).fetchall()[0][0] == len(_contigs()[0][1])
+    plain.close()
+
+
+def test_open_catalog_on_another_root(built, tmp_path):
+    # the views name the build root's Parquet files; `root` moves only the shard reader
+    root, man, cat = built
+    moved = tmp_path / "moved"
+    shutil.copytree(root / "l0seq", moved / "l0seq")
+    cu, seq, _ = _contigs()[0]
+    c = catalog.open_catalog(cat, root=moved)
+    assert catalog.seq_reader(c).root == moved
+    assert c.execute("SELECT seq_get(?, 5, 50, 1)", [cu]).fetchall()[0][0].encode() == seq[5:50]
+    c.close()
+    shutil.rmtree(moved / "l0seq/seq_shards")
+    c = catalog.open_catalog(cat, root=moved)
+    with pytest.raises(duckdb.Error, match="No such file"):
+        c.execute("SELECT seq_get(?, 0, 10, 1)", [cu]).fetchall()
+    c.close()
 
 
 def test_unknown_contig_raises(con):
@@ -313,10 +394,10 @@ def test_regenerating_the_catalog_replaces_it_whole(built, tmp_path):
     out = tmp_path / "c.duckdb"
     catalog.generate_catalog(man, out)
     first = catalog.open_catalog(out)
-    n = first.execute("SELECT count(*) FROM seq_chunks").fetchone()[0]
+    n = first.execute("SELECT count(*) FROM contig_index").fetchall()[0][0]
     catalog.generate_catalog({**man, "release_id": "rS0.next"}, out)
     # an open reader keeps its snapshot; a new connection sees the new catalog
-    assert first.execute("SELECT count(*) FROM seq_chunks").fetchone()[0] == n
+    assert first.execute("SELECT count(*) FROM contig_index").fetchall()[0][0] == n
     first.close()
     second = catalog.open_catalog(out)
     assert dict(second.execute("SELECT * FROM catalog_info").fetchall())["release_id"] == "rS0.next"

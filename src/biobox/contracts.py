@@ -2,12 +2,13 @@
 
 Each check returns a list of problems; an empty list passes.
 
-    LY-02  declared sort order holds within each file
+    LY-02  declared sort order holds within each file (and across a stage's shards)
     LY-03  min/max statistics on every sort-key column in every row group
     LY-04  no file under 64 MB outside the waivers, unless it is its table's only file in the stage
-    C-03   foreign keys resolve (SQL anti-joins over the catalog)
+    C-03   foreign keys resolve (SQL anti-joins over the catalog); `check_shards`: seq_locator and
+           the shards' `.fai` agree record for record, and each `.gzi` lists the shard's blocks
     C-05   coordinate bounds, including origin wrap on circular contigs
-    R-06   lineage: every chunk, slot and occurrence reaches an L0 object; no orphan chunks
+    R-06   lineage: every stored sequence, slot and occurrence reaches an L0 object
     R-09   append-only: a later release keeps every earlier stage file byte-identical
     D-01/02/04  `content_hashes`: an order-independent hash of every table's rows
 """
@@ -20,7 +21,8 @@ from pathlib import Path
 import duckdb
 import pyarrow.parquet as pq
 
-from biobox.registry.schemas import TABLES
+from biobox.l0seq.bgzf import block_starts, read_fai, read_gzi
+from biobox.registry.schemas import ARTIFACTS, TABLES
 
 NFS_MIN_BYTES = 64 * 2**20
 
@@ -67,7 +69,8 @@ def check_statistics(manifest: dict) -> list[str]:
 
 
 def check_file_sizes(manifest: dict, min_bytes: int = NFS_MIN_BYTES) -> list[str]:
-    """LY-04. Waived: registry `small_ok` tables. A table whose stage fits in one small file may be one file."""
+    """LY-04. Waived: registry `small_ok` tables and shard indexes. A table whose stage fits in one
+    small file may be one file."""
     problems = []
     groups: dict[tuple, list[dict]] = {}
     for f in manifest["files"]:
@@ -76,6 +79,10 @@ def check_file_sizes(manifest: dict, min_bytes: int = NFS_MIN_BYTES) -> list[str
             continue
         stage = f["partitions"].get("stage") or f["partitions"].get("release") or ""
         groups.setdefault((f["table"], stage), []).append(f)
+    for a in manifest.get("artifacts", []):
+        if any(a["path"].endswith(c) for c in ARTIFACTS[a["artifact"]].companions):
+            continue
+        groups.setdefault((a["artifact"], a["partitions"].get("stage", "")), []).append(a)
     for (name, stage), files in sorted(groups.items()):
         small = [f for f in files if f["bytes"] < min_bytes]
         if small and len(files) > 1:
@@ -87,10 +94,9 @@ def check_file_sizes(manifest: dict, min_bytes: int = NFS_MIN_BYTES) -> list[str
 
 # Foreign keys that exist at S0 (C-03): (child, child cols, parent, parent cols)
 FOREIGN_KEYS = [
-    ("contig_occurrence", ("raw_digest",), "seq_chunks", ("raw_digest",)),
+    ("contig_occurrence", ("raw_digest",), "seq_locator", ("raw_digest",)),
     ("contig_occurrence", ("l0_object_sha256",), "l0_manifest", ("object_sha256",)),
-    ("contig_index", ("raw_digest",), "seq_chunks", ("raw_digest",)),
-    ("seq_locator", ("raw_digest",), "seq_chunks", ("raw_digest",)),
+    ("contig_index", ("raw_digest",), "seq_locator", ("raw_digest",)),
     ("slot_protein", ("contig_uid",), "contig_index", ("contig_uid",)),
     ("slot_protein", ("protein_uid", "gene_call_version"), "protein_seq", ("protein_uid", "gene_call_version")),
     ("protein_occurrence", ("contig_uid", "slot_ordinal", "gene_call_version"),
@@ -115,6 +121,51 @@ def check_foreign_keys(con: duckdb.DuckDBPyConnection) -> list[str]:
         n = con.execute(f"SELECT count(*) FROM {child} c ANTI JOIN {parent} p ON {on}").fetchall()[0][0]
         if n:
             problems.append(f"{child}{ccols} -> {parent}{pcols}: {n} unresolved rows")
+    return problems
+
+
+def check_shards(manifest: dict) -> list[str]:
+    """C-03 for the shards, and LY-02 across them.
+
+    Every seq_locator row names a shard of the manifest whose `.fai` has a record
+    `raw_digest.hex()` of the same length, and every `.fai` record is a locator row for that
+    shard. Records are sorted by name within a shard and across a stage's shards. Each `.gzi`
+    lists exactly the block starts found by walking the block headers.
+    """
+    root = Path(manifest["root"])
+    problems = []
+    shards = sorted(a["path"] for a in manifest.get("artifacts", [])
+                    if a["artifact"] == "seq_shards" and a["path"].endswith(".fa.gz"))
+    loc_files = [f for f in manifest["files"] if f["table"] == "seq_locator"]
+    locator: dict[str, int] = {}
+    by_shard: dict[str, dict[str, int]] = {}
+    for f in loc_files:
+        t = pq.read_table(root / f["path"])
+        for rd, shard, n in zip(*(t.column(c).to_pylist() for c in ("raw_digest", "shard", "contig_len"))):
+            by_shard.setdefault(shard, {})[rd.hex()] = n
+            locator[rd.hex()] = n
+    for shard in sorted(set(by_shard) - set(shards)):
+        problems.append(f"seq_locator names {shard}, which is not in the manifest ({len(by_shard[shard])} rows)")
+    last_by_stage: dict[str, str] = {}
+    for shard in shards:
+        fai = read_fai(root / (shard + ".fai"))
+        names = [e.name for e in fai]
+        if names != sorted(names):
+            problems.append(f"{shard}: records not sorted by raw_digest (LY-02)")
+        stage = shard.split("/")[-2]
+        if names and last_by_stage.get(stage, "") >= names[0]:
+            problems.append(f"{shard}: first record sorts before the previous shard's last (LY-02)")
+        if names:
+            last_by_stage[stage] = names[-1]
+        want = by_shard.get(shard, {})
+        got = {e.name: e.length for e in fai}
+        if got != want:
+            extra, missing = set(got) - set(want), set(want) - set(got)
+            wrong = {k for k in set(got) & set(want) if got[k] != want[k]}
+            problems.append(f"{shard}: .fai vs seq_locator: {len(extra)} unlisted, {len(missing)} missing, "
+                            f"{len(wrong)} lengths differ")
+        if read_gzi(root / (shard + ".gzi")) != block_starts(root / shard)[1:]:
+            problems.append(f"{shard}: .gzi does not list the shard's blocks")
     return problems
 
 
@@ -160,11 +211,11 @@ def check_coordinates(con: duckdb.DuckDBPyConnection) -> list[str]:
 
 
 def check_lineage(con: duckdb.DuckDBPyConnection) -> list[str]:
-    """R-06: no orphan chunks; every slot's contig has an occurrence row; every occurrence an L0 object."""
+    """R-06: no orphan sequence; every slot's contig has an occurrence row; every occurrence an L0 object."""
     problems = []
     checks = {
-        "seq_chunks without an occurrence":
-            "SELECT count(DISTINCT raw_digest) FROM seq_chunks s ANTI JOIN contig_occurrence o USING (raw_digest)",
+        "stored sequences without an occurrence":
+            "SELECT count(*) FROM seq_locator s ANTI JOIN contig_occurrence o USING (raw_digest)",
         "slots whose contig has no occurrence":
             "SELECT count(*) FROM slot_protein s ANTI JOIN contig_occurrence o USING (contig_uid)",
         "occurrences without an L0 object":
@@ -178,11 +229,11 @@ def check_lineage(con: duckdb.DuckDBPyConnection) -> list[str]:
 
 
 def check_append_only(before: dict, after: dict) -> list[str]:
-    """R-09: every non-metadata file of the earlier manifest is in the later one with the same sha256."""
-    later = {f["path"]: f["sha256"] for f in after["files"]}
+    """R-09: every non-metadata file and artifact of the earlier manifest is in the later one with the same sha256."""
+    later = {f["path"]: f["sha256"] for f in after["files"] + after.get("artifacts", [])}
     problems = []
-    for f in before["files"]:
-        if TABLES[f["table"]].small_ok:
+    for f in before["files"] + before.get("artifacts", []):
+        if "table" in f and TABLES[f["table"]].small_ok:
             continue  # small metadata files (seq_locator, l0_manifest) are rewritten per stage by design
         if later.get(f["path"]) != f["sha256"]:
             problems.append(f"{f['path']}: {'removed' if f['path'] not in later else 'rewritten'}")
@@ -193,6 +244,7 @@ def content_hashes(manifest: dict) -> dict[str, str]:
     """D-01/D-02/D-04: per table, sha256 over the sorted per-row hashes (partition values included).
 
     Independent of file layout, row order and thread count; equal hashes mean equal row multisets.
+    Artifacts are hashed by (path, sha256): shard bytes depend only on the set of sequences.
     """
     root = Path(manifest["root"])
     per: dict[str, list[bytes]] = {}
@@ -203,4 +255,6 @@ def content_hashes(manifest: dict) -> dict[str, str]:
         rows = per.setdefault(f["table"], [])
         for r in zip(*cols):
             rows.append(hashlib.sha256(part + repr(r).encode()).digest())
+    for a in manifest.get("artifacts", []):
+        per.setdefault(a["artifact"], []).append(hashlib.sha256(f"{a['path']}\t{a['sha256']}".encode()).digest())
     return {name: hashlib.sha256(b"".join(sorted(rows))).hexdigest() for name, rows in sorted(per.items())}

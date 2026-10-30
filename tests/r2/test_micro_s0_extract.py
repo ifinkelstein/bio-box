@@ -1,6 +1,7 @@
-"""Ring R2: O-EXTRACT (bgzip FASTA + .fai + .gzi) on micro-S0.
+"""Ring R2: O-EXTRACT (bgzip FASTA + .fai + .gzi) and the store's own shards on micro-S0.
 
-Covers R-07 (extract round trip: re-ingested digests equal, samtools accepts the indexes),
+Covers R-07 (extract round trip: re-ingested digests equal, samtools accepts the indexes of
+an export and of every store shard),
 R-03 against `samtools faidx` (with `-i` for minus strand) where samtools is on PATH,
 LY-08 (byte-identical rewrite), and the block counting used by K-13.
 """
@@ -34,7 +35,7 @@ def _seqs():
 def exported(tmp_path_factory):
     d = tmp_path_factory.mktemp("extract")
     root = d / "store"
-    ingest([SourceObject(FIX / o["file"], "s", "1") for o in CONTRACT["objects"]], root, "S0", chunk_size=4096, row_group_chunks=16)
+    ingest([SourceObject(FIX / o["file"], "s", "1") for o in CONTRACT["objects"]], root, "S0", shard_bases=200_000)
     store = SeqStore(root)
     contigs = [ids.contig_uid(s) for s in _seqs()]
     out = d / "out.fa.gz"
@@ -104,3 +105,21 @@ def test_r03_slices_equal_samtools_faidx_both_strands(exported):
                 assert got == want, (reg, strand)
                 if strand == -1:
                     assert got == revcomp(store.get(cu, a, b))
+
+
+@pytest.mark.skipif(SAMTOOLS is None, reason="samtools not on PATH")
+@pytest.mark.covers("R-07", "R-03")
+def test_store_shards_are_what_samtools_would_write(exported, tmp_path):
+    d, store, contigs, _, _ = exported
+    shards = sorted((d / "store/l0seq/seq_shards").rglob("shard-*.fa.gz"))
+    assert len(shards) > 1
+    for shard in shards:
+        copy = tmp_path / shard.name
+        shutil.copy(shard, copy)
+        subprocess.run([SAMTOOLS, "faidx", str(copy)], check=True)
+        for suffix in (".fai", ".gzi"):
+            assert Path(str(copy) + suffix).read_bytes() == Path(str(shard) + suffix).read_bytes(), (shard.name, suffix)
+    rd = ids.raw_digest(_seqs()[2])
+    res = subprocess.run([SAMTOOLS, "faidx", str(d / "store" / store.shard_of(rd)), f"{rd.hex()}:1001-2000"],
+                         check=True, capture_output=True)
+    assert b"".join(res.stdout.splitlines()[1:]) == store.raw(rd, 1000, 2000)

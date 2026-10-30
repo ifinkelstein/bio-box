@@ -148,7 +148,7 @@ Each card lists six things:
   - ID scheme: blake3 content UIDs + dense per-release IDs + `id_history`.
   - Schema v1, including the corrected badge layout, int32 `delta_bp` and namespaced token IDs.
   - Enum registry mapped to Sequence Ontology terms.
-  - Sequence store format: Parquet chunks vs bgzip+faidx, decided by bake-off test K-13, scored by LY-06 row-group counts. First run 2026-10-30: bgzip wins on gene and neighbourhood slices (13–17× fewer bytes read); flip pending the PI (`planning/measurements/2026-10-30_k13_bakeoff.md`).
+  - Sequence store format: Parquet chunks vs bgzip+faidx, decided by bake-off test K-13, scored by LY-06 row-group counts. First run 2026-10-30: bgzip wins on gene and neighbourhood slices (13–17× fewer bytes read); the PI chose the flip (DEC-17, `planning/measurements/2026-10-30_k13_bakeoff.md`). R-08 latency rerun on the pod still to do.
   - Partition keys, file sizes, row-group sizes and sort keys (LY-04, LY-06).
   - Release naming.
   - License flags.
@@ -449,7 +449,7 @@ Every edition carries the sequence store for its stages. Sources that cannot be 
 
 | Open item | Decided at |
 |---|---|
-| Sequence-store primary format (Parquet chunks vs bgzip+faidx) | S0 (K-13, by LY-06 row-group counts) |
+| Sequence-store primary format (Parquet chunks vs bgzip+faidx) | decided 2026-10-30: bgzip shards (K-13, DEC-17) |
 | Row-group sizes and sort keys | S0 (LY-06) |
 | ~~Zombi fit~~ **Decided 2026-10-29:** ZOMBI2 plus custom `synthworld` ([synthworld_spec.md](planning/tests/synthworld_spec.md) §1); fit spike GO with conditions ([synthworld_spike.md](planning/tests/synthworld_spike.md), DEC-15) | done |
 | ~~CI host for ring R2~~ **Decided 2026-10-29 (DEC-06):** GitHub Actions on private `ifinkelstein/bio-box` | done |

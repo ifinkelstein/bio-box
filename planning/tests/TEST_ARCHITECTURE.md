@@ -63,7 +63,7 @@ Each operation has an ID, inputs and outputs (registered schemas), its oracle, i
 
 | op | what it does | oracle | MRs | existing tests |
 |---|---|---|---|---|
-| O-INGEST | source object → `l0`, `contig_occurrence`, `seq_chunks` | re-parse the source independently; sha256 of every record | MR-01, MR-02, MR-14 | R-01, R-02, C-01, L-01 |
+| O-INGEST | source object → `l0`, `contig_occurrence`, `seq_shards` | re-parse the source independently; sha256 of every record | MR-01, MR-02, MR-14 | R-01, R-02, C-01, L-01 |
 | O-IDENT | identity resolution and dedup (L0.5, `contig_member`) | brute-force pairwise containment on micro-corpus | MR-06, MR-07, MR-01 | C-*, A-* (dedup), D-* |
 | O-SLICE | `seq get` contig, region, strand; `seq_slice` macro | Python slicing of the source FASTA | MR-03, MR-04, MR-14 | R-03, R-05, R-08 |
 | O-TRANSLATE | region and six-frame translation, genetic codes | Biopython translation tables | MR-03, MR-13 | R-04 |

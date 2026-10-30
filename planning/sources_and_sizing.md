@@ -46,7 +46,7 @@ From `WILKECOMP.org` (probed 2026-09-30) and `fragment-defense/old-plan.2026-10-
 ## 3. Sequence store (new requirement): every contig, protein and IGR kept and retrievable
 
 - **What is kept:** raw contig nucleotide sequences for **every** contig, including dedup members, which are never discarded. Predicted proteins and IGRs are kept too. All are reachable by any downstream project through a stable sequence UID.
-- **Format:** primary is Parquet `seq_chunks` + `protein_seq` per `data_layer_and_tests.md` §2A; bgzip FASTA + `samtools faidx` (`.fai` + `.gzi`) is generated on demand. The S0 bake-off (K-13) can flip the primary to bgzip shards of 1–4 GB. zstd-seekable is not used. The size model below holds for either format.
+- **Format:** primary is bgzip FASTA shards (`.fai` + `.gzi`, ~2^30 bases, ~0.33 GB each) + Parquet `protein_seq` per `data_layer_and_tests.md` §2A, decided by the S0 bake-off K-13 (DEC-17). zstd-seekable is not used. The size model below holds for either format.
 - **Lookup table:** `seq_index.parquet` maps `seq_uid` (BLAKE3-128 of the uppercased sequence; exact-byte `raw_digest` is sha256) to `{source, accession, version, file, record_name, length, md5}`. Proteins and IGRs also carry `{parent_contig_uid, start, end, strand}`.
 - **Size model:**
 
