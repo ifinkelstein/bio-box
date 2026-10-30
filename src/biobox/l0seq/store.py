@@ -25,7 +25,7 @@ from pathlib import Path
 import pyarrow as pa
 import pyarrow.parquet as pq
 
-from biobox import fasta, ids
+from biobox import fasta, ids, ledger
 from biobox.registry.schemas import table
 
 CHUNK_SIZE = 65_536
@@ -103,7 +103,7 @@ def ingest(
         else set()
     )
 
-    manifest_rows, occ_rows = [], []
+    manifest_rows, occ_rows, ledger_rows = [], [], []
     new_seqs: dict[bytes, bytes] = {}
     variants: dict[tuple[bytes, bytes], tuple] = {}  # (contig_uid, raw_digest) -> best precedence key
     for obj in objects:
@@ -120,7 +120,9 @@ def ingest(
             "redistributable": obj.redistributable,
             "retrieved_at": obj.retrieved_at,
         })
+        n_in = n_kept = 0
         for ordinal, rec in enumerate(fasta.read(Path(obj.path))):
+            n_in += 1
             rd = ids.raw_digest(rec.seq)
             cu = ids.contig_uid(rec.seq)
             occ_rows.append({
@@ -135,11 +137,13 @@ def ingest(
                 "line_width": rec.line_width,
                 "_source": obj.source_name,
             })
-            if rd not in known:
+            if rd not in known and rd not in new_seqs:
                 new_seqs[rd] = rec.seq
+                n_kept += 1
             key = (obj.precedence, obj_sha, ordinal)
             if (cu, rd) not in variants or key < variants[(cu, rd)]:
                 variants[(cu, rd)] = key
+        ledger_rows.append(ledger.row(obj_sha, "l0_object", n_in, n_kept, n_in - n_kept))
 
     # seq_chunks: one file per digest prefix, sorted by (raw_digest, chunk_ix)
     by_prefix: dict[str, list[bytes]] = defaultdict(list)
@@ -216,6 +220,7 @@ def ingest(
     man = man.sort_by([("source_uid", "ascending"), ("object_path", "ascending")])
     _write(man, man_path, 122_880)
 
+    ledger.write(root, stage, "ingest", ledger_rows)
     return {"objects": len(objects), "records": len(occ_rows), "new_sequences": len(new_seqs), "index_rows": len(idx_rows)}
 
 

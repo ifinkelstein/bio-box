@@ -35,7 +35,7 @@ import pyarrow.parquet as pq
 import pyrodigal
 import pyrodigal_gv
 
-from biobox import ids
+from biobox import ids, ledger
 from biobox.l0seq.store import SeqStore
 from biobox.registry.schemas import table
 
@@ -194,6 +194,17 @@ def run(root: Path, stage: str, genomes: list[GenomeInput], version: str = GENE_
             pa.Table.from_pylist(rows, schema=prot_spec.schema),
             root / f"l0seq/protein_seq/gene_call_version={version}/stage={stage}/protein_prefix={prefix}/part-0.parquet",
         )
+    # ledger: per contig, genes in; kept = first gene of its protein sequence in (contig, slot) order
+    seen: set[bytes] = set()
+    per: dict[bytes, list[int]] = {cu: [0, 0] for g in genomes for cu in g.contig_uids}
+    for r in slot_rows:
+        c = per[r["contig_uid"]]
+        c[0] += 1
+        if r["protein_uid"] not in seen:
+            seen.add(r["protein_uid"])
+            c[1] += 1
+    ledger.write(root, stage, "genecall",
+                 [ledger.row(cu, "contig", n, k, n - k) for cu, (n, k) in per.items()])
     return {
         "genes": len(calls),
         "distinct_proteins": len(distinct),

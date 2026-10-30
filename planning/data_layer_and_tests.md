@@ -437,6 +437,8 @@ Every step writes `ledger/stage=S/step=X.parquet` with rows `(object_uid, n_in, 
 | L-03 | O-RUN, O-ACCRETE | Downstream `n_in` equals upstream `n_kept` along the DAG | B |
 | L-04 | O-INGEST, O-IDENT | The breakdown by reason code is within the expected band (e.g., FCS-GX contamination ≤ X% per source) | W |
 
+**Implemented at S0 (2026-10-30, `src/biobox/ledger.py`).** Registry table `ledger` (small metadata, LY-04 waiver), stored at `ledger/stage=<S>/step=<name>/part-0.parquet` (a directory per step, so the manifest builder classifies it like every other partitioned table). One row per (object, reason); `object_key` is the L0 object sha256, a `contig_uid`, or a library or level name. Steps so far: `ingest` (records; kept = byte sequences new to the store; merged = already stored), `genecall` (genes per contig; kept = first gene of each protein sequence in the stage), `domains-<library>` (proteins; kept = with a domain; rejected `no_hit`), `cluster` (per level; kept = representatives; written under the release's stage, `rS0.1` → `S0`). L-03 checks three edges: gene-call kept = proteins scanned per library = proteins clustered at NR90, and NR90 kept = NR50 in. R2 checks all three tests with injected faults on micro-S0; R3 on the golden set (33,716 genes in, 33,442 kept).
+
 ### 4.3 Brute-force oracle equivalence (every query class, every stage at S0–S2; a sampled 1,000 queries per class from S3 on)
 
 For each query class, a naive reference implementation in Python or plain DuckDB, with no indexes, runs over the raw L1/L3 rows. Its results must equal the production query path exactly: set equality, plus equal counts and aggregates. Every query class is an O-SERVE oracle (TEST_ARCHITECTURE §2); the column names the operation underneath.

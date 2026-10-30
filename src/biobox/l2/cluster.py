@@ -30,6 +30,7 @@ import pyarrow as pa
 import pyarrow.parquet as pq
 from blake3 import blake3
 
+from biobox import ledger
 from biobox.registry.schemas import table
 
 # UniRef-style: member covered >= 80% by the alignment to its representative (cov-mode 1,
@@ -79,6 +80,11 @@ def _read_proteins(root: Path, gene_call_version: str) -> dict[bytes, str]:
 
 def _tsv_pairs(path: Path) -> list[tuple[str, str]]:
     return [tuple(line.rstrip("\n").split("\t")[:2]) for line in path.read_text().splitlines() if line]
+
+
+def ledger_stage(release: str) -> str:
+    """rS0.1 -> S0, rS2C.1 -> S2C; any other release name is used as is."""
+    return release[1:].split(".")[0] if release.startswith("rS") else release
 
 
 def run(root: Path, release: str, gene_call_version: str, threads: int = 1, tmp: Path | None = None) -> dict:
@@ -138,5 +144,9 @@ def run(root: Path, release: str, gene_call_version: str, threads: int = 1, tmp:
         p.parent.mkdir(parents=True, exist_ok=True)
         pq.write_table(pa.Table.from_pylist(rows, schema=spec.schema), p, compression="zstd", row_group_size=122_880)
     counts = {lvl: len({r["cluster_uid"] for r in mem_rows if r["level"] == lvl}) for lvl in LEVELS}
+    # ledger under the release's stage (rS0.1 -> S0): NR90 sees every protein, NR50 the NR90 representatives
+    n_in = {"nr90": len(prots), "nr50": counts["nr90"]}
+    ledger.write(root, ledger_stage(release), "cluster",
+                 [ledger.row(lvl.encode(), "level", n_in[lvl], counts[lvl], n_in[lvl] - counts[lvl]) for lvl in LEVELS])
     return {"proteins": len(prots), "clusters": counts,
             "aligned": {lvl: sum(1 for r in aln_rows if r["level"] == lvl) for lvl in LEVELS}}

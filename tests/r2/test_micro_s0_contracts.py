@@ -18,7 +18,7 @@ import pyhmmer
 import pytest
 import yaml
 
-from biobox import catalog, contracts, fasta, ids
+from biobox import catalog, contracts, fasta, ids, ledger
 from biobox.l0seq import SourceObject, ingest
 from biobox.l1 import domains
 from biobox.l1.genecall import GENE_CALL_VERSION, GenomeInput, run as call_genes
@@ -218,3 +218,47 @@ def test_content_hash_sees_a_changed_row(built, tmp_path):
     assert changed["l1_domains"] != contracts.content_hashes(man)["l1_domains"]
     assert {k: v for k, v in changed.items() if k != "l1_domains"} == \
         {k: v for k, v in contracts.content_hashes(man).items() if k != "l1_domains"}
+
+
+# --- ledger (L-01..L-03) --------------------------------------------------------------------
+
+
+def _steps(root: Path) -> list[str]:
+    return sorted(p.name.removeprefix("step=") for p in (root / "ledger/stage=S0").iterdir())
+
+
+def test_l01_every_step_balances(built):
+    _, man, _ = built
+    root = Path(man["root"])
+    steps = _steps(root)
+    assert {"ingest", "genecall", "domains-test-1"} <= set(steps)
+    assert ledger.check_balance(root, "S0", steps) == []
+
+
+def test_l02_ingest_ledger_lists_the_input_objects(built):
+    _, man, _ = built
+    expected = {ids.sha256_file(FIX / o["file"]) for o in CONTRACT["objects"]}
+    assert ledger.check_inputs(Path(man["root"]), "S0", expected) == []
+    assert ledger.check_inputs(Path(man["root"]), "S0", expected | {b"x" * 32})
+
+
+def test_l03_counts_carry_along_the_dag(built):
+    _, man, _ = built
+    root = Path(man["root"])
+    assert ledger.check_chain(root, "S0") == []
+    gc = ledger.read(root, "S0", "genecall")
+    distinct = len(domains.load_proteins(root, GENE_CALL_VERSION, "S0"))
+    assert sum(r["n_kept"] for r in gc) == distinct
+    if MMSEQS:
+        assert {r["object_key"] for r in ledger.read(root, "S0", "cluster")} == {b"nr90", b"nr50"}
+
+
+def test_ledger_faults_are_caught(built, tmp_path):
+    _, man, _ = built
+    root = tmp_path / "s"
+    shutil.copytree(man["root"], root)
+    gc = ledger.read(root, "S0", "genecall")
+    gc[0]["n_kept"] += 1  # unbalanced (L-01) and breaks the chain (L-03)
+    ledger.write(root, "S0", "genecall", gc)
+    assert ledger.check_balance(root, "S0", ["genecall"])
+    assert ledger.check_chain(root, "S0")

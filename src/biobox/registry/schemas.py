@@ -420,6 +420,30 @@ _SPECS = [
         doc="data_layer_and_tests.md §2B.1; profile coordinates per SEARCH_PLAN SD-17",
     ),
     TableSpec(
+        name="ledger",
+        layer="ledger",
+        location="ledger",
+        schema=pa.schema([
+            _f("object_key", pa.binary()),
+            _f("object_kind", pa.string()),
+            _f("n_in", pa.uint64()),
+            _f("n_kept", pa.uint64()),
+            _f("n_merged", pa.uint64()),
+            _f("n_rejected", pa.uint64()),
+            _f("reason_code", pa.string()),
+        ]),
+        primary_key=("object_key", "reason_code", "stage", "step"),
+        sort_key=("object_key", "reason_code"),
+        partition_keys=("stage", "step"),
+        enums={"object_kind": ("l0_object", "contig", "library", "level")},
+        small_ok=True,
+        doc=(
+            "data_layer_and_tests.md §4.2. One row per (object, reason); n_rejected counts that reason only, so "
+            "L-01 sums rows per object. object_key is the L0 object sha256, a contig_uid, or the UTF-8 name of a "
+            "library or cluster level"
+        ),
+    ),
+    TableSpec(
         name="test_run",
         location="tests/test_run",
         layer="tests",

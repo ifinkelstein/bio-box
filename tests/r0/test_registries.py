@@ -87,7 +87,7 @@ def test_enums_refer_to_string_or_int_columns(name):
 
 def test_small_ok_tables_match_ly04_list():
     # TEST_ARCHITECTURE LY-04 names these metadata tables; anything else small_ok must be a waived kind.
-    named = {"l0_manifest", "seq_locator", "id_history"}
+    named = {"l0_manifest", "seq_locator", "id_history", "ledger"}
     waived_kinds = {"search", "tests"}
     for name, spec in TABLES.items():
         if spec.small_ok:

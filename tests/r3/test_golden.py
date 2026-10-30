@@ -17,7 +17,7 @@ import pyarrow.parquet as pq
 import pytest
 import yaml
 
-from biobox import catalog, contracts, fasta, ids
+from biobox import catalog, contracts, fasta, ids, ledger
 from biobox.l0seq import SeqStore, SourceObject, ingest
 from biobox.l1 import igr
 from biobox.l1.genecall import GENE_CALL_VERSION, GenomeInput, call_genome, run
@@ -195,3 +195,13 @@ def test_golden_ly04_report(golden_catalog):
     problems = contracts.check_file_sizes(man)
     print("\nLY-04:", problems)
     assert any("seq_chunks" in p for p in problems)  # the known prefix-bucket finding (see R2 xfail)
+
+
+@pytest.mark.covers("L-01", "L-02", "L-03")
+def test_golden_ledger_reconciles(store_root):
+    assert ledger.check_balance(store_root, "S0", ["ingest", "genecall"]) == []
+    expected = {ids.sha256_file(DIR / LOCK["files"][e["id"]]["path"]) for e in GOLDEN["genomes"]}
+    assert ledger.check_inputs(store_root, "S0", expected) == []
+    assert ledger.check_chain(store_root, "S0") == []
+    gc = ledger.read(store_root, "S0", "genecall")
+    assert sum(r["n_in"] for r in gc) == 33_716 and sum(r["n_kept"] for r in gc) == 33_442
