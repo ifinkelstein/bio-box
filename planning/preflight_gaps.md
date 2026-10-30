@@ -198,8 +198,8 @@ Decisions (ADRs committed)
 
 Infrastructure
 - [ ] Git repo created with `golden.yaml`, `sources.yaml`, `refdb.yaml`, `params.yaml` stubs, ADR folder, `RUNBOOK.md` skeleton.
-- [ ] CI: unit and property tests plus micro-S0 fixture green; image built and pushed by digest.
-- [ ] `.sif` pulled on wilkcomp02 by digest; `bio-box doctor` output recorded (CPU flags, cgroup delegation, `ulimit`, filesystems, singularity/Apptainer version, DuckDB version).
+- [x] CI: unit and property tests plus micro-S0 fixture green; image built and pushed by digest (2026-10-30, `.github/workflows/image.yml`).
+- [x] `.sif` pulled on wilkcomp02 by digest; `bio-box doctor` output recorded; golden set R3 green on the pod (`planning/measurements/2026-10-30_wilkcomp02.md`). Still to add to `doctor`: cgroup cap and `/stor` mounts from inside the container.
 - [ ] `bio-box run-step` wrapper ported from `homology_pod.sh` (nice 19/15, systemd-run MemoryMax, thread env vars, STOP file, `/tmp` staging, one rsync, small-file guard, ledger row), with a kill-resume test including a wiped `/tmp`.
 - [ ] Directories created with setgid and README (what, who, until when, safe to delete): `/stor/work/Wilke/if2453/all-the-data`, `/stor/scratch/Wilke/if2453/all-the-data`.
 
