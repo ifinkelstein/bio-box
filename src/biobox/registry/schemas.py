@@ -503,3 +503,26 @@ def conformance_problems(data: pa.Table, spec: TableSpec) -> list[str]:
         if keys.group_by(file_key).aggregate([]).num_rows != data.num_rows:
             problems.append(f"{spec.name}: duplicate primary key")
     return problems
+
+
+def schema_lock() -> dict[str, list[list]]:
+    """The registry as plain data, for tests/registry/schema_lock.json (LY-09)."""
+    return {name: [[f.name, str(f.type), f.nullable] for f in spec.schema] for name, spec in sorted(TABLES.items())}
+
+
+def evolution_problems(locked: dict[str, list[list]], current: dict[str, list[list]] | None = None) -> list[str]:
+    """LY-09: a locked column may never be removed, renamed, retyped or reordered; new columns are
+    appended and nullable, so files and catalogs from before the change stay readable."""
+    current = current if current is not None else schema_lock()
+    problems = []
+    for name, fields in locked.items():
+        if name not in current:
+            problems.append(f"{name}: table removed")
+            continue
+        now = current[name]
+        if now[: len(fields)] != fields:
+            problems.append(f"{name}: a locked column was removed, renamed, retyped or reordered")
+        for f in now[len(fields):]:
+            if not f[2]:
+                problems.append(f"{name}.{f[0]}: an added column must be nullable")
+    return problems

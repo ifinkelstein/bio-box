@@ -322,3 +322,44 @@ def test_regenerating_the_catalog_replaces_it_whole(built, tmp_path):
     assert dict(second.execute("SELECT * FROM catalog_info").fetchall())["release_id"] == "rS0.next"
     second.close()
     assert sorted(p.name for p in tmp_path.iterdir() if p.name.startswith(".")) == []
+
+
+# --- LY-09: a nullable column added later --------------------------------------------------
+
+
+def test_ly09_catalog_reads_files_from_before_a_nullable_column(built, tmp_path, monkeypatch):
+    import dataclasses
+
+    import pyarrow as pa
+
+    from biobox.registry import schemas
+
+    root, man, _ = built
+    spec = schemas.TABLES["contig_index"]
+    wider = dataclasses.replace(spec, schema=spec.schema.append(pa.field("topology", pa.string(), nullable=True)))
+    monkeypatch.setitem(schemas.TABLES, "contig_index", wider)
+    store = tmp_path / "s"
+    shutil.copytree(root, store, ignore=shutil.ignore_patterns("catalog", "manifests"))
+    old = next(store.glob("l0seq/contig_index/stage=S0/part-0.parquet"))
+    # a later stage writes the wider schema
+    t = pq.read_table(old).append_column("topology", pa.array(["linear"] * pq.read_table(old).num_rows, pa.string()))
+    new = store / "l0seq/contig_index/stage=S1/part-0.parquet"
+    new.parent.mkdir(parents=True)
+    pq.write_table(t.cast(wider.schema), new)
+    m = catalog.build_manifest(store, "x")
+    c = catalog.open_catalog(catalog.generate_catalog(m, tmp_path / "c.duckdb"))
+    rows = c.execute("SELECT stage, topology FROM contig_index ORDER BY stage").fetchall()
+    assert {r for r in rows} == {("S0", None), ("S1", "linear")}
+    c.close()
+    # with only old files, the new column is a typed NULL
+    new.unlink()
+    m = catalog.build_manifest(store, "x")
+    c = catalog.open_catalog(catalog.generate_catalog(m, tmp_path / "c2.duckdb"))
+    assert c.execute("SELECT count(*) FROM contig_index WHERE topology IS NULL").fetchall()[0][0] > 0
+    c.close()
+    # a retyped column is still refused
+    bad = pq.read_table(old)
+    bad = bad.set_column(bad.column_names.index("contig_len"), "contig_len", bad.column("contig_len").cast(pa.int32()))
+    pq.write_table(bad, old)
+    with pytest.raises(catalog.LayoutError, match="C-01"):
+        catalog.build_manifest(store, "x")

@@ -47,6 +47,21 @@ def schema_hash(schema: pa.Schema) -> str:
     return hashlib.sha256("\n".join(lines).encode()).hexdigest()
 
 
+def compatible_columns(file_schema: pa.Schema, registry: pa.Schema) -> int | None:
+    """Number of registry columns a file holds, or None if incompatible (LY-09).
+
+    A file written before a nullable column was appended holds a prefix of the registry's
+    fields; every field it lacks must be nullable. Anything else (a removed, renamed,
+    retyped or reordered column) is incompatible.
+    """
+    k = len(file_schema)
+    if k > len(registry) or not file_schema.equals(pa.schema(list(registry)[:k]), check_metadata=False):
+        return None
+    if not all(f.nullable for f in list(registry)[k:]):
+        return None
+    return k
+
+
 def classify(rel: str) -> tuple[TableSpec, dict[str, str]] | None:
     """Map a root-relative path to (table, partitions). None: no table claims the path."""
     for spec in TABLES.values():
@@ -99,7 +114,8 @@ def build_manifest(root: Path, release_id: str) -> dict:
         spec, parts = hit
         pf = pq.ParquetFile(path)
         md = pf.metadata
-        if not pf.schema_arrow.equals(spec.schema, check_metadata=False):
+        n_cols = compatible_columns(pf.schema_arrow, spec.schema)
+        if n_cols is None:
             raise LayoutError(f"{rel}: schema differs from registry table {spec.name} (C-01)")
         _check_derived_partitions(rel, parts, md)
         files.append({
@@ -110,7 +126,8 @@ def build_manifest(root: Path, release_id: str) -> dict:
             "bytes": path.stat().st_size,
             "rows": md.num_rows,
             "row_groups": md.num_row_groups,
-            "schema_hash": schema_hash(spec.schema),
+            "schema_hash": schema_hash(pf.schema_arrow),
+            "n_columns": n_cols,
         })
     params_path = root / "l0seq/store_params.json"
     params = json.loads(params_path.read_text()) if params_path.exists() else {}
@@ -209,7 +226,7 @@ def _sql_str(s: str) -> str:
     return "'" + s.replace("'", "''") + "'"
 
 
-def _view_sql(spec: TableSpec, paths: list[str]) -> str:
+def _view_sql(spec: TableSpec, paths: list[str], n_columns: int | None = None) -> str:
     if not paths:
         cols = [f'CAST(NULL AS {duck_type(f.type)}) AS "{f.name}"' for f in spec.schema]
         cols += [f'CAST(NULL AS VARCHAR) AS "{k}"' for k in spec.partition_keys]
@@ -220,7 +237,13 @@ def _view_sql(spec: TableSpec, paths: list[str]) -> str:
         opts = f"hive_partitioning = true, hive_types = {types}"
     else:
         opts = "hive_partitioning = false"
-    return f"CREATE VIEW {spec.name} AS SELECT * FROM read_parquet({files}, {opts})"
+    # union_by_name reads files written before a nullable column was added (LY-09); a column no
+    # file has yet is a typed NULL
+    n = len(spec.schema) if n_columns is None else n_columns
+    cols = [f'"{f.name}"' if i < n else f'CAST(NULL AS {duck_type(f.type)}) AS "{f.name}"'
+            for i, f in enumerate(spec.schema)] + [f'"{k}"' for k in spec.partition_keys]
+    return (f"CREATE VIEW {spec.name} AS SELECT {', '.join(cols)} "
+            f"FROM read_parquet({files}, {opts}, union_by_name = true)")
 
 
 COMPLEMENT = ("ACGTRYKMBVDHNacgtrykmbvdhn", "TGCAYRMKVBHDNtgcayrmkvbhdn")
@@ -285,8 +308,11 @@ def generate_catalog(manifest: dict, out_path: Path, root: Path | None = None) -
         by_table[f["table"]].append(str(root / f["path"]))
     con = duckdb.connect(str(tmp))
     try:
+        widest = {}
+        for f in manifest["files"]:
+            widest[f["table"]] = max(widest.get(f["table"], 0), f.get("n_columns", len(TABLES[f["table"]].schema)))
         for name in sorted(TABLES):
-            con.execute(_view_sql(TABLES[name], sorted(by_table[name])))
+            con.execute(_view_sql(TABLES[name], sorted(by_table[name]), widest.get(name)))
         for stmt in macro_sql(manifest["params"].get("chunk_size", DEFAULT_CHUNK_SIZE)):
             con.execute(stmt)
         con.execute("CREATE TABLE catalog_info (key VARCHAR, value VARCHAR)")

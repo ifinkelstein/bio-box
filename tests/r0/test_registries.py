@@ -156,6 +156,28 @@ def test_s1_failures_have_a_real_test():
             assert real, f"{fid}: S1 failure with no defined test"
 
 
+def test_ly09_registry_evolves_compatibly():
+    import json
+
+    from biobox.registry.schemas import evolution_problems, schema_lock
+
+    locked = json.loads((REG / "schema_lock.json").read_text())
+    assert evolution_problems(locked) == []
+    assert locked == schema_lock(), "registry changed compatibly: run scripts/update_schema_lock.py"
+
+
+def test_ly09_rule_rejects_breaking_changes():
+    from biobox.registry.schemas import evolution_problems
+
+    locked = {"t": [["a", "int64", False], ["b", "string", False]]}
+    assert evolution_problems(locked, {"t": locked["t"] + [["c", "string", True]]}) == []
+    assert evolution_problems(locked, {"t": locked["t"] + [["c", "string", False]]})
+    assert evolution_problems(locked, {"t": [["a", "int32", False], ["b", "string", False]]})
+    assert evolution_problems(locked, {"t": [["b", "string", False], ["a", "int64", False]]})
+    assert evolution_problems(locked, {"t": locked["t"][:1]})
+    assert evolution_problems(locked, {})
+
+
 def test_gate_ids_are_documented():
     from biobox.gate import load_gates
 
