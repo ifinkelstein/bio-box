@@ -62,6 +62,7 @@ def build(root: Path, order: int = 1, threads: int = 1) -> dict:
     if MMSEQS:
         from biobox.l2 import cluster
         tmp = root.parent / f"{root.name}.mmseqs"
+        tmp.mkdir(parents=True, exist_ok=True)
         cluster.run(root, "rS0.test", GENE_CALL_VERSION, threads=threads, tmp=tmp)
         shutil.rmtree(tmp, ignore_errors=True)
     return catalog.build_manifest(root, "rS0.test")
