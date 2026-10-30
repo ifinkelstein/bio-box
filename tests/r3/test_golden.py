@@ -17,7 +17,7 @@ import pyarrow.parquet as pq
 import pytest
 import yaml
 
-from biobox import fasta, ids
+from biobox import catalog, contracts, fasta, ids
 from biobox.l0seq import SeqStore, SourceObject, ingest
 from biobox.l1.genecall import GENE_CALL_VERSION, GenomeInput, call_genome, run
 
@@ -159,3 +159,36 @@ def test_r04_independent_translation_on_golden(store_root):
             assert c["aa"] == "M" + aa[1:-1], (e["id"], c["start"])
             checked += 1
     assert checked > 30_000
+
+
+@pytest.fixture(scope="module")
+def golden_catalog(store_root, tmp_path_factory):
+    man = catalog.build_manifest(store_root, "rS0.golden")
+    con = catalog.open_catalog(catalog.generate_catalog(man, tmp_path_factory.mktemp("cat") / "c.duckdb"))
+    yield man, con
+    con.close()
+
+
+@pytest.mark.covers("LY-02", "LY-03")
+def test_golden_layout_sort_and_statistics(golden_catalog):
+    man, _ = golden_catalog
+    assert contracts.check_sort_order(man) == []
+    assert contracts.check_statistics(man) == []
+
+
+@pytest.mark.covers("C-03", "C-05", "R-06")
+def test_golden_contracts(golden_catalog):
+    _, con = golden_catalog
+    assert contracts.check_foreign_keys(con) == []
+    assert contracts.check_coordinates(con) == []
+    assert contracts.check_lineage(con) == []
+    wraps = con.execute('SELECT count(*) FROM protein_occurrence o JOIN contig_index ci USING (contig_uid) '
+                        'WHERE o."end" > ci.contig_len').fetchall()[0][0]
+    assert wraps >= 1  # origin-wrapping genes exist, so C-05's wrap rule is exercised
+
+
+def test_golden_ly04_report(golden_catalog):
+    man, _ = golden_catalog
+    problems = contracts.check_file_sizes(man)
+    print("\nLY-04:", problems)
+    assert any("seq_chunks" in p for p in problems)  # the known prefix-bucket finding (see R2 xfail)

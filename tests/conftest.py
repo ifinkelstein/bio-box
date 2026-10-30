@@ -50,6 +50,8 @@ def pytest_runtest_logreport(report):
         outcome = _OUTCOME[report.outcome]
         if report.when == "setup" and report.outcome == "failed":
             outcome = "error"
+        if hasattr(report, "wasxfail"):
+            outcome = "fail"  # a known failure is still a failure for the gate
         started = datetime.fromtimestamp(getattr(report, "start", datetime.now().timestamp()), tz=timezone.utc)
         metrics = {k: v for k, v in report.user_properties}
         commit = _commit()
