@@ -326,9 +326,52 @@ def _mutate(s, frac, rng):
     return "".join(s)
 
 
-def trap_world(root: Path, lib: Path, seed: int = 7) -> dict:
+def _hmm_of(name: str, acc: str, members: list[str], ga: float, path: Path) -> None:
+    alpha = pyhmmer.easel.Alphabet.amino()
+    msa = pyhmmer.easel.TextMSA(name=name.encode(), sequences=[
+        pyhmmer.easel.TextSequence(name=f"m{i}".encode(), sequence=s) for i, s in enumerate(members)]).digitize(alpha)
+    hmm, _, _ = pyhmmer.plan7.Builder(alpha, seed=1).build_msa(msa, pyhmmer.plan7.Background(alpha))
+    hmm.name, hmm.accession = name, acc
+    hmm.cutoffs.gathering = (ga, ga)
+    with open(path, "wb") as fh:
+        hmm.write(fh)
+
+
+def _place(root: Path, loci: list[tuple[str, str, str, bool]]) -> None:
+    """One linear 1.7 kb contig per locus (left, target, right), all + strand; `partial` puts
+    the target at the contig end (dist_to_contig_end_bp = 0, as for a partial gene call)."""
+    from biobox.l3.tapes import build_tape
+
+    occ, tapes_ = [], []
+    for k, (left, target, right, partial) in enumerate(loci):
+        cu = ids.contig_uid(f"synthetic-contig-{k}".encode())
+        gu = ids.genome_uid([cu])
+        coords = [(100, 460, 1), (600, 1080, 1), (1200, 1560, 1)]
+        prots = [ids.protein_uid(x) for x in (left, target, right)]
+        for i, ((st_, en, sd), pu) in enumerate(zip(coords, prots)):
+            occ.append({"protein_uid": pu, "contig_uid": cu, "slot_ordinal": i, "genome_uid": gu, "start": st_,
+                        "end": en, "strand": sd, "tax_order": None, "is_species_rep": True, "tier": 1,
+                        "assembly_quality": "complete",
+                        "dist_to_contig_end_bp": 0 if partial and i == 1 else min(st_, 1700 - en)})
+        tapes_.append({"contig_uid": cu, "tax_order_bucket": None, "genome_uid": gu, "contig_len": 1700,
+                       "is_circular": False, "n_slots": 3, "tier": 1, "assembly_quality": "complete",
+                       **build_tape(coords, 1700, False), "protein_uids": prots})
+    occ.sort(key=lambda r: (r["protein_uid"], r["contig_uid"], r["slot_ordinal"]))
+    tapes_.sort(key=lambda r: r["contig_uid"])
+    for rel, rows, name in ((f"l1/protein_occurrence/gene_call_version={V}/stage=S0", occ, "protein_occurrence"),
+                            (f"l3/tapes/gene_call_version={V}/stage=S0", tapes_, "contig_tapes")):
+        (root / rel).mkdir(parents=True)
+        pq.write_table(pa.Table.from_pylist(rows, schema=table(name).schema), root / rel / "part-0.parquet")
+
+
+def trap_world(root: Path, lib: Path, seed: int = 7, placed: bool = False) -> dict:
     """Seed family A (10), library family B (30, GA 60) and 5 bridges half way from A to B on
-    the sites where they differ, plus 50 random decoys; A shares ~24% identity with B."""
+    the sites where they differ, plus 50 random decoys; A shares ~24% identity with B.
+
+    `placed` adds locus context: every A member, bridge and B member on its own contig; A
+    members and bridges flanked by members of a library family M (`ctx-1`, GA 60), B members by
+    proteins with no library hit; three A fragments (the first 40%) flanked by M; and two A
+    members placed as partial genes. The base sequences do not change."""
     rng = random.Random(seed)
     A = "".join(rng.choice(AA) for _ in range(160))
     sites = rng.sample(range(160), 128)
@@ -342,21 +385,35 @@ def trap_world(root: Path, lib: Path, seed: int = 7) -> dict:
             s[i] = B[i]
         bridges.append(_mutate("".join(s), 0.075, rng))
     decoys = ["".join(rng.choice(AA) for _ in range(160)) for _ in range(50)]
+    world = {"A": A, "a": fam_a, "b": {ids.protein_uid(s) for s in fam_b}}
+    extra: list[str] = []
+    if placed:
+        r2 = random.Random(seed + 1)
+        M = "".join(r2.choice(AA) for _ in range(120))
+        frags = [fam_a[i][:64] for i in (7, 8, 9)]
+        partial = fam_a[5:7]
+        m_members = [_mutate(M, 0.15, r2) for _ in range(2 * (len(fam_a) + len(bridges) + len(frags)))]
+        plain = ["".join(r2.choice(AA) for _ in range(120)) for _ in range(2 * len(fam_b))]
+        it, ip = iter(m_members), iter(plain)
+        loci = [(next(it), t, next(it), t in partial) for t in fam_a + bridges + frags]
+        loci += [(next(ip), t, next(ip), False) for t in fam_b]
+        _place(root, loci)
+        extra = frags + m_members + plain
+        world.update(fragments={ids.protein_uid(x) for x in frags}, partial={ids.protein_uid(x) for x in partial})
     rows = sorted(({"protein_uid": ids.protein_uid(s), "protein_digest": ids.raw_digest(s.encode()), "length": len(s),
-                    "seq": s} for s in set(fam_a + fam_b + bridges + decoys)), key=lambda r: r["protein_uid"])
+                    "seq": s} for s in set(fam_a + fam_b + bridges + decoys + extra)), key=lambda r: r["protein_uid"])
     out = root / f"l0seq/protein_seq/gene_call_version={V}/stage=S0/protein_prefix=all/part-0.parquet"
     out.parent.mkdir(parents=True)
     pq.write_table(pa.Table.from_pylist(rows, schema=table("protein_seq").schema), out)
-    alpha = pyhmmer.easel.Alphabet.amino()
-    msa = pyhmmer.easel.TextMSA(name=b"TRAPB", sequences=[
-        pyhmmer.easel.TextSequence(name=f"b{i}".encode(), sequence=s) for i, s in enumerate(fam_b[:8])]).digitize(alpha)
-    hmm, _, _ = pyhmmer.plan7.Builder(alpha, seed=1).build_msa(msa, pyhmmer.plan7.Background(alpha))
-    hmm.name, hmm.accession = "trapB", "TRAP0001"
-    hmm.cutoffs.gathering = (60.0, 60.0)
-    with open(lib, "wb") as fh:
-        hmm.write(fh)
+    _hmm_of("trapB", "TRAP0001", fam_b[:8], 60.0, lib)
     domains.run(root, "S0", V, "trap", "1", lib, "gathering")
-    return {"A": A, "a": fam_a, "b": {ids.protein_uid(s) for s in fam_b}}
+    world["models"] = {"trap-1": lib}
+    if placed:
+        ctx = lib.with_name("ctx.hmm")
+        _hmm_of("ctxM", "CTX0001", m_members[:8], 60.0, ctx)
+        domains.run(root, "S0", V, "ctx", "1", ctx, "gathering")
+        world["models"]["ctx-1"] = ctx
+    return world
 
 
 def test_s07_drift_alarm_reverts_a_planted_corruption(tmp_path):
@@ -391,3 +448,209 @@ def test_search_tables_conform_to_the_registry(world):
         from biobox.registry.schemas import conformance_problems
 
         assert conformance_problems(pq.read_table(p), table(name)) == []
+
+
+def _trap_recipe(w, stop="[no_new_reps]", tool="jackhmmer", mx=5, extra=""):
+    return (f"recipe: trap\nwritten_against: rSyn\nseed: [{{sequence: {w['A']}}}]\ntarget: unique\n"
+            f"tool: {tool}\niterations: {{max: {mx}, inclusion_bits: 30, stop: {stop}}}\n"
+            f"controls: {{positive: [{{sequence: {w['a'][0]}}}]}}\n{extra}")
+
+
+@pytest.fixture(scope="module")
+def placed(tmp_path_factory):
+    d = tmp_path_factory.mktemp("placed")
+    root = d / "a"
+    w = trap_world(root, d / "trap.hmm", placed=True)
+    pack.build(root, "rSyn", models=w["models"])
+    return root, d, w
+
+
+def test_s07_context_lost_reverts_when_new_hits_lose_round1_neighbors(placed):
+    root, d, w = placed
+    row = runner.run(root, _trap_recipe(w, "[no_new_reps, context_lost]"), "rSyn", work_base=d / "work", limits=LIMITS)
+    assert row["status"] == "ok", row["error"]
+    assert row["stop_reason"].startswith("context_lost") and row["final_round"] == row["rounds"] - 1
+    log = json.loads(row["rounds_json"])
+    assert log[-1]["context_retention"] < 0.5
+    final = {h["target_uid"] for h in runner.read_hits(root, row["run_id"].hex())}
+    assert len(final & w["b"]) <= 3
+    # the same world without the rule drifts into B: the check, not the world, stops it
+    free = runner.run(root, _trap_recipe(w), "rSyn", work_base=d / "work", limits=LIMITS)
+    assert len({h["target_uid"] for h in runner.read_hits(root, free["run_id"].hex())} & w["b"]) >= 25
+
+
+@pytest.mark.parametrize("policy", ["exclude", "flag", "include"])
+def test_curation_labels_for_coverage_and_partial_genes(placed, policy):
+    root, d, w = placed
+    text = _trap_recipe(w, tool="phmmer", mx=1,
+                        extra=f"partial: {policy}\ncuration: {{min_query_coverage: 0.9}}\n")
+    row = runner.run(root, text, "rSyn", work_base=d / "work", limits=LIMITS)
+    assert row["status"] == "ok", row["error"]
+    rows = runner.read_hits(root, row["run_id"].hex(), round_=1, final_only=False)
+    label = {r["target_uid"]: (r["curation_label"], r["curation_reason"], r["is_partial"]) for r in rows}
+    assert w["fragments"] <= set(label)
+    for u in w["fragments"]:
+        assert label[u][0] == "drop" and label[u][1].startswith("query_coverage")
+    for u in w["partial"]:
+        lab, reason, is_partial = label[u]
+        assert is_partial
+        assert (lab, reason) == (("drop", "partial") if policy == "exclude" else ("keep", None))
+    kept = {u for u, (lab, _, _) in label.items() if lab == "keep"}
+    assert not kept & w["fragments"]  # dropped targets never enter the next profile or the final set
+    final = {h["target_uid"] for h in runner.read_hits(root, row["run_id"].hex())}
+    assert final == kept
+
+
+HMMSEARCH = shutil.which("hmmsearch")
+
+
+@pytest.mark.skipif(HMMSEARCH is None, reason="hmmsearch binary not on PATH")
+def test_rounds_equal_the_hmmsearch_binary(placed, tmp_path):
+    """O-SEARCH oracle: each round's stored profile, searched by HMMER's own hmmsearch at the
+    same Z and threshold, gives the same included targets, sequence scores and kept domains."""
+    root, d, w = placed
+    row = runner.run(root, _trap_recipe(w), "rSyn", work_base=d / "work", limits=LIMITS)
+    assert row["status"] == "ok" and row["rounds"] >= 2
+    faa = tmp_path / "unique.faa"
+    with open(faa, "w") as fh:
+        for sh in sorted(pack.pack_dir(root, "rSyn").glob("unique/part-*.faa.zst")):
+            for name, seq in fastz.read_records(sh):
+                fh.write(f">{name}\n{seq}\n")
+    codec = pa.Codec("zstd")
+    profiles = pq.read_table(runner.run_dir(root, row["run_id"]) / "profiles.parquet").to_pylist()
+    hits = pq.read_table(runner.run_dir(root, row["run_id"]) / "hits.parquet").to_pylist()
+    bits = 30.0
+    for prof in profiles:
+        k = prof["round"]
+        hmm = tmp_path / f"r{k}.hmm"
+        hmm.write_bytes(codec.decompress(prof["profile_zst"], asbytes=True))
+        tbl, dom = tmp_path / f"r{k}.tbl", tmp_path / f"r{k}.dom"
+        subprocess.run([HMMSEARCH, "--noali", "--cpu", "1", "-Z", "1e8", "--domZ", "1e8", "-T", str(bits),
+                        "--incT", str(bits), "--tblout", str(tbl), "--domtblout", str(dom), "-o", "/dev/null",
+                        str(hmm), str(faa)], check=True)
+        seq_scores = {}
+        for line in tbl.read_text().splitlines():
+            if not line.startswith("#"):
+                f = line.split()
+                if float(f[5]) >= bits:
+                    seq_scores[f[0]] = float(f[5])
+        doms: dict[str, list[tuple[int, int, float]]] = {}
+        for line in dom.read_text().splitlines():
+            if not line.startswith("#"):
+                f = line.split()
+                if f[0] in seq_scores:
+                    doms.setdefault(f[0], []).append((int(f[19]) - 1, int(f[20]), float(f[13])))
+        mine = [h for h in hits if h["round"] == k]
+        got_seq = {h["target_uid"].hex(): h["seq_bitscore"] for h in mine}
+        assert set(got_seq) == set(seq_scores), f"round {k}: included targets differ"
+        assert all(abs(got_seq[t] - seq_scores[t]) <= 0.051 for t in seq_scores)
+        for t, ds in doms.items():
+            best = max(ds, key=lambda x: x[2])
+            want = sorted((a, b) for a, b, sc in ds if sc >= bits / 2 or (a, b, sc) == best)
+            have = sorted((h["env_start"], h["env_end"]) for h in mine if h["target_uid"].hex() == t)
+            assert have == want, f"round {k}, {t}: kept domains differ"
+
+
+# --- cancel and runner death ------------------------------------------------------------------------
+
+
+def _wait_for(pred, timeout=60.0):
+    import time
+
+    deadline = time.time() + timeout
+    while time.time() < deadline:
+        if pred():
+            return True
+        time.sleep(0.1)
+    return False
+
+
+def _alive(pid: int) -> bool:
+    import os
+
+    try:
+        os.kill(pid, 0)
+    except ProcessLookupError:
+        return False
+    try:  # a zombie still answers kill(0); it is gone for our purposes
+        st = subprocess.run(["ps", "-o", "stat=", "-p", str(pid)], capture_output=True, text=True).stdout.strip()
+        return bool(st) and not st.startswith("Z")
+    except FileNotFoundError:
+        return True
+
+
+def test_cancel_records_stopped_with_no_hits(world, tmp_path):
+    root, d, _ = world
+    hit, _ = _seed(root)
+    rec = tmp_path / "r.yaml"
+    rec.write_text(_recipe(hit, hit))
+    work = tmp_path / "work"
+    rid = runner.submit(root, rec, REL, runner.Limits(cpus=1, wall_s=300), work, fault="timeout")
+    assert _wait_for(lambda: (work / rid / "worker.pid").exists())
+    runner.cancel(root, rid)
+    assert _wait_for(lambda: runner.status(root, rid)["status"] != "running")
+    st = runner.status(root, rid)
+    assert st["status"] == "stopped", st
+    assert sorted(p.name for p in runner.run_dir(root, rid).iterdir()) == ["run.parquet"]
+
+
+def test_runner_death_is_reported_and_the_worker_does_not_outlive_it(world, tmp_path):
+    import os
+    import signal
+
+    root, d, _ = world
+    hit, _ = _seed(root)
+    rec = tmp_path / "r.yaml"
+    rec.write_text(_recipe(hit, hit))
+    work = tmp_path / "work"
+    rid = runner.submit(root, rec, REL, runner.Limits(cpus=1, wall_s=300), work, fault="timeout")
+    assert _wait_for(lambda: (work / rid / "worker.pid").exists())
+    worker_pid = int((work / rid / "worker.pid").read_text())
+    runner_pid = json.loads((runner.runs_dir(root) / "pending" / f"{rid}.json").read_text())["pid"]
+    os.kill(runner_pid, signal.SIGKILL)
+    assert _wait_for(lambda: not _alive(runner_pid), 10)
+    st = runner.status(root, rid)
+    assert st["status"] == "failed" and "without closing" in st["error"]
+    assert _wait_for(lambda: not _alive(worker_pid), 10), "worker outlived its runner"
+    assert not runner.run_dir(root, rid).exists()
+
+
+# --- C-03 and C-08 for search outputs -----------------------------------------------------------------
+
+
+def test_c03_search_links_resolve_and_a_foreign_run_id_is_caught(world, tmp_path):
+    root = world[0]
+    hit, _ = _seed(root)
+    _run(world, _recipe(hit, hit, tool="jackhmmer", mx=2))
+    man = catalog.build_manifest(root, REL)
+    con = catalog.open_catalog(catalog.generate_catalog(man, tmp_path / "c.duckdb"))
+    try:
+        assert contracts.check_search_links(con) == []
+        assert con.execute("SELECT count(*) FROM search_hit").fetchone()[0] > 0
+    finally:
+        con.close()
+    bad = _copy(world, tmp_path)
+    hits_file = sorted((bad / "search").glob("run=*/hits.parquet"))[0]
+    t = pq.read_table(hits_file).to_pylist()
+    for r in t:
+        r["run_id"] = b"\x11" * 16
+    pq.write_table(pa.Table.from_pylist(t, schema=table("search_hit").schema), hits_file)
+    con = catalog.open_catalog(catalog.generate_catalog(catalog.build_manifest(bad, REL), tmp_path / "d.duckdb"))
+    try:
+        problems = contracts.check_search_links(con)
+    finally:
+        con.close()
+    assert any(p.startswith("search_hit -> search_run") for p in problems)
+    assert any(p.startswith("run_id equals its directory") for p in problems)
+
+
+def test_c08_search_runs_and_pack_record_the_locked_versions(world):
+    from biobox import provenance
+
+    root = world[0]
+    assert sorted((root / "search").glob("run=*/run.parquet"))
+    assert provenance.check_search(root) == []
+    lock = {**provenance.locked_versions(), "pyhmmer": "0.0.0"}
+    problems = provenance.check_search(root, lock)
+    assert any("pack_manifest.json" in p for p in problems) and any("run.parquet" in p for p in problems)
+

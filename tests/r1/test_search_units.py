@@ -264,6 +264,41 @@ def test_s09_mr04_rotation_keeps_circular_neighborhoods(c, r, policy, data):
     assert key(after) == key(before)
 
 
+CUT_POLICIES = st.builds(
+    nbr.Policy.parse,
+    window=st.sampled_from(["1g", "3g", "10g", "100bp", "1kb"]),
+    strand=st.sampled_from(["any", "same"]),
+    operon_gap=st.sampled_from([None, 0, 50, 300]),
+)
+
+
+@settings(max_examples=300, deadline=None)
+@given(contigs(circular=False), CUT_POLICIES, st.data())
+def test_s09_mr05_cut_changes_only_windows_across_the_cut(c, policy, data):
+    """Cutting a linear contig between genes keeps each side's rows and their geometry, drops the
+    rows across the cut, and flags exactly the anchors whose window the cut now reaches."""
+    slots, length, _ = c
+    cuts = [i for i in range(1, len(slots)) if max(e for _, e, _ in slots[:i]) <= slots[i][0]]
+    assume(cuts)
+    cut = data.draw(st.sampled_from(cuts))
+    p0 = slots[cut][0]
+    pieces = [(slots[:cut], p0, 0), ([(s - p0, e - p0, x) for s, e, x in slots[cut:]], length - p0, cut)]
+    shape = lambda rows: sorted((r["offset"], r["delta_bp"], r["same_strand"], r["in_operon"]) for r in rows)  # noqa: E731
+    for piece, plen, base in pieces:
+        for i in range(len(piece)):
+            whole = nbr.neighborhood(_tape(slots, length, False), base + i, policy)
+            part = nbr.neighborhood(_tape(piece, plen, False), i, policy)
+            same_side = [r for r in whole if base <= r["ordinal"] < base + len(piece)]
+            assert shape(part) == shape(same_side)
+            if policy.window_genes is not None:
+                k = policy.window_genes
+                assert bool(part[0]["flags"] & nbr.FLAG_CENSORED) == (i < k or len(piece) - 1 - i < k)
+            else:
+                a = piece[i]
+                assert bool(part[0]["flags"] & nbr.FLAG_CENSORED) == (a[0] - policy.window_bp < 0
+                                                                      or a[1] + policy.window_bp > plen)
+
+
 def test_s09_edge_policies_and_flags_on_a_fixed_contig():
     slots = [(0, 300, 1), (350, 900, 1), (1_000, 1_500, -1), (1_520, 2_000, -1), (5_000, 5_600, 1)]
     t = _tape(slots, 6_000, False)

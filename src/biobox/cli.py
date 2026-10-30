@@ -45,11 +45,12 @@ def _search(a) -> int:
         limits = runner.Limits(cpus=a.cpus, cpu_min=a.cpu_min, wall_s=a.wall_s)
         try:
             if not a.wait:
-                print(runner.submit(root, Path(a.target), a.release, limits, Path(a.work) if a.work else None))
+                print(runner.submit(root, Path(a.target), a.release, limits, Path(a.work) if a.work else None,
+                                    a.fault))
                 return 0
             row = runner.run(root, Path(a.target), a.release, limits=limits,
                              work_base=Path(a.work) if a.work else None, argv=sys.argv,
-                             run_id=bytes.fromhex(a.run_id) if a.run_id else None)
+                             run_id=bytes.fromhex(a.run_id) if a.run_id else None, fault=a.fault)
         except RecipeError as e:
             print(f"refused: {e}", file=sys.stderr)
             return 2
@@ -112,6 +113,7 @@ def main(argv: list[str] | None = None) -> int:
     s.add_argument("--cpu-min", type=float, default=300.0)
     s.add_argument("--wall-s", type=float, default=6 * 3600.0)
     s.add_argument("--round", type=int)
+    s.add_argument("--fault", help=argparse.SUPPRESS)  # test hook: oom, timeout, cpu, crash
     s.add_argument("--members", action="store_true")
     s.add_argument("--json", action="store_true")
     s.add_argument("--top_n", type=int, default=export.TOP_N)

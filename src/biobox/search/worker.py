@@ -22,6 +22,7 @@ from biobox.registry.schemas import table
 from biobox.search import engine, fastz, nbr
 
 EXIT_OOM = 86
+EXIT_ORPHAN = 87  # the runner died: nothing would record this run, so stop
 _ZSTD = pa.Codec("zstd")
 
 
@@ -101,8 +102,25 @@ def _degenerate(rows: list[dict]) -> list[str]:
     return warn
 
 
+def _watch_parent() -> None:
+    """Exit when the runner dies (the worker is reparented), so no orphan runs to the CPU cap."""
+    import threading
+
+    parent = os.getppid()
+
+    def loop():
+        while True:
+            time.sleep(0.5)
+            if os.getppid() != parent:
+                os._exit(EXIT_ORPHAN)
+
+    threading.Thread(target=loop, daemon=True).start()
+
+
 def main(job_path: str) -> int:
     job = json.loads(Path(job_path).read_text())
+    _watch_parent()
+    (Path(job_path).parent / "worker.pid").write_text(str(os.getpid()))
     _fault(job.get("fault"))
     root, out = Path(job["root"]), Path(job["out"])
     out.mkdir(parents=True, exist_ok=True)

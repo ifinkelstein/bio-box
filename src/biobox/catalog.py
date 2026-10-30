@@ -517,18 +517,21 @@ def attach_search(con: duckdb.DuckDBPyConnection, root: Path) -> dict[str, int]:
     after the catalog is built, so the views are made when the catalog is opened; each run
     file view carries the run id from its path as `run`."""
     idx_path = root / "search/run_index.json"
+    runs = json.loads(idx_path.read_text())["runs"] if idx_path.exists() else []
     counts = {}
-    if idx_path.exists():
-        runs = json.loads(idx_path.read_text())["runs"]
-        for name, fname in SEARCH_RUN_FILES.items():
-            paths = [str(root / f"search/run={r['run_id']}/{fname}") for r in runs if fname in r["files"]]
-            counts[name] = len(paths)
-            if paths:
-                spec = TABLES[name]
-                cols = [f'"{f.name}"' for f in spec.schema] + ['"run"']
-                files = "[" + ", ".join(_sql_str(x) for x in sorted(paths)) + "]"
-                con.execute(f"CREATE OR REPLACE TEMP VIEW {name} AS SELECT {', '.join(cols)} FROM read_parquet("
-                            f"{files}, hive_partitioning = true, hive_types = {{'run': 'VARCHAR'}}, union_by_name = true)")
+    for name, fname in SEARCH_RUN_FILES.items():
+        spec = TABLES[name]
+        paths = [str(root / f"search/run={r['run_id']}/{fname}") for r in runs if fname in r["files"]]
+        counts[name] = len(paths)
+        if paths:
+            cols = [f'"{f.name}"' for f in spec.schema] + ['"run"']
+            files = "[" + ", ".join(_sql_str(x) for x in sorted(paths)) + "]"
+            con.execute(f"CREATE OR REPLACE TEMP VIEW {name} AS SELECT {', '.join(cols)} FROM read_parquet("
+                        f"{files}, hive_partitioning = true, hive_types = {{'run': 'VARCHAR'}}, union_by_name = true)")
+        else:  # same columns with no runs, so queries over `run` bind either way
+            cols = [f'CAST(NULL AS {duck_type(f.type)}) AS "{f.name}"' for f in spec.schema]
+            con.execute(f"CREATE OR REPLACE TEMP VIEW {name} AS SELECT {', '.join(cols)}, "
+                        "CAST(NULL AS VARCHAR) AS \"run\" WHERE false")
     rel = con.execute("SELECT value FROM catalog_info WHERE key = 'release_id'").fetchall()
     if rel:
         metas = sorted((root / f"search_pack/release={rel[0][0]}").glob("*/*_meta.parquet"))

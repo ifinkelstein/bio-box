@@ -134,6 +134,42 @@ def check_foreign_keys(con: duckdb.DuckDBPyConnection) -> list[str]:
     return problems
 
 
+# Search outputs (C-03, S-05): run files resolve to their run, hits to their targets. Over the
+# catalog's search views (catalog.attach_search), where `run` is the run directory's id.
+SEARCH_LINKS = [
+    ("search_hit -> search_run",
+     "SELECT count(*) FROM search_hit h ANTI JOIN search_run r ON h.run_id = r.run_id"),
+    ("search_profile -> search_run",
+     "SELECT count(*) FROM search_profile p ANTI JOIN search_run r ON p.run_id = r.run_id"),
+    ("neighborhoods -> search_run",
+     "SELECT count(*) FROM neighborhoods n ANTI JOIN search_run r ON n.run = r.run"),
+    ("run_id equals its directory",
+     "SELECT (SELECT count(*) FROM search_run WHERE hex(run_id) <> upper(run)) "
+     "+ (SELECT count(*) FROM search_hit WHERE hex(run_id) <> upper(run)) "
+     "+ (SELECT count(*) FROM search_profile WHERE hex(run_id) <> upper(run))"),
+    ("protein hits -> protein_seq",
+     "SELECT count(*) FROM search_hit h WHERE h.target_kind = 'protein' "
+     "AND NOT EXISTS (SELECT 1 FROM protein_seq p WHERE p.protein_uid = h.target_uid)"),
+    ("region hits -> search_region",
+     "SELECT count(*) FROM search_hit h WHERE h.target_kind IN ('dark_orf', 'igr') "
+     "AND NOT EXISTS (SELECT 1 FROM search_region s WHERE s.region_uid = h.target_uid)"),
+    ("neighborhood anchors -> final hits",
+     "SELECT count(*) FROM neighborhoods n JOIN search_run r ON n.run = r.run WHERE NOT EXISTS ("
+     "SELECT 1 FROM search_hit h WHERE h.run = n.run AND h.round = r.final_round "
+     "AND h.curation_label = 'keep' AND h.target_uid = n.anchor_protein_uid)"),
+]
+
+
+def check_search_links(con: duckdb.DuckDBPyConnection) -> list[str]:
+    """C-03 for search runs: every row resolves (catalog opened with its data root)."""
+    problems = []
+    for name, sql in SEARCH_LINKS:
+        n = con.execute(sql).fetchall()[0][0]
+        if n:
+            problems.append(f"{name}: {n} unresolved rows")
+    return problems
+
+
 def check_shards(manifest: dict) -> list[str]:
     """C-03 for the shards, and LY-02 across them.
 

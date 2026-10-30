@@ -312,7 +312,8 @@ def verify(root: Path, release: str, pack_id: bytes | None = None,
         info = manifest["targets"][target]
         if sum(s["n_seq"] for s in shards) != info["n_seq"]:
             problems.append(f"{target}: shard counts do not sum to the target's n_seq")
-        for s in sorted(shards, key=lambda s: s["path"])[:-1]:
+        # models are one file per library (small by nature, SEARCH_PLAN §3.2), not size-cut shards
+        for s in (sorted(shards, key=lambda s: s["path"])[:-1] if target != "models" else []):
             if s["bytes"] < min_shard_bytes:
                 problems.append(f"{s['path']}: {s['bytes']} bytes, under {min_shard_bytes} and not the last shard")
         if target == "models":

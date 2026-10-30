@@ -317,7 +317,7 @@ def _pending(root: Path) -> Path:
 
 
 def submit(root: Path, recipe_path: Path, release: str, limits: Limits = Limits(),
-           work_base: Path | None = None) -> str:
+           work_base: Path | None = None, fault: str | None = None) -> str:
     """Check the recipe now, run it detached, return the run_id at once."""
     root = Path(root).resolve()
     r, _ = rcp.load(Path(recipe_path))
@@ -330,6 +330,8 @@ def submit(root: Path, recipe_path: Path, release: str, limits: Limits = Limits(
            "--cpu-min", str(limits.cpu_min), "--wall-s", str(limits.wall_s)]
     if work_base is not None:
         cmd += ["--work", str(work_base)]
+    if fault is not None:
+        cmd += ["--fault", fault]
     proc = subprocess.Popen(cmd, stdout=subprocess.DEVNULL, stderr=open(p / f"{run_id.hex()}.stderr", "w"),
                             start_new_session=True)
     (p / f"{run_id.hex()}.json").write_text(json.dumps({"run_id": run_id.hex(), "pid": proc.pid, "status": "running"}))
@@ -345,12 +347,26 @@ def status(root: Path, run_id: str) -> dict:
     p = _pending(root) / f"{run_id}.json"
     if p.exists():
         info = json.loads(p.read_text())
-        try:
-            os.kill(info["pid"], 0)
+        if _alive(info["pid"]):
             return {"run_id": run_id, "status": "running"}
-        except ProcessLookupError:
-            return {"run_id": run_id, "status": "failed", "error": "runner exited without closing the run"}
+        return {"run_id": run_id, "status": "failed", "error": "runner exited without closing the run"}
     raise KeyError(f"no run {run_id}")
+
+
+def _alive(pid: int) -> bool:
+    """Whether a runner process is still running; a dead child of this process (a zombie, which
+    still answers kill(pid, 0)) is reaped and counts as dead."""
+    try:
+        done, _ = os.waitpid(pid, os.WNOHANG)
+        if done:
+            return False
+    except ChildProcessError:
+        pass  # not our child: the submitting process has exited and the runner was reparented
+    try:
+        os.kill(pid, 0)
+    except ProcessLookupError:
+        return False
+    return True
 
 
 def cancel(root: Path, run_id: str) -> None:

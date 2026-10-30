@@ -111,3 +111,34 @@ def check_provenance(manifest: dict, lock: dict[str, str] | None = None) -> list
                     problems.append(f"{f['path']}: {step} tool versions missing {missing}, differ {wrong}")
                     break
     return problems
+
+
+SEARCH_TOOLS = ("bio-box", "pyhmmer", "pyarrow")
+
+
+def _versions_problems(where: str, tv: dict | None, lock: dict[str, str]) -> list[str]:
+    if not tv:
+        return [f"{where}: no tool versions"]
+    missing = [t for t in SEARCH_TOOLS if t not in tv]
+    wrong = {t: (v, lock.get(t)) for t, v in tv.items() if lock.get(t) != v}
+    return [f"{where}: tool versions missing {missing}, differ {wrong}"] if missing or wrong else []
+
+
+def check_search(root: Path, lock: dict[str, str] | None = None) -> list[str]:
+    """C-08 for what lives outside the release manifest: each search pack's builder and each
+    closed run's tool versions equal the container lock."""
+    import pyarrow.parquet as pq
+
+    lock = locked_versions() if lock is None else lock
+    root = Path(root)
+    problems = []
+    for m in sorted(root.glob("search_pack/release=*/pack_manifest.json")):
+        problems += _versions_problems(str(m.relative_to(root)), json.loads(m.read_text()).get("builder"), lock)
+    idx = root / "search/run_index.json"
+    for r in json.loads(idx.read_text())["runs"] if idx.exists() else []:
+        path = root / f"search/run={r['run_id']}/run.parquet"
+        row = pq.read_table(path, columns=["tool_versions_json"]).to_pylist()[0]
+        tv = json.loads(row["tool_versions_json"]) if row["tool_versions_json"] else None
+        problems += _versions_problems(str(path.relative_to(root)), tv, lock)
+    return problems
+
