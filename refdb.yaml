@@ -10,8 +10,9 @@ databases:
     models: 30134
     url: https://ftp.ebi.ac.uk/pub/databases/Pfam/releases/Pfam38.2/Pfam-A.hmm.gz
     file: Pfam-A.hmm.gz
-    upstream_md5: 7ab3c4e215d0daaea3004e37c4e24f8a
-    sha256: null
+    upstream_md5: 7ab3c4e215d0daaea3004e37c4e24f8a   # matched on download, 2026-10-30
+    sha256: 2d82087b6c5c60d762cc767f98e8260b273134c215ab7efccf7440614a4e5dab
+    bytes: 273842176
     cutoff: gathering        # Pfam GA lines
     license: CC0
     used_by: [O-SCAN]
@@ -21,7 +22,8 @@ databases:
     models: 18950
     url: https://ftp.ncbi.nlm.nih.gov/hmm/20.0/hmm_PGAP.HMM.tgz
     file: hmm_PGAP.HMM.tgz
-    sha256: null
+    sha256: dda5bf4a12916704374b04254e296ded647a89429d26d5bba6d16b149d7e50cc
+    bytes: 443960501
     cutoff: trusted          # PGAP applies the TC lines
     license: public domain (NCBI)
     used_by: [O-SCAN]
@@ -30,7 +32,8 @@ databases:
     released: 2026-01
     url: https://ftp.ebi.ac.uk/pub/databases/Rfam/15.1/Rfam.cm.gz
     file: Rfam.cm.gz
-    sha256: null
+    sha256: e2e636e9ce138dae506769aa74d067ce35466e94002818cfe125ea2a3cab8168
+    bytes: 45753387
     cutoff: gathering        # Rfam GA lines (Infernal --cut_ga)
     license: CC0
     used_by: [O-SCAN (ncRNA), O-ARRAY]
