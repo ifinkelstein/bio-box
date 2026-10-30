@@ -531,6 +531,8 @@ Golden snapshots detect change, not error: comparisons to the previous release (
 
 Part of ring R4 when triggered. K-05 and K-06 are the partition and row-group cases of LY-06, which extends them to every canonical query (§4.11).
 
+**Status 2026-10-30.** Micro-scale forms run in ring R2 (`tests/r2/test_micro_s0_duckdb.py`, DuckDB 2.0.0): K-01 (package, `version()` and `catalog_info` equal `uv.lock`), K-02/K-03 (a 15M-row, 5M-group `GROUP BY` under `memory_limit = 100MB` completes and spills > 100 MB into the configured local `temp_directory`; nothing lands next to the catalog), K-04 (the `threads` setting is applied), K-05 (a `stage` or `gene_call_version` filter opens only that partition's files), K-06 (inside LY-06), K-08 (1, 4 and 16 spawned processes on one read-only catalog, no lock errors), K-09 (a second read-write open from another process fails with `IOException` naming the lock, and the file still opens afterwards), K-11 (`COPY ... ORDER BY` at 1 and 4 threads gives identical rows and, at 300k rows, identical bytes), K-12 (IN-list and semi-join give the Python answer for k = 10, 100 and all proteins). Still to run on the pod (R4): K-02 at 150 GB inside the 200 GB scope with `memory.peak`, K-04 CPU tracking at 8/20/40 threads, K-08 p95 per client count, K-10 NFS vs local, K-12 timings for k up to 100,000, and K-13 (§2A.1).
+
 | ID | op (MR) | test | pass condition |
 |---|---|---|---|
 | K-01 | O-CATALOG | Version pin: `SELECT version()` equals the lock; Parquet written by version N is read identically by N and N+1 (forward check before any bump) | exact |
@@ -648,6 +650,8 @@ Defined in TEST_ARCHITECTURE §7; one line each here. Run on the micro-corpus at
 | LY-10 | O-CATALOG | catalog lists files explicitly (no globs); every manifest file exists with its sha256 | F-11; §3.3 |
 
 LY-06 generalizes K-05 (partition pruning) and K-06 (row-group pruning) from one table each to every canonical query. At S0, LY-06 row-group counts decide K-13 (§2A.1), the row-group sizes and the sort keys (§3.2). Latency (R-08, §4.8) is checked afterwards and does not decide.
+
+**How LY-06 counts (S0, 2026-10-30).** `catalog.profile_query` runs the query with `PRAGMA enable_profiling = 'json'` and reads, for every Parquet scan in the plan, `Total Files Read`, `row_groups_scanned` and `total_row_groups_to_scan`, plus the query's `total_bytes_read`. The expected count comes from the files' own min/max statistics. On micro-S0 (4 KB chunks, 16 per row group) a slice reads one `seq_chunks` file and exactly the row groups whose chunk range it overlaps, a `protein_of` lookup reads one `protein_seq` file and one row group, and `slots_of` reads at most one row group per `protein_occurrence` file. Two findings changed the macros: (1) without a `digest_prefix` predicate DuckDB opened every prefix file of the table (row groups were pruned, files were not), so `seq_raw` and `protein_of` now filter on the prefix derived from the key, which prunes files even when the key comes from a subquery; (2) a macro argument is substituted as an expression, so `seq_get` written as a `CASE` over two `seq_slice` calls scanned `seq_chunks` twice; each macro now binds its slice once in a subquery. DuckDB 2.0 writes no profile for a `count(*)` filtered only on hive keys (it answers from metadata), so LY-06 queries use an aggregate that scans.
 
 ### 4.12 Rings and results (TEST_ARCHITECTURE §8)
 

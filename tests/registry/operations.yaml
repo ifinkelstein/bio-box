@@ -37,7 +37,7 @@ operations:
     outputs: [query_result]
     oracle: Python slicing of the source FASTA
     mrs: [MR-03, MR-04, MR-14]
-    tests: [R-03, R-05, R-08]
+    tests: [R-03, R-05, R-08, LY-06]
   O-TRANSLATE:
     summary: region and six-frame translation under genetic codes
     inputs: [seq_chunks, slot_protein]
@@ -212,4 +212,4 @@ operations:
     outputs: [search_run, test_run]
     oracle: fault injection
     mrs: [MR-16, MR-17]
-    tests: [S-05, S-06]
+    tests: [S-05, S-06, K-02, K-03, K-04]

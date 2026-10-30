@@ -20,6 +20,7 @@ import hashlib
 import json
 import os
 import shutil
+import tempfile
 from pathlib import Path
 
 import blake3
@@ -245,24 +246,26 @@ def macro_sql(chunk_size: int) -> list[str]:
               WHEN _s = _e THEN ''
               ELSE (SELECT substr(string_agg(seq, '' ORDER BY chunk_ix), _s - min(chunk_ix) * {cs} + 1, _e - _s)
                     FROM seq_chunks
-                    WHERE raw_digest = _rd AND chunk_ix BETWEEN _s // {cs} AND (_e - 1) // {cs})
+                    WHERE digest_prefix = lower(hex((_rd)[1:1]))  -- prunes files, not just row groups
+                      AND raw_digest = _rd AND chunk_ix BETWEEN _s // {cs} AND (_e - 1) // {cs})
             END""",
         "CREATE MACRO seq_slice(_cuid, _s, _e) AS seq_raw(default_digest(_cuid), _s, _e)",
-        """CREATE MACRO seq_get(_cuid, _s, _e, _strand) AS CASE
-              WHEN _strand = 1 THEN seq_slice(_cuid, _s, _e)
-              WHEN _strand = -1 THEN revcomp(seq_slice(_cuid, _s, _e))
-              ELSE error('seq_get: strand must be 1 or -1')
-            END""",
+        # each macro below evaluates its slice once: a macro argument is substituted as an
+        # expression, so passing seq_slice(...) to two CASE branches would scan seq_chunks twice
+        """CREATE MACRO seq_get(_cuid, _s, _e, _strand) AS (
+              SELECT CASE WHEN _strand = 1 THEN _x WHEN _strand = -1 THEN revcomp(_x)
+                          ELSE error('seq_get: strand must be 1 or -1') END
+              FROM (SELECT seq_slice(_cuid, _s, _e) AS _x))""",
         # circular contigs: an origin-wrapping slice has contig_len < _e <= _s + contig_len (C-05, DEC-13)
-        """CREATE MACRO seq_get_circular(_cuid, _s, _e, _strand) AS CASE
-              WHEN _e <= contig_len_of(_cuid) THEN seq_get(_cuid, _s, _e, _strand)
-              WHEN NOT (0 <= _s AND _s < contig_len_of(_cuid) AND _e <= _s + contig_len_of(_cuid))
-                THEN error('seq_get_circular: invalid wrapping slice')
-              WHEN _strand = 1 THEN seq_slice(_cuid, _s, contig_len_of(_cuid)) || seq_slice(_cuid, 0, _e - contig_len_of(_cuid))
-              WHEN _strand = -1 THEN revcomp(seq_slice(_cuid, _s, contig_len_of(_cuid)) || seq_slice(_cuid, 0, _e - contig_len_of(_cuid)))
-              ELSE error('seq_get_circular: strand must be 1 or -1')
-            END""",
-        "CREATE MACRO protein_of(_puid) AS (SELECT any_value(seq) FROM protein_seq WHERE protein_uid = _puid)",
+        """CREATE MACRO seq_get_circular(_cuid, _s, _e, _strand) AS (
+              SELECT CASE
+                WHEN _strand NOT IN (1, -1) THEN error('seq_get_circular: strand must be 1 or -1')
+                WHEN _e > _n AND NOT (_s < _n AND _e <= _s + _n) THEN error('seq_get_circular: invalid wrapping slice')
+                WHEN _strand = 1 THEN _x ELSE revcomp(_x) END
+              FROM (SELECT _n, seq_slice(_cuid, _s, least(_e, _n)) || seq_slice(_cuid, 0, greatest(_e - _n, 0)) AS _x
+                    FROM (SELECT contig_len_of(_cuid) AS _n)))""",
+        "CREATE MACRO protein_of(_puid) AS (SELECT any_value(seq) FROM protein_seq "
+        "WHERE protein_prefix = lower(hex((_puid)[1:1])) AND protein_uid = _puid)",
         "CREATE MACRO slots_of(_puid) AS TABLE SELECT * FROM protein_occurrence WHERE protein_uid = _puid",
         "CREATE MACRO domains_of(_puid) AS TABLE SELECT * FROM l1_domains WHERE protein_uid = _puid ORDER BY env_start, model_acc",
     ]
@@ -336,12 +339,17 @@ def profile_query(con: duckdb.DuckDBPyConnection, sql: str, params: list | None 
     scan could have read. `bytes_read` is DuckDB's I/O counter for the query. Counts, not time,
     decide layouts (LY-06).
     """
-    con.execute("PRAGMA enable_profiling = 'json'")
-    try:
-        result = con.execute(sql, params or []).fetchall()
-        info = json.loads(con.get_profiling_information(format="json"))
-    finally:
-        con.execute("PRAGMA disable_profiling")
+    with tempfile.TemporaryDirectory() as d:
+        out = Path(d) / "profile.json"
+        con.execute("PRAGMA enable_profiling = 'json'")
+        con.execute(f"PRAGMA profiling_output = {_sql_str(str(out))}")  # keeps the profile off stdout
+        try:
+            result = con.execute(sql, params or []).fetchall()
+        finally:
+            con.execute("PRAGMA disable_profiling")
+        # DuckDB 2.0 writes no profile for some plans (count(*) filtered only on hive keys);
+        # callers that count units must use a query that scans (e.g. sum of a column)
+        info = json.loads(out.read_text()) if out.exists() else {}
     scans = []
 
     def walk(node):
