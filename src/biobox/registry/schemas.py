@@ -2,7 +2,8 @@
 
 One `TableSpec` per planned Parquet table: Arrow schema of the file columns,
 keys, sort order, hive partition keys, enum domains and whether the table is a
-small metadata file exempt from the NFS >=64 MB rule (LY-04).
+small metadata file exempt from the NFS >=64 MB rule (LY-04), and where its
+files live under the data root (`location`, read by the manifest builder).
 
 Partition keys live only in the path (`gene_call_version=v1/...`), never as file
 columns, so a reader never sees two copies that could disagree. A primary key
@@ -38,6 +39,10 @@ class TableSpec:
     enums: dict[str, tuple] = field(default_factory=dict)
     small_ok: bool = False
     doc: str = ""
+    # Path under the data root: a directory holding `<k>=<v>/.../*.parquet` in
+    # partition_keys order, or a single `.parquet` file. Empty: not yet placed
+    # (the catalog exposes an empty view).
+    location: str = ""
 
 
 def _f(name: str, typ: pa.DataType, nullable: bool = False) -> pa.Field:
@@ -47,6 +52,7 @@ def _f(name: str, typ: pa.DataType, nullable: bool = False) -> pa.Field:
 _SPECS = [
     TableSpec(
         name="l0_manifest",
+        location="l0/l0_manifest.parquet",
         layer="L0",
         schema=pa.schema([
             _f("source_uid", pa.uint64()),
@@ -66,6 +72,7 @@ _SPECS = [
     ),
     TableSpec(
         name="seq_chunks",
+        location="l0seq/seq_chunks",
         layer="L0-seq",
         schema=pa.schema([
             _f("raw_digest", SHA256),
@@ -80,6 +87,7 @@ _SPECS = [
     ),
     TableSpec(
         name="contig_occurrence",
+        location="l0seq/contig_occurrence",
         layer="L0-seq",
         schema=pa.schema([
             _f("source_uid", pa.uint64()),
@@ -99,6 +107,7 @@ _SPECS = [
     ),
     TableSpec(
         name="contig_index",
+        location="l0seq/contig_index",
         layer="L0-seq",
         schema=pa.schema([
             _f("contig_uid", UID),
@@ -116,6 +125,7 @@ _SPECS = [
     ),
     TableSpec(
         name="seq_locator",
+        location="l0seq/seq_locator.parquet",
         layer="L0-seq",
         schema=pa.schema([
             _f("raw_digest", SHA256),
@@ -130,6 +140,7 @@ _SPECS = [
     ),
     TableSpec(
         name="protein_seq",
+        location="l0seq/protein_seq",
         layer="L0-seq",
         schema=pa.schema([
             _f("protein_uid", UID),
@@ -144,6 +155,7 @@ _SPECS = [
     ),
     TableSpec(
         name="slot_protein",
+        location="l1/slot_protein",
         layer="L0-seq",
         schema=pa.schema([
             _f("contig_uid", UID),
@@ -160,6 +172,7 @@ _SPECS = [
     ),
     TableSpec(
         name="igr",
+        location="l0seq/igr",
         layer="L0-seq",
         schema=pa.schema([
             _f("contig_uid", UID),
@@ -214,6 +227,7 @@ _SPECS = [
     ),
     TableSpec(
         name="protein_occurrence",
+        location="l1/protein_occurrence",
         layer="L1-derived",
         schema=pa.schema([
             _f("protein_uid", UID),
@@ -240,6 +254,7 @@ _SPECS = [
     ),
     TableSpec(
         name="l1_domains",
+        location="l1/domains",
         layer="L1",
         schema=pa.schema([
             _f("protein_uid", UID),
@@ -272,6 +287,7 @@ _SPECS = [
     ),
     TableSpec(
         name="cluster_member",
+        location="l2/cluster_member",
         layer="L2",
         schema=pa.schema([
             _f("member_uid", UID),
@@ -288,6 +304,7 @@ _SPECS = [
     ),
     TableSpec(
         name="cluster_member_aln",
+        location="l2/cluster_member_aln",
         layer="L2",
         schema=pa.schema([
             _f("member_uid", UID),
@@ -313,6 +330,7 @@ _SPECS = [
     ),
     TableSpec(
         name="id_history",
+        location="l2/id_history.parquet",
         layer="L2",
         schema=pa.schema([
             _f("entity_type", pa.string()),
@@ -403,6 +421,7 @@ _SPECS = [
     ),
     TableSpec(
         name="test_run",
+        location="tests/test_run",
         layer="tests",
         schema=pa.schema([
             _f("test_id", pa.string()),

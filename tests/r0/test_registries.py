@@ -94,6 +94,19 @@ def test_small_ok_tables_match_ly04_list():
             assert name in named or spec.layer in waived_kinds, f"{name}: small_ok without an LY-04 waiver"
 
 
+def test_locations_are_unambiguous():
+    # the manifest builder classifies files by location (O-CATALOG, LY-10)
+    placed = {n: s.location for n, s in TABLES.items() if s.location}
+    for name, loc in placed.items():
+        spec = TABLES[name]
+        assert not loc.startswith("/") and ".." not in loc, f"{name}: location must be root-relative"
+        if loc.endswith(".parquet"):
+            assert not spec.partition_keys, f"{name}: a single-file location cannot have partitions"
+        for other, oloc in placed.items():
+            if other != name:
+                assert not (oloc + "/").startswith(loc.removesuffix(".parquet") + "/"), f"{name} and {other} overlap"
+
+
 def test_specified_and_pending_are_disjoint():
     both = set(TABLES) & set(PENDING)
     assert not both, f"tables both specified and pending: {both}"

@@ -145,27 +145,26 @@ bio-box region translate <contig_uid:start-end> [--six-frame] [--min-orf 30]
 - **Reverse lookup `protein_uid → slots`.** `seq slots` reads `protein_occurrence`, which is sorted by `protein_uid`, so one lookup touches one row group per file (zone maps, K-06). A search hit list is protein-first; this is the join that gives every hit its locus context (SEARCH_PLAN SD-02).
 - **`region translate`** translates a contig interval from `seq_chunks` under the genetic code recorded for the contig; `--six-frame` emits stop-to-stop ORFs of at least `--min-orf` aa in all six frames. It is the on-demand form of the `dark_orf` pack target (§2B.2).
 
-**DuckDB (pure SQL, in the generated catalog):**
+**DuckDB (pure SQL, in the generated catalog):** as implemented in `src/biobox/catalog.py` (`macro_sql`; S0, 2026-10-30). `CS` is the store's `chunk_size` from the manifest. Parameters start with `_` so they never collide with column names.
 ```sql
--- forward-strand slice, 0-based half-open
-CREATE MACRO seq_slice(cuid, s, e) AS (
-  SELECT substr(string_agg(seq, '' ORDER BY chunk_ix),
-                s - min(chunk_ix) * 65536 + 1, e - s)
-  FROM seq_chunks sc JOIN contig_index ci USING (raw_digest)
-  WHERE ci.contig_uid = cuid
-    AND chunk_ix BETWEEN s // 65536 AND (e - 1) // 65536);
-CREATE MACRO revcomp(x) AS reverse(translate(x, 'ACGTRYKMBVDHNacgtrykmbvdhn', 'TGCAYRMKVBHDNtgcayrmkvbhdn'));
-CREATE MACRO seq_get(cuid, s, e, strand) AS
-  CASE WHEN strand = -1 THEN revcomp(seq_slice(cuid, s, e)) ELSE seq_slice(cuid, s, e) END;
--- domain envelope of a segment, 0-based half-open on the protein
-CREATE MACRO segment_seq(suid) AS (
-  SELECT substr(p.seq, s.env_start + 1, s.env_end - s.env_start)
-  FROM segments s JOIN protein_seq p USING (protein_uid)
-  WHERE s.segment_uid = suid);
--- reverse lookup: every slot that carries a protein
-CREATE MACRO slots_of(puid) AS TABLE
-  SELECT * FROM protein_occurrence WHERE protein_uid = puid;
+CREATE MACRO revcomp(_x) AS reverse(translate(_x, 'ACGTRYKMBVDHNacgtrykmbvdhn', 'TGCAYRMKVBHDNtgcayrmkvbhdn'));
+CREATE MACRO default_digest(_cuid) AS (SELECT raw_digest FROM contig_index WHERE contig_uid = _cuid AND is_default_variant);
+-- forward bytes of one stored variant, 0-based half-open; out-of-range slices raise, empty slices return ''
+CREATE MACRO seq_raw(_rd, _s, _e) AS CASE
+  WHEN digest_len(_rd) IS NULL THEN error('seq_raw: unknown raw_digest')
+  WHEN _s < 0 OR _e < _s OR _e > digest_len(_rd) THEN error('seq_raw: slice outside 0:contig_len')
+  WHEN _s = _e THEN ''
+  ELSE (SELECT substr(string_agg(seq, '' ORDER BY chunk_ix), _s - min(chunk_ix) * CS + 1, _e - _s)
+        FROM seq_chunks WHERE raw_digest = _rd AND chunk_ix BETWEEN _s // CS AND (_e - 1) // CS) END;
+CREATE MACRO seq_slice(_cuid, _s, _e) AS seq_raw(default_digest(_cuid), _s, _e);
+CREATE MACRO seq_get(_cuid, _s, _e, _strand) AS ...;          -- strand +1 / -1, else error
+CREATE MACRO seq_get_circular(_cuid, _s, _e, _strand) AS ...; -- origin wrap when contig_len < _e <= _s + contig_len (C-05)
+CREATE MACRO protein_of(_puid) AS (SELECT any_value(seq) FROM protein_seq WHERE protein_uid = _puid);
+CREATE MACRO slots_of(_puid) AS TABLE SELECT * FROM protein_occurrence WHERE protein_uid = _puid;   -- reverse lookup
+CREATE MACRO domains_of(_puid) AS TABLE SELECT * FROM l1_domains WHERE protein_uid = _puid ORDER BY env_start, model_acc;
+-- planned with the segments table: segment_seq(_suid), the envelope [env_start, env_end) of protein_seq
 ```
+The earlier draft of `seq_slice` joined `contig_index` without `is_default_variant`, which would concatenate the chunks of every raw variant of a contig (a soft-masked copy and an uppercase copy, MR-14). R2 checks the fix with a soft-masked second variant of lambda. Column names `start` and `end` are SQL keywords, so queries quote them (`"end"`).
 `contig_index` maps `contig_uid → raw_digest`. Where several raw variants share a `contig_uid`, the default variant is the one with the lowest (source precedence, `l0_object_sha256`, `record_ordinal`), so it does not depend on input order (MR-01), and the other variants are reachable by `raw_digest`. `contig_index` is partitioned by `stage`; a later stage adds only new (contig_uid, raw_digest) pairs and never changes an earlier default (implemented in `src/biobox/l0seq/store.py`, tested by `tests/r2/test_micro_s0_l0seq.py`). Python clients may also call `atd.seq.get(...)`, which uses `seq_locator` to read exactly one row group. Both paths must return identical bytes (R-03).
 
 **Export to FASTA:** `extract`, as above. The `--bgzip --faidx` output is directly usable by samtools, pysam, pyfaidx, MMseqs2 `createdb` and Infernal.
@@ -389,6 +388,14 @@ Why:
 4. The catalog (SQLite on local disk during build) survives a kill-and-resume.
 
 Until then, release-to-release comparison uses two catalogs side by side.
+
+**Implemented at S0 (2026-10-30, `src/biobox/catalog.py`, tests `tests/r2/test_micro_s0_catalog.py`).**
+- `build_manifest(root, release_id)` walks every `.parquet` file under the root and classifies it by the registry's `location` field (`src/biobox/registry/schemas.py`). It refuses a file that no table claims (LY-10), a partition path whose keys differ from the registered ones or are out of order (LY-05), a derived partition value (`digest_prefix`, `protein_prefix`) that is not the leading byte of the key column in every row group, read from the row-group min/max (LY-05, LY-03), and a file whose Arrow schema differs from the registry (C-01). Each entry records path, table, partitions, sha256, bytes, rows, row groups and schema hash; the store's `chunk_size` goes in `params`.
+- `manifest_hash` is BLAKE3-128 of the canonical JSON with `root` left out, so the same release has the same hash on the pod and on Hetzner (MR-01 is tested by building the micro store in reverse input order under another root).
+- `verify_manifest` reports missing files, size or sha256 changes, and any `.parquet` file not in the manifest (LY-10).
+- `generate_catalog` writes views over explicit file lists (`read_parquet([...], hive_partitioning = true, hive_types = {...: VARCHAR})`; partition keys are VARCHAR so `digest_prefix = '00'` is never read as an integer), typed empty views for registered tables with no files yet, the macros of §2A.3, and two small tables, `catalog_info` (release, manifest hash, root, DuckDB version) and `catalog_files`. It builds under a temporary name and moves the file into place with `os.replace`. A reader that is already open keeps its snapshot; new connections see the new catalog.
+- `open_catalog` copies the catalog to a local directory (e.g. `/tmp/if2453`) if asked and opens it with `access_mode = READ_ONLY`. `swap_current` points `manifests/current.json` at `release=<R>.json` by renaming a fresh symlink.
+- DuckDB's Python row fetch of `TIMESTAMPTZ` needs `pytz`, which the image does not ship; read timestamps through Arrow (`con.sql(...).to_arrow_table()`).
 
 ---
 

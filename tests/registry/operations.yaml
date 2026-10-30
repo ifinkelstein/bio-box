@@ -191,7 +191,7 @@ operations:
     outputs: [catalog]
     oracle: list files independently; compare views
     mrs: [MR-01]
-    tests: [C-01, K-05, K-06, K-08, K-09]
+    tests: [C-01, LY-05, LY-07, LY-10, K-05, K-06, K-08, K-09]
   O-SERVE:
     summary: query classes Q1 to Q8
     inputs: [catalog]

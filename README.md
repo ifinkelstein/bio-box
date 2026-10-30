@@ -6,12 +6,14 @@ Staged, content-addressed corpus of prokaryotic and viral genomes for neighborho
 |---|---|
 | `00-spec.md`, `PLAN.md`, `STAGES.md`, `DEPLOYMENT-AND-MALLEABILITY.md`, `PRIOR-ART.md` | specification, plan, stage ladder, deployment |
 | `planning/` | data layer and tests, sizing, preflight gaps, search plan, test architecture |
-| `src/biobox/registry/` | schema registry (Arrow schemas, keys, enums) |
+| `src/biobox/registry/` | schema registry (Arrow schemas, keys, enums, file locations) |
+| `src/biobox/l0seq/`, `l1/`, `l2/` | sequence store, gene calling, domain scans, clustering (S0) |
+| `src/biobox/catalog.py` | release manifest, generated read-only DuckDB catalog, sequence macros |
 | `tests/registry/` | operation registry, metamorphic relations, failure modes, pending tables |
-| `tests/r0`, `tests/r1` | ring R0 (registry lint) and R1 (unit) tests |
+| `tests/r0`, `tests/r1`, `tests/r2`, `tests/r3` | rings R0 (registry lint), R1 (unit), R2 (micro-S0 fixture), R3 (golden set; needs `BIOBOX_GOLDEN_DIR`) |
 | `audits/`, `presentations/` | audit record and the group-meeting deck |
 
-Run the tests (laptop or CI host; ring R0–R1):
+Run the tests (laptop or CI host; rings R0–R2):
 
 ```
 uv sync
