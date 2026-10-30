@@ -1,0 +1,95 @@
+{
+ "neighborhood": {
+  "keys": [
+   "schema",
+   "anchor_protein_uid",
+   "contig_uid",
+   "anchor_ordinal",
+   "ordinal",
+   "offset",
+   "offset_rel",
+   "protein_uid",
+   "start",
+   "end",
+   "strand",
+   "delta_bp",
+   "junction_topology",
+   "same_strand",
+   "in_operon",
+   "censored",
+   "crosses_origin",
+   "policy_hash"
+  ],
+  "version": 1
+ },
+ "pack_target": {
+  "keys": [
+   "schema",
+   "release_id",
+   "pack_id",
+   "target",
+   "kind",
+   "n_seq",
+   "n_residues",
+   "shards"
+  ],
+  "version": 1
+ },
+ "search_hit": {
+  "keys": [
+   "schema",
+   "run_id",
+   "round",
+   "target_kind",
+   "target_uid",
+   "bitscore",
+   "evalue_zref",
+   "target_size",
+   "seq_bitscore",
+   "seq_evalue_zref",
+   "env_start",
+   "env_end",
+   "ali_start",
+   "ali_end",
+   "hmm_from",
+   "hmm_to",
+   "model_len",
+   "is_partial",
+   "first_inclusion_round",
+   "score_kind",
+   "curation_label",
+   "curation_reason",
+   "n_occurrences",
+   "occurrences"
+  ],
+  "version": 1
+ },
+ "search_run": {
+  "keys": [
+   "schema",
+   "run_id",
+   "status",
+   "error",
+   "recipe_hash",
+   "written_against",
+   "ran_against",
+   "pack_id",
+   "target",
+   "target_size",
+   "rounds",
+   "final_round",
+   "stop_reason",
+   "controls",
+   "warnings",
+   "submitted_at",
+   "wall_s",
+   "cpu_min_max_pid",
+   "peak_rss_bytes",
+   "z_prot",
+   "z_nt_mb",
+   "partial_policy",
+   "max_output_gb"
+  ],
+  "version": 1
+ }
+}

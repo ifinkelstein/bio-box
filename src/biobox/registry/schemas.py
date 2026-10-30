@@ -362,6 +362,17 @@ _SPECS = [
             _f("status", pa.string()),
             _f("partial_policy", pa.string()),
             _f("max_output_gb", pa.float32()),
+            # appended 2026-10-30 with the runner (LY-09)
+            _f("target", pa.string(), nullable=True),
+            _f("target_size", pa.uint64(), nullable=True),
+            _f("rounds", pa.uint16(), nullable=True),
+            _f("final_round", pa.uint16(), nullable=True),
+            _f("rounds_json", pa.string(), nullable=True),
+            _f("stop_reason", pa.string(), nullable=True),
+            _f("controls_json", pa.string(), nullable=True),
+            _f("warnings_json", pa.string(), nullable=True),
+            _f("limits_json", pa.string(), nullable=True),
+            _f("error", pa.string(), nullable=True),
         ]),
         primary_key=("run_id",),
         sort_key=("run_id",),
@@ -395,6 +406,9 @@ _SPECS = [
             _f("score_kind", pa.string()),
             _f("curation_label", pa.string(), nullable=True),
             _f("curation_reason", pa.string(), nullable=True),
+            # appended 2026-10-30 with the runner (LY-09): the sequence-level score that decides inclusion
+            _f("seq_bitscore", pa.float32(), nullable=True),
+            _f("seq_evalue_zref", pa.float64(), nullable=True),
         ]),
         primary_key=("run_id", "round", "target_kind", "target_uid", "env_start"),
         sort_key=("round", "target_kind", "target_uid"),
@@ -403,7 +417,91 @@ _SPECS = [
             "score_kind": ("exact", "projected"),
         },
         small_ok=True,
-        doc="data_layer_and_tests.md §2B.1; profile coordinates per SEARCH_PLAN SD-17",
+        doc=(
+            "data_layer_and_tests.md §2B.1; profile coordinates per SEARCH_PLAN SD-17. One row per included "
+            "domain (env/ali on the target, hmm on the profile, 0-based half-open); round counts from 1"
+        ),
+    ),
+    TableSpec(
+        name="search_profile",
+        layer="search",
+        schema=pa.schema([
+            _f("run_id", UID),
+            _f("round", pa.uint16()),
+            _f("kind", pa.string()),
+            _f("profile_zst", pa.binary()),
+            _f("msa_zst", pa.binary(), nullable=True),
+            _f("n_seq", pa.uint32()),
+            _f("n_eff", pa.float32(), nullable=True),
+        ]),
+        primary_key=("run_id", "round"),
+        sort_key=("round",),
+        enums={"kind": ("hmm", "cm", "pssm")},
+        small_ok=True,
+        doc="data_layer_and_tests.md §2B.1: the profile each round searched with (HMMER3 text, zstd) and its MSA "
+            "(Stockholm, zstd)",
+    ),
+    TableSpec(
+        name="neighborhoods",
+        layer="search",
+        schema=pa.schema([
+            _f("anchor_protein_uid", UID),
+            _f("contig_uid", UID),
+            _f("anchor_ordinal", pa.uint32()),
+            _f("ordinal", pa.uint32()),
+            _f("offset", pa.int16()),
+            _f("offset_rel", pa.int16()),
+            _f("protein_uid", UID),
+            _f("start", COORD),
+            _f("end", COORD),
+            _f("strand", STRAND),
+            _f("delta_bp", pa.int32(), nullable=True),
+            _f("junction_topology", pa.uint8(), nullable=True),
+            _f("same_strand", pa.bool_()),
+            _f("in_operon", pa.bool_(), nullable=True),
+            _f("flags", pa.uint8()),
+            _f("policy_hash", pa.string()),
+        ]),
+        primary_key=("contig_uid", "anchor_ordinal", "ordinal", "policy_hash"),
+        sort_key=("anchor_protein_uid", "contig_uid", "anchor_ordinal", "offset"),
+        enums={"strand": STRAND_VALUES},
+        small_ok=True,
+        doc=(
+            "SEARCH_PLAN SD-08; biobox/search/nbr.py. One row per slot in an anchor's window, the anchor "
+            "itself at offset 0. offset is along the contig, offset_rel along the anchor's strand (positive = "
+            "downstream); flags bit 0 window cut by a linear contig end, bit 1 crosses the origin"
+        ),
+    ),
+    TableSpec(
+        name="search_region",
+        layer="search",
+        schema=pa.schema([
+            _f("region_uid", UID),
+            _f("target_kind", pa.string()),
+            _f("contig_uid", UID),
+            _f("start", COORD),
+            _f("end", COORD),
+            _f("strand", STRAND),
+            _f("n_residues", pa.uint32()),
+            _f("left_slot", pa.uint32(), nullable=True),
+            _f("right_slot", pa.uint32(), nullable=True),
+            _f("orientation", pa.uint8(), nullable=True),
+            _f("gc", pa.float32(), nullable=True),
+            _f("dist_to_contig_end_bp", pa.uint32(), nullable=True),
+            _f("partial", pa.bool_()),
+            _f("at_contig_end", pa.bool_()),
+            _f("gene_overlap_frac", pa.float32(), nullable=True),
+            _f("genetic_code", pa.uint8(), nullable=True),
+        ]),
+        primary_key=("region_uid",),
+        sort_key=("region_uid",),
+        enums={"target_kind": ("dark_orf", "igr", "contig_region", "spacer"), "strand": STRAND_VALUES},
+        small_ok=True,
+        doc=(
+            "data_layer_and_tests.md §2B.2: `igr_meta.parquet` and `dark_orf_meta.parquet` of a search pack; "
+            "region_uid = blake3(contig_uid, start, end, strand). n_residues counts nt for IGRs, aa for dark "
+            "ORFs; orientation is the flanks' junction code (1 co-directional, 2 divergent, 3 convergent)"
+        ),
     ),
     TableSpec(
         name="ledger",

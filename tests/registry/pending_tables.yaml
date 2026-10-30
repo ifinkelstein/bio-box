@@ -10,8 +10,6 @@ pending:
   background_rates: data_layer_and_tests.md §2B.1
   domain_promiscuity: data_layer_and_tests.md §2B.1
   user_token_overlay: data_layer_and_tests.md §2B.1
-  search_profile: data_layer_and_tests.md §2B.1
   search_ssn: data_layer_and_tests.md §2B.1
   search_ssn_thresholds: data_layer_and_tests.md §2B.1
-  neighborhoods: data_layer_and_tests.md §2B.3
   arch_calls: TEST_ARCHITECTURE.md §5.1

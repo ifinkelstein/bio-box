@@ -1,6 +1,6 @@
 # Search plan: how ad hoc searches run on the bio-box layers
 
-Status: **planning only** (2026-10-29). Nothing here is implemented, installed or run. This file is authoritative for search; the plan files (`00-spec.md`, `PLAN.md`, `STAGES.md`, `DEPLOYMENT-AND-MALLEABILITY.md`, `planning/data_layer_and_tests.md`, `planning/sources_and_sizing.md`) point here.
+Status: **S0 runner built** (2026-10-30). The ST0 slice is implemented in `src/biobox/search/`: the search pack (`unique`, `igr`, `dark_orf`, `models`), recipes, the runner with its limits and failure states, the iteration controller with the drift and context checks, `bio-box nbr`, and `--json` exports with the schema rule. What it covers and leaves out is in `planning/data_layer_and_tests.md` §2B.7. The rest of this plan is not yet built. This file is authoritative for search; the plan files (`00-spec.md`, `PLAN.md`, `STAGES.md`, `DEPLOYMENT-AND-MALLEABILITY.md`, `planning/data_layer_and_tests.md`, `planning/sources_and_sizing.md`) point here.
 
 Inputs:
 
@@ -93,7 +93,9 @@ Sidecar rule clarified: coverage means the fraction of the sidecar's keys that r
 
 S5 search pack total on NFS: about 370–530 GB (*estimate*; the row sum in `planning/sources_and_sizing.md` "Search pack sizing"), against 30 TB of scratch. The NR50/NR90 rows use the 4.8e8-protein upper bound and run 15–25% high against the reconciled S5 range of 120–135 Gaa. Per-run working set in `/tmp`: 60–120 GB (NR50 plus IGRs).
 
-### 3.3 New commands (planned; none exists)
+### 3.3 New commands
+
+Built at S0 (2026-10-30): `pack build|verify`, `search run|status|cancel|hits` (`--json`, `--top_n`, `--members`; not `--format domainator-gb` or `--with-context bp`) and `nbr` (`--anchors` as a run or UIDs, `--window`, `--strand`, `--operon-gap`, `--edge`, `--circular`, `--json`). The others are planned.
 
 ```
 bio-box search run <recipe.yaml>           # submit; returns run_id; async

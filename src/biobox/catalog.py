@@ -50,6 +50,12 @@ DERIVED_PARTITIONS = {
 }
 
 
+# Trees under the data root that carry their own manifests and are not release files: the
+# search pack (search_pack/release=<R>/pack_manifest.json, verified by C-12) and search runs
+# (search/run_index.json), which are written after the release is signed.
+EXCLUDED_TREES = ("search_pack", "search")
+
+
 class LayoutError(ValueError):
     """A file under the data root that does not fit the registry (stray, bad path, bad schema)."""
 
@@ -170,6 +176,8 @@ def build_manifest(root: Path, release_id: str) -> dict:
     files = []
     for path in sorted(root.rglob("*.parquet")):
         rel = path.relative_to(root).as_posix()
+        if rel.split("/", 1)[0] in EXCLUDED_TREES:
+            continue
         hit = classify(rel)
         if hit is None:
             raise LayoutError(f"{rel}: no registered table claims this path (LY-10)")
@@ -495,7 +503,41 @@ def open_catalog(path: Path, local_dir: Path | None = None, threads: int | None 
     store = SeqStore(root, cache_blocks) if (Path(root) / "l0seq/seq_locator.parquet").exists() else None
     _register_seq_udf(con, store)
     _READERS[id(con)] = store
+    attach_search(con, Path(root))
     return con
+
+
+SEARCH_RUN_FILES = {"search_run": "run.parquet", "search_hit": "hits.parquet", "search_profile": "profiles.parquet",
+                    "neighborhoods": "neighborhoods.parquet"}
+
+
+def attach_search(con: duckdb.DuckDBPyConnection, root: Path) -> dict[str, int]:
+    """Temporary views over closed search runs (`search/run_index.json`) and the release's pack
+    regions, shadowing the catalog's empty views (data_layer_and_tests.md §2B.3). Runs close
+    after the catalog is built, so the views are made when the catalog is opened; each run
+    file view carries the run id from its path as `run`."""
+    idx_path = root / "search/run_index.json"
+    counts = {}
+    if idx_path.exists():
+        runs = json.loads(idx_path.read_text())["runs"]
+        for name, fname in SEARCH_RUN_FILES.items():
+            paths = [str(root / f"search/run={r['run_id']}/{fname}") for r in runs if fname in r["files"]]
+            counts[name] = len(paths)
+            if paths:
+                spec = TABLES[name]
+                cols = [f'"{f.name}"' for f in spec.schema] + ['"run"']
+                files = "[" + ", ".join(_sql_str(x) for x in sorted(paths)) + "]"
+                con.execute(f"CREATE OR REPLACE TEMP VIEW {name} AS SELECT {', '.join(cols)} FROM read_parquet("
+                            f"{files}, hive_partitioning = true, hive_types = {{'run': 'VARCHAR'}}, union_by_name = true)")
+    rel = con.execute("SELECT value FROM catalog_info WHERE key = 'release_id'").fetchall()
+    if rel:
+        metas = sorted((root / f"search_pack/release={rel[0][0]}").glob("*/*_meta.parquet"))
+        counts["search_region"] = len(metas)
+        if metas:
+            files = "[" + ", ".join(_sql_str(str(x)) for x in metas) + "]"
+            con.execute(f"CREATE OR REPLACE TEMP VIEW search_region AS SELECT * FROM read_parquet({files}, "
+                        "hive_partitioning = false)")
+    return counts
 
 
 # --- LY-06: storage units read per query -------------------------------------

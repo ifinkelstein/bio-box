@@ -76,6 +76,7 @@ Each operation has an ID, inputs and outputs (registered schemas), its oracle, i
 | O-PROJECT | rep → member projection and near-cutoff re-score | exact re-score on all members (micro) or a sample (stage) | MR-08, MR-12 | S-08, A-03 |
 | O-TAPE | contig tapes, segments, junction topology, directons | brute-force rebuild from L1 in Python | MR-03, MR-04, MR-05, MR-11 | Q2 oracle, G-* |
 | O-PAIRS | `slot_pairs`, window enumeration | brute-force window enumeration | MR-03, MR-05, MR-11 | Q1, Q4 oracles |
+| O-PACK | per-release search pack: unique proteins, IGRs ≥ 30 nt, dark ORFs, models, with its manifest (added 2026-10-30) | recount every target from its source tables; translate each dark ORF from the sequence store | MR-01 | C-12 |
 | O-SEARCH | recipe search against a pack target | `hmmsearch`/`mmseqs`/`diamond` binaries; exhaustive search on `unique` | MR-09, MR-10, MR-12, MR-16 | S-01, S-02, S-03, S-04 |
 | O-ITER | iteration controller | hand-built rounds on micro-corpus; planted divergent members | MR-09, MR-10 | S-07 |
 | O-NBR | neighborhood fetch with window, strand, operon, edge, circular rules | brute-force Python over coordinates | MR-03, MR-04, MR-05 | S-09, S-02d |

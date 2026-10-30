@@ -22,6 +22,12 @@ def genome_uid(contig_uids: list[bytes]) -> bytes:
     return blake3(b"".join(sorted(contig_uids))).digest(length=16)
 
 
+def region_uid(contig_uid: bytes, start: int, end: int, strand: int) -> bytes:
+    """BLAKE3-128 of (contig_uid, start, end, strand): a nucleotide search target (IGR, dark ORF)."""
+    return blake3(contig_uid + start.to_bytes(8, "big") + end.to_bytes(8, "big")
+                  + strand.to_bytes(1, "big", signed=True)).digest(length=16)
+
+
 def raw_digest(seq: bytes) -> bytes:
     """sha256 of the exact stored bytes (case and IUPAC preserved)."""
     return hashlib.sha256(seq).digest()

@@ -1,0 +1,345 @@
+"""Ring R1: search units against oracles written from the definitions (S-04, S-09, S-12 lint, S-13).
+
+ORFs: an independent codon table and a per-position definition (an ORF starts after a stop,
+or at a linear contig end, and runs to the next stop). Neighborhoods: windows recomputed from
+coordinates by enumerating both ways round. Recipes: the paper checks that refuse a recipe.
+"""
+
+from __future__ import annotations
+
+import dataclasses
+import json
+from collections import Counter
+from pathlib import Path
+
+import pytest
+from hypothesis import assume, given, settings, strategies as st
+
+from biobox.search import export, nbr, orfs, recipe
+from biobox.search.recipe import RecipeError
+
+REPO = Path(__file__).resolve().parents[2]
+
+# --- ORFs --------------------------------------------------------------------------------------
+
+_AAS = "FFLLSSSSYY**CC*WLLLLPPPPHHQQRRRRIIIMTTTTNNKKSSRRVVVVAAAADDEEGGGG"
+_B = "TCAG"
+TABLE = {a + b + c: _AAS[16 * i + 4 * j + k] for i, a in enumerate(_B) for j, b in enumerate(_B) for k, c in enumerate(_B)}
+
+
+def _table(code):
+    t = dict(TABLE)
+    if code == 4:
+        t["TGA"] = "W"
+    return t
+
+
+def _rc(s):
+    return s[::-1].translate(str.maketrans("ACGT", "TGCA"))
+
+
+def _oracle_orfs(seq, circular, code, min_aa):
+    t, L, out = _table(code), len(seq), set()
+    for strand in (1, -1):
+        s = seq if strand == 1 else _rc(seq)
+
+        def codon(p):
+            return "".join(s[(p + x) % L] for x in range(3)) if circular else s[p:p + 3]
+
+        for p in range(L):
+            if circular:
+                if t[codon((p - 3) % L)] != "*":
+                    continue
+            elif not (p < 3 or (p >= 3 and t.get(codon(p - 3)) == "*")):
+                continue
+            aa, q, closed = [], p, False
+            while (circular and q - p + 3 <= L) or (not circular and q + 3 <= L):
+                c = t[codon(q)]
+                if c == "*":
+                    closed = True
+                    break
+                aa.append(c)
+                q += 3
+            if circular and not closed:
+                continue
+            if len(aa) < min_aa:
+                continue
+            lo, hi = p, q + 3 if closed else q
+            if strand == 1:
+                start, end = lo, hi
+            else:
+                start, end = L - hi, L - lo
+                if circular and start < 0:
+                    start, end = start + L, end + L
+            partial = not circular and (p < 3 or not closed)  # open at a linear contig end
+            out.add((start, end, strand, "".join(aa), partial))
+    return out
+
+
+def _prod_orfs(seq, circular, code, min_aa):
+    return {(o.start, o.end, o.strand, o.aa, o.partial)
+            for o in orfs.six_frame_orfs(seq.encode(), circular, code, min_aa)}
+
+
+@settings(max_examples=300, deadline=None)
+@given(st.text(alphabet="ACGT", min_size=3, max_size=240), st.booleans(), st.sampled_from([11, 4]))
+def test_six_frame_orfs_equal_per_position_oracle(seq, circular, code):
+    assert _prod_orfs(seq, circular, code, 3) == _oracle_orfs(seq, circular, code, 3)
+
+
+@settings(max_examples=200, deadline=None)
+@given(st.text(alphabet="ACGT", min_size=30, max_size=300), st.data())
+def test_dark_orf_rule_equals_definition(seq, data):
+    L = len(seq)
+    genes = []
+    for _ in range(data.draw(st.integers(0, 3))):
+        s = data.draw(st.integers(0, L - 10))
+        genes.append((s, data.draw(st.integers(s + 3, L)), data.draw(st.sampled_from([1, -1]))))
+    got = {(o.start, o.end, o.strand) for o, _, _ in orfs.dark_orfs(seq.encode(), False, genes, 11, 3, 20, 0.5)}
+    covered = set()
+    for s, e, _ in genes:
+        covered |= set(range(s, e))
+    own = {(1, e) for s, e, st_ in genes if st_ == 1} | {(-1, s) for s, e, st_ in genes if st_ == -1}
+    want = set()
+    for start, end, strand, _, _ in _oracle_orfs(seq, False, 11, 3):
+        if (strand, end if strand == 1 else start) in own:
+            continue
+        frac = len(covered & set(range(start, end))) / (end - start)
+        if frac >= 0.5 and not (start < 20 or end > L - 20):
+            continue
+        want.add((start, end, strand))
+    assert got == want
+
+
+# --- neighborhoods (S-09) ------------------------------------------------------------------------
+
+
+@st.composite
+def contigs(draw, circular=None):
+    length = draw(st.integers(min_value=300, max_value=6_000))
+    circ = draw(st.booleans()) if circular is None else circular
+    n = draw(st.integers(min_value=1, max_value=14))
+    starts = sorted(draw(st.lists(st.integers(0, length - 2), min_size=n, max_size=n, unique=True)))
+    slots = []
+    for s in starts:
+        e = min(s + draw(st.integers(1, 500)), length)
+        slots.append((s, e, draw(st.sampled_from([1, -1]))))
+    return slots, length, circ
+
+
+def _tape(slots, length, circ):
+    return {"contig_uid": b"c" * 16, "contig_len": length, "is_circular": circ,
+            "start_bps": [s for s, _, _ in slots], "end_bps": [e for _, e, _ in slots],
+            "strands": [x for _, _, x in slots], "protein_uids": [bytes([i]) * 16 for i in range(len(slots))]}
+
+
+def _gap(a, b):
+    return max(a[0], b[0]) - min(a[1], b[1])
+
+
+def _oracle_nbr(slots, length, circ, i, p: nbr.Policy):
+    n = len(slots)
+    a = slots[i]
+    if not circ:
+        if p.edge == "exclude" and min(a[0], length - a[1]) < p.edge_bp:
+            return None
+        if p.edge == "require" and (i < p.edge_n or n - 1 - i < p.edge_n):
+            return None
+    ways = {}
+    for j in range(n):
+        if j == i:
+            continue
+        opts = []
+        if circ:
+            f = (j - i) % n
+            for d in (f, f - n):
+                if d == 0:
+                    continue
+                b = slots[j]
+                crosses = (d > 0 and j < i) or (d < 0 and j > i)
+                if crosses:
+                    b = (b[0] + length, b[1] + length, b[2]) if d > 0 else (b[0] - length, b[1] - length, b[2])
+                opts.append((d, _gap(a, b), crosses))
+        else:
+            opts.append((j - i, _gap(a, slots[j]), False))
+        if p.window_genes is not None:
+            best = min(opts, key=lambda o: (abs(o[0]), -o[0]))
+            if abs(best[0]) <= p.window_genes:
+                ways[j] = best
+        else:
+            best = min(opts, key=lambda o: (o[1], -o[0]))
+            if best[1] <= p.window_bp:
+                ways[j] = best
+    operon = None
+    if p.operon_gap is not None:
+        operon = {i}
+        for step in (1, -1):
+            cur = i
+            while True:
+                nxt = (cur + step) % n if circ else cur + step
+                if not circ and not 0 <= nxt < n or nxt in operon or slots[nxt][2] != a[2]:
+                    break
+                x, y = (slots[cur], slots[nxt])
+                if circ and ((step == 1 and nxt < cur) or (step == -1 and nxt > cur)):
+                    y = (y[0] + step * length, y[1] + step * length, y[2])
+                if _gap(x, y) > p.operon_gap:
+                    break
+                operon.add(nxt)
+                cur = nxt
+    if circ:
+        cens = False
+    elif p.window_genes is not None:
+        cens = i < p.window_genes or n - 1 - i < p.window_genes
+    else:
+        cens = a[0] - p.window_bp < 0 or a[1] + p.window_bp > length
+    rows = {(i, 0, 0, None, int(cens))}
+    for j, (d, g, crosses) in ways.items():
+        if p.strand == "same" and slots[j][2] != a[2]:
+            continue
+        if operon is not None and j not in operon:
+            continue
+        rows.add((j, d, d * a[2], g, int(cens) | (2 if crosses else 0)))
+    return rows
+
+
+def _prod_nbr(slots, length, circ, i, p):
+    got = nbr.neighborhood(_tape(slots, length, circ), i, p)
+    return None if got is None else {(r["ordinal"], r["offset"], r["offset_rel"], r["delta_bp"], r["flags"])
+                                     for r in got}
+
+
+POLICIES = st.builds(
+    nbr.Policy.parse,
+    window=st.sampled_from(["0g", "1g", "3g", "10g", "100bp", "1kb", "3kb"]),
+    strand=st.sampled_from(["any", "same"]),
+    operon_gap=st.sampled_from([None, 0, 50, 300]),
+    edge=st.sampled_from(["truncate", "exclude:200bp", "require:2"]),
+    circular=st.sampled_from(["auto", "off"]),
+)
+
+
+@settings(max_examples=500, deadline=None)
+@given(contigs(), POLICIES, st.data())
+def test_s09_neighborhood_equals_coordinate_oracle(c, policy, data):
+    slots, length, circ = c
+    i = data.draw(st.integers(0, len(slots) - 1))
+    eff_circ = circ and policy.circular == "auto"
+    want = _oracle_nbr(slots, length, eff_circ, i, policy)
+    assert _prod_nbr(slots, length, circ, i, policy) == want
+
+
+@settings(max_examples=300, deadline=None)
+@given(contigs(circular=False), POLICIES, st.data())
+def test_s09_mr03_reverse_complement_keeps_offsets_along_the_anchor(c, policy, data):
+    slots, length, _ = c
+    assume(all(a[0] < b[0] and a[1] < b[1] for a, b in zip(slots, slots[1:])))
+    i = data.draw(st.integers(0, len(slots) - 1))
+    m = sorted((length - e, length - s, -x) for s, e, x in slots)
+    mi = len(slots) - 1 - i
+    before = nbr.neighborhood(_tape(slots, length, False), i, policy)
+    after = nbr.neighborhood(_tape(m, length, False), mi, policy)
+    key = lambda rows: None if rows is None else Counter(  # noqa: E731
+        (r["offset_rel"], r["same_strand"], r["delta_bp"], r["in_operon"], r["flags"]) for r in rows)
+    assert key(after) == key(before)
+
+
+@settings(max_examples=300, deadline=None)
+@given(contigs(circular=True), st.integers(0, 5_999), POLICIES, st.data())
+def test_s09_mr04_rotation_keeps_circular_neighborhoods(c, r, policy, data):
+    slots, length, _ = c
+    policy = dataclasses.replace(policy, circular="auto")  # edge policies do not apply on a circle
+    r %= length
+    i = data.draw(st.integers(0, len(slots) - 1))
+    tagged = sorted((((s - r) % length, (s - r) % length + (e - s), x), k) for k, (s, e, x) in enumerate(slots))
+    rot = [t for t, _ in tagged]
+    assume(all(e <= length for _, e, _ in rot[:-1]))
+    ri = [k for _, k in tagged].index(i)
+    before = nbr.neighborhood(_tape(slots, length, True), i, policy)
+    after = nbr.neighborhood(_tape(rot, length, True), ri, policy)
+    n = len(slots)
+    # a partner exactly half way round is reached forward; rotation keeps it on the same side only
+    # up to that tie, so compare offsets by magnitude there
+    key = lambda rows: Counter((abs(x["offset"]) if 2 * abs(x["offset"]) == n else x["offset"], x["delta_bp"],  # noqa: E731
+                                x["same_strand"], x["in_operon"]) for x in rows)
+    assert key(after) == key(before)
+
+
+def test_s09_edge_policies_and_flags_on_a_fixed_contig():
+    slots = [(0, 300, 1), (350, 900, 1), (1_000, 1_500, -1), (1_520, 2_000, -1), (5_000, 5_600, 1)]
+    t = _tape(slots, 6_000, False)
+    p = nbr.Policy.parse(window="2g")
+    rows = nbr.neighborhood(t, 0, p)
+    assert [r["ordinal"] for r in rows] == [0, 1, 2] and all(r["flags"] & nbr.FLAG_CENSORED for r in rows)
+    assert nbr.neighborhood(t, 0, nbr.Policy.parse(window="2g", edge="exclude:3kb")) is None
+    assert nbr.neighborhood(t, 2, nbr.Policy.parse(window="2g", edge="require:2")) is not None
+    assert nbr.neighborhood(t, 1, nbr.Policy.parse(window="2g", edge="require:2")) is None
+    op = nbr.neighborhood(t, 2, nbr.Policy.parse(window="10g", operon_gap=50))
+    assert [r["ordinal"] for r in op] == [2, 3] and all(r["in_operon"] for r in op)
+    same = nbr.neighborhood(t, 2, nbr.Policy.parse(window="10g", strand="same"))
+    # slot 3 lies right of a minus-strand anchor along the contig: upstream of it, so offset_rel -1
+    assert [(r["ordinal"], r["offset"], r["offset_rel"]) for r in same] == [(2, 0, 0), (3, 1, -1)]
+    circ = nbr.neighborhood(_tape(slots, 6_000, True), 4, nbr.Policy.parse(window="1g"))
+    assert {r["ordinal"]: r["flags"] for r in circ} == {3: 0, 4: 0, 0: nbr.FLAG_CROSSES_ORIGIN}
+    assert {r["ordinal"]: r["delta_bp"] for r in circ}[0] == 400  # 5_600 -> 6_000 + 0
+
+
+# --- recipes (S-04, S-12 lint) ----------------------------------------------------------------------
+
+BASE = """
+recipe: t
+written_against: rS0.1
+seed: [{sequence: MKVLAAGIVGLLL}]
+target: unique
+tool: jackhmmer
+iterations: {max: 3, inclusion_bits: 27}
+controls: {positive: [{sequence: MKVLAAGIVGLLL}]}
+"""
+
+
+def test_s04_recipe_without_positive_control_is_refused():
+    with pytest.raises(RecipeError, match="positive control"):
+        recipe.load(BASE.replace("controls: {positive: [{sequence: MKVLAAGIVGLLL}]}", ""))
+    with pytest.raises(RecipeError, match="positive control"):
+        recipe.load(BASE.replace("{positive: [{sequence: MKVLAAGIVGLLL}]}", "{positive: []}"))
+    r, _ = recipe.load(BASE)
+    assert r["controls"]["negative"] == "shuffled_seed"  # the default negative (MR-09)
+
+
+@pytest.mark.parametrize("edit,match", [
+    (("target: unique", "target: everything"), "target"),
+    (("iterations: {max: 3, inclusion_bits: 27}", "iterations: {max: 3, inclusion_evalue: 0.001}"), "bits"),
+    (("iterations: {max: 3, inclusion_bits: 27}", "iterations: {max: 3}"), "inclusion_bits"),
+    (("tool: jackhmmer", "tool: phmmer"), "one round"),
+    (("recipe: t", "recipe: t\nz: 2e7"), "release_default"),
+    (("recipe: t", "recipe: t\ncolour: red"), "unknown keys"),
+    (("seed: [{sequence: MKVLAAGIVGLLL}]", "seed: [{protein_uid: ABC}]"), "hex"),
+    (("seed: [{sequence: MKVLAAGIVGLLL}]", "seed: [{kind: sequence, value: MKV, source: {paper_id: x}}]"), "evidence"),
+    (("recipe: t", "recipe: t\ncontext: {edge: sideways}"), "edge"),
+])
+def test_recipe_paper_checks_refuse(edit, match):
+    with pytest.raises(RecipeError, match=match):
+        recipe.load(BASE.replace(*edit))
+
+
+def test_recipe_hash_is_spelling_free_and_gaps_are_listed():
+    a, _ = recipe.load(BASE)
+    b, _ = recipe.load(BASE.replace("seed: [{sequence: MKVLAAGIVGLLL}]",
+                                    "seed:\n  - kind: sequence\n    value: mkvl aagi vglll"))
+    assert recipe.recipe_hash(a) == recipe.recipe_hash(b)
+    assert recipe.executable(a) == []
+    c, _ = recipe.load(BASE.replace("target: unique", "target: igr").replace("tool: jackhmmer", "tool: nhmmer"))
+    assert any("target igr" in g for g in recipe.executable(c)) and any("nhmmer" in g for g in recipe.executable(c))
+
+
+# --- JSON exports (S-13) ------------------------------------------------------------------------------
+
+
+def test_s13_json_schemas_match_the_lock():
+    locked = json.loads(export.lock_path(REPO).read_text())
+    assert export.lock_problems(locked) == []
+    removed = {k: {**v, "keys": v["keys"][:-1]} for k, v in export.SCHEMAS.items()}
+    assert export.lock_problems(locked, removed)  # a removed key without a bump fails
+    bumped = {k: {"version": v["version"] + 1, "keys": v["keys"][:-1]} for k, v in export.SCHEMAS.items()}
+    assert export.lock_problems(locked, bumped) == []
+    added = {k: {**v, "keys": v["keys"] + ["extra"]} for k, v in export.SCHEMAS.items()}
+    assert export.lock_problems(locked, added) == []

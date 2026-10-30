@@ -108,6 +108,13 @@ operations:
     oracle: brute-force window enumeration
     mrs: [MR-03, MR-04, MR-05, MR-11]
     tests: [Q1, Q3, Q4, C-03, LY-06]
+  O-PACK:
+    summary: per-release search pack (unique proteins, IGRs >= 30 nt, dark ORFs, models) and its manifest
+    inputs: [protein_seq, igr, seq_shards, protein_occurrence, slot_protein, contig_tapes]
+    outputs: [search_pack, search_region]
+    oracle: recount every target from its source tables; translate each dark ORF from the sequence store
+    mrs: [MR-01]
+    tests: [C-12]
   O-SEARCH:
     summary: recipe search against a search-pack target
     inputs: [recipe, search_pack]
