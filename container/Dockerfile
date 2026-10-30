@@ -23,6 +23,8 @@ LABEL org.opencontainers.image.source=https://github.com/ifinkelstein/bio-box
 FROM runtime AS test
 RUN uv sync --frozen --python /opt/conda/bin/python
 COPY --chown=$MAMBA_USER:$MAMBA_USER tests ./tests
+# the K-13 regression test runs the bake-off script's layouts
+COPY --chown=$MAMBA_USER:$MAMBA_USER scripts ./scripts
 COPY --chown=$MAMBA_USER:$MAMBA_USER golden.yaml golden.lock.yaml ./
 # R0 checks test IDs against the plan documents
 COPY --chown=$MAMBA_USER:$MAMBA_USER 00-spec.md PLAN.md STAGES.md ./
