@@ -70,12 +70,14 @@ def built(tmp_path_factory):
     return root, report, mem, aln, prot
 
 
+@pytest.mark.covers("C-01", "C-06", "LY-01")
 def test_tables_conform(built):
     _, _, mem, aln, _ = built
     assert conformance_problems(mem, table("cluster_member")) == []
     assert conformance_problems(aln, table("cluster_member_aln")) == []
 
 
+@pytest.mark.covers("C-02")
 def test_every_protein_once_per_level_and_reps_are_members(built):
     _, _, mem, _, prot = built
     for level in LEVELS:
@@ -133,6 +135,7 @@ def _walk(cigar: str, rep: str, member: str, rs: int, ms: int):
     return ident, cols, i, j
 
 
+@pytest.mark.covers("C-11")
 def test_stored_alignments_check_out_against_sequences(built):
     _, _, _, aln, prot = built
     for r in aln.to_pylist():

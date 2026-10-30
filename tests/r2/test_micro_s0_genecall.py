@@ -86,6 +86,7 @@ GLOBS = {
 }
 
 
+@pytest.mark.covers("C-01", "C-02", "C-06", "LY-01")
 @pytest.mark.parametrize("name", sorted(GLOBS))
 def test_tables_conform(root, name):
     files = sorted(root.glob(GLOBS[name]))

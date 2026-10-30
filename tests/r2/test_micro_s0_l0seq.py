@@ -65,6 +65,7 @@ def test_fixture_matches_contract():
         assert len(recs[0].seq) == o["length"]
 
 
+@pytest.mark.covers("C-01", "C-02", "C-06", "LY-01")
 @pytest.mark.parametrize(
     "name,glob",
     [

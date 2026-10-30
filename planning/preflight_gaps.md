@@ -209,7 +209,7 @@ Test harness, on paper (gap #29; `STAGES.md` S−1 item 15; § numbers in this g
 - [ ] Synthetic-world generator (`synthworld`) spec: planted features and truth tables (§6.2), null worlds with phylogeny and HGT. **Spec written** (`planning/tests/synthworld_spec.md`; ZOMBI2 backbone plus custom code, Zombi 1 and ALF not used); S−1 fit spike done 2026-10-29: GO with conditions (`planning/tests/synthworld_spike.md`, DEC-15).
 - [x] CI host for R2 chosen: GitHub Actions on private `ifinkelstein/bio-box` (DEC-06).
 - [x] `test_run` schema registered (fields in §8).
-- [ ] S0 gate written as a SQL query over `test_run`.
+- [x] S0 gate written as a SQL query over `test_run` (`python -m biobox.gate S0`, `tests/registry/gates.yaml`; 2026-10-30).
 - [ ] S-12 manifests on paper: the three Domainator case studies and five synteny hypotheses as recipes, each with a workflow manifest (§5.1).
 
 Data

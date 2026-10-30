@@ -695,13 +695,16 @@ SELECT g.test_id
 FROM gate_spec g
 LEFT JOIN test_run t
   ON t.test_id = g.test_id
- AND t.image_digest = $image
+ AND t.outcome <> 'skip'                      -- a skipped test was not run
+ AND t.runtime_image_digest = $image
  AND (t.release_id = $release OR t.ring IN ('R0', 'R1', 'R2'))
 WHERE g.stage = $stage AND g.gate = 'B'
 GROUP BY g.test_id
 HAVING count(t.test_id) = 0 OR NOT bool_and(t.outcome = 'pass');
 ```
 Regressions are diffs between two runs' rows for the same `test_id` and `params_hash`.
+
+**Implemented (2026-10-30).** `tests/conftest.py` records one `test_run` row per test execution and plan ID when `BIOBOX_TEST_RUN_DIR` is set (IDs come from the test name, `test_r03_...`, or `@pytest.mark.covers(...)`; a test with no plan ID is recorded under its node ID). `src/biobox/testrun.py` writes one `<date>-<k>.parquet` per session and rewrites `test_run_index.json` by atomic rename. `tests/registry/gates.yaml` holds the S0 gate from the S0 rows of §4.9 and §4.10 (ranges expanded; R0 checks every ID is defined). `python -m biobox.gate S0 --dir $ATD_ROOT/tests [--image D] [--release R]` runs the query above (with `$image` and `$release` optional, for laptop runs) and checks that each required ring is green in its latest session. A skip counts as not run, so a test skipped for a missing tool stays on the missing list. The first report is in `planning/measurements/2026-10-30_s0_gate.md`.
 
 **Tests of the tests** (TEST_ARCHITECTURE §8): mutation score ≥ 80% of mutants killed by R1–R2 (*target*; measured at S0); every S1-severity failure (F-01..F-10) has a test that fails when it is injected; one flexibility check (a lab member adds a workflow from a manifest and recipe only).
 

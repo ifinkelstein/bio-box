@@ -33,4 +33,5 @@ markers = [
     "r0: static checks on registries, recipes and manifests (TEST_ARCHITECTURE §8)",
     "r2: micro-corpus and micro-S0 fixture builds (TEST_ARCHITECTURE §8)",
     "r3: golden set with real tools; needs BIOBOX_GOLDEN_DIR (TEST_ARCHITECTURE §8)",
+    "covers(*ids): plan test IDs a test covers, recorded in test_run (data_layer_and_tests.md §4.12)",
 ]

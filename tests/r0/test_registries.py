@@ -156,6 +156,16 @@ def test_s1_failures_have_a_real_test():
             assert real, f"{fid}: S1 failure with no defined test"
 
 
+def test_gate_ids_are_documented():
+    from biobox.gate import load_gates
+
+    documented = _documented_test_ids()
+    for stage, g in load_gates(REG / "gates.yaml").items():
+        for t in g["B"] + g["W"]:
+            assert t in documented, f"gates.yaml {stage}: {t} is not defined in the plan docs"
+        assert set(g["rings"]) <= {"R0", "R1", "R2", "R3", "R4", "R5"}
+
+
 def test_operations_match_test_architecture():
     doc = (ROOT / "planning" / "tests" / "TEST_ARCHITECTURE.md").read_text()
     in_doc = set(re.findall(r"^\| (O-[A-Z]+) \|", doc, flags=re.M))

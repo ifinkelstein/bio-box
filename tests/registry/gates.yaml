@@ -1,0 +1,39 @@
+# Stage gates (data_layer_and_tests.md §4.9 and §4.10; §4.12 gate query).
+# Written from the S0 rows of both tables; ranges like C-01..C-08 are expanded by
+# src/biobox/gate.py. R0 checks every ID here is defined in the plan documents.
+# B blocks the stage; W is recorded in the release notes; rings must be green;
+# milestones are not tests and are signed off by hand.
+stages:
+  S0:
+    B:
+      - C-01..C-08
+      - C-10..C-12
+      - L-01..L-03
+      - R-01..R-07
+      - R-09
+      - Q1..Q8
+      - D-01..D-04
+      - G-01
+      - G-02
+      - G-04
+      - K-01..K-13
+      - LY-01..LY-10
+      - S-01
+      - S-02d
+      - S-04
+      - S-05
+      - S-06
+      - S-07
+      - S-09
+      - S-12
+      - S-13
+    W:
+      - G-03
+      - C-09
+      - R-08
+    rings: [R0, R1, R2, R3]
+    milestones:
+      - micro-corpus built with its manifest hashes recorded
+      - mutation score measured (target >= 80%)
+      - null-world calibration first pass (MR-18)
+      - cost table measured on the pod

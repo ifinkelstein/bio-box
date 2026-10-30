@@ -77,6 +77,7 @@ def built(tmp_path_factory):
     return root, lib, source, report, rows
 
 
+@pytest.mark.covers("C-01", "C-06", "LY-01")
 def test_table_conforms(built):
     _, _, _, _, rows = built
     assert rows.num_rows > 0

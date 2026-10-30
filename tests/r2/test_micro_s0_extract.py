@@ -50,6 +50,7 @@ def test_r07_reingest_gives_identical_digests(exported, tmp_path):
     assert report["records"] == 3 and report["blocks"] > 3
 
 
+@pytest.mark.covers("LY-08")
 def test_rewrite_is_byte_identical(exported, tmp_path):
     _, store, contigs, out, _ = exported
     again = tmp_path / "again.fa.gz"

@@ -74,6 +74,7 @@ def _contigs():
 # --- manifest (LY-10, LY-05, C-01) ------------------------------------------------
 
 
+@pytest.mark.covers("LY-10")
 def test_manifest_lists_every_parquet_file_and_verifies(built):
     root, man, _ = built
     on_disk = sorted(p.relative_to(root).as_posix() for p in root.rglob("*.parquet"))
@@ -84,6 +85,7 @@ def test_manifest_lists_every_parquet_file_and_verifies(built):
     assert {f["table"] for f in man["files"]} >= {"seq_chunks", "contig_index", "protein_seq", "slot_protein", "protein_occurrence"}
 
 
+@pytest.mark.covers("LY-10")
 def test_verify_detects_tampering_and_strays(built, tmp_path):
     root, man, _ = built
     copy = tmp_path / "copy"
@@ -98,6 +100,7 @@ def test_verify_detects_tampering_and_strays(built, tmp_path):
     assert "not in manifest: l0seq/stray.parquet" in problems
 
 
+@pytest.mark.covers("C-01", "LY-05", "LY-10")
 def test_stray_wrong_partition_and_schema_drift_are_refused(built, tmp_path):
     root, man, _ = built
     chunk = next(x for x in man["files"] if x["table"] == "seq_chunks")
@@ -141,6 +144,7 @@ def test_mr01_manifest_hash_ignores_input_order_and_root(built, tmp_path):
 # --- catalog views (LY-10, LY-07) ---------------------------------------------------
 
 
+@pytest.mark.covers("LY-10")
 def test_views_use_explicit_file_lists(built, con):
     _, man, _ = built
     views = dict(con.execute("SELECT view_name, sql FROM duckdb_views() WHERE NOT internal").fetchall())
@@ -199,6 +203,7 @@ def test_catalog_is_read_only(con):
         con.execute("CREATE TABLE x (a INTEGER)")
 
 
+@pytest.mark.covers("LY-05")
 def test_partition_columns_come_from_paths(con):
     stages = {r[0] for r in con.execute("SELECT DISTINCT stage FROM seq_chunks").fetchall()}
     assert stages == {"S0"}
