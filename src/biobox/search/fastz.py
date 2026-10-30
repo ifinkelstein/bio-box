@@ -65,3 +65,17 @@ def read_records(path: Path) -> Iterator[tuple[str, str]]:
         elif name is not None:
             yield name, line
             name = None
+
+
+def zst(data: bytes) -> bytes:
+    """A zstd frame of `data` (search_profile blobs); read back with `unzst` or `zstd -d`."""
+    sink = pa.BufferOutputStream()
+    with pa.CompressedOutputStream(sink, "zstd") as out:
+        out.write(data)
+    return sink.getvalue().to_pybytes()
+
+
+def unzst(blob: bytes) -> bytes:
+    with pa.CompressedInputStream(pa.BufferReader(blob), "zstd") as fh:
+        return fh.read()
+

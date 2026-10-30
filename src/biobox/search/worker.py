@@ -23,11 +23,10 @@ from biobox.search import engine, fastz, nbr
 
 EXIT_OOM = 86
 EXIT_ORPHAN = 87  # the runner died: nothing would record this run, so stop
-_ZSTD = pa.Codec("zstd")
 
 
 def _zst(b: bytes | None) -> bytes | None:
-    return None if b is None else _ZSTD.compress(b, asbytes=True)
+    return None if b is None else fastz.zst(b)
 
 
 def _families(root: Path) -> dict[bytes, set[str]]:

@@ -448,6 +448,10 @@ def test_search_tables_conform_to_the_registry(world):
         from biobox.registry.schemas import conformance_problems
 
         assert conformance_problems(pq.read_table(p), table(name)) == []
+        if name == "search_profile":  # blobs decode on their own: HMMER3 text and Stockholm
+            for r in pq.read_table(p).to_pylist():
+                assert fastz.unzst(r["profile_zst"]).startswith(b"HMMER3")
+                assert r["msa_zst"] is None or fastz.unzst(r["msa_zst"]).startswith(b"# STOCKHOLM")
 
 
 def _trap_recipe(w, stop="[no_new_reps]", tool="jackhmmer", mx=5, extra=""):
@@ -516,14 +520,13 @@ def test_rounds_equal_the_hmmsearch_binary(placed, tmp_path):
         for sh in sorted(pack.pack_dir(root, "rSyn").glob("unique/part-*.faa.zst")):
             for name, seq in fastz.read_records(sh):
                 fh.write(f">{name}\n{seq}\n")
-    codec = pa.Codec("zstd")
     profiles = pq.read_table(runner.run_dir(root, row["run_id"]) / "profiles.parquet").to_pylist()
     hits = pq.read_table(runner.run_dir(root, row["run_id"]) / "hits.parquet").to_pylist()
     bits = 30.0
     for prof in profiles:
         k = prof["round"]
         hmm = tmp_path / f"r{k}.hmm"
-        hmm.write_bytes(codec.decompress(prof["profile_zst"], asbytes=True))
+        hmm.write_bytes(fastz.unzst(prof["profile_zst"]))
         tbl, dom = tmp_path / f"r{k}.tbl", tmp_path / f"r{k}.dom"
         subprocess.run([HMMSEARCH, "--noali", "--cpu", "1", "-Z", "1e8", "--domZ", "1e8", "-T", str(bits),
                         "--incT", str(bits), "--tblout", str(tbl), "--domtblout", str(dom), "-o", "/dev/null",
