@@ -95,19 +95,19 @@ operations:
     mrs: [MR-08, MR-12]
     tests: [S-08, A-03]
   O-TAPE:
-    summary: contig tapes, segments, junction topology, directons
-    inputs: [l1_genes, l1_domains, l1_ncrna, protein_occurrence]
-    outputs: [contig_tapes]
+    summary: contig tapes, segments, junction topology, directons; release tokens
+    inputs: [l1_genes, l1_domains, l1_ncrna, protein_occurrence, contig_index, cluster_member]
+    outputs: [contig_tapes, tape_tokens, token_dict]
     oracle: brute-force rebuild from L1 in Python
     mrs: [MR-03, MR-04, MR-05, MR-11]
-    tests: [Q2, G-03, A-04, A-05]
+    tests: [Q2, C-04, C-05, C-07, K-07, G-03, A-04, A-05]
   O-PAIRS:
     summary: slot_pairs window enumeration
-    inputs: [contig_tapes]
+    inputs: [contig_tapes, tape_tokens]
     outputs: [slot_pairs]
     oracle: brute-force window enumeration
-    mrs: [MR-03, MR-05, MR-11]
-    tests: [Q1, Q4]
+    mrs: [MR-03, MR-04, MR-05, MR-11]
+    tests: [Q1, Q3, Q4, C-03, LY-06]
   O-SEARCH:
     summary: recipe search against a search-pack target
     inputs: [recipe, search_pack]

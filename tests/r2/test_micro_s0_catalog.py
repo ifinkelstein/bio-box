@@ -25,6 +25,7 @@ import yaml
 from biobox import catalog, fasta, ids
 from biobox.l0seq import SeqStore, SourceObject, ingest, revcomp
 from biobox.l1.genecall import GENE_CALL_VERSION, GenomeInput, run as call_genes
+from biobox.l3 import tapes
 from biobox.registry.schemas import TABLES
 
 pytestmark = pytest.mark.r2
@@ -44,6 +45,7 @@ def _build(root: Path, order=1) -> Path:
         genomes.append(GenomeInput((cu,), o["genetic_code"], kind=o["kind"],
                                    circular=(cu,) if o["topology"] == "circular" else ()))
     call_genes(root, "S0", genomes)
+    tapes.run(root, "S0", {u for g in genomes for u in g.circular})  # LIST columns for LY-07
     return root
 
 

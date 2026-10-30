@@ -39,6 +39,8 @@ class TableSpec:
     enums: dict[str, tuple] = field(default_factory=dict)
     small_ok: bool = False
     doc: str = ""
+    # Parallel LIST columns: one entry per slot, so equal lengths in every row (C-04).
+    list_columns: tuple[str, ...] = ()
     # Path under the data root: a directory holding `<k>=<v>/.../*.parquet` in
     # partition_keys order, or a single `.parquet` file. Empty: not yet placed
     # (the catalog exposes an empty view).
@@ -426,6 +428,102 @@ _SPECS = [
             "data_layer_and_tests.md §4.2. One row per (object, reason); n_rejected counts that reason only, so "
             "L-01 sums rows per object. object_key is the L0 object sha256, a contig_uid, or the UTF-8 name of a "
             "library or cluster level"
+        ),
+    ),
+    TableSpec(
+        name="contig_tapes",
+        location="l3/tapes",
+        layer="L3",
+        schema=pa.schema([
+            _f("contig_uid", UID),
+            _f("tax_order_bucket", pa.uint32(), nullable=True),
+            _f("genome_uid", UID, nullable=True),
+            _f("contig_len", COORD),
+            _f("is_circular", pa.bool_()),
+            _f("n_slots", pa.uint32()),
+            _f("tier", pa.uint8(), nullable=True),
+            _f("assembly_quality", pa.string(), nullable=True),
+            _f("feature_kinds", pa.list_(pa.uint8())),
+            _f("strands", pa.list_(STRAND)),
+            _f("start_bps", pa.list_(pa.uint32())),
+            _f("end_bps", pa.list_(pa.uint32())),
+            _f("delta_bp_prev_slots", pa.list_(pa.int32())),
+            _f("junction_topology_prevs", pa.list_(pa.uint8())),
+            _f("orfs_to_contig_starts", pa.list_(pa.uint16()), nullable=True),
+            _f("orfs_to_contig_ends", pa.list_(pa.uint16()), nullable=True),
+            _f("slot_flags", pa.list_(pa.uint8())),
+            _f("protein_uids", pa.list_(UID)),
+        ]),
+        primary_key=("contig_uid", "gene_call_version"),
+        sort_key=("tax_order_bucket", "contig_uid"),
+        partition_keys=("gene_call_version", "stage"),
+        list_columns=("feature_kinds", "strands", "start_bps", "end_bps", "delta_bp_prev_slots",
+                      "junction_topology_prevs", "orfs_to_contig_starts", "orfs_to_contig_ends", "slot_flags",
+                      "protein_uids"),
+        doc=(
+            "PLAN.md §4.2; biobox/l3/tapes.py. One row per contig, list index = slot_ordinal; coordinates "
+            "only (append-only per stage). feature_kinds 1 = CDS; junction codes 1 co-directional, 2 divergent, "
+            "3 convergent, 4 nested antisense, null for the first slot of a linear contig"
+        ),
+    ),
+    TableSpec(
+        name="token_dict",
+        location="l3/token_dict",
+        layer="L3",
+        schema=pa.schema([
+            _f("token_id", pa.uint64()),
+            _f("level", pa.string()),
+            _f("source", pa.string()),
+            _f("key", pa.string()),
+            _f("n_slots", pa.uint64()),
+        ]),
+        primary_key=("token_id", "release"),
+        sort_key=("token_id",),
+        partition_keys=("release",),
+        enums={"level": ("family", "nr50", "nr90", "subfamily")},
+        doc="biobox/l3/tokens.py: uint64 token = level(3) | source(5) | local(56), release-local",
+    ),
+    TableSpec(
+        name="tape_tokens",
+        location="l3/tape_tokens",
+        layer="L3",
+        schema=pa.schema([
+            _f("contig_uid", UID),
+            _f("family_tokens", pa.list_(pa.uint64())),
+            _f("nr50_tokens", pa.list_(pa.uint64())),
+            _f("nr90_tokens", pa.list_(pa.uint64())),
+        ]),
+        primary_key=("contig_uid", "gene_call_version", "release"),
+        sort_key=("contig_uid",),
+        partition_keys=("gene_call_version", "release"),
+        list_columns=("family_tokens", "nr50_tokens", "nr90_tokens"),
+        doc="data_layer_and_tests.md §1 L3 (`tape_tokens_<release>`): token columns, recomputed per release",
+    ),
+    TableSpec(
+        name="slot_pairs",
+        location="l3/slot_pairs",
+        layer="L3",
+        schema=pa.schema([
+            _f("anchor_token", pa.uint64()),
+            _f("partner_token", pa.uint64()),
+            _f("contig_uid", UID),
+            _f("anchor_ordinal", pa.uint32()),
+            _f("partner_ordinal", pa.uint32()),
+            _f("orf_offset", pa.int16()),
+            _f("junction_topology", pa.uint8()),
+            _f("delta_bp", pa.int32()),
+            _f("flags", pa.uint8()),
+            _f("tier", pa.uint8(), nullable=True),
+            _f("tax_order", pa.uint32(), nullable=True),
+        ]),
+        primary_key=("anchor_token", "partner_token", "contig_uid", "anchor_ordinal", "partner_ordinal", "release"),
+        sort_key=("anchor_token", "partner_token", "contig_uid", "anchor_ordinal", "partner_ordinal"),
+        partition_keys=("release", "anchor_bucket"),
+        enums={"junction_topology": (0, 1, 2, 3, 4, 5)},
+        doc=(
+            "PLAN.md §4.2; biobox/l3/pairs.py. Directed pairs within +-10 slots at one token level; flags bit 0 "
+            "anchor window cut by a linear end, bit 1 pair crosses the origin; anchor_bucket = hex of the "
+            "anchor token's low byte at the release's width"
         ),
     ),
     TableSpec(

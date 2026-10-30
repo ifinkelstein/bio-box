@@ -1,7 +1,7 @@
 """Ring R2: contracts, layout and determinism over the whole micro-S0 build.
 
 The build is O-INGEST, O-CALL, O-SCAN (a 6-model library made from lambda proteins) and,
-where MMseqs2 is on PATH, O-CLUSTER. Covers LY-02, LY-03, LY-04, C-03 (tables and shards), C-05, R-06, R-09,
+where MMseqs2 is on PATH, O-CLUSTER, then O-TAPE and O-PAIRS. Covers LY-02, LY-03, LY-04, C-03 (tables and shards), C-05, R-06, R-09,
 D-01 (same inputs twice), D-02 (thread counts) and D-04 (input order), each with an
 injected fault that the check must catch.
 """
@@ -22,6 +22,7 @@ from biobox import catalog, contracts, fasta, ids, ledger, provenance
 from biobox.l0seq import SourceObject, ingest
 from biobox.l1 import domains
 from biobox.l1.genecall import GENE_CALL_VERSION, GenomeInput, run as call_genes
+from biobox.l3 import pairs, tapes, tokens
 
 pytestmark = pytest.mark.r2
 
@@ -65,6 +66,9 @@ def build(root: Path, order: int = 1, threads: int = 1) -> dict:
         tmp.mkdir(parents=True, exist_ok=True)
         cluster.run(root, "rS0.test", GENE_CALL_VERSION, threads=threads, tmp=tmp)
         shutil.rmtree(tmp, ignore_errors=True)
+    tapes.run(root, "S0", {u for g in genomes for u in g.circular})
+    tokens.run(root, "rS0.test")
+    pairs.run(root, "rS0.test")
     return catalog.build_manifest(root, "rS0.test")
 
 
@@ -178,7 +182,8 @@ def _fault_con(con, **replace) -> duckdb.DuckDBPyConnection:
     """An in-memory copy of the catalog's tables with some replaced by Arrow tables (fault injection)."""
     c = duckdb.connect()
     for name in ("protein_occurrence", "contig_index", "slot_protein", "protein_seq", "l1_domains", "contig_occurrence",
-                 "l0_manifest", "seq_locator", "cluster_member", "cluster_member_aln", "igr"):
+                 "l0_manifest", "seq_locator", "cluster_member", "cluster_member_aln", "igr",
+                 "contig_tapes", "tape_tokens", "token_dict", "slot_pairs"):
         tbl = replace.get(name)
         if tbl is None:
             tbl = con.sql(f"SELECT * FROM {name}").to_arrow_table()

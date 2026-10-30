@@ -179,6 +179,98 @@
    false
   ]
  ],
+ "contig_tapes": [
+  [
+   "contig_uid",
+   "fixed_size_binary[16]",
+   false
+  ],
+  [
+   "tax_order_bucket",
+   "uint32",
+   true
+  ],
+  [
+   "genome_uid",
+   "fixed_size_binary[16]",
+   true
+  ],
+  [
+   "contig_len",
+   "int64",
+   false
+  ],
+  [
+   "is_circular",
+   "bool",
+   false
+  ],
+  [
+   "n_slots",
+   "uint32",
+   false
+  ],
+  [
+   "tier",
+   "uint8",
+   true
+  ],
+  [
+   "assembly_quality",
+   "string",
+   true
+  ],
+  [
+   "feature_kinds",
+   "list<item: uint8>",
+   false
+  ],
+  [
+   "strands",
+   "list<item: int8>",
+   false
+  ],
+  [
+   "start_bps",
+   "list<item: uint32>",
+   false
+  ],
+  [
+   "end_bps",
+   "list<item: uint32>",
+   false
+  ],
+  [
+   "delta_bp_prev_slots",
+   "list<item: int32>",
+   false
+  ],
+  [
+   "junction_topology_prevs",
+   "list<item: uint8>",
+   false
+  ],
+  [
+   "orfs_to_contig_starts",
+   "list<item: uint16>",
+   true
+  ],
+  [
+   "orfs_to_contig_ends",
+   "list<item: uint16>",
+   true
+  ],
+  [
+   "slot_flags",
+   "list<item: uint8>",
+   false
+  ],
+  [
+   "protein_uids",
+   "list<item: fixed_size_binary[16]>",
+   false
+  ]
+ ],
  "genome_identity": [
   [
    "assembly_accession",
@@ -791,6 +883,63 @@
    false
   ]
  ],
+ "slot_pairs": [
+  [
+   "anchor_token",
+   "uint64",
+   false
+  ],
+  [
+   "partner_token",
+   "uint64",
+   false
+  ],
+  [
+   "contig_uid",
+   "fixed_size_binary[16]",
+   false
+  ],
+  [
+   "anchor_ordinal",
+   "uint32",
+   false
+  ],
+  [
+   "partner_ordinal",
+   "uint32",
+   false
+  ],
+  [
+   "orf_offset",
+   "int16",
+   false
+  ],
+  [
+   "junction_topology",
+   "uint8",
+   false
+  ],
+  [
+   "delta_bp",
+   "int32",
+   false
+  ],
+  [
+   "flags",
+   "uint8",
+   false
+  ],
+  [
+   "tier",
+   "uint8",
+   true
+  ],
+  [
+   "tax_order",
+   "uint32",
+   true
+  ]
+ ],
  "slot_protein": [
   [
    "contig_uid",
@@ -815,6 +964,28 @@
   [
    "edit_type",
    "string",
+   false
+  ]
+ ],
+ "tape_tokens": [
+  [
+   "contig_uid",
+   "fixed_size_binary[16]",
+   false
+  ],
+  [
+   "family_tokens",
+   "list<item: uint64>",
+   false
+  ],
+  [
+   "nr50_tokens",
+   "list<item: uint64>",
+   false
+  ],
+  [
+   "nr90_tokens",
+   "list<item: uint64>",
    false
   ]
  ],
@@ -893,6 +1064,33 @@
    "seed",
    "int64",
    true
+  ]
+ ],
+ "token_dict": [
+  [
+   "token_id",
+   "uint64",
+   false
+  ],
+  [
+   "level",
+   "string",
+   false
+  ],
+  [
+   "source",
+   "string",
+   false
+  ],
+  [
+   "key",
+   "string",
+   false
+  ],
+  [
+   "n_slots",
+   "uint64",
+   false
   ]
  ]
 }

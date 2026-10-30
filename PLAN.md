@@ -439,6 +439,8 @@ Raw nucleotide sequences stay available to any project. That covers every source
 
 ### 4.2 Tables
 
+**S0 implementation (2026-10-30):** `src/biobox/l3/` builds coordinate tapes, release tokens (uint64, family/NR50/NR90) and `slot_pairs` within ±10 slots from L1, with Q1–Q4 as catalog macros checked against brute-force oracles; what is filled at S0 and what waits for later producers is in `planning/data_layer_and_tests.md` §4.3. The tapes are sorted by `(tax_order_bucket, contig_uid)` (data_layer §3.2); `dense_contig_id` stays a release-scoped serving ID (L5) and is not stored in the append-only tapes.
+
 #### `contig_tapes` (one row per contig; sorted by `dense_contig_id`, stored explicitly)
 Per-contig scalars:
 - `contig_uid`, `dense_contig_id`

@@ -7,7 +7,9 @@ Each check returns a list of problems; an empty list passes.
     LY-04  no file under 64 MB outside the waivers, unless it is its table's only file in the stage
     C-03   foreign keys resolve (SQL anti-joins over the catalog); `check_shards`: seq_locator and
            the shards' `.fai` agree record for record, and each `.gzi` lists the shard's blocks
+    C-04   parallel LIST columns of a row have equal lengths (tapes: = n_slots; tokens: = the tape's)
     C-05   coordinate bounds, including origin wrap on circular contigs
+    C-07   saturating fields carry their overflow flag; clipped share < 0.1%
     R-06   lineage: every stored sequence, slot and occurrence reaches an L0 object
     R-09   append-only: a later release keeps every earlier stage file byte-identical
     D-01/02/04  `content_hashes`: an order-independent hash of every table's rows
@@ -28,9 +30,10 @@ NFS_MIN_BYTES = 64 * 2**20
 
 
 def _sort_ok(rows: list[tuple]) -> int | None:
-    """Index of the first row that breaks non-decreasing order, or None."""
-    for i in range(1, len(rows)):
-        if rows[i] < rows[i - 1]:
+    """Index of the first row that breaks non-decreasing order (nulls first), or None."""
+    keyed = [tuple((0,) if v is None else (1, v) for v in r) for r in rows]
+    for i in range(1, len(keyed)):
+        if keyed[i] < keyed[i - 1]:
             return i
     return None
 
@@ -57,12 +60,14 @@ def check_statistics(manifest: dict) -> list[str]:
     for f in manifest["files"]:
         spec = TABLES[f["table"]]
         md = pq.ParquetFile(root / f["path"]).metadata
-        names = md.schema.to_arrow_schema().names
+        leaf = {md.schema.column(i).path: i for i in range(md.num_columns)}  # leaf columns, lists flattened
         for rg in range(md.num_row_groups):
             if md.row_group(rg).num_rows == 0:
                 continue
             for col in spec.sort_key:
-                st = md.row_group(rg).column(names.index(col)).statistics
+                st = md.row_group(rg).column(leaf[col]).statistics
+                if st is not None and st.has_null_count and st.null_count == md.row_group(rg).num_rows:
+                    continue  # an all-null column has no min/max; its null count prunes it
                 if st is None or not st.has_min_max:
                     problems.append(f"{f['path']}: row group {rg} has no min/max on {col}")
     return problems
@@ -106,6 +111,11 @@ FOREIGN_KEYS = [
     ("cluster_member", ("rep_uid",), "protein_seq", ("protein_uid",)),
     ("cluster_member_aln", ("member_uid", "level", "release"), "cluster_member", ("member_uid", "level", "release")),
     ("igr", ("contig_uid",), "contig_index", ("contig_uid",)),
+    ("contig_tapes", ("contig_uid",), "contig_index", ("contig_uid",)),
+    ("tape_tokens", ("contig_uid", "gene_call_version"), "contig_tapes", ("contig_uid", "gene_call_version")),
+    ("slot_pairs", ("contig_uid",), "contig_tapes", ("contig_uid",)),
+    ("slot_pairs", ("anchor_token", "release"), "token_dict", ("token_id", "release")),
+    ("slot_pairs", ("partner_token", "release"), "token_dict", ("token_id", "release")),
 ]
 
 
@@ -169,6 +179,47 @@ def check_shards(manifest: dict) -> list[str]:
     return problems
 
 
+def check_list_lengths(con: duckdb.DuckDBPyConnection) -> list[str]:
+    """C-04."""
+    problems = []
+    for name, spec in sorted(TABLES.items()):
+        if not spec.list_columns:
+            continue
+        first = spec.list_columns[0]
+        conds = [f'("{c}" IS NULL OR len("{c}") = len("{first}"))' for c in spec.list_columns[1:]]
+        if "n_slots" in spec.schema.names:
+            conds.append(f'len("{first}") = n_slots')
+        n = con.execute(f"SELECT count(*) FROM {name} WHERE NOT ({' AND '.join(conds)})").fetchall()[0][0]
+        if n:
+            problems.append(f"{name}: {n} rows with parallel lists of different lengths")
+    n = con.execute("""
+        SELECT count(*) FROM tape_tokens k JOIN contig_tapes t USING (contig_uid, gene_call_version)
+        WHERE len(k.family_tokens) <> t.n_slots OR len(k.nr50_tokens) <> t.n_slots OR len(k.nr90_tokens) <> t.n_slots
+    """).fetchall()[0][0]
+    if n:
+        problems.append(f"tape_tokens: {n} rows whose lists differ in length from their tape")
+    return problems
+
+
+SATURATION_MAX_SHARE = 0.001
+
+
+def check_saturation(con: duckdb.DuckDBPyConnection) -> list[str]:
+    """C-07 for the tapes' uint16 censoring distances (slot_flags bit 0 marks a clipped value)."""
+    problems = []
+    bad, clipped, total = con.execute("""
+        SELECT count(*) FILTER (WHERE f & 1 = 1 AND NOT (s = 65535 OR e = 65535)),
+               count(*) FILTER (WHERE f & 1 = 1), count(*)
+        FROM (SELECT unnest(slot_flags) f, unnest(orfs_to_contig_starts) s, unnest(orfs_to_contig_ends) e
+              FROM contig_tapes WHERE orfs_to_contig_starts IS NOT NULL)
+    """).fetchall()[0]
+    if bad:
+        problems.append(f"contig_tapes: {bad} slots flagged clipped whose distances are not saturated")
+    if total and clipped / total > SATURATION_MAX_SHARE:
+        problems.append(f"contig_tapes: {clipped} of {total} censoring distances clipped (> 0.1%)")
+    return problems
+
+
 def check_coordinates(con: duckdb.DuckDBPyConnection) -> list[str]:
     """C-05. A slot may end past the contig end only on a circular contig, which genecall marks with
     dist_to_contig_end_bp = contig_len (no edge), and only within one turn."""
@@ -207,6 +258,22 @@ def check_coordinates(con: duckdb.DuckDBPyConnection) -> list[str]:
     """).fetchall()[0][0]
     if bad:
         problems.append(f"cluster_member_aln: {bad} rows outside sequence bounds")
+    bad = con.execute("""
+        SELECT count(*) FROM (
+          SELECT contig_len, is_circular, unnest(start_bps) s, unnest(end_bps) e, unnest(strands) st
+          FROM contig_tapes)
+        WHERE NOT (s < e AND s < contig_len AND st IN (1, -1)
+                   AND (e <= contig_len OR (is_circular AND e <= s + contig_len)))
+    """).fetchall()[0][0]
+    if bad:
+        problems.append(f"contig_tapes: {bad} slots outside contig bounds")
+    bad = con.execute("""
+        SELECT count(*) FROM slot_pairs p JOIN contig_tapes t USING (contig_uid)
+        WHERE NOT (p.anchor_ordinal < t.n_slots AND p.partner_ordinal < t.n_slots
+                   AND p.anchor_ordinal <> p.partner_ordinal AND p.orf_offset <> 0)
+    """).fetchall()[0][0]
+    if bad:
+        problems.append(f"slot_pairs: {bad} rows with ordinals outside their tape")
     return problems
 
 

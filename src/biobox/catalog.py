@@ -40,8 +40,14 @@ from biobox.registry.schemas import ARTIFACTS, TABLES, ArtifactSpec, TableSpec
 
 MANIFEST_VERSION = 2
 
-# Partitions whose value is derived from a file column's key prefix (biobox.layout buckets).
-DERIVED_PARTITIONS = {"protein_prefix": "protein_uid"}
+# Partitions whose value is derived from a file column (biobox.layout buckets): the column and
+# how a value maps to its bucket key. A prefix of the sort key is checked from row-group
+# min/max; the low byte of a token is not monotone in the sort order, so it is checked by
+# reading the column's distinct values.
+DERIVED_PARTITIONS = {
+    "protein_prefix": ("protein_uid", "prefix"),
+    "anchor_bucket": ("anchor_token", "low_byte"),
+}
 
 
 class LayoutError(ValueError):
@@ -131,17 +137,24 @@ def _artifact_entries(root: Path) -> list[dict]:
     return out
 
 
-def _check_derived_partitions(rel: str, parts: dict[str, str], md: pq.FileMetaData) -> None:
-    """LY-05: every row's key prefix matches the derived partition value (from row-group min/max).
+def _check_derived_partitions(rel: str, parts: dict[str, str], md: pq.FileMetaData, path: Path) -> None:
+    """LY-05: every row's key matches the derived partition value.
 
-    Rows are sorted by key, so checking each row group's min and max checks every row.
+    For a key prefix, rows are sorted by key, so each row group's min and max check every row.
     """
-    names = md.schema.to_arrow_schema().names
+    leaf = {md.schema.column(i).path: i for i in range(md.num_columns)}
     for key, value in parts.items():
         if key not in DERIVED_PARTITIONS:
             continue
-        col = DERIVED_PARTITIONS[key]
-        ci = names.index(col)
+        col, how = DERIVED_PARTITIONS[key]
+        if how == "low_byte":
+            import pyarrow.compute as pc
+
+            for v in pc.unique(pq.read_table(path, columns=[col]).column(col)).to_pylist():
+                if not layout.bucket_matches(value, bytes([v & 0xFF])):
+                    raise LayoutError(f"{rel}: {key}={value} but {col} {v} has low byte {v & 0xFF:02x} (LY-05)")
+            continue
+        ci = leaf[col]
         for rg in range(md.num_row_groups):
             st = md.row_group(rg).column(ci).statistics
             if st is None or not st.has_min_max:
@@ -166,7 +179,7 @@ def build_manifest(root: Path, release_id: str) -> dict:
         n_cols = compatible_columns(pf.schema_arrow, spec.schema)
         if n_cols is None:
             raise LayoutError(f"{rel}: schema differs from registry table {spec.name} (C-01)")
-        _check_derived_partitions(rel, parts, md)
+        _check_derived_partitions(rel, parts, md, path)
         files.append({
             "path": rel,
             "table": spec.name,
@@ -344,6 +357,41 @@ def macro_sql() -> list[str]:
         "AND protein_uid = _puid)",
         "CREATE MACRO slots_of(_puid) AS TABLE SELECT * FROM protein_occurrence WHERE protein_uid = _puid",
         "CREATE MACRO domains_of(_puid) AS TABLE SELECT * FROM l1_domains WHERE protein_uid = _puid ORDER BY env_start, model_acc",
+        # --- L3 (Q1-Q4); release-scoped tables are read for this catalog's release only ---
+        "CREATE MACRO catalog_release() AS (SELECT value FROM catalog_info WHERE key = 'release_id')",
+        "CREATE MACRO token_of(_level, _key) AS "
+        "(SELECT token_id FROM token_dict WHERE release = catalog_release() AND level = _level AND key = _key)",
+        # the anchor's bucket at every width a release may use (biobox.layout, biobox.l3.pairs)
+        "CREATE MACRO pair_bucket_ok(_bucket, _tok) AS _bucket IN "
+        "('all', left(printf('%02x', (_tok % 256)::INTEGER), 1), printf('%02x', (_tok % 256)::INTEGER))",
+        # Q1: loci (anchor slots) of A with B within +-k slots; _tier NULL for every tier
+        """CREATE MACRO q1_count(_a, _b, _k, _tier) AS (
+              SELECT count(DISTINCT (contig_uid, anchor_ordinal)) FROM slot_pairs
+              WHERE release = catalog_release() AND pair_bucket_ok(anchor_bucket, _a)
+                AND anchor_token = _a AND partner_token = _b AND abs(orf_offset) <= _k
+                AND (_tier IS NULL OR tier = _tier))""",
+        # Q3 (counts; z_score ranking arrives with pair_stats): partners of A within +-k slots
+        """CREATE MACRO partners_of(_a, _k) AS TABLE
+              SELECT partner_token, count(DISTINCT (contig_uid, anchor_ordinal)) AS n_loci, count(*) AS n_pairs
+              FROM slot_pairs
+              WHERE release = catalog_release() AND pair_bucket_ok(anchor_bucket, _a)
+                AND anchor_token = _a AND abs(orf_offset) <= _k
+              GROUP BY partner_token ORDER BY n_loci DESC, partner_token""",
+        # Q4: every instance of (A, B) within +-k slots, with geometry
+        """CREATE MACRO pairs_of(_a, _b, _k) AS TABLE
+              SELECT contig_uid, anchor_ordinal, partner_ordinal, orf_offset, junction_topology, delta_bp, flags, tier
+              FROM slot_pairs
+              WHERE release = catalog_release() AND pair_bucket_ok(anchor_bucket, _a)
+                AND anchor_token = _a AND partner_token = _b AND abs(orf_offset) <= _k
+              ORDER BY contig_uid, anchor_ordinal, partner_ordinal""",
+        # Q2: tapes of a list of contigs with this release's tokens
+        """CREATE MACRO tapes_of(_cuids) AS TABLE
+              SELECT t.*, k.family_tokens, k.nr50_tokens, k.nr90_tokens
+              FROM contig_tapes t LEFT JOIN tape_tokens k
+                ON k.contig_uid = t.contig_uid AND k.gene_call_version = t.gene_call_version
+                   AND k.release = catalog_release()
+              WHERE list_contains(_cuids, t.contig_uid)
+              ORDER BY t.contig_uid, t.gene_call_version""",
     ]
 
 
@@ -366,11 +414,6 @@ def generate_catalog(manifest: dict, out_path: Path, root: Path | None = None) -
             widest[f["table"]] = max(widest.get(f["table"], 0), f.get("n_columns", len(TABLES[f["table"]].schema)))
         for name in sorted(TABLES):
             con.execute(_view_sql(TABLES[name], sorted(by_table[name]), widest.get(name)))
-        # DuckDB binds a macro's functions when it is created: a stand-in lets the macros be
-        # stored; open_catalog registers the real reader
-        _register_seq_udf(con, None)
-        for stmt in macro_sql():
-            con.execute(stmt)
         con.execute("CREATE TABLE catalog_info (key VARCHAR, value VARCHAR)")
         con.executemany("INSERT INTO catalog_info VALUES (?, ?)", [
             ("release_id", manifest["release_id"]),
@@ -387,6 +430,12 @@ def generate_catalog(manifest: dict, out_path: Path, root: Path | None = None) -
         if arts:
             con.executemany("INSERT INTO catalog_artifacts VALUES (?, ?, ?, ?)",
                             [(a["path"], a["artifact"], a["sha256"], a["bytes"]) for a in arts])
+        # DuckDB binds a macro's functions when it is created: a stand-in lets the macros be
+        # stored; open_catalog registers the real reader;
+        # macros come last because they read catalog_info
+        _register_seq_udf(con, None)
+        for stmt in macro_sql():
+            con.execute(stmt)
         con.execute("CHECKPOINT")
     finally:
         con.close()

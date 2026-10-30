@@ -31,9 +31,13 @@ VERSION_PARTITION = {
     "l1_domains": "library",
     "cluster_member": "release",
     "cluster_member_aln": "release",
+    "contig_tapes": "gene_call_version",
+    "tape_tokens": "release",
+    "token_dict": "release",
+    "slot_pairs": "release",
 }
 # ledger steps whose output depends on a tool, and the tools they must record
-STEP_TOOLS = {"ingest": ("pyarrow",), "genecall": ("pyrodigal", "pyrodigal-gv", "pyarrow"),
+STEP_TOOLS = {"ingest": ("pyarrow",), "tape": ("pyarrow",), "genecall": ("pyrodigal", "pyrodigal-gv", "pyarrow"),
               "domains-*": ("pyhmmer", "pyarrow"), "cluster": ("mmseqs2", "pyarrow")}
 GENE_CALL_RE = re.compile(r"^pyrodigal-(?P<pyrodigal>[^-]+)-gv-(?P<gv>[^-]+)-p\d+$")
 

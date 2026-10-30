@@ -9,6 +9,7 @@ from __future__ import annotations
 import gzip
 import hashlib
 import os
+import shutil
 import time
 from collections import Counter
 from pathlib import Path
@@ -20,6 +21,7 @@ import yaml
 from biobox import catalog, contracts, fasta, ids, ledger, provenance
 from biobox.l0seq import SeqStore, SourceObject, ingest
 from biobox.l1 import igr
+from biobox.l3 import pairs, tapes, tokens
 from biobox.l1.genecall import GENE_CALL_VERSION, GenomeInput, call_genome, run
 
 pytestmark = pytest.mark.r3
@@ -75,7 +77,13 @@ def store_root(tmp_path_factory):
     report = run(root, "S0", inputs)
     t2 = time.perf_counter()
     igrs = igr.run(root, "S0", {u for gi in inputs for u in gi.circular})
-    print(f"\ngolden: ingest {t1 - t0:.1f}s, gene calling {t2 - t1:.1f}s, {report}, igr {igrs}")
+    tp = tapes.run(root, "S0", {u for gi in inputs for u in gi.circular})
+    print(f"\ngolden: ingest {t1 - t0:.1f}s, gene calling {t2 - t1:.1f}s, {report}, igr {igrs}, tapes {tp}")
+    if shutil.which("mmseqs"):
+        from biobox.l2 import cluster
+        cluster.run(root, "rS0.golden", GENE_CALL_VERSION, threads=4, tmp=root.parent)
+        tokens.run(root, "rS0.golden")
+        print("pairs", pairs.run(root, "rS0.golden"))
     return root
 
 
@@ -220,3 +228,33 @@ def test_golden_ledger_reconciles(store_root):
     assert ledger.check_chain(store_root, "S0") == []
     gc = ledger.read(store_root, "S0", "genecall")
     assert sum(r["n_in"] for r in gc) == 33_716 and sum(r["n_kept"] for r in gc) == 33_442
+
+
+@pytest.mark.covers("C-04", "C-05", "C-07", "Q2")
+def test_golden_tapes(golden_catalog, store_root):
+    man, con = golden_catalog
+    assert contracts.check_list_lengths(con) == []
+    assert contracts.check_saturation(con) == []
+    assert contracts.check_coordinates(con) == []
+    n_slots, wraps = con.execute("SELECT sum(n_slots), count(*) FILTER (WHERE list_max(end_bps) > contig_len) "
+                                 "FROM contig_tapes").fetchall()[0]
+    assert n_slots == 33_716 and wraps >= 1
+    occ = {}
+    for f in store_root.glob(f"l1/protein_occurrence/gene_call_version={GENE_CALL_VERSION}/stage=S0/part-0.parquet"):
+        for r in pq.read_table(f).to_pylist():
+            occ.setdefault(r["contig_uid"], []).append(r)
+    cuids = sorted(occ)[::3]
+    for g in con.sql("SELECT contig_uid, start_bps, protein_uids FROM tapes_of(?)", params=[cuids]).to_arrow_table().to_pylist():
+        slots = sorted(occ[g["contig_uid"]], key=lambda r: r["slot_ordinal"])
+        assert g["start_bps"] == [r["start"] for r in slots]
+        assert g["protein_uids"] == [r["protein_uid"] for r in slots]
+
+
+@pytest.mark.skipif(shutil.which("mmseqs") is None, reason="MMseqs2 not on PATH")
+@pytest.mark.covers("Q1", "C-03")
+def test_golden_pairs(golden_catalog):
+    _, con = golden_catalog
+    assert contracts.check_foreign_keys(con) == []
+    a, b, n = con.execute("SELECT anchor_token, partner_token, count(DISTINCT (contig_uid, anchor_ordinal)) "
+                          "FROM slot_pairs WHERE abs(orf_offset) <= 3 GROUP BY 1, 2 ORDER BY 3 DESC, 1, 2 LIMIT 1").fetchall()[0]
+    assert con.execute("SELECT q1_count(?, ?, 3, NULL)", [a, b]).fetchall()[0][0] == n

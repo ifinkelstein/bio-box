@@ -341,9 +341,10 @@ $ATD_ROOT/                                   # /stor/scratch/Wilke/if2453/all-th
   l1/protein_occurrence/gene_call_version=<v>/stage=<S>/part-<k>.parquet
   l2/cluster_member/release=<R>/part-<k>.parquet; l2/cluster_member_aln/release=<R>/part-<k>.parquet   # one row per protein per level (nr90, nr50; subfam later); release in the path only
   l2/igr/release=<R>/...parquet; id_history.parquet
-  l3/tapes/stage=<S>/shard=<nnnnn>.parquet               # coordinates (stable)
-  l3/tokens/release=<R>/shard=<nnnnn>.parquet            # token projection (versioned)
-  l3/slot_pairs/release=<R>/anchor_bucket=<bb>/part-<k>.parquet
+  l3/tapes/gene_call_version=<v>/stage=<S>/part-<k>.parquet          # coordinates (stable)
+  l3/tape_tokens/gene_call_version=<v>/release=<R>/part-<k>.parquet  # token projection (per release)
+  l3/token_dict/release=<R>/part-<k>.parquet                         # token_id -> level, source, key, n_slots
+  l3/slot_pairs/release=<R>/anchor_bucket=<all|h|hh>/part-<k>.parquet
   l3/user_overlay/user_tokens.parquet; user_token=<id>.parquet   # one file per promoted family; same waiver as search/
   l4/release=<R>/{pair_stats,closure,pangenome,transitions,domain_promiscuity,background_rates}/...
   l5/release=<R>/...                                      # only if built
@@ -476,6 +477,16 @@ Q1–Q8 follow `PLAN.md` §1.2. An earlier draft of this file numbered them diff
 `bio-box nbr` on a stored hit set is a Q2 fetch and stays synchronous.
 
 Tokens are sampled stratified by frequency decile, so hub tokens are always in the sample. Gate: **B** on any mismatch.
+
+**L3 and the oracles at S0 (2026-10-30; `src/biobox/l3/`, `tests/r1/test_l3.py`, `tests/r2/test_micro_s0_l3.py`).**
+- **Tapes** (`contig_tapes`, O-TAPE): one row per default contig of the stage, as for IGRs, with parallel lists, one entry per gene slot (list index = `slot_ordinal`): feature kind (CDS), strand, start and end, gap and junction to the previous slot, slots to each linear contig end (uint16, saturating with `slot_flags` bit 0, C-07; null on circular contigs), `protein_uid`. Scalars: contig length, circularity, slot count, tier, assembly quality, genome, and `tax_order_bucket` (null until taxonomy; it leads the sort key of §3.2). Append-only per stage. Columns that need later producers (segments, directons, regimes, structure, badges) arrive as nullable columns (LY-09). `dense_contig_id` is not stored: it is a release-scoped serving ID (L5) and would break append-only tapes.
+- **Tokens** (`token_dict`, `tape_tokens`): per release, every slot gets a family token (the canonical domain: the first library in precedence order with an included domain, best bitscore in it), an NR50 and an NR90 token. `token_id` is uint64, level (3 bits) | source (5) | local (56). PLAN §4.1's 32-bit form widens "if counts require it", and NR90 clusters pass 2^24 by S5, so the release line starts wide.
+- **Pairs** (`slot_pairs`, O-PAIRS): directed pairs within ±10 slots at each level, with offset, junction topology, bp gap (`max(starts) − min(ends)`, negative for overlap), edge-censoring and origin flags, and tier. Bucketed by the anchor token's low byte at the width `biobox.layout` picks; a Q1 lookup opens one bucket file and one row group (LY-06). Until regulon loci exist the locus is the contig.
+- **Queries** (catalog macros): `q1_count(A, B, k, tier)`, `partners_of(A, k)` (Q3 as partner counts; the `z_score` ranking needs `pair_stats`, O-STATS), `pairs_of(A, B, k)` (Q4), `tapes_of([contig_uid, ...])` (Q2), `token_of(level, key)`; release-scoped tables are read for the catalog's own release.
+- **Oracles.** R2 compares every macro with a nested loop over the tape rows read straight from the shards, for decile-stratified tokens, k = 1, 3, 10 and tier filters; Q2 also against a rebuild from `protein_occurrence`; Q7 against the decompressed source (and `samtools faidx` in the image); Q8 runs seven analytic queries on the catalog and on plain `read_parquet` views and compares results. R1 checks the tape and pair builders against brute-force all-pairs oracles (Hypothesis) and MR-03, MR-04, MR-05.
+- **What MR-03 found.** (1) The first gap definition, `right.start − left.end`, changes under reverse complement when slots overlap; the gap is now `max(starts) − min(ends)`. (2) On a circle with an even slot count, a partner exactly half way round was taken forward, which mirrors to the other way; it now takes the way with the smaller gap. (3) Slots are in start order, so nested genes or shared starts reorder under reverse complement; MR-03 holds exactly when start and end orders agree, which is how the relation is stated.
+- **K-07** (micro form): bytes decoded per Q2 fetch rise with the list columns projected, at a fixed row-group count; the curve is recorded and the `LIST` vs exploded decision stays at S2.
+- **Not at S0:** Q5 and Q6 need pangenome planes and tree transitions (O-PROF), which need taxonomy and species; they stay unbuilt.
 
 ### 4.4 Accretion-equivalence
 
