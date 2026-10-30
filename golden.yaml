@@ -136,8 +136,24 @@ spike_ins:
     records: [{accession: NC_001422.1, length: 5386, topology: circular}]
     checks: [phiX removal in Stage 0b screening]
 
+metagenomes:
+  - id: cami2_marine_s0
+    organism: CAMI II marine short-read sample 0, gold-standard assembly
+    kind: metagenome
+    source:
+      fetch: url
+      url: https://frl.publisso.de/data/frl:6425521/marine/short_read/marmgCAMI2_sample_0_contigs.tar.gz
+      size_listed: 360M
+      listed_modified: 2021-06-22
+      doi: 10.4126/FRL01-006425521
+      citation: Meyer et al. 2022 Nat Methods, doi:10.1038/s41592-022-01431-4
+    checks: [fragmented-contig handling, edge censoring (MR-05), contig taxonomy against the CAMI genome mapping]
+    note: >-
+      Chosen 2026-10-29 by Claude at the PI's request ("not too important"): the smallest single
+      sample with a published gold standard (marmgCAMI2_short_read_sample_0_gsa). Fetched on the
+      pod at S0, not on the laptop; checksum pinned in golden.lock.yaml at that fetch. Truth for
+      contig-to-genome mapping is inside the tarball (verify) and in marmgCAMI2_setup.tar.gz (914M).
+
 pending:
-  - id: cami2_marine_subset
-    note: CAMI II marine dataset; choose samples and pin file checksums at S0
   - id: synthetic_spike_panel
     note: adaptors (UniVec), planted riboswitches; defined with synthworld

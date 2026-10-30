@@ -214,7 +214,8 @@ Test harness, on paper (gap #29; `STAGES.md` S−1 item 15; § numbers in this g
 
 Data
 - [x] `golden.yaml` pinned (2026-10-29): 15 genomes and phiX verified against NCBI; SR1, Lak (A1 plus a B8 contrast) and Obelisk chosen; checksums in `golden.lock.yaml`.
-- [ ] CAMI II marine samples chosen; truth extracts (EcoCyc, SubtiWiki, RegulonDB, M-CSA) downloaded as L0 sources with contracts.
+- [x] CAMI II marine sample chosen: short-read sample 0 gold-standard contigs (`golden.yaml`, fetched on the pod at S0).
+- [ ] Truth extracts (EcoCyc, SubtiWiki, RegulonDB, M-CSA) downloaded as L0 sources with contracts.
 - [ ] `refdb.yaml` filled for every S0–S3 database; downloads checksummed and frozen (§4).
 - [ ] `sources.yaml` contracts drafted for S0–S3 sources, with license and redistribution flags (GTDB taxonomy, PLSDB terms checked).
 - [ ] Replay supplements on the fetch list (§1.1) downloaded and pinned as L0 sources.

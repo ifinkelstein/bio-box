@@ -140,7 +140,7 @@ Each card lists six things:
 
 - **Adds:**
   - The ~14 golden genomes from critique_8 (16 entries with the CAMI II subset and the synthetic spike-in panel): MG1655, *B. subtilis* 168, T4, λ, *M. genitalium*, an SR1 genome, a Lak phage, *M. acetivorans*, *H. volcanii*, *S. acidocaldarius*, H37Rv, *B. thetaiotaomicron*, *S. pyogenes* SF370, an Obelisk. Accessions marked "pin" get chosen here.
-  - A CAMI II marine subset.
+  - A CAMI II marine subset: short-read sample 0 gold-standard contigs (`golden.yaml`).
 - **Capability:**
   - The full layer stack at toy scale: L0 contracts (`sources.yaml`), the L0-seq sequence store, L1 Parquet, L2 clusters, L3 tapes and `slot_pairs`, L4 score-test statistics (`pair_stats`), and the read-only DuckDB catalog swapped in by atomic rename.
   - The `bio-box run-step` wrapper, the ledger, and `bio-box doctor`.
@@ -455,7 +455,7 @@ Every edition carries the sequence store for its stages. Sources that cannot be 
 | ~~CI host for ring R2~~ **Decided 2026-10-29 (DEC-06):** GitHub Actions on private `ifinkelstein/bio-box` | done |
 | Mutation-score target (≥ 80%, *target*) confirmed after the first measurement (TEST_ARCHITECTURE §11 item 3) | S0 |
 | Which lab member runs the flexibility check, and on which workflow (TEST_ARCHITECTURE §11 item 4) | S0 (named; TEST_ARCHITECTURE gives no owner) |
-| ~~Golden-set accessions marked "pin"~~ **Pinned 2026-10-29** in `golden.yaml`: SR1 RAAC1_SR1_1 CP006913.1 (code 25), Lak-A1 MK250018.1 (code 15) plus Lak-B8 MK250027.1 (code 11 contrast), Obelisk-S.s and Obelisk-α from the authors' Stanford deposit (doi:10.25740/wb363nt3637). CAMI II marine samples still to choose | S0 (CAMI) |
+| ~~Golden-set accessions marked "pin"~~ **Pinned 2026-10-29** in `golden.yaml`: SR1 RAAC1_SR1_1 CP006913.1 (code 25), Lak-A1 MK250018.1 (code 15) plus Lak-B8 MK250027.1 (code 15 by sequence although NCBI records 11), Obelisk-S.s and Obelisk-α from the authors' Stanford deposit (doi:10.25740/wb363nt3637). CAMI II marine short-read sample 0 gold-standard contigs chosen (fetched on the pod at S0) | done |
 | Infernal production-mode recall and cost | S0 |
 | geNomad rate on Haswell; whether to rerun or trust shipped calls | S0, then S4 |
 | DuckLake vs generated read-only catalog | S2 |
