@@ -2,7 +2,6 @@
 # R0 fails if a table is both specified and pending, or used by an operation and neither.
 pending:
   l1_genes: data_layer_and_tests.md §1 (L1 kind=genes)
-  l1_domains: data_layer_and_tests.md §1 (L1 kind=domains)
   l1_domains_projected: data_layer_and_tests.md §2B.5
   l1_ncrna: data_layer_and_tests.md §1 (L1 kind=ncrna)
   l1_systems: PLAN.md §3.2 (DefenseFinder, PADLOC, CRISPRCasTyper sidecars)

@@ -239,6 +239,38 @@ _SPECS = [
         doc="data_layer_and_tests.md §2B.1",
     ),
     TableSpec(
+        name="l1_domains",
+        layer="L1",
+        schema=pa.schema([
+            _f("protein_uid", UID),
+            _f("model_acc", pa.string()),
+            _f("model_name", pa.string()),
+            _f("model_len", pa.uint32()),
+            _f("seq_bitscore", pa.float32()),
+            _f("seq_evalue_zref", pa.float64()),
+            _f("dom_bitscore", pa.float32()),
+            _f("dom_ievalue_zref", pa.float64()),
+            _f("env_start", pa.uint32()),
+            _f("env_end", pa.uint32()),
+            _f("ali_start", pa.uint32()),
+            _f("ali_end", pa.uint32()),
+            _f("hmm_from", pa.uint32()),
+            _f("hmm_to", pa.uint32()),
+            _f("cutoff", pa.string()),
+            _f("z", pa.float64()),
+            _f("dom_z", pa.float64()),
+        ]),
+        primary_key=("protein_uid", "model_acc", "env_start", "library", "stage"),
+        sort_key=("protein_uid", "env_start", "model_acc"),
+        partition_keys=("library", "stage"),
+        enums={"cutoff": ("gathering", "trusted", "noise", "none")},
+        doc=(
+            "data_layer_and_tests.md §1 (L1 kind=domains), SEARCH_PLAN SD-04/SD-05. One row per included "
+            "domain; `library` path value is <name>-<version> (e.g. pfam-38.2). Coordinates 0-based half-open "
+            "on the protein (env/ali) and on the model (hmm). E-values at the fixed Z_prot = domZ = 1e8"
+        ),
+    ),
+    TableSpec(
         name="cluster_member",
         layer="L2",
         schema=pa.schema([
