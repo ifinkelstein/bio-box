@@ -52,12 +52,12 @@ From `WILKECOMP.org` (probed 2026-09-30) and `fragment-defense/old-plan.2026-10-
 
 | Sequence type | Compressed size | Index overhead |
 |---|---|---|
-| Nucleotide (contigs, IGRs) | 0.25–0.30 B/bp, using **0.27** | `.fai` ≈ 50 B/record, `.gzi` ≈ 0.25 MB/GB |
-| Protein | ≈0.55 B/aa, using **0.55** | Same as above |
+| Nucleotide (contigs, IGRs) | **0.309 B/bp** (*measured*, golden set, 2026-11-09; shards with indexes; the estimate was 0.25–0.30, using 0.27) | `.fai` ≈ 50 B/record, `.gzi` ≈ 0.25 MB/GB |
+| Protein | **0.73 B/aa** (*measured*, golden set, 2026-11-09; `protein_seq`, 227 bytes per distinct protein; the estimate was 0.55) | Same as above |
 
 - **Per-stage store size:**
-  - `store_GB = 0.27·Gbp_nt + 0.55·Gaa + 0.27·0.12·Gbp_nt + 50 B·N_records`
-  - That is ≈ **0.46 GB per Gbp of genome**: 0.27 nt + 0.165 aa + 0.032 IGR.
+  - `store_GB = 0.309·Gbp_nt + 0.73·Gaa + 0.309·0.12·Gbp_nt + 50 B·N_records`
+  - That is ≈ **0.565 GB per Gbp of genome** (*derived* from the measured constants above: 0.309 nt + 0.219 aa (0.73 × 0.30) + 0.037 IGR (0.309 × 0.12); the estimate was 0.46: 0.27 nt + 0.165 aa + 0.032 IGR).
 - **Location:** on `/stor/scratch` (not backed up). Durability comes from each source's pinned checksum and from a second copy of the store on the lab storage server or an object bucket once it exceeds ~1 TB (S6). The `seq_index` and manifests go to `/stor/work`, which is backed up.
 
 ## 4. The ladder
@@ -83,14 +83,14 @@ All rates are unmeasured; "Core-h" is the range from §2 at the stage's scale.
 
 | Stage | Sources (version) | n genomes | Gbp | Download GB | Core-h, est. | Disk: seq store / everything else | License flag | New capability |
 |---|---|---|---|---|---|---|---|---|
-| **S0** | Golden set (critique_8 table: MG1655, B. sub 168, T4, λ, *M. genitalium*, SR1, Lak, *M. acetivorans*, *H. volcanii*, *S. acidocaldarius*, H37Rv, *B. theta*, SF370, Obelisk) + CAMI II marine subset | ~14 + CAMI subset | ~0.05 (+ CAMI subset, est. 1–3) | <2 | 100–1,500 (dominated by full-Rfam reference runs and microbenchmarks) | 0.03 GB (+ ~1 GB CAMI) / <20 GB | Open (RefSeq/INSDC; CAMI CC-BY) | Calibrates every rate above. End-to-end truth: operons vs RegulonDB, frameshift/Sec/intron/code-4/code-25 handling, leaderless starts. DuckDB/Parquet schema and tests at toy scale |
+| **S0** | Golden set (critique_8 table: MG1655, B. sub 168, T4, λ, *M. genitalium*, SR1, Lak, *M. acetivorans*, *H. volcanii*, *S. acidocaldarius*, H37Rv, *B. theta*, SF370, Obelisk) + CAMI II marine subset | 15 + CAMI subset (*measured*, golden set, 2026-11-09) | 0.0365 (36,475,789 bp, *measured*, golden set, 2026-11-09) (+ CAMI subset, est. 1–3) | <2 | 100–1,500 (dominated by full-Rfam reference runs and microbenchmarks) | 0.03 GB (+ ~1 GB CAMI) / <20 GB | Open (RefSeq/INSDC; CAMI CC-BY) | Calibrates every rate above. End-to-end truth: operons vs RegulonDB, frameshift/Sec/intron/code-4/code-25 handling, leaderless starts. DuckDB/Parquet schema and tests at toy scale |
 | **S1** | INPHARED 14Apr2025 (or newer) complete phages | est. 30–40k (14,244 at Jan 2021; current count must be read from `*_data.tsv`) | est. 1.7–2.2 | ~0.6 | 250–2,500 | 0.9 GB / ~15 GB | Sequences INSDC (open). INPHARED scripts AGPL-3.0 | Phage gene calling (pyrodigal-gv, codes 11/15), PHROGs, introns/HEGs, frameshifts (gpG-T), viral regime class; first `slot_pairs` and `pair_stats` |
 | **S2** | PLSDB 2024_05_31_v2 | 72,360 plasmids | est. 5–7 ("~7 GB of sequence information") | ~2–7 | 800–6,000 | 2.8 GB / ~40 GB | Records from NCBI Nucleotide (open). Database license not stated → cite, redistribute derived tables only after check | Plasmid backbone/cargo, MOB/Rep, conjugation, integrons/attC, AMR passengers. Benchmark-5 trap material appears; vehicle dedup on real plasmids |
-| **S2C** | GTDB R226 metadata (`bac120/ar53_metadata_r226`, `ncbi_assembly_level = Complete Genome`, ≤20 per species) + NCBI datasets for the sequences | est. 15–30k (count to pin at S−1) | est. 60–120 (15–30k × ~4 Mbp) | est. 17–38 (0.28–0.32 GB/Gbp, the S5 tarball ratio 127 GB / 400–450 Gbp) | 3,000–22,000 *derived*: 60–120 Gbp × 50–180 core-h/Gbp (S5 rate: 20,000/400 and 80,000/450); SEARCH_PLAN §6.1's 7,500–20,000 is narrower than this product. Library scans on exact-unique proteins (§2) | 28–55 GB (0.46 GB/Gbp) / ~80–240 GB (S5 ratio 1.3–2.0 GB/Gbp); search pack ~50–105 GB (below) | Genomes INSDC (open); GTDB CC BY-SA (verify) | Closed chromosomes with exact neighborhoods (no edge censoring); multi-strain dependence-aware counts; search tier ST2 (user tokens, on-demand anchor statistics, `nbr score`, local HH-suite) |
-| **S3** | GTDB R226 species reps < 2 Mbp (Patescibacteria ≈6,435 species; DPANN; Mycoplasmatota; endosymbionts), selected from `bac120/ar53_metadata_r226` `genome_size` | est. 9–12k (count from metadata) | est. 10–13 | extract from the S5 tarball, or ~4 via NCBI datasets | 1,000–10,000 | 5.2 GB / ~60 GB | GTDB: CC BY-SA 4.0 (verify) for taxonomy; genomes INSDC | Genetic code detection (code 25 in BD1-5/SR1, code 4 in Mollicutes), reduced genomes, leaderless archaea, small-genome NOGD sanity. First tree-ordered bitvectors (sparse) |
+| **S2C** | GTDB R226 metadata (`bac120/ar53_metadata_r226`, `ncbi_assembly_level = Complete Genome`, ≤20 per species) + NCBI datasets for the sequences | 25,458 (*measured*, GTDB R226 metadata, 2026-11-09; 56,387 contigs, 97.7 M proteins; the estimate was 15–30k) | 106.4 (*measured*, GTDB R226 metadata, 2026-11-09; the estimate was 60–120) | 29 (*derived*: 0.273 GB/Gbp, the S5 tarball ratio 127 GB / 465.5 Gbp, × 106.4 Gbp; the estimate was 17–38) | 4,600–18,300 *derived*: 106.4 Gbp × 43–172 core-h/Gbp (S5 rate: 20,000/465.5 and 80,000/465.5); SEARCH_PLAN §6.1's 7,500–20,000 lies inside this range. Library scans on exact-unique proteins (§2) | 60 GB (*derived*: 0.565 GB/Gbp × 106.4 Gbp) / ~80–240 GB (S5 ratio 1.3–2.0 GB/Gbp; computed from the superseded estimate; recompute); search pack ~50–105 GB (below; computed from the superseded estimate; recompute) | Genomes INSDC (open); GTDB CC BY-SA (verify) | Closed chromosomes with exact neighborhoods (no edge censoring); multi-strain dependence-aware counts; search tier ST2 (user tokens, on-demand anchor statistics, `nbr score`, local HH-suite) |
+| **S3** | GTDB R226 species reps < 2 Mbp (Patescibacteria ≈6,435 species; DPANN; Mycoplasmatota; endosymbionts), selected from `bac120/ar53_metadata_r226` `genome_size` | 38,750 (*measured*, GTDB R226 metadata, 2026-11-09; 4.17 M contigs, 53.2 M proteins; the earlier estimate was about a quarter of this) | 52.4 (*measured*, GTDB R226 metadata, 2026-11-09; the earlier estimate was about a fifth of this) | extract from the S5 tarball, or ~4 via NCBI datasets (computed from the superseded estimate; recompute) | 1,000–10,000 (computed from the superseded estimate; recompute) | 5.2 GB / ~60 GB (computed from the superseded estimate; recompute) | GTDB: CC BY-SA 4.0 (verify) for taxonomy; genomes INSDC | Genetic code detection (code 25 in BD1-5/SR1, code 4 in Mollicutes), reduced genomes, leaderless archaea, small-genome NOGD sanity. First tree-ordered bitvectors (sparse) |
 | **S4** | IMG/VR v4 `-hc` HQ vOTU reps (231,408 vOTUs with HQ member; 495,576 UViGs ≥90% complete) + optionally IMG/PR (699,973 plasmids) | 0.23M (+0.7M) | est. 12 (+ est. 10–30) | est. 5–15 | 4,500–17,000 (HMM + Rfam on IGRs; geNomad/CheckV not rerun, because IMG/VR ships them) | 5.5–19 GB / ~150 GB | **Gated: JGI Data Usage Policy.** Local-only layer, flagged `redistributable = false`. IMG/PR moved to the JGI Data Portal (old Genome Portal sunset mid-2025) | Uncultivated viral diversity, host predictions, prophage/provirus boundaries, viral spacer links |
-| **S5** | GTDB R226 all species reps (`gtdb_genomes_reps_r226.tar.gz`, 127.30 GB); complete reps already loaded at S2C and S3 reps are not re-ingested | 143,614 total (remaining = 143,614 − S3 − complete reps at S2C) | est. 400–450 | 127 | **20,000–80,000** (25–100 days at 800 core-h/day). Long poles: Rfam on IGRs, geNomad (until measured), Pfam on NR90 | 207 GB / ~0.6–0.8 TB on scratch; **local `/tmp` peak 500–900 GB** | GTDB CC BY-SA (verify); genomes INSDC | Tree-wide phylogenetic dispersion, species-level presence bitvectors (core plane only), clade-local NOGD, full token dictionary (`seq_family`, `subfamily_50`) |
-| **S6** | GTDB R226 remaining non-rep members (588,861 minus the complete members loaded at S2C) via NCBI datasets, + RefSeq `Complete Genome` flag | 732,475 total | est. 2,700–3,100 cumulative | est. 800–950 | est. 60,000–1,600,000 (geNomad dominates if it is not cheap); Pfam on new NR90 reps only, via `clusterupdate` | **+1.34 TB (cumulative ≈1.56 TB)**; the delta shrinks by the S2C members' share, the cumulative does not / +2–4 TB | INSDC (open) | Pangenome planes (`core_chr`, `pan_any`, `mge_accessory`), `hq_closed_or_multi_strain` mask, strain-level vehicle dedup |
+| **S5** | GTDB R226 all species reps (`gtdb_genomes_reps_r226.tar.gz`, 127.30 GB); complete reps already loaded at S2C and S3 reps are not re-ingested | 143,614 total (remaining = 143,614 − S3 − complete reps at S2C; 24.95 M contigs, 437 M proteins, *measured*, GTDB R226 metadata, 2026-11-09) | 465.5 (*measured*, GTDB R226 metadata, 2026-11-09; the estimate was 400–450) | 127 | **20,000–80,000** (25–100 days at 800 core-h/day; computed from the superseded estimate; recompute). Long poles: Rfam on IGRs, geNomad (until measured), Pfam on NR90 | 207 GB / ~0.6–0.8 TB on scratch (computed from the superseded estimate; recompute); **local `/tmp` peak 500–900 GB** | GTDB CC BY-SA (verify); genomes INSDC | Tree-wide phylogenetic dispersion, species-level presence bitvectors (core plane only), clade-local NOGD, full token dictionary (`seq_family`, `subfamily_50`) |
+| **S6** | GTDB R226 remaining non-rep members (588,861 minus the complete members loaded at S2C) via NCBI datasets, + RefSeq `Complete Genome` flag | 732,475 total (111.5 M contigs, 2,436 M proteins, *measured*, GTDB R226 metadata, 2026-11-09) | 2,588 cumulative (*measured*, GTDB R226 metadata, 2026-11-09; the estimate was 2,700–3,100) | est. 800–950 (computed from the superseded estimate; recompute) | est. 60,000–1,600,000 (geNomad dominates if it is not cheap; computed from the superseded estimate; recompute); Pfam on new NR90 reps only, via `clusterupdate` | **+1.34 TB (cumulative ≈1.56 TB)**; the delta shrinks by the S2C members' share, the cumulative does not (computed from the superseded estimate; recompute) / +2–4 TB | INSDC (open) | Pangenome planes (`core_chr`, `pan_any`, `mge_accessory`), `hq_closed_or_multi_strain` mask, strain-level vehicle dedup |
 | **S7+** | Off box: AllTheBacteria (2.44M, MIT), SPIRE, GlobDB extras, Logan (AWS us-east-1 compute-to-data) | Millions | Tbp–Pbp | TB–100s TB | Hetzner/AWS | Hetzner object storage | Mixed; Logan has no stated license → NIH/NCBI policy | Tier 3: unbinned diversity, rare architectures |
 
 ### Disk per layer for S5 (the last stage that fits on the box)
@@ -99,9 +99,9 @@ All rates are unmeasured; "Core-h" is the range from §2 at the stage's scale.
 |---|---|---|
 | Raw download (genome tarball; GTDB protein tarballs not needed because we re-call) | 127 GB | scratch, read-only |
 | Sequence store: nt + aa + IGR, bgzip + fai | ~207 GB | scratch |
-| Per-genome annotations: pyrodigal GFF → Parquet; Pfam/NCBIfam hits ≈1.5 hits/protein × 60 B over ~4.8e8 proteins (scanned on NR90 reps, projected to every protein, §2) | ~50 GB | scratch |
-| Clusters: MMseqs2 DBs (~2× aa bytes) + NR90/NR50 membership Parquet (16 B/protein) | ~300 GB DB (transient) + ~8 GB membership | DB on `/tmp` during runs, membership on scratch |
-| Parquet tapes (est. 6e8 slots × ~40 B) + `slot_pairs` + `pair_stats` | ~25–60 GB | scratch |
+| Per-genome annotations: pyrodigal GFF → Parquet; Pfam/NCBIfam hits ≈1.5 hits/protein × 60 B over 437 M proteins (*measured*, GTDB R226 metadata, 2026-11-09; scanned on NR90 reps, projected to every protein, §2) | ~50 GB (computed from the superseded 4.8e8 estimate; recompute) | scratch |
+| Clusters: MMseqs2 DBs (~2× aa bytes) + NR90/NR50 membership Parquet (36.5 B per protein per level, *measured*, golden set, 2026-11-09; the estimate was 16 B/protein) | ~300 GB DB (transient; computed from the superseded estimate; recompute) + ~32 GB membership (*derived*: 36.5 B × 2 levels × 437 M proteins; the estimate was ~8 GB) | DB on `/tmp` during runs, membership on scratch |
+| Parquet tapes (est. 6e8 slots (superseded estimate; the S5 protein count is 437 M) × 30.4 B per slot, *measured*, golden set, 2026-11-09; the estimate was ~40 B) + `slot_pairs` + `pair_stats` | ~25–60 GB (computed from the superseded estimate; recompute) | scratch |
 | DuckDB catalog / views | <1 GB | scratch |
 
 ### S5 protein residues (reconciled 2026-10-29)
@@ -110,13 +110,13 @@ Three values were in use ([`search/06_infra_inventory.md`](search/06_infra_inven
 
 | Value | Derivation | Status |
 |---|---|---|
-| **120–135 Gaa** | 0.30 aa/bp × 400–450 Gbp (§2 constant, the same formula used at every stage) | **Working range** |
+| **120–135 Gaa** | 0.30 aa/bp × 400–450 Gbp (§2 constant, the same formula used at every stage; computed from the superseded Gbp estimate, S5 is 465.5 Gbp *measured*, GTDB R226 metadata, 2026-11-09; recompute) | **Working range** |
 | 145 Gaa | Stated in §5 (`/tmp` line) without a derivation | Superseded |
 | 158 Gaa | ~4.8×10⁸ proteins × 330 aa | Superseded: it multiplies the conservative protein count by the mean length, so it double-counts the margin |
 
 - The protein count consistent with the working range is 3.6–4.1×10⁸ (*derived*: 120–135 Gaa ÷ 330 aa). The ~4.8×10⁸ figure is kept as the **upper bound for memory and `/tmp` sizing** (linclust 160 GB, §5), not as a residue source.
-- Protein store at S5: 0.55 B/aa × 120–135 Gaa = 66–74 GB (*derived*, matches the 0.165 GB/Gbp term in §3). `data_layer_and_tests.md` §2A.4 gives 45 GB and needs the same update.
-- S0 measures aa/bp and mean protein length on the golden set; S2C (60–120 Gbp of complete genomes) is the first stage large enough to refit both before S5.
+- Protein store at S5: 0.73 B/aa × 120–135 Gaa = 88–99 GB (*derived*; the 120–135 Gaa is computed from the superseded Gbp estimate; recompute; matches the 0.219 GB/Gbp term in §3; the estimate was 0.55 B/aa and 66–74 GB). `data_layer_and_tests.md` §2A.4 gives 45 GB and needs the same update.
+- S0 measures aa/bp and mean protein length on the golden set; S2C (106.4 Gbp of complete genomes, *measured*, GTDB R226 metadata, 2026-11-09) is the first stage large enough to refit both before S5.
 
 ### Search pack sizing ([SEARCH_PLAN §3.2](search/SEARCH_PLAN.md))
 
@@ -139,16 +139,16 @@ Byte constants (*derived* from the SEARCH_PLAN §3.2 S5 rows): zstd protein FAST
 
 Derivations:
 - **S1–S2 NR90/NR50:** S1 NR90 0.5–1.5×10⁶ × 215 aa (phage mean 200–230 aa) = 0.11–0.32 Gaa, plus S2 NR90 0.9–2.6×10⁶ × 330 aa = 0.30–0.86 Gaa. S1 NR50 0.2–1.0×10⁶ × 215 aa plus S2 NR50 (0.1–0.25 × 4.5–6.4×10⁶) × 330 aa. Cross-stage merging is ignored, so these are upper ends.
-- **S2C proteins:** 60–120 Gbp × 0.30 = 18–36 Gaa; ÷ 330 aa = 5.5–11×10⁷ proteins (*derived*). Exact-unique 2–4×10⁷ applies the S6 unique fraction (35%, §5) because S2C holds up to 20 strains per species; it may be higher, since many species have a single complete genome. SEARCH_PLAN §6 ST2 "~2–4×10⁷ proteins" is this exact-unique count.
+- **S2C proteins:** 106.4 Gbp × 0.30 = 31.9 Gaa; ÷ 330 aa = 9.7×10⁷ proteins (*derived*; the S2C protein count is 97.7 M, *measured*, GTDB R226 metadata, 2026-11-09). The S2C column of the table above was computed from the superseded 60–120 Gbp estimate; recompute. Exact-unique 2–4×10⁷ applies the S6 unique fraction (35%, §5) because S2C holds up to 20 strains per species; it may be higher, since many species have a single complete genome. SEARCH_PLAN §6 ST2 "~2–4×10⁷ proteins" is this exact-unique count.
 - **S2C NR90/NR50:** the S6 ratios to exact-unique (NR90 3.5–6×10⁸ / 1×10⁹ = 0.35–0.6; NR50 1.2–2.5×10⁸ / 1×10⁹ = 0.12–0.25) applied to 2–4×10⁷, × 330 aa, plus the S0–S2 values.
-- **S2C IGR and dark ORFs:** 12% × 60–120 Gbp = 7.2–14.4 Gbp; 0.07 × 60–120 = 4.2–8.4 Gaa; plus S0–S2.
+- **S2C IGR and dark ORFs:** 12% × 106.4 Gbp = 12.8 Gbp; 0.07 × 106.4 = 7.4 Gaa; plus S0–S2 (*derived*).
 - **S5 and S6 rows:** SEARCH_PLAN §3.2 values, on the conservative 4.8×10⁸ protein count (NR50 and NR90 there are 0.2–0.35× and 0.5–0.7× of it). On the reconciled 120–135 Gaa they would be ~15–25% lower.
 - **S5 total:** the sum of SEARCH_PLAN's own S5 rows is ~370–530 GB, which SEARCH_PLAN now uses (it first quoted "about 200–350 GB"). Either way it is under 2% of the 30 TB scratch. Per-run `/tmp` working set (NR50 FASTA + index + IGRs): ~70–110 GB at S5, ~4–11 GB at S2C, inside the 150 GB search-lane quota (SD-15).
 - **Base scans versus search targets:** library scans use exact-unique proteins through S2C and NR90 reps from S3 (§2, SD-05); the pack's `unique.dmnd` is a recall-check target from S5 on, not the scan unit.
 
 ## 5. Where the wilkcomp02 envelope stops being enough
 
-- **S0–S4, including S2C, fit with margin.** Each is under 20k core-h (S2C's high end is ~22k, about 27 days), under 200 GB of working set, and under 1 TB of disk.
+- **S0–S4, including S2C, fit with margin.** Each is under 20k core-h (S2C's high end is ~18.3k, about 23 days; *derived*: 18,300 ÷ 800), under 200 GB of working set, and under 1 TB of disk.
 - **S5 is the boundary stage.** It fits on disk (~1 TB of scratch), but it is borderline on three axes:
   1. **Memory.** MMseqs2 linclust over ~4.8e8 proteins (the upper bound, §4 reconciliation) ≈ 4.8e8 × 336 B ≈ **160 GB**, at the edge of the 200 GB cgroup.
      - Mitigation: exact-sequence dedup first. Then either shard linclust by phylum and merge with `clusterupdate` (MMseqs2 ≥ 18-8cc5c, per the pod notes), or get a written overnight exception to 400 GB from Claus Wilke / rctf-support.
@@ -179,7 +179,7 @@ All runs go through `hyperfine` or `/usr/bin/time -v` inside the `bio-box` `.sif
    - Output: `s_cm` and recall of production mode vs reference (target ≥ 0.98 of reference hits with E < 1e-5).
 4. **geNomad** on 100 Mbp of mixed S1/S2/S3 sequence at 1 and 8 threads, with and without NN → `g`.
 5. **MMseqs2** linclust and cluster at 50% on 1e7 proteins → `l`, peak RSS and tmp bytes. Check the 336 B/seq memory formula.
-6. **Sequence store:** bgzip vs zstd-seekable bytes/bp and random-access latency (1,000 random records from NFS) → confirms 0.27 B/bp and 0.55 B/aa.
+6. **Sequence store:** bgzip vs zstd-seekable bytes/bp and random-access latency (1,000 random records from NFS) → checks the golden-set values 0.309 B/bp and 0.73 B/aa (*measured*, golden set, 2026-11-09; the estimates were 0.27 and 0.55).
 7. **DuckDB:** Parquet scan and lookup on the S0 tapes, as the template for the data-layer tests at each stage.
 
 ## 7. Facts verified for this plan (2026-10-28)
