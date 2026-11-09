@@ -9,6 +9,7 @@ import pyarrow as pa
 import pytest
 import yaml
 
+from biobox.ids import KIND
 from biobox.registry.schemas import ARTIFACTS, SHA256, TABLES, UID
 
 pytestmark = pytest.mark.r0
@@ -32,6 +33,12 @@ def _load(name: str) -> dict:
 OPS = _load("operations.yaml")
 PENDING = _load("pending_tables.yaml")["pending"]
 REL = _load("relations.yaml")
+
+
+# AGENTS §3.3: an ordinal is never a key. These tables still have one in their primary key;
+# B-17 empties the set, and the test below fails until every fixed table is removed from it.
+ORDINAL_COLUMNS = {"ordinal", "slot_ordinal", "anchor_ordinal", "partner_ordinal"}
+LEGACY_ORDINAL_KEYS = {"neighborhoods", "protein_occurrence", "slot_pairs", "slot_protein"}
 
 
 def _documented_test_ids() -> set[str]:
@@ -87,7 +94,8 @@ def test_enums_refer_to_string_or_int_columns(name):
 
 def test_small_ok_tables_match_ly04_list():
     # TEST_ARCHITECTURE LY-04 names these metadata tables; anything else small_ok must be a waived kind.
-    named = {"l0_manifest", "seq_locator", "id_history", "ledger"}
+    # tape_version_def: declared small_ok in planning/tasks/TASKS.md §2 (card B-03)
+    named = {"l0_manifest", "seq_locator", "id_history", "ledger", "tape_version_def"}
     waived_kinds = {"search", "tests"}
     for name, spec in TABLES.items():
         if spec.small_ok:
@@ -106,6 +114,29 @@ def test_locations_are_unambiguous():
         for other, oloc in placed.items():
             if other != name:
                 assert not (oloc + "/").startswith(loc.removesuffix(".parquet") + "/"), f"{name} and {other} overlap"
+
+
+def test_no_primary_key_holds_an_ordinal_outside_the_legacy_set():
+    # AGENTS §3.3, DEC-18: features are keyed by feature_uid; a tape position is valid in one tape_version only
+    keyed = {n for n, s in TABLES.items() if ORDINAL_COLUMNS & set(s.primary_key)}
+    assert keyed - LEGACY_ORDINAL_KEYS == set(), f"ordinal in a new primary key: {sorted(keyed - LEGACY_ORDINAL_KEYS)}"
+    assert LEGACY_ORDINAL_KEYS - keyed == set(), (
+        f"no longer keyed by an ordinal, remove from LEGACY_ORDINAL_KEYS: {sorted(LEGACY_ORDINAL_KEYS - keyed)}")
+
+
+def test_phase_b_tables_are_registered():
+    # B-03: the six tables of TASKS.md §2, added beside the legacy ones (expand before contract)
+    new = {"genome_input", "feature", "feature_protein", "contig_dim", "tape_version_def", "token_postings"}
+    assert new <= set(TABLES), f"missing: {sorted(new - set(TABLES))}"
+    assert {"slot_protein", "slot_pairs"} <= set(TABLES)
+    # a replacement table keeps its predecessor's enum domains
+    quality = TABLES["protein_occurrence"].enums["assembly_quality"]
+    assert TABLES["genome_input"].enums["assembly_quality"] == quality
+    assert TABLES["contig_dim"].enums["assembly_quality"] == quality
+    assert TABLES["feature_protein"].enums["edit_type"] == TABLES["slot_protein"].enums["edit_type"]
+    assert TABLES["feature"].enums["kind"] == tuple(sorted(KIND.values()))
+    assert TABLES["contig_dim"].schema.field("assembly_quality").nullable
+    assert not TABLES["genome_input"].schema.field("assembly_quality").nullable
 
 
 def test_c08_version_partitions_are_registered():

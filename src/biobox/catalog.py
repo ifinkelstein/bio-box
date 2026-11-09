@@ -47,6 +47,7 @@ MANIFEST_VERSION = 2
 DERIVED_PARTITIONS = {
     "protein_prefix": ("protein_uid", "prefix"),
     "anchor_bucket": ("anchor_token", "low_byte"),
+    "token_bucket": ("token_id", "low_byte"),
 }
 
 
