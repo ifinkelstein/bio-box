@@ -639,6 +639,28 @@ def test_status_does_not_trust_a_pid_a_live_unrelated_process_may_own(tmp_path):
 
 
 @pytest.mark.covers("A-01")
+def test_cancel_does_not_signal_a_pid_whose_runner_is_gone(tmp_path):
+    """The runner died and its pid was reused: cancel must leave the new owner of the pid alone."""
+    import sys
+
+    pend = runner.runs_dir(tmp_path) / "pending"
+    pend.mkdir(parents=True)
+    lock = tmp_path / "work" / "cd" / "runner.lock"
+    lock.parent.mkdir(parents=True)
+    lock.write_text("")
+    bystander = subprocess.Popen([sys.executable, "-c", "import time; time.sleep(60)"])
+    try:
+        (pend / "cd.json").write_text(json.dumps({"run_id": "cd", "pid": bystander.pid, "lock": str(lock),
+                                                  "status": "running"}))
+        runner.cancel(tmp_path, "cd")
+        with pytest.raises(subprocess.TimeoutExpired):
+            bystander.wait(timeout=1.0)
+    finally:
+        bystander.kill()
+        bystander.wait()
+
+
+@pytest.mark.covers("A-01")
 def test_runner_lock_is_held_before_the_pending_record_is_visible_and_status_frees_it(world, tmp_path, monkeypatch):
     import fcntl
     import os

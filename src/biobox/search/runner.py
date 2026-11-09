@@ -57,8 +57,7 @@ _BOOT = ("import os, sys\n"
          "    sys.exit(worker.main(sys.argv[1]))\n"
          "except MemoryError:\n"
          f"    os._exit({EXIT_OOM})\n")
-LOCK_NAME = "runner.lock"
-LOCK_FD_ENV = "BIOBOX_RUNNER_LOCK_FD"  # set by `submit`: the inherited fd that holds the runner's flock
+LOCK_NAME = "runner.lock"  # flock held by the runner for its lifetime, through an fd inherited from `submit`
 RUN_FILES = ("run.parquet", "hits.parquet", "profiles.parquet", "neighborhoods.parquet")
 
 
@@ -346,7 +345,7 @@ def submit(root: Path, recipe_path: Path, release: str, limits: Limits = Limits(
     try:
         fcntl.flock(fd, fcntl.LOCK_EX)
         proc = subprocess.Popen(cmd, stdout=subprocess.DEVNULL, stderr=open(p / f"{run_id.hex()}.stderr", "w"),
-                                start_new_session=True, pass_fds=(fd,), env={**os.environ, LOCK_FD_ENV: str(fd)})
+                                start_new_session=True, pass_fds=(fd,))
     finally:
         os.close(fd)  # the runner's copy keeps the lock
     info = p / f"{run_id.hex()}.json"
@@ -384,8 +383,8 @@ def _runner_holds(lock: str | None) -> bool:
     except FileNotFoundError:
         return False
     try:
-        try:
-            fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        try:  # shared, so two probes at once never block each other into a false "running"
+            fcntl.flock(fd, fcntl.LOCK_SH | fcntl.LOCK_NB)
         except BlockingIOError:
             return True
         fcntl.flock(fd, fcntl.LOCK_UN)
@@ -395,8 +394,11 @@ def _runner_holds(lock: str | None) -> bool:
 
 
 def cancel(root: Path, run_id: str) -> None:
+    """Ask a live runner to stop. A runner that is gone is not signalled: its pid may belong to
+    another process by now."""
     info = json.loads((_pending(root) / f"{run_id}.json").read_text())
-    os.kill(info["pid"], signal.SIGTERM)
+    if _runner_holds(info.get("lock")):
+        os.kill(info["pid"], signal.SIGTERM)
 
 
 def read_run(root: Path, run_id: str) -> dict:
