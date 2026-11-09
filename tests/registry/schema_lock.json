@@ -78,6 +78,48 @@
    false
   ]
  ],
+ "contig_dim": [
+  [
+   "contig_uid",
+   "fixed_size_binary[16]",
+   false
+  ],
+  [
+   "genome_uid",
+   "fixed_size_binary[16]",
+   false
+  ],
+  [
+   "contig_len",
+   "int64",
+   false
+  ],
+  [
+   "is_circular",
+   "bool",
+   false
+  ],
+  [
+   "tier",
+   "uint8",
+   true
+  ],
+  [
+   "assembly_quality",
+   "string",
+   true
+  ],
+  [
+   "tax_order",
+   "uint32",
+   true
+  ],
+  [
+   "is_species_rep",
+   "bool",
+   false
+  ]
+ ],
  "contig_index": [
   [
    "contig_uid",
@@ -271,6 +313,80 @@
    false
   ]
  ],
+ "feature": [
+  [
+   "feature_uid",
+   "fixed_size_binary[16]",
+   false
+  ],
+  [
+   "contig_uid",
+   "fixed_size_binary[16]",
+   false
+  ],
+  [
+   "start",
+   "int64",
+   false
+  ],
+  [
+   "end",
+   "int64",
+   false
+  ],
+  [
+   "strand",
+   "int8",
+   false
+  ],
+  [
+   "kind",
+   "uint8",
+   false
+  ]
+ ],
+ "feature_protein": [
+  [
+   "contig_uid",
+   "fixed_size_binary[16]",
+   false
+  ],
+  [
+   "feature_uid",
+   "fixed_size_binary[16]",
+   false
+  ],
+  [
+   "start",
+   "int64",
+   false
+  ],
+  [
+   "end",
+   "int64",
+   false
+  ],
+  [
+   "strand",
+   "int8",
+   false
+  ],
+  [
+   "protein_uid",
+   "fixed_size_binary[16]",
+   false
+  ],
+  [
+   "genetic_code",
+   "uint8",
+   false
+  ],
+  [
+   "edit_type",
+   "string",
+   false
+  ]
+ ],
  "genome_identity": [
   [
    "assembly_accession",
@@ -324,6 +440,38 @@
   ],
   [
    "release_id",
+   "string",
+   false
+  ]
+ ],
+ "genome_input": [
+  [
+   "contig_uid",
+   "fixed_size_binary[16]",
+   false
+  ],
+  [
+   "genome_uid",
+   "fixed_size_binary[16]",
+   false
+  ],
+  [
+   "is_circular",
+   "bool",
+   false
+  ],
+  [
+   "kind",
+   "string",
+   false
+  ],
+  [
+   "genetic_code",
+   "uint8",
+   false
+  ],
+  [
+   "assembly_quality",
    "string",
    false
   ]
@@ -1250,6 +1398,18 @@
    false
   ]
  ],
+ "tape_version_def": [
+  [
+   "tape_version",
+   "string",
+   false
+  ],
+  [
+   "producer",
+   "string",
+   false
+  ]
+ ],
  "test_run": [
   [
    "test_id",
@@ -1351,6 +1511,63 @@
   [
    "n_slots",
    "uint64",
+   false
+  ]
+ ],
+ "token_postings": [
+  [
+   "token_id",
+   "uint64",
+   false
+  ],
+  [
+   "contig_uid",
+   "fixed_size_binary[16]",
+   false
+  ],
+  [
+   "ordinal",
+   "uint32",
+   false
+  ],
+  [
+   "seg_idx",
+   "uint16",
+   false
+  ],
+  [
+   "feature_uid",
+   "fixed_size_binary[16]",
+   false
+  ],
+  [
+   "start",
+   "int64",
+   false
+  ],
+  [
+   "end",
+   "int64",
+   false
+  ],
+  [
+   "strand",
+   "int8",
+   false
+  ],
+  [
+   "n_slots",
+   "uint32",
+   false
+  ],
+  [
+   "is_circular",
+   "bool",
+   false
+  ],
+  [
+   "contig_len",
+   "int64",
    false
   ]
  ]

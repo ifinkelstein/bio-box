@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import hashlib
+
 import pyarrow as pa
 
 import pyarrow.parquet as pq
@@ -9,7 +11,9 @@ import pytest
 from blake3 import blake3
 from hypothesis import assume, given, strategies as st
 
+from biobox import catalog
 from biobox.ids import KIND, feature_uid, region_uid
+from biobox.io import write_table
 from biobox.registry.schemas import TABLES, conformance_problems, table
 
 
@@ -123,3 +127,129 @@ def test_feature_uid_allows_origin_wrapping_end():
 def test_feature_uid_rejects_invalid_input(args):
     with pytest.raises(ValueError):
         feature_uid(*args)
+
+
+# --- phase-B tables (card B-03; TASKS.md §2) ------------------------------------------------
+
+PHASE_B = ("contig_dim", "feature", "feature_protein", "genome_input", "tape_version_def", "token_postings")
+RELEASE = "rS0.test"
+PRODUCERS = ("pyrodigal", "trnascan")
+# TASKS.md §2: "t-" + first 12 hex digits of sha256 over the sorted producer names joined by \n
+TAPE_VERSION = "t-" + hashlib.sha256("\n".join(sorted(PRODUCERS)).encode()).hexdigest()[:12]
+TOKEN_BUCKET = "2a"  # both tokens below have low byte 0x2a
+
+
+def _u(i: int) -> bytes:
+    return bytes([i]) * 16
+
+
+_C1, _C2, _G = _u(1), _u(2), _u(9)
+_CDS = (_C1, 0, 300, 1, KIND["cds"])
+_RNA = (_C1, 400, 500, -1, KIND["ncrna"])
+_F_CDS, _F_RNA = feature_uid(*_CDS), feature_uid(*_RNA)
+
+
+def _phase_b_tables() -> dict[str, tuple[str, pa.Table]]:
+    """One small valid table per new spec, sorted by its sort key, and the root-relative path it goes to."""
+    rows = {
+        "genome_input": [
+            {"contig_uid": _C1, "genome_uid": _G, "is_circular": True, "kind": "prokaryote", "genetic_code": 11,
+             "assembly_quality": "complete"},
+            {"contig_uid": _C2, "genome_uid": _G, "is_circular": False, "kind": "plasmid", "genetic_code": 11,
+             "assembly_quality": "complete"},
+        ],
+        "feature": [
+            {"feature_uid": _F_CDS, "contig_uid": _C1, "start": 0, "end": 300, "strand": 1, "kind": KIND["cds"]},
+            {"feature_uid": _F_RNA, "contig_uid": _C1, "start": 400, "end": 500, "strand": -1, "kind": KIND["ncrna"]},
+        ],
+        "feature_protein": [
+            {"contig_uid": _C1, "feature_uid": _F_CDS, "start": 0, "end": 300, "strand": 1, "protein_uid": _u(7),
+             "genetic_code": 11, "edit_type": "none"},
+        ],
+        "contig_dim": [
+            {"contig_uid": _C1, "genome_uid": _G, "contig_len": 1000, "is_circular": True, "tier": 1,
+             "assembly_quality": "complete", "tax_order": 5, "is_species_rep": True},
+            {"contig_uid": _C2, "genome_uid": _G, "contig_len": 2000, "is_circular": False, "tier": None,
+             "assembly_quality": None, "tax_order": None, "is_species_rep": False},
+        ],
+        "tape_version_def": [{"tape_version": TAPE_VERSION, "producer": p} for p in PRODUCERS],
+        "token_postings": [
+            # a family token on two domains (seg_idx 0, 1) of the CDS slot, then a token on the ncRNA slot
+            {"token_id": 0x2A, "contig_uid": _C1, "ordinal": 0, "seg_idx": 0, "feature_uid": _F_CDS, "start": 0,
+             "end": 300, "strand": 1, "n_slots": 2, "is_circular": True, "contig_len": 1000},
+            {"token_id": 0x2A, "contig_uid": _C1, "ordinal": 0, "seg_idx": 1, "feature_uid": _F_CDS, "start": 0,
+             "end": 300, "strand": 1, "n_slots": 2, "is_circular": True, "contig_len": 1000},
+            {"token_id": 0x12A, "contig_uid": _C1, "ordinal": 1, "seg_idx": 0, "feature_uid": _F_RNA, "start": 400,
+             "end": 500, "strand": -1, "n_slots": 2, "is_circular": True, "contig_len": 1000},
+        ],
+    }
+    parts = {
+        "genome_input": "stage=S0",
+        "feature": "producer=pyrodigal/stage=S0",
+        "feature_protein": "gene_call_version=v1/stage=S0",
+        "contig_dim": f"release={RELEASE}",
+        "token_postings": f"release={RELEASE}/tape_version={TAPE_VERSION}/token_bucket={TOKEN_BUCKET}",
+    }
+    out = {}
+    for name, r in rows.items():
+        spec = table(name)
+        rel = spec.location if spec.location.endswith(".parquet") else f"{spec.location}/{parts[name]}/part-0.parquet"
+        out[name] = rel, pa.Table.from_pylist(r, schema=spec.schema)
+    return out
+
+
+def _write_phase_b(root) -> dict[str, tuple[str, pa.Table]]:
+    tables = _phase_b_tables()
+    for name, (rel, t) in tables.items():
+        write_table(t, table(name), root / rel)
+    return tables
+
+
+@pytest.mark.covers("C-01", "LY-01")
+@pytest.mark.parametrize("name", PHASE_B)
+def test_phase_b_table_written_by_the_writer_conforms(name, tmp_path):
+    rel, t = _phase_b_tables()[name]
+    spec = table(name)
+    assert conformance_problems(t, spec) == []
+    write_table(t, spec, tmp_path / rel)
+    back = pq.read_table(tmp_path / rel, partitioning=None)
+    assert conformance_problems(back, spec) == []
+    assert back.equals(t)
+
+
+@pytest.mark.covers("LY-05", "LY-10")
+def test_phase_b_tables_are_catalog_views_with_partition_columns(tmp_path):
+    root = tmp_path / "root"
+    tables = _write_phase_b(root)
+    assert sorted(tables) == list(PHASE_B)
+    man = catalog.build_manifest(root, RELEASE)
+    assert sorted(f["table"] for f in man["files"]) == list(PHASE_B)
+    cat = catalog.generate_catalog(man, tmp_path / "catalog.duckdb", root)
+    con = catalog.open_catalog(cat, root=root)
+    try:
+        for name, (rel, t) in tables.items():
+            spec = table(name)
+            cols = [c[0] for c in con.execute(f"DESCRIBE {name}").fetchall()]
+            assert cols == spec.schema.names + list(spec.partition_keys), name
+            got = con.sql(f"SELECT * FROM {name}").to_arrow_table()
+            assert got.num_rows == t.num_rows, name
+            want = dict(p.split("=", 1) for p in rel.split("/")[:-1] if "=" in p)
+            for k, v in want.items():
+                assert set(got.column(k).to_pylist()) == {v}, f"{name}.{k}"
+            assert sorted(got.select(spec.schema.names).to_pylist(), key=repr) == sorted(t.to_pylist(), key=repr), name
+    finally:
+        con.close()
+
+
+@pytest.mark.covers("LY-05")
+@pytest.mark.parametrize("bucket,ok", [("2a", True), ("2", True), ("all", True), ("ff", False), ("3", False)])
+def test_token_postings_file_under_the_wrong_bucket_is_refused(tmp_path, bucket, ok):
+    # token_bucket is the hex of the token's low byte (as slot_pairs.anchor_bucket); both tokens end in 0x2a
+    rel, t = _phase_b_tables()["token_postings"]
+    root = tmp_path / "root"
+    write_table(t, table("token_postings"), root / rel.replace(f"token_bucket={TOKEN_BUCKET}", f"token_bucket={bucket}"))
+    if ok:
+        assert len(catalog.build_manifest(root, RELEASE)["files"]) == 1
+    else:
+        with pytest.raises(catalog.LayoutError, match="LY-05"):
+            catalog.build_manifest(root, RELEASE)

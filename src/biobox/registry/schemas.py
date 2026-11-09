@@ -20,12 +20,18 @@ from dataclasses import dataclass, field
 
 import pyarrow as pa
 
-UID = pa.binary(16)  # BLAKE3-128 content UIDs
+from biobox.ids import KIND
+
+UID =pa.binary(16)  # BLAKE3-128 content UIDs
 SHA256 = pa.binary(32)  # raw_digest and object checksums
 STRAND = pa.int8()  # +1 / -1
 COORD = pa.int64()  # 0-based half-open contig coordinates
 
 STRAND_VALUES = (1, -1)
+# the domains of protein_occurrence.assembly_quality and slot_protein.edit_type, shared by the
+# phase-B tables that replace them (R0 checks they stay equal)
+_ASSEMBLY_QUALITY = ("complete", "chromosome", "scaffold", "contig", "mag_hq", "mag_mq", "vOTU", "plasmid")
+_EDIT_TYPES = ("none", "frameshift", "selenocysteine", "pyrrolysine", "intron")
 
 
 @dataclass(frozen=True)
@@ -622,6 +628,133 @@ _SPECS = [
             "PLAN.md §4.2; biobox/l3/pairs.py. Directed pairs within +-10 slots at one token level; flags bit 0 "
             "anchor window cut by a linear end, bit 1 pair crosses the origin; anchor_bucket = hex of the "
             "anchor token's low byte at the release's width"
+        ),
+    ),
+    # --- phase B (card B-03): added beside the legacy tables they replace; B-17 removes those ---
+    TableSpec(
+        name="genome_input",
+        location="l0seq/genome_input",
+        layer="L0-seq",
+        schema=pa.schema([
+            _f("contig_uid", UID),
+            _f("genome_uid", UID),
+            _f("is_circular", pa.bool_()),
+            _f("kind", pa.string()),
+            _f("genetic_code", pa.uint8()),
+            _f("assembly_quality", pa.string()),
+        ]),
+        primary_key=("contig_uid", "stage"),
+        sort_key=("contig_uid",),
+        partition_keys=("stage",),
+        enums={"kind": ("prokaryote", "virus", "plasmid"), "assembly_quality": _ASSEMBLY_QUALITY},
+        doc="planning/tasks/TASKS.md §2; DEC-18. The gene caller's per-contig inputs, persisted per stage",
+    ),
+    TableSpec(
+        name="feature",
+        location="l1/feature",
+        layer="L1",
+        schema=pa.schema([
+            _f("feature_uid", UID),
+            _f("contig_uid", UID),
+            _f("start", COORD),
+            _f("end", COORD),
+            _f("strand", STRAND),
+            _f("kind", pa.uint8()),
+        ]),
+        primary_key=("feature_uid", "producer"),
+        sort_key=("contig_uid", "start", "end", "strand", "kind"),
+        partition_keys=("producer", "stage"),
+        enums={"strand": STRAND_VALUES, "kind": tuple(sorted(KIND.values()))},
+        doc=(
+            "planning/tasks/TASKS.md §2; DEC-18. feature_uid = ids.feature_uid(contig_uid, start, end, strand, "
+            "kind), kind from ids.KIND; 0-based half-open, end > contig_len for an origin-crossing feature"
+        ),
+    ),
+    TableSpec(
+        name="feature_protein",
+        location="l1/feature_protein",
+        layer="L1",
+        schema=pa.schema([
+            _f("contig_uid", UID),
+            _f("feature_uid", UID),
+            _f("start", COORD),
+            _f("end", COORD),
+            _f("strand", STRAND),
+            _f("protein_uid", UID),
+            _f("genetic_code", pa.uint8()),
+            _f("edit_type", pa.string()),
+        ]),
+        primary_key=("feature_uid", "gene_call_version"),
+        sort_key=("contig_uid", "start", "end"),
+        partition_keys=("gene_call_version", "stage"),
+        enums={"strand": STRAND_VALUES, "edit_type": _EDIT_TYPES},
+        doc="planning/tasks/TASKS.md §2; DEC-18. Replaces slot_protein: the protein of each CDS feature",
+    ),
+    TableSpec(
+        name="contig_dim",
+        location="dim/contig_dim",
+        layer="dim",
+        schema=pa.schema([
+            _f("contig_uid", UID),
+            _f("genome_uid", UID),
+            _f("contig_len", COORD),
+            _f("is_circular", pa.bool_()),
+            _f("tier", pa.uint8(), nullable=True),
+            _f("assembly_quality", pa.string(), nullable=True),
+            _f("tax_order", pa.uint32(), nullable=True),
+            _f("is_species_rep", pa.bool_()),
+        ]),
+        primary_key=("contig_uid", "release"),
+        sort_key=("contig_uid",),
+        partition_keys=("release",),
+        enums={"assembly_quality": _ASSEMBLY_QUALITY},
+        doc=(
+            "planning/tasks/TASKS.md §2; DEC-20. Contig attributes that change without the sequence changing; "
+            "the only place they live (AGENTS §3.6)"
+        ),
+    ),
+    TableSpec(
+        name="tape_version_def",
+        location="l3/tape_version_def.parquet",
+        layer="L3",
+        schema=pa.schema([
+            _f("tape_version", pa.string()),
+            _f("producer", pa.string()),
+        ]),
+        primary_key=("tape_version", "producer"),
+        sort_key=("tape_version", "producer"),
+        small_ok=True,
+        doc=(
+            "planning/tasks/TASKS.md §2; DEC-18. tape_version = 't-' + first 12 hex digits of sha256 over the "
+            "sorted producer names joined by \\n; one row per (tape_version, producer)"
+        ),
+    ),
+    TableSpec(
+        name="token_postings",
+        location="l3/token_postings",
+        layer="L3",
+        schema=pa.schema([
+            _f("token_id", pa.uint64()),
+            _f("contig_uid", UID),
+            _f("ordinal", pa.uint32()),
+            _f("seg_idx", pa.uint16()),
+            _f("feature_uid", UID),
+            _f("start", COORD),
+            _f("end", COORD),
+            _f("strand", STRAND),
+            _f("n_slots", pa.uint32()),
+            _f("is_circular", pa.bool_()),
+            _f("contig_len", COORD),
+        ]),
+        primary_key=("token_id", "contig_uid", "feature_uid", "seg_idx", "release", "tape_version"),
+        sort_key=("token_id", "contig_uid", "ordinal", "seg_idx"),
+        partition_keys=("release", "tape_version", "token_bucket"),
+        enums={"strand": STRAND_VALUES},
+        doc=(
+            "planning/tasks/TASKS.md §2; DEC-19. Replaces slot_pairs: one row per slot and token (seg_idx 0 for "
+            "NR90/NR50, the domain's rank by env_start for family tokens). ordinal orders the rows within one "
+            "tape_version but is not part of the key (AGENTS §3.3); token_bucket = hex of the token's low byte "
+            "at the release's width, as slot_pairs.anchor_bucket"
         ),
     ),
     TableSpec(
