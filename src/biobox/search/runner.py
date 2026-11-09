@@ -57,6 +57,7 @@ _BOOT = ("import os, sys\n"
          "    sys.exit(worker.main(sys.argv[1]))\n"
          "except MemoryError:\n"
          f"    os._exit({EXIT_OOM})\n")
+LOCK_NAME = "runner.lock"  # flock held by the runner for its lifetime, through an fd inherited from `submit`
 RUN_FILES = ("run.parquet", "hits.parquet", "profiles.parquet", "neighborhoods.parquet")
 
 
@@ -222,8 +223,10 @@ def run(root: Path, recipe_src: Path | str, release: str, *, limits: Limits = Li
     rh = rcp.recipe_hash(r)
     run_id = run_id or new_run_id(rh, release, res["pack_id"], submitted)
     work = Path(work_base or default_work_base()) / run_id.hex()
-    if work.exists():
-        shutil.rmtree(work)
+    if work.exists():  # `submit` made this directory and holds runner.lock in it: keep that file
+        for child in work.iterdir():
+            if child.name != LOCK_NAME:
+                shutil.rmtree(child) if child.is_dir() else child.unlink()
     out = work / "out"
     out.mkdir(parents=True)
     cancelled: list = []
@@ -332,9 +335,24 @@ def submit(root: Path, recipe_path: Path, release: str, limits: Limits = Limits(
         cmd += ["--work", str(work_base)]
     if fault is not None:
         cmd += ["--fault", fault]
-    proc = subprocess.Popen(cmd, stdout=subprocess.DEVNULL, stderr=open(p / f"{run_id.hex()}.stderr", "w"),
-                            start_new_session=True)
-    (p / f"{run_id.hex()}.json").write_text(json.dumps({"run_id": run_id.hex(), "pid": proc.pid, "status": "running"}))
+    # The runner's liveness is a flock on local disk (never under the data root: flock is unreliable on
+    # NFS). It is taken here, before the pending record exists, and handed to the runner as an inherited
+    # fd (the lock belongs to the open file description, so it lives exactly as long as the runner).
+    work = (Path(work_base or default_work_base()) / run_id.hex()).resolve()
+    work.mkdir(parents=True, exist_ok=True)
+    lock_path = work / LOCK_NAME
+    fd = os.open(lock_path, os.O_RDWR | os.O_CREAT, 0o644)
+    try:
+        fcntl.flock(fd, fcntl.LOCK_EX)
+        proc = subprocess.Popen(cmd, stdout=subprocess.DEVNULL, stderr=open(p / f"{run_id.hex()}.stderr", "w"),
+                                start_new_session=True, pass_fds=(fd,))
+    finally:
+        os.close(fd)  # the runner's copy keeps the lock
+    info = p / f"{run_id.hex()}.json"
+    tmp = info.with_name(f".{info.name}.tmp")
+    tmp.write_text(json.dumps({"run_id": run_id.hex(), "pid": proc.pid, "lock": str(lock_path),
+                               "status": "running"}))
+    os.replace(tmp, info)
     return run_id.hex()
 
 
@@ -347,31 +365,40 @@ def status(root: Path, run_id: str) -> dict:
     p = _pending(root) / f"{run_id}.json"
     if p.exists():
         info = json.loads(p.read_text())
-        if _alive(info["pid"]):
+        if _runner_holds(info.get("lock")):
             return {"run_id": run_id, "status": "running"}
+        if (d / "run.parquet").exists():  # closed between the first look and the lock probe
+            return status(root, run_id)
         return {"run_id": run_id, "status": "failed", "error": "runner exited without closing the run"}
     raise KeyError(f"no run {run_id}")
 
 
-def _alive(pid: int) -> bool:
-    """Whether a runner process is still running; a dead child of this process (a zombie, which
-    still answers kill(pid, 0)) is reaped and counts as dead."""
-    try:
-        done, _ = os.waitpid(pid, os.WNOHANG)
-        if done:
-            return False
-    except ChildProcessError:
-        pass  # not our child: the submitting process has exited and the runner was reparented
-    try:
-        os.kill(pid, 0)
-    except ProcessLookupError:
+def _runner_holds(lock: str | None) -> bool:
+    """Whether a live runner holds its lock. If the probe gets the lock the runner is dead; it is released
+    at once. A lock file that is gone means the runner finished and cleaned up (or never started)."""
+    if not lock:
         return False
-    return True
+    try:
+        fd = os.open(lock, os.O_RDWR)
+    except FileNotFoundError:
+        return False
+    try:
+        try:  # shared, so two probes at once never block each other into a false "running"
+            fcntl.flock(fd, fcntl.LOCK_SH | fcntl.LOCK_NB)
+        except BlockingIOError:
+            return True
+        fcntl.flock(fd, fcntl.LOCK_UN)
+        return False
+    finally:
+        os.close(fd)
 
 
 def cancel(root: Path, run_id: str) -> None:
+    """Ask a live runner to stop. A runner that is gone is not signalled: its pid may belong to
+    another process by now."""
     info = json.loads((_pending(root) / f"{run_id}.json").read_text())
-    os.kill(info["pid"], signal.SIGTERM)
+    if _runner_holds(info.get("lock")):
+        os.kill(info["pid"], signal.SIGTERM)
 
 
 def read_run(root: Path, run_id: str) -> dict:
