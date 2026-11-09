@@ -157,9 +157,7 @@ only if the card says so.
 columns are added first (B-03 to B-16) while the legacy ones (`slot_protein`, `slot_ordinal`,
 `left_slot`, `right_slot`, the dimension columns on fact tables) stay written and readable; B-17
 removes them once nothing reads them. A card that adds a column to an existing table edits
-`schemas.py` and regenerates the lock in the same commit as the builder that writes it. Cards merge
-into the branch `phase-b`, which is cut from `plan/task-cards`.
-
+`schemas.py` and regenerates the lock in the same commit as the builder that writes it.
 ### B-01 One Parquet writer
 **M** · Depends: 0-01
 Files: `src/biobox/io.py`+, `tests/r1/test_io.py`+
