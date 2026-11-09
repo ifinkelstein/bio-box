@@ -1,0 +1,24 @@
+# Host profile for the shared pod wilkcomp02 (C-01). Every key is required.
+# Sources are named per value; nothing here is invented.
+
+# DEPLOYMENT-AND-MALLEABILITY.md section 0.3 (line 56)
+max_threads_day: 40
+max_threads_night: 56
+mem_scope: 200G
+tmp: /tmp/if2453/bio-box
+durable: /stor/work/Wilke/if2453/all-the-data
+bulk: /stor/scratch/Wilke/if2453/all-the-data
+nice_monolithic: 19
+nice_fanout: 15
+
+# Day window, local time, Monday to Friday, hours [day_start_hour, day_end_hour). ESTIMATE: the
+# footprint agreement (planning/footprint_request.md) says "by day" and "at night and weekends"
+# without clock hours; 08:00 to 20:00 is an assumption for the PI to confirm with the pod owner.
+day_start_hour: 8
+day_end_hour: 20
+
+# DEPLOYMENT-AND-MALLEABILITY.md section 2 (shards under 300 CPU-min; the watchdog acts near 369)
+cpu_min_per_process: 300
+
+# planning/data_layer_and_tests.md section 4.11, LY-04 (NFS small-file rule, 64 MB)
+small_file_floor_bytes: 67108864
