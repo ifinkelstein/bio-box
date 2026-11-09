@@ -65,3 +65,8 @@ def test_bool_is_not_an_int(tmp_path):
 @pytest.mark.parametrize("hour,expected", [(7, 56), (8, 40), (19, 40), (20, 56)])
 def test_threads_at(hour, expected):
     assert profile.load(SHIPPED).threads_at(hour) == expected
+
+
+@pytest.mark.parametrize("weekday,expected", [(4, 40), (5, 56), (6, 56)])
+def test_weekend_uses_the_night_cap_at_noon(weekday, expected):
+    assert profile.load(SHIPPED).threads_at(12, weekday) == expected

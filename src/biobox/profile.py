@@ -23,9 +23,11 @@ class Profile:
     cpu_min_per_process: int
     small_file_floor_bytes: int
 
-    def threads_at(self, hour: int) -> int:
-        """Thread cap at a local hour (0-23): day cap in [day_start_hour, day_end_hour)."""
-        day = self.day_start_hour <= hour < self.day_end_hour
+    def threads_at(self, hour: int, weekday: int = 0) -> int:
+        """Thread cap at a local hour (0-23) and weekday (Monday = 0): the day cap on Monday to
+        Friday in [day_start_hour, day_end_hour), the night cap otherwise. The night cap is also
+        conditional on no other compute running, which the caller checks (run-step)."""
+        day = weekday < 5 and self.day_start_hour <= hour < self.day_end_hour
         return self.max_threads_day if day else self.max_threads_night
 
 

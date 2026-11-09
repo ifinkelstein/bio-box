@@ -66,7 +66,7 @@ Every number you write in a document carries one of three labels: *measured* (ho
 It is a shared machine and we are guests. An agent runs something on the pod only when its card says **Pod: yes**.
 
 1. Run only through `bio-box run-step` (card C-02), inside the `.sif` pulled by digest. Tools installed on the pod are never used to produce outputs; they may be used as oracles.
-2. At most 40 threads between 08:00 and 20:00 and 56 at night, every process inside a `systemd-run --user --scope -p MemoryMax=200G` scope, at `nice 19`. A single process stays under 300 CPU-minutes; larger work is split into shard processes.
+2. At most 40 threads by day; 56 at night and on weekends, and only when `ps` or `top` shows no other compute (the profile's 08:00 to 20:00 weekday window is an assumption until the PI confirms it with the pod owner). Every process runs inside a `systemd-run --user --scope -p MemoryMax=200G` scope, at `nice 19`. A single process stays under 300 CPU-minutes; larger work is split into shard processes.
 3. Work in `/tmp/if2453/bio-box`. Results go to the data root with one `rsync` and an atomic rename. Never write files under 64 MB onto `/stor` except the registry's `small_ok` tables.
 4. Before each step, check for a `STOP` file in the data root and exit cleanly if it exists.
 5. Never delete or overwrite anything under `/stor`. Never use Docker on the pod. Never start a network service.
