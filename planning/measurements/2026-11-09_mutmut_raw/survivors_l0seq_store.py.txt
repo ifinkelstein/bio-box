@@ -1,0 +1,327 @@
+[survived] _write__mutmut_1
+    - def _write(tbl: pa.Table, path: Path, row_group_size: int, statistics: list[str] | bool = True) -> None:
+    + def _write(tbl: pa.Table, path: Path, row_group_size: int, statistics: list[str] | bool = False) -> None:
+[survived] _write__mutmut_10
+    - pq.write_table(tbl, path, compression="zstd", row_group_size=row_group_size, write_statistics=statistics)
+    + pq.write_table(tbl, path, compression=None, row_group_size=row_group_size, write_statistics=statistics)
+[survived] _write__mutmut_11
+    - pq.write_table(tbl, path, compression="zstd", row_group_size=row_group_size, write_statistics=statistics)
+    + pq.write_table(tbl, path, compression="zstd", row_group_size=None, write_statistics=statistics)
+[survived] _write__mutmut_12
+    - pq.write_table(tbl, path, compression="zstd", row_group_size=row_group_size, write_statistics=statistics)
+    + pq.write_table(tbl, path, compression="zstd", row_group_size=row_group_size, write_statistics=None)
+[survived] _write__mutmut_15
+    - pq.write_table(tbl, path, compression="zstd", row_group_size=row_group_size, write_statistics=statistics)
+    + pq.write_table(tbl, path, row_group_size=row_group_size, write_statistics=statistics)
+[survived] _write__mutmut_16
+    - pq.write_table(tbl, path, compression="zstd", row_group_size=row_group_size, write_statistics=statistics)
+    + pq.write_table(tbl, path, compression="zstd", write_statistics=statistics)
+[survived] _write__mutmut_17
+    - pq.write_table(tbl, path, compression="zstd", row_group_size=row_group_size, write_statistics=statistics)
+    + pq.write_table(tbl, path, compression="zstd", row_group_size=row_group_size, )
+[survived] _write__mutmut_19
+    - pq.write_table(tbl, path, compression="zstd", row_group_size=row_group_size, write_statistics=statistics)
+    + pq.write_table(tbl, path, compression="ZSTD", row_group_size=row_group_size, write_statistics=statistics)
+[survived] _existing_locator__mutmut_5
+    - p = root / "l0seq" / "seq_locator.parquet"
+    + p = root / "L0SEQ" / "seq_locator.parquet"
+[survived] _existing_locator__mutmut_7
+    - p = root / "l0seq" / "seq_locator.parquet"
+    + p = root / "l0seq" / "SEQ_LOCATOR.PARQUET"
+[timeout] _existing_index__mutmut_5
+    - d = root / "l0seq" / "contig_index"
+    + d = root / "L0SEQ" / "contig_index"
+[timeout] _existing_index__mutmut_7
+    - d = root / "l0seq" / "contig_index"
+    + d = root / "l0seq" / "CONTIG_INDEX"
+[timeout] _existing_index__mutmut_9
+    - cols = ["contig_uid", "raw_digest", "contig_len", "is_default_variant"]
+    + cols = None
+[timeout] _existing_index__mutmut_20
+    - return pa.concat_tables(pq.read_table(f, columns=cols) for f in sorted(d.glob("stage=*/part-0.parquet")))
+    + return pa.concat_tables(pq.read_table(f, columns=None) for f in sorted(d.glob("stage=*/part-0.parquet")))
+[timeout] _existing_index__mutmut_22
+    - return pa.concat_tables(pq.read_table(f, columns=cols) for f in sorted(d.glob("stage=*/part-0.parquet")))
+    + return pa.concat_tables(pq.read_table(f, ) for f in sorted(d.glob("stage=*/part-0.parquet")))
+[survived] ingest__mutmut_6
+    - params_path = root / "l0seq" / "store_params.json"
+    + params_path = root / "XXl0seqXX" / "store_params.json"
+[survived] ingest__mutmut_8
+    - params_path = root / "l0seq" / "store_params.json"
+    + params_path = root / "l0seq" / "XXstore_params.jsonXX"
+[survived] ingest__mutmut_9
+    - params_path = root / "l0seq" / "store_params.json"
+    + params_path = root / "l0seq" / "STORE_PARAMS.JSON"
+[survived] ingest__mutmut_10
+    - params = {"format": STORE_FORMAT, "shard_bases": shard_bases, "line_width": line_width, "bgzf_level": BGZF_LEVEL}
+    + params = None
+[survived] ingest__mutmut_11
+    - params = {"format": STORE_FORMAT, "shard_bases": shard_bases, "line_width": line_width, "bgzf_level": BGZF_LEVEL}
+    + params = {"XXformatXX": STORE_FORMAT, "shard_bases": shard_bases, "line_width": line_width, "bgzf_level": BGZF_LEVEL}
+[survived] ingest__mutmut_12
+    - params = {"format": STORE_FORMAT, "shard_bases": shard_bases, "line_width": line_width, "bgzf_level": BGZF_LEVEL}
+    + params = {"FORMAT": STORE_FORMAT, "shard_bases": shard_bases, "line_width": line_width, "bgzf_level": BGZF_LEVEL}
+[survived] ingest__mutmut_13
+    - params = {"format": STORE_FORMAT, "shard_bases": shard_bases, "line_width": line_width, "bgzf_level": BGZF_LEVEL}
+    + params = {"format": STORE_FORMAT, "XXshard_basesXX": shard_bases, "line_width": line_width, "bgzf_level": BGZF_LEVEL}
+[survived] ingest__mutmut_14
+    - params = {"format": STORE_FORMAT, "shard_bases": shard_bases, "line_width": line_width, "bgzf_level": BGZF_LEVEL}
+    + params = {"format": STORE_FORMAT, "SHARD_BASES": shard_bases, "line_width": line_width, "bgzf_level": BGZF_LEVEL}
+[survived] ingest__mutmut_15
+    - params = {"format": STORE_FORMAT, "shard_bases": shard_bases, "line_width": line_width, "bgzf_level": BGZF_LEVEL}
+    + params = {"format": STORE_FORMAT, "shard_bases": shard_bases, "XXline_widthXX": line_width, "bgzf_level": BGZF_LEVEL}
+[survived] ingest__mutmut_16
+    - params = {"format": STORE_FORMAT, "shard_bases": shard_bases, "line_width": line_width, "bgzf_level": BGZF_LEVEL}
+    + params = {"format": STORE_FORMAT, "shard_bases": shard_bases, "LINE_WIDTH": line_width, "bgzf_level": BGZF_LEVEL}
+[survived] ingest__mutmut_17
+    - params = {"format": STORE_FORMAT, "shard_bases": shard_bases, "line_width": line_width, "bgzf_level": BGZF_LEVEL}
+    + params = {"format": STORE_FORMAT, "shard_bases": shard_bases, "line_width": line_width, "XXbgzf_levelXX": BGZF_LEVEL}
+[survived] ingest__mutmut_18
+    - params = {"format": STORE_FORMAT, "shard_bases": shard_bases, "line_width": line_width, "bgzf_level": BGZF_LEVEL}
+    + params = {"format": STORE_FORMAT, "shard_bases": shard_bases, "line_width": line_width, "BGZF_LEVEL": BGZF_LEVEL}
+[survived] ingest__mutmut_21
+    - raise ValueError("store parameters differ from the existing store")
+    + raise ValueError(None)
+[survived] ingest__mutmut_22
+    - raise ValueError("store parameters differ from the existing store")
+    + raise ValueError("XXstore parameters differ from the existing storeXX")
+[survived] ingest__mutmut_23
+    - raise ValueError("store parameters differ from the existing store")
+    + raise ValueError("STORE PARAMETERS DIFFER FROM THE EXISTING STORE")
+[survived] ingest__mutmut_25
+    - params_path.parent.mkdir(parents=True, exist_ok=True)
+    + params_path.parent.mkdir(parents=True, exist_ok=None)
+[survived] ingest__mutmut_27
+    - params_path.parent.mkdir(parents=True, exist_ok=True)
+    + params_path.parent.mkdir(parents=True, )
+[survived] ingest__mutmut_29
+    - params_path.parent.mkdir(parents=True, exist_ok=True)
+    + params_path.parent.mkdir(parents=True, exist_ok=False)
+[survived] ingest__mutmut_32
+    - params_path.write_text(json.dumps(params, sort_keys=True))
+    + params_path.write_text(json.dumps(params, sort_keys=None))
+[survived] ingest__mutmut_34
+    - params_path.write_text(json.dumps(params, sort_keys=True))
+    + params_path.write_text(json.dumps(params, ))
+[survived] ingest__mutmut_35
+    - params_path.write_text(json.dumps(params, sort_keys=True))
+    + params_path.write_text(json.dumps(params, sort_keys=False))
+[survived] ingest__mutmut_49
+    - if old_index is not None
+    + if (old_index is not None) and False
+[survived] ingest__mutmut_77
+    - tools = provenance.tool_versions("pyarrow")
+    + tools = None
+[survived] ingest__mutmut_80
+    - tools = provenance.tool_versions("pyarrow")
+    + tools = provenance.tool_versions("PYARROW")
+[survived] ingest__mutmut_87
+    - src_uid = ids.source_uid(obj.source_name, obj.source_release)
+    + src_uid = ids.source_uid(None, obj.source_release)
+[survived] ingest__mutmut_88
+    - src_uid = ids.source_uid(obj.source_name, obj.source_release)
+    + src_uid = ids.source_uid(obj.source_name, None)
+[survived] ingest__mutmut_113
+    - n_in = n_kept = 0
+    + n_in = n_kept = 1
+[survived] ingest__mutmut_117
+    - n_in += 1
+    + n_in = 1
+[survived] ingest__mutmut_119
+    - n_in += 1
+    + n_in += 2
+[survived] ingest__mutmut_149
+    - n_kept += 1
+    + n_kept = 1
+[survived] ingest__mutmut_155
+    - if (cu, rd) not in variants or key < variants[(cu, rd)]:
+    + if (cu, rd) not in variants or key <= variants[(cu, rd)]:
+[survived] ingest__mutmut_163
+    - ledger_rows.append(ledger.row(obj_sha, "l0_object", n_in, n_kept, n_in - n_kept, tools=tools))
+    + ledger_rows.append(ledger.row(obj_sha, "l0_object", n_in, n_kept, n_in - n_kept, tools=None))
+[survived] ingest__mutmut_166
+    - ledger_rows.append(ledger.row(obj_sha, "l0_object", n_in, n_kept, n_in - n_kept, tools=tools))
+    + ledger_rows.append(ledger.row(obj_sha, "l0_object", n_kept, n_in - n_kept, tools=tools))
+[survived] ingest__mutmut_167
+    - ledger_rows.append(ledger.row(obj_sha, "l0_object", n_in, n_kept, n_in - n_kept, tools=tools))
+    + ledger_rows.append(ledger.row(obj_sha, "l0_object", n_in, n_in - n_kept, tools=tools))
+[survived] ingest__mutmut_168
+    - ledger_rows.append(ledger.row(obj_sha, "l0_object", n_in, n_kept, n_in - n_kept, tools=tools))
+    + ledger_rows.append(ledger.row(obj_sha, "l0_object", n_in, n_kept, tools=tools))
+[survived] ingest__mutmut_169
+    - ledger_rows.append(ledger.row(obj_sha, "l0_object", n_in, n_kept, n_in - n_kept, tools=tools))
+    + ledger_rows.append(ledger.row(obj_sha, "l0_object", n_in, n_kept, n_in - n_kept, ))
+[survived] ingest__mutmut_170
+    - ledger_rows.append(ledger.row(obj_sha, "l0_object", n_in, n_kept, n_in - n_kept, tools=tools))
+    + ledger_rows.append(ledger.row(obj_sha, "XXl0_objectXX", n_in, n_kept, n_in - n_kept, tools=tools))
+[survived] ingest__mutmut_171
+    - ledger_rows.append(ledger.row(obj_sha, "l0_object", n_in, n_kept, n_in - n_kept, tools=tools))
+    + ledger_rows.append(ledger.row(obj_sha, "L0_OBJECT", n_in, n_kept, n_in - n_kept, tools=tools))
+[survived] ingest__mutmut_172
+    - ledger_rows.append(ledger.row(obj_sha, "l0_object", n_in, n_kept, n_in - n_kept, tools=tools))
+    + ledger_rows.append(ledger.row(obj_sha, "l0_object", n_in, n_kept, n_in + n_kept, tools=tools))
+[survived] ingest__mutmut_175
+    - held = 0
+    + held = 1
+[survived] ingest__mutmut_178
+    - if groups[-1] and held + n > shard_bases:
+    + if groups[-1] or held + n > shard_bases:
+[survived] ingest__mutmut_181
+    - if groups[-1] and held + n > shard_bases:
+    + if groups[-1] and held - n > shard_bases:
+[survived] ingest__mutmut_182
+    - if groups[-1] and held + n > shard_bases:
+    + if groups[-1] and held + n >= shard_bases:
+[survived] ingest__mutmut_185
+    - held = 0
+    + held = 1
+[survived] ingest__mutmut_189
+    - held += n
+    + held = n
+[survived] ingest__mutmut_190
+    - held += n
+    + held -= n
+[survived] ingest__mutmut_200
+    - write_bgzf_fasta(((rd.hex(), new_seqs[rd]) for rd in group), root / rel, line_width, BGZF_LEVEL)
+    + write_bgzf_fasta(((rd.hex(), new_seqs[rd]) for rd in group), root / rel, BGZF_LEVEL)
+[survived] ingest__mutmut_201
+    - write_bgzf_fasta(((rd.hex(), new_seqs[rd]) for rd in group), root / rel, line_width, BGZF_LEVEL)
+    + write_bgzf_fasta(((rd.hex(), new_seqs[rd]) for rd in group), root / rel, line_width, )
+[survived] ingest__mutmut_221
+    - by_source[r["_source"]].append({k: v for k, v in r.items() if k != "_source"})
+    + by_source[r["_source"]].append({k: v for k, v in r.items() if k != "XX_sourceXX"})
+[survived] ingest__mutmut_222
+    - by_source[r["_source"]].append({k: v for k, v in r.items() if k != "_source"})
+    + by_source[r["_source"]].append({k: v for k, v in r.items() if k != "_SOURCE"})
+[survived] ingest__mutmut_237
+    - _write(pa.Table.from_pylist(rows, schema=occ_spec.schema), root / rel, 122_880)
+    + _write(pa.Table.from_pylist(rows, schema=occ_spec.schema), root / rel, None)
+[survived] ingest__mutmut_246
+    - _write(pa.Table.from_pylist(rows, schema=occ_spec.schema), root / rel, 122_880)
+    + _write(pa.Table.from_pylist(rows, schema=occ_spec.schema), root / rel, 122881)
+[survived] ingest__mutmut_254
+    - if cu not in best or key < best[cu][0]:
+    + if cu not in best or key <= best[cu][0]:
+[survived] ingest__mutmut_287
+    - 122_880,
+    + None,
+[survived] ingest__mutmut_296
+    - 122_880,
+    + 122881,
+[survived] ingest__mutmut_315
+    - _write(loc, root / "l0seq/seq_locator.parquet", 122_880)
+    + _write(loc, root / "l0seq/seq_locator.parquet", None)
+[survived] ingest__mutmut_322
+    - _write(loc, root / "l0seq/seq_locator.parquet", 122_880)
+    + _write(loc, root / "l0seq/seq_locator.parquet", 122881)
+[survived] ingest__mutmut_329
+    - man_path = root / "l0/l0_manifest.parquet"
+    + man_path = root / "XXl0/l0_manifest.parquetXX"
+[survived] ingest__mutmut_330
+    - man_path = root / "l0/l0_manifest.parquet"
+    + man_path = root / "L0/L0_MANIFEST.PARQUET"
+[survived] ingest__mutmut_351
+    - _write(man, man_path, 122_880)
+    + _write(man, man_path, None)
+[survived] ingest__mutmut_355
+    - _write(man, man_path, 122_880)
+    + _write(man, man_path, 122881)
+[survived] ingest__mutmut_357
+    - ledger.write(root, stage, "ingest", ledger_rows)
+    + ledger.write(root, None, "ingest", ledger_rows)
+[survived] ingest__mutmut_358
+    - ledger.write(root, stage, "ingest", ledger_rows)
+    + ledger.write(root, stage, None, ledger_rows)
+[survived] ingest__mutmut_364
+    - ledger.write(root, stage, "ingest", ledger_rows)
+    + ledger.write(root, stage, "XXingestXX", ledger_rows)
+[survived] ingest__mutmut_365
+    - ledger.write(root, stage, "ingest", ledger_rows)
+    + ledger.write(root, stage, "INGEST", ledger_rows)
+[survived] ingest__mutmut_366
+    - return {"objects": len(objects), "records": len(occ_rows), "new_sequences": len(new_seqs), "index_rows": len(idx_rows)}
+    + return {"XXobjectsXX": len(objects), "records": len(occ_rows), "new_sequences": len(new_seqs), "index_rows": len(idx_rows)}
+[survived] ingest__mutmut_367
+    - return {"objects": len(objects), "records": len(occ_rows), "new_sequences": len(new_seqs), "index_rows": len(idx_rows)}
+    + return {"OBJECTS": len(objects), "records": len(occ_rows), "new_sequences": len(new_seqs), "index_rows": len(idx_rows)}
+[survived] ingest__mutmut_368
+    - return {"objects": len(objects), "records": len(occ_rows), "new_sequences": len(new_seqs), "index_rows": len(idx_rows)}
+    + return {"objects": len(objects), "XXrecordsXX": len(occ_rows), "new_sequences": len(new_seqs), "index_rows": len(idx_rows)}
+[survived] ingest__mutmut_369
+    - return {"objects": len(objects), "records": len(occ_rows), "new_sequences": len(new_seqs), "index_rows": len(idx_rows)}
+    + return {"objects": len(objects), "RECORDS": len(occ_rows), "new_sequences": len(new_seqs), "index_rows": len(idx_rows)}
+[timeout] biobox.l0seq.store.xǁSeqStoreǁ__init____mutmut_1
+    - def __init__(self, root: Path, cache_blocks: int = 64):
+    + def __init__(self, root: Path, cache_blocks: int = 65):
+[timeout] biobox.l0seq.store.xǁSeqStoreǁ__init____mutmut_8
+    - loc = pq.read_table(self.root / "l0seq/seq_locator.parquet")
+    + loc = pq.read_table(self.root / "L0SEQ/SEQ_LOCATOR.PARQUET")
+[timeout] biobox.l0seq.store.xǁSeqStoreǁ__init____mutmut_37
+    - self._cache_blocks = cache_blocks
+    + self._cache_blocks = None
+[survived] biobox.l0seq.store.xǁSeqStoreǁ_shard__mutmut_4
+    - self._shards[rel] = BgzfFasta(self.root / rel, cache_blocks=self._cache_blocks)
+    + self._shards[rel] = BgzfFasta(self.root / rel, cache_blocks=None)
+[survived] biobox.l0seq.store.xǁSeqStoreǁ_shard__mutmut_6
+    - self._shards[rel] = BgzfFasta(self.root / rel, cache_blocks=self._cache_blocks)
+    + self._shards[rel] = BgzfFasta(self.root / rel, )
+[survived] biobox.l0seq.store.xǁSeqStoreǁcounters__mutmut_8
+    - "uncompressed_bytes_decoded": sum(b.uncompressed_bytes_decoded for b in s)}
+    + "XXuncompressed_bytes_decodedXX": sum(b.uncompressed_bytes_decoded for b in s)}
+[survived] biobox.l0seq.store.xǁSeqStoreǁcounters__mutmut_9
+    - "uncompressed_bytes_decoded": sum(b.uncompressed_bytes_decoded for b in s)}
+    + "UNCOMPRESSED_BYTES_DECODED": sum(b.uncompressed_bytes_decoded for b in s)}
+[survived] biobox.l0seq.store.xǁSeqStoreǁraw__mutmut_12
+    - raise ValueError(f"slice {start}:{end} outside 0:{length}")
+    + raise ValueError(None)
+[survived] biobox.l0seq.store.xǁSeqStoreǁget__mutmut_3
+    - self, contig_uid: bytes, start: int = 0, end: int | None = None, strand: int = 1, circular: bool = False
+    + self, contig_uid: bytes, start: int = 0, end: int | None = None, strand: int = 1, circular: bool = True
+[survived] biobox.l0seq.store.xǁSeqStoreǁget__mutmut_10
+    - if circular and end is not None and end > n:
+    + if circular and end is not None and end >= n:
+[survived] biobox.l0seq.store.xǁSeqStoreǁget__mutmut_12
+    - if not 0 <= start < n < end <= start + n:
+    + if not 1 <= start < n < end <= start + n:
+[survived] biobox.l0seq.store.xǁSeqStoreǁget__mutmut_13
+    - if not 0 <= start < n < end <= start + n:
+    + if not 0 < start < n < end <= start + n:
+[survived] biobox.l0seq.store.xǁSeqStoreǁget__mutmut_14
+    - if not 0 <= start < n < end <= start + n:
+    + if not 0 <= start <= n < end <= start + n:
+[survived] biobox.l0seq.store.xǁSeqStoreǁget__mutmut_15
+    - if not 0 <= start < n < end <= start + n:
+    + if not 0 <= start < n <= end <= start + n:
+[survived] biobox.l0seq.store.xǁSeqStoreǁget__mutmut_16
+    - if not 0 <= start < n < end <= start + n:
+    + if not 0 <= start < n < end < start + n:
+[survived] biobox.l0seq.store.xǁSeqStoreǁget__mutmut_18
+    - raise ValueError(f"wrapping slice {start}:{end} invalid for length {n}")
+    + raise ValueError(None)
+[survived] biobox.l0seq.store.xǁSeqStoreǁget__mutmut_23
+    - seq = self.raw(rd, start, n) + self.raw(rd, 0, end - n)
+    + seq = self.raw(rd, start, None) + self.raw(rd, 0, end - n)
+[survived] biobox.l0seq.store.xǁSeqStoreǁget__mutmut_26
+    - seq = self.raw(rd, start, n) + self.raw(rd, 0, end - n)
+    + seq = self.raw(rd, start, ) + self.raw(rd, 0, end - n)
+[survived] biobox.l0seq.store.xǁSeqStoreǁget__mutmut_48
+    - raise ValueError("strand must be +1 or -1")
+    + raise ValueError(None)
+[survived] biobox.l0seq.store.xǁSeqStoreǁget__mutmut_49
+    - raise ValueError("strand must be +1 or -1")
+    + raise ValueError("XXstrand must be +1 or -1XX")
+[survived] biobox.l0seq.store.xǁSeqStoreǁget__mutmut_50
+    - raise ValueError("strand must be +1 or -1")
+    + raise ValueError("STRAND MUST BE +1 OR -1")
+[survived] biobox.l0seq.store.xǁSeqStoreǁreconstruct_object__mutmut_8
+    - pq.read_table(f) for f in sorted((self.root / "l0seq/contig_occurrence").glob("stage=*/source=*/part-0.parquet"))
+    + pq.read_table(f) for f in sorted((self.root / "L0SEQ/CONTIG_OCCURRENCE").glob("stage=*/source=*/part-0.parquet"))
+[survived] biobox.l0seq.store.xǁSeqStoreǁreconstruct_object__mutmut_13
+    - key=lambda r: r["record_ordinal"],
+    + key=None,
+[survived] biobox.l0seq.store.xǁSeqStoreǁreconstruct_object__mutmut_15
+    - key=lambda r: r["record_ordinal"], ⏎ )
+    + )
+[survived] biobox.l0seq.store.xǁSeqStoreǁreconstruct_object__mutmut_19
+    - key=lambda r: r["record_ordinal"],
+    + key=lambda r: None,

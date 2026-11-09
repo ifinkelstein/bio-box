@@ -1,0 +1,126 @@
+[survived] window__mutmut_3
+    - for d in sorted(range(-k, k + 1), key=lambda d: (abs(d), d)):
+    + for d in sorted(range(-k, k + 1), key=None):
+[survived] window__mutmut_5
+    - for d in sorted(range(-k, k + 1), key=lambda d: (abs(d), d)):
+    + for d in sorted(range(-k, k + 1), ):
+[survived] run__mutmut_28
+    - rows += pairs_of_contig(t, {lvl: tok[f"{lvl}_tokens"] for lvl in LEVELS}, k)
+    + rows += pairs_of_contig(t, {lvl: tok[f"{lvl}_tokens"] for lvl in LEVELS}, )
+[survived] run__mutmut_29
+    - width = layout.prefix_width(BYTES_PER_ROW * len(rows)) if prefix_width is None else prefix_width
+    + width = None
+[survived] run__mutmut_30
+    - width = layout.prefix_width(BYTES_PER_ROW * len(rows)) if prefix_width is None else prefix_width
+    + width = layout.prefix_width(BYTES_PER_ROW * len(rows)) if (prefix_width is None) and False else prefix_width
+[survived] run__mutmut_33
+    - width = layout.prefix_width(BYTES_PER_ROW * len(rows)) if prefix_width is None else prefix_width
+    + width = layout.prefix_width(BYTES_PER_ROW / len(rows)) if prefix_width is None else prefix_width
+[survived] run__mutmut_39
+    - buckets[layout.bucket(bucket_key(r["anchor_token"]), width)].append(r)
+    + buckets[layout.bucket(bucket_key(r["anchor_token"]), None)].append(r)
+[survived] run__mutmut_50
+    - n_files = 0
+    + n_files = 1
+[survived] run__mutmut_72
+    - starts = layout.cut([BYTES_PER_ROW] * len(rs), max_file_bytes)
+    + starts = layout.cut([BYTES_PER_ROW] * len(rs), )
+[survived] run__mutmut_77
+    - base.mkdir(parents=True, exist_ok=True)
+    + base.mkdir(parents=True, exist_ok=None)
+[survived] run__mutmut_79
+    - base.mkdir(parents=True, exist_ok=True)
+    + base.mkdir(parents=True, )
+[survived] run__mutmut_81
+    - base.mkdir(parents=True, exist_ok=True)
+    + base.mkdir(parents=True, exist_ok=False)
+[survived] run__mutmut_88
+    - for part, (a, z) in enumerate(zip(starts, starts[1:] + [len(rs)])):
+    + for part, (a, z) in enumerate(zip(starts, starts[2:] + [len(rs)])):
+[survived] run__mutmut_91
+    - compression="zstd", row_group_size=122_880,
+    + compression=None, row_group_size=122_880,
+[survived] run__mutmut_92
+    - compression="zstd", row_group_size=122_880,
+    + compression="zstd", row_group_size=None,
+[survived] run__mutmut_93
+    - write_statistics=["anchor_token", "partner_token", "contig_uid", "anchor_ordinal", ⏎ "partner_ordinal"])
+    + write_statistics=None)
+[survived] run__mutmut_96
+    - compression="zstd", row_group_size=122_880,
+    + row_group_size=122_880,
+[survived] run__mutmut_97
+    - compression="zstd", row_group_size=122_880, ⏎ write_statistics=["anchor_token", "partner_token", "contig_uid", "anchor_ordinal",
+    + compression="zstd", write_statistics=["anchor_token", "partner_token", "contig_uid", "anchor_ordinal",
+[survived] run__mutmut_98
+    - write_statistics=["anchor_token", "partner_token", "contig_uid", "anchor_ordinal", ⏎ "partner_ordinal"])
+    + )
+[survived] run__mutmut_105
+    - compression="zstd", row_group_size=122_880,
+    + compression="ZSTD", row_group_size=122_880,
+[survived] run__mutmut_106
+    - compression="zstd", row_group_size=122_880,
+    + compression="zstd", row_group_size=122881,
+[survived] run__mutmut_107
+    - write_statistics=["anchor_token", "partner_token", "contig_uid", "anchor_ordinal",
+    + write_statistics=["XXanchor_tokenXX", "partner_token", "contig_uid", "anchor_ordinal",
+[survived] run__mutmut_108
+    - write_statistics=["anchor_token", "partner_token", "contig_uid", "anchor_ordinal",
+    + write_statistics=["ANCHOR_TOKEN", "partner_token", "contig_uid", "anchor_ordinal",
+[survived] run__mutmut_109
+    - write_statistics=["anchor_token", "partner_token", "contig_uid", "anchor_ordinal",
+    + write_statistics=["anchor_token", "XXpartner_tokenXX", "contig_uid", "anchor_ordinal",
+[survived] run__mutmut_110
+    - write_statistics=["anchor_token", "partner_token", "contig_uid", "anchor_ordinal",
+    + write_statistics=["anchor_token", "PARTNER_TOKEN", "contig_uid", "anchor_ordinal",
+[survived] run__mutmut_111
+    - write_statistics=["anchor_token", "partner_token", "contig_uid", "anchor_ordinal",
+    + write_statistics=["anchor_token", "partner_token", "XXcontig_uidXX", "anchor_ordinal",
+[survived] run__mutmut_112
+    - write_statistics=["anchor_token", "partner_token", "contig_uid", "anchor_ordinal",
+    + write_statistics=["anchor_token", "partner_token", "CONTIG_UID", "anchor_ordinal",
+[survived] run__mutmut_113
+    - write_statistics=["anchor_token", "partner_token", "contig_uid", "anchor_ordinal",
+    + write_statistics=["anchor_token", "partner_token", "contig_uid", "XXanchor_ordinalXX",
+[survived] run__mutmut_114
+    - write_statistics=["anchor_token", "partner_token", "contig_uid", "anchor_ordinal",
+    + write_statistics=["anchor_token", "partner_token", "contig_uid", "ANCHOR_ORDINAL",
+[survived] run__mutmut_115
+    - "partner_ordinal"])
+    + "XXpartner_ordinalXX"])
+[survived] run__mutmut_116
+    - "partner_ordinal"])
+    + "PARTNER_ORDINAL"])
+[survived] run__mutmut_117
+    - n_files += 1
+    + n_files = 1
+[survived] run__mutmut_118
+    - n_files += 1
+    + n_files -= 1
+[survived] run__mutmut_119
+    - n_files += 1
+    + n_files += 2
+[survived] run__mutmut_120
+    - return {"pairs": len(rows), "buckets": len(buckets), "files": n_files, "k": k}
+    + return {"XXpairsXX": len(rows), "buckets": len(buckets), "files": n_files, "k": k}
+[survived] run__mutmut_121
+    - return {"pairs": len(rows), "buckets": len(buckets), "files": n_files, "k": k}
+    + return {"PAIRS": len(rows), "buckets": len(buckets), "files": n_files, "k": k}
+[survived] run__mutmut_122
+    - return {"pairs": len(rows), "buckets": len(buckets), "files": n_files, "k": k}
+    + return {"pairs": len(rows), "XXbucketsXX": len(buckets), "files": n_files, "k": k}
+[survived] run__mutmut_123
+    - return {"pairs": len(rows), "buckets": len(buckets), "files": n_files, "k": k}
+    + return {"pairs": len(rows), "BUCKETS": len(buckets), "files": n_files, "k": k}
+[survived] run__mutmut_124
+    - return {"pairs": len(rows), "buckets": len(buckets), "files": n_files, "k": k}
+    + return {"pairs": len(rows), "buckets": len(buckets), "XXfilesXX": n_files, "k": k}
+[survived] run__mutmut_125
+    - return {"pairs": len(rows), "buckets": len(buckets), "files": n_files, "k": k}
+    + return {"pairs": len(rows), "buckets": len(buckets), "FILES": n_files, "k": k}
+[survived] run__mutmut_126
+    - return {"pairs": len(rows), "buckets": len(buckets), "files": n_files, "k": k}
+    + return {"pairs": len(rows), "buckets": len(buckets), "files": n_files, "XXkXX": k}
+[survived] run__mutmut_127
+    - return {"pairs": len(rows), "buckets": len(buckets), "files": n_files, "k": k}
+    + return {"pairs": len(rows), "buckets": len(buckets), "files": n_files, "K": k}
