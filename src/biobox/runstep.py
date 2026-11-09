@@ -12,21 +12,33 @@ writes its outputs under `BIOBOX_STAGING` at their root-relative paths and never
 Order of work:
 
 1. `<root>/STOP` exists: exit 75 (EX_TEMPFAIL) and run nothing.
-2. Resume: `<root>/runs/stage=<S>/<step>.json` exists and every output it lists is in the root
+2. Recover (card C-03): an intent file `<root>/runs/stage=<S>/<step>.publishing.json` means an
+   earlier attempt died while publishing. Each output it lists is kept if it is in the root with
+   the listed sha256, else renamed in from `.incoming` if it is there with the listed sha256.
+   If every output is then in place, the run record is written from the intent (no rerun) and
+   run-step exits 0. Otherwise the root files that the intent lists and whose sha256 equals the
+   intent's are deleted (never any other file), the intent, `.incoming` and staging are removed,
+   and the step runs afresh. A root file at a listed path with another sha256 is not this step's:
+   exit 2, naming it, and change nothing.
+3. Resume: `<root>/runs/stage=<S>/<step>.json` exists and every output it lists is in the root
    with its recorded size: exit 0. A listed output missing or of another size is an error;
    nothing is rebuilt over existing files.
-3. Remove a staging or `<root>/.incoming/<stage>.<step>/` directory left by an earlier attempt.
-4. Run the command inside `systemd-run --user --scope -p MemoryMax=<mem_scope>` (Linux, when
-   present) at the profile's nice, and measure wall time, CPU-minutes and peak RSS (`os.wait4`).
-5. Command failed: exit with its code (1 if killed); staging is left for inspection.
+4. Remove a staging or `<root>/.incoming/<stage>.<step>/` directory left by an earlier attempt.
+5. Run the command inside `systemd-run --user --scope -p MemoryMax=<mem_scope>` (Linux, when
+   present) at the profile's nice, in its own session and process group, and measure wall time,
+   CPU-minutes and peak RSS (`os.wait4`). SIGTERM and SIGINT to run-step meanwhile are forwarded
+   to that process group; run-step waits for the command, publishes nothing, leaves staging and
+   exits 128 + the signal number.
+6. Command failed: exit with its code (1 if killed); staging is left for inspection.
    `STOP` appeared meanwhile: exit 75 without publishing.
-6. Publish (all or nothing): refuse empty staging, a final path that exists (append-only,
+7. Publish (all or nothing): refuse empty staging, a final path that exists (append-only,
    AGENTS §3.10), a path no registry table or artifact claims (LY-10), and small files by the
-   rule of `contracts.check_file_sizes` (LY-04). Then one `rsync -a` into
+   rule of `contracts.check_file_sizes` (LY-04). Then write the intent file atomically (every
+   output with bytes and sha256, plus everything the run record holds), one `rsync -a` into
    `<root>/.incoming/<stage>.<step>/`, `os.replace` of each file into place, and removal of the
    incoming and staging directories.
-7. Write the run record atomically. `runs/` is not part of the release manifest (it holds
-   timestamps and host names) and is in `catalog.EXCLUDED_TREES`.
+8. Write the run record atomically, then delete the intent file. `runs/` is not part of the
+   release manifest (it holds timestamps and host names) and is in `catalog.EXCLUDED_TREES`.
 """
 
 from __future__ import annotations
@@ -36,9 +48,11 @@ import os
 import platform
 import re
 import shutil
+import signal
 import socket
 import subprocess
 import sys
+import threading
 import time
 from collections.abc import Callable, Sequence
 from datetime import datetime, timezone
@@ -58,7 +72,14 @@ EXIT_REFUSED = 2
 BUSY_LOAD = 8.0
 
 THREAD_VARS = ("OMP_NUM_THREADS", "OPENBLAS_NUM_THREADS", "MKL_NUM_THREADS", "POLARS_MAX_THREADS")
+FORWARDED = (signal.SIGTERM, signal.SIGINT)
 _NAME = re.compile(r"[A-Za-z0-9][A-Za-z0-9_.-]*")
+
+Hook = Callable[[str], None]
+
+
+def _no_hook(point: str) -> None:
+    pass
 
 
 class Refused(Exception):
@@ -100,6 +121,64 @@ def _atomic_write(path: Path, data: bytes) -> None:
     tmp = path.with_name(f".{path.name}.tmp-{os.getpid()}")
     tmp.write_bytes(data)
     os.replace(tmp, path)
+
+
+def _record_bytes(record: dict) -> bytes:
+    return json.dumps(record, sort_keys=True, indent=1).encode() + b"\n"
+
+
+def _ours(path: Path, sha256: str) -> bool:
+    """`path` is a regular file whose content has this sha256."""
+    return path.is_file() and not path.is_symlink() and ids.sha256_file(path).hex() == sha256
+
+
+def _remove_leftovers(incoming: Path, stage_dir: Path) -> None:
+    for d in (incoming, stage_dir):
+        if d.exists():
+            shutil.rmtree(d)
+    if incoming.parent.is_dir() and not any(incoming.parent.iterdir()):
+        incoming.parent.rmdir()
+
+
+def _recover(root: Path, intent_path: Path, record_path: Path, incoming: Path, stage_dir: Path) -> int | None:
+    """Finish or undo a publish that an earlier attempt died in (module docstring, step 2).
+    Return the exit code when there is nothing left to run, or None to run the step afresh."""
+    intent = json.loads(intent_path.read_text())
+    keep: list[Path] = []
+    move: list[tuple[Path, Path]] = []
+    foreign: list[str] = []
+    lost: list[str] = []
+    for o in intent["outputs"]:
+        dst = root / o["path"]
+        if (dst.exists() or dst.is_symlink()) and _ours(dst, o["sha256"]):
+            keep.append(dst)
+        elif dst.exists() or dst.is_symlink():
+            foreign.append(o["path"])
+        elif _ours(incoming / o["path"], o["sha256"]):
+            move.append((incoming / o["path"], dst))
+        else:
+            lost.append(o["path"])
+    if foreign:
+        _err(f"{intent_path} lists {', '.join(foreign)}, but the root holds other content there; "
+             f"not this step's file, left untouched; nothing done")
+        return EXIT_REFUSED
+    if not lost:
+        for src, dst in move:
+            dst.parent.mkdir(parents=True, exist_ok=True)
+            os.replace(src, dst)
+        _atomic_write(record_path, _record_bytes(intent))
+        _remove_leftovers(incoming, stage_dir)
+        intent_path.unlink()
+        print(f"run-step: {intent['stage']}.{intent['step']} recovered an interrupted publish of "
+              f"{len(intent['outputs'])} files")
+        return 0
+    for p in keep:
+        p.unlink()
+    intent_path.unlink()
+    _remove_leftovers(incoming, stage_dir)
+    _err(f"interrupted publish of {intent['stage']}.{intent['step']} cannot be finished "
+         f"({', '.join(lost)} lost); removed its {len(keep)} published files; running it again")
+    return None
 
 
 def _resume(root: Path, record: Path) -> int:
@@ -178,8 +257,10 @@ def _check_sizes(root: Path, outputs: list[tuple[dict, tuple]], floor: int) -> N
             raise Refused(f"{', '.join(sorted(small))}: {problems[0]} (LY-04)")
 
 
-def _publish(root: Path, stage_dir: Path, incoming: Path, floor: int,
-             which: Callable[[str], str | None]) -> list[dict]:
+def _publish(root: Path, stage_dir: Path, incoming: Path, intent_path: Path, meta: dict, floor: int,
+             which: Callable[[str], str | None], hook: Hook) -> dict:
+    """Check, then publish the staged outputs; return the run record (`meta` plus `outputs`).
+    `hook` is called at each point a crash can leave work half done (tests only)."""
     files = sorted(p for p in stage_dir.rglob("*") if not p.is_dir())
     if not files:
         raise Refused(f"staging {stage_dir} is empty; nothing to publish")
@@ -194,8 +275,12 @@ def _publish(root: Path, stage_dir: Path, incoming: Path, floor: int,
         e["bytes"] = p.stat().st_size
         outputs.append((e, key))
     _check_sizes(root, outputs, floor)
-    records = [{"path": e["path"], "bytes": e["bytes"], "sha256": ids.sha256_file(stage_dir / e["path"]).hex()}
-               for e, _ in outputs]
+    records = sorted(({"path": e["path"], "bytes": e["bytes"],
+                       "sha256": ids.sha256_file(stage_dir / e["path"]).hex()} for e, _ in outputs),
+                     key=lambda o: o["path"])
+    record = {**meta, "outputs": records}
+    _atomic_write(intent_path, _record_bytes(record))
+    hook("after_intent")
 
     incoming.parent.mkdir(parents=True, exist_ok=True)
     rsync = which("rsync")
@@ -203,7 +288,8 @@ def _publish(root: Path, stage_dir: Path, incoming: Path, floor: int,
         subprocess.run([rsync, "-a", f"{stage_dir}/", f"{incoming}/"], check=True)
     else:
         shutil.copytree(stage_dir, incoming)
-    for r in records:
+    hook("after_rsync")
+    for i, r in enumerate(records):
         src, dst = incoming / r["path"], root / r["path"]
         if src.stat().st_size != r["bytes"]:
             raise RuntimeError(f"{r['path']}: copy into {incoming} has the wrong size")
@@ -211,29 +297,60 @@ def _publish(root: Path, stage_dir: Path, incoming: Path, floor: int,
             raise RuntimeError(f"{r['path']}: appeared in the root during publishing")
         dst.parent.mkdir(parents=True, exist_ok=True)
         os.replace(src, dst)
-    shutil.rmtree(incoming)
-    if not any(incoming.parent.iterdir()):
-        incoming.parent.rmdir()
-    shutil.rmtree(stage_dir)
-    return records
+        hook(f"after_rename:{i}")
+    _remove_leftovers(incoming, stage_dir)
+    return record
 
 
-def _execute(argv: list[str], env: dict[str, str]) -> tuple[int, float, float, int]:
-    """Run argv; return (exit status, wall seconds, CPU minutes, peak RSS bytes) of the child tree."""
-    t0 = time.monotonic()
-    proc = subprocess.Popen(argv, env=env)
-    _, status, ru = os.wait4(proc.pid, 0)
-    wall = time.monotonic() - t0
+def _signal_group(pgid: int, signum: int) -> None:
+    try:
+        os.killpg(pgid, signum)
+    except (ProcessLookupError, PermissionError):  # the group has already exited
+        pass
+
+
+def _execute(argv: list[str], env: dict[str, str]) -> tuple[int, float, float, int, int | None]:
+    """Run argv in its own session (so its process group can be signalled as one; a systemd-run
+    scope keeps that group); return (exit status, wall seconds, CPU minutes, peak RSS bytes, the
+    signal forwarded or None). SIGTERM and SIGINT received meanwhile are forwarded to the group,
+    and the command is still waited for; handlers are installed only in the main thread and the
+    previous ones restored after."""
+    received: list[int] = []
+    group: list[int] = []
+
+    def forward(signum, frame) -> None:
+        received.append(signum)
+        if group:
+            _signal_group(group[0], signum)
+
+    previous = {}
+    if threading.current_thread() is threading.main_thread():
+        previous = {s: signal.signal(s, forward) for s in FORWARDED}
+    try:
+        t0 = time.monotonic()
+        proc = subprocess.Popen(argv, env=env, start_new_session=True)
+        group.append(proc.pid)
+        if received:  # arrived before the group existed
+            _signal_group(proc.pid, received[-1])
+        _, status, ru = os.wait4(proc.pid, 0)
+        wall = time.monotonic() - t0
+    finally:
+        for s, h in previous.items():
+            signal.signal(s, h)
     proc.returncode = os.waitstatus_to_exitcode(status)
     rss = ru.ru_maxrss if sys.platform == "darwin" else ru.ru_maxrss * 1024  # bytes on macOS, KiB on Linux
-    return proc.returncode, wall, (ru.ru_utime + ru.ru_stime) / 60.0, rss
+    return proc.returncode, wall, (ru.ru_utime + ru.ru_stime) / 60.0, rss, (received[0] if received else None)
 
 
 def run_step(prof: Profile, root: str | Path, stage: str, step: str, cmd: Sequence[str], *,
              nice: str = "monolithic", threads: int | None = None,
              clock: Callable[[], datetime] = datetime.now, load: Callable[[], float] = _load1,
-             which: Callable[[str], str | None] = shutil.which, system: str | None = None) -> int:
-    """Run one step; return the exit code for `bio-box run-step` (0, 75 for STOP, else non-zero)."""
+             which: Callable[[str], str | None] = shutil.which, system: str | None = None,
+             _hook: Hook | None = None) -> int:
+    """Run one step; return the exit code for `bio-box run-step` (0, 75 for STOP, else non-zero).
+    `_hook` (tests only) is called with each publish point name: after_intent, after_rsync,
+    after_rename:<i>, before_record, after_record; an exception it raises is not caught."""
+    hook = _hook or _no_hook
     root = Path(root).resolve()
     for what, name in (("stage", stage), ("step", step)):
         if not _NAME.fullmatch(name):
@@ -256,11 +373,16 @@ def run_step(prof: Profile, root: str | Path, stage: str, step: str, cmd: Sequen
         _err(f"{root / 'STOP'} exists; not starting {stage}.{step}")
         return EXIT_STOP
     record_path = root / "runs" / f"stage={stage}" / f"{step}.json"
+    intent_path = root / "runs" / f"stage={stage}" / f"{step}.publishing.json"
+    stage_dir = Path(prof.tmp) / "staging" / f"{stage}.{step}"
+    incoming = root / ".incoming" / f"{stage}.{step}"
+    if intent_path.exists():
+        code = _recover(root, intent_path, record_path, incoming, stage_dir)
+        if code is not None:
+            return code
     if record_path.exists():
         return _resume(root, record_path)
 
-    stage_dir = Path(prof.tmp) / "staging" / f"{stage}.{step}"
-    incoming = root / ".incoming" / f"{stage}.{step}"
     for stale in (incoming, stage_dir):
         if stale.exists():
             shutil.rmtree(stale)
@@ -270,30 +392,37 @@ def run_step(prof: Profile, root: str | Path, stage: str, step: str, cmd: Sequen
     env.update({v: str(n_threads) for v in THREAD_VARS})
     argv = build_argv(cmd, nice_value, prof.mem_scope, system=system, which=which)
     started_at = datetime.now(timezone.utc).isoformat(timespec="seconds")
-    code, wall, cpu_min, rss = _execute(argv, env)
+    code, wall, cpu_min, rss, sig = _execute(argv, env)
 
+    if sig is not None:
+        _err(f"{signal.Signals(sig).name} received; forwarded to {stage}.{step}, which exited {code}; "
+             f"nothing published, staging left at {stage_dir}")
+        return 128 + sig
     if code != 0:
         _err(f"{stage}.{step} failed with exit {code}; nothing published, staging left at {stage_dir}")
         return code if code > 0 else 1
     if (root / "STOP").exists():
         _err(f"{root / 'STOP'} appeared; not publishing {stage}.{step}, staging left at {stage_dir}")
         return EXIT_STOP
+    over = cpu_min > prof.cpu_min_per_process
+    meta = {
+        "stage": stage, "step": step, "argv": argv, "threads": n_threads, "nice": nice_value,
+        "started_at": started_at, "wall_s": round(wall, 3), "cpu_min": round(cpu_min, 6),
+        "peak_rss_bytes": rss, "host": socket.gethostname(), "exit_code": code,
+        "image_digest": os.environ.get("BIOBOX_IMAGE_DIGEST", "none"), "over_cpu_budget": over,
+    }
     try:
-        outputs = _publish(root, stage_dir, incoming, prof.small_file_floor_bytes, which)
+        record = _publish(root, stage_dir, incoming, intent_path, meta, prof.small_file_floor_bytes,
+                          which, hook)
     except Refused as e:
         _err(f"refused: {e}; nothing published, staging left at {stage_dir}")
         return EXIT_REFUSED
 
-    over = cpu_min > prof.cpu_min_per_process
     if over:
         _err(f"warning: {stage}.{step} used {cpu_min:.1f} CPU-minutes, over {prof.cpu_min_per_process}")
-    record = {
-        "stage": stage, "step": step, "argv": argv, "threads": n_threads, "nice": nice_value,
-        "started_at": started_at, "wall_s": round(wall, 3), "cpu_min": round(cpu_min, 6),
-        "peak_rss_bytes": rss, "host": socket.gethostname(), "exit_code": code,
-        "image_digest": os.environ.get("BIOBOX_IMAGE_DIGEST", "none"),
-        "over_cpu_budget": over, "outputs": sorted(outputs, key=lambda o: o["path"]),
-    }
-    _atomic_write(record_path, json.dumps(record, sort_keys=True, indent=1).encode() + b"\n")
-    print(f"run-step: {stage}.{step} published {len(outputs)} files")
+    hook("before_record")
+    _atomic_write(record_path, _record_bytes(record))
+    hook("after_record")
+    intent_path.unlink()
+    print(f"run-step: {stage}.{step} published {len(record['outputs'])} files")
     return 0
