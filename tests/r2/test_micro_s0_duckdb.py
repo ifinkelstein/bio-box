@@ -195,12 +195,15 @@ def test_k02_k03_oversized_group_by_spills_to_temp_directory(tmp_path):
 
     def size_now():
         total = 0
-        for p in spill.rglob("*"):
-            try:
-                if p.is_file():
-                    total += p.stat().st_size
-            except FileNotFoundError:
-                continue  # DuckDB deleted the temp file between listing and stat
+        try:
+            for p in spill.rglob("*"):
+                try:
+                    if p.is_file():
+                        total += p.stat().st_size
+                except FileNotFoundError:
+                    continue  # DuckDB deleted the temp file between listing and stat
+        except FileNotFoundError:
+            pass  # a directory vanished while it was being walked; the partial sum is a lower bound
         return total
 
     def watch():
