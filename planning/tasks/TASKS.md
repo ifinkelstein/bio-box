@@ -4,7 +4,8 @@ Read [`AGENTS.md`](../../AGENTS.md) first. One card per session. Evidence for ev
 here is in [`planning/measurements/2026-11-09_design_stress_test.md`](../measurements/2026-11-09_design_stress_test.md).
 
 Tiers: **L** a small model does it alone. **M** a small model does it and a stronger model or the PI
-reviews before merge. **H** design or decision; not for a small model.
+reviews before merge. **H** design or decision; not for a small model. Model assignment (PI,
+2026-11-09): Sonnet for **L** cards, Opus for **M** cards; the orchestrating session audits every result.
 
 Card fields: *Depends* (cards that must be merged first), *Files* (the only files you may edit;
 `+` marks a new file), *Do*, *Accept* (commands that must pass), *Stop if*.
@@ -19,7 +20,7 @@ card 0-01 is done.
 | Decision | Verdict | Measured evidence (2026-11-09) | Cost to change now | Cost after `rS1.1` |
 |---|---|---|---|---|
 | Slot key `(contig_uid, slot_ordinal)` | **Change** to `feature_uid` | One added ncRNA on *E. coli* K-12 rewrote 1,214 of 4,318 slot rows, 1,006 of 3,562 IGR rows and 24,342 of 86,360 pair rows; a gene split rewrote 2,372, 1,946 and 47,430. With a coordinate key: 0–1, 1–2 and 110–130. Worse, 86,340 pair primary keys stayed valid while pointing at different genes | 8 tables, 12 modules (about 95 references); no release exists, so the lock may be regenerated | Every released table is rewritten under new names, `id_history` rows for every slot, and every stored search result that holds an ordinal is invalid |
-| Materialized `slot_pairs` | **Change** to `token_postings`, pairs computed at query time | 40 rows and 308 bytes per gene at two token levels on the golden set, against 334 bytes per gene for the sequence shards; the builder holds 544 bytes of heap per row. Projected with GTDB R226 counts: S5 16–23 × 10⁹ rows, 130–460 GB against a 25–60 GB budget line | One builder, four macros, one table; `pairs_of_contig` is kept as the oracle | A released table and its queries are replaced; hundreds of GB already written |
+| Materialized `slot_pairs` | **Change** to `token_postings`, pairs computed at query time | 54 rows and 422 bytes per gene at three token levels on the golden set (40 and 308 at two), against 334 bytes per gene for the sequence shards; the builder holds 544 bytes of heap per row. Projected with GTDB R226 counts: S5 16–23 × 10⁹ rows, 130–460 GB against a 25–60 GB budget line | One builder, four macros, one table; `pairs_of_contig` is kept as the oracle | A released table and its queries are replaced; hundreds of GB already written |
 | Release-local token ids | **Keep**, with the API rule in `AGENTS.md` §3.4 | Not stress-tested beyond reading the code: ids are recomputed per release by design and never leave a `release=` partition | none | low: token columns are a release-time join |
 | Digest-sorted bgzip shards | **Keep the format**, change what surrounds it | samtools 1.19.2 returns identical bytes for 33,713 of 33,713 gene slices and builds byte-identical `.fai` and `.gzi`. At 1,000× the fixture with 12 shards: 1.15 blocks per ±10-gene neighborhood; a 500-contig export reads 0.36 bytes per bp (contiguous cost 0.31). But: the reader loads the whole index (2 s and 414 MB per 10⁶ contigs), joined lookups scan the whole index (9 of 9 row groups), ingest holds a stage in RAM, and one tape row group holds 8,192 contigs | Reader, ingest, two tables' partitioning, tape writer | The same code, plus a rewrite of released index and tape files |
 

@@ -31,7 +31,23 @@ is 1.1 Mbp/s per thread, not 1.2.
 Stage B on the pod (clustering at 3 threads, no domain scans): 33,010 NR90 and 29,219 NR50 clusters,
 1,347,888 pair rows, clustering 87 s, pairs 13 s, peak RSS 1.27 GB.
 
-PENDING_B
+Full build on the pod (Pfam 38.2 and NCBIfam 20.0 at 16 threads, clustering at 8 threads, tokens,
+pairs), manifest `2548b144db0d7ec9a1cd8074e29a7e8a`, peak RSS 2.6 GB:
+
+| Step | Wall | Output |
+|---|---|---|
+| Pfam scan | 290 s | 56,786 domains on 27,176 proteins (identical to the 2026-10-30 record) |
+| NCBIfam scan | 599 s | 18,361 domains on 12,548 proteins (identical to the 2026-10-30 record) |
+| clustering | 48 s | 33,010 NR90 and 29,219 NR50 clusters |
+| tokens | 1.5 s | 11,698 family, 29,219 NR50, 33,010 NR90 tokens |
+| pairs | 20 s | 1,823,702 rows |
+
+Determinism: `cluster_member` and `cluster_member_aln` are byte-identical between the 3-thread and
+the 8-thread build, as are all 15 stage-A files.
+
+With all three token levels `slot_pairs` holds 54.1 rows per gene at 7.80 bytes per row: 422 bytes
+per gene, more than the sequence shards (334 bytes per gene). `l1_domains` is 53.8 bytes per row at
+2.25 domains per protein.
 
 ## 2. Independent tools (measured)
 
@@ -61,6 +77,8 @@ Measured on the golden set (bytes on disk, zstd Parquet or bgzip):
 | `cluster_member_aln` | protein and level | 26.2 |
 | `tape_tokens`, two levels | gene | 9.0 |
 | `slot_pairs`, two levels | row; gene | 7.7; 308 (40 rows per gene) |
+| `slot_pairs`, three levels | row; gene | 7.8; 422 (54.1 rows per gene) |
+| `l1_domains`, Pfam and NCBIfam | row; gene | 53.8; 120 |
 
 At S0 almost every cluster is a singleton and there are 21 contigs, so `contig_uid` compresses to
 nothing in `slot_pairs`. With millions of contigs the 16-byte key no longer dictionary-encodes, so
