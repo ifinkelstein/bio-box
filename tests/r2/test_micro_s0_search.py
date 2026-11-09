@@ -618,6 +618,71 @@ def test_runner_death_is_reported_and_the_worker_does_not_outlive_it(world, tmp_
     assert not runner.run_dir(root, rid).exists()
 
 
+@pytest.mark.covers("A-01")
+def test_status_does_not_trust_a_pid_a_live_unrelated_process_may_own(tmp_path):
+    """Pid reuse: the recorded pid answers kill(0), but nobody holds the runner lock: the run is dead."""
+    import os
+
+    pend = runner.runs_dir(tmp_path) / "pending"
+    pend.mkdir(parents=True)
+    lock = tmp_path / "work" / "ab" / "runner.lock"
+    lock.parent.mkdir(parents=True)
+    lock.write_text("")
+    (pend / "ab.json").write_text(json.dumps({"run_id": "ab", "pid": os.getpid(), "lock": str(lock),
+                                              "status": "running"}))
+    st = runner.status(tmp_path, "ab")
+    assert st["status"] == "failed" and "without closing" in st["error"], st
+    import fcntl
+
+    with open(lock, "a") as f:  # status must have released the lock it probed with
+        fcntl.flock(f, fcntl.LOCK_EX | fcntl.LOCK_NB)
+
+
+@pytest.mark.covers("A-01")
+def test_runner_lock_is_held_before_the_pending_record_is_visible_and_status_frees_it(world, tmp_path, monkeypatch):
+    import fcntl
+    import os
+    import signal
+
+    def held(path):
+        with open(path, "a") as f:
+            try:
+                fcntl.flock(f, fcntl.LOCK_EX | fcntl.LOCK_NB)
+            except BlockingIOError:
+                return True
+            return False
+
+    root, d, _ = world
+    hit, _ = _seed(root)
+    rec = tmp_path / "r.yaml"
+    rec.write_text(_recipe(hit, hit))
+    work = tmp_path / "work"
+    seen = {}
+    real_popen = subprocess.Popen
+
+    def spy(cmd, *a, **kw):
+        rid = cmd[cmd.index("--run-id") + 1]
+        lock = work / rid / "runner.lock"
+        seen["lock_exists"] = lock.exists()
+        seen["held_at_spawn"] = lock.exists() and held(lock)
+        seen["pending_at_spawn"] = (runner.runs_dir(root) / "pending" / f"{rid}.json").exists()
+        return real_popen(cmd, *a, **kw)
+
+    monkeypatch.setattr(runner.subprocess, "Popen", spy)
+    rid = runner.submit(root, rec, REL, runner.Limits(cpus=1, wall_s=300), work, fault="timeout")
+    monkeypatch.undo()
+    assert seen == {"lock_exists": True, "held_at_spawn": True, "pending_at_spawn": False}, seen
+    lock = work / rid / "runner.lock"
+    info = json.loads((runner.runs_dir(root) / "pending" / f"{rid}.json").read_text())
+    assert info["lock"] == str(lock)
+    assert runner.status(root, rid)["status"] == "running"
+    assert held(lock)
+    assert _wait_for(lambda: (work / rid / "worker.pid").exists())
+    runner.cancel(root, rid)
+    assert _wait_for(lambda: runner.status(root, rid)["status"] != "running")
+    assert runner.status(root, rid)["status"] == "stopped"
+
+
 # --- C-03 and C-08 for search outputs -----------------------------------------------------------------
 
 
