@@ -139,6 +139,13 @@ Files: `src/biobox/doctor.py`, `tests/r1/test_doctor.py`
 Do: report `memory.max` of the current cgroup (v2 path from `/proc/self/cgroup`), and whether each path in a `--paths` argument is visible and writable.
 Accept: new unit tests with a fake `/proc` tree pass.
 
+### A-05 Spill-watcher thread race in the K-02 test
+**L** · Depends: none
+Files: `tests/r2/test_micro_s0_duckdb.py`
+Background: `test_k02_k03_oversized_group_by_spills_to_temp_directory` starts a `watch` thread that sums `p.stat().st_size` over the spill directory; DuckDB deletes a temp file between `rglob` and `stat`, the thread dies with `FileNotFoundError`, and pytest reports only a warning (seen 2026-11-09). A dead watcher can under-report the spill and let the test pass or fail for the wrong reason.
+Do: make the watcher tolerate a file that vanishes (skip it) and fail the test if the watcher thread raised anything else.
+Accept: 50 consecutive runs of that test with `-W error::pytest.PytestUnhandledThreadExceptionWarning` pass.
+
 ---
 
 ## Phase B. Data model before any release
@@ -267,8 +274,8 @@ Accept: loader validates types and refuses unknown keys.
 ### C-02 `bio-box run-step`
 **M** · Depends: C-01
 Files: `src/biobox/runstep.py`+, `src/biobox/cli.py`, `tests/r2/test_runstep.py`+
-Do: run one step command: check `STOP`; create a staging directory under the profile's `tmp`; start the command in `systemd-run --user --scope -p MemoryMax=<mem_scope>` at the profile's nice (plain subprocess where `systemd-run` is absent); set every thread variable (`OMP_NUM_THREADS`, `POLARS_MAX_THREADS`, DuckDB `threads`, MMseqs2 `--threads`) from the cap for the current hour; on success copy outputs with one `rsync` and rename into place; refuse outputs that are files under 64 MB unless the table is `small_ok`; write a ledger row with wall time, CPU-minutes and peak RSS; on failure leave no output in the data root.
-Accept: tests with a fake step: STOP honored; failure leaves nothing; small-file refusal; thread cap by hour; resume skips a step whose ledger row and outputs exist.
+Do: run one step command: check `STOP`; create a staging directory under the profile's `tmp`; start the command in `systemd-run --user --scope -p MemoryMax=<mem_scope>` at the profile's nice (plain subprocess where `systemd-run` is absent); set every thread variable (`OMP_NUM_THREADS`, `POLARS_MAX_THREADS`, DuckDB `threads`, MMseqs2 `--threads`) from the cap for the current hour; on success copy outputs with one `rsync` and rename into place; refuse outputs that are files under 64 MB unless the table is `small_ok`; write a run record `runs/stage=<S>/<step>.json` with wall time, CPU-minutes, peak RSS and the sha256 of each output (outside the release manifest, because times and host names would break cross-host manifest equality); on failure leave no output in the data root. The night thread cap applies only when the load average shows no other compute.
+Accept: tests with a fake step: STOP honored; failure leaves nothing; small-file refusal; thread cap by hour, weekday and load; resume skips a step whose run record and outputs exist.
 
 ### C-03 Kill and resume
 **M** · Depends: C-02
