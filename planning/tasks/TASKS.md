@@ -280,8 +280,10 @@ Accept: tests with a fake step: STOP honored; failure leaves nothing; small-file
 ### C-03 Kill and resume
 **M** · Depends: C-02
 Files: `tests/r2/test_runstep_resume.py`+
-Do: D-03. Kill a step at each phase (running, during rsync, before rename), also with the staging directory deleted; rerun; outputs equal an uninterrupted run byte for byte.
-Accept: the test passes for every kill point.
+Files also: `src/biobox/runstep.py`
+Background (audit of C-02, 2026-11-09): two gaps. (a) If `run-step` dies after renaming some outputs into the root and before writing the run record, the next attempt reruns the command and then refuses to publish because the files exist; the step is stuck. (b) A SIGTERM or SIGINT to `run-step` leaves the step command running.
+Do: D-03. 1. Before the first rename, write an intent file `runs/stage=<S>/<step>.publishing.json` listing every output with bytes and sha256. On start, if an intent file exists: an output present in the root with the listed sha256 is kept; one still in `.incoming` is renamed in; if every output is then in place, write the run record and exit 0; otherwise delete only the root files that match the intent's sha256, delete the intent and rerun. Never delete a file the intent does not list. 2. Forward SIGTERM and SIGINT to the child's process group and exit after it does, publishing nothing. 3. Kill a step at each phase (running, during rsync, between renames, before the record), also with the staging directory deleted; rerun; outputs equal an uninterrupted run byte for byte.
+Accept: the test passes for every kill point; no test sleeps to hit a kill point (inject a hook).
 
 ### C-04 `bio-box build-stage`
 **M** · Depends: C-02, B-17
