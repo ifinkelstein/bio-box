@@ -191,12 +191,29 @@ def test_k02_k03_oversized_group_by_spills_to_temp_directory(tmp_path):
     spill = tmp_path / "spill"
     seen = {"max": 0}
     stop = threading.Event()
+    errors = []
+
+    def size_now():
+        total = 0
+        try:
+            for p in spill.rglob("*"):
+                try:
+                    if p.is_file():
+                        total += p.stat().st_size
+                except FileNotFoundError:
+                    continue  # DuckDB deleted the temp file between listing and stat
+        except FileNotFoundError:
+            pass  # a directory vanished while it was being walked; the partial sum is a lower bound
+        return total
 
     def watch():
-        while not stop.is_set():
-            if spill.exists():
-                seen["max"] = max(seen["max"], sum(p.stat().st_size for p in spill.rglob("*") if p.is_file()))
-            time.sleep(0.01)
+        try:
+            while not stop.is_set():
+                if spill.exists():
+                    seen["max"] = max(seen["max"], size_now())
+                time.sleep(0.01)
+        except BaseException as e:
+            errors.append(e)
 
     t = threading.Thread(target=watch)
     t.start()
@@ -209,6 +226,7 @@ def test_k02_k03_oversized_group_by_spills_to_temp_directory(tmp_path):
     finally:
         stop.set()
         t.join()
+    assert not errors, f"the spill watcher died: {errors!r}"
     assert (n, total) == (5_000_000, 15_000_000)
     assert seen["max"] > 100 * 2**20, "the query fit in memory, so nothing was tested"
     assert not list(tmp_path.glob("*.tmp")) and not (REPO / ".tmp").exists()
