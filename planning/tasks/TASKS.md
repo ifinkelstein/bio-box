@@ -153,6 +153,13 @@ Accept: 50 consecutive runs of that test with `-W error::pytest.PytestUnhandledT
 Every card here cites DEC-18..DEC-23. After each card: `uv run python scripts/update_schema_lock.py`
 only if the card says so.
 
+**Expand, migrate, contract.** Every card in this phase leaves the whole suite green. New tables and
+columns are added first (B-03 to B-16) while the legacy ones (`slot_protein`, `slot_ordinal`,
+`left_slot`, `right_slot`, the dimension columns on fact tables) stay written and readable; B-17
+removes them once nothing reads them. A card that adds a column to an existing table edits
+`schemas.py` and regenerates the lock in the same commit as the builder that writes it. Cards merge
+into the branch `phase-b`, which is cut from `plan/task-cards`.
+
 ### B-01 One Parquet writer
 **M** · Depends: 0-01
 Files: `src/biobox/io.py`+, `tests/r1/test_io.py`+
@@ -168,8 +175,8 @@ Accept: tests pass.
 ### B-03 Registry: new and changed tables
 **M** · Depends: B-02
 Files: `src/biobox/registry/schemas.py`, `tests/registry/schema_lock.json` (by script), `tests/registry/pending_tables.yaml`, `tests/registry/operations.yaml`, `tests/r0/test_registries.py`
-Do: add `genome_input`, `feature`, `feature_protein`, `contig_dim`, `tape_version_def`, `token_postings`; change `protein_occurrence`, `igr`, `contig_tapes`, `tape_tokens`, `seq_locator`, `neighborhoods`, `search_region` as §2; remove `slot_protein` and `slot_pairs`. Regenerate the lock with the script. Add a registry test: no primary key contains a column named `ordinal`, `slot_ordinal`, `anchor_ordinal` or `partner_ordinal`.
-Accept: R0 green. Other rings will fail until B-04..B-13 land; list the failing test files in the report.
+Do: add the six new tables only: `genome_input`, `feature`, `feature_protein`, `contig_dim`, `tape_version_def`, `token_postings`, exactly as §2 (no location clash with existing tables). Do not change or remove any existing table. Regenerate the lock with the script. Add a registry test: no primary key contains a column named `ordinal`, `slot_ordinal`, `anchor_ordinal` or `partner_ordinal`, except for the tables in a module-level allowlist `LEGACY_ORDINAL_KEYS` that holds exactly the tables that have one today; B-17 empties it.
+Accept: the whole suite green.
 
 ### B-04 Persist genome inputs
 **L** · Depends: B-01, B-03
@@ -180,19 +187,22 @@ Accept: round trip on the micro-S0 fixture; conformance check passes.
 ### B-05 Gene calling writes features
 **M** · Depends: B-04
 Files: `src/biobox/l1/genecall.py`, `tests/r2/test_micro_s0_genecall.py`
-Do: read genomes from `genome_input`; process one genome at a time; write `feature` (producer = gene-call version, kind 1), `feature_protein` and `protein_occurrence` through `io.write_table`; no `slot_ordinal` anywhere. Distinct proteins: write per-genome candidates to a temporary Parquet, then deduplicate by `protein_uid` with DuckDB (`duck_batches`) into the bucketed `protein_seq` files.
+Files also: `src/biobox/registry/schemas.py` and the lock (add non-null `feature_uid` to `protein_occurrence`; its primary key becomes `(feature_uid, gene_call_version)`).
+Do: read genomes from `genome_input` when no list is passed; process one genome at a time; write `feature` (producer = gene-call version, kind 1), `feature_protein` and `protein_occurrence` through `io.write_table`. Legacy stays for now: `slot_ordinal` remains a plain column of `protein_occurrence` and `slot_protein` is still written (B-17 removes both). Distinct proteins: write per-genome candidates to a temporary Parquet, then deduplicate by `protein_uid` with DuckDB (`duck_batches`) into the bucketed `protein_seq` files.
 Accept: migrated tests pass; gene set equals the old one on the fixture (same starts, ends, strands, proteins); peak RSS at 100× synthetic under 1.5 GB.
 
 ### B-06 IGRs reference features
 **L** · Depends: B-05
 Files: `src/biobox/l1/igr.py`, `tests/r1/test_igr.py`, `tests/r2/test_micro_s0_igr.py`
-Do: flanks are `left_feature_uid` and `right_feature_uid`; input is every `feature` row of the tape's producers, not only genes; one contig at a time.
+Files also: `src/biobox/registry/schemas.py` and the lock (add nullable `left_feature_uid`, `right_feature_uid`).
+Do: flanks are `left_feature_uid` and `right_feature_uid` (`left_slot` and `right_slot` stay written until B-17); input is every `feature` row of the tape's producers, not only genes; one contig at a time.
 Accept: migrated tests pass; the IGR coordinates on the fixture are unchanged.
 
 ### B-07 Tapes by tape version
 **M** · Depends: B-05
 Files: `src/biobox/l3/tapes.py`, `tests/r1/test_l3.py`, `tests/r2/test_micro_s0_l3.py`
-Do: build from `feature` rows of the listed producers; write `tape_version_def`; `feature_uids` list; row groups bounded at 131,072 slots (`io.write_table(max_slots=...)`); drop the dimension columns.
+Files also: `src/biobox/registry/schemas.py` and the lock; `src/biobox/l3/tokens.py`, `src/biobox/l3/pairs.py`, `src/biobox/catalog.py`, `src/biobox/provenance.py`, `src/biobox/search/*.py` and their tests, only where they name the tape partition.
+Do: build from `feature` rows of the listed producers; write `tape_version_def`; the partition key `tape_version` replaces `gene_call_version` for `contig_tapes` and `tape_tokens` (update every reader of those paths in the same commit); add the `feature_uids` list; row groups bounded at 131,072 slots (`io.write_table(max_slots=...)`). The dimension columns stay, nullable, until B-17.
 Accept: migrated tests; new test: a tape read for one contig scans one row group whose slot total is ≤ 131,072 (`profile_query`).
 
 ### B-08 The stability test
@@ -210,13 +220,14 @@ Accept: migrated tests pass.
 ### B-10 Postings builder
 **M** · Depends: B-09
 Files: `src/biobox/l3/postings.py`+, `tests/r2/test_micro_s0_postings.py`+
-Do: one pass over tapes and tape tokens, one row per slot per cluster token, plus one row per included domain from `l1_domains` for family tokens (`seg_idx` per §2). Sort and bucket with DuckDB, write with `io.write_table`. Remove `pairs.run`; move `pairs_of_contig`, `window` and the flags to `tests/oracles/pairs_oracle.py`+ unchanged.
+Do: one pass over tapes and tape tokens, one row per slot per cluster token, plus one row per included domain from `l1_domains` for family tokens (`seg_idx` per §2). Sort and bucket with DuckDB, write with `io.write_table`. `pairs.run` and `slot_pairs` stay until B-11.
 Accept: row count equals slots × cluster levels + included domains on the fixture; LY-02, LY-03, LY-05 hold; peak RSS at 100× synthetic under 1.5 GB.
 
 ### B-11 Pair macros over postings
 **M** · Depends: B-10
 Files: `src/biobox/catalog.py`, `tests/r2/test_micro_s0_l3.py`
-Do: implement `slot_dist`, `q1_count`, `pairs_of`, `fusions_of`, `partners_of` as §2. Test `pairs_of` and `q1_count` against the oracle for every token pair on the fixture, on linear and circular contigs, including a circular contig with an even slot count (the half-way rule).
+Files also: `src/biobox/l3/pairs.py` (removed), `tests/oracles/pairs_oracle.py`+, `src/biobox/registry/schemas.py` and the lock (remove `slot_pairs`), `src/biobox/contracts.py`, `src/biobox/provenance.py`, `scripts/stress/*.py`, and every test that builds or reads `slot_pairs`.
+Do: implement `slot_dist`, `q1_count`, `pairs_of`, `fusions_of`, `partners_of` as §2. Then remove `pairs.run` and the `slot_pairs` table; move `pairs_of_contig`, `window` and the flags unchanged to `tests/oracles/pairs_oracle.py`. Test `pairs_of` and `q1_count` against the oracle for every token pair on the fixture, on linear and circular contigs, including a circular contig with an even slot count (the half-way rule).
 Accept: oracle equality; `profile_query` shows Q1 and Q4 on a non-hub token scan at most 2 row groups per side at 1,000× synthetic.
 
 ### B-12 `contig_dim`
@@ -249,10 +260,10 @@ Files: `src/biobox/search/nbr.py`, `src/biobox/search/pack.py`, `src/biobox/sear
 Do: every output row that names a slot carries `feature_uid` and `tape_version`; region flanks are feature uids.
 Accept: S-09 and S-13 tests pass after migration.
 
-### B-17 Contracts and foreign keys
-**L** · Depends: B-05..B-12
-Files: `src/biobox/contracts.py`, `src/biobox/provenance.py`, `tests/r2/test_micro_s0_contracts.py`, `tests/r3/test_golden.py`
-Do: replace the foreign-key list with the new tables; `VERSION_PARTITION` for the new tables; golden tests use the new builders.
+### B-17 Contract: remove the legacy keys
+**M** · Depends: B-05..B-16
+Files: `src/biobox/registry/schemas.py` and the lock, every builder and reader that still writes or reads a legacy item, `src/biobox/contracts.py`, `src/biobox/provenance.py`, `tests/r0/test_registries.py`, `tests/r2/*`, `tests/r3/test_golden.py`
+Do: remove the `slot_protein` table; remove `slot_ordinal` from `protein_occurrence`, `left_slot` and `right_slot` from `igr` and `search_region`, and `tier`, `tax_order`, `tax_order_bucket`, `assembly_quality`, `is_species_rep`, `genome_uid` from `protein_occurrence` and `contig_tapes`; make `neighborhoods` key on feature uids; empty `LEGACY_ORDINAL_KEYS`; replace the foreign-key list and `VERSION_PARTITION` with the final tables. `rg -n "slot_ordinal|left_slot|right_slot|slot_protein" src` must return nothing.
 Accept: R0–R2 green on the laptop; R3 green with `BIOBOX_GOLDEN_DIR`.
 
 ### B-18 Phase-B exit measurement
