@@ -6,6 +6,7 @@
     bio-box search status|cancel <run_id> --root R
     bio-box search hits <run_id> --root R [--round N] [--members] [--json] [--top_n 50] [--format tsv]
     bio-box nbr --root R --anchors <run_id|uid,uid,...> --window 10g --strand any --edge truncate [--json]
+    bio-box run-step --profile P --root R --stage S --step NAME [--nice monolithic|fanout] [--threads N] -- CMD ...
 """
 
 from __future__ import annotations
@@ -92,7 +93,19 @@ def _nbr(a) -> int:
     return 0
 
 
+def _run_step(a) -> int:
+    from biobox import profile, runstep
+
+    return runstep.run_step(profile.load(a.profile), Path(a.root), a.stage, a.step, a.command,
+                            nice=a.nice, threads=a.threads)
+
+
 def main(argv: list[str] | None = None) -> int:
+    argv = list(sys.argv[1:] if argv is None else argv)
+    command: list[str] = []
+    if argv[:1] == ["run-step"] and "--" in argv:  # everything after the first `--` is the step command
+        i = argv.index("--")
+        argv, command = argv[:i], argv[i + 1:]
     p = argparse.ArgumentParser(prog="bio-box")
     sub = p.add_subparsers(dest="cmd", required=True)
     common = argparse.ArgumentParser(add_help=False)
@@ -126,10 +139,22 @@ def main(argv: list[str] | None = None) -> int:
     n.add_argument("--circular", default="auto")
     n.add_argument("--json", action="store_true")
     n.add_argument("--top_n", type=int, default=0)
+    r = sub.add_parser("run-step", usage="bio-box run-step --profile P --root R --stage S --step NAME "
+                                         "[--nice monolithic|fanout] [--threads N] -- CMD [ARGS ...]")
+    r.add_argument("--profile", required=True, help="host profile YAML (profiles/wilkcomp02.yaml)")
+    r.add_argument("--root", required=True)
+    r.add_argument("--stage", required=True)
+    r.add_argument("--step", required=True)
+    r.add_argument("--nice", choices=["monolithic", "fanout"], default="monolithic")
+    r.add_argument("--threads", type=int)
     a = p.parse_args(argv)
     if a.cmd == "search" and a.action == "run" and not a.release:
         p.error("search run needs --release")
-    return {"pack": _pack, "search": _search, "nbr": _nbr}[a.cmd](a)
+    if a.cmd == "run-step":
+        if not command:
+            p.error("run-step needs a command after --")
+        a.command = command
+    return {"pack": _pack, "search": _search, "nbr": _nbr, "run-step": _run_step}[a.cmd](a)
 
 
 if __name__ == "__main__":

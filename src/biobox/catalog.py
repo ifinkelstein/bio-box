@@ -52,8 +52,9 @@ DERIVED_PARTITIONS = {
 
 # Trees under the data root that carry their own manifests and are not release files: the
 # search pack (search_pack/release=<R>/pack_manifest.json, verified by C-12) and search runs
-# (search/run_index.json), which are written after the release is signed.
-EXCLUDED_TREES = ("search_pack", "search")
+# (search/run_index.json), which are written after the release is signed; and run-step records
+# (runs/stage=<S>/<step>.json, card C-02), which hold timestamps and host names.
+EXCLUDED_TREES = ("search_pack", "search", "runs")
 
 
 class LayoutError(ValueError):
