@@ -22,7 +22,7 @@ import pyarrow as pa
 
 from biobox.ids import KIND
 
-UID =pa.binary(16)  # BLAKE3-128 content UIDs
+UID = pa.binary(16)  # BLAKE3-128 content UIDs
 SHA256 = pa.binary(32)  # raw_digest and object checksums
 STRAND = pa.int8()  # +1 / -1
 COORD = pa.int64()  # 0-based half-open contig coordinates
