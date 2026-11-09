@@ -15,8 +15,9 @@ import pyarrow.parquet as pq
 import pytest
 import yaml
 
-from biobox import fasta, ids
+from biobox import catalog, fasta, ids
 from biobox.l0seq import SeqStore, SourceObject, ingest, revcomp
+from biobox.l0seq.inputs import write_genome_input
 from biobox.l1.genecall import GENE_CALL_VERSION, GenomeInput, call_genome, run
 from biobox.registry.schemas import conformance_problems, table
 
@@ -83,7 +84,15 @@ GLOBS = {
     "slot_protein": f"l1/slot_protein/gene_call_version={V}/stage=S0/part-0.parquet",
     "protein_occurrence": f"l1/protein_occurrence/gene_call_version={V}/stage=S0/part-0.parquet",
     "protein_seq": f"l0seq/protein_seq/gene_call_version={V}/stage=S0/protein_prefix=*/part-*.parquet",
+    "feature": f"l1/feature/producer={V}/stage=S0/part-0.parquet",
+    "feature_protein": f"l1/feature_protein/gene_call_version={V}/stage=S0/part-0.parquet",
 }
+# every file gene calling writes for a stage (B-05): the tables above and its ledger
+OUTPUTS = ("l1/**/*.parquet", "l0seq/protein_seq/**/*.parquet", "ledger/stage=S0/step=genecall/*.parquet")
+
+
+def _outputs(root: Path) -> dict[str, bytes]:
+    return {str(p.relative_to(root)): p.read_bytes() for g in OUTPUTS for p in sorted(root.glob(g))}
 
 
 @pytest.mark.covers("C-01", "C-02", "C-06", "LY-01")
@@ -101,6 +110,110 @@ def test_c10_occurrence_matches_slot_protein(root):
     occ_keys = [(r["contig_uid"], r["slot_ordinal"]) for r in occ]
     assert len(occ_keys) == len(set(occ_keys)) == len(slots)
     assert {k: r["protein_uid"] for k, r in zip(occ_keys, occ)} == slots
+
+
+def _legacy_genes(root: Path) -> dict[tuple, bytes]:
+    """(contig_uid, start, end, strand) -> protein_uid from the legacy slot-keyed tables."""
+    slots = {(r["contig_uid"], r["slot_ordinal"]): r["protein_uid"] for r in _read(root, GLOBS["slot_protein"]).to_pylist()}
+    out = {}
+    for r in _read(root, GLOBS["protein_occurrence"]).to_pylist():
+        out[(r["contig_uid"], r["start"], r["end"], r["strand"])] = slots[(r["contig_uid"], r["slot_ordinal"])]
+    assert len(out) == len(slots)
+    return out
+
+
+@pytest.mark.covers("C-01", "LY-10")
+def test_new_tables_enter_the_manifest(root):
+    man = catalog.build_manifest(root, "rS0.test")
+    by_table = {f["table"]: f for f in man["files"]}
+    for name in ("feature", "feature_protein"):
+        assert by_table[name]["path"] == GLOBS[name]
+        assert by_table[name]["rows"] == len(_legacy_genes(root))
+    assert by_table["feature"]["partitions"] == {"producer": V, "stage": "S0"}
+
+
+@pytest.mark.covers("C-03")
+def test_features_equal_the_legacy_gene_set(root):
+    legacy = _legacy_genes(root)
+    feats = _read(root, GLOBS["feature"]).to_pylist()
+    assert {(r["contig_uid"], r["start"], r["end"], r["strand"]) for r in feats} == set(legacy)
+    assert len(feats) == len(legacy)
+    for r in feats:
+        assert r["kind"] == ids.KIND["cds"]
+        assert r["feature_uid"] == ids.feature_uid(r["contig_uid"], r["start"], r["end"], r["strand"], r["kind"])
+
+
+@pytest.mark.covers("C-03")
+def test_feature_protein_equals_the_legacy_mapping(root):
+    legacy = _legacy_genes(root)
+    fp = _read(root, GLOBS["feature_protein"]).to_pylist()
+    assert {(r["contig_uid"], r["start"], r["end"], r["strand"]): r["protein_uid"] for r in fp} == legacy
+    feature_uids = {r["feature_uid"] for r in _read(root, GLOBS["feature"]).to_pylist()}
+    assert {r["feature_uid"] for r in fp} == feature_uids
+    codes = {(r["contig_uid"], r["slot_ordinal"]): r["genetic_code"] for r in _read(root, GLOBS["slot_protein"]).to_pylist()}
+    assert sorted(r["genetic_code"] for r in fp) == sorted(codes.values())
+    assert {r["edit_type"] for r in fp} == {"none"}
+
+
+@pytest.mark.covers("C-03")
+def test_occurrence_feature_uid_recomputes_from_its_row(root):
+    occ = _read(root, GLOBS["protein_occurrence"]).to_pylist()
+    feature_uids = {r["feature_uid"] for r in _read(root, GLOBS["feature"]).to_pylist()}
+    for r in occ:
+        assert r["feature_uid"] == ids.feature_uid(r["contig_uid"], r["start"], r["end"], r["strand"], ids.KIND["cds"])
+    assert {r["feature_uid"] for r in occ} == feature_uids
+
+
+@pytest.mark.covers("LY-08")
+def test_run_reads_genome_input_when_no_list_is_given(tmp_path):
+    a, b = tmp_path / "a", tmp_path / "b"
+    want = _build(a)
+    objs = [SourceObject(FIX / o["file"], CONTRACT["source_name"], CONTRACT["source_release"]) for o in OBJS]
+    ingest(objs, b, "S0")
+    write_genome_input(b, "S0", _genomes())
+    assert run(b, "S0") == want
+    assert _outputs(a) == _outputs(b)
+    assert len(_outputs(a)) == 6
+
+
+@pytest.mark.covers("MR-01", "D-01")
+def test_mr01_bytes_do_not_depend_on_genome_order(tmp_path):
+    a, b = tmp_path / "a", tmp_path / "b"
+    want = _build(a)
+    objs = [SourceObject(FIX / o["file"], CONTRACT["source_name"], CONTRACT["source_release"]) for o in OBJS]
+    ingest(objs, b, "S0")
+    scratch = tmp_path / "scratch"
+    scratch.mkdir()
+    assert run(b, "S0", iter(_genomes()[::-1]), tmp=scratch) == want  # any iterable, consumed once
+    assert _outputs(a) == _outputs(b)
+    assert list(scratch.iterdir()) == []  # the scratch directory is removed
+
+
+@pytest.mark.covers("C-05")
+def test_origin_wrapping_gene_has_end_past_contig_len_in_feature(tmp_path):
+    # micro-S0 M. genitalium has no gene across its origin, so rotate it into one (as MR-04 does)
+    o = next(o for o in OBJS if o["accession"] == "NC_000908.2")
+    seq = fasta.read(FIX / o["file"])[0].seq
+    n = len(seq)
+    root = tmp_path / "s"
+    ingest([SourceObject(FIX / o["file"], "a", "1")], root, "S0")
+    base = call_genome(SeqStore(root), _genome(o, seq))
+    target = base[len(base) // 2]
+    r = (target["start"] + target["end"]) // 2
+    rot_file = tmp_path / "rot.fna"
+    rot_file.write_bytes(b"\n".join(fasta.format_record("rot", seq[r:] + seq[:r], 70)) + b"\n")
+    ingest([SourceObject(rot_file, "b", "1")], root, "S1")
+    rotated = _genome(o, seq[r:] + seq[:r])
+    report = run(root, "S1", [rotated])
+    assert report["wrapping_genes"] >= 1
+    cu = rotated.contig_uids[0]
+    feats = _read(root, f"l1/feature/producer={V}/stage=S1/part-0.parquet").to_pylist()
+    wraps = [f for f in feats if f["end"] > n]
+    assert len(wraps) == report["wrapping_genes"]
+    for f in wraps:
+        assert f["contig_uid"] == cu and f["start"] < n and f["end"] - f["start"] < n
+        assert f["feature_uid"] == ids.feature_uid(cu, f["start"], f["end"], f["strand"], ids.KIND["cds"])
+    assert conformance_problems(_read(root, f"l1/feature/producer={V}/stage=S1/part-0.parquet"), table("feature")) == []
 
 
 def test_protein_seq_is_content_addressed(root):
