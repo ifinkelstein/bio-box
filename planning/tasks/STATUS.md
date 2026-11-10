@@ -81,6 +81,17 @@ the same commits: two search tests fail intermittently there (card A-07). The or
 checked CI only after the first push and missed this for a day. The merge to `main` waits for A-07.
 The `gh` token has `read:packages` since 2026-11-10, so the image can be pulled once `main` builds it.
 
+## Plan for larger imports (approved by the PI, 2026-11-10)
+
+1. When card C-10 reports a clean real run of `build-stage`: rebuild the 10 Gbp set (the phages and
+   2,497 prokaryotes of `rL.3`) with the current code, under the night cap, on the pod's local disk,
+   then sync to the provisional area on `/stor`. It replaces `rL.3`, which current code cannot open.
+2. When card B-24 merges: build all 11,973 complete GTDB species representatives (about 50 Gbp,
+   *derived*: 4.25 Mbp per genome from the 2,497 already fetched) as several stages of about 10 Gbp.
+   Expected wall time about 2.5 days, of which Pfam about 1.5 (*derived* from rates in
+   `planning/measurements/2026-11-10_import_ladder/`).
+The thread cap is the sum over all our processes: 40 by day, 56 at night.
+
 ## In progress
 
 | Card | Model | State |
