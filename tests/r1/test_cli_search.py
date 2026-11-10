@@ -28,6 +28,7 @@ def _profile(tmp_path, **over):
 @pytest.fixture(autouse=True)
 def _clean_env(monkeypatch):
     monkeypatch.delenv("BIOBOX_PROFILE", raising=False)
+    monkeypatch.delenv("BIOBOX_POD_UNIT", raising=False)
 
 
 @pytest.fixture
@@ -154,3 +155,50 @@ def test_w03_search_run_takes_its_directories_from_the_profile_and_the_flags(tmp
     assert captured["kw"] == {"packs": tmp_path / "p", "runs": tmp_path / "r", "out": None}
     assert cli.main(argv + flags + ["--out", str(tmp_path / "one-run")]) == 0  # --out is the run's own directory
     assert captured["kw"] == {"packs": tmp_path / "p", "runs": None, "out": tmp_path / "one-run"}
+
+
+# --- W-13: a search in a pod_run.sh unit -----------------------------------------------------------------------
+
+
+@pytest.fixture
+def waited(monkeypatch):
+    """`runner.run` intercepted: what `search run --wait` asked of it."""
+    seen = {}
+
+    def fake_run(root, recipe, release, **kw):
+        seen.update(kw)
+        return {"run_id": b"\x13" * 16, "status": "ok"}
+
+    monkeypatch.setattr(runner, "run", fake_run)
+    return seen
+
+
+@pytest.mark.covers("W-13")
+def test_w13_search_run_without_wait_in_a_pod_run_unit_is_refused(tmp_path, captured, monkeypatch, capsys):
+    """Card W-13 (1): in a `pod_run.sh` unit (a transient service started with `systemd-run --collect`) the unit
+    ends with its main process and systemd stops every process left in it, the detached runner included (measured
+    on the pod: the run ended `failed: runner exited without closing the run`). So it is refused, before anything
+    is checked or recorded, with a message that says to use --wait."""
+    monkeypatch.setenv("BIOBOX_POD_UNIT", "w13-x")
+    assert cli.main(_argv(tmp_path)) == 2
+    err = capsys.readouterr().err
+    assert "--wait" in err and "w13-x" in err and "pod_run.sh" in err, err
+    assert captured == {}  # submit was never called
+
+
+@pytest.mark.covers("W-13")
+def test_w13_search_run_with_wait_in_a_pod_run_unit_runs_and_records_its_pending_record(tmp_path, waited,
+                                                                                       monkeypatch, capsys):
+    monkeypatch.setenv("BIOBOX_POD_UNIT", "w13-x")
+    assert cli.main(_argv(tmp_path, "--wait")) == 0
+    assert waited["pending"] is True
+    assert capsys.readouterr().out.strip() == "13" * 16 + "\tok"
+
+
+@pytest.mark.covers("W-13")
+def test_w13_the_runner_that_submit_starts_leaves_the_pending_record_to_submit(tmp_path, waited):
+    """`submit` writes the pending record itself, before it returns; the runner it starts is told so (`--submitted`,
+    checked on a real submit in tests/r2/test_micro_s0_search.py) and writes none of its own: two writers of one
+    record would race."""
+    assert cli.main(_argv(tmp_path, "--wait", "--submitted")) == 0
+    assert waited["pending"] is False
