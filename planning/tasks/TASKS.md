@@ -350,6 +350,13 @@ Accept: S-05 and S-06 tests pass in the image.
 Files: `RUNBOOK.md`+
 Do: launch, pause (`STOP`), resume, cancel a search, clean `/tmp`, who to email, how to read the ledger. Commands only, each one tested.
 
+### C-07 Scope on the host, around the container
+**M** · Depends: C-05 · Pod: yes (the acceptance probe only)
+Files: `src/biobox/runstep.py`, `src/biobox/search/runner.py`, `scripts/pod_run.sh`+, `tests/r1/test_runstep_units.py`, `RUNBOOK.md` (if C-06 has merged)
+Why: `systemd-run` is not visible inside the `.sif` (found by the import ladder on wilkcomp02, 2026-11-09), so a `run-step` or a search worker started inside the image cannot open its own scope and today runs with no memory cap.
+Do: (1) `scripts/pod_run.sh <unit> <bio-box args>`: the one host-side launcher. It starts `systemd-run --user --unit=<unit> --collect -p MemoryMax=<profile> -p MemorySwapMax=0 nice -n 19 singularity exec <sif by digest> bio-box ...`, detached. (2) Inside the container `run-step` and the search runner detect that they are already in a scope (read `/proc/self/cgroup` and the cgroup's `memory.max`), do not call `systemd-run`, and write the detected cap into the run record. If there is no `systemd-run` and no cap, and the profile requires one, they refuse to start with a message that names `scripts/pod_run.sh`. (3) Add `MemorySwapMax=0` wherever a scope is built.
+Accept: unit tests for the three cases (scope available; already capped; neither) using a fake cgroup tree, written first and seen to fail. On the pod: a step launched through `scripts/pod_run.sh` records the cap in its run record, and a deliberate 1 GB over-allocation in a 512 MB unit is killed by the kernel, not by polling.
+
 ---
 
 ## Phase W. One-command discovery workflow
@@ -407,6 +414,13 @@ Accept: the walk-through's result (1,931 proteins for Pfam `RNA_pol` at 30 bits 
 Files: `src/biobox/search/recipe.py`, `src/biobox/search/worker.py`, tests
 Do: the shorthand `{protein_uid: X, label: ...}` for a positive control is accepted; the drift alarm writes a warning into `warnings_json` when no domain table exists instead of evaluating against nothing; a catalog view `contig_label` gives one accession and header per contig (`contig_occurrence` has several rows per contig).
 Accept: tests for each.
+
+### W-09 Every pyhmmer call takes its thread count from the caller
+**L** · Depends: W-04
+Files: `src/biobox/search/engine.py`, `tests/r1/test_search_units.py`
+Why: `engine.families_of` calls `pyhmmer.hmmsearch` without `cpus`, so pyhmmer sizes its pool from the host (found by the import ladder on the 64-core pod, 2026-11-09). On a shared machine that breaks the thread cap of AGENTS.md §7.2.
+Do: `families_of` and every other pyhmmer entry point in `src/biobox` take a `threads` argument with no default and pass it as `cpus`. Callers pass the worker's capped thread count.
+Accept: a test that replaces `pyhmmer.hmmsearch` with a recorder and fails when any call lacks `cpus` or passes 0, seen to fail first; `rg "hmmsearch\(|hmmscan\(|phmmer\(" src/biobox` shows `cpus=` on every call.
 
 ---
 

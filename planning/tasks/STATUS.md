@@ -5,10 +5,12 @@ The running record of the cards in [`TASKS.md`](TASKS.md). Updated at every merg
 its own branch `task/<ID>`, audited by the orchestrating session, and merged after the full suite
 passed on the integration branch.
 
-Last update: 2026-11-09, late evening. Suite on the integration branch: 737 passed, 16 skipped
-(the skips need MMseqs2, samtools or the HMMER binaries, which only the image has).
+Last update: 2026-11-10, after midnight. Suite on the integration branch: 829 passed, 10 skipped
+(*measured*, wilkcomp02, 2026-11-10, `sh scripts/pod_pytest.sh integration --shards 8`, in the
+pinned image; 3 min 40 s wall for the slowest shard, against 13.5 min in one process). The skips
+need samtools, bgzip, Prodigal or the golden set. Tests no longer run on the laptop (AGENTS.md §5.5).
 
-## Merged (29 cards)
+## Merged (33 cards)
 
 | Card | Merge | What it did | Audit notes |
 |---|---|---|---|
@@ -41,6 +43,9 @@ Last update: 2026-11-09, late evening. Suite on the integration branch: 737 pass
 | A-04 | `4ad0e82` | `doctor`: cgroup memory cap and path visibility | |
 | B-16 | `c25699d` | Search layer names slots by `feature_uid` | |
 | D-03 | `b108be6` | samtools, bgzip, Prodigal and RefSeq checks as golden-ring tests | Only the RefSeq test has executed; Prodigal tolerance set from the measured 4 |
+| B-19 | `4972f71` | Streaming ledger; builder tables cut into parts | |
+| W-06 | `5f31050` | `nbr summarize`: neighbor families and clusters per anchor window | Same commit adds `scripts/pod_pytest.sh` and fixes a cluster-ledger test that only fails where MMseqs2 exists |
+| C-05, W-04 | `0a4ae15` | Search workers start in scopes; worker thread caps; exit and kill labelling | The scope cannot be opened from inside the image: card C-07 |
 
 Decisions DEC-18 to DEC-23 were approved by the PI on 2026-11-09 and are in `planning/DECISIONS.md`.
 
@@ -48,15 +53,16 @@ Decisions DEC-18 to DEC-23 were approved by the PI on 2026-11-09 and are in `pla
 
 | Card | Model | State |
 |---|---|---|
-| B-19 streaming ledger and multi-part tables | Opus | running |
-| C-05 + W-04 search workers in scopes; thread caps; exit and kill labelling | Opus | running |
-| W-06 neighbor summary | Opus | running |
+| B-17 remove the legacy ordinal columns | Opus | started 2026-11-10 |
+| A-03 README for `scripts/stress` | Sonnet | started 2026-11-10 |
+| C-07 scope on the host around the container | Opus | started 2026-11-10 |
+| W-09 pyhmmer thread count from the caller | Sonnet | started 2026-11-10 |
 | Pod import ladder (not a card): phages, then 1 Gbp and 10 Gbp of complete prokaryotes with the new code | Opus | detached jobs on the pod; agent waiting on them |
 
 ## Next, in order
 
-1. B-17 remove the legacy ordinal columns (after B-19).
-2. B-18 phase-B exit measurements; A-03 README for `scripts/stress`.
+1. B-18 phase-B exit measurements (after B-17).
+2. B-22 `l0_manifest` per stage and W-05 readable exports (held until B-17 merges: they share `schemas.py`, the lock and `export.py` with it).
 3. Pull request `plan/task-cards` → `main`, merged when the suite and CI are green (the PI delegated the timing). The merge builds the image and runs the image-only tests for the first time.
 4. C-04 `build-stage`; C-06 runbook.
 5. W-03 pack and runs outside the data root; W-05 readable exports; W-07 the one command.

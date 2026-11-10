@@ -33,7 +33,7 @@ ARGS=""
 for a in "$@"; do
   ARGS="$ARGS '$(printf %s "$a" | sed "s/'/'\\\\''/g")'"
 done
-ssh -o BatchMode=yes "$HOST" "mkdir -p '$DST'"
+ssh -o BatchMode=yes "$HOST" "mkdir -p '$DST' /tmp/if2453/ci-tmp"
 rsync -a --delete -e "ssh -o BatchMode=yes" \
   --exclude .git --exclude .venv --exclude .hypothesis --exclude .pytest_cache --exclude mutants \
   --exclude .claude --exclude __pycache__ "$TOP/" "$HOST:$DST/"
@@ -61,17 +61,19 @@ done
 PIDS=""
 for k in $(seq 0 $((SHARDS - 1))); do
   [ -f "$OUT/files.$k" ] || continue
-  ( run "$k" "$(cat "$OUT/files.$k")" > "$OUT/log.$k" 2>&1; echo $? > "$OUT/rc.$k" ) &
+  ( set +e; run "$k" "$(cat "$OUT/files.$k")" > "$OUT/log.$k" 2>&1; echo $? > "$OUT/rc.$k" ) &
   PIDS="$PIDS $!"
 done
-wait $PIDS
+for p in $PIDS; do
+  wait "$p" || true
+done
 RC=0
 for k in $(seq 0 $((SHARDS - 1))); do
   [ -f "$OUT/log.$k" ] || continue
   if [ "$(cat "$OUT/rc.$k")" != "0" ]; then
     RC=1
     echo "=== shard $k FAILED ==="
-    cat "$OUT/log.$k"
+    tail -n 60 "$OUT/log.$k"
   else
     echo "shard $k: $(tail -n 1 "$OUT/log.$k")"
   fi

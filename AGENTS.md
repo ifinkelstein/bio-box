@@ -54,7 +54,7 @@ If a rule and a task card disagree, the rule wins and you stop and report the co
 2. An oracle is an independent implementation: an external tool (`samtools`, the Prodigal binary, `hmmsearch`, MMseqs2), a brute-force loop written separately, or a published table. It is never the function under test, and never a snapshot of that function's earlier output.
 3. Fixed seeds. No sleeps to wait for state: poll a condition with a timeout.
 4. Mark each test with `@pytest.mark.covers(...)` naming the plan test IDs it covers, and the ring marker.
-5. Before you finish, run `uv run pytest -q` and put the summary line in your report. Tests that need MMseqs2, samtools or `hmmsearch` skip on a laptop; they run in the image in CI, and the card is not done until CI is green on your branch.
+5. **No compute on the laptop** (PI, 2026-11-09). Tests, builds and measurements run on the pod, in the image: `sh scripts/pod_pytest.sh <task ID> [--golden] [--shards 8] [pytest args]` mirrors your working tree (committed or not) to the pod and runs pytest there. While developing, run only the test files you are changing (`sh scripts/pod_pytest.sh B-17 tests/r2/test_x.py -k name`); before you finish, run the whole suite once with `--shards 8` and put every shard's summary line in your report. Do not run `uv run pytest`, `uv run python` measurement scripts or any long computation locally; editing files, `git`, `rg` and reading are fine. The pod's image has MMseqs2 and the HMMER binaries, so tests that would skip on a laptop run there; samtools, bgzip and Prodigal tests still wait for the image built from `main`.
 6. Statistics are tested only against constructed truth (planted signal recovered, null worlds calibrated). A golden snapshot is not evidence that a statistic is right.
 
 ## 6. Numbers
@@ -63,7 +63,7 @@ Every number you write in a document carries one of three labels: *measured* (ho
 
 ## 7. The pod (wilkcomp02)
 
-It is a shared machine and we are guests. An agent runs something on the pod only when its card says **Pod: yes**.
+It is a shared machine and we are guests. Running the test suite there through `scripts/pod_pytest.sh` is always allowed (it uses a 32 GB scope at `nice 19`; at most 8 shards per agent). Anything else on the pod (builds, scans, imports, measurements at scale) needs a card that says **Pod: yes**, and every job longer than a few minutes is launched detached (`systemd-run --user --unit=<name> --collect ...`) so that it survives the laptop going off.
 
 1. Run only through `bio-box run-step` (card C-02), inside the `.sif` pulled by digest. Tools installed on the pod are never used to produce outputs; they may be used as oracles.
 2. At most 40 threads by day; 56 at night and on weekends, and only when `ps` or `top` shows no other compute (the profile's 08:00 to 20:00 weekday window is an assumption until the PI confirms it with the pod owner). Every process runs inside a `systemd-run --user --scope -p MemoryMax=200G` scope, at `nice 19`. A single process stays under 300 CPU-minutes; larger work is split into shard processes.
