@@ -174,10 +174,7 @@ def test_lookup_prunes(store, name, keys):
     _assert_prunes(q)
 
 
-# --- lookups the exit measurement found NOT pruning: card B-31 ------------------------------------
-
-B31 = "card B-31"
-
+# --- lookups the exit measurement found NOT pruning, fixed by card B-31 ----------------------------
 
 def _scans_of(q: dict, table: str) -> list[dict]:
     return [s for s in q["scans"] if s["table"] == table]
@@ -221,22 +218,41 @@ def test_q4_token_of_keys_prune(store):
     _assert_prunes(_rows(store["rep"], "neighbours: Q4 nr90 pair instances, keys from token_dict (token_of)"))
 
 
-# The two partners_of lookups below keep their markers after card B-31. Their key is one token, but the partner
-# side reads the tape tokens of every anchor contig (TASKS §2), one row group per contig at most: 100 contigs of
-# 300 for the family token, 10 for the NR90 token, spread by contig_uid over the 11 row groups of tape_tokens, so
-# no layout can serve them in 2 row groups per token. What B-31 asks of them (reads in proportion to the anchors'
-# contigs, not to the release) is tested by test_partners_of_reads_grow_with_the_anchors_not_the_release.
-@pytest.mark.xfail(strict=True, raises=AssertionError, reason=B31)
-def test_partners_of_near_side_prunes_literal_key(store):
-    q = _cold(store, "SELECT count(*), sum(n_pairs) FROM partners_of(?, 10)", [store["rep"]["tokens"]["family_a"][1]])
-    assert len(_scans_of(q, "token_postings")) >= 2, "the anchor and the near side are separate scans"
-    _assert_prunes(q)
+def _assert_partner_bound(store, sql: str, params: list, tok: int) -> dict:
+    """The bound of a neighbour query (TASKS §2, card B-31), run cold: the anchor side reads the postings of
+    one token (at most 2 row groups per scan; two scans, `token_slots` and the hub check, and no third one
+    for the partner side); the partner side reads `tape_tokens` only, exactly the row groups whose footer
+    range holds an anchor contig, so at most one per anchor contig."""
+    q = _cold(store, sql, params)
+    con = store["con"]
+    anchors = sorted(r[0] for r in con.execute(
+        "SELECT DISTINCT contig_uid FROM token_postings WHERE release = catalog_release() AND token_id = ?", [tok]).fetchall())
+    assert {s["table"] for s in q["scans"]} <= {"token_postings", "tape_tokens", "token_dict"}, q["scans"]
+    post = _scans_of(q, "token_postings")
+    assert 1 <= len(post) <= 2 and all(s["row_groups"] <= MAX_RG_PER_KEY for s in post), _show(q)
+    near = sum(s["row_groups"] for s in _scans_of(q, "tape_tokens"))
+    assert near == _footer_row_groups(store, "tape_tokens", anchors) <= len(anchors), (_show(q), len(anchors))
+    assert q["result"][0][0] > 0
+    return q
 
 
-@pytest.mark.xfail(strict=True, raises=AssertionError, reason=B31)
-def test_partners_of_token_of_key_prunes(store):
-    _assert_prunes(_cold(store, "SELECT count(*), sum(n_pairs) FROM partners_of(token_of('nr90', ?), 10)",
-                         [store["rep"]["tokens"]["nr90_a"][0]]))
+# card D-05 first scored these two lookups at 2 row groups per token, which a neighbour query cannot meet: its
+# partner side reads the tape tokens of every anchor contig (TASKS §2), one row group per contig at most, and
+# the anchors of one token can lie on any number of contigs (100 of 300 for the family token here, 10 for the
+# NR90 token, spread by contig_uid over the 11 row groups). So the bound is per anchor contig on the partner
+# side and per token on the anchor side; that it does not grow with the release is
+# test_partners_of_reads_grow_with_the_anchors_not_the_release.
+def test_partners_of_literal_key_reads_per_anchor_contig(store):
+    """partners_of with a literal family token (COPIES loci): the bound of `_assert_partner_bound`."""
+    tok = store["rep"]["tokens"]["family_a"][1]
+    _assert_partner_bound(store, "SELECT count(*), sum(n_pairs) FROM partners_of(?, 10)", [tok], tok)
+
+
+def test_partners_of_token_of_key_reads_per_anchor_contig(store):
+    """partners_of with an NR90 key through token_of (10 loci): the bound of `_assert_partner_bound`."""
+    key = store["rep"]["tokens"]["nr90_a"][0]
+    tok = store["con"].execute("SELECT token_of('nr90', ?)", [key]).fetchall()[0][0]
+    _assert_partner_bound(store, "SELECT count(*), sum(n_pairs) FROM partners_of(token_of('nr90', ?), 10)", [key], tok)
 
 
 def _macro(store, sql: str) -> dict:

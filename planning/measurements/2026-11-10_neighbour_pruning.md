@@ -87,10 +87,22 @@ on one connection, so a later partner query can find its contigs already cached.
 | whole script, `total_s` | 310.7 s | 324.2 s | | |
 | `peak_rss_mb_queries` | 1,114 MB | 1,078 MB | | |
 
-On this small store, a partners query whose anchors cover the whole release (family, hub) costs 0.1 to
-0.17 s more than before: the partner side is Python work per anchor contig, against DuckDB's scan of
-1.5 to 2.2 M postings rows. That holds for these timings only (*measured*, 3,000 contigs); what
-scales is the row-group count.
+On this small store, cold partner queries whose anchors lie on many contigs are slower than before:
+0.252 to 0.373 s for the family (1,000 anchor contigs) and 0.848 to 1.015 s for the hub. In exchange,
+their partner side no longer grows with the release (*measured*, the cold columns above). The partner
+side is now Python work per anchor contig, where before it was DuckDB's scan of every postings row of
+the release (1.48 M and 2.22 M rows here).
+
+Crossover, *derived*: the old time grows in proportion to the release and the new one stays fixed for a
+fixed set of anchors, so the new code should be faster from about 0.373 / 0.252 x 1,000x = 1,480x for
+the family query and 1.015 / 0.848 x 1,000x = 1,200x for the hub. Inputs: the cold times above. The
+model assumes the old time is linear in postings rows, which the `rL.3` ladder supports (partner side
+0.14 s at 2.4 M slots and 1.3 s at 12 M; `2026-11-10_import_ladder/rL3.md`). The crossover itself is
+not measured.
+
+`partners_of` now needs `open_catalog`. On a plain DuckDB connection to the catalog file it fails with
+"Scalar Function with name bb_slot_tokens does not exist!", as the sequence macros already do; before
+card B-31 it worked there.
 
 The partner side now costs Python work per anchor contig. A first version that looked up one
 (contig, slot) per row took 286.1 s for the hub and 4.4 s for the family (the same script, *measured*;
@@ -116,14 +128,19 @@ contig (the test's oracle), at most one per anchor contig. Results resolved to s
 shared a row group; doubling the store moved the row-group boundaries. It is bounded by the 10 anchor
 contigs, not by the release's 11 or 22.
 
-## What still does not meet 2 row groups per key
+## Bounds and what is left
 
-- `partners_of` reads one `tape_tokens` row group per anchor contig, at most. For a token on many
-  contigs this is more than 2 per token: 7 of 7 for the family token with 1,000 loci at 1,000x, and 6
-  of 11 for the NR90 token at 100x. The two D-05 tests that score `partners_of` per token
-  (`test_partners_of_near_side_prunes_literal_key`, `test_partners_of_token_of_key_prunes`) keep their
-  `xfail` markers, and they now measure on a fresh connection. In the script's order the NR90 query ran
-  warm, after the family query had cached its contigs, and read 0 row groups.
+- `partners_of` reads at most one `tape_tokens` row group per anchor contig. For a token on many
+  contigs that is more than 2 per token: 7 of 7 for the family token with 1,000 loci at 1,000x. D-05
+  first scored the two `partners_of` lookups at 2 row groups per token, which a neighbour query cannot
+  meet. They are now tested against the bound TASKS §2 implies, on a fresh connection
+  (`test_partners_of_literal_key_reads_per_anchor_contig`, `test_partners_of_token_of_key_reads_per_anchor_contig`):
+  - the anchor-side postings read at most 2 row groups per scan;
+  - the partner side reads no postings at all;
+  - the partner side reads exactly the `tape_tokens` row groups that hold an anchor contig.
+
+  A fresh connection matters: in the script's order the NR90 query ran warm, after the family query
+  had cached its contigs, and read 0 row groups.
 - `token_of(level, key)` itself scans `token_dict`, which is sorted by `token_id` and not by
   `(level, key)`. It read 1 of 1 row group here, but at `rL.3` `token_dict` holds 11,258,843 rows
   (`2026-11-10_import_ladder/rL3.md`). The card does not cover this; it is an open question.
