@@ -17,8 +17,8 @@ never token ids (AGENTS §3.4); genome and tier come from `contig_dim` (AGENTS �
 Tables a person opens (card W-05): `hits_tsv` (one row per gene of a hit protein), `hits_faa` (one
 record per hit protein), `locus_tables` (one table per anchor locus) and `protein_fasta` (every distinct
 protein of a release). Scores are rounded to one decimal: bit scores as `%.1f`, E-values as `%.1e`.
-They are DuckDB queries over explicit file lists (the release manifest when there is one, else the
-registry layout; AGENTS §3.9), each table filtered by key with `IN (SELECT ...)` before a join, and
+They are DuckDB queries over explicit file lists (`catalog.ReleaseFiles`: the release manifest when
+there is one, else the stages of the release's `release_def`; card W-12; AGENTS §3.9), each table filtered by key with `IN (SELECT ...)` before a join, and
 the results stream out in batches.
 """
 
@@ -247,6 +247,25 @@ def release_manifest(root: Path, release: str | None) -> dict | None:
     return catalog.read_manifest(path)
 
 
+def release_files(root: Path, release: str | None, manifest=None):
+    """The release's files for a reader (card W-12): a `catalog.ReleaseFiles` as given, else
+    `ReleaseFiles.of(root, release, manifest)` (the manifest, else the `release_def` stages). ValueError, naming
+    the release and `bio-box release define`, when the release has no manifest and no `release_def`."""
+    from biobox import catalog
+
+    if isinstance(manifest, catalog.ReleaseFiles):
+        return manifest
+    if release is None:
+        raise ValueError("no release: a hit or locus export reads one release's files; name it (bio-box release define "
+                         "writes its stages)")
+    try:
+        return catalog.ReleaseFiles.of(Path(root), release, manifest)
+    except FileNotFoundError:
+        raise ValueError(f"release {release} is not defined under {root}: it has no manifest and no release_def; "
+                         f"define it with: bio-box release define --root {root} --release {release} "
+                         f"--stages S0,...") from None
+
+
 class _Store:
     def __init__(self, con, libraries: list[str]):
         self.con, self.libraries = con, libraries
@@ -294,7 +313,7 @@ def _view(con, name: str, spec_name: str, files: list[tuple[Path, dict]], cols: 
 
 class open_store:
     """A DuckDB connection with temp views over the store's relations (`_RELATIONS`) for one release, gene-call
-    version and tape version; files from `manifest` when given, else the registry layout. Threads and memory
+    version and tape version; files from `release_files` (`manifest`, else the release's stages). Threads and memory
     are capped, and spills go to a private scratch directory under `tmp` (system temp by default)."""
 
     def __init__(self, root: Path, *, release: str | None, gene_call_version: str, tape_version: str | None = None,
@@ -308,6 +327,7 @@ class open_store:
         from biobox.search.nbr import _store_files
 
         root, release, gcv, tv, manifest, threads, tmp, relations = self.args
+        manifest = release_files(root, release, manifest)  # refuses an undefined release before anything is opened
         self.scratch = Path(tempfile.mkdtemp(prefix="biobox-export-", dir=tmp))
         self.con = duckdb.connect(config={"threads": threads or EXPORT_THREADS, "memory_limit": EXPORT_MEMORY_LIMIT,
                                           "temp_directory": str(self.scratch / "duckdb")})
@@ -575,8 +595,8 @@ def _protein_fasta(root, release, gene_call_version, manifest, threads, tmp) -> 
 
 
 def contig_dims(root: Path, release: str | None, contigs: set[bytes], manifest: dict | None = None) -> dict[bytes, dict]:
-    """{contig_uid: {genome_uid, tier}} from the release's `contig_dim` for the contigs (files from `manifest`
-    when given, else the registry layout); a contig without a row is absent."""
+    """{contig_uid: {genome_uid, tier}} from the release's `contig_dim` for the contigs (files from `release_files`);
+    a contig without a row is absent."""
     import pyarrow.parquet as pq
 
     from biobox.search.nbr import _store_files
@@ -584,7 +604,7 @@ def contig_dims(root: Path, release: str | None, contigs: set[bytes], manifest: 
     if release is None or not contigs:
         return {}
     out: dict[bytes, dict] = {}
-    for path, _ in _store_files(Path(root), "contig_dim", {"release": release}, manifest):
+    for path, _ in _store_files(Path(root), "contig_dim", {"release": release}, release_files(root, release, manifest)):
         t = pq.read_table(path, columns=["contig_uid", "genome_uid", "tier"], partitioning=None,
                           filters=[("contig_uid", "in", sorted(contigs))])
         for r in t.to_pylist():
