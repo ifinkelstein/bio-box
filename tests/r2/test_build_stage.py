@@ -23,11 +23,15 @@ import dataclasses
 import gzip
 import json
 import shutil
+import subprocess
 import sys
+import threading
+from datetime import datetime
 from pathlib import Path
 
 import pyarrow.parquet as pq
 import pytest
+import yaml
 
 from biobox import catalog, cli, runstep
 from biobox import stage as bs
@@ -313,6 +317,305 @@ def test_a_build_killed_between_shards_resumes_at_the_next_shard(direct, sharded
     assert started == [*shard_names(root)[1:], SCAN, *NAMES[7:]]
     assert {k: v for k, v in records(root).items() if k in done} == done  # the plan and shard 0 did not run again
     check_sharded_equals_direct(direct, root)
+
+
+# --- shards several at a time, planned with a margin (card C-11) -----------------------------------------
+
+NOON = c08.NOON_MONDAY  # the day cap of the test profile (4) holds: the allowance of every test below
+SUNDAY_NIGHT = datetime(2026, 11, 8, 23, 0)  # the night cap (6) holds when the host is idle
+TIMEOUT = 120  # seconds a shard waits for the others it must run beside before the test fails
+
+
+def idle() -> float:
+    return 0.0
+
+
+def shard(k: int) -> str:
+    return f"{SCAN}.shard-{k:05d}"
+
+
+def patched_residues(direct):
+    """Residues per shard that cut the fixture into six or seven shards, so four jobs have work at once (the
+    plan's residues come from `shard_residues`; the measured rate gives the fixture at most two shards)."""
+    n = fixture_residues(direct["root"], "S0") // 6 + 1
+    return lambda prof: n
+
+
+class Counting:
+    """A runner that counts the shard steps running at once (`most`) and records each shard call with its
+    thread count. The first `meet` shard calls wait at a barrier until `meet` of them are running, so a build
+    that runs fewer at once breaks the barrier (after TIMEOUT) instead of passing by timing. A shard named in
+    `fail` returns that code (after the barrier) without running."""
+
+    def __init__(self, meet: int = 1, fail: dict[str, int] | None = None):
+        self.lock = threading.Lock()
+        self.alive = self.most = 0
+        self.calls: list[tuple[str, int]] = []
+        self.meet, self.fail = meet, dict(fail or {})
+        self.barrier = threading.Barrier(meet, timeout=TIMEOUT) if meet > 1 else None
+
+    def __call__(self, prof, root, stage, step, cmd, **kw) -> int:
+        if ".shard-" not in step:
+            return runner(prof, root, stage, step, cmd, **kw)
+        with self.lock:
+            self.alive += 1
+            self.most = max(self.most, self.alive)
+            self.calls.append((step, kw["threads"]))
+            first = len(self.calls) <= self.meet
+        try:
+            if first and self.barrier is not None:
+                self.barrier.wait()
+            if step in self.fail:
+                return self.fail[step]
+            return runner(prof, root, stage, step, cmd, **kw)
+        finally:
+            with self.lock:
+                self.alive -= 1
+
+
+def jobs_of(direct, root: Path, jobs: int, cpus: int) -> bs.Build:
+    return dataclasses.replace(build_of(direct, root), scan_jobs=jobs, scan_cpus=cpus)
+
+
+def profile_file(direct, prof, path: Path) -> Path:
+    path.write_text(yaml.safe_dump(dataclasses.asdict(prof)))
+    return path
+
+
+def cli_argv(direct, root: Path, prof_file: Path, *extra: str) -> list[str]:
+    argv = argv_of(direct, root)
+    argv[argv.index("--profile") + 1] = str(prof_file)
+    return argv + list(extra)
+
+
+@pytest.fixture(scope="module")
+def by_jobs(direct, tmp_path_factory):
+    """The fixture built with 1, 2 and 4 scan jobs over six or seven shards. 1 job of 4 threads and 4 jobs of
+    1 thread run through a counting runner (the shards' run-steps in this process); 2 jobs of 2 threads run
+    through the command line, where each shard is its own `bio-box run-step` process."""
+    out = {}
+    prof = small_budget(direct)
+    with pytest.MonkeyPatch.context() as mp:
+        mp.setattr(bs, "shard_residues", patched_residues(direct))
+        for jobs, cpus in ((1, 4), (4, 1)):
+            root = tmp_path_factory.mktemp(f"c11-j{jobs}") / "root"
+            count = Counting(meet=jobs)
+            assert bs.build_stage(prof, jobs_of(direct, root, jobs, cpus), run=count, clock=lambda: NOON,
+                                  load=idle) == 0
+            out[jobs] = {"root": root, "count": count, "cpus": cpus}
+        base = tmp_path_factory.mktemp("c11-j2")
+        pf = profile_file(direct, prof, base / "profile.yaml")
+        assert cli.main(cli_argv(direct, base / "root", pf, "--scan-jobs", "2", "--scan-cpus", "2")) == 0
+        out[2] = {"root": base / "root", "count": None, "cpus": 2}
+    return out
+
+
+@pytest.mark.covers("D-01")
+def test_with_1_2_and_4_scan_jobs_the_root_equals_the_unsharded_build(direct, by_jobs):
+    trees = {}
+    for jobs, b in sorted(by_jobs.items()):
+        root = b["root"]
+        assert len(shard_names(root)) >= 5, "the fixture must give four jobs work at once"
+        check_sharded_equals_direct(direct, root)
+        assert not (root / ".incoming").exists()  # nothing of the publishing area is left behind
+        trees[jobs] = c08.data(c08.tree(root))  # every file, the plan and the shard records included
+    assert trees[1] == trees[2] == trees[4]
+
+
+def test_the_plan_is_the_same_file_whatever_the_jobs_and_threads(direct, by_jobs):
+    plan = domains.scan_dir("S0", "test", "1") + "/plan.json"
+    assert (by_jobs[1]["root"] / plan).read_bytes() == (by_jobs[4]["root"] / plan).read_bytes()
+    assert (by_jobs[2]["root"] / plan).read_bytes() == (by_jobs[4]["root"] / plan).read_bytes()
+
+
+def test_shard_steps_alive_at_once_never_exceed_the_jobs_and_each_takes_its_threads(direct, by_jobs):
+    for jobs in (1, 4):
+        count, root = by_jobs[jobs]["count"], by_jobs[jobs]["root"]
+        assert count.most == jobs  # the barrier made `jobs` run at once; the count shows never more
+        assert sorted(s for s, _ in count.calls) == shard_names(root)  # each shard started once
+        assert {t for _, t in count.calls} == {by_jobs[jobs]["cpus"]}
+    # through the command line each shard is a run-step of its own, with --scan-cpus threads
+    root = by_jobs[2]["root"]
+    recs = [json.loads((root / "runs/stage=S0" / f"{n}.json").read_text()) for n in shard_names(root)]
+    assert {r["threads"] for r in recs} == {2}
+    assert all(r["argv"][r["argv"].index("--cpus") + 1] == "2" for r in recs)
+
+
+def test_shards_are_planned_at_80_percent_of_the_budget(direct, sharded):
+    assert bs.SHARD_MARGIN == 0.8
+    # derived: 300 CPU-minutes × 0.8 / 7.30 CPU-minutes per million residues = 32,876,712.3 residues
+    assert bs.shard_residues(dataclasses.replace(direct["prof"], cpu_min_per_process=300)) == 32_876_712
+    prof = small_budget(direct)
+    plan = domains.read_plan(sharded[0], "S0", "test", "1")
+    assert plan["shard_residues"] == bs.shard_residues(prof)
+    assert all(s["residues"] * bs.SCAN_CPU_MIN_PER_M / 1e6 <= 0.8 * prof.cpu_min_per_process for s in plan["shards"])
+
+
+def test_a_scan_estimated_above_80_percent_of_the_budget_is_sharded(direct, sharded, tmp_path, monkeypatch):
+    """The same margin decides whether a scan is sharded: an estimate of 90% of the budget is."""
+    root = tmp_path / "root"
+    shutil.copytree(sharded[0], root, symlinks=True, ignore=shutil.ignore_patterns("domain_scan"))
+    prof, residues = small_budget(direct), fixture_residues(root, "S0")
+    b = build_of(direct, root)
+    scan = next(s for s in bs.steps(prof, b) if s.name == SCAN)
+    for share, want in ((0.9, True), (0.7, False)):
+        monkeypatch.setattr(bs, "SCAN_CPU_MIN_PER_M", share * prof.cpu_min_per_process * 1e6 / residues)
+        assert bs._sharded(prof, b, root, scan) is want
+
+
+@pytest.mark.covers("D-03")
+def test_a_failed_shard_stops_launches_lets_running_shards_publish_and_the_next_call_runs_the_rest(
+        direct, tmp_path, monkeypatch, capsys):
+    monkeypatch.setattr(bs, "shard_residues", patched_residues(direct))
+    prof, root = small_budget(direct), tmp_path / "root"
+    count = Counting(meet=4, fail={shard(3): 3})
+    b = jobs_of(direct, root, 4, 1)
+    assert bs.build_stage(prof, b, run=count, clock=lambda: NOON, load=idle) == 3  # the failed shard's code
+    assert shard(3) in capsys.readouterr().err
+    n = len(domains.read_plan(root, "S0", "test", "1")["shards"])
+    assert n >= 5
+    assert sorted(s for s, _ in count.calls) == [shard(k) for k in range(4)]  # nothing launched after it
+    assert shard_names(root) == [shard(k) for k in range(3)]  # the shards running beside it published
+    assert not any(k.startswith((f"stage=S0/{SCAN}.json", f"stage={REL}/")) for k in records(root))
+    done = records(root)
+    started: list[str] = []  # the steps that had no run record when build-stage reached them
+
+    def recording(prof_, root_, stage, step, cmd, **kw):
+        if not (Path(root_) / "runs" / f"stage={stage}" / f"{step}.json").exists():
+            started.append(step)
+        return runner(prof_, root_, stage, step, cmd, **kw)
+
+    assert bs.build_stage(prof, b, run=recording, clock=lambda: NOON, load=idle) == 0
+    assert sorted(started[:n - 3]) == [shard(k) for k in range(3, n)]  # only the shards without a record
+    assert started[n - 3:] == [SCAN, *NAMES[7:]]  # then the merge and the release
+    assert {k: v for k, v in records(root).items() if k in done} == done
+    check_sharded_equals_direct(direct, root)
+
+
+@pytest.mark.covers("D-03")
+def test_stop_is_checked_before_each_shard_launch(direct, tmp_path, monkeypatch, capsys):
+    monkeypatch.setattr(bs, "shard_residues", patched_residues(direct))
+    prof, root = small_budget(direct), tmp_path / "root"
+
+    def stop(point: str) -> None:
+        if point.startswith(f"after:{SCAN}.shard-"):
+            (root / "STOP").write_text("")
+
+    count = Counting(meet=2)
+    assert bs.build_stage(prof, jobs_of(direct, root, 2, 2), run=count, clock=lambda: NOON, load=idle,
+                          _hook=stop) == runstep.EXIT_STOP
+    assert "STOP" in capsys.readouterr().err
+    assert sorted(s for s, _ in count.calls) == [shard(0), shard(1)]  # the two running; none launched after
+    assert 1 <= len(shard_names(root)) <= 2 and set(shard_names(root)) <= {shard(0), shard(1)}
+    (root / "STOP").unlink()
+    assert bs.build_stage(prof, jobs_of(direct, root, 2, 2), run=runner, clock=lambda: NOON, load=idle) == 0
+    check_sharded_equals_direct(direct, root)
+
+
+@pytest.mark.covers("D-03")
+def test_shards_publishing_at_once_do_not_remove_each_others_incoming_area(direct, tmp_path, monkeypatch):
+    """After its renames, run-step removes `<root>/.incoming` when it lists it empty (`_remove_leftovers`);
+    a shard that copies its outputs into `.incoming` between that listing and the `rmdir` makes the `rmdir`
+    fail, after the first shard's files are in the root and before its run record. Ordered here without
+    timing: shard 0 lists `.incoming`, then shard 1 copies (rsync, or copytree where rsync is absent, as in
+    the image), then shard 0 goes on. Both must publish."""
+    monkeypatch.setattr(bs, "shard_residues", patched_residues(direct))
+    prof, root = small_budget(direct), tmp_path / "root"
+    incoming = root.resolve() / ".incoming"
+    who = threading.local()
+    listed, copied = threading.Event(), threading.Event()
+    real_iterdir, real_run, real_copytree = Path.iterdir, subprocess.run, shutil.copytree
+
+    def iterdir(self):
+        if self == incoming and getattr(who, "step", None) == shard(0) and not listed.is_set():
+            names = list(real_iterdir(self))
+            listed.set()
+            assert copied.wait(TIMEOUT), "shard 1 never published beside shard 0"
+            return iter(names)
+        return real_iterdir(self)
+
+    def before_copy(dst) -> None:
+        if getattr(who, "step", None) == shard(1) and not copied.is_set() and shard(1) in str(dst):
+            assert listed.wait(TIMEOUT), "shard 0 never cleaned up beside shard 1"
+
+    def run_cmd(argv, *a, **k):
+        before_copy(argv[-1] if argv and str(argv[0]).endswith("rsync") else "")
+        try:
+            return real_run(argv, *a, **k)
+        finally:
+            if getattr(who, "step", None) == shard(1) and listed.is_set():
+                copied.set()
+
+    def copytree(src, dst, *a, **k):
+        before_copy(dst)
+        try:
+            return real_copytree(src, dst, *a, **k)
+        finally:
+            if getattr(who, "step", None) == shard(1) and listed.is_set():
+                copied.set()
+
+    def run_(prof_, root_, stage, step, cmd, **kw):
+        who.step = step
+        try:
+            return runner(prof_, root_, stage, step, cmd, **kw)
+        finally:
+            who.step = None
+            if step == shard(1):
+                copied.set()  # whatever happened, shard 0 waits no longer
+
+    def after_scan(point: str) -> None:
+        if point == f"after:{SCAN}":
+            raise Killed(point)
+
+    monkeypatch.setattr(Path, "iterdir", iterdir)
+    monkeypatch.setattr(runstep.subprocess, "run", run_cmd)
+    monkeypatch.setattr(runstep.shutil, "copytree", copytree)
+    with pytest.raises(Killed):
+        bs.build_stage(prof, jobs_of(direct, root, 2, 2), run=run_, clock=lambda: NOON, load=idle, _hook=after_scan)
+    assert listed.is_set() and copied.is_set()
+    n = len(domains.read_plan(root, "S0", "test", "1")["shards"])
+    assert shard_names(root) == [shard(k) for k in range(n)] and f"stage=S0/{SCAN}" in record_names(root)
+    assert not list(root.rglob("*.publishing.json"))  # no publish was left half done
+    assert not (root / ".incoming").exists()
+
+
+def test_jobs_times_threads_above_the_hours_allowance_is_refused_before_any_step(direct, tmp_path, capsys):
+    root = tmp_path / "root"
+    prof = direct["prof"]  # day cap 4, night cap 6
+    for when, load, jobs, cpus, allowance in ((NOON, 0.0, 3, 2, 4), (SUNDAY_NIGHT, 20.0, 5, 1, 4),
+                                              (SUNDAY_NIGHT, 0.0, 7, 1, 6), (NOON, 0.0, 1, 5, 4)):
+        b = jobs_of(direct, root, jobs, cpus)
+        assert bs.build_stage(prof, b, run=runner, clock=lambda: when, load=lambda: load) == runstep.EXIT_REFUSED
+        err = capsys.readouterr().err
+        assert f"--scan-jobs {jobs}" in err and f"--scan-cpus {cpus}" in err and f"{jobs * cpus}" in err
+        assert f"allows {allowance}" in err
+    for jobs, cpus in ((0, 1), (1, 0)):
+        assert bs.build_stage(prof, jobs_of(direct, root, jobs, cpus), run=runner, clock=lambda: NOON,
+                              load=idle) == runstep.EXIT_REFUSED
+        assert "at least 1" in capsys.readouterr().err
+    # at night on an idle host 3 × 2 fits the night cap of 6: refused only for the missing release definition
+    b = dataclasses.replace(jobs_of(direct, root, 3, 2), stages=None)
+    assert bs.build_stage(prof, b, run=runner, clock=lambda: SUNDAY_NIGHT, load=idle) == runstep.EXIT_REFUSED
+    assert "--scan-jobs" not in capsys.readouterr().err
+    assert c08.tree(root) == {} and records(root) == {}
+    # the command line refuses the same way (at any hour the test profile allows 4 or 6)
+    argv = cli_argv(direct, root, profile_path(direct), "--scan-jobs", "4", "--scan-cpus", "2")
+    assert cli.main(argv) == runstep.EXIT_REFUSED
+    assert "--scan-jobs 4" in capsys.readouterr().err
+    assert c08.tree(root) == {} and records(root) == {}
+
+
+def test_the_defaults_use_the_hours_allowance_and_no_more(direct, tmp_path):
+    b = build_of(direct, tmp_path / "root")
+    assert bs.scan_slots(b, 40) == (10, 4)  # the day cap
+    assert bs.scan_slots(b, 56) == (14, 4)  # the night cap
+    assert bs.scan_slots(b, 6) == (1, 4)
+    assert bs.scan_slots(b, 2) == (1, 2)  # fewer threads than the default: one job of all of them
+    assert bs.scan_slots(dataclasses.replace(b, scan_cpus=8), 40) == (5, 8)
+    assert bs.scan_slots(dataclasses.replace(b, scan_jobs=3), 40) == (3, 4)
+    assert bs.scan_allowance(direct["prof"], NOON, 0.0) == 4
+    assert bs.scan_allowance(direct["prof"], SUNDAY_NIGHT, 0.0) == 6
+    assert bs.scan_allowance(direct["prof"], SUNDAY_NIGHT, 20.0) == 4  # busy host: the day cap
 
 
 # --- refusals before any step ---------------------------------------------------------------------------

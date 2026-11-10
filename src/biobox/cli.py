@@ -26,6 +26,7 @@
     bio-box stage ncrna --root R --stage S --cm Rfam.cm.gz --cpus N [--tmp D] [--seq-stages S0,S1] [--out DIR]
     bio-box build-stage --profile P --root R --stage S --release R1 [--stages S0,S1] --genomes genomes.json
                 --objects objects.json [--library NAME VERSION HMM CUTOFF ...] [--tmp D] [--threads N]
+                [--scan-jobs J] [--scan-cpus C]
 
 `build-stage` (card C-04, `biobox.stage`) runs every `stage` step and then every `release` step of
 one stage and its release, each as a `run-step`; a second call skips what is done.
@@ -524,7 +525,7 @@ def _build_stage(a) -> int:
     b = stage.Build(root=Path(a.root), stage=a.stage, release=a.release, genomes=Path(a.genomes),
                     objects=Path(a.objects), stages=None if a.stages is None else tuple(_csv(a.stages)),
                     libraries=libs, tmp=Path(a.tmp) if a.tmp else None, threads=a.threads,
-                    gene_call_version=a.gene_call_version)
+                    gene_call_version=a.gene_call_version, scan_jobs=a.scan_jobs, scan_cpus=a.scan_cpus)
     return stage.build_stage(profile.load(a.profile), b)
 
 
@@ -652,8 +653,13 @@ def main(argv: list[str] | None = None) -> int:
     bs.add_argument("--library", nargs=4, action="append", default=[], metavar=("NAME", "VERSION", "HMM", "CUTOFF"),
                     help="a domain library to scan (repeatable; one step each, in the order given)")
     bs.add_argument("--tmp", help="scratch directory of the steps (default: <profile tmp>/scratch)")
-    bs.add_argument("--threads", type=int, help="threads of every step (default: the smaller of the profile's "
-                                                "day and night caps)")
+    bs.add_argument("--threads", type=int, help="threads of every step but the scan shards (default: the smaller "
+                                                "of the profile's day and night caps)")
+    bs.add_argument("--scan-jobs", type=int, help="scan shards run at once, each its own run-step (card C-11; "
+                                                  "default: the threads run-step allows now // --scan-cpus)")
+    bs.add_argument("--scan-cpus", type=int, help="threads of each scan shard (default 4, or the allowance if "
+                                                  "smaller); --scan-jobs × --scan-cpus may not exceed the threads "
+                                                  "run-step allows now")
     a = p.parse_args(argv)
     if a.cmd == "search" and a.action == "run" and not a.release:
         p.error("search run needs --release")

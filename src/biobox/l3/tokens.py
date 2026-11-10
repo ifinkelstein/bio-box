@@ -21,6 +21,10 @@ Writes, under `<root>/l3/`, through `biobox.io.write_table`:
     token_dict/release=<R>/part-<k>.parquet                     token_id -> level, source, key, n_slots
     tape_tokens/tape_version=<tv>/release=<R>/part-<k>.parquet  per contig: one list per level
 
+`token_dict` is sorted by `token_id`, which readers rely on (the reverse lookup token -> key prunes on
+it); within each (level, source) the rows are then in key order, so its row groups carry min/max
+statistics on `key` as well, and `catalog.TokenKeyLookup` finds a key by footer statistics (card B-34).
+
 and the release's `release_def` (`biobox.catalog.define_release`) if it has none. Only the release's
 stages are read (card B-25): tapes and domains of a stage the release does not list are ignored.
 The tape version is that of `producers` (default: the gene-call producer alone, card B-07); a
@@ -248,7 +252,7 @@ def run(root: Path, release: str, stages: list[str], gene_call_version: str = GE
                  f"JOIN (VALUES {level_names}) l(lv, level) ON l.lv = k.lv "
                  f"JOIN (VALUES {names}) s(src, name) ON s.src = k.src ORDER BY k.token_id",
             "token_dict", out / f"l3/token_dict/release={release}", EST_DICT_ROW, max_file_bytes,
-            statistics=["n_slots"])
+            statistics=["n_slots", "key"])  # key: token_of's point lookup by (level, key), card B-34
         est_tok = EST_TOKEN_ROW + EST_TOKEN_SLOT * max(1, n_slots // max(1, n_tapes))
         n_tok = _write_parts(
             con, "SELECT contig_uid, "

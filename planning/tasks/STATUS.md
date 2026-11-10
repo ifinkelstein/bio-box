@@ -5,13 +5,67 @@ The running record of the cards in [`TASKS.md`](TASKS.md). Updated at every merg
 its own branch `task/<ID>`, audited by the orchestrating session, and merged after the full suite
 passed on the integration branch.
 
-Last update: 2026-11-09, 23:00 CST. Suite on the integration branch after the B-17 merge: 861 passed, 10 skipped; golden ring
+## Handoff, 2026-11-10 about 11:45 CST
+
+Written so a new session can continue without the conversation that produced this file.
+
+**Where things are.** All merged work is on branch `plan/task-cards`, pushed to GitHub. Nothing is on
+`main`. 61 cards are merged (table below). Rules for agents are in `AGENTS.md`; cards in `TASKS.md`.
+How the work is run: one card per agent in its own git worktree on branch `task/<ID>`; tests only on
+the pod (`sh scripts/pod_pytest.sh <ID> --shards 8`); the orchestrating session audits each report,
+merges `--no-ff` into `plan/task-cards`, runs the suite on the merged tree, commits, updates this
+file, pushes, and checks the GitHub Actions result for the pushed commit. Sonnet for tier-L cards,
+Opus for the rest, at most four agents at once. Helper scripts for watching CI and pod units are in
+`scripts/orchestrator/`.
+
+**The last merge (C-11) was committed before its merged-tree suite run finished.** The run
+(`pod_pytest.sh integration --shards 8`) was in flight at handoff. C-11's own branch passed the full
+suite (1,054 passed, 10 skipped). Rerun the suite on `plan/task-cards` first.
+
+**Cards whose agents were running at handoff.** Each has a branch; a branch with commits holds real
+work, one without holds none yet. Worktrees are under `.claude/worktrees/` in the main checkout
+(`git worktree list`).
+
+| Card | Branch | State at handoff | To continue |
+|---|---|---|---|
+| A-07 CI flakes | `task/A-07`, pushed, complete | Fix done and audited. 16 of the 20 required consecutive `ci` runs on that branch were green, none red; the loop (`scripts/orchestrator/ci_repeat.sh ifinkelstein/bio-box task/A-07 20`) was still going | Check the remaining runs (`gh run list --workflow ci --branch task/A-07`); if all green, merge into `plan/task-cards`. Until then `ci` on `plan/task-cards` can fail on `test_s05_...[oom-oom]`: that is this known cause, not a new break |
+| E-01 ncRNA producer | `task/E-01`, has commits | On its pod test runs; no report yet | Read the branch; rerun its tests; finish the card's acceptance and report |
+| B-27 lookup tables | `task/B-27`, has commits | Working; no report yet | Same |
+| C-10 first real `build-stage` on the pod | `task/C-10`, no commits yet | Building on the pod in `/tmp/if2453/c10` (units `c10-*`); the Pfam scan of the 250-genome stage was running, throttled to 16 threads | Read `/tmp/if2453/c10/logs` and the run records under `/tmp/if2453/c10/root/runs`; the card says what to measure and write |
+| Source review of a paper | `docs/natcomm-sources`, no commits yet | Reading `s41467-026-79223-z` to list databases not in `planning/sources_and_sizing.md` | Rerun from the brief in card form below if nothing was committed |
+
+Brief for the source review, since it has no card: read the paper, list every database it uses or
+mentions, mark which are not in `planning/sources_and_sizing.md`, `STAGES.md`, `refdb.yaml` or
+`planning/search/05_external_modern.md` and `06_infra_inventory.md`; write
+`planning/sources_from_s41467-026-79223-z.md` and a "candidates, not yet approved" subsection in
+`sources_and_sizing.md`; add nothing to the import plan itself; no network access; sizes as the
+paper states them, with page references.
+
+**Next cards, in order.** C-12 (builds respect the hour; lost scratch; publish race in `run-step`),
+then W-13 and W-03 (searches under a pod unit; runs outside the data root: both after A-07 merges),
+B-30 (ingest by batch), then phase E after E-01. Then the merge of `plan/task-cards` into `main`,
+which the PI delegated: it waits for A-07 so that `ci` is reliably green; the merge builds the new
+image, and the `gh` token now has `read:packages` to pull it.
+
+**Larger imports** (plan approved by the PI, section below): the 10 Gbp rebuild waits for C-10's
+report; launch it with `build-stage --scan-jobs/--scan-cpus` at a total of 40 threads so it is legal
+at any hour (C-12 is not merged). The 50 Gbp build follows.
+
+**Decisions waiting for the PI:** cards 0-04, 0-05, 0-07 and the catalog byte-identity exception,
+all under "Open items for the PI" below. Decided today: DEC-24 (cluster from scratch).
+
+**On the pod now:** `rL.1`, `rL.2`, `rL.3` on `/stor` (old layout; current code cannot open them);
+C-10's build on local disk; test mirrors under `/tmp/if2453/ci`. The account's thread cap is a total
+across everything we run: 40 by day, 56 at night.
+
+Last full suite on the integration branch before the C-11 merge: 1,053 passed, 10 skipped
+(*measured*, wilkcomp02, 2026-11-10, commit `6225c32`). Older note, kept for the record: Suite on the integration branch after the B-17 merge: 861 passed, 10 skipped; golden ring
 (`--golden tests/r3`): 32 passed, 5 skipped
 (*measured*, wilkcomp02, 2026-11-10 about 03:00 CST, `sh scripts/pod_pytest.sh integration --shards 8`, in the
 pinned image; 3 min 40 s wall for the slowest shard, against 13.5 min in one process). The skips
 need samtools, bgzip, Prodigal or the golden set. Tests no longer run on the laptop (AGENTS.md §5.5).
 
-## Merged (59 cards)
+## Merged (61 cards)
 
 | Card | Merge | What it did | Audit notes |
 |---|---|---|---|
@@ -73,6 +127,8 @@ need samtools, bgzip, Prodigal or the golden set. Tests no longer run on the lap
 | C-06 | this merge | `RUNBOOK.md`: build, pause, resume, verify, search, export, clean up, limits; an R0 test checks every command in it against the real CLI parser and the limits table against the profile | Every command was run on the pod on a fixture-sized root (appendix A lists each with its last line). Not exercised: a reboot, the real 64 MiB floor and 200G cap, real Pfam (card C-10). Found four defects in running searches under a unit: card W-13 |
 | B-31 | this merge | Catalog lookups prune: a key through `token_of` reads 1 row group; digest and length macros read no scan; the neighbour query's partner side reads the tape tokens of the anchors' contigs, not the whole token level | 1,000× synthetic, cold: `token_of` postings 0.32 s to 0.09 s. Partner queries are slower cold at that size (family 0.25 s to 0.37 s) but no longer grow with the release; crossover about 1,200× to 1,480× (*derived*, not measured). The two D-05 tests with an impossible bound were replaced by tests of the per-anchor-contig bound; no xfail remains. `partners_of` now needs `open_catalog`. No real-data number: current code cannot open `rL.3`. Follow-ups: card B-34 |
 | B-24 | this merge | Clustering streams: Python peak 997 MB at 2.05 M proteins, was 8,921 MB; outputs byte-identical. Domain scan can be planned, scanned in shards and merged, and `build-stage` does that instead of refusing | The 46 GB at 10.6 M proteins and the 410 GB projection were our Python process, not MMseqs2; MMseqs2 itself is at least 5.3 GB at 2.05 M and its growth is unmeasured (PI card 0-06). Shards run one after another and are sized with no margin: card C-11, needed before a real Pfam scan |
+| B-34 | this merge | `token_of` prunes (13 row groups to 1 for a literal or one joined key at 1,000×) through footer statistics on `token_dict.key`, no new table; a catalog can be opened several times in one process; a plain DuckDB connection gets an error that names `open_catalog` | Found: the catalog `.duckdb` file was never byte-deterministic: two builds differ in about 65 bytes of DuckDB internals (file identifier, checksums, padding). Its logical content is now tested instead. The manifest, not the catalog, is the record, so this is an exception to AGENTS §4.3 to state, not a defect to fix: listed under open items. A cold `token_of` over 100 spread keys is slower than before at this size (0.059 s against 0.018 s) |
+| C-11 | this merge | `build-stage --scan-jobs J --scan-cpus C`: scan shards run J at a time, J × C within the hour's thread allowance; shards planned at 80% of the CPU-minute budget (32.9 M residues for Pfam, *derived*) | Byte-identical to the unsharded scan at J of 1, 2 and 4; a failed shard stops new launches and the next call runs only what is missing. Found and worked around a race between two steps publishing at once. Open: the allowance is fixed at the start of a build, so a night build keeps the night cap by day; lost scratch between shards and merge leaves the build stuck: card C-12 |
 
 Decisions DEC-18 to DEC-23 were approved by the PI on 2026-11-09 and are in `planning/DECISIONS.md`.
 
@@ -100,8 +156,9 @@ The thread cap is the sum over all our processes: 40 by day, 56 at night.
 |---|---|---|
 | A-07 two search tests fail intermittently on GitHub Actions | Opus | started 2026-11-10 |
 | C-10 first real `build-stage` on the pod (two stages, two releases, local disk) | Opus | started 2026-11-10 |
-| B-34 catalog follow-ups: token lookup by name, two connections, plain-connection error | Opus | started 2026-11-10 |
-| C-11 domain-scan shards several at a time, with a margin | Opus | started 2026-11-10 |
+| E-01 non-coding RNA producer (Infernal, Rfam) | Opus | started 2026-11-10 |
+| C-10 first real `build-stage` on the pod | Opus | started 2026-11-10; its Pfam scan is throttled to the day cap |
+| B-27 lookup tables for contig labels and cluster membership | Opus | started 2026-11-10 |
 
 ## Next, in order
 
@@ -128,6 +185,7 @@ probed by hand on the pod).
 - A `read:packages` credential, so the image built from `main` can be pulled on the pod.
 - Confirm the day window for the pod's thread caps (profile assumes 08:00 to 20:00 on weekdays).
 - First-10 questions (card 0-03), before the S1 gate.
+- The generated catalog file is not byte-identical between two builds of the same manifest (about 65 bytes of DuckDB internals differ; *measured*, card B-34). AGENTS §4.3 says every output is byte-identical. Proposed wording for the PI to accept: "the catalog is generated from the manifest and is excluded from byte identity; its logical content is tested".
 - Card 0-07: a cluster's id is a hash of its member set, so it changes whenever the cluster gains a protein: 39.9% of NR50 clusters lost their id from `rL.2` to `rL.3` while 94.4% of proteins stayed with their old cluster's main fragment (*measured*). Recommendation: keep the id and add a lineage table that maps each cluster to its best-overlap predecessor.
 - Card 0-05: two S5 storage budgets are exceeded (annotations 107 GB against 50; tapes plus postings 75 GB against 25 to 60), because every table now carries a 16-byte `feature_uid`. Recommendation: raise the budgets.
 - Card 0-04: keep `token_postings` self-contained (about 36 GB at GTDB scale) or drop the columns the tape already holds (about a third smaller, at the price of a join). Recommendation: keep.
