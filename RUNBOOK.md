@@ -148,16 +148,24 @@ estimated at 80% of the budget at most; it depends only on the inputs and the bu
 shards run at once, each its own `run-step`:
 
 - `--scan-cpus C`: threads per shard. Default 4.
-- `--scan-jobs J`: shards at once. Default: the allowance divided by C, rounded down.
-- The allowance is the thread count `run-step` allows when `build-stage` starts: 40 by day; 56 at
-  night and at weekends, only while the load average is at most 8.
-- J × C above the allowance is refused before any step (exit 2). The message names J, C and the
-  allowance.
-- The output is the same, byte for byte, for any J and C.
+- `--scan-jobs J`: shards at once. Default: the allowance when `build-stage` starts, divided by C,
+  rounded down.
+- The allowance is the thread count `run-step` allows: 40 by day; 56 at night and at weekends, only
+  while the load average is at most 8.
+- J × C above the allowance when `build-stage` starts is refused before any step (exit 2). The
+  message names J, C and the allowance.
+- The allowance is read again before each step and before each shard launch. A build started at
+  night keeps to 40 threads once the day window opens: shards already running finish, and new ones
+  start only while the shards in flight fit the allowance, so fewer run at once. If one shard's C
+  is above the allowance, the launch waits (the log says `holding it`) and starts when the hour or
+  the load allows. The same holds for a step whose `--threads` is above the allowance; the default
+  `--threads` (the smaller cap) never waits.
+- The output is the same, byte for byte, for any J and C, and whenever the allowance changes.
 
-The unit's CPU quota is `pod_run.sh --threads`, which defaults to the day cap (40). For a night build
-at the night cap, pass `--threads 56` to `pod_run.sh` too. This fixture launch runs two shards of one
-thread at once; the scratch profile allows 2 threads:
+The unit's CPU quota is `pod_run.sh --threads`, which defaults to the profile's night cap
+(`max_threads_night`, 56), the most any hour allows. It is only a ceiling, fixed at launch:
+`build-stage` holds the limit of the hour itself, before each step and before each shard launch.
+This fixture launch runs two shards of one thread at once; the scratch profile allows 2 threads:
 
 ```bash
 bash "$TREE/scripts/pod_run.sh" --profile "$PROFILE" --image "$IMAGE" --digest "$DIGEST" --bind /tmp/if2453 --env PYTHONPATH="$PYTHONPATH_POD" --threads 2 c11-build build-stage --profile "$PROFILE" --root "$ROOT" --stage S0 --release rC6.1 --stages S0 --genomes "$WORK/inputs/genomes-S0.json" --objects "$WORK/inputs/objects-S0.json" --library test 1 "$WORK/inputs/lib.hmm" gathering --scan-jobs 2 --scan-cpus 1
@@ -219,10 +227,11 @@ What `run-step` leaves, and what it does at the next start:
 |---|---|---|
 | `$BBTMP/staging/<stage>.<step>/` | the step was killed, failed or stopped | removes it and runs the step again |
 | `$BBTMP/scratch/...` | a builder was killed | nothing; a builder makes a new scratch directory |
+| a scan shard's run missing from `$BBTMP/scratch/biobox-domain-scan/<plan>/` while its run record exists | scratch was cleared (a reboot) or damaged between the shards and the merge | `build-stage`, before the merge, scans exactly those shards again into scratch (log: `scanning it again`); the new run must have the sha256 the shard's published record holds, else the build stops naming the shard (tell the PI) |
 | `$ROOT/runs/stage=<S>/<step>.json` (run record) | the step finished | skips the step if every listed output is in the root with its recorded size |
 | `$ROOT/runs/stage=<S>/<step>.publishing.json` (intent file) | killed while publishing | finishes the publish, or undoes it, then reruns (see below) |
 | `$ROOT/.incoming/<stage>.<step>/` | killed while publishing | uses it to finish the publish, then removes it |
-| `$ROOT/.incoming/_build-stage.<stage>.<scan step>/` (empty) | `build-stage` was killed while scan shards ran | nothing; `build-stage` removes it when the shards of its next call end |
+| `$ROOT/.incoming/` (empty) | a step was killed after removing its own directory there, or the root's filesystem cannot lock a directory (NFS) | nothing; the next step to publish removes it when it is empty and no other step is creating into it |
 
 An intent file lists every output with its sha256. At the next start, an output that is in the
 root with the listed sha256 is kept, and one still in `.incoming` is moved in. If every output is
@@ -451,8 +460,8 @@ find "$BBTMP/logs" -name '*.log' -mtime +30
 ## 10. Limits
 
 Copied from `profiles/wilkcomp02.yaml` (the profile) and `AGENTS.md` section 7 (AGENTS), each
-with its source. `scripts/pod_run.sh` reads `mem_scope`, `max_threads_day`, `nice_monolithic` and
-`tmp` from the profile; `run-step` reads the rest. The test `tests/r0/test_runbook.py` fails when
+with its source. `scripts/pod_run.sh` reads `mem_scope`, `max_threads_night` (the unit's CPU
+quota), `nice_monolithic` and `tmp` from the profile; `run-step` and `build-stage` read the rest. The test `tests/r0/test_runbook.py` fails when
 a profile value is missing from this table.
 
 | Limit | Value | Source |
@@ -466,7 +475,8 @@ a profile value is missing from this table.
 | Nice | 19 (one big process), 15 (many small ones) | profile `nice_monolithic`, `nice_fanout`; AGENTS 7.2 says 19 |
 | CPU-minutes per process | 300 | profile `cpu_min_per_process`; AGENTS 7.2 |
 | Scan shard size | 32,876,712 residues: 80% of `cpu_min_per_process` (300) at 7.30 CPU-minutes per million residues (derived: 300 × 0.8 / 7.30 × 10^6; the rate measured for Pfam on wilkcomp02, 2026-11-10) | `SHARD_MARGIN` and `SCAN_CPU_MIN_PER_M` in `src/biobox/stage.py`; card C-11 |
-| Scan shards at once | `--scan-jobs` J × `--scan-cpus` C at most the threads `run-step` allows when `build-stage` starts (40 by day, 56 at night when idle); defaults C = 4, J = allowance // C (10 by day, 14 at night) | `scan_slots` in `src/biobox/stage.py`; card C-11 |
+| Scan shards at once | `--scan-jobs` J × `--scan-cpus` C at most the threads `run-step` allows when `build-stage` starts (40 by day, 56 at night when idle); defaults C = 4, J = allowance // C (10 by day, 14 at night). The allowance is read again before each step and before each shard launch; a launch that would pass it waits | `scan_slots` and `_launch` in `src/biobox/stage.py`; cards C-11, C-12 |
+| Unit CPU quota | the night cap, 56: a ceiling fixed at launch; `build-stage` holds the limit of the hour | `scripts/pod_run.sh --threads`, profile `max_threads_night`; card C-12 |
 | Smallest data file | 64 MiB (67108864 bytes), except tables the registry marks `small_ok` | profile `small_file_floor_bytes`; AGENTS 7.3 says 64 MB |
 | Work directory | `/tmp/if2453/bio-box` | profile `tmp`; AGENTS 7.3 |
 | Durable results | `/stor/work/Wilke/if2453/all-the-data` | profile `durable` |
@@ -488,9 +498,8 @@ The scratch profile used for the tests in this file differs from the real one in
 | Limit | What happens | Card |
 |---|---|---|
 | Ingest of a stage over about 60 Gbp | `build-stage` refuses before any step (exit 2): one ingest process runs at about 3.7 Mbp/s (measured, wilkcomp02), so it would pass 300 CPU-minutes. Split the stage into smaller stages | B-30 |
-| The scan allowance is decided once | `build-stage` checks `--scan-jobs` × `--scan-cpus` against the allowance when it starts. A build started at night with 56 threads of shards keeps 56 after 08:00 on a weekday. If a build will run into the day, start it with the day allowance (`--scan-jobs 10 --scan-cpus 4`) | C-11 |
 | Shard size is Pfam's | shards are cut at 80% of the budget at Pfam's rate. A library more than 1.25 times slower per residue than Pfam (derived: 1 / 0.8) passes 300 CPU-minutes per shard, and the run record says `over_cpu_budget`. Lower `--scan-cpus` does not help, since the budget counts CPU-minutes | C-11 |
-| `pod_run.sh` CPU quota | the unit's quota is `--threads` of `pod_run.sh` (default 40), whatever `--scan-jobs` × `--scan-cpus` is. At night pass `--threads 56` to use the night cap | C-07, C-11 |
+| `pod_run.sh` CPU quota | the unit's quota is `--threads` of `pod_run.sh` (default the night cap, 56), fixed at launch, whatever `--scan-jobs` × `--scan-cpus` is. By day it is above the day cap: the day cap is held by `build-stage` and `run-step`, not by the quota. A `run-step` launched alone keeps the thread count it chose at its start until it ends (at most 300 CPU-minutes) | C-07, C-11, C-12 |
 | The image on the pod is old | the pod has the test image `bio-box-test_74b3e05.sif`, not an image built from the current source. The current source is bound in with `PYTHONPATH` (section 0) | 0-02 |
 | `rL.*` releases on `/stor` | they are in the pre-B-17 layout: current readers and `verify_manifest` may not read them. `rL.1` and `rL.2` also fail verification on one file, `l0/l0_manifest.parquet` | B-17, B-22 |
 
@@ -502,10 +511,6 @@ Found while writing this runbook, no card yet (reported to the PI):
 - `search status` of a run started with `--wait` finds nothing until the run has ended.
 - After `systemctl --user stop`, the unit's log has no `pod_run: ... exited` line.
 - The card text says `bio-box doctor`; the command is `python -m biobox.doctor`.
-- A scan's shard runs live in scratch (`$BBTMP/scratch/biobox-domain-scan/`) until the merge. If
-  scratch is cleared after some shards have published (a reboot clears `/tmp`), the merge refuses,
-  because those runs are gone, and their shards are not scanned again, because their run records
-  exist. Found by card C-11, from the code of `domains.merge` and `domains.scan_shard`; not run.
 
 ## 12. Contact
 
