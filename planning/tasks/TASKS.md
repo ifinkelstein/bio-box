@@ -276,6 +276,12 @@ Files: `src/biobox/ledger.py`, the builders that call `ledger.write`, every read
 Do: `ledger.write` accepts an iterator of rows and writes through `io.write_table` (today each builder holds one ledger dict per contig of the stage; S6 has 111.5 M contigs). Tables that are still one `part-0.parquet` per stage (`feature`, `feature_protein`, `protein_occurrence`, `igr`, `contig_index`, `contig_occurrence`) are cut into `part-<k>.parquet` at `layout.MAX_FILE_BYTES` while streaming, as `tapes.run` and `genecall._write_protein_seq` already do; every reader globs `part-*.parquet`.
 Accept: with `max_file_bytes` forced small on the fixture, each table has several parts whose concatenation equals the single-file output row for row; suite green.
 
+### B-21 Per-domain family postings
+**M** · Depends: B-11 (split out of B-10 on 2026-11-09)
+Files: `src/biobox/l3/tokens.py`, `src/biobox/l3/postings.py`, tests
+Do: B-10 writes one posting per slot and level from `tape_tokens`, so a multi-domain protein is indexed only by its canonical family. Extend `token_dict` to every model with an included domain on a slot (not only canonical ones), and write one family posting per included domain with `seg_idx` = the domain's rank by `env_start`; `tape_tokens.family_tokens` keeps the canonical family. Then `fusions_of(a, b)` finds two families on one slot.
+Accept: on a fixture protein with two Pfam domains, both families have a posting on the same slot with `seg_idx` 0 and 1; token ids of cluster levels are unchanged.
+
 ### B-20 IGR version names its producer set
 **L** · Depends: B-07
 Files: `src/biobox/l1/igr.py`, `src/biobox/provenance.py`, tests
