@@ -215,6 +215,66 @@ def test_bytes_do_not_depend_on_workers(tmp_path):
     assert _outputs(a) == _outputs(b)
 
 
+def _fragments(path: Path, n: int = 240, seed: int = 32) -> list[bytes]:
+    """`n` distinct fragments of 500 to 3,000 bp cut from the fixture genomes at seeded positions (short
+    contigs with real genes, most of them partial), written to the FASTA file `path`."""
+    import random
+
+    rng = random.Random(seed)
+    genomes = [fasta.read(FIX / o["file"])[0].seq for o in OBJS]
+    frags: dict[bytes, bytes] = {}
+    while len(frags) < n:
+        s = rng.choice(genomes)
+        ln = rng.randrange(500, 3001)
+        st = rng.randrange(0, len(s) - ln)
+        frags.setdefault(ids.contig_uid(s[st : st + ln]), s[st : st + ln])
+    recs = list(frags.values())
+    path.write_bytes(b"".join(b"\n".join(fasta.format_record(f"f{i}", r, 80)) + b"\n" for i, r in enumerate(recs)))
+    return recs
+
+
+@pytest.mark.covers("D-01", "LY-08")
+def test_short_contigs_go_to_workers_in_batches_bounded_by_bases(tmp_path, monkeypatch):
+    # card B-32: with many one-contig genomes, a task holds many genomes, up to `batch_bases` bases, so the
+    # number of tasks follows the bases, not the genome count; the output bytes depend neither on the
+    # batch size nor on the worker count
+    import biobox.l1.genecall as gc
+
+    src = tmp_path / "frags.fna"
+    recs = _fragments(src)
+    genomes = [GenomeInput((ids.contig_uid(r),), 11, kind="prokaryote") for r in recs]
+    length = {ids.contig_uid(r): len(r) for r in recs}
+    total, longest, batch_bases = sum(length.values()), max(length.values()), 50_000
+    tasks: list[list] = []
+    real = gc._call_batch
+
+    def counting(store, batch):
+        tasks.append(list(batch))
+        return real(store, batch)
+
+    monkeypatch.setattr(gc, "_call_batch", counting)  # the in-process path (workers=1) calls it by name
+
+    def build(name, **kw):
+        root = tmp_path / name
+        ingest([SourceObject(src, "frags", "1")], root, "S0")
+        return run(root, "S0", genomes, **kw), _outputs(root)
+
+    want = build("a", batch_bases=batch_bases)
+    assert want[0]["genes"] > len(genomes) / 2
+    assert [g for b in tasks for g in b] == genomes  # every genome once, in input order
+    held = [sum(length[cu] for g in b for cu in g.contig_uids) for b in tasks]
+    assert all(h <= batch_bases for h in held)
+    assert all(h > batch_bases - longest for h in held[:-1])  # a batch is cut only when the next genome overflows it
+    assert len(tasks) <= total // (batch_bases - longest) + 1 < len(genomes) / 10
+    tasks.clear()
+    assert build("b", batch_bases=1) == want  # a genome larger than the batch is a task alone
+    assert len(tasks) == len(genomes)
+    for i, kw in enumerate(({"workers": 3}, {"workers": 3, "batch_bases": 1}, {"workers": 3, "batch_bases": 10**12})):
+        assert build(f"w{i}", **kw) == want, kw
+    with pytest.raises(ValueError, match="batch_bases"):
+        run(tmp_path / "a", "S1", genomes, batch_bases=0)
+
+
 @pytest.mark.covers("D-01")
 def test_worker_exception_propagates_and_publishes_nothing(tmp_path):
     from dataclasses import replace
