@@ -82,7 +82,7 @@ Last full suite on the integration branch before the C-11 merge: 1,053 passed, 1
 pinned image; 3 min 40 s wall for the slowest shard, against 13.5 min in one process). The skips
 need samtools, bgzip, Prodigal or the golden set. Tests no longer run on the laptop (AGENTS.md §5.5).
 
-## Merged (64 cards)
+## Merged (65 cards)
 
 | Card | Merge | What it did | Audit notes |
 |---|---|---|---|
@@ -149,6 +149,7 @@ need samtools, bgzip, Prodigal or the golden set. Tests no longer run on the lap
 | A-07 | this merge | Two intermittent `ci` failures fixed at their causes: the injected-oom test no longer races a 3 s wall clock (a memory-capped scope takes 4.5 to 5.2 s to kill at 4 GB, *measured*); a runner counts as live only if it holds the lock and its process is not exiting (the lock outlives the main thread by 25 to 59 ms, *measured* over 50 kills) | 20 consecutive green `ci` runs on its branch. Also fixed: an oom fault that was not stopped was reported as `oom`; it now ends `failed: that limit is not enforced`. Not established: that GitHub's runner takes the scope path (inferred) |
 | C-10 | `2b8e421`+1 | First real `build-stage` run on the pod with the real profile: 1,947 phages and 250 prokaryotes, two releases, both verify; all 24 run records show the inherited 200 G cap | The 250-genome stage equals the earlier ladder build gene for gene (927,920 genes, 918,765 proteins, 764,935 IGRs; all compared). STOP, a repeat call and a mid-step kill behave as on the fixture. Ran the code from before B-24/C-11, so the sharded scan inside `build-stage` was not exercised. Seven defects: card C-13 |
 | B-27 | this merge | Lookup tables `contig_label` (per stage, by contig) and `member_cluster` (per release, by level then protein); exports and `nbr summarize` read them | On the real 10 Gbp release a protein's cluster lookup read 1 of 173 row groups in 0.04 s, against 173 of 173 in 0.51 s (*measured*, with the first sort order; the final order reads up to 3). Every export byte-identical. The audit changed the sort to (level, member) so a many-neighbour summary reads one level's half. `member_cluster` is about 860 MB at 10 Gbp. Joined-key lookups on the multi-stage label view still scan |
+| E-01 | this merge | ncRNA producer: Infernal `cmsearch` with Rfam at the fixed Z, hits at or above GA become `feature` rows (producer `infernal-1.1.5-rfam-15.1`) and `l1_ncrna` rows; `bio-box stage ncrna` | Oracle: the `cmsearch` binary's own table, parsed separately. A hit across the origin of a circular contig is found once. Byte-identical at 1 and 4 threads. **Cost: 1,319 bases per CPU-second with full Rfam: about 2,100 CPU-hours for 10 Gbp, five times Pfam** (*derived*). Keeps every overlapping hit (seven rRNA models on one operon): PI card 0-08. Not in `build-stage` and not sharded: card E-07 |
 
 Decisions DEC-18 to DEC-23 were approved by the PI on 2026-11-09 and are in `planning/DECISIONS.md`.
 
@@ -207,6 +208,7 @@ probed by hand on the pod).
 - Confirm the day window for the pod's thread caps (profile assumes 08:00 to 20:00 on weekdays).
 - First-10 questions (card 0-03), before the S1 gate.
 - The generated catalog file is not byte-identical between two builds of the same manifest (about 65 bytes of DuckDB internals differ; *measured*, card B-34). AGENTS §4.3 says every output is byte-identical. Proposed wording for the PI to accept: "the catalog is generated from the manifest and is excluded from byte identity; its logical content is tested".
+- Card 0-08: ncRNA. Keep every overlapping Rfam hit or apply clan competition (recommended: clan competition, one tape slot per gene); scan full Rfam everywhere (about 2,100 CPU-hours per 10 Gbp, five times Pfam) or a curated prokaryote and phage subset (recommended).
 - Card 0-07: a cluster's id is a hash of its member set, so it changes whenever the cluster gains a protein: 39.9% of NR50 clusters lost their id from `rL.2` to `rL.3` while 94.4% of proteins stayed with their old cluster's main fragment (*measured*). Recommendation: keep the id and add a lineage table that maps each cluster to its best-overlap predecessor.
 - Card 0-05: two S5 storage budgets are exceeded (annotations 107 GB against 50; tapes plus postings 75 GB against 25 to 60), because every table now carries a 16-byte `feature_uid`. Recommendation: raise the budgets.
 - Card 0-04: keep `token_postings` self-contained (about 36 GB at GTDB scale) or drop the columns the tape already holds (about a third smaller, at the price of a join). Recommendation: keep.

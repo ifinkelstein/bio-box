@@ -9,7 +9,9 @@ the ledgers, equal the container lock: `uv.lock` for Python packages, the conda 
 An `igr_version` is `<tape_version>-igr1` (card B-20) and is checked through its tape version, as below.
 A `tape_version` names no tool versions (card B-07): it is resolved to its producers through the
 manifest's `tape_version_def` files, which must hash to it (`biobox.l3.tapes.tape_version`), and
-each producer must name its tool versions as a gene-call version does and equal the lock.
+each producer must name its tool versions as a gene-call version does and equal the lock. The ncRNA
+producer (card E-01) is `infernal-<v>-rfam-<v>`: Infernal's version must be the conda pin, and the Rfam
+library's the version `refdb.yaml` freezes (the lock includes the refdb libraries for this).
 """
 
 from __future__ import annotations
@@ -25,7 +27,9 @@ from pathlib import Path
 import yaml
 
 REPO = Path(__file__).resolve().parents[2]
-NATIVE = {"mmseqs2": ["mmseqs", "version"]}
+NATIVE = {"mmseqs2": ["mmseqs", "version"], "infernal": ["cmsearch", "-h"]}
+# native tools whose version is one line of their output, not all of it: the line's first group (card E-01)
+NATIVE_VERSION_RE = {"infernal": re.compile(r"^# INFERNAL (\S+) ", re.M)}
 
 # table -> partition key that names the version its rows were made under
 VERSION_PARTITION = {
@@ -35,6 +39,7 @@ VERSION_PARTITION = {
     "protein_occurrence": "gene_call_version",
     "igr": "igr_version",
     "l1_domains": "library",
+    "l1_ncrna": "producer",
     "cluster_member": "release",
     "cluster_member_aln": "release",
     "contig_tapes": "tape_version",
@@ -45,8 +50,11 @@ VERSION_PARTITION = {
 }
 # ledger steps whose output depends on a tool, and the tools they must record
 STEP_TOOLS = {"ingest": ("pyarrow",), "tape-*": ("pyarrow",), "genecall": ("pyrodigal", "pyrodigal-gv", "pyarrow"),
-              "domains-*": ("pyhmmer", "pyarrow"), "cluster": ("mmseqs2", "pyarrow")}
+              "domains-*": ("pyhmmer", "pyarrow"), "cluster": ("mmseqs2", "pyarrow"),
+              "ncrna-*": ("infernal", "rfam", "pyarrow")}
 GENE_CALL_RE = re.compile(r"^pyrodigal-(?P<pyrodigal>[^-]+)-gv-(?P<gv>[^-]+)-p\d+$")
+# the ncRNA producer (card E-01, biobox.l1.ncrna): Infernal's version and the Rfam library's
+NCRNA_RE = re.compile(r"^infernal-(?P<infernal>[^-]+)-rfam-(?P<rfam>[^-]+)$")
 
 
 def tool_versions(*names: str) -> dict[str, str]:
@@ -57,14 +65,22 @@ def tool_versions(*names: str) -> dict[str, str]:
             exe = shutil.which(NATIVE[n][0])
             if exe is None:
                 raise FileNotFoundError(f"{NATIVE[n][0]} not on PATH")
-            out[n] = subprocess.run([exe, *NATIVE[n][1:]], check=True, capture_output=True, text=True).stdout.strip()
+            text = subprocess.run([exe, *NATIVE[n][1:]], check=True, capture_output=True, text=True).stdout.strip()
+            if n in NATIVE_VERSION_RE:
+                m = NATIVE_VERSION_RE[n].search(text)
+                if m is None:
+                    raise ValueError(f"{exe}: no {n} version in the output of {' '.join(NATIVE[n])}")
+                text = m[1]
+            out[n] = text
         else:
             out[n] = metadata.version(n)
     return out
 
 
 def locked_versions(repo: Path = REPO) -> dict[str, str]:
-    """The container lock: uv.lock packages plus the conda pins (`name=version`)."""
+    """The container lock: uv.lock packages plus the conda pins (`name=version`), and the reference
+    libraries frozen in `refdb.yaml` (`rfam`: "15.1"; card E-01 records the library in its ledger). A
+    package name never clashes with a library name; a clash keeps the package's version."""
     lock = tomllib.loads((repo / "uv.lock").read_text())
     out = {p["name"]: p["version"] for p in lock["package"] if "version" in p}
     env = yaml.safe_load((repo / "container" / "environment.yml").read_text())
@@ -72,13 +88,21 @@ def locked_versions(repo: Path = REPO) -> dict[str, str]:
         if isinstance(dep, str) and "=" in dep:
             name, version = dep.split("=", 1)
             out[name.strip()] = version.split()[0]
+    for db in refdb_libraries(repo):
+        out.setdefault(db["name"], db["version"])
     return out
+
+
+def refdb_libraries(repo: Path = REPO) -> list[dict]:
+    """The reference libraries of `refdb.yaml` (DEC-12): name, version (as a string), file, sha256."""
+    doc = yaml.safe_load((repo / "refdb.yaml").read_text())
+    return [{**db, "version": str(db["version"])} for db in doc.get("databases", [])]
 
 
 def _step_tools(step: str) -> tuple[str, ...] | None:
     if step in STEP_TOOLS:
         return STEP_TOOLS[step]
-    for prefix in ("domains-", "tape-"):  # one ledger per library and per tape version
+    for prefix in ("domains-", "tape-", "ncrna-"):  # one ledger per library, tape version and ncRNA producer
         if step.startswith(prefix):
             return STEP_TOOLS[prefix + "*"]
     return None
@@ -151,6 +175,17 @@ def _gene_call_problems(where: str, what: str, v: str, lock: dict[str, str]) -> 
     return []
 
 
+def _producer_problems(where: str, what: str, p: str, lock: dict[str, str]) -> list[str]:
+    """A feature producer names its tool versions: the ncRNA producer (`NCRNA_RE`, card E-01) Infernal's and
+    the Rfam library's, which must equal the lock; any other producer is a gene-call version."""
+    m = NCRNA_RE.match(p)
+    if m is None:
+        return _gene_call_problems(where, what, p, lock)
+    if (m["infernal"], m["rfam"]) != (lock.get("infernal"), lock.get("rfam")):
+        return [f"{where}: {what} differs from the lock (infernal {lock.get('infernal')}, rfam {lock.get('rfam')})"]
+    return []
+
+
 def _tape_version_problems(manifest: dict, root: Path, lock: dict[str, str]) -> list[str]:
     """C-08 for tape versions: each is defined by a `tape_version_def` file of the manifest that
     hashes to it, and each of its producers names tool versions equal to the lock."""
@@ -174,7 +209,7 @@ def _tape_version_problems(manifest: dict, root: Path, lock: dict[str, str]) -> 
             problems.append(f"{f['path']}: tape_version_def lists {producers}, which does not hash to tape_version={tv}")
             continue
         for p in producers:
-            problems += _gene_call_problems(f["path"], f"tape_version={tv} producer {p}", p, lock)
+            problems += _producer_problems(f["path"], f"tape_version={tv} producer {p}", p, lock)
     for f in manifest["files"]:
         tv = f["partitions"].get("tape_version")
         if tv is not None and f["table"] != "tape_version_def" and tv not in defined:

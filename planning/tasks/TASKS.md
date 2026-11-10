@@ -108,6 +108,11 @@ Evidence: `planning/measurements/2026-11-10_postings_bytes.md`. A posting is 35.
 Options: (a) keep every column: a neighbour query needs only postings, no join; (b) drop `start`, `end`, `strand`, `n_slots`, `is_circular`, `contig_len`, which the tape holds: 32.6% smaller (*derived*), and every coordinate or distance question joins the tape; (c) drop only `contig_len`, `n_slots`, `is_circular` (contig attributes, arguably against AGENTS §3.6): 9.4% smaller (*derived*: 3.35 of 35.7), with a join to `contig_dim` or the tape for wrap-around distances only.
 Recommendation of the orchestrating session: (a) for now. 36 GB is small beside Pfam scan cost and sequence shards, and the measured queries are fast because they do not join. Revisit only if a budget is missed.
 
+### 0-08 Non-coding RNA: which hits to keep, and whether to scan everything
+**H** (PI) · Depends: E-01 · Evidence: `planning/measurements/2026-11-10_ncrna_rate.md` (*measured*, wilkcomp02, 2026-11-10)
+Two questions. (1) Overlapping hits. The producer keeps every `cmsearch` hit at or above its model's GA cutoff, because neither the spec nor a decision row says otherwise. On one small genome, four small-subunit rRNA models and three large-subunit models all hit the same operon, and tRNA and tRNA-Sec models hit overlapping loci. Each distinct locus becomes one feature and one tape slot, so overlapping models put several slots where there is one gene. Rfam's own practice is clan competition: within a clan, keep the best-scoring hit per locus. Options: (a) keep all hits (today); (b) clan competition before features are written, keeping the losing hits in `l1_ncrna` flagged but off the tape. (2) Cost. Full Rfam 15.1 scans at 1,319 bases per CPU-second on the golden set (*derived* from measured CPU time): about 2,100 CPU-hours for 10 Gbp and 10,500 for 50 Gbp (*derived*), five times the Pfam scan, with up to 12.3 GiB per `cmsearch` process. Options: (a) full Rfam everywhere; (b) a curated subset (rRNA, tRNA, tmRNA, RNase P, SRP, riboswitches and other models with bacterial, archaeal or phage hits) with full Rfam on the golden set only; (c) full Rfam on species representatives only.
+Recommendation of the orchestrating session: (1b) and (2b): the tape should carry one slot per gene, and a five-fold cost over Pfam is not justified for models that cannot hit prokaryotes. Both need the PI's word because they define what an ncRNA feature is.
+
 ### 0-07 What names a protein cluster from one release to the next
 **H** (PI) · Depends: DEC-24 · Evidence: `planning/measurements/2026-11-10_cluster_id_churn.md` (*measured*, wilkcomp02, 2026-11-10, releases `rL.1`, `rL.2`, `rL.3`)
 `cluster_uid` is a hash of the cluster's whole member set, so a cluster that gains one protein gets a new id. From `rL.2` to `rL.3` (2.05 M to 10.6 M proteins), 12.4% of NR90 clusters and 39.9% of NR50 clusters lost their id, and 44.0% of carried-over proteins have a new NR50 id; yet 94.4% of those proteins still sit with the largest fragment of their old cluster (99.6% at NR90), and three quarters of the NR50 clusters that lost their id only gained members. Representatives are not stable either: 30.9% of carried-over proteins have a new NR50 representative. Among NR50 clusters of at least 10 members, 29% were split. So today nobody can follow "the same family" across releases by `cluster_uid`, although the members mostly stay together.
@@ -662,6 +667,13 @@ Accept: under 5 minutes in CI.
 Files: `src/biobox/l1/ncrna.py`+, `src/biobox/registry/schemas.py` (`l1_ncrna`), `tests/r2/test_micro_s0_ncrna.py`+
 Do: `cmsearch` with Rfam 15.1 at `Z_nt` (DEC-04) and each model's GA cutoff over contigs; hits become `feature` rows (kind 2, producer `infernal-1.1.5-rfam-15.1`) and `l1_ncrna` rows keyed by `feature_uid`.
 Accept: oracle: the `cmsearch` binary's tabular output on the fixture; tapes with both producers build.
+
+### E-07 ncRNA scan in shards, and in `build-stage`
+**M** · Depends: E-01, C-12, PI card 0-08 (which hits, which models)
+Files: `src/biobox/l1/ncrna.py`, `src/biobox/stage.py`, `src/biobox/cli.py` (`stage ncrna plan|shard|merge`, `build-stage --ncrna-cm`), tests, `RUNBOOK.md`
+Why: one `cmsearch` process scans about 23.7 Mbp inside the 300 CPU-minute budget (*derived* from 1,319 bases per CPU-second, *measured*), so any real stage needs shards; and the producer is not in `build-stage`'s step list.
+Do: shard the ncRNA scan as card B-24 did the domain scan (plan by cumulative bases over contigs sorted by `contig_uid`, one process per shard, merge in sort order, byte-identical to the unsharded run), reuse C-11's shard pool with a memory term (each `cmsearch` peaked at 12.3 GiB: jobs × 13 GiB must fit the unit's cap); fill the `features` slot of `build-stage` when `--ncrna-cm` is given; pass both producers to the IGR and tape steps, which changes the tape version by design.
+Accept: sharded equals unsharded on the fixture; a `build-stage` run with and without `--ncrna-cm` gives two tape versions and the gene-call tables are byte-identical between them.
 
 ### E-02 Rfam spike-in panel (G-04)
 **L** · Depends: E-01

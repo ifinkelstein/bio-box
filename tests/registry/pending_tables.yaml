@@ -3,7 +3,6 @@
 pending:
   l1_genes: data_layer_and_tests.md §1 (L1 kind=genes)
   l1_domains_projected: data_layer_and_tests.md §2B.5
-  l1_ncrna: data_layer_and_tests.md §1 (L1 kind=ncrna)
   l1_systems: PLAN.md §3.2 (DefenseFinder, PADLOC, CRISPRCasTyper sidecars)
   pair_stats: PLAN.md §4.3
   pangenome_planes: PLAN.md §4.4

@@ -23,6 +23,7 @@
     bio-box stage domains plan --root R --stage S --library L --library-version V --hmm F --cutoff C --shard-residues N
     bio-box stage domains shard --root R --stage S --library L --library-version V --hmm F --shard K --cpus N --tmp D
     bio-box stage domains merge --root R --stage S --library L --library-version V --tmp D
+    bio-box stage ncrna --root R --stage S --cm Rfam.cm.gz --cpus N [--tmp D] [--seq-stages S0,S1] [--out DIR]
     bio-box build-stage --profile P --root R --stage S --release R1 [--stages S0,S1] --genomes genomes.json
                 --objects objects.json [--library NAME VERSION HMM CUTOFF ...] [--tmp D] [--threads N]
                 [--scan-jobs J] [--scan-cpus C]
@@ -302,7 +303,7 @@ def _run_step(a) -> int:
 
 
 RELEASE_STEPS = ("define", "cluster", "tokens", "postings", "dim", "manifest", "catalog")
-STAGE_STEPS = ("inputs", "ingest", "genecall", "igr", "tapes", "domains")
+STAGE_STEPS = ("inputs", "ingest", "genecall", "igr", "tapes", "domains", "ncrna")
 DOMAIN_ACTIONS = ("plan", "shard", "merge")  # `stage domains plan|shard|merge` (card B-24)
 OUT_HELP = ("output root (card C-08): every output goes under it at its root-relative path; default "
             "$BIOBOX_STAGING when set (bio-box run-step sets it and publishes from it), else --root")
@@ -475,6 +476,12 @@ def _stage_step(a, root: Path, out: Path) -> dict:
         kw = {} if a.max_slots is None else {"max_slots": a.max_slots}
         return tapes.run(root, a.stage, gene_call_version=a.gene_call_version, producers=_csv(a.producers), tmp=tmp,
                          out=out, **kw, **mfb)
+    if a.step == "ncrna":  # card E-01
+        from biobox.l1 import ncrna
+
+        if not a.cm:
+            raise ValueError("stage ncrna needs --cm")
+        return ncrna.run(root, a.stage, Path(a.cm), a.cpus, tmp=tmp, out=out, seq_stages=_csv(a.seq_stages), **mfb)
     from biobox.l1 import domains
 
     need = {None: ("library", "library_version", "hmm", "cutoff"),  # the whole scan in this process
@@ -630,7 +637,8 @@ def main(argv: list[str] | None = None) -> int:
     st.add_argument("--library-version", help="domains: library version (38.2)")
     st.add_argument("--hmm", help="domains: the library's HMM file")
     st.add_argument("--cutoff", help="domains: gathering, trusted, noise or none")
-    st.add_argument("--cpus", type=int, default=1, help="domains: hmmsearch threads")
+    st.add_argument("--cpus", type=int, default=1, help="domains: hmmsearch threads; ncrna: cmsearch threads (--cpu)")
+    st.add_argument("--cm", help="ncrna: the Rfam covariance-model library (.cm or .cm.gz; card E-01)")
     st.add_argument("--shard-residues", type=int, help="domains plan: residues per shard at most")
     st.add_argument("--shard", type=int, help="domains shard: the shard to scan (0-based)")
     bs = sub.add_parser("build-stage", parents=[common], help="a stage and its release, step by step under "

@@ -270,6 +270,48 @@ _SPECS = [
             "on the protein (env/ali) and on the model (hmm). E-values at the fixed Z_prot = domZ = 1e8"
         ),
     ),
+    # card E-01 (biobox.l1.ncrna): one row per cmsearch hit at or above its model's GA; the hit's locus is a
+    # `feature` row of kind ncrna under the same producer
+    TableSpec(
+        name="l1_ncrna",
+        location="l1/ncrna",
+        layer="L1",
+        schema=pa.schema([
+            _f("feature_uid", UID),
+            _f("contig_uid", UID),
+            _f("start", COORD),
+            _f("end", COORD),
+            _f("strand", STRAND),
+            _f("model_acc", pa.string()),
+            _f("model_name", pa.string()),
+            _f("model_len", pa.uint32()),
+            _f("mdl_start", pa.uint32()),
+            _f("mdl_end", pa.uint32()),
+            _f("mdl_kind", pa.string()),
+            _f("bitscore", pa.float32()),
+            _f("evalue_zref", pa.float64()),
+            _f("ga_bits", pa.float32()),
+            _f("z_mb", pa.float64()),
+            _f("trunc_5p", pa.bool_()),
+            _f("trunc_3p", pa.bool_()),
+            _f("gc", pa.float32()),
+            _f("contig_len", COORD),
+        ]),
+        primary_key=("feature_uid", "model_acc", "producer"),
+        sort_key=("contig_uid", "start", "end", "strand", "model_acc"),
+        partition_keys=("producer", "stage"),
+        enums={"strand": STRAND_VALUES, "mdl_kind": ("cm", "hmm")},
+        doc=(
+            "card E-01; data_layer_and_tests.md §1 (L1 kind=ncrna); DEC-04; 00-spec.md §3.15. One row per Infernal "
+            "cmsearch hit at or above its model's GA (`--cut_ga`), E-values at the fixed Z_nt = 1e5 Mb. "
+            "feature_uid = ids.feature_uid(contig_uid, start, end, strand, KIND['ncrna']), the `feature` row of "
+            "the same producer (`infernal-<v>-rfam-<v>`); two models that hit the same coordinates share it. "
+            "start/end 0-based half-open on the contig, end > contig_len for a hit across the origin of a circular "
+            "contig; mdl_start/mdl_end 0-based half-open on the model (of model_len consensus columns, CLEN); "
+            "mdl_kind 'hmm' for a model searched by its profile HMM alone; trunc_5p/trunc_3p for a hit cut by a "
+            "linear contig's end; gc the hit's GC fraction; contig_len the real target size (bases searched)"
+        ),
+    ),
     TableSpec(
         name="cluster_member",
         location="l2/cluster_member",
