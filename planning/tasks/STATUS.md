@@ -11,7 +11,7 @@ Last update: 2026-11-09, 23:00 CST. Suite on the integration branch after the B-
 pinned image; 3 min 40 s wall for the slowest shard, against 13.5 min in one process). The skips
 need samtools, bgzip, Prodigal or the golden set. Tests no longer run on the laptop (AGENTS.md §5.5).
 
-## Merged (52 cards)
+## Merged (53 cards)
 
 | Card | Merge | What it did | Audit notes |
 |---|---|---|---|
@@ -66,6 +66,7 @@ need samtools, bgzip, Prodigal or the golden set. Tests no longer run on the lap
 | D-05 | this merge | `tests/r2/test_scale_layout.py`: 100× synthetic store; row-group limits; lookups that prune asserted at ≤ 2 row groups per key; eight lookups that do not prune are strict expected-failures tied to card B-31 | Runs in 40 to 48 s. At the real row-group limits a 100× store has 1 or 2 row groups, so the test scales the writer's caps by 1/16 while building (test side only) to get ≥ 8; the real limits are checked at 1,000× by `scripts/stress/synth_scale.py`, not in CI. B-31 must remove the eight markers |
 | B-33 | this merge | A release's manifest lists its stages' files, its own `release=` files, the tape versions it uses and unpartitioned artifacts; `verify_manifest` ignores other releases | An earlier release's manifest still verifies and rebuilds byte-identical after a later release. Fixture manifest hash unchanged. Stopped once on two tests outside the card: one assertion migrated with authorisation; a latent bug fixed (a manifest with no Parquet files could not generate a catalog) |
 | C-08 | this merge | Every builder takes `out=`; the release manifest and the catalog are registered artifacts; `bio-box stage ...` and `bio-box release ...` default `--out` to `$BIOBOX_STAGING` | Each builder as a real `run-step` subprocess equals the direct build file for file, MMseqs2 and HMMER steps included; the 12-step chain gives the same manifest hash; a catalog built in staging embeds the final root. Merged tree on the pod: 983 passed, 10 skipped, 8 xfailed; golden 32 passed, 5 skipped. The size rule will refuse a second release's manifest at the pod's floor: card C-09 |
+| C-09 | this merge | Size rule: small-by-nature artifacts (manifest, catalog, `store_params`) are exempt by a registry flag; other files are grouped by their partition tuple without bucket keys | Reproduced first at the pod's 64 MiB floor: the second release's manifest was refused by `run-step`. The audit had bucket keys taken out of the grouping, so tiny files spread across buckets are still refused. Agent's full pod run: 988 passed, 10 skipped, 8 xfailed |
 
 Decisions DEC-18 to DEC-23 were approved by the PI on 2026-11-09 and are in `planning/DECISIONS.md`.
 
@@ -74,9 +75,7 @@ Decisions DEC-18 to DEC-23 were approved by the PI on 2026-11-09 and are in `pla
 | Card | Model | State |
 |---|---|---|
 | B-32 gene calling of short contigs uses its workers | Opus | started 2026-11-10 |
-| C-04 `bio-box build-stage` (second attempt, after C-08) | Opus | started 2026-11-10 |
-| C-09 file-size rule and small release records | Sonnet | started 2026-11-10 |
-| B-31 catalog macros that do not prune | Opus | started 2026-11-10 || C-04 `bio-box build-stage` | Opus | stopped 2026-11-10 with evidence, nothing written: builders cannot write into `run-step` staging. Now depends on B-22 and the new card C-08; card amended |
+| C-04 `bio-box build-stage` (second attempt, after C-08) | Opus | started 2026-11-10 || B-31 catalog macros that do not prune | Opus | started 2026-11-10 || C-04 `bio-box build-stage` | Opus | stopped 2026-11-10 with evidence, nothing written: builders cannot write into `run-step` staging. Now depends on B-22 and the new card C-08; card amended |
 | Pod import ladder (not a card): phages, then 1 Gbp and 10 Gbp of complete prokaryotes with the new code | Opus | detached jobs on the pod; agent waiting on them |
 
 ## Next, in order
