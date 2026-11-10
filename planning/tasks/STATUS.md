@@ -46,6 +46,7 @@ need samtools, bgzip, Prodigal or the golden set. Tests no longer run on the lap
 | B-19 | `4972f71` | Streaming ledger; builder tables cut into parts | |
 | W-06 | `5f31050` | `nbr summarize`: neighbor families and clusters per anchor window | Same commit adds `scripts/pod_pytest.sh` and fixes a cluster-ledger test that only fails where MMseqs2 exists |
 | C-05, W-04 | `0a4ae15` | Search workers start in scopes; worker thread caps; exit and kill labelling | The scope cannot be opened from inside the image: card C-07 |
+| W-09 | this merge | Every pyhmmer search in `search/` takes a required thread count | Agent's full pod run on its branch: 830 passed, 10 skipped. `l1/domains.py` `scan` still defaults `cpus=1` (bounded, so left) |
 
 Decisions DEC-18 to DEC-23 were approved by the PI on 2026-11-09 and are in `planning/DECISIONS.md`.
 
@@ -56,7 +57,6 @@ Decisions DEC-18 to DEC-23 were approved by the PI on 2026-11-09 and are in `pla
 | B-17 remove the legacy ordinal columns | Opus | started 2026-11-09 |
 | A-03 README for `scripts/stress` | Sonnet | started 2026-11-09 |
 | C-07 scope on the host around the container | Opus | started 2026-11-09 |
-| W-09 pyhmmer thread count from the caller | Sonnet | started 2026-11-09 |
 | Pod import ladder (not a card): phages, then 1 Gbp and 10 Gbp of complete prokaryotes with the new code | Opus | detached jobs on the pod; agent waiting on them |
 
 ## Next, in order

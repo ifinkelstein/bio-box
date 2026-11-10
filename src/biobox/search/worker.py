@@ -10,8 +10,8 @@ before it imports this module, because numpy's OpenBLAS starts its threads when 
 imports numpy and Arrow sizes its pools from OMP_NUM_THREADS and ARROW_IO_THREADS (Arrow reads
 no ARROW_NUM_THREADS); `main` then sets the Arrow CPU and I/O pools to `cpus` explicitly. The
 worker opens no DuckDB connection; one added here must `SET threads` to `cpus`. pyhmmer's
-searches get `cpus` through `engine.Settings`; `engine.families_of` passes no `cpus`, so that
-one call lets pyhmmer size its threads by the host's cores (at most one per library model).
+searches get `cpus` through `engine.Settings`, and `engine.families_of` takes `threads=cpus`
+(card W-09); no pyhmmer call sizes its pool from the host.
 
 Exit (card W-04). `entry` runs `main` and always ends with `os._exit`: an uncaught exception
 in the main thread or in any thread prints its traceback to stderr and exits EXIT_FAILED
@@ -309,7 +309,7 @@ def main(job_path: str) -> int:
     else:
         hmm = engine.build_from_sequence(f"{recipe['recipe']}_r1", seed_seq)
         msa_text = f"# STOCKHOLM 1.0\n\nseed {seed_seq}\n//\n".encode()
-    seed_families = engine.families_of(seed_seq or hmm.consensus.upper(), model_paths)
+    seed_families = engine.families_of(seed_seq or hmm.consensus.upper(), model_paths, threads=cpus)
     if seed["kind"] in ("hmm", "hmm_file"):
         seed_families.add(engine.text(hmm.accession) or engine.text(hmm.name))
     settings = engine.Settings(

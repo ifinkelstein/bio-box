@@ -787,6 +787,40 @@ def test_w04_runner_caps_the_workers_thread_pools_by_its_cpus():
     assert boot.index("OMP_NUM_THREADS") < boot.index("import worker")
 
 
+@pytest.mark.covers("W-09")
+def test_w09_every_pyhmmer_search_takes_cpus_from_the_caller(tmp_path, monkeypatch):
+    import pyhmmer
+
+    from biobox.search import engine
+
+    calls = []
+
+    def recorder(*args, **kwargs):
+        calls.append(kwargs)
+        assert kwargs.get("cpus", 0) >= 1, f"pyhmmer search called without a positive cpus: {sorted(kwargs)}"
+        return []
+
+    for name in ("hmmsearch", "hmmscan", "phmmer", "jackhmmer", "nhmmer"):
+        if hasattr(pyhmmer, name):
+            monkeypatch.setattr(pyhmmer, name, recorder)
+        if hasattr(pyhmmer.hmmer, name):
+            monkeypatch.setattr(pyhmmer.hmmer, name, recorder)
+    hmm = engine.build_from_sequence("w09", "MKVLAAGIVGLLLAQPSTEWRHDNCY")
+    lib = tmp_path / "lib.hmm"
+    with open(lib, "wb") as fh:
+        hmm.write(fh)
+    target = engine.load_target("protein", iter([("00" * 16, "MKVLAAGIVGLLLAQPSTEWRHDNCY")]))
+
+    engine.families_of("MKVLAAGIVGLLLAQPSTEWRHDNCY", [lib], threads=3)
+    engine.search(hmm, target, 25.0, 25.0, threads=5)
+    assert [c["cpus"] for c in calls] == [3, 5]
+    # no default: a caller that forgets the thread count fails loudly
+    with pytest.raises(TypeError):
+        engine.families_of("MKVLAAGIVGLLLAQPSTEWRHDNCY", [lib])
+    with pytest.raises(TypeError):
+        engine.search(hmm, target, 25.0, 25.0)
+
+
 KILL, TERM, XCPU, SEGV = -signal.SIGKILL, -signal.SIGTERM, -signal.SIGXCPU, -signal.SIGSEGV
 OK_RESULT = {"status": "ok", "error": None}
 
