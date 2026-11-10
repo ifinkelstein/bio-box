@@ -74,7 +74,7 @@ def test_fixture_matches_contract():
         ("contig_occurrence", "l0seq/contig_occurrence/stage=*/source=*/part-0.parquet"),
         ("contig_index", "l0seq/contig_index/stage=*/part-0.parquet"),
         ("seq_locator", "l0seq/seq_locator/stage=*/part-0.parquet"),
-        ("l0_manifest", "l0/l0_manifest.parquet"),
+        ("l0_manifest", "l0/l0_manifest/stage=*/part-0.parquet"),
     ],
 )
 def test_written_tables_conform(store_root, name, glob):
@@ -614,8 +614,7 @@ def test_duplicates_are_stored_once_in_the_smaller_sha_batch_and_not_again_later
     report = ingest(_objects([c]), root, stage="S1", shard_bases=SMALL_SHARDS)
     after = _all_files(root)
     for k, val in before.items():
-        if k != "l0/l0_manifest.parquet":  # rewritten per stage (a finding of card B-15, not changed here)
-            assert after[k] == val, f"S1 rewrote {k}"
+        assert after[k] == val, f"S1 rewrote {k}"
     assert report["new_sequences"] == 1
     s1 = sorted(root.glob("l0seq/seq_shards/stage=S1/*.fa.gz"))
     assert [sh.name for sh in s1] == ["shard-0000.fa.gz"]

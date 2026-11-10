@@ -6,10 +6,9 @@ a named point (no sleeps, as in the C-03 tests). run-step publishes nothing from
 empties staging before the next attempt, so the rerun must give the same root as an uninterrupted
 ingest. The oracle is a direct, uninterrupted `ingest` into its own root, compared byte for byte.
 
-`l0seq/store_params.json` is not a path any registry table or artifact claims, so run-step cannot
-publish it (LY-10). The run-step root is given the oracle's copy beforehand, as a store whose
-parameters were fixed earlier holds it; ingest then checks it and writes none (open question of
-card B-23).
+The run-step root starts empty: the first stage writes `l0seq/store_params.json` into staging and
+run-step publishes it as the `store_params` artifact; a later stage checks it and writes none
+(card B-22). Two stages ingested under run-step give the root that two direct ingests give.
 
 A direct call that dies leaves its files in the stage directories; the rerun must refuse before it
 reads a source, change nothing, and name the cure (a clean stage directory).
@@ -18,6 +17,7 @@ reads a source, change nothing, and name the cure (a clean stage directory).
 from __future__ import annotations
 
 import hashlib
+import json
 import shutil
 import sys
 from datetime import datetime
@@ -26,7 +26,7 @@ from pathlib import Path
 import pytest
 import yaml
 
-from biobox import fasta, profile, runstep
+from biobox import catalog, fasta, ids, profile, runstep
 from biobox.l0seq import SourceObject, ingest
 
 pytestmark = [pytest.mark.r2, pytest.mark.covers("D-03")]
@@ -114,13 +114,10 @@ def test_hook_sees_every_point_in_order(tmp_path, oracle):
 @pytest.mark.parametrize("point", POINTS)
 def test_killed_under_run_step_then_rerun_is_byte_identical(prof, tmp_path, oracle, point):
     root = tmp_path / "root"
-    params = root / "l0seq/store_params.json"
-    params.parent.mkdir(parents=True)
-    shutil.copy(oracle / "l0seq/store_params.json", params)
     staging = Path(prof.tmp) / "staging" / "S0.ingest"
 
     assert run_ingest(prof, root, tmp_path / "scratch", point) == 1  # killed: run-step's exit code
-    assert tree(root) == {"l0seq/store_params.json": tree(oracle)["l0seq/store_params.json"]}  # nothing published
+    assert tree(root) == {}  # nothing published
     left = sorted(p.relative_to(staging).as_posix() for p in staging.rglob("*") if p.is_file())
     if point.startswith("shard:"):  # died mid-stage: some of the stage is written, not all
         assert f"l0seq/seq_shards/stage=S0/shard-000{point[-1]}.fa.gz" in left
@@ -133,8 +130,6 @@ def test_killed_under_run_step_then_rerun_is_byte_identical(prof, tmp_path, orac
 
 def test_uninterrupted_run_step_equals_direct_ingest(prof, tmp_path, oracle):
     root = tmp_path / "root"
-    (root / "l0seq").mkdir(parents=True)
-    shutil.copy(oracle / "l0seq/store_params.json", root / "l0seq/store_params.json")
     assert run_ingest(prof, root, tmp_path / "scratch", "none") == 0
     assert tree(root) == tree(oracle)
 
@@ -186,3 +181,77 @@ def test_scratch_may_not_lie_under_the_output(tmp_path):
     out = tmp_path / "staging"
     with pytest.raises(ValueError, match="scratch"):
         ingest(objects(), tmp_path / "root", "S0", tmp=out / "scratch", out=out)
+
+
+# --- two stages under run-step (card B-22) ------------------------------------------------------
+
+# S1 repeats one object of S0 (its sequence is stored already) and adds one
+STAGES = {"S0": PATHS[:2], "S1": PATHS[1:]}
+
+STAGE_STEP = r"""
+import os, sys
+from pathlib import Path
+from biobox.l0seq import SourceObject, ingest
+stage, shard_bases, scratch, *paths = sys.argv[1:]
+objs = [SourceObject(Path(p), "micro", "1", "INSDC (public)", True) for p in paths]
+ingest(objs, os.environ["BIOBOX_ROOT"], stage, shard_bases=int(shard_bases), tmp=scratch,
+       out=os.environ["BIOBOX_STAGING"])
+"""
+
+
+def objects_of(paths) -> list[SourceObject]:
+    return [SourceObject(p, "micro", "1", "INSDC (public)", True) for p in paths]
+
+
+def run_stage(prof, root: Path, stage: str, scratch: Path, shard_bases: int = SHARD_BASES) -> int:
+    scratch.mkdir(parents=True, exist_ok=True)
+    cmd = [sys.executable, "-c", STAGE_STEP, stage, str(shard_bases), str(scratch), *map(str, STAGES[stage])]
+    return runstep.run_step(prof, root, stage, "ingest", cmd, clock=lambda: NOON_MONDAY, load=lambda: 0.0)
+
+
+def published(root: Path, stage: str) -> list[str]:
+    return [o["path"] for o in json.loads((root / f"runs/stage={stage}/ingest.json").read_text())["outputs"]]
+
+
+@pytest.mark.covers("R-09", "LY-10")
+def test_two_stages_under_run_step_publish_and_equal_two_direct_ingests(prof, tmp_path):
+    direct = tmp_path / "direct"
+    for stage, paths in STAGES.items():
+        ingest(objects_of(paths), direct, stage, shard_bases=SHARD_BASES)
+    root = tmp_path / "root"
+    assert run_stage(prof, root, "S0", tmp_path / "scratch") == 0
+    first = tree(root)
+    assert run_stage(prof, root, "S1", tmp_path / "scratch") == 0
+    assert tree(root) == tree(direct)  # file for file, by sha256
+    assert {k: v for k, v in tree(root).items() if k in first} == first  # S1 changed no S0 file
+    # the first stage published the store parameters; the second wrote only its own partitions
+    assert "l0seq/store_params.json" in published(root, "S0")
+    assert "l0/l0_manifest/stage=S0/part-0.parquet" in published(root, "S0")
+    assert published(root, "S1") and all("/stage=S1/" in p for p in published(root, "S1"))
+    # the release over both stages lists every file, the store parameters among its artifacts
+    man = catalog.build_manifest(root, "rS1.b22", ["S0", "S1"])
+    assert catalog.verify_manifest(man) == []
+    assert [a["path"] for a in man["artifacts"] if a["artifact"] == "store_params"] == ["l0seq/store_params.json"]
+    assert sorted(f["path"] for f in man["files"] if f["table"] == "l0_manifest") == [
+        "l0/l0_manifest/stage=S0/part-0.parquet", "l0/l0_manifest/stage=S1/part-0.parquet"]
+
+
+def test_later_stage_with_other_store_parameters_is_refused_before_reading(prof, tmp_path, monkeypatch):
+    root = tmp_path / "root"
+    assert run_stage(prof, root, "S0", tmp_path / "scratch") == 0
+    before = tree(root)
+    # under run-step: the step fails, nothing is published
+    assert run_stage(prof, root, "S1", tmp_path / "scratch", shard_bases=SHARD_BASES + 1) == 1
+    assert tree(root) == before
+    # a direct call refuses before it opens a source
+    reads = []
+    orig_iter, orig_sha = fasta.iter_records, ids.sha256_file
+    monkeypatch.setattr(fasta, "iter_records", lambda p: (reads.append(p), orig_iter(p))[1])
+    monkeypatch.setattr(ids, "sha256_file", lambda p: (reads.append(p), orig_sha(p))[1])
+    out = tmp_path / "staging"
+    for kw in ({"shard_bases": SHARD_BASES + 1}, {"shard_bases": SHARD_BASES, "line_width": 60}):
+        with pytest.raises(ValueError, match="store_params"):
+            ingest(objects_of(STAGES["S1"]), root, "S1", out=out, **kw)
+    assert reads == []
+    monkeypatch.undo()
+    assert tree(root) == before and not out.exists()
