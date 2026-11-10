@@ -1,0 +1,303 @@
+[survived] token_id__mutmut_1
+    - if not 0 <= source < 32 or not 0 <= local < 2**56:
+    + if not 0 <= source < 32 and not 0 <= local < 2**56:
+[survived] token_id__mutmut_5
+    - if not 0 <= source < 32 or not 0 <= local < 2**56:
+    + if not 0 <= source <= 32 or not 0 <= local < 2**56:
+[survived] token_id__mutmut_6
+    - if not 0 <= source < 32 or not 0 <= local < 2**56:
+    + if not 0 <= source < 33 or not 0 <= local < 2**56:
+[survived] token_id__mutmut_10
+    - if not 0 <= source < 32 or not 0 <= local < 2**56:
+    + if not 0 <= source < 32 or not 0 <= local <= 2**56:
+[survived] token_id__mutmut_11
+    - if not 0 <= source < 32 or not 0 <= local < 2**56:
+    + if not 0 <= source < 32 or not 0 <= local < 2 * 56:
+[survived] token_id__mutmut_12
+    - if not 0 <= source < 32 or not 0 <= local < 2**56:
+    + if not 0 <= source < 32 or not 0 <= local < 3**56:
+[survived] token_id__mutmut_13
+    - if not 0 <= source < 32 or not 0 <= local < 2**56:
+    + if not 0 <= source < 32 or not 0 <= local < 2**57:
+[survived] token_id__mutmut_14
+    - raise ValueError(f"token ({level}, {source}, {local}) out of range")
+    + raise ValueError(None)
+[survived] token_id__mutmut_16
+    - return LEVELS[level] << 61 | source << 56 | local
+    + return LEVELS[level] << 61 & source << 56 | local
+[survived] token_id__mutmut_17
+    - return LEVELS[level] << 61 | source << 56 | local
+    + return LEVELS[level] >> 61 | source << 56 | local
+[survived] token_id__mutmut_18
+    - return LEVELS[level] << 61 | source << 56 | local
+    + return LEVELS[level] << 62 | source << 56 | local
+[survived] token_id__mutmut_19
+    - return LEVELS[level] << 61 | source << 56 | local
+    + return LEVELS[level] << 61 | source >> 56 | local
+[survived] token_id__mutmut_20
+    - return LEVELS[level] << 61 | source << 56 | local
+    + return LEVELS[level] << 61 | source << 57 | local
+[no tests] token_level__mutmut_1
+    - return {v: k for k, v in LEVELS.items()}[tid >> 61]
+    + return {v: k for k, v in LEVELS.items()}[tid << 61]
+[no tests] token_level__mutmut_2
+    - return {v: k for k, v in LEVELS.items()}[tid >> 61]
+    + return {v: k for k, v in LEVELS.items()}[tid >> 62]
+[survived] read_tapes__mutmut_7
+    - files = sorted((Path(root) / "l3/tapes").glob(f"gene_call_version={gene_call_version}/stage=*/part-*.parquet"))
+    + files = sorted((Path(root) / "L3/TAPES").glob(f"gene_call_version={gene_call_version}/stage=*/part-*.parquet"))
+[survived] read_tapes__mutmut_9
+    - return [r for f in files for r in pq.read_table(f, columns=columns).to_pylist()]
+    + return [r for f in files for r in pq.read_table(f, columns=None).to_pylist()]
+[survived] read_tapes__mutmut_11
+    - return [r for f in files for r in pq.read_table(f, columns=columns).to_pylist()]
+    + return [r for f in files for r in pq.read_table(f, ).to_pylist()]
+[survived] canonical_families__mutmut_7
+    - for f in sorted((Path(root) / "l1/domains").glob(f"library={lib}/stage=*/part-*.parquet")):
+    + for f in sorted((Path(root) / "XXl1/domainsXX").glob(f"library={lib}/stage=*/part-*.parquet")):
+[survived] canonical_families__mutmut_8
+    - for f in sorted((Path(root) / "l1/domains").glob(f"library={lib}/stage=*/part-*.parquet")):
+    + for f in sorted((Path(root) / "L1/DOMAINS").glob(f"library={lib}/stage=*/part-*.parquet")):
+[survived] canonical_families__mutmut_11
+    - t = pq.read_table(f, columns=["protein_uid", "model_acc", "dom_bitscore", "env_start"]).to_pylist()
+    + t = pq.read_table(f, columns=None).to_pylist()
+[survived] canonical_families__mutmut_13
+    - t = pq.read_table(f, columns=["protein_uid", "model_acc", "dom_bitscore", "env_start"]).to_pylist()
+    + t = pq.read_table(f, ).to_pylist()
+[survived] canonical_families__mutmut_22
+    - key = (rank, -r["dom_bitscore"], r["model_acc"], r["env_start"])
+    + key = None
+[survived] canonical_families__mutmut_23
+    - key = (rank, -r["dom_bitscore"], r["model_acc"], r["env_start"])
+    + key = (rank, +r["dom_bitscore"], r["model_acc"], r["env_start"])
+[survived] canonical_families__mutmut_34
+    - if r["protein_uid"] not in best or key < best[r["protein_uid"]][0]:
+    + if r["protein_uid"] not in best or key <= best[r["protein_uid"]][0]:
+[survived] canonical_families__mutmut_35
+    - if r["protein_uid"] not in best or key < best[r["protein_uid"]][0]:
+    + if r["protein_uid"] not in best or key < best[r["XXprotein_uidXX"]][0]:
+[survived] canonical_families__mutmut_36
+    - if r["protein_uid"] not in best or key < best[r["protein_uid"]][0]:
+    + if r["protein_uid"] not in best or key < best[r["PROTEIN_UID"]][0]:
+[survived] canonical_families__mutmut_37
+    - if r["protein_uid"] not in best or key < best[r["protein_uid"]][0]:
+    + if r["protein_uid"] not in best or key < best[r["protein_uid"]][1]:
+[survived] libraries_in__mutmut_3
+    - return sorted({p.name.removeprefix("library=") for p in (Path(root) / "l1/domains").glob("library=*")})
+    + return sorted({p.name.removesuffix("library=") for p in (Path(root) / "l1/domains").glob("library=*")})
+[survived] libraries_in__mutmut_4
+    - return sorted({p.name.removeprefix("library=") for p in (Path(root) / "l1/domains").glob("library=*")})
+    + return sorted({p.name.removeprefix("XXlibrary=XX") for p in (Path(root) / "l1/domains").glob("library=*")})
+[survived] libraries_in__mutmut_5
+    - return sorted({p.name.removeprefix("library=") for p in (Path(root) / "l1/domains").glob("library=*")})
+    + return sorted({p.name.removeprefix("LIBRARY=") for p in (Path(root) / "l1/domains").glob("library=*")})
+[survived] libraries_in__mutmut_9
+    - return sorted({p.name.removeprefix("library=") for p in (Path(root) / "l1/domains").glob("library=*")})
+    + return sorted({p.name.removeprefix("library=") for p in (Path(root) / "XXl1/domainsXX").glob("library=*")})
+[survived] libraries_in__mutmut_10
+    - return sorted({p.name.removeprefix("library=") for p in (Path(root) / "l1/domains").glob("library=*")})
+    + return sorted({p.name.removeprefix("library=") for p in (Path(root) / "L1/DOMAINS").glob("library=*")})
+[survived] libraries_in__mutmut_11
+    - return sorted({p.name.removeprefix("library=") for p in (Path(root) / "l1/domains").glob("library=*")})
+    + return sorted({p.name.removeprefix("library=") for p in (Path(root) / "l1/domains").glob("XXlibrary=*XX")})
+[survived] libraries_in__mutmut_12
+    - return sorted({p.name.removeprefix("library=") for p in (Path(root) / "l1/domains").glob("library=*")})
+    + return sorted({p.name.removeprefix("library=") for p in (Path(root) / "l1/domains").glob("LIBRARY=*")})
+[survived] _write_parts__mutmut_7
+    - starts = layout.cut([est_row] * len(rows), layout.MAX_FILE_BYTES)
+    + starts = layout.cut([est_row] * len(rows), )
+[survived] _write_parts__mutmut_10
+    - base.mkdir(parents=True, exist_ok=True)
+    + base.mkdir(parents=True, exist_ok=None)
+[survived] _write_parts__mutmut_12
+    - base.mkdir(parents=True, exist_ok=True)
+    + base.mkdir(parents=True, )
+[survived] _write_parts__mutmut_14
+    - base.mkdir(parents=True, exist_ok=True)
+    + base.mkdir(parents=True, exist_ok=False)
+[survived] _write_parts__mutmut_21
+    - for k, (a, b) in enumerate(zip(starts, starts[1:] + [len(rows)])):
+    + for k, (a, b) in enumerate(zip(starts, starts[2:] + [len(rows)])):
+[survived] _write_parts__mutmut_24
+    - compression="zstd", row_group_size=row_group, write_statistics=stats)
+    + compression=None, row_group_size=row_group, write_statistics=stats)
+[survived] _write_parts__mutmut_25
+    - compression="zstd", row_group_size=row_group, write_statistics=stats)
+    + compression="zstd", row_group_size=None, write_statistics=stats)
+[survived] _write_parts__mutmut_26
+    - compression="zstd", row_group_size=row_group, write_statistics=stats)
+    + compression="zstd", row_group_size=row_group, write_statistics=None)
+[survived] _write_parts__mutmut_29
+    - compression="zstd", row_group_size=row_group, write_statistics=stats)
+    + row_group_size=row_group, write_statistics=stats)
+[survived] _write_parts__mutmut_30
+    - compression="zstd", row_group_size=row_group, write_statistics=stats)
+    + compression="zstd", write_statistics=stats)
+[survived] _write_parts__mutmut_31
+    - compression="zstd", row_group_size=row_group, write_statistics=stats)
+    + compression="zstd", row_group_size=row_group, )
+[survived] _write_parts__mutmut_38
+    - compression="zstd", row_group_size=row_group, write_statistics=stats)
+    + compression="ZSTD", row_group_size=row_group, write_statistics=stats)
+[survived] run__mutmut_5
+    - libraries = libraries_in(root) if libraries is None else libraries
+    + libraries = libraries_in(root) if (libraries is None) or True else libraries
+[survived] run__mutmut_8
+    - if len(libraries) > 31:
+    + if len(libraries) >= 31:
+[survived] run__mutmut_9
+    - if len(libraries) > 31:
+    + if len(libraries) > 32:
+[survived] run__mutmut_10
+    - raise ValueError("more than 31 libraries: widen the token source field")
+    + raise ValueError(None)
+[survived] run__mutmut_11
+    - raise ValueError("more than 31 libraries: widen the token source field")
+    + raise ValueError("XXmore than 31 libraries: widen the token source fieldXX")
+[survived] run__mutmut_12
+    - raise ValueError("more than 31 libraries: widen the token source field")
+    + raise ValueError("MORE THAN 31 LIBRARIES: WIDEN THE TOKEN SOURCE FIELD")
+[survived] run__mutmut_16
+    - tapes = read_tapes(root, gene_call_version, ["contig_uid", "protein_uids"])
+    + tapes = read_tapes(root, gene_call_version, None)
+[survived] run__mutmut_19
+    - tapes = read_tapes(root, gene_call_version, ["contig_uid", "protein_uids"])
+    + tapes = read_tapes(root, gene_call_version, )
+[survived] run__mutmut_37
+    - for f in sorted(p.glob("part-*.parquet")) if p.exists() else []:
+    + for f in sorted(p.glob("part-*.parquet")) if (p.exists()) or True else []:
+[survived] run__mutmut_43
+    - for r in pq.read_table(f, columns=["member_uid", "level", "cluster_uid"]).to_pylist():
+    + for r in pq.read_table(f, columns=None).to_pylist():
+[survived] run__mutmut_45
+    - for r in pq.read_table(f, columns=["member_uid", "level", "cluster_uid"]).to_pylist():
+    + for r in pq.read_table(f, ).to_pylist():
+[survived] run__mutmut_63
+    - f = fam.get(pu) if pu is not None else None
+    + f = None
+[survived] run__mutmut_64
+    - f = fam.get(pu) if pu is not None else None
+    + f = fam.get(pu) if (pu is not None) and False else None
+[survived] run__mutmut_65
+    - f = fam.get(pu) if pu is not None else None
+    + f = fam.get(pu) if (pu is not None) or True else None
+[survived] run__mutmut_66
+    - f = fam.get(pu) if pu is not None else None
+    + f = fam.get(None) if pu is not None else None
+[survived] run__mutmut_67
+    - f = fam.get(pu) if pu is not None else None
+    + f = fam.get(pu) if pu is None else None
+[survived] run__mutmut_68
+    - out["family"] = (libraries.index(f[0]) + 1, f[1]) if f else None
+    + out["family"] = None
+[survived] run__mutmut_71
+    - out["family"] = (libraries.index(f[0]) + 1, f[1]) if f else None
+    + out["family"] = (libraries.index(f[0]) + 1, f[1]) if (f) and False else None
+[survived] run__mutmut_85
+    - c = clusters[lvl].get(pu) if pu is not None else None
+    + c = clusters[lvl].get(pu) if (pu is not None) or True else None
+[survived] run__mutmut_91
+    - out[lvl] = (0, c.hex()) if c else None
+    + out[lvl] = (1, c.hex()) if c else None
+[survived] run__mutmut_100
+    - uses[(lvl, *k)] += 1
+    + uses[(lvl, *k)] = 1
+[survived] run__mutmut_102
+    - uses[(lvl, *k)] += 1
+    + uses[(lvl, *k)] += 2
+[survived] run__mutmut_108
+    - for local, key in enumerate(sorted(k for (l, s, k) in uses if l == lvl and s == src)):
+    + for local, key in enumerate(sorted(k for (l, s, k) in uses if l == lvl or s == src)):
+[survived] run__mutmut_143
+    - for cu, slots in sorted(per_contig, key=lambda x: x[0]):
+    + for cu, slots in sorted(per_contig, key=None):
+[survived] run__mutmut_145
+    - for cu, slots in sorted(per_contig, key=lambda x: x[0]):
+    + for cu, slots in sorted(per_contig, ):
+[survived] run__mutmut_161
+    - n_dict = _write_parts(dict_rows, "token_dict", root / f"l3/token_dict/release={release}", 60, 122_880,
+    + n_dict = _write_parts(dict_rows, "token_dict", root / f"l3/token_dict/release={release}", 60, None,
+[survived] run__mutmut_162
+    - ["token_id", "n_slots"])
+    + None)
+[survived] run__mutmut_172
+    - n_dict = _write_parts(dict_rows, "token_dict", root / f"l3/token_dict/release={release}", 60, 122_880,
+    + n_dict = _write_parts(dict_rows, "token_dict", root / f"l3/token_dict/release={release}", 61, 122_880,
+[survived] run__mutmut_173
+    - n_dict = _write_parts(dict_rows, "token_dict", root / f"l3/token_dict/release={release}", 60, 122_880,
+    + n_dict = _write_parts(dict_rows, "token_dict", root / f"l3/token_dict/release={release}", 60, 122881,
+[survived] run__mutmut_174
+    - ["token_id", "n_slots"])
+    + ["XXtoken_idXX", "n_slots"])
+[survived] run__mutmut_175
+    - ["token_id", "n_slots"])
+    + ["TOKEN_ID", "n_slots"])
+[survived] run__mutmut_176
+    - ["token_id", "n_slots"])
+    + ["token_id", "XXn_slotsXX"])
+[survived] run__mutmut_177
+    - ["token_id", "n_slots"])
+    + ["token_id", "N_SLOTS"])
+[survived] run__mutmut_183
+    - 8_192, ["contig_uid"])
+    + None, ["contig_uid"])
+[survived] run__mutmut_184
+    - 8_192, ["contig_uid"])
+    + 8_192, None)
+[survived] run__mutmut_194
+    - 100 + 30 * max(1, sum(len(s) for _, s in per_contig) // max(1, len(per_contig))),
+    + 100 - 30 * max(1, sum(len(s) for _, s in per_contig) // max(1, len(per_contig))),
+[survived] run__mutmut_195
+    - 100 + 30 * max(1, sum(len(s) for _, s in per_contig) // max(1, len(per_contig))),
+    + 101 + 30 * max(1, sum(len(s) for _, s in per_contig) // max(1, len(per_contig))),
+[survived] run__mutmut_196
+    - 100 + 30 * max(1, sum(len(s) for _, s in per_contig) // max(1, len(per_contig))),
+    + 100 + 30 / max(1, sum(len(s) for _, s in per_contig) // max(1, len(per_contig))),
+[survived] run__mutmut_197
+    - 100 + 30 * max(1, sum(len(s) for _, s in per_contig) // max(1, len(per_contig))),
+    + 100 + 31 * max(1, sum(len(s) for _, s in per_contig) // max(1, len(per_contig))),
+[survived] run__mutmut_202
+    - 100 + 30 * max(1, sum(len(s) for _, s in per_contig) // max(1, len(per_contig))),
+    + 100 + 30 * max(2, sum(len(s) for _, s in per_contig) // max(1, len(per_contig))),
+[survived] run__mutmut_203
+    - 100 + 30 * max(1, sum(len(s) for _, s in per_contig) // max(1, len(per_contig))),
+    + 100 + 30 * max(1, sum(len(s) for _, s in per_contig) / max(1, len(per_contig))),
+[survived] run__mutmut_209
+    - 100 + 30 * max(1, sum(len(s) for _, s in per_contig) // max(1, len(per_contig))),
+    + 100 + 30 * max(1, sum(len(s) for _, s in per_contig) // max(2, len(per_contig))),
+[survived] run__mutmut_210
+    - 8_192, ["contig_uid"])
+    + 8193, ["contig_uid"])
+[survived] run__mutmut_211
+    - 8_192, ["contig_uid"])
+    + 8_192, ["XXcontig_uidXX"])
+[survived] run__mutmut_212
+    - 8_192, ["contig_uid"])
+    + 8_192, ["CONTIG_UID"])
+[survived] run__mutmut_213
+    - return {"tokens": {lvl: sum(1 for r in dict_rows if r["level"] == lvl) for lvl in LEVELS},
+    + return {"XXtokensXX": {lvl: sum(1 for r in dict_rows if r["level"] == lvl) for lvl in LEVELS},
+[survived] run__mutmut_214
+    - return {"tokens": {lvl: sum(1 for r in dict_rows if r["level"] == lvl) for lvl in LEVELS},
+    + return {"TOKENS": {lvl: sum(1 for r in dict_rows if r["level"] == lvl) for lvl in LEVELS},
+[survived] run__mutmut_216
+    - return {"tokens": {lvl: sum(1 for r in dict_rows if r["level"] == lvl) for lvl in LEVELS},
+    + return {"tokens": {lvl: sum(2 for r in dict_rows if r["level"] == lvl) for lvl in LEVELS},
+[survived] run__mutmut_219
+    - return {"tokens": {lvl: sum(1 for r in dict_rows if r["level"] == lvl) for lvl in LEVELS},
+    + return {"tokens": {lvl: sum(1 for r in dict_rows if r["level"] != lvl) for lvl in LEVELS},
+[survived] run__mutmut_220
+    - "contigs": len(tok_rows), "files": n_dict + n_tok}
+    + "XXcontigsXX": len(tok_rows), "files": n_dict + n_tok}
+[survived] run__mutmut_221
+    - "contigs": len(tok_rows), "files": n_dict + n_tok}
+    + "CONTIGS": len(tok_rows), "files": n_dict + n_tok}
+[survived] run__mutmut_222
+    - "contigs": len(tok_rows), "files": n_dict + n_tok}
+    + "contigs": len(tok_rows), "XXfilesXX": n_dict + n_tok}
+[survived] run__mutmut_223
+    - "contigs": len(tok_rows), "files": n_dict + n_tok}
+    + "contigs": len(tok_rows), "FILES": n_dict + n_tok}
+[survived] run__mutmut_224
+    - "contigs": len(tok_rows), "files": n_dict + n_tok}
+    + "contigs": len(tok_rows), "files": n_dict - n_tok}

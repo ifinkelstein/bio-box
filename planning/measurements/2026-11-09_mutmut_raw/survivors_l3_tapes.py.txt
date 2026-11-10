@@ -1,0 +1,210 @@
+[survived] _occurrence__mutmut_4
+    - cols = ["protein_uid", "contig_uid", "slot_ordinal", "genome_uid", "start", "end", "strand", "tier", ⏎ "assembly_quality"]
+    + cols = None
+[survived] _occurrence__mutmut_24
+    - return pq.read_table(p, columns=cols).to_pylist()
+    + return pq.read_table(p, columns=None).to_pylist()
+[survived] _occurrence__mutmut_26
+    - return pq.read_table(p, columns=cols).to_pylist()
+    + return pq.read_table(p, ).to_pylist()
+[survived] run__mutmut_5
+    - columns=["contig_uid", "contig_len", "is_default_variant"]).to_pylist()
+    + columns=None).to_pylist()
+[survived] run__mutmut_7
+    - columns=["contig_uid", "contig_len", "is_default_variant"]).to_pylist()
+    + ).to_pylist()
+[survived] run__mutmut_31
+    - by_contig.setdefault(r["contig_uid"], []).append(r)
+    + by_contig.setdefault(r["contig_uid"], None).append(r)
+[survived] run__mutmut_33
+    - by_contig.setdefault(r["contig_uid"], []).append(r)
+    + by_contig.setdefault(r["contig_uid"], ).append(r)
+[survived] run__mutmut_51
+    - raise ValueError(f"{cu.hex()}: slot ordinals are not 0..n-1")
+    + raise ValueError(None)
+[survived] run__mutmut_60
+    - first = occ[0] if occ else {}
+    + first = occ[0] if (occ) and False else {}
+[survived] run__mutmut_61
+    - first = occ[0] if occ else {}
+    + first = occ[0] if (occ) or True else {}
+[survived] run__mutmut_62
+    - first = occ[0] if occ else {}
+    + first = occ[1] if occ else {}
+[survived] run__mutmut_66
+    - "tax_order_bucket": None,
+    + "XXtax_order_bucketXX": None,
+[survived] run__mutmut_67
+    - "tax_order_bucket": None,
+    + "TAX_ORDER_BUCKET": None,
+[survived] run__mutmut_68
+    - "genome_uid": first.get("genome_uid"),
+    + "XXgenome_uidXX": first.get("genome_uid"),
+[survived] run__mutmut_69
+    - "genome_uid": first.get("genome_uid"),
+    + "GENOME_UID": first.get("genome_uid"),
+[survived] run__mutmut_70
+    - "genome_uid": first.get("genome_uid"),
+    + "genome_uid": first.get(None),
+[survived] run__mutmut_71
+    - "genome_uid": first.get("genome_uid"),
+    + "genome_uid": first.get("XXgenome_uidXX"),
+[survived] run__mutmut_72
+    - "genome_uid": first.get("genome_uid"),
+    + "genome_uid": first.get("GENOME_UID"),
+[survived] run__mutmut_77
+    - "is_circular": cu in circular,
+    + "is_circular": cu not in circular,
+[survived] run__mutmut_80
+    - "tier": first.get("tier"),
+    + "XXtierXX": first.get("tier"),
+[survived] run__mutmut_81
+    - "tier": first.get("tier"),
+    + "TIER": first.get("tier"),
+[survived] run__mutmut_82
+    - "tier": first.get("tier"),
+    + "tier": first.get(None),
+[survived] run__mutmut_83
+    - "tier": first.get("tier"),
+    + "tier": first.get("XXtierXX"),
+[survived] run__mutmut_84
+    - "tier": first.get("tier"),
+    + "tier": first.get("TIER"),
+[survived] run__mutmut_85
+    - "assembly_quality": first.get("assembly_quality"),
+    + "XXassembly_qualityXX": first.get("assembly_quality"),
+[survived] run__mutmut_86
+    - "assembly_quality": first.get("assembly_quality"),
+    + "ASSEMBLY_QUALITY": first.get("assembly_quality"),
+[survived] run__mutmut_87
+    - "assembly_quality": first.get("assembly_quality"),
+    + "assembly_quality": first.get(None),
+[survived] run__mutmut_88
+    - "assembly_quality": first.get("assembly_quality"),
+    + "assembly_quality": first.get("XXassembly_qualityXX"),
+[survived] run__mutmut_89
+    - "assembly_quality": first.get("assembly_quality"),
+    + "assembly_quality": first.get("ASSEMBLY_QUALITY"),
+[survived] run__mutmut_92
+    - **build_tape(slots, lengths[cu], cu in circular),
+    + **build_tape(slots, lengths[cu], None),
+[survived] run__mutmut_96
+    - **build_tape(slots, lengths[cu], cu in circular),
+    + **build_tape(slots, lengths[cu], cu not in circular),
+[survived] run__mutmut_106
+    - ledger_rows.append(ledger.row(cu, "contig", len(occ), len(occ), tools=provenance.tool_versions("pyarrow")))
+    + ledger_rows.append(ledger.row(cu, "contig", len(occ), len(occ), tools=None))
+[survived] run__mutmut_111
+    - ledger_rows.append(ledger.row(cu, "contig", len(occ), len(occ), tools=provenance.tool_versions("pyarrow")))
+    + ledger_rows.append(ledger.row(cu, "contig", len(occ), len(occ), ))
+[survived] run__mutmut_112
+    - ledger_rows.append(ledger.row(cu, "contig", len(occ), len(occ), tools=provenance.tool_versions("pyarrow")))
+    + ledger_rows.append(ledger.row(cu, "XXcontigXX", len(occ), len(occ), tools=provenance.tool_versions("pyarrow")))
+[survived] run__mutmut_113
+    - ledger_rows.append(ledger.row(cu, "contig", len(occ), len(occ), tools=provenance.tool_versions("pyarrow")))
+    + ledger_rows.append(ledger.row(cu, "CONTIG", len(occ), len(occ), tools=provenance.tool_versions("pyarrow")))
+[survived] run__mutmut_116
+    - ledger_rows.append(ledger.row(cu, "contig", len(occ), len(occ), tools=provenance.tool_versions("pyarrow")))
+    + ledger_rows.append(ledger.row(cu, "contig", len(occ), len(occ), tools=provenance.tool_versions("PYARROW")))
+[survived] run__mutmut_122
+    - est = [200 + 30 * r["n_slots"] for r in rows]
+    + est = [200 - 30 * r["n_slots"] for r in rows]
+[survived] run__mutmut_123
+    - est = [200 + 30 * r["n_slots"] for r in rows]
+    + est = [201 + 30 * r["n_slots"] for r in rows]
+[survived] run__mutmut_124
+    - est = [200 + 30 * r["n_slots"] for r in rows]
+    + est = [200 + 30 / r["n_slots"] for r in rows]
+[survived] run__mutmut_125
+    - est = [200 + 30 * r["n_slots"] for r in rows]
+    + est = [200 + 31 * r["n_slots"] for r in rows]
+[survived] run__mutmut_132
+    - starts = layout.cut(est, max_file_bytes)
+    + starts = layout.cut(est, )
+[survived] run__mutmut_141
+    - for k, (a, b) in enumerate(zip(starts, starts[1:] + [len(rows)])):
+    + for k, (a, b) in enumerate(zip(starts, starts[2:] + [len(rows)])):
+[survived] run__mutmut_143
+    - base.mkdir(parents=True, exist_ok=True)
+    + base.mkdir(parents=True, exist_ok=None)
+[survived] run__mutmut_145
+    - base.mkdir(parents=True, exist_ok=True)
+    + base.mkdir(parents=True, )
+[survived] run__mutmut_147
+    - base.mkdir(parents=True, exist_ok=True)
+    + base.mkdir(parents=True, exist_ok=False)
+[survived] run__mutmut_150
+    - compression="zstd", row_group_size=ROW_GROUP_CONTIGS,
+    + compression=None, row_group_size=ROW_GROUP_CONTIGS,
+[survived] run__mutmut_151
+    - compression="zstd", row_group_size=ROW_GROUP_CONTIGS,
+    + compression="zstd", row_group_size=None,
+[survived] run__mutmut_152
+    - write_statistics=["contig_uid", "tax_order_bucket", "n_slots", "contig_len"])
+    + write_statistics=None)
+[survived] run__mutmut_155
+    - compression="zstd", row_group_size=ROW_GROUP_CONTIGS,
+    + row_group_size=ROW_GROUP_CONTIGS,
+[survived] run__mutmut_156
+    - compression="zstd", row_group_size=ROW_GROUP_CONTIGS, ⏎ write_statistics=["contig_uid", "tax_order_bucket", "n_slots", "contig_len"])
+    + compression="zstd", write_statistics=["contig_uid", "tax_order_bucket", "n_slots", "contig_len"])
+[survived] run__mutmut_157
+    - write_statistics=["contig_uid", "tax_order_bucket", "n_slots", "contig_len"])
+    + )
+[survived] run__mutmut_164
+    - compression="zstd", row_group_size=ROW_GROUP_CONTIGS,
+    + compression="ZSTD", row_group_size=ROW_GROUP_CONTIGS,
+[survived] run__mutmut_165
+    - write_statistics=["contig_uid", "tax_order_bucket", "n_slots", "contig_len"])
+    + write_statistics=["XXcontig_uidXX", "tax_order_bucket", "n_slots", "contig_len"])
+[survived] run__mutmut_166
+    - write_statistics=["contig_uid", "tax_order_bucket", "n_slots", "contig_len"])
+    + write_statistics=["CONTIG_UID", "tax_order_bucket", "n_slots", "contig_len"])
+[survived] run__mutmut_167
+    - write_statistics=["contig_uid", "tax_order_bucket", "n_slots", "contig_len"])
+    + write_statistics=["contig_uid", "XXtax_order_bucketXX", "n_slots", "contig_len"])
+[survived] run__mutmut_168
+    - write_statistics=["contig_uid", "tax_order_bucket", "n_slots", "contig_len"])
+    + write_statistics=["contig_uid", "TAX_ORDER_BUCKET", "n_slots", "contig_len"])
+[survived] run__mutmut_169
+    - write_statistics=["contig_uid", "tax_order_bucket", "n_slots", "contig_len"])
+    + write_statistics=["contig_uid", "tax_order_bucket", "XXn_slotsXX", "contig_len"])
+[survived] run__mutmut_170
+    - write_statistics=["contig_uid", "tax_order_bucket", "n_slots", "contig_len"])
+    + write_statistics=["contig_uid", "tax_order_bucket", "N_SLOTS", "contig_len"])
+[survived] run__mutmut_171
+    - write_statistics=["contig_uid", "tax_order_bucket", "n_slots", "contig_len"])
+    + write_statistics=["contig_uid", "tax_order_bucket", "n_slots", "XXcontig_lenXX"])
+[survived] run__mutmut_172
+    - write_statistics=["contig_uid", "tax_order_bucket", "n_slots", "contig_len"])
+    + write_statistics=["contig_uid", "tax_order_bucket", "n_slots", "CONTIG_LEN"])
+[survived] run__mutmut_174
+    - ledger.write(root, stage, "tape", ledger_rows)
+    + ledger.write(root, None, "tape", ledger_rows)
+[survived] run__mutmut_175
+    - ledger.write(root, stage, "tape", ledger_rows)
+    + ledger.write(root, stage, None, ledger_rows)
+[survived] run__mutmut_181
+    - ledger.write(root, stage, "tape", ledger_rows)
+    + ledger.write(root, stage, "XXtapeXX", ledger_rows)
+[survived] run__mutmut_182
+    - ledger.write(root, stage, "tape", ledger_rows)
+    + ledger.write(root, stage, "TAPE", ledger_rows)
+[survived] run__mutmut_183
+    - return {"contigs": len(rows), "slots": sum(r["n_slots"] for r in rows), "files": len(starts)}
+    + return {"XXcontigsXX": len(rows), "slots": sum(r["n_slots"] for r in rows), "files": len(starts)}
+[survived] run__mutmut_184
+    - return {"contigs": len(rows), "slots": sum(r["n_slots"] for r in rows), "files": len(starts)}
+    + return {"CONTIGS": len(rows), "slots": sum(r["n_slots"] for r in rows), "files": len(starts)}
+[survived] run__mutmut_185
+    - return {"contigs": len(rows), "slots": sum(r["n_slots"] for r in rows), "files": len(starts)}
+    + return {"contigs": len(rows), "XXslotsXX": sum(r["n_slots"] for r in rows), "files": len(starts)}
+[survived] run__mutmut_186
+    - return {"contigs": len(rows), "slots": sum(r["n_slots"] for r in rows), "files": len(starts)}
+    + return {"contigs": len(rows), "SLOTS": sum(r["n_slots"] for r in rows), "files": len(starts)}
+[survived] run__mutmut_190
+    - return {"contigs": len(rows), "slots": sum(r["n_slots"] for r in rows), "files": len(starts)}
+    + return {"contigs": len(rows), "slots": sum(r["n_slots"] for r in rows), "XXfilesXX": len(starts)}
+[survived] run__mutmut_191
+    - return {"contigs": len(rows), "slots": sum(r["n_slots"] for r in rows), "files": len(starts)}
+    + return {"contigs": len(rows), "slots": sum(r["n_slots"] for r in rows), "FILES": len(starts)}

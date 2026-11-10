@@ -1,0 +1,171 @@
+[survived] _block__mutmut_51
+    - header = struct.pack("<BBBBIBBHBBHH", 31, 139, 8, 4, 0, 0, 255, 6, 66, 67, 2, bsize - 1)
+    + header = struct.pack("<BBBBIBBHBBHH", 31, 139, 8, 4, 1, 0, 255, 6, 66, 67, 2, bsize - 1)
+[survived] _block__mutmut_52
+    - header = struct.pack("<BBBBIBBHBBHH", 31, 139, 8, 4, 0, 0, 255, 6, 66, 67, 2, bsize - 1)
+    + header = struct.pack("<BBBBIBBHBBHH", 31, 139, 8, 4, 0, 1, 255, 6, 66, 67, 2, bsize - 1)
+[survived] _block__mutmut_57
+    - header = struct.pack("<BBBBIBBHBBHH", 31, 139, 8, 4, 0, 0, 255, 6, 66, 67, 2, bsize - 1)
+    + header = struct.pack("<BBBBIBBHBBHH", 31, 139, 8, 4, 0, 0, 255, 6, 66, 67, 3, bsize - 1)
+[survived] write_bgzf_fasta__mutmut_1
+    - def write_bgzf_fasta(records, out: Path, line_width: int = 80, level: int = 6) -> dict:
+    + def write_bgzf_fasta(records, out: Path, line_width: int = 81, level: int = 6) -> dict:
+[survived] write_bgzf_fasta__mutmut_2
+    - def write_bgzf_fasta(records, out: Path, line_width: int = 80, level: int = 6) -> dict:
+    + def write_bgzf_fasta(records, out: Path, line_width: int = 80, level: int = 7) -> dict:
+[survived] write_bgzf_fasta__mutmut_32
+    - while len(buf) >= BLOCK_DATA or (final and buf):
+    + while len(buf) > BLOCK_DATA or (final and buf):
+[timeout] write_bgzf_fasta__mutmut_33
+    - while len(buf) >= BLOCK_DATA or (final and buf):
+    + while len(buf) >= BLOCK_DATA or (final or buf):
+[survived] write_bgzf_fasta__mutmut_86
+    - if len(buf) >= BLOCK_DATA:
+    + if len(buf) > BLOCK_DATA:
+[survived] write_bgzf_fasta__mutmut_90
+    - cpos += len(EOF_BLOCK)
+    + cpos = len(EOF_BLOCK)
+[survived] write_bgzf_fasta__mutmut_91
+    - cpos += len(EOF_BLOCK)
+    + cpos -= len(EOF_BLOCK)
+[survived] write_bgzf_fasta__mutmut_111
+    - fh.write(struct.pack("<Q", len(gzi)))
+    + fh.write(struct.pack("<q", len(gzi)))
+[survived] write_bgzf_fasta__mutmut_120
+    - fh.write(struct.pack("<QQ", c, u))
+    + fh.write(struct.pack("<qq", c, u))
+[survived] write_bgzf_fasta__mutmut_132
+    - return {"bytes": cpos, "uncompressed_bytes": upos, "blocks": len(gzi) + 1, "records": len(fai)}
+    + return {"XXbytesXX": cpos, "uncompressed_bytes": upos, "blocks": len(gzi) + 1, "records": len(fai)}
+[survived] write_bgzf_fasta__mutmut_133
+    - return {"bytes": cpos, "uncompressed_bytes": upos, "blocks": len(gzi) + 1, "records": len(fai)}
+    + return {"BYTES": cpos, "uncompressed_bytes": upos, "blocks": len(gzi) + 1, "records": len(fai)}
+[survived] write_bgzf_fasta__mutmut_134
+    - return {"bytes": cpos, "uncompressed_bytes": upos, "blocks": len(gzi) + 1, "records": len(fai)}
+    + return {"bytes": cpos, "XXuncompressed_bytesXX": upos, "blocks": len(gzi) + 1, "records": len(fai)}
+[survived] write_bgzf_fasta__mutmut_135
+    - return {"bytes": cpos, "uncompressed_bytes": upos, "blocks": len(gzi) + 1, "records": len(fai)}
+    + return {"bytes": cpos, "UNCOMPRESSED_BYTES": upos, "blocks": len(gzi) + 1, "records": len(fai)}
+[survived] write_bgzf_fasta__mutmut_138
+    - return {"bytes": cpos, "uncompressed_bytes": upos, "blocks": len(gzi) + 1, "records": len(fai)}
+    + return {"bytes": cpos, "uncompressed_bytes": upos, "blocks": len(gzi) - 1, "records": len(fai)}
+[survived] write_bgzf_fasta__mutmut_139
+    - return {"bytes": cpos, "uncompressed_bytes": upos, "blocks": len(gzi) + 1, "records": len(fai)}
+    + return {"bytes": cpos, "uncompressed_bytes": upos, "blocks": len(gzi) + 2, "records": len(fai)}
+[survived] read_fai__mutmut_4
+    - n, length, off, lb, lw = line.split("\t")[:5]
+    + n, length, off, lb, lw = line.split(None)[:5]
+[survived] read_fai__mutmut_6
+    - n, length, off, lb, lw = line.split("\t")[:5]
+    + n, length, off, lb, lw = line.split("\t")[:6]
+[survived] read_gzi__mutmut_9
+    - (n,) = struct.unpack_from("<Q", raw)
+    + (n,) = struct.unpack_from("<q", raw)
+[survived] read_gzi__mutmut_15
+    - raise ValueError(f"{path}: {len(raw)} bytes for {n} entries")
+    + raise ValueError(None)
+[survived] read_gzi__mutmut_23
+    - return [struct.unpack_from("<QQ", raw, 8 + 16 * i) for i in range(n)]
+    + return [struct.unpack_from("<qq", raw, 8 + 16 * i) for i in range(n)]
+[survived] block_starts__mutmut_12
+    - while c < size:
+    + while c <= size:
+[survived] block_starts__mutmut_15
+    - h = fh.read(18)
+    + h = fh.read(None)
+[survived] block_starts__mutmut_16
+    - h = fh.read(18)
+    + h = fh.read(19)
+[survived] block_starts__mutmut_17
+    - if len(h) < 18 or h[:4] != b"\x1f\x8b\x08\x04" or h[12:14] != b"BC":
+    + if len(h) < 18 or h[:4] != b"\x1f\x8b\x08\x04" and h[12:14] != b"BC":
+[survived] block_starts__mutmut_18
+    - if len(h) < 18 or h[:4] != b"\x1f\x8b\x08\x04" or h[12:14] != b"BC":
+    + if len(h) < 18 and h[:4] != b"\x1f\x8b\x08\x04" or h[12:14] != b"BC":
+[survived] block_starts__mutmut_29
+    - raise ValueError(f"{path}: no BGZF block header at {c}")
+    + raise ValueError(None)
+[survived] block_starts__mutmut_39
+    - bsize = struct.unpack_from("<H", h, 16)[0] + 1
+    + bsize = struct.unpack_from("<h", h, 16)[0] + 1
+[survived] block_starts__mutmut_53
+    - (isize,) = struct.unpack("<I", fh.read(4))
+    + (isize,) = struct.unpack("<i", fh.read(4))
+[survived] block_starts__mutmut_56
+    - if isize == 0 and c + bsize == size:
+    + if isize == 0 or c + bsize == size:
+[survived] block_starts__mutmut_66
+    - raise ValueError(f"{path}: no EOF block")
+    + raise ValueError(None)
+[survived] biobox.l0seq.bgzf.xǁBgzfFastaǁ__init____mutmut_10
+    - self.fai: dict[str, FaiEntry] = {e.name: e for e in read_fai(str(path) + ".fai")}
+    + self.fai: dict[str, FaiEntry] = {e.name: e for e in read_fai(str(path) + ".FAI")}
+[survived] biobox.l0seq.bgzf.xǁBgzfFastaǁ__init____mutmut_16
+    - pairs = read_gzi(str(path) + ".gzi")
+    + pairs = read_gzi(str(path) + ".GZI")
+[survived] biobox.l0seq.bgzf.xǁBgzfFastaǁ__init____mutmut_25
+    - self._cache_max = cache_blocks
+    + self._cache_max = None
+[survived] biobox.l0seq.bgzf.xǁBgzfFastaǁ__init____mutmut_30
+    - self.compressed_bytes_read = 0
+    + self.compressed_bytes_read = 1
+[survived] biobox.l0seq.bgzf.xǁBgzfFastaǁ__init____mutmut_32
+    - self.uncompressed_bytes_decoded = 0
+    + self.uncompressed_bytes_decoded = 1
+[survived] biobox.l0seq.bgzf.xǁBgzfFastaǁclose__mutmut_1
+    - if self._fd is not None:
+    + if self._fd is None:
+[survived] biobox.l0seq.bgzf.xǁBgzfFastaǁclose__mutmut_2
+    - os.close(self._fd)
+    + os.close(None)
+[survived] biobox.l0seq.bgzf.xǁBgzfFastaǁclose__mutmut_3
+    - self._fd = None
+    + self._fd = ""
+[survived] biobox.l0seq.bgzf.xǁBgzfFastaǁ_blocks_for__mutmut_14
+    - last = bisect.bisect_right(self._ustart, uhi - 1) - 1
+    + last = bisect.bisect_right(self._ustart, uhi + 1) - 1
+[survived] biobox.l0seq.bgzf.xǁBgzfFastaǁunits_for__mutmut_2
+    - return 0
+    + return 1
+[survived] biobox.l0seq.bgzf.xǁBgzfFastaǁ_decoded__mutmut_1
+    - hit = self._cache.pop(b, None)
+    + hit = None
+[survived] biobox.l0seq.bgzf.xǁBgzfFastaǁ_decoded__mutmut_2
+    - hit = self._cache.pop(b, None)
+    + hit = self._cache.pop(None, None)
+[survived] biobox.l0seq.bgzf.xǁBgzfFastaǁ_decoded__mutmut_6
+    - self._cache[b] = hit
+    + self._cache[b] = None
+[survived] biobox.l0seq.bgzf.xǁBgzfFastaǁ_decoded__mutmut_20
+    - cend = self._cstart[b + 1] if b + 1 < len(self._cstart) else self._size - len(EOF_BLOCK)
+    + cend = self._cstart[b + 1] if b + 2 < len(self._cstart) else self._size - len(EOF_BLOCK)
+[survived] biobox.l0seq.bgzf.xǁBgzfFastaǁ_decoded__mutmut_22
+    - cend = self._cstart[b + 1] if b + 1 < len(self._cstart) else self._size - len(EOF_BLOCK)
+    + cend = self._cstart[b + 1] if b + 1 < len(self._cstart) else self._size + len(EOF_BLOCK)
+[survived] biobox.l0seq.bgzf.xǁBgzfFastaǁ_decoded__mutmut_44
+    - self.compressed_bytes_read += len(blk)
+    + self.compressed_bytes_read = len(blk)
+[survived] biobox.l0seq.bgzf.xǁBgzfFastaǁ_decoded__mutmut_45
+    - self.compressed_bytes_read += len(blk)
+    + self.compressed_bytes_read -= len(blk)
+[survived] biobox.l0seq.bgzf.xǁBgzfFastaǁ_decoded__mutmut_46
+    - self.uncompressed_bytes_decoded += len(data)
+    + self.uncompressed_bytes_decoded = len(data)
+[survived] biobox.l0seq.bgzf.xǁBgzfFastaǁ_decoded__mutmut_47
+    - self.uncompressed_bytes_decoded += len(data)
+    + self.uncompressed_bytes_decoded -= len(data)
+[survived] biobox.l0seq.bgzf.xǁBgzfFastaǁ_decoded__mutmut_48
+    - self._cache[b] = data
+    + self._cache[b] = None
+[survived] biobox.l0seq.bgzf.xǁBgzfFastaǁ_decoded__mutmut_49
+    - if len(self._cache) > self._cache_max:
+    + if len(self._cache) >= self._cache_max:
+[survived] biobox.l0seq.bgzf.xǁBgzfFastaǁ_decoded__mutmut_50
+    - self._cache.popitem(last=False)
+    + self._cache.popitem(last=None)
+[survived] biobox.l0seq.bgzf.xǁBgzfFastaǁ_decoded__mutmut_51
+    - self._cache.popitem(last=False)
+    + self._cache.popitem(last=True)
+[survived] biobox.l0seq.bgzf.xǁBgzfFastaǁfetch__mutmut_7
+    - raise ValueError(f"slice {start}:{end} outside 0:{e.length}")
+    + raise ValueError(None)

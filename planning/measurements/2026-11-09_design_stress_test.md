@@ -155,7 +155,31 @@ Limits of the current code:
 
 ## 6. Mutation testing
 
-PENDING_MUTMUT
+Incomplete. mutmut generated 2,937 mutants for `l0seq`, `l1` and `l3` (laptop; tests `tests/r1` and
+`tests/r2`; the MMseqs2, samtools and `hmmsearch` tests skip there). It left 594 alive, but its
+per-mutant test selection misses real kills (confirmed on one `genecall` mutant), so 594 is an upper
+bound. A re-check of the 594 against the full test selection was interrupted on 2026-11-09 and has
+no result. The raw survivor lists, one file per module, are in `2026-11-09_mutmut_raw/`; they are
+unverified and unclassified. Card D-01 must rerun with the full test selection per mutant before any
+D-02 work starts.
+
+## 6a. S1 pilot on INPHARED phages (measured, wilkcomp02, in progress)
+
+Source: `14Apr2025_genomes.fa.gz` (643,340,443 bytes) from `millardlab-inphared.s3.climb.ac.uk`.
+Driver: `scripts/stress/pilot_s1/pilot.py`; store kept at `/tmp/if2453/pilot_s1/root` on the pod,
+release name `rS1.pilot1`. Results so far (the rest is in `/tmp/if2453/pilot_s1/result.json` when
+the run ends):
+
+| Item | Value |
+|---|---|
+| records; bases | 34,076; 2,084,350,440 bp (median 45,487 bp, maximum 735,411 bp) |
+| distinct sequences stored | 27,258; 1,664,109,938 bp (20% of the records are exact duplicates) |
+| shards | 2 |
+| ingest, 1 thread | 427 s (4.9 Mbp/s of input), peak RSS 5.6 GB |
+| phage gene calling (`pyrodigal-gv`, meta mode), 200-genome probe | 0.222 Mbp/s per thread, 5× slower than the 1.1 Mbp/s of single mode on prokaryotes; building a finder per genome costs 0.008 ms and is not the cause |
+
+At 0.222 Mbp/s the full set needs about 2.1 hours on one thread (*derived*); the gene caller must run
+genomes in parallel before S4 (about 12 Gbp of viral sequence).
 
 ## 7. State of the pod and CI at the start (measured)
 

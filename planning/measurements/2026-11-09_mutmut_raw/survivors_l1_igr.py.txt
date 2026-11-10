@@ -1,0 +1,120 @@
+[survived] igrs_of_contig__mutmut_3
+    - return [(0, length, None, None)] if length else []
+    + return [(0, length, None, None)] if (length) or True else []
+[survived] igrs_of_contig__mutmut_13
+    - genes = sorted(slots, key=lambda s: (s[1], s[2], s[0]))
+    + genes = sorted(slots, key=lambda s: (s[1], s[2], s[1]))
+[survived] igrs_of_contig__mutmut_17
+    - wraps = [(e - length, o) for o, s, e in genes if e > length] if circular else []
+    + wraps = [(e - length, o) for o, s, e in genes if e > length] if (circular) or True else []
+[survived] igrs_of_contig__mutmut_19
+    - wraps = [(e - length, o) for o, s, e in genes if e > length] if circular else []
+    + wraps = [(e - length, o) for o, s, e in genes if e >= length] if circular else []
+[survived] igrs_of_contig__mutmut_44
+    - if e > reach:
+    + if e >= reach:
+[survived] igrs_of_contig__mutmut_57
+    - start, end = reach, first_start + length if first_start else length
+    + start, end = reach, first_start + length if (first_start) or True else length
+[survived] igrs_of_contig__mutmut_59
+    - if start >= length:  # the last gene ends exactly at the origin
+    + if start > length:  # the last gene ends exactly at the origin
+[survived] igrs_of_contig__mutmut_60
+    - start, end = start - length, end - length
+    + start, end = None
+[survived] igrs_of_contig__mutmut_61
+    - start, end = start - length, end - length
+    + start, end = start + length, end - length
+[survived] igrs_of_contig__mutmut_62
+    - start, end = start - length, end - length
+    + start, end = start - length, end + length
+[survived] run__mutmut_5
+    - columns=["contig_uid", "slot_ordinal", "start", "end"]).to_pylist()
+    + columns=None).to_pylist()
+[survived] run__mutmut_7
+    - columns=["contig_uid", "slot_ordinal", "start", "end"]).to_pylist()
+    + ).to_pylist()
+[survived] run__mutmut_30
+    - by_contig.setdefault(r["contig_uid"], []).append((r["slot_ordinal"], r["start"], r["end"]))
+    + by_contig.setdefault(r["contig_uid"], None).append((r["slot_ordinal"], r["start"], r["end"]))
+[survived] run__mutmut_32
+    - by_contig.setdefault(r["contig_uid"], []).append((r["slot_ordinal"], r["start"], r["end"]))
+    + by_contig.setdefault(r["contig_uid"], ).append((r["slot_ordinal"], r["start"], r["end"]))
+[survived] run__mutmut_45
+    - for s, e, left, right in igrs_of_contig(by_contig[cu], lengths[cu], cu in circular):
+    + for s, e, left, right in igrs_of_contig(by_contig[cu], lengths[cu], None):
+[survived] run__mutmut_49
+    - for s, e, left, right in igrs_of_contig(by_contig[cu], lengths[cu], cu in circular):
+    + for s, e, left, right in igrs_of_contig(by_contig[cu], lengths[cu], cu not in circular):
+[survived] run__mutmut_59
+    - rows.append({"contig_uid": cu, "start": s, "end": e, "strand": 1, "left_slot": left, "right_slot": right})
+    + rows.append({"contig_uid": cu, "start": s, "end": e, "strand": 2, "left_slot": left, "right_slot": right})
+[survived] run__mutmut_60
+    - rows.append({"contig_uid": cu, "start": s, "end": e, "strand": 1, "left_slot": left, "right_slot": right})
+    + rows.append({"contig_uid": cu, "start": s, "end": e, "strand": 1, "XXleft_slotXX": left, "right_slot": right})
+[survived] run__mutmut_61
+    - rows.append({"contig_uid": cu, "start": s, "end": e, "strand": 1, "left_slot": left, "right_slot": right})
+    + rows.append({"contig_uid": cu, "start": s, "end": e, "strand": 1, "LEFT_SLOT": left, "right_slot": right})
+[survived] run__mutmut_62
+    - rows.append({"contig_uid": cu, "start": s, "end": e, "strand": 1, "left_slot": left, "right_slot": right})
+    + rows.append({"contig_uid": cu, "start": s, "end": e, "strand": 1, "left_slot": left, "XXright_slotXX": right})
+[survived] run__mutmut_63
+    - rows.append({"contig_uid": cu, "start": s, "end": e, "strand": 1, "left_slot": left, "right_slot": right})
+    + rows.append({"contig_uid": cu, "start": s, "end": e, "strand": 1, "left_slot": left, "RIGHT_SLOT": right})
+[survived] run__mutmut_76
+    - pq.write_table(pa.Table.from_pylist(rows, schema=table("igr").schema), out, compression="zstd", row_group_size=122_880)
+    + pq.write_table(pa.Table.from_pylist(rows, schema=table("igr").schema), out, compression=None, row_group_size=122_880)
+[survived] run__mutmut_77
+    - pq.write_table(pa.Table.from_pylist(rows, schema=table("igr").schema), out, compression="zstd", row_group_size=122_880)
+    + pq.write_table(pa.Table.from_pylist(rows, schema=table("igr").schema), out, compression="zstd", row_group_size=None)
+[survived] run__mutmut_80
+    - pq.write_table(pa.Table.from_pylist(rows, schema=table("igr").schema), out, compression="zstd", row_group_size=122_880)
+    + pq.write_table(pa.Table.from_pylist(rows, schema=table("igr").schema), out, row_group_size=122_880)
+[survived] run__mutmut_81
+    - pq.write_table(pa.Table.from_pylist(rows, schema=table("igr").schema), out, compression="zstd", row_group_size=122_880)
+    + pq.write_table(pa.Table.from_pylist(rows, schema=table("igr").schema), out, compression="zstd", )
+[survived] run__mutmut_83
+    - pq.write_table(pa.Table.from_pylist(rows, schema=table("igr").schema), out, compression="zstd", row_group_size=122_880)
+    + pq.write_table(pa.Table.from_pylist(rows, schema=None), out, compression="zstd", row_group_size=122_880)
+[survived] run__mutmut_85
+    - pq.write_table(pa.Table.from_pylist(rows, schema=table("igr").schema), out, compression="zstd", row_group_size=122_880)
+    + pq.write_table(pa.Table.from_pylist(rows, ), out, compression="zstd", row_group_size=122_880)
+[survived] run__mutmut_90
+    - pq.write_table(pa.Table.from_pylist(rows, schema=table("igr").schema), out, compression="zstd", row_group_size=122_880)
+    + pq.write_table(pa.Table.from_pylist(rows, schema=table("igr").schema), out, compression="ZSTD", row_group_size=122_880)
+[survived] run__mutmut_91
+    - pq.write_table(pa.Table.from_pylist(rows, schema=table("igr").schema), out, compression="zstd", row_group_size=122_880)
+    + pq.write_table(pa.Table.from_pylist(rows, schema=table("igr").schema), out, compression="zstd", row_group_size=122881)
+[survived] run__mutmut_92
+    - return {"igrs": len(rows), "igrs_ge_30": sum(1 for r in rows if r["end"] - r["start"] >= 30),
+    + return {"XXigrsXX": len(rows), "igrs_ge_30": sum(1 for r in rows if r["end"] - r["start"] >= 30),
+[survived] run__mutmut_93
+    - return {"igrs": len(rows), "igrs_ge_30": sum(1 for r in rows if r["end"] - r["start"] >= 30),
+    + return {"IGRS": len(rows), "igrs_ge_30": sum(1 for r in rows if r["end"] - r["start"] >= 30),
+[survived] run__mutmut_94
+    - return {"igrs": len(rows), "igrs_ge_30": sum(1 for r in rows if r["end"] - r["start"] >= 30),
+    + return {"igrs": len(rows), "XXigrs_ge_30XX": sum(1 for r in rows if r["end"] - r["start"] >= 30),
+[survived] run__mutmut_95
+    - return {"igrs": len(rows), "igrs_ge_30": sum(1 for r in rows if r["end"] - r["start"] >= 30),
+    + return {"igrs": len(rows), "IGRS_GE_30": sum(1 for r in rows if r["end"] - r["start"] >= 30),
+[survived] run__mutmut_97
+    - return {"igrs": len(rows), "igrs_ge_30": sum(1 for r in rows if r["end"] - r["start"] >= 30),
+    + return {"igrs": len(rows), "igrs_ge_30": sum(2 for r in rows if r["end"] - r["start"] >= 30),
+[survived] run__mutmut_98
+    - return {"igrs": len(rows), "igrs_ge_30": sum(1 for r in rows if r["end"] - r["start"] >= 30),
+    + return {"igrs": len(rows), "igrs_ge_30": sum(1 for r in rows if r["end"] + r["start"] >= 30),
+[survived] run__mutmut_103
+    - return {"igrs": len(rows), "igrs_ge_30": sum(1 for r in rows if r["end"] - r["start"] >= 30),
+    + return {"igrs": len(rows), "igrs_ge_30": sum(1 for r in rows if r["end"] - r["start"] > 30),
+[survived] run__mutmut_104
+    - return {"igrs": len(rows), "igrs_ge_30": sum(1 for r in rows if r["end"] - r["start"] >= 30),
+    + return {"igrs": len(rows), "igrs_ge_30": sum(1 for r in rows if r["end"] - r["start"] >= 31),
+[survived] run__mutmut_105
+    - "bp": sum(r["end"] - r["start"] for r in rows)}
+    + "XXbpXX": sum(r["end"] - r["start"] for r in rows)}
+[survived] run__mutmut_106
+    - "bp": sum(r["end"] - r["start"] for r in rows)}
+    + "BP": sum(r["end"] - r["start"] for r in rows)}
+[survived] run__mutmut_108
+    - "bp": sum(r["end"] - r["start"] for r in rows)}
+    + "bp": sum(r["end"] + r["start"] for r in rows)}

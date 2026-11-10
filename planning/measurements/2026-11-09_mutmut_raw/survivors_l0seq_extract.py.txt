@@ -1,0 +1,12 @@
+[survived] extract__mutmut_1
+    - def extract(store, contigs, out: Path, line_width: int = 80, level: int = 6) -> dict:
+    + def extract(store, contigs, out: Path, line_width: int = 81, level: int = 6) -> dict:
+[survived] extract__mutmut_2
+    - def extract(store, contigs, out: Path, line_width: int = 80, level: int = 6) -> dict:
+    + def extract(store, contigs, out: Path, line_width: int = 80, level: int = 7) -> dict:
+[survived] extract__mutmut_9
+    - return write_bgzf_fasta(((cu.hex(), store.get(cu)) for cu in contigs), out, line_width, level)
+    + return write_bgzf_fasta(((cu.hex(), store.get(cu)) for cu in contigs), out, level)
+[survived] extract__mutmut_10
+    - return write_bgzf_fasta(((cu.hex(), store.get(cu)) for cu in contigs), out, line_width, level)
+    + return write_bgzf_fasta(((cu.hex(), store.get(cu)) for cu in contigs), out, line_width, )
