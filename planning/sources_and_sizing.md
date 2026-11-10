@@ -102,6 +102,7 @@ All rates are unmeasured; "Core-h" is the range from §2 at the stage's scale.
 | Per-genome annotations: pyrodigal GFF → Parquet; Pfam/NCBIfam hits ≈1.5 hits/protein × 60 B over 437 M proteins (*measured*, GTDB R226 metadata, 2026-11-09; scanned on NR90 reps, projected to every protein, §2) | ~50 GB (computed from the superseded 4.8e8 estimate; recompute) | scratch |
 | Clusters: MMseqs2 DBs (~2× aa bytes) + NR90/NR50 membership Parquet (36.5 B per protein per level, *measured*, golden set, 2026-11-09; the estimate was 16 B/protein) | ~300 GB DB (transient; computed from the superseded estimate; recompute) + ~32 GB membership (*derived*: 36.5 B × 2 levels × 437 M proteins; the estimate was ~8 GB) | DB on `/tmp` during runs, membership on scratch |
 | Parquet tapes (est. 6e8 slots (superseded estimate; the S5 protein count is 437 M) × 30.4 B per slot, *measured*, golden set, 2026-11-09; the estimate was ~40 B) + `slot_pairs` + `pair_stats` | ~25–60 GB (computed from the superseded estimate; recompute) | scratch |
+| `token_postings` (35.74 B per row, *measured*, rL.2 store, wilkcomp02, 2026-11-10, `scripts/stress/postings_bytes.py`; the code's estimate was 20 B; 2.329 rows per CDS slot, *measured*, same store) | ~36 GB (*derived*: 437 M proteins × 2.329 rows × 35.74 B; the family share of rows is from the S1+P1 store and is an *estimate* at GTDB scale; recompute with the S5 slot count) | scratch |
 | DuckDB catalog / views | <1 GB | scratch |
 
 ### S5 protein residues (reconciled 2026-10-29)

@@ -41,6 +41,7 @@ has to update it. This was found by reading the code, and each reason is stated.
 | `synth_scale.py` | pod | 1,000x layout and query read counts | 5 | pre-B (slot_pairs section) |
 | `builder_limits.py` | pod | heap per pair row and `SeqStore` open cost at 10^6 contigs | 5 (limits table) | pre-B |
 | `macro_scan.py` | pod | row groups read by the sequence macros at 10^6 contigs | 5 (limits table) | needs rerun for B-14 |
+| `postings_bytes.py` | pod | `token_postings` bytes per column from Parquet footers (`python scripts/stress/postings_bytes.py ROOT RELEASE [--json]`; read only, card B-26) | `planning/measurements/2026-11-10_postings_bytes.md` | current |
 | `pilot_s1/pilot.py` | pod | S1 rate pilot on INPHARED phages | 6a, 6b | pre-B, `biobox.l3.pairs` is gone |
 | `pilot_s1/pilot_resume.py` | pod | same, skipping steps that already finished | 6a | pre-B, as `pilot.py` |
 | `pilot_s1/resume.sh` | pod | wrapper that waits for an earlier process, then runs `pilot_resume.py` | 6a | pod paths hard-coded |
