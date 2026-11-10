@@ -8,10 +8,15 @@ DuckDB file holding only views over explicit file lists (no globs, LY-10) and
 the sequence macros of §2A.3. It is built under a temporary name and moved into
 place with rename(2); `current.json` is a symlink swapped the same way.
 
-DuckDB cannot read BGZF, so `seq_raw` calls `bb_seq_raw`, a Python function that
-`open_catalog` registers on each connection (DEC-17). A catalog opened with plain
-`duckdb` has every view and macro, but the sequence macros fail with "bb_seq_raw
-does not exist".
+DuckDB cannot read BGZF, so the sequence macros are thin wrappers over Python functions
+that `open_catalog` registers on each connection (DEC-17): `seq_get` and `seq_slice` call
+`bb_seq`, `seq_get_circular` calls `bb_seq_circular`, `seq_raw` calls `bb_seq_raw`. They
+resolve keys through `SeqStore` point lookups, never through SQL on `contig_index` or
+`seq_locator`, so a fetch reads O(1) index row groups also when the keys come from a joined
+table (AGENTS §4.4, card B-14). A catalog opened with plain `duckdb` has every view and
+macro, but the sequence macros fail with "Catalog Error: Scalar Function with name bb_seq
+does not exist!" (`bb_seq_circular`, `bb_seq_raw` for the other two); the lookup macros
+`default_digest`, `digest_len` and `contig_len_of` work there.
 
     manifest = build_manifest(root, "rS0.1")
     write_manifest(manifest, root / "manifests/release=rS0.1.json")
@@ -329,8 +334,11 @@ COMPLEMENT = ("ACGTRYKMBVDHNacgtrykmbvdhn", "TGCAYRMKVBHDNtgcayrmkvbhdn")
 def macro_sql() -> list[str]:
     """Sequence macros (data_layer_and_tests.md §2A.3). 0-based half-open; strand +1/-1.
 
-    Parameter names start with an underscore so they never collide with column names. Bounds
-    are checked in SQL; `bb_seq_raw` (registered by `open_catalog`) only reads the shard.
+    Parameter names start with an underscore so they never collide with column names. The
+    sequence macros only call `bb_seq`, `bb_seq_circular` and `bb_seq_raw` (registered by
+    `open_catalog`), which check bounds and strand, resolve keys and read the shards; the lookup
+    macros `default_digest`, `digest_len` and `contig_len_of` are for users and scan the index
+    views, so the sequence macros do not call them.
     """
     return [
         f"CREATE MACRO revcomp(_x) AS reverse(translate(_x, '{COMPLEMENT[0]}', '{COMPLEMENT[1]}'))",
@@ -339,28 +347,14 @@ def macro_sql() -> list[str]:
         "CREATE MACRO digest_len(_rd) AS (SELECT contig_len FROM seq_locator WHERE raw_digest = _rd)",
         "CREATE MACRO contig_len_of(_cuid) AS "
         "(SELECT contig_len FROM contig_index WHERE contig_uid = _cuid AND is_default_variant)",
-        # forward bytes of one stored variant
-        """CREATE MACRO seq_raw(_rd, _s, _e) AS CASE
-              WHEN digest_len(_rd) IS NULL THEN error('seq_raw: unknown raw_digest')
-              WHEN _s < 0 OR _e < _s OR _e > digest_len(_rd) THEN error('seq_raw: slice outside 0:contig_len')
-              WHEN _s = _e THEN ''
-              ELSE bb_seq_raw(_rd, _s, _e)
-            END""",
-        "CREATE MACRO seq_slice(_cuid, _s, _e) AS seq_raw(default_digest(_cuid), _s, _e)",
-        # each macro below evaluates its slice once: a macro argument is substituted as an
-        # expression, so passing seq_slice(...) to two CASE branches would read the shard twice
-        """CREATE MACRO seq_get(_cuid, _s, _e, _strand) AS (
-              SELECT CASE WHEN _strand = 1 THEN _x WHEN _strand = -1 THEN revcomp(_x)
-                          ELSE error('seq_get: strand must be 1 or -1') END
-              FROM (SELECT seq_slice(_cuid, _s, _e) AS _x))""",
+        # sequence: thin wrappers over the Python functions (card B-14; see _register_seq_udf).
+        # forward bytes of one stored variant, by exact raw_digest
+        "CREATE MACRO seq_raw(_rd, _s, _e) AS bb_seq_raw(_rd, _s, _e)",
+        # the default variant of a contig, forward strand
+        "CREATE MACRO seq_slice(_cuid, _s, _e) AS bb_seq(_cuid, _s, _e, 1)",
+        "CREATE MACRO seq_get(_cuid, _s, _e, _strand) AS bb_seq(_cuid, _s, _e, _strand)",
         # circular contigs: an origin-wrapping slice has contig_len < _e <= _s + contig_len (C-05, DEC-13)
-        """CREATE MACRO seq_get_circular(_cuid, _s, _e, _strand) AS (
-              SELECT CASE
-                WHEN _strand NOT IN (1, -1) THEN error('seq_get_circular: strand must be 1 or -1')
-                WHEN _e > _n AND NOT (_s < _n AND _e <= _s + _n) THEN error('seq_get_circular: invalid wrapping slice')
-                WHEN _strand = 1 THEN _x ELSE revcomp(_x) END
-              FROM (SELECT _n, seq_slice(_cuid, _s, least(_e, _n)) || seq_slice(_cuid, 0, greatest(_e - _n, 0)) AS _x
-                    FROM (SELECT contig_len_of(_cuid) AS _n)))""",
+        "CREATE MACRO seq_get_circular(_cuid, _s, _e, _strand) AS bb_seq_circular(_cuid, _s, _e, _strand)",
         "CREATE MACRO protein_of(_puid) AS (SELECT any_value(seq) FROM protein_seq "
         # the key's bucket at every width a stage may use (biobox.layout); prunes files
         "WHERE protein_prefix IN ('all', left(lower(hex((_puid)[1:1])), 1), lower(hex((_puid)[1:1]))) "
@@ -453,9 +447,9 @@ def generate_catalog(manifest: dict, out_path: Path, root: Path | None = None) -
         if arts:
             con.executemany("INSERT INTO catalog_artifacts VALUES (?, ?, ?, ?)",
                             [(a["path"], a["artifact"], a["sha256"], a["bytes"]) for a in arts])
-        # DuckDB binds a macro's functions when it is created: a stand-in lets the macros be
-        # stored; open_catalog registers the real reader;
-        # macros come last because they read catalog_info
+        # DuckDB binds a macro's functions when it is created: stand-ins for bb_seq,
+        # bb_seq_circular and bb_seq_raw let the macros be stored without a store; open_catalog
+        # registers the real readers; macros come last because they read catalog_info
         _register_seq_udf(con, None)
         for stmt in macro_sql():
             con.execute(stmt)
@@ -469,20 +463,104 @@ def generate_catalog(manifest: dict, out_path: Path, root: Path | None = None) -
 _READERS: dict[int, object] = {}
 
 
-def _register_seq_udf(con: duckdb.DuckDBPyConnection, store) -> None:
-    def bb_seq_raw(rd: pa.Array, s: pa.Array, e: pa.Array) -> pa.Array:
-        if store is None:
-            raise RuntimeError("bb_seq_raw: open the catalog with biobox.catalog.open_catalog to read sequence")
-        out = [None if None in (r, a, b) else store.raw(r, a, b).decode("ascii")
-               for r, a, b in zip(rd.to_pylist(), s.to_pylist(), e.to_pylist())]
-        return pa.array(out, pa.string())
+def _read_in_file_order(store, n_rows: int, jobs: list) -> list:
+    """Read one vector's slices and return them as strings in row order (None for NULL rows).
 
-    con.create_function("bb_seq_raw", bb_seq_raw, ["BLOB", "BIGINT", "BIGINT"], "VARCHAR",
-                        type="arrow", null_handling="special", side_effects=False)
+    `jobs` holds (row, strand, pieces), pieces being (shard, raw_digest, start, end) already
+    bounds-checked; an origin-wrapping slice is two pieces. The pieces are read sorted by
+    (shard, raw_digest, start, end), which is (shard, file offset) order because a shard's records
+    are sorted by raw_digest (the bisected `.fai` requires it): a batch of fetches decompresses
+    each BGZF block once and front to back, whatever order the rows came in. The results are then
+    put back in the rows' original order.
+    """
+    from biobox.l0seq.store import revcomp
+
+    order = sorted(((p, row, k) for row, _, pieces in jobs for k, p in enumerate(pieces)), key=lambda x: x[0])
+    got = {}
+    for (shard, rd, a, b), row, k in order:
+        got[(row, k)] = store.read(shard, rd, a, b) if a < b else b""
+    out: list = [None] * n_rows
+    for row, strand, pieces in jobs:
+        x = b"".join(got[(row, k)] for k in range(len(pieces)))
+        out[row] = (x if strand == 1 else revcomp(x)).decode("ascii")
+    return out
+
+
+def _register_seq_udf(con: duckdb.DuckDBPyConnection, store) -> None:
+    """Register `bb_seq`, `bb_seq_circular` and `bb_seq_raw` over `store` (card B-14).
+
+    Each is vectorized (Arrow in, Arrow out) and resolves keys with SeqStore point lookups
+    (`default_digest`, `locate`: one row group per index per key, cached), never with SQL on the
+    index views. A NULL in any argument gives NULL. With `store` None (the stand-ins
+    `generate_catalog` stores the macros against, or a root without sequence) they raise.
+    """
+
+    def need() -> None:
+        if store is None:
+            raise RuntimeError("bb_seq: open the catalog with biobox.catalog.open_catalog to read sequence")
+
+    def contig_jobs(who: str, circular: bool, cuids: pa.Array, starts: pa.Array, ends: pa.Array,
+                    strands: pa.Array) -> pa.Array:
+        need()
+        rows = list(zip(cuids.to_pylist(), starts.to_pylist(), ends.to_pylist(), strands.to_pylist()))
+        resolved: dict[bytes, tuple[bytes, str, int]] = {}  # contig_uid -> (raw_digest, shard, contig_len)
+        jobs = []
+        for i, (cu, s, e, t) in enumerate(rows):
+            if cu is None or s is None or e is None or t is None:
+                continue
+            if t not in (1, -1):
+                raise ValueError(f"{who}: strand must be 1 or -1 (got {t})")
+            if cu not in resolved:
+                try:
+                    rd = store.default_digest(cu)
+                except KeyError:
+                    raise ValueError(f"{who}: unknown contig_uid {cu.hex()}") from None
+                resolved[cu] = (rd, *store.locate(rd))
+            rd, shard, n = resolved[cu]
+            if circular and e > n:
+                if not 0 <= s < n < e <= s + n:
+                    raise ValueError(f"{who}: invalid wrapping slice {s}:{e} (contig_len {n})")
+                pieces = [(shard, rd, s, n), (shard, rd, 0, e - n)]
+            elif not 0 <= s <= e <= n:
+                raise ValueError(f"{who}: slice outside 0:contig_len ({s}:{e}, contig_len {n})")
+            else:
+                pieces = [(shard, rd, s, e)]
+            jobs.append((i, t, pieces))
+        return pa.array(_read_in_file_order(store, len(rows), jobs), pa.string())
+
+    def bb_seq(cuids, starts, ends, strands):
+        return contig_jobs("seq_get", False, cuids, starts, ends, strands)
+
+    def bb_seq_circular(cuids, starts, ends, strands):
+        return contig_jobs("seq_get_circular", True, cuids, starts, ends, strands)
+
+    def bb_seq_raw(rds: pa.Array, starts: pa.Array, ends: pa.Array) -> pa.Array:
+        need()
+        rows = list(zip(rds.to_pylist(), starts.to_pylist(), ends.to_pylist()))
+        located: dict[bytes, tuple[str, int]] = {}
+        jobs = []
+        for i, (rd, s, e) in enumerate(rows):
+            if rd is None or s is None or e is None:
+                continue
+            if rd not in located:
+                try:
+                    located[rd] = store.locate(rd)
+                except KeyError:
+                    raise ValueError(f"seq_raw: unknown raw_digest {rd.hex()}") from None
+            shard, n = located[rd]
+            if not 0 <= s <= e <= n:
+                raise ValueError(f"seq_raw: slice outside 0:contig_len ({s}:{e}, contig_len {n})")
+            jobs.append((i, 1, [(shard, rd, s, e)]))
+        return pa.array(_read_in_file_order(store, len(rows), jobs), pa.string())
+
+    opts = {"type": "arrow", "null_handling": "special", "side_effects": False}
+    con.create_function("bb_seq", bb_seq, ["BLOB", "BIGINT", "BIGINT", "BIGINT"], "VARCHAR", **opts)
+    con.create_function("bb_seq_circular", bb_seq_circular, ["BLOB", "BIGINT", "BIGINT", "BIGINT"], "VARCHAR", **opts)
+    con.create_function("bb_seq_raw", bb_seq_raw, ["BLOB", "BIGINT", "BIGINT"], "VARCHAR", **opts)
 
 
 def seq_reader(con: duckdb.DuckDBPyConnection):
-    """The SeqStore behind a connection's `bb_seq_raw`, for its LY-06 counters."""
+    """The SeqStore behind a connection's sequence functions, for its LY-06 counters."""
     return _READERS.get(id(con))
 
 
@@ -491,8 +569,9 @@ def open_catalog(path: Path, local_dir: Path | None = None, threads: int | None 
                  root: Path | None = None, cache_blocks: int = 64) -> duckdb.DuckDBPyConnection:
     """Open read-only, optionally from a copy on local disk (never open a DuckDB file over NFS).
 
-    Registers `bb_seq_raw` over the shards under `root` (default: the root the catalog was
-    built from, in `catalog_info`), with an LRU of `cache_blocks` decoded blocks per shard.
+    Registers `bb_seq`, `bb_seq_circular` and `bb_seq_raw` over the store under `root`
+    (default: the root the catalog was built from, in `catalog_info`), with an LRU of
+    `cache_blocks` decoded blocks per shard.
     """
     path = Path(path)
     if local_dir is not None:
@@ -566,11 +645,21 @@ def profile_query(con: duckdb.DuckDBPyConnection, sql: str, params: list | None 
 
     `scans` has one entry per Parquet scan: files read, row groups scanned and the total the
     scan could have read. `bytes_read` is DuckDB's I/O counter for the query. `bgzf` is what
-    `bb_seq_raw` read from the shards (blocks decompressed, compressed bytes read, bytes
-    decoded), zero when the query reads no sequence. Counts, not time, decide layouts (LY-06).
+    the sequence functions read from the shards (blocks decompressed, compressed bytes read,
+    bytes decoded), and `index` the row groups their point lookups read from `seq_locator` and
+    `contig_index` (`KeyLookup.row_groups_read`; a cache hit counts nothing); both are zero when
+    the query reads no sequence. Counts, not time, decide layouts (LY-06).
     """
     store = seq_reader(con)
     before = store.counters() if store is not None else None
+
+    def index_counts() -> dict[str, int]:
+        if store is None:
+            return {"locator_row_groups_read": 0, "index_row_groups_read": 0}
+        return {"locator_row_groups_read": store.locator.row_groups_read,
+                "index_row_groups_read": store.index.row_groups_read}
+
+    index_before = index_counts()
     with tempfile.TemporaryDirectory() as d:
         out = Path(d) / "profile.json"
         con.execute("PRAGMA enable_profiling = 'json'")
@@ -604,4 +693,6 @@ def profile_query(con: duckdb.DuckDBPyConnection, sql: str, params: list | None 
         walk(c)
     bgzf = ({k: v - before[k] for k, v in store.counters().items()} if store is not None
             else {"blocks_read": 0, "compressed_bytes_read": 0, "uncompressed_bytes_decoded": 0})
-    return {"result": result, "scans": scans, "bytes_read": info.get("io", {}).get("total_bytes_read"), "bgzf": bgzf}
+    index = {k: v - index_before[k] for k, v in index_counts().items()}
+    return {"result": result, "scans": scans, "bytes_read": info.get("io", {}).get("total_bytes_read"), "bgzf": bgzf,
+            "index": index}
