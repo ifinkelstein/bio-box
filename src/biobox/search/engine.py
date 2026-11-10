@@ -192,12 +192,12 @@ def find_model(paths: list, key: str):
     return None
 
 
-def families_of(seq: str, model_paths: list) -> set[str]:
+def families_of(seq: str, model_paths: list, threads: int) -> set[str]:
     """Library families on one sequence, at each model's GA cutoff (25 bits without one)."""
     out = set()
     target = pyhmmer.easel.DigitalSequenceBlock(AMINO, [_digital("seed", seq)])
     for p in model_paths:
-        for hits in pyhmmer.hmmsearch(list(iter_hmms(p)), target, Z=Z_PROT, domZ=DOM_Z):
+        for hits in pyhmmer.hmmsearch(list(iter_hmms(p)), target, cpus=threads, Z=Z_PROT, domZ=DOM_Z):
             q = hits.query
             ga = q.cutoffs.gathering if q.cutoffs.gathering_available() else None
             cut = ga[0] if ga else FALLBACK_FAMILY_BITS
@@ -206,10 +206,10 @@ def families_of(seq: str, model_paths: list) -> set[str]:
     return out
 
 
-def search(hmm, target: Target, inclusion_bits: float, domain_bits: float, cpus: int = 1) -> dict[bytes, dict]:
+def search(hmm, target: Target, inclusion_bits: float, domain_bits: float, threads: int) -> dict[bytes, dict]:
     """Included targets -> {seq_bitscore, seq_evalue_zref, domains: [...]} for one profile."""
     out = {}
-    for hits in pyhmmer.hmmsearch([hmm], target.block, cpus=cpus, Z=Z_PROT, domZ=DOM_Z,
+    for hits in pyhmmer.hmmsearch([hmm], target.block, cpus=threads, Z=Z_PROT, domZ=DOM_Z,
                                   T=inclusion_bits, incT=inclusion_bits):
         for hit in hits:
             if hit.score < inclusion_bits:
@@ -279,7 +279,7 @@ def iterate(seed_hmm, seed_msa_text: bytes | None, seed_seq: str | None, target:
     seen: set[bytes] = set()
     round1_context: set[str] | None = None
     for k in range(1, s.max_rounds + 1):
-        hits = search(hmm, target, s.inclusion_bits, s.domain_bits, s.cpus)
+        hits = search(hmm, target, s.inclusion_bits, s.domain_bits, threads=s.cpus)
         labels = {u: _label(u, h, hmm.M, s, partial) for u, h in hits.items()}
         kept = sorted(u for u, (lab, _) in labels.items() if lab == "keep")
         new = [u for u in kept if u not in seen]
@@ -349,7 +349,7 @@ def shuffled(seq: str, seed: int) -> str:
 def negative_control(seed_seq: str, target: Target, s: Settings, seed: int) -> dict:
     """MR-09: a composition-preserving shuffle of the seed, searched as round 1."""
     hmm = build_from_sequence("shuffled_seed", shuffled(seed_seq, seed))
-    n = len(search(hmm, target, s.inclusion_bits, s.domain_bits, s.cpus))
+    n = len(search(hmm, target, s.inclusion_bits, s.domain_bits, threads=s.cpus))
     exp = tail_expectation(hmm, s.inclusion_bits, target.size)
     return {"kind": "shuffled_seed", "n_hits": n, "expectation": exp, "allowed": math.ceil(exp),
             "pass": n <= math.ceil(exp)}
