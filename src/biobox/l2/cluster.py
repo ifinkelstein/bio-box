@@ -10,6 +10,7 @@ Writes under `<root>/`:
 
     l2/cluster_member/release=<R>/part-<k>.parquet
     l2/cluster_member_aln/release=<R>/part-<k>.parquet
+    ledger/release=<R>/step=cluster/part-0.parquet
 
 Both tables go through `biobox.io.write_parts`, cut at `max_file_bytes` of estimated size (card
 B-19). The rows are still built in Python lists; making this builder stream is a separate card.
@@ -37,7 +38,6 @@ import pyarrow.parquet as pq
 from blake3 import blake3
 
 from biobox import catalog, io, layout, ledger, provenance
-from biobox.catalog import ledger_stage  # rS0.1 -> S0: where the release's clustering ledger goes
 from biobox.registry.schemas import table
 
 # Estimated zstd bytes per row; they only cut parts. Measured on the golden set 36.5 (`cluster_member`)
@@ -167,10 +167,11 @@ def run(root: Path, release: str, gene_call_version: str, stages: list[str], thr
                    for i in range(0, len(rows), io.ROW_GROUP_ROWS)]
         io.write_parts(batches, spec, root / f"l2/{name}/release={release}", est, max_file_bytes)
     counts = {lvl: len({r["cluster_uid"] for r in mem_rows if r["level"] == lvl}) for lvl in LEVELS}
-    # ledger under the release's stage (rS0.1 -> S0): NR90 sees every protein, NR50 the NR90 representatives
+    # the release's own ledger (ledger/release=<R>/step=cluster, card B-28): NR90 sees every protein, NR50
+    # the NR90 representatives
     n_in = {"nr90": len(prots), "nr50": counts["nr90"]}
     tools = provenance.tool_versions("mmseqs2", "pyarrow")
-    ledger.write(root, ledger_stage(release), "cluster",
+    ledger.write_release(root, release, "cluster",
                  sorted((ledger.row(lvl.encode(), "level", n_in[lvl], counts[lvl], n_in[lvl] - counts[lvl], tools=tools)
                          for lvl in LEVELS), key=lambda r: (r["object_key"], r["reason_code"])))
     return {"proteins": len(prots), "clusters": counts,

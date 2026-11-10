@@ -52,6 +52,9 @@ class TableSpec:
     # partition_keys order, or a single `.parquet` file. Empty: not yet placed
     # (the catalog exposes an empty view).
     location: str = ""
+    # Other partition key tuples a path under `location` may use instead of `partition_keys`; the first
+    # key of each differs, so a path still maps to one key set (the ledger, card B-28).
+    alt_partition_keys: tuple[tuple[str, ...], ...] = ()
 
 
 def _f(name: str, typ: pa.DataType, nullable: bool = False) -> pa.Field:
@@ -524,12 +527,15 @@ _SPECS = [
         primary_key=("object_key", "reason_code", "stage", "step"),
         sort_key=("object_key", "reason_code"),
         partition_keys=("stage", "step"),
+        # a release's own steps (clustering) are not a stage's: ledger/release=<R>/step=<name>/ (card B-28)
+        alt_partition_keys=(("release", "step"),),
         enums={"object_kind": ("l0_object", "contig", "library", "level")},
         small_ok=True,
         doc=(
             "data_layer_and_tests.md §4.2. One row per (object, reason); n_rejected counts that reason only, so "
             "L-01 sums rows per object. object_key is the L0 object sha256, a contig_uid, or the UTF-8 name of a "
-            "library or cluster level"
+            "library or cluster level. A stage's steps are partitioned by (stage, step); a release's own steps "
+            "(clustering) by (release, step), so two releases over one stage never share a ledger path"
         ),
     ),
     TableSpec(

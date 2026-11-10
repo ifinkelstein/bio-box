@@ -32,6 +32,7 @@ from pathlib import Path
 
 import pyarrow.parquet as pq
 
+from biobox import catalog
 from biobox.l1.genecall import GENE_CALL_VERSION
 from biobox.search import export, nbr, pack, runner
 from biobox.search.recipe import RecipeError
@@ -156,8 +157,13 @@ def _search(a) -> int:
             return 2
         return 0
     occ = {}
+    try:
+        files = catalog.ReleaseFiles.of(root, release, manifest)  # the run's release only (card B-28)
+    except (FileNotFoundError, ValueError) as e:
+        print(f"refused: {e}", file=sys.stderr)
+        return 2
     for o in nbr.occurrences(root, {h["target_uid"] for h in hits if h["target_kind"] == "protein"},
-                             a.gene_call_version, tape_version=tv):
+                             a.gene_call_version, tape_version=tv, files=files):
         occ.setdefault(o["protein_uid"], []).append(o)
     dims = export.contig_dims(root, release, {o["contig_uid"] for v in occ.values() for o in v}, manifest)
     recs = list(export.hit_records(hits, occ, a.top_n or None, a.members, tape_version=tv, dims=dims))
@@ -204,17 +210,21 @@ def _nbr(a) -> int:
         return 2
     uids, tv, run_release = got
     policy = nbr.Policy.parse(a.window, a.strand, a.operon_gap, a.edge, a.circular)
-    if a.action == "summarize" or a.format == "tsv":
-        release = a.release or run_release
-        if release is None:
-            print("refused: anchors given as protein uids need --release (the release whose clusters and "
-                  "contig_dim to read)", file=sys.stderr)
-            return 2
+    release = a.release or run_release
+    if release is None:
+        print("refused: anchors given as protein uids need --release (the release whose files to read: its "
+              "tapes, clusters and contig_dim)", file=sys.stderr)
+        return 2
+    try:
+        files = catalog.ReleaseFiles.of(root, release, export.release_manifest(root, release))
+    except (FileNotFoundError, ValueError) as e:
+        print(f"refused: {e}", file=sys.stderr)
+        return 2
     if a.action is None and a.format == "tsv":  # card W-05: one table per anchor locus
         if a.json:
             print("refused: --json and --format are exclusive", file=sys.stderr)
             return 2
-        rows, _ = nbr.fetch(root, uids, policy, a.gene_call_version, tape_version=tv)
+        rows, _ = nbr.fetch(root, uids, policy, a.gene_call_version, tape_version=tv, files=files)
         bits = None
         if run_release is not None:
             bits = {}
@@ -237,13 +247,14 @@ def _nbr(a) -> int:
     if a.action == "summarize":
         try:
             s = nbr.summarize(root, uids, policy, [x.strip() for x in a.by.split(",") if x.strip()], release=release,
-                              gene_call_version=a.gene_call_version, tape_version=tv, top_n=a.top)
+                              gene_call_version=a.gene_call_version, tape_version=tv, top_n=a.top,
+                              manifest=files.manifest)
         except ValueError as e:
             print(f"refused: {e}", file=sys.stderr)
             return 2
         _print(export.ndjson(export.nbr_summary_records(s)) if a.json else export.nbr_summary_tsv(s))
         return 0
-    rows, counts = nbr.fetch(root, uids, policy, a.gene_call_version, tape_version=tv)
+    rows, counts = nbr.fetch(root, uids, policy, a.gene_call_version, tape_version=tv, files=files)
     if a.json:
         _print(export.ndjson(export.nbr_records(rows, a.top_n or None)))
     else:

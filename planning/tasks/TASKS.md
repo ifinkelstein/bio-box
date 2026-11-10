@@ -148,6 +148,12 @@ Files: `scripts/stress/README.md`+, `scripts/stress/*.py`
 Do: write the README: what each script measures, its command line, and which card uses it. Do not change script behavior.
 Accept: every script runs with `--help` or prints its usage.
 
+### A-06 Stress scripts follow the B-28 reader signatures
+**L** · Depends: B-28 · Pod: yes (to run them)
+Files: `scripts/stress/{builder_limits.py,synth_scale.py,step6_export.py}`, `scripts/stress/pilot_s1/{pilot.py,store_probe.py}`, `scripts/stress/pilot_cami/{pilot_cami.py,probe_cami.py}`, `scripts/stress/README.md`, `tests/r0/test_stress_scripts.py`+
+Do: card B-28 made `SeqStore(root, stages)` require its stages and `pack.build` require a defined release; eight call sites in these scripts still call `SeqStore(root)` and now raise `TypeError`. Pass the script's own stage list (or `catalog.ReleaseFiles.of(root, release)` where the script has a release). Add an R0 test that imports nothing heavy: it parses every script under `scripts/stress` with `ast` and fails on a call to `SeqStore` with fewer than two positional arguments, and on any builder call that B-25 gave a required `stages` argument without it, so the next signature change is caught without running the scripts.
+Accept: the R0 test, written first and seen to fail on the eight sites; `synth_scale.py` at 10× and `builder_limits.py` run to completion on the pod.
+
 ### A-04 `doctor` reads the cgroup cap and `/stor` mounts
 **L** · Depends: none
 Files: `src/biobox/doctor.py`, `tests/r1/test_doctor.py`
@@ -332,6 +338,13 @@ Files: `src/biobox/search/pack.py`, `src/biobox/search/nbr.py`, `src/biobox/sear
 Why: after B-25 the release builders read only the release's stages, but `pack build`, `nbr`, the search worker and `SeqStore` still read every `stage=*` directory on disk, so a search against release R can return genes of a stage R does not contain. Separately, two releases whose names share a stage prefix (`rS0.1`, `rS0.2`) collide on `ledger/stage=S0/step=cluster`, and the second clustering is refused.
 Do: each of these readers takes the file list of the release (from the manifest when one is given, else from `catalog.release_stages`), never a glob (AGENTS §3.9). The clustering ledger is partitioned by release (`ledger/release=<R>/step=cluster/`), a new location in the registry; other ledgers stay per stage.
 Accept: test first: a store with stages S0 and S1 and release R1 over S0 only: `pack build`, a search run and `nbr` against R1 return nothing from S1; two releases over the same stage both cluster. `rg -n "stage=\*" src/biobox/search src/biobox/l0seq/store.py` returns only per-stage builders.
+
+### B-33 A release's manifest covers only that release's files
+**M** · Depends: B-28 (found in its report)
+Files: `src/biobox/catalog.py` (`build_manifest`, `verify_manifest`, `ReleaseFiles`), `tests/r2/test_release_readers.py`, `tests/r2/test_micro_s0_dim.py` (it relies on the old behaviour: migrate it)
+Why: `build_manifest` and `verify_manifest` take in every file under any `release=` partition (`token_dict`, `cluster_member`, postings, cluster ledgers of other releases). So release R1's manifest stops verifying as soon as release R2 writes its files, and R2's manifest lists R1's. On the pod this would make every earlier release fail verification after each new one.
+Do: a file with a `release=` partition belongs to that release only. A release's manifest lists the stage files of its `release_def` stages, its own `release=` files, and unpartitioned artifacts; `verify_manifest` ignores other releases' files instead of reporting them as strays.
+Accept: test first: build R1 and its manifest, then build R2 over the same stage: R1's manifest still verifies with no problems and is byte-identical when rebuilt; R2's manifest lists no R1 file.
 
 ### B-29 Postings builder runs out of memory at 21 M slots
 Correction, 2026-11-10: the title and the evidence line below say "about 21 M slots"; that was the orchestrating session's error. Release `rL.3` has 12,048,866 slots and 25,822,709 postings (*measured* by the B-29 agent, `planning/measurements/2026-11-10_postings_memory.md`).

@@ -21,6 +21,10 @@ timestamps, so the same inputs give the same pack_id (D-01).
 
 The pack sits under the data root but outside the release manifest (catalog.EXCLUDED_TREES):
 it has its own manifest and is verified by `verify` (C-12) before the release is signed.
+
+A pack holds the release's files only (card B-28): every input is listed by `catalog.ReleaseFiles`,
+from the release manifest when there is one, else from the stages of the release's `release_def`, so
+a stage on disk the release does not list never enters its pack.
 """
 
 from __future__ import annotations
@@ -35,7 +39,8 @@ import pyarrow.parquet as pq
 from blake3 import blake3
 
 from biobox import ids, layout, provenance
-from biobox.l0seq.store import SeqStore, has_sequences
+from biobox.catalog import ReleaseFiles
+from biobox.l0seq.store import SeqStore
 from biobox.l1 import domains
 from biobox.l1.genecall import GENE_CALL_VERSION
 from biobox.l1.igr import igr_version
@@ -67,21 +72,21 @@ def _source_hash(root: Path, paths: list[Path]) -> dict:
     return {"files": len(paths), "blake3": h.hexdigest()}
 
 
-def _protein_files(root: Path, gcv: str) -> list[Path]:
-    return sorted((root / "l0seq/protein_seq").glob(f"gene_call_version={gcv}/stage=*/protein_prefix=*/part-*.parquet"))
+def _protein_files(rf: ReleaseFiles, gcv: str) -> list[Path]:
+    return rf.table("protein_seq", gene_call_version=gcv)
 
 
-def _occurrence_files(root: Path, gcv: str) -> list[Path]:
-    return sorted((root / "l1/protein_occurrence").glob(f"gene_call_version={gcv}/stage=*/part-*.parquet"))
+def _occurrence_files(rf: ReleaseFiles, gcv: str) -> list[Path]:
+    return rf.table("protein_occurrence", gene_call_version=gcv)
 
 
-def _igr_files(root: Path, iv: str) -> list[Path]:
+def _igr_files(rf: ReleaseFiles, iv: str) -> list[Path]:
     """The IGR files of igr version iv (`<tape_version>-igr1`, card B-20)."""
-    return sorted((root / "l0seq/igr").glob(f"igr_version={iv}/stage=*/part-*.parquet"))
+    return rf.table("igr", igr_version=iv)
 
 
-def _tape_files(root: Path, tv: str) -> list[Path]:
-    return sorted((root / "l3/tapes").glob(f"tape_version={tv}/stage=*/part-*.parquet"))
+def _tape_files(rf: ReleaseFiles, tv: str) -> list[Path]:
+    return rf.table("contig_tapes", tape_version=tv)
 
 
 def manifest_tape_version(manifest: dict) -> str:
@@ -90,10 +95,10 @@ def manifest_tape_version(manifest: dict) -> str:
     return manifest.get("tape_version") or tape_version([manifest["gene_call_version"]])
 
 
-def _contigs(root: Path, tv: str) -> tuple[dict[bytes, int], set[bytes], dict[bytes, int]]:
+def _contigs(rf: ReleaseFiles, tv: str) -> tuple[dict[bytes, int], set[bytes], dict[bytes, int]]:
     """Contig lengths, the circular contigs and the strand of every slot's feature, from the tapes of tv."""
     lengths, circular, strands = {}, set(), {}
-    for f in _tape_files(root, tv):
+    for f in _tape_files(rf, tv):
         for r in pq.read_table(f, columns=["contig_uid", "contig_len", "is_circular", "feature_uids",
                                            "strands"]).to_pylist():
             lengths[r["contig_uid"]] = r["contig_len"]
@@ -103,10 +108,10 @@ def _contigs(root: Path, tv: str) -> tuple[dict[bytes, int], set[bytes], dict[by
     return lengths, circular, strands
 
 
-def _slots(root: Path, gcv: str) -> dict[bytes, list[dict]]:
+def _slots(rf: ReleaseFiles, gcv: str) -> dict[bytes, list[dict]]:
     """The genes of each contig in coordinate order (start, end, strand)."""
     by_contig: dict[bytes, list[dict]] = defaultdict(list)
-    for f in _occurrence_files(root, gcv):
+    for f in _occurrence_files(rf, gcv):
         for r in pq.read_table(f, columns=["contig_uid", "start", "end", "strand"]).to_pylist():
             by_contig[r["contig_uid"]].append(r)
     for v in by_contig.values():
@@ -114,18 +119,18 @@ def _slots(root: Path, gcv: str) -> dict[bytes, list[dict]]:
     return by_contig
 
 
-def _codes(root: Path, gcv: str) -> dict[bytes, int]:
+def _codes(rf: ReleaseFiles, gcv: str) -> dict[bytes, int]:
     """Genetic code per contig: the commonest code among its CDS features (11 for a contig with none)."""
     counts: dict[bytes, Counter] = defaultdict(Counter)
-    for f in sorted((root / "l1/feature_protein").glob(f"gene_call_version={gcv}/stage=*/part-*.parquet")):
+    for f in rf.table("feature_protein", gene_call_version=gcv):
         for r in pq.read_table(f, columns=["contig_uid", "genetic_code"]).to_pylist():
             counts[r["contig_uid"]][r["genetic_code"]] += 1
     return {cu: c.most_common(1)[0][0] for cu, c in counts.items()}
 
 
-def _check_codes(root: Path, gcv: str) -> None:
+def _check_codes(rf: ReleaseFiles, gcv: str) -> None:
     """Fail fast, before anything is written, on a genetic code the dark-ORF stage cannot translate."""
-    for cu, code in sorted(_codes(root, gcv).items()):
+    for cu, code in sorted(_codes(rf, gcv).items()):
         try:
             orfs.check_code(code)
         except ValueError as e:
@@ -154,18 +159,18 @@ def _write_meta(rows: list[dict], path: Path) -> None:
                    row_group_size=122_880)
 
 
-def _build_unique(root: Path, out: Path, gcv: str, shard_bytes: int) -> list[dict]:
+def _build_unique(rf: ReleaseFiles, out: Path, gcv: str, shard_bytes: int) -> list[dict]:
     prots = {}
-    for f in _protein_files(root, gcv):
+    for f in _protein_files(rf, gcv):
         t = pq.read_table(f, columns=["protein_uid", "seq"])
         prots.update(zip(t.column("protein_uid").to_pylist(), t.column("seq").to_pylist()))
     return fastz.write_records(out / "unique", ".faa.zst",
                                ((u.hex(), prots[u].replace("*", "")) for u in sorted(prots)), shard_bytes)
 
 
-def _build_igr(root: Path, out: Path, iv: str, store: SeqStore, lengths, circular, strands, shard_bytes):
+def _build_igr(rf: ReleaseFiles, out: Path, iv: str, store: SeqStore, lengths, circular, strands, shard_bytes):
     meta, records = [], []
-    for f in _igr_files(root, iv):
+    for f in _igr_files(rf, iv):
         for r in pq.read_table(f, partitioning=None).to_pylist():
             cu, s, e = r["contig_uid"], r["start"], r["end"]
             if e - s < IGR_MIN_NT:
@@ -186,8 +191,8 @@ def _build_igr(root: Path, out: Path, iv: str, store: SeqStore, lengths, circula
     return shards
 
 
-def _build_dark_orf(root: Path, out: Path, gcv: str, store: SeqStore, lengths, circular, slots, shard_bytes):
-    codes = _codes(root, gcv)
+def _build_dark_orf(rf: ReleaseFiles, out: Path, gcv: str, store: SeqStore, lengths, circular, slots, shard_bytes):
+    codes = _codes(rf, gcv)
     meta, records = [], []
     for cu in sorted(lengths):
         circ = cu in circular
@@ -222,14 +227,17 @@ def _build_models(out: Path, models: dict[str, Path]) -> list[dict]:
 
 def build(root: Path, release: str, gene_call_version: str = GENE_CALL_VERSION,
           models: dict[str, Path] | None = None, shard_text_bytes: int = SHARD_TEXT_BYTES,
-          producers: list[str] | None = None) -> dict:
+          producers: list[str] | None = None, release_manifest: dict | None = None) -> dict:
     """Build the release's pack from the data root; returns the manifest (with `pack_id`).
 
     `producers` (default: the gene-call producer alone) name the feature set: the IGRs are those of
     its igr version and the region flanks are features of its tape version, which the manifest
-    records as `tape_version` (card B-16)."""
+    records as `tape_version` (card B-16). Every input file is the release's (card B-28): from
+    `release_manifest` (default: `manifests/release=<R>.json` when it exists), else from the stages of
+    the release's `release_def` (FileNotFoundError when it has neither)."""
     root = Path(root).resolve()
-    _check_codes(root, gene_call_version)
+    rf = ReleaseFiles.of(root, release, release_manifest)
+    _check_codes(rf, gene_call_version)
     out = pack_dir(root, release)
     if out.exists():
         shutil.rmtree(out)
@@ -237,28 +245,28 @@ def build(root: Path, release: str, gene_call_version: str = GENE_CALL_VERSION,
     gcv = gene_call_version
     producers = sorted(producers) if producers is not None else [gcv]
     tv, iv = tape_version(producers), igr_version(producers)
-    lengths, circular, strands = _contigs(root, tv)
-    slots = _slots(root, gcv)
+    lengths, circular, strands = _contigs(rf, tv)
+    slots = _slots(rf, gcv)
     # a protein-only root (a synthetic world) has no sequence store: its nucleotide targets are empty
-    store = SeqStore(root) if has_sequences(root) else None
+    store = SeqStore(root, rf) if rf.table("seq_locator") else None
     if store is None:
         lengths = {}
     try:
         built = {
-            "unique": _build_unique(root, out, gcv, shard_text_bytes),
-            "igr": _build_igr(root, out, iv, store, lengths, circular, strands, shard_text_bytes),
-            "dark_orf": _build_dark_orf(root, out, gcv, store, lengths, circular, slots, shard_text_bytes),
+            "unique": _build_unique(rf, out, gcv, shard_text_bytes),
+            "igr": _build_igr(rf, out, iv, store, lengths, circular, strands, shard_text_bytes),
+            "dark_orf": _build_dark_orf(rf, out, gcv, store, lengths, circular, slots, shard_text_bytes),
             "models": _build_models(out, models or {}),
         }
     finally:
         if store is not None:
             store.close()
-    seq_files = sorted((root / "l0seq/seq_shards").glob("stage=*/shard-*.fa.gz"))
+    seq_files = rf.artifact("seq_shards")
     sources = {
-        "unique": {"protein_seq": _source_hash(root, _protein_files(root, gcv))},
-        "igr": {"igr": _source_hash(root, _igr_files(root, iv)), "seq_shards": _source_hash(root, seq_files)},
-        "dark_orf": {"protein_occurrence": _source_hash(root, _occurrence_files(root, gcv)),
-                     "contig_tapes": _source_hash(root, _tape_files(root, tv)),
+        "unique": {"protein_seq": _source_hash(root, _protein_files(rf, gcv))},
+        "igr": {"igr": _source_hash(root, _igr_files(rf, iv)), "seq_shards": _source_hash(root, seq_files)},
+        "dark_orf": {"protein_occurrence": _source_hash(root, _occurrence_files(rf, gcv)),
+                     "contig_tapes": _source_hash(root, _tape_files(rf, tv)),
                      "seq_shards": _source_hash(root, seq_files)},
         "models": {lib: {"files": 1, "sha256": ids.sha256_file(p).hex()} for lib, p in sorted((models or {}).items())},
     }
@@ -297,13 +305,13 @@ def read_manifest(root: Path, release: str) -> tuple[dict, bytes]:
     return json.loads(data), pack_id_of(data)
 
 
-def _count_source(root: Path, manifest: dict, target: str, out: Path) -> int | None:
+def _count_source(rf: ReleaseFiles, manifest: dict, target: str, out: Path) -> int | None:
     gcv = manifest["gene_call_version"]
     if target == "unique":
-        return len({u for f in _protein_files(root, gcv)
+        return len({u for f in _protein_files(rf, gcv)
                     for u in pq.read_table(f, columns=["protein_uid"]).column("protein_uid").to_pylist()})
     if target == "igr":
-        return sum(1 for f in _igr_files(root, manifest.get("igr_version") or igr_version([gcv]))
+        return sum(1 for f in _igr_files(rf, manifest.get("igr_version") or igr_version([gcv]))
                    for r in pq.read_table(f, columns=["start", "end"]).to_pylist()
                    if r["end"] - r["start"] >= manifest["rules"]["igr_min_nt"])
     if target == "dark_orf":
@@ -312,12 +320,17 @@ def _count_source(root: Path, manifest: dict, target: str, out: Path) -> int | N
 
 
 def verify(root: Path, release: str, pack_id: bytes | None = None,
-           min_shard_bytes: int = layout.TARGET_FILE_BYTES) -> list[str]:
-    """C-12: problems with the release's pack; empty means it verifies."""
+           min_shard_bytes: int = layout.TARGET_FILE_BYTES, release_manifest: dict | None = None) -> list[str]:
+    """C-12: problems with the release's pack; empty means it verifies. Sequence counts are checked
+    against the release's files (`release_manifest`, as for `build`)."""
     root = Path(root).resolve()
     out = pack_dir(root, release)
     if not (out / "pack_manifest.json").exists():
         return [f"{_rel(root, out)}: no pack_manifest.json"]
+    try:
+        rf = ReleaseFiles.of(root, release, release_manifest)
+    except FileNotFoundError as e:
+        return [f"release {release}: {e}"]
     manifest, pid = read_manifest(root, release)
     problems = []
     if pack_id is not None and pack_id != pid:
@@ -361,7 +374,7 @@ def verify(root: Path, release: str, pack_id: bytes | None = None,
                 n_records += n
                 if n != s["n_seq"]:
                     problems.append(f"{s['path']}: {n} records, manifest says {s['n_seq']}")
-        expect = _count_source(root, manifest, target, out)
+        expect = _count_source(rf, manifest, target, out)
         if expect is not None and expect != info["n_seq"]:
             problems.append(f"{target}: {info['n_seq']} sequences, its source has {expect}")
     return problems

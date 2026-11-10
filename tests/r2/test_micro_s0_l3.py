@@ -333,12 +333,15 @@ def test_q8_ad_hoc_sql_equals_an_unindexed_copy(built, sql):
     """The catalog's answer equals the same SQL over plain read_parquet views of a copy of the files."""
     root, man, con, _ = built
     plain = duckdb.connect()
-    by_table = defaultdict(list)
+    # one read_parquet per table and partition layout: the ledger has two (per stage, and per release for
+    # clustering, card B-28), and a hive read takes one key set per call
+    by_table = defaultdict(lambda: defaultdict(list))
     for f in man["files"]:
-        by_table[f["table"]].append(str(root / f["path"]))
-    for name, files in by_table.items():
-        plain.execute(f"CREATE VIEW {name} AS SELECT * FROM read_parquet({files!r}, hive_partitioning = true, "
-                      "union_by_name = true)")
+        by_table[f["table"]][tuple(f["partitions"])].append(str(root / f["path"]))
+    for name, layouts in by_table.items():
+        reads = [f"SELECT * FROM read_parquet({files!r}, hive_partitioning = true, union_by_name = true)"
+                 for _, files in sorted(layouts.items())]
+        plain.execute(f"CREATE VIEW {name} AS {' UNION ALL BY NAME '.join(reads)}")
     assert con.execute(sql).fetchall() == plain.execute(sql).fetchall()
     plain.close()
 

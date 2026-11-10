@@ -11,7 +11,7 @@ Last update: 2026-11-09, 23:00 CST. Suite on the integration branch after the B-
 pinned image; 3 min 40 s wall for the slowest shard, against 13.5 min in one process). The skips
 need samtools, bgzip, Prodigal or the golden set. Tests no longer run on the laptop (AGENTS.md §5.5).
 
-## Merged (47 cards)
+## Merged (48 cards)
 
 | Card | Merge | What it did | Audit notes |
 |---|---|---|---|
@@ -61,6 +61,7 @@ need samtools, bgzip, Prodigal or the golden set. Tests no longer run on the lap
 | B-29 | this merge | Postings builder fixed: tokens are exploded one row group at a time into flat scratch runs, then sorted, so the sort spills; memory limit unchanged | Cause found by measurement: the `ORDER BY` over a union fed from a materialized CTE did not spill (1.9 GB) when family postings are sparse. Reproduced small (690,000 slots at a scaled limit). On real `rL.3`: old builder fails at 38 s; new one writes 25,822,709 rows in 105 s at 2.4 GB peak RSS, byte-identical to the old builder run with an 8 GB cap. 771 fixture files unchanged |
 | W-11 | this merge | `export proteins` refuses without the release manifest; a check of 2,053,315 stored proteins in `rL.2` found no `*` anywhere, so FASTA output needed no change (a fixture test pins it) | Agent's full pod run: 906 passed, 10 skipped. Hit and locus exports still glob without a manifest: card W-12 |
 | D-06 | this merge | The append-only check compares every file and artifact, small tables included | Fault injection on `l0_manifest`, `ledger`, `release_def`, `tape_version_def` and `store_params.json`: each rewrite is reported; clean on the two-stage, two-release fixture. Agent's full pod run: 906 passed, 10 skipped |
+| B-28 | this merge | `pack build`, `nbr`, the search worker and `SeqStore` read only the release's stages (no default that globs); the clustering ledger is per release | The agent showed the bug on the old code: proteins planted in a stage outside the release were in its pack and its search hits. Other fixture files byte-identical. Stress scripts still call `SeqStore(root)`: card A-06. One release's manifest takes in other releases' files: card B-33 |
 
 Decisions DEC-18 to DEC-23 were approved by the PI on 2026-11-09 and are in `planning/DECISIONS.md`.
 
@@ -68,7 +69,6 @@ Decisions DEC-18 to DEC-23 were approved by the PI on 2026-11-09 and are in `pla
 
 | Card | Model | State |
 |---|---|---|
-| B-28 query-time readers take the release's stages | Opus | started 2026-11-10 |
 | B-32 gene calling of short contigs uses its workers | Opus | started 2026-11-10 |
 | C-04 `bio-box build-stage` | Opus | stopped 2026-11-10 with evidence, nothing written: builders cannot write into `run-step` staging. Now depends on B-22 and the new card C-08; card amended |
 | Pod import ladder (not a card): phages, then 1 Gbp and 10 Gbp of complete prokaryotes with the new code | Opus | detached jobs on the pod; agent waiting on them |

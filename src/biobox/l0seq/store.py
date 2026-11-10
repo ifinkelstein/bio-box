@@ -27,7 +27,8 @@ stage; every later stage checks it and writes none.
 
 `SeqStore` loads neither index (card B-13): `seq_locator` and `contig_index` are looked up
 through `KeyLookup` (footers once, one row group per key) and each shard's `.fai` is bisected
-on disk (`BgzfFasta`).
+on disk (`BgzfFasta`). It reads only the stages it is opened for (card B-28): `SeqStore(root, ["S0"])`,
+or `SeqStore(root, catalog.ReleaseFiles.of(root, "rS0.1"))` for a release's files.
 """
 
 from __future__ import annotations
@@ -89,18 +90,15 @@ PARAMS_PATH = ARTIFACTS["store_params"].location
 
 
 def locator_files(root: Path) -> list[Path]:
-    """The store's `seq_locator` files (the parts of each stage that stored a sequence), in stage order
-    and then part order."""
+    """Every stage's `seq_locator` files on disk, by stage directory and then part order. Only ingest
+    reads these (a new stage's anti-join must see every sequence already stored); a reader takes its
+    stages' files (`SeqStore`, card B-28)."""
     return io.part_files(Path(root) / LOCATOR_DIR, "stage=*/part-*.parquet")
 
 
 def index_files(root: Path) -> list[Path]:
+    """Every stage's `contig_index` files on disk; ingest only, as `locator_files`."""
     return io.part_files(Path(root) / INDEX_DIR, "stage=*/part-*.parquet")
-
-
-def has_sequences(root: Path) -> bool:
-    """True if `root` holds a sequence store (at least one stage's `seq_locator`)."""
-    return bool(locator_files(root))
 
 
 def _sql_path(p: Path) -> str:
@@ -491,14 +489,36 @@ class SeqStore:
     `raw_digest`) and `index` (`contig_index` by `contig_uid`) are `KeyLookup`s that read one
     row group per key, with an LRU of `cache_row_groups` decoded row groups each. An unknown
     key raises KeyError.
+
+    The store reads the stages it is opened for, and no other (card B-28; AGENTS §3.9). `stages` is
+    either a list of stage names, whose own index directories are listed (a per-stage builder passes its
+    stage and the earlier stages its inputs may name), or a `catalog.ReleaseFiles`, whose file lists are
+    taken as given (a release's reader: its manifest's files, else those of its `release_def` stages).
+    There is no default: a store never lists every stage on disk. A contig or sequence of a stage not
+    opened raises KeyError naming the stages.
     """
 
-    def __init__(self, root: Path, cache_blocks: int = 64, cache_row_groups: int = 64):
+    def __init__(self, root: Path, stages, cache_blocks: int = 64, cache_row_groups: int = 64):
         self.root = Path(root)
-        self.locator_files = locator_files(self.root)
+        if isinstance(stages, (str, bytes)) or stages is None or isinstance(stages, int):
+            raise TypeError(f"SeqStore needs the stages it reads (a list of names or catalog.ReleaseFiles), "
+                            f"got {stages!r}")
+        if hasattr(stages, "table"):  # catalog.ReleaseFiles
+            self.stages = list(stages.stages)
+            self.locator_files = stages.table("seq_locator")
+            self.index_files = stages.table("contig_index")
+            self._occurrence_files = lambda: stages.table("contig_occurrence")
+        else:
+            from biobox.catalog import check_stages
+
+            self.stages = check_stages(stages)
+            self.locator_files = [f for s in self.stages for f in io.part_files(self.root / LOCATOR_DIR / f"stage={s}")]
+            self.index_files = [f for s in self.stages for f in io.part_files(self.root / INDEX_DIR / f"stage={s}")]
+            occ = self.root / table("contig_occurrence").location
+            self._occurrence_files = lambda: [f for s in self.stages
+                                              for f in io.part_files(occ / f"stage={s}", "source=*/part-*.parquet")]
         if not self.locator_files:
-            raise FileNotFoundError(f"{self.root / LOCATOR_DIR}: no seq_locator files")
-        self.index_files = index_files(self.root)
+            raise FileNotFoundError(f"{self.root / LOCATOR_DIR}: no seq_locator files in stages {self.stages}")
         self.locator = KeyLookup(self.locator_files, "raw_digest", ["shard", "contig_len"], cache_row_groups)
         self.index = KeyLookup(self.index_files, "contig_uid", ["raw_digest", "is_default_variant"], cache_row_groups)
         self._cache_blocks = cache_blocks
@@ -507,7 +527,7 @@ class SeqStore:
     def _where(self, rd: bytes) -> tuple[str, int]:
         rows = self.locator.get(rd)
         if not rows:
-            raise KeyError(rd)
+            raise KeyError(f"raw_digest {rd.hex()} is in none of the stages {self.stages} this store reads")
         return rows[0]["shard"], rows[0]["contig_len"]
 
     def default_digest(self, contig_uid: bytes) -> bytes:
@@ -515,7 +535,7 @@ class SeqStore:
         for r in self.index.get(contig_uid):
             if r["is_default_variant"]:
                 return r["raw_digest"]
-        raise KeyError(contig_uid)
+        raise KeyError(f"contig_uid {contig_uid.hex()} is in none of the stages {self.stages} this store reads")
 
     def _shard(self, rel: str) -> BgzfFasta:
         if rel not in self._shards:
@@ -574,10 +594,9 @@ class SeqStore:
         return seq
 
     def reconstruct_object(self, l0_object_sha256: bytes) -> list[bytes]:
-        """FASTA lines of one source object, from occurrence rows and chunks (R-02)."""
-        occ = pa.concat_tables(
-            pq.read_table(f) for f in io.part_files(self.root / "l0seq/contig_occurrence", "stage=*/source=*/part-*.parquet")
-        )
+        """FASTA lines of one source object, from occurrence rows and chunks (R-02); the occurrence rows are
+        those of the store's stages."""
+        occ = pa.concat_tables(pq.read_table(f) for f in self._occurrence_files())
         rows = sorted(
             (r for r in occ.to_pylist() if r["l0_object_sha256"] == l0_object_sha256),
             key=lambda r: r["record_ordinal"],

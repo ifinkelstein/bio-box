@@ -55,7 +55,7 @@ def _slots(root):
 def test_r05_igrs_lie_between_their_flanking_slots(built):
     root, circular, rows = built
     slots = _slots(root)
-    store = SeqStore(root)
+    store = SeqStore(root, ["S0"])
     assert rows
     for r in rows:
         n = store.length_of(store.default_digest(r["contig_uid"]))
@@ -79,7 +79,7 @@ def test_r05_igrs_lie_between_their_flanking_slots(built):
 
 def test_r05_igr_slices_equal_the_source(built, tmp_path):
     root, circular, rows = built
-    store = SeqStore(root)
+    store = SeqStore(root, ["S0"])
     con = catalog.open_catalog(catalog.generate_catalog(catalog.build_manifest(root, "x", ["S0"]), tmp_path / "c.duckdb"))
     src = {ids.contig_uid(fasta.read(FIX / o["file"])[0].seq): fasta.read(FIX / o["file"])[0].seq for o in CONTRACT["objects"]}
     for r in rows[::7]:

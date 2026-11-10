@@ -28,6 +28,13 @@ while the release is built, never enters it.
     generate_catalog(manifest, root / "catalog/release=rS0.1.duckdb")
     swap_current(root / "manifests", "rS0.1")
     con = open_catalog(root / "catalog/release=rS0.1.duckdb", local_dir="/tmp/if2453")
+
+Query-time readers of a release (the search pack, `nbr`, the search worker, `SeqStore`) open only the
+release's files too (card B-28): `ReleaseFiles.of(root, release)` lists them from the release's manifest
+when it has one, else from the stages its `release_def` names, one explicit stage directory at a time.
+
+    files = ReleaseFiles.of(root, "rS0.1")
+    files.table("protein_occurrence", gene_call_version="pyrodigal-3.6.3")   # [Path, ...]
 """
 
 from __future__ import annotations
@@ -115,10 +122,22 @@ def classify(rel: str) -> tuple[TableSpec, dict[str, str]] | None:
         if not fname.endswith(".parquet"):
             raise LayoutError(f"{rel}: not a .parquet file")
         kv = [d.split("=", 1) for d in dirs]
-        if any(len(x) != 2 for x in kv) or tuple(k for k, _ in kv) != spec.partition_keys:
-            raise LayoutError(f"{rel}: partition path {dirs} does not match {spec.name} keys {spec.partition_keys} (LY-05)")
+        if any(len(x) != 2 for x in kv) or tuple(k for k, _ in kv) not in key_sets(spec):
+            raise LayoutError(f"{rel}: partition path {dirs} does not match {spec.name} keys "
+                              f"{' or '.join(map(str, key_sets(spec)))} (LY-05)")
         return spec, dict(kv)
     return None
+
+
+def key_sets(spec: TableSpec) -> tuple[tuple[str, ...], ...]:
+    """The partition key tuples a path of `spec` may use: its `partition_keys`, then its
+    `alt_partition_keys` (the ledger: per stage, or per release for a release's own steps, card B-28)."""
+    return (spec.partition_keys, *spec.alt_partition_keys)
+
+
+def all_keys(spec: TableSpec) -> tuple[str, ...]:
+    """Every partition key of `spec` over all its key sets, in first-seen order (its view's key columns)."""
+    return tuple(dict.fromkeys(k for ks in key_sets(spec) for k in ks))
 
 
 def classify_artifact(rel: str) -> tuple[ArtifactSpec, dict[str, str], str] | None:
@@ -278,20 +297,116 @@ def define_release(root: Path, release: str, stages) -> list[str]:
     return stages
 
 
-def ledger_stage(release: str) -> str:
-    """The ledger stage of a release's own steps (clustering): rS0.1 -> S0, rS2C.1 -> S2C; any other
-    release name is used as is."""
-    return release[1:].split(".")[0] if release.startswith("rS") else release
-
-
 def _in_release(stages: set[str], release_id: str):
     """Whether a file of table or artifact `name` in stage partition `stage` (None: not partitioned by
-    stage) belongs to the release: no stage, a listed stage, or the release's own ledger stage."""
-    own = ledger_stage(release_id)
+    stage) belongs to the release: no stage, or a listed stage. A release's own steps (clustering) write
+    their ledger under `ledger/release=<R>/` (card B-28), which has no stage."""
 
     def keep(name: str, stage: str | None) -> bool:
-        return stage is None or stage in stages or (name == "ledger" and stage == own)
+        return stage is None or stage in stages
     return keep
+
+
+def manifest_path(root: Path, release: str) -> Path:
+    """Where a release's manifest is written: `manifests/release=<R>.json` under the data root."""
+    return Path(root) / f"manifests/release={release}.json"
+
+
+class ReleaseFiles:
+    """The files of one release that a query-time reader may open (card B-28; AGENTS §3.9).
+
+    With a manifest (`of` reads `manifests/release=<R>.json` when it exists, or takes the one given),
+    exactly the manifest's files and artifacts: a file written after it is not the release's. Without
+    one, the files of the stages the release's `release_def` names: each listed stage's own directory
+    of a table is listed (a glob over buckets or libraries inside it, never over stage directories), so
+    a stage on disk the release does not list is never opened. Files outside any stage partition (a
+    release's own tables, `ledger/release=<R>/`) are listed by their location, filtered by the
+    partitions a caller asks for. Files come in the release's stage order, then part order.
+
+        files = ReleaseFiles.of(root, "rS0.1")
+        files.table("contig_tapes", tape_version=tv)      # [Path]
+        files.entries("l1_domains")                       # [(Path, {"library": ..., "stage": ...})]
+        files.artifact("seq_shards")                      # the shard files, without their indexes
+    """
+
+    def __init__(self, root: Path, release: str, stages, manifest: dict | None = None):
+        self.root = Path(root)
+        self.release = release
+        self.stages = check_stages(stages)
+        self.manifest = manifest
+        self._rank = {s: i for i, s in enumerate(self.stages)}
+
+    @classmethod
+    def of(cls, root: Path, release: str, manifest: dict | None = None) -> "ReleaseFiles":
+        """The release's files: from `manifest`, else from `manifests/release=<R>.json` if present, else from
+        `release_stages` (FileNotFoundError when the release has neither a manifest nor a `release_def`)."""
+        root = Path(root)
+        if manifest is None and manifest_path(root, release).exists():
+            manifest = read_manifest(manifest_path(root, release))
+        if manifest is not None:
+            if manifest["release_id"] != release:
+                raise ValueError(f"manifest of release {manifest['release_id']} given for release {release}")
+            return cls(root, release, manifest["stages"], manifest)
+        return cls(root, release, release_stages(root, release))
+
+    @property
+    def source(self) -> str:
+        """`manifest` or `release_def`: where the file lists come from."""
+        return "manifest" if self.manifest is not None else "release_def"
+
+    def _order(self, path: Path, parts: dict) -> tuple:
+        return (self._rank.get(parts.get("stage"), -1), io.part_key(path))
+
+    def entries(self, name: str, **want) -> list[tuple[Path, dict]]:
+        """(path, partitions) of table `name`'s files of the release whose partitions include `want`."""
+        want = {k: str(v) for k, v in want.items()}
+        if self.manifest is not None:
+            found = [(self.root / f["path"], f["partitions"]) for f in self.manifest["files"] if f["table"] == name]
+        else:
+            found = self._layout(name, want)
+        keep = [(p, parts) for p, parts in found if all(parts.get(k) == v for k, v in want.items())]
+        return sorted(keep, key=lambda x: self._order(*x))
+
+    def table(self, name: str, **want) -> list[Path]:
+        """The paths of `entries(name, **want)`."""
+        return [p for p, _ in self.entries(name, **want)]
+
+    def _layout(self, name: str, want: dict[str, str]) -> list[tuple[Path, dict]]:
+        """A table's files from the registry layout: one listing per key set and per listed stage."""
+        spec = TABLES[name]
+        base = self.root / spec.location
+        if spec.location.endswith(".parquet"):
+            return [(base, {})] if base.is_file() else []
+        out = []
+        for keys in key_sets(spec):
+            for stage in (self.stages if "stage" in keys else [None]):
+                dirs = "/".join(f"{k}={stage if k == 'stage' else want.get(k, '*')}" for k in keys)
+                for p in io.part_files(base, f"{dirs}/*.parquet" if dirs else "*.parquet"):
+                    hit = classify(p.relative_to(self.root).as_posix())
+                    if hit is not None and hit[0].name == name:
+                        out.append((p, hit[1]))
+        return out
+
+    def artifact(self, name: str) -> list[Path]:
+        """The files of artifact `name` in the release (its main files; companions such as a shard's `.fai`
+        and `.gzi` are left out), in stage order, then by path."""
+        spec = ARTIFACTS[name]
+        if self.manifest is not None:
+            found = [(self.root / a["path"], a["partitions"]) for a in self.manifest.get("artifacts", [])
+                     if a["artifact"] == name]
+        elif spec.single_file:
+            base = self.root / spec.location
+            found = [(base, {})] if base.is_file() else []
+        else:
+            found = []
+            for stage in (self.stages if "stage" in spec.partition_keys else [None]):
+                dirs = "/".join(f"{k}={stage if k == 'stage' else '*'}" for k in spec.partition_keys)
+                base = self.root / spec.location
+                for p in sorted(base.glob(f"{dirs}/*" if dirs else "*")) if base.exists() else []:
+                    if p.is_file() and re.fullmatch(spec.pattern, p.name):
+                        found.append((p, classify_artifact(p.relative_to(self.root).as_posix())[1]))
+        main = [(p, parts) for p, parts in found if re.fullmatch(spec.pattern, p.name)]
+        return [p for p, parts in sorted(main, key=lambda x: (self._rank.get(x[1].get("stage"), -1), str(x[0])))]
 
 
 def build_manifest(root: Path, release_id: str, stages) -> dict:
@@ -388,7 +503,8 @@ def _claimed_by(rel: str) -> str | None:
 def verify_manifest(manifest: dict, root: Path | None = None) -> list[str]:
     """LY-10: every listed file exists with its sha256 and size, and no unlisted .parquet or artifact file
     exists in the release's scope. A file of a stage the release does not list is not the release's
-    (card B-25); a stray is reported wherever it is."""
+    (card B-25); a stray is reported wherever it is, except in the trees `build_manifest` leaves out
+    (`EXCLUDED_TREES`: the search pack and runs, written after the release, card B-28)."""
     root = Path(root or manifest["root"])
     in_release = _in_release(set(manifest["stages"]), manifest["release_id"])
     problems = []
@@ -408,7 +524,7 @@ def verify_manifest(manifest: dict, root: Path | None = None) -> list[str]:
         present += _artifact_files(root, spec)
     for p in sorted(set(present)):
         rel = p.relative_to(root).as_posix()
-        if rel in listed:
+        if rel in listed or rel.split("/", 1)[0] in EXCLUDED_TREES:  # as build_manifest: runs carry their own records
             continue
         name = _claimed_by(rel)
         if name is not None and not in_release(name, _path_stage(rel)):
@@ -455,24 +571,33 @@ def _sql_str(s: str) -> str:
     return "'" + s.replace("'", "''") + "'"
 
 
-def _view_sql(spec: TableSpec, paths: list[str], n_columns: int | None = None) -> str:
-    if not paths:
+def _view_sql(spec: TableSpec, files: list[tuple[str, tuple[str, ...]]], n_columns: int | None = None) -> str:
+    """The view over `files`, (path, the partition keys of its path). One `read_parquet` per key set: a
+    table with several (the ledger, card B-28) is their UNION ALL, each key a set lacks a typed NULL."""
+    keys_all = all_keys(spec)
+    if not files:
         cols = [f'CAST(NULL AS {duck_type(f.type)}) AS "{f.name}"' for f in spec.schema]
-        cols += [f'CAST(NULL AS VARCHAR) AS "{k}"' for k in spec.partition_keys]
+        cols += [f'CAST(NULL AS VARCHAR) AS "{k}"' for k in keys_all]
         return f"CREATE VIEW {spec.name} AS SELECT {', '.join(cols)} WHERE false"
-    files = "[" + ", ".join(_sql_str(p) for p in paths) + "]"
-    if spec.partition_keys:
-        types = "{" + ", ".join(f"{_sql_str(k)}: 'VARCHAR'" for k in spec.partition_keys) + "}"
-        opts = f"hive_partitioning = true, hive_types = {types}"
-    else:
-        opts = "hive_partitioning = false"
     # union_by_name reads files written before a nullable column was added (LY-09); a column no
     # file has yet is a typed NULL
     n = len(spec.schema) if n_columns is None else n_columns
-    cols = [f'"{f.name}"' if i < n else f'CAST(NULL AS {duck_type(f.type)}) AS "{f.name}"'
-            for i, f in enumerate(spec.schema)] + [f'"{k}"' for k in spec.partition_keys]
-    return (f"CREATE VIEW {spec.name} AS SELECT {', '.join(cols)} "
-            f"FROM read_parquet({files}, {opts}, union_by_name = true)")
+    data = [f'"{f.name}"' if i < n else f'CAST(NULL AS {duck_type(f.type)}) AS "{f.name}"'
+            for i, f in enumerate(spec.schema)]
+    groups: dict[tuple[str, ...], list[str]] = {}
+    for path, keys in files:
+        groups.setdefault(tuple(keys), []).append(path)
+    selects = []
+    for keys in sorted(groups, key=lambda ks: key_sets(spec).index(ks) if ks in key_sets(spec) else len(key_sets(spec))):
+        listing = "[" + ", ".join(_sql_str(p) for p in groups[keys]) + "]"
+        if keys:
+            types = "{" + ", ".join(f"{_sql_str(k)}: 'VARCHAR'" for k in keys) + "}"
+            opts = f"hive_partitioning = true, hive_types = {types}"
+        else:
+            opts = "hive_partitioning = false"
+        cols = data + [f'"{k}"' if k in keys else f'CAST(NULL AS VARCHAR) AS "{k}"' for k in keys_all]
+        selects.append(f"SELECT {', '.join(cols)} FROM read_parquet({listing}, {opts}, union_by_name = true)")
+    return f"CREATE VIEW {spec.name} AS " + " UNION ALL ".join(selects)
 
 
 COMPLEMENT = ("ACGTRYKMBVDHNacgtrykmbvdhn", "TGCAYRMKVBHDNtgcayrmkvbhdn")
@@ -675,9 +800,9 @@ def generate_catalog(manifest: dict, out_path: Path, root: Path | None = None, t
     for p in (tmp, Path(str(tmp) + ".wal")):
         if p.exists():
             p.unlink()
-    by_table: dict[str, list[str]] = {name: [] for name in TABLES}
+    by_table: dict[str, list[tuple[str, tuple[str, ...]]]] = {name: [] for name in TABLES}
     for f in manifest["files"]:
-        by_table[f["table"]].append(str(root / f["path"]))
+        by_table[f["table"]].append((str(root / f["path"]), tuple(f["partitions"])))
     con = duckdb.connect(str(tmp))
     try:
         widest = {}
@@ -698,6 +823,7 @@ def generate_catalog(manifest: dict, out_path: Path, root: Path | None = None, t
             ("root", str(root)),
             ("duckdb_version", duckdb.__version__),
             ("tape_version", tape_version),
+            ("stages", json.dumps(manifest.get("stages", []))),  # the release's stages, in order (card B-28)
         ])
         con.execute("CREATE TABLE catalog_files AS SELECT * FROM (VALUES (NULL::VARCHAR, NULL::VARCHAR, NULL::VARCHAR, NULL::BIGINT, NULL::BIGINT)) "
                     "t(path, \"table\", sha256, \"rows\", row_groups) WHERE false")
@@ -775,7 +901,8 @@ def _register_seq_udf(con: duckdb.DuckDBPyConnection, store) -> None:
                 try:
                     rd = store.default_digest(cu)
                 except KeyError:
-                    raise ValueError(f"{who}: unknown contig_uid {cu.hex()}") from None
+                    raise ValueError(f"{who}: unknown contig_uid {cu.hex()} (in none of the stages "
+                                     f"{store.stages} this catalog's sequence store reads)") from None
                 resolved[cu] = (rd, *store.locate(rd))
             rd, shard, n = resolved[cu]
             if circular and e > n:
@@ -807,7 +934,8 @@ def _register_seq_udf(con: duckdb.DuckDBPyConnection, store) -> None:
                 try:
                     located[rd] = store.locate(rd)
                 except KeyError:
-                    raise ValueError(f"seq_raw: unknown raw_digest {rd.hex()}") from None
+                    raise ValueError(f"seq_raw: unknown raw_digest {rd.hex()} (in none of the stages "
+                                     f"{store.stages} this catalog's sequence store reads)") from None
             shard, n = located[rd]
             if not 0 <= s <= e <= n:
                 raise ValueError(f"seq_raw: slice outside 0:contig_len ({s}:{e}, contig_len {n})")
@@ -818,6 +946,24 @@ def _register_seq_udf(con: duckdb.DuckDBPyConnection, store) -> None:
     con.create_function("bb_seq", bb_seq, ["BLOB", "BIGINT", "BIGINT", "BIGINT"], "VARCHAR", **opts)
     con.create_function("bb_seq_circular", bb_seq_circular, ["BLOB", "BIGINT", "BIGINT", "BIGINT"], "VARCHAR", **opts)
     con.create_function("bb_seq_raw", bb_seq_raw, ["BLOB", "BIGINT", "BIGINT"], "VARCHAR", **opts)
+
+
+SEQ_TABLES = ("seq_locator", "contig_index", "contig_occurrence")  # what SeqStore reads
+
+
+def catalog_release_files(con: duckdb.DuckDBPyConnection, root: Path) -> ReleaseFiles:
+    """The release's sequence-store files as the catalog lists them (`catalog_files`, from its manifest),
+    under `root`: the sequence functions read only these (card B-28)."""
+    info = dict(con.execute("SELECT key, value FROM catalog_info").fetchall())
+    rows = con.execute('SELECT path, "table" FROM catalog_files WHERE "table" IN (SELECT unnest(?::VARCHAR[])) '
+                       "ORDER BY path", [list(SEQ_TABLES)]).fetchall()
+    files = [{"path": p, "table": t, "partitions": classify(p)[1]} for p, t in rows]
+    if "stages" in info:
+        stages = json.loads(info["stages"])
+    else:  # a catalog from before card B-28: the stages its files name
+        stages = sorted({f["partitions"]["stage"] for f in files if "stage" in f["partitions"]})
+    rel = info["release_id"]
+    return ReleaseFiles(root, rel, stages, {"release_id": rel, "stages": stages, "files": files, "artifacts": []})
 
 
 def seq_reader(con: duckdb.DuckDBPyConnection):
@@ -853,9 +999,10 @@ def open_catalog(path: Path, local_dir: Path | None = None, threads: int | None 
     con = duckdb.connect(str(path), read_only=True, config=config)
     if root is None:
         root = Path(con.execute("SELECT value FROM catalog_info WHERE key = 'root'").fetchall()[0][0])
-    from biobox.l0seq.store import SeqStore, has_sequences
+    from biobox.l0seq.store import SeqStore
 
-    store = SeqStore(root, cache_blocks) if has_sequences(Path(root)) else None
+    files = catalog_release_files(con, Path(root))
+    store = SeqStore(root, files, cache_blocks) if files.table("seq_locator") else None
     _register_seq_udf(con, store)
     _READERS[id(con)] = store
     attach_search(con, Path(root))
