@@ -370,6 +370,12 @@ Do: make each of these resolve its key so that the scan prunes: join the key in,
 Since card D-05 the failing tests already exist: `tests/r2/test_scale_layout.py` holds eight `xfail(strict=True, reason="card B-31")` tests, one per defect, with the row groups each reads today (32 of 32 for the token macros, 10 of 10 for the digest macros). Remove the markers as you fix each; a marker left on a fixed lookup fails the suite (XPASS).
 Accept: test first, on the 100× synthetic store built in the test: each macro above, with a literal key and with keys from a joined table, reads at most 2 row groups per key (`catalog.profile_query`); the existing Q-tests give the same rows.
 
+### B-34 Catalog follow-ups from B-31
+**M** · Depends: B-31 (found in its report)
+Files: `src/biobox/l3/tokens.py` (how `token_dict` is written), `src/biobox/registry/schemas.py` and lock if a table is added, `src/biobox/catalog.py` (`token_of`, `open_catalog`), tests
+Do: (1) `token_of(level, key)` looks `token_dict` up by (level, stable key), but the table is sorted by `token_id`, so the lookup cannot prune; it is 1 row group on the fixtures and 11.3 M rows at `rL.3` (*measured* row count). Add a lookup table `token_key` per release sorted by (level, key) written by the same builder, or sort `token_dict` so that both directions prune: decide by measuring both on the 1,000× store, and do not re-sort a table other readers rely on without checking them. (2) `open_catalog` cannot open a second connection to the same catalog file in one process ("Scalar Function with name bb_seq already exists"): register the UDFs per connection so it can. (3) `partners_of` and the sequence macros need `open_catalog`; a plain DuckDB connection to the catalog file fails with "bb_slot_tokens does not exist". Make that failure say what to do: a stored macro of the same name that raises a clear error naming `biobox.catalog.open_catalog`, shadowed by the real one on an opened connection.
+Accept: tests first: `token_of` for 100 keys from a joined table reads at most 2 row groups per key at 100× with at least 8 row groups in the lookup table; two connections to one catalog in one process both answer a sequence query; the plain-connection error names `open_catalog`.
+
 ### B-32 Gene calling of short contigs uses its workers
 **L** · Depends: none · found by B-18
 Files: `src/biobox/l1/genecall.py`, tests, `planning/measurements/<date>_genecall_short_contigs.md`+ · Pod: yes
