@@ -3,21 +3,28 @@
 Covers C-01 (registry contract), C-11 (one alignment per member per level),
 an independent check of every stored alignment against the sequences, cluster
 nesting, cluster_uid recomputation, and MR-16 (thread count does not change output).
+Card B-24: the Python process's peak does not grow with the protein count (a K-copy synthetic set).
 Needs `mmseqs` on PATH (the bio-box image); skipped otherwise.
 """
 
 from __future__ import annotations
 
+import hashlib
+import json
 import random
 import re
 import shutil
+import subprocess
+import sys
 from pathlib import Path
 
+import numpy as np
+import pyarrow as pa
 import pyarrow.parquet as pq
 import pytest
 import yaml
 
-from biobox import fasta, ids
+from biobox import fasta, ids, io
 from biobox.l0seq import SourceObject, ingest
 from biobox.l1.genecall import GENE_CALL_VERSION, GenomeInput, run as call_genes
 from biobox.l2.cluster import LEVELS, cluster_uid, params_hash, run as cluster
@@ -177,3 +184,83 @@ def test_mr16_thread_count_does_not_change_output(tmp_path, built):
     for name in ("cluster_member", "cluster_member_aln"):
         rel = f"l2/{name}/release={RELEASE}/part-0.parquet"
         assert (root1 / rel).read_bytes() == (root4 / rel).read_bytes(), name
+
+
+# --- card B-24: the Python side of clustering does not grow with the protein count ----------------------
+#
+# A K-copy synthetic protein set: BASE random proteins (fixed seed), each copied K times with 4% of its
+# residues substituted, so every copy joins its base's NR90 cluster and MMseqs2 stays fast. `cluster.run`
+# runs in a child process whose own peak RSS is compared at K = K_SMALL and K = K_LARGE: VmHWM of
+# /proc/self/status, which counts neither its MMseqs2 children (other processes) nor this test process
+# (`ru_maxrss` would: Linux carries the forking parent's RSS into a child's at exec). Before card B-24 the builder
+# held every protein, cluster row and alignment row in Python lists: in this test its peak grew from
+# 749 MB to 1,743 MB (993 MB, 4.0 KB per added protein), and it was 8.9 GB at 2.05 M proteins; the
+# streaming builder's grew from 309 MB to 350 MB (all measured on wilkcomp02, 2026-11-10;
+# planning/measurements/2026-11-10_cluster_memory.md). It holds batches and DuckDB's buffers, which the
+# child caps at MEM_DUCK (a module constant, not an argument, so the same child ran on the code before
+# the card).
+
+BASE = 5_000
+K_SMALL, K_LARGE = 30, 80
+MEM_DUCK = "64MB"
+MEM_GROWTH_MB = 96  # bound on the peak's growth from 150,000 to 400,000 proteins: DuckDB's cap and 32 MB
+_AA = np.frombuffer(b"ACDEFGHIKLMNPQRSTVWY", dtype=np.uint8)
+
+_CHILD = """
+import json, sys
+from pathlib import Path
+from biobox.l2 import cluster
+cluster.DUCK_MEMORY_LIMIT = sys.argv[4]
+res = cluster.run(Path(sys.argv[1]), sys.argv[2], sys.argv[3], ["S0"], threads=4, tmp=Path(sys.argv[5]))
+hwm = next(int(x.split()[1]) for x in open("/proc/self/status") if x.startswith("VmHWM:"))
+print(json.dumps({"peak_kb": hwm, "result": res}))
+"""
+
+
+def _k_copy_store(root: Path, k: int, seed: int = 24) -> int:
+    """`BASE * k` distinct proteins in stage S0's `protein_seq`; returns their number."""
+    rng = np.random.default_rng(seed)
+    bases = [rng.integers(0, len(_AA), int(n)) for n in rng.integers(60, 150, BASE)]
+    seqs: set[str] = set()
+    for b in bases:
+        for _ in range(k):
+            while True:  # a copy without a substitution can repeat another; draw again (same seed, same set)
+                s = b.copy()
+                hit = rng.random(len(s)) < 0.04
+                s[hit] = rng.integers(0, len(_AA), int(hit.sum()))
+                aa = _AA[s].tobytes().decode()
+                if aa not in seqs:
+                    seqs.add(aa)
+                    break
+    rows = sorted((ids.protein_uid(s), s) for s in seqs)
+    spec = table("protein_seq")
+    t = pa.table({"protein_uid": [u for u, _ in rows],
+                  "protein_digest": [hashlib.sha256(s.encode()).digest() for _, s in rows],
+                  "length": [len(s) for _, s in rows], "seq": [s for _, s in rows]})
+    io.write_table(t, spec, root / f"l0seq/protein_seq/gene_call_version={GENE_CALL_VERSION}/stage=S0/"
+                                   "protein_prefix=all/part-0.parquet")
+    return len(rows)
+
+
+def _child_peak_mb(root: Path, tmp: Path) -> tuple[float, dict]:
+    tmp.mkdir()
+    out = subprocess.run([sys.executable, "-c", _CHILD, str(root), RELEASE, GENE_CALL_VERSION, MEM_DUCK, str(tmp)],
+                         capture_output=True, text=True)
+    assert out.returncode == 0, out.stderr[-3000:]
+    rec = json.loads(out.stdout.strip().splitlines()[-1])
+    return rec["peak_kb"] / 1024, rec["result"]
+
+
+@pytest.mark.covers("K-02")
+@pytest.mark.skipif(not Path("/proc/self/status").exists(), reason="reads VmHWM from /proc (Linux)")
+def test_b24_python_peak_does_not_grow_with_protein_count(tmp_path):
+    peaks = {}
+    for k in (K_SMALL, K_LARGE):
+        root = tmp_path / f"k{k}"
+        n = _k_copy_store(root, k)
+        assert n == BASE * k  # no two copies collided
+        peaks[k], res = _child_peak_mb(root, tmp_path / f"tmp{k}")
+        assert res["proteins"] == n and res["aligned"] == {"nr90": n, "nr50": n}
+    growth = peaks[K_LARGE] - peaks[K_SMALL]
+    assert growth < MEM_GROWTH_MB, (f"Python peak RSS {peaks[K_SMALL]:.0f} MB at {BASE * K_SMALL:,} proteins and "
+                                    f"{peaks[K_LARGE]:.0f} MB at {BASE * K_LARGE:,}: grew {growth:.0f} MB")
