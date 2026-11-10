@@ -137,18 +137,25 @@ def main(job_path: str) -> int:
     seed = job["seed"]
     model_paths = [Path(p) for p in job["models"]]
     seed_seq = seed.get("sequence")
+    seed_file = Path(job["seed_file"]) if job.get("seed_file") else None  # staged bytes, hashed at submit
     if seed["kind"] == "hmm":
         hmm = engine.find_model(model_paths, seed["value"])
         msa_text = None
+    elif seed["kind"] == "hmm_file":  # used exactly as a library model is
+        hmm = engine.read_hmm_file(seed_file.read_bytes(), seed.get("model"))
+        msa_text = None
     elif seed["kind"] == "msa":
-        msa = engine.read_msa(seed["value"])
+        msa = engine.read_msa(seed_file)
         msa_text = engine._msa_text(msa)
         hmm = engine.build_from_msa(f"{recipe['recipe']}_r1", msa)
+    elif seed["kind"] == "sequences":
+        hmm, msa = engine.build_from_sequences(f"{recipe['recipe']}_r1", engine.read_seed_fasta(seed_file.read_bytes()))
+        msa_text = engine._msa_text(msa)
     else:
         hmm = engine.build_from_sequence(f"{recipe['recipe']}_r1", seed_seq)
         msa_text = f"# STOCKHOLM 1.0\n\nseed {seed_seq}\n//\n".encode()
     seed_families = engine.families_of(seed_seq or hmm.consensus.upper(), model_paths)
-    if seed["kind"] == "hmm":
+    if seed["kind"] in ("hmm", "hmm_file"):
         seed_families.add(engine.text(hmm.accession) or engine.text(hmm.name))
     settings = engine.Settings(
         inclusion_bits=it["inclusion_bits"], domain_bits=it["domain_bits"], max_rounds=it["max"],

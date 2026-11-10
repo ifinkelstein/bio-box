@@ -1293,6 +1293,11 @@
    "error",
    "string",
    true
+  ],
+  [
+   "seed_json",
+   "string",
+   true
   ]
  ],
  "seq_locator": [

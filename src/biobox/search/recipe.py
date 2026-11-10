@@ -3,7 +3,8 @@
 `load` checks a recipe on paper: every key known, every value of the right kind, a positive
 control present (S-04: a recipe without one is refused), thresholds in bits (SD-04). It fills
 defaults and returns the normalized recipe; `recipe_hash` is the sha256 of its canonical
-JSON, so two spellings of one recipe hash alike.
+JSON, so two spellings of one recipe hash alike. A seed that names a file (`hmm_file`, `msa`,
+`sequences`) is hashed by the file's sha256, not its path (`identity`).
 
 `executable` lists what this build cannot yet run (kinds, targets, tools, options), so a
 recipe can be valid on paper (S-12) before the stage that runs it. The runner refuses a
@@ -24,7 +25,9 @@ import yaml
 from biobox.search.nbr import Policy, PolicyError
 
 SEED_KINDS = ("sequence", "protein_uid", "region_uid", "hmm", "msa", "protein_accession", "cm", "structure",
-              "locus", "region")
+              "locus", "region", "hmm_file", "sequences")
+# seeds that name a file: the recipe is identified by the file's sha256, never by its path
+FILE_SEED_KINDS = ("hmm_file", "msa", "sequences")
 TARGETS = ("unique", "dark_orf", "igr", "nr50", "nr90", "segments", "contigs", "spacers")
 TOOLS = ("phmmer", "hmmsearch", "jackhmmer", "nhmmer", "cmsearch", "mmseqs", "diamond", "hhblits", "foldseek",
          "blastn", "tblastn")
@@ -32,7 +35,7 @@ STOP_RULES = ("no_new_reps", "context_lost", "drift_alarm")
 OUTPUTS = ("hits", "msa_per_round", "hmm_per_round", "neighborhoods", "summary")
 
 # what this build runs (S0, ST0)
-RUN_SEED_KINDS = ("sequence", "protein_uid", "hmm", "msa")
+RUN_SEED_KINDS = ("sequence", "protein_uid", "hmm", "msa", "hmm_file", "sequences")
 RUN_POSITIVE_KINDS = ("sequence", "protein_uid", "region_uid")
 RUN_TARGETS = {"unique": "protein", "dark_orf": "dark_orf"}
 RUN_TOOLS = ("phmmer", "hmmsearch", "jackhmmer")
@@ -63,12 +66,18 @@ def _seed(s, where: str) -> dict:
         if len(kinds) == 1 or len(s) == 1:
             k = kinds[0] if kinds else next(iter(s))
             s = {"kind": k, "value": s[k], **{a: b for a, b in s.items() if a != k}}
-    _keys(s, {"kind", "value", "label", "source"}, where)
+    _keys(s, {"kind", "value", "label", "source", "model"}, where)
     if s.get("kind") not in SEED_KINDS:
         raise RecipeError(f"{where}: kind {s.get('kind')!r} not one of {SEED_KINDS}")
     if s.get("value") in (None, ""):
         raise RecipeError(f"{where}: value missing")
     out = {"kind": s["kind"], "value": str(s["value"])}
+    if "model" in s:
+        if s["kind"] != "hmm_file":
+            raise RecipeError(f"{where}: model (which profile of a file to use) applies to hmm_file seeds only")
+        if s["model"] in (None, ""):
+            raise RecipeError(f"{where}: model is empty; give a model name or accession")
+        out["model"] = str(s["model"])
     if s["kind"] == "sequence":
         seq = re.sub(r"\s+", "", out["value"]).upper().rstrip("*")
         if not re.fullmatch(r"[A-Z]+", seq):
@@ -188,8 +197,22 @@ def normalize(raw: dict) -> dict:
     return out
 
 
+def identity(recipe: dict) -> dict:
+    """The normalized recipe as it is hashed: a file seed counts by the sha256 of its bytes, which the
+    runner pins at submit (`runner.resolve` sets `sha256`), never by its path, so a moved copy is the
+    same recipe and an edited file is a different one."""
+    out = copy.deepcopy(recipe)
+    for s in out["seed"]:
+        if s["kind"] in FILE_SEED_KINDS:
+            if "sha256" not in s:
+                raise RecipeError(f"{s['kind']} seed {s['value']}: its content is not pinned (no sha256); "
+                                  "a file seed is hashed after the runner reads the file at submit")
+            del s["value"]
+    return out
+
+
 def recipe_hash(recipe: dict) -> str:
-    return hashlib.sha256(json.dumps(recipe, sort_keys=True, separators=(",", ":")).encode()).hexdigest()
+    return hashlib.sha256(json.dumps(identity(recipe), sort_keys=True, separators=(",", ":")).encode()).hexdigest()
 
 
 def load(path_or_text: Path | str) -> tuple[dict, str]:
