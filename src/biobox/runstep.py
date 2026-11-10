@@ -17,8 +17,8 @@ Order of work:
    the listed sha256, else renamed in from `.incoming` if it is there with the listed sha256.
    If every output is then in place, the run record is written from the intent (no rerun) and
    run-step exits 0. Otherwise the root files that the intent lists and whose sha256 equals the
-   intent's are deleted (never any other file), the intent, `.incoming` and staging are removed,
-   and the step runs afresh. A root file at a listed path with another sha256 is not this step's:
+   intent's are deleted (never any other file), the intent, the step's `.incoming/<stage>.<step>/`
+   and staging are removed, and the step runs afresh. A root file at a listed path with another sha256 is not this step's:
    exit 2, naming it, and change nothing.
 3. Resume: `<root>/runs/stage=<S>/<step>.json` exists and every output it lists is in the root
    with its recorded size: exit 0. A listed output missing or of another size is an error;
@@ -43,15 +43,23 @@ Order of work:
 7. Publish (all or nothing): refuse empty staging, a final path that exists (append-only,
    AGENTS §3.10), a path no registry table or artifact claims (LY-10), and small files by the
    rule of `contracts.check_file_sizes` (LY-04). Then write the intent file atomically (every
-   output with bytes and sha256, plus everything the run record holds), one `rsync -a` into
-   `<root>/.incoming/<stage>.<step>/`, `os.replace` of each file into place, and removal of the
+   output with bytes and sha256, plus everything the run record holds), one `rsync -a` (or
+   `copytree` where there is no rsync) into `<root>/.incoming/<stage>.<step>/`, created with its
+   parent just before the copy, `os.replace` of each file into place, and removal of the step's own
    incoming and staging directories.
+   Directories shared between steps that run at once (card C-12): `<root>/.incoming` is removed only
+   when it is empty, by `rmdir` under an exclusive `flock` on the root directory, while a step
+   creates its incoming directory under a shared one, so a step publishing beside another never
+   loses its parent; it is never listed and then removed. The staging parent `<profile tmp>/staging`,
+   `runs/stage=<S>/` and the output directories are created with their parents and never removed.
 8. Write the run record atomically, then delete the intent file. `runs/` is not part of the
    release manifest (it holds timestamps and host names) and is in `catalog.EXCLUDED_TREES`.
 """
 
 from __future__ import annotations
 
+import contextlib
+import fcntl
 import json
 import os
 import platform
@@ -63,7 +71,7 @@ import subprocess
 import sys
 import threading
 import time
-from collections.abc import Callable, Sequence
+from collections.abc import Callable, Iterator, Sequence
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -224,12 +232,50 @@ def _ours(path: Path, sha256: str) -> bool:
     return path.is_file() and not path.is_symlink() and ids.sha256_file(path).hex() == sha256
 
 
+@contextlib.contextmanager
+def _incoming_lock(root: Path, exclusive: bool) -> Iterator[bool]:
+    """Hold a `flock` on the data root's directory while `<root>/.incoming` is created into (shared) or removed
+    (exclusive) (card C-12); yield whether it is held. Released when the block ends. A filesystem that cannot lock a
+    directory (an NFS mount refuses an exclusive lock on a directory opened read-only) gives False."""
+    try:
+        fd = os.open(root, os.O_RDONLY)
+    except OSError:
+        yield False
+        return
+    try:
+        try:
+            fcntl.flock(fd, fcntl.LOCK_EX if exclusive else fcntl.LOCK_SH)
+            held = True
+        except OSError:
+            held = False
+        yield held
+    finally:
+        os.close(fd)
+
+
+def _make_incoming(incoming: Path) -> None:
+    """Create this step's `<root>/.incoming/<stage>.<step>/`, with its parent, just before copying into it. Under the
+    shared lock, so another step's `_remove_leftovers` cannot remove the parent between its creation and the
+    step's own directory's; once that exists the parent is not empty and is never removed."""
+    with _incoming_lock(incoming.parent.parent, exclusive=False):
+        incoming.mkdir(parents=True, exist_ok=True)
+
+
 def _remove_leftovers(incoming: Path, stage_dir: Path) -> None:
+    """Remove this step's incoming and staging directories, then the shared `<root>/.incoming` if it is empty (card
+    C-12). Other steps may be publishing into `.incoming` meanwhile, so it is never listed and then removed: `rmdir`
+    under the exclusive lock (`_incoming_lock`) removes it only when it is empty and no step is between creating it
+    and creating its own directory in it; a non-empty `.incoming` is left to the last step to finish. Where the
+    lock cannot be held, `.incoming` is left in place (empty, and outside every manifest)."""
     for d in (incoming, stage_dir):
         if d.exists():
             shutil.rmtree(d)
-    if incoming.parent.is_dir() and not any(incoming.parent.iterdir()):
-        incoming.parent.rmdir()
+    if not incoming.parent.exists():
+        return
+    with _incoming_lock(incoming.parent.parent, exclusive=True) as held:
+        if held:
+            with contextlib.suppress(OSError):  # not empty (another step is publishing), or removed already
+                incoming.parent.rmdir()
 
 
 def _recover(root: Path, intent_path: Path, record_path: Path, incoming: Path, stage_dir: Path) -> int | None:
@@ -374,12 +420,12 @@ def _publish(root: Path, stage_dir: Path, incoming: Path, intent_path: Path, met
     _atomic_write(intent_path, _record_bytes(record))
     hook("after_intent")
 
-    incoming.parent.mkdir(parents=True, exist_ok=True)
     rsync = which("rsync")
+    _make_incoming(incoming)
     if rsync:
         subprocess.run([rsync, "-a", f"{stage_dir}/", f"{incoming}/"], check=True)
     else:
-        shutil.copytree(stage_dir, incoming)
+        shutil.copytree(stage_dir, incoming, dirs_exist_ok=True)
     hook("after_rsync")
     for i, r in enumerate(records):
         src, dst = incoming / r["path"], root / r["path"]

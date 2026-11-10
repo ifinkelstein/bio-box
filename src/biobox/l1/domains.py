@@ -19,7 +19,10 @@ Two ways to scan a stage, with byte-identical output (card B-24):
   sorted scratch run, `<tmp>/biobox-domain-scan/<plan>/shard-<k>.parquet` (`<plan>`: the first 16
   hex of the plan's sha256), and writes its record `.../shard-<k>.json` beside the plan (the run's
   sha256 and counts); `merge` checks every run against its record and writes the runs, in shard
-  order, as the files and ledger `run` writes.
+  order, as the files and ledger `run` writes. If scratch is cleared between the shards and the
+  merge (a reboot clears /tmp), `rescan_shard` (`python -m biobox.l1.domains rescan`, card C-12)
+  scans a shard again into scratch without writing its record again: the new run must have the
+  sha256 the record holds, so the merge is of the same runs as before.
 
 At a fixed Z a protein's hits do not depend on the other proteins searched (MR-12), the shards are
 consecutive ranges of protein_uid, and `scan` sorts each one's rows by the table's sort key, so the
@@ -33,11 +36,13 @@ sha256 of the HMM file, which every shard checks. Thread counts are the caller's
 
 from __future__ import annotations
 
+import argparse
 import gzip
 import hashlib
 import io
 import json
 import os
+import sys
 import tarfile
 import tempfile
 from collections.abc import Iterator
@@ -332,6 +337,26 @@ def _shard_proteins(root: Path, p: dict, s: dict) -> dict[bytes, str]:
     return out
 
 
+def _shard_inputs(root: Path, stage: str, library: str, library_version: str, hmm_path: Path, k: int,
+                  out: Path | None = None) -> tuple[bytes, dict, dict, dict[bytes, str]]:
+    """(the plan's bytes, the plan, its shard k, the shard's proteins), checked: k is one of the plan's shards,
+    `hmm_path` is the plan's HMM file, and the proteins read are the plan's counts."""
+    raw = _plan_bytes(root, stage, library, library_version, out)
+    p = json.loads(raw)
+    if not 0 <= k < len(p["shards"]):
+        step = _names(stage, library, library_version)[1]
+        raise ValueError(f"shard {k}: the plan of {step} for stage {stage} has {len(p['shards'])} shards")
+    have = ids.sha256_file(Path(hmm_path)).hex()
+    if have != p["hmm_sha256"]:
+        raise ValueError(f"{hmm_path}: sha256 {have} is not the plan's HMM file ({p['hmm_sha256']})")
+    s = p["shards"][k]
+    proteins = _shard_proteins(root, p, s)
+    if len(proteins) != s["proteins"] or sum(len(x) for x in proteins.values()) != s["residues"]:
+        raise ValueError(f"shard {k}: {len(proteins)} proteins read, the plan lists {s['proteins']} "
+                         f"({s['residues']} residues)")
+    return raw, p, s, proteins
+
+
 def scan_shard(root: Path, stage: str, library: str, library_version: str, hmm_path: Path, k: int, cpus: int,
                tmp: Path | None = None, out: Path | None = None) -> dict:
     """Scan shard `k` of the stage's plan with `cpus` threads: write its sorted run under scratch
@@ -349,18 +374,7 @@ def scan_shard(root: Path, stage: str, library: str, library_version: str, hmm_p
     for base in dict.fromkeys([root.resolve(), out.resolve()]):
         if (base / rel).exists():
             raise FileExistsError(f"{base / rel}: shard {k} is scanned once; refusing to overwrite")
-    raw = _plan_bytes(root, stage, library, library_version, out)
-    p = json.loads(raw)
-    if not 0 <= k < len(p["shards"]):
-        raise ValueError(f"shard {k}: the plan of {step} for stage {stage} has {len(p['shards'])} shards")
-    have = ids.sha256_file(Path(hmm_path)).hex()
-    if have != p["hmm_sha256"]:
-        raise ValueError(f"{hmm_path}: sha256 {have} is not the plan's HMM file ({p['hmm_sha256']})")
-    s = p["shards"][k]
-    proteins = _shard_proteins(root, p, s)
-    if len(proteins) != s["proteins"] or sum(len(x) for x in proteins.values()) != s["residues"]:
-        raise ValueError(f"shard {k}: {len(proteins)} proteins read, the plan lists {s['proteins']} "
-                         f"({s['residues']} residues)")
+    raw, p, s, proteins = _shard_inputs(root, stage, library, library_version, hmm_path, k, out)
     rows = scan(proteins, hmm_path, p["cutoff"], cpus=cpus)
     path = run_path(tmp, root, stage, library, library_version, k, out)
     path.parent.mkdir(parents=True, exist_ok=True)
@@ -376,11 +390,83 @@ def scan_shard(root: Path, stage: str, library: str, library_version: str, hmm_p
             "proteins_with_hit": rec["proteins_with_hit"]}
 
 
+# --- a shard whose scratch run was lost (card C-12) --------------------------------------------------------
+
+
+def shard_record(root: Path, stage: str, library: str, library_version: str, k: int) -> dict | None:
+    """The published record of shard k (in the root), or None when there is none."""
+    p = _find(root, None, _shard_rel(stage, library, library_version, k))
+    return None if p is None else json.loads(p.read_bytes())
+
+
+def run_problem(root: Path, stage: str, library: str, library_version: str, k: int, tmp: Path | None) -> str | None:
+    """Why the scratch run of shard k, whose record is published, cannot be merged as it is (`merge` would refuse
+    it, or could not check it), or None: "is missing", "differs from the sha256 its record holds", or "cannot be
+    checked: its record holds no run sha256" (a record written without one)."""
+    rec = shard_record(root, stage, library, library_version, k)
+    if rec is None:
+        raise FileNotFoundError(f"shard {k} of domains-{library}-{library_version}, stage {stage}: no record")
+    path = run_path(tmp, root, stage, library, library_version, k)
+    if not path.is_file():
+        return "is missing"
+    if "run_sha256" not in rec:
+        return "cannot be checked: its record holds no run sha256"
+    if ids.sha256_file(path).hex() != rec["run_sha256"]:
+        return "differs from the sha256 its record holds"
+    return None
+
+
+def rescan_shard(root: Path, stage: str, library: str, library_version: str, hmm_path: Path, k: int, cpus: int,
+                 tmp: Path | None = None) -> dict:
+    """Scan shard k again into scratch (`run_path`) for a shard whose record is published in `root` but whose run
+    is gone or damaged, e.g. after a reboot cleared /tmp (card C-12). The record is not written again: the new run
+    must reproduce it. Its sha256 must equal the record's `run_sha256`; a record that holds none (written without
+    one) is checked by its domain and hit counts instead, and the result says `"verified": "counts"`. On a mismatch
+    the new run is deleted, the run in scratch is left as it was, and a ValueError names the shard. Refuses, like
+    `scan_shard`, when the stage's domains are written, the HMM file is not the plan's, or the proteins do not
+    match the plan."""
+    root = Path(root)
+    ledger.check_scratch(tmp, root)
+    if not isinstance(cpus, int) or cpus < 1:
+        raise ValueError(f"cpus {cpus!r}: give the thread count explicitly (at least 1)")
+    lib_dir, step = _names(stage, library, library_version)
+    ledger.refuse_written(root, root, [lib_dir, f"ledger/stage={stage}/step={step}"], f"{step} of stage {stage}")
+    rec = shard_record(root, stage, library, library_version, k)
+    if rec is None:
+        raise FileNotFoundError(f"shard {k} of {step}, stage {stage}: no published record to scan it again for; "
+                                "scan it with domains.scan_shard")
+    raw, p, s, proteins = _shard_inputs(root, stage, library, library_version, hmm_path, k)
+    if rec["plan_sha256"] != hashlib.sha256(raw).hexdigest() or rec["shard"] != k:
+        raise ValueError(f"shard {k} of {step}, stage {stage}: its record is of another plan or shard")
+    rows = scan(proteins, hmm_path, p["cutoff"], cpus=cpus)
+    path = run_path(tmp, root, stage, library, library_version, k)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    new = path.with_name(f".rescan-{os.getpid()}-{path.name}")
+    spec = table("l1_domains")
+    bio.write_table(_batches(rows, spec), spec, new)
+    have, hits = ids.sha256_file(new).hex(), len({r["protein_uid"] for r in rows})
+    want = rec.get("run_sha256")
+    if want is not None:
+        bad = None if have == want else f"its run has sha256 {have}, the record holds {want}"
+    else:
+        got, rec_counts = (len(rows), hits), (rec["domains"], rec["proteins_with_hit"])
+        bad = None if got == rec_counts else (f"it gives {got[0]} domains in {got[1]} proteins, the record "
+                                              f"{rec_counts[0]} in {rec_counts[1]}")
+    if bad is not None:
+        new.unlink()
+        raise ValueError(f"shard {k} of {step}, stage {stage}: scanned again, {bad}; the published record is not "
+                         f"the scan of these inputs, so the merge cannot run (the run in scratch is left as it was)")
+    os.replace(new, path)
+    return {"shard": k, "domains": len(rows), "proteins_with_hit": hits, "run_sha256": have,
+            "verified": "sha256" if want is not None else "counts"}
+
+
 def merge(root: Path, stage: str, library: str, library_version: str, tmp: Path | None = None,
           max_file_bytes: int = layout.MAX_FILE_BYTES, out: Path | None = None) -> dict:
     """Write the shards' runs, in shard order, as the stage's domain files and ledger under `out`
     (default `root`): the files `run` writes. Every shard needs its record (in `root` or `out`) and a run
-    whose sha256 is the record's; otherwise nothing is written."""
+    whose sha256 is the record's (for a record that holds no run sha256, whose row count is the record's
+    domains; build-stage scans such a shard again first, `rescan_shard`); otherwise nothing is written."""
     root = Path(root)
     out_root = root if out is None else Path(out)
     ledger.check_scratch(tmp, root, out_root)
@@ -401,7 +487,10 @@ def merge(root: Path, stage: str, library: str, library_version: str, tmp: Path 
         if not path.is_file():
             raise FileNotFoundError(f"{path}: the run of shard {k} is not in the scratch directory; its record "
                                     "is published, so scan the shard again into this scratch directory")
-        if ids.sha256_file(path).hex() != rec["run_sha256"]:
+        if "run_sha256" not in rec:  # a record written without one: its row count is checked (card C-12)
+            if pq.ParquetFile(path).metadata.num_rows != rec["domains"]:
+                raise ValueError(f"{path}: row count differs from the domains in the record of shard {k}")
+        elif ids.sha256_file(path).hex() != rec["run_sha256"]:
             raise ValueError(f"{path}: sha256 differs from the record of shard {k}")
         recs.append(rec)
         runs.append(path)
@@ -417,3 +506,28 @@ def merge(root: Path, stage: str, library: str, library_version: str, tmp: Path 
     _write(out_root, stage, lib_dir, step, batches(), p["proteins"], hit, max_file_bytes)
     return {"proteins": p["proteins"], "domains": sum(r["domains"] for r in recs), "proteins_with_hit": hit,
             "models_with_hit": len(models), "shards": len(recs)}
+
+
+def main(argv: list[str] | None = None) -> int:
+    """`python -m biobox.l1.domains rescan --root R --stage S --library L --library-version V --hmm F --shard K
+    --cpus N --tmp D`: `rescan_shard` in its own process, as build-stage runs it (card C-12). It writes nothing
+    into the root, so it is not a run-step. Prints one JSON line; exit 2 with the reason on a refusal."""
+    ap = argparse.ArgumentParser(prog="python -m biobox.l1.domains")
+    ap.add_argument("action", choices=["rescan"])
+    for name in ("--root", "--stage", "--library", "--library-version", "--hmm", "--tmp"):
+        ap.add_argument(name, required=True)
+    ap.add_argument("--shard", type=int, required=True)
+    ap.add_argument("--cpus", type=int, required=True)
+    a = ap.parse_args(argv)
+    try:
+        res = rescan_shard(Path(a.root), a.stage, a.library, a.library_version, Path(a.hmm), a.shard, a.cpus,
+                           tmp=Path(a.tmp))
+    except (ValueError, FileNotFoundError, FileExistsError) as e:
+        print(f"domains rescan: {e}", file=sys.stderr)
+        return 2
+    print(json.dumps({"action": a.action, "result": res, "stage": a.stage}, sort_keys=True))
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

@@ -514,16 +514,18 @@ def test_stop_is_checked_before_each_shard_launch(direct, tmp_path, monkeypatch,
 
 @pytest.mark.covers("D-03")
 def test_shards_publishing_at_once_do_not_remove_each_others_incoming_area(direct, tmp_path, monkeypatch):
-    """After its renames, run-step removes `<root>/.incoming` when it lists it empty (`_remove_leftovers`);
-    a shard that copies its outputs into `.incoming` between that listing and the `rmdir` makes the `rmdir`
-    fail, after the first shard's files are in the root and before its run record. Ordered here without
-    timing: shard 0 lists `.incoming`, then shard 1 copies (rsync, or copytree where rsync is absent, as in
-    the image), then shard 0 goes on. Both must publish."""
+    """Before card C-12, run-step removed `<root>/.incoming` after its renames when it listed it empty
+    (`_remove_leftovers`); a shard that copied its outputs into `.incoming` between that listing and the `rmdir`
+    made the `rmdir` fail, after the first shard's files were in the root and before its run record. Ordered
+    here without timing: shard 1, before its copy (rsync, or copytree where rsync is absent, as in the image),
+    waits until shard 0 has looked at `.incoming` (then shard 0 waits for that copy before it goes on) or, as
+    run-step since card C-12 never lists it, until shard 0 has ended. Both must publish. (Migrated by card
+    C-12: the wait for shard 0's listing became a wait for its listing or its end.)"""
     monkeypatch.setattr(bs, "shard_residues", patched_residues(direct))
     prof, root = small_budget(direct), tmp_path / "root"
     incoming = root.resolve() / ".incoming"
     who = threading.local()
-    listed, copied = threading.Event(), threading.Event()
+    listed, copied = threading.Event(), threading.Event()  # listed: shard 0 looked at `.incoming`, or ended
     real_iterdir, real_run, real_copytree = Path.iterdir, subprocess.run, shutil.copytree
 
     def iterdir(self):
@@ -536,7 +538,7 @@ def test_shards_publishing_at_once_do_not_remove_each_others_incoming_area(direc
 
     def before_copy(dst) -> None:
         if getattr(who, "step", None) == shard(1) and not copied.is_set() and shard(1) in str(dst):
-            assert listed.wait(TIMEOUT), "shard 0 never cleaned up beside shard 1"
+            assert listed.wait(TIMEOUT), "shard 0 never cleaned up or ended beside shard 1"
 
     def run_cmd(argv, *a, **k):
         before_copy(argv[-1] if argv and str(argv[0]).endswith("rsync") else "")
@@ -562,6 +564,8 @@ def test_shards_publishing_at_once_do_not_remove_each_others_incoming_area(direc
             who.step = None
             if step == shard(1):
                 copied.set()  # whatever happened, shard 0 waits no longer
+            if step == shard(0):
+                listed.set()  # shard 0 has ended: shard 1 waits no longer
 
     def after_scan(point: str) -> None:
         if point == f"after:{SCAN}":
@@ -655,3 +659,290 @@ def test_a_second_stage_and_release_change_no_file_of_the_first(direct, built, t
     man = c08.check_manifest(root, REL2, catalog.read_manifest(catalog.manifest_path(oracle, REL2)))
     assert catalog.verify_manifest(man) == []
     c08.check_catalog(root, REL2, man, Path(direct["prof"].tmp) / "staging")
+
+
+# --- long builds: the hour and lost scratch (card C-12) ----------------------------------------------------
+#
+# Each test continues a build from a shared fixture instead of building from nothing: `planned` is a build stopped
+# after its scan's plan step (six or seven shards), `scanned` is `planned` continued through every shard at night and
+# stopped before the merge. The oracle for the files is the direct (unsharded) build; for the plan and the shard
+# records it is `scanned`, whose shards all ran at the night cap with the allowance never changing.
+
+DAY = datetime(2026, 11, 9, 9, 0)  # Monday 09:00: the test profile's day cap (4) holds
+
+
+class Clock:
+    """An injected clock: `before` until it is armed, then one time of `script` per call (its last time for every
+    call past its end). The runners below arm it while the scan's plan step runs, so the calls it counts are the ones
+    build-stage makes after the plan: one before each shard launch, and one at each check while it holds a launch."""
+
+    def __init__(self, before: datetime, script: list[datetime]):
+        self.before, self.script, self.armed, self.calls = before, list(script), False, 0
+
+    def __call__(self) -> datetime:
+        if not self.armed:
+            return self.before
+        self.calls += 1
+        return self.script[min(self.calls, len(self.script)) - 1]
+
+
+def index(step: str) -> int:
+    return int(step.rsplit("-", 1)[1])
+
+
+class InFlight:
+    """A runner that records, for each scan shard, the threads of the shards running when it starts (its own
+    included) and the clock calls made by then, and runs every step through `run-step` at the time `when`. The shards
+    numbered below `hold` stay running until build-stage holds a launch for the allowance (its `hold:` hook point,
+    `hook`) or TIMEOUT passes: a build that launches past the allowance is then seen doing it, without timing."""
+
+    def __init__(self, clock: Clock, when: datetime, hold: int = 0):
+        self.clock, self.when, self.hold = clock, when, hold
+        self.lock = threading.Lock()
+        self.alive: dict[str, int] = {}
+        self.starts: list[tuple[str, int, int]] = []  # (shard step, threads in flight at its start, clock calls)
+        self.held = threading.Event()
+
+    def hook(self, point: str) -> None:
+        if point.startswith("hold:"):
+            self.held.set()
+
+    def __call__(self, prof, root, stage, step, cmd, **kw) -> int:
+        def go() -> int:
+            return runstep.run_step(prof, root, stage, step, cmd, clock=lambda: self.when, load=idle, **kw)
+
+        if step.endswith(".plan"):
+            self.clock.armed = True
+        if ".shard-" not in step:
+            return go()
+        with self.lock:
+            self.alive[step] = kw["threads"]
+            self.starts.append((step, sum(self.alive.values()), self.clock.calls))
+        try:
+            if index(step) < self.hold:
+                self.held.wait(TIMEOUT)
+            return go()
+        finally:
+            with self.lock:
+                del self.alive[step]
+
+
+def copy_root(src: Path, base: Path) -> Path:
+    shutil.copytree(src, base / "root", symlinks=True)
+    return base / "root"
+
+
+def scan_records(root: Path) -> dict[str, str]:
+    return {k: v for k, v in c08.tree(root).items() if k.startswith(SHARD_RECORDS)}
+
+
+def check_stage_files(direct, root: Path) -> None:
+    """For a build stopped after its scan: every file but the shard records is the direct build's file at that path,
+    byte for byte, and every domain file of the direct build is there."""
+    got = {k: v for k, v in c08.tree(root).items() if not k.startswith(SHARD_RECORDS)}
+    want = c08.tree(direct["root"])
+    assert got == {k: want.get(k) for k in got}
+    assert {k for k in want if k.startswith("l1/domains/")} <= set(got)
+
+
+@pytest.fixture(scope="module")
+def planned(direct, tmp_path_factory):
+    """A build stopped after its scan's plan step, the scan cut into six or seven shards."""
+    root = tmp_path_factory.mktemp("c12-planned") / "root"
+
+    def stop(point: str) -> None:
+        if point == f"after:{SCAN}.plan":
+            raise Killed(point)
+
+    with pytest.MonkeyPatch.context() as mp:
+        mp.setattr(bs, "shard_residues", patched_residues(direct))
+        with pytest.raises(Killed):
+            bs.build_stage(small_budget(direct), build_of(direct, root), run=runner, clock=lambda: NOON, load=idle,
+                           _hook=stop)
+    return root
+
+
+@pytest.fixture(scope="module")
+def scanned(direct, planned, tmp_path_factory):
+    """`planned` continued through every shard at night (four jobs of one thread) and stopped before the merge: the
+    root with every shard's record, and the scratch directory with every shard's run."""
+    base = tmp_path_factory.mktemp("c12-scanned")
+    root = copy_root(planned, base)
+
+    def until_merge(prof, root_, stage, step, cmd, **kw):
+        if step == SCAN:
+            raise Killed(step)
+        return runner(prof, root_, stage, step, cmd, **kw)
+
+    with pytest.MonkeyPatch.context() as mp:
+        mp.setattr(bs, "shard_residues", patched_residues(direct))
+        b = dataclasses.replace(jobs_of(direct, root, 4, 1), tmp=base / "scratch")
+        with pytest.raises(Killed):
+            bs.build_stage(small_budget(direct), b, run=until_merge, clock=lambda: SUNDAY_NIGHT, load=idle)
+    n = len(domains.read_plan(root, "S0", "test", "1")["shards"])
+    assert n >= 5 and shard_names(root) == [shard(k) for k in range(n)]
+    return root, base / "scratch"
+
+
+@pytest.mark.covers("D-01")
+def test_c12_after_the_clock_moves_from_night_to_day_no_shard_launch_passes_the_day_cap(
+        direct, planned, scanned, tmp_path, monkeypatch):
+    """Six jobs of one thread fit the night cap (6) when the build starts. The clock reads night for the first three
+    shard launches, then day (cap 4). After the change no shard may start while it would put more than 4 threads in
+    flight; the shards started at night run on and finish. Counted through the runner. The build ends byte-identical
+    to the direct build, with the shard records of `scanned`, whose shards all ran at night."""
+    monkeypatch.setattr(bs, "shard_residues", patched_residues(direct))
+    monkeypatch.setattr(bs, "RECHECK_S", 1.0, raising=False)
+    prof, root = small_budget(direct), copy_root(planned, tmp_path)
+    clock = Clock(SUNDAY_NIGHT, [SUNDAY_NIGHT] * 3 + [DAY])
+    count = InFlight(clock, SUNDAY_NIGHT, hold=3)
+    b = dataclasses.replace(jobs_of(direct, root, 6, 1), tmp=tmp_path / "scratch")
+    assert bs.build_stage(prof, b, run=count, clock=clock, load=idle, _hook=count.hook) == 0
+    n = len(domains.read_plan(root, "S0", "test", "1")["shards"])
+    assert sorted(s for s, _, _ in count.starts) == [shard(k) for k in range(n)]  # each shard started once
+    after = {s: t for s, t, _ in count.starts if index(s) >= 3}  # the shards launched after the change
+    assert after and all(t <= prof.max_threads_day for t in after.values()), count.starts
+    assert count.held.is_set() and clock.calls > 3  # a launch was held, and the clock moved
+    check_sharded_equals_direct(direct, root)
+    assert scan_records(root) == scan_records(scanned[0])
+
+
+def test_c12_with_the_allowance_below_one_shards_threads_the_build_waits_then_proceeds(
+        direct, planned, scanned, tmp_path, monkeypatch, capsys):
+    """One job of 5 threads fits the night cap (6) when the build starts. The clock then reads day (cap 4) for two
+    checks and night after. No shard starts while it reads day: build-stage holds the launch, waits RECHECK_S (at
+    least a second) on the shards it runs, of which there are none, checks again, and launches when the clock
+    allows."""
+    monkeypatch.setattr(bs, "shard_residues", patched_residues(direct))
+    monkeypatch.setattr(bs, "RECHECK_S", 1.0, raising=False)
+    prof, root = small_budget(direct), copy_root(planned, tmp_path)
+    clock = Clock(SUNDAY_NIGHT, [DAY, DAY, SUNDAY_NIGHT])
+    count = InFlight(clock, SUNDAY_NIGHT)
+    seen: list[str] = []
+
+    def hook(point: str) -> None:
+        seen.append(point)
+        if point == f"after:{SCAN}":
+            raise Killed(point)
+
+    b = dataclasses.replace(jobs_of(direct, root, 1, 5), tmp=tmp_path / "scratch")
+    with pytest.raises(Killed):
+        bs.build_stage(prof, b, run=count, clock=clock, load=idle, _hook=hook)
+    assert [p for p in seen if p.startswith("hold:")] == [f"hold:{shard(0)}"] * 2
+    assert f"allows {prof.max_threads_day}" in capsys.readouterr().err
+    assert [c for s, _, c in count.starts if s == shard(0)] == [3]  # launched at the third check, the first at night
+    assert {t for _, t, _ in count.starts} == {5}
+    assert bs.RECHECK_S >= 1
+    check_stage_files(direct, root)
+    assert scan_records(root) == scan_records(scanned[0])
+
+
+def lost_scratch(scanned, tmp_path: Path) -> tuple[Path, Path]:
+    """Copies of `scanned`'s root and scratch directory, for a test to damage."""
+    root = copy_root(scanned[0], tmp_path)
+    shutil.copytree(scanned[1], tmp_path / "scratch")
+    return root, tmp_path / "scratch"
+
+
+def shard_run(root: Path, scratch: Path, k: int) -> Path:
+    return domains.run_path(scratch, root, "S0", "test", "1", k)
+
+
+def shard_record_path(root: Path, k: int) -> Path:
+    return root / domains.scan_dir("S0", "test", "1") / f"shard-{k:05d}.json"
+
+
+@pytest.mark.covers("D-01", "D-03")
+@pytest.mark.parametrize("damage", ["deleted", "corrupted"])
+def test_c12_a_shard_whose_scratch_run_was_lost_is_scanned_again_and_the_build_ends_byte_identical(
+        direct, scanned, tmp_path, monkeypatch, capsys, damage):
+    """Scratch is damaged between the shards and their merge (a reboot clears /tmp): shard 2's run deleted, or one
+    of its bytes changed (same size: only the sha256 its record holds can tell). build-stage scans that shard again
+    into scratch, and no other (counted by the `after:<shard>.rescan` hook points), without publishing its record
+    again, then merges. The deleted case runs to the end and equals the direct build; the corrupted case stops
+    after the scan step and its files equal the direct build's."""
+    monkeypatch.setattr(bs, "shard_residues", patched_residues(direct))
+    prof = small_budget(direct)
+    root, scratch = lost_scratch(scanned, tmp_path)
+    run2 = shard_run(root, scratch, 2)
+    if damage == "deleted":
+        run2.unlink()
+    else:
+        data = bytearray(run2.read_bytes())
+        data[len(data) // 2] ^= 0xFF
+        run2.write_bytes(bytes(data))
+    rec2 = shard_record_path(root, 2).read_bytes()
+    before = records(root)
+    seen: list[str] = []
+
+    def hook(point: str) -> None:
+        seen.append(point)
+        if point == f"after:{SCAN}" and damage == "corrupted":
+            raise Killed(point)
+
+    b = dataclasses.replace(jobs_of(direct, root, 4, 1), tmp=scratch)
+    if damage == "deleted":
+        assert bs.build_stage(prof, b, run=runner, clock=lambda: NOON, load=idle, _hook=hook) == 0
+        check_sharded_equals_direct(direct, root)
+    else:
+        with pytest.raises(Killed):
+            bs.build_stage(prof, b, run=runner, clock=lambda: NOON, load=idle, _hook=hook)
+        check_stage_files(direct, root)
+    assert [p for p in seen if p.endswith(".rescan")] == [f"after:{shard(2)}.rescan"]  # that shard, and only it
+    assert shard(2) in capsys.readouterr().err
+    assert shard_record_path(root, 2).read_bytes() == rec2  # the record stayed
+    assert scan_records(root) == scan_records(scanned[0])
+    assert {k: v for k, v in records(root).items() if k in before} == before  # no shard step ran or published again
+
+
+def test_c12_a_rescan_that_gives_another_checksum_stops_with_an_error_naming_the_shard(
+        direct, scanned, tmp_path, monkeypatch, capfd):
+    """Shard 1's record is made to hold a run sha256 that its inputs do not give. Its run in scratch fails the
+    record, so build-stage scans it again; the new run does not give the record's sha256 either, so the build stops
+    before the merge, with an error that names the shard, and leaves the run in scratch as it was."""
+    monkeypatch.setattr(bs, "shard_residues", patched_residues(direct))
+    prof = small_budget(direct)
+    root, scratch = lost_scratch(scanned, tmp_path)
+    path = shard_record_path(root, 1)
+    rec = json.loads(path.read_text())
+    rec["run_sha256"] = "0" * 64
+    path.write_text(json.dumps(rec, sort_keys=True, indent=1) + "\n")
+    run1 = shard_run(root, scratch, 1).read_bytes()
+    b = dataclasses.replace(jobs_of(direct, root, 4, 1), tmp=scratch)
+    code = bs.build_stage(prof, b, run=runner, clock=lambda: NOON, load=idle)
+    assert code not in (0, runstep.EXIT_STOP)
+    err = capfd.readouterr().err
+    assert f"{shard(1)}.rescan exited {code}" in err  # build-stage names the shard step
+    assert "shard 1 of domains-test-1" in err and "0" * 64 in err  # the rescan names the shard and the checksums
+    assert f"stage=S0/{SCAN}.json" not in records(root)  # no merge
+    assert not (root / "l1/domains").exists()
+    assert shard_run(root, scratch, 1).read_bytes() == run1
+
+
+def test_c12_a_record_without_a_run_checksum_is_scanned_again_and_accepted_with_a_note(
+        direct, scanned, tmp_path, monkeypatch, capsys):
+    """A shard record that holds no run sha256 (`domains.scan_shard` has written one into every record since card
+    B-24; the case is handled for a record written otherwise) cannot be checked against its run: build-stage scans
+    the shard again, accepts the new run when its domain and hit counts equal the record's, says so in the log, and
+    merges."""
+    monkeypatch.setattr(bs, "shard_residues", patched_residues(direct))
+    prof = small_budget(direct)
+    root, scratch = lost_scratch(scanned, tmp_path)
+    path = shard_record_path(root, 3)
+    rec = json.loads(path.read_text())
+    del rec["run_sha256"]
+    path.write_text(json.dumps(rec, sort_keys=True, indent=1) + "\n")
+    seen: list[str] = []
+
+    def hook(point: str) -> None:
+        seen.append(point)
+        if point == f"after:{SCAN}":
+            raise Killed(point)
+
+    b = dataclasses.replace(jobs_of(direct, root, 4, 1), tmp=scratch)
+    with pytest.raises(Killed):
+        bs.build_stage(prof, b, run=runner, clock=lambda: NOON, load=idle, _hook=hook)
+    assert [p for p in seen if p.endswith(".rescan")] == [f"after:{shard(3)}.rescan"]
+    err = capsys.readouterr().err
+    assert shard(3) in err and "no run sha256" in err
+    check_stage_files(direct, root)

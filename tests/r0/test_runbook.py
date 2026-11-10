@@ -284,6 +284,22 @@ def test_the_runbook_shows_the_scan_options_of_build_stage():
     assert rows and all("tested on the fixture" in ln for ln in rows)
 
 
+@pytest.mark.covers("C-12")
+def test_the_unit_quota_is_the_night_cap_and_the_runbook_says_build_stage_holds_the_hour():
+    """Card C-12: `pod_run.sh` sets the unit's CPU quota from the profile's night cap, the most any hour allows, and
+    `build-stage` holds the limit of the hour itself, checked again before each step and each shard launch. The
+    runbook says so where it names the quota, and no longer lists the allowance decided once as a known limit."""
+    script = POD_RUN.read_text()
+    assert re.search(r"^THREADS=\$\{THREADS:-\$\(prof max_threads_night\)\}$", script, re.M)
+    header = script.split("set -euo pipefail", 1)[0]
+    assert "max_threads_night" in header and "build-stage" in header
+    text = RUNBOOK.read_text()
+    assert "decided once" not in section_of(text, "## 11. Known limits")
+    for heading in ("## 2. ", "## 10. Limits"):
+        part = section_of(text, heading)
+        assert "max_threads_night" in part and "before each shard launch" in part, heading
+
+
 def test_every_script_the_runbook_names_exists():
     named = set(re.findall(r"scripts/[A-Za-z0-9_./-]+\.(?:sh|py)", RUNBOOK.read_text()))
     assert named, "the runbook names no script"

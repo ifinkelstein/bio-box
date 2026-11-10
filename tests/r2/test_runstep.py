@@ -11,7 +11,9 @@ from __future__ import annotations
 import hashlib
 import json
 import shutil
+import subprocess
 import sys
+import threading
 from datetime import datetime
 from pathlib import Path
 
@@ -341,6 +343,77 @@ def test_stale_incoming_and_staging_cleaned(prof, root):
     assert run(prof, root, "occ", fake("--out", f"{out}=10")) == 0
     assert not stale_incoming.exists()
     assert root_files(root) == [out, "runs/stage=S0/occ.json"]
+
+
+TIMEOUT = 60  # seconds one step waits for the other before the test fails
+
+
+@pytest.mark.covers("D-03")
+@pytest.mark.parametrize("copier", ["copytree", "rsync"])
+@pytest.mark.parametrize("first", ["a", "b"])
+def test_two_steps_publishing_at_once_both_succeed(prof, root, copier, first):
+    """Card C-12: steps `a` and `b` publish into one root at once, with nothing outside run-step to keep them apart.
+    Ordered without timing: the second step creates its incoming area and then waits, before its copy, until the
+    first has looked at the shared `<root>/.incoming` to remove it (run-step before card C-12 listed it and removed
+    it when it found it empty) or, if the first never looks, until the first has ended; the first, once it has
+    looked, waits for the second's copy before it goes on. Both orders of `a` and `b`, on the `copytree` path and,
+    where `rsync` exists, on the `rsync` path. Both must publish, and nothing of the publishing area is left."""
+    if copier == "rsync" and shutil.which("rsync") is None:
+        pytest.skip("rsync is not on PATH")
+    which = shutil.which if copier == "rsync" else (lambda name: None if name == "rsync" else shutil.which(name))
+    second = "b" if first == "a" else "a"
+    incoming = root.resolve() / ".incoming"
+    who = threading.local()
+    go, copied = threading.Event(), threading.Event()  # go: the first looked at `.incoming`, or ended
+    real_iterdir, real_run, real_copytree = Path.iterdir, subprocess.run, shutil.copytree
+
+    def iterdir(self):
+        if self == incoming and getattr(who, "step", None) == first and not go.is_set():
+            names = list(real_iterdir(self))
+            go.set()
+            assert copied.wait(TIMEOUT), "the second step never copied"
+            return iter(names)
+        return real_iterdir(self)
+
+    def copying(copy, *a, **k):
+        if getattr(who, "step", None) == second:
+            assert go.wait(TIMEOUT), "the first step never ended"
+            try:
+                return copy(*a, **k)
+            finally:
+                copied.set()
+        return copy(*a, **k)
+
+    def run_cmd(argv, *a, **k):
+        return copying(real_run, argv, *a, **k) if argv and str(argv[0]).endswith("rsync") else real_run(argv, *a, **k)
+
+    results: dict[str, object] = {}
+
+    def publish(step: str) -> None:
+        who.step = step
+        try:
+            results[step] = run(prof, root, step, fake("--out", f"ledger/stage=S0/step={step}/part-0.parquet=10"),
+                                which=which)
+        except BaseException as e:  # noqa: BLE001 - reported below
+            results[step] = e
+        finally:
+            who.step = None
+            (go if step == first else copied).set()  # whatever happened, the other waits no longer
+
+    with pytest.MonkeyPatch.context() as mp:
+        mp.setattr(Path, "iterdir", iterdir)
+        mp.setattr(runstep.subprocess, "run", run_cmd)
+        mp.setattr(runstep.shutil, "copytree", lambda *a, **k: copying(real_copytree, *a, **k))
+        threads = [threading.Thread(target=publish, args=(s,)) for s in ("a", "b")]
+        for t in threads:
+            t.start()
+        for t in threads:
+            t.join(2 * TIMEOUT)
+    assert results == {"a": 0, "b": 0}
+    assert root_files(root) == ["ledger/stage=S0/step=a/part-0.parquet", "ledger/stage=S0/step=b/part-0.parquet",
+                                "runs/stage=S0/a.json", "runs/stage=S0/b.json"]
+    assert not incoming.exists()
+    assert not staging(prof, "a").exists() and not staging(prof, "b").exists()
 
 
 def test_build_manifest_ignores_runs(prof, root):
