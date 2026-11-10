@@ -146,7 +146,7 @@ def test_b25_rebuild_after_a_later_stage_gives_byte_identical_release_files(ladd
         assert (a / rel).is_dir() and (b / rel).is_dir(), rel
     release_files = sorted(p for p in snap if f"release={REL}/" in p or "/step=cluster/" in p)
     want = {"release_def", "token_dict", "tape_tokens", "token_postings", "contig_dim"} | (
-        {"cluster_member", "cluster_member_aln", "ledger"} if MMSEQS else set())
+        {"cluster_member", "cluster_member_aln", "member_cluster", "ledger"} if MMSEQS else set())  # B-27
     assert {f["table"] for f in ladder["m1"]["files"] if f["path"] in release_files} == want
     for p in release_files:
         assert (b / p).read_bytes() == snap[p], p

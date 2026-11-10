@@ -37,10 +37,10 @@ PATHS = [FIX / o["file"] for o in CONTRACT["objects"]]
 SHARD_BASES = 200_000  # the three fixture genomes land in three shards
 NOON_MONDAY = datetime(2026, 11, 9, 12, 0)
 # every point the hook is called at, in order; a kill at the last one is a finished ingest
-POINTS = ["pass1", "shard:0", "shard:1", "shard:2", "contig_occurrence", "contig_index", "seq_locator",
-          "ledger", "l0_manifest"]
-STAGE_DIRS = ["l0seq/seq_shards/stage=S0", "l0seq/contig_occurrence/stage=S0", "l0seq/contig_index/stage=S0",
-              "l0seq/seq_locator/stage=S0", "ledger/stage=S0/step=ingest"]
+POINTS = ["pass1", "shard:0", "shard:1", "shard:2", "contig_occurrence", "contig_label", "contig_index",
+          "seq_locator", "ledger", "l0_manifest"]  # contig_label: card B-27
+STAGE_DIRS = ["l0seq/seq_shards/stage=S0", "l0seq/contig_occurrence/stage=S0", "l0seq/contig_label/stage=S0",
+              "l0seq/contig_index/stage=S0", "l0seq/seq_locator/stage=S0", "ledger/stage=S0/step=ingest"]
 
 STEP = r"""
 import os, signal, sys

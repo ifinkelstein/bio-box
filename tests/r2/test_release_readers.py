@@ -283,8 +283,8 @@ def test_b28_two_releases_over_one_stage_both_cluster_and_verify(store, tmp_path
 # --- each release's manifest covers that release's files only (card B-33) -------------------------------
 
 R2_SAME = "rS0.b33"  # a second release over S0 alone
-OWN_TABLES = {"release_def", "token_dict", "tape_tokens", "token_postings", "contig_dim", "cluster_member"} | (
-    {"cluster_member_aln", "ledger"} if MMSEQS else set())
+OWN_TABLES = {"release_def", "token_dict", "tape_tokens", "token_postings", "contig_dim", "cluster_member",
+              "member_cluster"} | ({"cluster_member_aln", "ledger"} if MMSEQS else set())  # member_cluster: card B-27
 
 
 def _release_files(root: Path, release: str, stages: list[str], work: Path) -> None:

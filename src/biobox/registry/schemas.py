@@ -313,6 +313,48 @@ _SPECS = [
             "the alignment; cigar is the MMseqs2 CIGAR as ASCII bytes"
         ),
     ),
+    # --- card B-27: lookup tables sorted by the key they are looked up by, written beside their sources ---
+    TableSpec(
+        name="contig_label",
+        location="l0seq/contig_label",
+        layer="L0-seq",
+        schema=pa.schema([
+            _f("contig_uid", UID),
+            _f("accession", pa.string()),
+            _f("original_header", pa.string()),
+            _f("n_records", pa.uint32()),
+            _f("l0_object_sha256", SHA256),
+            _f("record_ordinal", pa.uint64()),
+        ]),
+        primary_key=("contig_uid", "stage"),
+        sort_key=("contig_uid",),
+        partition_keys=("stage",),
+        doc=(
+            "card B-27: one row per contig of the stage's contig_occurrence (every source), written by ingest "
+            "with it: the accession and header of the contig's first record by (l0_object_sha256, "
+            "record_ordinal), that record's object and ordinal (so a release over several stages takes the "
+            "first over all of them), and its number of records in the stage"
+        ),
+    ),
+    TableSpec(
+        name="member_cluster",
+        location="l2/member_cluster",
+        layer="L2",
+        schema=pa.schema([
+            _f("member_uid", UID),
+            _f("level", pa.string()),
+            _f("cluster_uid", UID),
+            _f("rep_uid", UID),
+        ]),
+        primary_key=("member_uid", "level", "release"),
+        sort_key=("member_uid", "level"),
+        partition_keys=("release",),
+        enums={"level": ("nr90", "nr50", "subfam")},
+        doc=(
+            "card B-27: cluster_member re-sorted by member, written by the clustering step with it: a protein's "
+            "cluster and representative at each level, looked up by member_uid"
+        ),
+    ),
     TableSpec(
         name="id_history",
         location="l2/id_history.parquet",

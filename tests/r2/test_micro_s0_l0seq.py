@@ -72,6 +72,7 @@ def test_fixture_matches_contract():
     "name,glob",
     [
         ("contig_occurrence", "l0seq/contig_occurrence/stage=*/source=*/part-0.parquet"),
+        ("contig_label", "l0seq/contig_label/stage=*/part-0.parquet"),  # card B-27
         ("contig_index", "l0seq/contig_index/stage=*/part-0.parquet"),
         ("seq_locator", "l0seq/seq_locator/stage=*/part-0.parquet"),
         ("l0_manifest", "l0/l0_manifest/stage=*/part-0.parquet"),
@@ -700,7 +701,8 @@ def test_same_length_edit_between_the_passes_is_refused(tmp_path):
     with pytest.raises(ValueError, match="changed since the first pass"):
         ingest(objs, root, stage="S0", shard_bases=SMALL_SHARDS, out=out, _hook=edit_after_pass1)
     assert not root.exists() or not any(p.is_file() for p in root.rglob("*"))  # nothing in the root
-    for table_dir in ("l0seq/seq_locator", "l0seq/contig_index", "l0seq/contig_occurrence", "ledger", "l0"):
+    for table_dir in ("l0seq/seq_locator", "l0seq/contig_index", "l0seq/contig_occurrence", "l0seq/contig_label",
+                      "ledger", "l0"):
         assert not (out / table_dir).exists(), table_dir  # no table written: the stage died in pass 2
 
 

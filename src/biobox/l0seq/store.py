@@ -6,6 +6,7 @@ Layout under `<root>/` (planning/data_layer_and_tests.md §2A.1, §3.1):
     l0seq/store_params.json
     l0seq/seq_shards/stage=<S>/shard-<NNNN>.fa.gz   (+ .fa.gz.fai, .fa.gz.gzi)
     l0seq/contig_occurrence/stage=<S>/source=<name>/part-<k>.parquet
+    l0seq/contig_label/stage=<S>/part-<k>.parquet
     l0seq/contig_index/stage=<S>/part-<k>.parquet
     l0seq/seq_locator/stage=<S>/part-<k>.parquet
 
@@ -18,6 +19,13 @@ batch is a maximal run of source objects, in object sha256 order, whose new sequ
 at most `shard_bases` bases (one larger object is a batch of its own); records are sorted by
 `raw_digest` inside a shard and there is no order across shards. Ingest holds one batch's
 sequences at a time. samtools, pysam and MMseqs2 read the shards as they are.
+
+`contig_label` (card B-27) is `contig_occurrence` by contig, for readers that look a contig's
+accession and header up by `contig_uid` (`contig_occurrence` is sorted by object and ordinal, so
+such a lookup cannot prune it): one row per contig of the stage, sorted by `contig_uid`, with its
+first record by (`l0_object_sha256`, `record_ordinal`) and its number of records. It is made from
+one DuckDB sort of the stage's records by (`contig_uid`, `l0_object_sha256`, `record_ordinal`),
+which spills into the private scratch directory, read a batch at a time (`_label_batches`).
 
 A stage never rewrites an earlier stage's files (AGENTS §3.10): a sequence already stored
 adds only occurrence rows, a stage's `seq_locator` file holds only the sequences first
@@ -43,7 +51,9 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 import duckdb
+import numpy as np
 import pyarrow as pa
+import pyarrow.compute as pc
 import pyarrow.parquet as pq
 
 from biobox import fasta, ids, io, layout, ledger, provenance
@@ -61,6 +71,7 @@ SCRATCH_FLUSH_ROWS = 65_536  # pass-1 rows buffered before a scratch row group i
 # widths (random 16- and 32-byte keys do not compress); none of these tables has a measurement yet
 # (planning/measurements/2026-11-09_design_stress_test.md §3 and §6a list none).
 EST_OCCURRENCE_ROW = 120  # estimate: contig_occurrence (accession and header strings, raw_digest, contig_uid)
+EST_LABEL_ROW = 110  # estimate: contig_label (contig_uid 16, object sha256 32, the accession and header strings)
 EST_INDEX_ROW = 56  # estimate: contig_index (contig_uid 16 + raw_digest 32 + length and flag)
 EST_LOCATOR_ROW = 40  # estimate: seq_locator (raw_digest 32 + dictionary-coded shard path + length)
 EST_MANIFEST_ROW = 160  # estimate: l0_manifest (sha256 32 + object name, source and license strings + 3 scalars)
@@ -85,6 +96,7 @@ class SourceObject:
 
 LOCATOR_DIR = "l0seq/seq_locator"
 INDEX_DIR = "l0seq/contig_index"
+LABEL_DIR = table("contig_label").location
 MANIFEST_DIR = table("l0_manifest").location
 PARAMS_PATH = ARTIFACTS["store_params"].location
 
@@ -186,6 +198,51 @@ def _wanted(con, batch_rows: int = io.ROW_GROUP_ROWS):
         reader.close()
 
 
+_LABEL_COLUMNS = ("contig_uid", "accession", "original_header", "l0_object_sha256", "record_ordinal")
+
+
+def _label_batches(con, spec, batch_rows: int = io.ROW_GROUP_ROWS):
+    """The stage's `contig_label` rows in contig_uid order (card B-27): from one DuckDB sort of every record of
+    `seen` by (contig_uid, l0_object_sha256, record_ordinal), which spills, each contig's first row with
+    `n_records`, its number of rows. The sorted rows come `batch_rows` at a time; a contig is cut where the
+    contig_uid changes, and the last contig of a batch is held (one row and a count) until the next batch shows
+    whether it goes on. Ties (one object listed twice) are broken by `obj_idx`; their rows are equal."""
+    reader = con.sql(f"SELECT {', '.join(_LABEL_COLUMNS)} FROM seen "
+                     "ORDER BY contig_uid, l0_object_sha256, record_ordinal, obj_idx").to_arrow_reader(batch_rows)
+    held: tuple[pa.RecordBatch, int] | None = None  # the last contig seen: its first row and its rows so far
+
+    def labelled(rows: pa.RecordBatch, counts) -> pa.RecordBatch:
+        n = pa.array(np.asarray(counts, dtype=np.uint32), pa.uint32())
+        return io.conform(pa.RecordBatch.from_arrays([*rows.columns, n], names=[*_LABEL_COLUMNS, "n_records"]), spec)
+
+    try:
+        for b in reader:
+            n = b.num_rows
+            if not n:
+                continue
+            uids = b.column(0)
+            cut = np.flatnonzero(pc.not_equal(uids.slice(1), uids.slice(0, n - 1)).to_numpy(zero_copy_only=False)) + 1
+            starts = np.concatenate([[0], cut]).astype(np.int64)
+            counts = np.diff(np.concatenate([starts, [n]]))
+            first = 0
+            if held is not None:
+                if held[0].column(0)[0].as_py() == uids[0].as_py():  # the held contig goes on into this batch
+                    held = (held[0], held[1] + int(counts[0]))
+                    first = 1
+                if first == 0 or len(starts) > 1:
+                    yield labelled(held[0], [held[1]])
+                    held = None
+            if held is None:
+                done = starts[first:-1]
+                if len(done):
+                    yield labelled(b.take(pa.array(done)), counts[first:-1])
+                held = (b.slice(int(starts[-1]), 1), int(counts[-1]))
+        if held is not None:
+            yield labelled(held[0], [held[1]])
+    finally:
+        reader.close()
+
+
 def _stat(path: Path) -> tuple[int, int]:
     st = Path(path).stat()
     return st.st_size, st.st_mtime_ns
@@ -193,8 +250,9 @@ def _stat(path: Path) -> tuple[int, int]:
 
 def stage_dirs(stage: str) -> list[str]:
     """The root-relative directories that hold one stage's ingest files (the ledger's included)."""
-    return [f"l0seq/seq_shards/stage={stage}", f"l0seq/contig_occurrence/stage={stage}", f"{INDEX_DIR}/stage={stage}",
-            f"{LOCATOR_DIR}/stage={stage}", f"ledger/stage={stage}/step=ingest", f"{MANIFEST_DIR}/stage={stage}"]
+    return [f"l0seq/seq_shards/stage={stage}", f"l0seq/contig_occurrence/stage={stage}", f"{LABEL_DIR}/stage={stage}",
+            f"{INDEX_DIR}/stage={stage}", f"{LOCATOR_DIR}/stage={stage}", f"ledger/stage={stage}/step=ingest",
+            f"{MANIFEST_DIR}/stage={stage}"]
 
 
 def stage_files(base: Path, stage: str) -> list[Path]:
@@ -249,8 +307,8 @@ def ingest(
     stage only and is written last; no earlier stage's row is read or rewritten.
 
     `_hook` (tests only) is called with each point at which a kill leaves the stage half written:
-    "pass1", "shard:<j>" after each shard, "contig_occurrence", "contig_index", "seq_locator",
-    "ledger", "l0_manifest"; an exception it raises is not caught.
+    "pass1", "shard:<j>" after each shard, "contig_occurrence", "contig_label", "contig_index",
+    "seq_locator", "ledger", "l0_manifest"; an exception it raises is not caught.
     """
     root = Path(root)
     out = root if out is None else Path(out)
@@ -437,6 +495,15 @@ def _decide_and_write(con, root: Path, out: Path, stage: str, ordered: list[tupl
         io.write_parts(io.duck_batches(con, sql, occ_spec), occ_spec,
                        out / f"l0seq/contig_occurrence/stage={stage}/source={src}", EST_OCCURRENCE_ROW, max_file_bytes)
     hook("contig_occurrence")
+
+    # contig_label: contig_occurrence by contig (card B-27), every source of the stage together; a stage without
+    # records has neither table
+    (n_records,), = con.execute("SELECT count(*) FROM seen").fetchall()
+    if n_records:
+        lab_spec = table("contig_label")
+        io.write_parts(_label_batches(con, lab_spec), lab_spec, out / f"{LABEL_DIR}/stage={stage}", EST_LABEL_ROW,
+                       max_file_bytes)
+    hook("contig_label")
 
     # contig_index: new (contig_uid, raw_digest) pairs; the default is the variant with the lowest
     # (precedence, object sha256, record ordinal) of the stage, unless an earlier stage gave one
