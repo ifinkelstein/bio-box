@@ -441,6 +441,19 @@ Why: `engine.families_of` calls `pyhmmer.hmmsearch` without `cpus`, so pyhmmer s
 Do: `families_of` and every other pyhmmer entry point in `src/biobox` take a `threads` argument with no default and pass it as `cpus`. Callers pass the worker's capped thread count.
 Accept: a test that replaces `pyhmmer.hmmsearch` with a recorder and fails when any call lacks `cpus` or passes 0, seen to fail first; `rg "hmmsearch\(|hmmscan\(|phmmer\(" src/biobox` shows `cpus=` on every call.
 
+### W-11 Export follow-ups from the W-05 audit
+**L** · Depends: W-05, B-25
+Files: `src/biobox/search/export.py`, `src/biobox/cli.py` (`export`, `search hits`), `tests/r2/test_micro_s0_search.py`
+Do: (1) `export proteins` without `manifests/release=<R>.json` refuses with exit 2 instead of reading every `protein_seq` file it finds (AGENTS §3.9: readers use the manifest's file list, never globs); migrate the W-05 test that compares "with and without manifest" to assert the refusal. (2) FASTA written for a person (`--format faa`, `export proteins`) has no `*`: a trailing `*` is dropped, and a protein with an internal `*` is written as stored and counted in a note on stderr. First check on the pod whether `protein_seq` holds any `*` at all (`rL.2`); if it holds none, add only a test that says so and change nothing.
+Accept: tests for each, written first.
+
+### B-27 Lookups that cannot prune: contig labels and cluster membership
+**M** · Depends: B-25 (found in the W-05 report; AGENTS §4.4)
+Files: `src/biobox/registry/schemas.py` and lock (two tables), their builders (`src/biobox/l0seq/store.py`, `src/biobox/l2/cluster.py`), `src/biobox/catalog.py` (`contig_label`, macros), `src/biobox/search/export.py`, `src/biobox/search/nbr.py`, tests
+Why: `contig_occurrence` is looked up by `contig_uid` but sorted by (`l0_object_sha256`, `record_ordinal`); `cluster_member` is looked up by `member_uid` but sorted by (`level`, `cluster_uid`, `member_uid`). Neither lookup can use min/max statistics, so exports and `nbr summarize` scan the whole table: 10.5 M `cluster_member` rows at `rL.2p`, 190 M at GTDB scale (*derived*: 2 levels x 95 M proteins).
+Do: add two lookup tables written by the same builders, sorted by the lookup key: `contig_label` (per stage: `contig_uid`, first source accession and header by (`l0_object_sha256`, `record_ordinal`), `n_records`) and `member_cluster` (per release: `member_uid`, `level`, `cluster_uid`, `rep_uid`). Point the `contig_label` view, the exports and `nbr.summarize` at them. Do not re-sort the existing tables.
+Accept: `catalog.profile_query` on the 100x synthetic store: a label lookup and a membership lookup by 100 keys from a joined table each read at most 2 row groups per key; outputs of the exports unchanged byte for byte.
+
 ### W-10 `bio-box search run` takes the host profile
 **L** · Depends: C-07 (found in its report)
 Files: `src/biobox/cli.py`, `tests/r1/test_cli_search.py`+
