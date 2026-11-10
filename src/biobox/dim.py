@@ -19,7 +19,7 @@ from pathlib import Path
 
 import duckdb
 
-from biobox import catalog, io, layout
+from biobox import catalog, io, layout, ledger
 from biobox.l1.genecall import DUCK_MEMORY_LIMIT
 from biobox.registry.schemas import table
 
@@ -32,11 +32,16 @@ def _sql_list(files: list[Path]) -> str:
     return "[" + ", ".join("'" + str(f).replace("'", "''") + "'" for f in files) + "]"
 
 
-def run(root, release: str, stages: list[str], tmp=None, max_file_bytes: int = layout.MAX_FILE_BYTES) -> dict:
+def run(root, release: str, stages: list[str], tmp=None, max_file_bytes: int = layout.MAX_FILE_BYTES,
+        out=None) -> dict:
     """Build `contig_dim` for `release` over `stages`, the release's stages (card B-25): a stage the
     release does not list is not read, a listed stage without `contig_index` files raises
     FileNotFoundError, and the release's `release_def` is written, or checked to list the same stages
     (`catalog.define_release`).
+
+    Inputs are read from `root`; the table and (when the root has none) the `release_def` are written
+    under `out` (default `root`; card C-08). Refuses, before any work, when the release's partition
+    already holds a file in `root` or `out`; with `out` given, `tmp` may lie under neither.
 
     Errors: a default-variant contig without a `genome_input` row, a `genome_input` row whose
     contig is not a default-variant contig of the given stages, and a contig whose `genome_input`
@@ -44,12 +49,16 @@ def run(root, release: str, stages: list[str], tmp=None, max_file_bytes: int = l
     Returns `{"contigs": n, "genomes": g, "circular": c}`.
     """
     root = Path(root)
+    if out is not None:
+        ledger.check_scratch(tmp, root, out)
+    out = root if out is None else Path(out)
     stages = catalog.check_stages(stages)
     spec = table("contig_dim")
-    base = root / spec.location / f"release={release}"
-    if io.part_files(base):
-        raise FileExistsError(f"{io.part_files(base)[0]}: a release's dimension table is written once; "
-                              "refusing to overwrite")
+    rel_base = f"{spec.location}/release={release}"
+    catalog.verify_release_def(root, release, stages)  # a disagreeing definition is named before a refusal
+    ledger.refuse_written(root, out, [rel_base], f"contig_dim of release {release} (a release's dimension table "
+                                                  "is written once)")
+    base = out / rel_base
     if not stages:
         raise ValueError(f"release {release}: no stages")
     idx, gin = [], []
@@ -59,7 +68,7 @@ def run(root, release: str, stages: list[str], tmp=None, max_file_bytes: int = l
             raise FileNotFoundError(f"stage {s}: no contig_index files under {root}")
         idx += found
         gin += io.part_files(root / f"l0seq/genome_input/stage={s}")
-    catalog.define_release(root, release, stages)
+    catalog.define_release(root, release, stages, out=out)
     scratch = Path(tempfile.mkdtemp(prefix="biobox-dim-", dir=tmp))
     con = duckdb.connect(config={"threads": 1, "memory_limit": DUCK_MEMORY_LIMIT,
                                  "temp_directory": str(scratch / "duckdb")})

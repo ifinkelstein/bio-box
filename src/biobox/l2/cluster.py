@@ -102,16 +102,28 @@ def _tsv_pairs(path: Path) -> list[tuple[str, str]]:
 
 
 def run(root: Path, release: str, gene_call_version: str, stages: list[str], threads: int = 1,
-        tmp: Path | None = None, max_file_bytes: int = layout.MAX_FILE_BYTES) -> dict:
+        tmp: Path | None = None, max_file_bytes: int = layout.MAX_FILE_BYTES, out: Path | None = None) -> dict:
     """Cluster the distinct proteins of `stages`, the release's stages (card B-25), and write the
     release's cluster tables; the release's `release_def` is written, or checked to list the same
-    stages (`catalog.define_release`)."""
+    stages (`catalog.define_release`).
+
+    The proteins are read from `root`; the cluster tables, the release's clustering ledger and (when
+    the root has none) its `release_def` are written under `out` (default `root`; card C-08). Refuses,
+    before any work, when those tables or that ledger already hold a file in `root` or `out`; with
+    `out` given, `tmp` may lie under neither."""
     root = Path(root)
+    if out is not None:
+        ledger.check_scratch(tmp, root, out)
+    out = root if out is None else Path(out)
     stages = catalog.check_stages(stages)
+    catalog.verify_release_def(root, release, stages)  # a disagreeing definition is named before a refusal
+    ledger.refuse_written(root, out, [f"l2/cluster_member/release={release}", f"l2/cluster_member_aln/release={release}",
+                                      ledger.release_path("", release, "cluster").parent.as_posix()],
+                          f"clustering of release {release}")
     prots = _read_proteins(root, gene_call_version, stages)
     if not prots:
         raise FileNotFoundError(f"release {release}: no proteins in stages {stages}")
-    catalog.define_release(root, release, stages)
+    catalog.define_release(root, release, stages, out=out)
     with tempfile.TemporaryDirectory(dir=tmp) as d:
         w = Path(d)
         with open(w / "in.faa", "w") as fh:
@@ -165,13 +177,13 @@ def run(root: Path, release: str, gene_call_version: str, stages: list[str], thr
                                   ("cluster_member_aln", aln_rows, aln_spec, EST_ALN_ROW)):
         batches = [pa.RecordBatch.from_pylist(rows[i : i + io.ROW_GROUP_ROWS], schema=spec.schema)
                    for i in range(0, len(rows), io.ROW_GROUP_ROWS)]
-        io.write_parts(batches, spec, root / f"l2/{name}/release={release}", est, max_file_bytes)
+        io.write_parts(batches, spec, out / f"l2/{name}/release={release}", est, max_file_bytes)
     counts = {lvl: len({r["cluster_uid"] for r in mem_rows if r["level"] == lvl}) for lvl in LEVELS}
     # the release's own ledger (ledger/release=<R>/step=cluster, card B-28): NR90 sees every protein, NR50
     # the NR90 representatives
     n_in = {"nr90": len(prots), "nr50": counts["nr90"]}
     tools = provenance.tool_versions("mmseqs2", "pyarrow")
-    ledger.write_release(root, release, "cluster",
+    ledger.write_release(out, release, "cluster",
                  sorted((ledger.row(lvl.encode(), "level", n_in[lvl], counts[lvl], n_in[lvl] - counts[lvl], tools=tools)
                          for lvl in LEVELS), key=lambda r: (r["object_key"], r["reason_code"])))
     return {"proteins": len(prots), "clusters": counts,

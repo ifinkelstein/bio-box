@@ -170,7 +170,10 @@ def _path_parts(rel: str) -> dict[str, str]:
 
 
 def _artifact_files(root: Path, spec: ArtifactSpec) -> list[Path]:
-    """The files under the artifact's location (the one file itself for a `single_file` artifact)."""
+    """The files under the artifact's location (the one file itself for a `single_file` artifact); none
+    for an artifact that is not a release file (`in_manifest` False: the manifests and catalogs)."""
+    if not spec.in_manifest:
+        return []
     base = Path(root) / spec.location
     if spec.single_file:
         return [base] if base.is_file() else []
@@ -280,13 +283,20 @@ def verify_release_def(root: Path, release: str, stages) -> list[str]:
     return stages
 
 
-def define_release(root: Path, release: str, stages) -> list[str]:
+def define_release(root: Path, release: str, stages, out: Path | None = None) -> list[str]:
     """Make sure `release` is defined over `stages`: write its `release_def` if it has none, verify it
     lists the same stages in the same order if it has one (ValueError otherwise). Returns the stages.
 
     Written once, as a tape version's `tape_version_def` is: defining a release again with the same
-    stages is a no-op, so every release-level builder calls this after checking its inputs."""
+    stages is a no-op, so every release-level builder calls this after checking its inputs.
+
+    `out` (card C-08) is the output root of the step that calls this (default `root`). A definition in
+    `root` is verified and never written again; else one already in `out` (written earlier in the same
+    step) is verified; else it is written under `out`, and run-step publishes it with the step."""
     stages = verify_release_def(root, release, stages)
+    if out is not None and Path(out).resolve() != Path(root).resolve() and read_release_def(root, release) is None:
+        stages = verify_release_def(out, release, stages)
+        root = out  # the definition, if absent from the root, is the output root's to hold
     if not stages:
         raise ValueError(f"release {release}: a release needs at least one stage")
     path = release_def_path(root, release)
@@ -545,8 +555,28 @@ def _atomic_write(path: Path, data: bytes) -> None:
     os.replace(tmp, path)
 
 
-def write_manifest(manifest: dict, path: Path) -> None:
+def _refuse_record(root: Path, out: Path, rel: str, what: str) -> Path:
+    """`out / rel`, after refusing (FileExistsError) when `root` or `out` already holds `rel`."""
+    for base in dict.fromkeys([Path(root).resolve(), Path(out).resolve()]):
+        if (base / rel).exists():
+            raise FileExistsError(f"{base / rel}: {what} is written once; refusing to overwrite")
+    return Path(out) / rel
+
+
+def write_manifest(manifest: dict, path: Path | None = None, out: Path | None = None) -> Path:
+    """Write `manifest` as sorted-key JSON under a temporary name renamed into place; return its path.
+
+    With `path`: at that path. Without (card C-08): as the `release_manifest` artifact,
+    `manifests/release=<R>.json` under `out` (default: the manifest's own `root`; under run-step
+    `$BIOBOX_STAGING`, from which run-step publishes it), written once: FileExistsError, before
+    anything is written, when the root or `out` already holds the release's manifest. The file holds
+    the manifest's `root`, the data root it lists (`build_manifest`), wherever it is written."""
+    if path is None:
+        root = Path(manifest["root"])
+        rel = manifest_path("", manifest["release_id"]).as_posix()
+        path = _refuse_record(root, root if out is None else out, rel, f"the manifest of release {manifest['release_id']}")
     _atomic_write(Path(path), json.dumps(manifest, sort_keys=True, indent=1).encode() + b"\n")
+    return Path(path)
 
 
 def read_manifest(path: Path) -> dict:
@@ -850,13 +880,28 @@ def served_tape_version(manifest: dict) -> str:
     return tvs[0] if tvs else ""
 
 
-def generate_catalog(manifest: dict, out_path: Path, root: Path | None = None, tape_version: str | None = None) -> Path:
+def catalog_path(root: Path, release: str) -> Path:
+    """Where a release's catalog is published: `catalog/release=<R>.duckdb` under the data root."""
+    return Path(root) / f"catalog/release={release}.duckdb"
+
+
+def generate_catalog(manifest: dict, out_path: Path | None = None, root: Path | None = None,
+                     tape_version: str | None = None, out: Path | None = None) -> Path:
     """Write the catalog under a temporary name and rename it into place (atomic on one filesystem).
 
     `tape_version`: the tape version the pair macros serve (`catalog_tape_version()`); by default the
     single one of the release's `token_postings` (`served_tape_version`).
+
+    The catalog holds absolute paths: `catalog_info.root` and every file in its views are under `root`
+    (default: the manifest's `root`), the data root its readers open. Where the file goes is separate
+    (card C-08): `out_path` when given; else the `catalog` artifact, `catalog/release=<R>.duckdb` under
+    `out` (default `root`; under run-step `$BIOBOX_STAGING`, so a catalog built in staging still names
+    the final root), written once: FileExistsError, before any work, when the root or `out` holds it.
     """
     root = Path(root or manifest["root"]).resolve()
+    if out_path is None:
+        rel = catalog_path("", manifest["release_id"]).as_posix()
+        out_path = _refuse_record(root, root if out is None else out, rel, f"the catalog of release {manifest['release_id']}")
     if tape_version is None:
         tape_version = served_tape_version(manifest)
     out_path = Path(out_path)

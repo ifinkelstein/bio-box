@@ -21,6 +21,13 @@ Bounded memory (card B-19; AGENTS §4.1): `write` streams any iterable of rows, 
 sorted by (object_key, reason_code), through `biobox.io.write_table` in batches of `BATCH_ROWS`;
 a step's ledger is written once (append-only). The checks are DuckDB aggregates over the ledger
 files, so no ledger is loaded; only `read` returns a whole ledger as a list.
+
+Where a step writes (card C-08). A builder reads its inputs from the data root and writes every
+output, its ledger included, under an output root `out` (the root itself by default; under
+`bio-box run-step`, `$BIOBOX_STAGING`, from which run-step publishes). `write` and `write_release`
+take that output root as their first argument. `refuse_written` is the check every builder makes
+before any work: its partitions hold no file yet, in the root or in `out`; `check_scratch` keeps a
+builder's scratch directory out of both.
 """
 
 from __future__ import annotations
@@ -93,6 +100,31 @@ def write_release(root: Path, release: str, step: str, rows: Iterable[dict]) -> 
     if step not in RELEASE_STEPS:
         raise ValueError(f"{step} is not a release step {sorted(RELEASE_STEPS)}: its ledger is a stage's (ledger.write)")
     return _write(release_path(root, release, step), rows)
+
+
+def refuse_written(root: Path, out: Path | None, dirs: Iterable[str], what: str) -> None:
+    """Raise FileExistsError, naming the first file, when any file (a writer's temporary one included)
+    lies under one of the root-relative directories `dirs` in `root` or in `out` (card C-08). A builder
+    calls this before it reads an input, so a step that already ran, or whose output directory holds a
+    killed attempt's files, does no work and changes nothing; `io.write_table` refuses an existing file
+    in any case."""
+    bases = [Path(root).resolve()] + ([] if out is None else [Path(out).resolve()])
+    for base in dict.fromkeys(bases):
+        for d in dirs:
+            p = base / d
+            left = sorted(f for f in p.rglob("*") if not f.is_dir()) if p.is_dir() else []
+            if left:
+                raise FileExistsError(f"{left[0]}: {what} already has {len(left)} file(s) under {p}; a step "
+                                      "writes its partitions once; refusing to overwrite")
+
+
+def check_scratch(tmp, root: Path, out: Path | None = None) -> None:
+    """ValueError when the scratch directory `tmp` lies under the data root or the output root (card C-08)."""
+    if tmp is None:
+        return
+    for base, where in ((root, "the data root"), (out, "the output directory")):
+        if base is not None and Path(tmp).resolve().is_relative_to(Path(base).resolve()):
+            raise ValueError(f"{tmp}: the scratch directory may not lie under {where}")
 
 
 def _write(out: Path, rows: Iterable[dict]) -> Path:
