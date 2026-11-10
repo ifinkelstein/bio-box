@@ -70,6 +70,9 @@ Decisions DEC-18 to DEC-23 were approved by the PI on 2026-11-09 and are in `pla
 | Card | Model | State |
 |---|---|---|
 | B-32 gene calling of short contigs uses its workers | Opus | started 2026-11-10 |
+| C-08 every builder writes to an output root; manifest and catalog registered | Opus | started 2026-11-10 |
+| B-33 a release's manifest covers only that release's files | Opus | started 2026-11-10 |
+| A-06 stress scripts follow the B-28 signatures | Sonnet | started 2026-11-10 |
 | C-04 `bio-box build-stage` | Opus | stopped 2026-11-10 with evidence, nothing written: builders cannot write into `run-step` staging. Now depends on B-22 and the new card C-08; card amended |
 | Pod import ladder (not a card): phages, then 1 Gbp and 10 Gbp of complete prokaryotes with the new code | Opus | detached jobs on the pod; agent waiting on them |
 
