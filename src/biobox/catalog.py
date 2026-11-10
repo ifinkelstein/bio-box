@@ -18,7 +18,12 @@ macro, but the sequence macros fail with "Catalog Error: Scalar Function with na
 does not exist!" (`bb_seq_circular`, `bb_seq_raw` for the other two); the lookup macros
 `default_digest`, `digest_len` and `contig_len_of` work there.
 
-    manifest = build_manifest(root, "rS0.1")
+A release names its stages (card B-25): `define_release` writes its `release_def` once, and
+`build_manifest` lists only the files of those stages, so a stage written later, or being written
+while the release is built, never enters it.
+
+    stages = define_release(root, "rS0.1", ["S0"])   # later: release_stages(root, "rS0.1")
+    manifest = build_manifest(root, "rS0.1", stages)
     write_manifest(manifest, root / "manifests/release=rS0.1.json")
     generate_catalog(manifest, root / "catalog/release=rS0.1.duckdb")
     swap_current(root / "manifests", "rS0.1")
@@ -40,10 +45,10 @@ import duckdb
 import pyarrow as pa
 import pyarrow.parquet as pq
 
-from biobox import ids, layout
+from biobox import ids, io, layout
 from biobox.registry.schemas import ARTIFACTS, TABLES, ArtifactSpec, TableSpec
 
-MANIFEST_VERSION = 2
+MANIFEST_VERSION = 3  # 3: the manifest records the release's stages (card B-25)
 
 # Partitions whose value is derived from a file column (biobox.layout buckets): the column and
 # how a value maps to its bucket key. A prefix of the sort key is checked from row-group
@@ -133,7 +138,17 @@ def classify_artifact(rel: str) -> tuple[ArtifactSpec, dict[str, str], str] | No
     return None
 
 
-def _artifact_entries(root: Path) -> list[dict]:
+def _path_stage(rel: str) -> str | None:
+    """The `stage=<S>` directory of a root-relative path, read from the path alone (None: none)."""
+    for d in rel.split("/")[:-1]:
+        if d.startswith("stage="):
+            return d.removeprefix("stage=")
+    return None
+
+
+def _artifact_entries(root: Path, in_release) -> list[dict]:
+    """The artifact files `in_release(name, stage)` keeps; a file of another stage is skipped before it
+    is classified, so a stage still being written cannot fail the manifest of a release without it."""
     out = []
     for spec in ARTIFACTS.values():
         base = root / spec.location
@@ -142,6 +157,8 @@ def _artifact_entries(root: Path) -> list[dict]:
         found = {}
         for path in sorted(p for p in base.rglob("*") if p.is_file()):
             rel = path.relative_to(root).as_posix()
+            if not in_release(spec.name, _path_stage(rel)):
+                continue
             _, parts, suffix = classify_artifact(rel)
             found[rel] = suffix
             out.append({"path": rel, "artifact": spec.name, "partitions": parts,
@@ -183,10 +200,100 @@ def _check_derived_partitions(rel: str, parts: dict[str, str], md: pq.FileMetaDa
                     raise LayoutError(f"{rel}: {key}={value} but {col} starts with {bytes(v)[:1].hex()} (LY-05)")
 
 
-def build_manifest(root: Path, release_id: str) -> dict:
-    """Scan every .parquet file and artifact file under `root`; refuse strays, bad paths and schema drift."""
+# --- release definition (card B-25) --------------------------------------------
+
+
+def release_def_path(root: Path, release: str) -> Path:
+    return Path(root) / TABLES["release_def"].location / f"release={release}" / "part-0.parquet"
+
+
+def check_stages(stages) -> list[str]:
+    """`stages` as a list in the order given: stage names, none empty and none twice. A bare string
+    is refused (it would read as its characters)."""
+    if isinstance(stages, (str, bytes)) or not isinstance(stages, (list, tuple)):
+        raise TypeError(f"stages must be a list of stage names, got {stages!r}")
+    out = list(stages)
+    if not all(isinstance(s, str) and s and "/" not in s and "=" not in s for s in out):
+        raise ValueError(f"stages {out}: each must be a non-empty name without '/' or '='")
+    if len(set(out)) != len(out):
+        raise ValueError(f"stages {out}: a stage is listed twice")
+    return out
+
+
+def read_release_def(root: Path, release: str) -> list[str] | None:
+    """The stages of `release` in its order, or None when it has no `release_def` file."""
+    path = release_def_path(root, release)
+    if not path.exists():
+        return None
+    t = pq.read_table(path, columns=["position", "stage"], partitioning=None)
+    pos = t.column("position").to_pylist()
+    if pos != list(range(len(pos))):
+        raise ValueError(f"{path}: release_def positions {pos} are not 0..{len(pos) - 1}")
+    return t.column("stage").to_pylist()
+
+
+def release_stages(root: Path, release: str) -> list[str]:
+    """The stages `release_def` names for `release`; FileNotFoundError when the release is not defined."""
+    stages = read_release_def(root, release)
+    if stages is None:
+        raise FileNotFoundError(f"{release_def_path(root, release)}: release {release} has no release_def; "
+                                "define it once with its stages (define_release, or --stages)")
+    return stages
+
+
+def verify_release_def(root: Path, release: str, stages) -> list[str]:
+    """`stages` checked (`check_stages`) and, when `release` has a `release_def`, equal to it in order
+    (ValueError otherwise). Writes nothing."""
+    stages = check_stages(stages)
+    have = read_release_def(root, release)
+    if have is not None and have != stages:
+        raise ValueError(f"{release_def_path(root, release)}: release_def of {release} lists stages {have}, "
+                         f"not {stages}")
+    return stages
+
+
+def define_release(root: Path, release: str, stages) -> list[str]:
+    """Make sure `release` is defined over `stages`: write its `release_def` if it has none, verify it
+    lists the same stages in the same order if it has one (ValueError otherwise). Returns the stages.
+
+    Written once, as a tape version's `tape_version_def` is: defining a release again with the same
+    stages is a no-op, so every release-level builder calls this after checking its inputs."""
+    stages = verify_release_def(root, release, stages)
+    if not stages:
+        raise ValueError(f"release {release}: a release needs at least one stage")
+    path = release_def_path(root, release)
+    if not path.exists():
+        spec = TABLES["release_def"]
+        io.write_table(pa.table({"position": pa.array(range(len(stages)), pa.uint16()),
+                                 "stage": pa.array(stages, pa.string())}, schema=spec.schema), spec, path)
+    return stages
+
+
+def ledger_stage(release: str) -> str:
+    """The ledger stage of a release's own steps (clustering): rS0.1 -> S0, rS2C.1 -> S2C; any other
+    release name is used as is."""
+    return release[1:].split(".")[0] if release.startswith("rS") else release
+
+
+def _in_release(stages: set[str], release_id: str):
+    """Whether a file of table or artifact `name` in stage partition `stage` (None: not partitioned by
+    stage) belongs to the release: no stage, a listed stage, or the release's own ledger stage."""
+    own = ledger_stage(release_id)
+
+    def keep(name: str, stage: str | None) -> bool:
+        return stage is None or stage in stages or (name == "ledger" and stage == own)
+    return keep
+
+
+def build_manifest(root: Path, release_id: str, stages) -> dict:
+    """The release's manifest: every .parquet and artifact file under `root` outside a stage partition
+    or in one of `stages` (the release's, card B-25). A stage directory the release does not list is
+    ignored without being read; a listed stage with no file raises FileNotFoundError; `stages` must
+    equal the release's `release_def` when it has one. Refuses strays, bad paths and schema drift."""
     root = Path(root).resolve()
-    files = []
+    stages = verify_release_def(root, release_id, stages)
+    in_release = _in_release(set(stages), release_id)
+    picked = []
     for path in sorted(root.rglob("*.parquet")):
         rel = path.relative_to(root).as_posix()
         if rel.split("/", 1)[0] in EXCLUDED_TREES:
@@ -194,7 +301,16 @@ def build_manifest(root: Path, release_id: str) -> dict:
         hit = classify(rel)
         if hit is None:
             raise LayoutError(f"{rel}: no registered table claims this path (LY-10)")
-        spec, parts = hit
+        if in_release(hit[0].name, hit[1].get("stage")):
+            picked.append((path, rel, *hit))
+    present = {parts.get("stage") for _, _, _, parts in picked} | {
+        s for spec in ARTIFACTS.values() if spec.partition_keys[:1] == ("stage",)
+        for s in stages if (root / spec.location / f"stage={s}").is_dir()}
+    missing = [s for s in stages if s not in present]
+    if missing:
+        raise FileNotFoundError(f"release {release_id}: listed stages {missing} have no files under {root}")
+    files = []
+    for path, rel, spec, parts in picked:
         pf = pq.ParquetFile(path)
         md = pf.metadata
         n_cols = compatible_columns(pf.schema_arrow, spec.schema)
@@ -217,11 +333,12 @@ def build_manifest(root: Path, release_id: str) -> dict:
     return {
         "manifest_version": MANIFEST_VERSION,
         "release_id": release_id,
+        "stages": stages,
         "root": str(root),
         "params": params,
         "tables": {name: schema_hash(spec.schema) for name, spec in sorted(TABLES.items())},
         "files": files,
-        "artifacts": _artifact_entries(root),
+        "artifacts": _artifact_entries(root, in_release),
     }
 
 
@@ -250,9 +367,21 @@ def read_manifest(path: Path) -> dict:
     return json.loads(Path(path).read_text())
 
 
+def _claimed_by(rel: str) -> str | None:
+    """The table or artifact that claims a root-relative path; None for a stray."""
+    try:
+        hit = classify(rel) or classify_artifact(rel)
+    except LayoutError:
+        return None
+    return hit[0].name if hit else None
+
+
 def verify_manifest(manifest: dict, root: Path | None = None) -> list[str]:
-    """LY-10: every listed file exists with its sha256 and size, and no unlisted .parquet or artifact file exists."""
+    """LY-10: every listed file exists with its sha256 and size, and no unlisted .parquet or artifact file
+    exists in the release's scope. A file of a stage the release does not list is not the release's
+    (card B-25); a stray is reported wherever it is."""
     root = Path(root or manifest["root"])
+    in_release = _in_release(set(manifest["stages"]), manifest["release_id"])
     problems = []
     listed = set()
     for f in manifest["files"] + manifest.get("artifacts", []):
@@ -271,8 +400,12 @@ def verify_manifest(manifest: dict, root: Path | None = None) -> list[str]:
             present += [p for p in (root / spec.location).rglob("*") if p.is_file()]
     for p in sorted(set(present)):
         rel = p.relative_to(root).as_posix()
-        if rel not in listed:
-            problems.append(f"not in manifest: {rel}")
+        if rel in listed:
+            continue
+        name = _claimed_by(rel)
+        if name is not None and not in_release(name, _path_stage(rel)):
+            continue
+        problems.append(f"not in manifest: {rel}")
     return problems
 
 

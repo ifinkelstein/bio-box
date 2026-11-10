@@ -152,5 +152,5 @@ def test_genome_input_lives_below_l1():
 @pytest.mark.covers("C-01")
 def test_manifest_accepts_a_root_holding_only_this_file(tmp_path):
     write_genome_input(tmp_path, "S0", _genomes())
-    man = catalog.build_manifest(tmp_path, "rS0.test")
+    man = catalog.build_manifest(tmp_path, "rS0.test", ["S0"])
     assert [f["table"] for f in man["files"]] == ["genome_input"]

@@ -862,6 +862,18 @@
    false
   ]
  ],
+ "release_def": [
+  [
+   "position",
+   "uint16",
+   false
+  ],
+  [
+   "stage",
+   "string",
+   false
+  ]
+ ],
  "search_hit": [
   [
    "run_id",

@@ -699,6 +699,24 @@ _SPECS = [
         ),
     ),
     TableSpec(
+        name="release_def",
+        location="release_def",
+        layer="release",
+        schema=pa.schema([
+            _f("position", pa.uint16()),
+            _f("stage", pa.string()),
+        ]),
+        primary_key=("release", "stage"),
+        sort_key=("position",),
+        partition_keys=("release",),
+        small_ok=True,
+        doc=(
+            "card B-25: the stages a release is built over, one row per stage, `position` its rank in the "
+            "release's order (from 0). Written once per release (biobox.catalog.define_release); every "
+            "release-level builder and the manifest read only these stages (AGENTS §3.9)"
+        ),
+    ),
+    TableSpec(
         name="token_postings",
         location="l3/token_postings",
         layer="L3",

@@ -53,7 +53,7 @@ def _build(root: Path, order=1) -> Path:
 @pytest.fixture(scope="module")
 def built(tmp_path_factory):
     root = _build(tmp_path_factory.mktemp("catalog"))
-    man = catalog.build_manifest(root, "rS0.test")
+    man = catalog.build_manifest(root, "rS0.test", ["S0"])
     catalog.write_manifest(man, root / "manifests/release=rS0.test.json")
     cat = catalog.generate_catalog(man, root / "catalog/release=rS0.test.duckdb")
     return root, man, cat
@@ -133,7 +133,7 @@ def test_stray_wrong_partition_and_schema_drift_are_refused(built, tmp_path):
         (d / rel).parent.mkdir(parents=True)
         shutil.copy(root / occ["path"], d / rel)
         with pytest.raises(catalog.LayoutError):
-            catalog.build_manifest(d, "x")
+            catalog.build_manifest(d, "x", ["S0"])
     # a protein_seq file under the wrong protein_prefix (LY-05)
     prot = next(x for x in man["files"] if x["table"] == "protein_seq")
     d = tmp_path / "prefix"
@@ -142,7 +142,7 @@ def test_stray_wrong_partition_and_schema_drift_are_refused(built, tmp_path):
     (d / rel).parent.mkdir(parents=True)
     shutil.copy(root / prot["path"], d / rel)
     with pytest.raises(catalog.LayoutError, match="LY-05"):
-        catalog.build_manifest(d, "x")
+        catalog.build_manifest(d, "x", ["S0"])
     # a file whose schema is not the registered one (C-01)
     d = tmp_path / "schema"
     occ = next(x for x in man["files"] if x["table"] == "contig_index")
@@ -150,13 +150,13 @@ def test_stray_wrong_partition_and_schema_drift_are_refused(built, tmp_path):
     t = pq.read_table(root / occ["path"])
     pq.write_table(t.drop_columns(["is_default_variant"]), d / occ["path"])
     with pytest.raises(catalog.LayoutError, match="C-01"):
-        catalog.build_manifest(d, "x")
+        catalog.build_manifest(d, "x", ["S0"])
 
 
 def test_mr01_manifest_hash_ignores_input_order_and_root(built, tmp_path):
     _, man, _ = built
     other = _build(tmp_path / "reversed", order=-1)
-    m2 = catalog.build_manifest(other, "rS0.test")
+    m2 = catalog.build_manifest(other, "rS0.test", ["S0"])
     assert m2["root"] != man["root"]
     assert catalog.manifest_hash(m2) == catalog.manifest_hash(man)
 
@@ -179,7 +179,7 @@ def test_bad_shard_layouts_are_refused(built, tmp_path, case):
     else:
         shutil.copy(root / man["files"][0]["path"], d / "l0seq/seq_shards/stage=S0/part-0.parquet")
     with pytest.raises(catalog.LayoutError):
-        catalog.build_manifest(d, "x")
+        catalog.build_manifest(d, "x", ["S0"])
 
 
 # --- catalog views (LY-10, LY-07) ---------------------------------------------------
@@ -316,7 +316,7 @@ def test_mr14_macro_reads_only_the_default_variant(tmp_path):
     ingest([SourceObject(lam_path, CONTRACT["source_name"], CONTRACT["source_release"], CONTRACT["license"], True),
             SourceObject(mpath, "other_source", "1", "INSDC (public)", True, precedence=200)],
            root, "S0", shard_bases=SHARD_BASES)
-    cat = catalog.generate_catalog(catalog.build_manifest(root, "x"), tmp_path / "c.duckdb")
+    cat = catalog.generate_catalog(catalog.build_manifest(root, "x", ["S0"]), tmp_path / "c.duckdb")
     c = catalog.open_catalog(cat)
     cu = ids.contig_uid(lam.seq)
     assert c.execute("SELECT seq_get(?, 0, 6000, 1)", [cu]).fetchone()[0].encode() == lam.seq[:6000]
@@ -335,7 +335,7 @@ def test_w08_contig_label_has_one_row_per_contig(tmp_path):
     ingest([SourceObject(lam_path, CONTRACT["source_name"], CONTRACT["source_release"], CONTRACT["license"], True),
             SourceObject(dup, "other_source", "1", "INSDC (public)", True, precedence=200)],
            root, "S0", shard_bases=SHARD_BASES)
-    man = catalog.build_manifest(root, "x")
+    man = catalog.build_manifest(root, "x", ["S0"])
     c = catalog.open_catalog(catalog.generate_catalog(man, tmp_path / "c.duckdb"))
     occ = c.execute("SELECT l0_object_sha256, record_ordinal, accession, original_header, contig_uid "
                     "FROM contig_occurrence ORDER BY l0_object_sha256, record_ordinal").fetchall()
@@ -477,7 +477,7 @@ def test_r03_origin_wrapping_genes_through_seq_get_circular(built, tmp_path):
     genes = _genes(s)
     wrap = [g for g in genes if g["end"] > len(rot)]
     assert len(wrap) >= 1
-    c = catalog.open_catalog(catalog.generate_catalog(catalog.build_manifest(s, "x"), tmp_path / "c.duckdb"))
+    c = catalog.open_catalog(catalog.generate_catalog(catalog.build_manifest(s, "x", ["S0"]), tmp_path / "c.duckdb"))
     try:
         _check_genes(c, SeqStore(s), {cu: (rot, True)}, "seq_get_circular", genes)
         _check_genes(c, SeqStore(s), {cu: (rot, True)}, "seq_get_circular", wrap)
@@ -694,14 +694,14 @@ def test_ly09_catalog_reads_files_from_before_a_nullable_column(built, tmp_path,
     new = store / "l0seq/contig_index/stage=S1/part-0.parquet"
     new.parent.mkdir(parents=True)
     pq.write_table(t.cast(wider.schema), new)
-    m = catalog.build_manifest(store, "x")
+    m = catalog.build_manifest(store, "x", ["S0", "S1"])
     c = catalog.open_catalog(catalog.generate_catalog(m, tmp_path / "c.duckdb"))
     rows = c.execute("SELECT stage, topology FROM contig_index ORDER BY stage").fetchall()
     assert {r for r in rows} == {("S0", None), ("S1", "linear")}
     c.close()
     # with only old files, the new column is a typed NULL
     new.unlink()
-    m = catalog.build_manifest(store, "x")
+    m = catalog.build_manifest(store, "x", ["S0"])
     c = catalog.open_catalog(catalog.generate_catalog(m, tmp_path / "c2.duckdb"))
     assert c.execute("SELECT count(*) FROM contig_index WHERE topology IS NULL").fetchall()[0][0] > 0
     c.close()
@@ -710,4 +710,4 @@ def test_ly09_catalog_reads_files_from_before_a_nullable_column(built, tmp_path,
     bad = bad.set_column(bad.column_names.index("contig_len"), "contig_len", bad.column("contig_len").cast(pa.int32()))
     pq.write_table(bad, old)
     with pytest.raises(catalog.LayoutError, match="C-01"):
-        catalog.build_manifest(store, "x")
+        catalog.build_manifest(store, "x", ["S0"])
