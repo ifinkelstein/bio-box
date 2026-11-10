@@ -311,6 +311,11 @@
    "protein_uids",
    "list<item: fixed_size_binary[16]>",
    false
+  ],
+  [
+   "feature_uids",
+   "list<item: fixed_size_binary[16]>",
+   false
   ]
  ],
  "feature": [
@@ -1414,11 +1419,6 @@
   ]
  ],
  "tape_version_def": [
-  [
-   "tape_version",
-   "string",
-   false
-  ],
   [
    "producer",
    "string",

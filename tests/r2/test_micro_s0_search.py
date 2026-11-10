@@ -340,7 +340,7 @@ def _hmm_of(name: str, acc: str, members: list[str], ga: float, path: Path) -> N
 def _place(root: Path, loci: list[tuple[str, str, str, bool]]) -> None:
     """One linear 1.7 kb contig per locus (left, target, right), all + strand; `partial` puts
     the target at the contig end (dist_to_contig_end_bp = 0, as for a partial gene call)."""
-    from biobox.l3.tapes import build_tape
+    from biobox.l3.tapes import build_tape, tape_version
 
     occ, tapes_ = [], []
     for k, (left, target, right, partial) in enumerate(loci):
@@ -356,11 +356,12 @@ def _place(root: Path, loci: list[tuple[str, str, str, bool]]) -> None:
                         "feature_uid": ids.feature_uid(cu, st_, en, sd, ids.KIND["cds"])})
         tapes_.append({"contig_uid": cu, "tax_order_bucket": None, "genome_uid": gu, "contig_len": 1700,
                        "is_circular": False, "n_slots": 3, "tier": 1, "assembly_quality": "complete",
-                       **build_tape(coords, 1700, False), "protein_uids": prots})
+                       **build_tape(coords, 1700, False), "protein_uids": prots,
+                       "feature_uids": [ids.feature_uid(cu, a, b, sd, ids.KIND["cds"]) for a, b, sd in coords]})
     occ.sort(key=lambda r: (r["protein_uid"], r["contig_uid"], r["slot_ordinal"]))
     tapes_.sort(key=lambda r: r["contig_uid"])
     for rel, rows, name in ((f"l1/protein_occurrence/gene_call_version={V}/stage=S0", occ, "protein_occurrence"),
-                            (f"l3/tapes/gene_call_version={V}/stage=S0", tapes_, "contig_tapes")):
+                            (f"l3/tapes/tape_version={tape_version([V])}/stage=S0", tapes_, "contig_tapes")):
         (root / rel).mkdir(parents=True)
         pq.write_table(pa.Table.from_pylist(rows, schema=table(name).schema), root / rel / "part-0.parquet")
 

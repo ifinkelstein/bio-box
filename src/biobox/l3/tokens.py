@@ -17,8 +17,11 @@ outside the release).
 
 Writes, under `<root>/l3/`:
 
-    token_dict/release=<R>/part-<k>.parquet                          token_id -> level, source, key, n_slots
-    tape_tokens/gene_call_version=<v>/release=<R>/part-<k>.parquet   per contig: one list per level
+    token_dict/release=<R>/part-<k>.parquet                     token_id -> level, source, key, n_slots
+    tape_tokens/tape_version=<tv>/release=<R>/part-<k>.parquet  per contig: one list per level
+
+The tape version is that of `producers` (default: the gene-call producer alone, card B-07); a
+non-CDS slot has no protein and so no token.
 """
 
 from __future__ import annotations
@@ -31,6 +34,7 @@ import pyarrow.parquet as pq
 
 from biobox import layout
 from biobox.l1.genecall import GENE_CALL_VERSION
+from biobox.l3.tapes import tape_version
 from biobox.registry.schemas import table
 
 LEVELS = {"family": 1, "nr50": 2, "nr90": 3}  # 4 is reserved for subfamilies
@@ -47,8 +51,15 @@ def token_level(tid: int) -> str:
     return {v: k for k, v in LEVELS.items()}[tid >> 61]
 
 
-def read_tapes(root: Path, gene_call_version: str, columns: list[str] | None = None) -> list[dict]:
-    files = sorted((Path(root) / "l3/tapes").glob(f"gene_call_version={gene_call_version}/stage=*/part-*.parquet"))
+def tape_version_of(gene_call_version: str = GENE_CALL_VERSION, producers: list[str] | None = None) -> str:
+    """The tape version of `producers`, by default the gene-call producer alone."""
+    return tape_version([gene_call_version] if producers is None else producers)
+
+
+def read_tapes(root: Path, gene_call_version: str = GENE_CALL_VERSION, columns: list[str] | None = None,
+               producers: list[str] | None = None) -> list[dict]:
+    tv = tape_version_of(gene_call_version, producers)
+    files = sorted((Path(root) / "l3/tapes").glob(f"tape_version={tv}/stage=*/part-*.parquet"))
     return [r for f in files for r in pq.read_table(f, columns=columns).to_pylist()]
 
 
@@ -80,12 +91,13 @@ def _write_parts(rows: list[dict], spec_name: str, base: Path, est_row: float, r
 
 
 def run(root: Path, release: str, gene_call_version: str = GENE_CALL_VERSION,
-        libraries: list[str] | None = None) -> dict:
+        libraries: list[str] | None = None, producers: list[str] | None = None) -> dict:
     root = Path(root)
     libraries = libraries_in(root) if libraries is None else libraries
     if len(libraries) > 31:
         raise ValueError("more than 31 libraries: widen the token source field")
-    tapes = read_tapes(root, gene_call_version, ["contig_uid", "protein_uids"])
+    tv = tape_version_of(gene_call_version, producers)
+    tapes = read_tapes(root, gene_call_version, ["contig_uid", "protein_uids"], producers)
     fam = canonical_families(root, libraries)
     clusters: dict[str, dict[bytes, bytes]] = {"nr50": {}, "nr90": {}}
     p = root / f"l2/cluster_member/release={release}"
@@ -130,7 +142,7 @@ def run(root: Path, release: str, gene_call_version: str = GENE_CALL_VERSION,
     n_dict = _write_parts(dict_rows, "token_dict", root / f"l3/token_dict/release={release}", 60, 122_880,
                           ["token_id", "n_slots"])
     n_tok = _write_parts(tok_rows, "tape_tokens",
-                         root / f"l3/tape_tokens/gene_call_version={gene_call_version}/release={release}",
+                         root / f"l3/tape_tokens/tape_version={tv}/release={release}",
                          100 + 30 * max(1, sum(len(s) for _, s in per_contig) // max(1, len(per_contig))),
                          8_192, ["contig_uid"])
     return {"tokens": {lvl: sum(1 for r in dict_rows if r["level"] == lvl) for lvl in LEVELS},

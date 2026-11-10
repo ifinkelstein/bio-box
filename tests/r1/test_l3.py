@@ -8,12 +8,14 @@ from coordinates.
 
 from __future__ import annotations
 
+import hashlib
 from collections import Counter
 
+import pytest
 from hypothesis import assume, given, settings, strategies as st
 
 from biobox.l3.pairs import FLAG_CENSORED, FLAG_CROSSES_ORIGIN, pairs_of_contig
-from biobox.l3.tapes import build_tape
+from biobox.l3.tapes import build_tape, tape_version
 
 K = 3
 
@@ -123,6 +125,37 @@ def test_tape_lists_equal_brute_force(c):
         assert t["orfs_to_contig_starts"] is None and t["orfs_to_contig_ends"] is None
     else:
         assert t["orfs_to_contig_starts"] == list(range(n)) and t["orfs_to_contig_ends"] == list(range(n))[::-1]
+
+
+@pytest.mark.covers("C-04")
+@settings(max_examples=100, deadline=None)
+@given(contigs(), st.data())
+def test_tape_kinds_are_the_features_kinds(c, data):
+    """card B-07: a slot's kind is its feature's kind; the geometry lists do not depend on kinds."""
+    slots, length, circ, _ = c
+    kinds = data.draw(st.lists(st.sampled_from([1, 2, 3, 4, 15]), min_size=len(slots), max_size=len(slots)))
+    t = build_tape(slots, length, circ, kinds)
+    assert t["feature_kinds"] == kinds
+    assert {k: v for k, v in t.items() if k != "feature_kinds"} == \
+        {k: v for k, v in build_tape(slots, length, circ).items() if k != "feature_kinds"}
+    assert build_tape(slots, length, circ)["feature_kinds"] == [1] * len(slots)  # default: every slot a CDS
+    with pytest.raises(ValueError, match="kinds"):
+        build_tape(slots, length, circ, kinds + [1])
+
+
+def test_tape_version_known_answer():
+    # TASKS.md §2: "t-" + the first 12 hex digits of sha256 over the sorted producer names joined by "\n"
+    producers = ["pyrodigal-3.6.3-gv-0.3.2-p2", "test-ncrna", "aragorn-1.2.41"]
+    want = "t-" + hashlib.sha256("aragorn-1.2.41\npyrodigal-3.6.3-gv-0.3.2-p2\ntest-ncrna".encode("utf-8")).hexdigest()[:12]
+    assert tape_version(producers) == want
+    assert tape_version(producers[::-1]) == want == tape_version(sorted(producers))
+    one = "pyrodigal-3.6.3-gv-0.3.2-p2"
+    assert tape_version([one]) == "t-" + hashlib.sha256(one.encode()).hexdigest()[:12]
+    assert tape_version([one]) != want
+    assert len(want) == 14 and all(ch in "0123456789abcdef" for ch in want[2:])
+    for bad in ([], [one, one]):
+        with pytest.raises(ValueError):
+            tape_version(bad)
 
 
 def _shape(rows, drop_cross=False):

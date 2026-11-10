@@ -5,6 +5,10 @@ Each step records the versions of the tools that shaped its output in its ledger
 partition, that the versions a `gene_call_version` or `igr_version` names, and those in
 the ledgers, equal the container lock: `uv.lock` for Python packages, the conda pins in
 `container/environment.yml` for native tools.
+
+A `tape_version` names no tool versions (card B-07): it is resolved to its producers through the
+manifest's `tape_version_def` files, which must hash to it (`biobox.l3.tapes.tape_version`), and
+each producer must name its tool versions as a gene-call version does and equal the lock.
 """
 
 from __future__ import annotations
@@ -31,7 +35,8 @@ VERSION_PARTITION = {
     "l1_domains": "library",
     "cluster_member": "release",
     "cluster_member_aln": "release",
-    "contig_tapes": "gene_call_version",
+    "contig_tapes": "tape_version",
+    "tape_version_def": "tape_version",
     "tape_tokens": "release",
     "token_dict": "release",
     "slot_pairs": "release",
@@ -89,12 +94,8 @@ def check_provenance(manifest: dict, lock: dict[str, str] | None = None) -> list
             v = f["partitions"].get(vkey)
             if v is None:
                 continue
-            m = GENE_CALL_RE.match(v.removesuffix("-igr1") if vkey == "igr_version" else v)
-            if m is None:
-                problems.append(f"{f['path']}: {vkey}={v} does not name its tool versions")
-            elif (m["pyrodigal"], m["gv"]) != (lock.get("pyrodigal"), lock.get("pyrodigal-gv")):
-                problems.append(f"{f['path']}: {vkey}={v} differs from the lock "
-                                f"(pyrodigal {lock.get('pyrodigal')}, pyrodigal-gv {lock.get('pyrodigal-gv')})")
+            problems += _gene_call_problems(f["path"], f"{vkey}={v}",
+                                            v.removesuffix("-igr1") if vkey == "igr_version" else v, lock)
         if f["table"] == "ledger":
             step = f["partitions"]["step"]
             need = _step_tools(step)
@@ -110,6 +111,48 @@ def check_provenance(manifest: dict, lock: dict[str, str] | None = None) -> list
                 if missing or wrong:
                     problems.append(f"{f['path']}: {step} tool versions missing {missing}, differ {wrong}")
                     break
+    return problems + _tape_version_problems(manifest, root, lock)
+
+
+def _gene_call_problems(where: str, what: str, v: str, lock: dict[str, str]) -> list[str]:
+    """`v` must name pyrodigal and pyrodigal-gv versions (GENE_CALL_RE) equal to the lock."""
+    m = GENE_CALL_RE.match(v)
+    if m is None:
+        return [f"{where}: {what} does not name its tool versions"]
+    if (m["pyrodigal"], m["gv"]) != (lock.get("pyrodigal"), lock.get("pyrodigal-gv")):
+        return [f"{where}: {what} differs from the lock "
+                f"(pyrodigal {lock.get('pyrodigal')}, pyrodigal-gv {lock.get('pyrodigal-gv')})"]
+    return []
+
+
+def _tape_version_problems(manifest: dict, root: Path, lock: dict[str, str]) -> list[str]:
+    """C-08 for tape versions: each is defined by a `tape_version_def` file of the manifest that
+    hashes to it, and each of its producers names tool versions equal to the lock."""
+    import pyarrow.parquet as pq
+
+    from biobox.l3.tapes import tape_version  # biobox.l3.tapes imports this module
+
+    problems, defined = [], set()
+    for f in manifest["files"]:
+        tv = f["partitions"].get("tape_version")
+        if f["table"] != "tape_version_def" or tv is None:
+            continue
+        defined.add(tv)
+        producers = sorted(pq.read_table(root / f["path"], columns=["producer"], partitioning=None)
+                           .column("producer").to_pylist())
+        try:
+            ok = tape_version(producers) == tv
+        except ValueError:
+            ok = False
+        if not ok:
+            problems.append(f"{f['path']}: tape_version_def lists {producers}, which does not hash to tape_version={tv}")
+            continue
+        for p in producers:
+            problems += _gene_call_problems(f["path"], f"tape_version={tv} producer {p}", p, lock)
+    for f in manifest["files"]:
+        tv = f["partitions"].get("tape_version")
+        if tv is not None and f["table"] != "tape_version_def" and tv not in defined:
+            problems.append(f"{f['path']}: tape_version={tv} has no tape_version_def in the manifest")
     return problems
 
 

@@ -18,11 +18,12 @@ import pyhmmer
 import pytest
 import yaml
 
-from biobox import catalog, contracts, fasta, ids, ledger, provenance
+from biobox import catalog, contracts, fasta, ids, io, ledger, provenance
 from biobox.l0seq import SourceObject, ingest
 from biobox.l1 import domains
 from biobox.l1.genecall import GENE_CALL_VERSION, GenomeInput, run as call_genes
 from biobox.l3 import pairs, tapes, tokens
+from biobox.registry.schemas import table
 
 pytestmark = pytest.mark.r2
 
@@ -242,6 +243,38 @@ def test_c08_faults_are_caught(built, tmp_path):
     f = next(x for x in man["files"] if x["table"] == "protein_seq")
     bad = {**f, "partitions": {k: v for k, v in f["partitions"].items() if k != "gene_call_version"}}
     assert provenance.check_provenance({**man, "files": [bad]})
+
+
+@pytest.mark.covers("C-08")
+def test_c08_a_tape_version_is_checked_through_its_producers(built, tmp_path):
+    """card B-07: a tape_version names no tool versions; C-08 resolves its producers in tape_version_def."""
+    import hashlib
+
+    _, man, _ = built
+    lock = provenance.locked_versions()
+    tv = "t-" + hashlib.sha256(GENE_CALL_VERSION.encode()).hexdigest()[:12]
+    tape_files = [f for f in man["files"] if f["table"] in ("contig_tapes", "tape_tokens")]
+    defs = [f for f in man["files"] if f["table"] == "tape_version_def"]
+    assert tape_files and [f["partitions"] for f in defs] == [{"tape_version": tv}]
+    only = {**man, "files": tape_files + defs}
+    assert provenance.check_provenance(only) == []
+    # the tapes alone hold no gene_call_version: the stale pyrodigal is found through the definition
+    probs = provenance.check_provenance(only, {**lock, "pyrodigal": "0.0.1"})
+    assert probs and all("differs from the lock" in p and tv in p for p in probs)
+    # a tape version without its definition
+    probs = provenance.check_provenance({**man, "files": tape_files})
+    assert probs and all("no tape_version_def" in p for p in probs)
+    # definitions that do not hash to their tape_version, or name a producer that names no tool versions
+    root = tmp_path / "s"
+    spec = table("tape_version_def")
+    cases = {"x": ([GENE_CALL_VERSION, "test-ncrna"], tv, "does not hash"),
+             "y": (["test-ncrna"], "t-" + hashlib.sha256(b"test-ncrna").hexdigest()[:12], "does not name its tool versions")}
+    for name, (producers, version, msg) in cases.items():
+        rel = f"{name}/l3/tape_version_def/tape_version={version}/part-0.parquet"
+        io.write_table([pa.table({"producer": sorted(producers)})], spec, root / rel)
+        entry = {"path": rel, "table": "tape_version_def", "partitions": {"tape_version": version}}
+        probs = provenance.check_provenance({**man, "root": str(root), "files": [entry]})
+        assert probs and all(msg in p for p in probs), probs
 
 
 # --- append-only and determinism -----------------------------------------------------------

@@ -12,6 +12,7 @@ C-07, K-07, LY-06 for pair lookups, and D-01 for the L3 tables.
 
 from __future__ import annotations
 
+import hashlib
 import random
 import shutil
 from collections import defaultdict
@@ -24,12 +25,13 @@ import pyhmmer
 import pytest
 import yaml
 
-from biobox import catalog, contracts, fasta, ids
+from biobox import catalog, contracts, fasta, ids, io
 from biobox.l0seq import SourceObject, ingest, revcomp
+from biobox.l0seq.inputs import write_genome_input
 from biobox.l1 import domains
 from biobox.l1.genecall import GENE_CALL_VERSION as V, GenomeInput, run as call_genes
 from biobox.l3 import pairs, tapes, tokens
-from biobox.registry.schemas import table
+from biobox.registry.schemas import conformance_problems, table
 
 pytestmark = pytest.mark.r2
 
@@ -39,6 +41,8 @@ MMSEQS = shutil.which("mmseqs")
 SAMTOOLS = shutil.which("samtools")
 REL = "rS0.l3"
 LEVELS = ("family", "nr50", "nr90")
+# the tape version of the single gene-call producer, computed here from TASKS.md §2 (not by biobox)
+TV = "t-" + hashlib.sha256(V.encode("utf-8")).hexdigest()[:12]
 
 
 def _library(root: Path, path: Path) -> None:
@@ -116,8 +120,8 @@ def _read(root: Path, glob: str) -> list[dict]:
 
 def _oracle_rows(root: Path) -> list[tuple[dict, dict]]:
     """(tape, tokens) per contig, straight from the shards."""
-    t = {r["contig_uid"]: r for r in _read(root, f"l3/tapes/gene_call_version={V}/stage=*/part-*.parquet")}
-    k = {r["contig_uid"]: r for r in _read(root, f"l3/tape_tokens/gene_call_version={V}/release={REL}/part-*.parquet")}
+    t = {r["contig_uid"]: r for r in _read(root, f"l3/tapes/tape_version={TV}/stage=*/part-*.parquet")}
+    k = {r["contig_uid"]: r for r in _read(root, f"l3/tape_tokens/tape_version={TV}/release={REL}/part-*.parquet")}
     return [(t[cu], k[cu]) for cu in sorted(t)]
 
 
@@ -316,21 +320,29 @@ def test_l3_contracts_hold(built):
 @pytest.mark.covers("C-04", "C-07")
 def test_l3_faults_are_caught(built):
     _, _, con, _ = built
-    t = con.sql("SELECT * EXCLUDE (gene_call_version, stage) FROM contig_tapes").to_arrow_table().to_pylist()
+    t = con.sql("SELECT * EXCLUDE (tape_version, stage) FROM contig_tapes").to_arrow_table().to_pylist()
     short = [dict(r) for r in t]
     short[0]["strands"] = short[0]["strands"][:-1]
-    assert any("parallel lists" in p for p in contracts.check_list_lengths(_with_gcv(con, short)))
+    assert any("parallel lists" in p for p in contracts.check_list_lengths(_with_tv(con, short)))
     flagged = [dict(r) for r in t]
     lin = next(r for r in flagged if r["orfs_to_contig_starts"] and r["n_slots"])
     lin["slot_flags"] = [1] * lin["n_slots"]  # flagged as clipped but not saturated
-    assert any("not saturated" in p for p in contracts.check_saturation(_with_gcv(con, flagged)))
+    assert any("not saturated" in p for p in contracts.check_saturation(_with_tv(con, flagged)))
+    # tokens whose lists differ in length from their tape (joined on contig_uid and tape_version)
+    shorter = [dict(r) for r in t]
+    longer = next(r for r in shorter if r["n_slots"])
+    longer["n_slots"] += 1
+    for col in table("contig_tapes").list_columns:
+        if longer[col] is not None:
+            longer[col] = longer[col] + longer[col][:1]
+    assert any("differ in length from their tape" in p for p in contracts.check_list_lengths(_with_tv(con, shorter)))
 
 
-def _with_gcv(con, tape_rows):
+def _with_tv(con, tape_rows):
     c = duckdb.connect()
     tbl = pa.Table.from_pylist(tape_rows)
     c.register("_t", tbl)
-    c.execute(f"CREATE VIEW contig_tapes AS SELECT *, '{V}' AS gene_call_version FROM _t")
+    c.execute(f"CREATE VIEW contig_tapes AS SELECT *, '{TV}' AS tape_version FROM _t")
     c.register("tape_tokens", con.sql("SELECT * FROM tape_tokens").to_arrow_table())
     return c
 
@@ -394,7 +406,255 @@ def test_l3_is_deterministic_and_order_free(built, tmp_path):
     build(other, order=-1)
     h1 = contracts.content_hashes(man)
     h2 = contracts.content_hashes(catalog.build_manifest(other, REL))
-    for name in ("contig_tapes", "tape_tokens", "token_dict", "slot_pairs"):
+    for name in ("contig_tapes", "tape_tokens", "token_dict", "slot_pairs", "tape_version_def"):
         assert h1[name] == h2[name], name
     for rel in sorted(p.relative_to(root).as_posix() for p in (root / "l3").rglob("*.parquet")):
         assert (root / rel).read_bytes() == (other / rel).read_bytes(), rel
+
+
+# --- card B-07: tapes by tape version --------------------------------------------------------------
+
+TAPE_DIRS = ("l3/tapes", "l3/tape_version_def")
+
+
+def _tapes_of_tv(root: Path, tv: str = TV) -> dict[bytes, dict]:
+    return {r["contig_uid"]: r for r in _read(root, f"l3/tapes/tape_version={tv}/stage=S0/part-*.parquet")}
+
+
+def _fresh(root: Path, tmp_path: Path, name: str, drop=TAPE_DIRS) -> Path:
+    """A copy of the built root without the tables the test rebuilds (the writer never overwrites)."""
+    fresh = tmp_path / name
+    shutil.copytree(root, fresh)
+    for d in drop:
+        shutil.rmtree(fresh / d)
+    return fresh
+
+
+def _digests(root: Path, dirs) -> dict[str, str]:
+    return {p.relative_to(root).as_posix(): hashlib.sha256(p.read_bytes()).hexdigest()
+            for d in dirs for p in sorted((root / d).rglob("*.parquet"))}
+
+
+@pytest.mark.covers("C-04")
+def test_b07_feature_uids_follow_the_legacy_slot_ordinals(built):
+    """With the gene-call producer alone, slot i of a tape is the gene whose slot_ordinal is i."""
+    root, _, _, _ = built
+    occ = defaultdict(list)
+    for r in _read(root, f"l1/protein_occurrence/gene_call_version={V}/stage=S0/part-0.parquet"):
+        occ[r["contig_uid"]].append(r)
+    feats = {r["feature_uid"]: r for r in _read(root, f"l1/feature/producer={V}/stage=S0/part-*.parquet")}
+    tps = _tapes_of_tv(root)
+    assert len(tps) == len(CONTRACT["objects"]) and all(t["n_slots"] for t in tps.values())
+    for cu, t in tps.items():
+        legacy = sorted(occ[cu], key=lambda r: r["slot_ordinal"])
+        assert [r["slot_ordinal"] for r in legacy] == list(range(t["n_slots"]))
+        assert t["feature_uids"] == [r["feature_uid"] for r in legacy]
+        assert t["protein_uids"] == [r["protein_uid"] for r in legacy]
+        assert t["feature_kinds"] == [ids.KIND["cds"]] * t["n_slots"]
+        for fu, s, e, strand in zip(t["feature_uids"], t["start_bps"], t["end_bps"], t["strands"]):
+            f = feats[fu]
+            assert (f["contig_uid"], f["start"], f["end"], f["strand"], f["kind"]) == (cu, s, e, strand, ids.KIND["cds"])
+            assert fu == ids.feature_uid(cu, s, e, strand, ids.KIND["cds"])
+
+
+@pytest.mark.covers("C-01", "LY-05", "LY-10")
+def test_b07_layout_conforms_and_the_manifest_accepts_it(built):
+    root, man, con, _ = built
+    assert tapes.tape_version([V]) == TV
+    by = defaultdict(list)
+    for f in man["files"]:
+        by[f["table"]].append(f)
+    assert [f["path"] for f in by["tape_version_def"]] == [f"l3/tape_version_def/tape_version={TV}/part-0.parquet"]
+    assert by["contig_tapes"] and all(f["partitions"] == {"tape_version": TV, "stage": "S0"} for f in by["contig_tapes"])
+    assert by["tape_tokens"] and all(f["partitions"] == {"tape_version": TV, "release": REL} for f in by["tape_tokens"])
+    for name in ("contig_tapes", "tape_tokens", "tape_version_def"):
+        for f in by[name]:
+            assert conformance_problems(pq.read_table(root / f["path"], partitioning=None), table(name)) == [], f["path"]
+    assert pq.read_table(root / by["tape_version_def"][0]["path"], partitioning=None).to_pylist() == [{"producer": V}]
+    assert pq.read_schema(root / by["contig_tapes"][0]["path"]).names[-1] == "feature_uids"
+    assert con.execute("SELECT tape_version, producer FROM tape_version_def").fetchall() == [(TV, V)]
+    assert con.execute("SELECT DISTINCT tape_version FROM contig_tapes").fetchall() == [(TV,)]
+    assert con.execute("SELECT DISTINCT tape_version FROM tape_tokens").fetchall() == [(TV,)]
+    assert contracts.check_append_only(man, man) == []
+
+
+@pytest.mark.covers("LY-04", "LY-06", "Q2")
+def test_b07_slot_bounded_row_groups_and_a_one_contig_lookup_reads_one(built, tmp_path, record_property):
+    root, _, _, circ = built
+    old = _tapes_of_tv(root)
+    n_by = {cu: t["n_slots"] for cu, t in old.items()}
+    cap = min(n_by.values())  # no two contigs fit together, so each is its own row group; the others exceed the cap
+    fresh = _fresh(root, tmp_path, "s")
+    res = tapes.run(fresh, "S0", circ, max_slots=cap)
+    assert res["tape_version"] == TV and res["files"] == 1 and res["contigs"] == len(n_by)
+    [path] = sorted((fresh / f"l3/tapes/tape_version={TV}/stage=S0").glob("*.parquet"))
+    pf = pq.ParquetFile(path)
+    groups = [pf.read_row_group(i, columns=["n_slots"]).column(0).to_pylist() for i in range(pf.metadata.num_row_groups)]
+    assert len(groups) == len(n_by) >= 3
+    assert all(sum(g) <= cap or len(g) == 1 for g in groups)
+    assert any(sum(g) > cap for g in groups)  # an oversized contig is a row group of its own
+    assert pq.read_table(path).to_pylist() == [old[cu] for cu in sorted(old)]
+    # the default build: every row group within AGENTS §4.6
+    for f in sorted((root / "l3/tapes").rglob("*.parquet")):
+        p = pq.ParquetFile(f)
+        assert all(sum(p.read_row_group(i, columns=["n_slots"]).column(0).to_pylist()) <= 131_072
+                   for i in range(p.metadata.num_row_groups))
+    # tape tokens with one contig per row group, so that their pruning is visible too
+    [tok] = sorted((fresh / f"l3/tape_tokens/tape_version={TV}/release={REL}").glob("*.parquet"))
+    pq.write_table(pq.read_table(tok, partitioning=None), tok, row_group_size=1, write_statistics=["contig_uid"])
+    man = catalog.build_manifest(fresh, REL)
+    assert contracts.check_sort_order(man) == [] and contracts.check_statistics(man) == []
+    con = catalog.open_catalog(catalog.generate_catalog(man, tmp_path / "c.duckdb"))
+
+    def scanned(prof, d):
+        (s,) = [s for s in prof["scans"] if any(f"/l3/{d}/" in x for x in s["files"])]
+        return s["row_groups_scanned"], s["row_groups_total"]
+
+    try:
+        sql = "SELECT sum(n_slots), sum(len(nr90_tokens)) FROM tapes_of({})"
+        for cu in sorted(n_by):
+            for arg, params in (("?", [[cu]]),  # a literal key, then a key that comes from a joined table
+                                ("(SELECT list(contig_uid) FROM contig_index WHERE contig_uid = ?)", [cu])):
+                prof = catalog.profile_query(con, sql.format(arg), params)
+                assert prof["result"][0] == (n_by[cu], n_by[cu]), arg
+                assert scanned(prof, "tapes") == (1, len(groups)), arg
+                assert scanned(prof, "tape_tokens") == (1, len(n_by)), arg
+        prof = catalog.profile_query(con, sql.format("?"), [sorted(n_by)])
+        record_property("b07_three_contig_lookup", {"tapes": scanned(prof, "tapes"),
+                                                    "tape_tokens": scanned(prof, "tape_tokens")})
+        assert scanned(prof, "tapes")[0] <= len(n_by)
+    finally:
+        con.close()
+
+
+@pytest.mark.covers("LY-04")
+def test_b07_parts_are_cut_at_max_file_bytes(built, tmp_path):
+    root, _, _, circ = built
+    old = _tapes_of_tv(root)
+    order = sorted(old)
+    est = [200 + 30 * old[cu]["n_slots"] for cu in order]  # the builder's estimate per contig row
+    fresh = _fresh(root, tmp_path, "s")
+    res = tapes.run(fresh, "S0", circ, max_file_bytes=est[0] + est[1])  # the first two rows fill part 0
+    assert res["files"] == 2
+    d = fresh / f"l3/tapes/tape_version={TV}/stage=S0"
+    assert sorted(p.name for p in d.iterdir()) == ["part-0.parquet", "part-1.parquet"]
+    assert [r["contig_uid"] for r in pq.read_table(d / "part-0.parquet").to_pylist()] == order[:2]
+    assert [r["contig_uid"] for r in pq.read_table(d / "part-1.parquet").to_pylist()] == order[2:]
+    assert _tapes_of_tv(fresh) == old
+
+
+@pytest.mark.covers("R-09", "C-04", "C-05")
+def test_b07_second_producer_is_a_new_tape_version_beside_the_first(built, tmp_path):
+    root, _, _, circ = built
+    fresh = tmp_path / "s"
+    shutil.copytree(root, fresh)
+    first = _digests(fresh, ("l3",))
+    assert any("/tape_version_def/" in k for k in first) and any("/tapes/" in k for k in first)
+    mg = next(iter(circ))  # the only circular contig is M. genitalium (NC_000908.2)
+    genes = sorted((r for r in _read(fresh, f"l1/feature/producer={V}/stage=S0/part-*.parquet") if r["contig_uid"] == mg),
+                   key=lambda r: (r["start"], r["end"]))
+    reach, gap = 0, None
+    for g in genes:
+        if g["start"] - reach >= 100 and reach > 0:
+            gap = reach
+            break
+        reach = max(reach, g["end"])
+    assert gap is not None
+    s, e, kind = gap + 30, gap + 70, ids.KIND["ncrna"]
+    fu = ids.feature_uid(mg, s, e, 1, kind)
+    spec = table("feature")
+    io.write_table([pa.RecordBatch.from_pylist(
+        [{"feature_uid": fu, "contig_uid": mg, "start": s, "end": e, "strand": 1, "kind": kind}], schema=spec.schema)],
+        spec, fresh / "l1/feature/producer=test-ncrna/stage=S0/part-0.parquet")
+    res = tapes.run(fresh, "S0", circ, producers=["test-ncrna", V])
+    tv2 = "t-" + hashlib.sha256("\n".join(sorted([V, "test-ncrna"])).encode("utf-8")).hexdigest()[:12]
+    assert res["tape_version"] == tv2 != TV
+    assert res["slots"] == sum(t["n_slots"] for t in _tapes_of_tv(root).values()) + 1
+    # the first tape version's files (and its tokens) are untouched
+    assert {k: v for k, v in _digests(fresh, ("l3",)).items() if k in first} == first
+    old, new = _tapes_of_tv(fresh), _tapes_of_tv(fresh, tv2)
+    assert set(new) == set(old)
+    for cu in set(old) - {mg}:
+        assert new[cu] == old[cu]
+    o, n = old[mg], new[mg]
+    assert n["n_slots"] == o["n_slots"] + 1
+    i = n["feature_uids"].index(fu)
+    assert (n["start_bps"][i], n["end_bps"][i], n["strands"][i]) == (s, e, 1)
+    assert n["protein_uids"][i] is None and n["feature_kinds"][i] == kind
+    drop = lambda xs: xs[:i] + xs[i + 1:]  # noqa: E731
+    for col in ("feature_uids", "protein_uids", "feature_kinds", "start_bps", "end_bps", "strands"):
+        assert drop(n[col]) == o[col], col
+    keys = list(zip(n["start_bps"], n["end_bps"], n["strands"], n["feature_kinds"]))
+    assert keys == sorted(keys)
+    assert pq.read_table(fresh / f"l3/tape_version_def/tape_version={tv2}/part-0.parquet").column(
+        "producer").to_pylist() == sorted([V, "test-ncrna"])
+    man = catalog.build_manifest(fresh, REL)
+    assert contracts.check_sort_order(man) == [] and contracts.check_statistics(man) == []
+    con = catalog.open_catalog(catalog.generate_catalog(man, tmp_path / "c.duckdb"))
+    try:
+        assert contracts.check_list_lengths(con) == [] and contracts.check_coordinates(con) == []
+        assert contracts.check_foreign_keys(con) == []
+        got = con.execute("SELECT tape_version, n_slots, nr90_tokens IS NULL FROM tapes_of(?)", [[mg]]).fetchall()
+        assert got == sorted([(TV, o["n_slots"], False), (tv2, n["n_slots"], True)])  # tokens exist for TV only
+    finally:
+        con.close()
+
+
+@pytest.mark.covers("C-04")
+def test_b07_a_contig_without_features_has_an_empty_tape(built, tmp_path):
+    root, _, _, circ = built
+    fresh = tmp_path / "s"
+    shutil.copytree(root, fresh)
+    io.write_table([], table("feature"), fresh / "l1/feature/producer=test-none/stage=S0/part-0.parquet")
+    res = tapes.run(fresh, "S0", circ, producers=["test-none"])
+    got, old = _tapes_of_tv(fresh, res["tape_version"]), _tapes_of_tv(root)
+    assert set(got) == set(old) and res["slots"] == 0 and res["contigs"] == len(old)
+    for cu, t in got.items():
+        assert (t["n_slots"], t["feature_uids"], t["protein_uids"], t["feature_kinds"]) == (0, [], [], [])
+        assert (t["contig_len"], t["is_circular"]) == (old[cu]["contig_len"], cu in circ)
+        assert t["genome_uid"] is None and t["tier"] is None  # legacy columns: no gene to take them from
+
+
+def test_b07_tape_version_def_refuses_a_mismatching_producer_list(built, tmp_path):
+    root, _, _, circ = built
+    fresh = _fresh(root, tmp_path, "s")
+    spec = table("tape_version_def")
+    io.write_table([pa.table({"producer": ["somebody-else"]})], spec,
+                   fresh / f"l3/tape_version_def/tape_version={TV}/part-0.parquet")
+    with pytest.raises(ValueError, match="tape_version_def"):
+        tapes.run(fresh, "S0", circ)
+    assert not (fresh / "l3/tapes").exists()
+    # the matching definition is accepted and left as it is
+    shutil.rmtree(fresh / "l3/tape_version_def")
+    io.write_table([pa.table({"producer": [V]})], spec, fresh / f"l3/tape_version_def/tape_version={TV}/part-0.parquet")
+    kept = _digests(fresh, ("l3/tape_version_def",))
+    tapes.run(fresh, "S0", circ)
+    assert _digests(fresh, ("l3/tape_version_def",)) == kept == _digests(root, ("l3/tape_version_def",))
+
+
+@pytest.mark.covers("D-01", "D-04", "LY-08")
+def test_b07_tape_bytes_do_not_depend_on_input_row_order_or_the_run(built, tmp_path):
+    root, _, _, circ = built
+    want = _digests(root, TAPE_DIRS)
+    rng = random.Random(3)
+    for name, shuffle in (("again", False), ("shuffled", True)):
+        fresh = _fresh(root, tmp_path, name)
+        if shuffle:
+            for rel in (f"l1/feature/producer={V}/stage=S0/part-0.parquet",
+                        f"l1/feature_protein/gene_call_version={V}/stage=S0/part-0.parquet",
+                        f"l1/protein_occurrence/gene_call_version={V}/stage=S0/part-0.parquet",
+                        "l0seq/contig_index/stage=S0/part-0.parquet"):
+                t = pq.read_table(fresh / rel, partitioning=None)
+                idx = list(range(t.num_rows))
+                rng.shuffle(idx)
+                pq.write_table(t.take(idx), fresh / rel, row_group_size=max(1, t.num_rows // 7))
+        tapes.run(fresh, "S0", circ)
+        assert _digests(fresh, TAPE_DIRS) == want, name
+
+
+def test_b07_default_topology_comes_from_genome_input(built, tmp_path):
+    root, _, _, circ = built
+    fresh = _fresh(root, tmp_path, "s")
+    write_genome_input(fresh, "S0", [GenomeInput((cu,), circular=(cu,) if cu in circ else ()) for cu in _tapes_of_tv(root)])
+    tapes.run(fresh, "S0")  # circular=None
+    assert _digests(fresh, TAPE_DIRS) == _digests(root, TAPE_DIRS)

@@ -18,6 +18,7 @@ from pathlib import Path
 import pyarrow as pa
 import pyarrow.parquet as pq
 
+from biobox.l3.tapes import tape_version
 from biobox.registry.schemas import table
 from biobox.search import engine, fastz, nbr
 
@@ -151,7 +152,8 @@ def main(job_path: str) -> int:
     partial = _partial(root, job, target)
     fams = _families(root) if target.kind == "protein" and cur["foreign_domain_alarm"] else None
     policy = nbr.Policy.parse(**recipe["context"])
-    have_tapes = any((root / "l3/tapes").glob(f"gene_call_version={job['gene_call_version']}/stage=*/part-*.parquet"))
+    tv = tape_version([job["gene_call_version"]])  # the gene-call producer's tapes (card B-07)
+    have_tapes = any((root / "l3/tapes").glob(f"tape_version={tv}/stage=*/part-*.parquet"))
     warnings = []
     if fams is None and "drift_alarm" in it["stop"]:
         warnings.append("drift_alarm not evaluated: no stored library hits for this target kind")

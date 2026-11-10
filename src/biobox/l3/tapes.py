@@ -1,14 +1,21 @@
-"""Contig tapes, coordinates only (operation O-TAPE; PLAN.md §4.2, data_layer_and_tests.md §1 L3).
+"""Contig tapes, coordinates only (operation O-TAPE; PLAN.md §4.2; planning/tasks/TASKS.md §2; card B-07).
 
-One row per contig of a stage (every default variant in `contig_index`, as for IGRs), with
-parallel lists holding one entry per gene slot; the list index is `slot_ordinal`, so
-`(contig_uid, slot_ordinal)` is the slot key everywhere. Tapes are append-only per stage and
-carry stable keys only (`protein_uid`); tokens are a release-time join (`biobox.l3.tokens`).
+A tape version is a set of feature producers: `tape_version(producers)` is "t-" + the first 12
+hex digits of sha256 over the sorted producer names joined by "\\n". A tape is one row per contig
+of a stage (every default variant in `contig_index`, also a contig with no features) and tape
+version, with parallel lists holding one entry per slot. The slots are the union of the `feature`
+rows of the producers, ordered by (start, end, strand, kind); the list index is the slot's ordinal,
+valid inside one tape version only, and `feature_uids` names each slot (AGENTS §3.3). With the
+gene-call producer alone this is genecall's `slot_ordinal` order. Tapes are append-only per stage
+and carry stable keys only (`feature_uid`, `protein_uid`); tokens are a release-time join
+(`biobox.l3.tokens`).
 
-S0 fills the columns L1 can supply: kinds, strands, coordinates, the junction to the
-previous slot, censoring distances and protein UIDs. Columns that need later sidecars
-(segments, directons, regimes, taxonomy, structure) are added as nullable columns when
-their producers exist (LY-09).
+S0 fills the columns L1 can supply: kinds, strands, coordinates, the junction to the previous
+slot, censoring distances and the protein of each CDS slot (null for any other kind). Columns that
+need later sidecars (segments, directons, regimes, taxonomy, structure) are added as nullable
+columns when their producers exist (LY-09). `tax_order_bucket`, `genome_uid`, `tier` and
+`assembly_quality` are legacy (card B-17 removes them): taken from the contig's first gene in
+`protein_occurrence`, null for a contig without genes.
 
 Junctions and distances on a linear contig: the first slot has no previous junction (null),
 and `orfs_to_contig_starts/ends` count the slots between a slot and the contig ends,
@@ -16,35 +23,67 @@ saturating at 65,535 with `slot_flags` bit 0 set (C-07). On a circular contig th
 slot's previous slot is the last one across the origin, and the distance lists are null
 (no edge).
 
-Slots are in start order (slot_ordinal), so where genes nest or share a start, reverse
-complementing a contig reorders them and their slot offsets change; MR-03 holds exactly for
-slots whose start and end orders agree (tests/r1/test_l3.py).
+Slots are in start order, so where features nest or share a start, reverse complementing a
+contig reorders them and their slot offsets change; MR-03 holds exactly for slots whose start
+and end orders agree (tests/r1/test_l3.py).
 
-Writes `<root>/l3/tapes/gene_call_version=<v>/stage=<S>/part-<k>.parquet`, sorted by
-(tax_order_bucket, contig_uid), cut at 1 GB (estimated).
+Writes, all through `biobox.io.write_table`:
+
+    l3/tapes/tape_version=<tv>/stage=<S>/part-<k>.parquet   sorted by contig_uid, cut at
+                                                            `max_file_bytes` (estimated)
+    l3/tape_version_def/tape_version=<tv>/part-0.parquet    the producers, once per tape version
+    ledger/stage=<S>/step=tape/part-0.parquet
+
+Bounded memory (AGENTS §4.1): DuckDB sorts the features (spilling into a private temporary
+directory) and an Arrow reader hands them over in `contig_uid` order; one contig's features are
+held at a time, and a row group holds whole contigs and at most `max_slots` slots (AGENTS §4.6).
 """
 
 from __future__ import annotations
 
+import hashlib
+import shutil
+import tempfile
+from collections.abc import Iterable, Iterator
 from pathlib import Path
 
+import duckdb
 import pyarrow as pa
 import pyarrow.parquet as pq
 
-from biobox import layout, ledger, provenance
-from biobox.l1.genecall import GENE_CALL_VERSION
+from biobox import io, layout, ledger, provenance
+from biobox.ids import KIND
+from biobox.l1.genecall import DUCK_MEMORY_LIMIT, GENE_CALL_VERSION
 from biobox.l3.geometry import pair_geometry
 from biobox.registry.schemas import table
 
-KIND_CDS = 1
+KIND_CDS = KIND["cds"]
 U16_MAX = 65_535
 FLAG_DIST_CLIPPED = 1
-ROW_GROUP_CONTIGS = 8_192  # data_layer_and_tests.md §3.2
+MAX_SLOTS = 131_072  # slots per row group (AGENTS §4.6)
+EST_ROW_BYTES, EST_SLOT_BYTES = 200, 30  # zstd estimate per contig row and per slot; cuts parts only
+BATCH_ROWS = 4_096  # contig rows handed to the writer at a time
 
 
-def build_tape(slots: list[tuple[int, int, int]], contig_len: int, circular: bool) -> dict:
-    """List columns for one contig from its slots (start, end, strand) in slot_ordinal order."""
+def tape_version(producers: Iterable[str]) -> str:
+    """"t-" + the first 12 hex digits of sha256 over the sorted producer names joined by "\\n" (UTF-8)."""
+    names = list(producers)
+    if not names:
+        raise ValueError("a tape version needs at least one producer")
+    if len(set(names)) != len(names):
+        raise ValueError(f"a producer is listed twice: {sorted(names)}")
+    return "t-" + hashlib.sha256("\n".join(sorted(names)).encode("utf-8")).hexdigest()[:12]
+
+
+def build_tape(slots: list[tuple[int, int, int]], contig_len: int, circular: bool,
+               kinds: list[int] | None = None) -> dict:
+    """List columns for one contig from its slots (start, end, strand) in ordinal order; `kinds` are
+    the slots' feature kinds (default: every slot a CDS)."""
     n = len(slots)
+    if kinds is None:
+        kinds = [KIND_CDS] * n
+    elif len(kinds) != n:
+        raise ValueError(f"{len(kinds)} kinds for {n} slots")
     delta: list[int | None] = []
     junc: list[int | None] = []
     for i in range(n):
@@ -66,7 +105,7 @@ def build_tape(slots: list[tuple[int, int, int]], contig_len: int, circular: boo
             to_start.append(min(a, U16_MAX))
             to_end.append(min(b, U16_MAX))
     return {
-        "feature_kinds": [KIND_CDS] * n,
+        "feature_kinds": list(kinds),
         "strands": [s[2] for s in slots],
         "start_bps": [s[0] for s in slots],
         "end_bps": [s[1] for s in slots],
@@ -78,53 +117,173 @@ def build_tape(slots: list[tuple[int, int, int]], contig_len: int, circular: boo
     }
 
 
-def _occurrence(root: Path, gene_call_version: str, stage: str) -> list[dict]:
-    p = root / f"l1/protein_occurrence/gene_call_version={gene_call_version}/stage={stage}/part-0.parquet"
-    if not p.exists():
-        return []
-    cols = ["protein_uid", "contig_uid", "slot_ordinal", "genome_uid", "start", "end", "strand", "tier",
-            "assembly_quality"]
-    return pq.read_table(p, columns=cols).to_pylist()
+def _sql_path(p: Path) -> str:
+    return "'" + str(p).replace("'", "''") + "'"
 
 
-def run(root: Path, stage: str, circular: set[bytes] | frozenset = frozenset(),
-        gene_call_version: str = GENE_CALL_VERSION, max_file_bytes: int = layout.MAX_FILE_BYTES) -> dict:
-    """Write the stage's coordinate tapes from protein_occurrence and contig_index."""
+def _source(files: list[Path], cols: str, empty: str) -> str:
+    """A subquery over `files`, or a typed empty one when there are none (read_parquet needs a file)."""
+    if not files:
+        return f"(SELECT {empty} WHERE false)"
+    return f"(SELECT {cols} FROM read_parquet([{', '.join(_sql_path(f) for f in files)}]))"
+
+
+def def_path(root: Path, tv: str) -> Path:
+    return Path(root) / table("tape_version_def").location / f"tape_version={tv}" / "part-0.parquet"
+
+
+def _stored_producers(root: Path, tv: str, producers: list[str]) -> bool:
+    """True if the tape version's definition exists; raises if it lists other producers."""
+    path = def_path(root, tv)
+    if not path.exists():
+        return False
+    have = sorted(pq.read_table(path, columns=["producer"], partitioning=None).column("producer").to_pylist())
+    if have != sorted(producers):
+        raise ValueError(f"{path}: tape_version_def of {tv} lists {have}, not {sorted(producers)}")
+    return True
+
+
+class _Peek:
+    def __init__(self, it: Iterator[dict]):
+        self._it, self._head, self._done = it, None, False
+
+    def peek(self) -> dict | None:
+        if self._head is None and not self._done:
+            self._head = next(self._it, None)
+            self._done = self._head is None
+        return self._head
+
+    def pop(self) -> None:
+        self._head = None
+
+
+def run(root: Path, stage: str, circular: set[bytes] | frozenset | None = None,
+        gene_call_version: str = GENE_CALL_VERSION, producers: list[str] | None = None,
+        max_file_bytes: int = layout.MAX_FILE_BYTES, max_slots: int = MAX_SLOTS, tmp=None) -> dict:
+    """Write the stage's tapes for the tape version of `producers` (default `[gene_call_version]`).
+
+    `circular`: the circular contig_uids; None reads the stage's `genome_input` table. Proteins come
+    from `feature_protein` of `gene_call_version` (CDS slots only), the legacy columns from its
+    `protein_occurrence`. `tmp` holds DuckDB's private spill directory (system temp by default).
+    """
     root = Path(root)
-    idx = pq.read_table(root / f"l0seq/contig_index/stage={stage}/part-0.parquet",
-                        columns=["contig_uid", "contig_len", "is_default_variant"]).to_pylist()
-    lengths = {r["contig_uid"]: r["contig_len"] for r in idx if r["is_default_variant"]}
-    by_contig: dict[bytes, list[dict]] = {cu: [] for cu in lengths}
-    for r in _occurrence(root, gene_call_version, stage):
-        by_contig.setdefault(r["contig_uid"], []).append(r)
-    rows, ledger_rows = [], []
-    for cu in sorted(by_contig):
-        occ = sorted(by_contig[cu], key=lambda r: r["slot_ordinal"])
-        if [r["slot_ordinal"] for r in occ] != list(range(len(occ))):
-            raise ValueError(f"{cu.hex()}: slot ordinals are not 0..n-1")
-        slots = [(r["start"], r["end"], r["strand"]) for r in occ]
-        first = occ[0] if occ else {}
-        rows.append({
+    producers = [gene_call_version] if producers is None else list(producers)
+    tv = tape_version(producers)
+    if max_slots < 1:
+        raise ValueError("max_slots must be positive")
+    if tmp is not None and Path(tmp).resolve().is_relative_to(root.resolve()):
+        raise ValueError(f"{tmp}: the scratch directory may not lie under the data root")
+    have_def = _stored_producers(root, tv, producers)
+    feats = []
+    for p in sorted(producers):
+        found = sorted((root / f"l1/feature/producer={p}/stage={stage}").glob("part-*.parquet"))
+        if not found:
+            raise FileNotFoundError(f"no feature files for producer {p} at stage {stage}")
+        feats += found
+    gcv = f"gene_call_version={gene_call_version}/stage={stage}"
+    fp = sorted((root / f"l1/feature_protein/{gcv}").glob("part-*.parquet"))
+    occ = sorted((root / f"l1/protein_occurrence/{gcv}").glob("part-*.parquet"))
+    idx = root / f"l0seq/contig_index/stage={stage}/part-0.parquet"
+    gi = []
+    if circular is None:
+        gi = sorted((root / table("genome_input").location / f"stage={stage}").glob("part-*.parquet"))
+        if not gi:
+            raise FileNotFoundError(f"no genome_input for stage {stage}: pass `circular` or write it first")
+    sql = (
+        f"WITH c AS (SELECT contig_uid, contig_len FROM read_parquet({_sql_path(idx)}) WHERE is_default_variant), "
+        f"f AS (SELECT DISTINCT * FROM {_source(feats, 'feature_uid, contig_uid, start, \"end\", strand, kind', '')}), "
+        f"fp AS {_source(fp, 'feature_uid, protein_uid', 'NULL::BLOB AS feature_uid, NULL::BLOB AS protein_uid')}, "
+        "o AS " + _source(occ, "feature_uid, slot_ordinal, genome_uid, tier, assembly_quality",
+                          "NULL::BLOB AS feature_uid, NULL::UINTEGER AS slot_ordinal, NULL::BLOB AS genome_uid, "
+                          "NULL::UTINYINT AS tier, NULL::VARCHAR AS assembly_quality") + ", "
+        "g AS " + _source(gi, "contig_uid, is_circular", "NULL::BLOB AS contig_uid, NULL::BOOLEAN AS is_circular") + " "
+        "SELECT coalesce(c.contig_uid, f.contig_uid) AS contig_uid, c.contig_len, g.is_circular, f.feature_uid, "
+        f'f.start, f."end", f.strand, f.kind, CASE WHEN f.kind = {KIND_CDS} THEN fp.protein_uid END AS protein_uid, '
+        "o.slot_ordinal, o.genome_uid, o.tier, o.assembly_quality "
+        "FROM c FULL OUTER JOIN f ON f.contig_uid = c.contig_uid "
+        "LEFT JOIN fp ON fp.feature_uid = f.feature_uid "
+        "LEFT JOIN o ON o.feature_uid = f.feature_uid "
+        "LEFT JOIN g ON g.contig_uid = coalesce(c.contig_uid, f.contig_uid) "
+        'ORDER BY 1, f.start, f."end", f.strand, f.kind'
+    )
+    spec = table("contig_tapes")
+    tools = provenance.tool_versions("pyarrow")
+    counts = {"contigs": 0, "slots": 0}
+    ledger_rows: list[dict] = []  # ledger.write takes a list: one small row per contig is held here
+    scratch = Path(tempfile.mkdtemp(prefix="biobox-tapes-", dir=tmp))
+    con = duckdb.connect(config={"threads": 1, "memory_limit": DUCK_MEMORY_LIMIT,
+                                 "temp_directory": str(scratch / "duckdb"), "preserve_insertion_order": True})
+
+    def contig_row(cu: bytes, length: int | None, circ: bool, fs: list[tuple]) -> dict:
+        if length is None:
+            raise KeyError(f"features on contig {cu.hex()} that contig_index does not hold")
+        genes = [x for x in fs if x[6] is not None]
+        first = min(genes, key=lambda x: x[6]) if genes else (None,) * 10
+        n = len(fs)
+        counts["contigs"] += 1
+        counts["slots"] += n
+        ledger_rows.append(ledger.row(cu, "contig", n, n, tools=tools))
+        return {
             "contig_uid": cu,
             "tax_order_bucket": None,
-            "genome_uid": first.get("genome_uid"),
-            "contig_len": lengths[cu],
-            "is_circular": cu in circular,
-            "n_slots": len(occ),
-            "tier": first.get("tier"),
-            "assembly_quality": first.get("assembly_quality"),
-            **build_tape(slots, lengths[cu], cu in circular),
-            "protein_uids": [r["protein_uid"] for r in occ],
-        })
-        ledger_rows.append(ledger.row(cu, "contig", len(occ), len(occ), tools=provenance.tool_versions("pyarrow")))
-    spec = table("contig_tapes")
-    est = [200 + 30 * r["n_slots"] for r in rows]
-    starts = layout.cut(est, max_file_bytes)
-    base = root / f"l3/tapes/gene_call_version={gene_call_version}/stage={stage}"
-    for k, (a, b) in enumerate(zip(starts, starts[1:] + [len(rows)])):
-        base.mkdir(parents=True, exist_ok=True)
-        pq.write_table(pa.Table.from_pylist(rows[a:b], schema=spec.schema), base / f"part-{k}.parquet",
-                       compression="zstd", row_group_size=ROW_GROUP_CONTIGS,
-                       write_statistics=["contig_uid", "tax_order_bucket", "n_slots", "contig_len"])
+            "genome_uid": first[7],
+            "contig_len": length,
+            "is_circular": circ,
+            "n_slots": n,
+            "tier": first[8],
+            "assembly_quality": first[9],
+            **build_tape([(x[1], x[2], x[3]) for x in fs], length, circ, [x[4] for x in fs]),
+            "protein_uids": [x[5] for x in fs],
+            "feature_uids": [x[0] for x in fs],
+        }
+
+    def rows() -> Iterator[dict]:
+        cur, length, circ, fs = None, None, False, []
+        reader = con.sql(sql).to_arrow_reader(io.ROW_GROUP_ROWS)
+        try:
+            for b in reader:
+                cols = [b.column(i).to_pylist() for i in range(b.num_columns)]
+                for cu, n, gcirc, fu, s, e, strand, kind, pu, slot, guid, tier, aq in zip(*cols):
+                    if cu != cur:
+                        if cur is not None:
+                            yield contig_row(cur, length, circ, fs)
+                        cur, length, fs = cu, n, []
+                        circ = bool(gcirc) if circular is None else cu in circular
+                    if fu is not None:
+                        fs.append((fu, s, e, strand, kind, pu, slot, guid, tier, aq))
+            if cur is not None:
+                yield contig_row(cur, length, circ, fs)
+        finally:
+            reader.close()
+
+    def part(src: _Peek) -> Iterator[pa.RecordBatch]:
+        """The rows of one part: cut where `layout.cut` cuts the estimated row sizes."""
+        held, buf, buf_slots = 0.0, [], 0
+        while (r := src.peek()) is not None:
+            est = EST_ROW_BYTES + EST_SLOT_BYTES * r["n_slots"]
+            if held and held + est > max_file_bytes:
+                break
+            src.pop()
+            held += est
+            buf.append(r)
+            buf_slots += r["n_slots"]
+            if len(buf) >= BATCH_ROWS or buf_slots >= max_slots:
+                yield pa.RecordBatch.from_pylist(buf, schema=spec.schema)
+                buf, buf_slots = [], 0
+        if buf:
+            yield pa.RecordBatch.from_pylist(buf, schema=spec.schema)
+
+    base = root / f"l3/tapes/tape_version={tv}/stage={stage}"
+    try:
+        src, k = _Peek(rows()), 0
+        while k == 0 or src.peek() is not None:
+            io.write_table(part(src), spec, base / f"part-{k}.parquet", max_slots=max_slots, slots_column="n_slots",
+                           statistics=["n_slots", "contig_len"])
+            k += 1
+    finally:
+        con.close()
+        shutil.rmtree(scratch, ignore_errors=True)
+    if not have_def:
+        io.write_table([pa.table({"producer": sorted(producers)})], table("tape_version_def"), def_path(root, tv))
     ledger.write(root, stage, "tape", ledger_rows)
-    return {"contigs": len(rows), "slots": sum(r["n_slots"] for r in rows), "files": len(starts)}
+    return {**counts, "files": k, "tape_version": tv}
