@@ -278,12 +278,29 @@ They pass on this branch (45 passed). They check:
     than the spread, which is the whole table.
 - **The merged view of a two-stage release.**
 
+## 7. After the audit: `member_cluster` sorted by (`level`, `member_uid`)
+
+The audit accepted the proposal from the first report: sort `member_cluster` by level, then member. A lookup
+at one level then reads that level's rows only, and a member at both levels reads at most 2 row groups per
+level. The columns are unchanged, so the schema lock is unchanged; the sort key is not in it.
+
+The lines that change were re-measured at 1,000x on the tree at c73c6e3 (unit `b27-after2`, the same driver;
+section 1 has the old lines):
+
+- **Membership, literal key:** 3/223 (0.024 s cold), against 1/223 with member order. That is the member's row
+  group at each level plus the one row group that holds the end of nr50 and the start of nr90, whose
+  `member_uid` range spans nearly every key.
+- **Membership, 100 random keys at both levels:** 143/223 (0.083 s cold), against 84/223 with member order.
+- **`nbr summarize`, neighbors' clusters (`_k`, one level, about 1,400 keys):** 112/223 `member_cluster`
+  (0.061 s), against 223/223 with member order, and equal to the old `cluster_member` read.
+- **Bytes per row (synthetic, 1,000x):** 46.9, against 40.6 with member order. A member's two rows are no
+  longer adjacent. This was not re-measured on `rL.3`; the projection in section 4 used 40.5 B/row and may be
+  about 15% low (*estimate*, from the synthetic ratio 46.9 / 40.6).
+- **Byte identity:** the exports are unchanged (`hits_tsv`, `locus_tables` and `summarize` at 1,000x, and all
+  49 fixture outputs). The fixture's manifest hash is now `ae8b36f37f72acd0ce5d0d5e138e175c`, because the
+  `member_cluster` file's bytes changed.
+
 ## Open
 
-- **`nbr summarize` with many neighbors.** It reads all of `member_cluster` where it used to read the half of
-  `cluster_member` that holds one level (112/223 against 223/223 at 1,000x, about 1,400 neighbor keys). With
-  fewer neighbors than row groups it reads less than before. Sorting `member_cluster` by (`level`,
-  `member_uid`) would keep both properties at 2 row groups per member for the exports, but the card specifies
-  `member_uid` order. It is left as the card says, and reported.
 - **Multi-stage catalogs.** Joined keys on the catalog's `contig_label` view scan the label table (section 2).
   The exports are not affected.
