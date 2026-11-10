@@ -75,7 +75,10 @@ Decisions DEC-18 to DEC-23 were approved by the PI on 2026-11-09 and are in `pla
 
 | Card | Model | State |
 |---|---|---|
-| B-32 gene calling of short contigs uses its workers | Opus | started 2026-11-10 || B-31 catalog macros that do not prune | Opus | started 2026-11-10 || C-04 `bio-box build-stage` | Opus | stopped 2026-11-10 with evidence, nothing written: builders cannot write into `run-step` staging. Now depends on B-22 and the new card C-08; card amended |
+| B-32 gene calling of short contigs uses its workers | Opus | started 2026-11-10 || B-31 catalog macros that do not prune | Opus | started 2026-11-10 |
+| W-12 hit and locus exports read only the release's files | Sonnet | started 2026-11-10 |
+| C-10 first real `build-stage` on the pod (two stages, two releases, local disk) | Opus | started 2026-11-10 |
+| B-24 streaming clustering; sharded domain scan inside `build-stage` | Opus | started 2026-11-10 || C-04 `bio-box build-stage` | Opus | stopped 2026-11-10 with evidence, nothing written: builders cannot write into `run-step` staging. Now depends on B-22 and the new card C-08; card amended |
 | Pod import ladder (not a card): phages, then 1 Gbp and 10 Gbp of complete prokaryotes with the new code | Opus | detached jobs on the pod; agent waiting on them |
 
 ## Next, in order
