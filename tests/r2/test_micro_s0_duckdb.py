@@ -150,6 +150,50 @@ def test_ly06_reverse_lookup_reads_one_row_group_per_file(built, con):
     assert scan["row_groups_scanned"] <= len(occ_files)
 
 
+@pytest.mark.covers("LY-06")
+def test_b31_lookup_macros_equal_the_stored_sql_and_read_no_index_scan(built):
+    """Card B-31: `open_catalog`'s `default_digest`, `digest_len` and `contig_len_of` (point lookups) give the
+    answers of the SQL macros the catalog stores (read through plain duckdb) for keys from a joined table:
+    every contig and every stored variant of both stages, an unknown key and NULL; and they read the index
+    through the lookups (at most one row group per index per key), with no scan of the index views."""
+    import pyarrow as pa
+
+    _, man, cat = built
+    plain = duckdb.connect(str(cat), read_only=True)
+    try:
+        pairs = plain.execute("SELECT contig_uid, raw_digest FROM contig_index ORDER BY contig_uid, raw_digest").fetchall()
+    finally:
+        plain.close()
+    cus = sorted({cu for cu, _ in pairs}) + [b"\x00" * 16, None]
+    rds = sorted({rd for _, rd in pairs}) + [b"\x01" * 16, None]
+    keys = pa.table({"i": pa.array(range(len(cus)), pa.int64()), "contig_uid": pa.array(cus, pa.binary())})
+    digests = pa.table({"i": pa.array(range(len(rds)), pa.int64()), "raw_digest": pa.array(rds, pa.binary())})
+    by_contig = ("SELECT i, default_digest(contig_uid), contig_len_of(contig_uid), digest_len(default_digest(contig_uid)) "
+                 "FROM k ORDER BY i")
+    by_digest = "SELECT i, digest_len(raw_digest) FROM r ORDER BY i"
+    plain = duckdb.connect(str(cat), read_only=True)  # the stored SQL macros: no function of open_catalog
+    try:
+        plain.register("k", keys)
+        plain.register("r", digests)
+        want = plain.execute(by_contig).fetchall(), plain.execute(by_digest).fetchall()
+    finally:
+        plain.close()
+    assert sum(r[1] is not None for r in want[0]) == len(cus) - 2 and want[0][-2][1:] == want[0][-1][1:] == (None,) * 3
+    assert sum(r[1] is not None for r in want[1]) == len(rds) - 2
+    rg_total = sum(f["row_groups"] for f in man["files"] if f["table"] in ("contig_index", "seq_locator"))
+    for sql, rows in zip((by_contig, by_digest), want):
+        c = catalog.open_catalog(cat)  # cold lookup caches for each query
+        try:
+            c.register("k", keys)
+            c.register("r", digests)
+            prof = catalog.profile_query(c, sql)
+        finally:
+            c.close()
+        assert prof["result"] == rows, sql
+        assert not [s for s in prof["scans"] if any(t in f for f in s["files"] for t in ("/contig_index/", "/seq_locator/"))]
+        assert 1 <= sum(prof["index"].values()) <= min(2 * len(cus), rg_total), (sql, prof["index"])
+
+
 # --- K-05: hive partition pruning ------------------------------------------------------
 
 

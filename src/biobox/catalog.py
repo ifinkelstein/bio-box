@@ -15,8 +15,11 @@ resolve keys through `SeqStore` point lookups, never through SQL on `contig_inde
 `seq_locator`, so a fetch reads O(1) index row groups also when the keys come from a joined
 table (AGENTS §4.4, card B-14). A catalog opened with plain `duckdb` has every view and
 macro, but the sequence macros fail with "Catalog Error: Scalar Function with name bb_seq
-does not exist!" (`bb_seq_circular`, `bb_seq_raw` for the other two); the lookup macros
-`default_digest`, `digest_len` and `contig_len_of` work there.
+does not exist!" (`bb_seq_circular`, `bb_seq_raw` for the other two), and so does `partners_of`
+(`bb_slot_tokens`, its point lookup of `tape_tokens`, card B-31). The lookup macros `default_digest`,
+`digest_len` and `contig_len_of` work there as SQL that scans the index views; `open_catalog` shadows
+them on its connection with point lookups over the same `SeqStore` (card B-31), so a joined key reads
+one index row group, not all.
 
 A release names its stages (card B-25): `define_release` writes its `release_def` once, and
 `build_manifest` lists only the files of those stages, so a stage written later, or being written
@@ -42,20 +45,25 @@ when it has one, else from the stages its `release_def` names, one explicit stag
 
 from __future__ import annotations
 
+import bisect
 import hashlib
 import json
 import os
 import re
 import shutil
 import tempfile
+import threading
 from pathlib import Path
 
 import blake3
 import duckdb
+import numpy as np
 import pyarrow as pa
+import pyarrow.compute as pc
 import pyarrow.parquet as pq
 
 from biobox import ids, io, layout
+from biobox.l0seq.lookup import KeyLookup
 from biobox.registry.schemas import ARTIFACTS, TABLES, ArtifactSpec, TableSpec
 
 MANIFEST_VERSION = 3  # 3: the manifest records the release's stages (card B-25)
@@ -73,7 +81,7 @@ DERIVED_PARTITIONS = {
 # window is cut by a contig end, whatever k the query asks for (K_MAX of the pair oracle, tests/oracles).
 PAIR_K_MAX = 10
 PAIR_FLAG_CENSORED, PAIR_FLAG_CROSSES_ORIGIN = 1, 2
-# partners_of scans every posting of the anchor's contigs; above this many anchor postings it refuses
+# partners_of reads the tape tokens of every anchor's contig; above this many anchor postings it refuses
 PARTNERS_MAX_ROWS = 100_000
 
 
@@ -701,9 +709,13 @@ COMPLEMENT = ("ACGTRYKMBVDHNacgtrykmbvdhn", "TGCAYRMKVBHDNtgcayrmkvbhdn")
 def pair_macro_sql() -> list[str]:
     """Neighbour macros over `token_postings` (card B-11; planning/tasks/TASKS.md §2; AGENTS §3.5).
 
-    Pairs are never stored: Q1, Q3 and Q4 self-join the postings of this catalog's release and tape
+    Pairs are never stored: Q1 and Q4 self-join the postings of this catalog's release and tape
     version (`catalog_tape_version()`) on `contig_uid`. Each side of a lookup by token reads one
-    `token_bucket` and the row groups whose `token_id` range holds the token. The geometry helpers
+    `token_bucket` and the row groups whose `token_id` range holds the token, also when the token comes
+    from `token_of` or a joined table (card B-31: `token_rows` joins the token in). Q3 (`partners_of`)
+    takes its anchors from the postings and the tokens near them from `tape_tokens` of the anchors'
+    contigs (`bb_slot_tokens`), so its partner side reads row groups in proportion to the anchors'
+    contigs, not to the release. The geometry helpers
     reproduce `pairs_of_contig` (tests/oracles/pairs_oracle.py) and `biobox.l3.geometry`:
 
         pair_offset    signed shortest offset from slot _i to slot _j (j - i on a linear contig); on a
@@ -727,15 +739,22 @@ def pair_macro_sql() -> list[str]:
     delta = "pair_delta_bp({d}, _i, _as, _ae, _j, _bs, _be, _circ, _len)"
     return [
         "CREATE MACRO catalog_tape_version() AS (SELECT value FROM catalog_info WHERE key = 'tape_version')",
-        # a token's bucket at every width a release may use (biobox.layout, biobox.l3.postings)
-        "CREATE MACRO token_bucket_ok(_bucket, _tok) AS _bucket IN "
-        "('all', left(printf('%02x', (_tok % 256)::INTEGER), 1), printf('%02x', (_tok % 256)::INTEGER))",
+        # a token's bucket at every width a release may use (biobox.layout, biobox.l3.postings): 'all', or the
+        # token's low byte as hex cut to the bucket's width. _tok appears once, so a key given as a subquery
+        # (token_of) is evaluated once here
+        "CREATE MACRO token_bucket_ok(_bucket, _tok) AS "
+        "(_bucket = 'all' OR _bucket = left(printf('%02x', (_tok % 256)::INTEGER), length(_bucket)))",
         # every posting of a token in this catalog's release and tape version, and its slots (one row per
-        # slot whatever the number of segments the token has there)
+        # slot whatever the number of segments the token has there). The token is joined in (card B-31): a
+        # literal, a scalar subquery (token_of) or a column of an outer query is one build-side row whose
+        # value DuckDB pushes into the postings scan as a join filter, so the scan reads the row groups whose
+        # token_id range holds it. `token_id = _tok` with a subquery read every row group (20 of 20 at 1,000x,
+        # 2026-11-10 phase B exit); with a literal the bucket filter also prunes files, as before
         """CREATE MACRO token_rows(_tok) AS TABLE
-              SELECT * FROM token_postings
-              WHERE release = catalog_release() AND tape_version = catalog_tape_version()
-                AND token_bucket_ok(token_bucket, _tok) AND token_id = _tok""",
+              SELECT p.* FROM (SELECT (_tok)::UBIGINT AS _t) _k
+              JOIN token_postings p ON p.token_id = _k._t
+              WHERE p.release = catalog_release() AND p.tape_version = catalog_tape_version()
+                AND token_bucket_ok(p.token_bucket, _tok)""",
         """CREATE MACRO token_slots(_tok) AS TABLE
               SELECT DISTINCT contig_uid, ordinal, feature_uid, start, "end", strand, n_slots, is_circular, contig_len
               FROM token_rows(_tok)""",
@@ -794,22 +813,34 @@ def pair_macro_sql() -> list[str]:
                 ON b.contig_uid = a.contig_uid AND b.ordinal = a.ordinal AND b.seg_idx <> a.seg_idx
               ORDER BY a.contig_uid, a.ordinal, anchor_seg_idx, partner_seg_idx""",
         # Q3 (counts; z_score ranking arrives with pair_stats): every token at every level within k slots
-        # of the loci of A. The near side scans the postings of A's contigs, so a hub is refused here
+        # of the loci of A. Anchors come from the postings of A (by token_id); the partner slots are the
+        # slots within k of each anchor on its contig (slot_dist 1..k, each slot once per anchor), and their
+        # tokens come from `tape_tokens` of the anchors' contigs through `bb_slot_tokens` (card B-31), a
+        # point lookup by contig_uid that reads only the row groups holding those contigs. Postings are
+        # sorted by token_id, so the earlier near side (postings filtered by contig_uid) read the whole
+        # token level of the release. A hub is still refused here (its anchors are many)
         f"""CREATE MACRO partners_of(_a, _k) AS TABLE
               WITH _anchor AS (
                      SELECT * FROM token_slots(_a)
                      WHERE (SELECT CASE WHEN count(*) > {PARTNERS_MAX_ROWS} THEN error('partners_of: token has more '
                                    || 'than {PARTNERS_MAX_ROWS} loci; use pair_stats (hub routing)') ELSE true END
                             FROM token_rows(_a))),
-                   _near AS (
-                     SELECT DISTINCT token_id, contig_uid, ordinal FROM token_postings
-                     WHERE release = catalog_release() AND tape_version = catalog_tape_version()
-                       AND contig_uid IN (SELECT contig_uid FROM _anchor))
-              SELECT p.token_id AS partner_token, count(DISTINCT (a.contig_uid, a.ordinal)) AS n_loci,
-                     count(*) AS n_pairs
-              FROM _anchor a JOIN _near p ON p.contig_uid = a.contig_uid
-              WHERE slot_dist(a.ordinal, p.ordinal, a.n_slots, a.is_circular) BETWEEN 1 AND _k
-              GROUP BY p.token_id ORDER BY n_loci DESC, partner_token""",
+                   _off AS (
+                     SELECT contig_uid, ordinal::BIGINT AS _i, n_slots::BIGINT AS _n, is_circular AS _c,
+                            unnest(range(-least(_k::BIGINT, n_slots::BIGINT), least(_k::BIGINT, n_slots::BIGINT) + 1)) AS _d
+                     FROM _anchor),
+                   _win AS (
+                     SELECT DISTINCT contig_uid, _i, _n,
+                            CASE WHEN _c THEN ((_i + _d) % _n + _n) % _n ELSE _i + _d END AS _j
+                     FROM _off WHERE _d <> 0),
+                   _per AS (
+                     SELECT contig_uid, list(_i ORDER BY _i, _j) AS _is, list(_j ORDER BY _i, _j) AS _js
+                     FROM _win WHERE _j >= 0 AND _j < _n AND _j <> _i GROUP BY contig_uid),
+                   _slots AS (
+                     SELECT contig_uid, unnest(_is) AS _i, unnest(bb_slot_tokens(contig_uid, _js)) AS _toks FROM _per),
+                   _near AS (SELECT contig_uid, _i, unnest(_toks) AS _tok FROM _slots)
+              SELECT _tok AS partner_token, count(DISTINCT (contig_uid, _i)) AS n_loci, count(*) AS n_pairs
+              FROM _near GROUP BY _tok ORDER BY n_loci DESC, partner_token""",
     ]
 
 
@@ -819,8 +850,9 @@ def macro_sql() -> list[str]:
     Parameter names start with an underscore so they never collide with column names. The
     sequence macros only call `bb_seq`, `bb_seq_circular` and `bb_seq_raw` (registered by
     `open_catalog`), which check bounds and strand, resolve keys and read the shards; the lookup
-    macros `default_digest`, `digest_len` and `contig_len_of` are for users and scan the index
-    views, so the sequence macros do not call them.
+    macros `default_digest`, `digest_len` and `contig_len_of` are for users. As stored here they scan
+    the index views (for a plain `duckdb` connection); `open_catalog` replaces them on its connection
+    with point lookups (`_register_lookup_udf`, card B-31). The sequence macros do not call them.
     """
     return [
         f"CREATE MACRO revcomp(_x) AS reverse(translate(_x, '{COMPLEMENT[0]}', '{COMPLEMENT[1]}'))",
@@ -949,6 +981,7 @@ def generate_catalog(manifest: dict, out_path: Path | None = None, root: Path | 
         # bb_seq_circular and bb_seq_raw let the macros be stored without a store; open_catalog
         # registers the real readers; macros come last because they read catalog_info
         _register_seq_udf(con, None)
+        _register_tape_udf(con, None)  # partners_of calls bb_slot_tokens (card B-31)
         for stmt in macro_sql():
             con.execute(stmt)
         con.execute("CHECKPOINT")
@@ -959,6 +992,7 @@ def generate_catalog(manifest: dict, out_path: Path | None = None, root: Path | 
 
 
 _READERS: dict[int, object] = {}
+_TAPES: dict[int, object] = {}  # id(connection) -> its _LazyTapes (card B-31)
 
 
 def _read_in_file_order(store, n_rows: int, jobs: list) -> list:
@@ -1059,6 +1093,184 @@ def _register_seq_udf(con: duckdb.DuckDBPyConnection, store) -> None:
     con.create_function("bb_seq_raw", bb_seq_raw, ["BLOB", "BIGINT", "BIGINT"], "VARCHAR", **opts)
 
 
+def _register_lookup_udf(con: duckdb.DuckDBPyConnection, store) -> None:
+    """`default_digest`, `digest_len` and `contig_len_of` as point lookups over `store` (card B-31).
+
+    The macros the catalog stores scan `contig_index` or `seq_locator`: a key from a joined table is a
+    correlated subquery, which DuckDB 2.0 answers with a left join that pushes no filter into the index
+    scan (10 of 10 row groups for one joined key at 100x; every rewrite as a subquery read the same,
+    measured on wilkcomp02, 2026-11-10). `open_catalog` shadows them, on its connection only, with temporary
+    macros over `bb_default_digest`, `bb_digest_len` and `bb_contig_len_of`, which resolve each key with
+    SeqStore's `KeyLookup`s (one row group per index per key, counted in `profile_query`'s `index`), as the
+    sequence functions do (card B-14). Unknown keys and NULLs give NULL, as the SQL macros do. A catalog
+    opened with plain `duckdb` keeps the SQL macros: the same answers, without the pruning.
+    """
+
+    def per_key(fn, rtype):
+        def udf(keys: pa.Array) -> pa.Array:
+            got: dict[bytes, object] = {}
+            out = []
+            for k in keys.to_pylist():
+                if k is None:
+                    out.append(None)
+                    continue
+                if k not in got:
+                    try:
+                        got[k] = fn(k)
+                    except KeyError:
+                        got[k] = None
+                out.append(got[k])
+            return pa.array(out, rtype)
+        return udf
+
+    opts = {"type": "arrow", "null_handling": "special", "side_effects": False}
+    con.create_function("bb_default_digest", per_key(store.default_digest, pa.binary()), ["BLOB"], "BLOB", **opts)
+    con.create_function("bb_digest_len", per_key(store.length_of, pa.int64()), ["BLOB"], "BIGINT", **opts)
+    con.create_function("bb_contig_len_of", per_key(lambda cu: store.length_of(store.default_digest(cu)), pa.int64()),
+                        ["BLOB"], "BIGINT", **opts)
+    for stmt in ("CREATE OR REPLACE TEMP MACRO default_digest(_cuid) AS bb_default_digest(_cuid)",
+                 "CREATE OR REPLACE TEMP MACRO digest_len(_rd) AS bb_digest_len(_rd)",
+                 "CREATE OR REPLACE TEMP MACRO contig_len_of(_cuid) AS bb_contig_len_of(_cuid)"):
+        con.execute(stmt)
+
+
+TAPE_TOKEN_LISTS = ("family_tokens", "nr50_tokens", "nr90_tokens")  # bb_slot_tokens returns a slot's tokens in this order
+
+
+class TapeTokenLookup(KeyLookup):
+    """`tape_tokens` rows by `contig_uid` from the release's files of one tape version (card B-31).
+
+    The footer statistics and binary search of `KeyLookup` (one row group read per contig, at most
+    `cache_row_groups` decoded row groups held), with its own decoding: a row group is held as numpy arrays
+    per token list (offsets, values with nulls as 0, validity), so finding a slot's tokens is array
+    indexing, never a pyarrow call or a Python object per slot. `row(key)` gives (levels, row index);
+    `get` of the base class is not available. `files_hit` counts row groups read per file (a cache hit
+    counts nothing).
+    """
+
+    def __init__(self, files, cache_row_groups: int = 32):
+        super().__init__(files, "contig_uid", TAPE_TOKEN_LISTS, cache_row_groups)
+        self.files_hit = [0] * len(self._files)
+        self.row_groups_total = sum(len(f.row_groups) for f in self._files)
+
+    def _decoded(self, fi: int, g: int):
+        hit = self._cache.pop((fi, g), None)
+        if hit is not None:
+            self._cache[(fi, g)] = hit
+            return hit
+        f = self._files[fi]
+        t = pq.ParquetFile(f.path, metadata=f.metadata).read_row_group(g, columns=self.columns)
+        self.row_groups_read += 1
+        self.files_hit[fi] += 1
+        levels = []
+        for c in TAPE_TOKEN_LISTS:
+            a = t.column(c).combine_chunks()
+            v = a.values  # a row group read whole: offsets start at 0 and index `values`
+            levels.append((a.offsets.to_numpy(zero_copy_only=False).astype(np.int64),
+                           v.fill_null(0).to_numpy(zero_copy_only=False).astype(np.uint64),
+                           v.is_valid().to_numpy(zero_copy_only=False)))
+        out = (levels, t.column(self.key_column).to_pylist())
+        if self.cache_row_groups > 0:
+            self._cache[(fi, g)] = out
+            if len(self._cache) > self.cache_row_groups:
+                self._cache.popitem(last=False)
+        return out
+
+    def get(self, key):  # noqa: D102
+        raise NotImplementedError("TapeTokenLookup: use row()")
+
+    def row(self, key: bytes) -> tuple[list, int] | None:
+        """(the row group's token lists as (offsets, values, valid) per level, the contig's row in it), or None
+        when no file holds the contig."""
+        with self._lock:
+            for fi, f in enumerate(self._files):
+                first, last = bisect.bisect_left(f.maxs, key), bisect.bisect_right(f.mins, key)
+                for j in range(first, last):
+                    levels, keys = self._decoded(fi, f.row_groups[j])
+                    a = bisect.bisect_left(keys, key)
+                    if a < len(keys) and keys[a] == key:
+                        return levels, a
+        return None
+
+
+class _LazyTapes:
+    """The connection's `TapeTokenLookup`, built (footers read) on first use, so a catalog whose queries never
+    ask for tape tokens never opens them."""
+
+    def __init__(self, files: list[Path]):
+        self.files = files
+        self._lookup: TapeTokenLookup | None = None
+        self._lock = threading.Lock()
+
+    def get(self) -> TapeTokenLookup:
+        with self._lock:
+            if self._lookup is None:
+                self._lookup = TapeTokenLookup(self.files)
+            return self._lookup
+
+    def peek(self) -> TapeTokenLookup | None:
+        return self._lookup
+
+
+def _register_tape_udf(con: duckdb.DuckDBPyConnection, tapes: _LazyTapes | None) -> None:
+    """Register `bb_slot_tokens(contig_uid, js)` over `tapes` (card B-31): for each 0-based slot of the list
+    `js`, the non-null tokens of that slot of the contig's tape tokens, family then NR50 then NR90; an empty
+    list for a slot outside the tape or a contig without tape tokens, NULL for a NULL argument. One call per
+    contig (the macro groups its slots), so a contig is looked up once and its slots are read with numpy.
+    With `tapes` None (the stand-in `generate_catalog` stores the macros against) it raises."""
+
+    def bb_slot_tokens(cuids: pa.Array, jss: pa.Array) -> pa.Array:
+        if tapes is None:
+            raise RuntimeError("bb_slot_tokens: open the catalog with biobox.catalog.open_catalog to read tape tokens")
+        lookup = tapes.get()
+        cus = cuids.to_pylist()
+        lens = pc.list_value_length(jss).fill_null(0).to_numpy(zero_copy_only=False).astype(np.int64)
+        flat = pc.list_flatten(jss).fill_null(-1).to_numpy(zero_copy_only=False).astype(np.int64)
+        starts = np.concatenate([[0], np.cumsum(lens)])
+        null = np.array([cu is None or not jss[r].is_valid for r, cu in enumerate(cus)], dtype=bool)
+        toks, masks = [], []
+        for r, cu in enumerate(cus):
+            if null[r]:
+                continue
+            js = flat[starts[r]:starts[r + 1]]
+            hit = lookup.row(cu)
+            tok = np.zeros((len(js), len(TAPE_TOKEN_LISTS)), np.uint64)
+            ok = np.zeros(tok.shape, bool)
+            if hit is not None:
+                levels, i = hit
+                for L, (offs, vals, valid) in enumerate(levels):
+                    o, n = offs[i], offs[i + 1] - offs[i]
+                    inside = (js >= 0) & (js < n)
+                    pos = o + np.where(inside, js, 0)
+                    if len(vals):
+                        tok[:, L] = vals[np.minimum(pos, len(vals) - 1)]
+                        ok[:, L] = inside & valid[np.minimum(pos, len(vals) - 1)]
+            toks.append(tok)
+            masks.append(ok)
+        tok = np.concatenate(toks) if toks else np.zeros((0, len(TAPE_TOKEN_LISTS)), np.uint64)
+        ok = np.concatenate(masks) if masks else np.zeros(tok.shape, bool)
+        inner_offsets = np.concatenate([[0], np.cumsum(ok.sum(axis=1))]).astype(np.int32)
+        inner = pa.ListArray.from_arrays(pa.array(inner_offsets, pa.int32()), pa.array(tok[ok], pa.uint64()))
+        outer_lens = np.where(null, 0, lens)
+        outer_offsets = np.concatenate([[0], np.cumsum(outer_lens)]).astype(np.int32)
+        return pa.ListArray.from_arrays(pa.array(outer_offsets, pa.int32()), inner, mask=pa.array(null))
+
+    con.create_function("bb_slot_tokens", bb_slot_tokens, ["BLOB", "BIGINT[]"], "UBIGINT[][]",
+                        type="arrow", null_handling="special", side_effects=False)
+
+
+def _tape_token_files(con: duckdb.DuckDBPyConnection, root: Path) -> list[Path]:
+    """The catalog's `tape_tokens` files of its release and served tape version (`catalog_files`), under `root`."""
+    info = dict(con.execute("SELECT key, value FROM catalog_info").fetchall())
+    rows = con.execute("SELECT path FROM catalog_files WHERE \"table\" = 'tape_tokens' ORDER BY path").fetchall()
+    out = []
+    for (p,) in rows:
+        parts = classify(p)[1]
+        if parts.get("release") == info["release_id"] and parts.get("tape_version") == info.get("tape_version"):
+            out.append(Path(root) / p)
+    return out
+
+
 SEQ_TABLES = ("seq_locator", "contig_index", "contig_occurrence")  # what SeqStore reads
 
 
@@ -1116,6 +1328,13 @@ def open_catalog(path: Path, local_dir: Path | None = None, threads: int | None 
     store = SeqStore(root, files, cache_blocks) if files.table("seq_locator") else None
     _register_seq_udf(con, store)
     _READERS[id(con)] = store
+    if store is not None:
+        _register_lookup_udf(con, store)
+    # the tape tokens the views read: under the build root, as every view's files (`root` moves the shards only)
+    built = Path(con.execute("SELECT value FROM catalog_info WHERE key = 'root'").fetchall()[0][0])
+    tapes = _LazyTapes(_tape_token_files(con, built))
+    _register_tape_udf(con, tapes)
+    _TAPES[id(con)] = tapes
     attach_search(con, Path(root))
     return con
 
@@ -1167,7 +1386,10 @@ def profile_query(con: duckdb.DuckDBPyConnection, sql: str, params: list | None 
     the sequence functions read from the shards (blocks decompressed, compressed bytes read,
     bytes decoded), and `index` the row groups their point lookups read from `seq_locator` and
     `contig_index` (`KeyLookup.row_groups_read`; a cache hit counts nothing); both are zero when
-    the query reads no sequence. Counts, not time, decide layouts (LY-06).
+    the query reads no sequence. The `tape_tokens` row groups that `bb_slot_tokens` reads by point lookup
+    (`partners_of`, card B-31) are one more entry of `scans`, with `"lookup": "bb_slot_tokens"` and
+    `rows_scanned` None. The lookups `default_digest`, `digest_len` and `contig_len_of` of `open_catalog`
+    count in `index`. Counts, not time, decide layouts (LY-06).
     """
     store = seq_reader(con)
     before = store.counters() if store is not None else None
@@ -1179,6 +1401,13 @@ def profile_query(con: duckdb.DuckDBPyConnection, sql: str, params: list | None 
                 "index_row_groups_read": store.index.row_groups_read}
 
     index_before = index_counts()
+    lazy = _TAPES.get(id(con))
+
+    def tape_counts() -> tuple[int, list[int]]:
+        t = lazy.peek() if lazy is not None else None
+        return (0, []) if t is None else (t.row_groups_read, list(t.files_hit))
+
+    tapes_before = tape_counts()
     with tempfile.TemporaryDirectory() as d:
         out = Path(d) / "profile.json"
         con.execute("PRAGMA enable_profiling = 'json'")
@@ -1210,7 +1439,21 @@ def profile_query(con: duckdb.DuckDBPyConnection, sql: str, params: list | None 
         walk(op)
     for c in info.get("children", []):
         walk(c)
-    bgzf = ({k: v - before[k] for k, v in store.counters().items()} if store is not None
+    # the tape-token point lookups of bb_slot_tokens (partners_of, card B-31) read Parquet outside DuckDB's
+    # scans: they are listed as one more scan of `tape_tokens`, row groups read of the files' total
+    tapes_after = tape_counts()
+    if tapes_after[0] > tapes_before[0]:
+        t = lazy.peek()
+        hit_before = tapes_before[1] or [0] * len(tapes_after[1])
+        scans.append({
+            "files": [str(p) for p in t.files],
+            "files_read": sum(a > b for a, b in zip(tapes_after[1], hit_before)),
+            "row_groups_scanned": tapes_after[0] - tapes_before[0],
+            "row_groups_total": t.row_groups_total,
+            "rows_scanned": None,
+            "lookup": "bb_slot_tokens",
+        })
+    bgzf =({k: v - before[k] for k, v in store.counters().items()} if store is not None
             else {"blocks_read": 0, "compressed_bytes_read": 0, "uncompressed_bytes_decoded": 0})
     index = {k: v - index_before[k] for k, v in index_counts().items()}
     return {"result": result, "scans": scans, "bytes_read": info.get("io", {}).get("total_bytes_read"), "bgzf": bgzf,

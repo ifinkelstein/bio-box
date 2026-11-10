@@ -616,6 +616,16 @@ def test_b11_partners_of_refuses_a_hub_token(tmp_path):
                     "n_slots": pa.array([2] * m, pa.uint32()), "is_circular": pa.array([False] * m),
                     "contig_len": pa.array([200] * m, pa.int64())}).cast(spec.schema)
     io.write_table([tbl], spec, root / f"{POST}/release={REL}/tape_version={tv}/token_bucket=all/part-0.parquet")
+    # the tape tokens these postings come from (card B-31: partners_of reads its partner slots there), two
+    # slots per contig: the h contigs hold the hub on slot 0, the d contigs big on slot 0 and partner on slot 1
+    ttok = {cu(b"h", i): [hub, None] for i in range(n + 1)} | {cu(b"d", i): [big, partner] for i in range(n)}
+    keys = sorted(ttok)
+    tspec = table("tape_tokens")
+    tt = pa.table({"contig_uid": pa.array(keys, pa.binary(16)), "family_tokens": pa.array([[None, None]] * len(keys), pa.list_(pa.uint64())),
+                   "nr50_tokens": pa.array([[None, None]] * len(keys), pa.list_(pa.uint64())),
+                   "nr90_tokens": pa.array([ttok[k] for k in keys], pa.list_(pa.uint64()))}).cast(tspec.schema)
+    io.write_table([tt], tspec, root / f"l3/tape_tokens/tape_version={tv}/release={REL}/part-0.parquet", max_slots=131_072,
+                   slots_column="nr90_tokens")
     con = catalog.open_catalog(catalog.generate_catalog(catalog.build_manifest(root, REL, []), tmp_path / "c.duckdb"))
     try:
         with pytest.raises(duckdb.Error, match=r"partners_of: token has more than 100000 loci; use pair_stats \(hub routing\)"):
