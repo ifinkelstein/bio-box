@@ -24,11 +24,12 @@ Writes, per gene-calling version and stage (paths under `<root>/`), all through 
 Every table is cut into parts at `max_file_bytes` of estimated size (`io.write_parts`, card B-19); a
 small stage is one `part-0.parquet` per table.
 
-Bounded memory (AGENTS §4.1): consecutive genomes are grouped into batches of at most
-`batch_bases` bases (a larger genome is a batch alone; lengths from `contig_index`), and a batch is
-called genome by genome, in the calling process or, with `workers` > 1, in one of `workers`
-worker processes, at most `2 * workers` batches in flight (card B-32). Each batch comes back as
-two Arrow record batches that are appended to unsorted scratch Parquet files in a private
+Bounded memory (AGENTS §4.1): a genome of at least `THREAD_MIN_BASES` bases is a batch alone, and
+shorter consecutive genomes are grouped into batches of at most `batch_bases` bases (lengths from
+`contig_index`). A batch is called genome by genome, in the calling process or, with `workers` > 1,
+a long genome in a worker thread and a batch of short ones in a worker process, at most `workers`
+batches at once (card B-32). Each batch comes back as two Arrow record batches that are appended,
+in the order the batches finish, to unsorted scratch Parquet files in a private
 temporary directory; one DuckDB connection (`DUCK_MEMORY_LIMIT`, spilling into that directory,
 one thread so that the output order is fixed) then sorts each table into its file, so the output
 depends neither on the batches nor on the worker count. Nothing is published if a genome fails.
@@ -52,6 +53,7 @@ import sys
 import tempfile
 import threading
 from collections.abc import Iterable, Iterator
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
 import duckdb
@@ -80,6 +82,13 @@ SCRATCH_FLUSH_ROWS = 65_536  # rows a scratch writer buffers before it writes a 
 # wilkcomp02, planning/measurements/2026-11-10_genecall_short_contigs.md), so the per-task cost is
 # small, and a 100,000-contig slice still makes 62 tasks for 8 workers
 BATCH_BASES = 1_000_000
+# a genome at least this long is called alone in a worker thread, shorter ones in batches in worker
+# processes (card B-32). Chosen; the reasoning is an estimate from the one-thread profile of the slice
+# (measured, wilkcomp02): a 620 bp contig cost 0.93 ms in `find_genes`, which releases the GIL, and
+# about 0.5 ms of Python that holds it, mostly reading the sequence. `find_genes` grows with length
+# and the Python part barely does, so at 10 kb the Python part is about 5% (derived: 0.93 ms x 16
+# against about 0.75 ms) and threads scale, while a process costs seconds of imports to start
+THREAD_MIN_BASES = 10_000
 DUCK_MEMORY_LIMIT = "2GB"  # the sorting connection's cap; larger sorts spill into the scratch directory
 # Estimated zstd bytes per row; they only cut parts at `max_file_bytes` (card B-19). Measured values
 # are from planning/measurements/2026-11-09_design_stress_test.md (§3 golden set, §6a S1 pilot), taken
@@ -167,18 +176,17 @@ def call_genome(store: SeqStore, genome: GenomeInput) -> list[dict]:
     return _call(genome, _sequences(store, genome))
 
 
-def _call_batch(store: SeqStore, batch: list[GenomeInput]) -> tuple[pa.RecordBatch, pa.RecordBatch, list[str], int]:
-    """Call the genes of a batch of genomes, one genome at a time, in input order: the gene and the
-    protein-candidate scratch rows as two record batches, the modes used and the number of genes that
-    wrap the origin. Runs in a worker process (or in the caller's when `workers` is 1)."""
+def _rows(calls_per_genome: Iterable[list[dict]]) -> tuple[pa.RecordBatch, pa.RecordBatch, list[str], int]:
+    """The gene and the protein-candidate scratch rows of some genomes' calls as two record batches,
+    the modes used and the number of genes that wrap the origin."""
     cds = ids.KIND["cds"]
     gcols: list[list] = [[] for _ in _GENE_SCRATCH]
     pus: list[bytes] = []
     aas: list[str] = []
     modes: set[str] = set()
     n_wrap = 0
-    for genome in batch:
-        for c in call_genome(store, genome):
+    for calls in calls_per_genome:
+        for c in calls:
             pu = ids.protein_uid(c["aa"])
             fu = ids.feature_uid(c["contig_uid"], c["start"], c["end"], c["strand"], cds)
             row = (c["contig_uid"], fu, c["start"], c["end"], c["strand"], pu, c["genetic_code"],
@@ -194,6 +202,17 @@ def _call_batch(store: SeqStore, batch: list[GenomeInput]) -> tuple[pa.RecordBat
     cands = pa.RecordBatch.from_arrays([pa.array(pus, type=pa.binary(16)), pa.array(aas, type=pa.string())],
                                        schema=_CANDIDATE_SCRATCH)
     return genes, cands, sorted(modes), n_wrap
+
+
+def _call_batch(store: SeqStore, batch: list[GenomeInput]) -> tuple:
+    """`_rows` of a batch of genomes, called one genome at a time in input order. Runs in a worker
+    process, or in the caller's when `workers` is 1."""
+    return _rows(call_genome(store, g) for g in batch)
+
+
+def _call_read(genome: GenomeInput, seqs: dict[bytes, str]) -> tuple:
+    """`_rows` of one genome whose sequences the calling thread has read. Runs in a worker thread."""
+    return _rows([_call(genome, seqs)])
 
 
 def _worker_main(root: str) -> None:
@@ -223,23 +242,22 @@ def _worker_main(root: str) -> None:
 
 
 class _Workers:
-    """`n` worker processes, each `python -c` running `_worker_main`. Not `multiprocessing`: its spawn
-    and forkserver start methods run the caller's main script again in every worker (the stress
-    drivers have no main guard), and fork is unsafe in a process that has threads. Tasks go to a
-    worker's stdin and results come back on its stdout as pickles; one reader thread per worker
-    drains stdout into a shared queue, so neither side can block on a full pipe."""
+    """Up to `n` worker processes, each `python -c` running `_worker_main`, started when a batch finds
+    none idle (a process costs about 2.8 s of imports, measured: B-32 measurement file). Not
+    `multiprocessing`: its spawn and forkserver start methods run the caller's main script again in
+    every worker (the stress drivers have no main guard), and fork is unsafe in a process that has
+    threads. A batch goes to a worker's stdin and its result comes back on stdout as a pickle; one
+    reader thread per worker drains stdout into the shared queue `q` as `(i, message)`, so neither
+    side can block on a full pipe."""
 
-    def __init__(self, n: int, root: Path):
+    def __init__(self, n: int, root: Path, q: queue.SimpleQueue):
         src = str(Path(__file__).resolve().parents[2])  # the directory that holds this `biobox`
-        boot = (f"import sys; sys.path.insert(0, {src!r}); "
-                f"from biobox.l1.genecall import _worker_main; _worker_main({str(root)!r})")
-        self._q: queue.SimpleQueue = queue.SimpleQueue()
-        self._procs = [subprocess.Popen([sys.executable, "-c", boot], stdin=subprocess.PIPE, stdout=subprocess.PIPE)
-                       for _ in range(n)]
-        self._readers = [threading.Thread(target=self._drain, args=(i, p), daemon=True, name=f"genecall-reader-{i}")
-                         for i, p in enumerate(self._procs)]
-        for t in self._readers:
-            t.start()
+        self._boot = (f"import sys; sys.path.insert(0, {src!r}); "
+                      f"from biobox.l1.genecall import _worker_main; _worker_main({str(root)!r})")
+        self._n, self._q = n, q
+        self._procs: list[subprocess.Popen] = []
+        self._readers: list[threading.Thread] = []
+        self._idle: list[int] = []
 
     def _drain(self, i: int, p: subprocess.Popen) -> None:
         try:
@@ -248,7 +266,19 @@ class _Workers:
         except BaseException as e:  # noqa: BLE001 - EOF or a torn stream: the worker is gone
             self._q.put((i, ("eof", None, e)))
 
-    def send(self, i: int, seq: int, batch: list[GenomeInput]) -> None:
+    def send(self, seq: int, batch: list[GenomeInput]) -> None:
+        """Give a batch to an idle worker, starting one if none is idle (at most `n`)."""
+        if not self._idle:
+            if len(self._procs) >= self._n:
+                raise RuntimeError("no idle gene-call worker")  # the caller keeps at most n busy
+            i = len(self._procs)
+            p = subprocess.Popen([sys.executable, "-c", self._boot], stdin=subprocess.PIPE, stdout=subprocess.PIPE)
+            self._procs.append(p)
+            t = threading.Thread(target=self._drain, args=(i, p), daemon=True, name=f"genecall-reader-{i}")
+            self._readers.append(t)
+            t.start()
+            self._idle.append(i)
+        i = self._idle.pop()
         p = self._procs[i]
         try:
             pickle.dump((seq, batch), p.stdin, protocol=pickle.HIGHEST_PROTOCOL)
@@ -256,14 +286,11 @@ class _Workers:
         except BrokenPipeError:
             raise RuntimeError(f"gene-call worker {i} exited with code {p.wait()}") from None
 
-    def receive(self) -> tuple[int, int, tuple]:
-        """(worker, seq, result) of the next batch any worker finishes; a worker's exception is raised."""
-        i, (kind, seq, value) = self._q.get()
-        if kind == "ok":
-            return i, seq, value
-        if kind == "error":
-            raise value
-        raise RuntimeError(f"gene-call worker {i} exited with code {self._procs[i].wait()} before answering")
+    def answered(self, i: int, kind: str) -> None:
+        """Worker `i` sent message `kind`: it is idle again, or gone."""
+        if kind == "eof":
+            raise RuntimeError(f"gene-call worker {i} exited with code {self._procs[i].wait()} before answering")
+        self._idle.append(i)
 
     def close(self, kill: bool) -> None:
         for p in self._procs:
@@ -292,64 +319,91 @@ def _genome_bases(lengths: KeyLookup, genome: GenomeInput) -> int:
     return n
 
 
-def _batches(genomes: Iterable[GenomeInput], bases_of, batch_bases: int) -> Iterator[list[GenomeInput]]:
-    """Consecutive genomes in input order, cut before the genome that would take a batch past
-    `batch_bases` bases; a genome larger than that is a batch alone."""
+def _batches(genomes: Iterable[GenomeInput], bases_of, batch_bases: int, thread_min_bases: int
+             ) -> Iterator[tuple[bool, list[GenomeInput]]]:
+    """`(long, batch)` in input order. A genome of at least `thread_min_bases` bases is a batch alone
+    (`long`); shorter consecutive genomes are grouped, cut before the genome that would take a batch
+    past `batch_bases` bases (a genome larger than that is a batch alone)."""
     batch: list[GenomeInput] = []
     held = 0
     for g in genomes:
         n = bases_of(g)
-        if batch and held + n > batch_bases:
-            yield batch
+        if n >= thread_min_bases or (batch and held + n > batch_bases):
+            if batch:
+                yield False, batch
             batch, held = [], 0
+        if n >= thread_min_bases:
+            yield True, [g]
+            continue
         batch.append(g)
         held += n
     if batch:
-        yield batch
+        yield False, batch
 
 
-def _calls_in_order(store: SeqStore, root: Path, batches: Iterable[list[GenomeInput]], workers: int
+def _calls_in_order(store: SeqStore, root: Path, batches: Iterable[tuple[bool, list[GenomeInput]]], workers: int
                     ) -> Iterator[tuple[list[GenomeInput], tuple]]:
-    """(batch, `_call_batch` result) in input order. With `workers` > 1, batches are called in worker
-    processes (`_Workers`), each with its own `SeqStore` (card B-32: in threads, sequence reads and
-    per-gene Python work held the GIL and the workers starved on short contigs). A worker takes one
-    batch at a time; batches are read from `batches` lazily, so that at most `2 * workers` are in
-    flight or done and waiting for their turn. A worker's exception is raised here, and the workers
-    are then killed."""
+    """(batch, `_rows` result); at most `workers` batches are called at once, and batches are read
+    from `batches` lazily, one for each that finishes.
+
+    Card B-32: a long genome (`long`) is called in a worker thread, its sequences read here in the
+    calling thread so that the store is never shared between threads: pyrodigal releases the GIL in
+    `find_genes`, which dominates a long genome's cost. Batches of short genomes go to worker
+    processes (`_Workers`), each with its own `SeqStore`: in threads, sequence reads and per-gene
+    Python work held the GIL and the workers starved. With workers, results come in the order they
+    finish, so that a long genome does not hold back the batches behind it; the output does not
+    depend on that order, because `_publish` sorts every table on a key that is unique when no
+    contig is in two genomes (as `genome_input` guarantees; MR-01). A worker's exception is raised
+    here; the processes are then killed and the threads finish their genome."""
     if workers <= 1:
-        for b in batches:
+        for _, b in batches:
             yield b, _call_batch(store, b)
         return
-    pool = _Workers(workers, root)
+    q: queue.SimpleQueue = queue.SimpleQueue()  # (worker index, or None for a thread; message)
+    procs = _Workers(workers, root, q)
+    threads: ThreadPoolExecutor | None = None
+
+    def threaded(seq: int):
+        def put(f) -> None:
+            if not f.cancelled():
+                e = f.exception()
+                q.put((None, ("ok", seq, f.result()) if e is None else ("error", seq, e)))
+        return put
+
     finished = False
     try:
         it = iter(batches)
         sent: dict[int, list[GenomeInput]] = {}
-        done: dict[int, tuple] = {}
-        idle = list(range(workers))
-        n_sent = n_out = 0
+        n_sent = 0
         more = True
         while True:
-            while more and idle and n_sent - n_out < 2 * workers:
-                b = next(it, None)
-                if b is None:
+            while more and len(sent) < workers:
+                nxt = next(it, None)
+                if nxt is None:
                     more = False
                     break
-                pool.send(idle.pop(), n_sent, b)
+                long, b = nxt
+                if long:
+                    if threads is None:
+                        threads = ThreadPoolExecutor(max_workers=workers, thread_name_prefix="genecall")
+                    threads.submit(_call_read, b[0], _sequences(store, b[0])).add_done_callback(threaded(n_sent))
+                else:
+                    procs.send(n_sent, b)
                 sent[n_sent] = b
                 n_sent += 1
-            if n_out in done:
-                yield sent.pop(n_out), done.pop(n_out)
-                n_out += 1
-            elif n_out == n_sent:
+            if not sent:
                 break
-            else:
-                i, seq, res = pool.receive()
-                idle.append(i)
-                done[seq] = res
+            i, (kind, seq, value) = q.get()
+            if i is not None:
+                procs.answered(i, kind)
+            if kind == "error":
+                raise value
+            yield sent.pop(seq), value
         finished = True
     finally:
-        pool.close(kill=not finished)
+        procs.close(kill=not finished)
+        if threads is not None:
+            threads.shutdown(wait=True, cancel_futures=True)
 
 
 class _Scratch:
@@ -450,8 +504,9 @@ def run(root: Path, stage: str, genomes: Iterable[GenomeInput] | None = None, ve
 
     `genomes`: any iterable, consumed once; None reads the stage's `genome_input` table. `tmp`: the
     directory that holds the private scratch directory (system temp by default; never the data root).
-    `workers`: worker processes calling genes at once; `batch_bases`: bases of consecutive genomes
-    sent to a worker as one task (a larger genome is a task alone). The output bytes depend on
+    `workers`: batches called at once, in worker threads or processes; `batch_bases`: bases of
+    consecutive short genomes sent to a worker process as one task (a larger genome is a task alone).
+    The output bytes depend on
     neither. `max_file_bytes`: every table is cut into parts of at most this many estimated bytes
     (one row above it is a part alone).
     """
@@ -473,7 +528,7 @@ def run(root: Path, stage: str, genomes: Iterable[GenomeInput] | None = None, ve
         n_genes = n_wrap = 0
         modes: set[str] = set()
         lengths = KeyLookup(store.index_files, "contig_uid", ["contig_len", "is_default_variant"])
-        batches = _batches(genomes, lambda g: _genome_bases(lengths, g), batch_bases)
+        batches = _batches(genomes, lambda g: _genome_bases(lengths, g), batch_bases, THREAD_MIN_BASES)
         calls_iter = _calls_in_order(store, root, batches, workers)
         try:
             for batch, (genes, cands, batch_modes, batch_wrap) in calls_iter:

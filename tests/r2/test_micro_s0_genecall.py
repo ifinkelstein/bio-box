@@ -254,12 +254,13 @@ def test_short_contigs_go_to_workers_in_batches_bounded_by_bases(tmp_path, monke
 
     monkeypatch.setattr(gc, "_call_batch", counting)  # the in-process path (workers=1) calls it by name
 
-    def build(name, **kw):
+    def build(name, gs, **kw):
         root = tmp_path / name
-        ingest([SourceObject(src, "frags", "1")], root, "S0")
-        return run(root, "S0", genomes, **kw), _outputs(root)
+        objs = [SourceObject(FIX / o["file"], CONTRACT["source_name"], CONTRACT["source_release"]) for o in OBJS]
+        ingest([SourceObject(src, "frags", "1"), *objs], root, "S0")
+        return run(root, "S0", gs, **kw), _outputs(root)
 
-    want = build("a", batch_bases=batch_bases)
+    want = build("a", genomes, batch_bases=batch_bases)
     assert want[0]["genes"] > len(genomes) / 2
     assert [g for b in tasks for g in b] == genomes  # every genome once, in input order
     held = [sum(length[cu] for g in b for cu in g.contig_uids) for b in tasks]
@@ -267,12 +268,33 @@ def test_short_contigs_go_to_workers_in_batches_bounded_by_bases(tmp_path, monke
     assert all(h > batch_bases - longest for h in held[:-1])  # a batch is cut only when the next genome overflows it
     assert len(tasks) <= total // (batch_bases - longest) + 1 < len(genomes) / 10
     tasks.clear()
-    assert build("b", batch_bases=1) == want  # a genome larger than the batch is a task alone
+    assert build("b", genomes, batch_bases=1) == want  # a genome larger than the batch is a task alone
     assert len(tasks) == len(genomes)
     for i, kw in enumerate(({"workers": 3}, {"workers": 3, "batch_bases": 1}, {"workers": 3, "batch_bases": 10**12})):
-        assert build(f"w{i}", **kw) == want, kw
+        assert build(f"w{i}", genomes, **kw) == want, kw
+    # the fixture's long genomes (worker threads) among the fragments (worker processes)
+    mixed = genomes[:100] + _genomes() + genomes[100:]
+    want_mixed = build("m1", mixed)
+    assert want_mixed[0]["genes"] > want[0]["genes"] + 700
+    assert build("m3", mixed, workers=3) == want_mixed
     with pytest.raises(ValueError, match="batch_bases"):
         run(tmp_path / "a", "S1", genomes, batch_bases=0)
+
+
+@pytest.mark.covers("D-01")
+def test_exception_in_a_worker_process_propagates_and_publishes_nothing(tmp_path):
+    from dataclasses import replace
+
+    src, root, scratch = tmp_path / "frags.fna", tmp_path / "s", tmp_path / "scratch"
+    recs = _fragments(src, n=60)
+    ingest([SourceObject(src, "frags", "1")], root, "S0")
+    genomes = [GenomeInput((ids.contig_uid(r),), 11, kind="prokaryote") for r in recs]
+    genomes[40] = replace(genomes[40], kind="bogus")  # a short genome: called in a worker process
+    scratch.mkdir()
+    with pytest.raises(ValueError, match="unknown genome kind 'bogus'"):
+        run(root, "S0", genomes, workers=3, batch_bases=20_000, tmp=scratch)
+    assert _outputs(root) == {}
+    assert list(scratch.iterdir()) == []
 
 
 @pytest.mark.covers("D-01")
