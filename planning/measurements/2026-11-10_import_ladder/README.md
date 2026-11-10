@@ -27,7 +27,7 @@ FASTA carries no topology, so every contig was stored as linear.
 | `rL.1` | S1 | done, verified. Row-for-row equal to the old-code pilot on locators, genes, proteins, IGRs, tapes, clusters and tokens |
 | `rL.2` | S1 + P1 | done, verified |
 | `rL.2p` | meant to be S1 + P1 with Pfam on P1 | **contaminated, do not use for counts**: see finding 1 |
-| `rL.3` | S1 + P1 + P2 | clustering was running at 01:55 CST on 2026-11-10 (unit `ladder-C`) |
+| `rL.3` | S1 + P1 + P2 | done and verified on `/stor` at 04:10 CST on 2026-11-10, after the postings fix: see `rL3.md`. No Pfam for P2 (0.30% of its slots carry a family token) |
 
 ## Step timings
 

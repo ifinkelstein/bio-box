@@ -1,0 +1,39 @@
+{
+ "rL.1": {
+  "files": 25,
+  "artifacts": 3,
+  "bytes": 1623256748,
+  "missing_or_changed": [
+   "size differs: l0/l0_manifest.parquet"
+  ],
+  "later_files_not_in_this_manifest": 82,
+  "scratch_manifest_hash": "d39408853bcf25bbabf4e751b64f1a5e",
+  "local_manifest_hash": "d39408853bcf25bbabf4e751b64f1a5e",
+  "same_file_sha256_as_local": true,
+  "verify_s": 5.6
+ },
+ "rL.2": {
+  "files": 46,
+  "artifacts": 6,
+  "bytes": 2996804176,
+  "missing_or_changed": [
+   "size differs: l0/l0_manifest.parquet"
+  ],
+  "later_files_not_in_this_manifest": 58,
+  "scratch_manifest_hash": "fd1b4751d2f0d28528cc5ff78d368434",
+  "local_manifest_hash": "fd1b4751d2f0d28528cc5ff78d368434",
+  "same_file_sha256_as_local": true,
+  "verify_s": 9.6
+ },
+ "rL.3": {
+  "files": 77,
+  "artifacts": 33,
+  "bytes": 13508242096,
+  "missing_or_changed": [],
+  "later_files_not_in_this_manifest": 0,
+  "scratch_manifest_hash": "e08feda18e1e13d901472b76c4913cb6",
+  "local_manifest_hash": "e08feda18e1e13d901472b76c4913cb6",
+  "same_file_sha256_as_local": true,
+  "verify_s": 45.4
+ }
+}

@@ -1,0 +1,328 @@
+{
+ "release": "rL.3",
+ "root": "/stor/scratch/Wilke/if2453/all-the-data/provisional/rL",
+ "manifest": {
+  "files": 77,
+  "artifacts": 33,
+  "bytes": 13508242096,
+  "stage_values_in_paths": {
+   "P1": 19,
+   "P2": 42,
+   "S1": 19,
+   "rL.1": 1,
+   "rL.2": 1,
+   "rL.2p": 1,
+   "rL.3": 1
+  },
+  "release_values_in_paths": {
+   "rL.1": 6,
+   "rL.2": 6,
+   "rL.2p": 6,
+   "rL.3": 6
+  },
+  "manifest_hash": "e08feda18e1e13d901472b76c4913cb6"
+ },
+ "open_catalog_s": 0.691,
+ "open_catalog_rss_growth_mb": 54.9,
+ "catalog_info": {
+  "release_id": "rL.3",
+  "manifest_hash": "e08feda18e1e13d901472b76c4913cb6",
+  "root": "/stor/scratch/Wilke/if2453/all-the-data/provisional/rL",
+  "duckdb_version": "2.0.0"
+ },
+ "coverage": {
+  "contig_index_default_by_stage": {
+   "P1": 539,
+   "P2": 5018,
+   "S1": 27258
+  },
+  "genome_input_by_stage_kind": [
+   [
+    "P1",
+    "prokaryote",
+    539
+   ],
+   [
+    "P2",
+    "prokaryote",
+    5018
+   ],
+   [
+    "S1",
+    "virus",
+    27258
+   ]
+  ],
+  "tapes_by_stage": [
+   [
+    "P1",
+    539,
+    927920
+   ],
+   [
+    "P2",
+    5018,
+    8722859
+   ],
+   [
+    "S1",
+    27258,
+    2398087
+   ]
+  ],
+  "contig_dim_rL3": [
+   32815,
+   32815
+  ],
+  "contig_dim_releases": {
+   "rL.1": 27258,
+   "rL.2": 27797,
+   "rL.2p": 32815,
+   "rL.3": 32815
+  },
+  "tape_tokens_rL3_contigs": [
+   32815,
+   32815
+  ],
+  "postings_rL3": [
+   25822709,
+   32805
+  ],
+  "dim_not_in_index": 0,
+  "index_not_in_dim": 0,
+  "cluster_member_rL3": {
+   "nr50": 2966200,
+   "nr90": 8278537
+  },
+  "cluster_member_rL3_members": 10620684,
+  "token_dict_rL3_by_level": {
+   "family": 14106,
+   "nr50": 2966200,
+   "nr90": 8278537
+  },
+  "domains_by_stage": {
+   "P1": 1552451,
+   "S1": 605564
+  },
+  "family_postings_by_stage": {
+   "P1": 757230,
+   "P2": 26485,
+   "S1": 941262
+  }
+ },
+ "queries": {
+  "a_seq_get_1000": {
+   "pick_s": 0.51,
+   "wall_s": 0.904,
+   "warm_wall_s": 0.67,
+   "result": [
+    [
+     1000,
+     1856765
+    ]
+   ],
+   "expected_bp": 1856765,
+   "ok": true,
+   "distinct_contigs": 881,
+   "by_kind": {
+    "prokaryote": 813,
+    "virus": 187
+   },
+   "scans": [
+    {
+     "files_read": 0,
+     "row_groups_scanned": 0,
+     "row_groups_total": 0,
+     "rows_scanned": 0
+    }
+   ],
+   "bytes_read": 0,
+   "bgzf": {
+    "blocks_read": 1033,
+    "compressed_bytes_read": 20402604,
+    "uncompressed_bytes_decoded": 67434240
+   },
+   "index": {
+    "locator_row_groups_read": 3,
+    "index_row_groups_read": 3
+   },
+   "warm": {
+    "scans": [
+     {
+      "files_read": 0,
+      "row_groups_scanned": 0,
+      "row_groups_total": 0,
+      "rows_scanned": 0
+     }
+    ],
+    "bytes_read": 0,
+    "bgzf": {
+     "blocks_read": 1033,
+     "compressed_bytes_read": 20402604,
+     "uncompressed_bytes_decoded": 67434240
+    },
+    "index": {
+     "locator_row_groups_read": 0,
+     "index_row_groups_read": 0
+    }
+   }
+  },
+  "b_nr50_neighbours_largest_prok_cluster": {
+   "definition": "NR50 cluster of rL.3 with the most distinct member proteins found on prokaryote contigs; partners: NR50 tokens within 3 slots",
+   "find_cluster_s": 3.68,
+   "top3": [
+    [
+     "f66315ba169348cec749a0d94cafae71",
+     2899
+    ],
+    [
+     "3a04ab75f40f07b9a78aa6993b389ddc",
+     2709
+    ],
+    [
+     "df0c4ccbbba432f34d010f542ed12dd1",
+     2496
+    ]
+   ],
+   "cluster_uid": "f66315ba169348cec749a0d94cafae71",
+   "prokaryote_members": 2899,
+   "all_members": 2908,
+   "token_id": 4611686018430242937,
+   "n_slots_dict": 2950,
+   "rep_uid": "1afedddd207032261289719e65dd7982",
+   "rep_pfam": [],
+   "anchor_loci": 2950,
+   "anchor_contigs": 2331,
+   "loci_with_partner": 2950,
+   "pair_rows": 17678,
+   "wall_s": 1.433,
+   "top10_wall_s": 1.958,
+   "top10_partners": [
+    [
+     "cf3c79cc1141b4e5bf0d94887a2d1a68",
+     449
+    ],
+    [
+     "c8cea4b744852fee5f2163c0ef8c0f5e",
+     405
+    ],
+    [
+     "04145240b07edc2f9e5a6563f0d43af2",
+     352
+    ],
+    [
+     "df23413849d4482389adbdc886db89d5",
+     289
+    ],
+    [
+     "10bc0867786cf1b6e84e9784dd99fddd",
+     235
+    ],
+    [
+     "76940adade6fd2206e069599fb92f41d",
+     162
+    ],
+    [
+     "73ec43204166767e7ebc35ecfec906c1",
+     161
+    ],
+    [
+     "60a1dc0fe40ce250ed6b2c4b97856886",
+     130
+    ],
+    [
+     "cb375f662f1186c46a63b0aba2eb20d5",
+     124
+    ],
+    [
+     "a43f8e6509031258a2da08255d8e254c",
+     122
+    ]
+   ],
+   "scans": [
+    {
+     "files_read": 1,
+     "row_groups_scanned": 1,
+     "row_groups_total": 211,
+     "rows_scanned": 2950
+    },
+    {
+     "files_read": 1,
+     "row_groups_scanned": 99,
+     "row_groups_total": 211,
+     "rows_scanned": 10052622
+    }
+   ],
+   "bytes_read": 86709192,
+   "bgzf": {
+    "blocks_read": 0,
+    "compressed_bytes_read": 0,
+    "uncompressed_bytes_decoded": 0
+   },
+   "index": {
+    "locator_row_groups_read": 0,
+    "index_row_groups_read": 0
+   }
+  },
+  "c_postings_join_contig_dim": {
+   "sql": "SELECT CASE tp.token_id >> 61 WHEN 1 THEN 'family' WHEN 2 THEN 'nr50' WHEN 3 THEN 'nr90' END AS level, d.assembly_quality, count(*) AS postings, count(DISTINCT tp.contig_uid) AS contigs, sum(d.contig_len) AS len_sum FROM token_postings tp JOIN contig_dim_now() d USING (contig_uid) WHERE tp.release = 'rL.3' GROUP BY ALL ORDER BY 1, 2",
+   "wall_s": 1.466,
+   "result": [
+    [
+     "family",
+     "complete",
+     1724977,
+     28965,
+     3697613153142
+    ],
+    [
+     "nr50",
+     "complete",
+     12048866,
+     32805,
+     46232543314908
+    ],
+    [
+     "nr90",
+     "complete",
+     12048866,
+     32805,
+     46232543314908
+    ]
+   ],
+   "total_postings": 25822709,
+   "scans": [
+    {
+     "files_read": 1,
+     "row_groups_scanned": 211,
+     "row_groups_total": 211,
+     "rows_scanned": 25822709
+    },
+    {
+     "files_read": 1,
+     "row_groups_scanned": 1,
+     "row_groups_total": 1,
+     "rows_scanned": 32815
+    },
+    {
+     "files_read": 0,
+     "row_groups_scanned": 1,
+     "row_groups_total": 1,
+     "rows_scanned": 4
+    }
+   ],
+   "bytes_read": 146574196,
+   "bgzf": {
+    "blocks_read": 0,
+    "compressed_bytes_read": 0,
+    "uncompressed_bytes_decoded": 0
+   },
+   "index": {
+    "locator_row_groups_read": 0,
+    "index_row_groups_read": 0
+   }
+  }
+ },
+ "rss_mb_end": 1269.5,
+ "self_peak_rss_mb": 2579.4
+}
