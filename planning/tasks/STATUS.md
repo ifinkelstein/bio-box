@@ -80,7 +80,7 @@ probed by hand on the pod).
 
 ## Open items for the PI
 
-- Add `prodigal=2.6.3` to the test image, or accept that the Prodigal test stays skipped.
+- Done 2026-11-10: the PI approved `prodigal=2.6.3` in `container/environment.yml` (test oracle only). The Prodigal test first runs in the image built from `main`.
 - A `read:packages` credential, so the image built from `main` can be pulled on the pod.
 - Confirm the day window for the pod's thread caps (profile assumes 08:00 to 20:00 on weekdays).
 - First-10 questions (card 0-03), before the S1 gate.
