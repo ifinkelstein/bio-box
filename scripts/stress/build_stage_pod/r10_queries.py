@@ -62,9 +62,12 @@ def timed(con, sql: str, params=None) -> dict:
 
 def main(root: Path, rel: str, out: Path) -> dict:
     R: dict = {"release": rel, "root": str(root)}
+    def connect():
+        return catalog.open_catalog(root / "catalog" / f"release={rel}.duckdb", threads=4, memory_limit="16GB",
+                                    temp_directory=out.parent / f"duck-q-{rel}")
+
     t = time.perf_counter()
-    con = catalog.open_catalog(root / "catalog" / f"release={rel}.duckdb", threads=4, memory_limit="16GB",
-                               temp_directory=out.parent / f"duck-q-{rel}")
+    con = connect()
     R["open_catalog_s"] = round(time.perf_counter() - t, 3)
 
     t = time.perf_counter()
@@ -114,7 +117,9 @@ def main(root: Path, rel: str, out: Path) -> dict:
     lo, hi = 2 << 61, 3 << 61
 
     def neighbours(ptok: int) -> dict:
-        """NR50 partners within 3 slots of the slots of token `ptok`: the B-31 macro and the ladder's query."""
+        """NR50 partners within 3 slots of the slots of token `ptok`: the B-31 macro and the ladder's query. On a
+        new connection, so the tape-token lookup's row-group cache holds nothing from an earlier query."""
+        con = connect()
         d = {"partners_of": timed(
                  con, f"SELECT count(*), sum(n_loci), sum(n_pairs) FROM partners_of({ptok}::UBIGINT, 3) "
                       f"WHERE partner_token >= {lo}::UBIGINT AND partner_token < {hi}::UBIGINT"),
