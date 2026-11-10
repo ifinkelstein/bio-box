@@ -514,16 +514,18 @@ def test_stop_is_checked_before_each_shard_launch(direct, tmp_path, monkeypatch,
 
 @pytest.mark.covers("D-03")
 def test_shards_publishing_at_once_do_not_remove_each_others_incoming_area(direct, tmp_path, monkeypatch):
-    """After its renames, run-step removes `<root>/.incoming` when it lists it empty (`_remove_leftovers`);
-    a shard that copies its outputs into `.incoming` between that listing and the `rmdir` makes the `rmdir`
-    fail, after the first shard's files are in the root and before its run record. Ordered here without
-    timing: shard 0 lists `.incoming`, then shard 1 copies (rsync, or copytree where rsync is absent, as in
-    the image), then shard 0 goes on. Both must publish."""
+    """Before card C-12, run-step removed `<root>/.incoming` after its renames when it listed it empty
+    (`_remove_leftovers`); a shard that copied its outputs into `.incoming` between that listing and the `rmdir`
+    made the `rmdir` fail, after the first shard's files were in the root and before its run record. Ordered
+    here without timing: shard 1, before its copy (rsync, or copytree where rsync is absent, as in the image),
+    waits until shard 0 has looked at `.incoming` (then shard 0 waits for that copy before it goes on) or, as
+    run-step since card C-12 never lists it, until shard 0 has ended. Both must publish. (Migrated by card
+    C-12: the wait for shard 0's listing became a wait for its listing or its end.)"""
     monkeypatch.setattr(bs, "shard_residues", patched_residues(direct))
     prof, root = small_budget(direct), tmp_path / "root"
     incoming = root.resolve() / ".incoming"
     who = threading.local()
-    listed, copied = threading.Event(), threading.Event()
+    listed, copied = threading.Event(), threading.Event()  # listed: shard 0 looked at `.incoming`, or ended
     real_iterdir, real_run, real_copytree = Path.iterdir, subprocess.run, shutil.copytree
 
     def iterdir(self):
@@ -536,7 +538,7 @@ def test_shards_publishing_at_once_do_not_remove_each_others_incoming_area(direc
 
     def before_copy(dst) -> None:
         if getattr(who, "step", None) == shard(1) and not copied.is_set() and shard(1) in str(dst):
-            assert listed.wait(TIMEOUT), "shard 0 never cleaned up beside shard 1"
+            assert listed.wait(TIMEOUT), "shard 0 never cleaned up or ended beside shard 1"
 
     def run_cmd(argv, *a, **k):
         before_copy(argv[-1] if argv and str(argv[0]).endswith("rsync") else "")
@@ -562,6 +564,8 @@ def test_shards_publishing_at_once_do_not_remove_each_others_incoming_area(direc
             who.step = None
             if step == shard(1):
                 copied.set()  # whatever happened, shard 0 waits no longer
+            if step == shard(0):
+                listed.set()  # shard 0 has ended: shard 1 waits no longer
 
     def after_scan(point: str) -> None:
         if point == f"after:{SCAN}":

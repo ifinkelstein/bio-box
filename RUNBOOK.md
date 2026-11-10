@@ -230,7 +230,7 @@ What `run-step` leaves, and what it does at the next start:
 | `$ROOT/runs/stage=<S>/<step>.json` (run record) | the step finished | skips the step if every listed output is in the root with its recorded size |
 | `$ROOT/runs/stage=<S>/<step>.publishing.json` (intent file) | killed while publishing | finishes the publish, or undoes it, then reruns (see below) |
 | `$ROOT/.incoming/<stage>.<step>/` | killed while publishing | uses it to finish the publish, then removes it |
-| `$ROOT/.incoming/_build-stage.<stage>.<scan step>/` (empty) | `build-stage` was killed while scan shards ran | nothing; `build-stage` removes it when the shards of its next call end |
+| `$ROOT/.incoming/` (empty) | a step was killed after removing its own directory there, or the root's filesystem cannot lock a directory (NFS) | nothing; the next step to publish removes it when it is empty and no other step is creating into it |
 
 An intent file lists every output with its sha256. At the next start, an output that is in the
 root with the listed sha256 is kept, and one still in `.incoming` is moved in. If every output is

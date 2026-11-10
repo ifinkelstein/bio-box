@@ -67,13 +67,8 @@ then the call returns the failed shard's code (of the lowest shard when several 
 Concurrent run-steps into one root are safe because each has its own step name, so its own staging
 directory, `.incoming/<stage>.<step>/`, intent file and run record; the shard records are distinct
 files of a `small_ok` artifact (the size check does not group them) and the shards write no ledger.
-One thing is shared: after its renames, run-step removes `<root>/.incoming` when it lists it empty
-(`runstep._remove_leftovers`), which fails (`rmdir`: not empty) when another shard copies into
-`.incoming` between that listing and the `rmdir`, after the first shard's files are in the root and
-before its run record. While shards run, build-stage therefore keeps an empty directory
-`.incoming/_build-stage.<stage>.<scan step>` (no step's incoming directory can have that name: a stage
-name starts with a letter or digit), so `.incoming` is never empty; it removes it, and `.incoming` if
-then empty, once every shard has ended.
+The one directory they share, `<root>/.incoming`, `run-step` itself creates and removes safely beside
+other steps (card C-12, `runstep._remove_leftovers`); build-stage keeps nothing there.
 
 The first step that does not exit 0 ends the build with its exit code. `run-step` gives every step
 kill-and-resume (cards C-02, C-03), so the next call skips each step whose run record and outputs
@@ -85,7 +80,6 @@ unit.
 
 from __future__ import annotations
 
-import contextlib
 import dataclasses
 import gzip
 import hashlib
@@ -539,7 +533,7 @@ def _run_shards(prof: Profile, root: Path, scan: Step, shards: list[Step], jobs:
                 hook: Hook | None, allow: Callable[[], int]) -> int | None:
     """Run the shard steps without a run record, up to `jobs` at once (module docstring); return None when
     every shard has its record, else the failed shard's code or 75 for STOP. A shard with a record and no
-    intent file is passed over (its hook is called). The marker in `.incoming` is kept while any shard runs."""
+    intent file is passed over (its hook is called)."""
     todo = []
     for s in shards:
         if _record(root, s).exists() and not _intent(root, s).exists():
@@ -549,15 +543,7 @@ def _run_shards(prof: Profile, root: Path, scan: Step, shards: list[Step], jobs:
             todo.append(s)
     if not todo:
         return None
-    marker = root / ".incoming" / f"_build-stage.{scan.run_stage}.{scan.name}"
-    marker.mkdir(parents=True, exist_ok=True)
-    try:
-        return _launch(prof, root, todo, jobs, cpus, run, hook, allow)
-    finally:
-        with contextlib.suppress(OSError):
-            marker.rmdir()
-        with contextlib.suppress(OSError):  # not empty: a killed step's publish, which its run-step recovers
-            marker.parent.rmdir()
+    return _launch(prof, root, todo, jobs, cpus, run, hook, allow)
 
 
 def _launch(prof: Profile, root: Path, todo: list[Step], jobs: int, cpus: int, run: Runner,
