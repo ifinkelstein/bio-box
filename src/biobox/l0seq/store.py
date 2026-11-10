@@ -307,6 +307,15 @@ class SeqStore:
     def length_of(self, rd: bytes) -> int:
         return self._where(rd)[1]
 
+    def locate(self, rd: bytes) -> tuple[str, int]:
+        """(shard path under the root, contig_len) of a stored variant, in one locator lookup."""
+        return self._where(rd)
+
+    def read(self, shard: str, rd: bytes, start: int, end: int) -> bytes:
+        """Forward bytes of a variant already located (`locate`), with no index lookup; batch
+        readers (`catalog.bb_seq`) use it to read in shard order."""
+        return self._shard(shard).fetch(rd.hex(), start, end)
+
     def raw(self, rd: bytes, start: int = 0, end: int | None = None) -> bytes:
         """Forward-strand bytes of one stored variant."""
         rel, length = self._where(rd)

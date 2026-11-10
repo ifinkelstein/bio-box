@@ -218,7 +218,10 @@ class BgzfFasta:
             self._fai_size = None
 
     def __del__(self):
-        self.close()
+        try:
+            self.close()
+        except Exception:  # at interpreter exit module globals (os) may already be gone
+            pass
 
     def check_sorted(self) -> bool:
         """True if the `.fai` names are strictly increasing (reads the whole file once)."""
