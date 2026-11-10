@@ -4,7 +4,9 @@ A run is a recorded job:
 
   1. The recipe is checked on paper (`recipe.load`) and against the release (`resolve`):
      the pack must verify (C-12), every seed, model ID and positive control must be in it,
-     and nothing in the recipe may be beyond what this build runs. Refusals raise
+     and nothing in the recipe may be beyond what this build runs. A file seed (`hmm_file`,
+     `msa`, `sequences`) is read once here: its sha256 replaces its path in the recipe hash
+     and the query hash, and its bytes are staged for the worker. Refusals raise
      RecipeError and record nothing.
   2. The target's shards are copied to `<work>/<run_id>/` and checked against the pack
      manifest's sha256; their total must fit the /tmp quota.
@@ -23,7 +25,9 @@ A run is a recorded job:
 
 from __future__ import annotations
 
+import copy
 import fcntl
+import hashlib
 import json
 import os
 import platform
@@ -109,9 +113,11 @@ def resolve(root: Path, r: dict, release: str) -> dict:
     elif seed["kind"] == "hmm":
         if engine.find_model([pdir / m["path"] for m in models], seed["value"]) is None:
             raise RecipeError(f"model {seed['value']} is not in the release's libraries")
-    elif seed["kind"] == "msa":
-        if not Path(seed["value"]).exists():
-            raise RecipeError(f"seed MSA {seed['value']} not found")
+    seed_bytes = None
+    if seed["kind"] in rcp.FILE_SEED_KINDS:
+        seed, seed_bytes = _read_seed_file(seed)
+        r = copy.deepcopy(r)
+        r["seed"][0]["sha256"] = seed["sha256"]  # what recipe_hash covers in place of the path
     positives = []
     for p in r["controls"]["positive"]:
         uid = ids.protein_uid(p["value"]).hex() if p["kind"] == "sequence" else p["value"]
@@ -120,7 +126,38 @@ def resolve(root: Path, r: dict, release: str) -> dict:
                               "it could never be recovered")
         positives.append({"kind": p["kind"], "uid": uid, "label": p.get("label")})
     return {"manifest": manifest, "pack_id": pid, "shards": shards, "models": models, "seed": seed,
-            "positives": positives, "pack_dir": pdir}
+            "positives": positives, "pack_dir": pdir, "recipe": r, "seed_bytes": seed_bytes}
+
+
+def _read_seed_file(seed: dict) -> tuple[dict, bytes]:
+    """Read a file seed once at submit: its sha256 and what it holds travel with the job, and the
+    worker searches with these bytes (staged), not with whatever the path holds later."""
+    kind, path = seed["kind"], seed["value"]
+    try:
+        data = Path(path).read_bytes()
+    except FileNotFoundError:
+        raise RecipeError(f"seed {kind} file {path} not found") from None
+    except OSError as e:
+        raise RecipeError(f"seed {kind} file {path} cannot be read: {e}") from None
+    out = {k: v for k, v in seed.items() if k != "value"}
+    out.update(path=path, sha256=hashlib.sha256(data).hexdigest())
+    try:
+        if kind == "hmm_file":
+            hmm = engine.read_hmm_file(data, seed.get("model"))
+            out.update(model_name=engine.text(hmm.name), model_accession=engine.text(hmm.accession),
+                       model_length=int(hmm.M))
+        elif kind == "sequences":
+            recs = engine.read_seed_fasta(data)
+            out.update(n_sequences=len(recs), names=[n for n, _ in recs])
+    except ValueError as e:
+        raise RecipeError(f"seed {kind} file {path}: {e}") from None
+    return out, data
+
+
+def query_hash(seed: dict) -> str:
+    """The resolved seed's hash; a file seed counts by its content (sha256 and what it holds), not its path."""
+    q = {k: v for k, v in seed.items() if not (seed["kind"] in rcp.FILE_SEED_KINDS and k == "path")}
+    return blake3(json.dumps(q, sort_keys=True).encode()).hexdigest()
 
 
 def _set_limits(limits: Limits):
@@ -219,6 +256,7 @@ def run(root: Path, recipe_src: Path | str, release: str, *, limits: Limits = Li
     root = Path(root).resolve()
     r, text = rcp.load(Path(recipe_src) if isinstance(recipe_src, Path) else recipe_src)
     res = resolve(root, r, release)
+    r = res["recipe"]
     submitted = datetime.now(timezone.utc)
     rh = rcp.recipe_hash(r)
     run_id = run_id or new_run_id(rh, release, res["pack_id"], submitted)
@@ -237,7 +275,13 @@ def run(root: Path, recipe_src: Path | str, release: str, *, limits: Limits = Li
     rc, ru, result = None, None, {}
     try:
         shards, models, sums = _stage(res, work, limits)
+        seed_file = None
+        if res["seed_bytes"] is not None:  # the bytes read and hashed at submit, not the path's later content
+            seed_file = work / "seed" / Path(res["seed"]["path"]).name
+            seed_file.parent.mkdir()
+            seed_file.write_bytes(res["seed_bytes"])
         job = {"run_id": run_id.hex(), "root": str(root), "out": str(out), "recipe": r, "seed": res["seed"],
+               "seed_file": str(seed_file) if seed_file else None,
                "positives": res["positives"], "target_kind": rcp.RUN_TARGETS[r["target"]],
                "shards": [str(p) for p in shards], "models": [str(p) for p in models],
                "meta": str(res["pack_dir"] / f"{r['target']}/{r['target']}_meta.parquet") if r["target"] != "unique" else None,
@@ -269,7 +313,7 @@ def run(root: Path, recipe_src: Path | str, release: str, *, limits: Limits = Li
         "runtime_image_digest": os.environ.get("BIOBOX_IMAGE_DIGEST", "none"),
         "written_against": r["written_against"], "ran_against": release, "pack_id": res["pack_id"],
         "shard_sha256": sums, "z_prot": pack.Z["z_prot"], "z_nt_mb": pack.Z["z_nt_mb"],
-        "query_hash": blake3(json.dumps(res["seed"], sort_keys=True).encode()).hexdigest(),
+        "query_hash": query_hash(res["seed"]),
         "submitted_at": submitted, "wall_s": wall, "peak_rss_bytes": rss, "cpu_min_max_pid": cpu_min,
         "host": socket.gethostname(), "exit_code": rc, "status": status, "partial_policy": r["partial"],
         "max_output_gb": r["max_output_gb"], "target": r["target"], "target_size": result.get("target_size"),
@@ -279,6 +323,7 @@ def run(root: Path, recipe_src: Path | str, release: str, *, limits: Limits = Li
         "controls_json": json.dumps(result["controls"], sort_keys=True, default=str) if result.get("controls") else None,
         "warnings_json": json.dumps(result.get("warnings", [])) if result else None,
         "limits_json": json.dumps(asdict(limits), sort_keys=True), "error": error,
+        "seed_json": json.dumps(res["seed"], sort_keys=True),
     }
     _publish(root, run_id, row, out, status)
     if not keep_work:
@@ -325,7 +370,7 @@ def submit(root: Path, recipe_path: Path, release: str, limits: Limits = Limits(
     root = Path(root).resolve()
     r, _ = rcp.load(Path(recipe_path))
     res = resolve(root, r, release)
-    run_id = new_run_id(rcp.recipe_hash(r), release, res["pack_id"], datetime.now(timezone.utc))
+    run_id = new_run_id(rcp.recipe_hash(res["recipe"]), release, res["pack_id"], datetime.now(timezone.utc))
     p = _pending(root)
     p.mkdir(parents=True, exist_ok=True)
     cmd = [sys.executable, "-m", "biobox.cli", "search", "run", str(recipe_path), "--root", str(root),

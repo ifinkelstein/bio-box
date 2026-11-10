@@ -1,8 +1,9 @@
 """Profile search rounds and the iteration controller (operations O-SEARCH, O-ITER; SEARCH_PLAN §4.1, SD-10).
 
 Every round is an `hmmsearch` of one profile against the whole target at the fixed search
-space (Z_prot = domZ = 1e8). Round 1 searches with the seed: an HMM as given, or a profile
-built from a sequence (what phmmer and the first round of jackhmmer do) or from an MSA.
+space (Z_prot = domZ = 1e8). Round 1 searches with the seed: an HMM as given (from a pack
+library or a user's file), or a profile built from a sequence (what phmmer and the first round
+of jackhmmer do), from an MSA, or from unaligned seed sequences (`build_from_sequences`).
 
 Per round k:
 
@@ -30,6 +31,7 @@ from __future__ import annotations
 import io
 import math
 import random
+import re
 from dataclasses import dataclass, field
 from typing import Callable, Iterator
 
@@ -98,9 +100,85 @@ def build_from_msa(name: str, msa):
     return hmm
 
 
+def build_from_sequences(name: str, records: list[tuple[str, str]]):
+    """A profile from unaligned seeds, as hmmalign + hmmbuild would make it with no multiple aligner:
+    a single-sequence profile of the first seed, every seed aligned to it (trimmed to the model's
+    match states) and the profile built from that alignment. Returns (profile, alignment)."""
+    first = build_from_sequence(f"{name}_first", records[0][1])
+    block = pyhmmer.easel.DigitalSequenceBlock(AMINO, [_digital(n, s) for n, s in records])
+    msa = pyhmmer.hmmer.hmmalign(first, block, trim=True, digitize=True, cpus=1)
+    return build_from_msa(name, msa), msa
+
+
 def read_msa(path) -> pyhmmer.easel.DigitalMSA:
     with pyhmmer.easel.MSAFile(str(path), digital=True, alphabet=AMINO) as fh:
         return fh.read()
+
+
+def _model_keys(hmm) -> set[str]:
+    acc = text(hmm.accession)
+    return {k for k in (acc, acc.split(".")[0], text(hmm.name)) if k}
+
+
+def read_hmm_file(data: bytes, model: str | None = None):
+    """The one HMMER3 profile in a user's file, or the one `model` names (name or accession, with or
+    without version). ValueError says why when the file holds none, several, or a non-protein one."""
+    try:
+        with pyhmmer.plan7.HMMFile(io.BytesIO(data)) as fh:
+            hmms = list(fh)
+    except (ValueError, EOFError, OSError, RuntimeError) as e:
+        raise ValueError(f"not an HMMER3 profile file ({e})") from None
+    if not hmms:
+        raise ValueError("not an HMMER3 profile file (no model in it)")
+    names = [text(h.accession) or text(h.name) for h in hmms]
+    if model is None:
+        if len(hmms) > 1:
+            raise ValueError(f"{len(hmms)} models in the file ({', '.join(names[:5])}"
+                             f"{', ...' if len(names) > 5 else ''}); name one with `model:` (name or accession)")
+        hmm = hmms[0]
+    else:
+        match = [h for h in hmms if model in _model_keys(h)]
+        if not match:
+            raise ValueError(f"no model {model!r} in the file (it holds {', '.join(names[:5])}"
+                             f"{', ...' if len(names) > 5 else ''})")
+        if len(match) > 1:
+            raise ValueError(f"model {model!r} names {len(match)} models in the file; give a unique accession")
+        hmm = match[0]
+    if not hmm.alphabet.is_amino():
+        raise ValueError(f"model {text(hmm.name)} is not an amino-acid profile; protein targets need an "
+                         "amino-acid profile")
+    return hmm
+
+
+_NUCLEOTIDE = set("ACGTUN")
+
+
+def read_seed_fasta(data: bytes) -> list[tuple[str, str]]:
+    """(name, sequence) of a protein FASTA of seeds, in file order; ValueError says why it is unusable:
+    fewer than 2 sequences, a duplicate name, an empty sequence, a character outside A-Z, or only
+    nucleotide letters."""
+    try:
+        with pyhmmer.easel.SequenceFile(io.BytesIO(data), format="fasta") as fh:
+            recs = [(text(s.name), s.sequence) for s in fh]
+    except (ValueError, EOFError, OSError, RuntimeError) as e:
+        raise ValueError(f"not a FASTA file ({e})") from None
+    if len(recs) < 2:
+        raise ValueError(f"{len(recs)} sequence(s); a profile from sequences needs at least 2 "
+                         "(give one sequence as a `sequence` seed)")
+    out, seen = [], set()
+    for name, seq in recs:
+        if name in seen:
+            raise ValueError(f"duplicate sequence name {name!r}")
+        seen.add(name)
+        seq = re.sub(r"\s+", "", seq).upper().rstrip("*")
+        if not seq:
+            raise ValueError(f"sequence {name!r} is empty")
+        if not re.fullmatch(r"[A-Z]+", seq):
+            raise ValueError(f"sequence {name!r} has characters outside A-Z")
+        out.append((name, seq))
+    if set("".join(s for _, s in out)) <= _NUCLEOTIDE:
+        raise ValueError("every sequence holds only nucleotide letters (ACGTUN); give protein sequences")
+    return out
 
 
 def find_model(paths: list, key: str):

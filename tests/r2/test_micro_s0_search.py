@@ -9,6 +9,8 @@ not carry, and bridge sequences between them, so an unguarded jackhmmer drifts i
 
 from __future__ import annotations
 
+import hashlib
+import io
 import json
 import platform
 import random
@@ -26,7 +28,8 @@ from biobox import catalog, contracts, ids
 from biobox.l1 import domains, igr
 from biobox.l1.genecall import GENE_CALL_VERSION as V
 from biobox.registry.schemas import table
-from biobox.search import export, fastz, orfs, pack, runner
+from biobox.search import engine, export, fastz, orfs, pack, runner
+from biobox.search import recipe as rcp
 from biobox.search.recipe import RecipeError
 
 sys.path.insert(0, str(Path(__file__).parent))
@@ -659,6 +662,287 @@ def test_rounds_equal_the_hmmsearch_binary(placed, tmp_path):
             want = sorted((a, b) for a, b, sc in ds if sc >= bits / 2 or (a, b, sc) == best)
             have = sorted((h["env_start"], h["env_end"]) for h in mine if h["target_uid"].hex() == t)
             assert have == want, f"round {k}, {t}: kept domains differ"
+
+
+# --- W-02: a user's HMM file and seed sequences as seeds -------------------------------------------------
+
+
+def _library_models(path: Path, accs: list[str]) -> list:
+    hmms = list(domains.iter_hmms(path))
+    return [next(h for h in hmms if engine.text(h.accession) == a) for a in accs]
+
+
+def _write_hmms(path: Path, hmms: list) -> Path:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with open(path, "wb") as fh:
+        for h in hmms:
+            h.write(fh)
+    return path
+
+
+def _write_faa(path: Path, records: list[tuple[str, str]]) -> Path:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text("".join(f">{n}\n{s}\n" for n, s in records))
+    return path
+
+
+def _file_recipe(kind: str, path: Path, positive: bytes, rel: str = REL, tool: str = "hmmsearch", mx: int = 1,
+                 bits: float = 25, seed_extra: str = "") -> str:
+    return (f"recipe: w02\nwritten_against: {rel}\nseed: [{{{kind}: '{path}'{seed_extra}}}]\ntarget: unique\n"
+            f"tool: {tool}\niterations: {{max: {mx}, inclusion_bits: {bits}}}\n"
+            f"controls: {{positive: [{{protein_uid: {positive.hex()}}}]}}\n")
+
+
+def _stored(root: Path, acc: str) -> set[bytes]:
+    return {r["protein_uid"] for f in sorted((root / "l1/domains").rglob("*.parquet"))
+            for r in pq.read_table(f).to_pylist() if r["model_acc"] == acc}
+
+
+def _rows(root: Path, row: dict) -> list[tuple]:
+    return sorted((h["round"], h["target_uid"], h["bitscore"], h["seq_bitscore"], h["evalue_zref"], h["seq_evalue_zref"],
+                   h["env_start"], h["env_end"], h["ali_start"], h["ali_end"], h["hmm_from"], h["hmm_to"],
+                   h["model_len"], h["curation_label"])
+                  for h in runner.read_hits(root, row["run_id"].hex(), final_only=False))
+
+
+def _pinned(root: Path, text: str, rel: str = REL) -> tuple[str, str, dict]:
+    r, _ = rcp.load(text)
+    res = runner.resolve(root, r, rel)
+    return rcp.recipe_hash(res["recipe"]), runner.query_hash(res["seed"]), res
+
+
+@pytest.mark.covers("W-02")
+def test_w02_hmm_file_returns_exactly_the_library_models_hits(world, tmp_path):
+    root, d, _ = world
+    pos = sorted(_stored(root, "TEST0000"))[0]
+    f = _write_hmms(tmp_path / "own" / "lam0.hmm", _library_models(d / "a.hmm", ["TEST0000"]))
+    lib = _run(world, _recipe(pos, pos, tool="hmmsearch").replace(f"seed: [{{protein_uid: {pos.hex()}}}]",
+                                                                 "seed: [{hmm: TEST0000}]"))
+    own = _run(world, _file_recipe("hmm_file", f, pos))
+    assert lib["status"] == own["status"] == "ok", (lib["error"], own["error"])
+    assert (own["z_prot"], own["rounds"], own["final_round"]) == (lib["z_prot"], 1, 1)
+    want = _rows(root, lib)
+    assert want and _rows(root, own) == want
+    assert pos in {r[1] for r in want}
+
+
+def _score_line_edit(text: str) -> str:
+    """One digit changed in the first COMPO line (a score line); the file still parses."""
+    lines = text.splitlines(keepends=True)
+    i = next(k for k, line in enumerate(lines) if line.split()[:1] == ["COMPO"])
+    j = next(k for k, c in enumerate(lines[i]) if c.isdigit())
+    lines[i] = lines[i][:j] + ("2" if lines[i][j] != "2" else "3") + lines[i][j + 1:]
+    return "".join(lines)
+
+
+@pytest.mark.covers("W-02")
+@pytest.mark.parametrize("kind", ["hmm_file", "sequences", "msa"])
+def test_w02_seed_file_hashes_follow_its_content_not_its_path(world, tmp_path, kind):
+    root, d, _ = world
+    pos = sorted(_stored(root, "TEST0000"))[0]
+    prots = domains.load_proteins(root, V, "S0")
+    three = [(f"p{i}", prots[u].rstrip("*")) for i, u in enumerate(sorted(prots)[:3])]
+    if kind == "hmm_file":
+        f = _write_hmms(tmp_path / "a" / "m.hmm", _library_models(d / "a.hmm", ["TEST0000"]))
+        other = _write_hmms(tmp_path / "o" / "m.hmm", _library_models(d / "a.hmm", ["TEST0001"]))
+        edited = _score_line_edit(f.read_text())
+    elif kind == "sequences":
+        f = _write_faa(tmp_path / "a" / "m.faa", three)
+        other = _write_faa(tmp_path / "o" / "m.faa", three[:2])
+        edited = f.read_text().replace(three[0][1][:5], three[0][1][:4] + ("W" if three[0][1][4] != "W" else "Y"), 1)
+    else:
+        s = three[0][1]
+        f = tmp_path / "a" / "m.sto"
+        f.parent.mkdir(parents=True)
+        f.write_text(f"# STOCKHOLM 1.0\n\nx1 {s[:60]}\nx2 {s[1:61]}\n//\n")
+        other = tmp_path / "o" / "m.sto"
+        other.parent.mkdir(parents=True)
+        other.write_text(f"# STOCKHOLM 1.0\n\nx1 {s[:60]}\nx2 {s[2:62]}\n//\n")
+        edited = f.read_text().replace(f"x2 {s[1]}", f"x2 {'W' if s[1] != 'W' else 'Y'}")
+    assert edited != f.read_text()
+    moved = tmp_path / "moved" / "elsewhere" / f"renamed{f.suffix}"
+    moved.parent.mkdir(parents=True)
+    shutil.copyfile(f, moved)
+    changed = tmp_path / "changed" / f.name
+    changed.parent.mkdir(parents=True)
+    changed.write_text(edited)
+    tool = "hmmsearch" if kind == "hmm_file" else "jackhmmer"
+    a, b, c, o = (_pinned(root, _file_recipe(kind, p, pos, tool=tool)) for p in (f, moved, changed, other))
+    assert a[:2] == b[:2]  # the same content at another path: same recipe_hash and query_hash
+    assert c[0] != a[0] and c[1] != a[1] and o[0] != a[0] and o[1] != a[1]
+    sha = hashlib.sha256(f.read_bytes()).hexdigest()
+    form = json.dumps(rcp.identity(a[2]["recipe"]), sort_keys=True)
+    assert sha in form and str(tmp_path) not in form and f.name not in form
+    assert a[2]["seed"]["sha256"] == sha and a[2]["seed"]["path"] == str(f)
+
+
+def _dna_hmm(path: Path) -> Path:
+    alpha = pyhmmer.easel.Alphabet.dna()
+    seq = pyhmmer.easel.TextSequence(name=b"d", sequence="ACGTTGCAACGTAGCTAGCTAGGATCCA").digitize(alpha)
+    hmm, _, _ = pyhmmer.plan7.Builder(alpha, seed=42).build(seq, pyhmmer.plan7.Background(alpha))
+    return _write_hmms(path, [hmm])
+
+
+@pytest.mark.covers("W-02")
+@pytest.mark.parametrize("case,match", [
+    ("missing_hmm", "not found"), ("two_models", "2 models"), ("absent_model", "no model 'NOPE'"),
+    ("not_hmm", "not an HMMER3 profile"), ("dna_hmm", "amino-acid profile"), ("missing_faa", "not found"),
+    ("one_sequence", "at least 2"), ("dna_letters", "nucleotide"), ("duplicate_names", "duplicate"),
+])
+def test_w02_seed_files_are_refused_at_submit(world, tmp_path, case, match):
+    root, d, _ = world
+    pos = sorted(_stored(root, "TEST0000"))[0]
+    prots = domains.load_proteins(root, V, "S0")
+    p = [prots[u].rstrip("*") for u in sorted(prots)[:3]]
+    kind, extra = ("sequences" if case in ("missing_faa", "one_sequence", "dna_letters", "duplicate_names")
+                   else "hmm_file"), ""
+    two = lambda: _write_hmms(tmp_path / "two.hmm", _library_models(d / "a.hmm", ["TEST0000", "TEST0001"]))  # noqa: E731
+    f = {
+        "missing_hmm": lambda: tmp_path / "absent.hmm",
+        "two_models": two,
+        "absent_model": two,
+        "not_hmm": lambda: _write_faa(tmp_path / "x.hmm", [("a", p[0]), ("b", p[1])]),
+        "dna_hmm": lambda: _dna_hmm(tmp_path / "dna.hmm"),
+        "missing_faa": lambda: tmp_path / "absent.faa",
+        "one_sequence": lambda: _write_faa(tmp_path / "one.faa", [("a", p[0])]),
+        "dna_letters": lambda: _write_faa(tmp_path / "dna.faa", [("a", "ACGTTGCAACGT" * 5), ("b", "ACGTAGCTAGGA" * 5)]),
+        "duplicate_names": lambda: _write_faa(tmp_path / "dup.faa", [("a", p[0]), ("b", p[1]), ("a", p[2])]),
+    }[case]()
+    if case == "absent_model":
+        extra = ", model: NOPE"
+    before = sorted(runner.runs_dir(root).glob("run=*"))
+    with pytest.raises(RecipeError, match=match):
+        _run(world, _file_recipe(kind, f, pos, seed_extra=extra))
+    assert sorted(runner.runs_dir(root).glob("run=*")) == before  # a refusal records nothing
+
+
+@pytest.mark.covers("W-02")
+def test_w02_model_key_picks_one_model_and_the_run_records_its_provenance(world, tmp_path):
+    root, d, _ = world
+    lam0, lam1 = _library_models(d / "a.hmm", ["TEST0000", "TEST0001"])
+    f = _write_hmms(tmp_path / "lib" / "two.hmm", [lam0, lam1])
+    pos = sorted(_stored(root, "TEST0001"))[0]
+    by_name = _pinned(root, _file_recipe("hmm_file", f, pos, seed_extra=", model: lam1"))[2]["seed"]
+    assert (by_name["model_name"], by_name["model_accession"]) == ("lam1", "TEST0001")
+    text = _file_recipe("hmm_file", f, pos, seed_extra=", model: TEST0001")
+    row = _run(world, text)
+    assert row["status"] == "ok", row["error"]
+    seed = json.loads(row["seed_json"])
+    assert seed["kind"] == "hmm_file" and seed["path"] == str(f) and seed["model"] == "TEST0001"
+    assert seed["sha256"] == hashlib.sha256(f.read_bytes()).hexdigest()
+    assert (seed["model_name"], seed["model_accession"], seed["model_length"]) == ("lam1", "TEST0001", lam1.M)
+    rh, qh, _ = _pinned(root, text)
+    assert (row["recipe_hash"], row["query_hash"]) == (rh, qh)
+    hits = runner.read_hits(root, row["run_id"].hex())
+    assert pos in {h["target_uid"] for h in hits} and {h["model_len"] for h in hits} == {lam1.M}
+
+
+def _b_seeds(placed) -> list[tuple[bytes, str, str]]:
+    """Three members of family B, as the library model TRAP0001 stored them: (uid, name, sequence)."""
+    root = placed[0]
+    prots = domains.load_proteins(root, V, "S0")
+    return [(u, f"bseed{i}", prots[u]) for i, u in enumerate(sorted(_stored(root, "TRAP0001"))[:3])]
+
+
+@pytest.mark.covers("W-02")
+def test_w02_sequences_seed_recovers_its_family_and_stores_the_alignment(placed, tmp_path):
+    root, d, w = placed
+    seeds = _b_seeds(placed)
+    assert {u for u, _, _ in seeds} <= w["b"]
+    faa = _write_faa(tmp_path / "seeds.faa", [(n, s) for _, n, s in seeds])
+    row = runner.run(root, _file_recipe("sequences", faa, seeds[0][0], rel="rSyn", bits=30), "rSyn",
+                     work_base=d / "work", limits=LIMITS)
+    assert row["status"] == "ok", row["error"]
+    final = {h["target_uid"] for h in runner.read_hits(root, row["run_id"].hex())}
+    assert {u for u, _, _ in seeds} <= final
+    assert len(final & w["b"]) >= 25  # three seeds find the family, not only themselves
+    prof = [p for p in pq.read_table(runner.run_dir(root, row["run_id"]) / "profiles.parquet").to_pylist()
+            if p["round"] == 1]
+    assert len(prof) == 1 and prof[0]["n_seq"] == 3
+    sto = fastz.unzst(prof[0]["msa_zst"]).decode()
+    assert sto.startswith("# STOCKHOLM") and all(n in sto for _, n, _ in seeds)
+    msa = pyhmmer.easel.MSAFile(io.BytesIO(sto.encode()), format="stockholm").read()
+    assert sorted(engine.text(n) for n in msa.names) == sorted(n for _, n, _ in seeds)
+    seed = json.loads(row["seed_json"])
+    assert seed["path"] == str(faa) and seed["sha256"] == hashlib.sha256(faa.read_bytes()).hexdigest()
+    assert seed["n_sequences"] == 3 and seed["names"] == [n for _, n, _ in seeds]
+
+
+@pytest.mark.covers("W-02")
+@pytest.mark.parametrize("kind", ["hmm_file", "sequences", "msa"])
+def test_w02_file_seeds_iterate(placed, tmp_path, kind):
+    root, d, w = placed
+    seeds = _b_seeds(placed)
+    if kind == "hmm_file":
+        f = _write_hmms(tmp_path / "trap.hmm", _library_models(w["models"]["trap-1"], ["TRAP0001"]))
+    elif kind == "sequences":
+        f = _write_faa(tmp_path / "seeds.faa", [(n, s) for _, n, s in seeds])
+    else:
+        (trap,) = _library_models(w["models"]["trap-1"], ["TRAP0001"])
+        block = pyhmmer.easel.TextSequenceBlock(
+            pyhmmer.easel.TextSequence(name=n.encode(), sequence=s) for _, n, s in seeds).digitize(trap.alphabet)
+        f = tmp_path / "seeds.sto"
+        with open(f, "wb") as fh:
+            pyhmmer.hmmer.hmmalign(trap, block, trim=True).write(fh, "stockholm")
+    row = runner.run(root, _file_recipe(kind, f, seeds[0][0], rel="rSyn", tool="jackhmmer", mx=3, bits=30), "rSyn",
+                     work_base=d / "work", limits=LIMITS)
+    assert row["status"] == "ok", row["error"]
+    profiles = pq.read_table(runner.run_dir(root, row["run_id"]) / "profiles.parquet").to_pylist()
+    assert row["rounds"] >= 2 and len(profiles) == row["rounds"]
+    assert {u for u, _, _ in seeds} <= {h["target_uid"] for h in runner.read_hits(root, row["run_id"].hex())}
+
+
+HMMER = {b: shutil.which(b) for b in ("hmmbuild", "hmmalign", "hmmsearch")}
+
+
+def _tblout(path: Path, bits: float) -> dict[str, float]:
+    out = {}
+    for line in path.read_text().splitlines():
+        if not line.startswith("#"):
+            f = line.split()
+            if float(f[5]) >= bits:
+                out[f[0]] = float(f[5])
+    return out
+
+
+@pytest.mark.covers("W-02")
+@pytest.mark.skipif(None in HMMER.values(), reason="hmmbuild, hmmalign or hmmsearch binary not on PATH")
+def test_w02_sequences_profile_hits_equal_the_hmmer_binaries(placed, tmp_path):
+    """AGENTS §5.2 oracle: HMMER's binaries build the profile the walk-through's way (a single-sequence
+    profile of the first seed, `hmmalign --trim` of all seeds to it, `hmmbuild`) and `hmmsearch` it at
+    the same Z and threshold; the included targets equal the run's. The run's stored round-1 profile,
+    searched by `hmmsearch`, also gives the run's sequence scores (the tolerance of the round oracle)."""
+    root, d, w = placed
+    seeds = _b_seeds(placed)
+    bits = 30.0
+    faa = _write_faa(tmp_path / "seeds.faa", [(n, s) for _, n, s in seeds])
+    row = runner.run(root, _file_recipe("sequences", faa, seeds[0][0], rel="rSyn", bits=bits), "rSyn",
+                     work_base=d / "work", limits=LIMITS)
+    assert row["status"] == "ok", row["error"]
+    got = {h["target_uid"].hex(): h["seq_bitscore"] for h in runner.read_hits(root, row["run_id"].hex())}
+    unique = tmp_path / "unique.faa"
+    with open(unique, "w") as fh:
+        for sh in sorted(pack.pack_dir(root, "rSyn").glob("unique/part-*.faa.zst")):
+            for name, seq in fastz.read_records(sh):
+                fh.write(f">{name}\n{seq}\n")
+    first = tmp_path / "first.sto"
+    first.write_text(f"# STOCKHOLM 1.0\n\n{seeds[0][1]} {seeds[0][2]}\n//\n")
+    run = lambda *a: subprocess.run([str(x) for x in a], check=True, capture_output=True)  # noqa: E731
+    run(HMMER["hmmbuild"], "--amino", "--singlemx", "-n", "first", "-o", "/dev/null", tmp_path / "first.hmm", first)
+    run(HMMER["hmmalign"], "--trim", "--amino", "-o", tmp_path / "seeds.sto", tmp_path / "first.hmm", faa)
+    run(HMMER["hmmbuild"], "--amino", "-n", "w02", "-o", "/dev/null", tmp_path / "w02.hmm", tmp_path / "seeds.sto")
+    stored = tmp_path / "stored.hmm"
+    prof = pq.read_table(runner.run_dir(root, row["run_id"]) / "profiles.parquet").to_pylist()
+    stored.write_bytes(fastz.unzst(next(p for p in prof if p["round"] == 1)["profile_zst"]))
+    tables = {}
+    for name in ("w02", "stored"):
+        tbl = tmp_path / f"{name}.tbl"
+        run(HMMER["hmmsearch"], "--noali", "--cpu", "1", "-Z", "1e8", "--domZ", "1e8", "-T", bits, "--incT", bits,
+            "--tblout", tbl, "-o", "/dev/null", tmp_path / f"{name}.hmm" if name == "w02" else stored, unique)
+        tables[name] = _tblout(tbl, bits)
+    assert set(tables["w02"]) == set(got), "the binaries' profile includes other targets"
+    assert set(tables["stored"]) == set(got)
+    assert all(abs(got[t] - tables["stored"][t]) <= 0.051 for t in got)
 
 
 # --- cancel and runner death ------------------------------------------------------------------------

@@ -385,6 +385,9 @@ _SPECS = [
             _f("warnings_json", pa.string(), nullable=True),
             _f("limits_json", pa.string(), nullable=True),
             _f("error", pa.string(), nullable=True),
+            # appended 2026-11-09 with W-02 (LY-09): the seed as resolved at submit; a file seed carries
+            # its path as given, sha256 and what it holds (model name, accession, length; or seed names)
+            _f("seed_json", pa.string(), nullable=True),
         ]),
         primary_key=("run_id",),
         sort_key=("run_id",),

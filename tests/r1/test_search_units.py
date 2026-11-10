@@ -446,6 +446,47 @@ def test_recipe_hash_is_spelling_free_and_gaps_are_listed():
     assert any("target igr" in g for g in recipe.executable(c)) and any("nhmmer" in g for g in recipe.executable(c))
 
 
+@pytest.mark.covers("W-02")
+@pytest.mark.parametrize("kind,extra", [("hmm_file", ""), ("hmm_file", ", model: PF00940"), ("sequences", ""),
+                                        ("msa", "")])
+def test_w02_file_seed_kinds_parse_on_paper_and_are_executable(kind, extra):
+    short = BASE.replace("seed: [{sequence: MKVLAAGIVGLLL}]", "seed: [{%s: /data/x.file%s, label: s}]" % (kind, extra))
+    long = BASE.replace("seed: [{sequence: MKVLAAGIVGLLL}]",
+                        "seed: [{kind: %s, value: /data/x.file%s, label: s}]" % (kind, extra))
+    a, _ = recipe.load(short)
+    b, _ = recipe.load(long)
+    assert a == b and a["seed"][0]["kind"] == kind and a["seed"][0]["value"] == "/data/x.file"
+    assert recipe.executable(a) == []
+    if extra:
+        assert a["seed"][0]["model"] == "PF00940"
+
+
+@pytest.mark.covers("W-02")
+def test_w02_model_key_belongs_to_hmm_file_only():
+    with pytest.raises(RecipeError, match="model"):
+        recipe.load(BASE.replace("seed: [{sequence: MKVLAAGIVGLLL}]", "seed: [{sequences: /x.faa, model: PF00940}]"))
+    with pytest.raises(RecipeError, match="model"):
+        recipe.load(BASE.replace("seed: [{sequence: MKVLAAGIVGLLL}]", "seed: [{hmm: PF00940, model: PF00940}]"))
+
+
+@pytest.mark.covers("W-02")
+@pytest.mark.parametrize("kind", ["hmm_file", "msa", "sequences"])
+def test_w02_recipe_hash_covers_file_content_not_path(kind):
+    def pinned(path, sha):
+        r, _ = recipe.load(BASE.replace("seed: [{sequence: MKVLAAGIVGLLL}]", "seed: [{%s: %s}]" % (kind, path)))
+        with pytest.raises(RecipeError, match="sha256"):  # a file seed is hashed only once its content is pinned
+            recipe.recipe_hash(r)
+        r["seed"][0]["sha256"] = sha
+        return r
+
+    a = pinned("/one/place/m.file", "aa" * 32)
+    b = pinned("/another/m2.file", "aa" * 32)
+    c = pinned("/one/place/m.file", "ab" * 32)
+    assert recipe.recipe_hash(a) == recipe.recipe_hash(b) != recipe.recipe_hash(c)
+    form = json.dumps(recipe.identity(a))
+    assert "/one/place" not in form and "m.file" not in form and "aa" * 32 in form
+
+
 # --- JSON exports (S-13) ------------------------------------------------------------------------------
 
 
