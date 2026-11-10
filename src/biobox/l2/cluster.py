@@ -116,6 +116,7 @@ def run(root: Path, release: str, gene_call_version: str, stages: list[str], thr
         ledger.check_scratch(tmp, root, out)
     out = root if out is None else Path(out)
     stages = catalog.check_stages(stages)
+    catalog.verify_release_def(root, release, stages)  # a disagreeing definition is named before a refusal
     ledger.refuse_written(root, out, [f"l2/cluster_member/release={release}", f"l2/cluster_member_aln/release={release}",
                                       ledger.release_path("", release, "cluster").parent.as_posix()],
                           f"clustering of release {release}")

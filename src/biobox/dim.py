@@ -55,6 +55,7 @@ def run(root, release: str, stages: list[str], tmp=None, max_file_bytes: int = l
     stages = catalog.check_stages(stages)
     spec = table("contig_dim")
     rel_base = f"{spec.location}/release={release}"
+    catalog.verify_release_def(root, release, stages)  # a disagreeing definition is named before a refusal
     ledger.refuse_written(root, out, [rel_base], f"contig_dim of release {release} (a release's dimension table "
                                                   "is written once)")
     base = out / rel_base

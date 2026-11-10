@@ -233,6 +233,7 @@ def run(root: Path, release: str, stages: list[str], gene_call_version: str = GE
         raise FileNotFoundError(f"{tok_dir}: no tape_tokens for tape version {tv} and release {release}; "
                                 "run biobox.l3.tokens first")
     rel_base = f"l3/token_postings/release={release}/tape_version={tv}"
+    catalog.verify_release_def(root, release, stages)  # a disagreeing definition is named before a refusal
     ledger.refuse_written(root, out, [rel_base], f"postings of release {release}")
     base = out / rel_base
     catalog.define_release(root, release, stages, out=out)

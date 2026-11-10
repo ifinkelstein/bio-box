@@ -176,6 +176,7 @@ def run(root: Path, release: str, stages: list[str], gene_call_version: str = GE
         raise ValueError("max_slots must be positive")
     ledger.check_scratch(tmp, root, out)
     tv = tape_version_of(gene_call_version, producers)
+    catalog.verify_release_def(root, release, stages)  # a disagreeing definition is named before a refusal
     ledger.refuse_written(root, out, [f"l3/token_dict/release={release}", f"l3/tape_tokens/tape_version={tv}/release={release}"],
                           f"tokens of release {release}")
     tape_files = _tape_files(root, tv, stages)
