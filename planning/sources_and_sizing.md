@@ -211,3 +211,41 @@ All runs go through `hyperfine` or `/usr/bin/time -v` inside the `bio-box` `.sif
 - RefSeq `Complete Genome` bacterial/archaeal count (read from `assembly_summary_refseq.txt`).
 - GTDB R226 complete-genome count, reps and members, and the ≤20-per-species selection (`ncbi_assembly_level` in `bac120/ar53_metadata_r226`). This pins S2C and is an S−1 task.
 - AllTheBacteria precomputed annotation availability.
+
+---
+
+## 8. Candidates from s41467-026-79223-z (added 2026-11-10, not yet approved for import)
+
+Read from Yuan et al., *Nature Communications* (2026), doi:10.1038/s41467-026-79223-z. Nothing below
+changes a line, size or budget above, and nothing was added to `STAGES.md`, `refdb.yaml`, `golden.yaml`
+or `sources.yaml`: approving a source is the PI's decision. Full table, sizes with their page
+references, access strings and licence notes are in
+[`sources_from_s41467-026-79223-z.md`](sources_from_s41467-026-79223-z.md).
+
+| Candidate | One line | Would fit |
+|---|---|---|
+| PlasmidScope | Aggregate of ten plasmid databases (PLSDB, COMPASS, mMGE, IMG/PR, TPA, ENA, Kraken2, GenBank, DDBJ, RefSeq), ">852,600 plasmid genomes" (*as stated in the paper*, Methods p. 13) | S2, in place of PLSDB alone; 59–83 Gbp and ~31–44 GB of store (*derived*; see the new file §2.2) |
+| HRGM2 + HRGMv2_100 | Human gut MAG catalogue across 41 countries with a protein database; size not stated | S4/S6-adjacent genome source, or a reference library for host assignment |
+| VIRE | Metagenome-derived planetary-scale virome with environmental context (2026); size not stated | S4, alongside or instead of IMG/VR |
+| metaVR | "24 million uncultivated virus genomes" (*as stated in the paper*, reference list p. 16) | S4, representatives only; full set ≈1.2 Tbp (*derived*) |
+| mMGE | Human metagenomic extrachromosomal MGEs: the non-plasmid, non-viral class the ladder has no source for | S2 or S4 |
+| CGVR | Human gut virome at single-nucleotide resolution (2025); size not stated | S4 |
+| HPGC | ">7000 unique huge phage ... genomes" >200 kbp (*as stated in the paper*, Results p. 2) | S1, beside INPHARED; also a regime-classification trap set |
+| BFVD | Predicted viral protein structures, used as a Foldseek target; size not stated here | `refdb.yaml`, from tier ST3 |
+| KOfam | KEGG ortholog HMMs with per-family score thresholds | `refdb.yaml`; `search/06_infra_inventory.md` §2 lists KOfam as currently unreachable |
+
+Test material rather than sources: the four cross-family prophage clusters of this paper plus the
+three of Wirbel, Hickey et al. 2026 and the two vOTUs of Pei et al. 2024, with per-family host counts
+printed in Fig. 5d (p. 8); the 38 curated Hodor genomes with 6 embedded prophages (GenBank
+PRJNA1527067); the 20,082 DGR reverse transcriptases of Roux et al. 2021.
+
+Observations, not changes:
+- The paper reaches **PLSDB** and **IMG/PR** through PlasmidScope rather than directly. If
+  PlasmidScope were adopted, both become members of one source rather than separate rows, and the JGI
+  gating we record for IMG/PR at S4 would need re-checking against PlasmidScope's own terms.
+- **GTDB R226** is the release this paper uses for all taxonomy, the same release as S2C/S3/S5/S6, so
+  no newer release is implied.
+- **IMG/VR v4** is cited only as a source of the original metagenomic genomes, with no newer release.
+- The paper states that Hodors are "consistently classified as viral sequences" by geNomad and
+  VirSorter2 (Discussion p. 10). geNomad is our regime classifier at S1 and S4; this is a documented
+  failure case on composite MGEs, with 44 deposited sequences to test against.
