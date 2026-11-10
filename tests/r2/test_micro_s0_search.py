@@ -30,7 +30,7 @@ from biobox.l1 import domains, igr
 from biobox.l1.genecall import GENE_CALL_VERSION as V
 from biobox.l3 import tapes
 from biobox.registry.schemas import conformance_problems, table
-from biobox.search import engine, export, fastz, nbr, orfs, pack, runner
+from biobox.search import engine, export, fastz, nbr, orfs, pack, runner, worker
 from biobox.search import recipe as rcp
 from biobox.search.recipe import RecipeError
 
@@ -279,15 +279,31 @@ def test_hmm_seed_from_the_library_finds_its_stored_hits(world):
 # --- provenance and failure states (S-05), envelope (S-06) -----------------------------------------------
 
 
+_S05_MEM_GB = 4 if platform.system() == "Linux" else None
+S05_LIMITS = {f: runner.Limits(cpus=1, wall_s=3, mem_gb=_S05_MEM_GB) for f in ("oom", "timeout", "crash")}
+
+
 @pytest.mark.parametrize("fault,status", [("oom", "oom"), ("timeout", "timeout"), ("crash", "failed")])
 def test_s05_injected_failures_are_states_never_zero_hits(world, fault, status):
     hit, _ = _seed(world[0])
-    lim = runner.Limits(cpus=1, wall_s=3, mem_gb=4 if platform.system() == "Linux" else None)
-    row = _run(world, _recipe(hit, hit), fault=fault, limits=lim)
-    assert row["status"] == status, row["error"]
+    row = _run(world, _recipe(hit, hit), fault=fault, limits=S05_LIMITS[fault])
+    # which path limited the worker (scope, inherited cap, RLIMIT_AS) is in argv and limits_json
+    assert row["status"] == status, (row["error"], row["argv"][:4], row["limits_json"])
     d = runner.run_dir(world[0], row["run_id"])
     assert sorted(p.name for p in d.iterdir()) == ["run.parquet"]  # no hits file, so never "0 hits"
     assert runner.read_hits(world[0], row["run_id"].hex()) == []
+
+
+@pytest.mark.covers("A-07", "S-05")
+def test_a07_oom_is_oom_however_long_the_fault_takes_to_reach_its_limit(world, monkeypatch):
+    """CI flake (1): under a systemd scope the kernel kills only once the worker has touched mem_gb of
+    pages (4.5-5.2 s for 4 GB on the pod, measured), so an oom test whose wall limit the fault can
+    reach is a race. Injected condition: the fault starts 4 s late, longer than the old 3 s wall."""
+    monkeypatch.setenv(worker.OOM_DELAY_VAR, "4")
+    hit, _ = _seed(world[0])
+    row = _run(world, _recipe(hit, hit), fault="oom", limits=S05_LIMITS["oom"])
+    assert row["status"] == "oom", (row["error"], row["argv"][:4], row["limits_json"])
+    assert sorted(p.name for p in runner.run_dir(world[0], row["run_id"]).iterdir()) == ["run.parquet"]
 
 
 def test_s05_every_hit_resolves_to_a_run_and_catalog_shows_runs(world):
@@ -1881,6 +1897,94 @@ def test_cancel_does_not_signal_a_pid_whose_runner_is_gone(tmp_path):
     finally:
         bystander.kill()
         bystander.wait()
+
+
+# A runner whose main thread has exited while another thread of it still runs: the lock it inherited
+# stays held (the thread group's file table is open), and /proc shows the leader as a zombie. The leader
+# leaves through the raw exit syscall, which ends one thread (exit_group would end them all).
+_ZOMBIE_LEADER = """
+import ctypes, os, sys, threading
+threading.Thread(target=os.read, args=(0, 1)).start()  # holds the process open until stdin closes
+print("ready", flush=True)
+ctypes.CDLL(None).syscall({nr}, 0)
+"""
+_SYS_EXIT = {"x86_64": 60, "aarch64": 93}
+
+
+def _proc_state(pid: int) -> str | None:
+    try:
+        s = Path(f"/proc/{pid}/stat").read_text()
+    except OSError:
+        return None
+    return s[s.rindex(")") + 2:].split()[0]
+
+
+@pytest.mark.covers("A-07", "A-01")
+@pytest.mark.skipif(platform.system() != "Linux" or platform.machine() not in _SYS_EXIT,
+                    reason="a zombie thread-group leader is a Linux state; the syscall number is per arch")
+def test_a07_status_is_failed_once_the_runner_leader_is_a_zombie_though_its_lock_is_still_held(tmp_path):
+    """CI flake (2): after SIGKILL a multi-threaded runner's leader can be a zombie (what `_alive` and
+    `ps` report as gone) while its last thread still tears the process down and holds runner.lock
+    (2 of 20 kills on the pod: Z with the lock held for 42-43 ms; measured 2026-11-10). Injected
+    condition: a stand-in runner whose leader thread exits while a second thread keeps the lock."""
+    import fcntl
+    import os
+
+    lock = tmp_path / "work" / "ef" / runner.LOCK_NAME
+    lock.parent.mkdir(parents=True)
+    fd = os.open(lock, os.O_RDWR | os.O_CREAT, 0o644)
+    fcntl.flock(fd, fcntl.LOCK_EX)  # taken and handed down as `submit` does
+    proc = subprocess.Popen([sys.executable, "-c", _ZOMBIE_LEADER.format(nr=_SYS_EXIT[platform.machine()])],
+                            stdin=subprocess.PIPE, stdout=subprocess.PIPE, pass_fds=(fd,), text=True)
+    os.close(fd)
+    try:
+        assert proc.stdout.readline().strip() == "ready"
+        assert _wait_for(lambda: _proc_state(proc.pid) == "Z", 10)
+        assert not _alive(proc.pid)  # gone as the runner-death test and `ps` see it
+        assert runner._runner_holds(str(lock))  # the condition: the lock is still held
+        pend = runner.runs_dir(tmp_path) / "pending"
+        pend.mkdir(parents=True)
+        (pend / "ef.json").write_text(json.dumps({"run_id": "ef", "pid": proc.pid, "lock": str(lock),
+                                                  "status": "running"}))
+        st = runner.status(tmp_path, "ef")
+        assert st["status"] == "failed" and "without closing" in st["error"], st
+    finally:
+        proc.stdin.close()
+        proc.wait(timeout=30)
+
+
+@pytest.mark.covers("A-07")
+@pytest.mark.skipif(platform.system() != "Linux", reason="reads /proc/<pid>/fd")
+def test_a07_only_the_runner_holds_a_descriptor_of_its_lock(world, tmp_path):
+    """The lock is the runner's alone: no fd of the worker (or of systemd-run or nice, which exec it)
+    refers to runner.lock, so the worker cannot keep a dead runner looking alive."""
+    import os
+
+    root, d, _ = world
+    hit, _ = _seed(root)
+    rec = tmp_path / "r.yaml"
+    rec.write_text(_recipe(hit, hit))
+    work = tmp_path / "work"
+    rid = runner.submit(root, rec, REL, runner.Limits(cpus=1, wall_s=300), work, fault="timeout")
+    assert _wait_for(lambda: (work / rid / "worker.pid").exists())
+    info = json.loads((runner.runs_dir(root) / "pending" / f"{rid}.json").read_text())
+    worker_pid = int((work / rid / "worker.pid").read_text())
+
+    def lock_fds(pid):
+        out = []
+        for n in os.listdir(f"/proc/{pid}/fd"):
+            try:
+                out.append(os.readlink(f"/proc/{pid}/fd/{n}"))
+            except OSError:
+                pass
+        return [p for p in out if p == info["lock"]]
+
+    try:
+        assert lock_fds(info["pid"]) == [info["lock"]]
+        assert lock_fds(worker_pid) == []
+    finally:
+        runner.cancel(root, rid)
+        assert _wait_for(lambda: runner.status(root, rid)["status"] != "running")
 
 
 @pytest.mark.covers("A-01")

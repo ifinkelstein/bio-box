@@ -49,6 +49,8 @@ EXIT_OOM = 86
 EXIT_ORPHAN = 87  # the runner died: nothing would record this run, so stop
 EXIT_FAILED = 88  # an uncaught exception in any thread; its traceback is in stderr
 ROUND_FAULTS = ("round2", "round2_thread")  # test hooks that fire inside round 2 of an iterative run
+# test hook (card A-07): the `oom` fault starts this many seconds late, as on a host slower to reach its limit
+OOM_DELAY_VAR = "BIOBOX_OOM_FAULT_DELAY_S"
 
 # The worker's entry point (`python -c BOOT job.json`): thread variables first, then the import.
 BOOT = ("import json, os, sys\n"
@@ -223,6 +225,8 @@ def _fault(kind: str | None) -> None:
     if kind is None or kind in ROUND_FAULTS:
         return
     if kind == "oom":
+        if os.environ.get(OOM_DELAY_VAR):
+            time.sleep(float(os.environ[OOM_DELAY_VAR]))
         # a real allocation past the limit the runner set: RLIMIT_AS (Linux without a scope) raises
         # MemoryError; the scope's MemoryMax gets the worker OOM-killed. Elsewhere, the error it would raise.
         limit = os.environ.get("BIOBOX_RLIMIT_AS") or os.environ.get("BIOBOX_MEMORY_MAX")
