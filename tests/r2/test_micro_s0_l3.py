@@ -13,9 +13,10 @@ C-07, K-07, LY-06 for pair lookups, and D-01 for the L3 tables.
 from __future__ import annotations
 
 import hashlib
+import inspect
 import random
 import shutil
-from collections import defaultdict
+from collections import Counter, defaultdict
 from pathlib import Path
 
 import duckdb
@@ -25,7 +26,7 @@ import pyhmmer
 import pytest
 import yaml
 
-from biobox import catalog, contracts, fasta, ids, io
+from biobox import catalog, contracts, fasta, ids, io, layout
 from biobox.l0seq import SourceObject, ingest, revcomp
 from biobox.l0seq.inputs import write_genome_input
 from biobox.l1 import domains
@@ -658,3 +659,327 @@ def test_b07_default_topology_comes_from_genome_input(built, tmp_path):
     write_genome_input(fresh, "S0", [GenomeInput((cu,), circular=(cu,) if cu in circ else ()) for cu in _tapes_of_tv(root)])
     tapes.run(fresh, "S0")  # circular=None
     assert _digests(fresh, TAPE_DIRS) == _digests(root, TAPE_DIRS)
+
+
+# --- card B-09: tokens joined, ranked and aggregated in DuckDB -------------------------------------
+
+TOKEN_DIRS = ("l3/token_dict", "l3/tape_tokens")
+LEVEL_BITS = {"family": 1, "nr50": 2, "nr90": 3}  # PLAN.md §4.1: token = level (3) | source (5) | local (56)
+
+
+def _rows(root: Path, glob: str, columns=None) -> list[dict]:
+    """The rows of the files of `glob` in path order, without partition columns."""
+    return [r for f in sorted(root.glob(glob)) for r in pq.read_table(f, columns=columns, partitioning=None).to_pylist()]
+
+
+def _oracle_tokens(root: Path, release: str, libraries: list[str], tv: str = TV) -> tuple[list[dict], list[dict]]:
+    """The in-memory algorithm of tokens.run before card B-09, kept here as a brute-force reference:
+    every tape, domain and cluster row in Python dicts. Returns (token_dict rows, tape_tokens rows)."""
+    tps = _rows(root, f"l3/tapes/tape_version={tv}/stage=*/part-*.parquet", ["contig_uid", "protein_uids"])
+    best: dict[bytes, tuple] = {}
+    for rank, lib in enumerate(libraries):
+        for r in _rows(root, f"l1/domains/library={lib}/stage=*/part-*.parquet"):
+            key = (rank, -r["dom_bitscore"], r["model_acc"], r["env_start"])
+            if r["protein_uid"] not in best or key < best[r["protein_uid"]][0]:
+                best[r["protein_uid"]] = (key, lib, r["model_acc"])
+    clusters: dict[str, dict[bytes, bytes]] = {"nr50": {}, "nr90": {}}
+    for r in _rows(root, f"l2/cluster_member/release={release}/part-*.parquet"):
+        if r["level"] in clusters:
+            clusters[r["level"]][r["member_uid"]] = r["cluster_uid"]
+
+    def keys(pu):
+        fam = best.get(pu) if pu is not None else None
+        out = {"family": (libraries.index(fam[1]) + 1, fam[2]) if fam else None}
+        for lvl in ("nr50", "nr90"):
+            c = clusters[lvl].get(pu) if pu is not None else None
+            out[lvl] = (0, c.hex()) if c else None
+        return out
+
+    per_contig = [(t["contig_uid"], [keys(pu) for pu in t["protein_uids"]]) for t in tps]
+    uses = Counter((lvl, *k) for _, slots in per_contig for s in slots for lvl, k in s.items() if k is not None)
+    tid: dict[tuple, int] = {}
+    for lvl, bits in LEVEL_BITS.items():
+        for src in sorted({s for (lv, s, _) in uses if lv == lvl}):
+            for local, key in enumerate(sorted(k for (lv, s, k) in uses if lv == lvl and s == src)):
+                tid[(lvl, src, key)] = bits << 61 | src << 56 | local
+    names = {0: "mmseqs2", **{i + 1: lib for i, lib in enumerate(libraries)}}
+    dict_rows = sorted(({"token_id": t, "level": lv, "source": names[s], "key": k, "n_slots": uses[(lv, s, k)]}
+                        for (lv, s, k), t in tid.items()), key=lambda r: r["token_id"])
+    tok_rows = [{"contig_uid": cu, **{f"{lvl}_tokens": [None if s[lvl] is None else tid[(lvl, *s[lvl])] for s in slots]
+                                      for lvl in LEVEL_BITS}}
+                for cu, slots in sorted(per_contig, key=lambda x: x[0])]
+    return dict_rows, tok_rows
+
+
+def _written_tokens(root: Path, release: str, tv: str = TV) -> tuple[list[dict], list[dict]]:
+    return (_rows(root, f"l3/token_dict/release={release}/part-*.parquet"),
+            _rows(root, f"l3/tape_tokens/tape_version={tv}/release={release}/part-*.parquet"))
+
+
+def _row_group_slots(path: Path) -> list[list[int]]:
+    pf = pq.ParquetFile(path)
+    return [[len(x) for x in pf.read_row_group(i, columns=["nr90_tokens"]).column(0).to_pylist()]
+            for i in range(pf.metadata.num_row_groups)]
+
+
+@pytest.mark.covers("C-04")
+def test_b09_tokens_equal_the_in_memory_oracle(built):
+    root, _, _, _ = built
+    got = _written_tokens(root, REL)
+    assert got == _oracle_tokens(root, REL, ["test-1"])
+    dict_rows, tok_rows = got
+    assert {r["level"] for r in dict_rows} == set(LEVELS) and len(tok_rows) == len(CONTRACT["objects"])
+    fams = [x for r in tok_rows for x in r["family_tokens"]]
+    assert None in fams and any(x is not None for x in fams)  # slots without a family keep a null in the list
+    n_slots = {cu: t["n_slots"] for cu, t in _tapes_of_tv(root).items()}
+    for r in tok_rows:
+        assert all(len(r[f"{lvl}_tokens"]) == n_slots[r["contig_uid"]] for lvl in LEVELS)
+
+
+def _dom(pu: bytes, acc: str, score: float, env: int) -> dict:
+    return {"protein_uid": pu, "model_acc": acc, "model_name": acc.lower(), "model_len": 100, "seq_bitscore": score,
+            "seq_evalue_zref": 1e-9, "dom_bitscore": score, "dom_ievalue_zref": 1e-9, "env_start": env,
+            "env_end": env + 20, "ali_start": env, "ali_end": env + 20, "hmm_from": 0, "hmm_to": 20,
+            "cutoff": "gathering", "z": 1e8, "dom_z": 1e8}
+
+
+def _write_sorted(spec_name: str, rows: list[dict], path: Path) -> None:
+    spec = table(spec_name)
+    rows = sorted(rows, key=lambda r: tuple(r[c] for c in spec.sort_key if c in spec.schema.names))
+    io.write_table([pa.Table.from_pylist(rows, schema=spec.schema)], spec, path)
+
+
+@pytest.mark.covers("C-04")
+def test_b09_canonical_families_and_cluster_keys_on_synthetic_mappings(built, tmp_path):
+    """Library precedence, bitscore and accession ties, key order and unused keys, on real protein uids."""
+    root, _, _, _ = built
+    fresh = tmp_path / "s"
+    shutil.copytree(root, fresh)
+    rel = "rS0.b09"
+    tps = _tapes_of_tv(root)
+    p = sorted({pu for t in tps.values() for pu in t["protein_uids"]})[:8]
+    libs = {
+        "zzz-1": [_dom(p[0], "M2", 50.0, 10), _dom(p[0], "M1", 50.0, 40),  # equal bitscores: the smaller accession
+                  _dom(p[1], "Z9", 40.0, 5), _dom(p[1], "A1", 60.0, 90),  # the higher bitscore before the accession
+                  _dom(p[2], "Q1", -5.0, 3), _dom(p[2], "Q2", 3.0, 7),  # negative bitscores
+                  _dom(p[3], "b10", 20.0, 1), _dom(p[3], "b10", 20.0, 0)],  # one model twice
+        "mmm-1": [_dom(p[0], "TOP", 999.0, 1), _dom(p[4], "b9", 10.0, 2), _dom(p[5], "B2", 10.0, 2)],
+        "aaa-1": [_dom(p[6], "a", 1.0, 0), _dom(p[4], "zzz", 500.0, 0)],
+    }
+    for lib, rows in libs.items():
+        _write_sorted("l1_domains", rows, fresh / f"l1/domains/library={lib}/stage=S0/part-0.parquet")
+    order = ["zzz-1", "mmm-1", "aaa-1"]  # precedence is this order, not the names' order
+    want_family = {p[0]: ("zzz-1", "M1"), p[1]: ("zzz-1", "A1"), p[2]: ("zzz-1", "Q2"), p[3]: ("zzz-1", "b10"),
+                   p[4]: ("mmm-1", "b9"), p[5]: ("mmm-1", "B2"), p[6]: ("aaa-1", "a")}
+    hi, mid, lo = b"\xff" * 16, b"\x80" + b"\0" * 15, b"\x01" * 16  # unsigned order: lo < mid < hi
+    cl = [("nr90", p[0], hi), ("nr90", p[1], mid), ("nr90", p[2], lo), ("nr90", p[3], hi),
+          ("nr50", p[0], b"\x7f" * 16), ("nr50", p[4], b"\0" * 16), ("subfam", p[5], b"\x05" * 16)]
+    _write_sorted("cluster_member", [{"member_uid": m, "level": lv, "cluster_uid": c, "rep_uid": m,
+                                      "cluster_params_hash": "synthetic"} for lv, m, c in cl],
+                  fresh / f"l2/cluster_member/release={rel}/part-0.parquet")
+    res = tokens.run(fresh, rel, libraries=order)
+    dict_rows, tok_rows = got = _written_tokens(fresh, rel)
+    assert got == _oracle_tokens(fresh, rel, order)
+    by_key = {(r["level"], r["source"], r["key"]): r for r in dict_rows}
+    uses = Counter(pu for t in tps.values() for pu in t["protein_uids"])
+    fam = [k for k in by_key if k[0] == "family"]
+    assert sorted(fam, key=lambda k: by_key[k]["token_id"]) == [  # by source, then key in code point order
+        ("family", "zzz-1", "A1"), ("family", "zzz-1", "M1"), ("family", "zzz-1", "Q2"), ("family", "zzz-1", "b10"),
+        ("family", "mmm-1", "B2"), ("family", "mmm-1", "b9"), ("family", "aaa-1", "a")]  # "TOP" is on no slot
+    for (lv, src, key), r in by_key.items():
+        tid = r["token_id"]
+        if lv == "family":
+            assert tid >> 61 == 1 and (tid >> 56) & 31 == order.index(src) + 1
+            assert r["n_slots"] == sum(uses[pu] for pu, f in want_family.items() if f == (src, key))
+    assert [(by_key[("nr90", "mmseqs2", c.hex())]["token_id"]) for c in (lo, mid, hi)] == [3 << 61 | i for i in range(3)]
+    assert by_key[("nr90", "mmseqs2", hi.hex())]["n_slots"] == uses[p[0]] + uses[p[3]]
+    assert res["tokens"] == {"family": 7, "nr50": 2, "nr90": 3} and res["contigs"] == len(tps)
+    tid_of = {(r["level"], r["token_id"]): (r["source"], r["key"]) for r in dict_rows}
+    for r in tok_rows:
+        for i, pu in enumerate(tps[r["contig_uid"]]["protein_uids"]):
+            f = r["family_tokens"][i]
+            assert (tid_of[("family", f)] if f is not None else None) == want_family.get(pu)
+            n50 = r["nr50_tokens"][i]
+            assert (n50 is None) == (pu not in (p[0], p[4]))  # null where the protein has no cluster at that level
+
+
+def _add_ncrna(root: Path, mg: bytes) -> bytes:
+    """One kind-2 feature in an intergenic gap of contig `mg` as producer `test-ncrna` (as in the B-07 test)."""
+    genes = sorted((r for r in _read(root, f"l1/feature/producer={V}/stage=S0/part-*.parquet") if r["contig_uid"] == mg),
+                   key=lambda r: (r["start"], r["end"]))
+    reach, gap = 0, None
+    for g in genes:
+        if g["start"] - reach >= 100 and reach > 0:
+            gap = reach
+            break
+        reach = max(reach, g["end"])
+    assert gap is not None
+    s, e, kind = gap + 30, gap + 70, ids.KIND["ncrna"]
+    fu = ids.feature_uid(mg, s, e, 1, kind)
+    spec = table("feature")
+    io.write_table([pa.RecordBatch.from_pylist(
+        [{"feature_uid": fu, "contig_uid": mg, "start": s, "end": e, "strand": 1, "kind": kind}], schema=spec.schema)],
+        spec, root / "l1/feature/producer=test-ncrna/stage=S0/part-0.parquet")
+    return fu
+
+
+@pytest.mark.covers("C-04")
+def test_b09_a_non_cds_slot_has_null_tokens_at_every_level(built, tmp_path):
+    root, _, _, circ = built
+    fresh = tmp_path / "s"
+    shutil.copytree(root, fresh)
+    mg = next(iter(circ))  # the only circular contig is M. genitalium (NC_000908.2)
+    fu = _add_ncrna(fresh, mg)
+    producers = ["test-ncrna", V]
+    tv2 = tapes.run(fresh, "S0", circ, producers=producers)["tape_version"]
+    rel = "rS0.b09nc"
+    shutil.copytree(fresh / f"l2/cluster_member/release={REL}", fresh / f"l2/cluster_member/release={rel}")
+    res = tokens.run(fresh, rel, producers=producers)
+    got = _written_tokens(fresh, rel, tv2)
+    assert got == _oracle_tokens(fresh, rel, ["test-1"], tv2)
+    old_dict, old_tok = _written_tokens(root, REL)
+    assert got[0] == old_dict  # one more slot without a protein: the same tokens and counts
+    old, new = ({r["contig_uid"]: r for r in rows} for rows in (old_tok, got[1]))
+    i = _tapes_of_tv(fresh, tv2)[mg]["feature_uids"].index(fu)
+    for lvl in LEVELS:
+        col = f"{lvl}_tokens"
+        assert new[mg][col][i] is None
+        assert new[mg][col][:i] + new[mg][col][i + 1:] == old[mg][col]
+        assert all(new[cu][col] == old[cu][col] for cu in set(old) - {mg})
+    assert res["contigs"] == len(old)
+
+
+@pytest.mark.covers("C-04")
+def test_b09_tapes_without_slots_get_three_empty_lists(built, tmp_path):
+    root, _, _, circ = built
+    fresh = tmp_path / "s"
+    shutil.copytree(root, fresh)
+    io.write_table([], table("feature"), fresh / "l1/feature/producer=test-none/stage=S0/part-0.parquet")
+    tv0 = tapes.run(fresh, "S0", circ, producers=["test-none"])["tape_version"]
+    res = tokens.run(fresh, REL + "-empty", producers=["test-none"])
+    dict_rows, tok_rows = got = _written_tokens(fresh, REL + "-empty", tv0)
+    assert got == _oracle_tokens(fresh, REL + "-empty", ["test-1"], tv0)
+    assert dict_rows == []
+    assert tok_rows == [{"contig_uid": cu, "family_tokens": [], "nr50_tokens": [], "nr90_tokens": []}
+                        for cu in sorted(_tapes_of_tv(root))]
+    assert res == {"tokens": {"family": 0, "nr50": 0, "nr90": 0}, "contigs": len(tok_rows), "files": 2}
+
+
+@pytest.mark.covers("LY-04")
+def test_b09_tape_token_row_groups_hold_whole_contigs_within_max_slots(built, tmp_path):
+    root, _, _, _ = built
+    n_by = {cu: t["n_slots"] for cu, t in _tapes_of_tv(root).items()}
+    cap = min(n_by.values())  # no two contigs fit together; the larger ones exceed the cap alone
+    fresh = _fresh(root, tmp_path, "s", TOKEN_DIRS)
+    tokens.run(fresh, REL, max_slots=cap)
+    [path] = sorted((fresh / f"l3/tape_tokens/tape_version={TV}/release={REL}").glob("*.parquet"))
+    groups = _row_group_slots(path)
+    assert groups == [[n_by[cu]] for cu in sorted(n_by)]
+    assert all(sum(g) <= cap or len(g) == 1 for g in groups) and any(sum(g) > cap for g in groups)
+    assert _written_tokens(fresh, REL) == _written_tokens(root, REL)
+    for f in sorted((root / "l3/tape_tokens").rglob("*.parquet")):  # the default build, AGENTS §4.6
+        assert all(sum(g) <= 131_072 for g in _row_group_slots(f))
+
+
+@pytest.mark.covers("LY-04")
+def test_b09_parts_are_cut_at_max_file_bytes(built, tmp_path):
+    root, _, _, _ = built
+    want_dict, want_tok = _written_tokens(root, REL)
+    n_slots = [t["n_slots"] for t in _tapes_of_tv(root).values()]
+    est_tok = 100 + 30 * max(1, sum(n_slots) // len(n_slots))  # the estimates per row, as before card B-09
+    fresh = _fresh(root, tmp_path, "s", TOKEN_DIRS)
+    cap = 3_000  # 50 dictionary rows per part; every tape-token row is a part of its own
+    res = tokens.run(fresh, REL, max_file_bytes=cap)
+    for d, rows, est in ((f"l3/token_dict/release={REL}", want_dict, 60),
+                         (f"l3/tape_tokens/tape_version={TV}/release={REL}", want_tok, est_tok)):
+        starts = layout.cut([est] * len(rows), cap)
+        assert len(starts) > 1
+        names = sorted((fresh / d).iterdir(), key=lambda p: int(p.stem.removeprefix("part-")))
+        assert [p.name for p in names] == [f"part-{k}.parquet" for k in range(len(starts))]
+        for p, a, b in zip(names, starts, starts[1:] + [len(rows)]):
+            assert pq.read_table(p, partitioning=None).to_pylist() == rows[a:b], p.name
+    assert res["files"] == len(layout.cut([60] * len(want_dict), cap)) + len(want_tok)
+    man = catalog.build_manifest(fresh, REL)
+    assert contracts.check_sort_order(man) == [] and contracts.check_statistics(man) == []
+
+
+@pytest.mark.covers("D-01", "D-04", "LY-08")
+def test_b09_token_bytes_do_not_depend_on_the_run_or_on_input_layout(built, tmp_path):
+    root, _, _, circ = built
+    want = _digests(root, TOKEN_DIRS)
+    rng = random.Random(9)
+    for name in ("again", "shuffled", "split"):
+        fresh = _fresh(root, tmp_path, name, TOKEN_DIRS)
+        if name == "shuffled":  # domain and cluster rows in another order, in several row groups
+            for f in sorted(fresh.glob("l1/domains/**/*.parquet")) + sorted(fresh.glob("l2/cluster_member/**/*.parquet")):
+                t = pq.read_table(f, partitioning=None)
+                idx = list(range(t.num_rows))
+                rng.shuffle(idx)
+                pq.write_table(t.take(idx), f, row_group_size=max(1, t.num_rows // 5))
+        if name == "split":  # the tapes in three parts
+            for d in TAPE_DIRS:
+                shutil.rmtree(fresh / d)
+            n = sorted(t["n_slots"] for t in _tapes_of_tv(root).values())
+            assert tapes.run(fresh, "S0", circ, max_file_bytes=200 + 30 * n[0])["files"] == 3
+        tokens.run(fresh, REL)
+        assert _digests(fresh, TOKEN_DIRS) == want, name
+
+
+@pytest.mark.covers("C-01", "LY-05", "LY-02", "LY-03")
+def test_b09_token_files_conform_and_the_manifest_accepts_them(built):
+    root, man, con, _ = built
+    by = defaultdict(list)
+    for f in man["files"]:
+        by[f["table"]].append(f)
+    assert [f["partitions"] for f in by["token_dict"]] == [{"release": REL}]
+    for name in ("token_dict", "tape_tokens"):
+        for f in by[name]:
+            assert conformance_problems(pq.read_table(root / f["path"], partitioning=None), table(name)) == [], f["path"]
+    assert contracts.check_sort_order(man) == [] and contracts.check_statistics(man) == []
+    assert contracts.check_list_lengths(con) == [] and contracts.check_foreign_keys(con) == []
+    counted = con.execute("SELECT level, sum(n_slots) FROM token_dict GROUP BY 1 ORDER BY 1").fetchall()
+    on_slots = [(lvl, con.execute(f"SELECT count(t) FROM (SELECT unnest({lvl}_tokens) AS t FROM tape_tokens)").fetchall()[0][0])
+                for lvl in sorted(LEVELS)]
+    assert counted == on_slots
+
+
+def test_b09_tokens_never_load_every_tape(built, tmp_path, monkeypatch):
+    root, _, _, _ = built
+    fresh = _fresh(root, tmp_path, "s", TOKEN_DIRS)
+
+    def refuse(*a, **k):
+        raise AssertionError("tokens.run read every tape into Python")
+
+    monkeypatch.setattr(tokens, "read_tapes", refuse)
+    parent = tmp_path / "scratch-parent"
+    parent.mkdir()
+    tokens.run(fresh, REL, tmp=parent)
+    assert _digests(fresh, TOKEN_DIRS) == _digests(root, TOKEN_DIRS)
+    assert list(parent.iterdir()) == []  # the private scratch directory is removed
+
+
+def test_b09_refusals(built, tmp_path):
+    root, _, _, _ = built
+    fresh = _fresh(root, tmp_path, "s", TOKEN_DIRS)
+    with pytest.raises(ValueError, match="31 libraries"):
+        tokens.run(fresh, REL, libraries=[f"lib{i}-1" for i in range(32)])
+    with pytest.raises(ValueError, match="scratch"):
+        tokens.run(fresh, REL, tmp=fresh / "tmp")
+    assert not (fresh / "l3/token_dict").exists() and not (fresh / "l3/tape_tokens").exists()
+
+
+def test_b09_iter_tapes_yields_rows_in_contig_order_across_files_and_row_groups(built, tmp_path):
+    root, _, _, _ = built
+    rows = sorted(_tapes_of_tv(root).values(), key=lambda r: r["contig_uid"])
+    rows = [{k: v for k, v in r.items() if k in table("contig_tapes").schema.names} for r in rows]
+    fake = tmp_path / "r"
+    spec = table("contig_tapes")
+    for stage, part in (("S0", rows[0::2]), ("S1", rows[1::2])):  # interleaved in contig order across stages
+        io.write_table([pa.Table.from_pylist(part, schema=spec.schema)], spec,
+                       fake / f"l3/tapes/tape_version={TV}/stage={stage}/part-0.parquet", row_group_rows=1)
+    it = tokens.iter_tapes(fake, TV)
+    assert inspect.isgenerator(it)
+    assert list(it) == rows
+    assert list(tokens.iter_tapes(fake, TV, ["n_slots"])) == [{"n_slots": r["n_slots"]} for r in rows]
+    assert list(tokens.iter_tapes(fake, "t-000000000000")) == []
+    assert [r["contig_uid"] for r in tokens.read_tapes(root, V, ["contig_uid"])] == [r["contig_uid"] for r in rows]

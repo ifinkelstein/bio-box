@@ -115,15 +115,18 @@ def write_table(batches: Iterable[pa.RecordBatch | pa.Table] | pa.Table, spec: T
 
     Every row group holds `row_group_rows` rows except the last. With `max_slots` and `slots_column`,
     a row group is also closed before a row would push its sum of `slots_column` past `max_slots`; a
-    single row above `max_slots` is a row group of its own. Returns rows, row groups and file bytes.
+    single row above `max_slots` is a row group of its own. `slots_column` is an integer column, or a
+    list column whose length is the row's slot count. Returns rows, row groups and file bytes.
     """
     path = Path(path)
     if row_group_rows < 1:
         raise ValueError("row_group_rows must be positive")
     if (max_slots is None) != (slots_column is None):
         raise ValueError("max_slots and slots_column go together")
-    if slots_column is not None and not pa.types.is_integer(spec.schema.field(slots_column).type):
-        raise ValueError(f"{spec.name}.{slots_column}: slot counts must be an integer column")
+    slots_type = spec.schema.field(slots_column).type if slots_column is not None else None
+    count_list = slots_type is not None and pa.types.is_list(slots_type)  # a list's length is its slots (card B-09)
+    if slots_type is not None and not (pa.types.is_integer(slots_type) or count_list):
+        raise ValueError(f"{spec.name}.{slots_column}: slot counts must be an integer or a list column")
     if path.exists():
         raise FileExistsError(f"{path}: stages are append-only; refusing to overwrite")
     key = [c for c in spec.sort_key if c in spec.schema.names]  # partition keys live in the path
@@ -164,6 +167,8 @@ def write_table(batches: Iterable[pa.RecordBatch | pa.Table] | pa.Table, spec: T
             last = [c.slice(n - 1, 1) for c in cols]
             if max_slots is not None:
                 s = b.column(slots_column)
+                if count_list:
+                    s = pc.list_value_length(s)  # null for a null list, refused below
                 if s.null_count or (pc.min(s).as_py() or 0) < 0:
                     raise ValueError(f"{spec.name}.{slots_column}: slot counts must be non-negative")
                 cum = np.cumsum(s.to_numpy(zero_copy_only=False), dtype=np.int64)

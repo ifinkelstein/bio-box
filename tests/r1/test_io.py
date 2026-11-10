@@ -367,6 +367,46 @@ def test_slot_bounded_row_groups_match_the_greedy_oracle(slots, cap, rows, cuts)
         assert rg_sizes(out) == _greedy_groups(slots, cap, rows)
 
 
+def tok_row(i: int, n: int) -> dict:
+    return {"contig_uid": uid(i), "family_tokens": [None if k % 3 == 0 else k for k in range(n)],
+            "nr50_tokens": list(range(n)), "nr90_tokens": [7] * n}
+
+
+@pytest.mark.covers("LY-04")
+def test_a_list_slots_column_counts_its_length_as_the_slots(tmp_path):
+    """card B-09: `tape_tokens` has no `n_slots`; the length of one of its lists is the row's slot count."""
+    spec = table("tape_tokens")
+    slots = [3, 4, 2, 6, 1, 1, 1, 12, 2, 8, 0, 1]
+    rows = [tok_row(i, n) for i, n in enumerate(slots)]
+    src = inferred(rows)
+    out = tmp_path / "one.parquet"
+    write_table([src], spec, out, max_slots=8, slots_column="family_tokens")  # nulls inside a list are slots too
+    assert rg_sizes(out) == _greedy_groups(slots, 8, 10**9) == [2, 2, 3, 1, 1, 2, 1]
+    assert pq.read_table(out).to_pylist() == rows
+    many = tmp_path / "many.parquet"
+    write_table(batches_of(src, [1, 2, 5, 7, 8, 9]), spec, many, max_slots=8, slots_column="nr50_tokens")
+    assert many.read_bytes() == out.read_bytes()
+    capped = tmp_path / "capped.parquet"
+    write_table(batches_of(src, [3, 4]), spec, capped, row_group_rows=2, max_slots=8, slots_column="nr90_tokens")
+    assert rg_sizes(capped) == _greedy_groups(slots, 8, 2)
+    # the same cuts as the integer column that holds the lengths
+    tapes = tmp_path / "tapes.parquet"
+    write_table([inferred([tape_row(i, n) for i, n in enumerate(slots)])], TAPES, tapes, max_slots=8,
+                slots_column="n_slots")
+    assert rg_sizes(tapes) == rg_sizes(out)
+
+
+def test_a_slots_column_must_be_an_integer_or_a_non_null_list(tmp_path):
+    with pytest.raises(ValueError, match="assembly_quality"):
+        write_table([inferred([tape_row(0, 2)])], TAPES, tmp_path / "a.parquet", max_slots=8,
+                    slots_column="assembly_quality")
+    circular = {**tape_row(1, 2), "orfs_to_contig_starts": None}  # a nullable list column holding a null list
+    with pytest.raises(ValueError, match="orfs_to_contig_starts"):
+        write_table([inferred([tape_row(0, 2), circular])], TAPES, tmp_path / "b.parquet", max_slots=8,
+                    slots_column="orfs_to_contig_starts")
+    assert list(tmp_path.iterdir()) == []
+
+
 @pytest.mark.covers("LY-08")
 @settings(max_examples=40, deadline=None)
 @given(keys=st.lists(_KEY, max_size=300), cuts=st.lists(st.integers(0, 300), max_size=12),
