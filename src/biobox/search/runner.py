@@ -10,14 +10,22 @@ A run is a recorded job:
      RecipeError and record nothing.
   2. The target's shards are copied to `<work>/<run_id>/` and checked against the pack
      manifest's sha256; their total must fit the /tmp quota.
-  3. `biobox.search.worker` runs in a child process at nice 15, with RLIMIT_CPU at the CPU
-     cap (300 CPU-min; the pod watchdog kills near 369) and, on Linux, RLIMIT_AS at the
-     memory cap, under a wall-clock timeout.
-  4. The exit decides the status: 0 -> the worker's own (`ok`, `failed` for a control,
-     `output_cap`); EXIT_OOM or a SIGKILL the runner did not send -> `oom`; SIGXCPU or the
-     wall timeout -> `timeout`; a cancel (SIGTERM) -> `stopped`; anything else -> `failed`.
-     Only `ok`, `failed`-by-control and `output_cap` runs carry hits; the others write
-     `run.parquet` alone, never an empty hits file (S-05).
+  3. `biobox.search.worker` runs in a child process started the way run-step starts a step
+     (`runstep.scope_argv`, card C-05): on Linux with `systemd-run`, inside a transient user
+     scope with `MemoryMax` at the memory cap and `CPUQuota` at the CPU count, at nice 15;
+     elsewhere under `nice` (or `os.nice`). RLIMIT_CPU at the CPU cap (300 CPU-min; the pod
+     watchdog kills near 369) applies in both paths, because the watchdog's rule is per process.
+     RLIMIT_AS at the memory cap is set only in the fallback on Linux, where no cgroup limit
+     exists: it caps virtual memory, not resident memory, so under it a thread-heavy process
+     fails to start threads long before it is out of memory (194 threads failed at 5 GB
+     resident under an 18 GB RLIMIT_AS on the 112-core host). A wall-clock timeout covers both.
+  4. The exit decides the status (`classify_exit`): 0 -> the worker's own (`ok`, `failed` for a
+     control, `output_cap`); EXIT_OOM (MemoryError, under RLIMIT_AS in the fallback) -> `oom`;
+     a SIGKILL the runner did not send -> `oom` when the scope's cgroup counts an OOM kill
+     (`scope_oom_killed`), `failed` when it does not, and `oom` as before when there is no
+     cgroup to ask; SIGXCPU or the wall timeout -> `timeout`; a cancel (SIGTERM) -> `stopped`;
+     anything else -> `failed`. Only `ok`, `failed`-by-control and `output_cap` runs carry
+     hits; the others write `run.parquet` alone, never an empty hits file (S-05).
   5. The run directory is written next to its final place and renamed in
      (`search/run=<run_id>/`), then `search/run_index.json` is rewritten by atomic rename
      under a lock.
@@ -46,14 +54,16 @@ import pyarrow as pa
 import pyarrow.parquet as pq
 from blake3 import blake3
 
-from biobox import ids, provenance
+from biobox import ids, provenance, runstep
 from biobox.l1.genecall import GENE_CALL_VERSION
 from biobox.registry.schemas import table
 from biobox.search import engine, fastz, pack, recipe as rcp
 from biobox.search.recipe import RecipeError
-from biobox.search.worker import EXIT_OOM
+from biobox.search.worker import CGROUP_FILE, EXIT_OOM
 
 GB = 10**9
+CGROUP_ROOT = Path("/sys/fs/cgroup")  # the cgroup v2 mount
+_WHICH = object()  # default for scope_oom_killed(systemctl=...): look it up on PATH
 # the worker's entry point: a MemoryError while importing under RLIMIT_AS is an OOM too
 _BOOT = ("import os, sys\n"
          "try:\n"
@@ -69,7 +79,7 @@ RUN_FILES = ("run.parquet", "hits.parquet", "profiles.parquet", "neighborhoods.p
 class Limits:
     cpu_min: float = 300.0       # per search process (SD-15)
     wall_s: float = 6 * 3600.0
-    mem_gb: float | None = None  # RLIMIT_AS, Linux only
+    mem_gb: float | None = None  # the scope's MemoryMax; RLIMIT_AS on Linux without systemd-run; else none
     tmp_quota_gb: float = 150.0
     nice: int = 15
     cpus: int = 8
@@ -160,16 +170,99 @@ def query_hash(seed: dict) -> str:
     return blake3(json.dumps(q, sort_keys=True).encode()).hexdigest()
 
 
-def _set_limits(limits: Limits):
+def worker_command(job: Path) -> list[str]:
+    return [sys.executable, "-c", _BOOT, str(job)]
+
+
+def worker_argv(job: Path, limits: Limits, *, system: str | None = None,
+                which=shutil.which) -> tuple[list[str], str]:
+    """The worker's argv and how it is limited ("scope", "nice", "bare"), by run-step's helper."""
+    mem = None if limits.mem_gb is None else str(int(limits.mem_gb * GB))
+    return runstep.scope_argv(worker_command(job), limits.nice, mem_max=mem, cpu_quota=limits.cpus * 100,
+                              system=system, which=which)
+
+
+def rlimits(limits: Limits, kind: str, system: str) -> dict[int, tuple[int, int]]:
+    """The rlimits the worker starts under. RLIMIT_CPU always (per process); RLIMIT_AS only on
+    Linux where no scope caps memory (module docstring, point 3)."""
+    cpu = max(1, int(limits.cpu_min * 60))
+    out = {resource.RLIMIT_CPU: (cpu, cpu + 5)}
+    if limits.mem_gb is not None and system == "Linux" and kind != "scope":
+        b = int(limits.mem_gb * GB)
+        out[resource.RLIMIT_AS] = (b, b)
+    return out
+
+
+def worker_env(limits: Limits, kind: str, system: str, base: dict[str, str]) -> dict[str, str]:
+    """The worker's environment: `base` plus the memory limit it runs under, by name, for the
+    `oom` fault to allocate past (BIOBOX_MEMORY_MAX in a scope, BIOBOX_RLIMIT_AS in the fallback)."""
+    env = dict(base)
+    env.pop("BIOBOX_MEMORY_MAX", None)
+    env.pop("BIOBOX_RLIMIT_AS", None)
+    if limits.mem_gb is not None:
+        if kind == "scope":
+            env["BIOBOX_MEMORY_MAX"] = str(int(limits.mem_gb * GB))
+        elif system == "Linux":
+            env["BIOBOX_RLIMIT_AS"] = str(int(limits.mem_gb * GB))
+    return env
+
+
+def _preexec(limits: Limits, kind: str, system: str):
+    """Runs in the child before exec: its own session (so the runner signals the group), its
+    niceness when no `nice` binary sets it, and its rlimits (inherited through systemd-run and nice)."""
+    lims = rlimits(limits, kind, system)
+
     def fn():
         os.setsid()
-        os.nice(limits.nice)
-        cpu = max(1, int(limits.cpu_min * 60))
-        resource.setrlimit(resource.RLIMIT_CPU, (cpu, cpu + 5))
-        if limits.mem_gb is not None and platform.system() == "Linux":
-            b = int(limits.mem_gb * GB)
-            resource.setrlimit(resource.RLIMIT_AS, (b, b))
+        if kind == "bare":
+            os.nice(limits.nice)
+        for which, value in lims.items():
+            resource.setrlimit(which, value)
     return fn
+
+
+def _oom_kills(memory_events: str) -> int:
+    for line in memory_events.splitlines():
+        key, _, value = line.partition(" ")
+        if key == "oom_kill":
+            return int(value)
+    return 0
+
+
+def scope_oom_killed(work: Path, *, cgroup_root: Path = CGROUP_ROOT, systemctl=_WHICH) -> bool | None:
+    """Whether the kernel OOM-killed a process of the worker's scope: True, False, or None when
+    there is no evidence either way. The worker recorded its cgroup path (`CGROUP_FILE`); the
+    scope's `memory.events` counts OOM kills while the cgroup exists. systemd removes the cgroup
+    of a scope once its last process has exited, so after that the scope unit's `Result` is
+    asked instead (`oom-kill` after an OOM kill; a failed unit stays loaded until reset-failed,
+    which is done here once it has been read)."""
+    try:
+        cg = (Path(work) / CGROUP_FILE).read_text().strip()
+    except OSError:
+        return None
+    if not cg:
+        return None
+    try:
+        return _oom_kills((Path(cgroup_root) / cg.lstrip("/") / "memory.events").read_text()) > 0
+    except (OSError, ValueError):
+        pass
+    exe = shutil.which("systemctl") if systemctl is _WHICH else systemctl
+    unit = cg.rsplit("/", 1)[-1]
+    if not exe or not unit.endswith(".scope"):
+        return None
+    try:
+        out = subprocess.run([exe, "--user", "show", "-p", "LoadState", "-p", "Result", unit],
+                             capture_output=True, text=True, timeout=10).stdout
+    except (OSError, subprocess.SubprocessError):
+        return None
+    props = dict(line.partition("=")[::2] for line in out.splitlines())
+    if props.get("LoadState") != "loaded" or not props.get("Result"):
+        return None
+    try:
+        subprocess.run([exe, "--user", "reset-failed", unit], capture_output=True, timeout=10)
+    except (OSError, subprocess.SubprocessError):
+        pass
+    return props["Result"] == "oom-kill"
 
 
 def _stage(res: dict, work: Path, limits: Limits) -> tuple[list[Path], list[Path], list[bytes]]:
@@ -214,20 +307,39 @@ def _wait(proc: subprocess.Popen, wall_s: float, cancelled: list) -> tuple[int, 
         time.sleep(0.02)
 
 
-def _status(rc: int, timed_out: bool, cancelled: bool, out: Path, stderr: str) -> tuple[str, str | None, dict]:
+def classify_exit(rc: int, *, timed_out: bool, cancelled: bool, cgroup_oom: bool | None,
+                  result: dict | None, stderr: str = "") -> tuple[str, str | None]:
+    """(status, error) of a worker exit, from the evidence alone: its exit status `rc`; whether
+    the runner itself sent the kill (`timed_out`: SIGKILL at the wall deadline; `cancelled`:
+    SIGTERM); whether the scope's cgroup counted an OOM kill (`cgroup_oom`, None without a scope
+    or without an answer); the worker's `result.json` (exit 0 only); its stderr. An EXIT_OOM is
+    the fallback's MemoryError (RLIMIT_AS)."""
     if timed_out:
-        return "timeout", "wall-clock timeout", {}
+        return "timeout", "wall-clock timeout"
     if cancelled:
-        return "stopped", "cancelled", {}
-    if rc == 0 and (out / "result.json").exists():
-        res = json.loads((out / "result.json").read_text())
-        return res["status"], res["error"], res
-    if rc == EXIT_OOM or rc == -signal.SIGKILL:
-        return "oom", "out of memory" if rc == EXIT_OOM else "killed (SIGKILL; OOM killer)", {}
+        return "stopped", "cancelled"
+    if rc == 0 and result is not None:
+        return result["status"], result["error"]
+    if rc == EXIT_OOM:
+        return "oom", "out of memory (MemoryError)"
+    if rc == -signal.SIGKILL:
+        if cgroup_oom:
+            return "oom", "killed by the kernel OOM killer at the scope's MemoryMax (memory.events oom_kill)"
+        if cgroup_oom is False:
+            return "failed", "worker was killed by signal 9 from outside (its scope reports no OOM kill)"
+        return "oom", "killed (SIGKILL; OOM killer presumed: no cgroup to ask)"
     if rc == -signal.SIGXCPU:
-        return "timeout", "CPU limit reached (RLIMIT_CPU)", {}
+        return "timeout", "CPU limit reached (RLIMIT_CPU)"
     tail = stderr.strip().splitlines()[-1:] if stderr.strip() else []
-    return "failed", f"worker exited {rc}" + (f": {tail[0]}" if tail else ""), {}
+    return "failed", f"worker exited {rc}" + (f": {tail[0]}" if tail else "")
+
+
+def _status(rc: int, timed_out: bool, cancelled: bool, out: Path, stderr: str,
+            cgroup_oom: bool | None = None) -> tuple[str, str | None, dict]:
+    res = json.loads((out / "result.json").read_text()) if rc == 0 and (out / "result.json").exists() else None
+    status, error = classify_exit(rc, timed_out=timed_out, cancelled=cancelled, cgroup_oom=cgroup_oom,
+                                  result=res, stderr=stderr)
+    return status, error, (res if res is not None and not (timed_out or cancelled) else {})
 
 
 def _index_update(root: Path, entry: dict) -> None:
@@ -296,14 +408,17 @@ def run(root: Path, recipe_src: Path | str, release: str, *, limits: Limits = Li
                "max_output_bytes": int(r["max_output_gb"] * GB), "fault": fault,
                "negative_seed": int.from_bytes(run_id[:4], "big")}
         (work / "job.json").write_text(json.dumps(job, sort_keys=True))
-        env = dict(os.environ)
-        if limits.mem_gb is not None and platform.system() == "Linux":
-            env["BIOBOX_RLIMIT_AS"] = str(int(limits.mem_gb * GB))
+        system = platform.system()
+        argv, kind = worker_argv(work / "job.json", limits, system=system)
+        env = worker_env(limits, kind, system, os.environ)
         with open(work / "stderr.txt", "w") as err:
-            proc = subprocess.Popen([sys.executable, "-c", _BOOT, str(work / "job.json")],
-                                    stdout=subprocess.DEVNULL, stderr=err, preexec_fn=_set_limits(limits), env=env)
+            proc = subprocess.Popen(argv, stdout=subprocess.DEVNULL, stderr=err,
+                                    preexec_fn=_preexec(limits, kind, system), env=env)
             rc, ru, timed_out = _wait(proc, limits.wall_s, cancelled)
-        status, error, result = _status(rc, timed_out, bool(cancelled), out, (work / "stderr.txt").read_text())
+        # only a scope's own cgroup is evidence: outside one, the cgroup is the runner's session's
+        cgroup_oom = scope_oom_killed(work) if kind == "scope" and rc == -signal.SIGKILL and not timed_out else None
+        status, error, result = _status(rc, timed_out, bool(cancelled), out, (work / "stderr.txt").read_text(),
+                                        cgroup_oom)
     except _RunFailure as f:
         status, error = f.status, f.error
     finally:

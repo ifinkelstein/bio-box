@@ -9,13 +9,16 @@ from __future__ import annotations
 
 import dataclasses
 import json
+import resource
+import signal
 from collections import Counter
 from pathlib import Path
 
 import pytest
 from hypothesis import assume, given, settings, strategies as st
 
-from biobox.search import export, nbr, orfs, recipe
+from biobox import runstep
+from biobox.search import export, nbr, orfs, recipe, runner, worker
 from biobox.search.recipe import RecipeError
 
 REPO = Path(__file__).resolve().parents[2]
@@ -547,3 +550,132 @@ def test_b16_json_records_with_an_ordinal_carry_feature_uid_and_tape_version():
             assert "anchor_ordinal" not in keys or "anchor_feature_uid" in keys, kind
         if "occurrences" in keys:
             assert "tape_version" in keys, kind
+
+
+# --- C-05: the worker's scope, its limits and how an exit is classified ------------------------------
+
+
+def _found(name: str) -> str:
+    return f"/usr/bin/{name}"
+
+
+def _no_systemd(name: str) -> str | None:
+    return None if name == "systemd-run" else f"/usr/bin/{name}"
+
+
+@pytest.mark.covers("C-05", "S-06")
+def test_c05_worker_argv_in_a_scope_and_in_the_fallback():
+    job = Path("/w/run/job.json")
+    worker_cmd = runner.worker_command(job)
+    assert worker_cmd[-1] == str(job)
+    lim = runner.Limits(cpus=2, mem_gb=18, nice=15)
+    assert runner.worker_argv(job, lim, system="Linux", which=_found) == (
+        ["systemd-run", "--user", "--scope", "--quiet", "-p", "MemoryMax=18000000000", "-p", "CPUQuota=200%",
+         "nice", "-n", "15", *worker_cmd], "scope")
+    # no memory limit in the run's limits: no MemoryMax (as the fallback sets no RLIMIT_AS then)
+    assert runner.worker_argv(job, runner.Limits(cpus=3, nice=15), system="Linux", which=_found) == (
+        ["systemd-run", "--user", "--scope", "--quiet", "-p", "CPUQuota=300%", "nice", "-n", "15", *worker_cmd],
+        "scope")
+    nice = (["nice", "-n", "15", *worker_cmd], "nice")
+    assert runner.worker_argv(job, lim, system="Linux", which=_no_systemd) == nice
+    assert runner.worker_argv(job, lim, system="Darwin", which=_found) == nice
+    assert runner.worker_argv(job, lim, system="Linux", which=lambda name: None) == (worker_cmd, "bare")
+    # run-step builds its argv with the same helper
+    cmd = ["mmseqs", "easy-search"]
+    for system, which in (("Linux", _found), ("Linux", _no_systemd), ("Darwin", _found)):
+        assert runstep.build_argv(cmd, 19, "200G", system=system, which=which) == \
+            runstep.scope_argv(cmd, 19, mem_max="200G", system=system, which=which)[0]
+
+
+@pytest.mark.covers("C-05", "S-06")
+def test_c05_rlimit_as_only_where_no_scope_caps_memory():
+    """RLIMIT_CPU caps each process in both paths; RLIMIT_AS (virtual memory) only without a scope, on Linux."""
+    lim = runner.Limits(cpu_min=2, mem_gb=4)
+    cpu = {resource.RLIMIT_CPU: (120, 125)}
+    assert runner.rlimits(lim, "scope", "Linux") == cpu
+    for kind in ("nice", "bare"):
+        assert runner.rlimits(lim, kind, "Linux") == {**cpu, resource.RLIMIT_AS: (4 * 10**9, 4 * 10**9)}
+        assert runner.rlimits(lim, kind, "Darwin") == cpu
+    assert runner.rlimits(runner.Limits(cpu_min=2), "nice", "Linux") == cpu
+
+
+@pytest.mark.covers("C-05", "S-05")
+def test_c05_worker_env_names_the_memory_limit_it_runs_under():
+    lim = runner.Limits(mem_gb=4)
+    scope = runner.worker_env(lim, "scope", "Linux", {"PATH": "/bin"})
+    assert scope["BIOBOX_MEMORY_MAX"] == str(4 * 10**9) and "BIOBOX_RLIMIT_AS" not in scope
+    assert scope["PATH"] == "/bin"
+    fallback = runner.worker_env(lim, "nice", "Linux", {})
+    assert fallback["BIOBOX_RLIMIT_AS"] == str(4 * 10**9) and "BIOBOX_MEMORY_MAX" not in fallback
+    for env in (runner.worker_env(lim, "nice", "Darwin", {}), runner.worker_env(runner.Limits(), "scope", "Linux", {})):
+        assert "BIOBOX_RLIMIT_AS" not in env and "BIOBOX_MEMORY_MAX" not in env
+
+
+KILL, TERM, XCPU, SEGV = -signal.SIGKILL, -signal.SIGTERM, -signal.SIGXCPU, -signal.SIGSEGV
+OK_RESULT = {"status": "ok", "error": None}
+
+
+@pytest.mark.covers("C-05", "S-05")
+@pytest.mark.parametrize("rc,timed_out,cancelled,cgroup_oom,result,want", [
+    (0, False, False, None, OK_RESULT, "ok"),
+    (0, False, False, None, {"status": "failed", "error": "positive control not recovered"}, "failed"),
+    (0, False, False, None, None, "failed"),                    # exit 0 without a result
+    (worker.EXIT_OOM, False, False, None, None, "oom"),          # MemoryError (under RLIMIT_AS in the fallback)
+    (KILL, True, False, None, None, "timeout"),                  # the runner's own wall-clock SIGKILL
+    (KILL, True, False, True, None, "timeout"),
+    (KILL, False, False, True, None, "oom"),                     # the scope's memory.events counts an oom_kill
+    (KILL, False, False, False, None, "failed"),                 # the scope says no OOM kill: killed from outside
+    (KILL, False, False, None, None, "oom"),                     # no cgroup evidence (fallback): presumed OOM
+    (TERM, False, True, None, None, "stopped"),                  # cancel
+    (XCPU, False, False, None, None, "timeout"),                 # RLIMIT_CPU
+    (SEGV, False, False, None, None, "failed"),
+    (1, False, False, None, None, "failed"),
+])
+def test_c05_exit_classification_from_its_evidence(rc, timed_out, cancelled, cgroup_oom, result, want):
+    status, error = runner.classify_exit(rc, timed_out=timed_out, cancelled=cancelled, cgroup_oom=cgroup_oom,
+                                         result=result, stderr="Traceback\nRuntimeError: boom\n")
+    assert status == want, error
+    if want != "ok":
+        assert error
+    if rc == 1:
+        assert error.endswith("RuntimeError: boom")
+    if rc == KILL and cgroup_oom is False:
+        assert "signal 9" in error and "outside" in error
+
+
+CG = "/user.slice/user-1000.slice/user@1000.service/app.slice/run-r0123abcd.scope"
+
+
+def _systemctl(tmp_path: Path, load: str, result: str) -> str:
+    """A stand-in for `systemctl` that answers `show` with this LoadState and Result (and ignores the rest)."""
+    p = tmp_path / f"systemctl-{load}-{result}"
+    p.write_text(f'#!/bin/sh\n[ "$2" = show ] && printf "LoadState={load}\\nResult={result}\\n"\nexit 0\n')
+    p.chmod(0o755)
+    return str(p)
+
+
+@pytest.mark.covers("C-05", "S-05")
+def test_c05_oom_evidence_from_the_scope(tmp_path):
+    work, cg_root = tmp_path / "work", tmp_path / "cgroup"
+    work.mkdir()
+    assert runner.scope_oom_killed(work, cgroup_root=cg_root, systemctl=None) is None  # the worker left no marker
+    (work / runner.CGROUP_FILE).write_text(CG + "\n")
+    assert runner.scope_oom_killed(work, cgroup_root=cg_root, systemctl=None) is None  # scope gone, nobody to ask
+    events = cg_root / CG.lstrip("/") / "memory.events"
+    events.parent.mkdir(parents=True)
+    events.write_text("low 0\nhigh 0\nmax 1450\noom 3\noom_kill 1\noom_group_kill 0\n")
+    assert runner.scope_oom_killed(work, cgroup_root=cg_root, systemctl=None) is True
+    events.write_text("low 0\nhigh 0\nmax 0\noom 0\noom_kill 0\noom_group_kill 0\n")
+    assert runner.scope_oom_killed(work, cgroup_root=cg_root, systemctl=None) is False
+    events.unlink()  # systemd removed the scope's cgroup: its unit's result says why it ended
+    for load, result, want in (("loaded", "oom-kill", True), ("loaded", "success", False),
+                               ("loaded", "signal", False), ("not-found", "success", None)):
+        got = runner.scope_oom_killed(work, cgroup_root=cg_root, systemctl=_systemctl(tmp_path, load, result))
+        assert got is want, (load, result)
+
+
+@pytest.mark.covers("C-05")
+def test_c05_worker_reads_its_cgroup_v2_path():
+    assert worker.cgroup_v2_path(f"0::{CG}\n") == CG
+    assert worker.cgroup_v2_path(f"12:memory:/x\n1:name=systemd:/y\n0::{CG}\n") == CG
+    assert worker.cgroup_v2_path("12:memory:/x\n1:name=systemd:/y\n") is None  # cgroup v1 only: no evidence

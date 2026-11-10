@@ -24,6 +24,26 @@ from biobox.search import engine, fastz, nbr
 
 EXIT_OOM = 86
 EXIT_ORPHAN = 87  # the runner died: nothing would record this run, so stop
+CGROUP_FILE = "worker.cgroup"  # beside job.json: the worker's cgroup v2 path, where the runner looks for an OOM kill
+
+
+def cgroup_v2_path(proc_self_cgroup: str) -> str | None:
+    """The unified (v2) hierarchy path in the text of /proc/self/cgroup, or None (no v2 line)."""
+    for line in proc_self_cgroup.splitlines():
+        if line.startswith("0::"):
+            return line[3:]
+    return None
+
+
+def _record_cgroup(job_dir: Path) -> None:
+    """Write this process's cgroup v2 path for the runner. Under a systemd scope it is the scope's
+    own cgroup, whose memory.events counts the kernel's OOM kills (card C-05)."""
+    try:
+        path = cgroup_v2_path(Path("/proc/self/cgroup").read_text())
+    except OSError:  # not Linux
+        return
+    if path:
+        (job_dir / CGROUP_FILE).write_text(path + "\n")
 
 
 def _zst(b: bytes | None) -> bytes | None:
@@ -60,9 +80,11 @@ def _fault(kind: str | None) -> None:
     if kind is None:
         return
     if kind == "oom":
-        # a real allocation where the runner set RLIMIT_AS (Linux); elsewhere the error it would raise
-        if os.environ.get("BIOBOX_RLIMIT_AS"):
-            _ = bytearray(int(os.environ["BIOBOX_RLIMIT_AS"]) * 2)
+        # a real allocation past the limit the runner set: RLIMIT_AS (Linux without a scope) raises
+        # MemoryError; the scope's MemoryMax gets the worker OOM-killed. Elsewhere, the error it would raise.
+        limit = os.environ.get("BIOBOX_RLIMIT_AS") or os.environ.get("BIOBOX_MEMORY_MAX")
+        if limit:
+            _ = bytearray(int(limit) * 2)
         raise MemoryError("injected")
     if kind == "timeout":
         time.sleep(10**6)
@@ -126,6 +148,7 @@ def _watch_parent() -> None:
 def main(job_path: str) -> int:
     job = json.loads(Path(job_path).read_text())
     _watch_parent()
+    _record_cgroup(Path(job_path).parent)
     (Path(job_path).parent / "worker.pid").write_text(str(os.getpid()))
     _fault(job.get("fault"))
     root, out = Path(job["root"]), Path(job["out"])
