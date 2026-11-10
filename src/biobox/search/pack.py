@@ -112,6 +112,15 @@ def _codes(root: Path, gcv: str) -> dict[bytes, int]:
     return {cu: c.most_common(1)[0][0] for cu, c in counts.items()}
 
 
+def _check_codes(root: Path, gcv: str) -> None:
+    """Fail fast, before anything is written, on a genetic code the dark-ORF stage cannot translate."""
+    for cu, code in sorted(_codes(root, gcv).items()):
+        try:
+            orfs.check_code(code)
+        except ValueError as e:
+            raise ValueError(f"{e}; first contig using it: {cu.hex()}") from None
+
+
 def _gc(seq: bytes) -> float:
     s = seq.upper()
     acgt = sum(s.count(b) for b in (b"A", b"C", b"G", b"T"))
@@ -204,6 +213,7 @@ def build(root: Path, release: str, gene_call_version: str = GENE_CALL_VERSION,
           models: dict[str, Path] | None = None, shard_text_bytes: int = SHARD_TEXT_BYTES) -> dict:
     """Build the release's pack from the data root; returns the manifest (with `pack_id`)."""
     root = Path(root).resolve()
+    _check_codes(root, gene_call_version)
     out = pack_dir(root, release)
     if out.exists():
         shutil.rmtree(out)

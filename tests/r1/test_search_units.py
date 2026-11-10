@@ -31,6 +31,10 @@ def _table(code):
     t = dict(TABLE)
     if code == 4:
         t["TGA"] = "W"
+    elif code == 15:
+        t["TAG"] = "Q"
+    elif code == 25:
+        t["TGA"] = "G"
     return t
 
 
@@ -109,6 +113,55 @@ def test_dark_orf_rule_equals_definition(seq, data):
             continue
         want.add((start, end, strand))
     assert got == want
+
+
+@settings(max_examples=300, deadline=None)
+@given(st.text(alphabet="ACGT", min_size=3, max_size=240), st.booleans(), st.sampled_from([4, 11, 15, 25]))
+@pytest.mark.covers("W-01")
+def test_w01_six_frame_orfs_equal_oracle_for_codes_4_11_15_25(seq, circular, code):
+    """Both strands, circular and linear: translation and stop-to-stop boundaries per code."""
+    assert _prod_orfs(seq, circular, code, 3) == _oracle_orfs(seq, circular, code, 3)
+
+
+@settings(max_examples=300, deadline=None)
+@given(st.text(alphabet="ACGT", min_size=0, max_size=300), st.sampled_from([4, 11, 15, 25]))
+@pytest.mark.covers("W-01")
+def test_w01_translate_equals_codon_table(seq, code):
+    t = _table(code)
+    want = "".join(t[seq[i:i + 3]] for i in range(0, len(seq) - 2, 3))
+    assert orfs._translate(seq, code) == want
+
+
+@pytest.mark.covers("W-01")
+def test_w01_tag_is_glutamine_and_not_a_stop_under_code_15():
+    body = "GCT" * 40
+    seq = "ATG" + body + "TAG" + body + "TAA"
+    under11 = {(o.start, o.end, o.strand, o.aa) for o in orfs.six_frame_orfs(seq.encode(), False, 11, 30) if o.strand == 1}
+    under15 = {(o.start, o.end, o.strand, o.aa) for o in orfs.six_frame_orfs(seq.encode(), False, 15, 30) if o.strand == 1}
+    first = 3 + 120 + 3
+    assert (0, first, 1, "M" + "A" * 40) in under11  # the ORF ends at TAG
+    assert (first, len(seq), 1, "A" * 40) in under11
+    through = (0, len(seq), 1, "M" + "A" * 40 + "Q" + "A" * 40)  # reads through, TAG as Q
+    assert through in under15 and through not in under11
+    assert (0, first, 1, "M" + "A" * 40) not in under15 and (first, len(seq), 1, "A" * 40) not in under15
+    assert orfs._translate("TAGTAATGA", 15) == "Q**"
+    assert orfs._translate("TAGTAATGA", 11) == "***"
+
+
+@pytest.mark.parametrize("code", [0, 7, 26, 99])
+@pytest.mark.covers("W-01")
+def test_w01_unsupported_code_raises_value_error_naming_it(code):
+    with pytest.raises(ValueError, match=str(code)):
+        orfs._translate("ATGAAATAG", code)
+    with pytest.raises(ValueError, match=str(code)):
+        orfs.six_frame_orfs(b"ATGAAATAGATGAAATAG", False, code, 1)
+    with pytest.raises(ValueError, match=str(code)):
+        orfs.check_code(code)
+
+
+@pytest.mark.covers("W-01")
+def test_w01_supported_codes_include_the_golden_set():
+    assert {4, 11, 15, 25} <= set(orfs.supported_codes())
 
 
 # --- neighborhoods (S-09) ------------------------------------------------------------------------
