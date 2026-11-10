@@ -7,6 +7,9 @@ never on how the input was batched, so the bytes do not either; min/max statisti
 the sort-key columns. The file is written under `.<name>.tmp-<pid>` beside its final path and
 renamed into place only after the writer closed cleanly. At most one row group is buffered.
 
+`write_parts` streams sorted batches into `part-<k>.parquet` files of one directory, cut at
+`layout.MAX_FILE_BYTES` of estimated size (card B-19); `part_files` lists such files in part order.
+
 `duck_batches` streams a DuckDB query result as batches cast to a spec (DuckDB has no fixed-size
 binary type and returns UIDs and digests as BLOB).
 """
@@ -16,7 +19,8 @@ from __future__ import annotations
 import contextlib
 import io
 import os
-from collections.abc import Iterable, Iterator
+import re
+from collections.abc import Callable, Iterable, Iterator
 from pathlib import Path
 
 import numpy as np
@@ -24,10 +28,12 @@ import pyarrow as pa
 import pyarrow.compute as pc
 import pyarrow.parquet as pq
 
+from biobox import layout
 from biobox.registry.schemas import TableSpec
 
 ROW_GROUP_ROWS = 122_880  # AGENTS §4.6
 _CAST_ERRORS = (pa.ArrowInvalid, pa.ArrowNotImplementedError, pa.ArrowTypeError)
+_PART_RE = re.compile(r"part-(\d+)\.parquet")
 
 
 def conform(batch: pa.RecordBatch, spec: TableSpec) -> pa.RecordBatch:
@@ -199,6 +205,91 @@ def write_table(batches: Iterable[pa.RecordBatch | pa.Table] | pa.Table, spec: T
         tmp.unlink(missing_ok=True)
         raise
     return {"rows": rows, "row_groups": groups, "bytes": path.stat().st_size}
+
+
+def part_key(path) -> tuple[str, int, str]:
+    """Sort key of a part file: its directory, then the number `k` of `part-<k>.parquet` (so part-10
+    follows part-9), then the name (a file of another name sorts after the parts of its directory)."""
+    p = Path(path)
+    m = _PART_RE.fullmatch(p.name)
+    return (p.parent.as_posix(), int(m[1]) if m else 2**63, p.name)
+
+
+def part_files(base, pattern: str = "part-*.parquet") -> list[Path]:
+    """The files under `base` that match the glob `pattern` (default: the parts of `base` itself; for
+    example `stage=*/part-*.parquet` for every stage), by directory and then in part order."""
+    base = Path(base)
+    return sorted(base.glob(pattern), key=part_key) if base.exists() else []
+
+
+class _PartSource:
+    """Batches consumed from the front, with each row's estimated size beside it."""
+
+    def __init__(self, batches, est_row_bytes):
+        self._it, self._est = _as_batches(batches), est_row_bytes
+        self._b: pa.RecordBatch | None = None
+        self._e: np.ndarray | None = None
+
+    def _estimates(self, b: pa.RecordBatch) -> np.ndarray:
+        if callable(self._est):
+            e = np.asarray(self._est(b), dtype=np.float64)
+            if e.shape != (b.num_rows,):
+                raise ValueError(f"est_row_bytes gave shape {e.shape} for a batch of {b.num_rows} rows")
+        else:
+            e = np.full(b.num_rows, float(self._est), dtype=np.float64)
+        if e.size and not (np.isfinite(e).all() and (e >= 0).all()):
+            raise ValueError("estimated row sizes must be finite and non-negative")
+        return e
+
+    def head(self) -> pa.RecordBatch | None:
+        while self._b is None or not self._b.num_rows:
+            b = next(self._it, None)
+            if b is None:
+                self._b = self._e = None
+                return None
+            self._b, self._e = b, (self._estimates(b) if b.num_rows else None)
+        return self._b
+
+    def part(self, max_file_bytes: int) -> Iterator[pa.RecordBatch]:
+        """The rows of one part: cut where `layout.cut` cuts (the same left-to-right float sums)."""
+        held = 0.0
+        while (b := self.head()) is not None:
+            cs = np.cumsum(np.concatenate([[held], self._e]))  # cs[i] = bytes held before row i
+            cut = np.flatnonzero((cs[:-1] != 0) & (cs[1:] > max_file_bytes))
+            n = int(cut[0]) if len(cut) else b.num_rows
+            piece = b.slice(0, n)
+            self._b, self._e = b.slice(n), self._e[n:]
+            if n:
+                yield piece
+            if n < b.num_rows:
+                return
+            held = float(cs[n])
+
+
+def write_parts(batches: Iterable[pa.RecordBatch | pa.Table] | pa.Table, spec: TableSpec, base_dir,
+                est_row_bytes: float | Callable[[pa.RecordBatch], np.ndarray],
+                max_file_bytes: int = layout.MAX_FILE_BYTES, **write_table_options) -> list[Path]:
+    """Write sorted batches as `base_dir/part-<k>.parquet`, k = 0, 1, ..., through `write_table`.
+
+    A new part starts when the next row would push the part's estimated size past `max_file_bytes`
+    (the rule of `layout.cut`); a part holds at least one row, and `part-0` is written even for empty
+    input. `est_row_bytes` is one estimate for every row, or a function of a batch (as the caller
+    passed it) giving each row's estimate. The parts depend only on the rows and the estimates, never
+    on how the input was batched. Refuses a directory that already holds parts (append-only).
+    `write_table_options` go to every `write_table` call. Returns the written paths, in part order.
+    """
+    base_dir = Path(base_dir)
+    if max_file_bytes < 1:
+        raise ValueError("max_file_bytes must be positive")
+    have = part_files(base_dir)
+    if have:
+        raise FileExistsError(f"{have[0]}: stages are append-only; refusing to overwrite ({len(have)} parts exist)")
+    src, paths = _PartSource(batches, est_row_bytes), []
+    while not paths or src.head() is not None:
+        path = base_dir / f"part-{len(paths)}.parquet"
+        write_table(src.part(max_file_bytes), spec, path, **write_table_options)
+        paths.append(path)
+    return paths
 
 
 def duck_batches(con, sql: str, spec: TableSpec, params=None, batch_rows: int = ROW_GROUP_ROWS

@@ -5,9 +5,12 @@ Layout under `<root>/` (planning/data_layer_and_tests.md §2A.1, §3.1):
     l0/l0_manifest.parquet
     l0seq/store_params.json
     l0seq/seq_shards/stage=<S>/shard-<NNNN>.fa.gz   (+ .fa.gz.fai, .fa.gz.gzi)
-    l0seq/contig_occurrence/stage=<S>/source=<name>/part-0.parquet
-    l0seq/contig_index/stage=<S>/part-0.parquet
-    l0seq/seq_locator/stage=<S>/part-0.parquet
+    l0seq/contig_occurrence/stage=<S>/source=<name>/part-<k>.parquet
+    l0seq/contig_index/stage=<S>/part-<k>.parquet
+    l0seq/seq_locator/stage=<S>/part-<k>.parquet
+
+Each table is cut into parts at `max_file_bytes` of estimated size (`biobox.io.write_parts`, card
+B-19); a small stage is one `part-0.parquet`. Readers take every part, in part order.
 
 Sequences are bgzip FASTA shards (DEC-17, after K-13): each stored byte sequence once,
 named by its `raw_digest` hex. One ingest batch writes one shard (card B-15, TASKS §2): a
@@ -39,7 +42,7 @@ import duckdb
 import pyarrow as pa
 import pyarrow.parquet as pq
 
-from biobox import fasta, ids, io, ledger, provenance
+from biobox import fasta, ids, io, layout, ledger, provenance
 from biobox.l0seq.bgzf import BgzfFasta, write_bgzf_fasta
 from biobox.l0seq.lookup import KeyLookup
 from biobox.registry.schemas import table
@@ -50,6 +53,12 @@ LINE_WIDTH = 80
 BGZF_LEVEL = 6
 DUCK_MEMORY_LIMIT = "1GB"  # ingest's DuckDB cap; larger sorts spill into the private scratch directory
 SCRATCH_FLUSH_ROWS = 65_536  # pass-1 rows buffered before a scratch row group is written
+# Estimated zstd bytes per row; they only cut parts at `max_file_bytes`. Estimates from the column
+# widths (random 16- and 32-byte keys do not compress); none of these tables has a measurement yet
+# (planning/measurements/2026-11-09_design_stress_test.md §3 and §6a list none).
+EST_OCCURRENCE_ROW = 120  # estimate: contig_occurrence (accession and header strings, raw_digest, contig_uid)
+EST_INDEX_ROW = 56  # estimate: contig_index (contig_uid 16 + raw_digest 32 + length and flag)
+EST_LOCATOR_ROW = 40  # estimate: seq_locator (raw_digest 32 + dictionary-coded shard path + length)
 
 _COMP = bytes.maketrans(b"ACGTRYKMBVDHNacgtrykmbvdhn", b"TGCAYRMKVBHDNtgcayrmkvbhdn")
 
@@ -79,12 +88,13 @@ INDEX_DIR = "l0seq/contig_index"
 
 
 def locator_files(root: Path) -> list[Path]:
-    """The store's `seq_locator` files, one per stage that stored a sequence, in stage order."""
-    return sorted((Path(root) / LOCATOR_DIR).glob("stage=*/part-0.parquet"))
+    """The store's `seq_locator` files (the parts of each stage that stored a sequence), in stage order
+    and then part order."""
+    return io.part_files(Path(root) / LOCATOR_DIR, "stage=*/part-*.parquet")
 
 
 def index_files(root: Path) -> list[Path]:
-    return sorted((Path(root) / INDEX_DIR).glob("stage=*/part-0.parquet"))
+    return io.part_files(Path(root) / INDEX_DIR, "stage=*/part-*.parquet")
 
 
 def has_sequences(root: Path) -> bool:
@@ -183,6 +193,7 @@ def ingest(
     shard_bases: int = SHARD_BASES,
     line_width: int = LINE_WIDTH,
     tmp: Path | None = None,
+    max_file_bytes: int = layout.MAX_FILE_BYTES,
 ) -> dict:
     """Ingest FASTA source objects for one stage. Returns counts for the ledger.
 
@@ -193,7 +204,8 @@ def ingest(
     occurrence of each by (object sha256, record ordinal), and the stage's `contig_index` rows.
     Pass 2 re-reads the objects batch by batch (`_batches`) and writes one shard per batch, its new
     sequences sorted by `raw_digest`; only one batch's sequences are held at a time. `tmp` holds the
-    scratch directory (system temp by default; never the data root).
+    scratch directory (system temp by default; never the data root). The tables are cut into parts at
+    `max_file_bytes` of estimated size (`io.write_parts`).
     """
     root = Path(root)
     if tmp is not None and Path(tmp).resolve().is_relative_to(root.resolve()):
@@ -230,7 +242,7 @@ def ingest(
                                      "temp_directory": str(scratch / "duckdb"), "preserve_insertion_order": True})
         try:
             return _decide_and_write(con, root, stage, ordered, n_in, seen_path, old_loc, old_idx, scratch,
-                                     shard_bases, line_width)
+                                     shard_bases, line_width, max_file_bytes)
         finally:
             con.close()
     finally:
@@ -239,7 +251,7 @@ def ingest(
 
 def _decide_and_write(con, root: Path, stage: str, ordered: list[tuple[bytes, SourceObject]], n_in: list[int],
                       seen_path: Path, old_loc: list[Path], old_idx: list[Path], scratch: Path,
-                      shard_bases: int, line_width: int) -> dict:
+                      shard_bases: int, line_width: int, max_file_bytes: int) -> dict:
     con.execute(f"CREATE VIEW seen AS SELECT * FROM read_parquet({_sql_path(seen_path)})")
     con.execute("CREATE VIEW old_loc AS " + (
         f"SELECT raw_digest FROM read_parquet({_sql_files(old_loc)}, union_by_name = true)" if old_loc
@@ -301,8 +313,8 @@ def _decide_and_write(con, root: Path, stage: str, ordered: list[tuple[bytes, So
     for (src,) in con.execute("SELECT DISTINCT source FROM seen ORDER BY source").fetchall():
         sql = (f"SELECT {occ_cols} FROM seen WHERE source = {_sql_path(src)} "
                "ORDER BY l0_object_sha256, record_ordinal, obj_idx")
-        io.write_table(io.duck_batches(con, sql, occ_spec), occ_spec,
-                       root / f"l0seq/contig_occurrence/stage={stage}/source={src}/part-0.parquet")
+        io.write_parts(io.duck_batches(con, sql, occ_spec), occ_spec,
+                       root / f"l0seq/contig_occurrence/stage={stage}/source={src}", EST_OCCURRENCE_ROW, max_file_bytes)
 
     # contig_index: new (contig_uid, raw_digest) pairs; the default is the variant with the lowest
     # (precedence, object sha256, record ordinal) of the stage, unless an earlier stage gave one
@@ -322,15 +334,15 @@ def _decide_and_write(con, root: Path, stage: str, ordered: list[tuple[bytes, So
         ORDER BY p.contig_uid, p.raw_digest"""
     (n_idx,), = con.execute(f"SELECT count(*) FROM ({idx_sql})").fetchall()
     if n_idx:
-        io.write_table(io.duck_batches(con, idx_sql, idx_spec), idx_spec,
-                       root / f"l0seq/contig_index/stage={stage}/part-0.parquet")
+        io.write_parts(io.duck_batches(con, idx_sql, idx_spec), idx_spec,
+                       root / f"l0seq/contig_index/stage={stage}", EST_INDEX_ROW, max_file_bytes)
 
     # seq_locator: this stage's new sequences only, sorted by raw_digest; never rewritten (AGENTS §3.10)
     if n_new:
         loc_spec = table("seq_locator")
-        io.write_table(io.duck_batches(con, "SELECT n.raw_digest, b.shard, n.contig_len FROM new_seq n "
+        io.write_parts(io.duck_batches(con, "SELECT n.raw_digest, b.shard, n.contig_len FROM new_seq n "
                                             "JOIN batch_of b USING (obj_idx) ORDER BY n.raw_digest", loc_spec),
-                       loc_spec, root / f"{LOCATOR_DIR}/stage={stage}/part-0.parquet")
+                       loc_spec, root / f"{LOCATOR_DIR}/stage={stage}", EST_LOCATOR_ROW, max_file_bytes)
 
     # l0_manifest: small metadata, rewritten with all stages
     man_spec = table("l0_manifest")
@@ -351,10 +363,11 @@ def _decide_and_write(con, root: Path, stage: str, ordered: list[tuple[bytes, So
     man = man.sort_by([("source_uid", "ascending"), ("object_path", "ascending")])
     _write(man, man_path, 122_880)
 
-    # ledger: per object, records in; kept = sequences first stored from it; merged = the rest
+    # ledger: per object, records in; kept = sequences first stored from it; merged = the rest. The
+    # objects are in sha256 order, the ledger's sort key; rows stream to the writer
     tools = provenance.tool_versions("pyarrow")
-    ledger.write(root, stage, "ingest", [ledger.row(sha, "l0_object", n_in[i], kept[i], n_in[i] - kept[i], tools=tools)
-                                         for i, (sha, _) in enumerate(ordered)])
+    ledger.write(root, stage, "ingest", (ledger.row(sha, "l0_object", n_in[i], kept[i], n_in[i] - kept[i], tools=tools)
+                                         for i, (sha, _) in enumerate(ordered)))
     return {"objects": len(ordered), "records": sum(n_in), "new_sequences": n_new, "index_rows": n_idx,
             "shards": len(batches)}
 
@@ -454,7 +467,7 @@ class SeqStore:
     def reconstruct_object(self, l0_object_sha256: bytes) -> list[bytes]:
         """FASTA lines of one source object, from occurrence rows and chunks (R-02)."""
         occ = pa.concat_tables(
-            pq.read_table(f) for f in sorted((self.root / "l0seq/contig_occurrence").glob("stage=*/source=*/part-0.parquet"))
+            pq.read_table(f) for f in io.part_files(self.root / "l0seq/contig_occurrence", "stage=*/source=*/part-*.parquet")
         )
         rows = sorted(
             (r for r in occ.to_pylist() if r["l0_object_sha256"] == l0_object_sha256),

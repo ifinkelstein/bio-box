@@ -596,3 +596,176 @@ def test_token_dict_spec_round_trips(tmp_path):
     out = tmp_path / "x.parquet"
     write_table([inferred(rows)], TOK, out)
     assert pq.read_table(out).to_pylist() == rows
+
+
+# --- parts (card B-19) -------------------------------------------------------------------------
+
+
+def tok_dict_rows(sizes: list[int]) -> list[dict]:
+    """token_dict rows whose `n_slots` carries the row's estimated size (for a callable estimate)."""
+    return [{"token_id": i, "level": "nr90", "source": "mmseqs", "key": f"k{i}", "n_slots": s}
+            for i, s in enumerate(sizes)]
+
+
+def _expected_parts(sizes: list[float], max_bytes: int) -> list[list[int]]:
+    """Oracle: a plain loop over rows. A part closes before a row that would push its held estimate
+    past `max_bytes`, unless the part holds nothing yet (one oversized row is a part of its own)."""
+    parts: list[list[int]] = [[]]
+    held = 0.0
+    for i, s in enumerate(sizes):
+        if parts[-1] and held + s > max_bytes:
+            parts.append([])
+            held = 0.0
+        parts[-1].append(i)
+        held += s
+    return parts
+
+
+def _parts_rows(paths: list[Path]) -> list[list[dict]]:
+    return [pq.read_table(p).to_pylist() for p in paths]
+
+
+@pytest.mark.covers("LY-04")
+@settings(max_examples=60, deadline=None)
+@given(sizes=st.lists(st.integers(1, 120), max_size=60), max_bytes=st.integers(1, 400),
+       cuts=st.lists(st.integers(0, 60), max_size=8))
+def test_write_parts_cuts_where_the_plain_loop_cuts(sizes, max_bytes, cuts):
+    from biobox.io import write_parts
+
+    rows = tok_dict_rows(sizes)
+    with tempfile.TemporaryDirectory() as d:
+        base = Path(d) / "release=r"
+        src = pa.Table.from_pylist(rows, schema=TOK.schema)
+        paths = write_parts(batches_of(src, [c for c in cuts if c <= len(rows)]), TOK, base,
+                            lambda b: b.column("n_slots").to_numpy(), max_bytes)
+        want = _expected_parts([float(s) for s in sizes], max_bytes)
+        assert [p.name for p in paths] == [f"part-{k}.parquet" for k in range(len(want))]
+        assert sorted(base.iterdir()) == sorted(paths)
+        assert _parts_rows(paths) == [[rows[i] for i in part] for part in want]
+
+
+@pytest.mark.covers("LY-04")
+def test_write_parts_with_one_estimate_holds_max_bytes_over_estimate_rows_per_part(tmp_path):
+    """The rule of the old `tokens._write_parts`: every part holds max(1, max_file_bytes // est) rows."""
+    from biobox.io import write_parts
+
+    rows = tok_dict_rows([1] * 23)
+    for est, max_bytes, per_part in ((60, 300, 5), (60, 359, 5), (60, 360, 6), (100, 30, 1), (7, 10**9, 23)):
+        paths = write_parts([inferred(rows)], TOK, tmp_path / f"e{est}-{max_bytes}", est, max_bytes)
+        assert [len(p) for p in _parts_rows(paths)] == [len(rows[i : i + per_part]) for i in range(0, 23, per_part)]
+
+
+@pytest.mark.covers("LY-04", "LY-08")
+@settings(max_examples=25, deadline=None)
+@given(slots=st.lists(st.integers(0, 9), max_size=40), max_bytes=st.integers(1, 2000),
+       cuts=st.lists(st.integers(0, 40), max_size=6), rg=st.integers(1, 8))
+def test_parts_concatenate_to_the_single_file_and_do_not_depend_on_batching(slots, max_bytes, cuts, rg):
+    """Tape rows, cut as `tapes.run` cuts (200 + 30 per slot), with slot-bounded row groups."""
+    from biobox.io import write_parts
+
+    rows = [tape_row(i, n) for i, n in enumerate(slots)]
+    src = pa.Table.from_pylist(rows, schema=TAPES.schema) if rows else TAPES.schema.empty_table()
+    kw = {"row_group_rows": rg, "max_slots": 12, "slots_column": "n_slots", "statistics": ["n_slots", "contig_len"]}
+
+    def est(b):
+        return 200 + 30 * b.column("n_slots").to_numpy().astype(np.float64)
+
+    with tempfile.TemporaryDirectory() as d:
+        one = write_parts([src], TAPES, Path(d) / "one", est, max_bytes, **kw)
+        split = write_parts(batches_of(inferred(rows) if rows else src, [c for c in cuts if c <= len(rows)]), TAPES,
+                            Path(d) / "split", est, max_bytes, **kw)
+        assert [p.read_bytes() for p in one] == [p.read_bytes() for p in split]
+        single = Path(d) / "single.parquet"
+        write_table([src], TAPES, single, **kw)
+        assert [r for part in _parts_rows(one) for r in part] == pq.read_table(single).to_pylist() == rows
+        if len(one) == 1:
+            assert one[0].read_bytes() == single.read_bytes()
+        m = {"root": d, "files": [{"table": "contig_tapes", "path": p.relative_to(d).as_posix()} for p in one]}
+        assert contracts.check_sort_order(m) == [] and contracts.check_statistics(m) == []
+
+
+@pytest.mark.covers("LY-01")
+@pytest.mark.parametrize("batches", [[], "empty_batches"])
+def test_write_parts_writes_part_0_for_empty_input(tmp_path, batches):
+    from biobox.io import write_parts
+
+    if batches == "empty_batches":
+        batches = [inferred(occ_rows(2)).slice(0, 0), pa.RecordBatch.from_pylist([], schema=OCC.schema)]
+    paths = write_parts(batches, OCC, tmp_path / "s", 40, 100)
+    assert paths == [tmp_path / "s/part-0.parquet"]
+    got = pq.read_table(paths[0])
+    assert got.num_rows == 0 and got.schema.equals(OCC.schema, check_metadata=False)
+
+
+@pytest.mark.covers("R-09")
+def test_write_parts_refuses_a_directory_that_holds_parts(tmp_path):
+    from biobox.io import write_parts
+
+    write_parts([inferred(occ_rows(6))], OCC, tmp_path / "s", 40, 100)
+    before = {p.name: p.read_bytes() for p in (tmp_path / "s").iterdir()}
+    assert len(before) == 3
+    with pytest.raises(FileExistsError, match="append-only"):
+        write_parts([inferred(occ_rows(2))], OCC, tmp_path / "s", 40, 10**6)
+    assert {p.name: p.read_bytes() for p in (tmp_path / "s").iterdir()} == before
+    with pytest.raises(ValueError, match="max_file_bytes"):
+        write_parts([inferred(occ_rows(2))], OCC, tmp_path / "t", 40, 0)
+
+
+def test_part_files_lists_parts_in_part_order(tmp_path):
+    from biobox.io import part_files
+
+    for stage in ("S0", "S1"):
+        for k in (0, 1, 2, 10, 11):
+            (tmp_path / f"stage={stage}").mkdir(exist_ok=True)
+            (tmp_path / f"stage={stage}/part-{k}.parquet").write_bytes(b"")
+    got = [p.relative_to(tmp_path).as_posix() for p in part_files(tmp_path, "stage=*/part-*.parquet")]
+    assert got == [f"stage={s}/part-{k}.parquet" for s in ("S0", "S1") for k in (0, 1, 2, 10, 11)]
+    assert [p.name for p in part_files(tmp_path / "stage=S1")] == [f"part-{k}.parquet" for k in (0, 1, 2, 10, 11)]
+    assert part_files(tmp_path / "nonesuch") == []
+
+
+# --- the ledger streams through the writer (card B-19) -------------------------------------------
+
+
+@pytest.mark.covers("L-01")
+def test_ledger_write_consumes_a_generator_lazily(tmp_path, monkeypatch):
+    from biobox import io as bio
+    from biobox import ledger
+
+    pulled, at_first_batch = [0], []
+    real_conform = bio.conform
+
+    def conform(batch, spec):  # write_table casts each batch as it arrives: the first one marks the first write
+        if not at_first_batch:
+            at_first_batch.append(pulled[0])
+        return real_conform(batch, spec)
+
+    def rows(n):
+        for i in range(n):
+            pulled[0] += 1
+            yield ledger.row(i.to_bytes(4, "big"), "contig", 3, 2, 1)
+
+    monkeypatch.setattr(bio, "conform", conform)
+    monkeypatch.setattr(ledger, "BATCH_ROWS", 100, raising=False)
+    n = 2_500
+    path = ledger.write(tmp_path, "S0", "genecall", rows(n))
+    assert pulled[0] == n and at_first_batch and at_first_batch[0] <= 100  # one batch pulled, not the whole input
+    got = ledger.read(tmp_path, "S0", "genecall")
+    assert [r["object_key"] for r in got] == [i.to_bytes(4, "big") for i in range(n)]
+    assert path == tmp_path / "ledger/stage=S0/step=genecall/part-0.parquet"
+    assert ledger.check_balance(tmp_path, "S0", ["genecall"]) == []
+
+
+@pytest.mark.covers("L-01")
+def test_ledger_write_refuses_unsorted_rows_and_an_existing_ledger(tmp_path):
+    from biobox import ledger
+
+    rows = [ledger.row(b"b", "x", 1, 1), ledger.row(b"a", "x", 1, 1)]
+    with pytest.raises(ValueError, match="not sorted"):
+        ledger.write(tmp_path, "S0", "s", iter(rows))
+    assert not (tmp_path / "ledger/stage=S0/step=s/part-0.parquet").exists()
+    ledger.write(tmp_path, "S0", "s", rows[::-1])
+    with pytest.raises(FileExistsError):
+        ledger.write(tmp_path, "S0", "s", rows[::-1])
+    assert ledger.write(tmp_path, "S0", "empty", []) == tmp_path / "ledger/stage=S0/step=empty/part-0.parquet"
+    assert ledger.read(tmp_path, "S0", "empty") == [] and ledger.read(tmp_path, "S0", "nonesuch") == []

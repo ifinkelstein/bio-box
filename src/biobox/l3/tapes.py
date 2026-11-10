@@ -30,13 +30,14 @@ and end orders agree (tests/r1/test_l3.py).
 Writes, all through `biobox.io.write_table`:
 
     l3/tapes/tape_version=<tv>/stage=<S>/part-<k>.parquet   sorted by contig_uid, cut at
-                                                            `max_file_bytes` (estimated)
+                                                            `max_file_bytes` (estimated, `io.write_parts`)
     l3/tape_version_def/tape_version=<tv>/part-0.parquet    the producers, once per tape version
     ledger/stage=<S>/step=tape-<tv>/part-0.parquet
 
 Bounded memory (AGENTS §4.1): DuckDB sorts the features (spilling into a private temporary
 directory) and an Arrow reader hands them over in `contig_uid` order; one contig's features are
 held at a time, and a row group holds whole contigs and at most `max_slots` slots (AGENTS §4.6).
+The ledger (one row per contig) streams to its writer from the tape parts just written (card B-19).
 """
 
 from __future__ import annotations
@@ -48,6 +49,7 @@ from collections.abc import Iterable, Iterator
 from pathlib import Path
 
 import duckdb
+import numpy as np
 import pyarrow as pa
 import pyarrow.parquet as pq
 
@@ -153,20 +155,6 @@ def ensure_def(root: Path, producers: list[str]) -> str:
     return tv
 
 
-class _Peek:
-    def __init__(self, it: Iterator[dict]):
-        self._it, self._head, self._done = it, None, False
-
-    def peek(self) -> dict | None:
-        if self._head is None and not self._done:
-            self._head = next(self._it, None)
-            self._done = self._head is None
-        return self._head
-
-    def pop(self) -> None:
-        self._head = None
-
-
 def run(root: Path, stage: str, circular: set[bytes] | frozenset | None = None,
         gene_call_version: str = GENE_CALL_VERSION, producers: list[str] | None = None,
         max_file_bytes: int = layout.MAX_FILE_BYTES, max_slots: int = MAX_SLOTS, tmp=None) -> dict:
@@ -186,21 +174,24 @@ def run(root: Path, stage: str, circular: set[bytes] | frozenset | None = None,
     _stored_producers(root, tv, producers)  # fail before any work if the stored definition disagrees
     feats = []
     for p in sorted(producers):
-        found = sorted((root / f"l1/feature/producer={p}/stage={stage}").glob("part-*.parquet"))
+        found = io.part_files(root / f"l1/feature/producer={p}/stage={stage}")
         if not found:
             raise FileNotFoundError(f"no feature files for producer {p} at stage {stage}")
         feats += found
     gcv = f"gene_call_version={gene_call_version}/stage={stage}"
-    fp = sorted((root / f"l1/feature_protein/{gcv}").glob("part-*.parquet"))
-    occ = sorted((root / f"l1/protein_occurrence/{gcv}").glob("part-*.parquet"))
-    idx = root / f"l0seq/contig_index/stage={stage}/part-0.parquet"
+    fp = io.part_files(root / f"l1/feature_protein/{gcv}")
+    occ = io.part_files(root / f"l1/protein_occurrence/{gcv}")
+    idx = io.part_files(root / f"l0seq/contig_index/stage={stage}")
+    if not idx:
+        raise FileNotFoundError(f"no contig_index files at stage {stage}")
     gi = []
     if circular is None:
-        gi = sorted((root / table("genome_input").location / f"stage={stage}").glob("part-*.parquet"))
+        gi = io.part_files(root / table("genome_input").location / f"stage={stage}")
         if not gi:
             raise FileNotFoundError(f"no genome_input for stage {stage}: pass `circular` or write it first")
     sql = (
-        f"WITH c AS (SELECT contig_uid, contig_len FROM read_parquet({_sql_path(idx)}) WHERE is_default_variant), "
+        f"WITH c AS (SELECT contig_uid, contig_len FROM read_parquet([{', '.join(_sql_path(f) for f in idx)}]) "
+        "WHERE is_default_variant), "
         f"f AS (SELECT DISTINCT * FROM {_source(feats, 'feature_uid, contig_uid, start, \"end\", strand, kind', '')}), "
         f"fp AS {_source(fp, 'feature_uid, protein_uid', 'NULL::BLOB AS feature_uid, NULL::BLOB AS protein_uid')}, "
         "o AS " + _source(occ, "feature_uid, slot_ordinal, genome_uid, tier, assembly_quality",
@@ -219,7 +210,6 @@ def run(root: Path, stage: str, circular: set[bytes] | frozenset | None = None,
     spec = table("contig_tapes")
     tools = provenance.tool_versions("pyarrow")
     counts = {"contigs": 0, "slots": 0}
-    ledger_rows: list[dict] = []  # ledger.write takes a list: one small row per contig is held here
     scratch = Path(tempfile.mkdtemp(prefix="biobox-tapes-", dir=tmp))
     con = duckdb.connect(config={"threads": 1, "memory_limit": DUCK_MEMORY_LIMIT,
                                  "temp_directory": str(scratch / "duckdb"), "preserve_insertion_order": True})
@@ -232,7 +222,6 @@ def run(root: Path, stage: str, circular: set[bytes] | frozenset | None = None,
         n = len(fs)
         counts["contigs"] += 1
         counts["slots"] += n
-        ledger_rows.append(ledger.row(cu, "contig", n, n, tools=tools))
         return {
             "contig_uid": cu,
             "tax_order_bucket": None,
@@ -266,15 +255,10 @@ def run(root: Path, stage: str, circular: set[bytes] | frozenset | None = None,
         finally:
             reader.close()
 
-    def part(src: _Peek) -> Iterator[pa.RecordBatch]:
-        """The rows of one part: cut where `layout.cut` cuts the estimated row sizes."""
-        held, buf, buf_slots = 0.0, [], 0
-        while (r := src.peek()) is not None:
-            est = EST_ROW_BYTES + EST_SLOT_BYTES * r["n_slots"]
-            if held and held + est > max_file_bytes:
-                break
-            src.pop()
-            held += est
+    def batches() -> Iterator[pa.RecordBatch]:
+        """The tape rows, at most `BATCH_ROWS` rows or `max_slots` slots held at a time."""
+        buf, buf_slots = [], 0
+        for r in rows():
             buf.append(r)
             buf_slots += r["n_slots"]
             if len(buf) >= BATCH_ROWS or buf_slots >= max_slots:
@@ -283,16 +267,24 @@ def run(root: Path, stage: str, circular: set[bytes] | frozenset | None = None,
         if buf:
             yield pa.RecordBatch.from_pylist(buf, schema=spec.schema)
 
+    def est(b: pa.RecordBatch) -> np.ndarray:
+        return EST_ROW_BYTES + EST_SLOT_BYTES * b.column("n_slots").to_numpy(zero_copy_only=False).astype(np.float64)
+
     base = root / f"l3/tapes/tape_version={tv}/stage={stage}"
     try:
-        src, k = _Peek(rows()), 0
-        while k == 0 or src.peek() is not None:
-            io.write_table(part(src), spec, base / f"part-{k}.parquet", max_slots=max_slots, slots_column="n_slots",
-                           statistics=["n_slots", "contig_len"])
-            k += 1
+        paths = io.write_parts(batches(), spec, base, est, max_file_bytes, max_slots=max_slots,
+                               slots_column="n_slots", statistics=["n_slots", "contig_len"])
     finally:
         con.close()
         shutil.rmtree(scratch, ignore_errors=True)
     ensure_def(root, producers)
-    ledger.write(root, stage, f"tape-{tv}", ledger_rows)  # per tape version: a second version never rewrites it
-    return {**counts, "files": k, "tape_version": tv}
+
+    def ledger_rows() -> Iterator[dict]:
+        """Per contig: slots in, all kept; read back from the parts just written, in contig_uid order."""
+        for f in paths:
+            for b in pq.ParquetFile(f).iter_batches(batch_size=io.ROW_GROUP_ROWS, columns=["contig_uid", "n_slots"]):
+                for cu, n in zip(b.column("contig_uid").to_pylist(), b.column("n_slots").to_pylist()):
+                    yield ledger.row(cu, "contig", n, n, tools=tools)
+
+    ledger.write(root, stage, f"tape-{tv}", ledger_rows())  # per tape version: a second version never rewrites it
+    return {**counts, "files": len(paths), "tape_version": tv}

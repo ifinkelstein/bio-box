@@ -34,6 +34,7 @@ ap.add_argument("--seed", type=int, default=1)
 a = ap.parse_args()
 
 from biobox import catalog, fasta, ids, layout  # noqa: E402
+from biobox import io as bio  # noqa: E402
 from biobox.l0seq import SeqStore, SourceObject, ingest  # noqa: E402
 from biobox.l1.genecall import GENE_CALL_VERSION, GenomeInput, run as call_genes  # noqa: E402
 from biobox.l3 import tapes as tapes_mod  # noqa: E402
@@ -73,8 +74,10 @@ for o in src["objects"]:
     genomes.append(GenomeInput((cu,), o["genetic_code"], kind=o["kind"], circular=(cu,) if o["topology"] == "circular" else ()))
 call_genes(base_root, "S0", genomes)
 tapes_mod.run(base_root, "S0", {g.circular[0] for g in genomes if g.circular})
-base_tapes = {t["contig_uid"]: t for t in pq.read_table(next((base_root / "l3/tapes").rglob("part-0.parquet"))).to_pylist()}
-base_occ = pq.read_table(next((base_root / "l1/protein_occurrence").rglob("part-0.parquet"))).to_pylist()
+base_tapes = {t["contig_uid"]: t for f in bio.part_files(base_root / "l3/tapes", "*/stage=S0/part-*.parquet")
+              for t in pq.read_table(f).to_pylist()}
+base_occ = [r for f in bio.part_files(base_root / "l1/protein_occurrence", "*/stage=S0/part-*.parquet")
+            for r in pq.read_table(f).to_pylist()]
 B = len(base_recs)
 n_slots = [base_tapes[cu]["n_slots"] for _, _, cu, _ in base_recs]
 g_off = np.concatenate([[0], np.cumsum(n_slots)])  # global fixture-gene index of each contig's slot 0

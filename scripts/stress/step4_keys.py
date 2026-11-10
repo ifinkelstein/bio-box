@@ -13,6 +13,7 @@ from pathlib import Path
 
 import pyarrow.parquet as pq
 
+from biobox import io
 from biobox.l1.genecall import GENE_CALL_VERSION
 from biobox.l1.igr import igrs_of_contig
 from biobox.l3.tapes import build_tape
@@ -22,8 +23,10 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "tests"))
 from oracles.pairs_oracle import pairs_of_contig  # noqa: E402
 
 root = Path(sys.argv[1])
-occ = pq.read_table(root / f"l1/protein_occurrence/gene_call_version={GENE_CALL_VERSION}/stage=S0/part-0.parquet").to_pylist()
-idx = {r["contig_uid"]: r["contig_len"] for r in pq.read_table(root / "l0seq/contig_index/stage=S0/part-0.parquet").to_pylist()}
+occ = [r for f in io.part_files(root / f"l1/protein_occurrence/gene_call_version={GENE_CALL_VERSION}/stage=S0")
+       for r in pq.read_table(f).to_pylist()]
+idx = {r["contig_uid"]: r["contig_len"] for f in io.part_files(root / "l0seq/contig_index/stage=S0")
+       for r in pq.read_table(f).to_pylist()}
 ecoli = next(cu for cu, n in idx.items() if n == 4_641_652)
 L = idx[ecoli]
 base = sorted((r for r in occ if r["contig_uid"] == ecoli), key=lambda r: r["slot_ordinal"])

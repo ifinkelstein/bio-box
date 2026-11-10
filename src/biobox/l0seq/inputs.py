@@ -19,12 +19,15 @@ from pathlib import Path
 import duckdb
 import pyarrow as pa
 
-from biobox import ids, io
+from biobox import ids, io, layout
 from biobox.registry.schemas import table
 
 _SPEC = table("genome_input")
 _READ_BATCH_ROWS = 65_536
 _DUCK_MEMORY_LIMIT = "1GB"  # sorts larger than this spill to a private temporary directory
+# estimate: zstd bytes per row (contig_uid and genome_uid, 16 random bytes each, + small columns); cuts
+# parts only. No measurement yet (planning/measurements/2026-11-09_design_stress_test.md §3 lists none).
+EST_ROW_BYTES = 36
 
 
 @dataclass(frozen=True)
@@ -38,8 +41,8 @@ class GenomeInput:
     is_species_rep: bool = False
 
 
-def _path(root, stage: str) -> Path:
-    return Path(root) / _SPEC.location / f"stage={stage}" / "part-0.parquet"
+def _dir(root, stage: str) -> Path:
+    return Path(root) / _SPEC.location / f"stage={stage}"
 
 
 def _rows(genomes: Iterable[GenomeInput]) -> list[tuple]:
@@ -69,10 +72,12 @@ def _batches(rows: list[tuple]) -> Iterator[pa.RecordBatch]:
             [pa.array(cols[k], type=f.type) for k, f in enumerate(_SPEC.schema)], schema=_SPEC.schema)
 
 
-def write_genome_input(root, stage: str, genomes: Iterable[GenomeInput]) -> dict:
-    """Write `<root>/l0seq/genome_input/stage=<stage>/part-0.parquet`; refuses to overwrite it."""
+def write_genome_input(root, stage: str, genomes: Iterable[GenomeInput],
+                       max_file_bytes: int = layout.MAX_FILE_BYTES) -> dict:
+    """Write `<root>/l0seq/genome_input/stage=<stage>/part-<k>.parquet`, cut at `max_file_bytes` of
+    estimated size (`io.write_parts`); refuses to overwrite."""
     rows = _rows(genomes)
-    io.write_table(_batches(rows), _SPEC, _path(root, stage))
+    io.write_parts(_batches(rows), _SPEC, _dir(root, stage), EST_ROW_BYTES, max_file_bytes)
     return {"genomes": len({r[1] for r in rows}), "contigs": len(rows)}
 
 
@@ -94,16 +99,16 @@ def iter_genome_input(root, stage: str, tmp=None) -> Iterator[GenomeInput]:
     DuckDB sorts the table and an Arrow reader hands it over in batches, so only the rows of the
     genome being assembled are held. `tmp` holds DuckDB's spill directory (system temp by default).
     """
-    path = _path(root, stage)
-    if not path.exists():
-        raise FileNotFoundError(f"{path}: no genome_input for stage {stage}")
+    files = io.part_files(_dir(root, stage))
+    if not files:
+        raise FileNotFoundError(f"{_dir(root, stage)}: no genome_input for stage {stage}")
     scratch = Path(tempfile.mkdtemp(prefix="biobox-genome-input-", dir=tmp))
     con = duckdb.connect(config={"threads": 1, "memory_limit": _DUCK_MEMORY_LIMIT,
                                  "temp_directory": str(scratch / "duckdb")})
     try:
-        lit = str(path).replace("'", "''")
-        reader = con.sql(f"SELECT * FROM read_parquet('{lit}') ORDER BY genome_uid, contig_uid"
-                         ).to_arrow_reader(_READ_BATCH_ROWS)
+        lits = ", ".join("'" + str(f).replace("'", "''") + "'" for f in files)
+        reader = con.sql(f"SELECT * FROM read_parquet([{lits}], hive_partitioning = false) "
+                         "ORDER BY genome_uid, contig_uid").to_arrow_reader(_READ_BATCH_ROWS)
         guid, rs = None, []
         for b in reader:
             for r in b.to_pylist():

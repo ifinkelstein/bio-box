@@ -8,8 +8,11 @@ protein per level, representatives included as self rows.
 
 Writes under `<root>/`:
 
-    l2/cluster_member/release=<R>/part-0.parquet
-    l2/cluster_member_aln/release=<R>/part-0.parquet
+    l2/cluster_member/release=<R>/part-<k>.parquet
+    l2/cluster_member_aln/release=<R>/part-<k>.parquet
+
+Both tables go through `biobox.io.write_parts`, cut at `max_file_bytes` of estimated size (card
+B-19). The rows are still built in Python lists; making this builder stream is a separate card.
 
 Inputs are written to FASTA sorted by protein_uid and MMseqs2 runs with
 `--shuffle 0` and explicit `--threads`, so output does not depend on input order
@@ -30,8 +33,14 @@ import pyarrow as pa
 import pyarrow.parquet as pq
 from blake3 import blake3
 
-from biobox import ledger, provenance
+from biobox import io, layout, ledger, provenance
 from biobox.registry.schemas import table
+
+# Estimated zstd bytes per row; they only cut parts. Measured on the golden set 36.5 (`cluster_member`)
+# and 26.2 (`cluster_member_aln`) bytes per protein and level, 31.0 and 31.0 on the S1 pilot
+# (planning/measurements/2026-11-09_design_stress_test.md §3, §6a).
+EST_MEMBER_ROW = 37
+EST_ALN_ROW = 31
 
 # UniRef-style: member covered >= 80% by the alignment to its representative (cov-mode 1,
 # coverage of the target = member), greedy by length (cluster-mode 2, CD-HIT-like).
@@ -87,7 +96,8 @@ def ledger_stage(release: str) -> str:
     return release[1:].split(".")[0] if release.startswith("rS") else release
 
 
-def run(root: Path, release: str, gene_call_version: str, threads: int = 1, tmp: Path | None = None) -> dict:
+def run(root: Path, release: str, gene_call_version: str, threads: int = 1, tmp: Path | None = None,
+        max_file_bytes: int = layout.MAX_FILE_BYTES) -> dict:
     root = Path(root)
     prots = _read_proteins(root, gene_call_version)
     with tempfile.TemporaryDirectory(dir=tmp) as d:
@@ -139,16 +149,17 @@ def run(root: Path, release: str, gene_call_version: str, threads: int = 1, tmp:
     mem_spec, aln_spec = table("cluster_member"), table("cluster_member_aln")
     mem_rows.sort(key=lambda r: (r["level"], r["cluster_uid"], r["member_uid"]))
     aln_rows.sort(key=lambda r: (r["level"], r["rep_uid"], r["member_uid"]))
-    for name, rows, spec in (("cluster_member", mem_rows, mem_spec), ("cluster_member_aln", aln_rows, aln_spec)):
-        p = root / f"l2/{name}/release={release}/part-0.parquet"
-        p.parent.mkdir(parents=True, exist_ok=True)
-        pq.write_table(pa.Table.from_pylist(rows, schema=spec.schema), p, compression="zstd", row_group_size=122_880)
+    for name, rows, spec, est in (("cluster_member", mem_rows, mem_spec, EST_MEMBER_ROW),
+                                  ("cluster_member_aln", aln_rows, aln_spec, EST_ALN_ROW)):
+        batches = [pa.RecordBatch.from_pylist(rows[i : i + io.ROW_GROUP_ROWS], schema=spec.schema)
+                   for i in range(0, len(rows), io.ROW_GROUP_ROWS)]
+        io.write_parts(batches, spec, root / f"l2/{name}/release={release}", est, max_file_bytes)
     counts = {lvl: len({r["cluster_uid"] for r in mem_rows if r["level"] == lvl}) for lvl in LEVELS}
     # ledger under the release's stage (rS0.1 -> S0): NR90 sees every protein, NR50 the NR90 representatives
     n_in = {"nr90": len(prots), "nr50": counts["nr90"]}
     tools = provenance.tool_versions("mmseqs2", "pyarrow")
     ledger.write(root, ledger_stage(release), "cluster",
-                 [ledger.row(lvl.encode(), "level", n_in[lvl], counts[lvl], n_in[lvl] - counts[lvl], tools=tools)
-                  for lvl in LEVELS])
+                 sorted((ledger.row(lvl.encode(), "level", n_in[lvl], counts[lvl], n_in[lvl] - counts[lvl], tools=tools)
+                         for lvl in LEVELS), key=lambda r: (r["object_key"], r["reason_code"])))
     return {"proteins": len(prots), "clusters": counts,
             "aligned": {lvl: sum(1 for r in aln_rows if r["level"] == lvl) for lvl in LEVELS}}

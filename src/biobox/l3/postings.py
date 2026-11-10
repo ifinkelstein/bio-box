@@ -103,7 +103,7 @@ def run(root: Path, release: str, gene_call_version: str = GENE_CALL_VERSION, pr
     tv = tape_version_of(gene_call_version, producers)
     tape_files = _tape_files(root, tv)
     tok_dir = root / f"l3/tape_tokens/tape_version={tv}/release={release}"
-    tok_files = sorted(tok_dir.glob("part-*.parquet"))
+    tok_files = io.part_files(tok_dir)
     if not tok_files:
         raise FileNotFoundError(f"{tok_dir}: no tape_tokens for tape version {tv} and release {release}; "
                                 "run biobox.l3.tokens first")

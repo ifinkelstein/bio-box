@@ -9,8 +9,9 @@ the legacy `left_slot`, `right_slot` stay until card B-17). On linear contigs th
 null flank; on circular contigs the run across the origin has `end > contig_len`
 (C-05), and a contig with no genes is one IGR with both flanks null.
 
-Writes `<root>/l0seq/igr/igr_version=<v>/stage=<S>/part-0.parquet`, where `<v>` is
-`<tape_version>-igr1` (card B-20) and the tape version's `tape_version_def` file is made sure to exist.
+Writes `<root>/l0seq/igr/igr_version=<v>/stage=<S>/part-<k>.parquet` (cut at `max_file_bytes` of
+estimated size, `io.write_parts`, card B-19), where `<v>` is `<tape_version>-igr1` (card B-20) and the
+tape version's `tape_version_def` file is made sure to exist.
 """
 
 from __future__ import annotations
@@ -23,13 +24,17 @@ from pathlib import Path
 import duckdb
 import pyarrow as pa
 
-from biobox import io
+from biobox import io, layout
 from biobox.l0seq.inputs import iter_genome_input
 from biobox.l1.genecall import DUCK_MEMORY_LIMIT, GENE_CALL_VERSION
 from biobox.l3.tapes import ensure_def, tape_version  # tapes.py does not import this module: no cycle
 from biobox.registry.schemas import table
 
 IGR_RULE = "igr1"
+# estimate: zstd bytes per IGR row; cuts parts only. Measured 12.7 B/row on the golden set and 9.7 on the
+# S1 pilot (planning/measurements/2026-11-09_design_stress_test.md §3, §6a) before the two flanking
+# feature_uid columns (16 random bytes each) were added: 13 + 32.
+EST_ROW_BYTES = 45
 
 
 def igr_version(producers: str | Iterable[str] = GENE_CALL_VERSION) -> str:
@@ -90,7 +95,8 @@ def _contig_igrs(cu: bytes, length: int, feats: list[tuple], circular: bool) -> 
 
 
 def run(root: Path, stage: str, circular: set[bytes] | frozenset | None = None,
-        gene_call_version: str = GENE_CALL_VERSION, producers: list[str] | None = None, tmp=None) -> dict:
+        gene_call_version: str = GENE_CALL_VERSION, producers: list[str] | None = None, tmp=None,
+        max_file_bytes: int = layout.MAX_FILE_BYTES) -> dict:
     """Build IGRs for every contig of a stage from the `feature` rows of `producers` and contig_index.
 
     `circular`: the circular contig_uids; None reads the stage's `genome_input` table. `producers`:
@@ -103,13 +109,15 @@ def run(root: Path, stage: str, circular: set[bytes] | frozenset | None = None,
     v = igr_version(producers)
     files = []
     for p in producers:
-        found = sorted((root / f"l1/feature/producer={p}/stage={stage}").glob("part-*.parquet"))
+        found = io.part_files(root / f"l1/feature/producer={p}/stage={stage}")
         if not found:
             raise FileNotFoundError(f"no feature files for producer {p} at stage {stage}")
         files += found
     ensure_def(root, producers)  # write the tape version's definition, or verify the stored one
-    occ = sorted((root / f"l1/protein_occurrence/gene_call_version={gene_call_version}/stage={stage}").glob("part-*.parquet"))
-    idx = root / f"l0seq/contig_index/stage={stage}/part-0.parquet"
+    occ = io.part_files(root / f"l1/protein_occurrence/gene_call_version={gene_call_version}/stage={stage}")
+    idx = io.part_files(root / f"l0seq/contig_index/stage={stage}")
+    if not idx:
+        raise FileNotFoundError(f"no contig_index files at stage {stage}")
     scratch = Path(tempfile.mkdtemp(prefix="biobox-igr-", dir=tmp))
     con = duckdb.connect(config={"threads": 1, "memory_limit": DUCK_MEMORY_LIMIT,
                                  "temp_directory": str(scratch / "duckdb")})
@@ -118,10 +126,11 @@ def run(root: Path, stage: str, circular: set[bytes] | frozenset | None = None,
             circular = frozenset(cu for g in iter_genome_input(root, stage, tmp=scratch) for cu in g.circular)
         flist = "[" + ", ".join(_sql_path(f) for f in files) + "]"
         olist = "[" + ", ".join(_sql_path(f) for f in occ) + "]"
+        ilist = "[" + ", ".join(_sql_path(f) for f in idx) + "]"
         sql = (
             "SELECT coalesce(c.contig_uid, f.contig_uid) AS contig_uid, c.contig_len, f.feature_uid, f.start, "
             'f."end", f.strand, f.kind, o.slot_ordinal '
-            f"FROM (SELECT contig_uid, contig_len FROM read_parquet({_sql_path(idx)}) WHERE is_default_variant) c "
+            f"FROM (SELECT contig_uid, contig_len FROM read_parquet({ilist}) WHERE is_default_variant) c "
             f"FULL OUTER JOIN read_parquet({flist}) f ON f.contig_uid = c.contig_uid "
             f"LEFT JOIN read_parquet({olist}) o ON o.feature_uid = f.feature_uid "
             'ORDER BY 1, f.start, f."end", f.strand, f.kind, o.slot_ordinal'
@@ -159,7 +168,7 @@ def run(root: Path, stage: str, circular: set[bytes] | frozenset | None = None,
             if out:
                 yield pa.RecordBatch.from_pylist(out, schema=spec.schema)
 
-        io.write_table(batches(), spec, root / f"l0seq/igr/igr_version={v}/stage={stage}/part-0.parquet")
+        io.write_parts(batches(), spec, root / f"l0seq/igr/igr_version={v}/stage={stage}", EST_ROW_BYTES, max_file_bytes)
         return stats
     finally:
         con.close()

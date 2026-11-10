@@ -105,8 +105,9 @@ def check_provenance(manifest: dict, lock: dict[str, str] | None = None) -> list
             need = _step_tools(step)
             if need is None:
                 continue
-            for r in pq.read_table(root / f["path"]).to_pylist():
-                tv = json.loads(r["tool_versions_json"]) if r.get("tool_versions_json") else None
+            # one column, a batch at a time: a ledger has one row per contig of the stage (card B-19)
+            for raw in _column_values(pq, root / f["path"], "tool_versions_json"):
+                tv = json.loads(raw) if raw else None
                 if tv is None:
                     problems.append(f"{f['path']}: {step} ledger row without tool versions")
                     break
@@ -116,6 +117,16 @@ def check_provenance(manifest: dict, lock: dict[str, str] | None = None) -> list
                     problems.append(f"{f['path']}: {step} tool versions missing {missing}, differ {wrong}")
                     break
     return problems + _tape_version_problems(manifest, root, lock)
+
+
+def _column_values(pq, path: Path, column: str):
+    """The values of one column of a Parquet file, in row order, read a batch at a time."""
+    pf = pq.ParquetFile(path)
+    if column not in pf.schema_arrow.names:
+        yield from (None for _ in range(pf.metadata.num_rows))
+        return
+    for b in pf.iter_batches(batch_size=65_536, columns=[column]):
+        yield from b.column(column).to_pylist()
 
 
 IGR_SUFFIX = "-igr1"

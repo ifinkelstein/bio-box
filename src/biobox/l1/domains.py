@@ -5,7 +5,9 @@ one HMM library, using the library's own bit-score cutoffs (Pfam GA, NCBIfam TC)
 and a fixed search space (Z = domZ = 1e8, SEARCH_PLAN SD-04, DEC-04), so stored
 E-values do not change as the corpus grows. Only included domains are kept.
 
-Writes `<root>/l1/domains/library=<name>-<version>/stage=<S>/part-0.parquet`.
+Writes `<root>/l1/domains/library=<name>-<version>/stage=<S>/part-<k>.parquet` through
+`biobox.io.write_parts`, cut at `max_file_bytes` of estimated size (card B-19). The scan itself
+still holds the stage's proteins and domain rows in Python lists; making it stream is a separate card.
 """
 
 from __future__ import annotations
@@ -19,11 +21,15 @@ import pyarrow as pa
 import pyarrow.parquet as pq
 import pyhmmer
 
-from biobox import ledger, provenance
+from biobox import io as bio
+from biobox import layout, ledger, provenance
 from biobox.registry.schemas import table
 
 Z_PROT = 1e8
 DOM_Z = 1e8
+# estimate: zstd bytes per domain row; cuts parts only. Measured 53.8 B/row for Pfam and NCBIfam on the
+# golden set (planning/measurements/2026-11-09_design_stress_test.md §3).
+EST_ROW_BYTES = 54
 
 
 def iter_hmms(path: Path):
@@ -106,21 +112,26 @@ def scan(
     return rows
 
 
+def _batches(rows: list[dict], spec) -> list[pa.RecordBatch]:
+    return [pa.RecordBatch.from_pylist(rows[i : i + bio.ROW_GROUP_ROWS], schema=spec.schema)
+            for i in range(0, len(rows), bio.ROW_GROUP_ROWS)]
+
+
 def run(root: Path, stage: str, gene_call_version: str, library: str, library_version: str,
-        hmm_path: Path, cutoff: str, cpus: int = 1) -> dict:
+        hmm_path: Path, cutoff: str, cpus: int = 1, max_file_bytes: int = layout.MAX_FILE_BYTES) -> dict:
     proteins = load_proteins(root, gene_call_version, stage)
     rows = scan(proteins, hmm_path, cutoff, cpus=cpus)
-    out = Path(root) / f"l1/domains/library={library}-{library_version}/stage={stage}/part-0.parquet"
-    out.parent.mkdir(parents=True, exist_ok=True)
-    pq.write_table(pa.Table.from_pylist(rows, schema=table("l1_domains").schema), out,
-                   compression="zstd", row_group_size=122_880)
+    spec = table("l1_domains")
+    bio.write_parts(_batches(rows, spec), spec, Path(root) / f"l1/domains/library={library}-{library_version}/stage={stage}",
+                    EST_ROW_BYTES, max_file_bytes)
     hit = len({r["protein_uid"] for r in rows})
     lib = f"{library}-{library_version}".encode()
     tools = provenance.tool_versions("pyhmmer", "pyarrow")
     ledger.write(root, stage, f"domains-{library}-{library_version}",
-                 [ledger.row(lib, "library", len(proteins), hit, tools=tools),
-                  ledger.row(lib, "library", len(proteins), hit, n_rejected=len(proteins) - hit, reason="no_hit",
-                             tools=tools)])
+                 sorted([ledger.row(lib, "library", len(proteins), hit, tools=tools),
+                         ledger.row(lib, "library", len(proteins), hit, n_rejected=len(proteins) - hit,
+                                    reason="no_hit", tools=tools)],
+                        key=lambda r: (r["object_key"], r["reason_code"])))
     return {"proteins": len(proteins), "domains": len(rows),
             "proteins_with_hit": hit,
             "models_with_hit": len({r["model_acc"] for r in rows})}

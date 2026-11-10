@@ -115,8 +115,11 @@ def test_mr16_cpus_do_not_change_output(built, tmp_path):
     root, lib, _, _, _ = built
     out1 = root / "l1/domains/library=test-1/stage=S0/part-0.parquet"
     a = out1.read_bytes()
-    domains.run(root, "S0", GENE_CALL_VERSION, "test", "1", lib, "gathering", cpus=4)
-    assert out1.read_bytes() == a
+    # into a fresh root holding the same proteins: the writers never rewrite a file (card B-19)
+    fresh = tmp_path / "s"
+    shutil.copytree(root / "l0seq/protein_seq", fresh / "l0seq/protein_seq")
+    domains.run(fresh, "S0", GENE_CALL_VERSION, "test", "1", lib, "gathering", cpus=4)
+    assert (fresh / "l1/domains/library=test-1/stage=S0/part-0.parquet").read_bytes() == a
 
 
 @pytest.mark.skipif(shutil.which("hmmsearch") is None, reason="hmmsearch binary not on PATH")

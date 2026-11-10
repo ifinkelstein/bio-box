@@ -15,12 +15,15 @@ planning/DECISIONS.md DEC-13):
 
 Writes, per gene-calling version and stage (paths under `<root>/`), all through `biobox.io.write_table`:
 
-    l1/feature/producer=<v>/stage=<S>/part-0.parquet                       (card B-05; kind cds)
-    l1/feature_protein/gene_call_version=<v>/stage=<S>/part-0.parquet      (card B-05)
-    l1/protein_occurrence/gene_call_version=<v>/stage=<S>/part-0.parquet
-    l1/slot_protein/gene_call_version=<v>/stage=<S>/part-0.parquet         (legacy; B-17 removes it)
+    l1/feature/producer=<v>/stage=<S>/part-<k>.parquet                       (card B-05; kind cds)
+    l1/feature_protein/gene_call_version=<v>/stage=<S>/part-<k>.parquet      (card B-05)
+    l1/protein_occurrence/gene_call_version=<v>/stage=<S>/part-<k>.parquet
+    l1/slot_protein/gene_call_version=<v>/stage=<S>/part-<k>.parquet         (legacy; B-17 removes it)
     l0seq/protein_seq/gene_call_version=<v>/stage=<S>/protein_prefix=<all|h|hh>/part-<k>.parquet  (biobox.layout)
     ledger/stage=<S>/step=genecall/part-0.parquet
+
+Every table is cut into parts at `max_file_bytes` of estimated size (`io.write_parts`, card B-19); a
+small stage is one `part-0.parquet` per table.
 
 Bounded memory (AGENTS §4.1): genomes are called one at a time (or `workers` at a time, at most
 `2 * workers` in flight) and their genes appended to unsorted scratch Parquet files in a private
@@ -63,6 +66,13 @@ GENE_CALL_VERSION = f"pyrodigal-{pyrodigal.__version__}-gv-{pyrodigal_gv.__versi
 KINDS = ("prokaryote", "virus", "plasmid")
 SCRATCH_FLUSH_ROWS = 65_536  # rows a scratch writer buffers before it writes a row group
 DUCK_MEMORY_LIMIT = "2GB"  # the sorting connection's cap; larger sorts spill into the scratch directory
+# Estimated zstd bytes per row; they only cut parts at `max_file_bytes` (card B-19). Measured values
+# are from planning/measurements/2026-11-09_design_stress_test.md (§3 golden set, §6a S1 pilot), taken
+# before `feature_uid` (16 random bytes, which do not compress) was added to these tables.
+EST_FEATURE_ROW = 24  # estimate: feature_uid 16 + delta-coded coordinates; not measured
+EST_FEATURE_PROTEIN_ROW = 40  # estimate: feature_uid and protein_uid, 16 random bytes each; not measured
+EST_OCCURRENCE_ROW = 48  # estimate: 32.2 B/gene measured (§3; 30.5 in §6a) + 16 for feature_uid
+EST_SLOT_PROTEIN_ROW = 20  # estimate: 19.5 B/gene measured (§3; 16.1 in §6a)
 
 # unsorted per-gene scratch rows, appended genome by genome
 _GENE_SCRATCH = pa.schema([
@@ -269,7 +279,8 @@ def run(root: Path, stage: str, genomes: Iterable[GenomeInput] | None = None, ve
 
     `genomes`: any iterable, consumed once; None reads the stage's `genome_input` table. `tmp`: the
     directory that holds the private scratch directory (system temp by default; never the data root).
-    `workers`: genomes called at once; the output bytes do not depend on it.
+    `workers`: genomes called at once; the output bytes do not depend on it. `max_file_bytes`: every
+    table is cut into parts of at most this many estimated bytes (one row above it is a part alone).
     """
     root = Path(root)
     if workers < 1:
@@ -315,8 +326,8 @@ def run(root: Path, stage: str, genomes: Iterable[GenomeInput] | None = None, ve
 
 def _publish(root: Path, stage: str, version: str, scratch: Path, prefix_width: int | None,
              max_file_bytes: int) -> int:
-    """Sort the scratch rows into the stage's files; returns the number of distinct proteins. Each
-    table is one `part-0.parquet` for now; splitting a large stage's tables into parts is a later card."""
+    """Sort the scratch rows into the stage's files, each table cut into parts at `max_file_bytes`;
+    returns the number of distinct proteins. The ledger rows stream from DuckDB to the writer."""
     con = duckdb.connect(config={"threads": 1, "memory_limit": DUCK_MEMORY_LIMIT,
                                  "temp_directory": str(scratch / "duckdb"), "preserve_insertion_order": True})
     try:
@@ -326,23 +337,23 @@ def _publish(root: Path, stage: str, version: str, scratch: Path, prefix_width: 
         con.execute(f"CREATE VIEW contigs AS SELECT DISTINCT contig_uid FROM {src['contigs']}")
         gcv = f"gene_call_version={version}/stage={stage}"
         outputs = [
-            ("feature", f"l1/feature/producer={version}/stage={stage}",
+            ("feature", f"l1/feature/producer={version}/stage={stage}", EST_FEATURE_ROW,
              f'SELECT feature_uid, contig_uid, start, "end", strand, {ids.KIND["cds"]}::UTINYINT AS kind FROM genes '
              'ORDER BY contig_uid, start, "end", strand'),
-            ("feature_protein", f"l1/feature_protein/{gcv}",
+            ("feature_protein", f"l1/feature_protein/{gcv}", EST_FEATURE_PROTEIN_ROW,
              'SELECT contig_uid, feature_uid, start, "end", strand, protein_uid, genetic_code, \'none\' AS edit_type '
              'FROM genes ORDER BY contig_uid, start, "end", strand'),
-            ("protein_occurrence", f"l1/protein_occurrence/{gcv}",
+            ("protein_occurrence", f"l1/protein_occurrence/{gcv}", EST_OCCURRENCE_ROW,
              'SELECT protein_uid, contig_uid, slot_ordinal, genome_uid, start, "end", strand, '
              'NULL::UINTEGER AS tax_order, is_species_rep, tier, assembly_quality, dist_to_contig_end_bp, feature_uid '
              'FROM genes '
              'ORDER BY protein_uid, contig_uid, slot_ordinal'),
-            ("slot_protein", f"l1/slot_protein/{gcv}",
+            ("slot_protein", f"l1/slot_protein/{gcv}", EST_SLOT_PROTEIN_ROW,
              "SELECT contig_uid, slot_ordinal, protein_uid, genetic_code, 'none' AS edit_type FROM genes "
              "ORDER BY contig_uid, slot_ordinal"),
         ]
-        for name, rel, sql in outputs:
-            io.write_table(io.duck_batches(con, sql, table(name)), table(name), root / rel / "part-0.parquet")
+        for name, rel, est, sql in outputs:
+            io.write_parts(io.duck_batches(con, sql, table(name)), table(name), root / rel, est, max_file_bytes)
 
         distinct = "(SELECT DISTINCT protein_uid, aa FROM candidates)"
         (n_prot, n_aa), = con.execute(f"SELECT count(*), coalesce(sum(length(aa)), 0) FROM {distinct}").fetchall()
@@ -354,18 +365,25 @@ def _publish(root: Path, stage: str, version: str, scratch: Path, prefix_width: 
                  f"FROM {distinct} ORDER BY protein_uid",
             root / f"l0seq/protein_seq/{gcv}", width, max_file_bytes)
 
-        # ledger: per contig, genes in; kept = first gene of its protein sequence in (contig, slot) order
-        reader = con.sql(
-            "WITH g AS (SELECT contig_uid, row_number() OVER (PARTITION BY protein_uid ORDER BY contig_uid, slot_ordinal)"
-            " = 1 AS first FROM genes) "
-            "SELECT c.contig_uid, count(g.contig_uid) AS n, count(*) FILTER (WHERE g.first) AS k "
-            "FROM contigs c LEFT JOIN g USING (contig_uid) GROUP BY c.contig_uid ORDER BY c.contig_uid"
-        ).to_arrow_reader(io.ROW_GROUP_ROWS)
+        # ledger: per contig, genes in; kept = first gene of its protein sequence in (contig, slot) order;
+        # rows stream from DuckDB in contig_uid order (the ledger's sort key) to the writer
         tools = provenance.tool_versions("pyrodigal", "pyrodigal-gv", "pyarrow")
-        # ledger.write takes a list: one small row per contig is held here
-        rows = [ledger.row(cu, "contig", n, k, n - k, tools=tools)
-                for b in reader for cu, n, k in zip(*(b.column(i).to_pylist() for i in range(3)))]
-        ledger.write(root, stage, "genecall", rows)
+
+        def ledger_rows() -> Iterator[dict]:
+            reader = con.sql(
+                "WITH g AS (SELECT contig_uid, row_number() OVER (PARTITION BY protein_uid ORDER BY contig_uid, "
+                "slot_ordinal) = 1 AS first FROM genes) "
+                "SELECT c.contig_uid, count(g.contig_uid) AS n, count(*) FILTER (WHERE g.first) AS k "
+                "FROM contigs c LEFT JOIN g USING (contig_uid) GROUP BY c.contig_uid ORDER BY c.contig_uid"
+            ).to_arrow_reader(io.ROW_GROUP_ROWS)
+            try:
+                for b in reader:
+                    for cu, n, k in zip(*(b.column(i).to_pylist() for i in range(3))):
+                        yield ledger.row(cu, "contig", n, k, n - k, tools=tools)
+            finally:
+                reader.close()
+
+        ledger.write(root, stage, "genecall", ledger_rows())
     finally:
         con.close()
     return n_prot
