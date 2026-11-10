@@ -65,13 +65,13 @@ Decisions DEC-18 to DEC-23 were approved by the PI on 2026-11-09 and are in `pla
 | B-23 ingest reads once; killed ingest reruns | Opus | started 2026-11-09 |
 | B-18 phase-B exit measurements | Opus | started 2026-11-10 |
 | B-29 postings builder out of memory at 21 M slots | Opus | started 2026-11-10 |
-| C-04 `bio-box build-stage` | Opus | started 2026-11-10 |
+| C-04 `bio-box build-stage` | Opus | stopped 2026-11-10 with evidence, nothing written: builders cannot write into `run-step` staging. Now depends on B-22 and the new card C-08; card amended |
 | Pod import ladder (not a card): phages, then 1 Gbp and 10 Gbp of complete prokaryotes with the new code | Opus | detached jobs on the pod; agent waiting on them |
 
 ## Next, in order
 
-1. B-22 `l0_manifest` per stage (held until B-23 merges: both edit `l0seq/store.py`); B-26 postings bytes (after B-25: both touch `postings.py`).
-2. B-24 streaming clustering (now needed before S2: see the import ladder).
+1. The path to a one-command stage build, in order: B-23 (in rework) → B-22 (`l0_manifest` per stage; register `store_params.json`) → C-08 (every builder writes to `out=`; after B-29) → C-04 (`build-stage`) → C-06 (runbook). Until C-04 merges, stages are built by a hand-written driver, as the import ladder was.
+2. B-28 (query-time readers take the release's stages), B-24 (streaming clustering and sharded scans; memory, not time, is the limit), B-30 (ingest by batch), B-27 and W-11.
 3. Pull request `plan/task-cards` → `main`, merged when the suite and CI are green (the PI delegated the timing). The merge builds the image and runs the image-only tests for the first time.
 4. C-04 `build-stage`; C-06 runbook.
 5. W-03 pack and runs outside the data root; W-05 readable exports; W-07 the one command.

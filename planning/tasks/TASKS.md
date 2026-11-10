@@ -375,8 +375,26 @@ Accept: the test passes for every kill point; no test sleeps to hit a kill point
 **M** · Depends: C-02, B-17
 Files: `src/biobox/stage.py`+, `src/biobox/cli.py`, `tests/r2/test_build_stage.py`+
 Do: a fixed list of steps for a stage, each through `run-step`: inputs → ingest → gene calling → other feature producers → IGRs → tapes → domain scans → clustering → tokens → postings → `contig_dim` → manifest → catalog. No workflow engine; a list and the ledger. A scan step is split into shard processes that each stay under 300 CPU-minutes.
-Amended 2026-11-10 from the import ladder: ingest is one process at about 3.7 Mbp/s (*measured*, wilkcomp02), so a stage over about 60 Gbp exceeds 300 CPU-minutes; `build-stage` splits ingest into batch processes (DEC-22: one shard per batch) as it does scans. Launch each step through `scripts/pod_run.sh` (C-07). Depends also on B-25: the release steps take the stage list.
+Amended 2026-11-10 (twice). An agent started this card and stopped with evidence (three probe tests, `sh scripts/pod_pytest.sh C-04`): no builder except ingest can write into `$BIOBOX_STAGING`, and `run-step` refuses `store_params.json`, the manifest and the catalog because nothing in the registry claims them. So: **Depends: C-02, B-17, B-25, B-22, C-08.** Rulings for this card:
+- Each step is `run-step` running a builder with `root=$BIOBOX_ROOT, out=$BIOBOX_STAGING` (card C-08 gives every builder `out=`). No symlink views.
+- `scripts/pod_run.sh` launches `build-stage` once on the host; every step's `run-step` inherits that unit's memory cap. `build-stage` never calls `pod_run.sh`.
+- Ingest is one process in this card. Before starting it, estimate its CPU-minutes from the input bytes (*measured* rate: 42.9 CPU-min for 9.6 Gbp on wilkcomp02, `planning/measurements/2026-11-10_import_ladder/`) and refuse a stage that would exceed the profile's `cpu_min_per_process`, naming card B-30 (ingest by batch). The domain scan is one process the same way until B-24 gives a sharded scan; same refusal.
+- The one-shard-per-batch decision is DEC-21 (the earlier text said DEC-22).
 Accept: the fixture builds end to end with one command; a second run does nothing.
+
+### C-08 Every builder can write to a separate output root
+**M** · Depends: B-23, B-29 (they edit two of the same files) · found by the C-04 agent, 2026-11-10
+Files: `src/biobox/l0seq/inputs.py`, `src/biobox/l1/genecall.py`, `src/biobox/l1/igr.py`, `src/biobox/l3/tapes.py`, `src/biobox/l1/domains.py`, `src/biobox/l2/cluster.py`, `src/biobox/l3/tokens.py`, `src/biobox/l3/postings.py`, `src/biobox/dim.py`, `src/biobox/ledger.py`, `src/biobox/catalog.py` (`write_manifest`, `generate_catalog`, `define_release`), `src/biobox/registry/schemas.py` (artifacts), `src/biobox/cli.py` (`release` and a new `stage` command group), `tests/r2/test_builders_out.py`+
+Why: `run-step` publishes what a command wrote into `$BIOBOX_STAGING` (its module docstring is the contract). Only `ingest` has an `out=` argument (card B-23); every other builder reads and writes the one `root` it is given, so none can run as a step. And the registry claims neither `manifests/release=<R>.json` nor `catalog/release=<R>.duckdb`, so `run-step` refuses them (LY-10).
+Do: (1) every builder's `run` takes `out: Path | None = None`: inputs are read from `root` (earlier steps and stages), every output including its ledger and any definition row (`tape_version_def`, `release_def`) is written under `out` (default: `root`, so direct calls and all existing tests are unchanged). A definition row that already exists in `root` is verified, not rewritten. Follow `ingest`'s pattern exactly, including its refusal when the target partition already holds files. (2) Register the manifest and the catalog as artifacts so `run-step` can publish them. (3) CLI: `bio-box stage inputs|ingest|genecall|igr|tapes|domains --root R --stage S [--out DIR]` beside the existing `bio-box release ...`, each defaulting `--out` to `$BIOBOX_STAGING` when that is set.
+Accept: tests first: for each builder, run as a `run-step` command on the fixture, the published root is file-for-file identical (sha256) to the root built by direct calls; the whole chain inputs → catalog run step by step under `run-step` gives the same manifest hash as today's fixture build.
+
+### B-30 Ingest by batch processes
+**M** · Depends: B-22, C-08
+Files: `src/biobox/l0seq/store.py`, `src/biobox/stage.py` (if C-04 has merged), tests
+Why: one ingest process runs at about 3.7 Mbp/s (*measured*, wilkcomp02), so a stage over about 60 Gbp exceeds 300 CPU-minutes (AGENTS §7.2). `ingest` decides new sequences and `contig_index` for the whole stage in one call, so it cannot be split today.
+Do: split a stage's ingest into a plan step (pass 1 over all sources, itself sharded by source object, writing a scratch decision table: which records are new, their batch, their shard) and one process per batch that writes that batch's shard and rows (DEC-21: one shard per batch), then a merge step for the per-stage index tables. Batches are a deterministic function of the sorted inputs and the batch size. Output must be byte-identical to the single-process ingest.
+Accept: with the batch size forced small on the fixture, the batch build equals the single-process build file for file; each process's CPU-minutes are in its run record and under the budget on the 1,000× synthetic stage.
 
 ### C-05 Search runner under systemd scopes
 **M** · Depends: A-01, C-02
