@@ -1312,63 +1312,6 @@
    false
   ]
  ],
- "slot_pairs": [
-  [
-   "anchor_token",
-   "uint64",
-   false
-  ],
-  [
-   "partner_token",
-   "uint64",
-   false
-  ],
-  [
-   "contig_uid",
-   "fixed_size_binary[16]",
-   false
-  ],
-  [
-   "anchor_ordinal",
-   "uint32",
-   false
-  ],
-  [
-   "partner_ordinal",
-   "uint32",
-   false
-  ],
-  [
-   "orf_offset",
-   "int16",
-   false
-  ],
-  [
-   "junction_topology",
-   "uint8",
-   false
-  ],
-  [
-   "delta_bp",
-   "int32",
-   false
-  ],
-  [
-   "flags",
-   "uint8",
-   false
-  ],
-  [
-   "tier",
-   "uint8",
-   true
-  ],
-  [
-   "tax_order",
-   "uint32",
-   true
-  ]
- ],
  "slot_protein": [
   [
    "contig_uid",

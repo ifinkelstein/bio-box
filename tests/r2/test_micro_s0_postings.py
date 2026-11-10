@@ -5,7 +5,9 @@ family tokens, NR50/NR90 clusters from MMseqs2 or the deterministic stand-in). T
 plain Python loop over the tape rows and the tape-token rows read with pyarrow: one posting per
 (slot, level) with a token, every one at `seg_idx` 0 (per-domain family postings with
 `seg_idx` > 0 are a later card). Neighbour questions over the catalog's `token_postings` view are
-checked against `biobox.l3.pairs.pairs_of_contig`, which survives as the pair oracle (AGENTS §3.5).
+checked against `pairs_of_contig` (tests/oracles/pairs_oracle.py), which survives as the pair oracle
+(AGENTS §3.5); the pair macros' pruning and the hub refusal are tested here on postings written for the
+purpose (card B-11).
 """
 
 from __future__ import annotations
@@ -17,13 +19,15 @@ import sys
 from collections import Counter
 from pathlib import Path
 
+import duckdb
 import pyarrow as pa
 import pyarrow.parquet as pq
 import pytest
 
 from biobox import catalog, contracts, ids, io, provenance
-from biobox.l3 import pairs, postings, tapes, tokens
+from biobox.l3 import postings, tapes, tokens
 from biobox.registry.schemas import conformance_problems, table
+from oracles.pairs_oracle import pairs_of_contig
 
 sys.path.insert(0, str(Path(__file__).parent))
 import test_micro_s0_l3 as micro  # noqa: E402
@@ -38,13 +42,14 @@ COLS = ("token_id", "contig_uid", "ordinal", "seg_idx", "feature_uid", "start", 
 SORT = ("token_id", "contig_uid", "ordinal", "seg_idx")  # the registry's sort key, written out here
 EST_ROW = 20  # the builder's per-row estimate (bytes), which cuts parts and picks the bucket width
 POST = "l3/token_postings"
+NR90_BASE = LEVEL_BITS["nr90"] << 61
 
 
 @pytest.fixture(scope="module")
 def built(tmp_path_factory):
     d = tmp_path_factory.mktemp("postings")
     root = d / "a"
-    circ = micro.build(root)
+    circ = micro.build(root, with_postings=False)
     res = postings.run(root, REL)
     man = catalog.build_manifest(root, REL)
     con = catalog.open_catalog(catalog.generate_catalog(man, d / "c.duckdb"))
@@ -157,7 +162,7 @@ def test_b10_ordinals_name_the_features_of_the_tape(built):
 
 def test_b10_without_a_domain_library_the_family_level_adds_nothing(built, tmp_path):
     root, _, _, _, _ = built
-    fresh = _fresh(root, tmp_path, "s", (POST, "l1/domains", "l3/token_dict", "l3/tape_tokens", "l3/slot_pairs"))
+    fresh = _fresh(root, tmp_path, "s", (POST, "l1/domains", "l3/token_dict", "l3/tape_tokens"))
     tokens.run(fresh, REL)
     res = postings.run(fresh, REL)
     got = _written(fresh)
@@ -362,11 +367,11 @@ NEAR = """
 
 
 def _pair_oracle(root: Path, a: int, b: int, k: int) -> int:
-    """Loci (contig, anchor slot) of A with B within k slots, from `pairs.pairs_of_contig` on every tape."""
+    """Loci (contig, anchor slot) of A with B within k slots, from `pairs_of_contig` on every tape."""
     tps = _tapes_of(root, TV)
     loci = set()
     for tok in _rows(root, f"l3/tape_tokens/tape_version={TV}/release={REL}/part-*.parquet"):
-        for p in pairs.pairs_of_contig(tps[tok["contig_uid"]], {lvl: tok[f"{lvl}_tokens"] for lvl in LEVELS}, k):
+        for p in pairs_of_contig(tps[tok["contig_uid"]], {lvl: tok[f"{lvl}_tokens"] for lvl in LEVELS}, k):
             if p["anchor_token"] == a and p["partner_token"] == b:
                 loci.add((p["contig_uid"], p["anchor_ordinal"]))
     return len(loci)
@@ -466,5 +471,90 @@ def test_b10_a_token_lookup_scans_at_most_two_row_groups(tmp_path):
             (scan,) = [s for s in prof["scans"] if any(f"/{POST}/" in x for x in s["files"])]
             assert prof["result"][0][0] == n_tok[tid]
             assert scan["row_groups_scanned"] <= 2 and scan["row_groups_total"] == md.num_row_groups, tid
+    finally:
+        con.close()
+
+
+# --- card B-11: the pair macros prune; partners_of refuses a hub ------------------------------------
+
+
+def _near(tok_rows: list[dict], tape_rows: list[dict], a: int, b: int, k: int) -> tuple[int, int]:
+    """(loci of A with B within k slots, (A slot, B slot) pairs), by a loop over the token lists of each contig."""
+    circ = {t["contig_uid"]: t["is_circular"] for t in tape_rows}
+    loci = pairs = 0
+    for r in tok_rows:
+        col, n = r["nr90_tokens"], len(r["nr90_tokens"])
+        for i in (i for i, t in enumerate(col) if t == a):
+            near = [j for j, t in enumerate(col) if t == b and j != i and
+                    (min(abs(i - j), n - abs(i - j)) if circ[r["contig_uid"]] else abs(i - j)) <= k]
+            loci += bool(near)
+            pairs += len(near)
+    return loci, pairs
+
+
+@pytest.mark.covers("LY-06", "Q1", "Q4")
+def test_b11_pair_macros_scan_at_most_two_row_groups_per_side(tmp_path):
+    """q1_count and pairs_of for non-hub token pairs on postings of several row groups: each side of the self-join
+    reads at most 2 row groups (AGENTS §4.4), including tokens whose rows straddle a row-group boundary."""
+    root = tmp_path / "r"
+    tv, tape_rows, tok_rows = _synthetic(root)
+    postings.run(root, REL, producers=["synthetic-b10"])
+    [path] = _files(root, REL, tv)["all"]
+    md = pq.ParquetFile(path).metadata
+    assert md.num_row_groups >= 3
+    con = catalog.open_catalog(catalog.generate_catalog(catalog.build_manifest(root, REL), tmp_path / "c.duckdb"))
+    try:
+        first = [pq.ParquetFile(path).read_row_group(i, columns=["token_id"]).column(0) for i in range(md.num_row_groups)]
+        anchors = sorted({g[0].as_py() for g in first[1:]} | {g[-1].as_py() for g in first[:-1]}
+                         | set(random.Random(5).sample(sorted({t for r in tok_rows for t in r["nr90_tokens"] if t}), 6)))
+        checked = 0
+        for a in anchors:
+            # the partner: the token most often within 3 slots of A
+            near = Counter(r["nr90_tokens"][j] for r in tok_rows for i, t in enumerate(r["nr90_tokens"]) if t == a
+                           for j in range(max(0, i - 3), min(N_SLOTS, i + 4)) if j != i and r["nr90_tokens"][j])
+            b = near.most_common(1)[0][0]
+            loci, n_pairs = _near(tok_rows, tape_rows, a, b, 10)
+            for sql, want in (("SELECT q1_count(?, ?, 10, NULL)", (loci,)),
+                              ("SELECT count(*), sum(delta_bp) IS NOT NULL FROM pairs_of(?, ?, 10)", (n_pairs, True))):
+                prof = catalog.profile_query(con, sql, [a, b])
+                assert prof["result"][0] == want, (sql, a, b)
+                scans = [s for s in prof["scans"] if any(f"/{POST}/" in x for x in s["files"])]
+                assert len(scans) == 2, (sql, scans)  # one per side
+                assert all(s["row_groups_scanned"] <= 2 and s["row_groups_total"] == md.num_row_groups
+                           for s in scans), (sql, a, b, scans)
+                checked += 1
+        assert checked == 2 * len(anchors)
+        straddle = {first[i][-1].as_py() for i in range(md.num_row_groups - 1)} & {g[0].as_py() for g in first[1:]}
+        assert straddle and straddle <= set(anchors)  # tokens whose rows span two row groups were looked up
+    finally:
+        con.close()
+
+
+@pytest.mark.covers("Q3")
+def test_b11_partners_of_refuses_a_hub_token(tmp_path):
+    """More than 100,000 posting rows: partners_of refuses and names pair_stats; at exactly 100,000 it answers."""
+    root = tmp_path / "r"
+    tv = tapes.tape_version(["synthetic-hub"])
+    hub, big, partner, n = NR90_BASE | 1, NR90_BASE | 2, NR90_BASE | 3, 100_000
+    cu = lambda tag, i: tag + i.to_bytes(15, "big")  # noqa: E731
+    rows = [(hub, cu(b"h", i), 0) for i in range(n + 1)] + [(big, cu(b"d", i), 0) for i in range(n)] + \
+        [(partner, cu(b"d", i), 1) for i in range(n)]
+    tok, cus, ords = zip(*rows)
+    m = len(rows)
+    spec = table("token_postings")
+    tbl = pa.table({"token_id": pa.array(tok, pa.uint64()), "contig_uid": pa.array(cus, pa.binary(16)),
+                    "ordinal": pa.array(ords, pa.uint32()), "seg_idx": pa.array([0] * m, pa.uint16()),
+                    "feature_uid": pa.array([c[:15] + bytes([o]) for c, o in zip(cus, ords)], pa.binary(16)),
+                    "start": pa.array([100 * o for o in ords], pa.int64()),
+                    "end": pa.array([100 * o + 90 for o in ords], pa.int64()), "strand": pa.array([1] * m, pa.int8()),
+                    "n_slots": pa.array([2] * m, pa.uint32()), "is_circular": pa.array([False] * m),
+                    "contig_len": pa.array([200] * m, pa.int64())}).cast(spec.schema)
+    io.write_table([tbl], spec, root / f"{POST}/release={REL}/tape_version={tv}/token_bucket=all/part-0.parquet")
+    con = catalog.open_catalog(catalog.generate_catalog(catalog.build_manifest(root, REL), tmp_path / "c.duckdb"))
+    try:
+        with pytest.raises(duckdb.Error, match=r"partners_of: token has more than 100000 loci; use pair_stats \(hub routing\)"):
+            con.execute("SELECT * FROM partners_of(?, 10)", [hub]).fetchall()
+        assert con.execute("SELECT * FROM partners_of(?, 1)", [big]).fetchall() == [(partner, n, n)]
+        assert con.execute("SELECT q1_count(?, ?, 1, NULL)", [big, partner]).fetchall() == [(n,)]
     finally:
         con.close()

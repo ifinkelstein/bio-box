@@ -15,8 +15,11 @@ import pyarrow.parquet as pq
 
 from biobox.l1.genecall import GENE_CALL_VERSION
 from biobox.l1.igr import igrs_of_contig
-from biobox.l3.pairs import pairs_of_contig
 from biobox.l3.tapes import build_tape
+
+# the pair enumeration lives on as the test oracle since card B-11 removed the materialized pairs
+sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "tests"))
+from oracles.pairs_oracle import pairs_of_contig  # noqa: E402
 
 root = Path(sys.argv[1])
 occ = pq.read_table(root / f"l1/protein_occurrence/gene_call_version={GENE_CALL_VERSION}/stage=S0/part-0.parquet").to_pylist()

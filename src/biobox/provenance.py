@@ -40,7 +40,6 @@ VERSION_PARTITION = {
     "tape_version_def": "tape_version",
     "tape_tokens": "release",
     "token_dict": "release",
-    "slot_pairs": "release",
     "token_postings": "release",
 }
 # ledger steps whose output depends on a tool, and the tools they must record

@@ -2,7 +2,9 @@
 
     python builder_limits.py ROOT SCRATCH
 
-1. Bytes of Python heap per slot_pairs row as `pairs.pairs_of_contig` builds them (E. coli, one level).
+1. Bytes of Python heap per slot_pairs row as `pairs_of_contig` builds them (E. coli, one level). The
+   materialized pair builder was removed by card B-11; the enumeration survives as the test oracle
+   (tests/oracles/pairs_oracle.py), which this measurement now imports.
 2. `SeqStore(root)` open time and heap for a synthetic store index of 1e6 contigs.
 """
 
@@ -18,8 +20,10 @@ import pyarrow as pa
 import pyarrow.parquet as pq
 
 from biobox.l0seq import SeqStore
-from biobox.l3.pairs import pairs_of_contig
 from biobox.registry.schemas import table
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "tests"))
+from oracles.pairs_oracle import pairs_of_contig  # noqa: E402
 
 root, scratch = Path(sys.argv[1]), Path(sys.argv[2])
 out = {}

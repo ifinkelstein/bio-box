@@ -36,7 +36,13 @@ a = ap.parse_args()
 from biobox import catalog, fasta, ids, layout  # noqa: E402
 from biobox.l0seq import SeqStore, SourceObject, ingest  # noqa: E402
 from biobox.l1.genecall import GENE_CALL_VERSION, GenomeInput, run as call_genes  # noqa: E402
-from biobox.l3 import pairs as pairs_mod, tapes as tapes_mod  # noqa: E402
+from biobox.l3 import tapes as tapes_mod  # noqa: E402
+
+# card B-11 removed biobox.l3.pairs and the slot_pairs table; the enumeration is the test oracle now. The
+# slot_pairs section below is stale (it writes a table the registry no longer has); card B-18 moves this
+# script to token_postings
+sys.path.insert(0, str(a.repo / "tests"))
+from oracles import pairs_oracle as pairs_mod  # noqa: E402
 from biobox.l3.tokens import token_id  # noqa: E402
 from biobox.registry.schemas import table  # noqa: E402
 

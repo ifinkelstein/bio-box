@@ -613,33 +613,6 @@ _SPECS = [
         list_columns=("family_tokens", "nr50_tokens", "nr90_tokens"),
         doc="data_layer_and_tests.md §1 L3 (`tape_tokens_<release>`): token columns, recomputed per release",
     ),
-    TableSpec(
-        name="slot_pairs",
-        location="l3/slot_pairs",
-        layer="L3",
-        schema=pa.schema([
-            _f("anchor_token", pa.uint64()),
-            _f("partner_token", pa.uint64()),
-            _f("contig_uid", UID),
-            _f("anchor_ordinal", pa.uint32()),
-            _f("partner_ordinal", pa.uint32()),
-            _f("orf_offset", pa.int16()),
-            _f("junction_topology", pa.uint8()),
-            _f("delta_bp", pa.int32()),
-            _f("flags", pa.uint8()),
-            _f("tier", pa.uint8(), nullable=True),
-            _f("tax_order", pa.uint32(), nullable=True),
-        ]),
-        primary_key=("anchor_token", "partner_token", "contig_uid", "anchor_ordinal", "partner_ordinal", "release"),
-        sort_key=("anchor_token", "partner_token", "contig_uid", "anchor_ordinal", "partner_ordinal"),
-        partition_keys=("release", "anchor_bucket"),
-        enums={"junction_topology": (0, 1, 2, 3, 4, 5)},
-        doc=(
-            "PLAN.md §4.2; biobox/l3/pairs.py. Directed pairs within +-10 slots at one token level; flags bit 0 "
-            "anchor window cut by a linear end, bit 1 pair crosses the origin; anchor_bucket = hex of the "
-            "anchor token's low byte at the release's width"
-        ),
-    ),
     # --- phase B (card B-03): added beside the legacy tables they replace; B-17 removes those ---
     TableSpec(
         name="genome_input",
@@ -762,10 +735,11 @@ _SPECS = [
         partition_keys=("release", "tape_version", "token_bucket"),
         enums={"strand": STRAND_VALUES},
         doc=(
-            "planning/tasks/TASKS.md §2; DEC-19. Replaces slot_pairs: one row per slot and token (seg_idx 0 for "
+            "planning/tasks/TASKS.md §2; DEC-19. Replaces slot_pairs (removed by card B-11; pairs are computed "
+            "at query time by the catalog's pair macros): one row per slot and token (seg_idx 0 for "
             "NR90/NR50, the domain's rank by env_start for family tokens). ordinal orders the rows within one "
             "tape_version but is not part of the key (AGENTS §3.3); token_bucket = hex of the token's low byte "
-            "at the release's width, as slot_pairs.anchor_bucket"
+            "at the release's width"
         ),
     ),
     TableSpec(

@@ -113,9 +113,6 @@ FOREIGN_KEYS = [
     ("igr", ("contig_uid",), "contig_index", ("contig_uid",)),
     ("contig_tapes", ("contig_uid",), "contig_index", ("contig_uid",)),
     ("tape_tokens", ("contig_uid", "tape_version"), "contig_tapes", ("contig_uid", "tape_version")),
-    ("slot_pairs", ("contig_uid",), "contig_tapes", ("contig_uid",)),
-    ("slot_pairs", ("anchor_token", "release"), "token_dict", ("token_id", "release")),
-    ("slot_pairs", ("partner_token", "release"), "token_dict", ("token_id", "release")),
     ("token_postings", ("token_id", "release"), "token_dict", ("token_id", "release")),
     ("token_postings", ("contig_uid",), "contig_tapes", ("contig_uid",)),
 ]
@@ -301,13 +298,13 @@ def check_coordinates(con: duckdb.DuckDBPyConnection) -> list[str]:
     """).fetchall()[0][0]
     if bad:
         problems.append(f"contig_tapes: {bad} slots outside contig bounds")
+    # the pair macros read slot positions from the postings (card B-11): each ordinal lies in its tape
     bad = con.execute("""
-        SELECT count(*) FROM slot_pairs p JOIN contig_tapes t USING (contig_uid)
-        WHERE NOT (p.anchor_ordinal < t.n_slots AND p.partner_ordinal < t.n_slots
-                   AND p.anchor_ordinal <> p.partner_ordinal AND p.orf_offset <> 0)
+        SELECT count(*) FROM token_postings p JOIN contig_tapes t USING (contig_uid, tape_version)
+        WHERE NOT (p.ordinal < t.n_slots AND p.n_slots = t.n_slots)
     """).fetchall()[0][0]
     if bad:
-        problems.append(f"slot_pairs: {bad} rows with ordinals outside their tape")
+        problems.append(f"token_postings: {bad} rows with ordinals outside their tape")
     return problems
 
 

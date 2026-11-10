@@ -248,7 +248,7 @@ def test_phase_b_tables_are_catalog_views_with_partition_columns(tmp_path):
 @pytest.mark.covers("LY-05")
 @pytest.mark.parametrize("bucket,ok", [("2a", True), ("2", True), ("all", True), ("ff", False), ("3", False)])
 def test_token_postings_file_under_the_wrong_bucket_is_refused(tmp_path, bucket, ok):
-    # token_bucket is the hex of the token's low byte (as slot_pairs.anchor_bucket); both tokens end in 0x2a
+    # token_bucket is the hex of the token's low byte (catalog macro token_bucket_ok); both tokens end in 0x2a
     rel, t = _phase_b_tables()["token_postings"]
     root = tmp_path / "root"
     write_table(t, table("token_postings"), root / rel.replace(f"token_bucket={TOKEN_BUCKET}", f"token_bucket={bucket}"))
