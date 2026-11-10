@@ -1,16 +1,16 @@
 """`bio-box` command line: search pack, search runs, neighborhoods (SEARCH_PLAN §3.3).
 
-    bio-box pack build --root R --release rS0.1 [--model pfam-38.2=/path/Pfam-A.hmm ...]
-    bio-box pack verify --root R --release rS0.1
-    bio-box search run recipe.yaml --root R --release rS0.1 [--wait]
-    bio-box search status|cancel <run_id> --root R
-    bio-box search hits <run_id> --root R [--round N] [--members] [--json] [--top_n 50]
-    bio-box search hits <run_id> --root R --format tsv|faa [--round N] [--library L] [--out FILE]
-    bio-box nbr --root R --anchors <run_id|uid,uid,...> --window 10g --strand any --edge truncate [--json]
-                [--tape-version T]
-    bio-box nbr <run_id|uid,uid,...> --root R --window 5g --format tsv [--release R] [--out DIR]
-    bio-box nbr summarize <run_id|uid,uid,...> --root R --window 5g --by pfam,nr50 [--top 50] [--release R]
-                [--json | --format tsv]
+    bio-box pack build --root R --release rS0.1 [--model pfam-38.2=/path/Pfam-A.hmm ...] [--pack-dir P]
+    bio-box pack verify --root R --release rS0.1 [--pack-dir P]
+    bio-box search run recipe.yaml --root R --release rS0.1 [--wait] [--out DIR | --runs DIR] [--pack-dir P]
+    bio-box search status|cancel <run> --root R [--runs DIR]
+    bio-box search hits <run> --root R [--runs DIR] [--round N] [--members] [--json] [--top_n 50]
+    bio-box search hits <run> --root R [--runs DIR] --format tsv|faa [--round N] [--library L] [--out FILE]
+    bio-box nbr --root R --anchors <run|uid,uid,...> --window 10g --strand any --edge truncate [--json]
+                [--tape-version T] [--runs DIR]
+    bio-box nbr <run|uid,uid,...> --root R --window 5g --format tsv [--release R] [--out DIR] [--runs DIR]
+    bio-box nbr summarize <run|uid,uid,...> --root R --window 5g --by pfam,nr50 [--top 50] [--release R]
+                [--json | --format tsv] [--runs DIR]
     bio-box export proteins --root R --release R [--out FILE]
     bio-box run-step --profile P --root R --stage S --step NAME [--nice monolithic|fanout] [--threads N] -- CMD ...
     bio-box release define --root R --release R1 --stages S0,S1 [--out DIR]
@@ -38,6 +38,13 @@ Every builder step reads its inputs from `--root` and writes its outputs under `
 which defaults to `$BIOBOX_STAGING` when that is set and to the root otherwise; so the same command
 runs directly or as `bio-box run-step ... -- python -m biobox.cli stage genecall --root R --stage S`.
 A step whose partitions already hold files in the root or in `--out` is refused (exit 2) before any work.
+
+The search path writes nothing under the data root (card W-03). The search pack is built into a pack
+directory (`--pack-dir`, `biobox.search.pack`); a run into `--out DIR`, else `run=<run_id>` in a runs
+directory (`--runs`). A `<run>` argument is a run directory, or a run id in the runs directory. Defaults,
+with a host profile (`--profile`, else $BIOBOX_PROFILE): `<tmp>/packs` and `<tmp>/search/<user>/runs`;
+without one, `biobox.search.runner.default_pack_base()` and `default_runs_dir()`. A search whose pack is
+missing exits 2 with the command that builds it.
 """
 
 from __future__ import annotations
@@ -70,35 +77,71 @@ def _emit(lines, out: str | None) -> None:
         export.write_lines(lines, Path(out))
 
 
-def _run_release(root: Path, run_id: str) -> str | None:
+def _profile_tmp(a) -> Path | None:
+    """The host profile's `tmp` (`--profile`, else $BIOBOX_PROFILE), or None without a profile."""
+    path = getattr(a, "profile", None) or os.environ.get("BIOBOX_PROFILE")
+    if not path:
+        return None
+    from biobox import profile
+
+    return Path(profile.load(path).tmp)
+
+
+def _packs(a) -> Path:
+    """The pack directory (card W-03): `--pack-dir`, else the default for the host profile."""
+    return Path(a.pack_dir) if getattr(a, "pack_dir", None) else runner.default_pack_base(_profile_tmp(a))
+
+
+def _runs(a) -> Path:
+    """The runs directory (card W-03): `--runs`, else the per-user default for the host profile."""
+    return Path(a.runs) if getattr(a, "runs", None) else runner.default_runs_dir(_profile_tmp(a))
+
+
+def _run_path(a, ref: str) -> Path:
+    """A run named on the command line: a run id (32 hex digits) in the runs directory (`_runs`), unless a
+    directory of that name exists here; anything else is the run's directory."""
+    if len(ref) == 32 and all(c in "0123456789abcdef" for c in ref) and not Path(ref).is_dir():
+        return runner.run_dir(_runs(a), ref)
+    return Path(ref)
+
+
+def _run_release(d: Path) -> str | None:
     """The release a recorded run ran against; None when the run is not on disk."""
-    path = runner.run_dir(root, run_id) / "run.parquet"
+    path = Path(d) / "run.parquet"
     if not path.exists():
         return None
     return pq.read_table(path, columns=["ran_against"]).column("ran_against")[0].as_py()
 
 
-def _run_tape_version(root: Path, run_id: str, gene_call_version: str) -> str:
-    """The tape version a closed run read: its pack's (card B-16); the gene-call producer's when the
-    run or its pack is not on disk."""
-    path = runner.run_dir(root, run_id) / "run.parquet"
+def _run_tape_version(d: Path, packs: Path, gene_call_version: str) -> str:
+    """The tape version a closed run read: its pack's (card B-16), the pack found by the run's pack_id in
+    the pack directory `packs`; the gene-call producer's when the run or its pack is not on disk."""
+    path = Path(d) / "run.parquet"
     if path.exists():
-        release = pq.read_table(path, columns=["ran_against"]).column("ran_against")[0].as_py()
-        if (pack.pack_dir(root, release) / "pack_manifest.json").exists():
-            return pack.manifest_tape_version(pack.read_manifest(root, release)[0])
+        row = pq.read_table(path, columns=["ran_against", "pack_id"]).to_pylist()[0]
+        pdir = pack.pack_dir(packs, row["ran_against"], row["pack_id"])
+        if (pdir / pack.MANIFEST).exists():
+            return pack.manifest_tape_version(pack.read_manifest(pdir)[0])
     return nbr.resolve_tape_version(gene_call_version)
 
 
 def _pack(a) -> int:
+    """`pack build|verify` (card W-03): the release's pack in the pack directory, never under the root."""
+    packs = _packs(a)
     if a.action == "build":
         models = dict(m.split("=", 1) for m in a.model)
-        man = pack.build(Path(a.root), a.release, a.gene_call_version, {k: Path(v) for k, v in models.items()})
+        try:
+            man = pack.build(Path(a.root), a.release, a.gene_call_version, {k: Path(v) for k, v in models.items()},
+                             packs=packs)
+        except (ValueError, FileExistsError) as e:
+            print(f"refused: {e}", file=sys.stderr)
+            return 2
         recs = (export.record("pack_target", {"release_id": a.release, "pack_id": man["pack_id"], "target": t,
                                               "shards": sum(1 for s in man["shards"] if s["target"] == t), **info})
                 for t, info in sorted(man["targets"].items()))
         _print(export.ndjson(recs))
         return 0
-    problems = pack.verify(Path(a.root), a.release)
+    problems = pack.verify(Path(a.root), a.release, packs=packs)
     _print(problems or [f"pack {a.release}: verified"])
     return 1 if problems else 0
 
@@ -137,31 +180,49 @@ def _search(a) -> int:
     if a.action == "run":
         try:
             limits = _limits(a)
+            tmp = _profile_tmp(a)
         except (ValueError, OSError) as e:
             print(f"refused: {e}", file=sys.stderr)
             return 2
+        # card W-03: the pack, the run, its pending record and its work directory, all outside the root
+        packs = _packs(a)
+        work = Path(a.work) if a.work else runner.default_work_base(tmp)
+        out = Path(a.out) if a.out else None
+        runs = None if out is not None else _runs(a)
         try:
             if not a.wait:
-                print(runner.submit(root, Path(a.target), a.release, limits, Path(a.work) if a.work else None,
-                                    a.fault))
+                print(runner.submit(root, Path(a.target), a.release, limits, work, a.fault, packs=packs, runs=runs,
+                                    out=out))
                 return 0
-            row = runner.run(root, Path(a.target), a.release, limits=limits,
-                             work_base=Path(a.work) if a.work else None, argv=sys.argv,
-                             run_id=bytes.fromhex(a.run_id) if a.run_id else None, fault=a.fault)
+            row = runner.run(root, Path(a.target), a.release, limits=limits, work_base=work, argv=sys.argv,
+                             run_id=bytes.fromhex(a.run_id) if a.run_id else None, fault=a.fault, packs=packs,
+                             runs=runs, out=out)
         except RecipeError as e:
             print(f"refused: {e}", file=sys.stderr)
             return 2
         _print(export.ndjson([export.run_record(row)]) if a.json else [row["run_id"].hex() + "\t" + row["status"]])
         return 0 if row["status"] == "ok" else 1
+    d = _run_path(a, a.target)
     if a.action == "status":
-        print(json.dumps(runner.status(root, a.target)))
+        try:
+            print(json.dumps(runner.status(d)))
+        except KeyError:
+            print(f"refused: no run {a.target} (looked for {d} and its pending record)", file=sys.stderr)
+            return 2
         return 0
     if a.action == "cancel":
-        runner.cancel(root, a.target)
+        try:
+            runner.cancel(d)
+        except FileNotFoundError:
+            print(f"refused: no pending run {a.target} (looked for {runner.pending_path(d)})", file=sys.stderr)
+            return 2
         return 0
-    hits = runner.read_hits(root, a.target, a.round)
-    tv = _run_tape_version(root, a.target, a.gene_call_version)
-    release = _run_release(root, a.target)
+    if not (d / "run.parquet").exists():
+        print(f"refused: no closed run {a.target} (looked for {d})", file=sys.stderr)
+        return 2
+    hits = runner.read_hits(d, a.round)
+    tv = _run_tape_version(d, _packs(a), a.gene_call_version)
+    release = _run_release(d)
     manifest = export.release_manifest(root, release)
     if a.format:  # card W-05 (files: the manifest's, else the release_def stages: card W-12): one row per gene (tsv) or one record per protein (faa)
         if a.json:
@@ -195,18 +256,27 @@ def _search(a) -> int:
     return 0
 
 
-def _anchors(root: Path, source: str, tape_version: str | None, gene_call_version: str):
-    """Anchor proteins from a recorded run's protein hits or a comma-separated list of protein uids:
-    (uids, tape version, the run's release or None), or a refusal message."""
-    if len(source) == 32 and (runner.run_dir(root, source) / "run.parquet").exists():
-        uids = {h["target_uid"] for h in runner.read_hits(root, source) if h["target_kind"] == "protein"}
-        run_tv = _run_tape_version(root, source, gene_call_version)
+def _anchor_run(a, source: str) -> Path | None:
+    """The run directory `source` names (`_run_path`), when it holds a closed run; else None (protein uids)."""
+    d = _run_path(a, source)
+    return d if (d / "run.parquet").exists() else None
+
+
+def _anchors(a, source: str, tape_version: str | None, gene_call_version: str):
+    """Anchor proteins from a recorded run's protein hits (a run directory, or a run id in the runs
+    directory) or a comma-separated list of protein uids: (uids, tape version, the run's release or None),
+    or a refusal message."""
+    d = _anchor_run(a, source)
+    if d is not None:
+        uids = {h["target_uid"] for h in runner.read_hits(d) if h["target_kind"] == "protein"}
+        run_tv = _run_tape_version(d, _packs(a), gene_call_version)
         if tape_version is not None and tape_version != run_tv:
             return f"refused: tape version {tape_version} is not the tape version {run_tv} that run {source} read"
-        release = pq.read_table(runner.run_dir(root, source) / "run.parquet",
-                                columns=["ran_against"]).column("ran_against")[0].as_py()
-        return uids, run_tv, release
-    return {bytes.fromhex(x) for x in source.split(",") if x}, tape_version, None
+        return uids, run_tv, _run_release(d)
+    try:
+        return {bytes.fromhex(x) for x in source.split(",") if x}, tape_version, None
+    except ValueError:
+        return f"refused: {source} is neither a closed run (in {_runs(a)} or as a directory) nor protein uids"
 
 
 def _nbr(a) -> int:
@@ -223,7 +293,7 @@ def _nbr(a) -> int:
         print("refused: nbr needs --anchors", file=sys.stderr)
         return 2
     source = a.source or a.anchors
-    got = _anchors(root, source, a.tape_version, a.gene_call_version)
+    got = _anchors(a, source, a.tape_version, a.gene_call_version)
     if isinstance(got, str):
         print(got, file=sys.stderr)
         return 2
@@ -247,7 +317,7 @@ def _nbr(a) -> int:
         bits = None
         if run_release is not None:
             bits = {}
-            for h in runner.read_hits(root, source):
+            for h in runner.read_hits(_anchor_run(a, source)):
                 if h["target_kind"] == "protein" and h.get("seq_bitscore") is not None:
                     bits[h["target_uid"]] = max(bits.get(h["target_uid"], h["seq_bitscore"]), h["seq_bitscore"])
         try:
@@ -305,6 +375,11 @@ def _run_step(a) -> int:
 RELEASE_STEPS = ("define", "cluster", "tokens", "postings", "dim", "manifest", "catalog")
 STAGE_STEPS = ("inputs", "ingest", "genecall", "igr", "tapes", "domains", "ncrna")
 DOMAIN_ACTIONS = ("plan", "shard", "merge")  # `stage domains plan|shard|merge` (card B-24)
+PACK_DIR_HELP = ("the pack directory, outside the data root (card W-03); default: <profile tmp>/packs with a host "
+                 "profile, else packs beside $BIOBOX_SEARCH_WORK or /tmp/atd/search")
+RUNS_HELP = ("the runs directory, outside the data root (card W-03); default: <profile tmp>/search/<user>/runs with "
+             "a host profile, else runs in $BIOBOX_SEARCH_WORK or /tmp/atd/search")
+PROFILE_DIRS_HELP = "host profile YAML (default: $BIOBOX_PROFILE); its tmp holds the default pack and runs directories"
 OUT_HELP = ("output root (card C-08): every output goes under it at its root-relative path; default "
             "$BIOBOX_STAGING when set (bio-box run-step sets it and publishes from it), else --root")
 
@@ -544,13 +619,18 @@ def main(argv: list[str] | None = None) -> int:
     pk.add_argument("action", choices=["build", "verify"])
     pk.add_argument("--release", required=True)
     pk.add_argument("--model", action="append", default=[], help="library=path to an HMM file")
+    pk.add_argument("--pack-dir", help=PACK_DIR_HELP)
+    pk.add_argument("--profile", help=PROFILE_DIRS_HELP)
     s = sub.add_parser("search", parents=[common])
     s.add_argument("action", choices=["run", "status", "cancel", "hits"])
-    s.add_argument("target", help="recipe path (run) or run_id")
+    s.add_argument("target", help="recipe path (run), or the run: its directory or its run id in --runs")
     s.add_argument("--release")
     s.add_argument("--wait", action="store_true")
     s.add_argument("--run-id")
-    s.add_argument("--work")
+    s.add_argument("--work", help="run: parent of the run's work directory (default: <profile tmp>/search/<user>/"
+                                  "work with a profile, else $BIOBOX_SEARCH_WORK or /tmp/atd/search)")
+    s.add_argument("--runs", help=RUNS_HELP)
+    s.add_argument("--pack-dir", help=PACK_DIR_HELP)
     s.add_argument("--cpus", type=int, help=f"worker cpus (default {DEFAULT_CPUS}, or the profile's cap if lower)")
     s.add_argument("--mem-gb", type=float, help="memory cap in GB (default: the profile's mem_scope, else none)")
     s.add_argument("--profile", help="host profile YAML (default: $BIOBOX_PROFILE); caps cpus and memory, "
@@ -564,7 +644,8 @@ def main(argv: list[str] | None = None) -> int:
     s.add_argument("--top_n", type=int, default=export.TOP_N)
     s.add_argument("--format", choices=["tsv", "faa"], help="hits: tsv (one row per gene) or faa (one record per "
                                                            "protein, named by protein uid)")
-    s.add_argument("--out", help="hits --format: write this file (default: stdout)")
+    s.add_argument("--out", help="run: the run's directory, outside the data root (default: run=<run_id> in "
+                                 "--runs); hits --format: write this file (default: stdout)")
     s.add_argument("--library", help="hits --format: domain library of pfam_architecture (default: the only one, "
                                      "else the pfam one)")
     s.add_argument("--threads", type=int, help=f"hits --format: DuckDB threads (default {export.EXPORT_THREADS})")
@@ -595,6 +676,9 @@ def main(argv: list[str] | None = None) -> int:
     n.add_argument("--library", help="--format tsv without summarize: domain library of pfam_architecture")
     n.add_argument("--threads", type=int, help=f"--format tsv without summarize: DuckDB threads (default "
                                                f"{export.EXPORT_THREADS})")
+    n.add_argument("--runs", help=RUNS_HELP)
+    n.add_argument("--pack-dir", help=PACK_DIR_HELP)
+    n.add_argument("--profile", help=PROFILE_DIRS_HELP)
     r = sub.add_parser("run-step", usage="bio-box run-step --profile P --root R --stage S --step NAME "
                                          "[--nice monolithic|fanout] [--threads N] -- CMD [ARGS ...]")
     r.add_argument("--profile", required=True, help="host profile YAML (profiles/wilkcomp02.yaml)")

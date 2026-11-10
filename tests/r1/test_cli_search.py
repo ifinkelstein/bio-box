@@ -1,6 +1,9 @@
-"""W-10: `bio-box search run` takes the host profile (ring R1 by directory)."""
+"""W-10: `bio-box search run` takes the host profile; W-03: and the directories it writes, outside the data root
+(ring R1 by directory)."""
 
 from __future__ import annotations
+
+from pathlib import Path
 
 import pytest
 import yaml
@@ -39,8 +42,9 @@ def no_cap(tmp_path, monkeypatch):
 def captured(monkeypatch):
     seen = {}
 
-    def fake_submit(root, recipe, release, limits, work, fault):
+    def fake_submit(root, recipe, release, limits, work, fault, **kw):
         seen["limits"] = limits
+        seen["work"], seen["kw"] = work, kw  # card W-03: the work, pack and runs directories
         return "runid"
 
     monkeypatch.setattr(runner, "submit", fake_submit)
@@ -112,3 +116,41 @@ def test_without_profile_limits_are_unchanged(tmp_path, captured):
     assert captured["limits"] == runner.Limits(cpus=8, cpu_min=300.0, wall_s=6 * 3600.0)
     assert cli.main(_argv(tmp_path, "--cpus", "64")) == 0
     assert captured["limits"].cpus == 64
+
+
+# --- W-03: where a search writes -------------------------------------------------------------------------------
+
+
+@pytest.mark.covers("W-03")
+def test_w03_default_directories_with_and_without_a_profile(tmp_path, monkeypatch):
+    t = tmp_path / "ptmp"
+    assert runner.default_runs_dir(t, user="alice") == t / "search" / "alice" / "runs"
+    assert runner.default_work_base(t, user="alice") == t / "search" / "alice" / "work"
+    assert runner.default_runs_dir(t, user="bob") != runner.default_runs_dir(t, user="alice")
+    assert runner.default_pack_base(t) == t / "packs"  # one per host: a pack is a cache of a release
+    monkeypatch.setenv("LOGNAME", "carol")
+    assert runner.default_runs_dir(t) == t / "search" / "carol" / "runs"
+    monkeypatch.delenv("BIOBOX_SEARCH_WORK", raising=False)
+    assert runner.default_work_base() == Path("/tmp/atd/search")
+    assert runner.default_runs_dir() == Path("/tmp/atd/search/runs")
+    assert runner.default_pack_base() == Path("/tmp/atd/packs")
+    monkeypatch.setenv("BIOBOX_SEARCH_WORK", str(tmp_path / "w"))
+    assert (runner.default_work_base(), runner.default_runs_dir(), runner.default_pack_base()) == (
+        tmp_path / "w", tmp_path / "w" / "runs", tmp_path / "packs")
+
+
+@pytest.mark.covers("W-03")
+def test_w03_search_run_takes_its_directories_from_the_profile_and_the_flags(tmp_path, captured, monkeypatch):
+    monkeypatch.setenv("LOGNAME", "alice")
+    t = tmp_path / "ptmp"
+    prof = _profile(tmp_path, require_mem_cap=False, tmp=str(t))
+    argv = ["search", "run", RECIPE, "--root", str(tmp_path / "root"), "--release", "rS0.1", "--profile", str(prof)]
+    assert cli.main(argv) == 0
+    assert captured["work"] == t / "search" / "alice" / "work"
+    assert captured["kw"] == {"packs": t / "packs", "runs": t / "search" / "alice" / "runs", "out": None}
+    flags = ["--work", str(tmp_path / "w"), "--pack-dir", str(tmp_path / "p"), "--runs", str(tmp_path / "r")]
+    assert cli.main(argv + flags) == 0
+    assert captured["work"] == tmp_path / "w"
+    assert captured["kw"] == {"packs": tmp_path / "p", "runs": tmp_path / "r", "out": None}
+    assert cli.main(argv + flags + ["--out", str(tmp_path / "one-run")]) == 0  # --out is the run's own directory
+    assert captured["kw"] == {"packs": tmp_path / "p", "runs": None, "out": tmp_path / "one-run"}

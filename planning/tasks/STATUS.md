@@ -94,7 +94,7 @@ Last full suite on the integration branch before the C-11 merge: 1,053 passed, 1
 pinned image; 3 min 40 s wall for the slowest shard, against 13.5 min in one process). The skips
 need samtools, bgzip, Prodigal or the golden set. Tests no longer run on the laptop (AGENTS.md §5.5).
 
-## Merged (66 cards)
+## Merged (67 cards)
 
 | Card | Merge | What it did | Audit notes |
 |---|---|---|---|
@@ -163,6 +163,7 @@ need samtools, bgzip, Prodigal or the golden set. Tests no longer run on the lap
 | B-27 | this merge | Lookup tables `contig_label` (per stage, by contig) and `member_cluster` (per release, by level then protein); exports and `nbr summarize` read them | On the real 10 Gbp release a protein's cluster lookup read 1 of 173 row groups in 0.04 s, against 173 of 173 in 0.51 s (*measured*, with the first sort order; the final order reads up to 3). Every export byte-identical. The audit changed the sort to (level, member) so a many-neighbour summary reads one level's half. `member_cluster` is about 860 MB at 10 Gbp. Joined-key lookups on the multi-stage label view still scan |
 | E-01 | this merge | ncRNA producer: Infernal `cmsearch` with Rfam at the fixed Z, hits at or above GA become `feature` rows (producer `infernal-1.1.5-rfam-15.1`) and `l1_ncrna` rows; `bio-box stage ncrna` | Oracle: the `cmsearch` binary's own table, parsed separately. A hit across the origin of a circular contig is found once. Byte-identical at 1 and 4 threads. **Cost: 1,319 bases per CPU-second with full Rfam: about 2,100 CPU-hours for 10 Gbp, five times Pfam** (*derived*). Keeps every overlapping hit (seven rRNA models on one operon): PI card 0-08. Not in `build-stage` and not sharded: card E-07 |
 | C-12 | this merge | `build-stage` rechecks the hour's thread allowance every 60 s while shards run; two steps publishing at once are serialized by a lock in `run-step`; a shard whose scratch run is lost is rescanned alone (`python -m biobox.l1.domains rescan`); `pod_run.sh` sets the unit's CPU quota to the night cap | Tests inject the clock: a build that crosses from night to day never has more threads in flight than the hour allows. Both publish orders pass on the `copytree` and `rsync` paths. A build with one shard's scratch deleted ends byte-identical. `tests/r2/test_build_stage.py` now takes about 15 minutes on the pod (*measured*, agent's run) |
+| W-03 | this merge | The search pack and search runs live outside the data root: packs at `<pack-dir>/release=<R>/<pack_id>/`, runs in `--runs`; with a profile the defaults are `<tmp>/packs` and `<tmp>/search/<user>/{runs,work}`. A pack is never overwritten; a second build is a no-op. `run_index.json` is gone | A full search (pack verify, run, status, hits, `nbr`) against a read-only root leaves every file's sha256 unchanged. A pack, run or work directory under the root is refused. Two pack builds are byte-identical. The fixture pack is 2.1 MB (*measured*); about 3.4 GB at 10 Gbp (*derived*, `planning/measurements/2026-11-10_search_pack_size.md`). `RUNBOOK.md` is not yet updated: card W-13. Old runs and packs under `<root>/search` and `<root>/search_pack` on the pod are no longer read; removing them is the PI's call |
 
 Decisions DEC-18 to DEC-23 were approved by the PI on 2026-11-09 and are in `planning/DECISIONS.md`.
 
@@ -190,7 +191,6 @@ The thread cap is the sum over all our processes: 40 by day, 56 at night.
 |---|---|---|
 | C-13 defects from the first real build | Opus | started 2026-11-10 |
 | B-30 ingest by batch processes | Opus | started 2026-11-10 |
-| W-03 pack and search runs outside the data root | Opus | started 2026-11-10 |
 | 10 Gbp rebuild with `build-stage` (not a card; branch `build/r10`, pod root `/tmp/if2453/r10`) | Opus | started 2026-11-10 |
 
 ## Next, in order

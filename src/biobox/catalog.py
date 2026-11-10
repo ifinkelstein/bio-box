@@ -1579,7 +1579,8 @@ def seq_reader(con: duckdb.DuckDBPyConnection):
 
 def open_catalog(path: Path, local_dir: Path | None = None, threads: int | None = None,
                  memory_limit: str | None = None, temp_directory: Path | None = None,
-                 root: Path | None = None, cache_blocks: int = 64) -> duckdb.DuckDBPyConnection:
+                 root: Path | None = None, cache_blocks: int = 64, runs=(),
+                 pack: Path | None = None) -> duckdb.DuckDBPyConnection:
     """Open read-only, optionally from a copy on local disk (never open a DuckDB file over NFS).
 
     The catalog file is attached read-only, under its file name without `.duckdb` (the name a plain
@@ -1591,6 +1592,9 @@ def open_catalog(path: Path, local_dir: Path | None = None, threads: int | None 
     catalog was built from, in `catalog_info`), with an LRU of `cache_blocks` decoded blocks per shard, and
     shadows the stored stand-ins and the lookup macros with them. Sets the join filter to the row groups of
     the release's largest table (`set_join_key_filter`, card B-27).
+
+    `runs` (search run directories) and `pack` (the release's search pack directory), both outside the data
+    root (card W-03), are given to `attach_search`.
     """
     path = Path(path)
     if local_dir is not None:
@@ -1636,7 +1640,7 @@ def open_catalog(path: Path, local_dir: Path | None = None, threads: int | None 
     keys = _Lazy(TokenKeyLookup, _token_dict_files(con, built))
     _register_token_udf(con, keys)
     _LOOKUPS[id(con)] = [("bb_slot_tokens", tapes), ("bb_token_of", keys)]
-    attach_search(con, Path(root))
+    attach_search(con, runs, pack)
     return con
 
 
@@ -1644,30 +1648,48 @@ SEARCH_RUN_FILES = {"search_run": "run.parquet", "search_hit": "hits.parquet", "
                     "neighborhoods": "neighborhoods.parquet"}
 
 
-def attach_search(con: duckdb.DuckDBPyConnection, root: Path) -> dict[str, int]:
-    """Temporary views over closed search runs (`search/run_index.json`) and the release's pack
-    regions, shadowing the catalog's empty views (data_layer_and_tests.md §2B.3). Runs close
-    after the catalog is built, so the views are made when the catalog is opened; each run
-    file view carries the run id from its path as `run`."""
-    idx_path = root / "search/run_index.json"
-    runs = json.loads(idx_path.read_text())["runs"] if idx_path.exists() else []
+def _run_label(d: Path) -> str:
+    """A run directory's `run` in the search views: the id of its name `run=<run_id>`, else (a directory
+    named freely with `bio-box search run --out`) the run id its record holds."""
+    if d.name.startswith("run="):
+        return d.name.removeprefix("run=")
+    return pq.read_table(d / "run.parquet", columns=["run_id"]).column("run_id")[0].as_py().hex()
+
+
+def attach_search(con: duckdb.DuckDBPyConnection, runs=(), pack: Path | None = None) -> dict[str, int]:
+    """Temporary views over closed search runs and the release's pack regions, shadowing the catalog's
+    empty views (data_layer_and_tests.md §2B.3). Runs and packs live outside the data root (card W-03) and
+    close after the catalog is built, so they are given when the catalog is opened: `runs` is a list of run
+    directories (each holds its `run.parquet`; FileNotFoundError otherwise), `pack` the directory of the
+    release's search pack (ValueError for a pack of another release). Each run file view carries its run's
+    `run` (`_run_label`)."""
+    dirs = sorted({Path(d) for d in runs})
+    for d in dirs:
+        if not (d / "run.parquet").is_file():
+            raise FileNotFoundError(f"{d}: not a closed search run (no run.parquet)")
+    labels = {d: _run_label(d) for d in dirs}
     counts = {}
     for name, fname in SEARCH_RUN_FILES.items():
         spec = TABLES[name]
-        paths = [str(root / f"search/run={r['run_id']}/{fname}") for r in runs if fname in r["files"]]
-        counts[name] = len(paths)
-        if paths:
+        found = [(d / fname, labels[d]) for d in dirs if (d / fname).is_file()]
+        counts[name] = len(found)
+        if found:
             cols = [f'"{f.name}"' for f in spec.schema] + ['"run"']
-            files = "[" + ", ".join(_sql_str(x) for x in sorted(paths)) + "]"
-            con.execute(f"CREATE OR REPLACE TEMP VIEW {name} AS SELECT {', '.join(cols)} FROM read_parquet("
-                        f"{files}, hive_partitioning = true, hive_types = {{'run': 'VARCHAR'}}, union_by_name = true)")
+            parts = " UNION ALL BY NAME ".join(
+                f"SELECT *, {_sql_str(label)} AS \"run\" FROM read_parquet({_sql_str(str(p))}, hive_partitioning = false)"
+                for p, label in found)
+            con.execute(f"CREATE OR REPLACE TEMP VIEW {name} AS SELECT {', '.join(cols)} FROM ({parts})")
         else:  # same columns with no runs, so queries over `run` bind either way
             cols = [f'CAST(NULL AS {duck_type(f.type)}) AS "{f.name}"' for f in spec.schema]
             con.execute(f"CREATE OR REPLACE TEMP VIEW {name} AS SELECT {', '.join(cols)}, "
                         "CAST(NULL AS VARCHAR) AS \"run\" WHERE false")
-    rel = con.execute("SELECT value FROM catalog_info WHERE key = 'release_id'").fetchall()
-    if rel:
-        metas = sorted((root / f"search_pack/release={rel[0][0]}").glob("*/*_meta.parquet"))
+    if pack is not None:
+        pack = Path(pack)
+        man = json.loads((pack / "pack_manifest.json").read_text())
+        rel = con.execute("SELECT value FROM catalog_info WHERE key = 'release_id'").fetchall()
+        if rel and man["release_id"] != rel[0][0]:
+            raise ValueError(f"{pack}: a search pack of release {man['release_id']}, not of the catalog's {rel[0][0]}")
+        metas = [pack / m["path"] for m in sorted(man["meta"], key=lambda m: m["path"])]  # the pack's own list
         counts["search_region"] = len(metas)
         if metas:
             files = "[" + ", ".join(_sql_str(str(x)) for x in metas) + "]"
