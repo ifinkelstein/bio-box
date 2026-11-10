@@ -12,6 +12,12 @@ Readers of R1 (the search pack, a search run's hits and neighborhoods, `nbr`, `S
 catalog's sequence functions) must return nothing of S1. Separately, two releases over one stage
 (rS0.b28a, rS0.b28b) each cluster, each with its own ledger under `ledger/release=<R>/`, and both
 manifests verify.
+
+Card B-33: a file under `release=<R>` is R's only. R1's manifest is built, then a later release writes its
+files (rS0.b33 over S0 alone, and R2 over S0 and S1): R1's manifest still verifies and is rebuilt
+byte-identical, the later manifest lists no R1 file, a stray under `release=R1` is reported by R1's
+manifest and not by the later one's, and a `tape_version_def` is in a manifest only when the release's
+files use that tape version.
 """
 
 from __future__ import annotations
@@ -23,13 +29,14 @@ from pathlib import Path
 import pyarrow.parquet as pq
 import pytest
 
-from biobox import catalog, fasta, ids, ledger
+from biobox import catalog, contracts, dim, fasta, ids, ledger
 from biobox.l0seq import SeqStore, SourceObject, ingest, revcomp
 from biobox.l0seq.inputs import GenomeInput, write_genome_input
 from biobox.l1 import domains, igr
 from biobox.l1.genecall import GENE_CALL_VERSION as V
 from biobox.l1.genecall import run as call_genes
-from biobox.l3 import tapes
+from biobox.l3 import postings, tapes, tokens
+from biobox.registry.schemas import TABLES
 from biobox.search import fastz, nbr, pack, runner
 
 sys.path.insert(0, str(Path(__file__).parent))
@@ -271,3 +278,173 @@ def test_b28_two_releases_over_one_stage_both_cluster_and_verify(store, tmp_path
         assert ("S0", None, "genecall") in steps and (None, rels[0], "cluster") in steps
     finally:
         con.close()
+
+
+# --- each release's manifest covers that release's files only (card B-33) -------------------------------
+
+R2_SAME = "rS0.b33"  # a second release over S0 alone
+OWN_TABLES = {"release_def", "token_dict", "tape_tokens", "token_postings", "contig_dim", "cluster_member"} | (
+    {"cluster_member_aln", "ledger"} if MMSEQS else set())
+
+
+def _release_files(root: Path, release: str, stages: list[str], work: Path) -> None:
+    """Every release-level builder of `release` over `stages` (as test_micro_s0_release_def builds one)."""
+    if MMSEQS:
+        from biobox.l2 import cluster
+
+        cluster.run(root, release, V, stages, tmp=work)
+    else:
+        micro._stand_in_clusters(root, release)  # S0's proteins only: the S0+S1 case needs MMseqs2
+    tokens.run(root, release, stages)
+    postings.run(root, release, stages)
+    dim.run(root, release, stages, tmp=work)
+
+
+def _s0_genomes() -> list[GenomeInput]:
+    out = []
+    for o in micro.CONTRACT["objects"]:
+        cu = ids.contig_uid(fasta.read(FIX / o["file"])[0].seq)
+        out.append(GenomeInput((cu,), o["genetic_code"], kind=o["kind"],
+                               circular=(cu,) if o["topology"] == "circular" else ()))
+    return out
+
+
+@pytest.fixture(scope="module", params=[(R2_SAME, ("S0",)), (R2, ("S0", "S1"))], ids=["same-stage", "more-stages"])
+def later(store, tmp_path_factory, request):
+    """R1's manifest, built before a later release over the same stage (or over S0 and S1) writes its files."""
+    rel2, stages2 = request.param[0], list(request.param[1])
+    if "S1" in stages2 and not MMSEQS:
+        pytest.skip("the stand-in clusters hold S0's proteins only; S0+S1 needs MMseqs2 (runs in the image)")
+    d = tmp_path_factory.mktemp("b33")
+    root, work = d / "a", d / "work"
+    shutil.copytree(store["root"], root)
+    work.mkdir()
+    write_genome_input(root, "S0", _s0_genomes())  # micro.build passes them to the gene caller directly
+    dim.run(root, R1, ["S0"], tmp=work)  # R1's contig_dim beside its clusters, tokens and postings
+    m1 = catalog.build_manifest(root, R1, ["S0"])
+    catalog.define_release(root, rel2, stages2)  # R2 is already defined in the store: a no-op there
+    _release_files(root, rel2, stages2, work)
+    m2 = catalog.build_manifest(root, rel2, stages2)
+    return {"root": root, "rel2": rel2, "stages2": stages2, "m1": m1, "m2": m2}
+
+
+def _copy(later, tmp_path: Path) -> Path:
+    c = tmp_path / "c"
+    shutil.copytree(later["root"], c)
+    return c
+
+
+@pytest.mark.covers("LY-10", "D-01")
+def test_b33_an_earlier_manifest_still_verifies_and_rebuilds_identically_after_a_later_release(later):
+    root, m1, m2, rel2 = later["root"], later["m1"], later["m2"], later["rel2"]
+    for m, rel in ((m1, R1), (m2, rel2)):  # both releases wrote every release-level table
+        assert {f["table"] for f in m["files"] if f["partitions"].get("release") == rel} == OWN_TABLES, rel
+    assert catalog.verify_manifest(m1, root) == []
+    assert catalog.manifest_bytes(catalog.build_manifest(root, R1, ["S0"])) == catalog.manifest_bytes(m1)
+    assert catalog.verify_manifest(m2, root) == []
+    assert catalog.manifest_bytes(catalog.build_manifest(root, rel2, later["stages2"])) == catalog.manifest_bytes(m2)
+
+
+@pytest.mark.covers("LY-10")
+def test_b33_a_later_manifest_lists_no_file_of_an_earlier_release(later):
+    m1, m2, rel2 = later["m1"], later["m2"], later["rel2"]
+    assert not [f["path"] for f in m2["files"] + m2["artifacts"] if f"release={R1}/" in f["path"]]
+    assert {f["partitions"]["release"] for f in m2["files"] if "release" in f["partitions"]} == {rel2}
+    assert {f["partitions"]["release"] for f in m1["files"] if "release" in f["partitions"]} == {R1}
+    # the stage files: the later release holds every file of R1's stage with the same bytes
+    def s0(m):
+        return {f["path"]: f["sha256"] for f in m["files"] + m["artifacts"] if f["partitions"].get("stage") == "S0"}
+    assert s0(m1) and s0(m1) == s0(m2)
+    assert bool([f for f in m2["files"] if f["partitions"].get("stage") == "S1"]) == ("S1" in later["stages2"])
+    assert not [f for f in m1["files"] if f["partitions"].get("stage") == "S1"]
+    # the unpartitioned artifact and the one tape version both use are in both
+    tv_defs = [f"l3/tape_version_def/tape_version={tapes.tape_version([V])}/part-0.parquet"]
+    for m in (m1, m2):
+        assert [f["path"] for f in m["files"] if f["table"] == "tape_version_def"] == tv_defs
+        assert [a["path"] for a in m["artifacts"] if a["artifact"] == "store_params"] == ["l0seq/store_params.json"]
+
+
+@pytest.mark.covers("LY-10")
+def test_b33_a_stray_of_a_release_is_reported_by_that_release_only(later, tmp_path):
+    c = _copy(later, tmp_path)
+    m1, m2, rel2 = later["m1"], later["m2"], later["rel2"]
+    for rel, table_dir in ((R1, "l3/token_dict"), (rel2, "dim/contig_dim")):
+        src = c / f"{table_dir}/release={rel}/part-0.parquet"
+        shutil.copy(src, src.with_name("part-9.parquet"))
+    stray1, stray2 = f"l3/token_dict/release={R1}/part-9.parquet", f"dim/contig_dim/release={rel2}/part-9.parquet"
+    assert catalog.verify_manifest(m1, c) == [f"not in manifest: {stray1}"]
+    assert catalog.verify_manifest(m2, c) == [f"not in manifest: {stray2}"]
+    # a stray in a stage both releases list is reported by both
+    src = c / "l0seq/contig_index/stage=S0/part-0.parquet"
+    shutil.copy(src, src.with_name("part-9.parquet"))
+    stray0 = "l0seq/contig_index/stage=S0/part-9.parquet"
+    assert catalog.verify_manifest(m1, c) == [f"not in manifest: {p}" for p in sorted([stray0, stray1])]
+    assert catalog.verify_manifest(m2, c) == [f"not in manifest: {p}" for p in sorted([stray0, stray2])]
+
+
+@pytest.mark.covers("LY-10")
+def test_b33_a_tape_version_def_is_in_the_manifests_of_releases_that_use_it(later, tmp_path):
+    c = _copy(later, tmp_path)
+    tv = tapes.tape_version([V])
+    other = tapes.ensure_def(c, ["b33-unused-producer"])  # a tape version no file of either release names
+    assert other != tv and tapes.def_path(c, other).is_file()
+    for rel, stages, m in ((R1, ["S0"], later["m1"]), (later["rel2"], later["stages2"], later["m2"])):
+        assert catalog.verify_manifest(m, c) == []
+        again = catalog.build_manifest(c, rel, stages)
+        assert catalog.manifest_hash(again) == catalog.manifest_hash(m), rel
+    # a stray beside the definition of the version the releases use is reported
+    stray = tapes.def_path(c, tv).with_name("part-1.parquet")
+    shutil.copy(tapes.def_path(c, tv), stray)
+    for m in (later["m1"], later["m2"]):
+        assert catalog.verify_manifest(m, c) == [f"not in manifest: {stray.relative_to(c).as_posix()}"]
+
+
+@pytest.mark.covers("LY-10")
+def test_b33_release_files_from_release_def_list_only_the_release_own_files(later):
+    root = later["root"]
+    for rel, stages in ((R1, ["S0"]), (later["rel2"], later["stages2"])):
+        by_def = catalog.ReleaseFiles(root, rel, stages)
+        by_man = catalog.ReleaseFiles.of(root, rel, catalog.build_manifest(root, rel, stages))
+        for name in sorted(OWN_TABLES - {"ledger"}):
+            got = by_def.table(name)
+            assert got and all(f"release={rel}/" in p.as_posix() for p in got), (rel, name)
+            assert got == by_man.table(name), (rel, name)
+        assert by_def.table("ledger", release=rel) == by_man.table("ledger", release=rel)
+
+
+@pytest.mark.covers("LY-10")
+def test_b33_a_manifest_with_no_parquet_file_gives_a_catalog_with_empty_views(tmp_path):
+    root = tmp_path / "empty"
+    root.mkdir()
+    man = catalog.build_manifest(root, "rS0.empty", [])
+    assert man["files"] == [] and man["artifacts"] == []
+    con = catalog.open_catalog(catalog.generate_catalog(man, tmp_path / "e.duckdb"))
+    try:
+        assert con.execute("SELECT count(*) FROM catalog_files").fetchone()[0] == 0
+        views = {r[0] for r in con.execute("SELECT view_name FROM duckdb_views() WHERE NOT internal").fetchall()}
+        placed = sorted(name for name, spec in TABLES.items() if spec.location)
+        assert set(placed) <= views
+        for name in placed:
+            assert con.execute(f"SELECT count(*) FROM {name}").fetchone()[0] == 0, name
+    finally:
+        con.close()
+
+
+@pytest.mark.covers("R-09", "D-06")
+def test_b33_append_only_across_releases_reports_a_rewritten_stage_file_only(later, tmp_path):
+    m1, m2, rel2 = later["m1"], later["m2"], later["rel2"]
+    assert contracts.check_append_only(m1, m2) == []
+    # a rewritten S0 file is still found: the same rows in other bytes
+    c = _copy(later, tmp_path)
+    rel = next(f["path"] for f in m1["files"] if f["table"] == "contig_index")
+    p = c / rel
+    old = p.read_bytes()
+    codec = pq.ParquetFile(p).metadata.row_group(0).column(0).compression
+    pq.write_table(pq.read_table(p, partitioning=None), p, compression="gzip" if codec == "ZSTD" else "zstd")
+    assert p.read_bytes() != old
+    assert contracts.check_append_only(m1, catalog.build_manifest(c, rel2, later["stages2"])) == [f"{rel}: rewritten"]
+    # within one release, its own files are still compared
+    gone = [f for f in m1["files"] if f["table"] == "token_dict"]
+    assert gone
+    assert contracts.check_append_only(m1, {**m1, "files": [f for f in m1["files"] if f not in gone]}) == [
+        f"{f['path']}: removed" for f in gone]

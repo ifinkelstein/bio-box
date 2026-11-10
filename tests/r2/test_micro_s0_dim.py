@@ -90,7 +90,17 @@ def test_contig_dim_now_reads_only_the_catalog_release(built, tmp_path):
     got = con.execute(f"SELECT {cols} FROM contig_dim_now() ORDER BY contig_uid").fetchall()
     assert got == [tuple(r.values()) for r in want]
     con.close()
-    other = catalog.open_catalog(catalog.generate_catalog(catalog.build_manifest(root, "rOther", ["S0"]), tmp_path / "b.duckdb"))
+    # card B-33: REL's contig_dim file is REL's only, so another release's manifest does not list it
+    mine = catalog.build_manifest(root, REL, ["S0"])
+    theirs = catalog.build_manifest(root, "rOther", ["S0"])
+    assert not [f["path"] for f in theirs["files"] if f["table"] == "contig_dim"]
+    other = catalog.open_catalog(catalog.generate_catalog(theirs, tmp_path / "b.duckdb"))
+    assert other.execute("SELECT count(*) FROM contig_dim_now()").fetchone()[0] == 0
+    assert other.execute("SELECT count(*) FROM contig_dim").fetchone()[0] == 0
+    other.close()
+    # and contig_dim_now() filters by release when the view does hold another release's rows (a hand-made list)
+    mixed = {**theirs, "files": theirs["files"] + [f for f in mine["files"] if f["table"] == "contig_dim"]}
+    other = catalog.open_catalog(catalog.generate_catalog(mixed, tmp_path / "m.duckdb"))
     assert other.execute("SELECT count(*) FROM contig_dim_now()").fetchone()[0] == 0
     assert other.execute("SELECT count(*) FROM contig_dim").fetchone()[0] == 3
     other.close()

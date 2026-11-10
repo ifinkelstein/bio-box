@@ -363,7 +363,15 @@ def test_r09_a_later_stage_keeps_earlier_files(built, tmp_path):
            shard_bases=10**6)
     after = catalog.build_manifest(root, "rS1.test", ["S0", "S1"])
     assert contracts.check_append_only(before, after) == []
-    assert len(after["files"]) > len(before["files"])
+    # card B-33: rS0.test's own release= files are not rS1.test's; its stage and unpartitioned files are kept
+    def shared(m):
+        return {f["path"]: f["sha256"] for f in m["files"] + m["artifacts"]
+                if "stage" in f["partitions"] or not f["partitions"]}
+    later = {f["path"]: f["sha256"] for f in after["files"] + after["artifacts"]}
+    assert shared(before) and all(later.get(p) == h for p, h in shared(before).items())
+    def staged(m):
+        return [f for f in m["files"] if "stage" in f["partitions"]]
+    assert len(staged(after)) > len(staged(before))
     # and the check notices a rewrite
     assert len(after["artifacts"]) > len(before["artifacts"])  # the lambda variant is a new S1 shard
     f = next(x for x in after["files"] if x["table"] == "contig_occurrence")

@@ -20,7 +20,10 @@ does not exist!" (`bb_seq_circular`, `bb_seq_raw` for the other two); the lookup
 
 A release names its stages (card B-25): `define_release` writes its `release_def` once, and
 `build_manifest` lists only the files of those stages, so a stage written later, or being written
-while the release is built, never enters it.
+while the release is built, never enters it. A file under `release=<R>` is R's only (card B-33): a
+release's manifest lists its stages' files, its own `release=` files, the `tape_version_def` of each tape
+version those use, and the unpartitioned files, so a later release's files neither enter an earlier
+release's manifest nor stop it verifying.
 
     stages = define_release(root, "rS0.1", ["S0"])   # later: release_stages(root, "rS0.1")
     manifest = build_manifest(root, "rS0.1", stages)
@@ -161,12 +164,9 @@ def classify_artifact(rel: str) -> tuple[ArtifactSpec, dict[str, str], str] | No
     return None
 
 
-def _path_stage(rel: str) -> str | None:
-    """The `stage=<S>` directory of a root-relative path, read from the path alone (None: none)."""
-    for d in rel.split("/")[:-1]:
-        if d.startswith("stage="):
-            return d.removeprefix("stage=")
-    return None
+def _path_parts(rel: str) -> dict[str, str]:
+    """The `<k>=<v>` directories of a root-relative path, read from the path alone (no registry lookup)."""
+    return dict(d.split("=", 1) for d in rel.split("/")[:-1] if "=" in d)
 
 
 def _artifact_files(root: Path, spec: ArtifactSpec) -> list[Path]:
@@ -178,14 +178,14 @@ def _artifact_files(root: Path, spec: ArtifactSpec) -> list[Path]:
 
 
 def _artifact_entries(root: Path, in_release) -> list[dict]:
-    """The artifact files `in_release(name, stage)` keeps; a file of another stage is skipped before it
-    is classified, so a stage still being written cannot fail the manifest of a release without it."""
+    """The artifact files `in_release(name, partitions)` keeps; a file of another stage is skipped before
+    it is classified, so a stage still being written cannot fail the manifest of a release without it."""
     out = []
     for spec in ARTIFACTS.values():
         found = {}
         for path in _artifact_files(root, spec):
             rel = path.relative_to(root).as_posix()
-            if not in_release(spec.name, _path_stage(rel)):
+            if not in_release(spec.name, _path_parts(rel)):
                 continue
             _, parts, suffix = classify_artifact(rel)
             found[rel] = suffix
@@ -297,13 +297,64 @@ def define_release(root: Path, release: str, stages) -> list[str]:
     return stages
 
 
-def _in_release(stages: set[str], release_id: str):
-    """Whether a file of table or artifact `name` in stage partition `stage` (None: not partitioned by
-    stage) belongs to the release: no stage, or a listed stage. A release's own steps (clustering) write
-    their ledger under `ledger/release=<R>/` (card B-28), which has no stage."""
+# A release's scope (card B-33). A file belongs to a release by its partitions:
+#   (a) `stage=<S>`: to every release whose `release_def` lists S;
+#   (b) `release=<R>`: to R only (its tokens, postings, clusters, `contig_dim`, `release_def`, and the
+#       ledger of its own steps, `ledger/release=<R>/`, card B-28);
+#   (c) a version alone, neither stage nor release (`tape_version_def`): to the releases whose (a) and (b)
+#       files use that version, through a `tape_version` partition or the tape version an `igr_version`
+#       names (`<tape_version>-igr1`, card B-20), so that C-08 finds every definition it needs;
+#   (d) no partition (`store_params`, `id_history`, `test_run`): to every release.
+# The table of each partitioned file in (c), and the version key that places it.
+VERSION_ONLY = {"tape_version_def": "tape_version"}
 
-    def keep(name: str, stage: str | None) -> bool:
-        return stage is None or stage in stages
+
+def _scope(name: str, parts: dict[str, str]) -> tuple[str, str] | None:
+    """Where a file of table or artifact `name` with partitions `parts` falls in a release's scope:
+    ("stage", S), ("release", R), (version key, value) for (c), or None for an unpartitioned file (d).
+    A partitioned file in none of these raises LayoutError: no rule says which release it belongs to."""
+    if "stage" in parts:
+        return "stage", parts["stage"]
+    if "release" in parts:
+        return "release", parts["release"]
+    if not parts:
+        return None
+    key = VERSION_ONLY.get(name)
+    if key is None or set(parts) != {key}:
+        raise LayoutError(f"{name} partitions {parts}: neither a stage, a release nor a version alone "
+                          f"({', '.join(VERSION_ONLY)}): no release scope claims it (card B-33)")
+    return key, parts[key]
+
+
+def _used_tape_versions(partitions) -> set[str]:
+    """The tape versions an iterable of files' partitions name: `tape_version`, and the tape version of an
+    `igr_version` (a malformed one names none; C-08 reports it)."""
+    from biobox.provenance import _igr_tape_version  # provenance parses igr versions (card B-20)
+
+    out = set()
+    for parts in partitions:
+        if "tape_version" in parts:
+            out.add(parts["tape_version"])
+        tv = _igr_tape_version(parts["igr_version"]) if "igr_version" in parts else None
+        if tv is not None:
+            out.add(tv)
+    return out
+
+
+def _in_release(stages: set[str], release_id: str, tape_versions: set[str] = frozenset()):
+    """Whether a file of table or artifact `name` with partitions `parts` is in the release's scope (above):
+    a listed stage, the release's own `release=` partition, a tape version of `tape_versions`, or none."""
+
+    def keep(name: str, parts: dict[str, str]) -> bool:
+        scope = _scope(name, parts)
+        if scope is None:
+            return True
+        kind, value = scope
+        if kind == "stage":
+            return value in stages
+        if kind == "release":
+            return value == release_id
+        return value in tape_versions
     return keep
 
 
@@ -319,9 +370,11 @@ class ReleaseFiles:
     exactly the manifest's files and artifacts: a file written after it is not the release's. Without
     one, the files of the stages the release's `release_def` names: each listed stage's own directory
     of a table is listed (a glob over buckets or libraries inside it, never over stage directories), so
-    a stage on disk the release does not list is never opened. Files outside any stage partition (a
-    release's own tables, `ledger/release=<R>/`) are listed by their location, filtered by the
-    partitions a caller asks for. Files come in the release's stage order, then part order.
+    a stage on disk the release does not list is never opened. A table partitioned by release is listed
+    in the release's own `release=<R>` directory only (card B-33: tokens, postings, clusters, `contig_dim`,
+    `ledger/release=<R>/`); other files outside any stage partition (`tape_version_def`, unpartitioned
+    tables) are listed by their location, filtered by the partitions a caller asks for. Files come in the
+    release's stage order, then part order.
 
         files = ReleaseFiles.of(root, "rS0.1")
         files.table("contig_tapes", tape_version=tv)      # [Path]
@@ -378,9 +431,11 @@ class ReleaseFiles:
         if spec.location.endswith(".parquet"):
             return [(base, {})] if base.is_file() else []
         out = []
+        fixed = {"release": self.release}  # a `release=` partition holds that release's files only (card B-33)
+        # limitation: a version-only table (tape_version_def) is listed by `want`, not by the versions the release uses
         for keys in key_sets(spec):
             for stage in (self.stages if "stage" in keys else [None]):
-                dirs = "/".join(f"{k}={stage if k == 'stage' else want.get(k, '*')}" for k in keys)
+                dirs = "/".join(f"{k}={stage if k == 'stage' else fixed.get(k, want.get(k, '*'))}" for k in keys)
                 for p in io.part_files(base, f"{dirs}/*.parquet" if dirs else "*.parquet"):
                     hit = classify(p.relative_to(self.root).as_posix())
                     if hit is not None and hit[0].name == name:
@@ -410,14 +465,16 @@ class ReleaseFiles:
 
 
 def build_manifest(root: Path, release_id: str, stages) -> dict:
-    """The release's manifest: every .parquet and artifact file under `root` outside a stage partition
-    or in one of `stages` (the release's, card B-25). A stage directory the release does not list is
-    ignored without being read; a listed stage with no file raises FileNotFoundError; `stages` must
-    equal the release's `release_def` when it has one. Refuses strays, bad paths and schema drift."""
+    """The release's manifest: every .parquet and artifact file under `root` in the release's scope (card
+    B-33, `VERSION_ONLY` above): the files of `stages` (the release's, card B-25), its own `release=<R>`
+    files, the `tape_version_def` of each tape version those files use, and the unpartitioned files. A
+    stage directory the release does not list is ignored without being read, as are other releases' files
+    and definitions of tape versions the release does not use; a listed stage with no file raises
+    FileNotFoundError; `stages` must equal the release's `release_def` when it has one. Refuses strays
+    and bad paths anywhere under `root`, and schema drift in the release's files."""
     root = Path(root).resolve()
     stages = verify_release_def(root, release_id, stages)
-    in_release = _in_release(set(stages), release_id)
-    picked = []
+    hits = []
     for path in sorted(root.rglob("*.parquet")):
         rel = path.relative_to(root).as_posix()
         if rel.split("/", 1)[0] in EXCLUDED_TREES:
@@ -425,8 +482,13 @@ def build_manifest(root: Path, release_id: str, stages) -> dict:
         hit = classify(rel)
         if hit is None:
             raise LayoutError(f"{rel}: no registered table claims this path (LY-10)")
-        if in_release(hit[0].name, hit[1].get("stage")):
-            picked.append((path, rel, *hit))
+        hits.append((path, rel, *hit))
+    # (a), (b) and (d) first (no tape version given: no (c) file is kept): the tape versions their files
+    # use decide which definitions (c) are the release's
+    direct = _in_release(set(stages), release_id)
+    used = _used_tape_versions(parts for _, _, spec, parts in hits if direct(spec.name, parts))
+    in_release = _in_release(set(stages), release_id, used)
+    picked = [h for h in hits if in_release(h[2].name, h[3])]
     present = {parts.get("stage") for _, _, _, parts in picked} | {
         s for spec in ARTIFACTS.values() if spec.partition_keys[:1] == ("stage",)
         for s in stages if (root / spec.location / f"stage={s}").is_dir()}
@@ -491,22 +553,25 @@ def read_manifest(path: Path) -> dict:
     return json.loads(Path(path).read_text())
 
 
-def _claimed_by(rel: str) -> str | None:
-    """The table or artifact that claims a root-relative path; None for a stray."""
+def _claimed_by(rel: str) -> tuple[str, dict[str, str]] | None:
+    """The table or artifact that claims a root-relative path, with its partitions; None for a stray."""
     try:
         hit = classify(rel) or classify_artifact(rel)
     except LayoutError:
         return None
-    return hit[0].name if hit else None
+    return (hit[0].name, hit[1]) if hit else None
 
 
 def verify_manifest(manifest: dict, root: Path | None = None) -> list[str]:
     """LY-10: every listed file exists with its sha256 and size, and no unlisted .parquet or artifact file
-    exists in the release's scope. A file of a stage the release does not list is not the release's
-    (card B-25); a stray is reported wherever it is, except in the trees `build_manifest` leaves out
-    (`EXCLUDED_TREES`: the search pack and runs, written after the release, card B-28)."""
+    exists in the release's scope (card B-33, as `build_manifest` draws it). A file of a stage the release
+    does not list (card B-25), of another release's `release=` partition, or defining a tape version none
+    of the listed files uses is not the release's and is ignored; any other stray is reported, also one no
+    table claims, except in the trees `build_manifest` leaves out (`EXCLUDED_TREES`: the search pack and
+    runs, written after the release, card B-28)."""
     root = Path(root or manifest["root"])
-    in_release = _in_release(set(manifest["stages"]), manifest["release_id"])
+    used = _used_tape_versions(f["partitions"] for f in manifest["files"])
+    in_release = _in_release(set(manifest["stages"]), manifest["release_id"], used)
     problems = []
     listed = set()
     for f in manifest["files"] + manifest.get("artifacts", []):
@@ -526,8 +591,8 @@ def verify_manifest(manifest: dict, root: Path | None = None) -> list[str]:
         rel = p.relative_to(root).as_posix()
         if rel in listed or rel.split("/", 1)[0] in EXCLUDED_TREES:  # as build_manifest: runs carry their own records
             continue
-        name = _claimed_by(rel)
-        if name is not None and not in_release(name, _path_stage(rel)):
+        hit = _claimed_by(rel)
+        if hit is not None and not in_release(*hit):
             continue
         problems.append(f"not in manifest: {rel}")
     return problems
@@ -827,8 +892,9 @@ def generate_catalog(manifest: dict, out_path: Path, root: Path | None = None, t
         ])
         con.execute("CREATE TABLE catalog_files AS SELECT * FROM (VALUES (NULL::VARCHAR, NULL::VARCHAR, NULL::VARCHAR, NULL::BIGINT, NULL::BIGINT)) "
                     "t(path, \"table\", sha256, \"rows\", row_groups) WHERE false")
-        con.executemany("INSERT INTO catalog_files VALUES (?, ?, ?, ?, ?)",
-                        [(f["path"], f["table"], f["sha256"], f["rows"], f["row_groups"]) for f in manifest["files"]])
+        rows = [(f["path"], f["table"], f["sha256"], f["rows"], f["row_groups"]) for f in manifest["files"]]
+        if rows:  # a release with no Parquet file of its own (card B-33): executemany refuses an empty list
+            con.executemany("INSERT INTO catalog_files VALUES (?, ?, ?, ?, ?)", rows)
         con.execute("CREATE TABLE catalog_artifacts (path VARCHAR, artifact VARCHAR, sha256 VARCHAR, bytes BIGINT)")
         arts = manifest.get("artifacts", [])
         if arts:
