@@ -64,6 +64,8 @@ Decisions DEC-18 to DEC-23 were approved by the PI on 2026-11-09 and are in `pla
 |---|---|---|
 | B-23 ingest reads once; killed ingest reruns | Opus | started 2026-11-09 |
 | B-18 phase-B exit measurements | Opus | started 2026-11-10 |
+| B-29 postings builder out of memory at 21 M slots | Opus | started 2026-11-10 |
+| C-04 `bio-box build-stage` | Opus | started 2026-11-10 |
 | Pod import ladder (not a card): phages, then 1 Gbp and 10 Gbp of complete prokaryotes with the new code | Opus | detached jobs on the pod; agent waiting on them |
 
 ## Next, in order
