@@ -22,7 +22,7 @@ from biobox import catalog, contracts, fasta, ids, io, ledger, provenance
 from biobox.l0seq import SourceObject, ingest
 from biobox.l1 import domains
 from biobox.l1.genecall import GENE_CALL_VERSION, GenomeInput, run as call_genes
-from biobox.l3 import pairs, tapes, tokens
+from biobox.l3 import postings, tapes, tokens
 from biobox.registry.schemas import table
 
 pytestmark = pytest.mark.r2
@@ -69,7 +69,7 @@ def build(root: Path, order: int = 1, threads: int = 1) -> dict:
         shutil.rmtree(tmp, ignore_errors=True)
     tapes.run(root, "S0", {u for g in genomes for u in g.circular})
     tokens.run(root, "rS0.test")
-    pairs.run(root, "rS0.test")
+    postings.run(root, "rS0.test")
     return catalog.build_manifest(root, "rS0.test")
 
 
@@ -184,7 +184,7 @@ def _fault_con(con, **replace) -> duckdb.DuckDBPyConnection:
     c = duckdb.connect()
     for name in ("protein_occurrence", "contig_index", "slot_protein", "protein_seq", "l1_domains", "contig_occurrence",
                  "l0_manifest", "seq_locator", "cluster_member", "cluster_member_aln", "igr",
-                 "contig_tapes", "tape_tokens", "token_dict", "slot_pairs", "token_postings"):
+                 "contig_tapes", "tape_tokens", "token_dict", "token_postings"):
         tbl = replace.get(name)
         if tbl is None:
             tbl = con.sql(f"SELECT * FROM {name}").to_arrow_table()
@@ -202,6 +202,12 @@ def test_injected_faults_are_caught(built):
     rows[k]["end"] = rows[k]["start"] + 10**6
     bad = pa.Table.from_pylist(rows, schema=occ.schema)
     assert contracts.check_coordinates(_fault_con(con, protein_occurrence=bad))
+    # a posting whose ordinal lies past the end of its tape (C-05; the pair macros read slots from postings)
+    post = con.sql("SELECT * FROM token_postings").to_arrow_table()
+    rows = post.to_pylist()
+    rows[0]["ordinal"] = rows[0]["n_slots"]
+    probs = contracts.check_coordinates(_fault_con(con, token_postings=pa.Table.from_pylist(rows, schema=post.schema)))
+    assert probs == ["token_postings: 1 rows with ordinals outside their tape"]
     # a slot whose protein is missing (C-03)
     ps = con.sql("SELECT * FROM protein_seq").to_arrow_table()
     assert contracts.check_foreign_keys(_fault_con(con, protein_seq=ps.slice(1)))

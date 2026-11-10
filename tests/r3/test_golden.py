@@ -21,8 +21,9 @@ import yaml
 from biobox import catalog, contracts, fasta, ids, ledger, provenance
 from biobox.l0seq import SeqStore, SourceObject, ingest
 from biobox.l1 import igr
-from biobox.l3 import pairs, tapes, tokens
+from biobox.l3 import postings, tapes, tokens
 from biobox.l1.genecall import GENE_CALL_VERSION, GenomeInput, call_genome, run
+from oracles.pairs_oracle import K_MAX, pairs_of_contig
 
 pytestmark = pytest.mark.r3
 
@@ -83,7 +84,7 @@ def store_root(tmp_path_factory):
         from biobox.l2 import cluster
         cluster.run(root, "rS0.golden", GENE_CALL_VERSION, threads=4, tmp=root.parent)
         tokens.run(root, "rS0.golden")
-        print("pairs", pairs.run(root, "rS0.golden"))
+        print("postings", postings.run(root, "rS0.golden"))
     return root
 
 
@@ -250,11 +251,37 @@ def test_golden_tapes(golden_catalog, store_root):
         assert g["protein_uids"] == [r["protein_uid"] for r in slots]
 
 
+def _golden_pair_rows(root: Path, release: str, keep=None):
+    """`pairs_of_contig` at K_MAX on every tape of the release, one contig at a time: (anchor, partner) -> rows of
+    (contig_uid, anchor_ordinal, partner_ordinal, orf_offset, junction_topology, delta_bp, flags) within 3 slots,
+    for the pairs in `keep` (every pair when None)."""
+    tv = tokens.tape_version_of()
+    tps = {r["contig_uid"]: r for f in sorted(root.glob(f"l3/tapes/tape_version={tv}/stage=*/part-*.parquet"))
+           for r in pq.read_table(f, partitioning=None).to_pylist()}
+    out: dict[tuple[int, int], list[tuple]] = {}
+    for f in sorted(root.glob(f"l3/tape_tokens/tape_version={tv}/release={release}/part-*.parquet")):
+        for tok in pq.read_table(f, partitioning=None).to_pylist():
+            lists = {lvl: tok[f"{lvl}_tokens"] for lvl in ("family", "nr50", "nr90")}
+            for p in pairs_of_contig(tps[tok["contig_uid"]], lists, K_MAX):
+                key = (p["anchor_token"], p["partner_token"])
+                if abs(p["orf_offset"]) <= 3 and (keep is None or key in keep):
+                    out.setdefault(key, []).append((p["contig_uid"], p["anchor_ordinal"], p["partner_ordinal"],
+                                                    p["orf_offset"], p["junction_topology"], p["delta_bp"], p["flags"]))
+    return out
+
+
 @pytest.mark.skipif(shutil.which("mmseqs") is None, reason="MMseqs2 not on PATH")
-@pytest.mark.covers("Q1", "C-03")
-def test_golden_pairs(golden_catalog):
+@pytest.mark.covers("Q1", "Q4", "C-03")
+def test_golden_pairs(golden_catalog, store_root):
+    """Q1 and Q4 over token_postings (card B-11) for the most frequent token pair within 3 slots, against the pair
+    oracle run on every golden tape."""
     _, con = golden_catalog
     assert contracts.check_foreign_keys(con) == []
-    a, b, n = con.execute("SELECT anchor_token, partner_token, count(DISTINCT (contig_uid, anchor_ordinal)) "
-                          "FROM slot_pairs WHERE abs(orf_offset) <= 3 GROUP BY 1, 2 ORDER BY 3 DESC, 1, 2 LIMIT 1").fetchall()[0]
-    assert con.execute("SELECT q1_count(?, ?, 3, NULL)", [a, b]).fetchall()[0][0] == n
+    loci = {k: len({(r[0], r[1]) for r in v}) for k, v in _golden_pair_rows(store_root, "rS0.golden").items()}
+    (a, b) = min(loci, key=lambda p: (-loci[p], p))
+    assert loci[(a, b)] > 1
+    assert con.execute("SELECT q1_count(?, ?, 3, NULL)", [a, b]).fetchall()[0][0] == loci[(a, b)]
+    want = sorted(_golden_pair_rows(store_root, "rS0.golden", {(a, b)})[(a, b)])
+    got = con.execute("SELECT contig_uid, anchor_ordinal, partner_ordinal, orf_offset, junction_topology, delta_bp, "
+                      "flags FROM pairs_of(?, ?, 3)", [a, b]).fetchall()
+    assert sorted(got) == want

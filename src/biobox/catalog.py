@@ -46,9 +46,15 @@ MANIFEST_VERSION = 2
 # reading the column's distinct values.
 DERIVED_PARTITIONS = {
     "protein_prefix": ("protein_uid", "prefix"),
-    "anchor_bucket": ("anchor_token", "low_byte"),
     "token_bucket": ("token_id", "low_byte"),
 }
+
+# The pair macros' censoring window (card B-11): an anchor on a linear contig is flagged when its +-10-slot
+# window is cut by a contig end, whatever k the query asks for (K_MAX of the pair oracle, tests/oracles).
+PAIR_K_MAX = 10
+PAIR_FLAG_CENSORED, PAIR_FLAG_CROSSES_ORIGIN = 1, 2
+# partners_of scans every posting of the anchor's contigs; above this many anchor postings it refuses
+PARTNERS_MAX_ROWS = 100_000
 
 
 # Trees under the data root that carry their own manifests and are not release files: the
@@ -326,6 +332,121 @@ def _view_sql(spec: TableSpec, paths: list[str], n_columns: int | None = None) -
 COMPLEMENT = ("ACGTRYKMBVDHNacgtrykmbvdhn", "TGCAYRMKVBHDNtgcayrmkvbhdn")
 
 
+def pair_macro_sql() -> list[str]:
+    """Neighbour macros over `token_postings` (card B-11; planning/tasks/TASKS.md §2; AGENTS §3.5).
+
+    Pairs are never stored: Q1, Q3 and Q4 self-join the postings of this catalog's release and tape
+    version (`catalog_tape_version()`) on `contig_uid`. Each side of a lookup by token reads one
+    `token_bucket` and the row groups whose `token_id` range holds the token. The geometry helpers
+    reproduce `pairs_of_contig` (tests/oracles/pairs_oracle.py) and `biobox.l3.geometry`:
+
+        pair_offset    signed shortest offset from slot _i to slot _j (j - i on a linear contig); on a
+                       circle a partner exactly half way round takes the way with the smaller bp gap,
+                       forward on a tie
+        pair_crosses   the path of offset _d crosses the origin (circular only)
+        pair_delta_bp  gap between the two slots ordered left to right, or minus their overlap, the right
+                       slot unwrapped by one contig length when the path crosses the origin
+        pair_junction  1 co-directional, 4 nested antisense, 2 divergent, 3 convergent
+        pair_flags     1: the anchor's +-10-slot window is cut by a linear contig end (K_MAX, not the
+                       query's k); 2: the path crosses the origin
+
+    Slot arguments come as (ordinal, start, end[, strand]) of the anchor, then of the partner.
+    """
+    k_max, cens, cross = PAIR_K_MAX, PAIR_FLAG_CENSORED, PAIR_FLAG_CROSSES_ORIGIN
+    left = "CASE WHEN _d > 0 THEN {a} ELSE {b} END"  # the slot to the left along the contig
+    right = "(CASE WHEN _d > 0 THEN {b} ELSE {a} END + pair_shift(_d, _i, _j, _circ, _len))"
+    ls, le, lstr = left.format(a="_as", b="_bs"), left.format(a="_ae", b="_be"), left.format(a="_astr", b="_bstr")
+    rs, re_ = right.format(a="_as", b="_bs"), right.format(a="_ae", b="_be")
+    fwd = "ring_fwd(_i, _j, _n)"
+    delta = "pair_delta_bp({d}, _i, _as, _ae, _j, _bs, _be, _circ, _len)"
+    return [
+        "CREATE MACRO catalog_tape_version() AS (SELECT value FROM catalog_info WHERE key = 'tape_version')",
+        # a token's bucket at every width a release may use (biobox.layout, biobox.l3.postings)
+        "CREATE MACRO token_bucket_ok(_bucket, _tok) AS _bucket IN "
+        "('all', left(printf('%02x', (_tok % 256)::INTEGER), 1), printf('%02x', (_tok % 256)::INTEGER))",
+        # every posting of a token in this catalog's release and tape version, and its slots (one row per
+        # slot whatever the number of segments the token has there)
+        """CREATE MACRO token_rows(_tok) AS TABLE
+              SELECT * FROM token_postings
+              WHERE release = catalog_release() AND tape_version = catalog_tape_version()
+                AND token_bucket_ok(token_bucket, _tok) AND token_id = _tok""",
+        """CREATE MACRO token_slots(_tok) AS TABLE
+              SELECT DISTINCT contig_uid, ordinal, feature_uid, start, "end", strand, n_slots, is_circular, contig_len
+              FROM token_rows(_tok)""",
+        "CREATE MACRO slot_dist(_i, _j, _n, _circ) AS CASE WHEN _circ "
+        "THEN least(abs(_i::BIGINT - _j::BIGINT), _n::BIGINT - abs(_i::BIGINT - _j::BIGINT)) "
+        "ELSE abs(_i::BIGINT - _j::BIGINT) END",
+        "CREATE MACRO ring_fwd(_i, _j, _n) AS ((_j::BIGINT - _i::BIGINT) % _n::BIGINT + _n::BIGINT) % _n::BIGINT",
+        "CREATE MACRO pair_crosses(_d, _i, _j, _circ) AS (_circ AND ((_d > 0 AND _j < _i) OR (_d < 0 AND _i < _j)))",
+        "CREATE MACRO pair_shift(_d, _i, _j, _circ, _len) AS "
+        "CASE WHEN pair_crosses(_d, _i, _j, _circ) THEN _len::BIGINT ELSE 0 END",
+        f"CREATE MACRO pair_delta_bp(_d, _i, _as, _ae, _j, _bs, _be, _circ, _len) AS "
+        f"(greatest({ls}, {rs}) - least({le}, {re_}))::BIGINT",
+        f"""CREATE MACRO pair_junction(_d, _i, _as, _ae, _astr, _j, _bs, _be, _bstr, _circ, _len) AS CASE
+              WHEN _astr = _bstr THEN 1
+              WHEN ({ls} <= {rs} AND {re_} <= {le}) OR ({rs} <= {ls} AND {le} <= {re_}) THEN 4
+              WHEN {lstr} = -1 THEN 2 ELSE 3 END""",
+        f"""CREATE MACRO pair_offset(_i, _as, _ae, _j, _bs, _be, _n, _circ, _len) AS CASE
+              WHEN NOT _circ THEN _j::BIGINT - _i::BIGINT
+              WHEN 2 * {fwd} < _n THEN {fwd}
+              WHEN 2 * {fwd} > _n THEN {fwd} - _n
+              WHEN {delta.format(d=fwd + " - _n")} < {delta.format(d=fwd)} THEN {fwd} - _n
+              ELSE {fwd} END""",
+        f"""CREATE MACRO pair_flags(_d, _i, _j, _n, _circ) AS
+              (CASE WHEN NOT _circ AND (_i::BIGINT < {k_max} OR _n::BIGINT - 1 - _i::BIGINT < {k_max}) THEN {cens} ELSE 0 END)
+              + (CASE WHEN pair_crosses(_d, _i, _j, _circ) THEN {cross} ELSE 0 END)""",
+        # Q1: loci (anchor slots) of A with B on another slot within k; _tier NULL for every tier, else
+        # the contigs of that tier in this release's contig_dim (a contig without a row matches no tier)
+        """CREATE MACRO q1_count(_a, _b, _k, _tier) AS (
+              SELECT count(DISTINCT (a.contig_uid, a.ordinal))
+              FROM token_slots(_a) a JOIN token_slots(_b) b ON b.contig_uid = a.contig_uid
+              WHERE slot_dist(a.ordinal, b.ordinal, a.n_slots, a.is_circular) BETWEEN 1 AND _k
+                AND (_tier IS NULL OR a.contig_uid IN (SELECT contig_uid FROM contig_dim_now() WHERE tier = _tier)))""",
+        # Q4: every (A slot, B slot) within k, with the geometry of pairs_of_contig
+        """CREATE MACRO pairs_of(_a, _b, _k) AS TABLE
+              SELECT contig_uid, anchor_feature_uid, partner_feature_uid, anchor_ordinal, partner_ordinal,
+                     orf_offset::SMALLINT AS orf_offset,
+                     pair_junction(orf_offset, anchor_ordinal, a_s, a_e, a_str, partner_ordinal, b_s, b_e, b_str,
+                                   c_circ, c_len)::UTINYINT AS junction_topology,
+                     pair_delta_bp(orf_offset, anchor_ordinal, a_s, a_e, partner_ordinal, b_s, b_e, c_circ,
+                                   c_len)::INTEGER AS delta_bp,
+                     pair_flags(orf_offset, anchor_ordinal, partner_ordinal, c_n, c_circ)::UTINYINT AS flags
+              FROM (SELECT a.contig_uid, a.feature_uid AS anchor_feature_uid, b.feature_uid AS partner_feature_uid,
+                           a.ordinal AS anchor_ordinal, b.ordinal AS partner_ordinal,
+                           a.start AS a_s, a."end" AS a_e, a.strand AS a_str,
+                           b.start AS b_s, b."end" AS b_e, b.strand AS b_str,
+                           a.n_slots AS c_n, a.is_circular AS c_circ, a.contig_len AS c_len,
+                           pair_offset(a.ordinal, a.start, a."end", b.ordinal, b.start, b."end", a.n_slots,
+                                       a.is_circular, a.contig_len) AS orf_offset
+                    FROM token_slots(_a) a JOIN token_slots(_b) b ON b.contig_uid = a.contig_uid
+                    WHERE slot_dist(a.ordinal, b.ordinal, a.n_slots, a.is_circular) BETWEEN 1 AND _k)
+              ORDER BY contig_uid, anchor_ordinal, partner_ordinal""",
+        # both tokens on one slot with different segments (domain postings, seg_idx > 0)
+        """CREATE MACRO fusions_of(_a, _b) AS TABLE
+              SELECT a.contig_uid, a.feature_uid, a.ordinal, a.seg_idx AS anchor_seg_idx, b.seg_idx AS partner_seg_idx
+              FROM token_rows(_a) a JOIN token_rows(_b) b
+                ON b.contig_uid = a.contig_uid AND b.ordinal = a.ordinal AND b.seg_idx <> a.seg_idx
+              ORDER BY a.contig_uid, a.ordinal, anchor_seg_idx, partner_seg_idx""",
+        # Q3 (counts; z_score ranking arrives with pair_stats): every token at every level within k slots
+        # of the loci of A. The near side scans the postings of A's contigs, so a hub is refused here
+        f"""CREATE MACRO partners_of(_a, _k) AS TABLE
+              WITH _anchor AS (
+                     SELECT * FROM token_slots(_a)
+                     WHERE (SELECT CASE WHEN count(*) > {PARTNERS_MAX_ROWS} THEN error('partners_of: token has more '
+                                   || 'than {PARTNERS_MAX_ROWS} loci; use pair_stats (hub routing)') ELSE true END
+                            FROM token_rows(_a))),
+                   _near AS (
+                     SELECT DISTINCT token_id, contig_uid, ordinal FROM token_postings
+                     WHERE release = catalog_release() AND tape_version = catalog_tape_version()
+                       AND contig_uid IN (SELECT contig_uid FROM _anchor))
+              SELECT p.token_id AS partner_token, count(DISTINCT (a.contig_uid, a.ordinal)) AS n_loci,
+                     count(*) AS n_pairs
+              FROM _anchor a JOIN _near p ON p.contig_uid = a.contig_uid
+              WHERE slot_dist(a.ordinal, p.ordinal, a.n_slots, a.is_circular) BETWEEN 1 AND _k
+              GROUP BY p.token_id ORDER BY n_loci DESC, partner_token""",
+    ]
+
+
 def macro_sql() -> list[str]:
     """Sequence macros (data_layer_and_tests.md §2A.3). 0-based half-open; strand +1/-1.
 
@@ -371,31 +492,9 @@ def macro_sql() -> list[str]:
         "CREATE MACRO catalog_release() AS (SELECT value FROM catalog_info WHERE key = 'release_id')",
         "CREATE MACRO token_of(_level, _key) AS "
         "(SELECT token_id FROM token_dict WHERE release = catalog_release() AND level = _level AND key = _key)",
-        # the anchor's bucket at every width a release may use (biobox.layout, biobox.l3.pairs)
-        "CREATE MACRO pair_bucket_ok(_bucket, _tok) AS _bucket IN "
-        "('all', left(printf('%02x', (_tok % 256)::INTEGER), 1), printf('%02x', (_tok % 256)::INTEGER))",
         # dimension rows of this catalog's release only (card B-12)
         "CREATE MACRO contig_dim_now() AS TABLE SELECT * FROM contig_dim WHERE release = catalog_release()",
-        # Q1: loci (anchor slots) of A with B within +-k slots; _tier NULL for every tier
-        """CREATE MACRO q1_count(_a, _b, _k, _tier) AS (
-              SELECT count(DISTINCT (contig_uid, anchor_ordinal)) FROM slot_pairs
-              WHERE release = catalog_release() AND pair_bucket_ok(anchor_bucket, _a)
-                AND anchor_token = _a AND partner_token = _b AND abs(orf_offset) <= _k
-                AND (_tier IS NULL OR tier = _tier))""",
-        # Q3 (counts; z_score ranking arrives with pair_stats): partners of A within +-k slots
-        """CREATE MACRO partners_of(_a, _k) AS TABLE
-              SELECT partner_token, count(DISTINCT (contig_uid, anchor_ordinal)) AS n_loci, count(*) AS n_pairs
-              FROM slot_pairs
-              WHERE release = catalog_release() AND pair_bucket_ok(anchor_bucket, _a)
-                AND anchor_token = _a AND abs(orf_offset) <= _k
-              GROUP BY partner_token ORDER BY n_loci DESC, partner_token""",
-        # Q4: every instance of (A, B) within +-k slots, with geometry
-        """CREATE MACRO pairs_of(_a, _b, _k) AS TABLE
-              SELECT contig_uid, anchor_ordinal, partner_ordinal, orf_offset, junction_topology, delta_bp, flags, tier
-              FROM slot_pairs
-              WHERE release = catalog_release() AND pair_bucket_ok(anchor_bucket, _a)
-                AND anchor_token = _a AND partner_token = _b AND abs(orf_offset) <= _k
-              ORDER BY contig_uid, anchor_ordinal, partner_ordinal""",
+        *pair_macro_sql(),
         # Q2: tapes of a list of contigs (every tape version) with this release's tokens. Each side is
         # filtered by `IN` over the unnested list before the join, which prunes row groups by contig_uid
         # in both tables, also when the list comes from a joined table (AGENTS §4.4, card B-07). In DuckDB
@@ -412,9 +511,29 @@ def macro_sql() -> list[str]:
     ]
 
 
-def generate_catalog(manifest: dict, out_path: Path, root: Path | None = None) -> Path:
-    """Write the catalog under a temporary name and rename it into place (atomic on one filesystem)."""
+def served_tape_version(manifest: dict) -> str:
+    """The one tape version of the release's `token_postings` in the manifest; "" when it has none.
+
+    Raises ValueError when the release holds postings of several tape versions: the caller must name one.
+    """
+    rel = manifest["release_id"]
+    tvs = sorted({f["partitions"]["tape_version"] for f in manifest["files"]
+                  if f["table"] == "token_postings" and f["partitions"].get("release") == rel})
+    if len(tvs) > 1:
+        raise ValueError(f"token_postings of release {rel} hold {len(tvs)} tape versions {tvs}; "
+                         "pass tape_version to generate_catalog")
+    return tvs[0] if tvs else ""
+
+
+def generate_catalog(manifest: dict, out_path: Path, root: Path | None = None, tape_version: str | None = None) -> Path:
+    """Write the catalog under a temporary name and rename it into place (atomic on one filesystem).
+
+    `tape_version`: the tape version the pair macros serve (`catalog_tape_version()`); by default the
+    single one of the release's `token_postings` (`served_tape_version`).
+    """
     root = Path(root or manifest["root"]).resolve()
+    if tape_version is None:
+        tape_version = served_tape_version(manifest)
     out_path = Path(out_path)
     out_path.parent.mkdir(parents=True, exist_ok=True)
     tmp = out_path.with_name(f".{out_path.name}.tmp-{os.getpid()}")
@@ -443,6 +562,7 @@ def generate_catalog(manifest: dict, out_path: Path, root: Path | None = None) -
             ("manifest_hash", manifest_hash(manifest)),
             ("root", str(root)),
             ("duckdb_version", duckdb.__version__),
+            ("tape_version", tape_version),
         ])
         con.execute("CREATE TABLE catalog_files AS SELECT * FROM (VALUES (NULL::VARCHAR, NULL::VARCHAR, NULL::VARCHAR, NULL::BIGINT, NULL::BIGINT)) "
                     "t(path, \"table\", sha256, \"rows\", row_groups) WHERE false")

@@ -102,10 +102,10 @@ operations:
     mrs: [MR-03, MR-04, MR-05, MR-11, MR-20]
     tests: [Q2, C-04, C-05, C-07, K-07, G-03, A-04, A-05]
   O-PAIRS:
-    summary: slot_pairs window enumeration
+    summary: token postings; slot pairs within +-k computed at query time by the catalog macros (card B-11)
     inputs: [contig_tapes, tape_tokens]
-    outputs: [slot_pairs]
-    oracle: brute-force window enumeration
+    outputs: [token_postings]
+    oracle: brute-force window enumeration (tests/oracles/pairs_oracle.py)
     mrs: [MR-03, MR-04, MR-05, MR-11]
     tests: [Q1, Q3, Q4, C-03, LY-06]
   O-PACK:
@@ -152,7 +152,7 @@ operations:
     tests: [NEW]
   O-STATS:
     summary: pair statistics, nulls, FDR, modules
-    inputs: [slot_pairs, background_rates]
+    inputs: [token_postings, background_rates]
     outputs: [pair_stats]
     oracle: brute-force score test; simulation calibration
     mrs: [MR-06, MR-08, MR-18, MR-19]

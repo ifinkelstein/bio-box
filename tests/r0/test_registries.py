@@ -38,7 +38,7 @@ REL = _load("relations.yaml")
 # AGENTS §3.3: an ordinal is never a key. These tables still have one in their primary key;
 # B-17 empties the set, and the test below fails until every fixed table is removed from it.
 ORDINAL_COLUMNS = {"ordinal", "slot_ordinal", "anchor_ordinal", "partner_ordinal"}
-LEGACY_ORDINAL_KEYS = {"neighborhoods", "slot_pairs", "slot_protein"}
+LEGACY_ORDINAL_KEYS = {"neighborhoods", "slot_protein"}
 
 
 def _documented_test_ids() -> set[str]:
@@ -128,7 +128,8 @@ def test_phase_b_tables_are_registered():
     # B-03: the six tables of TASKS.md §2, added beside the legacy ones (expand before contract)
     new = {"genome_input", "feature", "feature_protein", "contig_dim", "tape_version_def", "token_postings"}
     assert new <= set(TABLES), f"missing: {sorted(new - set(TABLES))}"
-    assert {"slot_protein", "slot_pairs"} <= set(TABLES)
+    assert "slot_protein" in TABLES
+    assert "slot_pairs" not in TABLES  # card B-11: pairs are computed from token_postings, never stored (AGENTS §3.5)
     # a replacement table keeps its predecessor's enum domains
     quality = TABLES["protein_occurrence"].enums["assembly_quality"]
     assert TABLES["genome_input"].enums["assembly_quality"] == quality

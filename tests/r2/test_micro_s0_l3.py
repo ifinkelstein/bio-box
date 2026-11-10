@@ -1,11 +1,13 @@
-"""Ring R2: L3 tapes, tokens and pairs on micro-S0, and the Q1-Q4, Q7, Q8 oracles (data_layer_and_tests.md §4.3).
+"""Ring R2: L3 tapes, tokens and postings on micro-S0, and the Q1-Q4, Q7, Q8 oracles (data_layer_and_tests.md §4.3).
 
 The build: ingest, gene calls, a 6-model domain library from lambda proteins (family
 tokens) and NR50/NR90 clusters from MMseqs2 where it is on PATH, else a deterministic
 stand-in grouping (the oracles read the same tokens, so what they test does not depend on
-how the clusters were made). Each production path (catalog macros) is compared with a
-brute-force oracle written here from the definitions: a nested loop over tape rows read
-straight from the Parquet shards, and a rebuild of the tape lists from protein_occurrence.
+how the clusters were made), tapes, tape tokens and token postings. Each production path
+(catalog macros) is compared with an oracle: the pair macros over `token_postings` (card
+B-11) with `pairs_of_contig` (tests/oracles/pairs_oracle.py) run on the tape rows read
+straight from the Parquet shards, the partner counts with a brute-force loop over the
+oracle's windows, and the tapes with a rebuild of the tape lists from protein_occurrence.
 Covers Q1, Q2, Q3 (partner counts; z_score ranking needs pair_stats), Q4, Q7, Q8, C-04,
 C-07, K-07, LY-06 for pair lookups, and D-01 for the L3 tables.
 """
@@ -26,13 +28,16 @@ import pyhmmer
 import pytest
 import yaml
 
-from biobox import catalog, contracts, fasta, ids, io, layout
+from hypothesis import HealthCheck, given, settings, strategies as st
+
+from biobox import catalog, contracts, dim, fasta, ids, io, layout
 from biobox.l0seq import SourceObject, ingest, revcomp
 from biobox.l0seq.inputs import write_genome_input
 from biobox.l1 import domains
 from biobox.l1.genecall import GENE_CALL_VERSION as V, GenomeInput, run as call_genes
-from biobox.l3 import pairs, tapes, tokens
+from biobox.l3 import geometry, postings, tapes, tokens
 from biobox.registry.schemas import conformance_problems, table
+from oracles.pairs_oracle import FLAG_CENSORED, FLAG_CROSSES_ORIGIN, K_MAX, pairs_of_contig, window
 
 pytestmark = pytest.mark.r2
 
@@ -75,7 +80,7 @@ def _stand_in_clusters(root: Path, release: str) -> None:
     pq.write_table(pa.Table.from_pylist(rows, schema=table("cluster_member").schema), d / "part-0.parquet")
 
 
-def build(root: Path, order: int = 1) -> set[bytes]:
+def build(root: Path, order: int = 1, with_postings: bool = True) -> set[bytes]:
     objs = CONTRACT["objects"][::order]
     ingest([SourceObject(FIX / o["file"], CONTRACT["source_name"], CONTRACT["source_release"], CONTRACT["license"], True)
             for o in objs], root, "S0")
@@ -98,7 +103,8 @@ def build(root: Path, order: int = 1) -> set[bytes]:
         _stand_in_clusters(root, REL)
     tapes.run(root, "S0", circ)
     tokens.run(root, REL)
-    pairs.run(root, REL)
+    if with_postings:
+        postings.run(root, REL)
     return circ
 
 
@@ -119,35 +125,33 @@ def _read(root: Path, glob: str) -> list[dict]:
     return [r for f in sorted(root.glob(glob)) for r in pq.read_table(f).to_pylist()]
 
 
-def _oracle_rows(root: Path) -> list[tuple[dict, dict]]:
+def _oracle_rows(root: Path, release: str = REL, tv: str = TV) -> list[tuple[dict, dict]]:
     """(tape, tokens) per contig, straight from the shards."""
-    t = {r["contig_uid"]: r for r in _read(root, f"l3/tapes/tape_version={TV}/stage=*/part-*.parquet")}
-    k = {r["contig_uid"]: r for r in _read(root, f"l3/tape_tokens/tape_version={TV}/release={REL}/part-*.parquet")}
+    t = {r["contig_uid"]: r for r in _read(root, f"l3/tapes/tape_version={tv}/stage=*/part-*.parquet")}
+    k = {r["contig_uid"]: r for r in _read(root, f"l3/tape_tokens/tape_version={tv}/release={release}/part-*.parquet")}
     return [(t[cu], k[cu]) for cu in sorted(t)]
 
 
-def _within(i: int, j: int, n: int, circular: bool) -> int:
-    if not circular:
-        return abs(j - i)
-    return min((j - i) % n, (i - j) % n)
+PAIR_COLS = ("contig_uid", "anchor_feature_uid", "partner_feature_uid", "anchor_ordinal", "partner_ordinal",
+             "orf_offset", "junction_topology", "delta_bp", "flags")
+PAIRS_SQL = f"SELECT {', '.join(PAIR_COLS)} FROM pairs_of(?, ?, ?)"
 
 
-def _oracle_instances(rows, a: int, b: int, k: int, tier=None) -> list[tuple]:
-    """Every (contig, anchor slot, partner slot) with token a at the anchor and b within k slots."""
-    out = []
+def _oracle_pairs(rows, k: int = K_MAX) -> dict[tuple[int, int], list[tuple]]:
+    """`pairs_of_contig` on every tape, as rows of PAIR_COLS keyed by (anchor token, partner token)."""
+    out: dict[tuple[int, int], list[tuple]] = defaultdict(list)
     for tape, tok in rows:
-        if tier is not None and tape["tier"] != tier:
-            continue
-        n = tape["n_slots"]
-        for lvl in LEVELS:
-            col = tok[f"{lvl}_tokens"]
-            for i in range(n):
-                if col[i] != a:
-                    continue
-                for j in range(n):
-                    if j != i and col[j] == b and _within(i, j, n, tape["is_circular"]) <= k:
-                        out.append((tape["contig_uid"], i, j))
-    return sorted(out)
+        fu = tape["feature_uids"]
+        for p in pairs_of_contig(tape, {lvl: tok[f"{lvl}_tokens"] for lvl in LEVELS}, k):
+            i, j = p["anchor_ordinal"], p["partner_ordinal"]
+            out[(p["anchor_token"], p["partner_token"])].append(
+                (p["contig_uid"], fu[i], fu[j], i, j, p["orf_offset"], p["junction_topology"], p["delta_bp"], p["flags"]))
+    return out
+
+
+def _loci(rows) -> int:
+    """Distinct (contig, anchor slot) among oracle rows."""
+    return len({(r[0], r[3]) for r in rows})
 
 
 def _sample_tokens(con, n: int, seed: int) -> list[int]:
@@ -163,69 +167,102 @@ def _sample_tokens(con, n: int, seed: int) -> list[int]:
 # --- Q1-Q4 ---------------------------------------------------------------------------------
 
 
-@pytest.mark.covers("Q1")
-@pytest.mark.parametrize("k", [1, 3, 10])
-def test_q1_count_equals_nested_loop(built, k):
-    root, _, con, _ = built
+_PAIR_LIST = "(SELECT unnest($a)::UBIGINT AS a, unnest($b)::UBIGINT AS b) l"
+# the macros for many token pairs in one statement: the same macro text, its arguments taken from a joined list
+PAIRS_BULK = f"SELECT l.a, l.b, {', '.join('p.' + c for c in PAIR_COLS)} FROM {_PAIR_LIST}, " \
+             "LATERAL (SELECT * FROM pairs_of(l.a, l.b, $k)) p"
+Q1_BULK = f"SELECT l.a, l.b, q1_count(l.a, l.b, 1, NULL), q1_count(l.a, l.b, 3, NULL), " \
+          f"q1_count(l.a, l.b, {K_MAX}, NULL) FROM {_PAIR_LIST}"
+
+
+def _check_pairs_against_the_oracle(con, rows, pairs, literal: int = 40) -> dict[str, int]:
+    """pairs_of (k = 10 and k = 3) and q1_count (k = 1, 3, 10) equal the oracle for every ordered token pair in
+    `pairs`, column for column; `literal` of them also one statement at a time with the tokens as parameters,
+    which also checks the order of pairs_of. Returns what the oracle rows exercised."""
+    by_k = {k: _oracle_pairs(rows, k) for k in (1, 3, K_MAX)}
+    full = by_k[K_MAX]
+    lists = {"a": [a for a, _ in pairs], "b": [b for _, b in pairs]}
+    for k in (K_MAX, 3):
+        got = defaultdict(list)
+        for a, b, *r in con.execute(PAIRS_BULK, {**lists, "k": k}).fetchall():
+            got[(a, b)].append(tuple(r))
+        assert set(got) <= set(pairs)
+        for p in pairs:
+            # with k = 3 the rows within 3 slots are unchanged: the censoring flag is about the +-K_MAX window
+            assert sorted(got.get(p, [])) == sorted(r for r in full.get(p, []) if abs(r[5]) <= k), (p, k)
+    for a, b, *counts in con.execute(Q1_BULK, lists).fetchall():
+        assert counts == [_loci(by_k[k].get((a, b), [])) for k in (1, 3, K_MAX)], (a, b)
+    for a, b in random.Random(15).sample(pairs, min(literal, len(pairs))):
+        got = con.execute(PAIRS_SQL, [a, b, K_MAX]).fetchall()
+        assert got == sorted(got, key=lambda r: (r[0], r[3], r[4])), (a, b)  # ordered by contig, anchor, partner
+        assert sorted(got) == sorted(full.get((a, b), [])), (a, b)
+        assert con.execute("SELECT q1_count(?, ?, ?, NULL)", [a, b, K_MAX]).fetchall()[0][0] == \
+            _loci(full.get((a, b), [])), (a, b)
+    seen = Counter()
+    for p in pairs:
+        for r in full.get(p, []):
+            seen["rows"] += 1
+            seen["crosses_origin"] += bool(r[8] & FLAG_CROSSES_ORIGIN)
+            seen["censored"] += bool(r[8] & FLAG_CENSORED)
+            seen[f"topology_{r[6]}"] += 1
+    return seen
+
+
+@pytest.mark.covers("Q1", "Q4")
+def test_b11_pairs_of_and_q1_count_equal_the_pair_oracle(built):
+    """Card B-11: every ordered token pair that co-occurs within 10 slots at a level of the fixture (two linear
+    contigs and the odd circle of M. genitalium), column for column against `pairs_of_contig`, and q1_count for
+    k in 1, 3, 10."""
+    root, _, con, circ = built
     rows = _oracle_rows(root)
-    anchors = _sample_tokens(con, 12, k)
-    checked = nonzero = 0
-    for a in anchors:
-        # partners within k of A, plus A itself (often absent): both zero and non-zero counts are checked
-        partners = {b for (b,) in con.execute("SELECT DISTINCT partner_token FROM slot_pairs "
-                                              "WHERE anchor_token = ? AND abs(orf_offset) <= ?", [a, k]).fetchall()}
-        for b in sorted(partners)[:6] + [anchors[0]]:
-            for tier in (None, 1):
-                want = len({(c, i) for c, i, _ in _oracle_instances(rows, a, b, k, tier)})
-                got = con.execute("SELECT q1_count(?, ?, ?, ?)", [a, b, k, tier]).fetchall()[0][0]
-                assert got == want, (a, b, k, tier)
-                checked += 1
-                nonzero += want > 0
-    assert checked > 50 and nonzero > 10
+    assert sum(t["is_circular"] for t, _ in rows) == 1 and len(rows) == 3
+    full = _oracle_pairs(rows)
+    per_level = Counter(a >> 61 for a, _ in full)
+    assert all(per_level[bits] > 0 for bits in (1, 2, 3)), per_level  # family, nr50, nr90
+    seen = _check_pairs_against_the_oracle(con, rows, sorted(full), literal=60)
+    assert seen["rows"] == sum(len(v) for v in full.values())
+    assert seen["crosses_origin"] > 0 and seen["censored"] > 0, seen
+    assert seen["topology_1"] and seen["topology_2"] and seen["topology_3"], seen
+    # token pairs of one level that never meet within 10 slots: no rows, zero loci
+    by_level = defaultdict(set)
+    for _, k in rows:
+        for lvl in LEVELS:
+            by_level[lvl] |= {t for t in k[f"{lvl}_tokens"] if t is not None}
+    rng = random.Random(12)
+    apart = sorted({p for lvl in LEVELS for p in (tuple(rng.sample(sorted(by_level[lvl]), 2)) for _ in range(200))
+                    if p not in full})
+    assert len(apart) > 50
+    assert _check_pairs_against_the_oracle(con, rows, apart)["rows"] == 0
+    assert con.execute(PAIRS_SQL, [sorted(by_level["nr90"])[0], 7 << 61, K_MAX]).fetchall() == []  # an unknown token
 
 
 @pytest.mark.covers("Q3")
-def test_q3_partner_profile_equals_nested_loop(built):
+def test_q3_partners_of_equals_a_brute_force_count(built):
+    """partners_of: every token at every level within k slots of the loci of A, counted by a loop over the oracle's
+    windows; ranked by loci."""
     root, _, con, _ = built
     rows = _oracle_rows(root)
+    other_level = 0
     for a in _sample_tokens(con, 10, 3):
-        want: dict[int, set] = defaultdict(set)
-        n_pairs: dict[int, int] = defaultdict(int)
-        for tape, tok in rows:
-            n = tape["n_slots"]
-            for lvl in LEVELS:
-                col = tok[f"{lvl}_tokens"]
+        for k in (1, K_MAX):
+            loci: dict[int, set] = defaultdict(set)
+            n_pairs: Counter = Counter()
+            for tape, tok in rows:
+                n, circ = tape["n_slots"], tape["is_circular"]
+                cols = [tok[f"{lvl}_tokens"] for lvl in LEVELS]
                 for i in range(n):
-                    if col[i] != a:
+                    if a not in [c[i] for c in cols]:
                         continue
-                    for j in range(n):
-                        if j != i and col[j] is not None and _within(i, j, n, tape["is_circular"]) <= 10:
-                            want[col[j]].add((tape["contig_uid"], i))
-                            n_pairs[col[j]] += 1
-        got = con.execute("SELECT partner_token, n_loci, n_pairs FROM partners_of(?, 10)", [a]).fetchall()
-        assert sorted(got) == sorted((b, len(s), n_pairs[b]) for b, s in want.items()), a
-        assert [g[1] for g in got] == sorted((g[1] for g in got), reverse=True)  # ranked
-
-
-@pytest.mark.covers("Q4")
-def test_q4_drill_down_equals_nested_loop(built):
-    root, _, con, _ = built
-    rows = _oracle_rows(root)
-    by_contig = {t["contig_uid"]: t for t, _ in rows}
-    for a in _sample_tokens(con, 8, 4):
-        for (b,) in con.execute("SELECT DISTINCT partner_token FROM slot_pairs WHERE anchor_token = ? ORDER BY 1 LIMIT 4",
-                                [a]).fetchall():
-            got = con.execute("SELECT contig_uid, anchor_ordinal, partner_ordinal, orf_offset, junction_topology, "
-                              "delta_bp FROM pairs_of(?, ?, 10)", [a, b]).fetchall()
-            assert sorted((c, i, j) for c, i, j, *_ in got) == _oracle_instances(rows, a, b, 10)
-            for c, i, j, d, topo, delta in got:
-                t = by_contig[c]
-                s = list(zip(t["start_bps"], t["end_bps"], t["strands"]))
-                left, right = (s[i], s[j]) if d > 0 else (s[j], s[i])
-                if t["is_circular"] and ((d > 0) != (j > i)):
-                    right = (right[0] + t["contig_len"], right[1] + t["contig_len"], right[2])
-                assert delta == max(left[0], right[0]) - min(left[1], right[1])
-                assert (topo == 1) == (left[2] == right[2])
+                    for j, _ in window(i, n, circ, k):
+                        for c in cols:
+                            if c[j] is not None:
+                                loci[c[j]].add((tape["contig_uid"], i))
+                                n_pairs[c[j]] += 1
+            got = con.execute("SELECT partner_token, n_loci, n_pairs FROM partners_of(?, ?)", [a, k]).fetchall()
+            assert sorted(got) == sorted((b, len(s), n_pairs[b]) for b, s in loci.items()), (a, k)
+            assert got == sorted(got, key=lambda g: (-g[1], g[0]))  # ranked by loci, then token
+            other_level += sum(b >> 61 != a >> 61 for b, _, _ in got)
+    assert other_level > 0  # partners at the other token levels are counted too
 
 
 @pytest.mark.covers("Q2", "C-05")
@@ -278,12 +315,12 @@ def test_q7_slice_equals_the_decompressed_source(built, tmp_path):
 
 Q8_QUERIES = [
     "SELECT level, count(*), sum(n_slots) FROM token_dict GROUP BY level ORDER BY level",
-    "SELECT junction_topology, count(*), sum(delta_bp) FROM slot_pairs GROUP BY 1 ORDER BY 1",
+    "SELECT strand, count(*), sum(\"end\" - start) FROM token_postings GROUP BY 1 ORDER BY 1",
     "SELECT is_circular, count(*), sum(n_slots), max(contig_len) FROM contig_tapes GROUP BY 1 ORDER BY 1",
-    "SELECT tier, count(DISTINCT contig_uid), count(*) FROM slot_pairs WHERE abs(orf_offset) <= 2 GROUP BY 1 ORDER BY 1",
+    "SELECT is_circular, count(DISTINCT contig_uid), count(*) FROM token_postings WHERE ordinal <= 2 GROUP BY 1 ORDER BY 1",
     "SELECT strand, count(*), sum(\"end\" - start) FROM protein_occurrence GROUP BY 1 ORDER BY 1",
     "SELECT model_acc, count(DISTINCT protein_uid) FROM l1_domains GROUP BY 1 ORDER BY 1",
-    "SELECT d.level, count(*) FROM slot_pairs p JOIN token_dict d ON d.token_id = p.anchor_token "
+    "SELECT d.level, count(*) FROM token_postings p JOIN token_dict d ON d.token_id = p.token_id "
     "GROUP BY 1 ORDER BY 1",
 ]
 
@@ -351,20 +388,28 @@ def _with_tv(con, tape_rows):
 @pytest.mark.covers("LY-06", "LY-05")
 @pytest.mark.parametrize("width", [1, 2])
 def test_ly06_pair_lookup_opens_one_bucket(built, tmp_path, width):
+    """Q1 and Q4 over postings bucketed by the token's low byte: each side of the self-join opens one file."""
     root, _, _, _ = built
     copy = tmp_path / "s"
-    shutil.copytree(root, copy, ignore=shutil.ignore_patterns("slot_pairs"))
-    pairs.run(copy, REL, prefix_width=width)
+    shutil.copytree(root, copy, ignore=shutil.ignore_patterns("token_postings"))
+    postings.run(copy, REL, prefix_width=width)
     man = catalog.build_manifest(copy, REL)  # LY-05: every row's token matches its bucket
-    files = [f for f in man["files"] if f["table"] == "slot_pairs"]
+    files = [f for f in man["files"] if f["table"] == "token_postings"]
     assert len(files) > 1
+    full = _oracle_pairs(_oracle_rows(root))
+    bucket = lambda t: f"{t & 0xFF:02x}"[:width]  # noqa: E731
+    a, b = next(p for p in sorted(full) if bucket(p[0]) != bucket(p[1]))
     c = catalog.open_catalog(catalog.generate_catalog(man, tmp_path / "c.duckdb"))
     try:
-        a, b = c.execute("SELECT anchor_token, partner_token FROM slot_pairs ORDER BY anchor_token LIMIT 1").fetchall()[0]
-        prof = catalog.profile_query(c, "SELECT q1_count(?, ?, 10, NULL)", [a, b])
-        (scan,) = [s for s in prof["scans"] if any("/slot_pairs/" in f for f in s["files"])]
-        assert prof["result"][0][0] >= 1
-        assert scan["files_read"] == 1 and scan["row_groups_scanned"] == 1
+        for sql, want in (("SELECT q1_count(?, ?, 10, NULL)", _loci(full[(a, b)])),
+                          ("SELECT count(*) FROM pairs_of(?, ?, 10)", len(full[(a, b)]))):
+            prof = catalog.profile_query(c, sql, [a, b])
+            scans = [s for s in prof["scans"] if any("/token_postings/" in f for f in s["files"])]
+            assert prof["result"][0][0] == want >= 1, sql
+            assert len(scans) == 2, sql  # one per side
+            assert sorted(s["files"][0].split("token_bucket=")[1].split("/")[0] for s in scans) == \
+                sorted([bucket(a), bucket(b)]), sql
+            assert all(s["files_read"] == 1 and s["row_groups_scanned"] == 1 for s in scans), (sql, scans)
     finally:
         c.close()
 
@@ -407,7 +452,7 @@ def test_l3_is_deterministic_and_order_free(built, tmp_path):
     build(other, order=-1)
     h1 = contracts.content_hashes(man)
     h2 = contracts.content_hashes(catalog.build_manifest(other, REL))
-    for name in ("contig_tapes", "tape_tokens", "token_dict", "slot_pairs", "tape_version_def"):
+    for name in ("contig_tapes", "tape_tokens", "token_dict", "token_postings", "tape_version_def"):
         assert h1[name] == h2[name], name
     for rel in sorted(p.relative_to(root).as_posix() for p in (root / "l3").rglob("*.parquet")):
         assert (root / rel).read_bytes() == (other / rel).read_bytes(), rel
@@ -983,3 +1028,282 @@ def test_b09_iter_tapes_yields_rows_in_contig_order_across_files_and_row_groups(
     assert list(tokens.iter_tapes(fake, TV, ["n_slots"])) == [{"n_slots": r["n_slots"]} for r in rows]
     assert list(tokens.iter_tapes(fake, "t-000000000000")) == []
     assert [r["contig_uid"] for r in tokens.read_tapes(root, V, ["contig_uid"])] == [r["contig_uid"] for r in rows]
+
+
+# --- card B-11: pair macros over token postings ------------------------------------------------------
+
+SYN_PRODUCER = "synthetic-b11"
+SYN_REL = "rS0.b11syn"
+FAM, NR50, NR90 = 1 << 61 | 1 << 56, 2 << 61, 3 << 61  # token id bases (PLAN.md §4.1): level | source
+
+
+def _syn_slots(rng: random.Random, n: int, length: int, circular: bool, wrap: bool) -> list[tuple[int, int, int]]:
+    """n slots in coordinate order with overlaps and slots nested in the previous one on the other strand; with
+    `wrap`, the last slot of a circular contig crosses the origin."""
+    step, slots = length // n, []
+    for idx in range(n):
+        prev = slots[-1] if slots else None
+        if prev and prev[1] - prev[0] > 60 and rng.random() < 0.25:
+            s, e, strand = prev[0] + 10, prev[1] - 10, -prev[2]
+        else:
+            s = step * idx + rng.randrange(0, step // 3)
+            e, strand = s + rng.randrange(20, 2 * step), rng.choice((1, -1))
+        slots.append((s, min(e, length), strand))
+    slots.sort()
+    if wrap:
+        s, _, strand = slots[-1]
+        slots[-1] = (s, s + 3 * step, strand)
+        assert slots[-1][1] > length
+    return slots
+
+
+def _write_syn_tapes(root: Path, contigs: list[tuple[str, list[tuple[int, int, int]], int, bool]], seed: int) -> str:
+    """contig_tapes and tape_tokens for the synthetic tape version, written directly; returns the tape version."""
+    rng = random.Random(seed)
+    tv = tapes.tape_version([SYN_PRODUCER])
+    tape_rows, tok_rows = [], []
+    for name, slots, length, circular in contigs:
+        cu, n = ids.contig_uid(name.encode()), len(slots)
+        tape_rows.append({"contig_uid": cu, "tax_order_bucket": None, "genome_uid": None, "contig_len": length,
+                          "is_circular": circular, "n_slots": n, "tier": None, "assembly_quality": None,
+                          **tapes.build_tape(slots, length, circular), "protein_uids": [None] * n,
+                          "feature_uids": [ids.feature_uid(cu, s, e, st, ids.KIND["cds"]) for s, e, st in slots]})
+        pick = lambda base, k, p_none: [None if rng.random() < p_none else base | rng.randrange(k) for _ in slots]  # noqa: E731
+        tok_rows.append({"contig_uid": cu, "family_tokens": pick(FAM, 3, 0.3), "nr50_tokens": pick(NR50, 3, 0.2),
+                         "nr90_tokens": pick(NR90, 4, 0.1)})
+    for name, rows, path in (("contig_tapes", tape_rows, f"l3/tapes/tape_version={tv}/stage=S0/part-0.parquet"),
+                             ("tape_tokens", tok_rows, f"l3/tape_tokens/tape_version={tv}/release={SYN_REL}/part-0.parquet")):
+        spec = table(name)
+        io.write_table([pa.Table.from_pylist(sorted(rows, key=lambda r: r["contig_uid"]), schema=spec.schema)], spec,
+                       root / path)
+    return tv
+
+
+@pytest.mark.covers("Q1", "Q4")
+def test_b11_pairs_of_equals_the_oracle_on_even_circles_and_short_lines(tmp_path):
+    """Synthetic tapes through `postings.run`: circles with an even slot count of at most 20 (a partner exactly half
+    way round is within 10 slots), a 2-slot circle whose two ways round have equal gaps (forward on a tie), slots
+    across the origin, nested antisense slots, and linear contigs shorter than 21 slots (every anchor censored).
+    Every ordered token pair against `pairs_of_contig`."""
+    rng = random.Random(1111)
+    contigs = [("even-8", _syn_slots(rng, 8, 4_000, True, False), 4_000, True),
+               ("even-20-wrap", _syn_slots(rng, 20, 9_000, True, True), 9_000, True),
+               ("even-12-wrap", _syn_slots(rng, 12, 6_000, True, True), 6_000, True),
+               ("even-2", _syn_slots(rng, 2, 1_500, True, False), 1_500, True),
+               ("tie-2", [(0, 100, 1), (500, 600, -1)], 1_000, True),
+               ("odd-9-wrap", _syn_slots(rng, 9, 5_000, True, True), 5_000, True),
+               ("linear-15", _syn_slots(rng, 15, 7_000, False, False), 7_000, False),
+               ("linear-1", [(10, 300, -1)], 400, False),
+               ("circle-1", [(10, 300, 1)], 400, True)]
+    root = tmp_path / "r"
+    tv = _write_syn_tapes(root, contigs, 1112)
+    postings.run(root, SYN_REL, producers=[SYN_PRODUCER])
+    man = catalog.build_manifest(root, SYN_REL)
+    con = catalog.open_catalog(catalog.generate_catalog(man, tmp_path / "c.duckdb"))
+    try:
+        assert con.execute("SELECT catalog_tape_version()").fetchall() == [(tv,)]
+        rows = _oracle_rows(root, SYN_REL, tv)
+        toks = sorted({t for _, k in rows for lvl in LEVELS for t in k[f"{lvl}_tokens"] if t is not None})
+        assert len(toks) == 10
+        same_level = [(a, b) for a in toks for b in toks if a >> 61 == b >> 61]  # the oracle pairs within a level
+        seen = _check_pairs_against_the_oracle(con, rows, same_level)
+    finally:
+        con.close()
+    assert seen["crosses_origin"] and seen["censored"] and seen["topology_4"], seen
+    n_of = {t["contig_uid"]: (t["n_slots"], t["is_circular"]) for t, _ in rows}
+    half = [r for rs in _oracle_pairs(rows).values() for r in rs if n_of[r[0]][1] and 2 * abs(r[5]) == n_of[r[0]][0]]
+    assert any(r[5] < 0 for r in half) and any(r[5] > 0 for r in half)  # the half-way rule takes both ways
+    tie = ids.contig_uid(b"tie-2")
+    assert {r[5] for r in half if r[0] == tie} == {1}  # equal gaps both ways: forward
+    lin = ids.contig_uid(b"linear-15")
+    assert all(r[8] & FLAG_CENSORED for rs in _oracle_pairs(rows).values() for r in rs if r[0] == lin)
+
+
+@pytest.mark.covers("Q1")
+def test_b11_q1_count_filters_tiers_through_contig_dim(built, tmp_path):
+    """The tier filter joins contig_dim of the catalog's release: the builder's null tiers match no tier; tiers set
+    by hand in a second release select their contigs, and a contig without a dimension row matches none."""
+    root, _, _, circ = built
+    fresh = tmp_path / "s"
+    shutil.copytree(root, fresh)
+    cus = sorted(_tapes_of_tv(root))
+    write_genome_input(fresh, "S0", [GenomeInput((cu,), circular=(cu,) if cu in circ else ()) for cu in cus])
+    dim.run(fresh, REL)
+    dim_rows = _rows(fresh, f"dim/contig_dim/release={REL}/part-*.parquet")
+    assert [r["contig_uid"] for r in dim_rows] == cus and {r["tier"] for r in dim_rows} == {None}
+    rows = _oracle_rows(root)
+    full = _oracle_pairs(rows)
+    pairs = sorted(full)
+    lists = {"a": [a for a, _ in pairs], "b": [b for _, b in pairs]}
+    by_tier = f"SELECT l.a, l.b, q1_count(l.a, l.b, 10, NULL), q1_count(l.a, l.b, 10, 1), q1_count(l.a, l.b, 10, 2), " \
+              f"q1_count(l.a, l.b, 10, 3) FROM {_PAIR_LIST}"
+    con = catalog.open_catalog(catalog.generate_catalog(catalog.build_manifest(fresh, REL), tmp_path / "a.duckdb"))
+    try:
+        got = con.execute(by_tier, lists).fetchall()
+        assert sorted(got) == [(a, b, _loci(full[(a, b)]), 0, 0, 0) for a, b in pairs]  # null tiers match no tier
+        a, b = pairs[0]
+        assert con.execute("SELECT q1_count(?, ?, 10, 1)", [a, b]).fetchall() == [(0,)]
+    finally:
+        con.close()
+    rel2 = "rS0.b11tier"
+    tiers = {cus[0]: 1, cus[1]: 2}  # cus[2] has no dimension row in rel2
+    _write_sorted("contig_dim", [{**{k: v for k, v in r.items() if k != "release"}, "tier": tiers[r["contig_uid"]]}
+                                 for r in dim_rows if r["contig_uid"] in tiers],
+                  fresh / f"dim/contig_dim/release={rel2}/part-0.parquet")
+    shutil.copytree(fresh / f"l3/token_postings/release={REL}", fresh / f"l3/token_postings/release={rel2}")
+    con = catalog.open_catalog(catalog.generate_catalog(catalog.build_manifest(fresh, rel2), tmp_path / "b.duckdb"))
+    try:
+        want = [(a, b, _loci(full[(a, b)]), *(_loci([r for r in full[(a, b)] if tiers.get(r[0]) == t]) for t in (1, 2, 3)))
+                for a, b in pairs]
+        assert sorted(con.execute(by_tier, lists).fetchall()) == want
+        for a, b, _, t1, t2, _ in want[:20]:
+            assert con.execute("SELECT q1_count(?, ?, 10, 1), q1_count(?, ?, 10, 2)", [a, b, a, b]).fetchall() == [(t1, t2)]
+    finally:
+        con.close()
+    assert any(w[3] for w in want) and any(w[4] for w in want)
+    assert any(r[0] == cus[2] for rs in full.values() for r in rs)  # the contig without a row had loci to drop
+
+
+def _write_postings(root: Path, release: str, tv: str, rows: list[dict]) -> None:
+    """A hand-written token_postings file (bucket `all`) with the registry's defaults for the columns not given."""
+    full = [{"seg_idx": 0, "start": 100 * r["ordinal"], "end": 100 * r["ordinal"] + 90, "strand": 1, "is_circular": False,
+             "feature_uid": ids.feature_uid(r["contig_uid"], 100 * r["ordinal"], 100 * r["ordinal"] + 90, 1, 1),
+             "contig_len": 100 * r["n_slots"], **r} for r in rows]
+    _write_sorted("token_postings", full, root / f"l3/token_postings/release={release}/tape_version={tv}/"
+                                              "token_bucket=all/part-0.parquet")
+
+
+@pytest.mark.covers("Q4")
+def test_b11_fusions_of_finds_two_tokens_on_one_slot_with_different_segments(built, tmp_path):
+    root, _, con, _ = built
+    # the fixture's postings carry seg_idx 0 only, so no fusion exists yet (card B-21 adds per-domain postings)
+    full = _oracle_pairs(_oracle_rows(root))
+    for a, b in random.Random(14).sample(sorted(full), 20):
+        assert con.execute("SELECT * FROM fusions_of(?, ?)", [a, b]).fetchall() == []
+    tv = tapes.tape_version([SYN_PRODUCER])
+    x, y = ids.contig_uid(b"fusion-x"), ids.contig_uid(b"fusion-y")
+    f1, f2 = FAM | 1, FAM | 2
+    rows = [{"token_id": f1, "contig_uid": x, "ordinal": 2, "seg_idx": 0, "n_slots": 10},
+            {"token_id": f2, "contig_uid": x, "ordinal": 2, "seg_idx": 1, "n_slots": 10},  # a fusion at slot 2
+            {"token_id": f1, "contig_uid": x, "ordinal": 5, "seg_idx": 0, "n_slots": 10},
+            {"token_id": f2, "contig_uid": x, "ordinal": 6, "seg_idx": 1, "n_slots": 10},  # neighbours, no fusion
+            {"token_id": f1, "contig_uid": y, "ordinal": 7, "seg_idx": 0, "n_slots": 10},  # f1 twice on slot 7
+            {"token_id": f1, "contig_uid": y, "ordinal": 7, "seg_idx": 2, "n_slots": 10},
+            {"token_id": f2, "contig_uid": y, "ordinal": 7, "seg_idx": 1, "n_slots": 10}]
+    r = tmp_path / "r"
+    _write_postings(r, SYN_REL, tv, rows)
+    c = catalog.open_catalog(catalog.generate_catalog(catalog.build_manifest(r, SYN_REL), tmp_path / "c.duckdb"))
+    fu = lambda cu, i: ids.feature_uid(cu, 100 * i, 100 * i + 90, 1, 1)  # noqa: E731
+    try:
+        got = c.execute("SELECT contig_uid, feature_uid, ordinal, anchor_seg_idx, partner_seg_idx "
+                        "FROM fusions_of(?, ?)", [f1, f2]).fetchall()
+        want = sorted([(x, fu(x, 2), 2, 0, 1), (y, fu(y, 7), 7, 0, 1), (y, fu(y, 7), 7, 2, 1)])
+        assert got == want
+        assert c.execute("SELECT count(*) FROM fusions_of(?, ?)", [f1, f1]).fetchall()[0][0] == 2  # seg 0 and seg 2
+        # a slot with a token on two segments is one slot for the pair macros
+        assert c.execute("SELECT anchor_ordinal, partner_ordinal FROM pairs_of(?, ?, 10)", [f1, f2]).fetchall() == \
+            [(2, 6), (5, 2), (5, 6)]
+        assert c.execute("SELECT q1_count(?, ?, 10, NULL)", [f1, f2]).fetchall()[0][0] == 2
+    finally:
+        c.close()
+
+
+def test_b11_the_catalog_serves_one_tape_version(tmp_path):
+    x = ids.contig_uid(b"tv-x")
+    tv1, tv2 = tapes.tape_version(["p-one"]), tapes.tape_version(["p-two"])
+    root = tmp_path / "r"
+    for tv, (i, j) in ((tv1, (0, 1)), (tv2, (0, 3))):
+        _write_postings(root, SYN_REL, tv, [{"token_id": NR90 | 1, "contig_uid": x, "ordinal": i, "n_slots": 9},
+                                            {"token_id": NR90 | 2, "contig_uid": x, "ordinal": j, "n_slots": 9}])
+    man = catalog.build_manifest(root, SYN_REL)
+    with pytest.raises(ValueError, match="tape version"):
+        catalog.generate_catalog(man, tmp_path / "a.duckdb")
+    for tv, d in ((tv1, 1), (tv2, 3)):
+        c = catalog.open_catalog(catalog.generate_catalog(man, tmp_path / f"{tv}.duckdb", tape_version=tv))
+        try:
+            assert c.execute("SELECT catalog_tape_version()").fetchall() == [(tv,)]
+            assert c.execute("SELECT orf_offset FROM pairs_of(?, ?, 10)", [NR90 | 1, NR90 | 2]).fetchall() == [(d,)]
+        finally:
+            c.close()
+    # postings of another release only: no tape version is served and the pair macros return nothing
+    c = catalog.open_catalog(catalog.generate_catalog(catalog.build_manifest(root, "rOther"), tmp_path / "o.duckdb",
+                                                      tape_version=None))
+    try:
+        assert c.execute("SELECT catalog_tape_version()").fetchall() == [("",)]
+        assert c.execute("SELECT q1_count(?, ?, 10, NULL)", [NR90 | 1, NR90 | 2]).fetchall() == [(0,)]
+        assert c.execute("SELECT count(*) FROM pairs_of(?, ?, 10)", [NR90 | 1, NR90 | 2]).fetchall() == [(0,)]
+        assert c.execute("SELECT count(*) FROM partners_of(?, 10)", [NR90 | 1]).fetchall() == [(0,)]
+    finally:
+        c.close()
+
+
+@st.composite
+def _contig_slots(draw):
+    circ = draw(st.booleans())
+    length = draw(st.integers(min_value=200, max_value=5_000))
+    n = draw(st.integers(min_value=2, max_value=24))
+    starts = sorted(draw(st.lists(st.integers(min_value=0, max_value=length - 2), min_size=n, max_size=n, unique=True)))
+    slots = []
+    for idx, s in enumerate(starts):
+        e = s + draw(st.integers(min_value=1, max_value=600))
+        # only the last slot of a circle may cross the origin (tapes order slots by start)
+        slots.append((s, min(e, s + length) if circ and idx == n - 1 else min(e, length), draw(st.sampled_from([1, -1]))))
+    return slots, length, circ
+
+
+HELPERS_SQL = """
+    SELECT slot_dist(i, j, n, circ), pair_offset(i, a_s, a_e, j, b_s, b_e, n, circ, len),
+           pair_delta_bp(d, i, a_s, a_e, j, b_s, b_e, circ, len),
+           pair_junction(d, i, a_s, a_e, a_str, j, b_s, b_e, b_str, circ, len), pair_flags(d, i, j, n, circ)
+    FROM (SELECT unnest($i)::UINTEGER AS i, unnest($j)::UINTEGER AS j, unnest($d)::BIGINT AS d,
+                 unnest($s1)::BIGINT AS a_s, unnest($e1)::BIGINT AS a_e, unnest($t1)::TINYINT AS a_str,
+                 unnest($s2)::BIGINT AS b_s, unnest($e2)::BIGINT AS b_e, unnest($t2)::TINYINT AS b_str,
+                 $n::UINTEGER AS n, $circ::BOOLEAN AS circ, $clen::BIGINT AS len, unnest(range(len($i))) AS rn)
+    ORDER BY rn
+"""
+
+
+@pytest.mark.covers("Q4")
+@settings(max_examples=150, deadline=None, suppress_health_check=[HealthCheck.too_slow])
+@given(_contig_slots())
+def test_b11_pair_helper_macros_equal_geometry_and_the_oracle(built, c):
+    """slot_dist, pair_offset, pair_delta_bp, pair_junction and pair_flags on every ordered slot pair of a contig,
+    against biobox.l3.geometry for both signs of the offset, and against `pairs_of_contig` for the rows it gives."""
+    _, _, con, _ = built
+    slots, length, circ = c
+    n = len(slots)
+    cases = []
+    for i in range(n):
+        for j in range(n):
+            if i != j:
+                off = geometry.cyclic_offset(i, j, n) if circ else j - i
+                cases += [(i, j, off), (i, j, -off)]
+    params = {"i": [x[0] for x in cases], "j": [x[1] for x in cases], "d": [x[2] for x in cases],
+              "s1": [slots[x[0]][0] for x in cases], "e1": [slots[x[0]][1] for x in cases],
+              "t1": [slots[x[0]][2] for x in cases], "s2": [slots[x[1]][0] for x in cases],
+              "e2": [slots[x[1]][1] for x in cases], "t2": [slots[x[1]][2] for x in cases],
+              "n": n, "circ": circ, "clen": length}
+    got = con.execute(HELPERS_SQL, params).fetchall()
+    assert len(got) == len(cases)
+    chosen = {}
+    for (i, j, d), (dist, offset, delta, topo, flags) in zip(cases, got):
+        assert dist == (min(abs(i - j), n - abs(i - j)) if circ else abs(i - j))
+        want_d = geometry.cyclic_offset(i, j, n) if circ else j - i
+        if circ and 2 * abs(want_d) == n and \
+                geometry.pair_geometry(slots, i, j, -want_d, length, circ)[1] < geometry.pair_geometry(slots, i, j, want_d, length, circ)[1]:
+            want_d = -want_d
+        assert offset == want_d, (i, j)
+        g_topo, g_delta, g_cross = geometry.pair_geometry(slots, i, j, d, length, circ)
+        assert (topo, delta) == (g_topo, g_delta), (i, j, d)
+        censored = not circ and (i < K_MAX or n - 1 - i < K_MAX)
+        assert flags == (FLAG_CENSORED if censored else 0) | (FLAG_CROSSES_ORIGIN if g_cross else 0), (i, j, d)
+        if d == offset:
+            chosen[(i, j)] = (dist, offset, topo, delta, flags)
+    tape = {"contig_uid": b"h" * 16, "is_circular": circ, "contig_len": length, "tier": None,
+            **tapes.build_tape(slots, length, circ)}
+    oracle = pairs_of_contig(tape, {"family": [None] * n, "nr50": [None] * n, "nr90": [1] * n}, K_MAX)
+    assert {(r["anchor_ordinal"], r["partner_ordinal"]) for r in oracle} == \
+        {p for p, v in chosen.items() if 1 <= v[0] <= K_MAX}
+    for r in oracle:
+        _, offset, topo, delta, flags = chosen[(r["anchor_ordinal"], r["partner_ordinal"])]
+        assert (offset, topo, delta, flags) == (r["orf_offset"], r["junction_topology"], r["delta_bp"], r["flags"])

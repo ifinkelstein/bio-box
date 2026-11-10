@@ -1,6 +1,9 @@
 """Ring R1: tapes and pairs against brute-force oracles, and MR-03, MR-04, MR-05 (O-TAPE, O-PAIRS);
 the token id layout (card B-09; the token builder itself is tested on micro-S0 in ring R2).
 
+The pair enumeration under test is the pair oracle `pairs_of_contig` (tests/oracles/pairs_oracle.py,
+moved from `biobox.l3.pairs` by card B-11), which the catalog's pair macros are compared with in ring R2.
+
 Slots are random (start, end, strand) sets on linear and circular contigs. The oracles below
 are written from the definitions in PLAN.md §4.2 and biobox/l3, without the production
 helpers: all slot pairs are enumerated and kept by distance, and geometry is recomputed
@@ -15,9 +18,9 @@ from collections import Counter
 import pytest
 from hypothesis import assume, given, settings, strategies as st
 
-from biobox.l3.pairs import FLAG_CENSORED, FLAG_CROSSES_ORIGIN, pairs_of_contig
 from biobox.l3.tapes import build_tape, tape_version
 from biobox.l3.tokens import token_id, token_level
+from oracles.pairs_oracle import FLAG_CENSORED, FLAG_CROSSES_ORIGIN, pairs_of_contig
 
 K = 3
 
