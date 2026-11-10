@@ -194,12 +194,17 @@ used the pre-phase-B versions; its store is pre-phase-B format.
 ### `pilot_s1/store_probe.py`
 
 ```
-python scripts/stress/pilot_s1/store_probe.py ROOT OUT_JSON [--n 1000] [--k 10]
+python scripts/stress/pilot_s1/store_probe.py ROOT OUT_JSON [--n 1000] [--k 10] [--release R | --stages S1,P1]
 ```
 
 In a fresh process: `SeqStore` open time and memory, index footers and row groups read on open, and
 `--n` random neighbourhoods of +-`--k` genes fetched with and without the block cache. Reads tapes
-through `biobox.l3.tokens.read_tapes` of the gene-call tape version.
+through `biobox.l3.tokens.read_tapes` of the gene-call tape version, for the stages of `--release`
+(its `release_def`) or `--stages`; with neither, every stage directory of that tape version.
+
+Since card B-25 every release-level builder (`cluster.run`, `tokens.run`, `postings.run`, `dim.run`)
+and `catalog.build_manifest` takes the release's stage list; the scripts here pass the one stage they
+build (`S0`, `S1` or the CAMI stage), and `step4_keys.py` reads it from the release's `release_def`.
 
 ### `pilot_cami/pilot_cami.py`, `pilot_cami/probe_cami.py`, `pilot_cami/run.sh`
 
@@ -215,4 +220,4 @@ pair steps, part files, the per-stage `seq_locator`, `tape_version` paths, a `Se
 index). The source is the gold-standard assembly of CAMI II marine sample 0, already on the pod under
 `/tmp/if2453/pilot_cami/src/x/`; its download script stays on the pod because its URL is not listed in
 `sources.yaml` (AGENTS.md section 8). The 2026-11-09 store at `/tmp/if2453/pilot_cami/work/root` is
-pre-phase-B format; B-18 did not rerun this pilot (exit file, deviations).
+pre-phase-B format; B-18 reran the pilot into `/tmp/if2453/b18/cami` (exit file §7).
