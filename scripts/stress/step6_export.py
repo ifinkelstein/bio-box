@@ -29,7 +29,7 @@ n = wraps = 0
 with open(out / "genes.tsv", "w") as genes:
     for r in occ:
         cu = r["contig_uid"]
-        rd = store._default[cu]
+        rd = store.default_digest(cu)
         length = store.length_of(rd)
         genes.write(f"{acc[cu]}\t{r['start']}\t{r['end']}\t{r['strand']}\t{length}\n")
         if r["end"] > length:

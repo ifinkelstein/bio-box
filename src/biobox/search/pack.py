@@ -34,7 +34,7 @@ import pyarrow.parquet as pq
 from blake3 import blake3
 
 from biobox import ids, layout, provenance
-from biobox.l0seq.store import SeqStore
+from biobox.l0seq.store import SeqStore, has_sequences
 from biobox.l1 import domains
 from biobox.l1.genecall import GENE_CALL_VERSION
 from biobox.l1.igr import igr_version
@@ -212,7 +212,7 @@ def build(root: Path, release: str, gene_call_version: str = GENE_CALL_VERSION,
     lengths, circular = _contigs(root, gcv)
     slots = _slots(root, gcv)
     # a protein-only root (a synthetic world) has no sequence store: its nucleotide targets are empty
-    store = SeqStore(root) if (root / "l0seq/seq_locator.parquet").exists() else None
+    store = SeqStore(root) if has_sequences(root) else None
     if store is None:
         lengths = {}
     try:

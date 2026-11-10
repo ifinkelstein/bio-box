@@ -43,9 +43,18 @@ store = SeqStore(a.root)
 R["open_s"] = round(time.perf_counter() - t, 3)
 R["rss_after_open_mb"] = rss_now_mb()
 R["peak_after_open_mb"] = peak_mb()
-R["locator_entries"] = len(store._loc)
-R["default_contigs"] = len(store._default)
-R["shards"] = sorted({rel for rel, _ in store._loc.values()})
+R["index_footers_read"] = store.locator.footers_read + store.index.footers_read
+R["index_row_groups_read_on_open"] = store.locator.row_groups_read + store.index.row_groups_read
+# counted from the index files after the timed open (the store itself holds no dict of contigs)
+import pyarrow.compute as pc  # noqa: E402
+import pyarrow.parquet as pq  # noqa: E402
+
+loc = pq.read_table(store.locator_files, columns=["shard"])
+R["locator_entries"] = loc.num_rows
+R["default_contigs"] = sum(pc.sum(pq.read_table(f, columns=["is_default_variant"]).column(0)).as_py() or 0
+                           for f in store.index_files)
+R["shards"] = sorted(set(loc.column("shard").to_pylist()))
+del loc
 
 tp = read_tapes(a.root, GENE_CALL_VERSION, ["contig_uid", "contig_len", "n_slots", "start_bps", "end_bps"])
 tp = [t for t in tp if t["n_slots"]]

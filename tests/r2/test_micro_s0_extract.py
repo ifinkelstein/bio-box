@@ -62,7 +62,7 @@ def test_rewrite_is_byte_identical(exported, tmp_path):
 
 def test_index_slices_equal_store_and_count_blocks(exported):
     _, store, contigs, out, _ = exported
-    bg = BgzfFasta(out)
+    bg = BgzfFasta(out, name_sorted=False)  # an export keeps the caller's record order
     rng = random.Random(7)
     for cu in contigs:
         n = len(store.get(cu))

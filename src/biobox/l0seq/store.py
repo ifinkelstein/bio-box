@@ -7,15 +7,20 @@ Layout under `<root>/` (planning/data_layer_and_tests.md §2A.1, §3.1):
     l0seq/seq_shards/stage=<S>/shard-<NNNN>.fa.gz   (+ .fa.gz.fai, .fa.gz.gzi)
     l0seq/contig_occurrence/stage=<S>/source=<name>/part-0.parquet
     l0seq/contig_index/stage=<S>/part-0.parquet
-    l0seq/seq_locator.parquet
+    l0seq/seq_locator/stage=<S>/part-0.parquet
 
 Sequences are bgzip FASTA shards (DEC-17, after K-13): each stored byte sequence once,
 named by its `raw_digest` hex, records sorted by `raw_digest`, a shard closed once it
 holds `shard_bases` bases. samtools, pysam and MMseqs2 read the shards as they are.
 
-A stage never rewrites an earlier stage's files: a sequence already stored adds
-only occurrence rows. `seq_locator`, `l0_manifest` and `store_params.json` are
-small metadata files rewritten per stage.
+A stage never rewrites an earlier stage's files (AGENTS §3.10): a sequence already stored
+adds only occurrence rows, and a stage's `seq_locator` file holds only the sequences first
+stored in that stage. `l0_manifest` and `store_params.json` are small metadata files
+rewritten per stage.
+
+`SeqStore` loads neither index (card B-13): `seq_locator` and `contig_index` are looked up
+through `KeyLookup` (footers once, one row group per key) and each shard's `.fai` is bisected
+on disk (`BgzfFasta`).
 """
 
 from __future__ import annotations
@@ -29,8 +34,9 @@ from pathlib import Path
 import pyarrow as pa
 import pyarrow.parquet as pq
 
-from biobox import fasta, ids, ledger, provenance
+from biobox import fasta, ids, io, ledger, provenance
 from biobox.l0seq.bgzf import BgzfFasta, write_bgzf_fasta
+from biobox.l0seq.lookup import KeyLookup
 from biobox.registry.schemas import table
 
 STORE_FORMAT = "bgzf-fasta-1"
@@ -61,18 +67,41 @@ def _write(tbl: pa.Table, path: Path, row_group_size: int, statistics: list[str]
     pq.write_table(tbl, path, compression="zstd", row_group_size=row_group_size, write_statistics=statistics)
 
 
+LOCATOR_DIR = "l0seq/seq_locator"
+INDEX_DIR = "l0seq/contig_index"
+
+
+def locator_files(root: Path) -> list[Path]:
+    """The store's `seq_locator` files, one per stage that stored a sequence, in stage order."""
+    return sorted((Path(root) / LOCATOR_DIR).glob("stage=*/part-0.parquet"))
+
+
+def index_files(root: Path) -> list[Path]:
+    return sorted((Path(root) / INDEX_DIR).glob("stage=*/part-0.parquet"))
+
+
+def has_sequences(root: Path) -> bool:
+    """True if `root` holds a sequence store (at least one stage's `seq_locator`)."""
+    return bool(locator_files(root))
+
+
 def _existing_locator(root: Path) -> pa.Table | None:
-    p = root / "l0seq" / "seq_locator.parquet"
-    return pq.read_table(p) if p.exists() else None
+    """Every stored sequence of the earlier stages (raw_digest, shard, contig_len).
+
+    The one place `ingest` learns which digests are already stored; it reads every stage's
+    locator whole, which batch ingest (card B-15) replaces.
+    """
+    files = locator_files(root)
+    return pa.concat_tables(pq.read_table(f) for f in files) if files else None
 
 
 def _existing_index(root: Path) -> pa.Table | None:
-    d = root / "l0seq" / "contig_index"
-    if not d.exists():
+    files = index_files(root)
+    if not files:
         return None
     # only the columns the store uses, so files from before an appended column still concatenate (LY-09)
     cols = ["contig_uid", "raw_digest", "contig_len", "is_default_variant"]
-    return pa.concat_tables(pq.read_table(f, columns=cols) for f in sorted(d.glob("stage=*/part-0.parquet")))
+    return pa.concat_tables(pq.read_table(f, columns=cols) for f in files)
 
 
 def ingest(
@@ -202,14 +231,13 @@ def ingest(
             122_880,
         )
 
-    # seq_locator and l0_manifest: small metadata, rewritten with all stages
-    loc_spec = table("seq_locator")
-    loc = pa.Table.from_pylist(new_loc, schema=loc_spec.schema)
-    if locator is not None:
-        loc = pa.concat_tables([locator, loc])
-    loc = loc.sort_by("raw_digest")
-    _write(loc, root / "l0seq/seq_locator.parquet", 122_880)
+    # seq_locator: this stage's new sequences only, sorted by raw_digest; never rewritten (AGENTS §3.10)
+    if new_loc:
+        loc_spec = table("seq_locator")
+        loc = pa.Table.from_pylist(new_loc, schema=loc_spec.schema).sort_by("raw_digest")
+        io.write_table(loc, loc_spec, root / f"{LOCATOR_DIR}/stage={stage}/part-0.parquet")
 
+    # l0_manifest: small metadata, rewritten with all stages
     man_spec = table("l0_manifest")
     man_path = root / "l0/l0_manifest.parquet"
     man = pa.Table.from_pylist(manifest_rows, schema=man_spec.schema)
@@ -227,19 +255,36 @@ class SeqStore:
 
     `seq_locator` maps a raw_digest to its shard; the shard's `.fai` and `.gzi` find the
     blocks. `counters()` sums blocks decompressed and bytes read over all shards (LY-06).
+
+    Nothing is loaded on open but the Parquet footers of the two indexes: `locator` (by
+    `raw_digest`) and `index` (`contig_index` by `contig_uid`) are `KeyLookup`s that read one
+    row group per key, with an LRU of `cache_row_groups` decoded row groups each. An unknown
+    key raises KeyError.
     """
 
-    def __init__(self, root: Path, cache_blocks: int = 64):
+    def __init__(self, root: Path, cache_blocks: int = 64, cache_row_groups: int = 64):
         self.root = Path(root)
-        loc = pq.read_table(self.root / "l0seq/seq_locator.parquet")
-        self._loc: dict[bytes, tuple[str, int]] = dict(zip(
-            loc.column("raw_digest").to_pylist(),
-            zip(loc.column("shard").to_pylist(), loc.column("contig_len").to_pylist())))
-        idx = _existing_index(self.root)
-        self._default: dict[bytes, bytes] = {
-            r["contig_uid"]: r["raw_digest"] for r in idx.to_pylist() if r["is_default_variant"]}
+        self.locator_files = locator_files(self.root)
+        if not self.locator_files:
+            raise FileNotFoundError(f"{self.root / LOCATOR_DIR}: no seq_locator files")
+        self.index_files = index_files(self.root)
+        self.locator = KeyLookup(self.locator_files, "raw_digest", ["shard", "contig_len"], cache_row_groups)
+        self.index = KeyLookup(self.index_files, "contig_uid", ["raw_digest", "is_default_variant"], cache_row_groups)
         self._cache_blocks = cache_blocks
         self._shards: dict[str, BgzfFasta] = {}
+
+    def _where(self, rd: bytes) -> tuple[str, int]:
+        rows = self.locator.get(rd)
+        if not rows:
+            raise KeyError(rd)
+        return rows[0]["shard"], rows[0]["contig_len"]
+
+    def default_digest(self, contig_uid: bytes) -> bytes:
+        """raw_digest of the contig's default variant."""
+        for r in self.index.get(contig_uid):
+            if r["is_default_variant"]:
+                return r["raw_digest"]
+        raise KeyError(contig_uid)
 
     def _shard(self, rel: str) -> BgzfFasta:
         if rel not in self._shards:
@@ -247,7 +292,7 @@ class SeqStore:
         return self._shards[rel]
 
     def shard_of(self, rd: bytes) -> str:
-        return self._loc[rd][0]
+        return self._where(rd)[0]
 
     def counters(self) -> dict[str, int]:
         s = self._shards.values()
@@ -260,11 +305,11 @@ class SeqStore:
             b.close()
 
     def length_of(self, rd: bytes) -> int:
-        return self._loc[rd][1]
+        return self._where(rd)[1]
 
     def raw(self, rd: bytes, start: int = 0, end: int | None = None) -> bytes:
         """Forward-strand bytes of one stored variant."""
-        rel, length = self._loc[rd]
+        rel, length = self._where(rd)
         end = length if end is None else end
         if not 0 <= start <= end <= length:
             raise ValueError(f"slice {start}:{end} outside 0:{length}")
@@ -274,7 +319,7 @@ class SeqStore:
         self, contig_uid: bytes, start: int = 0, end: int | None = None, strand: int = 1, circular: bool = False
     ) -> bytes:
         """Slice the default variant. On a circular contig `end` may exceed the length (origin wrap)."""
-        rd = self._default[contig_uid]
+        rd = self.default_digest(contig_uid)
         n = self.length_of(rd)
         if circular and end is not None and end > n:
             if not 0 <= start < n < end <= start + n:

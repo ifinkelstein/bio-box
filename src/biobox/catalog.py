@@ -507,9 +507,9 @@ def open_catalog(path: Path, local_dir: Path | None = None, threads: int | None 
     con = duckdb.connect(str(path), read_only=True, config=config)
     if root is None:
         root = Path(con.execute("SELECT value FROM catalog_info WHERE key = 'root'").fetchall()[0][0])
-    from biobox.l0seq.store import SeqStore
+    from biobox.l0seq.store import SeqStore, has_sequences
 
-    store = SeqStore(root, cache_blocks) if (Path(root) / "l0seq/seq_locator.parquet").exists() else None
+    store = SeqStore(root, cache_blocks) if has_sequences(Path(root)) else None
     _register_seq_udf(con, store)
     _READERS[id(con)] = store
     attach_search(con, Path(root))

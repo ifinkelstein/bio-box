@@ -23,7 +23,7 @@ from pathlib import Path
 import duckdb
 import pyarrow.parquet as pq
 
-from biobox.l0seq.bgzf import block_starts, read_fai, read_gzi
+from biobox.l0seq.bgzf import BgzfFasta, block_starts, read_fai, read_gzi
 from biobox.registry.schemas import ARTIFACTS, TABLES
 
 NFS_MIN_BYTES = 64 * 2**20
@@ -198,8 +198,10 @@ def check_shards(manifest: dict) -> list[str]:
     for shard in shards:
         fai = read_fai(root / (shard + ".fai"))
         names = [e.name for e in fai]
-        if names != sorted(names):
+        bg = BgzfFasta(root / shard)
+        if not bg.check_sorted():  # the readers bisect the .fai, so its names must increase
             problems.append(f"{shard}: records not sorted by raw_digest (LY-02)")
+        bg.close()
         stage = shard.split("/")[-2]
         if names and last_by_stage.get(stage, "") >= names[0]:
             problems.append(f"{shard}: first record sorts before the previous shard's last (LY-02)")
@@ -339,7 +341,7 @@ def check_append_only(before: dict, after: dict) -> list[str]:
     problems = []
     for f in before["files"] + before.get("artifacts", []):
         if "table" in f and TABLES[f["table"]].small_ok:
-            continue  # small metadata files (seq_locator, l0_manifest) are rewritten per stage by design
+            continue  # small metadata files (l0_manifest) are rewritten per stage by design
         if later.get(f["path"]) != f["sha256"]:
             problems.append(f"{f['path']}: {'removed' if f['path'] not in later else 'rewritten'}")
     return problems
