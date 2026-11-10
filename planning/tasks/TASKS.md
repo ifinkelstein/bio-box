@@ -331,6 +331,64 @@ Do: launch, pause (`STOP`), resume, cancel a search, clean `/tmp`, who to email,
 
 ---
 
+## Phase W. One-command discovery workflow
+
+From the walk-through in [`planning/measurements/2026-11-09_ssrnap_workflow/`](../measurements/2026-11-09_ssrnap_workflow/README.md):
+mining single-subunit RNA polymerases with a custom HMM worked in about 30 s of compute but needed
+150 lines of ad hoc code, and the recipe runner stopped in six places. These cards close that gap.
+They do not depend on phase B, except where noted; cards that touch slot keys wait for B-16.
+
+### W-01 Pack build survives genetic code 15
+**L** · Depends: none
+Files: `src/biobox/search/orfs.py`, `tests/r1/test_search_units.py`, `tests/r2/test_micro_s0_search.py`
+Background: `orfs._translate` calls `pyhmmer.easel.GeneticCode(15)`, which does not exist; 61 phage contigs carry code 15 (TAG read as Gln) and the dark-ORF stage crashes.
+Do: translate code 15 as table 11 with TAG → Q (a small explicit table, tested against a hand-written oracle); any other code pyhmmer lacks is a clear error naming the code and the contig, raised before the build starts.
+Accept: a fixture contig with code 15 builds a pack; the translation test passes.
+
+### W-02 A user's HMM file as a seed
+**M** · Depends: none
+Files: `src/biobox/search/recipe.py`, `src/biobox/search/runner.py`, `src/biobox/search/worker.py`, `src/biobox/search/engine.py`, tests
+Do: a seed kind `hmm_file` (path; the file's sha256 and the model's name, accession and length are recorded in `search_run`); the recipe hash covers the file's sha256, not its path. A seed kind `sequences` (FASTA of seeds) that builds a profile by aligning the seeds to a single-sequence profile of the first seed and running the builder, as the walk-through did.
+Accept: the Pfam `RNA_pol` model given as a file returns the same hits as the same model named from a library; a moved copy of the file gives the same recipe hash.
+
+### W-03 Pack and runs outside the data root
+**M** · Depends: none
+Files: `src/biobox/search/pack.py`, `src/biobox/search/runner.py`, `src/biobox/cli.py`, `src/biobox/catalog.py` (`attach_search`), tests
+Do: the pack is built once per release as a step of `build-stage` (card C-04) into `search_pack/release=<R>/` and is read-only afterwards; a run's output directory is `--out DIR` (default: a per-user directory from the host profile, never the data root), and `attach_search` takes a list of run directories.
+Accept: a full run against a read-only store root succeeds and writes nothing under it.
+
+### W-04 Worker threads, exit and kill labelling
+**M** · Depends: C-05
+Files: `src/biobox/search/worker.py`, `src/biobox/search/runner.py`, tests
+Do: the worker sets the Arrow CPU and I/O pools, OpenMP and DuckDB threads to the run's CPU limit before importing anything that starts a pool; any uncaught exception ends the process with a non-zero exit (no hang); a SIGKILL that the runner did not send and that the cgroup does not report as an out-of-memory kill is recorded as `failed`, not `oom`.
+Accept: the thread count of a worker with `cpus=2` on a many-core host stays under 16 (measured in a test through `/proc` or `psutil`); an injected exception in round 2 of an iterative run ends the run as `failed` within seconds.
+
+### W-05 Exports a person can open
+**M** · Depends: B-16
+Files: `src/biobox/search/export.py`, `src/biobox/cli.py`, `tests/registry/json_schema_lock.json` (version bump), tests
+Do: `bio-box search hits <run> --format tsv|faa` with one row per gene: accession, header, contig length, start, end, strand, protein length, bitscore, E-value at the reference Z, NR90 and NR50 cluster ids, the gene's Pfam architecture. `bio-box nbr <run> --format tsv` writes one table per locus. Scores rounded to one decimal. `bio-box export proteins --release R` writes the distinct proteins as FASTA named by protein uid.
+Accept: the walk-through's `hits.tsv` is reproduced by one command; S-13 passes with the bumped schema version.
+
+### W-06 Neighbor summary
+**M** · Depends: B-11
+Files: `src/biobox/search/nbr.py`, `src/biobox/cli.py`, tests
+Do: `bio-box nbr summarize <run> --window 5g --by pfam,nr50`: per neighbor family or cluster, the number and share of loci, the offsets it occurs at, the number of genomes, and for clusters with no domain the representative's length. Computed from postings and tapes.
+Accept: on the fixture, counts equal a brute-force loop over tapes.
+
+### W-07 One command
+**M** · Depends: W-02, W-03, W-05, W-06
+Files: `src/biobox/cli.py`, `RUNBOOK.md`, tests
+Do: `bio-box search hmm --hmm FILE --release R --bits 30 --neighbors 5 --out DIR` writes the recipe it ran, the hit table, the FASTA, the neighbor summary and per-locus tables into `DIR`. A positive control may be given as `--positive ACCESSION:START-END` or a header substring, resolved to a protein uid; without one the command refuses, as the runner does.
+Accept: the walk-through's result (1,931 proteins for Pfam `RNA_pol` at 30 bits on `rS1.pilot1`) is reproduced by this one command on the pod (Pod: yes).
+
+### W-08 Small recipe and alarm fixes
+**L** · Depends: none
+Files: `src/biobox/search/recipe.py`, `src/biobox/search/worker.py`, tests
+Do: the shorthand `{protein_uid: X, label: ...}` for a positive control is accepted; the drift alarm writes a warning into `warnings_json` when no domain table exists instead of evaluating against nothing; a catalog view `contig_label` gives one accession and header per contig (`contig_occurrence` has several rows per contig).
+Accept: tests for each.
+
+---
+
 ## Phase D. Test strength
 
 ### D-01 Mutation testing in the repo
