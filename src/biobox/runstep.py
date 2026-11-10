@@ -99,17 +99,30 @@ def choose_threads(prof: Profile, now: datetime, load1: float) -> int:
     return cap
 
 
-def build_argv(cmd: Sequence[str], nice: int, mem_scope: str, *, system: str | None = None,
-               which: Callable[[str], str | None] = shutil.which) -> list[str]:
-    """The argv that runs `cmd`: in a memory-capped systemd scope on Linux when `systemd-run`
-    exists, else under `nice` when it exists, else bare."""
+def scope_argv(cmd: Sequence[str], nice: int, *, mem_max: str | None, cpu_quota: int | None = None,
+               system: str | None = None, which: Callable[[str], str | None] = shutil.which
+               ) -> tuple[list[str], str]:
+    """The argv that runs `cmd` under a host's limits, and which way it does ("scope", "nice" or
+    "bare"). On Linux with `systemd-run`: a transient user scope (`MemoryMax=<mem_max>` when
+    given, `CPUQuota=<cpu_quota>%` when given) at `nice`; systemd-run and nice exec the command,
+    so it keeps the caller's pid, session and rlimits. Else under the `nice` binary when it
+    exists, else bare (the caller sets its own niceness then). Shared by run-step and the
+    search runner (card C-05)."""
     system = platform.system() if system is None else system
     if system == "Linux" and which("systemd-run"):
-        return ["systemd-run", "--user", "--scope", "--quiet", "-p", f"MemoryMax={mem_scope}",
-                "nice", "-n", str(nice), *cmd]
+        props = [] if mem_max is None else ["-p", f"MemoryMax={mem_max}"]
+        props += [] if cpu_quota is None else ["-p", f"CPUQuota={cpu_quota}%"]
+        return ["systemd-run", "--user", "--scope", "--quiet", *props, "nice", "-n", str(nice), *cmd], "scope"
     if which("nice"):
-        return ["nice", "-n", str(nice), *cmd]
-    return list(cmd)
+        return ["nice", "-n", str(nice), *cmd], "nice"
+    return list(cmd), "bare"
+
+
+def build_argv(cmd: Sequence[str], nice: int, mem_scope: str, *, system: str | None = None,
+               which: Callable[[str], str | None] = shutil.which) -> list[str]:
+    """The argv that runs a step command: in a memory-capped systemd scope on Linux when
+    `systemd-run` exists, else under `nice` when it exists, else bare (`scope_argv`)."""
+    return scope_argv(cmd, nice, mem_max=mem_scope, system=system, which=which)[0]
 
 
 def _err(msg: str) -> None:

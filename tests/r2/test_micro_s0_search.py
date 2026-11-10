@@ -1492,6 +1492,79 @@ def test_runner_lock_is_held_before_the_pending_record_is_visible_and_status_fre
     assert runner.status(root, rid)["status"] == "stopped"
 
 
+# --- W-04: worker threads, exit and kill labelling ------------------------------------------------------
+
+
+@pytest.mark.covers("W-04", "S-06")
+def test_w04_worker_thread_pools_follow_the_runs_cpu_limit(world, record_property):
+    import os
+
+    root, d, _ = world
+    hit, _ = _seed(root)
+    row = runner.run(root, _recipe(hit, hit, tool="jackhmmer", mx=3), REL, work_base=d / "work",
+                     limits=runner.Limits(cpus=2, wall_s=120), keep_work=True)
+    assert row["status"] == "ok", row["error"]
+    t = json.loads((d / "work" / row["run_id"].hex() / "out" / "result.json").read_text())["threads"]
+    for k in ("python_peak", "os_peak", "arrow_cpu_count", "arrow_io_thread_count"):
+        record_property(f"worker_{k}", t[k])
+    record_property("host_cpu_count", os.cpu_count())
+    assert t["cpus"] == 2
+    assert (t["arrow_cpu_count"], t["arrow_io_thread_count"]) == (2, 2)
+    assert t["env"] == {v: "2" for v in ("OMP_NUM_THREADS", "OPENBLAS_NUM_THREADS", "MKL_NUM_THREADS",
+                                          "POLARS_MAX_THREADS", "ARROW_IO_THREADS")}
+    assert t["python_peak"] >= 1 and t["samples"] >= row["rounds"]
+    if platform.system() == "Linux":
+        assert t["os_peak"] is not None and t["os_peak"] >= t["python_peak"]
+    if (os.cpu_count() or 1) >= 8:  # a host-sized pool would show here
+        assert t["python_peak"] < 16
+        if platform.system() == "Linux":  # /proc/self/status counts native threads too; skipped elsewhere
+            assert t["os_peak"] < 16, t
+
+
+@pytest.mark.covers("W-04", "S-05")
+@pytest.mark.parametrize("fault,last_line", [
+    ("round2", "RuntimeError: injected in round 2"),
+    ("round2_thread", "RuntimeError: injected in a worker thread in round 2"),
+])
+def test_w04_an_exception_in_round_2_ends_the_run_failed_within_seconds(placed, fault, last_line, record_property):
+    """In the main thread, or in a thread whose caller then waits on it forever (a pool that lost a
+    worker): the process ends at once, non-zero, with its traceback; no hits from round 1 survive."""
+    root, d, w = placed
+    row = runner.run(root, _trap_recipe(w), "rSyn", work_base=d / "work", limits=runner.Limits(cpus=2, wall_s=60),
+                     fault=fault, keep_work=True)
+    record_property("run_wall_s", row["wall_s"])
+    assert row["status"] == "failed", row["error"]
+    assert row["error"].endswith(last_line), row["error"]
+    assert row["wall_s"] < 20
+    assert sorted(p.name for p in runner.run_dir(root, row["run_id"]).iterdir()) == ["run.parquet"]
+    assert runner.read_hits(root, row["run_id"].hex()) == []
+    work = d / "work" / row["run_id"].hex()
+    assert (work / "out" / "hits.parquet").exists()  # round 1 was written: the fault came after it
+    err = (work / "stderr.txt").read_text()
+    assert "Traceback" in err and err.strip().splitlines()[-1] == last_line
+    assert not _alive(int((work / "worker.pid").read_text()))
+
+
+@pytest.mark.covers("W-04", "S-05")
+def test_w04_a_sigkill_from_outside_is_failed_not_oom(world, tmp_path):
+    import os
+    import signal
+
+    root, d, _ = world
+    hit, _ = _seed(root)
+    rec = tmp_path / "r.yaml"
+    rec.write_text(_recipe(hit, hit))
+    work = tmp_path / "work"
+    rid = runner.submit(root, rec, REL, runner.Limits(cpus=1, wall_s=300), work, fault="timeout")
+    assert _wait_for(lambda: (work / rid / "worker.pid").exists())
+    os.kill(int((work / rid / "worker.pid").read_text()), signal.SIGKILL)
+    assert _wait_for(lambda: runner.status(root, rid)["status"] != "running")
+    st = runner.status(root, rid)
+    assert st["status"] == "failed", st
+    assert "signal 9" in st["error"] and "outside" in st["error"]
+    assert sorted(p.name for p in runner.run_dir(root, rid).iterdir()) == ["run.parquet"]
+
+
 # --- C-03 and C-08 for search outputs -----------------------------------------------------------------
 
 
