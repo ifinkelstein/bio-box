@@ -10,7 +10,6 @@ import gzip
 import hashlib
 import os
 import shutil
-import time
 from collections import Counter
 from pathlib import Path
 
@@ -19,10 +18,9 @@ import pytest
 import yaml
 
 from biobox import catalog, contracts, fasta, ids, ledger, provenance
-from biobox.l0seq import SeqStore, SourceObject, ingest
-from biobox.l1 import igr
-from biobox.l3 import postings, tapes, tokens
-from biobox.l1.genecall import GENE_CALL_VERSION, GenomeInput, call_genome, run
+from biobox.l0seq import SeqStore
+from biobox.l3 import tokens
+from biobox.l1.genecall import GENE_CALL_VERSION, GenomeInput, call_genome
 from oracles.pairs_oracle import K_MAX, pairs_of_contig
 
 pytestmark = pytest.mark.r3
@@ -65,27 +63,6 @@ def _input(entry, code=None, kind=None):
     uids = tuple(ids.contig_uid(r.seq) for r in recs)
     circ = tuple(u for u, spec in zip(uids, entry["records"]) if spec["topology"] == "circular")
     return GenomeInput(uids, code or entry["genetic_code"], kind=kind or entry["kind"], circular=circ)
-
-
-@pytest.fixture(scope="module")
-def store_root(tmp_path_factory):
-    root = tmp_path_factory.mktemp("golden")
-    objs = [SourceObject(DIR / LOCK["files"][e["id"]]["path"], "golden", str(GOLDEN["version"])) for e in GOLDEN["genomes"]]
-    t0 = time.perf_counter()
-    ingest(objs, root, "S0")
-    t1 = time.perf_counter()
-    inputs = [_input(e) for e in GOLDEN["genomes"]]
-    report = run(root, "S0", inputs)
-    t2 = time.perf_counter()
-    igrs = igr.run(root, "S0", {u for gi in inputs for u in gi.circular})
-    tp = tapes.run(root, "S0", {u for gi in inputs for u in gi.circular})
-    print(f"\ngolden: ingest {t1 - t0:.1f}s, gene calling {t2 - t1:.1f}s, {report}, igr {igrs}, tapes {tp}")
-    if shutil.which("mmseqs"):
-        from biobox.l2 import cluster
-        cluster.run(root, "rS0.golden", GENE_CALL_VERSION, threads=4, tmp=root.parent)
-        tokens.run(root, "rS0.golden")
-        print("postings", postings.run(root, "rS0.golden"))
-    return root
 
 
 def test_files_match_lock():
