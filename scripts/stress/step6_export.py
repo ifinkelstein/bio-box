@@ -1,11 +1,13 @@
-"""Step 6, laptop side: export every gene slice of the built golden store for an independent check.
+"""Step 6, export side: every gene slice of the built golden store, for an independent check.
 
     python step6_export.py ROOT OUT_DIR
 
 Writes regions_plus.txt / regions_minus.txt (samtools region strings on the shard's record names),
 expected_plus.tsv / expected_minus.tsv (sha256 of the bytes bio-box returns for each region, same
-order) and genes.tsv (accession, start, end, strand, 0-based half-open) for the gene-call comparison.
-Origin-wrapping genes are listed in genes.tsv but left out of the slice files.
+order) and genes.tsv (accession, start, end, strand, contig length, feature_uid hex; 0-based
+half-open) for the gene-call comparison. Genes are read from `feature_protein` and ordered by
+(accession, start, end, strand); each is named by its `feature_uid`, never by a position (card B-18,
+AGENTS §3.3). Origin-wrapping genes are listed in genes.tsv but left out of the slice files.
 """
 
 import hashlib
@@ -25,20 +27,20 @@ if len(sys.argv) < 3 or sys.argv[1] in ("-h", "--help"):
 root, out = Path(sys.argv[1]), Path(sys.argv[2])
 out.mkdir(parents=True, exist_ok=True)
 store = SeqStore(root)
-occ = [r for f in io.part_files(root / f"l1/protein_occurrence/gene_call_version={GENE_CALL_VERSION}/stage=S0")
-       for r in pq.read_table(f).to_pylist()]
+genes_in = [r for f in io.part_files(root / f"l1/feature_protein/gene_call_version={GENE_CALL_VERSION}/stage=S0")
+            for r in pq.read_table(f, columns=["contig_uid", "feature_uid", "start", "end", "strand"]).to_pylist()]
 co = [r for f in io.part_files(root / "l0seq/contig_occurrence", "stage=S0/source=*/part-*.parquet")
       for r in pq.read_table(f).to_pylist()]
 acc = {r["contig_uid"]: r["accession"] for r in co}
-occ.sort(key=lambda r: (acc[r["contig_uid"]], r["slot_ordinal"]))
+genes_in.sort(key=lambda r: (acc[r["contig_uid"]], r["start"], r["end"], r["strand"]))
 files = {s: (open(out / f"regions_{n}.txt", "w"), open(out / f"expected_{n}.tsv", "w")) for s, n in ((1, "plus"), (-1, "minus"))}
 n = wraps = 0
 with open(out / "genes.tsv", "w") as genes:
-    for r in occ:
+    for r in genes_in:
         cu = r["contig_uid"]
         rd = store.default_digest(cu)
         length = store.length_of(rd)
-        genes.write(f"{acc[cu]}\t{r['start']}\t{r['end']}\t{r['strand']}\t{length}\n")
+        genes.write(f"{acc[cu]}\t{r['start']}\t{r['end']}\t{r['strand']}\t{length}\t{r['feature_uid'].hex()}\n")
         if r["end"] > length:
             wraps += 1
             continue
@@ -50,4 +52,4 @@ with open(out / "genes.tsv", "w") as genes:
 for a, b in files.values():
     a.close()
     b.close()
-print(f"genes {len(occ)}, slices exported {n}, origin-wrapping skipped {wraps}")
+print(f"genes {len(genes_in)}, slices exported {n}, origin-wrapping skipped {wraps}")

@@ -1,94 +1,161 @@
-"""Step 4: what changes when one ncRNA slot is added and one gene is split into two segment slots.
+"""Step 4: what changes when one ncRNA feature is added to E. coli K-12 (measurements file section 4).
 
-    python step4_keys.py ROOT
+    python step4_keys.py ROOT SCRATCH RELEASE > keys.json
 
-Uses the built golden store (E. coli K-12 chromosome) and the repo's own igr/tape/pair functions on
-the modified slot list. Rows are compared twice: under the current key (contig_uid, slot_ordinal)
-and under a coordinate key (contig_uid, start, end, strand, kind).
+ROOT is a golden store built by `build_s0.py ... RELEASE --cluster N` (stage A, genome inputs,
+clusters, tokens and postings of RELEASE for the gene-call producer alone). SCRATCH must not exist; the
+script copies ROOT to SCRATCH/after (without its manifests and catalog, and without
+`l3/token_dict/release=RELEASE`, which the second token build writes again) and never writes under ROOT.
+
+In the copy it adds one kind-2 (ncRNA) feature as a second producer `b18-ncrna`, 377 nt on the minus
+strand, 60 nt into the first IGR of at least 500 nt at or after 3.27 Mb (the same place as the
+2026-11-09 measurement), and runs the repo's own builders for the tape version of both producers:
+`igr.run`, `tapes.run`, `tokens.run` and `postings.run`. Then every table is compared before (tape
+version of the gene caller alone) and after (both producers), twice: keyed as the registry keys it
+(by `feature_uid`, card B-17), and keyed by the slot's ordinal, the key phase B removed. A row is
+"rewritten" when its key is gone or any of its other columns changed.
 """
 
 import json
+import shutil
 import sys
 from pathlib import Path
 
-import pyarrow.parquet as pq
-
-from biobox import io
-from biobox.l1.genecall import GENE_CALL_VERSION
-from biobox.l1.igr import igrs_of_contig
-from biobox.l3.tapes import build_tape
-
-# the pair enumeration lives on as the test oracle since card B-11 removed the materialized pairs
-sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "tests"))
-from oracles.pairs_oracle import pairs_of_contig  # noqa: E402
-
-if len(sys.argv) < 2 or sys.argv[1] in ("-h", "--help"):
+if len(sys.argv) < 4 or sys.argv[1] in ("-h", "--help"):
     print(__doc__)
     sys.exit(0 if sys.argv[1:2] in (["-h"], ["--help"]) else 2)
 
-root = Path(sys.argv[1])
-occ = [r for f in io.part_files(root / f"l1/protein_occurrence/gene_call_version={GENE_CALL_VERSION}/stage=S0")
-       for r in pq.read_table(f).to_pylist()]
-idx = {r["contig_uid"]: r["contig_len"] for f in io.part_files(root / "l0seq/contig_index/stage=S0")
-       for r in pq.read_table(f).to_pylist()}
+import pyarrow as pa  # noqa: E402
+import pyarrow.parquet as pq  # noqa: E402
+
+from biobox import catalog, ids, io  # noqa: E402
+from biobox.l1 import igr  # noqa: E402
+from biobox.l1.genecall import GENE_CALL_VERSION as V  # noqa: E402
+from biobox.l3 import postings, tapes, tokens  # noqa: E402
+from biobox.registry.schemas import table  # noqa: E402
+
+root, scratch, rel = Path(sys.argv[1]), Path(sys.argv[2]), sys.argv[3]
+if scratch.exists():
+    sys.exit(f"{scratch}: exists; give a fresh directory")
+NEW = "b18-ncrna"
+P1, P2 = [V], [V, NEW]
+STAGES = catalog.release_stages(root, rel)  # the release names its stages (card B-25)
+TV1, TV2 = tapes.tape_version(P1), tapes.tape_version(P2)
+after = scratch / "after"
+
+
+def rows(base: Path, pattern: str, columns=None) -> list[dict]:
+    return [r for f in io.part_files(base, pattern) for r in pq.read_table(f, columns=columns, partitioning=None).to_pylist()]
+
+
+# --- the copy and the new feature ----------------------------------------------------------------
+shutil.copytree(root, after, ignore=lambda d, names: [n for n in names if Path(d) == root and n in ("manifests", "catalog")])
+shutil.rmtree(after / f"l3/token_dict/release={rel}")
+idx = {r["contig_uid"]: r["contig_len"] for r in rows(root / "l0seq/contig_index", "stage=S0/part-*.parquet")}
 ecoli = next(cu for cu, n in idx.items() if n == 4_641_652)
-L = idx[ecoli]
-base = sorted((r for r in occ if r["contig_uid"] == ecoli), key=lambda r: r["slot_ordinal"])
-# features as (start, end, strand, kind, token-key); kind 1 CDS, 2 ncRNA, 3 segment
-feats0 = [(r["start"], r["end"], r["strand"], 1, r["protein_uid"].hex()) for r in base]
-
-# (a) one 377-nt ncRNA in the first IGR >= 500 nt at or after 3.27 Mb
-igr0 = igrs_of_contig([(i, f[0], f[1]) for i, f in enumerate(feats0)], L, True)
-s, e, _, _ = next(g for g in igr0 if g[0] >= 3_270_000 and g[1] - g[0] >= 500)
-nc = (s + 60, s + 60 + 377, -1, 2, "ncRNA:new")
-# (b) the longest protein split at its midpoint (in-frame) into two segment slots
-longest = max(range(len(feats0)), key=lambda i: feats0[i][1] - feats0[i][0])
-gs, ge, gstr, _, gkey = feats0[longest]
-mid = gs + ((ge - gs) // 6) * 3
-segs = [(gs, mid, gstr, 3, gkey + ":seg0"), (mid, ge, gstr, 3, gkey + ":seg1")]
+igr1 = rows(root / f"l0seq/igr/igr_version={igr.igr_version(P1)}", "stage=S0/part-*.parquet")
+target = next(g for g in sorted(igr1, key=lambda g: g["start"])
+              if g["contig_uid"] == ecoli and g["start"] >= 3_270_000 and g["end"] - g["start"] >= 500)
+s, e, strand, kind = target["start"] + 60, target["start"] + 60 + 377, -1, ids.KIND["ncrna"]
+fu = ids.feature_uid(ecoli, s, e, strand, kind)
+spec = table("feature")
+io.write_table([pa.RecordBatch.from_pylist([{"feature_uid": fu, "contig_uid": ecoli, "start": s, "end": e, "strand": strand,
+                                              "kind": kind}], schema=spec.schema)],
+               spec, after / f"l1/feature/producer={NEW}/stage=S0/part-0.parquet")
+built = {"igr": igr.run(after, "S0", producers=P2), "tapes": tapes.run(after, "S0", producers=P2),
+         "tokens": tokens.run(after, rel, STAGES, producers=P2), "postings": postings.run(after, rel, STAGES, producers=P2)}
 
 
-def world(feats):
-    feats = sorted(feats, key=lambda f: (f[0], f[1], f[2]))
-    slots = [(f[0], f[1], f[2]) for f in feats]
-    tape = build_tape(slots, L, True)
-    tape.update(contig_uid=ecoli, is_circular=True, contig_len=L, tier=1)
-    toks = {k: i for i, k in enumerate(sorted({f[4] for f in feats}))}
-    t = [toks[f[4]] for f in feats]
-    tk = {"family": [None] * len(feats), "nr50": [None] * len(feats), "nr90": t}  # one level; x3 at most
-    pairs = pairs_of_contig(tape, tk)
-    igrs = igrs_of_contig([(i, f[0], f[1]) for i, f in enumerate(feats)], L, True)
-    return feats, pairs, igrs
+# --- comparison ----------------------------------------------------------------------------------
+def diff(a: dict, b: dict) -> dict:
+    """a, b: key -> rest of the row. Rewritten: key gone or row changed."""
+    same = sum(1 for k, v in a.items() if k in b and b[k] == v)
+    return {"before": len(a), "after": len(b), "unchanged": same, "rewritten": len(a) - same,
+            "new": sum(1 for k in b if k not in a)}
 
 
-def diff(a: set, b: set) -> dict:
-    return {"before": len(a), "after": len(b), "unchanged": len(a & b), "removed_or_rewritten": len(a - b), "new": len(b - a)}
+def tape_slots(tape_rows: list[dict], tok_rows: list[dict], by_feature: bool) -> tuple[dict, dict]:
+    """Slot entries of the tapes (all list columns) and of the tape tokens, keyed by feature_uid or ordinal."""
+    lists = [c for c in table("contig_tapes").list_columns if c != "feature_uids"]
+    toks = {r["contig_uid"]: r for r in tok_rows}
+    slots, tslots = {}, {}
+    for t in tape_rows:
+        k = toks[t["contig_uid"]]
+        for i, f in enumerate(t["feature_uids"]):
+            key = (t["contig_uid"], f) if by_feature else (t["contig_uid"], i)
+            rest = tuple((t[c] or [None] * t["n_slots"])[i] for c in lists)
+            slots[key] = rest + ((i,) if by_feature else (f,))
+            tslots[key] = tuple(k[f"{lvl}_tokens"][i] for lvl in tokens.LEVELS) + ((i,) if by_feature else (f,))
+    return slots, tslots
 
 
-def tables(feats, pairs, igrs, coord_key: bool):
-    def sk(i):  # slot key
-        f = feats[i]
-        return (f[0], f[1], f[2], f[3]) if coord_key else i
+def snapshot(base: Path, producers: list[str], tv: str) -> dict:
+    return {
+        "feature": rows(base / "l1/feature", "producer=*/stage=S0/part-*.parquet"),
+        "feature_protein": rows(base / f"l1/feature_protein/gene_call_version={V}", "stage=S0/part-*.parquet"),
+        "protein_occurrence": rows(base / f"l1/protein_occurrence/gene_call_version={V}", "stage=S0/part-*.parquet"),
+        "igr": rows(base / f"l0seq/igr/igr_version={igr.igr_version(producers)}", "stage=S0/part-*.parquet"),
+        "tapes": rows(base / f"l3/tapes/tape_version={tv}", "stage=S0/part-*.parquet"),
+        "tape_tokens": rows(base / f"l3/tape_tokens/tape_version={tv}", f"release={rel}/part-*.parquet"),
+        "token_dict": rows(base / "l3/token_dict", f"release={rel}/part-*.parquet"),
+        "token_postings": rows(base / "l3/token_postings", f"release={rel}/tape_version={tv}/token_bucket=*/part-*.parquet"),
+    }
 
-    slot_rows = {(sk(i), f[4]) for i, f in enumerate(feats)}  # slot_protein / protein_occurrence / tape entry
-    igr_rows = {(g[0], g[1], None if g[2] is None else sk(g[2]), None if g[3] is None else sk(g[3])) for g in igrs}
-    pair_rows = {(sk(p["anchor_ordinal"]), sk(p["partner_ordinal"]), p["orf_offset"], p["junction_topology"], p["delta_bp"],
-                  p["flags"]) for p in pairs}
-    pair_keys = {(sk(p["anchor_ordinal"]), sk(p["partner_ordinal"])) for p in pairs}
-    return {"slot rows (slot_protein, protein_occurrence, tape list entries)": slot_rows, "igr rows (left_slot/right_slot)": igr_rows,
-            "slot_pairs rows, one token level": pair_rows, "slot_pairs primary keys, one token level": pair_keys}
+
+b0, b1 = snapshot(root, P1, TV1), snapshot(after, P2, TV2)
+out = {"contig": "E. coli K-12 MG1655 chromosome", "contig_is_circular": next(t["is_circular"] for t in b0["tapes"]
+                                                                               if t["contig_uid"] == ecoli),
+       "tape_versions": [TV1, TV2], "ncRNA": {"start": s, "end": e, "strand": strand, "feature_uid": fu.hex()},
+       "ecoli_slots_before": next(t["n_slots"] for t in b0["tapes"] if t["contig_uid"] == ecoli),
+       "built": built, "tables": {}}
+ordinal_new = next(t for t in b1["tapes"] if t["contig_uid"] == ecoli)["feature_uids"].index(fu)
+out["ncRNA"]["ordinal_in_new_tape"] = ordinal_new
+T = out["tables"]
 
 
-w0 = world(feats0)
-out = {"contig": "E. coli K-12 MG1655 chromosome", "slots_before": len(feats0), "ncRNA_at": [nc[0], nc[1]],
-       "ncRNA_ordinal": sorted(feats0 + [nc], key=lambda f: (f[0], f[1], f[2])).index(nc),
-       "split_gene_ordinal": longest, "split_gene_len_bp": ge - gs}
-for name, feats1 in (("add_ncRNA", feats0 + [nc]),
-                     ("split_gene", [f for i, f in enumerate(feats0) if i != longest] + segs),
-                     ("both", [f for i, f in enumerate(feats0) if i != longest] + segs + [nc])):
-    w1 = world(feats1)
-    out[name] = {}
-    for label, ck in (("ordinal_key (current)", False), ("coordinate_key (proposed)", True)):
-        t0, t1 = tables(*w0, ck), tables(*w1, ck)
-        out[name][label] = {k: diff(t0[k], t1[k]) for k in t0}
-print(json.dumps(out, indent=1))
+def keyed(rs: list[dict], key: tuple[str, ...]) -> dict:
+    return {tuple(r[k] for k in key): tuple(v for c, v in sorted(r.items()) if c not in key) for r in rs}
+
+
+T["feature (feature_uid; all producers)"] = diff(keyed(b0["feature"], ("feature_uid", "contig_uid")),
+                                                  keyed(b1["feature"], ("feature_uid", "contig_uid")))
+for name in ("feature_protein", "protein_occurrence"):
+    T[f"{name} (feature_uid)"] = diff(keyed(b0[name], ("feature_uid",)), keyed(b1[name], ("feature_uid",)))
+T["igr (contig_uid, start, end, strand); flanks by feature_uid"] = diff(
+    keyed(b0["igr"], ("contig_uid", "start", "end", "strand")), keyed(b1["igr"], ("contig_uid", "start", "end", "strand")))
+T["contig_tapes rows (contig_uid)"] = diff(keyed(b0["tapes"], ("contig_uid",)), keyed(b1["tapes"], ("contig_uid",)))
+T["tape_tokens rows (contig_uid)"] = diff(keyed(b0["tape_tokens"], ("contig_uid",)), keyed(b1["tape_tokens"], ("contig_uid",)))
+T["token_dict (token_id)"] = diff(keyed(b0["token_dict"], ("token_id",)), keyed(b1["token_dict"], ("token_id",)))
+for label, by_f in (("feature_uid key (registry)", True), ("ordinal key (pre-phase-B)", False)):
+    s0, k0 = tape_slots(b0["tapes"], b0["tape_tokens"], by_f)
+    s1, k1 = tape_slots(b1["tapes"], b1["tape_tokens"], by_f)
+    # positional columns: delta and junction to the previous slot, distances to the contig ends, and the
+    # ordinal itself when the key is the feature_uid
+    T[f"tape slot entries, all list columns and the {'ordinal' if by_f else 'feature_uid'}, {label}"] = diff(s0, s1)
+    if by_f:
+        T[f"tape slot entries, all list columns without the ordinal, {label}"] = diff(
+            {k: v[:-1] for k, v in s0.items()}, {k: v[:-1] for k, v in s1.items()})
+    T[f"tape slot entries, own coordinates, kind and protein only, {label}"] = diff(
+        {k: v[:4] + v[-2:-1] for k, v in s0.items()}, {k: v[:4] + v[-2:-1] for k, v in s1.items()})
+    T[f"tape_tokens slot entries, {label}"] = diff({k: v[:-1] for k, v in k0.items()} if by_f else k0,
+                                                  {k: v[:-1] for k, v in k1.items()} if by_f else k1)
+pk = ("token_id", "contig_uid", "feature_uid", "seg_idx")
+ok = ("token_id", "contig_uid", "ordinal", "seg_idx")
+T["token_postings, primary key (token_id, contig_uid, feature_uid, seg_idx), all columns"] = diff(
+    keyed(b0["token_postings"], pk), keyed(b1["token_postings"], pk))
+
+
+def without(rs: list[dict], cols: tuple[str, ...]) -> list[dict]:
+    return [{c: x for c, x in r.items() if c not in cols} for r in rs]
+
+
+T["token_postings, primary key, without n_slots"] = diff(
+    keyed(without(b0["token_postings"], ("n_slots",)), pk), keyed(without(b1["token_postings"], ("n_slots",)), pk))
+T["token_postings, primary key, without ordinal and n_slots"] = diff(
+    keyed(without(b0["token_postings"], ("ordinal", "n_slots")), pk), keyed(without(b1["token_postings"], ("ordinal", "n_slots")), pk))
+T["token_postings, ordinal key (token_id, contig_uid, ordinal, seg_idx), all columns"] = diff(
+    keyed(b0["token_postings"], ok), keyed(b1["token_postings"], ok))
+T["token_postings, ordinal key, without n_slots"] = diff(
+    keyed(without(b0["token_postings"], ("n_slots",)), ok), keyed(without(b1["token_postings"], ("n_slots",)), ok))
+T["token_postings rows on the E. coli contig"] = sum(1 for r in b0["token_postings"] if r["contig_uid"] == ecoli)
+print(json.dumps(out, indent=1, default=lambda x: x.hex() if isinstance(x, bytes) else str(x)))

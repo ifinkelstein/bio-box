@@ -1,6 +1,10 @@
 """SeqStore open cost and 1,000 random +-10-gene neighborhood fetches, in a fresh process.
 
-    python store_probe.py ROOT OUT_JSON [--n 1000] [--k 10]
+    python store_probe.py ROOT OUT_JSON [--n 1000] [--k 10] [--release R | --stages S1,P1]
+
+Neighbourhoods are drawn from the tapes of the given stages (card B-25: readers take an explicit stage
+list): `--release` reads them from that release's `release_def`, `--stages` lists them; with neither,
+every stage directory under the gene-call tape version is used and the list is printed in the output.
 """
 
 import argparse
@@ -17,6 +21,9 @@ ap.add_argument("root", type=Path)
 ap.add_argument("out", type=Path)
 ap.add_argument("--n", type=int, default=1000)
 ap.add_argument("--k", type=int, default=10)
+g = ap.add_mutually_exclusive_group()
+g.add_argument("--release", help="take the stages from this release's release_def")
+g.add_argument("--stages", help="comma-separated stage list")
 a = ap.parse_args()
 
 KIB = 1024 if sys.platform == "linux" else 1024 * 1024
@@ -56,7 +63,18 @@ R["default_contigs"] = sum(pc.sum(pq.read_table(f, columns=["is_default_variant"
 R["shards"] = sorted(set(loc.column("shard").to_pylist()))
 del loc
 
-tp = read_tapes(a.root, GENE_CALL_VERSION, ["contig_uid", "contig_len", "n_slots", "start_bps", "end_bps"])
+from biobox import catalog  # noqa: E402
+from biobox.l3.tapes import tape_version  # noqa: E402
+
+if a.release:
+    stages = catalog.release_stages(a.root, a.release)
+elif a.stages:
+    stages = a.stages.split(",")
+else:
+    stages = sorted(d.name.removeprefix("stage=") for d in
+                    (a.root / f"l3/tapes/tape_version={tape_version([GENE_CALL_VERSION])}").glob("stage=*"))
+R["stages"] = stages
+tp = read_tapes(a.root, GENE_CALL_VERSION, ["contig_uid", "contig_len", "n_slots", "start_bps", "end_bps"], stages=stages)
 tp = [t for t in tp if t["n_slots"]]
 cum, tot = [], 0
 for t in tp:

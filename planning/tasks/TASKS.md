@@ -108,6 +108,12 @@ Evidence: `planning/measurements/2026-11-10_postings_bytes.md`. A posting is 35.
 Options: (a) keep every column: a neighbour query needs only postings, no join; (b) drop `start`, `end`, `strand`, `n_slots`, `is_circular`, `contig_len`, which the tape holds: 32.6% smaller (*derived*), and every coordinate or distance question joins the tape; (c) drop only `contig_len`, `n_slots`, `is_circular` (contig attributes, arguably against AGENTS §3.6): 9.4% smaller (*derived*: 3.35 of 35.7), with a join to `contig_dim` or the tape for wrap-around distances only.
 Recommendation of the orchestrating session: (a) for now. 36 GB is small beside Pfam scan cost and sequence shards, and the measured queries are fast because they do not join. Revisit only if a budget is missed.
 
+### 0-05 Two S5 storage budgets are exceeded
+**H** (PI) · Depends: B-18 · Evidence: `planning/measurements/2026-11-10_phase_b_exit.md` (table "Misses")
+At S5 (*derived* from bytes per unit *measured* on the pod): per-genome annotations project to 107 GB against a budget of about 50 GB; tapes plus postings to 75 GB against 25 to 60 GB. The whole S5 store projects to about 497 GB and S6 to about 2.8 TB. The cause is the phase-B decision itself: a 16-byte `feature_uid` beside every gene in `feature`, `feature_protein`, `protein_occurrence`, tapes and postings costs about 144 bytes per gene, about 63 GB at S5.
+Options: (a) raise the two budget lines to the measured values: disk is not the binding constraint on the pod, and stable keys were bought on purpose (DEC-18); (b) carry `feature_uid` in fewer tables and join for it; (c) with card 0-04, slim postings.
+Recommendation of the orchestrating session: (a). Decide with 0-04, before `rS0.1`.
+
 ### 0-03 First-10 questions
 **H** · Depends: none
 Do: the PI signs off or replaces the ten draft questions in `planning/preflight_gaps.md` §3 (DEC-05 said to ask again before the S1 gate). Card G-09 needs Q1.
@@ -333,6 +339,20 @@ Files: `src/biobox/l3/postings.py`, `scripts/stress/synth_scale.py` (a `--slots-
 Evidence (*measured*, wilkcomp02): `postings.run` for release `rL.3` (32,815 contigs, about 21 M slots, of which 5,018 prokaryote contigs hold thousands of slots each) failed after 40 s with `OutOfMemoryException: could not allocate block of size 256.0 KiB (1.8 GiB/1.8 GiB used)` at `con.sql(sql).to_arrow_reader(...)`. It passed at 7.6 M and 8.4 M postings. The query joins whole tape rows to whole token rows, unnests every list by position, and sorts all levels at once inside one 2 GB connection; a spill directory is set, so the operator that holds the memory is one that cannot spill. The B-10 memory test used the 100x synthetic store, whose contigs are fixture-sized, so it never saw long lists.
 Do: (1) reproduce first, small: a synthetic store with prokaryote-like contigs (`--slots-per-contig 5000`) on which the current builder fails under the 2 GB limit; that is the failing test (AGENTS §5.1), at a size that runs in under two minutes. (2) Find the operator with `EXPLAIN ANALYZE` or by bisecting the query; do not guess. (3) Fix without raising the memory limit: for example explode tapes and tokens one tape row group at a time (a row group holds at most 131,072 slots, AGENTS §4.6) into scratch Parquet runs, then let DuckDB sort the flat rows, which does spill. Output bytes must not change on the fixture.
 Accept: the new test passes; the fixture's postings files are byte-identical to before; on the pod, `postings.run` for `rL.3` in `/tmp/if2453/ladder/root` completes inside the 2 GB DuckDB limit, with wall time and peak RSS recorded (the ladder's driver can resume: `planning/measurements/2026-11-10_import_ladder/README.md`, but call the builder through the image with your tree first on the path, not the ladder's old checkout).
+
+### B-31 Catalog macros that do not prune
+**M** · Depends: B-28 (same file) · found by B-18 (`planning/measurements/2026-11-10_phase_b_exit.md`; AGENTS §4.4)
+Files: `src/biobox/catalog.py`, `tests/r2/test_micro_s0_duckdb.py`, `tests/r2/test_scale_layout.py`+
+Evidence (*measured*, wilkcomp02, 2026-11-10, `scripts/stress/synth_scale.py` at 1,000× with `catalog.profile_query`): a key passed through `token_of(...)` (a scalar subquery) is not pushed into the `token_postings` scan, so `token_rows`, `q1_count`, `pairs_of` and `partners_of` read 20 of 20 row groups where the same key through a plain join reads 1; the near side of `partners_of` filters `token_postings` by `contig_uid`, which cannot prune because the table is sorted by `token_id` (TASKS §2 says to read `tape_tokens` there); `default_digest`, `digest_len` and `contig_len_of` read 9 of 9 row groups for a joined key at 10⁶ contigs (`scripts/stress/macro_scan.py`).
+Do: make each of these resolve its key so that the scan prunes: join the key in, or resolve it first and pass a literal, as B-14 did for the sequence macros with a Python UDF. `partners_of` takes its near side from `tape_tokens` by `contig_uid`. Results must not change.
+Accept: test first, on the 100× synthetic store built in the test: each macro above, with a literal key and with keys from a joined table, reads at most 2 row groups per key (`catalog.profile_query`); the existing Q-tests give the same rows.
+
+### B-32 Gene calling of short contigs uses its workers
+**L** · Depends: none · found by B-18
+Files: `src/biobox/l1/genecall.py`, tests, `planning/measurements/<date>_genecall_short_contigs.md`+ · Pod: yes
+Evidence (*measured*, wilkcomp02): the CAMI II sample (1.48 M contigs) took 1,989 s with 8 workers against 2,322 s on one thread, at about 2 CPUs busy; complete prokaryotes run at 12 Mbp/s on 16 workers.
+Do: profile first on a 100,000-contig slice (where does the parent spend its time: reading sequences, pickling, the scratch writer?). Fix what the profile shows, for example by sending workers batches of genomes sized by bases, not one genome at a time. Output bytes must not change.
+Accept: on the slice, 8 workers are at least 4 times faster than 1; the fixture's gene-call files are byte-identical; numbers recorded with labels.
 
 ### B-26 Re-measure postings size and correct its budget
 **L** · Depends: B-17 · Pod: yes

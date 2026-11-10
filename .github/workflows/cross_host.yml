@@ -1,0 +1,22 @@
+name: cross-host
+
+# Card B-18: cross-host equality of the fixture store. This job builds the micro-S0 fixture store with
+# the environment ci.yml sets up (uv.lock, Python 3.14) and prints its manifest hash; the same script
+# runs on wilkcomp02 in the pinned image, and the two hashes must be equal
+# (planning/measurements/2026-11-10_phase_b_exit.md, section 5).
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [plan/task-cards, main]
+
+jobs:
+  fixture-manifest:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v7
+      - uses: astral-sh/setup-uv@v10.3.3
+      - run: uv sync --python 3.14
+      - run: uv run python scripts/stress/build_fixture.py . "$RUNNER_TEMP/fixture_root" rX.fixture > "$RUNNER_TEMP/fixture_report.json"
+      - run: uv run python scripts/stress/show_report.py "$RUNNER_TEMP/fixture_report.json"
+      - run: cat "$RUNNER_TEMP/fixture_report.json"

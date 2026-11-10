@@ -1,17 +1,20 @@
-"""S1 rate pilot on INPHARED: ingest, gene calling (p2, virus, linear), IGRs, tapes, MMseqs2
-clustering, tokens, pair-row counting (plus a 2% pairs sample), manifest. Throwaway.
+"""S1 rate pilot on INPHARED: ingest, genome inputs, gene calling (p2, virus, linear), IGRs, tapes,
+MMseqs2 clustering, tokens, token postings, contig_dim, manifest. Throwaway.
 
-    python pilot.py SRC_FASTA WORKDIR RELEASE [--limit N] [--threads 16] [--step-timeout 10800]
+    python pilot.py SRC_FASTA WORKDIR RELEASE [--limit N] [--threads 16] [--workers 1] [--step-timeout 10800]
+                    [--overhead-n 200] [--resume]
 
-WORKDIR gets root/, mmseqs_tmp/, pairs_sample/, manifest.json and result.json (rewritten after
-every step so a crash leaves partial results).
+WORKDIR gets root/, mmseqs_tmp/, manifest.json and result.json (rewritten after every step so a crash
+leaves partial results). With --resume (what `pilot_resume.py` passes), steps that an earlier process
+finished without error, as recorded in WORKDIR/result.json, are skipped. Card B-18 replaced the
+pre-phase-B steps `pairs_count` and `pairs_sample` (which imported the removed `biobox.l3.pairs` and
+wrote the removed `slot_pairs` table) by the postings builder.
 """
 
 import argparse
 import gzip
 import json
 import platform
-import random
 import resource
 import signal
 import statistics
@@ -30,22 +33,22 @@ ap.add_argument("src", type=Path)
 ap.add_argument("workdir", type=Path)
 ap.add_argument("release")
 ap.add_argument("--limit", type=int, default=0)
-ap.add_argument("--threads", type=int, default=16)
+ap.add_argument("--threads", type=int, default=16, help="MMseqs2 threads")
+ap.add_argument("--workers", type=int, default=1, help="genomes called at once by genecall.run")
 ap.add_argument("--step-timeout", type=int, default=10800)
 ap.add_argument("--overhead-n", type=int, default=200)
-ap.add_argument("--pair-sample", type=float, default=0.02)
+ap.add_argument("--resume", action="store_true", help="skip steps an earlier process finished without error")
 a = ap.parse_args()
 
 import pyrodigal_gv  # noqa: E402
 
-from biobox import catalog, layout  # noqa: E402
+from biobox import catalog, io  # noqa: E402
 from biobox.l0seq import SourceObject, ingest  # noqa: E402
+from biobox.l0seq.inputs import write_genome_input  # noqa: E402
 from biobox.l0seq.store import SeqStore  # noqa: E402
 from biobox.l1 import igr  # noqa: E402
 from biobox.l1.genecall import GENE_CALL_VERSION, GenomeInput, call_genome, run as call_genes  # noqa: E402
 from biobox.l3 import tapes  # noqa: E402
-from biobox.l3.tokens import LEVELS, read_tapes  # noqa: E402
-from biobox.registry.schemas import table  # noqa: E402
 
 W = a.workdir
 W.mkdir(parents=True, exist_ok=True)
@@ -59,6 +62,13 @@ R: dict = {
     "gene_call_version": GENE_CALL_VERSION, "release": a.release, "limit": a.limit,
     "threads_mmseqs": a.threads, "steps": {}, "failed": {},
 }
+# resume: keep the steps an earlier process finished without error and skip them here
+if a.resume and OUT.exists():
+    prev = json.loads(OUT.read_text())
+    prev["steps"] = {k: v for k, v in prev.get("steps", {}).items() if not v.get("error") and "skipped" not in v}
+    prev["failed"] = {}
+    prev["resumed_utc"] = datetime.now(timezone.utc).isoformat(timespec="seconds")
+    R = prev
 
 
 def rss_now_mb() -> float:
@@ -92,6 +102,9 @@ signal.signal(signal.SIGALRM, _alarm)
 
 
 def step(name, fn, threads=1, needs=()):
+    if a.resume and name in R["steps"]:
+        print(f"{name}: done by an earlier process, skipped", flush=True)
+        return R["steps"][name].get("result")
     missing = [n for n in needs if n not in R["steps"] or R["steps"][n].get("error")]
     if missing:
         R["steps"][name] = {"skipped": f"depends on failed/missing {missing}"}
@@ -142,12 +155,14 @@ step("ingest", lambda: ingest([obj], ROOT, "S1"))
 # record statistics from the store's own tables
 genomes: list = []
 if not R["steps"]["ingest"].get("error"):
-    occ = pq.read_table(ROOT / "l0seq/contig_occurrence/stage=S1/source=inphared/part-0.parquet",
-                        columns=["raw_digest", "contig_uid"])
-    loc = pq.read_table(ROOT / "l0seq/seq_locator/stage=S1/part-0.parquet", columns=["raw_digest", "contig_len", "shard"])
+    def read(base, cols=None):  # every part of a table directory (card B-19 cuts tables into parts)
+        return pa.concat_tables(pq.read_table(f, columns=cols, partitioning=None) for f in io.part_files(base))
+
+    occ = read(ROOT / "l0seq/contig_occurrence/stage=S1/source=inphared", ["raw_digest", "contig_uid"])
+    loc = read(ROOT / "l0seq/seq_locator/stage=S1", ["raw_digest", "contig_len", "shard"])
     ln_of = dict(zip(loc.column("raw_digest").to_pylist(), loc.column("contig_len").to_pylist()))
     rec_lens = [ln_of[rd] for rd in occ.column("raw_digest").to_pylist()]
-    idx = pq.read_table(ROOT / "l0seq/contig_index/stage=S1/part-0.parquet").to_pylist()
+    idx = read(ROOT / "l0seq/contig_index/stage=S1").to_pylist()
     default = sorted((r["contig_uid"], r["contig_len"]) for r in idx if r["is_default_variant"])
     R["records"] = {
         "records": len(rec_lens), "total_bp": sum(rec_lens),
@@ -201,7 +216,8 @@ def overhead():
 step("genecall_overhead_probe", overhead, needs=("ingest",))
 
 # --- 2 gene calling --------------------------------------------------------------
-step("genecall", lambda: call_genes(ROOT, "S1", genomes), needs=("ingest",))
+step("genome_input", lambda: write_genome_input(ROOT, "S1", genomes), needs=("ingest",))
+step("genecall", lambda: call_genes(ROOT, "S1", genomes, workers=a.workers), threads=a.workers, needs=("genome_input",))
 
 # --- 3 IGRs, tapes (all linear: INPHARED topology unknown) ---------------------------
 step("igr", lambda: igr.run(ROOT, "S1", set()), needs=("genecall",))
@@ -213,7 +229,7 @@ def do_cluster():
 
     tmp = W / "mmseqs_tmp"
     tmp.mkdir(exist_ok=True)
-    return cluster.run(ROOT, a.release, GENE_CALL_VERSION, threads=a.threads, tmp=tmp)
+    return cluster.run(ROOT, a.release, GENE_CALL_VERSION, ["S1"], threads=a.threads, tmp=tmp)
 
 
 step("cluster", do_cluster, threads=a.threads, needs=("genecall",))
@@ -222,86 +238,38 @@ step("cluster", do_cluster, threads=a.threads, needs=("genecall",))
 def do_tokens():
     from biobox.l3 import tokens
 
-    return tokens.run(ROOT, a.release)
+    return tokens.run(ROOT, a.release, ["S1"])  # the release's stages (card B-25)
 
 
 step("tokens", do_tokens, needs=("cluster", "tapes"))
 
-# --- 6 pairs: exact row count without materializing, plus a materialized 2% sample ------
-def pair_count():
-    from biobox.l3.pairs import K_MAX, window
+# --- 6 token postings (card B-18: pairs are never materialized, AGENTS §3.5; the pair count and the 2% pair
+# sample of the 2026-11-09 run are replaced by the postings builder, which neighbour queries read) ------
+def do_postings():
+    from biobox.l3 import postings
 
-    tp = {t["contig_uid"]: t for t in read_tapes(ROOT, GENE_CALL_VERSION, ["contig_uid", "n_slots", "is_circular"])}
-    files = sorted((ROOT / f"l3/tape_tokens/gene_call_version={GENE_CALL_VERSION}/release={a.release}").glob("part-*.parquet"))
-    rows = {lvl: 0 for lvl in LEVELS}
-    genes = 0
-    for f in files:
-        for tok in pq.read_table(f).to_pylist():
-            t = tp[tok["contig_uid"]]
-            n, circ = t["n_slots"], t["is_circular"]
-            genes += n
-            for lvl in LEVELS:
-                tl = tok[f"{lvl}_tokens"]
-                if all(x is None for x in tl):
-                    continue
-                if not circ and all(x is not None for x in tl):  # closed form: same as window() on a linear tape
-                    rows[lvl] += sum(min(i, K_MAX) + min(n - 1 - i, K_MAX) for i in range(n))
-                else:
-                    for i in range(n):
-                        if tl[i] is None:
-                            continue
-                        rows[lvl] += sum(1 for j, _ in window(i, n, circ, K_MAX) if tl[j] is not None)
-    total = sum(rows.values())
-    lv = [l for l in LEVELS if rows[l]]
-    return {"rows_by_level": rows, "rows_total": total, "genes": genes, "levels_with_rows": lv,
-            "rows_per_gene_per_level": {l: round(rows[l] / max(1, genes), 3) for l in lv}}
+    out = postings.run(ROOT, a.release, ["S1"])
+    files = io.part_files(ROOT / "l3/token_postings", f"release={a.release}/tape_version={out['tape_version']}/token_bucket=*/part-*.parquet")
+    nbytes = sum(f.stat().st_size for f in files)
+    genes = (R["steps"].get("genecall", {}).get("result") or {}).get("genes") or 0
+    return {**out, "bytes": nbytes, "bytes_per_row": round(nbytes / max(1, out["rows"]), 3),
+            "rows_per_gene": round(out["rows"] / max(1, genes), 3)}
 
 
-step("pairs_count", pair_count, needs=("tokens",))
+step("postings", do_postings, needs=("tokens",))
 
 
-def pair_sample():
-    from biobox.l3.pairs import BYTES_PER_ROW, K_MAX, pairs_of_contig
+def do_dim():
+    from biobox import dim
 
-    tp = {t["contig_uid"]: t for t in read_tapes(ROOT, GENE_CALL_VERSION)}
-    rng = random.Random(20261109)
-    pick = set(rng.sample(sorted(tp), max(1, round(a.pair_sample * len(tp)))))
-    files = sorted((ROOT / f"l3/tape_tokens/gene_call_version={GENE_CALL_VERSION}/release={a.release}").glob("part-*.parquet"))
-    t0 = time.perf_counter()
-    rows, genes = [], 0
-    for f in files:
-        for tok in pq.read_table(f).to_pylist():
-            if tok["contig_uid"] not in pick:
-                continue
-            t = tp[tok["contig_uid"]]
-            genes += t["n_slots"]
-            rows += pairs_of_contig(t, {lvl: tok[f"{lvl}_tokens"] for lvl in LEVELS}, K_MAX)
-    t_gen = time.perf_counter() - t0
-    rss_rows = rss_now_mb()
-    rows.sort(key=lambda r: (r["anchor_token"], r["partner_token"], r["contig_uid"], r["anchor_ordinal"], r["partner_ordinal"]))
-    out = W / "pairs_sample/part-0.parquet"
-    out.parent.mkdir(parents=True, exist_ok=True)
-    t1 = time.perf_counter()
-    pq.write_table(pa.Table.from_pylist(rows, schema=table("slot_pairs").schema), out, compression="zstd",
-                   row_group_size=122_880,
-                   write_statistics=["anchor_token", "partner_token", "contig_uid", "anchor_ordinal", "partner_ordinal"])
-    t_write = time.perf_counter() - t1
-    b = out.stat().st_size
-    n = len(rows)
-    del rows
-    return {"contigs": len(pick), "genes": genes, "rows": n, "bytes": b,
-            "bytes_per_row": round(b / max(1, n), 3), "rows_per_gene": round(n / max(1, genes), 3),
-            "rows_per_gene_per_level": round(n / max(1, genes) / 2, 3),  # nr50 + nr90 (no family tokens)
-            "model_bytes_per_row": BYTES_PER_ROW, "generate_s": round(t_gen, 2), "write_s": round(t_write, 2),
-            "rss_mb_after_generate": rss_rows,
-            "rows_per_s_generate": round(n / max(1e-9, t_gen))}
+    return dim.run(ROOT, a.release, ["S1"])
 
 
-step("pairs_sample", pair_sample, needs=("tokens",))
+step("contig_dim", do_dim, needs=("ingest",))
 
 # --- 7 manifest -------------------------------------------------------------------
 def do_manifest():
-    man = catalog.build_manifest(ROOT, a.release)
+    man = catalog.build_manifest(ROOT, a.release, ["S1"])
     catalog.write_manifest(man, W / "manifest.json")
     per = defaultdict(lambda: {"files": 0, "rows": 0, "bytes": 0, "row_groups": 0})
     for f in man["files"]:

@@ -70,4 +70,21 @@ out["seqstore_open_1e6_contigs"] = {
     "seconds": round(dt, 2), "heap_mb_held": round(cur / 2**20), "heap_mb_peak": round(peak / 2**20),
     "locator_file_mb": round(os.path.getsize(LOC) / 2**20, 1),
     "contig_index_file_mb": round(os.path.getsize(r2 / "l0seq/contig_index/stage=S0/part-0.parquet") / 2**20, 1)}
+# 3. the point lookups `bb_seq` makes (card B-14): contig_uid -> raw_digest -> (shard, length), for 1 key and for
+# 1,000 random keys in a fresh store with no row group cached; row groups read per key (AGENTS §4.4)
+keys = pq.read_table(r2 / "l0seq/contig_index/stage=S0/part-0.parquet", columns=["contig_uid"]).column(0).to_pylist()
+pick = [keys[int(i)] for i in np.random.default_rng(1).choice(len(keys), size=1000, replace=False)]
+for label, ks in (("1_key", pick[:1]), ("1000_keys", pick)):
+    st = SeqStore(r2, cache_row_groups=0)
+    t0 = time.perf_counter()
+    for k in ks:
+        st.locate(st.default_digest(k))
+    rg = st.locator.row_groups_read + st.index.row_groups_read
+    out[f"bb_seq_point_lookups_{label}"] = {
+        "seconds": round(time.perf_counter() - t0, 3), "keys": len(ks),
+        "index_row_groups_read": st.index.row_groups_read, "locator_row_groups_read": st.locator.row_groups_read,
+        "row_groups_per_key": round(rg / len(ks), 3),
+        "row_groups_total": {"contig_index": pq.ParquetFile(r2 / "l0seq/contig_index/stage=S0/part-0.parquet").metadata.num_row_groups,
+                             "seq_locator": pq.ParquetFile(LOC).metadata.num_row_groups}}
+    st.close()
 print(json.dumps(out, indent=1))

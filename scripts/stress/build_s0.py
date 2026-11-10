@@ -1,9 +1,11 @@
 """Build S0 from the golden set with the repo's own builders and report what was written.
 
     python build_s0.py REPO GOLDEN_DIR ROOT RELEASE [--cluster THREADS] [--pfam PATH] [--ncbifam PATH] [--cpus N]
+                       [--workers N]
 
-Stage A (always): ingest, gene calling, IGRs, tapes.
-Stage B (--cluster, needs mmseqs): clustering, tokens, slot pairs. --pfam/--ncbifam add domain scans
+Stage A (always): ingest, genome inputs, gene calling, IGRs, tapes.
+Stage B (--cluster, needs mmseqs): clustering, tokens, token postings, contig_dim (card B-18: the
+pairs step and the `slot_pairs` table are gone, AGENTS §3.5). --pfam/--ncbifam add domain scans
 before tokens. Writes ROOT/manifests/release=<R>.json and prints a JSON report.
 """
 
@@ -23,14 +25,16 @@ ap.add_argument("repo", type=Path)
 ap.add_argument("golden_dir", type=Path)
 ap.add_argument("root", type=Path)
 ap.add_argument("release")
-ap.add_argument("--cluster", type=int, default=0)
+ap.add_argument("--cluster", type=int, default=0, help="MMseqs2 threads; 0 skips stage B")
 ap.add_argument("--pfam", type=Path)
 ap.add_argument("--ncbifam", type=Path)
-ap.add_argument("--cpus", type=int, default=1)
+ap.add_argument("--cpus", type=int, default=1, help="threads for the domain scans")
+ap.add_argument("--workers", type=int, default=1, help="genomes called at once (output bytes do not depend on it)")
 a = ap.parse_args()
 
 from biobox import catalog, fasta, ids  # noqa: E402
 from biobox.l0seq import SourceObject, ingest  # noqa: E402
+from biobox.l0seq.inputs import write_genome_input  # noqa: E402
 from biobox.l1 import igr  # noqa: E402
 from biobox.l1.genecall import GENE_CALL_VERSION, GenomeInput, run as call_genes  # noqa: E402
 from biobox.l3 import tapes  # noqa: E402
@@ -57,7 +61,8 @@ for e in spec["genomes"]:
     circ = tuple(u for u, r in zip(uids, e["records"]) if r["topology"] == "circular")
     genomes.append(GenomeInput(uids, e["genetic_code"], kind=e["kind"], circular=circ))
 circular = {u for g in genomes for u in g.circular}
-timed("genecall", lambda: call_genes(a.root, "S0", genomes))
+timed("genome_input", lambda: write_genome_input(a.root, "S0", genomes))
+timed("genecall", lambda: call_genes(a.root, "S0", genomes, workers=a.workers))
 timed("igr", lambda: igr.run(a.root, "S0", circular))
 timed("tapes", lambda: tapes.run(a.root, "S0", circular))
 if a.pfam or a.ncbifam:
@@ -68,16 +73,19 @@ if a.pfam or a.ncbifam:
     if a.ncbifam:
         timed("ncbifam", lambda: domains.run(a.root, "S0", GENE_CALL_VERSION, "ncbifam", "20.0", a.ncbifam, "trusted", cpus=a.cpus))
 if a.cluster:
+    from biobox import dim
     from biobox.l2 import cluster
-    from biobox.l3 import pairs, tokens
+    from biobox.l3 import postings, tokens
 
     tmp = a.root.parent / "mmseqs_tmp"
     tmp.mkdir(exist_ok=True)
-    timed("cluster", lambda: cluster.run(a.root, a.release, GENE_CALL_VERSION, threads=a.cluster, tmp=tmp))
-    timed("tokens", lambda: tokens.run(a.root, a.release))
-    timed("pairs", lambda: pairs.run(a.root, a.release))
+    # every release-level builder takes the release's stages and writes or checks its release_def (card B-25)
+    timed("cluster", lambda: cluster.run(a.root, a.release, GENE_CALL_VERSION, ["S0"], threads=a.cluster, tmp=tmp))
+    timed("tokens", lambda: tokens.run(a.root, a.release, ["S0"]))
+    timed("postings", lambda: postings.run(a.root, a.release, ["S0"]))
+    timed("contig_dim", lambda: dim.run(a.root, a.release, ["S0"]))
 
-man = catalog.build_manifest(a.root, a.release)
+man = catalog.build_manifest(a.root, a.release, ["S0"])
 catalog.write_manifest(man, a.root / f"manifests/release={a.release}.json")
 per = defaultdict(lambda: {"files": 0, "rows": 0, "bytes": 0, "row_groups": 0})
 for f in man["files"]:
