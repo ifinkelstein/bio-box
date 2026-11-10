@@ -10,8 +10,11 @@ Layout under `<root>/` (planning/data_layer_and_tests.md §2A.1, §3.1):
     l0seq/seq_locator/stage=<S>/part-0.parquet
 
 Sequences are bgzip FASTA shards (DEC-17, after K-13): each stored byte sequence once,
-named by its `raw_digest` hex, records sorted by `raw_digest`, a shard closed once it
-holds `shard_bases` bases. samtools, pysam and MMseqs2 read the shards as they are.
+named by its `raw_digest` hex. One ingest batch writes one shard (card B-15, TASKS §2): a
+batch is a maximal run of source objects, in object sha256 order, whose new sequences total
+at most `shard_bases` bases (one larger object is a batch of its own); records are sorted by
+`raw_digest` inside a shard and there is no order across shards. Ingest holds one batch's
+sequences at a time. samtools, pysam and MMseqs2 read the shards as they are.
 
 A stage never rewrites an earlier stage's files (AGENTS §3.10): a sequence already stored
 adds only occurrence rows, and a stage's `seq_locator` file holds only the sequences first
@@ -26,11 +29,13 @@ on disk (`BgzfFasta`).
 from __future__ import annotations
 
 import json
-from collections import defaultdict
+import shutil
+import tempfile
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
 
+import duckdb
 import pyarrow as pa
 import pyarrow.parquet as pq
 
@@ -43,6 +48,8 @@ STORE_FORMAT = "bgzf-fasta-1"
 SHARD_BASES = 2**30  # ~0.33 GB on disk at 0.31 bytes/bp: inside the 256 MB-1 GB band (LY-04)
 LINE_WIDTH = 80
 BGZF_LEVEL = 6
+DUCK_MEMORY_LIMIT = "1GB"  # ingest's DuckDB cap; larger sorts spill into the private scratch directory
+SCRATCH_FLUSH_ROWS = 65_536  # pass-1 rows buffered before a scratch row group is written
 
 _COMP = bytes.maketrans(b"ACGTRYKMBVDHNacgtrykmbvdhn", b"TGCAYRMKVBHDNtgcayrmkvbhdn")
 
@@ -85,23 +92,88 @@ def has_sequences(root: Path) -> bool:
     return bool(locator_files(root))
 
 
-def _existing_locator(root: Path) -> pa.Table | None:
-    """Every stored sequence of the earlier stages (raw_digest, shard, contig_len).
-
-    The one place `ingest` learns which digests are already stored; it reads every stage's
-    locator whole, which batch ingest (card B-15) replaces.
-    """
-    files = locator_files(root)
-    return pa.concat_tables(pq.read_table(f) for f in files) if files else None
+def _sql_path(p: Path) -> str:
+    return "'" + str(p).replace("'", "''") + "'"
 
 
-def _existing_index(root: Path) -> pa.Table | None:
-    files = index_files(root)
-    if not files:
-        return None
-    # only the columns the store uses, so files from before an appended column still concatenate (LY-09)
-    cols = ["contig_uid", "raw_digest", "contig_len", "is_default_variant"]
-    return pa.concat_tables(pq.read_table(f, columns=cols) for f in files)
+def _sql_files(files: list[Path]) -> str:
+    return "[" + ", ".join(_sql_path(f) for f in files) + "]"
+
+
+# pass 1's private scratch rows, one per record: the occurrence columns plus what DuckDB decides on
+_SEEN = pa.schema([
+    ("source", pa.string()),  # source_name, the contig_occurrence partition
+    ("source_uid", pa.uint64()),
+    ("source_release", pa.string()),
+    ("l0_object_sha256", pa.binary(32)),
+    ("record_ordinal", pa.uint64()),
+    ("accession", pa.string()),
+    ("original_header", pa.string()),
+    ("raw_digest", pa.binary(32)),
+    ("contig_uid", pa.binary(16)),
+    ("line_width", pa.uint32()),
+    ("contig_len", pa.int64()),
+    ("precedence", pa.int64()),
+    ("obj_idx", pa.uint32()),  # rank of the object in sha256 order
+])
+
+
+class _Scratch:
+    """An unsorted Parquet file written in row groups of `SCRATCH_FLUSH_ROWS` rows."""
+
+    def __init__(self, path: Path, schema: pa.Schema):
+        self._schema = schema
+        self._cols: list[list] = [[] for _ in schema]
+        self._writer = pq.ParquetWriter(path, schema, compression="zstd", write_statistics=False)
+
+    def add(self, row: tuple) -> None:
+        for col, v in zip(self._cols, row):
+            col.append(v)
+        if len(self._cols[0]) >= SCRATCH_FLUSH_ROWS:
+            self.flush()
+
+    def flush(self) -> None:
+        if self._cols[0]:
+            arrays = [pa.array(c, type=f.type) for c, f in zip(self._cols, self._schema)]
+            self._writer.write_batch(pa.RecordBatch.from_arrays(arrays, schema=self._schema))
+            self._cols = [[] for _ in self._schema]
+
+    def close(self) -> None:
+        self.flush()
+        self._writer.close()
+
+
+def _object_order(objects: list[SourceObject]) -> list[tuple[bytes, SourceObject]]:
+    """(sha256, object) in ascending sha256; ties (the same bytes listed twice) by the object's fields."""
+    keyed = [(ids.sha256_file(o.path), o) for o in objects]
+    return sorted(keyed, key=lambda t: (t[0], t[1].source_name, t[1].source_release, t[1].precedence,
+                                        Path(t[1].path).name, str(t[1].path)))
+
+
+def _batches(per_object: list[tuple[int, int]], shard_bases: int) -> list[list[int]]:
+    """Objects (index, new bases), in sha256 order, cut into maximal runs of at most `shard_bases`
+    new bases; an object above `shard_bases` is a batch of its own. Objects that store nothing new
+    are in no batch (TASKS §2, card B-15)."""
+    batches: list[list[int]] = []
+    held = 0
+    for i, bases in per_object:
+        if not batches or held + bases > shard_bases:
+            batches.append([])
+            held = 0
+        batches[-1].append(i)
+        held += bases
+    return batches
+
+
+def _wanted(con, batch_rows: int = io.ROW_GROUP_ROWS):
+    """(obj_idx, record_ordinal, raw_digest) of every first occurrence, in object then record order."""
+    reader = con.sql("SELECT obj_idx, record_ordinal, raw_digest FROM new_seq "
+                     "ORDER BY obj_idx, record_ordinal").to_arrow_reader(batch_rows)
+    try:
+        for b in reader:
+            yield from zip(*(b.column(i).to_pylist() for i in range(3)))
+    finally:
+        reader.close()
 
 
 def ingest(
@@ -110,9 +182,22 @@ def ingest(
     stage: str,
     shard_bases: int = SHARD_BASES,
     line_width: int = LINE_WIDTH,
+    tmp: Path | None = None,
 ) -> dict:
-    """Ingest FASTA source objects for one stage. Returns counts for the ledger."""
+    """Ingest FASTA source objects for one stage. Returns counts for the ledger.
+
+    Batch ingest (card B-15; AGENTS §4.1, §4.3). The objects are taken in ascending sha256, so no
+    output depends on the order of `objects`. Pass 1 streams every record once into a private
+    scratch table (sequences are hashed and dropped). One DuckDB connection then decides which
+    digests are new (an anti-join against the earlier stages' `seq_locator` files), the first
+    occurrence of each by (object sha256, record ordinal), and the stage's `contig_index` rows.
+    Pass 2 re-reads the objects batch by batch (`_batches`) and writes one shard per batch, its new
+    sequences sorted by `raw_digest`; only one batch's sequences are held at a time. `tmp` holds the
+    scratch directory (system temp by default; never the data root).
+    """
     root = Path(root)
+    if tmp is not None and Path(tmp).resolve().is_relative_to(root.resolve()):
+        raise ValueError(f"{tmp}: the scratch directory may not lie under the data root")
     params_path = root / "l0seq" / "store_params.json"
     params = {"format": STORE_FORMAT, "shard_bases": shard_bases, "line_width": line_width, "bgzf_level": BGZF_LEVEL}
     if params_path.exists():
@@ -122,132 +207,156 @@ def ingest(
         params_path.parent.mkdir(parents=True, exist_ok=True)
         params_path.write_text(json.dumps(params, sort_keys=True))
 
-    locator = _existing_locator(root)
-    known = set(locator.column("raw_digest").to_pylist()) if locator is not None else set()
-    old_index = _existing_index(root)
-    old_default = (
-        {u for u, d in zip(old_index.column("contig_uid").to_pylist(), old_index.column("is_default_variant").to_pylist()) if d}
-        if old_index is not None
-        else set()
-    )
-    old_pairs = (
-        set(zip(old_index.column("contig_uid").to_pylist(), old_index.column("raw_digest").to_pylist()))
-        if old_index is not None
-        else set()
-    )
+    ordered = _object_order(objects)
+    old_loc, old_idx = locator_files(root), index_files(root)  # the earlier stages', read before writing
+    scratch = Path(tempfile.mkdtemp(prefix="biobox-ingest-", dir=tmp))
+    try:
+        # pass 1: every record once; occurrence and decision columns to scratch, sequences dropped
+        seen_path = scratch / "seen.parquet"
+        seen = _Scratch(seen_path, _SEEN)
+        n_in = [0] * len(ordered)
+        try:
+            for i, (sha, obj) in enumerate(ordered):
+                src_uid = ids.source_uid(obj.source_name, obj.source_release)
+                for k, rec in enumerate(fasta.iter_records(Path(obj.path))):
+                    seen.add((obj.source_name, src_uid, obj.source_release, sha, k, rec.accession, rec.header,
+                              ids.raw_digest(rec.seq), ids.contig_uid(rec.seq), rec.line_width, len(rec.seq),
+                              obj.precedence, i))
+                    n_in[i] = k + 1
+                rec = None
+        finally:
+            seen.close()
+        con = duckdb.connect(config={"threads": 1, "memory_limit": DUCK_MEMORY_LIMIT,
+                                     "temp_directory": str(scratch / "duckdb"), "preserve_insertion_order": True})
+        try:
+            return _decide_and_write(con, root, stage, ordered, n_in, seen_path, old_loc, old_idx, scratch,
+                                     shard_bases, line_width)
+        finally:
+            con.close()
+    finally:
+        shutil.rmtree(scratch, ignore_errors=True)
 
-    tools = provenance.tool_versions("pyarrow")
-    manifest_rows, occ_rows, ledger_rows = [], [], []
-    new_seqs: dict[bytes, bytes] = {}
-    variants: dict[tuple[bytes, bytes], tuple] = {}  # (contig_uid, raw_digest) -> best precedence key
-    for obj in objects:
-        obj_sha = ids.sha256_file(obj.path)
-        src_uid = ids.source_uid(obj.source_name, obj.source_release)
-        manifest_rows.append({
-            "source_uid": src_uid,
-            "source_name": obj.source_name,
-            "source_release": obj.source_release,
-            "object_path": Path(obj.path).name,
-            "object_sha256": obj_sha,
-            "bytes": Path(obj.path).stat().st_size,
-            "license": obj.license,
-            "redistributable": obj.redistributable,
-            "retrieved_at": obj.retrieved_at,
-        })
-        n_in = n_kept = 0
-        for ordinal, rec in enumerate(fasta.read(Path(obj.path))):
-            n_in += 1
-            rd = ids.raw_digest(rec.seq)
-            cu = ids.contig_uid(rec.seq)
-            occ_rows.append({
-                "source_uid": src_uid,
-                "source_release": obj.source_release,
-                "l0_object_sha256": obj_sha,
-                "record_ordinal": ordinal,
-                "accession": rec.accession,
-                "original_header": rec.header,
-                "raw_digest": rd,
-                "contig_uid": cu,
-                "line_width": rec.line_width,
-                "_source": obj.source_name,
-            })
-            if rd not in known and rd not in new_seqs:
-                new_seqs[rd] = rec.seq
-                n_kept += 1
-            key = (obj.precedence, obj_sha, ordinal)
-            if (cu, rd) not in variants or key < variants[(cu, rd)]:
-                variants[(cu, rd)] = key
-        ledger_rows.append(ledger.row(obj_sha, "l0_object", n_in, n_kept, n_in - n_kept, tools=tools))
 
-    # seq_shards: new sequences sorted by raw_digest, cut into shards of about shard_bases
-    groups: list[list[bytes]] = [[]]
-    held = 0
-    for rd in sorted(new_seqs):
-        n = len(new_seqs[rd])
-        if groups[-1] and held + n > shard_bases:
-            groups.append([])
-            held = 0
-        groups[-1].append(rd)
-        held += n
-    new_loc = []
-    for i, group in enumerate(g for g in groups if g):
-        rel = f"l0seq/seq_shards/stage={stage}/shard-{i:04d}.fa.gz"
-        write_bgzf_fasta(((rd.hex(), new_seqs[rd]) for rd in group), root / rel, line_width, BGZF_LEVEL)
-        new_loc += [{"raw_digest": rd, "shard": rel, "contig_len": len(new_seqs[rd])} for rd in group]
+def _decide_and_write(con, root: Path, stage: str, ordered: list[tuple[bytes, SourceObject]], n_in: list[int],
+                      seen_path: Path, old_loc: list[Path], old_idx: list[Path], scratch: Path,
+                      shard_bases: int, line_width: int) -> dict:
+    con.execute(f"CREATE VIEW seen AS SELECT * FROM read_parquet({_sql_path(seen_path)})")
+    con.execute("CREATE VIEW old_loc AS " + (
+        f"SELECT raw_digest FROM read_parquet({_sql_files(old_loc)}, union_by_name = true)" if old_loc
+        else "SELECT NULL::BLOB AS raw_digest WHERE false"))
+    con.execute("CREATE VIEW old_idx AS " + (
+        f"SELECT contig_uid, raw_digest, is_default_variant FROM read_parquet({_sql_files(old_idx)}, "
+        "union_by_name = true)" if old_idx
+        else "SELECT NULL::BLOB AS contig_uid, NULL::BLOB AS raw_digest, NULL::BOOLEAN AS is_default_variant WHERE false"))
+    # new digests: not in any earlier stage, each at its first occurrence by (object sha256, ordinal)
+    new_path = scratch / "new_seq.parquet"
+    con.execute(f"""
+        COPY (SELECT raw_digest, contig_len, obj_idx, record_ordinal FROM (
+                SELECT s.raw_digest, s.contig_len, s.obj_idx, s.record_ordinal,
+                       row_number() OVER (PARTITION BY s.raw_digest ORDER BY s.obj_idx, s.record_ordinal) AS rn
+                FROM seen s ANTI JOIN old_loc l ON s.raw_digest = l.raw_digest)
+              WHERE rn = 1 ORDER BY obj_idx, record_ordinal)
+        TO {_sql_path(new_path)} (FORMAT parquet)""")
+    con.execute(f"CREATE VIEW new_seq AS SELECT * FROM read_parquet({_sql_path(new_path)})")
+    kept = [0] * len(ordered)
+    per_object = []
+    for i, n, bases in con.execute("SELECT obj_idx, count(*), sum(contig_len) FROM new_seq "
+                                   "GROUP BY obj_idx ORDER BY obj_idx").fetchall():
+        kept[i] = n
+        per_object.append((i, int(bases)))
+    batches = _batches(per_object, shard_bases)
+    shard_of = [f"l0seq/seq_shards/stage={stage}/shard-{j:04d}.fa.gz" for j in range(len(batches))]
+    con.register("batch_of", pa.table({
+        "obj_idx": pa.array([i for b in batches for i in b], pa.uint32()),
+        "shard": pa.array([shard_of[j] for j, b in enumerate(batches) for _ in b], pa.string())}))
+
+    # pass 2: one batch's first occurrences at a time, one shard per batch
+    wanted = _wanted(con)
+    nxt = next(wanted, None)
+    try:
+        for j, batch in enumerate(batches):
+            seqs: dict[bytes, bytes] = {}
+            for i in batch:
+                path = Path(ordered[i][1].path)
+                for k, rec in enumerate(fasta.iter_records(path)):
+                    if nxt is None or nxt[0] != i:
+                        break  # nothing more to keep from this object
+                    if nxt[1] == k:
+                        if ids.raw_digest(rec.seq) != nxt[2]:
+                            raise ValueError(f"{path}: record {k} changed since the first pass")
+                        seqs[nxt[2]] = rec.seq
+                        nxt = next(wanted, None)
+                rec = None
+                if nxt is not None and nxt[0] == i:
+                    raise ValueError(f"{path}: fewer records than in the first pass")
+            write_bgzf_fasta(((rd.hex(), seqs[rd]) for rd in sorted(seqs)), root / shard_of[j], line_width, BGZF_LEVEL)
+            del seqs
+    finally:
+        wanted.close()
+    n_new = sum(kept)
 
     # contig_occurrence: partitioned by source, sorted by (object sha, ordinal)
     occ_spec = table("contig_occurrence")
-    by_source: dict[str, list[dict]] = defaultdict(list)
-    for r in occ_rows:
-        by_source[r["_source"]].append({k: v for k, v in r.items() if k != "_source"})
-    for src in sorted(by_source):
-        rows = sorted(by_source[src], key=lambda r: (r["l0_object_sha256"], r["record_ordinal"]))
-        rel = f"l0seq/contig_occurrence/stage={stage}/source={src}/part-0.parquet"
-        _write(pa.Table.from_pylist(rows, schema=occ_spec.schema), root / rel, 122_880)
+    occ_cols = ", ".join(f'"{c}"' for c in occ_spec.schema.names)
+    for (src,) in con.execute("SELECT DISTINCT source FROM seen ORDER BY source").fetchall():
+        sql = (f"SELECT {occ_cols} FROM seen WHERE source = {_sql_path(src)} "
+               "ORDER BY l0_object_sha256, record_ordinal, obj_idx")
+        io.write_table(io.duck_batches(con, sql, occ_spec), occ_spec,
+                       root / f"l0seq/contig_occurrence/stage={stage}/source={src}/part-0.parquet")
 
-    # contig_index: new (contig_uid, raw_digest) pairs; one default per contig across stages
+    # contig_index: new (contig_uid, raw_digest) pairs; the default is the variant with the lowest
+    # (precedence, object sha256, record ordinal) of the stage, unless an earlier stage gave one
     idx_spec = table("contig_index")
-    best: dict[bytes, tuple] = {}
-    for (cu, rd), key in variants.items():
-        if cu not in best or key < best[cu][0]:
-            best[cu] = (key, rd)
-    lengths = {rd: len(s) for rd, s in new_seqs.items()}
-    if locator is not None:
-        lengths.update(zip(locator.column("raw_digest").to_pylist(), locator.column("contig_len").to_pylist()))
-    idx_rows = [
-        {
-            "contig_uid": cu,
-            "raw_digest": rd,
-            "contig_len": lengths[rd],
-            "is_default_variant": cu not in old_default and best[cu][1] == rd,
-        }
-        for (cu, rd) in sorted(variants)
-        if (cu, rd) not in old_pairs
-    ]
-    if idx_rows:
-        _write(
-            pa.Table.from_pylist(idx_rows, schema=idx_spec.schema),
-            root / f"l0seq/contig_index/stage={stage}/part-0.parquet",
-            122_880,
-        )
+    idx_sql = """
+        WITH pairs AS (SELECT contig_uid, raw_digest, min(contig_len) AS contig_len FROM seen
+                       GROUP BY contig_uid, raw_digest),
+             ranked AS (SELECT contig_uid, raw_digest, row_number() OVER (PARTITION BY contig_uid
+                            ORDER BY precedence, l0_object_sha256, record_ordinal, obj_idx) AS rn FROM seen),
+             best AS (SELECT contig_uid, raw_digest AS best_digest FROM ranked WHERE rn = 1),
+             old_default AS (SELECT DISTINCT contig_uid FROM old_idx WHERE is_default_variant)
+        SELECT p.contig_uid, p.raw_digest, p.contig_len,
+               (d.contig_uid IS NULL AND b.best_digest = p.raw_digest) AS is_default_variant
+        FROM pairs p JOIN best b ON b.contig_uid = p.contig_uid
+             LEFT JOIN old_default d ON d.contig_uid = p.contig_uid
+        WHERE NOT EXISTS (SELECT 1 FROM old_idx o WHERE o.contig_uid = p.contig_uid AND o.raw_digest = p.raw_digest)
+        ORDER BY p.contig_uid, p.raw_digest"""
+    (n_idx,), = con.execute(f"SELECT count(*) FROM ({idx_sql})").fetchall()
+    if n_idx:
+        io.write_table(io.duck_batches(con, idx_sql, idx_spec), idx_spec,
+                       root / f"l0seq/contig_index/stage={stage}/part-0.parquet")
 
     # seq_locator: this stage's new sequences only, sorted by raw_digest; never rewritten (AGENTS §3.10)
-    if new_loc:
+    if n_new:
         loc_spec = table("seq_locator")
-        loc = pa.Table.from_pylist(new_loc, schema=loc_spec.schema).sort_by("raw_digest")
-        io.write_table(loc, loc_spec, root / f"{LOCATOR_DIR}/stage={stage}/part-0.parquet")
+        io.write_table(io.duck_batches(con, "SELECT n.raw_digest, b.shard, n.contig_len FROM new_seq n "
+                                            "JOIN batch_of b USING (obj_idx) ORDER BY n.raw_digest", loc_spec),
+                       loc_spec, root / f"{LOCATOR_DIR}/stage={stage}/part-0.parquet")
 
     # l0_manifest: small metadata, rewritten with all stages
     man_spec = table("l0_manifest")
     man_path = root / "l0/l0_manifest.parquet"
-    man = pa.Table.from_pylist(manifest_rows, schema=man_spec.schema)
+    man = pa.Table.from_pylist([{
+        "source_uid": ids.source_uid(obj.source_name, obj.source_release),
+        "source_name": obj.source_name,
+        "source_release": obj.source_release,
+        "object_path": Path(obj.path).name,
+        "object_sha256": sha,
+        "bytes": Path(obj.path).stat().st_size,
+        "license": obj.license,
+        "redistributable": obj.redistributable,
+        "retrieved_at": obj.retrieved_at,
+    } for sha, obj in ordered], schema=man_spec.schema)
     if man_path.exists():
         man = pa.concat_tables([pq.read_table(man_path), man])
     man = man.sort_by([("source_uid", "ascending"), ("object_path", "ascending")])
     _write(man, man_path, 122_880)
 
-    ledger.write(root, stage, "ingest", ledger_rows)
-    return {"objects": len(objects), "records": len(occ_rows), "new_sequences": len(new_seqs), "index_rows": len(idx_rows)}
+    # ledger: per object, records in; kept = sequences first stored from it; merged = the rest
+    tools = provenance.tool_versions("pyarrow")
+    ledger.write(root, stage, "ingest", [ledger.row(sha, "l0_object", n_in[i], kept[i], n_in[i] - kept[i], tools=tools)
+                                         for i, (sha, _) in enumerate(ordered)])
+    return {"objects": len(ordered), "records": sum(n_in), "new_sequences": n_new, "index_rows": n_idx,
+            "shards": len(batches)}
 
 
 class SeqStore:
