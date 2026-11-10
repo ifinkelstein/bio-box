@@ -67,6 +67,9 @@ Decisions DEC-18 to DEC-23 were approved by the PI on 2026-11-09 and are in `pla
 | Card | Model | State |
 |---|---|---|
 | B-28 query-time readers take the release's stages | Opus | started 2026-11-10 |
+| W-11 export follow-ups | Sonnet | started 2026-11-10 |
+| D-06 append-only check covers small tables | Sonnet | started 2026-11-10 |
+| Finish release `rL.3` on the pod (not a card): place the fixed postings, then `contig_dim`, catalog, verify, sync | Opus | started 2026-11-10 |
 | C-04 `bio-box build-stage` | Opus | stopped 2026-11-10 with evidence, nothing written: builders cannot write into `run-step` staging. Now depends on B-22 and the new card C-08; card amended |
 | Pod import ladder (not a card): phages, then 1 Gbp and 10 Gbp of complete prokaryotes with the new code | Opus | detached jobs on the pod; agent waiting on them |
 
