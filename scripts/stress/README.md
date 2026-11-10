@@ -2,49 +2,51 @@
 
 These scripts produced the measurements in
 [`planning/measurements/2026-11-09_design_stress_test.md`](../../planning/measurements/2026-11-09_design_stress_test.md)
-(called "the measurements file" below; section numbers are its sections). Card A-03 documents them;
-card B-18 ("Phase-B exit measurement") updates them to the new data model and reruns them. The numbers
-live in the measurements file, not here.
+("the 2026-11-09 file") and, after card B-18 moved them to the phase-B data model, in
+[`planning/measurements/2026-11-10_phase_b_exit.md`](../../planning/measurements/2026-11-10_phase_b_exit.md)
+("the exit file"). Section numbers below are those files' sections. Card A-03 documented the scripts;
+card B-18 updated them and reran them. The numbers live in the measurement files, not here.
 
 Rules that apply to every run (AGENTS.md sections 4, 6, 7):
 
-- No compute on the laptop. Run on the pod (wilkcomp02) through the test image, with the checkout's
-  `src/` first on `PYTHONPATH`. `scripts/pod_pytest.sh <name>` mirrors a tree to
-  `/tmp/if2453/ci/<name>` and shows the exact prefix (`systemd-run --user --scope -p MemoryMax=...
-  nice -n 19 singularity exec --cleanenv --env PYTHONPATH=<tree>/src:<pydeps> --bind /tmp/if2453
-  --pwd <tree> <image> python ...`). A script's `REPO` argument is that tree.
+- No compute on the laptop. Run on the pod (wilkcomp02) in the test image, with the checkout's `src/`
+  first on `PYTHONPATH`. `sh scripts/pod_pytest.sh <name> tests/r0 -k nothing_matches_this` mirrors the
+  working tree to `/tmp/if2453/ci/<name>`; the exact command prefix is in `scripts/pod_pytest.sh`
+  (`systemd-run --user ... -p MemoryMax=... -p MemorySwapMax=0 nice -n 19 singularity exec --cleanenv
+  --env PYTHONPATH=<tree>/src:<pydeps> --bind /tmp/if2453 --pwd <tree> <image> python ...`). A
+  script's `REPO` argument is that tree. Anything longer than a few minutes is launched detached
+  (`systemd-run --user --unit=<name> --collect ...`); the exit file lists the commands B-18 used.
 - Every script prints usage and exits with `--help` (or `-h`) before doing any work. With too few
-  arguments the stdlib-only scripts print the same usage and exit 2.
+  arguments the stdlib-style scripts print the same usage and exit 2.
 - Scripts print JSON or text to stdout; redirect it to a file under `/tmp/if2453/`. Nothing here
-  writes outside the output directory it is given.
-- The CAMI II pilot of section 6c has no driver in this directory (its store is on the pod under
-  `/tmp/if2453/pilot_cami`). Section 1 compares a laptop build with a pod build; with the rule above
-  the second host must now be another pod run or a CI run, decided at B-18.
-
-Status column: "pre-B" means the script was written for the data model before phase B and card B-18
-has to update it. This was found by reading the code, and each reason is stated.
+  writes outside the output directory it is given, and none writes under its input store.
 
 ## Index
 
-| Script | Host | Measures | Measurements file | Status |
+| Script | Host | Measures | Section | Status |
 |---|---|---|---|---|
-| `build_s0.py` | pod | build of the golden set, per-table size, cross-host manifest hash | 1, 6b | stage A current; stage B (`--cluster`) broken |
-| `show_report.py` | any (stdlib) | compact view of a `build_s0.py` report | 1, 3 | current |
-| `diff_reports.py` | any (stdlib) | two `build_s0.py` reports: manifest hash and per-file sha256 | 1 | current |
-| `step6_export.py` | pod | exports gene slices from a built store for the independent check | 2 | pre-B |
-| `hash_fa.py` | pod (stdlib) | sha256 per record of a `samtools faidx` FASTA | 2 | current |
-| `prodigal_run.py` | pod (stdlib + `prodigal`) | Prodigal single mode on the ten golden prokaryotes | 2 | current |
-| `step6_compare.py` | any | compares bio-box with samtools, Prodigal and RefSeq CDS | 2 | pre-B |
-| `gtdb_counts.py` | any (needs `duckdb`) | unit counts per stage from GTDB R226 metadata | 3 | current |
-| `gtdb_pairs.py` | any (needs `duckdb`) | lower bound of `slot_pairs` rows per level | 3 | obsolete by design (see below) |
-| `step4_keys.py` | pod | slot-key stability: ordinal key against coordinate key | 4 | pre-B |
-| `synth_scale.py` | pod | 1,000x layout and query read counts | 5 | pre-B (slot_pairs section) |
-| `builder_limits.py` | pod | heap per pair row and `SeqStore` open cost at 10^6 contigs | 5 (limits table) | pre-B |
-| `macro_scan.py` | pod | row groups read by the sequence macros at 10^6 contigs | 5 (limits table) | needs rerun for B-14 |
-| `pilot_s1/pilot.py` | pod | S1 rate pilot on INPHARED phages | 6a, 6b | pre-B, `biobox.l3.pairs` is gone |
-| `pilot_s1/pilot_resume.py` | pod | same, skipping steps that already finished | 6a | pre-B, as `pilot.py` |
-| `pilot_s1/resume.sh` | pod | wrapper that waits for an earlier process, then runs `pilot_resume.py` | 6a | pod paths hard-coded |
-| `pilot_s1/store_probe.py` | pod | `SeqStore` open cost and 1,000 neighborhood fetches in a fresh process | 6a, 6c | check at B-18 |
+| `build_s0.py` | pod | build of the golden set, per-table size, manifest hash | 2026-11-09 §1, §3; exit §3, §6 | current (B-18) |
+| `build_fixture.py` | pod and CI | stage-A build of the micro-S0 fixture and its manifest hash: the cross-host check | exit §5 | new (B-18) |
+| `show_report.py` | any (stdlib) | compact view of a `build_s0.py` or `build_fixture.py` report | | current |
+| `diff_reports.py` | any (stdlib) | two reports: manifest hash and per-file sha256 | exit §5 | current |
+| `column_bytes.py` | pod | bytes per table and per column from the Parquet footers of a manifest | exit §6 | new (B-18) |
+| `step6_export.py` | pod | exports gene slices from a built store for the independent check | 2026-11-09 §2 | current (B-18); its checks now also run as `tests/r3/test_golden_independent.py` |
+| `hash_fa.py` | pod (stdlib) | sha256 per record of a `samtools faidx` FASTA | 2026-11-09 §2 | current |
+| `prodigal_run.py` | pod (stdlib + `prodigal`) | Prodigal single mode on the ten golden prokaryotes | 2026-11-09 §2 | current |
+| `step6_compare.py` | any | compares bio-box with samtools, Prodigal and RefSeq CDS | 2026-11-09 §2 | current (B-18) |
+| `gtdb_counts.py` | pod (needs `duckdb`) | unit counts per stage from GTDB R226 metadata | 2026-11-09 §3 | current |
+| `gtdb_postings.py` | pod (needs `duckdb`) | every table projected to GTDB R226 scale from measured bytes per unit | exit §6 | new (B-18); replaces `gtdb_pairs.py` |
+| `step4_keys.py` | pod | one added ncRNA feature: rows rewritten in every table, by `feature_uid` and by ordinal | 2026-11-09 §4; exit §3 | current (B-18) |
+| `synth_scale.py` | pod | 1,000x layout and row groups read per key lookup | 2026-11-09 §5; exit §2 | current (B-18) |
+| `builder_limits.py` | pod | heap per pair row of the pair oracle and `SeqStore` open cost at 10^6 contigs | 2026-11-09 §5 | runs; the pair half measures the test oracle only (pairs are not built, AGENTS §3.5) |
+| `macro_scan.py` | pod | row groups read by the user lookup macros at 10^6 contigs | 2026-11-09 §5 | runs; the sequence macros no longer call these (card B-14) |
+| `pilot_s1/pilot.py` | pod | S1 rate pilot on INPHARED phages | 2026-11-09 §6a, §6b | current (B-18): postings replace the pair steps |
+| `pilot_s1/pilot_resume.py` | pod | `pilot.py --resume` | 2026-11-09 §6a | current (B-18) |
+| `pilot_s1/resume.sh` | pod | waits for an earlier process, then runs `pilot_resume.py` in a memory scope | 2026-11-09 §6a | current (B-18): scope added, paths from the environment |
+| `pilot_s1/store_probe.py` | pod | `SeqStore` open cost and 1,000 neighbourhood fetches in a fresh process | 2026-11-09 §6a, §6c | current |
+| `pilot_cami/pilot_cami.py` | pod | short-contig pilot on CAMI II marine sample 0 | 2026-11-09 §6c | added by B-18 from the pod, moved to the phase-B model |
+| `pilot_cami/probe_cami.py` | pod | short-contig measurements on the CAMI store | 2026-11-09 §6c | as above |
+| `pilot_cami/run.sh` | pod | driver then probe, each in a memory scope | 2026-11-09 §6c | as above |
 
 ## Per script
 
@@ -53,199 +55,140 @@ Paths are relative to the repository root. `REPO` is the checkout (its `src/` is
 
 ### `build_s0.py`
 
+```
+python scripts/stress/build_s0.py REPO GOLDEN_DIR ROOT RELEASE [--cluster THREADS] [--pfam PATH] [--ncbifam PATH] [--cpus N] [--workers N] > report.json
+```
+
 Builds S0 from the golden set with the repo's own builders and prints a JSON report: host, Python,
-manifest hash, per-step timings, peak RSS, per-table files/rows/bytes, sha256 of every file.
+manifest hash, per-step timings and results, peak RSS, per-table files/rows/bytes, sha256 of every
+file. Stage A (ingest, `genome_input`, gene calling with `--workers` genomes at once, IGRs, tapes)
+always runs. `--cluster` adds MMseqs2 clustering, tokens, `token_postings` and `contig_dim`; `--pfam`
+/ `--ncbifam` add domain scans (HMM files, `--cpus` threads) before tokens. Card B-18 replaced the
+removed pairs step by the postings builder. Writes `ROOT/manifests/release=<R>.json`.
+
+### `build_fixture.py`
 
 ```
-python scripts/stress/build_s0.py REPO GOLDEN_DIR ROOT RELEASE [--cluster THREADS] [--pfam PATH] [--ncbifam PATH] [--cpus N] > report.json
+python scripts/stress/build_fixture.py REPO ROOT RELEASE > report.json
 ```
 
-Stage A (ingest, gene calling, IGRs, tapes) always runs. `--cluster` adds clustering, tokens and pairs;
-`--pfam` / `--ncbifam` add domain scans (HMM files; they need `hmmsearch`, so the pod). Used by
-measurements section 1 (cross-host hash, stage B, full build) and section 3 (bytes per unit). Cards:
-B-18 (cross-host manifest hash).
+Stage A of the micro-S0 fixture (`tests/fixtures/micro_s0`: three genomes, 0.8 Mbp, no network, no
+MMseqs2) plus `contig_dim`, then `catalog.build_manifest`. ROOT must not exist. The report has
+`build_s0.py`'s shape plus the versions of the packages whose bytes reach the files. The cross-host
+check of card B-18: `.github/workflows/cross_host.yml` runs it on a GitHub runner set up as `ci.yml`
+is, and the pod runs it in the image; `diff_reports.py` compares the two reports.
 
-Pre-phase-B code: with `--cluster` it imports `biobox.l3.pairs` and calls `pairs.run`, a module card
-B-11 removed (`src/biobox/l3` now has `postings.py` and `geometry.py`). Stage A and `--pfam` /
-`--ncbifam` do not touch it. B-18 must replace the `pairs` step with the postings builder.
-
-### `show_report.py`
+### `show_report.py`, `diff_reports.py`
 
 ```
 python scripts/stress/show_report.py REPORT.json
-```
-
-Prints one line per table (rows, bytes, bytes per row, per gene, per Mbp) from a `build_s0.py` report.
-Needs only the report's keys, so it works on any host. Used for the per-unit costs of section 3.
-
-### `diff_reports.py`
-
-```
 python scripts/stress/diff_reports.py A.json B.json
 ```
 
-Compares two reports from `build_s0.py` (for example laptop and pod): manifest hash equal or
-different, and which files differ. This is the cross-host determinism check of section 1 and the
-acceptance of B-18.
+One line per table (rows, bytes, bytes per row, per gene, per Mbp); and the manifest hash of two
+reports, equal or different, with the files that differ.
 
-### `step6_export.py`
+### `column_bytes.py`
 
-Exports every gene slice of the built golden store for an independent check by `samtools faidx`.
+```
+python scripts/stress/column_bytes.py MANIFEST_JSON [--root ROOT] [--where KEY=VALUE ...] > bytes.json
+```
+
+Reads only Parquet footers. Per table: files, rows, bytes; per column the compressed bytes of its
+column chunks. `--where stage=P1` measures one stage of a multi-stage store. Column chunks compress
+independently, so a table's size without some columns is its size minus their chunks: B-18 uses this
+to correct the import ladder's per-unit sizes, measured before card B-17 removed the legacy columns.
+
+### `step6_export.py`, `hash_fa.py`, `prodigal_run.py`, `step6_compare.py`
 
 ```
 python scripts/stress/step6_export.py ROOT OUT_DIR
-```
-
-Writes `regions_{plus,minus}.txt`, `expected_{plus,minus}.tsv` (sha256 of the bytes bio-box returns)
-and `genes.tsv`. Run on the store built by `build_s0.py`; then copy `OUT_DIR` and the shard to the pod
-(section 2 used a laptop-built shard; build on the pod now). Pre-phase-B: reads
-`protein_occurrence` and orders by `slot_ordinal`, with no `feature_uid` (AGENTS.md section 3.3).
-
-### `hash_fa.py`
-
-```
-samtools faidx SHARD.fa.gz -r regions_plus.txt -o plus.fa     # outside this script
+samtools faidx SHARD.fa.gz -r regions_plus.txt -o plus.fa     # outside these scripts
 python3 scripts/stress/hash_fa.py plus.fa > plus.tsv
-```
-
-Writes `name<TAB>sha256` per record (the part of the name before `/`), stdlib only.
-Output goes to `step6_compare.py` as `pod/plus.tsv` and `pod/minus.tsv` under its `STEP6_DIR`.
-
-### `prodigal_run.py`
-
-```
 python3 scripts/stress/prodigal_run.py GOLDEN_DIR OUT_DIR
-```
-
-Runs the Prodigal binary on the ten golden prokaryotes (genetic code per genome is hard-coded) at
-`nice -n 19`; writes `OUT_DIR/<id>.fna` and `.gff` and prints the sha256 and CDS count per genome.
-`prodigal` must be on `PATH` (an oracle only; AGENTS.md section 7.1 forbids using pod tools to produce
-outputs). Used for the Prodigal row of section 2.
-
-### `step6_compare.py`
-
-```
 python scripts/stress/step6_compare.py STEP6_DIR ROOT > compare.json
 ```
 
-`STEP6_DIR` holds the `step6_export.py` output plus a `pod/` directory with `plus.tsv`, `minus.tsv`,
-`shard-0000.fa.gz.fai`, `shard-0000.fa.gz.gzi` (made by samtools) and the Prodigal `*.gff` files, plus
-`GCF_000005845.2.gff.gz`. Compares slices, indexes, Prodigal calls and RefSeq CDS (section 2). Reads
-`ROOT/l0seq/seq_shards/stage=S0/shard-0000.fa.gz`. Pre-phase-B only through its input
-(`step6_export.py` output).
+The hand-run independent check of the 2026-11-09 file §2. `step6_export.py` reads genes from
+`feature_protein`, orders them by (accession, start, end, strand) and names each by its `feature_uid`
+(sixth column of `genes.tsv`). `step6_compare.py` compares each shard's indexes with
+`pod/<shard name>.fai` / `.gzi`. The same checks run as golden-ring tests
+(`tests/r3/test_golden_independent.py`, card D-03); B-18 used those (exit §4).
 
-### `gtdb_counts.py`
+### `gtdb_counts.py`, `gtdb_postings.py`
 
 ```
 python scripts/stress/gtdb_counts.py GTDB_DIR > counts.json
+python scripts/stress/gtdb_postings.py GTDB_DIR UNITS_JSON > projection.json
 ```
 
-`GTDB_DIR` has `bac120_metadata_r226.tsv.gz` and `ar53_metadata_r226.tsv.gz` (listed in
-AGENTS.md section 8 allows fetching only URLs listed in `golden.yaml`, `refdb.yaml` or
-`sources.yaml`). Prints genomes, bp, contigs, proteins and contig-count quantiles for S6, S5, S3, S2C
-and complete genomes. Used by the unit counts of section 3. It is a metadata query; run it on the
-pod like the others.
-
-### `gtdb_pairs.py`
-
-```
-python scripts/stress/gtdb_pairs.py GTDB_DIR > pairs.json
-```
-
-Lower bound (and the upper bound of 20) on `slot_pairs` rows per level for S2C, S5 and S6. Section 3
-used it for the pair-row projection. AGENTS.md section 3.5 now forbids materializing pairs, so B-18
-should replace it by a `token_postings` projection (one row per slot and token) rather than rerun it.
+`GTDB_DIR` has `bac120_metadata_r226.tsv.gz` and `ar53_metadata_r226.tsv.gz` (AGENTS.md section 8
+allows fetching only URLs listed in `golden.yaml`, `refdb.yaml` or `sources.yaml`; B-18 used the copy
+already made for the import ladder). `gtdb_counts.py` prints genomes, bp, contigs, proteins and
+contig-count quantiles for S6, S5, S3, S2C. `gtdb_postings.py` multiplies those unit counts by the
+bytes per unit in `UNITS_JSON` (`{"table": {"unit": "bp"|"contig"|"gene", "bytes_per_unit": B,
+"source": "..."}}`, or `rows_per_unit` and `bytes_per_row`) for every table, `token_postings` included.
+It replaces `gtdb_pairs.py`, which bounded `slot_pairs` rows: pairs are no longer materialized
+(AGENTS.md section 3.5), so card B-18 deleted it.
 
 ### `step4_keys.py`
 
 ```
-python scripts/stress/step4_keys.py ROOT > keys.json
+python scripts/stress/step4_keys.py ROOT SCRATCH RELEASE > keys.json
 ```
 
-On the *E. coli* K-12 chromosome of a built golden store: adds one ncRNA slot, splits the longest gene,
-and counts which slot, IGR and pair rows survive under the ordinal key and under the coordinate key.
-This is the evidence behind AGENTS.md section 3.3. Pre-phase-B: the "current key" arm is
-`(contig_uid, slot_ordinal)`; it imports the pair enumeration from `tests/oracles/pairs_oracle.py`
-(already moved there by B-11) and reads `slot_ordinal` from `protein_occurrence`. B-18 changes it to
-check `feature_uid` stability (expected: 0 rows changed) and drops the pair arm.
+ROOT is a golden store from `build_s0.py ... --cluster N`. The script copies it to `SCRATCH/after`,
+adds one ncRNA feature (kind 2, 377 nt, minus strand, 60 nt into the first IGR of at least 500 nt at or
+after 3.27 Mb of *E. coli* K-12, as on 2026-11-09) as a second producer, and runs the repo's IGR,
+tape, token and postings builders for the tape version of both producers. Every table is then
+compared with the original under its registry key (`feature_uid`) and under the slot ordinal, the key
+phase B removed. This is the evidence behind AGENTS.md section 3.3.
 
 ### `synth_scale.py`
 
 ```
-python scripts/stress/synth_scale.py REPO OUT COPIES [--shard-bases N] [--pair-width {0,1,2}] [--seed S] > synth.json
+python scripts/stress/synth_scale.py REPO OUT COPIES [--shard-bases N] [--postings-width {0,1,2}] [--seed S] > synth.json
 ```
 
-Copies each micro-S0 fixture contig `COPIES` times with 3% substitutions, ingests them, writes
-synthetic gene, token and tape tables in the repo's layout, and scores canonical queries with
-`catalog.profile_query` (row groups and bytes read). Section 5 used `COPIES=1000`. It reports its
-own peak RSS (`peak_rss_mb_*` keys); run it on the pod under the memory scope. AGENTS.md section 4.2
-names it (as `synth_scale.py`) for the 100x builder memory tests.
+Copies each micro-S0 contig `COPIES` times with 3% substitutions and ingests them; replicates the
+fixture's gene features per copy; writes synthetic clusters (NR90 per 10 copies, NR50 per 100) and a
+synthetic family library (one family per fixture protein, 20% without, 3% in one hub); then runs the
+repo's tape, token, postings and `contig_dim` builders and builds the catalog. Each key lookup
+(sequence by contig, tape of a contig, postings of a token, neighbours of a token) runs with a literal
+key and with keys from a joined table, scored by `catalog.profile_query`: row groups read of the total
+per scan, the sequence index row groups, and `rg_per_key`. `key_lookups_over_2_rg_per_key` lists any
+lookup above AGENTS.md section 4.4's bound. `--postings-width` replaces the old `--pair-width`.
+AGENTS.md section 4.2 names this script for the 100x builder memory tests.
 
-Pre-phase-B: the file says so in a comment. The `slot_pairs` section (lines from "slot_pairs" down)
-writes a table the registry no longer has and calls `tests/oracles/pairs_oracle.py`; the query list
-still uses `pairs_of`, `partners_of`, `q1_count` through the catalog. Gene tables are keyed by
-`slot_ordinal`. B-18 moves it to `token_postings` and `feature_uid`.
-
-### `builder_limits.py`
+### `builder_limits.py`, `macro_scan.py`
 
 ```
 python scripts/stress/builder_limits.py ROOT SCRATCH > limits.json
-```
-
-Python heap per pair row from `pairs_of_contig` (the oracle) on the largest tape, and `SeqStore`
-open time and heap on a synthetic 10^6-contig locator written under `SCRATCH`. These two numbers
-produced the "pair builder" and "`SeqStore` open" rows of the limits table in section 5, and the
-evidence for AGENTS.md section 4.1. The pair half is moot after B-11; the open-time half is the
-baseline for cards B-13 and B-18. `SCRATCH` gets about 100 MB.
-
-### `macro_scan.py`
-
-```
 python scripts/stress/macro_scan.py LOCATOR_ROOT > macro.json
 ```
 
-`LOCATOR_ROOT` is the synthetic store `builder_limits.py` wrote (`SCRATCH/locator_1e6`). Builds a
-manifest and catalog (written next to it as `locator.duckdb`, in the parent directory of
-`LOCATOR_ROOT`) and counts row groups scanned by `default_digest(...)` / `digest_len(...)` for a literal key,
-one joined key and 1,000 joined keys (AGENTS.md section 4.4). Section 5 limits table. B-14 and
-B-18 rerun it to show the joined case now reads O(1) row groups.
+`builder_limits.py`: heap per pair row of `pairs_of_contig` (the test oracle; nothing builds pairs
+since B-11) on the largest tape, and `SeqStore` open time and heap on a synthetic 10^6-contig index
+written under `SCRATCH` (about 100 MB). `macro_scan.py`: on that index, row groups read by the user
+macros `default_digest` / `digest_len` for a literal key, one joined key and 1,000 joined keys. These
+macros scan the index views by design (`catalog.macro_sql`); the sequence macros resolve keys through
+`bb_seq` instead (card B-14), which `synth_scale.py` measures.
 
-### `pilot_s1/pilot.py`
-
-```
-python scripts/stress/pilot_s1/pilot.py SRC_FASTA WORKDIR RELEASE [--limit N] [--threads 16] [--step-timeout 10800] [--overhead-n 200] [--pair-sample 0.02]
-```
-
-Throwaway S1 rate pilot on the INPHARED FASTA (`14Apr2025_genomes.fa.gz`): ingest, gene calling with
-`pyrodigal-gv`, IGRs, tapes, MMseqs2 clustering, tokens, pair-row counting plus a 2% pair sample,
-manifest. `WORKDIR` gets `root/`, `mmseqs_tmp/`, `pairs_sample/`, `manifest.json` and `result.json`
-(rewritten after each step). Needs `pyrodigal_gv` and `mmseqs`. Pod only: long (hours), uses
-`--threads` threads, so keep to the thread and CPU-minute limits of AGENTS.md section 7.2 and check
-for the `STOP` file. Sections 6a and 6b. Pre-phase-B: the `pairs_count` and `pairs_sample` steps import
-`biobox.l3.pairs` (`K_MAX`, `window`, `BYTES_PER_ROW`, `pairs_of_contig`), which no longer exists, and
-write the removed `slot_pairs` table. Everything up to tokens still matches the code. Section 6b says
-its store is "pre-phase-B format".
-
-### `pilot_s1/pilot_resume.py`
-
-Same arguments as `pilot.py`; identical except that it reads an existing `WORKDIR/result.json` and
-skips steps that finished without error. Same pre-phase-B status.
+### `pilot_s1/pilot.py`, `pilot_s1/pilot_resume.py`, `pilot_s1/resume.sh`
 
 ```
-python scripts/stress/pilot_s1/pilot_resume.py SRC_FASTA WORKDIR RELEASE [--limit N] [--threads 16] [--step-timeout 10800]
-```
-
-### `pilot_s1/resume.sh`
-
-```
+python scripts/stress/pilot_s1/pilot.py SRC_FASTA WORKDIR RELEASE [--limit N] [--threads 16] [--workers 1] [--step-timeout 10800] [--overhead-n 200] [--resume]
+python scripts/stress/pilot_s1/pilot_resume.py SRC_FASTA WORKDIR RELEASE [same options]
 sh scripts/stress/pilot_s1/resume.sh [PID_OF_EARLIER_PROCESS]
 ```
 
-Waits for `PID` to exit, refuses to start if the `STOP` file exists in the data root, then runs
-`pilot_resume.py` in the image at `nice -n 19` with 16 threads and a 12,600 s step timeout. Paths
-(`/tmp/if2453/pilot_s1`, the image digest, `/stor/scratch/Wilke/if2453/all-the-data/STOP`) are
-hard-coded for the 2026-11-09 run; it does not use `systemd-run`, so the memory scope of AGENTS.md
-section 7.2 is not applied. Edit paths and add the scope before any reuse. Section 6a.
+Throwaway S1 rate pilot on the INPHARED FASTA (`14Apr2025_genomes.fa.gz`): ingest, genome inputs,
+gene calling, IGRs, tapes, MMseqs2 clustering, tokens, postings, `contig_dim`, manifest. `WORKDIR`
+gets `root/`, `mmseqs_tmp/`, `manifest.json` and `result.json` (rewritten after each step). Pod only:
+long, keep to AGENTS.md section 7.2 and check for the `STOP` file. `pilot_resume.py` is `pilot.py
+--resume`. `resume.sh` takes its paths from `PILOT_*` environment variables (see the file) and runs
+the resume inside a `systemd-run --scope` with `MemoryMax` and `MemorySwapMax=0`. The 2026-11-09 run
+used the pre-phase-B versions; its store is pre-phase-B format.
 
 ### `pilot_s1/store_probe.py`
 
@@ -254,6 +197,21 @@ python scripts/stress/pilot_s1/store_probe.py ROOT OUT_JSON [--n 1000] [--k 10]
 ```
 
 In a fresh process: `SeqStore` open time and memory, index footers and row groups read on open, and
-`--n` random neighborhoods of +-`--k` genes fetched with and without the block cache. Runs on a store
-built by the pilots (sections 6a and 6c). It reads tapes through `biobox.l3.tokens.read_tapes`,
-which still exists; check its keys against the new tape schema at B-18.
+`--n` random neighbourhoods of +-`--k` genes fetched with and without the block cache. Reads tapes
+through `biobox.l3.tokens.read_tapes` of the gene-call tape version.
+
+### `pilot_cami/pilot_cami.py`, `pilot_cami/probe_cami.py`, `pilot_cami/run.sh`
+
+```
+sh scripts/stress/pilot_cami/run.sh WORKDIR SRC_FASTA RELEASE
+python scripts/stress/pilot_cami/pilot_cami.py SRC_FASTA WORKDIR RELEASE [--threads 8] [--workers 1] [...]
+python scripts/stress/pilot_cami/probe_cami.py WORKDIR RELEASE [--threads 8] [--n 1000] [--flank 1000]
+```
+
+The short-contig pilot of the 2026-11-09 file §6c, copied into the repo by card B-18 from
+`/tmp/if2453/pilot_cami/scripts` on the pod and moved to the phase-B model (postings instead of the
+pair steps, part files, the per-stage `seq_locator`, `tape_version` paths, a `SeqStore` that loads no
+index). The source is the gold-standard assembly of CAMI II marine sample 0, already on the pod under
+`/tmp/if2453/pilot_cami/src/x/`; its download script stays on the pod because its URL is not listed in
+`sources.yaml` (AGENTS.md section 8). The 2026-11-09 store at `/tmp/if2453/pilot_cami/work/root` is
+pre-phase-B format; B-18 did not rerun this pilot (exit file, deviations).
