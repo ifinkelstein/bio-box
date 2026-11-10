@@ -12,8 +12,6 @@ external:
   - tool_output          # raw domtblout/tblout/GFF from tools
   - genbank_export       # --format domainator-gb
   - json_export          # --json NDJSON
-  - catalog              # generated read-only DuckDB file
-  - release_manifest
   - query_result
 
 operations:

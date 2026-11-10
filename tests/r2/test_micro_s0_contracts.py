@@ -125,6 +125,62 @@ def test_size_check_allows_one_small_file_per_stage():
     assert contracts.check_file_sizes({"files": files * 2})
 
 
+def _tiny(table, **parts):
+    return {"table": table, "partitions": parts, "path": "x", "bytes": 10}
+
+
+@pytest.mark.covers("LY-04")
+def test_size_check_still_refuses_a_second_tiny_file_in_one_partition_of_a_data_table():
+    one = _tiny("l1_domains", library="a", stage="S0")
+    assert contracts.check_file_sizes({"files": [one, {**one, "path": "y"}]})  # same partition: refused
+    big = {**one, "bytes": 10**9}
+    assert contracts.check_file_sizes({"files": [big, {**big, "path": "y"}]}) == []  # both above the floor
+    assert contracts.check_file_sizes({"files": [one, {**big, "path": "y"}]})  # a small one beside a big one
+
+
+@pytest.mark.covers("LY-04")
+def test_size_check_groups_by_the_full_partition_tuple_not_by_stage():
+    a, b = _tiny("l1_domains", library="a", stage="S0"), _tiny("l1_domains", library="b", stage="S0")
+    assert contracts.check_file_sizes({"files": [a, b]}) == []  # two libraries are two groups
+
+
+@pytest.mark.covers("LY-04")
+def test_size_check_exempts_small_artifacts_by_registry_flag_and_refuses_the_rest():
+    def art(name, rel, **parts):
+        return {"artifact": name, "partitions": parts, "path": rel, "bytes": 10}
+
+    kept = [art("release_manifest", "manifests/release=r1.json"), art("release_manifest", "manifests/release=r2.json"),
+            art("catalog", "catalog/release=r1.duckdb"), art("catalog", "catalog/release=r2.duckdb"),
+            art("store_params", "l0seq/store_params.json")]
+    assert contracts.check_file_sizes({"files": [], "artifacts": kept}) == []
+    shards = [art("seq_shards", f"l0seq/seq_shards/stage=S0/shard-000{i}.fa.gz", stage="S0") for i in range(2)]
+    assert contracts.check_file_sizes({"files": [], "artifacts": shards})  # not small by nature
+
+
+@pytest.mark.covers("LY-04", "LY-10")
+def test_two_releases_publish_under_run_step_at_the_pods_floor(tmp_path):
+    """Card C-09: the second release's manifest and catalog are not refused at the real 64 MiB floor."""
+    import test_builders_out as bo
+
+    prof = bo.profile_at(tmp_path / "prof")
+    path = tmp_path / "prof" / "profile.yaml"
+    path.write_text(path.read_text().replace("small_file_floor_bytes: 1000", "small_file_floor_bytes: 67108864"))
+    prof = bo.profile.load(path)
+    assert prof.small_file_floor_bytes == 67108864
+    w = bo.Work(tmp_path / "work")
+    w.prepare()
+    root = tmp_path / "root"
+    steps = (bo.stage_steps("S0", w) + bo.release_steps(bo.REL, ["S0"], w)
+             + bo.stage_steps("S1", w) + bo.release_steps(bo.REL2, ["S0", "S1"], w))
+    for step in steps:
+        if step.name == "domains" and not w.lib.exists():
+            bo.write_library(root, w.lib)  # the HMM library the CLI step reads, made from this root's proteins
+        assert bo.run_cli(prof, root, step) == 0, f"{step.run_stage}.{step.name}"
+    for rel in (bo.REL, bo.REL2):
+        assert (root / f"manifests/release={rel}.json").is_file()
+        assert (root / f"catalog/release={rel}.duckdb").is_file()
+
+
 # --- contracts ---------------------------------------------------------------------------
 
 

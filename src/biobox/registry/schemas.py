@@ -815,6 +815,8 @@ class ArtifactSpec:
     companions: tuple[str, ...] = ()
     doc: str = ""
     in_manifest: bool = True
+    # Small by nature: exempt from the LY-04 floor, as `TableSpec.small_ok` is (card C-09).
+    small_ok: bool = False
 
     @property
     def single_file(self) -> bool:
@@ -841,6 +843,7 @@ ARTIFACTS: dict[str, ArtifactSpec] = {
         doc="the sequence store's parameters (format, shard_bases, line_width, bgzf_level) as sorted-key JSON; "
             "written once, by the first stage's ingest, and checked, never rewritten, by every later one "
             "(card B-22)",
+        small_ok=True,
     ),
     # A release's own records (card C-08): one file per release, the release in the file name
     # (`release=<R>.json`, `release=<R>.duckdb`), so the artifact has no partition directories. Both
@@ -855,6 +858,7 @@ ARTIFACTS: dict[str, ArtifactSpec] = {
         doc="a release's manifest, the system of record (biobox.catalog.build_manifest, write_manifest); "
             "written once per release",
         in_manifest=False,
+        small_ok=True,
     ),
     "catalog": ArtifactSpec(
         name="catalog",
@@ -865,6 +869,7 @@ ARTIFACTS: dict[str, ArtifactSpec] = {
         doc="a release's generated read-only DuckDB catalog (biobox.catalog.generate_catalog): views over "
             "the manifest's explicit file lists",
         in_manifest=False,
+        small_ok=True,
     ),
 }
 
