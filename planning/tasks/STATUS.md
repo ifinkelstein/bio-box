@@ -191,7 +191,7 @@ The thread cap is the sum over all our processes: 40 by day, 56 at night.
 |---|---|---|
 | C-13 defects from the first real build | Opus | **merged 2026-11-10** (68 cards; pod suite 1,172 passed, 12 skipped): per-step scratch, timestamped line-buffered logs, `pod_run.sh` exit line after a stop, `bio-box release verify`, Pfam rate 7.96, ingest constant, STOP mid-step test. Not run in a real pod unit; W-13 checks the exit line under systemd. Row in the merged table still to write |
 | W-13 search under a pod unit; runbook update for W-03 | Opus | started 2026-11-10, built on W-03 and C-13 |
-| B-30 ingest by batch processes | Opus | started 2026-11-10 |
+| B-30 ingest by batch processes | Opus | **reported done, not merged**: `task/B-30` at `1db6817`, pushed; its own suite 1,163 passed, 12 skipped; built before W-03 and C-13 merged. Next: audit, merge, integration suite. Batch build equals single-process file for file; on the 1,000× stage the largest process used 0.248 CPU-min and the batch path costs 33% more CPU in total (*measured*, agent's run). Open from its report: run records' peak RSS reads 344 MB for every step (looks inherited from the parent; a `run-step` defect, needs a card); pass-1 shards are cut at the whole-ingest rate |
 | 10 Gbp rebuild with `build-stage` (not a card; branch `build/r10`, pod root `/tmp/if2453/r10`) | Opus | started 2026-11-10 |
 
 ## Next, in order
