@@ -26,10 +26,21 @@ use it defines the release (the cluster step writes the definition), and later t
 Before any step (exit 2, nothing run): a bad name; `--stage` not among the release's stages; no
 `--stages` and no `release_def`; `--stages` that disagree with the `release_def`; ingest whose
 estimated CPU-minutes exceed the profile's `cpu_min_per_process` (ingest is one process until card
-B-30); and `--scan-jobs` × `--scan-cpus` above the threads `run-step` allows at the start of the
-call (`runstep.choose_threads`: the profile's cap for the hour and weekday, the day cap while the
-host is busy). The ingest estimate is skipped when ingest's run record exists. Before each step: a
-`STOP` file in the root exits 75, as `run-step` does.
+B-30); and `--scan-jobs` × `--scan-cpus`, or `--threads`, above the threads `run-step` allows at
+the start of the call (`runstep.choose_threads`: the profile's cap for the hour and weekday, the day
+cap while the host is busy). The ingest estimate is skipped when ingest's run record exists. Before
+each step: a `STOP` file in the root exits 75, as `run-step` does.
+
+The hour (card C-12). A build can run past the start of the day window, so the allowance is not
+decided once: it is read again (`clock`, `load`, `runstep.choose_threads`) before each step that has
+no run record and before each scan shard launch. Work is started only while it fits: a step only
+while its `--threads` is at most the allowance, a shard only while the shards in flight and it, at
+`--scan-cpus` each, are at most the allowance. Work already running finishes. When the allowance has
+shrunk below `--scan-jobs` × `--scan-cpus`, fewer shards run at once; below one shard's
+`--scan-cpus` (or a step's `--threads`), the launch is held: build-stage waits on the shards it
+runs, or for `RECHECK_S` seconds when none runs, then checks again (and checks `STOP`). The default
+`--threads` (the smaller cap) is never held. `run-step` itself chooses its threads by the hour when
+it starts. The output bytes depend on none of this.
 
 A scan in shards (cards B-24, C-11). Residues are known only after gene calling, so a scan step's
 estimate is made when the build reaches it and its record does not exist. When it exceeds
@@ -42,7 +53,8 @@ the inputs, the budget and the margin only, never on J or C, and the merged file
 scan in one process, byte for byte. The shards' scratch runs live under the scratch directory and
 are removed after the merge.
 
-Up to J shards run at once (`--scan-jobs`, default: the allowance // C), each its own `bio-box
+Up to J shards run at once (`--scan-jobs`, default: the allowance at the start // C; fewer while
+the allowance of the hour is smaller, above), each its own `bio-box
 run-step` process (`python -m biobox.cli run-step --threads C -- ...`, `--scan-cpus`, default
 `DEFAULT_SCAN_CPUS` or the allowance if smaller), started in this process's group, so a Ctrl-C or the
 unit's stop reaches it and run-step forwards it to its step. Each launch is a thread that waits on
@@ -116,6 +128,10 @@ SHARD_MARGIN = 0.8
 # Threads per scan shard when --scan-cpus is not given (or the allowance, if smaller). A default, not a
 # measured optimum: the allowance is filled by running more shards at once, not by more threads each.
 DEFAULT_SCAN_CPUS = 4
+# Seconds between checks of the allowance while a launch is held for it and nothing runs to wait on (card C-12). The
+# allowance changes at the edges of the day window and with the load average, so a minute's delay is small beside a
+# step or a shard. Not measured; never below a second (no tighter polling).
+RECHECK_S = 60.0
 CUTOFFS = ("gathering", "trusted", "noise", "none")
 _READ = 1 << 20  # bytes per read when decompressing an input to count it
 
@@ -296,6 +312,10 @@ def _refusal(prof: Profile, b: Build, root: Path, plan: list[Step], allowance: i
                 f"{allowance} now ({now:%a %H:%M}: the profile's day cap {prof.max_threads_day} on weekdays from "
                 f"{prof.day_start_hour}:00 to {prof.day_end_hour}:00, else the night cap {prof.max_threads_night}, "
                 f"and the day cap while the load average is above {runstep.BUSY_LOAD}); lower one of them")
+    if threads_of(prof, b) > allowance:
+        return (f"--threads {threads_of(prof, b)} is above the {allowance} threads run-step allows now "
+                f"({now:%a %H:%M}); give at most {min(prof.max_threads_day, prof.max_threads_night)} (the smaller cap, "
+                f"allowed at any hour) or leave it out")
     if scratch_of(prof, b).is_relative_to(root):
         return f"{scratch_of(prof, b)}: the scratch directory may not lie under the data root"
     try:
@@ -376,8 +396,11 @@ def build_stage(prof: Profile, b: Build, *, run: Runner | None = None,
     scan shards, which it is then called for from one thread each; without it each shard is its own
     `bio-box run-step` process. `clock` and `load` (tests only) give the time and load average the scan
     allowance is decided at. `_hook` (tests only) is called with `after:<step>` after each step that
-    exited 0 or was passed over (scan shards in the order they end). An exception that `_hook` raises
-    is not caught; shards then running are waited for first."""
+    exited 0 or was passed over (scan shards in the order they end), and with `hold:<step>` each time a
+    step or shard launch is held for the allowance (card C-12). An exception that `_hook` raises
+    is not caught; shards then running are waited for first. The clock and the load are read at the
+    start, then before each step without a run record, before each shard launch and at each check
+    while a launch is held."""
     shard_run = run
     run = runstep.run_step if run is None else run
     root = Path(b.root).resolve()
@@ -395,11 +418,20 @@ def build_stage(prof: Profile, b: Build, *, run: Runner | None = None,
     n = threads_of(prof, b)
     jobs, cpus = scan_slots(b, allowance)
 
+    def allow() -> int:
+        """The threads run-step allows now (read again at every call, card C-12)."""
+        return scan_allowance(prof, clock(), load())
+
     def one(step: Step) -> int | None:
-        """Run `step` (STOP checked first); its non-zero exit code, else None."""
+        """Run `step` (STOP checked first, then held while its threads do not fit the allowance); its non-zero exit
+        code, else None."""
         if (root / "STOP").exists():
             _say(f"{root / 'STOP'} exists; stopping before {step.run_stage}.{step.name}")
             return runstep.EXIT_STOP
+        if not _record(root, step).exists() or _intent(root, step).exists():
+            code = _hold_step(root, step, n, allow, _hook)
+            if code is not None:
+                return code
         cmd: Sequence[str] = [sys.executable, "-m", "biobox.cli", *step.argv]
         code = run(prof, root, step.run_stage, step.name, cmd, threads=n)
         if code != 0:
@@ -413,7 +445,7 @@ def build_stage(prof: Profile, b: Build, *, run: Runner | None = None,
             return runstep.EXIT_STOP
         if step.argv is not None:
             if step.check == "scan" and not _record(root, step).exists() and _sharded(prof, b, root, step):
-                code = _scan_in_shards(prof, b, root, step, one, _hook, jobs, cpus, shard_run)
+                code = _scan_in_shards(prof, b, root, step, one, _hook, jobs, cpus, shard_run, allow)
             else:
                 code = one(step)
             if code is not None:
@@ -424,10 +456,32 @@ def build_stage(prof: Profile, b: Build, *, run: Runner | None = None,
     return 0
 
 
+def _hold_step(root: Path, step: Step, need: int, allow: Callable[[], int], hook: Hook | None) -> int | None:
+    """Wait until a step of `need` threads, which runs alone, fits the allowance `allow()` (card C-12): None then, or
+    75 when a `STOP` file appears meanwhile. While it does not fit, check again every `RECHECK_S` seconds."""
+    said = None
+    while True:
+        a = allow()
+        if need <= a:
+            return None
+        if a != said:
+            _say(f"{step.run_stage}.{step.name} needs {need} threads, but run-step allows {a} now; holding it, "
+                 f"checking again every {RECHECK_S:g} s")
+            said = a
+        if hook is not None:
+            hook(f"hold:{step.name}")
+        threading.Event().wait(RECHECK_S)  # nothing runs to wait on: a timed wait, at least a second
+        if (root / "STOP").exists():
+            _say(f"{root / 'STOP'} exists; stopping before {step.run_stage}.{step.name}")
+            return runstep.EXIT_STOP
+
+
 def _scan_in_shards(prof: Profile, b: Build, root: Path, step: Step, one: Callable[[Step], int | None],
-                    hook: Hook | None, jobs: int, cpus: int, run: Runner | None) -> int | None:
-    """The scan `step` as its plan step, then its shard steps, up to `jobs` at once with `cpus` threads each
-    (`_run_shards`), then the merge step (`scan_steps`); each is a `run-step`, so a call after a kill skips
+                    hook: Hook | None, jobs: int, cpus: int, run: Runner | None,
+                    allow: Callable[[], int]) -> int | None:
+    """The scan `step` as its plan step, then its shard steps, up to `jobs` at once with `cpus` threads each and
+    within the allowance `allow()` of the hour (`_run_shards`), then the merge step (`scan_steps`); each is a
+    `run-step`, so a call after a kill skips
     every step already published. `run` stands in for the shards' run-step processes (tests only). The
     shards' scratch runs are removed once the merge is published."""
     lib = _library(b, step)
@@ -441,7 +495,7 @@ def _scan_in_shards(prof: Profile, b: Build, root: Path, step: Step, one: Callab
     subs = scan_steps(prof, b, step, shards, cpus)
     if run is None:
         run = _process_runner(_profile_file(prof, scratch_of(prof, b)))
-    code = _run_shards(prof, root, step, subs[1:-1], jobs, cpus, run, hook)
+    code = _run_shards(prof, root, step, subs[1:-1], jobs, cpus, run, hook, allow)
     if code is not None:
         return code
     code = one(subs[-1])  # the merge; its hook is the scan step's, after this returns
@@ -482,7 +536,7 @@ def _intent(root: Path, step: Step) -> Path:
 
 
 def _run_shards(prof: Profile, root: Path, scan: Step, shards: list[Step], jobs: int, cpus: int, run: Runner,
-                hook: Hook | None) -> int | None:
+                hook: Hook | None, allow: Callable[[], int]) -> int | None:
     """Run the shard steps without a run record, up to `jobs` at once (module docstring); return None when
     every shard has its record, else the failed shard's code or 75 for STOP. A shard with a record and no
     intent file is passed over (its hook is called). The marker in `.incoming` is kept while any shard runs."""
@@ -498,7 +552,7 @@ def _run_shards(prof: Profile, root: Path, scan: Step, shards: list[Step], jobs:
     marker = root / ".incoming" / f"_build-stage.{scan.run_stage}.{scan.name}"
     marker.mkdir(parents=True, exist_ok=True)
     try:
-        return _launch(prof, root, todo, jobs, cpus, run, hook)
+        return _launch(prof, root, todo, jobs, cpus, run, hook, allow)
     finally:
         with contextlib.suppress(OSError):
             marker.rmdir()
@@ -507,11 +561,14 @@ def _run_shards(prof: Profile, root: Path, scan: Step, shards: list[Step], jobs:
 
 
 def _launch(prof: Profile, root: Path, todo: list[Step], jobs: int, cpus: int, run: Runner,
-            hook: Hook | None) -> int | None:
+            hook: Hook | None, allow: Callable[[], int]) -> int | None:
     """Start the steps of `todo` in order, at most `jobs` running at once, each in a thread that calls `run`
-    and puts its result on a queue; wait on the queue (never poll). A `STOP` file before a launch, a step
-    that does not exit 0, or an exception (from a step or `hook`) stops launches; the steps running are
-    waited for in every case. An exception is raised again after that."""
+    and puts its result on a queue; wait on the queue (never poll). Before each launch the allowance is read
+    again (`allow()`, card C-12): a step is launched only while the steps running and it, at `cpus` threads each,
+    fit it; else the launch is held (`hold:<step>` to `hook`), and the queue is waited on with a timeout of
+    `RECHECK_S` seconds, after which, or after a step ends, the allowance is read again. A `STOP` file before a
+    launch, a step that does not exit 0, or an exception (from a step or `hook`) stops launches; the steps
+    running are waited for in every case. An exception is raised again after that."""
     done: queue.SimpleQueue = queue.SimpleQueue()
 
     def work(k: int, s: Step) -> None:
@@ -524,19 +581,37 @@ def _launch(prof: Profile, root: Path, todo: list[Step], jobs: int, cpus: int, r
 
     pending = list(enumerate(todo))
     running, failed, error, stopped = 0, {}, None, False
+    said = None  # the allowance last named in a hold message
     try:
         while True:
+            held = False
             while pending and running < jobs and not (failed or stopped or error is not None):
                 if (root / "STOP").exists():
                     _say(f"{root / 'STOP'} exists; launching no more shards, waiting for the {running} running")
                     stopped = True
                     break
-                k, s = pending.pop(0)
+                k, s = pending[0]
+                a = allow()
+                if (running + 1) * cpus > a:
+                    held = True
+                    if a != said:
+                        _say(f"{s.run_stage}.{s.name} needs {cpus} threads beside the {running * cpus} in flight, but "
+                             f"run-step allows {a} now; holding it, checking again when a shard ends or every "
+                             f"{RECHECK_S:g} s")
+                        said = a
+                    if hook is not None:
+                        hook(f"hold:{s.name}")
+                    break
+                said = None
+                pending.pop(0)
                 threading.Thread(target=work, args=(k, s), name=f"build-stage {s.name}").start()
                 running += 1
-            if not running:
+            if not running and not held:
                 break
-            k, s, res = done.get()  # blocks until a step's run-step has exited
+            try:  # until a step's run-step has exited; while a launch is held, at most RECHECK_S seconds
+                k, s, res = done.get(timeout=RECHECK_S if held else None)
+            except queue.Empty:
+                continue
             running -= 1
             if isinstance(res, BaseException):
                 error = res if error is None else error

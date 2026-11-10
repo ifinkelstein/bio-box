@@ -655,3 +655,179 @@ def test_a_second_stage_and_release_change_no_file_of_the_first(direct, built, t
     man = c08.check_manifest(root, REL2, catalog.read_manifest(catalog.manifest_path(oracle, REL2)))
     assert catalog.verify_manifest(man) == []
     c08.check_catalog(root, REL2, man, Path(direct["prof"].tmp) / "staging")
+
+
+# --- long builds: the hour and lost scratch (card C-12) ----------------------------------------------------
+#
+# Each test continues a build from a shared fixture instead of building from nothing: `planned` is a build stopped
+# after its scan's plan step (six or seven shards), `scanned` is `planned` continued through every shard at night and
+# stopped before the merge. The oracle for the files is the direct (unsharded) build; for the plan and the shard
+# records it is `scanned`, whose shards all ran at the night cap with the allowance never changing.
+
+DAY = datetime(2026, 11, 9, 9, 0)  # Monday 09:00: the test profile's day cap (4) holds
+
+
+class Clock:
+    """An injected clock: `before` until it is armed, then one time of `script` per call (its last time for every
+    call past its end). The runners below arm it while the scan's plan step runs, so the calls it counts are the ones
+    build-stage makes after the plan: one before each shard launch, and one at each check while it holds a launch."""
+
+    def __init__(self, before: datetime, script: list[datetime]):
+        self.before, self.script, self.armed, self.calls = before, list(script), False, 0
+
+    def __call__(self) -> datetime:
+        if not self.armed:
+            return self.before
+        self.calls += 1
+        return self.script[min(self.calls, len(self.script)) - 1]
+
+
+def index(step: str) -> int:
+    return int(step.rsplit("-", 1)[1])
+
+
+class InFlight:
+    """A runner that records, for each scan shard, the threads of the shards running when it starts (its own
+    included) and the clock calls made by then, and runs every step through `run-step` at the time `when`. The shards
+    numbered below `hold` stay running until build-stage holds a launch for the allowance (its `hold:` hook point,
+    `hook`) or TIMEOUT passes: a build that launches past the allowance is then seen doing it, without timing."""
+
+    def __init__(self, clock: Clock, when: datetime, hold: int = 0):
+        self.clock, self.when, self.hold = clock, when, hold
+        self.lock = threading.Lock()
+        self.alive: dict[str, int] = {}
+        self.starts: list[tuple[str, int, int]] = []  # (shard step, threads in flight at its start, clock calls)
+        self.held = threading.Event()
+
+    def hook(self, point: str) -> None:
+        if point.startswith("hold:"):
+            self.held.set()
+
+    def __call__(self, prof, root, stage, step, cmd, **kw) -> int:
+        def go() -> int:
+            return runstep.run_step(prof, root, stage, step, cmd, clock=lambda: self.when, load=idle, **kw)
+
+        if step.endswith(".plan"):
+            self.clock.armed = True
+        if ".shard-" not in step:
+            return go()
+        with self.lock:
+            self.alive[step] = kw["threads"]
+            self.starts.append((step, sum(self.alive.values()), self.clock.calls))
+        try:
+            if index(step) < self.hold:
+                self.held.wait(TIMEOUT)
+            return go()
+        finally:
+            with self.lock:
+                del self.alive[step]
+
+
+def copy_root(src: Path, base: Path) -> Path:
+    shutil.copytree(src, base / "root", symlinks=True)
+    return base / "root"
+
+
+def scan_records(root: Path) -> dict[str, str]:
+    return {k: v for k, v in c08.tree(root).items() if k.startswith(SHARD_RECORDS)}
+
+
+def check_stage_files(direct, root: Path) -> None:
+    """For a build stopped after its scan: every file but the shard records is the direct build's file at that path,
+    byte for byte, and every domain file of the direct build is there."""
+    got = {k: v for k, v in c08.tree(root).items() if not k.startswith(SHARD_RECORDS)}
+    want = c08.tree(direct["root"])
+    assert got == {k: want.get(k) for k in got}
+    assert {k for k in want if k.startswith("l1/domains/")} <= set(got)
+
+
+@pytest.fixture(scope="module")
+def planned(direct, tmp_path_factory):
+    """A build stopped after its scan's plan step, the scan cut into six or seven shards."""
+    root = tmp_path_factory.mktemp("c12-planned") / "root"
+
+    def stop(point: str) -> None:
+        if point == f"after:{SCAN}.plan":
+            raise Killed(point)
+
+    with pytest.MonkeyPatch.context() as mp:
+        mp.setattr(bs, "shard_residues", patched_residues(direct))
+        with pytest.raises(Killed):
+            bs.build_stage(small_budget(direct), build_of(direct, root), run=runner, clock=lambda: NOON, load=idle,
+                           _hook=stop)
+    return root
+
+
+@pytest.fixture(scope="module")
+def scanned(direct, planned, tmp_path_factory):
+    """`planned` continued through every shard at night (four jobs of one thread) and stopped before the merge: the
+    root with every shard's record, and the scratch directory with every shard's run."""
+    base = tmp_path_factory.mktemp("c12-scanned")
+    root = copy_root(planned, base)
+
+    def until_merge(prof, root_, stage, step, cmd, **kw):
+        if step == SCAN:
+            raise Killed(step)
+        return runner(prof, root_, stage, step, cmd, **kw)
+
+    with pytest.MonkeyPatch.context() as mp:
+        mp.setattr(bs, "shard_residues", patched_residues(direct))
+        b = dataclasses.replace(jobs_of(direct, root, 4, 1), tmp=base / "scratch")
+        with pytest.raises(Killed):
+            bs.build_stage(small_budget(direct), b, run=until_merge, clock=lambda: SUNDAY_NIGHT, load=idle)
+    n = len(domains.read_plan(root, "S0", "test", "1")["shards"])
+    assert n >= 5 and shard_names(root) == [shard(k) for k in range(n)]
+    return root, base / "scratch"
+
+
+@pytest.mark.covers("D-01")
+def test_c12_after_the_clock_moves_from_night_to_day_no_shard_launch_passes_the_day_cap(
+        direct, planned, scanned, tmp_path, monkeypatch):
+    """Six jobs of one thread fit the night cap (6) when the build starts. The clock reads night for the first three
+    shard launches, then day (cap 4). After the change no shard may start while it would put more than 4 threads in
+    flight; the shards started at night run on and finish. Counted through the runner. The build ends byte-identical
+    to the direct build, with the shard records of `scanned`, whose shards all ran at night."""
+    monkeypatch.setattr(bs, "shard_residues", patched_residues(direct))
+    monkeypatch.setattr(bs, "RECHECK_S", 1.0, raising=False)
+    prof, root = small_budget(direct), copy_root(planned, tmp_path)
+    clock = Clock(SUNDAY_NIGHT, [SUNDAY_NIGHT] * 3 + [DAY])
+    count = InFlight(clock, SUNDAY_NIGHT, hold=3)
+    b = dataclasses.replace(jobs_of(direct, root, 6, 1), tmp=tmp_path / "scratch")
+    assert bs.build_stage(prof, b, run=count, clock=clock, load=idle, _hook=count.hook) == 0
+    n = len(domains.read_plan(root, "S0", "test", "1")["shards"])
+    assert sorted(s for s, _, _ in count.starts) == [shard(k) for k in range(n)]  # each shard started once
+    after = {s: t for s, t, _ in count.starts if index(s) >= 3}  # the shards launched after the change
+    assert after and all(t <= prof.max_threads_day for t in after.values()), count.starts
+    assert count.held.is_set() and clock.calls > 3  # a launch was held, and the clock moved
+    check_sharded_equals_direct(direct, root)
+    assert scan_records(root) == scan_records(scanned[0])
+
+
+def test_c12_with_the_allowance_below_one_shards_threads_the_build_waits_then_proceeds(
+        direct, planned, scanned, tmp_path, monkeypatch, capsys):
+    """One job of 5 threads fits the night cap (6) when the build starts. The clock then reads day (cap 4) for two
+    checks and night after. No shard starts while it reads day: build-stage holds the launch, waits RECHECK_S (at
+    least a second) on the shards it runs, of which there are none, checks again, and launches when the clock
+    allows."""
+    monkeypatch.setattr(bs, "shard_residues", patched_residues(direct))
+    monkeypatch.setattr(bs, "RECHECK_S", 1.0, raising=False)
+    prof, root = small_budget(direct), copy_root(planned, tmp_path)
+    clock = Clock(SUNDAY_NIGHT, [DAY, DAY, SUNDAY_NIGHT])
+    count = InFlight(clock, SUNDAY_NIGHT)
+    seen: list[str] = []
+
+    def hook(point: str) -> None:
+        seen.append(point)
+        if point == f"after:{SCAN}":
+            raise Killed(point)
+
+    b = dataclasses.replace(jobs_of(direct, root, 1, 5), tmp=tmp_path / "scratch")
+    with pytest.raises(Killed):
+        bs.build_stage(prof, b, run=count, clock=clock, load=idle, _hook=hook)
+    assert [p for p in seen if p.startswith("hold:")] == [f"hold:{shard(0)}"] * 2
+    assert f"allows {prof.max_threads_day}" in capsys.readouterr().err
+    assert [c for s, _, c in count.starts if s == shard(0)] == [3]  # launched at the third check, the first at night
+    assert {t for _, t, _ in count.starts} == {5}
+    assert bs.RECHECK_S >= 1
+    check_stage_files(direct, root)
+    assert scan_records(root) == scan_records(scanned[0])
