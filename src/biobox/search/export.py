@@ -556,8 +556,16 @@ def locus_tables(root: Path, rows: list[dict], *, release: str | None, gene_call
 
 def protein_fasta(root: Path, *, release: str, gene_call_version: str, manifest: dict | None = None,
                   threads: int | None = None, tmp=None) -> Iterator[str]:
-    """`export proteins`: every distinct protein of `protein_seq` (the release manifest's files when given, else
-    every file of the gene-call version), by protein_uid, named by its uid, the sequence as stored on one line."""
+    """`export proteins`: every distinct protein of `protein_seq` (the release manifest's files), by
+    protein_uid, named by its uid, the sequence as stored on one line. Without a manifest it raises
+    ValueError at the call: readers use the manifest's file list, never a glob (AGENTS 3.9)."""
+    if manifest is None:
+        raise ValueError(f"export proteins needs manifests/release={release}.json (write it with "
+                         f"`bio-box release manifest --release {release}`); readers never glob")
+    return _protein_fasta(root, release, gene_call_version, manifest, threads, tmp)
+
+
+def _protein_fasta(root, release, gene_call_version, manifest, threads, tmp) -> Iterator[str]:
     with open_store(root, release=release, gene_call_version=gene_call_version, manifest=manifest, threads=threads,
                     tmp=tmp, relations=("prot",)) as st:
         for r in _stream(st.con, "SELECT protein_uid, min(seq) AS seq FROM prot GROUP BY protein_uid "

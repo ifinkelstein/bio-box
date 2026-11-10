@@ -41,6 +41,7 @@ Rules that apply to every run (AGENTS.md sections 4, 6, 7):
 | `builder_limits.py` | pod | heap per pair row of the pair oracle and `SeqStore` open cost at 10^6 contigs | 2026-11-09 §5 | runs; the pair half measures the test oracle only (pairs are not built, AGENTS §3.5) |
 | `macro_scan.py` | pod | row groups read by the user lookup macros at 10^6 contigs | 2026-11-09 §5 | runs; the sequence macros no longer call these (card B-14) |
 | `postings_bytes.py` | pod | `token_postings` bytes per column from Parquet footers (`python scripts/stress/postings_bytes.py ROOT RELEASE [--json]`; read only, card B-26) | `planning/measurements/2026-11-10_postings_bytes.md` | current |
+| `protein_stars.py` | pod | sequences of `protein_seq` that end in `*` or hold an internal `*`, files from the release manifest (`python scripts/stress/protein_stars.py ROOT RELEASE`; read only, one thread, card W-11) | `planning/measurements/2026-11-10_protein_stars.md` | new (W-11) |
 | `pilot_s1/pilot.py` | pod | S1 rate pilot on INPHARED phages | 2026-11-09 §6a, §6b | current (B-18): postings replace the pair steps |
 | `pilot_s1/pilot_resume.py` | pod | `pilot.py --resume` | 2026-11-09 §6a | current (B-18) |
 | `pilot_s1/resume.sh` | pod | waits for an earlier process, then runs `pilot_resume.py` in a memory scope | 2026-11-09 §6a | current (B-18): scope added, paths from the environment |

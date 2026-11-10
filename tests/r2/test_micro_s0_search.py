@@ -1081,15 +1081,40 @@ def test_w05_export_proteins_writes_every_distinct_protein_named_by_uid(w05, cap
     prot = {r["protein_uid"]: r["seq"] for r in _pq(root, f"l0seq/protein_seq/gene_call_version={V}")}
     want = "".join(f">{u.hex()}\n{prot[u]}\n" for u in sorted(prot))
     args = ["export", "proteins", "--release", REL, "--root", str(root)]
-    assert cli.main(args) == 0
-    assert capsys.readouterr().out == want
-    # with the release manifest the files come from it; the same proteins, and --out writes the same bytes
+    # card W-11: without the release manifest the export refuses (see test_w11_export_proteins_without_...)
+    assert cli.main(args) == 2
+    capsys.readouterr()
+    # with the release manifest the files come from it; every distinct protein, and --out writes the same bytes
     catalog.write_manifest(catalog.build_manifest(root, REL, ["S0"]), root / f"manifests/release={REL}.json")
     dst = tmp_path / "p.faa"
     assert cli.main(args + ["--out", str(dst)]) == 0
     assert dst.read_text() == want
     assert cli.main(args) == 0
     assert capsys.readouterr().out == want
+
+
+@pytest.mark.covers("W-11")
+def test_w11_export_proteins_without_the_release_manifest_refuses(w05, capsys, tmp_path):
+    root = tmp_path / "a"
+    shutil.copytree(w05[0], root)
+    assert not (root / f"manifests/release={REL}.json").exists()
+    dst = tmp_path / "p.faa"
+    capsys.readouterr()
+    assert cli.main(["export", "proteins", "--release", REL, "--root", str(root), "--out", str(dst)]) == 2
+    cap = capsys.readouterr()
+    assert cap.out == "" and not dst.exists()
+    assert f"manifests/release={REL}.json" in cap.err and "bio-box release manifest" in cap.err
+    # the library call refuses too, before any iteration, instead of reading every file it finds
+    with pytest.raises(ValueError, match="manifest"):
+        export.protein_fasta(root, release=REL, gene_call_version=V)
+
+
+@pytest.mark.covers("W-11")
+def test_w11_no_stored_protein_contains_a_star(w05):
+    # rL.2 (2,053,315 proteins, measured 2026-11-10 with scripts/stress/protein_stars.py) holds none, so the
+    # FASTA writers keep the sequence as stored; this pins the fixture to the same property.
+    prot = _pq(w05[0], f"l0seq/protein_seq/gene_call_version={V}")
+    assert prot and all("*" not in r["seq"] for r in prot)
 
 
 # --- S-07: planted drift trap ---------------------------------------------------------------------------------

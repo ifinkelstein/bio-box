@@ -11,7 +11,7 @@ Last update: 2026-11-09, 23:00 CST. Suite on the integration branch after the B-
 pinned image; 3 min 40 s wall for the slowest shard, against 13.5 min in one process). The skips
 need samtools, bgzip, Prodigal or the golden set. Tests no longer run on the laptop (AGENTS.md §5.5).
 
-## Merged (45 cards)
+## Merged (46 cards)
 
 | Card | Merge | What it did | Audit notes |
 |---|---|---|---|
@@ -59,6 +59,7 @@ need samtools, bgzip, Prodigal or the golden set. Tests no longer run on the lap
 | B-22 | this merge | `l0_manifest` is partitioned by stage; `store_params.json` is a registered artifact, written once; a first and a second stage both publish under `run-step` and equal two direct ingests file for file | 32 other fixture files byte-identical before and after. Agent's full pod run: 903 passed, 10 skipped; golden 32 passed, 5 skipped. `contracts.check_append_only` still skips all small tables: card D-06 |
 | B-18 | this merge | Phase-B exit measurements (`planning/measurements/2026-11-10_phase_b_exit.md`); stress scripts moved to the new model; CAMI II driver added; `.github/workflows/cross_host.yml` | Two of three acceptance criteria are **not met**: some catalog macros read every row group (card B-31), and two S5 storage budgets are exceeded (PI card 0-05). Cross-host equality holds on its first run: GitHub Actions and the pod both give manifest hash `ccd621b1...` for commit `f37c366` (fixture store; no clustering or domain step in it). Short-contig results: store open 0.03 s (was 7.2 s), tape lookup 1 of 15 row groups (was 181 of 181) |
 | B-29 | this merge | Postings builder fixed: tokens are exploded one row group at a time into flat scratch runs, then sorted, so the sort spills; memory limit unchanged | Cause found by measurement: the `ORDER BY` over a union fed from a materialized CTE did not spill (1.9 GB) when family postings are sparse. Reproduced small (690,000 slots at a scaled limit). On real `rL.3`: old builder fails at 38 s; new one writes 25,822,709 rows in 105 s at 2.4 GB peak RSS, byte-identical to the old builder run with an 8 GB cap. 771 fixture files unchanged |
+| W-11 | this merge | `export proteins` refuses without the release manifest; a check of 2,053,315 stored proteins in `rL.2` found no `*` anywhere, so FASTA output needed no change (a fixture test pins it) | Agent's full pod run: 906 passed, 10 skipped. Hit and locus exports still glob without a manifest: card W-12 |
 
 Decisions DEC-18 to DEC-23 were approved by the PI on 2026-11-09 and are in `planning/DECISIONS.md`.
 
@@ -67,7 +68,6 @@ Decisions DEC-18 to DEC-23 were approved by the PI on 2026-11-09 and are in `pla
 | Card | Model | State |
 |---|---|---|
 | B-28 query-time readers take the release's stages | Opus | started 2026-11-10 |
-| W-11 export follow-ups | Sonnet | started 2026-11-10 |
 | D-06 append-only check covers small tables | Sonnet | started 2026-11-10 |
 | Finish release `rL.3` on the pod (not a card): place the fixed postings, then `contig_dim`, catalog, verify, sync | Opus | started 2026-11-10 |
 | C-04 `bio-box build-stage` | Opus | stopped 2026-11-10 with evidence, nothing written: builders cannot write into `run-step` staging. Now depends on B-22 and the new card C-08; card amended |

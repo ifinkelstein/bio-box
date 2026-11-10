@@ -256,8 +256,10 @@ def _export(a) -> int:
     root = Path(a.root)
     manifest = export.release_manifest(root, a.release)
     if manifest is None:
-        print(f"note: no manifests/release={a.release}.json; reading every protein_seq file of gene_call_version "
-              f"{a.gene_call_version}", file=sys.stderr)
+        print(f"error: no manifests/release={a.release}.json under {root}; readers use the manifest's file list, "
+              f"never a glob. Write it with: bio-box release manifest --root {root} --release {a.release}",
+              file=sys.stderr)
+        return 2
     _emit(export.protein_fasta(root, release=a.release, gene_call_version=a.gene_call_version, manifest=manifest,
                                threads=a.threads), a.out)
     return 0
@@ -382,7 +384,7 @@ def main(argv: list[str] | None = None) -> int:
     s.add_argument("--threads", type=int, help=f"hits --format: DuckDB threads (default {export.EXPORT_THREADS})")
     e = sub.add_parser("export", parents=[common])
     e.add_argument("what", choices=["proteins"], help="proteins: every distinct protein as FASTA named by protein uid")
-    e.add_argument("--release", required=True, help="files from manifests/release=<R>.json when present")
+    e.add_argument("--release", required=True, help="needs manifests/release=<R>.json (bio-box release manifest)")
     e.add_argument("--out", help="write this file (default: stdout)")
     e.add_argument("--threads", type=int, help=f"DuckDB threads (default {export.EXPORT_THREADS})")
     n = sub.add_parser("nbr", parents=[common])

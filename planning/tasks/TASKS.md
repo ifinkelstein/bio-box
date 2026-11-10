@@ -508,6 +508,12 @@ Files: `src/biobox/search/export.py`, `src/biobox/cli.py` (`export`, `search hit
 Do: (1) `export proteins` without `manifests/release=<R>.json` refuses with exit 2 instead of reading every `protein_seq` file it finds (AGENTS §3.9: readers use the manifest's file list, never globs); migrate the W-05 test that compares "with and without manifest" to assert the refusal. (2) FASTA written for a person (`--format faa`, `export proteins`) has no `*`: a trailing `*` is dropped, and a protein with an internal `*` is written as stored and counted in a note on stderr. First check on the pod whether `protein_seq` holds any `*` at all (`rL.2`); if it holds none, add only a test that says so and change nothing.
 Accept: tests for each, written first.
 
+### W-12 Hit and locus exports read only the manifest's files
+**L** · Depends: B-28, W-11 (found in the W-11 report; AGENTS §3.9)
+Files: `src/biobox/search/export.py`, `src/biobox/cli.py` (`search hits`, `nbr`), `tests/r2/test_micro_s0_search.py`
+Do: `hits_tsv`, `hits_faa` and `locus_tables` still fall back to a registry glob when the release has no manifest. Make them refuse as `export proteins` does since W-11 (exit 2, naming the manifest and `bio-box release manifest`), or take the release's stage list through the readers B-28 changed; no path may glob over stages.
+Accept: tests first: each command without a manifest exits 2 with that message; with a manifest and an extra stage on disk, output is unchanged.
+
 ### B-27 Lookups that cannot prune: contig labels and cluster membership
 **M** · Depends: B-25 (found in the W-05 report; AGENTS §4.4)
 Files: `src/biobox/registry/schemas.py` and lock (two tables), their builders (`src/biobox/l0seq/store.py`, `src/biobox/l2/cluster.py`), `src/biobox/catalog.py` (`contig_label`, macros), `src/biobox/search/export.py`, `src/biobox/search/nbr.py`, tests
