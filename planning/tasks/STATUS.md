@@ -11,7 +11,7 @@ Last update: 2026-11-09, 23:00 CST. Suite on the integration branch after the B-
 pinned image; 3 min 40 s wall for the slowest shard, against 13.5 min in one process). The skips
 need samtools, bgzip, Prodigal or the golden set. Tests no longer run on the laptop (AGENTS.md §5.5).
 
-## Merged (39 cards)
+## Merged (40 cards)
 
 | Card | Merge | What it did | Audit notes |
 |---|---|---|---|
@@ -53,6 +53,7 @@ need samtools, bgzip, Prodigal or the golden set. Tests no longer run on the lap
 | W-10 | this merge | `bio-box search run --profile` (or `$BIOBOX_PROFILE`): thread cap, nice and required memory cap from the host profile; flags may only lower them | Agent's full pod run on its branch: 866 passed, 10 skipped. With a profile, `mem_gb` defaults to the profile's `mem_scope` |
 | B-17 | this merge | Legacy keys removed: `slot_protein` table; ordinal, flank-slot and dimension columns; foreign keys and lineage now run through `feature` and `feature_protein`; `LEGACY_ORDINAL_KEYS` is empty | Schema lock regenerated on the pod with `--breaking`. Nested occurrence objects in search-hit exports changed (`ordinal`, no `genome_uid` or `tier`) without a schema-version bump: folded into card W-05 |
 | W-05 | this merge | `search hits --format tsv\|faa`, `nbr <run> --format tsv`, `export proteins`; search-hit JSON is `search_hit/2` with `genome_uid` and `tier` joined from `contig_dim` | TSV checked against a brute-force join written in the test. Agent's full pod run on its branch: 866 passed, 10 skipped. Two lookups cannot prune (card B-27); `export proteins` globs when there is no manifest and FASTA keeps `*` (card W-11) |
+| B-26 | this merge | Postings measured by column: 35.7 bytes per row, of which `feature_uid` is 17.0; estimate in the code corrected from 20 to 36 | The audit migrated one test constant that mirrors the estimate. Whether to slim the table is a PI decision: card 0-04 |
 
 Decisions DEC-18 to DEC-23 were approved by the PI on 2026-11-09 and are in `planning/DECISIONS.md`.
 
@@ -90,6 +91,7 @@ probed by hand on the pod).
 - A `read:packages` credential, so the image built from `main` can be pulled on the pod.
 - Confirm the day window for the pod's thread caps (profile assumes 08:00 to 20:00 on weekdays).
 - First-10 questions (card 0-03), before the S1 gate.
+- Card 0-04: keep `token_postings` self-contained (about 36 GB at GTDB scale) or drop the columns the tape already holds (about a third smaller, at the price of a join). Recommendation: keep.
 - `l0_manifest` is still one file rewritten per stage, against the append-only rule (found in B-15; no card yet: see B-22 in `TASKS.md`).
 
 ## On the pod (wilkcomp02)

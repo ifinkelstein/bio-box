@@ -40,7 +40,7 @@ LEVEL_BITS = {"family": 1, "nr50": 2, "nr90": 3}  # PLAN.md §4.1: token = level
 COLS = ("token_id", "contig_uid", "ordinal", "seg_idx", "feature_uid", "start", "end", "strand", "n_slots",
         "is_circular", "contig_len")
 SORT = ("token_id", "contig_uid", "ordinal", "seg_idx")  # the registry's sort key, written out here
-EST_ROW = 20  # the builder's per-row estimate (bytes), which cuts parts and picks the bucket width
+EST_ROW = 36  # the builder's per-row estimate (bytes), which cuts parts and picks the bucket width
 POST = "l3/token_postings"
 NR90_BASE = LEVEL_BITS["nr90"] << 61
 

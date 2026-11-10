@@ -102,6 +102,12 @@ and `ghcr.io/ifinkelstein/bio-box@sha256:50143ef2df2035e285e9b4def994d5495357d3d
 into `~/bio-box/images/`. Create `/stor/work/Wilke/if2453/all-the-data` (setgid) with a README like the scratch one (DEC-11).
 Accept: `singularity exec <test sif> pytest -q` is green on the pod; the directory exists.
 
+### 0-04 Slim `token_postings` or keep it self-contained
+**H** (PI) · Depends: B-26 · Decide before `rS0.1` is signed (after that the columns are locked, AGENTS §3.8)
+Evidence: `planning/measurements/2026-11-10_postings_bytes.md`. A posting is 35.7 bytes (*measured*, `rL.2`): `feature_uid` 17.0, `contig_uid` 4.8, `start` and `end` 8.2, `contig_len` 2.2, `ordinal` 1.4, `n_slots` 1.2, `token_id` 0.9. At GTDB scale that is about 36 GB (*derived* there).
+Options: (a) keep every column: a neighbour query needs only postings, no join; (b) drop `start`, `end`, `strand`, `n_slots`, `is_circular`, `contig_len`, which the tape holds: 32.6% smaller (*derived*), and every coordinate or distance question joins the tape; (c) drop only `contig_len`, `n_slots`, `is_circular` (contig attributes, arguably against AGENTS §3.6): 9.4% smaller (*derived*: 3.35 of 35.7), with a join to `contig_dim` or the tape for wrap-around distances only.
+Recommendation of the orchestrating session: (a) for now. 36 GB is small beside Pfam scan cost and sequence shards, and the measured queries are fast because they do not join. Revisit only if a budget is missed.
+
 ### 0-03 First-10 questions
 **H** · Depends: none
 Do: the PI signs off or replaces the ten draft questions in `planning/preflight_gaps.md` §3 (DEC-05 said to ask again before the S1 gate). Card G-09 needs Q1.

@@ -44,7 +44,7 @@ from biobox.l1.genecall import DUCK_MEMORY_LIMIT, GENE_CALL_VERSION
 from biobox.l3.tokens import LEVELS, _scan, _tape_files, tape_version_of
 from biobox.registry.schemas import table
 
-EST_POSTING_ROW = 20  # estimate: zstd bytes per posting row (PLAN.md §4.2 size model, 15-25 B); cuts parts, picks width
+EST_POSTING_ROW = 36  # zstd bytes per posting row, measured 35.74 (rL.2, pod wilkcomp02, 2026-11-10, scripts/stress/postings_bytes.py; the earlier estimate was 20), rounded up to an int; cuts parts, picks width
 _LISTS = ("feature_uids", "start_bps", "end_bps", "strands")
 _TOKENS = tuple(f"{lvl}_tokens" for lvl in LEVELS)
 
