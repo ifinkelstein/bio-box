@@ -474,6 +474,73 @@ def test_b10_a_token_lookup_scans_at_most_two_row_groups(tmp_path):
         con.close()
 
 
+# --- card B-29: prokaryote-like contigs inside the memory limit -------------------------------------
+#
+# rL.3 on the pod (12,048,866 slots and 25,822,709 postings; 5,018 of its 32,815 contigs are GTDB
+# replicons with thousands of slots, and only 1,724,977 slots have a family) ran the one-query builder out
+# of its 2 GB DuckDB limit (measured, wilkcomp02, 2026-11-10; planning/measurements/
+# 2026-11-10_postings_memory.md). This store has that shape: long contigs over two stages, short
+# phage-like contigs in a third, families on few slots; the DuckDB limit is scaled from 2 GB by the
+# store's share of rL.3's slots.
+
+LONG = (("S0", 60, 5_000), ("S1", 60, 5_000), ("S2", 1_500, 60))  # (stage, contigs, slots each): 690,000 slots
+LONG_LIMIT = "115MB"  # 2 GB x 690,000 / 12,048,866 slots = 114.5 MB, rounded up (derived)
+
+
+def _long_contigs(root: Path, groups=LONG) -> str:
+    """Tapes of `groups` (stage, contigs, slots per contig), written directly (no gene calls), and their
+    tape tokens at the three levels. One slot in 20 has no protein (no token at any level); 3 CDSs in
+    1,000 have a family, near P2's 26,485 of 8,722,859 slots (measured, rL.3). Returns the tape version."""
+    rng = random.Random(29)
+    tv = tapes.tape_version(["synthetic-b29"])
+    by_stage: dict[str, list[dict]] = {}
+    tok_rows = []
+    for stage, n_contigs, n_slots in groups:
+        for c in range(n_contigs):
+            cu = ids.contig_uid(b"B29-%s-%d" % (stage.encode(), c))  # a uid only: no sequence is stored
+            slots = [(1000 * j, 1000 * j + 900, 1 if rng.random() < 0.5 else -1) for j in range(n_slots)]
+            circular = c % 3 == 0
+            by_stage.setdefault(stage, []).append(
+                {"contig_uid": cu, "contig_len": 1000 * n_slots, "is_circular": circular, "n_slots": n_slots,
+                 **tapes.build_tape(slots, 1000 * n_slots, circular), "protein_uids": [None] * n_slots,
+                 "feature_uids": [ids.feature_uid(cu, s, e, st, ids.KIND["cds"]) for s, e, st in slots]})
+            cds = [rng.random() >= 0.05 for _ in range(n_slots)]
+            tok = lambda lvl, n_keys, p_none: [  # noqa: E731
+                LEVEL_BITS[lvl] << 61 | rng.randrange(n_keys) if k and rng.random() >= p_none else None for k in cds]
+            tok_rows.append({"contig_uid": cu, "family_tokens": tok("family", 3_000, 0.997),
+                             "nr50_tokens": tok("nr50", 60_000, 0.0), "nr90_tokens": tok("nr90", 200_000, 0.0)})
+    spec = table("contig_tapes")
+    for stage, rows in by_stage.items():
+        rows.sort(key=lambda r: r["contig_uid"])
+        io.write_table([pa.Table.from_pylist(rows, schema=spec.schema)], spec,
+                       root / f"l3/tapes/tape_version={tv}/stage={stage}/part-0.parquet", max_slots=131_072,
+                       slots_column="n_slots")
+    tok_rows.sort(key=lambda r: r["contig_uid"])
+    spec = table("tape_tokens")
+    io.write_table([pa.Table.from_pylist(tok_rows, schema=spec.schema)], spec,
+                   root / f"l3/tape_tokens/tape_version={tv}/release={REL}/part-0.parquet", max_slots=131_072,
+                   slots_column="nr90_tokens")
+    return tv
+
+
+@pytest.mark.covers("K-02", "LY-02")
+def test_b29_long_contigs_stay_inside_the_memory_limit(tmp_path):
+    """Contigs of 5,000 slots over two stages and short ones in a third: the postings are built inside the
+    scaled DuckDB limit (the one-query builder raised duckdb.OutOfMemoryException here) and equal the
+    oracle row for row, in the order of the sort key."""
+    root = tmp_path / "r"
+    tv = _long_contigs(root)
+    stages = [s for s, _, _ in LONG]
+    res = postings.run(root, REL, stages, producers=["synthetic-b29"], memory_limit=LONG_LIMIT, tmp=tmp_path)
+    want = sorted((_key(r) for r in _oracle(root, REL, tv)), key=lambda k: k[:4])  # the sort key is unique
+    got = [_key(r) for r in _written(root, REL, tv)]
+    assert res["rows"] == len(got) == len(want) > 1_000_000
+    assert got == want
+    assert 0 < res["rows_by_level"]["family"] < res["rows_by_level"]["nr50"] == res["rows_by_level"]["nr90"]
+    man = catalog.build_manifest(root, REL, stages)
+    assert contracts.check_sort_order(man) == [] and contracts.check_statistics(man) == []
+
+
 # --- card B-11: the pair macros prune; partners_of refuses a hub ------------------------------------
 
 

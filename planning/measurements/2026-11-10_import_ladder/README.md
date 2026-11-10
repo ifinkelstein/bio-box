@@ -109,7 +109,9 @@ or catalog, and nothing of it was synced to `/stor`.
 - **Tokens: 216 s, 2.3 GB.**
 - **Postings failed after 40 s**: DuckDB `OutOfMemoryException ... (1.8 GiB/1.8 GiB used)` inside
   `postings.run`. This is the first builder to break its bounded-memory rule on real data; the
-  earlier stages had no long contigs in the majority. Card B-29.
+  earlier stages had no long contigs in the majority. Card B-29, fixed the same day: see
+  `../2026-11-10_postings_memory.md` (`rL.3` has 12,048,866 slots and 25,822,709 postings; the
+  fixed builder writes them in 105 s inside the same 2 GB limit).
 
 ## Projection to 106 Gbp of prokaryotes (all *derived* from the rates above)
 
