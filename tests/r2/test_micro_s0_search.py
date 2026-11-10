@@ -280,7 +280,17 @@ def test_hmm_seed_from_the_library_finds_its_stored_hits(world):
 
 
 _S05_MEM_GB = 4 if platform.system() == "Linux" else None
-S05_LIMITS = {f: runner.Limits(cpus=1, wall_s=3, mem_gb=_S05_MEM_GB) for f in ("oom", "timeout", "crash")}
+# Each fault gets the limits its state is about (card A-07). The wall clock is the subject of the
+# `timeout` fault only: it sleeps forever, so the wall must fire, and 3 s keeps the test short. For
+# `oom` and `crash` a wall the fault can reach turns the test into a race between the fault and the
+# clock: under a systemd scope (GitHub's runner) the kernel kills only after the worker has imported
+# everything and touched mem_gb of pages, 4.5-5.2 s for 4 GB in a scope on the pod (measured
+# 2026-11-10); on GitHub it timed out in 4 of the 7 failed runs card A-07 lists. Their work is bounded by construction
+# (one allocation of twice the limit, which ends at the limit; one raise), so they run under the
+# file's wall (LIMITS.wall_s), which only a hung worker reaches. The assertions are unchanged.
+S05_LIMITS = {"timeout": runner.Limits(cpus=1, wall_s=3, mem_gb=_S05_MEM_GB),
+              "oom": runner.Limits(cpus=1, wall_s=LIMITS.wall_s, mem_gb=_S05_MEM_GB),
+              "crash": runner.Limits(cpus=1, wall_s=LIMITS.wall_s, mem_gb=_S05_MEM_GB)}
 
 
 @pytest.mark.parametrize("fault,status", [("oom", "oom"), ("timeout", "timeout"), ("crash", "failed")])

@@ -221,18 +221,28 @@ def _round_fault(kind: str | None, k: int) -> None:
     answered.wait()  # never set
 
 
+def oom_bytes(env) -> int | None:
+    """What the `oom` fault allocates in one step: twice the memory limit the runner named for this worker
+    (BIOBOX_RLIMIT_AS where RLIMIT_AS holds it, else BIOBOX_MEMORY_MAX: the scope's MemoryMax or the
+    inherited cap), so it is past that limit by construction (card A-07); None when no limit was named."""
+    limit = env.get("BIOBOX_RLIMIT_AS") or env.get("BIOBOX_MEMORY_MAX")
+    return 2 * int(limit) if limit else None
+
+
 def _fault(kind: str | None) -> None:
     if kind is None or kind in ROUND_FAULTS:
         return
     if kind == "oom":
         if os.environ.get(OOM_DELAY_VAR):
             time.sleep(float(os.environ[OOM_DELAY_VAR]))
-        # a real allocation past the limit the runner set: RLIMIT_AS (Linux without a scope) raises
-        # MemoryError; the scope's MemoryMax gets the worker OOM-killed. Elsewhere, the error it would raise.
-        limit = os.environ.get("BIOBOX_RLIMIT_AS") or os.environ.get("BIOBOX_MEMORY_MAX")
-        if limit:
-            _ = bytearray(int(limit) * 2)
-        raise MemoryError("injected")
+        n = oom_bytes(os.environ)
+        if n is None:  # no limit was named (macOS, or no mem_gb): the error an allocation would raise
+            raise MemoryError("injected")
+        # one zero-filled allocation, so every page is touched: under RLIMIT_AS the allocator fails at once
+        # (MemoryError); under a cgroup cap the kernel OOM-kills the worker while the pages are touched
+        buf = bytearray(n)
+        raise RuntimeError(f"the oom fault allocated and touched {len(buf)} bytes, twice the limit the runner "
+                           "named, and was not stopped: that limit is not enforced")
     if kind == "timeout":
         time.sleep(10**6)
     if kind == "cpu":
