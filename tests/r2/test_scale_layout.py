@@ -60,14 +60,13 @@ def _scaled_write_table(real):
     return write_table
 
 
-@pytest.fixture(scope="module")
-def store(tmp_path_factory):
-    out = tmp_path_factory.mktemp("scale")
+def _build(out: Path, copies: int) -> dict:
+    """`synth_scale.py` at `copies` into `out`, with the scaled row-group caps."""
     mp = pytest.MonkeyPatch()
     mp.setattr(bio, "write_table", _scaled_write_table(bio.write_table))
     t0 = time.perf_counter()
     argv = sys.argv
-    sys.argv = [str(SCRIPT), str(REPO), str(out), str(COPIES), "--shard-bases", str(2**26), "--seed", str(SEED)]
+    sys.argv = [str(SCRIPT), str(REPO), str(out), str(copies), "--shard-bases", str(2**26), "--seed", str(SEED)]
     try:
         with contextlib.redirect_stdout(stdio.StringIO()) as buf:
             g = runpy.run_path(str(SCRIPT), run_name="__main__")
@@ -75,8 +74,22 @@ def store(tmp_path_factory):
         sys.argv = argv
         mp.undo()
     rep = json.loads(buf.getvalue())
-    yield {"g": g, "rep": rep, "con": g["con"], "man": g["man"], "root": g["root"], "build_s": time.perf_counter() - t0}
-    g["con"].close()
+    return {"g": g, "rep": rep, "con": g["con"], "man": g["man"], "root": g["root"], "build_s": time.perf_counter() - t0}
+
+
+@pytest.fixture(scope="module")
+def store(tmp_path_factory):
+    s = _build(tmp_path_factory.mktemp("scale"), COPIES)
+    yield s
+    s["con"].close()
+
+
+@pytest.fixture(scope="module")
+def store2x(tmp_path_factory):
+    """The same build at twice the copies: copies 0 to COPIES - 1 are the same contigs (same seed, same order)."""
+    s = _build(tmp_path_factory.mktemp("scale2x"), 2 * COPIES)
+    yield s
+    s["con"].close()
 
 
 def _rows(rep: dict, name: str) -> dict:
@@ -170,59 +183,143 @@ def _scans_of(q: dict, table: str) -> list[dict]:
     return [s for s in q["scans"] if s["table"] == table]
 
 
-@pytest.mark.xfail(strict=True, raises=AssertionError, reason=B31)
+def _fresh(store):
+    """A fresh connection in place of the store's: empty lookup caches, so counts are cold (synth_scale's
+    `fresh()`). One open catalog per database file in a process (its functions are the instance's), so the
+    old connection is closed first; the script's tables are registered again."""
+    g = store["g"]
+    store["con"].close()
+    store["con"] = con = catalog.open_catalog(g["cat"], threads=4)
+    for name, tbl in g["registered"].items():
+        con.register(name, tbl)
+    return con
+
+
+def _cold(store, sql: str, params=None, keys: int = 1) -> dict:
+    """synth_scale's `run` scoring of `sql` on a fresh connection. Since card B-31 `partners_of` reads tape
+    tokens by point lookup with a row-group cache on the connection, so the script's reports of partner
+    queries after the first are warm (the family query's contigs hold the NR90 query's): these are re-run cold."""
+    out = catalog.profile_query(_fresh(store), sql, params)
+    scans = [{"table": _table_of(s["files"][0]), "row_groups": s["row_groups_scanned"], "of": s["row_groups_total"],
+              "rg_per_key": s["row_groups_scanned"] / keys} for s in out["scans"] if s["files"]]
+    idx = out["index"]
+    return {"keys": keys, "scans": scans, "index": idx, "result": out["result"],
+            "max_rg_per_key": max([s["rg_per_key"] for s in scans] + [sum(idx.values()) / keys])}
+
+
 def test_token_of_key_prunes_postings(store):
     q = _rows(store["rep"], "postings of a token: key from token_dict (token_of), nr90")
     assert _scans_of(q, "token_postings")
     _assert_prunes(q)
 
 
-@pytest.mark.xfail(strict=True, raises=AssertionError, reason=B31)
 def test_q1_token_of_keys_prune(store):
     _assert_prunes(_rows(store["rep"], "neighbours: Q1 nr90 pair, keys from token_dict (token_of)"))
 
 
-@pytest.mark.xfail(strict=True, raises=AssertionError, reason=B31)
 def test_q4_token_of_keys_prune(store):
     _assert_prunes(_rows(store["rep"], "neighbours: Q4 nr90 pair instances, keys from token_dict (token_of)"))
 
 
+# The two partners_of lookups below keep their markers after card B-31. Their key is one token, but the partner
+# side reads the tape tokens of every anchor contig (TASKS §2), one row group per contig at most: 100 contigs of
+# 300 for the family token, 10 for the NR90 token, spread by contig_uid over the 11 row groups of tape_tokens, so
+# no layout can serve them in 2 row groups per token. What B-31 asks of them (reads in proportion to the anchors'
+# contigs, not to the release) is tested by test_partners_of_reads_grow_with_the_anchors_not_the_release.
 @pytest.mark.xfail(strict=True, raises=AssertionError, reason=B31)
 def test_partners_of_near_side_prunes_literal_key(store):
-    q = _rows(store["rep"], "neighbours: Q3 partners of one family, literal key")
+    q = _cold(store, "SELECT count(*), sum(n_pairs) FROM partners_of(?, 10)", [store["rep"]["tokens"]["family_a"][1]])
     assert len(_scans_of(q, "token_postings")) >= 2, "the anchor and the near side are separate scans"
     _assert_prunes(q)
 
 
 @pytest.mark.xfail(strict=True, raises=AssertionError, reason=B31)
 def test_partners_of_token_of_key_prunes(store):
-    _assert_prunes(_rows(store["rep"], "neighbours: Q3 partners of one nr90, key from token_dict (token_of)"))
+    _assert_prunes(_cold(store, "SELECT count(*), sum(n_pairs) FROM partners_of(token_of('nr90', ?), 10)",
+                         [store["rep"]["tokens"]["nr90_a"][0]]))
 
 
 def _macro(store, sql: str) -> dict:
-    return catalog.profile_query(store["con"], sql)
+    return catalog.profile_query(_fresh(store), sql)  # cold: the point lookups cache row groups per connection
 
 
 def _macro_prunes(store, sql: str) -> None:
+    """Row groups read per key, by Parquet scans and by the point lookups of the catalog's Python functions
+    (`profile_query`'s `index`: `seq_locator` and `contig_index`, card B-31 as B-14)."""
     out = _macro(store, sql)
-    assert out["scans"], "the query must scan Parquet for the row group count to mean something"
-    worst = max(s["row_groups_scanned"] for s in out["scans"])
-    assert worst <= MAX_RG_PER_KEY, "; ".join(f"{s['row_groups_scanned']} of {s['row_groups_total']}" for s in out["scans"])
+    reads = [s["row_groups_scanned"] for s in out["scans"]] + list(out["index"].values())
+    assert sum(reads) > 0, "the query must read row groups for the count to mean something"
+    worst = max(reads)
+    assert worst <= MAX_RG_PER_KEY, "; ".join(f"{s['row_groups_scanned']} of {s['row_groups_total']}" for s in out["scans"]) + \
+        f"; index {out['index']}"
 
 
-@pytest.mark.xfail(strict=True, raises=AssertionError, reason=B31)
 def test_default_digest_joined_key_prunes(store):
     _macro_prunes(store, "SELECT count(default_digest(contig_uid)) FROM pick1")
 
 
-@pytest.mark.xfail(strict=True, raises=AssertionError, reason=B31)
 def test_digest_len_joined_key_prunes(store):
     _macro_prunes(store, "SELECT sum(digest_len(default_digest(contig_uid))) FROM pick1")
 
 
-@pytest.mark.xfail(strict=True, raises=AssertionError, reason=B31)
 def test_contig_len_of_joined_key_prunes(store):
     _macro_prunes(store, "SELECT sum(contig_len_of(contig_uid)) FROM pick1")
+
+
+def _table_of(path: str) -> str:
+    parts = Path(path).parts
+    return parts[parts.index("l3") + 1] if "l3" in parts else Path(path).parent.name
+
+
+def _footer_row_groups(store, table: str, keys: list[bytes]) -> int:
+    """Oracle: the row groups of `table` whose contig_uid min/max holds one of `keys`, from the Parquet footers."""
+    n = 0
+    for p in _files(store, table):
+        md = pq.ParquetFile(p).metadata
+        ci = next(i for i in range(md.num_columns) if md.schema.column(i).path == "contig_uid")
+        for g in range(md.num_row_groups):
+            st = md.row_group(g).column(ci).statistics
+            n += any(st.min <= k <= st.max for k in keys)
+    return n
+
+
+def _partner_reads(s: dict) -> dict:
+    """partners_of(<NR90 token of copies 0-9>, 10) on a fresh connection (cold lookup caches): the row groups
+    each table was read for, the anchors' contigs, and the result with partner tokens resolved to stable keys."""
+    g = s["g"]
+    key = g["nr90_key"](g["pidx"][g["gl"][g["gi"]][3]], 0)  # copies 0-9: the same contigs at every scale
+    con = _fresh(s)
+    tok =con.execute("SELECT token_of('nr90', ?)", [key]).fetchall()[0][0]  # resolved first, passed as a literal
+    prof = catalog.profile_query(con, "SELECT partner_token, n_loci, n_pairs FROM partners_of(?, 10)", [tok])
+    anchors = sorted(r[0] for r in con.execute(
+        "SELECT DISTINCT contig_uid FROM token_postings WHERE release = catalog_release() AND token_id = ?", [tok]).fetchall())
+    keyed = sorted(con.execute(
+        "SELECT d.level, d.key, p.n_loci, p.n_pairs FROM partners_of(?, 10) p JOIN token_dict d "
+        "ON d.token_id = p.partner_token AND d.release = catalog_release()", [tok]).fetchall())
+    reads: dict[str, list[tuple[int, int]]] = {}
+    for sc in prof["scans"]:
+        if sc["files"]:
+            reads.setdefault(_table_of(sc["files"][0]), []).append((sc["row_groups_scanned"], sc["row_groups_total"]))
+    return {"reads": reads, "anchors": anchors, "keyed": keyed, "n_rows": len(prof["result"]),
+            "total": {t: sum(f["row_groups"] for f in s["man"]["files"] if f["table"] == t) for t in ("tape_tokens", "token_postings")}}
+
+
+@pytest.mark.covers("Q3", "LY-06")
+def test_partners_of_reads_grow_with_the_anchors_not_the_release(store, store2x, record_property):
+    """Card B-31: the partner side of partners_of reads the anchors' contigs' row groups of `tape_tokens` (exactly
+    the row groups whose footer range holds an anchor contig, at most one per contig), whatever the size of the
+    release; the anchors' postings stay at most 2 row groups; doubling the store changes neither the reads' bound
+    nor the answer (partner tokens resolved to their stable keys through token_dict)."""
+    one, two = _partner_reads(store), _partner_reads(store2x)
+    assert one["anchors"] == two["anchors"] and len(one["anchors"]) == 10
+    assert one["keyed"] == two["keyed"] and one["n_rows"] == len(one["keyed"]) > 0
+    assert all(two["total"][t] >= 1.8 * one["total"][t] for t in one["total"]), (one["total"], two["total"])
+    for s, r in ((store, one), (store2x, two)):
+        assert set(r["reads"]) <= {"token_postings", "tape_tokens"}, r["reads"]
+        assert all(n <= MAX_RG_PER_KEY for n, _ in r["reads"]["token_postings"]), r["reads"]
+        near = sum(n for n, _ in r["reads"].get("tape_tokens", []))
+        assert near == _footer_row_groups(s, "tape_tokens", r["anchors"]) <= len(r["anchors"]), r["reads"]
+    record_property("partner_reads", json.dumps({"1x": one["reads"], "2x": two["reads"], "totals": [one["total"], two["total"]]}))
 
 
 def test_build_time(store, record_property):
