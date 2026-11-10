@@ -174,7 +174,8 @@ def _phase_b_tables() -> dict[str, tuple[str, pa.Table]]:
             {"contig_uid": _C2, "genome_uid": _G, "contig_len": 2000, "is_circular": False, "tier": None,
              "assembly_quality": None, "tax_order": None, "is_species_rep": False},
         ],
-        "tape_version_def": [{"tape_version": TAPE_VERSION, "producer": p} for p in PRODUCERS],
+        # card B-07: one directory per tape version, so a new version never rewrites a file (AGENTS §3.10)
+        "tape_version_def": [{"producer": p} for p in sorted(PRODUCERS)],
         "token_postings": [
             # a family token on two domains (seg_idx 0, 1) of the CDS slot, then a token on the ncRNA slot
             {"token_id": 0x2A, "contig_uid": _C1, "ordinal": 0, "seg_idx": 0, "feature_uid": _F_CDS, "start": 0,
@@ -190,6 +191,7 @@ def _phase_b_tables() -> dict[str, tuple[str, pa.Table]]:
         "feature": "producer=pyrodigal/stage=S0",
         "feature_protein": "gene_call_version=v1/stage=S0",
         "contig_dim": f"release={RELEASE}",
+        "tape_version_def": f"tape_version={TAPE_VERSION}",
         "token_postings": f"release={RELEASE}/tape_version={TAPE_VERSION}/token_bucket={TOKEN_BUCKET}",
     }
     out = {}

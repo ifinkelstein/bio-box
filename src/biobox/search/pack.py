@@ -39,6 +39,7 @@ from biobox.l1 import domains
 from biobox.l1.genecall import GENE_CALL_VERSION
 from biobox.l1.igr import igr_version
 from biobox.l3.geometry import junction
+from biobox.l3.tapes import tape_version
 from biobox.registry.schemas import table
 from biobox.search import fastz, orfs
 
@@ -78,7 +79,8 @@ def _igr_files(root: Path, gcv: str) -> list[Path]:
 
 
 def _tape_files(root: Path, gcv: str) -> list[Path]:
-    return sorted((root / "l3/tapes").glob(f"gene_call_version={gcv}/stage=*/part-*.parquet"))
+    # the gene-call producer's tape version (card B-07)
+    return sorted((root / "l3/tapes").glob(f"tape_version={tape_version([gcv])}/stage=*/part-*.parquet"))
 
 
 def _contigs(root: Path, gcv: str) -> tuple[dict[bytes, int], set[bytes]]:

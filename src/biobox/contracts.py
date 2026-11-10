@@ -112,7 +112,7 @@ FOREIGN_KEYS = [
     ("cluster_member_aln", ("member_uid", "level", "release"), "cluster_member", ("member_uid", "level", "release")),
     ("igr", ("contig_uid",), "contig_index", ("contig_uid",)),
     ("contig_tapes", ("contig_uid",), "contig_index", ("contig_uid",)),
-    ("tape_tokens", ("contig_uid", "gene_call_version"), "contig_tapes", ("contig_uid", "gene_call_version")),
+    ("tape_tokens", ("contig_uid", "tape_version"), "contig_tapes", ("contig_uid", "tape_version")),
     ("slot_pairs", ("contig_uid",), "contig_tapes", ("contig_uid",)),
     ("slot_pairs", ("anchor_token", "release"), "token_dict", ("token_id", "release")),
     ("slot_pairs", ("partner_token", "release"), "token_dict", ("token_id", "release")),
@@ -229,7 +229,7 @@ def check_list_lengths(con: duckdb.DuckDBPyConnection) -> list[str]:
         if n:
             problems.append(f"{name}: {n} rows with parallel lists of different lengths")
     n = con.execute("""
-        SELECT count(*) FROM tape_tokens k JOIN contig_tapes t USING (contig_uid, gene_call_version)
+        SELECT count(*) FROM tape_tokens k JOIN contig_tapes t USING (contig_uid, tape_version)
         WHERE len(k.family_tokens) <> t.n_slots OR len(k.nr50_tokens) <> t.n_slots OR len(k.nr90_tokens) <> t.n_slots
     """).fetchall()[0][0]
     if n:

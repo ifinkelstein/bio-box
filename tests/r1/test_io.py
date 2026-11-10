@@ -7,6 +7,7 @@ slot-bounded row groups, and the registry's `conformance_problems` for the schem
 
 from __future__ import annotations
 
+import dataclasses
 import os
 import subprocess
 import sys
@@ -27,6 +28,8 @@ from biobox.registry.schemas import conformance_problems, table
 
 OCC = table("protein_occurrence")
 TAPES = table("contig_tapes")
+# the tapes' sort key before card B-07, kept here for the writer's nulls-first order on a nullable key
+NULL_KEYED = dataclasses.replace(TAPES, sort_key=("tax_order_bucket", "contig_uid"))
 DOM = table("l1_domains")
 TOK = table("token_dict")
 
@@ -53,7 +56,7 @@ def tape_row(i: int, n: int, bucket: int | None = None) -> dict:
             "end_bps": [100 * k + 90 for k in range(n)], "delta_bp_prev_slots": [10] * n,
             "junction_topology_prevs": [1] * n, "orfs_to_contig_starts": list(range(n)),
             "orfs_to_contig_ends": list(range(n))[::-1], "slot_flags": [0] * n,
-            "protein_uids": [uid(10_000 + k) for k in range(n)]}
+            "protein_uids": [uid(10_000 + k) for k in range(n)], "feature_uids": [uid(20_000 + k) for k in range(n)]}
 
 
 def dom_row(key: tuple[bytes, int, str]) -> dict:
@@ -196,16 +199,16 @@ def test_unsorted_after_empty_batches_is_still_caught(tmp_path):
 @pytest.mark.covers("LY-02")
 def test_nulls_sort_first(tmp_path):
     ok = [tape_row(5, 1, None), tape_row(9, 1, None), tape_row(1, 1, 0), tape_row(2, 1, 3)]
-    write_table([inferred(ok)], TAPES, tmp_path / "ok.parquet")
+    write_table([inferred(ok)], NULL_KEYED, tmp_path / "ok.parquet")
     bad = [tape_row(1, 1, 0), tape_row(2, 1, None)]
     with pytest.raises(ValueError, match=r"contig_tapes.*tax_order_bucket.*row 1\b"):
-        write_table([inferred(bad)], TAPES, tmp_path / "bad.parquet")
+        write_table([inferred(bad)], NULL_KEYED, tmp_path / "bad.parquet")
     across = [inferred([tape_row(1, 1, 4)]), inferred([tape_row(2, 1, None)])]
     with pytest.raises(ValueError, match=r"row 1\b"):
-        write_table(across, TAPES, tmp_path / "across.parquet")
+        write_table(across, NULL_KEYED, tmp_path / "across.parquet")
     # within the null bucket the second key decides
     with pytest.raises(ValueError, match=r"row 1\b"):
-        write_table([inferred([tape_row(9, 1, None), tape_row(5, 1, None)])], TAPES, tmp_path / "n.parquet")
+        write_table([inferred([tape_row(9, 1, None), tape_row(5, 1, None)])], NULL_KEYED, tmp_path / "n.parquet")
 
 
 @pytest.mark.covers("LY-02")
@@ -255,10 +258,10 @@ def test_refusal_with_a_nullable_key_agrees_with_the_oracle(keys, sort_it, cuts)
     with tempfile.TemporaryDirectory() as d:
         batches = batches_of(src, [c for c in cuts if c <= len(rows)])
         if want is None:
-            write_table(batches, TAPES, Path(d) / "x.parquet", row_group_rows=4)
+            write_table(batches, NULL_KEYED, Path(d) / "x.parquet", row_group_rows=4)
         else:
             with pytest.raises(ValueError, match=rf"row {want}\b"):
-                write_table(batches, TAPES, Path(d) / "x.parquet", row_group_rows=4)
+                write_table(batches, NULL_KEYED, Path(d) / "x.parquet", row_group_rows=4)
 
 
 # --- row groups and bytes (LY-04, LY-08)-------------------------------------------------------
@@ -385,8 +388,8 @@ def test_bytes_do_not_depend_on_how_the_input_is_batched(keys, cuts, rg):
 
 @pytest.mark.covers("LY-03", "LY-02")
 def test_sort_key_columns_have_min_max_in_every_row_group(tmp_path):
-    rows = [tape_row(i, 2, None) for i in range(10)] + [tape_row(i, 2, 7) for i in range(10)]
-    out = tmp_path / "l3/tapes/gene_call_version=v/stage=S0/part-0.parquet"
+    rows = [tape_row(i, 2, None) for i in range(10)] + [tape_row(i, 2, 7) for i in range(10, 20)]
+    out = tmp_path / "l3/tapes/tape_version=t-000000000000/stage=S0/part-0.parquet"
     write_table([inferred(rows)], TAPES, out, row_group_rows=4)
     m = manifest(tmp_path, "contig_tapes", out)
     assert contracts.check_statistics(m) == []

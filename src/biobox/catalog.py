@@ -394,14 +394,19 @@ def macro_sql() -> list[str]:
               WHERE release = catalog_release() AND pair_bucket_ok(anchor_bucket, _a)
                 AND anchor_token = _a AND partner_token = _b AND abs(orf_offset) <= _k
               ORDER BY contig_uid, anchor_ordinal, partner_ordinal""",
-        # Q2: tapes of a list of contigs with this release's tokens
+        # Q2: tapes of a list of contigs (every tape version) with this release's tokens. Each side is
+        # filtered by `IN` over the unnested list before the join, which prunes row groups by contig_uid
+        # in both tables, also when the list comes from a joined table (AGENTS §4.4, card B-07). In DuckDB
+        # 2.0.0 `list_contains` prunes only a literal list, and the same `IN` written after the join
+        # scanned every tapes row group on the micro fixture
         """CREATE MACRO tapes_of(_cuids) AS TABLE
+              WITH _q AS (SELECT DISTINCT unnest(_cuids) AS _cu)
               SELECT t.*, k.family_tokens, k.nr50_tokens, k.nr90_tokens
-              FROM contig_tapes t LEFT JOIN tape_tokens k
-                ON k.contig_uid = t.contig_uid AND k.gene_call_version = t.gene_call_version
-                   AND k.release = catalog_release()
-              WHERE list_contains(_cuids, t.contig_uid)
-              ORDER BY t.contig_uid, t.gene_call_version""",
+              FROM (SELECT * FROM contig_tapes WHERE contig_uid IN (SELECT _cu FROM _q)) t
+              LEFT JOIN (SELECT * FROM tape_tokens
+                         WHERE release = catalog_release() AND contig_uid IN (SELECT _cu FROM _q)) k
+                ON k.contig_uid = t.contig_uid AND k.tape_version = t.tape_version
+              ORDER BY t.contig_uid, t.tape_version""",
     ]
 
 

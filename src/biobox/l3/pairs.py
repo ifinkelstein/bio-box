@@ -28,7 +28,7 @@ import pyarrow.parquet as pq
 from biobox import layout
 from biobox.l1.genecall import GENE_CALL_VERSION
 from biobox.l3.geometry import cyclic_offset, pair_geometry
-from biobox.l3.tokens import LEVELS, read_tapes
+from biobox.l3.tokens import LEVELS, read_tapes, tape_version_of
 from biobox.registry.schemas import table
 
 K_MAX = 10
@@ -85,10 +85,13 @@ def pairs_of_contig(tape: dict, tokens: dict[str, list[int | None]], k: int = K_
 
 
 def run(root: Path, release: str, gene_call_version: str = GENE_CALL_VERSION, k: int = K_MAX,
-        prefix_width: int | None = None, max_file_bytes: int = layout.MAX_FILE_BYTES) -> dict:
+        prefix_width: int | None = None, max_file_bytes: int = layout.MAX_FILE_BYTES,
+        producers: list[str] | None = None) -> dict:
+    """`producers`: the tape version's producers, by default the gene-call producer alone (card B-07)."""
     root = Path(root)
-    tapes = {t["contig_uid"]: t for t in read_tapes(root, gene_call_version)}
-    tok_files = sorted((root / f"l3/tape_tokens/gene_call_version={gene_call_version}/release={release}").glob("part-*.parquet"))
+    tv = tape_version_of(gene_call_version, producers)
+    tapes = {t["contig_uid"]: t for t in read_tapes(root, gene_call_version, producers=producers)}
+    tok_files = sorted((root / f"l3/tape_tokens/tape_version={tv}/release={release}").glob("part-*.parquet"))
     rows = []
     for f in tok_files:
         for tok in pq.read_table(f).to_pylist():

@@ -561,18 +561,22 @@ _SPECS = [
             _f("orfs_to_contig_starts", pa.list_(pa.uint16()), nullable=True),
             _f("orfs_to_contig_ends", pa.list_(pa.uint16()), nullable=True),
             _f("slot_flags", pa.list_(pa.uint8())),
-            _f("protein_uids", pa.list_(UID)),
+            _f("protein_uids", pa.list_(UID)),  # entries nullable: a non-CDS slot has no protein
+            _f("feature_uids", pa.list_(UID)),  # card B-07: one entry per slot, never null
         ]),
-        primary_key=("contig_uid", "gene_call_version"),
-        sort_key=("tax_order_bucket", "contig_uid"),
-        partition_keys=("gene_call_version", "stage"),
+        primary_key=("contig_uid", "tape_version"),
+        sort_key=("contig_uid",),
+        partition_keys=("tape_version", "stage"),
         list_columns=("feature_kinds", "strands", "start_bps", "end_bps", "delta_bp_prev_slots",
                       "junction_topology_prevs", "orfs_to_contig_starts", "orfs_to_contig_ends", "slot_flags",
-                      "protein_uids"),
+                      "protein_uids", "feature_uids"),
         doc=(
-            "PLAN.md §4.2; biobox/l3/tapes.py. One row per contig, list index = slot_ordinal; coordinates "
-            "only (append-only per stage). feature_kinds 1 = CDS; junction codes 1 co-directional, 2 divergent, "
-            "3 convergent, 4 nested antisense, null for the first slot of a linear contig"
+            "PLAN.md §4.2; planning/tasks/TASKS.md §2; biobox/l3/tapes.py. One row per contig and tape version; "
+            "the slots are the features of the version's producers ordered by (start, end, strand, kind), and "
+            "the list index (ordinal) is valid inside one tape_version only (AGENTS §3.3). feature_kinds from "
+            "ids.KIND; protein_uids null for a non-CDS slot; junction codes 1 co-directional, 2 divergent, "
+            "3 convergent, 4 nested antisense, null for the first slot of a linear contig. tax_order_bucket, "
+            "genome_uid, tier and assembly_quality are legacy (B-17 removes them)"
         ),
     ),
     TableSpec(
@@ -602,9 +606,9 @@ _SPECS = [
             _f("nr50_tokens", pa.list_(pa.uint64())),
             _f("nr90_tokens", pa.list_(pa.uint64())),
         ]),
-        primary_key=("contig_uid", "gene_call_version", "release"),
+        primary_key=("contig_uid", "tape_version", "release"),
         sort_key=("contig_uid",),
-        partition_keys=("gene_call_version", "release"),
+        partition_keys=("tape_version", "release"),
         list_columns=("family_tokens", "nr50_tokens", "nr90_tokens"),
         doc="data_layer_and_tests.md §1 L3 (`tape_tokens_<release>`): token columns, recomputed per release",
     ),
@@ -720,18 +724,19 @@ _SPECS = [
     ),
     TableSpec(
         name="tape_version_def",
-        location="l3/tape_version_def.parquet",
+        location="l3/tape_version_def",
         layer="L3",
         schema=pa.schema([
-            _f("tape_version", pa.string()),
             _f("producer", pa.string()),
         ]),
         primary_key=("tape_version", "producer"),
-        sort_key=("tape_version", "producer"),
+        sort_key=("producer",),
+        partition_keys=("tape_version",),
         small_ok=True,
         doc=(
             "planning/tasks/TASKS.md §2; DEC-18. tape_version = 't-' + first 12 hex digits of sha256 over the "
-            "sorted producer names joined by \\n; one row per (tape_version, producer)"
+            "sorted producer names joined by \\n; one row per (tape_version, producer), one directory per "
+            "tape version so that a new version never rewrites a file (card B-07, AGENTS §3.10)"
         ),
     ),
     TableSpec(

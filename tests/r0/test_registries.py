@@ -139,6 +139,22 @@ def test_phase_b_tables_are_registered():
     assert not TABLES["genome_input"].schema.field("assembly_quality").nullable
 
 
+def test_tape_tables_are_partitioned_by_tape_version():
+    # card B-07, TASKS.md §2: the tape version replaces gene_call_version in the tape partitions; its
+    # definition is a directory per version, so a new version never rewrites a file (AGENTS §3.10)
+    t = TABLES["contig_tapes"]
+    assert (t.partition_keys, t.primary_key, t.sort_key) == (("tape_version", "stage"), ("contig_uid", "tape_version"),
+                                                             ("contig_uid",))
+    assert t.schema.names[-1] == "feature_uids" and t.list_columns[-1] == "feature_uids"
+    assert t.schema.field("feature_uids").type == pa.list_(UID) and not t.schema.field("feature_uids").nullable
+    assert t.schema.field("protein_uids").type.value_field.nullable  # a non-CDS slot has no protein
+    k = TABLES["tape_tokens"]
+    assert (k.partition_keys, k.primary_key) == (("tape_version", "release"), ("contig_uid", "tape_version", "release"))
+    d = TABLES["tape_version_def"]
+    assert (d.location, d.partition_keys, d.schema.names) == ("l3/tape_version_def", ("tape_version",), ["producer"])
+    assert (d.primary_key, d.sort_key, d.small_ok) == (("tape_version", "producer"), ("producer",), True)
+
+
 def test_c08_version_partitions_are_registered():
     from biobox.provenance import VERSION_PARTITION
 

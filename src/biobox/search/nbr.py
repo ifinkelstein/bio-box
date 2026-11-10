@@ -32,6 +32,7 @@ import pyarrow.parquet as pq
 
 from biobox.l1.genecall import GENE_CALL_VERSION
 from biobox.l3.geometry import cyclic_offset, pair_geometry
+from biobox.l3.tapes import tape_version
 from biobox.registry.schemas import table
 
 FLAG_CENSORED = 1
@@ -179,7 +180,8 @@ def _row(tape, i, j, d, anchor_strand, topo, delta, operon, flags, policy) -> di
 
 def _tapes(root: Path, gene_call_version: str, contigs: set[bytes]) -> dict[bytes, dict]:
     out = {}
-    for f in sorted((Path(root) / "l3/tapes").glob(f"gene_call_version={gene_call_version}/stage=*/part-*.parquet")):
+    tv = tape_version([gene_call_version])  # the gene-call producer's tapes (card B-07)
+    for f in sorted((Path(root) / "l3/tapes").glob(f"tape_version={tv}/stage=*/part-*.parquet")):
         t = pq.read_table(f, filters=[("contig_uid", "in", sorted(contigs))]) if contigs else None
         for r in (t.to_pylist() if t is not None else []):
             out[r["contig_uid"]] = r
