@@ -202,6 +202,48 @@ would take about 7.5 minutes (*derived*). Card B-05 now includes parallel gene c
 The DuckDB catalog step needs numpy for the Arrow sequence function; the `74b3e05` image lacks it
 (the HEAD image has it). The pilot used the lock-pinned numpy 2.5.4 from a side directory.
 
+## 6b. Provisional phage database with Pfam domains (measured, wilkcomp02, 2026-11-09)
+
+Store: `/stor/scratch/Wilke/if2453/all-the-data/provisional/rS1.pilot1` (1.1 GB, manifest
+`bb554e38067f23841353d94b40521654`, verified; catalog under `catalog/`). Pre-phase-B format.
+
+| Item | Value |
+|---|---|
+| Pfam 38.2 scan, 17 shard processes of 4 threads, 8 at a time | 271.8 M residues; 1,984 CPU-minutes in all; 121 CPU-minutes and 30 minutes wall per full shard; 0.44 GB peak per shard; none over 250 CPU-minutes |
+| rate | 7.3 CPU-minutes per million residues; 1.1 × 10¹⁰ cells per second per thread (golden set: 1.0 × 10¹⁰) |
+| result | 605,564 domains on 436,807 of 1,134,550 proteins (38.5%); 6,392 models with a hit |
+| family tokens | 5,402; 941,262 of 2,398,087 slots carry one (39%) |
+| queries through the catalog | top families 0.09 s; terminase neighbourhoods within 3 genes over 8,148 loci 0.27 s; gene plus 500 bp flanks 0.5 s, equal to `samtools faidx` |
+
+## 6c. Short-contig pilot, CAMI II marine sample 0 (measured, wilkcomp02, 2026-11-09)
+
+Source `marmgCAMI2_sample_0_contigs.tar.gz`, sha256 `e7639d22…1cb55a`; store kept at
+`/tmp/if2453/pilot_cami/work/root` (1.6 GB), release `rCAMI.pilot1`. Code at commit `2556ddd`
+(before phase B). Every step ran without error.
+
+| Item | CAMI | Phages (§6a) |
+|---|---|---|
+| contigs; bases; median length | 1,475,972; 909.5 Mbp; 294 bp (91.6% under 1 kb) | 27,258; 1.66 Gbp; 45 kb |
+| ingest | 296 s (3.1 Mbp/s), 3.9 GB | 427 s, 5.6 GB |
+| gene calling, 1 thread | 2,322 s (0.39 Mbp/s, 636 contigs/s), 7.8 GB peak | 7,032 s (0.24 Mbp/s) |
+| genes; per contig; partial | 1,963,951; 1.33; 83.5% run off a contig end | 2,398,087; 88; not counted |
+| contigs with no gene | 3.3% | |
+| distinct proteins | 98.8% of genes | 47% |
+| NR90 singleton clusters | 89% | |
+| tapes | 824 s; 52.5 bytes per slot (70 per contig) | 38 s; 23.7 bytes per slot |
+| pair rows per gene per level | 2.09; 95% of slots have their window cut by a contig end | 18.8 |
+| shard; `.fai` index | 0.403 bytes per bp; 85 bytes per contig, 34% of the shard's size | 0.310; under 1% |
+| `SeqStore` open | 7.2 s and 1.15 GB (4.9 s and 782 MB per million contigs; the synthetic estimate was 2 s and 414 MB) | negligible |
+| one-contig tape lookup (`tapes_of`) | 181 of 181 row groups, 53 MB read | |
+| 1,000 gene fetches, direct | 8.5 s, 1.01 blocks each | |
+| 1,000 gene fetches, catalog macro | 15.2 s; `contig_index` scanned whole 3 times and `seq_locator` twice, 326 MB of Parquet read | |
+
+What this shows. With short contigs the cost moves from bases to contigs: the per-contig index
+files and the in-memory index dominate, and almost every neighborhood is censored. Cards B-07
+(tape lookup that prunes, done), B-13 (index that is looked up, not loaded), B-14 (sequence macros
+without index scans) and B-15 (batch ingest) address the measured limits; nothing here calls for a
+change to the target model.
+
 ## 7. State of the pod and CI at the start (measured)
 
 - CI is red at HEAD: `test_runner_death_is_reported_and_the_worker_does_not_outlive_it` (run 41096564184).
