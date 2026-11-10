@@ -1,4 +1,5 @@
-"""Ring R1: tapes and pairs against brute-force oracles, and MR-03, MR-04, MR-05 (O-TAPE, O-PAIRS).
+"""Ring R1: tapes and pairs against brute-force oracles, and MR-03, MR-04, MR-05 (O-TAPE, O-PAIRS);
+the token id layout (card B-09; the token builder itself is tested on micro-S0 in ring R2).
 
 Slots are random (start, end, strand) sets on linear and circular contigs. The oracles below
 are written from the definitions in PLAN.md §4.2 and biobox/l3, without the production
@@ -16,6 +17,7 @@ from hypothesis import assume, given, settings, strategies as st
 
 from biobox.l3.pairs import FLAG_CENSORED, FLAG_CROSSES_ORIGIN, pairs_of_contig
 from biobox.l3.tapes import build_tape, tape_version
+from biobox.l3.tokens import token_id, token_level
 
 K = 3
 
@@ -156,6 +158,18 @@ def test_tape_version_known_answer():
     for bad in ([], [one, one]):
         with pytest.raises(ValueError):
             tape_version(bad)
+
+
+def test_token_id_bit_layout_known_answer():
+    # PLAN.md §4.1 and card B-09 ("token ids as today"): level (3 bits) | source (5 bits) | local (56 bits)
+    assert token_id("family", 1, 0) == 0x2100_0000_0000_0000
+    assert token_id("nr90", 0, 5) == 0x6000_0000_0000_0005
+    assert token_id("nr50", 31, 2**56 - 1) == 0x5FFF_FFFF_FFFF_FFFF
+    assert [token_level(t) for t in (0x2100_0000_0000_0000, 0x4000_0000_0000_0000, 0x6000_0000_0000_0005)] == \
+        ["family", "nr50", "nr90"]
+    for bad in (("family", 32, 0), ("nr90", 0, 2**56), ("nr50", -1, 0)):
+        with pytest.raises(ValueError):
+            token_id(*bad)
 
 
 def _shape(rows, drop_cross=False):
