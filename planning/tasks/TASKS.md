@@ -1,6 +1,8 @@
 # bio-box task cards
 
-Read [`AGENTS.md`](../../AGENTS.md) first. One card per session. Evidence for every design choice
+Read [`AGENTS.md`](../../AGENTS.md) first. One card per session. What is done, in progress and
+next is in [`STATUS.md`](STATUS.md), updated at every merge; a gap found while doing or auditing a
+card becomes a new card here in the same commit that records the finding. Evidence for every design choice
 here is in [`planning/measurements/2026-11-09_design_stress_test.md`](../measurements/2026-11-09_design_stress_test.md).
 
 Tiers: **L** a small model does it alone. **M** a small model does it and a stronger model or the PI
@@ -282,6 +284,24 @@ Accept: with `max_file_bytes` forced small on the fixture, each table has severa
 Files: `src/biobox/l3/tokens.py`, `src/biobox/l3/postings.py`, tests
 Do: B-10 writes one posting per slot and level from `tape_tokens`, so a multi-domain protein is indexed only by its canonical family. Extend `token_dict` to every model with an included domain on a slot (not only canonical ones), and write one family posting per included domain with `seg_idx` = the domain's rank by `env_start`; `tape_tokens.family_tokens` keeps the canonical family. Then `fusions_of(a, b)` finds two families on one slot.
 Accept: on a fixture protein with two Pfam domains, both families have a posting on the same slot with `seg_idx` 0 and 1; token ids of cluster levels are unchanged.
+
+### B-22 `l0_manifest` per stage
+**L** · Depends: B-15 (found in its audit)
+Files: `src/biobox/l0seq/store.py`, `src/biobox/registry/schemas.py`, tests
+Do: `l0_manifest` is one file, `l0/l0_manifest.parquet`, re-read and rewritten by every stage, against AGENTS §3.10. Make it a directory partitioned by stage (`l0/l0_manifest/stage=<S>/part-0.parquet`), written once per stage; readers take all stages. Remove the exemption for that file from the R-09 test.
+Accept: after a second stage is ingested, every file of the first stage is byte-identical, with no exception.
+
+### B-23 Ingest: recover the second-read cost and make a crashed stage restartable
+**M** · Depends: B-15 (found in its audit)
+Files: `src/biobox/l0seq/store.py`, tests
+Do: batch ingest reads each source twice and re-hashes kept records in the second pass, which made it 28% slower at 1,000× the fixture (measured). Check length only in the second pass and hash once, unless a measurement shows the hash is not the cost. Separately, an ingest that dies mid-stage leaves files the writer then refuses to overwrite: under `run-step` the stage is published from staging, so make `ingest` safe to rerun into a clean staging directory and document that a direct call needs a clean stage directory.
+Accept: wall time at 1,000× within 10% of the pre-B-15 time (135 s on the laptop), with peak memory unchanged; a killed and rerun ingest under `run-step` gives byte-identical output.
+
+### B-24 Streaming rewrites of clustering and domain scans
+**M** · Depends: B-19
+Files: `src/biobox/l2/cluster.py`, `src/biobox/l1/domains.py`, tests
+Do: these two builders still hold every protein, every alignment row and every domain row in Python lists (B-19 only changes their final write). Stream proteins to MMseqs2 from Parquet, parse its output tables with DuckDB, and write through `io.write_parts`; scan domains shard by shard, each shard its own process under the 300 CPU-minute limit (the sharded scan run by hand on 2026-11-09 is the model: 17 shards, 121 CPU-minutes each), merging sorted shard outputs.
+Accept: outputs content-identical on the fixture; peak memory does not grow with protein count (K-copy measurement as in B-05).
 
 ### B-20 IGR version names its producer set
 **L** · Depends: B-07
