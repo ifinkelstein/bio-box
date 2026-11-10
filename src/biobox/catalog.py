@@ -432,6 +432,7 @@ class ReleaseFiles:
             return [(base, {})] if base.is_file() else []
         out = []
         fixed = {"release": self.release}  # a `release=` partition holds that release's files only (card B-33)
+        # limitation: a version-only table (tape_version_def) is listed by `want`, not by the versions the release uses
         for keys in key_sets(spec):
             for stage in (self.stages if "stage" in keys else [None]):
                 dirs = "/".join(f"{k}={stage if k == 'stage' else fixed.get(k, want.get(k, '*'))}" for k in keys)
@@ -891,8 +892,9 @@ def generate_catalog(manifest: dict, out_path: Path, root: Path | None = None, t
         ])
         con.execute("CREATE TABLE catalog_files AS SELECT * FROM (VALUES (NULL::VARCHAR, NULL::VARCHAR, NULL::VARCHAR, NULL::BIGINT, NULL::BIGINT)) "
                     "t(path, \"table\", sha256, \"rows\", row_groups) WHERE false")
-        con.executemany("INSERT INTO catalog_files VALUES (?, ?, ?, ?, ?)",
-                        [(f["path"], f["table"], f["sha256"], f["rows"], f["row_groups"]) for f in manifest["files"]])
+        rows = [(f["path"], f["table"], f["sha256"], f["rows"], f["row_groups"]) for f in manifest["files"]]
+        if rows:  # a release with no Parquet file of its own (card B-33): executemany refuses an empty list
+            con.executemany("INSERT INTO catalog_files VALUES (?, ?, ?, ?, ?)", rows)
         con.execute("CREATE TABLE catalog_artifacts (path VARCHAR, artifact VARCHAR, sha256 VARCHAR, bytes BIGINT)")
         arts = manifest.get("artifacts", [])
         if arts:

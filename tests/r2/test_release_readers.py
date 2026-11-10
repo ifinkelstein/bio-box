@@ -36,6 +36,7 @@ from biobox.l1 import domains, igr
 from biobox.l1.genecall import GENE_CALL_VERSION as V
 from biobox.l1.genecall import run as call_genes
 from biobox.l3 import postings, tapes, tokens
+from biobox.registry.schemas import TABLES
 from biobox.search import fastz, nbr, pack, runner
 
 sys.path.insert(0, str(Path(__file__).parent))
@@ -409,6 +410,24 @@ def test_b33_release_files_from_release_def_list_only_the_release_own_files(late
             assert got and all(f"release={rel}/" in p.as_posix() for p in got), (rel, name)
             assert got == by_man.table(name), (rel, name)
         assert by_def.table("ledger", release=rel) == by_man.table("ledger", release=rel)
+
+
+@pytest.mark.covers("LY-10")
+def test_b33_a_manifest_with_no_parquet_file_gives_a_catalog_with_empty_views(tmp_path):
+    root = tmp_path / "empty"
+    root.mkdir()
+    man = catalog.build_manifest(root, "rS0.empty", [])
+    assert man["files"] == [] and man["artifacts"] == []
+    con = catalog.open_catalog(catalog.generate_catalog(man, tmp_path / "e.duckdb"))
+    try:
+        assert con.execute("SELECT count(*) FROM catalog_files").fetchone()[0] == 0
+        views = {r[0] for r in con.execute("SELECT view_name FROM duckdb_views() WHERE NOT internal").fetchall()}
+        placed = sorted(name for name, spec in TABLES.items() if spec.location)
+        assert set(placed) <= views
+        for name in placed:
+            assert con.execute(f"SELECT count(*) FROM {name}").fetchone()[0] == 0, name
+    finally:
+        con.close()
 
 
 @pytest.mark.covers("R-09", "D-06")
