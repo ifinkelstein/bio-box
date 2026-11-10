@@ -13,12 +13,21 @@
                 [--json | --format tsv]
     bio-box export proteins --root R --release R [--out FILE]
     bio-box run-step --profile P --root R --stage S --step NAME [--nice monolithic|fanout] [--threads N] -- CMD ...
-    bio-box release define --root R --release R1 --stages S0,S1
-    bio-box release cluster|tokens|postings|dim|manifest --root R --release R1 [--stages S0,S1] [--tmp D]
-                [--threads N] [--producers P,Q] [--libraries L,M]
+    bio-box release define --root R --release R1 --stages S0,S1 [--out DIR]
+    bio-box release cluster|tokens|postings|dim|manifest|catalog --root R --release R1 [--stages S0,S1]
+                [--tmp D] [--threads N] [--producers P,Q] [--libraries L,M] [--tape-version T] [--out DIR]
+    bio-box stage inputs --root R --stage S --genomes genomes.json [--out DIR]
+    bio-box stage ingest --root R --stage S --objects objects.json [--shard-bases N] [--line-width N] [--tmp D]
+    bio-box stage genecall|igr|tapes --root R --stage S [--tmp D] [--producers P,Q] [--workers N] [--out DIR]
+    bio-box stage domains --root R --stage S --library pfam --library-version 38.2 --hmm F --cutoff gathering
 
 A release names its stages (card B-25): `--stages` defines it once (its `release_def`); after that
 every release step reads the stages from `release_def`, and `--stages`, if given, must repeat them.
+
+Every builder step reads its inputs from `--root` and writes its outputs under `--out` (card C-08),
+which defaults to `$BIOBOX_STAGING` when that is set and to the root otherwise; so the same command
+runs directly or as `bio-box run-step ... -- python -m biobox.cli stage genecall --root R --stage S`.
+A step whose partitions already hold files in the root or in `--out` is refused (exit 2) before any work.
 """
 
 from __future__ import annotations
@@ -283,51 +292,83 @@ def _run_step(a) -> int:
                             nice=a.nice, threads=a.threads)
 
 
-RELEASE_STEPS = ("define", "cluster", "tokens", "postings", "dim", "manifest")
+RELEASE_STEPS = ("define", "cluster", "tokens", "postings", "dim", "manifest", "catalog")
+STAGE_STEPS = ("inputs", "ingest", "genecall", "igr", "tapes", "domains")
+OUT_HELP = ("output root (card C-08): every output goes under it at its root-relative path; default "
+            "$BIOBOX_STAGING when set (bio-box run-step sets it and publishes from it), else --root")
 
 
 def _csv(s: str | None) -> list[str] | None:
     return None if s is None else [x.strip() for x in s.split(",")]
 
 
-def _release_step(a, root: Path, stages: list[str]) -> dict:
+def _out(a, root: Path) -> Path:
+    """Where a builder step writes (card C-08): `--out`, else `$BIOBOX_STAGING` (set by run-step, which
+    publishes from it), else the root itself."""
+    if a.out:
+        return Path(a.out)
+    staging = os.environ.get("BIOBOX_STAGING")
+    return Path(staging) if staging else root
+
+
+def _release_step(a, root: Path, stages: list[str], out: Path) -> dict:
     tmp = Path(a.tmp) if a.tmp else None
     if a.step == "cluster":
         from biobox.l2 import cluster
 
-        return cluster.run(root, a.release, a.gene_call_version, stages, threads=a.threads, tmp=tmp)
+        return cluster.run(root, a.release, a.gene_call_version, stages, threads=a.threads, tmp=tmp, out=out)
     if a.step == "tokens":
         from biobox.l3 import tokens
 
         return tokens.run(root, a.release, stages, a.gene_call_version, libraries=_csv(a.libraries),
-                          producers=_csv(a.producers), tmp=tmp)
+                          producers=_csv(a.producers), tmp=tmp, out=out)
     if a.step == "postings":
         from biobox.l3 import postings
 
-        return postings.run(root, a.release, stages, a.gene_call_version, producers=_csv(a.producers), tmp=tmp)
+        return postings.run(root, a.release, stages, a.gene_call_version, producers=_csv(a.producers), tmp=tmp,
+                            out=out)
     if a.step == "dim":
         from biobox import dim
 
-        return dim.run(root, a.release, stages, tmp=tmp)
+        return dim.run(root, a.release, stages, tmp=tmp, out=out)
     from biobox import catalog
 
+    if a.step == "catalog":
+        path = catalog.manifest_path(root, a.release)
+        if not path.exists():
+            raise FileNotFoundError(f"{path}: no manifest of release {a.release}; the catalog is built from it. "
+                                    f"Write it with: bio-box release manifest --root {root} --release {a.release}")
+        man = catalog.read_manifest(path)
+        got = catalog.generate_catalog(man, root=root, out=out, tape_version=a.tape_version)
+        return {"catalog": got.name, "manifest_hash": catalog.manifest_hash(man)}
+    path = catalog.manifest_path(root, a.release)
+    same_root = out.resolve() == root.resolve()
+    if not same_root:  # refused before the manifest is built (write_manifest refuses again)
+        for p in (path, catalog.manifest_path(out, a.release)):
+            if p.exists():
+                raise FileExistsError(f"{p}: the manifest of release {a.release} is written once; "
+                                      "refusing to overwrite")
     man = catalog.build_manifest(root, a.release, stages)
-    path = root / f"manifests/release={a.release}.json"
-    if path.exists() and catalog.manifest_hash(catalog.read_manifest(path)) != catalog.manifest_hash(man):
-        raise ValueError(f"{path}: a different manifest of release {a.release} exists; refusing to overwrite")
-    catalog.write_manifest(man, path)
-    return {"files": len(man["files"]), "artifacts": len(man["artifacts"]), "manifest_hash": catalog.manifest_hash(man)}
+    res = {"files": len(man["files"]), "artifacts": len(man["artifacts"]), "manifest_hash": catalog.manifest_hash(man)}
+    if same_root and path.exists():  # into the root itself, as before card C-08: the same manifest is a no-op
+        if catalog.manifest_hash(catalog.read_manifest(path)) != catalog.manifest_hash(man):
+            raise ValueError(f"{path}: a different manifest of release {a.release} exists; refusing to overwrite")
+        return res
+    catalog.write_manifest(man, out=out)
+    return res
 
 
 def _release(a) -> int:
     """One release-level step over the release's stages (card B-25). `define` writes `release_def`
     once (each stage must have been ingested); a builder step given `--stages` defines the release if
-    it is not yet defined; without `--stages` the stages come from `release_def`. `manifest` needs
-    the release defined."""
+    it is not yet defined; without `--stages` the stages come from `release_def`. `manifest` and
+    `catalog` need the release defined; `catalog` needs its manifest. Inputs are read from `--root`,
+    outputs written under `_out` (card C-08)."""
     from biobox import catalog, io
 
     root = Path(a.root)
     try:
+        out = _out(a, root)
         given = _csv(a.stages)
         if a.step == "define":
             if given is None:
@@ -337,20 +378,110 @@ def _release(a) -> int:
             if missing:
                 raise FileNotFoundError(f"stages {missing} have no contig_index under {root}: not ingested")
             res: dict = {}
-            stages = catalog.define_release(root, a.release, stages)
+            stages = catalog.define_release(root, a.release, stages, out=out)
         else:
-            if given is None or a.step == "manifest":
+            if given is None or a.step in ("manifest", "catalog"):
                 stages = catalog.release_stages(root, a.release)
                 if given is not None and catalog.check_stages(given) != stages:
                     raise ValueError(f"release_def of {a.release} lists stages {stages}, not {given}")
             else:
                 stages = catalog.verify_release_def(root, a.release, given)  # the builder defines it
-            res = _release_step(a, root, stages)
-    except (FileNotFoundError, ValueError) as e:
+            res = _release_step(a, root, stages, out)
+    except (FileNotFoundError, FileExistsError, ValueError) as e:
         print(f"refused: {e}", file=sys.stderr)
         return 2
     print(json.dumps({"release": a.release, "stages": stages, "step": a.step, "result": res}, sort_keys=True,
                      default=str))
+    return 0
+
+
+def _json_list(path: str) -> list[dict]:
+    data = json.loads(Path(path).read_text())
+    if not isinstance(data, list) or not all(isinstance(x, dict) for x in data):
+        raise ValueError(f"{path}: expected a JSON list of objects")
+    return data
+
+
+def _genomes(path: str):
+    """`--genomes FILE`: a JSON list of `GenomeInput` fields, contig uids as hex."""
+    from biobox.l0seq.inputs import GenomeInput
+
+    out = []
+    for g in _json_list(path):
+        kw = dict(g)
+        kw["contig_uids"] = tuple(bytes.fromhex(u) for u in g["contig_uids"])
+        kw["circular"] = tuple(bytes.fromhex(u) for u in g.get("circular", ()))
+        out.append(GenomeInput(**kw))
+    return out
+
+
+def _source_objects(path: str):
+    """`--objects FILE`: a JSON list of `SourceObject` fields (`retrieved_at` as ISO 8601); a relative
+    `path` is taken from the directory of FILE."""
+    from biobox.l0seq import SourceObject
+
+    out = []
+    for o in _json_list(path):
+        kw = dict(o)
+        p = Path(kw["path"])
+        kw["path"] = p if p.is_absolute() else Path(path).parent / p
+        if "retrieved_at" in kw:
+            kw["retrieved_at"] = datetime.fromisoformat(kw["retrieved_at"])
+        out.append(SourceObject(**kw))
+    return out
+
+
+def _stage_step(a, root: Path, out: Path) -> dict:
+    tmp = Path(a.tmp) if a.tmp else None
+    mfb = {} if a.max_file_bytes is None else {"max_file_bytes": a.max_file_bytes}
+    if a.step == "inputs":
+        from biobox.l0seq.inputs import write_genome_input
+
+        if not a.genomes:
+            raise ValueError("stage inputs needs --genomes")
+        return write_genome_input(root, a.stage, _genomes(a.genomes), out=out, **mfb)
+    if a.step == "ingest":
+        from biobox.l0seq import ingest
+
+        if not a.objects:
+            raise ValueError("stage ingest needs --objects")
+        kw = {k: v for k, v in (("shard_bases", a.shard_bases), ("line_width", a.line_width)) if v is not None}
+        return ingest(_source_objects(a.objects), root, a.stage, tmp=tmp, out=out, **kw, **mfb)
+    if a.step == "genecall":
+        from biobox.l1.genecall import run
+
+        return run(root, a.stage, version=a.gene_call_version, prefix_width=a.prefix_width, tmp=tmp,
+                   workers=a.workers, seq_stages=_csv(a.seq_stages), out=out, **mfb)
+    if a.step == "igr":
+        from biobox.l1 import igr
+
+        return igr.run(root, a.stage, gene_call_version=a.gene_call_version, producers=_csv(a.producers), tmp=tmp,
+                       out=out, **mfb)
+    if a.step == "tapes":
+        from biobox.l3 import tapes
+
+        kw = {} if a.max_slots is None else {"max_slots": a.max_slots}
+        return tapes.run(root, a.stage, gene_call_version=a.gene_call_version, producers=_csv(a.producers), tmp=tmp,
+                         out=out, **kw, **mfb)
+    from biobox.l1 import domains
+
+    missing = [f"--{n.replace('_', '-')}" for n in ("library", "library_version", "hmm", "cutoff") if not getattr(a, n)]
+    if missing:
+        raise ValueError(f"stage domains needs {', '.join(missing)}")
+    return domains.run(root, a.stage, a.gene_call_version, a.library, a.library_version, Path(a.hmm), a.cutoff,
+                       cpus=a.cpus, out=out, **mfb)
+
+
+def _stage(a) -> int:
+    """One per-stage builder step (card C-08): inputs are read from `--root`, outputs written under
+    `--out`, else `$BIOBOX_STAGING`, else the root."""
+    root = Path(a.root)
+    try:
+        res = _stage_step(a, root, _out(a, root))
+    except (FileNotFoundError, FileExistsError, ValueError) as e:
+        print(f"refused: {e}", file=sys.stderr)
+        return 2
+    print(json.dumps({"stage": a.stage, "step": a.step, "result": res}, sort_keys=True, default=str))
     return 0
 
 
@@ -436,6 +567,30 @@ def main(argv: list[str] | None = None) -> int:
     rl.add_argument("--threads", type=int, default=1, help="cluster: MMseqs2 threads")
     rl.add_argument("--producers", help="tokens, postings: the tape version's producers (default: the gene caller)")
     rl.add_argument("--libraries", help="tokens: domain libraries in precedence order (default: those with domains in the release's stages, by name)")
+    rl.add_argument("--tape-version", help="catalog: the tape version the pair macros serve (default: the one of "
+                                           "the release's postings)")
+    rl.add_argument("--out", help=OUT_HELP)
+    st = sub.add_parser("stage", parents=[common], help="per-stage builder steps (card C-08)")
+    st.add_argument("step", choices=STAGE_STEPS)
+    st.add_argument("--stage", required=True)
+    st.add_argument("--out", help=OUT_HELP)
+    st.add_argument("--tmp", help="scratch directory (system temp by default; under neither the root nor --out)")
+    st.add_argument("--max-file-bytes", type=int, help="cut each table into parts of at most this many estimated bytes")
+    st.add_argument("--genomes", help="inputs: JSON list of genomes (GenomeInput fields, contig uids as hex)")
+    st.add_argument("--objects", help="ingest: JSON list of source objects (SourceObject fields)")
+    st.add_argument("--shard-bases", type=int, help="ingest: new bases per sequence shard")
+    st.add_argument("--line-width", type=int, help="ingest: FASTA line width of the shards")
+    st.add_argument("--prefix-width", type=int, choices=[0, 1, 2], help="genecall: protein_seq bucket width")
+    st.add_argument("--workers", type=int, default=1, help="genecall: genomes called at once")
+    st.add_argument("--seq-stages", help="genecall: S0,S1: the stages whose sequences the genomes name "
+                                         "(default: the stage itself)")
+    st.add_argument("--producers", help="igr, tapes: the tape version's producers (default: the gene caller)")
+    st.add_argument("--max-slots", type=int, help="tapes: slots per row group")
+    st.add_argument("--library", help="domains: library name (pfam)")
+    st.add_argument("--library-version", help="domains: library version (38.2)")
+    st.add_argument("--hmm", help="domains: the library's HMM file")
+    st.add_argument("--cutoff", help="domains: gathering, trusted, noise or none")
+    st.add_argument("--cpus", type=int, default=1, help="domains: hmmsearch threads")
     a = p.parse_args(argv)
     if a.cmd == "search" and a.action == "run" and not a.release:
         p.error("search run needs --release")
@@ -444,7 +599,7 @@ def main(argv: list[str] | None = None) -> int:
             p.error("run-step needs a command after --")
         a.command = command
     return {"pack": _pack, "search": _search, "nbr": _nbr, "export": _export, "run-step": _run_step,
-            "release": _release}[a.cmd](a)
+            "release": _release, "stage": _stage}[a.cmd](a)
 
 
 if __name__ == "__main__":
