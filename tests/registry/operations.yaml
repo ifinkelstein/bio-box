@@ -99,7 +99,7 @@ operations:
     inputs: [l1_genes, l1_domains, l1_ncrna, protein_occurrence, contig_index, cluster_member]
     outputs: [contig_tapes, tape_tokens, token_dict]
     oracle: brute-force rebuild from L1 in Python
-    mrs: [MR-03, MR-04, MR-05, MR-11]
+    mrs: [MR-03, MR-04, MR-05, MR-11, MR-20]
     tests: [Q2, C-04, C-05, C-07, K-07, G-03, A-04, A-05]
   O-PAIRS:
     summary: slot_pairs window enumeration

@@ -20,6 +20,7 @@ mrs:
   MR-17: rerun a recipe on a later release; same results on unchanged targets
   MR-18: null world; p-values uniform, FDR at nominal level
   MR-19: add a contamination mask; only statistics involving masked contigs change
+  MR-20: feature addition stability; adding a feature of any kind leaves every existing feature_uid-keyed row byte-identical and shifts only ordinals inside a new tape version
 
 failures:
   F-01: {severity: S1, summary: coordinate or strand error, caught_by: [MR-03, MR-04, R-03, R-05]}
