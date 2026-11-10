@@ -23,13 +23,14 @@ for strand in ("plus", "minus"):
     same = sum(1 for e, g in zip(exp, got) if e == g)
     out[f"samtools_slices_{strand}"] = {"expected": len(exp), "returned": len(got), "identical": same}
 
-# 2. indexes written by the repo vs indexes samtools builds for the same shard
-shard = root / "l0seq/seq_shards/stage=S0/shard-0000.fa.gz"
-for suf in (".fai", ".gzi"):
-    a, b = Path(str(shard) + suf).read_bytes(), (d / "pod" / f"shard-0000.fa.gz{suf}").read_bytes()
-    out[f"index{suf}_identical_to_samtools"] = a == b
-    if a != b:
-        out[f"index{suf}_sizes"] = [len(a), len(b)]
+# 2. indexes written by the repo vs indexes samtools builds for the same shard (batch ingest, card B-15,
+# names shards per batch, so every shard of the stage is compared with pod/<shard name>.fai and .gzi)
+for shard in sorted((root / "l0seq/seq_shards/stage=S0").glob("*.fa.gz")):
+    for suf in (".fai", ".gzi"):
+        a, b = Path(str(shard) + suf).read_bytes(), (d / "pod" / f"{shard.name}{suf}").read_bytes()
+        out[f"{shard.name}{suf}_identical_to_samtools"] = a == b
+        if a != b:
+            out[f"{shard.name}{suf}_sizes"] = [len(a), len(b)]
 
 
 # 3. gene calls
@@ -49,7 +50,7 @@ def load_gff(path, opener=open):
 bb = defaultdict(set)
 lens = {}
 for ln in (d / "genes.tsv").read_text().splitlines():
-    acc, s, e, st, n = ln.split("\t")
+    acc, s, e, st, n = ln.split("\t")[:5]  # a sixth column, feature_uid, since card B-18
     bb[acc].add((int(s), int(e), int(st)))
     lens[acc] = int(n)
 
