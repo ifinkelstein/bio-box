@@ -146,6 +146,83 @@ def test_dark_orfs_translate_their_own_coordinates(world):
     store.close()
 
 
+def _declare_code(root: Path, contig_prefix: str, code: int) -> bytes:
+    """Rewrite the genetic code of every slot of the contig whose uid starts with the hex prefix."""
+    target = None
+    for f in sorted((root / "l1/slot_protein").rglob("*.parquet")):
+        t = pq.read_table(f)
+        rows = t.to_pylist()
+        for r in rows:
+            if r["contig_uid"].hex().startswith(contig_prefix):
+                r["genetic_code"] = code
+                target = r["contig_uid"]
+        pq.write_table(pa.Table.from_pylist(rows, schema=t.schema), f, compression="zstd")
+    assert target is not None
+    return target
+
+
+def _oracle_dark(root: Path, cu: bytes, circular: bool, code: int) -> dict:
+    """{(start, end, strand): aa} of the dark ORFs of one contig, from the r1 per-position ORF oracle."""
+    from biobox.l0seq.store import SeqStore
+
+    sys.path.insert(0, str(REPO / "tests/r1"))
+    from test_search_units import _oracle_orfs
+
+    genes = []
+    for f in pack._occurrence_files(root, V):
+        genes += [(r["start"], r["end"], r["strand"]) for r in pq.read_table(f).to_pylist() if r["contig_uid"] == cu]
+    store = SeqStore(root)
+    seq = store.get(cu).decode().upper()
+    store.close()
+    L = len(seq)
+    covered = set()
+    for g in genes:
+        covered |= {x % L for x in range(g[0], g[1])} if circular else set(range(g[0], g[1]))
+    own = {(1, e % L) for s_, e, st in genes if st == 1} | {(-1, s_ % L) for s_, e, st in genes if st == -1}
+    out = {}
+    for start, end, strand, aa, _ in _oracle_orfs(seq, circular, code, orfs.MIN_AA):
+        if (strand, (end if strand == 1 else start) % L) in own:
+            continue
+        frac = len({x % L for x in range(start, end)} & covered) / (end - start)
+        at_end = not circular and (start < orfs.END_BP or end > L - orfs.END_BP)
+        if frac >= orfs.MAX_GENE_OVERLAP and not at_end:
+            continue
+        out[(start, end, strand)] = aa
+    return out
+
+
+# (contig 014272 carries IUPAC ambiguity codes; the plain-table oracle covers ACGT contigs only)
+@pytest.mark.parametrize("prefix", ["be7014", "b4db86"])
+@pytest.mark.covers("W-01")
+def test_w01_pack_builds_with_a_contig_declared_code_15(world, tmp_path, prefix):
+    root = _copy(world, tmp_path)
+    cu = _declare_code(root, prefix, 15)
+    pack.build(root, REL, models={"test-1": world[1] / "a.hmm"})
+    pdir = pack.pack_dir(root, REL)
+    meta = pq.read_table(pdir / "dark_orf/dark_orf_meta.parquet").to_pylist()
+    seqs = dict(r for s in sorted(pdir.glob("dark_orf/part-*.faa.zst")) for r in fastz.read_records(s))
+    circ = {r["contig_uid"] for r in pq.read_table(next((root / "l3/tapes").rglob("*.parquet"))).to_pylist()
+            if r["is_circular"]}
+    got = {(m["start"], m["end"], m["strand"]): seqs[m["region_uid"].hex()] for m in meta if m["contig_uid"] == cu}
+    assert all(m["genetic_code"] == 15 for m in meta if m["contig_uid"] == cu)
+    want = _oracle_dark(root, cu, cu in circ, 15)
+    assert got == want and want
+    assert want != _oracle_dark(root, cu, cu in circ, 11)  # TAG matters for this contig
+
+
+@pytest.mark.parametrize("bad", [7, 26])
+@pytest.mark.covers("W-01")
+def test_w01_unsupported_code_fails_before_any_pack_file_is_written(world, tmp_path, bad):
+    root = _copy(world, tmp_path)
+    cu = _declare_code(root, "be7014", bad)
+    pdir = pack.pack_dir(root, REL)
+    shutil.rmtree(pdir)
+    with pytest.raises(ValueError) as e:
+        pack.build(root, REL, models={"test-1": world[1] / "a.hmm"})
+    assert str(bad) in str(e.value) and cu.hex() in str(e.value)
+    assert not pdir.exists()
+
+
 # --- runs, controls (S-04) -----------------------------------------------------------------------------
 
 
