@@ -5,7 +5,24 @@ The running record of the cards in [`TASKS.md`](TASKS.md). Updated at every merg
 its own branch `task/<ID>`, audited by the orchestrating session, and merged after the full suite
 passed on the integration branch.
 
-## Handoff, 2026-11-10 about 11:45 CST
+## Current state, 2026-11-10 about 11:30 CST (supersedes the handoff section where they differ)
+
+The session continued after the handoff below was written (its clock time was wrong: it was
+written at about 10:05 CST). Since then:
+- The suite on `plan/task-cards` with C-11 merged passed on the pod: 1,064 passed, 10 skipped.
+- The source review of the paper is merged: `planning/sources_from_s41467-026-79223-z.md`; eleven
+  candidate databases, none added to the import plan.
+- **A-07 is merged**: its branch had 20 consecutive green `ci` runs. `ci` on `plan/task-cards`
+  should now be reliably green; a red run from here on is a new problem, not the known one.
+- Running: C-10 (real build on the pod), B-27, E-01, C-12. All four were resumed after the session
+  restart; their branches are `task/<ID>`.
+- C-10 is merged. The 10 Gbp rebuild with the current code started on the pod (not a card; root
+  `/tmp/if2453/r10/root`, units `r10-*`): first without Pfam, as release `rN.1`, so a queryable store
+  exists in hours; then the Pfam scan through `build-stage`'s sharded path and release `rN.2`.
+- Next: W-13 and W-03 (unblocked by A-07), B-30, then the merge to `main` once several consecutive
+  `ci` runs on `plan/task-cards` are green.
+
+## Handoff, 2026-11-10 (written about 10:05 CST)
 
 Written so a new session can continue without the conversation that produced this file.
 
@@ -65,7 +82,7 @@ Last full suite on the integration branch before the C-11 merge: 1,053 passed, 1
 pinned image; 3 min 40 s wall for the slowest shard, against 13.5 min in one process). The skips
 need samtools, bgzip, Prodigal or the golden set. Tests no longer run on the laptop (AGENTS.md §5.5).
 
-## Merged (61 cards)
+## Merged (63 cards)
 
 | Card | Merge | What it did | Audit notes |
 |---|---|---|---|
@@ -129,6 +146,8 @@ need samtools, bgzip, Prodigal or the golden set. Tests no longer run on the lap
 | B-24 | this merge | Clustering streams: Python peak 997 MB at 2.05 M proteins, was 8,921 MB; outputs byte-identical. Domain scan can be planned, scanned in shards and merged, and `build-stage` does that instead of refusing | The 46 GB at 10.6 M proteins and the 410 GB projection were our Python process, not MMseqs2; MMseqs2 itself is at least 5.3 GB at 2.05 M and its growth is unmeasured (PI card 0-06). Shards run one after another and are sized with no margin: card C-11, needed before a real Pfam scan |
 | B-34 | this merge | `token_of` prunes (13 row groups to 1 for a literal or one joined key at 1,000×) through footer statistics on `token_dict.key`, no new table; a catalog can be opened several times in one process; a plain DuckDB connection gets an error that names `open_catalog` | Found: the catalog `.duckdb` file was never byte-deterministic: two builds differ in about 65 bytes of DuckDB internals (file identifier, checksums, padding). Its logical content is now tested instead. The manifest, not the catalog, is the record, so this is an exception to AGENTS §4.3 to state, not a defect to fix: listed under open items. A cold `token_of` over 100 spread keys is slower than before at this size (0.059 s against 0.018 s) |
 | C-11 | this merge | `build-stage --scan-jobs J --scan-cpus C`: scan shards run J at a time, J × C within the hour's thread allowance; shards planned at 80% of the CPU-minute budget (32.9 M residues for Pfam, *derived*) | Byte-identical to the unsharded scan at J of 1, 2 and 4; a failed shard stops new launches and the next call runs only what is missing. Found and worked around a race between two steps publishing at once. Open: the allowance is fixed at the start of a build, so a night build keeps the night cap by day; lost scratch between shards and merge leaves the build stuck: card C-12 |
+| A-07 | this merge | Two intermittent `ci` failures fixed at their causes: the injected-oom test no longer races a 3 s wall clock (a memory-capped scope takes 4.5 to 5.2 s to kill at 4 GB, *measured*); a runner counts as live only if it holds the lock and its process is not exiting (the lock outlives the main thread by 25 to 59 ms, *measured* over 50 kills) | 20 consecutive green `ci` runs on its branch. Also fixed: an oom fault that was not stopped was reported as `oom`; it now ends `failed: that limit is not enforced`. Not established: that GitHub's runner takes the scope path (inferred) |
+| C-10 | `2b8e421`+1 | First real `build-stage` run on the pod with the real profile: 1,947 phages and 250 prokaryotes, two releases, both verify; all 24 run records show the inherited 200 G cap | The 250-genome stage equals the earlier ladder build gene for gene (927,920 genes, 918,765 proteins, 764,935 IGRs; all compared). STOP, a repeat call and a mid-step kill behave as on the fixture. Ran the code from before B-24/C-11, so the sharded scan inside `build-stage` was not exercised. Seven defects: card C-13 |
 
 Decisions DEC-18 to DEC-23 were approved by the PI on 2026-11-09 and are in `planning/DECISIONS.md`.
 
@@ -154,7 +173,7 @@ The thread cap is the sum over all our processes: 40 by day, 56 at night.
 
 | Card | Model | State |
 |---|---|---|
-| A-07 two search tests fail intermittently on GitHub Actions | Opus | started 2026-11-10 |
+| C-12 builds respect the hour; lost scratch; publish race in `run-step` | Opus | started 2026-11-10 |
 | C-10 first real `build-stage` on the pod (two stages, two releases, local disk) | Opus | started 2026-11-10 |
 | E-01 non-coding RNA producer (Infernal, Rfam) | Opus | started 2026-11-10 |
 | C-10 first real `build-stage` on the pod | Opus | started 2026-11-10; its Pfam scan is throttled to the day cap |

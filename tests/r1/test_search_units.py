@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import dataclasses
 import json
+import platform
 import resource
 import signal
 from collections import Counter
@@ -883,6 +884,172 @@ def test_c05_oom_evidence_from_the_scope(tmp_path):
                                ("loaded", "signal", False), ("not-found", "success", None)):
         got = runner.scope_oom_killed(work, cgroup_root=cg_root, systemctl=_systemctl(tmp_path, load, result))
         assert got is want, (load, result)
+
+
+# --- A-07: the oom fault reaches its limit on every path; the runner's liveness ---------------------------
+
+
+def _oom_worker(tmp_path: Path, lim: runner.Limits, kind: str, cap_bytes: int | None = None) -> int:
+    """Run the real worker entry with the `oom` fault under the env and rlimits the runner gives `kind`
+    on Linux (or on this system for "bare" without mem_gb); its exit code."""
+    import os
+    import subprocess
+
+    job = tmp_path / kind / "job.json"
+    job.parent.mkdir(parents=True)
+    job.write_text(json.dumps({"cpus": 1, "fault": "oom"}))
+    system = "Linux" if lim.mem_gb is not None else platform.system()
+    env = runner.worker_env(lim, kind, system, dict(os.environ), cap_bytes=cap_bytes)
+    lims = runner.rlimits(lim, kind, system, cap_bytes)
+
+    def pre():
+        for which, value in lims.items():
+            resource.setrlimit(which, value)
+    return subprocess.run(runner.worker_command(job), env=env, preexec_fn=pre,
+                          stdout=subprocess.DEVNULL, stderr=subprocess.PIPE, timeout=120).returncode
+
+
+def _held_by(lim: runner.Limits, kind: str, system: str, cap_bytes: int | None) -> tuple[str, int | None]:
+    """What holds the worker's memory on a path, and at how many bytes: ("rlimit_as", n), ("cgroup", n)
+    (the scope's MemoryMax, or the inherited unit's cap) or ("none", None)."""
+    rl = runner.rlimits(lim, kind, system, cap_bytes)
+    if resource.RLIMIT_AS in rl:
+        return "rlimit_as", rl[resource.RLIMIT_AS][0]
+    if kind == "scope" and lim.mem_gb is not None:
+        argv, _ = runner.worker_argv(Path("/w/job.json"), lim, system=system, which=_found)
+        return "cgroup", int(next(a for a in argv if a.startswith("MemoryMax=")).split("=")[1])
+    if kind == "inherited" and cap_bytes is not None:
+        return "cgroup", cap_bytes
+    return "none", None
+
+
+# (kind, system, limits, inherited cap): every way the runner can start a worker
+OOM_PATHS = [
+    ("scope", "Linux", runner.Limits(mem_gb=4), None),                  # GitHub's ubuntu-24.04 runner
+    ("inherited", "Linux", runner.Limits(mem_gb=4), 32 * 2**30),        # the pod under scripts/pod_pytest.sh
+    ("inherited", "Linux", runner.Limits(mem_gb=None), 32 * 2**30),     # the unit's cap is the only limit
+    ("nice", "Linux", runner.Limits(mem_gb=4), None),
+    ("bare", "Linux", runner.Limits(mem_gb=4), None),
+    ("nice", "Darwin", runner.Limits(mem_gb=4), None),
+    ("scope", "Linux", runner.Limits(mem_gb=None), None),
+]
+
+
+@pytest.mark.covers("A-07", "S-05")
+@pytest.mark.parametrize("kind,system,lim,cap", OOM_PATHS)
+def test_a07_the_oom_fault_allocates_past_the_limit_that_holds_its_path(kind, system, lim, cap):
+    """By construction, not by speed: in one allocation the fault asks for twice the limit the runner named,
+    and the limit it names is the one that holds the worker on that path."""
+    env = runner.worker_env(lim, kind, system, {}, cap_bytes=cap)
+    how, limit = _held_by(lim, kind, system, cap)
+    n = worker.oom_bytes(env)
+    if how == "none":
+        assert n is None
+    else:
+        assert n == 2 * limit > limit, (how, limit, env)
+
+
+@pytest.mark.covers("A-07", "S-05")
+@pytest.mark.parametrize("kind,system,lim,cap", [p for p in OOM_PATHS if _held_by(p[2], p[0], p[1], p[3])[0] == "cgroup"])
+def test_a07_a_cgroup_kill_of_the_oom_fault_is_oom(tmp_path, kind, system, lim, cap):
+    """Scope and inherited cap: the kernel answers the allocation with SIGKILL and one more oom_kill in the
+    cgroup's memory.events (in an inherited unit, above the count when the worker started)."""
+    work, cg_root = tmp_path / "work", tmp_path / "cgroup"
+    work.mkdir()
+    (work / runner.CGROUP_FILE).write_text(CG + "\n")
+    events = cg_root / CG.lstrip("/") / "memory.events"
+    events.parent.mkdir(parents=True)
+    baseline = 2 if kind == "inherited" else 0  # kills in the shared unit before this worker started
+    events.write_text(f"low 0\nhigh 0\nmax 9\noom 9\noom_kill {baseline + 1}\noom_group_kill 0\n")
+    evidence = runner.scope_oom_killed(work, cgroup_root=cg_root, systemctl=None, baseline=baseline)
+    status, error = runner.classify_exit(KILL, timed_out=False, cancelled=False, cgroup_oom=evidence, result=None)
+    assert status == "oom", error
+    events.write_text(f"low 0\nhigh 0\nmax 9\noom 9\noom_kill {baseline}\noom_group_kill 0\n")
+    evidence = runner.scope_oom_killed(work, cgroup_root=cg_root, systemctl=None, baseline=baseline)
+    assert runner.classify_exit(KILL, timed_out=False, cancelled=False, cgroup_oom=evidence, result=None)[0] == "failed"
+
+
+@pytest.mark.covers("A-07", "S-05")
+@pytest.mark.skipif(platform.system() != "Linux", reason="RLIMIT_AS is set only on Linux")
+@pytest.mark.parametrize("kind,cap", [("nice", None), ("bare", None), ("inherited", 32 * 2**30)])
+def test_a07_the_oom_fault_under_rlimit_as_exits_oom_at_once(tmp_path, kind, cap):
+    """RLIMIT_AS paths (no cgroup holds the worker to mem_gb): the real worker's allocation fails in the
+    allocator, before any page is touched, and the exit is EXIT_OOM."""
+    lim = runner.Limits(mem_gb=4)
+    assert _held_by(lim, kind, "Linux", cap)[0] == "rlimit_as"
+    rc = _oom_worker(tmp_path, lim, kind, cap)
+    assert runner.classify_exit(rc, timed_out=False, cancelled=False, cgroup_oom=None, result=None) == \
+        ("oom", "out of memory (MemoryError)"), rc
+
+
+@pytest.mark.covers("A-07", "S-05")
+def test_a07_the_oom_fault_without_a_limit_exits_oom(tmp_path):
+    """No limit named (macOS, or no mem_gb): the fault raises the MemoryError an allocation would."""
+    lim = runner.Limits(mem_gb=None)
+    assert _held_by(lim, "bare", platform.system(), None)[0] == "none"
+    rc = _oom_worker(tmp_path, lim, "bare")
+    assert runner.classify_exit(rc, timed_out=False, cancelled=False, cgroup_oom=None, result=None)[0] == "oom"
+
+
+@pytest.mark.covers("A-07", "S-05")
+def test_a07_an_oom_fault_that_is_not_stopped_is_failed_not_oom(tmp_path):
+    """A named limit that does not hold (a scope without the memory controller, say): the allocation
+    succeeds, and the run must not be recorded as `oom`."""
+    import os
+    import subprocess
+
+    job = tmp_path / "job.json"
+    job.write_text(json.dumps({"cpus": 1, "fault": "oom"}))
+    env = {**os.environ, "BIOBOX_MEMORY_MAX": str(2**20)}  # 1 MiB, enforced by nothing
+    env.pop("BIOBOX_RLIMIT_AS", None)
+    p = subprocess.run(runner.worker_command(job), env=env, stdout=subprocess.DEVNULL,
+                       stderr=subprocess.PIPE, text=True, timeout=120)
+    status, error = runner.classify_exit(p.returncode, timed_out=False, cancelled=False, cgroup_oom=None,
+                                         result=None, stderr=p.stderr)
+    assert status == "failed" and "not enforced" in error, (p.returncode, p.stderr[-500:])
+
+
+def _stat_line(pid: int, state: str, flags: int = 0x400100, start: int = 12345) -> str:
+    rest = [str(1 + i) for i in range(49)]  # fields 4..52 of proc(5)
+    rest[5] = str(flags)                      # field 9
+    rest[18] = str(start)                     # field 22
+    return f"{pid} (py (thon) x) {state} " + " ".join(rest) + "\n"
+
+
+def _fake_proc(tmp_path: Path, procs: dict[int, str]) -> Path:
+    root = tmp_path / "proc"
+    (root / "self").mkdir(parents=True)
+    (root / "self" / "stat").write_text(_stat_line(1, "R"))
+    for pid, line in procs.items():
+        (root / str(pid)).mkdir()
+        (root / str(pid) / "stat").write_text(line)
+    return root
+
+
+@pytest.mark.covers("A-07", "A-01")
+@pytest.mark.parametrize("line,start,want", [
+    (_stat_line(100, "R"), 12345, True),
+    (_stat_line(100, "S"), 12345, True),
+    (_stat_line(100, "D"), 12345, True),
+    (_stat_line(100, "T"), 12345, True),               # stopped is not dead
+    (_stat_line(100, "S"), None, True),                # a pending record from before the start time was kept
+    (_stat_line(100, "Z"), 12345, False),              # the leader is a zombie (its last thread may hold the lock)
+    (_stat_line(100, "X"), 12345, False),
+    (_stat_line(100, "R", flags=0x400104), 12345, False),  # PF_EXITING: the kernel is tearing it down
+    (_stat_line(100, "S", start=99999), 12345, False),  # the pid now belongs to another process
+    (None, 12345, False),                               # the pid is gone
+])
+def test_a07_runner_process_liveness_from_proc(tmp_path, line, start, want):
+    root = _fake_proc(tmp_path, {100: line} if line else {})
+    assert runner.runner_process_alive({"pid": 100, "start": start}, proc_root=root) is want
+
+
+@pytest.mark.covers("A-07")
+def test_a07_without_proc_the_lock_alone_decides(tmp_path):
+    assert runner.runner_process_alive({"pid": 100, "start": 1}, proc_root=tmp_path / "noproc") is None
+    root = _fake_proc(tmp_path, {100: _stat_line(100, "S", start=777)})
+    assert runner.proc_start_time(100, proc_root=root) == 777
+    assert runner.proc_start_time(101, proc_root=root) is None
 
 
 @pytest.mark.covers("C-05")

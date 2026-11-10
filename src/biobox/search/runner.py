@@ -70,6 +70,8 @@ from biobox.search.worker import BOOT, CGROUP_FILE, EXIT_FAILED, EXIT_OOM, THREA
 
 GB = 10**9
 CGROUP_ROOT = Path("/sys/fs/cgroup")  # the cgroup v2 mount
+PROC_ROOT = Path("/proc")
+PF_EXITING = 0x4  # task flag (include/linux/sched.h) the kernel sets once a task has begun to exit
 _WHICH = object()  # default for scope_oom_killed(systemctl=...): look it up on PATH
 LOCK_NAME = "runner.lock"  # flock held by the runner for its lifetime, through an fd inherited from `submit`
 RUN_FILES = ("run.parquet", "hits.parquet", "profiles.parquet", "neighborhoods.parquet")
@@ -563,7 +565,10 @@ def submit(root: Path, recipe_path: Path, release: str, limits: Limits = Limits(
         cmd += ["--fault", fault]
     # The runner's liveness is a flock on local disk (never under the data root: flock is unreliable on
     # NFS). It is taken here, before the pending record exists, and handed to the runner as an inherited
-    # fd (the lock belongs to the open file description, so it lives exactly as long as the runner).
+    # fd (the lock belongs to the open file description, so it lives exactly as long as the runner's
+    # files are open). The pid and its start time are recorded too: a killed multi-threaded runner's files
+    # stay open, lock included, until its last thread has torn the process down, while its leader is
+    # already a zombie (card A-07); `status` counts that runner as dead (`_runner_live`).
     work = (Path(work_base or default_work_base()) / run_id.hex()).resolve()
     work.mkdir(parents=True, exist_ok=True)
     lock_path = work / LOCK_NAME
@@ -574,9 +579,10 @@ def submit(root: Path, recipe_path: Path, release: str, limits: Limits = Limits(
                                 start_new_session=True, pass_fds=(fd,))
     finally:
         os.close(fd)  # the runner's copy keeps the lock
+    start = proc_start_time(proc.pid)  # our unreaped child: the pid cannot have been reused yet
     info = p / f"{run_id.hex()}.json"
     tmp = info.with_name(f".{info.name}.tmp")
-    tmp.write_text(json.dumps({"run_id": run_id.hex(), "pid": proc.pid, "lock": str(lock_path),
+    tmp.write_text(json.dumps({"run_id": run_id.hex(), "pid": proc.pid, "start": start, "lock": str(lock_path),
                                "status": "running"}))
     os.replace(tmp, info)
     return run_id.hex()
@@ -591,12 +597,52 @@ def status(root: Path, run_id: str) -> dict:
     p = _pending(root) / f"{run_id}.json"
     if p.exists():
         info = json.loads(p.read_text())
-        if _runner_holds(info.get("lock")):
+        if _runner_live(info):
             return {"run_id": run_id, "status": "running"}
-        if (d / "run.parquet").exists():  # closed between the first look and the lock probe
+        if (d / "run.parquet").exists():  # closed between the first look and the probes
             return status(root, run_id)
         return {"run_id": run_id, "status": "failed", "error": "runner exited without closing the run"}
     raise KeyError(f"no run {run_id}")
+
+
+def _runner_live(info: dict) -> bool:
+    """A runner is live when it holds its lock and its process is neither gone, nor exiting, nor another
+    process (`runner_process_alive`). The lock alone is not enough: after SIGKILL the leader of a
+    multi-threaded runner is a zombie, and gone to `ps`, while its last thread still holds the lock
+    (25-47 ms of teardown on the pod; card A-07). The pid alone is not enough either (card A-01)."""
+    return _runner_holds(info.get("lock")) and runner_process_alive(info) is not False
+
+
+def _proc_stat(pid: int, proc_root: Path) -> tuple[str, int, int] | None:
+    """(state, flags, start time) from /proc/<pid>/stat (proc(5) fields 3, 9 and 22), or None."""
+    try:
+        s = (Path(proc_root) / str(int(pid)) / "stat").read_text()
+    except (OSError, ValueError):
+        return None
+    f = s[s.rindex(")") + 2:].split()  # the command name may hold spaces and parentheses
+    return f[0], int(f[6]), int(f[19])
+
+
+def proc_start_time(pid: int, proc_root: Path = PROC_ROOT) -> int | None:
+    """The kernel's start time of a pid (clock ticks after boot), which tells a pid's owners apart; None without /proc."""
+    st = _proc_stat(pid, proc_root)
+    return None if st is None else st[2]
+
+
+def runner_process_alive(info: dict, proc_root: Path = PROC_ROOT) -> bool | None:
+    """Whether the recorded runner process (`pid`, and `start` when recorded) is alive and not exiting:
+    False when the pid is gone, a zombie (Z, X), has begun to exit (PF_EXITING: SIGKILL delivered, the
+    kernel tearing it down) or now belongs to a process with another start time; None without /proc
+    (not Linux), where the lock alone decides."""
+    if not (Path(proc_root) / "self" / "stat").exists():
+        return None
+    st = _proc_stat(info["pid"], proc_root)
+    if st is None:
+        return False
+    state, flags, start = st
+    if state in ("Z", "X", "x") or flags & PF_EXITING:
+        return False
+    return info.get("start") is None or start == info["start"]
 
 
 def _runner_holds(lock: str | None) -> bool:
@@ -623,7 +669,7 @@ def cancel(root: Path, run_id: str) -> None:
     """Ask a live runner to stop. A runner that is gone is not signalled: its pid may belong to
     another process by now."""
     info = json.loads((_pending(root) / f"{run_id}.json").read_text())
-    if _runner_holds(info.get("lock")):
+    if _runner_live(info):
         os.kill(info["pid"], signal.SIGTERM)
 
 
