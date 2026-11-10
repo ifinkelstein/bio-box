@@ -14,6 +14,7 @@ import io
 import json
 import platform
 import random
+import re
 import shutil
 import subprocess
 import sys
@@ -376,7 +377,9 @@ def test_s13_cli_json_records_match_the_locked_schemas(world, tmp_path):
     for h in hits:
         for o in h["occurrences"]:
             tape = tps[bytes.fromhex(o["contig_uid"])]
-            assert set(o) == {"contig_uid", "ordinal", "feature_uid", "start", "end", "strand"}  # card B-17
+            # card B-17 renamed slot_ordinal to ordinal; card W-05 (search_hit/2) joins genome_uid and tier back
+            # from contig_dim at export time
+            assert set(o) == {"contig_uid", "ordinal", "feature_uid", "start", "end", "strand", "genome_uid", "tier"}
             assert tape["feature_uids"][o["ordinal"]].hex() == o["feature_uid"]
             assert feats[bytes.fromhex(o["feature_uid"])]["start"] == o["start"]
     for r in nb:
@@ -789,6 +792,304 @@ def test_w06_cli_summary_json_matches_the_lock_and_tsv_reads_back(world, capsys)
     assert [json.loads(x) for x in capsys.readouterr().out.splitlines()] == recs
     assert cli.main(["nbr", "summarize", uids, "--root", str(root), "--window", "5g"]) == 2
     assert "--release" in capsys.readouterr().err
+
+
+# --- W-05: exports a person can open, against brute-force joins over the Parquet files ----------------------
+
+W05_HIT_COLUMNS = ["accession", "header", "contig_len", "start", "end", "strand", "length", "seq_bitscore",
+                   "seq_evalue_zref", "pfam_architecture", "protein_uid", "nr90", "nr50", "nr50_rep", "genome_uid",
+                   "tier", "contig_uid", "feature_uid", "ordinal", "tape_version", "dist_to_contig_end_bp", "n_records"]
+W05_LOCUS_COLUMNS = ["offset", "offset_rel", "ordinal", "feature_uid", "start", "end", "strand", "protein_uid",
+                     "length_aa", "pfam_architecture", "nr90", "nr50", "hit_seq_bitscore", "delta_bp", "crosses_origin"]
+W05_BITS, W05_EVALUE = {"seq_bitscore", "hit_seq_bitscore"}, {"seq_evalue_zref"}
+
+
+@pytest.fixture(scope="module")
+def w05(world, tmp_path_factory):
+    """A copy of the world with a finished jackhmmer run and a contig_dim of REL written by hand: the two linear
+    contigs in one made-up genome and tiers 1, 2, 3 in contig order, so genome and tier are constructed truth."""
+    hit, _ = _seed(world[0])
+    row = _run(world, _recipe(hit, hit, tool="jackhmmer", mx=2))
+    assert row["status"] == "ok", row["error"]
+    root = tmp_path_factory.mktemp("w05") / "a"
+    shutil.copytree(world[0], root)
+    tps = _tape_rows(root, tapes.tape_version([V]))
+    lin = sorted(cu for cu, t in tps.items() if not t["is_circular"])
+    one = ids.genome_uid(lin)
+    rows = [{"contig_uid": cu, "genome_uid": one if cu in lin else ids.genome_uid([cu]), "contig_len": t["contig_len"],
+             "is_circular": t["is_circular"], "tier": k + 1, "assembly_quality": None, "tax_order": None,
+             "is_species_rep": False} for k, (cu, t) in enumerate(sorted(tps.items()))]
+    d = root / f"dim/contig_dim/release={REL}"
+    d.mkdir(parents=True)
+    pq.write_table(pa.Table.from_pylist(rows, schema=table("contig_dim").schema), d / "part-0.parquet")
+    return root, row["run_id"].hex(), {r["contig_uid"]: r for r in rows}
+
+
+def _w05_cell(col: str, v) -> str:
+    if v is None:
+        return ""
+    if col in W05_BITS:
+        return f"{v:.1f}"
+    if col in W05_EVALUE:
+        return f"{v:.1e}"
+    if isinstance(v, bool):
+        return "true" if v else "false"
+    if isinstance(v, bytes):
+        return v.hex()
+    return str(v).replace("\t", " ").replace("\n", " ").replace("\r", " ")
+
+
+def _pq(root: Path, base: str) -> list[dict]:
+    return [r for f in sorted((root / base).rglob("*.parquet")) for r in pq.read_table(f, partitioning=None).to_pylist()]
+
+
+def _w05_final_hits(root: Path, rid: str) -> list[dict]:
+    """The run's kept hits of its final round, read from its files."""
+    run = pq.read_table(root / f"search/run={rid}/run.parquet").to_pylist()[0]
+    return [h for h in pq.read_table(root / f"search/run={rid}/hits.parquet").to_pylist()
+            if h["round"] == run["final_round"] and h["curation_label"] == "keep"]
+
+
+def _w05_store(root: Path) -> dict:
+    """Everything the exports join, as dicts built by loops over the Parquet shards."""
+    recs: dict[bytes, list[dict]] = {}
+    for r in _pq(root, "l0seq/contig_occurrence"):
+        recs.setdefault(r["contig_uid"], []).append(r)
+    label = {}
+    for cu, rs in recs.items():
+        first = min(rs, key=lambda r: (r["l0_object_sha256"], r["record_ordinal"]))
+        label[cu] = (first["accession"], first["original_header"], len(rs))
+    assert sorted(p.name for p in (root / "l1/domains").glob("library=*")) == ["library=test-1"]
+    doms: dict[bytes, set] = {}
+    for r in _pq(root, "l1/domains"):
+        doms.setdefault(r["protein_uid"], set()).add((r["env_start"], r["model_acc"], r["model_name"]))
+    arch = {}
+    for pu, ds in doms.items():
+        names: list[str] = []
+        for _, _, name in sorted(ds):
+            if not names or names[-1] != name:
+                names.append(name)
+        arch[pu] = "+".join(names)
+    return {"label": label, "arch": arch,
+            "clen": {r["contig_uid"]: r["contig_len"] for r in _pq(root, "l0seq/contig_index") if r["is_default_variant"]},
+            "prot": {r["protein_uid"]: r for r in _pq(root, f"l0seq/protein_seq/gene_call_version={V}")},
+            "clus": {(r["member_uid"], r["level"]): r for r in _pq(root, f"l2/cluster_member/release={REL}")},
+            "tapes": _tape_rows(root, tapes.tape_version([V]))}
+
+
+def _w05_scores(hits: list[dict]) -> dict[bytes, tuple[float, float]]:
+    score: dict[bytes, tuple[float, float]] = {}
+    for h in hits:
+        b, e = score.get(h["target_uid"], (h["seq_bitscore"], h["seq_evalue_zref"]))
+        score[h["target_uid"]] = (max(b, h["seq_bitscore"]), min(e, h["seq_evalue_zref"]))
+    return score
+
+
+def _w05_oracle_genes(root: Path, hits: list[dict], dims: dict) -> list[dict]:
+    """One dict per gene of a hit protein, in the export's order (accession, contig, coordinates, protein)."""
+    s, score, tv = _w05_store(root), _w05_scores(hits), tapes.tape_version([V])
+    out = []
+    for o in _pq(root, f"l1/protein_occurrence/gene_call_version={V}"):
+        pu, cu = o["protein_uid"], o["contig_uid"]
+        if pu not in score:
+            continue
+        acc, hdr, n = s["label"].get(cu, (None, None, None))
+        c90, c50, d = s["clus"].get((pu, "nr90")), s["clus"].get((pu, "nr50")), dims.get(cu)
+        row = {"accession": acc, "header": hdr, "contig_len": s["clen"][cu], "start": o["start"], "end": o["end"],
+               "strand": o["strand"], "length": s["prot"][pu]["length"], "seq_bitscore": score[pu][0],
+               "seq_evalue_zref": score[pu][1], "pfam_architecture": s["arch"].get(pu) or "-", "protein_uid": pu,
+               "nr90": c90 and c90["cluster_uid"], "nr50": c50 and c50["cluster_uid"], "nr50_rep": c50 and c50["rep_uid"],
+               "genome_uid": d and d["genome_uid"], "tier": d and d["tier"], "contig_uid": cu,
+               "feature_uid": o["feature_uid"], "ordinal": s["tapes"][cu]["feature_uids"].index(o["feature_uid"]),
+               "tape_version": tv, "dist_to_contig_end_bp": o["dist_to_contig_end_bp"], "n_records": n}
+        out.append(((acc is None, acc or "", cu, o["start"], o["end"], o["strand"], pu), row))
+    return [r for _, r in sorted(out, key=lambda x: x[0])]
+
+
+def _w05_tsv(cols: list[str], rows: list[dict]) -> list[str]:
+    return ["\t".join(cols)] + ["\t".join(_w05_cell(c, r[c]) for c in cols) for r in rows]
+
+
+def _w05_hits(root: Path) -> list[dict]:
+    """Hits made by hand, as search_hit rows: the W-06 anchors (genes next to the circular contig's origin, at each
+    linear contig end, beside the domain-carrying lambda genes, and the library-hit seed), each with its own
+    score and E-value, two domain rows for the first (the export keeps one row per gene)."""
+    rows = [{"target_kind": "protein", "target_uid": u, "seq_bitscore": 20.0 + 3.37 * k,
+             "seq_evalue_zref": 1.234 * 10.0 ** (-k)} for k, u in enumerate(sorted(_w06_anchors(root)))]
+    return rows + [dict(rows[0])]
+
+
+@pytest.mark.covers("W-05")
+def test_w05_search_hits_tsv_equals_a_brute_force_join_over_the_parquet_files(w05, world, capsys, tmp_path):
+    root, rid, dims = w05
+    args = ["search", "hits", rid, "--root", str(root), "--format", "tsv"]
+    assert cli.main(args) == 0
+    out = capsys.readouterr().out
+    genes = _w05_oracle_genes(root, _w05_final_hits(root, rid), dims)
+    assert genes and out == "\n".join(_w05_tsv(W05_HIT_COLUMNS, genes)) + "\n"
+    # deterministic bytes, and --out writes the same bytes
+    assert cli.main(args) == 0
+    assert capsys.readouterr().out == out
+    dst = tmp_path / "hits.tsv"
+    assert cli.main(args + ["--out", str(dst)]) == 0
+    assert dst.read_bytes() == out.encode()
+    # a broader hit set on every contig, through the same export
+    made = _w05_hits(root)
+    genes = _w05_oracle_genes(root, made, dims)
+    got = list(export.hits_tsv(root, made, release=REL, tape_version=tapes.tape_version([V]), gene_call_version=V))
+    assert got == _w05_tsv(W05_HIT_COLUMNS, genes)
+    # the world is what the card asks for: genes on every contig, with and without a domain architecture, genome
+    # and tier from contig_dim, cluster ids that are cluster uids (16 bytes as hex), never token ids
+    assert len({g["contig_uid"] for g in genes}) == 3 and len(genes) >= len(made) - 1
+    assert {g["pfam_architecture"] == "-" for g in genes} == {True, False}
+    assert all(g["tier"] is not None and g["genome_uid"] is not None for g in genes)
+    assert all(len(_w05_cell("nr50", g["nr50"])) == 32 for g in genes)
+    # without contig_dim (the world itself) genome and tier are empty, not guessed
+    bare = list(export.hits_tsv(world[0], made, release=REL, tape_version=tapes.tape_version([V]),
+                                gene_call_version=V))
+    assert bare == _w05_tsv(W05_HIT_COLUMNS, _w05_oracle_genes(world[0], made, {}))
+
+
+@pytest.mark.covers("W-05")
+def test_w05_search_hits_faa_sequences_equal_protein_seq(w05, capsys):
+    root, rid, dims = w05
+    prot = {r["protein_uid"]: r for r in _pq(root, f"l0seq/protein_seq/gene_call_version={V}")}
+
+    def oracle(hits):
+        genes, want = _w05_oracle_genes(root, hits, dims), []
+        for pu in sorted({g["protein_uid"] for g in genes}):
+            mine = [g for g in genes if g["protein_uid"] == pu]
+            g = mine[0]
+            place = f"{g['accession'] or g['contig_uid'].hex()}:{g['start']}-{g['end']}({g['strand']:+d})"
+            desc = (f"length={prot[pu]['length']} seq_bitscore={_w05_cell('seq_bitscore', g['seq_bitscore'])} "
+                    f"seq_evalue_zref={_w05_cell('seq_evalue_zref', g['seq_evalue_zref'])} n_genes={len(mine)} "
+                    f"example={place}" + (f" {_w05_cell('header', g['header'])}" if g["header"] else ""))
+            want += [f">{pu.hex()} {desc}", prot[pu]["seq"]]
+        return want
+
+    args = ["search", "hits", rid, "--root", str(root), "--format", "faa"]
+    assert cli.main(args) == 0
+    out = capsys.readouterr().out
+    assert out == "\n".join(oracle(_w05_final_hits(root, rid))) + "\n"
+    assert cli.main(args) == 0
+    assert capsys.readouterr().out == out
+    made = _w05_hits(root)
+    got = list(export.hits_faa(root, made, release=REL, tape_version=tapes.tape_version([V]), gene_call_version=V))
+    assert got == oracle(made)
+    names = [x[1:].split(" ")[0] for x in got if x.startswith(">")]
+    assert names == sorted(names) and len(names) == len({h["target_uid"] for h in made}) > 3
+
+
+@pytest.mark.covers("W-05", "S-13")
+def test_w05_hit_json_is_version_2_with_genome_and_tier_joined_from_contig_dim(w05, world, capsys):
+    root, rid, dims = w05
+    locked = json.loads(export.lock_path(REPO).read_text())
+    assert locked["search_hit"]["version"] == 2 and export.SCHEMAS["search_hit"]["version"] == 2
+    assert export.lock_problems(locked) == [] and locked == json.loads(json.dumps(export.SCHEMAS, sort_keys=True))
+    for r, want_dim in ((root, True), (world[0], False)):  # the world has no contig_dim: null, not absent
+        assert cli.main(["search", "hits", rid, "--root", str(r), "--json", "--members"]) == 0
+        recs = [json.loads(x) for x in capsys.readouterr().out.splitlines()]
+        assert recs and all(h["schema"] == "search_hit/2" and list(h) == locked["search_hit"]["keys"] for h in recs)
+        occ = [o for h in recs for o in h["occurrences"]]
+        assert occ and all(list(o) == ["contig_uid", "ordinal", "feature_uid", "start", "end", "strand", "genome_uid",
+                                       "tier"] for o in occ)
+        for o in occ:
+            d = dims[bytes.fromhex(o["contig_uid"])]
+            assert (o["genome_uid"], o["tier"]) == ((d["genome_uid"].hex(), d["tier"]) if want_dim else (None, None))
+
+
+def _w05_oracle_loci(root: Path, hits: list[dict], window: str) -> list[tuple[str, list[str]]]:
+    """(file name, lines) per anchor locus: windows from the S-09 coordinate oracle (tests/r1 `_oracle_nbr`) over
+    the tapes, annotations from `_w05_store`; loci by accession, contig and anchor ordinal; rows by offset."""
+    r1 = _r1()
+    policy = nbr.Policy.parse(window=window)
+    s, score, tv = _w05_store(root), _w05_scores(hits), tapes.tape_version([V])
+    loci = []
+    for cu, t in s["tapes"].items():
+        slots = list(zip(t["start_bps"], t["end_bps"], t["strands"]))
+        for i, apu in enumerate(t["protein_uids"]):
+            if apu not in score:
+                continue
+            got = r1._oracle_nbr(slots, t["contig_len"], t["is_circular"], i, policy)
+            if got is None:
+                continue
+            acc, hdr, _ = s["label"].get(cu, (None, None, None))
+            rows = []
+            for j, d, rel, gap, fl in sorted(got, key=lambda x: x[1]):
+                pu = t["protein_uids"][j]
+                c90, c50 = s["clus"].get((pu, "nr90")), s["clus"].get((pu, "nr50"))
+                rows.append({"offset": d, "offset_rel": rel, "ordinal": j, "feature_uid": t["feature_uids"][j],
+                             "start": slots[j][0], "end": slots[j][1], "strand": slots[j][2], "protein_uid": pu,
+                             "length_aa": s["prot"][pu]["length"] if pu else None,
+                             "pfam_architecture": (s["arch"].get(pu) or "-") if pu else None,
+                             "nr90": c90 and c90["cluster_uid"], "nr50": c50 and c50["cluster_uid"],
+                             "hit_seq_bitscore": score[pu][0] if pu in score else None,
+                             "delta_bp": gap if d != 0 else None, "crosses_origin": bool(fl & 2)})
+            cens = any(fl & 1 for _, d, _, _, fl in got if d == 0)
+            facts = [("contig_uid", cu.hex()), ("anchor_feature_uid", t["feature_uids"][i].hex()), ("anchor_ordinal", i),
+                     ("anchor_protein_uid", apu.hex()), ("tape_version", tv), ("policy_hash", policy.hash()),
+                     ("censored", "true" if cens else "false")]
+            lines = [f"# {_w05_cell('header', hdr) if hdr else cu.hex()}",
+                     "# " + "\t".join(f"{k}={v}" for k, v in facts)] + _w05_tsv(W05_LOCUS_COLUMNS, rows)
+            name = f"locus_{re.sub(r'[^A-Za-z0-9._-]', '_', acc or cu.hex())}_{t['feature_uids'][i].hex()}.tsv"
+            loci.append(((acc is None, acc or "", cu, i), name, lines))
+    return [(name, lines) for _, name, lines in sorted(loci, key=lambda x: x[0])]
+
+
+@pytest.mark.covers("W-05", "S-09")
+def test_w05_nbr_tsv_writes_one_table_per_locus_equal_to_the_coordinate_oracle(w05, capsys, tmp_path):
+    root, rid, _ = w05
+    args = ["nbr", rid, "--root", str(root), "--window", "3g", "--format", "tsv"]
+    assert cli.main(args) == 0
+    out = capsys.readouterr().out
+    want = _w05_oracle_loci(root, _w05_final_hits(root, rid), "3g")
+    assert want and out == "\n\n".join("\n".join(lines) for _, lines in want) + "\n"  # tables, a blank line between
+    blocks = out.rstrip("\n").split("\n\n")
+    assert cli.main(args) == 0
+    assert capsys.readouterr().out == out
+    # --out DIR: one file per locus with the same table
+    d = tmp_path / "loci"
+    assert cli.main(args + ["--out", str(d)]) == 0
+    assert sorted(p.name for p in d.iterdir()) == sorted(name for name, _ in want)
+    for name, lines in want:
+        assert (d / name).read_text() == "\n".join(lines) + "\n"
+    # anchors given as protein uids need the release named, as nbr summarize does
+    uids = ",".join(sorted({h["target_uid"].hex() for h in _w05_final_hits(root, rid)}))
+    assert cli.main(["nbr", uids, "--root", str(root), "--window", "3g", "--format", "tsv"]) == 2
+    assert "--release" in capsys.readouterr().err
+    assert cli.main(["nbr", uids, "--root", str(root), "--window", "3g", "--format", "tsv", "--release", REL]) == 0
+    no_scores = capsys.readouterr().out.rstrip("\n").split("\n\n")
+    assert len(no_scores) == len(blocks)
+    # a broader anchor set through the same export: windows across the circular origin and cut at linear ends
+    made = _w05_hits(root)
+    for window in ("3g", "5g"):
+        rows, _ = nbr.fetch(root, {h["target_uid"] for h in made}, nbr.Policy.parse(window=window))
+        got = list(export.locus_tables(root, rows, release=REL, gene_call_version=V,
+                                       hit_bits={h["target_uid"]: h["seq_bitscore"] for h in made}))
+        want = _w05_oracle_loci(root, made, window)
+        assert got == want
+        assert len({lines[1].split("\t")[0] for _, lines in want}) == 3  # loci on every contig
+        assert any("censored=true" in lines[1] for _, lines in want)
+        assert any(line.endswith("\ttrue") for _, lines in want for line in lines[3:])  # crosses the origin
+        assert any(line.split("\t")[12] for _, lines in want for line in lines[3:] if not line.startswith("0\t"))
+
+
+@pytest.mark.covers("W-05")
+def test_w05_export_proteins_writes_every_distinct_protein_named_by_uid(w05, capsys, tmp_path):
+    root = tmp_path / "a"
+    shutil.copytree(w05[0], root)
+    prot = {r["protein_uid"]: r["seq"] for r in _pq(root, f"l0seq/protein_seq/gene_call_version={V}")}
+    want = "".join(f">{u.hex()}\n{prot[u]}\n" for u in sorted(prot))
+    args = ["export", "proteins", "--release", REL, "--root", str(root)]
+    assert cli.main(args) == 0
+    assert capsys.readouterr().out == want
+    # with the release manifest the files come from it; the same proteins, and --out writes the same bytes
+    catalog.write_manifest(catalog.build_manifest(root, REL), root / f"manifests/release={REL}.json")
+    dst = tmp_path / "p.faa"
+    assert cli.main(args + ["--out", str(dst)]) == 0
+    assert dst.read_text() == want
+    assert cli.main(args) == 0
+    assert capsys.readouterr().out == want
 
 
 # --- S-07: planted drift trap ---------------------------------------------------------------------------------
