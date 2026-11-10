@@ -8,6 +8,7 @@ injected fault that the check must catch.
 
 from __future__ import annotations
 
+import json
 import shutil
 from pathlib import Path
 
@@ -370,6 +371,46 @@ def test_r09_a_later_stage_keeps_earlier_files(built, tmp_path):
     shard = next(a for a in after["artifacts"] if "stage=S0" in a["path"])
     rewritten = [{**a, "sha256": "0" * 64} if a is shard else a for a in after["artifacts"]]
     assert contracts.check_append_only(before, {**after, "artifacts": rewritten}) == [f"{shard['path']}: rewritten"]
+
+
+def _small_tables(man):
+    from biobox.registry.schemas import TABLES
+
+    return sorted({f["table"] for f in man["files"] if TABLES[f["table"]].small_ok})
+
+
+def test_d06_a_rewritten_small_table_is_reported(built, tmp_path):
+    """card D-06 (AGENTS 3.9, 3.10): no table is exempt; one changed value in any small-table file is found."""
+    _, man, _ = built
+    small = _small_tables(man)
+    assert {"ledger", "release_def", "tape_version_def"} <= set(small)
+    for table in [*small, "seq_locator"]:
+        root = tmp_path / table
+        shutil.copytree(man["root"], root)
+        before = catalog.build_manifest(root, "rS0.test", ["S0"])
+        f = next(x for x in before["files"] if x["table"] == table and x["partitions"].get("stage", "S0") == "S0")
+        p = root / f["path"]
+        # the same rows in other bytes: a rewrite that every reader of the table still accepts
+        old = p.read_bytes()
+        codec = pq.ParquetFile(p).metadata.row_group(0).column(0).compression
+        pq.write_table(pq.read_table(p, partitioning=None), p, compression="gzip" if codec == "ZSTD" else "zstd")
+        assert p.read_bytes() != old
+        after = catalog.build_manifest(root, "rS0.test", ["S0"])
+        assert contracts.check_append_only(before, after) == [f"{f['path']}: rewritten"], table
+
+
+def test_d06_a_rewritten_store_params_is_reported(built, tmp_path):
+    _, man, _ = built
+    root = tmp_path / "s"
+    shutil.copytree(man["root"], root)
+    before = catalog.build_manifest(root, "rS0.test", ["S0"])
+    path = root / "l0seq/store_params.json"
+    params = json.loads(path.read_text())
+    key = next(k for k, v in params.items() if isinstance(v, int))
+    params[key] += 1
+    path.write_text(json.dumps(params, sort_keys=True))
+    after = catalog.build_manifest(root, "rS0.test", ["S0"])
+    assert contracts.check_append_only(before, after) == ["l0seq/store_params.json: rewritten"]
 
 
 def test_d01_same_inputs_same_content(built, tmp_path):

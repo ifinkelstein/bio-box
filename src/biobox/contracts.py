@@ -331,12 +331,11 @@ def check_lineage(con: duckdb.DuckDBPyConnection) -> list[str]:
 
 
 def check_append_only(before: dict, after: dict) -> list[str]:
-    """R-09: every non-metadata file and artifact of the earlier manifest is in the later one with the same sha256."""
+    """R-09, D-06: every file and artifact of the earlier manifest, small tables included, is in the later one
+    with the same sha256 (AGENTS 3.9, 3.10)."""
     later = {f["path"]: f["sha256"] for f in after["files"] + after.get("artifacts", [])}
     problems = []
     for f in before["files"] + before.get("artifacts", []):
-        if "table" in f and TABLES[f["table"]].small_ok:
-            continue  # small metadata files (l0_manifest) are rewritten per stage by design
         if later.get(f["path"]) != f["sha256"]:
             problems.append(f"{f['path']}: {'removed' if f['path'] not in later else 'rewritten'}")
     return problems
