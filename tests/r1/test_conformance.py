@@ -38,6 +38,8 @@ def _igr(strands):
             "strand": pa.array(strands, pa.int8()),
             "left_slot": pa.array([None] * n, pa.uint32()),
             "right_slot": pa.array([0] * n, pa.uint32()),
+            "left_feature_uid": pa.array([None] * n, pa.binary(16)),
+            "right_feature_uid": pa.array([None] * n, pa.binary(16)),
         },
         schema=spec.schema,
     )

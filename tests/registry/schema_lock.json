@@ -543,6 +543,16 @@
    "right_slot",
    "uint32",
    true
+  ],
+  [
+   "left_feature_uid",
+   "fixed_size_binary[16]",
+   true
+  ],
+  [
+   "right_feature_uid",
+   "fixed_size_binary[16]",
+   true
   ]
  ],
  "l0_manifest": [

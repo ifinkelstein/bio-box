@@ -173,6 +173,8 @@ _SPECS = [
             _f("strand", STRAND),
             _f("left_slot", pa.uint32(), nullable=True),
             _f("right_slot", pa.uint32(), nullable=True),
+            _f("left_feature_uid", UID, nullable=True),
+            _f("right_feature_uid", UID, nullable=True),
         ]),
         primary_key=("contig_uid", "start", "end", "strand", "igr_version"),
         sort_key=("contig_uid", "start"),
