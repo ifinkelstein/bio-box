@@ -14,14 +14,17 @@ from pathlib import Path
 
 import pyarrow.parquet as pq
 
+from biobox import io
 from biobox.l0seq import SeqStore
 from biobox.l1.genecall import GENE_CALL_VERSION
 
 root, out = Path(sys.argv[1]), Path(sys.argv[2])
 out.mkdir(parents=True, exist_ok=True)
 store = SeqStore(root)
-occ = pq.read_table(root / f"l1/protein_occurrence/gene_call_version={GENE_CALL_VERSION}/stage=S0/part-0.parquet").to_pylist()
-co = pq.read_table(next((root / "l0seq/contig_occurrence").rglob("part-0.parquet"))).to_pylist()
+occ = [r for f in io.part_files(root / f"l1/protein_occurrence/gene_call_version={GENE_CALL_VERSION}/stage=S0")
+       for r in pq.read_table(f).to_pylist()]
+co = [r for f in io.part_files(root / "l0seq/contig_occurrence", "stage=S0/source=*/part-*.parquet")
+      for r in pq.read_table(f).to_pylist()]
 acc = {r["contig_uid"]: r["accession"] for r in co}
 occ.sort(key=lambda r: (acc[r["contig_uid"]], r["slot_ordinal"]))
 files = {s: (open(out / f"regions_{n}.txt", "w"), open(out / f"expected_{n}.tsv", "w")) for s, n in ((1, "plus"), (-1, "minus"))}

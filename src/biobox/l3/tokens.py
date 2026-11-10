@@ -43,7 +43,6 @@ from collections.abc import Iterator
 from pathlib import Path
 
 import duckdb
-import pyarrow as pa
 import pyarrow.parquet as pq
 
 from biobox import io, layout
@@ -73,7 +72,7 @@ def tape_version_of(gene_call_version: str = GENE_CALL_VERSION, producers: list[
 
 
 def _tape_files(root: Path, tv: str) -> list[Path]:
-    return sorted((Path(root) / "l3/tapes").glob(f"tape_version={tv}/stage=*/part-*.parquet"))
+    return io.part_files(Path(root) / "l3/tapes", f"tape_version={tv}/stage=*/part-*.parquet")
 
 
 def read_tapes(root: Path, gene_call_version: str = GENE_CALL_VERSION, columns: list[str] | None = None,
@@ -122,37 +121,11 @@ def _scan(files: list[Path], cols: str, empty: str, numbered: bool = False) -> s
         for i, f in enumerate(files)) + ")"
 
 
-class _Rows:
-    """Record batches consumed from the front, `n` rows at a time."""
-
-    def __init__(self, batches: Iterator[pa.RecordBatch]):
-        self._it, self._head = batches, None
-
-    def empty(self) -> bool:
-        while self._head is None or not self._head.num_rows:
-            self._head = next(self._it, None)
-            if self._head is None:
-                return True
-        return False
-
-    def take(self, n: int) -> Iterator[pa.RecordBatch]:
-        while n and not self.empty():
-            b = self._head.slice(0, n)
-            self._head = self._head.slice(b.num_rows)
-            n -= b.num_rows
-            yield b
-
-
 def _write_parts(con, sql: str, spec_name: str, base: Path, est_row: int, max_file_bytes: int, **kw) -> int:
-    """Stream `sql` into `base/part-<k>.parquet`, cut where `layout.cut` cuts rows of `est_row` estimated
-    bytes each: every part holds max(1, max_file_bytes // est_row) rows. At least part-0 is written."""
+    """Stream `sql` into `base/part-<k>.parquet` through `io.write_parts`, rows of `est_row` estimated
+    bytes each, so every part holds max(1, max_file_bytes // est_row) rows. At least part-0 is written."""
     spec = table(spec_name)
-    per_part = max(1, max_file_bytes // est_row)
-    rows, k = _Rows(io.duck_batches(con, sql, spec)), 0
-    while k == 0 or not rows.empty():
-        io.write_table(rows.take(per_part), spec, base / f"part-{k}.parquet", **kw)
-        k += 1
-    return k
+    return len(io.write_parts(io.duck_batches(con, sql, spec), spec, base, est_row, max_file_bytes, **kw))
 
 
 def run(root: Path, release: str, gene_call_version: str = GENE_CALL_VERSION,
@@ -179,14 +152,14 @@ def run(root: Path, release: str, gene_call_version: str = GENE_CALL_VERSION,
                      "NULL::BLOB[] AS protein_uids", numbered=True)
     dom_parts = []
     for rank, lib in enumerate(libraries):  # a library listed twice: its first position wins, as its rank is smaller
-        files = sorted((root / "l1/domains").glob(f"library={lib}/stage=*/part-*.parquet"))
+        files = io.part_files(root / "l1/domains", f"library={lib}/stage=*/part-*.parquet")
         if files:
             dom_parts.append(_scan(files, f"{rank} AS rank, protein_uid, model_acc, dom_bitscore, env_start", ""))
     doms = " UNION ALL ".join(f"SELECT * FROM {p}" for p in dom_parts) or (
         "SELECT NULL::INTEGER AS rank, NULL::BLOB AS protein_uid, NULL::VARCHAR AS model_acc, "
         "NULL::FLOAT AS dom_bitscore, NULL::UINTEGER AS env_start WHERE false")
     cdir = root / f"l2/cluster_member/release={release}"
-    clusters = _scan(sorted(cdir.glob("part-*.parquet")) if cdir.exists() else [], "member_uid, level, cluster_uid",
+    clusters = _scan(io.part_files(cdir), "member_uid, level, cluster_uid",
                      "NULL::BIGINT AS fidx, NULL::BIGINT AS rn, NULL::BLOB AS member_uid, NULL::VARCHAR AS level, "
                      "NULL::BLOB AS cluster_uid", numbered=True)
     names = ", ".join(f"({s}, {_sql_str(n)})" for s, n in [(0, CLUSTER_SOURCE)] +

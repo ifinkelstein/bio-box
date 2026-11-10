@@ -10,7 +10,7 @@ from pathlib import Path
 import pyarrow as pa
 import pyarrow.parquet as pq
 
-from biobox import catalog
+from biobox import catalog, io
 
 root = Path(sys.argv[1])
 man = catalog.build_manifest(root, "rX")
@@ -18,7 +18,7 @@ cat = catalog.generate_catalog(man, root.parent / "locator.duckdb")
 t = time.perf_counter()
 con = catalog.open_catalog(cat)
 open_s = round(time.perf_counter() - t, 2)
-idx = pq.read_table(root / "l0seq/contig_index/stage=S0/part-0.parquet", columns=["contig_uid"])
+idx = pa.concat_tables(pq.read_table(f, columns=["contig_uid"]) for f in io.part_files(root / "l0seq/contig_index/stage=S0"))
 uids = idx.column("contig_uid").to_pylist()
 out = {"open_catalog_s": open_s, "contig_index_row_groups": man["files"][0]["row_groups"] if man["files"][0]["table"] == "contig_index" else None}
 

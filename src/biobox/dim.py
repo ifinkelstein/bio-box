@@ -6,8 +6,9 @@ from `contig_index` (`contig_len`) and `genome_input` (`genome_uid`, `is_circula
 `assembly_quality`). Taxonomy and tiering steps do not exist yet, so `tax_order` and `tier` are null
 and `is_species_rep` is false for every row; those steps will write them.
 
-Writes `<root>/dim/contig_dim/release=<release>/part-0.parquet`, once: the writer refuses to
-overwrite, so a release's dimension table cannot be rewritten.
+Writes `<root>/dim/contig_dim/release=<release>/part-<k>.parquet` (cut at `max_file_bytes` of
+estimated size, `io.write_parts`, card B-19), once: the writer refuses to overwrite, so a release's
+dimension table cannot be rewritten.
 """
 
 from __future__ import annotations
@@ -18,9 +19,13 @@ from pathlib import Path
 
 import duckdb
 
-from biobox import io
+from biobox import io, layout
 from biobox.l1.genecall import DUCK_MEMORY_LIMIT
 from biobox.registry.schemas import table
+
+# estimate: zstd bytes per contig_dim row (contig_uid and genome_uid, 16 random bytes each, + small
+# columns); cuts parts only. No measurement yet (planning/measurements/2026-11-09_design_stress_test.md).
+EST_ROW_BYTES = 44
 
 
 def _sql_list(files: list[Path]) -> str:
@@ -32,7 +37,8 @@ def _stage_dirs(root: Path) -> list[str]:
     return sorted(d.name.removeprefix("stage=") for d in base.glob("stage=*") if d.is_dir()) if base.exists() else []
 
 
-def run(root, release: str, stages: list[str] | None = None, tmp=None) -> dict:
+def run(root, release: str, stages: list[str] | None = None, tmp=None,
+        max_file_bytes: int = layout.MAX_FILE_BYTES) -> dict:
     """Build `contig_dim` for `release` over `stages` (default: every stage with a `contig_index`).
 
     Errors: a default-variant contig without a `genome_input` row, a `genome_input` row whose
@@ -42,19 +48,20 @@ def run(root, release: str, stages: list[str] | None = None, tmp=None) -> dict:
     """
     root = Path(root)
     spec = table("contig_dim")
-    out = root / spec.location / f"release={release}" / "part-0.parquet"
-    if out.exists():
-        raise FileExistsError(f"{out}: a release's dimension table is written once; refusing to overwrite")
+    base = root / spec.location / f"release={release}"
+    if io.part_files(base):
+        raise FileExistsError(f"{io.part_files(base)[0]}: a release's dimension table is written once; "
+                              "refusing to overwrite")
     stages = _stage_dirs(root) if stages is None else sorted(stages)
     if not stages:
         raise FileNotFoundError(f"{root}: no contig_index stages")
     idx, gin = [], []
     for s in stages:
-        found = sorted((root / f"l0seq/contig_index/stage={s}").glob("part-*.parquet"))
+        found = io.part_files(root / f"l0seq/contig_index/stage={s}")
         if not found:
             raise FileNotFoundError(f"no contig_index files for stage {s}")
         idx += found
-        gin += sorted((root / f"l0seq/genome_input/stage={s}").glob("part-*.parquet"))
+        gin += io.part_files(root / f"l0seq/genome_input/stage={s}")
     scratch = Path(tempfile.mkdtemp(prefix="biobox-dim-", dir=tmp))
     con = duckdb.connect(config={"threads": 1, "memory_limit": DUCK_MEMORY_LIMIT,
                                  "temp_directory": str(scratch / "duckdb")})
@@ -87,7 +94,8 @@ def run(root, release: str, stages: list[str] | None = None, tmp=None) -> dict:
                     "is_circular, assembly_quality FROM gi) g USING (contig_uid)")
         contigs, genomes, circular = con.execute(
             "SELECT count(*), count(DISTINCT genome_uid), count(*) FILTER (WHERE is_circular) FROM dim").fetchall()[0]
-        io.write_table(io.duck_batches(con, "SELECT * FROM dim ORDER BY contig_uid", spec), spec, out)
+        io.write_parts(io.duck_batches(con, "SELECT * FROM dim ORDER BY contig_uid", spec), spec, base,
+                       EST_ROW_BYTES, max_file_bytes)
         return {"contigs": contigs, "genomes": genomes, "circular": circular}
     finally:
         con.close()

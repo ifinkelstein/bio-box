@@ -258,6 +258,7 @@ def test_c08_faults_are_caught(built, tmp_path):
     rows = ledger.read(root, "S0", "domains-test-1")
     for r in rows:
         r["tool_versions_json"] = '{"pyarrow": "1.0", "pyhmmer": "0.0.1"}'
+    ledger.path(root, "S0", "domains-test-1").unlink()  # the writer never rewrites a ledger (card B-19)
     ledger.write(root, "S0", "domains-test-1", rows)
     probs = provenance.check_provenance({**man, "root": str(root)})
     assert any("domains-test-1 tool versions" in p for p in probs)
@@ -265,6 +266,7 @@ def test_c08_faults_are_caught(built, tmp_path):
     rows = ledger.read(root, "S0", "genecall")
     for r in rows:
         r["tool_versions_json"] = None
+    ledger.path(root, "S0", "genecall").unlink()
     ledger.write(root, "S0", "genecall", rows)
     assert any("genecall ledger row without tool versions" in p for p in provenance.check_provenance({**man, "root": str(root)}))
     # a versioned table outside its version partition
@@ -431,6 +433,7 @@ def test_ledger_faults_are_caught(built, tmp_path):
     shutil.copytree(man["root"], root)
     gc = ledger.read(root, "S0", "genecall")
     gc[0]["n_kept"] += 1  # unbalanced (L-01) and breaks the chain (L-03)
+    ledger.path(root, "S0", "genecall").unlink()  # the writer never rewrites a ledger (card B-19)
     ledger.write(root, "S0", "genecall", gc)
     assert ledger.check_balance(root, "S0", ["genecall"])
     assert ledger.check_chain(root, "S0")

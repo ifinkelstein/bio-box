@@ -467,12 +467,20 @@ def _tapes_of_tv(root: Path, tv: str = TV) -> dict[bytes, dict]:
     return {r["contig_uid"]: r for r in _read(root, f"l3/tapes/tape_version={tv}/stage=S0/part-*.parquet")}
 
 
+def _drop_tape_ledgers(root: Path) -> None:
+    """The tapes' ledgers go with the tapes: the ledger writer never rewrites a step either (card B-19)."""
+    for d in sorted(root.glob("ledger/stage=*/step=tape-*")):
+        shutil.rmtree(d)
+
+
 def _fresh(root: Path, tmp_path: Path, name: str, drop=TAPE_DIRS) -> Path:
     """A copy of the built root without the tables the test rebuilds (the writer never overwrites)."""
     fresh = tmp_path / name
     shutil.copytree(root, fresh)
     for d in drop:
         shutil.rmtree(fresh / d)
+    if "l3/tapes" in drop:
+        _drop_tape_ledgers(fresh)
     return fresh
 
 
@@ -964,6 +972,7 @@ def test_b09_token_bytes_do_not_depend_on_the_run_or_on_input_layout(built, tmp_
         if name == "split":  # the tapes in three parts
             for d in TAPE_DIRS:
                 shutil.rmtree(fresh / d)
+            _drop_tape_ledgers(fresh)
             n = sorted(t["n_slots"] for t in _tapes_of_tv(root).values())
             assert tapes.run(fresh, "S0", circ, max_file_bytes=200 + 30 * n[0])["files"] == 3
         tokens.run(fresh, REL)

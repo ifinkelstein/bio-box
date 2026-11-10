@@ -19,6 +19,7 @@ import numpy as np
 import pyarrow as pa
 import pyarrow.parquet as pq
 
+from biobox import io
 from biobox.l0seq import SeqStore
 from biobox.registry.schemas import table
 
@@ -27,7 +28,7 @@ from oracles.pairs_oracle import pairs_of_contig  # noqa: E402
 
 root, scratch = Path(sys.argv[1]), Path(sys.argv[2])
 out = {}
-tapes = pq.read_table(next((root / "l3/tapes").rglob("part-0.parquet"))).to_pylist()
+tapes = [r for f in io.part_files(root / "l3/tapes", "*/stage=*/part-*.parquet") for r in pq.read_table(f).to_pylist()]
 t = max(tapes, key=lambda r: r["n_slots"])
 n = t["n_slots"]
 tracemalloc.start()
