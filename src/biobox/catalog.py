@@ -27,7 +27,7 @@ over the real Python function (`<name>_udf`). The lookup macros `default_digest`
 B-34), so a joined key reads O(1) row groups, not all.
 
 Lookups by a key that a table is not sorted by cannot prune (card B-27): `contig_label` and `member_cluster`
-are lookup tables sorted by `contig_uid` and `member_uid`, written beside `contig_occurrence` and
+are lookup tables sorted by `contig_uid` and by (`level`, `member_uid`), written beside `contig_occurrence` and
 `cluster_member`. The catalog's `contig_label` view reads them (`label_view_sql`), and `open_catalog` raises
 the connection's join filter so that keys from a joined table prune to the row groups that hold them
 (`set_join_key_filter`).

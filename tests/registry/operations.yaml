@@ -18,7 +18,7 @@ operations:
   O-INGEST:
     summary: source object to L0 manifest, contig occurrences and sequence chunks
     inputs: [source_object]
-    outputs: [l0_manifest, contig_occurrence, seq_shards, contig_index, seq_locator, store_params]
+    outputs: [l0_manifest, contig_occurrence, contig_label, seq_shards, contig_index, seq_locator, store_params]
     oracle: re-parse the source independently; sha256 of every record
     mrs: [MR-01, MR-02, MR-14]
     tests: [R-01, R-02, C-01, L-01, L-02]
@@ -81,7 +81,7 @@ operations:
   O-CLUSTER:
     summary: NR90, NR50, subfamily clustering with member alignments
     inputs: [protein_seq]
-    outputs: [cluster_member, cluster_member_aln, id_history]
+    outputs: [cluster_member, cluster_member_aln, member_cluster, id_history]
     oracle: full recluster on the micro-corpus; pairwise identity check of members
     mrs: [MR-01, MR-08, MR-16]
     tests: [A-03, C-11, D-02]

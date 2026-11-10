@@ -347,12 +347,13 @@ _SPECS = [
             _f("rep_uid", UID),
         ]),
         primary_key=("member_uid", "level", "release"),
-        sort_key=("member_uid", "level"),
+        sort_key=("level", "member_uid"),
         partition_keys=("release",),
         enums={"level": ("nr90", "nr50", "subfam")},
         doc=(
-            "card B-27: cluster_member re-sorted by member, written by the clustering step with it: a protein's "
-            "cluster and representative at each level, looked up by member_uid"
+            "card B-27: cluster_member re-sorted by level and member, written by the clustering step with it: a "
+            "protein's cluster and representative at each level, looked up by member_uid (one row group per "
+            "level; a lookup at one level reads that level's rows only)"
         ),
     ),
     TableSpec(

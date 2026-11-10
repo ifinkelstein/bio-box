@@ -315,7 +315,7 @@ def _level_sql(level: str) -> tuple[str, str]:
                           NULL::VARCHAR AS cluster_uid, NULL::VARCHAR AS rep_uid, NULL::BIGINT AS rep_length
                    FROM domains WHERE protein_uid IN (SELECT protein_uid FROM _nb) GROUP BY library, model_acc"""
         return keyed, attrs
-    # a neighbor's cluster is looked up by member (`members`, sorted by member_uid); the clusters' rows by
+    # a neighbor's cluster is looked up by member (`members`, sorted by level and member_uid); the clusters' rows by
     # cluster (`clusters`, sorted by level and cluster_uid)
     cl = f"""(SELECT DISTINCT member_uid, cluster_uid, rep_uid FROM members
               WHERE level = '{level}' AND member_uid IN (SELECT protein_uid FROM _nb))"""

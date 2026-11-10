@@ -14,9 +14,10 @@ Writes under `<root>/`:
     ledger/release=<R>/step=cluster/part-0.parquet
 
 The tables go through `biobox.io.write_parts`, cut at `max_file_bytes` of estimated size (card
-B-19). `member_cluster` (card B-27) is `cluster_member` sorted by (member_uid, level), for readers
+B-19). `member_cluster` (card B-27) is `cluster_member` sorted by (level, member_uid), for readers
 that look a protein's clusters up by member (`cluster_member` is sorted by cluster, so such a lookup
-cannot prune it); `write_member_cluster` makes it from the `cluster_member` files just written, with
+cannot prune it): a member reads one row group per level, and a lookup at one level reads only that
+level's rows; `write_member_cluster` makes it from the `cluster_member` files just written, with
 one DuckDB sort that spills.
 
 The proteins are those of the release's stages only (card B-25), so a stage written later or
@@ -329,7 +330,7 @@ def write_member_cluster(member_files: list[Path], dest: Path, *, tmp: Path | No
                          max_file_bytes: int = layout.MAX_FILE_BYTES, memory_limit: str | None = None) -> dict:
     """Write `member_cluster` (card B-27) under `dest` (`l2/member_cluster/release=<R>`): the rows of the
     release's `cluster_member` files `member_files` (member_uid, level, cluster_uid, rep_uid), sorted by
-    (member_uid, level) with one DuckDB sort on one thread, capped at `memory_limit` (default
+    (level, member_uid) with one DuckDB sort on one thread, capped at `memory_limit` (default
     `DUCK_MEMORY_LIMIT`) and spilling into a private directory under `tmp` (system temp by default), streamed
     to the writer a batch at a time. Refuses (FileExistsError) when `dest` already holds parts, as every
     writer does. Returns rows and parts."""
@@ -345,7 +346,7 @@ def write_member_cluster(member_files: list[Path], dest: Path, *, tmp: Path | No
                                      "memory_limit": DUCK_MEMORY_LIMIT if memory_limit is None else memory_limit})
         try:
             sql = (f"SELECT {', '.join(spec.schema.names)} FROM read_parquet({listing}, hive_partitioning = false) "
-                   "ORDER BY member_uid, level")
+                   "ORDER BY level, member_uid")
             paths = io.write_parts(io.duck_batches(con, sql, spec), spec, dest, EST_MEMBER_CLUSTER_ROW, max_file_bytes)
         finally:
             con.close()

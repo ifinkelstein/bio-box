@@ -540,12 +540,13 @@ def _spread(files: list[Path], column: str, keys) -> int:
     return sum(lo <= hi_k and lo_k <= hi for lo, hi in _footer_ranges(files, column))
 
 
-def _assert_key_bound(read: int, keys: list, hold: int, spread: int, total: int, thr: int) -> None:
-    """The bound of card B-27 for keys from a joined table: at most 2 row groups per key (AGENTS §4.4) and no more
+def _assert_key_bound(read: int, keys: list, hold: int, spread: int, total: int, thr: int, levels: int = 1) -> None:
+    """The bound of card B-27 for keys from a joined table: at most 2 row groups per key and level looked up (AGENTS
+    §4.4; `member_cluster` is sorted by level, then member, so a member at both levels is two lookups) and no more
     than the keys' spread; with no more keys than the connection's join filter lists (`thr`), exactly the row
     groups that hold a key."""
     assert total >= MIN_RG, f"{total} row groups in the table"
-    assert 1 <= read <= MAX_RG_PER_KEY * len(keys) and read <= spread, (read, hold, spread, total)
+    assert 1 <= read <= MAX_RG_PER_KEY * levels * len(keys) and read <= spread, (read, hold, spread, total)
     if len(keys) <= thr:
         assert read == hold, f"{read} row groups read; {hold} hold the {len(keys)} keys (spread {spread} of {total})"
 
@@ -605,14 +606,14 @@ def test_b27_contig_label_conforms_and_is_each_contigs_first_record(store):
 
 @pytest.mark.covers("C-01")
 def test_b27_member_cluster_conforms_and_equals_cluster_member(lookups):
-    """Card B-27: `member_cluster` conforms to its spec, is sorted by (member_uid, level), and every (member,
+    """Card B-27: `member_cluster` conforms to its spec, is sorted by (level, member_uid), and every (member,
     level) of `cluster_member` appears in it exactly once, with the same cluster and representative."""
     root, man = lookups["root"], lookups["man"]
     files = _manifest_files(root, man, "member_cluster")
     assert files
     t = pa.concat_tables(pq.read_table(f, partitioning=None) for f in files)
     assert conformance_problems(t, table("member_cluster")) == []
-    keys = list(zip(t.column("member_uid").to_pylist(), t.column("level").to_pylist()))
+    keys = list(zip(t.column("level").to_pylist(), t.column("member_uid").to_pylist()))
     assert keys == sorted(keys) and len(set(keys)) == len(keys)
     got: dict[tuple[bytes, str], list[tuple[bytes, bytes]]] = {}
     for r in t.to_pylist():
@@ -665,8 +666,8 @@ def test_b27_label_joined_keys_read_the_row_groups_that_hold_them(store, pick, n
 
 def _member_keys(files: list[Path], n: int) -> tuple[list[bytes], int]:
     """`n` member_uids, half from the second row group of `member_cluster` and half from the second to last (the
-    row groups numbered over the files in order; a row group's first and last member, whose other level may sit
-    in the next row group, are left out), and how many row groups the table has."""
+    row groups numbered over the files in order; a row group's first and last member, which the next row group
+    may hold too, are left out), and how many row groups the table has."""
     groups = []
     for p in files:
         pf = pq.ParquetFile(p)
@@ -677,18 +678,23 @@ def _member_keys(files: list[Path], n: int) -> tuple[list[bytes], int]:
 
 
 @pytest.mark.covers("LY-06")
-def test_b27_membership_literal_key_reads_at_most_2_row_groups(lookups, record_property):
-    """Card B-27: the catalog's `member_cluster` by a literal member_uid reads at most 2 row groups (of at
-    least MIN_RG) and nothing of `cluster_member`, and gives the member's NR50 and NR90 clusters as the oracle."""
+def test_b27_membership_literal_key_reads_at_most_2_row_groups_per_level(lookups, record_property):
+    """Card B-27: the catalog's `member_cluster` (sorted by level, then member) by a literal member_uid reads at
+    most 2 row groups at one level and at most 2 per level at both (of at least MIN_RG), nothing of
+    `cluster_member`, and gives the member's NR50 and NR90 clusters as the oracle."""
     root, man = lookups["root"], lookups["man"]
     want = _membership_oracle(root, man)
     members = sorted({m for m, _ in want})
     key = members[len(members) // 3]
     rows, reads, _ = _query(root, lookups["cat"], MEMBER_SQL, [key])
     assert rows == [(lv, *want[(key, lv)][0]) for lv in ("nr50", "nr90")]
+    one, reads1, _ = _query(root, lookups["cat"], "SELECT cluster_uid, rep_uid FROM member_cluster "
+                                                  "WHERE level = 'nr90' AND member_uid = ?", [key])
+    assert one == [want[(key, "nr90")][0]]
     _, n = _member_keys(_manifest_files(root, man, "member_cluster"), 2)
-    record_property("member_reads", json.dumps({"read": reads, "of": n}))
-    assert set(reads) == {"member_cluster"} and 1 <= reads["member_cluster"] <= MAX_RG_PER_KEY, reads
+    record_property("member_reads", json.dumps({"both levels": reads, "nr90": reads1, "of": n}))
+    assert set(reads) == {"member_cluster"} and 1 <= reads["member_cluster"] <= 2 * MAX_RG_PER_KEY, reads
+    assert set(reads1) == {"member_cluster"} and 1 <= reads1["member_cluster"] <= MAX_RG_PER_KEY, reads1
 
 
 MEMBER_PICKS = [("40 from two row groups", 40), ("100 from two row groups", 100), ("100 random", 100)]
@@ -697,9 +703,11 @@ MEMBER_PICKS = [("40 from two row groups", 40), ("100 from two row groups", 100)
 @pytest.mark.covers("LY-06")
 @pytest.mark.parametrize("pick,n", MEMBER_PICKS, ids=[p[0] for p in MEMBER_PICKS])
 def test_b27_membership_joined_keys_read_the_row_groups_that_hold_them(lookups, pick, n, record_property):
-    """Card B-27: member_uids from a joined table read nothing of `cluster_member`, and of `member_cluster` the
-    bound of `_assert_key_bound`. "from two row groups" takes them from the second and the second to last row
-    group, so their range spans the table while two row groups hold them."""
+    """Card B-27: member_uids from a joined table, looked up at both levels, read nothing of `cluster_member`,
+    and of `member_cluster` the bound of `_assert_key_bound` (2 row groups per key and level). "from two row
+    groups" takes them from the second and the second to last row group, so their range spans the table while
+    few row groups hold them (their own two, those that hold the same members at the other level, and the one
+    where the levels meet)."""
     import random
 
     root, man = lookups["root"], lookups["man"]
@@ -716,9 +724,9 @@ def test_b27_membership_joined_keys_read_the_row_groups_that_hold_them(lookups, 
                            len(_footer_ranges(files, "member_uid")))
     record_property("member_reads", json.dumps({"read": reads, "hold": hold, "spread": spread, "of": total, "thr": thr}))
     assert set(reads) == {"member_cluster"}, reads
-    _assert_key_bound(reads["member_cluster"], keys, hold, spread, total, thr)
+    _assert_key_bound(reads["member_cluster"], keys, hold, spread, total, thr, levels=2)
     if pick == "40 from two row groups":
-        assert hold == 2 < spread and len(keys) <= thr, (hold, spread, total, thr)
+        assert hold < spread and len(keys) <= thr, (hold, spread, total, thr)
 
 
 class _Profiled:
@@ -769,7 +777,7 @@ def test_b27_export_lookups_read_the_row_groups_that_hold_the_keys(lookups, n, r
     for t, (col, ks) in keys.items():
         files = _manifest_files(root, man, t)
         _assert_key_bound(px.reads.get(t, 0), ks, _holding(files, col, ks), _spread(files, col, ks),
-                          len(_footer_ranges(files, col)), thr)
+                          len(_footer_ranges(files, col)), thr, levels=2 if t == "member_cluster" else 1)
 
 
 def test_b27_contig_label_view_merges_the_release_stages(tmp_path):

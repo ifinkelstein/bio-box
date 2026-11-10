@@ -87,13 +87,14 @@ def test_tables_conform(built):
 @pytest.mark.covers("C-01")
 def test_b27_member_cluster_is_cluster_member_by_member(built):
     """Card B-27: `cluster.run` writes `member_cluster` beside `cluster_member`: it conforms, is sorted by
-    (member_uid, level), and holds each (member, level) of `cluster_member` once with its cluster and representative."""
+    (level, member_uid), and holds each (member, level) of `cluster_member` once with its cluster and representative."""
     root, _, mem, _, _ = built
     mc = pq.read_table(root / f"l2/member_cluster/release={RELEASE}/part-0.parquet")
     assert conformance_problems(mc, table("member_cluster")) == []
-    keys = list(zip(mc.column("member_uid").to_pylist(), mc.column("level").to_pylist()))
+    keys = list(zip(mc.column("level").to_pylist(), mc.column("member_uid").to_pylist()))
     assert keys == sorted(keys) and len(set(keys)) == len(keys)
-    want = sorted((r["member_uid"], r["level"], r["cluster_uid"], r["rep_uid"]) for r in mem.to_pylist())
+    want = sorted(((r["member_uid"], r["level"], r["cluster_uid"], r["rep_uid"]) for r in mem.to_pylist()),
+                  key=lambda x: (x[1], x[0]))
     assert [tuple(r.values()) for r in mc.to_pylist()] == want
 
 
