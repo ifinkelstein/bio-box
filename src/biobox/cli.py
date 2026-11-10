@@ -6,6 +6,7 @@
     bio-box search status|cancel <run_id> --root R
     bio-box search hits <run_id> --root R [--round N] [--members] [--json] [--top_n 50] [--format tsv]
     bio-box nbr --root R --anchors <run_id|uid,uid,...> --window 10g --strand any --edge truncate [--json]
+                [--tape-version T]
     bio-box run-step --profile P --root R --stage S --step NAME [--nice monolithic|fanout] [--threads N] -- CMD ...
 """
 
@@ -16,6 +17,8 @@ import json
 import sys
 from pathlib import Path
 
+import pyarrow.parquet as pq
+
 from biobox.l1.genecall import GENE_CALL_VERSION
 from biobox.search import export, nbr, pack, runner
 from biobox.search.recipe import RecipeError
@@ -24,6 +27,17 @@ from biobox.search.recipe import RecipeError
 def _print(lines) -> None:
     for line in lines:
         sys.stdout.write(line + "\n")
+
+
+def _run_tape_version(root: Path, run_id: str, gene_call_version: str) -> str:
+    """The tape version a closed run read: its pack's (card B-16); the gene-call producer's when the
+    run or its pack is not on disk."""
+    path = runner.run_dir(root, run_id) / "run.parquet"
+    if path.exists():
+        release = pq.read_table(path, columns=["ran_against"]).column("ran_against")[0].as_py()
+        if (pack.pack_dir(root, release) / "pack_manifest.json").exists():
+            return pack.manifest_tape_version(pack.read_manifest(root, release)[0])
+    return nbr.resolve_tape_version(gene_call_version)
 
 
 def _pack(a) -> int:
@@ -64,11 +78,12 @@ def _search(a) -> int:
         runner.cancel(root, a.target)
         return 0
     hits = runner.read_hits(root, a.target, a.round)
+    tv = _run_tape_version(root, a.target, a.gene_call_version)
     occ = {}
     for o in nbr.occurrences(root, {h["target_uid"] for h in hits if h["target_kind"] == "protein"},
-                             a.gene_call_version):
+                             a.gene_call_version, tape_version=tv):
         occ.setdefault(o["protein_uid"], []).append(o)
-    recs = list(export.hit_records(hits, occ, a.top_n or None, a.members))
+    recs = list(export.hit_records(hits, occ, a.top_n or None, a.members, tape_version=tv))
     if a.json:
         _print(export.ndjson(recs))
     else:
@@ -80,12 +95,19 @@ def _search(a) -> int:
 
 def _nbr(a) -> int:
     root = Path(a.root)
+    tv = a.tape_version
     if len(a.anchors) == 32 and (runner.run_dir(root, a.anchors) / "run.parquet").exists():
         uids = {h["target_uid"] for h in runner.read_hits(root, a.anchors) if h["target_kind"] == "protein"}
+        run_tv = _run_tape_version(root, a.anchors, a.gene_call_version)
+        if tv is not None and tv != run_tv:
+            print(f"refused: tape version {tv} is not the tape version {run_tv} that run {a.anchors} read",
+                  file=sys.stderr)
+            return 2
+        tv = run_tv
     else:
         uids = {bytes.fromhex(x) for x in a.anchors.split(",") if x}
     policy = nbr.Policy.parse(a.window, a.strand, a.operon_gap, a.edge, a.circular)
-    rows, counts = nbr.fetch(root, uids, policy, a.gene_call_version)
+    rows, counts = nbr.fetch(root, uids, policy, a.gene_call_version, tape_version=tv)
     if a.json:
         _print(export.ndjson(export.nbr_records(rows, a.top_n or None)))
     else:
@@ -139,6 +161,7 @@ def main(argv: list[str] | None = None) -> int:
     n.add_argument("--circular", default="auto")
     n.add_argument("--json", action="store_true")
     n.add_argument("--top_n", type=int, default=0)
+    n.add_argument("--tape-version", help="tapes to read (default: the run's pack's, else the gene-call producer's)")
     r = sub.add_parser("run-step", usage="bio-box run-step --profile P --root R --stage S --step NAME "
                                          "[--nice monolithic|fanout] [--threads N] -- CMD [ARGS ...]")
     r.add_argument("--profile", required=True, help="host profile YAML (profiles/wilkcomp02.yaml)")

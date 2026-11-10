@@ -4,6 +4,9 @@ Every record carries `"schema": "<kind>/<version>"`. The rule, checked against
 `tests/registry/json_schema_lock.json`: keys may be added at the same version; removing or
 renaming a key needs a version bump. Bytes are lowercase hex, timestamps ISO 8601 UTC.
 Lists are capped at query time (`top_n`, default 50), so one stored result serves any cap.
+
+An ordinal is never exported alone (AGENTS §3.3, card B-16): a record with an ordinal, or with
+occurrences that have one, carries the `feature_uid` beside it and the `tape_version` it belongs to.
 """
 
 from __future__ import annotations
@@ -18,7 +21,7 @@ SCHEMAS: dict[str, dict] = {
         "schema", "run_id", "round", "target_kind", "target_uid", "bitscore", "evalue_zref", "target_size",
         "seq_bitscore", "seq_evalue_zref", "env_start", "env_end", "ali_start", "ali_end", "hmm_from", "hmm_to",
         "model_len", "is_partial", "first_inclusion_round", "score_kind", "curation_label", "curation_reason",
-        "n_occurrences", "occurrences"]},
+        "n_occurrences", "occurrences", "tape_version"]},
     "search_run": {"version": 1, "keys": [
         "schema", "run_id", "status", "error", "recipe_hash", "written_against", "ran_against", "pack_id", "target",
         "target_size", "rounds", "final_round", "stop_reason", "controls", "warnings", "submitted_at", "wall_s",
@@ -26,7 +29,7 @@ SCHEMAS: dict[str, dict] = {
     "neighborhood": {"version": 1, "keys": [
         "schema", "anchor_protein_uid", "contig_uid", "anchor_ordinal", "ordinal", "offset", "offset_rel",
         "protein_uid", "start", "end", "strand", "delta_bp", "junction_topology", "same_strand", "in_operon",
-        "censored", "crosses_origin", "policy_hash"]},
+        "censored", "crosses_origin", "policy_hash", "anchor_feature_uid", "feature_uid", "tape_version"]},
     "pack_target": {"version": 1, "keys": ["schema", "release_id", "pack_id", "target", "kind", "n_seq",
                                            "n_residues", "shards"]},
 }
@@ -55,15 +58,17 @@ def record(kind: str, data: dict) -> dict:
 
 
 def hit_records(hits: list[dict], occurrences: dict[bytes, list[dict]] | None = None,
-                top_n: int | None = TOP_N, members: bool = False) -> Iterator[dict]:
-    """Best domain first per target, targets by descending sequence score."""
+                top_n: int | None = TOP_N, members: bool = False, tape_version: str | None = None) -> Iterator[dict]:
+    """Best domain first per target, targets by descending sequence score. Each occurrence's
+    `slot_ordinal` is valid inside `tape_version` (nbr.occurrences looks it up there)."""
     rows = sorted(hits, key=lambda r: (-(r["seq_bitscore"] or 0), r["target_uid"], -r["bitscore"]))
     for r in rows[:top_n] if top_n else rows:
         occ = (occurrences or {}).get(r["target_uid"], [])
         shown = occ if members else occ[:OCCURRENCES_SHOWN]
-        yield record("search_hit", {**r, "n_occurrences": len(occ), "occurrences": [
-            {"contig_uid": o["contig_uid"], "slot_ordinal": o["slot_ordinal"], "genome_uid": o["genome_uid"],
-             "start": o["start"], "end": o["end"], "strand": o["strand"], "tier": o["tier"]} for o in shown]})
+        yield record("search_hit", {**r, "n_occurrences": len(occ), "tape_version": tape_version, "occurrences": [
+            {"contig_uid": o["contig_uid"], "slot_ordinal": o["slot_ordinal"], "feature_uid": o["feature_uid"],
+             "genome_uid": o["genome_uid"], "start": o["start"], "end": o["end"], "strand": o["strand"],
+             "tier": o["tier"]} for o in shown]})
 
 
 def run_record(row: dict) -> dict:

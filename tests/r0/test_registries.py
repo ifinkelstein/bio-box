@@ -38,7 +38,7 @@ REL = _load("relations.yaml")
 # AGENTS §3.3: an ordinal is never a key. These tables still have one in their primary key;
 # B-17 empties the set, and the test below fails until every fixed table is removed from it.
 ORDINAL_COLUMNS = {"ordinal", "slot_ordinal", "anchor_ordinal", "partner_ordinal"}
-LEGACY_ORDINAL_KEYS = {"neighborhoods", "slot_protein"}
+LEGACY_ORDINAL_KEYS = {"slot_protein"}  # neighborhoods keys on feature uids since card B-16
 
 
 def _documented_test_ids() -> set[str]:

@@ -1,7 +1,8 @@
 """Per-release search pack: build and verify (SEARCH_PLAN SD-06, SD-07; data_layer_and_tests.md §2B.2; C-12).
 
     $ATD_ROOT/search_pack/release=<R>/
-      pack_manifest.json         shards, meta files, counts, sources, rules, builder versions
+      pack_manifest.json         shards, meta files, counts, sources, rules, builder versions, and the
+                                 tape_version the region flanks (feature uids) refer to
       unique/part-<k>.faa.zst    every exact-unique protein, named by protein_uid hex
       igr/part-<k>.fna.zst       IGRs >= 30 nt (+ strand), named by region_uid hex
       igr/igr_meta.parquet       search_region rows for the IGRs
@@ -74,23 +75,32 @@ def _occurrence_files(root: Path, gcv: str) -> list[Path]:
     return sorted((root / "l1/protein_occurrence").glob(f"gene_call_version={gcv}/stage=*/part-*.parquet"))
 
 
-def _igr_files(root: Path, gcv: str) -> list[Path]:
-    return sorted((root / "l0seq/igr").glob(f"igr_version={igr_version([gcv])}/stage=*/part-*.parquet"))
+def _igr_files(root: Path, iv: str) -> list[Path]:
+    """The IGR files of igr version iv (`<tape_version>-igr1`, card B-20)."""
+    return sorted((root / "l0seq/igr").glob(f"igr_version={iv}/stage=*/part-*.parquet"))
 
 
-def _tape_files(root: Path, gcv: str) -> list[Path]:
-    # the gene-call producer's tape version (card B-07)
-    return sorted((root / "l3/tapes").glob(f"tape_version={tape_version([gcv])}/stage=*/part-*.parquet"))
+def _tape_files(root: Path, tv: str) -> list[Path]:
+    return sorted((root / "l3/tapes").glob(f"tape_version={tv}/stage=*/part-*.parquet"))
 
 
-def _contigs(root: Path, gcv: str) -> tuple[dict[bytes, int], set[bytes]]:
-    lengths, circular = {}, set()
-    for f in _tape_files(root, gcv):
-        for r in pq.read_table(f, columns=["contig_uid", "contig_len", "is_circular"]).to_pylist():
+def manifest_tape_version(manifest: dict) -> str:
+    """The tape version a pack's flanks refer to, and so the one its runs read (card B-16); a manifest
+    from before B-16 names none and was built from the gene-call producer's."""
+    return manifest.get("tape_version") or tape_version([manifest["gene_call_version"]])
+
+
+def _contigs(root: Path, tv: str) -> tuple[dict[bytes, int], set[bytes], dict[bytes, int]]:
+    """Contig lengths, the circular contigs and the strand of every slot's feature, from the tapes of tv."""
+    lengths, circular, strands = {}, set(), {}
+    for f in _tape_files(root, tv):
+        for r in pq.read_table(f, columns=["contig_uid", "contig_len", "is_circular", "feature_uids",
+                                           "strands"]).to_pylist():
             lengths[r["contig_uid"]] = r["contig_len"]
             if r["is_circular"]:
                 circular.add(r["contig_uid"])
-    return lengths, circular
+            strands.update(zip(r["feature_uids"], r["strands"]))
+    return lengths, circular, strands
 
 
 def _slots(root: Path, gcv: str) -> dict[bytes, list[dict]]:
@@ -131,7 +141,8 @@ def _region(kind: str, cu: bytes, start: int, end: int, strand: int, n_residues:
     row = {"region_uid": ids.region_uid(cu, start, end, strand), "target_kind": kind, "contig_uid": cu,
            "start": start, "end": end, "strand": strand, "n_residues": n_residues, "left_slot": None,
            "right_slot": None, "orientation": None, "gc": None, "dist_to_contig_end_bp": None,
-           "partial": False, "at_contig_end": False, "gene_overlap_frac": None, "genetic_code": None}
+           "partial": False, "at_contig_end": False, "gene_overlap_frac": None, "genetic_code": None,
+           "left_feature_uid": None, "right_feature_uid": None}
     row.update(kw)
     return row
 
@@ -151,20 +162,20 @@ def _build_unique(root: Path, out: Path, gcv: str, shard_bytes: int) -> list[dic
                                ((u.hex(), prots[u].replace("*", "")) for u in sorted(prots)), shard_bytes)
 
 
-def _build_igr(root: Path, out: Path, gcv: str, store: SeqStore, lengths, circular, slots, shard_bytes):
+def _build_igr(root: Path, out: Path, iv: str, store: SeqStore, lengths, circular, strands, shard_bytes):
     meta, records = [], []
-    for f in _igr_files(root, gcv):
-        for r in pq.read_table(f).to_pylist():
+    for f in _igr_files(root, iv):
+        for r in pq.read_table(f, partitioning=None).to_pylist():
             cu, s, e = r["contig_uid"], r["start"], r["end"]
             if e - s < IGR_MIN_NT:
                 continue
             L, circ = lengths[cu], cu in circular
             seq = store.get(cu, s, e, 1, circular=circ)
-            ls = slots[cu][r["left_slot"]] if r["left_slot"] is not None else None
-            rs = slots[cu][r["right_slot"]] if r["right_slot"] is not None else None
+            lf, rf = r["left_feature_uid"], r["right_feature_uid"]
             # flanks of an IGR never nest, so only their strands matter
-            orient = junction((0, 1, ls["strand"]), (2, 3, rs["strand"])) if ls and rs else None
+            orient = junction((0, 1, strands[lf]), (2, 3, strands[rf])) if lf and rf else None
             row = _region("igr", cu, s, e, 1, e - s, left_slot=r["left_slot"], right_slot=r["right_slot"],
+                          left_feature_uid=lf, right_feature_uid=rf,
                           orientation=orient, gc=_gc(seq), dist_to_contig_end_bp=None if circ else min(s, L - e),
                           partial=not circ and (s == 0 or e == L))
             meta.append(row)
@@ -210,8 +221,13 @@ def _build_models(out: Path, models: dict[str, Path]) -> list[dict]:
 
 
 def build(root: Path, release: str, gene_call_version: str = GENE_CALL_VERSION,
-          models: dict[str, Path] | None = None, shard_text_bytes: int = SHARD_TEXT_BYTES) -> dict:
-    """Build the release's pack from the data root; returns the manifest (with `pack_id`)."""
+          models: dict[str, Path] | None = None, shard_text_bytes: int = SHARD_TEXT_BYTES,
+          producers: list[str] | None = None) -> dict:
+    """Build the release's pack from the data root; returns the manifest (with `pack_id`).
+
+    `producers` (default: the gene-call producer alone) name the feature set: the IGRs are those of
+    its igr version and the region flanks are features of its tape version, which the manifest
+    records as `tape_version` (card B-16)."""
     root = Path(root).resolve()
     _check_codes(root, gene_call_version)
     out = pack_dir(root, release)
@@ -219,7 +235,9 @@ def build(root: Path, release: str, gene_call_version: str = GENE_CALL_VERSION,
         shutil.rmtree(out)
     out.mkdir(parents=True)
     gcv = gene_call_version
-    lengths, circular = _contigs(root, gcv)
+    producers = sorted(producers) if producers is not None else [gcv]
+    tv, iv = tape_version(producers), igr_version(producers)
+    lengths, circular, strands = _contigs(root, tv)
     slots = _slots(root, gcv)
     # a protein-only root (a synthetic world) has no sequence store: its nucleotide targets are empty
     store = SeqStore(root) if has_sequences(root) else None
@@ -228,7 +246,7 @@ def build(root: Path, release: str, gene_call_version: str = GENE_CALL_VERSION,
     try:
         built = {
             "unique": _build_unique(root, out, gcv, shard_text_bytes),
-            "igr": _build_igr(root, out, gcv, store, lengths, circular, slots, shard_text_bytes),
+            "igr": _build_igr(root, out, iv, store, lengths, circular, strands, shard_text_bytes),
             "dark_orf": _build_dark_orf(root, out, gcv, store, lengths, circular, slots, shard_text_bytes),
             "models": _build_models(out, models or {}),
         }
@@ -238,9 +256,9 @@ def build(root: Path, release: str, gene_call_version: str = GENE_CALL_VERSION,
     seq_files = sorted((root / "l0seq/seq_shards").glob("stage=*/shard-*.fa.gz"))
     sources = {
         "unique": {"protein_seq": _source_hash(root, _protein_files(root, gcv))},
-        "igr": {"igr": _source_hash(root, _igr_files(root, gcv)), "seq_shards": _source_hash(root, seq_files)},
+        "igr": {"igr": _source_hash(root, _igr_files(root, iv)), "seq_shards": _source_hash(root, seq_files)},
         "dark_orf": {"protein_occurrence": _source_hash(root, _occurrence_files(root, gcv)),
-                     "contig_tapes": _source_hash(root, _tape_files(root, gcv)),
+                     "contig_tapes": _source_hash(root, _tape_files(root, tv)),
                      "seq_shards": _source_hash(root, seq_files)},
         "models": {lib: {"files": 1, "sha256": ids.sha256_file(p).hex()} for lib, p in sorted((models or {}).items())},
     }
@@ -248,7 +266,8 @@ def build(root: Path, release: str, gene_call_version: str = GENE_CALL_VERSION,
         "pack_format": PACK_FORMAT,
         "release_id": release,
         "gene_call_version": gcv,
-        "igr_version": igr_version([gcv]),
+        "igr_version": iv,
+        "tape_version": tv,  # the tape version the region flanks refer to, and the one a run reads
         "z": Z,
         "rules": {"igr_min_nt": IGR_MIN_NT, "dark_orf_min_aa": orfs.MIN_AA, "dark_orf_end_bp": orfs.END_BP,
                   "dark_orf_max_gene_overlap": orfs.MAX_GENE_OVERLAP, "shard_text_bytes": shard_text_bytes},
@@ -284,7 +303,7 @@ def _count_source(root: Path, manifest: dict, target: str, out: Path) -> int | N
         return len({u for f in _protein_files(root, gcv)
                     for u in pq.read_table(f, columns=["protein_uid"]).column("protein_uid").to_pylist()})
     if target == "igr":
-        return sum(1 for f in _igr_files(root, gcv)
+        return sum(1 for f in _igr_files(root, manifest.get("igr_version") or igr_version([gcv]))
                    for r in pq.read_table(f, columns=["start", "end"]).to_pylist()
                    if r["end"] - r["start"] >= manifest["rules"]["igr_min_nt"])
     if target == "dark_orf":

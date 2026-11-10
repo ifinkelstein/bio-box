@@ -476,15 +476,22 @@ _SPECS = [
             _f("in_operon", pa.bool_(), nullable=True),
             _f("flags", pa.uint8()),
             _f("policy_hash", pa.string()),
+            # card B-16: the slots by feature_uid (primary key, so non-null: appended before the first
+            # release, AGENTS §3.8) and the tape version the ordinals belong to; the ordinals stay plain
+            # columns until B-17
+            _f("anchor_feature_uid", UID),
+            _f("feature_uid", UID),
+            _f("tape_version", pa.string(), nullable=True),
         ]),
-        primary_key=("contig_uid", "anchor_ordinal", "ordinal", "policy_hash"),
+        primary_key=("contig_uid", "anchor_feature_uid", "feature_uid", "policy_hash"),
         sort_key=("anchor_protein_uid", "contig_uid", "anchor_ordinal", "offset"),
         enums={"strand": STRAND_VALUES},
         small_ok=True,
         doc=(
             "SEARCH_PLAN SD-08; biobox/search/nbr.py. One row per slot in an anchor's window, the anchor "
             "itself at offset 0. offset is along the contig, offset_rel along the anchor's strand (positive = "
-            "downstream); flags bit 0 window cut by a linear contig end, bit 1 crosses the origin"
+            "downstream); flags bit 0 window cut by a linear contig end, bit 1 crosses the origin. "
+            "anchor_ordinal and ordinal are valid inside tape_version only (AGENTS §3.3)"
         ),
     ),
     TableSpec(
@@ -507,6 +514,10 @@ _SPECS = [
             _f("at_contig_end", pa.bool_()),
             _f("gene_overlap_frac", pa.float32(), nullable=True),
             _f("genetic_code", pa.uint8(), nullable=True),
+            # card B-16: the flanks as features of the pack's tape version (pack_manifest.json
+            # `tape_version`); left_slot and right_slot stay until B-17
+            _f("left_feature_uid", UID, nullable=True),
+            _f("right_feature_uid", UID, nullable=True),
         ]),
         primary_key=("region_uid",),
         sort_key=("region_uid",),
