@@ -11,4 +11,4 @@ dependencies:
   - hmmer=3.4
   - infernal=1.1.5
   - samtools=1.25      # with htslib bgzip; oracle for R-03 slices and R-07 (.fai/.gzi accepted)
-  - prodigal=2.6.3     # test oracle only (card D-03): never used to produce outputs; approved by the PI 2026-11-10
+  - prodigal=2.6.3     # test oracle only (card D-03): never used to produce outputs; approved by the PI 2026-11-09

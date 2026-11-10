@@ -5,8 +5,8 @@ The running record of the cards in [`TASKS.md`](TASKS.md). Updated at every merg
 its own branch `task/<ID>`, audited by the orchestrating session, and merged after the full suite
 passed on the integration branch.
 
-Last update: 2026-11-10, after midnight. Suite on the integration branch: 829 passed, 10 skipped
-(*measured*, wilkcomp02, 2026-11-10, `sh scripts/pod_pytest.sh integration --shards 8`, in the
+Last update: 2026-11-09, 23:00 CST. Suite on the integration branch: 829 passed, 10 skipped
+(*measured*, wilkcomp02, 2026-11-09, `sh scripts/pod_pytest.sh integration --shards 8`, in the
 pinned image; 3 min 40 s wall for the slowest shard, against 13.5 min in one process). The skips
 need samtools, bgzip, Prodigal or the golden set. Tests no longer run on the laptop (AGENTS.md §5.5).
 
@@ -53,10 +53,10 @@ Decisions DEC-18 to DEC-23 were approved by the PI on 2026-11-09 and are in `pla
 
 | Card | Model | State |
 |---|---|---|
-| B-17 remove the legacy ordinal columns | Opus | started 2026-11-10 |
-| A-03 README for `scripts/stress` | Sonnet | started 2026-11-10 |
-| C-07 scope on the host around the container | Opus | started 2026-11-10 |
-| W-09 pyhmmer thread count from the caller | Sonnet | started 2026-11-10 |
+| B-17 remove the legacy ordinal columns | Opus | started 2026-11-09 |
+| A-03 README for `scripts/stress` | Sonnet | started 2026-11-09 |
+| C-07 scope on the host around the container | Opus | started 2026-11-09 |
+| W-09 pyhmmer thread count from the caller | Sonnet | started 2026-11-09 |
 | Pod import ladder (not a card): phages, then 1 Gbp and 10 Gbp of complete prokaryotes with the new code | Opus | detached jobs on the pod; agent waiting on them |
 
 ## Next, in order
@@ -80,7 +80,7 @@ probed by hand on the pod).
 
 ## Open items for the PI
 
-- Done 2026-11-10: the PI approved `prodigal=2.6.3` in `container/environment.yml` (test oracle only). The Prodigal test first runs in the image built from `main`.
+- Done 2026-11-09: the PI approved `prodigal=2.6.3` in `container/environment.yml` (test oracle only). The Prodigal test first runs in the image built from `main`.
 - A `read:packages` credential, so the image built from `main` can be pulled on the pod.
 - Confirm the day window for the pod's thread caps (profile assumes 08:00 to 20:00 on weekdays).
 - First-10 questions (card 0-03), before the S1 gate.
