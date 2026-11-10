@@ -153,7 +153,7 @@ def _search(a) -> int:
     tv = _run_tape_version(root, a.target, a.gene_call_version)
     release = _run_release(root, a.target)
     manifest = export.release_manifest(root, release)
-    if a.format:  # card W-05: one row per gene (tsv) or one record per protein (faa)
+    if a.format:  # card W-05 (files: the manifest's, else the release_def stages: card W-12): one row per gene (tsv) or one record per protein (faa)
         if a.json:
             print("refused: --json and --format are exclusive", file=sys.stderr)
             return 2
@@ -167,7 +167,7 @@ def _search(a) -> int:
         return 0
     occ = {}
     try:
-        files = catalog.ReleaseFiles.of(root, release, manifest)  # the run's release only (card B-28)
+        files = export.release_files(root, release, manifest)  # the run's release only (cards B-28, W-12)
     except (FileNotFoundError, ValueError) as e:
         print(f"refused: {e}", file=sys.stderr)
         return 2
@@ -225,7 +225,7 @@ def _nbr(a) -> int:
               "tapes, clusters and contig_dim)", file=sys.stderr)
         return 2
     try:
-        files = catalog.ReleaseFiles.of(root, release, export.release_manifest(root, release))
+        files = export.release_files(root, release, export.release_manifest(root, release))  # card W-12
     except (FileNotFoundError, ValueError) as e:
         print(f"refused: {e}", file=sys.stderr)
         return 2
@@ -242,7 +242,7 @@ def _nbr(a) -> int:
                     bits[h["target_uid"]] = max(bits.get(h["target_uid"], h["seq_bitscore"]), h["seq_bitscore"])
         try:
             tables = export.locus_tables(root, rows, release=release, gene_call_version=a.gene_call_version,
-                                         hit_bits=bits, manifest=export.release_manifest(root, release),
+                                         hit_bits=bits, manifest=files,
                                          library=a.library, threads=a.threads)
             if a.out is None:
                 _print(line for k, (_, lines) in enumerate(tables) for line in ([""] if k else []) + lines)
