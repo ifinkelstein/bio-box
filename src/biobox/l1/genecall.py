@@ -344,8 +344,8 @@ def _batches(genomes: Iterable[GenomeInput], bases_of, batch_bases: int, thread_
         yield False, batch
 
 
-def _calls_in_order(store: SeqStore, root: Path, batches: Iterable[tuple[bool, list[GenomeInput]]], workers: int
-                    ) -> Iterator[tuple[list[GenomeInput], tuple]]:
+def _called(store: SeqStore, root: Path, batches: Iterable[tuple[bool, list[GenomeInput]]], workers: int
+            ) -> Iterator[tuple[list[GenomeInput], tuple]]:
     """(batch, `_rows` result); at most `workers` batches are called at once, and batches are read
     from `batches` lazily, one for each that finishes.
 
@@ -545,7 +545,7 @@ def run(root: Path, stage: str, genomes: Iterable[GenomeInput] | None = None, ve
         modes: set[str] = set()
         lengths = KeyLookup(store.index_files, "contig_uid", ["contig_len", "is_default_variant"])
         batches = _batches(genomes, lambda g: _genome_bases(store, lengths, g), batch_bases, THREAD_MIN_BASES)
-        calls_iter = _calls_in_order(store, root, batches, workers)
+        calls_iter = _called(store, root, batches, workers)
         try:
             for batch, (genes, cands, batch_modes, batch_wrap) in calls_iter:
                 ks.add(pa.RecordBatch.from_arrays(
