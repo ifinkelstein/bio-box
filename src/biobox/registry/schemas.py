@@ -234,8 +234,11 @@ _SPECS = [
             _f("tier", pa.uint8()),
             _f("assembly_quality", pa.string()),
             _f("dist_to_contig_end_bp", pa.uint32()),
+            # card B-05: appended non-null before the first release (AGENTS §3.8); slot_ordinal stays
+            # a plain column until B-17
+            _f("feature_uid", UID),
         ]),
-        primary_key=("contig_uid", "slot_ordinal", "gene_call_version"),
+        primary_key=("feature_uid", "gene_call_version"),
         sort_key=("protein_uid",),
         partition_keys=("gene_call_version", "stage"),
         enums={

@@ -109,6 +109,47 @@ def test_second_write_for_a_stage_is_refused(tmp_path):
 
 
 @pytest.mark.covers("C-01")
+def test_iter_streams_the_same_genomes_in_genome_uid_order(tmp_path):
+    from biobox.l0seq.inputs import iter_genome_input
+
+    write_genome_input(tmp_path, "S0", _genomes())
+    it = iter_genome_input(tmp_path, "S0")
+    assert next(it) == read_genome_input(tmp_path, "S0")[0]  # a lazy iterator, not a list
+    streamed = list(iter_genome_input(tmp_path, "S0"))
+    assert streamed == read_genome_input(tmp_path, "S0")
+    assert {str(_key(g)) for g in streamed} == {str(_key(g)) for g in _genomes()}
+    guids = [ids.genome_uid(list(g.contig_uids)) for g in streamed]
+    assert guids == sorted(guids)
+
+
+def test_iter_refuses_a_genome_whose_contigs_disagree(tmp_path):
+    import pyarrow as pa
+
+    from biobox.l0seq.inputs import iter_genome_input
+
+    write_genome_input(tmp_path / "ok", "S0", [_synthetic()])
+    t = pq.read_table(_path(tmp_path / "ok"))
+    codes = t.column("genetic_code").to_pylist()
+    bad = t.set_column(t.schema.get_field_index("genetic_code"), "genetic_code",
+                       pa.array([codes[0], codes[0] + 1], type=pa.uint8()))
+    _path(tmp_path / "bad").parent.mkdir(parents=True)
+    pq.write_table(bad, _path(tmp_path / "bad"))
+    with pytest.raises(ValueError, match="disagree on genetic_code"):
+        list(iter_genome_input(tmp_path / "bad", "S0"))
+
+
+def test_genome_input_lives_below_l1():
+    # B-05: l0seq.inputs owns GenomeInput and imports nothing from l1; genecall re-exports it
+    import subprocess
+    import sys
+
+    code = ("import sys, biobox.l0seq.inputs as i; "
+            "bad = sorted(m for m in sys.modules if m.startswith('biobox.l1')); assert not bad, bad; "
+            "import biobox.l1.genecall as g; assert g.GenomeInput is i.GenomeInput")
+    subprocess.run([sys.executable, "-c", code], check=True)
+
+
+@pytest.mark.covers("C-01")
 def test_manifest_accepts_a_root_holding_only_this_file(tmp_path):
     write_genome_input(tmp_path, "S0", _genomes())
     man = catalog.build_manifest(tmp_path, "rS0.test")

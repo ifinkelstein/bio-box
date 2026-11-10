@@ -4,6 +4,10 @@ Covers C-01/C-06 (registry contract), C-10 (protein_occurrence completeness),
 R-04 (protein consistency against an independent translation), LY-08, MR-03
 (reverse complement, with a measured tolerance), and a G-02-style genetic-code
 check on M. genitalium (code 4).
+
+Card B-05: the `feature` and `feature_protein` tables against the legacy slot-keyed ones (C-03),
+`feature_uid` recomputed from each row, reading `genome_input` when no genome list is passed,
+and output bytes that depend neither on the genome order (MR-01) nor on `workers` (D-01).
 """
 
 from __future__ import annotations
@@ -187,6 +191,34 @@ def test_mr01_bytes_do_not_depend_on_genome_order(tmp_path):
     assert run(b, "S0", iter(_genomes()[::-1]), tmp=scratch) == want  # any iterable, consumed once
     assert _outputs(a) == _outputs(b)
     assert list(scratch.iterdir()) == []  # the scratch directory is removed
+
+
+@pytest.mark.covers("D-01", "LY-08")
+def test_bytes_do_not_depend_on_workers(tmp_path):
+    a, b = tmp_path / "a", tmp_path / "b"
+    want = _build(a)
+    objs = [SourceObject(FIX / o["file"], CONTRACT["source_name"], CONTRACT["source_release"]) for o in OBJS]
+    ingest(objs, b, "S0")
+    assert run(b, "S0", _genomes(), workers=4) == want
+    assert _outputs(a) == _outputs(b)
+
+
+@pytest.mark.covers("D-01")
+def test_worker_exception_propagates_and_publishes_nothing(tmp_path):
+    from dataclasses import replace
+
+    root, scratch = tmp_path / "s", tmp_path / "scratch"
+    objs = [SourceObject(FIX / o["file"], CONTRACT["source_name"], CONTRACT["source_release"]) for o in OBJS]
+    ingest(objs, root, "S0")
+    genomes = _genomes()
+    genomes[1] = replace(genomes[1], kind="bogus")  # the gene finder of this genome raises in its worker
+    scratch.mkdir()
+    with pytest.raises(ValueError, match="unknown genome kind 'bogus'"):
+        run(root, "S0", genomes, workers=4, tmp=scratch)
+    assert _outputs(root) == {}
+    assert list(scratch.iterdir()) == []
+    with pytest.raises(ValueError, match="under the data root"):
+        run(root, "S0", _genomes(), tmp=root / "scratch")
 
 
 @pytest.mark.covers("C-05")

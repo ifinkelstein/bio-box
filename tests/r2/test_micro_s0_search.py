@@ -352,7 +352,8 @@ def _place(root: Path, loci: list[tuple[str, str, str, bool]]) -> None:
             occ.append({"protein_uid": pu, "contig_uid": cu, "slot_ordinal": i, "genome_uid": gu, "start": st_,
                         "end": en, "strand": sd, "tax_order": None, "is_species_rep": True, "tier": 1,
                         "assembly_quality": "complete",
-                        "dist_to_contig_end_bp": 0 if partial and i == 1 else min(st_, 1700 - en)})
+                        "dist_to_contig_end_bp": 0 if partial and i == 1 else min(st_, 1700 - en),
+                        "feature_uid": ids.feature_uid(cu, st_, en, sd, ids.KIND["cds"])})
         tapes_.append({"contig_uid": cu, "tax_order_bucket": None, "genome_uid": gu, "contig_len": 1700,
                        "is_circular": False, "n_slots": 3, "tier": 1, "assembly_quality": "complete",
                        **build_tape(coords, 1700, False), "protein_uids": prots})
