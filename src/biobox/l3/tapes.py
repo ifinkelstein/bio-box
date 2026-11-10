@@ -32,7 +32,7 @@ Writes, all through `biobox.io.write_table`:
     l3/tapes/tape_version=<tv>/stage=<S>/part-<k>.parquet   sorted by contig_uid, cut at
                                                             `max_file_bytes` (estimated)
     l3/tape_version_def/tape_version=<tv>/part-0.parquet    the producers, once per tape version
-    ledger/stage=<S>/step=tape/part-0.parquet
+    ledger/stage=<S>/step=tape-<tv>/part-0.parquet
 
 Bounded memory (AGENTS §4.1): DuckDB sorts the features (spilling into a private temporary
 directory) and an Arrow reader hands them over in `contig_uid` order; one contig's features are
@@ -285,5 +285,5 @@ def run(root: Path, stage: str, circular: set[bytes] | frozenset | None = None,
         shutil.rmtree(scratch, ignore_errors=True)
     if not have_def:
         io.write_table([pa.table({"producer": sorted(producers)})], table("tape_version_def"), def_path(root, tv))
-    ledger.write(root, stage, "tape", ledger_rows)
+    ledger.write(root, stage, f"tape-{tv}", ledger_rows)  # per tape version: a second version never rewrites it
     return {**counts, "files": k, "tape_version": tv}

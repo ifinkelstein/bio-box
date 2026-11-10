@@ -42,7 +42,7 @@ VERSION_PARTITION = {
     "slot_pairs": "release",
 }
 # ledger steps whose output depends on a tool, and the tools they must record
-STEP_TOOLS = {"ingest": ("pyarrow",), "tape": ("pyarrow",), "genecall": ("pyrodigal", "pyrodigal-gv", "pyarrow"),
+STEP_TOOLS = {"ingest": ("pyarrow",), "tape-*": ("pyarrow",), "genecall": ("pyrodigal", "pyrodigal-gv", "pyarrow"),
               "domains-*": ("pyhmmer", "pyarrow"), "cluster": ("mmseqs2", "pyarrow")}
 GENE_CALL_RE = re.compile(r"^pyrodigal-(?P<pyrodigal>[^-]+)-gv-(?P<gv>[^-]+)-p\d+$")
 
@@ -76,7 +76,10 @@ def locked_versions(repo: Path = REPO) -> dict[str, str]:
 def _step_tools(step: str) -> tuple[str, ...] | None:
     if step in STEP_TOOLS:
         return STEP_TOOLS[step]
-    return STEP_TOOLS["domains-*"] if step.startswith("domains-") else None
+    for prefix in ("domains-", "tape-"):  # one ledger per library and per tape version
+        if step.startswith(prefix):
+            return STEP_TOOLS[prefix + "*"]
+    return None
 
 
 def check_provenance(manifest: dict, lock: dict[str, str] | None = None) -> list[str]:
