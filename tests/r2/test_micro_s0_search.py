@@ -441,6 +441,34 @@ def test_s07_drift_alarm_reverts_a_planted_corruption(tmp_path):
     assert dropped and all(h["curation_label"] == "drop" and h["curation_reason"] == "drift_alarm" for h in dropped)
 
 
+def _warnings(root, run):
+    import json
+
+    row = pq.read_table(next((root / "search").glob(f"run={run['run_id'].hex()}/run.parquet"))).to_pylist()[0]
+    return json.loads(row["warnings_json"])
+
+
+def test_w08_drift_alarm_warns_when_the_release_has_no_domain_table(tmp_path):
+    import shutil
+
+    texts = {}
+    for name in ("with", "without"):
+        root = tmp_path / name
+        w = trap_world(root, tmp_path / f"{name}.hmm")
+        pack.build(root, "rSyn", models={"trap-1": tmp_path / f"{name}.hmm"})
+        if name == "without":
+            shutil.rmtree(root / "l1/domains")
+        text = (f"recipe: trap\nwritten_against: rSyn\nseed: [{{sequence: {w['A']}}}]\ntarget: unique\n"
+                f"tool: jackhmmer\niterations: {{max: 3, inclusion_bits: 30, stop: [no_new_reps, drift_alarm]}}\n"
+                f"controls: {{positive: [{{sequence: {w['a'][0]}}}]}}\n")
+        texts[name] = runner.run(root, text, "rSyn", work_base=tmp_path / f"work-{name}", limits=LIMITS)
+        texts[name] = (root, texts[name])
+    (r1, with_), (r2, without) = texts["with"], texts["without"]
+    assert not any("domain annotations" in x for x in _warnings(r1, with_))
+    assert any("drift_alarm could not be evaluated" in x and "no domain annotations" in x for x in _warnings(r2, without))
+    assert without["status"] == with_["status"] == "ok"
+
+
 def test_search_tables_conform_to_the_registry(world):
     root = world[0]
     for p in sorted((root / "search").glob("run=*/*.parquet")):

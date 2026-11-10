@@ -38,6 +38,12 @@ def _families(root: Path) -> dict[bytes, set[str]]:
     return out
 
 
+def _has_domains(root: Path) -> bool:
+    """Whether the release holds any l1_domains row at all (not whether these hits have one)."""
+    return any(pq.ParquetFile(f).metadata.num_rows > 0
+               for f in (root / "l1/domains").glob("library=*/stage=*/part-*.parquet"))
+
+
 def _partial(root: Path, job: dict, target: engine.Target) -> set[bytes]:
     if target.kind == "protein":
         files = sorted((root / "l1/protein_occurrence").glob(f"gene_call_version={job['gene_call_version']}/stage=*/part-*.parquet"))
@@ -157,6 +163,8 @@ def main(job_path: str) -> int:
     warnings = []
     if fams is None and "drift_alarm" in it["stop"]:
         warnings.append("drift_alarm not evaluated: no stored library hits for this target kind")
+    if fams is not None and not fams and it["max"] > 1 and "drift_alarm" in it["stop"] and not _has_domains(root):
+        warnings.append("drift_alarm could not be evaluated: the release has no domain annotations (l1_domains is empty)")
     if not (target.kind == "protein" and have_tapes) and "context_lost" in it["stop"]:
         warnings.append("context_lost not evaluated: no tapes for this target kind")
 

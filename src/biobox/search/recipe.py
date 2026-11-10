@@ -55,9 +55,14 @@ def _keys(d: dict, allowed: set, where: str) -> None:
 
 
 def _seed(s, where: str) -> dict:
-    if isinstance(s, dict) and "kind" not in s and len(s) == 1:  # shorthand: {protein_accession: MJ0613}
-        (k, v), = s.items()
-        s = {"kind": k, "value": v}
+    if isinstance(s, dict) and "kind" not in s and "value" not in s:
+        # shorthand: {protein_accession: MJ0613}, optionally with label / source beside the kind key
+        kinds = [k for k in s if k in SEED_KINDS]
+        if len(kinds) > 1:
+            raise RecipeError(f"{where}: more than one kind key {sorted(kinds)}; give one")
+        if len(kinds) == 1 or len(s) == 1:
+            k = kinds[0] if kinds else next(iter(s))
+            s = {"kind": k, "value": s[k], **{a: b for a, b in s.items() if a != k}}
     _keys(s, {"kind", "value", "label", "source"}, where)
     if s.get("kind") not in SEED_KINDS:
         raise RecipeError(f"{where}: kind {s.get('kind')!r} not one of {SEED_KINDS}")

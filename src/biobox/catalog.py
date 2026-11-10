@@ -431,6 +431,12 @@ def generate_catalog(manifest: dict, out_path: Path, root: Path | None = None) -
             widest[f["table"]] = max(widest.get(f["table"], 0), f.get("n_columns", len(TABLES[f["table"]].schema)))
         for name in sorted(TABLES):
             con.execute(_view_sql(TABLES[name], sorted(by_table[name]), widest.get(name)))
+        # derived view, not a registry table: one row per contig_uid (contig_occurrence has one per source record)
+        con.execute(
+            "CREATE VIEW contig_label AS SELECT contig_uid, "
+            "arg_min(accession, (l0_object_sha256, record_ordinal)) AS accession, "
+            "arg_min(original_header, (l0_object_sha256, record_ordinal)) AS original_header, "
+            "count(*) AS n_occurrences FROM contig_occurrence GROUP BY contig_uid")
         con.execute("CREATE TABLE catalog_info (key VARCHAR, value VARCHAR)")
         con.executemany("INSERT INTO catalog_info VALUES (?, ?)", [
             ("release_id", manifest["release_id"]),
