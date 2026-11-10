@@ -32,6 +32,15 @@ SCHEMAS: dict[str, dict] = {
         "censored", "crosses_origin", "policy_hash", "anchor_feature_uid", "feature_uid", "tape_version"]},
     "pack_target": {"version": 1, "keys": ["schema", "release_id", "pack_id", "target", "kind", "n_seq",
                                            "n_residues", "shards"]},
+    # card W-06: `bio-box nbr summarize`, one header record, then one record per key and level
+    "nbr_summary_header": {"version": 1, "keys": [
+        "schema", "release", "tape_version", "policy", "policy_hash", "levels", "top_n", "n_anchor_proteins_given",
+        "n_anchor_proteins", "anchors_dropped_by_edge", "n_anchor_loci", "n_contigs", "n_anchor_genomes",
+        "genome_basis", "n_censored_loci", "n_neighbors", "n_keys"]},
+    "nbr_summary": {"version": 1, "keys": [
+        "schema", "release", "tape_version", "policy_hash", "level", "key", "unannotated", "library", "model_acc",
+        "model_name", "cluster_uid", "rep_uid", "rep_length", "n_loci", "share_of_loci", "n_neighbors", "n_genomes",
+        "genome_basis", "offsets", "modal_offset", "same_strand_share"]},
 }
 TOP_N = 50
 OCCURRENCES_SHOWN = 5
@@ -79,6 +88,47 @@ def run_record(row: dict) -> dict:
 def nbr_records(rows: list[dict], top_n: int | None = None) -> Iterator[dict]:
     for r in rows[:top_n] if top_n else rows:
         yield record("neighborhood", {**r, "censored": bool(r["flags"] & 1), "crosses_origin": bool(r["flags"] & 2)})
+
+
+def nbr_summary_records(summary: dict) -> Iterator[dict]:
+    """`nbr.summarize` as records: the header (run-level facts), then each level's rows in order."""
+    h = summary["header"]
+    yield record("nbr_summary_header", h)
+    for r in summary["rows"]:
+        yield record("nbr_summary", {"release": h.get("release"), "tape_version": h.get("tape_version"),
+                                     "policy_hash": h.get("policy_hash"), **r})
+
+
+SUMMARY_TSV_COLUMNS = {
+    "pfam": ["level", "key", "unannotated", "library", "model_acc", "model_name"],
+    "nr": ["level", "key", "unannotated", "cluster_uid", "rep_uid", "rep_length", "model_name"],
+}
+SUMMARY_TSV_STATS = ["n_loci", "share_of_loci", "n_neighbors", "n_genomes", "genome_basis", "offsets", "modal_offset",
+                     "same_strand_share"]
+
+
+def _tsv_cell(col: str, v) -> str:
+    if v is None:
+        return ""
+    if isinstance(v, bool):
+        return "true" if v else "false"
+    if col == "offsets":
+        return ",".join(f"{o}:{n}" for o, n in v.items())
+    return str(v)
+
+
+def nbr_summary_tsv(summary: dict) -> Iterator[str]:
+    """`--format tsv`: the header's facts as `# key<TAB>json` lines, then one table per level (a column line and
+    its rows; offsets as `offset:count,...`), tables separated by a blank line."""
+    for k, v in record("nbr_summary_header", summary["header"]).items():
+        yield f"# {k}\t{json.dumps(v, separators=(',', ':'))}"
+    for level in summary["header"]["levels"]:
+        cols = SUMMARY_TSV_COLUMNS["pfam" if level == "pfam" else "nr"] + SUMMARY_TSV_STATS
+        yield ""
+        yield "\t".join(cols)
+        for r in summary["rows"]:
+            if r["level"] == level:
+                yield "\t".join(_tsv_cell(c, r.get(c)) for c in cols)
 
 
 def ndjson(records: Iterable[dict]) -> Iterator[str]:

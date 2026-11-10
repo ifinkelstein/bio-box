@@ -7,6 +7,8 @@
     bio-box search hits <run_id> --root R [--round N] [--members] [--json] [--top_n 50] [--format tsv]
     bio-box nbr --root R --anchors <run_id|uid,uid,...> --window 10g --strand any --edge truncate [--json]
                 [--tape-version T]
+    bio-box nbr summarize <run_id|uid,uid,...> --root R --window 5g --by pfam,nr50 [--top 50] [--release R]
+                [--json | --format tsv]
     bio-box run-step --profile P --root R --stage S --step NAME [--nice monolithic|fanout] [--threads N] -- CMD ...
 """
 
@@ -93,20 +95,48 @@ def _search(a) -> int:
     return 0
 
 
+def _anchors(root: Path, source: str, tape_version: str | None, gene_call_version: str):
+    """Anchor proteins from a recorded run's protein hits or a comma-separated list of protein uids:
+    (uids, tape version, the run's release or None), or a refusal message."""
+    if len(source) == 32 and (runner.run_dir(root, source) / "run.parquet").exists():
+        uids = {h["target_uid"] for h in runner.read_hits(root, source) if h["target_kind"] == "protein"}
+        run_tv = _run_tape_version(root, source, gene_call_version)
+        if tape_version is not None and tape_version != run_tv:
+            return f"refused: tape version {tape_version} is not the tape version {run_tv} that run {source} read"
+        release = pq.read_table(runner.run_dir(root, source) / "run.parquet",
+                                columns=["ran_against"]).column("ran_against")[0].as_py()
+        return uids, run_tv, release
+    return {bytes.fromhex(x) for x in source.split(",") if x}, tape_version, None
+
+
 def _nbr(a) -> int:
     root = Path(a.root)
-    tv = a.tape_version
-    if len(a.anchors) == 32 and (runner.run_dir(root, a.anchors) / "run.parquet").exists():
-        uids = {h["target_uid"] for h in runner.read_hits(root, a.anchors) if h["target_kind"] == "protein"}
-        run_tv = _run_tape_version(root, a.anchors, a.gene_call_version)
-        if tv is not None and tv != run_tv:
-            print(f"refused: tape version {tv} is not the tape version {run_tv} that run {a.anchors} read",
-                  file=sys.stderr)
-            return 2
-        tv = run_tv
-    else:
-        uids = {bytes.fromhex(x) for x in a.anchors.split(",") if x}
+    if a.action == "summarize" and not (a.source or a.anchors):
+        print("refused: nbr summarize needs a run id or a list of protein uids", file=sys.stderr)
+        return 2
+    if a.action is None and not a.anchors:
+        print("refused: nbr needs --anchors", file=sys.stderr)
+        return 2
+    got = _anchors(root, a.source or a.anchors, a.tape_version, a.gene_call_version)
+    if isinstance(got, str):
+        print(got, file=sys.stderr)
+        return 2
+    uids, tv, run_release = got
     policy = nbr.Policy.parse(a.window, a.strand, a.operon_gap, a.edge, a.circular)
+    if a.action == "summarize":
+        release = a.release or run_release
+        if release is None:
+            print("refused: anchors given as protein uids need --release (the release whose clusters and "
+                  "contig_dim to read)", file=sys.stderr)
+            return 2
+        try:
+            s = nbr.summarize(root, uids, policy, [x.strip() for x in a.by.split(",") if x.strip()], release=release,
+                              gene_call_version=a.gene_call_version, tape_version=tv, top_n=a.top)
+        except ValueError as e:
+            print(f"refused: {e}", file=sys.stderr)
+            return 2
+        _print(export.ndjson(export.nbr_summary_records(s)) if a.json else export.nbr_summary_tsv(s))
+        return 0
     rows, counts = nbr.fetch(root, uids, policy, a.gene_call_version, tape_version=tv)
     if a.json:
         _print(export.ndjson(export.nbr_records(rows, a.top_n or None)))
@@ -153,7 +183,9 @@ def main(argv: list[str] | None = None) -> int:
     s.add_argument("--json", action="store_true")
     s.add_argument("--top_n", type=int, default=export.TOP_N)
     n = sub.add_parser("nbr", parents=[common])
-    n.add_argument("--anchors", required=True)
+    n.add_argument("action", nargs="?", choices=["summarize"], help="summarize: families and clusters per window")
+    n.add_argument("source", nargs="?", help="summarize: run_id or protein uids (uid,uid,...)")
+    n.add_argument("--anchors", help="run_id or protein uids (uid,uid,...)")
     n.add_argument("--window", default="10g")
     n.add_argument("--strand", default="any")
     n.add_argument("--operon-gap")
@@ -162,6 +194,10 @@ def main(argv: list[str] | None = None) -> int:
     n.add_argument("--json", action="store_true")
     n.add_argument("--top_n", type=int, default=0)
     n.add_argument("--tape-version", help="tapes to read (default: the run's pack's, else the gene-call producer's)")
+    n.add_argument("--by", default="pfam,nr50", help="summarize: levels, some of pfam,nr50,nr90")
+    n.add_argument("--top", type=int, default=nbr.SUMMARY_TOP, help="summarize: rows per level (0: all)")
+    n.add_argument("--release", help="summarize: release of the clusters and contig_dim (default: the run's)")
+    n.add_argument("--format", choices=["tsv"], help="summarize: tsv (the default without --json)")
     r = sub.add_parser("run-step", usage="bio-box run-step --profile P --root R --stage S --step NAME "
                                          "[--nice monolithic|fanout] [--threads N] -- CMD [ARGS ...]")
     r.add_argument("--profile", required=True, help="host profile YAML (profiles/wilkcomp02.yaml)")
