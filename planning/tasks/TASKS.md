@@ -270,6 +270,18 @@ Files: `scripts/stress/*.py`, `planning/measurements/<date>_phase_b_exit.md`+
 Do: update the stress scripts to the new model and rerun all of them: cross-host manifest hash, 1,000× synthetic queries, feature stability, independent-tool checks, GTDB projection of every table.
 Accept: laptop and pod manifest hashes equal; no query scans more than 2 row groups per lookup; no projected table exceeds its budget in `sources_and_sizing.md` (update the budget lines with measured values, labelled).
 
+### B-19 Streaming ledger and multi-part tables
+**M** · Depends: B-07 (found while auditing B-05 and B-07)
+Files: `src/biobox/ledger.py`, the builders that call `ledger.write`, every reader that opens `part-0.parquet` by name, their tests
+Do: `ledger.write` accepts an iterator of rows and writes through `io.write_table` (today each builder holds one ledger dict per contig of the stage; S6 has 111.5 M contigs). Tables that are still one `part-0.parquet` per stage (`feature`, `feature_protein`, `protein_occurrence`, `igr`, `contig_index`, `contig_occurrence`) are cut into `part-<k>.parquet` at `layout.MAX_FILE_BYTES` while streaming, as `tapes.run` and `genecall._write_protein_seq` already do; every reader globs `part-*.parquet`.
+Accept: with `max_file_bytes` forced small on the fixture, each table has several parts whose concatenation equals the single-file output row for row; suite green.
+
+### B-20 IGR version names its producer set
+**L** · Depends: B-07
+Files: `src/biobox/l1/igr.py`, `src/biobox/provenance.py`, tests
+Do: `igr_version` is `<tape_version>-igr1`, so IGRs computed for a second producer set land beside the first instead of at the same path. Today the version names only the gene caller.
+Accept: the stability test (B-08) runs both producer sets in one store without removing files.
+
 ---
 
 ## Phase C. Running on the pod
