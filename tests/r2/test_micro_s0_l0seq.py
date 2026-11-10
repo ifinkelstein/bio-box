@@ -674,18 +674,35 @@ def test_memory_holds_one_batch_not_the_stage(tmp_path, monkeypatch):
     assert live["max"] <= bound, (live["max"], bound)
 
 
-# --- one hash per record (card B-23) ----------------------------------------------------------
+# --- a source changed between the passes (card B-23) ------------------------------------------
 
 
 @pytest.mark.covers("R-01")
-def test_each_record_is_hashed_once(tmp_path, monkeypatch):
-    """Pass 2 re-reads the objects but checks a kept record by its length; only pass 1 hashes."""
+def test_same_length_edit_between_the_passes_is_refused(tmp_path):
+    """Pass 2 checks a kept record's digest, not only its length and the file's size and mtime:
+    stored bytes are identified by their digest (AGENTS §3.2)."""
+    import os
+
     objs = _world(tmp_path / "src")
-    hashed: list[int] = []
-    orig = ids.raw_digest
-    monkeypatch.setattr(ids, "raw_digest", lambda s: hashed.append(len(s)) or orig(s))
-    ingest(objs, tmp_path / "s", stage="S0", shard_bases=SMALL_SHARDS)
-    assert len(hashed) == sum(len(_oracle_records(o.path)) for o in objs)
+    src = tmp_path / "src" / "s3.fna"
+    recs = _oracle_records(src)
+    g = recs[2].seq
+    edited = g[:100] + (b"A" if g[100:101] != b"A" else b"C") + g[101:]
+    st = src.stat()
+
+    def edit_after_pass1(point: str) -> None:
+        if point == "pass1":
+            _write_records(src, [(recs[0].header, recs[0].seq), (recs[1].header, recs[1].seq),
+                                 (recs[2].header, edited)])
+            os.utime(src, ns=(st.st_atime_ns, st.st_mtime_ns))
+            assert src.stat().st_size == st.st_size and src.stat().st_mtime_ns == st.st_mtime_ns
+
+    root, out = tmp_path / "root", tmp_path / "staging"
+    with pytest.raises(ValueError, match="changed since the first pass"):
+        ingest(objs, root, stage="S0", shard_bases=SMALL_SHARDS, out=out, _hook=edit_after_pass1)
+    assert not root.exists() or not any(p.is_file() for p in root.rglob("*"))  # nothing in the root
+    for table_dir in ("l0seq/seq_locator", "l0seq/contig_index", "l0seq/contig_occurrence", "ledger", "l0"):
+        assert not (out / table_dir).exists(), table_dir  # no table written: the stage died in pass 2
 
 
 @pytest.mark.covers("R-01")

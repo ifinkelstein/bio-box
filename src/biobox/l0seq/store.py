@@ -229,9 +229,9 @@ def ingest(
     digests are new (an anti-join against the earlier stages' `seq_locator` files), the first
     occurrence of each by (object sha256, record ordinal), and the stage's `contig_index` rows.
     Pass 2 re-reads the objects batch by batch (`_batches`) and writes one shard per batch, its new
-    sequences sorted by `raw_digest`; only one batch's sequences are held at a time. Pass 2 does not
-    hash again (card B-23): a kept record must have the length pass 1 saw, and each object its size
-    and mtime. `tmp` holds the scratch directory (system temp by default; never under the data root
+    sequences sorted by `raw_digest`; only one batch's sequences are held at a time. Pass 2 refuses a
+    source that changed since pass 1: an object whose size or mtime differs, and a kept record whose
+    length or `raw_digest` differs (card B-23). `tmp` holds the scratch directory (system temp by default; never under the data root
     or `out`). The tables are cut into parts at `max_file_bytes` of estimated size (`io.write_parts`).
 
     Where files go, and a rerun after a crash (card B-23). The earlier stages are read from `root`;
@@ -353,9 +353,9 @@ def _decide_and_write(con, root: Path, out: Path, stage: str, ordered: list[tupl
                     if nxt is None or nxt[0] != i:
                         break  # nothing more to keep from this object
                     if nxt[1] == k:
-                        # pass 1 hashed this record; its length and the object's size and mtime
-                        # stand in for a second hash (card B-23)
-                        if len(rec.seq) != nxt[3]:
+                        # stored bytes are identified by their digest (AGENTS §3.2): hash again (about
+                        # 3 s per 240 s at 1,000x, card B-23), after the cheap length check
+                        if len(rec.seq) != nxt[3] or ids.raw_digest(rec.seq) != nxt[2]:
                             raise ValueError(f"{path}: record {k} changed since the first pass")
                         seqs[nxt[2]] = rec.seq
                         nxt = next(wanted, None)
