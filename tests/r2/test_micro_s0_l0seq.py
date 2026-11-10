@@ -672,3 +672,34 @@ def test_memory_holds_one_batch_not_the_stage(tmp_path, monkeypatch):
     assert len(handed) == len(_expected_batches(objs, SMALL_SHARDS))
     assert all(n <= bound and alive <= bound for n, alive in handed), handed
     assert live["max"] <= bound, (live["max"], bound)
+
+
+# --- one hash per record (card B-23) ----------------------------------------------------------
+
+
+@pytest.mark.covers("R-01")
+def test_each_record_is_hashed_once(tmp_path, monkeypatch):
+    """Pass 2 re-reads the objects but checks a kept record by its length; only pass 1 hashes."""
+    objs = _world(tmp_path / "src")
+    hashed: list[int] = []
+    orig = ids.raw_digest
+    monkeypatch.setattr(ids, "raw_digest", lambda s: hashed.append(len(s)) or orig(s))
+    ingest(objs, tmp_path / "s", stage="S0", shard_bases=SMALL_SHARDS)
+    assert len(hashed) == sum(len(_oracle_records(o.path)) for o in objs)
+
+
+@pytest.mark.covers("R-01")
+def test_record_of_another_length_in_pass_2_is_refused(tmp_path, monkeypatch):
+    objs = _world(tmp_path / "src")
+    calls = {"n": 0}
+    orig = fasta.iter_records
+
+    def second_pass_shorter(path):
+        calls["n"] += 1
+        for r in orig(path):
+            # pass 1 reads each object once; from the next read on (pass 2) one base is missing
+            yield r if calls["n"] <= len(objs) else fasta.Record(r.header, r.seq[:-1], r.line_width)
+
+    monkeypatch.setattr(fasta, "iter_records", second_pass_shorter)
+    with pytest.raises(ValueError, match="changed since the first pass"):
+        ingest(objs, tmp_path / "s", stage="S0", shard_bases=SMALL_SHARDS)

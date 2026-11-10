@@ -176,14 +176,20 @@ def _batches(per_object: list[tuple[int, int]], shard_bases: int) -> list[list[i
 
 
 def _wanted(con, batch_rows: int = io.ROW_GROUP_ROWS):
-    """(obj_idx, record_ordinal, raw_digest) of every first occurrence, in object then record order."""
-    reader = con.sql("SELECT obj_idx, record_ordinal, raw_digest FROM new_seq "
+    """(obj_idx, record_ordinal, raw_digest, contig_len) of every first occurrence, in object then
+    record order."""
+    reader = con.sql("SELECT obj_idx, record_ordinal, raw_digest, contig_len FROM new_seq "
                      "ORDER BY obj_idx, record_ordinal").to_arrow_reader(batch_rows)
     try:
         for b in reader:
-            yield from zip(*(b.column(i).to_pylist() for i in range(3)))
+            yield from zip(*(b.column(i).to_pylist() for i in range(4)))
     finally:
         reader.close()
+
+
+def _stat(path: Path) -> tuple[int, int]:
+    st = Path(path).stat()
+    return st.st_size, st.st_mtime_ns
 
 
 def ingest(
@@ -227,6 +233,7 @@ def ingest(
         seen_path = scratch / "seen.parquet"
         seen = _Scratch(seen_path, _SEEN)
         n_in = [0] * len(ordered)
+        stats = [_stat(obj.path) for _, obj in ordered]
         try:
             for i, (sha, obj) in enumerate(ordered):
                 src_uid = ids.source_uid(obj.source_name, obj.source_release)
@@ -241,7 +248,7 @@ def ingest(
         con = duckdb.connect(config={"threads": 1, "memory_limit": DUCK_MEMORY_LIMIT,
                                      "temp_directory": str(scratch / "duckdb"), "preserve_insertion_order": True})
         try:
-            return _decide_and_write(con, root, stage, ordered, n_in, seen_path, old_loc, old_idx, scratch,
+            return _decide_and_write(con, root, stage, ordered, n_in, stats, seen_path, old_loc, old_idx, scratch,
                                      shard_bases, line_width, max_file_bytes)
         finally:
             con.close()
@@ -250,7 +257,7 @@ def ingest(
 
 
 def _decide_and_write(con, root: Path, stage: str, ordered: list[tuple[bytes, SourceObject]], n_in: list[int],
-                      seen_path: Path, old_loc: list[Path], old_idx: list[Path], scratch: Path,
+                      stats: list[tuple[int, int]], seen_path: Path, old_loc: list[Path], old_idx: list[Path], scratch: Path,
                       shard_bases: int, line_width: int, max_file_bytes: int) -> dict:
     con.execute(f"CREATE VIEW seen AS SELECT * FROM read_parquet({_sql_path(seen_path)})")
     con.execute("CREATE VIEW old_loc AS " + (
@@ -290,11 +297,15 @@ def _decide_and_write(con, root: Path, stage: str, ordered: list[tuple[bytes, So
             seqs: dict[bytes, bytes] = {}
             for i in batch:
                 path = Path(ordered[i][1].path)
+                if _stat(path) != stats[i]:
+                    raise ValueError(f"{path}: changed since the first pass (size or mtime)")
                 for k, rec in enumerate(fasta.iter_records(path)):
                     if nxt is None or nxt[0] != i:
                         break  # nothing more to keep from this object
                     if nxt[1] == k:
-                        if ids.raw_digest(rec.seq) != nxt[2]:
+                        # pass 1 hashed this record; its length and the object's size and mtime
+                        # stand in for a second hash (card B-23)
+                        if len(rec.seq) != nxt[3]:
                             raise ValueError(f"{path}: record {k} changed since the first pass")
                         seqs[nxt[2]] = rec.seq
                         nxt = next(wanted, None)
