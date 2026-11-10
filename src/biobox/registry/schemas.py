@@ -118,7 +118,7 @@ _SPECS = [
     ),
     TableSpec(
         name="seq_locator",
-        location="l0seq/seq_locator.parquet",
+        location="l0seq/seq_locator",
         layer="L0-seq",
         schema=pa.schema([
             _f("raw_digest", SHA256),
@@ -127,8 +127,9 @@ _SPECS = [
         ]),
         primary_key=("raw_digest",),
         sort_key=("raw_digest",),
-        small_ok=True,
-        doc="data_layer_and_tests.md §2A.1; DEC-17",
+        # one file per stage with the sequences first stored in it, never rewritten (AGENTS §3.10, card B-13)
+        partition_keys=("stage",),
+        doc="data_layer_and_tests.md §2A.1; DEC-17; planning/tasks/TASKS.md §2 (card B-13)",
     ),
     TableSpec(
         name="protein_seq",

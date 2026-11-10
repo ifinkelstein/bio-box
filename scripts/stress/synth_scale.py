@@ -305,9 +305,6 @@ run("1 neighborhood: tape and tokens", "SELECT sum(n_slots), sum(len(nr90_tokens
 run("1 neighborhood: slots of a protein", "SELECT count(*), sum(start) FROM slots_of(?)", [puid(base_tapes[base_recs[big][2]]["protein_uids"][60], N // 2)])
 
 store = SeqStore(root)
-loc = pq.read_table(root / "l0seq/seq_locator.parquet").to_pylist()
-shard_of = {r["raw_digest"]: r["shard"] for r in loc}
-dflt = store._default
 for k in (1, 50, 500):
     k = min(k, N * B)
     pick = [uids[int(qrng.integers(N))][int(qrng.integers(B))] for _ in range(k)]
@@ -317,9 +314,9 @@ for k in (1, 50, 500):
     name = f"export proxy: {k} whole contigs (a genome with {k} contigs)"
     run(name, "SELECT sum(length(seq_slice(contig_uid, 0, contig_len_of(contig_uid)))) FROM g")
     q = rep["queries"][name]
-    q["shards_touched"] = len({shard_of[dflt[u]] for u in pick})
+    q["shards_touched"] = len({store.shard_of(store.default_digest(u)) for u in pick})
     q["shards_total"] = len(shards)
-    q["bp_returned"] = sum(store.length_of(dflt[u]) for u in pick)
+    q["bp_returned"] = sum(store.length_of(store.default_digest(u)) for u in pick)
 rep["peak_rss_mb_queries"] = rss_mb()
 rep["rss_mb_before_open"] = r0
 rep["total_s"] = round(time.perf_counter() - T0, 1)

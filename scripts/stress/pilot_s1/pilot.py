@@ -144,7 +144,7 @@ genomes: list = []
 if not R["steps"]["ingest"].get("error"):
     occ = pq.read_table(ROOT / "l0seq/contig_occurrence/stage=S1/source=inphared/part-0.parquet",
                         columns=["raw_digest", "contig_uid"])
-    loc = pq.read_table(ROOT / "l0seq/seq_locator.parquet", columns=["raw_digest", "contig_len", "shard"])
+    loc = pq.read_table(ROOT / "l0seq/seq_locator/stage=S1/part-0.parquet", columns=["raw_digest", "contig_len", "shard"])
     ln_of = dict(zip(loc.column("raw_digest").to_pylist(), loc.column("contig_len").to_pylist()))
     rec_lens = [ln_of[rd] for rd in occ.column("raw_digest").to_pylist()]
     idx = pq.read_table(ROOT / "l0seq/contig_index/stage=S1/part-0.parquet").to_pylist()

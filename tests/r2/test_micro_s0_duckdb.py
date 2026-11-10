@@ -80,7 +80,7 @@ def _edge(root: Path, rd: bytes, k: int) -> int:
     """Sequence position of the k-th BGZF block boundary inside the record."""
     store = SeqStore(root)
     bg = store._shard(store.shard_of(rd))
-    e = bg.fai[rd.hex()]
+    e = bg.entry(rd.hex())
     rel = [u - e.offset for u in bg._ustart if u > e.offset][k]
     return rel - rel // e.line_width
 

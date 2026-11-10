@@ -73,7 +73,7 @@ def test_fixture_matches_contract():
     [
         ("contig_occurrence", "l0seq/contig_occurrence/stage=*/source=*/part-0.parquet"),
         ("contig_index", "l0seq/contig_index/stage=*/part-0.parquet"),
-        ("seq_locator", "l0seq/seq_locator.parquet"),
+        ("seq_locator", "l0seq/seq_locator/stage=*/part-0.parquet"),
         ("l0_manifest", "l0/l0_manifest.parquet"),
     ],
 )
@@ -242,3 +242,128 @@ def test_identical_sequence_stored_once_across_sources_and_stages(tmp_path):
             assert after[k] == v, f"S1 rewrote an S0 file: {k}"
     assert not list(root.glob("l0seq/seq_shards/stage=S1/*"))
     assert list(root.glob("l0seq/contig_occurrence/stage=S1/source=second_source/part-0.parquet"))
+
+
+# --- the index is looked up, not loaded (card B-13) --------------------------------
+
+
+@pytest.mark.covers("LY-06", "R-03")
+def test_store_open_reads_no_row_group_and_one_get_reads_one_of_each_index(store_root):
+    store = SeqStore(store_root)
+    assert store.locator.row_groups_read == 0 and store.index.row_groups_read == 0
+    assert store.locator.footers_read == 1 and store.index.footers_read == 1  # one stage, one file each
+    seq = fasta.read(_fixture_paths()[1])[0].seq
+    cu, rd = ids.contig_uid(seq), ids.raw_digest(seq)
+    assert store.get(cu, 1000, 3000, -1) == revcomp(seq[1000:3000])
+    assert store.locator.row_groups_read == 1 and store.index.row_groups_read == 1
+    assert store.default_digest(cu) == rd and store.length_of(rd) == len(seq)
+    assert store.shard_of(rd).startswith("l0seq/seq_shards/stage=S0/shard-")
+    assert store.locator.row_groups_read == 1 and store.index.row_groups_read == 1  # served by the cache
+
+
+def test_unknown_keys_raise_key_error(store_root):
+    store = SeqStore(store_root)
+    with pytest.raises(KeyError):
+        store.get(b"\x00" * 16)
+    with pytest.raises(KeyError):
+        store.default_digest(b"\xff" * 16)
+    with pytest.raises(KeyError):
+        store.raw(b"\x00" * 32)
+    with pytest.raises(KeyError):
+        store.length_of(b"\xff" * 32)
+
+
+@pytest.mark.covers("R-09")
+def test_second_stage_adds_locator_files_and_keeps_the_first_byte_identical(tmp_path):
+    lam = fasta.read(_fixture_paths()[0])[0]
+    other = fasta.read(_fixture_paths()[1])[0]
+    root = tmp_path / "s"
+    ingest(_objects([_fixture_paths()[0]]), root, stage="S0", shard_bases=200_000)
+    s0 = root / "l0seq/seq_locator/stage=S0/part-0.parquet"
+    before = s0.read_bytes()
+    assert pq.read_table(s0).column("raw_digest").to_pylist() == [ids.raw_digest(lam.seq)]
+    src = tmp_path / "src"
+    src.mkdir()
+    rc_path = _write_fasta(src / "lambda_rc.fna", "lambda_rc", revcomp(lam.seq))
+    ingest(_objects([rc_path, _fixture_paths()[1], _fixture_paths()[0]]), root, stage="S1", shard_bases=200_000)
+    assert s0.read_bytes() == before
+    assert sorted(p.relative_to(root).as_posix() for p in (root / "l0seq").rglob("seq_locator*")) == [
+        "l0seq/seq_locator"]
+    s1 = root / "l0seq/seq_locator/stage=S1/part-0.parquet"
+    assert sorted(p.relative_to(root / "l0seq/seq_locator").as_posix() for p in s0.parents[1].rglob("*.parquet")) == [
+        "stage=S0/part-0.parquet", "stage=S1/part-0.parquet"]
+    t1 = pq.read_table(s1)
+    # only the sequences first stored in S1, sorted by raw_digest
+    assert t1.column("raw_digest").to_pylist() == sorted([ids.raw_digest(revcomp(lam.seq)), ids.raw_digest(other.seq)])
+    assert conformance_problems(t1, table("seq_locator")) == []
+    md = pq.read_metadata(s1)
+    assert all(md.row_group(g).column(0).statistics.has_min_max for g in range(md.num_row_groups))
+    store = SeqStore(root)
+    assert store.locator.footers_read == 2
+    for s in (lam.seq, revcomp(lam.seq), other.seq):
+        assert store.get(ids.contig_uid(s), 5, 905) == s[5:905]
+    assert store.shard_of(ids.raw_digest(lam.seq)).startswith("l0seq/seq_shards/stage=S0/")
+    assert store.shard_of(ids.raw_digest(other.seq)).startswith("l0seq/seq_shards/stage=S1/")
+
+
+def _many_records(n: int, seed: int) -> list[tuple[str, bytes]]:
+    rng = random.Random(seed)
+    return sorted((hashlib.sha256(str(i).encode()).hexdigest(),
+                   bytes(rng.choice(b"ACGT") for _ in range(rng.randrange(1, 300)))) for i in range(n))
+
+
+@pytest.mark.covers("LY-06")
+def test_fai_lookup_touches_about_log2_n_lines(tmp_path):
+    import math
+
+    from biobox.l0seq.bgzf import BgzfFasta, read_fai, write_bgzf_fasta
+
+    n = 4096
+    recs = _many_records(n, 9)
+    out = tmp_path / "s.fa.gz"
+    write_bgzf_fasta(recs, out)
+    bg = BgzfFasta(out)
+    assert bg.fai_lines_read == 0  # opening reads no line of the index
+    bound = math.ceil(math.log2(n)) + 3
+    rng = random.Random(10)
+    worst = 0
+    for name, seq in rng.sample(recs, 300):
+        before = bg.fai_lines_read
+        assert bg.fetch(name, 0, len(seq)) == seq
+        worst = max(worst, bg.fai_lines_read - before)
+    assert 0 < worst <= bound, worst
+    before = bg.fai_lines_read
+    assert bg.fetch(name, 0, 1) == seq[:1]  # a repeat is served by the entry cache
+    assert bg.fai_lines_read == before
+    full = read_fai(str(out) + ".fai")  # oracle: the whole index, read line by line
+    for e in [full[0], full[-1], *rng.sample(full, 50)]:
+        assert bg.entry(e.name) == e
+    for absent in ("0" * 64, "f" * 65, "", recs[7][0][:-1], recs[7][0] + "0"):
+        with pytest.raises(KeyError):
+            bg.entry(absent)
+    assert bg.check_sorted()
+
+
+@pytest.mark.covers("LY-02")
+def test_unsorted_fai_is_reported(tmp_path):
+    from biobox.l0seq.bgzf import BgzfFasta, write_bgzf_fasta
+
+    recs = _many_records(200, 11)
+    out = tmp_path / "s.fa.gz"
+    write_bgzf_fasta(recs, out)
+    fai = Path(str(out) + ".fai")
+    fai.write_text("".join(fai.read_text().splitlines(keepends=True)[::-1]))
+    bg = BgzfFasta(out)
+    assert not bg.check_sorted()
+    raised = 0
+    for name, _ in recs[:40]:
+        try:
+            e = bg.entry(name)
+        except ValueError as err:
+            assert "not sorted by name" in str(err)
+            raised += 1
+        except KeyError:
+            pass
+        else:
+            assert e.name == name
+    assert raised > 0

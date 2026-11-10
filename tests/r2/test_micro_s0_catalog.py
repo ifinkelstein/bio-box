@@ -258,7 +258,7 @@ def test_partition_columns_come_from_paths(con):
 def _block_edges(store: SeqStore, rd: bytes) -> list[int]:
     """Sequence positions where one BGZF block of the record's shard ends and the next begins."""
     bg = store._shard(store.shard_of(rd))
-    e = bg.fai[rd.hex()]
+    e = bg.entry(rd.hex())
     out = []
     for u in bg._ustart[1:]:
         rel = u - e.offset

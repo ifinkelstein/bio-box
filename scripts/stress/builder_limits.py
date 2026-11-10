@@ -41,10 +41,12 @@ rds = sorted(rd[i * 32 : (i + 1) * 32] for i in range(M))
 cus = sorted(cu[i * 16 : (i + 1) * 16] for i in range(M))
 r2 = scratch / "locator_1e6"
 (r2 / "l0seq/contig_index/stage=S0").mkdir(parents=True, exist_ok=True)
+(r2 / "l0seq/seq_locator/stage=S0").mkdir(parents=True, exist_ok=True)
+LOC = r2 / "l0seq/seq_locator/stage=S0/part-0.parquet"
 pq.write_table(pa.table({"raw_digest": pa.array(rds, pa.binary(32)),
                          "shard": pa.array([f"l0seq/seq_shards/stage=S0/shard-{i % 400:04d}.fa.gz" for i in range(M)]),
                          "contig_len": pa.array(np.full(M, 20000, dtype=np.int64))}).cast(table("seq_locator").schema),
-               r2 / "l0seq/seq_locator.parquet", compression="zstd", row_group_size=122_880)
+               LOC, compression="zstd", row_group_size=122_880)
 pq.write_table(pa.table({"contig_uid": pa.array(cus, pa.binary(16)), "raw_digest": pa.array(rds, pa.binary(32)),
                          "contig_len": pa.array(np.full(M, 20000, dtype=np.int64)),
                          "is_default_variant": pa.array(np.ones(M, dtype=bool))}).cast(table("contig_index").schema),
@@ -57,6 +59,6 @@ dt = time.perf_counter() - t0
 cur, peak = tracemalloc.get_traced_memory()
 out["seqstore_open_1e6_contigs"] = {
     "seconds": round(dt, 2), "heap_mb_held": round(cur / 2**20), "heap_mb_peak": round(peak / 2**20),
-    "locator_file_mb": round(os.path.getsize(r2 / "l0seq/seq_locator.parquet") / 2**20, 1),
+    "locator_file_mb": round(os.path.getsize(LOC) / 2**20, 1),
     "contig_index_file_mb": round(os.path.getsize(r2 / "l0seq/contig_index/stage=S0/part-0.parquet") / 2**20, 1)}
 print(json.dumps(out, indent=1))

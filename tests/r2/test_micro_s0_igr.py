@@ -56,7 +56,7 @@ def test_r05_igrs_lie_between_their_flanking_slots(built):
     store = SeqStore(root)
     assert rows
     for r in rows:
-        n = store.length_of(store._default[r["contig_uid"]])
+        n = store.length_of(store.default_digest(r["contig_uid"]))
         if r["left_slot"] is not None:
             assert slots[(r["contig_uid"], r["left_slot"])]["end"] % n == r["start"] % n
         if r["right_slot"] is not None:
@@ -67,7 +67,7 @@ def test_r05_igrs_lie_between_their_flanking_slots(built):
     for (cu, _), s in slots.items():
         by_contig.setdefault(cu, []).append(s)
     for r in rows:
-        n = store.length_of(store._default[r["contig_uid"]])
+        n = store.length_of(store.default_digest(r["contig_uid"]))
         span = {p % n for p in range(r["start"], r["end"])}
         for s in by_contig.get(r["contig_uid"], []):
             assert not span & {p % n for p in range(s["start"], s["end"])}
