@@ -18,7 +18,10 @@
    "in_operon",
    "censored",
    "crosses_origin",
-   "policy_hash"
+   "policy_hash",
+   "anchor_feature_uid",
+   "feature_uid",
+   "tape_version"
   ],
   "version": 1
  },
@@ -60,7 +63,8 @@
    "curation_label",
    "curation_reason",
    "n_occurrences",
-   "occurrences"
+   "occurrences",
+   "tape_version"
   ],
   "version": 1
  },

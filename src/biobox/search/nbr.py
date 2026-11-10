@@ -17,6 +17,11 @@ On a circular contig a slot is reached the shorter way round (by slot offset for
 windows, forward on a tie; by gap for bp windows, forward on a tie), and flag bit 1 marks a
 neighbor reached across the origin. `offset` is along the contig; `offset_rel` is along the
 anchor's strand, positive downstream of it.
+
+Slots are named by `feature_uid` (AGENTS §3.3, card B-16). An anchor is a protein occurrence,
+identified by `(contig_uid, feature_uid)`; its ordinal is looked up in the one tape version the
+fetch reads, and every row carries `anchor_feature_uid`, `feature_uid` and that `tape_version`
+beside the ordinals, which are valid inside it only.
 """
 
 from __future__ import annotations
@@ -32,7 +37,7 @@ import pyarrow.parquet as pq
 
 from biobox.l1.genecall import GENE_CALL_VERSION
 from biobox.l3.geometry import cyclic_offset, pair_geometry
-from biobox.l3.tapes import tape_version
+from biobox.l3.tapes import tape_version as tape_version_of
 from biobox.registry.schemas import table
 
 FLAG_CENSORED = 1
@@ -175,40 +180,75 @@ def _row(tape, i, j, d, anchor_strand, topo, delta, operon, flags, policy) -> di
             "ordinal": j, "offset": d, "offset_rel": d * anchor_strand, "protein_uid": tape["protein_uids"][j],
             "start": tape["start_bps"][j], "end": tape["end_bps"][j], "strand": tape["strands"][j],
             "delta_bp": delta, "junction_topology": topo, "same_strand": tape["strands"][j] == anchor_strand,
-            "in_operon": None if operon is None else j in operon, "flags": flags, "policy_hash": policy.hash()}
+            "in_operon": None if operon is None else j in operon, "flags": flags, "policy_hash": policy.hash(),
+            "anchor_feature_uid": tape["feature_uids"][i], "feature_uid": tape["feature_uids"][j],
+            "tape_version": tape.get("tape_version")}
 
 
-def _tapes(root: Path, gene_call_version: str, contigs: set[bytes]) -> dict[bytes, dict]:
+def resolve_tape_version(gene_call_version: str = GENE_CALL_VERSION, tape_version: str | None = None,
+                         producers: list[str] | None = None) -> str:
+    """The tape version a read uses: `tape_version` if given, else that of `producers` (default: the
+    single gene-call producer, card B-07)."""
+    if tape_version is not None:
+        return tape_version
+    return tape_version_of(producers if producers is not None else [gene_call_version])
+
+
+def _tapes(root: Path, tv: str, contigs: set[bytes]) -> dict[bytes, dict]:
+    """The tapes of tape version tv for the contigs, each with its `tape_version`."""
     out = {}
-    tv = tape_version([gene_call_version])  # the gene-call producer's tapes (card B-07)
     for f in sorted((Path(root) / "l3/tapes").glob(f"tape_version={tv}/stage=*/part-*.parquet")):
         t = pq.read_table(f, filters=[("contig_uid", "in", sorted(contigs))]) if contigs else None
         for r in (t.to_pylist() if t is not None else []):
-            out[r["contig_uid"]] = r
+            out[r["contig_uid"]] = {**r, "tape_version": tv}
     return out
 
 
-def occurrences(root: Path, protein_uids: set[bytes], gene_call_version: str = GENE_CALL_VERSION) -> list[dict]:
+def _ordinal(tapes: dict[bytes, dict], index: dict[bytes, dict], cu: bytes, fu: bytes, tv: str) -> int:
+    """The ordinal of feature fu of contig cu inside tape version tv."""
+    if cu not in tapes:
+        raise ValueError(f"contig {cu.hex()} has no tape in tape_version {tv}")
+    if cu not in index:
+        index[cu] = {u: k for k, u in enumerate(tapes[cu]["feature_uids"])}
+    if fu not in index[cu]:
+        raise ValueError(f"feature {fu.hex()} of contig {cu.hex()} is not a slot of tape_version {tv}")
+    return index[cu][fu]
+
+
+def occurrences(root: Path, protein_uids: set[bytes], gene_call_version: str = GENE_CALL_VERSION,
+                tape_version: str | None = None) -> list[dict]:
+    """protein_occurrence rows of the proteins. With `tape_version`, each row's `slot_ordinal` is the
+    ordinal of its feature in that tape version, and the row carries `tape_version`."""
     files = sorted((Path(root) / "l1/protein_occurrence").glob(f"gene_call_version={gene_call_version}/stage=*/part-*.parquet"))
     if not protein_uids:
         return []
-    return [r for f in files for r in pq.read_table(f, filters=[("protein_uid", "in", sorted(protein_uids))]).to_pylist()]
+    rows = [r for f in files for r in pq.read_table(f, filters=[("protein_uid", "in", sorted(protein_uids))]).to_pylist()]
+    if tape_version is None:
+        return rows
+    tapes, index = _tapes(root, tape_version, {r["contig_uid"] for r in rows}), {}
+    return [{**r, "slot_ordinal": _ordinal(tapes, index, r["contig_uid"], r["feature_uid"], tape_version),
+             "tape_version": tape_version} for r in rows]
 
 
-def fetch(root: Path, protein_uids: set[bytes], policy: Policy,
-          gene_call_version: str = GENE_CALL_VERSION) -> tuple[list[dict], dict]:
-    """Neighborhoods of every occurrence of the anchor proteins; (rows, counts)."""
+def fetch(root: Path, protein_uids: set[bytes], policy: Policy, gene_call_version: str = GENE_CALL_VERSION,
+          tape_version: str | None = None, producers: list[str] | None = None) -> tuple[list[dict], dict]:
+    """Neighborhoods of every occurrence of the anchor proteins; (rows, counts).
+
+    The tapes read are those of `tape_version` (default: the tape version of `producers`, which
+    defaults to the gene-call producer). Each anchor is found on its tape by its feature_uid."""
+    tv = resolve_tape_version(gene_call_version, tape_version, producers)
     occ = occurrences(root, protein_uids, gene_call_version)
-    tapes = _tapes(root, gene_call_version, {r["contig_uid"] for r in occ})
+    tapes, index = _tapes(root, tv, {r["contig_uid"] for r in occ}), {}
     rows, dropped = [], 0
-    for r in sorted(occ, key=lambda r: (r["contig_uid"], r["slot_ordinal"])):
-        got = neighborhood(tapes[r["contig_uid"]], r["slot_ordinal"], policy)
+    for r in sorted(occ, key=lambda r: (r["contig_uid"], r["feature_uid"])):
+        i = _ordinal(tapes, index, r["contig_uid"], r["feature_uid"], tv)
+        got = neighborhood(tapes[r["contig_uid"]], i, policy)
         if got is None:
             dropped += 1
         else:
             rows += got
     rows.sort(key=lambda r: (r["anchor_protein_uid"], r["contig_uid"], r["anchor_ordinal"], r["offset"]))
-    return rows, {"anchors": len(occ), "anchors_dropped_by_edge": dropped, "rows": len(rows)}
+    return rows, {"anchors": len(occ), "anchors_dropped_by_edge": dropped, "rows": len(rows), "tape_version": tv}
 
 
 def write(rows: list[dict], path: Path) -> Path:

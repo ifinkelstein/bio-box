@@ -24,11 +24,12 @@ import pyarrow.parquet as pq
 import pyhmmer
 import pytest
 
-from biobox import catalog, contracts, ids
+from biobox import catalog, cli, contracts, ids
 from biobox.l1 import domains, igr
 from biobox.l1.genecall import GENE_CALL_VERSION as V
-from biobox.registry.schemas import table
-from biobox.search import engine, export, fastz, orfs, pack, runner
+from biobox.l3 import tapes
+from biobox.registry.schemas import conformance_problems, table
+from biobox.search import engine, export, fastz, nbr, orfs, pack, runner
 from biobox.search import recipe as rcp
 from biobox.search.recipe import RecipeError
 
@@ -368,6 +369,21 @@ def test_s13_cli_json_records_match_the_locked_schemas(world, tmp_path):
     nb = [json.loads(x) for x in lines]
     assert nb and all(list(r) == locked["neighborhood"]["keys"] for r in nb)
     assert {r["anchor_protein_uid"] for r in nb} == {h["target_uid"] for h in hits}
+    # card B-16 (AGENTS §3.3): every exported ordinal has its feature_uid beside it, in the run's tape version
+    tv = tapes.tape_version([V])
+    tps, feats = _tape_rows(root, tv), _features(root)
+    assert all(h["tape_version"] == tv for h in hits)
+    for h in hits:
+        for o in h["occurrences"]:
+            tape = tps[bytes.fromhex(o["contig_uid"])]
+            assert tape["feature_uids"][o["slot_ordinal"]].hex() == o["feature_uid"]
+            assert feats[bytes.fromhex(o["feature_uid"])]["start"] == o["start"]
+    for r in nb:
+        tape = tps[bytes.fromhex(r["contig_uid"])]
+        assert r["tape_version"] == tv
+        assert tape["feature_uids"][r["ordinal"]].hex() == r["feature_uid"]
+        assert tape["feature_uids"][r["anchor_ordinal"]].hex() == r["anchor_feature_uid"]
+        assert bytes.fromhex(r["feature_uid"]) in feats and bytes.fromhex(r["anchor_feature_uid"]) in feats
 
 
 def test_async_submit_then_status(world, tmp_path):
@@ -392,6 +408,158 @@ def test_neighborhoods_written_for_final_hits(world):
     final = {h["target_uid"] for h in runner.read_hits(root, row["run_id"].hex())}
     assert {r["anchor_protein_uid"] for r in nb} == final
     assert all(abs(r["offset"]) <= 5 for r in nb)
+
+
+# --- card B-16: search outputs name slots by feature_uid and say which tape version -------------------
+
+
+def _tape_rows(root: Path, tv: str) -> dict[bytes, dict]:
+    return {r["contig_uid"]: r for f in sorted((root / "l3/tapes").glob(f"tape_version={tv}/stage=*/part-*.parquet"))
+            for r in pq.read_table(f, partitioning=None).to_pylist()}
+
+
+def _features(root: Path) -> dict[bytes, dict]:
+    return {r["feature_uid"]: r for f in sorted((root / "l1/feature").glob("producer=*/stage=*/part-*.parquet"))
+            for r in pq.read_table(f, partitioning=None).to_pylist()}
+
+
+def _check_neighborhood_rows(root: Path, rows: list[dict], tv: str) -> None:
+    """Each row's feature uids are the tape's at its ordinals (in tape version tv) and resolve in `feature`."""
+    tps, feats = _tape_rows(root, tv), _features(root)
+    assert rows
+    for r in rows:
+        tape = tps[r["contig_uid"]]
+        assert r["tape_version"] == tv
+        assert r["feature_uid"] == tape["feature_uids"][r["ordinal"]]
+        assert r["anchor_feature_uid"] == tape["feature_uids"][r["anchor_ordinal"]]
+        f = feats[r["feature_uid"]]
+        assert (f["contig_uid"], f["start"], f["end"], f["strand"]) == (r["contig_uid"], r["start"], r["end"], r["strand"])
+        assert feats[r["anchor_feature_uid"]]["contig_uid"] == r["contig_uid"]
+    keys = [(r["contig_uid"], r["anchor_feature_uid"], r["feature_uid"], r["policy_hash"]) for r in rows]
+    assert len(set(keys)) == len(keys)
+
+
+@pytest.mark.covers("S-09")
+def test_b16_run_neighborhoods_name_slots_by_feature_uid_in_the_packs_tape_version(world):
+    root, _, man = world
+    tv = tapes.tape_version([V])
+    assert man["tape_version"] == tv
+    assert table("neighborhoods").primary_key == ("contig_uid", "anchor_feature_uid", "feature_uid", "policy_hash")
+    hit, _ = _seed(root)
+    row = _run(world, _recipe(hit, hit, extra="context: {window: 5g, edge: truncate}\n"))
+    t = pq.read_table(runner.run_dir(root, row["run_id"]) / "neighborhoods.parquet")
+    assert conformance_problems(t, table("neighborhoods")) == []
+    _check_neighborhood_rows(root, t.to_pylist(), tv)
+
+
+@pytest.mark.covers("C-12")
+def test_b16_search_region_flanks_are_the_igr_tables_feature_uids(world):
+    root, _, man = world
+    tv = tapes.tape_version([V])
+    assert (man["tape_version"], man["igr_version"]) == (tv, igr.igr_version([V]))
+    feats, tape = _features(root), _tape_rows(root, tv)
+    src = {(r["contig_uid"], r["start"], r["end"]): r
+           for f in sorted((root / "l0seq/igr").glob(f"igr_version={man['igr_version']}/stage=*/part-*.parquet"))
+           for r in pq.read_table(f, partitioning=None).to_pylist()}
+    pdir = pack.pack_dir(root, REL)
+    n_flanks = 0
+    for target in ("igr", "dark_orf"):
+        t = pq.read_table(pdir / f"{target}/{target}_meta.parquet")
+        assert conformance_problems(t, table("search_region")) == []
+        for m in t.to_pylist():
+            for side in ("left", "right"):
+                fu, slot = m[f"{side}_feature_uid"], m[f"{side}_slot"]
+                assert (fu is None) == (slot is None), (target, side)
+                if fu is not None:
+                    n_flanks += 1
+                    assert feats[fu]["contig_uid"] == m["contig_uid"]
+                    assert tape[m["contig_uid"]]["feature_uids"][slot] == fu  # the legacy slot names the same feature
+            if target == "igr":
+                s = src[(m["contig_uid"], m["start"], m["end"])]
+                assert (m["left_feature_uid"], m["right_feature_uid"]) == (s["left_feature_uid"], s["right_feature_uid"])
+    assert n_flanks > 0
+
+
+NEW = "test-ncrna"
+TWO = "rS0.two"
+
+
+@pytest.fixture(scope="module")
+def two(world, tmp_path_factory):
+    """The micro-S0 store with a second producer: one kind-2 feature in an IGR of M. genitalium; IGRs, tapes
+    and the pack of release TWO are built for both producers, beside the one-producer ones."""
+    d = tmp_path_factory.mktemp("two")
+    root = d / "a"
+    shutil.copytree(world[0], root)
+    circ = {cu for cu, t in _tape_rows(root, tapes.tape_version([V])).items() if t["is_circular"]}
+    mg = next(iter(circ))  # the only circular contig is M. genitalium
+    fu = micro._add_ncrna(root, mg)
+    producers = [V, NEW]
+    igr.run(root, "S0", circ, producers=producers)
+    tapes.run(root, "S0", circ, producers=producers)
+    man = pack.build(root, TWO, models={"test-1": world[1] / "a.hmm"}, producers=producers)
+    return root, d, man, mg, fu
+
+
+@pytest.mark.covers("MR-20", "S-09")
+def test_b16_neighbor_feature_uids_stay_when_a_producer_adds_a_feature_and_ordinals_move(two):
+    root, _, man, mg, fu = two
+    tv1, tv2 = tapes.tape_version([V]), tapes.tape_version([V, NEW])
+    assert man["tape_version"] == tv2 != tv1
+    t2 = _tape_rows(root, tv2)[mg]
+    i, n, k = t2["feature_uids"].index(fu), t2["n_slots"], 3
+    # anchors on M. genitalium whose k-gene window in the two-producer tape does not reach the new feature
+    far = [j for j in range(n) if min((j - i) % n, (i - j) % n) > k and t2["protein_uids"][j] is not None]
+    far_fus = {t2["feature_uids"][j] for j in far}
+    uids = {t2["protein_uids"][j] for j in far}
+    policy = nbr.Policy.parse(window=f"{k}g")
+    one, _ = nbr.fetch(root, uids, policy)  # default: the gene-call producer's tape version
+    other, _ = nbr.fetch(root, uids, policy, tape_version=tv2)
+    _check_neighborhood_rows(root, one, tv1)
+    _check_neighborhood_rows(root, other, tv2)
+
+    def kept(rows):  # coding neighbors of the far anchors (a protein may also occur next to the new feature)
+        return [r for r in rows if r["protein_uid"] is not None and (r["contig_uid"] != mg or r["anchor_feature_uid"] in far_fus)]
+
+    def triples(rows):
+        return {(r["contig_uid"], r["anchor_feature_uid"], r["feature_uid"]) for r in kept(rows)}
+
+    assert triples(one) == triples(other) and any(r["contig_uid"] == mg for r in kept(one))
+    assert fu not in {r["feature_uid"] for r in other}
+    ords = [{(r["anchor_feature_uid"], r["feature_uid"]): (r["anchor_ordinal"], r["ordinal"])
+             for r in kept(rows) if r["contig_uid"] == mg} for rows in (one, other)]
+    assert set(ords[0]) == set(ords[1])
+    # the ordinals of the same features move by one downstream of the new feature (at index i of tape 2)
+    for key, (a, o) in ords[0].items():
+        assert ords[1][key] == (a + (a >= i), o + (o >= i))
+    assert any(ords[0][key] != ords[1][key] for key in ords[0])
+
+
+@pytest.mark.covers("S-05")
+def test_b16_a_run_is_refused_on_a_tape_version_other_than_the_packs(two, capsys):
+    root, d, man, mg, fu = two
+    tv1, tv2 = tapes.tape_version([V]), tapes.tape_version([V, NEW])
+    hit, _ = _seed(root)
+    text = _recipe(hit, hit, extra="context: {window: 3g, edge: truncate}\n").replace(
+        f"written_against: {REL}", f"written_against: {TWO}")
+    before = sorted(runner.runs_dir(root).glob("run=*"))
+    with pytest.raises(RecipeError, match=f"tape version {tv1}.*{tv2}"):
+        runner.run(root, text, TWO, work_base=d / "work", limits=LIMITS, tape_version=tv1)
+    assert sorted(runner.runs_dir(root).glob("run=*")) == before  # a refusal records nothing
+    # the pack's own tape version is the run's: neighborhoods and hit occurrences use its ordinals
+    row = runner.run(root, text, TWO, work_base=d / "work", limits=LIMITS)
+    assert row["status"] == "ok", row["error"]
+    nb = pq.read_table(runner.run_dir(root, row["run_id"]) / "neighborhoods.parquet").to_pylist()
+    _check_neighborhood_rows(root, nb, tv2)
+    assert cli.main(["search", "hits", row["run_id"].hex(), "--root", str(root), "--json"]) == 0
+    hits = [json.loads(x) for x in capsys.readouterr().out.splitlines()]
+    tps = _tape_rows(root, tv2)
+    assert hits and all(h["tape_version"] == tv2 for h in hits)
+    for o in (o for h in hits for o in h["occurrences"]):
+        assert tps[bytes.fromhex(o["contig_uid"])]["feature_uids"][o["slot_ordinal"]].hex() == o["feature_uid"]
+    assert cli.main(["nbr", "--anchors", row["run_id"].hex(), "--root", str(root), "--json",
+                     "--tape-version", tv1]) == 2
+    assert "tape version" in capsys.readouterr().err
 
 
 # --- S-07: planted drift trap ---------------------------------------------------------------------------------

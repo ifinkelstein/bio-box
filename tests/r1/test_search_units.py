@@ -183,7 +183,8 @@ def contigs(draw, circular=None):
 def _tape(slots, length, circ):
     return {"contig_uid": b"c" * 16, "contig_len": length, "is_circular": circ,
             "start_bps": [s for s, _, _ in slots], "end_bps": [e for _, e, _ in slots],
-            "strands": [x for _, _, x in slots], "protein_uids": [bytes([i]) * 16 for i in range(len(slots))]}
+            "strands": [x for _, _, x in slots], "protein_uids": [bytes([i]) * 16 for i in range(len(slots))],
+            "feature_uids": [bytes([0xF0, i]) * 8 for i in range(len(slots))]}
 
 
 def _gap(a, b):
@@ -352,6 +353,23 @@ def test_s09_mr05_cut_changes_only_windows_across_the_cut(c, policy, data):
                                                                       or a[1] + policy.window_bp > plen)
 
 
+@settings(max_examples=300, deadline=None)
+@given(contigs(), POLICIES, st.data())
+@pytest.mark.covers("S-09")
+def test_b16_neighborhood_rows_name_their_slots_by_feature_uid(c, policy, data):
+    """AGENTS §3.3: every row with an ordinal carries the feature_uid at that ordinal and the tape version."""
+    slots, length, circ = c
+    i = data.draw(st.integers(0, len(slots) - 1))
+    tape = {**_tape(slots, length, circ), "tape_version": "t-0123456789ab"}
+    rows = nbr.neighborhood(tape, i, policy)
+    assume(rows is not None)
+    for r in rows:
+        assert r["anchor_ordinal"] == i and r["anchor_feature_uid"] == bytes([0xF0, i]) * 8
+        assert r["feature_uid"] == bytes([0xF0, r["ordinal"]]) * 8
+        assert r["tape_version"] == "t-0123456789ab"
+    assert len({r["feature_uid"] for r in rows}) == len(rows)  # no duplicate under the primary key
+
+
 def test_s09_edge_policies_and_flags_on_a_fixed_contig():
     slots = [(0, 300, 1), (350, 900, 1), (1_000, 1_500, -1), (1_520, 2_000, -1), (5_000, 5_600, 1)]
     t = _tape(slots, 6_000, False)
@@ -499,3 +517,33 @@ def test_s13_json_schemas_match_the_lock():
     assert export.lock_problems(locked, bumped) == []
     added = {k: {**v, "keys": v["keys"] + ["extra"]} for k, v in export.SCHEMAS.items()}
     assert export.lock_problems(locked, added) == []
+
+
+ORDINAL_KEYS = {"slot_ordinal", "anchor_ordinal", "ordinal"}
+
+
+@pytest.mark.covers("S-13")
+def test_b16_json_records_with_an_ordinal_carry_feature_uid_and_tape_version():
+    """AGENTS §3.3: no exported ordinal without the feature_uid beside it and the tape version it belongs to."""
+    tv, cu, anchor, fu, pu = "t-0123456789ab", b"\x01" * 16, b"\x02" * 16, b"\x03" * 16, b"\x04" * 16
+    nb = {"anchor_protein_uid": pu, "contig_uid": cu, "anchor_ordinal": 4, "ordinal": 5, "offset": 1, "offset_rel": 1,
+          "protein_uid": pu, "start": 10, "end": 20, "strand": 1, "delta_bp": 3, "junction_topology": 1,
+          "same_strand": True, "in_operon": None, "flags": 2, "policy_hash": "p", "anchor_feature_uid": anchor,
+          "feature_uid": fu, "tape_version": tv}
+    [rec] = export.nbr_records([nb])
+    assert (rec["anchor_feature_uid"], rec["feature_uid"], rec["tape_version"]) == (anchor.hex(), fu.hex(), tv)
+    assert (rec["anchor_ordinal"], rec["ordinal"]) == (4, 5)
+    hit = {"target_uid": pu, "target_kind": "protein", "seq_bitscore": 50.0, "bitscore": 40.0}
+    occ = {"contig_uid": cu, "slot_ordinal": 5, "feature_uid": fu, "genome_uid": cu, "start": 10, "end": 20,
+           "strand": 1, "tier": 1}
+    [rec] = export.hit_records([hit], {pu: [occ]}, tape_version=tv)
+    assert rec["tape_version"] == tv
+    assert [(o["slot_ordinal"], o["feature_uid"]) for o in rec["occurrences"]] == [(5, fu.hex())]
+    # every record kind whose keys (or nested occurrences) name an ordinal names the tape version too
+    for kind, spec in export.SCHEMAS.items():
+        keys = set(spec["keys"])
+        if keys & ORDINAL_KEYS:
+            assert {"feature_uid", "tape_version"} <= keys, kind
+            assert "anchor_ordinal" not in keys or "anchor_feature_uid" in keys, kind
+        if "occurrences" in keys:
+            assert "tape_version" in keys, kind

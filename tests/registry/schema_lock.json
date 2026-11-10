@@ -816,6 +816,21 @@
    "policy_hash",
    "string",
    false
+  ],
+  [
+   "anchor_feature_uid",
+   "fixed_size_binary[16]",
+   false
+  ],
+  [
+   "feature_uid",
+   "fixed_size_binary[16]",
+   false
+  ],
+  [
+   "tape_version",
+   "string",
+   true
   ]
  ],
  "protein_occurrence": [
@@ -1130,6 +1145,16 @@
   [
    "genetic_code",
    "uint8",
+   true
+  ],
+  [
+   "left_feature_uid",
+   "fixed_size_binary[16]",
+   true
+  ],
+  [
+   "right_feature_uid",
+   "fixed_size_binary[16]",
    true
   ]
  ],

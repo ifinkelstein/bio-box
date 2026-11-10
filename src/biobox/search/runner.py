@@ -251,11 +251,18 @@ def new_run_id(recipe_hash: str, release: str, pack_id: bytes, submitted: dateti
 
 def run(root: Path, recipe_src: Path | str, release: str, *, limits: Limits = Limits(),
         work_base: Path | None = None, argv: list[str] | None = None, run_id: bytes | None = None,
-        fault: str | None = None, gene_call_version: str = GENE_CALL_VERSION, keep_work: bool = False) -> dict:
-    """Run one recipe to completion; returns the search_run row. Refusals raise RecipeError."""
+        fault: str | None = None, gene_call_version: str = GENE_CALL_VERSION, keep_work: bool = False,
+        tape_version: str | None = None) -> dict:
+    """Run one recipe to completion; returns the search_run row. Refusals raise RecipeError.
+
+    The run reads the tape version of its pack (card B-16); `tape_version`, when given, must be it."""
     root = Path(root).resolve()
     r, text = rcp.load(Path(recipe_src) if isinstance(recipe_src, Path) else recipe_src)
     res = resolve(root, r, release)
+    pack_tv = pack.manifest_tape_version(res["manifest"])
+    if tape_version is not None and tape_version != pack_tv:
+        raise RecipeError(f"tape version {tape_version} is not the tape version {pack_tv} of the {release} pack: "
+                          "a run reads the one tape version its pack's flanks refer to")
     r = res["recipe"]
     submitted = datetime.now(timezone.utc)
     rh = rcp.recipe_hash(r)
@@ -285,7 +292,7 @@ def run(root: Path, recipe_src: Path | str, release: str, *, limits: Limits = Li
                "positives": res["positives"], "target_kind": rcp.RUN_TARGETS[r["target"]],
                "shards": [str(p) for p in shards], "models": [str(p) for p in models],
                "meta": str(res["pack_dir"] / f"{r['target']}/{r['target']}_meta.parquet") if r["target"] != "unique" else None,
-               "gene_call_version": gene_call_version, "cpus": limits.cpus,
+               "gene_call_version": gene_call_version, "tape_version": pack_tv, "cpus": limits.cpus,
                "max_output_bytes": int(r["max_output_gb"] * GB), "fault": fault,
                "negative_seed": int.from_bytes(run_id[:4], "big")}
         (work / "job.json").write_text(json.dumps(job, sort_keys=True))

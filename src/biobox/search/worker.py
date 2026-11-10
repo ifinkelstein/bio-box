@@ -165,7 +165,8 @@ def main(job_path: str) -> int:
     partial = _partial(root, job, target)
     fams = _families(root) if target.kind == "protein" and cur["foreign_domain_alarm"] else None
     policy = nbr.Policy.parse(**recipe["context"])
-    tv = tape_version([job["gene_call_version"]])  # the gene-call producer's tapes (card B-07)
+    # the one tape version the run reads: its pack's (card B-16), the gene-call producer's for an older job
+    tv = job.get("tape_version") or tape_version([job["gene_call_version"]])
     have_tapes = any((root / "l3/tapes").glob(f"tape_version={tv}/stage=*/part-*.parquet"))
     warnings = []
     if fams is None and "drift_alarm" in it["stop"]:
@@ -179,7 +180,7 @@ def main(job_path: str) -> int:
         return {u: fams.get(u, set()) for u in uids}
 
     def context(uids):
-        rows, _ = nbr.fetch(root, set(uids), policy, job["gene_call_version"])
+        rows, _ = nbr.fetch(root, set(uids), policy, job["gene_call_version"], tape_version=tv)
         ctx: dict[bytes, set[str]] = {u: set() for u in uids}
         for r in rows:
             if r["offset"] != 0:
@@ -226,12 +227,13 @@ def main(job_path: str) -> int:
     warnings += _degenerate([r for r in hit_rows if r["round"] == final_round and r["curation_label"] == "keep"])
     n_nbr = 0
     if status in ("ok", "failed") and "neighborhoods" in recipe["outputs"] and target.kind == "protein" and have_tapes:
-        rows, counts = nbr.fetch(root, final, policy, job["gene_call_version"])
+        rows, counts = nbr.fetch(root, final, policy, job["gene_call_version"], tape_version=tv)
         nbr.write(rows, out / "neighborhoods.parquet")
         n_nbr = counts["rows"]
     result = {"status": status, "error": error, "rounds": last.k, "final_round": final_round,
               "stop_reason": last.checks.get("stop"), "controls": controls, "warnings": warnings,
-              "target_size": target.size, "rounds_log": rounds_log, "n_final": len(final), "n_neighborhood_rows": n_nbr}
+              "target_size": target.size, "rounds_log": rounds_log, "n_final": len(final), "n_neighborhood_rows": n_nbr,
+              "tape_version": tv}
     (out / "result.json").write_text(json.dumps(result, sort_keys=True, default=str))
     return 0
 
