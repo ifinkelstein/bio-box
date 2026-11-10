@@ -29,4 +29,6 @@ COPY --chown=$MAMBA_USER:$MAMBA_USER golden.yaml golden.lock.yaml ./
 # R0 checks test IDs against the plan documents
 COPY --chown=$MAMBA_USER:$MAMBA_USER 00-spec.md PLAN.md STAGES.md ./
 COPY --chown=$MAMBA_USER:$MAMBA_USER planning ./planning
+# the host-profile tests read the shipped profile
+COPY --chown=$MAMBA_USER:$MAMBA_USER profiles ./profiles
 CMD ["pytest", "-q"]
