@@ -9,6 +9,10 @@ import sys
 from collections import defaultdict
 from pathlib import Path
 
+if len(sys.argv) < 3 or sys.argv[1] in ("-h", "--help"):
+    print(__doc__)
+    sys.exit(0 if sys.argv[1:2] in (["-h"], ["--help"]) else 2)
+
 d, root = Path(sys.argv[1]), Path(sys.argv[2])
 out = {}
 

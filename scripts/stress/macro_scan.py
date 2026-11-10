@@ -12,6 +12,10 @@ import pyarrow.parquet as pq
 
 from biobox import catalog, io
 
+if len(sys.argv) < 2 or sys.argv[1] in ("-h", "--help"):
+    print(__doc__)
+    sys.exit(0 if sys.argv[1:2] in (["-h"], ["--help"]) else 2)
+
 root = Path(sys.argv[1])
 man = catalog.build_manifest(root, "rX")
 cat = catalog.generate_catalog(man, root.parent / "locator.duckdb")

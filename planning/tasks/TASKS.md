@@ -271,7 +271,8 @@ Accept: R0–R2 green on the laptop; R3 green with `BIOBOX_GOLDEN_DIR`.
 **M** · Depends: B-01..B-17 · Pod: yes (after C-02; until then the PI runs it)
 Files: `scripts/stress/*.py`, `planning/measurements/<date>_phase_b_exit.md`+
 Do: update the stress scripts to the new model and rerun all of them: cross-host manifest hash, 1,000× synthetic queries, feature stability, independent-tool checks, GTDB projection of every table.
-Accept: laptop and pod manifest hashes equal; no query scans more than 2 row groups per lookup; no projected table exceeds its budget in `sources_and_sizing.md` (update the budget lines with measured values, labelled).
+Amended 2026-11-09: `scripts/stress/README.md` (card A-03) lists what is stale in each script: `build_s0.py --cluster`, `pilot.py` and `pilot_resume.py` import the removed `biobox.l3.pairs`; `step6_export.py` and `step4_keys.py` key on `slot_ordinal`; `gtdb_pairs.py` is obsolete (delete it and project `token_postings` instead); `resume.sh` applies no memory scope. No compute runs on the laptop any more, so the cross-host check compares the pod with a GitHub Actions runner (a workflow step that builds the fixture store and prints the manifest hash), not with the laptop. Also add the CAMI II pilot driver (measurements §6c; its store is at `/tmp/if2453/pilot_cami` on the pod) to `scripts/stress/`.
+Accept: CI-runner and pod manifest hashes equal; no query scans more than 2 row groups per lookup; no projected table exceeds its budget in `sources_and_sizing.md` (update the budget lines with measured values, labelled).
 
 ### B-19 Streaming ledger and multi-part tables
 **M** · Depends: B-07 (found while auditing B-05 and B-07)

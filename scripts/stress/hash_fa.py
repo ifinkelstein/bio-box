@@ -13,6 +13,10 @@ def emit():
         print(name + "\t" + hashlib.sha256(b"".join(parts)).hexdigest())
 
 
+if len(sys.argv) < 2 or sys.argv[1] in ("-h", "--help"):
+    print(__doc__)
+    sys.exit(0 if sys.argv[1:2] in (["-h"], ["--help"]) else 2)
+
 with open(sys.argv[1], "rb") as fh:
     for ln in fh:
         ln = ln.rstrip(b"\r\n")

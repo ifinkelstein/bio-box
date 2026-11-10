@@ -5,6 +5,10 @@
 import json
 import sys
 
+if len(sys.argv) < 2 or sys.argv[1] in ("-h", "--help"):
+    print(__doc__)
+    sys.exit(0 if sys.argv[1:2] in (["-h"], ["--help"]) else 2)
+
 r = json.load(open(sys.argv[1]))
 print(r["machine"], r["python"], r["release"], "manifest", r["manifest_hash"], "bp", r["total_bp"], "peak_rss_mb", r["peak_rss_mb"])
 print("timings", r["timings_s"])
