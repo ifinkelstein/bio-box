@@ -8,7 +8,7 @@
 # It starts, detached,
 #   systemd-run --user --unit=<unit> --collect -p MemoryMax=<mem> -p MemorySwapMax=0
 #     -p CPUQuota=<threads*100>% -p OOMPolicy=continue
-#     nice -n <nice> singularity exec --cleanenv --bind /sys/fs/cgroup:/sys/fs/cgroup:ro ...
+#     nice -n <nice> singularity exec --cleanenv --env PYTHONUNBUFFERED=1 --bind /sys/fs/cgroup:/sys/fs/cgroup:ro ...
 #     <sif> python -m biobox.cli <bio-box args...>
 # and returns at once. MemorySwapMax=0: the pod has swap, and a cap that can spill into swap is
 # not a cap. OOMPolicy=continue: when the kernel kills the step command or a search worker at the
@@ -31,7 +31,9 @@
 #   --bind SPEC      an extra `singularity --bind` (repeatable)
 #   --env K=V        an extra `singularity --env` (repeatable), e.g. PYTHONPATH=<tree>/src
 #   --log FILE       stdout and stderr of the unit (default: <profile tmp>/logs/<unit>.log);
-#                    its last line is "pod_run: <unit> exited <code>"
+#                    its last line is "pod_run: <unit> exited <code>", also after a stop, when
+#                    "pod_run: <unit> received SIGTERM" comes before it. run-step's and build-stage's
+#                    lines carry a timestamp and are written as they happen (card C-13)
 # Watch it with `systemctl --user status <unit>` and the log; stop it with
 # `systemctl --user stop <unit>` (run-step forwards the SIGTERM to its step).
 set -euo pipefail
@@ -91,12 +93,17 @@ command -v systemd-run > /dev/null || die "systemd-run not found: run pod_run.sh
 mkdir -p "$(dirname "$LOG")"
 
 # A small sh is the unit's main process, so the log ends with the exit code even though
-# --collect unloads the unit as soon as it ends.
+# --collect unloads the unit as soon as it ends. `systemctl --user stop` sends SIGTERM to every
+# process of the unit at once, this sh included (card C-13: before the trap, a stopped unit's log
+# had no last line). The sh traps SIGTERM, SIGINT and SIGHUP: a trapped signal waits until the
+# command it runs has ended (POSIX), then the sh says which signal came and writes the exit line.
+# A trap that is not empty is reset in the command it starts, so bio-box still gets the signal.
+# PYTHONUNBUFFERED: a step command's own output reaches the log as it is written.
 systemd-run --user --unit="$UNIT" --collect --quiet --same-dir \
   -p MemoryMax="$MEM" -p MemorySwapMax=0 -p CPUQuota="$((THREADS * 100))%" -p OOMPolicy=continue \
   -p StandardOutput="append:$LOG" -p StandardError="append:$LOG" \
-  /bin/sh -c 'unit=$1; shift; "$@"; rc=$?; echo "pod_run: $unit exited $rc"; exit $rc' sh "$UNIT" \
-  "$NICE_BIN" -n "$NICE" "$SING" exec --cleanenv --bind /sys/fs/cgroup:/sys/fs/cgroup:ro "${BINDS[@]}" \
+  /bin/sh -c 'unit=$1; shift; sig=""; trap "sig=TERM" TERM; trap "sig=INT" INT; trap "sig=HUP" HUP; "$@"; rc=$?; [ -z "$sig" ] || echo "pod_run: $unit received SIG$sig"; echo "pod_run: $unit exited $rc"; exit $rc' sh "$UNIT" \
+  "$NICE_BIN" -n "$NICE" "$SING" exec --cleanenv --env PYTHONUNBUFFERED=1 --bind /sys/fs/cgroup:/sys/fs/cgroup:ro "${BINDS[@]}" \
   --env "BIOBOX_IMAGE_DIGEST=$SUM" "${ENVS[@]}" "$IMAGE" python -m biobox.cli "$@"
 
 echo "pod_run: started $UNIT (MemoryMax=$MEM, MemorySwapMax=0, CPUQuota=$((THREADS * 100))%, nice $NICE)"

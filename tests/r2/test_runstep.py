@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import re
 import shutil
 import subprocess
 import sys
@@ -253,7 +254,7 @@ def test_resume_skips_a_finished_step(prof, root, tmp_path, capsys):
     before = record_path(root, "occ").read_bytes()
     marker = tmp_path / "marker"
     assert run(prof, root, "occ", fake("--marker", str(marker), "--exit", "9")) == 0
-    assert "skipped" in capsys.readouterr().out
+    assert "skipped" in capsys.readouterr().err  # migrated by card C-13: run-step's own lines go to stderr
     assert not marker.exists()
     assert record_path(root, "occ").read_bytes() == before
 
@@ -434,6 +435,47 @@ def test_cli_run_step(prof, root, tmp_path):
     rec = json.loads(record_path(root, "occ").read_text())
     assert rec["threads"] == 1 and rec["nice"] == 15
     assert rec["outputs"][0]["path"] == out
+
+
+STAMPED = re.compile(r"^\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d[+-]\d\d:\d\d (run-step|build-stage): ")
+UNIT = r"""
+import sys
+from pathlib import Path
+from biobox import profile, runstep, stage
+prof, root, cmd = profile.load(sys.argv[1]), Path(sys.argv[2]), sys.argv[3:]
+for step in ("a", "b", "a"):  # the third call finds a's run record: skipped
+    runstep.run_step(prof, root, "S0", step, [*cmd, step], threads=1)
+stage._say("done")
+"""
+SAYS = r"""
+import os, pathlib, sys
+print(f"command {sys.argv[1]} ran")
+p = pathlib.Path(os.environ["BIOBOX_STAGING"]) / f"ledger/stage=S0/step={sys.argv[1]}/part-0.parquet"
+p.parent.mkdir(parents=True)
+p.write_bytes(b"x" * 10)
+"""
+
+
+@pytest.mark.covers("C-13")
+def test_c13_run_step_and_build_stage_lines_are_timestamped_and_in_time_order_in_one_log(prof, root, tmp_path):
+    """Card C-13 (2): a unit log is stdout and stderr of `build-stage` in one file, with `run-step` running in its
+    process. `run-step`'s own lines (published, skipped) and `build-stage`'s are written line-buffered to stderr with
+    a timestamp, so they fall between the step commands' output in the order things happened and the last line shows
+    progress. Measured in C-10: block-buffered on stdout, every `published` line came at the end of the log."""
+    log = tmp_path / "unit.log"
+    argv = [sys.executable, "-c", UNIT, str(tmp_path / "profile.yaml"), str(root), sys.executable, "-c", SAYS]
+    with log.open("wb") as fh:
+        assert subprocess.run(argv, stdout=fh, stderr=subprocess.STDOUT, timeout=120).returncode == 0
+    lines = log.read_text().splitlines()
+    assert [STAMPED.sub(r"\1: ", ln) for ln in lines] == [
+        "command a ran",
+        "run-step: S0.a published 1 files",
+        "command b ran",
+        "run-step: S0.b published 1 files",
+        "run-step: S0.a skipped: run record and outputs present",
+        "build-stage: done",
+    ], lines
+    assert all(STAMPED.match(ln) for ln in lines if not ln.startswith("command "))
 
 
 def test_cli_stop_exit_code(prof, root, tmp_path):

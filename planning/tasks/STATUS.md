@@ -189,7 +189,8 @@ The thread cap is the sum over all our processes: 40 by day, 56 at night.
 
 | Card | Model | State |
 |---|---|---|
-| C-13 defects from the first real build | Opus | started 2026-11-10 |
+| C-13 defects from the first real build | Opus | **merged 2026-11-10** (68 cards; pod suite 1,172 passed, 12 skipped): per-step scratch, timestamped line-buffered logs, `pod_run.sh` exit line after a stop, `bio-box release verify`, Pfam rate 7.96, ingest constant, STOP mid-step test. Not run in a real pod unit; W-13 checks the exit line under systemd. Row in the merged table still to write |
+| W-13 search under a pod unit; runbook update for W-03 | Opus | started 2026-11-10, built on W-03 and C-13 |
 | B-30 ingest by batch processes | Opus | started 2026-11-10 |
 | 10 Gbp rebuild with `build-stage` (not a card; branch `build/r10`, pod root `/tmp/if2453/r10`) | Opus | started 2026-11-10 |
 
