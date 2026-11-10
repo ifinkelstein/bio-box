@@ -32,8 +32,10 @@ on disk (`BgzfFasta`).
 from __future__ import annotations
 
 import json
+import os
 import shutil
 import tempfile
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
@@ -192,6 +194,22 @@ def _stat(path: Path) -> tuple[int, int]:
     return st.st_size, st.st_mtime_ns
 
 
+def stage_dirs(stage: str) -> list[str]:
+    """The root-relative directories that hold one stage's ingest files (the ledger's included)."""
+    return [f"l0seq/seq_shards/stage={stage}", f"l0seq/contig_occurrence/stage={stage}", f"{INDEX_DIR}/stage={stage}",
+            f"{LOCATOR_DIR}/stage={stage}", f"ledger/stage={stage}/step=ingest"]
+
+
+def stage_files(base: Path, stage: str) -> list[Path]:
+    """Every file under `base` in the stage's ingest directories, a writer's temporary files included."""
+    return sorted(p for d in stage_dirs(stage) if (Path(base) / d).is_dir()
+                  for p in (Path(base) / d).rglob("*") if not p.is_dir())
+
+
+def _no_hook(point: str) -> None:
+    pass
+
+
 def ingest(
     objects: list[SourceObject],
     root: Path,
@@ -200,6 +218,8 @@ def ingest(
     line_width: int = LINE_WIDTH,
     tmp: Path | None = None,
     max_file_bytes: int = layout.MAX_FILE_BYTES,
+    out: Path | None = None,
+    _hook: Callable[[str], None] | None = None,
 ) -> dict:
     """Ingest FASTA source objects for one stage. Returns counts for the ledger.
 
@@ -209,21 +229,49 @@ def ingest(
     digests are new (an anti-join against the earlier stages' `seq_locator` files), the first
     occurrence of each by (object sha256, record ordinal), and the stage's `contig_index` rows.
     Pass 2 re-reads the objects batch by batch (`_batches`) and writes one shard per batch, its new
-    sequences sorted by `raw_digest`; only one batch's sequences are held at a time. `tmp` holds the
-    scratch directory (system temp by default; never the data root). The tables are cut into parts at
-    `max_file_bytes` of estimated size (`io.write_parts`).
+    sequences sorted by `raw_digest`; only one batch's sequences are held at a time. Pass 2 does not
+    hash again (card B-23): a kept record must have the length pass 1 saw, and each object its size
+    and mtime. `tmp` holds the scratch directory (system temp by default; never under the data root
+    or `out`). The tables are cut into parts at `max_file_bytes` of estimated size (`io.write_parts`).
+
+    Where files go, and a rerun after a crash (card B-23). The earlier stages are read from `root`;
+    this stage's files are written under `out` (default `root`) at their root-relative paths. Under
+    `bio-box run-step` pass `out=$BIOBOX_STAGING` and `root=$BIOBOX_ROOT`: run-step publishes the
+    stage from staging only when ingest succeeded and empties staging before the next attempt, so a
+    killed ingest is rerun from the start into a clean staging directory and gives the same bytes.
+    A direct call (`out` is the root) needs a clean stage directory: ingest refuses, before it reads
+    a source, when any file (a temporary one included) is in the stage's directories (`stage_dirs`)
+    under `root` or `out`. After a direct ingest died, remove those directories and run it again; the
+    `l0_manifest` is written last, so a stage that died earlier has not touched it. Nothing here
+    overwrites a file: `io.write_table` still refuses to. `store_params.json` is written under `out`
+    only when the root has none; when it has one, the parameters must equal it.
+
+    `_hook` (tests only) is called with each point at which a kill leaves the stage half written:
+    "pass1", "shard:<j>" after each shard, "contig_occurrence", "contig_index", "seq_locator",
+    "ledger", "l0_manifest"; an exception it raises is not caught.
     """
     root = Path(root)
-    if tmp is not None and Path(tmp).resolve().is_relative_to(root.resolve()):
-        raise ValueError(f"{tmp}: the scratch directory may not lie under the data root")
+    out = root if out is None else Path(out)
+    hook = _hook or _no_hook
+    if tmp is not None:
+        for base, what in ((root, "the data root"), (out, "the output directory")):
+            if Path(tmp).resolve().is_relative_to(base.resolve()):
+                raise ValueError(f"{tmp}: the scratch directory may not lie under {what}")
+    for base in dict.fromkeys([root.resolve(), out.resolve()]):
+        left = stage_files(base, stage)
+        if left:
+            raise FileExistsError(
+                f"{left[0]}: stage {stage} already has {len(left)} ingest file(s) under {base}; ingest "
+                f"writes a stage once. A direct call needs a clean stage directory: if an earlier ingest "
+                f"died, remove {', '.join(stage_dirs(stage))} and run it again, or ingest under run-step")
     params_path = root / "l0seq" / "store_params.json"
     params = {"format": STORE_FORMAT, "shard_bases": shard_bases, "line_width": line_width, "bgzf_level": BGZF_LEVEL}
     if params_path.exists():
         if json.loads(params_path.read_text()) != params:
             raise ValueError("store parameters differ from the existing store")
     else:
-        params_path.parent.mkdir(parents=True, exist_ok=True)
-        params_path.write_text(json.dumps(params, sort_keys=True))
+        (out / "l0seq").mkdir(parents=True, exist_ok=True)
+        (out / "l0seq" / "store_params.json").write_text(json.dumps(params, sort_keys=True))
 
     ordered = _object_order(objects)
     old_loc, old_idx = locator_files(root), index_files(root)  # the earlier stages', read before writing
@@ -245,20 +293,22 @@ def ingest(
                 rec = None
         finally:
             seen.close()
+        hook("pass1")
         con = duckdb.connect(config={"threads": 1, "memory_limit": DUCK_MEMORY_LIMIT,
                                      "temp_directory": str(scratch / "duckdb"), "preserve_insertion_order": True})
         try:
-            return _decide_and_write(con, root, stage, ordered, n_in, stats, seen_path, old_loc, old_idx, scratch,
-                                     shard_bases, line_width, max_file_bytes)
+            return _decide_and_write(con, root, out, stage, ordered, n_in, stats, seen_path, old_loc, old_idx,
+                                     scratch, shard_bases, line_width, max_file_bytes, hook)
         finally:
             con.close()
     finally:
         shutil.rmtree(scratch, ignore_errors=True)
 
 
-def _decide_and_write(con, root: Path, stage: str, ordered: list[tuple[bytes, SourceObject]], n_in: list[int],
-                      stats: list[tuple[int, int]], seen_path: Path, old_loc: list[Path], old_idx: list[Path], scratch: Path,
-                      shard_bases: int, line_width: int, max_file_bytes: int) -> dict:
+def _decide_and_write(con, root: Path, out: Path, stage: str, ordered: list[tuple[bytes, SourceObject]],
+                      n_in: list[int], stats: list[tuple[int, int]], seen_path: Path, old_loc: list[Path],
+                      old_idx: list[Path], scratch: Path, shard_bases: int, line_width: int, max_file_bytes: int,
+                      hook: Callable[[str], None]) -> dict:
     con.execute(f"CREATE VIEW seen AS SELECT * FROM read_parquet({_sql_path(seen_path)})")
     con.execute("CREATE VIEW old_loc AS " + (
         f"SELECT raw_digest FROM read_parquet({_sql_files(old_loc)}, union_by_name = true)" if old_loc
@@ -312,8 +362,9 @@ def _decide_and_write(con, root: Path, stage: str, ordered: list[tuple[bytes, So
                 rec = None
                 if nxt is not None and nxt[0] == i:
                     raise ValueError(f"{path}: fewer records than in the first pass")
-            write_bgzf_fasta(((rd.hex(), seqs[rd]) for rd in sorted(seqs)), root / shard_of[j], line_width, BGZF_LEVEL)
+            write_bgzf_fasta(((rd.hex(), seqs[rd]) for rd in sorted(seqs)), out / shard_of[j], line_width, BGZF_LEVEL)
             del seqs
+            hook(f"shard:{j}")
     finally:
         wanted.close()
     n_new = sum(kept)
@@ -325,7 +376,8 @@ def _decide_and_write(con, root: Path, stage: str, ordered: list[tuple[bytes, So
         sql = (f"SELECT {occ_cols} FROM seen WHERE source = {_sql_path(src)} "
                "ORDER BY l0_object_sha256, record_ordinal, obj_idx")
         io.write_parts(io.duck_batches(con, sql, occ_spec), occ_spec,
-                       root / f"l0seq/contig_occurrence/stage={stage}/source={src}", EST_OCCURRENCE_ROW, max_file_bytes)
+                       out / f"l0seq/contig_occurrence/stage={stage}/source={src}", EST_OCCURRENCE_ROW, max_file_bytes)
+    hook("contig_occurrence")
 
     # contig_index: new (contig_uid, raw_digest) pairs; the default is the variant with the lowest
     # (precedence, object sha256, record ordinal) of the stage, unless an earlier stage gave one
@@ -346,16 +398,27 @@ def _decide_and_write(con, root: Path, stage: str, ordered: list[tuple[bytes, So
     (n_idx,), = con.execute(f"SELECT count(*) FROM ({idx_sql})").fetchall()
     if n_idx:
         io.write_parts(io.duck_batches(con, idx_sql, idx_spec), idx_spec,
-                       root / f"l0seq/contig_index/stage={stage}", EST_INDEX_ROW, max_file_bytes)
+                       out / f"{INDEX_DIR}/stage={stage}", EST_INDEX_ROW, max_file_bytes)
+    hook("contig_index")
 
     # seq_locator: this stage's new sequences only, sorted by raw_digest; never rewritten (AGENTS §3.10)
     if n_new:
         loc_spec = table("seq_locator")
         io.write_parts(io.duck_batches(con, "SELECT n.raw_digest, b.shard, n.contig_len FROM new_seq n "
                                             "JOIN batch_of b USING (obj_idx) ORDER BY n.raw_digest", loc_spec),
-                       loc_spec, root / f"{LOCATOR_DIR}/stage={stage}", EST_LOCATOR_ROW, max_file_bytes)
+                       loc_spec, out / f"{LOCATOR_DIR}/stage={stage}", EST_LOCATOR_ROW, max_file_bytes)
 
-    # l0_manifest: small metadata, rewritten with all stages
+    hook("seq_locator")
+
+    # ledger: per object, records in; kept = sequences first stored from it; merged = the rest. The
+    # objects are in sha256 order, the ledger's sort key; rows stream to the writer
+    tools = provenance.tool_versions("pyarrow")
+    ledger.write(out, stage, "ingest", (ledger.row(sha, "l0_object", n_in[i], kept[i], n_in[i] - kept[i], tools=tools)
+                                        for i, (sha, _) in enumerate(ordered)))
+    hook("ledger")
+
+    # l0_manifest: small metadata, rewritten with all stages; written last and renamed into place, so
+    # a stage that died earlier has not touched it (card B-23)
     man_spec = table("l0_manifest")
     man_path = root / "l0/l0_manifest.parquet"
     man = pa.Table.from_pylist([{
@@ -372,13 +435,11 @@ def _decide_and_write(con, root: Path, stage: str, ordered: list[tuple[bytes, So
     if man_path.exists():
         man = pa.concat_tables([pq.read_table(man_path), man])
     man = man.sort_by([("source_uid", "ascending"), ("object_path", "ascending")])
-    _write(man, man_path, 122_880)
-
-    # ledger: per object, records in; kept = sequences first stored from it; merged = the rest. The
-    # objects are in sha256 order, the ledger's sort key; rows stream to the writer
-    tools = provenance.tool_versions("pyarrow")
-    ledger.write(root, stage, "ingest", (ledger.row(sha, "l0_object", n_in[i], kept[i], n_in[i] - kept[i], tools=tools)
-                                         for i, (sha, _) in enumerate(ordered)))
+    man_out = out / "l0/l0_manifest.parquet"
+    man_tmp = man_out.with_name(f".{man_out.name}.tmp-{os.getpid()}")
+    _write(man, man_tmp, 122_880)
+    os.replace(man_tmp, man_out)
+    hook("l0_manifest")
     return {"objects": len(ordered), "records": sum(n_in), "new_sequences": n_new, "index_rows": n_idx,
             "shards": len(batches)}
 
