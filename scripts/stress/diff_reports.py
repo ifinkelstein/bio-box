@@ -5,6 +5,10 @@
 import json
 import sys
 
+if len(sys.argv) < 3 or sys.argv[1] in ("-h", "--help"):
+    print(__doc__)
+    sys.exit(0 if sys.argv[1:2] in (["-h"], ["--help"]) else 2)
+
 a, b = (json.load(open(p)) for p in sys.argv[1:3])
 print("hosts:", a["machine"], a["python"], "|", b["machine"], b["python"])
 print("manifest_hash:", a["manifest_hash"], b["manifest_hash"], "EQUAL" if a["manifest_hash"] == b["manifest_hash"] else "DIFFERENT")
