@@ -119,7 +119,7 @@ def test_ly04_no_small_files_outside_waivers(built):
 
 
 def test_size_check_allows_one_small_file_per_stage():
-    files = [{"table": "slot_protein", "partitions": {"stage": "S0"}, "bytes": 10}]
+    files = [{"table": "feature_protein", "partitions": {"stage": "S0"}, "bytes": 10}]
     assert contracts.check_file_sizes({"files": files}) == []
     assert contracts.check_file_sizes({"files": files * 2})
 
@@ -204,9 +204,9 @@ def test_r06_lineage_is_complete(built):
 def _fault_con(con, **replace) -> duckdb.DuckDBPyConnection:
     """An in-memory copy of the catalog's tables with some replaced by Arrow tables (fault injection)."""
     c = duckdb.connect()
-    for name in ("protein_occurrence", "contig_index", "slot_protein", "protein_seq", "l1_domains", "contig_occurrence",
-                 "l0_manifest", "seq_locator", "cluster_member", "cluster_member_aln", "igr",
-                 "contig_tapes", "tape_tokens", "token_dict", "token_postings"):
+    for name in ("protein_occurrence", "contig_index", "feature", "feature_protein", "contig_dim", "protein_seq",
+                 "l1_domains", "contig_occurrence", "l0_manifest", "seq_locator", "cluster_member", "cluster_member_aln",
+                 "igr", "contig_tapes", "tape_tokens", "token_dict", "token_postings"):
         tbl = replace.get(name)
         if tbl is None:
             tbl = con.sql(f"SELECT * FROM {name}").to_arrow_table()
@@ -233,6 +233,14 @@ def test_injected_faults_are_caught(built):
     # a slot whose protein is missing (C-03)
     ps = con.sql("SELECT * FROM protein_seq").to_arrow_table()
     assert contracts.check_foreign_keys(_fault_con(con, protein_seq=ps.slice(1)))
+    # a CDS whose feature row is lost, and an occurrence whose CDS is lost (C-03 on feature uids, card B-17)
+    ft = con.sql("SELECT * FROM feature").to_arrow_table()
+    assert contracts.check_foreign_keys(_fault_con(con, feature=ft.slice(1))) == [
+        "feature_protein('feature_uid', 'gene_call_version') -> feature('feature_uid', 'producer'): 1 unresolved rows"]
+    fp = con.sql("SELECT * FROM feature_protein").to_arrow_table()
+    assert contracts.check_foreign_keys(_fault_con(con, feature_protein=fp.slice(1))) == [
+        "protein_occurrence('feature_uid', 'gene_call_version') -> feature_protein('feature_uid', 'gene_call_version'): "
+        "1 unresolved rows"]
     # an occurrence row lost, so a stored sequence is orphaned (R-06)
     co = con.sql("SELECT * FROM contig_occurrence").to_arrow_table()
     assert contracts.check_lineage(_fault_con(con, contig_occurrence=co.slice(1)))

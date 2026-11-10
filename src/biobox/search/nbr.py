@@ -220,8 +220,9 @@ def _ordinal(tapes: dict[bytes, dict], index: dict[bytes, dict], cu: bytes, fu: 
 
 def occurrences(root: Path, protein_uids: set[bytes], gene_call_version: str = GENE_CALL_VERSION,
                 tape_version: str | None = None) -> list[dict]:
-    """protein_occurrence rows of the proteins. With `tape_version`, each row's `slot_ordinal` is the
-    ordinal of its feature in that tape version, and the row carries `tape_version`."""
+    """protein_occurrence rows of the proteins. With `tape_version`, each row also carries `ordinal`, the
+    position of its feature in that tape version, and `tape_version` (an ordinal is valid inside one tape
+    version only, so it never travels without them; AGENTS §3.3)."""
     files = sorted((Path(root) / "l1/protein_occurrence").glob(f"gene_call_version={gene_call_version}/stage=*/part-*.parquet"))
     if not protein_uids:
         return []
@@ -229,7 +230,7 @@ def occurrences(root: Path, protein_uids: set[bytes], gene_call_version: str = G
     if tape_version is None:
         return rows
     tapes, index = _tapes(root, tape_version, {r["contig_uid"] for r in rows}), {}
-    return [{**r, "slot_ordinal": _ordinal(tapes, index, r["contig_uid"], r["feature_uid"], tape_version),
+    return [{**r, "ordinal": _ordinal(tapes, index, r["contig_uid"], r["feature_uid"], tape_version),
              "tape_version": tape_version} for r in rows]
 
 

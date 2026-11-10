@@ -413,6 +413,7 @@ Accept: the thread count of a worker with `cpus=2` on a many-core host stays und
 **M** · Depends: B-16
 Files: `src/biobox/search/export.py`, `src/biobox/cli.py`, `tests/registry/json_schema_lock.json` (version bump), tests
 Do: `bio-box search hits <run> --format tsv|faa` with one row per gene: accession, header, contig length, start, end, strand, protein length, bitscore, E-value at the reference Z, NR90 and NR50 cluster ids, the gene's Pfam architecture. `bio-box nbr <run> --format tsv` writes one table per locus. Scores rounded to one decimal. `bio-box export proteins --release R` writes the distinct proteins as FASTA named by protein uid.
+Amended 2026-11-10: card B-17 changed the nested occurrence objects of a search-hit record (`slot_ordinal` became `ordinal`; `genome_uid` and `tier` were dropped, they live in `contig_dim`) without a version bump, because the lock covers top-level keys only. This card's bump to `search_hit/2` records that change too; add `genome_uid` and `tier` back to the export by joining `contig_dim` at export time.
 Accept: the walk-through's `hits.tsv` is reproduced by one command; S-13 passes with the bumped schema version.
 
 ### W-06 Neighbor summary

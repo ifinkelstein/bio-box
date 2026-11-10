@@ -68,16 +68,16 @@ def record(kind: str, data: dict) -> dict:
 
 def hit_records(hits: list[dict], occurrences: dict[bytes, list[dict]] | None = None,
                 top_n: int | None = TOP_N, members: bool = False, tape_version: str | None = None) -> Iterator[dict]:
-    """Best domain first per target, targets by descending sequence score. Each occurrence's
-    `slot_ordinal` is valid inside `tape_version` (nbr.occurrences looks it up there)."""
+    """Best domain first per target, targets by descending sequence score. Each occurrence's `ordinal`
+    is valid inside `tape_version` (nbr.occurrences looks it up there) and travels with its `feature_uid`.
+    Genome, tier and taxonomy are not on an occurrence: they are in `contig_dim` (AGENTS §3.6)."""
     rows = sorted(hits, key=lambda r: (-(r["seq_bitscore"] or 0), r["target_uid"], -r["bitscore"]))
     for r in rows[:top_n] if top_n else rows:
         occ = (occurrences or {}).get(r["target_uid"], [])
         shown = occ if members else occ[:OCCURRENCES_SHOWN]
         yield record("search_hit", {**r, "n_occurrences": len(occ), "tape_version": tape_version, "occurrences": [
-            {"contig_uid": o["contig_uid"], "slot_ordinal": o["slot_ordinal"], "feature_uid": o["feature_uid"],
-             "genome_uid": o["genome_uid"], "start": o["start"], "end": o["end"], "strand": o["strand"],
-             "tier": o["tier"]} for o in shown]})
+            {"contig_uid": o["contig_uid"], "ordinal": o["ordinal"], "feature_uid": o["feature_uid"],
+             "start": o["start"], "end": o["end"], "strand": o["strand"]} for o in shown]})
 
 
 def run_record(row: dict) -> dict:

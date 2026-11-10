@@ -701,11 +701,10 @@ def test_b16_json_records_with_an_ordinal_carry_feature_uid_and_tape_version():
     assert (rec["anchor_feature_uid"], rec["feature_uid"], rec["tape_version"]) == (anchor.hex(), fu.hex(), tv)
     assert (rec["anchor_ordinal"], rec["ordinal"]) == (4, 5)
     hit = {"target_uid": pu, "target_kind": "protein", "seq_bitscore": 50.0, "bitscore": 40.0}
-    occ = {"contig_uid": cu, "slot_ordinal": 5, "feature_uid": fu, "genome_uid": cu, "start": 10, "end": 20,
-           "strand": 1, "tier": 1}
+    occ = {"contig_uid": cu, "ordinal": 5, "feature_uid": fu, "start": 10, "end": 20, "strand": 1}  # card B-17
     [rec] = export.hit_records([hit], {pu: [occ]}, tape_version=tv)
     assert rec["tape_version"] == tv
-    assert [(o["slot_ordinal"], o["feature_uid"]) for o in rec["occurrences"]] == [(5, fu.hex())]
+    assert [(o["ordinal"], o["feature_uid"]) for o in rec["occurrences"]] == [(5, fu.hex())]
     # every record kind whose keys (or nested occurrences) name an ordinal names the tape version too
     for kind, spec in export.SCHEMAS.items():
         keys = set(spec["keys"])

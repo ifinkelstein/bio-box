@@ -18,7 +18,6 @@ Writes, per gene-calling version and stage (paths under `<root>/`), all through 
     l1/feature/producer=<v>/stage=<S>/part-<k>.parquet                       (card B-05; kind cds)
     l1/feature_protein/gene_call_version=<v>/stage=<S>/part-<k>.parquet      (card B-05)
     l1/protein_occurrence/gene_call_version=<v>/stage=<S>/part-<k>.parquet
-    l1/slot_protein/gene_call_version=<v>/stage=<S>/part-<k>.parquet         (legacy; B-17 removes it)
     l0seq/protein_seq/gene_call_version=<v>/stage=<S>/protein_prefix=<all|h|hh>/part-<k>.parquet  (biobox.layout)
     ledger/stage=<S>/step=genecall/part-0.parquet
 
@@ -30,6 +29,10 @@ Bounded memory (AGENTS §4.1): genomes are called one at a time (or `workers` at
 temporary directory; one DuckDB connection (`DUCK_MEMORY_LIMIT`, spilling into that directory,
 one thread so that the output order is fixed) then sorts each table into its file. Nothing is
 published if a genome fails.
+
+Genes of a contig are ordered by (start, end, strand); every table names a gene by its `feature_uid`
+and coordinates, never by its position in that order (AGENTS §3.3). Genome, tier and assembly quality
+are not copied onto the gene rows: they live in `contig_dim` (AGENTS §3.6).
 
 Coordinates are 0-based half-open (pyrodigal reports 1-based inclusive).
 `dist_to_contig_end_bp` is 0 for genes running off a linear contig end and
@@ -71,15 +74,15 @@ DUCK_MEMORY_LIMIT = "2GB"  # the sorting connection's cap; larger sorts spill in
 # before `feature_uid` (16 random bytes, which do not compress) was added to these tables.
 EST_FEATURE_ROW = 24  # estimate: feature_uid 16 + delta-coded coordinates; not measured
 EST_FEATURE_PROTEIN_ROW = 40  # estimate: feature_uid and protein_uid, 16 random bytes each; not measured
-EST_OCCURRENCE_ROW = 48  # estimate: 32.2 B/gene measured (§3; 30.5 in §6a) + 16 for feature_uid
-EST_SLOT_PROTEIN_ROW = 20  # estimate: 19.5 B/gene measured (§3; 16.1 in §6a)
+# estimate: 32.2 B/gene measured (§3; 30.5 in §6a) + 16 for feature_uid, before card B-17 removed the
+# ordinal, genome and dimension columns; not re-measured
+EST_OCCURRENCE_ROW = 48
 
 # unsorted per-gene scratch rows, appended genome by genome
 _GENE_SCRATCH = pa.schema([
-    ("contig_uid", pa.binary(16)), ("slot_ordinal", pa.uint32()), ("feature_uid", pa.binary(16)),
+    ("contig_uid", pa.binary(16)), ("feature_uid", pa.binary(16)),
     ("start", pa.int64()), ("end", pa.int64()), ("strand", pa.int8()), ("protein_uid", pa.binary(16)),
-    ("genetic_code", pa.uint8()), ("genome_uid", pa.binary(16)), ("dist_to_contig_end_bp", pa.uint32()),
-    ("assembly_quality", pa.string()), ("tier", pa.uint8()), ("is_species_rep", pa.bool_()),
+    ("genetic_code", pa.uint8()), ("dist_to_contig_end_bp", pa.uint32()),
     ("mode", pa.string()), ("wraps_origin", pa.bool_()),
 ])
 _CANDIDATE_SCRATCH = pa.schema([("protein_uid", pa.binary(16)), ("aa", pa.string())])
@@ -124,21 +127,18 @@ def _sequences(store: SeqStore, genome: GenomeInput) -> dict[bytes, str]:
 
 def _call(genome: GenomeInput, seqs: dict[bytes, str]) -> list[dict]:
     finder, mode = _finder(genome, seqs)
-    guid = ids.genome_uid(list(genome.contig_uids))
     calls: list[dict] = []
     for cu in sorted(seqs):
         seq = seqs[cu]
         circular = cu in genome.circular
         genes = sorted(_genes(finder, seq, circular), key=lambda t: (t[0], t[1], t[2]))
-        for ordinal, (start, end, strand, aa, code, partial) in enumerate(genes):
+        for start, end, strand, aa, code, partial in genes:
             if circular:
                 dist = len(seq)
             else:
                 dist = 0 if partial else min(start, len(seq) - end)
             calls.append({
                 "contig_uid": cu,
-                "slot_ordinal": ordinal,
-                "genome_uid": guid,
                 "start": start,
                 "end": end,
                 "strand": strand,
@@ -147,9 +147,6 @@ def _call(genome: GenomeInput, seqs: dict[bytes, str]) -> list[dict]:
                 "mode": mode,
                 "wraps_origin": end > len(seq),
                 "dist_to_contig_end_bp": dist,
-                "assembly_quality": genome.assembly_quality,
-                "tier": genome.tier,
-                "is_species_rep": genome.is_species_rep,
             })
     return calls
 
@@ -306,9 +303,8 @@ def run(root: Path, stage: str, genomes: Iterable[GenomeInput] | None = None, ve
                 for c in calls:
                     pu = ids.protein_uid(c["aa"])
                     fu = ids.feature_uid(c["contig_uid"], c["start"], c["end"], c["strand"], cds)
-                    gs.add((c["contig_uid"], c["slot_ordinal"], fu, c["start"], c["end"], c["strand"], pu,
-                            c["genetic_code"], c["genome_uid"], c["dist_to_contig_end_bp"], c["assembly_quality"],
-                            c["tier"], c["is_species_rep"], c["mode"], c["wraps_origin"]))
+                    gs.add((c["contig_uid"], fu, c["start"], c["end"], c["strand"], pu, c["genetic_code"],
+                            c["dist_to_contig_end_bp"], c["mode"], c["wraps_origin"]))
                     cs.add((pu, c["aa"]))
                     modes.add(c["mode"])
                     n_wrap += c["wraps_origin"]
@@ -344,13 +340,9 @@ def _publish(root: Path, stage: str, version: str, scratch: Path, prefix_width: 
              'SELECT contig_uid, feature_uid, start, "end", strand, protein_uid, genetic_code, \'none\' AS edit_type '
              'FROM genes ORDER BY contig_uid, start, "end", strand'),
             ("protein_occurrence", f"l1/protein_occurrence/{gcv}", EST_OCCURRENCE_ROW,
-             'SELECT protein_uid, contig_uid, slot_ordinal, genome_uid, start, "end", strand, '
-             'NULL::UINTEGER AS tax_order, is_species_rep, tier, assembly_quality, dist_to_contig_end_bp, feature_uid '
+             'SELECT protein_uid, contig_uid, start, "end", strand, dist_to_contig_end_bp, feature_uid '
              'FROM genes '
-             'ORDER BY protein_uid, contig_uid, slot_ordinal'),
-            ("slot_protein", f"l1/slot_protein/{gcv}", EST_SLOT_PROTEIN_ROW,
-             "SELECT contig_uid, slot_ordinal, protein_uid, genetic_code, 'none' AS edit_type FROM genes "
-             "ORDER BY contig_uid, slot_ordinal"),
+             'ORDER BY protein_uid, contig_uid, start, "end", strand'),
         ]
         for name, rel, est, sql in outputs:
             io.write_parts(io.duck_batches(con, sql, table(name)), table(name), root / rel, est, max_file_bytes)
@@ -365,14 +357,14 @@ def _publish(root: Path, stage: str, version: str, scratch: Path, prefix_width: 
                  f"FROM {distinct} ORDER BY protein_uid",
             root / f"l0seq/protein_seq/{gcv}", width, max_file_bytes)
 
-        # ledger: per contig, genes in; kept = first gene of its protein sequence in (contig, slot) order;
-        # rows stream from DuckDB in contig_uid order (the ledger's sort key) to the writer
+        # ledger: per contig, genes in; kept = first gene of its protein sequence in (contig, start, end,
+        # strand) order; rows stream from DuckDB in contig_uid order (the ledger's sort key) to the writer
         tools = provenance.tool_versions("pyrodigal", "pyrodigal-gv", "pyarrow")
 
         def ledger_rows() -> Iterator[dict]:
             reader = con.sql(
                 "WITH g AS (SELECT contig_uid, row_number() OVER (PARTITION BY protein_uid ORDER BY contig_uid, "
-                "slot_ordinal) = 1 AS first FROM genes) "
+                'start, "end", strand) = 1 AS first FROM genes) '
                 "SELECT c.contig_uid, count(g.contig_uid) AS n, count(*) FILTER (WHERE g.first) AS k "
                 "FROM contigs c LEFT JOIN g USING (contig_uid) GROUP BY c.contig_uid ORDER BY c.contig_uid"
             ).to_arrow_reader(io.ROW_GROUP_ROWS)

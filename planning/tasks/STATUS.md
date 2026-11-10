@@ -5,12 +5,13 @@ The running record of the cards in [`TASKS.md`](TASKS.md). Updated at every merg
 its own branch `task/<ID>`, audited by the orchestrating session, and merged after the full suite
 passed on the integration branch.
 
-Last update: 2026-11-09, 23:00 CST. Suite on the integration branch after the C-07 merge: 858 passed, 10 skipped
-(*measured*, wilkcomp02, 2026-11-10 about 01:00 CST, `sh scripts/pod_pytest.sh integration --shards 8`, in the
+Last update: 2026-11-09, 23:00 CST. Suite on the integration branch after the B-17 merge: 861 passed, 10 skipped; golden ring
+(`--golden tests/r3`): 32 passed, 5 skipped
+(*measured*, wilkcomp02, 2026-11-10 about 03:00 CST, `sh scripts/pod_pytest.sh integration --shards 8`, in the
 pinned image; 3 min 40 s wall for the slowest shard, against 13.5 min in one process). The skips
 need samtools, bgzip, Prodigal or the golden set. Tests no longer run on the laptop (AGENTS.md §5.5).
 
-## Merged (37 cards)
+## Merged (38 cards)
 
 | Card | Merge | What it did | Audit notes |
 |---|---|---|---|
@@ -50,6 +51,7 @@ need samtools, bgzip, Prodigal or the golden set. Tests no longer run on the lap
 | A-03 | this merge | README for `scripts/stress`; every script prints usage | 11 of 17 scripts had no usage path; README lists which scripts still use the old data model (folded into card B-18) |
 | C-07 | this merge | `scripts/pod_run.sh` opens the memory-capped unit on the host; `run-step` and the search runner inherit a cap they find, or refuse when the profile requires one | Probed on the pod: a 1 GiB allocation in a 512 MiB unit was killed by the kernel (`oom_kill 1`); the pod has 1117 GB of swap, so `MemorySwapMax=0` is set everywhere. The search CLI cannot yet require a cap: card W-10 |
 | W-10 | this merge | `bio-box search run --profile` (or `$BIOBOX_PROFILE`): thread cap, nice and required memory cap from the host profile; flags may only lower them | Agent's full pod run on its branch: 866 passed, 10 skipped. With a profile, `mem_gb` defaults to the profile's `mem_scope` |
+| B-17 | this merge | Legacy keys removed: `slot_protein` table; ordinal, flank-slot and dimension columns; foreign keys and lineage now run through `feature` and `feature_protein`; `LEGACY_ORDINAL_KEYS` is empty | Schema lock regenerated on the pod with `--breaking`. Nested occurrence objects in search-hit exports changed (`ordinal`, no `genome_uid` or `tier`) without a schema-version bump: folded into card W-05 |
 
 Decisions DEC-18 to DEC-23 were approved by the PI on 2026-11-09 and are in `planning/DECISIONS.md`.
 
@@ -57,7 +59,6 @@ Decisions DEC-18 to DEC-23 were approved by the PI on 2026-11-09 and are in `pla
 
 | Card | Model | State |
 |---|---|---|
-| B-17 remove the legacy ordinal columns | Opus | started 2026-11-09 |
 | B-23 ingest reads once; killed ingest reruns | Opus | started 2026-11-09 |
 | Pod import ladder (not a card): phages, then 1 Gbp and 10 Gbp of complete prokaryotes with the new code | Opus | detached jobs on the pod; agent waiting on them |
 

@@ -46,8 +46,7 @@ def contigs(draw, circular=None):
 
 
 def _tape(slots, length, circ):
-    return {"contig_uid": b"c" * 16, "is_circular": circ, "contig_len": length, "tier": 1,
-            **build_tape(slots, length, circ)}
+    return {"contig_uid": b"c" * 16, "is_circular": circ, "contig_len": length, **build_tape(slots, length, circ)}
 
 
 def _tokens(toks):

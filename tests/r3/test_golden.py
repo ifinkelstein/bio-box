@@ -222,10 +222,12 @@ def test_golden_tapes(golden_catalog, store_root):
         for r in pq.read_table(f).to_pylist():
             occ.setdefault(r["contig_uid"], []).append(r)
     cuids = sorted(occ)[::3]
-    for g in con.sql("SELECT contig_uid, start_bps, protein_uids FROM tapes_of(?)", params=[cuids]).to_arrow_table().to_pylist():
-        slots = sorted(occ[g["contig_uid"]], key=lambda r: r["slot_ordinal"])
+    sql = "SELECT contig_uid, start_bps, protein_uids, feature_uids FROM tapes_of(?)"
+    for g in con.sql(sql, params=[cuids]).to_arrow_table().to_pylist():
+        slots = sorted(occ[g["contig_uid"]], key=lambda r: (r["start"], r["end"], r["strand"]))  # coordinate order
         assert g["start_bps"] == [r["start"] for r in slots]
         assert g["protein_uids"] == [r["protein_uid"] for r in slots]
+        assert g["feature_uids"] == [r["feature_uid"] for r in slots]
 
 
 def _golden_pair_rows(root: Path, release: str, keep=None):

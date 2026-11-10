@@ -28,8 +28,8 @@ STRAND = pa.int8()  # +1 / -1
 COORD = pa.int64()  # 0-based half-open contig coordinates
 
 STRAND_VALUES = (1, -1)
-# the domains of protein_occurrence.assembly_quality and slot_protein.edit_type, shared by the
-# phase-B tables that replace them (R0 checks they stay equal)
+# the domains of assembly quality and of a CDS's edit type, as the pre-phase-B tables had them
+# (R0 checks the tables that carry them keep these values)
 _ASSEMBLY_QUALITY = ("complete", "chromosome", "scaffold", "contig", "mag_hq", "mag_mq", "vOTU", "plasmid")
 _EDIT_TYPES = ("none", "frameshift", "selenocysteine", "pyrrolysine", "intron")
 
@@ -147,23 +147,6 @@ _SPECS = [
         doc="data_layer_and_tests.md §2A.1",
     ),
     TableSpec(
-        name="slot_protein",
-        location="l1/slot_protein",
-        layer="L0-seq",
-        schema=pa.schema([
-            _f("contig_uid", UID),
-            _f("slot_ordinal", pa.uint32()),
-            _f("protein_uid", UID),
-            _f("genetic_code", pa.uint8()),
-            _f("edit_type", pa.string()),
-        ]),
-        primary_key=("contig_uid", "slot_ordinal", "gene_call_version"),
-        sort_key=("contig_uid", "slot_ordinal"),
-        partition_keys=("gene_call_version", "stage"),
-        enums={"edit_type": ("none", "frameshift", "selenocysteine", "pyrrolysine", "intron")},
-        doc="data_layer_and_tests.md §2A.1; slot_uid is the composite (contig_uid, slot_ordinal)",
-    ),
-    TableSpec(
         name="igr",
         location="l0seq/igr",
         layer="L0-seq",
@@ -172,8 +155,6 @@ _SPECS = [
             _f("start", COORD),
             _f("end", COORD),
             _f("strand", STRAND),
-            _f("left_slot", pa.uint32(), nullable=True),
-            _f("right_slot", pa.uint32(), nullable=True),
             _f("left_feature_uid", UID, nullable=True),
             _f("right_feature_uid", UID, nullable=True),
         ]),
@@ -181,7 +162,10 @@ _SPECS = [
         sort_key=("contig_uid", "start"),
         partition_keys=("igr_version", "stage"),
         enums={"strand": STRAND_VALUES},
-        doc="data_layer_and_tests.md §2A.1 (coordinates only; null slot at a contig end)",
+        doc=(
+            "data_layer_and_tests.md §2A.1; planning/tasks/TASKS.md §2. Coordinates only; the flanks are the "
+            "feature uids of the tape version's producers, null at a linear contig end"
+        ),
     ),
     TableSpec(
         name="genome_identity",
@@ -227,28 +211,21 @@ _SPECS = [
         schema=pa.schema([
             _f("protein_uid", UID),
             _f("contig_uid", UID),
-            _f("slot_ordinal", pa.uint32()),
-            _f("genome_uid", UID),
             _f("start", COORD),
             _f("end", COORD),
             _f("strand", STRAND),
-            _f("tax_order", pa.uint32(), nullable=True),
-            _f("is_species_rep", pa.bool_()),
-            _f("tier", pa.uint8()),
-            _f("assembly_quality", pa.string()),
             _f("dist_to_contig_end_bp", pa.uint32()),
-            # card B-05: appended non-null before the first release (AGENTS §3.8); slot_ordinal stays
-            # a plain column until B-17
-            _f("feature_uid", UID),
+            _f("feature_uid", UID),  # card B-05
         ]),
         primary_key=("feature_uid", "gene_call_version"),
         sort_key=("protein_uid",),
         partition_keys=("gene_call_version", "stage"),
-        enums={
-            "strand": STRAND_VALUES,
-            "assembly_quality": ("complete", "chromosome", "scaffold", "contig", "mag_hq", "mag_mq", "vOTU", "plasmid"),
-        },
-        doc="data_layer_and_tests.md §2B.1",
+        enums={"strand": STRAND_VALUES},
+        doc=(
+            "data_layer_and_tests.md §2B.1; planning/tasks/TASKS.md §2. Rows sorted by (protein_uid, contig_uid, "
+            "start, end, strand). Genome, tier, taxonomy and assembly quality live in contig_dim (AGENTS §3.6; "
+            "card B-17 removed them here with the ordinal column)"
+        ),
     ),
     TableSpec(
         name="l1_domains",
@@ -477,8 +454,8 @@ _SPECS = [
             _f("flags", pa.uint8()),
             _f("policy_hash", pa.string()),
             # card B-16: the slots by feature_uid (primary key, so non-null: appended before the first
-            # release, AGENTS §3.8) and the tape version the ordinals belong to; the ordinals stay plain
-            # columns until B-17
+            # release, AGENTS §3.8) and the tape version the ordinals belong to; the ordinals are plain
+            # columns, never a key (TASKS.md §2, card B-17)
             _f("anchor_feature_uid", UID),
             _f("feature_uid", UID),
             _f("tape_version", pa.string(), nullable=True),
@@ -505,8 +482,6 @@ _SPECS = [
             _f("end", COORD),
             _f("strand", STRAND),
             _f("n_residues", pa.uint32()),
-            _f("left_slot", pa.uint32(), nullable=True),
-            _f("right_slot", pa.uint32(), nullable=True),
             _f("orientation", pa.uint8(), nullable=True),
             _f("gc", pa.float32(), nullable=True),
             _f("dist_to_contig_end_bp", pa.uint32(), nullable=True),
@@ -515,7 +490,7 @@ _SPECS = [
             _f("gene_overlap_frac", pa.float32(), nullable=True),
             _f("genetic_code", pa.uint8(), nullable=True),
             # card B-16: the flanks as features of the pack's tape version (pack_manifest.json
-            # `tape_version`); left_slot and right_slot stay until B-17
+            # `tape_version`); they replace the ordinal flanks that card B-17 removed
             _f("left_feature_uid", UID, nullable=True),
             _f("right_feature_uid", UID, nullable=True),
         ]),
@@ -560,13 +535,9 @@ _SPECS = [
         layer="L3",
         schema=pa.schema([
             _f("contig_uid", UID),
-            _f("tax_order_bucket", pa.uint32(), nullable=True),
-            _f("genome_uid", UID, nullable=True),
             _f("contig_len", COORD),
             _f("is_circular", pa.bool_()),
             _f("n_slots", pa.uint32()),
-            _f("tier", pa.uint8(), nullable=True),
-            _f("assembly_quality", pa.string(), nullable=True),
             _f("feature_kinds", pa.list_(pa.uint8())),
             _f("strands", pa.list_(STRAND)),
             _f("start_bps", pa.list_(pa.uint32())),
@@ -590,8 +561,8 @@ _SPECS = [
             "the slots are the features of the version's producers ordered by (start, end, strand, kind), and "
             "the list index (ordinal) is valid inside one tape_version only (AGENTS §3.3). feature_kinds from "
             "ids.KIND; protein_uids null for a non-CDS slot; junction codes 1 co-directional, 2 divergent, "
-            "3 convergent, 4 nested antisense, null for the first slot of a linear contig. tax_order_bucket, "
-            "genome_uid, tier and assembly_quality are legacy (B-17 removes them)"
+            "3 convergent, 4 nested antisense, null for the first slot of a linear contig. Genome, tier, "
+            "taxonomy and assembly quality live in contig_dim (AGENTS §3.6; card B-17 removed them here)"
         ),
     ),
     TableSpec(
@@ -627,7 +598,7 @@ _SPECS = [
         list_columns=("family_tokens", "nr50_tokens", "nr90_tokens"),
         doc="data_layer_and_tests.md §1 L3 (`tape_tokens_<release>`): token columns, recomputed per release",
     ),
-    # --- phase B (card B-03): added beside the legacy tables they replace; B-17 removes those ---
+    # --- phase B (card B-03): added beside the legacy tables they replaced; B-17 removed those ---
     TableSpec(
         name="genome_input",
         location="l0seq/genome_input",
@@ -685,7 +656,7 @@ _SPECS = [
         sort_key=("contig_uid", "start", "end"),
         partition_keys=("gene_call_version", "stage"),
         enums={"strand": STRAND_VALUES, "edit_type": _EDIT_TYPES},
-        doc="planning/tasks/TASKS.md §2; DEC-18. Replaces slot_protein: the protein of each CDS feature",
+        doc="planning/tasks/TASKS.md §2; DEC-18. The protein of each CDS feature (replaced the ordinal-keyed table)",
     ),
     TableSpec(
         name="contig_dim",

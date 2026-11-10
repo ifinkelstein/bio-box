@@ -40,7 +40,7 @@ operations:
     tests: [R-03, R-05, R-08, LY-06]
   O-TRANSLATE:
     summary: region and six-frame translation under genetic codes
-    inputs: [seq_shards, slot_protein]
+    inputs: [seq_shards, feature_protein]
     outputs: [query_result]
     oracle: Biopython translation tables
     mrs: [MR-03, MR-13]
@@ -55,7 +55,7 @@ operations:
   O-CALL:
     summary: gene calling, smORFs, split-gene arbitration
     inputs: [seq_shards]
-    outputs: [slot_protein, protein_seq, igr, l1_genes]
+    outputs: [feature, feature_protein, protein_occurrence, protein_seq, igr, l1_genes]
     oracle: planted genes in synthetic worlds; golden GFF
     mrs: [MR-03, MR-04, MR-13]
     tests: [G-01, G-02, R-04, R-05, A-02]
@@ -96,7 +96,7 @@ operations:
     tests: [S-08, A-03]
   O-TAPE:
     summary: contig tapes, segments, junction topology, directons; release tokens
-    inputs: [l1_genes, l1_domains, l1_ncrna, protein_occurrence, contig_index, cluster_member]
+    inputs: [l1_genes, l1_domains, l1_ncrna, feature, feature_protein, contig_index, cluster_member]
     outputs: [contig_tapes, tape_tokens, token_dict]
     oracle: brute-force rebuild from L1 in Python
     mrs: [MR-03, MR-04, MR-05, MR-11, MR-20]
@@ -110,7 +110,7 @@ operations:
     tests: [Q1, Q3, Q4, C-03, LY-06]
   O-PACK:
     summary: per-release search pack (unique proteins, IGRs >= 30 nt, dark ORFs, models) and its manifest
-    inputs: [protein_seq, igr, seq_shards, protein_occurrence, slot_protein, contig_tapes]
+    inputs: [protein_seq, igr, seq_shards, protein_occurrence, feature_protein, contig_tapes]
     outputs: [search_pack, search_region]
     oracle: recount every target from its source tables; translate each dark ORF from the sequence store
     mrs: [MR-01]

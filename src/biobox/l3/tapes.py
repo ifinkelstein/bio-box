@@ -6,16 +6,15 @@ of a stage (every default variant in `contig_index`, also a contig with no featu
 version, with parallel lists holding one entry per slot. The slots are the union of the `feature`
 rows of the producers, ordered by (start, end, strand, kind); the list index is the slot's ordinal,
 valid inside one tape version only, and `feature_uids` names each slot (AGENTS §3.3). With the
-gene-call producer alone this is genecall's `slot_ordinal` order. Tapes are append-only per stage
+gene-call producer alone this is genecall's (start, end, strand) order. Tapes are append-only per stage
 and carry stable keys only (`feature_uid`, `protein_uid`); tokens are a release-time join
 (`biobox.l3.tokens`).
 
 S0 fills the columns L1 can supply: kinds, strands, coordinates, the junction to the previous
 slot, censoring distances and the protein of each CDS slot (null for any other kind). Columns that
 need later sidecars (segments, directons, regimes, taxonomy, structure) are added as nullable
-columns when their producers exist (LY-09). `tax_order_bucket`, `genome_uid`, `tier` and
-`assembly_quality` are legacy (card B-17 removes them): taken from the contig's first gene in
-`protein_occurrence`, null for a contig without genes.
+columns when their producers exist (LY-09). Genome, tier, taxonomy and assembly quality are not
+on the tape: they live in `contig_dim` (AGENTS §3.6; card B-17 removed them here).
 
 Junctions and distances on a linear contig: the first slot has no previous junction (null),
 and `orfs_to_contig_starts/ends` count the slots between a slot and the contig ends,
@@ -161,8 +160,8 @@ def run(root: Path, stage: str, circular: set[bytes] | frozenset | None = None,
     """Write the stage's tapes for the tape version of `producers` (default `[gene_call_version]`).
 
     `circular`: the circular contig_uids; None reads the stage's `genome_input` table. Proteins come
-    from `feature_protein` of `gene_call_version` (CDS slots only), the legacy columns from its
-    `protein_occurrence`. `tmp` holds DuckDB's private spill directory (system temp by default).
+    from `feature_protein` of `gene_call_version` (CDS slots only). `tmp` holds DuckDB's private
+    spill directory (system temp by default).
     """
     root = Path(root)
     producers = [gene_call_version] if producers is None else list(producers)
@@ -180,7 +179,6 @@ def run(root: Path, stage: str, circular: set[bytes] | frozenset | None = None,
         feats += found
     gcv = f"gene_call_version={gene_call_version}/stage={stage}"
     fp = io.part_files(root / f"l1/feature_protein/{gcv}")
-    occ = io.part_files(root / f"l1/protein_occurrence/{gcv}")
     idx = io.part_files(root / f"l0seq/contig_index/stage={stage}")
     if not idx:
         raise FileNotFoundError(f"no contig_index files at stage {stage}")
@@ -194,16 +192,11 @@ def run(root: Path, stage: str, circular: set[bytes] | frozenset | None = None,
         "WHERE is_default_variant), "
         f"f AS (SELECT DISTINCT * FROM {_source(feats, 'feature_uid, contig_uid, start, \"end\", strand, kind', '')}), "
         f"fp AS {_source(fp, 'feature_uid, protein_uid', 'NULL::BLOB AS feature_uid, NULL::BLOB AS protein_uid')}, "
-        "o AS " + _source(occ, "feature_uid, slot_ordinal, genome_uid, tier, assembly_quality",
-                          "NULL::BLOB AS feature_uid, NULL::UINTEGER AS slot_ordinal, NULL::BLOB AS genome_uid, "
-                          "NULL::UTINYINT AS tier, NULL::VARCHAR AS assembly_quality") + ", "
         "g AS " + _source(gi, "contig_uid, is_circular", "NULL::BLOB AS contig_uid, NULL::BOOLEAN AS is_circular") + " "
         "SELECT coalesce(c.contig_uid, f.contig_uid) AS contig_uid, c.contig_len, g.is_circular, f.feature_uid, "
-        f'f.start, f."end", f.strand, f.kind, CASE WHEN f.kind = {KIND_CDS} THEN fp.protein_uid END AS protein_uid, '
-        "o.slot_ordinal, o.genome_uid, o.tier, o.assembly_quality "
+        f'f.start, f."end", f.strand, f.kind, CASE WHEN f.kind = {KIND_CDS} THEN fp.protein_uid END AS protein_uid '
         "FROM c FULL OUTER JOIN f ON f.contig_uid = c.contig_uid "
         "LEFT JOIN fp ON fp.feature_uid = f.feature_uid "
-        "LEFT JOIN o ON o.feature_uid = f.feature_uid "
         "LEFT JOIN g ON g.contig_uid = coalesce(c.contig_uid, f.contig_uid) "
         'ORDER BY 1, f.start, f."end", f.strand, f.kind'
     )
@@ -217,20 +210,14 @@ def run(root: Path, stage: str, circular: set[bytes] | frozenset | None = None,
     def contig_row(cu: bytes, length: int | None, circ: bool, fs: list[tuple]) -> dict:
         if length is None:
             raise KeyError(f"features on contig {cu.hex()} that contig_index does not hold")
-        genes = [x for x in fs if x[6] is not None]
-        first = min(genes, key=lambda x: x[6]) if genes else (None,) * 10
         n = len(fs)
         counts["contigs"] += 1
         counts["slots"] += n
         return {
             "contig_uid": cu,
-            "tax_order_bucket": None,
-            "genome_uid": first[7],
             "contig_len": length,
             "is_circular": circ,
             "n_slots": n,
-            "tier": first[8],
-            "assembly_quality": first[9],
             **build_tape([(x[1], x[2], x[3]) for x in fs], length, circ, [x[4] for x in fs]),
             "protein_uids": [x[5] for x in fs],
             "feature_uids": [x[0] for x in fs],
@@ -242,14 +229,14 @@ def run(root: Path, stage: str, circular: set[bytes] | frozenset | None = None,
         try:
             for b in reader:
                 cols = [b.column(i).to_pylist() for i in range(b.num_columns)]
-                for cu, n, gcirc, fu, s, e, strand, kind, pu, slot, guid, tier, aq in zip(*cols):
+                for cu, n, gcirc, fu, s, e, strand, kind, pu in zip(*cols):
                     if cu != cur:
                         if cur is not None:
                             yield contig_row(cur, length, circ, fs)
                         cur, length, fs = cu, n, []
                         circ = bool(gcirc) if circular is None else cu in circular
                     if fu is not None:
-                        fs.append((fu, s, e, strand, kind, pu, slot, guid, tier, aq))
+                        fs.append((fu, s, e, strand, kind, pu))
             if cur is not None:
                 yield contig_row(cur, length, circ, fs)
         finally:

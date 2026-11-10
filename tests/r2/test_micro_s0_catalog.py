@@ -86,7 +86,8 @@ def test_manifest_lists_every_parquet_file_and_verifies(built):
     assert catalog.verify_manifest(man) == []
     for f in man["files"]:
         assert f["rows"] == pq.ParquetFile(root / f["path"]).metadata.num_rows
-    assert {f["table"] for f in man["files"]} >= {"seq_locator", "contig_index", "protein_seq", "slot_protein", "protein_occurrence"}
+    assert {f["table"] for f in man["files"]} >= {"seq_locator", "contig_index", "protein_seq", "feature", "feature_protein",
+                                                  "protein_occurrence"}
     shard_files = sorted(p.relative_to(root).as_posix() for p in (root / "l0seq/seq_shards").rglob("*") if p.is_file())
     assert [a["path"] for a in man["artifacts"]] == shard_files
     assert len(shard_files) == 3 * len([a for a in shard_files if a.endswith(".fa.gz")]) > 3
@@ -630,8 +631,8 @@ def test_protein_and_slot_macros(built, con):
     root, _, _ = built
     occ = pq.read_table(root / f"l1/protein_occurrence/gene_call_version={GENE_CALL_VERSION}/stage=S0/part-0.parquet").to_pylist()
     puid = occ[len(occ) // 2]["protein_uid"]
-    want = sorted((r["contig_uid"], r["slot_ordinal"]) for r in occ if r["protein_uid"] == puid)
-    got = sorted(con.execute("SELECT contig_uid, slot_ordinal FROM slots_of(?)", [puid]).fetchall())
+    want = sorted((r["contig_uid"], r["feature_uid"]) for r in occ if r["protein_uid"] == puid)
+    got = sorted(con.execute("SELECT contig_uid, feature_uid FROM slots_of(?)", [puid]).fetchall())
     assert got == want
     prot = {}
     for f in root.glob("l0seq/protein_seq/**/part-0.parquet"):

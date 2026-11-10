@@ -97,15 +97,19 @@ def check_file_sizes(manifest: dict, min_bytes: int = NFS_MIN_BYTES) -> list[str
     return problems
 
 
-# Foreign keys that exist at S0 (C-03): (child, child cols, parent, parent cols)
+# Foreign keys that exist at S0 (C-03): (child, child cols, parent, parent cols). Slots are named by
+# feature_uid, never by an ordinal (AGENTS §3.3; card B-17); a gene-call version is the producer of its
+# CDS features.
 FOREIGN_KEYS = [
     ("contig_occurrence", ("raw_digest",), "seq_locator", ("raw_digest",)),
     ("contig_occurrence", ("l0_object_sha256",), "l0_manifest", ("object_sha256",)),
     ("contig_index", ("raw_digest",), "seq_locator", ("raw_digest",)),
-    ("slot_protein", ("contig_uid",), "contig_index", ("contig_uid",)),
-    ("slot_protein", ("protein_uid", "gene_call_version"), "protein_seq", ("protein_uid", "gene_call_version")),
-    ("protein_occurrence", ("contig_uid", "slot_ordinal", "gene_call_version"),
-     "slot_protein", ("contig_uid", "slot_ordinal", "gene_call_version")),
+    ("contig_dim", ("contig_uid",), "contig_index", ("contig_uid",)),
+    ("feature", ("contig_uid",), "contig_index", ("contig_uid",)),
+    ("feature_protein", ("feature_uid", "gene_call_version"), "feature", ("feature_uid", "producer")),
+    ("feature_protein", ("protein_uid", "gene_call_version"), "protein_seq", ("protein_uid", "gene_call_version")),
+    ("protein_occurrence", ("feature_uid", "gene_call_version"),
+     "feature_protein", ("feature_uid", "gene_call_version")),
     ("l1_domains", ("protein_uid",), "protein_seq", ("protein_uid",)),
     ("cluster_member", ("member_uid",), "protein_seq", ("protein_uid",)),
     ("cluster_member", ("rep_uid",), "protein_seq", ("protein_uid",)),
@@ -309,13 +313,13 @@ def check_coordinates(con: duckdb.DuckDBPyConnection) -> list[str]:
 
 
 def check_lineage(con: duckdb.DuckDBPyConnection) -> list[str]:
-    """R-06: no orphan sequence; every slot's contig has an occurrence row; every occurrence an L0 object."""
+    """R-06: no orphan sequence; every feature's contig has an occurrence row; every occurrence an L0 object."""
     problems = []
     checks = {
         "stored sequences without an occurrence":
             "SELECT count(*) FROM seq_locator s ANTI JOIN contig_occurrence o USING (raw_digest)",
-        "slots whose contig has no occurrence":
-            "SELECT count(*) FROM slot_protein s ANTI JOIN contig_occurrence o USING (contig_uid)",
+        "features whose contig has no occurrence":
+            "SELECT count(*) FROM feature f ANTI JOIN contig_occurrence o USING (contig_uid)",
         "occurrences without an L0 object":
             "SELECT count(*) FROM contig_occurrence o ANTI JOIN l0_manifest m ON o.l0_object_sha256 = m.object_sha256",
     }

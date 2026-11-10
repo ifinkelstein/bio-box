@@ -1,8 +1,8 @@
 """Slot geometry shared by tapes and pairs (PLAN.md §4.2; data_layer_and_tests.md §2A.2).
 
 A slot is (start, end, strand), 0-based half-open on the contig; on a circular contig a
-slot may wrap the origin (`end > contig_len`). Slots on one contig are in slot_ordinal
-order, which is coordinate order.
+slot may wrap the origin (`end > contig_len`). Slots on one contig are in tape order
+(the ordinal inside one tape version), which is coordinate order.
 """
 
 from __future__ import annotations

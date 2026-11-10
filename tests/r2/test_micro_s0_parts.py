@@ -56,7 +56,6 @@ SPLIT = {
     "feature": f"l1/feature/producer={V}/stage=S0",
     "feature_protein": f"l1/feature_protein/gene_call_version={V}/stage=S0",
     "protein_occurrence": f"l1/protein_occurrence/gene_call_version={V}/stage=S0",
-    "slot_protein": f"l1/slot_protein/gene_call_version={V}/stage=S0",
     "igr": f"l0seq/igr/igr_version={IGRV}/stage=S0",
     "l1_domains": "l1/domains/library=test-1/stage=S0",
     "cluster_member": f"l2/cluster_member/release={REL}",
