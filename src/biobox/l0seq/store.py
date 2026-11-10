@@ -71,7 +71,9 @@ SCRATCH_FLUSH_ROWS = 65_536  # pass-1 rows buffered before a scratch row group i
 # widths (random 16- and 32-byte keys do not compress); none of these tables has a measurement yet
 # (planning/measurements/2026-11-09_design_stress_test.md §3 and §6a list none).
 EST_OCCURRENCE_ROW = 120  # estimate: contig_occurrence (accession and header strings, raw_digest, contig_uid)
-EST_LABEL_ROW = 110  # estimate: contig_label (contig_uid 16, object sha256 32, the accession and header strings)
+# contig_label: 47.9 bytes per row, measured on wilkcomp02, 2026-11-10, rL.3's three stages (32,815 contigs;
+# planning/measurements/2026-11-10_label_and_membership_lookups.md); it only cuts parts
+EST_LABEL_ROW = 48
 EST_INDEX_ROW = 56  # estimate: contig_index (contig_uid 16 + raw_digest 32 + length and flag)
 EST_LOCATOR_ROW = 40  # estimate: seq_locator (raw_digest 32 + dictionary-coded shard path + length)
 EST_MANIFEST_ROW = 160  # estimate: l0_manifest (sha256 32 + object name, source and license strings + 3 scalars)

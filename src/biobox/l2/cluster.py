@@ -73,7 +73,9 @@ from biobox.registry.schemas import table
 # (planning/measurements/2026-11-09_design_stress_test.md §3, §6a).
 EST_MEMBER_ROW = 37
 EST_ALN_ROW = 31
-EST_MEMBER_CLUSTER_ROW = 37  # estimate: member_cluster holds cluster_member's rows less its params hash, member first
+# member_cluster: 40.5 bytes per row, measured on wilkcomp02, 2026-11-10, rL.3's 21,241,368 rows
+# (planning/measurements/2026-11-10_label_and_membership_lookups.md)
+EST_MEMBER_CLUSTER_ROW = 40
 
 # UniRef-style: member covered >= 80% by the alignment to its representative (cov-mode 1,
 # coverage of the target = member), greedy by length (cluster-mode 2, CD-HIT-like).
