@@ -148,6 +148,12 @@ Files: `scripts/stress/README.md`+, `scripts/stress/*.py`
 Do: write the README: what each script measures, its command line, and which card uses it. Do not change script behavior.
 Accept: every script runs with `--help` or prints its usage.
 
+### A-06 Stress scripts follow the B-28 reader signatures
+**L** · Depends: B-28 · Pod: yes (to run them)
+Files: `scripts/stress/{builder_limits.py,synth_scale.py,step6_export.py}`, `scripts/stress/pilot_s1/{pilot.py,store_probe.py}`, `scripts/stress/pilot_cami/{pilot_cami.py,probe_cami.py}`, `scripts/stress/README.md`, `tests/r0/test_stress_scripts.py`+
+Do: card B-28 made `SeqStore(root, stages)` require its stages and `pack.build` require a defined release; eight call sites in these scripts still call `SeqStore(root)` and now raise `TypeError`. Pass the script's own stage list (or `catalog.ReleaseFiles.of(root, release)` where the script has a release). Add an R0 test that imports nothing heavy: it parses every script under `scripts/stress` with `ast` and fails on a call to `SeqStore` with fewer than two positional arguments, and on any builder call that B-25 gave a required `stages` argument without it, so the next signature change is caught without running the scripts.
+Accept: the R0 test, written first and seen to fail on the eight sites; `synth_scale.py` at 10× and `builder_limits.py` run to completion on the pod.
+
 ### A-04 `doctor` reads the cgroup cap and `/stor` mounts
 **L** · Depends: none
 Files: `src/biobox/doctor.py`, `tests/r1/test_doctor.py`
@@ -333,6 +339,13 @@ Why: after B-25 the release builders read only the release's stages, but `pack b
 Do: each of these readers takes the file list of the release (from the manifest when one is given, else from `catalog.release_stages`), never a glob (AGENTS §3.9). The clustering ledger is partitioned by release (`ledger/release=<R>/step=cluster/`), a new location in the registry; other ledgers stay per stage.
 Accept: test first: a store with stages S0 and S1 and release R1 over S0 only: `pack build`, a search run and `nbr` against R1 return nothing from S1; two releases over the same stage both cluster. `rg -n "stage=\*" src/biobox/search src/biobox/l0seq/store.py` returns only per-stage builders.
 
+### B-33 A release's manifest covers only that release's files
+**M** · Depends: B-28 (found in its report)
+Files: `src/biobox/catalog.py` (`build_manifest`, `verify_manifest`, `ReleaseFiles`), `tests/r2/test_release_readers.py`, `tests/r2/test_micro_s0_dim.py` (it relies on the old behaviour: migrate it)
+Why: `build_manifest` and `verify_manifest` take in every file under any `release=` partition (`token_dict`, `cluster_member`, postings, cluster ledgers of other releases). So release R1's manifest stops verifying as soon as release R2 writes its files, and R2's manifest lists R1's. On the pod this would make every earlier release fail verification after each new one.
+Do: a file with a `release=` partition belongs to that release only. A release's manifest lists the stage files of its `release_def` stages, its own `release=` files, and unpartitioned artifacts; `verify_manifest` ignores other releases' files instead of reporting them as strays.
+Accept: test first: build R1 and its manifest, then build R2 over the same stage: R1's manifest still verifies with no problems and is byte-identical when rebuilt; R2's manifest lists no R1 file.
+
 ### B-29 Postings builder runs out of memory at 21 M slots
 Correction, 2026-11-10: the title and the evidence line below say "about 21 M slots"; that was the orchestrating session's error. Release `rL.3` has 12,048,866 slots and 25,822,709 postings (*measured* by the B-29 agent, `planning/measurements/2026-11-10_postings_memory.md`).
 **M** · Depends: B-25 · Pod: yes (found by the import ladder, stage C, 2026-11-10 02:53 CST)
@@ -345,7 +358,9 @@ Accept: the new test passes; the fixture's postings files are byte-identical to 
 **M** · Depends: B-28 (same file) · found by B-18 (`planning/measurements/2026-11-10_phase_b_exit.md`; AGENTS §4.4)
 Files: `src/biobox/catalog.py`, `tests/r2/test_micro_s0_duckdb.py`, `tests/r2/test_scale_layout.py`+
 Evidence (*measured*, wilkcomp02, 2026-11-10, `scripts/stress/synth_scale.py` at 1,000× with `catalog.profile_query`): a key passed through `token_of(...)` (a scalar subquery) is not pushed into the `token_postings` scan, so `token_rows`, `q1_count`, `pairs_of` and `partners_of` read 20 of 20 row groups where the same key through a plain join reads 1; the near side of `partners_of` filters `token_postings` by `contig_uid`, which cannot prune because the table is sorted by `token_id` (TASKS §2 says to read `tape_tokens` there); `default_digest`, `digest_len` and `contig_len_of` read 9 of 9 row groups for a joined key at 10⁶ contigs (`scripts/stress/macro_scan.py`).
+Added 2026-11-10 from the `rL.3` release (`planning/measurements/2026-11-10_import_ladder/rL3.md`, *measured*): in every neighbour query the partner side reads the whole token level: 99 of 211 row groups for NR50 neighbours of one cluster (1.3 to 1.4 s at 12 M slots, against 0.14 s at 2.4 M), so that read grows linearly with the release. Postings are sorted by `token_id`, and partners are found by position on the anchors' contigs, so they cannot be pruned from postings: take the partner slots from `tape_tokens` of the anchors' contigs (sorted by `contig_uid`; one row group per contig), as TASKS §2 specifies, and resolve token ids to stable keys through `token_dict` afterwards. This is the main item of the card.
 Do: make each of these resolve its key so that the scan prunes: join the key in, or resolve it first and pass a literal, as B-14 did for the sequence macros with a Python UDF. `partners_of` takes its near side from `tape_tokens` by `contig_uid`. Results must not change.
+Since card D-05 the failing tests already exist: `tests/r2/test_scale_layout.py` holds eight `xfail(strict=True, reason="card B-31")` tests, one per defect, with the row groups each reads today (32 of 32 for the token macros, 10 of 10 for the digest macros). Remove the markers as you fix each; a marker left on a fixed lookup fails the suite (XPASS).
 Accept: test first, on the 100× synthetic store built in the test: each macro above, with a literal key and with keys from a joined table, reads at most 2 row groups per key (`catalog.profile_query`); the existing Q-tests give the same rows.
 
 ### B-32 Gene calling of short contigs uses its workers
@@ -409,6 +424,13 @@ Files: `src/biobox/l0seq/inputs.py`, `src/biobox/l1/genecall.py`, `src/biobox/l1
 Why: `run-step` publishes what a command wrote into `$BIOBOX_STAGING` (its module docstring is the contract). Only `ingest` has an `out=` argument (card B-23); every other builder reads and writes the one `root` it is given, so none can run as a step. And the registry claims neither `manifests/release=<R>.json` nor `catalog/release=<R>.duckdb`, so `run-step` refuses them (LY-10).
 Do: (1) every builder's `run` takes `out: Path | None = None`: inputs are read from `root` (earlier steps and stages), every output including its ledger and any definition row (`tape_version_def`, `release_def`) is written under `out` (default: `root`, so direct calls and all existing tests are unchanged). A definition row that already exists in `root` is verified, not rewritten. Follow `ingest`'s pattern exactly, including its refusal when the target partition already holds files. (2) Register the manifest and the catalog as artifacts so `run-step` can publish them. (3) CLI: `bio-box stage inputs|ingest|genecall|igr|tapes|domains --root R --stage S [--out DIR]` beside the existing `bio-box release ...`, each defaulting `--out` to `$BIOBOX_STAGING` when that is set.
 Accept: tests first: for each builder, run as a `run-step` command on the fixture, the published root is file-for-file identical (sha256) to the root built by direct calls; the whole chain inputs → catalog run step by step under `run-step` gives the same manifest hash as today's fixture build.
+
+### C-09 The file-size rule does not refuse small release records
+**L** · Depends: C-08 (found in its report) · blocks the second release under C-04
+Files: `src/biobox/contracts.py` (`check_file_sizes`), `src/biobox/registry/schemas.py` (a `small_ok` flag on `ArtifactSpec` if it lacks one), `tests/r2/test_micro_s0_contracts.py`, `tests/registry/operations.yaml` (drop `catalog` and `release_manifest` from `external` if R0 accepts it)
+Why: `check_file_sizes` groups artifacts by (artifact, stage) and refuses a group with more than one file under the profile's floor (64 MiB on wilkcomp02). The release manifest and the catalog have no partitions, so every release's manifest falls in one group: the second release's manifest and catalog would be refused by `run-step` (`_check_sizes`). The same grouping would refuse two small domain-library files in one stage. Derived from the code by the C-08 agent; not yet run at the pod's floor.
+Do: reproduce first at the real floor (a test profile with `small_file_floor_bytes: 67108864` and two releases built through `run-step`). Then: artifacts and tables that are small by nature (manifest, catalog, `store_params`, and every `small_ok` table) are exempt by a registry flag, not by name in the check; for the rest, group by the full partition tuple, not by stage alone. Do not lower or bypass the floor for data tables.
+Accept: the reproduction fails first and passes after; a deliberately tiny second file in a data table's partition is still refused.
 
 ### B-30 Ingest by batch processes
 **M** · Depends: B-22, C-08

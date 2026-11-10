@@ -118,16 +118,23 @@ def _batches(rows: list[dict], spec) -> list[pa.RecordBatch]:
 
 
 def run(root: Path, stage: str, gene_call_version: str, library: str, library_version: str,
-        hmm_path: Path, cutoff: str, cpus: int = 1, max_file_bytes: int = layout.MAX_FILE_BYTES) -> dict:
+        hmm_path: Path, cutoff: str, cpus: int = 1, max_file_bytes: int = layout.MAX_FILE_BYTES,
+        out: Path | None = None) -> dict:
+    """Scan the stage's distinct proteins (read from `root`) with one library; write its domains and
+    ledger under `out` (default `root`; card C-08). Refuses, before reading a protein, when either
+    already holds a file in `root` or `out`."""
+    out = Path(root) if out is None else Path(out)
+    lib_dir = f"l1/domains/library={library}-{library_version}/stage={stage}"
+    step = f"domains-{library}-{library_version}"
+    ledger.refuse_written(root, out, [lib_dir, f"ledger/stage={stage}/step={step}"], f"{step} of stage {stage}")
     proteins = load_proteins(root, gene_call_version, stage)
     rows = scan(proteins, hmm_path, cutoff, cpus=cpus)
     spec = table("l1_domains")
-    bio.write_parts(_batches(rows, spec), spec, Path(root) / f"l1/domains/library={library}-{library_version}/stage={stage}",
-                    EST_ROW_BYTES, max_file_bytes)
+    bio.write_parts(_batches(rows, spec), spec, out / lib_dir, EST_ROW_BYTES, max_file_bytes)
     hit = len({r["protein_uid"] for r in rows})
     lib = f"{library}-{library_version}".encode()
     tools = provenance.tool_versions("pyhmmer", "pyarrow")
-    ledger.write(root, stage, f"domains-{library}-{library_version}",
+    ledger.write(out, stage, step,
                  sorted([ledger.row(lib, "library", len(proteins), hit, tools=tools),
                          ledger.row(lib, "library", len(proteins), hit, n_rejected=len(proteins) - hit,
                                     reason="no_hit", tools=tools)],

@@ -42,11 +42,23 @@ from biobox.l0seq.store import SeqStore  # noqa: E402
 from biobox.l1.genecall import GENE_CALL_VERSION  # noqa: E402
 from biobox.l3.tokens import read_tapes  # noqa: E402
 
+from biobox import catalog  # noqa: E402
+from biobox.l3.tapes import tape_version  # noqa: E402
+
+if a.release:
+    stages = catalog.release_stages(a.root, a.release)
+elif a.stages:
+    stages = a.stages.split(",")
+else:
+    stages = sorted(d.name.removeprefix("stage=") for d in
+                    (a.root / f"l3/tapes/tape_version={tape_version([GENE_CALL_VERSION])}").glob("stage=*"))
+
 R = {"host": platform.node(), "root": str(a.root)}
+R["stages"] = stages
 R["rss_before_open_mb"] = rss_now_mb()
 R["peak_before_open_mb"] = peak_mb()
 t = time.perf_counter()
-store = SeqStore(a.root)
+store = SeqStore(a.root, stages)  # the stages of the release or of --stages (card B-28)
 R["open_s"] = round(time.perf_counter() - t, 3)
 R["rss_after_open_mb"] = rss_now_mb()
 R["peak_after_open_mb"] = peak_mb()
@@ -63,17 +75,6 @@ R["default_contigs"] = sum(pc.sum(pq.read_table(f, columns=["is_default_variant"
 R["shards"] = sorted(set(loc.column("shard").to_pylist()))
 del loc
 
-from biobox import catalog  # noqa: E402
-from biobox.l3.tapes import tape_version  # noqa: E402
-
-if a.release:
-    stages = catalog.release_stages(a.root, a.release)
-elif a.stages:
-    stages = a.stages.split(",")
-else:
-    stages = sorted(d.name.removeprefix("stage=") for d in
-                    (a.root / f"l3/tapes/tape_version={tape_version([GENE_CALL_VERSION])}").glob("stage=*"))
-R["stages"] = stages
 tp = read_tapes(a.root, GENE_CALL_VERSION, ["contig_uid", "contig_len", "n_slots", "start_bps", "end_bps"], stages=stages)
 tp = [t for t in tp if t["n_slots"]]
 cum, tot = [], 0
@@ -113,7 +114,7 @@ def run(st: SeqStore, label: str) -> None:
 
 
 run(store, "fetch_cache64_first_pass")
-run(SeqStore(a.root, cache_blocks=0), "fetch_cache0")
+run(SeqStore(a.root, stages, cache_blocks=0), "fetch_cache0")
 R["peak_end_mb"] = peak_mb()
 a.out.write_text(json.dumps(R, indent=1, default=str))
 print(json.dumps(R, indent=1, default=str))

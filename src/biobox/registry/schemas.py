@@ -52,6 +52,9 @@ class TableSpec:
     # partition_keys order, or a single `.parquet` file. Empty: not yet placed
     # (the catalog exposes an empty view).
     location: str = ""
+    # Other partition key tuples a path under `location` may use instead of `partition_keys`; the first
+    # key of each differs, so a path still maps to one key set (the ledger, card B-28).
+    alt_partition_keys: tuple[tuple[str, ...], ...] = ()
 
 
 def _f(name: str, typ: pa.DataType, nullable: bool = False) -> pa.Field:
@@ -524,12 +527,15 @@ _SPECS = [
         primary_key=("object_key", "reason_code", "stage", "step"),
         sort_key=("object_key", "reason_code"),
         partition_keys=("stage", "step"),
+        # a release's own steps (clustering) are not a stage's: ledger/release=<R>/step=<name>/ (card B-28)
+        alt_partition_keys=(("release", "step"),),
         enums={"object_kind": ("l0_object", "contig", "library", "level")},
         small_ok=True,
         doc=(
             "data_layer_and_tests.md §4.2. One row per (object, reason); n_rejected counts that reason only, so "
             "L-01 sums rows per object. object_key is the L0 object sha256, a contig_uid, or the UTF-8 name of a "
-            "library or cluster level"
+            "library or cluster level. A stage's steps are partitioned by (stage, step); a release's own steps "
+            "(clustering) by (release, step), so two releases over one stage never share a ledger path"
         ),
     ),
     TableSpec(
@@ -795,6 +801,10 @@ class ArtifactSpec:
     `pattern`, and each such file has one companion per suffix in `companions`. An artifact with
     no partition keys whose `location` ends in a name `pattern` matches is that one file
     (`single_file`), as a table whose location ends in `.parquet` is.
+
+    `in_manifest` False marks the files that describe a release rather than belong to it: its
+    manifest and its catalog (card C-08). They are claimed here so that `bio-box run-step` can
+    publish them (LY-10), and are never listed in a release manifest nor reported as its strays.
     """
 
     name: str
@@ -804,6 +814,7 @@ class ArtifactSpec:
     pattern: str
     companions: tuple[str, ...] = ()
     doc: str = ""
+    in_manifest: bool = True
 
     @property
     def single_file(self) -> bool:
@@ -830,6 +841,30 @@ ARTIFACTS: dict[str, ArtifactSpec] = {
         doc="the sequence store's parameters (format, shard_bases, line_width, bgzf_level) as sorted-key JSON; "
             "written once, by the first stage's ingest, and checked, never rewritten, by every later one "
             "(card B-22)",
+    ),
+    # A release's own records (card C-08): one file per release, the release in the file name
+    # (`release=<R>.json`, `release=<R>.duckdb`), so the artifact has no partition directories. Both
+    # hold the data root's absolute path (the manifest's `root`; the catalog's `catalog_info.root` and
+    # its views' file lists) and are built for the final root even when written into staging.
+    "release_manifest": ArtifactSpec(
+        name="release_manifest",
+        layer="release",
+        location="manifests",
+        partition_keys=(),
+        pattern=r"release=[^/=]+\.json",
+        doc="a release's manifest, the system of record (biobox.catalog.build_manifest, write_manifest); "
+            "written once per release",
+        in_manifest=False,
+    ),
+    "catalog": ArtifactSpec(
+        name="catalog",
+        layer="release",
+        location="catalog",
+        partition_keys=(),
+        pattern=r"release=[^/=]+\.duckdb",
+        doc="a release's generated read-only DuckDB catalog (biobox.catalog.generate_catalog): views over "
+            "the manifest's explicit file lists",
+        in_manifest=False,
     ),
 }
 

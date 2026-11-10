@@ -1,7 +1,9 @@
 """Step ledgers and their reconciliation (data_layer_and_tests.md §4.2: L-01, L-02, L-03).
 
 Each step writes `<root>/ledger/stage=<S>/step=<name>/part-0.parquet`: one row per
-(object, reason) with n_in, n_kept, n_merged and n_rejected for that reason.
+(object, reason) with n_in, n_kept, n_merged and n_rejected for that reason. A release's own steps
+(`RELEASE_STEPS`: clustering) write `<root>/ledger/release=<R>/step=<name>/part-0.parquet` instead
+(`write_release`, card B-28), so two releases over one stage (rS0.1, rS0.2) each have their own.
 
 S0 steps and what their counts mean:
 
@@ -19,6 +21,13 @@ Bounded memory (card B-19; AGENTS §4.1): `write` streams any iterable of rows, 
 sorted by (object_key, reason_code), through `biobox.io.write_table` in batches of `BATCH_ROWS`;
 a step's ledger is written once (append-only). The checks are DuckDB aggregates over the ledger
 files, so no ledger is loaded; only `read` returns a whole ledger as a list.
+
+Where a step writes (card C-08). A builder reads its inputs from the data root and writes every
+output, its ledger included, under an output root `out` (the root itself by default; under
+`bio-box run-step`, `$BIOBOX_STAGING`, from which run-step publishes). `write` and `write_release`
+take that output root as their first argument. `refuse_written` is the check every builder makes
+before any work: its partitions hold no file yet, in the root or in `out`; `check_scratch` keeps a
+builder's scratch directory out of both.
 """
 
 from __future__ import annotations
@@ -55,17 +64,70 @@ def row(object_key: bytes, kind: str, n_in: int, n_kept: int, n_merged: int = 0,
             "tool_versions_json": json.dumps(tools, sort_keys=True) if tools is not None else None}
 
 
+RELEASE_STEPS = frozenset({"cluster"})  # steps of a release, not of a stage (card B-28)
+
+
 def path(root: Path, stage: str, step: str) -> Path:
     return Path(root) / f"ledger/stage={stage}/step={step}/part-0.parquet"
+
+
+def release_path(root: Path, release: str, step: str) -> Path:
+    """The ledger of a release's own step (`RELEASE_STEPS`)."""
+    return Path(root) / f"ledger/release={release}/step={step}/part-0.parquet"
+
+
+def _step_path(root: Path, stage: str, step: str, release: str | None) -> Path | None:
+    """Where `step`'s ledger is for `stage`: a release step's is its release's (None without a release)."""
+    if step in RELEASE_STEPS:
+        return None if release is None else release_path(root, release, step)
+    return path(root, stage, step)
 
 
 def write(root: Path, stage: str, step: str, rows: Iterable[dict]) -> Path:
     """Write the step's ledger from `rows`, any iterable consumed once and never materialized.
 
     Rows must come sorted by (object_key, reason_code) (the writer refuses them otherwise; callers
-    `ORDER BY` in SQL or sort a handful of rows). A ledger that exists is never rewritten.
+    `ORDER BY` in SQL or sort a handful of rows). A ledger that exists is never rewritten. A release
+    step (`RELEASE_STEPS`) is refused here: it goes to `write_release`.
     """
-    out = path(root, stage, step)
+    if step in RELEASE_STEPS:
+        raise ValueError(f"{step} is a release step: its ledger is the release's (ledger.write_release)")
+    return _write(path(root, stage, step), rows)
+
+
+def write_release(root: Path, release: str, step: str, rows: Iterable[dict]) -> Path:
+    """As `write`, for a release's own step (`RELEASE_STEPS`), under `ledger/release=<R>/`."""
+    if step not in RELEASE_STEPS:
+        raise ValueError(f"{step} is not a release step {sorted(RELEASE_STEPS)}: its ledger is a stage's (ledger.write)")
+    return _write(release_path(root, release, step), rows)
+
+
+def refuse_written(root: Path, out: Path | None, dirs: Iterable[str], what: str) -> None:
+    """Raise FileExistsError, naming the first file, when any file (a writer's temporary one included)
+    lies under one of the root-relative directories `dirs` in `root` or in `out` (card C-08). A builder
+    calls this before it reads an input, so a step that already ran, or whose output directory holds a
+    killed attempt's files, does no work and changes nothing; `io.write_table` refuses an existing file
+    in any case."""
+    bases = [Path(root).resolve()] + ([] if out is None else [Path(out).resolve()])
+    for base in dict.fromkeys(bases):
+        for d in dirs:
+            p = base / d
+            left = sorted(f for f in p.rglob("*") if not f.is_dir()) if p.is_dir() else []
+            if left:
+                raise FileExistsError(f"{left[0]}: {what} already has {len(left)} file(s) under {p}; a step "
+                                      "writes its partitions once; refusing to overwrite")
+
+
+def check_scratch(tmp, root: Path, out: Path | None = None) -> None:
+    """ValueError when the scratch directory `tmp` lies under the data root or the output root (card C-08)."""
+    if tmp is None:
+        return
+    for base, where in ((root, "the data root"), (out, "the output directory")):
+        if base is not None and Path(tmp).resolve().is_relative_to(Path(base).resolve()):
+            raise ValueError(f"{tmp}: the scratch directory may not lie under {where}")
+
+
+def _write(out: Path, rows: Iterable[dict]) -> Path:
     spec = table("ledger")
 
     def batches() -> Iterator[pa.RecordBatch]:
@@ -88,6 +150,24 @@ def read(root: Path, stage: str, step: str) -> list[dict]:
     return pq.read_table(p).to_pylist() if p.exists() else []
 
 
+def read_release(root: Path, release: str, step: str) -> list[dict]:
+    """As `read`, for a release's own step."""
+    p = release_path(root, release, step)
+    return pq.read_table(p).to_pylist() if p.exists() else []
+
+
+def _one_stage_release(root: Path, stage: str, release: str | None) -> None:
+    """A release step's counts follow from one stage's only when the release is that stage alone."""
+    if release is None:
+        return
+    from biobox import catalog
+
+    stages = catalog.read_release_def(root, release)
+    if stages is not None and stages != [stage]:
+        raise ValueError(f"release {release} has stages {stages}: its steps are checked against stage {stage} "
+                         "only when it is that stage alone")
+
+
 @contextlib.contextmanager
 def _duck() -> Iterator[duckdb.DuckDBPyConnection]:
     scratch = Path(tempfile.mkdtemp(prefix="biobox-ledger-"))
@@ -107,13 +187,14 @@ def _src(files: list[Path]) -> str:
         for i, f in enumerate(files)) + ")"
 
 
-def check_balance(root: Path, stage: str, steps: list[str]) -> list[str]:
-    """L-01: per object, n_in = n_kept + n_merged + sum of n_rejected over reasons."""
+def check_balance(root: Path, stage: str, steps: list[str], release: str | None = None) -> list[str]:
+    """L-01: per object, n_in = n_kept + n_merged + sum of n_rejected over reasons. A release step
+    (`RELEASE_STEPS`) is read from `release`'s ledger, and skipped without one."""
     problems = []
     with _duck() as con:
         for step in steps:
-            p = path(root, stage, step)
-            if not p.exists():
+            p = _step_path(root, stage, step, release)
+            if p is None or not p.exists():
                 continue
             for uid, same, n_in, kept, merged, rejected in con.execute(
                     "SELECT object_key, count(DISTINCT n_in) = 1 AND count(DISTINCT n_kept) = 1 "
@@ -147,18 +228,21 @@ def check_inputs(root: Path, stage: str, expected_objects: set[bytes]) -> list[s
     return problems
 
 
-def check_chain(root: Path, stage: str) -> list[str]:
+def check_chain(root: Path, stage: str, release: str | None = None) -> list[str]:
     """L-03: along each DAG edge, downstream n_in equals upstream n_kept (summed over the filter).
 
     An object's count is taken from its rows (equal across its reason rows when L-01 holds; the
     smallest otherwise). Problems come in the order of the downstream objects' first appearance:
-    steps in name order, objects in key order within a step.
+    steps in name order, objects in key order within a step. The release steps (`RELEASE_STEPS`) are
+    read from `release`'s ledger (card B-28), a release whose `release_def` is `stage` alone
+    (ValueError otherwise); without `release` their edges are not checked.
     """
+    _one_stage_release(root, stage, release)
     problems = []
     with _duck() as con:
         for up, up_obj, down, down_obj in CHAIN:
-            up_path = path(root, stage, up)
-            if not up_path.exists():
+            up_path = _step_path(root, stage, up, release)
+            if up_path is None or not up_path.exists():
                 continue
             (rows_up,), = con.execute(f"SELECT count(*) FROM {_src([up_path])}").fetchall()
             if not rows_up:
@@ -170,7 +254,7 @@ def check_chain(root: Path, stage: str) -> list[str]:
                 {} if up_obj is None else {"obj": up_obj}).fetchall()
             downs = ([p.name.removeprefix("step=") for p in sorted((Path(root) / f"ledger/stage={stage}").glob(f"step={down}"))]
                      if down.endswith("*") else [down])
-            files = [f for f in (path(root, stage, d) for d in downs) if f.exists()]
+            files = [f for f in (_step_path(root, stage, d, release) for d in downs) if f is not None and f.exists()]
             if not files:
                 continue
             dfilt = "" if down_obj is None else "HAVING object_key = $dobj"

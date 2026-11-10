@@ -61,9 +61,11 @@ import pyarrow.parquet as pq  # noqa: E402
 from biobox import io  # noqa: E402
 from biobox.l0seq.store import SeqStore  # noqa: E402
 
+R = json.loads((W / "result.json").read_text())
+STAGE = R["stage"]  # the pilot's one stage, which SeqStore must be told (card B-28)
 rss0 = rss_now_mb()
 t = time.perf_counter()
-store = SeqStore(ROOT)
+store = SeqStore(ROOT, [STAGE])
 open_s = time.perf_counter() - t
 rss1 = rss_now_mb()
 n_loc = sum(pq.ParquetFile(f).metadata.num_rows for f in store.locator_files)
@@ -92,8 +94,6 @@ from biobox.l3.tapes import tape_version  # noqa: E402
 
 V = GENE_CALL_VERSION
 TV = tape_version([V])  # the gene-call producer alone (card B-07)
-R = json.loads((W / "result.json").read_text())
-STAGE = R["stage"]
 plan = R.get("genecall_plan", {})
 
 
@@ -299,7 +299,7 @@ ref: list = []
 
 
 def fetch_store():
-    st = SeqStore(ROOT)  # fresh: empty block cache
+    st = SeqStore(ROOT, [STAGE])  # fresh: empty block cache
     c0 = st.counters()
     t0 = time.perf_counter()
     for c, s, e, strand in picks:

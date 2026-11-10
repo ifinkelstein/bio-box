@@ -36,7 +36,7 @@ def exported(tmp_path_factory):
     d = tmp_path_factory.mktemp("extract")
     root = d / "store"
     ingest([SourceObject(FIX / o["file"], "s", "1") for o in CONTRACT["objects"]], root, "S0", shard_bases=200_000)
-    store = SeqStore(root)
+    store = SeqStore(root, ["S0"])
     contigs = [ids.contig_uid(s) for s in _seqs()]
     out = d / "out.fa.gz"
     report = extract(store, contigs, out)

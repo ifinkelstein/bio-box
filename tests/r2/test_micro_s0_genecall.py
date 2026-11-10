@@ -118,7 +118,7 @@ def test_c10_occurrence_matches_feature_protein(root):
 
 def _direct_calls(root: Path) -> dict[tuple, dict]:
     """(contig_uid, start, end, strand) -> the gene as `call_genome` returns it, without the tables."""
-    store = SeqStore(root)
+    store = SeqStore(root, ["S0"])
     try:
         return {(c["contig_uid"], c["start"], c["end"], c["strand"]): c for g in _genomes() for c in call_genome(store, g)}
     finally:
@@ -323,7 +323,7 @@ def test_origin_wrapping_gene_has_end_past_contig_len_in_feature(tmp_path):
     n = len(seq)
     root = tmp_path / "s"
     ingest([SourceObject(FIX / o["file"], "a", "1")], root, "S0")
-    base = call_genome(SeqStore(root), _genome(o, seq))
+    base = call_genome(SeqStore(root, ["S0"]), _genome(o, seq))
     target = base[len(base) // 2]
     r = (target["start"] + target["end"]) // 2
     rot_file = tmp_path / "rot.fna"
@@ -353,7 +353,7 @@ def test_protein_seq_is_content_addressed(root):
 
 
 def test_r04_proteins_match_independent_translation(root):
-    store = SeqStore(root)
+    store = SeqStore(root, ["S0"])
     prot = {p["protein_uid"]: p["seq"] for p in _read(root, GLOBS["protein_seq"]).to_pylist()}
     codes = {r["feature_uid"]: r["genetic_code"] for r in _read(root, GLOBS["feature_protein"]).to_pylist()}
     checked = 0
@@ -384,7 +384,7 @@ def test_gene_counts_are_plausible(root):
 
 
 def test_mycoplasma_needs_code_4(root):
-    store = SeqStore(root)
+    store = SeqStore(root, ["S0"])
     mg = ids.contig_uid(fasta.read(FIX / "NC_000908.2.fna.gz")[0].seq)
     c4 = call_genome(store, GenomeInput((mg,), 4, circular=(mg,)))
     c11 = call_genome(store, GenomeInput((mg,), 11, circular=(mg,)))
@@ -414,7 +414,7 @@ def test_mr03_reverse_complement_keeps_proteins(tmp_path, acc):
     rc_file.write_bytes(b"\n".join(fasta.format_record("rc", revcomp(seq), 70)) + b"\n")
     root = tmp_path / "s"
     ingest([SourceObject(FIX / o["file"], "a", "1"), SourceObject(rc_file, "b", "1")], root, "S0")
-    store = SeqStore(root)
+    store = SeqStore(root, ["S0"])
     fwd = call_genome(store, _genome(o, seq))
     rev = call_genome(store, _genome(o, revcomp(seq)))
     pf, pr = {c["aa"] for c in fwd}, {c["aa"] for c in rev}
@@ -430,7 +430,7 @@ def test_mr03_reverse_complement_keeps_proteins(tmp_path, acc):
 
 
 def test_viruses_route_to_gv_and_mycoplasma_to_single(root):
-    store = SeqStore(root)
+    store = SeqStore(root, ["S0"])
     modes = {}
     for o in OBJS:
         calls = call_genome(store, _genome(o))
@@ -451,14 +451,14 @@ def test_mr04_rotating_a_circular_genome_keeps_genes(tmp_path):
     src.mkdir()
     root = tmp_path / "s"
     ingest([SourceObject(FIX / o["file"], "a", "1")], root, "S0")
-    base = call_genome(SeqStore(root), _genome(o, seq))
+    base = call_genome(SeqStore(root, ["S0"]), _genome(o, seq))
     target = base[len(base) // 2]
     r = (target["start"] + target["end"]) // 2  # inside a mid-genome gene
     rotated = seq[r:] + seq[:r]
     rot_file = src / "rot.fna"
     rot_file.write_bytes(b"\n".join(fasta.format_record("rot", rotated, 70)) + b"\n")
     ingest([SourceObject(rot_file, "b", "1")], root, "S1")
-    rot = call_genome(SeqStore(root), _genome(o, rotated))
+    rot = call_genome(SeqStore(root, ["S0", "S1"]), _genome(o, rotated))
     wrap = [c for c in rot if c["wraps_origin"]]
     assert any(c["aa"] == target["aa"] for c in wrap), "the split gene must be called whole across the origin"
     key = lambda cs, shift: {((c["start"] + shift) % n, c["end"] - c["start"], c["strand"], c["aa"]) for c in cs}  # noqa: E731
@@ -477,7 +477,7 @@ def test_wrapping_slice_round_trips():
 
     with tempfile.TemporaryDirectory() as d:
         ingest([SourceObject(FIX / "NC_000908.2.fna.gz", "a", "1")], Path(d), "S0", shard_bases=200_000)
-        store = SeqStore(Path(d))
+        store = SeqStore(Path(d), ["S0"])
         cu = ids.contig_uid(root_seq)
         doubled = root_seq + root_seq
         for _ in range(100):

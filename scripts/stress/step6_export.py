@@ -26,7 +26,7 @@ if len(sys.argv) < 3 or sys.argv[1] in ("-h", "--help"):
 
 root, out = Path(sys.argv[1]), Path(sys.argv[2])
 out.mkdir(parents=True, exist_ok=True)
-store = SeqStore(root)
+store = SeqStore(root, ["S0"])  # the golden store is read at stage S0 (card B-28)
 genes_in = [r for f in io.part_files(root / f"l1/feature_protein/gene_call_version={GENE_CALL_VERSION}/stage=S0")
             for r in pq.read_table(f, columns=["contig_uid", "feature_uid", "start", "end", "strand"]).to_pylist()]
 co = [r for f in io.part_files(root / "l0seq/contig_occurrence", "stage=S0/source=*/part-*.parquet")

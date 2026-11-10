@@ -274,7 +274,7 @@ def _block_edges(store: SeqStore, rd: bytes) -> list[int]:
 
 def test_r03_macros_equal_python_path(built, con):
     root, _, _ = built
-    store = SeqStore(root)
+    store = SeqStore(root, ["S0"])
     rng = random.Random(20261030)
     n_edges = 0
     for cu, seq, _ in _contigs():
@@ -296,7 +296,7 @@ def test_r03_macros_equal_python_path(built, con):
 
 def test_r03_origin_wrap_on_circular_contig(built, con):
     root, _, _ = built
-    store = SeqStore(root)
+    store = SeqStore(root, ["S0"])
     cu, seq, circ = next(c for c in _contigs() if c[2])
     n = len(seq)
     for a, b in [(n - 100, n + 50), (n - 1, n + 1), (5, n + 4)]:
@@ -447,7 +447,7 @@ def _check_genes(con, store, seqs, macro, group):
 @pytest.mark.covers("R-03")
 def test_r03_every_gene_through_the_macros_equals_store_and_fasta(built, con):
     root, _, _ = built
-    store = SeqStore(root)
+    store = SeqStore(root, ["S0"])
     seqs = {cu: (seq, circ) for cu, seq, circ in _contigs()}
     genes = _genes(root)
     assert len(genes) > 500 and {g["strand"] for g in genes} == {1, -1}
@@ -482,8 +482,8 @@ def test_r03_origin_wrapping_genes_through_seq_get_circular(built, tmp_path):
     assert len(wrap) >= 1
     c = catalog.open_catalog(catalog.generate_catalog(catalog.build_manifest(s, "x", ["S0"]), tmp_path / "c.duckdb"))
     try:
-        _check_genes(c, SeqStore(s), {cu: (rot, True)}, "seq_get_circular", genes)
-        _check_genes(c, SeqStore(s), {cu: (rot, True)}, "seq_get_circular", wrap)
+        _check_genes(c, SeqStore(s, ["S0"]), {cu: (rot, True)}, "seq_get_circular", genes)
+        _check_genes(c, SeqStore(s, ["S0"]), {cu: (rot, True)}, "seq_get_circular", wrap)
         for g in wrap:  # strand -1 of a wrapping gene too, whatever the gene's own strand
             got = c.execute("SELECT seq_get_circular(?, ?, ?, ?)", [cu, g["start"], g["end"], -g["strand"]]).fetchone()[0]
             assert got.encode() == _oracle(rot, g["start"], g["end"], -g["strand"])
@@ -495,7 +495,7 @@ def test_r03_origin_wrapping_genes_through_seq_get_circular(built, tmp_path):
 @pytest.mark.parametrize("order", ["random", "descending", "one contig repeated"])
 def test_r03_table_driven_fetch_equals_per_row_results_in_order(built, con, order):
     root, _, _ = built
-    store = SeqStore(root)
+    store = SeqStore(root, ["S0"])
     mg = next(c for c in _contigs() if c[2])[0]
     rows = _random_slices(1000, 20261109, only=mg if order == "one contig repeated" else None)
     if order == "descending":
@@ -554,7 +554,7 @@ def test_ly06_a_batch_reads_blocks_in_file_order_whatever_the_row_order(built, r
     are sorted by raw_digest; a direct loop in the random order reads more."""
     root, _, cat = built
     rows = [(cu, a, b, 1) for cu, a, b, _ in _random_slices(1000, 31, max_len=2000)]
-    probe = SeqStore(root)
+    probe = SeqStore(root, ["S0"])
     key = {cu: (probe.shard_of(ids.raw_digest(seq)), ids.raw_digest(seq)) for cu, seq, _ in _contigs()}
     in_order = sorted(rows, key=lambda r: (*key[r[0]], r[1], r[2]))
     blocks = {}
@@ -566,7 +566,7 @@ def test_ly06_a_batch_reads_blocks_in_file_order_whatever_the_row_order(built, r
         assert prof["result"][0][0] == sum(r[2] - r[1] for r in rs)
         blocks[name] = prof["bgzf"]["blocks_read"]
     for name, rs in (("direct random", rows), ("direct sorted", in_order)):
-        s = SeqStore(root, cache_blocks=1)
+        s = SeqStore(root, ["S0"], cache_blocks=1)
         for r in rs:
             s.get(*r)
         blocks[name] = s.counters()["blocks_read"]

@@ -215,10 +215,11 @@ def _call_read(genome: GenomeInput, seqs: dict[bytes, str]) -> tuple:
     return _rows([_call(genome, seqs)])
 
 
-def _worker_main(root: str) -> None:
-    """A worker process: open the store once, then read `(seq, batch)` pickles from stdin until it
-    closes and answer each with `("ok", seq, result)` or `("error", seq, exception)` on stdout."""
-    store = SeqStore(Path(root))
+def _worker_main(root: str, stages: list[str]) -> None:
+    """A worker process: open the store (for the caller's `stages`, card B-28) once, then read
+    `(seq, batch)` pickles from stdin until it closes and answer each with `("ok", seq, result)` or
+    `("error", seq, exception)` on stdout."""
+    store = SeqStore(Path(root), stages)
     inp, out = sys.stdin.buffer, sys.stdout.buffer
     sys.stdout = sys.stderr  # a stray print must not corrupt the result stream
     try:
@@ -250,10 +251,10 @@ class _Workers:
     reader thread per worker drains stdout into the shared queue `q` as `(i, message)`, so neither
     side can block on a full pipe."""
 
-    def __init__(self, n: int, root: Path, q: queue.SimpleQueue):
+    def __init__(self, n: int, root: Path, stages: list[str], q: queue.SimpleQueue):
         src = str(Path(__file__).resolve().parents[2])  # the directory that holds this `biobox`
-        self._boot = (f"import sys; sys.path.insert(0, {src!r}); "
-                      f"from biobox.l1.genecall import _worker_main; _worker_main({str(root)!r})")
+        self._boot = (f"import sys; sys.path.insert(0, {src!r}); from biobox.l1.genecall import _worker_main; "
+                      f"_worker_main({str(root)!r}, {[str(s) for s in stages]!r})")
         self._n, self._q = n, q
         self._procs: list[subprocess.Popen] = []
         self._readers: list[threading.Thread] = []
@@ -308,12 +309,14 @@ class _Workers:
             p.stdout.close()
 
 
-def _genome_bases(lengths: KeyLookup, genome: GenomeInput) -> int:
-    """Bases of a genome's default contig variants, from `contig_index` (one key lookup per contig)."""
+def _genome_bases(store: SeqStore, lengths: KeyLookup, genome: GenomeInput) -> int:
+    """Bases of a genome's default contig variants, from the store's `contig_index` files (one key
+    lookup per contig). A contig the store does not hold raises the store's KeyError."""
     n = 0
     for cu in genome.contig_uids:
         rows = [r for r in lengths.get(cu) if r["is_default_variant"]]
         if not rows:
+            store.default_digest(cu)  # raises KeyError naming the stages the store reads
             raise KeyError(cu)
         n += rows[0]["contig_len"]
     return n
@@ -360,7 +363,7 @@ def _calls_in_order(store: SeqStore, root: Path, batches: Iterable[tuple[bool, l
             yield b, _call_batch(store, b)
         return
     q: queue.SimpleQueue = queue.SimpleQueue()  # (worker index, or None for a thread; message)
-    procs = _Workers(workers, root, q)
+    procs = _Workers(workers, root, store.stages, q)
     threads: ThreadPoolExecutor | None = None
 
     def threaded(seq: int):
@@ -499,25 +502,38 @@ def _write_protein_seq(con, sql: str, base: Path, width: int, max_file_bytes: in
 
 def run(root: Path, stage: str, genomes: Iterable[GenomeInput] | None = None, version: str = GENE_CALL_VERSION,
         prefix_width: int | None = None, max_file_bytes: int = layout.MAX_FILE_BYTES, tmp=None,
-        workers: int = 1, batch_bases: int = BATCH_BASES) -> dict:
+        workers: int = 1, seq_stages: list[str] | None = None, out: Path | None = None,
+        batch_bases: int = BATCH_BASES) -> dict:
     """Call genes and write the stage's tables. `prefix_width` (0, 1, 2) overrides the size rule.
+
+    `out` (card C-08): the output root, default `root`. Sequences and `genome_input` are read from
+    `root`; every table and the ledger are written under `out` (`$BIOBOX_STAGING` under run-step).
+    Refuses, before any work, when one of the stage's gene-call partitions already holds a file in
+    `root` or `out`; `tmp` may lie under neither.
 
     `genomes`: any iterable, consumed once; None reads the stage's `genome_input` table. `tmp`: the
     directory that holds the private scratch directory (system temp by default; never the data root).
     `workers`: batches called at once, in worker threads or processes; `batch_bases`: bases of
     consecutive short genomes sent to a worker process as one task (a larger genome is a task alone).
-    The output bytes depend on
-    neither. `max_file_bytes`: every table is cut into parts of at most this many estimated bytes
-    (one row above it is a part alone).
+    The output bytes depend on neither. `max_file_bytes`: every table is cut into parts of at most
+    this many estimated bytes (one row above it is a part alone).
+    `seq_stages`: the stages whose sequences the genomes may name (card B-28): the stage itself (the
+    default) and, when its contigs repeat sequences stored before it, the earlier stages that hold them.
+    A contig in none of them raises KeyError naming the stages read.
     """
     root = Path(root)
+    out = root if out is None else Path(out)
     if workers < 1:
         raise ValueError(f"workers must be at least 1, got {workers}")
     if batch_bases < 1:
         raise ValueError(f"batch_bases must be at least 1, got {batch_bases}")
-    if tmp is not None and Path(tmp).resolve().is_relative_to(root.resolve()):
-        raise ValueError(f"{tmp}: the scratch directory may not lie under the data root")
-    store = SeqStore(root)
+    ledger.check_scratch(tmp, root, out)
+    gcv = f"gene_call_version={version}/stage={stage}"
+    ledger.refuse_written(root, out, [f"l1/feature/producer={version}/stage={stage}", f"l1/feature_protein/{gcv}",
+                                      f"l1/protein_occurrence/{gcv}", f"l0seq/protein_seq/{gcv}",
+                                      f"ledger/stage={stage}/step=genecall"], f"gene calls of stage {stage}")
+    stages = [stage] if seq_stages is None else list(seq_stages)
+    store = SeqStore(root, stages)
     scratch = Path(tempfile.mkdtemp(prefix="biobox-genecall-", dir=tmp))
     try:
         if genomes is None:
@@ -528,7 +544,7 @@ def run(root: Path, stage: str, genomes: Iterable[GenomeInput] | None = None, ve
         n_genes = n_wrap = 0
         modes: set[str] = set()
         lengths = KeyLookup(store.index_files, "contig_uid", ["contig_len", "is_default_variant"])
-        batches = _batches(genomes, lambda g: _genome_bases(lengths, g), batch_bases, THREAD_MIN_BASES)
+        batches = _batches(genomes, lambda g: _genome_bases(store, lengths, g), batch_bases, THREAD_MIN_BASES)
         calls_iter = _calls_in_order(store, root, batches, workers)
         try:
             for batch, (genes, cands, batch_modes, batch_wrap) in calls_iter:
@@ -543,7 +559,7 @@ def run(root: Path, stage: str, genomes: Iterable[GenomeInput] | None = None, ve
             calls_iter.close()
             for s in (gs, cs, ks):
                 s.close()
-        n_prot = _publish(root, stage, version, scratch, prefix_width, max_file_bytes)
+        n_prot = _publish(out, stage, version, scratch, prefix_width, max_file_bytes)
         return {"genes": n_genes, "distinct_proteins": n_prot, "modes": sorted(modes), "wrapping_genes": n_wrap}
     finally:
         store.close()

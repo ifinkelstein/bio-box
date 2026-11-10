@@ -448,7 +448,9 @@ def run(root: Path, recipe_src: Path | str, release: str, *, limits: Limits = Li
             seed_file = work / "seed" / Path(res["seed"]["path"]).name
             seed_file.parent.mkdir()
             seed_file.write_bytes(res["seed_bytes"])
-        job = {"run_id": run_id.hex(), "root": str(root), "out": str(out), "recipe": r, "seed": res["seed"],
+        # `release`: the worker reads only this release's files of the root (card B-28)
+        job = {"run_id": run_id.hex(), "root": str(root), "release": release, "out": str(out), "recipe": r,
+               "seed": res["seed"],
                "seed_file": str(seed_file) if seed_file else None,
                "positives": res["positives"], "target_kind": rcp.RUN_TARGETS[r["target"]],
                "shards": [str(p) for p in shards], "models": [str(p) for p in models],

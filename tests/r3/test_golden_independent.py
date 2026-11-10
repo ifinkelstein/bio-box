@@ -115,7 +115,7 @@ def prodigal_problems(biobox: set, prodigal: set, n: int, circular: bool) -> lis
 def genes(store_root):
     """Every gene of the golden store: dicts with accession, contig_uid, start, end, strand, rd (default raw_digest),
     length (contig length). Read from protein_occurrence, as step6_export.py did."""
-    store = SeqStore(store_root)
+    store = SeqStore(store_root, ["S0"])
     occ = pq.read_table(
         store_root / f"l1/protein_occurrence/gene_call_version={GENE_CALL_VERSION}/stage=S0/part-0.parquet").to_pylist()
     co = pq.read_table(next((store_root / "l0seq/contig_occurrence").rglob("part-0.parquet"))).to_pylist()
@@ -145,7 +145,7 @@ def _run(cmd: list[str], **kw) -> subprocess.CompletedProcess:
 def test_every_gene_slice_equals_samtools_faidx(store_root, genes, tmp_path):
     """Every non-origin-wrapping gene: bio-box's bytes for (contig, start, end, strand) equal `samtools faidx`
     on the shard with the repo-written .fai/.gzi (`-i` for the minus strand). Measured 2026-11-09: 33,713 of 33,713."""
-    store = SeqStore(store_root)
+    store = SeqStore(store_root, ["S0"])
     groups: dict[tuple[str, int], list[dict]] = defaultdict(list)
     for g in genes:
         if g["end"] <= g["length"]:

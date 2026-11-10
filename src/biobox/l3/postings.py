@@ -47,7 +47,7 @@ import pyarrow as pa
 import pyarrow.compute as pc
 import pyarrow.parquet as pq
 
-from biobox import catalog, io, layout
+from biobox import catalog, io, layout, ledger
 from biobox.l1.genecall import DUCK_MEMORY_LIMIT, GENE_CALL_VERSION
 from biobox.l3.tokens import LEVELS, _scan, _sql_str, _tape_files, tape_version_of
 from biobox.registry.schemas import table
@@ -204,21 +204,27 @@ def _explode(t: pa.Table, k: pa.Table, spec) -> pa.Table:
 
 def run(root: Path, release: str, stages: list[str], gene_call_version: str = GENE_CALL_VERSION,
         producers: list[str] | None = None, prefix_width: int | None = None,
-        max_file_bytes: int = layout.MAX_FILE_BYTES, tmp=None, memory_limit: str = DUCK_MEMORY_LIMIT) -> dict:
+        max_file_bytes: int = layout.MAX_FILE_BYTES, tmp=None, memory_limit: str = DUCK_MEMORY_LIMIT,
+        out: Path | None = None) -> dict:
     """Write the release's postings for the tape version of `producers` (default: the gene-call producer).
 
     Reads the tapes of that tape version for `stages`, the release's stages (card B-25; a listed stage
     without tapes raises FileNotFoundError, and they must be the stages of the release's `release_def`),
     and its `tape_tokens` of `release` (written by `biobox.l3.tokens.run`). `prefix_width` overrides
     the bucket width; `tmp` holds DuckDB's private scratch directory (system temp by default; never
-    the data root); `memory_limit` is DuckDB's cap (a test passes a smaller one, scaled with its store).
+    the data root nor `out`); `memory_limit` is DuckDB's cap (a test passes a smaller one, scaled with
+    its store).
+
+    Inputs are read from `root`; the postings and (when the root has none) the `release_def` are written
+    under `out` (default `root`; card C-08). Refuses, before any work, when the release's postings of this
+    tape version already hold a file in `root` or `out`.
     """
     root = Path(root)
+    out = root if out is None else Path(out)
     stages = catalog.check_stages(stages)
     if prefix_width not in (None, 0, 1, 2):
         raise ValueError(f"prefix_width {prefix_width}: must be 0, 1 or 2")
-    if tmp is not None and Path(tmp).resolve().is_relative_to(root.resolve()):
-        raise ValueError(f"{tmp}: the scratch directory may not lie under the data root")
+    ledger.check_scratch(tmp, root, out)
     tv = tape_version_of(gene_call_version, producers)
     tape_files = _tape_files(root, tv, stages)
     tok_dir = root / f"l3/tape_tokens/tape_version={tv}/release={release}"
@@ -226,10 +232,11 @@ def run(root: Path, release: str, stages: list[str], gene_call_version: str = GE
     if not tok_files:
         raise FileNotFoundError(f"{tok_dir}: no tape_tokens for tape version {tv} and release {release}; "
                                 "run biobox.l3.tokens first")
-    base = root / f"l3/token_postings/release={release}/tape_version={tv}"
-    if base.exists() and any(base.rglob("*.parquet")):
-        raise FileExistsError(f"{base}: postings exist; refusing to overwrite")
-    catalog.define_release(root, release, stages)
+    rel_base = f"l3/token_postings/release={release}/tape_version={tv}"
+    catalog.verify_release_def(root, release, stages)  # a disagreeing definition is named before a refusal
+    ledger.refuse_written(root, out, [rel_base], f"postings of release {release}")
+    base = out / rel_base
+    catalog.define_release(root, release, stages, out=out)
 
     tape_src = _scan(tape_files, "contig_uid, contig_len, is_circular, n_slots, " + ", ".join(_LISTS),
                      "NULL::BLOB AS contig_uid, NULL::BIGINT AS contig_len, NULL::BOOLEAN AS is_circular, "

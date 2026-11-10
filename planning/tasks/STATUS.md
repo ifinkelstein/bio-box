@@ -11,7 +11,7 @@ Last update: 2026-11-09, 23:00 CST. Suite on the integration branch after the B-
 pinned image; 3 min 40 s wall for the slowest shard, against 13.5 min in one process). The skips
 need samtools, bgzip, Prodigal or the golden set. Tests no longer run on the laptop (AGENTS.md §5.5).
 
-## Merged (47 cards)
+## Merged (52 cards)
 
 | Card | Merge | What it did | Audit notes |
 |---|---|---|---|
@@ -61,6 +61,11 @@ need samtools, bgzip, Prodigal or the golden set. Tests no longer run on the lap
 | B-29 | this merge | Postings builder fixed: tokens are exploded one row group at a time into flat scratch runs, then sorted, so the sort spills; memory limit unchanged | Cause found by measurement: the `ORDER BY` over a union fed from a materialized CTE did not spill (1.9 GB) when family postings are sparse. Reproduced small (690,000 slots at a scaled limit). On real `rL.3`: old builder fails at 38 s; new one writes 25,822,709 rows in 105 s at 2.4 GB peak RSS, byte-identical to the old builder run with an 8 GB cap. 771 fixture files unchanged |
 | W-11 | this merge | `export proteins` refuses without the release manifest; a check of 2,053,315 stored proteins in `rL.2` found no `*` anywhere, so FASTA output needed no change (a fixture test pins it) | Agent's full pod run: 906 passed, 10 skipped. Hit and locus exports still glob without a manifest: card W-12 |
 | D-06 | this merge | The append-only check compares every file and artifact, small tables included | Fault injection on `l0_manifest`, `ledger`, `release_def`, `tape_version_def` and `store_params.json`: each rewrite is reported; clean on the two-stage, two-release fixture. Agent's full pod run: 906 passed, 10 skipped |
+| B-28 | this merge | `pack build`, `nbr`, the search worker and `SeqStore` read only the release's stages (no default that globs); the clustering ledger is per release | The agent showed the bug on the old code: proteins planted in a stage outside the release were in its pack and its search hits. Other fixture files byte-identical. Stress scripts still call `SeqStore(root)`: card A-06. One release's manifest takes in other releases' files: card B-33 |
+| A-06 | this merge | Ten stale `SeqStore(root)` calls in eight stress scripts fixed; a static R0 test parses the scripts and `src` signatures and fails on a stale call | `synth_scale.py` at 10× and `builder_limits.py` ran to completion on the pod; the pilot scripts were checked statically only. Agent's full pod run: 917 passed, 10 skipped |
+| D-05 | this merge | `tests/r2/test_scale_layout.py`: 100× synthetic store; row-group limits; lookups that prune asserted at ≤ 2 row groups per key; eight lookups that do not prune are strict expected-failures tied to card B-31 | Runs in 40 to 48 s. At the real row-group limits a 100× store has 1 or 2 row groups, so the test scales the writer's caps by 1/16 while building (test side only) to get ≥ 8; the real limits are checked at 1,000× by `scripts/stress/synth_scale.py`, not in CI. B-31 must remove the eight markers |
+| B-33 | this merge | A release's manifest lists its stages' files, its own `release=` files, the tape versions it uses and unpartitioned artifacts; `verify_manifest` ignores other releases | An earlier release's manifest still verifies and rebuilds byte-identical after a later release. Fixture manifest hash unchanged. Stopped once on two tests outside the card: one assertion migrated with authorisation; a latent bug fixed (a manifest with no Parquet files could not generate a catalog) |
+| C-08 | this merge | Every builder takes `out=`; the release manifest and the catalog are registered artifacts; `bio-box stage ...` and `bio-box release ...` default `--out` to `$BIOBOX_STAGING` | Each builder as a real `run-step` subprocess equals the direct build file for file, MMseqs2 and HMMER steps included; the 12-step chain gives the same manifest hash; a catalog built in staging embeds the final root. Merged tree on the pod: 983 passed, 10 skipped, 8 xfailed; golden 32 passed, 5 skipped. The size rule will refuse a second release's manifest at the pod's floor: card C-09 |
 
 Decisions DEC-18 to DEC-23 were approved by the PI on 2026-11-09 and are in `planning/DECISIONS.md`.
 
@@ -68,9 +73,10 @@ Decisions DEC-18 to DEC-23 were approved by the PI on 2026-11-09 and are in `pla
 
 | Card | Model | State |
 |---|---|---|
-| B-28 query-time readers take the release's stages | Opus | started 2026-11-10 |
-| Finish release `rL.3` on the pod (not a card): place the fixed postings, then `contig_dim`, catalog, verify, sync | Opus | started 2026-11-10 |
-| C-04 `bio-box build-stage` | Opus | stopped 2026-11-10 with evidence, nothing written: builders cannot write into `run-step` staging. Now depends on B-22 and the new card C-08; card amended |
+| B-32 gene calling of short contigs uses its workers | Opus | started 2026-11-10 |
+| C-04 `bio-box build-stage` (second attempt, after C-08) | Opus | started 2026-11-10 |
+| C-09 file-size rule and small release records | Sonnet | started 2026-11-10 |
+| B-31 catalog macros that do not prune | Opus | started 2026-11-10 || C-04 `bio-box build-stage` | Opus | stopped 2026-11-10 with evidence, nothing written: builders cannot write into `run-step` staging. Now depends on B-22 and the new card C-08; card amended |
 | Pod import ladder (not a card): phages, then 1 Gbp and 10 Gbp of complete prokaryotes with the new code | Opus | detached jobs on the pod; agent waiting on them |
 
 ## Next, in order
@@ -107,5 +113,5 @@ probed by hand on the pod).
 - `~/bio-box`: `main`, unchanged. `~/bio-box-next`: `plan/task-cards` at `f9af5b6`, used by the import ladder.
 - Provisional phage database with Pfam domains: `/stor/scratch/Wilke/if2453/all-the-data/provisional/rS1.pilot1` (old-code format; verified).
 - Old-code pilots kept on local disk: `/tmp/if2453/pilot_s1` (phages), `/tmp/if2453/pilot_cami` (1.48 M short contigs).
-- Import ladder with the new code: work in `/tmp/if2453/ladder`, results in `/stor/scratch/Wilke/if2453/all-the-data/provisional/rL`. Stage A (phages, `rL.1`), stage B (1 Gbp of complete prokaryotes, `rL.2`, finished 2026-11-09 23:12 CST) are done and clean. `rL.2p` (meant to be B plus Pfam) is **contaminated**: it was built while stage C's files were being written and took them in (its 12,048,866 features include stage C's genes, with clusters computed without them); use it only to try queries, not for counts. Stage C (10 Gbp, `rL.3`) **failed at 02:53 CST on 2026-11-10 in the postings step** (DuckDB out of memory inside its 2 GB limit; card B-29); its ingest, gene calls, IGRs, tapes, clusters (9,460 s, 46 GB for 10.63 M proteins) and tokens are on the pod's local disk in `/tmp/if2453/ladder/root`, with no postings or catalog, and nothing of `rL.3` is on `/stor`. Results, scripts and findings: `planning/measurements/2026-11-10_import_ladder/`. New cards from it: B-25 (a release names its stages), B-26 (postings bytes); B-24 and C-04 amended.
+- Import ladder with the new code: work in `/tmp/if2453/ladder`, results in `/stor/scratch/Wilke/if2453/all-the-data/provisional/rL`. Stage A (phages, `rL.1`), stage B (1 Gbp of complete prokaryotes, `rL.2`, finished 2026-11-09 23:12 CST) are done and clean. `rL.2p` (meant to be B plus Pfam) is **contaminated**: it was built while stage C's files were being written and took them in (its 12,048,866 features include stage C's genes, with clusters computed without them); use it only to try queries, not for counts. Stage C (10 Gbp, `rL.3`) failed at 02:53 CST on 2026-11-10 in the postings step (card B-29), and was finished at 04:10 CST with the fixed builder's postings: **`rL.3` is complete and verified on `/stor`** (32,815 contigs, 12,048,866 slots, 10,620,684 proteins, 25,822,709 postings, 13.5 GB; `planning/measurements/2026-11-10_import_ladder/rL3.md`). It has no Pfam for its newest stage (about 338 CPU-hours, not started), and it was built by the pre-B-17 code, so it is in the old layout. On `/stor`, `rL.1` and `rL.2` each fail verification on one file, `l0/l0_manifest.parquet`, which the old ingest rewrote per stage (fixed in the code by B-22). Results, scripts and findings: `planning/measurements/2026-11-10_import_ladder/`. New cards from it: B-25 (a release names its stages), B-26 (postings bytes); B-24 and C-04 amended.
 - Workflow walk-through outputs: `/tmp/if2453/ssrnap`.

@@ -145,12 +145,1104 @@
    "error": null,
    "started": "2026-11-10T00:10:19",
    "finished": "2026-11-10T00:11:37"
+  },
+  "cluster": {
+   "wall_s": 9463.5,
+   "threads": 16,
+   "cpu_s": 130379.9,
+   "user_s": 128785.3,
+   "sys_s": 1594.6,
+   "peak_rss_mb": 46073.1,
+   "cpu_min": 2173.0,
+   "result": {
+    "proteins": 10620684,
+    "clusters": {
+     "nr90": 8278537,
+     "nr50": 2966200
+    },
+    "aligned": {
+     "nr90": 10620684,
+     "nr50": 10620684
+    },
+    "threads": 16,
+    "protein_seq_files_read": [
+     "l0seq/protein_seq/gene_call_version=pyrodigal-3.7.1-gv-0.3.2-p2/stage=P1/protein_prefix=all/part-0.parquet",
+     "l0seq/protein_seq/gene_call_version=pyrodigal-3.7.1-gv-0.3.2-p2/stage=P2/protein_prefix=all/part-0.parquet",
+     "l0seq/protein_seq/gene_call_version=pyrodigal-3.7.1-gv-0.3.2-p2/stage=P2/protein_prefix=all/part-1.parquet",
+     "l0seq/protein_seq/gene_call_version=pyrodigal-3.7.1-gv-0.3.2-p2/stage=S1/protein_prefix=all/part-0.parquet"
+    ]
+   },
+   "error": null,
+   "started": "2026-11-10T00:11:37",
+   "finished": "2026-11-10T02:49:21"
+  },
+  "wait_pfam": {
+   "wall_s": 0.0,
+   "threads": 1,
+   "driver_cpu_s": 0.0,
+   "result": {
+    "waited_s": 0.0,
+    "bp_pfam_merged": true,
+    "timed_out": false
+   },
+   "error": null,
+   "started": "2026-11-10T02:49:21",
+   "finished": "2026-11-10T02:49:21"
+  },
+  "tokens": {
+   "wall_s": 219.7,
+   "threads": 1,
+   "cpu_s": 218.4,
+   "user_s": 181.5,
+   "sys_s": 36.9,
+   "peak_rss_mb": 2336.6,
+   "cpu_min": 3.6,
+   "result": {
+    "tokens": {
+     "family": 14106,
+     "nr50": 2966200,
+     "nr90": 8278537
+    },
+    "contigs": 32815,
+    "files": 2,
+    "libraries": [
+     "pfam-38.2"
+    ],
+    "domain_files": [
+     "l1/domains/library=pfam-38.2/stage=P1/part-0.parquet",
+     "l1/domains/library=pfam-38.2/stage=S1/part-0.parquet"
+    ]
+   },
+   "error": null,
+   "started": "2026-11-10T02:49:21",
+   "finished": "2026-11-10T02:53:01"
+  },
+  "postings": {
+   "wall_s": 105.4,
+   "threads": 1,
+   "cpu_s": 107.7,
+   "user_s": 90.4,
+   "sys_s": 17.3,
+   "peak_rss_mb": 2417.4,
+   "cpu_min": 1.8,
+   "result": {
+    "rows": 25822709,
+    "rows_by_level": {
+     "family": 1724977,
+     "nr50": 12048866,
+     "nr90": 12048866
+    },
+    "buckets": 1,
+    "files": 1,
+    "tape_version": "t-ca596dd85040"
+   },
+   "error": null,
+   "external": "not run by this driver: written by the B-29 postings builder (commit c6e1272, /tmp/if2453/b29/root, 2 GB DuckDB limit) from this store's rL.3 tapes and tape_tokens; byte-identical to the f9af5b6 builder with an 8 GB DuckDB cap; hard-linked into l3/token_postings/release=rL.3/tape_version=t-ca596dd85040/token_bucket=all/part-0.parquet. wall/cpu/peak from planning/measurements/2026-11-10_postings_memory.md (os.wait4, measure.py)",
+   "file_sha256": "92d69f44695fcb4611da09701918dd030b0ed1ace428201d1ef36f5d82b9c66a",
+   "file_bytes": 1001038504,
+   "started": null,
+   "finished": "2026-11-10T03:47:38",
+   "marked_done": "2026-11-10T04:04:51"
+  },
+  "dim": {
+   "wall_s": 4.0,
+   "threads": 1,
+   "cpu_s": 4.3,
+   "user_s": 2.3,
+   "sys_s": 2.1,
+   "peak_rss_mb": 326.4,
+   "cpu_min": 0.1,
+   "result": {
+    "contigs": 32815,
+    "genomes": 29755,
+    "circular": 0
+   },
+   "error": null,
+   "started": "2026-11-10T04:05:07",
+   "finished": "2026-11-10T04:05:11"
+  },
+  "catalog": {
+   "wall_s": 142.0,
+   "threads": 1,
+   "cpu_s": 121.0,
+   "user_s": 107.7,
+   "sys_s": 13.3,
+   "peak_rss_mb": 2057.8,
+   "cpu_min": 2.0,
+   "result": {
+    "manifest": "/tmp/if2453/ladder/root/manifests/release=rL.3.json",
+    "manifest_hash": "e08feda18e1e13d901472b76c4913cb6",
+    "catalog": "/tmp/if2453/ladder/root/catalog/release=rL.3.duckdb",
+    "catalog_bytes": 1060864,
+    "files": 77,
+    "artifacts": 33,
+    "total_bytes": 13508242096,
+    "verify_problems": [],
+    "times_s": {
+     "build_manifest": 78.44,
+     "write_manifest": 0.0,
+     "generate_catalog": 10.52,
+     "verify_manifest": 49.63
+    },
+    "tables": {
+     "artifact:seq_shards": {
+      "files": 11,
+      "rows": 0,
+      "bytes": 3758426987,
+      "row_groups": 0,
+      "new_files": 0,
+      "new_rows": 0,
+      "new_bytes": 0
+     },
+     "artifact:seq_shards.fai": {
+      "files": 11,
+      "rows": 0,
+      "bytes": 2869895,
+      "row_groups": 0,
+      "new_files": 0,
+      "new_rows": 0,
+      "new_bytes": 0
+     },
+     "artifact:seq_shards.gzi": {
+      "files": 11,
+      "rows": 0,
+      "bytes": 3047192,
+      "row_groups": 0,
+      "new_files": 0,
+      "new_rows": 0,
+      "new_bytes": 0
+     },
+     "cluster_member": {
+      "files": 4,
+      "rows": 31722768,
+      "bytes": 1130422425,
+      "row_groups": 260,
+      "new_files": 1,
+      "new_rows": 21241368,
+      "new_bytes": 762906723
+     },
+     "cluster_member_aln": {
+      "files": 4,
+      "rows": 31722768,
+      "bytes": 1096187014,
+      "row_groups": 260,
+      "new_files": 1,
+      "new_rows": 21241368,
+      "new_bytes": 744490206
+     },
+     "contig_dim": {
+      "files": 4,
+      "rows": 120685,
+      "bytes": 4712233,
+      "row_groups": 4,
+      "new_files": 1,
+      "new_rows": 32815,
+      "new_bytes": 1264516
+     },
+     "contig_index": {
+      "files": 3,
+      "rows": 32815,
+      "bytes": 1829873,
+      "row_groups": 3,
+      "new_files": 0,
+      "new_rows": 0,
+      "new_bytes": 0
+     },
+     "contig_occurrence": {
+      "files": 3,
+      "rows": 39633,
+      "bytes": 2611395,
+      "row_groups": 3,
+      "new_files": 0,
+      "new_rows": 0,
+      "new_bytes": 0
+     },
+     "contig_tapes": {
+      "files": 3,
+      "rows": 32815,
+      "bytes": 565154883,
+      "row_groups": 95,
+      "new_files": 0,
+      "new_rows": 0,
+      "new_bytes": 0
+     },
+     "feature": {
+      "files": 3,
+      "rows": 12048866,
+      "bytes": 310044295,
+      "row_groups": 99,
+      "new_files": 0,
+      "new_rows": 0,
+      "new_bytes": 0
+     },
+     "feature_protein": {
+      "files": 3,
+      "rows": 12048866,
+      "bytes": 511473798,
+      "row_groups": 99,
+      "new_files": 0,
+      "new_rows": 0,
+      "new_bytes": 0
+     },
+     "genome_input": {
+      "files": 3,
+      "rows": 32815,
+      "bytes": 1122281,
+      "row_groups": 3,
+      "new_files": 0,
+      "new_rows": 0,
+      "new_bytes": 0
+     },
+     "igr": {
+      "files": 3,
+      "rows": 9491097,
+      "bytes": 436136894,
+      "row_groups": 79,
+      "new_files": 0,
+      "new_rows": 0,
+      "new_bytes": 0
+     },
+     "l0_manifest": {
+      "files": 1,
+      "rows": 2498,
+      "bytes": 114347,
+      "row_groups": 1,
+      "new_files": 0,
+      "new_rows": 0,
+      "new_bytes": 0
+     },
+     "l1_domains": {
+      "files": 2,
+      "rows": 2158015,
+      "bytes": 113529030,
+      "row_groups": 18,
+      "new_files": 0,
+      "new_rows": 0,
+      "new_bytes": 0
+     },
+     "ledger": {
+      "files": 15,
+      "rows": 68140,
+      "bytes": 1568516,
+      "row_groups": 15,
+      "new_files": 1,
+      "new_rows": 2,
+      "new_bytes": 2529
+     },
+     "protein_occurrence": {
+      "files": 3,
+      "rows": 12048866,
+      "bytes": 648593471,
+      "row_groups": 99,
+      "new_files": 0,
+      "new_rows": 0,
+      "new_bytes": 0
+     },
+     "protein_seq": {
+      "files": 4,
+      "rows": 10634028,
+      "bytes": 2390603339,
+      "row_groups": 89,
+      "new_files": 0,
+      "new_rows": 0,
+      "new_bytes": 0
+     },
+     "seq_locator": {
+      "files": 3,
+      "rows": 32815,
+      "bytes": 1247836,
+      "row_groups": 3,
+      "new_files": 0,
+      "new_rows": 0,
+      "new_bytes": 0
+     },
+     "slot_protein": {
+      "files": 3,
+      "rows": 12048866,
+      "bytes": 216991883,
+      "row_groups": 99,
+      "new_files": 0,
+      "new_rows": 0,
+      "new_bytes": 0
+     },
+     "tape_tokens": {
+      "files": 4,
+      "rows": 120685,
+      "bytes": 205766649,
+      "row_groups": 231,
+      "new_files": 1,
+      "new_rows": 32815,
+      "new_bytes": 121417336
+     },
+     "tape_version_def": {
+      "files": 1,
+      "rows": 1,
+      "bytes": 571,
+      "row_groups": 1,
+      "new_files": 0,
+      "new_rows": 0,
+      "new_bytes": 0
+     },
+     "token_dict": {
+      "files": 4,
+      "rows": 16430026,
+      "bytes": 317646880,
+      "row_groups": 135,
+      "new_files": 1,
+      "new_rows": 11258843,
+      "new_bytes": 216384222
+     },
+     "token_postings": {
+      "files": 4,
+      "rows": 47589685,
+      "bytes": 1788140409,
+      "row_groups": 389,
+      "new_files": 1,
+      "new_rows": 25822709,
+      "new_bytes": 1001038504
+     }
+    }
+   },
+   "error": null,
+   "started": "2026-11-10T04:05:11",
+   "finished": "2026-11-10T04:07:33"
+  },
+  "appendonly": {
+   "wall_s": 44.6,
+   "threads": 1,
+   "cpu_s": 44.1,
+   "user_s": 39.2,
+   "sys_s": 5.0,
+   "peak_rss_mb": 312.1,
+   "cpu_min": 0.7,
+   "result": {
+    "manifests": [
+     "rL.1",
+     "rL.2",
+     "rL.2p"
+    ],
+    "files_checked": 103,
+    "identical": 102,
+    "differ": [],
+    "missing": [],
+    "expected_rewrites": [
+     {
+      "path": "l0/l0_manifest.parquet",
+      "first_manifest": "rL.1",
+      "note": "small metadata file rewritten per stage by ingest (store.py docstring); every earlier row is still present"
+     }
+    ],
+    "bytes_hashed": 10660738060,
+    "hash_s": 41.1,
+    "ok": true,
+    "l0_manifest_rows_now": 2498
+   },
+   "error": null,
+   "started": "2026-11-10T04:07:33",
+   "finished": "2026-11-10T04:08:17"
+  },
+  "queries": {
+   "wall_s": 16.1,
+   "threads": 1,
+   "cpu_s": 34.9,
+   "user_s": 28.4,
+   "sys_s": 6.5,
+   "peak_rss_mb": 1597.9,
+   "cpu_min": 0.6,
+   "result": {
+    "release": "rL.3",
+    "seqstore_open_s": 0.0317,
+    "seqstore_rss_growth_mb": 7.3,
+    "open_catalog_s": 0.3612,
+    "open_catalog_rss_growth_mb": 10.3,
+    "rss_mb_after_open": 223.8,
+    "row_counts": {
+     "views": {
+      "cluster_member": {
+       "rows": 31722768,
+       "wall_s": 0.027
+      },
+      "cluster_member_aln": {
+       "rows": 31722768,
+       "wall_s": 0.024
+      },
+      "contig_dim": {
+       "rows": 120685,
+       "wall_s": 0.003
+      },
+      "contig_index": {
+       "rows": 32815,
+       "wall_s": 0.002
+      },
+      "contig_occurrence": {
+       "rows": 39633,
+       "wall_s": 0.002
+      },
+      "contig_tapes": {
+       "rows": 32815,
+       "wall_s": 0.015
+      },
+      "feature": {
+       "rows": 12048866,
+       "wall_s": 0.013
+      },
+      "feature_protein": {
+       "rows": 12048866,
+       "wall_s": 0.007
+      },
+      "genome_input": {
+       "rows": 32815,
+       "wall_s": 0.002
+      },
+      "igr": {
+       "rows": 9491097,
+       "wall_s": 0.006
+      },
+      "l0_manifest": {
+       "rows": 2498,
+       "wall_s": 0.003
+      },
+      "l1_domains": {
+       "rows": 2158015,
+       "wall_s": 0.004
+      },
+      "ledger": {
+       "rows": 68140,
+       "wall_s": 0.005
+      },
+      "protein_occurrence": {
+       "rows": 12048866,
+       "wall_s": 0.008
+      },
+      "protein_seq": {
+       "rows": 10634028,
+       "wall_s": 0.006
+      },
+      "seq_locator": {
+       "rows": 32815,
+       "wall_s": 0.002
+      },
+      "slot_protein": {
+       "rows": 12048866,
+       "wall_s": 0.006
+      },
+      "tape_tokens": {
+       "rows": 120685,
+       "wall_s": 0.007
+      },
+      "tape_version_def": {
+       "rows": 1,
+       "wall_s": 0.001
+      },
+      "token_dict": {
+       "rows": 16430026,
+       "wall_s": 0.009
+      },
+      "token_postings": {
+       "rows": 47589685,
+       "wall_s": 0.027
+      }
+     },
+     "this_release": {
+      "cluster_member": 21241368,
+      "token_dict": 11258843,
+      "tape_tokens": 32815,
+      "token_postings": 25822709,
+      "contig_dim": 32815
+     },
+     "wall_s": 0.24
+    },
+    "pick_genes_s": 0.46,
+    "seq_get_1000": {
+     "wall_s": 0.787,
+     "result": [
+      [
+       1000,
+       1913949
+      ]
+     ],
+     "expected_bp": 1913949,
+     "distinct_contigs": 849,
+     "scans": [
+      {
+       "files_read": 0,
+       "row_groups_scanned": 0,
+       "row_groups_total": 0,
+       "rows_scanned": 0
+      }
+     ],
+     "bytes_read": 0,
+     "bgzf": {
+      "blocks_read": 1031,
+      "compressed_bytes_read": 20369393,
+      "uncompressed_bytes_decoded": 67303680
+     },
+     "index": {
+      "locator_row_groups_read": 3,
+      "index_row_groups_read": 3
+     }
+    },
+    "seq_get_1000_warm": {
+     "wall_s": 0.613,
+     "scans": [
+      {
+       "files_read": 0,
+       "row_groups_scanned": 0,
+       "row_groups_total": 0,
+       "rows_scanned": 0
+      }
+     ],
+     "bytes_read": 0,
+     "bgzf": {
+      "blocks_read": 1031,
+      "compressed_bytes_read": 20369393,
+      "uncompressed_bytes_decoded": 67303680
+     },
+     "index": {
+      "locator_row_groups_read": 0,
+      "index_row_groups_read": 0
+     }
+    },
+    "tapes_of_one": {
+     "contig_uid": "e9983af50db3530f1ddd1b5d0147f250",
+     "wall_s": 0.075,
+     "result": [
+      [
+       1,
+       5521,
+       5521
+      ]
+     ],
+     "scans": [
+      {
+       "files_read": 1,
+       "row_groups_scanned": 1,
+       "row_groups_total": 93,
+       "rows_scanned": 1
+      },
+      {
+       "files_read": 0,
+       "row_groups_scanned": 1,
+       "row_groups_total": 1,
+       "rows_scanned": 4
+      },
+      {
+       "files_read": 3,
+       "row_groups_scanned": 3,
+       "row_groups_total": 95,
+       "rows_scanned": 1
+      }
+     ],
+     "bytes_read": 1892652,
+     "bgzf": {
+      "blocks_read": 0,
+      "compressed_bytes_read": 0,
+      "uncompressed_bytes_decoded": 0
+     },
+     "index": {
+      "locator_row_groups_read": 0,
+      "index_row_groups_read": 0
+     }
+    },
+    "postings_lookup_nr50": {
+     "token_id": 4611686018428060843,
+     "cluster_uid": "3a04ab75f40f07b9a78aa6993b389ddc",
+     "n_slots_dict": 3509,
+     "wall_s": 0.052,
+     "result": [
+      [
+       3509,
+       6757367
+      ]
+     ],
+     "scans": [
+      {
+       "files_read": 1,
+       "row_groups_scanned": 1,
+       "row_groups_total": 211,
+       "rows_scanned": 3509
+      }
+     ],
+     "bytes_read": 1400474,
+     "bgzf": {
+      "blocks_read": 0,
+      "compressed_bytes_read": 0,
+      "uncompressed_bytes_decoded": 0
+     },
+     "index": {
+      "locator_row_groups_read": 0,
+      "index_row_groups_read": 0
+     },
+     "rep_uid": "24cb91f2b7b364f66c122e67046f5912",
+     "rep_pfam": [
+      [
+       "PF03143.24",
+       "GTP_EFTU_D3",
+       1
+      ],
+      [
+       "PF00009.34",
+       "GTP_EFTU",
+       1
+      ],
+      [
+       "PF03144.32",
+       "GTP_EFTU_D2",
+       1
+      ]
+     ]
+    },
+    "neighbours": [
+     {
+      "label": "terminase family PF03237.22 (Terminase_6N) -> family partners",
+      "token_id": 2377900603251623781,
+      "partner_level": "family",
+      "anchor_loci": 6261,
+      "anchor_contigs": 6054,
+      "loci_with_partner": 5999,
+      "pair_rows": 21208,
+      "wall_s": 0.225,
+      "top10_wall_s": 0.361,
+      "top10_partners": [
+       [
+        "PF11053.13",
+        1316
+       ],
+       [
+        "PF07230.17",
+        1280
+       ],
+       [
+        "PF16724.12",
+        1260
+       ],
+       [
+        "PF22639.3",
+        1061
+       ],
+       [
+        "PF11649.13",
+        1055
+       ],
+       [
+        "PF04860.18",
+        989
+       ],
+       [
+        "PF23849.3",
+        980
+       ],
+       [
+        "PF06074.19",
+        870
+       ],
+       [
+        "PF06841.19",
+        719
+       ],
+       [
+        "PF26848.1",
+        657
+       ]
+      ],
+      "scans": [
+       {
+        "files_read": 1,
+        "row_groups_scanned": 1,
+        "row_groups_total": 211,
+        "rows_scanned": 6261
+       },
+       {
+        "files_read": 1,
+        "row_groups_scanned": 15,
+        "row_groups_total": 211,
+        "rows_scanned": 598227
+       }
+      ],
+      "bytes_read": 13898456,
+      "bgzf": {
+       "blocks_read": 0,
+       "compressed_bytes_read": 0,
+       "uncompressed_bytes_decoded": 0
+      },
+      "index": {
+       "locator_row_groups_read": 0,
+       "index_row_groups_read": 0
+      }
+     },
+     {
+      "label": "terminase family PF03237.22 -> nr50 partners",
+      "token_id": 2377900603251623781,
+      "partner_level": "nr50",
+      "anchor_loci": 6261,
+      "anchor_contigs": 6054,
+      "loci_with_partner": 6261,
+      "pair_rows": 33842,
+      "wall_s": 0.412,
+      "top10_wall_s": 0.648,
+      "top10_partners": [
+       [
+        "6cf95b7c8a830df7d1ab2e718c2f4c2b",
+        1103
+       ],
+       [
+        "03970bbae10e33c9f71ae1b38c8da245",
+        931
+       ],
+       [
+        "a013655d35c9cd5330d3acc845a13737",
+        876
+       ],
+       [
+        "1f686dc961ebc566cc565d7608a28fef",
+        850
+       ],
+       [
+        "5949a659035db1edbd191af5405e18a0",
+        792
+       ],
+       [
+        "b996cc11e41121083fe5e4839067028e",
+        764
+       ],
+       [
+        "fa5bd6fe44da174179faa1e40ad8cf7f",
+        336
+       ],
+       [
+        "44709501830d82855692bc6c2ddb276b",
+        335
+       ],
+       [
+        "7c3fe6cd4c5b15e8eec8571d0245d111",
+        329
+       ],
+       [
+        "ca125a9c209705238dfe40dc94f85ecc",
+        322
+       ]
+      ],
+      "scans": [
+       {
+        "files_read": 1,
+        "row_groups_scanned": 1,
+        "row_groups_total": 211,
+        "rows_scanned": 6261
+       },
+       {
+        "files_read": 1,
+        "row_groups_scanned": 99,
+        "row_groups_total": 211,
+        "rows_scanned": 1203878
+       }
+      ],
+      "bytes_read": 86538637,
+      "bgzf": {
+       "blocks_read": 0,
+       "compressed_bytes_read": 0,
+       "uncompressed_bytes_decoded": 0
+      },
+      "index": {
+       "locator_row_groups_read": 0,
+       "index_row_groups_read": 0
+      }
+     },
+     {
+      "label": "most abundant NR50 3a04ab75f40f07b9a78aa6993b389ddc -> nr50 partners",
+      "token_id": 4611686018428060843,
+      "partner_level": "nr50",
+      "anchor_loci": 3509,
+      "anchor_contigs": 2399,
+      "loci_with_partner": 3509,
+      "pair_rows": 21034,
+      "wall_s": 1.312,
+      "top10_wall_s": 1.862,
+      "top10_partners": [
+       [
+        "a1067e264de1eb216f25d86819261a69",
+        1757
+       ],
+       [
+        "10512581cf96c75faf3d497616dfd14d",
+        1472
+       ],
+       [
+        "b94b35ae2b69011bee62591ed0fde2c5",
+        1151
+       ],
+       [
+        "52aa30a2292f8e2470ff8448941bc99e",
+        884
+       ],
+       [
+        "2372928a63e9acb3738f61dc0bdc18ed",
+        616
+       ],
+       [
+        "947fd50b8a63f2053794562ab45ed974",
+        568
+       ],
+       [
+        "abbae03575f3e3095e6e8cc0f069eeb7",
+        322
+       ],
+       [
+        "32ff8deb7aa7e2fadb34d2738b39c652",
+        307
+       ],
+       [
+        "44a723d775ffdd8df28fc9d18ec707cb",
+        279
+       ],
+       [
+        "2e4a596228eadde2cf81352862046f30",
+        274
+       ]
+      ],
+      "scans": [
+       {
+        "files_read": 1,
+        "row_groups_scanned": 1,
+        "row_groups_total": 211,
+        "rows_scanned": 3509
+       },
+       {
+        "files_read": 1,
+        "row_groups_scanned": 99,
+        "row_groups_total": 211,
+        "rows_scanned": 10322593
+       }
+      ],
+      "bytes_read": 86701922,
+      "bgzf": {
+       "blocks_read": 0,
+       "compressed_bytes_read": 0,
+       "uncompressed_bytes_decoded": 0
+      },
+      "index": {
+       "locator_row_groups_read": 0,
+       "index_row_groups_read": 0
+      }
+     },
+     {
+      "label": "most abundant NR50 3a04ab75f40f07b9a78aa6993b389ddc -> family partners",
+      "token_id": 4611686018428060843,
+      "partner_level": "family",
+      "anchor_loci": 3509,
+      "anchor_contigs": 2399,
+      "loci_with_partner": 846,
+      "pair_rows": 2754,
+      "wall_s": 0.24,
+      "top10_wall_s": 0.321,
+      "top10_partners": [
+       [
+        "PF00164.32",
+        453
+       ],
+       [
+        "PF00338.28",
+        369
+       ],
+       [
+        "PF00177.28",
+        315
+       ],
+       [
+        "PF00009.34",
+        178
+       ],
+       [
+        "PF02357.25",
+        152
+       ],
+       [
+        "PF00297.29",
+        140
+       ],
+       [
+        "PF00573.28",
+        137
+       ],
+       [
+        "PF00584.26",
+        119
+       ],
+       [
+        "PF03946.20",
+        115
+       ],
+       [
+        "PF00298.25",
+        32
+       ]
+      ],
+      "scans": [
+       {
+        "files_read": 1,
+        "row_groups_scanned": 1,
+        "row_groups_total": 211,
+        "rows_scanned": 3509
+       },
+       {
+        "files_read": 1,
+        "row_groups_scanned": 15,
+        "row_groups_total": 211,
+        "rows_scanned": 771929
+       }
+      ],
+      "bytes_read": 14061741,
+      "bgzf": {
+       "blocks_read": 0,
+       "compressed_bytes_read": 0,
+       "uncompressed_bytes_decoded": 0
+      },
+      "index": {
+       "locator_row_groups_read": 0,
+       "index_row_groups_read": 0
+      }
+     },
+     {
+      "label": "most abundant prokaryote NR50 3a04ab75f40f07b9a78aa6993b389ddc -> nr50 partners",
+      "token_id": 4611686018428060843,
+      "partner_level": "nr50",
+      "anchor_loci": 3509,
+      "anchor_contigs": 2399,
+      "loci_with_partner": 3509,
+      "pair_rows": 21034,
+      "wall_s": 1.21,
+      "top10_wall_s": 1.945,
+      "top10_partners": [
+       [
+        "a1067e264de1eb216f25d86819261a69",
+        1757
+       ],
+       [
+        "10512581cf96c75faf3d497616dfd14d",
+        1472
+       ],
+       [
+        "b94b35ae2b69011bee62591ed0fde2c5",
+        1151
+       ],
+       [
+        "52aa30a2292f8e2470ff8448941bc99e",
+        884
+       ],
+       [
+        "2372928a63e9acb3738f61dc0bdc18ed",
+        616
+       ],
+       [
+        "947fd50b8a63f2053794562ab45ed974",
+        568
+       ],
+       [
+        "abbae03575f3e3095e6e8cc0f069eeb7",
+        322
+       ],
+       [
+        "32ff8deb7aa7e2fadb34d2738b39c652",
+        307
+       ],
+       [
+        "44a723d775ffdd8df28fc9d18ec707cb",
+        279
+       ],
+       [
+        "2e4a596228eadde2cf81352862046f30",
+        274
+       ]
+      ],
+      "scans": [
+       {
+        "files_read": 1,
+        "row_groups_scanned": 1,
+        "row_groups_total": 211,
+        "rows_scanned": 3509
+       },
+       {
+        "files_read": 1,
+        "row_groups_scanned": 99,
+        "row_groups_total": 211,
+        "rows_scanned": 10353160
+       }
+      ],
+      "bytes_read": 86701922,
+      "bgzf": {
+       "blocks_read": 0,
+       "compressed_bytes_read": 0,
+       "uncompressed_bytes_decoded": 0
+      },
+      "index": {
+       "locator_row_groups_read": 0,
+       "index_row_groups_read": 0
+      }
+     }
+    ],
+    "terminase_family_token_slots": 6261,
+    "prok_top_nr50": {
+     "token_id": 4611686018428060843,
+     "key": "3a04ab75f40f07b9a78aa6993b389ddc",
+     "prokaryote_slots": 3505
+    },
+    "rss_mb_end": 1189.8
+   },
+   "error": null,
+   "started": "2026-11-10T04:08:17",
+   "finished": "2026-11-10T04:08:33"
+  },
+  "sync": {
+   "wall_s": 137.6,
+   "threads": 1,
+   "driver_cpu_s": 0.0,
+   "result": {
+    "rsync": {
+     "rc": 0,
+     "wall_s": 10.5,
+     "cpu_s": 11.2,
+     "user_s": 2.6,
+     "sys_s": 8.6,
+     "peak_rss_mb": 14.0,
+     "new_files": 7,
+     "updated_files": [],
+     "transferred": [
+      "2,847,504,036"
+     ]
+    },
+    "scratch_catalog": {
+     "rc": 0,
+     "wall_s": 127.1,
+     "cpu_s": 118.5,
+     "user_s": 101.2,
+     "sys_s": 17.3,
+     "peak_rss_mb": 2127.5,
+     "times_s": {
+      "build_manifest": 71.39,
+      "write_manifest": 0.0,
+      "generate_catalog": 6.09,
+      "copy_catalog_to_root": 0.01,
+      "verify_manifest": 47.47,
+      "open_catalog": 0.19,
+      "count_all_views": 0.17
+     },
+     "verify_problems": [],
+     "manifest_hash": "e08feda18e1e13d901472b76c4913cb6",
+     "mismatch": {}
+    }
+   },
+   "error": null,
+   "started": "2026-11-10T04:08:33",
+   "finished": "2026-11-10T04:10:51"
   }
  },
  "runs": [
   {
    "started": "2026-11-09T22:05:55",
    "pid": 3887939
+  },
+  {
+   "started": "2026-11-10T04:05:07",
+   "pid": 846850
   }
  ],
  "thread_decisions": {
@@ -163,6 +1255,35 @@
    "avail": 16,
    "threads": 16,
    "waited_s": 0
+  },
+  "cluster": {
+   "hour": 0,
+   "cap": 48,
+   "load1": 20.41,
+   "ours": 12,
+   "foreign": 8.4,
+   "avail": 36,
+   "threads": 16,
+   "waited_s": 0
   }
- }
+ },
+ "postings_failed_attempts": [
+  {
+   "wall_s": 40.0,
+   "threads": 1,
+   "cpu_s": 39.7,
+   "user_s": 32.7,
+   "sys_s": 6.9,
+   "peak_rss_mb": 2181.9,
+   "cpu_min": 0.7,
+   "result": null,
+   "error": "OutOfMemoryException: Out of Memory Error: could not allocate block of size 256.0 KiB (1.8 GiB/1.8 GiB used)\n\nPossible solutions:\n* Reducing the number of threads (SET threads=X)\n* Disabling insertion-order preservation (SET preserve_insertion_order=false)\n* Increasing the memory limit (SET memory_limit='...GB')\n\nSee also https://duckdb.org/docs/current/guides/performance/how_to_tune_workloads",
+   "traceback": "Traceback (most recent call last):\n  File \"/tmp/if2453/ladder/scripts/step.py\", line 724, in <module>\n    rec[\"result\"] = jsonable(STEPS[a.step]())\n                             ~~~~~~~~~~~~~^^\n  File \"/tmp/if2453/ladder/scripts/step.py\", line 292, in do_postings\n    return postings.run(ROOT, REL, tmp=TMP)\n           ~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^\n  File \"/opt/bio-box/src/biobox/l3/postings.py\", line 149, in run\n    reader = con.sql(sql).to_arrow_reader(io.ROW_GROUP_ROWS)\n  File \"/opt/bio-box/.venv/lib/python3.14/site-packages/duckdb/_relation.py\", line 3017, in guarded\n    raise _trimmed(error) from error.__cause__\n_duckdb.OutOfMemoryException: Out of Memory Error: could not allocate block of size 256.0 KiB (1.8 GiB/1.8 GiB used)\n\nPossible solutions:\n* Reducing the number of threads (SET threads=X)\n* Disabling insertion-order preservation (SET preserve_insertion_order=false)\n* Increasing the memory limit (SET memory_limit='...GB')\n\nSee also https://duckdb.org/docs/current/guides/performance/how_to_tune_workloads\n",
+   "started": "2026-11-10T02:53:01",
+   "finished": "2026-11-10T02:53:41"
+  }
+ ],
+ "finished": "2026-11-10T04:10:51",
+ "failed_hard_step": null,
+ "soft_failures": []
 }

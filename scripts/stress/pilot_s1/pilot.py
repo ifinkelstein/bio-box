@@ -176,7 +176,7 @@ if not R["steps"]["ingest"].get("error"):
 
 # --- 2a finder-construction overhead on the first N genomes (sorted uid order ~ random) ----
 def overhead():
-    store = SeqStore(ROOT)
+    store = SeqStore(ROOT, ["S1"])  # the pilot's one stage (card B-28)
     sample = genomes[: a.overhead_n]
     seqs = [store.get(g.contig_uids[0]).upper().decode("ascii") for g in sample]
     t_new = t_find = t_tr = 0.0

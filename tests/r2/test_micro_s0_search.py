@@ -139,7 +139,7 @@ def test_dark_orfs_translate_their_own_coordinates(world):
     pdir = pack.pack_dir(root, REL)
     meta = {r["region_uid"].hex(): r for r in pq.read_table(pdir / "dark_orf/dark_orf_meta.parquet").to_pylist()}
     seqs = dict(r for s in sorted(pdir.glob("dark_orf/part-*.faa.zst")) for r in fastz.read_records(s))
-    store = SeqStore(root)
+    store = SeqStore(root, ["S0"])
     circ = {r["contig_uid"] for r in pq.read_table(next((root / "l3/tapes").rglob("*.parquet"))).to_pylist()
             if r["is_circular"]}
     for name in sorted(seqs)[::7]:
@@ -174,9 +174,9 @@ def _oracle_dark(root: Path, cu: bytes, circular: bool, code: int) -> dict:
     from test_search_units import _oracle_orfs
 
     genes = []
-    for f in pack._occurrence_files(root, V):
+    for f in pack._occurrence_files(catalog.ReleaseFiles.of(root, REL), V):
         genes += [(r["start"], r["end"], r["strand"]) for r in pq.read_table(f).to_pylist() if r["contig_uid"] == cu]
-    store = SeqStore(root)
+    store = SeqStore(root, ["S0"])
     seq = store.get(cu).decode().upper()
     store.close()
     L = len(seq)
@@ -501,6 +501,7 @@ def two(world, tmp_path_factory):
     producers = [V, NEW]
     igr.run(root, "S0", circ, producers=producers)
     tapes.run(root, "S0", circ, producers=producers)
+    catalog.define_release(root, TWO, ["S0"])  # the pack reads the release's stages (card B-28)
     man = pack.build(root, TWO, models={"test-1": world[1] / "a.hmm"}, producers=producers)
     return root, d, man, mg, fu
 
@@ -517,8 +518,9 @@ def test_b16_neighbor_feature_uids_stay_when_a_producer_adds_a_feature_and_ordin
     far_fus = {t2["feature_uids"][j] for j in far}
     uids = {t2["protein_uids"][j] for j in far}
     policy = nbr.Policy.parse(window=f"{k}g")
-    one, _ = nbr.fetch(root, uids, policy)  # default: the gene-call producer's tape version
-    other, _ = nbr.fetch(root, uids, policy, tape_version=tv2)
+    files = catalog.ReleaseFiles.of(root, TWO)
+    one, _ = nbr.fetch(root, uids, policy, files=files)  # default: the gene-call producer's tape version
+    other, _ = nbr.fetch(root, uids, policy, tape_version=tv2, files=files)
     _check_neighborhood_rows(root, one, tv1)
     _check_neighborhood_rows(root, other, tv2)
 
@@ -713,7 +715,7 @@ def test_w06_summary_equals_a_brute_force_loop_over_tapes(world, window):
     # the world is what the card asks for: an anchor window across the origin, windows cut at linear ends,
     # neighbors with and without a family and two neighbors of one family or cluster at one locus
     assert want["header"]["n_censored_loci"] >= 2 and h["genome_basis"] == "contig_uid"
-    rows, _ = nbr.fetch(root, anchors, nbr.Policy.parse(window=window))
+    rows, _ = nbr.fetch(root, anchors, nbr.Policy.parse(window=window), files=catalog.ReleaseFiles.of(root, REL))
     assert any(r["flags"] & nbr.FLAG_CROSSES_ORIGIN for r in rows)
     for level in ("pfam", "nr50"):
         lv = [r for r in want["rows"] if r["level"] == level]
@@ -1063,7 +1065,8 @@ def test_w05_nbr_tsv_writes_one_table_per_locus_equal_to_the_coordinate_oracle(w
     # a broader anchor set through the same export: windows across the circular origin and cut at linear ends
     made = _w05_hits(root)
     for window in ("3g", "5g"):
-        rows, _ = nbr.fetch(root, {h["target_uid"] for h in made}, nbr.Policy.parse(window=window))
+        rows, _ = nbr.fetch(root, {h["target_uid"] for h in made}, nbr.Policy.parse(window=window),
+                            files=catalog.ReleaseFiles.of(root, REL))
         got = list(export.locus_tables(root, rows, release=REL, gene_call_version=V,
                                        hit_bits={h["target_uid"]: h["seq_bitscore"] for h in made}))
         want = _w05_oracle_loci(root, made, window)
@@ -1214,6 +1217,7 @@ def trap_world(root: Path, lib: Path, seed: int = 7, placed: bool = False) -> di
         _hmm_of("ctxM", "CTX0001", m_members[:8], 60.0, ctx)
         domains.run(root, "S0", V, "ctx", "1", ctx, "gathering")
         world["models"]["ctx-1"] = ctx
+    catalog.define_release(root, "rSyn", ["S0"])  # its pack and runs read the release's stages (card B-28)
     return world
 
 

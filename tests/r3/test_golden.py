@@ -82,7 +82,7 @@ def test_every_record_has_genes(store_root):
 
 
 def test_prokaryote_gene_density_is_plausible(store_root):
-    store = SeqStore(store_root)
+    store = SeqStore(store_root, ["S0"])
     for e in GOLDEN["genomes"]:
         if e["kind"] != "prokaryote":
             continue
@@ -95,7 +95,7 @@ def test_prokaryote_gene_density_is_plausible(store_root):
 def test_gv_picks_the_phage_genetic_code(store_root, gid, expected):
     # lak_b8: NCBI says code 11, the sequence says 15 (golden.yaml note); lambda and t4 are code-11 controls.
     e = next(e for e in GOLDEN["genomes"] if e["id"] == gid)
-    calls = call_genome(SeqStore(store_root), _input(e))
+    calls = call_genome(SeqStore(store_root, ["S0"]), _input(e))
     codes = Counter(c["genetic_code"] for c in calls)
     assert codes.most_common(1)[0][0] == expected, codes
     assert codes[expected] / sum(codes.values()) >= 0.95, codes
@@ -104,7 +104,7 @@ def test_gv_picks_the_phage_genetic_code(store_root, gid, expected):
 @pytest.mark.parametrize("gid", ["lak_a1", "lak_b8", "lambda", "t4"])
 def test_phage_coding_density_under_called_code(store_root, gid):
     e = next(e for e in GOLDEN["genomes"] if e["id"] == gid)
-    calls = call_genome(SeqStore(store_root), _input(e))
+    calls = call_genome(SeqStore(store_root, ["S0"]), _input(e))
     n = sum(len(r.seq) for r in _records(gid))
     covered = sum(c["end"] - c["start"] for c in calls)
     assert covered / n >= 0.85, (gid, covered / n)
@@ -112,7 +112,7 @@ def test_phage_coding_density_under_called_code(store_root, gid):
 
 def test_sr1_needs_code_25(store_root):
     e = next(e for e in GOLDEN["genomes"] if e["id"] == "sr1_raac1")
-    store = SeqStore(store_root)
+    store = SeqStore(store_root, ["S0"])
     c25 = call_genome(store, _input(e, code=25))
     c11 = call_genome(store, _input(e, code=11))
     mean = lambda cs: sum(len(c["aa"]) for c in cs) / len(cs)  # noqa: E731
@@ -121,7 +121,7 @@ def test_sr1_needs_code_25(store_root):
 
 def test_obelisk_oblin1_is_called(store_root):
     e = next(e for e in GOLDEN["genomes"] if e["id"] == "obelisk_ss")
-    calls = call_genome(SeqStore(store_root), _input(e))
+    calls = call_genome(SeqStore(store_root, ["S0"]), _input(e))
     recs = _records("obelisk_ss")
     for truth in e["truth"]:
         rec = next(r for r in recs if truth["record"] in r.header)
@@ -135,7 +135,7 @@ def test_obelisk_oblin1_is_called(store_root):
 
 
 def test_r04_independent_translation_on_golden(store_root):
-    store = SeqStore(store_root)
+    store = SeqStore(store_root, ["S0"])
     checked = 0
     for e in GOLDEN["genomes"]:
         gi = _input(e)
@@ -203,7 +203,7 @@ def test_golden_ledger_reconciles(store_root):
     assert ledger.check_balance(store_root, "S0", ["ingest", "genecall"]) == []
     expected = {ids.sha256_file(DIR / LOCK["files"][e["id"]]["path"]) for e in GOLDEN["genomes"]}
     assert ledger.check_inputs(store_root, "S0", expected) == []
-    assert ledger.check_chain(store_root, "S0") == []
+    assert ledger.check_chain(store_root, "S0", release="rS0.golden") == []  # clustering: the release's ledger (B-28)
     gc = ledger.read(store_root, "S0", "genecall")
     assert sum(r["n_in"] for r in gc) == 33_716 and sum(r["n_kept"] for r in gc) == 33_442
 

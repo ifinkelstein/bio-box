@@ -363,7 +363,15 @@ def test_r09_a_later_stage_keeps_earlier_files(built, tmp_path):
            shard_bases=10**6)
     after = catalog.build_manifest(root, "rS1.test", ["S0", "S1"])
     assert contracts.check_append_only(before, after) == []
-    assert len(after["files"]) > len(before["files"])
+    # card B-33: rS0.test's own release= files are not rS1.test's; its stage and unpartitioned files are kept
+    def shared(m):
+        return {f["path"]: f["sha256"] for f in m["files"] + m["artifacts"]
+                if "stage" in f["partitions"] or not f["partitions"]}
+    later = {f["path"]: f["sha256"] for f in after["files"] + after["artifacts"]}
+    assert shared(before) and all(later.get(p) == h for p, h in shared(before).items())
+    def staged(m):
+        return [f for f in m["files"] if "stage" in f["partitions"]]
+    assert len(staged(after)) > len(staged(before))
     # and the check notices a rewrite
     assert len(after["artifacts"]) > len(before["artifacts"])  # the lambda variant is a new S1 shard
     f = next(x for x in after["files"] if x["table"] == "contig_occurrence")
@@ -455,7 +463,8 @@ def test_l01_every_step_balances(built):
     root = Path(man["root"])
     steps = _steps(root)
     assert {"ingest", "genecall", "domains-test-1"} <= set(steps)
-    assert ledger.check_balance(root, "S0", steps) == []
+    # clustering is the release's step: its ledger is under ledger/release=<R>/ (card B-28)
+    assert ledger.check_balance(root, "S0", steps + ["cluster"], release="rS0.test") == []
 
 
 def test_l02_ingest_ledger_lists_the_input_objects(built):
@@ -468,12 +477,13 @@ def test_l02_ingest_ledger_lists_the_input_objects(built):
 def test_l03_counts_carry_along_the_dag(built):
     _, man, _ = built
     root = Path(man["root"])
-    assert ledger.check_chain(root, "S0") == []
+    assert ledger.check_chain(root, "S0", release="rS0.test") == []
     gc = ledger.read(root, "S0", "genecall")
     distinct = len(domains.load_proteins(root, GENE_CALL_VERSION, "S0"))
     assert sum(r["n_kept"] for r in gc) == distinct
     if MMSEQS:
-        assert {r["object_key"] for r in ledger.read(root, "S0", "cluster")} == {b"nr90", b"nr50"}
+        assert {r["object_key"] for r in ledger.read_release(root, "rS0.test", "cluster")} == {b"nr90", b"nr50"}
+        assert ledger.read(root, "S0", "cluster") == []  # not a stage's step (card B-28)
 
 
 def test_ledger_faults_are_caught(built, tmp_path):
@@ -486,3 +496,4 @@ def test_ledger_faults_are_caught(built, tmp_path):
     ledger.write(root, "S0", "genecall", gc)
     assert ledger.check_balance(root, "S0", ["genecall"])
     assert ledger.check_chain(root, "S0")
+    assert ledger.check_chain(root, "S0", release="rS0.test")

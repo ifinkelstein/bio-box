@@ -19,7 +19,7 @@ from pathlib import Path
 import duckdb
 import pyarrow as pa
 
-from biobox import ids, io, layout
+from biobox import ids, io, layout, ledger
 from biobox.registry.schemas import table
 
 _SPEC = table("genome_input")
@@ -73,11 +73,15 @@ def _batches(rows: list[tuple]) -> Iterator[pa.RecordBatch]:
 
 
 def write_genome_input(root, stage: str, genomes: Iterable[GenomeInput],
-                       max_file_bytes: int = layout.MAX_FILE_BYTES) -> dict:
-    """Write `<root>/l0seq/genome_input/stage=<stage>/part-<k>.parquet`, cut at `max_file_bytes` of
-    estimated size (`io.write_parts`); refuses to overwrite."""
+                       max_file_bytes: int = layout.MAX_FILE_BYTES, out=None) -> dict:
+    """Write `<out>/l0seq/genome_input/stage=<stage>/part-<k>.parquet`, cut at `max_file_bytes` of
+    estimated size (`io.write_parts`). `out` is the output root (default `root`; under run-step,
+    `$BIOBOX_STAGING`, card C-08); refuses, before reading `genomes`, when the stage's partition
+    already holds a file in `root` or in `out`."""
+    out = Path(root) if out is None else Path(out)
+    ledger.refuse_written(root, out, [_dir("", stage).as_posix()], f"genome_input of stage {stage}")
     rows = _rows(genomes)
-    io.write_parts(_batches(rows), _SPEC, _dir(root, stage), EST_ROW_BYTES, max_file_bytes)
+    io.write_parts(_batches(rows), _SPEC, _dir(out, stage), EST_ROW_BYTES, max_file_bytes)
     return {"genomes": len({r[1] for r in rows}), "contigs": len(rows)}
 
 

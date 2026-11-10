@@ -88,7 +88,7 @@ def test_written_tables_conform(store_root, name, glob):
 
 
 def test_r01_record_digests(store_root):
-    store = SeqStore(store_root)
+    store = SeqStore(store_root, ["S0"])
     for p in _fixture_paths():
         for rec in fasta.read(p):
             rd = ids.raw_digest(rec.seq)
@@ -97,7 +97,7 @@ def test_r01_record_digests(store_root):
 
 
 def test_r02_object_round_trip(store_root):
-    store = SeqStore(store_root)
+    store = SeqStore(store_root, ["S0"])
     for p in _fixture_paths():
         expected = hashlib.sha256(b"\n".join(fasta.normalized_lines(p)) + b"\n").digest()
         got = store.reconstruct_object(ids.sha256_file(p))
@@ -105,7 +105,7 @@ def test_r02_object_round_trip(store_root):
 
 
 def test_r03_random_slices_both_strands(store_root):
-    store = SeqStore(store_root)
+    store = SeqStore(store_root, ["S0"])
     rng = random.Random(20261029)
     for p in _fixture_paths():
         seq = fasta.read(p)[0].seq
@@ -118,7 +118,7 @@ def test_r03_random_slices_both_strands(store_root):
 
 
 def test_slice_out_of_bounds_raises(store_root):
-    store = SeqStore(store_root)
+    store = SeqStore(store_root, ["S0"])
     seq = fasta.read(_fixture_paths()[0])[0].seq
     with pytest.raises(ValueError):
         store.get(ids.contig_uid(seq), 0, len(seq) + 1)
@@ -201,7 +201,7 @@ def test_mr03_reverse_complement_slices_mirror(tmp_path):
     rc_path = _write_fasta(src / "lambda_rc.fna", "lambda_rc", revcomp(lam.seq))
     root = tmp_path / "s"
     ingest(_objects([_fixture_paths()[0], rc_path]), root, stage="S0", shard_bases=200_000)
-    store = SeqStore(root)
+    store = SeqStore(root, ["S0"])
     fwd, rc = ids.contig_uid(lam.seq), ids.contig_uid(revcomp(lam.seq))
     n = len(lam.seq)
     rng = random.Random(3)
@@ -221,7 +221,7 @@ def test_mr14_soft_mask_keeps_contig_uid(tmp_path):
         SourceObject(mpath, "other_source", "1", "INSDC (public)", True, precedence=200)
     ]
     ingest(objs, root, stage="S0", shard_bases=200_000)
-    store = SeqStore(root)
+    store = SeqStore(root, ["S0"])
     assert ids.contig_uid(masked) == ids.contig_uid(lam.seq)
     assert ids.raw_digest(masked) != ids.raw_digest(lam.seq)
     assert store.raw(ids.raw_digest(masked)) == masked
@@ -253,7 +253,7 @@ def test_identical_sequence_stored_once_across_sources_and_stages(tmp_path):
 
 @pytest.mark.covers("LY-06", "R-03")
 def test_store_open_reads_no_row_group_and_one_get_reads_one_of_each_index(store_root):
-    store = SeqStore(store_root)
+    store = SeqStore(store_root, ["S0"])
     assert store.locator.row_groups_read == 0 and store.index.row_groups_read == 0
     assert store.locator.footers_read == 1 and store.index.footers_read == 1  # one stage, one file each
     seq = fasta.read(_fixture_paths()[1])[0].seq
@@ -266,7 +266,7 @@ def test_store_open_reads_no_row_group_and_one_get_reads_one_of_each_index(store
 
 
 def test_unknown_keys_raise_key_error(store_root):
-    store = SeqStore(store_root)
+    store = SeqStore(store_root, ["S0"])
     with pytest.raises(KeyError):
         store.get(b"\x00" * 16)
     with pytest.raises(KeyError):
@@ -302,7 +302,7 @@ def test_second_stage_adds_locator_files_and_keeps_the_first_byte_identical(tmp_
     assert conformance_problems(t1, table("seq_locator")) == []
     md = pq.read_metadata(s1)
     assert all(md.row_group(g).column(0).statistics.has_min_max for g in range(md.num_row_groups))
-    store = SeqStore(root)
+    store = SeqStore(root, ["S0", "S1"])
     assert store.locator.footers_read == 2
     for s in (lam.seq, revcomp(lam.seq), other.seq):
         assert store.get(ids.contig_uid(s), 5, 905) == s[5:905]
@@ -571,7 +571,7 @@ def test_shards_follow_the_batch_rule(tmp_path):
     want_loc = sorted((rd, shard, len(s)) for shard, b in zip(shards, batches) for rd, s in b.items())
     assert [(r["raw_digest"], r["shard"], r["contig_len"]) for r in loc] == want_loc
     assert report["new_sequences"] == len(want_loc)
-    store = SeqStore(root)
+    store = SeqStore(root, ["S0"])
     for b in batches:
         for rd, s in b.items():
             assert store.raw(rd) == s
@@ -600,7 +600,7 @@ def test_duplicates_are_stored_once_in_the_smaller_sha_batch_and_not_again_later
     lo, hi = sorted(objs, key=_sha)
     root = tmp_path / "s"
     ingest(objs, root, stage="S0", shard_bases=SMALL_SHARDS)
-    store = SeqStore(root)
+    store = SeqStore(root, ["S0"])
     rd = ids.raw_digest
     first_lo = rd(u) if lo.path == a else rd(v)  # lo's own sequence
     assert store.shard_of(rd(s)) == store.shard_of(first_lo) == "l0seq/seq_shards/stage=S0/shard-0000.fa.gz"
@@ -625,7 +625,7 @@ def test_duplicates_are_stored_once_in_the_smaller_sha_batch_and_not_again_later
     assert [(r["contig_uid"], r["is_default_variant"]) for r in idx1] == [(ids.contig_uid(t), True)]
     assert {r["object_key"]: (r["n_in"], r["n_kept"], r["n_merged"]) for r in ledger.read(root, "S1", "ingest")} == {
         _sha(_objects([c])[0]): (3, 1, 2)}
-    store = SeqStore(root)
+    store = SeqStore(root, ["S0", "S1"])
     for x in (s, u, v, t):
         assert store.get(ids.contig_uid(x)) == x
 

@@ -243,17 +243,19 @@ def test_ledger_checks_on_the_multi_part_store(stores):
     for root in (stores["a"], stores["b"]):
         steps = sorted(p.name.removeprefix("step=") for p in (root / "ledger/stage=S0").iterdir())
         assert {"ingest", "genecall", "domains-test-1", f"tape-{TV}"} <= set(steps)
-        assert ledger.check_balance(root, "S0", steps) == []
+        # the release's own ledger (clustering) is under ledger/release=<R>/ (card B-28)
+        assert ledger.check_balance(root, "S0", steps + ["cluster"], release=REL) == []
         assert ledger.check_inputs(root, "S0", expected) == []
-        assert ledger.check_chain(root, "S0") == []
+        assert ledger.check_chain(root, "S0", release=REL) == []
         for step in steps:
             assert ledger.read(root, "S0", step) == ledger.read(stores["a"], "S0", step), step
+        assert ledger.read_release(root, REL, "cluster") == ledger.read_release(stores["a"], REL, "cluster")
     tape_ledger = ledger.read(stores["b"], "S0", f"tape-{TV}")
     assert [r["object_key"] for r in tape_ledger] == sorted(g.contig_uids[0] for g in _genomes())
 
 
 def test_seqstore_and_genome_input_read_every_part(stores):
-    sa, sb = SeqStore(stores["a"]), SeqStore(stores["b"])
+    sa, sb = SeqStore(stores["a"], ["S0"]), SeqStore(stores["b"], ["S0"])
     try:
         assert len(sb.locator_files) == len(sb.index_files) == 3 and len(sa.locator_files) == 1
         for g in _genomes():
@@ -283,10 +285,15 @@ def _oracle_per_object(rows):
     return out
 
 
+def _read(root, stage, step):
+    """A step's ledger rows: a release step's (clustering) from the release's ledger (card B-28)."""
+    return ledger.read_release(root, REL, step) if step in ledger.RELEASE_STEPS else ledger.read(root, stage, step)
+
+
 def _oracle_balance(root, stage, steps):
     problems = []
     for step in steps:
-        for uid, o in _oracle_per_object(ledger.read(root, stage, step)).items():
+        for uid, o in _oracle_per_object(_read(root, stage, step)).items():
             if len(o["n_in"]) != 1 or len(o["n_kept"]) != 1 or len(o["n_merged"]) != 1:
                 problems.append(f"{step} {uid!r}: n_in/n_kept/n_merged differ between reason rows")
                 continue
@@ -309,13 +316,13 @@ def _oracle_inputs(root, stage, expected):
 def _oracle_chain(root, stage):
     problems = []
     for up, up_obj, down, down_obj in ledger.CHAIN:
-        urows = ledger.read(root, stage, up)
+        urows = _read(root, stage, up)
         if not urows:
             continue
         kept = sum(next(iter(o["n_kept"])) for u, o in _oracle_per_object(urows).items() if up_obj is None or u == up_obj)
         downs = ([p.name.removeprefix("step=") for p in sorted((Path(root) / f"ledger/stage={stage}").glob(f"step={down}"))]
                  if down.endswith("*") else [down])
-        for u, o in _oracle_per_object([r for d in downs for r in ledger.read(root, stage, d)]).items():
+        for u, o in _oracle_per_object([r for d in downs for r in _read(root, stage, d)]).items():
             if down_obj is not None and u != down_obj:
                 continue
             if next(iter(o["n_in"])) != kept:
@@ -350,12 +357,14 @@ def test_ledger_checks_agree_with_the_row_by_row_oracle(stores, tmp_path, fault)
         _rewrite(root, "domains-test-1", [{**r, "n_in": r["n_in"] + 5} for r in dom])
     elif fault == "cluster chain":
         kept = sum(r["n_kept"] for r in gc)
-        shutil.rmtree(root / "ledger/stage=S0/step=cluster", ignore_errors=True)  # present when MMseqs2 ran
-        ledger.write(root, "S0", "cluster", [ledger.row(b"nr50", "level", 7, 3, 4), ledger.row(b"nr90", "level", kept, 9, kept - 9)])
+        shutil.rmtree(ledger.release_path(root, REL, "cluster").parent, ignore_errors=True)  # present when MMseqs2 ran
+        ledger.write_release(root, REL, "cluster", [ledger.row(b"nr50", "level", 7, 3, 4),
+                                                    ledger.row(b"nr90", "level", kept, 9, kept - 9)])
     elif fault == "second library":
         ledger.write(root, "S0", "domains-a-1", [ledger.row(b"a-1", "library", 3, 1, n_rejected=2)])
-    steps = sorted(p.name.removeprefix("step=") for p in (root / "ledger/stage=S0").iterdir())
-    got = (ledger.check_balance(root, "S0", steps), ledger.check_inputs(root, "S0", expected), ledger.check_chain(root, "S0"))
+    steps = sorted(p.name.removeprefix("step=") for p in (root / "ledger/stage=S0").iterdir()) + ["cluster"]
+    got = (ledger.check_balance(root, "S0", steps, release=REL), ledger.check_inputs(root, "S0", expected),
+           ledger.check_chain(root, "S0", release=REL))
     want = (_oracle_balance(root, "S0", steps), _oracle_inputs(root, "S0", expected), _oracle_chain(root, "S0"))
     assert got == want
     assert any(got) == (fault != "none")
