@@ -1463,10 +1463,12 @@ def _register_token_udf(con: duckdb.DuckDBPyConnection, tokens: _Lazy) -> None:
     The stored `token_of` is a scalar subquery on `token_dict`, which is sorted by `token_id`: by key it can
     prune only with a literal and only on the `key` statistics, and for keys from a joined table it reads every
     row group. `open_catalog` shadows it, on its connection only, with a temporary macro over
-    `bb_token_of_udf`, which resolves each distinct key with `TokenKeyLookup`. The macro stays a scalar
-    subquery, so a key given once (a literal or a parameter) is resolved once per query, as before. An unknown
-    level or key, or a NULL, gives NULL; a key with tokens under two sources of one level raises, as the
-    stored subquery does with two rows."""
+    `bb_token_of_udf`, which resolves each distinct key of a vector with `TokenKeyLookup`. The macro calls the
+    function directly: wrapped in a scalar subquery, 100 joined keys took 0.059 s in 8 calls of 20 to 30 rows,
+    against 0.016 s in 2 calls of 100 (measured, wilkcomp02, 2026-11-10, 1,000x synthetic store), and for a
+    literal or a parameter DuckDB calls it as often either way (`token_rows`, `q1_count`). An unknown
+    level or key, or a NULL, gives NULL; a key with tokens under two sources of one level raises (there is no
+    one token to give)."""
 
     def bb_token_of(levels: pa.Array, keys: pa.Array) -> pa.Array:
         rows = list(zip(levels.to_pylist(), keys.to_pylist()))
@@ -1482,7 +1484,7 @@ def _register_token_udf(con: duckdb.DuckDBPyConnection, tokens: _Lazy) -> None:
 
     con.create_function("bb_token_of_udf", bb_token_of, ["VARCHAR", "VARCHAR"], "UBIGINT",
                         type="arrow", null_handling="special", side_effects=False)
-    con.execute("CREATE OR REPLACE TEMP MACRO token_of(_level, _key) AS (SELECT bb_token_of_udf(_level, _key))")
+    con.execute("CREATE OR REPLACE TEMP MACRO token_of(_level, _key) AS bb_token_of_udf(_level, _key)")
 
 
 SEQ_TABLES = ("seq_locator", "contig_index", "contig_occurrence")  # what SeqStore reads
