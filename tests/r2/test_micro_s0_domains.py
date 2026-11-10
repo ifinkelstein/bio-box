@@ -145,3 +145,100 @@ def test_matches_hmmsearch_binary(built, tmp_path):
         rs, rd, re_ = ref[k]
         assert s == pytest.approx(rs, abs=0.05) and d == pytest.approx(rd, abs=0.05)
         assert e == pytest.approx(re_, rel=0.02)
+
+
+# --- card B-24: the scan in shards ----------------------------------------------------------------------
+#
+# `domains.plan` cuts the stage's proteins, sorted by protein_uid, into shards by cumulative residues;
+# `domains.scan_shard` scans one shard in its own call into a sorted scratch run; `domains.merge` writes
+# the runs as the stage's domain files and ledger. The oracle is the unsharded `domains.run` of the
+# `built` fixture: every file must be byte-identical, for any shard size.
+
+OUTS = ("l1/domains/library=test-1/stage=S0", "ledger/stage=S0/step=domains-test-1")
+
+
+def _outputs(root: Path) -> dict[str, bytes]:
+    return {p.relative_to(root).as_posix(): p.read_bytes() for d in OUTS for p in sorted((root / d).rglob("*"))
+            if p.is_file()}
+
+
+def _fresh(root: Path, at: Path) -> Path:
+    """A new root holding only the fixture's proteins (the writers never rewrite a file, card B-19)."""
+    shutil.copytree(root / "l0seq/protein_seq", at / "l0seq/protein_seq")
+    return at
+
+
+def _lengths(root: Path) -> list[tuple[bytes, int]]:
+    """(protein_uid, residues) of every distinct protein, in uid order, from the sequences themselves."""
+    return sorted((u, len(s)) for u, s in domains.load_proteins(root, GENE_CALL_VERSION, "S0").items())
+
+
+def _sharded(root: Path, lib: Path, size: int, tmp: Path, cpus: int = 1) -> dict:
+    plan = domains.plan(root, "S0", GENE_CALL_VERSION, "test", "1", lib, "gathering", size)
+    for k in range(plan["shards"]):
+        domains.scan_shard(root, "S0", "test", "1", lib, k, cpus=cpus, tmp=tmp)
+    domains.merge(root, "S0", "test", "1", tmp=tmp)
+    return plan
+
+
+@pytest.mark.covers("D-01", "MR-12")
+@pytest.mark.parametrize("want", ["one", "two", "many"])
+def test_b24_sharded_scan_equals_the_unsharded_run(built, tmp_path, want):
+    root, lib = built[0], built[1]
+    lengths = _lengths(root)
+    total, longest = sum(n for _, n in lengths), max(n for _, n in lengths)
+    size = {"one": total, "two": -(-total // 2) + longest, "many": total // 8}[want]
+    fresh = _fresh(root, tmp_path / "s")
+    _sharded(fresh, lib, size, tmp_path / "scratch", cpus=2 if want == "many" else 1)
+    assert _outputs(fresh) == _outputs(root)
+    # the plan: shards in uid order cover every protein once, each within `size` unless it is one protein,
+    # and each closed only when its next protein would not fit (cut by cumulative residues)
+    shards = domains.read_plan(fresh, "S0", "test", "1")["shards"]
+    if want == "one":
+        assert len(shards) == 1
+    elif want == "two":
+        assert len(shards) == 2
+    else:
+        assert len(shards) >= 5
+    at = 0
+    for s in shards:
+        assert s["first"] == lengths[at][0].hex()
+        took = lengths[at:at + s["proteins"]]
+        assert s["last"] == took[-1][0].hex() and s["residues"] == sum(n for _, n in took)
+        assert s["residues"] <= size or s["proteins"] == 1
+        at += s["proteins"]
+        if at < len(lengths):
+            assert s["residues"] + lengths[at][1] > size
+    assert at == len(lengths)
+
+
+def test_b24_a_shard_refuses_another_library_file(built, tmp_path):
+    root, lib = built[0], built[1]
+    fresh = _fresh(root, tmp_path / "s")
+    domains.plan(fresh, "S0", GENE_CALL_VERSION, "test", "1", lib, "gathering", 10**9)
+    other = tmp_path / "other.hmm"
+    other.write_bytes(lib.read_bytes().split(b"//\n", 1)[1])  # every model but the first
+    with pytest.raises(ValueError, match="sha256"):
+        domains.scan_shard(fresh, "S0", "test", "1", other, 0, cpus=1, tmp=tmp_path / "scratch")
+    with pytest.raises(FileExistsError):  # a plan is written once
+        domains.plan(fresh, "S0", GENE_CALL_VERSION, "test", "1", lib, "gathering", 10**9)
+
+
+def test_b24_merge_refuses_a_missing_shard_or_a_changed_run(built, tmp_path):
+    root, lib = built[0], built[1]
+    fresh = _fresh(root, tmp_path / "s")
+    scratch = tmp_path / "scratch"
+    plan = domains.plan(fresh, "S0", GENE_CALL_VERSION, "test", "1", lib, "gathering", sum(n for _, n in _lengths(root)) // 3)
+    assert plan["shards"] >= 3
+    for k in range(plan["shards"] - 1):
+        domains.scan_shard(fresh, "S0", "test", "1", lib, k, cpus=1, tmp=scratch)
+    with pytest.raises(FileNotFoundError, match=f"shard {plan['shards'] - 1}"):
+        domains.merge(fresh, "S0", "test", "1", tmp=scratch)
+    domains.scan_shard(fresh, "S0", "test", "1", lib, plan["shards"] - 1, cpus=1, tmp=scratch)
+    with pytest.raises(FileExistsError):  # a shard is scanned once
+        domains.scan_shard(fresh, "S0", "test", "1", lib, 0, cpus=1, tmp=scratch)
+    run0 = domains.run_path(scratch, fresh, "S0", "test", "1", 0)
+    run0.write_bytes(run0.read_bytes() + b"\0")
+    with pytest.raises(ValueError, match="sha256"):
+        domains.merge(fresh, "S0", "test", "1", tmp=scratch)
+    assert _outputs(fresh) == {}  # nothing was written

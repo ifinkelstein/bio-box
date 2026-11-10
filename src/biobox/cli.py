@@ -20,6 +20,9 @@
     bio-box stage ingest --root R --stage S --objects objects.json [--shard-bases N] [--line-width N] [--tmp D]
     bio-box stage genecall|igr|tapes --root R --stage S [--tmp D] [--producers P,Q] [--workers N] [--out DIR]
     bio-box stage domains --root R --stage S --library pfam --library-version 38.2 --hmm F --cutoff gathering
+    bio-box stage domains plan --root R --stage S --library L --library-version V --hmm F --cutoff C --shard-residues N
+    bio-box stage domains shard --root R --stage S --library L --library-version V --hmm F --shard K --cpus N --tmp D
+    bio-box stage domains merge --root R --stage S --library L --library-version V --tmp D
     bio-box build-stage --profile P --root R --stage S --release R1 [--stages S0,S1] --genomes genomes.json
                 --objects objects.json [--library NAME VERSION HMM CUTOFF ...] [--tmp D] [--threads N]
 
@@ -299,6 +302,7 @@ def _run_step(a) -> int:
 
 RELEASE_STEPS = ("define", "cluster", "tokens", "postings", "dim", "manifest", "catalog")
 STAGE_STEPS = ("inputs", "ingest", "genecall", "igr", "tapes", "domains")
+DOMAIN_ACTIONS = ("plan", "shard", "merge")  # `stage domains plan|shard|merge` (card B-24)
 OUT_HELP = ("output root (card C-08): every output goes under it at its root-relative path; default "
             "$BIOBOX_STAGING when set (bio-box run-step sets it and publishes from it), else --root")
 
@@ -439,6 +443,8 @@ def _source_objects(path: str):
 def _stage_step(a, root: Path, out: Path) -> dict:
     tmp = Path(a.tmp) if a.tmp else None
     mfb = {} if a.max_file_bytes is None else {"max_file_bytes": a.max_file_bytes}
+    if a.action is not None and a.step != "domains":
+        raise ValueError(f"stage {a.step}: {a.action} is a step of stage domains only")
     if a.step == "inputs":
         from biobox.l0seq.inputs import write_genome_input
 
@@ -470,9 +476,21 @@ def _stage_step(a, root: Path, out: Path) -> dict:
                          out=out, **kw, **mfb)
     from biobox.l1 import domains
 
-    missing = [f"--{n.replace('_', '-')}" for n in ("library", "library_version", "hmm", "cutoff") if not getattr(a, n)]
+    need = {None: ("library", "library_version", "hmm", "cutoff"),  # the whole scan in this process
+            "plan": ("library", "library_version", "hmm", "cutoff", "shard_residues"),  # card B-24
+            "shard": ("library", "library_version", "hmm", "shard"),
+            "merge": ("library", "library_version")}[a.action]
+    missing = [f"--{n.replace('_', '-')}" for n in need if getattr(a, n) in (None, "")]  # shard 0 is given
     if missing:
-        raise ValueError(f"stage domains needs {', '.join(missing)}")
+        raise ValueError(f"stage domains{'' if a.action is None else ' ' + a.action} needs {', '.join(missing)}")
+    if a.action == "plan":
+        return domains.plan(root, a.stage, a.gene_call_version, a.library, a.library_version, Path(a.hmm), a.cutoff,
+                            a.shard_residues, out=out)
+    if a.action == "shard":
+        return domains.scan_shard(root, a.stage, a.library, a.library_version, Path(a.hmm), a.shard, a.cpus,
+                                  tmp=tmp, out=out)
+    if a.action == "merge":
+        return domains.merge(root, a.stage, a.library, a.library_version, tmp=tmp, out=out, **mfb)
     return domains.run(root, a.stage, a.gene_call_version, a.library, a.library_version, Path(a.hmm), a.cutoff,
                        cpus=a.cpus, out=out, **mfb)
 
@@ -486,7 +504,8 @@ def _stage(a) -> int:
     except (FileNotFoundError, FileExistsError, ValueError) as e:
         print(f"refused: {e}", file=sys.stderr)
         return 2
-    print(json.dumps({"stage": a.stage, "step": a.step, "result": res}, sort_keys=True, default=str))
+    head = {"stage": a.stage, "step": a.step} | ({} if a.action is None else {"action": a.action})
+    print(json.dumps({**head, "result": res}, sort_keys=True, default=str))
     return 0
 
 
@@ -589,6 +608,9 @@ def main(argv: list[str] | None = None) -> int:
     rl.add_argument("--out", help=OUT_HELP)
     st = sub.add_parser("stage", parents=[common], help="per-stage builder steps (card C-08)")
     st.add_argument("step", choices=STAGE_STEPS)
+    st.add_argument("action", nargs="?", choices=DOMAIN_ACTIONS,
+                    help="domains in shards (card B-24): plan, then shard (one call per --shard K), then merge; "
+                         "without it, the whole scan in one process")
     st.add_argument("--stage", required=True)
     st.add_argument("--out", help=OUT_HELP)
     st.add_argument("--tmp", help="scratch directory (system temp by default; under neither the root nor --out)")
@@ -608,6 +630,8 @@ def main(argv: list[str] | None = None) -> int:
     st.add_argument("--hmm", help="domains: the library's HMM file")
     st.add_argument("--cutoff", help="domains: gathering, trusted, noise or none")
     st.add_argument("--cpus", type=int, default=1, help="domains: hmmsearch threads")
+    st.add_argument("--shard-residues", type=int, help="domains plan: residues per shard at most")
+    st.add_argument("--shard", type=int, help="domains shard: the shard to scan (0-based)")
     bs = sub.add_parser("build-stage", parents=[common], help="a stage and its release, step by step under "
                                                               "run-step (card C-04)")
     bs.add_argument("--profile", required=True, help="host profile YAML (profiles/wilkcomp02.yaml)")
