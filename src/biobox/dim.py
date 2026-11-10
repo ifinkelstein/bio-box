@@ -19,7 +19,7 @@ from pathlib import Path
 
 import duckdb
 
-from biobox import io, layout
+from biobox import catalog, io, layout
 from biobox.l1.genecall import DUCK_MEMORY_LIMIT
 from biobox.registry.schemas import table
 
@@ -32,14 +32,11 @@ def _sql_list(files: list[Path]) -> str:
     return "[" + ", ".join("'" + str(f).replace("'", "''") + "'" for f in files) + "]"
 
 
-def _stage_dirs(root: Path) -> list[str]:
-    base = root / "l0seq/contig_index"
-    return sorted(d.name.removeprefix("stage=") for d in base.glob("stage=*") if d.is_dir()) if base.exists() else []
-
-
-def run(root, release: str, stages: list[str] | None = None, tmp=None,
-        max_file_bytes: int = layout.MAX_FILE_BYTES) -> dict:
-    """Build `contig_dim` for `release` over `stages` (default: every stage with a `contig_index`).
+def run(root, release: str, stages: list[str], tmp=None, max_file_bytes: int = layout.MAX_FILE_BYTES) -> dict:
+    """Build `contig_dim` for `release` over `stages`, the release's stages (card B-25): a stage the
+    release does not list is not read, a listed stage without `contig_index` files raises
+    FileNotFoundError, and the release's `release_def` is written, or checked to list the same stages
+    (`catalog.define_release`).
 
     Errors: a default-variant contig without a `genome_input` row, a `genome_input` row whose
     contig is not a default-variant contig of the given stages, and a contig whose `genome_input`
@@ -47,21 +44,22 @@ def run(root, release: str, stages: list[str] | None = None, tmp=None,
     Returns `{"contigs": n, "genomes": g, "circular": c}`.
     """
     root = Path(root)
+    stages = catalog.check_stages(stages)
     spec = table("contig_dim")
     base = root / spec.location / f"release={release}"
     if io.part_files(base):
         raise FileExistsError(f"{io.part_files(base)[0]}: a release's dimension table is written once; "
                               "refusing to overwrite")
-    stages = _stage_dirs(root) if stages is None else sorted(stages)
     if not stages:
-        raise FileNotFoundError(f"{root}: no contig_index stages")
+        raise ValueError(f"release {release}: no stages")
     idx, gin = [], []
-    for s in stages:
+    for s in stages:  # in the release's order; the output is sorted by contig_uid and does not depend on it
         found = io.part_files(root / f"l0seq/contig_index/stage={s}")
         if not found:
-            raise FileNotFoundError(f"no contig_index files for stage {s}")
+            raise FileNotFoundError(f"stage {s}: no contig_index files under {root}")
         idx += found
         gin += io.part_files(root / f"l0seq/genome_input/stage={s}")
+    catalog.define_release(root, release, stages)
     scratch = Path(tempfile.mkdtemp(prefix="biobox-dim-", dir=tmp))
     con = duckdb.connect(config={"threads": 1, "memory_limit": DUCK_MEMORY_LIMIT,
                                  "temp_directory": str(scratch / "duckdb")})

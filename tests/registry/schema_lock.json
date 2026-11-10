@@ -228,16 +228,6 @@
    false
   ],
   [
-   "tax_order_bucket",
-   "uint32",
-   true
-  ],
-  [
-   "genome_uid",
-   "fixed_size_binary[16]",
-   true
-  ],
-  [
    "contig_len",
    "int64",
    false
@@ -251,16 +241,6 @@
    "n_slots",
    "uint32",
    false
-  ],
-  [
-   "tier",
-   "uint8",
-   true
-  ],
-  [
-   "assembly_quality",
-   "string",
-   true
   ],
   [
    "feature_kinds",
@@ -538,16 +518,6 @@
    "strand",
    "int8",
    false
-  ],
-  [
-   "left_slot",
-   "uint32",
-   true
-  ],
-  [
-   "right_slot",
-   "uint32",
-   true
   ],
   [
    "left_feature_uid",
@@ -845,16 +815,6 @@
    false
   ],
   [
-   "slot_ordinal",
-   "uint32",
-   false
-  ],
-  [
-   "genome_uid",
-   "fixed_size_binary[16]",
-   false
-  ],
-  [
    "start",
    "int64",
    false
@@ -867,26 +827,6 @@
   [
    "strand",
    "int8",
-   false
-  ],
-  [
-   "tax_order",
-   "uint32",
-   true
-  ],
-  [
-   "is_species_rep",
-   "bool",
-   false
-  ],
-  [
-   "tier",
-   "uint8",
-   false
-  ],
-  [
-   "assembly_quality",
-   "string",
    false
   ],
   [
@@ -918,6 +858,18 @@
   ],
   [
    "seq",
+   "string",
+   false
+  ]
+ ],
+ "release_def": [
+  [
+   "position",
+   "uint16",
+   false
+  ],
+  [
+   "stage",
    "string",
    false
   ]
@@ -1101,16 +1053,6 @@
    "n_residues",
    "uint32",
    false
-  ],
-  [
-   "left_slot",
-   "uint32",
-   true
-  ],
-  [
-   "right_slot",
-   "uint32",
-   true
   ],
   [
    "orientation",
@@ -1339,33 +1281,6 @@
   [
    "contig_len",
    "int64",
-   false
-  ]
- ],
- "slot_protein": [
-  [
-   "contig_uid",
-   "fixed_size_binary[16]",
-   false
-  ],
-  [
-   "slot_ordinal",
-   "uint32",
-   false
-  ],
-  [
-   "protein_uid",
-   "fixed_size_binary[16]",
-   false
-  ],
-  [
-   "genetic_code",
-   "uint8",
-   false
-  ],
-  [
-   "edit_type",
-   "string",
    false
   ]
  ],

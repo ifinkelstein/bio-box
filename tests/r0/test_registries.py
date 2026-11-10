@@ -35,10 +35,21 @@ PENDING = _load("pending_tables.yaml")["pending"]
 REL = _load("relations.yaml")
 
 
-# AGENTS §3.3: an ordinal is never a key. These tables still have one in their primary key;
-# B-17 empties the set, and the test below fails until every fixed table is removed from it.
+# AGENTS §3.3: an ordinal is never a key. Card B-17 removed the last table keyed by one (slot_protein),
+# so no table may have one in its primary key.
 ORDINAL_COLUMNS = {"ordinal", "slot_ordinal", "anchor_ordinal", "partner_ordinal"}
-LEGACY_ORDINAL_KEYS = {"slot_protein"}  # neighborhoods keys on feature uids since card B-16
+LEGACY_ORDINAL_KEYS: set[str] = set()
+# card B-17 (TASKS.md §2): the legacy columns removed from each fact table
+REMOVED_COLUMNS = {
+    "protein_occurrence": {"slot_ordinal", "genome_uid", "tax_order", "is_species_rep", "tier", "assembly_quality"},
+    "contig_tapes": {"tax_order_bucket", "genome_uid", "tier", "assembly_quality"},
+    "igr": {"left_slot", "right_slot"},
+    "search_region": {"left_slot", "right_slot"},
+}
+# AGENTS §3.6, DEC-20: attributes that change without the sequence live only in the dimension tables
+# (genome_input holds the gene caller's inputs, among them the assembly quality it was given)
+DIMENSION_COLUMNS = {"tier": {"contig_dim"}, "tax_order": {"contig_dim"}, "tax_order_bucket": set(),
+                     "is_species_rep": {"contig_dim"}, "assembly_quality": {"contig_dim", "genome_input"}}
 
 
 def _documented_test_ids() -> set[str]:
@@ -94,8 +105,9 @@ def test_enums_refer_to_string_or_int_columns(name):
 
 def test_small_ok_tables_match_ly04_list():
     # TEST_ARCHITECTURE LY-04 names these metadata tables; anything else small_ok must be a waived kind.
-    # tape_version_def: declared small_ok in planning/tasks/TASKS.md §2 (card B-03)
-    named = {"l0_manifest", "seq_locator", "id_history", "ledger", "tape_version_def"}
+    # tape_version_def: declared small_ok in planning/tasks/TASKS.md §2 (card B-03); release_def: one row per
+    # stage of a release, written once like tape_version_def (card B-25)
+    named = {"l0_manifest", "seq_locator", "id_history", "ledger", "tape_version_def", "release_def"}
     waived_kinds = {"search", "tests"}
     for name, spec in TABLES.items():
         if spec.small_ok:
@@ -125,19 +137,57 @@ def test_no_primary_key_holds_an_ordinal_outside_the_legacy_set():
 
 
 def test_phase_b_tables_are_registered():
-    # B-03: the six tables of TASKS.md §2, added beside the legacy ones (expand before contract)
+    # B-03: the six tables of TASKS.md §2; B-17 removed the legacy slot_protein they replace
     new = {"genome_input", "feature", "feature_protein", "contig_dim", "tape_version_def", "token_postings"}
     assert new <= set(TABLES), f"missing: {sorted(new - set(TABLES))}"
-    assert "slot_protein" in TABLES
+    assert "slot_protein" not in TABLES  # card B-17: feature_protein replaces it
     assert "slot_pairs" not in TABLES  # card B-11: pairs are computed from token_postings, never stored (AGENTS §3.5)
-    # a replacement table keeps its predecessor's enum domains
-    quality = TABLES["protein_occurrence"].enums["assembly_quality"]
+    # a replacement table keeps its predecessor's enum domains (protein_occurrence.assembly_quality and
+    # slot_protein.edit_type as they were locked before card B-17)
+    quality = ("complete", "chromosome", "scaffold", "contig", "mag_hq", "mag_mq", "vOTU", "plasmid")
     assert TABLES["genome_input"].enums["assembly_quality"] == quality
     assert TABLES["contig_dim"].enums["assembly_quality"] == quality
-    assert TABLES["feature_protein"].enums["edit_type"] == TABLES["slot_protein"].enums["edit_type"]
+    assert TABLES["feature_protein"].enums["edit_type"] == ("none", "frameshift", "selenocysteine", "pyrrolysine",
+                                                            "intron")
     assert TABLES["feature"].enums["kind"] == tuple(sorted(KIND.values()))
     assert TABLES["contig_dim"].schema.field("assembly_quality").nullable
     assert not TABLES["genome_input"].schema.field("assembly_quality").nullable
+
+
+@pytest.mark.covers("LY-01")
+def test_b17_legacy_columns_are_removed():
+    # card B-17: no slot ordinal, slot flank or dimension column is left on a fact table
+    for name, cols in REMOVED_COLUMNS.items():
+        assert cols.isdisjoint(TABLES[name].schema.names), f"{name}: {sorted(cols & set(TABLES[name].schema.names))}"
+    for name, spec in TABLES.items():
+        assert not {"slot_ordinal", "left_slot", "right_slot"} & set(spec.schema.names), name
+        for col, allowed in DIMENSION_COLUMNS.items():
+            assert col not in spec.schema.names or name in allowed, f"{name}.{col}: a dimension column on a fact table"
+    occ = TABLES["protein_occurrence"]
+    assert occ.primary_key == ("feature_uid", "gene_call_version") and not occ.schema.field("feature_uid").nullable
+    for name in ("igr", "search_region"):
+        for side in ("left", "right"):
+            f = TABLES[name].schema.field(f"{side}_feature_uid")
+            assert f.type == UID and f.nullable, f"{name}.{side}_feature_uid: null at a linear contig end"
+    nb = TABLES["neighborhoods"]
+    assert nb.primary_key == ("contig_uid", "anchor_feature_uid", "feature_uid", "policy_hash")
+
+
+@pytest.mark.covers("C-03")
+def test_b17_foreign_keys_name_final_tables_and_no_ordinal():
+    # card B-17: the C-03 foreign keys hold only registered tables, resolve no ordinal, and replace slot_protein
+    # by the feature tables
+    from biobox.contracts import FOREIGN_KEYS
+
+    for child, ccols, parent, pcols in FOREIGN_KEYS:
+        for name, cols in ((child, ccols), (parent, pcols)):
+            assert name in TABLES, f"foreign key on unknown table {name}"
+            spec = TABLES[name]
+            assert set(cols) <= set(spec.schema.names) | set(spec.partition_keys), f"{name}{cols}"
+            assert not ORDINAL_COLUMNS & set(cols), f"{name}{cols}: an ordinal in a foreign key (AGENTS §3.3)"
+    edges = {(c, p) for c, _, p, _ in FOREIGN_KEYS}
+    assert {("feature", "contig_index"), ("feature_protein", "feature"), ("feature_protein", "protein_seq"),
+            ("protein_occurrence", "feature_protein")} <= edges
 
 
 def test_tape_tables_are_partitioned_by_tape_version():
@@ -160,7 +210,10 @@ def test_c08_version_partitions_are_registered():
     from biobox.provenance import VERSION_PARTITION
 
     for name, key in VERSION_PARTITION.items():
+        assert name in TABLES, f"{name}: provenance partition for an unregistered table"
         assert key in TABLES[name].partition_keys, f"{name}: provenance partition {key} is not a partition key"
+    # card B-17: the final tables, slot_protein replaced by the feature tables
+    assert (VERSION_PARTITION.get("feature"), VERSION_PARTITION.get("feature_protein")) == ("producer", "gene_call_version")
 
 
 def test_specified_and_pending_are_disjoint():

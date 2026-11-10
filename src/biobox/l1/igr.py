@@ -4,9 +4,8 @@ An IGR is a maximal run of bases covered by no feature of the tape's producers (
 any kind covers its bases), so overlapping and nested features produce none between them.
 Every run of >= 1 nt is stored; the >= 30 nt filter (Weinberg convention, SEARCH_PLAN SD-07) is applied when the search
 pack is built. Coordinates are 0-based half-open on the + strand (`strand` = 1);
-orientation is derived from the flanking features (`left_feature_uid`, `right_feature_uid`;
-the legacy `left_slot`, `right_slot` stay until card B-17). On linear contigs the end runs have a
-null flank; on circular contigs the run across the origin has `end > contig_len`
+orientation is derived from the flanking features (`left_feature_uid`, `right_feature_uid`, of
+any kind). On linear contigs the end runs have a null flank; on circular contigs the run across the origin has `end > contig_len`
 (C-05), and a contig with no genes is one IGR with both flanks null.
 
 Writes `<root>/l0seq/igr/igr_version=<v>/stage=<S>/part-<k>.parquet` (cut at `max_file_bytes` of
@@ -46,7 +45,9 @@ def igr_version(producers: str | Iterable[str] = GENE_CALL_VERSION) -> str:
 
 
 def igrs_of_contig(slots: list[tuple[int, int, int]], length: int, circular: bool) -> list[tuple[int, int, int | None, int | None]]:
-    """(start, end, left_slot, right_slot) for one contig; slots are (slot_ordinal, start, end)."""
+    """(start, end, left, right) for one contig; slots are (name, start, end), and `left`/`right` are the
+    names of the flanking slots (None at a linear contig end). The caller picks the names: `_contig_igrs`
+    uses each feature's position in its sorted list and maps it back to the feature_uid."""
     if not slots:
         return [(0, length, None, None)] if length else []
     genes = sorted(slots, key=lambda s: (s[1], s[2], s[0]))
@@ -84,12 +85,10 @@ def _sql_path(p: Path) -> str:
 
 
 def _contig_igrs(cu: bytes, length: int, feats: list[tuple], circular: bool) -> list[dict]:
-    """IGR rows of one contig; `feats` are (feature_uid, start, end, slot_ordinal) in sort order. The
-    position in `feats` stands in for the ordinal that `igrs_of_contig` uses to name the flanks."""
+    """IGR rows of one contig; `feats` are (feature_uid, start, end) in sort order. The position in
+    `feats` names a flank for `igrs_of_contig` only; the row stores its feature_uid."""
     runs = igrs_of_contig([(i, f[1], f[2]) for i, f in enumerate(feats)], length, circular)
     return [{"contig_uid": cu, "start": s, "end": e, "strand": 1,
-             "left_slot": None if left is None else feats[left][3],
-             "right_slot": None if right is None else feats[right][3],
              "left_feature_uid": None if left is None else feats[left][0],
              "right_feature_uid": None if right is None else feats[right][0]} for s, e, left, right in runs]
 
@@ -100,8 +99,7 @@ def run(root: Path, stage: str, circular: set[bytes] | frozenset | None = None,
     """Build IGRs for every contig of a stage from the `feature` rows of `producers` and contig_index.
 
     `circular`: the circular contig_uids; None reads the stage's `genome_input` table. `producers`:
-    default `[gene_call_version]`. `left_slot`/`right_slot` (legacy, B-17 removes them) are the
-    `slot_ordinal` of a gene flank taken from protein_occurrence, null for any other flank.
+    default `[gene_call_version]`; `gene_call_version` names the default producer only.
     Contigs are streamed in `contig_uid` order; one contig's features are held at a time.
     """
     root = Path(root)
@@ -114,7 +112,6 @@ def run(root: Path, stage: str, circular: set[bytes] | frozenset | None = None,
             raise FileNotFoundError(f"no feature files for producer {p} at stage {stage}")
         files += found
     ensure_def(root, producers)  # write the tape version's definition, or verify the stored one
-    occ = io.part_files(root / f"l1/protein_occurrence/gene_call_version={gene_call_version}/stage={stage}")
     idx = io.part_files(root / f"l0seq/contig_index/stage={stage}")
     if not idx:
         raise FileNotFoundError(f"no contig_index files at stage {stage}")
@@ -125,15 +122,13 @@ def run(root: Path, stage: str, circular: set[bytes] | frozenset | None = None,
         if circular is None:
             circular = frozenset(cu for g in iter_genome_input(root, stage, tmp=scratch) for cu in g.circular)
         flist = "[" + ", ".join(_sql_path(f) for f in files) + "]"
-        olist = "[" + ", ".join(_sql_path(f) for f in occ) + "]"
         ilist = "[" + ", ".join(_sql_path(f) for f in idx) + "]"
         sql = (
             "SELECT coalesce(c.contig_uid, f.contig_uid) AS contig_uid, c.contig_len, f.feature_uid, f.start, "
-            'f."end", f.strand, f.kind, o.slot_ordinal '
+            'f."end", f.strand, f.kind '
             f"FROM (SELECT contig_uid, contig_len FROM read_parquet({ilist}) WHERE is_default_variant) c "
             f"FULL OUTER JOIN read_parquet({flist}) f ON f.contig_uid = c.contig_uid "
-            f"LEFT JOIN read_parquet({olist}) o ON o.feature_uid = f.feature_uid "
-            'ORDER BY 1, f.start, f."end", f.strand, f.kind, o.slot_ordinal'
+            'ORDER BY 1, f.start, f."end", f.strand, f.kind'
         )
         spec = table("igr")
         stats = {"igrs": 0, "igrs_ge_30": 0, "bp": 0}
@@ -155,12 +150,12 @@ def run(root: Path, stage: str, circular: set[bytes] | frozenset | None = None,
 
             reader = con.sql(sql).to_arrow_reader(io.ROW_GROUP_ROWS)
             for b in reader:
-                for cu, n, fu, s, e, _, _, slot in zip(*(b.column(i).to_pylist() for i in range(8))):
+                for cu, n, fu, s, e in zip(*(b.column(i).to_pylist() for i in range(5))):
                     if cu != cur:
                         close()
                         cur, length, feats = cu, n, []
                     if fu is not None:
-                        feats.append((fu, s, e, slot))
+                        feats.append((fu, s, e))
                 if len(out) >= io.ROW_GROUP_ROWS:
                     yield pa.RecordBatch.from_pylist(out, schema=spec.schema)
                     out = []

@@ -5,9 +5,10 @@ R-04 (protein consistency against an independent translation), LY-08, MR-03
 (reverse complement, with a measured tolerance), and a G-02-style genetic-code
 check on M. genitalium (code 4).
 
-Card B-05: the `feature` and `feature_protein` tables against the legacy slot-keyed ones (C-03),
-`feature_uid` recomputed from each row, reading `genome_input` when no genome list is passed,
-and output bytes that depend neither on the genome order (MR-01) nor on `workers` (D-01).
+Card B-05: the `feature` and `feature_protein` tables against `protein_occurrence` and a direct
+`call_genome` (C-03), `feature_uid` recomputed from each row, reading `genome_input` when no genome
+list is passed, and output bytes that depend neither on the genome order (MR-01) nor on `workers`
+(D-01). Card B-17 removed the slot-keyed table these were first compared with.
 """
 
 from __future__ import annotations
@@ -85,7 +86,6 @@ def root(tmp_path_factory):
 
 V = GENE_CALL_VERSION
 GLOBS = {
-    "slot_protein": f"l1/slot_protein/gene_call_version={V}/stage=S0/part-0.parquet",
     "protein_occurrence": f"l1/protein_occurrence/gene_call_version={V}/stage=S0/part-0.parquet",
     "protein_seq": f"l0seq/protein_seq/gene_call_version={V}/stage=S0/protein_prefix=*/part-*.parquet",
     "feature": f"l1/feature/producer={V}/stage=S0/part-0.parquet",
@@ -108,27 +108,38 @@ def test_tables_conform(root, name):
         assert conformance_problems(pq.read_table(f), table(name)) == [], f
 
 
-def test_c10_occurrence_matches_slot_protein(root):
-    slots = {(r["contig_uid"], r["slot_ordinal"]): r["protein_uid"] for r in _read(root, GLOBS["slot_protein"]).to_pylist()}
+def test_c10_occurrence_matches_feature_protein(root):
+    cds = {r["feature_uid"]: r["protein_uid"] for r in _read(root, GLOBS["feature_protein"]).to_pylist()}
     occ = _read(root, GLOBS["protein_occurrence"]).to_pylist()
-    occ_keys = [(r["contig_uid"], r["slot_ordinal"]) for r in occ]
-    assert len(occ_keys) == len(set(occ_keys)) == len(slots)
-    assert {k: r["protein_uid"] for k, r in zip(occ_keys, occ)} == slots
+    occ_keys = [r["feature_uid"] for r in occ]
+    assert len(occ_keys) == len(set(occ_keys)) == len(cds)
+    assert {k: r["protein_uid"] for k, r in zip(occ_keys, occ)} == cds
+
+
+def _direct_calls(root: Path) -> dict[tuple, dict]:
+    """(contig_uid, start, end, strand) -> the gene as `call_genome` returns it, without the tables."""
+    store = SeqStore(root)
+    try:
+        return {(c["contig_uid"], c["start"], c["end"], c["strand"]): c for g in _genomes() for c in call_genome(store, g)}
+    finally:
+        store.close()
 
 
 def _legacy_genes(root: Path) -> dict[tuple, bytes]:
-    """(contig_uid, start, end, strand) -> protein_uid from the legacy slot-keyed tables."""
-    slots = {(r["contig_uid"], r["slot_ordinal"]): r["protein_uid"] for r in _read(root, GLOBS["slot_protein"]).to_pylist()}
+    """(contig_uid, start, end, strand) -> protein_uid from protein_occurrence (the slot-keyed table it was once
+    joined with is gone, card B-17), checked against the genes `call_genome` returns directly."""
     out = {}
     for r in _read(root, GLOBS["protein_occurrence"]).to_pylist():
-        out[(r["contig_uid"], r["start"], r["end"], r["strand"])] = slots[(r["contig_uid"], r["slot_ordinal"])]
-    assert len(out) == len(slots)
+        out[(r["contig_uid"], r["start"], r["end"], r["strand"])] = r["protein_uid"]
+    direct = _direct_calls(root)
+    assert set(out) == set(direct) and len(out) == len(direct)
+    assert out == {k: ids.protein_uid(c["aa"]) for k, c in direct.items()}
     return out
 
 
 @pytest.mark.covers("C-01", "LY-10")
 def test_new_tables_enter_the_manifest(root):
-    man = catalog.build_manifest(root, "rS0.test")
+    man = catalog.build_manifest(root, "rS0.test", ["S0"])
     by_table = {f["table"]: f for f in man["files"]}
     for name in ("feature", "feature_protein"):
         assert by_table[name]["path"] == GLOBS[name]
@@ -154,8 +165,9 @@ def test_feature_protein_equals_the_legacy_mapping(root):
     assert {(r["contig_uid"], r["start"], r["end"], r["strand"]): r["protein_uid"] for r in fp} == legacy
     feature_uids = {r["feature_uid"] for r in _read(root, GLOBS["feature"]).to_pylist()}
     assert {r["feature_uid"] for r in fp} == feature_uids
-    codes = {(r["contig_uid"], r["slot_ordinal"]): r["genetic_code"] for r in _read(root, GLOBS["slot_protein"]).to_pylist()}
-    assert sorted(r["genetic_code"] for r in fp) == sorted(codes.values())
+    direct = _direct_calls(root)
+    assert {(r["contig_uid"], r["start"], r["end"], r["strand"]): r["genetic_code"] for r in fp} == \
+        {k: c["genetic_code"] for k, c in direct.items()}
     assert {r["edit_type"] for r in fp} == {"none"}
 
 
@@ -177,7 +189,7 @@ def test_run_reads_genome_input_when_no_list_is_given(tmp_path):
     write_genome_input(b, "S0", _genomes())
     assert run(b, "S0") == want
     assert _outputs(a) == _outputs(b)
-    assert len(_outputs(a)) == 6
+    assert len(_outputs(a)) == 5  # feature, feature_protein, protein_occurrence, protein_seq, ledger (B-17)
 
 
 @pytest.mark.covers("MR-01", "D-01")
@@ -254,21 +266,21 @@ def test_protein_seq_is_content_addressed(root):
         assert p["protein_uid"] == ids.protein_uid(p["seq"])
         assert p["protein_digest"] == ids.raw_digest(p["seq"].encode())
         assert p["length"] == len(p["seq"])
-    used = {r["protein_uid"] for r in _read(root, GLOBS["slot_protein"]).to_pylist()}
+    used = {r["protein_uid"] for r in _read(root, GLOBS["feature_protein"]).to_pylist()}
     assert used == {p["protein_uid"] for p in prots}
 
 
 def test_r04_proteins_match_independent_translation(root):
     store = SeqStore(root)
     prot = {p["protein_uid"]: p["seq"] for p in _read(root, GLOBS["protein_seq"]).to_pylist()}
-    codes = {(r["contig_uid"], r["slot_ordinal"]): r["genetic_code"] for r in _read(root, GLOBS["slot_protein"]).to_pylist()}
+    codes = {r["feature_uid"]: r["genetic_code"] for r in _read(root, GLOBS["feature_protein"]).to_pylist()}
     checked = 0
     for r in _read(root, GLOBS["protein_occurrence"]).to_pylist():
         if r["dist_to_contig_end_bp"] == 0:
             continue  # partial gene at a contig edge
         nt = store.get(r["contig_uid"], r["start"], r["end"], r["strand"], circular=r["contig_uid"] in CIRCULAR)
         assert len(nt) % 3 == 0
-        aa = _translate(nt, codes[(r["contig_uid"], r["slot_ordinal"])])
+        aa = _translate(nt, codes[r["feature_uid"]])
         assert aa.endswith("*"), "complete gene must end in a stop codon"
         expected = "M" + aa[1:-1]  # Prodigal reports alternative starts as M
         assert prot[r["protein_uid"]] == expected

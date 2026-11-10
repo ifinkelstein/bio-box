@@ -38,10 +38,12 @@ rsync -a --delete -e "ssh -o BatchMode=yes" \
   --exclude .git --exclude .venv --exclude .hypothesis --exclude .pytest_cache --exclude mutants \
   --exclude .claude --exclude __pycache__ "$TOP/" "$HOST:$DST/"
 
+# /sys/fs/cgroup is bound read-only so that run-step and the search runner inside the image see
+# the scope's memory cap (card C-07: inside the image the directory is otherwise empty).
 run() {  # run <basetemp suffix> <pytest args string>
-  ssh -o BatchMode=yes "$HOST" "systemd-run --user --scope --quiet -p MemoryMax=32G nice -n 19 \
+  ssh -o BatchMode=yes "$HOST" "systemd-run --user --scope --quiet -p MemoryMax=32G -p MemorySwapMax=0 nice -n 19 \
     singularity exec --cleanenv --env PYTHONPATH=$DST/src:$PYDEPS $GOLDEN_ENV \
-    --env OMP_NUM_THREADS=2 --bind /tmp/if2453 --pwd '$DST' '$IMAGE' \
+    --env OMP_NUM_THREADS=2 --bind /tmp/if2453 --bind /sys/fs/cgroup:/sys/fs/cgroup:ro --pwd '$DST' '$IMAGE' \
     python -m pytest -q -p no:cacheprovider --basetemp=/tmp/if2453/ci-tmp/$NAME-$1 $2"
 }
 

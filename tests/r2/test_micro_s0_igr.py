@@ -47,8 +47,9 @@ def built(tmp_path_factory):
 
 
 def _slots(root):
+    """The genes of protein_occurrence by feature_uid (card B-17: the gene-call producer's only features)."""
     occ = pq.read_table(root / f"l1/protein_occurrence/gene_call_version={GENE_CALL_VERSION}/stage=S0/part-0.parquet")
-    return {(r["contig_uid"], r["slot_ordinal"]): r for r in occ.to_pylist()}
+    return {r["feature_uid"]: r for r in occ.to_pylist()}
 
 
 def test_r05_igrs_lie_between_their_flanking_slots(built):
@@ -58,15 +59,17 @@ def test_r05_igrs_lie_between_their_flanking_slots(built):
     assert rows
     for r in rows:
         n = store.length_of(store.default_digest(r["contig_uid"]))
-        if r["left_slot"] is not None:
-            assert slots[(r["contig_uid"], r["left_slot"])]["end"] % n == r["start"] % n
-        if r["right_slot"] is not None:
-            assert slots[(r["contig_uid"], r["right_slot"])]["start"] == r["end"] % n or \
-                slots[(r["contig_uid"], r["right_slot"])]["start"] == r["end"]
+        if r["left_feature_uid"] is not None:
+            assert slots[r["left_feature_uid"]]["contig_uid"] == r["contig_uid"]
+            assert slots[r["left_feature_uid"]]["end"] % n == r["start"] % n
+        if r["right_feature_uid"] is not None:
+            assert slots[r["right_feature_uid"]]["contig_uid"] == r["contig_uid"]
+            assert slots[r["right_feature_uid"]]["start"] == r["end"] % n or \
+                slots[r["right_feature_uid"]]["start"] == r["end"]
     # no slot overlaps any IGR interior
     by_contig = {}
-    for (cu, _), s in slots.items():
-        by_contig.setdefault(cu, []).append(s)
+    for s in slots.values():
+        by_contig.setdefault(s["contig_uid"], []).append(s)
     for r in rows:
         n = store.length_of(store.default_digest(r["contig_uid"]))
         span = {p % n for p in range(r["start"], r["end"])}
@@ -77,7 +80,7 @@ def test_r05_igrs_lie_between_their_flanking_slots(built):
 def test_r05_igr_slices_equal_the_source(built, tmp_path):
     root, circular, rows = built
     store = SeqStore(root)
-    con = catalog.open_catalog(catalog.generate_catalog(catalog.build_manifest(root, "x"), tmp_path / "c.duckdb"))
+    con = catalog.open_catalog(catalog.generate_catalog(catalog.build_manifest(root, "x", ["S0"]), tmp_path / "c.duckdb"))
     src = {ids.contig_uid(fasta.read(FIX / o["file"])[0].seq): fasta.read(FIX / o["file"])[0].seq for o in CONTRACT["objects"]}
     for r in rows[::7]:
         seq = src[r["contig_uid"]]
@@ -90,7 +93,7 @@ def test_r05_igr_slices_equal_the_source(built, tmp_path):
 
 def test_igr_table_passes_contracts(built, tmp_path):
     root, _, _ = built
-    man = catalog.build_manifest(root, "x")
+    man = catalog.build_manifest(root, "x", ["S0"])
     con = catalog.open_catalog(catalog.generate_catalog(man, tmp_path / "c.duckdb"))
     assert contracts.check_foreign_keys(con) == []
     assert contracts.check_coordinates(con) == []
@@ -133,13 +136,18 @@ def _contig_lengths(root):
 
 
 def _reference(root, circular):
-    """(contig_uid, start, end, left_slot, right_slot) the old way: protein_occurrence + igrs_of_contig."""
+    """(contig_uid, start, end, left_feature_uid, right_feature_uid) the old way: protein_occurrence +
+    igrs_of_contig, each contig's genes named by their rank in (start, end, strand) order and mapped back
+    to their feature_uid here (the rule the removed slot ordinal followed)."""
     by = {}
     for r in _slots(root).values():
-        by.setdefault(r["contig_uid"], []).append((r["slot_ordinal"], r["start"], r["end"]))
+        by.setdefault(r["contig_uid"], []).append(r)
     out = []
     for cu, n in _contig_lengths(root).items():
-        out += [(cu, s, e, left, right) for s, e, left, right in igrs_of_contig(by.get(cu, []), n, cu in circular)]
+        genes = sorted(by.get(cu, []), key=lambda r: (r["start"], r["end"], r["strand"]))
+        runs = igrs_of_contig([(i, g["start"], g["end"]) for i, g in enumerate(genes)], n, cu in circular)
+        out += [(cu, s, e, None if left is None else genes[left]["feature_uid"],
+                 None if right is None else genes[right]["feature_uid"]) for s, e, left, right in runs]
     return sorted(out, key=lambda t: (t[0], t[1]))
 
 
@@ -151,7 +159,7 @@ def test_b06_igr_conforms_and_matches_the_old_computation(built):
     assert t.schema.equals(spec.schema)
     assert t.schema.names[-2:] == ["left_feature_uid", "right_feature_uid"]
     assert conformance_problems(t, spec) == []
-    got = [(r["contig_uid"], r["start"], r["end"], r["left_slot"], r["right_slot"]) for r in rows]
+    got = [(r["contig_uid"], r["start"], r["end"], r["left_feature_uid"], r["right_feature_uid"]) for r in rows]
     assert got == _reference(root, circular)
     assert {cu for cu, *_ in got} == set(_contig_lengths(root))
 
@@ -163,20 +171,19 @@ def test_b06_flank_feature_uids_exist_and_touch_the_igr(built):
     root, circular, rows = built
     feats = {r["feature_uid"]: r for r in pq.read_table(
         root / f"l1/feature/producer={GENE_CALL_VERSION}/stage=S0/part-0.parquet").to_pylist()}
-    occ = {r["feature_uid"]: r["slot_ordinal"] for r in _slots(root).values()}
+    occ = _slots(root)
     n_of = _contig_lengths(root)
     wrapped = 0
     for r in rows:
         n = n_of[r["contig_uid"]]
         wrapped += r["end"] > n
-        for side, slot in (("left", "left_slot"), ("right", "right_slot")):
+        for side in ("left", "right"):
             fu = r[f"{side}_feature_uid"]
-            assert (fu is None) == (r[slot] is None)  # nulls exactly where the legacy slot is null
             if fu is None:
                 continue
             f = feats[fu]
             assert f["contig_uid"] == r["contig_uid"]
-            assert occ[fu] == r[slot]
+            assert (occ[fu]["start"], occ[fu]["end"], occ[fu]["strand"]) == (f["start"], f["end"], f["strand"])  # a gene
             if side == "left":
                 assert f["end"] % n == r["start"] % n
             else:
@@ -217,10 +224,8 @@ def test_b06_second_producer_splits_one_igr(built, tmp_path):
         assert new_keys[k] == old_keys[k]
     first, second = new_keys[(mg, target["start"])], new_keys[(mg, e)]
     assert (first["end"], second["end"]) == (s, target["end"])
-    assert first["left_feature_uid"] == target["left_feature_uid"] and first["left_slot"] == target["left_slot"]
-    assert first["right_feature_uid"] == fu and first["right_slot"] is None
-    assert second["left_feature_uid"] == fu and second["left_slot"] is None
-    assert second["right_feature_uid"] == target["right_feature_uid"] and second["right_slot"] == target["right_slot"]
+    assert first["left_feature_uid"] == target["left_feature_uid"] and first["right_feature_uid"] == fu
+    assert second["left_feature_uid"] == fu and second["right_feature_uid"] == target["right_feature_uid"]
 
 
 def test_b06_default_topology_comes_from_genome_input(built, tmp_path):

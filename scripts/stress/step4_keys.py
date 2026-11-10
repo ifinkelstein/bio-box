@@ -22,6 +22,10 @@ from biobox.l3.tapes import build_tape
 sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "tests"))
 from oracles.pairs_oracle import pairs_of_contig  # noqa: E402
 
+if len(sys.argv) < 2 or sys.argv[1] in ("-h", "--help"):
+    print(__doc__)
+    sys.exit(0 if sys.argv[1:2] in (["-h"], ["--help"]) else 2)
+
 root = Path(sys.argv[1])
 occ = [r for f in io.part_files(root / f"l1/protein_occurrence/gene_call_version={GENE_CALL_VERSION}/stage=S0")
        for r in pq.read_table(f).to_pylist()]

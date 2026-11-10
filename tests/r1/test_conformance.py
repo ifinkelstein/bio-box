@@ -36,10 +36,8 @@ def _igr(strands):
             "start": pa.array(range(0, 10 * n, 10), pa.int64()),
             "end": pa.array(range(5, 10 * n + 5, 10), pa.int64()),
             "strand": pa.array(strands, pa.int8()),
-            "left_slot": pa.array([None] * n, pa.uint32()),
-            "right_slot": pa.array([0] * n, pa.uint32()),
             "left_feature_uid": pa.array([None] * n, pa.binary(16)),
-            "right_feature_uid": pa.array([None] * n, pa.binary(16)),
+            "right_feature_uid": pa.array([bytes(16)] * n, pa.binary(16)),
         },
         schema=spec.schema,
     )
@@ -226,7 +224,7 @@ def test_phase_b_tables_are_catalog_views_with_partition_columns(tmp_path):
     root = tmp_path / "root"
     tables = _write_phase_b(root)
     assert sorted(tables) == list(PHASE_B)
-    man = catalog.build_manifest(root, RELEASE)
+    man = catalog.build_manifest(root, RELEASE, ["S0"])
     assert sorted(f["table"] for f in man["files"]) == list(PHASE_B)
     cat = catalog.generate_catalog(man, tmp_path / "catalog.duckdb", root)
     con = catalog.open_catalog(cat, root=root)
@@ -253,7 +251,7 @@ def test_token_postings_file_under_the_wrong_bucket_is_refused(tmp_path, bucket,
     root = tmp_path / "root"
     write_table(t, table("token_postings"), root / rel.replace(f"token_bucket={TOKEN_BUCKET}", f"token_bucket={bucket}"))
     if ok:
-        assert len(catalog.build_manifest(root, RELEASE)["files"]) == 1
+        assert len(catalog.build_manifest(root, RELEASE, [])["files"]) == 1
     else:
         with pytest.raises(catalog.LayoutError, match="LY-05"):
-            catalog.build_manifest(root, RELEASE)
+            catalog.build_manifest(root, RELEASE, [])

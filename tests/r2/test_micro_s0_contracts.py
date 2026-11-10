@@ -65,12 +65,12 @@ def build(root: Path, order: int = 1, threads: int = 1) -> dict:
         from biobox.l2 import cluster
         tmp = root.parent / f"{root.name}.mmseqs"
         tmp.mkdir(parents=True, exist_ok=True)
-        cluster.run(root, "rS0.test", GENE_CALL_VERSION, threads=threads, tmp=tmp)
+        cluster.run(root, "rS0.test", GENE_CALL_VERSION, ["S0"], threads=threads, tmp=tmp)
         shutil.rmtree(tmp, ignore_errors=True)
     tapes.run(root, "S0", {u for g in genomes for u in g.circular})
-    tokens.run(root, "rS0.test")
-    postings.run(root, "rS0.test")
-    return catalog.build_manifest(root, "rS0.test")
+    tokens.run(root, "rS0.test", ["S0"])
+    postings.run(root, "rS0.test", ["S0"])
+    return catalog.build_manifest(root, "rS0.test", ["S0"])
 
 
 @pytest.fixture(scope="module")
@@ -119,7 +119,7 @@ def test_ly04_no_small_files_outside_waivers(built):
 
 
 def test_size_check_allows_one_small_file_per_stage():
-    files = [{"table": "slot_protein", "partitions": {"stage": "S0"}, "bytes": 10}]
+    files = [{"table": "feature_protein", "partitions": {"stage": "S0"}, "bytes": 10}]
     assert contracts.check_file_sizes({"files": files}) == []
     assert contracts.check_file_sizes({"files": files * 2})
 
@@ -176,7 +176,7 @@ def test_c03_shards_are_not_ordered_across_each_other(tmp_path):
 
     root = tmp_path / "s"
     ingest([SourceObject(FIX / o["file"], "s", "1") for o in CONTRACT["objects"]], root, "S0", shard_bases=200_000)
-    man = catalog.build_manifest(root, "x")
+    man = catalog.build_manifest(root, "x", ["S0"])
     shards = sorted(a["path"] for a in man["artifacts"] if a["path"].endswith(".fa.gz"))
     names = [[e.name for e in read_fai(root / (s + ".fai"))] for s in shards]
     assert len(shards) == 3
@@ -204,9 +204,9 @@ def test_r06_lineage_is_complete(built):
 def _fault_con(con, **replace) -> duckdb.DuckDBPyConnection:
     """An in-memory copy of the catalog's tables with some replaced by Arrow tables (fault injection)."""
     c = duckdb.connect()
-    for name in ("protein_occurrence", "contig_index", "slot_protein", "protein_seq", "l1_domains", "contig_occurrence",
-                 "l0_manifest", "seq_locator", "cluster_member", "cluster_member_aln", "igr",
-                 "contig_tapes", "tape_tokens", "token_dict", "token_postings"):
+    for name in ("protein_occurrence", "contig_index", "feature", "feature_protein", "contig_dim", "protein_seq",
+                 "l1_domains", "contig_occurrence", "l0_manifest", "seq_locator", "cluster_member", "cluster_member_aln",
+                 "igr", "contig_tapes", "tape_tokens", "token_dict", "token_postings"):
         tbl = replace.get(name)
         if tbl is None:
             tbl = con.sql(f"SELECT * FROM {name}").to_arrow_table()
@@ -233,6 +233,14 @@ def test_injected_faults_are_caught(built):
     # a slot whose protein is missing (C-03)
     ps = con.sql("SELECT * FROM protein_seq").to_arrow_table()
     assert contracts.check_foreign_keys(_fault_con(con, protein_seq=ps.slice(1)))
+    # a CDS whose feature row is lost, and an occurrence whose CDS is lost (C-03 on feature uids, card B-17)
+    ft = con.sql("SELECT * FROM feature").to_arrow_table()
+    assert contracts.check_foreign_keys(_fault_con(con, feature=ft.slice(1))) == [
+        "feature_protein('feature_uid', 'gene_call_version') -> feature('feature_uid', 'producer'): 1 unresolved rows"]
+    fp = con.sql("SELECT * FROM feature_protein").to_arrow_table()
+    assert contracts.check_foreign_keys(_fault_con(con, feature_protein=fp.slice(1))) == [
+        "protein_occurrence('feature_uid', 'gene_call_version') -> feature_protein('feature_uid', 'gene_call_version'): "
+        "1 unresolved rows"]
     # an occurrence row lost, so a stored sequence is orphaned (R-06)
     co = con.sql("SELECT * FROM contig_occurrence").to_arrow_table()
     assert contracts.check_lineage(_fault_con(con, contig_occurrence=co.slice(1)))
@@ -343,7 +351,7 @@ def test_r09_a_later_stage_keeps_earlier_files(built, tmp_path):
     _, man, _ = built
     root = tmp_path / "s"
     shutil.copytree(man["root"], root)
-    before = catalog.build_manifest(root, "rS0.test")
+    before = catalog.build_manifest(root, "rS0.test", ["S0"])
     t4 = next(o for o in CONTRACT["objects"] if o["accession"] == "NC_000866.4")
     dup = tmp_path / "t4_again.fna.gz"
     shutil.copy(FIX / t4["file"], dup)
@@ -352,7 +360,7 @@ def test_r09_a_later_stage_keeps_earlier_files(built, tmp_path):
     lam_masked.write_bytes(b"\n".join(fasta.format_record("lam_variant", lam[:2000].lower() + lam[2000:], 70)) + b"\n")
     ingest([SourceObject(dup, "s1_source", "1"), SourceObject(lam_masked, "s1_source", "1")], root, "S1",
            shard_bases=10**6)
-    after = catalog.build_manifest(root, "rS1.test")
+    after = catalog.build_manifest(root, "rS1.test", ["S0", "S1"])
     assert contracts.check_append_only(before, after) == []
     assert len(after["files"]) > len(before["files"])
     # and the check notices a rewrite

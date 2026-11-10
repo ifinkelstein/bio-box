@@ -104,19 +104,20 @@ def _contigs(root: Path, tv: str) -> tuple[dict[bytes, int], set[bytes], dict[by
 
 
 def _slots(root: Path, gcv: str) -> dict[bytes, list[dict]]:
+    """The genes of each contig in coordinate order (start, end, strand)."""
     by_contig: dict[bytes, list[dict]] = defaultdict(list)
     for f in _occurrence_files(root, gcv):
-        for r in pq.read_table(f, columns=["contig_uid", "slot_ordinal", "start", "end", "strand"]).to_pylist():
+        for r in pq.read_table(f, columns=["contig_uid", "start", "end", "strand"]).to_pylist():
             by_contig[r["contig_uid"]].append(r)
     for v in by_contig.values():
-        v.sort(key=lambda r: r["slot_ordinal"])
+        v.sort(key=lambda r: (r["start"], r["end"], r["strand"]))
     return by_contig
 
 
 def _codes(root: Path, gcv: str) -> dict[bytes, int]:
-    """Genetic code per contig: the commonest code among its slots (11 for a contig with none)."""
+    """Genetic code per contig: the commonest code among its CDS features (11 for a contig with none)."""
     counts: dict[bytes, Counter] = defaultdict(Counter)
-    for f in sorted((root / "l1/slot_protein").glob(f"gene_call_version={gcv}/stage=*/part-*.parquet")):
+    for f in sorted((root / "l1/feature_protein").glob(f"gene_call_version={gcv}/stage=*/part-*.parquet")):
         for r in pq.read_table(f, columns=["contig_uid", "genetic_code"]).to_pylist():
             counts[r["contig_uid"]][r["genetic_code"]] += 1
     return {cu: c.most_common(1)[0][0] for cu, c in counts.items()}
@@ -139,8 +140,8 @@ def _gc(seq: bytes) -> float:
 
 def _region(kind: str, cu: bytes, start: int, end: int, strand: int, n_residues: int, **kw) -> dict:
     row = {"region_uid": ids.region_uid(cu, start, end, strand), "target_kind": kind, "contig_uid": cu,
-           "start": start, "end": end, "strand": strand, "n_residues": n_residues, "left_slot": None,
-           "right_slot": None, "orientation": None, "gc": None, "dist_to_contig_end_bp": None,
+           "start": start, "end": end, "strand": strand, "n_residues": n_residues,
+           "orientation": None, "gc": None, "dist_to_contig_end_bp": None,
            "partial": False, "at_contig_end": False, "gene_overlap_frac": None, "genetic_code": None,
            "left_feature_uid": None, "right_feature_uid": None}
     row.update(kw)
@@ -174,8 +175,7 @@ def _build_igr(root: Path, out: Path, iv: str, store: SeqStore, lengths, circula
             lf, rf = r["left_feature_uid"], r["right_feature_uid"]
             # flanks of an IGR never nest, so only their strands matter
             orient = junction((0, 1, strands[lf]), (2, 3, strands[rf])) if lf and rf else None
-            row = _region("igr", cu, s, e, 1, e - s, left_slot=r["left_slot"], right_slot=r["right_slot"],
-                          left_feature_uid=lf, right_feature_uid=rf,
+            row = _region("igr", cu, s, e, 1, e - s, left_feature_uid=lf, right_feature_uid=rf,
                           orientation=orient, gc=_gc(seq), dist_to_contig_end_bp=None if circ else min(s, L - e),
                           partial=not circ and (s == 0 or e == L))
             meta.append(row)

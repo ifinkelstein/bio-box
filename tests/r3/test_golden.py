@@ -152,7 +152,7 @@ def test_r04_independent_translation_on_golden(store_root):
 
 @pytest.fixture(scope="module")
 def golden_catalog(store_root, tmp_path_factory):
-    man = catalog.build_manifest(store_root, "rS0.golden")
+    man = catalog.build_manifest(store_root, "rS0.golden", ["S0"])
     con = catalog.open_catalog(catalog.generate_catalog(man, tmp_path_factory.mktemp("cat") / "c.duckdb"))
     yield man, con
     con.close()
@@ -222,10 +222,12 @@ def test_golden_tapes(golden_catalog, store_root):
         for r in pq.read_table(f).to_pylist():
             occ.setdefault(r["contig_uid"], []).append(r)
     cuids = sorted(occ)[::3]
-    for g in con.sql("SELECT contig_uid, start_bps, protein_uids FROM tapes_of(?)", params=[cuids]).to_arrow_table().to_pylist():
-        slots = sorted(occ[g["contig_uid"]], key=lambda r: r["slot_ordinal"])
+    sql = "SELECT contig_uid, start_bps, protein_uids, feature_uids FROM tapes_of(?)"
+    for g in con.sql(sql, params=[cuids]).to_arrow_table().to_pylist():
+        slots = sorted(occ[g["contig_uid"]], key=lambda r: (r["start"], r["end"], r["strand"]))  # coordinate order
         assert g["start_bps"] == [r["start"] for r in slots]
         assert g["protein_uids"] == [r["protein_uid"] for r in slots]
+        assert g["feature_uids"] == [r["feature_uid"] for r in slots]
 
 
 def _golden_pair_rows(root: Path, release: str, keep=None):

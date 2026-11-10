@@ -1,0 +1,30 @@
+{
+ "key": "Bp",
+ "step": "pfam_merge",
+ "stage": "P1",
+ "release": "rL.2p",
+ "threads": 1,
+ "started_utc": "2026-11-10T06:38:58+00:00",
+ "result": {
+  "out": "l1/domains/library=pfam-38.2/stage=P1/part-0.parquet",
+  "bytes": 80793179,
+  "proteins_scanned": 918525,
+  "stage_proteins": 918765,
+  "domains": 1552451,
+  "proteins_with_hit": 750254,
+  "models_with_hit": 14235,
+  "shard_cpu_min": 2149.6,
+  "shard_wall_s_sum": 31646.0,
+  "shard_peak_rss_mb_max": 617.1,
+  "cpu_min_per_mres": 7.3,
+  "ledger": "ledger/stage=P1/step=domains-pfam-38.2/part-0.parquet",
+  "balance": [],
+  "chain": [
+   "genecall->domains-* b'pfam-38.2': n_in 918525 != upstream n_kept 918765"
+  ],
+  "note": "only proteins new in P1 were scanned (S1 proteins carry the pilot's Pfam rows), so the ledger n_in is the scanned count and the genecall->domains chain check (L-03) reports it"
+ },
+ "error": null,
+ "inner_wall_s": 3.26,
+ "self_peak_rss_mb": 842.7
+}

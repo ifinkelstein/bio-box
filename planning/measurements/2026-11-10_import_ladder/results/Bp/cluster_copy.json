@@ -1,0 +1,22 @@
+{
+ "key": "Bp",
+ "step": "cluster_copy",
+ "stage": "P1",
+ "release": "rL.2p",
+ "threads": 1,
+ "started_utc": "2026-11-10T06:39:04+00:00",
+ "result": {
+  "cluster_member": {
+   "sha256": "1c19ff7ebe83fe14f025a8fd04e0f22ee8b7d892fee7c2a5f0a7c53ffdd17e3c",
+   "same_as_source": true
+  },
+  "cluster_member_aln": {
+   "sha256": "712c02fcf15a4527c67a0bd5d1c339d91634b6dc4ae1aa0aab93cfe02dceeccf",
+   "same_as_source": true
+  },
+  "ledger": "ledger/stage=rL.2p/step=cluster/part-0.parquet"
+ },
+ "error": null,
+ "inner_wall_s": 3.73,
+ "self_peak_rss_mb": 321.6
+}

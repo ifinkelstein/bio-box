@@ -62,6 +62,27 @@ def test_bool_is_not_an_int(tmp_path):
         profile.load(_write(tmp_path, d))
 
 
+@pytest.mark.covers("C-07")
+def test_shipped_profile_requires_a_memory_cap():
+    assert profile.load(SHIPPED).require_mem_cap is True
+
+
+@pytest.mark.covers("C-07")
+def test_require_mem_cap_is_optional_and_defaults_to_false(tmp_path):
+    d = _raw()
+    del d["require_mem_cap"]
+    assert profile.load(_write(tmp_path, d)).require_mem_cap is False
+
+
+@pytest.mark.covers("C-07")
+@pytest.mark.parametrize("value", ["yes", 1, 0, None])
+def test_require_mem_cap_must_be_a_bool(tmp_path, value):
+    d = _raw()
+    d["require_mem_cap"] = value
+    with pytest.raises(ValueError, match="require_mem_cap"):
+        profile.load(_write(tmp_path, d))
+
+
 @pytest.mark.parametrize("hour,expected", [(7, 56), (8, 40), (19, 40), (20, 56)])
 def test_threads_at(hour, expected):
     assert profile.load(SHIPPED).threads_at(hour) == expected

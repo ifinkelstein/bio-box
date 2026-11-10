@@ -120,7 +120,7 @@ def genes(store_root):
         store_root / f"l1/protein_occurrence/gene_call_version={GENE_CALL_VERSION}/stage=S0/part-0.parquet").to_pylist()
     co = pq.read_table(next((store_root / "l0seq/contig_occurrence").rglob("part-0.parquet"))).to_pylist()
     acc = {r["contig_uid"]: r["accession"] for r in co}
-    occ.sort(key=lambda r: (acc[r["contig_uid"]], r["slot_ordinal"]))
+    occ.sort(key=lambda r: (acc[r["contig_uid"]], r["start"], r["end"], r["strand"]))  # coordinate order (B-17)
     out = []
     for r in occ:
         rd = store.default_digest(r["contig_uid"])

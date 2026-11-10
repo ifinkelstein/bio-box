@@ -58,7 +58,7 @@ def built(tmp_path_factory):
             genomes.append(GenomeInput((cu,), o["genetic_code"], kind=o["kind"],
                                        circular=(cu,) if o["topology"] == "circular" else ()))
         call_genes(root, stage, genomes)
-    man = catalog.build_manifest(root, "rS1.test")
+    man = catalog.build_manifest(root, "rS1.test", ["S0", "S1"])
     cat = catalog.generate_catalog(man, root / "catalog/release=rS1.test.duckdb")
     return root, man, cat
 
@@ -123,7 +123,7 @@ def test_ly06_protein_lookup_reads_one_file_per_stage(tmp_path, width):
         genomes.append(GenomeInput((cu,), o["genetic_code"], kind=o["kind"],
                                    circular=(cu,) if o["topology"] == "circular" else ()))
     call_genes(root, "S0", genomes, prefix_width=None if width == 0 else width, max_file_bytes=40_000)
-    man = catalog.build_manifest(root, "x")  # LY-05 holds for every width
+    man = catalog.build_manifest(root, "x", ["S0"])  # LY-05 holds for every width
     files = [x for x in man["files"] if x["table"] == "protein_seq"]
     assert {x["partitions"]["protein_prefix"] for x in files} <= ({"all"} if width == 0 else
                                                                    {f"{i:02x}"[:width] for i in range(256)})
@@ -167,9 +167,9 @@ def test_k05_gene_call_version_and_stage_filter(built, con):
     root, man, _ = built
     want = [f for f in man["files"] if f["table"] == "protein_occurrence" and f["partitions"]["stage"] == "S0"]
     # a sum, not count(*): DuckDB answers count(*) on hive keys without a profiled scan
-    prof = catalog.profile_query(con, "SELECT sum(slot_ordinal) FROM protein_occurrence WHERE gene_call_version = ? AND stage = 'S0'",
+    prof = catalog.profile_query(con, "SELECT sum(start) FROM protein_occurrence WHERE gene_call_version = ? AND stage = 'S0'",
                                  [GENE_CALL_VERSION])
-    assert prof["result"][0][0] == sum(sum(pq.read_table(root / f["path"]).column("slot_ordinal").to_pylist()) for f in want)
+    assert prof["result"][0][0] == sum(sum(pq.read_table(root / f["path"]).column("start").to_pylist()) for f in want)
     assert _seq_scan(prof, "/protein_occurrence/")["files_read"] == len(want)
 
 
@@ -310,12 +310,12 @@ def test_k12_in_list_and_semi_join_agree(built, con):
     uids = sorted({r["protein_uid"] for r in occ})
     import pyarrow as pa
     for k in (10, 100, len(uids)):
-        want = sorted((r["contig_uid"], r["slot_ordinal"]) for r in occ if r["protein_uid"] in set(uids[:k]))
+        want = sorted((r["contig_uid"], r["feature_uid"]) for r in occ if r["protein_uid"] in set(uids[:k]))
         got_in = sorted(con.execute(
-            "SELECT contig_uid, slot_ordinal FROM protein_occurrence WHERE list_contains(?, protein_uid)", [uids[:k]]).fetchall())
+            "SELECT contig_uid, feature_uid FROM protein_occurrence WHERE list_contains(?, protein_uid)", [uids[:k]]).fetchall())
         q = pa.table({"protein_uid": pa.array(uids[:k], pa.binary(16))})
         con.register("q", q)
         got_semi = sorted(con.execute(
-            "SELECT contig_uid, slot_ordinal FROM protein_occurrence SEMI JOIN q USING (protein_uid)").fetchall())
+            "SELECT contig_uid, feature_uid FROM protein_occurrence SEMI JOIN q USING (protein_uid)").fetchall())
         con.unregister("q")
         assert got_in == got_semi == want, k

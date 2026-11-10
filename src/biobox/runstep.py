@@ -24,11 +24,20 @@ Order of work:
    with its recorded size: exit 0. A listed output missing or of another size is an error;
    nothing is rebuilt over existing files.
 4. Remove a staging or `<root>/.incoming/<stage>.<step>/` directory left by an earlier attempt.
-5. Run the command inside `systemd-run --user --scope -p MemoryMax=<mem_scope>` (Linux, when
-   present) at the profile's nice, in its own session and process group, and measure wall time,
-   CPU-minutes and peak RSS (`os.wait4`). SIGTERM and SIGINT to run-step meanwhile are forwarded
-   to that process group; run-step waits for the command, publishes nothing, leaves staging and
-   exits 128 + the signal number.
+5. Decide the memory cap (card C-07, `memory_cap`). A cgroup v2 `memory.max` already above
+   run-step (its own cgroup or an ancestor, read by `doctor.cgroup_memory`) is inherited: no
+   scope is opened, unless `systemd-run` is present and `mem_scope` is tighter than that cap.
+   Inside the image `systemd-run` is not visible, so the cap is the unit `scripts/pod_run.sh`
+   opened on the host around `singularity exec` (which binds /sys/fs/cgroup read-only so it can
+   be seen). With neither a cap nor `systemd-run`, a profile with `require_mem_cap` refuses to
+   start (exit 2, naming scripts/pod_run.sh); otherwise the command runs under `nice` alone. The
+   run record's `mem_cap` says which: `opened`, `inherited` (with the bytes and the cgroup that
+   sets them) or `none`.
+   Run the command (inside `systemd-run --user --scope -p MemoryMax=<mem_scope> -p
+   MemorySwapMax=0` when opened) at the profile's nice, in its own session and process group,
+   and measure wall time, CPU-minutes and peak RSS (`os.wait4`). SIGTERM and SIGINT to run-step
+   meanwhile are forwarded to that process group; run-step waits for the command, publishes
+   nothing, leaves staging and exits 128 + the signal number.
 6. Command failed: exit with its code (1 if killed); staging is left for inspection.
    `STOP` appeared meanwhile: exit 75 without publishing.
 7. Publish (all or nothing): refuse empty staging, a final path that exists (append-only,
@@ -60,6 +69,7 @@ from pathlib import Path
 
 from biobox import contracts, ids
 from biobox.catalog import LayoutError, classify, classify_artifact
+from biobox.doctor import cgroup_memory
 from biobox.profile import Profile
 from biobox.registry.schemas import ARTIFACTS, TABLES
 
@@ -74,6 +84,11 @@ BUSY_LOAD = 8.0
 THREAD_VARS = ("OMP_NUM_THREADS", "OPENBLAS_NUM_THREADS", "MKL_NUM_THREADS", "POLARS_MAX_THREADS")
 FORWARDED = (signal.SIGTERM, signal.SIGINT)
 _NAME = re.compile(r"[A-Za-z0-9][A-Za-z0-9_.-]*")
+
+PROC_ROOT = Path("/proc")
+CGROUP_ROOT = Path("/sys/fs/cgroup")  # the cgroup v2 mount
+LAUNCHER = "scripts/pod_run.sh"  # the host-side launcher that opens the unit around `singularity exec`
+_SIZE = re.compile(r"(\d+)([KMGTPE]?)")  # systemd's MemoryMax= byte syntax (suffixes are powers of 1024)
 
 Hook = Callable[[str], None]
 
@@ -99,18 +114,81 @@ def choose_threads(prof: Profile, now: datetime, load1: float) -> int:
     return cap
 
 
-def scope_argv(cmd: Sequence[str], nice: int, *, mem_max: str | None, cpu_quota: int | None = None,
-               system: str | None = None, which: Callable[[str], str | None] = shutil.which
-               ) -> tuple[list[str], str]:
-    """The argv that runs `cmd` under a host's limits, and which way it does ("scope", "nice" or
-    "bare"). On Linux with `systemd-run`: a transient user scope (`MemoryMax=<mem_max>` when
-    given, `CPUQuota=<cpu_quota>%` when given) at `nice`; systemd-run and nice exec the command,
-    so it keeps the caller's pid, session and rlimits. Else under the `nice` binary when it
-    exists, else bare (the caller sets its own niceness then). Shared by run-step and the
-    search runner (card C-05)."""
+class NoCap(Exception):
+    """The profile requires a memory cap and there is neither a scope to open nor a cap to inherit."""
+
+
+def size_bytes(spec: str | None) -> int | None:
+    """Bytes of a systemd `MemoryMax=` value (`200G`, `512M`, `4000000000`), or None for anything
+    else (None, `infinity`, a percentage)."""
+    m = _SIZE.fullmatch(spec.strip()) if spec else None
+    if m is None:
+        return None
+    return int(m.group(1)) * 1024 ** " KMGTPE".index(m.group(2) or " ")
+
+
+def detect_cap(proc_root: str | Path | None = None, cgroup_root: str | Path | None = None) -> dict | None:
+    """The memory cap this process already runs under: the smallest numeric cgroup v2
+    `memory.max` on its own cgroup or an ancestor (`doctor.cgroup_memory`, card A-04), as
+    {"memory_max_bytes", "limited_at", "cgroup"}; None when there is none (every level `max`,
+    cgroup v1, or no tree visible: inside the image /sys/fs/cgroup is empty unless bound in)."""
+    return _cap_of(_cgroup(proc_root, cgroup_root))
+
+
+def _cgroup(proc_root: str | Path | None, cgroup_root: str | Path | None) -> dict:
+    return cgroup_memory(PROC_ROOT if proc_root is None else proc_root,
+                         CGROUP_ROOT if cgroup_root is None else cgroup_root)
+
+
+def _cap_of(cg: dict) -> dict | None:
+    if not cg["available"] or cg["memory_max_bytes"] is None:
+        return None
+    return {"memory_max_bytes": cg["memory_max_bytes"], "limited_at": cg["limited_at"], "cgroup": cg["path"]}
+
+
+def memory_cap(mem_max: str | None, *, require: bool, system: str | None = None,
+               which: Callable[[str], str | None] | None = None, proc_root: str | Path | None = None,
+               cgroup_root: str | Path | None = None) -> dict:
+    """How a command started here is memory-capped (card C-07): {"how": "inherited", ...the cap
+    `detect_cap` found}, {"how": "opened", "memory_max": mem_max} (a systemd scope will be opened
+    for it), or {"how": "none"}. A cap found is inherited unless `systemd-run` is present and
+    `mem_max` is tighter than it. Raises NoCap when `require` and neither is possible."""
     system = platform.system() if system is None else system
+    which = shutil.which if which is None else which
+    cg = _cgroup(proc_root, cgroup_root) if system == "Linux" else {"available": False, "reason": system}
+    found = _cap_of(cg)
+    can_open = system == "Linux" and which("systemd-run") is not None
+    want = size_bytes(mem_max)
+    if found is not None and not (can_open and want is not None and want < found["memory_max_bytes"]):
+        return {"how": "inherited", **found}
+    if can_open:
+        return {"how": "opened", "memory_max": mem_max}
+    if require:
+        why = (f"no cgroup v2 memory cap is visible ({cg['reason']})" if not cg["available"]
+               else f"no memory.max is set on {cg['path']} or its parents")
+        raise NoCap(f"the profile requires a memory cap (require_mem_cap), but systemd-run is not on PATH "
+                    f"and {why}. Inside the image, start this from the host with {LAUNCHER}, which opens "
+                    f"a MemoryMax unit around singularity exec and binds /sys/fs/cgroup so the cap is seen")
+    return {"how": "none"}
+
+
+def scope_argv(cmd: Sequence[str], nice: int, *, mem_max: str | None, cpu_quota: int | None = None,
+               inherited: dict | None = None, system: str | None = None,
+               which: Callable[[str], str | None] = shutil.which) -> tuple[list[str], str]:
+    """The argv that runs `cmd` under a host's limits, and which way it does ("scope",
+    "inherited", "nice" or "bare"). With `inherited` (a cap `memory_cap` found above this
+    process, card C-07): no scope, under the `nice` binary when it exists. Else on Linux with
+    `systemd-run`: a transient user scope (`MemoryMax=<mem_max>` when given, `MemorySwapMax=0`
+    so a cap is never stretched by swap, `CPUQuota=<cpu_quota>%` when given) at `nice`;
+    systemd-run and nice exec the command, so it keeps the caller's pid, session and rlimits.
+    Else under the `nice` binary when it exists, else bare (the caller sets its own niceness
+    then). Shared by run-step and the search runner (card C-05)."""
+    system = platform.system() if system is None else system
+    if inherited is not None:
+        return (["nice", "-n", str(nice), *cmd] if which("nice") else list(cmd)), "inherited"
     if system == "Linux" and which("systemd-run"):
         props = [] if mem_max is None else ["-p", f"MemoryMax={mem_max}"]
+        props += ["-p", "MemorySwapMax=0"]
         props += [] if cpu_quota is None else ["-p", f"CPUQuota={cpu_quota}%"]
         return ["systemd-run", "--user", "--scope", "--quiet", *props, "nice", "-n", str(nice), *cmd], "scope"
     if which("nice"):
@@ -118,11 +196,12 @@ def scope_argv(cmd: Sequence[str], nice: int, *, mem_max: str | None, cpu_quota:
     return list(cmd), "bare"
 
 
-def build_argv(cmd: Sequence[str], nice: int, mem_scope: str, *, system: str | None = None,
-               which: Callable[[str], str | None] = shutil.which) -> list[str]:
-    """The argv that runs a step command: in a memory-capped systemd scope on Linux when
-    `systemd-run` exists, else under `nice` when it exists, else bare (`scope_argv`)."""
-    return scope_argv(cmd, nice, mem_max=mem_scope, system=system, which=which)[0]
+def build_argv(cmd: Sequence[str], nice: int, mem_scope: str, *, inherited: dict | None = None,
+               system: str | None = None, which: Callable[[str], str | None] = shutil.which) -> list[str]:
+    """The argv that runs a step command: under `nice` inside an inherited cap, else in a
+    memory-capped systemd scope on Linux when `systemd-run` exists, else under `nice` when it
+    exists, else bare (`scope_argv`)."""
+    return scope_argv(cmd, nice, mem_max=mem_scope, inherited=inherited, system=system, which=which)[0]
 
 
 def _err(msg: str) -> None:
@@ -359,8 +438,10 @@ def run_step(prof: Profile, root: str | Path, stage: str, step: str, cmd: Sequen
              nice: str = "monolithic", threads: int | None = None,
              clock: Callable[[], datetime] = datetime.now, load: Callable[[], float] = _load1,
              which: Callable[[str], str | None] = shutil.which, system: str | None = None,
+             proc_root: str | Path | None = None, cgroup_root: str | Path | None = None,
              _hook: Hook | None = None) -> int:
     """Run one step; return the exit code for `bio-box run-step` (0, 75 for STOP, else non-zero).
+    `proc_root` and `cgroup_root` (tests only) stand in for /proc and /sys/fs/cgroup.
     `_hook` (tests only) is called with each publish point name: after_intent, after_rsync,
     after_rename:<i>, before_record, after_record; an exception it raises is not caught."""
     hook = _hook or _no_hook
@@ -395,6 +476,12 @@ def run_step(prof: Profile, root: str | Path, stage: str, step: str, cmd: Sequen
             return code
     if record_path.exists():
         return _resume(root, record_path)
+    try:
+        cap = memory_cap(prof.mem_scope, require=prof.require_mem_cap, system=system, which=which,
+                         proc_root=proc_root, cgroup_root=cgroup_root)
+    except NoCap as e:
+        _err(f"not starting {stage}.{step}: {e}")
+        return EXIT_REFUSED
 
     for stale in (incoming, stage_dir):
         if stale.exists():
@@ -403,7 +490,8 @@ def run_step(prof: Profile, root: str | Path, stage: str, step: str, cmd: Sequen
 
     env = dict(os.environ, BIOBOX_STAGING=str(stage_dir), BIOBOX_ROOT=str(root), BIOBOX_THREADS=str(n_threads))
     env.update({v: str(n_threads) for v in THREAD_VARS})
-    argv = build_argv(cmd, nice_value, prof.mem_scope, system=system, which=which)
+    argv = build_argv(cmd, nice_value, prof.mem_scope, inherited=cap if cap["how"] == "inherited" else None,
+                      system=system, which=which)
     started_at = datetime.now(timezone.utc).isoformat(timespec="seconds")
     code, wall, cpu_min, rss, sig = _execute(argv, env)
 
@@ -423,6 +511,7 @@ def run_step(prof: Profile, root: str | Path, stage: str, step: str, cmd: Sequen
         "started_at": started_at, "wall_s": round(wall, 3), "cpu_min": round(cpu_min, 6),
         "peak_rss_bytes": rss, "host": socket.gethostname(), "exit_code": code,
         "image_digest": os.environ.get("BIOBOX_IMAGE_DIGEST", "none"), "over_cpu_budget": over,
+        "mem_cap": cap,
     }
     try:
         record = _publish(root, stage_dir, incoming, intent_path, meta, prof.small_file_floor_bytes,

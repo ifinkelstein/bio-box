@@ -26,6 +26,10 @@ from biobox.registry.schemas import table
 sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "tests"))
 from oracles.pairs_oracle import pairs_of_contig  # noqa: E402
 
+if len(sys.argv) < 3 or sys.argv[1] in ("-h", "--help"):
+    print(__doc__)
+    sys.exit(0 if sys.argv[1:2] in (["-h"], ["--help"]) else 2)
+
 root, scratch = Path(sys.argv[1]), Path(sys.argv[2])
 out = {}
 tapes = [r for f in io.part_files(root / "l3/tapes", "*/stage=*/part-*.parquet") for r in pq.read_table(f).to_pylist()]

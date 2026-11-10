@@ -18,6 +18,10 @@ from biobox import io
 from biobox.l0seq import SeqStore
 from biobox.l1.genecall import GENE_CALL_VERSION
 
+if len(sys.argv) < 3 or sys.argv[1] in ("-h", "--help"):
+    print(__doc__)
+    sys.exit(0 if sys.argv[1:2] in (["-h"], ["--help"]) else 2)
+
 root, out = Path(sys.argv[1]), Path(sys.argv[2])
 out.mkdir(parents=True, exist_ok=True)
 store = SeqStore(root)

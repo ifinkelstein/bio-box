@@ -98,13 +98,13 @@ def build(root: Path, order: int = 1, with_postings: bool = True) -> set[bytes]:
         from biobox.l2 import cluster
         tmp = root.parent / f"{root.name}.mmseqs"
         tmp.mkdir(parents=True, exist_ok=True)
-        cluster.run(root, REL, V, tmp=tmp)
+        cluster.run(root, REL, V, ["S0"], tmp=tmp)
     else:
         _stand_in_clusters(root, REL)
     tapes.run(root, "S0", circ)
-    tokens.run(root, REL)
+    tokens.run(root, REL, ["S0"])
     if with_postings:
-        postings.run(root, REL)
+        postings.run(root, REL, ["S0"])
     return circ
 
 
@@ -112,7 +112,7 @@ def build(root: Path, order: int = 1, with_postings: bool = True) -> set[bytes]:
 def built(tmp_path_factory):
     d = tmp_path_factory.mktemp("l3")
     circ = build(d / "a")
-    man = catalog.build_manifest(d / "a", REL)
+    man = catalog.build_manifest(d / "a", REL, ["S0"])
     con = catalog.open_catalog(catalog.generate_catalog(man, d / "c.duckdb"))
     yield d / "a", man, con, circ
     con.close()
@@ -281,9 +281,11 @@ def test_q2_fetch_equals_shards_and_l1_rebuild(built):
             assert g[col] == v, col
         for lvl in LEVELS:
             assert g[f"{lvl}_tokens"] == tok[f"{lvl}_tokens"]
-        # independent rebuild from L1: slots in ordinal order, protein UIDs, strands, coordinates
-        slots = sorted(occ[g["contig_uid"]], key=lambda r: r["slot_ordinal"])
+        # independent rebuild from L1: slots in coordinate order (start, end, strand), feature and protein
+        # UIDs, strands, coordinates
+        slots = sorted(occ[g["contig_uid"]], key=lambda r: (r["start"], r["end"], r["strand"]))
         assert g["n_slots"] == len(slots)
+        assert g["feature_uids"] == [r["feature_uid"] for r in slots]
         assert g["protein_uids"] == [r["protein_uid"] for r in slots]
         assert g["start_bps"] == [r["start"] for r in slots] and g["end_bps"] == [r["end"] for r in slots]
         assert g["strands"] == [r["strand"] for r in slots]
@@ -392,8 +394,8 @@ def test_ly06_pair_lookup_opens_one_bucket(built, tmp_path, width):
     root, _, _, _ = built
     copy = tmp_path / "s"
     shutil.copytree(root, copy, ignore=shutil.ignore_patterns("token_postings"))
-    postings.run(copy, REL, prefix_width=width)
-    man = catalog.build_manifest(copy, REL)  # LY-05: every row's token matches its bucket
+    postings.run(copy, REL, ["S0"], prefix_width=width)
+    man = catalog.build_manifest(copy, REL, ["S0"])  # LY-05: every row's token matches its bucket
     files = [f for f in man["files"] if f["table"] == "token_postings"]
     assert len(files) > 1
     full = _oracle_pairs(_oracle_rows(root))
@@ -451,7 +453,7 @@ def test_l3_is_deterministic_and_order_free(built, tmp_path):
     other = tmp_path / "b"
     build(other, order=-1)
     h1 = contracts.content_hashes(man)
-    h2 = contracts.content_hashes(catalog.build_manifest(other, REL))
+    h2 = contracts.content_hashes(catalog.build_manifest(other, REL, ["S0"]))
     for name in ("contig_tapes", "tape_tokens", "token_dict", "token_postings", "tape_version_def"):
         assert h1[name] == h2[name], name
     for rel in sorted(p.relative_to(root).as_posix() for p in (root / "l3").rglob("*.parquet")):
@@ -490,8 +492,9 @@ def _digests(root: Path, dirs) -> dict[str, str]:
 
 
 @pytest.mark.covers("C-04")
-def test_b07_feature_uids_follow_the_legacy_slot_ordinals(built):
-    """With the gene-call producer alone, slot i of a tape is the gene whose slot_ordinal is i."""
+def test_b07_feature_uids_follow_the_genes_in_coordinate_order(built):
+    """With the gene-call producer alone, slot i of a tape is the i-th gene of its contig in (start, end, strand)
+    order (the rule the legacy slot ordinal followed until card B-17 removed it)."""
     root, _, _, _ = built
     occ = defaultdict(list)
     for r in _read(root, f"l1/protein_occurrence/gene_call_version={V}/stage=S0/part-0.parquet"):
@@ -500,10 +503,10 @@ def test_b07_feature_uids_follow_the_legacy_slot_ordinals(built):
     tps = _tapes_of_tv(root)
     assert len(tps) == len(CONTRACT["objects"]) and all(t["n_slots"] for t in tps.values())
     for cu, t in tps.items():
-        legacy = sorted(occ[cu], key=lambda r: r["slot_ordinal"])
-        assert [r["slot_ordinal"] for r in legacy] == list(range(t["n_slots"]))
-        assert t["feature_uids"] == [r["feature_uid"] for r in legacy]
-        assert t["protein_uids"] == [r["protein_uid"] for r in legacy]
+        genes = sorted(occ[cu], key=lambda r: (r["start"], r["end"], r["strand"]))
+        assert len(genes) == t["n_slots"]
+        assert t["feature_uids"] == [r["feature_uid"] for r in genes]
+        assert t["protein_uids"] == [r["protein_uid"] for r in genes]
         assert t["feature_kinds"] == [ids.KIND["cds"]] * t["n_slots"]
         for fu, s, e, strand in zip(t["feature_uids"], t["start_bps"], t["end_bps"], t["strands"]):
             f = feats[fu]
@@ -556,7 +559,7 @@ def test_b07_slot_bounded_row_groups_and_a_one_contig_lookup_reads_one(built, tm
     # tape tokens with one contig per row group, so that their pruning is visible too
     [tok] = sorted((fresh / f"l3/tape_tokens/tape_version={TV}/release={REL}").glob("*.parquet"))
     pq.write_table(pq.read_table(tok, partitioning=None), tok, row_group_size=1, write_statistics=["contig_uid"])
-    man = catalog.build_manifest(fresh, REL)
+    man = catalog.build_manifest(fresh, REL, ["S0"])
     assert contracts.check_sort_order(man) == [] and contracts.check_statistics(man) == []
     con = catalog.open_catalog(catalog.generate_catalog(man, tmp_path / "c.duckdb"))
 
@@ -642,7 +645,7 @@ def test_b07_second_producer_is_a_new_tape_version_beside_the_first(built, tmp_p
     assert keys == sorted(keys)
     assert pq.read_table(fresh / f"l3/tape_version_def/tape_version={tv2}/part-0.parquet").column(
         "producer").to_pylist() == sorted([V, "test-ncrna"])
-    man = catalog.build_manifest(fresh, REL)
+    man = catalog.build_manifest(fresh, REL, ["S0"])
     assert contracts.check_sort_order(man) == [] and contracts.check_statistics(man) == []
     con = catalog.open_catalog(catalog.generate_catalog(man, tmp_path / "c.duckdb"))
     try:
@@ -666,7 +669,7 @@ def test_b07_a_contig_without_features_has_an_empty_tape(built, tmp_path):
     for cu, t in got.items():
         assert (t["n_slots"], t["feature_uids"], t["protein_uids"], t["feature_kinds"]) == (0, [], [], [])
         assert (t["contig_len"], t["is_circular"]) == (old[cu]["contig_len"], cu in circ)
-        assert t["genome_uid"] is None and t["tier"] is None  # legacy columns: no gene to take them from
+        assert set(t) == set(table("contig_tapes").schema.names)  # card B-17: no dimension column on a tape
 
 
 def test_b07_tape_version_def_refuses_a_mismatching_producer_list(built, tmp_path):
@@ -830,7 +833,7 @@ def test_b09_canonical_families_and_cluster_keys_on_synthetic_mappings(built, tm
     _write_sorted("cluster_member", [{"member_uid": m, "level": lv, "cluster_uid": c, "rep_uid": m,
                                       "cluster_params_hash": "synthetic"} for lv, m, c in cl],
                   fresh / f"l2/cluster_member/release={rel}/part-0.parquet")
-    res = tokens.run(fresh, rel, libraries=order)
+    res = tokens.run(fresh, rel, ["S0"], libraries=order)
     dict_rows, tok_rows = got = _written_tokens(fresh, rel)
     assert got == _oracle_tokens(fresh, rel, order)
     by_key = {(r["level"], r["source"], r["key"]): r for r in dict_rows}
@@ -887,7 +890,7 @@ def test_b09_a_non_cds_slot_has_null_tokens_at_every_level(built, tmp_path):
     tv2 = tapes.run(fresh, "S0", circ, producers=producers)["tape_version"]
     rel = "rS0.b09nc"
     shutil.copytree(fresh / f"l2/cluster_member/release={REL}", fresh / f"l2/cluster_member/release={rel}")
-    res = tokens.run(fresh, rel, producers=producers)
+    res = tokens.run(fresh, rel, ["S0"], producers=producers)
     got = _written_tokens(fresh, rel, tv2)
     assert got == _oracle_tokens(fresh, rel, ["test-1"], tv2)
     old_dict, old_tok = _written_tokens(root, REL)
@@ -909,7 +912,7 @@ def test_b09_tapes_without_slots_get_three_empty_lists(built, tmp_path):
     shutil.copytree(root, fresh)
     io.write_table([], table("feature"), fresh / "l1/feature/producer=test-none/stage=S0/part-0.parquet")
     tv0 = tapes.run(fresh, "S0", circ, producers=["test-none"])["tape_version"]
-    res = tokens.run(fresh, REL + "-empty", producers=["test-none"])
+    res = tokens.run(fresh, REL + "-empty", ["S0"], producers=["test-none"])
     dict_rows, tok_rows = got = _written_tokens(fresh, REL + "-empty", tv0)
     assert got == _oracle_tokens(fresh, REL + "-empty", ["test-1"], tv0)
     assert dict_rows == []
@@ -924,7 +927,7 @@ def test_b09_tape_token_row_groups_hold_whole_contigs_within_max_slots(built, tm
     n_by = {cu: t["n_slots"] for cu, t in _tapes_of_tv(root).items()}
     cap = min(n_by.values())  # no two contigs fit together; the larger ones exceed the cap alone
     fresh = _fresh(root, tmp_path, "s", TOKEN_DIRS)
-    tokens.run(fresh, REL, max_slots=cap)
+    tokens.run(fresh, REL, ["S0"], max_slots=cap)
     [path] = sorted((fresh / f"l3/tape_tokens/tape_version={TV}/release={REL}").glob("*.parquet"))
     groups = _row_group_slots(path)
     assert groups == [[n_by[cu]] for cu in sorted(n_by)]
@@ -942,7 +945,7 @@ def test_b09_parts_are_cut_at_max_file_bytes(built, tmp_path):
     est_tok = 100 + 30 * max(1, sum(n_slots) // len(n_slots))  # the estimates per row, as before card B-09
     fresh = _fresh(root, tmp_path, "s", TOKEN_DIRS)
     cap = 3_000  # 50 dictionary rows per part; every tape-token row is a part of its own
-    res = tokens.run(fresh, REL, max_file_bytes=cap)
+    res = tokens.run(fresh, REL, ["S0"], max_file_bytes=cap)
     for d, rows, est in ((f"l3/token_dict/release={REL}", want_dict, 60),
                          (f"l3/tape_tokens/tape_version={TV}/release={REL}", want_tok, est_tok)):
         starts = layout.cut([est] * len(rows), cap)
@@ -952,7 +955,7 @@ def test_b09_parts_are_cut_at_max_file_bytes(built, tmp_path):
         for p, a, b in zip(names, starts, starts[1:] + [len(rows)]):
             assert pq.read_table(p, partitioning=None).to_pylist() == rows[a:b], p.name
     assert res["files"] == len(layout.cut([60] * len(want_dict), cap)) + len(want_tok)
-    man = catalog.build_manifest(fresh, REL)
+    man = catalog.build_manifest(fresh, REL, ["S0"])
     assert contracts.check_sort_order(man) == [] and contracts.check_statistics(man) == []
 
 
@@ -975,7 +978,7 @@ def test_b09_token_bytes_do_not_depend_on_the_run_or_on_input_layout(built, tmp_
             _drop_tape_ledgers(fresh)
             n = sorted(t["n_slots"] for t in _tapes_of_tv(root).values())
             assert tapes.run(fresh, "S0", circ, max_file_bytes=200 + 30 * n[0])["files"] == 3
-        tokens.run(fresh, REL)
+        tokens.run(fresh, REL, ["S0"])
         assert _digests(fresh, TOKEN_DIRS) == want, name
 
 
@@ -1007,7 +1010,7 @@ def test_b09_tokens_never_load_every_tape(built, tmp_path, monkeypatch):
     monkeypatch.setattr(tokens, "read_tapes", refuse)
     parent = tmp_path / "scratch-parent"
     parent.mkdir()
-    tokens.run(fresh, REL, tmp=parent)
+    tokens.run(fresh, REL, ["S0"], tmp=parent)
     assert _digests(fresh, TOKEN_DIRS) == _digests(root, TOKEN_DIRS)
     assert list(parent.iterdir()) == []  # the private scratch directory is removed
 
@@ -1016,9 +1019,9 @@ def test_b09_refusals(built, tmp_path):
     root, _, _, _ = built
     fresh = _fresh(root, tmp_path, "s", TOKEN_DIRS)
     with pytest.raises(ValueError, match="31 libraries"):
-        tokens.run(fresh, REL, libraries=[f"lib{i}-1" for i in range(32)])
+        tokens.run(fresh, REL, ["S0"], libraries=[f"lib{i}-1" for i in range(32)])
     with pytest.raises(ValueError, match="scratch"):
-        tokens.run(fresh, REL, tmp=fresh / "tmp")
+        tokens.run(fresh, REL, ["S0"], tmp=fresh / "tmp")
     assert not (fresh / "l3/token_dict").exists() and not (fresh / "l3/tape_tokens").exists()
 
 
@@ -1031,12 +1034,16 @@ def test_b09_iter_tapes_yields_rows_in_contig_order_across_files_and_row_groups(
     for stage, part in (("S0", rows[0::2]), ("S1", rows[1::2])):  # interleaved in contig order across stages
         io.write_table([pa.Table.from_pylist(part, schema=spec.schema)], spec,
                        fake / f"l3/tapes/tape_version={TV}/stage={stage}/part-0.parquet", row_group_rows=1)
-    it = tokens.iter_tapes(fake, TV)
+    it = tokens.iter_tapes(fake, TV, ["S0", "S1"])
     assert inspect.isgenerator(it)
     assert list(it) == rows
-    assert list(tokens.iter_tapes(fake, TV, ["n_slots"])) == [{"n_slots": r["n_slots"]} for r in rows]
-    assert list(tokens.iter_tapes(fake, "t-000000000000")) == []
-    assert [r["contig_uid"] for r in tokens.read_tapes(root, V, ["contig_uid"])] == [r["contig_uid"] for r in rows]
+    assert list(tokens.iter_tapes(fake, TV, ["S0", "S1"], ["n_slots"])) == [{"n_slots": r["n_slots"]} for r in rows]
+    # card B-25: only the stages given are read, and a stage given without tapes of the version is an error
+    assert list(tokens.iter_tapes(fake, TV, ["S1"])) == rows[1::2]
+    with pytest.raises(FileNotFoundError, match="S0"):
+        list(tokens.iter_tapes(fake, "t-000000000000", ["S0"]))
+    assert [r["contig_uid"] for r in tokens.read_tapes(root, V, ["contig_uid"], stages=["S0"])] == [
+        r["contig_uid"] for r in rows]
 
 
 # --- card B-11: pair macros over token postings ------------------------------------------------------
@@ -1073,8 +1080,7 @@ def _write_syn_tapes(root: Path, contigs: list[tuple[str, list[tuple[int, int, i
     tape_rows, tok_rows = [], []
     for name, slots, length, circular in contigs:
         cu, n = ids.contig_uid(name.encode()), len(slots)
-        tape_rows.append({"contig_uid": cu, "tax_order_bucket": None, "genome_uid": None, "contig_len": length,
-                          "is_circular": circular, "n_slots": n, "tier": None, "assembly_quality": None,
+        tape_rows.append({"contig_uid": cu, "contig_len": length, "is_circular": circular, "n_slots": n,
                           **tapes.build_tape(slots, length, circular), "protein_uids": [None] * n,
                           "feature_uids": [ids.feature_uid(cu, s, e, st, ids.KIND["cds"]) for s, e, st in slots]})
         pick = lambda base, k, p_none: [None if rng.random() < p_none else base | rng.randrange(k) for _ in slots]  # noqa: E731
@@ -1106,8 +1112,8 @@ def test_b11_pairs_of_equals_the_oracle_on_even_circles_and_short_lines(tmp_path
                ("circle-1", [(10, 300, 1)], 400, True)]
     root = tmp_path / "r"
     tv = _write_syn_tapes(root, contigs, 1112)
-    postings.run(root, SYN_REL, producers=[SYN_PRODUCER])
-    man = catalog.build_manifest(root, SYN_REL)
+    postings.run(root, SYN_REL, ["S0"], producers=[SYN_PRODUCER])
+    man = catalog.build_manifest(root, SYN_REL, ["S0"])
     con = catalog.open_catalog(catalog.generate_catalog(man, tmp_path / "c.duckdb"))
     try:
         assert con.execute("SELECT catalog_tape_version()").fetchall() == [(tv,)]
@@ -1137,7 +1143,7 @@ def test_b11_q1_count_filters_tiers_through_contig_dim(built, tmp_path):
     shutil.copytree(root, fresh)
     cus = sorted(_tapes_of_tv(root))
     write_genome_input(fresh, "S0", [GenomeInput((cu,), circular=(cu,) if cu in circ else ()) for cu in cus])
-    dim.run(fresh, REL)
+    dim.run(fresh, REL, ["S0"])
     dim_rows = _rows(fresh, f"dim/contig_dim/release={REL}/part-*.parquet")
     assert [r["contig_uid"] for r in dim_rows] == cus and {r["tier"] for r in dim_rows} == {None}
     rows = _oracle_rows(root)
@@ -1146,7 +1152,7 @@ def test_b11_q1_count_filters_tiers_through_contig_dim(built, tmp_path):
     lists = {"a": [a for a, _ in pairs], "b": [b for _, b in pairs]}
     by_tier = f"SELECT l.a, l.b, q1_count(l.a, l.b, 10, NULL), q1_count(l.a, l.b, 10, 1), q1_count(l.a, l.b, 10, 2), " \
               f"q1_count(l.a, l.b, 10, 3) FROM {_PAIR_LIST}"
-    con = catalog.open_catalog(catalog.generate_catalog(catalog.build_manifest(fresh, REL), tmp_path / "a.duckdb"))
+    con = catalog.open_catalog(catalog.generate_catalog(catalog.build_manifest(fresh, REL, ["S0"]), tmp_path / "a.duckdb"))
     try:
         got = con.execute(by_tier, lists).fetchall()
         assert sorted(got) == [(a, b, _loci(full[(a, b)]), 0, 0, 0) for a, b in pairs]  # null tiers match no tier
@@ -1160,7 +1166,7 @@ def test_b11_q1_count_filters_tiers_through_contig_dim(built, tmp_path):
                                  for r in dim_rows if r["contig_uid"] in tiers],
                   fresh / f"dim/contig_dim/release={rel2}/part-0.parquet")
     shutil.copytree(fresh / f"l3/token_postings/release={REL}", fresh / f"l3/token_postings/release={rel2}")
-    con = catalog.open_catalog(catalog.generate_catalog(catalog.build_manifest(fresh, rel2), tmp_path / "b.duckdb"))
+    con = catalog.open_catalog(catalog.generate_catalog(catalog.build_manifest(fresh, rel2, ["S0"]), tmp_path / "b.duckdb"))
     try:
         want = [(a, b, _loci(full[(a, b)]), *(_loci([r for r in full[(a, b)] if tiers.get(r[0]) == t]) for t in (1, 2, 3)))
                 for a, b in pairs]
@@ -1201,7 +1207,7 @@ def test_b11_fusions_of_finds_two_tokens_on_one_slot_with_different_segments(bui
             {"token_id": f2, "contig_uid": y, "ordinal": 7, "seg_idx": 1, "n_slots": 10}]
     r = tmp_path / "r"
     _write_postings(r, SYN_REL, tv, rows)
-    c = catalog.open_catalog(catalog.generate_catalog(catalog.build_manifest(r, SYN_REL), tmp_path / "c.duckdb"))
+    c = catalog.open_catalog(catalog.generate_catalog(catalog.build_manifest(r, SYN_REL, []), tmp_path / "c.duckdb"))
     fu = lambda cu, i: ids.feature_uid(cu, 100 * i, 100 * i + 90, 1, 1)  # noqa: E731
     try:
         got = c.execute("SELECT contig_uid, feature_uid, ordinal, anchor_seg_idx, partner_seg_idx "
@@ -1224,7 +1230,7 @@ def test_b11_the_catalog_serves_one_tape_version(tmp_path):
     for tv, (i, j) in ((tv1, (0, 1)), (tv2, (0, 3))):
         _write_postings(root, SYN_REL, tv, [{"token_id": NR90 | 1, "contig_uid": x, "ordinal": i, "n_slots": 9},
                                             {"token_id": NR90 | 2, "contig_uid": x, "ordinal": j, "n_slots": 9}])
-    man = catalog.build_manifest(root, SYN_REL)
+    man = catalog.build_manifest(root, SYN_REL, [])  # postings only: no stage file
     with pytest.raises(ValueError, match="tape version"):
         catalog.generate_catalog(man, tmp_path / "a.duckdb")
     for tv, d in ((tv1, 1), (tv2, 3)):
@@ -1235,7 +1241,7 @@ def test_b11_the_catalog_serves_one_tape_version(tmp_path):
         finally:
             c.close()
     # postings of another release only: no tape version is served and the pair macros return nothing
-    c = catalog.open_catalog(catalog.generate_catalog(catalog.build_manifest(root, "rOther"), tmp_path / "o.duckdb",
+    c = catalog.open_catalog(catalog.generate_catalog(catalog.build_manifest(root, "rOther", []), tmp_path / "o.duckdb",
                                                       tape_version=None))
     try:
         assert c.execute("SELECT catalog_tape_version()").fetchall() == [("",)]
@@ -1308,8 +1314,7 @@ def test_b11_pair_helper_macros_equal_geometry_and_the_oracle(built, c):
         assert flags == (FLAG_CENSORED if censored else 0) | (FLAG_CROSSES_ORIGIN if g_cross else 0), (i, j, d)
         if d == offset:
             chosen[(i, j)] = (dist, offset, topo, delta, flags)
-    tape = {"contig_uid": b"h" * 16, "is_circular": circ, "contig_len": length, "tier": None,
-            **tapes.build_tape(slots, length, circ)}
+    tape = {"contig_uid": b"h" * 16, "is_circular": circ, "contig_len": length, **tapes.build_tape(slots, length, circ)}
     oracle = pairs_of_contig(tape, {"family": [None] * n, "nr50": [None] * n, "nr90": [1] * n}, K_MAX)
     assert {(r["anchor_ordinal"], r["partner_ordinal"]) for r in oracle} == \
         {p for p, v in chosen.items() if 1 <= v[0] <= K_MAX}

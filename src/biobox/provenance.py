@@ -30,7 +30,8 @@ NATIVE = {"mmseqs2": ["mmseqs", "version"]}
 # table -> partition key that names the version its rows were made under
 VERSION_PARTITION = {
     "protein_seq": "gene_call_version",
-    "slot_protein": "gene_call_version",
+    "feature": "producer",
+    "feature_protein": "gene_call_version",
     "protein_occurrence": "gene_call_version",
     "igr": "igr_version",
     "l1_domains": "library",

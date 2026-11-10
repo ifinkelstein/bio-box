@@ -11,6 +11,10 @@ from pathlib import Path
 
 CODES = {"ecoli_mg1655": 11, "bsub_168": 11, "mgenitalium": 4, "sr1_raac1": 25, "macetivorans_c2a": 11, "hvolcanii_ds2": 11,
          "sacidocaldarius_dsm639": 11, "mtb_h37rv": 11, "btheta_vpi5482": 11, "spyogenes_sf370": 11}
+if len(sys.argv) < 3 or sys.argv[1] in ("-h", "--help"):
+    print(__doc__)
+    sys.exit(0 if sys.argv[1:2] in (["-h"], ["--help"]) else 2)
+
 golden, out = Path(sys.argv[1]), Path(sys.argv[2])
 for gid, code in CODES.items():
     src = golden / gid / f"{gid}.fna.gz"

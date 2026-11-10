@@ -701,11 +701,10 @@ def test_b16_json_records_with_an_ordinal_carry_feature_uid_and_tape_version():
     assert (rec["anchor_feature_uid"], rec["feature_uid"], rec["tape_version"]) == (anchor.hex(), fu.hex(), tv)
     assert (rec["anchor_ordinal"], rec["ordinal"]) == (4, 5)
     hit = {"target_uid": pu, "target_kind": "protein", "seq_bitscore": 50.0, "bitscore": 40.0}
-    occ = {"contig_uid": cu, "slot_ordinal": 5, "feature_uid": fu, "genome_uid": cu, "start": 10, "end": 20,
-           "strand": 1, "tier": 1}
+    occ = {"contig_uid": cu, "ordinal": 5, "feature_uid": fu, "start": 10, "end": 20, "strand": 1}  # card B-17
     [rec] = export.hit_records([hit], {pu: [occ]}, tape_version=tv)
     assert rec["tape_version"] == tv
-    assert [(o["slot_ordinal"], o["feature_uid"]) for o in rec["occurrences"]] == [(5, fu.hex())]
+    assert [(o["ordinal"], o["feature_uid"]) for o in rec["occurrences"]] == [(5, fu.hex())]
     # every record kind whose keys (or nested occurrences) name an ordinal names the tape version too
     for kind, spec in export.SCHEMAS.items():
         keys = set(spec["keys"])
@@ -734,11 +733,12 @@ def test_c05_worker_argv_in_a_scope_and_in_the_fallback():
     assert worker_cmd[-1] == str(job)
     lim = runner.Limits(cpus=2, mem_gb=18, nice=15)
     assert runner.worker_argv(job, lim, system="Linux", which=_found) == (
-        ["systemd-run", "--user", "--scope", "--quiet", "-p", "MemoryMax=18000000000", "-p", "CPUQuota=200%",
-         "nice", "-n", "15", *worker_cmd], "scope")
+        ["systemd-run", "--user", "--scope", "--quiet", "-p", "MemoryMax=18000000000", "-p", "MemorySwapMax=0",
+         "-p", "CPUQuota=200%", "nice", "-n", "15", *worker_cmd], "scope")
     # no memory limit in the run's limits: no MemoryMax (as the fallback sets no RLIMIT_AS then)
     assert runner.worker_argv(job, runner.Limits(cpus=3, nice=15), system="Linux", which=_found) == (
-        ["systemd-run", "--user", "--scope", "--quiet", "-p", "CPUQuota=300%", "nice", "-n", "15", *worker_cmd],
+        ["systemd-run", "--user", "--scope", "--quiet", "-p", "MemorySwapMax=0", "-p", "CPUQuota=300%",
+         "nice", "-n", "15", *worker_cmd],
         "scope")
     nice = (["nice", "-n", "15", *worker_cmd], "nice")
     assert runner.worker_argv(job, lim, system="Linux", which=_no_systemd) == nice

@@ -1,0 +1,31 @@
+{
+ "key": "B",
+ "step": "appendonly",
+ "stage": "P1",
+ "release": "rL.2",
+ "threads": 1,
+ "started_utc": "2026-11-10T05:11:49+00:00",
+ "result": {
+  "manifests": [
+   "rL.1"
+  ],
+  "files_checked": 28,
+  "identical": 27,
+  "differ": [],
+  "missing": [],
+  "expected_rewrites": [
+   {
+    "path": "l0/l0_manifest.parquet",
+    "first_manifest": "rL.1",
+    "note": "small metadata file rewritten per stage by ingest (store.py docstring); every earlier row is still present"
+   }
+  ],
+  "bytes_hashed": 1623267743,
+  "hash_s": 5.9,
+  "ok": true,
+  "l0_manifest_rows_now": 251
+ },
+ "error": null,
+ "inner_wall_s": 5.92,
+ "self_peak_rss_mb": 322.6
+}

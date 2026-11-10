@@ -4,19 +4,30 @@
     bio-box pack verify --root R --release rS0.1
     bio-box search run recipe.yaml --root R --release rS0.1 [--wait]
     bio-box search status|cancel <run_id> --root R
-    bio-box search hits <run_id> --root R [--round N] [--members] [--json] [--top_n 50] [--format tsv]
+    bio-box search hits <run_id> --root R [--round N] [--members] [--json] [--top_n 50]
+    bio-box search hits <run_id> --root R --format tsv|faa [--round N] [--library L] [--out FILE]
     bio-box nbr --root R --anchors <run_id|uid,uid,...> --window 10g --strand any --edge truncate [--json]
                 [--tape-version T]
+    bio-box nbr <run_id|uid,uid,...> --root R --window 5g --format tsv [--release R] [--out DIR]
     bio-box nbr summarize <run_id|uid,uid,...> --root R --window 5g --by pfam,nr50 [--top 50] [--release R]
                 [--json | --format tsv]
+    bio-box export proteins --root R --release R [--out FILE]
     bio-box run-step --profile P --root R --stage S --step NAME [--nice monolithic|fanout] [--threads N] -- CMD ...
+    bio-box release define --root R --release R1 --stages S0,S1
+    bio-box release cluster|tokens|postings|dim|manifest --root R --release R1 [--stages S0,S1] [--tmp D]
+                [--threads N] [--producers P,Q] [--libraries L,M]
+
+A release names its stages (card B-25): `--stages` defines it once (its `release_def`); after that
+every release step reads the stages from `release_def`, and `--stages`, if given, must repeat them.
 """
 
 from __future__ import annotations
 
 import argparse
 import json
+import os
 import sys
+from datetime import datetime
 from pathlib import Path
 
 import pyarrow.parquet as pq
@@ -29,6 +40,22 @@ from biobox.search.recipe import RecipeError
 def _print(lines) -> None:
     for line in lines:
         sys.stdout.write(line + "\n")
+
+
+def _emit(lines, out: str | None) -> None:
+    """To stdout, or to the file `out` (written under a temporary name and renamed into place)."""
+    if out is None:
+        _print(lines)
+    else:
+        export.write_lines(lines, Path(out))
+
+
+def _run_release(root: Path, run_id: str) -> str | None:
+    """The release a recorded run ran against; None when the run is not on disk."""
+    path = runner.run_dir(root, run_id) / "run.parquet"
+    if not path.exists():
+        return None
+    return pq.read_table(path, columns=["ran_against"]).column("ran_against")[0].as_py()
 
 
 def _run_tape_version(root: Path, run_id: str, gene_call_version: str) -> str:
@@ -56,10 +83,43 @@ def _pack(a) -> int:
     return 1 if problems else 0
 
 
+DEFAULT_CPUS = 8  # `search run` without --cpus (and without a profile cap below it)
+
+
+def _limits(a) -> runner.Limits:
+    """The run's Limits (card W-10). Without a profile (--profile, else $BIOBOX_PROFILE): the flags
+    alone, as before. With one: require_cap, nice, the thread cap for the current hour and the
+    memory scope come from it, and --cpus / --mem-gb may lower them, never raise them (ValueError)."""
+    cpus = DEFAULT_CPUS if a.cpus is None else a.cpus
+    mem_gb = a.mem_gb
+    extra: dict = {}
+    path = a.profile or os.environ.get("BIOBOX_PROFILE")
+    if path:
+        from biobox import profile, runstep
+
+        prof = profile.load(path)
+        cap = runstep.choose_threads(prof, datetime.now(), runstep._load1())
+        if a.cpus is not None and a.cpus > cap:
+            raise ValueError(f"--cpus {a.cpus} is above the profile's thread cap of {cap} for this hour")
+        cpus = min(cpus, cap)
+        mem_cap = runstep.size_bytes(prof.mem_scope)
+        if mem_cap is not None:
+            if mem_gb is not None and mem_gb * runner.GB > mem_cap:
+                raise ValueError(f"--mem-gb {mem_gb:g} is above the profile's memory scope of {prof.mem_scope}")
+            if mem_gb is None:
+                mem_gb = mem_cap / runner.GB
+        extra = {"require_cap": prof.require_mem_cap, "nice": prof.nice_monolithic}
+    return runner.Limits(cpus=cpus, cpu_min=a.cpu_min, wall_s=a.wall_s, mem_gb=mem_gb, **extra)
+
+
 def _search(a) -> int:
     root = Path(a.root)
     if a.action == "run":
-        limits = runner.Limits(cpus=a.cpus, cpu_min=a.cpu_min, wall_s=a.wall_s)
+        try:
+            limits = _limits(a)
+        except (ValueError, OSError) as e:
+            print(f"refused: {e}", file=sys.stderr)
+            return 2
         try:
             if not a.wait:
                 print(runner.submit(root, Path(a.target), a.release, limits, Path(a.work) if a.work else None,
@@ -81,11 +141,26 @@ def _search(a) -> int:
         return 0
     hits = runner.read_hits(root, a.target, a.round)
     tv = _run_tape_version(root, a.target, a.gene_call_version)
+    release = _run_release(root, a.target)
+    manifest = export.release_manifest(root, release)
+    if a.format:  # card W-05: one row per gene (tsv) or one record per protein (faa)
+        if a.json:
+            print("refused: --json and --format are exclusive", file=sys.stderr)
+            return 2
+        make = export.hits_tsv if a.format == "tsv" else export.hits_faa
+        try:
+            _emit(make(root, hits, release=release, tape_version=tv, gene_call_version=a.gene_call_version,
+                       manifest=manifest, library=a.library, threads=a.threads), a.out)
+        except ValueError as e:
+            print(f"refused: {e}", file=sys.stderr)
+            return 2
+        return 0
     occ = {}
     for o in nbr.occurrences(root, {h["target_uid"] for h in hits if h["target_kind"] == "protein"},
                              a.gene_call_version, tape_version=tv):
         occ.setdefault(o["protein_uid"], []).append(o)
-    recs = list(export.hit_records(hits, occ, a.top_n or None, a.members, tape_version=tv))
+    dims = export.contig_dims(root, release, {o["contig_uid"] for v in occ.values() for o in v}, manifest)
+    recs = list(export.hit_records(hits, occ, a.top_n or None, a.members, tape_version=tv, dims=dims))
     if a.json:
         _print(export.ndjson(recs))
     else:
@@ -111,24 +186,55 @@ def _anchors(root: Path, source: str, tape_version: str | None, gene_call_versio
 
 def _nbr(a) -> int:
     root = Path(a.root)
+    if a.action not in (None, "summarize"):  # `nbr <run_id|uids>`: the first positional is the anchors
+        if a.source is not None:
+            print(f"refused: nbr: unknown action {a.action!r} (expected summarize)", file=sys.stderr)
+            return 2
+        a.action, a.source = None, a.action
     if a.action == "summarize" and not (a.source or a.anchors):
         print("refused: nbr summarize needs a run id or a list of protein uids", file=sys.stderr)
         return 2
-    if a.action is None and not a.anchors:
+    if a.action is None and not (a.anchors or a.source):
         print("refused: nbr needs --anchors", file=sys.stderr)
         return 2
-    got = _anchors(root, a.source or a.anchors, a.tape_version, a.gene_call_version)
+    source = a.source or a.anchors
+    got = _anchors(root, source, a.tape_version, a.gene_call_version)
     if isinstance(got, str):
         print(got, file=sys.stderr)
         return 2
     uids, tv, run_release = got
     policy = nbr.Policy.parse(a.window, a.strand, a.operon_gap, a.edge, a.circular)
-    if a.action == "summarize":
+    if a.action == "summarize" or a.format == "tsv":
         release = a.release or run_release
         if release is None:
             print("refused: anchors given as protein uids need --release (the release whose clusters and "
                   "contig_dim to read)", file=sys.stderr)
             return 2
+    if a.action is None and a.format == "tsv":  # card W-05: one table per anchor locus
+        if a.json:
+            print("refused: --json and --format are exclusive", file=sys.stderr)
+            return 2
+        rows, _ = nbr.fetch(root, uids, policy, a.gene_call_version, tape_version=tv)
+        bits = None
+        if run_release is not None:
+            bits = {}
+            for h in runner.read_hits(root, source):
+                if h["target_kind"] == "protein" and h.get("seq_bitscore") is not None:
+                    bits[h["target_uid"]] = max(bits.get(h["target_uid"], h["seq_bitscore"]), h["seq_bitscore"])
+        try:
+            tables = export.locus_tables(root, rows, release=release, gene_call_version=a.gene_call_version,
+                                         hit_bits=bits, manifest=export.release_manifest(root, release),
+                                         library=a.library, threads=a.threads)
+            if a.out is None:
+                _print(line for k, (_, lines) in enumerate(tables) for line in ([""] if k else []) + lines)
+            else:
+                for name, lines in tables:
+                    export.write_lines(lines, Path(a.out) / name)
+        except ValueError as e:
+            print(f"refused: {e}", file=sys.stderr)
+            return 2
+        return 0
+    if a.action == "summarize":
         try:
             s = nbr.summarize(root, uids, policy, [x.strip() for x in a.by.split(",") if x.strip()], release=release,
                               gene_call_version=a.gene_call_version, tape_version=tv, top_n=a.top)
@@ -145,11 +251,94 @@ def _nbr(a) -> int:
     return 0
 
 
+def _export(a) -> int:
+    """`export proteins` (card W-05): the release's distinct proteins as FASTA named by protein uid."""
+    root = Path(a.root)
+    manifest = export.release_manifest(root, a.release)
+    if manifest is None:
+        print(f"note: no manifests/release={a.release}.json; reading every protein_seq file of gene_call_version "
+              f"{a.gene_call_version}", file=sys.stderr)
+    _emit(export.protein_fasta(root, release=a.release, gene_call_version=a.gene_call_version, manifest=manifest,
+                               threads=a.threads), a.out)
+    return 0
+
+
 def _run_step(a) -> int:
     from biobox import profile, runstep
 
     return runstep.run_step(profile.load(a.profile), Path(a.root), a.stage, a.step, a.command,
                             nice=a.nice, threads=a.threads)
+
+
+RELEASE_STEPS = ("define", "cluster", "tokens", "postings", "dim", "manifest")
+
+
+def _csv(s: str | None) -> list[str] | None:
+    return None if s is None else [x.strip() for x in s.split(",")]
+
+
+def _release_step(a, root: Path, stages: list[str]) -> dict:
+    tmp = Path(a.tmp) if a.tmp else None
+    if a.step == "cluster":
+        from biobox.l2 import cluster
+
+        return cluster.run(root, a.release, a.gene_call_version, stages, threads=a.threads, tmp=tmp)
+    if a.step == "tokens":
+        from biobox.l3 import tokens
+
+        return tokens.run(root, a.release, stages, a.gene_call_version, libraries=_csv(a.libraries),
+                          producers=_csv(a.producers), tmp=tmp)
+    if a.step == "postings":
+        from biobox.l3 import postings
+
+        return postings.run(root, a.release, stages, a.gene_call_version, producers=_csv(a.producers), tmp=tmp)
+    if a.step == "dim":
+        from biobox import dim
+
+        return dim.run(root, a.release, stages, tmp=tmp)
+    from biobox import catalog
+
+    man = catalog.build_manifest(root, a.release, stages)
+    path = root / f"manifests/release={a.release}.json"
+    if path.exists() and catalog.manifest_hash(catalog.read_manifest(path)) != catalog.manifest_hash(man):
+        raise ValueError(f"{path}: a different manifest of release {a.release} exists; refusing to overwrite")
+    catalog.write_manifest(man, path)
+    return {"files": len(man["files"]), "artifacts": len(man["artifacts"]), "manifest_hash": catalog.manifest_hash(man)}
+
+
+def _release(a) -> int:
+    """One release-level step over the release's stages (card B-25). `define` writes `release_def`
+    once (each stage must have been ingested); a builder step given `--stages` defines the release if
+    it is not yet defined; without `--stages` the stages come from `release_def`. `manifest` needs
+    the release defined."""
+    from biobox import catalog, io
+
+    root = Path(a.root)
+    try:
+        given = _csv(a.stages)
+        if a.step == "define":
+            if given is None:
+                raise ValueError("release define needs --stages")
+            stages = catalog.check_stages(given)
+            missing = [s for s in stages if not io.part_files(root / f"l0seq/contig_index/stage={s}")]
+            if missing:
+                raise FileNotFoundError(f"stages {missing} have no contig_index under {root}: not ingested")
+            res: dict = {}
+            stages = catalog.define_release(root, a.release, stages)
+        else:
+            if given is None or a.step == "manifest":
+                stages = catalog.release_stages(root, a.release)
+                if given is not None and catalog.check_stages(given) != stages:
+                    raise ValueError(f"release_def of {a.release} lists stages {stages}, not {given}")
+            else:
+                stages = catalog.verify_release_def(root, a.release, given)  # the builder defines it
+            res = _release_step(a, root, stages)
+    except (FileNotFoundError, ValueError) as e:
+        print(f"refused: {e}", file=sys.stderr)
+        return 2
+    print(json.dumps({"release": a.release, "stages": stages, "step": a.step, "result": res}, sort_keys=True,
+                     default=str))
+    return 0
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -174,7 +363,10 @@ def main(argv: list[str] | None = None) -> int:
     s.add_argument("--wait", action="store_true")
     s.add_argument("--run-id")
     s.add_argument("--work")
-    s.add_argument("--cpus", type=int, default=8)
+    s.add_argument("--cpus", type=int, help=f"worker cpus (default {DEFAULT_CPUS}, or the profile's cap if lower)")
+    s.add_argument("--mem-gb", type=float, help="memory cap in GB (default: the profile's mem_scope, else none)")
+    s.add_argument("--profile", help="host profile YAML (default: $BIOBOX_PROFILE); caps cpus and memory, "
+                                     "and refuses to run uncapped where it requires a cap")
     s.add_argument("--cpu-min", type=float, default=300.0)
     s.add_argument("--wall-s", type=float, default=6 * 3600.0)
     s.add_argument("--round", type=int)
@@ -182,8 +374,19 @@ def main(argv: list[str] | None = None) -> int:
     s.add_argument("--members", action="store_true")
     s.add_argument("--json", action="store_true")
     s.add_argument("--top_n", type=int, default=export.TOP_N)
+    s.add_argument("--format", choices=["tsv", "faa"], help="hits: tsv (one row per gene) or faa (one record per "
+                                                           "protein, named by protein uid)")
+    s.add_argument("--out", help="hits --format: write this file (default: stdout)")
+    s.add_argument("--library", help="hits --format: domain library of pfam_architecture (default: the only one, "
+                                     "else the pfam one)")
+    s.add_argument("--threads", type=int, help=f"hits --format: DuckDB threads (default {export.EXPORT_THREADS})")
+    e = sub.add_parser("export", parents=[common])
+    e.add_argument("what", choices=["proteins"], help="proteins: every distinct protein as FASTA named by protein uid")
+    e.add_argument("--release", required=True, help="files from manifests/release=<R>.json when present")
+    e.add_argument("--out", help="write this file (default: stdout)")
+    e.add_argument("--threads", type=int, help=f"DuckDB threads (default {export.EXPORT_THREADS})")
     n = sub.add_parser("nbr", parents=[common])
-    n.add_argument("action", nargs="?", choices=["summarize"], help="summarize: families and clusters per window")
+    n.add_argument("action", nargs="?", help="summarize: families and clusters per window; otherwise the anchors")
     n.add_argument("source", nargs="?", help="summarize: run_id or protein uids (uid,uid,...)")
     n.add_argument("--anchors", help="run_id or protein uids (uid,uid,...)")
     n.add_argument("--window", default="10g")
@@ -196,8 +399,14 @@ def main(argv: list[str] | None = None) -> int:
     n.add_argument("--tape-version", help="tapes to read (default: the run's pack's, else the gene-call producer's)")
     n.add_argument("--by", default="pfam,nr50", help="summarize: levels, some of pfam,nr50,nr90")
     n.add_argument("--top", type=int, default=nbr.SUMMARY_TOP, help="summarize: rows per level (0: all)")
-    n.add_argument("--release", help="summarize: release of the clusters and contig_dim (default: the run's)")
-    n.add_argument("--format", choices=["tsv"], help="summarize: tsv (the default without --json)")
+    n.add_argument("--release", help="summarize, --format tsv: release of the clusters and contig_dim (default: "
+                                     "the run's)")
+    n.add_argument("--format", choices=["tsv"], help="summarize: tsv (the default without --json); otherwise one "
+                                                     "table per anchor locus")
+    n.add_argument("--out", help="--format tsv without summarize: one file per locus in this directory")
+    n.add_argument("--library", help="--format tsv without summarize: domain library of pfam_architecture")
+    n.add_argument("--threads", type=int, help=f"--format tsv without summarize: DuckDB threads (default "
+                                               f"{export.EXPORT_THREADS})")
     r = sub.add_parser("run-step", usage="bio-box run-step --profile P --root R --stage S --step NAME "
                                          "[--nice monolithic|fanout] [--threads N] -- CMD [ARGS ...]")
     r.add_argument("--profile", required=True, help="host profile YAML (profiles/wilkcomp02.yaml)")
@@ -206,6 +415,14 @@ def main(argv: list[str] | None = None) -> int:
     r.add_argument("--step", required=True)
     r.add_argument("--nice", choices=["monolithic", "fanout"], default="monolithic")
     r.add_argument("--threads", type=int)
+    rl = sub.add_parser("release", parents=[common], help="release-level steps over the release's stages (B-25)")
+    rl.add_argument("step", choices=RELEASE_STEPS)
+    rl.add_argument("--release", required=True)
+    rl.add_argument("--stages", help="S0,S1: the release's stages in order; defines the release once")
+    rl.add_argument("--tmp", help="scratch directory (system temp by default; never under the data root)")
+    rl.add_argument("--threads", type=int, default=1, help="cluster: MMseqs2 threads")
+    rl.add_argument("--producers", help="tokens, postings: the tape version's producers (default: the gene caller)")
+    rl.add_argument("--libraries", help="tokens: domain libraries in precedence order (default: those with domains in the release's stages, by name)")
     a = p.parse_args(argv)
     if a.cmd == "search" and a.action == "run" and not a.release:
         p.error("search run needs --release")
@@ -213,7 +430,8 @@ def main(argv: list[str] | None = None) -> int:
         if not command:
             p.error("run-step needs a command after --")
         a.command = command
-    return {"pack": _pack, "search": _search, "nbr": _nbr, "run-step": _run_step}[a.cmd](a)
+    return {"pack": _pack, "search": _search, "nbr": _nbr, "export": _export, "run-step": _run_step,
+            "release": _release}[a.cmd](a)
 
 
 if __name__ == "__main__":

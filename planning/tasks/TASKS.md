@@ -102,6 +102,12 @@ and `ghcr.io/ifinkelstein/bio-box@sha256:50143ef2df2035e285e9b4def994d5495357d3d
 into `~/bio-box/images/`. Create `/stor/work/Wilke/if2453/all-the-data` (setgid) with a README like the scratch one (DEC-11).
 Accept: `singularity exec <test sif> pytest -q` is green on the pod; the directory exists.
 
+### 0-04 Slim `token_postings` or keep it self-contained
+**H** (PI) · Depends: B-26 · Decide before `rS0.1` is signed (after that the columns are locked, AGENTS §3.8)
+Evidence: `planning/measurements/2026-11-10_postings_bytes.md`. A posting is 35.7 bytes (*measured*, `rL.2`): `feature_uid` 17.0, `contig_uid` 4.8, `start` and `end` 8.2, `contig_len` 2.2, `ordinal` 1.4, `n_slots` 1.2, `token_id` 0.9. At GTDB scale that is about 36 GB (*derived* there).
+Options: (a) keep every column: a neighbour query needs only postings, no join; (b) drop `start`, `end`, `strand`, `n_slots`, `is_circular`, `contig_len`, which the tape holds: 32.6% smaller (*derived*), and every coordinate or distance question joins the tape; (c) drop only `contig_len`, `n_slots`, `is_circular` (contig attributes, arguably against AGENTS §3.6): 9.4% smaller (*derived*: 3.35 of 35.7), with a join to `contig_dim` or the tape for wrap-around distances only.
+Recommendation of the orchestrating session: (a) for now. 36 GB is small beside Pfam scan cost and sequence shards, and the measured queries are fast because they do not join. Revisit only if a budget is missed.
+
 ### 0-03 First-10 questions
 **H** · Depends: none
 Do: the PI signs off or replaces the ten draft questions in `planning/preflight_gaps.md` §3 (DEC-05 said to ask again before the S1 gate). Card G-09 needs Q1.
@@ -271,7 +277,8 @@ Accept: R0–R2 green on the laptop; R3 green with `BIOBOX_GOLDEN_DIR`.
 **M** · Depends: B-01..B-17 · Pod: yes (after C-02; until then the PI runs it)
 Files: `scripts/stress/*.py`, `planning/measurements/<date>_phase_b_exit.md`+
 Do: update the stress scripts to the new model and rerun all of them: cross-host manifest hash, 1,000× synthetic queries, feature stability, independent-tool checks, GTDB projection of every table.
-Accept: laptop and pod manifest hashes equal; no query scans more than 2 row groups per lookup; no projected table exceeds its budget in `sources_and_sizing.md` (update the budget lines with measured values, labelled).
+Amended 2026-11-09: `scripts/stress/README.md` (card A-03) lists what is stale in each script: `build_s0.py --cluster`, `pilot.py` and `pilot_resume.py` import the removed `biobox.l3.pairs`; `step6_export.py` and `step4_keys.py` key on `slot_ordinal`; `gtdb_pairs.py` is obsolete (delete it and project `token_postings` instead); `resume.sh` applies no memory scope. No compute runs on the laptop any more, so the cross-host check compares the pod with a GitHub Actions runner (a workflow step that builds the fixture store and prints the manifest hash), not with the laptop. Also add the CAMI II pilot driver (measurements §6c; its store is at `/tmp/if2453/pilot_cami` on the pod) to `scripts/stress/`.
+Accept: CI-runner and pod manifest hashes equal; no query scans more than 2 row groups per lookup; no projected table exceeds its budget in `sources_and_sizing.md` (update the budget lines with measured values, labelled).
 
 ### B-19 Streaming ledger and multi-part tables
 **M** · Depends: B-07 (found while auditing B-05 and B-07)
@@ -289,19 +296,50 @@ Accept: on a fixture protein with two Pfam domains, both families have a posting
 **L** · Depends: B-15 (found in its audit)
 Files: `src/biobox/l0seq/store.py`, `src/biobox/registry/schemas.py`, tests
 Do: `l0_manifest` is one file, `l0/l0_manifest.parquet`, re-read and rewritten by every stage, against AGENTS §3.10. Make it a directory partitioned by stage (`l0/l0_manifest/stage=<S>/part-0.parquet`), written once per stage; readers take all stages. Remove the exemption for that file from the R-09 test.
+Amended 2026-11-10 from the B-23 report: `l0seq/store_params.json` is claimed by no table or artifact, so `run-step` refuses to publish the first stage of a new store (`runstep._claim`, LY-10). Register it as an artifact in `schemas.py` in this card, written once by the first stage and verified, never rewritten, by later ones; remove the workaround in `tests/r2/test_ingest_restart.py` that pre-seeds the file. With both fixes a first and a second stage can be ingested under `run-step`; add that as a test. Also remove the `l0_manifest` allowance from `tests/r2/test_micro_s0_release_def.py` (B-25 left it for this card). Raised to **M**.
 Accept: after a second stage is ingested, every file of the first stage is byte-identical, with no exception.
 
 ### B-23 Ingest: recover the second-read cost and make a crashed stage restartable
 **M** · Depends: B-15 (found in its audit)
 Files: `src/biobox/l0seq/store.py`, tests
 Do: batch ingest reads each source twice and re-hashes kept records in the second pass, which made it 28% slower at 1,000× the fixture (measured). Check length only in the second pass and hash once, unless a measurement shows the hash is not the cost. Separately, an ingest that dies mid-stage leaves files the writer then refuses to overwrite: under `run-step` the stage is published from staging, so make `ingest` safe to rerun into a clean staging directory and document that a direct call needs a clean stage directory.
-Accept: wall time at 1,000× within 10% of the pre-B-15 time (135 s on the laptop), with peak memory unchanged; a killed and rerun ingest under `run-step` gives byte-identical output.
+Amended 2026-11-10 after the agent's measurement (*measured*, wilkcomp02, 3 interleaved runs each, 1,000× synthetic, one thread): batch ingest is 0.9% faster than the pre-B-15 code at the default shard size and 12.4% slower at 16 MiB shards, not 28% slower (that was a laptop figure). A profile shows zlib compression is 182 to 188 s of about 240 s, the second FASTA parse about 25 s, and the second hash about 3 s. The premise of this card was therefore wrong: hashing is not the cost, and the pass-2 hash check stays, because it is what ties the stored bytes to their digest. What remains of the card is the restart safety. Recovering the second parse (pass 1 records byte offsets, pass 2 seeks) is not worth a card until ingest is a measured bottleneck: compression dominates.
+Accept: a killed and rerun ingest under `run-step` gives byte-identical output; a source changed between the passes is refused.
 
 ### B-24 Streaming rewrites of clustering and domain scans
 **M** · Depends: B-19
 Files: `src/biobox/l2/cluster.py`, `src/biobox/l1/domains.py`, tests
 Do: these two builders still hold every protein, every alignment row and every domain row in Python lists (B-19 only changes their final write). Stream proteins to MMseqs2 from Parquet, parse its output tables with DuckDB, and write through `io.write_parts`; scan domains shard by shard, each shard its own process under the 300 CPU-minute limit (the sharded scan run by hand on 2026-11-09 is the model: 17 shards, 121 CPU-minutes each), merging sorted shard outputs.
+Amended 2026-11-10: needed before S2, not after. *Measured* on wilkcomp02: clustering a whole release took 473.5 s and 5.35 GB at 1.13 M proteins and 1,320 s and 9.57 GB at 2.05 M (about n^1.73 and 4.7 KB per protein, *derived* from two points). Also decide, with evidence from the 10.6 M protein run (`rL.3`), whether each release must recluster everything or can use `mmseqs clusterupdate`; if that changes cluster identity rules it is an **H** question: stop and report.
 Accept: outputs content-identical on the fixture; peak memory does not grow with protein count (K-copy measurement as in B-05).
+
+### B-25 A release names its stages
+**M** · Depends: B-17 (found by the import ladder, 2026-11-10: `planning/measurements/2026-11-10_import_ladder/README.md` finding 1)
+Files: `src/biobox/l3/tokens.py`, `src/biobox/l3/postings.py`, `src/biobox/dim.py`, `src/biobox/l2/cluster.py`, `src/biobox/catalog.py` (`build_manifest`), `src/biobox/cli.py`, `src/biobox/registry/schemas.py` (a `release_def` table: `release`, ordered `stages`), tests
+Why: every release-level builder reads whatever `stage=*` directories exist. A release built while a later stage was being written took that stage's files in (release `rL.2p` on the pod), against AGENTS §3.9 (explicit lists, never globs).
+Do: a release is defined once, by a `release_def` row listing its stages. Every release-level builder and `build_manifest` takes that list and reads only those stages; a stage directory on disk that the release does not list is ignored, and a listed stage that is missing is an error.
+Accept: test first: build release R1 over stage S0; add a second stage's files to the store; rebuild R1 into a fresh root from the same `release_def`: every file is byte-identical to the first build. `rg -n "stage=\*" src/biobox` returns nothing in a release-level builder.
+
+### B-28 Query-time readers take the release's stages
+**M** · Depends: B-25 (found in its report)
+Files: `src/biobox/search/pack.py`, `src/biobox/search/nbr.py`, `src/biobox/search/worker.py`, `src/biobox/l0seq/store.py` (`SeqStore` only), `src/biobox/ledger.py` or `src/biobox/catalog.py` (`ledger_stage`), tests
+Why: after B-25 the release builders read only the release's stages, but `pack build`, `nbr`, the search worker and `SeqStore` still read every `stage=*` directory on disk, so a search against release R can return genes of a stage R does not contain. Separately, two releases whose names share a stage prefix (`rS0.1`, `rS0.2`) collide on `ledger/stage=S0/step=cluster`, and the second clustering is refused.
+Do: each of these readers takes the file list of the release (from the manifest when one is given, else from `catalog.release_stages`), never a glob (AGENTS §3.9). The clustering ledger is partitioned by release (`ledger/release=<R>/step=cluster/`), a new location in the registry; other ledgers stay per stage.
+Accept: test first: a store with stages S0 and S1 and release R1 over S0 only: `pack build`, a search run and `nbr` against R1 return nothing from S1; two releases over the same stage both cluster. `rg -n "stage=\*" src/biobox/search src/biobox/l0seq/store.py` returns only per-stage builders.
+
+### B-29 Postings builder runs out of memory at 21 M slots
+**M** · Depends: B-25 · Pod: yes (found by the import ladder, stage C, 2026-11-10 02:53 CST)
+Files: `src/biobox/l3/postings.py`, `scripts/stress/synth_scale.py` (a `--slots-per-contig` option), `tests/r2/test_micro_s0_postings.py`, `planning/measurements/<date>_postings_memory.md`+
+Evidence (*measured*, wilkcomp02): `postings.run` for release `rL.3` (32,815 contigs, about 21 M slots, of which 5,018 prokaryote contigs hold thousands of slots each) failed after 40 s with `OutOfMemoryException: could not allocate block of size 256.0 KiB (1.8 GiB/1.8 GiB used)` at `con.sql(sql).to_arrow_reader(...)`. It passed at 7.6 M and 8.4 M postings. The query joins whole tape rows to whole token rows, unnests every list by position, and sorts all levels at once inside one 2 GB connection; a spill directory is set, so the operator that holds the memory is one that cannot spill. The B-10 memory test used the 100x synthetic store, whose contigs are fixture-sized, so it never saw long lists.
+Do: (1) reproduce first, small: a synthetic store with prokaryote-like contigs (`--slots-per-contig 5000`) on which the current builder fails under the 2 GB limit; that is the failing test (AGENTS §5.1), at a size that runs in under two minutes. (2) Find the operator with `EXPLAIN ANALYZE` or by bisecting the query; do not guess. (3) Fix without raising the memory limit: for example explode tapes and tokens one tape row group at a time (a row group holds at most 131,072 slots, AGENTS §4.6) into scratch Parquet runs, then let DuckDB sort the flat rows, which does spill. Output bytes must not change on the fixture.
+Accept: the new test passes; the fixture's postings files are byte-identical to before; on the pod, `postings.run` for `rL.3` in `/tmp/if2453/ladder/root` completes inside the 2 GB DuckDB limit, with wall time and peak RSS recorded (the ladder's driver can resume: `planning/measurements/2026-11-10_import_ladder/README.md`, but call the builder through the image with your tree first on the path, not the ladder's old checkout).
+
+### B-26 Re-measure postings size and correct its budget
+**L** · Depends: B-17 · Pod: yes
+Files: `src/biobox/l3/postings.py` (the estimate in its docstring or constant), `planning/sources_and_sizing.md` (the postings line only), `planning/measurements/<date>_postings_bytes.md`+
+Why: `token_postings` measured 34.6 to 36.8 bytes per row on the pod against the 20 the code states (73 to 84% over; AGENTS §6 threshold is 20%).
+Do: on the `rL.2` store on the pod, report bytes per row by column (`pq` metadata: compressed size per column chunk), find which columns carry the excess (`feature_uid` is 16 random bytes and will not compress; check the others' encodings and the sort key). Change no schema. Replace the estimate with the measured value, labelled, and recompute the GTDB-scale projection.
+Accept: the measurement file has the per-column table and the command; no unlabelled number remains for postings.
 
 ### B-20 IGR version names its producer set
 **L** · Depends: B-07
@@ -337,6 +375,7 @@ Accept: the test passes for every kill point; no test sleeps to hit a kill point
 **M** · Depends: C-02, B-17
 Files: `src/biobox/stage.py`+, `src/biobox/cli.py`, `tests/r2/test_build_stage.py`+
 Do: a fixed list of steps for a stage, each through `run-step`: inputs → ingest → gene calling → other feature producers → IGRs → tapes → domain scans → clustering → tokens → postings → `contig_dim` → manifest → catalog. No workflow engine; a list and the ledger. A scan step is split into shard processes that each stay under 300 CPU-minutes.
+Amended 2026-11-10 from the import ladder: ingest is one process at about 3.7 Mbp/s (*measured*, wilkcomp02), so a stage over about 60 Gbp exceeds 300 CPU-minutes; `build-stage` splits ingest into batch processes (DEC-22: one shard per batch) as it does scans. Launch each step through `scripts/pod_run.sh` (C-07). Depends also on B-25: the release steps take the stage list.
 Accept: the fixture builds end to end with one command; a second run does nothing.
 
 ### C-05 Search runner under systemd scopes
@@ -396,6 +435,7 @@ Accept: the thread count of a worker with `cpus=2` on a many-core host stays und
 **M** · Depends: B-16
 Files: `src/biobox/search/export.py`, `src/biobox/cli.py`, `tests/registry/json_schema_lock.json` (version bump), tests
 Do: `bio-box search hits <run> --format tsv|faa` with one row per gene: accession, header, contig length, start, end, strand, protein length, bitscore, E-value at the reference Z, NR90 and NR50 cluster ids, the gene's Pfam architecture. `bio-box nbr <run> --format tsv` writes one table per locus. Scores rounded to one decimal. `bio-box export proteins --release R` writes the distinct proteins as FASTA named by protein uid.
+Amended 2026-11-10: card B-17 changed the nested occurrence objects of a search-hit record (`slot_ordinal` became `ordinal`; `genome_uid` and `tier` were dropped, they live in `contig_dim`) without a version bump, because the lock covers top-level keys only. This card's bump to `search_hit/2` records that change too; add `genome_uid` and `tier` back to the export by joining `contig_dim` at export time.
 Accept: the walk-through's `hits.tsv` is reproduced by one command; S-13 passes with the bumped schema version.
 
 ### W-06 Neighbor summary
@@ -422,6 +462,26 @@ Files: `src/biobox/search/engine.py`, `tests/r1/test_search_units.py`
 Why: `engine.families_of` calls `pyhmmer.hmmsearch` without `cpus`, so pyhmmer sizes its pool from the host (found by the import ladder on the 64-core pod, 2026-11-09). On a shared machine that breaks the thread cap of AGENTS.md §7.2.
 Do: `families_of` and every other pyhmmer entry point in `src/biobox` take a `threads` argument with no default and pass it as `cpus`. Callers pass the worker's capped thread count.
 Accept: a test that replaces `pyhmmer.hmmsearch` with a recorder and fails when any call lacks `cpus` or passes 0, seen to fail first; `rg "hmmsearch\(|hmmscan\(|phmmer\(" src/biobox` shows `cpus=` on every call.
+
+### W-11 Export follow-ups from the W-05 audit
+**L** · Depends: W-05, B-25
+Files: `src/biobox/search/export.py`, `src/biobox/cli.py` (`export`, `search hits`), `tests/r2/test_micro_s0_search.py`
+Do: (1) `export proteins` without `manifests/release=<R>.json` refuses with exit 2 instead of reading every `protein_seq` file it finds (AGENTS §3.9: readers use the manifest's file list, never globs); migrate the W-05 test that compares "with and without manifest" to assert the refusal. (2) FASTA written for a person (`--format faa`, `export proteins`) has no `*`: a trailing `*` is dropped, and a protein with an internal `*` is written as stored and counted in a note on stderr. First check on the pod whether `protein_seq` holds any `*` at all (`rL.2`); if it holds none, add only a test that says so and change nothing.
+Accept: tests for each, written first.
+
+### B-27 Lookups that cannot prune: contig labels and cluster membership
+**M** · Depends: B-25 (found in the W-05 report; AGENTS §4.4)
+Files: `src/biobox/registry/schemas.py` and lock (two tables), their builders (`src/biobox/l0seq/store.py`, `src/biobox/l2/cluster.py`), `src/biobox/catalog.py` (`contig_label`, macros), `src/biobox/search/export.py`, `src/biobox/search/nbr.py`, tests
+Why: `contig_occurrence` is looked up by `contig_uid` but sorted by (`l0_object_sha256`, `record_ordinal`); `cluster_member` is looked up by `member_uid` but sorted by (`level`, `cluster_uid`, `member_uid`). Neither lookup can use min/max statistics, so exports and `nbr summarize` scan the whole table: 10.5 M `cluster_member` rows at `rL.2p`, 190 M at GTDB scale (*derived*: 2 levels x 95 M proteins).
+Do: add two lookup tables written by the same builders, sorted by the lookup key: `contig_label` (per stage: `contig_uid`, first source accession and header by (`l0_object_sha256`, `record_ordinal`), `n_records`) and `member_cluster` (per release: `member_uid`, `level`, `cluster_uid`, `rep_uid`). Point the `contig_label` view, the exports and `nbr.summarize` at them. Do not re-sort the existing tables.
+Accept: `catalog.profile_query` on the 100x synthetic store: a label lookup and a membership lookup by 100 keys from a joined table each read at most 2 row groups per key; outputs of the exports unchanged byte for byte.
+
+### W-10 `bio-box search run` takes the host profile
+**L** · Depends: C-07 (found in its report)
+Files: `src/biobox/cli.py`, `tests/r1/test_cli_search.py`+
+Why: `Limits.require_cap`, `mem_gb` and `cpus` cannot be set from the command line, so a search started by hand on the pod never refuses to run uncapped and ignores the profile's thread cap.
+Do: `bio-box search run` and `search submit` take `--profile PATH` (default: `$BIOBOX_PROFILE` when set). With a profile, `Limits.require_cap` is the profile's `require_mem_cap`, `cpus` is at most `runstep.choose_threads` for the current hour, and `nice` is the profile's. Explicit `--cpus` and `--mem-gb` flags may lower, never raise, what the profile allows.
+Accept: tests, written first: with a profile that requires a cap and neither `systemd-run` nor a cgroup cap (injected), the command exits 2 and names `scripts/pod_run.sh`; `--cpus` above the profile's cap is refused.
 
 ---
 
