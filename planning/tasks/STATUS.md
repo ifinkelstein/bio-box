@@ -11,7 +11,7 @@ Last update: 2026-11-09, 23:00 CST. Suite on the integration branch after the B-
 pinned image; 3 min 40 s wall for the slowest shard, against 13.5 min in one process). The skips
 need samtools, bgzip, Prodigal or the golden set. Tests no longer run on the laptop (AGENTS.md §5.5).
 
-## Merged (59 cards)
+## Merged (60 cards)
 
 | Card | Merge | What it did | Audit notes |
 |---|---|---|---|
@@ -73,6 +73,7 @@ need samtools, bgzip, Prodigal or the golden set. Tests no longer run on the lap
 | C-06 | this merge | `RUNBOOK.md`: build, pause, resume, verify, search, export, clean up, limits; an R0 test checks every command in it against the real CLI parser and the limits table against the profile | Every command was run on the pod on a fixture-sized root (appendix A lists each with its last line). Not exercised: a reboot, the real 64 MiB floor and 200G cap, real Pfam (card C-10). Found four defects in running searches under a unit: card W-13 |
 | B-31 | this merge | Catalog lookups prune: a key through `token_of` reads 1 row group; digest and length macros read no scan; the neighbour query's partner side reads the tape tokens of the anchors' contigs, not the whole token level | 1,000× synthetic, cold: `token_of` postings 0.32 s to 0.09 s. Partner queries are slower cold at that size (family 0.25 s to 0.37 s) but no longer grow with the release; crossover about 1,200× to 1,480× (*derived*, not measured). The two D-05 tests with an impossible bound were replaced by tests of the per-anchor-contig bound; no xfail remains. `partners_of` now needs `open_catalog`. No real-data number: current code cannot open `rL.3`. Follow-ups: card B-34 |
 | B-24 | this merge | Clustering streams: Python peak 997 MB at 2.05 M proteins, was 8,921 MB; outputs byte-identical. Domain scan can be planned, scanned in shards and merged, and `build-stage` does that instead of refusing | The 46 GB at 10.6 M proteins and the 410 GB projection were our Python process, not MMseqs2; MMseqs2 itself is at least 5.3 GB at 2.05 M and its growth is unmeasured (PI card 0-06). Shards run one after another and are sized with no margin: card C-11, needed before a real Pfam scan |
+| B-34 | this merge | `token_of` prunes (13 row groups to 1 for a literal or one joined key at 1,000×) through footer statistics on `token_dict.key`, no new table; a catalog can be opened several times in one process; a plain DuckDB connection gets an error that names `open_catalog` | Found: the catalog `.duckdb` file was never byte-deterministic: two builds differ in about 65 bytes of DuckDB internals (file identifier, checksums, padding). Its logical content is now tested instead. The manifest, not the catalog, is the record, so this is an exception to AGENTS §4.3 to state, not a defect to fix: listed under open items. A cold `token_of` over 100 spread keys is slower than before at this size (0.059 s against 0.018 s) |
 
 Decisions DEC-18 to DEC-23 were approved by the PI on 2026-11-09 and are in `planning/DECISIONS.md`.
 
@@ -100,7 +101,8 @@ The thread cap is the sum over all our processes: 40 by day, 56 at night.
 |---|---|---|
 | A-07 two search tests fail intermittently on GitHub Actions | Opus | started 2026-11-10 |
 | C-10 first real `build-stage` on the pod (two stages, two releases, local disk) | Opus | started 2026-11-10 |
-| B-34 catalog follow-ups: token lookup by name, two connections, plain-connection error | Opus | started 2026-11-10 |
+| E-01 non-coding RNA producer (Infernal, Rfam) | Opus | started 2026-11-10 |
+| C-10 first real `build-stage` on the pod | Opus | started 2026-11-10; its Pfam scan is throttled to the day cap |
 | C-11 domain-scan shards several at a time, with a margin | Opus | started 2026-11-10 |
 
 ## Next, in order
@@ -128,6 +130,7 @@ probed by hand on the pod).
 - A `read:packages` credential, so the image built from `main` can be pulled on the pod.
 - Confirm the day window for the pod's thread caps (profile assumes 08:00 to 20:00 on weekdays).
 - First-10 questions (card 0-03), before the S1 gate.
+- The generated catalog file is not byte-identical between two builds of the same manifest (about 65 bytes of DuckDB internals differ; *measured*, card B-34). AGENTS §4.3 says every output is byte-identical. Proposed wording for the PI to accept: "the catalog is generated from the manifest and is excluded from byte identity; its logical content is tested".
 - Card 0-07: a cluster's id is a hash of its member set, so it changes whenever the cluster gains a protein: 39.9% of NR50 clusters lost their id from `rL.2` to `rL.3` while 94.4% of proteins stayed with their old cluster's main fragment (*measured*). Recommendation: keep the id and add a lineage table that maps each cluster to its best-overlap predecessor.
 - Card 0-05: two S5 storage budgets are exceeded (annotations 107 GB against 50; tapes plus postings 75 GB against 25 to 60), because every table now carries a 16-byte `feature_uid`. Recommendation: raise the budgets.
 - Card 0-04: keep `token_postings` self-contained (about 36 GB at GTDB scale) or drop the columns the tape already holds (about a third smaller, at the price of a join). Recommendation: keep.

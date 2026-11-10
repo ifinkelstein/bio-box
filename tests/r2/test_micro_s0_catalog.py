@@ -358,7 +358,8 @@ def test_macro_rejects_bad_slices(con, args):
 
 
 def test_sequence_macros_need_open_catalog(built):
-    # the message the module docstring documents: the Python function is not registered
+    # the message the module docstring documents: the stored stand-in of the Python function names
+    # open_catalog (card B-34; before it, "Scalar Function with name bb_seq does not exist")
     _, _, cat = built
     plain = duckdb.connect(str(cat), read_only=True)
     cu, seq, _ = _contigs()[0]
@@ -366,7 +367,7 @@ def test_sequence_macros_need_open_catalog(built):
                           ("SELECT seq_slice(?, 0, 10)", [cu], "bb_seq"),
                           ("SELECT seq_get_circular(?, 0, 10, 1)", [cu], "bb_seq_circular"),
                           ("SELECT seq_raw(?, 0, 10)", [ids.raw_digest(seq)], "bb_seq_raw")]:
-        with pytest.raises(duckdb.Error, match=f"Scalar Function with name {fn} does not exist"):
+        with pytest.raises(duckdb.Error, match=rf"open_catalog\(path\); {fn} is a Python function of biobox"):
             plain.execute(sql, args).fetchall()
     assert plain.execute("SELECT contig_len_of(?)", [cu]).fetchall()[0][0] == len(_contigs()[0][1])
     plain.close()

@@ -11,7 +11,8 @@ row groups per table, and 8 would take about 1,100x for the tapes and about 10^6
 `contig_index` and `seq_locator` (data_layer_and_tests.md and the exit measurement: 9 of 9 at 10^6
 contigs), which no test can build. So the build runs with the row-group caps of `io.write_table`
 scaled down, test side only (nothing in `src/` changes): row tables 1/16 of ROW_GROUP_ROWS (7,680
-rows), list tables 1/16 of MAX_SLOTS (8,192 slots), and the three contig-level tables 32 rows. The
+rows), list tables 1/16 of MAX_SLOTS (8,192 slots), the three contig-level tables 32 rows, and
+`token_dict` 1/128 of ROW_GROUP_ROWS (960 rows; about 10,000 tokens at 100x, card B-34). The
 pruning behaviour (zone maps on the sort key) is what is under test; the assertions state the caps
 they ran with and also the real AGENTS bounds. Every probed table must have at least MIN_RG row
 groups, or the test fails before it measures anything.
@@ -47,13 +48,18 @@ ROW_CAP = bio.ROW_GROUP_ROWS // 16  # 7,680 rows
 SLOT_CAP = tapes.MAX_SLOTS // 16  # 8,192 slots
 CONTIG_CAP = 32  # contig_index, seq_locator, contig_dim: 300 contigs at 100x
 CONTIG_TABLES = ("contig_index", "seq_locator", "contig_dim")
+TOKEN_CAP = bio.ROW_GROUP_ROWS // 128  # token_dict: 960 rows (card B-34)
 LIST_TABLES = {"contig_tapes": "n_slots", "tape_tokens": "nr90_tokens"}  # table -> column that counts slots
-PROBED = ("seq_locator", "contig_index", "contig_dim", "contig_tapes", "tape_tokens", "token_postings")
+PROBED = ("seq_locator", "contig_index", "contig_dim", "contig_tapes", "tape_tokens", "token_postings", "token_dict")
+
+
+def _cap(table: str) -> int:
+    return CONTIG_CAP if table in CONTIG_TABLES else TOKEN_CAP if table == "token_dict" else ROW_CAP
 
 
 def _scaled_write_table(real):
     def write_table(batches, spec, path, *, row_group_rows=bio.ROW_GROUP_ROWS, max_slots=None, **kw):
-        cap = CONTIG_CAP if spec.name in CONTIG_TABLES else ROW_CAP
+        cap = _cap(spec.name)
         if max_slots is not None:
             max_slots = min(max_slots, SLOT_CAP)
         return real(batches, spec, path, row_group_rows=min(row_group_rows, cap), max_slots=max_slots, **kw)
@@ -121,7 +127,8 @@ def _files(store, table: str) -> list[Path]:
 def test_probed_tables_have_enough_row_groups(store):
     n = {t: sum(f["row_groups"] for f in store["man"]["files"] if f["table"] == t) for t in PROBED}
     short = {t: k for t, k in n.items() if k < MIN_RG}
-    assert not short, f"fewer than {MIN_RG} row groups at {COPIES}x (caps {ROW_CAP}/{SLOT_CAP}/{CONTIG_CAP}): {short}; all: {n}"
+    assert not short, (f"fewer than {MIN_RG} row groups at {COPIES}x (caps {ROW_CAP}/{SLOT_CAP}/{CONTIG_CAP}/{TOKEN_CAP}): "
+                       f"{short}; all: {n}")
 
 
 def test_row_group_sizes_agents_4_6(store):
@@ -141,7 +148,7 @@ def test_row_group_sizes_agents_4_6(store):
                     checked[t] = max(checked.get(t, 0), slots)
                 else:
                     assert rows <= bio.ROW_GROUP_ROWS, f"{t} {p.name} row group {i}: {rows} rows > 122,880"
-                    cap = CONTIG_CAP if t in CONTIG_TABLES else ROW_CAP
+                    cap = _cap(t)
                     assert rows <= cap, f"{t} {p.name} row group {i}: {rows} rows > cap {cap}"
                     checked[t] = max(checked.get(t, 0), rows)
     assert set(LIST_TABLES) <= set(checked)
@@ -180,23 +187,23 @@ def _scans_of(q: dict, table: str) -> list[dict]:
     return [s for s in q["scans"] if s["table"] == table]
 
 
-def _fresh(store):
+def _fresh(store, tables: dict | None = None):
     """A fresh connection in place of the store's: empty lookup caches, so counts are cold (synth_scale's
-    `fresh()`). One open catalog per database file in a process (its functions are the instance's), so the
-    old connection is closed first; the script's tables are registered again."""
+    `fresh()`). The old connection is closed first (since card B-34 two could be open at once); the script's
+    tables and `tables` are registered on the new one."""
     g = store["g"]
     store["con"].close()
     store["con"] = con = catalog.open_catalog(g["cat"], threads=4)
-    for name, tbl in g["registered"].items():
+    for name, tbl in {**g["registered"], **(tables or {})}.items():
         con.register(name, tbl)
     return con
 
 
-def _cold(store, sql: str, params=None, keys: int = 1) -> dict:
+def _cold(store, sql: str, params=None, keys: int = 1, tables: dict | None = None) -> dict:
     """synth_scale's `run` scoring of `sql` on a fresh connection. Since card B-31 `partners_of` reads tape
     tokens by point lookup with a row-group cache on the connection, so the script's reports of partner
     queries after the first are warm (the family query's contigs hold the NR90 query's): these are re-run cold."""
-    out = catalog.profile_query(_fresh(store), sql, params)
+    out = catalog.profile_query(_fresh(store, tables), sql, params)
     scans = [{"table": _table_of(s["files"][0]), "row_groups": s["row_groups_scanned"], "of": s["row_groups_total"],
               "rg_per_key": s["row_groups_scanned"] / keys} for s in out["scans"] if s["files"]]
     idx = out["index"]
@@ -280,6 +287,105 @@ def test_digest_len_joined_key_prunes(store):
 
 def test_contig_len_of_joined_key_prunes(store):
     _macro_prunes(store, "SELECT sum(contig_len_of(contig_uid)) FROM pick1")
+
+
+# --- token_of resolves a stable key by point lookup (card B-34) ------------------------------------
+
+
+def _token_oracle(store) -> dict:
+    """Oracle: every `token_dict` row of the release read whole with pyarrow, with the row group that holds it
+    (numbered in token_id order): `by` maps (level, key) to [(token_id, row group)]; `n` row groups."""
+    groups = []
+    for p in _files(store, "token_dict"):
+        pf = pq.ParquetFile(p)
+        groups += [pf.read_row_group(g, columns=["token_id", "level", "key"]).to_pylist()
+                   for g in range(pf.metadata.num_row_groups)]
+    groups.sort(key=lambda rows: rows[0]["token_id"])
+    by: dict[tuple[str, str], list[tuple[int, int]]] = {}
+    for i, rows in enumerate(groups):
+        for r in rows:
+            by.setdefault((r["level"], r["key"]), []).append((r["token_id"], i))
+    return {"by": by, "n": len(groups)}
+
+
+def _token_reads(q: dict) -> int:
+    """Row groups of `token_dict` a scored query read: DuckDB's scans and token_of's point lookups."""
+    return sum(s["row_groups"] for s in q["scans"] if s["table"] == "token_dict")
+
+
+@pytest.mark.covers("LY-06")
+@pytest.mark.parametrize("level", ["family", "nr50", "nr90"])
+def test_token_of_literal_key_reads_at_most_2_row_groups(store, level, record_property):
+    """Card B-34: token_of(level, key) with a literal key reads at most 2 of token_dict's row groups (at least
+    MIN_RG), and gives the token the oracle reads for the key."""
+    o = _token_oracle(store)
+    assert o["n"] >= MIN_RG, f"token_dict has {o['n']} row groups at cap {TOKEN_CAP}"
+    keys = sorted(k for lv, k in o["by"] if lv == level)
+    key = keys[len(keys) // 2]
+    (tok, _), = o["by"][(level, key)]
+    q = _cold(store, "SELECT token_of(?, ?)", [level, key])
+    assert q["result"] == [(tok,)]
+    record_property("token_dict_reads", json.dumps({"read": _token_reads(q), "of": o["n"]}))
+    assert 1 <= _token_reads(q) <= MAX_RG_PER_KEY, _show(q)
+
+
+def _keys_in_two_row_groups(o: dict, n: int) -> tuple[list[str], set[int]]:
+    """`n` nr90 keys, half from the first row group that holds at least n/2 nr90 keys and half from the last
+    such one, and those two row groups. A lookup that prunes reads the two; a scan, or a join filter on the
+    keys' min and max, reads every row group between them as well."""
+    per: dict[int, list[str]] = {}
+    for (lv, k), hits in o["by"].items():
+        if lv == "nr90":
+            per.setdefault(hits[0][1], []).append(k)
+    full = sorted(rg for rg, ks in per.items() if len(ks) >= n // 2)
+    a, b = full[0], full[-1]
+    assert b - a >= 4, f"the nr90 keys lie in row groups {sorted(per)}: too few for the test to mean something"
+    return sorted(per[a])[: n // 2] + sorted(per[b])[-(n - n // 2):], {a, b}
+
+
+@pytest.mark.covers("LY-06")
+def test_token_of_100_joined_keys_read_only_the_row_groups_that_hold_them(store, record_property):
+    """Card B-34: token_of for 100 keys from a joined table reads at most 2 row groups per key, and exactly the
+    row groups of token_dict that hold the keys (the oracle), which here are 2 of at least MIN_RG."""
+    import pyarrow as pa
+
+    o = _token_oracle(store)
+    keys, holds = _keys_in_two_row_groups(o, 100)
+    want = sum(o["by"][("nr90", k)][0][0] for k in keys)
+    tables = {"k100": pa.table({"key": pa.array(keys, pa.string())})}
+    q = _cold(store, "SELECT sum(token_of('nr90', key)), count(token_of('nr90', key)) FROM k100", keys=100, tables=tables)
+    assert q["result"] == [(want, 100)]
+    n = _token_reads(q)
+    record_property("token_dict_reads", json.dumps({"read": n, "hold": sorted(holds), "of": o["n"]}))
+    assert n <= MAX_RG_PER_KEY * 100 and n == len(holds), f"{n} row groups read; they hold the keys: {sorted(holds)}; {_show(q)}"
+
+
+@pytest.mark.covers("LY-06")
+def test_token_of_1_joined_key_reads_at_most_2_row_groups(store):
+    import pyarrow as pa
+
+    o = _token_oracle(store)
+    keys, _ = _keys_in_two_row_groups(o, 2)
+    q = _cold(store, "SELECT sum(token_of('nr90', key)) FROM k1", tables={"k1": pa.table({"key": pa.array(keys[-1:], pa.string())})})
+    assert q["result"] == [(o["by"][("nr90", keys[-1])][0][0],)]
+    assert 1 <= _token_reads(q) <= MAX_RG_PER_KEY, _show(q)
+
+
+def test_token_of_answers_every_key_as_token_dict_holds_it(store):
+    """Card B-34: token_of on open_catalog's connection gives, for every (level, key) of token_dict, the token
+    the oracle reads, and NULL for an unknown key or level and for a NULL argument."""
+    import pyarrow as pa
+
+    o = _token_oracle(store)
+    k0 = next(iter(o["by"]))[1]
+    rows = [(lv, k, hits[0][0]) for (lv, k), hits in sorted(o["by"].items())]
+    rows += [("nr90", "no such key", None), ("nr91", k0, None), (None, k0, None), ("nr90", None, None)]
+    assert all(len(h) == 1 for h in o["by"].values())
+    tbl = pa.table({"level": pa.array([r[0] for r in rows], pa.string()), "key": pa.array([r[1] for r in rows], pa.string()),
+                    "want": pa.array([r[2] for r in rows], pa.uint64())})
+    con = _fresh(store, {"allk": tbl})
+    assert con.execute("SELECT count(*), count(*) FILTER (WHERE token_of(level, key) IS DISTINCT FROM want) "
+                       "FROM allk").fetchall() == [(len(rows), 0)]
 
 
 def _table_of(path: str) -> str:

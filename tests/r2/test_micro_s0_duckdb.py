@@ -12,6 +12,7 @@ expected from the min/max statistics; for sequence, BGZF blocks decompressed by
 from __future__ import annotations
 
 import hashlib
+import json
 import subprocess
 import sys
 import threading
@@ -68,6 +69,51 @@ def con(built):
     c = catalog.open_catalog(built[2])
     yield c
     c.close()
+
+
+TOK_REL = "rS0.tok"
+
+
+@pytest.fixture(scope="module")
+def tokened(tmp_path_factory):
+    """Every fixture contig in S0 with tapes, NR50/NR90 tokens and postings, so a catalog answers neighbour
+    queries. The clusters are the stand-in grouping of tests/r2/test_micro_s0_l3.py (by the first UID byte),
+    written here, so no MMseqs2 is needed."""
+    import pyarrow as pa
+
+    from biobox.l3 import postings, tapes, tokens
+    from biobox.registry.schemas import table
+
+    root = tmp_path_factory.mktemp("tok") / "root"
+    objs = CONTRACT["objects"]
+    ingest([_obj(o) for o in objs], root, "S0", shard_bases=SHARD_BASES)
+    genomes, circ = [], set()
+    for o in objs:
+        cu = ids.contig_uid(fasta.read(FIX / o["file"])[0].seq)
+        c = (cu,) if o["topology"] == "circular" else ()
+        circ |= set(c)
+        genomes.append(GenomeInput((cu,), o["genetic_code"], kind=o["kind"], circular=c))
+    call_genes(root, "S0", genomes)
+    occ = [f for f in (root / f"l1/protein_occurrence/gene_call_version={GENE_CALL_VERSION}/stage=S0").glob("part-*.parquet")]
+    uids = sorted({u for f in occ for u in pq.read_table(f, columns=["protein_uid"]).column(0).to_pylist()})
+    rows = [{"member_uid": p, "level": lvl, "cluster_uid": bytes([p[0] % g, len(lvl)]) * 8, "rep_uid": p,
+             "cluster_params_hash": "stand-in"} for p in uids for lvl, g in (("nr90", 97), ("nr50", 23))]
+    rows.sort(key=lambda r: (r["level"], r["cluster_uid"], r["member_uid"]))
+    d = root / f"l2/cluster_member/release={TOK_REL}"
+    d.mkdir(parents=True)
+    pq.write_table(pa.Table.from_pylist(rows, schema=table("cluster_member").schema), d / "part-0.parquet")
+    tapes.run(root, "S0", circ)
+    tokens.run(root, TOK_REL, ["S0"])
+    postings.run(root, TOK_REL, ["S0"])
+    man = catalog.build_manifest(root, TOK_REL, ["S0"])
+    cat = catalog.generate_catalog(man, root.parent / f"catalog/release={TOK_REL}.duckdb")
+    plain = duckdb.connect(str(cat), read_only=True)
+    try:  # the NR90 token on the most slots, and its key: a neighbour query with something to find
+        key, tok = plain.execute("SELECT key, token_id FROM token_dict WHERE level = 'nr90' "
+                                 "ORDER BY n_slots DESC, token_id LIMIT 1").fetchone()
+    finally:
+        plain.close()
+    return {"root": root, "man": man, "cat": cat, "key": key, "tok": tok}
 
 
 def _seq_scan(prof: dict, table_dir: str) -> dict:
@@ -192,6 +238,130 @@ def test_b31_lookup_macros_equal_the_stored_sql_and_read_no_index_scan(built):
         assert prof["result"] == rows, sql
         assert not [s for s in prof["scans"] if any(t in f for f in s["files"] for t in ("/contig_index/", "/seq_locator/"))]
         assert 1 <= sum(prof["index"].values()) <= min(2 * len(cus), rg_total), (sql, prof["index"])
+
+
+# --- card B-34: connections side by side; a plain connection says what to do ------------------------
+
+
+SEQ_SQL = "SELECT seq_get(?, 0, 60, 1), seq_get(?, 100, 160, -1)"
+NBR_SQL = "SELECT partner_token, n_loci, n_pairs FROM partners_of(?, 3)"
+
+
+def _answers(c, tok: dict, cu: bytes) -> tuple:
+    return (c.execute(SEQ_SQL, [cu, cu]).fetchall(), c.execute(NBR_SQL, [tok["tok"]]).fetchall(),
+            c.execute("SELECT token_of('nr90', ?)", [tok["key"]]).fetchall())
+
+
+@pytest.mark.covers("K-08", "Q3", "Q7")
+def test_b34_two_connections_to_one_catalog_in_one_process(tokened, built):
+    """Card B-34: two `open_catalog` connections to one catalog file, with different settings, and a third to
+    another catalog, are open at once in one process; each answers a sequence query and a neighbour query, and
+    closing one leaves the others answering the same."""
+    seq = fasta.read(FIX / "NC_000908.2.fna.gz")[0].seq
+    cu = ids.contig_uid(seq)
+    want_seq = [(seq[0:60].decode(), revcomp_ascii(seq[100:160]))]
+    a = catalog.open_catalog(tokened["cat"], threads=1)
+    b = catalog.open_catalog(tokened["cat"], threads=2)
+    other = catalog.open_catalog(built[2], threads=1)  # another catalog: S0 and S1, no tokens
+    try:
+        got_a, got_b = _answers(a, tokened, cu), _answers(b, tokened, cu)
+        assert got_a[0] == want_seq and got_a[1] and got_a[2] == [(tokened["tok"],)]
+        assert got_b == got_a
+        assert other.execute(SEQ_SQL, [cu, cu]).fetchall() == want_seq
+        assert other.execute(NBR_SQL, [tokened["tok"]]).fetchall() == []  # no postings in that release
+        assert [c.execute("SELECT current_setting('threads')").fetchone()[0] for c in (a, b, other)] == [1, 2, 1]
+        a.close()
+        assert _answers(b, tokened, cu) == got_a
+        assert other.execute(SEQ_SQL, [cu, cu]).fetchall() == want_seq
+        c = catalog.open_catalog(tokened["cat"])  # and one more after a close
+        try:
+            assert _answers(c, tokened, cu) == got_a
+        finally:
+            c.close()
+        assert _answers(b, tokened, cu) == got_a
+    finally:
+        for c in (a, b, other):
+            c.close()
+
+
+def revcomp_ascii(s: bytes) -> str:
+    """Reverse complement of an ACGT sequence, written here (the oracle is not the code under test)."""
+    return s[::-1].translate(bytes.maketrans(b"ACGTacgt", b"TGCAtgca")).decode()
+
+
+@pytest.mark.covers("Q3", "Q7")
+def test_b34_plain_connection_error_names_open_catalog(tokened):
+    """Card B-34: on a plain duckdb connection to the catalog file, the sequence macros and partners_of raise an
+    error that names `open_catalog` (the stored stand-ins of the Python functions), also inside a larger
+    expression; what is plain SQL (token_of, the views) still works there."""
+    seq = fasta.read(FIX / "NC_000908.2.fna.gz")[0].seq
+    cu, rd = ids.contig_uid(seq), ids.raw_digest(seq)
+    plain = duckdb.connect(str(tokened["cat"]), read_only=True)
+    try:
+        for sql, args in [("SELECT seq_get(?, 0, 10, 1)", [cu]), ("SELECT seq_slice(?, 0, 10)", [cu]),
+                          ("SELECT seq_get_circular(?, 0, 10, 1)", [cu]), ("SELECT seq_raw(?, 0, 10)", [rd]),
+                          ("SELECT length(seq_get(?, 0, 10, 1)) + 1", [cu]),
+                          ("SELECT count(*) FROM partners_of(?, 3)", [tokened["tok"]]),
+                          ("SELECT sum(n_pairs) FROM partners_of(?, 3)", [tokened["tok"]])]:
+            with pytest.raises(duckdb.Error, match=r"open this catalog with biobox\.catalog\.open_catalog"):
+                plain.execute(sql, args).fetchall()
+        assert plain.execute("SELECT token_of('nr90', ?)", [tokened["key"]]).fetchall() == [(tokened["tok"],)]
+        assert plain.execute("SELECT count(*) FROM contig_index").fetchone()[0] > 0
+    finally:
+        plain.close()
+
+
+def test_b34_token_key_lookup_without_key_statistics_reads_the_level(tokened, tmp_path):
+    """A token_dict written before card B-34 has no `key` statistics: TokenKeyLookup still finds every key
+    (the oracle: the table read whole), reading the row groups of the key's level instead of pruning."""
+    src = [tokened["root"] / f["path"] for f in tokened["man"]["files"] if f["table"] == "token_dict"]
+    t = pq.read_table(src, columns=["token_id", "level", "source", "key", "n_slots"], partitioning=None)
+    old = tmp_path / "part-0.parquet"
+    pq.write_table(t, old, row_group_size=7, write_statistics=["token_id"])
+    assert pq.read_metadata(old).row_group(0).column(3).statistics is None
+    look = catalog.TokenKeyLookup([old])
+    rows = t.to_pylist()
+    got = look.tokens([(r["level"], r["key"]) for r in rows] + [("nr90", "no such key")])
+    assert all(got[(r["level"], r["key"])] == [r["token_id"]] for r in rows) and got[("nr90", "no such key")] == []
+    levels = {r["level"] for r in rows}
+    for lv in levels:  # without key statistics: every row group that meets the level, no more
+        n = sum(1 for g in range(pq.read_metadata(old).num_row_groups)
+                if lv in set(pq.ParquetFile(old).read_row_group(g, columns=["level"]).column(0).to_pylist()))
+        assert len(look.candidates(lv, "any key")) == n
+
+
+def _logical(path: Path) -> dict:
+    """What a catalog file holds, read back through DuckDB: views, macros, tables (rows in order)."""
+    c = duckdb.connect(str(path), read_only=True)
+    try:
+        db = c.execute("SELECT current_database()").fetchone()[0]
+        out = {"views": c.execute("SELECT view_name, sql FROM duckdb_views() WHERE NOT internal AND database_name = ? "
+                                  "ORDER BY view_name", [db]).fetchall(),
+               "macros": c.execute("SELECT function_name, function_type, macro_definition, parameters::VARCHAR "
+                                   "FROM duckdb_functions() WHERE database_name = ? AND NOT internal "
+                                   "ORDER BY ALL", [db]).fetchall()}
+        for t in ("catalog_info", "catalog_files", "catalog_artifacts"):
+            out[t] = c.execute(f"SELECT * FROM {t} ORDER BY ALL").fetchall()
+        return out
+    finally:
+        c.close()
+
+
+@pytest.mark.covers("D-01")
+def test_b34_catalog_content_is_the_same_on_two_builds(tokened, tmp_path, record_property):
+    """AGENTS §4.3 for the catalog with its stand-in macros (card B-34): two builds from one manifest hold the
+    same views, macros and tables. The files are not byte-identical, and were not before this card: DuckDB
+    2.0.0 writes a random identifier per file, block checksums over it, and uninitialised padding bytes
+    (measured 2026-11-10, planning/measurements/2026-11-10_token_lookup.md), so equality is checked on what
+    the file holds, and the count of differing bytes is recorded."""
+    paths = [catalog.generate_catalog(tokened["man"], tmp_path / k / "c.duckdb") for k in ("a", "b")]
+    one, two = (_logical(p) for p in paths)
+    assert one == two
+    assert any(name == "bb_seq" and "open_catalog" in body for name, _, body, _ in one["macros"])
+    x, y = (p.read_bytes() for p in paths)
+    record_property("catalog_bytes", json.dumps({"sizes": [len(x), len(y)],
+                                                  "differing": sum(a != b for a, b in zip(x, y))}))
+    assert len(x) == len(y)
 
 
 # --- K-05: hive partition pruning ------------------------------------------------------
