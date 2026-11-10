@@ -2,7 +2,7 @@
 
 Each check returns a list of problems; an empty list passes.
 
-    LY-02  declared sort order holds within each file (and across a stage's shards)
+    LY-02  declared sort order holds within each file (each shard too; none across shards)
     LY-03  min/max statistics on every sort-key column in every row group
     LY-04  no file under 64 MB outside the waivers, unless it is its table's only file in the stage
     C-03   foreign keys resolve (SQL anti-joins over the catalog); `check_shards`: seq_locator and
@@ -173,12 +173,13 @@ def check_search_links(con: duckdb.DuckDBPyConnection) -> list[str]:
 
 
 def check_shards(manifest: dict) -> list[str]:
-    """C-03 for the shards, and LY-02 across them.
+    """C-03 for the shards, and LY-02 inside each.
 
     Every seq_locator row names a shard of the manifest whose `.fai` has a record
     `raw_digest.hex()` of the same length, and every `.fai` record is a locator row for that
-    shard. Records are sorted by name within a shard and across a stage's shards. Each `.gzi`
-    lists exactly the block starts found by walking the block headers.
+    shard. Records are sorted by name within a shard; there is no order across shards (one
+    ingest batch writes one shard, card B-15). Each `.gzi` lists exactly the block starts found
+    by walking the block headers.
     """
     root = Path(manifest["root"])
     problems = []
@@ -194,19 +195,12 @@ def check_shards(manifest: dict) -> list[str]:
             locator[rd.hex()] = n
     for shard in sorted(set(by_shard) - set(shards)):
         problems.append(f"seq_locator names {shard}, which is not in the manifest ({len(by_shard[shard])} rows)")
-    last_by_stage: dict[str, str] = {}
     for shard in shards:
         fai = read_fai(root / (shard + ".fai"))
-        names = [e.name for e in fai]
         bg = BgzfFasta(root / shard)
         if not bg.check_sorted():  # the readers bisect the .fai, so its names must increase
             problems.append(f"{shard}: records not sorted by raw_digest (LY-02)")
         bg.close()
-        stage = shard.split("/")[-2]
-        if names and last_by_stage.get(stage, "") >= names[0]:
-            problems.append(f"{shard}: first record sorts before the previous shard's last (LY-02)")
-        if names:
-            last_by_stage[stage] = names[-1]
         want = by_shard.get(shard, {})
         got = {e.name: e.length for e in fai}
         if got != want:

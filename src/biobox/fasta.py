@@ -9,6 +9,7 @@ unwrapped sequence.
 from __future__ import annotations
 
 import gzip
+from collections.abc import Iterator
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -43,23 +44,36 @@ def _width(lines: list[bytes]) -> int:
     return 0
 
 
-def read(path: Path) -> list[Record]:
-    records: list[Record] = []
+def iter_records(path: Path) -> Iterator[Record]:
+    """The records of `path` one at a time, reading the file as it goes (card B-15).
+
+    Only the record being assembled is held. Lines are taken as `normalized_lines` gives them (CRLF
+    folded to LF, blank lines dropped); `read` is this, listed.
+    """
     header: str | None = None
     seq_lines: list[bytes] = []
-    for ln in normalized_lines(path):
-        if ln.startswith(b">"):
-            if header is not None:
-                records.append(Record(header, b"".join(seq_lines), _width(seq_lines)))
-            header = ln[1:].decode()
-            seq_lines = []
-        else:
-            if header is None:
-                raise ValueError(f"{path}: sequence before the first header")
-            seq_lines.append(ln)
+    with _open(path) as fh:
+        for raw in fh:
+            if not raw.strip():
+                continue
+            ln = raw.rstrip(b"\r\n")
+            if ln.startswith(b">"):
+                if header is not None:
+                    rec = Record(header, b"".join(seq_lines), _width(seq_lines))
+                    seq_lines = []
+                    yield rec
+                header = ln[1:].decode()
+                seq_lines = []
+            else:
+                if header is None:
+                    raise ValueError(f"{path}: sequence before the first header")
+                seq_lines.append(ln)
     if header is not None:
-        records.append(Record(header, b"".join(seq_lines), _width(seq_lines)))
-    return records
+        yield Record(header, b"".join(seq_lines), _width(seq_lines))
+
+
+def read(path: Path) -> list[Record]:
+    return list(iter_records(path))
 
 
 def format_record(header: str, seq: bytes, line_width: int) -> list[bytes]:

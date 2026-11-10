@@ -169,6 +169,28 @@ def test_c03_shard_faults_are_caught(built, tmp_path, fault):
     assert contracts.check_shards({**man, "root": str(root)})
 
 
+@pytest.mark.covers("C-03", "LY-02")
+def test_c03_shards_are_not_ordered_across_each_other(tmp_path):
+    """card B-15: one batch writes one shard, sorted inside; there is no order across shards."""
+    from biobox.l0seq.bgzf import read_fai
+
+    root = tmp_path / "s"
+    ingest([SourceObject(FIX / o["file"], "s", "1") for o in CONTRACT["objects"]], root, "S0", shard_bases=200_000)
+    man = catalog.build_manifest(root, "x")
+    shards = sorted(a["path"] for a in man["artifacts"] if a["path"].endswith(".fa.gz"))
+    names = [[e.name for e in read_fai(root / (s + ".fai"))] for s in shards]
+    assert len(shards) == 3
+    assert any(names[i][-1] >= names[i + 1][0] for i in range(len(shards) - 1))  # precondition
+    assert contracts.check_shards(man) == []
+    # a locator row naming a shard that does not hold the record is caught, on both shards
+    loc = root / next(f["path"] for f in man["files"] if f["table"] == "seq_locator")
+    rows = pq.read_table(loc).to_pylist()
+    rows[0]["shard"], rows[1]["shard"] = rows[1]["shard"], rows[0]["shard"]
+    pq.write_table(pa.Table.from_pylist(rows, schema=table("seq_locator").schema), loc)
+    probs = contracts.check_shards(man)
+    assert len(probs) == 2 and all(".fai vs seq_locator" in p for p in probs), probs
+
+
 def test_c05_coordinates_in_bounds(built):
     _, _, con = built
     assert contracts.check_coordinates(con) == []  # the wrap rule is exercised on the golden set (R3)
