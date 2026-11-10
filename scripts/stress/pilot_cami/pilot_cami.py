@@ -185,7 +185,7 @@ if not R["steps"]["ingest"].get("error"):
 
 # --- 2a gene-calling rate on a seeded 2% contig sample, and the plan -----------------
 def rate_probe():
-    store = SeqStore(ROOT)
+    store = SeqStore(ROOT, [STAGE])  # the pilot's one stage (card B-28)
     rng = random.Random(20261109)
     sample = rng.sample(default, max(1, round(a.probe_fraction * len(default))))
     t0 = time.perf_counter()
