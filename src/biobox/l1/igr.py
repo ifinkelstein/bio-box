@@ -9,13 +9,15 @@ the legacy `left_slot`, `right_slot` stay until card B-17). On linear contigs th
 null flank; on circular contigs the run across the origin has `end > contig_len`
 (C-05), and a contig with no genes is one IGR with both flanks null.
 
-Writes `<root>/l0seq/igr/igr_version=<v>/stage=<S>/part-0.parquet`.
+Writes `<root>/l0seq/igr/igr_version=<v>/stage=<S>/part-0.parquet`, where `<v>` is
+`<tape_version>-igr1` (card B-20) and the tape version's `tape_version_def` file is made sure to exist.
 """
 
 from __future__ import annotations
 
 import shutil
 import tempfile
+from collections.abc import Iterable
 from pathlib import Path
 
 import duckdb
@@ -24,13 +26,18 @@ import pyarrow as pa
 from biobox import io
 from biobox.l0seq.inputs import iter_genome_input
 from biobox.l1.genecall import DUCK_MEMORY_LIMIT, GENE_CALL_VERSION
+from biobox.l3.tapes import ensure_def, tape_version  # tapes.py does not import this module: no cycle
 from biobox.registry.schemas import table
 
 IGR_RULE = "igr1"
 
 
-def igr_version(gene_call_version: str = GENE_CALL_VERSION) -> str:
-    return f"{gene_call_version}-{IGR_RULE}"
+def igr_version(producers: str | Iterable[str] = GENE_CALL_VERSION) -> str:
+    """`<tape_version>-igr1`: the IGR version names the producer set through its tape version, so IGRs of
+    a second producer set land beside the first. `producers` is a list of producer names, or (the old
+    single-argument meaning) a plain string, which is the single producer `[gene_call_version]`."""
+    names = [producers] if isinstance(producers, str) else list(producers)
+    return f"{tape_version(names)}-{IGR_RULE}"
 
 
 def igrs_of_contig(slots: list[tuple[int, int, int]], length: int, circular: bool) -> list[tuple[int, int, int | None, int | None]]:
@@ -93,12 +100,14 @@ def run(root: Path, stage: str, circular: set[bytes] | frozenset | None = None,
     """
     root = Path(root)
     producers = [gene_call_version] if producers is None else list(producers)
+    v = igr_version(producers)
     files = []
     for p in producers:
         found = sorted((root / f"l1/feature/producer={p}/stage={stage}").glob("part-*.parquet"))
         if not found:
             raise FileNotFoundError(f"no feature files for producer {p} at stage {stage}")
         files += found
+    ensure_def(root, producers)  # write the tape version's definition, or verify the stored one
     occ = sorted((root / f"l1/protein_occurrence/gene_call_version={gene_call_version}/stage={stage}").glob("part-*.parquet"))
     idx = root / f"l0seq/contig_index/stage={stage}/part-0.parquet"
     scratch = Path(tempfile.mkdtemp(prefix="biobox-igr-", dir=tmp))
@@ -150,7 +159,6 @@ def run(root: Path, stage: str, circular: set[bytes] | frozenset | None = None,
             if out:
                 yield pa.RecordBatch.from_pylist(out, schema=spec.schema)
 
-        v = igr_version(gene_call_version)
         io.write_table(batches(), spec, root / f"l0seq/igr/igr_version={v}/stage={stage}/part-0.parquet")
         return stats
     finally:

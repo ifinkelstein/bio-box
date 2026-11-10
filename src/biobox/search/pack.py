@@ -75,7 +75,7 @@ def _occurrence_files(root: Path, gcv: str) -> list[Path]:
 
 
 def _igr_files(root: Path, gcv: str) -> list[Path]:
-    return sorted((root / "l0seq/igr").glob(f"igr_version={igr_version(gcv)}/stage=*/part-*.parquet"))
+    return sorted((root / "l0seq/igr").glob(f"igr_version={igr_version([gcv])}/stage=*/part-*.parquet"))
 
 
 def _tape_files(root: Path, gcv: str) -> list[Path]:
@@ -238,7 +238,7 @@ def build(root: Path, release: str, gene_call_version: str = GENE_CALL_VERSION,
         "pack_format": PACK_FORMAT,
         "release_id": release,
         "gene_call_version": gcv,
-        "igr_version": igr_version(gcv),
+        "igr_version": igr_version([gcv]),
         "z": Z,
         "rules": {"igr_min_nt": IGR_MIN_NT, "dark_orf_min_aa": orfs.MIN_AA, "dark_orf_end_bp": orfs.END_BP,
                   "dark_orf_max_gene_overlap": orfs.MAX_GENE_OVERLAP, "shard_text_bytes": shard_text_bytes},

@@ -5,15 +5,14 @@ add one 40 nt kind-2 feature inside an IGR of the M. genitalium contig as a seco
 rebuild IGRs and tapes for both producers. Everything keyed by `feature_uid` must be unchanged; only the
 ordinals inside the new tape version move (by one, after the new feature).
 
-Finding: `igr.igr_version` does not depend on the producer set, so a second producer set would write the same
-IGR file as the first and the writer refuses to overwrite it. The rebuild therefore runs in a COPY of the store
-with the first IGR output removed; the IGR file of the copy is compared by rows, every other file by sha256.
+Card B-20: `igr.igr_version` names the producer set (`<tape_version>-igr1`), so both producer sets are built in
+ONE store. Every file that existed before the second build is byte-identical afterwards (the first IGR file
+included); the second set's IGR file sits beside it under its own `igr_version`.
 """
 
 from __future__ import annotations
 
 import hashlib
-import shutil
 from pathlib import Path
 
 import pyarrow as pa
@@ -41,12 +40,12 @@ def _rows(root: Path, glob: str) -> list[dict]:
     return [r for f in sorted(root.glob(glob)) for r in pq.read_table(f, partitioning=None).to_pylist()]
 
 
-def _snapshot(root: Path) -> dict:
+def _snapshot(root: Path, producers: list[str]) -> dict:
     return {
         "feature": _rows(root, "l1/feature/producer=*/stage=S0/part-*.parquet"),
         "feature_protein": _rows(root, f"l1/feature_protein/gene_call_version={V}/stage=S0/part-*.parquet"),
         "protein_occurrence": _rows(root, f"l1/protein_occurrence/gene_call_version={V}/stage=S0/part-*.parquet"),
-        "igr": _rows(root, "l0seq/igr/igr_version=*/stage=S0/part-*.parquet"),
+        "igr": _rows(root, f"l0seq/igr/igr_version={igr.igr_version(producers)}/stage=S0/part-*.parquet"),
     }
 
 
@@ -83,7 +82,7 @@ def stability(tmp_path_factory):
     call_genes(root, "S0", genomes)
     igr.run(root, "S0", circ)
     tapes.run(root, "S0", circ)
-    before = _snapshot(root)
+    before = _snapshot(root, [V])
     before_tapes = _tapes(root, [V])
     before_files = _digests(root)
 
@@ -94,9 +93,7 @@ def stability(tmp_path_factory):
     s, e, kind = target["start"] + 80, target["start"] + 120, ids.KIND["ncrna"]
     fu = ids.feature_uid(mg, s, e, 1, kind)
 
-    second = base / "second"
-    shutil.copytree(root, second)
-    shutil.rmtree(second / "l0seq/igr")  # finding: the IGR version ignores the producer set (see the docstring)
+    second = root  # one store: the second producer set is built beside the first
     spec = table("feature")
     io.write_table([pa.RecordBatch.from_pylist(
         [{"feature_uid": fu, "contig_uid": mg, "start": s, "end": e, "strand": 1, "kind": kind}], schema=spec.schema)],
@@ -106,7 +103,7 @@ def stability(tmp_path_factory):
     tapes.run(second, "S0", circ, producers=producers)
     return {"mg": mg, "target": target, "s": s, "e": e, "kind": kind, "fu": fu, "circ": circ,
             "before": before, "before_tapes": before_tapes, "before_files": before_files,
-            "after": _snapshot(second), "after_tapes": _tapes(second, producers), "after_files": _digests(second),
+            "after": _snapshot(second, producers), "after_tapes": _tapes(second, producers), "after_files": _digests(second),
             "second": second, "first": root}
 
 
@@ -116,14 +113,13 @@ def test_mr20_feature_addition_changes_nothing_it_does_not_touch(stability):
     mg, fu, s, e = d["mg"], d["fu"], d["s"], d["e"]
     assert tapes.tape_version([V]) != tapes.tape_version([V, NEW])
 
-    # 1. every earlier file is byte-identical (the IGR file is the one rewritten in the copy; see 4)
-    igr_files = {k for k in d["before_files"] if "/igr/" in k or k.startswith("l0seq/igr/")}
-    assert len(igr_files) == 1
+    # 1. every file that existed before the second build is byte-identical afterwards, with no exception
+    assert len([k for k in d["before_files"] if k.startswith("l0seq/igr/")]) == 1
     for k, h in d["before_files"].items():
-        if k not in igr_files:
-            assert d["after_files"][k] == h, k
+        assert d["after_files"][k] == h, k
     added_files = set(d["after_files"]) - set(d["before_files"])
-    assert added_files and all(k.startswith(("l3/", "l1/feature/producer=test-ncrna/", "ledger/")) for k in added_files), added_files
+    assert added_files and all(k.startswith(("l3/", "l1/feature/producer=test-ncrna/", "ledger/", "l0seq/igr/"))
+                               for k in added_files), added_files
     assert not any("tape_version=" + tapes.tape_version([V]) in k for k in added_files)
 
     # 2. feature: every earlier row unchanged, exactly one new row across producers
@@ -160,6 +156,19 @@ def test_mr20_feature_addition_changes_nothing_it_does_not_touch(stability):
     assert second["left_feature_uid"] == fu and second["right_feature_uid"] == target["right_feature_uid"]
     assert first["left_slot"] == target["left_slot"] and second["right_slot"] == target["right_slot"]
     assert first["right_slot"] is None and second["left_slot"] is None  # the ncRNA is not a gene
+
+
+@pytest.mark.covers("MR-20")
+def test_b20_the_two_igr_files_sit_under_different_igr_versions(stability):
+    d = stability
+    v1, v2 = igr.igr_version([V]), igr.igr_version([V, NEW])
+    assert v1 != v2 and v1 == f"{tapes.tape_version([V])}-igr1" and v2 == f"{tapes.tape_version([V, NEW])}-igr1"
+    p1 = f"l0seq/igr/igr_version={v1}/stage=S0/part-0.parquet"
+    p2 = f"l0seq/igr/igr_version={v2}/stage=S0/part-0.parquet"
+    assert p1 in d["before_files"] and p2 not in d["before_files"]
+    assert p2 in d["after_files"]
+    assert d["after_files"][p1] == d["before_files"][p1]  # the first file's sha256 is unchanged
+    assert {k for k in d["after_files"] if k.startswith("l0seq/igr/")} == {p1, p2}
 
 
 @pytest.mark.covers("MR-20")
