@@ -33,6 +33,8 @@ Writes, all through `biobox.io.write_table`:
     l3/tape_version_def/tape_version=<tv>/part-0.parquet    the producers, once per tape version
     ledger/stage=<S>/step=tape-<tv>/part-0.parquet
 
+under the output root `out` (the data root by default; card C-08: `$BIOBOX_STAGING` under run-step).
+
 Bounded memory (AGENTS §4.1): DuckDB sorts the features (spilling into a private temporary
 directory) and an Arrow reader hands them over in `contig_uid` order; one contig's features are
 held at a time, and a row group holds whole contigs and at most `max_slots` slots (AGENTS §4.6).
@@ -133,44 +135,58 @@ def def_path(root: Path, tv: str) -> Path:
     return Path(root) / table("tape_version_def").location / f"tape_version={tv}" / "part-0.parquet"
 
 
-def _stored_producers(root: Path, tv: str, producers: list[str]) -> bool:
-    """True if the tape version's definition exists; raises if it lists other producers."""
-    path = def_path(root, tv)
-    if not path.exists():
-        return False
-    have = sorted(pq.read_table(path, columns=["producer"], partitioning=None).column("producer").to_pylist())
-    if have != sorted(producers):
-        raise ValueError(f"{path}: tape_version_def of {tv} lists {have}, not {sorted(producers)}")
-    return True
+def _stored_producers(root: Path, tv: str, producers: list[str], out: Path | None = None) -> bool:
+    """True if the tape version's definition exists in `root` or, when given, in `out`; raises if it
+    lists other producers."""
+    for base in dict.fromkeys([Path(root)] + ([] if out is None else [Path(out)])):
+        path = def_path(base, tv)
+        if not path.exists():
+            continue
+        have = sorted(pq.read_table(path, columns=["producer"], partitioning=None).column("producer").to_pylist())
+        if have != sorted(producers):
+            raise ValueError(f"{path}: tape_version_def of {tv} lists {have}, not {sorted(producers)}")
+        return True
+    return False
 
 
-def ensure_def(root: Path, producers: list[str]) -> str:
+def ensure_def(root: Path, producers: list[str], out: Path | None = None) -> str:
     """Make sure the tape version of `producers` has its `tape_version_def` file: write it if absent,
     verify it lists the same producers if present (ValueError otherwise). Returns the tape version.
-    Shared by `tapes.run` and `biobox.l1.igr.run` (card B-20)."""
+    Shared by `tapes.run` and `biobox.l1.igr.run` (card B-20). A definition in `root` (or already in
+    `out`) is verified and never written again; an absent one is written under `out` (default `root`;
+    card C-08), so run-step publishes it with the step that first needs it."""
     tv = tape_version(producers)
-    if not _stored_producers(root, tv, producers):
-        io.write_table([pa.table({"producer": sorted(producers)})], table("tape_version_def"), def_path(root, tv))
+    if not _stored_producers(root, tv, producers, out):
+        io.write_table([pa.table({"producer": sorted(producers)})], table("tape_version_def"),
+                       def_path(root if out is None else out, tv))
     return tv
 
 
 def run(root: Path, stage: str, circular: set[bytes] | frozenset | None = None,
         gene_call_version: str = GENE_CALL_VERSION, producers: list[str] | None = None,
-        max_file_bytes: int = layout.MAX_FILE_BYTES, max_slots: int = MAX_SLOTS, tmp=None) -> dict:
+        max_file_bytes: int = layout.MAX_FILE_BYTES, max_slots: int = MAX_SLOTS, tmp=None,
+        out: Path | None = None) -> dict:
     """Write the stage's tapes for the tape version of `producers` (default `[gene_call_version]`).
 
     `circular`: the circular contig_uids; None reads the stage's `genome_input` table. Proteins come
     from `feature_protein` of `gene_call_version` (CDS slots only). `tmp` holds DuckDB's private
-    spill directory (system temp by default).
+    spill directory (system temp by default; under neither the root nor `out`).
+
+    Inputs are read from `root`; the tapes, the ledger and (when the root has none) the tape version's
+    definition are written under `out` (default `root`; card C-08), and the ledger is read back from
+    the parts just written there. Refuses, before any work, when the tapes or the ledger of this stage
+    and tape version already hold a file in `root` or `out`.
     """
     root = Path(root)
+    out = root if out is None else Path(out)
     producers = [gene_call_version] if producers is None else list(producers)
     tv = tape_version(producers)
     if max_slots < 1:
         raise ValueError("max_slots must be positive")
-    if tmp is not None and Path(tmp).resolve().is_relative_to(root.resolve()):
-        raise ValueError(f"{tmp}: the scratch directory may not lie under the data root")
-    _stored_producers(root, tv, producers)  # fail before any work if the stored definition disagrees
+    ledger.check_scratch(tmp, root, out)
+    _stored_producers(root, tv, producers, out)  # fail before any work if the stored definition disagrees
+    ledger.refuse_written(root, out, [f"l3/tapes/tape_version={tv}/stage={stage}",
+                                      f"ledger/stage={stage}/step=tape-{tv}"], f"tapes {tv} of stage {stage}")
     feats = []
     for p in sorted(producers):
         found = io.part_files(root / f"l1/feature/producer={p}/stage={stage}")
@@ -257,14 +273,14 @@ def run(root: Path, stage: str, circular: set[bytes] | frozenset | None = None,
     def est(b: pa.RecordBatch) -> np.ndarray:
         return EST_ROW_BYTES + EST_SLOT_BYTES * b.column("n_slots").to_numpy(zero_copy_only=False).astype(np.float64)
 
-    base = root / f"l3/tapes/tape_version={tv}/stage={stage}"
+    base = out / f"l3/tapes/tape_version={tv}/stage={stage}"
     try:
         paths = io.write_parts(batches(), spec, base, est, max_file_bytes, max_slots=max_slots,
                                slots_column="n_slots", statistics=["n_slots", "contig_len"])
     finally:
         con.close()
         shutil.rmtree(scratch, ignore_errors=True)
-    ensure_def(root, producers)
+    ensure_def(root, producers, out)
 
     def ledger_rows() -> Iterator[dict]:
         """Per contig: slots in, all kept; read back from the parts just written, in contig_uid order."""
@@ -273,5 +289,5 @@ def run(root: Path, stage: str, circular: set[bytes] | frozenset | None = None,
                 for cu, n in zip(b.column("contig_uid").to_pylist(), b.column("n_slots").to_pylist()):
                     yield ledger.row(cu, "contig", n, n, tools=tools)
 
-    ledger.write(root, stage, f"tape-{tv}", ledger_rows())  # per tape version: a second version never rewrites it
+    ledger.write(out, stage, f"tape-{tv}", ledger_rows())  # per tape version: a second version never rewrites it
     return {**counts, "files": len(paths), "tape_version": tv}

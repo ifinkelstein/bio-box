@@ -271,8 +271,13 @@ def _write_protein_seq(con, sql: str, base: Path, width: int, max_file_bytes: in
 
 def run(root: Path, stage: str, genomes: Iterable[GenomeInput] | None = None, version: str = GENE_CALL_VERSION,
         prefix_width: int | None = None, max_file_bytes: int = layout.MAX_FILE_BYTES, tmp=None,
-        workers: int = 1, seq_stages: list[str] | None = None) -> dict:
+        workers: int = 1, seq_stages: list[str] | None = None, out: Path | None = None) -> dict:
     """Call genes and write the stage's tables. `prefix_width` (0, 1, 2) overrides the size rule.
+
+    `out` (card C-08): the output root, default `root`. Sequences and `genome_input` are read from
+    `root`; every table and the ledger are written under `out` (`$BIOBOX_STAGING` under run-step).
+    Refuses, before any work, when one of the stage's gene-call partitions already holds a file in
+    `root` or `out`; `tmp` may lie under neither.
 
     `genomes`: any iterable, consumed once; None reads the stage's `genome_input` table. `tmp`: the
     directory that holds the private scratch directory (system temp by default; never the data root).
@@ -283,10 +288,14 @@ def run(root: Path, stage: str, genomes: Iterable[GenomeInput] | None = None, ve
     A contig in none of them raises KeyError naming the stages read.
     """
     root = Path(root)
+    out = root if out is None else Path(out)
     if workers < 1:
         raise ValueError(f"workers must be at least 1, got {workers}")
-    if tmp is not None and Path(tmp).resolve().is_relative_to(root.resolve()):
-        raise ValueError(f"{tmp}: the scratch directory may not lie under the data root")
+    ledger.check_scratch(tmp, root, out)
+    gcv = f"gene_call_version={version}/stage={stage}"
+    ledger.refuse_written(root, out, [f"l1/feature/producer={version}/stage={stage}", f"l1/feature_protein/{gcv}",
+                                      f"l1/protein_occurrence/{gcv}", f"l0seq/protein_seq/{gcv}",
+                                      f"ledger/stage={stage}/step=genecall"], f"gene calls of stage {stage}")
     store = SeqStore(root, [stage] if seq_stages is None else seq_stages)
     scratch = Path(tempfile.mkdtemp(prefix="biobox-genecall-", dir=tmp))
     try:
@@ -316,7 +325,7 @@ def run(root: Path, stage: str, genomes: Iterable[GenomeInput] | None = None, ve
             calls_iter.close()
             for s in (gs, cs, ks):
                 s.close()
-        n_prot = _publish(root, stage, version, scratch, prefix_width, max_file_bytes)
+        n_prot = _publish(out, stage, version, scratch, prefix_width, max_file_bytes)
         return {"genes": n_genes, "distinct_proteins": n_prot, "modes": sorted(modes), "wrapping_genes": n_wrap}
     finally:
         store.close()

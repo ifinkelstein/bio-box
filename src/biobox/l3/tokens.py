@@ -47,7 +47,7 @@ from pathlib import Path
 import duckdb
 import pyarrow.parquet as pq
 
-from biobox import catalog, io, layout
+from biobox import catalog, io, layout, ledger
 from biobox.l1.genecall import DUCK_MEMORY_LIMIT, GENE_CALL_VERSION
 from biobox.l3.tapes import MAX_SLOTS, tape_version
 from biobox.registry.schemas import table
@@ -152,27 +152,34 @@ def _write_parts(con, sql: str, spec_name: str, base: Path, est_row: int, max_fi
 
 def run(root: Path, release: str, stages: list[str], gene_call_version: str = GENE_CALL_VERSION,
         libraries: list[str] | None = None, producers: list[str] | None = None,
-        max_file_bytes: int = layout.MAX_FILE_BYTES, max_slots: int = MAX_SLOTS, tmp=None) -> dict:
+        max_file_bytes: int = layout.MAX_FILE_BYTES, max_slots: int = MAX_SLOTS, tmp=None,
+        out: Path | None = None) -> dict:
     """Write the release's `token_dict` and the `tape_tokens` of the tape version of `producers`.
 
     `stages`: the release's stages (card B-25); only their tapes and domains are read, a listed stage
     without tapes raises FileNotFoundError, and the release's `release_def` is written, or checked to
     list the same stages (`catalog.define_release`). `libraries`: the domain libraries in precedence
     order (default: every library with domains in `stages`, by name). `tmp` holds DuckDB's private
-    scratch directory (system temp by default; never the data root).
+    scratch directory (system temp by default; never the data root nor `out`).
+
+    Inputs (tapes, domains, the release's clusters) are read from `root`; both tables and (when the
+    root has none) the `release_def` are written under `out` (default `root`; card C-08). Refuses,
+    before any work, when either table of this release already holds a file in `root` or `out`.
     """
     root = Path(root)
+    out = root if out is None else Path(out)
     stages = catalog.check_stages(stages)
     libraries = libraries_in(root, stages) if libraries is None else list(libraries)
     if len(libraries) > 31:
         raise ValueError("more than 31 libraries: widen the token source field")
     if max_slots < 1:
         raise ValueError("max_slots must be positive")
-    if tmp is not None and Path(tmp).resolve().is_relative_to(root.resolve()):
-        raise ValueError(f"{tmp}: the scratch directory may not lie under the data root")
+    ledger.check_scratch(tmp, root, out)
     tv = tape_version_of(gene_call_version, producers)
+    ledger.refuse_written(root, out, [f"l3/token_dict/release={release}", f"l3/tape_tokens/tape_version={tv}/release={release}"],
+                          f"tokens of release {release}")
     tape_files = _tape_files(root, tv, stages)
-    catalog.define_release(root, release, stages)
+    catalog.define_release(root, release, stages, out=out)
 
     # the stages' tapes, numbered by file and row: rows with equal contig_uid keep that order
     tape_src = _scan(tape_files, "contig_uid, protein_uids",
@@ -239,7 +246,7 @@ def run(root: Path, release: str, stages: list[str], gene_call_version: str = GE
             con, f"SELECT k.token_id, l.level, s.name AS source, k.key, k.n_slots FROM read_parquet({keys}) k "
                  f"JOIN (VALUES {level_names}) l(lv, level) ON l.lv = k.lv "
                  f"JOIN (VALUES {names}) s(src, name) ON s.src = k.src ORDER BY k.token_id",
-            "token_dict", root / f"l3/token_dict/release={release}", EST_DICT_ROW, max_file_bytes,
+            "token_dict", out / f"l3/token_dict/release={release}", EST_DICT_ROW, max_file_bytes,
             statistics=["n_slots"])
         est_tok = EST_TOKEN_ROW + EST_TOKEN_SLOT * max(1, n_slots // max(1, n_tapes))
         n_tok = _write_parts(
@@ -255,7 +262,7 @@ def run(root: Path, release: str, stages: list[str], gene_call_version: str = GE
                  f"  LEFT JOIN read_parquet({keys}) k90 ON k90.lv = {lv_90} AND k90.key = s.nr90_key "
                  "  GROUP BY s.fidx, s.rn, s.contig_uid) "
                  "ORDER BY contig_uid, fidx, rn",
-            "tape_tokens", root / f"l3/tape_tokens/tape_version={tv}/release={release}", est_tok, max_file_bytes,
+            "tape_tokens", out / f"l3/tape_tokens/tape_version={tv}/release={release}", est_tok, max_file_bytes,
             max_slots=max_slots, slots_column="nr90_tokens")
     finally:
         con.close()

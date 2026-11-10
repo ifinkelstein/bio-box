@@ -23,7 +23,7 @@ from pathlib import Path
 import duckdb
 import pyarrow as pa
 
-from biobox import io, layout
+from biobox import io, layout, ledger
 from biobox.l0seq.inputs import iter_genome_input
 from biobox.l1.genecall import DUCK_MEMORY_LIMIT, GENE_CALL_VERSION
 from biobox.l3.tapes import ensure_def, tape_version  # tapes.py does not import this module: no cycle
@@ -95,23 +95,32 @@ def _contig_igrs(cu: bytes, length: int, feats: list[tuple], circular: bool) -> 
 
 def run(root: Path, stage: str, circular: set[bytes] | frozenset | None = None,
         gene_call_version: str = GENE_CALL_VERSION, producers: list[str] | None = None, tmp=None,
-        max_file_bytes: int = layout.MAX_FILE_BYTES) -> dict:
+        max_file_bytes: int = layout.MAX_FILE_BYTES, out: Path | None = None) -> dict:
     """Build IGRs for every contig of a stage from the `feature` rows of `producers` and contig_index.
 
     `circular`: the circular contig_uids; None reads the stage's `genome_input` table. `producers`:
     default `[gene_call_version]`; `gene_call_version` names the default producer only.
     Contigs are streamed in `contig_uid` order; one contig's features are held at a time.
+
+    Inputs are read from `root`; the IGRs and (when the root has none) the tape version's definition
+    are written under `out` (default `root`; card C-08). Refuses, before any work, when the stage's
+    IGR partition already holds a file in `root` or `out`; with `out` given, `tmp` may lie under
+    neither (a direct call into the root keeps its earlier rule: none).
     """
     root = Path(root)
+    if out is not None:
+        ledger.check_scratch(tmp, root, out)
+    out = root if out is None else Path(out)
     producers = [gene_call_version] if producers is None else list(producers)
     v = igr_version(producers)
+    ledger.refuse_written(root, out, [f"l0seq/igr/igr_version={v}/stage={stage}"], f"IGRs {v} of stage {stage}")
     files = []
     for p in producers:
         found = io.part_files(root / f"l1/feature/producer={p}/stage={stage}")
         if not found:
             raise FileNotFoundError(f"no feature files for producer {p} at stage {stage}")
         files += found
-    ensure_def(root, producers)  # write the tape version's definition, or verify the stored one
+    ensure_def(root, producers, out)  # write the tape version's definition, or verify the stored one
     idx = io.part_files(root / f"l0seq/contig_index/stage={stage}")
     if not idx:
         raise FileNotFoundError(f"no contig_index files at stage {stage}")
@@ -163,7 +172,7 @@ def run(root: Path, stage: str, circular: set[bytes] | frozenset | None = None,
             if out:
                 yield pa.RecordBatch.from_pylist(out, schema=spec.schema)
 
-        io.write_parts(batches(), spec, root / f"l0seq/igr/igr_version={v}/stage={stage}", EST_ROW_BYTES, max_file_bytes)
+        io.write_parts(batches(), spec, out / f"l0seq/igr/igr_version={v}/stage={stage}", EST_ROW_BYTES, max_file_bytes)
         return stats
     finally:
         con.close()
