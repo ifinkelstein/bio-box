@@ -537,6 +537,7 @@ Accept: the Pfam `RNA_pol` model given as a file returns the same hits as the sa
 **M** · Depends: none
 Files: `src/biobox/search/pack.py`, `src/biobox/search/runner.py`, `src/biobox/cli.py`, `src/biobox/catalog.py` (`attach_search`), tests
 Do: the pack is built once per release as a step of `build-stage` (card C-04) into `search_pack/release=<R>/` and is read-only afterwards; a run's output directory is `--out DIR` (default: a per-user directory from the host profile, never the data root), and `attach_search` takes a list of run directories.
+Amended 2026-11-10 after the agent's stop (probe on the pod: the fixture pack is 7 files, 2.14 MB, byte-identical across two builds; the size rule refuses it at the 64 MiB floor, and would at any scale because the pack manifest is a few KB): the pack does **not** go into the data root and is not a `build-stage` step or a registered artifact. It is a rebuildable cache of a release in a pack directory outside the root (`--pack-dir`, default under the profile's `tmp`), at `<pack-dir>/release=<R>/<pack_id>/`, written once and never overwritten. A search whose pack is missing exits 2 and names the command that builds it. The sentence above about `search_pack/release=<R>/` under the root is superseded.
 Accept: a full run against a read-only store root succeeds and writes nothing under it.
 
 ### W-04 Worker threads, exit and kill labelling
