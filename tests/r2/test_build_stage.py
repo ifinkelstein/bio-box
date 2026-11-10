@@ -443,8 +443,9 @@ def test_shard_steps_alive_at_once_never_exceed_the_jobs_and_each_takes_its_thre
 
 def test_shards_are_planned_at_80_percent_of_the_budget(direct, sharded):
     assert bs.SHARD_MARGIN == 0.8
-    # derived: 300 CPU-minutes × 0.8 / 7.30 CPU-minutes per million residues = 32,876,712.3 residues
-    assert bs.shard_residues(dataclasses.replace(direct["prof"], cpu_min_per_process=300)) == 32_876_712
+    # derived: 300 CPU-minutes × 0.8 / 7.96 CPU-minutes per million residues = 30,150,753.8 residues (the rate of
+    # C-10's P1 scan; card C-13 migrated this from 7.30 and 32,876,712)
+    assert bs.shard_residues(dataclasses.replace(direct["prof"], cpu_min_per_process=300)) == 30_150_753
     prof = small_budget(direct)
     plan = domains.read_plan(sharded[0], "S0", "test", "1")
     assert plan["shard_residues"] == bs.shard_residues(prof)
@@ -946,3 +947,138 @@ def test_c12_a_record_without_a_run_checksum_is_scanned_again_and_accepted_with_
     err = capsys.readouterr().err
     assert shard(3) in err and "no run sha256" in err
     check_stage_files(direct, root)
+
+
+# --- defects of the first real build (card C-13, evidence planning/measurements/2026-11-10_build_stage_pod.md) -----
+
+
+def snap_after(direct, name: str) -> dict[str, str]:
+    """The direct build's root as it stood after step `name`."""
+    return c08.tree(direct["snaps"][c08.NAMES.index(name)])
+
+
+@pytest.mark.covers("C-13", "D-03")
+def test_c13_each_step_has_its_own_scratch_and_its_next_attempt_removes_what_a_killed_attempt_left(direct, tmp_path):
+    """C-10: a clustering step stopped by `systemctl --user stop` left 1.2 GB in the shared scratch directory, which
+    nothing removed (*measured*). Each step that takes `--tmp` now has its own directory, `<scratch>/<stage>.<step>`;
+    the next attempt of that step removes it before the step starts, and a step that succeeds leaves none. Here the
+    first attempt of ingest is killed (it leaves a builder's scratch directory and exits 143, as run-step does after
+    a SIGTERM); the second finds its directory empty and publishes."""
+    root, prof = tmp_path / "root", direct["prof"]
+    b = build_of(direct, root)
+    scratch = bs.scratch_of(prof, b)
+    with_tmp = [s for s in bs.steps(prof, b) if s.argv and "--tmp" in s.argv]
+    assert {s.name for s in with_tmp} >= {"ingest", "genecall", "igr", "tapes", "cluster", "tokens", "postings", "dim"}
+    for s in with_tmp:
+        assert s.argv[s.argv.index("--tmp") + 1] == str(scratch / f"{s.run_stage}.{s.name}"), s.name
+    mine = scratch / "S0.ingest"
+    left = mine / "biobox-ingest-killed"
+    attempts: list[str] = []
+
+    def killed_once(prof_, root_, stage, step, cmd, **kw):
+        if step == "ingest":
+            attempts.append(step)
+            if len(attempts) == 1:
+                left.mkdir(parents=True)
+                (left / "pass1.parquet").write_bytes(b"x" * 4096)  # what a builder killed mid-step leaves
+                return 143
+            assert mine.is_dir() and not any(mine.iterdir()), "the earlier attempt's scratch is still there"
+        return runner(prof_, root_, stage, step, cmd, **kw)
+
+    def stop(point: str) -> None:
+        if point == "after:ingest":
+            raise Killed(point)
+
+    assert bs.build_stage(prof, b, run=killed_once) == 143
+    assert left.is_dir()  # left until the step's next attempt (or by hand)
+    with pytest.raises(Killed):
+        bs.build_stage(prof, b, run=killed_once, _hook=stop)
+    assert attempts == ["ingest", "ingest"]
+    assert not mine.exists()  # the step succeeded: its scratch is gone
+    assert record_names(root) == {"stage=S0/inputs", "stage=S0/ingest"}
+
+
+@pytest.mark.covers("C-13", "D-03")
+def test_c13_a_stop_inside_a_step_discards_its_finished_work_and_the_next_call_runs_it_again(direct, tmp_path, capsys):
+    """C-10 found no fixture test with `STOP` created *during* a step (the one above creates it between steps). The
+    documented rule (card C-02, step 6): the step's command finishes, run-step publishes nothing of it, leaves its
+    staging and exits 75; build-stage stops there; the next call, `STOP` removed, runs that step again from the start
+    (on the pod: S1a's gene calling, 57.7 s and 4.98 CPU-minutes, ran twice). Here genecall's command creates `STOP`
+    as it starts and then runs to the end."""
+    root, prof = tmp_path / "root", direct["prof"]
+    stop_then = ("import pathlib, subprocess, sys; pathlib.Path(sys.argv[1]).write_text(''); "
+                 "sys.exit(subprocess.call(sys.argv[2:]))")
+
+    def stop_inside_genecall(prof_, root_, stage, step, cmd, **kw):
+        if step == "genecall":
+            cmd = [sys.executable, "-c", stop_then, str(Path(root_) / "STOP"), *cmd]
+        return runner(prof_, root_, stage, step, cmd, **kw)
+
+    assert bs.build_stage(prof, build_of(direct, root), run=stop_inside_genecall) == runstep.EXIT_STOP
+    assert "STOP appeared; not publishing S0.genecall" in capsys.readouterr().err
+    assert record_names(root) == {"stage=S0/inputs", "stage=S0/ingest"}
+    assert {k: v for k, v in c08.tree(root).items() if k != "STOP"} == snap_after(direct, "ingest")
+    staged = Path(prof.tmp) / "staging" / "S0.genecall"
+    assert any(p.is_file() for p in staged.rglob("*")), "the finished work is left in staging, not published"
+    (root / "STOP").unlink()
+    started: list[str] = []
+
+    def recording(prof_, root_, stage, step, cmd, **kw):
+        if not (Path(root_) / "runs" / f"stage={stage}" / f"{step}.json").exists():
+            started.append(step)
+        return runner(prof_, root_, stage, step, cmd, **kw)
+
+    def after_genecall(point: str) -> None:
+        if point == "after:genecall":
+            raise Killed(point)
+
+    with pytest.raises(Killed):
+        bs.build_stage(prof, build_of(direct, root), run=recording, _hook=after_genecall)
+    assert started == ["genecall"]  # inputs and ingest skipped; genecall run again from the start
+    assert c08.tree(root) == snap_after(direct, "genecall")
+
+
+def run_cli(*argv: str) -> int:
+    return cli.main([str(a) for a in argv])
+
+
+@pytest.mark.covers("C-13", "LY-10")
+def test_c13_release_verify_passes_a_built_release_and_fails_a_damaged_copy(built, tmp_path, capsys):
+    assert run_cli("release", "verify", "--root", built, "--release", REL) == 0
+    out = capsys.readouterr().out
+    assert f"release {REL}: verified" in out
+    root = tmp_path / "root"
+    shutil.copytree(built, root, symlinks=True)
+    victim = catalog.read_manifest(catalog.manifest_path(root, REL))["files"][0]["path"]
+    data = bytearray((root / victim).read_bytes())
+    data[len(data) // 2] ^= 0xFF
+    (root / victim).write_bytes(bytes(data))
+    assert run_cli("release", "verify", "--root", root, "--release", REL) == 1
+    assert f"sha256 differs: {victim}" in capsys.readouterr().out
+    assert run_cli("release", "verify", "--root", root, "--release", "rNo.1") == 1  # no manifest: a failure
+    assert "manifests/release=rNo.1.json" in capsys.readouterr().out
+
+
+@pytest.mark.covers("C-13", "R-09")
+def test_c13_release_verify_checks_a_later_release_against_a_named_previous_one(built, tmp_path, capsys):
+    """`--previous P`: every file of P's manifest outside P's own `release=` partition is in the release's manifest
+    with the same sha256 (`contracts.check_append_only`). The later release here is a second release over the same
+    stage, defined and given its manifest directly; then P's manifest is made to list one stage file with another
+    sha256, as a rewritten file would show."""
+    root = tmp_path / "root"
+    shutil.copytree(built, root, symlinks=True)
+    later = "rS0.c13"
+    catalog.define_release(root, later, ["S0"])
+    catalog.write_manifest(catalog.build_manifest(root, later, ["S0"]))
+    argv = ("release", "verify", "--root", root, "--release", later, "--previous", REL)
+    assert run_cli(*argv) == 0
+    out = capsys.readouterr().out
+    assert f"release {later}: verified" in out and f"append-only against {REL}: ok" in out
+    path = catalog.manifest_path(root, REL)
+    man = catalog.read_manifest(path)
+    f = next(f for f in man["files"] if f["partitions"].get("stage") == "S0")
+    f["sha256"] = "0" * 64
+    path.write_text(json.dumps(man, sort_keys=True, indent=1) + "\n")
+    assert run_cli(*argv) == 1
+    assert f"{f['path']}: rewritten" in capsys.readouterr().out
+    assert run_cli("release", "verify", "--root", root, "--release", later, "--previous", "rNo.1") == 1

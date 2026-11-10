@@ -109,8 +109,10 @@ systemctl --user status c06-build --no-pager
 tail -n 3 "$BBTMP/logs/c06-build.log"
 ```
 
-Each step prints one JSON line to the log as it ends. `run-step` and `build-stage` lines come at
-the end of the log, because the unit's output is buffered until it exits.
+Each step prints one JSON line to the log as it ends. Every `run-step` and `build-stage` line starts
+with a timestamp (local time and its UTC offset, for example `2026-11-10T07:21:57-06:00`) and is
+written as it happens, so the last line of the log shows where the build is: the step that was last
+`published` or `skipped`, or the shard that last ended.
 
 How to tell it finished:
 
@@ -121,12 +123,14 @@ ls "$ROOT/runs/stage=S0"
 ```
 
 - The last line is `pod_run: c06-build exited 0`. The number is the exit code.
-- The log has `build-stage: stage S0 and release rC6.1: all 13 steps done`, and a
+- The log has a line ending in `build-stage: stage S0 and release rC6.1: all 13 steps done`, and a
   `run-step: ... published N files` line for each of the 12 steps that run a command (the
   `features` slot is empty).
 - `systemctl --user status` says `could not be found`: the unit has ended.
-- A log whose last line is not `pod_run: ... exited`: the unit was stopped from outside
-  (`systemctl --user stop`, or a reboot). Go to section 4.
+- `pod_run: c06-build received SIGTERM` just before the last line: the unit was stopped
+  (`systemctl --user stop`, section 3). Relaunch to resume (section 4).
+- A log whose last line is not `pod_run: ... exited`: the unit was killed without a chance to
+  write it (SIGKILL, or a reboot). Go to section 4.
 
 Exit codes: `0` done. `75` a `STOP` file (section 3). `2` refused before or at a step: read the
 `build-stage:` or `run-step:` line in the log. Any other number is the failing step's own code, and
@@ -192,6 +196,11 @@ touch "$ROOT/STOP"
 - A step that is running when the file appears finishes its command. `run-step` then publishes
   nothing, leaves its staging directory and exits 75. The log says `STOP appeared; not publishing`.
   The next call runs that step again from the start.
+- So a `STOP` inside a step costs that step's whole work, done twice. On the pod a `STOP` during
+  stage S1a's gene calling cost 57.7 s and 4.98 CPU-minutes (measured, wilkcomp02, 2026-11-10,
+  card C-10, the rerun's run record); during a release's clustering it would cost up to 1,575.2 s
+  and 195.08 CPU-minutes (measured the same day, `rC.2.cluster` at 8 threads). To lose less, create
+  `STOP` just after the log shows a `run-step: ... published` line. This is the rule, not a fault.
 
 To stop at once, without waiting for the step, stop the unit. `run-step` forwards the SIGTERM to
 the step and publishes nothing from it.
@@ -200,7 +209,8 @@ the step and publishes nothing from it.
 systemctl --user stop c06-build
 ```
 
-A stopped unit leaves no `pod_run: ... exited` line in its log.
+The log of a stopped unit ends with `pod_run: c06-build received SIGTERM` and then
+`pod_run: c06-build exited 143`.
 
 Resume: remove the file, then launch the same build command again (section 2), with a new unit name.
 
@@ -226,7 +236,7 @@ What `run-step` leaves, and what it does at the next start:
 | Left behind | When | What `run-step` does |
 |---|---|---|
 | `$BBTMP/staging/<stage>.<step>/` | the step was killed, failed or stopped | removes it and runs the step again |
-| `$BBTMP/scratch/...` | a builder was killed | nothing; a builder makes a new scratch directory |
+| `$BBTMP/scratch/<stage>.<step>/` (a step's own scratch) | the step was killed, failed or stopped | `build-stage` removes it before that step's next attempt (log: `removing ..., left by an earlier attempt`), and removes it once the step succeeds. In C-10 a stopped clustering step left 1.2 GB there (measured, wilkcomp02, 2026-11-10) |
 | a scan shard's run missing from `$BBTMP/scratch/biobox-domain-scan/<plan>/` while its run record exists | scratch was cleared (a reboot) or damaged between the shards and the merge | `build-stage`, before the merge, scans exactly those shards again into scratch (log: `scanning it again`); the new run must have the sha256 the shard's published record holds, else the build stops naming the shard (tell the PI) |
 | `$ROOT/runs/stage=<S>/<step>.json` (run record) | the step finished | skips the step if every listed output is in the root with its recorded size |
 | `$ROOT/runs/stage=<S>/<step>.publishing.json` (intent file) | killed while publishing | finishes the publish, or undoes it, then reruns (see below) |
@@ -308,11 +318,22 @@ biopy -c 'import sys; from pathlib import Path; from biobox import ledger; root 
 
 ## 6. Verify a release
 
-Manifest verification re-reads every listed file and compares size and sha256. It also reports any
-unlisted file in the release's scope. `problems 0` is a pass.
+`release verify` re-reads every file the release's manifest lists and compares size and sha256. It
+also reports any unlisted file in the release's scope. It writes nothing. It prints each problem,
+then `release rC6.2: verified (...)` with the stages, the file count and the manifest hash. Exit 0
+is a pass, 1 a failure (a missing manifest is one).
 
 ```bash
-biopy -c 'import sys; from pathlib import Path; from biobox import catalog; m = catalog.read_manifest(catalog.manifest_path(Path(sys.argv[1]), sys.argv[2])); problems = catalog.verify_manifest(m); print(m["release_id"], "stages", m["stages"], "files", len(m["files"]), "hash", catalog.manifest_hash(m), "problems", len(problems)); print(*problems, sep="\n")' "$ROOT" rC6.2
+bio-box release verify --root "$ROOT" --release rC6.2
+```
+
+With `--previous`, it also checks that the later release kept the earlier one's files: every file
+of the earlier manifest, except the earlier release's own `release=` files, is in the later manifest
+with the same sha256 (append-only, R-09). It then prints `append-only against rC6.1: ok`, or each
+file as `removed` or `rewritten`.
+
+```bash
+bio-box release verify --root "$ROOT" --release rC6.2 --previous rC6.1
 ```
 
 Open the catalog and read from it. The catalog is a DuckDB file that names the root it was built
@@ -325,7 +346,7 @@ biopy -c 'import sys; from pathlib import Path; from biobox import catalog; con 
 An earlier release must still verify after a later one is built. Check `rC6.1` the same way:
 
 ```bash
-biopy -c 'import sys; from pathlib import Path; from biobox import catalog; m = catalog.read_manifest(catalog.manifest_path(Path(sys.argv[1]), sys.argv[2])); problems = catalog.verify_manifest(m); print(m["release_id"], "stages", m["stages"], "files", len(m["files"]), "hash", catalog.manifest_hash(m), "problems", len(problems)); print(*problems, sep="\n")' "$ROOT" rC6.1
+bio-box release verify --root "$ROOT" --release rC6.1
 ```
 
 ## 7. Search
@@ -420,7 +441,9 @@ ran` only means the selection matched nothing.
 What is ours, all under `/tmp/if2453/`:
 
 - `$BBTMP/staging/<stage>.<step>/`: leftovers of killed or failed steps.
-- `$BBTMP/scratch/`: builder scratch.
+- `$BBTMP/scratch/`: builder scratch: one directory per step, `<stage>.<step>/`, which
+  `build-stage` removes itself (section 4), and the scan shards' runs in `biobox-domain-scan/`,
+  removed after the merge.
 - `$BBTMP/logs/`: unit logs.
 - `$WORK/search-work/<run id>/`: a search run's work directory.
 - `$TREE`, `$WORK` and `/tmp/if2453/ci-tmp/<name>-*`: your mirrored trees and pytest directories.
@@ -447,7 +470,7 @@ Then remove leftovers one directory at a time, by exact path. Never use a glob a
 
 ```bash
 rm -r "$BBTMP/staging/S9.demo"
-rm -r "$BBTMP/scratch/tmpflnpepuv"
+rm -r "$BBTMP/scratch/S9.demo"
 rm -r "$WORK/search-work/3d96a70ba10c7f5cd895de3d838153ae"
 ```
 
@@ -474,7 +497,7 @@ a profile value is missing from this table.
 | Memory cap required | true: `run-step` and the search runner refuse to start uncapped | profile `require_mem_cap` |
 | Nice | 19 (one big process), 15 (many small ones) | profile `nice_monolithic`, `nice_fanout`; AGENTS 7.2 says 19 |
 | CPU-minutes per process | 300 | profile `cpu_min_per_process`; AGENTS 7.2 |
-| Scan shard size | 32,876,712 residues: 80% of `cpu_min_per_process` (300) at 7.30 CPU-minutes per million residues (derived: 300 × 0.8 / 7.30 × 10^6; the rate measured for Pfam on wilkcomp02, 2026-11-10) | `SHARD_MARGIN` and `SCAN_CPU_MIN_PER_M` in `src/biobox/stage.py`; card C-11 |
+| Scan shard size | 30,150,753 residues: 80% of `cpu_min_per_process` (300) at 7.96 CPU-minutes per million residues (derived: 300 × 0.8 / 7.96 × 10^6; the rate of the Pfam scan of stage P1 in card C-10, measured on wilkcomp02, 2026-11-10: 2,343.74 CPU-minutes for 294.5 M residues). The 80% leaves room for a scan 25% slower per residue (derived: 1 / 0.8) | `SHARD_MARGIN` and `SCAN_CPU_MIN_PER_M` in `src/biobox/stage.py`; cards C-11, C-13 |
 | Scan shards at once | `--scan-jobs` J × `--scan-cpus` C at most the threads `run-step` allows when `build-stage` starts (40 by day, 56 at night when idle); defaults C = 4, J = allowance // C (10 by day, 14 at night). The allowance is read again before each step and before each shard launch; a launch that would pass it waits | `scan_slots` and `_launch` in `src/biobox/stage.py`; cards C-11, C-12 |
 | Unit CPU quota | the night cap, 56: a ceiling fixed at launch; `build-stage` holds the limit of the hour | `scripts/pod_run.sh --threads`, profile `max_threads_night`; card C-12 |
 | Smallest data file | 64 MiB (67108864 bytes), except tables the registry marks `small_ok` | profile `small_file_floor_bytes`; AGENTS 7.3 says 64 MB |
@@ -498,7 +521,7 @@ The scratch profile used for the tests in this file differs from the real one in
 | Limit | What happens | Card |
 |---|---|---|
 | Ingest of a stage over about 60 Gbp | `build-stage` refuses before any step (exit 2): one ingest process runs at about 3.7 Mbp/s (measured, wilkcomp02), so it would pass 300 CPU-minutes. Split the stage into smaller stages | B-30 |
-| Shard size is Pfam's | shards are cut at 80% of the budget at Pfam's rate. A library more than 1.25 times slower per residue than Pfam (derived: 1 / 0.8) passes 300 CPU-minutes per shard, and the run record says `over_cpu_budget`. Lower `--scan-cpus` does not help, since the budget counts CPU-minutes | C-11 |
+| Shard size is Pfam's | shards are cut at 80% of the budget at Pfam's rate (7.96 CPU-minutes per million residues, measured in C-10). A library more than 1.25 times slower per residue than that (derived: 1 / 0.8; above 9.95 CPU-minutes per million residues, derived) passes 300 CPU-minutes per shard, and the run record says `over_cpu_budget`. Lower `--scan-cpus` does not help, since the budget counts CPU-minutes | C-11, C-13 |
 | `pod_run.sh` CPU quota | the unit's quota is `--threads` of `pod_run.sh` (default the night cap, 56), fixed at launch, whatever `--scan-jobs` × `--scan-cpus` is. By day it is above the day cap: the day cap is held by `build-stage` and `run-step`, not by the quota. A `run-step` launched alone keeps the thread count it chose at its start until it ends (at most 300 CPU-minutes) | C-07, C-11, C-12 |
 | The image on the pod is old | the pod has the test image `bio-box-test_74b3e05.sif`, not an image built from the current source. The current source is bound in with `PYTHONPATH` (section 0) | 0-02 |
 | `rL.*` releases on `/stor` | they are in the pre-B-17 layout: current readers and `verify_manifest` may not read them. `rL.1` and `rL.2` also fail verification on one file, `l0/l0_manifest.parquet` | B-17, B-22 |
@@ -509,7 +532,6 @@ Found while writing this runbook, no card yet (reported to the PI):
   `failed` with `runner exited without closing the run`, because the unit ends with its main
   process and takes the detached runner with it. Use `--wait`.
 - `search status` of a run started with `--wait` finds nothing until the run has ended.
-- After `systemctl --user stop`, the unit's log has no `pod_run: ... exited` line.
 - The card text says `bio-box doctor`; the command is `python -m biobox.doctor`.
 
 ## 12. Contact
@@ -543,7 +565,7 @@ section 0.
 | 3 | `touch "$ROOT/STOP"`, then a launch | 2026-11-10 | `pod_run: c06-s1 exited 75` (log: `STOP exists; not starting stage S1`) |
 | 3 | `touch "$ROOT/STOP"` while `S1.igr` ran (unit `c06-s1d`) | 2026-11-10 | `pod_run: c06-s1d exited 75` (log: `STOP appeared; not publishing S1.igr, staging left at ...`) |
 | 3 | `rm "$ROOT/STOP"` | 2026-11-10 | `(no output)` |
-| 3 | `systemctl --user stop c06-s1e` while `rC6.2.cluster` ran | 2026-11-10 | `(no output)`; log: `build-stage: rC6.2.cluster exited 143; stopping here; the next call resumes at this step` |
+| 3 | `systemctl --user stop c06-s1e` while `rC6.2.cluster` ran | 2026-11-10 | `(no output)`; log: `build-stage: rC6.2.cluster exited 143; stopping here; the next call resumes at this step`, the log's last line then (before card C-13 the wrapper wrote no exit line after a stop; its trap is tested by `tests/r1/test_pod_run.py`, not yet on the pod) |
 | 4 | relaunch after the stop (unit `c06-s1g`) | 2026-11-10 | `pod_run: c06-s1g exited 0` |
 | 4 | `ls -d "$ROOT" "$BBTMP"` | 2026-11-10 | `/tmp/if2453/c06/tmp` |
 | 4 | `find "$ROOT/runs" -name '*.publishing.json'` | 2026-11-10 | `(no output)` |
@@ -551,9 +573,10 @@ section 0.
 | 5 | all records, DuckDB | 2026-11-10 | `  24 rows                                                         6 columns` |
 | 5 | ledger totals, DuckDB | 2026-11-10 | `│ NULL    │ rC6.2   │ cluster             │       2 │   1707 │   1684 │       23 │          0 │` (then the table's bottom border) |
 | 5 | balance and chain checks | 2026-11-10 | `chain (L-03): []` |
-| 6 | verify `rC6.2` | 2026-11-10 | `rC6.2 stages ['S0', 'S1'] files 41 hash 5d2522bbd240fc3c9f40c397405ad4cb problems 0` |
+| 6 | verify `rC6.2` | 2026-11-10 | `rC6.2 stages ['S0', 'S1'] files 41 hash 5d2522bbd240fc3c9f40c397405ad4cb problems 0` (run as a python one-liner calling `catalog.verify_manifest`, before `bio-box release verify` existed) |
+| 6 | `bio-box release verify --root "$ROOT" --release rC6.2`, and with `--previous rC6.1` | not run on the pod; tested on the fixture | `tests/r2/test_build_stage.py` (card C-13): exit 0 and `release ...: verified` on a built release, exit 1 naming the file on a damaged copy, and `append-only against ...: ok` or `... rewritten` |
 | 6 | open the catalog of `rC6.2` | 2026-11-10 | `contigs 3` |
-| 6 | verify `rC6.1` | 2026-11-10 | `rC6.1 stages ['S0'] files 25 hash 98fbb4855e3d7e997db13336c32b7864 problems 0` |
+| 6 | verify `rC6.1` | 2026-11-10 | `rC6.1 stages ['S0'] files 25 hash 98fbb4855e3d7e997db13336c32b7864 problems 0` (the python one-liner, as above) |
 | 7 | `pod_run.sh ... c06-pack pack build ...` | 2026-11-10 | `pod_run: c06-pack exited 0` |
 | 7 | `bio-box pack verify --root "$ROOT" --release rC6.1` | 2026-11-10 | `pack rC6.1: verified` |
 | 7 | `pod_run.sh ... c06-search search run ... --wait` | 2026-11-10 | `pod_run: c06-search exited 0` (log: run id and `ok`) |
@@ -647,3 +670,6 @@ Last line: `01563e192ab22a5931d55e224a2dbb07`.
 - A build at the real profile's 64 MiB floor and 200G cap, and a real Pfam scan (card C-10).
 - Inputs outside `/tmp/if2453` (they need an extra `--bind`, section 2), and `--digest` refusing a
   wrong image (the script's `die` path was read, not run).
+- Card C-13's changes in a real unit: the exit line after `systemctl --user stop`, the timestamped
+  log lines, the per-step scratch directories and `bio-box release verify` were tested in the
+  test suite on the pod (`scripts/pod_pytest.sh`), not in a build launched with `pod_run.sh`.
