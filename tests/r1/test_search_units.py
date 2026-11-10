@@ -409,6 +409,33 @@ def test_recipe_paper_checks_refuse(edit, match):
         recipe.load(BASE.replace(*edit))
 
 
+UID32 = "ab" * 16
+
+
+@pytest.mark.parametrize("kind,value", [("protein_uid", UID32), ("region_uid", UID32), ("sequence", "MKVLAAGIVGLLL"),
+                                        ("protein_accession", "MJ0613")])
+def test_w08_shorthand_with_label_equals_the_long_form(kind, value):
+    short = BASE.replace("{positive: [{sequence: MKVLAAGIVGLLL}]}",
+                         "{positive: [{%s: %s, label: T7 gp1}]}" % (kind, value))
+    long = BASE.replace("{positive: [{sequence: MKVLAAGIVGLLL}]}",
+                        "{positive: [{kind: %s, value: %s, label: T7 gp1}]}" % (kind, value))
+    a, _ = recipe.load(short)
+    b, _ = recipe.load(long)
+    assert a == b and a["controls"]["positive"][0]["label"] == "T7 gp1"
+    assert recipe.recipe_hash(a) == recipe.recipe_hash(b)
+    s, _ = recipe.load(BASE.replace("seed: [{sequence: MKVLAAGIVGLLL}]", "seed: [{%s: %s, label: x}]" % (kind, value)))
+    assert s["seed"][0] == {"kind": kind, "value": a["controls"]["positive"][0]["value"], "label": "x"}
+
+
+def test_w08_two_kind_keys_in_one_entry_are_refused():
+    with pytest.raises(RecipeError, match="more than one kind"):
+        recipe.load(BASE.replace("{positive: [{sequence: MKVLAAGIVGLLL}]}",
+                                 "{positive: [{protein_uid: %s, sequence: MKV, label: x}]}" % UID32))
+    with pytest.raises(RecipeError, match="unknown keys"):
+        recipe.load(BASE.replace("{positive: [{sequence: MKVLAAGIVGLLL}]}",
+                                 "{positive: [{sequence: MKVLAAGIVGLLL, colour: red}]}"))
+
+
 def test_recipe_hash_is_spelling_free_and_gaps_are_listed():
     a, _ = recipe.load(BASE)
     b, _ = recipe.load(BASE.replace("seed: [{sequence: MKVLAAGIVGLLL}]",

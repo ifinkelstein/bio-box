@@ -322,6 +322,29 @@ def test_mr14_macro_reads_only_the_default_variant(tmp_path):
     c.close()
 
 
+def test_w08_contig_label_has_one_row_per_contig(tmp_path):
+    lam_path = FIX / CONTRACT["objects"][0]["file"]
+    lam = fasta.read(lam_path)[0]
+    src = tmp_path / "src"
+    src.mkdir()
+    dup = src / "lambda_again.fna"
+    dup.write_bytes(b"\n".join(fasta.format_record("lambda_again", lam.seq, 70)) + b"\n")
+    root = tmp_path / "s"
+    ingest([SourceObject(lam_path, CONTRACT["source_name"], CONTRACT["source_release"], CONTRACT["license"], True),
+            SourceObject(dup, "other_source", "1", "INSDC (public)", True, precedence=200)],
+           root, "S0", shard_bases=SHARD_BASES)
+    man = catalog.build_manifest(root, "x")
+    c = catalog.open_catalog(catalog.generate_catalog(man, tmp_path / "c.duckdb"))
+    occ = c.execute("SELECT l0_object_sha256, record_ordinal, accession, original_header, contig_uid "
+                    "FROM contig_occurrence ORDER BY l0_object_sha256, record_ordinal").fetchall()
+    assert len(occ) == 2 and len({r[4] for r in occ}) == 1
+    rows = c.execute("SELECT contig_uid, accession, original_header, n_occurrences FROM contig_label").fetchall()
+    assert rows == [(occ[0][4], occ[0][2], occ[0][3], 2)]
+    assert c.execute("SELECT count(*) FROM contig_label").fetchone()[0] == c.execute(
+        "SELECT count(DISTINCT contig_uid) FROM contig_occurrence").fetchone()[0]
+    c.close()
+
+
 @pytest.mark.parametrize("args", [(-1, 5, 1), (5, 4, 1), (0, 10**9, 1), (0, 5, 0)])
 def test_macro_rejects_bad_slices(con, args):
     cu = _contigs()[0][0]
