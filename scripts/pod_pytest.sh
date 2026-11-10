@@ -1,0 +1,80 @@
+#!/bin/sh
+# Run pytest for a working tree ON THE POD, inside the pinned image (AGENTS.md §5.5, §7).
+# No tests or measurements run on the laptop.
+#
+#   scripts/pod_pytest.sh <name> [--golden] [--shards N] [pytest args...]
+#
+# <name> is a short label (the task ID). The working tree, committed or not, is mirrored to
+# $BIOBOX_POD_CI/<name> on the pod and pytest runs there with that tree's src/ first on the path.
+# --golden also sets BIOBOX_GOLDEN_DIR, so ring R3 runs.
+# --shards N (only without explicit test paths) splits the test files over N pytest processes
+#   that run at once; each prints its own summary line and the script fails if any shard fails.
+#   The whole suite takes about 13 minutes in one process on the pod and about 3 with 8 shards.
+# The image on the pod has MMseqs2 and the HMMER binaries, so tests that skip on a laptop run here.
+set -eu
+NAME=$1
+shift
+GOLDEN_ENV=""
+SHARDS=1
+while [ $# -gt 0 ]; do
+  case "$1" in
+    --golden) GOLDEN_ENV="--env BIOBOX_GOLDEN_DIR=${BIOBOX_POD_GOLDEN:-/tmp/if2453/golden}"; shift ;;
+    --shards) SHARDS=$2; shift 2 ;;
+    *) break ;;
+  esac
+done
+HOST=${BIOBOX_POD:-if2453@wilkcomp02.ccbb.utexas.edu}
+CI=${BIOBOX_POD_CI:-/tmp/if2453/ci}
+IMAGE=${BIOBOX_POD_IMAGE:-/stor/home/if2453/bio-box/images/bio-box-test_74b3e05.sif}
+PYDEPS=${BIOBOX_POD_PYDEPS:-/tmp/if2453/pilot_s1/pydeps}
+TOP=${BIOBOX_TREE:-$(git rev-parse --show-toplevel)}  # BIOBOX_TREE: test a tree other than the current directory's
+DST="$CI/$NAME"
+ARGS=""
+for a in "$@"; do
+  ARGS="$ARGS '$(printf %s "$a" | sed "s/'/'\\\\''/g")'"
+done
+ssh -o BatchMode=yes "$HOST" "mkdir -p '$DST'"
+rsync -a --delete -e "ssh -o BatchMode=yes" \
+  --exclude .git --exclude .venv --exclude .hypothesis --exclude .pytest_cache --exclude mutants \
+  --exclude .claude --exclude __pycache__ "$TOP/" "$HOST:$DST/"
+
+run() {  # run <basetemp suffix> <pytest args string>
+  ssh -o BatchMode=yes "$HOST" "systemd-run --user --scope --quiet -p MemoryMax=32G nice -n 19 \
+    singularity exec --cleanenv --env PYTHONPATH=$DST/src:$PYDEPS $GOLDEN_ENV \
+    --env OMP_NUM_THREADS=2 --bind /tmp/if2453 --pwd '$DST' '$IMAGE' \
+    python -m pytest -q -p no:cacheprovider --basetemp=/tmp/if2453/ci-tmp/$NAME-$1 $2"
+}
+
+if [ "$SHARDS" -le 1 ] || [ -n "$ARGS" ]; then
+  run 0 "$ARGS"
+  exit $?
+fi
+
+OUT=$(mktemp -d)
+FILES=$(cd "$TOP" && find tests -name 'test_*.py' | sort)
+i=0
+for f in $FILES; do
+  k=$((i % SHARDS))
+  printf "%s " "$f" >> "$OUT/files.$k"
+  i=$((i + 1))
+done
+PIDS=""
+for k in $(seq 0 $((SHARDS - 1))); do
+  [ -f "$OUT/files.$k" ] || continue
+  ( run "$k" "$(cat "$OUT/files.$k")" > "$OUT/log.$k" 2>&1; echo $? > "$OUT/rc.$k" ) &
+  PIDS="$PIDS $!"
+done
+wait $PIDS
+RC=0
+for k in $(seq 0 $((SHARDS - 1))); do
+  [ -f "$OUT/log.$k" ] || continue
+  if [ "$(cat "$OUT/rc.$k")" != "0" ]; then
+    RC=1
+    echo "=== shard $k FAILED ==="
+    cat "$OUT/log.$k"
+  else
+    echo "shard $k: $(tail -n 1 "$OUT/log.$k")"
+  fi
+done
+rm -rf "$OUT"
+exit $RC

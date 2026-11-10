@@ -562,6 +562,234 @@ def test_b16_a_run_is_refused_on_a_tape_version_other_than_the_packs(two, capsys
     assert "tape version" in capsys.readouterr().err
 
 
+# --- W-06: neighbor summary against a brute-force loop over tapes ------------------------------------------
+
+
+def _r1():
+    sys.path.insert(0, str(REPO / "tests/r1"))
+    import test_search_units as r1
+
+    return r1
+
+
+def _w06_anchors(root: Path) -> set[bytes]:
+    """Anchors near the origin of the circular contig (both sides), next to each linear contig end, beside each
+    domain-carrying lambda gene, and the library-hit seed."""
+    tps = _tape_rows(root, tapes.tape_version([V]))
+    doms = {r["protein_uid"] for f in sorted((root / "l1/domains").rglob("*.parquet")) for r in pq.read_table(f).to_pylist()}
+    out = {_seed(root)[0]}
+    for t in tps.values():
+        p = t["protein_uids"]
+        out |= {p[1], p[-1]}  # circular: windows across the origin; linear: windows cut by the contig end
+        if not t["is_circular"]:
+            out |= {p[j + 2] for j, u in enumerate(p) if u in doms and j + 2 < len(p)}
+    assert None not in out
+    return out
+
+
+def _w06_store(root: Path, release: str = REL) -> dict:
+    """Domains, clusters, protein lengths and genomes straight from the Parquet shards."""
+    dom: dict[bytes, dict[tuple[str, str], str]] = {}
+    for f in sorted((root / "l1/domains").glob("library=*/stage=*/part-*.parquet")):
+        lib = f.parent.parent.name.split("=", 1)[1]
+        for r in pq.read_table(f, partitioning=None).to_pylist():
+            dom.setdefault(r["protein_uid"], {})[(lib, r["model_acc"])] = r["model_name"]
+    clus: dict[str, dict[bytes, tuple[bytes, bytes]]] = {"nr50": {}, "nr90": {}}
+    for f in sorted((root / f"l2/cluster_member/release={release}").glob("part-*.parquet")):
+        for r in pq.read_table(f, partitioning=None).to_pylist():
+            if r["level"] in clus:
+                clus[r["level"]][r["member_uid"]] = (r["cluster_uid"], r["rep_uid"])
+    lens = {r["protein_uid"]: r["length"] for f in sorted((root / "l0seq/protein_seq").rglob("part-*.parquet"))
+            for r in pq.read_table(f, columns=["protein_uid", "length"]).to_pylist()}
+    gen = {r["contig_uid"]: r["genome_uid"] for f in sorted((root / f"dim/contig_dim/release={release}").glob("*.parquet"))
+           for r in pq.read_table(f, partitioning=None).to_pylist()}
+    return {"dom": dom, "clus": clus, "len": lens, "genome": gen}
+
+
+def _oracle_summary(root: Path, anchors: set[bytes], window: str, levels=("pfam", "nr50"), release: str = REL) -> dict:
+    """The summary by a loop over every tape slot: each anchor slot's window from the S-09 coordinate oracle
+    (tests/r1 `_oracle_nbr`), then every count by hand."""
+    r1 = _r1()
+    policy = nbr.Policy.parse(window=window)
+    st_ = _w06_store(root, release)
+    tps = _tape_rows(root, tapes.tape_version([V]))
+    loci, contigs, censored, placed, nbrs = set(), set(), 0, set(), []
+    for cu in sorted(tps):
+        t = tps[cu]
+        slots = list(zip(t["start_bps"], t["end_bps"], t["strands"]))
+        for i, pu in enumerate(t["protein_uids"]):
+            if pu not in anchors:
+                continue
+            got = r1._oracle_nbr(slots, t["contig_len"], t["is_circular"], i, policy)
+            if got is None:
+                continue
+            loci.add((cu, i))
+            contigs.add(cu)
+            placed.add(pu)
+            censored += any(d == 0 and fl & 1 for _, d, _, _, fl in got)
+            for j, d, rel, _, _ in got:
+                if d != 0:
+                    nbrs.append({"locus": (cu, i), "protein": t["protein_uids"][j], "rel": rel,
+                                 "same": slots[j][2] == slots[i][2], "contig": cu})
+    basis = "genome_uid" if st_["genome"] and all(c in st_["genome"] for c in contigs) else "contig_uid"
+    genome = (lambda c: st_["genome"][c]) if basis == "genome_uid" else (lambda c: c)
+    n_loci = len(loci)
+    rows, n_keys = [], {}
+    for level in levels:
+        groups: dict[str, list[dict]] = {}
+        meta: dict[str, dict] = {}
+        for nb in nbrs:
+            u = nb["protein"]
+            if level == "pfam":
+                keys = {f"{lib}:{acc}": {"library": lib, "model_acc": acc, "model_name": name}
+                        for (lib, acc), name in st_["dom"].get(u, {}).items()}
+            else:
+                keys = {}
+                if u in st_["clus"][level]:
+                    c, rep = st_["clus"][level][u]
+                    keys = {c.hex(): {"cluster_uid": c.hex(), "rep_uid": rep.hex(), "rep_length": st_["len"].get(rep)}}
+            for k, m in keys.items():
+                groups.setdefault(k, []).append(nb)
+                meta[k] = m
+            if not keys:
+                groups.setdefault("", []).append(nb)
+        if level != "pfam":
+            for k, m in meta.items():
+                names, reps = {}, []
+                for member, (c, rep) in st_["clus"][level].items():
+                    if c.hex() == k:
+                        reps.append(rep)
+                        for name in set(st_["dom"].get(member, {}).values()):
+                            names[name] = names.get(name, 0) + 1
+                m["model_name"] = min(names, key=lambda x: (-names[x], x)) if names else ""
+                # the stand-in clusters name each member its own representative: take the least, as documented
+                m["rep_uid"] = min(reps).hex()
+                m["rep_length"] = st_["len"].get(min(reps))
+
+        def row(k, g):
+            hist: dict[int, int] = {}
+            for nb in g:
+                hist[nb["rel"]] = hist.get(nb["rel"], 0) + 1
+            n = len(g)
+            ls = {nb["locus"] for nb in g}
+            return {"level": level, "key": k, "unannotated": k == "", **meta.get(k, {}),
+                    "n_loci": len(ls), "share_of_loci": round(len(ls) / n_loci, 4) if n_loci else None,
+                    "n_neighbors": n, "n_genomes": len({genome(nb["contig"]) for nb in g}), "genome_basis": basis,
+                    "offsets": {str(o): hist[o] for o in sorted(hist)},
+                    "modal_offset": min(hist, key=lambda o: (-hist[o], abs(o), -o)) if hist else None,
+                    "same_strand_share": round(sum(nb["same"] for nb in g) / n, 4) if n else None}
+
+        keyed = sorted((row(k, g) for k, g in groups.items() if k), key=lambda r: (-r["n_loci"], r["key"]))
+        n_keys[level] = len(keyed)
+        rows += keyed + [row("", groups.get("", []))]
+    return {"header": {"n_anchor_proteins": len(placed), "n_anchor_loci": n_loci, "n_contigs": len(contigs),
+                       "n_censored_loci": censored, "n_neighbors": len(nbrs), "genome_basis": basis, "n_keys": n_keys},
+            "rows": rows}
+
+
+def _compare(got: dict, want: dict) -> None:
+    for k, v in want["header"].items():
+        assert got["header"][k] == v, k
+    assert [(r["level"], r["key"]) for r in got["rows"]] == [(r["level"], r["key"]) for r in want["rows"]]
+    for g, w in zip(got["rows"], want["rows"]):
+        assert {k: g[k] for k in w} == w, (w["level"], w["key"])
+
+
+@pytest.mark.covers("W-06", "S-09")
+@pytest.mark.parametrize("window", ["3g", "5g"])
+def test_w06_summary_equals_a_brute_force_loop_over_tapes(world, window):
+    root = world[0]
+    anchors = _w06_anchors(root)
+    want = _oracle_summary(root, anchors, window)
+    got = nbr.summarize(root, anchors, nbr.Policy.parse(window=window), by=("pfam", "nr50"), release=REL, top_n=0)
+    _compare(got, want)
+    h = got["header"]
+    assert (h["release"], h["tape_version"], h["policy_hash"]) == (REL, tapes.tape_version([V]),
+                                                                  nbr.Policy.parse(window=window).hash())
+    # the world is what the card asks for: an anchor window across the origin, windows cut at linear ends,
+    # neighbors with and without a family and two neighbors of one family or cluster at one locus
+    assert want["header"]["n_censored_loci"] >= 2 and h["genome_basis"] == "contig_uid"
+    rows, _ = nbr.fetch(root, anchors, nbr.Policy.parse(window=window))
+    assert any(r["flags"] & nbr.FLAG_CROSSES_ORIGIN for r in rows)
+    for level in ("pfam", "nr50"):
+        lv = [r for r in want["rows"] if r["level"] == level]
+        assert lv[-1]["unannotated"] and len(lv) > 2
+    assert [r for r in want["rows"] if r["level"] == "pfam"][-1]["n_neighbors"] > 0
+    nr = [r for r in want["rows"] if r["level"] == "nr50"]
+    assert sum(r["n_neighbors"] for r in nr) == want["header"]["n_neighbors"]
+    # top-N keeps totals: the cap drops rows only
+    capped = nbr.summarize(root, anchors, nbr.Policy.parse(window=window), release=REL, top_n=2)
+    assert capped["header"]["n_keys"] == want["header"]["n_keys"]
+    assert [(r["level"], r["key"]) for r in capped["rows"]] == [
+        (r["level"], r["key"]) for lv in ("pfam", "nr50")
+        for r in [x for x in want["rows"] if x["level"] == lv and not x["unannotated"]][:2]
+        + [x for x in want["rows"] if x["level"] == lv and x["unannotated"]]]
+
+
+@pytest.mark.covers("W-06")
+def test_w06_summary_counts_genomes_from_contig_dim_when_present(world, tmp_path):
+    root = _copy(world, tmp_path)
+    tps = _tape_rows(root, tapes.tape_version([V]))
+    lin = sorted(cu for cu, t in tps.items() if not t["is_circular"])
+    one = ids.genome_uid(lin)  # both phages in one made-up genome, so genomes < contigs
+    rows = [{"contig_uid": cu, "genome_uid": one if cu in lin else ids.genome_uid([cu]), "contig_len": t["contig_len"],
+             "is_circular": t["is_circular"], "tier": None, "assembly_quality": None, "tax_order": None,
+             "is_species_rep": False} for cu, t in sorted(tps.items())]
+    d = root / f"dim/contig_dim/release={REL}"
+    d.mkdir(parents=True)
+    pq.write_table(pa.Table.from_pylist(rows, schema=table("contig_dim").schema), d / "part-0.parquet")
+    anchors = _w06_anchors(root)
+    want = _oracle_summary(root, anchors, "5g", levels=("pfam", "nr50", "nr90"))
+    got = nbr.summarize(root, anchors, nbr.Policy.parse(window="5g"), by=("pfam", "nr50", "nr90"), release=REL,
+                        top_n=0)
+    assert want["header"]["genome_basis"] == "genome_uid"
+    _compare(got, want)
+    # the made-up genome changes some counts (the world without contig_dim counts contigs)
+    by_contig = _oracle_summary(world[0], anchors, "5g", levels=("pfam", "nr50", "nr90"))
+    assert by_contig["header"]["genome_basis"] == "contig_uid"
+    assert [r["n_genomes"] for r in want["rows"]] != [r["n_genomes"] for r in by_contig["rows"]]
+    # file lists from the release manifest give the same summary as the store's layout
+    man = catalog.build_manifest(root, REL)
+    assert nbr.summarize(root, anchors, nbr.Policy.parse(window="5g"), by=("pfam", "nr50", "nr90"), release=REL,
+                         top_n=0, manifest=man) == got
+
+
+@pytest.mark.covers("W-06", "S-13")
+def test_w06_cli_summary_json_matches_the_lock_and_tsv_reads_back(world, capsys):
+    root = world[0]
+    hit, _ = _seed(root)
+    row = _run(world, _recipe(hit, hit, tool="jackhmmer", mx=2))
+    assert row["status"] == "ok", row["error"]
+    rid = row["run_id"].hex()
+    args = ["nbr", "summarize", rid, "--root", str(root), "--window", "5g", "--by", "pfam,nr50"]
+    assert cli.main(args + ["--json"]) == 0
+    recs = [json.loads(x) for x in capsys.readouterr().out.splitlines()]
+    locked = json.loads(export.lock_path(REPO).read_text())
+    assert recs[0]["schema"] == "nbr_summary_header/1" and list(recs[0]) == locked["nbr_summary_header"]["keys"]
+    assert len(recs) > 3 and all(list(r) == locked["nbr_summary"]["keys"] for r in recs[1:])
+    assert {"nbr_summary", "nbr_summary_header"} <= set(locked)
+    assert export.lock_problems(locked) == [] and locked == json.loads(json.dumps(export.SCHEMAS, sort_keys=True))
+    # the run's hits are the anchors, its release and tape version the summary's
+    anchors = {h["target_uid"] for h in runner.read_hits(root, rid) if h["target_kind"] == "protein"}
+    s = nbr.summarize(root, anchors, nbr.Policy.parse(window="5g"), release=REL)
+    assert recs == list(export.nbr_summary_records(s))
+    assert recs[0]["release"] == REL and recs[0]["tape_version"] == tapes.tape_version([V])
+    assert recs[0]["top_n"] == 50 and recs[0]["levels"] == ["pfam", "nr50"]
+    assert cli.main(args + ["--format", "tsv"]) == 0
+    r1 = _r1()
+    back = r1.parse_summary_tsv(capsys.readouterr().out)
+    assert r1.same_numbers(back["rows"], recs[1:])
+    for k in ("n_anchor_proteins", "n_anchor_loci", "n_contigs", "n_censored_loci", "release", "tape_version",
+              "policy", "n_keys"):
+        assert back["header"][k] == recs[0][k], k
+    # anchors as a list of protein uids take the same path; a uid list needs the release named
+    uids = ",".join(sorted(u.hex() for u in anchors))
+    assert cli.main(["nbr", "summarize", uids, "--root", str(root), "--window", "5g", "--release", REL, "--json"]) == 0
+    assert [json.loads(x) for x in capsys.readouterr().out.splitlines()] == recs
+    assert cli.main(["nbr", "summarize", uids, "--root", str(root), "--window", "5g"]) == 2
+    assert "--release" in capsys.readouterr().err
+
+
 # --- S-07: planted drift trap ---------------------------------------------------------------------------------
 
 AA = "ACDEFGHIKLMNPQRSTVWY"

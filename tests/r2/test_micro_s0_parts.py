@@ -351,6 +351,7 @@ def test_ledger_checks_agree_with_the_row_by_row_oracle(stores, tmp_path, fault)
         _rewrite(root, "domains-test-1", [{**r, "n_in": r["n_in"] + 5} for r in dom])
     elif fault == "cluster chain":
         kept = sum(r["n_kept"] for r in gc)
+        shutil.rmtree(root / "ledger/stage=S0/step=cluster", ignore_errors=True)  # present when MMseqs2 ran
         ledger.write(root, "S0", "cluster", [ledger.row(b"nr50", "level", 7, 3, 4), ledger.row(b"nr90", "level", kept, 9, kept - 9)])
     elif fault == "second library":
         ledger.write(root, "S0", "domains-a-1", [ledger.row(b"a-1", "library", 3, 1, n_rejected=2)])

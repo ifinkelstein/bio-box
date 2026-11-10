@@ -389,6 +389,170 @@ def test_s09_edge_policies_and_flags_on_a_fixed_contig():
     assert {r["ordinal"]: r["delta_bp"] for r in circ}[0] == 400  # 5_600 -> 6_000 + 0
 
 
+# --- neighbor summary (W-06) ----------------------------------------------------------------------
+
+C1, C2, G1 = b"\xc1" * 16, b"\xc2" * 16, b"\x91" * 16
+P1, P2, P3, P4, P5 = (bytes([0xA0 + i]) * 16 for i in range(1, 6))
+A1, A2 = b"\xaa" * 16, b"\xab" * 16
+K1, K2 = b"\x31" * 16, b"\x32" * 16
+
+
+def _nrow(contig, anchor_pu, anchor_ord, anchor_strand, offset, pu, strand, flags=0):
+    """One neighborhood row as nbr.fetch writes it; ordinals stand in for slots of a 20-slot tape."""
+    fu = lambda o: contig[:8] + bytes([o]) * 8  # noqa: E731
+    return {"anchor_protein_uid": anchor_pu, "contig_uid": contig, "anchor_ordinal": anchor_ord,
+            "ordinal": anchor_ord + offset, "offset": offset, "offset_rel": offset * anchor_strand, "protein_uid": pu,
+            "start": 100 * (anchor_ord + offset), "end": 100 * (anchor_ord + offset) + 90, "strand": strand,
+            "delta_bp": None if offset == 0 else 10, "junction_topology": None if offset == 0 else 1,
+            "same_strand": strand == anchor_strand, "in_operon": None, "flags": flags, "policy_hash": "p",
+            "anchor_feature_uid": fu(anchor_ord), "feature_uid": fu(anchor_ord + offset), "tape_version": "t-x"}
+
+
+# locus 1 (C1, anchor A1 on +, window not cut): P1 (two domains of F1, one of F2) at +1, P2 (F1) at -2 on the
+# other strand, P3 (no domain) at +2; locus 2 (C2, anchor A2 on -, window cut by the contig end): P1 at +1
+# along the contig (upstream of the anchor, offset_rel -1), P4 (F3) at -1 along the contig (downstream, +1)
+TINY = [_nrow(C1, A1, 5, 1, 0, A1, 1), _nrow(C1, A1, 5, 1, 1, P1, 1), _nrow(C1, A1, 5, 1, -2, P2, -1),
+        _nrow(C1, A1, 5, 1, 2, P3, 1),
+        _nrow(C2, A2, 1, -1, 0, A2, -1, flags=1), _nrow(C2, A2, 1, -1, 1, P1, -1, flags=1),
+        _nrow(C2, A2, 1, -1, -1, P4, 1, flags=1)]
+TINY_DOMAINS = [{"protein_uid": P1, "library": "lib-1", "model_acc": "F1", "model_name": "fam1"},
+                {"protein_uid": P1, "library": "lib-1", "model_acc": "F1", "model_name": "fam1"},
+                {"protein_uid": P1, "library": "lib-1", "model_acc": "F2", "model_name": "fam2"},
+                {"protein_uid": P2, "library": "lib-1", "model_acc": "F1", "model_name": "fam1"},
+                {"protein_uid": P4, "library": "lib-1", "model_acc": "F3", "model_name": "fam3"},
+                {"protein_uid": P5, "library": "lib-1", "model_acc": "F3", "model_name": "fam3"}]
+TINY_CLUSTERS = [{"member_uid": u, "level": "nr50", "cluster_uid": c, "rep_uid": r}
+                 for u, c, r in ((P1, K1, P2), (P2, K1, P2), (P5, K1, P2), (P3, K2, P3), (A1, K2, P3))]
+TINY_LENGTHS = [{"protein_uid": P2, "length": 100}, {"protein_uid": P3, "length": 50}]
+
+
+def _tiny(by=("pfam", "nr50"), top_n=50, genome_of=None):
+    s = nbr.summarize_rows(TINY, by, domains=TINY_DOMAINS, clusters=TINY_CLUSTERS, protein_len=TINY_LENGTHS,
+                           genome_of=genome_of, top_n=top_n)
+    return s, {(r["level"], r["key"]): r for r in s["rows"]}
+
+
+@pytest.mark.covers("W-06")
+def test_w06_summary_counts_a_multi_domain_neighbor_once_per_family():
+    s, rows = _tiny()
+    f1, f2, f3 = rows[("pfam", "lib-1:F1")], rows[("pfam", "lib-1:F2")], rows[("pfam", "lib-1:F3")]
+    # P1 carries F1 twice and F2 once: one F1 neighbor and one F2 neighbor at each locus it sits in
+    assert (f1["n_loci"], f1["n_neighbors"], f1["share_of_loci"]) == (2, 3, 1.0)
+    assert (f2["n_loci"], f2["n_neighbors"], f2["share_of_loci"]) == (2, 2, 1.0)
+    assert (f3["n_loci"], f3["n_neighbors"], f3["share_of_loci"]) == (1, 1, 0.5)
+    assert (f1["library"], f1["model_acc"], f1["model_name"]) == ("lib-1", "F1", "fam1")
+    un = rows[("pfam", "")]
+    assert un["unannotated"] and (un["n_loci"], un["n_neighbors"], un["offsets"]) == (1, 1, {"2": 1})
+    assert [(r["level"], r["key"]) for r in s["rows"] if r["level"] == "pfam"] == [
+        ("pfam", "lib-1:F1"), ("pfam", "lib-1:F2"), ("pfam", "lib-1:F3"), ("pfam", "")]
+
+
+@pytest.mark.covers("W-06")
+def test_w06_two_neighbors_of_one_cluster_at_one_locus_are_one_locus_and_two_neighbors():
+    s, rows = _tiny()
+    k1, k2 = rows[("nr50", K1.hex())], rows[("nr50", K2.hex())]
+    assert (k1["n_loci"], k1["n_neighbors"]) == (2, 3)  # P1 and P2 at locus 1, P1 at locus 2
+    assert (k1["cluster_uid"], k1["rep_uid"], k1["rep_length"]) == (K1.hex(), P2.hex(), 100)
+    assert k1["model_name"] == "fam1"  # members P1 (fam1, fam2), P2 (fam1), P5 (fam3)
+    assert (k2["n_loci"], k2["n_neighbors"], k2["rep_length"], k2["model_name"]) == (1, 1, 50, "")
+    un = rows[("nr50", "")]  # P4 has no NR50 cluster
+    assert (un["n_loci"], un["n_neighbors"], un["offsets"], un["share_of_loci"]) == (1, 1, {"1": 1}, 0.5)
+    # every neighbor gene has one cluster or none: the level's neighbors add up
+    assert sum(r["n_neighbors"] for r in s["rows"] if r["level"] == "nr50") == s["header"]["n_neighbors"] == 5
+
+
+@pytest.mark.covers("W-06")
+def test_w06_offsets_are_strand_relative_and_the_mode_breaks_ties_toward_the_anchor_then_downstream():
+    s, rows = _tiny()
+    f1 = rows[("pfam", "lib-1:F1")]
+    # locus 1 (+): P1 at +1, P2 at -2; locus 2 (-): P1 one slot right along the contig is upstream, -1
+    assert f1["offsets"] == {"-2": 1, "-1": 1, "1": 1} and list(f1["offsets"]) == ["-2", "-1", "1"]
+    assert f1["modal_offset"] == 1
+    assert f1["same_strand_share"] == round(2 / 3, 4) == 0.6667  # P2 is on the other strand
+    f3 = rows[("pfam", "lib-1:F3")]
+    assert f3["offsets"] == {"1": 1} and f3["same_strand_share"] == 0.0  # P4 on + beside a - anchor
+    k1 = rows[("nr50", K1.hex())]
+    assert k1["offsets"] == {"-2": 1, "-1": 1, "1": 1} and k1["modal_offset"] == 1
+
+
+@pytest.mark.covers("W-06")
+def test_w06_top_n_limits_rows_after_totals_and_genomes_come_from_contig_dim():
+    s, rows = _tiny(top_n=1)
+    h = s["header"]
+    assert (h["n_anchor_loci"], h["n_contigs"], h["n_censored_loci"], h["n_anchor_proteins"]) == (2, 2, 1, 2)
+    assert h["n_keys"] == {"pfam": 3, "nr50": 2}  # before the cap
+    assert [(r["level"], r["key"]) for r in s["rows"]] == [("pfam", "lib-1:F1"), ("pfam", ""),
+                                                          ("nr50", K1.hex()), ("nr50", "")]
+    assert rows[("pfam", "lib-1:F1")]["share_of_loci"] == 1.0  # shares are of all anchor loci
+    assert rows[("pfam", "lib-1:F1")]["n_genomes"] == 2 and h["genome_basis"] == "contig_uid"
+    s, rows = _tiny(genome_of=[{"contig_uid": C1, "genome_uid": G1}, {"contig_uid": C2, "genome_uid": G1}])
+    assert s["header"]["genome_basis"] == "genome_uid" and rows[("pfam", "lib-1:F1")]["n_genomes"] == 1
+    assert all(r["genome_basis"] == "genome_uid" for r in s["rows"])
+    # a contig without a dimension row makes the whole summary fall back to contigs
+    s, rows = _tiny(genome_of=[{"contig_uid": C1, "genome_uid": G1}])
+    assert s["header"]["genome_basis"] == "contig_uid" and rows[("pfam", "lib-1:F1")]["n_genomes"] == 2
+
+
+_TSV_INT = {"n_loci", "n_neighbors", "n_genomes", "modal_offset", "rep_length"}
+_TSV_FLOAT = {"share_of_loci", "same_strand_share"}
+
+
+def _tsv_cell(col: str, x: str):
+    if col in _TSV_INT or col in _TSV_FLOAT:
+        return None if x == "" else (int(x) if col in _TSV_INT else float(x))
+    if col == "unannotated":
+        return {"true": True, "false": False}[x]
+    if col == "offsets":
+        return {} if x == "" else {o: int(n) for o, n in (p.rsplit(":", 1) for p in x.split(","))}
+    return x
+
+
+def parse_summary_tsv(text: str) -> dict:
+    """`bio-box nbr summarize --format tsv` read back: `# key<TAB>json` header lines, then one table per
+    level (a column line, then rows), tables separated by a blank line."""
+    header, rows, cols = {}, [], None
+    for line in text.splitlines():
+        if not line:
+            cols = None
+        elif line.startswith("#"):
+            k, tab, v = line[1:].strip(" ").partition("\t")
+            if tab:
+                header[k] = json.loads(v)
+        elif cols is None:
+            cols = line.split("\t")
+        else:
+            rows.append({c: _tsv_cell(c, x) for c, x in zip(cols, line.split("\t"), strict=True)})
+    return {"header": header, "rows": rows}
+
+
+def same_numbers(tsv_rows: list[dict], records: list[dict]) -> bool:
+    """Each TSV row equals its NDJSON record on the TSV's columns (an absent name is "" in TSV, null in JSON)."""
+    if len(tsv_rows) != len(records):
+        return False
+    norm = lambda v: "" if v is None else v  # noqa: E731
+    return all({k: norm(r[k]) for k in t} == {k: norm(v) for k, v in t.items()} for t, r in zip(tsv_rows, records))
+
+
+@pytest.mark.covers("W-06")
+def test_w06_summary_records_and_tsv_carry_the_same_numbers():
+    s, _ = _tiny()
+    s["header"].update(release="rX", tape_version="t-x", policy=dataclasses.asdict(nbr.Policy.parse("5g")),
+                       policy_hash=nbr.Policy.parse("5g").hash())
+    recs = list(export.nbr_summary_records(s))
+    assert recs[0]["schema"] == "nbr_summary_header/1" and list(recs[0]) == export.SCHEMAS["nbr_summary_header"]["keys"]
+    assert all(list(r) == export.SCHEMAS["nbr_summary"]["keys"] for r in recs[1:]) and len(recs) == 1 + len(s["rows"])
+    assert all(r["schema"] == "nbr_summary/1" for r in recs[1:])
+    back = parse_summary_tsv("\n".join(export.nbr_summary_tsv(s)))
+    assert {k: back["header"][k] for k in ("n_anchor_loci", "n_censored_loci", "release", "tape_version", "policy",
+                                           "n_keys")} == {k: recs[0][k] for k in ("n_anchor_loci", "n_censored_loci",
+                                                                                 "release", "tape_version", "policy",
+                                                                                 "n_keys")}
+    assert same_numbers(back["rows"], recs[1:])
+    assert {"cluster_uid", "rep_length"} <= set(next(r for r in back["rows"] if r["level"] == "nr50"))
+    with pytest.raises(ValueError, match="nr70"):
+        nbr.summarize_rows(TINY, ("pfam", "nr70"))
+
+
 # --- recipes (S-04, S-12 lint) ----------------------------------------------------------------------
 
 BASE = """
