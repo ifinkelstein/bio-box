@@ -11,7 +11,7 @@ Last update: 2026-11-09, 23:00 CST. Suite on the integration branch after the B-
 pinned image; 3 min 40 s wall for the slowest shard, against 13.5 min in one process). The skips
 need samtools, bgzip, Prodigal or the golden set. Tests no longer run on the laptop (AGENTS.md §5.5).
 
-## Merged (56 cards)
+## Merged (57 cards)
 
 | Card | Merge | What it did | Audit notes |
 |---|---|---|---|
@@ -70,6 +70,7 @@ need samtools, bgzip, Prodigal or the golden set. Tests no longer run on the lap
 | C-04 | this merge | `bio-box build-stage`: one command runs inputs → ingest → gene calling → IGRs → tapes → domain scans → clustering → tokens → postings → `contig_dim` → manifest → catalog, each as a `run-step` | Equals the direct build file for file on the fixture; a second call starts nothing; resumes after a kill; honours `STOP`; refuses a stage whose ingest or scan would exceed the CPU-minute budget (cards B-30, B-24). Branch `task/C-04-attempt2`. Tested on the fixture only: not yet run on real data on the pod (card C-10) |
 | W-12 | this merge | Hit and locus exports read only the release's files (manifest, else its `release_def` stages); an undefined release exits 2 | Shown first: without a manifest an S1 gene appeared in a release over S0. Agent's full pod run: 994 passed, 10 skipped, 8 xfailed. A dead glob branch remains in `nbr._store_files`; card B-27 removes it |
 | B-32 | this merge | Gene calling sends short genomes (under 10 kb) to worker processes in batches bounded by bases; long genomes stay in threads | On 100,000 CAMI II contigs: 8 workers 32.4 s against 1 worker about 160 s (5.0×; was 1.12× before). Complete genomes within 3% (fixture) and 11% faster at 8 workers (golden). All five gene-call outputs byte-identical across 96 runs. The profile showed sequence reads under the GIL were the bound, not pickling; two follow-ups in `SeqStore` noted in the measurement file |
+| C-06 | this merge | `RUNBOOK.md`: build, pause, resume, verify, search, export, clean up, limits; an R0 test checks every command in it against the real CLI parser and the limits table against the profile | Every command was run on the pod on a fixture-sized root (appendix A lists each with its last line). Not exercised: a reboot, the real 64 MiB floor and 200G cap, real Pfam (card C-10). Found four defects in running searches under a unit: card W-13 |
 
 Decisions DEC-18 to DEC-23 were approved by the PI on 2026-11-09 and are in `planning/DECISIONS.md`.
 
