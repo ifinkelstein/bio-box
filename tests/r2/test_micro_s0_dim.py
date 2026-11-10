@@ -46,7 +46,7 @@ def _out(root: Path, rel: str = REL) -> Path:
 @pytest.fixture(scope="module")
 def built(tmp_path_factory):
     root = _store(tmp_path_factory.mktemp("dim"))
-    stats = dim.run(root, REL)
+    stats = dim.run(root, REL, ["S0"])
     return root, stats
 
 
@@ -77,7 +77,7 @@ def test_one_row_per_default_contig(built):
 def test_file_conforms_and_enters_manifest(built):
     root, _ = built
     assert conformance_problems(pq.read_table(_out(root)), table("contig_dim")) == []
-    man = catalog.build_manifest(root, REL)
+    man = catalog.build_manifest(root, REL, ["S0"])
     assert "contig_dim" in {f["table"] for f in man["files"]}
 
 
@@ -85,12 +85,12 @@ def test_file_conforms_and_enters_manifest(built):
 def test_contig_dim_now_reads_only_the_catalog_release(built, tmp_path):
     root, _ = built
     want = pq.read_table(_out(root)).to_pylist()
-    con = catalog.open_catalog(catalog.generate_catalog(catalog.build_manifest(root, REL), tmp_path / "a.duckdb"))
+    con = catalog.open_catalog(catalog.generate_catalog(catalog.build_manifest(root, REL, ["S0"]), tmp_path / "a.duckdb"))
     cols = ", ".join(table("contig_dim").schema.names)
     got = con.execute(f"SELECT {cols} FROM contig_dim_now() ORDER BY contig_uid").fetchall()
     assert got == [tuple(r.values()) for r in want]
     con.close()
-    other = catalog.open_catalog(catalog.generate_catalog(catalog.build_manifest(root, "rOther"), tmp_path / "b.duckdb"))
+    other = catalog.open_catalog(catalog.generate_catalog(catalog.build_manifest(root, "rOther", ["S0"]), tmp_path / "b.duckdb"))
     assert other.execute("SELECT count(*) FROM contig_dim_now()").fetchone()[0] == 0
     assert other.execute("SELECT count(*) FROM contig_dim").fetchone()[0] == 3
     other.close()
@@ -98,7 +98,7 @@ def test_contig_dim_now_reads_only_the_catalog_release(built, tmp_path):
 
 def test_contig_dim_now_is_empty_without_any_dim_file(tmp_path):
     root = _store(tmp_path / "s")
-    con = catalog.open_catalog(catalog.generate_catalog(catalog.build_manifest(root, REL), tmp_path / "c.duckdb"))
+    con = catalog.open_catalog(catalog.generate_catalog(catalog.build_manifest(root, REL, ["S0"]), tmp_path / "c.duckdb"))
     assert con.execute("SELECT count(*) FROM contig_dim_now()").fetchone()[0] == 0
     con.close()
 
@@ -106,7 +106,7 @@ def test_contig_dim_now_is_empty_without_any_dim_file(tmp_path):
 def test_missing_genome_input_is_refused(tmp_path):
     root = _store(tmp_path, _genomes()[:1])
     with pytest.raises(ValueError, match=r"2 default-variant contigs have no genome_input row; first: [0-9a-f]{32}"):
-        dim.run(root, REL)
+        dim.run(root, REL, ["S0"])
     assert not _out(root).exists()
 
 
@@ -114,7 +114,7 @@ def test_stray_genome_input_contig_is_refused(tmp_path):
     stray = GenomeInput((ids.contig_uid(b"ACGTACGTAAAA"),), 11, kind="plasmid")
     root = _store(tmp_path, [*_genomes(), stray])
     with pytest.raises(ValueError, match="genome_input rows name a contig that contig_index does not hold"):
-        dim.run(root, REL)
+        dim.run(root, REL, ["S0"])
     assert not _out(root).exists()
 
 
@@ -122,12 +122,12 @@ def test_conflicting_duplicate_across_stages_is_refused_and_identical_collapses(
     root = _store(tmp_path)
     shutil.copytree(root / "l0seq/contig_index/stage=S0", root / "l0seq/contig_index/stage=S1")
     write_genome_input(root, "S1", _genomes())  # identical rows: one row per contig
-    assert dim.run(root, REL, tmp=tmp_path) == {"contigs": 3, "genomes": 3, "circular": 1}
+    assert dim.run(root, REL, ["S0", "S1"], tmp=tmp_path) == {"contigs": 3, "genomes": 3, "circular": 1}
     assert pq.read_table(_out(root)).num_rows == 3
     shutil.rmtree(root / "l0seq/genome_input/stage=S1")
     write_genome_input(root, "S1", _genomes("mag_hq"))
     with pytest.raises(ValueError, match="conflicting genome_input rows"):
-        dim.run(root, "rConflict")
+        dim.run(root, "rConflict", ["S0", "S1"])
     assert not _out(root, "rConflict").exists()
 
 
@@ -135,13 +135,13 @@ def test_second_build_for_a_release_refuses_to_overwrite(built):
     root, _ = built
     before = _out(root).read_bytes()
     with pytest.raises(FileExistsError):
-        dim.run(root, REL)
+        dim.run(root, REL, ["S0"])
     assert _out(root).read_bytes() == before
 
 
 @pytest.mark.covers("D-01")
 def test_output_bytes_are_identical_across_fresh_builds(tmp_path):
     a, b = _store(tmp_path / "a"), _store(tmp_path / "b")
-    dim.run(a, REL)
-    dim.run(b, REL)
+    dim.run(a, REL, ["S0"])
+    dim.run(b, REL, ["S0"])
     assert _out(a).read_bytes() == _out(b).read_bytes()

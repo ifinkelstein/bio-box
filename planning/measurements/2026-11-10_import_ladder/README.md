@@ -82,8 +82,9 @@ stage (one `seq_locator` file per stage, DEC-22).
 3. **Clustering does not scale as written.** Time grew as about n^1.73 between 1.13 M and
    2.05 M proteins and memory is about 4.7 KB per protein (*derived* from the two points). At
    about 95 M proteins (*derived*, 106 Gbp of prokaryotes) that is about 450 GB, over the 200 GB
-   scope. Two points are thin; `rL.3` (10.6 M) is the third. Card B-24 already covers the rewrite
-   and is now needed before S2, not after.
+   scope. Two points are thin; `rL.3` (10.6 M) is the third, and it revises this: see "Stage C
+   outcome" below (about n^1.2 in time; memory still over the scope). Card B-24 already covers the
+   rewrite and is needed before S2, not after.
 4. **Ingest of a large stage breaks the 300 CPU-minute rule.** It is linear at about 3.7 Mbp/s
    in one process: 42.9 CPU-min for 9.6 Gbp, so about 477 CPU-min at 106 Gbp (*derived*). A stage
    must be ingested as several batch processes. Folded into card C-04.
@@ -94,6 +95,22 @@ stage (one `seq_locator` file per stage, DEC-22).
 7. Gene calling in the new code is 7.2 times faster than the pilot on the same input (977 s on
    16 workers against 7,032 s on one thread), with 1.7 GB peak against 6.8 GB.
 
+## Stage C outcome (added 2026-11-10 03:00 CST)
+
+Stage C stopped at 02:53 CST: the unit `ladder-C` exited 1 in the postings step. `rL.3` has
+ingest, gene calls, IGRs, tapes, clusters and tokens; it has no postings, `contig_dim`, manifest
+or catalog, and nothing of it was synced to `/stor`.
+
+- **Clustering at 10.63 M proteins: 9,460 s and 46.1 GB peak** (16 threads; `results/C/cluster.json`
+  on the pod, not yet copied here). With the two earlier points this is about n^1.2 in time
+  between 2.05 M and 10.63 M proteins, not the n^1.73 the first two points suggested, and about
+  4.3 KB per protein in memory (*derived*). At 95 M proteins (*derived*) that is about 36 h and
+  about 410 GB: time is workable, memory is still twice the 200 GB scope, so card B-24 stands.
+- **Tokens: 216 s, 2.3 GB.**
+- **Postings failed after 40 s**: DuckDB `OutOfMemoryException ... (1.8 GiB/1.8 GiB used)` inside
+  `postings.run`. This is the first builder to break its bounded-memory rule on real data; the
+  earlier stages had no long contigs in the majority. Card B-29.
+
 ## Projection to 106 Gbp of prokaryotes (all *derived* from the rates above)
 
 | Step | Estimate |
@@ -103,7 +120,7 @@ stage (one `seq_locator` file per stage, DEC-22).
 | IGRs, tapes, tokens, postings | 10 to 20 min each |
 | catalog | 15 min per release |
 | Pfam, 48 threads | 3,730 CPU-h, about 78 h |
-| clustering | not feasible with the current builder |
+| clustering | about 36 h and about 410 GB with the current builder (three points); over the 200 GB scope |
 
 ## How to read stage C later
 

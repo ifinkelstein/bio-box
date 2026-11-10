@@ -80,7 +80,7 @@ def test_r05_igrs_lie_between_their_flanking_slots(built):
 def test_r05_igr_slices_equal_the_source(built, tmp_path):
     root, circular, rows = built
     store = SeqStore(root)
-    con = catalog.open_catalog(catalog.generate_catalog(catalog.build_manifest(root, "x"), tmp_path / "c.duckdb"))
+    con = catalog.open_catalog(catalog.generate_catalog(catalog.build_manifest(root, "x", ["S0"]), tmp_path / "c.duckdb"))
     src = {ids.contig_uid(fasta.read(FIX / o["file"])[0].seq): fasta.read(FIX / o["file"])[0].seq for o in CONTRACT["objects"]}
     for r in rows[::7]:
         seq = src[r["contig_uid"]]
@@ -93,7 +93,7 @@ def test_r05_igr_slices_equal_the_source(built, tmp_path):
 
 def test_igr_table_passes_contracts(built, tmp_path):
     root, _, _ = built
-    man = catalog.build_manifest(root, "x")
+    man = catalog.build_manifest(root, "x", ["S0"])
     con = catalog.open_catalog(catalog.generate_catalog(man, tmp_path / "c.duckdb"))
     assert contracts.check_foreign_keys(con) == []
     assert contracts.check_coordinates(con) == []

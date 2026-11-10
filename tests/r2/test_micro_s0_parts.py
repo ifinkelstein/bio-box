@@ -124,13 +124,13 @@ def build(root: Path, lib: Path | None, small: dict[str, int] | None) -> dict:
 
         work = root.parent / f"{root.name}.mmseqs"
         work.mkdir(parents=True, exist_ok=True)
-        out["cluster"] = cluster.run(root, REL, V, tmp=work, **kw.get("cluster", {}))
+        out["cluster"] = cluster.run(root, REL, V, ["S0"], tmp=work, **kw.get("cluster", {}))
         shutil.rmtree(work, ignore_errors=True)
     out["igr"] = igr.run(root, "S0", **kw.get("igr", {}))
     out["tapes"] = tapes.run(root, "S0", **kw.get("tapes", {}))
-    out["tokens"] = tokens.run(root, REL)
-    out["postings"] = postings.run(root, REL)
-    out["dim"] = dim.run(root, REL, **kw.get("dim", {}))
+    out["tokens"] = tokens.run(root, REL, ["S0"])
+    out["postings"] = postings.run(root, REL, ["S0"])
+    out["dim"] = dim.run(root, REL, ["S0"], **kw.get("dim", {}))
     out["lib"] = lib
     return out
 
@@ -140,7 +140,7 @@ def stores(tmp_path_factory):
     d = tmp_path_factory.mktemp("parts")
     a = build(d / "a", None, None)
     b = build(d / "b", a["lib"], SMALL)
-    man_a, man_b = catalog.build_manifest(d / "a", REL), catalog.build_manifest(d / "b", REL)
+    man_a, man_b = catalog.build_manifest(d / "a", REL, ["S0"]), catalog.build_manifest(d / "b", REL, ["S0"])
     cons = [catalog.open_catalog(catalog.generate_catalog(m, d / f"{n}.duckdb")) for n, m in (("a", man_a), ("b", man_b))]
     yield {"a": d / "a", "b": d / "b", "out_a": a, "out_b": b, "man_a": man_a, "man_b": man_b,
            "con_a": cons[0], "con_b": cons[1]}

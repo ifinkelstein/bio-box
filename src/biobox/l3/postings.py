@@ -39,12 +39,12 @@ import duckdb
 import numpy as np
 import pyarrow as pa
 
-from biobox import io, layout
+from biobox import catalog, io, layout
 from biobox.l1.genecall import DUCK_MEMORY_LIMIT, GENE_CALL_VERSION
 from biobox.l3.tokens import LEVELS, _scan, _tape_files, tape_version_of
 from biobox.registry.schemas import table
 
-EST_POSTING_ROW = 20  # estimate: zstd bytes per posting row (PLAN.md §4.2 size model, 15-25 B); cuts parts, picks width
+EST_POSTING_ROW = 36  # zstd bytes per posting row, measured 35.74 (rL.2, pod wilkcomp02, 2026-11-10, scripts/stress/postings_bytes.py; the earlier estimate was 20), rounded up to an int; cuts parts, picks width
 _LISTS = ("feature_uids", "start_bps", "end_bps", "strands")
 _TOKENS = tuple(f"{lvl}_tokens" for lvl in LEVELS)
 
@@ -87,21 +87,25 @@ def _bucket_name(bk: int, width: int) -> str:
     return layout.bucket(bytes([bk << 4 if width == 1 else bk]), width)
 
 
-def run(root: Path, release: str, gene_call_version: str = GENE_CALL_VERSION, producers: list[str] | None = None,
-        prefix_width: int | None = None, max_file_bytes: int = layout.MAX_FILE_BYTES, tmp=None) -> dict:
+def run(root: Path, release: str, stages: list[str], gene_call_version: str = GENE_CALL_VERSION,
+        producers: list[str] | None = None, prefix_width: int | None = None,
+        max_file_bytes: int = layout.MAX_FILE_BYTES, tmp=None) -> dict:
     """Write the release's postings for the tape version of `producers` (default: the gene-call producer).
 
-    Reads every stage's tapes of that tape version and its `tape_tokens` of `release` (written by
-    `biobox.l3.tokens.run`). `prefix_width` overrides the bucket width; `tmp` holds DuckDB's private
-    scratch directory (system temp by default; never the data root).
+    Reads the tapes of that tape version for `stages`, the release's stages (card B-25; a listed stage
+    without tapes raises FileNotFoundError, and they must be the stages of the release's `release_def`),
+    and its `tape_tokens` of `release` (written by `biobox.l3.tokens.run`). `prefix_width` overrides
+    the bucket width; `tmp` holds DuckDB's private scratch directory (system temp by default; never
+    the data root).
     """
     root = Path(root)
+    stages = catalog.check_stages(stages)
     if prefix_width not in (None, 0, 1, 2):
         raise ValueError(f"prefix_width {prefix_width}: must be 0, 1 or 2")
     if tmp is not None and Path(tmp).resolve().is_relative_to(root.resolve()):
         raise ValueError(f"{tmp}: the scratch directory may not lie under the data root")
     tv = tape_version_of(gene_call_version, producers)
-    tape_files = _tape_files(root, tv)
+    tape_files = _tape_files(root, tv, stages)
     tok_dir = root / f"l3/tape_tokens/tape_version={tv}/release={release}"
     tok_files = io.part_files(tok_dir)
     if not tok_files:
@@ -110,6 +114,7 @@ def run(root: Path, release: str, gene_call_version: str = GENE_CALL_VERSION, pr
     base = root / f"l3/token_postings/release={release}/tape_version={tv}"
     if base.exists() and any(base.rglob("*.parquet")):
         raise FileExistsError(f"{base}: postings exist; refusing to overwrite")
+    catalog.define_release(root, release, stages)
 
     tape_src = _scan(tape_files, "contig_uid, contig_len, is_circular, n_slots, " + ", ".join(_LISTS),
                      "NULL::BLOB AS contig_uid, NULL::BIGINT AS contig_len, NULL::BOOLEAN AS is_circular, "

@@ -58,7 +58,7 @@ def built(tmp_path_factory):
             genomes.append(GenomeInput((cu,), o["genetic_code"], kind=o["kind"],
                                        circular=(cu,) if o["topology"] == "circular" else ()))
         call_genes(root, stage, genomes)
-    man = catalog.build_manifest(root, "rS1.test")
+    man = catalog.build_manifest(root, "rS1.test", ["S0", "S1"])
     cat = catalog.generate_catalog(man, root / "catalog/release=rS1.test.duckdb")
     return root, man, cat
 
@@ -123,7 +123,7 @@ def test_ly06_protein_lookup_reads_one_file_per_stage(tmp_path, width):
         genomes.append(GenomeInput((cu,), o["genetic_code"], kind=o["kind"],
                                    circular=(cu,) if o["topology"] == "circular" else ()))
     call_genes(root, "S0", genomes, prefix_width=None if width == 0 else width, max_file_bytes=40_000)
-    man = catalog.build_manifest(root, "x")  # LY-05 holds for every width
+    man = catalog.build_manifest(root, "x", ["S0"])  # LY-05 holds for every width
     files = [x for x in man["files"] if x["table"] == "protein_seq"]
     assert {x["partitions"]["protein_prefix"] for x in files} <= ({"all"} if width == 0 else
                                                                    {f"{i:02x}"[:width] for i in range(256)})

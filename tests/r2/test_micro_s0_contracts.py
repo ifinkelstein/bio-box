@@ -65,12 +65,12 @@ def build(root: Path, order: int = 1, threads: int = 1) -> dict:
         from biobox.l2 import cluster
         tmp = root.parent / f"{root.name}.mmseqs"
         tmp.mkdir(parents=True, exist_ok=True)
-        cluster.run(root, "rS0.test", GENE_CALL_VERSION, threads=threads, tmp=tmp)
+        cluster.run(root, "rS0.test", GENE_CALL_VERSION, ["S0"], threads=threads, tmp=tmp)
         shutil.rmtree(tmp, ignore_errors=True)
     tapes.run(root, "S0", {u for g in genomes for u in g.circular})
-    tokens.run(root, "rS0.test")
-    postings.run(root, "rS0.test")
-    return catalog.build_manifest(root, "rS0.test")
+    tokens.run(root, "rS0.test", ["S0"])
+    postings.run(root, "rS0.test", ["S0"])
+    return catalog.build_manifest(root, "rS0.test", ["S0"])
 
 
 @pytest.fixture(scope="module")
@@ -176,7 +176,7 @@ def test_c03_shards_are_not_ordered_across_each_other(tmp_path):
 
     root = tmp_path / "s"
     ingest([SourceObject(FIX / o["file"], "s", "1") for o in CONTRACT["objects"]], root, "S0", shard_bases=200_000)
-    man = catalog.build_manifest(root, "x")
+    man = catalog.build_manifest(root, "x", ["S0"])
     shards = sorted(a["path"] for a in man["artifacts"] if a["path"].endswith(".fa.gz"))
     names = [[e.name for e in read_fai(root / (s + ".fai"))] for s in shards]
     assert len(shards) == 3
@@ -351,7 +351,7 @@ def test_r09_a_later_stage_keeps_earlier_files(built, tmp_path):
     _, man, _ = built
     root = tmp_path / "s"
     shutil.copytree(man["root"], root)
-    before = catalog.build_manifest(root, "rS0.test")
+    before = catalog.build_manifest(root, "rS0.test", ["S0"])
     t4 = next(o for o in CONTRACT["objects"] if o["accession"] == "NC_000866.4")
     dup = tmp_path / "t4_again.fna.gz"
     shutil.copy(FIX / t4["file"], dup)
@@ -360,7 +360,7 @@ def test_r09_a_later_stage_keeps_earlier_files(built, tmp_path):
     lam_masked.write_bytes(b"\n".join(fasta.format_record("lam_variant", lam[:2000].lower() + lam[2000:], 70)) + b"\n")
     ingest([SourceObject(dup, "s1_source", "1"), SourceObject(lam_masked, "s1_source", "1")], root, "S1",
            shard_bases=10**6)
-    after = catalog.build_manifest(root, "rS1.test")
+    after = catalog.build_manifest(root, "rS1.test", ["S0", "S1"])
     assert contracts.check_append_only(before, after) == []
     assert len(after["files"]) > len(before["files"])
     # and the check notices a rewrite
