@@ -40,7 +40,9 @@ who can read a release may not be able to write. The pack is read from a pack di
 `biobox.search.pack`); a run's directory is `out` (`bio-box search run --out DIR`), else
 `run=<run_id>/` in a runs directory (`runs`, `--runs DIR`). The pending record of a submitted run and
 its runner's stderr are `pending/<run dir name>.json` and `.stderr` beside the run directory
-(`pending_path`); the runner's lock is in its work directory. Defaults: with a host profile, a per-user
+(`pending_path`); the runner's lock is in its work directory. A run started with `bio-box search run
+--wait` (`run(pending=True)`, card W-13) takes that lock and writes that record itself, so it is watched
+and cancelled the same way. Defaults: with a host profile, a per-user
 directory under the profile's `tmp` (`<tmp>/search/<user>/runs` and `.../work`) and `<tmp>/packs`;
 without one, `default_work_base()` (`$BIOBOX_SEARCH_WORK`, else /tmp/atd/search), `runs` inside it and
 `packs` beside it. A run, work, runs or pack directory under the data root is refused before anything
@@ -449,13 +451,19 @@ def run(root: Path, recipe_src: Path | str, release: str, *, limits: Limits = Li
         work_base: Path | None = None, argv: list[str] | None = None, run_id: bytes | None = None,
         fault: str | None = None, gene_call_version: str = GENE_CALL_VERSION, keep_work: bool = False,
         tape_version: str | None = None, packs: Path | None = None, runs: Path | None = None,
-        out: Path | None = None) -> dict:
+        out: Path | None = None, pending: bool = False, on_pending=None) -> dict:
     """Run one recipe to completion; returns the search_run row. Refusals raise RecipeError.
 
     The pack is read from the pack directory `packs` (default `default_pack_base()`); the run is written to
     the directory `out`, else to `run=<run_id>` in `runs` (default `default_runs_dir()`). None of these, nor
     `work_base`, may lie under the root (module docstring). The run reads the tape version of its pack (card
-    B-16); `tape_version`, when given, must be it."""
+    B-16); `tape_version`, when given, must be it.
+
+    `pending` (card W-13; `bio-box search run --wait`): the run takes its runner lock and writes the pending
+    record `submit` writes, with this process as the runner, before its worker starts, so that `status` and
+    `cancel` work on it from another process while it runs. A run id whose lock a live runner holds is refused.
+    `on_pending(run_id_hex, path)` is called once the record is written. The runner `submit` starts runs
+    without it: `submit` writes that record itself."""
     system = platform.system()
     cap = memory_cap(limits, system=system)  # refused (card C-07) before anything is read or recorded
     root = Path(root).resolve()
@@ -481,6 +489,7 @@ def run(root: Path, recipe_src: Path | str, release: str, *, limits: Limits = Li
     if final.exists():
         raise RecipeError(f"{final} exists: a run directory is written once")
     work = work_base / run_id.hex()
+    lock_fd = _take_lock(work, run_id.hex()) if pending else None  # before the directory is cleaned
     if work.exists():  # `submit` made this directory and holds runner.lock in it: keep that file
         for child in work.iterdir():
             if child.name != LOCK_NAME:
@@ -494,6 +503,10 @@ def run(root: Path, recipe_src: Path | str, release: str, *, limits: Limits = Li
     sums: list[bytes] = []
     rc, ru, result = None, None, {}
     try:
+        if pending:  # after the SIGTERM handler: from here a cancel is recorded as `stopped`
+            info = _write_pending(final, run_id.hex(), os.getpid(), work / LOCK_NAME)
+            if on_pending is not None:
+                on_pending(run_id.hex(), info)
         shards, models, sums = _stage(res, work, limits)
         seed_file = None
         if res["seed_bytes"] is not None:  # the bytes read and hashed at submit, not the path's later content
@@ -556,10 +569,14 @@ def run(root: Path, recipe_src: Path | str, release: str, *, limits: Limits = Li
         "limits_json": json.dumps({**asdict(limits), "mem_cap": cap}, sort_keys=True), "error": error,
         "seed_json": json.dumps(res["seed"], sort_keys=True),
     }
-    # a worker that died after a round has hits on disk, but no result: they are not the run's
-    _publish(final, row, out, with_outputs=bool(result) and status in ("ok", "failed", "output_cap"))
-    if not keep_work:
-        shutil.rmtree(work, ignore_errors=True)
+    try:
+        # a worker that died after a round has hits on disk, but no result: they are not the run's
+        _publish(final, row, out, with_outputs=bool(result) and status in ("ok", "failed", "output_cap"))
+        if not keep_work:
+            shutil.rmtree(work, ignore_errors=True)
+    finally:
+        if lock_fd is not None:  # held until the run is closed: until then `status` says `running`
+            os.close(lock_fd)
     return row
 
 
@@ -610,8 +627,9 @@ def submit(root: Path, recipe_path: Path, release: str, limits: Limits = Limits(
         raise RecipeError(f"{final} exists: a run directory is written once")
     info = pending_path(final)
     info.parent.mkdir(parents=True, exist_ok=True)
+    # `--submitted`: this function writes the runner's pending record, so the runner does not (card W-13)
     cmd = [sys.executable, "-m", "biobox.cli", "search", "run", str(recipe_path), "--root", str(root),
-           "--release", release, "--wait", "--run-id", run_id.hex(), "--cpus", str(limits.cpus),
+           "--release", release, "--wait", "--submitted", "--run-id", run_id.hex(), "--cpus", str(limits.cpus),
            "--cpu-min", str(limits.cpu_min), "--wall-s", str(limits.wall_s), "--work", str(work_base.resolve()),
            "--pack-dir", str(packs.resolve()), "--out", str(final)]
     if fault is not None:
@@ -632,12 +650,35 @@ def submit(root: Path, recipe_path: Path, release: str, limits: Limits = Limits(
                                 start_new_session=True, pass_fds=(fd,))
     finally:
         os.close(fd)  # the runner's copy keeps the lock
-    start = proc_start_time(proc.pid)  # our unreaped child: the pid cannot have been reused yet
+    _write_pending(final, run_id.hex(), proc.pid, lock_path)  # our unreaped child: its pid cannot be reused yet
+    return run_id.hex()
+
+
+def _take_lock(work: Path, run_id: str) -> int:
+    """Take the runner lock of a run started with `pending` (card W-13), as `submit` takes it for its runner: an
+    exclusive flock on `<work>/runner.lock`, held through the returned fd for as long as the run is open. The fd
+    is not inherited by the worker (Python opens it close-on-exec), so only the runner holds it (card A-07). A
+    lock that another runner holds is refused: that run id is running."""
+    work.mkdir(parents=True, exist_ok=True)
+    fd = os.open(work / LOCK_NAME, os.O_RDWR | os.O_CREAT, 0o644)
+    try:
+        fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+    except BlockingIOError:
+        os.close(fd)
+        raise RecipeError(f"run {run_id} is running: its runner holds {work / LOCK_NAME}") from None
+    return fd
+
+
+def _write_pending(final: Path, run_id: str, pid: int, lock: Path) -> Path:
+    """Write the pending record of the run whose directory is `final` (`pending_path`): its runner's pid and
+    start time and the lock that runner holds; written under a temporary name and renamed into place."""
+    info = pending_path(final)
+    info.parent.mkdir(parents=True, exist_ok=True)
     tmp = info.with_name(f".{info.name}.tmp")
-    tmp.write_text(json.dumps({"run_id": run_id.hex(), "pid": proc.pid, "start": start, "lock": str(lock_path),
+    tmp.write_text(json.dumps({"run_id": run_id, "pid": pid, "start": proc_start_time(pid), "lock": str(lock),
                                "status": "running"}))
     os.replace(tmp, info)
-    return run_id.hex()
+    return info
 
 
 def status(d: Path) -> dict:
