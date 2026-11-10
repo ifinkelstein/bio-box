@@ -11,7 +11,7 @@ Last update: 2026-11-09, 23:00 CST. Suite on the integration branch after the B-
 pinned image; 3 min 40 s wall for the slowest shard, against 13.5 min in one process). The skips
 need samtools, bgzip, Prodigal or the golden set. Tests no longer run on the laptop (AGENTS.md §5.5).
 
-## Merged (49 cards)
+## Merged (50 cards)
 
 | Card | Merge | What it did | Audit notes |
 |---|---|---|---|
@@ -63,6 +63,7 @@ need samtools, bgzip, Prodigal or the golden set. Tests no longer run on the lap
 | D-06 | this merge | The append-only check compares every file and artifact, small tables included | Fault injection on `l0_manifest`, `ledger`, `release_def`, `tape_version_def` and `store_params.json`: each rewrite is reported; clean on the two-stage, two-release fixture. Agent's full pod run: 906 passed, 10 skipped |
 | B-28 | this merge | `pack build`, `nbr`, the search worker and `SeqStore` read only the release's stages (no default that globs); the clustering ledger is per release | The agent showed the bug on the old code: proteins planted in a stage outside the release were in its pack and its search hits. Other fixture files byte-identical. Stress scripts still call `SeqStore(root)`: card A-06. One release's manifest takes in other releases' files: card B-33 |
 | A-06 | this merge | Ten stale `SeqStore(root)` calls in eight stress scripts fixed; a static R0 test parses the scripts and `src` signatures and fails on a stale call | `synth_scale.py` at 10× and `builder_limits.py` ran to completion on the pod; the pilot scripts were checked statically only. Agent's full pod run: 917 passed, 10 skipped |
+| D-05 | this merge | `tests/r2/test_scale_layout.py`: 100× synthetic store; row-group limits; lookups that prune asserted at ≤ 2 row groups per key; eight lookups that do not prune are strict expected-failures tied to card B-31 | Runs in 40 to 48 s. At the real row-group limits a 100× store has 1 or 2 row groups, so the test scales the writer's caps by 1/16 while building (test side only) to get ≥ 8; the real limits are checked at 1,000× by `scripts/stress/synth_scale.py`, not in CI. B-31 must remove the eight markers |
 
 Decisions DEC-18 to DEC-23 were approved by the PI on 2026-11-09 and are in `planning/DECISIONS.md`.
 
