@@ -116,6 +116,8 @@ FOREIGN_KEYS = [
     ("slot_pairs", ("contig_uid",), "contig_tapes", ("contig_uid",)),
     ("slot_pairs", ("anchor_token", "release"), "token_dict", ("token_id", "release")),
     ("slot_pairs", ("partner_token", "release"), "token_dict", ("token_id", "release")),
+    ("token_postings", ("token_id", "release"), "token_dict", ("token_id", "release")),
+    ("token_postings", ("contig_uid",), "contig_tapes", ("contig_uid",)),
 ]
 
 
