@@ -13,13 +13,25 @@ that `open_catalog` registers on each connection (DEC-17): `seq_get` and `seq_sl
 `bb_seq`, `seq_get_circular` calls `bb_seq_circular`, `seq_raw` calls `bb_seq_raw`. They
 resolve keys through `SeqStore` point lookups, never through SQL on `contig_index` or
 `seq_locator`, so a fetch reads O(1) index row groups also when the keys come from a joined
-table (AGENTS §4.4, card B-14). A catalog opened with plain `duckdb` has every view and
-macro, but the sequence macros fail with "Catalog Error: Scalar Function with name bb_seq
-does not exist!" (`bb_seq_circular`, `bb_seq_raw` for the other two), and so does `partners_of`
-(`bb_slot_tokens`, its point lookup of `tape_tokens`, card B-31). The lookup macros `default_digest`,
-`digest_len` and `contig_len_of` work there as SQL that scans the index views; `open_catalog` shadows
-them on its connection with point lookups over the same `SeqStore` (card B-31), so a joined key reads
-one index row group, not all.
+table (AGENTS §4.4, card B-14). `partners_of` calls `bb_slot_tokens`, its point lookup of
+`tape_tokens` (card B-31).
+
+The stored catalog holds `bb_seq`, `bb_seq_circular`, `bb_seq_raw` and `bb_slot_tokens` as stand-in
+macros that raise an error naming `biobox.catalog.open_catalog` (card B-34), so a catalog opened with
+plain `duckdb` has every view and macro, and the sequence macros and `partners_of` fail there with that
+message. `open_catalog` shadows each stand-in on its connection with a temporary macro of the same name
+over the real Python function (`<name>_udf`). The lookup macros `default_digest`, `digest_len`,
+`contig_len_of` and `token_of` work on a plain connection as SQL that scans the index views or
+`token_dict`; `open_catalog` shadows them too, with point lookups over footer statistics (the
+`SeqStore` for the first three, card B-31; `TokenKeyLookup` over `token_dict` for `token_of`, card
+B-34), so a joined key reads O(1) row groups, not all.
+
+`open_catalog` attaches the catalog file read-only to a private in-memory DuckDB instance (card B-34).
+Python functions are registered in an instance's catalog, and `duckdb.connect` on one file path hands
+every connection of the process the same instance, so a second connection could not register them
+again ("Scalar Function with name bb_seq already exists"). With an instance per connection, any number
+of connections to one catalog, or to several, live side by side in one process, each with its own
+functions, settings and caches, and closing one leaves the others working.
 
 A release names its stages (card B-25): `define_release` writes its `release_def` once, and
 `build_manifest` lists only the files of those stages, so a stage written later, or being written
@@ -53,6 +65,7 @@ import re
 import shutil
 import tempfile
 import threading
+from collections import OrderedDict
 from pathlib import Path
 
 import blake3
@@ -83,6 +96,16 @@ PAIR_K_MAX = 10
 PAIR_FLAG_CENSORED, PAIR_FLAG_CROSSES_ORIGIN = 1, 2
 # partners_of reads the tape tokens of every anchor's contig; above this many anchor postings it refuses
 PARTNERS_MAX_ROWS = 100_000
+
+# The Python functions behind the catalog's macros (card B-34): name -> (parameters, SQL return type, the
+# macros that need it). The stored catalog holds each as a stand-in macro that raises; `open_catalog` shadows
+# it with a temporary macro over the function `<name>_udf`.
+PY_FUNCTIONS = {
+    "bb_seq": ("_cuid, _s, _e, _strand", "VARCHAR", "seq_get and seq_slice"),
+    "bb_seq_circular": ("_cuid, _s, _e, _strand", "VARCHAR", "seq_get_circular"),
+    "bb_seq_raw": ("_rd, _s, _e", "VARCHAR", "seq_raw"),
+    "bb_slot_tokens": ("_cuid, _js", "UBIGINT[][]", "partners_of"),
+}
 
 
 # Trees under the data root that carry their own manifests and are not release files: the
@@ -853,8 +876,18 @@ def macro_sql() -> list[str]:
     macros `default_digest`, `digest_len` and `contig_len_of` are for users. As stored here they scan
     the index views (for a plain `duckdb` connection); `open_catalog` replaces them on its connection
     with point lookups (`_register_lookup_udf`, card B-31). The sequence macros do not call them.
+
+    The first macros are the stand-ins of `PY_FUNCTIONS` (card B-34): on a plain connection each raises
+    an error that names `biobox.catalog.open_catalog`. The error is cast to the function's return type:
+    an untyped `error()` passed to another function is folded to NULL by DuckDB's binder (2.0.0), and the
+    caller would get NULL instead of the error.
     """
-    return [
+    stand_ins = [
+        f"CREATE MACRO {name}({params}) AS CAST(error('{users}: open this catalog with "
+        f"biobox.catalog.open_catalog(path); {name} is a Python function of biobox that a plain duckdb "
+        f"connection does not have') AS {rtype})"
+        for name, (params, rtype, users) in PY_FUNCTIONS.items()]
+    return stand_ins + [
         f"CREATE MACRO revcomp(_x) AS reverse(translate(_x, '{COMPLEMENT[0]}', '{COMPLEMENT[1]}'))",
         "CREATE MACRO default_digest(_cuid) AS "
         "(SELECT raw_digest FROM contig_index WHERE contig_uid = _cuid AND is_default_variant)",
@@ -977,11 +1010,9 @@ def generate_catalog(manifest: dict, out_path: Path | None = None, root: Path | 
         if arts:
             con.executemany("INSERT INTO catalog_artifacts VALUES (?, ?, ?, ?)",
                             [(a["path"], a["artifact"], a["sha256"], a["bytes"]) for a in arts])
-        # DuckDB binds a macro's functions when it is created: stand-ins for bb_seq,
-        # bb_seq_circular and bb_seq_raw let the macros be stored without a store; open_catalog
-        # registers the real readers; macros come last because they read catalog_info
-        _register_seq_udf(con, None)
-        _register_tape_udf(con, None)  # partners_of calls bb_slot_tokens (card B-31)
+        # DuckDB binds a macro's functions when it is created: the stand-in macros of PY_FUNCTIONS come
+        # first in macro_sql and are stored (card B-34; open_catalog shadows them with the real readers);
+        # macros come last because they read catalog_info
         for stmt in macro_sql():
             con.execute(stmt)
         con.execute("CHECKPOINT")
@@ -992,7 +1023,17 @@ def generate_catalog(manifest: dict, out_path: Path | None = None, root: Path | 
 
 
 _READERS: dict[int, object] = {}
-_TAPES: dict[int, object] = {}  # id(connection) -> its _LazyTapes (card B-31)
+# id(connection) -> its point lookups outside DuckDB's scans, as (function name, _Lazy): the tape tokens of
+# bb_slot_tokens (card B-31) and the token keys of token_of (card B-34); `profile_query` reports their reads
+_LOOKUPS: dict[int, list] = {}
+
+
+def _shadow(con: duckdb.DuckDBPyConnection, name: str) -> None:
+    """Shadow the stored stand-in macro `name` of PY_FUNCTIONS, on this connection only, with a temporary
+    macro of the same name over the registered Python function `<name>_udf` (card B-34). Temporary objects
+    come first in DuckDB's search path, also inside the stored macros that call `name`."""
+    params = PY_FUNCTIONS[name][0]
+    con.execute(f"CREATE OR REPLACE TEMP MACRO {name}({params}) AS {name}_udf({params})")
 
 
 def _read_in_file_order(store, n_rows: int, jobs: list) -> list:
@@ -1023,13 +1064,14 @@ def _register_seq_udf(con: duckdb.DuckDBPyConnection, store) -> None:
 
     Each is vectorized (Arrow in, Arrow out) and resolves keys with SeqStore point lookups
     (`default_digest`, `locate`: one row group per index per key, cached), never with SQL on the
-    index views. A NULL in any argument gives NULL. With `store` None (the stand-ins
-    `generate_catalog` stores the macros against, or a root without sequence) they raise.
+    index views. A NULL in any argument gives NULL. With `store` None (a release without
+    `seq_locator` files) they raise. Registered as `<name>_udf` and shadowing the stored stand-ins
+    (`_shadow`, card B-34).
     """
 
     def need() -> None:
         if store is None:
-            raise RuntimeError("bb_seq: open the catalog with biobox.catalog.open_catalog to read sequence")
+            raise RuntimeError("bb_seq: this catalog's release lists no seq_locator files, so it has no sequence to read")
 
     def contig_jobs(who: str, circular: bool, cuids: pa.Array, starts: pa.Array, ends: pa.Array,
                     strands: pa.Array) -> pa.Array:
@@ -1088,9 +1130,11 @@ def _register_seq_udf(con: duckdb.DuckDBPyConnection, store) -> None:
         return pa.array(_read_in_file_order(store, len(rows), jobs), pa.string())
 
     opts = {"type": "arrow", "null_handling": "special", "side_effects": False}
-    con.create_function("bb_seq", bb_seq, ["BLOB", "BIGINT", "BIGINT", "BIGINT"], "VARCHAR", **opts)
-    con.create_function("bb_seq_circular", bb_seq_circular, ["BLOB", "BIGINT", "BIGINT", "BIGINT"], "VARCHAR", **opts)
-    con.create_function("bb_seq_raw", bb_seq_raw, ["BLOB", "BIGINT", "BIGINT"], "VARCHAR", **opts)
+    con.create_function("bb_seq_udf", bb_seq, ["BLOB", "BIGINT", "BIGINT", "BIGINT"], "VARCHAR", **opts)
+    con.create_function("bb_seq_circular_udf", bb_seq_circular, ["BLOB", "BIGINT", "BIGINT", "BIGINT"], "VARCHAR", **opts)
+    con.create_function("bb_seq_raw_udf", bb_seq_raw, ["BLOB", "BIGINT", "BIGINT"], "VARCHAR", **opts)
+    for name in ("bb_seq", "bb_seq_circular", "bb_seq_raw"):
+        _shadow(con, name)
 
 
 def _register_lookup_udf(con: duckdb.DuckDBPyConnection, store) -> None:
@@ -1193,35 +1237,34 @@ class TapeTokenLookup(KeyLookup):
         return None
 
 
-class _LazyTapes:
-    """The connection's `TapeTokenLookup`, built (footers read) on first use, so a catalog whose queries never
-    ask for tape tokens never opens them."""
+class _Lazy:
+    """A connection's point lookup over `files` (`make(files)`: `TapeTokenLookup`, `TokenKeyLookup`), built
+    (footers read) on first use, so a catalog whose queries never need it never opens the files."""
 
-    def __init__(self, files: list[Path]):
+    def __init__(self, make, files: list[Path]):
+        self.make = make
         self.files = files
-        self._lookup: TapeTokenLookup | None = None
+        self._lookup = None
         self._lock = threading.Lock()
 
-    def get(self) -> TapeTokenLookup:
+    def get(self):
         with self._lock:
             if self._lookup is None:
-                self._lookup = TapeTokenLookup(self.files)
+                self._lookup = self.make(self.files)
             return self._lookup
 
-    def peek(self) -> TapeTokenLookup | None:
+    def peek(self):
         return self._lookup
 
 
-def _register_tape_udf(con: duckdb.DuckDBPyConnection, tapes: _LazyTapes | None) -> None:
+def _register_tape_udf(con: duckdb.DuckDBPyConnection, tapes: _Lazy) -> None:
     """Register `bb_slot_tokens(contig_uid, js)` over `tapes` (card B-31): for each 0-based slot of the list
     `js`, the non-null tokens of that slot of the contig's tape tokens, family then NR50 then NR90; an empty
     list for a slot outside the tape or a contig without tape tokens, NULL for a NULL argument. One call per
     contig (the macro groups its slots), so a contig is looked up once and its slots are read with numpy.
-    With `tapes` None (the stand-in `generate_catalog` stores the macros against) it raises."""
+    Registered as `bb_slot_tokens_udf`, shadowing the stored stand-in (`_shadow`, card B-34)."""
 
     def bb_slot_tokens(cuids: pa.Array, jss: pa.Array) -> pa.Array:
-        if tapes is None:
-            raise RuntimeError("bb_slot_tokens: open the catalog with biobox.catalog.open_catalog to read tape tokens")
         lookup = tapes.get()
         cus = cuids.to_pylist()
         lens = pc.list_value_length(jss).fill_null(0).to_numpy(zero_copy_only=False).astype(np.int64)
@@ -1255,8 +1298,9 @@ def _register_tape_udf(con: duckdb.DuckDBPyConnection, tapes: _LazyTapes | None)
         outer_offsets = np.concatenate([[0], np.cumsum(outer_lens)]).astype(np.int32)
         return pa.ListArray.from_arrays(pa.array(outer_offsets, pa.int32()), inner, mask=pa.array(null))
 
-    con.create_function("bb_slot_tokens", bb_slot_tokens, ["BLOB", "BIGINT[]"], "UBIGINT[][]",
+    con.create_function("bb_slot_tokens_udf", bb_slot_tokens, ["BLOB", "BIGINT[]"], "UBIGINT[][]",
                         type="arrow", null_handling="special", side_effects=False)
+    _shadow(con, "bb_slot_tokens")
 
 
 def _tape_token_files(con: duckdb.DuckDBPyConnection, root: Path) -> list[Path]:
@@ -1269,6 +1313,176 @@ def _tape_token_files(con: duckdb.DuckDBPyConnection, root: Path) -> list[Path]:
         if parts.get("release") == info["release_id"] and parts.get("tape_version") == info.get("tape_version"):
             out.append(Path(root) / p)
     return out
+
+
+def _token_dict_files(con: duckdb.DuckDBPyConnection, root: Path) -> list[Path]:
+    """The catalog's `token_dict` files of its release (`catalog_files`), under `root`."""
+    rel = con.execute("SELECT value FROM catalog_info WHERE key = 'release_id'").fetchall()[0][0]
+    rows = con.execute("SELECT path FROM catalog_files WHERE \"table\" = 'token_dict' ORDER BY path").fetchall()
+    return [Path(root) / p for (p,) in rows if classify(p)[1].get("release") == rel]
+
+
+class TokenKeyLookup:
+    """`token_dict` rows by (level, key) from footer statistics, without loading the table (card B-34).
+
+    `token_dict` is sorted by `token_id` = level | source | local, and `local` is the key's rank within
+    (level, source), so the rows of each (level, source) run are sorted by key. A row group's `token_id`
+    min and max are its first and last rows, which give the runs it starts and ends in (`token_id >> 56`);
+    its `key` min and max (statistics the builder writes since card B-34) bound every key in it. For a key
+    at a level, a row group is read when its `token_id` range meets the level, its `key` range holds the
+    key, and it is either inside one run, or holds part of a run whose other rows do not exclude the key:
+    the tail of a run is skipped when the key is not above the run's last row group inside the run, its
+    head when the key is not below the run's first such row group. A run that starts and ends inside one
+    row group cannot be excluded that way. So a key reads one row group of a run that spans whole row
+    groups, and at most two when its run is cut by the row-group boundaries or shares a row group with a
+    run of unknown keys (`tests/r2/test_scale_layout.py`). A row group without `key` statistics (a
+    `token_dict` written before card B-34) is read whenever it meets the level: right answers, no pruning.
+
+    Counters as `TapeTokenLookup`: `row_groups_read`, `files_hit` per file, `row_groups_total`. At most
+    `cache_row_groups` decoded row groups are held.
+    """
+
+    COLUMNS = ("token_id", "level", "key")
+
+    def __init__(self, files, cache_row_groups: int = 16):
+        from biobox.l3.tokens import LEVELS  # tokens imports this module
+
+        self.levels = dict(LEVELS)
+        self.files = [Path(p) for p in files]
+        self.cache_row_groups = cache_row_groups
+        self.row_groups_read = 0
+        self.files_hit = [0] * len(self.files)
+        self._cache: OrderedDict = OrderedDict()
+        self._lock = threading.Lock()
+        rgs = []  # (token_id min, token_id max, key min, key max, file index, row group)
+        self._metadata = []
+        for fi, path in enumerate(self.files):
+            md = pq.read_metadata(path)
+            self._metadata.append(md)
+            leaf = {md.schema.column(i).path: i for i in range(md.num_columns)}
+            for g in range(md.num_row_groups):
+                rg = md.row_group(g)
+                if rg.num_rows == 0:
+                    continue
+                t, k = rg.column(leaf["token_id"]).statistics, rg.column(leaf["key"]).statistics
+                if t is None or not t.has_min_max:
+                    raise ValueError(f"{path}: row group {g} has no min/max statistics on token_id (LY-03)")
+                # a token_dict written before card B-34 has no key statistics: its row groups are read
+                # whenever they meet the level, as the stored SQL macro reads them
+                k = (k.min, k.max) if k is not None and k.has_min_max else (None, None)
+                rgs.append((t.min, t.max, *k, fi, g))
+        rgs.sort(key=lambda r: r[0])
+        for prev, nxt in zip(rgs, rgs[1:]):
+            if nxt[0] <= prev[1]:
+                raise ValueError(f"token_dict row groups overlap in token_id ({prev[0]}..{prev[1]} and "
+                                 f"{nxt[0]}..{nxt[1]}): the files are not one sorted table (LY-02)")
+        self.row_groups_total = len(rgs)
+        self._tmin = [r[0] for r in rgs]
+        self._tmax = [r[1] for r in rgs]
+        self._kmin = [r[2] for r in rgs]
+        self._kmax = [r[3] for r in rgs]
+        self._where = [(r[4], r[5]) for r in rgs]
+        self._first = [r[0] >> 56 for r in rgs]  # the run (level << 5 | source) of the row group's first row
+        self._last = [r[1] >> 56 for r in rgs]
+        self._first_pure: dict[int, int] = {}  # run -> its first and last row group that holds that run only
+        self._last_pure: dict[int, int] = {}
+        for i, (a, b) in enumerate(zip(self._first, self._last)):
+            if a == b:
+                self._first_pure.setdefault(a, i)
+                self._last_pure[a] = i
+
+    def candidates(self, level: str, key: str) -> list[int]:
+        """The row groups (indices in token_id order) that may hold `key` at `level`; see the class docstring."""
+        lv = self.levels.get(level)
+        if lv is None:
+            return []
+        lo, hi = lv << 5, (lv << 5) | 31  # the runs of the level
+        first = bisect.bisect_left(self._last, lo)  # row groups ending before the level do not meet it
+        out = []
+        for i in range(first, len(self._first)):
+            a, b = self._first[i], self._last[i]
+            if a > hi:
+                break
+            if self._kmin[i] is not None and not self._kmin[i] <= key <= self._kmax[i]:
+                continue
+            if a == b or self._mixed_may_hold(i, key, max(a, lo), min(b, hi)):
+                out.append(i)
+        return out
+
+    def _mixed_may_hold(self, i: int, key: str, lo: int, hi: int) -> bool:
+        """Whether row group `i`, which holds rows of several runs, may hold `key` in one of the runs `lo`..`hi`."""
+        for r in range(lo, hi + 1):
+            if r == self._first[i] and self._last_pure.get(r) == i - 1 and self._kmax[i - 1] is not None:
+                if key > self._kmax[i - 1]:  # the run's tail: keys above its row groups before this one
+                    return True
+            elif r == self._last[i] and self._first_pure.get(r) == i + 1 and self._kmin[i + 1] is not None:
+                if key < self._kmin[i + 1]:  # the run's head: keys below its row groups after this one
+                    return True
+            else:
+                return True  # a run (or a run number without rows) whose keys here nothing bounds
+        return False
+
+    def _decoded(self, i: int) -> pa.Table:
+        hit = self._cache.pop(i, None)
+        if hit is not None:
+            self._cache[i] = hit
+            return hit
+        fi, g = self._where[i]
+        t = pq.ParquetFile(self.files[fi], metadata=self._metadata[fi]).read_row_group(g, columns=list(self.COLUMNS))
+        self.row_groups_read += 1
+        self.files_hit[fi] += 1
+        if self.cache_row_groups > 0:
+            self._cache[i] = t
+            if len(self._cache) > self.cache_row_groups:
+                self._cache.popitem(last=False)
+        return t
+
+    def tokens(self, pairs) -> dict[tuple[str, str], list[int]]:
+        """The token ids of each distinct (level, key) of `pairs` (an empty list for an unknown one); each row
+        group is read once for all the keys that need it."""
+        need: dict[int, dict[str, list[str]]] = {}  # row group -> level -> keys
+        out: dict[tuple[str, str], list[int]] = {}
+        for level, key in dict.fromkeys(pairs):
+            out[(level, key)] = []
+            for i in self.candidates(level, key):
+                need.setdefault(i, {}).setdefault(level, []).append(key)
+        with self._lock:
+            for i in sorted(need):
+                t = self._decoded(i)
+                for level, keys in need[i].items():
+                    m = pc.and_(pc.equal(t.column("level"), level), pc.is_in(t.column("key"), value_set=pa.array(keys)))
+                    hit = t.filter(m)
+                    for k, tid in zip(hit.column("key").to_pylist(), hit.column("token_id").to_pylist()):
+                        out[(level, k)].append(tid)
+        return out
+
+
+def _register_token_udf(con: duckdb.DuckDBPyConnection, tokens: _Lazy) -> None:
+    """`token_of(level, key)` as a point lookup over the release's `token_dict` footers (card B-34).
+
+    The stored `token_of` is a scalar subquery on `token_dict`, which is sorted by `token_id`: by key it can
+    prune only with a literal and only on the `key` statistics, and for keys from a joined table it reads every
+    row group. `open_catalog` shadows it, on its connection only, with a temporary macro over
+    `bb_token_of_udf`, which resolves each distinct key with `TokenKeyLookup`. The macro stays a scalar
+    subquery, so a key given once (a literal or a parameter) is resolved once per query, as before. An unknown
+    level or key, or a NULL, gives NULL; a key with tokens under two sources of one level raises, as the
+    stored subquery does with two rows."""
+
+    def bb_token_of(levels: pa.Array, keys: pa.Array) -> pa.Array:
+        rows = list(zip(levels.to_pylist(), keys.to_pylist()))
+        got = tokens.get().tokens([r for r in rows if r[0] is not None and r[1] is not None])
+        out = []
+        for level, key in rows:
+            tids = got.get((level, key), [])
+            if len(tids) > 1:
+                raise ValueError(f"token_of: key {key!r} names {len(tids)} tokens at level {level} "
+                                 f"(one per source): {sorted(tids)}")
+            out.append(tids[0] if tids else None)
+        return pa.array(out, pa.uint64())
+
+    con.create_function("bb_token_of_udf", bb_token_of, ["VARCHAR", "VARCHAR"], "UBIGINT",
+                        type="arrow", null_handling="special", side_effects=False)
+    con.execute("CREATE OR REPLACE TEMP MACRO token_of(_level, _key) AS (SELECT bb_token_of_udf(_level, _key))")
 
 
 SEQ_TABLES = ("seq_locator", "contig_index", "contig_occurrence")  # what SeqStore reads
@@ -1299,9 +1513,14 @@ def open_catalog(path: Path, local_dir: Path | None = None, threads: int | None 
                  root: Path | None = None, cache_blocks: int = 64) -> duckdb.DuckDBPyConnection:
     """Open read-only, optionally from a copy on local disk (never open a DuckDB file over NFS).
 
-    Registers `bb_seq`, `bb_seq_circular` and `bb_seq_raw` over the store under `root`
-    (default: the root the catalog was built from, in `catalog_info`), with an LRU of
-    `cache_blocks` decoded blocks per shard.
+    The catalog file is attached read-only, under its file name without `.duckdb` (the name a plain
+    `duckdb.connect` gives it), to a DuckDB instance of this connection's own, and made the default
+    database (card B-34; module docstring). `threads`, `memory_limit` and `temp_directory` (default: the
+    catalog path + `.tmp`, as for a file connection) configure that instance.
+
+    Registers the Python functions of `PY_FUNCTIONS` over the store under `root` (default: the root the
+    catalog was built from, in `catalog_info`), with an LRU of `cache_blocks` decoded blocks per shard, and
+    shadows the stored stand-ins and the lookup macros with them.
     """
     path = Path(path)
     if local_dir is not None:
@@ -1312,14 +1531,19 @@ def open_catalog(path: Path, local_dir: Path | None = None, threads: int | None 
             shutil.copyfile(path, tmp)
             os.replace(tmp, local)
         path = local
-    config = {"access_mode": "READ_ONLY"}
+    config = {"temp_directory": str(temp_directory if temp_directory is not None else f"{path}.tmp")}
     if threads is not None:
         config["threads"] = threads
     if memory_limit is not None:
         config["memory_limit"] = memory_limit
-    if temp_directory is not None:
-        config["temp_directory"] = str(temp_directory)
-    con = duckdb.connect(str(path), read_only=True, config=config)
+    con = duckdb.connect(":memory:", config=config)  # a new instance: its functions are this connection's
+    name = '"' + path.name.removesuffix(".duckdb").replace('"', '""') + '"'
+    try:
+        con.execute(f"ATTACH {_sql_str(str(path))} AS {name} (READ_ONLY)")
+        con.execute(f"USE {name}")
+    except BaseException:
+        con.close()
+        raise
     if root is None:
         root = Path(con.execute("SELECT value FROM catalog_info WHERE key = 'root'").fetchall()[0][0])
     from biobox.l0seq.store import SeqStore
@@ -1330,11 +1554,14 @@ def open_catalog(path: Path, local_dir: Path | None = None, threads: int | None 
     _READERS[id(con)] = store
     if store is not None:
         _register_lookup_udf(con, store)
-    # the tape tokens the views read: under the build root, as every view's files (`root` moves the shards only)
+    # the tape tokens and token keys the views read: under the build root, as every view's files (`root`
+    # moves the shards only)
     built = Path(con.execute("SELECT value FROM catalog_info WHERE key = 'root'").fetchall()[0][0])
-    tapes = _LazyTapes(_tape_token_files(con, built))
+    tapes = _Lazy(TapeTokenLookup, _tape_token_files(con, built))
     _register_tape_udf(con, tapes)
-    _TAPES[id(con)] = tapes
+    keys = _Lazy(TokenKeyLookup, _token_dict_files(con, built))
+    _register_token_udf(con, keys)
+    _LOOKUPS[id(con)] = [("bb_slot_tokens", tapes), ("bb_token_of", keys)]
     attach_search(con, Path(root))
     return con
 
@@ -1388,7 +1615,8 @@ def profile_query(con: duckdb.DuckDBPyConnection, sql: str, params: list | None 
     `contig_index` (`KeyLookup.row_groups_read`; a cache hit counts nothing); both are zero when
     the query reads no sequence. The `tape_tokens` row groups that `bb_slot_tokens` reads by point lookup
     (`partners_of`, card B-31) are one more entry of `scans`, with `"lookup": "bb_slot_tokens"` and
-    `rows_scanned` None. The lookups `default_digest`, `digest_len` and `contig_len_of` of `open_catalog`
+    `rows_scanned` None, and so are the `token_dict` row groups of `token_of` (`"lookup": "bb_token_of"`,
+    card B-34). The lookups `default_digest`, `digest_len` and `contig_len_of` of `open_catalog`
     count in `index`. Counts, not time, decide layouts (LY-06).
     """
     store = seq_reader(con)
@@ -1401,13 +1629,13 @@ def profile_query(con: duckdb.DuckDBPyConnection, sql: str, params: list | None 
                 "index_row_groups_read": store.index.row_groups_read}
 
     index_before = index_counts()
-    lazy = _TAPES.get(id(con))
+    lookups = _LOOKUPS.get(id(con), [])
 
-    def tape_counts() -> tuple[int, list[int]]:
-        t = lazy.peek() if lazy is not None else None
+    def lookup_counts(lazy) -> tuple[int, list[int]]:
+        t = lazy.peek()
         return (0, []) if t is None else (t.row_groups_read, list(t.files_hit))
 
-    tapes_before = tape_counts()
+    lookups_before = [lookup_counts(lazy) for _, lazy in lookups]
     with tempfile.TemporaryDirectory() as d:
         out = Path(d) / "profile.json"
         con.execute("PRAGMA enable_profiling = 'json'")
@@ -1439,20 +1667,22 @@ def profile_query(con: duckdb.DuckDBPyConnection, sql: str, params: list | None 
         walk(op)
     for c in info.get("children", []):
         walk(c)
-    # the tape-token point lookups of bb_slot_tokens (partners_of, card B-31) read Parquet outside DuckDB's
-    # scans: they are listed as one more scan of `tape_tokens`, row groups read of the files' total
-    tapes_after = tape_counts()
-    if tapes_after[0] > tapes_before[0]:
-        t = lazy.peek()
-        hit_before = tapes_before[1] or [0] * len(tapes_after[1])
-        scans.append({
-            "files": [str(p) for p in t.files],
-            "files_read": sum(a > b for a, b in zip(tapes_after[1], hit_before)),
-            "row_groups_scanned": tapes_after[0] - tapes_before[0],
-            "row_groups_total": t.row_groups_total,
-            "rows_scanned": None,
-            "lookup": "bb_slot_tokens",
-        })
+    # the point lookups of bb_slot_tokens (partners_of, card B-31) and of token_of (card B-34) read Parquet
+    # outside DuckDB's scans: each is listed as one more scan of its table (`tape_tokens`, `token_dict`), row
+    # groups read of the files' total
+    for (fn, lazy), (n_before, hit_before) in zip(lookups, lookups_before):
+        n_after, hit_after = lookup_counts(lazy)
+        if n_after > n_before:
+            t = lazy.peek()
+            hit_before = hit_before or [0] * len(hit_after)
+            scans.append({
+                "files": [str(p) for p in t.files],
+                "files_read": sum(a > b for a, b in zip(hit_after, hit_before)),
+                "row_groups_scanned": n_after - n_before,
+                "row_groups_total": t.row_groups_total,
+                "rows_scanned": None,
+                "lookup": fn,
+            })
     bgzf =({k: v - before[k] for k, v in store.counters().items()} if store is not None
             else {"blocks_read": 0, "compressed_bytes_read": 0, "uncompressed_bytes_decoded": 0})
     index = {k: v - index_before[k] for k, v in index_counts().items()}
