@@ -79,12 +79,13 @@ if a.cluster:
 
     tmp = a.root.parent / "mmseqs_tmp"
     tmp.mkdir(exist_ok=True)
-    timed("cluster", lambda: cluster.run(a.root, a.release, GENE_CALL_VERSION, threads=a.cluster, tmp=tmp))
-    timed("tokens", lambda: tokens.run(a.root, a.release))
-    timed("postings", lambda: postings.run(a.root, a.release))
+    # every release-level builder takes the release's stages and writes or checks its release_def (card B-25)
+    timed("cluster", lambda: cluster.run(a.root, a.release, GENE_CALL_VERSION, ["S0"], threads=a.cluster, tmp=tmp))
+    timed("tokens", lambda: tokens.run(a.root, a.release, ["S0"]))
+    timed("postings", lambda: postings.run(a.root, a.release, ["S0"]))
     timed("contig_dim", lambda: dim.run(a.root, a.release, ["S0"]))
 
-man = catalog.build_manifest(a.root, a.release)
+man = catalog.build_manifest(a.root, a.release, ["S0"])
 catalog.write_manifest(man, a.root / f"manifests/release={a.release}.json")
 per = defaultdict(lambda: {"files": 0, "rows": 0, "bytes": 0, "row_groups": 0})
 for f in man["files"]:

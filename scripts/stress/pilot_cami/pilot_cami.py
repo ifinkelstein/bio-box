@@ -250,7 +250,7 @@ def do_cluster():
 
     tmp = W / "mmseqs_tmp"
     tmp.mkdir(exist_ok=True)
-    return cluster.run(ROOT, a.release, GENE_CALL_VERSION, threads=a.threads, tmp=tmp)
+    return cluster.run(ROOT, a.release, GENE_CALL_VERSION, [STAGE], threads=a.threads, tmp=tmp)
 
 
 step("cluster", do_cluster, threads=a.threads, needs=("genecall",))
@@ -260,7 +260,7 @@ step("cluster", do_cluster, threads=a.threads, needs=("genecall",))
 def do_tokens():
     from biobox.l3 import tokens
 
-    return tokens.run(ROOT, a.release)
+    return tokens.run(ROOT, a.release, [STAGE])  # the release's stages (card B-25)
 
 
 step("tokens", do_tokens, needs=("cluster", "tapes"))
@@ -272,7 +272,7 @@ step("tokens", do_tokens, needs=("cluster", "tapes"))
 def do_postings():
     from biobox.l3 import postings
 
-    out = postings.run(ROOT, a.release)
+    out = postings.run(ROOT, a.release, [STAGE])
     files = io.part_files(ROOT / "l3/token_postings", f"release={a.release}/tape_version={out['tape_version']}/token_bucket=*/part-*.parquet")
     nbytes = sum(f.stat().st_size for f in files)
     genes = (R["steps"].get("genecall", {}).get("result") or {}).get("genes") or 0
@@ -294,7 +294,7 @@ step("contig_dim", do_dim, needs=("genome_input",))
 
 # --- 7 manifest and catalog ----------------------------------------------------------
 def do_manifest():
-    man = catalog.build_manifest(ROOT, a.release)
+    man = catalog.build_manifest(ROOT, a.release, [STAGE])
     catalog.write_manifest(man, ROOT / f"manifests/release={a.release}.json")
     per = defaultdict(lambda: {"files": 0, "rows": 0, "bytes": 0, "row_groups": 0})
     for f in man["files"]:

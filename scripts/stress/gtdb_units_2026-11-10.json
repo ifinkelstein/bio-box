@@ -19,6 +19,6 @@
  "cluster_member_aln": {"unit": "gene", "rows_per_unit": 2, "bytes_per_row": 34.249, "source": "measured, ladder rL.2 release file"},
  "contig_tapes": {"unit": "gene", "bytes_per_unit": 47.90, "source": "derived: measured ladder P1 47.906 B/slot minus removed genome_uid, tier, tax_order_bucket, assembly_quality (0.0096 B/slot)"},
  "tape_tokens": {"unit": "gene", "bytes_per_unit": 10.97, "source": "measured, golden, three token levels"},
- "token_postings": {"unit": "gene", "rows_per_unit": 2.8125, "bytes_per_row": 36.589, "source": "rows: measured, golden (94,827 rows / 33,716 genes: NR90 and NR50 on every gene, a Pfam family on 81.25%); bytes: measured, ladder rL.2 release file (7,593,431 rows)"},
+ "token_postings": {"unit": "gene", "rows_per_unit": 2.8125, "bytes_per_row": 35.74, "source": "rows: measured, golden (94,827 rows / 33,716 genes: NR90 and NR50 on every gene, a Pfam family on 81.25%); bytes: measured, rL.2 store, 13,330,867 rows (card B-26, planning/measurements/2026-11-10_postings_bytes.md; the rL.2 release file alone, 7,593,431 rows, is 36.59)"},
  "token_dict": {"unit": "gene", "rows_per_unit": 0.6503, "bytes_per_row": 19.546, "source": "measured, ladder rL.2 release file: 2,162,947 tokens / 3,326,007 genes"}
 }

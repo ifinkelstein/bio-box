@@ -206,15 +206,15 @@ bio.write_parts([pa.RecordBatch.from_pylist(dom[i : i + 122_880], schema=spec_d.
 del dom
 tick("clusters and families (synthetic)", t)
 t = time.perf_counter()
-tick("tokens.run", t, tokens.run(root, REL, libraries=[LIB]))
+tick("tokens.run", t, tokens.run(root, REL, ["S0"], libraries=[LIB]))  # the release's stages (card B-25)
 t = time.perf_counter()
-tick("postings.run", t, postings.run(root, REL, prefix_width=a.postings_width))
+tick("postings.run", t, postings.run(root, REL, ["S0"], prefix_width=a.postings_width))
 t = time.perf_counter()
 tick("dim.run", t, dim.run(root, REL, ["S0"]))
 
 # --- manifest and catalog ----------------------------------------------------------------------
 t = time.perf_counter()
-man = catalog.build_manifest(root, REL)
+man = catalog.build_manifest(root, REL, ["S0"])
 tick("build_manifest (validates layout)", t)
 per = {}
 for f in man["files"]:

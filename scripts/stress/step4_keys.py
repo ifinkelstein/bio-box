@@ -28,7 +28,7 @@ if len(sys.argv) < 4 or sys.argv[1] in ("-h", "--help"):
 import pyarrow as pa  # noqa: E402
 import pyarrow.parquet as pq  # noqa: E402
 
-from biobox import ids, io  # noqa: E402
+from biobox import catalog, ids, io  # noqa: E402
 from biobox.l1 import igr  # noqa: E402
 from biobox.l1.genecall import GENE_CALL_VERSION as V  # noqa: E402
 from biobox.l3 import postings, tapes, tokens  # noqa: E402
@@ -39,6 +39,7 @@ if scratch.exists():
     sys.exit(f"{scratch}: exists; give a fresh directory")
 NEW = "b18-ncrna"
 P1, P2 = [V], [V, NEW]
+STAGES = catalog.release_stages(root, rel)  # the release names its stages (card B-25)
 TV1, TV2 = tapes.tape_version(P1), tapes.tape_version(P2)
 after = scratch / "after"
 
@@ -62,7 +63,7 @@ io.write_table([pa.RecordBatch.from_pylist([{"feature_uid": fu, "contig_uid": ec
                                               "kind": kind}], schema=spec.schema)],
                spec, after / f"l1/feature/producer={NEW}/stage=S0/part-0.parquet")
 built = {"igr": igr.run(after, "S0", producers=P2), "tapes": tapes.run(after, "S0", producers=P2),
-         "tokens": tokens.run(after, rel, producers=P2), "postings": postings.run(after, rel, producers=P2)}
+         "tokens": tokens.run(after, rel, STAGES, producers=P2), "postings": postings.run(after, rel, STAGES, producers=P2)}
 
 
 # --- comparison ----------------------------------------------------------------------------------

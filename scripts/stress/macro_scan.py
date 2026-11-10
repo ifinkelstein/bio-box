@@ -17,7 +17,7 @@ if len(sys.argv) < 2 or sys.argv[1] in ("-h", "--help"):
     sys.exit(0 if sys.argv[1:2] in (["-h"], ["--help"]) else 2)
 
 root = Path(sys.argv[1])
-man = catalog.build_manifest(root, "rX")
+man = catalog.build_manifest(root, "rX", ["S0"])  # the synthetic index has stage S0 only (card B-25)
 cat = catalog.generate_catalog(man, root.parent / "locator.duckdb")
 t = time.perf_counter()
 con = catalog.open_catalog(cat)

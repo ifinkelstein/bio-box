@@ -64,7 +64,7 @@ timed("igr", lambda: igr.run(a.root, "S0"))
 timed("tapes", lambda: tapes.run(a.root, "S0"))
 timed("contig_dim", lambda: dim.run(a.root, a.release, ["S0"]))
 
-man = catalog.build_manifest(a.root, a.release)
+man = catalog.build_manifest(a.root, a.release, ["S0"])  # the release's stages (card B-25)
 per = defaultdict(lambda: {"files": 0, "rows": 0, "bytes": 0, "row_groups": 0})
 for f in man["files"]:
     p = per[f["table"]]
