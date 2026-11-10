@@ -263,6 +263,27 @@ def test_the_limits_table_carries_every_value_of_the_host_profile():
     assert not missing, "\n".join(missing)
 
 
+def section_of(text: str, heading: str) -> str:
+    start = text.index(heading)
+    end = text.find("\n## ", start + 1)
+    return text[start:] if end < 0 else text[start:end]
+
+
+@pytest.mark.covers("C-11")
+def test_the_runbook_shows_the_scan_options_of_build_stage():
+    """Card C-11: the build section shows a `build-stage` command with `--scan-jobs` and `--scan-cpus` (the
+    parser check above reads it), and the limits and known-limits sections say what bounds them."""
+    text = RUNBOOK.read_text()
+    build = [c for _, c in commands(section_of(text, "## 2. ")) if "build-stage" in c]
+    assert any("--scan-jobs" in c and "--scan-cpus" in c for c in build), "no build-stage command with both options"
+    for heading in ("## 10. Limits", "## 11. Known limits"):
+        part = section_of(text, heading)
+        assert "--scan-jobs" in part and "--scan-cpus" in part, f"{heading} does not name both options"
+    appendix = section_of(text, "## Appendix A")
+    rows = [ln for ln in appendix.splitlines() if "--scan-jobs" in ln]
+    assert rows and all("tested on the fixture" in ln for ln in rows)
+
+
 def test_every_script_the_runbook_names_exists():
     named = set(re.findall(r"scripts/[A-Za-z0-9_./-]+\.(?:sh|py)", RUNBOOK.read_text()))
     assert named, "the runbook names no script"

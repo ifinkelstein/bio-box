@@ -142,6 +142,34 @@ bash "$TREE/scripts/pod_run.sh" --profile "$PROFILE" --image "$IMAGE" --digest "
 A second stage and a release over both stages: change `--stage` to `S1`, `--release` to `rC6.2`,
 `--stages` to `S0,S1`, and the input files to the second stage's. The first release stays valid.
 
+**Domain scans in shards.** A scan estimated above 80% of the profile's `cpu_min_per_process` runs
+as a plan step, one step per shard and a merge step. The plan cuts the stage's proteins into shards
+estimated at 80% of the budget at most; it depends only on the inputs and the budget. Several
+shards run at once, each its own `run-step`:
+
+- `--scan-cpus C`: threads per shard. Default 4.
+- `--scan-jobs J`: shards at once. Default: the allowance divided by C, rounded down.
+- The allowance is the thread count `run-step` allows when `build-stage` starts: 40 by day; 56 at
+  night and at weekends, only while the load average is at most 8.
+- J × C above the allowance is refused before any step (exit 2). The message names J, C and the
+  allowance.
+- The output is the same, byte for byte, for any J and C.
+
+The unit's CPU quota is `pod_run.sh --threads`, which defaults to the day cap (40). For a night build
+at the night cap, pass `--threads 56` to `pod_run.sh` too. This fixture launch runs two shards of one
+thread at once; the scratch profile allows 2 threads:
+
+```bash
+bash "$TREE/scripts/pod_run.sh" --profile "$PROFILE" --image "$IMAGE" --digest "$DIGEST" --bind /tmp/if2453 --env PYTHONPATH="$PYTHONPATH_POD" --threads 2 c11-build build-stage --profile "$PROFILE" --root "$ROOT" --stage S0 --release rC6.1 --stages S0 --genomes "$WORK/inputs/genomes-S0.json" --objects "$WORK/inputs/objects-S0.json" --library test 1 "$WORK/inputs/lib.hmm" gathering --scan-jobs 2 --scan-cpus 1
+```
+
+For a real Pfam scan by day, with the real profile: `--scan-jobs 10 --scan-cpus 4`.
+
+A shard that fails stops new launches. Shards already running finish and publish, then
+`build-stage` exits with the failed shard's code. The next call runs only the shards that have no
+run record, then the merge. While shards run, the log holds one `run-step:` line per shard as it
+ends, in the order they end.
+
 ## 3. Pause with STOP, and resume
 
 Pause: create the file in the data root.
@@ -151,7 +179,8 @@ touch "$ROOT/STOP"
 ```
 
 - A new launch exits 75 and runs nothing. The log says `STOP exists; not starting`.
-- A running build checks before each step and exits 75 at the next step boundary.
+- A running build checks before each step and exits 75 at the next step boundary. During a scan
+  in shards it checks before each shard launch, launches no more, and waits for the shards that run.
 - A step that is running when the file appears finishes its command. `run-step` then publishes
   nothing, leaves its staging directory and exits 75. The log says `STOP appeared; not publishing`.
   The next call runs that step again from the start.
@@ -193,6 +222,7 @@ What `run-step` leaves, and what it does at the next start:
 | `$ROOT/runs/stage=<S>/<step>.json` (run record) | the step finished | skips the step if every listed output is in the root with its recorded size |
 | `$ROOT/runs/stage=<S>/<step>.publishing.json` (intent file) | killed while publishing | finishes the publish, or undoes it, then reruns (see below) |
 | `$ROOT/.incoming/<stage>.<step>/` | killed while publishing | uses it to finish the publish, then removes it |
+| `$ROOT/.incoming/_build-stage.<stage>.<scan step>/` (empty) | `build-stage` was killed while scan shards ran | nothing; `build-stage` removes it when the shards of its next call end |
 
 An intent file lists every output with its sha256. At the next start, an output that is in the
 root with the listed sha256 is kept, and one still in `.incoming` is moved in. If every output is
@@ -435,6 +465,8 @@ a profile value is missing from this table.
 | Memory cap required | true: `run-step` and the search runner refuse to start uncapped | profile `require_mem_cap` |
 | Nice | 19 (one big process), 15 (many small ones) | profile `nice_monolithic`, `nice_fanout`; AGENTS 7.2 says 19 |
 | CPU-minutes per process | 300 | profile `cpu_min_per_process`; AGENTS 7.2 |
+| Scan shard size | 32,876,712 residues: 80% of `cpu_min_per_process` (300) at 7.30 CPU-minutes per million residues (derived: 300 × 0.8 / 7.30 × 10^6; the rate measured for Pfam on wilkcomp02, 2026-11-10) | `SHARD_MARGIN` and `SCAN_CPU_MIN_PER_M` in `src/biobox/stage.py`; card C-11 |
+| Scan shards at once | `--scan-jobs` J × `--scan-cpus` C at most the threads `run-step` allows when `build-stage` starts (40 by day, 56 at night when idle); defaults C = 4, J = allowance // C (10 by day, 14 at night) | `scan_slots` in `src/biobox/stage.py`; card C-11 |
 | Smallest data file | 64 MiB (67108864 bytes), except tables the registry marks `small_ok` | profile `small_file_floor_bytes`; AGENTS 7.3 says 64 MB |
 | Work directory | `/tmp/if2453/bio-box` | profile `tmp`; AGENTS 7.3 |
 | Durable results | `/stor/work/Wilke/if2453/all-the-data` | profile `durable` |
@@ -456,7 +488,9 @@ The scratch profile used for the tests in this file differs from the real one in
 | Limit | What happens | Card |
 |---|---|---|
 | Ingest of a stage over about 60 Gbp | `build-stage` refuses before any step (exit 2): one ingest process runs at about 3.7 Mbp/s (measured, wilkcomp02), so it would pass 300 CPU-minutes. Split the stage into smaller stages | B-30 |
-| Domain scan over 300 CPU-minutes | `build-stage` stops before the scan (exit 2); the earlier steps stay published. The estimate is 7.30 CPU-minutes per million residues (measured for Pfam, 2026-11-10), so about 41 million residues is the limit. Shard the scan by hand | B-24 |
+| The scan allowance is decided once | `build-stage` checks `--scan-jobs` × `--scan-cpus` against the allowance when it starts. A build started at night with 56 threads of shards keeps 56 after 08:00 on a weekday. If a build will run into the day, start it with the day allowance (`--scan-jobs 10 --scan-cpus 4`) | C-11 |
+| Shard size is Pfam's | shards are cut at 80% of the budget at Pfam's rate. A library more than 1.25 times slower per residue than Pfam (derived: 1 / 0.8) passes 300 CPU-minutes per shard, and the run record says `over_cpu_budget`. Lower `--scan-cpus` does not help, since the budget counts CPU-minutes | C-11 |
+| `pod_run.sh` CPU quota | the unit's quota is `--threads` of `pod_run.sh` (default 40), whatever `--scan-jobs` × `--scan-cpus` is. At night pass `--threads 56` to use the night cap | C-07, C-11 |
 | The image on the pod is old | the pod has the test image `bio-box-test_74b3e05.sif`, not an image built from the current source. The current source is bound in with `PYTHONPATH` (section 0) | 0-02 |
 | `rL.*` releases on `/stor` | they are in the pre-B-17 layout: current readers and `verify_manifest` may not read them. `rL.1` and `rL.2` also fail verification on one file, `l0/l0_manifest.parquet` | B-17, B-22 |
 
@@ -468,6 +502,10 @@ Found while writing this runbook, no card yet (reported to the PI):
 - `search status` of a run started with `--wait` finds nothing until the run has ended.
 - After `systemctl --user stop`, the unit's log has no `pod_run: ... exited` line.
 - The card text says `bio-box doctor`; the command is `python -m biobox.doctor`.
+- A scan's shard runs live in scratch (`$BBTMP/scratch/biobox-domain-scan/`) until the merge. If
+  scratch is cleared after some shards have published (a reboot clears `/tmp`), the merge refuses,
+  because those runs are gone, and their shards are not scanned again, because their run records
+  exist. Found by card C-11, from the code of `domains.merge` and `domains.scan_shard`; not run.
 
 ## 12. Contact
 
@@ -496,6 +534,7 @@ section 0.
 | 2 | `ls "$ROOT/runs/stage=S0"` | 2026-11-10 | `tapes.json` |
 | 2 | second call, `pod_run.sh ... --digest "$DIGEST" ... c06-build-again build-stage ...` (and `c06-rebuild`) | 2026-11-10 | `pod_run: c06-rebuild exited 0` (every step `skipped: run record and outputs present`) |
 | 2 | second stage and release, `... c06-s1g build-stage ... --stage S1 --release rC6.2 --stages S0,S1 ...` | 2026-11-10 | `pod_run: c06-s1g exited 0` |
+| 2 | `pod_run.sh ... --threads 2 c11-build build-stage ... --scan-jobs 2 --scan-cpus 1` | not run with `pod_run.sh`; tested on the fixture | `tests/r2/test_build_stage.py` (card C-11) runs `build-stage --scan-jobs 2 --scan-cpus 2` on the fixture with the scan in 7 shards (2026-11-10). No real Pfam scan was run |
 | 3 | `touch "$ROOT/STOP"`, then a launch | 2026-11-10 | `pod_run: c06-s1 exited 75` (log: `STOP exists; not starting stage S1`) |
 | 3 | `touch "$ROOT/STOP"` while `S1.igr` ran (unit `c06-s1d`) | 2026-11-10 | `pod_run: c06-s1d exited 75` (log: `STOP appeared; not publishing S1.igr, staging left at ...`) |
 | 3 | `rm "$ROOT/STOP"` | 2026-11-10 | `(no output)` |
