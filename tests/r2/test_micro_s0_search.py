@@ -151,9 +151,9 @@ def test_dark_orfs_translate_their_own_coordinates(world):
 
 
 def _declare_code(root: Path, contig_prefix: str, code: int) -> bytes:
-    """Rewrite the genetic code of every slot of the contig whose uid starts with the hex prefix."""
+    """Rewrite the genetic code of every CDS feature of the contig whose uid starts with the hex prefix."""
     target = None
-    for f in sorted((root / "l1/slot_protein").rglob("*.parquet")):
+    for f in sorted((root / "l1/feature_protein").rglob("*.parquet")):
         t = pq.read_table(f)
         rows = t.to_pylist()
         for r in rows:
@@ -376,7 +376,8 @@ def test_s13_cli_json_records_match_the_locked_schemas(world, tmp_path):
     for h in hits:
         for o in h["occurrences"]:
             tape = tps[bytes.fromhex(o["contig_uid"])]
-            assert tape["feature_uids"][o["slot_ordinal"]].hex() == o["feature_uid"]
+            assert set(o) == {"contig_uid", "ordinal", "feature_uid", "start", "end", "strand"}  # card B-17
+            assert tape["feature_uids"][o["ordinal"]].hex() == o["feature_uid"]
             assert feats[bytes.fromhex(o["feature_uid"])]["start"] == o["start"]
     for r in nb:
         tape = tps[bytes.fromhex(r["contig_uid"])]
@@ -466,14 +467,14 @@ def test_b16_search_region_flanks_are_the_igr_tables_feature_uids(world):
     for target in ("igr", "dark_orf"):
         t = pq.read_table(pdir / f"{target}/{target}_meta.parquet")
         assert conformance_problems(t, table("search_region")) == []
+        assert not {"left_slot", "right_slot"} & set(t.column_names)  # card B-17: flanks by feature uid only
         for m in t.to_pylist():
             for side in ("left", "right"):
-                fu, slot = m[f"{side}_feature_uid"], m[f"{side}_slot"]
-                assert (fu is None) == (slot is None), (target, side)
+                fu = m[f"{side}_feature_uid"]
                 if fu is not None:
                     n_flanks += 1
                     assert feats[fu]["contig_uid"] == m["contig_uid"]
-                    assert tape[m["contig_uid"]]["feature_uids"][slot] == fu  # the legacy slot names the same feature
+                    assert fu in tape[m["contig_uid"]]["feature_uids"]  # a slot of the pack's tape version
             if target == "igr":
                 s = src[(m["contig_uid"], m["start"], m["end"])]
                 assert (m["left_feature_uid"], m["right_feature_uid"]) == (s["left_feature_uid"], s["right_feature_uid"])
@@ -556,7 +557,7 @@ def test_b16_a_run_is_refused_on_a_tape_version_other_than_the_packs(two, capsys
     tps = _tape_rows(root, tv2)
     assert hits and all(h["tape_version"] == tv2 for h in hits)
     for o in (o for h in hits for o in h["occurrences"]):
-        assert tps[bytes.fromhex(o["contig_uid"])]["feature_uids"][o["slot_ordinal"]].hex() == o["feature_uid"]
+        assert tps[bytes.fromhex(o["contig_uid"])]["feature_uids"][o["ordinal"]].hex() == o["feature_uid"]
     assert cli.main(["nbr", "--anchors", row["run_id"].hex(), "--root", str(root), "--json",
                      "--tape-version", tv1]) == 2
     assert "tape version" in capsys.readouterr().err
@@ -821,20 +822,16 @@ def _place(root: Path, loci: list[tuple[str, str, str, bool]]) -> None:
     occ, tapes_ = [], []
     for k, (left, target, right, partial) in enumerate(loci):
         cu = ids.contig_uid(f"synthetic-contig-{k}".encode())
-        gu = ids.genome_uid([cu])
         coords = [(100, 460, 1), (600, 1080, 1), (1200, 1560, 1)]
         prots = [ids.protein_uid(x) for x in (left, target, right)]
         for i, ((st_, en, sd), pu) in enumerate(zip(coords, prots)):
-            occ.append({"protein_uid": pu, "contig_uid": cu, "slot_ordinal": i, "genome_uid": gu, "start": st_,
-                        "end": en, "strand": sd, "tax_order": None, "is_species_rep": True, "tier": 1,
-                        "assembly_quality": "complete",
+            occ.append({"protein_uid": pu, "contig_uid": cu, "start": st_, "end": en, "strand": sd,
                         "dist_to_contig_end_bp": 0 if partial and i == 1 else min(st_, 1700 - en),
                         "feature_uid": ids.feature_uid(cu, st_, en, sd, ids.KIND["cds"])})
-        tapes_.append({"contig_uid": cu, "tax_order_bucket": None, "genome_uid": gu, "contig_len": 1700,
-                       "is_circular": False, "n_slots": 3, "tier": 1, "assembly_quality": "complete",
+        tapes_.append({"contig_uid": cu, "contig_len": 1700, "is_circular": False, "n_slots": 3,
                        **build_tape(coords, 1700, False), "protein_uids": prots,
                        "feature_uids": [ids.feature_uid(cu, a, b, sd, ids.KIND["cds"]) for a, b, sd in coords]})
-    occ.sort(key=lambda r: (r["protein_uid"], r["contig_uid"], r["slot_ordinal"]))
+    occ.sort(key=lambda r: (r["protein_uid"], r["contig_uid"], r["start"], r["end"], r["strand"]))
     tapes_.sort(key=lambda r: r["contig_uid"])
     for rel, rows, name in ((f"l1/protein_occurrence/gene_call_version={V}/stage=S0", occ, "protein_occurrence"),
                             (f"l3/tapes/tape_version={tape_version([V])}/stage=S0", tapes_, "contig_tapes")):

@@ -423,8 +423,7 @@ def _synthetic(root: Path) -> tuple[str, list[dict], list[dict]]:
         cu = ids.contig_uid(b"ACGT" * 25 + b"%d" % c)  # a uid only: no sequence is stored
         slots = [(100 * j, 100 * j + 90, 1 if rng.random() < 0.5 else -1) for j in range(N_SLOTS)]
         circular = c % 7 == 0
-        tape_rows.append({"contig_uid": cu, "tax_order_bucket": None, "genome_uid": None, "contig_len": 100 * N_SLOTS,
-                          "is_circular": circular, "n_slots": N_SLOTS, "tier": None, "assembly_quality": None,
+        tape_rows.append({"contig_uid": cu, "contig_len": 100 * N_SLOTS, "is_circular": circular, "n_slots": N_SLOTS,
                           **tapes.build_tape(slots, 100 * N_SLOTS, circular),
                           "protein_uids": [None] * N_SLOTS,
                           "feature_uids": [ids.feature_uid(cu, s, e, st, ids.KIND["cds"]) for s, e, st in slots]})

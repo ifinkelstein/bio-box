@@ -145,17 +145,13 @@ def test_mr20_feature_addition_changes_nothing_it_does_not_touch(stability):
     assert [(r["start"], r["end"]) for r in split] == [(target["start"], s), (e, target["end"])]
     others_new = [r for r in new_i if r not in split]
     assert len(others_old) == len(others_new) == len(old_i) - 1
-    # `left_slot` and `right_slot` are legacy ordinal-like values (B-17 removes them). Today they are the gene-call
-    # slot_ordinals from protein_occurrence, which the second producer does not touch, so unrelated IGRs keep them;
-    # that is all that is asserted about them. Everything else, including both flank feature uids, is compared.
+    # every column of the unrelated IGRs, both flank feature uids among them, is unchanged (card B-17 removed the
+    # ordinal flanks, so nothing is exempt any more)
     assert others_new == others_old
-    stable = [c for c in old_i[0] if c not in ("left_slot", "right_slot")]
-    assert [{c: r[c] for c in stable} for r in others_new] == [{c: r[c] for c in stable} for r in others_old]
+    assert set(old_i[0]) == {"contig_uid", "start", "end", "strand", "left_feature_uid", "right_feature_uid"}
     first, second = split
     assert first["left_feature_uid"] == target["left_feature_uid"] and first["right_feature_uid"] == fu
     assert second["left_feature_uid"] == fu and second["right_feature_uid"] == target["right_feature_uid"]
-    assert first["left_slot"] == target["left_slot"] and second["right_slot"] == target["right_slot"]
-    assert first["right_slot"] is None and second["left_slot"] is None  # the ncRNA is not a gene
 
 
 @pytest.mark.covers("MR-20")

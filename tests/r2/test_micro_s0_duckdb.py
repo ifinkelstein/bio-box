@@ -167,9 +167,9 @@ def test_k05_gene_call_version_and_stage_filter(built, con):
     root, man, _ = built
     want = [f for f in man["files"] if f["table"] == "protein_occurrence" and f["partitions"]["stage"] == "S0"]
     # a sum, not count(*): DuckDB answers count(*) on hive keys without a profiled scan
-    prof = catalog.profile_query(con, "SELECT sum(slot_ordinal) FROM protein_occurrence WHERE gene_call_version = ? AND stage = 'S0'",
+    prof = catalog.profile_query(con, "SELECT sum(start) FROM protein_occurrence WHERE gene_call_version = ? AND stage = 'S0'",
                                  [GENE_CALL_VERSION])
-    assert prof["result"][0][0] == sum(sum(pq.read_table(root / f["path"]).column("slot_ordinal").to_pylist()) for f in want)
+    assert prof["result"][0][0] == sum(sum(pq.read_table(root / f["path"]).column("start").to_pylist()) for f in want)
     assert _seq_scan(prof, "/protein_occurrence/")["files_read"] == len(want)
 
 
@@ -310,12 +310,12 @@ def test_k12_in_list_and_semi_join_agree(built, con):
     uids = sorted({r["protein_uid"] for r in occ})
     import pyarrow as pa
     for k in (10, 100, len(uids)):
-        want = sorted((r["contig_uid"], r["slot_ordinal"]) for r in occ if r["protein_uid"] in set(uids[:k]))
+        want = sorted((r["contig_uid"], r["feature_uid"]) for r in occ if r["protein_uid"] in set(uids[:k]))
         got_in = sorted(con.execute(
-            "SELECT contig_uid, slot_ordinal FROM protein_occurrence WHERE list_contains(?, protein_uid)", [uids[:k]]).fetchall())
+            "SELECT contig_uid, feature_uid FROM protein_occurrence WHERE list_contains(?, protein_uid)", [uids[:k]]).fetchall())
         q = pa.table({"protein_uid": pa.array(uids[:k], pa.binary(16))})
         con.register("q", q)
         got_semi = sorted(con.execute(
-            "SELECT contig_uid, slot_ordinal FROM protein_occurrence SEMI JOIN q USING (protein_uid)").fetchall())
+            "SELECT contig_uid, feature_uid FROM protein_occurrence SEMI JOIN q USING (protein_uid)").fetchall())
         con.unregister("q")
         assert got_in == got_semi == want, k

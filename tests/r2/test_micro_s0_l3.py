@@ -281,9 +281,11 @@ def test_q2_fetch_equals_shards_and_l1_rebuild(built):
             assert g[col] == v, col
         for lvl in LEVELS:
             assert g[f"{lvl}_tokens"] == tok[f"{lvl}_tokens"]
-        # independent rebuild from L1: slots in ordinal order, protein UIDs, strands, coordinates
-        slots = sorted(occ[g["contig_uid"]], key=lambda r: r["slot_ordinal"])
+        # independent rebuild from L1: slots in coordinate order (start, end, strand), feature and protein
+        # UIDs, strands, coordinates
+        slots = sorted(occ[g["contig_uid"]], key=lambda r: (r["start"], r["end"], r["strand"]))
         assert g["n_slots"] == len(slots)
+        assert g["feature_uids"] == [r["feature_uid"] for r in slots]
         assert g["protein_uids"] == [r["protein_uid"] for r in slots]
         assert g["start_bps"] == [r["start"] for r in slots] and g["end_bps"] == [r["end"] for r in slots]
         assert g["strands"] == [r["strand"] for r in slots]
@@ -490,8 +492,9 @@ def _digests(root: Path, dirs) -> dict[str, str]:
 
 
 @pytest.mark.covers("C-04")
-def test_b07_feature_uids_follow_the_legacy_slot_ordinals(built):
-    """With the gene-call producer alone, slot i of a tape is the gene whose slot_ordinal is i."""
+def test_b07_feature_uids_follow_the_genes_in_coordinate_order(built):
+    """With the gene-call producer alone, slot i of a tape is the i-th gene of its contig in (start, end, strand)
+    order (the rule the legacy slot ordinal followed until card B-17 removed it)."""
     root, _, _, _ = built
     occ = defaultdict(list)
     for r in _read(root, f"l1/protein_occurrence/gene_call_version={V}/stage=S0/part-0.parquet"):
@@ -500,10 +503,10 @@ def test_b07_feature_uids_follow_the_legacy_slot_ordinals(built):
     tps = _tapes_of_tv(root)
     assert len(tps) == len(CONTRACT["objects"]) and all(t["n_slots"] for t in tps.values())
     for cu, t in tps.items():
-        legacy = sorted(occ[cu], key=lambda r: r["slot_ordinal"])
-        assert [r["slot_ordinal"] for r in legacy] == list(range(t["n_slots"]))
-        assert t["feature_uids"] == [r["feature_uid"] for r in legacy]
-        assert t["protein_uids"] == [r["protein_uid"] for r in legacy]
+        genes = sorted(occ[cu], key=lambda r: (r["start"], r["end"], r["strand"]))
+        assert len(genes) == t["n_slots"]
+        assert t["feature_uids"] == [r["feature_uid"] for r in genes]
+        assert t["protein_uids"] == [r["protein_uid"] for r in genes]
         assert t["feature_kinds"] == [ids.KIND["cds"]] * t["n_slots"]
         for fu, s, e, strand in zip(t["feature_uids"], t["start_bps"], t["end_bps"], t["strands"]):
             f = feats[fu]
@@ -666,7 +669,7 @@ def test_b07_a_contig_without_features_has_an_empty_tape(built, tmp_path):
     for cu, t in got.items():
         assert (t["n_slots"], t["feature_uids"], t["protein_uids"], t["feature_kinds"]) == (0, [], [], [])
         assert (t["contig_len"], t["is_circular"]) == (old[cu]["contig_len"], cu in circ)
-        assert t["genome_uid"] is None and t["tier"] is None  # legacy columns: no gene to take them from
+        assert set(t) == set(table("contig_tapes").schema.names)  # card B-17: no dimension column on a tape
 
 
 def test_b07_tape_version_def_refuses_a_mismatching_producer_list(built, tmp_path):
@@ -1073,8 +1076,7 @@ def _write_syn_tapes(root: Path, contigs: list[tuple[str, list[tuple[int, int, i
     tape_rows, tok_rows = [], []
     for name, slots, length, circular in contigs:
         cu, n = ids.contig_uid(name.encode()), len(slots)
-        tape_rows.append({"contig_uid": cu, "tax_order_bucket": None, "genome_uid": None, "contig_len": length,
-                          "is_circular": circular, "n_slots": n, "tier": None, "assembly_quality": None,
+        tape_rows.append({"contig_uid": cu, "contig_len": length, "is_circular": circular, "n_slots": n,
                           **tapes.build_tape(slots, length, circular), "protein_uids": [None] * n,
                           "feature_uids": [ids.feature_uid(cu, s, e, st, ids.KIND["cds"]) for s, e, st in slots]})
         pick = lambda base, k, p_none: [None if rng.random() < p_none else base | rng.randrange(k) for _ in slots]  # noqa: E731
@@ -1308,8 +1310,7 @@ def test_b11_pair_helper_macros_equal_geometry_and_the_oracle(built, c):
         assert flags == (FLAG_CENSORED if censored else 0) | (FLAG_CROSSES_ORIGIN if g_cross else 0), (i, j, d)
         if d == offset:
             chosen[(i, j)] = (dist, offset, topo, delta, flags)
-    tape = {"contig_uid": b"h" * 16, "is_circular": circ, "contig_len": length, "tier": None,
-            **tapes.build_tape(slots, length, circ)}
+    tape = {"contig_uid": b"h" * 16, "is_circular": circ, "contig_len": length, **tapes.build_tape(slots, length, circ)}
     oracle = pairs_of_contig(tape, {"family": [None] * n, "nr50": [None] * n, "nr90": [1] * n}, K_MAX)
     assert {(r["anchor_ordinal"], r["partner_ordinal"]) for r in oracle} == \
         {p for p, v in chosen.items() if 1 <= v[0] <= K_MAX}

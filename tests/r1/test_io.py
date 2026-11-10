@@ -28,8 +28,10 @@ from biobox.registry.schemas import conformance_problems, table
 
 OCC = table("protein_occurrence")
 TAPES = table("contig_tapes")
-# the tapes' sort key before card B-07, kept here for the writer's nulls-first order on a nullable key
-NULL_KEYED = dataclasses.replace(TAPES, sort_key=("tax_order_bucket", "contig_uid"))
+DIM = table("contig_dim")
+# a nullable leading sort key, for the writer's nulls-first order (the tapes had one, `tax_order_bucket`,
+# until card B-17 moved taxonomy to contig_dim)
+NULL_KEYED = dataclasses.replace(DIM, sort_key=("tax_order", "contig_uid"))
 DOM = table("l1_domains")
 TOK = table("token_dict")
 
@@ -39,19 +41,22 @@ def uid(i: int) -> bytes:
 
 
 def occ_row(key: bytes, i: int) -> dict:
-    return {"protein_uid": key, "contig_uid": uid(7 * i + 1), "slot_ordinal": i, "genome_uid": uid(3),
-            "start": 100 * i, "end": 100 * i + 90, "strand": 1 if i % 2 else -1,
-            "tax_order": None if i % 3 == 0 else i, "is_species_rep": i % 2 == 0, "tier": 1,
-            "assembly_quality": "complete", "dist_to_contig_end_bp": i, "feature_uid": uid(11 * i + 5)}
+    return {"protein_uid": key, "contig_uid": uid(7 * i + 1), "start": 100 * i, "end": 100 * i + 90,
+            "strand": 1 if i % 2 else -1, "dist_to_contig_end_bp": i, "feature_uid": uid(11 * i + 5)}
 
 
 def occ_rows(n: int, first: int = 0) -> list[dict]:
     return [occ_row(uid(first + i), first + i) for i in range(n)]
 
 
-def tape_row(i: int, n: int, bucket: int | None = None) -> dict:
-    return {"contig_uid": uid(i), "tax_order_bucket": bucket, "genome_uid": None, "contig_len": 100 * n + 50,
-            "is_circular": False, "n_slots": n, "tier": 1, "assembly_quality": "complete",
+def dim_row(i: int, tax_order: int | None = None) -> dict:
+    return {"contig_uid": uid(i), "genome_uid": uid(3), "contig_len": 1000 + i % 1000, "is_circular": False,
+            "tier": None if i % 3 == 0 else 1, "assembly_quality": "complete", "tax_order": tax_order,
+            "is_species_rep": i % 2 == 0}
+
+
+def tape_row(i: int, n: int) -> dict:
+    return {"contig_uid": uid(i), "contig_len": 100 * n + 50, "is_circular": False, "n_slots": n,
             "feature_kinds": [1] * n, "strands": [1] * n, "start_bps": [100 * k for k in range(n)],
             "end_bps": [100 * k + 90 for k in range(n)], "delta_bp_prev_slots": [10] * n,
             "junction_topology_prevs": [1] * n, "orfs_to_contig_starts": list(range(n)),
@@ -137,7 +142,7 @@ def test_columns_are_reordered_to_the_spec(tmp_path):
 
 
 @pytest.mark.covers("LY-01")
-@pytest.mark.parametrize("change,name", [("drop", "tier"), ("add", "bogus")])
+@pytest.mark.parametrize("change,name", [("drop", "strand"), ("add", "bogus")])
 def test_missing_or_extra_column_is_an_error_naming_it(tmp_path, change, name):
     src = inferred(occ_rows(4))
     src = src.drop_columns([name]) if change == "drop" else src.append_column(name, pa.array([1, 2, 3, 4]))
@@ -152,17 +157,24 @@ def test_null_in_a_non_nullable_field_is_an_error(tmp_path):
     rows[2]["contig_uid"] = None
     with pytest.raises(ValueError, match="contig_uid"):
         write_table([inferred(rows)], OCC, tmp_path / "x.parquet")
-    rows = occ_rows(4)
+    rows = [dim_row(i, i) for i in range(4)]
     rows[2]["tax_order"] = None  # nullable: fine
-    write_table([inferred(rows)], OCC, tmp_path / "y.parquet")
+    write_table([inferred(rows)], DIM, tmp_path / "y.parquet")
+    rows[2]["genome_uid"] = None  # not nullable
+    with pytest.raises(ValueError, match="genome_uid"):
+        write_table([inferred(rows)], DIM, tmp_path / "z.parquet")
 
 
 @pytest.mark.covers("LY-01")
 def test_out_of_range_integer_is_an_error(tmp_path):
-    rows = occ_rows(4)
+    rows = [dim_row(i) for i in range(4)]
     rows[1]["tier"] = 300  # uint8
     with pytest.raises(ValueError, match="tier"):
-        write_table([inferred(rows)], OCC, tmp_path / "x.parquet")
+        write_table([inferred(rows)], DIM, tmp_path / "x.parquet")
+    rows = occ_rows(4)
+    rows[1]["dist_to_contig_end_bp"] = 2**32  # uint32
+    with pytest.raises(ValueError, match="dist_to_contig_end_bp"):
+        write_table([inferred(rows)], OCC, tmp_path / "y.parquet")
 
 
 # --- sort refusal (LY-02) ----------------------------------------------------------------------
@@ -198,17 +210,17 @@ def test_unsorted_after_empty_batches_is_still_caught(tmp_path):
 
 @pytest.mark.covers("LY-02")
 def test_nulls_sort_first(tmp_path):
-    ok = [tape_row(5, 1, None), tape_row(9, 1, None), tape_row(1, 1, 0), tape_row(2, 1, 3)]
+    ok = [dim_row(5, None), dim_row(9, None), dim_row(1, 0), dim_row(2, 3)]
     write_table([inferred(ok)], NULL_KEYED, tmp_path / "ok.parquet")
-    bad = [tape_row(1, 1, 0), tape_row(2, 1, None)]
-    with pytest.raises(ValueError, match=r"contig_tapes.*tax_order_bucket.*row 1\b"):
+    bad = [dim_row(1, 0), dim_row(2, None)]
+    with pytest.raises(ValueError, match=r"contig_dim.*tax_order.*row 1\b"):
         write_table([inferred(bad)], NULL_KEYED, tmp_path / "bad.parquet")
-    across = [inferred([tape_row(1, 1, 4)]), inferred([tape_row(2, 1, None)])]
+    across = [inferred([dim_row(1, 4)]), inferred([dim_row(2, None)])]
     with pytest.raises(ValueError, match=r"row 1\b"):
         write_table(across, NULL_KEYED, tmp_path / "across.parquet")
     # within the null bucket the second key decides
     with pytest.raises(ValueError, match=r"row 1\b"):
-        write_table([inferred([tape_row(9, 1, None), tape_row(5, 1, None)])], NULL_KEYED, tmp_path / "n.parquet")
+        write_table([inferred([dim_row(9, None), dim_row(5, None)])], NULL_KEYED, tmp_path / "n.parquet")
 
 
 @pytest.mark.covers("LY-02")
@@ -252,9 +264,9 @@ def test_refusal_agrees_with_the_row_by_row_oracle(keys, sort_it, cuts, rg):
 def test_refusal_with_a_nullable_key_agrees_with_the_oracle(keys, sort_it, cuts):
     if sort_it:
         keys = sorted(keys, key=lambda k: ((0,) if k[0] is None else (1, k[0]), k[1]))
-    rows = [tape_row(c, 1, b) for b, c in keys]
-    want = contracts._sort_ok([(r["tax_order_bucket"], r["contig_uid"]) for r in rows])
-    src = pa.Table.from_pylist(rows, schema=TAPES.schema)
+    rows = [dim_row(c, b) for b, c in keys]
+    want = contracts._sort_ok([(r["tax_order"], r["contig_uid"]) for r in rows])
+    src = pa.Table.from_pylist(rows, schema=DIM.schema)
     with tempfile.TemporaryDirectory() as d:
         batches = batches_of(src, [c for c in cuts if c <= len(rows)])
         if want is None:
@@ -295,9 +307,7 @@ def _big_occurrence(n: int, seed: int = 1) -> pa.Table:
     cols = {
         "protein_uid": pa.FixedSizeBinaryArray.from_buffers(pa.binary(16), n, [None, pa.py_buffer(keys.tobytes())]),
         "contig_uid": pa.FixedSizeBinaryArray.from_buffers(pa.binary(16), n, [None, pa.py_buffer(rng.bytes(16 * n))]),
-        "slot_ordinal": i % 5000, "genome_uid": pa.array([uid(3)] * n, pa.binary(16)), "start": i * 100,
-        "end": i * 100 + 90, "strand": np.where(i % 2, 1, -1), "tax_order": rng.integers(0, 1000, n),
-        "is_species_rep": i % 2 == 0, "tier": np.ones(n, np.uint8), "assembly_quality": ["complete"] * n,
+        "start": i * 100, "end": i * 100 + 90, "strand": np.where(i % 2, 1, -1),
         "dist_to_contig_end_bp": i % 7000,
         "feature_uid": pa.FixedSizeBinaryArray.from_buffers(pa.binary(16), n, [None, pa.py_buffer(rng.bytes(16 * n))]),
     }
@@ -397,8 +407,11 @@ def test_a_list_slots_column_counts_its_length_as_the_slots(tmp_path):
 
 
 def test_a_slots_column_must_be_an_integer_or_a_non_null_list(tmp_path):
-    with pytest.raises(ValueError, match="assembly_quality"):
+    with pytest.raises(ValueError, match="contig_uid"):
         write_table([inferred([tape_row(0, 2)])], TAPES, tmp_path / "a.parquet", max_slots=8,
+                    slots_column="contig_uid")
+    with pytest.raises(ValueError, match="assembly_quality"):  # a string column
+        write_table([inferred([dim_row(0)])], DIM, tmp_path / "s.parquet", max_slots=8,
                     slots_column="assembly_quality")
     circular = {**tape_row(1, 2), "orfs_to_contig_starts": None}  # a nullable list column holding a null list
     with pytest.raises(ValueError, match="orfs_to_contig_starts"):
@@ -428,7 +441,7 @@ def test_bytes_do_not_depend_on_how_the_input_is_batched(keys, cuts, rg):
 
 @pytest.mark.covers("LY-03", "LY-02")
 def test_sort_key_columns_have_min_max_in_every_row_group(tmp_path):
-    rows = [tape_row(i, 2, None) for i in range(10)] + [tape_row(i, 2, 7) for i in range(10, 20)]
+    rows = [tape_row(i, 2) for i in range(20)]
     out = tmp_path / "l3/tapes/tape_version=t-000000000000/stage=S0/part-0.parquet"
     write_table([inferred(rows)], TAPES, out, row_group_rows=4)
     m = manifest(tmp_path, "contig_tapes", out)
@@ -540,11 +553,9 @@ _OCC_SQL = """
 SELECT CAST(i AS BIGINT) AS dist_to_contig_end_bp,
        from_hex(lpad(to_hex(i), 32, '0')) AS protein_uid,
        from_hex(lpad(to_hex(7 * i + 1), 32, '0')) AS contig_uid,
-       i AS slot_ordinal, from_hex(lpad('3', 32, '0')) AS genome_uid,
        from_hex(lpad(to_hex(11 * i + 5), 32, '0')) AS feature_uid,
-       100 * i AS start, 100 * i + 90 AS "end", CASE WHEN i % 2 = 1 THEN 1 ELSE -1 END AS strand,
-       CASE WHEN i % 3 = 0 THEN NULL ELSE i END AS tax_order, i % 2 = 0 AS is_species_rep, 1 AS tier,
-       'complete' AS assembly_quality
+       100 * i AS start, 100 * i + 90 AS "end",
+       CASE WHEN i % 2 = 1 THEN 1 ELSE -1 END AS strand
 FROM range($n) t(i) ORDER BY protein_uid
 """
 
@@ -570,9 +581,9 @@ def test_duck_batches_is_lazy_and_names_a_missing_column():
     gen = duck_batches(con, "SELECT * FROM no_such_table", OCC)  # nothing runs until the first batch
     with pytest.raises(duckdb.Error):
         next(gen)
-    with pytest.raises(ValueError, match="assembly_quality"):
-        next(duck_batches(con, _OCC_SQL.replace(",\n       'complete' AS assembly_quality", ""), OCC,
-                          params={"n": 10}))
+    with pytest.raises(ValueError, match="strand"):
+        next(duck_batches(con, _OCC_SQL.replace(",\n       CASE WHEN i % 2 = 1 THEN 1 ELSE -1 END AS strand", ""),
+                          OCC, params={"n": 10}))
 
 
 def test_duck_batches_cast_blob_lists_to_uid_lists():
@@ -586,8 +597,8 @@ def test_duck_batches_cast_blob_lists_to_uid_lists():
     good = sql.replace("[from_hex(lpad(to_hex(i), 16, '0')), from_hex(lpad(to_hex(i + 1), 16, '0'))]", "[i, i]")
     [b] = list(duck_batches(con, good, spec))
     assert b.schema.equals(spec.schema)
-    occ_sql = _OCC_SQL.replace("from_hex(lpad('3', 32, '0'))", "from_hex(lpad('3', 30, '0'))")
-    with pytest.raises(ValueError, match="genome_uid"):
+    occ_sql = _OCC_SQL.replace("from_hex(lpad(to_hex(7 * i + 1), 32, '0'))", "from_hex(lpad(to_hex(7 * i + 1), 30, '0'))")
+    with pytest.raises(ValueError, match="contig_uid"):
         list(duck_batches(con, occ_sql, OCC, params={"n": 5}))
 
 

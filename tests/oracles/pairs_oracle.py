@@ -1,5 +1,6 @@
 """The slot-pair oracle: `pairs_of_contig`, `window`, the flags and `K_MAX`, moved unchanged from
-`biobox.l3.pairs` when card B-11 removed the materialized `slot_pairs` table (AGENTS §3.5).
+`biobox.l3.pairs` when card B-11 removed the materialized `slot_pairs` table (AGENTS §3.5). Card B-17
+dropped the `tier` and `tax_order` columns from its rows: tapes no longer carry them (AGENTS §3.6).
 
 The catalog's pair macros (`pairs_of`, `q1_count`, `partners_of`) answer neighbour questions from
 `token_postings` at query time; the tests compare them with this loop over the tapes.
@@ -59,6 +60,5 @@ def pairs_of_contig(tape: dict, tokens: dict[str, list[int | None]], k: int = K_
                 rows.append({"anchor_token": a, "partner_token": b, "contig_uid": tape["contig_uid"],
                              "anchor_ordinal": i, "partner_ordinal": j, "orf_offset": d,
                              "junction_topology": topo, "delta_bp": delta,
-                             "flags": flags_i | (FLAG_CROSSES_ORIGIN if crosses else 0),
-                             "tier": tape["tier"], "tax_order": None})
+                             "flags": flags_i | (FLAG_CROSSES_ORIGIN if crosses else 0)})
     return rows
