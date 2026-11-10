@@ -21,11 +21,12 @@ A run is a recorded job:
      resident under an 18 GB RLIMIT_AS on the 112-core host). A wall-clock timeout covers both.
   4. The exit decides the status (`classify_exit`): 0 -> the worker's own (`ok`, `failed` for a
      control, `output_cap`); EXIT_OOM (MemoryError, under RLIMIT_AS in the fallback) -> `oom`;
-     a SIGKILL the runner did not send -> `oom` when the scope's cgroup counts an OOM kill
-     (`scope_oom_killed`), `failed` when it does not, and `oom` as before when there is no
-     cgroup to ask; SIGXCPU or the wall timeout -> `timeout`; a cancel (SIGTERM) -> `stopped`;
-     anything else -> `failed`. Only `ok`, `failed`-by-control and `output_cap` runs carry
-     hits; the others write `run.parquet` alone, never an empty hits file (S-05).
+     a SIGKILL the runner did not send -> `oom` only when the scope's cgroup counts an OOM
+     kill (`scope_oom_killed`), else `failed`, killed from outside (card W-04); SIGXCPU or the
+     wall timeout -> `timeout`; a cancel (SIGTERM) -> `stopped`; EXIT_FAILED (an uncaught
+     exception in any worker thread, traceback in stderr) and anything else -> `failed`.
+     Only runs whose worker wrote its result (`ok`, `failed`-by-control, `output_cap`) carry
+     hits; the others write `run.parquet` alone, never an empty or partial hits file (S-05).
   5. The run directory is written next to its final place and renamed in
      (`search/run=<run_id>/`), then `search/run_index.json` is rewritten by atomic rename
      under a lock.
@@ -59,18 +60,11 @@ from biobox.l1.genecall import GENE_CALL_VERSION
 from biobox.registry.schemas import table
 from biobox.search import engine, fastz, pack, recipe as rcp
 from biobox.search.recipe import RecipeError
-from biobox.search.worker import CGROUP_FILE, EXIT_OOM
+from biobox.search.worker import BOOT, CGROUP_FILE, EXIT_FAILED, EXIT_OOM, THREAD_VARS
 
 GB = 10**9
 CGROUP_ROOT = Path("/sys/fs/cgroup")  # the cgroup v2 mount
 _WHICH = object()  # default for scope_oom_killed(systemctl=...): look it up on PATH
-# the worker's entry point: a MemoryError while importing under RLIMIT_AS is an OOM too
-_BOOT = ("import os, sys\n"
-         "try:\n"
-         "    from biobox.search import worker\n"
-         "    sys.exit(worker.main(sys.argv[1]))\n"
-         "except MemoryError:\n"
-         f"    os._exit({EXIT_OOM})\n")
 LOCK_NAME = "runner.lock"  # flock held by the runner for its lifetime, through an fd inherited from `submit`
 RUN_FILES = ("run.parquet", "hits.parquet", "profiles.parquet", "neighborhoods.parquet")
 
@@ -171,7 +165,8 @@ def query_hash(seed: dict) -> str:
 
 
 def worker_command(job: Path) -> list[str]:
-    return [sys.executable, "-c", _BOOT, str(job)]
+    """The worker's own entry (`worker.BOOT`): it sets the thread variables before importing anything."""
+    return [sys.executable, "-c", BOOT, str(job)]
 
 
 def worker_argv(job: Path, limits: Limits, *, system: str | None = None,
@@ -194,9 +189,11 @@ def rlimits(limits: Limits, kind: str, system: str) -> dict[int, tuple[int, int]
 
 
 def worker_env(limits: Limits, kind: str, system: str, base: dict[str, str]) -> dict[str, str]:
-    """The worker's environment: `base` plus the memory limit it runs under, by name, for the
-    `oom` fault to allocate past (BIOBOX_MEMORY_MAX in a scope, BIOBOX_RLIMIT_AS in the fallback)."""
+    """The worker's environment: `base`, every thread variable at `limits.cpus` (card W-04; the
+    worker sets them again itself), and the memory limit it runs under, by name, for the `oom`
+    fault to allocate past (BIOBOX_MEMORY_MAX in a scope, BIOBOX_RLIMIT_AS in the fallback)."""
     env = dict(base)
+    env.update({v: str(max(1, limits.cpus)) for v in THREAD_VARS})
     env.pop("BIOBOX_MEMORY_MAX", None)
     env.pop("BIOBOX_RLIMIT_AS", None)
     if limits.mem_gb is not None:
@@ -313,7 +310,8 @@ def classify_exit(rc: int, *, timed_out: bool, cancelled: bool, cgroup_oom: bool
     the runner itself sent the kill (`timed_out`: SIGKILL at the wall deadline; `cancelled`:
     SIGTERM); whether the scope's cgroup counted an OOM kill (`cgroup_oom`, None without a scope
     or without an answer); the worker's `result.json` (exit 0 only); its stderr. An EXIT_OOM is
-    the fallback's MemoryError (RLIMIT_AS)."""
+    a MemoryError (under RLIMIT_AS in the fallback). A SIGKILL the runner did not send is `oom`
+    only when the cgroup says so (card W-04): without that evidence it is `failed`."""
     if timed_out:
         return "timeout", "wall-clock timeout"
     if cancelled:
@@ -325,13 +323,13 @@ def classify_exit(rc: int, *, timed_out: bool, cancelled: bool, cgroup_oom: bool
     if rc == -signal.SIGKILL:
         if cgroup_oom:
             return "oom", "killed by the kernel OOM killer at the scope's MemoryMax (memory.events oom_kill)"
-        if cgroup_oom is False:
-            return "failed", "worker was killed by signal 9 from outside (its scope reports no OOM kill)"
-        return "oom", "killed (SIGKILL; OOM killer presumed: no cgroup to ask)"
+        why = "its scope reports no OOM kill" if cgroup_oom is False else "no evidence of an out-of-memory kill"
+        return "failed", f"worker was killed by signal 9 from outside ({why})"
     if rc == -signal.SIGXCPU:
         return "timeout", "CPU limit reached (RLIMIT_CPU)"
     tail = stderr.strip().splitlines()[-1:] if stderr.strip() else []
-    return "failed", f"worker exited {rc}" + (f": {tail[0]}" if tail else "")
+    what = "worker raised an uncaught exception" if rc == EXIT_FAILED else f"worker exited {rc}"
+    return "failed", what + (f": {tail[0]}" if tail else "")
 
 
 def _status(rc: int, timed_out: bool, cancelled: bool, out: Path, stderr: str,
@@ -447,7 +445,8 @@ def run(root: Path, recipe_src: Path | str, release: str, *, limits: Limits = Li
         "limits_json": json.dumps(asdict(limits), sort_keys=True), "error": error,
         "seed_json": json.dumps(res["seed"], sort_keys=True),
     }
-    _publish(root, run_id, row, out, status)
+    # a worker that died after a round has hits on disk, but no result: they are not the run's
+    _publish(root, run_id, row, out, with_outputs=bool(result) and status in ("ok", "failed", "output_cap"))
     if not keep_work:
         shutil.rmtree(work, ignore_errors=True)
     return row
@@ -459,7 +458,7 @@ def _main_thread() -> bool:
     return threading.current_thread() is threading.main_thread()
 
 
-def _publish(root: Path, run_id: bytes, row: dict, out: Path, status: str) -> None:
+def _publish(root: Path, run_id: bytes, row: dict, out: Path, with_outputs: bool) -> None:
     final = run_dir(root, run_id)
     tmp = final.with_name(f".{final.name}.tmp-{os.getpid()}")
     if tmp.exists():
@@ -467,7 +466,7 @@ def _publish(root: Path, run_id: bytes, row: dict, out: Path, status: str) -> No
     tmp.mkdir(parents=True)
     pq.write_table(pa.Table.from_pylist([row], schema=table("search_run").schema), tmp / "run.parquet")
     files = ["run.parquet"]
-    if status in ("ok", "failed", "output_cap"):
+    if with_outputs:
         for name in RUN_FILES[1:]:
             if (out / name).exists():
                 shutil.copyfile(out / name, tmp / name)
@@ -475,7 +474,7 @@ def _publish(root: Path, run_id: bytes, row: dict, out: Path, status: str) -> No
     if final.exists():
         raise FileExistsError(f"{final} exists: a run directory is never edited after it closes")
     os.replace(tmp, final)
-    _index_update(root, {"run_id": run_id.hex(), "status": status, "recipe_hash": row["recipe_hash"],
+    _index_update(root, {"run_id": run_id.hex(), "status": row["status"], "recipe_hash": row["recipe_hash"],
                          "ran_against": row["ran_against"], "files": files})
 
 

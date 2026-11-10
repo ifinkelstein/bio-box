@@ -611,6 +611,18 @@ def test_c05_worker_env_names_the_memory_limit_it_runs_under():
         assert "BIOBOX_RLIMIT_AS" not in env and "BIOBOX_MEMORY_MAX" not in env
 
 
+@pytest.mark.covers("W-04")
+def test_w04_runner_caps_the_workers_thread_pools_by_its_cpus():
+    want = {"OMP_NUM_THREADS", "OPENBLAS_NUM_THREADS", "MKL_NUM_THREADS", "POLARS_MAX_THREADS", "ARROW_IO_THREADS"}
+    assert set(worker.THREAD_VARS) == want
+    for kind, system in (("scope", "Linux"), ("nice", "Linux"), ("nice", "Darwin"), ("bare", "Linux")):
+        env = runner.worker_env(runner.Limits(cpus=3), kind, system, {"OMP_NUM_THREADS": "112"})
+        assert {v: env[v] for v in want} == {v: "3" for v in want}
+    # the worker's entry sets them itself before it imports anything that starts a pool
+    boot = runner.worker_command(Path("/w/job.json"))[2]
+    assert boot.index("OMP_NUM_THREADS") < boot.index("import worker")
+
+
 KILL, TERM, XCPU, SEGV = -signal.SIGKILL, -signal.SIGTERM, -signal.SIGXCPU, -signal.SIGSEGV
 OK_RESULT = {"status": "ok", "error": None}
 
@@ -625,7 +637,8 @@ OK_RESULT = {"status": "ok", "error": None}
     (KILL, True, False, True, None, "timeout"),
     (KILL, False, False, True, None, "oom"),                     # the scope's memory.events counts an oom_kill
     (KILL, False, False, False, None, "failed"),                 # the scope says no OOM kill: killed from outside
-    (KILL, False, False, None, None, "oom"),                     # no cgroup evidence (fallback): presumed OOM
+    (KILL, False, False, None, None, "failed"),                  # W-04: no evidence of OOM: killed from outside
+    (worker.EXIT_FAILED, False, False, None, None, "failed"),    # W-04: an uncaught exception in the worker
     (TERM, False, True, None, None, "stopped"),                  # cancel
     (XCPU, False, False, None, None, "timeout"),                 # RLIMIT_CPU
     (SEGV, False, False, None, None, "failed"),
@@ -637,9 +650,9 @@ def test_c05_exit_classification_from_its_evidence(rc, timed_out, cancelled, cgr
     assert status == want, error
     if want != "ok":
         assert error
-    if rc == 1:
+    if rc in (1, worker.EXIT_FAILED):
         assert error.endswith("RuntimeError: boom")
-    if rc == KILL and cgroup_oom is False:
+    if rc == KILL and not timed_out and not cgroup_oom:
         assert "signal 9" in error and "outside" in error
 
 
