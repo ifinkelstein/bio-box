@@ -16,6 +16,7 @@ from biobox.l0seq.inputs import write_genome_input
 from biobox.l1 import igr
 from biobox.l1.igr import igrs_of_contig
 from biobox.l1.genecall import GENE_CALL_VERSION, GenomeInput, run as call_genes
+from biobox.l3 import tapes
 from biobox.registry.schemas import conformance_problems, table
 
 pytestmark = pytest.mark.r2
@@ -110,8 +111,20 @@ def test_ly08_igr_rewrite_is_byte_identical(built, tmp_path):
 
 # --- card B-06: flanks reference features ------------------------------------------------------
 
-def _igr_path(root):
-    return root / f"l0seq/igr/igr_version={igr.igr_version()}/stage=S0/part-0.parquet"
+def _igr_path(root, producers=(GENE_CALL_VERSION,)):
+    return root / f"l0seq/igr/igr_version={igr.igr_version(list(producers))}/stage=S0/part-0.parquet"
+
+
+@pytest.mark.covers("R-05")
+def test_b20_igr_version_names_the_tape_version_and_the_definition_is_written(built):
+    root, _, _ = built
+    tv = tapes.tape_version([GENE_CALL_VERSION])
+    assert igr.igr_version([GENE_CALL_VERSION]) == f"{tv}-igr1"
+    assert igr.igr_version(GENE_CALL_VERSION) == igr.igr_version() == f"{tv}-igr1"  # a string is one producer
+    assert igr.igr_version(["b", "a"]) == igr.igr_version(["a", "b"]) == f"{tapes.tape_version(['a', 'b'])}-igr1"
+    assert _igr_path(root).exists()
+    d = pq.read_table(tapes.def_path(root, tv), columns=["producer"], partitioning=None)
+    assert d.column("producer").to_pylist() == [GENE_CALL_VERSION]
 
 
 def _contig_lengths(root):
@@ -177,8 +190,7 @@ def test_b06_flank_feature_uids_exist_and_touch_the_igr(built):
 def test_b06_second_producer_splits_one_igr(built, tmp_path):
     root, circular, rows = built
     fresh = tmp_path / "root"
-    shutil.copytree(root, fresh)
-    shutil.rmtree(fresh / "l0seq/igr")
+    shutil.copytree(root, fresh)  # B-20: the second producer set writes beside the first, no removal
     n_of = _contig_lengths(fresh)
     mg = next(cu for cu in circular)  # the only circular contig is M. genitalium (NC_000908.2)
     target = next(r for r in rows if r["contig_uid"] == mg and r["end"] - r["start"] >= 100 and r["end"] <= n_of[mg]
@@ -190,8 +202,10 @@ def test_b06_second_producer_splits_one_igr(built, tmp_path):
         [{"feature_uid": fu, "contig_uid": mg, "start": s, "end": e, "strand": 1, "kind": ids.KIND["ncrna"]}],
         schema=spec.schema)
     io.write_table([batch], spec, fresh / "l1/feature/producer=test-ncrna/stage=S0/part-0.parquet")
-    igr.run(fresh, "S0", circular, producers=[GENE_CALL_VERSION, "test-ncrna"])
-    new = pq.read_table(_igr_path(fresh)).to_pylist()
+    both = (GENE_CALL_VERSION, "test-ncrna")
+    igr.run(fresh, "S0", circular, producers=list(both))
+    assert _igr_path(fresh).read_bytes() == _igr_path(root).read_bytes()  # the first file is untouched
+    new = pq.read_table(_igr_path(fresh, both)).to_pylist()
     old_keys = {(r["contig_uid"], r["start"]): r for r in rows}
     new_keys = {(r["contig_uid"], r["start"]): r for r in new}
     assert len(new) == len(rows) + 1

@@ -143,6 +143,16 @@ def _stored_producers(root: Path, tv: str, producers: list[str]) -> bool:
     return True
 
 
+def ensure_def(root: Path, producers: list[str]) -> str:
+    """Make sure the tape version of `producers` has its `tape_version_def` file: write it if absent,
+    verify it lists the same producers if present (ValueError otherwise). Returns the tape version.
+    Shared by `tapes.run` and `biobox.l1.igr.run` (card B-20)."""
+    tv = tape_version(producers)
+    if not _stored_producers(root, tv, producers):
+        io.write_table([pa.table({"producer": sorted(producers)})], table("tape_version_def"), def_path(root, tv))
+    return tv
+
+
 class _Peek:
     def __init__(self, it: Iterator[dict]):
         self._it, self._head, self._done = it, None, False
@@ -173,7 +183,7 @@ def run(root: Path, stage: str, circular: set[bytes] | frozenset | None = None,
         raise ValueError("max_slots must be positive")
     if tmp is not None and Path(tmp).resolve().is_relative_to(root.resolve()):
         raise ValueError(f"{tmp}: the scratch directory may not lie under the data root")
-    have_def = _stored_producers(root, tv, producers)
+    _stored_producers(root, tv, producers)  # fail before any work if the stored definition disagrees
     feats = []
     for p in sorted(producers):
         found = sorted((root / f"l1/feature/producer={p}/stage={stage}").glob("part-*.parquet"))
@@ -283,7 +293,6 @@ def run(root: Path, stage: str, circular: set[bytes] | frozenset | None = None,
     finally:
         con.close()
         shutil.rmtree(scratch, ignore_errors=True)
-    if not have_def:
-        io.write_table([pa.table({"producer": sorted(producers)})], table("tape_version_def"), def_path(root, tv))
+    ensure_def(root, producers)
     ledger.write(root, stage, f"tape-{tv}", ledger_rows)  # per tape version: a second version never rewrites it
     return {**counts, "files": k, "tape_version": tv}

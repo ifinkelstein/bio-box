@@ -6,6 +6,7 @@ partition, that the versions a `gene_call_version` or `igr_version` names, and t
 the ledgers, equal the container lock: `uv.lock` for Python packages, the conda pins in
 `container/environment.yml` for native tools.
 
+An `igr_version` is `<tape_version>-igr1` (card B-20) and is checked through its tape version, as below.
 A `tape_version` names no tool versions (card B-07): it is resolved to its producers through the
 manifest's `tape_version_def` files, which must hash to it (`biobox.l3.tapes.tape_version`), and
 each producer must name its tool versions as a gene-call version does and equal the lock.
@@ -93,12 +94,12 @@ def check_provenance(manifest: dict, lock: dict[str, str] | None = None) -> list
         key = VERSION_PARTITION.get(f["table"])
         if key and not f["partitions"].get(key):
             problems.append(f"{f['path']}: {f['table']} without its {key} partition")
-        for vkey in ("gene_call_version", "igr_version"):
-            v = f["partitions"].get(vkey)
-            if v is None:
-                continue
-            problems += _gene_call_problems(f["path"], f"{vkey}={v}",
-                                            v.removesuffix("-igr1") if vkey == "igr_version" else v, lock)
+        v = f["partitions"].get("gene_call_version")
+        if v is not None:
+            problems += _gene_call_problems(f["path"], f"gene_call_version={v}", v, lock)
+        iv = f["partitions"].get("igr_version")
+        if iv is not None and _igr_tape_version(iv) is None:
+            problems.append(f"{f['path']}: igr_version={iv} is not <tape_version>-igr1")
         if f["table"] == "ledger":
             step = f["partitions"]["step"]
             need = _step_tools(step)
@@ -115,6 +116,16 @@ def check_provenance(manifest: dict, lock: dict[str, str] | None = None) -> list
                     problems.append(f"{f['path']}: {step} tool versions missing {missing}, differ {wrong}")
                     break
     return problems + _tape_version_problems(manifest, root, lock)
+
+
+IGR_SUFFIX = "-igr1"
+TAPE_VERSION_RE = re.compile(r"^t-[0-9a-f]{12}$")
+
+
+def _igr_tape_version(igr_version: str) -> str | None:
+    """The tape version an `igr_version` (`<tape_version>-igr1`, card B-20) names; None if malformed."""
+    tv = igr_version.removesuffix(IGR_SUFFIX) if igr_version.endswith(IGR_SUFFIX) else None
+    return tv if tv is not None and TAPE_VERSION_RE.match(tv) else None
 
 
 def _gene_call_problems(where: str, what: str, v: str, lock: dict[str, str]) -> list[str]:
@@ -156,6 +167,10 @@ def _tape_version_problems(manifest: dict, root: Path, lock: dict[str, str]) -> 
         tv = f["partitions"].get("tape_version")
         if tv is not None and f["table"] != "tape_version_def" and tv not in defined:
             problems.append(f"{f['path']}: tape_version={tv} has no tape_version_def in the manifest")
+        iv = f["partitions"].get("igr_version")
+        tv = None if iv is None else _igr_tape_version(iv)  # a malformed one is reported by the caller
+        if tv is not None and tv not in defined:
+            problems.append(f"{f['path']}: igr_version={iv} names tape_version={tv}, which has no tape_version_def in the manifest")
     return problems
 
 

@@ -277,6 +277,35 @@ def test_c08_a_tape_version_is_checked_through_its_producers(built, tmp_path):
         assert probs and all(msg in p for p in probs), probs
 
 
+@pytest.mark.covers("C-08")
+def test_c08_an_igr_version_is_a_tape_version_plus_igr1(built):
+    """card B-20: `igr_version` = `<tape_version>-igr1`; its tape version must be defined in the manifest."""
+    import hashlib
+
+    _, man, _ = built
+    tv = "t-" + hashlib.sha256(GENE_CALL_VERSION.encode()).hexdigest()[:12]
+    defs = [f for f in man["files"] if f["table"] == "tape_version_def"]
+    assert [f["partitions"] for f in defs] == [{"tape_version": tv}]
+
+    def igr_file(version):
+        return {"path": f"l0seq/igr/igr_version={version}/stage=S0/part-0.parquet", "table": "igr",
+                "partitions": {"igr_version": version, "stage": "S0"}}
+
+    ok = {**man, "files": defs + [igr_file(f"{tv}-igr1")]}
+    assert provenance.check_provenance(ok) == []
+    # a stale producer is found through the IGR's tape version
+    lock = provenance.locked_versions()
+    probs = provenance.check_provenance(ok, {**lock, "pyrodigal": "0.0.1"})
+    assert probs and all("differs from the lock" in p for p in probs)
+    # a tape version without a definition
+    probs = provenance.check_provenance({**man, "files": [igr_file(f"{tv}-igr1")]})
+    assert probs and all("no tape_version_def" in p and "igr_version" in p for p in probs), probs
+    # a malformed suffix, and the old form (a bare gene-call version)
+    for bad in (f"{tv}-igr2", tv, GENE_CALL_VERSION + "-igr1", "-igr1"):
+        probs = provenance.check_provenance({**man, "files": defs + [igr_file(bad)]})
+        assert any("igr_version" in p and "<tape_version>-igr1" in p for p in probs), (bad, probs)
+
+
 # --- append-only and determinism -----------------------------------------------------------
 
 
