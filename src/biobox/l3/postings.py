@@ -89,14 +89,14 @@ def _bucket_name(bk: int, width: int) -> str:
 
 def run(root: Path, release: str, stages: list[str], gene_call_version: str = GENE_CALL_VERSION,
         producers: list[str] | None = None, prefix_width: int | None = None,
-        max_file_bytes: int = layout.MAX_FILE_BYTES, tmp=None) -> dict:
+        max_file_bytes: int = layout.MAX_FILE_BYTES, tmp=None, memory_limit: str = DUCK_MEMORY_LIMIT) -> dict:
     """Write the release's postings for the tape version of `producers` (default: the gene-call producer).
 
     Reads the tapes of that tape version for `stages`, the release's stages (card B-25; a listed stage
     without tapes raises FileNotFoundError, and they must be the stages of the release's `release_def`),
     and its `tape_tokens` of `release` (written by `biobox.l3.tokens.run`). `prefix_width` overrides
     the bucket width; `tmp` holds DuckDB's private scratch directory (system temp by default; never
-    the data root).
+    the data root); `memory_limit` is DuckDB's cap (a test passes a smaller one, scaled with its store).
     """
     root = Path(root)
     stages = catalog.check_stages(stages)
@@ -124,7 +124,7 @@ def run(root: Path, release: str, stages: list[str], gene_call_version: str = GE
     spec = table("token_postings")
     names = spec.schema.names
     scratch = Path(tempfile.mkdtemp(prefix="biobox-postings-", dir=tmp))
-    con = duckdb.connect(config={"threads": 1, "memory_limit": DUCK_MEMORY_LIMIT,
+    con = duckdb.connect(config={"threads": 1, "memory_limit": memory_limit,
                                  "temp_directory": str(scratch / "duckdb"), "preserve_insertion_order": True})
     try:
         con.execute(f"CREATE VIEW tapes AS SELECT * FROM {tape_src}")
