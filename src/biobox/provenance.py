@@ -197,21 +197,27 @@ def _versions_problems(where: str, tv: dict | None, lock: dict[str, str]) -> lis
     return [f"{where}: tool versions missing {missing}, differ {wrong}"] if missing or wrong else []
 
 
-def check_search(root: Path, lock: dict[str, str] | None = None) -> list[str]:
-    """C-08 for what lives outside the release manifest: each search pack's builder and each
-    closed run's tool versions equal the container lock."""
+def check_search(packs: Path | None = None, runs: Path | None = None,
+                 lock: dict[str, str] | None = None) -> list[str]:
+    """C-08 for what lives outside the release manifest, and outside the data root (card W-03): each search
+    pack's builder in the pack directory `packs` (`release=<R>/<pack_id>/pack_manifest.json`) and each
+    closed run's tool versions in the runs directory `runs` (`run=<run_id>/run.parquet`) equal the
+    container lock."""
     import pyarrow.parquet as pq
 
     lock = locked_versions() if lock is None else lock
-    root = Path(root)
     problems = []
-    for m in sorted(root.glob("search_pack/release=*/pack_manifest.json")):
-        problems += _versions_problems(str(m.relative_to(root)), json.loads(m.read_text()).get("builder"), lock)
-    idx = root / "search/run_index.json"
-    for r in json.loads(idx.read_text())["runs"] if idx.exists() else []:
-        path = root / f"search/run={r['run_id']}/run.parquet"
-        row = pq.read_table(path, columns=["tool_versions_json"]).to_pylist()[0]
-        tv = json.loads(row["tool_versions_json"]) if row["tool_versions_json"] else None
-        problems += _versions_problems(str(path.relative_to(root)), tv, lock)
+    if packs is not None:
+        packs = Path(packs)
+        for m in sorted(packs.glob("release=*/*/pack_manifest.json")):
+            if m.parent.name.startswith("."):  # a pack being built, under its temporary name
+                continue
+            problems += _versions_problems(str(m.relative_to(packs)), json.loads(m.read_text()).get("builder"), lock)
+    if runs is not None:
+        runs = Path(runs)
+        for path in sorted(runs.glob("run=*/run.parquet")):
+            row = pq.read_table(path, columns=["tool_versions_json"]).to_pylist()[0]
+            tv = json.loads(row["tool_versions_json"]) if row["tool_versions_json"] else None
+            problems += _versions_problems(str(path.relative_to(runs)), tv, lock)
     return problems
 

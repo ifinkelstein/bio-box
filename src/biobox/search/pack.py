@@ -1,6 +1,6 @@
 """Per-release search pack: build and verify (SEARCH_PLAN SD-06, SD-07; data_layer_and_tests.md §2B.2; C-12).
 
-    $ATD_ROOT/search_pack/release=<R>/
+    <pack dir>/release=<R>/<pack_id>/
       pack_manifest.json         shards, meta files, counts, sources, rules, builder versions, and the
                                  tape_version the region flanks (feature uids) refer to
       unique/part-<k>.faa.zst    every exact-unique protein, named by protein_uid hex
@@ -19,8 +19,15 @@ protein and 0.6 GiB of nucleotide zstd), so every shard but the last of a target
 256 MB. `pack_id` is the BLAKE3-128 of `pack_manifest.json`; the manifest holds no
 timestamps, so the same inputs give the same pack_id (D-01).
 
-The pack sits under the data root but outside the release manifest (catalog.EXCLUDED_TREES):
-it has its own manifest and is verified by `verify` (C-12) before the release is signed.
+The pack lives outside the data root (card W-03), in a pack directory (`bio-box pack build
+--pack-dir DIR`; by default `<profile tmp>/packs` with a host profile, else beside the search work
+directory, `runner.default_pack_base`); a pack directory inside the root is refused. It is a derived,
+rebuildable cache of a release, not a release file: the same inputs give the same bytes and the same
+`pack_id`, its own manifest records what it was built from, and `verify` (C-12) checks it. It is kept
+off the data root because on shared storage every release's pack has files under the 64 MiB floor
+(LY-04; planning/measurements/2026-11-10_search_pack_size.md). `build` writes the pack under a
+temporary name in `release=<R>/` and renames it to its `pack_id`; it never overwrites a pack, and it is a
+no-op, before any work, when a pack built from the same inputs (`_fingerprint`) is there and verifies.
 
 A pack holds the release's files only (card B-28): every input is listed by `catalog.ReleaseFiles`,
 from the release manifest when there is one, else from the stages of the release's `release_def`, so
@@ -30,6 +37,7 @@ a stage on disk the release does not list never enters its pack.
 from __future__ import annotations
 
 import json
+import os
 import shutil
 from collections import Counter, defaultdict
 from pathlib import Path
@@ -57,8 +65,60 @@ TARGET_KIND = {"unique": "protein", "igr": "igr", "dark_orf": "dark_orf"}
 MISSING_AT_S0 = {"spacers": "no CRISPR spacer calls in this release (O-ARRAY not built)"}
 
 
-def pack_dir(root: Path, release: str) -> Path:
-    return Path(root) / f"search_pack/release={release}"
+MANIFEST = "pack_manifest.json"
+# the manifest keys that, with each target's `sources`, say what a pack was built from (`_fingerprint`)
+FINGERPRINT_KEYS = ("pack_format", "release_id", "gene_call_version", "igr_version", "tape_version", "z", "rules",
+                    "builder", "missing_targets")
+
+
+class NoPack(FileNotFoundError):
+    """No pack of the release in the pack directory; the message names the command that builds one."""
+
+
+def release_dir(packs: Path, release: str) -> Path:
+    """Where the packs of a release live in the pack directory `packs`."""
+    return Path(packs) / f"release={release}"
+
+
+def pack_dir(packs: Path, release: str, pack_id: bytes | str) -> Path:
+    """The pack of `release` with `pack_id` in the pack directory `packs`: `<packs>/release=<R>/<pack_id>`."""
+    return release_dir(packs, release) / (pack_id if isinstance(pack_id, str) else pack_id.hex())
+
+
+def outside_root(root: Path, path: Path, what: str) -> Path:
+    """`path`, after refusing (ValueError) a path that is the data root or lies under it (card W-03: nothing in
+    the search path writes under the root)."""
+    r, p = Path(root).resolve(), Path(path).resolve()
+    if p == r or p.is_relative_to(r):
+        raise ValueError(f"{what} {path} lies under the data root {root}; the search path writes nothing under the "
+                         "root: give a directory outside it")
+    return Path(path)
+
+
+def build_command(root: Path, release: str, packs: Path) -> str:
+    return (f"bio-box pack build --root {root} --release {release} --pack-dir {packs} "
+            "--model <library>-<version>=<HMM file> ...")
+
+
+def find(packs: Path, release: str, pack_id: bytes | str | None = None, *, root: Path | None = None) -> Path:
+    """The pack directory of `release` in `packs` (of `pack_id`, when given). NoPack, naming the command that
+    builds it, when there is none; ValueError when several packs of the release are there and none is named."""
+    if pack_id is not None:
+        d = pack_dir(packs, release, pack_id)
+        found = [d] if (d / MANIFEST).is_file() else []
+    else:
+        base = release_dir(packs, release)
+        found = sorted(p for p in base.iterdir() if not p.name.startswith(".") and (p / MANIFEST).is_file()) \
+            if base.is_dir() else []
+    if not found:
+        what = "search pack " if pack_id is None else \
+            f"search pack {pack_id if isinstance(pack_id, str) else pack_id.hex()} "
+        raise NoPack(f"no {what}of release {release} in the pack directory {packs}; build it with: "
+                     f"{build_command(root or '<data root>', release, packs)}")
+    if len(found) > 1:
+        raise ValueError(f"{len(found)} search packs of release {release} in {release_dir(packs, release)} "
+                         f"({', '.join(p.name for p in found)}); keep the one to search and remove the others")
+    return found[0]
 
 
 def _rel(root: Path, p: Path) -> str:
@@ -225,10 +285,24 @@ def _build_models(out: Path, models: dict[str, Path]) -> list[dict]:
     return shards
 
 
+def _fingerprint(manifest: dict) -> dict:
+    """What a pack was built from: the build's rules, versions and tools, and each target's sources (input
+    files by path and sha256, library files by sha256). The pack's bytes are a function of these (D-01)."""
+    return {**{k: manifest.get(k) for k in FINGERPRINT_KEYS},
+            "sources": {t: info.get("sources") for t, info in sorted(manifest.get("targets", {}).items())}}
+
+
 def build(root: Path, release: str, gene_call_version: str = GENE_CALL_VERSION,
           models: dict[str, Path] | None = None, shard_text_bytes: int = SHARD_TEXT_BYTES,
-          producers: list[str] | None = None, release_manifest: dict | None = None) -> dict:
-    """Build the release's pack from the data root; returns the manifest (with `pack_id`).
+          producers: list[str] | None = None, release_manifest: dict | None = None, *, packs: Path) -> dict:
+    """Build the release's pack from the data root into the pack directory `packs` (card W-03), at
+    `<packs>/release=<R>/<pack_id>/`; returns the manifest (with `pack_id`).
+
+    `packs` may not lie under the root (ValueError, before anything is read). When a pack of the release
+    built from the same inputs is there and verifies, nothing is built or written and its manifest is
+    returned. Otherwise the pack is written under a temporary name in `release=<R>/` and renamed to its
+    pack_id; if a pack of that id is there already (and does not verify), FileExistsError: a pack is never
+    overwritten.
 
     `producers` (default: the gene-call producer alone) name the feature set: the IGRs are those of
     its igr version and the region flanks are features of its tape version, which the manifest
@@ -236,15 +310,62 @@ def build(root: Path, release: str, gene_call_version: str = GENE_CALL_VERSION,
     `release_manifest` (default: `manifests/release=<R>.json` when it exists), else from the stages of
     the release's `release_def` (FileNotFoundError when it has neither)."""
     root = Path(root).resolve()
+    packs = outside_root(root, packs, "the pack directory")
     rf = ReleaseFiles.of(root, release, release_manifest)
     _check_codes(rf, gene_call_version)
-    out = pack_dir(root, release)
-    if out.exists():
-        shutil.rmtree(out)
-    out.mkdir(parents=True)
     gcv = gene_call_version
     producers = sorted(producers) if producers is not None else [gcv]
     tv, iv = tape_version(producers), igr_version(producers)
+    seq_files = rf.artifact("seq_shards")
+    sources = {
+        "unique": {"protein_seq": _source_hash(root, _protein_files(rf, gcv))},
+        "igr": {"igr": _source_hash(root, _igr_files(rf, iv)), "seq_shards": _source_hash(root, seq_files)},
+        "dark_orf": {"protein_occurrence": _source_hash(root, _occurrence_files(rf, gcv)),
+                     "contig_tapes": _source_hash(root, _tape_files(rf, tv)),
+                     "seq_shards": _source_hash(root, seq_files)},
+        "models": {lib: {"files": 1, "sha256": ids.sha256_file(p).hex()} for lib, p in sorted((models or {}).items())},
+    }
+    head = {
+        "pack_format": PACK_FORMAT,
+        "release_id": release,
+        "gene_call_version": gcv,
+        "igr_version": iv,
+        "tape_version": tv,  # the tape version the region flanks refer to, and the one a run reads
+        "z": Z,
+        "rules": {"igr_min_nt": IGR_MIN_NT, "dark_orf_min_aa": orfs.MIN_AA, "dark_orf_end_bp": orfs.END_BP,
+                  "dark_orf_max_gene_overlap": orfs.MAX_GENE_OVERLAP, "shard_text_bytes": shard_text_bytes},
+        "builder": provenance.tool_versions("bio-box", "pyhmmer", "pyarrow"),
+        "missing_targets": MISSING_AT_S0,
+    }
+    want = _fingerprint({**head, "targets": {t: {"sources": s} for t, s in sources.items()}})
+    base = release_dir(packs, release)
+    for d in sorted(p for p in base.iterdir() if not p.name.startswith(".")) if base.is_dir() else []:
+        if (d / MANIFEST).is_file():
+            have, pid = read_manifest(d)
+            if _fingerprint(have) == want and not verify_dir(root, release, d, release_manifest=release_manifest):
+                return {**have, "pack_id": pid.hex()}  # built from the same inputs: a no-op
+    base.mkdir(parents=True, exist_ok=True)
+    out = base / f".building-{os.getpid()}-{os.urandom(4).hex()}"
+    out.mkdir()
+    try:
+        manifest, data = _build_into(out, root, rf, head, sources, gcv, iv, tv, models or {}, shard_text_bytes)
+        final = pack_dir(packs, release, pack_id_of(data))
+        if final.exists():
+            if not verify_dir(root, release, final, release_manifest=release_manifest):
+                shutil.rmtree(out)
+                return {**manifest, "pack_id": final.name}
+            raise FileExistsError(f"{final}: a pack with this pack_id exists and does not verify; a pack is never "
+                                  "overwritten: remove it, then build again")
+        os.rename(out, final)
+    except BaseException:
+        shutil.rmtree(out, ignore_errors=True)
+        raise
+    return {**manifest, "pack_id": final.name}
+
+
+def _build_into(out: Path, root: Path, rf: ReleaseFiles, head: dict, sources: dict, gcv: str, iv: str, tv: str,
+                models: dict[str, Path], shard_text_bytes: int) -> tuple[dict, bytes]:
+    """Write the pack's files and its manifest into the empty directory `out`; (manifest, manifest bytes)."""
     lengths, circular, strands = _contigs(rf, tv)
     slots = _slots(rf, gcv)
     # a protein-only root (a synthetic world) has no sequence store: its nucleotide targets are empty
@@ -256,34 +377,16 @@ def build(root: Path, release: str, gene_call_version: str = GENE_CALL_VERSION,
             "unique": _build_unique(rf, out, gcv, shard_text_bytes),
             "igr": _build_igr(rf, out, iv, store, lengths, circular, strands, shard_text_bytes),
             "dark_orf": _build_dark_orf(rf, out, gcv, store, lengths, circular, slots, shard_text_bytes),
-            "models": _build_models(out, models or {}),
+            "models": _build_models(out, models),
         }
     finally:
         if store is not None:
             store.close()
-    seq_files = rf.artifact("seq_shards")
-    sources = {
-        "unique": {"protein_seq": _source_hash(root, _protein_files(rf, gcv))},
-        "igr": {"igr": _source_hash(root, _igr_files(rf, iv)), "seq_shards": _source_hash(root, seq_files)},
-        "dark_orf": {"protein_occurrence": _source_hash(root, _occurrence_files(rf, gcv)),
-                     "contig_tapes": _source_hash(root, _tape_files(rf, tv)),
-                     "seq_shards": _source_hash(root, seq_files)},
-        "models": {lib: {"files": 1, "sha256": ids.sha256_file(p).hex()} for lib, p in sorted((models or {}).items())},
-    }
     manifest = {
-        "pack_format": PACK_FORMAT,
-        "release_id": release,
-        "gene_call_version": gcv,
-        "igr_version": iv,
-        "tape_version": tv,  # the tape version the region flanks refer to, and the one a run reads
-        "z": Z,
-        "rules": {"igr_min_nt": IGR_MIN_NT, "dark_orf_min_aa": orfs.MIN_AA, "dark_orf_end_bp": orfs.END_BP,
-                  "dark_orf_max_gene_overlap": orfs.MAX_GENE_OVERLAP, "shard_text_bytes": shard_text_bytes},
-        "builder": provenance.tool_versions("bio-box", "pyhmmer", "pyarrow"),
+        **head,
         "targets": {t: {"kind": TARGET_KIND.get(t, t), "n_seq": sum(s["n_seq"] for s in sh),
                         "n_residues": sum(s["n_residues"] for s in sh), "sources": sources[t]}
                     for t, sh in built.items()},
-        "missing_targets": MISSING_AT_S0,
         "shards": [{"target": t, "path": _rel(out, s["path"]), "sha256": ids.sha256_file(s["path"]).hex(),
                     "bytes": s["path"].stat().st_size, "n_seq": s["n_seq"], "n_residues": s["n_residues"]}
                    for t, sh in built.items() for s in sh],
@@ -292,16 +395,17 @@ def build(root: Path, release: str, gene_call_version: str = GENE_CALL_VERSION,
                   "bytes": (out / f"{t}/{t}_meta.parquet").stat().st_size} for t in ("igr", "dark_orf")],
     }
     data = json.dumps(manifest, sort_keys=True, indent=1).encode()
-    (out / "pack_manifest.json").write_bytes(data)
-    return {**manifest, "pack_id": pack_id_of(data).hex()}
+    (out / MANIFEST).write_bytes(data)
+    return manifest, data
 
 
 def pack_id_of(manifest_bytes: bytes) -> bytes:
     return blake3(manifest_bytes).digest(length=16)
 
 
-def read_manifest(root: Path, release: str) -> tuple[dict, bytes]:
-    data = (pack_dir(root, release) / "pack_manifest.json").read_bytes()
+def read_manifest(pdir: Path) -> tuple[dict, bytes]:
+    """(manifest, pack_id) of the pack in the directory `pdir` (`find`, `pack_dir`)."""
+    data = (Path(pdir) / MANIFEST).read_bytes()
     return json.loads(data), pack_id_of(data)
 
 
@@ -320,22 +424,37 @@ def _count_source(rf: ReleaseFiles, manifest: dict, target: str, out: Path) -> i
 
 
 def verify(root: Path, release: str, pack_id: bytes | None = None,
-           min_shard_bytes: int = layout.TARGET_FILE_BYTES, release_manifest: dict | None = None) -> list[str]:
-    """C-12: problems with the release's pack; empty means it verifies. Sequence counts are checked
-    against the release's files (`release_manifest`, as for `build`)."""
-    root = Path(root).resolve()
-    out = pack_dir(root, release)
-    if not (out / "pack_manifest.json").exists():
-        return [f"{_rel(root, out)}: no pack_manifest.json"]
+           min_shard_bytes: int = layout.TARGET_FILE_BYTES, release_manifest: dict | None = None, *,
+           packs: Path) -> list[str]:
+    """C-12: problems with the release's pack in the pack directory `packs` (the one of `pack_id`, when
+    given; `find`); empty means it verifies. Sequence counts are checked against the release's files under
+    `root` (`release_manifest`, as for `build`)."""
+    try:
+        out = find(packs, release, pack_id, root=root)
+    except (FileNotFoundError, ValueError) as e:
+        return [str(e)]
+    return verify_dir(root, release, out, pack_id, min_shard_bytes, release_manifest)
+
+
+def verify_dir(root: Path, release: str, out: Path, pack_id: bytes | None = None,
+               min_shard_bytes: int = layout.TARGET_FILE_BYTES, release_manifest: dict | None = None) -> list[str]:
+    """`verify` of the pack in the directory `out`: also, the directory is named by the manifest's hash."""
+    root, out = Path(root).resolve(), Path(out)
+    if not (out / MANIFEST).exists():
+        return [f"{out}: no {MANIFEST}"]
     try:
         rf = ReleaseFiles.of(root, release, release_manifest)
     except FileNotFoundError as e:
         return [f"release {release}: {e}"]
-    manifest, pid = read_manifest(root, release)
+    manifest, pid = read_manifest(out)
     problems = []
     if pack_id is not None and pack_id != pid:
         problems.append(f"pack_id {pack_id.hex()} differs from the manifest hash {pid.hex()}")
-    listed = {"pack_manifest.json"}
+    if out.name != pid.hex():
+        problems.append(f"{out}: the directory is not named by the manifest hash {pid.hex()}")
+    if manifest.get("release_id") != release:
+        problems.append(f"{out}: a pack of release {manifest.get('release_id')}, not {release}")
+    listed = {MANIFEST}
     by_target: dict[str, list[dict]] = defaultdict(list)
     for entry in manifest["shards"] + manifest["meta"]:
         listed.add(entry["path"])

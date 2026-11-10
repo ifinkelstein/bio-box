@@ -97,20 +97,28 @@ def store(tmp_path_factory):
     assert len(p_mut) == 1 and p["protein_uid"] not in p_mut, "the planted P' was not called as one new protein"
     assert any(r["protein_uid"] == p["protein_uid"] and r["contig_uid"] == cu_b for r in s1), "P is not on the S1 contig"
     models = {"test-1": d / "a.hmm"}
+    # card W-03: the packs and the runs live beside the data root, never under it
+    pack_dir, runs = d / "a.packs", d / "a.runs"
     return {"root": root, "d": d, "models": models, "lam": lam_cu, "s0_contigs": {r["contig_uid"] for r in _occurrences(root, "S0")},
             "s1_contigs": {cu_a, cu_b}, "cu_a": cu_a, "cu_b": cu_b, "p": p["protein_uid"], "p_mut": next(iter(p_mut)),
             "s0_proteins": set(prots), "s1_only": {r["protein_uid"] for r in s1} - set(prots),
-            "packs": {rel: pack.build(root, rel, models=models) for rel in (R1, R2)}}
+            "packs": {rel: pack.build(root, rel, models=models, packs=pack_dir) for rel in (R1, R2)},
+            "pack_dir": pack_dir, "runs": runs}
 
 
-def _pack_ids(root: Path, release: str, target: str) -> set[str]:
-    man, _ = pack.read_manifest(root, release)
-    return {n for s in man["shards"] if s["target"] == target
-            for n, _ in fastz.read_records(pack.pack_dir(root, release) / s["path"])}
+def at(store) -> dict:
+    """The runner's keyword arguments that name the store's pack and runs directories (card W-03)."""
+    return {"packs": store["pack_dir"], "runs": store["runs"]}
 
 
-def _meta_contigs(root: Path, release: str, target: str) -> set[bytes]:
-    t = pq.read_table(pack.pack_dir(root, release) / f"{target}/{target}_meta.parquet", columns=["contig_uid"])
+def _pack_ids(store, release: str, target: str) -> set[str]:
+    pdir = pack.find(store["pack_dir"], release)
+    man, _ = pack.read_manifest(pdir)
+    return {n for s in man["shards"] if s["target"] == target for n, _ in fastz.read_records(pdir / s["path"])}
+
+
+def _meta_contigs(store, release: str, target: str) -> set[bytes]:
+    t = pq.read_table(pack.find(store["pack_dir"], release) / f"{target}/{target}_meta.parquet", columns=["contig_uid"])
     return set(t.column("contig_uid").to_pylist())
 
 
@@ -122,15 +130,15 @@ def test_b28_pack_of_r1_holds_only_r1_stages(store):
     root = store["root"]
     assert store["s1_only"] and store["p_mut"] in store["s1_only"]
     # R1: exactly the S0 proteins, and regions of S0 contigs only
-    assert _pack_ids(root, R1, "unique") == {u.hex() for u in store["s0_proteins"]}
+    assert _pack_ids(store, R1, "unique") == {u.hex() for u in store["s0_proteins"]}
     for target in ("igr", "dark_orf"):
-        got = _meta_contigs(root, R1, target)
+        got = _meta_contigs(store, R1, target)
         assert got and got <= store["s0_contigs"], target
-    assert pack.verify(root, R1) == []
+    assert pack.verify(root, R1, packs=store["pack_dir"]) == []
     # the control: R2's pack has the planted proteins and S1 regions
-    assert _pack_ids(root, R2, "unique") == {u.hex() for u in store["s0_proteins"] | store["s1_only"]}
-    assert _meta_contigs(root, R2, "igr") & store["s1_contigs"]
-    assert pack.verify(root, R2) == []
+    assert _pack_ids(store, R2, "unique") == {u.hex() for u in store["s0_proteins"] | store["s1_only"]}
+    assert _meta_contigs(store, R2, "igr") & store["s1_contigs"]
+    assert pack.verify(root, R2, packs=store["pack_dir"]) == []
     # the pack's inputs are the release's files: no S1 path is hashed into R1's sources
     m1, m2 = store["packs"][R1], store["packs"][R2]
     assert m1["targets"]["unique"]["sources"] != m2["targets"]["unique"]["sources"]
@@ -150,7 +158,7 @@ def test_b28_pack_from_the_manifest_equals_the_pack_from_release_def(store, tmp_
         assert files.table(name) == by_def.table(name), name
         assert files.table(name) and not [p for p in files.table(name) if "stage=S1" in p.as_posix()], name
     assert files.artifact("seq_shards") == by_def.artifact("seq_shards") != []
-    again = pack.build(root, R1, models=store["models"])
+    again = pack.build(root, R1, models=store["models"], packs=tmp_path / "packs")  # card W-03: its own pack dir
     assert again["pack_id"] == store["packs"][R1]["pack_id"]
 
 
@@ -222,10 +230,12 @@ def _recipe(release: str, seed: bytes) -> str:
 
 def _search(store, release: str) -> tuple[set[bytes], list[dict]]:
     root = store["root"]
-    row = runner.run(root, _recipe(release, store["p"]), release, work_base=store["d"] / "work", limits=LIMITS)
+    row = runner.run(root, _recipe(release, store["p"]), release, work_base=store["d"] / "work", limits=LIMITS,
+                     **at(store))
     assert row["status"] == "ok", row.get("error")
-    hits = {h["target_uid"] for h in runner.read_hits(root, row["run_id"].hex())}
-    nb = pq.read_table(runner.run_dir(root, row["run_id"]) / "neighborhoods.parquet").to_pylist()
+    d = runner.run_dir(store["runs"], row["run_id"])
+    hits = {h["target_uid"] for h in runner.read_hits(d)}
+    nb = pq.read_table(d / "neighborhoods.parquet").to_pylist()
     return hits, nb
 
 
