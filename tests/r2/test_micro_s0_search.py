@@ -1120,6 +1120,115 @@ def test_w11_no_stored_protein_contains_a_star(w05):
     assert prot and all("*" not in r["seq"] for r in prot)
 
 
+# --- W-12: hit and locus exports read the release's files only -----------------------------------------------
+
+import test_release_readers as rr  # noqa: E402
+from test_release_readers import store  # noqa: E402,F401  (the two-stage fixture: stages S0 and S1, release R1 over S0)
+
+
+@pytest.fixture(scope="module")
+def w12(store):
+    """The two-stage store with a finished search of R1 seeded with protein P, which also sits on an S1 contig."""
+    row = runner.run(store["root"], rr._recipe(rr.R1, store["p"]), rr.R1, work_base=store["d"] / "work12",
+                     limits=rr.LIMITS)
+    assert row["status"] == "ok", row.get("error")
+    return store, row["run_id"].hex()
+
+
+def _w12_commands(root: Path, rid: str) -> dict[str, list[str]]:
+    return {"hits-tsv": ["search", "hits", rid, "--root", str(root), "--format", "tsv"],
+            "hits-faa": ["search", "hits", rid, "--root", str(root), "--format", "faa"],
+            "nbr-tsv": ["nbr", rid, "--root", str(root), "--window", "3g", "--format", "tsv"]}
+
+
+def _w12_outputs(root: Path, rid: str, capsys) -> dict[str, str]:
+    capsys.readouterr()
+    out = {}
+    for name, args in _w12_commands(root, rid).items():
+        assert cli.main(args) == 0, name
+        out[name] = capsys.readouterr().out
+    return out
+
+
+def _w12_copy(store, tmp_path: Path, manifest: bool) -> Path:
+    root = tmp_path / "a"
+    shutil.copytree(store["root"], root)
+    path = catalog.manifest_path(root, rr.R1)
+    path.unlink(missing_ok=True)
+    if manifest:
+        catalog.write_manifest(catalog.build_manifest(root, rr.R1, ["S0"]), path)
+    return root
+
+
+def _w12_check_s0_only(store, out: dict[str, str]) -> None:
+    s1 = [c.hex() for c in store["s1_contigs"]]
+    assert all(out.values())
+    for name, text in out.items():
+        assert not any(c in text for c in s1), name  # no S1 contig, nowhere
+    rows = [line.split("\t") for line in out["hits-tsv"].rstrip("\n").split("\n")]
+    col = rows[0].index("contig_uid")
+    genes = [r for r in rows[1:] if r[rows[0].index("protein_uid")] == store["p"].hex()]
+    assert [r[col] for r in genes] == [store["lam"].hex()]  # P has one gene in R1: S1's copy is not R1's
+    faa = [line for line in out["hits-faa"].split("\n") if line.startswith(">")]
+    mine = [line for line in faa if line.startswith(">" + store["p"].hex())]
+    assert len(mine) == 1 and " n_genes=1 " in mine[0]
+    assert {line.split()[0][1:] for line in faa}.isdisjoint(u.hex() for u in store["s1_only"])
+
+
+@pytest.mark.parametrize("manifest", [False, True], ids=["release_def", "manifest"])
+@pytest.mark.covers("W-12", "S-09")
+def test_w12_hit_and_locus_exports_of_r1_return_nothing_from_s1(w12, tmp_path, capsys, manifest):
+    store, rid = w12
+    root = _w12_copy(store, tmp_path, manifest)
+    assert catalog.manifest_path(root, rr.R1).exists() == manifest
+    assert any(p.is_dir() for p in root.rglob("stage=S1"))  # the stage the release does not list is on disk
+    _w12_check_s0_only(store, _w12_outputs(root, rid, capsys))
+
+
+@pytest.mark.covers("W-12")
+def test_w12_release_def_and_manifest_give_the_same_bytes(w12, tmp_path, capsys):
+    store, rid = w12
+    bare = _w12_outputs(_w12_copy(store, tmp_path / "x", False), rid, capsys)
+    with_man = _w12_outputs(_w12_copy(store, tmp_path / "y", True), rid, capsys)
+    assert bare == with_man
+
+
+@pytest.mark.covers("W-12")
+def test_w12_with_a_manifest_an_extra_stage_on_disk_changes_no_output_byte(w12, tmp_path, capsys):
+    store, rid = w12
+    full = _w12_copy(store, tmp_path / "full", True)
+    lean = tmp_path / "lean"
+    shutil.copytree(full, lean)
+    gone = sorted(lean.rglob("stage=S1"))
+    assert gone
+    for d in gone:
+        shutil.rmtree(d)
+    assert not list(lean.rglob("stage=S1"))
+    assert _w12_outputs(lean, rid, capsys) == _w12_outputs(full, rid, capsys)
+
+
+@pytest.mark.covers("W-12")
+def test_w12_an_undefined_release_exits_2_naming_the_release_and_release_define(w12, tmp_path, capsys):
+    store, rid = w12
+    root = _w12_copy(store, tmp_path, False)
+    catalog.release_def_path(root, rr.R1).unlink()
+    capsys.readouterr()
+    for name, args in _w12_commands(root, rid).items():
+        assert cli.main(args) == 2, name
+        cap = capsys.readouterr()
+        assert cap.out == "", name
+        assert rr.R1 in cap.err and "bio-box release define" in cap.err, (name, cap.err)
+    # the library calls refuse too, before reading any file
+    with pytest.raises(ValueError, match="bio-box release define"):
+        list(export.hits_tsv(root, [], release=rr.R1, tape_version=tapes.tape_version([V]), gene_call_version=V))
+
+
+@pytest.mark.covers("W-12")
+def test_w12_export_py_lists_no_files_by_globbing():
+    src = (Path(export.__file__)).read_text()
+    assert "rglob" not in src and "glob(" not in src
+
+
 # --- S-07: planted drift trap ---------------------------------------------------------------------------------
 
 AA = "ACDEFGHIKLMNPQRSTVWY"

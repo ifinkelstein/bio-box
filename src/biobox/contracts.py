@@ -74,25 +74,28 @@ def check_statistics(manifest: dict) -> list[str]:
 
 
 def check_file_sizes(manifest: dict, min_bytes: int = NFS_MIN_BYTES) -> list[str]:
-    """LY-04. Waived: registry `small_ok` tables and shard indexes. A table whose stage fits in one
-    small file may be one file."""
+    """LY-04. Waived: registry `small_ok` tables and artifacts, and shard indexes. A group is the file's
+    table or artifact and its partition tuple without bucket keys, so a partition that fits in one small file may be
+    one file, and two libraries' files in one stage are two groups (card C-09)."""
     problems = []
     groups: dict[tuple, list[dict]] = {}
     for f in manifest["files"]:
         spec = TABLES[f["table"]]
         if spec.small_ok:
             continue
-        stage = f["partitions"].get("stage") or f["partitions"].get("release") or ""
-        groups.setdefault((f["table"], stage), []).append(f)
+        parts = {k: v for k, v in f["partitions"].items() if k not in spec.bucket_keys}
+        groups.setdefault((f["table"], tuple(sorted(parts.items()))), []).append(f)
     for a in manifest.get("artifacts", []):
+        if ARTIFACTS[a["artifact"]].small_ok:
+            continue
         if any(a["path"].endswith(c) for c in ARTIFACTS[a["artifact"]].companions):
             continue
-        groups.setdefault((a["artifact"], a["partitions"].get("stage", "")), []).append(a)
+        groups.setdefault((a["artifact"], tuple(sorted(a["partitions"].items()))), []).append(a)
     for (name, stage), files in sorted(groups.items()):
         small = [f for f in files if f["bytes"] < min_bytes]
         if small and len(files) > 1:
             total = sum(f["bytes"] for f in files)
-            problems.append(f"{name} {stage}: {len(small)} of {len(files)} files under {min_bytes >> 20} MB "
+            problems.append(f"{name} {dict(stage)}: {len(small)} of {len(files)} files under {min_bytes >> 20} MB "
                             f"({total / 2**20:.1f} MB in all); split only above the band")
     return problems
 

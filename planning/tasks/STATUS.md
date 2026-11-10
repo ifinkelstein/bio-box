@@ -11,7 +11,7 @@ Last update: 2026-11-09, 23:00 CST. Suite on the integration branch after the B-
 pinned image; 3 min 40 s wall for the slowest shard, against 13.5 min in one process). The skips
 need samtools, bgzip, Prodigal or the golden set. Tests no longer run on the laptop (AGENTS.md §5.5).
 
-## Merged (52 cards)
+## Merged (56 cards)
 
 | Card | Merge | What it did | Audit notes |
 |---|---|---|---|
@@ -66,15 +66,27 @@ need samtools, bgzip, Prodigal or the golden set. Tests no longer run on the lap
 | D-05 | this merge | `tests/r2/test_scale_layout.py`: 100× synthetic store; row-group limits; lookups that prune asserted at ≤ 2 row groups per key; eight lookups that do not prune are strict expected-failures tied to card B-31 | Runs in 40 to 48 s. At the real row-group limits a 100× store has 1 or 2 row groups, so the test scales the writer's caps by 1/16 while building (test side only) to get ≥ 8; the real limits are checked at 1,000× by `scripts/stress/synth_scale.py`, not in CI. B-31 must remove the eight markers |
 | B-33 | this merge | A release's manifest lists its stages' files, its own `release=` files, the tape versions it uses and unpartitioned artifacts; `verify_manifest` ignores other releases | An earlier release's manifest still verifies and rebuilds byte-identical after a later release. Fixture manifest hash unchanged. Stopped once on two tests outside the card: one assertion migrated with authorisation; a latent bug fixed (a manifest with no Parquet files could not generate a catalog) |
 | C-08 | this merge | Every builder takes `out=`; the release manifest and the catalog are registered artifacts; `bio-box stage ...` and `bio-box release ...` default `--out` to `$BIOBOX_STAGING` | Each builder as a real `run-step` subprocess equals the direct build file for file, MMseqs2 and HMMER steps included; the 12-step chain gives the same manifest hash; a catalog built in staging embeds the final root. Merged tree on the pod: 983 passed, 10 skipped, 8 xfailed; golden 32 passed, 5 skipped. The size rule will refuse a second release's manifest at the pod's floor: card C-09 |
+| C-09 | this merge | Size rule: small-by-nature artifacts (manifest, catalog, `store_params`) are exempt by a registry flag; other files are grouped by their partition tuple without bucket keys | Reproduced first at the pod's 64 MiB floor: the second release's manifest was refused by `run-step`. The audit had bucket keys taken out of the grouping, so tiny files spread across buckets are still refused. Agent's full pod run: 988 passed, 10 skipped, 8 xfailed |
+| C-04 | this merge | `bio-box build-stage`: one command runs inputs → ingest → gene calling → IGRs → tapes → domain scans → clustering → tokens → postings → `contig_dim` → manifest → catalog, each as a `run-step` | Equals the direct build file for file on the fixture; a second call starts nothing; resumes after a kill; honours `STOP`; refuses a stage whose ingest or scan would exceed the CPU-minute budget (cards B-30, B-24). Branch `task/C-04-attempt2`. Tested on the fixture only: not yet run on real data on the pod (card C-10) |
+| W-12 | this merge | Hit and locus exports read only the release's files (manifest, else its `release_def` stages); an undefined release exits 2 | Shown first: without a manifest an S1 gene appeared in a release over S0. Agent's full pod run: 994 passed, 10 skipped, 8 xfailed. A dead glob branch remains in `nbr._store_files`; card B-27 removes it |
+| B-32 | this merge | Gene calling sends short genomes (under 10 kb) to worker processes in batches bounded by bases; long genomes stay in threads | On 100,000 CAMI II contigs: 8 workers 32.4 s against 1 worker about 160 s (5.0×; was 1.12× before). Complete genomes within 3% (fixture) and 11% faster at 8 workers (golden). All five gene-call outputs byte-identical across 96 runs. The profile showed sequence reads under the GIL were the bound, not pickling; two follow-ups in `SeqStore` noted in the measurement file |
 
 Decisions DEC-18 to DEC-23 were approved by the PI on 2026-11-09 and are in `planning/DECISIONS.md`.
+
+## CI is not reliably green (found 2026-11-10)
+
+GitHub Actions `ci` failed on 7 of the last 12 pushes to `plan/task-cards` while the pod suite passed on
+the same commits: two search tests fail intermittently there (card A-07). The orchestrating session
+checked CI only after the first push and missed this for a day. The merge to `main` waits for A-07.
+The `gh` token has `read:packages` since 2026-11-10, so the image can be pulled once `main` builds it.
 
 ## In progress
 
 | Card | Model | State |
 |---|---|---|
-| B-32 gene calling of short contigs uses its workers | Opus | started 2026-11-10 || C-04 `bio-box build-stage` | Opus | stopped 2026-11-10 with evidence, nothing written: builders cannot write into `run-step` staging. Now depends on B-22 and the new card C-08; card amended |
-| Pod import ladder (not a card): phages, then 1 Gbp and 10 Gbp of complete prokaryotes with the new code | Opus | detached jobs on the pod; agent waiting on them |
+| B-31 catalog macros that do not prune | Opus | started 2026-11-10 |
+| C-10 first real `build-stage` on the pod (two stages, two releases, local disk) | Opus | started 2026-11-10 |
+| B-24 streaming clustering; sharded domain scan inside `build-stage` | Opus | started 2026-11-10 |
 
 ## Next, in order
 
