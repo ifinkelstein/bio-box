@@ -208,7 +208,15 @@ Pod, in the image:
 The hash changed between the rounds because card B-25 added the `release_def` file and the release's
 stages to the manifest (`MANIFEST_VERSION` 3); compare a CI run with the hash of the same code.
 
-The CI half is **pending its first run**: an agent may not push (AGENTS §1.3, §10), so the workflow has
+**First CI run, added by the orchestrating session on 2026-11-10: the hashes are equal.** For commit
+`f37c366` (which adds cards B-22 and B-23 to the code of the table above, so the hash differs from
+it): GitHub Actions run 42793801255 (`ubuntu-24.04`, `uv sync --python 3.14`) printed manifest hash
+`ccd621b13f21f968526e7faa5a77d844`; the pod, in the pinned image from the same tree
+(`python scripts/stress/build_fixture.py . /tmp/if2453/xhost-fixture rX.fixture`, wilkcomp02,
+2026-11-10), gave `ccd621b13f21f968526e7faa5a77d844`. Both *measured*. The fixture has no MMseqs2
+or HMMER step, so this covers ingest, gene calling, IGRs, tapes, `contig_dim` and the manifest only.
+
+The text below was written before that run. The CI half was **pending its first run**: an agent may not push (AGENTS §1.3, §10), so the workflow has
 never run. When it has, compare its hash with the pod's above (or save its JSON and run
 `diff_reports.py`). The report names the package versions on both hosts; the pod's are in the header
 of this file. A mismatch in pyarrow's version alone changes every Parquet footer (`created_by`) and
