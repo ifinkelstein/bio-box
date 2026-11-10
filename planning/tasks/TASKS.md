@@ -90,6 +90,7 @@ DEC-20 dimension tables hold taxonomy, tier and quality; DEC-21 one shard per in
 inside the shard only, and `seq_locator` partitioned by stage (amends DEC-17); DEC-22 tape row groups
 are bounded by slots; DEC-23 token ids stay release-local and never cross an API.
 Accept: the six rows exist. Phase B cards cite them.
+**Done 2026-11-09:** the PI approved DEC-18 to DEC-23; the rows are in `planning/DECISIONS.md`.
 
 ### 0-02 Registry credential and HEAD image on the pod
 **H** (human) · Depends: none · Pod: yes
