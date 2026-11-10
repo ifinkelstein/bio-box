@@ -271,20 +271,23 @@ def _write_protein_seq(con, sql: str, base: Path, width: int, max_file_bytes: in
 
 def run(root: Path, stage: str, genomes: Iterable[GenomeInput] | None = None, version: str = GENE_CALL_VERSION,
         prefix_width: int | None = None, max_file_bytes: int = layout.MAX_FILE_BYTES, tmp=None,
-        workers: int = 1) -> dict:
+        workers: int = 1, seq_stages: list[str] | None = None) -> dict:
     """Call genes and write the stage's tables. `prefix_width` (0, 1, 2) overrides the size rule.
 
     `genomes`: any iterable, consumed once; None reads the stage's `genome_input` table. `tmp`: the
     directory that holds the private scratch directory (system temp by default; never the data root).
     `workers`: genomes called at once; the output bytes do not depend on it. `max_file_bytes`: every
     table is cut into parts of at most this many estimated bytes (one row above it is a part alone).
+    `seq_stages`: the stages whose sequences the genomes may name (card B-28): the stage itself (the
+    default) and, when its contigs repeat sequences stored before it, the earlier stages that hold them.
+    A contig in none of them raises KeyError naming the stages read.
     """
     root = Path(root)
     if workers < 1:
         raise ValueError(f"workers must be at least 1, got {workers}")
     if tmp is not None and Path(tmp).resolve().is_relative_to(root.resolve()):
         raise ValueError(f"{tmp}: the scratch directory may not lie under the data root")
-    store = SeqStore(root)
+    store = SeqStore(root, [stage] if seq_stages is None else seq_stages)
     scratch = Path(tempfile.mkdtemp(prefix="biobox-genecall-", dir=tmp))
     try:
         if genomes is None:

@@ -1,6 +1,7 @@
 """The search process the runner launches under its limits: `python -c BOOT <job.json>`.
 
-It reads only the staged shards and the data root, writes `hits.parquet`, `profiles.parquet`,
+It reads only the staged shards and, of the data root, the files of the job's release (`release_files`,
+card B-28: its manifest's, else those of its `release_def` stages), writes `hits.parquet`, `profiles.parquet`,
 `neighborhoods.parquet` and `result.json` to the job's `out` directory, and checks the output
 cap after every round. A MemoryError exits with EXIT_OOM so the runner records `oom`; any
 other failure exits non-zero and the runner records `failed`. Neither writes hits.
@@ -29,6 +30,7 @@ import time
 import traceback
 import zlib
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 import pyarrow as pa
 import pyarrow.parquet as pq
@@ -36,6 +38,9 @@ import pyarrow.parquet as pq
 from biobox.l3.tapes import tape_version
 from biobox.registry.schemas import table
 from biobox.search import engine, fastz, nbr
+
+if TYPE_CHECKING:
+    from biobox.catalog import ReleaseFiles
 
 # the variables every thread pool the worker loads reads its size from; run-step sets the first four too
 THREAD_VARS = ("OMP_NUM_THREADS", "OPENBLAS_NUM_THREADS", "MKL_NUM_THREADS", "POLARS_MAX_THREADS",
@@ -163,24 +168,33 @@ def _zst(b: bytes | None) -> bytes | None:
     return None if b is None else fastz.zst(b)
 
 
-def _families(root: Path) -> dict[bytes, set[str]]:
+def release_files(job: dict) -> ReleaseFiles:
+    """The files of the job's release (card B-28): its manifest's, else those of its `release_def` stages.
+    Every read of the data root goes through these, so a stage the release does not hold is never read."""
+    from biobox.catalog import ReleaseFiles  # here, so importing the worker imports no DuckDB
+
+    if not job.get("release"):
+        raise ValueError("job has no release: the worker reads one release's files (card B-28)")
+    return ReleaseFiles.of(Path(job["root"]), job["release"])
+
+
+def _families(files: ReleaseFiles) -> dict[bytes, set[str]]:
     out: dict[bytes, set[str]] = {}
-    for f in sorted((root / "l1/domains").glob("library=*/stage=*/part-*.parquet")):
+    for f in sorted(files.table("l1_domains"), key=str):
         for r in pq.read_table(f, columns=["protein_uid", "model_acc"]).to_pylist():
             out.setdefault(r["protein_uid"], set()).add(r["model_acc"])
     return out
 
 
-def _has_domains(root: Path) -> bool:
+def _has_domains(files: ReleaseFiles) -> bool:
     """Whether the release holds any l1_domains row at all (not whether these hits have one)."""
-    return any(pq.ParquetFile(f).metadata.num_rows > 0
-               for f in (root / "l1/domains").glob("library=*/stage=*/part-*.parquet"))
+    return any(pq.ParquetFile(f).metadata.num_rows > 0 for f in files.table("l1_domains"))
 
 
-def _partial(root: Path, job: dict, target: engine.Target) -> set[bytes]:
+def _partial(files: ReleaseFiles, job: dict, target: engine.Target) -> set[bytes]:
     if target.kind == "protein":
-        files = sorted((root / "l1/protein_occurrence").glob(f"gene_call_version={job['gene_call_version']}/stage=*/part-*.parquet"))
-        return {r["protein_uid"] for f in files
+        paths = files.table("protein_occurrence", gene_call_version=job["gene_call_version"])
+        return {r["protein_uid"] for f in paths
                 for r in pq.read_table(f, columns=["protein_uid", "dist_to_contig_end_bp"]).to_pylist()
                 if r["dist_to_contig_end_bp"] == 0}
     meta = Path(job["meta"]) if job.get("meta") else None
@@ -317,16 +331,17 @@ def main(job_path: str) -> int:
         stop=tuple(it["stop"]), min_query_coverage=cur["min_query_coverage"], alarm_fraction=it["alarm_fraction"],
         alarm_min=it["alarm_min"], context_retention=it["context_retention"], partial_policy=recipe["partial"],
         cpus=cpus)
-    partial = _partial(root, job, target)
-    fams = _families(root) if target.kind == "protein" and cur["foreign_domain_alarm"] else None
+    files = release_files(job)
+    partial = _partial(files, job, target)
+    fams = _families(files) if target.kind == "protein" and cur["foreign_domain_alarm"] else None
     policy = nbr.Policy.parse(**recipe["context"])
     # the one tape version the run reads: its pack's (card B-16), the gene-call producer's for an older job
     tv = job.get("tape_version") or tape_version([job["gene_call_version"]])
-    have_tapes = any((root / "l3/tapes").glob(f"tape_version={tv}/stage=*/part-*.parquet"))
+    have_tapes = bool(files.table("contig_tapes", tape_version=tv))
     warnings = []
     if fams is None and "drift_alarm" in it["stop"]:
         warnings.append("drift_alarm not evaluated: no stored library hits for this target kind")
-    if fams is not None and not fams and it["max"] > 1 and "drift_alarm" in it["stop"] and not _has_domains(root):
+    if fams is not None and not fams and it["max"] > 1 and "drift_alarm" in it["stop"] and not _has_domains(files):
         warnings.append("drift_alarm could not be evaluated: the release has no domain annotations (l1_domains is empty)")
     if not (target.kind == "protein" and have_tapes) and "context_lost" in it["stop"]:
         warnings.append("context_lost not evaluated: no tapes for this target kind")
@@ -335,7 +350,7 @@ def main(job_path: str) -> int:
         return {u: fams.get(u, set()) for u in uids}
 
     def context(uids):
-        rows, _ = nbr.fetch(root, set(uids), policy, job["gene_call_version"], tape_version=tv)
+        rows, _ = nbr.fetch(root, set(uids), policy, job["gene_call_version"], tape_version=tv, files=files)
         ctx: dict[bytes, set[str]] = {u: set() for u in uids}
         for r in rows:
             if r["offset"] != 0:
@@ -384,7 +399,7 @@ def main(job_path: str) -> int:
     warnings += _degenerate([r for r in hit_rows if r["round"] == final_round and r["curation_label"] == "keep"])
     n_nbr = 0
     if status in ("ok", "failed") and "neighborhoods" in recipe["outputs"] and target.kind == "protein" and have_tapes:
-        rows, counts = nbr.fetch(root, final, policy, job["gene_call_version"], tape_version=tv)
+        rows, counts = nbr.fetch(root, final, policy, job["gene_call_version"], tape_version=tv, files=files)
         nbr.write(rows, out / "neighborhoods.parquet")
         n_nbr = counts["rows"]
     peaks.sample()

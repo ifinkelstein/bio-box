@@ -25,6 +25,10 @@ beside the ordinals, which are valid inside it only.
 
 `summarize` (card W-06) counts which Pfam families and NR50/NR90 clusters sit in those windows, with DuckDB
 over `fetch`'s rows joined to the store's `l1_domains`, `cluster_member`, `protein_seq` and `contig_dim`.
+
+Every read is of one release's files (card B-28): `occurrences` and `fetch` take `files`, a
+`catalog.ReleaseFiles` (its manifest's files, else those of its `release_def` stages), so an anchor's
+occurrence in a stage the release does not hold is not found.
 """
 
 from __future__ import annotations
@@ -197,10 +201,10 @@ def resolve_tape_version(gene_call_version: str = GENE_CALL_VERSION, tape_versio
     return tape_version_of(producers if producers is not None else [gene_call_version])
 
 
-def _tapes(root: Path, tv: str, contigs: set[bytes]) -> dict[bytes, dict]:
-    """The tapes of tape version tv for the contigs, each with its `tape_version`."""
+def _tapes(files, tv: str, contigs: set[bytes]) -> dict[bytes, dict]:
+    """The tapes of tape version tv for the contigs in the release's files, each with its `tape_version`."""
     out = {}
-    for f in sorted((Path(root) / "l3/tapes").glob(f"tape_version={tv}/stage=*/part-*.parquet")):
+    for f in files.table("contig_tapes", tape_version=tv):
         t = pq.read_table(f, filters=[("contig_uid", "in", sorted(contigs))]) if contigs else None
         for r in (t.to_pylist() if t is not None else []):
             out[r["contig_uid"]] = {**r, "tape_version": tv}
@@ -218,31 +222,42 @@ def _ordinal(tapes: dict[bytes, dict], index: dict[bytes, dict], cu: bytes, fu: 
     return index[cu][fu]
 
 
+def _release_files(root: Path, files):
+    if files is None or not hasattr(files, "table"):
+        raise TypeError("nbr reads one release's files: pass files=catalog.ReleaseFiles.of(root, release)")
+    if Path(files.root).resolve() != Path(root).resolve():
+        raise ValueError(f"files of release {files.release} are under {files.root}, not {root}")
+    return files
+
+
 def occurrences(root: Path, protein_uids: set[bytes], gene_call_version: str = GENE_CALL_VERSION,
-                tape_version: str | None = None) -> list[dict]:
-    """protein_occurrence rows of the proteins. With `tape_version`, each row also carries `ordinal`, the
-    position of its feature in that tape version, and `tape_version` (an ordinal is valid inside one tape
-    version only, so it never travels without them; AGENTS §3.3)."""
-    files = sorted((Path(root) / "l1/protein_occurrence").glob(f"gene_call_version={gene_call_version}/stage=*/part-*.parquet"))
+                tape_version: str | None = None, *, files) -> list[dict]:
+    """protein_occurrence rows of the proteins in the release's `files` (`catalog.ReleaseFiles`). With
+    `tape_version`, each row also carries `ordinal`, the position of its feature in that tape version, and
+    `tape_version` (an ordinal is valid inside one tape version only, so it never travels without them;
+    AGENTS §3.3)."""
+    files = _release_files(root, files)
     if not protein_uids:
         return []
-    rows = [r for f in files for r in pq.read_table(f, filters=[("protein_uid", "in", sorted(protein_uids))]).to_pylist()]
+    rows = [r for f in files.table("protein_occurrence", gene_call_version=gene_call_version)
+            for r in pq.read_table(f, filters=[("protein_uid", "in", sorted(protein_uids))]).to_pylist()]
     if tape_version is None:
         return rows
-    tapes, index = _tapes(root, tape_version, {r["contig_uid"] for r in rows}), {}
+    tapes, index = _tapes(files, tape_version, {r["contig_uid"] for r in rows}), {}
     return [{**r, "ordinal": _ordinal(tapes, index, r["contig_uid"], r["feature_uid"], tape_version),
              "tape_version": tape_version} for r in rows]
 
 
 def fetch(root: Path, protein_uids: set[bytes], policy: Policy, gene_call_version: str = GENE_CALL_VERSION,
-          tape_version: str | None = None, producers: list[str] | None = None) -> tuple[list[dict], dict]:
-    """Neighborhoods of every occurrence of the anchor proteins; (rows, counts).
+          tape_version: str | None = None, producers: list[str] | None = None, *, files) -> tuple[list[dict], dict]:
+    """Neighborhoods of every occurrence of the anchor proteins in the release's `files`
+    (`catalog.ReleaseFiles`, card B-28); (rows, counts).
 
     The tapes read are those of `tape_version` (default: the tape version of `producers`, which
     defaults to the gene-call producer). Each anchor is found on its tape by its feature_uid."""
     tv = resolve_tape_version(gene_call_version, tape_version, producers)
-    occ = occurrences(root, protein_uids, gene_call_version)
-    tapes, index = _tapes(root, tv, {r["contig_uid"] for r in occ}), {}
+    occ = occurrences(root, protein_uids, gene_call_version, files=files)
+    tapes, index = _tapes(files, tv, {r["contig_uid"] for r in occ}), {}
     rows, dropped = [], 0
     for r in sorted(occ, key=lambda r: (r["contig_uid"], r["feature_uid"])):
         i = _ordinal(tapes, index, r["contig_uid"], r["feature_uid"], tv)
@@ -415,11 +430,14 @@ def _sql_str(s: str) -> str:
     return "'" + str(s).replace("'", "''") + "'"
 
 
-def _store_files(root: Path, name: str, want: dict[str, str], manifest: dict | None) -> list[tuple[Path, dict]]:
-    """(path, partitions) of one table's files whose partitions include `want`: from the release manifest when
-    there is one (AGENTS §3.9), else from the registry location (the search layer's reads before a release)."""
+def _store_files(root: Path, name: str, want: dict[str, str], manifest) -> list[tuple[Path, dict]]:
+    """(path, partitions) of one table's files whose partitions include `want`: from a `catalog.ReleaseFiles`
+    (card B-28), or from a release manifest dict (AGENTS §3.9), else (None) from the registry location, every
+    stage on disk: the fallback `export.open_store` still takes when a release has no manifest."""
     from biobox import catalog
 
+    if hasattr(manifest, "entries"):  # catalog.ReleaseFiles
+        return sorted(manifest.entries(name, **want), key=lambda x: str(x[0]))
     if manifest is not None:
         found = [(root / f["path"], f["partitions"]) for f in manifest["files"] if f["table"] == name]
     else:
@@ -454,7 +472,8 @@ def summarize(root: Path, anchors: set[bytes], policy: Policy, by=("pfam", "nr50
     loci and how many genomes (`contig_dim` of `release`, else contigs). The rows are `fetch`'s; the anchor
     itself (offset 0) is no neighbor. A neighbor with no key at a level (no domain, no cluster, a non-CDS slot)
     counts in that level's `unannotated` row. `top_n` (0 or None: all) caps the keyed rows per level after the
-    totals. File lists come from `manifest` (default: `manifests/release=<release>.json` if present).
+    totals. File lists come from `manifest` (default: `manifests/release=<release>.json` if present; without
+    one, from the release's `release_def` stages).
 
     Per key: `n_loci` (anchor loci with such a neighbor), `share_of_loci` (of all anchor loci), `n_neighbors`
     (neighbor rows: a gene in two anchors' windows counts twice; a gene with several domains of one family
@@ -463,24 +482,24 @@ def summarize(root: Path, anchors: set[bytes], policy: Policy, by=("pfam", "nr50
     `same_strand_share`. A key at `nr50`/`nr90` is the cluster uid, with its representative (the least rep_uid
     if a mapping gives several), the representative's length and the `model_name` most members carry ("" if
     none; ties by name). Rows by `n_loci` descending, then key; shares rounded to 4 decimals. The header holds
-    the run-level facts, among them `n_censored_loci` (loci whose window a linear contig end cut)."""
+    the run-level facts, among them `n_censored_loci` (loci whose window a linear contig end cut).
+    Without a manifest the files are those of the stages of the release's `release_def` (card B-28)."""
+    from biobox import catalog
+
     by = _check_levels(by)
     root = Path(root)
-    if manifest is None and (root / f"manifests/release={release}.json").exists():
-        from biobox import catalog
-
-        manifest = catalog.read_manifest(root / f"manifests/release={release}.json")
-    rows, counts = fetch(root, set(anchors), policy, gene_call_version, tape_version=tape_version)
+    files = catalog.ReleaseFiles.of(root, release, manifest)
+    rows, counts = fetch(root, set(anchors), policy, gene_call_version, tape_version=tape_version, files=files)
     con = _connect(threads)
     try:
         con.register("nbr_rows", pa.Table.from_pylist(rows, schema=table("neighborhoods").schema))
-        _store_view(con, "domains", _store_files(root, "l1_domains", {}, manifest),
+        _store_view(con, "domains", _store_files(root, "l1_domains", {}, files),
                     "protein_uid, model_acc, model_name", ("library",))
-        _store_view(con, "clusters", _store_files(root, "cluster_member", {"release": release}, manifest),
+        _store_view(con, "clusters", _store_files(root, "cluster_member", {"release": release}, files),
                     "member_uid, level, cluster_uid, rep_uid")
         _store_view(con, "protein_len", _store_files(root, "protein_seq", {"gene_call_version": gene_call_version},
-                                                     manifest), "protein_uid, length")
-        _store_view(con, "genome_of", _store_files(root, "contig_dim", {"release": release}, manifest),
+                                                     files), "protein_uid, length")
+        _store_view(con, "genome_of", _store_files(root, "contig_dim", {"release": release}, files),
                     "contig_uid, genome_uid")
         out = _aggregate(con, by, top_n)
     finally:

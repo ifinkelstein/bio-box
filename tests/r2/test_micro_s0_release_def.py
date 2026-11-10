@@ -245,7 +245,7 @@ def test_b25_release_def_is_written_once_and_verified(ladder, tmp_path):
 def test_b25_cli_release_steps_define_once_and_read_the_definition_after(ladder, tmp_path, capsys):
     c = tmp_path / "c"
     shutil.copytree(ladder["b"], c)
-    # not an rS0.* name: its clustering ledger would go to ledger/stage=S0/step=cluster, which R1's holds
+    # each release has its own clustering ledger, ledger/release=<R>/step=cluster (card B-28)
     rel = "rCLI.1"
     base = ["--root", str(c), "--release", rel]
     assert cli.main(["release", "tokens", *base]) == 2  # not defined, and no --stages
