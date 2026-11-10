@@ -20,6 +20,11 @@
     bio-box stage ingest --root R --stage S --objects objects.json [--shard-bases N] [--line-width N] [--tmp D]
     bio-box stage genecall|igr|tapes --root R --stage S [--tmp D] [--producers P,Q] [--workers N] [--out DIR]
     bio-box stage domains --root R --stage S --library pfam --library-version 38.2 --hmm F --cutoff gathering
+    bio-box build-stage --profile P --root R --stage S --release R1 [--stages S0,S1] --genomes genomes.json
+                --objects objects.json [--library NAME VERSION HMM CUTOFF ...] [--tmp D] [--threads N]
+
+`build-stage` (card C-04, `biobox.stage`) runs every `stage` step and then every `release` step of
+one stage and its release, each as a `run-step`; a second call skips what is done.
 
 A release names its stages (card B-25): `--stages` defines it once (its `release_def`); after that
 every release step reads the stages from `release_def`, and `--stages`, if given, must repeat them.
@@ -485,6 +490,18 @@ def _stage(a) -> int:
     return 0
 
 
+def _build_stage(a) -> int:
+    """A stage and its release as a fixed list of run-step steps (card C-04, `biobox.stage`)."""
+    from biobox import profile, stage
+
+    libs = tuple(stage.Library(name, version, Path(hmm), cutoff) for name, version, hmm, cutoff in a.library)
+    b = stage.Build(root=Path(a.root), stage=a.stage, release=a.release, genomes=Path(a.genomes),
+                    objects=Path(a.objects), stages=None if a.stages is None else tuple(_csv(a.stages)),
+                    libraries=libs, tmp=Path(a.tmp) if a.tmp else None, threads=a.threads,
+                    gene_call_version=a.gene_call_version)
+    return stage.build_stage(profile.load(a.profile), b)
+
+
 def main(argv: list[str] | None = None) -> int:
     argv = list(sys.argv[1:] if argv is None else argv)
     command: list[str] = []
@@ -591,6 +608,20 @@ def main(argv: list[str] | None = None) -> int:
     st.add_argument("--hmm", help="domains: the library's HMM file")
     st.add_argument("--cutoff", help="domains: gathering, trusted, noise or none")
     st.add_argument("--cpus", type=int, default=1, help="domains: hmmsearch threads")
+    bs = sub.add_parser("build-stage", parents=[common], help="a stage and its release, step by step under "
+                                                              "run-step (card C-04)")
+    bs.add_argument("--profile", required=True, help="host profile YAML (profiles/wilkcomp02.yaml)")
+    bs.add_argument("--stage", required=True)
+    bs.add_argument("--release", required=True)
+    bs.add_argument("--stages", help="S0,S1: the release's stages in order; defines the release on first use, "
+                                     "else they come from its release_def")
+    bs.add_argument("--genomes", required=True, help="inputs: JSON list of genomes (as bio-box stage inputs)")
+    bs.add_argument("--objects", required=True, help="ingest: JSON list of source objects (as bio-box stage ingest)")
+    bs.add_argument("--library", nargs=4, action="append", default=[], metavar=("NAME", "VERSION", "HMM", "CUTOFF"),
+                    help="a domain library to scan (repeatable; one step each, in the order given)")
+    bs.add_argument("--tmp", help="scratch directory of the steps (default: <profile tmp>/scratch)")
+    bs.add_argument("--threads", type=int, help="threads of every step (default: the smaller of the profile's "
+                                                "day and night caps)")
     a = p.parse_args(argv)
     if a.cmd == "search" and a.action == "run" and not a.release:
         p.error("search run needs --release")
@@ -599,7 +630,7 @@ def main(argv: list[str] | None = None) -> int:
             p.error("run-step needs a command after --")
         a.command = command
     return {"pack": _pack, "search": _search, "nbr": _nbr, "export": _export, "run-step": _run_step,
-            "release": _release, "stage": _stage}[a.cmd](a)
+            "release": _release, "stage": _stage, "build-stage": _build_stage}[a.cmd](a)
 
 
 if __name__ == "__main__":
