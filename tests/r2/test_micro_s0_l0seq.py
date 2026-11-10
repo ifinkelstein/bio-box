@@ -672,3 +672,51 @@ def test_memory_holds_one_batch_not_the_stage(tmp_path, monkeypatch):
     assert len(handed) == len(_expected_batches(objs, SMALL_SHARDS))
     assert all(n <= bound and alive <= bound for n, alive in handed), handed
     assert live["max"] <= bound, (live["max"], bound)
+
+
+# --- a source changed between the passes (card B-23) ------------------------------------------
+
+
+@pytest.mark.covers("R-01")
+def test_same_length_edit_between_the_passes_is_refused(tmp_path):
+    """Pass 2 checks a kept record's digest, not only its length and the file's size and mtime:
+    stored bytes are identified by their digest (AGENTS §3.2)."""
+    import os
+
+    objs = _world(tmp_path / "src")
+    src = tmp_path / "src" / "s3.fna"
+    recs = _oracle_records(src)
+    g = recs[2].seq
+    edited = g[:100] + (b"A" if g[100:101] != b"A" else b"C") + g[101:]
+    st = src.stat()
+
+    def edit_after_pass1(point: str) -> None:
+        if point == "pass1":
+            _write_records(src, [(recs[0].header, recs[0].seq), (recs[1].header, recs[1].seq),
+                                 (recs[2].header, edited)])
+            os.utime(src, ns=(st.st_atime_ns, st.st_mtime_ns))
+            assert src.stat().st_size == st.st_size and src.stat().st_mtime_ns == st.st_mtime_ns
+
+    root, out = tmp_path / "root", tmp_path / "staging"
+    with pytest.raises(ValueError, match="changed since the first pass"):
+        ingest(objs, root, stage="S0", shard_bases=SMALL_SHARDS, out=out, _hook=edit_after_pass1)
+    assert not root.exists() or not any(p.is_file() for p in root.rglob("*"))  # nothing in the root
+    for table_dir in ("l0seq/seq_locator", "l0seq/contig_index", "l0seq/contig_occurrence", "ledger", "l0"):
+        assert not (out / table_dir).exists(), table_dir  # no table written: the stage died in pass 2
+
+
+@pytest.mark.covers("R-01")
+def test_record_of_another_length_in_pass_2_is_refused(tmp_path, monkeypatch):
+    objs = _world(tmp_path / "src")
+    calls = {"n": 0}
+    orig = fasta.iter_records
+
+    def second_pass_shorter(path):
+        calls["n"] += 1
+        for r in orig(path):
+            # pass 1 reads each object once; from the next read on (pass 2) one base is missing
+            yield r if calls["n"] <= len(objs) else fasta.Record(r.header, r.seq[:-1], r.line_width)
+
+    monkeypatch.setattr(fasta, "iter_records", second_pass_shorter)
+    with pytest.raises(ValueError, match="changed since the first pass"):
+        ingest(objs, tmp_path / "s", stage="S0", shard_bases=SMALL_SHARDS)

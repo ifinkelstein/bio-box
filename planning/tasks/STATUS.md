@@ -11,7 +11,7 @@ Last update: 2026-11-09, 23:00 CST. Suite on the integration branch after the B-
 pinned image; 3 min 40 s wall for the slowest shard, against 13.5 min in one process). The skips
 need samtools, bgzip, Prodigal or the golden set. Tests no longer run on the laptop (AGENTS.md §5.5).
 
-## Merged (41 cards)
+## Merged (42 cards)
 
 | Card | Merge | What it did | Audit notes |
 |---|---|---|---|
@@ -55,6 +55,7 @@ need samtools, bgzip, Prodigal or the golden set. Tests no longer run on the lap
 | W-05 | this merge | `search hits --format tsv\|faa`, `nbr <run> --format tsv`, `export proteins`; search-hit JSON is `search_hit/2` with `genome_uid` and `tier` joined from `contig_dim` | TSV checked against a brute-force join written in the test. Agent's full pod run on its branch: 866 passed, 10 skipped. Two lookups cannot prune (card B-27); `export proteins` globs when there is no manifest and FASTA keeps `*` (card W-11) |
 | B-26 | this merge | Postings measured by column: 35.7 bytes per row, of which `feature_uid` is 17.0; estimate in the code corrected from 20 to 36 | The audit migrated one test constant that mirrors the estimate. Whether to slim the table is a PI decision: card 0-04 |
 | B-25 | this merge | A release is defined once by `release_def` (ordered stages); clustering, tokens, postings, `contig_dim` and the manifest read only those stages; new `bio-box release define\|cluster\|tokens\|postings\|dim\|manifest` | The agent first reproduced the pod bug on the old code (all six release files changed when a later stage appeared). Query-time readers (`pack`, `nbr`, worker, `SeqStore`) still read every stage: card B-28 |
+| B-23 | this merge | Ingest takes `out=` and can be rerun after a kill under `run-step` (SIGKILL at nine points, byte-identical result); refuses a stage directory that is not clean before reading anything | The card's premise was wrong: on the pod the second hash is about 3 s of 240 s and compression is 182 to 188 s. The audit had the agent restore the pass-2 digest check and test that a same-length edit between passes is refused. Agent's full pod run on the merged state: 901 passed, 10 skipped |
 
 Decisions DEC-18 to DEC-23 were approved by the PI on 2026-11-09 and are in `planning/DECISIONS.md`.
 
@@ -62,7 +63,7 @@ Decisions DEC-18 to DEC-23 were approved by the PI on 2026-11-09 and are in `pla
 
 | Card | Model | State |
 |---|---|---|
-| B-23 ingest reads once; killed ingest reruns | Opus | started 2026-11-09 |
+| B-22 `l0_manifest` per stage; register `store_params.json` | Opus | started 2026-11-10 |
 | B-18 phase-B exit measurements | Opus | started 2026-11-10 |
 | B-29 postings builder out of memory at 21 M slots | Opus | started 2026-11-10 |
 | C-04 `bio-box build-stage` | Opus | stopped 2026-11-10 with evidence, nothing written: builders cannot write into `run-step` staging. Now depends on B-22 and the new card C-08; card amended |
