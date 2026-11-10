@@ -82,7 +82,7 @@ Last full suite on the integration branch before the C-11 merge: 1,053 passed, 1
 pinned image; 3 min 40 s wall for the slowest shard, against 13.5 min in one process). The skips
 need samtools, bgzip, Prodigal or the golden set. Tests no longer run on the laptop (AGENTS.md §5.5).
 
-## Merged (63 cards)
+## Merged (64 cards)
 
 | Card | Merge | What it did | Audit notes |
 |---|---|---|---|
@@ -148,6 +148,7 @@ need samtools, bgzip, Prodigal or the golden set. Tests no longer run on the lap
 | C-11 | this merge | `build-stage --scan-jobs J --scan-cpus C`: scan shards run J at a time, J × C within the hour's thread allowance; shards planned at 80% of the CPU-minute budget (32.9 M residues for Pfam, *derived*) | Byte-identical to the unsharded scan at J of 1, 2 and 4; a failed shard stops new launches and the next call runs only what is missing. Found and worked around a race between two steps publishing at once. Open: the allowance is fixed at the start of a build, so a night build keeps the night cap by day; lost scratch between shards and merge leaves the build stuck: card C-12 |
 | A-07 | this merge | Two intermittent `ci` failures fixed at their causes: the injected-oom test no longer races a 3 s wall clock (a memory-capped scope takes 4.5 to 5.2 s to kill at 4 GB, *measured*); a runner counts as live only if it holds the lock and its process is not exiting (the lock outlives the main thread by 25 to 59 ms, *measured* over 50 kills) | 20 consecutive green `ci` runs on its branch. Also fixed: an oom fault that was not stopped was reported as `oom`; it now ends `failed: that limit is not enforced`. Not established: that GitHub's runner takes the scope path (inferred) |
 | C-10 | `2b8e421`+1 | First real `build-stage` run on the pod with the real profile: 1,947 phages and 250 prokaryotes, two releases, both verify; all 24 run records show the inherited 200 G cap | The 250-genome stage equals the earlier ladder build gene for gene (927,920 genes, 918,765 proteins, 764,935 IGRs; all compared). STOP, a repeat call and a mid-step kill behave as on the fixture. Ran the code from before B-24/C-11, so the sharded scan inside `build-stage` was not exercised. Seven defects: card C-13 |
+| B-27 | this merge | Lookup tables `contig_label` (per stage, by contig) and `member_cluster` (per release, by level then protein); exports and `nbr summarize` read them | On the real 10 Gbp release a protein's cluster lookup read 1 of 173 row groups in 0.04 s, against 173 of 173 in 0.51 s (*measured*, with the first sort order; the final order reads up to 3). Every export byte-identical. The audit changed the sort to (level, member) so a many-neighbour summary reads one level's half. `member_cluster` is about 860 MB at 10 Gbp. Joined-key lookups on the multi-stage label view still scan |
 
 Decisions DEC-18 to DEC-23 were approved by the PI on 2026-11-09 and are in `planning/DECISIONS.md`.
 
@@ -177,7 +178,8 @@ The thread cap is the sum over all our processes: 40 by day, 56 at night.
 | C-10 first real `build-stage` on the pod (two stages, two releases, local disk) | Opus | started 2026-11-10 |
 | E-01 non-coding RNA producer (Infernal, Rfam) | Opus | started 2026-11-10 |
 | C-10 first real `build-stage` on the pod | Opus | started 2026-11-10; its Pfam scan is throttled to the day cap |
-| B-27 lookup tables for contig labels and cluster membership | Opus | started 2026-11-10 |
+| W-03 pack and search runs outside the data root | Opus | started 2026-11-10 |
+| 10 Gbp rebuild with `build-stage` (not a card; branch `build/r10`, pod root `/tmp/if2453/r10`) | Opus | started 2026-11-10 |
 
 ## Next, in order
 

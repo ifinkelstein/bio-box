@@ -10,10 +10,15 @@ Writes under `<root>/`:
 
     l2/cluster_member/release=<R>/part-<k>.parquet
     l2/cluster_member_aln/release=<R>/part-<k>.parquet
+    l2/member_cluster/release=<R>/part-<k>.parquet
     ledger/release=<R>/step=cluster/part-0.parquet
 
-Both tables go through `biobox.io.write_parts`, cut at `max_file_bytes` of estimated size (card
-B-19).
+The tables go through `biobox.io.write_parts`, cut at `max_file_bytes` of estimated size (card
+B-19). `member_cluster` (card B-27) is `cluster_member` sorted by (level, member_uid), for readers
+that look a protein's clusters up by member (`cluster_member` is sorted by cluster, so such a lookup
+cannot prune it): a member reads one row group per level, and a lookup at one level reads only that
+level's rows; `write_member_cluster` makes it from the `cluster_member` files just written, with
+one DuckDB sort that spills.
 
 The proteins are those of the release's stages only (card B-25), so a stage written later or
 while the release is built never enters its clusters.
@@ -69,6 +74,9 @@ from biobox.registry.schemas import table
 # (planning/measurements/2026-11-09_design_stress_test.md §3, §6a).
 EST_MEMBER_ROW = 37
 EST_ALN_ROW = 31
+# member_cluster: 40.5 bytes per row, measured on wilkcomp02, 2026-11-10, rL.3's 21,241,368 rows
+# (planning/measurements/2026-11-10_label_and_membership_lookups.md)
+EST_MEMBER_CLUSTER_ROW = 40
 
 # UniRef-style: member covered >= 80% by the alignment to its representative (cov-mode 1,
 # coverage of the target = member), greedy by length (cluster-mode 2, CD-HIT-like).
@@ -318,6 +326,33 @@ def _cluster_members(con, w: Path, level: str, phash: str) -> int:
     return n
 
 
+def write_member_cluster(member_files: list[Path], dest: Path, *, tmp: Path | None = None,
+                         max_file_bytes: int = layout.MAX_FILE_BYTES, memory_limit: str | None = None) -> dict:
+    """Write `member_cluster` (card B-27) under `dest` (`l2/member_cluster/release=<R>`): the rows of the
+    release's `cluster_member` files `member_files` (member_uid, level, cluster_uid, rep_uid), sorted by
+    (level, member_uid) with one DuckDB sort on one thread, capped at `memory_limit` (default
+    `DUCK_MEMORY_LIMIT`) and spilling into a private directory under `tmp` (system temp by default), streamed
+    to the writer a batch at a time. Refuses (FileExistsError) when `dest` already holds parts, as every
+    writer does. Returns rows and parts."""
+    spec = table("member_cluster")
+    if not member_files:
+        raise FileNotFoundError(f"{dest}: no cluster_member files to sort into member_cluster")
+    have = io.part_files(dest)
+    if have:
+        raise FileExistsError(f"{have[0]}: member_cluster is written once; refusing to overwrite")
+    listing = "[" + ", ".join(_sql_path(Path(f)) for f in member_files) + "]"
+    with tempfile.TemporaryDirectory(dir=tmp) as d:
+        con = duckdb.connect(config={"threads": 1, "temp_directory": str(Path(d) / "duckdb"),
+                                     "memory_limit": DUCK_MEMORY_LIMIT if memory_limit is None else memory_limit})
+        try:
+            sql = (f"SELECT {', '.join(spec.schema.names)} FROM read_parquet({listing}, hive_partitioning = false) "
+                   "ORDER BY level, member_uid")
+            paths = io.write_parts(io.duck_batches(con, sql, spec), spec, dest, EST_MEMBER_CLUSTER_ROW, max_file_bytes)
+        finally:
+            con.close()
+    return {"rows": sum(pq.read_metadata(p).num_rows for p in paths), "parts": len(paths)}
+
+
 def run(root: Path, release: str, gene_call_version: str, stages: list[str], threads: int = 1,
         tmp: Path | None = None, max_file_bytes: int = layout.MAX_FILE_BYTES, out: Path | None = None,
         memory_limit: str | None = None) -> dict:
@@ -337,6 +372,7 @@ def run(root: Path, release: str, gene_call_version: str, stages: list[str], thr
     stages = catalog.check_stages(stages)
     catalog.verify_release_def(root, release, stages)  # a disagreeing definition is named before a refusal
     ledger.refuse_written(root, out, [f"l2/cluster_member/release={release}", f"l2/cluster_member_aln/release={release}",
+                                      f"l2/member_cluster/release={release}",
                                       ledger.release_path("", release, "cluster").parent.as_posix()],
                           f"clustering of release {release}")
     files = _protein_files(root, gene_call_version, stages)
@@ -394,6 +430,10 @@ def run(root: Path, release: str, gene_call_version: str, stages: list[str], thr
                            max_file_bytes)
         finally:
             con.close()
+        # the lookup by member (card B-27), from the cluster_member files just written
+        write_member_cluster(io.part_files(out / f"l2/cluster_member/release={release}"),
+                             out / f"l2/member_cluster/release={release}", tmp=w, max_file_bytes=max_file_bytes,
+                             memory_limit=limit)
 
     # the release's own ledger (ledger/release=<R>/step=cluster, card B-28): NR90 sees every protein, NR50
     # the NR90 representatives

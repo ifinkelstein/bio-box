@@ -78,6 +78,10 @@ def _stand_in_clusters(root: Path, release: str) -> None:
     d = root / f"l2/cluster_member/release={release}"
     d.mkdir(parents=True)
     pq.write_table(pa.Table.from_pylist(rows, schema=table("cluster_member").schema), d / "part-0.parquet")
+    from biobox.l2 import cluster  # the lookup by member, as cluster.run writes it beside (card B-27)
+
+    cluster.write_member_cluster([d / "part-0.parquet"], root / f"l2/member_cluster/release={release}",
+                                 tmp=root.parent)
 
 
 def build(root: Path, order: int = 1, with_postings: bool = True) -> set[bytes]:

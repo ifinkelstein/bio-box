@@ -11,11 +11,17 @@ row groups per table, and 8 would take about 1,100x for the tapes and about 10^6
 `contig_index` and `seq_locator` (data_layer_and_tests.md and the exit measurement: 9 of 9 at 10^6
 contigs), which no test can build. So the build runs with the row-group caps of `io.write_table`
 scaled down, test side only (nothing in `src/` changes): row tables 1/16 of ROW_GROUP_ROWS (7,680
-rows), list tables 1/16 of MAX_SLOTS (8,192 slots), the three contig-level tables 32 rows, and
+rows), list tables 1/16 of MAX_SLOTS (8,192 slots), the contig-level tables 32 rows (`contig_index`,
+`seq_locator`, `contig_dim`, and since card B-27 `contig_occurrence` and `contig_label`), and
 `token_dict` 1/128 of ROW_GROUP_ROWS (960 rows; about 10,000 tokens at 100x, card B-34). The
 pruning behaviour (zone maps on the sort key) is what is under test; the assertions state the caps
 they ran with and also the real AGENTS bounds. Every probed table must have at least MIN_RG row
 groups, or the test fails before it measures anything.
+
+Card B-27: the label and membership lookups. `synth_scale.py` writes `cluster_member` by hand (no
+MMseqs2), so the `lookups` fixture writes the release's `member_cluster` from it with the builder's
+own function (`cluster.write_member_cluster`, which `cluster.run` calls) and builds a second manifest
+and catalog; `contig_label` is written by ingest inside the script.
 """
 
 from __future__ import annotations
@@ -28,6 +34,7 @@ import sys
 import time
 from pathlib import Path
 
+import pyarrow as pa
 import pyarrow.compute as pc
 import pyarrow.parquet as pq
 import pytest
@@ -35,6 +42,7 @@ import pytest
 from biobox import catalog
 from biobox import io as bio
 from biobox.l3 import tapes
+from biobox.registry.schemas import conformance_problems, table
 
 pytestmark = [pytest.mark.r2, pytest.mark.covers("D-05", "LY-06")]
 
@@ -46,11 +54,12 @@ MIN_RG = 8  # row groups a probed table must have for pruning to mean something
 MAX_RG_PER_KEY = 2  # AGENTS §4.4, as the exit measurement states it
 ROW_CAP = bio.ROW_GROUP_ROWS // 16  # 7,680 rows
 SLOT_CAP = tapes.MAX_SLOTS // 16  # 8,192 slots
-CONTIG_CAP = 32  # contig_index, seq_locator, contig_dim: 300 contigs at 100x
-CONTIG_TABLES = ("contig_index", "seq_locator", "contig_dim")
+CONTIG_CAP = 32  # contig_index, seq_locator, contig_dim, contig_occurrence, contig_label: 300 contigs at 100x
+CONTIG_TABLES = ("contig_index", "seq_locator", "contig_dim", "contig_occurrence", "contig_label")
 TOKEN_CAP = bio.ROW_GROUP_ROWS // 128  # token_dict: 960 rows (card B-34)
 LIST_TABLES = {"contig_tapes": "n_slots", "tape_tokens": "nr90_tokens"}  # table -> column that counts slots
-PROBED = ("seq_locator", "contig_index", "contig_dim", "contig_tapes", "tape_tokens", "token_postings", "token_dict")
+PROBED = ("seq_locator", "contig_index", "contig_dim", "contig_tapes", "tape_tokens", "token_postings", "token_dict",
+          "contig_occurrence", "contig_label")
 
 
 def _cap(table: str) -> int:
@@ -447,3 +456,367 @@ def test_partners_of_reads_grow_with_the_anchors_not_the_release(store, store2x,
 def test_build_time(store, record_property):
     record_property("build_s", round(store["build_s"], 1))
     assert store["build_s"] < 300, f"{store['build_s']:.0f} s for the {COPIES}x build and queries (card D-05: under 5 minutes)"
+
+
+# --- card B-27: contig labels and cluster membership by their lookup keys ---------------------------
+
+LABEL_SQL = "SELECT accession, original_header, n_occurrences FROM contig_label WHERE contig_uid = ?"
+MEMBER_SQL = "SELECT level, cluster_uid, rep_uid FROM member_cluster WHERE member_uid = ? ORDER BY level"
+
+
+@pytest.fixture(scope="module")
+def lookups(store, tmp_path_factory):
+    """The store with its release's `member_cluster`, written from the synthetic `cluster_member` by the
+    builder's own function at the scaled caps, and a manifest and catalog that list it."""
+    from biobox.l2 import cluster
+
+    g, root = store["g"], store["root"]
+    rel = g["REL"]
+    mp = pytest.MonkeyPatch()
+    mp.setattr(bio, "write_table", _scaled_write_table(bio.write_table))
+    try:
+        cluster.write_member_cluster(bio.part_files(root / f"l2/cluster_member/release={rel}"),
+                                     root / f"l2/member_cluster/release={rel}", tmp=tmp_path_factory.mktemp("mc"))
+    finally:
+        mp.undo()
+    man = catalog.build_manifest(root, rel, ["S0"])
+    cat = catalog.generate_catalog(man, tmp_path_factory.mktemp("b27") / "catalog.duckdb")
+    return {"root": root, "rel": rel, "V": g["V"], "man": man, "cat": cat}
+
+
+def _table_name(root: Path, path: str) -> str:
+    """The registry table of a file the profiler names (an absolute path under the store's root)."""
+    return catalog.classify(Path(path).resolve().relative_to(Path(root).resolve()).as_posix())[0].name
+
+
+def _reads_of(root: Path, scans: list[dict]) -> dict[str, int]:
+    """Row groups read per registry table, summed over the profiled scans."""
+    out: dict[str, int] = {}
+    for s in scans:
+        if s["files"]:
+            t = _table_name(root, s["files"][0])
+            out[t] = out.get(t, 0) + s["row_groups_scanned"]
+    return out
+
+
+def _query(root: Path, cat: Path, sql: str, params=None, tables: dict | None = None) -> tuple[list, dict[str, int], int]:
+    """`sql` on a fresh `open_catalog` connection (cold): its rows, the row groups read per table, and the
+    connection's `dynamic_or_filter_threshold` (`catalog.set_join_key_filter`)."""
+    con = catalog.open_catalog(cat, threads=4)
+    try:
+        for name, tbl in (tables or {}).items():
+            con.register(name, tbl)
+        out = catalog.profile_query(con, sql, params)
+        thr = int(con.execute("SELECT current_setting('dynamic_or_filter_threshold')").fetchall()[0][0])
+    finally:
+        con.close()
+    return out["result"], _reads_of(root, out["scans"]), thr
+
+
+def _manifest_files(root: Path, man: dict, table_name: str) -> list[Path]:
+    return [root / f["path"] for f in man["files"] if f["table"] == table_name]
+
+
+def _footer_ranges(files: list[Path], column: str) -> list[tuple]:
+    """Oracle: (min, max) of `column` of every row group of `files`, in file then row-group order, from the
+    Parquet footers."""
+    out = []
+    for p in files:
+        md = pq.ParquetFile(p).metadata
+        ci = next(i for i in range(md.num_columns) if md.schema.column(i).path == column)
+        out += [(md.row_group(g).column(ci).statistics.min, md.row_group(g).column(ci).statistics.max)
+                for g in range(md.num_row_groups)]
+    return out
+
+
+def _holding(files: list[Path], column: str, keys) -> int:
+    """Oracle: the row groups whose footer range of `column` holds one of `keys`."""
+    return sum(any(lo <= k <= hi for k in keys) for lo, hi in _footer_ranges(files, column))
+
+
+def _spread(files: list[Path], column: str, keys) -> int:
+    """Oracle: the row groups whose footer range of `column` meets the keys' range, min(keys) to max(keys)."""
+    lo_k, hi_k = min(keys), max(keys)
+    return sum(lo <= hi_k and lo_k <= hi for lo, hi in _footer_ranges(files, column))
+
+
+def _assert_key_bound(read: int, keys: list, hold: int, spread: int, total: int, thr: int, levels: int = 1) -> None:
+    """The bound of card B-27 for keys from a joined table: at most 2 row groups per key and level looked up (AGENTS
+    §4.4; `member_cluster` is sorted by level, then member, so a member at both levels is two lookups) and no more
+    than the keys' spread; with no more keys than the connection's join filter lists (`thr`), exactly the row
+    groups that hold a key."""
+    assert total >= MIN_RG, f"{total} row groups in the table"
+    assert 1 <= read <= MAX_RG_PER_KEY * levels * len(keys) and read <= spread, (read, hold, spread, total)
+    if len(keys) <= thr:
+        assert read == hold, f"{read} row groups read; {hold} hold the {len(keys)} keys (spread {spread} of {total})"
+
+
+def _occurrence_oracle(root: Path, man: dict) -> dict[bytes, tuple]:
+    """Brute force over every `contig_occurrence` row: per contig, the accession, header, l0_object_sha256 and
+    record_ordinal of its first record by (l0_object_sha256, record_ordinal), and its number of records."""
+    first: dict[bytes, list] = {}
+    cols = ["contig_uid", "l0_object_sha256", "record_ordinal", "accession", "original_header"]
+    for f in _manifest_files(root, man, "contig_occurrence"):
+        for r in pq.read_table(f, columns=cols, partitioning=None).to_pylist():
+            k = (r["l0_object_sha256"], r["record_ordinal"])
+            cur = first.get(r["contig_uid"])
+            if cur is None:
+                first[r["contig_uid"]] = [k, r["accession"], r["original_header"], 1]
+                continue
+            cur[3] += 1
+            if k < cur[0]:
+                cur[0], cur[1], cur[2] = k, r["accession"], r["original_header"]
+    return {cu: (acc, hdr, n, k[0], k[1]) for cu, (k, acc, hdr, n) in first.items()}
+
+
+def _membership_oracle(root: Path, man: dict) -> dict[tuple[bytes, str], list[tuple[bytes, bytes]]]:
+    """Brute force over every `cluster_member` row of the release: (member, level) -> [(cluster, representative)]."""
+    out: dict[tuple[bytes, str], list[tuple[bytes, bytes]]] = {}
+    for f in _manifest_files(root, man, "cluster_member"):
+        t = pq.read_table(f, columns=["member_uid", "level", "cluster_uid", "rep_uid"], partitioning=None)
+        for m, lv, c, r in zip(*(t.column(i).to_pylist() for i in range(4))):
+            out.setdefault((m, lv), []).append((c, r))
+    return out
+
+
+def _ends(ordered: list, n: int) -> list:
+    """`n` keys from both ends of the key order, half the first of `ordered` and half the last, so the keys'
+    range spans the table while the keys lie in few row groups."""
+    return ordered[: n // 2] + ordered[-(n - n // 2):]
+
+
+LABEL_PICKS = [("40 at both ends", 40), ("100 at both ends", 100), ("100 random", 100)]
+
+
+@pytest.mark.covers("C-01")
+def test_b27_contig_label_conforms_and_is_each_contigs_first_record(store):
+    """Card B-27: `contig_label` (written by ingest) conforms to its spec, holds one row per contig sorted by
+    contig_uid, and each row is the contig's first `contig_occurrence` record by (l0_object_sha256,
+    record_ordinal) with its number of records (the brute-force oracle)."""
+    files = _files(store, "contig_label")
+    assert files, "ingest wrote no contig_label files"
+    t = pa.concat_tables(pq.read_table(f, partitioning=None) for f in files)
+    assert conformance_problems(t, table("contig_label")) == []
+    uids = t.column("contig_uid").to_pylist()
+    assert uids == sorted(uids) and len(set(uids)) == len(uids)
+    got = {r["contig_uid"]: (r["accession"], r["original_header"], r["n_records"], r["l0_object_sha256"],
+                             r["record_ordinal"]) for r in t.to_pylist()}
+    assert got == _occurrence_oracle(store["root"], store["man"])
+
+
+@pytest.mark.covers("C-01")
+def test_b27_member_cluster_conforms_and_equals_cluster_member(lookups):
+    """Card B-27: `member_cluster` conforms to its spec, is sorted by (level, member_uid), and every (member,
+    level) of `cluster_member` appears in it exactly once, with the same cluster and representative."""
+    root, man = lookups["root"], lookups["man"]
+    files = _manifest_files(root, man, "member_cluster")
+    assert files
+    t = pa.concat_tables(pq.read_table(f, partitioning=None) for f in files)
+    assert conformance_problems(t, table("member_cluster")) == []
+    keys = list(zip(t.column("level").to_pylist(), t.column("member_uid").to_pylist()))
+    assert keys == sorted(keys) and len(set(keys)) == len(keys)
+    got: dict[tuple[bytes, str], list[tuple[bytes, bytes]]] = {}
+    for r in t.to_pylist():
+        got.setdefault((r["member_uid"], r["level"]), []).append((r["cluster_uid"], r["rep_uid"]))
+    want = _membership_oracle(root, man)
+    assert all(len(v) == 1 for v in want.values())
+    assert got == want
+
+
+@pytest.mark.covers("LY-06")
+def test_b27_label_literal_key_reads_at_most_2_row_groups(store, record_property):
+    """Card B-27: the catalog's `contig_label` by a literal contig_uid reads at most 2 row groups of
+    `contig_label` (of at least MIN_RG) and nothing of `contig_occurrence`, and gives the oracle's label."""
+    o = _occurrence_oracle(store["root"], store["man"])
+    key = sorted(o)[len(o) // 2]
+    rows, reads, _ = _query(store["root"], store["g"]["cat"], LABEL_SQL, [key])
+    assert rows == [o[key][:3]]
+    n = sum(f["row_groups"] for f in store["man"]["files"] if f["table"] == "contig_label")
+    record_property("label_reads", json.dumps({"read": reads, "of": n}))
+    assert set(reads) == {"contig_label"} and 1 <= reads["contig_label"] <= MAX_RG_PER_KEY, reads
+    assert n >= MIN_RG, f"contig_label has {n} row groups at cap {CONTIG_CAP}"
+
+
+@pytest.mark.covers("LY-06")
+@pytest.mark.parametrize("pick,n", LABEL_PICKS, ids=[p[0] for p in LABEL_PICKS])
+def test_b27_label_joined_keys_read_the_row_groups_that_hold_them(store, pick, n, record_property):
+    """Card B-27: contig_uids from a joined table read nothing of `contig_occurrence`, and of `contig_label`
+    the bound of `_assert_key_bound`. "at both ends" takes half the keys from the first row groups and half
+    from the last, so their range spans the table: 40 such keys are fewer than DuckDB's join filter lists
+    and read only the row groups that hold them, not the spread."""
+    import random
+
+    o = _occurrence_oracle(store["root"], store["man"])
+    ordered = sorted(o)
+    keys = _ends(ordered, n) if "ends" in pick else sorted(random.Random(SEED).sample(ordered, n))
+    tbl = pa.table({"contig_uid": pa.array(keys, pa.binary(16))})
+    rows, reads, thr = _query(store["root"], store["g"]["cat"],
+                              "SELECT l.contig_uid, l.accession, l.original_header, l.n_occurrences FROM k k "
+                              "JOIN contig_label l USING (contig_uid) ORDER BY l.contig_uid", tables={"k": tbl})
+    assert rows == [(k, *o[k][:3]) for k in keys]
+    files = _files(store, "contig_label")
+    hold, spread, total = (_holding(files, "contig_uid", keys), _spread(files, "contig_uid", keys),
+                           len(_footer_ranges(files, "contig_uid")))
+    record_property("label_reads", json.dumps({"read": reads, "hold": hold, "spread": spread, "of": total, "thr": thr}))
+    assert set(reads) == {"contig_label"}, reads
+    _assert_key_bound(reads["contig_label"], keys, hold, spread, total, thr)
+    if pick == "40 at both ends":
+        assert hold < spread == total and len(keys) <= thr, (hold, spread, total, thr)
+
+
+def _member_keys(files: list[Path], n: int) -> tuple[list[bytes], int]:
+    """`n` member_uids, half from the second row group of `member_cluster` and half from the second to last (the
+    row groups numbered over the files in order; a row group's first and last member, which the next row group
+    may hold too, are left out), and how many row groups the table has."""
+    groups = []
+    for p in files:
+        pf = pq.ParquetFile(p)
+        groups += [pf.read_row_group(g, columns=["member_uid"]).column(0).to_pylist() for g in range(pf.metadata.num_row_groups)]
+    assert len(groups) >= MIN_RG, f"member_cluster has {len(groups)} row groups at cap {ROW_CAP}"
+    a, b = sorted(set(groups[1]))[1:-1], sorted(set(groups[-2]))[1:-1]
+    return a[: n // 2] + b[-(n - n // 2):], len(groups)
+
+
+@pytest.mark.covers("LY-06")
+def test_b27_membership_literal_key_reads_at_most_2_row_groups_per_level(lookups, record_property):
+    """Card B-27: the catalog's `member_cluster` (sorted by level, then member) by a literal member_uid reads at
+    most 2 row groups at one level and at most 2 per level at both (of at least MIN_RG), nothing of
+    `cluster_member`, and gives the member's NR50 and NR90 clusters as the oracle."""
+    root, man = lookups["root"], lookups["man"]
+    want = _membership_oracle(root, man)
+    members = sorted({m for m, _ in want})
+    key = members[len(members) // 3]
+    rows, reads, _ = _query(root, lookups["cat"], MEMBER_SQL, [key])
+    assert rows == [(lv, *want[(key, lv)][0]) for lv in ("nr50", "nr90")]
+    one, reads1, _ = _query(root, lookups["cat"], "SELECT cluster_uid, rep_uid FROM member_cluster "
+                                                  "WHERE level = 'nr90' AND member_uid = ?", [key])
+    assert one == [want[(key, "nr90")][0]]
+    _, n = _member_keys(_manifest_files(root, man, "member_cluster"), 2)
+    record_property("member_reads", json.dumps({"both levels": reads, "nr90": reads1, "of": n}))
+    assert set(reads) == {"member_cluster"} and 1 <= reads["member_cluster"] <= 2 * MAX_RG_PER_KEY, reads
+    assert set(reads1) == {"member_cluster"} and 1 <= reads1["member_cluster"] <= MAX_RG_PER_KEY, reads1
+
+
+MEMBER_PICKS = [("40 from two row groups", 40), ("100 from two row groups", 100), ("100 random", 100)]
+
+
+@pytest.mark.covers("LY-06")
+@pytest.mark.parametrize("pick,n", MEMBER_PICKS, ids=[p[0] for p in MEMBER_PICKS])
+def test_b27_membership_joined_keys_read_the_row_groups_that_hold_them(lookups, pick, n, record_property):
+    """Card B-27: member_uids from a joined table, looked up at both levels, read nothing of `cluster_member`,
+    and of `member_cluster` the bound of `_assert_key_bound` (2 row groups per key and level). "from two row
+    groups" takes them from the second and the second to last row group, so their range spans the table while
+    few row groups hold them (their own two, those that hold the same members at the other level, and the one
+    where the levels meet)."""
+    import random
+
+    root, man = lookups["root"], lookups["man"]
+    files = _manifest_files(root, man, "member_cluster")
+    want = _membership_oracle(root, man)
+    keys = (_member_keys(files, n)[0] if "two" in pick
+            else sorted(random.Random(SEED).sample(sorted({m for m, _ in want}), n)))
+    rows, reads, thr = _query(root, lookups["cat"],
+                              "SELECT m.member_uid, m.level, m.cluster_uid, m.rep_uid FROM k JOIN member_cluster m "
+                              "USING (member_uid) ORDER BY m.member_uid, m.level",
+                              tables={"k": pa.table({"member_uid": pa.array(keys, pa.binary(16))})})
+    assert rows == [(m, lv, *want[(m, lv)][0]) for m in keys for lv in ("nr50", "nr90")]
+    hold, spread, total = (_holding(files, "member_uid", keys), _spread(files, "member_uid", keys),
+                           len(_footer_ranges(files, "member_uid")))
+    record_property("member_reads", json.dumps({"read": reads, "hold": hold, "spread": spread, "of": total, "thr": thr}))
+    assert set(reads) == {"member_cluster"}, reads
+    _assert_key_bound(reads["member_cluster"], keys, hold, spread, total, thr, levels=2)
+    if pick == "40 from two row groups":
+        assert hold < spread and len(keys) <= thr, (hold, spread, total, thr)
+
+
+class _Profiled:
+    """A connection whose `execute` runs each statement through `catalog.profile_query` and adds up the row
+    groups it read per registry table: the export functions take it in place of their connection."""
+
+    def __init__(self, con, root: Path):
+        self.con, self.root, self.reads = con, root, {}
+
+    def execute(self, sql: str, params=None):
+        for t, n in _reads_of(self.root, catalog.profile_query(self.con, sql, params)["scans"]).items():
+            self.reads[t] = self.reads.get(t, 0) + n
+
+
+@pytest.mark.covers("LY-06")
+@pytest.mark.parametrize("n", [40, 100])
+def test_b27_export_lookups_read_the_row_groups_that_hold_the_keys(lookups, n, record_property):
+    """Card B-27: the hit and locus exports' label and cluster lookups (`export._annotate_contigs` and
+    `_annotate_proteins` on `open_store`'s connection) for `n` contigs and `n` proteins whose ranges span the
+    tables never read `contig_occurrence` or `cluster_member`, read `contig_label` and `member_cluster` within
+    the bound of `_assert_key_bound`, and give the oracles' labels and clusters."""
+    from biobox.l3 import tapes as tapes_mod
+    from biobox.search import export
+
+    root, man, rel, v = lookups["root"], lookups["man"], lookups["rel"], lookups["V"]
+    o = _occurrence_oracle(root, man)
+    keys = {"contig_label": ("contig_uid", _ends(sorted(o), n)),
+            "member_cluster": ("member_uid", _member_keys(_manifest_files(root, man, "member_cluster"), n)[0])}
+    want = _membership_oracle(root, man)
+    with export.open_store(root, release=rel, gene_call_version=v, tape_version=tapes_mod.tape_version([v]), manifest=man,
+                           threads=4, relations=("prot", "dom", "clus", "lab", "cidx", "dim")) as st:
+        con = st.con
+        thr = int(con.execute("SELECT current_setting('dynamic_or_filter_threshold')").fetchall()[0][0])
+        con.register("_cin", pa.table({"contig_uid": pa.array(keys["contig_label"][1], pa.binary(16))}))
+        con.execute("CREATE TEMP TABLE _c AS SELECT contig_uid FROM _cin")
+        con.register("_pin", pa.table({"protein_uid": pa.array(keys["member_cluster"][1], pa.binary(16))}))
+        con.execute("CREATE TEMP TABLE _p AS SELECT protein_uid FROM _pin")
+        px = _Profiled(con, root)
+        export._annotate_contigs(px, False)
+        export._annotate_proteins(px, None)
+        lab = con.execute("SELECT contig_uid, accession, header, n_records FROM _lab ORDER BY contig_uid").fetchall()
+        cl = con.execute("SELECT protein_uid, nr90, nr50, nr50_rep FROM _cl ORDER BY protein_uid").fetchall()
+    assert lab == [(k, *o[k][:3]) for k in keys["contig_label"][1]]
+    assert cl == [(m, want[(m, "nr90")][0][0], want[(m, "nr50")][0][0], want[(m, "nr50")][0][1])
+                  for m in keys["member_cluster"][1]]
+    record_property("export_reads", json.dumps({"read": px.reads, "thr": thr}))
+    assert not {"contig_occurrence", "cluster_member"} & set(px.reads), px.reads
+    for t, (col, ks) in keys.items():
+        files = _manifest_files(root, man, t)
+        _assert_key_bound(px.reads.get(t, 0), ks, _holding(files, col, ks), _spread(files, col, ks),
+                          len(_footer_ranges(files, col)), thr, levels=2 if t == "member_cluster" else 1)
+
+
+def test_b27_contig_label_view_merges_the_release_stages(tmp_path):
+    """Card B-27: `contig_label` is written per stage; the catalog's view and the exports' label of a release over
+    two stages give, per contig, the first record by (l0_object_sha256, record_ordinal) over both stages and the
+    records of both (the brute-force oracle over `contig_occurrence`). Stage S1 holds a second copy of S0's
+    lambda genome under another name and source, and T4."""
+    import yaml
+
+    from biobox import fasta
+    from biobox.l0seq import SourceObject, ingest
+    from biobox.search import export
+
+    fix = REPO / "tests/fixtures/micro_s0"
+    objs = yaml.safe_load((fix / "sources.yaml").read_text())["objects"]
+    lam_path, t4_path = fix / objs[0]["file"], fix / objs[1]["file"]
+    dup = tmp_path / "lambda_again.fna"
+    dup.write_bytes(b"\n".join(fasta.format_record("lambda_again", fasta.read(lam_path)[0].seq, 70)) + b"\n")
+    root = tmp_path / "root"
+    ingest([SourceObject(lam_path, "micro", "1")], root, "S0")
+    ingest([SourceObject(dup, "other", "1"), SourceObject(t4_path, "micro", "1")], root, "S1")
+    for s in ("S0", "S1"):
+        assert bio.part_files(root / f"l0seq/contig_label/stage={s}"), f"no contig_label files in stage {s}"
+    rel = "rS0.b27"
+    catalog.define_release(root, rel, ["S0", "S1"])
+    man = catalog.build_manifest(root, rel, ["S0", "S1"])
+    o = _occurrence_oracle(root, man)
+    assert sorted(v[2] for v in o.values()) == [1, 2]
+    con = catalog.open_catalog(catalog.generate_catalog(man, tmp_path / "c.duckdb"), threads=2)
+    try:
+        view = con.execute("SELECT contig_uid, accession, original_header, n_occurrences FROM contig_label "
+                           "ORDER BY contig_uid").fetchall()
+    finally:
+        con.close()
+    assert view == [(k, *o[k][:3]) for k in sorted(o)]
+    with export.open_store(root, release=rel, gene_call_version="none", manifest=man, threads=2,
+                           relations=("lab", "cidx", "dim")) as st:
+        st.con.register("_cin", pa.table({"contig_uid": pa.array(sorted(o), pa.binary(16))}))
+        st.con.execute("CREATE TEMP TABLE _c AS SELECT contig_uid FROM _cin")
+        export._annotate_contigs(st.con, False)
+        lab = st.con.execute("SELECT contig_uid, accession, header, n_records FROM _lab ORDER BY contig_uid").fetchall()
+    assert lab == view

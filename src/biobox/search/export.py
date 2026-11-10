@@ -204,10 +204,12 @@ _RELATIONS = {
             ("protein_uid", "contig_uid", "feature_uid", "start", "end", "strand", "dist_to_contig_end_bp"), ()),
     "prot": ("protein_seq", ("gene_call_version",), ("protein_uid", "length", "seq"), ()),
     "dom": ("l1_domains", (), ("protein_uid", "model_acc", "model_name", "env_start"), ("library",)),
-    "clus": ("cluster_member", ("release",), ("member_uid", "level", "cluster_uid", "rep_uid"), ()),
+    # by member and by contig: the lookup tables of card B-27, sorted by those keys (cluster_member and
+    # contig_occurrence are sorted otherwise, so a lookup by member or contig read every row group of them)
+    "clus": ("member_cluster", ("release",), ("member_uid", "level", "cluster_uid", "rep_uid"), ()),
     "dim": ("contig_dim", ("release",), ("contig_uid", "genome_uid", "tier"), ()),
-    "lab": ("contig_occurrence", (), ("contig_uid", "accession", "original_header", "l0_object_sha256",
-                                      "record_ordinal"), ()),
+    "lab": ("contig_label", (), ("contig_uid", "accession", "original_header", "n_records", "l0_object_sha256",
+                                 "record_ordinal"), ()),
     "cidx": ("contig_index", (), ("contig_uid", "contig_len", "is_default_variant"), ()),
     "tape": ("contig_tapes", ("tape_version",), ("contig_uid", "feature_uids"), ()),
 }
@@ -314,7 +316,10 @@ def _view(con, name: str, spec_name: str, files: list[tuple[Path, dict]], cols: 
 class open_store:
     """A DuckDB connection with temp views over the store's relations (`_RELATIONS`) for one release, gene-call
     version and tape version; files from `release_files` (`manifest`, else the release's stages). Threads and memory
-    are capped, and spills go to a private scratch directory under `tmp` (system temp by default)."""
+    are capped, and spills go to a private scratch directory under `tmp` (system temp by default). Keys taken from a
+    temp table (`IN (SELECT ...)`) prune each relation to the row groups that hold them (card B-27): the
+    connection's join filter lists as many keys as the largest relation has row groups
+    (`catalog.set_join_key_filter`)."""
 
     def __init__(self, root: Path, *, release: str | None, gene_call_version: str, tape_version: str | None = None,
                  manifest: dict | None = None, threads: int | None = None, tmp=None,
@@ -324,6 +329,7 @@ class open_store:
     def __enter__(self) -> _Store:
         import duckdb
 
+        from biobox.catalog import row_groups_of, set_join_key_filter
         from biobox.search.nbr import _store_files
 
         root, release, gcv, tv, manifest, threads, tmp, relations = self.args
@@ -334,6 +340,7 @@ class open_store:
         values = {"gene_call_version": gcv, "release": release, "tape_version": tv}
         libraries: set[str] = set()
         try:
+            largest = 0
             for name in relations:
                 spec_name, filt, cols, keep = _RELATIONS[name]
                 want = {k: values[k] for k in filt}
@@ -341,6 +348,8 @@ class open_store:
                 if name == "dom":
                     libraries = {str(p["library"]) for _, p in files}
                 _view(self.con, name, spec_name, files, cols, keep)
+                largest = max(largest, row_groups_of(p for p, _ in files))
+            set_join_key_filter(self.con, largest)
         except BaseException:
             self.__exit__(None, None, None)
             raise
@@ -387,11 +396,15 @@ def _annotate_contigs(con, with_ordinals: bool) -> None:
     """Temp tables for the contig uids of temp table `_c`: `_lab` (accession and header of the contig's first
     source record by (l0_object_sha256, record_ordinal), as the catalog's `contig_label`, and the number of
     records), `_clen` (default variant's length), `_dim` (genome_uid, tier of the release's `contig_dim`) and,
-    `with_ordinals`, `_ord` (each slot's feature_uid and ordinal in the tape version's tapes)."""
+    `with_ordinals`, `_ord` (each slot's feature_uid and ordinal in the tape version's tapes).
+
+    `_lab` reads `contig_label` (card B-27): one row per contig and stage, with that stage's first record and
+    its records. The rows of the contigs are taken first, which prunes the table to the row groups that hold
+    them (`catalog.set_join_key_filter`), and only then merged over the release's stages."""
     con.execute("""CREATE OR REPLACE TEMP TABLE _lab AS
                    SELECT contig_uid, arg_min(accession, (l0_object_sha256, record_ordinal)) AS accession,
                           arg_min(original_header, (l0_object_sha256, record_ordinal)) AS header,
-                          count(*) AS n_records
+                          sum(n_records)::BIGINT AS n_records
                    FROM lab WHERE contig_uid IN (SELECT contig_uid FROM _c) GROUP BY contig_uid""")
     con.execute("CREATE OR REPLACE TEMP TABLE _clen AS SELECT contig_uid, max(contig_len) AS contig_len FROM cidx "
                 "WHERE is_default_variant AND contig_uid IN (SELECT contig_uid FROM _c) GROUP BY contig_uid")
@@ -463,11 +476,13 @@ def hits_tsv(root: Path, hits: list[dict], *, release: str | None, tape_version:
     """`search hits --format tsv`: a column line, then one row per gene of a hit protein (`protein_occurrence`),
     rows by accession (genes of contigs without one last), contig_uid, start, end, strand, protein_uid.
 
-    accession, header, n_records: the contig's first source record and how many it has (`contig_occurrence`);
+    accession, header, n_records: the contig's first source record and how many it has (`contig_label`, card
+    B-27: `contig_occurrence` by contig);
     contig_len: `contig_index`; length: the protein's (`protein_seq`); seq_bitscore, seq_evalue_zref: the
     protein's sequence score in the run and its E-value at the reference Z; pfam_architecture: domain names of
     the library (`_Store.library`) in order, `-` for none; nr90, nr50, nr50_rep: cluster uids and the NR50
-    representative (`cluster_member` of the release); genome_uid, tier: `contig_dim` of the release; ordinal:
+    representative (`member_cluster` of the release: `cluster_member` by member); genome_uid, tier: `contig_dim` of
+    the release; ordinal:
     the gene's slot in `tape_version`, beside its feature_uid (AGENTS §3.3)."""
     with open_store(root, release=release, gene_call_version=gene_call_version, tape_version=tape_version,
                     manifest=manifest, threads=threads, tmp=tmp) as st:

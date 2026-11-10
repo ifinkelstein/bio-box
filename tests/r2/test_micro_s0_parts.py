@@ -50,6 +50,7 @@ SMALL = {"ingest": 1, "genome_input": 1, "genecall": 8_192, "domains": 60, "clus
 # table -> its directory for the fixture's stage, release and versions
 SPLIT = {
     "contig_occurrence": f"l0seq/contig_occurrence/stage=S0/source={SRC}",
+    "contig_label": "l0seq/contig_label/stage=S0",  # card B-27
     "contig_index": "l0seq/contig_index/stage=S0",
     "seq_locator": "l0seq/seq_locator/stage=S0",
     "genome_input": "l0seq/genome_input/stage=S0",
@@ -60,10 +61,11 @@ SPLIT = {
     "l1_domains": "l1/domains/library=test-1/stage=S0",
     "cluster_member": f"l2/cluster_member/release={REL}",
     "cluster_member_aln": f"l2/cluster_member_aln/release={REL}",
+    "member_cluster": f"l2/member_cluster/release={REL}",  # card B-27
     "contig_dim": f"dim/contig_dim/release={REL}",
     "contig_tapes": f"l3/tapes/tape_version={TV}/stage=S0",
 }
-NEEDS_MMSEQS = {"cluster_member", "cluster_member_aln"}
+NEEDS_MMSEQS = {"cluster_member", "cluster_member_aln", "member_cluster"}
 
 
 def _genomes() -> list[GenomeInput]:
@@ -201,7 +203,7 @@ def test_every_table_has_the_same_rows(stores):
     ha, hb = contracts.content_hashes(stores["man_a"]), contracts.content_hashes(stores["man_b"])
     assert ha == hb
     for name in ("token_dict", "tape_tokens", "token_postings", "contig_dim", "tape_version_def") + (
-            ("cluster_member", "cluster_member_aln") if MMSEQS else ()):
+            ("cluster_member", "cluster_member_aln", "member_cluster") if MMSEQS else ()):
         fa = [stores["a"] / f["path"] for f in stores["man_a"]["files"] if f["table"] == name]
         fb = [stores["b"] / f["path"] for f in stores["man_b"]["files"] if f["table"] == name]
         assert fa and fb, name

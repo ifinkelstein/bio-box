@@ -84,6 +84,20 @@ def test_tables_conform(built):
     assert conformance_problems(aln, table("cluster_member_aln")) == []
 
 
+@pytest.mark.covers("C-01")
+def test_b27_member_cluster_is_cluster_member_by_member(built):
+    """Card B-27: `cluster.run` writes `member_cluster` beside `cluster_member`: it conforms, is sorted by
+    (level, member_uid), and holds each (member, level) of `cluster_member` once with its cluster and representative."""
+    root, _, mem, _, _ = built
+    mc = pq.read_table(root / f"l2/member_cluster/release={RELEASE}/part-0.parquet")
+    assert conformance_problems(mc, table("member_cluster")) == []
+    keys = list(zip(mc.column("level").to_pylist(), mc.column("member_uid").to_pylist()))
+    assert keys == sorted(keys) and len(set(keys)) == len(keys)
+    want = sorted(((r["member_uid"], r["level"], r["cluster_uid"], r["rep_uid"]) for r in mem.to_pylist()),
+                  key=lambda x: (x[1], x[0]))
+    assert [tuple(r.values()) for r in mc.to_pylist()] == want
+
+
 @pytest.mark.covers("C-02")
 def test_every_protein_once_per_level_and_reps_are_members(built):
     _, _, mem, _, prot = built
@@ -181,7 +195,7 @@ def test_mr16_thread_count_does_not_change_output(tmp_path, built):
     root1 = built[0]
     root4 = tmp_path / "t4"
     _build(root4, threads=4)
-    for name in ("cluster_member", "cluster_member_aln"):
+    for name in ("cluster_member", "cluster_member_aln", "member_cluster"):
         rel = f"l2/{name}/release={RELEASE}/part-0.parquet"
         assert (root1 / rel).read_bytes() == (root4 / rel).read_bytes(), name
 

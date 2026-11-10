@@ -142,6 +142,38 @@
    false
   ]
  ],
+ "contig_label": [
+  [
+   "contig_uid",
+   "fixed_size_binary[16]",
+   false
+  ],
+  [
+   "accession",
+   "string",
+   false
+  ],
+  [
+   "original_header",
+   "string",
+   false
+  ],
+  [
+   "n_records",
+   "uint32",
+   false
+  ],
+  [
+   "l0_object_sha256",
+   "fixed_size_binary[32]",
+   false
+  ],
+  [
+   "record_ordinal",
+   "uint64",
+   false
+  ]
+ ],
  "contig_member": [
   [
    "member_contig_uid",
@@ -704,6 +736,28 @@
    "tool_versions_json",
    "string",
    true
+  ]
+ ],
+ "member_cluster": [
+  [
+   "member_uid",
+   "fixed_size_binary[16]",
+   false
+  ],
+  [
+   "level",
+   "string",
+   false
+  ],
+  [
+   "cluster_uid",
+   "fixed_size_binary[16]",
+   false
+  ],
+  [
+   "rep_uid",
+   "fixed_size_binary[16]",
+   false
   ]
  ],
  "neighborhoods": [
