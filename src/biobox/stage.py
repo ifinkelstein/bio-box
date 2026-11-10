@@ -2,7 +2,7 @@
 
     bio-box build-stage --profile P --root R --stage S --release REL [--stages S0,S1]
         --genomes genomes.json --objects objects.json [--library NAME VERSION HMM CUTOFF ...]
-        [--tmp D] [--threads N] [--gene-call-version V]
+        [--tmp D] [--threads N] [--scan-jobs J] [--scan-cpus C] [--gene-call-version V]
 
 No workflow engine: the list `steps` returns and the run records `run-step` writes. Each step is
 `runstep.run_step` running `python -m biobox.cli stage ...` or `python -m biobox.cli release ...`
@@ -24,20 +24,44 @@ gene calling (`--workers`), to the scans (`--cpus`) and to MMseqs2 (`--threads`)
 use it defines the release (the cluster step writes the definition), and later the steps verify it.
 
 Before any step (exit 2, nothing run): a bad name; `--stage` not among the release's stages; no
-`--stages` and no `release_def`; `--stages` that disagree with the `release_def`; and ingest whose
+`--stages` and no `release_def`; `--stages` that disagree with the `release_def`; ingest whose
 estimated CPU-minutes exceed the profile's `cpu_min_per_process` (ingest is one process until card
-B-30). The estimate is skipped when ingest's run record exists. Before each step: a `STOP` file in
-the root exits 75, as `run-step` does.
+B-30); and `--scan-jobs` × `--scan-cpus` above the threads `run-step` allows at the start of the
+call (`runstep.choose_threads`: the profile's cap for the hour and weekday, the day cap while the
+host is busy). The ingest estimate is skipped when ingest's run record exists. Before each step: a
+`STOP` file in the root exits 75, as `run-step` does.
 
-A scan in shards (card B-24). Residues are known only after gene calling, so a scan step's
-estimate is made when the build reaches it and its record does not exist. When it exceeds the
-budget (or a shard plan for it is already published), the scan runs as steps of its own, one at a
-time (sequentially in this card): `domains-<lib>-<ver>.plan` (`bio-box stage domains plan`, shards
-of at most `shard_residues(profile)` residues: what fits the budget at `SCAN_CPU_MIN_PER_M`), then
-`domains-<lib>-<ver>.shard-<k>` for each shard (`... shard --shard K`, `--cpus` and `--tmp` as
-above), then the merge (`... merge`) under the scan step's own name, so its run record is the
-scan's. The shards' scratch runs live under the scratch directory and are removed after the merge.
-The merged files are those of the scan in one process, byte for byte.
+A scan in shards (cards B-24, C-11). Residues are known only after gene calling, so a scan step's
+estimate is made when the build reaches it and its record does not exist. When it exceeds
+`SHARD_MARGIN` of the budget (or a shard plan for it is already published), the scan runs as steps
+of its own: `domains-<lib>-<ver>.plan` (`bio-box stage domains plan`, shards of at most
+`shard_residues(profile)` residues: what fits `SHARD_MARGIN` of the budget at `SCAN_CPU_MIN_PER_M`),
+then `domains-<lib>-<ver>.shard-<k>` for each shard (`... shard --shard K --cpus C`), then the merge
+(`... merge`) under the scan step's own name, so its run record is the scan's. The plan depends on
+the inputs, the budget and the margin only, never on J or C, and the merged files are those of the
+scan in one process, byte for byte. The shards' scratch runs live under the scratch directory and
+are removed after the merge.
+
+Up to J shards run at once (`--scan-jobs`, default: the allowance // C), each its own `bio-box
+run-step` process (`python -m biobox.cli run-step --threads C -- ...`, `--scan-cpus`, default
+`DEFAULT_SCAN_CPUS` or the allowance if smaller), started in this process's group, so a Ctrl-C or the
+unit's stop reaches it and run-step forwards it to its step. Each launch is a thread that waits on
+its process; build-stage waits on those threads and never polls. In shard order: a shard whose run
+record exists (and no intent file) is passed over; before each launch a `STOP` file stops launches;
+a shard that exits non-zero stops launches. Shards already running finish and publish either way,
+then the call returns the failed shard's code (of the lowest shard when several fail), else 75 for
+`STOP`. The next call runs only the shards without a run record, then the merge.
+
+Concurrent run-steps into one root are safe because each has its own step name, so its own staging
+directory, `.incoming/<stage>.<step>/`, intent file and run record; the shard records are distinct
+files of a `small_ok` artifact (the size check does not group them) and the shards write no ledger.
+One thing is shared: after its renames, run-step removes `<root>/.incoming` when it lists it empty
+(`runstep._remove_leftovers`), which fails (`rmdir`: not empty) when another shard copies into
+`.incoming` between that listing and the `rmdir`, after the first shard's files are in the root and
+before its run record. While shards run, build-stage therefore keeps an empty directory
+`.incoming/_build-stage.<stage>.<scan step>` (no step's incoming directory can have that name: a stage
+name starts with a letter or digit), so `.incoming` is never empty; it removes it, and `.incoming` if
+then empty, once every shard has ended.
 
 The first step that does not exit 0 ends the build with its exit code. `run-step` gives every step
 kill-and-resume (cards C-02, C-03), so the next call skips each step whose run record and outputs
@@ -49,16 +73,25 @@ unit.
 
 from __future__ import annotations
 
+import contextlib
+import dataclasses
 import gzip
+import hashlib
 import json
+import os
+import queue
 import shutil
+import subprocess
 import sys
+import threading
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass
+from datetime import datetime
 from pathlib import Path
 
 import pyarrow.compute as pc
 import pyarrow.parquet as pq
+import yaml
 
 from biobox import catalog, runstep
 from biobox.l1 import domains
@@ -75,6 +108,14 @@ INGEST_BP = 9_596_180_328
 # residues) took 2,149.9 CPU-minutes, 7.30 per million residues (same README). Applied to every
 # library. It is an estimate for libraries other than Pfam.
 SCAN_CPU_MIN_PER_M = 7.30
+# Scan shards are planned to fill 80% of the CPU-minute budget, not all of it (card C-11): the rate above
+# is Pfam's on wilkcomp02, so a shard sized to the whole budget passes it whenever a library is slower
+# than Pfam or the host is loaded, and a process over the budget breaks AGENTS §7.2. The same margin
+# decides whether a scan is sharded at all.
+SHARD_MARGIN = 0.8
+# Threads per scan shard when --scan-cpus is not given (or the allowance, if smaller). A default, not a
+# measured optimum: the allowance is filled by running more shards at once, not by more threads each.
+DEFAULT_SCAN_CPUS = 4
 CUTOFFS = ("gathering", "trusted", "noise", "none")
 _READ = 1 << 20  # bytes per read when decompressing an input to count it
 
@@ -105,6 +146,8 @@ class Build:
     tmp: Path | None = None  # None: <profile tmp>/scratch
     threads: int | None = None  # None: min(max_threads_day, max_threads_night)
     gene_call_version: str = GENE_CALL_VERSION
+    scan_jobs: int | None = None  # J, scan shards at once; None: the allowance // C (`scan_slots`)
+    scan_cpus: int | None = None  # C, threads per scan shard; None: DEFAULT_SCAN_CPUS, or the allowance if smaller
 
 
 @dataclass(frozen=True)
@@ -117,6 +160,21 @@ class Step:
 
 def threads_of(prof: Profile, b: Build) -> int:
     return b.threads if b.threads is not None else min(prof.max_threads_day, prof.max_threads_night)
+
+
+def scan_allowance(prof: Profile, now: datetime, load1: float) -> int:
+    """The threads `run-step` allows at local time `now` with this 1-minute load average
+    (`runstep.choose_threads`): what the scan shards running at once share."""
+    return runstep.choose_threads(prof, now, load1)
+
+
+def scan_slots(b: Build, allowance: int) -> tuple[int, int]:
+    """(J, C): scan shards at once and threads per shard. C is `--scan-cpus`, else `DEFAULT_SCAN_CPUS` or
+    the allowance if smaller; J is `--scan-jobs`, else allowance // C, so one call uses the allowance and
+    no more. Not checked here (`_refusal` does)."""
+    cpus = b.scan_cpus if b.scan_cpus is not None else min(DEFAULT_SCAN_CPUS, allowance)
+    jobs = b.scan_jobs if b.scan_jobs is not None else (allowance // cpus if cpus > 0 else 0)
+    return jobs, cpus
 
 
 def scratch_of(prof: Profile, b: Build) -> Path:
@@ -215,8 +273,8 @@ def scan_cpu_min(residues: int) -> float:
     return residues * SCAN_CPU_MIN_PER_M / 1e6
 
 
-def _refusal(prof: Profile, b: Build, root: Path, plan: list[Step]) -> str | None:
-    """Why the build may not start (module docstring), or None."""
+def _refusal(prof: Profile, b: Build, root: Path, plan: list[Step], allowance: int, now: datetime) -> str | None:
+    """Why the build may not start (module docstring), or None. `allowance` is `scan_allowance` at `now`."""
     for what, name in (("stage", b.stage), ("release", b.release)):
         if not runstep._NAME.fullmatch(name):
             return f"bad {what} name {name!r}"
@@ -230,6 +288,14 @@ def _refusal(prof: Profile, b: Build, root: Path, plan: list[Step]) -> str | Non
         return "a library is given twice"
     if threads_of(prof, b) < 1:
         return f"--threads {threads_of(prof, b)}: must be at least 1"
+    jobs, cpus = scan_slots(b, allowance)
+    if jobs < 1 or cpus < 1:
+        return f"--scan-jobs {jobs} and --scan-cpus {cpus}: each must be at least 1"
+    if jobs * cpus > allowance:
+        return (f"--scan-jobs {jobs} × --scan-cpus {cpus} = {jobs * cpus} threads at once, but run-step allows "
+                f"{allowance} now ({now:%a %H:%M}: the profile's day cap {prof.max_threads_day} on weekdays from "
+                f"{prof.day_start_hour}:00 to {prof.day_end_hour}:00, else the night cap {prof.max_threads_night}, "
+                f"and the day cap while the load average is above {runstep.BUSY_LOAD}); lower one of them")
     if scratch_of(prof, b).is_relative_to(root):
         return f"{scratch_of(prof, b)}: the scratch directory may not lie under the data root"
     try:
@@ -254,25 +320,25 @@ def _refusal(prof: Profile, b: Build, root: Path, plan: list[Step]) -> str | Non
 
 
 def shard_residues(prof: Profile) -> int:
-    """Residues per scan shard: what fits in the profile's `cpu_min_per_process` at the measured rate
-    (`SCAN_CPU_MIN_PER_M`), at least one."""
-    return max(1, int(prof.cpu_min_per_process * 1e6 / SCAN_CPU_MIN_PER_M))
+    """Residues per scan shard: what fits in `SHARD_MARGIN` of the profile's `cpu_min_per_process` at the
+    measured rate (`SCAN_CPU_MIN_PER_M`), at least one. Nothing else: not the jobs, not the threads."""
+    return max(1, int(prof.cpu_min_per_process * SHARD_MARGIN * 1e6 / SCAN_CPU_MIN_PER_M))
 
 
 def _sharded(prof: Profile, b: Build, root: Path, step: Step) -> bool:
-    """Whether the scan `step` runs in shards: its estimate in one process exceeds the budget, or an
-    earlier call planned it in shards (its plan is published)."""
+    """Whether the scan `step` runs in shards: its estimate in one process exceeds `SHARD_MARGIN` of the
+    budget, or an earlier call planned it in shards (its plan is published)."""
     lib = _library(b, step)
     if (root / domains.scan_dir(b.stage, lib.name, lib.version) / "plan.json").exists():
         return True
     residues = stage_residues(root, b.stage, b.gene_call_version)
     est = scan_cpu_min(residues)
-    if est <= prof.cpu_min_per_process:
+    if est <= SHARD_MARGIN * prof.cpu_min_per_process:
         return False
     _say(f"{b.stage}.{step.name}: the scan of {residues:,} residues is estimated at {est:,.1f} CPU-minutes in one "
          f"process ({SCAN_CPU_MIN_PER_M} CPU-min per million residues, measured for Pfam on wilkcomp02, "
-         f"2026-11-10), over the profile's cpu_min_per_process of {prof.cpu_min_per_process} (AGENTS §7.2); "
-         f"it runs in shards of at most {shard_residues(prof):,} residues, one step each")
+         f"2026-11-10), over {SHARD_MARGIN:.0%} of the profile's cpu_min_per_process of {prof.cpu_min_per_process} "
+         f"(AGENTS §7.2); it runs in shards of at most {shard_residues(prof):,} residues, one step each")
     return True
 
 
@@ -280,12 +346,12 @@ def _library(b: Build, step: Step) -> Library:
     return next(lib for lib in b.libraries if scan_name(lib) == step.name)
 
 
-def scan_steps(prof: Profile, b: Build, step: Step, n_shards: int | None) -> list[Step]:
+def scan_steps(prof: Profile, b: Build, step: Step, n_shards: int | None, cpus: int) -> list[Step]:
     """The steps of the scan `step` in shards: its plan, then (once the plan is published and
-    `n_shards` known) one step per shard, then the merge under the scan step's own name, so its run
-    record is the scan's."""
+    `n_shards` known) one step per shard, each scanning with `cpus` threads, then the merge under the
+    scan step's own name, so its run record is the scan's."""
     lib = _library(b, step)
-    root, n, tmp = str(Path(b.root).resolve()), str(threads_of(prof, b)), str(scratch_of(prof, b))
+    root, n, tmp = str(Path(b.root).resolve()), str(cpus), str(scratch_of(prof, b))
 
     def dm(action: str, *extra: str) -> tuple[str, ...]:
         return ("stage", "domains", action, "--root", root, "--gene-call-version", b.gene_call_version,
@@ -302,23 +368,32 @@ def scan_steps(prof: Profile, b: Build, step: Step, n_shards: int | None) -> lis
             Step(b.stage, step.name, dm("merge", "--tmp", tmp))]
 
 
-def build_stage(prof: Profile, b: Build, *, run: Runner | None = None, _hook: Hook | None = None) -> int:
+def build_stage(prof: Profile, b: Build, *, run: Runner | None = None,
+                clock: Callable[[], datetime] = datetime.now, load: Callable[[], float] = runstep._load1,
+                _hook: Hook | None = None) -> int:
     """Run the steps of `b` in order; return 0, the first step's non-zero exit code, 75 for STOP, or 2
-    for a refusal (module docstring). `run` (tests only) stands in for `runstep.run_step`. `_hook` (tests
-    only) is called with `after:<step>` after each step that exited 0 or was passed over. An exception
-    that `_hook` raises is not caught."""
+    for a refusal (module docstring). `run` (tests only) stands in for `runstep.run_step`, also for the
+    scan shards, which it is then called for from one thread each; without it each shard is its own
+    `bio-box run-step` process. `clock` and `load` (tests only) give the time and load average the scan
+    allowance is decided at. `_hook` (tests only) is called with `after:<step>` after each step that
+    exited 0 or was passed over (scan shards in the order they end). An exception that `_hook` raises
+    is not caught; shards then running are waited for first."""
+    shard_run = run
     run = runstep.run_step if run is None else run
     root = Path(b.root).resolve()
     plan = steps(prof, b)
     if (root / "STOP").exists():
         _say(f"{root / 'STOP'} exists; not starting stage {b.stage}")
         return runstep.EXIT_STOP
-    why = _refusal(prof, b, root, plan)
+    now = clock()
+    allowance = scan_allowance(prof, now, load())
+    why = _refusal(prof, b, root, plan, allowance, now)
     if why is not None:
         _say(f"refused before any step: {why}")
         return runstep.EXIT_REFUSED
     scratch_of(prof, b).mkdir(parents=True, exist_ok=True)
     n = threads_of(prof, b)
+    jobs, cpus = scan_slots(b, allowance)
 
     def one(step: Step) -> int | None:
         """Run `step` (STOP checked first); its non-zero exit code, else None."""
@@ -338,7 +413,7 @@ def build_stage(prof: Profile, b: Build, *, run: Runner | None = None, _hook: Ho
             return runstep.EXIT_STOP
         if step.argv is not None:
             if step.check == "scan" and not _record(root, step).exists() and _sharded(prof, b, root, step):
-                code = _scan_in_shards(prof, b, root, step, one, _hook)
+                code = _scan_in_shards(prof, b, root, step, one, _hook, jobs, cpus, shard_run)
             else:
                 code = one(step)
             if code is not None:
@@ -350,25 +425,136 @@ def build_stage(prof: Profile, b: Build, *, run: Runner | None = None, _hook: Ho
 
 
 def _scan_in_shards(prof: Profile, b: Build, root: Path, step: Step, one: Callable[[Step], int | None],
-                    hook: Hook | None) -> int | None:
-    """The scan `step` as its plan step, one step per shard and the merge step, in that order and one at a
-    time (`scan_steps`); each is a `run-step`, so a call after a kill skips every step already published
-    and resumes at the next. The shards' scratch runs are removed once the merge is published."""
+                    hook: Hook | None, jobs: int, cpus: int, run: Runner | None) -> int | None:
+    """The scan `step` as its plan step, then its shard steps, up to `jobs` at once with `cpus` threads each
+    (`_run_shards`), then the merge step (`scan_steps`); each is a `run-step`, so a call after a kill skips
+    every step already published. `run` stands in for the shards' run-step processes (tests only). The
+    shards' scratch runs are removed once the merge is published."""
     lib = _library(b, step)
-    first = scan_steps(prof, b, step, None)[0]
+    first = scan_steps(prof, b, step, None, cpus)[0]
     code = one(first)
     if code is not None:
         return code
     if hook is not None:
         hook(f"after:{first.name}")
     shards = len(domains.read_plan(root, b.stage, lib.name, lib.version)["shards"])
-    rest = scan_steps(prof, b, step, shards)[1:]
-    for sub in rest:
-        code = one(sub)
-        if code is not None:
-            return code
-        if hook is not None and sub.name != step.name:  # the merge's hook is the scan step's, after this returns
-            hook(f"after:{sub.name}")
+    subs = scan_steps(prof, b, step, shards, cpus)
+    if run is None:
+        run = _process_runner(_profile_file(prof, scratch_of(prof, b)))
+    code = _run_shards(prof, root, step, subs[1:-1], jobs, cpus, run, hook)
+    if code is not None:
+        return code
+    code = one(subs[-1])  # the merge; its hook is the scan step's, after this returns
+    if code is not None:
+        return code
     run_dir = domains.run_path(scratch_of(prof, b), root, b.stage, lib.name, lib.version, 0).parent
     shutil.rmtree(run_dir, ignore_errors=True)
     return None
+
+
+def _profile_file(prof: Profile, scratch: Path) -> Path:
+    """The profile as a YAML file in scratch, named by its sha256, for the shards' `bio-box run-step`
+    processes (`profile.load` reads it back to the same values)."""
+    data = yaml.safe_dump(dataclasses.asdict(prof), sort_keys=True).encode()
+    path = Path(scratch) / f"build-stage-profile-{hashlib.sha256(data).hexdigest()[:16]}.yaml"
+    if not path.is_file() or path.read_bytes() != data:
+        tmp = path.with_name(f".{path.name}.tmp-{os.getpid()}")
+        tmp.write_bytes(data)
+        os.replace(tmp, path)
+    return path
+
+
+def _process_runner(profile_file: Path) -> Runner:
+    """A shard runner with `runstep.run_step`'s signature that runs the step as its own `bio-box run-step`
+    process in this process's group and waits for it; a process ended by a signal gives 128 + its number."""
+
+    def run(prof: Profile, root: Path, stage: str, step: str, cmd: Sequence[str], *, threads: int) -> int:
+        argv = [sys.executable, "-m", "biobox.cli", "run-step", "--profile", str(profile_file), "--root", str(root),
+                "--stage", stage, "--step", step, "--threads", str(threads), "--", *cmd]
+        code = subprocess.run(argv, check=False).returncode
+        return code if code >= 0 else 128 - code
+
+    return run
+
+
+def _intent(root: Path, step: Step) -> Path:
+    return root / "runs" / f"stage={step.run_stage}" / f"{step.name}.publishing.json"
+
+
+def _run_shards(prof: Profile, root: Path, scan: Step, shards: list[Step], jobs: int, cpus: int, run: Runner,
+                hook: Hook | None) -> int | None:
+    """Run the shard steps without a run record, up to `jobs` at once (module docstring); return None when
+    every shard has its record, else the failed shard's code or 75 for STOP. A shard with a record and no
+    intent file is passed over (its hook is called). The marker in `.incoming` is kept while any shard runs."""
+    todo = []
+    for s in shards:
+        if _record(root, s).exists() and not _intent(root, s).exists():
+            if hook is not None:
+                hook(f"after:{s.name}")
+        else:
+            todo.append(s)
+    if not todo:
+        return None
+    marker = root / ".incoming" / f"_build-stage.{scan.run_stage}.{scan.name}"
+    marker.mkdir(parents=True, exist_ok=True)
+    try:
+        return _launch(prof, root, todo, jobs, cpus, run, hook)
+    finally:
+        with contextlib.suppress(OSError):
+            marker.rmdir()
+        with contextlib.suppress(OSError):  # not empty: a killed step's publish, which its run-step recovers
+            marker.parent.rmdir()
+
+
+def _launch(prof: Profile, root: Path, todo: list[Step], jobs: int, cpus: int, run: Runner,
+            hook: Hook | None) -> int | None:
+    """Start the steps of `todo` in order, at most `jobs` running at once, each in a thread that calls `run`
+    and puts its result on a queue; wait on the queue (never poll). A `STOP` file before a launch, a step
+    that does not exit 0, or an exception (from a step or `hook`) stops launches; the steps running are
+    waited for in every case. An exception is raised again after that."""
+    done: queue.SimpleQueue = queue.SimpleQueue()
+
+    def work(k: int, s: Step) -> None:
+        try:
+            res: int | BaseException = run(prof, root, s.run_stage, s.name,
+                                           [sys.executable, "-m", "biobox.cli", *s.argv], threads=cpus)
+        except BaseException as e:  # handed to the main thread, which raises it once the others have ended
+            res = e
+        done.put((k, s, res))
+
+    pending = list(enumerate(todo))
+    running, failed, error, stopped = 0, {}, None, False
+    try:
+        while True:
+            while pending and running < jobs and not (failed or stopped or error is not None):
+                if (root / "STOP").exists():
+                    _say(f"{root / 'STOP'} exists; launching no more shards, waiting for the {running} running")
+                    stopped = True
+                    break
+                k, s = pending.pop(0)
+                threading.Thread(target=work, args=(k, s), name=f"build-stage {s.name}").start()
+                running += 1
+            if not running:
+                break
+            k, s, res = done.get()  # blocks until a step's run-step has exited
+            running -= 1
+            if isinstance(res, BaseException):
+                error = res if error is None else error
+                _say(f"{s.run_stage}.{s.name} raised {res!r}; launching no more shards, waiting for the "
+                     f"{running} running")
+            elif res != 0:
+                failed[k] = res
+                _say(f"{s.run_stage}.{s.name} exited {res}; launching no more shards, waiting for the {running} "
+                     f"running; the next call runs the shards without a run record")
+            elif hook is not None:
+                hook(f"after:{s.name}")
+    except BaseException:
+        while running:
+            done.get()
+            running -= 1
+        raise
+    if error is not None:
+        raise error
+    if failed:
+        return failed[min(failed)]
+    return runstep.EXIT_STOP if stopped else None
