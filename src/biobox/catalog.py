@@ -374,6 +374,8 @@ def macro_sql() -> list[str]:
         # the anchor's bucket at every width a release may use (biobox.layout, biobox.l3.pairs)
         "CREATE MACRO pair_bucket_ok(_bucket, _tok) AS _bucket IN "
         "('all', left(printf('%02x', (_tok % 256)::INTEGER), 1), printf('%02x', (_tok % 256)::INTEGER))",
+        # dimension rows of this catalog's release only (card B-12)
+        "CREATE MACRO contig_dim_now() AS TABLE SELECT * FROM contig_dim WHERE release = catalog_release()",
         # Q1: loci (anchor slots) of A with B within +-k slots; _tier NULL for every tier
         """CREATE MACRO q1_count(_a, _b, _k, _tier) AS (
               SELECT count(DISTINCT (contig_uid, anchor_ordinal)) FROM slot_pairs
