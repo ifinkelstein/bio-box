@@ -24,7 +24,8 @@ fetch reads, and every row carries `anchor_feature_uid`, `feature_uid` and that 
 beside the ordinals, which are valid inside it only.
 
 `summarize` (card W-06) counts which Pfam families and NR50/NR90 clusters sit in those windows, with DuckDB
-over `fetch`'s rows joined to the store's `l1_domains`, `cluster_member`, `protein_seq` and `contig_dim`.
+over `fetch`'s rows joined to the store's `l1_domains`, `member_cluster` (a neighbor's clusters, by member;
+card B-27), `cluster_member` (a cluster's members), `protein_seq` and `contig_dim`.
 
 Every read is of one release's files (card B-28): `occurrences` and `fetch` take `files`, a
 `catalog.ReleaseFiles` (its manifest's files, else those of its `release_def` stages), so an anchor's
@@ -287,6 +288,9 @@ _SUMMARY_SCHEMAS = {
                           ("model_name", pa.string())]),
     "clusters": pa.schema([("member_uid", pa.binary(16)), ("level", pa.string()), ("cluster_uid", pa.binary(16)),
                            ("rep_uid", pa.binary(16))]),
+    # the same rows, looked up by member (summarize: `member_cluster`, card B-27; summarize_rows: `clusters`)
+    "members": pa.schema([("member_uid", pa.binary(16)), ("level", pa.string()), ("cluster_uid", pa.binary(16)),
+                          ("rep_uid", pa.binary(16))]),
     "protein_len": pa.schema([("protein_uid", pa.binary(16)), ("length", pa.uint32())]),
     "genome_of": pa.schema([("contig_uid", pa.binary(16)), ("genome_uid", pa.binary(16))]),
 }
@@ -311,7 +315,9 @@ def _level_sql(level: str) -> tuple[str, str]:
                           NULL::VARCHAR AS cluster_uid, NULL::VARCHAR AS rep_uid, NULL::BIGINT AS rep_length
                    FROM domains WHERE protein_uid IN (SELECT protein_uid FROM _nb) GROUP BY library, model_acc"""
         return keyed, attrs
-    cl = f"""(SELECT DISTINCT member_uid, cluster_uid, rep_uid FROM clusters
+    # a neighbor's cluster is looked up by member (`members`, sorted by member_uid); the clusters' rows by
+    # cluster (`clusters`, sorted by level and cluster_uid)
+    cl = f"""(SELECT DISTINCT member_uid, cluster_uid, rep_uid FROM members
               WHERE level = '{level}' AND member_uid IN (SELECT protein_uid FROM _nb))"""
     keyed = f"""SELECT n.*, lower(hex(c.cluster_uid)) AS key FROM _nb n JOIN {cl} c ON c.member_uid = n.protein_uid"""
     # the representative: one per cluster in a real clustering; the least rep_uid if a mapping gives several
@@ -347,8 +353,8 @@ _STATS = """WITH s AS (SELECT key, count(DISTINCT (contig_uid, anchor_feature_ui
 
 
 def _aggregate(con, by: tuple[str, ...], top_n: int | None) -> dict:
-    """The summary over the relations `nbr_rows`, `domains`, `clusters`, `protein_len` and `genome_of` of `con`
-    (columns as in `_SUMMARY_SCHEMAS`; `nbr_rows` as the `neighborhoods` table). Every count is SQL."""
+    """The summary over the relations `nbr_rows`, `domains`, `clusters`, `members`, `protein_len` and `genome_of`
+    of `con` (columns as in `_SUMMARY_SCHEMAS`; `nbr_rows` as the `neighborhoods` table). Every count is SQL."""
     con.execute("""CREATE TEMP TABLE _loci AS
                    SELECT contig_uid, anchor_feature_uid, any_value(anchor_protein_uid) AS anchor_protein_uid,
                           bool_or("offset" = 0 AND (flags & 1) = 1) AS censored
@@ -411,7 +417,8 @@ def _connect(threads: int | None = None):
 def summarize_rows(rows: list[dict] | pa.Table, by=("pfam", "nr50"), *, domains=None, clusters=None,
                    protein_len=None, genome_of=None, top_n: int | None = SUMMARY_TOP) -> dict:
     """The neighbor summary of neighborhood rows (as `fetch` gives them) over the given annotations, each a
-    list of dicts or an Arrow table with the columns of `_SUMMARY_SCHEMAS` (None: empty)."""
+    list of dicts or an Arrow table with the columns of `_SUMMARY_SCHEMAS` (None: empty); `clusters` serves the
+    lookups by member as well."""
     by = _check_levels(by)
     con = _connect()
     try:
@@ -421,6 +428,7 @@ def summarize_rows(rows: list[dict] | pa.Table, by=("pfam", "nr50"), *, domains=
                            ("genome_of", genome_of)):
             t = data if isinstance(data, pa.Table) else pa.Table.from_pylist(data or [], schema=_SUMMARY_SCHEMAS[name])
             con.register(name, t)
+        con.execute("CREATE VIEW members AS SELECT member_uid, level, cluster_uid, rep_uid FROM clusters")
         return _aggregate(con, by, top_n)
     finally:
         con.close()
@@ -432,20 +440,13 @@ def _sql_str(s: str) -> str:
 
 def _store_files(root: Path, name: str, want: dict[str, str], manifest) -> list[tuple[Path, dict]]:
     """(path, partitions) of one table's files whose partitions include `want`: from a `catalog.ReleaseFiles`
-    (card B-28), or from a release manifest dict (AGENTS §3.9), else (None) from the registry location, every
-    stage on disk: the fallback `export.open_store` still takes when a release has no manifest."""
-    from biobox import catalog
-
+    (card B-28), or from a release manifest dict (AGENTS §3.9). Readers never list the registry location (no
+    glob over stages): since card W-12 every caller passes its release's files, so None is a TypeError."""
     if hasattr(manifest, "entries"):  # catalog.ReleaseFiles
         return sorted(manifest.entries(name, **want), key=lambda x: str(x[0]))
-    if manifest is not None:
-        found = [(root / f["path"], f["partitions"]) for f in manifest["files"] if f["table"] == name]
-    else:
-        base, found = root / table(name).location, []
-        for p in sorted(base.rglob("*.parquet")) if base.exists() else []:
-            hit = catalog.classify(p.relative_to(root).as_posix())
-            if hit is not None and hit[0].name == name:
-                found.append((p, hit[1]))
+    if manifest is None:
+        raise TypeError(f"{name}: a reader takes its release's files (catalog.ReleaseFiles or a manifest), never a glob")
+    found = [(root / f["path"], f["partitions"]) for f in manifest["files"] if f["table"] == name]
     return sorted(((p, parts) for p, parts in found if all(parts.get(k) == v for k, v in want.items())),
                   key=lambda x: str(x[0]))
 
@@ -493,14 +494,17 @@ def summarize(root: Path, anchors: set[bytes], policy: Policy, by=("pfam", "nr50
     con = _connect(threads)
     try:
         con.register("nbr_rows", pa.Table.from_pylist(rows, schema=table("neighborhoods").schema))
-        _store_view(con, "domains", _store_files(root, "l1_domains", {}, files),
-                    "protein_uid, model_acc, model_name", ("library",))
-        _store_view(con, "clusters", _store_files(root, "cluster_member", {"release": release}, files),
-                    "member_uid, level, cluster_uid, rep_uid")
-        _store_view(con, "protein_len", _store_files(root, "protein_seq", {"gene_call_version": gene_call_version},
-                                                     files), "protein_uid, length")
-        _store_view(con, "genome_of", _store_files(root, "contig_dim", {"release": release}, files),
-                    "contig_uid, genome_uid")
+        views = [("domains", "l1_domains", {}, "protein_uid, model_acc, model_name", ("library",)),
+                 ("clusters", "cluster_member", {"release": release}, "member_uid, level, cluster_uid, rep_uid", ()),
+                 ("members", "member_cluster", {"release": release}, "member_uid, level, cluster_uid, rep_uid", ()),
+                 ("protein_len", "protein_seq", {"gene_call_version": gene_call_version}, "protein_uid, length", ()),
+                 ("genome_of", "contig_dim", {"release": release}, "contig_uid, genome_uid", ())]
+        largest = 0
+        for name, spec_name, want, select, parts in views:
+            found = _store_files(root, spec_name, want, files)
+            _store_view(con, name, found, select, parts)
+            largest = max(largest, catalog.row_groups_of(p for p, _ in found))
+        catalog.set_join_key_filter(con, largest)  # keys from _nb prune to the row groups that hold them (card B-27)
         out = _aggregate(con, by, top_n)
     finally:
         con.close()

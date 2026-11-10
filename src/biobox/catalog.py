@@ -26,6 +26,12 @@ over the real Python function (`<name>_udf`). The lookup macros `default_digest`
 `SeqStore` for the first three, card B-31; `TokenKeyLookup` over `token_dict` for `token_of`, card
 B-34), so a joined key reads O(1) row groups, not all.
 
+Lookups by a key that a table is not sorted by cannot prune (card B-27): `contig_label` and `member_cluster`
+are lookup tables sorted by `contig_uid` and `member_uid`, written beside `contig_occurrence` and
+`cluster_member`. The catalog's `contig_label` view reads them (`label_view_sql`), and `open_catalog` raises
+the connection's join filter so that keys from a joined table prune to the row groups that hold them
+(`set_join_key_filter`).
+
 `open_catalog` attaches the catalog file read-only to a private in-memory DuckDB instance (card B-34).
 Python functions are registered in an instance's catalog, and `duckdb.connect` on one file path hands
 every connection of the process the same instance, so a second connection could not register them
@@ -726,7 +732,71 @@ def _view_sql(spec: TableSpec, files: list[tuple[str, tuple[str, ...]]], n_colum
     return f"CREATE VIEW {spec.name} AS " + " UNION ALL ".join(selects)
 
 
-COMPLEMENT = ("ACGTRYKMBVDHNacgtrykmbvdhn", "TGCAYRMKVBHDNtgcayrmkvbhdn")
+_FIRST = "(l0_object_sha256, record_ordinal)"
+
+
+def label_view_sql(files: list[str], n_stages: int) -> str:
+    """The catalog's `contig_label` (card B-27; card W-08 made it a view over `contig_occurrence`): one row
+    per contig of the release, the accession and header of its first source record by (l0_object_sha256,
+    record_ordinal) over the release's stages, and its number of records (`n_occurrences`, as W-08 named it;
+    also `n_records`). The columns are the registry table's, then `n_occurrences`; no `stage` column.
+
+    The rows come from the registry table `contig_label` (one row per contig and stage, sorted by
+    contig_uid), never from `contig_occurrence`, so a lookup by contig_uid prunes. With the files of one stage
+    the view is a projection of them: a literal key and keys from a joined table both read only the row
+    groups that hold them. With several stages it merges each contig's rows with a GROUP BY: a literal key
+    still prunes, but DuckDB 2.0 pushes no join filter through an aggregate (16 of 16 row groups for one
+    joined key, measured on wilkcomp02, 2026-11-10, planning/measurements/2026-11-10_label_and_membership_lookups.md),
+    so there joined keys scan the label table; the exports filter the rows by key before they merge them
+    (`biobox.search.export`) and prune in both cases."""
+    cols = ("contig_uid, accession, original_header, n_records, l0_object_sha256, record_ordinal, "
+            "n_records::BIGINT AS n_occurrences")
+    if not files:
+        spec = TABLES["contig_label"]
+        typed = [f'CAST(NULL AS {duck_type(f.type)}) AS "{f.name}"' for f in spec.schema]
+        return f"CREATE VIEW contig_label AS SELECT {', '.join(typed)}, CAST(NULL AS BIGINT) AS n_occurrences WHERE false"
+    rows = f"read_parquet([{', '.join(_sql_str(p) for p in files)}], hive_partitioning = false)"
+    if n_stages <= 1:
+        return f"CREATE VIEW contig_label AS SELECT {cols} FROM {rows}"
+    return ("CREATE VIEW contig_label AS SELECT contig_uid, "
+            f"arg_min(accession, {_FIRST}) AS accession, arg_min(original_header, {_FIRST}) AS original_header, "
+            f"sum(n_records)::UINTEGER AS n_records, arg_min(l0_object_sha256, {_FIRST}) AS l0_object_sha256, "
+            f"arg_min(record_ordinal, {_FIRST}) AS record_ordinal, sum(n_records)::BIGINT AS n_occurrences "
+            f"FROM {rows} GROUP BY contig_uid")
+
+
+# DuckDB 2.0 turns the keys of a hash join's build side into a filter on the probe side's scan. Up to
+# `dynamic_or_filter_threshold` keys (default 50) the filter is the list of keys, and a scan of a table sorted
+# by the key reads only the row groups whose min/max statistics hold one of them; above it only the keys' min
+# and max are pushed, and random keys then read every row group between them (59 of 1,024 row groups for 60
+# random keys with the threshold raised, 1,015 at the default; 631 and 1,022 for 1,000 keys; measured on
+# wilkcomp02, 2026-11-10, planning/measurements/2026-11-10_label_and_membership_lookups.md). Card B-27 raises it
+# to the row groups a connection's largest table has: below that many keys the list prunes to the row groups
+# that hold a key (at most two per key, AGENTS §4.4); above it the table has fewer row groups than there are
+# keys, so a scan reads less than one row group per key, and the cheaper min/max filter is used. The list
+# costs time on every row the scan reads (0.52 s against 0.16 s for 10,000 keys over 2^20 rows, measured
+# as above), so it is capped at JOIN_KEY_FILTER_MAX keys. The cap holds the lookup tables at GTDB scale
+# (derived: `member_cluster` 190 M rows / 122,880 = 1,547 row groups; `contig_label` 111.5 M contigs =
+# 908); a table with more row groups (the postings) gets the list for up to that many keys and the min/max
+# filter above it.
+JOIN_KEY_FILTER_MIN = 50  # DuckDB's own default
+JOIN_KEY_FILTER_MAX = 4096
+
+
+def set_join_key_filter(con: duckdb.DuckDBPyConnection, row_groups: int) -> int:
+    """Set the connection's `dynamic_or_filter_threshold` to `row_groups`, the row groups of the largest table
+    its queries read (see above), at least DuckDB's default and at most JOIN_KEY_FILTER_MAX. Returns it."""
+    n = max(JOIN_KEY_FILTER_MIN, min(JOIN_KEY_FILTER_MAX, int(row_groups)))
+    con.execute(f"SET dynamic_or_filter_threshold = {n}")
+    return n
+
+
+def row_groups_of(files) -> int:
+    """The row groups of Parquet `files`, from their footers."""
+    return sum(pq.read_metadata(p).num_row_groups for p in files)
+
+
+COMPLEMENT =("ACGTRYKMBVDHNacgtrykmbvdhn", "TGCAYRMKVBHDNtgcayrmkvbhdn")
 
 
 def pair_macro_sql() -> list[str]:
@@ -984,13 +1054,10 @@ def generate_catalog(manifest: dict, out_path: Path | None = None, root: Path | 
         for f in manifest["files"]:
             widest[f["table"]] = max(widest.get(f["table"], 0), f.get("n_columns", len(TABLES[f["table"]].schema)))
         for name in sorted(TABLES):
-            con.execute(_view_sql(TABLES[name], sorted(by_table[name]), widest.get(name)))
-        # derived view, not a registry table: one row per contig_uid (contig_occurrence has one per source record)
-        con.execute(
-            "CREATE VIEW contig_label AS SELECT contig_uid, "
-            "arg_min(accession, (l0_object_sha256, record_ordinal)) AS accession, "
-            "arg_min(original_header, (l0_object_sha256, record_ordinal)) AS original_header, "
-            "count(*) AS n_occurrences FROM contig_occurrence GROUP BY contig_uid")
+            if name != "contig_label":  # the release's labels, merged over its stages (label_view_sql)
+                con.execute(_view_sql(TABLES[name], sorted(by_table[name]), widest.get(name)))
+        label_stages = {f["partitions"].get("stage") for f in manifest["files"] if f["table"] == "contig_label"}
+        con.execute(label_view_sql([p for p, _ in sorted(by_table["contig_label"])], len(label_stages)))
         con.execute("CREATE TABLE catalog_info (key VARCHAR, value VARCHAR)")
         con.executemany("INSERT INTO catalog_info VALUES (?, ?)", [
             ("release_id", manifest["release_id"]),
@@ -1522,7 +1589,8 @@ def open_catalog(path: Path, local_dir: Path | None = None, threads: int | None 
 
     Registers the Python functions of `PY_FUNCTIONS` over the store under `root` (default: the root the
     catalog was built from, in `catalog_info`), with an LRU of `cache_blocks` decoded blocks per shard, and
-    shadows the stored stand-ins and the lookup macros with them.
+    shadows the stored stand-ins and the lookup macros with them. Sets the join filter to the row groups of
+    the release's largest table (`set_join_key_filter`, card B-27).
     """
     path = Path(path)
     if local_dir is not None:
@@ -1548,6 +1616,10 @@ def open_catalog(path: Path, local_dir: Path | None = None, threads: int | None 
         raise
     if root is None:
         root = Path(con.execute("SELECT value FROM catalog_info WHERE key = 'root'").fetchall()[0][0])
+    # keys from a joined table prune to the row groups that hold them (card B-27; set_join_key_filter)
+    (largest,), = con.execute('SELECT coalesce(max(n), 0)::BIGINT FROM (SELECT sum(row_groups) AS n FROM catalog_files '
+                              'GROUP BY "table")').fetchall()
+    set_join_key_filter(con, largest)
     from biobox.l0seq.store import SeqStore
 
     files = catalog_release_files(con, Path(root))

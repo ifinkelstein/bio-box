@@ -499,16 +499,18 @@ def _reads_of(root: Path, scans: list[dict]) -> dict[str, int]:
     return out
 
 
-def _query(root: Path, cat: Path, sql: str, params=None, tables: dict | None = None) -> tuple[list, dict[str, int]]:
-    """`sql` on a fresh `open_catalog` connection (cold): its rows and the row groups read per table."""
+def _query(root: Path, cat: Path, sql: str, params=None, tables: dict | None = None) -> tuple[list, dict[str, int], int]:
+    """`sql` on a fresh `open_catalog` connection (cold): its rows, the row groups read per table, and the
+    connection's `dynamic_or_filter_threshold` (`catalog.set_join_key_filter`)."""
     con = catalog.open_catalog(cat, threads=4)
     try:
         for name, tbl in (tables or {}).items():
             con.register(name, tbl)
         out = catalog.profile_query(con, sql, params)
+        thr = int(con.execute("SELECT current_setting('dynamic_or_filter_threshold')").fetchall()[0][0])
     finally:
         con.close()
-    return out["result"], _reads_of(root, out["scans"])
+    return out["result"], _reads_of(root, out["scans"]), thr
 
 
 def _manifest_files(root: Path, man: dict, table_name: str) -> list[Path]:
@@ -530,6 +532,22 @@ def _footer_ranges(files: list[Path], column: str) -> list[tuple]:
 def _holding(files: list[Path], column: str, keys) -> int:
     """Oracle: the row groups whose footer range of `column` holds one of `keys`."""
     return sum(any(lo <= k <= hi for k in keys) for lo, hi in _footer_ranges(files, column))
+
+
+def _spread(files: list[Path], column: str, keys) -> int:
+    """Oracle: the row groups whose footer range of `column` meets the keys' range, min(keys) to max(keys)."""
+    lo_k, hi_k = min(keys), max(keys)
+    return sum(lo <= hi_k and lo_k <= hi for lo, hi in _footer_ranges(files, column))
+
+
+def _assert_key_bound(read: int, keys: list, hold: int, spread: int, total: int, thr: int) -> None:
+    """The bound of card B-27 for keys from a joined table: at most 2 row groups per key (AGENTS §4.4) and no more
+    than the keys' spread; with no more keys than the connection's join filter lists (`thr`), exactly the row
+    groups that hold a key."""
+    assert total >= MIN_RG, f"{total} row groups in the table"
+    assert 1 <= read <= MAX_RG_PER_KEY * len(keys) and read <= spread, (read, hold, spread, total)
+    if len(keys) <= thr:
+        assert read == hold, f"{read} row groups read; {hold} hold the {len(keys)} keys (spread {spread} of {total})"
 
 
 def _occurrence_oracle(root: Path, man: dict) -> dict[bytes, tuple]:
@@ -560,10 +578,13 @@ def _membership_oracle(root: Path, man: dict) -> dict[tuple[bytes, str], list[tu
     return out
 
 
-def _spread_keys(ordered: list[bytes], n: int) -> list[bytes]:
-    """`n` keys from both ends of the key order: the first 64 and the last n - 64 of `ordered` (at the 32-row
-    contig cap, the first two and last two row groups), so a join filter on their min and max covers the table."""
-    return ordered[:64] + ordered[-(n - 64):]
+def _ends(ordered: list, n: int) -> list:
+    """`n` keys from both ends of the key order, half the first of `ordered` and half the last, so the keys'
+    range spans the table while the keys lie in few row groups."""
+    return ordered[: n // 2] + ordered[-(n - n // 2):]
+
+
+LABEL_PICKS = [("40 at both ends", 40), ("100 at both ends", 100), ("100 random", 100)]
 
 
 @pytest.mark.covers("C-01")
@@ -607,7 +628,7 @@ def test_b27_label_literal_key_reads_at_most_2_row_groups(store, record_property
     `contig_label` (of at least MIN_RG) and nothing of `contig_occurrence`, and gives the oracle's label."""
     o = _occurrence_oracle(store["root"], store["man"])
     key = sorted(o)[len(o) // 2]
-    rows, reads = _query(store["root"], store["g"]["cat"], LABEL_SQL, [key])
+    rows, reads, _ = _query(store["root"], store["g"]["cat"], LABEL_SQL, [key])
     assert rows == [o[key][:3]]
     n = sum(f["row_groups"] for f in store["man"]["files"] if f["table"] == "contig_label")
     record_property("label_reads", json.dumps({"read": reads, "of": n}))
@@ -616,40 +637,42 @@ def test_b27_label_literal_key_reads_at_most_2_row_groups(store, record_property
 
 
 @pytest.mark.covers("LY-06")
-@pytest.mark.parametrize("pick", ["both ends", "random"])
-def test_b27_label_100_joined_keys_read_the_row_groups_that_hold_them(store, pick, record_property):
-    """Card B-27: 100 contig_uids from a joined table read, of `contig_label`, exactly the row groups whose
-    footer range holds one of them (at most 2 per key), and nothing of `contig_occurrence`. "both ends" takes
-    the keys from the first two and the last two row groups, so a filter on the keys' min and max alone would
-    read every row group between them."""
+@pytest.mark.parametrize("pick,n", LABEL_PICKS, ids=[p[0] for p in LABEL_PICKS])
+def test_b27_label_joined_keys_read_the_row_groups_that_hold_them(store, pick, n, record_property):
+    """Card B-27: contig_uids from a joined table read nothing of `contig_occurrence`, and of `contig_label`
+    the bound of `_assert_key_bound`. "at both ends" takes half the keys from the first row groups and half
+    from the last, so their range spans the table: 40 such keys are fewer than DuckDB's join filter lists
+    and read only the row groups that hold them, not the spread."""
     import random
 
     o = _occurrence_oracle(store["root"], store["man"])
     ordered = sorted(o)
-    keys = _spread_keys(ordered, 100) if pick == "both ends" else sorted(random.Random(SEED).sample(ordered, 100))
+    keys = _ends(ordered, n) if "ends" in pick else sorted(random.Random(SEED).sample(ordered, n))
     tbl = pa.table({"contig_uid": pa.array(keys, pa.binary(16))})
-    rows, reads = _query(store["root"], store["g"]["cat"],
-                         "SELECT l.contig_uid, l.accession, l.original_header, l.n_occurrences FROM k100 k "
-                         "JOIN contig_label l USING (contig_uid) ORDER BY l.contig_uid", tables={"k100": tbl})
+    rows, reads, thr = _query(store["root"], store["g"]["cat"],
+                              "SELECT l.contig_uid, l.accession, l.original_header, l.n_occurrences FROM k k "
+                              "JOIN contig_label l USING (contig_uid) ORDER BY l.contig_uid", tables={"k": tbl})
     assert rows == [(k, *o[k][:3]) for k in keys]
     files = _files(store, "contig_label")
-    hold = _holding(files, "contig_uid", keys)
-    record_property("label_reads", json.dumps({"read": reads, "hold": hold, "of": len(_footer_ranges(files, "contig_uid"))}))
+    hold, spread, total = (_holding(files, "contig_uid", keys), _spread(files, "contig_uid", keys),
+                           len(_footer_ranges(files, "contig_uid")))
+    record_property("label_reads", json.dumps({"read": reads, "hold": hold, "spread": spread, "of": total, "thr": thr}))
     assert set(reads) == {"contig_label"}, reads
-    assert reads["contig_label"] == hold <= MAX_RG_PER_KEY * len(keys), (reads, hold)
-    if pick == "both ends":
-        assert hold < len(_footer_ranges(files, "contig_uid")) and len(_footer_ranges(files, "contig_uid")) >= MIN_RG
+    _assert_key_bound(reads["contig_label"], keys, hold, spread, total, thr)
+    if pick == "40 at both ends":
+        assert hold < spread == total and len(keys) <= thr, (hold, spread, total, thr)
 
 
 def _member_keys(files: list[Path], n: int) -> tuple[list[bytes], int]:
     """`n` member_uids, half from the second row group of `member_cluster` and half from the second to last (the
-    row groups numbered over the files in order), and how many row groups the table has."""
+    row groups numbered over the files in order; a row group's first and last member, whose other level may sit
+    in the next row group, are left out), and how many row groups the table has."""
     groups = []
     for p in files:
         pf = pq.ParquetFile(p)
         groups += [pf.read_row_group(g, columns=["member_uid"]).column(0).to_pylist() for g in range(pf.metadata.num_row_groups)]
     assert len(groups) >= MIN_RG, f"member_cluster has {len(groups)} row groups at cap {ROW_CAP}"
-    a, b = sorted(set(groups[1])), sorted(set(groups[-2]))
+    a, b = sorted(set(groups[1]))[1:-1], sorted(set(groups[-2]))[1:-1]
     return a[: n // 2] + b[-(n - n // 2):], len(groups)
 
 
@@ -661,30 +684,41 @@ def test_b27_membership_literal_key_reads_at_most_2_row_groups(lookups, record_p
     want = _membership_oracle(root, man)
     members = sorted({m for m, _ in want})
     key = members[len(members) // 3]
-    rows, reads = _query(root, lookups["cat"], MEMBER_SQL, [key])
+    rows, reads, _ = _query(root, lookups["cat"], MEMBER_SQL, [key])
     assert rows == [(lv, *want[(key, lv)][0]) for lv in ("nr50", "nr90")]
-    keys, n = _member_keys(_manifest_files(root, man, "member_cluster"), 2)
+    _, n = _member_keys(_manifest_files(root, man, "member_cluster"), 2)
     record_property("member_reads", json.dumps({"read": reads, "of": n}))
     assert set(reads) == {"member_cluster"} and 1 <= reads["member_cluster"] <= MAX_RG_PER_KEY, reads
 
 
+MEMBER_PICKS = [("40 from two row groups", 40), ("100 from two row groups", 100), ("100 random", 100)]
+
+
 @pytest.mark.covers("LY-06")
-def test_b27_membership_100_joined_keys_read_the_row_groups_that_hold_them(lookups, record_property):
-    """Card B-27: 100 member_uids from a joined table, taken from two row groups far apart, read exactly the
-    row groups of `member_cluster` whose footer range holds one of them, and nothing of `cluster_member`."""
+@pytest.mark.parametrize("pick,n", MEMBER_PICKS, ids=[p[0] for p in MEMBER_PICKS])
+def test_b27_membership_joined_keys_read_the_row_groups_that_hold_them(lookups, pick, n, record_property):
+    """Card B-27: member_uids from a joined table read nothing of `cluster_member`, and of `member_cluster` the
+    bound of `_assert_key_bound`. "from two row groups" takes them from the second and the second to last row
+    group, so their range spans the table while two row groups hold them."""
+    import random
+
     root, man = lookups["root"], lookups["man"]
     files = _manifest_files(root, man, "member_cluster")
-    keys, n = _member_keys(files, 100)
     want = _membership_oracle(root, man)
-    rows, reads = _query(root, lookups["cat"],
-                         "SELECT m.member_uid, m.level, m.cluster_uid, m.rep_uid FROM k100 k JOIN member_cluster m "
-                         "USING (member_uid) ORDER BY m.member_uid, m.level",
-                         tables={"k100": pa.table({"member_uid": pa.array(keys, pa.binary(16))})})
+    keys = (_member_keys(files, n)[0] if "two" in pick
+            else sorted(random.Random(SEED).sample(sorted({m for m, _ in want}), n)))
+    rows, reads, thr = _query(root, lookups["cat"],
+                              "SELECT m.member_uid, m.level, m.cluster_uid, m.rep_uid FROM k JOIN member_cluster m "
+                              "USING (member_uid) ORDER BY m.member_uid, m.level",
+                              tables={"k": pa.table({"member_uid": pa.array(keys, pa.binary(16))})})
     assert rows == [(m, lv, *want[(m, lv)][0]) for m in keys for lv in ("nr50", "nr90")]
-    hold = _holding(files, "member_uid", keys)
-    record_property("member_reads", json.dumps({"read": reads, "hold": hold, "of": n}))
+    hold, spread, total = (_holding(files, "member_uid", keys), _spread(files, "member_uid", keys),
+                           len(_footer_ranges(files, "member_uid")))
+    record_property("member_reads", json.dumps({"read": reads, "hold": hold, "spread": spread, "of": total, "thr": thr}))
     assert set(reads) == {"member_cluster"}, reads
-    assert reads["member_cluster"] == hold <= MAX_RG_PER_KEY * len(keys) and hold < n, (reads, hold, n)
+    _assert_key_bound(reads["member_cluster"], keys, hold, spread, total, thr)
+    if pick == "40 from two row groups":
+        assert hold == 2 < spread and len(keys) <= thr, (hold, spread, total, thr)
 
 
 class _Profiled:
@@ -700,38 +734,42 @@ class _Profiled:
 
 
 @pytest.mark.covers("LY-06")
-def test_b27_export_lookups_read_the_row_groups_that_hold_the_keys(lookups, record_property):
+@pytest.mark.parametrize("n", [40, 100])
+def test_b27_export_lookups_read_the_row_groups_that_hold_the_keys(lookups, n, record_property):
     """Card B-27: the hit and locus exports' label and cluster lookups (`export._annotate_contigs` and
-    `_annotate_proteins` on `open_store`'s connection) for 100 contigs and 100 proteins read exactly the row
-    groups of `contig_label` and `member_cluster` that hold the keys, never `contig_occurrence` or
-    `cluster_member`, and give the oracles' labels and clusters."""
+    `_annotate_proteins` on `open_store`'s connection) for `n` contigs and `n` proteins whose ranges span the
+    tables never read `contig_occurrence` or `cluster_member`, read `contig_label` and `member_cluster` within
+    the bound of `_assert_key_bound`, and give the oracles' labels and clusters."""
     from biobox.l3 import tapes as tapes_mod
     from biobox.search import export
 
     root, man, rel, v = lookups["root"], lookups["man"], lookups["rel"], lookups["V"]
     o = _occurrence_oracle(root, man)
-    contigs = _spread_keys(sorted(o), 100)
-    members, _ = _member_keys(_manifest_files(root, man, "member_cluster"), 100)
+    keys = {"contig_label": ("contig_uid", _ends(sorted(o), n)),
+            "member_cluster": ("member_uid", _member_keys(_manifest_files(root, man, "member_cluster"), n)[0])}
     want = _membership_oracle(root, man)
     with export.open_store(root, release=rel, gene_call_version=v, tape_version=tapes_mod.tape_version([v]), manifest=man,
                            threads=4, relations=("prot", "dom", "clus", "lab", "cidx", "dim")) as st:
         con = st.con
-        con.register("_cin", pa.table({"contig_uid": pa.array(contigs, pa.binary(16))}))
+        thr = int(con.execute("SELECT current_setting('dynamic_or_filter_threshold')").fetchall()[0][0])
+        con.register("_cin", pa.table({"contig_uid": pa.array(keys["contig_label"][1], pa.binary(16))}))
         con.execute("CREATE TEMP TABLE _c AS SELECT contig_uid FROM _cin")
-        con.register("_pin", pa.table({"protein_uid": pa.array(members, pa.binary(16))}))
+        con.register("_pin", pa.table({"protein_uid": pa.array(keys["member_cluster"][1], pa.binary(16))}))
         con.execute("CREATE TEMP TABLE _p AS SELECT protein_uid FROM _pin")
         px = _Profiled(con, root)
         export._annotate_contigs(px, False)
         export._annotate_proteins(px, None)
         lab = con.execute("SELECT contig_uid, accession, header, n_records FROM _lab ORDER BY contig_uid").fetchall()
         cl = con.execute("SELECT protein_uid, nr90, nr50, nr50_rep FROM _cl ORDER BY protein_uid").fetchall()
-    assert lab == [(k, *o[k][:3]) for k in contigs]
-    assert cl == [(m, want[(m, "nr90")][0][0], want[(m, "nr50")][0][0], want[(m, "nr50")][0][1]) for m in members]
-    hold = {"contig_label": _holding(_manifest_files(root, man, "contig_label"), "contig_uid", contigs),
-            "member_cluster": _holding(_manifest_files(root, man, "member_cluster"), "member_uid", members)}
-    record_property("export_reads", json.dumps({"read": px.reads, "hold": hold}))
+    assert lab == [(k, *o[k][:3]) for k in keys["contig_label"][1]]
+    assert cl == [(m, want[(m, "nr90")][0][0], want[(m, "nr50")][0][0], want[(m, "nr50")][0][1])
+                  for m in keys["member_cluster"][1]]
+    record_property("export_reads", json.dumps({"read": px.reads, "thr": thr}))
     assert not {"contig_occurrence", "cluster_member"} & set(px.reads), px.reads
-    assert {t: px.reads.get(t) for t in hold} == hold, (px.reads, hold)
+    for t, (col, ks) in keys.items():
+        files = _manifest_files(root, man, t)
+        _assert_key_bound(px.reads.get(t, 0), ks, _holding(files, col, ks), _spread(files, col, ks),
+                          len(_footer_ranges(files, col)), thr)
 
 
 def test_b27_contig_label_view_merges_the_release_stages(tmp_path):
