@@ -1,0 +1,55 @@
+name: mutation
+
+# Weekly mutation testing of l0seq, l1, l3, io, ids and layout (card D-01).
+# Pass 1: mutmut with its per-mutant test selection. Pass 2: scripts/mutation_recheck.py runs the
+# full tests/r1 + tests/r2 selection against every mutant pass 1 left alive; its verdict is final.
+# Runs in the test image that image.yml built for this commit (ghcr.io/ifinkelstein/bio-box-test:<sha>),
+# which has MMseqs2, samtools, hmmsearch and the dev dependency group (mutmut).
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: "17 3 * * 0"
+
+permissions:
+  contents: read
+  packages: read
+
+env:
+  IMAGE: ghcr.io/ifinkelstein/bio-box-test
+
+jobs:
+  mutation:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 360
+    steps:
+      - uses: actions/checkout@v7
+      - uses: docker/login-action@v4
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: pull the test image for this commit
+        run: docker pull ${{ env.IMAGE }}:${{ github.sha }}
+      - name: two-pass mutation run
+        # root, because /opt/bio-box is owned by root and mutmut writes ./mutants next to the sources;
+        # BIOBOX_TEST_RUN_DIR stays unset so conftest writes no test_run rows;
+        # profiles/ is not copied into the test image but tests/r1/test_profile.py reads it
+        run: |
+          mkdir -p out
+          docker run --rm --user root -v "$PWD/out:/out" -v "$PWD/profiles:/opt/bio-box/profiles:ro" ${{ env.IMAGE }}:${{ github.sha }} bash -euo pipefail -c '
+            unset BIOBOX_TEST_RUN_DIR
+            mutmut --version
+            mutmut run 2>&1 | tr "\r" "\n" | tail -n 400 > /out/mutmut_run.log
+            python scripts/mutation_recheck.py --tsv /out/mutation_recheck.tsv recheck --jobs 2 > /out/recheck.log
+            python scripts/mutation_recheck.py --tsv /out/mutation_recheck.tsv summary | tee /out/summary.txt
+          '
+      - name: summary
+        if: always()
+        run: |
+          if [ -f out/summary.txt ]; then cat out/summary.txt >> "$GITHUB_STEP_SUMMARY"; fi
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: mutation-survivors
+          path: out/
