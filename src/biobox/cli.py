@@ -16,6 +16,7 @@
     bio-box release define --root R --release R1 --stages S0,S1 [--out DIR]
     bio-box release cluster|tokens|postings|dim|manifest|catalog --root R --release R1 [--stages S0,S1]
                 [--tmp D] [--threads N] [--producers P,Q] [--libraries L,M] [--tape-version T] [--out DIR]
+    bio-box release verify --root R --release R2 [--previous R1]
     bio-box stage inputs --root R --stage S --genomes genomes.json [--out DIR]
     bio-box stage ingest --root R --stage S --objects objects.json [--shard-bases N] [--line-width N] [--tmp D]
     bio-box stage genecall|igr|tapes --root R --stage S [--tmp D] [--producers P,Q] [--workers N] [--out DIR]
@@ -302,7 +303,7 @@ def _run_step(a) -> int:
                             nice=a.nice, threads=a.threads)
 
 
-RELEASE_STEPS = ("define", "cluster", "tokens", "postings", "dim", "manifest", "catalog")
+RELEASE_STEPS = ("define", "cluster", "tokens", "postings", "dim", "manifest", "catalog", "verify")
 STAGE_STEPS = ("inputs", "ingest", "genecall", "igr", "tapes", "domains", "ncrna")
 DOMAIN_ACTIONS = ("plan", "shard", "merge")  # `stage domains plan|shard|merge` (card B-24)
 OUT_HELP = ("output root (card C-08): every output goes under it at its root-relative path; default "
@@ -369,14 +370,54 @@ def _release_step(a, root: Path, stages: list[str], out: Path) -> dict:
     return res
 
 
+def _verify(a) -> int:
+    """`release verify` (card C-13): the release's manifest against the root (`catalog.verify_manifest`: every listed
+    file there with its size and sha256, and no unlisted file in the release's scope) and, with `--previous P`, P's
+    manifest against the release's (`contracts.check_append_only`, R-09: every file of P outside P's own `release=`
+    partition is listed with the same sha256). Writes nothing. Prints each problem, then one line per check; exit 0
+    when there is no problem, else 1 (a missing manifest is a problem)."""
+    from biobox import contracts
+
+    root = Path(a.root)
+
+    def load(release: str) -> dict | None:
+        path = catalog.manifest_path(root, release)
+        if path.is_file():
+            return catalog.read_manifest(path)
+        print(f"release {release}: no manifest at {path} (bio-box release manifest --root {root} --release {release} "
+              f"writes it)")
+        return None
+
+    man = load(a.release)
+    if man is None:
+        return 1
+    problems = catalog.verify_manifest(man, root)
+    _print(problems)
+    print(f"release {a.release}: {'verified' if not problems else f'{len(problems)} problems'} (stages "
+          f"{','.join(man['stages'])}, {len(man['files'])} files, {len(man.get('artifacts', []))} artifacts, manifest "
+          f"hash {catalog.manifest_hash(man)})")
+    failed = bool(problems)
+    if a.previous:
+        prev = load(a.previous)
+        if prev is None:
+            return 1
+        rewritten = contracts.check_append_only(prev, man)
+        _print(rewritten)
+        print(f"append-only against {a.previous}: {'ok' if not rewritten else f'{len(rewritten)} problems'}")
+        failed = failed or bool(rewritten)
+    return 1 if failed else 0
+
+
 def _release(a) -> int:
     """One release-level step over the release's stages (card B-25). `define` writes `release_def`
     once (each stage must have been ingested); a builder step given `--stages` defines the release if
     it is not yet defined; without `--stages` the stages come from `release_def`. `manifest` and
     `catalog` need the release defined; `catalog` needs its manifest. Inputs are read from `--root`,
-    outputs written under `_out` (card C-08)."""
+    outputs written under `_out` (card C-08). `verify` writes nothing (`_verify`)."""
     from biobox import catalog, io
 
+    if a.step == "verify":
+        return _verify(a)
     root = Path(a.root)
     try:
         out = _out(a, root)
@@ -614,6 +655,8 @@ def main(argv: list[str] | None = None) -> int:
     rl.add_argument("--tape-version", help="catalog: the tape version the pair macros serve (default: the one of "
                                            "the release's postings)")
     rl.add_argument("--out", help=OUT_HELP)
+    rl.add_argument("--previous", help="verify: an earlier release; every file of its manifest outside its own "
+                                       "release= partition must be in this release's with the same sha256 (R-09)")
     st = sub.add_parser("stage", parents=[common], help="per-stage builder steps (card C-08)")
     st.add_argument("step", choices=STAGE_STEPS)
     st.add_argument("action", nargs="?", choices=DOMAIN_ACTIONS,
