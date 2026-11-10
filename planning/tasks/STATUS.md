@@ -60,12 +60,15 @@ Decisions DEC-18 to DEC-23 were approved by the PI on 2026-11-09 and are in `pla
 | Card | Model | State |
 |---|---|---|
 | B-23 ingest reads once; killed ingest reruns | Opus | started 2026-11-09 |
+| B-25 a release names its stages | Opus | started 2026-11-10 |
+| W-05 readable exports; `search_hit/2` | Opus | started 2026-11-10 |
+| B-18 phase-B exit measurements | Opus | started 2026-11-10 |
 | Pod import ladder (not a card): phages, then 1 Gbp and 10 Gbp of complete prokaryotes with the new code | Opus | detached jobs on the pod; agent waiting on them |
 
 ## Next, in order
 
-1. B-18 phase-B exit measurements (after B-17).
-2. B-22 `l0_manifest` per stage and W-05 readable exports (held until B-17 merges: they share `schemas.py`, the lock and `export.py` with it).
+1. B-22 `l0_manifest` per stage (held until B-23 merges: both edit `l0seq/store.py`); B-26 postings bytes (after B-25: both touch `postings.py`).
+2. B-24 streaming clustering (now needed before S2: see the import ladder).
 3. Pull request `plan/task-cards` → `main`, merged when the suite and CI are green (the PI delegated the timing). The merge builds the image and runs the image-only tests for the first time.
 4. C-04 `build-stage`; C-06 runbook.
 5. W-03 pack and runs outside the data root; W-05 readable exports; W-07 the one command.
