@@ -21,8 +21,12 @@
 #   --digest sha256:HEX   refuse unless the image's sha256 is this (it is computed either way
 #                    and passed in as BIOBOX_IMAGE_DIGEST, which run records carry)
 #   --mem SIZE       MemoryMax (default: the profile's mem_scope)
-#   --threads N      CPUQuota of N CPUs (default: the profile's max_threads_day, the cap that
-#                    holds at any hour; run-step chooses its own thread count under it)
+#   --threads N      CPUQuota of N CPUs (default: the profile's max_threads_night, the most any
+#                    hour allows). The quota is fixed when the unit starts, but a build runs
+#                    across hours, so it is only a ceiling: the limit of the hour is held inside
+#                    (card C-12). build-stage reads the allowance again before each step and
+#                    before each shard launch and starts nothing that would pass it, and each
+#                    run-step chooses its own thread count by the hour when it starts.
 #   --nice N         (default: the profile's nice_monolithic)
 #   --bind SPEC      an extra `singularity --bind` (repeatable)
 #   --env K=V        an extra `singularity --env` (repeatable), e.g. PYTHONPATH=<tree>/src
@@ -65,7 +69,7 @@ prof() {  # the value of a top-level scalar key of the profile
   sed -n "s/^$1:[[:space:]]*\([^#[:space:]]*\).*/\1/p" "$PROFILE"
 }
 MEM=${MEM:-$(prof mem_scope)}
-THREADS=${THREADS:-$(prof max_threads_day)}
+THREADS=${THREADS:-$(prof max_threads_night)}
 NICE=${NICE:-$(prof nice_monolithic)}
 TMPDIR_PROFILE=$(prof tmp)
 LOG=${LOG:-$TMPDIR_PROFILE/logs/$UNIT.log}
