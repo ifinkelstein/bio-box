@@ -184,7 +184,7 @@ def _fault_con(con, **replace) -> duckdb.DuckDBPyConnection:
     c = duckdb.connect()
     for name in ("protein_occurrence", "contig_index", "slot_protein", "protein_seq", "l1_domains", "contig_occurrence",
                  "l0_manifest", "seq_locator", "cluster_member", "cluster_member_aln", "igr",
-                 "contig_tapes", "tape_tokens", "token_dict", "slot_pairs"):
+                 "contig_tapes", "tape_tokens", "token_dict", "slot_pairs", "token_postings"):
         tbl = replace.get(name)
         if tbl is None:
             tbl = con.sql(f"SELECT * FROM {name}").to_arrow_table()
