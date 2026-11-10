@@ -139,7 +139,7 @@ def _legacy_genes(root: Path) -> dict[tuple, bytes]:
 
 @pytest.mark.covers("C-01", "LY-10")
 def test_new_tables_enter_the_manifest(root):
-    man = catalog.build_manifest(root, "rS0.test")
+    man = catalog.build_manifest(root, "rS0.test", ["S0"])
     by_table = {f["table"]: f for f in man["files"]}
     for name in ("feature", "feature_protein"):
         assert by_table[name]["path"] == GLOBS[name]

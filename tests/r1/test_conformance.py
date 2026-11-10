@@ -224,7 +224,7 @@ def test_phase_b_tables_are_catalog_views_with_partition_columns(tmp_path):
     root = tmp_path / "root"
     tables = _write_phase_b(root)
     assert sorted(tables) == list(PHASE_B)
-    man = catalog.build_manifest(root, RELEASE)
+    man = catalog.build_manifest(root, RELEASE, ["S0"])
     assert sorted(f["table"] for f in man["files"]) == list(PHASE_B)
     cat = catalog.generate_catalog(man, tmp_path / "catalog.duckdb", root)
     con = catalog.open_catalog(cat, root=root)
@@ -251,7 +251,7 @@ def test_token_postings_file_under_the_wrong_bucket_is_refused(tmp_path, bucket,
     root = tmp_path / "root"
     write_table(t, table("token_postings"), root / rel.replace(f"token_bucket={TOKEN_BUCKET}", f"token_bucket={bucket}"))
     if ok:
-        assert len(catalog.build_manifest(root, RELEASE)["files"]) == 1
+        assert len(catalog.build_manifest(root, RELEASE, [])["files"]) == 1
     else:
         with pytest.raises(catalog.LayoutError, match="LY-05"):
-            catalog.build_manifest(root, RELEASE)
+            catalog.build_manifest(root, RELEASE, [])

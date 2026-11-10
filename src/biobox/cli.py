@@ -10,6 +10,12 @@
     bio-box nbr summarize <run_id|uid,uid,...> --root R --window 5g --by pfam,nr50 [--top 50] [--release R]
                 [--json | --format tsv]
     bio-box run-step --profile P --root R --stage S --step NAME [--nice monolithic|fanout] [--threads N] -- CMD ...
+    bio-box release define --root R --release R1 --stages S0,S1
+    bio-box release cluster|tokens|postings|dim|manifest --root R --release R1 [--stages S0,S1] [--tmp D]
+                [--threads N] [--producers P,Q] [--libraries L,M]
+
+A release names its stages (card B-25): `--stages` defines it once (its `release_def`); after that
+every release step reads the stages from `release_def`, and `--stages`, if given, must repeat them.
 """
 
 from __future__ import annotations
@@ -187,6 +193,77 @@ def _run_step(a) -> int:
                             nice=a.nice, threads=a.threads)
 
 
+RELEASE_STEPS = ("define", "cluster", "tokens", "postings", "dim", "manifest")
+
+
+def _csv(s: str | None) -> list[str] | None:
+    return None if s is None else [x.strip() for x in s.split(",")]
+
+
+def _release_step(a, root: Path, stages: list[str]) -> dict:
+    tmp = Path(a.tmp) if a.tmp else None
+    if a.step == "cluster":
+        from biobox.l2 import cluster
+
+        return cluster.run(root, a.release, a.gene_call_version, stages, threads=a.threads, tmp=tmp)
+    if a.step == "tokens":
+        from biobox.l3 import tokens
+
+        return tokens.run(root, a.release, stages, a.gene_call_version, libraries=_csv(a.libraries),
+                          producers=_csv(a.producers), tmp=tmp)
+    if a.step == "postings":
+        from biobox.l3 import postings
+
+        return postings.run(root, a.release, stages, a.gene_call_version, producers=_csv(a.producers), tmp=tmp)
+    if a.step == "dim":
+        from biobox import dim
+
+        return dim.run(root, a.release, stages, tmp=tmp)
+    from biobox import catalog
+
+    man = catalog.build_manifest(root, a.release, stages)
+    path = root / f"manifests/release={a.release}.json"
+    if path.exists() and catalog.manifest_hash(catalog.read_manifest(path)) != catalog.manifest_hash(man):
+        raise ValueError(f"{path}: a different manifest of release {a.release} exists; refusing to overwrite")
+    catalog.write_manifest(man, path)
+    return {"files": len(man["files"]), "artifacts": len(man["artifacts"]), "manifest_hash": catalog.manifest_hash(man)}
+
+
+def _release(a) -> int:
+    """One release-level step over the release's stages (card B-25). `define` writes `release_def`
+    once (each stage must have been ingested); a builder step given `--stages` defines the release if
+    it is not yet defined; without `--stages` the stages come from `release_def`. `manifest` needs
+    the release defined."""
+    from biobox import catalog, io
+
+    root = Path(a.root)
+    try:
+        given = _csv(a.stages)
+        if a.step == "define":
+            if given is None:
+                raise ValueError("release define needs --stages")
+            stages = catalog.check_stages(given)
+            missing = [s for s in stages if not io.part_files(root / f"l0seq/contig_index/stage={s}")]
+            if missing:
+                raise FileNotFoundError(f"stages {missing} have no contig_index under {root}: not ingested")
+            res: dict = {}
+            stages = catalog.define_release(root, a.release, stages)
+        else:
+            if given is None or a.step == "manifest":
+                stages = catalog.release_stages(root, a.release)
+                if given is not None and catalog.check_stages(given) != stages:
+                    raise ValueError(f"release_def of {a.release} lists stages {stages}, not {given}")
+            else:
+                stages = catalog.verify_release_def(root, a.release, given)  # the builder defines it
+            res = _release_step(a, root, stages)
+    except (FileNotFoundError, ValueError) as e:
+        print(f"refused: {e}", file=sys.stderr)
+        return 2
+    print(json.dumps({"release": a.release, "stages": stages, "step": a.step, "result": res}, sort_keys=True,
+                     default=str))
+    return 0
+
+
 def main(argv: list[str] | None = None) -> int:
     argv = list(sys.argv[1:] if argv is None else argv)
     command: list[str] = []
@@ -244,6 +321,14 @@ def main(argv: list[str] | None = None) -> int:
     r.add_argument("--step", required=True)
     r.add_argument("--nice", choices=["monolithic", "fanout"], default="monolithic")
     r.add_argument("--threads", type=int)
+    rl = sub.add_parser("release", parents=[common], help="release-level steps over the release's stages (B-25)")
+    rl.add_argument("step", choices=RELEASE_STEPS)
+    rl.add_argument("--release", required=True)
+    rl.add_argument("--stages", help="S0,S1: the release's stages in order; defines the release once")
+    rl.add_argument("--tmp", help="scratch directory (system temp by default; never under the data root)")
+    rl.add_argument("--threads", type=int, default=1, help="cluster: MMseqs2 threads")
+    rl.add_argument("--producers", help="tokens, postings: the tape version's producers (default: the gene caller)")
+    rl.add_argument("--libraries", help="tokens: domain libraries in precedence order (default: those with domains in the release's stages, by name)")
     a = p.parse_args(argv)
     if a.cmd == "search" and a.action == "run" and not a.release:
         p.error("search run needs --release")
@@ -251,7 +336,7 @@ def main(argv: list[str] | None = None) -> int:
         if not command:
             p.error("run-step needs a command after --")
         a.command = command
-    return {"pack": _pack, "search": _search, "nbr": _nbr, "run-step": _run_step}[a.cmd](a)
+    return {"pack": _pack, "search": _search, "nbr": _nbr, "run-step": _run_step, "release": _release}[a.cmd](a)
 
 
 if __name__ == "__main__":

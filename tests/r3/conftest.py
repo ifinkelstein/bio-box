@@ -49,7 +49,7 @@ def store_root(tmp_path_factory):
     print(f"\ngolden: ingest {t1 - t0:.1f}s, gene calling {t2 - t1:.1f}s, {report}, igr {igrs}, tapes {tp}")
     if shutil.which("mmseqs"):
         from biobox.l2 import cluster
-        cluster.run(root, "rS0.golden", GENE_CALL_VERSION, threads=4, tmp=root.parent)
-        tokens.run(root, "rS0.golden")
-        print("postings", postings.run(root, "rS0.golden"))
+        cluster.run(root, "rS0.golden", GENE_CALL_VERSION, ["S0"], threads=4, tmp=root.parent)
+        tokens.run(root, "rS0.golden", ["S0"])
+        print("postings", postings.run(root, "rS0.golden", ["S0"]))
     return root

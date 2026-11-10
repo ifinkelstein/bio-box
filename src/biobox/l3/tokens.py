@@ -21,6 +21,8 @@ Writes, under `<root>/l3/`, through `biobox.io.write_table`:
     token_dict/release=<R>/part-<k>.parquet                     token_id -> level, source, key, n_slots
     tape_tokens/tape_version=<tv>/release=<R>/part-<k>.parquet  per contig: one list per level
 
+and the release's `release_def` (`biobox.catalog.define_release`) if it has none. Only the release's
+stages are read (card B-25): tapes and domains of a stage the release does not list are ignored.
 The tape version is that of `producers` (default: the gene-call producer alone, card B-07); a
 non-CDS slot has no protein and so no token (a null in each list), and a tape without slots has
 three empty lists.
@@ -45,7 +47,7 @@ from pathlib import Path
 import duckdb
 import pyarrow.parquet as pq
 
-from biobox import io, layout
+from biobox import catalog, io, layout
 from biobox.l1.genecall import DUCK_MEMORY_LIMIT, GENE_CALL_VERSION
 from biobox.l3.tapes import MAX_SLOTS, tape_version
 from biobox.registry.schemas import table
@@ -71,22 +73,31 @@ def tape_version_of(gene_call_version: str = GENE_CALL_VERSION, producers: list[
     return tape_version([gene_call_version] if producers is None else producers)
 
 
-def _tape_files(root: Path, tv: str) -> list[Path]:
-    return io.part_files(Path(root) / "l3/tapes", f"tape_version={tv}/stage=*/part-*.parquet")
+def _tape_files(root: Path, tv: str, stages: list[str]) -> list[Path]:
+    """The tape files of `tv` for `stages`, stage by stage in the order given and each stage's parts in
+    part order (card B-25). A listed stage without tapes of `tv` raises FileNotFoundError."""
+    files = []
+    for s in catalog.check_stages(stages):
+        found = io.part_files(Path(root) / f"l3/tapes/tape_version={tv}/stage={s}")
+        if not found:
+            raise FileNotFoundError(f"stage {s}: no tapes of tape version {tv} under {root}")
+        files += found
+    return files
 
 
 def read_tapes(root: Path, gene_call_version: str = GENE_CALL_VERSION, columns: list[str] | None = None,
-               producers: list[str] | None = None) -> list[dict]:
-    """Every tape of the tape version as a list (a test and `pairs` helper; builders use `iter_tapes`)."""
+               producers: list[str] | None = None, *, stages: list[str]) -> list[dict]:
+    """The tapes of the tape version for `stages` as a list (a test and `pairs` helper; builders use
+    `iter_tapes`)."""
     tv = tape_version_of(gene_call_version, producers)
-    return [r for f in _tape_files(root, tv) for r in pq.read_table(f, columns=columns).to_pylist()]
+    return [r for f in _tape_files(root, tv, stages) for r in pq.read_table(f, columns=columns).to_pylist()]
 
 
-def iter_tapes(root: Path, tape_version: str, columns: list[str] | None = None) -> Iterator[dict]:
-    """The tapes of `tape_version` one row at a time in `contig_uid` order, over every stage's files.
+def iter_tapes(root: Path, tape_version: str, stages: list[str], columns: list[str] | None = None) -> Iterator[dict]:
+    """The tapes of `tape_version` one row at a time in `contig_uid` order, over the files of `stages`.
 
     Each file is read one row group at a time and the files are merged on `contig_uid` (equal uids
-    in file path order), so one row group per file is held.
+    in the order of `stages`, then part order), so one row group per file is held.
     """
     def rows(f: Path) -> Iterator[dict]:
         pf = pq.ParquetFile(f)
@@ -95,12 +106,23 @@ def iter_tapes(root: Path, tape_version: str, columns: list[str] | None = None) 
             yield from pf.read_row_group(i, columns=cols).to_pylist()
 
     keep = None if columns is None else set(columns)
-    for r in heapq.merge(*(rows(f) for f in _tape_files(root, tape_version)), key=lambda r: r["contig_uid"]):
+    for r in heapq.merge(*(rows(f) for f in _tape_files(root, tape_version, stages)), key=lambda r: r["contig_uid"]):
         yield r if keep is None else {k: v for k, v in r.items() if k in keep}
 
 
-def libraries_in(root: Path) -> list[str]:
-    return sorted({p.name.removeprefix("library=") for p in (Path(root) / "l1/domains").glob("library=*")})
+def _domain_files(root: Path, library: str, stages: list[str]) -> list[Path]:
+    """The domain files of `library` for `stages`, in the order of `stages`. A library need not be
+    scanned on every stage (a stage without its files adds none)."""
+    return [f for s in stages for f in io.part_files(Path(root) / f"l1/domains/library={library}/stage={s}")]
+
+
+def libraries_in(root: Path, stages: list[str]) -> list[str]:
+    """The libraries with domain files in at least one of `stages`, by name (card B-25: a library that
+    only an unlisted stage has does not enter the release, so it cannot renumber the family sources)."""
+    base = Path(root) / "l1/domains"
+    names = sorted(p.name.removeprefix("library=") for p in base.iterdir() if p.name.startswith("library=")) \
+        if base.exists() else []
+    return [n for n in names if _domain_files(root, n, catalog.check_stages(stages))]
 
 
 def _sql_str(s: str) -> str:
@@ -128,16 +150,20 @@ def _write_parts(con, sql: str, spec_name: str, base: Path, est_row: int, max_fi
     return len(io.write_parts(io.duck_batches(con, sql, spec), spec, base, est_row, max_file_bytes, **kw))
 
 
-def run(root: Path, release: str, gene_call_version: str = GENE_CALL_VERSION,
+def run(root: Path, release: str, stages: list[str], gene_call_version: str = GENE_CALL_VERSION,
         libraries: list[str] | None = None, producers: list[str] | None = None,
         max_file_bytes: int = layout.MAX_FILE_BYTES, max_slots: int = MAX_SLOTS, tmp=None) -> dict:
     """Write the release's `token_dict` and the `tape_tokens` of the tape version of `producers`.
 
-    `libraries`: the domain libraries in precedence order (default: every library under `l1/domains`,
-    by name). `tmp` holds DuckDB's private scratch directory (system temp by default; never the data root).
+    `stages`: the release's stages (card B-25); only their tapes and domains are read, a listed stage
+    without tapes raises FileNotFoundError, and the release's `release_def` is written, or checked to
+    list the same stages (`catalog.define_release`). `libraries`: the domain libraries in precedence
+    order (default: every library with domains in `stages`, by name). `tmp` holds DuckDB's private
+    scratch directory (system temp by default; never the data root).
     """
     root = Path(root)
-    libraries = libraries_in(root) if libraries is None else list(libraries)
+    stages = catalog.check_stages(stages)
+    libraries = libraries_in(root, stages) if libraries is None else list(libraries)
     if len(libraries) > 31:
         raise ValueError("more than 31 libraries: widen the token source field")
     if max_slots < 1:
@@ -145,14 +171,16 @@ def run(root: Path, release: str, gene_call_version: str = GENE_CALL_VERSION,
     if tmp is not None and Path(tmp).resolve().is_relative_to(root.resolve()):
         raise ValueError(f"{tmp}: the scratch directory may not lie under the data root")
     tv = tape_version_of(gene_call_version, producers)
+    tape_files = _tape_files(root, tv, stages)
+    catalog.define_release(root, release, stages)
 
-    # every stage's tapes, numbered by file and row: rows with equal contig_uid keep that order
-    tape_src = _scan(_tape_files(root, tv), "contig_uid, protein_uids",
+    # the stages' tapes, numbered by file and row: rows with equal contig_uid keep that order
+    tape_src = _scan(tape_files, "contig_uid, protein_uids",
                      "NULL::BIGINT AS fidx, NULL::BIGINT AS rn, NULL::BLOB AS contig_uid, "
                      "NULL::BLOB[] AS protein_uids", numbered=True)
     dom_parts = []
     for rank, lib in enumerate(libraries):  # a library listed twice: its first position wins, as its rank is smaller
-        files = io.part_files(root / "l1/domains", f"library={lib}/stage=*/part-*.parquet")
+        files = _domain_files(root, lib, stages)
         if files:
             dom_parts.append(_scan(files, f"{rank} AS rank, protein_uid, model_acc, dom_bitscore, env_start", ""))
     doms = " UNION ALL ".join(f"SELECT * FROM {p}" for p in dom_parts) or (

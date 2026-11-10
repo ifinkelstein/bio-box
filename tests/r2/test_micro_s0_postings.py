@@ -50,8 +50,8 @@ def built(tmp_path_factory):
     d = tmp_path_factory.mktemp("postings")
     root = d / "a"
     circ = micro.build(root, with_postings=False)
-    res = postings.run(root, REL)
-    man = catalog.build_manifest(root, REL)
+    res = postings.run(root, REL, ["S0"])
+    man = catalog.build_manifest(root, REL, ["S0"])
     con = catalog.open_catalog(catalog.generate_catalog(man, d / "c.duckdb"))
     yield root, man, con, circ, res
     con.close()
@@ -163,8 +163,8 @@ def test_b10_ordinals_name_the_features_of_the_tape(built):
 def test_b10_without_a_domain_library_the_family_level_adds_nothing(built, tmp_path):
     root, _, _, _, _ = built
     fresh = _fresh(root, tmp_path, "s", (POST, "l1/domains", "l3/token_dict", "l3/tape_tokens"))
-    tokens.run(fresh, REL)
-    res = postings.run(fresh, REL)
+    tokens.run(fresh, REL, ["S0"])
+    res = postings.run(fresh, REL, ["S0"])
     got = _written(fresh)
     assert sorted(map(_key, got)) == sorted(map(_key, _oracle(fresh)))
     assert res["rows_by_level"]["family"] == 0 and res["rows"] == len(got) > 0
@@ -186,8 +186,8 @@ def test_b10_a_non_cds_slot_has_no_postings_and_shifts_later_ordinals(built, tmp
     tv2 = tapes.run(fresh, "S0", circ, producers=producers)["tape_version"]
     rel = "rS0.b10nc"
     shutil.copytree(fresh / f"l2/cluster_member/release={REL}", fresh / f"l2/cluster_member/release={rel}")
-    tokens.run(fresh, rel, producers=producers)
-    res = postings.run(fresh, rel, producers=producers)
+    tokens.run(fresh, rel, ["S0"], producers=producers)
+    res = postings.run(fresh, rel, ["S0"], producers=producers)
     assert res["tape_version"] == tv2 != TV
     got = _written(fresh, rel, tv2)
     assert sorted(map(_key, got)) == sorted(map(_key, _oracle(fresh, rel, tv2)))
@@ -247,7 +247,7 @@ def test_b10_foreign_keys_catch_an_unknown_token(built, tmp_path):
     row = {**_written(root)[0], "token_id": 7 << 61}  # level 7 is no token level: not in token_dict
     io.write_table([pa.Table.from_pylist([row], schema=spec.schema)], spec,
                    fresh / f"{POST}/release={REL}/tape_version={TV}/token_bucket=all/part-0.parquet")
-    man = catalog.build_manifest(fresh, REL)
+    man = catalog.build_manifest(fresh, REL, ["S0"])
     con = catalog.open_catalog(catalog.generate_catalog(man, tmp_path / "c.duckdb"))
     try:
         assert any(p.startswith("token_postings('token_id', 'release')") for p in contracts.check_foreign_keys(con))
@@ -260,7 +260,7 @@ def test_b10_foreign_keys_catch_an_unknown_token(built, tmp_path):
 def test_b10_rows_sit_in_the_bucket_of_their_low_byte(built, tmp_path, width):
     root, _, _, _, _ = built
     fresh = _fresh(root, tmp_path, "s")
-    res = postings.run(fresh, REL, prefix_width=width)
+    res = postings.run(fresh, REL, ["S0"], prefix_width=width)
     files = _files(fresh)
     assert len(files) > 1 and res["buckets"] == len(files)
     for b, fs in files.items():
@@ -269,7 +269,7 @@ def test_b10_rows_sit_in_the_bucket_of_their_low_byte(built, tmp_path, width):
             for tid in pq.read_table(f, columns=["token_id"]).column(0).to_pylist():
                 assert f"{tid & 0xFF:02x}"[:width] == b, (f, tid)
     assert sorted(map(_key, _written(fresh))) == sorted(map(_key, _written(root)))
-    man = catalog.build_manifest(fresh, REL)  # LY-05: the derived token_bucket partition is checked
+    man = catalog.build_manifest(fresh, REL, ["S0"])  # LY-05: the derived token_bucket partition is checked
     only = {**man, "files": [f for f in man["files"] if f["table"] == "token_postings"]}
     assert contracts.check_sort_order(only) == [] and contracts.check_statistics(only) == []
     # a lookup by token opens the one bucket that can hold it
@@ -293,7 +293,7 @@ def test_b10_parts_are_cut_at_max_file_bytes(built, tmp_path, width):
     want = pq.read_table(single, partitioning=None).to_pylist()
     per_part = 7
     fresh = _fresh(root, tmp_path, "s")
-    res = postings.run(fresh, REL, prefix_width=width, max_file_bytes=EST_ROW * per_part + EST_ROW // 2)
+    res = postings.run(fresh, REL, ["S0"], prefix_width=width, max_file_bytes=EST_ROW * per_part + EST_ROW // 2)
     files = _files(fresh)
     assert res["files"] == sum(len(fs) for fs in files.values())
     assert any(len(fs) > 1 for fs in files.values())
@@ -303,7 +303,7 @@ def test_b10_parts_are_cut_at_max_file_bytes(built, tmp_path, width):
         assert all(len(p) == per_part for p in parts[:-1]) and 1 <= len(parts[-1]) <= per_part
         mine = [r for r in want if b == "all" or f"{r['token_id'] & 0xFF:02x}"[:width] == b]
         assert [r for p in parts for r in p] == mine, b
-    man = catalog.build_manifest(fresh, REL)
+    man = catalog.build_manifest(fresh, REL, ["S0"])
     only = {**man, "files": [f for f in man["files"] if f["table"] == "token_postings"]}
     assert contracts.check_sort_order(only) == [] and contracts.check_statistics(only) == []
 
@@ -318,11 +318,11 @@ def test_b10_bytes_do_not_depend_on_the_run(built, tmp_path):
     assert want
     for name in ("again", "other"):
         fresh = _fresh(root, tmp_path, name)
-        postings.run(fresh, REL, tmp=tmp_path)
+        postings.run(fresh, REL, ["S0"], tmp=tmp_path)
         assert _digests(fresh) == want, name
     # a second run into the same root refuses to overwrite and leaves the files as they were
     with pytest.raises(FileExistsError, match="overwrite"):
-        postings.run(tmp_path / "again", REL)
+        postings.run(tmp_path / "again", REL, ["S0"])
     assert _digests(tmp_path / "again") == want
 
 
@@ -330,13 +330,13 @@ def test_b10_refusals_and_scratch(built, tmp_path):
     root, _, _, _, _ = built
     fresh = _fresh(root, tmp_path, "s")
     with pytest.raises(ValueError, match="scratch"):
-        postings.run(fresh, REL, tmp=fresh / "tmp")
+        postings.run(fresh, REL, ["S0"], tmp=fresh / "tmp")
     with pytest.raises(FileNotFoundError, match="tape_tokens"):
-        postings.run(fresh, "no-such-release")
+        postings.run(fresh, "no-such-release", ["S0"])
     assert not (fresh / POST).exists()
     parent = tmp_path / "scratch-parent"
     parent.mkdir()
-    postings.run(fresh, REL, tmp=parent)
+    postings.run(fresh, REL, ["S0"], tmp=parent)
     assert list(parent.iterdir()) == []  # the private scratch directory is removed
 
 
@@ -350,7 +350,7 @@ def test_b10_token_lists_of_another_length_than_the_tape_are_an_error(built, tmp
     io.write_table([pa.Table.from_pylist(toks, schema=spec.schema)], spec,
                    fresh / f"l3/tape_tokens/tape_version={TV}/release={REL}/part-0.parquet")
     with pytest.raises(ValueError, match=victim["contig_uid"].hex()):
-        postings.run(fresh, REL)
+        postings.run(fresh, REL, ["S0"])
     assert not (fresh / POST).exists()
 
 
@@ -447,7 +447,7 @@ def _synthetic(root: Path) -> tuple[str, list[dict], list[dict]]:
 def test_b10_a_token_lookup_scans_at_most_two_row_groups(tmp_path):
     root = tmp_path / "r"
     tv, tape_rows, tok_rows = _synthetic(root)
-    res = postings.run(root, REL, producers=["synthetic-b10"])
+    res = postings.run(root, REL, ["S0"], producers=["synthetic-b10"])
     n_tok = Counter(t for r in tok_rows for t in r["nr90_tokens"] if t is not None)
     assert res["rows"] == sum(n_tok.values()) > 2 * io.ROW_GROUP_ROWS
     [path] = _files(root, REL, tv)["all"]
@@ -457,7 +457,7 @@ def test_b10_a_token_lookup_scans_at_most_two_row_groups(tmp_path):
     # the oracle at this size: posting rows equal the loop over tapes and tokens
     want = sorted(_key(r) for r in _oracle(root, REL, tv))
     assert sorted(map(_key, _written(root, REL, tv))) == want
-    man = catalog.build_manifest(root, REL)
+    man = catalog.build_manifest(root, REL, ["S0"])
     assert contracts.check_sort_order(man) == [] and contracts.check_statistics(man) == []
     con = catalog.open_catalog(catalog.generate_catalog(man, tmp_path / "c.duckdb"))
     try:
@@ -497,11 +497,11 @@ def test_b11_pair_macros_scan_at_most_two_row_groups_per_side(tmp_path):
     reads at most 2 row groups (AGENTS §4.4), including tokens whose rows straddle a row-group boundary."""
     root = tmp_path / "r"
     tv, tape_rows, tok_rows = _synthetic(root)
-    postings.run(root, REL, producers=["synthetic-b10"])
+    postings.run(root, REL, ["S0"], producers=["synthetic-b10"])
     [path] = _files(root, REL, tv)["all"]
     md = pq.ParquetFile(path).metadata
     assert md.num_row_groups >= 3
-    con = catalog.open_catalog(catalog.generate_catalog(catalog.build_manifest(root, REL), tmp_path / "c.duckdb"))
+    con = catalog.open_catalog(catalog.generate_catalog(catalog.build_manifest(root, REL, ["S0"]), tmp_path / "c.duckdb"))
     try:
         first = [pq.ParquetFile(path).read_row_group(i, columns=["token_id"]).column(0) for i in range(md.num_row_groups)]
         anchors = sorted({g[0].as_py() for g in first[1:]} | {g[-1].as_py() for g in first[:-1]}
@@ -549,7 +549,7 @@ def test_b11_partners_of_refuses_a_hub_token(tmp_path):
                     "n_slots": pa.array([2] * m, pa.uint32()), "is_circular": pa.array([False] * m),
                     "contig_len": pa.array([200] * m, pa.int64())}).cast(spec.schema)
     io.write_table([tbl], spec, root / f"{POST}/release={REL}/tape_version={tv}/token_bucket=all/part-0.parquet")
-    con = catalog.open_catalog(catalog.generate_catalog(catalog.build_manifest(root, REL), tmp_path / "c.duckdb"))
+    con = catalog.open_catalog(catalog.generate_catalog(catalog.build_manifest(root, REL, []), tmp_path / "c.duckdb"))
     try:
         with pytest.raises(duckdb.Error, match=r"partners_of: token has more than 100000 loci; use pair_stats \(hub routing\)"):
             con.execute("SELECT * FROM partners_of(?, 10)", [hub]).fetchall()

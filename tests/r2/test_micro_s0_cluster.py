@@ -54,7 +54,7 @@ def _build(root: Path, threads: int) -> dict:
                                    circular=(cu,) if o["topology"] == "circular" else ()))
     genomes.append(GenomeInput((ids.contig_uid(fasta.read(mut)[0].seq),), 11, kind="virus"))
     call_genes(root, "S0", genomes)
-    return cluster(root, RELEASE, GENE_CALL_VERSION, threads=threads)
+    return cluster(root, RELEASE, GENE_CALL_VERSION, ["S0"], threads=threads)
 
 
 @pytest.fixture(scope="module")

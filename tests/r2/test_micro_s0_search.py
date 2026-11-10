@@ -126,7 +126,7 @@ def test_c12_small_shards_fail_unless_last_and_pack_is_deterministic(world, tmp_
 
 
 def test_pack_is_outside_the_release_manifest(world):
-    man = catalog.build_manifest(world[0], REL)
+    man = catalog.build_manifest(world[0], REL, ["S0"])
     assert not any(f["path"].startswith(("search_pack/", "search/")) for f in man["files"])
 
 
@@ -293,7 +293,7 @@ def test_s05_every_hit_resolves_to_a_run_and_catalog_shows_runs(world):
     root = world[0]
     hit, _ = _seed(root)
     _run(world, _recipe(hit, hit, tool="jackhmmer", mx=3))
-    man = catalog.build_manifest(root, REL)
+    man = catalog.build_manifest(root, REL, ["S0"])
     con = catalog.open_catalog(catalog.generate_catalog(man, world[1] / "c.duckdb"))
     try:
         orphans = con.execute("SELECT count(*) FROM search_hit h ANTI JOIN search_run r USING (run_id)").fetchone()[0]
@@ -750,7 +750,7 @@ def test_w06_summary_counts_genomes_from_contig_dim_when_present(world, tmp_path
     assert by_contig["header"]["genome_basis"] == "contig_uid"
     assert [r["n_genomes"] for r in want["rows"]] != [r["n_genomes"] for r in by_contig["rows"]]
     # file lists from the release manifest give the same summary as the store's layout
-    man = catalog.build_manifest(root, REL)
+    man = catalog.build_manifest(root, REL, ["S0"])
     assert nbr.summarize(root, anchors, nbr.Policy.parse(window="5g"), by=("pfam", "nr50", "nr90"), release=REL,
                          top_n=0, manifest=man) == got
 
@@ -1569,7 +1569,7 @@ def test_c03_search_links_resolve_and_a_foreign_run_id_is_caught(world, tmp_path
     root = world[0]
     hit, _ = _seed(root)
     _run(world, _recipe(hit, hit, tool="jackhmmer", mx=2))
-    man = catalog.build_manifest(root, REL)
+    man = catalog.build_manifest(root, REL, ["S0"])
     con = catalog.open_catalog(catalog.generate_catalog(man, tmp_path / "c.duckdb"))
     try:
         assert contracts.check_search_links(con) == []
@@ -1582,7 +1582,7 @@ def test_c03_search_links_resolve_and_a_foreign_run_id_is_caught(world, tmp_path
     for r in t:
         r["run_id"] = b"\x11" * 16
     pq.write_table(pa.Table.from_pylist(t, schema=table("search_hit").schema), hits_file)
-    con = catalog.open_catalog(catalog.generate_catalog(catalog.build_manifest(bad, REL), tmp_path / "d.duckdb"))
+    con = catalog.open_catalog(catalog.generate_catalog(catalog.build_manifest(bad, REL, ["S0"]), tmp_path / "d.duckdb"))
     try:
         problems = contracts.check_search_links(con)
     finally:

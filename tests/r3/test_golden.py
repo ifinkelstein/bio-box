@@ -152,7 +152,7 @@ def test_r04_independent_translation_on_golden(store_root):
 
 @pytest.fixture(scope="module")
 def golden_catalog(store_root, tmp_path_factory):
-    man = catalog.build_manifest(store_root, "rS0.golden")
+    man = catalog.build_manifest(store_root, "rS0.golden", ["S0"])
     con = catalog.open_catalog(catalog.generate_catalog(man, tmp_path_factory.mktemp("cat") / "c.duckdb"))
     yield man, con
     con.close()

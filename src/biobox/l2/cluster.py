@@ -14,6 +14,9 @@ Writes under `<root>/`:
 Both tables go through `biobox.io.write_parts`, cut at `max_file_bytes` of estimated size (card
 B-19). The rows are still built in Python lists; making this builder stream is a separate card.
 
+The proteins are those of the release's stages only (card B-25), so a stage written later or
+while the release is built never enters its clusters.
+
 Inputs are written to FASTA sorted by protein_uid and MMseqs2 runs with
 `--shuffle 0` and explicit `--threads`, so output does not depend on input order
 or on the host's core count.
@@ -33,7 +36,8 @@ import pyarrow as pa
 import pyarrow.parquet as pq
 from blake3 import blake3
 
-from biobox import io, layout, ledger, provenance
+from biobox import catalog, io, layout, ledger, provenance
+from biobox.catalog import ledger_stage  # rS0.1 -> S0: where the release's clustering ledger goes
 from biobox.registry.schemas import table
 
 # Estimated zstd bytes per row; they only cut parts. Measured on the golden set 36.5 (`cluster_member`)
@@ -76,10 +80,16 @@ class MMseqs:
         subprocess.run(cmd, check=True, stdout=self.log, stderr=subprocess.STDOUT, cwd=self.workdir)
 
 
-def _read_proteins(root: Path, gene_call_version: str) -> dict[bytes, str]:
-    files = sorted((root / "l0seq/protein_seq").glob(f"gene_call_version={gene_call_version}/stage=*/protein_prefix=*/part-*.parquet"))
-    if not files:
-        raise FileNotFoundError(f"no protein_seq files for gene_call_version={gene_call_version}")
+def _read_proteins(root: Path, gene_call_version: str, stages: list[str]) -> dict[bytes, str]:
+    """The distinct proteins of `stages` (card B-25: no other stage is read; a listed stage without
+    `protein_seq` files raises FileNotFoundError)."""
+    files = []
+    for s in stages:
+        found = io.part_files(root / f"l0seq/protein_seq/gene_call_version={gene_call_version}/stage={s}",
+                              "protein_prefix=*/part-*.parquet")
+        if not found:
+            raise FileNotFoundError(f"stage {s}: no protein_seq files for gene_call_version={gene_call_version}")
+        files += found
     out: dict[bytes, str] = {}
     for f in files:
         t = pq.read_table(f, columns=["protein_uid", "seq"])
@@ -91,15 +101,17 @@ def _tsv_pairs(path: Path) -> list[tuple[str, str]]:
     return [tuple(line.rstrip("\n").split("\t")[:2]) for line in path.read_text().splitlines() if line]
 
 
-def ledger_stage(release: str) -> str:
-    """rS0.1 -> S0, rS2C.1 -> S2C; any other release name is used as is."""
-    return release[1:].split(".")[0] if release.startswith("rS") else release
-
-
-def run(root: Path, release: str, gene_call_version: str, threads: int = 1, tmp: Path | None = None,
-        max_file_bytes: int = layout.MAX_FILE_BYTES) -> dict:
+def run(root: Path, release: str, gene_call_version: str, stages: list[str], threads: int = 1,
+        tmp: Path | None = None, max_file_bytes: int = layout.MAX_FILE_BYTES) -> dict:
+    """Cluster the distinct proteins of `stages`, the release's stages (card B-25), and write the
+    release's cluster tables; the release's `release_def` is written, or checked to list the same
+    stages (`catalog.define_release`)."""
     root = Path(root)
-    prots = _read_proteins(root, gene_call_version)
+    stages = catalog.check_stages(stages)
+    prots = _read_proteins(root, gene_call_version, stages)
+    if not prots:
+        raise FileNotFoundError(f"release {release}: no proteins in stages {stages}")
+    catalog.define_release(root, release, stages)
     with tempfile.TemporaryDirectory(dir=tmp) as d:
         w = Path(d)
         with open(w / "in.faa", "w") as fh:
