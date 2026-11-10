@@ -1,0 +1,21 @@
+{
+ "key": "Bp",
+ "step": "pfam_plan",
+ "stage": "P1",
+ "release": "rL.2p",
+ "threads": 1,
+ "started_utc": "2026-11-10T05:12:58+00:00",
+ "result": {
+  "stage": "P1",
+  "excluded_stages_with_pfam": [
+   "S1"
+  ],
+  "stage_proteins": 918765,
+  "new_proteins": 918525,
+  "residues": 294472489,
+  "n_shards": 19
+ },
+ "error": null,
+ "inner_wall_s": 3.13,
+ "self_peak_rss_mb": 1502.2
+}

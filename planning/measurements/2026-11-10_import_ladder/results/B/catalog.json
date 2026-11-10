@@ -1,0 +1,245 @@
+{
+ "key": "B",
+ "step": "catalog",
+ "stage": "P1",
+ "release": "rL.2",
+ "threads": 1,
+ "started_utc": "2026-11-10T05:11:15+00:00",
+ "result": {
+  "manifest": "/tmp/if2453/ladder/root/manifests/release=rL.2.json",
+  "manifest_hash": "fd1b4751d2f0d28528cc5ff78d368434",
+  "catalog": "/tmp/if2453/ladder/root/catalog/release=rL.2.duckdb",
+  "catalog_bytes": 1060864,
+  "files": 46,
+  "artifacts": 6,
+  "total_bytes": 2996804176,
+  "verify_problems": [],
+  "times_s": {
+   "build_manifest": 12.97,
+   "write_manifest": 0.0,
+   "generate_catalog": 5.09,
+   "verify_manifest": 12.0
+  },
+  "tables": {
+   "artifact:seq_shards": {
+    "files": 2,
+    "rows": 0,
+    "bytes": 826761462,
+    "row_groups": 0,
+    "new_files": 1,
+    "new_rows": 0,
+    "new_bytes": 310459709
+   },
+   "artifact:seq_shards.fai": {
+    "files": 2,
+    "rows": 0,
+    "bytes": 2428161,
+    "row_groups": 0,
+    "new_files": 1,
+    "new_rows": 0,
+    "new_bytes": 47419
+   },
+   "artifact:seq_shards.gzi": {
+    "files": 2,
+    "rows": 0,
+    "bytes": 665712,
+    "row_groups": 0,
+    "new_files": 1,
+    "new_rows": 0,
+    "new_bytes": 252296
+   },
+   "cluster_member": {
+    "files": 2,
+    "rows": 6375250,
+    "bytes": 218926824,
+    "row_groups": 53,
+    "new_files": 1,
+    "new_rows": 4106150,
+    "new_bytes": 148588878
+   },
+   "cluster_member_aln": {
+    "files": 2,
+    "rows": 6375250,
+    "bytes": 211067194,
+    "row_groups": 53,
+    "new_files": 1,
+    "new_rows": 4106150,
+    "new_bytes": 140629614
+   },
+   "contig_dim": {
+    "files": 2,
+    "rows": 55055,
+    "bytes": 2183201,
+    "row_groups": 2,
+    "new_files": 1,
+    "new_rows": 27797,
+    "new_bytes": 1102796
+   },
+   "contig_index": {
+    "files": 2,
+    "rows": 27797,
+    "bytes": 1546813,
+    "row_groups": 2,
+    "new_files": 1,
+    "new_rows": 539,
+    "new_bytes": 31102
+   },
+   "contig_occurrence": {
+    "files": 2,
+    "rows": 34615,
+    "bytes": 2158518,
+    "row_groups": 2,
+    "new_files": 1,
+    "new_rows": 539,
+    "new_bytes": 51658
+   },
+   "contig_tapes": {
+    "files": 2,
+    "rows": 27797,
+    "bytes": 146843730,
+    "row_groups": 27,
+    "new_files": 1,
+    "new_rows": 539,
+    "new_bytes": 44452200
+   },
+   "feature": {
+    "files": 2,
+    "rows": 3326007,
+    "bytes": 83760167,
+    "row_groups": 28,
+    "new_files": 1,
+    "new_rows": 927920,
+    "new_bytes": 24112968
+   },
+   "feature_protein": {
+    "files": 2,
+    "rows": 3326007,
+    "bytes": 137107148,
+    "row_groups": 28,
+    "new_files": 1,
+    "new_rows": 927920,
+    "new_bytes": 39909160
+   },
+   "genome_input": {
+    "files": 2,
+    "rows": 27797,
+    "bytes": 989036,
+    "row_groups": 2,
+    "new_files": 1,
+    "new_rows": 539,
+    "new_bytes": 15465
+   },
+   "igr": {
+    "files": 2,
+    "rows": 2307707,
+    "bytes": 102610216,
+    "row_groups": 20,
+    "new_files": 1,
+    "new_rows": 764935,
+    "new_bytes": 35528432
+   },
+   "l0_manifest": {
+    "files": 1,
+    "rows": 251,
+    "bytes": 14013,
+    "row_groups": 1,
+    "new_files": 0,
+    "new_rows": 0,
+    "new_bytes": 0
+   },
+   "l1_domains": {
+    "files": 1,
+    "rows": 605564,
+    "bytes": 32735851,
+    "row_groups": 5,
+    "new_files": 0,
+    "new_rows": 0,
+    "new_bytes": 0
+   },
+   "ledger": {
+    "files": 9,
+    "rows": 55851,
+    "bytes": 1218272,
+    "row_groups": 9,
+    "new_files": 4,
+    "new_rows": 1330,
+    "new_bytes": 44372
+   },
+   "protein_occurrence": {
+    "files": 2,
+    "rows": 3326007,
+    "bytes": 164487591,
+    "row_groups": 28,
+    "new_files": 1,
+    "new_rows": 927920,
+    "new_bytes": 50516941
+   },
+   "protein_seq": {
+    "files": 2,
+    "rows": 2053315,
+    "bytes": 420271060,
+    "row_groups": 18,
+    "new_files": 1,
+    "new_rows": 918765,
+    "new_bytes": 209946839
+   },
+   "seq_locator": {
+    "files": 2,
+    "rows": 27797,
+    "bytes": 1051220,
+    "row_groups": 2,
+    "new_files": 1,
+    "new_rows": 539,
+    "new_bytes": 21541
+   },
+   "slot_protein": {
+    "files": 2,
+    "rows": 3326007,
+    "bytes": 55764647,
+    "row_groups": 28,
+    "new_files": 1,
+    "new_rows": 927920,
+    "new_bytes": 17189997
+   },
+   "tape_tokens": {
+    "files": 2,
+    "rows": 55055,
+    "bytes": 48853268,
+    "row_groups": 45,
+    "new_files": 1,
+    "new_rows": 27797,
+    "new_bytes": 30523869
+   },
+   "tape_version_def": {
+    "files": 1,
+    "rows": 1,
+    "bytes": 571,
+    "row_groups": 1,
+    "new_files": 0,
+    "new_rows": 0,
+    "new_bytes": 0
+   },
+   "token_dict": {
+    "files": 2,
+    "rows": 2999532,
+    "bytes": 58883368,
+    "row_groups": 25,
+    "new_files": 1,
+    "new_rows": 2162947,
+    "new_bytes": 42277387
+   },
+   "token_postings": {
+    "files": 2,
+    "rows": 13330867,
+    "bytes": 476476133,
+    "row_groups": 109,
+    "new_files": 1,
+    "new_rows": 7593431,
+    "new_bytes": 277833790
+   }
+  }
+ },
+ "error": null,
+ "inner_wall_s": 30.06,
+ "self_peak_rss_mb": 745.7
+}

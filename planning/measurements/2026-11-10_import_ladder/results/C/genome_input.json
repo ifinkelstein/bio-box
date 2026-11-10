@@ -1,0 +1,28 @@
+{
+ "key": "C",
+ "step": "genome_input",
+ "stage": "P2",
+ "release": "rL.3",
+ "threads": 1,
+ "started_utc": "2026-11-10T05:56:16+00:00",
+ "result": {
+  "genomes": 2247,
+  "contigs": 5018,
+  "kind": "prokaryote",
+  "circular": 0,
+  "bp": 9596180328,
+  "note": "all contigs of an assembly one genome; topology not in the FASTA, all linear; genetic_code from ncbi_translation_table, 11 if absent",
+  "dup_within_genome": 0,
+  "dup_across_genomes": [],
+  "in_earlier_stage": [],
+  "genomes_without_contigs": [],
+  "codes": {
+   "11": 2215,
+   "25": 1,
+   "4": 31
+  }
+ },
+ "error": null,
+ "inner_wall_s": 0.26,
+ "self_peak_rss_mb": 325.0
+}

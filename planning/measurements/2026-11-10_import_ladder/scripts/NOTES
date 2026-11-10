@@ -1,0 +1,9 @@
+Correction to README (2026-11-10 02:00 CST): release rL.2p is NOT "S1+P1".
+
+Stage P2's stage files (seq shards, contig_index, genome_input, feature, feature_protein,
+protein_occurrence, protein_seq, igr, tapes) were written by the concurrently running stage-C build
+before rL.2p's tokens/postings/dim/manifest ran (they read every stage present). So rL.2p holds
+tape_tokens, token_postings and contig_dim for S1+P1+P2 (32,815 contigs), with rL.2's clusters
+(S1+P1 proteins only): P2 slots carry NR50/NR90 tokens only where their protein is identical to an
+S1/P1 protein, and family tokens only where identical to a scanned (S1 or P1) protein.
+rL.1 (S1) and rL.2 (S1+P1) are clean. rL.3 (S1+P1+P2, clustered over all three) supersedes rL.2p.

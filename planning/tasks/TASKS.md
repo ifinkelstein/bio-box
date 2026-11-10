@@ -302,7 +302,22 @@ Accept: wall time at 1,000× within 10% of the pre-B-15 time (135 s on the lapto
 **M** · Depends: B-19
 Files: `src/biobox/l2/cluster.py`, `src/biobox/l1/domains.py`, tests
 Do: these two builders still hold every protein, every alignment row and every domain row in Python lists (B-19 only changes their final write). Stream proteins to MMseqs2 from Parquet, parse its output tables with DuckDB, and write through `io.write_parts`; scan domains shard by shard, each shard its own process under the 300 CPU-minute limit (the sharded scan run by hand on 2026-11-09 is the model: 17 shards, 121 CPU-minutes each), merging sorted shard outputs.
+Amended 2026-11-10: needed before S2, not after. *Measured* on wilkcomp02: clustering a whole release took 473.5 s and 5.35 GB at 1.13 M proteins and 1,320 s and 9.57 GB at 2.05 M (about n^1.73 and 4.7 KB per protein, *derived* from two points). Also decide, with evidence from the 10.6 M protein run (`rL.3`), whether each release must recluster everything or can use `mmseqs clusterupdate`; if that changes cluster identity rules it is an **H** question: stop and report.
 Accept: outputs content-identical on the fixture; peak memory does not grow with protein count (K-copy measurement as in B-05).
+
+### B-25 A release names its stages
+**M** · Depends: B-17 (found by the import ladder, 2026-11-10: `planning/measurements/2026-11-10_import_ladder/README.md` finding 1)
+Files: `src/biobox/l3/tokens.py`, `src/biobox/l3/postings.py`, `src/biobox/dim.py`, `src/biobox/l2/cluster.py`, `src/biobox/catalog.py` (`build_manifest`), `src/biobox/cli.py`, `src/biobox/registry/schemas.py` (a `release_def` table: `release`, ordered `stages`), tests
+Why: every release-level builder reads whatever `stage=*` directories exist. A release built while a later stage was being written took that stage's files in (release `rL.2p` on the pod), against AGENTS §3.9 (explicit lists, never globs).
+Do: a release is defined once, by a `release_def` row listing its stages. Every release-level builder and `build_manifest` takes that list and reads only those stages; a stage directory on disk that the release does not list is ignored, and a listed stage that is missing is an error.
+Accept: test first: build release R1 over stage S0; add a second stage's files to the store; rebuild R1 into a fresh root from the same `release_def`: every file is byte-identical to the first build. `rg -n "stage=\*" src/biobox` returns nothing in a release-level builder.
+
+### B-26 Re-measure postings size and correct its budget
+**L** · Depends: B-17 · Pod: yes
+Files: `src/biobox/l3/postings.py` (the estimate in its docstring or constant), `planning/sources_and_sizing.md` (the postings line only), `planning/measurements/<date>_postings_bytes.md`+
+Why: `token_postings` measured 34.6 to 36.8 bytes per row on the pod against the 20 the code states (73 to 84% over; AGENTS §6 threshold is 20%).
+Do: on the `rL.2` store on the pod, report bytes per row by column (`pq` metadata: compressed size per column chunk), find which columns carry the excess (`feature_uid` is 16 random bytes and will not compress; check the others' encodings and the sort key). Change no schema. Replace the estimate with the measured value, labelled, and recompute the GTDB-scale projection.
+Accept: the measurement file has the per-column table and the command; no unlabelled number remains for postings.
 
 ### B-20 IGR version names its producer set
 **L** · Depends: B-07
@@ -338,6 +353,7 @@ Accept: the test passes for every kill point; no test sleeps to hit a kill point
 **M** · Depends: C-02, B-17
 Files: `src/biobox/stage.py`+, `src/biobox/cli.py`, `tests/r2/test_build_stage.py`+
 Do: a fixed list of steps for a stage, each through `run-step`: inputs → ingest → gene calling → other feature producers → IGRs → tapes → domain scans → clustering → tokens → postings → `contig_dim` → manifest → catalog. No workflow engine; a list and the ledger. A scan step is split into shard processes that each stay under 300 CPU-minutes.
+Amended 2026-11-10 from the import ladder: ingest is one process at about 3.7 Mbp/s (*measured*, wilkcomp02), so a stage over about 60 Gbp exceeds 300 CPU-minutes; `build-stage` splits ingest into batch processes (DEC-22: one shard per batch) as it does scans. Launch each step through `scripts/pod_run.sh` (C-07). Depends also on B-25: the release steps take the stage list.
 Accept: the fixture builds end to end with one command; a second run does nothing.
 
 ### C-05 Search runner under systemd scopes

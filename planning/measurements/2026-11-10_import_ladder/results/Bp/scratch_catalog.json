@@ -1,0 +1,167 @@
+{
+ "root": "/stor/scratch/Wilke/if2453/all-the-data/provisional/rL",
+ "release": "rL.2p",
+ "times_s": {
+  "build_manifest": 47.86,
+  "write_manifest": 0.0,
+  "generate_catalog": 4.68,
+  "copy_catalog_to_root": 0.01,
+  "verify_manifest": 37.47,
+  "open_catalog": 0.2,
+  "count_all_views": 0.13
+ },
+ "manifest": "/stor/scratch/Wilke/if2453/all-the-data/provisional/rL/manifests/release=rL.2p.json",
+ "manifest_hash": "973b1d069dc0e06e773435b79e8e3eb4",
+ "manifest_root": "/stor/scratch/Wilke/if2453/all-the-data/provisional/rL",
+ "manifest_tables": {
+  "cluster_member": {
+   "files": 3,
+   "rows": 10481400,
+   "bytes": 367515702
+  },
+  "cluster_member_aln": {
+   "files": 3,
+   "rows": 10481400,
+   "bytes": 351696808
+  },
+  "contig_dim": {
+   "files": 3,
+   "rows": 87870,
+   "bytes": 3447717
+  },
+  "contig_index": {
+   "files": 3,
+   "rows": 32815,
+   "bytes": 1829873
+  },
+  "contig_occurrence": {
+   "files": 3,
+   "rows": 39633,
+   "bytes": 2611395
+  },
+  "contig_tapes": {
+   "files": 3,
+   "rows": 32815,
+   "bytes": 565154883
+  },
+  "feature": {
+   "files": 3,
+   "rows": 12048866,
+   "bytes": 310044295
+  },
+  "feature_protein": {
+   "files": 3,
+   "rows": 12048866,
+   "bytes": 511473798
+  },
+  "genome_input": {
+   "files": 3,
+   "rows": 32815,
+   "bytes": 1122281
+  },
+  "igr": {
+   "files": 3,
+   "rows": 9491097,
+   "bytes": 436136894
+  },
+  "l0_manifest": {
+   "files": 1,
+   "rows": 2498,
+   "bytes": 114347
+  },
+  "l1_domains": {
+   "files": 2,
+   "rows": 2158015,
+   "bytes": 113529030
+  },
+  "ledger": {
+   "files": 14,
+   "rows": 68138,
+   "bytes": 1565987
+  },
+  "protein_occurrence": {
+   "files": 3,
+   "rows": 12048866,
+   "bytes": 648593471
+  },
+  "protein_seq": {
+   "files": 4,
+   "rows": 10634028,
+   "bytes": 2390603339
+  },
+  "seq_locator": {
+   "files": 3,
+   "rows": 32815,
+   "bytes": 1247836
+  },
+  "slot_protein": {
+   "files": 3,
+   "rows": 12048866,
+   "bytes": 216991883
+  },
+  "tape_tokens": {
+   "files": 3,
+   "rows": 87870,
+   "bytes": 84349313
+  },
+  "tape_version_def": {
+   "files": 1,
+   "rows": 1,
+   "bytes": 571
+  },
+  "token_dict": {
+   "files": 3,
+   "rows": 5171183,
+   "bytes": 101262658
+  },
+  "token_postings": {
+   "files": 3,
+   "rows": 21766976,
+   "bytes": 787101905
+  }
+ },
+ "manifest_artifacts": 33,
+ "catalog": "/stor/scratch/Wilke/if2453/all-the-data/provisional/rL/catalog/release=rL.2p.duckdb",
+ "catalog_bytes": 1060864,
+ "verify_problems": [],
+ "catalog_info": {
+  "release_id": "rL.2p",
+  "manifest_hash": "973b1d069dc0e06e773435b79e8e3eb4",
+  "root": "/stor/scratch/Wilke/if2453/all-the-data/provisional/rL",
+  "duckdb_version": "2.0.0"
+ },
+ "view_counts": {
+  "cluster_member": 10481400,
+  "cluster_member_aln": 10481400,
+  "contig_dim": 87870,
+  "contig_index": 32815,
+  "contig_member": 0,
+  "contig_occurrence": 39633,
+  "contig_tapes": 32815,
+  "feature": 12048866,
+  "feature_protein": 12048866,
+  "genome_identity": 0,
+  "genome_input": 32815,
+  "id_history": 0,
+  "igr": 9491097,
+  "l0_manifest": 2498,
+  "l1_domains": 2158015,
+  "ledger": 68138,
+  "neighborhoods": 0,
+  "protein_occurrence": 12048866,
+  "protein_seq": 10634028,
+  "search_hit": 0,
+  "search_profile": 0,
+  "search_region": 0,
+  "search_run": 0,
+  "seq_locator": 32815,
+  "slot_pairs": 0,
+  "slot_protein": 12048866,
+  "tape_tokens": 87870,
+  "tape_version_def": 1,
+  "test_run": 0,
+  "token_dict": 5171183,
+  "token_postings": 21766976
+ },
+ "view_vs_manifest_row_mismatch": {}
+}

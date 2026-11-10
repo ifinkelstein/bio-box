@@ -1,0 +1,23 @@
+{
+ "key": "B",
+ "step": "genecall",
+ "stage": "P1",
+ "release": "rL.2",
+ "threads": 16,
+ "started_utc": "2026-11-10T04:45:15+00:00",
+ "result": {
+  "genes": 927920,
+  "distinct_proteins": 918765,
+  "modes": [
+   "single"
+  ],
+  "wrapping_genes": 0,
+  "workers": 16,
+  "bp_called": 1016625803,
+  "residues": 294516869,
+  "protein_seq_files": 1
+ },
+ "error": null,
+ "inner_wall_s": 83.38,
+ "self_peak_rss_mb": 2608.8
+}

@@ -1,0 +1,22 @@
+{
+ "key": "B",
+ "step": "postings",
+ "stage": "P1",
+ "release": "rL.2",
+ "threads": 1,
+ "started_utc": "2026-11-10T05:10:44+00:00",
+ "result": {
+  "rows": 7593431,
+  "rows_by_level": {
+   "family": 941417,
+   "nr50": 3326007,
+   "nr90": 3326007
+  },
+  "buckets": 1,
+  "files": 1,
+  "tape_version": "t-ca596dd85040"
+ },
+ "error": null,
+ "inner_wall_s": 24.33,
+ "self_peak_rss_mb": 1748.5
+}
