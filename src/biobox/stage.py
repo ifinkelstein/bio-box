@@ -53,6 +53,15 @@ the inputs, the budget and the margin only, never on J or C, and the merged file
 scan in one process, byte for byte. The shards' scratch runs live under the scratch directory and
 are removed after the merge.
 
+Lost scratch (card C-12). A reboot clears `/tmp`; a shard's run record then still exists while its
+run in scratch is gone, so `run-step` would never scan it again and the merge would refuse. Before
+the merge, every shard's run is checked against its published record (`domains.run_problem`: missing,
+another sha256, or a record without one), and exactly those shards are scanned again into scratch
+(`python -m biobox.l1.domains rescan`, each its own process under the cap and nice of a run-step,
+run like the shards: up to J at once within the allowance, `STOP` before each launch). The records
+stay as published: a rescan must reproduce its record's sha256, and one that does not stops the
+build before the merge with an error naming the shard.
+
 Up to J shards run at once (`--scan-jobs`, default: the allowance at the start // C; fewer while
 the allowance of the hour is smaller, above), each its own `bio-box
 run-step` process (`python -m biobox.cli run-step --threads C -- ...`, `--scan-cpus`, default
@@ -166,6 +175,7 @@ class Step:
     name: str  # run-step's --step
     argv: tuple[str, ...] | None  # the bio-box arguments; None for an empty slot
     check: str | None = None  # "ingest" or "scan": the CPU-minute estimate made before it
+    module: str = "biobox.cli"  # what `python -m` runs: the bio-box CLI, or biobox.l1.domains for a rescan
 
 
 def threads_of(prof: Profile, b: Build) -> int:
@@ -426,7 +436,7 @@ def build_stage(prof: Profile, b: Build, *, run: Runner | None = None,
             code = _hold_step(root, step, n, allow, _hook)
             if code is not None:
                 return code
-        cmd: Sequence[str] = [sys.executable, "-m", "biobox.cli", *step.argv]
+        cmd: Sequence[str] = [sys.executable, "-m", step.module, *step.argv]
         code = run(prof, root, step.run_stage, step.name, cmd, threads=n)
         if code != 0:
             _say(f"{step.run_stage}.{step.name} exited {code}; stopping here; the next call resumes at this step")
@@ -475,9 +485,9 @@ def _scan_in_shards(prof: Profile, b: Build, root: Path, step: Step, one: Callab
                     allow: Callable[[], int]) -> int | None:
     """The scan `step` as its plan step, then its shard steps, up to `jobs` at once with `cpus` threads each and
     within the allowance `allow()` of the hour (`_run_shards`), then the merge step (`scan_steps`); each is a
-    `run-step`, so a call after a kill skips
-    every step already published. `run` stands in for the shards' run-step processes (tests only). The
-    shards' scratch runs are removed once the merge is published."""
+    `run-step`, so a call after a kill skips every step already published. Before the merge, a shard whose
+    scratch run is missing or fails its record is scanned again (`_rescan_lost`). `run` stands in for the shards'
+    run-step processes (tests only). The shards' scratch runs are removed once the merge is published."""
     lib = _library(b, step)
     first = scan_steps(prof, b, step, None, cpus)[0]
     code = one(first)
@@ -492,12 +502,67 @@ def _scan_in_shards(prof: Profile, b: Build, root: Path, step: Step, one: Callab
     code = _run_shards(prof, root, step, subs[1:-1], jobs, cpus, run, hook, allow)
     if code is not None:
         return code
+    code = _rescan_lost(prof, b, root, step, subs[1:-1], jobs, cpus, hook, allow)
+    if code is not None:
+        return code
     code = one(subs[-1])  # the merge; its hook is the scan step's, after this returns
     if code is not None:
         return code
     run_dir = domains.run_path(scratch_of(prof, b), root, b.stage, lib.name, lib.version, 0).parent
     shutil.rmtree(run_dir, ignore_errors=True)
     return None
+
+
+def _rescan_lost(prof: Profile, b: Build, root: Path, scan: Step, shards: list[Step], jobs: int, cpus: int,
+                 hook: Hook | None, allow: Callable[[], int]) -> int | None:
+    """Before the merge (card C-12): every shard has its run record, but scratch may have been cleared or damaged
+    since (a reboot clears /tmp), and its run records stop `run-step` from scanning it again. Each shard whose
+    scratch run is missing, fails the sha256 its published record holds, or cannot be checked (a record without
+    one) is scanned again into scratch (`python -m biobox.l1.domains rescan`, `_rescan_process`), as `_launch` runs
+    shards: up to `jobs` at once within the allowance, `cpus` threads each, `STOP` checked before each launch, and
+    `after:<shard step>.rescan` to `hook` as each ends. The record is not published again: the new run must
+    reproduce it, and a mismatch fails that rescan with an error naming the shard. Return None when every run is
+    in place, else the failing code (75 for STOP); the merge does not run then."""
+    lib = _library(b, scan)
+    scratch = scratch_of(prof, b)
+    hmm = str(Path(lib.hmm).resolve())
+    todo = []
+    for k, s in enumerate(shards):
+        why = domains.run_problem(root, b.stage, lib.name, lib.version, k, scratch)
+        if why is None:
+            continue
+        _say(f"{b.stage}.{s.name}: its run record exists, but its run in {scratch} {why}; scanning it again into "
+             f"scratch (its published record stays; the new run must reproduce it)")
+        if "no run sha256" in why:
+            _say(f"{b.stage}.{s.name}: note: its record holds no run sha256, so the new run is accepted when its "
+                 f"domain and hit counts equal the record's, and the merge checks its row count")
+        todo.append(Step(b.stage, f"{s.name}.rescan",
+                         ("rescan", "--root", str(root), "--stage", b.stage, "--library", lib.name,
+                          "--library-version", lib.version, "--hmm", hmm, "--shard", str(k), "--cpus", str(cpus),
+                          "--tmp", str(scratch)), module="biobox.l1.domains"))
+    if not todo:
+        return None
+    code = _launch(prof, root, todo, jobs, cpus, _rescan_process, hook, allow)
+    if code is not None and code != runstep.EXIT_STOP:
+        _say(f"{b.stage}.{scan.name}: a shard could not be scanned again to its record (above); the merge does not "
+             f"run. A record whose rescan differs is not the scan of these inputs: tell the PI")
+    return code
+
+
+def _rescan_process(prof: Profile, root: Path, stage: str, step: str, cmd: Sequence[str], *, threads: int) -> int:
+    """Run a shard rescan `cmd` (a Runner, `_rescan_lost`) as its own process in this process's group, under the
+    memory cap and nice a `run-step` would give it (`runstep.memory_cap`, `runstep.build_argv`), with `threads` in
+    the thread variables. It is not a run-step: it publishes nothing. A signal gives 128 + its number."""
+    try:
+        cap = runstep.memory_cap(prof.mem_scope, require=prof.require_mem_cap)
+    except runstep.NoCap as e:
+        _say(f"not scanning {stage}.{step} again: {e}")
+        return runstep.EXIT_REFUSED
+    argv = runstep.build_argv(list(cmd), prof.nice_monolithic, prof.mem_scope,
+                              inherited=cap if cap["how"] == "inherited" else None)
+    env = dict(os.environ, BIOBOX_THREADS=str(threads), **{v: str(threads) for v in runstep.THREAD_VARS})
+    code = subprocess.run(argv, env=env, check=False).returncode
+    return code if code >= 0 else 128 - code
 
 
 def _profile_file(prof: Profile, scratch: Path) -> Path:
@@ -560,7 +625,7 @@ def _launch(prof: Profile, root: Path, todo: list[Step], jobs: int, cpus: int, r
     def work(k: int, s: Step) -> None:
         try:
             res: int | BaseException = run(prof, root, s.run_stage, s.name,
-                                           [sys.executable, "-m", "biobox.cli", *s.argv], threads=cpus)
+                                           [sys.executable, "-m", s.module, *s.argv], threads=cpus)
         except BaseException as e:  # handed to the main thread, which raises it once the others have ended
             res = e
         done.put((k, s, res))
@@ -606,7 +671,8 @@ def _launch(prof: Profile, root: Path, todo: list[Step], jobs: int, cpus: int, r
             elif res != 0:
                 failed[k] = res
                 _say(f"{s.run_stage}.{s.name} exited {res}; launching no more shards, waiting for the {running} "
-                     f"running; the next call runs the shards without a run record")
+                     f"running; the next call runs the shards without a run record"
+                     + ("" if s.module == "biobox.cli" else " and scans again each shard whose run is not in scratch"))
             elif hook is not None:
                 hook(f"after:{s.name}")
     except BaseException:

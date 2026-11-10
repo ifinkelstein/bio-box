@@ -227,6 +227,7 @@ What `run-step` leaves, and what it does at the next start:
 |---|---|---|
 | `$BBTMP/staging/<stage>.<step>/` | the step was killed, failed or stopped | removes it and runs the step again |
 | `$BBTMP/scratch/...` | a builder was killed | nothing; a builder makes a new scratch directory |
+| a scan shard's run missing from `$BBTMP/scratch/biobox-domain-scan/<plan>/` while its run record exists | scratch was cleared (a reboot) or damaged between the shards and the merge | `build-stage`, before the merge, scans exactly those shards again into scratch (log: `scanning it again`); the new run must have the sha256 the shard's published record holds, else the build stops naming the shard (tell the PI) |
 | `$ROOT/runs/stage=<S>/<step>.json` (run record) | the step finished | skips the step if every listed output is in the root with its recorded size |
 | `$ROOT/runs/stage=<S>/<step>.publishing.json` (intent file) | killed while publishing | finishes the publish, or undoes it, then reruns (see below) |
 | `$ROOT/.incoming/<stage>.<step>/` | killed while publishing | uses it to finish the publish, then removes it |
@@ -510,10 +511,6 @@ Found while writing this runbook, no card yet (reported to the PI):
 - `search status` of a run started with `--wait` finds nothing until the run has ended.
 - After `systemctl --user stop`, the unit's log has no `pod_run: ... exited` line.
 - The card text says `bio-box doctor`; the command is `python -m biobox.doctor`.
-- A scan's shard runs live in scratch (`$BBTMP/scratch/biobox-domain-scan/`) until the merge. If
-  scratch is cleared after some shards have published (a reboot clears `/tmp`), the merge refuses,
-  because those runs are gone, and their shards are not scanned again, because their run records
-  exist. Found by card C-11, from the code of `domains.merge` and `domains.scan_shard`; not run.
 
 ## 12. Contact
 

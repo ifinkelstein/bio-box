@@ -835,3 +835,114 @@ def test_c12_with_the_allowance_below_one_shards_threads_the_build_waits_then_pr
     assert bs.RECHECK_S >= 1
     check_stage_files(direct, root)
     assert scan_records(root) == scan_records(scanned[0])
+
+
+def lost_scratch(scanned, tmp_path: Path) -> tuple[Path, Path]:
+    """Copies of `scanned`'s root and scratch directory, for a test to damage."""
+    root = copy_root(scanned[0], tmp_path)
+    shutil.copytree(scanned[1], tmp_path / "scratch")
+    return root, tmp_path / "scratch"
+
+
+def shard_run(root: Path, scratch: Path, k: int) -> Path:
+    return domains.run_path(scratch, root, "S0", "test", "1", k)
+
+
+def shard_record_path(root: Path, k: int) -> Path:
+    return root / domains.scan_dir("S0", "test", "1") / f"shard-{k:05d}.json"
+
+
+@pytest.mark.covers("D-01", "D-03")
+@pytest.mark.parametrize("damage", ["deleted", "corrupted"])
+def test_c12_a_shard_whose_scratch_run_was_lost_is_scanned_again_and_the_build_ends_byte_identical(
+        direct, scanned, tmp_path, monkeypatch, capsys, damage):
+    """Scratch is damaged between the shards and their merge (a reboot clears /tmp): shard 2's run deleted, or one
+    of its bytes changed (same size: only the sha256 its record holds can tell). build-stage scans that shard again
+    into scratch, and no other (counted by the `after:<shard>.rescan` hook points), without publishing its record
+    again, then merges. The deleted case runs to the end and equals the direct build; the corrupted case stops
+    after the scan step and its files equal the direct build's."""
+    monkeypatch.setattr(bs, "shard_residues", patched_residues(direct))
+    prof = small_budget(direct)
+    root, scratch = lost_scratch(scanned, tmp_path)
+    run2 = shard_run(root, scratch, 2)
+    if damage == "deleted":
+        run2.unlink()
+    else:
+        data = bytearray(run2.read_bytes())
+        data[len(data) // 2] ^= 0xFF
+        run2.write_bytes(bytes(data))
+    rec2 = shard_record_path(root, 2).read_bytes()
+    before = records(root)
+    seen: list[str] = []
+
+    def hook(point: str) -> None:
+        seen.append(point)
+        if point == f"after:{SCAN}" and damage == "corrupted":
+            raise Killed(point)
+
+    b = dataclasses.replace(jobs_of(direct, root, 4, 1), tmp=scratch)
+    if damage == "deleted":
+        assert bs.build_stage(prof, b, run=runner, clock=lambda: NOON, load=idle, _hook=hook) == 0
+        check_sharded_equals_direct(direct, root)
+    else:
+        with pytest.raises(Killed):
+            bs.build_stage(prof, b, run=runner, clock=lambda: NOON, load=idle, _hook=hook)
+        check_stage_files(direct, root)
+    assert [p for p in seen if p.endswith(".rescan")] == [f"after:{shard(2)}.rescan"]  # that shard, and only it
+    assert shard(2) in capsys.readouterr().err
+    assert shard_record_path(root, 2).read_bytes() == rec2  # the record stayed
+    assert scan_records(root) == scan_records(scanned[0])
+    assert {k: v for k, v in records(root).items() if k in before} == before  # no shard step ran or published again
+
+
+def test_c12_a_rescan_that_gives_another_checksum_stops_with_an_error_naming_the_shard(
+        direct, scanned, tmp_path, monkeypatch, capfd):
+    """Shard 1's record is made to hold a run sha256 that its inputs do not give. Its run in scratch fails the
+    record, so build-stage scans it again; the new run does not give the record's sha256 either, so the build stops
+    before the merge, with an error that names the shard, and leaves the run in scratch as it was."""
+    monkeypatch.setattr(bs, "shard_residues", patched_residues(direct))
+    prof = small_budget(direct)
+    root, scratch = lost_scratch(scanned, tmp_path)
+    path = shard_record_path(root, 1)
+    rec = json.loads(path.read_text())
+    rec["run_sha256"] = "0" * 64
+    path.write_text(json.dumps(rec, sort_keys=True, indent=1) + "\n")
+    run1 = shard_run(root, scratch, 1).read_bytes()
+    b = dataclasses.replace(jobs_of(direct, root, 4, 1), tmp=scratch)
+    code = bs.build_stage(prof, b, run=runner, clock=lambda: NOON, load=idle)
+    assert code not in (0, runstep.EXIT_STOP)
+    err = capfd.readouterr().err
+    assert f"{shard(1)}.rescan exited {code}" in err  # build-stage names the shard step
+    assert "shard 1 of domains-test-1" in err and "0" * 64 in err  # the rescan names the shard and the checksums
+    assert f"stage=S0/{SCAN}.json" not in records(root)  # no merge
+    assert not (root / "l1/domains").exists()
+    assert shard_run(root, scratch, 1).read_bytes() == run1
+
+
+def test_c12_a_record_without_a_run_checksum_is_scanned_again_and_accepted_with_a_note(
+        direct, scanned, tmp_path, monkeypatch, capsys):
+    """A shard record that holds no run sha256 (`domains.scan_shard` has written one into every record since card
+    B-24; the case is handled for a record written otherwise) cannot be checked against its run: build-stage scans
+    the shard again, accepts the new run when its domain and hit counts equal the record's, says so in the log, and
+    merges."""
+    monkeypatch.setattr(bs, "shard_residues", patched_residues(direct))
+    prof = small_budget(direct)
+    root, scratch = lost_scratch(scanned, tmp_path)
+    path = shard_record_path(root, 3)
+    rec = json.loads(path.read_text())
+    del rec["run_sha256"]
+    path.write_text(json.dumps(rec, sort_keys=True, indent=1) + "\n")
+    seen: list[str] = []
+
+    def hook(point: str) -> None:
+        seen.append(point)
+        if point == f"after:{SCAN}":
+            raise Killed(point)
+
+    b = dataclasses.replace(jobs_of(direct, root, 4, 1), tmp=scratch)
+    with pytest.raises(Killed):
+        bs.build_stage(prof, b, run=runner, clock=lambda: NOON, load=idle, _hook=hook)
+    assert [p for p in seen if p.endswith(".rescan")] == [f"after:{shard(3)}.rescan"]
+    err = capsys.readouterr().err
+    assert shard(3) in err and "no run sha256" in err
+    check_stage_files(direct, root)
