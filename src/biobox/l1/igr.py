@@ -1,9 +1,8 @@
 """Intergenic regions as coordinates (data_layer_and_tests.md §2A.1; R-05).
 
-An IGR is a maximal run of bases covered by no feature of the tape's producers (a gene of
-any kind of feature covers its bases), so overlapping and nested features produce none
-between them. Every run of >= 1 nt is stored;
-the >= 30 nt filter (Weinberg convention, SEARCH_PLAN SD-07) is applied when the search
+An IGR is a maximal run of bases covered by no feature of the tape's producers (a feature of
+any kind covers its bases), so overlapping and nested features produce none between them.
+Every run of >= 1 nt is stored; the >= 30 nt filter (Weinberg convention, SEARCH_PLAN SD-07) is applied when the search
 pack is built. Coordinates are 0-based half-open on the + strand (`strand` = 1);
 orientation is derived from the flanking features (`left_feature_uid`, `right_feature_uid`;
 the legacy `left_slot`, `right_slot` stay until card B-17). On linear contigs the end runs have a
