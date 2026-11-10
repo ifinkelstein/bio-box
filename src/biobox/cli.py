@@ -16,7 +16,9 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import sys
+from datetime import datetime
 from pathlib import Path
 
 import pyarrow.parquet as pq
@@ -56,10 +58,43 @@ def _pack(a) -> int:
     return 1 if problems else 0
 
 
+DEFAULT_CPUS = 8  # `search run` without --cpus (and without a profile cap below it)
+
+
+def _limits(a) -> runner.Limits:
+    """The run's Limits (card W-10). Without a profile (--profile, else $BIOBOX_PROFILE): the flags
+    alone, as before. With one: require_cap, nice, the thread cap for the current hour and the
+    memory scope come from it, and --cpus / --mem-gb may lower them, never raise them (ValueError)."""
+    cpus = DEFAULT_CPUS if a.cpus is None else a.cpus
+    mem_gb = a.mem_gb
+    extra: dict = {}
+    path = a.profile or os.environ.get("BIOBOX_PROFILE")
+    if path:
+        from biobox import profile, runstep
+
+        prof = profile.load(path)
+        cap = runstep.choose_threads(prof, datetime.now(), runstep._load1())
+        if a.cpus is not None and a.cpus > cap:
+            raise ValueError(f"--cpus {a.cpus} is above the profile's thread cap of {cap} for this hour")
+        cpus = min(cpus, cap)
+        mem_cap = runstep.size_bytes(prof.mem_scope)
+        if mem_cap is not None:
+            if mem_gb is not None and mem_gb * runner.GB > mem_cap:
+                raise ValueError(f"--mem-gb {mem_gb:g} is above the profile's memory scope of {prof.mem_scope}")
+            if mem_gb is None:
+                mem_gb = mem_cap / runner.GB
+        extra = {"require_cap": prof.require_mem_cap, "nice": prof.nice_monolithic}
+    return runner.Limits(cpus=cpus, cpu_min=a.cpu_min, wall_s=a.wall_s, mem_gb=mem_gb, **extra)
+
+
 def _search(a) -> int:
     root = Path(a.root)
     if a.action == "run":
-        limits = runner.Limits(cpus=a.cpus, cpu_min=a.cpu_min, wall_s=a.wall_s)
+        try:
+            limits = _limits(a)
+        except (ValueError, OSError) as e:
+            print(f"refused: {e}", file=sys.stderr)
+            return 2
         try:
             if not a.wait:
                 print(runner.submit(root, Path(a.target), a.release, limits, Path(a.work) if a.work else None,
@@ -174,7 +209,10 @@ def main(argv: list[str] | None = None) -> int:
     s.add_argument("--wait", action="store_true")
     s.add_argument("--run-id")
     s.add_argument("--work")
-    s.add_argument("--cpus", type=int, default=8)
+    s.add_argument("--cpus", type=int, help=f"worker cpus (default {DEFAULT_CPUS}, or the profile's cap if lower)")
+    s.add_argument("--mem-gb", type=float, help="memory cap in GB (default: the profile's mem_scope, else none)")
+    s.add_argument("--profile", help="host profile YAML (default: $BIOBOX_PROFILE); caps cpus and memory, "
+                                     "and refuses to run uncapped where it requires a cap")
     s.add_argument("--cpu-min", type=float, default=300.0)
     s.add_argument("--wall-s", type=float, default=6 * 3600.0)
     s.add_argument("--round", type=int)
