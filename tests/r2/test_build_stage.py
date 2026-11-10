@@ -7,9 +7,11 @@ Its steps are the same commands that test runs one by one: `python -m biobox.cli
 `python -m biobox.cli release ...`, each started by `runstep.run_step` as a real subprocess.
 
 Then: a second call starts no step command; a build stopped after a middle step (an injected
-hook, or a `STOP` file) resumes on the next call and ends byte-identical; the CPU-minute checks
-refuse ingest before any step (card B-30) and stop before the domain scan (card B-24); a second
-stage and a release over both stages, built by a second call, change no file of the first.
+hook, or a `STOP` file) resumes on the next call and ends byte-identical; the CPU-minute check
+refuses ingest before any step (card B-30); a scan estimated over the budget runs as a plan step,
+one step per shard and a merge step, whose files equal the unsharded build's byte for byte, and a
+build killed between shards resumes at the next shard (card B-24); a second stage and a release
+over both stages, built by a second call, change no file of the first.
 
 The test profile's small-file floor is 1,000 bytes, as in `test_builders_out`: at the pod's real
 64 MiB floor a second release's manifest is refused until card C-09 merges.
@@ -29,6 +31,7 @@ import pytest
 
 from biobox import catalog, cli, runstep
 from biobox import stage as bs
+from biobox.l1 import domains
 from biobox.l1.genecall import GENE_CALL_VERSION as V
 
 sys.path.insert(0, str(Path(__file__).parent))
@@ -213,20 +216,103 @@ def test_the_ingest_estimate_refuses_before_any_step(direct, tmp_path, capsys):
     assert c08.tree(root) == {} and records(root) == {}
 
 
-def test_the_scan_estimate_stops_before_the_scan_and_keeps_earlier_steps(direct, tmp_path, capsys):
-    root = tmp_path / "root"
+# --- a scan over the budget runs in shard steps (card B-24) ---------------------------------------------
+
+SCAN = "domains-test-1"
+SHARD_RECORDS = "l1/domain_scan/"  # the plan and shard records: a build's own, never in a manifest
+
+
+def small_budget(direct):
+    """A profile whose budget lies between the two estimates on the fixture (measured rates in stage.py)."""
     residues = fixture_residues(direct["root"], "S0")
-    # the budget lies between the two estimates on the fixture (measured rates in stage.py)
     assert fixture_fasta_bytes(direct, "S0") * bs.INGEST_CPU_MIN / bs.INGEST_BP < 1 < residues * bs.SCAN_CPU_MIN_PER_M / 1e6
-    prof = dataclasses.replace(direct["prof"], cpu_min_per_process=1)
-    assert run(direct, prof, root) == runstep.EXIT_REFUSED
-    err = capsys.readouterr().err
-    assert "B-24" in err and f"{residues:,}" in err
-    assert record_names(root) == {f"stage=S0/{n}" for n in ("inputs", "ingest", "genecall", "igr", "tapes")}
-    assert not any(p.startswith(("l1/domains/", "release_def/")) or "release=" in p for p in c08.tree(root))
-    # the earlier steps are published; with a budget that admits the scan, the build continues
-    assert run(direct, direct["prof"], root) == 0
-    check_equals_direct(direct, root)
+    return dataclasses.replace(direct["prof"], cpu_min_per_process=1)
+
+
+def shard_names(root: Path) -> list[str]:
+    return sorted(n.removeprefix("stage=S0/") for n in record_names(root) if n.startswith(f"stage=S0/{SCAN}.shard-"))
+
+
+def check_sharded_equals_direct(direct, root: Path) -> None:
+    """Every file but the shard records is the direct (unsharded) build's, byte for byte; so are the manifest
+    and the catalog, which never list the shard records."""
+    got = {k: v for k, v in c08.tree(root).items() if not k.startswith(SHARD_RECORDS)}
+    want = c08.tree(direct["root"])
+    assert sorted(got) == sorted(want)
+    assert c08.data(got) == c08.data(want)
+    man = c08.check_manifest(root, REL, direct["manifest"])
+    assert catalog.verify_manifest(man) == []
+    c08.check_catalog(root, REL, man, Path(direct["prof"].tmp) / "staging")
+
+
+@pytest.fixture(scope="module")
+def sharded(direct, tmp_path_factory):
+    """One build-stage call with a budget below the fixture's scan estimate, and the hook points it passed."""
+    root = tmp_path_factory.mktemp("c04-sharded") / "root"
+    seen: list[str] = []
+    assert run(direct, small_budget(direct), root, hook=seen.append) == 0
+    return root, seen
+
+
+@pytest.mark.covers("D-01")
+def test_a_scan_over_the_budget_runs_in_shard_steps_whose_merge_equals_the_unsharded_build(direct, sharded):
+    root, seen = sharded
+    budget = small_budget(direct).cpu_min_per_process
+    shards = shard_names(root)
+    assert len(shards) >= 2 and shards == [f"{SCAN}.shard-{k:05d}" for k in range(len(shards))]
+    stage_steps = ["inputs", "ingest", "genecall", "igr", "tapes"]
+    assert record_names(root) == ({f"stage=S0/{n}" for n in stage_steps + [f"{SCAN}.plan", *shards, SCAN]}
+                                  | {f"stage={REL}/{n}" for n in NAMES[7:]})
+    # each shard is its own step, in order, between the plan and the merge (the scan step's own record)
+    assert seen == ([f"after:{n}" for n in NAMES[:6]] + [f"after:{SCAN}.plan"] + [f"after:{s}" for s in shards]
+                    + [f"after:{n}" for n in NAMES[6:]])
+    # every shard fits the budget at the measured rate, and together they hold every protein once
+    plan = domains.read_plan(root, "S0", "test", "1")
+    assert len(plan["shards"]) == len(shards)
+    assert all(s["residues"] * bs.SCAN_CPU_MIN_PER_M / 1e6 <= budget for s in plan["shards"])
+    assert sum(s["residues"] for s in plan["shards"]) == fixture_residues(root, "S0")
+    check_sharded_equals_direct(direct, root)
+
+
+def test_a_second_call_after_a_sharded_scan_starts_nothing(direct, sharded, tmp_path, monkeypatch):
+    root = tmp_path / "root"
+    shutil.copytree(sharded[0], root, symlinks=True)
+    before, files = records(root), c08.tree(root)
+
+    def no_command(*a, **k):
+        raise AssertionError("a step command was started on the second call")
+
+    monkeypatch.setattr(runstep, "_execute", no_command)
+    assert run(direct, small_budget(direct), root) == 0
+    assert records(root) == before and c08.tree(root) == files
+
+
+@pytest.mark.covers("D-03")
+def test_a_build_killed_between_shards_resumes_at_the_next_shard(direct, sharded, tmp_path):
+    root = tmp_path / "root"
+    first = f"after:{SCAN}.shard-00000"
+
+    def kill(point: str) -> None:
+        if point == first:
+            raise Killed(point)
+
+    with pytest.raises(Killed):
+        run(direct, small_budget(direct), root, hook=kill)
+    done = records(root)
+    assert {k.removesuffix(".json") for k in done if k.startswith(f"stage=S0/{SCAN}")} == {
+        f"stage=S0/{SCAN}.plan", f"stage=S0/{SCAN}.shard-00000"}
+    started: list[str] = []  # the steps that had no run record when build-stage reached them
+
+    def recording(prof, root_, stage, step, cmd, **kw):
+        if not (Path(root_) / "runs" / f"stage={stage}" / f"{step}.json").exists():
+            started.append(step)
+        return runner(prof, root_, stage, step, cmd, **kw)
+
+    assert bs.build_stage(small_budget(direct), build_of(direct, root), run=recording) == 0
+    assert started[0] == f"{SCAN}.shard-00001"  # the next shard, then the rest of the build
+    assert started == [*shard_names(root)[1:], SCAN, *NAMES[7:]]
+    assert {k: v for k, v in records(root).items() if k in done} == done  # the plan and shard 0 did not run again
+    check_sharded_equals_direct(direct, root)
 
 
 # --- refusals before any step ---------------------------------------------------------------------------

@@ -12,8 +12,8 @@ with `--out` left to `$BIOBOX_STAGING` (card C-08), in this order:
     cluster, tokens, postings, dim, manifest, catalog
 
 `features` is the slot for feature producers other than the gene caller. It has no command yet
-and is passed over. The stage steps are recorded under `runs/stage=<S>/`, the release steps
-under `runs/stage=<REL>/`.
+and is passed over. A domain scan over the CPU budget runs as several steps (below). The stage
+steps are recorded under `runs/stage=<S>/`, the release steps under `runs/stage=<REL>/`.
 
 The step list and every argument are a pure function of the command line and the profile. Paths
 are made absolute. The thread count is `--threads`, else the smaller of the profile's day and
@@ -27,10 +27,17 @@ Before any step (exit 2, nothing run): a bad name; `--stage` not among the relea
 `--stages` and no `release_def`; `--stages` that disagree with the `release_def`; and ingest whose
 estimated CPU-minutes exceed the profile's `cpu_min_per_process` (ingest is one process until card
 B-30). The estimate is skipped when ingest's run record exists. Before each step: a `STOP` file in
-the root exits 75, as `run-step` does. Before each scan step whose record does not exist: residues
-are known only after gene calling, so the scan's estimate is made there, and the build stops before
-the scan (exit 2) when it exceeds the budget (one process per library until card B-24). The earlier
-steps stay published.
+the root exits 75, as `run-step` does.
+
+A scan in shards (card B-24). Residues are known only after gene calling, so a scan step's
+estimate is made when the build reaches it and its record does not exist. When it exceeds the
+budget (or a shard plan for it is already published), the scan runs as steps of its own, one at a
+time (sequentially in this card): `domains-<lib>-<ver>.plan` (`bio-box stage domains plan`, shards
+of at most `shard_residues(profile)` residues: what fits the budget at `SCAN_CPU_MIN_PER_M`), then
+`domains-<lib>-<ver>.shard-<k>` for each shard (`... shard --shard K`, `--cpus` and `--tmp` as
+above), then the merge (`... merge`) under the scan step's own name, so its run record is the
+scan's. The shards' scratch runs live under the scratch directory and are removed after the merge.
+The merged files are those of the scan in one process, byte for byte.
 
 The first step that does not exit 0 ends the build with its exit code. `run-step` gives every step
 kill-and-resume (cards C-02, C-03), so the next call skips each step whose run record and outputs
@@ -44,6 +51,7 @@ from __future__ import annotations
 
 import gzip
 import json
+import shutil
 import sys
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass
@@ -53,6 +61,7 @@ import pyarrow.compute as pc
 import pyarrow.parquet as pq
 
 from biobox import catalog, runstep
+from biobox.l1 import domains
 from biobox.l1.genecall import GENE_CALL_VERSION
 from biobox.profile import Profile
 
@@ -244,16 +253,53 @@ def _refusal(prof: Profile, b: Build, root: Path, plan: list[Step]) -> str | Non
     return None
 
 
-def _scan_refusal(prof: Profile, b: Build, root: Path, step: Step) -> str | None:
+def shard_residues(prof: Profile) -> int:
+    """Residues per scan shard: what fits in the profile's `cpu_min_per_process` at the measured rate
+    (`SCAN_CPU_MIN_PER_M`), at least one."""
+    return max(1, int(prof.cpu_min_per_process * 1e6 / SCAN_CPU_MIN_PER_M))
+
+
+def _sharded(prof: Profile, b: Build, root: Path, step: Step) -> bool:
+    """Whether the scan `step` runs in shards: its estimate in one process exceeds the budget, or an
+    earlier call planned it in shards (its plan is published)."""
+    lib = _library(b, step)
+    if (root / domains.scan_dir(b.stage, lib.name, lib.version) / "plan.json").exists():
+        return True
     residues = stage_residues(root, b.stage, b.gene_call_version)
     est = scan_cpu_min(residues)
     if est <= prof.cpu_min_per_process:
-        return None
-    return (f"stopped before {b.stage}.{step.name}: the scan of {residues:,} residues is estimated at "
-            f"{est:,.1f} CPU-minutes in one process ({SCAN_CPU_MIN_PER_M} CPU-min per million residues, measured "
-            f"for Pfam on wilkcomp02, 2026-11-10), over the profile's cpu_min_per_process of "
-            f"{prof.cpu_min_per_process} (AGENTS §7.2). The earlier steps are published; a scan in shard "
-            f"processes is card B-24")
+        return False
+    _say(f"{b.stage}.{step.name}: the scan of {residues:,} residues is estimated at {est:,.1f} CPU-minutes in one "
+         f"process ({SCAN_CPU_MIN_PER_M} CPU-min per million residues, measured for Pfam on wilkcomp02, "
+         f"2026-11-10), over the profile's cpu_min_per_process of {prof.cpu_min_per_process} (AGENTS §7.2); "
+         f"it runs in shards of at most {shard_residues(prof):,} residues, one step each")
+    return True
+
+
+def _library(b: Build, step: Step) -> Library:
+    return next(lib for lib in b.libraries if scan_name(lib) == step.name)
+
+
+def scan_steps(prof: Profile, b: Build, step: Step, n_shards: int | None) -> list[Step]:
+    """The steps of the scan `step` in shards: its plan, then (once the plan is published and
+    `n_shards` known) one step per shard, then the merge under the scan step's own name, so its run
+    record is the scan's."""
+    lib = _library(b, step)
+    root, n, tmp = str(Path(b.root).resolve()), str(threads_of(prof, b)), str(scratch_of(prof, b))
+
+    def dm(action: str, *extra: str) -> tuple[str, ...]:
+        return ("stage", "domains", action, "--root", root, "--gene-call-version", b.gene_call_version,
+                "--stage", b.stage, "--library", lib.name, "--library-version", lib.version, *extra)
+
+    hmm = str(Path(lib.hmm).resolve())
+    plan = Step(b.stage, f"{step.name}.plan", dm("plan", "--hmm", hmm, "--cutoff", lib.cutoff,
+                                                 "--shard-residues", str(shard_residues(prof))))
+    if n_shards is None:
+        return [plan]
+    return [plan,
+            *(Step(b.stage, f"{step.name}.shard-{k:05d}", dm("shard", "--hmm", hmm, "--shard", str(k), "--cpus", n,
+                                                              "--tmp", tmp)) for k in range(n_shards)),
+            Step(b.stage, step.name, dm("merge", "--tmp", tmp))]
 
 
 def build_stage(prof: Profile, b: Build, *, run: Runner | None = None, _hook: Hook | None = None) -> int:
@@ -273,23 +319,56 @@ def build_stage(prof: Profile, b: Build, *, run: Runner | None = None, _hook: Ho
         return runstep.EXIT_REFUSED
     scratch_of(prof, b).mkdir(parents=True, exist_ok=True)
     n = threads_of(prof, b)
+
+    def one(step: Step) -> int | None:
+        """Run `step` (STOP checked first); its non-zero exit code, else None."""
+        if (root / "STOP").exists():
+            _say(f"{root / 'STOP'} exists; stopping before {step.run_stage}.{step.name}")
+            return runstep.EXIT_STOP
+        cmd: Sequence[str] = [sys.executable, "-m", "biobox.cli", *step.argv]
+        code = run(prof, root, step.run_stage, step.name, cmd, threads=n)
+        if code != 0:
+            _say(f"{step.run_stage}.{step.name} exited {code}; stopping here; the next call resumes at this step")
+            return code
+        return None
+
     for step in plan:
         if (root / "STOP").exists():
             _say(f"{root / 'STOP'} exists; stopping before {step.run_stage}.{step.name}")
             return runstep.EXIT_STOP
         if step.argv is not None:
-            if step.check == "scan" and not _record(root, step).exists():
-                why = _scan_refusal(prof, b, root, step)
-                if why is not None:
-                    _say(why)
-                    return runstep.EXIT_REFUSED
-            cmd: Sequence[str] = [sys.executable, "-m", "biobox.cli", *step.argv]
-            code = run(prof, root, step.run_stage, step.name, cmd, threads=n)
-            if code != 0:
-                _say(f"{step.run_stage}.{step.name} exited {code}; stopping here; the next call resumes at "
-                     "this step")
+            if step.check == "scan" and not _record(root, step).exists() and _sharded(prof, b, root, step):
+                code = _scan_in_shards(prof, b, root, step, one, _hook)
+            else:
+                code = one(step)
+            if code is not None:
                 return code
         if _hook is not None:
             _hook(f"after:{step.name}")
     _say(f"stage {b.stage} and release {b.release}: all {len(plan)} steps done")
     return 0
+
+
+def _scan_in_shards(prof: Profile, b: Build, root: Path, step: Step, one: Callable[[Step], int | None],
+                    hook: Hook | None) -> int | None:
+    """The scan `step` as its plan step, one step per shard and the merge step, in that order and one at a
+    time (`scan_steps`); each is a `run-step`, so a call after a kill skips every step already published
+    and resumes at the next. The shards' scratch runs are removed once the merge is published."""
+    lib = _library(b, step)
+    first = scan_steps(prof, b, step, None)[0]
+    code = one(first)
+    if code is not None:
+        return code
+    if hook is not None:
+        hook(f"after:{first.name}")
+    shards = len(domains.read_plan(root, b.stage, lib.name, lib.version)["shards"])
+    rest = scan_steps(prof, b, step, shards)[1:]
+    for sub in rest:
+        code = one(sub)
+        if code is not None:
+            return code
+        if hook is not None and sub.name != step.name:  # the merge's hook is the scan step's, after this returns
+            hook(f"after:{sub.name}")
+    run_dir = domains.run_path(scratch_of(prof, b), root, b.stage, lib.name, lib.version, 0).parent
+    shutil.rmtree(run_dir, ignore_errors=True)
+    return None

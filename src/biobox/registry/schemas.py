@@ -850,6 +850,21 @@ ARTIFACTS: dict[str, ArtifactSpec] = {
             "(card B-22)",
         small_ok=True,
     ),
+    # A stage's domain scan in shards (card B-24, `biobox.l1.domains`): the plan and one record per shard
+    # (its scratch run's sha256 and counts), written once each by the plan and shard steps so that
+    # `bio-box run-step` can publish them. A build's own records, like `runs/`: never in a release manifest,
+    # so a release is the same whether its scans were sharded or not.
+    "domain_scan": ArtifactSpec(
+        name="domain_scan",
+        layer="L1",
+        location="l1/domain_scan",
+        partition_keys=("library", "stage"),
+        pattern=r"(plan|shard-\d{5})\.json",
+        doc="a stage's shard plan for one domain library (plan.json: proteins by protein_uid cut by cumulative "
+            "residues) and each scanned shard's record (shard-<k>.json), as sorted-key JSON",
+        in_manifest=False,
+        small_ok=True,
+    ),
     # A release's own records (card C-08): one file per release, the release in the file name
     # (`release=<R>.json`, `release=<R>.duckdb`), so the artifact has no partition directories. Both
     # hold the data root's absolute path (the manifest's `root`; the catalog's `catalog_info.root` and

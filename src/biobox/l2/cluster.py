@@ -13,7 +13,7 @@ Writes under `<root>/`:
     ledger/release=<R>/step=cluster/part-0.parquet
 
 Both tables go through `biobox.io.write_parts`, cut at `max_file_bytes` of estimated size (card
-B-19). The rows are still built in Python lists; making this builder stream is a separate card.
+B-19).
 
 The proteins are those of the release's stages only (card B-25), so a stage written later or
 while the release is built never enters its clusters.
@@ -21,19 +21,43 @@ while the release is built never enters its clusters.
 Inputs are written to FASTA sorted by protein_uid and MMseqs2 runs with
 `--shuffle 0` and explicit `--threads`, so output does not depend on input order
 or on the host's core count.
+
+Bounded memory (card B-24; AGENTS §4.1). No list or dict of proteins, members or alignments is
+held; the Python side holds a batch of rows and one cluster's members at a time.
+
+- Each stage's `protein_seq` files are one run sorted by protein_uid; the runs are merged into the
+  FASTA `SCRATCH_ROWS` proteins at a time, so the sequences are never sorted or held.
+- MMseqs2's two TSV outputs per level are converted to flat Parquet a block at a time; an alignment
+  row carries its line number.
+- Every other step is a plain DuckDB sort of those flat files (`DUCK_MEMORY_LIMIT`, one thread,
+  spilling into the private working directory; no join, window or hash aggregate, whose state does
+  not spill as a sort does) followed by a merge in Python: the members sorted by uid against the
+  proteins (every protein is a member exactly once), and against the alignment lines sorted by
+  (member, line), which keeps each member's first line whose query is its representative; the
+  members sorted by (representative, member), whose cluster uid is hashed one cluster at a time.
+  The rows found go to flat Parquet, and one more sort per table gives the writer its sort order.
+
+The MMseqs2 command lines, parameters and thread counts are those of the builder before card B-24,
+so cluster membership is unchanged. Before the card the Python side held every row in lists: 9.57 GB
+at 2.05 M proteins (measured, planning/measurements/2026-11-10_cluster_memory.md).
 """
 
 from __future__ import annotations
 
 import hashlib
+import heapq
+import itertools
 import json
 import shutil
 import subprocess
 import tempfile
-from collections import defaultdict
+from collections.abc import Iterator
 from pathlib import Path
 
+import duckdb
+import numpy as np
 import pyarrow as pa
+import pyarrow.csv as pacsv
 import pyarrow.parquet as pq
 from blake3 import blake3
 
@@ -53,6 +77,14 @@ LEVELS = {
     "nr50": {"min_seq_id": 0.5, "coverage": 0.8},
 }
 COMMON = ["--cov-mode", "1", "--cluster-mode", "2"]
+
+DUCK_MEMORY_LIMIT = "2GB"  # the sorting connection's cap, as genecall's and postings'; larger sorts spill
+SCRATCH_ROWS = 16_384  # rows per batch read, written or handed on by the Python side
+_CSV_BLOCK = 1 << 22  # bytes per block when converting an MMseqs2 TSV
+_ALN_COLUMNS = {"query": pa.string(), "target": pa.string(), "qstart": pa.int64(), "qend": pa.int64(),
+                "tstart": pa.int64(), "tend": pa.int64(), "fident": pa.float64(), "alnlen": pa.int64(),
+                "cigar": pa.string()}
+_ALN_FORMAT = ",".join(_ALN_COLUMNS)
 
 
 def params_hash(level: str) -> str:
@@ -80,29 +112,215 @@ class MMseqs:
         subprocess.run(cmd, check=True, stdout=self.log, stderr=subprocess.STDOUT, cwd=self.workdir)
 
 
-def _read_proteins(root: Path, gene_call_version: str, stages: list[str]) -> dict[bytes, str]:
-    """The distinct proteins of `stages` (card B-25: no other stage is read; a listed stage without
-    `protein_seq` files raises FileNotFoundError)."""
-    files = []
+def _protein_files(root: Path, gene_call_version: str, stages: list[str]) -> list[list[Path]]:
+    """The `protein_seq` files of each of `stages`, in bucket and part order (card B-25: no other stage
+    is read; a listed stage without `protein_seq` files raises FileNotFoundError)."""
+    out = []
     for s in stages:
         found = io.part_files(root / f"l0seq/protein_seq/gene_call_version={gene_call_version}/stage={s}",
                               "protein_prefix=*/part-*.parquet")
         if not found:
             raise FileNotFoundError(f"stage {s}: no protein_seq files for gene_call_version={gene_call_version}")
-        files += found
-    out: dict[bytes, str] = {}
-    for f in files:
-        t = pq.read_table(f, columns=["protein_uid", "seq"])
-        out.update(zip(t.column("protein_uid").to_pylist(), t.column("seq").to_pylist()))
+        out.append(found)
     return out
 
 
-def _tsv_pairs(path: Path) -> list[tuple[str, str]]:
-    return [tuple(line.rstrip("\n").split("\t")[:2]) for line in path.read_text().splitlines() if line]
+def _stage_proteins(files: list[Path]) -> Iterator[tuple[bytes, str]]:
+    """(protein_uid, seq) of one stage's `protein_seq` files, in protein_uid order, `SCRATCH_ROWS` at a
+    time. The files are sorted by protein_uid and bucketed by its prefix (`protein_seq`'s sort key), so in
+    bucket and part order they are one sorted run; a uid that does not follow the one before is a
+    RuntimeError, so no unsorted input is ever written as if it were sorted."""
+    last = None
+    for f in files:
+        for b in pq.ParquetFile(f).iter_batches(batch_size=SCRATCH_ROWS, columns=["protein_uid", "seq"]):
+            uids = b.column(0).to_pylist()
+            if uids and last is not None and uids[0] <= last or any(x >= y for x, y in zip(uids, uids[1:])):
+                raise RuntimeError(f"{f}: protein_seq rows are not in strictly increasing protein_uid order")
+            if uids:
+                last = uids[-1]
+            yield from zip(uids, b.column(1).to_pylist())
+
+
+def _sql_path(p: Path) -> str:
+    return "'" + str(p).replace("'", "''") + "'"
+
+
+class _Flat:
+    """Rows appended one at a time and written to a flat Parquet file `SCRATCH_ROWS` at a time."""
+
+    def __init__(self, path: Path, schema: pa.Schema):
+        self.schema = schema
+        self.cols: list[list] = [[] for _ in schema]
+        self.w = pq.ParquetWriter(path, schema, compression="zstd", compression_level=1)
+
+    def add(self, *row) -> None:
+        for c, v in zip(self.cols, row):
+            c.append(v)
+        if len(self.cols[0]) >= SCRATCH_ROWS:
+            self.flush()
+
+    def flush(self) -> None:
+        if self.cols[0]:
+            self.w.write_table(pa.table([pa.array(c, f.type) for c, f in zip(self.cols, self.schema)],
+                                        schema=self.schema))
+            for c in self.cols:
+                c.clear()
+
+    def close(self) -> None:
+        self.flush()
+        self.w.close()
+
+
+def _schema(**cols: pa.DataType) -> pa.Schema:
+    return pa.schema([pa.field(n, t, nullable=False) for n, t in cols.items()])
+
+
+def _write_fasta(stage_files: list[list[Path]], faa: Path, uids: Path) -> int:
+    """The distinct proteins of the stages' files as FASTA records `>{uid hex}` sorted by protein_uid:
+    each stage's files are one sorted run (`_stage_proteins`) and the runs are merged, so no sort holds
+    the sequences. A protein in two stages is written once (its uid is the hash of its sequence). The
+    uids, as hex in the same order, go to the flat file `uids`. Returns their number."""
+    n, last = 0, None
+    lines: list[str] = []
+    out = _Flat(uids, _schema(uid=pa.string()))
+    try:
+        with open(faa, "w") as fh:
+            for u, s in heapq.merge(*(_stage_proteins(f) for f in stage_files), key=lambda r: r[0]):
+                if u == last:
+                    continue
+                last, h = u, u.hex()
+                out.add(h)
+                lines.append(f">{h}\n{s}\n")
+                n += 1
+                if len(lines) == SCRATCH_ROWS:
+                    fh.write("".join(lines))
+                    lines.clear()
+            fh.write("".join(lines))
+    finally:
+        out.close()
+    return n
+
+
+def _tsv_to_parquet(src: Path, dst: Path, columns: dict[str, pa.DataType], line_numbers: bool = False) -> None:
+    """An MMseqs2 TSV (no header, no quoting) as flat Parquet, read a block at a time in file order; with
+    `line_numbers`, a column `ln` holds each row's 0-based line number among the non-empty lines."""
+    names = list(columns)
+    reader = pacsv.open_csv(src, read_options=pacsv.ReadOptions(column_names=names, use_threads=False,
+                                                                  block_size=_CSV_BLOCK),
+                            parse_options=pacsv.ParseOptions(delimiter="\t", quote_char=False, escape_char=False),
+                            convert_options=pacsv.ConvertOptions(column_types=columns, null_values=[],
+                                                                 strings_can_be_null=False))
+    schema = _schema(**columns, **({"ln": pa.int64()} if line_numbers else {}))
+    n = 0
+    with pq.ParquetWriter(dst, schema, compression="zstd", compression_level=1) as w:
+        for b in reader:
+            cols = [b.column(c) for c in names]
+            if line_numbers:
+                cols.append(pa.array(np.arange(n, n + b.num_rows, dtype=np.int64)))
+            n += b.num_rows
+            w.write_batch(pa.RecordBatch.from_arrays(cols, schema=schema))
+
+
+def _sorted(con, sql: str, path: Path) -> Path:
+    """The result of `sql` (which ends in its ORDER BY) as a flat Parquet file in that order: one sort at
+    a time, so a sort never shares the memory limit with another one being read."""
+    con.execute(f"COPY ({sql}) TO {_sql_path(path)} (FORMAT parquet, COMPRESSION zstd, ROW_GROUP_SIZE {SCRATCH_ROWS})")
+    return path
+
+
+def _flat_rows(path: Path, key: int = 0) -> Iterator[tuple]:
+    """The rows of a flat Parquet file, `SCRATCH_ROWS` at a time; with `key`, a row whose first `key`
+    values sort before the row above's is a RuntimeError (a merge must never see unsorted input)."""
+    last = None
+    for b in pq.ParquetFile(path).iter_batches(batch_size=SCRATCH_ROWS):
+        for row in zip(*(b.column(i).to_pylist() for i in range(b.num_columns))):
+            if key:
+                k = row[:key]
+                if last is not None and k < last:
+                    raise RuntimeError(f"{path.name}: rows are not sorted on their first {key} columns")
+                last = k
+            yield row
+
+
+def _pick_alignments(con, w: Path, level: str) -> int:
+    """Check that every protein is a member of exactly one cluster at `level`, and write to
+    `pick_<level>.parquet` each member's first alignment line whose query is the member's representative
+    (as the builder before card B-24 kept it: lines in file order, a line of another query passed over).
+    Returns the number of members with an alignment. Three sorted streams are merged: the proteins
+    (`prot.parquet`, uid order), the members (by uid) and the alignment lines (by target, then line)."""
+    clu, aln = _sql_path(w / f"clu_{level}.parquet"), _sql_path(w / f"aln_{level}.parquet")
+    members = _flat_rows(_sorted(con, f"SELECT member, rep FROM read_parquet({clu}) ORDER BY member",
+                                 w / f"by_member_{level}.parquet"), key=1)
+    lines = _flat_rows(_sorted(con, "SELECT target, ln, query, qstart, qend, tstart, tend, fident, alnlen, cigar "
+                                    f"FROM read_parquet({aln}) ORDER BY target, ln", w / f"by_target_{level}.parquet"),
+                       key=2)
+    out = _Flat(w / f"pick_{level}.parquet", _schema(**{c: t for c, t in _ALN_COLUMNS.items()}))
+    picked = 0
+    try:
+        head = next(lines, None)
+        prot = (u for (u,) in _flat_rows(w / "prot.parquet", key=1))
+        for mr, u in itertools.zip_longest(members, prot, fillvalue=None):
+            m, r = (None, None) if mr is None else mr
+            if m != u:
+                lost = m is None or (u is not None and u < m)
+                raise RuntimeError(f"{level}: clustering does not cover every protein once: "
+                                   + (f"protein {u} is in no cluster" if lost else
+                                      f"member {m} is listed twice or is not a protein"))
+            while head is not None and head[0] < m:  # a line whose target is no member: passed over
+                head = next(lines, None)
+            got = False
+            while head is not None and head[0] == m:
+                if not got and head[2] == r:
+                    out.add(head[2], head[0], *head[3:])
+                    got = True
+                    picked += 1
+                head = next(lines, None)
+    finally:
+        members.close()
+        lines.close()
+        out.close()
+    return picked
+
+
+def _cluster_members(con, w: Path, level: str, phash: str) -> int:
+    """Write `mem_<level>.parquet`, every member with its representative and cluster uid; returns the
+    number of clusters. The members arrive sorted by (rep, member), so each cluster's sorted members are
+    hashed when its last one has passed (the digest of `cluster_uid`)."""
+    rows = _flat_rows(_sorted(con, f"SELECT rep, member FROM read_parquet({_sql_path(w / f'clu_{level}.parquet')}) "
+                                   "ORDER BY rep, member", w / f"by_rep_{level}.parquet"), key=2)
+    out = _Flat(w / f"mem_{level}.parquet", _schema(member=pa.string(), rep=pa.string(), cluster_uid=pa.binary(16)))
+    tail = phash.encode()
+    n, cur, ms = 0, None, []
+
+    def close() -> None:
+        h = blake3()
+        for m in ms:
+            h.update(bytes.fromhex(m))
+        h.update(tail)
+        cu = h.digest(length=16)
+        for m in ms:
+            out.add(m, cur, cu)
+
+    try:
+        for r, m in rows:
+            if r != cur:
+                if ms:
+                    close()
+                    n += 1
+                cur, ms = r, []
+            ms.append(m)
+        if ms:
+            close()
+            n += 1
+    finally:
+        rows.close()
+        out.close()
+    return n
 
 
 def run(root: Path, release: str, gene_call_version: str, stages: list[str], threads: int = 1,
-        tmp: Path | None = None, max_file_bytes: int = layout.MAX_FILE_BYTES, out: Path | None = None) -> dict:
+        tmp: Path | None = None, max_file_bytes: int = layout.MAX_FILE_BYTES, out: Path | None = None,
+        memory_limit: str | None = None) -> dict:
     """Cluster the distinct proteins of `stages`, the release's stages (card B-25), and write the
     release's cluster tables; the release's `release_def` is written, or checked to list the same
     stages (`catalog.define_release`).
@@ -110,7 +328,8 @@ def run(root: Path, release: str, gene_call_version: str, stages: list[str], thr
     The proteins are read from `root`; the cluster tables, the release's clustering ledger and (when
     the root has none) its `release_def` are written under `out` (default `root`; card C-08). Refuses,
     before any work, when those tables or that ledger already hold a file in `root` or `out`; with
-    `out` given, `tmp` may lie under neither."""
+    `out` given, `tmp` may lie under neither. `memory_limit` is DuckDB's cap (default
+    `DUCK_MEMORY_LIMIT`, read when called)."""
     root = Path(root)
     if out is not None:
         ledger.check_scratch(tmp, root, out)
@@ -120,15 +339,14 @@ def run(root: Path, release: str, gene_call_version: str, stages: list[str], thr
     ledger.refuse_written(root, out, [f"l2/cluster_member/release={release}", f"l2/cluster_member_aln/release={release}",
                                       ledger.release_path("", release, "cluster").parent.as_posix()],
                           f"clustering of release {release}")
-    prots = _read_proteins(root, gene_call_version, stages)
-    if not prots:
-        raise FileNotFoundError(f"release {release}: no proteins in stages {stages}")
-    catalog.define_release(root, release, stages, out=out)
+    files = _protein_files(root, gene_call_version, stages)
+    limit = DUCK_MEMORY_LIMIT if memory_limit is None else memory_limit
     with tempfile.TemporaryDirectory(dir=tmp) as d:
         w = Path(d)
-        with open(w / "in.faa", "w") as fh:
-            for uid in sorted(prots):
-                fh.write(f">{uid.hex()}\n{prots[uid]}\n")
+        n_prot = _write_fasta(files, w / "in.faa", w / "prot.parquet")
+        if not n_prot:
+            raise FileNotFoundError(f"release {release}: no proteins in stages {stages}")
+        catalog.define_release(root, release, stages, out=out)
         mm = MMseqs(w, threads)
         mm("createdb", "in.faa", "db", "--dbtype", "1", "--shuffle", "0", "--write-lookup", "1", threaded=False)
         mm("cluster", "db", "clu90", "tmp90", "--min-seq-id", str(LEVELS["nr90"]["min_seq_id"]),
@@ -137,54 +355,51 @@ def run(root: Path, release: str, gene_call_version: str, stages: list[str], thr
         mm("cluster", "rep90", "clu50r", "tmp50", "--min-seq-id", str(LEVELS["nr50"]["min_seq_id"]),
            "-c", str(LEVELS["nr50"]["coverage"]), *COMMON)
         mm("mergeclusters", "db", "clu50", "clu90", "clu50r")
-        assign: dict[str, dict[str, str]] = {}
-        alns: dict[str, list[list[str]]] = {}
         for level, clu in (("nr90", "clu90"), ("nr50", "clu50")):
             mm("createtsv", "db", "db", clu, f"{clu}.tsv")
-            assign[level] = {m: r for r, m in _tsv_pairs(w / f"{clu}.tsv")}
+            _tsv_to_parquet(w / f"{clu}.tsv", w / f"clu_{level}.parquet", {"rep": pa.string(), "member": pa.string()})
             mm("align", "db", "db", clu, f"aln_{level}", "-a", "-e", "inf", "--min-seq-id", "0", "-c", "0",
                "--alignment-mode", "3")
-            mm("convertalis", "db", "db", f"aln_{level}", f"aln_{level}.tsv",
-               "--format-output", "query,target,qstart,qend,tstart,tend,fident,alnlen,cigar")
-            alns[level] = [ln.split("\t") for ln in (w / f"aln_{level}.tsv").read_text().splitlines() if ln]
+            mm("convertalis", "db", "db", f"aln_{level}", f"aln_{level}.tsv", "--format-output", _ALN_FORMAT)
+            _tsv_to_parquet(w / f"aln_{level}.tsv", w / f"aln_{level}.parquet", _ALN_COLUMNS, line_numbers=True)
+        mm.log.close()
 
-    lengths = {u.hex(): len(s) for u, s in prots.items()}
-    mem_rows, aln_rows = [], []
-    for level in LEVELS:
-        phash = params_hash(level)
-        members_of: dict[str, list[bytes]] = defaultdict(list)
-        for m, r in assign[level].items():
-            members_of[r].append(bytes.fromhex(m))
-        if set(assign[level]) != set(lengths):
-            raise RuntimeError(f"{level}: clustering does not cover every protein")
-        cuid = {r: cluster_uid(ms, phash) for r, ms in members_of.items()}
-        for m, r in assign[level].items():
-            mem_rows.append({"member_uid": bytes.fromhex(m), "level": level, "cluster_uid": cuid[r],
-                             "rep_uid": bytes.fromhex(r), "cluster_params_hash": phash})
-        seen = set()
-        for q, t, qs, qe, ts, te, fid, alen, cigar in alns[level]:
-            # convertalis: query = representative, target = member; coordinates 1-based inclusive
-            if assign[level].get(t) != q or t in seen:
-                continue
-            seen.add(t)
-            aln_rows.append({"member_uid": bytes.fromhex(t), "level": level, "rep_uid": bytes.fromhex(q),
-                             "qstart": int(ts) - 1, "qend": int(te), "tstart": int(qs) - 1, "tend": int(qe),
-                             "pident": float(fid), "alnlen": int(alen), "cigar": cigar.encode()})
-    mem_spec, aln_spec = table("cluster_member"), table("cluster_member_aln")
-    mem_rows.sort(key=lambda r: (r["level"], r["cluster_uid"], r["member_uid"]))
-    aln_rows.sort(key=lambda r: (r["level"], r["rep_uid"], r["member_uid"]))
-    for name, rows, spec, est in (("cluster_member", mem_rows, mem_spec, EST_MEMBER_ROW),
-                                  ("cluster_member_aln", aln_rows, aln_spec, EST_ALN_ROW)):
-        batches = [pa.RecordBatch.from_pylist(rows[i : i + io.ROW_GROUP_ROWS], schema=spec.schema)
-                   for i in range(0, len(rows), io.ROW_GROUP_ROWS)]
-        io.write_parts(batches, spec, out / f"l2/{name}/release={release}", est, max_file_bytes)
-    counts = {lvl: len({r["cluster_uid"] for r in mem_rows if r["level"] == lvl}) for lvl in LEVELS}
+        con = duckdb.connect(config={"threads": 1, "memory_limit": limit, "temp_directory": str(w / "duckdb"),
+                                     "preserve_insertion_order": True})
+        try:
+            aligned = {lvl: _pick_alignments(con, w, lvl) for lvl in LEVELS}
+            counts = {lvl: _cluster_members(con, w, lvl, params_hash(lvl)) for lvl in LEVELS}
+            mem_spec, aln_spec = table("cluster_member"), table("cluster_member_aln")
+            order = sorted(LEVELS)  # `level` leads both sort keys
+
+            def members() -> Iterator[pa.RecordBatch]:
+                for lvl in order:
+                    yield from io.duck_batches(con, (
+                        f"SELECT unhex(member) AS member_uid, '{lvl}' AS level, cluster_uid, unhex(rep) AS rep_uid, "
+                        f"'{params_hash(lvl)}' AS cluster_params_hash FROM read_parquet({_sql_path(w / f'mem_{lvl}.parquet')}) "
+                        "ORDER BY cluster_uid, member_uid"), mem_spec)
+
+            def alignments() -> Iterator[pa.RecordBatch]:
+                # convertalis: query = representative, target = member; coordinates 1-based inclusive
+                for lvl in order:
+                    yield from io.duck_batches(con, (
+                        f"SELECT unhex(target) AS member_uid, '{lvl}' AS level, unhex(query) AS rep_uid, "
+                        "tstart - 1 AS qstart, tend AS qend, qstart - 1 AS tstart, qend AS tend, fident AS pident, "
+                        f"alnlen, encode(cigar) AS cigar FROM read_parquet({_sql_path(w / f'pick_{lvl}.parquet')}) "
+                        "ORDER BY rep_uid, member_uid"), aln_spec)
+
+            io.write_parts(members(), mem_spec, out / f"l2/cluster_member/release={release}", EST_MEMBER_ROW,
+                           max_file_bytes)
+            io.write_parts(alignments(), aln_spec, out / f"l2/cluster_member_aln/release={release}", EST_ALN_ROW,
+                           max_file_bytes)
+        finally:
+            con.close()
+
     # the release's own ledger (ledger/release=<R>/step=cluster, card B-28): NR90 sees every protein, NR50
     # the NR90 representatives
-    n_in = {"nr90": len(prots), "nr50": counts["nr90"]}
+    n_in = {"nr90": n_prot, "nr50": counts["nr90"]}
     tools = provenance.tool_versions("mmseqs2", "pyarrow")
     ledger.write_release(out, release, "cluster",
                  sorted((ledger.row(lvl.encode(), "level", n_in[lvl], counts[lvl], n_in[lvl] - counts[lvl], tools=tools)
                          for lvl in LEVELS), key=lambda r: (r["object_key"], r["reason_code"])))
-    return {"proteins": len(prots), "clusters": counts,
-            "aligned": {lvl: sum(1 for r in aln_rows if r["level"] == lvl) for lvl in LEVELS}}
+    return {"proteins": n_prot, "clusters": counts, "aligned": aligned}
