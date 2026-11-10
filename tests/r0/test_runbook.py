@@ -300,6 +300,30 @@ def test_the_unit_quota_is_the_night_cap_and_the_runbook_says_build_stage_holds_
         assert "max_threads_night" in part and "before each shard launch" in part, heading
 
 
+@pytest.mark.covers("C-13")
+def test_c13_the_verify_section_runs_release_verify_with_and_without_a_previous_release():
+    """Card C-13 (4): section 6 verifies a release with `bio-box release verify` (the parser check above reads the
+    commands), once alone and once against the previous release."""
+    cmds = [c for _, c in commands(section_of(RUNBOOK.read_text(), "## 6. "))]
+    verify = [c for c in cmds if "bio-box release verify" in c]
+    assert any("--previous" not in c for c in verify) and any("--previous" in c for c in verify), cmds
+    assert not any("verify_manifest" in c for c in cmds)  # no python one-liner in its place
+
+
+@pytest.mark.covers("C-13")
+def test_c13_the_runbook_states_the_cost_of_a_stop_inside_a_step_and_the_logs_are_a_timeline():
+    """Card C-13 (2), (3), (7): a `STOP` inside a step discards that step's finished work, with C-10's measured
+    cost; `run-step` and `build-stage` lines are timestamped as they happen; a stopped unit's log still ends with the
+    `pod_run: ... exited` line."""
+    text = RUNBOOK.read_text()
+    stop = section_of(text, "## 3. ")
+    assert "57.7 s" in stop and "4.98 CPU-minutes" in stop and "measured" in stop
+    build = section_of(text, "## 2. ")
+    assert "buffered until it exits" not in build and "timestamp" in build
+    assert "leaves no `pod_run: ... exited` line" not in stop
+    assert "no `pod_run: ... exited` line" not in section_of(text, "## 11. ")
+
+
 def test_every_script_the_runbook_names_exists():
     named = set(re.findall(r"scripts/[A-Za-z0-9_./-]+\.(?:sh|py)", RUNBOOK.read_text()))
     assert named, "the runbook names no script"
