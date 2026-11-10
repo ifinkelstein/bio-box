@@ -39,7 +39,7 @@ def occ_row(key: bytes, i: int) -> dict:
     return {"protein_uid": key, "contig_uid": uid(7 * i + 1), "slot_ordinal": i, "genome_uid": uid(3),
             "start": 100 * i, "end": 100 * i + 90, "strand": 1 if i % 2 else -1,
             "tax_order": None if i % 3 == 0 else i, "is_species_rep": i % 2 == 0, "tier": 1,
-            "assembly_quality": "complete", "dist_to_contig_end_bp": i}
+            "assembly_quality": "complete", "dist_to_contig_end_bp": i, "feature_uid": uid(11 * i + 5)}
 
 
 def occ_rows(n: int, first: int = 0) -> list[dict]:
@@ -296,6 +296,7 @@ def _big_occurrence(n: int, seed: int = 1) -> pa.Table:
         "end": i * 100 + 90, "strand": np.where(i % 2, 1, -1), "tax_order": rng.integers(0, 1000, n),
         "is_species_rep": i % 2 == 0, "tier": np.ones(n, np.uint8), "assembly_quality": ["complete"] * n,
         "dist_to_contig_end_bp": i % 7000,
+        "feature_uid": pa.FixedSizeBinaryArray.from_buffers(pa.binary(16), n, [None, pa.py_buffer(rng.bytes(16 * n))]),
     }
     return pa.table({f.name: pa.array(cols[f.name]).cast(f.type) for f in OCC.schema}, schema=OCC.schema)
 
@@ -497,6 +498,7 @@ SELECT CAST(i AS BIGINT) AS dist_to_contig_end_bp,
        from_hex(lpad(to_hex(i), 32, '0')) AS protein_uid,
        from_hex(lpad(to_hex(7 * i + 1), 32, '0')) AS contig_uid,
        i AS slot_ordinal, from_hex(lpad('3', 32, '0')) AS genome_uid,
+       from_hex(lpad(to_hex(11 * i + 5), 32, '0')) AS feature_uid,
        100 * i AS start, 100 * i + 90 AS "end", CASE WHEN i % 2 = 1 THEN 1 ELSE -1 END AS strand,
        CASE WHEN i % 3 = 0 THEN NULL ELSE i END AS tax_order, i % 2 = 0 AS is_species_rep, 1 AS tier,
        'complete' AS assembly_quality

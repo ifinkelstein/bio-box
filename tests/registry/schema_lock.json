@@ -863,6 +863,11 @@
    "dist_to_contig_end_bp",
    "uint32",
    false
+  ],
+  [
+   "feature_uid",
+   "fixed_size_binary[16]",
+   false
   ]
  ],
  "protein_seq": [
