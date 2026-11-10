@@ -296,13 +296,15 @@ Accept: on a fixture protein with two Pfam domains, both families have a posting
 **L** · Depends: B-15 (found in its audit)
 Files: `src/biobox/l0seq/store.py`, `src/biobox/registry/schemas.py`, tests
 Do: `l0_manifest` is one file, `l0/l0_manifest.parquet`, re-read and rewritten by every stage, against AGENTS §3.10. Make it a directory partitioned by stage (`l0/l0_manifest/stage=<S>/part-0.parquet`), written once per stage; readers take all stages. Remove the exemption for that file from the R-09 test.
+Amended 2026-11-10 from the B-23 report: `l0seq/store_params.json` is claimed by no table or artifact, so `run-step` refuses to publish the first stage of a new store (`runstep._claim`, LY-10). Register it as an artifact in `schemas.py` in this card, written once by the first stage and verified, never rewritten, by later ones; remove the workaround in `tests/r2/test_ingest_restart.py` that pre-seeds the file. With both fixes a first and a second stage can be ingested under `run-step`; add that as a test. Also remove the `l0_manifest` allowance from `tests/r2/test_micro_s0_release_def.py` (B-25 left it for this card). Raised to **M**.
 Accept: after a second stage is ingested, every file of the first stage is byte-identical, with no exception.
 
 ### B-23 Ingest: recover the second-read cost and make a crashed stage restartable
 **M** · Depends: B-15 (found in its audit)
 Files: `src/biobox/l0seq/store.py`, tests
 Do: batch ingest reads each source twice and re-hashes kept records in the second pass, which made it 28% slower at 1,000× the fixture (measured). Check length only in the second pass and hash once, unless a measurement shows the hash is not the cost. Separately, an ingest that dies mid-stage leaves files the writer then refuses to overwrite: under `run-step` the stage is published from staging, so make `ingest` safe to rerun into a clean staging directory and document that a direct call needs a clean stage directory.
-Accept: wall time at 1,000× within 10% of the pre-B-15 time (135 s on the laptop), with peak memory unchanged; a killed and rerun ingest under `run-step` gives byte-identical output.
+Amended 2026-11-10 after the agent's measurement (*measured*, wilkcomp02, 3 interleaved runs each, 1,000× synthetic, one thread): batch ingest is 0.9% faster than the pre-B-15 code at the default shard size and 12.4% slower at 16 MiB shards, not 28% slower (that was a laptop figure). A profile shows zlib compression is 182 to 188 s of about 240 s, the second FASTA parse about 25 s, and the second hash about 3 s. The premise of this card was therefore wrong: hashing is not the cost, and the pass-2 hash check stays, because it is what ties the stored bytes to their digest. What remains of the card is the restart safety. Recovering the second parse (pass 1 records byte offsets, pass 2 seeks) is not worth a card until ingest is a measured bottleneck: compression dominates.
+Accept: a killed and rerun ingest under `run-step` gives byte-identical output; a source changed between the passes is refused.
 
 ### B-24 Streaming rewrites of clustering and domain scans
 **M** · Depends: B-19
