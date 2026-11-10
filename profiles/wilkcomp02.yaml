@@ -22,3 +22,8 @@ cpu_min_per_process: 300
 
 # planning/data_layer_and_tests.md section 4.11, LY-04 (NFS small-file rule, 64 MB)
 small_file_floor_bytes: 67108864
+
+# Card C-07 (AGENTS.md section 7.2: every process runs inside a MemoryMax scope). systemd-run is
+# not visible inside the image, so run-step and the search runner refuse to start unless they
+# open a scope or find a cgroup memory cap above them; launch them with scripts/pod_run.sh.
+require_mem_cap: true

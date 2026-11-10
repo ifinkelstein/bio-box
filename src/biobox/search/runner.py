@@ -12,17 +12,23 @@ A run is a recorded job:
      manifest's sha256; their total must fit the /tmp quota.
   3. `biobox.search.worker` runs in a child process started the way run-step starts a step
      (`runstep.scope_argv`, card C-05): on Linux with `systemd-run`, inside a transient user
-     scope with `MemoryMax` at the memory cap and `CPUQuota` at the CPU count, at nice 15;
-     elsewhere under `nice` (or `os.nice`). RLIMIT_CPU at the CPU cap (300 CPU-min; the pod
-     watchdog kills near 369) applies in both paths, because the watchdog's rule is per process.
-     RLIMIT_AS at the memory cap is set only in the fallback on Linux, where no cgroup limit
-     exists: it caps virtual memory, not resident memory, so under it a thread-heavy process
-     fails to start threads long before it is out of memory (194 threads failed at 5 GB
-     resident under an 18 GB RLIMIT_AS on the 112-core host). A wall-clock timeout covers both.
+     scope with `MemoryMax` at the memory cap, `MemorySwapMax=0` and `CPUQuota` at the CPU
+     count, at nice 15; elsewhere under `nice` (or `os.nice`). A cgroup memory cap already above
+     the runner (card C-07: inside the image, the unit `scripts/pod_run.sh` opened on the host)
+     is inherited instead (`runstep.memory_cap`): no scope, and the worker's memory limit is
+     that cap. With `Limits.require_cap` and neither a scope nor a cap, the run is refused
+     before anything is recorded. RLIMIT_CPU at the CPU cap (300 CPU-min; the pod watchdog
+     kills near 369) applies in every path, because the watchdog's rule is per process.
+     RLIMIT_AS at the memory cap is set only on Linux where no cgroup limit holds the worker to
+     `mem_gb` (no scope and no cap, or an inherited cap looser than `mem_gb`): it caps virtual
+     memory, not resident memory, so under it a thread-heavy process fails to start threads
+     long before it is out of memory (194 threads failed at 5 GB resident under an 18 GB
+     RLIMIT_AS on the 112-core host). A wall-clock timeout covers all paths.
   4. The exit decides the status (`classify_exit`): 0 -> the worker's own (`ok`, `failed` for a
      control, `output_cap`); EXIT_OOM (MemoryError, under RLIMIT_AS in the fallback) -> `oom`;
      a SIGKILL the runner did not send -> `oom` only when the scope's cgroup counts an OOM
-     kill (`scope_oom_killed`), else `failed`, killed from outside (card W-04); SIGXCPU or the
+     kill (`scope_oom_killed`; in an inherited unit, one more than before the worker started),
+     else `failed`, killed from outside (card W-04); SIGXCPU or the
      wall timeout -> `timeout`; a cancel (SIGTERM) -> `stopped`; EXIT_FAILED (an uncaught
      exception in any worker thread, traceback in stderr) and anything else -> `failed`.
      Only runs whose worker wrote its result (`ok`, `failed`-by-control, `output_cap`) carry
@@ -77,6 +83,7 @@ class Limits:
     tmp_quota_gb: float = 150.0
     nice: int = 15
     cpus: int = 8
+    require_cap: bool = False    # card C-07: refuse to run with neither a scope to open nor a cgroup cap above
 
 
 def default_work_base() -> Path:
@@ -169,34 +176,64 @@ def worker_command(job: Path) -> list[str]:
     return [sys.executable, "-c", BOOT, str(job)]
 
 
-def worker_argv(job: Path, limits: Limits, *, system: str | None = None,
+def _mem_max(limits: Limits) -> str | None:
+    return None if limits.mem_gb is None else str(int(limits.mem_gb * GB))
+
+
+def memory_cap(limits: Limits, *, system: str | None = None, which=None, proc_root: Path | None = None,
+               cgroup_root: Path | None = None) -> dict:
+    """How the worker's memory will be capped (`runstep.memory_cap`, card C-07): opened (a scope),
+    inherited (a cgroup cap above the runner) or none. With `limits.require_cap` and neither,
+    a RecipeError that names scripts/pod_run.sh."""
+    try:
+        return runstep.memory_cap(_mem_max(limits), require=limits.require_cap, system=system, which=which,
+                                  proc_root=proc_root, cgroup_root=cgroup_root)
+    except runstep.NoCap as e:
+        raise RecipeError(str(e)) from None
+
+
+def worker_argv(job: Path, limits: Limits, *, inherited: dict | None = None, system: str | None = None,
                 which=shutil.which) -> tuple[list[str], str]:
-    """The worker's argv and how it is limited ("scope", "nice", "bare"), by run-step's helper."""
-    mem = None if limits.mem_gb is None else str(int(limits.mem_gb * GB))
-    return runstep.scope_argv(worker_command(job), limits.nice, mem_max=mem, cpu_quota=limits.cpus * 100,
-                              system=system, which=which)
+    """The worker's argv and how it is limited ("scope", "inherited", "nice", "bare"), by
+    run-step's helper; `inherited` is the cap `memory_cap` found above the runner, if any."""
+    return runstep.scope_argv(worker_command(job), limits.nice, mem_max=_mem_max(limits),
+                              cpu_quota=limits.cpus * 100, inherited=inherited, system=system, which=which)
 
 
-def rlimits(limits: Limits, kind: str, system: str) -> dict[int, tuple[int, int]]:
+def _tighter(limits: Limits, cap_bytes: int | None) -> bool:
+    """`mem_gb` asks for less than the inherited cap gives (so the cap alone does not hold it)."""
+    return limits.mem_gb is not None and (cap_bytes is None or int(limits.mem_gb * GB) < cap_bytes)
+
+
+def rlimits(limits: Limits, kind: str, system: str, cap_bytes: int | None = None) -> dict[int, tuple[int, int]]:
     """The rlimits the worker starts under. RLIMIT_CPU always (per process); RLIMIT_AS only on
-    Linux where no scope caps memory (module docstring, point 3)."""
+    Linux where no cgroup holds memory to `mem_gb`: no scope and no cap, or an inherited cap
+    (`cap_bytes`) looser than `mem_gb` (module docstring, point 3)."""
     cpu = max(1, int(limits.cpu_min * 60))
     out = {resource.RLIMIT_CPU: (cpu, cpu + 5)}
-    if limits.mem_gb is not None and system == "Linux" and kind != "scope":
+    unheld = kind in ("nice", "bare") or (kind == "inherited" and _tighter(limits, cap_bytes))
+    if limits.mem_gb is not None and system == "Linux" and unheld:
         b = int(limits.mem_gb * GB)
         out[resource.RLIMIT_AS] = (b, b)
     return out
 
 
-def worker_env(limits: Limits, kind: str, system: str, base: dict[str, str]) -> dict[str, str]:
+def worker_env(limits: Limits, kind: str, system: str, base: dict[str, str],
+               cap_bytes: int | None = None) -> dict[str, str]:
     """The worker's environment: `base`, every thread variable at `limits.cpus` (card W-04; the
     worker sets them again itself), and the memory limit it runs under, by name, for the `oom`
-    fault to allocate past (BIOBOX_MEMORY_MAX in a scope, BIOBOX_RLIMIT_AS in the fallback)."""
+    fault to allocate past: BIOBOX_MEMORY_MAX in a scope or an inherited cap (`cap_bytes`),
+    BIOBOX_RLIMIT_AS where RLIMIT_AS is the limit (`rlimits`)."""
     env = dict(base)
     env.update({v: str(max(1, limits.cpus)) for v in THREAD_VARS})
     env.pop("BIOBOX_MEMORY_MAX", None)
     env.pop("BIOBOX_RLIMIT_AS", None)
-    if limits.mem_gb is not None:
+    if kind == "inherited":
+        if _tighter(limits, cap_bytes) and system == "Linux":
+            env["BIOBOX_RLIMIT_AS"] = str(int(limits.mem_gb * GB))
+        elif cap_bytes is not None:
+            env["BIOBOX_MEMORY_MAX"] = str(cap_bytes)
+    elif limits.mem_gb is not None:
         if kind == "scope":
             env["BIOBOX_MEMORY_MAX"] = str(int(limits.mem_gb * GB))
         elif system == "Linux":
@@ -204,14 +241,15 @@ def worker_env(limits: Limits, kind: str, system: str, base: dict[str, str]) -> 
     return env
 
 
-def _preexec(limits: Limits, kind: str, system: str):
+def _preexec(limits: Limits, kind: str, system: str, cap_bytes: int | None = None, renice: bool = False):
     """Runs in the child before exec: its own session (so the runner signals the group), its
-    niceness when no `nice` binary sets it, and its rlimits (inherited through systemd-run and nice)."""
-    lims = rlimits(limits, kind, system)
+    niceness when no `nice` binary sets it (`renice`), and its rlimits (inherited through
+    systemd-run and nice)."""
+    lims = rlimits(limits, kind, system, cap_bytes)
 
     def fn():
         os.setsid()
-        if kind == "bare":
+        if renice:
             os.nice(limits.nice)
         for which, value in lims.items():
             resource.setrlimit(which, value)
@@ -226,10 +264,21 @@ def _oom_kills(memory_events: str) -> int:
     return 0
 
 
-def scope_oom_killed(work: Path, *, cgroup_root: Path = CGROUP_ROOT, systemctl=_WHICH) -> bool | None:
+def _oom_kills_now(cgroup: str, cgroup_root: Path = CGROUP_ROOT) -> int:
+    """The `oom_kill` count of a cgroup's `memory.events` now; 0 when it cannot be read."""
+    try:
+        return _oom_kills((Path(cgroup_root) / cgroup.lstrip("/") / "memory.events").read_text())
+    except (OSError, ValueError):
+        return 0
+
+
+def scope_oom_killed(work: Path, *, cgroup_root: Path = CGROUP_ROOT, systemctl=_WHICH,
+                     baseline: int = 0) -> bool | None:
     """Whether the kernel OOM-killed a process of the worker's scope: True, False, or None when
     there is no evidence either way. The worker recorded its cgroup path (`CGROUP_FILE`); the
-    scope's `memory.events` counts OOM kills while the cgroup exists. systemd removes the cgroup
+    scope's `memory.events` counts OOM kills while the cgroup exists, and a kill is counted when
+    it is above `baseline` (in an inherited unit, shared with the runner and with whatever ran
+    in it before, the count when the worker started; card C-07). systemd removes the cgroup
     of a scope once its last process has exited, so after that the scope unit's `Result` is
     asked instead (`oom-kill` after an OOM kill; a failed unit stays loaded until reset-failed,
     which is done here once it has been read)."""
@@ -240,7 +289,7 @@ def scope_oom_killed(work: Path, *, cgroup_root: Path = CGROUP_ROOT, systemctl=_
     if not cg:
         return None
     try:
-        return _oom_kills((Path(cgroup_root) / cg.lstrip("/") / "memory.events").read_text()) > 0
+        return _oom_kills((Path(cgroup_root) / cg.lstrip("/") / "memory.events").read_text()) > baseline
     except (OSError, ValueError):
         pass
     exe = shutil.which("systemctl") if systemctl is _WHICH else systemctl
@@ -366,6 +415,8 @@ def run(root: Path, recipe_src: Path | str, release: str, *, limits: Limits = Li
     """Run one recipe to completion; returns the search_run row. Refusals raise RecipeError.
 
     The run reads the tape version of its pack (card B-16); `tape_version`, when given, must be it."""
+    system = platform.system()
+    cap = memory_cap(limits, system=system)  # refused (card C-07) before anything is read or recorded
     root = Path(root).resolve()
     r, text = rcp.load(Path(recipe_src) if isinstance(recipe_src, Path) else recipe_src)
     res = resolve(root, r, release)
@@ -406,15 +457,21 @@ def run(root: Path, recipe_src: Path | str, release: str, *, limits: Limits = Li
                "max_output_bytes": int(r["max_output_gb"] * GB), "fault": fault,
                "negative_seed": int.from_bytes(run_id[:4], "big")}
         (work / "job.json").write_text(json.dumps(job, sort_keys=True))
-        system = platform.system()
-        argv, kind = worker_argv(work / "job.json", limits, system=system)
-        env = worker_env(limits, kind, system, os.environ)
+        inherited = cap if cap["how"] == "inherited" else None
+        cap_bytes = inherited["memory_max_bytes"] if inherited else None
+        argv, kind = worker_argv(work / "job.json", limits, inherited=inherited, system=system)
+        env = worker_env(limits, kind, system, os.environ, cap_bytes=cap_bytes)
+        # an inherited unit is shared with the runner: only kills after this point are the worker's
+        baseline = _oom_kills_now(inherited["cgroup"]) if inherited else 0
+        renice = kind == "bare" or (kind == "inherited" and argv[0] != "nice")
         with open(work / "stderr.txt", "w") as err:
             proc = subprocess.Popen(argv, stdout=subprocess.DEVNULL, stderr=err,
-                                    preexec_fn=_preexec(limits, kind, system), env=env)
+                                    preexec_fn=_preexec(limits, kind, system, cap_bytes, renice), env=env)
             rc, ru, timed_out = _wait(proc, limits.wall_s, cancelled)
-        # only a scope's own cgroup is evidence: outside one, the cgroup is the runner's session's
-        cgroup_oom = scope_oom_killed(work) if kind == "scope" and rc == -signal.SIGKILL and not timed_out else None
+        # only a capped cgroup is evidence (the scope's own, or the unit's the cap was inherited
+        # from); outside one, the cgroup is the runner's session's
+        cgroup_oom = (scope_oom_killed(work, baseline=baseline)
+                      if kind in ("scope", "inherited") and rc == -signal.SIGKILL and not timed_out else None)
         status, error, result = _status(rc, timed_out, bool(cancelled), out, (work / "stderr.txt").read_text(),
                                         cgroup_oom)
     except _RunFailure as f:
@@ -442,7 +499,7 @@ def run(root: Path, recipe_src: Path | str, release: str, *, limits: Limits = Li
         "stop_reason": result.get("stop_reason"),
         "controls_json": json.dumps(result["controls"], sort_keys=True, default=str) if result.get("controls") else None,
         "warnings_json": json.dumps(result.get("warnings", [])) if result else None,
-        "limits_json": json.dumps(asdict(limits), sort_keys=True), "error": error,
+        "limits_json": json.dumps({**asdict(limits), "mem_cap": cap}, sort_keys=True), "error": error,
         "seed_json": json.dumps(res["seed"], sort_keys=True),
     }
     # a worker that died after a round has hits on disk, but no result: they are not the run's
@@ -488,6 +545,7 @@ def _pending(root: Path) -> Path:
 def submit(root: Path, recipe_path: Path, release: str, limits: Limits = Limits(),
            work_base: Path | None = None, fault: str | None = None) -> str:
     """Check the recipe now, run it detached, return the run_id at once."""
+    memory_cap(limits)  # card C-07: refuse here, before a runner is started or anything is recorded
     root = Path(root).resolve()
     r, _ = rcp.load(Path(recipe_path))
     res = resolve(root, r, release)

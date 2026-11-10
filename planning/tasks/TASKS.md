@@ -424,6 +424,13 @@ Why: `engine.families_of` calls `pyhmmer.hmmsearch` without `cpus`, so pyhmmer s
 Do: `families_of` and every other pyhmmer entry point in `src/biobox` take a `threads` argument with no default and pass it as `cpus`. Callers pass the worker's capped thread count.
 Accept: a test that replaces `pyhmmer.hmmsearch` with a recorder and fails when any call lacks `cpus` or passes 0, seen to fail first; `rg "hmmsearch\(|hmmscan\(|phmmer\(" src/biobox` shows `cpus=` on every call.
 
+### W-10 `bio-box search run` takes the host profile
+**L** · Depends: C-07 (found in its report)
+Files: `src/biobox/cli.py`, `tests/r1/test_cli_search.py`+
+Why: `Limits.require_cap`, `mem_gb` and `cpus` cannot be set from the command line, so a search started by hand on the pod never refuses to run uncapped and ignores the profile's thread cap.
+Do: `bio-box search run` and `search submit` take `--profile PATH` (default: `$BIOBOX_PROFILE` when set). With a profile, `Limits.require_cap` is the profile's `require_mem_cap`, `cpus` is at most `runstep.choose_threads` for the current hour, and `nice` is the profile's. Explicit `--cpus` and `--mem-gb` flags may lower, never raise, what the profile allows.
+Accept: tests, written first: with a profile that requires a cap and neither `systemd-run` nor a cgroup cap (injected), the command exits 2 and names `scripts/pod_run.sh`; `--cpus` above the profile's cap is refused.
+
 ---
 
 ## Phase D. Test strength

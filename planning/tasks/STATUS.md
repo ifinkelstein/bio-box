@@ -5,12 +5,12 @@ The running record of the cards in [`TASKS.md`](TASKS.md). Updated at every merg
 its own branch `task/<ID>`, audited by the orchestrating session, and merged after the full suite
 passed on the integration branch.
 
-Last update: 2026-11-09, 23:00 CST. Suite on the integration branch: 829 passed, 10 skipped
-(*measured*, wilkcomp02, 2026-11-09, `sh scripts/pod_pytest.sh integration --shards 8`, in the
+Last update: 2026-11-09, 23:00 CST. Suite on the integration branch after the C-07 merge: 858 passed, 10 skipped
+(*measured*, wilkcomp02, 2026-11-10 about 01:00 CST, `sh scripts/pod_pytest.sh integration --shards 8`, in the
 pinned image; 3 min 40 s wall for the slowest shard, against 13.5 min in one process). The skips
 need samtools, bgzip, Prodigal or the golden set. Tests no longer run on the laptop (AGENTS.md §5.5).
 
-## Merged (33 cards)
+## Merged (36 cards)
 
 | Card | Merge | What it did | Audit notes |
 |---|---|---|---|
@@ -48,6 +48,7 @@ need samtools, bgzip, Prodigal or the golden set. Tests no longer run on the lap
 | C-05, W-04 | `0a4ae15` | Search workers start in scopes; worker thread caps; exit and kill labelling | The scope cannot be opened from inside the image: card C-07 |
 | W-09 | this merge | Every pyhmmer search in `search/` takes a required thread count | Agent's full pod run on its branch: 830 passed, 10 skipped. `l1/domains.py` `scan` still defaults `cpus=1` (bounded, so left) |
 | A-03 | this merge | README for `scripts/stress`; every script prints usage | 11 of 17 scripts had no usage path; README lists which scripts still use the old data model (folded into card B-18) |
+| C-07 | this merge | `scripts/pod_run.sh` opens the memory-capped unit on the host; `run-step` and the search runner inherit a cap they find, or refuse when the profile requires one | Probed on the pod: a 1 GiB allocation in a 512 MiB unit was killed by the kernel (`oom_kill 1`); the pod has 1117 GB of swap, so `MemorySwapMax=0` is set everywhere. The search CLI cannot yet require a cap: card W-10 |
 
 Decisions DEC-18 to DEC-23 were approved by the PI on 2026-11-09 and are in `planning/DECISIONS.md`.
 
@@ -57,7 +58,6 @@ Decisions DEC-18 to DEC-23 were approved by the PI on 2026-11-09 and are in `pla
 |---|---|---|
 | B-17 remove the legacy ordinal columns | Opus | started 2026-11-09 |
 | B-23 ingest reads once; killed ingest reruns | Opus | started 2026-11-09 |
-| C-07 scope on the host around the container | Opus | started 2026-11-09 |
 | Pod import ladder (not a card): phages, then 1 Gbp and 10 Gbp of complete prokaryotes with the new code | Opus | detached jobs on the pod; agent waiting on them |
 
 ## Next, in order
@@ -92,5 +92,5 @@ probed by hand on the pod).
 - `~/bio-box`: `main`, unchanged. `~/bio-box-next`: `plan/task-cards` at `f9af5b6`, used by the import ladder.
 - Provisional phage database with Pfam domains: `/stor/scratch/Wilke/if2453/all-the-data/provisional/rS1.pilot1` (old-code format; verified).
 - Old-code pilots kept on local disk: `/tmp/if2453/pilot_s1` (phages), `/tmp/if2453/pilot_cami` (1.48 M short contigs).
-- Import ladder with the new code: `/tmp/if2453/ladder` (in progress).
+- Import ladder with the new code: work in `/tmp/if2453/ladder`, results in `/stor/scratch/Wilke/if2453/all-the-data/provisional/rL`. Stage A (phages, `rL.1`), stage B (1 Gbp of complete prokaryotes, `rL.2`, finished 2026-11-09 23:12 CST) and stage Bp (B plus Pfam, `rL.2p`, finished 2026-11-10 00:44 CST; manifest verified with no problems; 12,048,866 features, 21,766,976 postings, 2,158,015 Pfam domain rows, 10.66 GB; *measured*, wilkcomp02, the stage's own sync step) are done. Stage C (10 Gbp) is running. Timings go to `planning/measurements/` when the ladder agent reports.
 - Workflow walk-through outputs: `/tmp/if2453/ssrnap`.

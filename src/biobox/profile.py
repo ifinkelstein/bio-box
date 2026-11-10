@@ -7,6 +7,8 @@ from pathlib import Path
 
 import yaml
 
+_TYPES = {"int": int, "str": str, "bool": bool}
+
 
 @dataclasses.dataclass(frozen=True)
 class Profile:
@@ -22,6 +24,10 @@ class Profile:
     day_end_hour: int
     cpu_min_per_process: int
     small_file_floor_bytes: int
+    # Card C-07: true where every step and search worker must run under a memory cap. run-step and
+    # the search runner then refuse to start when they can neither open a systemd scope nor find a
+    # cgroup memory.max above them (inside the image: launch with scripts/pod_run.sh). Optional.
+    require_mem_cap: bool = False
 
     def threads_at(self, hour: int, weekday: int = 0) -> int:
         """Thread cap at a local hour (0-23) and weekday (Monday = 0): the day cap on Monday to
@@ -32,19 +38,20 @@ class Profile:
 
 
 def load(path: str | Path) -> Profile:
+    """Load and check a profile: every key without a default is required, no unknown keys, and
+    each value has its field's type (a bool is not an int, an int is not a bool)."""
     data = yaml.safe_load(Path(path).read_text())
     if not isinstance(data, dict):
         raise ValueError(f"{path}: profile must be a mapping")
-    fields = {f.name: f.type for f in dataclasses.fields(Profile)}
+    fields = {f.name: f for f in dataclasses.fields(Profile)}
     for key in data:
         if key not in fields:
             raise ValueError(f"{path}: unknown key {key!r}")
-    for key in fields:
-        if key not in data:
+    for key, f in fields.items():
+        if key not in data and f.default is dataclasses.MISSING:
             raise ValueError(f"{path}: missing key {key!r}")
-    for key, annotation in fields.items():
-        want = int if annotation in (int, "int") else str
-        value = data[key]
-        if not isinstance(value, want) or isinstance(value, bool):
+    for key, value in data.items():
+        want = _TYPES[fields[key].type if isinstance(fields[key].type, str) else fields[key].type.__name__]
+        if not isinstance(value, want) or (want is not bool and isinstance(value, bool)):
             raise ValueError(f"{path}: key {key!r} must be {want.__name__}, got {type(value).__name__}")
     return Profile(**data)
