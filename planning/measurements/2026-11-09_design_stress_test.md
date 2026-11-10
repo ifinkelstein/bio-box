@@ -178,8 +178,29 @@ the run ends):
 | ingest, 1 thread | 427 s (4.9 Mbp/s of input), peak RSS 5.6 GB |
 | phage gene calling (`pyrodigal-gv`, meta mode), 200-genome probe | 0.222 Mbp/s per thread, 5× slower than the 1.1 Mbp/s of single mode on prokaryotes; building a finder per genome costs 0.008 ms and is not the cause |
 
-At 0.222 Mbp/s the full set needs about 2.1 hours on one thread (*derived*); the gene caller must run
-genomes in parallel before S4 (about 12 Gbp of viral sequence).
+The run finished on 2026-11-09 (all steps without error; manifest `551b5da7b3f53a5a73a9280df7063e13`):
+
+| Step | Wall | Threads | Peak RSS | Result |
+|---|---|---|---|---|
+| ingest | 427 s | 1 | 5.6 GB | 2 shards, 0.310 bytes per bp |
+| gene calling | 7,032 s (0.237 Mbp/s) | 1 | 6.8 GB | 2,398,087 genes (1.44 per kb), 1,134,550 distinct proteins (47% of genes) |
+| IGRs | 17 s | 1 | | 1,542,772 regions, 939,283 of at least 30 nt |
+| tapes | 38 s | 1 | 2.7 GB | 27,258 contigs, 23.7 bytes per slot, 4 row groups |
+| clustering | 442 s | 16 | 6.0 GB | 534,101 NR90 and 297,082 NR50 clusters |
+| tokens | 37 s | 1 | | 831,183 tokens |
+| pairs (counted, not written) | 2 s | 1 | | 45,043,224 rows per level, 18.8 per gene |
+| pairs, 2% sample written | 24 s | 1 | 2.9 GB for 1.85 M rows | 7.46 bytes per row |
+| catalog | 9 s | 1 | | 1 MB DuckDB file over a 1.1 GB store |
+
+Bytes per unit against the golden set: `protein_seq` 185 per distinct protein (227), `protein_occurrence`
+30.5 per gene (32.2), `slot_protein` 16.1 (19.5), `cluster_member` 31.0 and `cluster_member_aln` 31.0
+per row (36.5, 26.2), IGR 9.7 per row (12.7), tapes 23.7 per slot (30.4), shards 0.310 per bp (0.309).
+
+Gene calling is 94% of the serial time. It is one process on one thread; across 16 threads it
+would take about 7.5 minutes (*derived*). Card B-05 now includes parallel gene calling.
+
+The DuckDB catalog step needs numpy for the Arrow sequence function; the `74b3e05` image lacks it
+(the HEAD image has it). The pilot used the lock-pinned numpy 2.5.4 from a side directory.
 
 ## 7. State of the pod and CI at the start (measured)
 
