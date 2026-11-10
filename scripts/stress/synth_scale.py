@@ -363,7 +363,7 @@ run("1,000 neighbourhoods: sequence (+-10 genes)", "SELECT sum(length(seq_slice(
     cold=True)["bp_returned"] = sum(x[2] - x[1] for x in anchors)
 run("1,000 neighbourhoods: tapes and tokens",
     "SELECT sum(n_slots), sum(len(nr90_tokens)) FROM tapes_of((SELECT list(DISTINCT contig_uid) FROM anchors))", keys=1000)
-store = SeqStore(root)
+store = SeqStore(root, ["S0"])  # the synthetic store has stage S0 only (card B-28)
 for k in (1, 50, 500):
     k = min(k, N * B)
     pk = [uids[int(qrng.integers(N))][int(qrng.integers(B))] for _ in range(k)]

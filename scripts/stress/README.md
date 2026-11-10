@@ -206,6 +206,11 @@ through `biobox.l3.tokens.read_tapes` of the gene-call tape version, for the sta
 Since card B-25 every release-level builder (`cluster.run`, `tokens.run`, `postings.run`, `dim.run`)
 and `catalog.build_manifest` takes the release's stage list; the scripts here pass the one stage they
 build (`S0`, `S1` or the CAMI stage), and `step4_keys.py` reads it from the release's `release_def`.
+Since card B-28 `SeqStore(root, stages)` has no default stage list: `builder_limits.py`, `synth_scale.py` and
+`step6_export.py` open it with `["S0"]`, `pilot.py` with `["S1"]`, the CAMI scripts with the pilot's stage,
+and `store_probe.py` with the stages of `--release` or `--stages`. `tests/r0/test_stress_scripts.py` parses
+every script here with `ast` and fails on a `SeqStore` call without stages or a builder or reader call
+with fewer arguments than the function requires, so the next signature change is caught statically.
 
 ### `pilot_cami/pilot_cami.py`, `pilot_cami/probe_cami.py`, `pilot_cami/run.sh`
 

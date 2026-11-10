@@ -5,7 +5,7 @@
 1. Bytes of Python heap per slot_pairs row as `pairs_of_contig` builds them (E. coli, one level). The
    materialized pair builder was removed by card B-11; the enumeration survives as the test oracle
    (tests/oracles/pairs_oracle.py), which this measurement now imports.
-2. `SeqStore(root)` open time and heap for a synthetic store index of 1e6 contigs.
+2. `SeqStore(root, ["S0"])` open time and heap for a synthetic store index of 1e6 contigs.
 """
 
 import json
@@ -63,7 +63,7 @@ pq.write_table(pa.table({"contig_uid": pa.array(cus, pa.binary(16)), "raw_digest
 del rds, cus, rd, cu
 tracemalloc.start()
 t0 = time.perf_counter()
-s = SeqStore(r2)
+s = SeqStore(r2, ["S0"])  # the synthetic index has stage S0 only (card B-28)
 dt = time.perf_counter() - t0
 cur, peak = tracemalloc.get_traced_memory()
 out["seqstore_open_1e6_contigs"] = {
@@ -75,7 +75,7 @@ out["seqstore_open_1e6_contigs"] = {
 keys = pq.read_table(r2 / "l0seq/contig_index/stage=S0/part-0.parquet", columns=["contig_uid"]).column(0).to_pylist()
 pick = [keys[int(i)] for i in np.random.default_rng(1).choice(len(keys), size=1000, replace=False)]
 for label, ks in (("1_key", pick[:1]), ("1000_keys", pick)):
-    st = SeqStore(r2, cache_row_groups=0)
+    st = SeqStore(r2, ["S0"], cache_row_groups=0)
     t0 = time.perf_counter()
     for k in ks:
         st.locate(st.default_digest(k))
