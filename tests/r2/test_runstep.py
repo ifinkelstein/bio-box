@@ -311,7 +311,8 @@ def test_argv_shapes():
     cmd = ["mmseqs", "easy-search", "--threads", "4"]
     found = lambda name: f"/usr/bin/{name}"  # noqa: E731
     assert runstep.build_argv(cmd, 19, "200G", system="Linux", which=found) == [
-        "systemd-run", "--user", "--scope", "--quiet", "-p", "MemoryMax=200G", "nice", "-n", "19", *cmd]
+        "systemd-run", "--user", "--scope", "--quiet", "-p", "MemoryMax=200G", "-p", "MemorySwapMax=0",
+        "nice", "-n", "19", *cmd]
     assert runstep.build_argv(cmd, 15, "200G", system="Darwin", which=found) == ["nice", "-n", "15", *cmd]
     no_systemd = lambda name: None if name == "systemd-run" else f"/usr/bin/{name}"  # noqa: E731
     assert runstep.build_argv(cmd, 19, "200G", system="Linux", which=no_systemd) == ["nice", "-n", "19", *cmd]

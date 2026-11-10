@@ -734,11 +734,12 @@ def test_c05_worker_argv_in_a_scope_and_in_the_fallback():
     assert worker_cmd[-1] == str(job)
     lim = runner.Limits(cpus=2, mem_gb=18, nice=15)
     assert runner.worker_argv(job, lim, system="Linux", which=_found) == (
-        ["systemd-run", "--user", "--scope", "--quiet", "-p", "MemoryMax=18000000000", "-p", "CPUQuota=200%",
-         "nice", "-n", "15", *worker_cmd], "scope")
+        ["systemd-run", "--user", "--scope", "--quiet", "-p", "MemoryMax=18000000000", "-p", "MemorySwapMax=0",
+         "-p", "CPUQuota=200%", "nice", "-n", "15", *worker_cmd], "scope")
     # no memory limit in the run's limits: no MemoryMax (as the fallback sets no RLIMIT_AS then)
     assert runner.worker_argv(job, runner.Limits(cpus=3, nice=15), system="Linux", which=_found) == (
-        ["systemd-run", "--user", "--scope", "--quiet", "-p", "CPUQuota=300%", "nice", "-n", "15", *worker_cmd],
+        ["systemd-run", "--user", "--scope", "--quiet", "-p", "MemorySwapMax=0", "-p", "CPUQuota=300%",
+         "nice", "-n", "15", *worker_cmd],
         "scope")
     nice = (["nice", "-n", "15", *worker_cmd], "nice")
     assert runner.worker_argv(job, lim, system="Linux", which=_no_systemd) == nice
