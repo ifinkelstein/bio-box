@@ -73,6 +73,13 @@ need samtools, bgzip, Prodigal or the golden set. Tests no longer run on the lap
 
 Decisions DEC-18 to DEC-23 were approved by the PI on 2026-11-09 and are in `planning/DECISIONS.md`.
 
+## CI is not reliably green (found 2026-11-10)
+
+GitHub Actions `ci` failed on 7 of the last 12 pushes to `plan/task-cards` while the pod suite passed on
+the same commits: two search tests fail intermittently there (card A-07). The orchestrating session
+checked CI only after the first push and missed this for a day. The merge to `main` waits for A-07.
+The `gh` token has `read:packages` since 2026-11-10, so the image can be pulled once `main` builds it.
+
 ## In progress
 
 | Card | Model | State |
