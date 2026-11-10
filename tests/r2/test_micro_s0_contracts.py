@@ -145,6 +145,18 @@ def test_size_check_groups_by_the_full_partition_tuple_not_by_stage():
 
 
 @pytest.mark.covers("LY-04")
+def test_size_check_refuses_many_tiny_files_across_buckets_of_one_stage_or_release():
+    seq = [_tiny("protein_seq", gene_call_version="g1", stage="S0", protein_prefix=h) for h in ("0", "1", "2")]
+    assert contracts.check_file_sizes({"files": seq})
+    post = [_tiny("token_postings", release="r1", tape_version="t1", token_bucket=h) for h in ("00", "01")]
+    assert contracts.check_file_sizes({"files": post})
+    big = [{**f, "bytes": 10**9} for f in seq]
+    assert contracts.check_file_sizes({"files": big}) == []  # buckets above the floor are fine
+    libs = [_tiny("l1_domains", library=x, stage="S0") for x in ("a", "b")]
+    assert contracts.check_file_sizes({"files": libs}) == []  # libraries are not buckets
+
+
+@pytest.mark.covers("LY-04")
 def test_size_check_exempts_small_artifacts_by_registry_flag_and_refuses_the_rest():
     def art(name, rel, **parts):
         return {"artifact": name, "partitions": parts, "path": rel, "bytes": 10}

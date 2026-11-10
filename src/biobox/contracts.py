@@ -75,7 +75,7 @@ def check_statistics(manifest: dict) -> list[str]:
 
 def check_file_sizes(manifest: dict, min_bytes: int = NFS_MIN_BYTES) -> list[str]:
     """LY-04. Waived: registry `small_ok` tables and artifacts, and shard indexes. A group is the file's
-    table or artifact and its full partition tuple, so a partition that fits in one small file may be
+    table or artifact and its partition tuple without bucket keys, so a partition that fits in one small file may be
     one file, and two libraries' files in one stage are two groups (card C-09)."""
     problems = []
     groups: dict[tuple, list[dict]] = {}
@@ -83,7 +83,8 @@ def check_file_sizes(manifest: dict, min_bytes: int = NFS_MIN_BYTES) -> list[str
         spec = TABLES[f["table"]]
         if spec.small_ok:
             continue
-        groups.setdefault((f["table"], tuple(sorted(f["partitions"].items()))), []).append(f)
+        parts = {k: v for k, v in f["partitions"].items() if k not in spec.bucket_keys}
+        groups.setdefault((f["table"], tuple(sorted(parts.items()))), []).append(f)
     for a in manifest.get("artifacts", []):
         if ARTIFACTS[a["artifact"]].small_ok:
             continue

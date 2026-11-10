@@ -55,6 +55,9 @@ class TableSpec:
     # Other partition key tuples a path under `location` may use instead of `partition_keys`; the first
     # key of each differs, so a path still maps to one key set (the ledger, card B-28).
     alt_partition_keys: tuple[tuple[str, ...], ...] = ()
+    # Partition keys that only split one stage's or release's rows by key prefix (a width a builder
+    # picks); they never separate LY-04 size groups (card C-09).
+    bucket_keys: tuple[str, ...] = ()
 
 
 def _f(name: str, typ: pa.DataType, nullable: bool = False) -> pa.Field:
@@ -150,6 +153,7 @@ _SPECS = [
         primary_key=("protein_uid", "gene_call_version"),
         sort_key=("protein_uid",),
         partition_keys=("gene_call_version", "stage", "protein_prefix"),
+        bucket_keys=("protein_prefix",),
         doc="data_layer_and_tests.md §2A.1",
     ),
     TableSpec(
@@ -745,6 +749,7 @@ _SPECS = [
         primary_key=("token_id", "contig_uid", "feature_uid", "seg_idx", "release", "tape_version"),
         sort_key=("token_id", "contig_uid", "ordinal", "seg_idx"),
         partition_keys=("release", "tape_version", "token_bucket"),
+        bucket_keys=("token_bucket",),
         enums={"strand": STRAND_VALUES},
         doc=(
             "planning/tasks/TASKS.md §2; DEC-19. Replaces slot_pairs (removed by card B-11; pairs are computed "
