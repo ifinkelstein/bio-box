@@ -146,6 +146,7 @@ A metamorphic relation (MR) states how the output must change when the input is 
 | MR-17 | rerun a recipe on a later release | same results on unchanged targets (generalizes S-03) |
 | MR-18 | null world: relabel genes within phylogenetic and HGT constraints | p-values uniform; FDR at nominal level |
 | MR-19 | add a contamination mask (an FCS-GX or host-screen sidecar flags contigs) | sequences, tapes and UIDs unchanged; only statistics involving masked contigs change, and they change exactly as if those contigs had been excluded at ingest; `fcs_gx_status` updated |
+| MR-20 | add one feature of any kind (for example an ncRNA inside an IGR) as a second producer | every existing `feature_uid`-keyed row is byte-identical; one IGR is replaced by two; only ordinals inside the new tape version shift, by one after the new feature, and the feature UIDs do not |
 
 ---
 
