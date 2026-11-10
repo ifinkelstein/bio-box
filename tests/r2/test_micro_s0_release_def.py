@@ -46,9 +46,6 @@ REL = "rS0.b25"
 # a builder that took every library on disk would renumber the family tokens of S0.
 STAGE_OBJECTS = {"S0": ("NC_001416.1", "NC_000866.4"), "S1": ("NC_000908.2",)}
 LIBRARIES = {"S0": ("test",), "S1": ("test", "a")}
-# card B-22: l0/l0_manifest.parquet is still one file that every ingest rewrites, so it is the one
-# manifest entry a later stage changes; with B-22 merged it is a per-stage file and this set is unused
-REWRITTEN_BY_EVERY_STAGE = {"l0/l0_manifest.parquet"}
 
 
 def _objects(stage: str) -> list[dict]:
@@ -172,18 +169,16 @@ def test_b25_manifest_of_the_rebuild_equals_the_first(ladder):
     e1, e2 = entries(m1), entries(m2)
     assert sorted(e1) == sorted(e2)
     differ = sorted(p for p in e1 if e1[p] != e2[p])
-    assert set(differ) <= REWRITTEN_BY_EVERY_STAGE, differ
+    assert differ == []
     same = {k: v for k, v in _portable(m1).items() if k not in ("files", "artifacts")}
     assert same == {k: v for k, v in _portable(m2).items() if k not in ("files", "artifacts")}
-    if not differ:
-        assert catalog.manifest_bytes(_portable(m1)) == catalog.manifest_bytes(_portable(m2))
+    assert catalog.manifest_bytes(_portable(m1)) == catalog.manifest_bytes(_portable(m2))
 
 
 @pytest.mark.covers("LY-10")
 def test_b25_verify_ignores_a_stage_the_release_does_not_list(ladder, tmp_path):
     a, m1 = ladder["a"], ladder["m1"]
-    problems = catalog.verify_manifest(m1, a)
-    assert [p for p in problems if p.split(": ", 1)[1] not in REWRITTEN_BY_EVERY_STAGE] == [], problems
+    assert catalog.verify_manifest(m1, a) == []
     # a stray file in a listed stage is still reported
     c = tmp_path / "c"
     shutil.copytree(a, c)

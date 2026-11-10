@@ -16,6 +16,7 @@ specified here are listed in tests/registry/pending_tables.yaml.
 
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass, field
 
 import pyarrow as pa
@@ -60,7 +61,7 @@ def _f(name: str, typ: pa.DataType, nullable: bool = False) -> pa.Field:
 _SPECS = [
     TableSpec(
         name="l0_manifest",
-        location="l0/l0_manifest.parquet",
+        location="l0/l0_manifest",
         layer="L0",
         schema=pa.schema([
             _f("source_uid", pa.uint64()),
@@ -73,10 +74,12 @@ _SPECS = [
             _f("redistributable", pa.bool_()),
             _f("retrieved_at", pa.timestamp("ms", tz="UTC")),
         ]),
-        primary_key=("source_uid", "object_path"),
+        primary_key=("source_uid", "object_path", "stage"),
         sort_key=("source_uid", "object_path"),
+        # the objects one stage ingested, written once by that stage's ingest (AGENTS §3.10, card B-22)
+        partition_keys=("stage",),
         small_ok=True,
-        doc="data_layer_and_tests.md §1 (L0)",
+        doc="data_layer_and_tests.md §1 (L0); one directory per stage (card B-22)",
     ),
     TableSpec(
         name="contig_occurrence",
@@ -789,7 +792,9 @@ class ArtifactSpec:
     """Non-Parquet files of a release, listed in the manifest like tables (LY-10).
 
     Files live at `<location>/<k>=<v>/.../<name>` in partition_keys order; `<name>` matches
-    `pattern`, and each such file has one companion per suffix in `companions`.
+    `pattern`, and each such file has one companion per suffix in `companions`. An artifact with
+    no partition keys whose `location` ends in a name `pattern` matches is that one file
+    (`single_file`), as a table whose location ends in `.parquet` is.
     """
 
     name: str
@@ -799,6 +804,10 @@ class ArtifactSpec:
     pattern: str
     companions: tuple[str, ...] = ()
     doc: str = ""
+
+    @property
+    def single_file(self) -> bool:
+        return not self.partition_keys and re.fullmatch(self.pattern, self.location.rsplit("/", 1)[-1]) is not None
 
 
 ARTIFACTS: dict[str, ArtifactSpec] = {
@@ -811,6 +820,16 @@ ARTIFACTS: dict[str, ArtifactSpec] = {
         companions=(".fai", ".gzi"),
         doc="bgzip FASTA of every stored byte sequence, records named by raw_digest hex and sorted "
             "by it (data_layer_and_tests.md §2A.1; DEC-17)",
+    ),
+    "store_params": ArtifactSpec(
+        name="store_params",
+        layer="L0-seq",
+        location="l0seq/store_params.json",
+        partition_keys=(),
+        pattern=r"store_params\.json",
+        doc="the sequence store's parameters (format, shard_bases, line_width, bgzf_level) as sorted-key JSON; "
+            "written once, by the first stage's ingest, and checked, never rewritten, by every later one "
+            "(card B-22)",
     ),
 }
 

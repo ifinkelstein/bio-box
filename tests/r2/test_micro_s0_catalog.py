@@ -89,7 +89,10 @@ def test_manifest_lists_every_parquet_file_and_verifies(built):
     assert {f["table"] for f in man["files"]} >= {"seq_locator", "contig_index", "protein_seq", "feature", "feature_protein",
                                                   "protein_occurrence"}
     shard_files = sorted(p.relative_to(root).as_posix() for p in (root / "l0seq/seq_shards").rglob("*") if p.is_file())
-    assert [a["path"] for a in man["artifacts"]] == shard_files
+    assert [a["path"] for a in man["artifacts"] if a["artifact"] == "seq_shards"] == shard_files
+    # card B-22: the store parameters are the other artifact, one file outside any stage
+    assert [(a["path"], a["partitions"]) for a in man["artifacts"] if a["artifact"] != "seq_shards"] == [
+        ("l0seq/store_params.json", {})]
     assert len(shard_files) == 3 * len([a for a in shard_files if a.endswith(".fa.gz")]) > 3
     from biobox import contracts
 

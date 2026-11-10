@@ -529,6 +529,13 @@ Files: `tests/r3/test_cross_host.py`+, `tests/registry/gates.yaml`
 Do: the test reads a manifest hash recorded by another host (path from `BIOBOX_PEER_MANIFEST`) and compares it with its own build; writes a `test_run` row covering D-05.
 Accept: passes with the laptop's manifest on the pod.
 
+### D-06 The append-only check covers small tables
+**L** · Depends: B-22 (found in its report)
+Files: `src/biobox/contracts.py`, `tests/r2/test_micro_s0_contracts.py`, `tests/registry/operations.yaml` (add `store_params` to the outputs of O-INGEST)
+Why: `contracts.check_append_only` skips every `small_ok` table, with a comment that `l0_manifest` is rewritten per stage by design. After B-22 nothing is rewritten by design, and the skip would hide a rewrite of `seq_locator`, `ledger`, `release_def` or `tape_version_def`.
+Do: remove the skip. If a table is then reported on the two-stage fixture, do not re-add the skip: report which table and where it is rewritten (`id_history` is one file and is a candidate).
+Accept: a fault-injection test, written first: rewrite one byte of a small table of an earlier stage and the check reports it; the check is clean on the two-stage fixture.
+
 ### D-05 Scale test in CI
 **L** · Depends: B-18
 Files: `tests/r2/test_scale_layout.py`+

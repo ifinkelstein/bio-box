@@ -2,7 +2,7 @@
 
 Layout under `<root>/` (planning/data_layer_and_tests.md §2A.1, §3.1):
 
-    l0/l0_manifest.parquet
+    l0/l0_manifest/stage=<S>/part-<k>.parquet
     l0seq/store_params.json
     l0seq/seq_shards/stage=<S>/shard-<NNNN>.fa.gz   (+ .fa.gz.fai, .fa.gz.gzi)
     l0seq/contig_occurrence/stage=<S>/source=<name>/part-<k>.parquet
@@ -20,9 +20,10 @@ at most `shard_bases` bases (one larger object is a batch of its own); records a
 sequences at a time. samtools, pysam and MMseqs2 read the shards as they are.
 
 A stage never rewrites an earlier stage's files (AGENTS §3.10): a sequence already stored
-adds only occurrence rows, and a stage's `seq_locator` file holds only the sequences first
-stored in that stage. `l0_manifest` and `store_params.json` are small metadata files
-rewritten per stage.
+adds only occurrence rows, a stage's `seq_locator` file holds only the sequences first
+stored in that stage, and its `l0_manifest` partition lists only the objects it ingested
+(card B-22). `store_params.json` (the `store_params` artifact) is written once, by the first
+stage; every later stage checks it and writes none.
 
 `SeqStore` loads neither index (card B-13): `seq_locator` and `contig_index` are looked up
 through `KeyLookup` (footers once, one row group per key) and each shard's `.fai` is bisected
@@ -47,7 +48,7 @@ import pyarrow.parquet as pq
 from biobox import fasta, ids, io, layout, ledger, provenance
 from biobox.l0seq.bgzf import BgzfFasta, write_bgzf_fasta
 from biobox.l0seq.lookup import KeyLookup
-from biobox.registry.schemas import table
+from biobox.registry.schemas import ARTIFACTS, table
 
 STORE_FORMAT = "bgzf-fasta-1"
 SHARD_BASES = 2**30  # ~0.33 GB on disk at 0.31 bytes/bp: inside the 256 MB-1 GB band (LY-04)
@@ -61,6 +62,7 @@ SCRATCH_FLUSH_ROWS = 65_536  # pass-1 rows buffered before a scratch row group i
 EST_OCCURRENCE_ROW = 120  # estimate: contig_occurrence (accession and header strings, raw_digest, contig_uid)
 EST_INDEX_ROW = 56  # estimate: contig_index (contig_uid 16 + raw_digest 32 + length and flag)
 EST_LOCATOR_ROW = 40  # estimate: seq_locator (raw_digest 32 + dictionary-coded shard path + length)
+EST_MANIFEST_ROW = 160  # estimate: l0_manifest (sha256 32 + object name, source and license strings + 3 scalars)
 
 _COMP = bytes.maketrans(b"ACGTRYKMBVDHNacgtrykmbvdhn", b"TGCAYRMKVBHDNtgcayrmkvbhdn")
 
@@ -80,13 +82,10 @@ class SourceObject:
     retrieved_at: datetime = field(default_factory=lambda: datetime(1970, 1, 1, tzinfo=timezone.utc))
 
 
-def _write(tbl: pa.Table, path: Path, row_group_size: int, statistics: list[str] | bool = True) -> None:
-    path.parent.mkdir(parents=True, exist_ok=True)
-    pq.write_table(tbl, path, compression="zstd", row_group_size=row_group_size, write_statistics=statistics)
-
-
 LOCATOR_DIR = "l0seq/seq_locator"
 INDEX_DIR = "l0seq/contig_index"
+MANIFEST_DIR = table("l0_manifest").location
+PARAMS_PATH = ARTIFACTS["store_params"].location
 
 
 def locator_files(root: Path) -> list[Path]:
@@ -197,7 +196,7 @@ def _stat(path: Path) -> tuple[int, int]:
 def stage_dirs(stage: str) -> list[str]:
     """The root-relative directories that hold one stage's ingest files (the ledger's included)."""
     return [f"l0seq/seq_shards/stage={stage}", f"l0seq/contig_occurrence/stage={stage}", f"{INDEX_DIR}/stage={stage}",
-            f"{LOCATOR_DIR}/stage={stage}", f"ledger/stage={stage}/step=ingest"]
+            f"{LOCATOR_DIR}/stage={stage}", f"ledger/stage={stage}/step=ingest", f"{MANIFEST_DIR}/stage={stage}"]
 
 
 def stage_files(base: Path, stage: str) -> list[Path]:
@@ -241,10 +240,15 @@ def ingest(
     killed ingest is rerun from the start into a clean staging directory and gives the same bytes.
     A direct call (`out` is the root) needs a clean stage directory: ingest refuses, before it reads
     a source, when any file (a temporary one included) is in the stage's directories (`stage_dirs`)
-    under `root` or `out`. After a direct ingest died, remove those directories and run it again; the
-    `l0_manifest` is written last, so a stage that died earlier has not touched it. Nothing here
-    overwrites a file: `io.write_table` still refuses to. `store_params.json` is written under `out`
-    only when the root has none; when it has one, the parameters must equal it.
+    under `root` or `out`. After a direct ingest died, remove those directories and run it again.
+    Nothing here overwrites a file: `io.write_table` still refuses to.
+
+    Store parameters and the object list (card B-22). `store_params.json` (the `store_params`
+    artifact) is checked before any source is read: when the root has one, the parameters must equal
+    it (ValueError otherwise) and nothing is written; when it has none, this is the store's first
+    stage and the file is written under `out`, after the stage's tables, so run-step publishes it with
+    them. The stage's `l0_manifest` partition (`l0/l0_manifest/stage=<S>/`) lists the objects of this
+    stage only and is written last; no earlier stage's row is read or rewritten.
 
     `_hook` (tests only) is called with each point at which a kill leaves the stage half written:
     "pass1", "shard:<j>" after each shard, "contig_occurrence", "contig_index", "seq_locator",
@@ -264,14 +268,8 @@ def ingest(
                 f"{left[0]}: stage {stage} already has {len(left)} ingest file(s) under {base}; ingest "
                 f"writes a stage once. A direct call needs a clean stage directory: if an earlier ingest "
                 f"died, remove {', '.join(stage_dirs(stage))} and run it again, or ingest under run-step")
-    params_path = root / "l0seq" / "store_params.json"
     params = {"format": STORE_FORMAT, "shard_bases": shard_bases, "line_width": line_width, "bgzf_level": BGZF_LEVEL}
-    if params_path.exists():
-        if json.loads(params_path.read_text()) != params:
-            raise ValueError("store parameters differ from the existing store")
-    else:
-        (out / "l0seq").mkdir(parents=True, exist_ok=True)
-        (out / "l0seq" / "store_params.json").write_text(json.dumps(params, sort_keys=True))
+    new_params = _check_params(root, out, params)
 
     ordered = _object_order(objects)
     old_loc, old_idx = locator_files(root), index_files(root)  # the earlier stages', read before writing
@@ -297,12 +295,75 @@ def ingest(
         con = duckdb.connect(config={"threads": 1, "memory_limit": DUCK_MEMORY_LIMIT,
                                      "temp_directory": str(scratch / "duckdb"), "preserve_insertion_order": True})
         try:
-            return _decide_and_write(con, root, out, stage, ordered, n_in, stats, seen_path, old_loc, old_idx,
-                                     scratch, shard_bases, line_width, max_file_bytes, hook)
+            report = _decide_and_write(con, root, out, stage, ordered, n_in, stats, seen_path, old_loc, old_idx,
+                                       scratch, shard_bases, line_width, max_file_bytes, hook)
         finally:
             con.close()
     finally:
         shutil.rmtree(scratch, ignore_errors=True)
+    # the store's parameters, by its first stage only, after every table of the stage; then the
+    # stage's l0_manifest partition, last (card B-22)
+    if new_params is not None:
+        _write_new(out / PARAMS_PATH, new_params)
+    _write_l0_manifest(out, stage, ordered, stats, max_file_bytes)
+    hook("l0_manifest")
+    return report
+
+
+def _params_bytes(params: dict) -> bytes:
+    return json.dumps(params, sort_keys=True).encode()
+
+
+def _check_params(root: Path, out: Path, params: dict) -> bytes | None:
+    """The `store_params` artifact (card B-22), checked before any source is read. The root has it:
+    the parameters must equal it (ValueError otherwise) and None is returned, since a later stage
+    writes none. The root has none: this is the store's first stage, and the bytes to write under
+    `out` are returned (FileExistsError if `out` already holds a copy)."""
+    have, mine = root / PARAMS_PATH, out / PARAMS_PATH
+    if have.exists():
+        stored = json.loads(have.read_text())
+        if stored != params:
+            raise ValueError(f"{have}: the store's parameters {stored} differ from this ingest's {params}; "
+                             "store_params is written once, by a store's first stage, and every later stage "
+                             "must use the same parameters")
+        return None
+    if mine.exists():
+        raise FileExistsError(f"{mine}: already exists; store_params is written once, by the store's first stage")
+    return _params_bytes(params)
+
+
+def _write_new(path: Path, data: bytes) -> None:
+    """`data` at `path`, which must not exist, under a temporary name renamed into place (AGENTS §3.9)."""
+    if path.exists():
+        raise FileExistsError(f"{path}: already exists; refusing to overwrite")
+    path.parent.mkdir(parents=True, exist_ok=True)
+    tmp = path.with_name(f".{path.name}.tmp-{os.getpid()}")
+    tmp.write_bytes(data)
+    os.replace(tmp, path)
+
+
+def _write_l0_manifest(out: Path, stage: str, ordered: list[tuple[bytes, SourceObject]],
+                       stats: list[tuple[int, int]], max_file_bytes: int) -> None:
+    """The stage's own `l0_manifest` partition: one row per object it ingested, sorted by
+    (source_uid, object_path), ties by sha256 order; written once and never rewritten (AGENTS §3.10,
+    card B-22). Its rows are as many as the objects ingest was handed."""
+    spec = table("l0_manifest")
+    src = [ids.source_uid(o.source_name, o.source_release) for _, o in ordered]
+    name = [Path(o.path).name for _, o in ordered]
+    order = sorted(range(len(ordered)), key=lambda i: (src[i], name[i], i))
+    objs = [ordered[i][1] for i in order]
+    tbl = pa.table({
+        "source_uid": pa.array([src[i] for i in order], pa.uint64()),
+        "source_name": pa.array([o.source_name for o in objs], pa.string()),
+        "source_release": pa.array([o.source_release for o in objs], pa.string()),
+        "object_path": pa.array([name[i] for i in order], pa.string()),
+        "object_sha256": pa.array([ordered[i][0] for i in order], pa.binary(32)),
+        "bytes": pa.array([stats[i][0] for i in order], pa.int64()),  # the size pass 2 checked
+        "license": pa.array([o.license for o in objs], pa.string()),
+        "redistributable": pa.array([o.redistributable for o in objs], pa.bool_()),
+        "retrieved_at": pa.array([o.retrieved_at for o in objs], pa.timestamp("ms", tz="UTC")),
+    }, schema=spec.schema)
+    io.write_parts(tbl, spec, out / MANIFEST_DIR / f"stage={stage}", EST_MANIFEST_ROW, max_file_bytes)
 
 
 def _decide_and_write(con, root: Path, out: Path, stage: str, ordered: list[tuple[bytes, SourceObject]],
@@ -416,30 +477,6 @@ def _decide_and_write(con, root: Path, out: Path, stage: str, ordered: list[tupl
     ledger.write(out, stage, "ingest", (ledger.row(sha, "l0_object", n_in[i], kept[i], n_in[i] - kept[i], tools=tools)
                                         for i, (sha, _) in enumerate(ordered)))
     hook("ledger")
-
-    # l0_manifest: small metadata, rewritten with all stages; written last and renamed into place, so
-    # a stage that died earlier has not touched it (card B-23)
-    man_spec = table("l0_manifest")
-    man_path = root / "l0/l0_manifest.parquet"
-    man = pa.Table.from_pylist([{
-        "source_uid": ids.source_uid(obj.source_name, obj.source_release),
-        "source_name": obj.source_name,
-        "source_release": obj.source_release,
-        "object_path": Path(obj.path).name,
-        "object_sha256": sha,
-        "bytes": Path(obj.path).stat().st_size,
-        "license": obj.license,
-        "redistributable": obj.redistributable,
-        "retrieved_at": obj.retrieved_at,
-    } for sha, obj in ordered], schema=man_spec.schema)
-    if man_path.exists():
-        man = pa.concat_tables([pq.read_table(man_path), man])
-    man = man.sort_by([("source_uid", "ascending"), ("object_path", "ascending")])
-    man_out = out / "l0/l0_manifest.parquet"
-    man_tmp = man_out.with_name(f".{man_out.name}.tmp-{os.getpid()}")
-    _write(man, man_tmp, 122_880)
-    os.replace(man_tmp, man_out)
-    hook("l0_manifest")
     return {"objects": len(ordered), "records": sum(n_in), "new_sequences": n_new, "index_rows": n_idx,
             "shards": len(batches)}
 

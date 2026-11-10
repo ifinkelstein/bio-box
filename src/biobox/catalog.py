@@ -124,6 +124,10 @@ def classify(rel: str) -> tuple[TableSpec, dict[str, str]] | None:
 def classify_artifact(rel: str) -> tuple[ArtifactSpec, dict[str, str], str] | None:
     """Map a path under an artifact location to (artifact, partitions, companion suffix or "")."""
     for spec in ARTIFACTS.values():
+        if spec.single_file:
+            if rel == spec.location:
+                return spec, {}, ""
+            continue
         if not rel.startswith(spec.location + "/"):
             continue
         parts = rel[len(spec.location) + 1 :].split("/")
@@ -146,16 +150,21 @@ def _path_stage(rel: str) -> str | None:
     return None
 
 
+def _artifact_files(root: Path, spec: ArtifactSpec) -> list[Path]:
+    """The files under the artifact's location (the one file itself for a `single_file` artifact)."""
+    base = Path(root) / spec.location
+    if spec.single_file:
+        return [base] if base.is_file() else []
+    return sorted(p for p in base.rglob("*") if p.is_file()) if base.exists() else []
+
+
 def _artifact_entries(root: Path, in_release) -> list[dict]:
     """The artifact files `in_release(name, stage)` keeps; a file of another stage is skipped before it
     is classified, so a stage still being written cannot fail the manifest of a release without it."""
     out = []
     for spec in ARTIFACTS.values():
-        base = root / spec.location
-        if not base.exists():
-            continue
         found = {}
-        for path in sorted(p for p in base.rglob("*") if p.is_file()):
+        for path in _artifact_files(root, spec):
             rel = path.relative_to(root).as_posix()
             if not in_release(spec.name, _path_stage(rel)):
                 continue
@@ -328,7 +337,7 @@ def build_manifest(root: Path, release_id: str, stages) -> dict:
             "schema_hash": schema_hash(pf.schema_arrow),
             "n_columns": n_cols,
         })
-    params_path = root / "l0seq/store_params.json"
+    params_path = root / ARTIFACTS["store_params"].location
     params = json.loads(params_path.read_text()) if params_path.exists() else {}
     return {
         "manifest_version": MANIFEST_VERSION,
@@ -396,8 +405,7 @@ def verify_manifest(manifest: dict, root: Path | None = None) -> list[str]:
             problems.append(f"sha256 differs: {f['path']}")
     present = list(root.rglob("*.parquet"))
     for spec in ARTIFACTS.values():
-        if (root / spec.location).exists():
-            present += [p for p in (root / spec.location).rglob("*") if p.is_file()]
+        present += _artifact_files(root, spec)
     for p in sorted(set(present)):
         rel = p.relative_to(root).as_posix()
         if rel in listed:
