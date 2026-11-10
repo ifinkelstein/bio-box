@@ -22,14 +22,20 @@ token opens one bucket. Within a bucket, rows are sorted by `(token_id, contig_u
 seg_idx)` and cut into parts of `max_file_bytes` estimated bytes; row groups hold 122,880 rows.
 With no rows at all, one empty `token_bucket=all/part-0.parquet` is written.
 
-Bounded memory (AGENTS §4.1): one DuckDB connection (`DUCK_MEMORY_LIMIT`, one thread, spilling into
-a private scratch directory) unnests the tape lists and the token lists by position, joins them on
-`contig_uid`, unions the three levels and sorts by (bucket, sort key); an ordered Arrow reader hands
-the rows to the writer, which cuts buckets and parts while streaming.
+Bounded memory (AGENTS §4.1; card B-29): the tape tokens are read one row group at a time (at most
+131,072 slots, AGENTS §4.6) beside a cursor on each tape file, both in `contig_uid` order, and each
+token row group's postings are exploded with Arrow into a flat Parquet run in a private scratch
+directory. One DuckDB connection (`DUCK_MEMORY_LIMIT`, one thread, spilling into that directory)
+checks the inputs, then sorts the flat runs by (bucket, sort key) in one statement; an ordered Arrow
+reader hands the rows to the writer, which cuts buckets and parts while streaming. The earlier single
+statement (join whole list rows, unnest, union the levels from a materialized CTE, sort) ran out of
+its 2 GB at rL.3's 12 M slots: its sort never spilled when the first branch of the union was small
+(measured, wilkcomp02, 2026-11-10; planning/measurements/2026-11-10_postings_memory.md).
 """
 
 from __future__ import annotations
 
+import bisect
 import shutil
 import tempfile
 from collections.abc import Iterator
@@ -38,10 +44,12 @@ from pathlib import Path
 import duckdb
 import numpy as np
 import pyarrow as pa
+import pyarrow.compute as pc
+import pyarrow.parquet as pq
 
 from biobox import catalog, io, layout
 from biobox.l1.genecall import DUCK_MEMORY_LIMIT, GENE_CALL_VERSION
-from biobox.l3.tokens import LEVELS, _scan, _tape_files, tape_version_of
+from biobox.l3.tokens import LEVELS, _scan, _sql_str, _tape_files, tape_version_of
 from biobox.registry.schemas import table
 
 EST_POSTING_ROW = 36  # zstd bytes per posting row, measured 35.74 (rL.2, pod wilkcomp02, 2026-11-10, scripts/stress/postings_bytes.py; the earlier estimate was 20), rounded up to an int; cuts parts, picks width
@@ -85,6 +93,113 @@ def _pieces(reader, names: list[str]) -> Iterator[tuple[int, pa.RecordBatch]]:
 def _bucket_name(bk: int, width: int) -> str:
     """The partition value of bucket number `bk` (the low byte, or its high hex digit at width 1)."""
     return layout.bucket(bytes([bk << 4 if width == 1 else bk]), width)
+
+
+_TAPE_COLS = ("contig_uid", "contig_len", "is_circular", "n_slots", *_LISTS)
+_TAPE_SCHEMA = pa.schema([table("contig_tapes").schema.field(c) for c in _TAPE_COLS])
+_TOK_COLS = ("contig_uid", *_TOKENS)
+_TOK_SCHEMA = pa.schema([table("tape_tokens").schema.field(c) for c in _TOK_COLS])
+
+
+class _TapeCursor:
+    """One tape file, read one row group at a time and consumed from the front in `contig_uid` order."""
+
+    def __init__(self, path: Path):
+        self._pf = pq.ParquetFile(path)
+        self._next, self._t, self._uids, self._off = 0, None, [], 0
+
+    def _load(self) -> bool:
+        """Whether a row remains (the next row group is read when the current one is used up)."""
+        while self._t is None or self._off == self._t.num_rows:
+            if self._next == self._pf.metadata.num_row_groups:
+                return False
+            t = self._pf.read_row_group(self._next, columns=list(_TAPE_COLS))
+            self._t = t.select(list(_TAPE_COLS)).cast(_TAPE_SCHEMA)
+            self._uids, self._off, self._next = self._t.column("contig_uid").to_pylist(), 0, self._next + 1
+        return True
+
+    def through(self, hi: bytes) -> list[pa.Table]:
+        """The rows from the front up to and including `contig_uid` `hi`."""
+        out = []
+        while self._load():
+            end = bisect.bisect_right(self._uids, hi, self._off)
+            if end > self._off:
+                out.append(self._t.slice(self._off, end - self._off))
+            self._off = end
+            if end < len(self._uids):
+                break
+        return out
+
+    def first(self) -> bytes | None:
+        return self._uids[self._off] if self._load() else None
+
+
+def _explode_runs(tape_files: list[Path], tok_files: list[Path], spec, out: Path) -> tuple[list[Path], int]:
+    """The postings, unsorted, as flat Parquet runs under `out`, one per tape-token row group; returns the
+    runs and their row count (card B-29).
+
+    The tape tokens (sorted by `contig_uid` across their parts) are read one row group at a time; each
+    tape file is a cursor in `contig_uid` order, so the tape rows of a token row group are the rows up to
+    its last contig in every tape file, and each file is read once. A token row group holds at most
+    131,072 slots (AGENTS §4.6), so only that and one row group per tape file are held at a time.
+    Called after `_check`; tapes and tokens that still do not pair up are a RuntimeError.
+    """
+    out.mkdir(parents=True)
+    cursors = [_TapeCursor(f) for f in tape_files]
+    runs, n = [], 0
+    for f in tok_files:
+        pf = pq.ParquetFile(f)
+        for i in range(pf.metadata.num_row_groups):
+            k = pf.read_row_group(i, columns=list(_TOK_COLS)).select(list(_TOK_COLS)).cast(_TOK_SCHEMA)
+            if not k.num_rows:
+                continue
+            ku = k.column("contig_uid").to_pylist()
+            pieces = [p for c in cursors for p in c.through(ku[-1])]
+            t = pa.concat_tables(pieces) if pieces else _TAPE_SCHEMA.empty_table()
+            tu = t.column("contig_uid").to_pylist()
+            order = sorted(range(len(tu)), key=tu.__getitem__)
+            if order != list(range(len(tu))):
+                t, tu = t.take(pa.array(order, pa.int64())), [tu[j] for j in order]
+            if tu != ku:
+                at = next((a for a, b in zip(tu, ku) if a != b), max(tu, ku, key=len)[min(len(tu), len(ku))])
+                raise RuntimeError(f"contig {at.hex()}: tapes and tape tokens do not pair up in {f.name}, row group {i}")
+            posts = _explode(t, k, spec)
+            n += posts.num_rows
+            if posts.num_rows:
+                runs.append(out / f"run-{len(runs):06d}.parquet")
+                pq.write_table(posts, runs[-1], compression="zstd", compression_level=1)
+    left = next((u for c in cursors if (u := c.first()) is not None), None)
+    if left is not None:
+        raise RuntimeError(f"contig {left.hex()}: a tape without tape tokens")
+    return runs, n
+
+
+def _explode(t: pa.Table, k: pa.Table, spec) -> pa.Table:
+    """The postings of tape rows `t` and their tape-token rows `k` (the same contigs in the same order),
+    level by level in slot order: a row per slot and non-null token, with its 0-based `ordinal`."""
+    col = lambda tbl, c: tbl.column(c).combine_chunks()  # noqa: E731
+    lens = pc.list_value_length(col(t, "feature_uids")).to_numpy(zero_copy_only=False).astype(np.int64)
+    for tbl, c in [(t, c) for c in _LISTS] + [(k, c) for c in _TOKENS]:
+        if not np.array_equal(pc.list_value_length(col(tbl, c)).to_numpy(zero_copy_only=False), lens):
+            raise RuntimeError(f"{c}: lists of another length than the tape's feature_uids")
+    parent = np.repeat(np.arange(len(lens), dtype=np.int64), lens)
+    ordinal = np.arange(len(parent), dtype=np.int64) - np.repeat(np.cumsum(lens) - lens, lens)
+    flat = {c: col(t, c).flatten() for c in _LISTS}
+    per_contig = {c: col(t, c) for c in ("contig_uid", "n_slots", "is_circular", "contig_len")}
+    levels = []
+    for c in _TOKENS:
+        tok = col(k, c).flatten()
+        keep = np.flatnonzero(tok.is_valid().to_numpy(zero_copy_only=False))
+        idx, p = pa.array(keep, pa.int64()), pa.array(parent[keep], pa.int64())
+        arrays = {"token_id": tok.take(idx), "contig_uid": per_contig["contig_uid"].take(p),
+                  "ordinal": pa.array(ordinal[keep]), "seg_idx": pa.array(np.zeros(len(keep), np.uint16)),
+                  "feature_uid": flat["feature_uids"].take(idx), "start": flat["start_bps"].take(idx),
+                  "end": flat["end_bps"].take(idx), "strand": flat["strands"].take(idx),
+                  "n_slots": per_contig["n_slots"].take(p), "is_circular": per_contig["is_circular"].take(p),
+                  "contig_len": per_contig["contig_len"].take(p)}
+        levels.append(pa.Table.from_arrays([arrays[n] for n in spec.schema.names], names=spec.schema.names)
+                      .cast(spec.schema))
+    return pa.concat_tables(levels)
 
 
 def run(root: Path, release: str, stages: list[str], gene_call_version: str = GENE_CALL_VERSION,
@@ -137,24 +252,17 @@ def run(root: Path, release: str, stages: list[str], gene_call_version: str = GE
         n_rows = sum(by_level.values())
         width = (layout.prefix_width(EST_POSTING_ROW * n_rows) if prefix_width is None else prefix_width) if n_rows else 0
         bk = {0: "0", 1: "(token_id & 255) >> 4", 2: "token_id & 255"}[width]
-        slots = (
-            "SELECT t.contig_uid, t.n_slots, t.is_circular, t.contig_len, "
-            "unnest(range(len(t.feature_uids))) AS ordinal, "
-            + ", ".join(f"unnest(t.{c}) AS {c}" for c in _LISTS) + ", "
-            + ", ".join(f"unnest(k.{c}) AS {c}" for c in _TOKENS) + " "
-            "FROM tapes t JOIN toks k ON k.contig_uid = t.contig_uid"
-        )
-        level_rows = " UNION ALL ".join(
-            f"SELECT {c} AS token_id, contig_uid, ordinal, 0 AS seg_idx, feature_uids AS feature_uid, "
-            f'start_bps AS start, end_bps AS "end", strands AS strand, n_slots, is_circular, contig_len '
-            f"FROM s WHERE {c} IS NOT NULL" for c in _TOKENS)
-        sql = (f"WITH s AS ({slots}), p AS ({level_rows}) "
-               f"SELECT ({bk})::BIGINT AS bk, * FROM p ORDER BY bk, token_id, contig_uid, ordinal, seg_idx")
+        runs, exploded = _explode_runs(tape_files, tok_files, spec, scratch / "runs")
+        if exploded != n_rows:
+            raise RuntimeError(f"token_postings: exploded {exploded} rows, the tape tokens hold {n_rows}")
         per_part = max(1, max_file_bytes // EST_POSTING_ROW)  # layout.cut on rows of equal estimated size
-        reader = con.sql(sql).to_arrow_reader(io.ROW_GROUP_ROWS)
+        # the flat runs, sorted by (bucket, sort key) in one statement: DuckDB's sort spills
+        reader = con.sql(f"SELECT ({bk})::BIGINT AS bk, * FROM read_parquet([{', '.join(_sql_str(r) for r in runs)}], "
+                         "hive_partitioning = false) ORDER BY bk, token_id, contig_uid, ordinal, seg_idx"
+                         ).to_arrow_reader(io.ROW_GROUP_ROWS) if runs else None
         n_files, n_buckets, written = 0, 0, 0
         try:
-            src = _Peek(_pieces(reader, names))
+            src = _Peek(_pieces(reader or [], names))
             if src.peek() is None:
                 written += io.write_table([], spec, base / f"token_bucket={layout.ALL}/part-0.parquet")["rows"]
                 n_files = n_buckets = 1
@@ -167,7 +275,8 @@ def run(root: Path, release: str, stages: list[str], gene_call_version: str = GE
                 n_files += k
                 n_buckets += 1
         finally:
-            reader.close()
+            if reader is not None:
+                reader.close()
     finally:
         con.close()
         shutil.rmtree(scratch, ignore_errors=True)
@@ -178,12 +287,18 @@ def run(root: Path, release: str, stages: list[str], gene_call_version: str = GE
 
 def _check(con) -> None:
     """Refuse a contig whose tape and token lists disagree: a token row without a tape, a tape without a
-    token row, a contig twice, or lists of another length than the tape's slots. Names the first contig."""
-    lens = " OR ".join([f"len(t.{c}) <> t.n_slots" for c in _LISTS] + [f"len(k.{c}) <> t.n_slots" for c in _TOKENS])
+    token row, a contig twice, or lists of another length than the tape's slots. Names the first contig.
+
+    The join holds list lengths, not lists (card B-29: joined whole, the token lists were a 340 MB hash
+    table at rL.3's 12 M slots, measured)."""
+    lens = " OR ".join([f"t.{c} <> t.n_slots" for c in _LISTS] + [f"k.{c} <> t.n_slots" for c in _TOKENS])
     bad = con.execute(
         "SELECT coalesce(t.contig_uid, k.contig_uid) AS cu, t.contig_uid IS NULL AS no_tape, "
-        "k.contig_uid IS NULL AS no_tokens FROM tapes t FULL OUTER JOIN toks k ON k.contig_uid = t.contig_uid "
-        f"WHERE t.contig_uid IS NULL OR k.contig_uid IS NULL OR {lens} ORDER BY cu LIMIT 1").fetchall()
+        "k.contig_uid IS NULL AS no_tokens "
+        f"FROM (SELECT contig_uid, n_slots, {', '.join(f'len({c}) AS {c}' for c in _LISTS)} FROM tapes) t "
+        f"FULL OUTER JOIN (SELECT contig_uid, {', '.join(f'len({c}) AS {c}' for c in _TOKENS)} FROM toks) k "
+        f"ON k.contig_uid = t.contig_uid WHERE t.contig_uid IS NULL OR k.contig_uid IS NULL OR {lens} "
+        "ORDER BY cu LIMIT 1").fetchall()
     if bad:
         cu, no_tape, no_tokens = bad[0]
         what = ("has tape tokens but no tape" if no_tape else "has a tape but no tape tokens" if no_tokens
