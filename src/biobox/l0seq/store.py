@@ -673,6 +673,11 @@ def pass1_shards(objects: list[SourceObject], pass1_bytes: int) -> list[list[int
     return _batches([(i, Path(o.path).stat().st_size) for i, o in enumerate(order)], pass1_bytes) or [[]]
 
 
+def _runs_base(tmp: Path | None, runs: Path | None) -> Path | None:
+    """Where the batch steps' shared runs live: `runs` when given, else `tmp` (one directory for both)."""
+    return tmp if runs is None else runs
+
+
 def ingest_runs_dir(tmp: Path | None, root: Path, stage: str) -> Path:
     """The scratch directory of the stage's pass-1 runs and decision table: under `tmp` (else the system's),
     named by the root and the stage, so two roots or stages never mix their runs."""
@@ -773,13 +778,16 @@ def _pass1_run(order: list[SourceObject], members: list[int], path: Path) -> lis
 
 def ingest_pass1(objects: list[SourceObject], root: Path, stage: str, k: int, pass1_bytes: int,
                  shard_bases: int = SHARD_BASES, line_width: int = LINE_WIDTH, tmp: Path | None = None,
-                 out: Path | None = None) -> dict:
-    """Pass 1 of shard `k` of `pass1_shards(objects, pass1_bytes)`: its run into scratch (`ingest_runs_dir`) and
-    its record under `out` (default `root`). Refuses, before it reads a source, a stage whose ingest files exist,
-    a shard whose record or a plan exists (in `root` or `out`), and store parameters other than the store's."""
+                 out: Path | None = None, runs_tmp: Path | None = None) -> dict:
+    """Pass 1 of shard `k` of `pass1_shards(objects, pass1_bytes)`: its run into scratch (`ingest_runs_dir` under
+    `runs_tmp`, the scratch the batch steps share; default `tmp`, this step's own) and its record under `out`
+    (default `root`). Refuses, before it reads a source, a stage whose ingest files exist, a shard whose record or
+    a plan exists (in `root` or `out`), and store parameters other than the store's."""
     root = Path(root)
     out = root if out is None else Path(out)
     ledger.check_scratch(tmp, root, out)
+    ledger.check_scratch(runs_tmp, root, out)
+    tmp = _runs_base(tmp, runs_tmp)
     _refuse_stage_written(root, out, stage, stage_dirs(stage))
     shards = pass1_shards(objects, pass1_bytes)
     if isinstance(k, bool) or not isinstance(k, int) or not 0 <= k < len(shards):
@@ -889,13 +897,17 @@ def _runs(recs: list[tuple[bytes, dict]], tmp: Path | None, root: Path, stage: s
 
 
 def ingest_plan(objects: list[SourceObject], root: Path, stage: str, shard_bases: int = SHARD_BASES,
-                line_width: int = LINE_WIDTH, tmp: Path | None = None, out: Path | None = None) -> dict:
-    """The stage's decisions from its pass-1 runs: the decision table into scratch, the plan under `out`
-    (default `root`). Needs every pass-1 record and a run with its sha256. Refuses a stage whose ingest files or
-    plan exist, and store parameters other than the store's or the pass-1 records'."""
+                line_width: int = LINE_WIDTH, tmp: Path | None = None, out: Path | None = None,
+                runs_tmp: Path | None = None) -> dict:
+    """The stage's decisions from its pass-1 runs: the decision table into scratch (both under `runs_tmp`, default
+    `tmp`; DuckDB spills into `tmp`), the plan under `out` (default `root`). Needs every pass-1 record and a run
+    with its sha256. Refuses a stage whose ingest files or plan exist, and store parameters other than the store's
+    or the pass-1 records'."""
     root = Path(root)
     out = root if out is None else Path(out)
     ledger.check_scratch(tmp, root, out)
+    ledger.check_scratch(runs_tmp, root, out)
+    shared = _runs_base(tmp, runs_tmp)
     _refuse_stage_written(root, out, stage, stage_dirs(stage))
     rel = _plan_rel(stage)
     if _find(root, out, rel) is not None:
@@ -905,8 +917,8 @@ def ingest_plan(objects: list[SourceObject], root: Path, stage: str, shard_bases
     order, recs = _pass1_records(objects, root, out, stage)
     if any(r["store_params"] != params for _, r in recs):
         raise ValueError(f"stage {stage}: the pass-1 records were made with other store parameters than {params}")
-    runs = _runs(recs, tmp, root, stage)
-    dest = ingest_runs_dir(tmp, root, stage) / NEW_SEQ
+    runs = _runs(recs, shared, root, stage)
+    dest = ingest_runs_dir(shared, root, stage) / NEW_SEQ
     part = dest.with_name(f".{dest.name}.tmp-{os.getpid()}")
     try:
         doc = _make_plan(order, recs, runs, root, stage, params, part, tmp)
@@ -926,14 +938,15 @@ def _check_plan_objects(order: list[SourceObject], plan: dict, stage: str) -> No
 
 
 def ingest_batch(objects: list[SourceObject], root: Path, stage: str, j: int, tmp: Path | None = None,
-                 out: Path | None = None) -> dict:
+                 out: Path | None = None, runs_tmp: Path | None = None) -> dict:
     """Batch `j` of the stage's plan: its objects read again for their new sequences, written as its shard under
     `out` (default `root`), as `ingest` writes it. Each object must have the size and sha256 of pass 1. Refuses a
     stage whose tables exist and a shard that exists, in `root` or `out`; needs the plan's decision table in
-    scratch with its sha256."""
+    scratch (under `runs_tmp`, default `tmp`) with its sha256."""
     root = Path(root)
     out = root if out is None else Path(out)
     ledger.check_scratch(tmp, root, out)
+    ledger.check_scratch(runs_tmp, root, out)
     _refuse_stage_written(root, out, stage, _table_dirs(stage))
     _, plan = _doc(root, out, _plan_rel(stage), f"ingest plan of stage {stage}")
     if isinstance(j, bool) or not isinstance(j, int) or not 0 <= j < len(plan["batches"]):
@@ -948,7 +961,7 @@ def ingest_batch(objects: list[SourceObject], root: Path, stage: str, j: int, tm
     _check_params(root, out, params)
     order = pass1_order(objects)
     _check_plan_objects(order, plan, stage)
-    new = _checked_run(ingest_runs_dir(tmp, root, stage) / NEW_SEQ, plan["new_seq_sha256"],
+    new = _checked_run(ingest_runs_dir(_runs_base(tmp, runs_tmp), root, stage) / NEW_SEQ, plan["new_seq_sha256"],
                        "the plan's decision table", stage, "--plan")
     docs = plan["objects"]
 
@@ -980,15 +993,18 @@ def ingest_batch(objects: list[SourceObject], root: Path, stage: str, j: int, tm
 
 def ingest_merge(objects: list[SourceObject], root: Path, stage: str, tmp: Path | None = None,
                  max_file_bytes: int = layout.MAX_FILE_BYTES, out: Path | None = None,
-                 _hook: Callable[[str], None] | None = None) -> dict:
+                 runs_tmp: Path | None = None, _hook: Callable[[str], None] | None = None) -> dict:
     """The stage's tables, ledger, `store_params` (its first stage only) and `l0_manifest` under `out` (default
     `root`), as `ingest` writes them, from the plan and the pass-1 runs. Needs every batch's shard published (in
-    `root` or `out`), every scratch run with the sha256 its record holds, and the earlier stages' index files the
-    plan decided against. `_hook` (tests only) is called at `ingest`'s points from "contig_occurrence" on."""
+    `root` or `out`), every scratch run (under `runs_tmp`, default `tmp`) with the sha256 its record holds, and the
+    earlier stages' index files the plan decided against. `_hook` (tests only) is called at `ingest`'s points from
+    "contig_occurrence" on."""
     root = Path(root)
     out = root if out is None else Path(out)
     hook = _hook or _no_hook
     ledger.check_scratch(tmp, root, out)
+    ledger.check_scratch(runs_tmp, root, out)
+    shared = _runs_base(tmp, runs_tmp)
     _refuse_stage_written(root, out, stage, _table_dirs(stage))
     raw, plan = _doc(root, out, _plan_rel(stage), f"ingest plan of stage {stage}")
     params = plan["store_params"]
@@ -1004,8 +1020,8 @@ def ingest_merge(objects: list[SourceObject], root: Path, stage: str, tmp: Path 
     _check_plan_objects(order, plan, stage)
     if [hashlib.sha256(r).hexdigest() for r, _ in recs] != plan["pass1_sha256"]:
         raise ValueError(f"stage {stage}: the pass-1 records are not those the plan was made from")
-    runs = _runs(recs, tmp, root, stage)
-    new = _checked_run(ingest_runs_dir(tmp, root, stage) / NEW_SEQ, plan["new_seq_sha256"],
+    runs = _runs(recs, shared, root, stage)
+    new = _checked_run(ingest_runs_dir(shared, root, stage) / NEW_SEQ, plan["new_seq_sha256"],
                        "the plan's decision table", stage, "--plan")
     docs = plan["objects"]
     ordered = [(bytes.fromhex(d["sha256"]), order[d["index"]]) for d in docs]

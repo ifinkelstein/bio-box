@@ -360,6 +360,11 @@ def test_build_stage_runs_an_ingest_over_the_budget_as_pass1_plan_batch_and_merg
         assert rec["threads"] == 1
     assert data(tree(root)) == tree(build_oracle)
     assert not store.ingest_runs_dir(build_of(work, root).tmp, root, "S0").exists()  # scratch removed after the merge
+    # each step had its own scratch directory (card C-13), removed once it exited 0
+    for name in want:
+        argv = record(root, "S0", name)["argv"]
+        assert argv[argv.index("--tmp") + 1] == str(Path(build_of(work, root).tmp).resolve() / f"S0.{name}")
+    assert not list(Path(build_of(work, root).tmp).glob("S0.ingest*"))
 
 
 def test_build_stage_within_the_margin_runs_ingest_in_one_process(work, build_oracle, prof, tmp_path):

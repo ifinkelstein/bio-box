@@ -33,15 +33,26 @@ A run is a recorded job:
      exception in any worker thread, traceback in stderr) and anything else -> `failed`.
      Only runs whose worker wrote its result (`ok`, `failed`-by-control, `output_cap`) carry
      hits; the others write `run.parquet` alone, never an empty or partial hits file (S-05).
-  5. The run directory is written next to its final place and renamed in
-     (`search/run=<run_id>/`), then `search/run_index.json` is rewritten by atomic rename
-     under a lock.
+  5. The run directory is written next to its final place and renamed in.
+
+Where things live (card W-03): nothing in the search path writes under the data root, which a user
+who can read a release may not be able to write. The pack is read from a pack directory (`packs`,
+`biobox.search.pack`); a run's directory is `out` (`bio-box search run --out DIR`), else
+`run=<run_id>/` in a runs directory (`runs`, `--runs DIR`). The pending record of a submitted run and
+its runner's stderr are `pending/<run dir name>.json` and `.stderr` beside the run directory
+(`pending_path`); the runner's lock is in its work directory. Defaults: with a host profile, a per-user
+directory under the profile's `tmp` (`<tmp>/search/<user>/runs` and `.../work`) and `<tmp>/packs`;
+without one, `default_work_base()` (`$BIOBOX_SEARCH_WORK`, else /tmp/atd/search), `runs` inside it and
+`packs` beside it. A run, work, runs or pack directory under the data root is refused before anything
+is read or recorded. A run is found by its directory (`status`, `cancel`, `read_run`, `read_hits`), or
+by its id in a runs directory (`run_dir`).
 """
 
 from __future__ import annotations
 
 import copy
 import fcntl
+import getpass
 import hashlib
 import json
 import os
@@ -88,28 +99,66 @@ class Limits:
     require_cap: bool = False    # card C-07: refuse to run with neither a scope to open nor a cgroup cap above
 
 
-def default_work_base() -> Path:
+def _user_dir(profile_tmp: Path, user: str | None) -> Path:
+    return Path(profile_tmp) / "search" / (user or getpass.getuser())
+
+
+def default_work_base(profile_tmp: Path | None = None, user: str | None = None) -> Path:
+    """Where runs' work directories go: with a host profile's `tmp`, `<tmp>/search/<user>/work`; else
+    `$BIOBOX_SEARCH_WORK`, else /tmp/atd/search."""
+    if profile_tmp is not None:
+        return _user_dir(profile_tmp, user) / "work"
     return Path(os.environ.get("BIOBOX_SEARCH_WORK", "/tmp/atd/search"))
 
 
-def runs_dir(root: Path) -> Path:
-    return Path(root) / "search"
+def default_runs_dir(profile_tmp: Path | None = None, user: str | None = None) -> Path:
+    """Where run directories go by default: with a host profile's `tmp`, `<tmp>/search/<user>/runs` (one per
+    user, so two users never see each other's runs); else `runs` in `default_work_base()`."""
+    if profile_tmp is not None:
+        return _user_dir(profile_tmp, user) / "runs"
+    return default_work_base() / "runs"
 
 
-def run_dir(root: Path, run_id: bytes | str) -> Path:
-    return runs_dir(root) / f"run={run_id if isinstance(run_id, str) else run_id.hex()}"
+def default_pack_base(profile_tmp: Path | None = None) -> Path:
+    """The default pack directory: `<tmp>/packs` with a host profile (shared: a pack is a cache of a release),
+    else `packs` beside `default_work_base()`."""
+    if profile_tmp is not None:
+        return Path(profile_tmp) / "packs"
+    return default_work_base().parent / "packs"
 
 
-def resolve(root: Path, r: dict, release: str) -> dict:
-    """Submit-time checks against the release's pack; returns the job's seed and positives."""
+def run_dir(runs: Path, run_id: bytes | str) -> Path:
+    """The directory of run `run_id` in the runs directory `runs`."""
+    return Path(runs) / f"run={run_id if isinstance(run_id, str) else run_id.hex()}"
+
+
+def pending_path(d: Path) -> Path:
+    """The pending record of the run whose directory is `d` (its runner's stderr has the suffix .stderr)."""
+    d = Path(d)
+    return d.parent / "pending" / f"{d.name}.json"
+
+
+def _outside(root: Path, path: Path, what: str) -> Path:
+    try:
+        return pack.outside_root(root, path, what)
+    except ValueError as e:
+        raise RecipeError(str(e)) from None
+
+
+def resolve(root: Path, r: dict, release: str, packs: Path) -> dict:
+    """Submit-time checks against the release's pack in the pack directory `packs`; returns the job's seed
+    and positives. A missing pack is refused with the command that builds it; it is never built here."""
     gaps = rcp.executable(r)
     if gaps:
         raise RecipeError("not executable in this build: " + "; ".join(gaps))
-    problems = pack.verify(root, release)
+    try:
+        pdir = pack.find(packs, release, root=root)
+    except (FileNotFoundError, ValueError) as e:
+        raise RecipeError(str(e)) from None
+    problems = pack.verify_dir(root, release, pdir)
     if problems:
         raise RecipeError(f"search pack for {release} does not verify (C-12): {problems[:3]}")
-    manifest, pid = pack.read_manifest(root, release)
-    pdir = pack.pack_dir(root, release)
+    manifest, pid = pack.read_manifest(pdir)
     tname = r["target"]
     shards = [s for s in manifest["shards"] if s["target"] == tname]
     models = [s for s in manifest["shards"] if s["target"] == "models"]
@@ -391,20 +440,6 @@ def _status(rc: int, timed_out: bool, cancelled: bool, out: Path, stderr: str,
     return status, error, (res if res is not None and not (timed_out or cancelled) else {})
 
 
-def _index_update(root: Path, entry: dict) -> None:
-    d = runs_dir(root)
-    d.mkdir(parents=True, exist_ok=True)
-    with open(d / ".index.lock", "w") as lock:
-        fcntl.flock(lock, fcntl.LOCK_EX)
-        path = d / "run_index.json"
-        idx = json.loads(path.read_text()) if path.exists() else {"runs": []}
-        idx["runs"] = sorted([e for e in idx["runs"] if e["run_id"] != entry["run_id"]] + [entry],
-                             key=lambda e: e["run_id"])
-        tmp = d / f".run_index.json.tmp-{os.getpid()}"
-        tmp.write_text(json.dumps(idx, sort_keys=True, indent=1))
-        os.replace(tmp, path)
-
-
 def new_run_id(recipe_hash: str, release: str, pack_id: bytes, submitted: datetime) -> bytes:
     return blake3(f"{recipe_hash}|{release}|{pack_id.hex()}|{submitted.isoformat()}|".encode()
                   + os.urandom(8)).digest(length=16)
@@ -413,15 +448,27 @@ def new_run_id(recipe_hash: str, release: str, pack_id: bytes, submitted: dateti
 def run(root: Path, recipe_src: Path | str, release: str, *, limits: Limits = Limits(),
         work_base: Path | None = None, argv: list[str] | None = None, run_id: bytes | None = None,
         fault: str | None = None, gene_call_version: str = GENE_CALL_VERSION, keep_work: bool = False,
-        tape_version: str | None = None) -> dict:
+        tape_version: str | None = None, packs: Path | None = None, runs: Path | None = None,
+        out: Path | None = None) -> dict:
     """Run one recipe to completion; returns the search_run row. Refusals raise RecipeError.
 
-    The run reads the tape version of its pack (card B-16); `tape_version`, when given, must be it."""
+    The pack is read from the pack directory `packs` (default `default_pack_base()`); the run is written to
+    the directory `out`, else to `run=<run_id>` in `runs` (default `default_runs_dir()`). None of these, nor
+    `work_base`, may lie under the root (module docstring). The run reads the tape version of its pack (card
+    B-16); `tape_version`, when given, must be it."""
     system = platform.system()
     cap = memory_cap(limits, system=system)  # refused (card C-07) before anything is read or recorded
     root = Path(root).resolve()
+    packs = _outside(root, Path(packs) if packs is not None else default_pack_base(), "the pack directory")
+    work_base = _outside(root, Path(work_base) if work_base is not None else default_work_base(), "the work directory")
+    if out is None:
+        runs = _outside(root, Path(runs) if runs is not None else default_runs_dir(), "the runs directory")
+    else:
+        out = _outside(root, Path(out), "the run directory")
+        if out.exists():
+            raise RecipeError(f"{out} exists: a run directory is written once")
     r, text = rcp.load(Path(recipe_src) if isinstance(recipe_src, Path) else recipe_src)
-    res = resolve(root, r, release)
+    res = resolve(root, r, release, packs)
     pack_tv = pack.manifest_tape_version(res["manifest"])
     if tape_version is not None and tape_version != pack_tv:
         raise RecipeError(f"tape version {tape_version} is not the tape version {pack_tv} of the {release} pack: "
@@ -430,7 +477,10 @@ def run(root: Path, recipe_src: Path | str, release: str, *, limits: Limits = Li
     submitted = datetime.now(timezone.utc)
     rh = rcp.recipe_hash(r)
     run_id = run_id or new_run_id(rh, release, res["pack_id"], submitted)
-    work = Path(work_base or default_work_base()) / run_id.hex()
+    final = out if out is not None else run_dir(runs, run_id)
+    if final.exists():
+        raise RecipeError(f"{final} exists: a run directory is written once")
+    work = work_base / run_id.hex()
     if work.exists():  # `submit` made this directory and holds runner.lock in it: keep that file
         for child in work.iterdir():
             if child.name != LOCK_NAME:
@@ -507,7 +557,7 @@ def run(root: Path, recipe_src: Path | str, release: str, *, limits: Limits = Li
         "seed_json": json.dumps(res["seed"], sort_keys=True),
     }
     # a worker that died after a round has hits on disk, but no result: they are not the run's
-    _publish(root, run_id, row, out, with_outputs=bool(result) and status in ("ok", "failed", "output_cap"))
+    _publish(final, row, out, with_outputs=bool(result) and status in ("ok", "failed", "output_cap"))
     if not keep_work:
         shutil.rmtree(work, ignore_errors=True)
     return row
@@ -519,48 +569,51 @@ def _main_thread() -> bool:
     return threading.current_thread() is threading.main_thread()
 
 
-def _publish(root: Path, run_id: bytes, row: dict, out: Path, with_outputs: bool) -> None:
-    final = run_dir(root, run_id)
+def _publish(final: Path, row: dict, out: Path, with_outputs: bool) -> None:
+    """Write the run directory `final` beside its place under a temporary name and rename it in."""
+    final.parent.mkdir(parents=True, exist_ok=True)
     tmp = final.with_name(f".{final.name}.tmp-{os.getpid()}")
     if tmp.exists():
         shutil.rmtree(tmp)
     tmp.mkdir(parents=True)
     pq.write_table(pa.Table.from_pylist([row], schema=table("search_run").schema), tmp / "run.parquet")
-    files = ["run.parquet"]
     if with_outputs:
         for name in RUN_FILES[1:]:
             if (out / name).exists():
                 shutil.copyfile(out / name, tmp / name)
-                files.append(name)
     if final.exists():
         raise FileExistsError(f"{final} exists: a run directory is never edited after it closes")
     os.replace(tmp, final)
-    _index_update(root, {"run_id": run_id.hex(), "status": row["status"], "recipe_hash": row["recipe_hash"],
-                         "ran_against": row["ran_against"], "files": files})
 
 
 # --- async submit, status, cancel ----------------------------------------------
 
 
-def _pending(root: Path) -> Path:
-    return runs_dir(root) / "pending"
-
-
 def submit(root: Path, recipe_path: Path, release: str, limits: Limits = Limits(),
-           work_base: Path | None = None, fault: str | None = None) -> str:
-    """Check the recipe now, run it detached, return the run_id at once."""
+           work_base: Path | None = None, fault: str | None = None, *, packs: Path | None = None,
+           runs: Path | None = None, out: Path | None = None) -> str:
+    """Check the recipe now, run it detached, return the run_id at once. `packs`, `runs`, `out` and
+    `work_base` as for `run`; the pending record is `pending_path` of the run's directory."""
     memory_cap(limits)  # card C-07: refuse here, before a runner is started or anything is recorded
     root = Path(root).resolve()
+    packs = _outside(root, Path(packs) if packs is not None else default_pack_base(), "the pack directory")
+    work_base = _outside(root, Path(work_base) if work_base is not None else default_work_base(), "the work directory")
+    if out is not None:
+        out = _outside(root, Path(out), "the run directory")
+    else:
+        runs = _outside(root, Path(runs) if runs is not None else default_runs_dir(), "the runs directory")
     r, _ = rcp.load(Path(recipe_path))
-    res = resolve(root, r, release)
+    res = resolve(root, r, release, packs)
     run_id = new_run_id(rcp.recipe_hash(res["recipe"]), release, res["pack_id"], datetime.now(timezone.utc))
-    p = _pending(root)
-    p.mkdir(parents=True, exist_ok=True)
+    final = (out if out is not None else run_dir(runs, run_id)).resolve()
+    if final.exists():
+        raise RecipeError(f"{final} exists: a run directory is written once")
+    info = pending_path(final)
+    info.parent.mkdir(parents=True, exist_ok=True)
     cmd = [sys.executable, "-m", "biobox.cli", "search", "run", str(recipe_path), "--root", str(root),
            "--release", release, "--wait", "--run-id", run_id.hex(), "--cpus", str(limits.cpus),
-           "--cpu-min", str(limits.cpu_min), "--wall-s", str(limits.wall_s)]
-    if work_base is not None:
-        cmd += ["--work", str(work_base)]
+           "--cpu-min", str(limits.cpu_min), "--wall-s", str(limits.wall_s), "--work", str(work_base.resolve()),
+           "--pack-dir", str(packs.resolve()), "--out", str(final)]
     if fault is not None:
         cmd += ["--fault", fault]
     # The runner's liveness is a flock on local disk (never under the data root: flock is unreliable on
@@ -569,18 +622,17 @@ def submit(root: Path, recipe_path: Path, release: str, limits: Limits = Limits(
     # files are open). The pid and its start time are recorded too: a killed multi-threaded runner's files
     # stay open, lock included, until its last thread has torn the process down, while its leader is
     # already a zombie (card A-07); `status` counts that runner as dead (`_runner_live`).
-    work = (Path(work_base or default_work_base()) / run_id.hex()).resolve()
+    work = (work_base / run_id.hex()).resolve()
     work.mkdir(parents=True, exist_ok=True)
     lock_path = work / LOCK_NAME
     fd = os.open(lock_path, os.O_RDWR | os.O_CREAT, 0o644)
     try:
         fcntl.flock(fd, fcntl.LOCK_EX)
-        proc = subprocess.Popen(cmd, stdout=subprocess.DEVNULL, stderr=open(p / f"{run_id.hex()}.stderr", "w"),
+        proc = subprocess.Popen(cmd, stdout=subprocess.DEVNULL, stderr=open(info.with_suffix(".stderr"), "w"),
                                 start_new_session=True, pass_fds=(fd,))
     finally:
         os.close(fd)  # the runner's copy keeps the lock
     start = proc_start_time(proc.pid)  # our unreaped child: the pid cannot have been reused yet
-    info = p / f"{run_id.hex()}.json"
     tmp = info.with_name(f".{info.name}.tmp")
     tmp.write_text(json.dumps({"run_id": run_id.hex(), "pid": proc.pid, "start": start, "lock": str(lock_path),
                                "status": "running"}))
@@ -588,21 +640,24 @@ def submit(root: Path, recipe_path: Path, release: str, limits: Limits = Limits(
     return run_id.hex()
 
 
-def status(root: Path, run_id: str) -> dict:
-    d = run_dir(root, run_id)
+def status(d: Path) -> dict:
+    """The status of the run whose directory is `d`: its record once closed, else from its pending record
+    (`pending_path`); KeyError when it has neither."""
+    d = Path(d)
     if (d / "run.parquet").exists():
         row = pq.read_table(d / "run.parquet").to_pylist()[0]
-        return {"run_id": run_id, "status": row["status"], "error": row["error"], "rounds": row["rounds"],
+        return {"run_id": row["run_id"].hex(), "status": row["status"], "error": row["error"], "rounds": row["rounds"],
                 "final_round": row["final_round"], "stop_reason": row["stop_reason"]}
-    p = _pending(root) / f"{run_id}.json"
+    p = pending_path(d)
     if p.exists():
         info = json.loads(p.read_text())
+        run_id = info["run_id"]
         if _runner_live(info):
             return {"run_id": run_id, "status": "running"}
         if (d / "run.parquet").exists():  # closed between the first look and the probes
-            return status(root, run_id)
+            return status(d)
         return {"run_id": run_id, "status": "failed", "error": "runner exited without closing the run"}
-    raise KeyError(f"no run {run_id}")
+    raise KeyError(f"no run at {d}")
 
 
 def _runner_live(info: dict) -> bool:
@@ -665,25 +720,27 @@ def _runner_holds(lock: str | None) -> bool:
         os.close(fd)
 
 
-def cancel(root: Path, run_id: str) -> None:
-    """Ask a live runner to stop. A runner that is gone is not signalled: its pid may belong to
-    another process by now."""
-    info = json.loads((_pending(root) / f"{run_id}.json").read_text())
+def cancel(d: Path) -> None:
+    """Ask the live runner of the run whose directory is `d` to stop (its pending record says which). A
+    runner that is gone is not signalled: its pid may belong to another process by now."""
+    info = json.loads(pending_path(d).read_text())
     if _runner_live(info):
         os.kill(info["pid"], signal.SIGTERM)
 
 
-def read_run(root: Path, run_id: str) -> dict:
-    return pq.read_table(run_dir(root, run_id) / "run.parquet").to_pylist()[0]
+def read_run(d: Path) -> dict:
+    """The search_run row of the closed run whose directory is `d`."""
+    return pq.read_table(Path(d) / "run.parquet").to_pylist()[0]
 
 
-def read_hits(root: Path, run_id: str, round_: int | None = None, final_only: bool = True) -> list[dict]:
-    d = run_dir(root, run_id)
+def read_hits(d: Path, round_: int | None = None, final_only: bool = True) -> list[dict]:
+    """The hits of the run whose directory is `d`: by default the kept hits of its final round."""
+    d = Path(d)
     if not (d / "hits.parquet").exists():
         return []
     rows = pq.read_table(d / "hits.parquet").to_pylist()
     if round_ is None and final_only:
-        round_ = read_run(root, run_id)["final_round"]
+        round_ = read_run(d)["final_round"]
         rows = [r for r in rows if r["curation_label"] == "keep"]
     if round_ is not None:
         rows = [r for r in rows if r["round"] == round_]

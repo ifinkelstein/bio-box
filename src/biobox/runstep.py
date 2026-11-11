@@ -54,6 +54,9 @@ Order of work:
    `runs/stage=<S>/` and the output directories are created with their parents and never removed.
 8. Write the run record atomically, then delete the intent file. `runs/` is not part of the
    release manifest (it holds timestamps and host names) and is in `catalog.EXCLUDED_TREES`.
+
+Every line run-step writes of its own (published, skipped, recovered, refused, failed) goes to stderr
+after a timestamp and is flushed at once (`log`, card C-13), so a unit log is a timeline.
 """
 
 from __future__ import annotations
@@ -212,8 +215,17 @@ def build_argv(cmd: Sequence[str], nice: int, mem_scope: str, *, inherited: dict
     return scope_argv(cmd, nice, mem_max=mem_scope, inherited=inherited, system=system, which=which)[0]
 
 
+def log(who: str, msg: str) -> None:
+    """One line of run-step's or build-stage's own (card C-13): to stderr, after a timestamp (local time with its UTC
+    offset, to the second), flushed at once. A unit log holds stdout and stderr of `build-stage`, in whose process
+    `run-step` runs; lines on a block-buffered stdout reached the log only when the process ended (C-10), so the log
+    was not a timeline and its last line showed no progress."""
+    stamp = datetime.now().astimezone().isoformat(timespec="seconds")
+    print(f"{stamp} {who}: {msg}", file=sys.stderr, flush=True)
+
+
 def _err(msg: str) -> None:
-    print(f"run-step: {msg}", file=sys.stderr)
+    log("run-step", msg)
 
 
 def _atomic_write(path: Path, data: bytes) -> None:
@@ -307,8 +319,7 @@ def _recover(root: Path, intent_path: Path, record_path: Path, incoming: Path, s
         _atomic_write(record_path, _record_bytes(intent))
         _remove_leftovers(incoming, stage_dir)
         intent_path.unlink()
-        print(f"run-step: {intent['stage']}.{intent['step']} recovered an interrupted publish of "
-              f"{len(intent['outputs'])} files")
+        _err(f"{intent['stage']}.{intent['step']} recovered an interrupted publish of {len(intent['outputs'])} files")
         return 0
     for p in keep:
         p.unlink()
@@ -331,7 +342,7 @@ def _resume(root: Path, record: Path) -> int:
     if bad:
         _err(f"{record} exists but {'; '.join(bad)}; not rebuilding over existing files")
         return EXIT_REFUSED
-    print(f"run-step: {rec['stage']}.{rec['step']} skipped: run record and outputs present")
+    _err(f"{rec['stage']}.{rec['step']} skipped: run record and outputs present")
     return 0
 
 
@@ -572,5 +583,5 @@ def run_step(prof: Profile, root: str | Path, stage: str, step: str, cmd: Sequen
     _atomic_write(record_path, _record_bytes(record))
     hook("after_record")
     intent_path.unlink()
-    print(f"run-step: {stage}.{step} published {len(record['outputs'])} files")
+    _err(f"{stage}.{step} published {len(record['outputs'])} files")
     return 0

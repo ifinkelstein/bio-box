@@ -1,6 +1,7 @@
 """Ring R2: the search pack, runner and exports on micro-S0, with fault injection (C-12, S-04..S-07, S-13).
 
-Micro-S0 is built as in test_micro_s0_l3 (plus IGRs), then the release's pack. Runs use the
+Micro-S0 is built as in test_micro_s0_l3 (plus IGRs), then the release's pack, in a pack directory
+beside the data root, never under it (card W-03); runs go to a runs directory beside it too. Runs use the
 real worker under the real limits; faults are injected through the runner's test hook
 (`fault=`), and on Linux the OOM test allocates past a real RLIMIT_AS. S-07 runs on a
 synthetic world with a planted trap: a seed family A, a library family B that A's seed does
@@ -12,6 +13,7 @@ from __future__ import annotations
 import hashlib
 import io
 import json
+import os
 import platform
 import random
 import re
@@ -49,8 +51,52 @@ def world(tmp_path_factory):
     root = d / "a"
     circ = micro.build(root)
     igr.run(root, "S0", circ)
-    man = pack.build(root, REL, models={"test-1": d / "a.hmm"})
+    man = pack.build(root, REL, models={"test-1": d / "a.hmm"}, packs=_packs_of(root))
     return root, d, man
+
+
+# Card W-03: a data root's pack and runs live beside it, never under it. Each test root `<dir>/<name>` has its
+# pack directory `<dir>/<name>.packs` and its runs directory `<dir>/<name>.runs`.
+
+
+def _packs_of(root: Path) -> Path:
+    return Path(root).parent / f"{Path(root).name}.packs"
+
+
+def _runs_of(root: Path) -> Path:
+    return Path(root).parent / f"{Path(root).name}.runs"
+
+
+def _rdir(root: Path, run_id) -> Path:
+    """The directory of a run of the root (`run_id` as bytes or hex)."""
+    return runner.run_dir(_runs_of(root), run_id)
+
+
+def _closed_runs(root: Path) -> list[Path]:
+    """The closed runs in the root's runs directory."""
+    return sorted(p.parent for p in _runs_of(root).glob("run=*/run.parquet"))
+
+
+def _at(root: Path) -> dict:
+    """The runner's keyword arguments that name the root's pack and runs directories."""
+    return {"packs": _packs_of(root), "runs": _runs_of(root)}
+
+
+def _dirs(root: Path) -> list[str]:
+    """The command-line options that name the root's runs and pack directories."""
+    return ["--runs", str(_runs_of(root)), "--pack-dir", str(_packs_of(root))]
+
+
+def _packs(world) -> Path:
+    return _packs_of(world[0])
+
+
+def _runs(world) -> Path:
+    return _runs_of(world[0])
+
+
+def _rd(world, run_id) -> Path:
+    return _rdir(world[0], run_id)
 
 
 def _seed(root: Path) -> tuple[bytes, bytes]:
@@ -69,7 +115,8 @@ def _recipe(seed_uid: bytes, positive: bytes, tool="phmmer", mx=1, extra="", tar
 
 def _run(world, text, **kw):
     root, d, _ = world
-    return runner.run(root, text, REL, work_base=d / "work", limits=kw.pop("limits", LIMITS), **kw)
+    return runner.run(root, text, REL, work_base=d / "work", limits=kw.pop("limits", LIMITS), packs=_packs(world),
+                      runs=_runs(world), **kw)
 
 
 # --- C-12 ------------------------------------------------------------------------------------------
@@ -77,7 +124,7 @@ def _run(world, text, **kw):
 
 def test_c12_pack_verifies_and_counts_equal_sources(world):
     root, d, man = world
-    assert pack.verify(root, REL, bytes.fromhex(man["pack_id"])) == []
+    assert pack.verify(root, REL, bytes.fromhex(man["pack_id"]), packs=_packs(world)) == []
     t = man["targets"]
     assert t["unique"]["n_seq"] == len(domains.load_proteins(root, V, "S0"))
     igrs = pq.read_table(next((root / "l0seq/igr").rglob("*.parquet"))).to_pylist()
@@ -87,16 +134,22 @@ def test_c12_pack_verifies_and_counts_equal_sources(world):
 
 
 def _copy(world, tmp_path) -> Path:
+    """A copy of the world's root, with copies of its pack and runs directories beside it (card W-03: they are
+    not under the root, so copying the root alone no longer takes them)."""
     root = world[0]
     dst = tmp_path / "a"
     shutil.copytree(root, dst)
+    for src, to in ((_packs_of(root), _packs_of(dst)), (_runs_of(root), _runs_of(dst))):
+        if src.exists():
+            shutil.copytree(src, to)
     return dst
 
 
 @pytest.mark.parametrize("fault", ["byte", "stray", "missing_meta", "count", "pack_id"])
 def test_c12_pack_faults_are_caught(world, tmp_path, fault):
     root = _copy(world, tmp_path)
-    pdir = pack.pack_dir(root, REL)
+    packs = _packs_of(root)
+    pdir = pack.find(packs, REL)
     pid = None
     if fault == "byte":
         p = pdir / "unique/part-0.faa.zst"
@@ -113,17 +166,24 @@ def test_c12_pack_faults_are_caught(world, tmp_path, fault):
         (pdir / "pack_manifest.json").write_text(json.dumps(m))
     elif fault == "pack_id":
         pid = b"\0" * 16
-    assert pack.verify(root, REL, pid)
+    assert pack.verify(root, REL, pid, packs=packs)
+
+
+def _pack_bytes(packs: Path) -> dict[str, bytes]:
+    return {p.relative_to(packs).as_posix(): p.read_bytes() for p in sorted(packs.rglob("*")) if p.is_file()}
 
 
 def test_c12_small_shards_fail_unless_last_and_pack_is_deterministic(world, tmp_path):
+    # card W-03: a pack is never overwritten, so the second build goes into a pack directory of its own (a
+    # build into the same one is a no-op: test_w03_pack_build_twice_is_a_no_op_and_a_pack_is_never_overwritten)
     root = _copy(world, tmp_path)
-    man = pack.build(root, REL, models={"test-1": world[1] / "a.hmm"}, shard_text_bytes=20_000)
+    man = pack.build(root, REL, models={"test-1": world[1] / "a.hmm"}, shard_text_bytes=20_000, packs=tmp_path / "p1")
     assert sum(1 for s in man["shards"] if s["target"] == "unique") > 1
-    assert any("not the last shard" in p for p in pack.verify(root, REL))
-    assert pack.verify(root, REL, min_shard_bytes=0) == []
-    again = pack.build(root, REL, models={"test-1": world[1] / "a.hmm"}, shard_text_bytes=20_000)
+    assert any("not the last shard" in p for p in pack.verify(root, REL, packs=tmp_path / "p1"))
+    assert pack.verify(root, REL, min_shard_bytes=0, packs=tmp_path / "p1") == []
+    again = pack.build(root, REL, models={"test-1": world[1] / "a.hmm"}, shard_text_bytes=20_000, packs=tmp_path / "p2")
     assert again["pack_id"] == man["pack_id"]  # D-01: no timestamps in the pack
+    assert _pack_bytes(tmp_path / "p1") == _pack_bytes(tmp_path / "p2")  # byte for byte, every file
 
 
 def test_pack_is_outside_the_release_manifest(world):
@@ -136,7 +196,7 @@ def test_dark_orfs_translate_their_own_coordinates(world):
     from biobox.l0seq.store import SeqStore
 
     root = world[0]
-    pdir = pack.pack_dir(root, REL)
+    pdir = pack.find(_packs(world), REL)
     meta = {r["region_uid"].hex(): r for r in pq.read_table(pdir / "dark_orf/dark_orf_meta.parquet").to_pylist()}
     seqs = dict(r for s in sorted(pdir.glob("dark_orf/part-*.faa.zst")) for r in fastz.read_records(s))
     store = SeqStore(root, ["S0"])
@@ -202,8 +262,9 @@ def _oracle_dark(root: Path, cu: bytes, circular: bool, code: int) -> dict:
 def test_w01_pack_builds_with_a_contig_declared_code_15(world, tmp_path, prefix):
     root = _copy(world, tmp_path)
     cu = _declare_code(root, prefix, 15)
-    pack.build(root, REL, models={"test-1": world[1] / "a.hmm"})
-    pdir = pack.pack_dir(root, REL)
+    # card W-03: the copy's pack is built into a pack directory of its own (the world's pack is not the copy's)
+    man = pack.build(root, REL, models={"test-1": world[1] / "a.hmm"}, packs=tmp_path / "packs")
+    pdir = pack.pack_dir(tmp_path / "packs", REL, man["pack_id"])
     meta = pq.read_table(pdir / "dark_orf/dark_orf_meta.parquet").to_pylist()
     seqs = dict(r for s in sorted(pdir.glob("dark_orf/part-*.faa.zst")) for r in fastz.read_records(s))
     circ = {r["contig_uid"] for r in pq.read_table(next((root / "l3/tapes").rglob("*.parquet"))).to_pylist()
@@ -220,12 +281,11 @@ def test_w01_pack_builds_with_a_contig_declared_code_15(world, tmp_path, prefix)
 def test_w01_unsupported_code_fails_before_any_pack_file_is_written(world, tmp_path, bad):
     root = _copy(world, tmp_path)
     cu = _declare_code(root, "be7014", bad)
-    pdir = pack.pack_dir(root, REL)
-    shutil.rmtree(pdir)
+    packs = tmp_path / "packs"  # card W-03: the copy has no pack of its own; none may appear
     with pytest.raises(ValueError) as e:
-        pack.build(root, REL, models={"test-1": world[1] / "a.hmm"})
+        pack.build(root, REL, models={"test-1": world[1] / "a.hmm"}, packs=packs)
     assert str(bad) in str(e.value) and cu.hex() in str(e.value)
-    assert not pdir.exists()
+    assert not packs.exists()
 
 
 # --- runs, controls (S-04) -----------------------------------------------------------------------------
@@ -273,7 +333,7 @@ def test_hmm_seed_from_the_library_finds_its_stored_hits(world):
                                                                  "seed: [{hmm: TEST0000}]"))
     assert row["status"] == "ok", row["error"]
     assert row["rounds"] == 1
-    assert {h["target_uid"] for h in runner.read_hits(root, row["run_id"].hex())} >= stored
+    assert {h["target_uid"] for h in runner.read_hits(_rdir(root, row["run_id"]))} >= stored
 
 
 # --- provenance and failure states (S-05), envelope (S-06) -----------------------------------------------
@@ -299,9 +359,9 @@ def test_s05_injected_failures_are_states_never_zero_hits(world, fault, status):
     row = _run(world, _recipe(hit, hit), fault=fault, limits=S05_LIMITS[fault])
     # which path limited the worker (scope, inherited cap, RLIMIT_AS) is in argv and limits_json
     assert row["status"] == status, (row["error"], row["argv"][:4], row["limits_json"])
-    d = runner.run_dir(world[0], row["run_id"])
+    d = _rdir(world[0], row["run_id"])
     assert sorted(p.name for p in d.iterdir()) == ["run.parquet"]  # no hits file, so never "0 hits"
-    assert runner.read_hits(world[0], row["run_id"].hex()) == []
+    assert runner.read_hits(_rdir(world[0], row["run_id"])) == []
 
 
 @pytest.mark.covers("A-07", "S-05")
@@ -313,7 +373,7 @@ def test_a07_oom_is_oom_however_long_the_fault_takes_to_reach_its_limit(world, m
     hit, _ = _seed(world[0])
     row = _run(world, _recipe(hit, hit), fault="oom", limits=S05_LIMITS["oom"])
     assert row["status"] == "oom", (row["error"], row["argv"][:4], row["limits_json"])
-    assert sorted(p.name for p in runner.run_dir(world[0], row["run_id"]).iterdir()) == ["run.parquet"]
+    assert sorted(p.name for p in _rdir(world[0], row["run_id"]).iterdir()) == ["run.parquet"]
 
 
 def test_s05_every_hit_resolves_to_a_run_and_catalog_shows_runs(world):
@@ -321,12 +381,14 @@ def test_s05_every_hit_resolves_to_a_run_and_catalog_shows_runs(world):
     hit, _ = _seed(root)
     _run(world, _recipe(hit, hit, tool="jackhmmer", mx=3))
     man = catalog.build_manifest(root, REL, ["S0"])
-    con = catalog.open_catalog(catalog.generate_catalog(man, world[1] / "c.duckdb"))
+    # card W-03: the runs and the pack are given to the catalog as directories outside the root
+    con = catalog.open_catalog(catalog.generate_catalog(man, world[1] / "c.duckdb"), runs=_closed_runs(root),
+                               pack=pack.find(_packs(world), REL))
     try:
         orphans = con.execute("SELECT count(*) FROM search_hit h ANTI JOIN search_run r USING (run_id)").fetchone()[0]
         assert orphans == 0
         n_hits = con.execute("SELECT count(*) FROM search_hit").fetchone()[0]
-        assert n_hits == sum(pq.read_metadata(p).num_rows for p in (root / "search").glob("run=*/hits.parquet"))
+        assert n_hits == sum(pq.read_metadata(p).num_rows for p in _runs_of(root).glob("run=*/hits.parquet"))
         # SD-02: every protein hit has locus context through protein_occurrence
         ctx = con.execute("SELECT count(*) FROM search_hit h JOIN protein_occurrence o ON o.protein_uid = h.target_uid "
                           "WHERE h.target_kind = 'protein'").fetchone()[0]
@@ -356,18 +418,18 @@ def test_output_cap_keeps_partial_outputs_flagged(world):
     hit, _ = _seed(world[0])
     row = _run(world, _recipe(hit, hit, extra="max_output_gb: 0.000000001\n"))
     assert row["status"] == "output_cap"
-    assert (runner.run_dir(world[0], row["run_id"]) / "hits.parquet").exists()
+    assert (_rdir(world[0], row["run_id"]) / "hits.parquet").exists()
 
 
 def test_dark_orf_target_runs(world):
     root = world[0]
-    pdir = pack.pack_dir(root, REL)
+    pdir = pack.find(_packs_of(root), REL)
     name, aa = next(fastz.read_records(next(pdir.glob("dark_orf/part-*.faa.zst"))))
     text = (f"recipe: dark\nwritten_against: {REL}\nseed: [{{sequence: {aa}}}]\ntarget: dark_orf\ntool: phmmer\n"
             f"iterations: {{max: 1, inclusion_bits: 20}}\ncontrols: {{positive: [{{region_uid: {name}}}]}}\n")
     row = _run(world, text)
     assert row["status"] == "ok", row["error"]
-    hits = runner.read_hits(root, row["run_id"].hex())
+    hits = runner.read_hits(_rdir(root, row["run_id"]))
     assert {h["target_kind"] for h in hits} == {"dark_orf"}
 
 
@@ -380,19 +442,19 @@ def test_s13_cli_json_records_match_the_locked_schemas(world, tmp_path):
     rec = tmp_path / "r.yaml"
     rec.write_text(_recipe(hit, hit, tool="jackhmmer", mx=2))
     cmd = [sys.executable, "-m", "biobox.cli"]
-    out = subprocess.run(cmd + ["search", "run", str(rec), "--root", str(root), "--release", REL, "--wait",
-                                "--json", "--cpus", "1", "--work", str(world[1] / "work")],
+    out = subprocess.run(cmd + ["search", "run", str(rec), "--root", str(root), *_dirs(root), "--release", REL,
+                                "--wait", "--json", "--cpus", "1", "--work", str(world[1] / "work")],
                          capture_output=True, text=True, check=True).stdout.splitlines()
     run = json.loads(out[0])
     locked = json.loads(export.lock_path(REPO).read_text())
     assert run["schema"] == "search_run/1" and list(run) == locked["search_run"]["keys"]
-    lines = subprocess.run(cmd + ["search", "hits", run["run_id"], "--root", str(root), "--json"],
+    lines = subprocess.run(cmd + ["search", "hits", run["run_id"], "--root", str(root), *_dirs(root), "--json"],
                            capture_output=True, text=True, check=True).stdout.splitlines()
     hits = [json.loads(x) for x in lines]
     assert hits and all(list(h) == locked["search_hit"]["keys"] for h in hits)
     assert all(h["n_occurrences"] >= 1 for h in hits)
-    lines = subprocess.run(cmd + ["nbr", "--anchors", run["run_id"], "--root", str(root), "--window", "3g", "--json"],
-                           capture_output=True, text=True, check=True).stdout.splitlines()
+    lines = subprocess.run(cmd + ["nbr", "--anchors", run["run_id"], "--root", str(root), *_dirs(root), "--window", "3g",
+                                  "--json"], capture_output=True, text=True, check=True).stdout.splitlines()
     nb = [json.loads(x) for x in lines]
     assert nb and all(list(r) == locked["neighborhood"]["keys"] for r in nb)
     assert {r["anchor_protein_uid"] for r in nb} == {h["target_uid"] for h in hits}
@@ -423,19 +485,19 @@ def test_async_submit_then_status(world, tmp_path):
     hit, _ = _seed(root)
     rec = tmp_path / "r.yaml"
     rec.write_text(_recipe(hit, hit))
-    rid = runner.submit(root, rec, REL, runner.Limits(cpus=1), world[1] / "work")
+    rid = runner.submit(root, rec, REL, runner.Limits(cpus=1), world[1] / "work", **_at(root))
     deadline = time.time() + 60
-    while runner.status(root, rid)["status"] == "running" and time.time() < deadline:
+    while runner.status(_rdir(root, rid))["status"] == "running" and time.time() < deadline:
         time.sleep(0.2)
-    assert runner.status(root, rid)["status"] == "ok"
+    assert runner.status(_rdir(root, rid))["status"] == "ok"
 
 
 def test_neighborhoods_written_for_final_hits(world):
     root = world[0]
     hit, _ = _seed(root)
     row = _run(world, _recipe(hit, hit, extra="context: {window: 5g, edge: truncate}\n"))
-    nb = pq.read_table(runner.run_dir(root, row["run_id"]) / "neighborhoods.parquet").to_pylist()
-    final = {h["target_uid"] for h in runner.read_hits(root, row["run_id"].hex())}
+    nb = pq.read_table(_rdir(root, row["run_id"]) / "neighborhoods.parquet").to_pylist()
+    final = {h["target_uid"] for h in runner.read_hits(_rdir(root, row["run_id"]))}
     assert {r["anchor_protein_uid"] for r in nb} == final
     assert all(abs(r["offset"]) <= 5 for r in nb)
 
@@ -477,7 +539,7 @@ def test_b16_run_neighborhoods_name_slots_by_feature_uid_in_the_packs_tape_versi
     assert table("neighborhoods").primary_key == ("contig_uid", "anchor_feature_uid", "feature_uid", "policy_hash")
     hit, _ = _seed(root)
     row = _run(world, _recipe(hit, hit, extra="context: {window: 5g, edge: truncate}\n"))
-    t = pq.read_table(runner.run_dir(root, row["run_id"]) / "neighborhoods.parquet")
+    t = pq.read_table(_rdir(root, row["run_id"]) / "neighborhoods.parquet")
     assert conformance_problems(t, table("neighborhoods")) == []
     _check_neighborhood_rows(root, t.to_pylist(), tv)
 
@@ -491,7 +553,7 @@ def test_b16_search_region_flanks_are_the_igr_tables_feature_uids(world):
     src = {(r["contig_uid"], r["start"], r["end"]): r
            for f in sorted((root / "l0seq/igr").glob(f"igr_version={man['igr_version']}/stage=*/part-*.parquet"))
            for r in pq.read_table(f, partitioning=None).to_pylist()}
-    pdir = pack.pack_dir(root, REL)
+    pdir = pack.find(_packs_of(root), REL)
     n_flanks = 0
     for target in ("igr", "dark_orf"):
         t = pq.read_table(pdir / f"{target}/{target}_meta.parquet")
@@ -528,7 +590,7 @@ def two(world, tmp_path_factory):
     igr.run(root, "S0", circ, producers=producers)
     tapes.run(root, "S0", circ, producers=producers)
     catalog.define_release(root, TWO, ["S0"])  # the pack reads the release's stages (card B-28)
-    man = pack.build(root, TWO, models={"test-1": world[1] / "a.hmm"}, producers=producers)
+    man = pack.build(root, TWO, models={"test-1": world[1] / "a.hmm"}, producers=producers, packs=_packs_of(root))
     return root, d, man, mg, fu
 
 
@@ -574,22 +636,22 @@ def test_b16_a_run_is_refused_on_a_tape_version_other_than_the_packs(two, capsys
     hit, _ = _seed(root)
     text = _recipe(hit, hit, extra="context: {window: 3g, edge: truncate}\n").replace(
         f"written_against: {REL}", f"written_against: {TWO}")
-    before = sorted(runner.runs_dir(root).glob("run=*"))
+    before = sorted(_runs_of(root).glob("run=*"))
     with pytest.raises(RecipeError, match=f"tape version {tv1}.*{tv2}"):
-        runner.run(root, text, TWO, work_base=d / "work", limits=LIMITS, tape_version=tv1)
-    assert sorted(runner.runs_dir(root).glob("run=*")) == before  # a refusal records nothing
+        runner.run(root, text, TWO, work_base=d / "work", limits=LIMITS, tape_version=tv1, **_at(root))
+    assert sorted(_runs_of(root).glob("run=*")) == before  # a refusal records nothing
     # the pack's own tape version is the run's: neighborhoods and hit occurrences use its ordinals
-    row = runner.run(root, text, TWO, work_base=d / "work", limits=LIMITS)
+    row = runner.run(root, text, TWO, work_base=d / "work", limits=LIMITS, **_at(root))
     assert row["status"] == "ok", row["error"]
-    nb = pq.read_table(runner.run_dir(root, row["run_id"]) / "neighborhoods.parquet").to_pylist()
+    nb = pq.read_table(_rdir(root, row["run_id"]) / "neighborhoods.parquet").to_pylist()
     _check_neighborhood_rows(root, nb, tv2)
-    assert cli.main(["search", "hits", row["run_id"].hex(), "--root", str(root), "--json"]) == 0
+    assert cli.main(["search", "hits", row["run_id"].hex(), "--root", str(root), *_dirs(root), "--json"]) == 0
     hits = [json.loads(x) for x in capsys.readouterr().out.splitlines()]
     tps = _tape_rows(root, tv2)
     assert hits and all(h["tape_version"] == tv2 for h in hits)
     for o in (o for h in hits for o in h["occurrences"]):
         assert tps[bytes.fromhex(o["contig_uid"])]["feature_uids"][o["ordinal"]].hex() == o["feature_uid"]
-    assert cli.main(["nbr", "--anchors", row["run_id"].hex(), "--root", str(root), "--json",
+    assert cli.main(["nbr", "--anchors", row["run_id"].hex(), "--root", str(root), *_dirs(root), "--json",
                      "--tape-version", tv1]) == 2
     assert "tape version" in capsys.readouterr().err
 
@@ -793,7 +855,7 @@ def test_w06_cli_summary_json_matches_the_lock_and_tsv_reads_back(world, capsys)
     row = _run(world, _recipe(hit, hit, tool="jackhmmer", mx=2))
     assert row["status"] == "ok", row["error"]
     rid = row["run_id"].hex()
-    args = ["nbr", "summarize", rid, "--root", str(root), "--window", "5g", "--by", "pfam,nr50"]
+    args = ["nbr", "summarize", rid, "--root", str(root), *_dirs(root), "--window", "5g", "--by", "pfam,nr50"]
     assert cli.main(args + ["--json"]) == 0
     recs = [json.loads(x) for x in capsys.readouterr().out.splitlines()]
     locked = json.loads(export.lock_path(REPO).read_text())
@@ -802,7 +864,7 @@ def test_w06_cli_summary_json_matches_the_lock_and_tsv_reads_back(world, capsys)
     assert {"nbr_summary", "nbr_summary_header"} <= set(locked)
     assert export.lock_problems(locked) == [] and locked == json.loads(json.dumps(export.SCHEMAS, sort_keys=True))
     # the run's hits are the anchors, its release and tape version the summary's
-    anchors = {h["target_uid"] for h in runner.read_hits(root, rid) if h["target_kind"] == "protein"}
+    anchors = {h["target_uid"] for h in runner.read_hits(_rdir(root, rid)) if h["target_kind"] == "protein"}
     s = nbr.summarize(root, anchors, nbr.Policy.parse(window="5g"), release=REL)
     assert recs == list(export.nbr_summary_records(s))
     assert recs[0]["release"] == REL and recs[0]["tape_version"] == tapes.tape_version([V])
@@ -816,9 +878,10 @@ def test_w06_cli_summary_json_matches_the_lock_and_tsv_reads_back(world, capsys)
         assert back["header"][k] == recs[0][k], k
     # anchors as a list of protein uids take the same path; a uid list needs the release named
     uids = ",".join(sorted(u.hex() for u in anchors))
-    assert cli.main(["nbr", "summarize", uids, "--root", str(root), "--window", "5g", "--release", REL, "--json"]) == 0
+    assert cli.main(["nbr", "summarize", uids, "--root", str(root), *_dirs(root), "--window", "5g", "--release", REL,
+                     "--json"]) == 0
     assert [json.loads(x) for x in capsys.readouterr().out.splitlines()] == recs
-    assert cli.main(["nbr", "summarize", uids, "--root", str(root), "--window", "5g"]) == 2
+    assert cli.main(["nbr", "summarize", uids, "--root", str(root), *_dirs(root), "--window", "5g"]) == 2
     assert "--release" in capsys.readouterr().err
 
 
@@ -841,6 +904,9 @@ def w05(world, tmp_path_factory):
     assert row["status"] == "ok", row["error"]
     root = tmp_path_factory.mktemp("w05") / "a"
     shutil.copytree(world[0], root)
+    # the run and the pack are beside the world's root, not under it (card W-03): the copy gets its own copies
+    shutil.copytree(_rd(world, row["run_id"]), _rdir(root, row["run_id"]))
+    shutil.copytree(_packs(world), _packs_of(root))
     tps = _tape_rows(root, tapes.tape_version([V]))
     lin = sorted(cu for cu, t in tps.items() if not t["is_circular"])
     one = ids.genome_uid(lin)
@@ -873,8 +939,8 @@ def _pq(root: Path, base: str) -> list[dict]:
 
 def _w05_final_hits(root: Path, rid: str) -> list[dict]:
     """The run's kept hits of its final round, read from its files."""
-    run = pq.read_table(root / f"search/run={rid}/run.parquet").to_pylist()[0]
-    return [h for h in pq.read_table(root / f"search/run={rid}/hits.parquet").to_pylist()
+    run = pq.read_table(_rdir(root, rid) / "run.parquet").to_pylist()[0]
+    return [h for h in pq.read_table(_rdir(root, rid) / "hits.parquet").to_pylist()
             if h["round"] == run["final_round"] and h["curation_label"] == "keep"]
 
 
@@ -950,7 +1016,7 @@ def _w05_hits(root: Path) -> list[dict]:
 @pytest.mark.covers("W-05")
 def test_w05_search_hits_tsv_equals_a_brute_force_join_over_the_parquet_files(w05, world, capsys, tmp_path):
     root, rid, dims = w05
-    args = ["search", "hits", rid, "--root", str(root), "--format", "tsv"]
+    args = ["search", "hits", rid, "--root", str(root), *_dirs(root), "--format", "tsv"]
     assert cli.main(args) == 0
     out = capsys.readouterr().out
     genes = _w05_oracle_genes(root, _w05_final_hits(root, rid), dims)
@@ -995,7 +1061,7 @@ def test_w05_search_hits_faa_sequences_equal_protein_seq(w05, capsys):
             want += [f">{pu.hex()} {desc}", prot[pu]["seq"]]
         return want
 
-    args = ["search", "hits", rid, "--root", str(root), "--format", "faa"]
+    args = ["search", "hits", rid, "--root", str(root), *_dirs(root), "--format", "faa"]
     assert cli.main(args) == 0
     out = capsys.readouterr().out
     assert out == "\n".join(oracle(_w05_final_hits(root, rid))) + "\n"
@@ -1015,7 +1081,7 @@ def test_w05_hit_json_is_version_2_with_genome_and_tier_joined_from_contig_dim(w
     assert locked["search_hit"]["version"] == 2 and export.SCHEMAS["search_hit"]["version"] == 2
     assert export.lock_problems(locked) == [] and locked == json.loads(json.dumps(export.SCHEMAS, sort_keys=True))
     for r, want_dim in ((root, True), (world[0], False)):  # the world has no contig_dim: null, not absent
-        assert cli.main(["search", "hits", rid, "--root", str(r), "--json", "--members"]) == 0
+        assert cli.main(["search", "hits", rid, "--root", str(r), *_dirs(r), "--json", "--members"]) == 0
         recs = [json.loads(x) for x in capsys.readouterr().out.splitlines()]
         assert recs and all(h["schema"] == "search_hit/2" and list(h) == locked["search_hit"]["keys"] for h in recs)
         occ = [o for h in recs for o in h["occurrences"]]
@@ -1067,7 +1133,7 @@ def _w05_oracle_loci(root: Path, hits: list[dict], window: str) -> list[tuple[st
 @pytest.mark.covers("W-05", "S-09")
 def test_w05_nbr_tsv_writes_one_table_per_locus_equal_to_the_coordinate_oracle(w05, capsys, tmp_path):
     root, rid, _ = w05
-    args = ["nbr", rid, "--root", str(root), "--window", "3g", "--format", "tsv"]
+    args = ["nbr", rid, "--root", str(root), *_dirs(root), "--window", "3g", "--format", "tsv"]
     assert cli.main(args) == 0
     out = capsys.readouterr().out
     want = _w05_oracle_loci(root, _w05_final_hits(root, rid), "3g")
@@ -1083,9 +1149,10 @@ def test_w05_nbr_tsv_writes_one_table_per_locus_equal_to_the_coordinate_oracle(w
         assert (d / name).read_text() == "\n".join(lines) + "\n"
     # anchors given as protein uids need the release named, as nbr summarize does
     uids = ",".join(sorted({h["target_uid"].hex() for h in _w05_final_hits(root, rid)}))
-    assert cli.main(["nbr", uids, "--root", str(root), "--window", "3g", "--format", "tsv"]) == 2
+    assert cli.main(["nbr", uids, "--root", str(root), *_dirs(root), "--window", "3g", "--format", "tsv"]) == 2
     assert "--release" in capsys.readouterr().err
-    assert cli.main(["nbr", uids, "--root", str(root), "--window", "3g", "--format", "tsv", "--release", REL]) == 0
+    assert cli.main(["nbr", uids, "--root", str(root), *_dirs(root), "--window", "3g", "--format", "tsv",
+                     "--release", REL]) == 0
     no_scores = capsys.readouterr().out.rstrip("\n").split("\n\n")
     assert len(no_scores) == len(blocks)
     # a broader anchor set through the same export: windows across the circular origin and cut at linear ends
@@ -1156,21 +1223,24 @@ from test_release_readers import store  # noqa: E402,F401  (the two-stage fixtur
 def w12(store):
     """The two-stage store with a finished search of R1 seeded with protein P, which also sits on an S1 contig."""
     row = runner.run(store["root"], rr._recipe(rr.R1, store["p"]), rr.R1, work_base=store["d"] / "work12",
-                     limits=rr.LIMITS)
+                     limits=rr.LIMITS, **rr.at(store))
     assert row["status"] == "ok", row.get("error")
     return store, row["run_id"].hex()
 
 
-def _w12_commands(root: Path, rid: str) -> dict[str, list[str]]:
-    return {"hits-tsv": ["search", "hits", rid, "--root", str(root), "--format", "tsv"],
-            "hits-faa": ["search", "hits", rid, "--root", str(root), "--format", "faa"],
-            "nbr-tsv": ["nbr", rid, "--root", str(root), "--window", "3g", "--format", "tsv"]}
+def _w12_commands(store, root: Path, rid: str) -> dict[str, list[str]]:
+    """The commands against the data root `root` (a copy of the store's); the run and the pack stay the store's,
+    in its runs and pack directories (card W-03)."""
+    where = ["--runs", str(store["runs"]), "--pack-dir", str(store["pack_dir"])]
+    return {"hits-tsv": ["search", "hits", rid, "--root", str(root), *where, "--format", "tsv"],
+            "hits-faa": ["search", "hits", rid, "--root", str(root), *where, "--format", "faa"],
+            "nbr-tsv": ["nbr", rid, "--root", str(root), *where, "--window", "3g", "--format", "tsv"]}
 
 
-def _w12_outputs(root: Path, rid: str, capsys) -> dict[str, str]:
+def _w12_outputs(store, root: Path, rid: str, capsys) -> dict[str, str]:
     capsys.readouterr()
     out = {}
-    for name, args in _w12_commands(root, rid).items():
+    for name, args in _w12_commands(store, root, rid).items():
         assert cli.main(args) == 0, name
         out[name] = capsys.readouterr().out
     return out
@@ -1208,14 +1278,14 @@ def test_w12_hit_and_locus_exports_of_r1_return_nothing_from_s1(w12, tmp_path, c
     root = _w12_copy(store, tmp_path, manifest)
     assert catalog.manifest_path(root, rr.R1).exists() == manifest
     assert any(p.is_dir() for p in root.rglob("stage=S1"))  # the stage the release does not list is on disk
-    _w12_check_s0_only(store, _w12_outputs(root, rid, capsys))
+    _w12_check_s0_only(store, _w12_outputs(store, root, rid, capsys))
 
 
 @pytest.mark.covers("W-12")
 def test_w12_release_def_and_manifest_give_the_same_bytes(w12, tmp_path, capsys):
     store, rid = w12
-    bare = _w12_outputs(_w12_copy(store, tmp_path / "x", False), rid, capsys)
-    with_man = _w12_outputs(_w12_copy(store, tmp_path / "y", True), rid, capsys)
+    bare = _w12_outputs(store, _w12_copy(store, tmp_path / "x", False), rid, capsys)
+    with_man = _w12_outputs(store, _w12_copy(store, tmp_path / "y", True), rid, capsys)
     assert bare == with_man
 
 
@@ -1230,7 +1300,7 @@ def test_w12_with_a_manifest_an_extra_stage_on_disk_changes_no_output_byte(w12, 
     for d in gone:
         shutil.rmtree(d)
     assert not list(lean.rglob("stage=S1"))
-    assert _w12_outputs(lean, rid, capsys) == _w12_outputs(full, rid, capsys)
+    assert _w12_outputs(store, lean, rid, capsys) == _w12_outputs(store, full, rid, capsys)
 
 
 @pytest.mark.covers("W-12")
@@ -1239,7 +1309,7 @@ def test_w12_an_undefined_release_exits_2_naming_the_release_and_release_define(
     root = _w12_copy(store, tmp_path, False)
     catalog.release_def_path(root, rr.R1).unlink()
     capsys.readouterr()
-    for name, args in _w12_commands(root, rid).items():
+    for name, args in _w12_commands(store, root, rid).items():
         assert cli.main(args) == 2, name
         cap = capsys.readouterr()
         assert cap.out == "", name
@@ -1359,15 +1429,15 @@ def trap_world(root: Path, lib: Path, seed: int = 7, placed: bool = False) -> di
 def test_s07_drift_alarm_reverts_a_planted_corruption(tmp_path):
     root = tmp_path / "a"
     w = trap_world(root, tmp_path / "trap.hmm")
-    pack.build(root, "rSyn", models={"trap-1": tmp_path / "trap.hmm"})
+    pack.build(root, "rSyn", models={"trap-1": tmp_path / "trap.hmm"}, packs=_packs_of(root))
     rows = {}
     for name, stop in (("guarded", "[no_new_reps, drift_alarm]"), ("unguarded", "[no_new_reps]")):
         text = (f"recipe: trap\nwritten_against: rSyn\nseed: [{{sequence: {w['A']}}}]\ntarget: unique\n"
                 f"tool: jackhmmer\niterations: {{max: 5, inclusion_bits: 30, stop: {stop}}}\n"
                 f"controls: {{positive: [{{sequence: {w['a'][0]}}}]}}\n")
-        rows[name] = runner.run(root, text, "rSyn", work_base=tmp_path / "work", limits=LIMITS)
+        rows[name] = runner.run(root, text, "rSyn", work_base=tmp_path / "work", limits=LIMITS, **_at(root))
     g, u = rows["guarded"], rows["unguarded"]
-    leaked = {n: len({h["target_uid"] for h in runner.read_hits(root, r["run_id"].hex())} & w["b"])
+    leaked = {n: len({h["target_uid"] for h in runner.read_hits(_rdir(root, r["run_id"]))} & w["b"])
               for n, r in rows.items()}
     # the trap is real: without the alarm the profile drifts into family B
     assert u["status"] == "ok" and leaked["unguarded"] >= 25
@@ -1375,14 +1445,14 @@ def test_s07_drift_alarm_reverts_a_planted_corruption(tmp_path):
     assert g["status"] == "ok", g["error"]
     assert g["stop_reason"].startswith("drift_alarm: TRAP0001") and g["final_round"] == g["rounds"] - 1
     assert leaked["guarded"] <= 3
-    dropped = [h for h in runner.read_hits(root, g["run_id"].hex(), round_=g["rounds"], final_only=False)]
+    dropped = [h for h in runner.read_hits(_rdir(root, g["run_id"]), round_=g["rounds"], final_only=False)]
     assert dropped and all(h["curation_label"] == "drop" and h["curation_reason"] == "drift_alarm" for h in dropped)
 
 
 def _warnings(root, run):
     import json
 
-    row = pq.read_table(next((root / "search").glob(f"run={run['run_id'].hex()}/run.parquet"))).to_pylist()[0]
+    row = pq.read_table(next(_runs_of(root).glob(f"run={run['run_id'].hex()}/run.parquet"))).to_pylist()[0]
     return json.loads(row["warnings_json"])
 
 
@@ -1393,13 +1463,14 @@ def test_w08_drift_alarm_warns_when_the_release_has_no_domain_table(tmp_path):
     for name in ("with", "without"):
         root = tmp_path / name
         w = trap_world(root, tmp_path / f"{name}.hmm")
-        pack.build(root, "rSyn", models={"trap-1": tmp_path / f"{name}.hmm"})
+        pack.build(root, "rSyn", models={"trap-1": tmp_path / f"{name}.hmm"}, packs=_packs_of(root))
         if name == "without":
             shutil.rmtree(root / "l1/domains")
         text = (f"recipe: trap\nwritten_against: rSyn\nseed: [{{sequence: {w['A']}}}]\ntarget: unique\n"
                 f"tool: jackhmmer\niterations: {{max: 3, inclusion_bits: 30, stop: [no_new_reps, drift_alarm]}}\n"
                 f"controls: {{positive: [{{sequence: {w['a'][0]}}}]}}\n")
-        texts[name] = runner.run(root, text, "rSyn", work_base=tmp_path / f"work-{name}", limits=LIMITS)
+        texts[name] = runner.run(root, text, "rSyn", work_base=tmp_path / f"work-{name}", limits=LIMITS,
+                                 **_at(root))
         texts[name] = (root, texts[name])
     (r1, with_), (r2, without) = texts["with"], texts["without"]
     assert not any("domain annotations" in x for x in _warnings(r1, with_))
@@ -1409,7 +1480,7 @@ def test_w08_drift_alarm_warns_when_the_release_has_no_domain_table(tmp_path):
 
 def test_search_tables_conform_to_the_registry(world):
     root = world[0]
-    for p in sorted((root / "search").glob("run=*/*.parquet")):
+    for p in sorted(_runs_of(root).glob("run=*/*.parquet")):
         name = {"run.parquet": "search_run", "hits.parquet": "search_hit", "profiles.parquet": "search_profile",
                 "neighborhoods.parquet": "neighborhoods"}[p.name]
         assert contracts is not None
@@ -1433,22 +1504,23 @@ def placed(tmp_path_factory):
     d = tmp_path_factory.mktemp("placed")
     root = d / "a"
     w = trap_world(root, d / "trap.hmm", placed=True)
-    pack.build(root, "rSyn", models=w["models"])
+    pack.build(root, "rSyn", models=w["models"], packs=_packs_of(root))
     return root, d, w
 
 
 def test_s07_context_lost_reverts_when_new_hits_lose_round1_neighbors(placed):
     root, d, w = placed
-    row = runner.run(root, _trap_recipe(w, "[no_new_reps, context_lost]"), "rSyn", work_base=d / "work", limits=LIMITS)
+    row = runner.run(root, _trap_recipe(w, "[no_new_reps, context_lost]"), "rSyn", work_base=d / "work", limits=LIMITS,
+                     **_at(root))
     assert row["status"] == "ok", row["error"]
     assert row["stop_reason"].startswith("context_lost") and row["final_round"] == row["rounds"] - 1
     log = json.loads(row["rounds_json"])
     assert log[-1]["context_retention"] < 0.5
-    final = {h["target_uid"] for h in runner.read_hits(root, row["run_id"].hex())}
+    final = {h["target_uid"] for h in runner.read_hits(_rdir(root, row["run_id"]))}
     assert len(final & w["b"]) <= 3
     # the same world without the rule drifts into B: the check, not the world, stops it
-    free = runner.run(root, _trap_recipe(w), "rSyn", work_base=d / "work", limits=LIMITS)
-    assert len({h["target_uid"] for h in runner.read_hits(root, free["run_id"].hex())} & w["b"]) >= 25
+    free = runner.run(root, _trap_recipe(w), "rSyn", work_base=d / "work", limits=LIMITS, **_at(root))
+    assert len({h["target_uid"] for h in runner.read_hits(_rdir(root, free["run_id"]))} & w["b"]) >= 25
 
 
 @pytest.mark.parametrize("policy", ["exclude", "flag", "include"])
@@ -1456,9 +1528,9 @@ def test_curation_labels_for_coverage_and_partial_genes(placed, policy):
     root, d, w = placed
     text = _trap_recipe(w, tool="phmmer", mx=1,
                         extra=f"partial: {policy}\ncuration: {{min_query_coverage: 0.9}}\n")
-    row = runner.run(root, text, "rSyn", work_base=d / "work", limits=LIMITS)
+    row = runner.run(root, text, "rSyn", work_base=d / "work", limits=LIMITS, **_at(root))
     assert row["status"] == "ok", row["error"]
-    rows = runner.read_hits(root, row["run_id"].hex(), round_=1, final_only=False)
+    rows = runner.read_hits(_rdir(root, row["run_id"]), round_=1, final_only=False)
     label = {r["target_uid"]: (r["curation_label"], r["curation_reason"], r["is_partial"]) for r in rows}
     assert w["fragments"] <= set(label)
     for u in w["fragments"]:
@@ -1469,7 +1541,7 @@ def test_curation_labels_for_coverage_and_partial_genes(placed, policy):
         assert (lab, reason) == (("drop", "partial") if policy == "exclude" else ("keep", None))
     kept = {u for u, (lab, _, _) in label.items() if lab == "keep"}
     assert not kept & w["fragments"]  # dropped targets never enter the next profile or the final set
-    final = {h["target_uid"] for h in runner.read_hits(root, row["run_id"].hex())}
+    final = {h["target_uid"] for h in runner.read_hits(_rdir(root, row["run_id"]))}
     assert final == kept
 
 
@@ -1481,15 +1553,15 @@ def test_rounds_equal_the_hmmsearch_binary(placed, tmp_path):
     """O-SEARCH oracle: each round's stored profile, searched by HMMER's own hmmsearch at the
     same Z and threshold, gives the same included targets, sequence scores and kept domains."""
     root, d, w = placed
-    row = runner.run(root, _trap_recipe(w), "rSyn", work_base=d / "work", limits=LIMITS)
+    row = runner.run(root, _trap_recipe(w), "rSyn", work_base=d / "work", limits=LIMITS, **_at(root))
     assert row["status"] == "ok" and row["rounds"] >= 2
     faa = tmp_path / "unique.faa"
     with open(faa, "w") as fh:
-        for sh in sorted(pack.pack_dir(root, "rSyn").glob("unique/part-*.faa.zst")):
+        for sh in sorted(pack.find(_packs_of(root), "rSyn").glob("unique/part-*.faa.zst")):
             for name, seq in fastz.read_records(sh):
                 fh.write(f">{name}\n{seq}\n")
-    profiles = pq.read_table(runner.run_dir(root, row["run_id"]) / "profiles.parquet").to_pylist()
-    hits = pq.read_table(runner.run_dir(root, row["run_id"]) / "hits.parquet").to_pylist()
+    profiles = pq.read_table(_rdir(root, row["run_id"]) / "profiles.parquet").to_pylist()
+    hits = pq.read_table(_rdir(root, row["run_id"]) / "hits.parquet").to_pylist()
     bits = 30.0
     for prof in profiles:
         k = prof["round"]
@@ -1560,12 +1632,12 @@ def _rows(root: Path, row: dict) -> list[tuple]:
     return sorted((h["round"], h["target_uid"], h["bitscore"], h["seq_bitscore"], h["evalue_zref"], h["seq_evalue_zref"],
                    h["env_start"], h["env_end"], h["ali_start"], h["ali_end"], h["hmm_from"], h["hmm_to"],
                    h["model_len"], h["curation_label"])
-                  for h in runner.read_hits(root, row["run_id"].hex(), final_only=False))
+                  for h in runner.read_hits(_rdir(root, row["run_id"]), final_only=False))
 
 
 def _pinned(root: Path, text: str, rel: str = REL) -> tuple[str, str, dict]:
     r, _ = rcp.load(text)
-    res = runner.resolve(root, r, rel)
+    res = runner.resolve(root, r, rel, _packs_of(root))
     return rcp.recipe_hash(res["recipe"]), runner.query_hash(res["seed"]), res
 
 
@@ -1668,10 +1740,10 @@ def test_w02_seed_files_are_refused_at_submit(world, tmp_path, case, match):
     }[case]()
     if case == "absent_model":
         extra = ", model: NOPE"
-    before = sorted(runner.runs_dir(root).glob("run=*"))
+    before = sorted(_runs_of(root).glob("run=*"))
     with pytest.raises(RecipeError, match=match):
         _run(world, _file_recipe(kind, f, pos, seed_extra=extra))
-    assert sorted(runner.runs_dir(root).glob("run=*")) == before  # a refusal records nothing
+    assert sorted(_runs_of(root).glob("run=*")) == before  # a refusal records nothing
 
 
 @pytest.mark.covers("W-02")
@@ -1691,7 +1763,7 @@ def test_w02_model_key_picks_one_model_and_the_run_records_its_provenance(world,
     assert (seed["model_name"], seed["model_accession"], seed["model_length"]) == ("lam1", "TEST0001", lam1.M)
     rh, qh, _ = _pinned(root, text)
     assert (row["recipe_hash"], row["query_hash"]) == (rh, qh)
-    hits = runner.read_hits(root, row["run_id"].hex())
+    hits = runner.read_hits(_rdir(root, row["run_id"]))
     assert pos in {h["target_uid"] for h in hits} and {h["model_len"] for h in hits} == {lam1.M}
 
 
@@ -1709,12 +1781,12 @@ def test_w02_sequences_seed_recovers_its_family_and_stores_the_alignment(placed,
     assert {u for u, _, _ in seeds} <= w["b"]
     faa = _write_faa(tmp_path / "seeds.faa", [(n, s) for _, n, s in seeds])
     row = runner.run(root, _file_recipe("sequences", faa, seeds[0][0], rel="rSyn", bits=30), "rSyn",
-                     work_base=d / "work", limits=LIMITS)
+                     work_base=d / "work", limits=LIMITS, **_at(root))
     assert row["status"] == "ok", row["error"]
-    final = {h["target_uid"] for h in runner.read_hits(root, row["run_id"].hex())}
+    final = {h["target_uid"] for h in runner.read_hits(_rdir(root, row["run_id"]))}
     assert {u for u, _, _ in seeds} <= final
     assert len(final & w["b"]) >= 25  # three seeds find the family, not only themselves
-    prof = [p for p in pq.read_table(runner.run_dir(root, row["run_id"]) / "profiles.parquet").to_pylist()
+    prof = [p for p in pq.read_table(_rdir(root, row["run_id"]) / "profiles.parquet").to_pylist()
             if p["round"] == 1]
     assert len(prof) == 1 and prof[0]["n_seq"] == 3
     sto = fastz.unzst(prof[0]["msa_zst"]).decode()
@@ -1743,11 +1815,11 @@ def test_w02_file_seeds_iterate(placed, tmp_path, kind):
         with open(f, "wb") as fh:
             pyhmmer.hmmer.hmmalign(trap, block, trim=True).write(fh, "stockholm")
     row = runner.run(root, _file_recipe(kind, f, seeds[0][0], rel="rSyn", tool="jackhmmer", mx=3, bits=30), "rSyn",
-                     work_base=d / "work", limits=LIMITS)
+                     work_base=d / "work", limits=LIMITS, **_at(root))
     assert row["status"] == "ok", row["error"]
-    profiles = pq.read_table(runner.run_dir(root, row["run_id"]) / "profiles.parquet").to_pylist()
+    profiles = pq.read_table(_rdir(root, row["run_id"]) / "profiles.parquet").to_pylist()
     assert row["rounds"] >= 2 and len(profiles) == row["rounds"]
-    assert {u for u, _, _ in seeds} <= {h["target_uid"] for h in runner.read_hits(root, row["run_id"].hex())}
+    assert {u for u, _, _ in seeds} <= {h["target_uid"] for h in runner.read_hits(_rdir(root, row["run_id"]))}
 
 
 HMMER = {b: shutil.which(b) for b in ("hmmbuild", "hmmalign", "hmmsearch")}
@@ -1775,12 +1847,12 @@ def test_w02_sequences_profile_hits_equal_the_hmmer_binaries(placed, tmp_path):
     bits = 30.0
     faa = _write_faa(tmp_path / "seeds.faa", [(n, s) for _, n, s in seeds])
     row = runner.run(root, _file_recipe("sequences", faa, seeds[0][0], rel="rSyn", bits=bits), "rSyn",
-                     work_base=d / "work", limits=LIMITS)
+                     work_base=d / "work", limits=LIMITS, **_at(root))
     assert row["status"] == "ok", row["error"]
-    got = {h["target_uid"].hex(): h["seq_bitscore"] for h in runner.read_hits(root, row["run_id"].hex())}
+    got = {h["target_uid"].hex(): h["seq_bitscore"] for h in runner.read_hits(_rdir(root, row["run_id"]))}
     unique = tmp_path / "unique.faa"
     with open(unique, "w") as fh:
-        for sh in sorted(pack.pack_dir(root, "rSyn").glob("unique/part-*.faa.zst")):
+        for sh in sorted(pack.find(_packs_of(root), "rSyn").glob("unique/part-*.faa.zst")):
             for name, seq in fastz.read_records(sh):
                 fh.write(f">{name}\n{seq}\n")
     first = tmp_path / "first.sto"
@@ -1790,7 +1862,7 @@ def test_w02_sequences_profile_hits_equal_the_hmmer_binaries(placed, tmp_path):
     run(HMMER["hmmalign"], "--trim", "--amino", "-o", tmp_path / "seeds.sto", tmp_path / "first.hmm", faa)
     run(HMMER["hmmbuild"], "--amino", "-n", "w02", "-o", "/dev/null", tmp_path / "w02.hmm", tmp_path / "seeds.sto")
     stored = tmp_path / "stored.hmm"
-    prof = pq.read_table(runner.run_dir(root, row["run_id"]) / "profiles.parquet").to_pylist()
+    prof = pq.read_table(_rdir(root, row["run_id"]) / "profiles.parquet").to_pylist()
     stored.write_bytes(fastz.unzst(next(p for p in prof if p["round"] == 1)["profile_zst"]))
     tables = {}
     for name in ("w02", "stored"):
@@ -1837,13 +1909,13 @@ def test_cancel_records_stopped_with_no_hits(world, tmp_path):
     rec = tmp_path / "r.yaml"
     rec.write_text(_recipe(hit, hit))
     work = tmp_path / "work"
-    rid = runner.submit(root, rec, REL, runner.Limits(cpus=1, wall_s=300), work, fault="timeout")
+    rid = runner.submit(root, rec, REL, runner.Limits(cpus=1, wall_s=300), work, fault="timeout", **_at(root))
     assert _wait_for(lambda: (work / rid / "worker.pid").exists())
-    runner.cancel(root, rid)
-    assert _wait_for(lambda: runner.status(root, rid)["status"] != "running")
-    st = runner.status(root, rid)
+    runner.cancel(_rdir(root, rid))
+    assert _wait_for(lambda: runner.status(_rdir(root, rid))["status"] != "running")
+    st = runner.status(_rdir(root, rid))
     assert st["status"] == "stopped", st
-    assert sorted(p.name for p in runner.run_dir(root, rid).iterdir()) == ["run.parquet"]
+    assert sorted(p.name for p in _rdir(root, rid).iterdir()) == ["run.parquet"]
 
 
 def test_runner_death_is_reported_and_the_worker_does_not_outlive_it(world, tmp_path):
@@ -1855,16 +1927,16 @@ def test_runner_death_is_reported_and_the_worker_does_not_outlive_it(world, tmp_
     rec = tmp_path / "r.yaml"
     rec.write_text(_recipe(hit, hit))
     work = tmp_path / "work"
-    rid = runner.submit(root, rec, REL, runner.Limits(cpus=1, wall_s=300), work, fault="timeout")
+    rid = runner.submit(root, rec, REL, runner.Limits(cpus=1, wall_s=300), work, fault="timeout", **_at(root))
     assert _wait_for(lambda: (work / rid / "worker.pid").exists())
     worker_pid = int((work / rid / "worker.pid").read_text())
-    runner_pid = json.loads((runner.runs_dir(root) / "pending" / f"{rid}.json").read_text())["pid"]
+    runner_pid = json.loads(runner.pending_path(_rdir(root, rid)).read_text())["pid"]
     os.kill(runner_pid, signal.SIGKILL)
     assert _wait_for(lambda: not _alive(runner_pid), 10)
-    st = runner.status(root, rid)
+    st = runner.status(_rdir(root, rid))
     assert st["status"] == "failed" and "without closing" in st["error"]
     assert _wait_for(lambda: not _alive(worker_pid), 10), "worker outlived its runner"
-    assert not runner.run_dir(root, rid).exists()
+    assert not _rdir(root, rid).exists()
 
 
 @pytest.mark.covers("A-01")
@@ -1872,14 +1944,14 @@ def test_status_does_not_trust_a_pid_a_live_unrelated_process_may_own(tmp_path):
     """Pid reuse: the recorded pid answers kill(0), but nobody holds the runner lock: the run is dead."""
     import os
 
-    pend = runner.runs_dir(tmp_path) / "pending"
-    pend.mkdir(parents=True)
+    d = runner.run_dir(tmp_path / "runs", "ab")
+    pend = runner.pending_path(d)
+    pend.parent.mkdir(parents=True)
     lock = tmp_path / "work" / "ab" / "runner.lock"
     lock.parent.mkdir(parents=True)
     lock.write_text("")
-    (pend / "ab.json").write_text(json.dumps({"run_id": "ab", "pid": os.getpid(), "lock": str(lock),
-                                              "status": "running"}))
-    st = runner.status(tmp_path, "ab")
+    pend.write_text(json.dumps({"run_id": "ab", "pid": os.getpid(), "lock": str(lock), "status": "running"}))
+    st = runner.status(d)
     assert st["status"] == "failed" and "without closing" in st["error"], st
     import fcntl
 
@@ -1892,16 +1964,16 @@ def test_cancel_does_not_signal_a_pid_whose_runner_is_gone(tmp_path):
     """The runner died and its pid was reused: cancel must leave the new owner of the pid alone."""
     import sys
 
-    pend = runner.runs_dir(tmp_path) / "pending"
-    pend.mkdir(parents=True)
+    d = runner.run_dir(tmp_path / "runs", "cd")
+    pend = runner.pending_path(d)
+    pend.parent.mkdir(parents=True)
     lock = tmp_path / "work" / "cd" / "runner.lock"
     lock.parent.mkdir(parents=True)
     lock.write_text("")
     bystander = subprocess.Popen([sys.executable, "-c", "import time; time.sleep(60)"])
     try:
-        (pend / "cd.json").write_text(json.dumps({"run_id": "cd", "pid": bystander.pid, "lock": str(lock),
-                                                  "status": "running"}))
-        runner.cancel(tmp_path, "cd")
+        pend.write_text(json.dumps({"run_id": "cd", "pid": bystander.pid, "lock": str(lock), "status": "running"}))
+        runner.cancel(d)
         with pytest.raises(subprocess.TimeoutExpired):
             bystander.wait(timeout=1.0)
     finally:
@@ -1952,11 +2024,11 @@ def test_a07_status_is_failed_once_the_runner_leader_is_a_zombie_though_its_lock
         assert _wait_for(lambda: _proc_state(proc.pid) == "Z", 10)
         assert not _alive(proc.pid)  # gone as the runner-death test and `ps` see it
         assert runner._runner_holds(str(lock))  # the condition: the lock is still held
-        pend = runner.runs_dir(tmp_path) / "pending"
-        pend.mkdir(parents=True)
-        (pend / "ef.json").write_text(json.dumps({"run_id": "ef", "pid": proc.pid, "lock": str(lock),
-                                                  "status": "running"}))
-        st = runner.status(tmp_path, "ef")
+        d = runner.run_dir(tmp_path / "runs", "ef")
+        pend = runner.pending_path(d)
+        pend.parent.mkdir(parents=True)
+        pend.write_text(json.dumps({"run_id": "ef", "pid": proc.pid, "lock": str(lock), "status": "running"}))
+        st = runner.status(d)
         assert st["status"] == "failed" and "without closing" in st["error"], st
     finally:
         proc.stdin.close()
@@ -1975,9 +2047,9 @@ def test_a07_only_the_runner_holds_a_descriptor_of_its_lock(world, tmp_path):
     rec = tmp_path / "r.yaml"
     rec.write_text(_recipe(hit, hit))
     work = tmp_path / "work"
-    rid = runner.submit(root, rec, REL, runner.Limits(cpus=1, wall_s=300), work, fault="timeout")
+    rid = runner.submit(root, rec, REL, runner.Limits(cpus=1, wall_s=300), work, fault="timeout", **_at(root))
     assert _wait_for(lambda: (work / rid / "worker.pid").exists())
-    info = json.loads((runner.runs_dir(root) / "pending" / f"{rid}.json").read_text())
+    info = json.loads(runner.pending_path(_rdir(root, rid)).read_text())
     worker_pid = int((work / rid / "worker.pid").read_text())
 
     def lock_fds(pid):
@@ -1993,8 +2065,8 @@ def test_a07_only_the_runner_holds_a_descriptor_of_its_lock(world, tmp_path):
         assert lock_fds(info["pid"]) == [info["lock"]]
         assert lock_fds(worker_pid) == []
     finally:
-        runner.cancel(root, rid)
-        assert _wait_for(lambda: runner.status(root, rid)["status"] != "running")
+        runner.cancel(_rdir(root, rid))
+        assert _wait_for(lambda: runner.status(_rdir(root, rid))["status"] != "running")
 
 
 @pytest.mark.covers("A-01")
@@ -2024,22 +2096,22 @@ def test_runner_lock_is_held_before_the_pending_record_is_visible_and_status_fre
         lock = work / rid / "runner.lock"
         seen["lock_exists"] = lock.exists()
         seen["held_at_spawn"] = lock.exists() and held(lock)
-        seen["pending_at_spawn"] = (runner.runs_dir(root) / "pending" / f"{rid}.json").exists()
+        seen["pending_at_spawn"] = runner.pending_path(_rdir(root, rid)).exists()
         return real_popen(cmd, *a, **kw)
 
     monkeypatch.setattr(runner.subprocess, "Popen", spy)
-    rid = runner.submit(root, rec, REL, runner.Limits(cpus=1, wall_s=300), work, fault="timeout")
+    rid = runner.submit(root, rec, REL, runner.Limits(cpus=1, wall_s=300), work, fault="timeout", **_at(root))
     monkeypatch.undo()
     assert seen == {"lock_exists": True, "held_at_spawn": True, "pending_at_spawn": False}, seen
     lock = work / rid / "runner.lock"
-    info = json.loads((runner.runs_dir(root) / "pending" / f"{rid}.json").read_text())
+    info = json.loads(runner.pending_path(_rdir(root, rid)).read_text())
     assert info["lock"] == str(lock)
-    assert runner.status(root, rid)["status"] == "running"
+    assert runner.status(_rdir(root, rid))["status"] == "running"
     assert held(lock)
     assert _wait_for(lambda: (work / rid / "worker.pid").exists())
-    runner.cancel(root, rid)
-    assert _wait_for(lambda: runner.status(root, rid)["status"] != "running")
-    assert runner.status(root, rid)["status"] == "stopped"
+    runner.cancel(_rdir(root, rid))
+    assert _wait_for(lambda: runner.status(_rdir(root, rid))["status"] != "running")
+    assert runner.status(_rdir(root, rid))["status"] == "stopped"
 
 
 # --- W-04: worker threads, exit and kill labelling ------------------------------------------------------
@@ -2052,7 +2124,7 @@ def test_w04_worker_thread_pools_follow_the_runs_cpu_limit(world, record_propert
     root, d, _ = world
     hit, _ = _seed(root)
     row = runner.run(root, _recipe(hit, hit, tool="jackhmmer", mx=3), REL, work_base=d / "work",
-                     limits=runner.Limits(cpus=2, wall_s=120), keep_work=True)
+                     limits=runner.Limits(cpus=2, wall_s=120), keep_work=True, **_at(root))
     assert row["status"] == "ok", row["error"]
     t = json.loads((d / "work" / row["run_id"].hex() / "out" / "result.json").read_text())["threads"]
     for k in ("python_peak", "os_peak", "arrow_cpu_count", "arrow_io_thread_count"):
@@ -2081,13 +2153,13 @@ def test_w04_an_exception_in_round_2_ends_the_run_failed_within_seconds(placed, 
     worker): the process ends at once, non-zero, with its traceback; no hits from round 1 survive."""
     root, d, w = placed
     row = runner.run(root, _trap_recipe(w), "rSyn", work_base=d / "work", limits=runner.Limits(cpus=2, wall_s=60),
-                     fault=fault, keep_work=True)
+                     fault=fault, keep_work=True, **_at(root))
     record_property("run_wall_s", row["wall_s"])
     assert row["status"] == "failed", row["error"]
     assert row["error"].endswith(last_line), row["error"]
     assert row["wall_s"] < 20
-    assert sorted(p.name for p in runner.run_dir(root, row["run_id"]).iterdir()) == ["run.parquet"]
-    assert runner.read_hits(root, row["run_id"].hex()) == []
+    assert sorted(p.name for p in _rdir(root, row["run_id"]).iterdir()) == ["run.parquet"]
+    assert runner.read_hits(_rdir(root, row["run_id"])) == []
     work = d / "work" / row["run_id"].hex()
     assert (work / "out" / "hits.parquet").exists()  # round 1 was written: the fault came after it
     err = (work / "stderr.txt").read_text()
@@ -2105,14 +2177,14 @@ def test_w04_a_sigkill_from_outside_is_failed_not_oom(world, tmp_path):
     rec = tmp_path / "r.yaml"
     rec.write_text(_recipe(hit, hit))
     work = tmp_path / "work"
-    rid = runner.submit(root, rec, REL, runner.Limits(cpus=1, wall_s=300), work, fault="timeout")
+    rid = runner.submit(root, rec, REL, runner.Limits(cpus=1, wall_s=300), work, fault="timeout", **_at(root))
     assert _wait_for(lambda: (work / rid / "worker.pid").exists())
     os.kill(int((work / rid / "worker.pid").read_text()), signal.SIGKILL)
-    assert _wait_for(lambda: runner.status(root, rid)["status"] != "running")
-    st = runner.status(root, rid)
+    assert _wait_for(lambda: runner.status(_rdir(root, rid))["status"] != "running")
+    st = runner.status(_rdir(root, rid))
     assert st["status"] == "failed", st
     assert "signal 9" in st["error"] and "outside" in st["error"]
-    assert sorted(p.name for p in runner.run_dir(root, rid).iterdir()) == ["run.parquet"]
+    assert sorted(p.name for p in _rdir(root, rid).iterdir()) == ["run.parquet"]
 
 
 # --- C-03 and C-08 for search outputs -----------------------------------------------------------------
@@ -2123,19 +2195,21 @@ def test_c03_search_links_resolve_and_a_foreign_run_id_is_caught(world, tmp_path
     hit, _ = _seed(root)
     _run(world, _recipe(hit, hit, tool="jackhmmer", mx=2))
     man = catalog.build_manifest(root, REL, ["S0"])
-    con = catalog.open_catalog(catalog.generate_catalog(man, tmp_path / "c.duckdb"))
+    con = catalog.open_catalog(catalog.generate_catalog(man, tmp_path / "c.duckdb"), runs=_closed_runs(root),
+                               pack=pack.find(_packs(world), REL))
     try:
         assert contracts.check_search_links(con) == []
         assert con.execute("SELECT count(*) FROM search_hit").fetchone()[0] > 0
     finally:
         con.close()
     bad = _copy(world, tmp_path)
-    hits_file = sorted((bad / "search").glob("run=*/hits.parquet"))[0]
+    hits_file = sorted(_runs_of(bad).glob("run=*/hits.parquet"))[0]
     t = pq.read_table(hits_file).to_pylist()
     for r in t:
         r["run_id"] = b"\x11" * 16
     pq.write_table(pa.Table.from_pylist(t, schema=table("search_hit").schema), hits_file)
-    con = catalog.open_catalog(catalog.generate_catalog(catalog.build_manifest(bad, REL, ["S0"]), tmp_path / "d.duckdb"))
+    con = catalog.open_catalog(catalog.generate_catalog(catalog.build_manifest(bad, REL, ["S0"]), tmp_path / "d.duckdb"),
+                               runs=_closed_runs(bad), pack=pack.find(_packs_of(bad), REL))
     try:
         problems = contracts.check_search_links(con)
     finally:
@@ -2148,9 +2222,217 @@ def test_c08_search_runs_and_pack_record_the_locked_versions(world):
     from biobox import provenance
 
     root = world[0]
-    assert sorted((root / "search").glob("run=*/run.parquet"))
-    assert provenance.check_search(root) == []
+    assert sorted(_runs_of(root).glob("run=*/run.parquet"))
+    # card W-03: the packs and the runs are read from their own directories, outside the data root
+    assert provenance.check_search(_packs(world), _runs(world)) == []
     lock = {**provenance.locked_versions(), "pyhmmer": "0.0.0"}
-    problems = provenance.check_search(root, lock)
+    problems = provenance.check_search(_packs(world), _runs(world), lock)
     assert any("pack_manifest.json" in p for p in problems) and any("run.parquet" in p for p in problems)
+
+
+# --- W-03: the pack and the runs live outside the data root ------------------------------------------------------
+
+
+def _tree(root: Path) -> dict[str, str]:
+    """sha256 of every file under `root`, and every directory, by root-relative path."""
+    return {p.relative_to(root).as_posix(): hashlib.sha256(p.read_bytes()).hexdigest() if p.is_file() else "dir"
+            for p in sorted(root.rglob("*"))}
+
+
+def _read_only(root: Path, request) -> None:
+    """Take write permission from every file and directory under `root` (and `root`); a finalizer gives it back."""
+    modes = {p: p.stat().st_mode for p in [root, *root.rglob("*")]}
+
+    def restore():
+        for p, m in modes.items():
+            p.chmod(m)
+
+    request.addfinalizer(restore)
+    for p, m in modes.items():
+        p.chmod(m & ~0o222)
+
+
+def _w03_recipe(root: Path, tmp_path: Path) -> Path:
+    hit, _ = _seed(root)
+    rec = tmp_path / "r.yaml"
+    rec.write_text(_recipe(hit, hit, tool="jackhmmer", mx=2, extra="context: {window: 3g, edge: truncate}\n"))
+    return rec
+
+
+def _stat_tree(d: Path) -> dict[str, tuple]:
+    """(inode, mtime, sha256) of every file under `d`: a rewrite of the same bytes changes the first two."""
+    return {p.relative_to(d).as_posix(): (p.stat().st_ino, p.stat().st_mtime_ns,
+                                          hashlib.sha256(p.read_bytes()).hexdigest() if p.is_file() else None)
+            for p in sorted(d.rglob("*"))}
+
+
+@pytest.mark.covers("W-03", "S-13")
+@pytest.mark.skipif(os.geteuid() == 0, reason="root ignores file permissions, so a read-only data root cannot be made")
+def test_w03_a_full_search_against_a_read_only_data_root_writes_nothing_under_it(world, tmp_path, capsys, request):
+    root = _copy(world, tmp_path)
+    for d in (_packs_of(root), _runs_of(root)):  # the copy starts with no pack and no run of its own
+        shutil.rmtree(d, ignore_errors=True)
+    packs, runs, work = tmp_path / "packs", tmp_path / "runs", tmp_path / "work"
+    before = _tree(root)
+    build = ["pack", "build", "--root", str(root), "--release", REL, "--model", f"test-1={world[1] / 'a.hmm'}",
+             "--pack-dir", str(packs)]
+    assert cli.main(build) == 0
+    assert _tree(root) == before  # building the pack wrote nothing under the root
+    _read_only(root, request)
+    with pytest.raises(PermissionError):
+        (root / "probe").write_text("")  # the root really is read-only
+    with pytest.raises(PermissionError):
+        (root / "l0seq" / "probe").write_text("")
+    capsys.readouterr()
+    assert cli.main(["pack", "verify", "--root", str(root), "--release", REL, "--pack-dir", str(packs)]) == 0
+    assert capsys.readouterr().out.strip() == f"pack {REL}: verified"
+    where =["--root", str(root), "--runs", str(runs), "--pack-dir", str(packs)]
+    assert cli.main(["search", "run", str(_w03_recipe(root, tmp_path)), "--release", REL, "--wait", "--json",
+                     "--cpus", "1", "--work", str(work), *where]) == 0
+    run = json.loads(capsys.readouterr().out.splitlines()[0])
+    rid = run["run_id"]
+    assert run["status"] == "ok"
+    assert cli.main(["search", "status", rid, *where]) == 0
+    assert json.loads(capsys.readouterr().out)["status"] == "ok"
+    d = runner.run_dir(runs, rid)
+    assert cli.main(["search", "status", str(d), "--root", str(root)]) == 0  # a run is also found by its directory
+    assert json.loads(capsys.readouterr().out)["run_id"] == rid
+    assert cli.main(["search", "hits", rid, "--json", *where]) == 0
+    hits = [json.loads(x) for x in capsys.readouterr().out.splitlines()]
+    assert hits and all(h["schema"] == "search_hit/2" for h in hits)
+    for fmt in ("tsv", "faa"):
+        assert cli.main(["search", "hits", rid, "--format", fmt, *where]) == 0
+        assert capsys.readouterr().out.strip(), fmt
+    assert cli.main(["nbr", rid, "--window", "3g", "--format", "tsv", *where]) == 0
+    assert capsys.readouterr().out.strip()
+    assert cli.main(["nbr", "summarize", rid, "--window", "5g", "--by", "pfam,nr50", *where]) == 0
+    assert capsys.readouterr().out.strip()
+    assert _tree(root) == before  # every file byte-identical, and no file or directory added
+    assert sorted(p.name for p in d.iterdir()) == ["hits.parquet", "neighborhoods.parquet", "profiles.parquet",
+                                                   "run.parquet"]
+
+
+@pytest.mark.covers("W-03")
+def test_w03_status_and_cancel_find_a_run_in_its_own_runs_directory_only(world, tmp_path, capsys):
+    root = world[0]
+    other, work = tmp_path / "other-runs", tmp_path / "work"
+    rid = runner.submit(root, _w03_recipe(root, tmp_path), REL, runner.Limits(cpus=1, wall_s=300), work, fault="timeout",
+                        packs=_packs(world), runs=other)
+    assert _wait_for(lambda: (work / rid / "worker.pid").exists())
+    d = runner.run_dir(other, rid)
+    mine = ["--root", str(root), "--runs", str(_runs(world))]
+    assert cli.main(["search", "status", rid, *mine]) == 2  # not in the world's runs directory
+    assert cli.main(["search", "cancel", rid, *mine]) == 2
+    assert "no pending run" in capsys.readouterr().err
+    assert runner.status(d)["status"] == "running"  # the refused cancel signalled nothing
+    assert cli.main(["search", "cancel", rid, "--root", str(root), "--runs", str(other)]) == 0
+    assert _wait_for(lambda: runner.status(d)["status"] != "running")
+    assert runner.status(d)["status"] == "stopped"
+    assert sorted(p.name for p in d.iterdir()) == ["run.parquet"]
+    assert runner.pending_path(d).parent == other / "pending"  # its pending record is beside it, not in the root
+    assert not (root / "search").exists()
+
+
+def _w03_profile(tmp_path: Path) -> Path:
+    data = {"max_threads_day": 4, "max_threads_night": 4, "mem_scope": "4G", "tmp": str(tmp_path / "ptmp"),
+            "durable": str(tmp_path / "durable"), "bulk": str(tmp_path / "bulk"), "nice_monolithic": 19,
+            "nice_fanout": 15, "day_start_hour": 8, "day_end_hour": 20, "cpu_min_per_process": 300,
+            "small_file_floor_bytes": 1000, "require_mem_cap": False}
+    path = tmp_path / "profile.yaml"
+    path.write_text(json.dumps(data))  # JSON is YAML
+    return path
+
+
+@pytest.mark.covers("W-03")
+def test_w03_two_users_runs_directories_do_not_see_each_others_runs(world, tmp_path, capsys, monkeypatch):
+    root, prof = world[0], _w03_profile(tmp_path)
+    monkeypatch.delenv("BIOBOX_PROFILE", raising=False)
+    monkeypatch.setenv("LOGNAME", "alice")
+    assert cli.main(["search", "run", str(_w03_recipe(root, tmp_path)), "--root", str(root), "--release", REL,
+                     "--wait", "--cpus", "1", "--profile", str(prof), "--pack-dir", str(_packs(world))]) == 0
+    rid = capsys.readouterr().out.split()[0]
+    ptmp = tmp_path / "ptmp"
+    assert (ptmp / "search/alice/runs" / f"run={rid}" / "run.parquet").is_file()  # the per-user default
+    assert (ptmp / "search/alice/work").is_dir()  # the work directory is per user under the profile's tmp too
+    assert cli.main(["search", "status", rid, "--root", str(root), "--profile", str(prof)]) == 0
+    assert json.loads(capsys.readouterr().out)["status"] == "ok"
+    monkeypatch.setenv("LOGNAME", "bob")
+    for action in ("status", "hits", "cancel"):
+        assert cli.main(["search", action, rid, "--root", str(root), "--profile", str(prof)]) == 2, action
+        assert str(ptmp / "search/bob/runs") in capsys.readouterr().err, action
+    assert not (root / "search").exists()
+
+
+@pytest.mark.covers("W-03", "C-12", "D-01")
+def test_w03_pack_build_twice_is_a_no_op_and_a_pack_is_never_overwritten(world, tmp_path, capsys, monkeypatch):
+    root, d, man = world
+    packs = tmp_path / "packs"
+    build = ["pack", "build", "--root", str(root), "--release", REL, "--model", f"test-1={d / 'a.hmm'}",
+             "--pack-dir", str(packs)]
+    verify = ["pack", "verify", "--root", str(root), "--release", REL, "--pack-dir", str(packs)]
+    before = _tree(root)
+    assert cli.main(build) == 0
+    first = capsys.readouterr().out
+    pdir = pack.find(packs, REL)
+    assert pdir == pack.pack_dir(packs, REL, man["pack_id"])  # the same inputs give the world's pack_id
+    assert _pack_bytes(packs) == _pack_bytes(_packs(world))  # and its bytes
+    snap = _stat_tree(packs)
+
+    def no_build(*a, **k):
+        raise AssertionError("the second build built")
+
+    monkeypatch.setattr(pack, "_build_into", no_build)
+    assert cli.main(build) == 0  # a pack of the same inputs is there and verifies: nothing is built or written
+    assert capsys.readouterr().out == first
+    assert _stat_tree(packs) == snap
+    monkeypatch.undo()
+    assert cli.main(verify) == 0
+    assert capsys.readouterr().out.strip() == f"pack {REL}: verified"
+    # one pack file altered: verify fails, and the build will not write over it
+    p = pdir / "unique/part-0.faa.zst"
+    b = bytearray(p.read_bytes())
+    b[-5] ^= 0xFF
+    p.write_bytes(bytes(b))
+    assert cli.main(verify) == 1
+    assert "sha256 differs" in capsys.readouterr().out
+    assert cli.main(build) == 2
+    assert "never overwritten" in capsys.readouterr().err
+    assert p.read_bytes() == bytes(b)
+    assert [x.name for x in pack.release_dir(packs, REL).iterdir()] == [pdir.name]  # no temporary pack left
+    assert _tree(root) == before
+
+
+@pytest.mark.covers("W-03")
+def test_w03_a_pack_run_or_work_directory_under_the_data_root_is_refused(world, tmp_path, capsys):
+    root = world[0]
+    before = _tree(root)
+    assert cli.main(["pack", "build", "--root", str(root), "--release", REL, "--pack-dir", str(root / "packs")]) == 2
+    assert "data root" in capsys.readouterr().err
+    with pytest.raises(ValueError, match="data root"):
+        pack.build(root, REL, packs=root / "l0seq" / "packs")
+    rec = _w03_recipe(root, tmp_path)
+    base = ["search", "run", str(rec), "--root", str(root), "--release", REL, "--cpus", "1", "--pack-dir",
+            str(_packs(world)), "--runs", str(tmp_path / "runs"), "--work", str(tmp_path / "work")]
+    for wait in (["--wait"], []):
+        for flag, inside in (("--runs", root / "runs"), ("--out", root / "run"), ("--work", root / "work"),
+                             ("--pack-dir", root / "packs")):
+            assert cli.main(base + wait + [flag, str(inside)]) == 2, (flag, wait)
+            assert "data root" in capsys.readouterr().err, (flag, wait)
+    assert _tree(root) == before
+    assert not (tmp_path / "runs").exists() and not (tmp_path / "work").exists()  # refused before anything
+
+
+@pytest.mark.covers("W-03")
+def test_w03_a_search_with_no_pack_exits_2_naming_the_command_that_builds_it(world, tmp_path, capsys):
+    root = world[0]
+    empty = tmp_path / "no-packs"
+    rec = _w03_recipe(root, tmp_path)
+    base = ["search", "run", str(rec), "--root", str(root), "--release", REL, "--cpus", "1", "--pack-dir", str(empty),
+            "--runs", str(tmp_path / "runs"), "--work", str(tmp_path / "work")]
+    for wait in (["--wait"], []):
+        assert cli.main(base + wait) == 2
+        err = capsys.readouterr().err
+        assert f"bio-box pack build --root {root.resolve()} --release {REL} --pack-dir {empty}" in err, err
+    assert not empty.exists()  # never built implicitly
+    assert not (tmp_path / "runs").exists()
 
