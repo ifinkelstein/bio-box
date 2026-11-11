@@ -1,0 +1,18 @@
+{
+ "mismatch": {},
+ "ok": true,
+ "stages": {
+  "P1": {
+   "bp": 1016625803,
+   "bytes": 1029384352,
+   "checked": 250,
+   "genomes": 250
+  },
+  "P2": {
+   "bp": 9596180328,
+   "bytes": 9716599273,
+   "checked": 2247,
+   "genomes": 2247
+  }
+ }
+}
