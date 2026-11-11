@@ -100,3 +100,68 @@ def test_w13_the_unit_tells_bio_box_its_name_after_the_callers_env():
     cmd = _launch_command()
     assert '--env "BIOBOX_POD_UNIT=$UNIT"' in cmd, cmd
     assert cmd.index('"${ENVS[@]}"') < cmd.index('--env "BIOBOX_POD_UNIT=$UNIT"') < cmd.index('"$IMAGE" python')
+
+
+FAKE_SYSTEMCTL = """#!/bin/sh
+echo "$@" > "$FAKE_SYSTEMCTL_ARGS"
+printf '%s\\n' "CPUUsageNSec=$FAKE_CPU" "MemoryPeak=$FAKE_MEM"
+"""
+
+
+def _fake_env(tmp_path, cpu: str, mem: str) -> dict:
+    """An environment whose `systemctl` is a fake that records its arguments and prints the two totals."""
+    bindir = tmp_path / "bin"
+    bindir.mkdir()
+    fake = bindir / "systemctl"
+    fake.write_text(FAKE_SYSTEMCTL)
+    fake.chmod(0o755)
+    return {**os.environ, "PATH": f"{bindir}:{os.environ['PATH']}", "FAKE_SYSTEMCTL_ARGS": str(tmp_path / "args"),
+            "FAKE_CPU": cpu, "FAKE_MEM": mem}
+
+
+def _run_wrapper_with_fake_systemctl(tmp_path, cpu: str, mem: str) -> list[str]:
+    """The wrapper around a command that exits 3, with a fake `systemctl` first on PATH (no unit is started)."""
+    log = tmp_path / "unit.log"
+    with log.open("wb") as fh:
+        got = subprocess.run(["/bin/sh", "-c", wrapper(), "sh", "w18-unit", sys.executable, "-c",
+                              "import sys; print('hi'); sys.exit(3)"], stdout=fh, stderr=subprocess.STDOUT,
+                             env=_fake_env(tmp_path, cpu, mem), timeout=TIMEOUT).returncode
+    assert got == 3
+    return log.read_text().splitlines()
+
+
+@pytest.mark.covers("W-18")
+def test_w18_the_unit_writes_its_cpu_and_memory_totals_before_the_exit_line(tmp_path):
+    """Card W-18 (4): `--collect` unloads the unit when it ends and its totals go with it, so the wrapper reads them
+    from `systemctl --user show` while the unit still exists and writes them just before the exit line."""
+    lines = _run_wrapper_with_fake_systemctl(tmp_path, "123456789", "987654")
+    assert lines == ["hi", "pod_run: w18-unit usage CPUUsageNSec=123456789 MemoryPeak=987654",
+                     "pod_run: w18-unit exited 3"]
+    assert (tmp_path / "args").read_text().split() == ["--user", "show", "w18-unit", "-p", "CPUUsageNSec", "-p",
+                                                        "MemoryPeak"]
+
+
+@pytest.mark.covers("W-18")
+def test_w18_no_totals_line_when_the_manager_reports_none(tmp_path):
+    """systemd says `[not set]` when accounting is off: the log then has no usage line, only the exit line."""
+    assert _run_wrapper_with_fake_systemctl(tmp_path, "[not set]", "[not set]") == ["hi", "pod_run: w18-unit exited 3"]
+
+
+@pytest.mark.covers("W-18")
+def test_w18_the_totals_come_after_a_stop_notice_and_before_the_exit_line(tmp_path):
+    ready, log = tmp_path / "ready", tmp_path / "unit.log"
+    with log.open("wb") as fh:
+        proc = subprocess.Popen(["/bin/sh", "-c", wrapper(), "sh", "w18-unit", sys.executable, "-c", CHILD,
+                                 str(ready)], stdout=fh, stderr=subprocess.STDOUT, env=_fake_env(tmp_path, "5", "6"),
+                                start_new_session=True)
+        try:
+            wait_for(ready.exists, "the command to start")
+            os.killpg(proc.pid, signal.SIGTERM)
+            proc.wait(TIMEOUT)
+        finally:
+            if proc.poll() is None:
+                os.killpg(proc.pid, signal.SIGKILL)
+                proc.wait(TIMEOUT)
+    assert log.read_text().splitlines()[-3:] == ["pod_run: w18-unit received SIGTERM",
+                                                  "pod_run: w18-unit usage CPUUsageNSec=5 MemoryPeak=6",
+                                                  "pod_run: w18-unit exited 143"]
