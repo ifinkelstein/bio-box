@@ -20,6 +20,9 @@
     bio-box release define --root R --release R1 --stages S0,S1 [--out DIR]
     bio-box release cluster|tokens|postings|dim|manifest|catalog --root R --release R1 [--stages S0,S1]
                 [--tmp D] [--threads N] [--producers P,Q] [--libraries L,M] [--tape-version T] [--out DIR]
+    bio-box release cluster plan --root R --release R1 [--stages S0,S1] --tmp D (--parts N | --part-cpu-min M)
+    bio-box release cluster step|redo --root R --release R1 --name STEP --tmp D --threads N
+    bio-box release cluster finish --root R --release R1 --tmp D --threads N
     bio-box release verify --root R --release R2 [--previous R1]
     bio-box stage inputs --root R --stage S --genomes genomes.json [--out DIR]
     bio-box stage ingest --root R --stage S --objects objects.json [--shard-bases N] [--line-width N] [--tmp D]
@@ -35,10 +38,14 @@
     bio-box stage ncrna --root R --stage S --cm Rfam.cm.gz --cpus N [--tmp D] [--seq-stages S0,S1] [--out DIR]
     bio-box build-stage --profile P --root R --stage S --release R1 [--stages S0,S1] --genomes genomes.json
                 --objects objects.json [--library NAME VERSION HMM CUTOFF ...] [--tmp D] [--threads N]
-                [--scan-jobs J] [--scan-cpus C]
+                [--scan-jobs J] [--scan-cpus C] [--cluster-parts N]
 
 `build-stage` (card C-04, `biobox.stage`) runs every `stage` step and then every `release` step of
 one stage and its release, each as a `run-step`; a second call skips what is done.
+
+`release cluster plan|step|finish|redo` (card B-41, `biobox.l2.cluster`) is a release's clustering in
+parts, each step its own process: `build-stage` runs them when clustering in one process is estimated
+over 80% of the CPU-minute budget. `redo` writes nothing into the root and is not a run-step.
 
 A release names its stages (card B-25): `--stages` defines it once (its `release_def`); after that
 every release step reads the stages from `release_def`, and `--stages`, if given, must repeat them.
@@ -739,6 +746,7 @@ def _run_step(a) -> int:
 
 
 RELEASE_STEPS = ("define", "cluster", "tokens", "postings", "dim", "manifest", "catalog", "verify")
+CLUSTER_ACTIONS = ("plan", "step", "finish", "redo")  # `release cluster plan|step|finish|redo` (card B-41)
 STAGE_STEPS = ("inputs", "ingest", "genecall", "igr", "tapes", "domains", "ncrna")
 DOMAIN_ACTIONS = ("plan", "shard", "merge")  # `stage domains plan|shard|merge` (card B-24)
 INGEST_ACTIONS = ("pass1", "plan", "batch", "merge")  # `stage ingest pass1|plan|batch|merge` (card B-30)
@@ -770,6 +778,11 @@ def _release_step(a, root: Path, stages: list[str], out: Path) -> dict:
     if a.step == "cluster":
         from biobox.l2 import cluster
 
+        if a.action == "plan":  # clustering in parts (card B-41)
+            if tmp is None:
+                raise ValueError("release cluster plan needs --tmp (the scratch directory of the work)")
+            return cluster.plan(root, a.release, a.gene_call_version, stages, tmp, parts=a.parts,
+                                part_cpu_min=a.part_cpu_min, out=out)
         return cluster.run(root, a.release, a.gene_call_version, stages, threads=a.threads, tmp=tmp, out=out)
     if a.step == "tokens":
         from biobox.l3 import tokens
@@ -867,6 +880,12 @@ def _release(a) -> int:
     if a.step == "verify":
         return _verify(a)
     root = Path(a.root)
+    if a.action is not None and a.step != "cluster":
+        print(f"refused: release {a.step} has no action {a.action} (only cluster: {', '.join(CLUSTER_ACTIONS)})",
+              file=sys.stderr)
+        return 2
+    if a.step == "cluster" and a.action in ("step", "finish", "redo"):
+        return _cluster_action(a, root)
     try:
         out = _out(a, root)
         given = _csv(a.stages)
@@ -890,7 +909,35 @@ def _release(a) -> int:
     except (FileNotFoundError, FileExistsError, ValueError) as e:
         print(f"refused: {e}", file=sys.stderr)
         return 2
-    print(json.dumps({"release": a.release, "stages": stages, "step": a.step, "result": res}, sort_keys=True,
+    head = {} if a.action is None else {"action": a.action}
+    print(json.dumps({"release": a.release, "stages": stages, "step": a.step, **head, "result": res}, sort_keys=True,
+                     default=str))
+    return 0
+
+
+def _cluster_action(a, root: Path) -> int:
+    """`release cluster step|finish|redo` (card B-41): one step of clustering in parts after its plan. The stages
+    are the plan's; `--tmp` is the scratch directory the work directory lives in (the same for every step)."""
+    from biobox.l2 import cluster
+
+    try:
+        if not a.tmp:
+            raise ValueError(f"release cluster {a.action} needs --tmp (the scratch directory of the plan's work)")
+        if a.action != "finish" and not a.name:
+            raise ValueError(f"release cluster {a.action} needs --name (a step of {cluster.PLAN_STEP}'s sequence)")
+        tmp = Path(a.tmp)
+        if a.action == "redo":  # writes nothing into the root or staging: not a run-step
+            res = cluster.redo(root, a.release, a.name, tmp, a.threads)
+        else:
+            out = _out(a, root)
+            if a.action == "step":
+                res = cluster.step(root, a.release, a.name, tmp, a.threads, out=out)
+            else:
+                res = cluster.finish(root, a.release, tmp, a.threads, out=out)
+    except (FileNotFoundError, FileExistsError, ValueError) as e:
+        print(f"refused: {e}", file=sys.stderr)
+        return 2
+    print(json.dumps({"release": a.release, "step": "cluster", "action": a.action, "result": res}, sort_keys=True,
                      default=str))
     return 0
 
@@ -1031,7 +1078,8 @@ def _build_stage(a) -> int:
     b = stage.Build(root=Path(a.root), stage=a.stage, release=a.release, genomes=Path(a.genomes),
                     objects=Path(a.objects), stages=None if a.stages is None else tuple(_csv(a.stages)),
                     libraries=libs, tmp=Path(a.tmp) if a.tmp else None, threads=a.threads,
-                    gene_call_version=a.gene_call_version, scan_jobs=a.scan_jobs, scan_cpus=a.scan_cpus)
+                    gene_call_version=a.gene_call_version, scan_jobs=a.scan_jobs, scan_cpus=a.scan_cpus,
+                    cluster_parts=a.cluster_parts)
     return stage.build_stage(profile.load(a.profile), b)
 
 
@@ -1136,7 +1184,16 @@ def main(argv: list[str] | None = None) -> int:
     r.add_argument("--threads", type=int)
     rl = sub.add_parser("release", parents=[common], help="release-level steps over the release's stages (B-25)")
     rl.add_argument("step", choices=RELEASE_STEPS)
+    rl.add_argument("action", nargs="?", choices=CLUSTER_ACTIONS,
+                    help="cluster in parts (card B-41): plan, then step (one call per --name, in the plan's "
+                         "sequence), then finish; redo makes a step whose scratch was lost again; without it, "
+                         "the whole clustering in one process")
     rl.add_argument("--release", required=True)
+    rl.add_argument("--name", help="cluster step|redo: the step (cluster.plan, cluster.<level>.<kk>.<module>, its "
+                                   ".cut or .part-<p>, ...)")
+    rl.add_argument("--parts", type=int, help="cluster plan: cut every per-query call into this many parts (forced)")
+    rl.add_argument("--part-cpu-min", type=float, help="cluster plan: the CPU-minutes a part may be estimated at "
+                                                       "(build-stage gives 80%% of cpu_min_per_process)")
     rl.add_argument("--stages", help="S0,S1: the release's stages in order; defines the release once")
     rl.add_argument("--tmp", help="scratch directory (system temp by default; never under the data root)")
     rl.add_argument("--threads", type=int, default=1, help="cluster: MMseqs2 threads")
@@ -1199,6 +1256,9 @@ def main(argv: list[str] | None = None) -> int:
     bs.add_argument("--scan-cpus", type=int, help="threads of each scan shard (default 4, or the allowance if "
                                                   "smaller); --scan-jobs × --scan-cpus may not exceed the threads "
                                                   "run-step allows now")
+    bs.add_argument("--cluster-parts", type=int, help="cluster in parts (card B-41), every per-query call cut into "
+                                                      "this many (default: in parts only when clustering in one "
+                                                      "process is estimated over 80%% of the budget, cut by it)")
     a = p.parse_args(argv)
     if a.cmd == "search" and a.action == "run" and not a.release:
         p.error("search run needs --release")
