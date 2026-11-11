@@ -59,3 +59,79 @@ def test_c13_the_ingest_estimate_is_within_20_percent_on_a_small_and_a_large_sta
 def test_c13_the_ingest_estimate_has_a_constant_term():
     """The start-up cost of a step that does almost nothing: C-10's `inputs` step of S1a, 0.07 CPU-min."""
     assert bs.ingest_cpu_min(0) == bs.INGEST_FIXED_CPU_MIN == 0.07
+
+
+# --- clustering (card B-36, DEC-25) -----------------------------------------------------------------------------
+# The clustering run records of the 10 Gbp rebuild, 16 threads each (*measured*, wilkcomp02, 2026-11-10, branch
+# `build/r10`, planning/measurements/2026-11-10_rebuild_10gbp.md, "Per-step numbers, phase 1"): proteins clustered,
+# CPU-minutes of the run record. `rN.1a` is phages only (stage S1).
+RN1A = (1_134_550, 84.75)
+RN1B = (2_053_075, 284.10)
+RN1 = (10_620_684, 2195.91)
+
+
+@pytest.mark.covers("B-36")
+@pytest.mark.parametrize("n,measured", [RN1B, RN1], ids=["rN.1b", "rN.1"])
+def test_b36_the_cluster_estimate_is_within_20_percent_of_the_two_upper_points(n, measured):
+    est = bs.cluster_cpu_min(n)
+    assert abs(est - measured) / measured <= 0.20, (n, est, measured)
+
+
+@pytest.mark.covers("B-36")
+@pytest.mark.parametrize("n,measured", [RN1A, RN1B, RN1], ids=["rN.1a", "rN.1b", "rN.1"])
+def test_b36_the_cluster_estimate_is_below_none_of_the_three_measured_points(n, measured):
+    """A refusal gate errs high: the estimate is at least each measurement (to the rounding of the records)."""
+    assert bs.cluster_cpu_min(n) >= measured * 0.999, (n, bs.cluster_cpu_min(n), measured)
+
+
+@pytest.mark.covers("B-36")
+def test_b36_the_shipped_profile_caps_clustering_at_20000_cpu_minutes():
+    assert _profile().cluster_cpu_min_max == 20000
+
+
+def _write_profile(tmp_path: Path, **change) -> Path:
+    import yaml
+
+    d = yaml.safe_load((Path(__file__).resolve().parents[2] / "profiles" / "wilkcomp02.yaml").read_text())
+    d.update(change)
+    for k, v in list(d.items()):
+        if v is ...:
+            del d[k]
+    p = tmp_path / "p.yaml"
+    p.write_text(yaml.safe_dump(d))
+    return p
+
+
+@pytest.mark.covers("B-36")
+def test_b36_the_cluster_cap_is_optional_may_be_null_and_must_be_an_int(tmp_path):
+    assert profile.load(_write_profile(tmp_path, cluster_cpu_min_max=...)).cluster_cpu_min_max is None
+    assert profile.load(_write_profile(tmp_path, cluster_cpu_min_max=None)).cluster_cpu_min_max is None
+    for bad in ("12000", True, 1.5):
+        with pytest.raises(ValueError, match="cluster_cpu_min_max"):
+            profile.load(_write_profile(tmp_path, cluster_cpu_min_max=bad))
+    with pytest.raises(ValueError, match="cpu_min_per_process"):  # null is allowed for the optional key only
+        profile.load(_write_profile(tmp_path, cpu_min_per_process=None))
+
+
+@pytest.mark.covers("B-36")
+def test_b36_with_the_cap_clustering_over_300_is_allowed_up_to_the_cap_and_refused_above_it():
+    import dataclasses
+
+    prof = _profile()
+    assert bs.cluster_cpu_min(RN1[0]) > prof.cpu_min_per_process
+    assert bs.cluster_refusal(prof, "rN.1", RN1[0]) is None  # the 10 Gbp release: exempt under DEC-25
+    capped = dataclasses.replace(prof, cluster_cpu_min_max=1000)
+    why = bs.cluster_refusal(capped, "rN.1", RN1[0])
+    assert why is not None and "cluster_cpu_min_max" in why and "1000" in why and "10,620,684" in why
+
+
+@pytest.mark.covers("B-36")
+def test_b36_without_the_cap_clustering_over_the_budget_is_refused():
+    import dataclasses
+
+    prof = dataclasses.replace(_profile(), cluster_cpu_min_max=None)
+    why = bs.cluster_refusal(prof, "rN.1", RN1[0])
+    assert why is not None and "cpu_min_per_process" in why and "cluster_cpu_min_max" in why and "DEC-25" in why
+    small = 1000  # proteins: far under the budget at any fitted rate
+    assert bs.cluster_cpu_min(small) < prof.cpu_min_per_process
+    assert bs.cluster_refusal(prof, "rN.1", small) is None

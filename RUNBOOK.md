@@ -198,6 +198,27 @@ floor((40 - 16) / 4) = 6, so `--scan-jobs 6 --scan-cpus 4`, 24 threads, 40 in al
 running, the same formula gives J = 10, which is the whole cap: leave a margin if anything may start
 during the hours the scan runs. A smaller J only makes the scan take longer; the output is the same.
 
+**Clustering's own cap (DEC-25).** A release's clustering is one process, and on a large release it
+passes 300 CPU-minutes: 2,195.91 CPU-minutes for 10,620,684 proteins (measured, wilkcomp02,
+2026-11-10, run record `rN.1.cluster`). DEC-25 exempts this one step from the 300 CPU-minute rule
+under its own cap, the profile's `cluster_cpu_min_max` (20000 in `profiles/wilkcomp02.yaml`, an
+estimate: about five times that run; the PI may change it). Every other step keeps the 300-minute rule.
+
+- `build-stage` estimates clustering's CPU-minutes before it starts it, from the release's protein
+  count: a power law through 284.10 CPU-minutes at 2,053,075 proteins and 2,195.91 at 10,620,684
+  (measured, wilkcomp02, 2026-11-10, `rN.1b` and `rN.1`; the fit is derived and extrapolated above
+  10.6 M proteins). At the cap of 20000 it refuses a release of more than about 62.7 M proteins
+  (derived: 10,620,684 × (20000 / 2195.91)^(1 / 1.244)).
+- When every stage of the release has its gene-call run record, the check is made before any step;
+  otherwise just before the cluster step's command, once this call's stage is gene-called.
+- An estimate over `cluster_cpu_min_max` is refused, exit 2. The log line starts `build-stage: refused`
+  and names `cluster_cpu_min_max`.
+- A profile without `cluster_cpu_min_max` (the scratch profile of Appendix B) gives no exemption:
+  clustering estimated over `cpu_min_per_process` is refused, exit 2, and the log line says so.
+- With the key, the cluster step's run record holds `cpu_budget_reason: exempt: DEC-25`, and
+  `over_cpu_budget` is still true when the step used more than 300 CPU-minutes (section 5).
+- The exemption ends when card B-37 splits clustering into processes under the budget.
+
 A shard that fails stops new launches. Shards already running go on to their own end and publish if
 no `STOP` file exists then, and `build-stage` exits with the failed shard's code. A `STOP` file is
 different: a shard whose command ends while `STOP` exists publishes nothing (section 3). The next call
@@ -315,6 +336,7 @@ names. Fields:
 | `wall_s`, `cpu_min`, `peak_rss_bytes` | wall seconds, CPU-minutes, peak resident bytes of the step command |
 | `mem_cap` | `how` is `inherited` (the unit's cap, with `memory_max_bytes`), `opened` or `none` |
 | `exit_code`, `over_cpu_budget` | `over_cpu_budget` is true above the profile's `cpu_min_per_process` |
+| `cpu_budget_reason` | only in a release's `cluster` record, when the profile sets `cluster_cpu_min_max`: `exempt: DEC-25` (section 2) |
 | `image_digest`, `host` | the image sha256 that `pod_run.sh --digest` passed in, and the host |
 | `outputs` | each published file: `path`, `bytes`, `sha256` |
 
@@ -489,6 +511,32 @@ is one row per gene; `--format faa` is one record per protein, named by protein 
 clusters around the anchors. `export proteins` needs the release's manifest; it reads the root only
 and takes no `--profile`.
 
+**One command.** `search hmm` (card W-07) does all of the above for an HMM file: it writes the recipe,
+runs it, and writes the exports into `--out DIR`. `--bits` is the inclusion threshold;
+`--neighbors N` the genes on each side (window `Ng`, default 5); `--model` picks one model of a file
+that holds several. `--positive` is required: a protein the search must find, given as
+`ACCESSION:START-END` (one gene, with the accession, start and end that `search hits --format tsv`
+prints: 0-based, end exclusive) or as a substring of its contig's header (case-sensitive). It must
+name exactly one protein of the release; otherwise the command exits 2 and lists the genes that
+matched, each as `ACCESSION:START-END`, so one can be given instead. `$POSITIVE` below is such a
+gene. The run runs in the foreground, as `search run --wait`, so it may run in a `pod_run.sh` unit;
+`search status` and `search cancel` work on it from another shell.
+
+```bash
+bash "$TREE/scripts/pod_run.sh" --profile "$PROFILE" --image "$IMAGE" --digest "$DIGEST" --bind /tmp/if2453 --env PYTHONPATH="$PYTHONPATH_POD" w07-hmm search hmm --root "$ROOT" --release rC6.1 --profile "$PROFILE" --hmm "$WORK/inputs/lib.hmm" --model lam0 --bits 25 --neighbors 5 --positive "$POSITIVE" --out "$WORK/hmm"
+```
+
+`DIR` must be new or empty and outside the data root. It then holds `recipe.yaml` (the recipe the
+run ran; `search run DIR/recipe.yaml` runs it again), `hits.tsv` and `hits.faa` (as `search hits
+--format tsv|faa`), `neighbors.tsv` (as `nbr summarize --format tsv`) and `loci/` (one table per
+locus, as `nbr --format tsv`); each is written by that command, so the files are the same. The log
+ends with the run id and `ok`, then one line per file. The run itself is in the runs directory, as
+for `search run`. A release with no domain library (the 10 Gbp release `rN.1` has none) is
+searched all the same: the neighbour summary is by `nr50,nr90` instead of `pfam,nr50`, and the log
+says so in a line that begins `note`. A run that ends other than `ok` exits 1 and leaves only
+`recipe.yaml` in `DIR`. When the release has no pack, the command exits 2 and prints the
+`pack build` command to run; it does not build the pack.
+
 ## 8. Run the test suite on the pod
 
 Run these on the laptop, in the repository checkout. The script copies the working tree to the pod
@@ -574,6 +622,7 @@ a profile value is missing from this table.
 | Memory cap required | true: `run-step` and the search runner refuse to start uncapped | profile `require_mem_cap` |
 | Nice | 19 (one big process), 15 (many small ones) | profile `nice_monolithic`, `nice_fanout`; AGENTS 7.2 says 19 |
 | CPU-minutes per process | 300 | profile `cpu_min_per_process`; AGENTS 7.2 |
+| CPU-minutes of a release's clustering | 20000, estimated before launch; refused above it. The one exemption from the 300 (DEC-25), until card B-37. Set by the PI on 2026-11-10 for the 50 Gbp build: about nine times the 2,195.91 measured for 10,620,684 proteins (wilkcomp02, 2026-11-10). Without the key, clustering over 300 is refused | profile `cluster_cpu_min_max`; DEC-25; `cluster_refusal` in `src/biobox/stage.py`; card B-36 |
 | Scan shard size | 30,150,753 residues: 80% of `cpu_min_per_process` (300) at 7.96 CPU-minutes per million residues (derived: 300 × 0.8 / 7.96 × 10^6; the rate of the Pfam scan of stage P1 in card C-10, measured on wilkcomp02, 2026-11-10: 2,343.74 CPU-minutes for 294.5 M residues). The 80% leaves room for a scan 25% slower per residue (derived: 1 / 0.8) | `SHARD_MARGIN` and `SCAN_CPU_MIN_PER_M` in `src/biobox/stage.py`; cards C-11, C-13 |
 | Scan shards at once | `--scan-jobs` J × `--scan-cpus` C at most the threads `run-step` allows when `build-stage` starts (40 by day, 56 at night when idle); defaults C = 4, J = allowance // C (10 by day, 14 at night). The cap is a total over everything of ours on the pod, and `build-stage` counts only its own threads: choose J = floor((cap - other threads) / C) (section 2). The allowance is read again before each step and before each shard launch; a launch that would pass it waits | `scan_slots` and `_launch` in `src/biobox/stage.py`; cards C-11, C-12 |
 | Unit CPU quota | the night cap, 56: a ceiling fixed at launch; `build-stage` holds the limit of the hour | `scripts/pod_run.sh --threads`, profile `max_threads_night`; card C-12 |
@@ -594,12 +643,14 @@ a profile value is missing from this table.
 
 The scratch profile used for the tests in this file differs from the real one in these keys:
 `max_threads_day` 2, `max_threads_night` 2, `mem_scope` 8G, `tmp`, `durable` and `bulk` under
-`/tmp/if2453/c06`, `small_file_floor_bytes` 1000. Appendix B lists it.
+`/tmp/if2453/c06`, `small_file_floor_bytes` 1000, and no `cluster_cpu_min_max` (so no clustering
+exemption; the fixture's clustering is far under 300 CPU-minutes). Appendix B lists it.
 
 ## 11. Known limits today
 
 | Limit | What happens | Card |
 |---|---|---|
+| Clustering is one process | a release's clustering may run above 300 CPU-minutes, up to the profile's `cluster_cpu_min_max` (20000), under DEC-25; a release estimated above that (about 62.7 M proteins, derived, section 2) is refused, exit 2. The estimate is a fit by protein count, extrapolated above 10.6 M proteins | B-36, B-37 |
 | Ingest of a stage over about 60 Gbp | `build-stage` refuses before any step (exit 2): one ingest process runs at about 3.7 Mbp/s (measured, wilkcomp02), so it would pass 300 CPU-minutes. Split the stage into smaller stages | B-30 |
 | Shard size is Pfam's | shards are cut at 80% of the budget at Pfam's rate (7.96 CPU-minutes per million residues, measured in C-10). A library more than 1.25 times slower per residue than that (derived: 1 / 0.8; above 9.95 CPU-minutes per million residues, derived) passes 300 CPU-minutes per shard, and the run record says `over_cpu_budget`. Lower `--scan-cpus` does not help, since the budget counts CPU-minutes | C-11, C-13 |
 | `pod_run.sh` CPU quota | the unit's quota is `--threads` of `pod_run.sh` (default the night cap, 56), fixed at launch, whatever `--scan-jobs` × `--scan-cpus` is. By day it is above the day cap: the day cap is held by `build-stage` and `run-step`, not by the quota. A `run-step` launched alone keeps the thread count it chose at its start until it ends (at most 300 CPU-minutes) | C-07, C-11, C-12 |
@@ -608,6 +659,7 @@ The scratch profile used for the tests in this file differs from the real one in
 | Search packs and runs inside an old root | a root written before card W-03 may hold `search_pack/` and `search/` (the pack and runs were then written into the root). Nothing reads or writes them now; the manifest leaves them out (`catalog.EXCLUDED_TREES`). Build the pack again into the pack directory (section 7) | W-03, W-13 |
 | No detached search in a unit | `search run` without `--wait` in a `pod_run.sh` unit is refused (exit 2): the unit would stop the detached runner when the command returns (section 7). Use `--wait`; `search status` and `search cancel` work on a `--wait` run from another shell | W-13 |
 | `pod_run.sh` and the profile | `pod_run.sh --profile` sets the unit's limits only; it does not pass the profile to `bio-box` (no `BIOBOX_PROFILE` in the image). Give `bio-box` its own `--profile`, or the pack, runs and work directories (section 7) | W-03, W-13 |
+| `search hmm --positive` reads all contig labels | the accession or header of the positive control is looked up in every row group of `contig_label`: no table is sorted by accession, and a header substring cannot prune. The contig's genes are then read from its tape by contig uid, which prunes. Not measured on a large release | W-07 |
 
 Found while writing this runbook, no card yet (reported to the PI):
 
@@ -839,3 +891,8 @@ Last line: `01563e192ab22a5931d55e224a2dbb07`.
   a build unit.
 - `search run` without `--wait` outside a `pod_run.sh` unit (a submitted, detached runner, for
   example from the `bio-box` function of section 0). It is tested in the test suite, not on the pod.
+- `search hmm` (section 7) in a `pod_run.sh` unit, and on a real release. Card W-07 tested it in the
+  test suite on the pod, on the fixture: its files equal those of the separate commands byte for
+  byte, its recipe run again through `search run` gives the same hits, a fixture release without a
+  domain library gives the summary by `nr50,nr90`, and its refusals (no positive control, one that
+  matches no protein or several, no pack, `DIR` under the root or not empty) exit 2.

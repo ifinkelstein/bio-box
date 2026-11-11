@@ -523,7 +523,10 @@ def test_c15_peak_memory_is_the_steps_own_not_the_launchers(prof, root, tmp_path
     assert big["peak_rss_bytes"] < PARENT_MIB * MIB, peaks
     assert big["peak_rss_bytes"] >= BIG_MIB * MIB, peaks  # what the step itself wrote is counted
     assert big["peak_rss_bytes"] - small["peak_rss_bytes"] >= (BIG_MIB - 32) * MIB, peaks
-    assert big["peak_rss_source"] == small["peak_rss_source"] == "child_maxrss"
+    # The source follows the cap the record names: a host with systemd-run and no inherited cap (GitHub Actions)
+    # opens a scope for the step and reads its memory.peak; elsewhere (the pod's inherited cap) it is the helper's.
+    expected = "scope_memory_peak" if big["mem_cap"]["how"] == "opened" else "child_maxrss"
+    assert big["peak_rss_source"] == small["peak_rss_source"] == expected, (big["mem_cap"], big["peak_rss_source"])
 
 
 # A fake /proc/self/cgroup and cgroup v2 tree, and a stand-in `systemd-run` that drops its own options and execs the
