@@ -38,6 +38,12 @@ Genes of a contig are ordered by (start, end, strand); every table names a gene 
 and coordinates, never by its position in that order (AGENTS §3.3). Genome, tier and assembly quality
 are not copied onto the gene rows: they live in `contig_dim` (AGENTS §3.6).
 
+A contig shared with a genome of an earlier stage (DEC-26, card C-20): ingest stored its bytes in the stage
+that saw them first, which owns its genes, IGRs and tape. This stage reads it from that stage (`seq_stages`),
+so a genome is still trained and called whole, but writes no row for it and records it as skipped (the
+result's `skipped_contigs`, a ledger row with reason `owned_by:<stage>`). Which genome's calls a shared contig
+carries therefore depends on which stage was built first; no other contig's rows do.
+
 Coordinates are 0-based half-open (pyrodigal reports 1-based inclusive).
 `dist_to_contig_end_bp` is 0 for genes running off a linear contig end and
 equals the contig length on circular contigs, which have no edge.
@@ -59,6 +65,7 @@ from pathlib import Path
 import duckdb
 import numpy as np
 import pyarrow as pa
+import pyarrow.compute as pc
 import pyarrow.parquet as pq
 import pyrodigal
 import pyrodigal_gv
@@ -66,7 +73,7 @@ import pyrodigal_gv
 from biobox import ids, io, layout, ledger, provenance
 from biobox.l0seq.inputs import GenomeInput, iter_genome_input
 from biobox.l0seq.lookup import KeyLookup
-from biobox.l0seq.store import SeqStore
+from biobox.l0seq.store import OWNED_BY, ContigOwners, SeqStore, missing_contig
 from biobox.registry.schemas import table
 
 __all__ = ["GENE_CALL_VERSION", "GenomeInput", "call_genome", "run"]
@@ -90,6 +97,7 @@ BATCH_BASES = 1_000_000
 # against about 0.75 ms) and threads scale, while a process costs seconds of imports to start
 THREAD_MIN_BASES = 10_000
 DUCK_MEMORY_LIMIT = "2GB"  # the sorting connection's cap; larger sorts spill into the scratch directory
+SKIP_REASON = OWNED_BY  # ledger reason of a contig another stage owns (DEC-26), followed by that stage
 # Estimated zstd bytes per row; they only cut parts at `max_file_bytes` (card B-19). Measured values
 # are from planning/measurements/2026-11-09_design_stress_test.md (§3 golden set, §6a S1 pilot), taken
 # before `feature_uid` (16 random bytes, which do not compress) was added to these tables.
@@ -311,15 +319,39 @@ class _Workers:
 
 def _genome_bases(store: SeqStore, lengths: KeyLookup, genome: GenomeInput) -> int:
     """Bases of a genome's default contig variants, from the store's `contig_index` files (one key
-    lookup per contig). A contig the store does not hold raises the store's KeyError."""
+    lookup per contig). A contig the store does not hold raises KeyError naming the stage on disk that
+    owns it, if any (DEC-26)."""
     n = 0
     for cu in genome.contig_uids:
         rows = [r for r in lengths.get(cu) if r["is_default_variant"]]
         if not rows:
-            store.default_digest(cu)  # raises KeyError naming the stages the store reads
-            raise KeyError(cu)
+            raise KeyError(missing_contig(store.root, cu, store.stages))
         n += rows[0]["contig_len"]
     return n
+
+
+def _owned(genomes: Iterable[GenomeInput], owners: ContigOwners, skipped: dict[bytes, str]
+           ) -> Iterator[GenomeInput]:
+    """The genomes, unchanged; each contig owned by another stage (DEC-26) is added to `skipped` with its owner
+    before its genome is handed on."""
+    for g in genomes:
+        for cu in g.contig_uids:
+            s = owners.owner(cu)
+            if s != owners.stage:
+                skipped[cu] = s
+        yield g
+
+
+def _drop(genes: pa.RecordBatch, cands: pa.RecordBatch, modes: list[str], n_wrap: int, skip: set[bytes]
+          ) -> tuple[pa.RecordBatch, pa.RecordBatch, list[str], int]:
+    """A batch's rows without the genes on the contigs in `skip` (owned by another stage, DEC-26); the gene and
+    candidate rows are parallel, one per gene."""
+    if not skip:
+        return genes, cands, modes, n_wrap
+    keep = pc.invert(pc.is_in(genes.column("contig_uid"), value_set=pa.array(sorted(skip), pa.binary(16))))
+    genes, cands = genes.filter(keep), cands.filter(keep)
+    return (genes, cands, sorted(set(genes.column("mode").to_pylist())),
+            int(pc.sum(genes.column("wraps_origin").cast(pa.int64())).as_py() or 0))
 
 
 def _batches(genomes: Iterable[GenomeInput], bases_of, batch_bases: int, thread_min_bases: int
@@ -519,7 +551,12 @@ def run(root: Path, stage: str, genomes: Iterable[GenomeInput] | None = None, ve
     this many estimated bytes (one row above it is a part alone).
     `seq_stages`: the stages whose sequences the genomes may name (card B-28): the stage itself (the
     default) and, when its contigs repeat sequences stored before it, the earlier stages that hold them.
-    A contig in none of them raises KeyError naming the stages read.
+    A contig in none of them raises KeyError naming the stages read and the stage on disk that owns it.
+
+    A contig stored first by another stage (DEC-26, card C-20): that stage owns its genes. Its genome is
+    still called whole (single mode trains on every contig of the genome), but no row is written for the
+    contig; it is listed in the result (`skipped_contigs`: contig uid and owning stage, by contig uid)
+    and in the ledger, one row per contig with reason `owned_by:<stage>` and every count 0.
     """
     root = Path(root)
     out = root if out is None else Path(out)
@@ -532,7 +569,7 @@ def run(root: Path, stage: str, genomes: Iterable[GenomeInput] | None = None, ve
     ledger.refuse_written(root, out, [f"l1/feature/producer={version}/stage={stage}", f"l1/feature_protein/{gcv}",
                                       f"l1/protein_occurrence/{gcv}", f"l0seq/protein_seq/{gcv}",
                                       f"ledger/stage={stage}/step=genecall"], f"gene calls of stage {stage}")
-    stages = [stage] if seq_stages is None else list(seq_stages)
+    stages = list(dict.fromkeys([stage, *([] if seq_stages is None else seq_stages)]))
     store = SeqStore(root, stages)
     scratch = Path(tempfile.mkdtemp(prefix="biobox-genecall-", dir=tmp))
     try:
@@ -543,13 +580,18 @@ def run(root: Path, stage: str, genomes: Iterable[GenomeInput] | None = None, ve
         ks = _Scratch(scratch / _SCRATCH_FILES["contigs"], _CONTIG_SCRATCH)
         n_genes = n_wrap = 0
         modes: set[str] = set()
+        skipped: dict[bytes, str] = {}  # contig -> owning stage (DEC-26); few: 4 of 54,265 contigs at 50 Gbp
         lengths = KeyLookup(store.index_files, "contig_uid", ["contig_len", "is_default_variant"])
-        batches = _batches(genomes, lambda g: _genome_bases(store, lengths, g), batch_bases, THREAD_MIN_BASES)
+        owned = _owned(genomes, ContigOwners(root, stage, stages), skipped)
+        batches = _batches(owned, lambda g: _genome_bases(store, lengths, g), batch_bases, THREAD_MIN_BASES)
         calls_iter = _called(store, root, batches, workers)
         try:
             for batch, (genes, cands, batch_modes, batch_wrap) in calls_iter:
+                skip = {cu for g in batch for cu in g.contig_uids if cu in skipped}
+                genes, cands, batch_modes, batch_wrap = _drop(genes, cands, batch_modes, batch_wrap, skip)
                 ks.add(pa.RecordBatch.from_arrays(
-                    [pa.array([cu for g in batch for cu in g.contig_uids], type=pa.binary(16))], schema=_CONTIG_SCRATCH))
+                    [pa.array([cu for g in batch for cu in g.contig_uids if cu not in skip], type=pa.binary(16))],
+                    schema=_CONTIG_SCRATCH))
                 gs.add(genes)
                 cs.add(cands)
                 modes.update(batch_modes)
@@ -559,20 +601,26 @@ def run(root: Path, stage: str, genomes: Iterable[GenomeInput] | None = None, ve
             calls_iter.close()
             for s in (gs, cs, ks):
                 s.close()
-        n_prot = _publish(out, stage, version, scratch, prefix_width, max_file_bytes)
-        return {"genes": n_genes, "distinct_proteins": n_prot, "modes": sorted(modes), "wrapping_genes": n_wrap}
+        n_prot = _publish(out, stage, version, scratch, prefix_width, max_file_bytes, skipped)
+        return {"genes": n_genes, "distinct_proteins": n_prot, "modes": sorted(modes), "wrapping_genes": n_wrap,
+                "skipped_contigs": [{"contig_uid": cu.hex(), "owner_stage": s} for cu, s in sorted(skipped.items())]}
     finally:
         store.close()
         shutil.rmtree(scratch, ignore_errors=True)
 
 
 def _publish(root: Path, stage: str, version: str, scratch: Path, prefix_width: int | None,
-             max_file_bytes: int) -> int:
+             max_file_bytes: int, skipped: dict[bytes, str] | None = None) -> int:
     """Sort the scratch rows into the stage's files, each table cut into parts at `max_file_bytes`;
-    returns the number of distinct proteins. The ledger rows stream from DuckDB to the writer."""
+    returns the number of distinct proteins. The ledger rows stream from DuckDB to the writer; a contig
+    in `skipped` (owned by another stage, DEC-26) has one ledger row, reason `owned_by:<stage>`, counts 0."""
+    skipped = skipped or {}
     con = duckdb.connect(config={"threads": 1, "memory_limit": DUCK_MEMORY_LIMIT,
                                  "temp_directory": str(scratch / "duckdb"), "preserve_insertion_order": True})
     try:
+        con.register("skipped", pa.table({"contig_uid": pa.array(list(skipped), pa.binary(16)),
+                                          "reason": pa.array([f"{SKIP_REASON}{s}" for s in skipped.values()],
+                                                             pa.string())}))
         src = {k: f"read_parquet({_sql_path(scratch / name)})" for k, name in _SCRATCH_FILES.items()}
         con.execute(f"CREATE VIEW genes AS SELECT * FROM {src['genes']}")
         con.execute(f"CREATE VIEW candidates AS SELECT * FROM {src['candidates']}")
@@ -611,13 +659,15 @@ def _publish(root: Path, stage: str, version: str, scratch: Path, prefix_width: 
             reader = con.sql(
                 "WITH g AS (SELECT contig_uid, row_number() OVER (PARTITION BY protein_uid ORDER BY contig_uid, "
                 'start, "end", strand) = 1 AS first FROM genes) '
-                "SELECT c.contig_uid, count(g.contig_uid) AS n, count(*) FILTER (WHERE g.first) AS k "
-                "FROM contigs c LEFT JOIN g USING (contig_uid) GROUP BY c.contig_uid ORDER BY c.contig_uid"
+                "SELECT contig_uid, n, k, reason FROM ("
+                "SELECT c.contig_uid, count(g.contig_uid) AS n, count(*) FILTER (WHERE g.first) AS k, 'ok' AS reason "
+                "FROM contigs c LEFT JOIN g USING (contig_uid) GROUP BY c.contig_uid "
+                "UNION ALL SELECT contig_uid, 0, 0, reason FROM skipped) ORDER BY contig_uid, reason"
             ).to_arrow_reader(io.ROW_GROUP_ROWS)
             try:
                 for b in reader:
-                    for cu, n, k in zip(*(b.column(i).to_pylist() for i in range(3))):
-                        yield ledger.row(cu, "contig", n, k, n - k, tools=tools)
+                    for cu, n, k, why in zip(*(b.column(i).to_pylist() for i in range(4))):
+                        yield ledger.row(cu, "contig", n, k, n - k, reason=why, tools=tools)
             finally:
                 reader.close()
 

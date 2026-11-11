@@ -15,7 +15,15 @@ with `--out` left to `$BIOBOX_STAGING` (card C-08), in this order:
 and is passed over. A domain scan over the CPU budget runs as several steps (below). The stage
 steps are recorded under `runs/stage=<S>/`, the release steps under `runs/stage=<REL>/`.
 
-The step list and every argument are a pure function of the command line and the profile. Paths
+Contigs shared across stages (card C-20, DEC-26). Ingest stores a sequence once, in the first stage that sees
+it, and that stage owns the contig's genes, IGRs and tape. When gene calling starts, `build-stage` adds
+`--seq-stages` naming the stage and every other stage of the root (`with_seq_stages`), so a genome that holds
+a contig stored by an earlier stage is still read and trained whole; gene calling skips that contig and
+records the skip. Before the release's clustering (after its CPU estimate, below), `dim.owner_problem` refuses
+(exit 2) a release that lists a stage without the stage that owns one of its contigs, naming that stage.
+
+The step list and every argument are a pure function of the command line and the profile (the gene-call
+step's `--seq-stages`, added when it starts, is the one exception). Paths
 are made absolute. The thread count is `--threads`, else the smaller of the profile's day and
 night caps, which `run-step` accepts at any hour; it is given to `run-step` (`BIOBOX_THREADS`), to
 gene calling (`--workers`), to the scans (`--cpus`) and to MMseqs2 (`--threads`). Scratch is
@@ -155,7 +163,7 @@ import pyarrow.compute as pc
 import pyarrow.parquet as pq
 import yaml
 
-from biobox import catalog, runstep
+from biobox import catalog, dim, runstep
 from biobox.l0seq import store
 from biobox.l1 import domains
 from biobox.l1.genecall import GENE_CALL_VERSION
@@ -631,6 +639,8 @@ def build_stage(prof: Profile, b: Build, *, run: Runner | None = None,
                 code = _ingest_in_batches(prof, b, root, one, _hook, jobs * cpus, shard_run, allow)
             elif step.check == "cluster":
                 why = None if _record(root, step).exists() else _cluster_gate(prof, b, root)
+                if why is None and not _record(root, step).exists():
+                    why = dim.owner_problem(root, b.release, _release_stages(b, root), tmp=scratch_of(prof, b))
                 if why is not None:
                     _say(f"refused before {step.run_stage}.{step.name}: {why}")
                     return runstep.EXIT_REFUSED
@@ -639,6 +649,8 @@ def build_stage(prof: Profile, b: Build, *, run: Runner | None = None,
                 else:
                     exempt = prof.cluster_cpu_min_max is not None
                     code = one(step, **({"budget_reason": CLUSTER_EXEMPT} if exempt else {}))
+            elif step.name == "genecall":
+                code = one(with_seq_stages(step, root, b.stage))
             else:
                 code = one(step)
             if code is not None:
@@ -647,6 +659,16 @@ def build_stage(prof: Profile, b: Build, *, run: Runner | None = None,
             _hook(f"after:{step.name}")
     _say(f"stage {b.stage} and release {b.release}: all {len(plan)} steps done")
     return 0
+
+
+def with_seq_stages(step: Step, root: Path, stage: str) -> Step:
+    """The gene-call step reading the sequences of every stage in the root (card C-20, DEC-26): `--seq-stages`
+    is the stage itself, then the others whose `seq_locator` exists when the step starts (`store.stages_on_disk`,
+    the stages the stage's ingest compared its sequences against). A contig of the stage's genomes that one of them
+    stored first is read from there for training and skipped in the output; a stage that holds none of its contigs
+    is never read. The files do not depend on which other stages are listed, since one stage owns each contig."""
+    seq = [stage, *(s for s in store.stages_on_disk(root) if s != stage)]
+    return dataclasses.replace(step, argv=(*step.argv, "--seq-stages", ",".join(seq)))
 
 
 def _fresh_scratch(step: Step) -> None:
