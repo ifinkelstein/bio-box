@@ -27,8 +27,10 @@ Before card W-19 the worker held the whole target three times over (a dict of `s
 its digitized copy) and the runner a set of every target name and a decoded copy of every shard: on the 10 Gbp
 release `rN.1` 26.27 GiB and 5.65 GiB (measured, wilkcomp02, 2026-11-11,
 planning/measurements/2026-11-11_trial_search_rN1_second.md); here, the worker 323.0 MiB at 10x (8,701 dark ORFs)
-and 352.6 MiB at 100x (86,427), 29.6 MiB more (measured, wilkcomp02, 2026-11-11, this test on the tree before
-W-19).
+and 352.6 MiB at 100x (86,427), 29.6 MiB more, and the runner's heap 16.7 MiB more (17.3 to 34.0 MiB in a second
+run, measured, wilkcomp02, 2026-11-11, this test on the tree before W-19). With the target read in blocks and the
+positive control looked up by key: the worker 322.7 and 324.0 MiB, 1.2 MiB more, and the runner's heap 16.02 MiB at
+both (one read chunk of `fastz.lookup`), 34 bytes more (measured, wilkcomp02, 2026-11-11).
 """
 
 from __future__ import annotations
