@@ -1082,3 +1082,101 @@ def test_c13_release_verify_checks_a_later_release_against_a_named_previous_one(
     assert run_cli(*argv) == 1
     assert f"{f['path']}: rewritten" in capsys.readouterr().out
     assert run_cli("release", "verify", "--root", root, "--release", later, "--previous", "rNo.1") == 1
+
+
+# --- clustering's own cap (card B-36, DEC-25) ---------------------------------------------------------------------
+
+STAGE_STEPS = ["inputs", "ingest", "genecall", "igr", "tapes", SCAN]
+
+
+def fixture_proteins(root: Path, stage: str) -> int:
+    """Rows of the stage's `protein_seq` files, counted here from the files themselves."""
+    files = sorted((Path(root) / f"l0seq/protein_seq/gene_call_version={V}/stage={stage}").rglob("*.parquet"))
+    return sum(pq.read_metadata(f).num_rows for f in files)
+
+
+class Calls:
+    """A runner that records each step it is asked to run (and its keywords), then runs it as `runner` does."""
+
+    def __init__(self):
+        self.seen: list[tuple[str, dict]] = []
+
+    def __call__(self, prof, root, stage, step, cmd, **kw) -> int:
+        self.seen.append((step, dict(kw)))
+        return runner(prof, root, stage, step, cmd, **kw)
+
+
+@pytest.fixture(scope="module")
+def capped(direct, tmp_path_factory):
+    """A build on an empty root whose profile caps clustering at 0 CPU-minutes: the stage's proteins are known only
+    after its gene calling, so the stage steps run and the cluster step is refused before its command."""
+    root = tmp_path_factory.mktemp("b36-capped") / "root"
+    calls = Calls()
+    prof = dataclasses.replace(direct["prof"], cluster_cpu_min_max=0)
+    code = bs.build_stage(prof, build_of(direct, root), run=calls)
+    return root, code, calls
+
+
+@pytest.mark.covers("B-36")
+def test_b36_a_release_over_the_cap_is_refused_before_the_cluster_steps_command(direct, capped):
+    root, code, calls = capped
+    assert code == runstep.EXIT_REFUSED
+    assert [s for s, _ in calls.seen] == STAGE_STEPS  # the cluster step was never handed to run-step
+    assert record_names(root) == {f"stage=S0/{n}" for n in STAGE_STEPS}
+    assert not any(k.startswith("l2/") or f"release={REL}" in k for k in c08.tree(root))
+
+
+@pytest.mark.covers("B-36")
+def test_b36_once_every_stage_is_gene_called_a_release_over_the_cap_is_refused_before_any_step(
+        direct, capped, tmp_path, capsys):
+    root = tmp_path / "root"
+    shutil.copytree(capped[0], root, symlinks=True)
+    before, files = records(root), c08.tree(root)
+    n = fixture_proteins(root, "S0")
+    assert n > 0
+    calls, seen = Calls(), []
+    prof = dataclasses.replace(direct["prof"], cluster_cpu_min_max=0)
+    assert bs.build_stage(prof, build_of(direct, root), run=calls, _hook=seen.append) == runstep.EXIT_REFUSED
+    err = capsys.readouterr().err
+    assert "refused before any step" in err and "cluster_cpu_min_max" in err and f"{n:,} proteins" in err
+    assert calls.seen == [] and seen == []
+    assert records(root) == before and c08.tree(root) == files
+
+
+@pytest.mark.covers("B-36")
+def test_b36_without_the_cap_clustering_over_cpu_min_per_process_is_refused(direct, capped, tmp_path, capsys):
+    """No `cluster_cpu_min_max`: no exemption. A budget of 0 puts the fixture's clustering over it; ingest and the
+    scan have their run records, so neither is estimated again and the refusal is clustering's."""
+    root = tmp_path / "root"
+    shutil.copytree(capped[0], root, symlinks=True)
+    before = records(root)
+    calls = Calls()
+    prof = dataclasses.replace(direct["prof"], cpu_min_per_process=0, cluster_cpu_min_max=None)
+    assert bs.build_stage(prof, build_of(direct, root), run=calls) == runstep.EXIT_REFUSED
+    err = capsys.readouterr().err
+    assert "cpu_min_per_process" in err and "no cluster_cpu_min_max" in err and "DEC-25" in err
+    assert calls.seen == [] and records(root) == before
+
+
+@pytest.mark.covers("B-36")
+def test_b36_a_release_under_the_cap_runs_and_its_cluster_record_names_dec25(direct, capped, tmp_path):
+    root = tmp_path / "root"
+    shutil.copytree(capped[0], root, symlinks=True)
+    calls = Calls()
+    prof = dataclasses.replace(direct["prof"], cluster_cpu_min_max=12000)
+    assert bs.build_stage(prof, build_of(direct, root), run=calls) == 0
+    assert [s for s, _ in calls.seen] == STAGE_STEPS + NAMES[7:]  # the stage steps are resumed (skipped) by run-step
+    assert [s for s, kw in calls.seen if "budget_reason" in kw] == ["cluster"]
+    assert dict(calls.seen)["cluster"]["budget_reason"] == "exempt: DEC-25"
+    rec = json.loads((root / "runs" / f"stage={REL}" / "cluster.json").read_bytes())
+    assert rec["cpu_budget_reason"] == "exempt: DEC-25"
+    assert rec["over_cpu_budget"] is False  # kept: the fixture's clustering is far under 300 CPU-minutes
+    others = {k: json.loads(v) for k, v in records(root).items() if k != f"stage={REL}/cluster.json"}
+    assert others and not any("cpu_budget_reason" in r for r in others.values())  # only clustering is exempt
+    check_equals_direct(direct, root)
+
+
+@pytest.mark.covers("B-36")
+def test_b36_a_profile_without_the_cap_writes_no_reason(built):
+    """The default build of this file (a profile without `cluster_cpu_min_max`): no record carries a reason."""
+    assert not any("cpu_budget_reason" in json.loads(v) for v in records(built).values())
