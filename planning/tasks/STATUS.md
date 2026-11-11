@@ -17,6 +17,21 @@ passed on the integration branch.
 - Held: W-13, until W-03 merges (same search files). E-07 waits for PI card 0-08.
 - Then: the merge to `main`; then pull the image by digest; then the 50 Gbp build.
 
+### 10 Gbp rebuild, 18:20 CST
+
+- Phase 1 is done: releases `rN.1a`, `rN.1b`, `rN.1` in `/tmp/if2453/r10/root` on the pod, all verified
+  (problems `[]`). `rN.1` equals `rL.3` in every gene, protein, IGR and cluster row (12,048,866 genes,
+  10,620,684 proteins, 2,966,200 NR50, 8,278,537 NR90; *measured*, branch `build/r10`,
+  `planning/measurements/2026-11-10_rebuild_10gbp.md`). No Pfam yet. Built with the tree at `740d049`.
+- Phase 2 (Pfam 38.2, about 103 shards, about 443 CPU-hours, *derived*) started at 18:14 CST under unit
+  `r10-p2-driver`: 16 threads by day, 32 from 20:00 to 06:30; expected to end about Wednesday midday,
+  then about 2.5 h for the `rN.2` clustering. State is under `/tmp/if2453/r10/phase2/`: `driver.log`,
+  then `DONE` or `FAILED`; `touch HALT` there stops it before its next launch; launching the driver
+  again resumes. Its STOP-based switch of the shard count first runs at 20:00 and is untested.
+- Not yet synced to `/stor`. `build/r10` is pushed but not merged into `plan/task-cards`.
+- Found: cards B-35 (`partners_of` 12 times slower than the query it replaced), B-36 (clustering
+  2,195.9 CPU-minutes in one process; PI decision), C-14 (runbook), C-15 (peak memory in run records).
+
 ## State at about 11:30 CST
 
 The session continued after the handoff below was written (its clock time was wrong: it was
@@ -94,7 +109,7 @@ Last full suite on the integration branch before the C-11 merge: 1,053 passed, 1
 pinned image; 3 min 40 s wall for the slowest shard, against 13.5 min in one process). The skips
 need samtools, bgzip, Prodigal or the golden set. Tests no longer run on the laptop (AGENTS.md §5.5).
 
-## Merged (67 cards)
+## Merged (69 cards)
 
 | Card | Merge | What it did | Audit notes |
 |---|---|---|---|
@@ -164,6 +179,8 @@ need samtools, bgzip, Prodigal or the golden set. Tests no longer run on the lap
 | E-01 | this merge | ncRNA producer: Infernal `cmsearch` with Rfam at the fixed Z, hits at or above GA become `feature` rows (producer `infernal-1.1.5-rfam-15.1`) and `l1_ncrna` rows; `bio-box stage ncrna` | Oracle: the `cmsearch` binary's own table, parsed separately. A hit across the origin of a circular contig is found once. Byte-identical at 1 and 4 threads. **Cost: 1,319 bases per CPU-second with full Rfam: about 2,100 CPU-hours for 10 Gbp, five times Pfam** (*derived*). Keeps every overlapping hit (seven rRNA models on one operon): PI card 0-08. Not in `build-stage` and not sharded: card E-07 |
 | C-12 | this merge | `build-stage` rechecks the hour's thread allowance every 60 s while shards run; two steps publishing at once are serialized by a lock in `run-step`; a shard whose scratch run is lost is rescanned alone (`python -m biobox.l1.domains rescan`); `pod_run.sh` sets the unit's CPU quota to the night cap | Tests inject the clock: a build that crosses from night to day never has more threads in flight than the hour allows. Both publish orders pass on the `copytree` and `rsync` paths. A build with one shard's scratch deleted ends byte-identical. `tests/r2/test_build_stage.py` now takes about 15 minutes on the pod (*measured*, agent's run) |
 | W-03 | this merge | The search pack and search runs live outside the data root: packs at `<pack-dir>/release=<R>/<pack_id>/`, runs in `--runs`; with a profile the defaults are `<tmp>/packs` and `<tmp>/search/<user>/{runs,work}`. A pack is never overwritten; a second build is a no-op. `run_index.json` is gone | A full search (pack verify, run, status, hits, `nbr`) against a read-only root leaves every file's sha256 unchanged. A pack, run or work directory under the root is refused. Two pack builds are byte-identical. The fixture pack is 2.1 MB (*measured*); about 3.4 GB at 10 Gbp (*derived*, `planning/measurements/2026-11-10_search_pack_size.md`). `RUNBOOK.md` is not yet updated: card W-13. Old runs and packs under `<root>/search` and `<root>/search_pack` on the pod are no longer read; removing them is the PI's call |
+| C-13 | `b23839b` | Seven defects from the first real build: each step has its own scratch directory, removed before a new attempt; `run-step` and `build-stage` lines are timestamped and line-buffered; `pod_run.sh` writes its exit line after a stop and runs Python unbuffered; `bio-box release verify`; Pfam rate constant 7.96 CPU-min per M residues (*measured*, C-10); a fixed ingest term 0.07 CPU-min (*measured*, C-10); a test for `STOP` inside a step | Pod suite 1,172 passed, 12 skipped. Shards are now planned at 30,150,753 residues (*derived*: 300 × 0.8 / 7.96). The `STOP` test passed on first run (it tests the existing rule). Not run in a real pod unit by this card; W-13 confirmed the exit line under systemd |
+| W-13 | this merge | A `search run --wait` writes the pending record, so `search status` and `search cancel` work from another shell; `search run` without `--wait` inside a `pod_run.sh` unit is refused (exit 2), because the unit is `Type=simple`, `KillMode=control-group` and systemd kills a detached runner when the main process exits (*measured*, wilkcomp02); `RUNBOOK.md` brought up to date with W-03 | Pod suite 1,183 passed, 12 skipped. On the pod (units `w13-*`): status showed `running`, cancel ended the run `stopped`, and a unit stopped with `systemctl` ended its log with `received SIGTERM` and the exit line. The two long runs used the test hook `--fault timeout` |
 
 Decisions DEC-18 to DEC-23 were approved by the PI on 2026-11-09 and are in `planning/DECISIONS.md`.
 
@@ -189,9 +206,9 @@ The thread cap is the sum over all our processes: 40 by day, 56 at night.
 
 | Card | Model | State |
 |---|---|---|
-| C-13 defects from the first real build | Opus | **merged 2026-11-10** (68 cards; pod suite 1,172 passed, 12 skipped): per-step scratch, timestamped line-buffered logs, `pod_run.sh` exit line after a stop, `bio-box release verify`, Pfam rate 7.96, ingest constant, STOP mid-step test. Not run in a real pod unit; W-13 checks the exit line under systemd. Row in the merged table still to write |
-| W-13 search under a pod unit; runbook update for W-03 | Opus | **reported done, not merged**: `task/W-13` at `d3b1dac`, pushed; its own suite 1,183 passed, 12 skipped; pod acceptance run (units `w13-*`): status sees a `--wait` run, `search cancel` ends it `stopped`, a stopped unit's log ends with the exit line. `search run` without `--wait` in a `pod_run.sh` unit is refused (exit 2). Next: audit, merge, integration suite |
-| Merge order note | | A first merge of `task/B-30` into `plan/task-cards` at `1540202` conflicted in `src/biobox/cli.py` and `src/biobox/stage.py` (against C-13 and W-03) and was aborted. Merge W-13 first (it is built on both), then have the B-30 agent merge `plan/task-cards` into `task/B-30`, resolve, and rerun its suite |
+| B-30 (continued) | Opus | Its first merge conflicted in `cli.py` and `stage.py` against C-13 and W-03; the agent is merging `plan/task-cards` and W-13 into `task/B-30` and rerunning its suite |
+| C-15 peak memory in run records | Opus | started 2026-11-10 |
+| B-35 `partners_of` pruning | Opus | started 2026-11-10 |
 | B-30 ingest by batch processes | Opus | **reported done, not merged**: `task/B-30` at `1db6817`, pushed; its own suite 1,163 passed, 12 skipped; built before W-03 and C-13 merged. Next: audit, merge, integration suite. Batch build equals single-process file for file; on the 1,000× stage the largest process used 0.248 CPU-min and the batch path costs 33% more CPU in total (*measured*, agent's run). Open from its report: run records' peak RSS reads 344 MB for every step (looks inherited from the parent; a `run-step` defect, needs a card); pass-1 shards are cut at the whole-ingest rate |
 | 10 Gbp rebuild with `build-stage` (not a card; branch `build/r10`, pod root `/tmp/if2453/r10`) | Opus | started 2026-11-10 |
 
