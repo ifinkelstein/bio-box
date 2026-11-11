@@ -525,6 +525,13 @@ Why: DEC-24 clusters every release from scratch; at 95 M proteins the single pro
 Design question for a stronger model or the PI before any code: which MMseqs2 modules replace the `linclust`/`cluster` workflow call (`prefilter`, `align`, `clust`, with `--split` or database splits), how the splits are made a pure function of the sorted input, and whether the result is byte-identical to the workflow's at any split count. Write the answer as a short design note with a measurement on the 2.05 M-protein stage; if the result is not identical, stop: that needs a new decision.
 Accept (for the implementing card): the split build equals the single-process build row for row on the fixture and on the 2.05 M stage; every process's run record is under 300 CPU-minutes; then remove the DEC-25 exemption.
 
+### B-38 `partners_of` is slow with many anchors
+**M** · Depends: B-35 (which fixed the counting, not the time)
+Files: `src/biobox/catalog.py` (the neighbour lookups), tests
+Evidence (*measured*, wilkcomp02, 2026-11-10): on `rN.1` (10 Gbp, 93 `tape_tokens` row groups) `partners_of` for 3,509 anchors took 9.5 s and made 556 row-group reads, against 0.47 to 0.80 s for the ladder's hand-written query with the same 21,034 pairs (`r10_queries.py`). On `rN.1b`, 1,146 anchor contigs took 0.804 s for 26 row groups (B-35 probe). B-35 showed the lookup reads the right row groups (at most min(contigs, row groups)); the cost is that its 32-row-group cache is smaller than the table, so row groups are read again, and that whole row groups are decoded in Python.
+Do: reproduce on a synthetic store with more `tape_tokens` row groups than the cache holds, with `profile_query` (`row_groups_read` now counts re-reads). Then make a many-anchor query read each row group at most once (visit anchors in row-group order, or size the cache to the query within a stated memory bound), and compare the time with the plain SQL join on the same store; if the join is faster above some anchor count, use it there and say where the switch is. Bounded memory (AGENTS §4.1): state the bound.
+Accept: the reproduction fails first; no row group is read twice in one query; on the 100× store the many-anchor query is no slower than the join; results equal the B-35 oracle.
+
 ### C-09 The file-size rule does not refuse small release records
 **L** · Depends: C-08 (found in its report) · blocks the second release under C-04
 Files: `src/biobox/contracts.py` (`check_file_sizes`), `src/biobox/registry/schemas.py` (a `small_ok` flag on `ArtifactSpec` if it lacks one), `tests/r2/test_micro_s0_contracts.py`, `tests/registry/operations.yaml` (drop `catalog` and `release_manifest` from `external` if R0 accepts it)
