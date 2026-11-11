@@ -17,6 +17,7 @@ cmsearch output: rRNA, tRNA, housekeeping (tmRNA, RNase P, SRP, 6S), riboswitch 
 from __future__ import annotations
 
 import json
+import re
 import sys
 from collections import defaultdict
 from pathlib import Path
@@ -32,10 +33,26 @@ VARIANTS = {  # option: (runs, fasta maps)
     "igr_m0_default": (["igr_m0_default"], ["igr_m0"]),
     "igr_m50_default": (["igr_m50_default"], ["igr_m50"]),
     "igr_m200_default": (["igr_m200_default"], ["igr_m200"]),
-    "igr_m0_rfam": (["igr_m0_rfam"], ["igr_m0"]),
-    "igr_m50_rfam": (["igr_m50_rfam"], ["igr_m50"]),
-    "igr_m200_rfam": (["igr_m200_rfam"], ["igr_m200"]),
+    "wgB_hmmonly": (["wgB_hmmonly"], ["wg_B"]),  # truth restricted to batch B's genomes below
+    "igr_m0_notrunc": (["igr_m0_notrunc"], ["igr_m0"]),
+    "igr_m200_notrunc": (["igr_m200_notrunc"], ["igr_m200"]),
 }
+_RES = re.compile(r"\((\d+) residues")
+
+
+def residues(out_path: Path) -> dict:
+    """Residues cmsearch searched over all models (both strands), and those re-searched for truncated hits,
+    summed from its per-model pipeline statistics."""
+    main = trunc = 0
+    with open(out_path, errors="replace") as fh:
+        for line in fh:
+            if line.startswith("Target sequences:"):
+                m = _RES.search(line)
+                main += int(m.group(1)) if m else 0
+            elif line.startswith("Target sequences re-searched for truncated hits:"):
+                m = _RES.search(line)
+                trunc += int(m.group(1)) if m else 0
+    return {"residues_searched": main, "residues_trunc_researched": trunc}
 
 
 def rna_class(name: str, desc: str) -> str:
@@ -70,6 +87,16 @@ def main(mdir: Path, out: Path) -> None:
     res = {"genome_bases": genome_bases, "runs": {}, "options": {}, "missing": []}
     for name, r in runs.items():
         res["runs"][name] = {k: r[k] for k in ("wall_s", "cpu_min", "peak_rss_mib", "exit_code", "started_at")}
+        res["runs"][name]["extra_flags"] = [a for a in r["argv"] if a in ("--rfam", "--hmmonly", "--notrunc")]
+        o = mdir / "out" / f"{name}.out"
+        if o.exists() and r["argv"][0] == "cmsearch":
+            res["runs"][name].update(residues(o))
+            fa = Path(r["argv"][-1])
+            mp = fa.with_name(fa.name[:-4] + ".map.json")
+            if mp.exists():
+                d = json.loads(mp.read_text())
+                res["runs"][name]["records"] = d.get("records", len(d["map"]))
+                res["runs"][name]["bases_searched"] = d.get("bases_searched")
     tdir = mdir / "out" / "merged"
     tdir.mkdir(exist_ok=True)
     for opt, (rnames, maps) in VARIANTS.items():
@@ -101,6 +128,10 @@ def main(mdir: Path, out: Path) -> None:
                 tp = tdir / "wg_default_panel20.hits.jsonl"
                 tp.write_text("".join(x + "\n" for x in truth.read_text().splitlines()
                                       if json.loads(x)["acc"] in panel))
+                truth = tp
+            if opt == "wgB_hmmonly":
+                tp = tdir / "wg_default_B.hits.jsonl"
+                tp.write_text((mdir / "out" / "wgB_default.hits.jsonl").read_text())
                 truth = tp
             if opt == "wg_subset":
                 keys = set((mdir / "lib" / "subset.keys").read_text().split())
@@ -157,7 +188,7 @@ def main(mdir: Path, out: Path) -> None:
         clen_sum = sum(cl for (_, _, cl) in pm)
         res["per_model"]["clen_sum"] = clen_sum
     # spike-ins
-    for v in ("default", "rfam"):
+    for v in ("default", "rfam", "hmmonly"):
         p = mdir / "out" / f"g04_{v}.score.json"
         if p.exists() and p.read_text().strip():
             res[f"g04_{v}"] = json.loads(p.read_text())

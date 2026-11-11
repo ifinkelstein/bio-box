@@ -142,8 +142,24 @@ case "$LANE" in
   scan igr_m50_rfam "$CM" "$M/fa/igr_m50" --rfam
   scan igr_m0_rfam "$CM" "$M/fa/igr_m0" --rfam
   ;;
+3)
+  # second plan, after wgB_rfam showed --rfam identical to the default at Z = 1e5 (every filter-stage count of
+  # every model and every hit): lane 2 was stopped while it waited, and its --rfam jobs were dropped
+  scan wgAll_panel20 "$G04/panel.cm" "$M/fa/wg_all"
+  scan wgB_hmmonly "$CM" "$M/fa/wg_B" --hmmonly
+  scan g04_hmmonly "$G04/panel.cm" "$G04/region" --hmmonly
+  img python "$BIN/infernal_spikein.py" score "$TREE" "$G04" "$M/out/g04_hmmonly.hits.jsonl" \
+    > "$M/out/g04_hmmonly.score.json" 2>> "$M/logs/g04_score.log"
+  wait_for "$M/lib/subset.cm"
+  scan wgB_subset "$M/lib/subset.cm" "$M/fa/wg_B"
+  ;;
+4)
+  # replaces lane 1's igr_m200_rfam (stopped at its start): intergenic without the truncated-hit re-search
+  scan igr_m0_notrunc "$CM" "$M/fa/igr_m0" --notrunc
+  scan igr_m200_notrunc "$CM" "$M/fa/igr_m200" --notrunc
+  ;;
 *)
-  echo "lane 1 or 2" >&2
+  echo "lane 1 to 4" >&2
   exit 2
   ;;
 esac
