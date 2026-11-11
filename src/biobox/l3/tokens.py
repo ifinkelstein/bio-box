@@ -2,8 +2,9 @@
 
 Tapes carry stable keys (`protein_uid`); a release maps each slot to tokens at three levels:
 
-    family  the canonical domain of the protein: the first library in `libraries` order with
-            an included domain, and in it the domain with the highest bitscore (ties: model
+    family  the model of each included domain of the protein (card B-21); `tape_tokens` holds one
+            per slot, the canonical domain: the first library in `libraries` order with an
+            included domain, and in it the domain with the highest bitscore (ties: model
             accession, then envelope start)
     nr50    the protein's NR50 cluster in this release
     nr90    the protein's NR90 cluster in this release
@@ -14,12 +15,18 @@ S5, so the release line starts wide. Source is the library's 1-based position in
 `libraries` for family tokens and 0 for clusters; local is the rank of the key within
 (level, source) among the keys that occur on at least one slot, in ascending string order of the
 key (the model accession for families, the cluster uid as lowercase hex for clusters), so ids are
-dense and reproducible but release-local (never a join key outside the release).
+dense and reproducible but release-local (never a join key outside the release). A family key
+occurs on a slot when the slot's protein has an included domain of the model, canonical or not
+(card B-21: `biobox.l3.postings` writes one family posting per included domain, and
+`fusions_of` finds two families on one slot), so new family keys never move a cluster token.
 
 Writes, under `<root>/l3/`, through `biobox.io.write_table`:
 
     token_dict/release=<R>/part-<k>.parquet                     token_id -> level, source, key, n_slots
     tape_tokens/tape_version=<tv>/release=<R>/part-<k>.parquet  per contig: one list per level
+
+`n_slots` is the number of slots that carry the token: for a cluster, the slots of its members;
+for a family, the slots whose protein has at least one included domain of the model.
 
 `token_dict` is sorted by `token_id`, which readers rely on (the reverse lookup token -> key prunes on
 it); within each (level, source) the rows are then in key order, so its row groups carry min/max
@@ -33,7 +40,9 @@ three empty lists.
 
 Bounded memory (AGENTS §4.1): one DuckDB connection (`DUCK_MEMORY_LIMIT`, one thread, spilling
 into a private scratch directory) unnests the tapes' `protein_uids` with their ordinals, joins them
-to the canonical families and the clusters, ranks the keys and aggregates the tokens back into one
+to the canonical families and the clusters, counts the slots of every model with a domain on them (a
+join of the slots to the distinct (protein, library, model) of the domains), ranks the keys and
+aggregates the tokens back into one
 list per tape; the results stream through `io.duck_batches` into `io.write_table`. A row group of
 `tape_tokens` holds whole contigs and at most `max_slots` slots (AGENTS §4.6). The list aggregate
 collects (ordinal, tokens) structs and sorts them per tape: DuckDB spills an unordered `list()` but
@@ -194,9 +203,10 @@ def run(root: Path, release: str, stages: list[str], gene_call_version: str = GE
     for rank, lib in enumerate(libraries):  # a library listed twice: its first position wins, as its rank is smaller
         files = _domain_files(root, lib, stages)
         if files:
-            dom_parts.append(_scan(files, f"{rank} AS rank, protein_uid, model_acc, dom_bitscore, env_start", ""))
+            dom_parts.append(_scan(files, f"{rank} AS rank, {_sql_str(lib)} AS lib, protein_uid, model_acc, "
+                                          "dom_bitscore, env_start", ""))
     doms = " UNION ALL ".join(f"SELECT * FROM {p}" for p in dom_parts) or (
-        "SELECT NULL::INTEGER AS rank, NULL::BLOB AS protein_uid, NULL::VARCHAR AS model_acc, "
+        "SELECT NULL::INTEGER AS rank, NULL::VARCHAR AS lib, NULL::BLOB AS protein_uid, NULL::VARCHAR AS model_acc, "
         "NULL::FLOAT AS dom_bitscore, NULL::UINTEGER AS env_start WHERE false")
     cdir = root / f"l2/cluster_member/release={release}"
     clusters = _scan(io.part_files(cdir), "member_uid, level, cluster_uid",
@@ -217,12 +227,16 @@ def run(root: Path, release: str, stages: list[str], gene_call_version: str = GE
         con.execute(f"CREATE VIEW fam AS SELECT protein_uid, arg_min({{'src': rank + 1, 'acc': model_acc}}, "
                     f"{{'r': rank, 'b': -dom_bitscore, 'a': model_acc, 'e': env_start}}) AS f FROM ({doms}) "
                     "GROUP BY protein_uid")
+        # every model with an included domain on a protein, once per protein (card B-21); a library listed twice
+        # takes its first position, as the canonical family does
+        con.execute(f"CREATE VIEW dom_models AS SELECT protein_uid, min(rank) + 1 AS src, model_acc FROM ({doms}) "
+                    "GROUP BY protein_uid, lib, model_acc")
         # cluster of a protein at a level (one row by the primary key; were there more, the last in file order)
         con.execute(f"CREATE VIEW cl AS SELECT member_uid, level, arg_max(cluster_uid, {{'f': fidx, 'r': rn}}) AS c "
                     f"FROM {clusters} WHERE level IN ('nr50', 'nr90') GROUP BY member_uid, level")
         # one row per slot (ord 1-based), or one with a null ord for a tape without slots
         con.execute(
-            "COPY (SELECT t.fidx, t.rn, t.contig_uid, CASE WHEN t.n > 0 THEN u.ord END AS ord, "
+            "COPY (SELECT t.fidx, t.rn, t.contig_uid, CASE WHEN t.n > 0 THEN u.ord END AS ord, u.pu, "
             "f.f.src AS fam_src, f.f.acc AS fam_key, lower(hex(c50.c)) AS nr50_key, lower(hex(c90.c)) AS nr90_key "
             "FROM (SELECT fidx, rn, contig_uid, len(protein_uids) AS n, "
             "      CASE WHEN len(protein_uids) = 0 THEN [NULL::BLOB] ELSE protein_uids END AS pus FROM tapes) t "
@@ -231,13 +245,15 @@ def run(root: Path, release: str, stages: list[str], gene_call_version: str = GE
             "LEFT JOIN cl c50 ON c50.member_uid = u.pu AND c50.level = 'nr50' "
             "LEFT JOIN cl c90 ON c90.member_uid = u.pu AND c90.level = 'nr90') "
             f"TO {slots} (FORMAT parquet, COMPRESSION zstd)")
-        # the keys that occur on a slot, ranked within (level, source)
+        # the keys that occur on a slot, ranked within (level, source): a family by any included domain of the
+        # slot's protein (card B-21), a cluster by its members
         con.execute(
             "COPY (SELECT lv, src, key, n_slots, local, (lv::UBIGINT << 61) | (src::UBIGINT << 56) | local::UBIGINT "
             "AS token_id FROM ("
             "  SELECT lv, src, key, count(*) AS n_slots, "
             "  row_number() OVER (PARTITION BY lv, src ORDER BY key) - 1 AS local FROM ("
-            f"    SELECT {lv_fam} AS lv, fam_src AS src, fam_key AS key FROM read_parquet({slots}) WHERE fam_key IS NOT NULL"
+            f"    SELECT {lv_fam} AS lv, d.src, d.model_acc AS key FROM read_parquet({slots}) s "
+            "     JOIN dom_models d ON d.protein_uid = s.pu"
             f"    UNION ALL SELECT {lv_50}, 0, nr50_key FROM read_parquet({slots}) WHERE nr50_key IS NOT NULL"
             f"    UNION ALL SELECT {lv_90}, 0, nr90_key FROM read_parquet({slots}) WHERE nr90_key IS NOT NULL) "
             f"  GROUP BY lv, src, key)) TO {keys} (FORMAT parquet, COMPRESSION zstd)")
