@@ -1,0 +1,18 @@
+[survived] junction__mutmut_5
+    - if (ls <= rs and re_ <= le) or (rs <= ls and le <= re_):
+    + if (ls < rs and re_ <= le) or (rs <= ls and le <= re_):
+[survived] junction__mutmut_8
+    - if (ls <= rs and re_ <= le) or (rs <= ls and le <= re_):
+    + if (ls <= rs and re_ <= le) or (rs < ls and le <= re_):
+[survived] junction__mutmut_9
+    - if (ls <= rs and re_ <= le) or (rs <= ls and le <= re_):
+    + if (ls <= rs and re_ <= le) or (rs <= ls and le < re_):
+[survived] cyclic_offset__mutmut_6
+    - return d if d <= n - d else d - n
+    + return d if d < n - d else d - n
+[survived] pair_geometry__mutmut_2
+    - if offset > 0:
+    + if offset >= 0:
+[survived] pair_geometry__mutmut_7
+    - crosses = circular and j < i
+    + crosses = circular and j <= i

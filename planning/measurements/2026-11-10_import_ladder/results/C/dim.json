@@ -1,0 +1,16 @@
+{
+ "key": "C",
+ "step": "dim",
+ "stage": "P2",
+ "release": "rL.3",
+ "threads": 1,
+ "started_utc": "2026-11-10T10:05:10+00:00",
+ "result": {
+  "contigs": 32815,
+  "genomes": 29755,
+  "circular": 0
+ },
+ "error": null,
+ "inner_wall_s": 0.64,
+ "self_peak_rss_mb": 326.4
+}

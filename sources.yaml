@@ -1,0 +1,25 @@
+# Sequence sources an agent may fetch from (AGENTS.md §8). Only the URL forms listed here, with
+# the variable parts named in braces. No key, no email address and no identifying User-Agent is
+# sent in any request. Every fetched file is checked against the provider's own checksum and
+# recorded with a sha256 of our own.
+#
+# Approved by the PI on 2026-11-11 for the 50 Gbp build (planning/measurements/2026-11-11_r50_inputs.md).
+# The same endpoint was used for the import ladder's 2,497 genomes on 2026-11-09, before this
+# file existed.
+version: 1
+sources:
+  - name: ncbi_datasets_genome
+    what: genome assemblies as nucleotide FASTA, by assembly accession (GCA_/GCF_), batches of at most 20
+    url: https://api.ncbi.nlm.nih.gov/datasets/v2/genome/accession/{accessions}/download?include_annotation_type=GENOME_FASTA
+    checksum: md5sum.txt inside the returned archive
+    limits: one connection; at most 3 requests per second; stop after 5 refusals in a row (HTTP 403, 429, 503)
+    license: INSDC (public)
+    selection: planning/measurements/2026-11-11_r50_inputs/selection/all.tsv (GTDB R226, best complete genome per species)
+    used_by: [scripts/stress/build_stage_pod/r50_fetch.py]
+  - name: ncbi_ftp_genome
+    what: fallback for an assembly the Datasets endpoint does not return; the same FASTA by its FTP path
+    url: https://ftp.ncbi.nlm.nih.gov/genomes/all/{GCA_or_GCF}/{nnn}/{nnn}/{nnn}/{assembly_dir}/{assembly_dir}_genomic.fna.gz
+    checksum: md5checksums.txt in the same directory
+    limits: one connection; at most 3 requests per second
+    license: INSDC (public)
+    used_by: [scripts/stress/build_stage_pod/r50_fetch.py]

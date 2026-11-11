@@ -1,0 +1,27 @@
+{
+ "key": "C",
+ "step": "ingest",
+ "stage": "P2",
+ "release": "rL.3",
+ "threads": 1,
+ "started_utc": "2026-11-10T05:12:59+00:00",
+ "result": {
+  "objects": 2247,
+  "records": 5018,
+  "new_sequences": 5018,
+  "index_rows": 5018,
+  "shards": 9,
+  "objects_bytes": 9716599273,
+  "records_bp": 9596180328,
+  "records_counted": 5018,
+  "default_contigs": 5018,
+  "default_contig_bp": 9596180328,
+  "stored_sequences": 5018,
+  "stored_bp": 9596180328,
+  "shard_bytes": 2931665525,
+  "shard_index_bytes": 2823214
+ },
+ "error": null,
+ "inner_wall_s": 2594.14,
+ "self_peak_rss_mb": 1319.3
+}

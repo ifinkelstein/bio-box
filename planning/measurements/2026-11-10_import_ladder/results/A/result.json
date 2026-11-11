@@ -1,0 +1,1380 @@
+{
+ "key": "A",
+ "stage": "S1",
+ "release": "rL.1",
+ "steps": {
+  "ingest": {
+   "wall_s": 462.5,
+   "threads": 1,
+   "cpu_s": 461.0,
+   "user_s": 454.9,
+   "sys_s": 6.1,
+   "peak_rss_mb": 1903.9,
+   "cpu_min": 7.7,
+   "result": {
+    "objects": 1,
+    "records": 34076,
+    "new_sequences": 27258,
+    "index_rows": 27258,
+    "shards": 1,
+    "objects_bytes": 643340443,
+    "records_bp": 2084350440,
+    "records_counted": 34076,
+    "default_contigs": 27258,
+    "default_contig_bp": 1664109938,
+    "stored_sequences": 27258,
+    "stored_bp": 1664109938,
+    "shard_bytes": 516301753,
+    "shard_index_bytes": 2794158
+   },
+   "error": null,
+   "started": "2026-11-09T22:05:54",
+   "finished": "2026-11-09T22:13:37"
+  },
+  "genome_input": {
+   "wall_s": 3.7,
+   "threads": 1,
+   "cpu_s": 4.0,
+   "user_s": 2.3,
+   "sys_s": 1.7,
+   "peak_rss_mb": 325.9,
+   "cpu_min": 0.1,
+   "result": {
+    "genomes": 27258,
+    "contigs": 27258,
+    "kind": "virus",
+    "genetic_code": 11,
+    "circular": 0,
+    "note": "every INPHARED record its own genome; topology unknown, all linear",
+    "bp": 1664109938
+   },
+   "error": null,
+   "started": "2026-11-09T22:13:37",
+   "finished": "2026-11-09T22:13:41"
+  },
+  "genecall": {
+   "wall_s": 977.0,
+   "threads": 16,
+   "cpu_s": 9328.3,
+   "user_s": 9317.1,
+   "sys_s": 11.2,
+   "peak_rss_mb": 1672.6,
+   "cpu_min": 155.5,
+   "result": {
+    "genes": 2398087,
+    "distinct_proteins": 1134550,
+    "modes": [
+     "gv-meta"
+    ],
+    "wrapping_genes": 0,
+    "workers": 16,
+    "bp_called": 1664109938,
+    "residues": 271831237,
+    "protein_seq_files": 1
+   },
+   "error": null,
+   "started": "2026-11-09T22:13:41",
+   "finished": "2026-11-09T22:29:58"
+  },
+  "igr": {
+   "wall_s": 15.4,
+   "threads": 1,
+   "cpu_s": 16.1,
+   "user_s": 12.3,
+   "sys_s": 3.8,
+   "peak_rss_mb": 987.2,
+   "cpu_min": 0.3,
+   "result": {
+    "igrs": 1542772,
+    "igrs_ge_30": 939283,
+    "bp": 152370894
+   },
+   "error": null,
+   "started": "2026-11-09T22:29:58",
+   "finished": "2026-11-09T22:30:13"
+  },
+  "tapes": {
+   "wall_s": 22.7,
+   "threads": 1,
+   "cpu_s": 23.4,
+   "user_s": 18.7,
+   "sys_s": 4.7,
+   "peak_rss_mb": 1557.5,
+   "cpu_min": 0.4,
+   "result": {
+    "contigs": 27258,
+    "slots": 2398087,
+    "files": 1,
+    "tape_version": "t-ca596dd85040"
+   },
+   "error": null,
+   "started": "2026-11-09T22:30:13",
+   "finished": "2026-11-09T22:30:36"
+  },
+  "cluster": {
+   "wall_s": 473.5,
+   "threads": 16,
+   "cpu_s": 5256.5,
+   "user_s": 5153.2,
+   "sys_s": 103.3,
+   "peak_rss_mb": 5351.6,
+   "cpu_min": 87.6,
+   "result": {
+    "proteins": 1134550,
+    "clusters": {
+     "nr90": 534101,
+     "nr50": 297082
+    },
+    "aligned": {
+     "nr90": 1134550,
+     "nr50": 1134550
+    },
+    "threads": 16,
+    "protein_seq_files_read": [
+     "l0seq/protein_seq/gene_call_version=pyrodigal-3.7.1-gv-0.3.2-p2/stage=S1/protein_prefix=all/part-0.parquet"
+    ]
+   },
+   "error": null,
+   "started": "2026-11-09T22:30:36",
+   "finished": "2026-11-09T22:38:29"
+  },
+  "domains": {
+   "wall_s": 5.4,
+   "threads": 1,
+   "cpu_s": 7.2,
+   "user_s": 4.4,
+   "sys_s": 2.8,
+   "peak_rss_mb": 658.1,
+   "cpu_min": 0.1,
+   "result": {
+    "new_distinct": 1134550,
+    "pilot_distinct": 1134550,
+    "only_new": 0,
+    "only_pilot": 0,
+    "equal": true,
+    "copied": "l1/domains/library=pfam-38.2/stage=S1/part-0.parquet",
+    "sha256": "633cb3a007d8b06ab5d87e09181c1bae6f3077b6ed01c27bd3b962aaa3ea9272",
+    "pilot_sha256": "633cb3a007d8b06ab5d87e09181c1bae6f3077b6ed01c27bd3b962aaa3ea9272",
+    "rows": 605564,
+    "proteins_with_hit": 436807,
+    "ledger": "ledger/stage=S1/step=domains-pfam-38.2/part-0.parquet",
+    "ledger_rows_equal_pilot": true,
+    "balance": [],
+    "chain": []
+   },
+   "error": null,
+   "started": "2026-11-09T22:38:29",
+   "finished": "2026-11-09T22:38:35"
+  },
+  "tokens": {
+   "wall_s": 21.2,
+   "threads": 1,
+   "cpu_s": 21.8,
+   "user_s": 17.3,
+   "sys_s": 4.5,
+   "peak_rss_mb": 1299.2,
+   "cpu_min": 0.4,
+   "result": {
+    "tokens": {
+     "family": 5402,
+     "nr50": 297082,
+     "nr90": 534101
+    },
+    "contigs": 27258,
+    "files": 2,
+    "libraries": [
+     "pfam-38.2"
+    ],
+    "domain_files": [
+     "l1/domains/library=pfam-38.2/stage=S1/part-0.parquet"
+    ]
+   },
+   "error": null,
+   "started": "2026-11-09T22:38:35",
+   "finished": "2026-11-09T22:38:56"
+  },
+  "postings": {
+   "wall_s": 20.0,
+   "threads": 1,
+   "cpu_s": 20.5,
+   "user_s": 17.0,
+   "sys_s": 3.5,
+   "peak_rss_mb": 1353.3,
+   "cpu_min": 0.3,
+   "result": {
+    "rows": 5737436,
+    "rows_by_level": {
+     "family": 941262,
+     "nr50": 2398087,
+     "nr90": 2398087
+    },
+    "buckets": 1,
+    "files": 1,
+    "tape_version": "t-ca596dd85040"
+   },
+   "error": null,
+   "started": "2026-11-09T22:38:56",
+   "finished": "2026-11-09T22:39:16"
+  },
+  "dim": {
+   "wall_s": 3.9,
+   "threads": 1,
+   "cpu_s": 4.3,
+   "user_s": 2.2,
+   "sys_s": 2.0,
+   "peak_rss_mb": 326.4,
+   "cpu_min": 0.1,
+   "result": {
+    "contigs": 27258,
+    "genomes": 27258,
+    "circular": 0
+   },
+   "error": null,
+   "started": "2026-11-09T22:39:16",
+   "finished": "2026-11-09T22:39:20"
+  },
+  "catalog": {
+   "wall_s": 17.6,
+   "threads": 1,
+   "cpu_s": 16.3,
+   "user_s": 13.3,
+   "sys_s": 3.0,
+   "peak_rss_mb": 421.0,
+   "cpu_min": 0.3,
+   "result": {
+    "manifest": "/tmp/if2453/ladder/root/manifests/release=rL.1.json",
+    "manifest_hash": "d39408853bcf25bbabf4e751b64f1a5e",
+    "catalog": "/tmp/if2453/ladder/root/catalog/release=rL.1.duckdb",
+    "catalog_bytes": 1060864,
+    "files": 25,
+    "artifacts": 3,
+    "total_bytes": 1623256748,
+    "verify_problems": [],
+    "times_s": {
+     "build_manifest": 6.37,
+     "write_manifest": 0.0,
+     "generate_catalog": 2.55,
+     "verify_manifest": 5.84
+    },
+    "tables": {
+     "artifact:seq_shards": {
+      "files": 1,
+      "rows": 0,
+      "bytes": 516301753,
+      "row_groups": 0,
+      "new_files": 1,
+      "new_rows": 0,
+      "new_bytes": 516301753
+     },
+     "artifact:seq_shards.fai": {
+      "files": 1,
+      "rows": 0,
+      "bytes": 2380742,
+      "row_groups": 0,
+      "new_files": 1,
+      "new_rows": 0,
+      "new_bytes": 2380742
+     },
+     "artifact:seq_shards.gzi": {
+      "files": 1,
+      "rows": 0,
+      "bytes": 413416,
+      "row_groups": 0,
+      "new_files": 1,
+      "new_rows": 0,
+      "new_bytes": 413416
+     },
+     "cluster_member": {
+      "files": 1,
+      "rows": 2269100,
+      "bytes": 70337946,
+      "row_groups": 19,
+      "new_files": 1,
+      "new_rows": 2269100,
+      "new_bytes": 70337946
+     },
+     "cluster_member_aln": {
+      "files": 1,
+      "rows": 2269100,
+      "bytes": 70437580,
+      "row_groups": 19,
+      "new_files": 1,
+      "new_rows": 2269100,
+      "new_bytes": 70437580
+     },
+     "contig_dim": {
+      "files": 1,
+      "rows": 27258,
+      "bytes": 1080405,
+      "row_groups": 1,
+      "new_files": 1,
+      "new_rows": 27258,
+      "new_bytes": 1080405
+     },
+     "contig_index": {
+      "files": 1,
+      "rows": 27258,
+      "bytes": 1515711,
+      "row_groups": 1,
+      "new_files": 1,
+      "new_rows": 27258,
+      "new_bytes": 1515711
+     },
+     "contig_occurrence": {
+      "files": 1,
+      "rows": 34076,
+      "bytes": 2106860,
+      "row_groups": 1,
+      "new_files": 1,
+      "new_rows": 34076,
+      "new_bytes": 2106860
+     },
+     "contig_tapes": {
+      "files": 1,
+      "rows": 27258,
+      "bytes": 102391530,
+      "row_groups": 19,
+      "new_files": 1,
+      "new_rows": 27258,
+      "new_bytes": 102391530
+     },
+     "feature": {
+      "files": 1,
+      "rows": 2398087,
+      "bytes": 59647199,
+      "row_groups": 20,
+      "new_files": 1,
+      "new_rows": 2398087,
+      "new_bytes": 59647199
+     },
+     "feature_protein": {
+      "files": 1,
+      "rows": 2398087,
+      "bytes": 97197988,
+      "row_groups": 20,
+      "new_files": 1,
+      "new_rows": 2398087,
+      "new_bytes": 97197988
+     },
+     "genome_input": {
+      "files": 1,
+      "rows": 27258,
+      "bytes": 973571,
+      "row_groups": 1,
+      "new_files": 1,
+      "new_rows": 27258,
+      "new_bytes": 973571
+     },
+     "igr": {
+      "files": 1,
+      "rows": 1542772,
+      "bytes": 67081784,
+      "row_groups": 13,
+      "new_files": 1,
+      "new_rows": 1542772,
+      "new_bytes": 67081784
+     },
+     "l0_manifest": {
+      "files": 1,
+      "rows": 1,
+      "bytes": 3018,
+      "row_groups": 1,
+      "new_files": 1,
+      "new_rows": 1,
+      "new_bytes": 3018
+     },
+     "l1_domains": {
+      "files": 1,
+      "rows": 605564,
+      "bytes": 32735851,
+      "row_groups": 5,
+      "new_files": 1,
+      "new_rows": 605564,
+      "new_bytes": 32735851
+     },
+     "ledger": {
+      "files": 5,
+      "rows": 54521,
+      "bytes": 1173900,
+      "row_groups": 5,
+      "new_files": 5,
+      "new_rows": 54521,
+      "new_bytes": 1173900
+     },
+     "protein_occurrence": {
+      "files": 1,
+      "rows": 2398087,
+      "bytes": 113970650,
+      "row_groups": 20,
+      "new_files": 1,
+      "new_rows": 2398087,
+      "new_bytes": 113970650
+     },
+     "protein_seq": {
+      "files": 1,
+      "rows": 1134550,
+      "bytes": 210324221,
+      "row_groups": 10,
+      "new_files": 1,
+      "new_rows": 1134550,
+      "new_bytes": 210324221
+     },
+     "seq_locator": {
+      "files": 1,
+      "rows": 27258,
+      "bytes": 1029679,
+      "row_groups": 1,
+      "new_files": 1,
+      "new_rows": 27258,
+      "new_bytes": 1029679
+     },
+     "slot_protein": {
+      "files": 1,
+      "rows": 2398087,
+      "bytes": 38574650,
+      "row_groups": 20,
+      "new_files": 1,
+      "new_rows": 2398087,
+      "new_bytes": 38574650
+     },
+     "tape_tokens": {
+      "files": 1,
+      "rows": 27258,
+      "bytes": 18329399,
+      "row_groups": 19,
+      "new_files": 1,
+      "new_rows": 27258,
+      "new_bytes": 18329399
+     },
+     "tape_version_def": {
+      "files": 1,
+      "rows": 1,
+      "bytes": 571,
+      "row_groups": 1,
+      "new_files": 1,
+      "new_rows": 1,
+      "new_bytes": 571
+     },
+     "token_dict": {
+      "files": 1,
+      "rows": 836585,
+      "bytes": 16605981,
+      "row_groups": 7,
+      "new_files": 1,
+      "new_rows": 836585,
+      "new_bytes": 16605981
+     },
+     "token_postings": {
+      "files": 1,
+      "rows": 5737436,
+      "bytes": 198642343,
+      "row_groups": 47,
+      "new_files": 1,
+      "new_rows": 5737436,
+      "new_bytes": 198642343
+     }
+    }
+   },
+   "error": null,
+   "started": "2026-11-09T22:39:20",
+   "finished": "2026-11-09T22:39:38"
+  },
+  "equiv": {
+   "wall_s": 33.9,
+   "threads": 1,
+   "cpu_s": 123.8,
+   "user_s": 109.7,
+   "sys_s": 14.1,
+   "peak_rss_mb": 2536.4,
+   "cpu_min": 2.1,
+   "result": {
+    "checks": [
+     {
+      "name": "seq_locator raw_digest,contig_len",
+      "columns": [
+       "raw_digest",
+       "contig_len"
+      ],
+      "pilot_rows": 27258,
+      "new_rows": 27258,
+      "only_pilot": 0,
+      "only_new": 0,
+      "equal": true
+     },
+     {
+      "name": "contig_index",
+      "columns": [
+       "contig_uid",
+       "raw_digest",
+       "contig_len",
+       "is_default_variant"
+      ],
+      "pilot_rows": 27258,
+      "new_rows": 27258,
+      "only_pilot": 0,
+      "only_new": 0,
+      "equal": true
+     },
+     {
+      "name": "contig_occurrence",
+      "columns": [
+       "source_uid",
+       "source_release",
+       "l0_object_sha256",
+       "record_ordinal",
+       "accession",
+       "original_header",
+       "raw_digest",
+       "contig_uid",
+       "line_width"
+      ],
+      "pilot_rows": 34076,
+      "new_rows": 34076,
+      "only_pilot": 0,
+      "only_new": 0,
+      "equal": true
+     },
+     {
+      "name": "genes: pilot protein_occurrence vs new feature_protein",
+      "columns": [
+       "contig_uid",
+       "start",
+       "end",
+       "strand",
+       "protein_uid"
+      ],
+      "pilot_rows": 2398087,
+      "new_rows": 2398087,
+      "only_pilot": 0,
+      "only_new": 0,
+      "equal": true
+     },
+     {
+      "name": "protein_occurrence (common columns)",
+      "columns": [
+       "protein_uid",
+       "contig_uid",
+       "slot_ordinal",
+       "genome_uid",
+       "start",
+       "end",
+       "strand",
+       "tax_order",
+       "is_species_rep",
+       "tier",
+       "assembly_quality",
+       "dist_to_contig_end_bp"
+      ],
+      "pilot_rows": 2398087,
+      "new_rows": 2398087,
+      "only_pilot": 0,
+      "only_new": 0,
+      "equal": true
+     },
+     {
+      "name": "slot_protein",
+      "columns": [
+       "contig_uid",
+       "slot_ordinal",
+       "protein_uid",
+       "genetic_code",
+       "edit_type"
+      ],
+      "pilot_rows": 2398087,
+      "new_rows": 2398087,
+      "only_pilot": 0,
+      "only_new": 0,
+      "equal": true
+     },
+     {
+      "name": "protein_seq",
+      "columns": [
+       "protein_uid",
+       "protein_digest",
+       "length",
+       "seq"
+      ],
+      "pilot_rows": 1134550,
+      "new_rows": 1134550,
+      "only_pilot": 0,
+      "only_new": 0,
+      "equal": true
+     },
+     {
+      "name": "igr (common columns)",
+      "columns": [
+       "contig_uid",
+       "start",
+       "end",
+       "strand",
+       "left_slot",
+       "right_slot"
+      ],
+      "pilot_rows": 1542772,
+      "new_rows": 1542772,
+      "only_pilot": 0,
+      "only_new": 0,
+      "equal": true
+     },
+     {
+      "name": "tapes (common columns, lists compared whole)",
+      "columns": [
+       "contig_uid",
+       "tax_order_bucket",
+       "genome_uid",
+       "contig_len",
+       "is_circular",
+       "n_slots",
+       "tier",
+       "assembly_quality",
+       "feature_kinds",
+       "strands",
+       "start_bps",
+       "end_bps",
+       "delta_bp_prev_slots",
+       "junction_topology_prevs",
+       "orfs_to_contig_starts",
+       "orfs_to_contig_ends",
+       "slot_flags",
+       "protein_uids"
+      ],
+      "pilot_rows": 27258,
+      "new_rows": 27258,
+      "only_pilot": 0,
+      "only_new": 0,
+      "equal": true
+     },
+     {
+      "name": "tape columns only in pilot / only in new",
+      "only_pilot": [],
+      "only_new": [
+       "feature_uids"
+      ]
+     },
+     {
+      "name": "cluster counts",
+      "pilot": {
+       "nr50": 297082,
+       "nr90": 534101
+      },
+      "new": {
+       "nr50": 297082,
+       "nr90": 534101
+      },
+      "equal": true
+     },
+     {
+      "name": "cluster_member membership",
+      "columns": [
+       "member_uid",
+       "level",
+       "cluster_uid",
+       "rep_uid",
+       "cluster_params_hash"
+      ],
+      "pilot_rows": 2269100,
+      "new_rows": 2269100,
+      "only_pilot": 0,
+      "only_new": 0,
+      "equal": true
+     },
+     {
+      "name": "cluster_member_aln",
+      "columns": [
+       "member_uid",
+       "level",
+       "rep_uid",
+       "qstart",
+       "qend",
+       "tstart",
+       "tend",
+       "pident",
+       "alnlen",
+       "cigar"
+      ],
+      "pilot_rows": 2269100,
+      "new_rows": 2269100,
+      "only_pilot": 0,
+      "only_new": 0,
+      "equal": true
+     },
+     {
+      "name": "token_dict (token_id, level, source, key, n_slots)",
+      "columns": [
+       "token_id",
+       "level",
+       "source",
+       "key",
+       "n_slots"
+      ],
+      "pilot_rows": 836585,
+      "new_rows": 836585,
+      "only_pilot": 0,
+      "only_new": 0,
+      "equal": true
+     },
+     {
+      "name": "tape_tokens",
+      "columns": [
+       "contig_uid",
+       "family_tokens",
+       "nr50_tokens",
+       "nr90_tokens"
+      ],
+      "pilot_rows": 27258,
+      "new_rows": 27258,
+      "only_pilot": 0,
+      "only_new": 0,
+      "equal": true
+     }
+    ],
+    "all_equal": true
+   },
+   "error": null,
+   "started": "2026-11-09T22:39:38",
+   "finished": "2026-11-09T22:40:11"
+  },
+  "queries": {
+   "wall_s": 6.1,
+   "threads": 1,
+   "cpu_s": 8.6,
+   "user_s": 5.7,
+   "sys_s": 2.9,
+   "peak_rss_mb": 505.0,
+   "cpu_min": 0.1,
+   "result": {
+    "release": "rL.1",
+    "seqstore_open_s": 0.0326,
+    "seqstore_rss_growth_mb": 7.4,
+    "open_catalog_s": 0.3816,
+    "open_catalog_rss_growth_mb": 9.7,
+    "rss_mb_after_open": 223.4,
+    "row_counts": {
+     "views": {
+      "cluster_member": {
+       "rows": 2269100,
+       "wall_s": 0.007
+      },
+      "cluster_member_aln": {
+       "rows": 2269100,
+       "wall_s": 0.002
+      },
+      "contig_dim": {
+       "rows": 27258,
+       "wall_s": 0.001
+      },
+      "contig_index": {
+       "rows": 27258,
+       "wall_s": 0.001
+      },
+      "contig_occurrence": {
+       "rows": 34076,
+       "wall_s": 0.001
+      },
+      "contig_tapes": {
+       "rows": 27258,
+       "wall_s": 0.003
+      },
+      "feature": {
+       "rows": 2398087,
+       "wall_s": 0.006
+      },
+      "feature_protein": {
+       "rows": 2398087,
+       "wall_s": 0.002
+      },
+      "genome_input": {
+       "rows": 27258,
+       "wall_s": 0.001
+      },
+      "igr": {
+       "rows": 1542772,
+       "wall_s": 0.002
+      },
+      "l0_manifest": {
+       "rows": 1,
+       "wall_s": 0.001
+      },
+      "l1_domains": {
+       "rows": 605564,
+       "wall_s": 0.002
+      },
+      "ledger": {
+       "rows": 54521,
+       "wall_s": 0.004
+      },
+      "protein_occurrence": {
+       "rows": 2398087,
+       "wall_s": 0.002
+      },
+      "protein_seq": {
+       "rows": 1134550,
+       "wall_s": 0.002
+      },
+      "seq_locator": {
+       "rows": 27258,
+       "wall_s": 0.001
+      },
+      "slot_protein": {
+       "rows": 2398087,
+       "wall_s": 0.002
+      },
+      "tape_tokens": {
+       "rows": 27258,
+       "wall_s": 0.002
+      },
+      "tape_version_def": {
+       "rows": 1,
+       "wall_s": 0.001
+      },
+      "token_dict": {
+       "rows": 836585,
+       "wall_s": 0.001
+      },
+      "token_postings": {
+       "rows": 5737436,
+       "wall_s": 0.003
+      }
+     },
+     "this_release": {
+      "cluster_member": 2269100,
+      "token_dict": 836585,
+      "tape_tokens": 27258,
+      "token_postings": 5737436,
+      "contig_dim": 27258
+     },
+     "wall_s": 0.07
+    },
+    "pick_genes_s": 0.18,
+    "seq_get_1000": {
+     "wall_s": 0.589,
+     "result": [
+      [
+       1000,
+       1640674
+      ]
+     ],
+     "expected_bp": 1640674,
+     "distinct_contigs": 963,
+     "scans": [
+      {
+       "files_read": 0,
+       "row_groups_scanned": 0,
+       "row_groups_total": 0,
+       "rows_scanned": 0
+      }
+     ],
+     "bytes_read": 0,
+     "bgzf": {
+      "blocks_read": 1005,
+      "compressed_bytes_read": 20086884,
+      "uncompressed_bytes_decoded": 65606400
+     },
+     "index": {
+      "locator_row_groups_read": 1,
+      "index_row_groups_read": 1
+     }
+    },
+    "seq_get_1000_warm": {
+     "wall_s": 0.477,
+     "scans": [
+      {
+       "files_read": 0,
+       "row_groups_scanned": 0,
+       "row_groups_total": 0,
+       "rows_scanned": 0
+      }
+     ],
+     "bytes_read": 0,
+     "bgzf": {
+      "blocks_read": 1005,
+      "compressed_bytes_read": 20086884,
+      "uncompressed_bytes_decoded": 65606400
+     },
+     "index": {
+      "locator_row_groups_read": 0,
+      "index_row_groups_read": 0
+     }
+    },
+    "tapes_of_one": {
+     "contig_uid": "ec8716a03c78057c76432c79c8e03829",
+     "wall_s": 0.043,
+     "result": [
+      [
+       1,
+       87,
+       87
+      ]
+     ],
+     "scans": [
+      {
+       "files_read": 1,
+       "row_groups_scanned": 1,
+       "row_groups_total": 19,
+       "rows_scanned": 1
+      },
+      {
+       "files_read": 0,
+       "row_groups_scanned": 1,
+       "row_groups_total": 1,
+       "rows_scanned": 4
+      },
+      {
+       "files_read": 1,
+       "row_groups_scanned": 1,
+       "row_groups_total": 19,
+       "rows_scanned": 1
+      }
+     ],
+     "bytes_read": 1218183,
+     "bgzf": {
+      "blocks_read": 0,
+      "compressed_bytes_read": 0,
+      "uncompressed_bytes_decoded": 0
+     },
+     "index": {
+      "locator_row_groups_read": 0,
+      "index_row_groups_read": 0
+     }
+    },
+    "postings_lookup_nr50": {
+     "token_id": 4611686018427448589,
+     "cluster_uid": "346053ced079f07e23eaf7d6f3a8612b",
+     "n_slots_dict": 2139,
+     "wall_s": 0.045,
+     "result": [
+      [
+       2139,
+       297911
+      ]
+     ],
+     "scans": [
+      {
+       "files_read": 1,
+       "row_groups_scanned": 1,
+       "row_groups_total": 47,
+       "rows_scanned": 2139
+      }
+     ],
+     "bytes_read": 505789,
+     "bgzf": {
+      "blocks_read": 0,
+      "compressed_bytes_read": 0,
+      "uncompressed_bytes_decoded": 0
+     },
+     "index": {
+      "locator_row_groups_read": 0,
+      "index_row_groups_read": 0
+     },
+     "rep_uid": "8dfbf498c92ad2986a5144393074d7d7",
+     "rep_pfam": [
+      [
+       "PF21241.3",
+       "UvsW_N",
+       1
+      ],
+      [
+       "PF11637.15",
+       "UvsW-1",
+       1
+      ],
+      [
+       "PF00270.36",
+       "DEAD",
+       1
+      ]
+     ]
+    },
+    "neighbours": [
+     {
+      "label": "terminase family PF03237.22 (Terminase_6N) -> family partners",
+      "token_id": 2377900603251623027,
+      "partner_level": "family",
+      "anchor_loci": 6200,
+      "anchor_contigs": 6002,
+      "loci_with_partner": 5939,
+      "pair_rows": 21002,
+      "wall_s": 0.089,
+      "top10_wall_s": 0.105,
+      "top10_partners": [
+       [
+        "PF11053.13",
+        1316
+       ],
+       [
+        "PF07230.17",
+        1280
+       ],
+       [
+        "PF16724.12",
+        1260
+       ],
+       [
+        "PF22639.3",
+        1061
+       ],
+       [
+        "PF11649.13",
+        1055
+       ],
+       [
+        "PF23849.3",
+        980
+       ],
+       [
+        "PF04860.18",
+        965
+       ],
+       [
+        "PF06074.19",
+        862
+       ],
+       [
+        "PF06841.19",
+        719
+       ],
+       [
+        "PF26848.1",
+        657
+       ]
+      ],
+      "scans": [
+       {
+        "files_read": 1,
+        "row_groups_scanned": 1,
+        "row_groups_total": 47,
+        "rows_scanned": 6200
+       },
+       {
+        "files_read": 1,
+        "row_groups_scanned": 8,
+        "row_groups_total": 47,
+        "rows_scanned": 481749
+       }
+      ],
+      "bytes_read": 7310036,
+      "bgzf": {
+       "blocks_read": 0,
+       "compressed_bytes_read": 0,
+       "uncompressed_bytes_decoded": 0
+      },
+      "index": {
+       "locator_row_groups_read": 0,
+       "index_row_groups_read": 0
+      }
+     },
+     {
+      "label": "terminase family PF03237.22 -> nr50 partners",
+      "token_id": 2377900603251623027,
+      "partner_level": "nr50",
+      "anchor_loci": 6200,
+      "anchor_contigs": 6002,
+      "loci_with_partner": 6200,
+      "pair_rows": 33476,
+      "wall_s": 0.124,
+      "top10_wall_s": 0.125,
+      "top10_partners": [
+       [
+        "6cf95b7c8a830df7d1ab2e718c2f4c2b",
+        1103
+       ],
+       [
+        "03970bbae10e33c9f71ae1b38c8da245",
+        931
+       ],
+       [
+        "a013655d35c9cd5330d3acc845a13737",
+        876
+       ],
+       [
+        "fea699e8c3f9ad219bae573ab920ebf0",
+        824
+       ],
+       [
+        "5949a659035db1edbd191af5405e18a0",
+        792
+       ],
+       [
+        "ae5475522e99e14ecb24b9f5b1dbc690",
+        763
+       ],
+       [
+        "fa5bd6fe44da174179faa1e40ad8cf7f",
+        336
+       ],
+       [
+        "a4fc57a89e53c194de609c8981e31922",
+        333
+       ],
+       [
+        "7c3fe6cd4c5b15e8eec8571d0245d111",
+        329
+       ],
+       [
+        "0817c015eb4518f5e0a71e9afaef3ea2",
+        324
+       ]
+      ],
+      "scans": [
+       {
+        "files_read": 1,
+        "row_groups_scanned": 1,
+        "row_groups_total": 47,
+        "rows_scanned": 6200
+       },
+       {
+        "files_read": 1,
+        "row_groups_scanned": 21,
+        "row_groups_total": 47,
+        "rows_scanned": 990926
+       }
+      ],
+      "bytes_read": 18549686,
+      "bgzf": {
+       "blocks_read": 0,
+       "compressed_bytes_read": 0,
+       "uncompressed_bytes_decoded": 0
+      },
+      "index": {
+       "locator_row_groups_read": 0,
+       "index_row_groups_read": 0
+      }
+     },
+     {
+      "label": "most abundant NR50 346053ced079f07e23eaf7d6f3a8612b -> nr50 partners",
+      "token_id": 4611686018427448589,
+      "partner_level": "nr50",
+      "anchor_loci": 2139,
+      "anchor_contigs": 1146,
+      "loci_with_partner": 2139,
+      "pair_rows": 12778,
+      "wall_s": 0.144,
+      "top10_wall_s": 0.124,
+      "top10_partners": [
+       [
+        "346053ced079f07e23eaf7d6f3a8612b",
+        1953
+       ],
+       [
+        "62bafe36d3b180b4e93500a8d6bc4f60",
+        1540
+       ],
+       [
+        "8166d7b44764c85585a7297fbe9e5bf0",
+        1523
+       ],
+       [
+        "9dab50dcd06fdc037a1b088ba7021dbb",
+        1029
+       ],
+       [
+        "755c594c1d0d1a7870ea851460e13102",
+        986
+       ],
+       [
+        "f12fc16c3dac90700aca6fa0933e4c60",
+        842
+       ],
+       [
+        "4ee5a2e638e9281912fe6fb9fced75ad",
+        369
+       ],
+       [
+        "2e2d7cfbff6387f985037a5437928faf",
+        335
+       ],
+       [
+        "cc3d9ace76959674c2fbff84e164110f",
+        285
+       ],
+       [
+        "5c4f4dbcd1c8bb601f689f2af37ddc0b",
+        257
+       ]
+      ],
+      "scans": [
+       {
+        "files_read": 1,
+        "row_groups_scanned": 1,
+        "row_groups_total": 47,
+        "rows_scanned": 2139
+       },
+       {
+        "files_read": 1,
+        "row_groups_scanned": 21,
+        "row_groups_total": 47,
+        "rows_scanned": 328024
+       }
+      ],
+      "bytes_read": 18602948,
+      "bgzf": {
+       "blocks_read": 0,
+       "compressed_bytes_read": 0,
+       "uncompressed_bytes_decoded": 0
+      },
+      "index": {
+       "locator_row_groups_read": 0,
+       "index_row_groups_read": 0
+      }
+     },
+     {
+      "label": "most abundant NR50 346053ced079f07e23eaf7d6f3a8612b -> family partners",
+      "token_id": 4611686018427448589,
+      "partner_level": "family",
+      "anchor_loci": 2139,
+      "anchor_contigs": 1146,
+      "loci_with_partner": 2138,
+      "pair_rows": 10283,
+      "wall_s": 0.064,
+      "top10_wall_s": 0.076,
+      "top10_partners": [
+       [
+        "PF10886.15",
+        2014
+       ],
+       [
+        "PF26098.2",
+        2004
+       ],
+       [
+        "PF11056.15",
+        1240
+       ],
+       [
+        "PF11637.15",
+        1055
+       ],
+       [
+        "PF26882.1",
+        1010
+       ],
+       [
+        "PF21241.3",
+        978
+       ],
+       [
+        "PF11242.15",
+        556
+       ],
+       [
+        "PF04965.20",
+        283
+       ],
+       [
+        "PF19835.7",
+        241
+       ],
+       [
+        "PF00801.27",
+        237
+       ]
+      ],
+      "scans": [
+       {
+        "files_read": 1,
+        "row_groups_scanned": 1,
+        "row_groups_total": 47,
+        "rows_scanned": 2139
+       },
+       {
+        "files_read": 1,
+        "row_groups_scanned": 8,
+        "row_groups_total": 47,
+        "rows_scanned": 203894
+       }
+      ],
+      "bytes_read": 7363298,
+      "bgzf": {
+       "blocks_read": 0,
+       "compressed_bytes_read": 0,
+       "uncompressed_bytes_decoded": 0
+      },
+      "index": {
+       "locator_row_groups_read": 0,
+       "index_row_groups_read": 0
+      }
+     }
+    ],
+    "terminase_family_token_slots": 6200,
+    "rss_mb_end": 511.1
+   },
+   "error": null,
+   "started": "2026-11-09T22:40:11",
+   "finished": "2026-11-09T22:40:18"
+  },
+  "sync": {
+   "wall_s": 25.6,
+   "threads": 1,
+   "driver_cpu_s": 0.0,
+   "result": {
+    "rsync": {
+     "rc": 0,
+     "wall_s": 7.5,
+     "cpu_s": 7.9,
+     "user_s": 1.7,
+     "sys_s": 6.3,
+     "peak_rss_mb": 14.0,
+     "new_files": 29,
+     "updated_files": [],
+     "transferred": [
+      "1,623,256,836"
+     ]
+    },
+    "scratch_catalog": {
+     "rc": 0,
+     "wall_s": 18.1,
+     "cpu_s": 16.3,
+     "user_s": 12.8,
+     "sys_s": 3.5,
+     "peak_rss_mb": 346.1,
+     "times_s": {
+      "build_manifest": 7.22,
+      "write_manifest": 0.0,
+      "generate_catalog": 3.24,
+      "copy_catalog_to_root": 0.01,
+      "verify_manifest": 5.57,
+      "open_catalog": 0.21,
+      "count_all_views": 0.08
+     },
+     "verify_problems": [],
+     "manifest_hash": "d39408853bcf25bbabf4e751b64f1a5e",
+     "mismatch": {}
+    }
+   },
+   "error": null,
+   "started": "2026-11-09T22:40:18",
+   "finished": "2026-11-09T22:40:43"
+  }
+ },
+ "runs": [
+  {
+   "started": "2026-11-09T22:05:54",
+   "pid": 3887688
+  }
+ ],
+ "thread_decisions": {
+  "genecall": {
+   "hour": 22,
+   "cap": 48,
+   "load1": 1.79,
+   "ours": 3,
+   "foreign": 0.0,
+   "avail": 45,
+   "threads": 16,
+   "waited_s": 0
+  },
+  "cluster": {
+   "hour": 22,
+   "cap": 48,
+   "load1": 8.71,
+   "ours": 3,
+   "foreign": 5.7,
+   "avail": 45,
+   "threads": 16,
+   "waited_s": 0
+  }
+ },
+ "finished": "2026-11-09T22:40:43",
+ "failed_hard_step": null,
+ "soft_failures": []
+}

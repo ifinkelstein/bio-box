@@ -8,6 +8,7 @@ injected fault that the check must catch.
 
 from __future__ import annotations
 
+import json
 import shutil
 from pathlib import Path
 
@@ -18,11 +19,12 @@ import pyhmmer
 import pytest
 import yaml
 
-from biobox import catalog, contracts, fasta, ids, ledger, provenance
+from biobox import catalog, contracts, fasta, ids, io, ledger, provenance
 from biobox.l0seq import SourceObject, ingest
 from biobox.l1 import domains
 from biobox.l1.genecall import GENE_CALL_VERSION, GenomeInput, run as call_genes
-from biobox.l3 import pairs, tapes, tokens
+from biobox.l3 import postings, tapes, tokens
+from biobox.registry.schemas import table
 
 pytestmark = pytest.mark.r2
 
@@ -64,12 +66,12 @@ def build(root: Path, order: int = 1, threads: int = 1) -> dict:
         from biobox.l2 import cluster
         tmp = root.parent / f"{root.name}.mmseqs"
         tmp.mkdir(parents=True, exist_ok=True)
-        cluster.run(root, "rS0.test", GENE_CALL_VERSION, threads=threads, tmp=tmp)
+        cluster.run(root, "rS0.test", GENE_CALL_VERSION, ["S0"], threads=threads, tmp=tmp)
         shutil.rmtree(tmp, ignore_errors=True)
     tapes.run(root, "S0", {u for g in genomes for u in g.circular})
-    tokens.run(root, "rS0.test")
-    pairs.run(root, "rS0.test")
-    return catalog.build_manifest(root, "rS0.test")
+    tokens.run(root, "rS0.test", ["S0"])
+    postings.run(root, "rS0.test", ["S0"])
+    return catalog.build_manifest(root, "rS0.test", ["S0"])
 
 
 @pytest.fixture(scope="module")
@@ -118,9 +120,77 @@ def test_ly04_no_small_files_outside_waivers(built):
 
 
 def test_size_check_allows_one_small_file_per_stage():
-    files = [{"table": "slot_protein", "partitions": {"stage": "S0"}, "bytes": 10}]
+    files = [{"table": "feature_protein", "partitions": {"stage": "S0"}, "bytes": 10}]
     assert contracts.check_file_sizes({"files": files}) == []
     assert contracts.check_file_sizes({"files": files * 2})
+
+
+def _tiny(table, **parts):
+    return {"table": table, "partitions": parts, "path": "x", "bytes": 10}
+
+
+@pytest.mark.covers("LY-04")
+def test_size_check_still_refuses_a_second_tiny_file_in_one_partition_of_a_data_table():
+    one = _tiny("l1_domains", library="a", stage="S0")
+    assert contracts.check_file_sizes({"files": [one, {**one, "path": "y"}]})  # same partition: refused
+    big = {**one, "bytes": 10**9}
+    assert contracts.check_file_sizes({"files": [big, {**big, "path": "y"}]}) == []  # both above the floor
+    assert contracts.check_file_sizes({"files": [one, {**big, "path": "y"}]})  # a small one beside a big one
+
+
+@pytest.mark.covers("LY-04")
+def test_size_check_groups_by_the_full_partition_tuple_not_by_stage():
+    a, b = _tiny("l1_domains", library="a", stage="S0"), _tiny("l1_domains", library="b", stage="S0")
+    assert contracts.check_file_sizes({"files": [a, b]}) == []  # two libraries are two groups
+
+
+@pytest.mark.covers("LY-04")
+def test_size_check_refuses_many_tiny_files_across_buckets_of_one_stage_or_release():
+    seq = [_tiny("protein_seq", gene_call_version="g1", stage="S0", protein_prefix=h) for h in ("0", "1", "2")]
+    assert contracts.check_file_sizes({"files": seq})
+    post = [_tiny("token_postings", release="r1", tape_version="t1", token_bucket=h) for h in ("00", "01")]
+    assert contracts.check_file_sizes({"files": post})
+    big = [{**f, "bytes": 10**9} for f in seq]
+    assert contracts.check_file_sizes({"files": big}) == []  # buckets above the floor are fine
+    libs = [_tiny("l1_domains", library=x, stage="S0") for x in ("a", "b")]
+    assert contracts.check_file_sizes({"files": libs}) == []  # libraries are not buckets
+
+
+@pytest.mark.covers("LY-04")
+def test_size_check_exempts_small_artifacts_by_registry_flag_and_refuses_the_rest():
+    def art(name, rel, **parts):
+        return {"artifact": name, "partitions": parts, "path": rel, "bytes": 10}
+
+    kept = [art("release_manifest", "manifests/release=r1.json"), art("release_manifest", "manifests/release=r2.json"),
+            art("catalog", "catalog/release=r1.duckdb"), art("catalog", "catalog/release=r2.duckdb"),
+            art("store_params", "l0seq/store_params.json")]
+    assert contracts.check_file_sizes({"files": [], "artifacts": kept}) == []
+    shards = [art("seq_shards", f"l0seq/seq_shards/stage=S0/shard-000{i}.fa.gz", stage="S0") for i in range(2)]
+    assert contracts.check_file_sizes({"files": [], "artifacts": shards})  # not small by nature
+
+
+@pytest.mark.covers("LY-04", "LY-10")
+def test_two_releases_publish_under_run_step_at_the_pods_floor(tmp_path):
+    """Card C-09: the second release's manifest and catalog are not refused at the real 64 MiB floor."""
+    import test_builders_out as bo
+
+    prof = bo.profile_at(tmp_path / "prof")
+    path = tmp_path / "prof" / "profile.yaml"
+    path.write_text(path.read_text().replace("small_file_floor_bytes: 1000", "small_file_floor_bytes: 67108864"))
+    prof = bo.profile.load(path)
+    assert prof.small_file_floor_bytes == 67108864
+    w = bo.Work(tmp_path / "work")
+    w.prepare()
+    root = tmp_path / "root"
+    steps = (bo.stage_steps("S0", w) + bo.release_steps(bo.REL, ["S0"], w)
+             + bo.stage_steps("S1", w) + bo.release_steps(bo.REL2, ["S0", "S1"], w))
+    for step in steps:
+        if step.name == "domains" and not w.lib.exists():
+            bo.write_library(root, w.lib)  # the HMM library the CLI step reads, made from this root's proteins
+        assert bo.run_cli(prof, root, step) == 0, f"{step.run_stage}.{step.name}"
+    for rel in (bo.REL, bo.REL2):
+        assert (root / f"manifests/release={rel}.json").is_file()
+        assert (root / f"catalog/release={rel}.duckdb").is_file()
 
 
 # --- contracts ---------------------------------------------------------------------------
@@ -168,6 +238,28 @@ def test_c03_shard_faults_are_caught(built, tmp_path, fault):
     assert contracts.check_shards({**man, "root": str(root)})
 
 
+@pytest.mark.covers("C-03", "LY-02")
+def test_c03_shards_are_not_ordered_across_each_other(tmp_path):
+    """card B-15: one batch writes one shard, sorted inside; there is no order across shards."""
+    from biobox.l0seq.bgzf import read_fai
+
+    root = tmp_path / "s"
+    ingest([SourceObject(FIX / o["file"], "s", "1") for o in CONTRACT["objects"]], root, "S0", shard_bases=200_000)
+    man = catalog.build_manifest(root, "x", ["S0"])
+    shards = sorted(a["path"] for a in man["artifacts"] if a["path"].endswith(".fa.gz"))
+    names = [[e.name for e in read_fai(root / (s + ".fai"))] for s in shards]
+    assert len(shards) == 3
+    assert any(names[i][-1] >= names[i + 1][0] for i in range(len(shards) - 1))  # precondition
+    assert contracts.check_shards(man) == []
+    # a locator row naming a shard that does not hold the record is caught, on both shards
+    loc = root / next(f["path"] for f in man["files"] if f["table"] == "seq_locator")
+    rows = pq.read_table(loc).to_pylist()
+    rows[0]["shard"], rows[1]["shard"] = rows[1]["shard"], rows[0]["shard"]
+    pq.write_table(pa.Table.from_pylist(rows, schema=table("seq_locator").schema), loc)
+    probs = contracts.check_shards(man)
+    assert len(probs) == 2 and all(".fai vs seq_locator" in p for p in probs), probs
+
+
 def test_c05_coordinates_in_bounds(built):
     _, _, con = built
     assert contracts.check_coordinates(con) == []  # the wrap rule is exercised on the golden set (R3)
@@ -181,9 +273,9 @@ def test_r06_lineage_is_complete(built):
 def _fault_con(con, **replace) -> duckdb.DuckDBPyConnection:
     """An in-memory copy of the catalog's tables with some replaced by Arrow tables (fault injection)."""
     c = duckdb.connect()
-    for name in ("protein_occurrence", "contig_index", "slot_protein", "protein_seq", "l1_domains", "contig_occurrence",
-                 "l0_manifest", "seq_locator", "cluster_member", "cluster_member_aln", "igr",
-                 "contig_tapes", "tape_tokens", "token_dict", "slot_pairs"):
+    for name in ("protein_occurrence", "contig_index", "feature", "feature_protein", "contig_dim", "protein_seq",
+                 "l1_domains", "contig_occurrence", "l0_manifest", "seq_locator", "cluster_member", "cluster_member_aln",
+                 "igr", "contig_tapes", "tape_tokens", "token_dict", "token_postings"):
         tbl = replace.get(name)
         if tbl is None:
             tbl = con.sql(f"SELECT * FROM {name}").to_arrow_table()
@@ -201,9 +293,23 @@ def test_injected_faults_are_caught(built):
     rows[k]["end"] = rows[k]["start"] + 10**6
     bad = pa.Table.from_pylist(rows, schema=occ.schema)
     assert contracts.check_coordinates(_fault_con(con, protein_occurrence=bad))
+    # a posting whose ordinal lies past the end of its tape (C-05; the pair macros read slots from postings)
+    post = con.sql("SELECT * FROM token_postings").to_arrow_table()
+    rows = post.to_pylist()
+    rows[0]["ordinal"] = rows[0]["n_slots"]
+    probs = contracts.check_coordinates(_fault_con(con, token_postings=pa.Table.from_pylist(rows, schema=post.schema)))
+    assert probs == ["token_postings: 1 rows with ordinals outside their tape"]
     # a slot whose protein is missing (C-03)
     ps = con.sql("SELECT * FROM protein_seq").to_arrow_table()
     assert contracts.check_foreign_keys(_fault_con(con, protein_seq=ps.slice(1)))
+    # a CDS whose feature row is lost, and an occurrence whose CDS is lost (C-03 on feature uids, card B-17)
+    ft = con.sql("SELECT * FROM feature").to_arrow_table()
+    assert contracts.check_foreign_keys(_fault_con(con, feature=ft.slice(1))) == [
+        "feature_protein('feature_uid', 'gene_call_version') -> feature('feature_uid', 'producer'): 1 unresolved rows"]
+    fp = con.sql("SELECT * FROM feature_protein").to_arrow_table()
+    assert contracts.check_foreign_keys(_fault_con(con, feature_protein=fp.slice(1))) == [
+        "protein_occurrence('feature_uid', 'gene_call_version') -> feature_protein('feature_uid', 'gene_call_version'): "
+        "1 unresolved rows"]
     # an occurrence row lost, so a stored sequence is orphaned (R-06)
     co = con.sql("SELECT * FROM contig_occurrence").to_arrow_table()
     assert contracts.check_lineage(_fault_con(con, contig_occurrence=co.slice(1)))
@@ -229,6 +335,7 @@ def test_c08_faults_are_caught(built, tmp_path):
     rows = ledger.read(root, "S0", "domains-test-1")
     for r in rows:
         r["tool_versions_json"] = '{"pyarrow": "1.0", "pyhmmer": "0.0.1"}'
+    ledger.path(root, "S0", "domains-test-1").unlink()  # the writer never rewrites a ledger (card B-19)
     ledger.write(root, "S0", "domains-test-1", rows)
     probs = provenance.check_provenance({**man, "root": str(root)})
     assert any("domains-test-1 tool versions" in p for p in probs)
@@ -236,12 +343,74 @@ def test_c08_faults_are_caught(built, tmp_path):
     rows = ledger.read(root, "S0", "genecall")
     for r in rows:
         r["tool_versions_json"] = None
+    ledger.path(root, "S0", "genecall").unlink()
     ledger.write(root, "S0", "genecall", rows)
     assert any("genecall ledger row without tool versions" in p for p in provenance.check_provenance({**man, "root": str(root)}))
     # a versioned table outside its version partition
     f = next(x for x in man["files"] if x["table"] == "protein_seq")
     bad = {**f, "partitions": {k: v for k, v in f["partitions"].items() if k != "gene_call_version"}}
     assert provenance.check_provenance({**man, "files": [bad]})
+
+
+@pytest.mark.covers("C-08")
+def test_c08_a_tape_version_is_checked_through_its_producers(built, tmp_path):
+    """card B-07: a tape_version names no tool versions; C-08 resolves its producers in tape_version_def."""
+    import hashlib
+
+    _, man, _ = built
+    lock = provenance.locked_versions()
+    tv = "t-" + hashlib.sha256(GENE_CALL_VERSION.encode()).hexdigest()[:12]
+    tape_files = [f for f in man["files"] if f["table"] in ("contig_tapes", "tape_tokens")]
+    defs = [f for f in man["files"] if f["table"] == "tape_version_def"]
+    assert tape_files and [f["partitions"] for f in defs] == [{"tape_version": tv}]
+    only = {**man, "files": tape_files + defs}
+    assert provenance.check_provenance(only) == []
+    # the tapes alone hold no gene_call_version: the stale pyrodigal is found through the definition
+    probs = provenance.check_provenance(only, {**lock, "pyrodigal": "0.0.1"})
+    assert probs and all("differs from the lock" in p and tv in p for p in probs)
+    # a tape version without its definition
+    probs = provenance.check_provenance({**man, "files": tape_files})
+    assert probs and all("no tape_version_def" in p for p in probs)
+    # definitions that do not hash to their tape_version, or name a producer that names no tool versions
+    root = tmp_path / "s"
+    spec = table("tape_version_def")
+    cases = {"x": ([GENE_CALL_VERSION, "test-ncrna"], tv, "does not hash"),
+             "y": (["test-ncrna"], "t-" + hashlib.sha256(b"test-ncrna").hexdigest()[:12], "does not name its tool versions")}
+    for name, (producers, version, msg) in cases.items():
+        rel = f"{name}/l3/tape_version_def/tape_version={version}/part-0.parquet"
+        io.write_table([pa.table({"producer": sorted(producers)})], spec, root / rel)
+        entry = {"path": rel, "table": "tape_version_def", "partitions": {"tape_version": version}}
+        probs = provenance.check_provenance({**man, "root": str(root), "files": [entry]})
+        assert probs and all(msg in p for p in probs), probs
+
+
+@pytest.mark.covers("C-08")
+def test_c08_an_igr_version_is_a_tape_version_plus_igr1(built):
+    """card B-20: `igr_version` = `<tape_version>-igr1`; its tape version must be defined in the manifest."""
+    import hashlib
+
+    _, man, _ = built
+    tv = "t-" + hashlib.sha256(GENE_CALL_VERSION.encode()).hexdigest()[:12]
+    defs = [f for f in man["files"] if f["table"] == "tape_version_def"]
+    assert [f["partitions"] for f in defs] == [{"tape_version": tv}]
+
+    def igr_file(version):
+        return {"path": f"l0seq/igr/igr_version={version}/stage=S0/part-0.parquet", "table": "igr",
+                "partitions": {"igr_version": version, "stage": "S0"}}
+
+    ok = {**man, "files": defs + [igr_file(f"{tv}-igr1")]}
+    assert provenance.check_provenance(ok) == []
+    # a stale producer is found through the IGR's tape version
+    lock = provenance.locked_versions()
+    probs = provenance.check_provenance(ok, {**lock, "pyrodigal": "0.0.1"})
+    assert probs and all("differs from the lock" in p for p in probs)
+    # a tape version without a definition
+    probs = provenance.check_provenance({**man, "files": [igr_file(f"{tv}-igr1")]})
+    assert probs and all("no tape_version_def" in p and "igr_version" in p for p in probs), probs
+    # a malformed suffix, and the old form (a bare gene-call version)
+    for bad in (f"{tv}-igr2", tv, GENE_CALL_VERSION + "-igr1", "-igr1"):
+        probs = provenance.check_provenance({**man, "files": defs + [igr_file(bad)]})
+        assert any("igr_version" in p and "<tape_version>-igr1" in p for p in probs), (bad, probs)
 
 
 # --- append-only and determinism -----------------------------------------------------------
@@ -251,7 +420,7 @@ def test_r09_a_later_stage_keeps_earlier_files(built, tmp_path):
     _, man, _ = built
     root = tmp_path / "s"
     shutil.copytree(man["root"], root)
-    before = catalog.build_manifest(root, "rS0.test")
+    before = catalog.build_manifest(root, "rS0.test", ["S0"])
     t4 = next(o for o in CONTRACT["objects"] if o["accession"] == "NC_000866.4")
     dup = tmp_path / "t4_again.fna.gz"
     shutil.copy(FIX / t4["file"], dup)
@@ -260,9 +429,17 @@ def test_r09_a_later_stage_keeps_earlier_files(built, tmp_path):
     lam_masked.write_bytes(b"\n".join(fasta.format_record("lam_variant", lam[:2000].lower() + lam[2000:], 70)) + b"\n")
     ingest([SourceObject(dup, "s1_source", "1"), SourceObject(lam_masked, "s1_source", "1")], root, "S1",
            shard_bases=10**6)
-    after = catalog.build_manifest(root, "rS1.test")
+    after = catalog.build_manifest(root, "rS1.test", ["S0", "S1"])
     assert contracts.check_append_only(before, after) == []
-    assert len(after["files"]) > len(before["files"])
+    # card B-33: rS0.test's own release= files are not rS1.test's; its stage and unpartitioned files are kept
+    def shared(m):
+        return {f["path"]: f["sha256"] for f in m["files"] + m["artifacts"]
+                if "stage" in f["partitions"] or not f["partitions"]}
+    later = {f["path"]: f["sha256"] for f in after["files"] + after["artifacts"]}
+    assert shared(before) and all(later.get(p) == h for p, h in shared(before).items())
+    def staged(m):
+        return [f for f in m["files"] if "stage" in f["partitions"]]
+    assert len(staged(after)) > len(staged(before))
     # and the check notices a rewrite
     assert len(after["artifacts"]) > len(before["artifacts"])  # the lambda variant is a new S1 shard
     f = next(x for x in after["files"] if x["table"] == "contig_occurrence")
@@ -270,6 +447,46 @@ def test_r09_a_later_stage_keeps_earlier_files(built, tmp_path):
     shard = next(a for a in after["artifacts"] if "stage=S0" in a["path"])
     rewritten = [{**a, "sha256": "0" * 64} if a is shard else a for a in after["artifacts"]]
     assert contracts.check_append_only(before, {**after, "artifacts": rewritten}) == [f"{shard['path']}: rewritten"]
+
+
+def _small_tables(man):
+    from biobox.registry.schemas import TABLES
+
+    return sorted({f["table"] for f in man["files"] if TABLES[f["table"]].small_ok})
+
+
+def test_d06_a_rewritten_small_table_is_reported(built, tmp_path):
+    """card D-06 (AGENTS 3.9, 3.10): no table is exempt; one changed value in any small-table file is found."""
+    _, man, _ = built
+    small = _small_tables(man)
+    assert {"ledger", "release_def", "tape_version_def"} <= set(small)
+    for table in [*small, "seq_locator"]:
+        root = tmp_path / table
+        shutil.copytree(man["root"], root)
+        before = catalog.build_manifest(root, "rS0.test", ["S0"])
+        f = next(x for x in before["files"] if x["table"] == table and x["partitions"].get("stage", "S0") == "S0")
+        p = root / f["path"]
+        # the same rows in other bytes: a rewrite that every reader of the table still accepts
+        old = p.read_bytes()
+        codec = pq.ParquetFile(p).metadata.row_group(0).column(0).compression
+        pq.write_table(pq.read_table(p, partitioning=None), p, compression="gzip" if codec == "ZSTD" else "zstd")
+        assert p.read_bytes() != old
+        after = catalog.build_manifest(root, "rS0.test", ["S0"])
+        assert contracts.check_append_only(before, after) == [f"{f['path']}: rewritten"], table
+
+
+def test_d06_a_rewritten_store_params_is_reported(built, tmp_path):
+    _, man, _ = built
+    root = tmp_path / "s"
+    shutil.copytree(man["root"], root)
+    before = catalog.build_manifest(root, "rS0.test", ["S0"])
+    path = root / "l0seq/store_params.json"
+    params = json.loads(path.read_text())
+    key = next(k for k, v in params.items() if isinstance(v, int))
+    params[key] += 1
+    path.write_text(json.dumps(params, sort_keys=True))
+    after = catalog.build_manifest(root, "rS0.test", ["S0"])
+    assert contracts.check_append_only(before, after) == ["l0seq/store_params.json: rewritten"]
 
 
 def test_d01_same_inputs_same_content(built, tmp_path):
@@ -314,7 +531,8 @@ def test_l01_every_step_balances(built):
     root = Path(man["root"])
     steps = _steps(root)
     assert {"ingest", "genecall", "domains-test-1"} <= set(steps)
-    assert ledger.check_balance(root, "S0", steps) == []
+    # clustering is the release's step: its ledger is under ledger/release=<R>/ (card B-28)
+    assert ledger.check_balance(root, "S0", steps + ["cluster"], release="rS0.test") == []
 
 
 def test_l02_ingest_ledger_lists_the_input_objects(built):
@@ -327,12 +545,13 @@ def test_l02_ingest_ledger_lists_the_input_objects(built):
 def test_l03_counts_carry_along_the_dag(built):
     _, man, _ = built
     root = Path(man["root"])
-    assert ledger.check_chain(root, "S0") == []
+    assert ledger.check_chain(root, "S0", release="rS0.test") == []
     gc = ledger.read(root, "S0", "genecall")
     distinct = len(domains.load_proteins(root, GENE_CALL_VERSION, "S0"))
     assert sum(r["n_kept"] for r in gc) == distinct
     if MMSEQS:
-        assert {r["object_key"] for r in ledger.read(root, "S0", "cluster")} == {b"nr90", b"nr50"}
+        assert {r["object_key"] for r in ledger.read_release(root, "rS0.test", "cluster")} == {b"nr90", b"nr50"}
+        assert ledger.read(root, "S0", "cluster") == []  # not a stage's step (card B-28)
 
 
 def test_ledger_faults_are_caught(built, tmp_path):
@@ -341,6 +560,8 @@ def test_ledger_faults_are_caught(built, tmp_path):
     shutil.copytree(man["root"], root)
     gc = ledger.read(root, "S0", "genecall")
     gc[0]["n_kept"] += 1  # unbalanced (L-01) and breaks the chain (L-03)
+    ledger.path(root, "S0", "genecall").unlink()  # the writer never rewrites a ledger (card B-19)
     ledger.write(root, "S0", "genecall", gc)
     assert ledger.check_balance(root, "S0", ["genecall"])
     assert ledger.check_chain(root, "S0")
+    assert ledger.check_chain(root, "S0", release="rS0.test")

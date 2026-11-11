@@ -1,0 +1,16 @@
+{
+ "key": "A",
+ "step": "igr",
+ "stage": "S1",
+ "release": "rL.1",
+ "threads": 1,
+ "started_utc": "2026-11-10T04:30:01+00:00",
+ "result": {
+  "igrs": 1542772,
+  "igrs_ge_30": 939283,
+  "bp": 152370894
+ },
+ "error": null,
+ "inner_wall_s": 11.97,
+ "self_peak_rss_mb": 987.2
+}

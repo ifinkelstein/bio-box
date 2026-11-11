@@ -1,0 +1,1185 @@
+{
+ "all": {
+  "n_loci": 2790,
+  "families": [
+   {
+    "family": "Phage_T7_1_1",
+    "n_loci": 1044,
+    "n_genomes": 1020,
+    "offsets": {
+     "1": 448,
+     "2": 464,
+     "3": 118,
+     "4": 12,
+     "5": 3
+    }
+   },
+   {
+    "family": "DNA_ligase_A_M",
+    "n_loci": 1018,
+    "n_genomes": 1005,
+    "offsets": {
+     "-4": 1,
+     "-3": 1,
+     "-2": 11,
+     "-1": 14,
+     "1": 25,
+     "2": 14,
+     "3": 320,
+     "4": 489,
+     "5": 145
+    }
+   },
+   {
+    "family": "DNA_ligase_C",
+    "n_loci": 991,
+    "n_genomes": 980,
+    "offsets": {
+     "-2": 1,
+     "-1": 1,
+     "1": 25,
+     "2": 14,
+     "3": 315,
+     "4": 489,
+     "5": 146
+    }
+   },
+   {
+    "family": "Head-tail_con",
+    "n_loci": 751,
+    "n_genomes": 739,
+    "offsets": {
+     "-1": 1,
+     "2": 22,
+     "3": 372,
+     "4": 320,
+     "5": 39
+    }
+   },
+   {
+    "family": "Phage_T7_kinase",
+    "n_loci": 689,
+    "n_genomes": 680,
+    "offsets": {
+     "-5": 1,
+     "-4": 11,
+     "-3": 27,
+     "-2": 25,
+     "-1": 631
+    }
+   },
+   {
+    "family": "Endonuclease_7",
+    "n_loci": 645,
+    "n_genomes": 639,
+    "offsets": {
+     "-5": 77,
+     "-4": 227,
+     "-3": 190,
+     "-2": 122,
+     "-1": 28,
+     "3": 1
+    }
+   },
+   {
+    "family": "Phage_T3_1_05",
+    "n_loci": 548,
+    "n_genomes": 544,
+    "offsets": {
+     "-2": 2,
+     "-1": 87,
+     "1": 380,
+     "2": 74,
+     "3": 5
+    }
+   },
+   {
+    "family": "BC10",
+    "n_loci": 529,
+    "n_genomes": 528,
+    "offsets": {
+     "2": 1,
+     "3": 2,
+     "4": 165,
+     "5": 361
+    }
+   },
+   {
+    "family": "T7-like_gp12",
+    "n_loci": 428,
+    "n_genomes": 424,
+    "offsets": {
+     "2": 199,
+     "3": 160,
+     "4": 67,
+     "5": 5
+    }
+   },
+   {
+    "family": "HNH_3",
+    "n_loci": 426,
+    "n_genomes": 391,
+    "offsets": {
+     "-5": 32,
+     "-4": 57,
+     "-3": 41,
+     "-2": 6,
+     "-1": 20,
+     "1": 78,
+     "2": 45,
+     "3": 29,
+     "4": 64,
+     "5": 87
+    }
+   },
+   {
+    "family": "Phage_T7_GP04",
+    "n_loci": 370,
+    "n_genomes": 359,
+    "offsets": {
+     "-5": 76,
+     "-4": 146,
+     "-3": 103,
+     "-2": 30,
+     "-1": 15
+    }
+   },
+   {
+    "family": "ocr",
+    "n_loci": 362,
+    "n_genomes": 358,
+    "offsets": {
+     "-5": 76,
+     "-4": 111,
+     "-3": 82,
+     "-2": 81,
+     "-1": 12
+    }
+   },
+   {
+    "family": "DUF3310",
+    "n_loci": 343,
+    "n_genomes": 340,
+    "offsets": {
+     "-5": 2,
+     "-4": 5,
+     "-3": 24,
+     "-2": 56,
+     "-1": 90,
+     "1": 1,
+     "3": 2,
+     "4": 6,
+     "5": 157
+    }
+   },
+   {
+    "family": "S-AdoMet_lyase",
+    "n_loci": 338,
+    "n_genomes": 335,
+    "offsets": {
+     "-5": 159,
+     "-4": 115,
+     "-3": 58,
+     "-2": 6
+    }
+   },
+   {
+    "family": "dGTP_diPhyd_N",
+    "n_loci": 317,
+    "n_genomes": 309,
+    "offsets": {
+     "-5": 49,
+     "-4": 39,
+     "-3": 40,
+     "-2": 160,
+     "-1": 30
+    }
+   }
+  ],
+  "clusters": [
+   {
+    "nr50": "eb9c25c3c916325df8c65576c9194736",
+    "rep": "444ce148420dfb916d5398561e626122",
+    "rep_len": 90,
+    "n_loci": 299,
+    "n_genomes": 297,
+    "offsets": {
+     "2": 60,
+     "3": 229,
+     "4": 10
+    },
+    "mates_pfam": {}
+   },
+   {
+    "nr50": "1b667be750e69bc8b4a80e7ce846427f",
+    "rep": "f82eab8195089f4a1b30bdab5e07c50c",
+    "rep_len": 347,
+    "n_loci": 285,
+    "n_genomes": 285,
+    "offsets": {
+     "-3": 1,
+     "4": 4,
+     "5": 280
+    },
+    "mates_pfam": {}
+   },
+   {
+    "nr50": "d6b99b4b297c63773deb00f53ab3b790",
+    "rep": "717b5f15f7fa62ac518ceb6700ad77f3",
+    "rep_len": 88,
+    "n_loci": 255,
+    "n_genomes": 253,
+    "offsets": {
+     "-4": 7,
+     "-3": 114,
+     "-2": 134
+    },
+    "mates_pfam": {}
+   },
+   {
+    "nr50": "ca6ca835bd22d4b16246c4a39d38a21b",
+    "rep": "30e0ab6f63c90df36142cc9ab0ef0e73",
+    "rep_len": 290,
+    "n_loci": 217,
+    "n_genomes": 217,
+    "offsets": {
+     "3": 1,
+     "4": 164,
+     "5": 52
+    },
+    "mates_pfam": {}
+   },
+   {
+    "nr50": "29fd4585678d849279eb12b4d368253a",
+    "rep": "68886f547d363205a09dc446da597036",
+    "rep_len": 92,
+    "n_loci": 213,
+    "n_genomes": 210,
+    "offsets": {
+     "1": 1,
+     "2": 159,
+     "3": 50,
+     "4": 3
+    },
+    "mates_pfam": {}
+   },
+   {
+    "nr50": "adfa5a32f59dc49791a2fdfd316eb5d5",
+    "rep": "03ec221dab86048dd53422b2f6661e77",
+    "rep_len": 147,
+    "n_loci": 213,
+    "n_genomes": 210,
+    "offsets": {
+     "1": 159,
+     "2": 50,
+     "3": 3,
+     "5": 1
+    },
+    "mates_pfam": {}
+   },
+   {
+    "nr50": "cc112f46891c0cffc85462eacfb9decb",
+    "rep": "fc5336699f55d233a00731c17075bd9d",
+    "rep_len": 81,
+    "n_loci": 192,
+    "n_genomes": 179,
+    "offsets": {
+     "1": 147,
+     "2": 36,
+     "3": 5,
+     "4": 2,
+     "5": 2
+    },
+    "mates_pfam": {}
+   },
+   {
+    "nr50": "2c979f8a36a4858d855aaa6f251aae6a",
+    "rep": "db8b48a29aa7f6f4519a8ff1beed84a7",
+    "rep_len": 87,
+    "n_loci": 188,
+    "n_genomes": 186,
+    "offsets": {
+     "-5": 57,
+     "-4": 88,
+     "-3": 41,
+     "-2": 2
+    },
+    "mates_pfam": {}
+   },
+   {
+    "nr50": "4c3ce8eb50f8b911b3da5fc05866a4b4",
+    "rep": "2733647abd9382d0e062e95566c576f1",
+    "rep_len": 132,
+    "n_loci": 157,
+    "n_genomes": 156,
+    "offsets": {
+     "-2": 1,
+     "-1": 156
+    },
+    "mates_pfam": {}
+   },
+   {
+    "nr50": "9b31e062454f05648c29912c255b4e0a",
+    "rep": "f7b05e03a1afc3f0b34bd7f50b353830",
+    "rep_len": 116,
+    "n_loci": 136,
+    "n_genomes": 133,
+    "offsets": {
+     "-4": 1,
+     "-3": 35,
+     "-2": 103
+    },
+    "mates_pfam": {
+     "Phage_T7_GP04": 1
+    }
+   },
+   {
+    "nr50": "396437e0e3a7ed521cba79785062dfba",
+    "rep": "1d7c5fecce6e4829b8c09a38accd32da",
+    "rep_len": 324,
+    "n_loci": 135,
+    "n_genomes": 135,
+    "offsets": {
+     "-5": 99,
+     "-4": 33,
+     "-3": 2,
+     "-2": 1
+    },
+    "mates_pfam": {}
+   },
+   {
+    "nr50": "fab32175eec6eeb927d82874794ed929",
+    "rep": "155f2bad2f028e12c3e8d4fe1a8b38f2",
+    "rep_len": 224,
+    "n_loci": 116,
+    "n_genomes": 114,
+    "offsets": {
+     "-3": 1,
+     "-2": 5,
+     "-1": 110
+    },
+    "mates_pfam": {
+     "DNMK": 5
+    }
+   },
+   {
+    "nr50": "abddcf29e202a55470e632099b823ac3",
+    "rep": "007992f9c970f5389950347c83c239b9",
+    "rep_len": 65,
+    "n_loci": 113,
+    "n_genomes": 111,
+    "offsets": {
+     "1": 109,
+     "2": 4,
+     "3": 1
+    },
+    "mates_pfam": {}
+   },
+   {
+    "nr50": "7c5ee74fa74b5ea3aa08a85506eaf6c8",
+    "rep": "07eadf898fe2008b80815d060073eb1d",
+    "rep_len": 83,
+    "n_loci": 111,
+    "n_genomes": 109,
+    "offsets": {
+     "2": 107,
+     "3": 3,
+     "4": 1
+    },
+    "mates_pfam": {}
+   },
+   {
+    "nr50": "61e628529d5204c433a9a211e4101718",
+    "rep": "584e158d65da79383be5f2d8be23baf0",
+    "rep_len": 287,
+    "n_loci": 109,
+    "n_genomes": 109,
+    "offsets": {
+     "4": 106,
+     "5": 4
+    },
+    "mates_pfam": {}
+   }
+  ]
+ },
+ "full": {
+  "n_loci": 2075,
+  "families": [
+   {
+    "family": "Phage_T7_1_1",
+    "n_loci": 999,
+    "n_genomes": 998,
+    "offsets": {
+     "1": 440,
+     "2": 448,
+     "3": 107,
+     "4": 5
+    }
+   },
+   {
+    "family": "DNA_ligase_A_M",
+    "n_loci": 987,
+    "n_genomes": 986,
+    "offsets": {
+     "-4": 1,
+     "-2": 9,
+     "-1": 13,
+     "1": 25,
+     "2": 13,
+     "3": 314,
+     "4": 477,
+     "5": 135
+    }
+   },
+   {
+    "family": "DNA_ligase_C",
+    "n_loci": 960,
+    "n_genomes": 959,
+    "offsets": {
+     "1": 25,
+     "2": 13,
+     "3": 310,
+     "4": 478,
+     "5": 134
+    }
+   },
+   {
+    "family": "Head-tail_con",
+    "n_loci": 719,
+    "n_genomes": 719,
+    "offsets": {
+     "2": 22,
+     "3": 360,
+     "4": 310,
+     "5": 28
+    }
+   },
+   {
+    "family": "Phage_T7_kinase",
+    "n_loci": 668,
+    "n_genomes": 668,
+    "offsets": {
+     "-4": 10,
+     "-3": 24,
+     "-2": 18,
+     "-1": 622
+    }
+   },
+   {
+    "family": "Endonuclease_7",
+    "n_loci": 627,
+    "n_genomes": 627,
+    "offsets": {
+     "-5": 72,
+     "-4": 221,
+     "-3": 188,
+     "-2": 119,
+     "-1": 27
+    }
+   },
+   {
+    "family": "Phage_T3_1_05",
+    "n_loci": 535,
+    "n_genomes": 535,
+    "offsets": {
+     "-2": 2,
+     "-1": 87,
+     "1": 373,
+     "2": 68,
+     "3": 5
+    }
+   },
+   {
+    "family": "BC10",
+    "n_loci": 518,
+    "n_genomes": 518,
+    "offsets": {
+     "2": 1,
+     "3": 2,
+     "4": 162,
+     "5": 353
+    }
+   },
+   {
+    "family": "T7-like_gp12",
+    "n_loci": 415,
+    "n_genomes": 415,
+    "offsets": {
+     "2": 196,
+     "3": 155,
+     "4": 63,
+     "5": 4
+    }
+   },
+   {
+    "family": "Phage_T7_GP04",
+    "n_loci": 351,
+    "n_genomes": 350,
+    "offsets": {
+     "-5": 70,
+     "-4": 138,
+     "-3": 100,
+     "-2": 29,
+     "-1": 14
+    }
+   },
+   {
+    "family": "ocr",
+    "n_loci": 351,
+    "n_genomes": 351,
+    "offsets": {
+     "-5": 74,
+     "-4": 108,
+     "-3": 78,
+     "-2": 80,
+     "-1": 11
+    }
+   },
+   {
+    "family": "DUF3310",
+    "n_loci": 333,
+    "n_genomes": 333,
+    "offsets": {
+     "-5": 2,
+     "-4": 4,
+     "-3": 22,
+     "-2": 55,
+     "-1": 87,
+     "1": 1,
+     "3": 2,
+     "4": 6,
+     "5": 154
+    }
+   },
+   {
+    "family": "S-AdoMet_lyase",
+    "n_loci": 327,
+    "n_genomes": 327,
+    "offsets": {
+     "-5": 152,
+     "-4": 111,
+     "-3": 58,
+     "-2": 6
+    }
+   },
+   {
+    "family": "HNH_3",
+    "n_loci": 301,
+    "n_genomes": 301,
+    "offsets": {
+     "-5": 31,
+     "-4": 53,
+     "-3": 39,
+     "-2": 4,
+     "-1": 11,
+     "1": 35,
+     "2": 16,
+     "3": 27,
+     "4": 51,
+     "5": 65
+    }
+   },
+   {
+    "family": "dGTP_diPhyd_N",
+    "n_loci": 300,
+    "n_genomes": 300,
+    "offsets": {
+     "-5": 46,
+     "-4": 33,
+     "-3": 39,
+     "-2": 154,
+     "-1": 29
+    }
+   }
+  ],
+  "clusters": [
+   {
+    "nr50": "eb9c25c3c916325df8c65576c9194736",
+    "rep": "444ce148420dfb916d5398561e626122",
+    "rep_len": 90,
+    "n_loci": 292,
+    "n_genomes": 292,
+    "offsets": {
+     "2": 59,
+     "3": 225,
+     "4": 8
+    },
+    "mates_pfam": {}
+   },
+   {
+    "nr50": "1b667be750e69bc8b4a80e7ce846427f",
+    "rep": "f82eab8195089f4a1b30bdab5e07c50c",
+    "rep_len": 347,
+    "n_loci": 279,
+    "n_genomes": 279,
+    "offsets": {
+     "4": 4,
+     "5": 275
+    },
+    "mates_pfam": {}
+   },
+   {
+    "nr50": "d6b99b4b297c63773deb00f53ab3b790",
+    "rep": "717b5f15f7fa62ac518ceb6700ad77f3",
+    "rep_len": 88,
+    "n_loci": 249,
+    "n_genomes": 249,
+    "offsets": {
+     "-4": 6,
+     "-3": 111,
+     "-2": 132
+    },
+    "mates_pfam": {}
+   },
+   {
+    "nr50": "ca6ca835bd22d4b16246c4a39d38a21b",
+    "rep": "30e0ab6f63c90df36142cc9ab0ef0e73",
+    "rep_len": 290,
+    "n_loci": 213,
+    "n_genomes": 213,
+    "offsets": {
+     "3": 1,
+     "4": 160,
+     "5": 52
+    },
+    "mates_pfam": {}
+   },
+   {
+    "nr50": "29fd4585678d849279eb12b4d368253a",
+    "rep": "68886f547d363205a09dc446da597036",
+    "rep_len": 92,
+    "n_loci": 206,
+    "n_genomes": 206,
+    "offsets": {
+     "1": 1,
+     "2": 155,
+     "3": 50
+    },
+    "mates_pfam": {}
+   },
+   {
+    "nr50": "adfa5a32f59dc49791a2fdfd316eb5d5",
+    "rep": "03ec221dab86048dd53422b2f6661e77",
+    "rep_len": 147,
+    "n_loci": 205,
+    "n_genomes": 205,
+    "offsets": {
+     "1": 155,
+     "2": 50
+    },
+    "mates_pfam": {}
+   },
+   {
+    "nr50": "2c979f8a36a4858d855aaa6f251aae6a",
+    "rep": "db8b48a29aa7f6f4519a8ff1beed84a7",
+    "rep_len": 87,
+    "n_loci": 182,
+    "n_genomes": 182,
+    "offsets": {
+     "-5": 55,
+     "-4": 87,
+     "-3": 38,
+     "-2": 2
+    },
+    "mates_pfam": {}
+   },
+   {
+    "nr50": "cc112f46891c0cffc85462eacfb9decb",
+    "rep": "fc5336699f55d233a00731c17075bd9d",
+    "rep_len": 81,
+    "n_loci": 172,
+    "n_genomes": 171,
+    "offsets": {
+     "1": 140,
+     "2": 32
+    },
+    "mates_pfam": {}
+   },
+   {
+    "nr50": "4c3ce8eb50f8b911b3da5fc05866a4b4",
+    "rep": "2733647abd9382d0e062e95566c576f1",
+    "rep_len": 132,
+    "n_loci": 154,
+    "n_genomes": 154,
+    "offsets": {
+     "-1": 154
+    },
+    "mates_pfam": {}
+   },
+   {
+    "nr50": "396437e0e3a7ed521cba79785062dfba",
+    "rep": "1d7c5fecce6e4829b8c09a38accd32da",
+    "rep_len": 324,
+    "n_loci": 130,
+    "n_genomes": 130,
+    "offsets": {
+     "-5": 97,
+     "-4": 31,
+     "-3": 2
+    },
+    "mates_pfam": {}
+   },
+   {
+    "nr50": "9b31e062454f05648c29912c255b4e0a",
+    "rep": "f7b05e03a1afc3f0b34bd7f50b353830",
+    "rep_len": 116,
+    "n_loci": 128,
+    "n_genomes": 128,
+    "offsets": {
+     "-3": 32,
+     "-2": 99
+    },
+    "mates_pfam": {
+     "Phage_T7_GP04": 1
+    }
+   },
+   {
+    "nr50": "fab32175eec6eeb927d82874794ed929",
+    "rep": "155f2bad2f028e12c3e8d4fe1a8b38f2",
+    "rep_len": 224,
+    "n_loci": 112,
+    "n_genomes": 112,
+    "offsets": {
+     "-2": 4,
+     "-1": 108
+    },
+    "mates_pfam": {
+     "DNMK": 5
+    }
+   },
+   {
+    "nr50": "abddcf29e202a55470e632099b823ac3",
+    "rep": "007992f9c970f5389950347c83c239b9",
+    "rep_len": 65,
+    "n_loci": 109,
+    "n_genomes": 109,
+    "offsets": {
+     "1": 107,
+     "2": 3
+    },
+    "mates_pfam": {}
+   },
+   {
+    "nr50": "61e628529d5204c433a9a211e4101718",
+    "rep": "584e158d65da79383be5f2d8be23baf0",
+    "rep_len": 287,
+    "n_loci": 107,
+    "n_genomes": 107,
+    "offsets": {
+     "4": 105,
+     "5": 3
+    },
+    "mates_pfam": {}
+   },
+   {
+    "nr50": "7c5ee74fa74b5ea3aa08a85506eaf6c8",
+    "rep": "07eadf898fe2008b80815d060073eb1d",
+    "rep_len": 83,
+    "n_loci": 107,
+    "n_genomes": 107,
+    "offsets": {
+     "2": 105,
+     "3": 2
+    },
+    "mates_pfam": {}
+   }
+  ]
+ },
+ "partial": {
+  "n_loci": 715,
+  "families": [
+   {
+    "family": "RNA_pol",
+    "n_loci": 225,
+    "n_genomes": 181,
+    "offsets": {
+     "-3": 4,
+     "-2": 11,
+     "-1": 22,
+     "1": 89,
+     "2": 72,
+     "3": 35,
+     "4": 8,
+     "5": 5
+    }
+   },
+   {
+    "family": "HNH_3",
+    "n_loci": 125,
+    "n_genomes": 90,
+    "offsets": {
+     "-5": 1,
+     "-4": 4,
+     "-3": 2,
+     "-2": 2,
+     "-1": 9,
+     "1": 43,
+     "2": 29,
+     "3": 2,
+     "4": 13,
+     "5": 22
+    }
+   },
+   {
+    "family": "DUF4326",
+    "n_loci": 66,
+    "n_genomes": 46,
+    "offsets": {
+     "-5": 19,
+     "-4": 23,
+     "-3": 21,
+     "-2": 1,
+     "1": 2
+    }
+   },
+   {
+    "family": "Big_2",
+    "n_loci": 56,
+    "n_genomes": 38,
+    "offsets": {
+     "1": 18,
+     "2": 14,
+     "3": 10,
+     "4": 8,
+     "5": 6
+    }
+   },
+   {
+    "family": "Hydrolase_2",
+    "n_loci": 46,
+    "n_genomes": 46,
+    "offsets": {
+     "-5": 1,
+     "-4": 1,
+     "-3": 2,
+     "-2": 26,
+     "-1": 15,
+     "5": 1
+    }
+   },
+   {
+    "family": "Phage_T7_1_1",
+    "n_loci": 45,
+    "n_genomes": 22,
+    "offsets": {
+     "1": 8,
+     "2": 16,
+     "3": 11,
+     "4": 7,
+     "5": 3
+    }
+   },
+   {
+    "family": "GP17",
+    "n_loci": 44,
+    "n_genomes": 25,
+    "offsets": {
+     "2": 20,
+     "3": 14,
+     "4": 7,
+     "5": 3
+    }
+   },
+   {
+    "family": "RPOL_N",
+    "n_loci": 44,
+    "n_genomes": 31,
+    "offsets": {
+     "-5": 1,
+     "-4": 3,
+     "-3": 6,
+     "-2": 6,
+     "-1": 30,
+     "1": 5,
+     "5": 1
+    }
+   },
+   {
+    "family": "Band_7",
+    "n_loci": 33,
+    "n_genomes": 21,
+    "offsets": {
+     "-2": 3,
+     "3": 5,
+     "4": 16,
+     "5": 9
+    }
+   },
+   {
+    "family": "Head-tail_con",
+    "n_loci": 32,
+    "n_genomes": 21,
+    "offsets": {
+     "-1": 1,
+     "3": 12,
+     "4": 10,
+     "5": 11
+    }
+   },
+   {
+    "family": "Toprim_2",
+    "n_loci": 32,
+    "n_genomes": 20,
+    "offsets": {
+     "-3": 2,
+     "-2": 2,
+     "3": 6,
+     "4": 15,
+     "5": 7
+    }
+   },
+   {
+    "family": "DNA_ligase_A_M",
+    "n_loci": 31,
+    "n_genomes": 19,
+    "offsets": {
+     "-3": 1,
+     "-2": 2,
+     "-1": 1,
+     "2": 1,
+     "3": 6,
+     "4": 12,
+     "5": 10
+    }
+   },
+   {
+    "family": "DNA_ligase_C",
+    "n_loci": 31,
+    "n_genomes": 21,
+    "offsets": {
+     "-2": 1,
+     "-1": 1,
+     "2": 1,
+     "3": 5,
+     "4": 11,
+     "5": 12
+    }
+   },
+   {
+    "family": "DnaB_C",
+    "n_loci": 31,
+    "n_genomes": 20,
+    "offsets": {
+     "-3": 2,
+     "-2": 2,
+     "2": 1,
+     "3": 5,
+     "4": 14,
+     "5": 7
+    }
+   },
+   {
+    "family": "Phage_holin_3_1",
+    "n_loci": 31,
+    "n_genomes": 31,
+    "offsets": {
+     "-4": 1,
+     "-3": 22,
+     "-2": 8
+    }
+   }
+  ],
+  "clusters": [
+   {
+    "nr50": "3f01a184619fd944a3378cd1275eda0b",
+    "rep": "3322922d27cadf74fbf0e4e3fe6c50ab",
+    "rep_len": 278,
+    "n_loci": 102,
+    "n_genomes": 102,
+    "offsets": {
+     "-5": 2,
+     "-4": 2,
+     "-3": 24,
+     "-2": 56,
+     "-1": 18
+    },
+    "mates_pfam": {}
+   },
+   {
+    "nr50": "7c38e95d3512280c6a4092dc6e89facf",
+    "rep": "0cfc3f528d3ddaa1f6cecf028a047107",
+    "rep_len": 220,
+    "n_loci": 93,
+    "n_genomes": 62,
+    "offsets": {
+     "-5": 21,
+     "-4": 7,
+     "-3": 17,
+     "-2": 30,
+     "-1": 17,
+     "5": 1
+    },
+    "mates_pfam": {}
+   },
+   {
+    "nr50": "a446ec58b9cbff66e6eedd97a464a630",
+    "rep": "2c5cd36adbc002b49bba155c5cebd17b",
+    "rep_len": 292,
+    "n_loci": 89,
+    "n_genomes": 55,
+    "offsets": {
+     "1": 33,
+     "2": 24,
+     "3": 14,
+     "4": 15,
+     "5": 3
+    },
+    "mates_pfam": {
+     "I-set": 1
+    }
+   },
+   {
+    "nr50": "2471c6e80bcaca4fa226702a033fc648",
+    "rep": "0d6b8d34443ebb89a6f96af422559459",
+    "rep_len": 311,
+    "n_loci": 61,
+    "n_genomes": 61,
+    "offsets": {
+     "-5": 16,
+     "-4": 27,
+     "-3": 9,
+     "-2": 9
+    },
+    "mates_pfam": {}
+   },
+   {
+    "nr50": "9c62dccc9ab092bb0160b4714c921444",
+    "rep": "24d530b2c07c3d078b6aacdecebfa2a3",
+    "rep_len": 64,
+    "n_loci": 60,
+    "n_genomes": 34,
+    "offsets": {
+     "-5": 15,
+     "-4": 6,
+     "-3": 24,
+     "-2": 15
+    },
+    "mates_pfam": {}
+   },
+   {
+    "nr50": "a721ebc6fc8c3eba02ef6e64be324955",
+    "rep": "1a9ebb3a02349c3c18e68ccd5ee2c4f3",
+    "rep_len": 67,
+    "n_loci": 55,
+    "n_genomes": 42,
+    "offsets": {
+     "2": 9,
+     "3": 16,
+     "4": 12,
+     "5": 18
+    },
+    "mates_pfam": {}
+   },
+   {
+    "nr50": "5d85609db94fc506abb3b5e93898d18d",
+    "rep": "568a6a9f755db168bcba743bbc3a6256",
+    "rep_len": 80,
+    "n_loci": 52,
+    "n_genomes": 52,
+    "offsets": {
+     "1": 7,
+     "2": 45
+    },
+    "mates_pfam": {}
+   },
+   {
+    "nr50": "a31b1c2e3813cfceea3933f7f20765c8",
+    "rep": "140acdab8874cb7f024ffde0b3bd69ed",
+    "rep_len": 184,
+    "n_loci": 52,
+    "n_genomes": 52,
+    "offsets": {
+     "3": 7,
+     "4": 45
+    },
+    "mates_pfam": {}
+   },
+   {
+    "nr50": "bcad1d32635917739e95a0308d59f5bd",
+    "rep": "cc896b4a0a834fff84aee3a8474d155f",
+    "rep_len": 194,
+    "n_loci": 52,
+    "n_genomes": 52,
+    "offsets": {
+     "4": 7,
+     "5": 45
+    },
+    "mates_pfam": {}
+   },
+   {
+    "nr50": "f76815c74a93d68d683e83a5e3dc3555",
+    "rep": "0209bd5bf126dcc03ac729c9f372b2c6",
+    "rep_len": 208,
+    "n_loci": 52,
+    "n_genomes": 52,
+    "offsets": {
+     "2": 7,
+     "3": 45
+    },
+    "mates_pfam": {}
+   },
+   {
+    "nr50": "3ed95133b55cd6cd07c2360ab96fab2c",
+    "rep": "7ef58dad36aa47f94ff7eb43bbbcb8e8",
+    "rep_len": 87,
+    "n_loci": 50,
+    "n_genomes": 50,
+    "offsets": {
+     "-5": 3,
+     "-4": 15,
+     "-3": 24,
+     "-2": 8
+    },
+    "mates_pfam": {}
+   },
+   {
+    "nr50": "066b0a3748146d1e49f4fcba5937fa59",
+    "rep": "6079784e8250bcfc84f56036911f39b5",
+    "rep_len": 72,
+    "n_loci": 48,
+    "n_genomes": 24,
+    "offsets": {
+     "-3": 24,
+     "-2": 24
+    },
+    "mates_pfam": {}
+   },
+   {
+    "nr50": "0bab198359edb94c72c277c769392c70",
+    "rep": "057b182b31b0452b1c2ce9ed0fe3d47d",
+    "rep_len": 109,
+    "n_loci": 48,
+    "n_genomes": 24,
+    "offsets": {
+     "-4": 24,
+     "-3": 24
+    },
+    "mates_pfam": {}
+   },
+   {
+    "nr50": "38aae0659a0beeecbafd62fc4f72db9e",
+    "rep": "15f79224ce02a2fcc0e0d12461acfd32",
+    "rep_len": 76,
+    "n_loci": 48,
+    "n_genomes": 24,
+    "offsets": {
+     "-2": 24,
+     "-1": 24
+    },
+    "mates_pfam": {}
+   },
+   {
+    "nr50": "887e99b0146cf56695f6c918dd477f8d",
+    "rep": "cf60beea7263bef142b100f0b4af4a70",
+    "rep_len": 63,
+    "n_loci": 48,
+    "n_genomes": 24,
+    "offsets": {
+     "3": 24,
+     "4": 24
+    },
+    "mates_pfam": {}
+   }
+  ]
+ }
+}

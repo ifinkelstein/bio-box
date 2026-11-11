@@ -10,7 +10,6 @@ import gzip
 import hashlib
 import os
 import shutil
-import time
 from collections import Counter
 from pathlib import Path
 
@@ -19,10 +18,10 @@ import pytest
 import yaml
 
 from biobox import catalog, contracts, fasta, ids, ledger, provenance
-from biobox.l0seq import SeqStore, SourceObject, ingest
-from biobox.l1 import igr
-from biobox.l3 import pairs, tapes, tokens
-from biobox.l1.genecall import GENE_CALL_VERSION, GenomeInput, call_genome, run
+from biobox.l0seq import SeqStore
+from biobox.l3 import tokens
+from biobox.l1.genecall import GENE_CALL_VERSION, GenomeInput, call_genome
+from oracles.pairs_oracle import K_MAX, pairs_of_contig
 
 pytestmark = pytest.mark.r3
 
@@ -66,27 +65,6 @@ def _input(entry, code=None, kind=None):
     return GenomeInput(uids, code or entry["genetic_code"], kind=kind or entry["kind"], circular=circ)
 
 
-@pytest.fixture(scope="module")
-def store_root(tmp_path_factory):
-    root = tmp_path_factory.mktemp("golden")
-    objs = [SourceObject(DIR / LOCK["files"][e["id"]]["path"], "golden", str(GOLDEN["version"])) for e in GOLDEN["genomes"]]
-    t0 = time.perf_counter()
-    ingest(objs, root, "S0")
-    t1 = time.perf_counter()
-    inputs = [_input(e) for e in GOLDEN["genomes"]]
-    report = run(root, "S0", inputs)
-    t2 = time.perf_counter()
-    igrs = igr.run(root, "S0", {u for gi in inputs for u in gi.circular})
-    tp = tapes.run(root, "S0", {u for gi in inputs for u in gi.circular})
-    print(f"\ngolden: ingest {t1 - t0:.1f}s, gene calling {t2 - t1:.1f}s, {report}, igr {igrs}, tapes {tp}")
-    if shutil.which("mmseqs"):
-        from biobox.l2 import cluster
-        cluster.run(root, "rS0.golden", GENE_CALL_VERSION, threads=4, tmp=root.parent)
-        tokens.run(root, "rS0.golden")
-        print("pairs", pairs.run(root, "rS0.golden"))
-    return root
-
-
 def test_files_match_lock():
     for gid, f in LOCK["files"].items():
         with gzip.open(DIR / f["path"], "rb") as fh:
@@ -104,7 +82,7 @@ def test_every_record_has_genes(store_root):
 
 
 def test_prokaryote_gene_density_is_plausible(store_root):
-    store = SeqStore(store_root)
+    store = SeqStore(store_root, ["S0"])
     for e in GOLDEN["genomes"]:
         if e["kind"] != "prokaryote":
             continue
@@ -117,7 +95,7 @@ def test_prokaryote_gene_density_is_plausible(store_root):
 def test_gv_picks_the_phage_genetic_code(store_root, gid, expected):
     # lak_b8: NCBI says code 11, the sequence says 15 (golden.yaml note); lambda and t4 are code-11 controls.
     e = next(e for e in GOLDEN["genomes"] if e["id"] == gid)
-    calls = call_genome(SeqStore(store_root), _input(e))
+    calls = call_genome(SeqStore(store_root, ["S0"]), _input(e))
     codes = Counter(c["genetic_code"] for c in calls)
     assert codes.most_common(1)[0][0] == expected, codes
     assert codes[expected] / sum(codes.values()) >= 0.95, codes
@@ -126,7 +104,7 @@ def test_gv_picks_the_phage_genetic_code(store_root, gid, expected):
 @pytest.mark.parametrize("gid", ["lak_a1", "lak_b8", "lambda", "t4"])
 def test_phage_coding_density_under_called_code(store_root, gid):
     e = next(e for e in GOLDEN["genomes"] if e["id"] == gid)
-    calls = call_genome(SeqStore(store_root), _input(e))
+    calls = call_genome(SeqStore(store_root, ["S0"]), _input(e))
     n = sum(len(r.seq) for r in _records(gid))
     covered = sum(c["end"] - c["start"] for c in calls)
     assert covered / n >= 0.85, (gid, covered / n)
@@ -134,7 +112,7 @@ def test_phage_coding_density_under_called_code(store_root, gid):
 
 def test_sr1_needs_code_25(store_root):
     e = next(e for e in GOLDEN["genomes"] if e["id"] == "sr1_raac1")
-    store = SeqStore(store_root)
+    store = SeqStore(store_root, ["S0"])
     c25 = call_genome(store, _input(e, code=25))
     c11 = call_genome(store, _input(e, code=11))
     mean = lambda cs: sum(len(c["aa"]) for c in cs) / len(cs)  # noqa: E731
@@ -143,7 +121,7 @@ def test_sr1_needs_code_25(store_root):
 
 def test_obelisk_oblin1_is_called(store_root):
     e = next(e for e in GOLDEN["genomes"] if e["id"] == "obelisk_ss")
-    calls = call_genome(SeqStore(store_root), _input(e))
+    calls = call_genome(SeqStore(store_root, ["S0"]), _input(e))
     recs = _records("obelisk_ss")
     for truth in e["truth"]:
         rec = next(r for r in recs if truth["record"] in r.header)
@@ -157,7 +135,7 @@ def test_obelisk_oblin1_is_called(store_root):
 
 
 def test_r04_independent_translation_on_golden(store_root):
-    store = SeqStore(store_root)
+    store = SeqStore(store_root, ["S0"])
     checked = 0
     for e in GOLDEN["genomes"]:
         gi = _input(e)
@@ -174,7 +152,7 @@ def test_r04_independent_translation_on_golden(store_root):
 
 @pytest.fixture(scope="module")
 def golden_catalog(store_root, tmp_path_factory):
-    man = catalog.build_manifest(store_root, "rS0.golden")
+    man = catalog.build_manifest(store_root, "rS0.golden", ["S0"])
     con = catalog.open_catalog(catalog.generate_catalog(man, tmp_path_factory.mktemp("cat") / "c.duckdb"))
     yield man, con
     con.close()
@@ -225,7 +203,7 @@ def test_golden_ledger_reconciles(store_root):
     assert ledger.check_balance(store_root, "S0", ["ingest", "genecall"]) == []
     expected = {ids.sha256_file(DIR / LOCK["files"][e["id"]]["path"]) for e in GOLDEN["genomes"]}
     assert ledger.check_inputs(store_root, "S0", expected) == []
-    assert ledger.check_chain(store_root, "S0") == []
+    assert ledger.check_chain(store_root, "S0", release="rS0.golden") == []  # clustering: the release's ledger (B-28)
     gc = ledger.read(store_root, "S0", "genecall")
     assert sum(r["n_in"] for r in gc) == 33_716 and sum(r["n_kept"] for r in gc) == 33_442
 
@@ -244,17 +222,45 @@ def test_golden_tapes(golden_catalog, store_root):
         for r in pq.read_table(f).to_pylist():
             occ.setdefault(r["contig_uid"], []).append(r)
     cuids = sorted(occ)[::3]
-    for g in con.sql("SELECT contig_uid, start_bps, protein_uids FROM tapes_of(?)", params=[cuids]).to_arrow_table().to_pylist():
-        slots = sorted(occ[g["contig_uid"]], key=lambda r: r["slot_ordinal"])
+    sql = "SELECT contig_uid, start_bps, protein_uids, feature_uids FROM tapes_of(?)"
+    for g in con.sql(sql, params=[cuids]).to_arrow_table().to_pylist():
+        slots = sorted(occ[g["contig_uid"]], key=lambda r: (r["start"], r["end"], r["strand"]))  # coordinate order
         assert g["start_bps"] == [r["start"] for r in slots]
         assert g["protein_uids"] == [r["protein_uid"] for r in slots]
+        assert g["feature_uids"] == [r["feature_uid"] for r in slots]
+
+
+def _golden_pair_rows(root: Path, release: str, keep=None):
+    """`pairs_of_contig` at K_MAX on every tape of the release, one contig at a time: (anchor, partner) -> rows of
+    (contig_uid, anchor_ordinal, partner_ordinal, orf_offset, junction_topology, delta_bp, flags) within 3 slots,
+    for the pairs in `keep` (every pair when None)."""
+    tv = tokens.tape_version_of()
+    tps = {r["contig_uid"]: r for f in sorted(root.glob(f"l3/tapes/tape_version={tv}/stage=*/part-*.parquet"))
+           for r in pq.read_table(f, partitioning=None).to_pylist()}
+    out: dict[tuple[int, int], list[tuple]] = {}
+    for f in sorted(root.glob(f"l3/tape_tokens/tape_version={tv}/release={release}/part-*.parquet")):
+        for tok in pq.read_table(f, partitioning=None).to_pylist():
+            lists = {lvl: tok[f"{lvl}_tokens"] for lvl in ("family", "nr50", "nr90")}
+            for p in pairs_of_contig(tps[tok["contig_uid"]], lists, K_MAX):
+                key = (p["anchor_token"], p["partner_token"])
+                if abs(p["orf_offset"]) <= 3 and (keep is None or key in keep):
+                    out.setdefault(key, []).append((p["contig_uid"], p["anchor_ordinal"], p["partner_ordinal"],
+                                                    p["orf_offset"], p["junction_topology"], p["delta_bp"], p["flags"]))
+    return out
 
 
 @pytest.mark.skipif(shutil.which("mmseqs") is None, reason="MMseqs2 not on PATH")
-@pytest.mark.covers("Q1", "C-03")
-def test_golden_pairs(golden_catalog):
+@pytest.mark.covers("Q1", "Q4", "C-03")
+def test_golden_pairs(golden_catalog, store_root):
+    """Q1 and Q4 over token_postings (card B-11) for the most frequent token pair within 3 slots, against the pair
+    oracle run on every golden tape."""
     _, con = golden_catalog
     assert contracts.check_foreign_keys(con) == []
-    a, b, n = con.execute("SELECT anchor_token, partner_token, count(DISTINCT (contig_uid, anchor_ordinal)) "
-                          "FROM slot_pairs WHERE abs(orf_offset) <= 3 GROUP BY 1, 2 ORDER BY 3 DESC, 1, 2 LIMIT 1").fetchall()[0]
-    assert con.execute("SELECT q1_count(?, ?, 3, NULL)", [a, b]).fetchall()[0][0] == n
+    loci = {k: len({(r[0], r[1]) for r in v}) for k, v in _golden_pair_rows(store_root, "rS0.golden").items()}
+    (a, b) = min(loci, key=lambda p: (-loci[p], p))
+    assert loci[(a, b)] > 1
+    assert con.execute("SELECT q1_count(?, ?, 3, NULL)", [a, b]).fetchall()[0][0] == loci[(a, b)]
+    want = sorted(_golden_pair_rows(store_root, "rS0.golden", {(a, b)})[(a, b)])
+    got = con.execute("SELECT contig_uid, anchor_ordinal, partner_ordinal, orf_offset, junction_topology, delta_bp, "
+                      "flags FROM pairs_of(?, ?, 3)", [a, b]).fetchall()
+    assert sorted(got) == want

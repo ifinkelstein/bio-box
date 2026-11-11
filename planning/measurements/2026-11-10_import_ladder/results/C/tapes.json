@@ -1,0 +1,17 @@
+{
+ "key": "C",
+ "step": "tapes",
+ "stage": "P2",
+ "release": "rL.3",
+ "threads": 1,
+ "started_utc": "2026-11-10T06:10:22+00:00",
+ "result": {
+  "contigs": 5018,
+  "slots": 8722859,
+  "files": 1,
+  "tape_version": "t-ca596dd85040"
+ },
+ "error": null,
+ "inner_wall_s": 75.26,
+ "self_peak_rss_mb": 2442.7
+}

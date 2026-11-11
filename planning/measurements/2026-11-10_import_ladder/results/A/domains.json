@@ -1,0 +1,27 @@
+{
+ "key": "A",
+ "step": "domains",
+ "stage": "S1",
+ "release": "rL.1",
+ "threads": 1,
+ "started_utc": "2026-11-10T04:38:32+00:00",
+ "result": {
+  "new_distinct": 1134550,
+  "pilot_distinct": 1134550,
+  "only_new": 0,
+  "only_pilot": 0,
+  "equal": true,
+  "copied": "l1/domains/library=pfam-38.2/stage=S1/part-0.parquet",
+  "sha256": "633cb3a007d8b06ab5d87e09181c1bae6f3077b6ed01c27bd3b962aaa3ea9272",
+  "pilot_sha256": "633cb3a007d8b06ab5d87e09181c1bae6f3077b6ed01c27bd3b962aaa3ea9272",
+  "rows": 605564,
+  "proteins_with_hit": 436807,
+  "ledger": "ledger/stage=S1/step=domains-pfam-38.2/part-0.parquet",
+  "ledger_rows_equal_pilot": true,
+  "balance": [],
+  "chain": []
+ },
+ "error": null,
+ "inner_wall_s": 2.1,
+ "self_peak_rss_mb": 658.1
+}

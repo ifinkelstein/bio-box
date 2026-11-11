@@ -1,0 +1,240 @@
+[survived] _write__mutmut_9
+    - pq.write_table(tbl, path, compression="zstd", row_group_size=122_880)
+    + pq.write_table(tbl, path, compression=None, row_group_size=122_880)
+[survived] _write__mutmut_10
+    - pq.write_table(tbl, path, compression="zstd", row_group_size=122_880)
+    + pq.write_table(tbl, path, compression="zstd", row_group_size=None)
+[survived] _write__mutmut_13
+    - pq.write_table(tbl, path, compression="zstd", row_group_size=122_880)
+    + pq.write_table(tbl, path, row_group_size=122_880)
+[survived] _write__mutmut_14
+    - pq.write_table(tbl, path, compression="zstd", row_group_size=122_880)
+    + pq.write_table(tbl, path, compression="zstd", )
+[survived] _write__mutmut_16
+    - pq.write_table(tbl, path, compression="zstd", row_group_size=122_880)
+    + pq.write_table(tbl, path, compression="ZSTD", row_group_size=122_880)
+[survived] _write__mutmut_17
+    - pq.write_table(tbl, path, compression="zstd", row_group_size=122_880)
+    + pq.write_table(tbl, path, compression="zstd", row_group_size=122881)
+[survived] _finder__mutmut_2
+    - raise ValueError(f"unknown genome kind {genome.kind!r}")
+    + raise ValueError(None)
+[survived] _finder__mutmut_10
+    - if genome.kind == "plasmid" or sum(len(s) for s in seqs.values()) < SINGLE_MODE_MIN_BP:
+    + if genome.kind == "plasmid" and sum(len(s) for s in seqs.values()) < SINGLE_MODE_MIN_BP:
+[survived] _finder__mutmut_12
+    - if genome.kind == "plasmid" or sum(len(s) for s in seqs.values()) < SINGLE_MODE_MIN_BP:
+    + if genome.kind == "XXplasmidXX" or sum(len(s) for s in seqs.values()) < SINGLE_MODE_MIN_BP:
+[survived] _finder__mutmut_13
+    - if genome.kind == "plasmid" or sum(len(s) for s in seqs.values()) < SINGLE_MODE_MIN_BP:
+    + if genome.kind == "PLASMID" or sum(len(s) for s in seqs.values()) < SINGLE_MODE_MIN_BP:
+[survived] _finder__mutmut_15
+    - if genome.kind == "plasmid" or sum(len(s) for s in seqs.values()) < SINGLE_MODE_MIN_BP:
+    + if genome.kind == "plasmid" or sum(len(s) for s in seqs.values()) <= SINGLE_MODE_MIN_BP:
+[survived] _finder__mutmut_16
+    - return pyrodigal.GeneFinder(meta=True), "meta"
+    + return pyrodigal.GeneFinder(meta=None), "meta"
+[survived] _finder__mutmut_17
+    - return pyrodigal.GeneFinder(meta=True), "meta"
+    + return pyrodigal.GeneFinder(meta=False), "meta"
+[survived] _finder__mutmut_18
+    - return pyrodigal.GeneFinder(meta=True), "meta"
+    + return pyrodigal.GeneFinder(meta=True), "XXmetaXX"
+[survived] _finder__mutmut_19
+    - return pyrodigal.GeneFinder(meta=True), "meta"
+    + return pyrodigal.GeneFinder(meta=True), "META"
+[survived] _finder__mutmut_21
+    - finder = pyrodigal.GeneFinder(meta=False)
+    + finder = pyrodigal.GeneFinder(meta=None)
+[survived] _genes__mutmut_6
+    - yield g.begin - 1, g.end, g.strand, g.translate(include_stop=False), g.translation_table, bool(
+    + yield g.begin - 1, g.end, g.strand, g.translate(include_stop=None), g.translation_table, bool(
+[survived] _genes__mutmut_7
+    - yield g.begin - 1, g.end, g.strand, g.translate(include_stop=False), g.translation_table, bool(
+    + yield g.begin - 1, g.end, g.strand, g.translate(include_stop=True), g.translation_table, bool(
+[survived] _genes__mutmut_8
+    - g.partial_begin or g.partial_end
+    + None
+[survived] _genes__mutmut_9
+    - g.partial_begin or g.partial_end
+    + g.partial_begin and g.partial_end
+[survived] _genes__mutmut_24
+    - if not 0 <= start < n or g.partial_begin or g.partial_end:
+    + if not 0 <= start < n or g.partial_begin and g.partial_end:
+[survived] _genes__mutmut_27
+    - if not 0 <= start < n or g.partial_begin or g.partial_end:
+    + if not 1 <= start < n or g.partial_begin or g.partial_end:
+[survived] _genes__mutmut_28
+    - if not 0 <= start < n or g.partial_begin or g.partial_end:
+    + if not 0 < start < n or g.partial_begin or g.partial_end:
+[survived] _genes__mutmut_29
+    - if not 0 <= start < n or g.partial_begin or g.partial_end:
+    + if not 0 <= start <= n or g.partial_begin or g.partial_end:
+[survived] _genes__mutmut_33
+    - yield start, end, g.strand, g.translate(include_stop=False), g.translation_table, False
+    + yield start, end, g.strand, g.translate(include_stop=None), g.translation_table, False
+[survived] _genes__mutmut_34
+    - yield start, end, g.strand, g.translate(include_stop=False), g.translation_table, False
+    + yield start, end, g.strand, g.translate(include_stop=True), g.translation_table, False
+[survived] _genes__mutmut_35
+    - yield start, end, g.strand, g.translate(include_stop=False), g.translation_table, False
+    + yield start, end, g.strand, g.translate(include_stop=False), g.translation_table, True
+[survived] call_genome__mutmut_3
+    - seqs = {cu: store.get(cu).upper().decode("ascii") for cu in genome.contig_uids}
+    + seqs = {cu: store.get(cu).lower().decode("ascii") for cu in genome.contig_uids}
+[survived] call_genome__mutmut_6
+    - seqs = {cu: store.get(cu).upper().decode("ascii") for cu in genome.contig_uids}
+    + seqs = {cu: store.get(cu).upper().decode("ASCII") for cu in genome.contig_uids}
+[survived] call_genome__mutmut_22
+    - genes = sorted(_genes(finder, seq, circular), key=lambda t: (t[0], t[1], t[2]))
+    + genes = sorted(_genes(finder, seq, circular), key=None)
+[survived] call_genome__mutmut_24
+    - genes = sorted(_genes(finder, seq, circular), key=lambda t: (t[0], t[1], t[2]))
+    + genes = sorted(_genes(finder, seq, circular), )
+[survived] call_genome__mutmut_32
+    - genes = sorted(_genes(finder, seq, circular), key=lambda t: (t[0], t[1], t[2]))
+    + genes = sorted(_genes(finder, seq, circular), key=lambda t: (t[1], t[1], t[2]))
+[survived] call_genome__mutmut_33
+    - genes = sorted(_genes(finder, seq, circular), key=lambda t: (t[0], t[1], t[2]))
+    + genes = sorted(_genes(finder, seq, circular), key=lambda t: (t[0], t[2], t[2]))
+[survived] call_genome__mutmut_34
+    - genes = sorted(_genes(finder, seq, circular), key=lambda t: (t[0], t[1], t[2]))
+    + genes = sorted(_genes(finder, seq, circular), key=lambda t: (t[0], t[1], t[3]))
+[survived] call_genome__mutmut_38
+    - dist = 0 if partial else min(start, len(seq) - end)
+    + dist = 0 if (partial) and False else min(start, len(seq) - end)
+[survived] call_genome__mutmut_39
+    - dist = 0 if partial else min(start, len(seq) - end)
+    + dist = 0 if (partial) or True else min(start, len(seq) - end)
+[survived] call_genome__mutmut_40
+    - dist = 0 if partial else min(start, len(seq) - end)
+    + dist = 1 if partial else min(start, len(seq) - end)
+[survived] call_genome__mutmut_45
+    - dist = 0 if partial else min(start, len(seq) - end)
+    + dist = 0 if partial else min(start, len(seq) + end)
+[survived] call_genome__mutmut_67
+    - "wraps_origin": end > len(seq),
+    + "wraps_origin": end >= len(seq),
+[survived] run__mutmut_38
+    - "edit_type": "none",
+    + "edit_type": "XXnoneXX",
+[survived] run__mutmut_39
+    - "edit_type": "none",
+    + "edit_type": "NONE",
+[survived] run__mutmut_92
+    - "tax_order": None,
+    + "XXtax_orderXX": None,
+[survived] run__mutmut_93
+    - "tax_order": None,
+    + "TAX_ORDER": None,
+[survived] run__mutmut_137
+    - est = {pu: 40 + PROTEIN_BYTES_PER_AA * len(aa) for pu, aa in distinct.items()}
+    + est = {pu: 40 - PROTEIN_BYTES_PER_AA * len(aa) for pu, aa in distinct.items()}
+[survived] run__mutmut_138
+    - est = {pu: 40 + PROTEIN_BYTES_PER_AA * len(aa) for pu, aa in distinct.items()}
+    + est = {pu: 41 + PROTEIN_BYTES_PER_AA * len(aa) for pu, aa in distinct.items()}
+[survived] run__mutmut_139
+    - est = {pu: 40 + PROTEIN_BYTES_PER_AA * len(aa) for pu, aa in distinct.items()}
+    + est = {pu: 40 + PROTEIN_BYTES_PER_AA / len(aa) for pu, aa in distinct.items()}
+[survived] run__mutmut_160
+    - starts = layout.cut([est[pu] for pu in uids], max_file_bytes)
+    + starts = layout.cut([est[pu] for pu in uids], )
+[survived] run__mutmut_176
+    - "protein_digest": ids.raw_digest(distinct[pu].encode("ascii")),
+    + "protein_digest": ids.raw_digest(distinct[pu].encode("ASCII")),
+[survived] run__mutmut_192
+    - per: dict[bytes, list[int]] = {cu: [0, 0] for g in genomes for cu in g.contig_uids}
+    + per: dict[bytes, list[int]] = {cu: [1, 0] for g in genomes for cu in g.contig_uids}
+[survived] run__mutmut_200
+    - c[0] += 1
+    + c[0] += 2
+[survived] run__mutmut_203
+    - if r["protein_uid"] not in seen:
+    + if r["protein_uid"] in seen:
+[survived] run__mutmut_204
+    - seen.add(r["protein_uid"])
+    + seen.add(None)
+[survived] run__mutmut_207
+    - c[1] += 1
+    + c[1] = 1
+[survived] run__mutmut_211
+    - tools = provenance.tool_versions("pyrodigal", "pyrodigal-gv", "pyarrow")
+    + tools = None
+[survived] run__mutmut_215
+    - tools = provenance.tool_versions("pyrodigal", "pyrodigal-gv", "pyarrow")
+    + tools = provenance.tool_versions("pyrodigal-gv", "pyarrow")
+[survived] run__mutmut_216
+    - tools = provenance.tool_versions("pyrodigal", "pyrodigal-gv", "pyarrow")
+    + tools = provenance.tool_versions("pyrodigal", "pyarrow")
+[survived] run__mutmut_217
+    - tools = provenance.tool_versions("pyrodigal", "pyrodigal-gv", "pyarrow")
+    + tools = provenance.tool_versions("pyrodigal", "pyrodigal-gv", )
+[survived] run__mutmut_219
+    - tools = provenance.tool_versions("pyrodigal", "pyrodigal-gv", "pyarrow")
+    + tools = provenance.tool_versions("PYRODIGAL", "pyrodigal-gv", "pyarrow")
+[survived] run__mutmut_221
+    - tools = provenance.tool_versions("pyrodigal", "pyrodigal-gv", "pyarrow")
+    + tools = provenance.tool_versions("pyrodigal", "PYRODIGAL-GV", "pyarrow")
+[survived] run__mutmut_223
+    - tools = provenance.tool_versions("pyrodigal", "pyrodigal-gv", "pyarrow")
+    + tools = provenance.tool_versions("pyrodigal", "pyrodigal-gv", "PYARROW")
+[survived] run__mutmut_225
+    - ledger.write(root, stage, "genecall",
+    + ledger.write(root, None, "genecall",
+[survived] run__mutmut_226
+    - ledger.write(root, stage, "genecall",
+    + ledger.write(root, stage, None,
+[survived] run__mutmut_232
+    - ledger.write(root, stage, "genecall",
+    + ledger.write(root, stage, "XXgenecallXX",
+[survived] run__mutmut_233
+    - ledger.write(root, stage, "genecall",
+    + ledger.write(root, stage, "GENECALL",
+[survived] run__mutmut_239
+    - [ledger.row(cu, "contig", n, k, n - k, tools=tools) for cu, (n, k) in per.items()])
+    + [ledger.row(cu, "contig", n, k, n - k, tools=None) for cu, (n, k) in per.items()])
+[survived] run__mutmut_242
+    - [ledger.row(cu, "contig", n, k, n - k, tools=tools) for cu, (n, k) in per.items()])
+    + [ledger.row(cu, "contig", k, n - k, tools=tools) for cu, (n, k) in per.items()])
+[survived] run__mutmut_243
+    - [ledger.row(cu, "contig", n, k, n - k, tools=tools) for cu, (n, k) in per.items()])
+    + [ledger.row(cu, "contig", n, n - k, tools=tools) for cu, (n, k) in per.items()])
+[survived] run__mutmut_244
+    - [ledger.row(cu, "contig", n, k, n - k, tools=tools) for cu, (n, k) in per.items()])
+    + [ledger.row(cu, "contig", n, k, tools=tools) for cu, (n, k) in per.items()])
+[survived] run__mutmut_245
+    - [ledger.row(cu, "contig", n, k, n - k, tools=tools) for cu, (n, k) in per.items()])
+    + [ledger.row(cu, "contig", n, k, n - k, ) for cu, (n, k) in per.items()])
+[survived] run__mutmut_246
+    - [ledger.row(cu, "contig", n, k, n - k, tools=tools) for cu, (n, k) in per.items()])
+    + [ledger.row(cu, "XXcontigXX", n, k, n - k, tools=tools) for cu, (n, k) in per.items()])
+[survived] run__mutmut_247
+    - [ledger.row(cu, "contig", n, k, n - k, tools=tools) for cu, (n, k) in per.items()])
+    + [ledger.row(cu, "CONTIG", n, k, n - k, tools=tools) for cu, (n, k) in per.items()])
+[survived] run__mutmut_248
+    - [ledger.row(cu, "contig", n, k, n - k, tools=tools) for cu, (n, k) in per.items()])
+    + [ledger.row(cu, "contig", n, k, n + k, tools=tools) for cu, (n, k) in per.items()])
+[survived] run__mutmut_249
+    - "genes": len(calls),
+    + "XXgenesXX": len(calls),
+[survived] run__mutmut_250
+    - "genes": len(calls),
+    + "GENES": len(calls),
+[survived] run__mutmut_251
+    - "distinct_proteins": len(distinct),
+    + "XXdistinct_proteinsXX": len(distinct),
+[survived] run__mutmut_252
+    - "distinct_proteins": len(distinct),
+    + "DISTINCT_PROTEINS": len(distinct),
+[survived] run__mutmut_253
+    - "modes": sorted({c["mode"] for c in calls}),
+    + "XXmodesXX": sorted({c["mode"] for c in calls}),
+[survived] run__mutmut_254
+    - "modes": sorted({c["mode"] for c in calls}),
+    + "MODES": sorted({c["mode"] for c in calls}),
+[survived] run__mutmut_258
+    - "wrapping_genes": sum(c["wraps_origin"] for c in calls),
+    + "XXwrapping_genesXX": sum(c["wraps_origin"] for c in calls),
+[survived] run__mutmut_259
+    - "wrapping_genes": sum(c["wraps_origin"] for c in calls),
+    + "WRAPPING_GENES": sum(c["wraps_origin"] for c in calls),

@@ -1,0 +1,649 @@
+{
+ "key": "C",
+ "step": "queries",
+ "stage": "P2",
+ "release": "rL.3",
+ "threads": 1,
+ "started_utc": "2026-11-10T10:08:21+00:00",
+ "result": {
+  "release": "rL.3",
+  "seqstore_open_s": 0.0317,
+  "seqstore_rss_growth_mb": 7.3,
+  "open_catalog_s": 0.3612,
+  "open_catalog_rss_growth_mb": 10.3,
+  "rss_mb_after_open": 223.8,
+  "row_counts": {
+   "views": {
+    "cluster_member": {
+     "rows": 31722768,
+     "wall_s": 0.027
+    },
+    "cluster_member_aln": {
+     "rows": 31722768,
+     "wall_s": 0.024
+    },
+    "contig_dim": {
+     "rows": 120685,
+     "wall_s": 0.003
+    },
+    "contig_index": {
+     "rows": 32815,
+     "wall_s": 0.002
+    },
+    "contig_occurrence": {
+     "rows": 39633,
+     "wall_s": 0.002
+    },
+    "contig_tapes": {
+     "rows": 32815,
+     "wall_s": 0.015
+    },
+    "feature": {
+     "rows": 12048866,
+     "wall_s": 0.013
+    },
+    "feature_protein": {
+     "rows": 12048866,
+     "wall_s": 0.007
+    },
+    "genome_input": {
+     "rows": 32815,
+     "wall_s": 0.002
+    },
+    "igr": {
+     "rows": 9491097,
+     "wall_s": 0.006
+    },
+    "l0_manifest": {
+     "rows": 2498,
+     "wall_s": 0.003
+    },
+    "l1_domains": {
+     "rows": 2158015,
+     "wall_s": 0.004
+    },
+    "ledger": {
+     "rows": 68140,
+     "wall_s": 0.005
+    },
+    "protein_occurrence": {
+     "rows": 12048866,
+     "wall_s": 0.008
+    },
+    "protein_seq": {
+     "rows": 10634028,
+     "wall_s": 0.006
+    },
+    "seq_locator": {
+     "rows": 32815,
+     "wall_s": 0.002
+    },
+    "slot_protein": {
+     "rows": 12048866,
+     "wall_s": 0.006
+    },
+    "tape_tokens": {
+     "rows": 120685,
+     "wall_s": 0.007
+    },
+    "tape_version_def": {
+     "rows": 1,
+     "wall_s": 0.001
+    },
+    "token_dict": {
+     "rows": 16430026,
+     "wall_s": 0.009
+    },
+    "token_postings": {
+     "rows": 47589685,
+     "wall_s": 0.027
+    }
+   },
+   "this_release": {
+    "cluster_member": 21241368,
+    "token_dict": 11258843,
+    "tape_tokens": 32815,
+    "token_postings": 25822709,
+    "contig_dim": 32815
+   },
+   "wall_s": 0.24
+  },
+  "pick_genes_s": 0.46,
+  "seq_get_1000": {
+   "wall_s": 0.787,
+   "result": [
+    [
+     1000,
+     1913949
+    ]
+   ],
+   "expected_bp": 1913949,
+   "distinct_contigs": 849,
+   "scans": [
+    {
+     "files_read": 0,
+     "row_groups_scanned": 0,
+     "row_groups_total": 0,
+     "rows_scanned": 0
+    }
+   ],
+   "bytes_read": 0,
+   "bgzf": {
+    "blocks_read": 1031,
+    "compressed_bytes_read": 20369393,
+    "uncompressed_bytes_decoded": 67303680
+   },
+   "index": {
+    "locator_row_groups_read": 3,
+    "index_row_groups_read": 3
+   }
+  },
+  "seq_get_1000_warm": {
+   "wall_s": 0.613,
+   "scans": [
+    {
+     "files_read": 0,
+     "row_groups_scanned": 0,
+     "row_groups_total": 0,
+     "rows_scanned": 0
+    }
+   ],
+   "bytes_read": 0,
+   "bgzf": {
+    "blocks_read": 1031,
+    "compressed_bytes_read": 20369393,
+    "uncompressed_bytes_decoded": 67303680
+   },
+   "index": {
+    "locator_row_groups_read": 0,
+    "index_row_groups_read": 0
+   }
+  },
+  "tapes_of_one": {
+   "contig_uid": "e9983af50db3530f1ddd1b5d0147f250",
+   "wall_s": 0.075,
+   "result": [
+    [
+     1,
+     5521,
+     5521
+    ]
+   ],
+   "scans": [
+    {
+     "files_read": 1,
+     "row_groups_scanned": 1,
+     "row_groups_total": 93,
+     "rows_scanned": 1
+    },
+    {
+     "files_read": 0,
+     "row_groups_scanned": 1,
+     "row_groups_total": 1,
+     "rows_scanned": 4
+    },
+    {
+     "files_read": 3,
+     "row_groups_scanned": 3,
+     "row_groups_total": 95,
+     "rows_scanned": 1
+    }
+   ],
+   "bytes_read": 1892652,
+   "bgzf": {
+    "blocks_read": 0,
+    "compressed_bytes_read": 0,
+    "uncompressed_bytes_decoded": 0
+   },
+   "index": {
+    "locator_row_groups_read": 0,
+    "index_row_groups_read": 0
+   }
+  },
+  "postings_lookup_nr50": {
+   "token_id": 4611686018428060843,
+   "cluster_uid": "3a04ab75f40f07b9a78aa6993b389ddc",
+   "n_slots_dict": 3509,
+   "wall_s": 0.052,
+   "result": [
+    [
+     3509,
+     6757367
+    ]
+   ],
+   "scans": [
+    {
+     "files_read": 1,
+     "row_groups_scanned": 1,
+     "row_groups_total": 211,
+     "rows_scanned": 3509
+    }
+   ],
+   "bytes_read": 1400474,
+   "bgzf": {
+    "blocks_read": 0,
+    "compressed_bytes_read": 0,
+    "uncompressed_bytes_decoded": 0
+   },
+   "index": {
+    "locator_row_groups_read": 0,
+    "index_row_groups_read": 0
+   },
+   "rep_uid": "24cb91f2b7b364f66c122e67046f5912",
+   "rep_pfam": [
+    [
+     "PF03143.24",
+     "GTP_EFTU_D3",
+     1
+    ],
+    [
+     "PF00009.34",
+     "GTP_EFTU",
+     1
+    ],
+    [
+     "PF03144.32",
+     "GTP_EFTU_D2",
+     1
+    ]
+   ]
+  },
+  "neighbours": [
+   {
+    "label": "terminase family PF03237.22 (Terminase_6N) -> family partners",
+    "token_id": 2377900603251623781,
+    "partner_level": "family",
+    "anchor_loci": 6261,
+    "anchor_contigs": 6054,
+    "loci_with_partner": 5999,
+    "pair_rows": 21208,
+    "wall_s": 0.225,
+    "top10_wall_s": 0.361,
+    "top10_partners": [
+     [
+      "PF11053.13",
+      1316
+     ],
+     [
+      "PF07230.17",
+      1280
+     ],
+     [
+      "PF16724.12",
+      1260
+     ],
+     [
+      "PF22639.3",
+      1061
+     ],
+     [
+      "PF11649.13",
+      1055
+     ],
+     [
+      "PF04860.18",
+      989
+     ],
+     [
+      "PF23849.3",
+      980
+     ],
+     [
+      "PF06074.19",
+      870
+     ],
+     [
+      "PF06841.19",
+      719
+     ],
+     [
+      "PF26848.1",
+      657
+     ]
+    ],
+    "scans": [
+     {
+      "files_read": 1,
+      "row_groups_scanned": 1,
+      "row_groups_total": 211,
+      "rows_scanned": 6261
+     },
+     {
+      "files_read": 1,
+      "row_groups_scanned": 15,
+      "row_groups_total": 211,
+      "rows_scanned": 598227
+     }
+    ],
+    "bytes_read": 13898456,
+    "bgzf": {
+     "blocks_read": 0,
+     "compressed_bytes_read": 0,
+     "uncompressed_bytes_decoded": 0
+    },
+    "index": {
+     "locator_row_groups_read": 0,
+     "index_row_groups_read": 0
+    }
+   },
+   {
+    "label": "terminase family PF03237.22 -> nr50 partners",
+    "token_id": 2377900603251623781,
+    "partner_level": "nr50",
+    "anchor_loci": 6261,
+    "anchor_contigs": 6054,
+    "loci_with_partner": 6261,
+    "pair_rows": 33842,
+    "wall_s": 0.412,
+    "top10_wall_s": 0.648,
+    "top10_partners": [
+     [
+      "6cf95b7c8a830df7d1ab2e718c2f4c2b",
+      1103
+     ],
+     [
+      "03970bbae10e33c9f71ae1b38c8da245",
+      931
+     ],
+     [
+      "a013655d35c9cd5330d3acc845a13737",
+      876
+     ],
+     [
+      "1f686dc961ebc566cc565d7608a28fef",
+      850
+     ],
+     [
+      "5949a659035db1edbd191af5405e18a0",
+      792
+     ],
+     [
+      "b996cc11e41121083fe5e4839067028e",
+      764
+     ],
+     [
+      "fa5bd6fe44da174179faa1e40ad8cf7f",
+      336
+     ],
+     [
+      "44709501830d82855692bc6c2ddb276b",
+      335
+     ],
+     [
+      "7c3fe6cd4c5b15e8eec8571d0245d111",
+      329
+     ],
+     [
+      "ca125a9c209705238dfe40dc94f85ecc",
+      322
+     ]
+    ],
+    "scans": [
+     {
+      "files_read": 1,
+      "row_groups_scanned": 1,
+      "row_groups_total": 211,
+      "rows_scanned": 6261
+     },
+     {
+      "files_read": 1,
+      "row_groups_scanned": 99,
+      "row_groups_total": 211,
+      "rows_scanned": 1203878
+     }
+    ],
+    "bytes_read": 86538637,
+    "bgzf": {
+     "blocks_read": 0,
+     "compressed_bytes_read": 0,
+     "uncompressed_bytes_decoded": 0
+    },
+    "index": {
+     "locator_row_groups_read": 0,
+     "index_row_groups_read": 0
+    }
+   },
+   {
+    "label": "most abundant NR50 3a04ab75f40f07b9a78aa6993b389ddc -> nr50 partners",
+    "token_id": 4611686018428060843,
+    "partner_level": "nr50",
+    "anchor_loci": 3509,
+    "anchor_contigs": 2399,
+    "loci_with_partner": 3509,
+    "pair_rows": 21034,
+    "wall_s": 1.312,
+    "top10_wall_s": 1.862,
+    "top10_partners": [
+     [
+      "a1067e264de1eb216f25d86819261a69",
+      1757
+     ],
+     [
+      "10512581cf96c75faf3d497616dfd14d",
+      1472
+     ],
+     [
+      "b94b35ae2b69011bee62591ed0fde2c5",
+      1151
+     ],
+     [
+      "52aa30a2292f8e2470ff8448941bc99e",
+      884
+     ],
+     [
+      "2372928a63e9acb3738f61dc0bdc18ed",
+      616
+     ],
+     [
+      "947fd50b8a63f2053794562ab45ed974",
+      568
+     ],
+     [
+      "abbae03575f3e3095e6e8cc0f069eeb7",
+      322
+     ],
+     [
+      "32ff8deb7aa7e2fadb34d2738b39c652",
+      307
+     ],
+     [
+      "44a723d775ffdd8df28fc9d18ec707cb",
+      279
+     ],
+     [
+      "2e4a596228eadde2cf81352862046f30",
+      274
+     ]
+    ],
+    "scans": [
+     {
+      "files_read": 1,
+      "row_groups_scanned": 1,
+      "row_groups_total": 211,
+      "rows_scanned": 3509
+     },
+     {
+      "files_read": 1,
+      "row_groups_scanned": 99,
+      "row_groups_total": 211,
+      "rows_scanned": 10322593
+     }
+    ],
+    "bytes_read": 86701922,
+    "bgzf": {
+     "blocks_read": 0,
+     "compressed_bytes_read": 0,
+     "uncompressed_bytes_decoded": 0
+    },
+    "index": {
+     "locator_row_groups_read": 0,
+     "index_row_groups_read": 0
+    }
+   },
+   {
+    "label": "most abundant NR50 3a04ab75f40f07b9a78aa6993b389ddc -> family partners",
+    "token_id": 4611686018428060843,
+    "partner_level": "family",
+    "anchor_loci": 3509,
+    "anchor_contigs": 2399,
+    "loci_with_partner": 846,
+    "pair_rows": 2754,
+    "wall_s": 0.24,
+    "top10_wall_s": 0.321,
+    "top10_partners": [
+     [
+      "PF00164.32",
+      453
+     ],
+     [
+      "PF00338.28",
+      369
+     ],
+     [
+      "PF00177.28",
+      315
+     ],
+     [
+      "PF00009.34",
+      178
+     ],
+     [
+      "PF02357.25",
+      152
+     ],
+     [
+      "PF00297.29",
+      140
+     ],
+     [
+      "PF00573.28",
+      137
+     ],
+     [
+      "PF00584.26",
+      119
+     ],
+     [
+      "PF03946.20",
+      115
+     ],
+     [
+      "PF00298.25",
+      32
+     ]
+    ],
+    "scans": [
+     {
+      "files_read": 1,
+      "row_groups_scanned": 1,
+      "row_groups_total": 211,
+      "rows_scanned": 3509
+     },
+     {
+      "files_read": 1,
+      "row_groups_scanned": 15,
+      "row_groups_total": 211,
+      "rows_scanned": 771929
+     }
+    ],
+    "bytes_read": 14061741,
+    "bgzf": {
+     "blocks_read": 0,
+     "compressed_bytes_read": 0,
+     "uncompressed_bytes_decoded": 0
+    },
+    "index": {
+     "locator_row_groups_read": 0,
+     "index_row_groups_read": 0
+    }
+   },
+   {
+    "label": "most abundant prokaryote NR50 3a04ab75f40f07b9a78aa6993b389ddc -> nr50 partners",
+    "token_id": 4611686018428060843,
+    "partner_level": "nr50",
+    "anchor_loci": 3509,
+    "anchor_contigs": 2399,
+    "loci_with_partner": 3509,
+    "pair_rows": 21034,
+    "wall_s": 1.21,
+    "top10_wall_s": 1.945,
+    "top10_partners": [
+     [
+      "a1067e264de1eb216f25d86819261a69",
+      1757
+     ],
+     [
+      "10512581cf96c75faf3d497616dfd14d",
+      1472
+     ],
+     [
+      "b94b35ae2b69011bee62591ed0fde2c5",
+      1151
+     ],
+     [
+      "52aa30a2292f8e2470ff8448941bc99e",
+      884
+     ],
+     [
+      "2372928a63e9acb3738f61dc0bdc18ed",
+      616
+     ],
+     [
+      "947fd50b8a63f2053794562ab45ed974",
+      568
+     ],
+     [
+      "abbae03575f3e3095e6e8cc0f069eeb7",
+      322
+     ],
+     [
+      "32ff8deb7aa7e2fadb34d2738b39c652",
+      307
+     ],
+     [
+      "44a723d775ffdd8df28fc9d18ec707cb",
+      279
+     ],
+     [
+      "2e4a596228eadde2cf81352862046f30",
+      274
+     ]
+    ],
+    "scans": [
+     {
+      "files_read": 1,
+      "row_groups_scanned": 1,
+      "row_groups_total": 211,
+      "rows_scanned": 3509
+     },
+     {
+      "files_read": 1,
+      "row_groups_scanned": 99,
+      "row_groups_total": 211,
+      "rows_scanned": 10353160
+     }
+    ],
+    "bytes_read": 86701922,
+    "bgzf": {
+     "blocks_read": 0,
+     "compressed_bytes_read": 0,
+     "uncompressed_bytes_decoded": 0
+    },
+    "index": {
+     "locator_row_groups_read": 0,
+     "index_row_groups_read": 0
+    }
+   }
+  ],
+  "terminase_family_token_slots": 6261,
+  "prok_top_nr50": {
+   "token_id": 4611686018428060843,
+   "key": "3a04ab75f40f07b9a78aa6993b389ddc",
+   "prokaryote_slots": 3505
+  },
+  "rss_mb_end": 1189.8
+ },
+ "error": null,
+ "inner_wall_s": 12.64,
+ "self_peak_rss_mb": 1597.9
+}

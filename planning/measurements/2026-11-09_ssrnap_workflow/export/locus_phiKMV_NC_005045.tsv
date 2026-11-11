@@ -1,0 +1,14 @@
+# NC_005045 Pseudomonas phage phiKMV, complete genome.
+# anchor(s): RNAP hit gene(s) at offset 0; window +-5 slots (bio-box nbr, policy 5g)
+anchor_ordinal	offset	offset_rel	start	end	strand	length_aa	pfam_architecture	nr50_cluster	rnap_hit_pfam_bits	rnap_hit_seed8_bits	protein_uid
+29	-5	-5	15090	16032	1	313	-	c03873a13c3b			bc4c865e332ff57bc3e7bb643f67d803
+29	-4	-4	16021	16462	1	146	Endonuclease_7	d9a8a88f653c			7dca711d274475fede3d6d72717d6a3f
+29	-3	-3	16458	17505	1	348	RNase_H_2	fcee91a89cdd			0b320d697aefedd75051dbf8b802e542
+29	-2	-2	17514	17883	1	122	dGTP_diPhyd_N	49107bf8a865			2e4f561dfca12bd2f6c05a15af29df75
+29	-1	-1	17879	18026	1	48	-	56f077b75a7f			64eac135f5ee230bf0ec9d78f1bdc4cc
+29	0	0	18034	20485	1	816	RPOL_N+RNA_pol	8513dc558122	340.5	582.7	eb8377fda717b96aac266fda63a2b096
+29	1	1	20645	20897	1	83	-	0c01e6ea4e71			db640858fbcd832582aa921259f94ea2
+29	2	2	20896	21370	1	157	Acetyltransf_1	69bbd3e811cc			504e182a7566169a04a3e31ab8b38eb4
+29	3	3	21314	21611	1	98	-	d5d985f255db			2b7f3e7bfce3507f5b2faa36c4186776
+29	4	4	21622	23155	1	510	Head-tail_con	741d6f88182c			439b1ce4c64743d549cd7ed3fb596dd6
+29	5	5	23158	24127	1	322	-	78ddf18f60dd			c10f6df101ba8881b43bbcf006d39470

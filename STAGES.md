@@ -87,19 +87,19 @@ The request was: "define how to scale this up one piece at a time, starting with
 
 Estimates come from [`sources_and_sizing.md`](planning/sources_and_sizing.md) §4. All rates are unmeasured until S0, and wilkcomp02 delivers about 800 core-h/day.
 
-| Stage | Adds | n | Gbp (est.) | Core-h (est.) | Seq store / other disk | License | Runs on | Search tier |
+| Stage | Adds | n | Gbp (est., except S0, S2C, S3, S5, S6: *measured*) | Core-h (est.) | Seq store / other disk | License | Runs on | Search tier |
 |---|---|---|---|---|---|---|---|---|
-| S0 | Golden set (~14 genomes) + CAMI II subset; harness | ~14 + subset | 0.05 (+1–3) | 100–1,500 | 0.03 (+1) GB / <20 GB | open | wilkcomp02 | ST0 |
+| S0 | Golden set (15 genomes) + CAMI II subset; harness | 15 + subset | 0.0365 (+1–3) | 100–1,500 | 0.03 (+1) GB / <20 GB | open | wilkcomp02 | ST0 |
 | S1 | INPHARED complete phages | 30–40k | 1.7–2.2 | 250–2,500 | 0.9 GB / ~15 GB | open (scripts AGPL) | wilkcomp02 | ST1 |
 | S2 | PLSDB plasmids | 72,360 | 5–7 | 800–6,000 | 2.8 GB / ~40 GB | check before redistribution | wilkcomp02 | ST1 (certified) |
-| S2C | GTDB R226 complete prokaryotic genomes (`Complete Genome`, ≤20 per species) | est. 15–30k (pin at S−1) | 60–120 | 3,000–22,000 | 28–55 GB / ~80–240 GB | INSDC + GTDB | wilkcomp02 | ST2 |
-| S3 | GTDB R226 species reps <2 Mbp | 9–12k | 10–13 | 1,000–10,000 | 5.2 GB / ~60 GB | GTDB CC BY-SA (verify) | wilkcomp02 | ST3 (deferred to S5) |
+| S2C | GTDB R226 complete prokaryotic genomes (`Complete Genome`, ≤20 per species) | 25,458 | 106.4 | 4,600–18,300 | 56 GB / ~80–240 GB | INSDC + GTDB | wilkcomp02 | ST2 |
+| S3 | GTDB R226 species reps <2 Mbp | 38,750 | 52.4 | 1,000–10,000 | 5.2 GB / ~60 GB | GTDB CC BY-SA (verify) | wilkcomp02 | ST3 (deferred to S5) |
 | S4 | IMG/VR v4 HQ vOTU reps (+ IMG/PR) | 0.23M (+0.7M) | ~12 (+10–30) | 4,500–17,000 | 5.5–19 GB / ~150 GB | JGI policy: local-only | wilkcomp02 | ST4 (deferred to S6) |
-| S5 | All GTDB R226 species reps (remaining after S2C and S3) | 143,614 total | 400–450 | 20,000–80,000 | 207 GB / 0.6–0.8 TB | INSDC + GTDB | wilkcomp02, borderline (§4) | ST3 (certified) |
-| S6 | All GTDB R226 genomes (remaining after S2C) + RefSeq complete flag | 732,475 total | 2,700–3,100 | 60k–1.6M | +1.34 TB / +2–4 TB | INSDC | split: per-genome work on wilkcomp02, global work on Hetzner | ST4 (certified) |
+| S5 | All GTDB R226 species reps (remaining after S2C and S3) | 143,614 total | 465.5 | 20,000–80,000 | 207 GB / 0.6–0.8 TB | INSDC + GTDB | wilkcomp02, borderline (§4) | ST3 (certified) |
+| S6 | All GTDB R226 genomes (remaining after S2C) + RefSeq complete flag | 732,475 total | 2,588 | 60k–1.6M | +1.34 TB / +2–4 TB | INSDC | split: per-genome work on wilkcomp02, global work on Hetzner | ST4 (certified) |
 | S7+ | AllTheBacteria, SPIRE, GlobDB extras, then Logan | millions | Tbp–Pbp | — | — | mixed | Hetzner; Logan on AWS next to its bucket | ST5 |
 
-S2C figures are *derived* in [`sources_and_sizing.md`](planning/sources_and_sizing.md) §4 from the S5 rate and the 0.46 GB/Gbp store model; the count is an *estimate* until the S−1 metadata count. S5 and S6 keep their totals; their per-stage deltas shrink by what S2C (and, for S5, S3) already loaded. Search tiers are from [SEARCH_PLAN §6](planning/search/SEARCH_PLAN.md); "deferred" means the stage loads data whose search acceptance belongs to a later tier gate.
+The genome counts and Gbp for S2C, S3, S5 and S6 are *measured* (GTDB R226 metadata, 2026-11-09, `scripts/stress/gtdb_counts.py`; [`2026-11-09_design_stress_test.md`](planning/measurements/2026-11-09_design_stress_test.md) §3), and the S0 count and Gbp are *measured* on the golden set (2026-11-09). S2C core-h is *derived* in [`sources_and_sizing.md`](planning/sources_and_sizing.md) §4 from the S5 rate and 106.4 Gbp, and its sequence store from the 0.528 GB/Gbp store model. The S2C "other disk" range, the S3 core-h and disk, the S5 core-h and disk, and the S6 core-h and disk were computed from the superseded Gbp estimates; recompute. S5 and S6 keep their totals; their per-stage deltas shrink by what S2C (and, for S5, S3) already loaded. Search tiers are from [SEARCH_PLAN §6](planning/search/SEARCH_PLAN.md); "deferred" means the stage loads data whose search acceptance belongs to a later tier gate.
 
 The portability track (§5) runs alongside: P0 at S0, P1 after S2, P2 at S5/S6, P3 at S7.
 
@@ -246,7 +246,7 @@ Inserted and approved 2026-10-29 ([SEARCH_PLAN SD-16, §6.1](planning/search/SEA
 
 - **Adds:**
   - GTDB R226 genomes, representatives and members, whose `ncbi_assembly_level` is `Complete Genome`, at most 20 per species, chosen by CheckM2 completeness and contamination, then by ANI diversity (skani).
-  - Count: *estimate* 15–30k assemblies, pinned by the S−1 metadata count.
+  - Count: 25,458 genomes, 56,387 contigs, 97.7 M proteins (*measured*, GTDB R226 metadata, 2026-11-09; the earlier estimate was 15–30k assemblies).
   - Complete species reps enter here and are not re-ingested at S5 (nor at S3 if under 2 Mbp). Complete non-rep members enter here and are not re-ingested at S6.
   - Plasmid replicons of these assemblies that PLSDB already supplied at S2 dedup by `seq_uid`; they gain the chromosome context, not a second copy.
 - **Capability:**
@@ -264,18 +264,18 @@ Inserted and approved 2026-10-29 ([SEARCH_PLAN SD-16, §6.1](planning/search/SEA
   6. Run the replays and cut release `rS2C.1`.
 - **Gate:**
   - Blocking: everything S2 runs, plus A-01..A-07 accretion equivalence (S2 → S2C).
-  - Recorded: a 3-point scaling fit (S1, S2, S2C). At 60–120 Gbp, S2C is the largest stage before S5, so its measured rate is the best predictor of S5.
+  - Recorded: a 3-point scaling fit (S1, S2, S2C). At 106.4 Gbp (*measured*, GTDB R226 metadata, 2026-11-09), S2C is the largest stage before S5, so its measured rate is the best predictor of S5.
   - Harness: gate = R4 on `rS2C.1` plus R5 for ST2 certification, as a `test_run` query; new workflows arrive with manifests; null-world calibration of O-STATS (MR-18) repeated at S2C scale (kill criterion K7 in `preflight_gaps.md` §6).
 - **Search gate (ST2):**
   - Replays: Makarova 2011 defense islands (full); Shmakov 2019 Sets 1–3; Shmakov 2018 CRISPR islands; Wu 2026 Druantia/Zorya (RefSeq loci); Bell 2026 YprA; Jimmy 2020 toxSAS; Atkinson 2011 RSH; the Mutte all-models score matrix.
   - S-tests: S-01 and S-03..S-09 blocking (S-03 on S2 → S2C); S-02 cross-tool concordance reported, including HH-suite on remote cases; S-10 once for ST2. The ST2 cost table is measured on the pod (S-06).
-- **Estimates:** *est.* 15–30k assemblies, 60–120 Gbp (at ~4 Mbp per assembly); 3,000–22,000 core-h (*derived*: 60–120 Gbp × 50–180 core-h/Gbp, the S5 rate; SEARCH_PLAN §6.1 quotes 7,500–20,000, narrower than the product of its own inputs); sequence store 28–55 GB (0.46 GB/Gbp); other disk ~80–240 GB (S5 ratio); search pack ~50–105 GB ([sizing §4](planning/sources_and_sizing.md)). Up to ~27 days at 800 core-h/day at the high end.
-- **Runs on:** wilkcomp02. MMseqs2 linclust over 6–12×10⁷ proteins needs ~20–40 GB (336 B/seq), inside the 200 GB cgroup.
+- **Estimates:** 25,458 genomes and 106.4 Gbp (*measured*, GTDB R226 metadata, 2026-11-09; earlier estimate 15–30k assemblies and 60–120 Gbp); 4,600–18,300 core-h (*derived*: 106.4 Gbp × 43–172 core-h/Gbp, the S5 rate = 20,000 and 80,000 core-h ÷ 465.5 Gbp; SEARCH_PLAN §6.1 quotes 7,500–20,000, which overlaps this range with its upper end above it); sequence store 56 GB (*derived*: 0.528 GB/Gbp × 106.4 Gbp); other disk ~80–240 GB (S5 ratio; computed from the superseded estimate; recompute); search pack ~50–105 GB ([sizing §4](planning/sources_and_sizing.md); computed from the superseded estimate; recompute). Up to ~23 days at 800 core-h/day at the high end (*derived*: 18,300 ÷ 800).
+- **Runs on:** wilkcomp02. MMseqs2 linclust over 97.7×10⁶ proteins (*measured*, GTDB R226 metadata, 2026-11-09) needs ~33 GB (*derived*: 97.7×10⁶ × 336 B/seq), inside the 200 GB cgroup.
 - **License:** INSDC (open) for genomes; GTDB CC BY-SA (verify) for taxonomy.
 
 ### S3: Small-genome bacteria and archaea (GTDB R226 species reps under 2 Mbp)
 
-- **Adds:** about 9–12k species reps from Patescibacteria, DPANN, Mycoplasmatota and endosymbionts, selected by `genome_size` in the R226 metadata. Reps already loaded at S2C (complete assemblies) are not re-ingested.
+- **Adds:** 38,750 species reps (*measured*, GTDB R226 metadata, 2026-11-09; the earlier estimate was about a quarter of this), 52.4 Gbp, 4.17 M contigs, 53.2 M proteins, from Patescibacteria, DPANN, Mycoplasmatota and endosymbionts, selected by `genome_size` in the R226 metadata. Reps already loaded at S2C (complete assemblies) are not re-ingested.
 - **Capability:**
   - Codetta-driven genetic code calls at scale.
   - Taxonomy assignment wired into `tax_order_id` with confidence (D-06).
@@ -318,7 +318,7 @@ Inserted and approved 2026-10-29 ([SEARCH_PLAN SD-16, §6.1](planning/search/SEA
 
 ### S5: All GTDB R226 species representatives (the last stage that fits wilkcomp02 in full)
 
-- **Adds:** the remaining species reps: 143,614 in total, minus the S3 reps (9–12k) and the complete reps already loaded at S2C (count from S−1). That is ~132k before the S2C subtraction. Complete reps are not re-ingested.
+- **Adds:** the remaining species reps: 143,614 in total, minus the S3 reps (38,750, *measured*, GTDB R226 metadata, 2026-11-09) and the complete reps already loaded at S2C (count from S−1). That is ~105k before the S2C subtraction (*derived*: 143,614 − 38,750 = 104,864). S5 is 465.5 Gbp, 24.95 M contigs and 437 M proteins in total (*measured*, GTDB R226 metadata, 2026-11-09). Complete reps are not re-ingested.
 - **Capability:**
   - The full token dictionary (`seq_family`, `subfamily_50`).
   - Tree-wide dispersion.

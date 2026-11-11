@@ -1,0 +1,20 @@
+{
+ "key": "A",
+ "step": "genome_input",
+ "stage": "S1",
+ "release": "rL.1",
+ "threads": 1,
+ "started_utc": "2026-11-10T04:13:40+00:00",
+ "result": {
+  "genomes": 27258,
+  "contigs": 27258,
+  "kind": "virus",
+  "genetic_code": 11,
+  "circular": 0,
+  "note": "every INPHARED record its own genome; topology unknown, all linear",
+  "bp": 1664109938
+ },
+ "error": null,
+ "inner_wall_s": 0.38,
+ "self_peak_rss_mb": 325.9
+}

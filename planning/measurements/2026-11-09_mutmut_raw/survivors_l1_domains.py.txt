@@ -1,0 +1,306 @@
+[survived] iter_hmms__mutmut_5
+    - if name.endswith((".tgz", ".tar.gz")):
+    + if name.endswith(("XX.tgzXX", ".tar.gz")):
+[survived] iter_hmms__mutmut_6
+    - if name.endswith((".tgz", ".tar.gz")):
+    + if name.endswith((".TGZ", ".tar.gz")):
+[survived] iter_hmms__mutmut_7
+    - if name.endswith((".tgz", ".tar.gz")):
+    + if name.endswith((".tgz", "XX.tar.gzXX")):
+[survived] iter_hmms__mutmut_8
+    - if name.endswith((".tgz", ".tar.gz")):
+    + if name.endswith((".tgz", ".TAR.GZ")):
+[survived] iter_hmms__mutmut_9
+    - with tarfile.open(path, "r:gz") as tar:
+    + with tarfile.open(None, "r:gz") as tar:
+[survived] iter_hmms__mutmut_10
+    - with tarfile.open(path, "r:gz") as tar:
+    + with tarfile.open(path, None) as tar:
+[survived] iter_hmms__mutmut_11
+    - with tarfile.open(path, "r:gz") as tar:
+    + with tarfile.open("r:gz") as tar:
+[survived] iter_hmms__mutmut_12
+    - with tarfile.open(path, "r:gz") as tar:
+    + with tarfile.open(path, ) as tar:
+[survived] iter_hmms__mutmut_13
+    - with tarfile.open(path, "r:gz") as tar:
+    + with tarfile.open(path, "XXr:gzXX") as tar:
+[survived] iter_hmms__mutmut_14
+    - with tarfile.open(path, "r:gz") as tar:
+    + with tarfile.open(path, "R:GZ") as tar:
+[survived] iter_hmms__mutmut_15
+    - for member in sorted((m for m in tar.getmembers() if m.isfile() and m.name.upper().endswith(".HMM")),
+    + for member in sorted(None,
+[survived] iter_hmms__mutmut_16
+    - key=lambda m: m.name):
+    + key=None):
+[survived] iter_hmms__mutmut_17
+    - for member in sorted((m for m in tar.getmembers() if m.isfile() and m.name.upper().endswith(".HMM")), ⏎ key=lambda m: m.name):
+    + for member in sorted(key=lambda m: m.name):
+[survived] iter_hmms__mutmut_18
+    - key=lambda m: m.name):
+    + ):
+[survived] iter_hmms__mutmut_19
+    - for member in sorted((m for m in tar.getmembers() if m.isfile() and m.name.upper().endswith(".HMM")),
+    + for member in sorted((m for m in tar.getmembers() if m.isfile() or m.name.upper().endswith(".HMM")),
+[survived] iter_hmms__mutmut_20
+    - for member in sorted((m for m in tar.getmembers() if m.isfile() and m.name.upper().endswith(".HMM")),
+    + for member in sorted((m for m in tar.getmembers() if m.isfile() and m.name.upper().endswith(None)),
+[survived] iter_hmms__mutmut_21
+    - for member in sorted((m for m in tar.getmembers() if m.isfile() and m.name.upper().endswith(".HMM")),
+    + for member in sorted((m for m in tar.getmembers() if m.isfile() and m.name.lower().endswith(".HMM")),
+[survived] iter_hmms__mutmut_22
+    - for member in sorted((m for m in tar.getmembers() if m.isfile() and m.name.upper().endswith(".HMM")),
+    + for member in sorted((m for m in tar.getmembers() if m.isfile() and m.name.upper().endswith("XX.HMMXX")),
+[survived] iter_hmms__mutmut_23
+    - for member in sorted((m for m in tar.getmembers() if m.isfile() and m.name.upper().endswith(".HMM")),
+    + for member in sorted((m for m in tar.getmembers() if m.isfile() and m.name.upper().endswith(".hmm")),
+[survived] iter_hmms__mutmut_24
+    - key=lambda m: m.name):
+    + key=lambda m: None):
+[survived] iter_hmms__mutmut_25
+    - data = tar.extractfile(member).read()
+    + data = None
+[survived] iter_hmms__mutmut_26
+    - data = tar.extractfile(member).read()
+    + data = tar.extractfile(None).read()
+[survived] iter_hmms__mutmut_27
+    - with pyhmmer.plan7.HMMFile(io.BytesIO(data)) as hf:
+    + with pyhmmer.plan7.HMMFile(None) as hf:
+[survived] iter_hmms__mutmut_28
+    - with pyhmmer.plan7.HMMFile(io.BytesIO(data)) as hf:
+    + with pyhmmer.plan7.HMMFile(io.BytesIO(None)) as hf:
+[survived] iter_hmms__mutmut_30
+    - opener = gzip.open if name.endswith(".gz") else open
+    + opener = gzip.open if (name.endswith(".gz")) and False else open
+[survived] iter_hmms__mutmut_33
+    - opener = gzip.open if name.endswith(".gz") else open
+    + opener = gzip.open if name.endswith("XX.gzXX") else open
+[survived] iter_hmms__mutmut_34
+    - opener = gzip.open if name.endswith(".gz") else open
+    + opener = gzip.open if name.endswith(".GZ") else open
+[survived] load_proteins__mutmut_7
+    - files = sorted((Path(root) / "l0seq/protein_seq").glob(
+    + files = sorted((Path(root) / "L0SEQ/PROTEIN_SEQ").glob(
+[survived] load_proteins__mutmut_11
+    - t = pq.read_table(f, columns=["protein_uid", "seq"])
+    + t = pq.read_table(f, columns=None)
+[survived] load_proteins__mutmut_13
+    - t = pq.read_table(f, columns=["protein_uid", "seq"])
+    + t = pq.read_table(f, )
+[survived] _decode__mutmut_1
+    - return x.decode() if isinstance(x, bytes) else (x or "")
+    + return x.decode() if (isinstance(x, bytes)) and False else (x or "")
+[segfault] _decode__mutmut_2
+    - return x.decode() if isinstance(x, bytes) else (x or "")
+    + return x.decode() if (isinstance(x, bytes)) or True else (x or "")
+[survived] _decode__mutmut_4
+    - return x.decode() if isinstance(x, bytes) else (x or "")
+    + return x.decode() if isinstance(x, bytes) else (x or "XXXX")
+[survived] scan__mutmut_1
+    - cpus: int = 1,
+    + cpus: int = 2,
+[segfault] scan__mutmut_5
+    - block = pyhmmer.easel.TextSequenceBlock( ⏎ pyhmmer.easel.TextSequence(name=u.hex().encode(), sequence=proteins[u].replace("*", "")) for u in uids ⏎ ).digitize(alphabet)
+    + block = None
+[survived] scan__mutmut_16
+    - pyhmmer.easel.TextSequence(name=u.hex().encode(), sequence=proteins[u].replace("*", "")) for u in uids
+    + pyhmmer.easel.TextSequence(name=u.hex().encode(), sequence=proteins[u].replace("XX*XX", "")) for u in uids
+[survived] scan__mutmut_17
+    - pyhmmer.easel.TextSequence(name=u.hex().encode(), sequence=proteins[u].replace("*", "")) for u in uids
+    + pyhmmer.easel.TextSequence(name=u.hex().encode(), sequence=proteins[u].replace("*", "XXXX")) for u in uids
+[segfault] scan__mutmut_19
+    - kwargs = {"cpus": cpus, "Z": Z_PROT, "domZ": DOM_Z}
+    + kwargs = {"XXcpusXX": cpus, "Z": Z_PROT, "domZ": DOM_Z}
+[segfault] scan__mutmut_20
+    - kwargs = {"cpus": cpus, "Z": Z_PROT, "domZ": DOM_Z}
+    + kwargs = {"CPUS": cpus, "Z": Z_PROT, "domZ": DOM_Z}
+[segfault] scan__mutmut_21
+    - kwargs = {"cpus": cpus, "Z": Z_PROT, "domZ": DOM_Z}
+    + kwargs = {"cpus": cpus, "XXZXX": Z_PROT, "domZ": DOM_Z}
+[segfault] scan__mutmut_22
+    - kwargs = {"cpus": cpus, "Z": Z_PROT, "domZ": DOM_Z}
+    + kwargs = {"cpus": cpus, "z": Z_PROT, "domZ": DOM_Z}
+[segfault] scan__mutmut_23
+    - kwargs = {"cpus": cpus, "Z": Z_PROT, "domZ": DOM_Z}
+    + kwargs = {"cpus": cpus, "Z": Z_PROT, "XXdomZXX": DOM_Z}
+[segfault] scan__mutmut_24
+    - kwargs = {"cpus": cpus, "Z": Z_PROT, "domZ": DOM_Z}
+    + kwargs = {"cpus": cpus, "Z": Z_PROT, "domz": DOM_Z}
+[segfault] scan__mutmut_25
+    - kwargs = {"cpus": cpus, "Z": Z_PROT, "domZ": DOM_Z}
+    + kwargs = {"cpus": cpus, "Z": Z_PROT, "DOMZ": DOM_Z}
+[survived] scan__mutmut_26
+    - if cutoff != "none":
+    + if cutoff == "none":
+[survived] scan__mutmut_27
+    - if cutoff != "none":
+    + if cutoff != "XXnoneXX":
+[survived] scan__mutmut_28
+    - if cutoff != "none":
+    + if cutoff != "NONE":
+[survived] scan__mutmut_29
+    - kwargs["bit_cutoffs"] = cutoff
+    + kwargs["bit_cutoffs"] = None
+[segfault] scan__mutmut_30
+    - kwargs["bit_cutoffs"] = cutoff
+    + kwargs["XXbit_cutoffsXX"] = cutoff
+[segfault] scan__mutmut_31
+    - kwargs["bit_cutoffs"] = cutoff
+    + kwargs["BIT_CUTOFFS"] = cutoff
+[segfault] scan__mutmut_32
+    - rows = []
+    + rows = None
+[segfault] scan__mutmut_34
+    - for hits in pyhmmer.hmmsearch(iter_hmms(hmm_path), block, **kwargs):
+    + for hits in pyhmmer.hmmsearch(iter_hmms(hmm_path), None, **kwargs):
+[segfault] scan__mutmut_39
+    - q = hits.query
+    + q = None
+[segfault] scan__mutmut_40
+    - acc, name, mlen = _decode(q.accession) or _decode(q.name), _decode(q.name), q.M
+    + acc, name, mlen = None
+[survived] scan__mutmut_41
+    - acc, name, mlen = _decode(q.accession) or _decode(q.name), _decode(q.name), q.M
+    + acc, name, mlen = _decode(q.accession) and _decode(q.name), _decode(q.name), q.M
+[survived] scan__mutmut_42
+    - acc, name, mlen = _decode(q.accession) or _decode(q.name), _decode(q.name), q.M
+    + acc, name, mlen = _decode(None) or _decode(q.name), _decode(q.name), q.M
+[survived] scan__mutmut_43
+    - acc, name, mlen = _decode(q.accession) or _decode(q.name), _decode(q.name), q.M
+    + acc, name, mlen = _decode(q.accession) or _decode(None), _decode(q.name), q.M
+[survived] scan__mutmut_44
+    - acc, name, mlen = _decode(q.accession) or _decode(q.name), _decode(q.name), q.M
+    + acc, name, mlen = _decode(q.accession) or _decode(q.name), _decode(None), q.M
+[survived] scan__mutmut_46
+    - continue
+    + break
+[survived] scan__mutmut_47
+    - if not dom.included:
+    + if dom.included:
+[survived] scan__mutmut_48
+    - continue
+    + break
+[segfault] scan__mutmut_49
+    - a = dom.alignment
+    + a = None
+[segfault] scan__mutmut_53
+    - "protein_uid": bytes.fromhex(_decode(hit.name)),
+    + "protein_uid": bytes.fromhex(None),
+[survived] scan__mutmut_71
+    - "env_start": dom.env_from - 1,
+    + "env_start": dom.env_from + 1,
+[survived] scan__mutmut_77
+    - "ali_start": a.target_from - 1,
+    + "ali_start": a.target_from + 1,
+[survived] scan__mutmut_83
+    - "hmm_from": a.hmm_from - 1,
+    + "hmm_from": a.hmm_from + 1,
+[survived] run__mutmut_1
+    - hmm_path: Path, cutoff: str, cpus: int = 1) -> dict:
+    + hmm_path: Path, cutoff: str, cpus: int = 2) -> dict:
+[survived] run__mutmut_17
+    - rows = scan(proteins, hmm_path, cutoff, cpus=cpus)
+    + rows = scan(proteins, hmm_path, cutoff, )
+[survived] run__mutmut_29
+    - compression="zstd", row_group_size=122_880)
+    + compression=None, row_group_size=122_880)
+[survived] run__mutmut_30
+    - compression="zstd", row_group_size=122_880)
+    + compression="zstd", row_group_size=None)
+[survived] run__mutmut_33
+    - compression="zstd", row_group_size=122_880)
+    + row_group_size=122_880)
+[survived] run__mutmut_34
+    - compression="zstd", row_group_size=122_880)
+    + compression="zstd", )
+[survived] run__mutmut_43
+    - compression="zstd", row_group_size=122_880)
+    + compression="ZSTD", row_group_size=122_880)
+[survived] run__mutmut_44
+    - compression="zstd", row_group_size=122_880)
+    + compression="zstd", row_group_size=122881)
+[survived] run__mutmut_47
+    - tools = provenance.tool_versions("pyhmmer", "pyarrow")
+    + tools = None
+[survived] run__mutmut_50
+    - tools = provenance.tool_versions("pyhmmer", "pyarrow")
+    + tools = provenance.tool_versions("pyarrow")
+[survived] run__mutmut_51
+    - tools = provenance.tool_versions("pyhmmer", "pyarrow")
+    + tools = provenance.tool_versions("pyhmmer", )
+[survived] run__mutmut_53
+    - tools = provenance.tool_versions("pyhmmer", "pyarrow")
+    + tools = provenance.tool_versions("PYHMMER", "pyarrow")
+[survived] run__mutmut_55
+    - tools = provenance.tool_versions("pyhmmer", "pyarrow")
+    + tools = provenance.tool_versions("pyhmmer", "PYARROW")
+[survived] run__mutmut_57
+    - ledger.write(root, stage, f"domains-{library}-{library_version}",
+    + ledger.write(root, None, f"domains-{library}-{library_version}",
+[survived] run__mutmut_58
+    - ledger.write(root, stage, f"domains-{library}-{library_version}",
+    + ledger.write(root, stage, None,
+[survived] run__mutmut_68
+    - [ledger.row(lib, "library", len(proteins), hit, tools=tools),
+    + [ledger.row(lib, "library", len(proteins), hit, tools=None),
+[survived] run__mutmut_73
+    - [ledger.row(lib, "library", len(proteins), hit, tools=tools),
+    + [ledger.row(lib, "library", len(proteins), hit, ),
+[survived] run__mutmut_74
+    - [ledger.row(lib, "library", len(proteins), hit, tools=tools),
+    + [ledger.row(lib, "XXlibraryXX", len(proteins), hit, tools=tools),
+[survived] run__mutmut_75
+    - [ledger.row(lib, "library", len(proteins), hit, tools=tools),
+    + [ledger.row(lib, "LIBRARY", len(proteins), hit, tools=tools),
+[survived] run__mutmut_82
+    - tools=tools)])
+    + tools=None)])
+[survived] run__mutmut_87
+    - ledger.row(lib, "library", len(proteins), hit, n_rejected=len(proteins) - hit, reason="no_hit",
+    + ledger.row(lib, "library", len(proteins), hit, reason="no_hit",
+[survived] run__mutmut_88
+    - ledger.row(lib, "library", len(proteins), hit, n_rejected=len(proteins) - hit, reason="no_hit", ⏎ tools=tools)])
+    + ledger.row(lib, "library", len(proteins), hit, n_rejected=len(proteins) - hit, tools=tools)])
+[survived] run__mutmut_89
+    - tools=tools)])
+    + )])
+[survived] run__mutmut_90
+    - ledger.row(lib, "library", len(proteins), hit, n_rejected=len(proteins) - hit, reason="no_hit",
+    + ledger.row(lib, "XXlibraryXX", len(proteins), hit, n_rejected=len(proteins) - hit, reason="no_hit",
+[survived] run__mutmut_91
+    - ledger.row(lib, "library", len(proteins), hit, n_rejected=len(proteins) - hit, reason="no_hit",
+    + ledger.row(lib, "LIBRARY", len(proteins), hit, n_rejected=len(proteins) - hit, reason="no_hit",
+[survived] run__mutmut_92
+    - ledger.row(lib, "library", len(proteins), hit, n_rejected=len(proteins) - hit, reason="no_hit",
+    + ledger.row(lib, "library", len(proteins), hit, n_rejected=len(proteins) + hit, reason="no_hit",
+[survived] run__mutmut_93
+    - ledger.row(lib, "library", len(proteins), hit, n_rejected=len(proteins) - hit, reason="no_hit",
+    + ledger.row(lib, "library", len(proteins), hit, n_rejected=len(proteins) - hit, reason="XXno_hitXX",
+[survived] run__mutmut_94
+    - ledger.row(lib, "library", len(proteins), hit, n_rejected=len(proteins) - hit, reason="no_hit",
+    + ledger.row(lib, "library", len(proteins), hit, n_rejected=len(proteins) - hit, reason="NO_HIT",
+[survived] run__mutmut_95
+    - return {"proteins": len(proteins), "domains": len(rows),
+    + return {"XXproteinsXX": len(proteins), "domains": len(rows),
+[survived] run__mutmut_96
+    - return {"proteins": len(proteins), "domains": len(rows),
+    + return {"PROTEINS": len(proteins), "domains": len(rows),
+[survived] run__mutmut_97
+    - return {"proteins": len(proteins), "domains": len(rows),
+    + return {"proteins": len(proteins), "XXdomainsXX": len(rows),
+[survived] run__mutmut_98
+    - return {"proteins": len(proteins), "domains": len(rows),
+    + return {"proteins": len(proteins), "DOMAINS": len(rows),
+[survived] run__mutmut_99
+    - "proteins_with_hit": hit,
+    + "XXproteins_with_hitXX": hit,
+[survived] run__mutmut_100
+    - "proteins_with_hit": hit,
+    + "PROTEINS_WITH_HIT": hit,
+[survived] run__mutmut_101
+    - "models_with_hit": len({r["model_acc"] for r in rows})}
+    + "XXmodels_with_hitXX": len({r["model_acc"] for r in rows})}
+[survived] run__mutmut_102
+    - "models_with_hit": len({r["model_acc"] for r in rows})}
+    + "MODELS_WITH_HIT": len({r["model_acc"] for r in rows})}

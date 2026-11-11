@@ -1,0 +1,36 @@
+# Host profile for the shared pod wilkcomp02 (C-01). Every key is required.
+# Sources are named per value; nothing here is invented.
+
+# DEPLOYMENT-AND-MALLEABILITY.md section 0.3 (line 56)
+max_threads_day: 40
+max_threads_night: 56
+mem_scope: 200G
+tmp: /tmp/if2453/bio-box
+durable: /stor/work/Wilke/if2453/all-the-data
+bulk: /stor/scratch/Wilke/if2453/all-the-data
+nice_monolithic: 19
+nice_fanout: 15
+
+# Day window, local time, Monday to Friday, hours [day_start_hour, day_end_hour). ESTIMATE: the
+# footprint agreement (planning/footprint_request.md) says "by day" and "at night and weekends"
+# without clock hours; 08:00 to 20:00 is an assumption for the PI to confirm with the pod owner.
+day_start_hour: 8
+day_end_hour: 20
+
+# DEPLOYMENT-AND-MALLEABILITY.md section 2 (shards under 300 CPU-min; the watchdog acts near 369)
+cpu_min_per_process: 300
+
+# DEC-25, card B-36: the clustering step of a release alone may run as one process above
+# cpu_min_per_process, up to this many CPU-minutes estimated before launch (build-stage refuses above
+# it). ESTIMATE: about five times the 2,195.91 CPU-minutes measured for 10,620,684 proteins (wilkcomp02,
+# 2026-11-10, run record rN.1.cluster); the PI may change it. Optional key: without it clustering gets
+# no exemption. The exemption ends when card B-37 splits clustering.
+cluster_cpu_min_max: 20000
+
+# planning/data_layer_and_tests.md section 4.11, LY-04 (NFS small-file rule, 64 MB)
+small_file_floor_bytes: 67108864
+
+# Card C-07 (AGENTS.md section 7.2: every process runs inside a MemoryMax scope). systemd-run is
+# not visible inside the image, so run-step and the search runner refuse to start unless they
+# open a scope or find a cgroup memory cap above them; launch them with scripts/pod_run.sh.
+require_mem_cap: true

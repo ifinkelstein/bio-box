@@ -146,6 +146,7 @@ A metamorphic relation (MR) states how the output must change when the input is 
 | MR-17 | rerun a recipe on a later release | same results on unchanged targets (generalizes S-03) |
 | MR-18 | null world: relabel genes within phylogenetic and HGT constraints | p-values uniform; FDR at nominal level |
 | MR-19 | add a contamination mask (an FCS-GX or host-screen sidecar flags contigs) | sequences, tapes and UIDs unchanged; only statistics involving masked contigs change, and they change exactly as if those contigs had been excluded at ingest; `fcs_gx_status` updated |
+| MR-20 | add one feature of any kind (for example an ncRNA inside an IGR) as a second producer | every existing `feature_uid`-keyed row is byte-identical; one IGR is replaced by two; only ordinals inside the new tape version shift, by one after the new feature, and the feature UIDs do not |
 
 ---
 
@@ -302,5 +303,5 @@ Further columns and rules (first written in `data_layer_and_tests.md` §4.12, ad
 
 1. ~~Zombi fit~~ **Decided 2026-10-29:** ZOMBI2 backbone plus custom `synthworld` code (`synthworld_spec.md` §1); Zombi 1 and ALF not used. Fit spike done 2026-10-29 (`synthworld_spike.md`): GO with conditions (DEC-15). Groups stay contiguous and co-oriented under `fates="group"` (100% across three runs; 86–90% under `fates="family"`), copies map one-to-one to gene-tree leaves, same-seed runs are byte-identical, and 46 genomes take 4–13 s at 1,000–4,000 genes each.
 2. ~~CI host for R2~~ **Decided 2026-10-29 (DEC-06):** GitHub Actions on the private repo `ifinkelstein/bio-box`. R0–R1 run there now; R2 runs there once the micro-corpus exists. `test_run` rows from Actions are uploaded as workflow artifacts and pulled by the pod-side writer.
-3. Mutation-score target confirmed after the first measurement at S0.
+3. Mutation-score target confirmed after the first measurement at S0. **Status 2026-11-09 (card D-01):** mutation testing is configured (`mutmut` in `pyproject.toml`, `scripts/mutation_recheck.py`, weekly `.github/workflows/mutation.yml`); the first verified score is pending the first workflow run.
 4. Which lab member runs the flexibility check, and on which workflow.

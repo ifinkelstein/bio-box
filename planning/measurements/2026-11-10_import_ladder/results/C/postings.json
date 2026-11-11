@@ -1,0 +1,13 @@
+{
+ "key": "C",
+ "step": "postings",
+ "stage": "P2",
+ "release": "rL.3",
+ "threads": 1,
+ "started_utc": "2026-11-10T08:53:03+00:00",
+ "result": null,
+ "error": "OutOfMemoryException: Out of Memory Error: could not allocate block of size 256.0 KiB (1.8 GiB/1.8 GiB used)\n\nPossible solutions:\n* Reducing the number of threads (SET threads=X)\n* Disabling insertion-order preservation (SET preserve_insertion_order=false)\n* Increasing the memory limit (SET memory_limit='...GB')\n\nSee also https://duckdb.org/docs/current/guides/performance/how_to_tune_workloads",
+ "traceback": "Traceback (most recent call last):\n  File \"/tmp/if2453/ladder/scripts/step.py\", line 724, in <module>\n    rec[\"result\"] = jsonable(STEPS[a.step]())\n                             ~~~~~~~~~~~~~^^\n  File \"/tmp/if2453/ladder/scripts/step.py\", line 292, in do_postings\n    return postings.run(ROOT, REL, tmp=TMP)\n           ~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^\n  File \"/opt/bio-box/src/biobox/l3/postings.py\", line 149, in run\n    reader = con.sql(sql).to_arrow_reader(io.ROW_GROUP_ROWS)\n  File \"/opt/bio-box/.venv/lib/python3.14/site-packages/duckdb/_relation.py\", line 3017, in guarded\n    raise _trimmed(error) from error.__cause__\n_duckdb.OutOfMemoryException: Out of Memory Error: could not allocate block of size 256.0 KiB (1.8 GiB/1.8 GiB used)\n\nPossible solutions:\n* Reducing the number of threads (SET threads=X)\n* Disabling insertion-order preservation (SET preserve_insertion_order=false)\n* Increasing the memory limit (SET memory_limit='...GB')\n\nSee also https://duckdb.org/docs/current/guides/performance/how_to_tune_workloads\n",
+ "inner_wall_s": 36.93,
+ "self_peak_rss_mb": 2181.9
+}

@@ -1,0 +1,133 @@
+{
+ "gtdb_release": "R226",
+ "gtdb_files_sha256": {
+  "bac120_metadata_r226.tsv.gz": "45f1614aff80c19752860880b47b3cdeb66def8ff66dc106909b28bb2bd9bcbf",
+  "ar53_metadata_r226.tsv.gz": "f12310f223e6dd27dc942379de1cfbeec5ebd2b917786cf2ce28695555eab6e5"
+ },
+ "rule": "ncbi_assembly_level = 'Complete Genome'; one per gtdb_taxonomy by checkm2 completeness - 5 x contamination desc (missing last), ties by GTDB accession",
+ "complete_genomes": 49324,
+ "complete_genomes_gtdb_representative": 9635,
+ "species_with_complete_genome": 11973,
+ "selected_that_are_gtdb_representative": 8314,
+ "ladder_P1_P2_reproduced": {
+  "P1": true,
+  "P2": true
+ },
+ "ladder_present": 2497,
+ "ladder_selected_not_fetched": [
+  "GCA_963667335.1",
+  "GCA_963921365.2",
+  "GCF_040719245.2"
+ ],
+ "all": {
+  "genomes": 11973,
+  "bp": 50498943687,
+  "contigs": 27055,
+  "proteins": 46053944,
+  "proteins_missing": 0,
+  "archaea": 542,
+  "translation_tables": {
+   "11": 10566,
+   "25": 5,
+   "4": 191,
+   "None": 1211
+  },
+  "max_genome_bp": 16040666,
+  "min_genome_bp": 142117,
+  "first": "GCA_000008085.1",
+  "last": "GCF_964212655.1"
+ },
+ "new": {
+  "genomes": 9476,
+  "bp": 39886137556,
+  "contigs": 21498,
+  "proteins": 36405791,
+  "proteins_missing": 0,
+  "archaea": 429,
+  "translation_tables": {
+   "11": 8372,
+   "25": 4,
+   "4": 154,
+   "None": 946
+  },
+  "max_genome_bp": 16040666,
+  "min_genome_bp": 142117,
+  "first": "GCA_000008885.1",
+  "last": "GCF_964212655.1"
+ },
+ "split": {
+  "stage_bp": 10000000000,
+  "n_stages": 4,
+  "total_bp": 39886137556,
+  "rule": "stage P(3 + floor(n * bp_before / total_bp)) over new genomes sorted by accession"
+ },
+ "stages": {
+  "P3": {
+   "genomes": 2677,
+   "bp": 9972903818,
+   "contigs": 9146,
+   "proteins": 9110791,
+   "proteins_missing": 0,
+   "archaea": 165,
+   "translation_tables": {
+    "11": 1694,
+    "25": 3,
+    "4": 34,
+    "None": 946
+   },
+   "max_genome_bp": 16040666,
+   "min_genome_bp": 208564,
+   "first": "GCA_000008885.1",
+   "last": "GCF_000785495.1"
+  },
+  "P4": {
+   "genomes": 2329,
+   "bp": 9976464003,
+   "contigs": 4006,
+   "proteins": 9080033,
+   "proteins_missing": 0,
+   "archaea": 87,
+   "translation_tables": {
+    "11": 2285,
+    "4": 44
+   },
+   "max_genome_bp": 14557589,
+   "min_genome_bp": 156578,
+   "first": "GCF_000785515.1",
+   "last": "GCF_011764545.1"
+  },
+  "P5": {
+   "genomes": 2289,
+   "bp": 9967897315,
+   "contigs": 4112,
+   "proteins": 9144170,
+   "proteins_missing": 0,
+   "archaea": 108,
+   "translation_tables": {
+    "11": 2266,
+    "25": 1,
+    "4": 22
+   },
+   "max_genome_bp": 13228663,
+   "min_genome_bp": 142117,
+   "first": "GCF_011764585.1",
+   "last": "GCF_027359115.1"
+  },
+  "P6": {
+   "genomes": 2181,
+   "bp": 9968872420,
+   "contigs": 4234,
+   "proteins": 9070797,
+   "proteins_missing": 0,
+   "archaea": 69,
+   "translation_tables": {
+    "11": 2127,
+    "4": 54
+   },
+   "max_genome_bp": 13942900,
+   "min_genome_bp": 288648,
+   "first": "GCF_027359355.1",
+   "last": "GCF_964212655.1"
+  }
+ }
+}

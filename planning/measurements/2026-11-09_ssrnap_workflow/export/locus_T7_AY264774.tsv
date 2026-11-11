@@ -1,0 +1,14 @@
+# AY264774 Enterobacteria phage T7, complete genome.
+# anchor(s): RNAP hit gene(s) at offset 0; window +-5 slots (bio-box nbr, policy 5g)
+anchor_ordinal	offset	offset_rel	start	end	strand	length_aa	pfam_architecture	nr50_cluster	rnap_hit_pfam_bits	rnap_hit_seed8_bits	protein_uid
+6	-5	-5	1277	1433	1	51	Phage_T7_GP04	5eb8cf2fd435			5f3900aa4f94c4a4d7d81193cca0bac4
+6	-4	-4	1495	1639	1	47	Gp0_5	6660385adf8a			27415817cd32234a2c9aaab183e8b3b1
+6	-3	-3	1635	1797	1	53	Phage_T7_0_6	8d5579188986			f01eeff985801708d5d808db9e491655
+6	-2	-2	1780	1999	1	72	-	aae13c448df4			e224c00407f8046692fb8d84b273481b
+6	-1	-1	2021	3101	1	359	Phage_T7_kinase	57f4a39dee36			7452ec32697c91126bb8027b23fb271a
+6	0	0	3171	5823	1	883	RPOL_N+RNA_pol	88e42e916ed3	367.7	1179.2	2eef240afefddcd2c8ac7660eb50e384
+6	1	1	6007	6136	1	42	Phage_T7_1_1	19583f8542c1			e897c717d134c1c57d0be0e1bc509a66
+6	2	2	6137	6395	1	85	T7-like_gp12	eb4f50cb168e			af92cf860f365d990a679166b72cd127
+6	3	3	6475	7555	1	359	DNA_ligase_A_M+DNA_ligase_C	fa4cb451607a			ebd56398a909f7924cd19bd03ce167cd
+6	4	4	7608	7764	1	51	DUF5464	5257dfa4af39			394f20fc77bbf7cb602293152662ab01
+6	5	5	7906	8167	1	86	BC10	8b4f16ff9d2b			ca7b6f27878ac7ab955d817ffd06fdab

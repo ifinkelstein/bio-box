@@ -13,6 +13,7 @@ decompresses and the bytes it reads, which is how LY-06 scores a sequence query.
 from __future__ import annotations
 
 import bisect
+import mmap
 import os
 import struct
 import threading
@@ -142,19 +143,59 @@ def block_starts(path: Path) -> list[tuple[int, int]]:
     raise ValueError(f"{path}: no EOF block")
 
 
+def _fai_entry(line: bytes) -> FaiEntry:
+    n, length, off, lb, lw = line.split(b"\t")[:5]
+    return FaiEntry(n.decode(), int(length), int(off), int(lb), int(lw))
+
+
+def fai_first_unsorted(path: Path) -> int | None:
+    """0-based line number of the first `.fai` line whose name is not above the previous one, or None.
+
+    Streams the file; names must be strictly increasing (bytes order, which is str order for the
+    ASCII hex names the store writes).
+    """
+    prev = None
+    with open(path, "rb") as fh:
+        for i, line in enumerate(fh):
+            name = line.split(b"\t", 1)[0]
+            if prev is not None and name <= prev:
+                return i
+            prev = name
+    return None
+
+
 class BgzfFasta:
     """Slice a bgzip FASTA through its `.fai` and `.gzi`.
 
+    The `.fai` is not loaded. Its records are sorted by name (the store writes them sorted by
+    `raw_digest` hex), so `entry(name)` bisects the memory-mapped file on line starts and parses
+    about log2(n) lines (`fai_lines_read` counts them); a small LRU keeps parsed entries. Opening
+    reads no line of it. Sortedness is checked lazily: a lookup whose bisection lands between
+    lines out of order raises; `check_sorted()` reads the whole file once (contracts). An export
+    whose records are in caller order (`extract`) is opened with `name_sorted=False`, which reads
+    the whole `.fai` into a dict, as the export's caller chose its size.
+
+    The `.gzi` block table is loaded whole: 16 bytes on disk per 65,280-byte block, about 15,500
+    blocks and 250 KB per Gbp of FASTA text, about 1.1 MB per Gbp as two Python int lists
+    (*derived*: 1e9 x 81/80 / 65,280 blocks; 2 x (8-byte pointer + 28-byte int) per block).
+
     Counters: `blocks_read` (blocks decompressed), `compressed_bytes_read`,
-    `uncompressed_bytes_decoded`. With `cache_blocks` > 0 a small LRU of decoded blocks
-    serves repeated slices; a cache hit counts nothing. Reads use pread, so one reader is
-    safe to share between threads.
+    `uncompressed_bytes_decoded`, `fai_lines_read`. With `cache_blocks` > 0 a small LRU of
+    decoded blocks serves repeated slices; a cache hit counts nothing. Reads use pread and the
+    caches sit behind one lock, so one reader is safe to share between threads.
     """
 
-    def __init__(self, path: Path, cache_blocks: int = 0):
+    FAI_CACHE = 1024
+
+    def __init__(self, path: Path, cache_blocks: int = 0, name_sorted: bool = True):
         self._fd: int | None = None
         self.path = Path(path)
-        self.fai: dict[str, FaiEntry] = {e.name: e for e in read_fai(str(path) + ".fai")}
+        self.fai_path = Path(str(path) + ".fai")
+        self._fai_all: dict[str, FaiEntry] | None = (
+            None if name_sorted else {e.name: e for e in read_fai(self.fai_path)})
+        self._fai_mm: mmap.mmap | None = None
+        self._fai_size: int | None = None
+        self._fai_cache: OrderedDict[str, FaiEntry] = OrderedDict()
         pairs = read_gzi(str(path) + ".gzi")
         self._cstart = [0] + [c for c, _ in pairs]
         self._ustart = [0] + [u for _, u in pairs]
@@ -165,14 +206,102 @@ class BgzfFasta:
         self.blocks_read = 0
         self.compressed_bytes_read = 0
         self.uncompressed_bytes_decoded = 0
+        self.fai_lines_read = 0
 
     def close(self) -> None:
         if self._fd is not None:
             os.close(self._fd)
             self._fd = None
+        if getattr(self, "_fai_mm", None) is not None:
+            self._fai_mm.close()
+            self._fai_mm = None
+            self._fai_size = None
 
     def __del__(self):
-        self.close()
+        try:
+            self.close()
+        except Exception:  # at interpreter exit module globals (os) may already be gone
+            pass
+
+    def check_sorted(self) -> bool:
+        """True if the `.fai` names are strictly increasing (reads the whole file once)."""
+        return fai_first_unsorted(self.fai_path) is None
+
+    def _fai_map(self) -> tuple[mmap.mmap | None, int]:
+        if self._fai_size is None:
+            size = self.fai_path.stat().st_size
+            if size:
+                with open(self.fai_path, "rb") as fh:
+                    self._fai_mm = mmap.mmap(fh.fileno(), 0, access=mmap.ACCESS_READ)
+            self._fai_size = size
+        return self._fai_mm, self._fai_size
+
+    def _bisect(self, name: str) -> FaiEntry:
+        mm, size = self._fai_map()
+        if mm is None:
+            raise KeyError(name)
+        target = name.encode()
+        seen: dict[int, tuple[bytes, int]] = {}  # line start -> (line without newline, next line start)
+
+        def line_at(s: int) -> tuple[bytes, int]:
+            if s not in seen:
+                e = mm.find(b"\n", s)
+                e = size if e < 0 else e
+                self.fai_lines_read += 1
+                seen[s] = (mm[s:e], e + 1)
+            return seen[s]
+
+        def name_at(s: int) -> bytes:
+            return line_at(s)[0].split(b"\t", 1)[0]
+
+        # lo is a line start and every line starting before lo has a name < target; every line
+        # starting at or after hi has a name >= target. Ends with lo the first line >= target.
+        lo, hi = 0, size
+        while lo < hi:
+            mid = (lo + hi) // 2
+            if mid == 0 or mm[mid - 1] == 0x0A:
+                s = mid
+            else:
+                s = mm.find(b"\n", mid)
+                s = size if s < 0 else s + 1
+            if s >= hi:  # no line starts in [mid, hi)
+                hi = mid
+            elif name_at(s) < target:
+                lo = line_at(s)[1]
+            else:
+                hi = s
+
+        def unsorted(a: bytes, b: bytes) -> ValueError:
+            return ValueError(f"{self.fai_path}: the index is not sorted by name ({a.decode()!r} comes "
+                              f"before {b.decode()!r}); a lookup cannot bisect it (check_sorted)")
+
+        # lazy sortedness check on the neighbours of the landing point
+        if lo > 0:
+            prev = name_at(mm.rfind(b"\n", 0, lo - 1) + 1)
+            if prev >= target:
+                raise unsorted(prev, target)
+        if lo >= size:
+            raise KeyError(name)
+        cur, nxt = line_at(lo)
+        cname = cur.split(b"\t", 1)[0]
+        if nxt < size and name_at(nxt) <= cname:
+            raise unsorted(cname, name_at(nxt))
+        if cname != target:
+            raise KeyError(name)
+        return _fai_entry(cur)
+
+    def entry(self, name: str) -> FaiEntry:
+        """The `.fai` record of `name`; KeyError if the shard has none."""
+        if self._fai_all is not None:
+            return self._fai_all[name]
+        with self._lock:
+            hit = self._fai_cache.pop(name, None)
+            if hit is None:
+                hit = self._bisect(name)
+            self._fai_cache[name] = hit
+            if len(self._fai_cache) > self.FAI_CACHE:
+                self._fai_cache.popitem(last=False)
+            return hit
 
     def _blocks_for(self, ulo: int, uhi: int) -> range:
         first = bisect.bisect_right(self._ustart, ulo) - 1
@@ -183,7 +312,7 @@ class BgzfFasta:
         """Blocks a slice touches, from the indexes alone (no I/O)."""
         if start == end:
             return 0
-        e = self.fai[name]
+        e = self.entry(name)
         return len(self._blocks_for(e.byte_of(start), e.byte_of(end - 1) + 1))
 
     def _decoded(self, b: int) -> bytes:
@@ -207,7 +336,7 @@ class BgzfFasta:
         return data
 
     def fetch(self, name: str, start: int, end: int) -> bytes:
-        e = self.fai[name]
+        e = self.entry(name)
         if not 0 <= start <= end <= e.length:
             raise ValueError(f"slice {start}:{end} outside 0:{e.length}")
         if start == end:

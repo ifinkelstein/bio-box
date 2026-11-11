@@ -1,4 +1,52 @@
 {
+ "nbr_summary": {
+  "keys": [
+   "schema",
+   "release",
+   "tape_version",
+   "policy_hash",
+   "level",
+   "key",
+   "unannotated",
+   "library",
+   "model_acc",
+   "model_name",
+   "cluster_uid",
+   "rep_uid",
+   "rep_length",
+   "n_loci",
+   "share_of_loci",
+   "n_neighbors",
+   "n_genomes",
+   "genome_basis",
+   "offsets",
+   "modal_offset",
+   "same_strand_share"
+  ],
+  "version": 1
+ },
+ "nbr_summary_header": {
+  "keys": [
+   "schema",
+   "release",
+   "tape_version",
+   "policy",
+   "policy_hash",
+   "levels",
+   "top_n",
+   "n_anchor_proteins_given",
+   "n_anchor_proteins",
+   "anchors_dropped_by_edge",
+   "n_anchor_loci",
+   "n_contigs",
+   "n_anchor_genomes",
+   "genome_basis",
+   "n_censored_loci",
+   "n_neighbors",
+   "n_keys"
+  ],
+  "version": 1
+ },
  "neighborhood": {
   "keys": [
    "schema",
@@ -18,7 +66,10 @@
    "in_operon",
    "censored",
    "crosses_origin",
-   "policy_hash"
+   "policy_hash",
+   "anchor_feature_uid",
+   "feature_uid",
+   "tape_version"
   ],
   "version": 1
  },
@@ -60,9 +111,10 @@
    "curation_label",
    "curation_reason",
    "n_occurrences",
-   "occurrences"
+   "occurrences",
+   "tape_version"
   ],
-  "version": 1
+  "version": 2
  },
  "search_run": {
   "keys": [

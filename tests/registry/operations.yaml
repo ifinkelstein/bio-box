@@ -12,15 +12,13 @@ external:
   - tool_output          # raw domtblout/tblout/GFF from tools
   - genbank_export       # --format domainator-gb
   - json_export          # --json NDJSON
-  - catalog              # generated read-only DuckDB file
-  - release_manifest
   - query_result
 
 operations:
   O-INGEST:
     summary: source object to L0 manifest, contig occurrences and sequence chunks
     inputs: [source_object]
-    outputs: [l0_manifest, contig_occurrence, seq_shards, contig_index, seq_locator]
+    outputs: [l0_manifest, contig_occurrence, contig_label, seq_shards, contig_index, seq_locator, store_params]
     oracle: re-parse the source independently; sha256 of every record
     mrs: [MR-01, MR-02, MR-14]
     tests: [R-01, R-02, C-01, L-01, L-02]
@@ -40,7 +38,7 @@ operations:
     tests: [R-03, R-05, R-08, LY-06]
   O-TRANSLATE:
     summary: region and six-frame translation under genetic codes
-    inputs: [seq_shards, slot_protein]
+    inputs: [seq_shards, feature_protein]
     outputs: [query_result]
     oracle: Biopython translation tables
     mrs: [MR-03, MR-13]
@@ -55,7 +53,7 @@ operations:
   O-CALL:
     summary: gene calling, smORFs, split-gene arbitration
     inputs: [seq_shards]
-    outputs: [slot_protein, protein_seq, igr, l1_genes]
+    outputs: [feature, feature_protein, protein_occurrence, protein_seq, igr, l1_genes]
     oracle: planted genes in synthetic worlds; golden GFF
     mrs: [MR-03, MR-04, MR-13]
     tests: [G-01, G-02, R-04, R-05, A-02]
@@ -83,7 +81,7 @@ operations:
   O-CLUSTER:
     summary: NR90, NR50, subfamily clustering with member alignments
     inputs: [protein_seq]
-    outputs: [cluster_member, cluster_member_aln, id_history]
+    outputs: [cluster_member, cluster_member_aln, member_cluster, id_history]
     oracle: full recluster on the micro-corpus; pairwise identity check of members
     mrs: [MR-01, MR-08, MR-16]
     tests: [A-03, C-11, D-02]
@@ -96,21 +94,21 @@ operations:
     tests: [S-08, A-03]
   O-TAPE:
     summary: contig tapes, segments, junction topology, directons; release tokens
-    inputs: [l1_genes, l1_domains, l1_ncrna, protein_occurrence, contig_index, cluster_member]
+    inputs: [l1_genes, l1_domains, l1_ncrna, feature, feature_protein, contig_index, cluster_member]
     outputs: [contig_tapes, tape_tokens, token_dict]
     oracle: brute-force rebuild from L1 in Python
-    mrs: [MR-03, MR-04, MR-05, MR-11]
+    mrs: [MR-03, MR-04, MR-05, MR-11, MR-20]
     tests: [Q2, C-04, C-05, C-07, K-07, G-03, A-04, A-05]
   O-PAIRS:
-    summary: slot_pairs window enumeration
+    summary: token postings; slot pairs within +-k computed at query time by the catalog macros (card B-11)
     inputs: [contig_tapes, tape_tokens]
-    outputs: [slot_pairs]
-    oracle: brute-force window enumeration
+    outputs: [token_postings]
+    oracle: brute-force window enumeration (tests/oracles/pairs_oracle.py)
     mrs: [MR-03, MR-04, MR-05, MR-11]
     tests: [Q1, Q3, Q4, C-03, LY-06]
   O-PACK:
     summary: per-release search pack (unique proteins, IGRs >= 30 nt, dark ORFs, models) and its manifest
-    inputs: [protein_seq, igr, seq_shards, protein_occurrence, slot_protein, contig_tapes]
+    inputs: [protein_seq, igr, seq_shards, protein_occurrence, feature_protein, contig_tapes]
     outputs: [search_pack, search_region]
     oracle: recount every target from its source tables; translate each dark ORF from the sequence store
     mrs: [MR-01]
@@ -152,7 +150,7 @@ operations:
     tests: [NEW]
   O-STATS:
     summary: pair statistics, nulls, FDR, modules
-    inputs: [slot_pairs, background_rates]
+    inputs: [token_postings, background_rates]
     outputs: [pair_stats]
     oracle: brute-force score test; simulation calibration
     mrs: [MR-06, MR-08, MR-18, MR-19]

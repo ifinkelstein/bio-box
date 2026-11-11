@@ -2,7 +2,7 @@
 
 Each check returns a list of problems; an empty list passes.
 
-    LY-02  declared sort order holds within each file (and across a stage's shards)
+    LY-02  declared sort order holds within each file (each shard too; none across shards)
     LY-03  min/max statistics on every sort-key column in every row group
     LY-04  no file under 64 MB outside the waivers, unless it is its table's only file in the stage
     C-03   foreign keys resolve (SQL anti-joins over the catalog); `check_shards`: seq_locator and
@@ -23,7 +23,7 @@ from pathlib import Path
 import duckdb
 import pyarrow.parquet as pq
 
-from biobox.l0seq.bgzf import block_starts, read_fai, read_gzi
+from biobox.l0seq.bgzf import BgzfFasta, block_starts, read_fai, read_gzi
 from biobox.registry.schemas import ARTIFACTS, TABLES
 
 NFS_MIN_BYTES = 64 * 2**20
@@ -74,48 +74,54 @@ def check_statistics(manifest: dict) -> list[str]:
 
 
 def check_file_sizes(manifest: dict, min_bytes: int = NFS_MIN_BYTES) -> list[str]:
-    """LY-04. Waived: registry `small_ok` tables and shard indexes. A table whose stage fits in one
-    small file may be one file."""
+    """LY-04. Waived: registry `small_ok` tables and artifacts, and shard indexes. A group is the file's
+    table or artifact and its partition tuple without bucket keys, so a partition that fits in one small file may be
+    one file, and two libraries' files in one stage are two groups (card C-09)."""
     problems = []
     groups: dict[tuple, list[dict]] = {}
     for f in manifest["files"]:
         spec = TABLES[f["table"]]
         if spec.small_ok:
             continue
-        stage = f["partitions"].get("stage") or f["partitions"].get("release") or ""
-        groups.setdefault((f["table"], stage), []).append(f)
+        parts = {k: v for k, v in f["partitions"].items() if k not in spec.bucket_keys}
+        groups.setdefault((f["table"], tuple(sorted(parts.items()))), []).append(f)
     for a in manifest.get("artifacts", []):
+        if ARTIFACTS[a["artifact"]].small_ok:
+            continue
         if any(a["path"].endswith(c) for c in ARTIFACTS[a["artifact"]].companions):
             continue
-        groups.setdefault((a["artifact"], a["partitions"].get("stage", "")), []).append(a)
+        groups.setdefault((a["artifact"], tuple(sorted(a["partitions"].items()))), []).append(a)
     for (name, stage), files in sorted(groups.items()):
         small = [f for f in files if f["bytes"] < min_bytes]
         if small and len(files) > 1:
             total = sum(f["bytes"] for f in files)
-            problems.append(f"{name} {stage}: {len(small)} of {len(files)} files under {min_bytes >> 20} MB "
+            problems.append(f"{name} {dict(stage)}: {len(small)} of {len(files)} files under {min_bytes >> 20} MB "
                             f"({total / 2**20:.1f} MB in all); split only above the band")
     return problems
 
 
-# Foreign keys that exist at S0 (C-03): (child, child cols, parent, parent cols)
+# Foreign keys that exist at S0 (C-03): (child, child cols, parent, parent cols). Slots are named by
+# feature_uid, never by an ordinal (AGENTS §3.3; card B-17); a gene-call version is the producer of its
+# CDS features.
 FOREIGN_KEYS = [
     ("contig_occurrence", ("raw_digest",), "seq_locator", ("raw_digest",)),
     ("contig_occurrence", ("l0_object_sha256",), "l0_manifest", ("object_sha256",)),
     ("contig_index", ("raw_digest",), "seq_locator", ("raw_digest",)),
-    ("slot_protein", ("contig_uid",), "contig_index", ("contig_uid",)),
-    ("slot_protein", ("protein_uid", "gene_call_version"), "protein_seq", ("protein_uid", "gene_call_version")),
-    ("protein_occurrence", ("contig_uid", "slot_ordinal", "gene_call_version"),
-     "slot_protein", ("contig_uid", "slot_ordinal", "gene_call_version")),
+    ("contig_dim", ("contig_uid",), "contig_index", ("contig_uid",)),
+    ("feature", ("contig_uid",), "contig_index", ("contig_uid",)),
+    ("feature_protein", ("feature_uid", "gene_call_version"), "feature", ("feature_uid", "producer")),
+    ("feature_protein", ("protein_uid", "gene_call_version"), "protein_seq", ("protein_uid", "gene_call_version")),
+    ("protein_occurrence", ("feature_uid", "gene_call_version"),
+     "feature_protein", ("feature_uid", "gene_call_version")),
     ("l1_domains", ("protein_uid",), "protein_seq", ("protein_uid",)),
     ("cluster_member", ("member_uid",), "protein_seq", ("protein_uid",)),
     ("cluster_member", ("rep_uid",), "protein_seq", ("protein_uid",)),
     ("cluster_member_aln", ("member_uid", "level", "release"), "cluster_member", ("member_uid", "level", "release")),
     ("igr", ("contig_uid",), "contig_index", ("contig_uid",)),
     ("contig_tapes", ("contig_uid",), "contig_index", ("contig_uid",)),
-    ("tape_tokens", ("contig_uid", "gene_call_version"), "contig_tapes", ("contig_uid", "gene_call_version")),
-    ("slot_pairs", ("contig_uid",), "contig_tapes", ("contig_uid",)),
-    ("slot_pairs", ("anchor_token", "release"), "token_dict", ("token_id", "release")),
-    ("slot_pairs", ("partner_token", "release"), "token_dict", ("token_id", "release")),
+    ("tape_tokens", ("contig_uid", "tape_version"), "contig_tapes", ("contig_uid", "tape_version")),
+    ("token_postings", ("token_id", "release"), "token_dict", ("token_id", "release")),
+    ("token_postings", ("contig_uid",), "contig_tapes", ("contig_uid",)),
 ]
 
 
@@ -171,12 +177,13 @@ def check_search_links(con: duckdb.DuckDBPyConnection) -> list[str]:
 
 
 def check_shards(manifest: dict) -> list[str]:
-    """C-03 for the shards, and LY-02 across them.
+    """C-03 for the shards, and LY-02 inside each.
 
     Every seq_locator row names a shard of the manifest whose `.fai` has a record
     `raw_digest.hex()` of the same length, and every `.fai` record is a locator row for that
-    shard. Records are sorted by name within a shard and across a stage's shards. Each `.gzi`
-    lists exactly the block starts found by walking the block headers.
+    shard. Records are sorted by name within a shard; there is no order across shards (one
+    ingest batch writes one shard, card B-15). Each `.gzi` lists exactly the block starts found
+    by walking the block headers.
     """
     root = Path(manifest["root"])
     problems = []
@@ -192,17 +199,12 @@ def check_shards(manifest: dict) -> list[str]:
             locator[rd.hex()] = n
     for shard in sorted(set(by_shard) - set(shards)):
         problems.append(f"seq_locator names {shard}, which is not in the manifest ({len(by_shard[shard])} rows)")
-    last_by_stage: dict[str, str] = {}
     for shard in shards:
         fai = read_fai(root / (shard + ".fai"))
-        names = [e.name for e in fai]
-        if names != sorted(names):
+        bg = BgzfFasta(root / shard)
+        if not bg.check_sorted():  # the readers bisect the .fai, so its names must increase
             problems.append(f"{shard}: records not sorted by raw_digest (LY-02)")
-        stage = shard.split("/")[-2]
-        if names and last_by_stage.get(stage, "") >= names[0]:
-            problems.append(f"{shard}: first record sorts before the previous shard's last (LY-02)")
-        if names:
-            last_by_stage[stage] = names[-1]
+        bg.close()
         want = by_shard.get(shard, {})
         got = {e.name: e.length for e in fai}
         if got != want:
@@ -229,7 +231,7 @@ def check_list_lengths(con: duckdb.DuckDBPyConnection) -> list[str]:
         if n:
             problems.append(f"{name}: {n} rows with parallel lists of different lengths")
     n = con.execute("""
-        SELECT count(*) FROM tape_tokens k JOIN contig_tapes t USING (contig_uid, gene_call_version)
+        SELECT count(*) FROM tape_tokens k JOIN contig_tapes t USING (contig_uid, tape_version)
         WHERE len(k.family_tokens) <> t.n_slots OR len(k.nr50_tokens) <> t.n_slots OR len(k.nr90_tokens) <> t.n_slots
     """).fetchall()[0][0]
     if n:
@@ -303,24 +305,24 @@ def check_coordinates(con: duckdb.DuckDBPyConnection) -> list[str]:
     """).fetchall()[0][0]
     if bad:
         problems.append(f"contig_tapes: {bad} slots outside contig bounds")
+    # the pair macros read slot positions from the postings (card B-11): each ordinal lies in its tape
     bad = con.execute("""
-        SELECT count(*) FROM slot_pairs p JOIN contig_tapes t USING (contig_uid)
-        WHERE NOT (p.anchor_ordinal < t.n_slots AND p.partner_ordinal < t.n_slots
-                   AND p.anchor_ordinal <> p.partner_ordinal AND p.orf_offset <> 0)
+        SELECT count(*) FROM token_postings p JOIN contig_tapes t USING (contig_uid, tape_version)
+        WHERE NOT (p.ordinal < t.n_slots AND p.n_slots = t.n_slots)
     """).fetchall()[0][0]
     if bad:
-        problems.append(f"slot_pairs: {bad} rows with ordinals outside their tape")
+        problems.append(f"token_postings: {bad} rows with ordinals outside their tape")
     return problems
 
 
 def check_lineage(con: duckdb.DuckDBPyConnection) -> list[str]:
-    """R-06: no orphan sequence; every slot's contig has an occurrence row; every occurrence an L0 object."""
+    """R-06: no orphan sequence; every feature's contig has an occurrence row; every occurrence an L0 object."""
     problems = []
     checks = {
         "stored sequences without an occurrence":
             "SELECT count(*) FROM seq_locator s ANTI JOIN contig_occurrence o USING (raw_digest)",
-        "slots whose contig has no occurrence":
-            "SELECT count(*) FROM slot_protein s ANTI JOIN contig_occurrence o USING (contig_uid)",
+        "features whose contig has no occurrence":
+            "SELECT count(*) FROM feature f ANTI JOIN contig_occurrence o USING (contig_uid)",
         "occurrences without an L0 object":
             "SELECT count(*) FROM contig_occurrence o ANTI JOIN l0_manifest m ON o.l0_object_sha256 = m.object_sha256",
     }
@@ -332,12 +334,15 @@ def check_lineage(con: duckdb.DuckDBPyConnection) -> list[str]:
 
 
 def check_append_only(before: dict, after: dict) -> list[str]:
-    """R-09: every non-metadata file and artifact of the earlier manifest is in the later one with the same sha256."""
+    """R-09, D-06: every file and artifact of the earlier manifest, small tables included, is in the later one
+    with the same sha256 (AGENTS 3.9, 3.10). A file under the earlier release's own `release=` partition is
+    not compared with a later release's manifest, which never lists it (card B-33)."""
     later = {f["path"]: f["sha256"] for f in after["files"] + after.get("artifacts", [])}
     problems = []
     for f in before["files"] + before.get("artifacts", []):
-        if "table" in f and TABLES[f["table"]].small_ok:
-            continue  # small metadata files (seq_locator, l0_manifest) are rewritten per stage by design
+        own = f.get("partitions", {}).get("release")
+        if own is not None and own != after.get("release_id"):
+            continue
         if later.get(f["path"]) != f["sha256"]:
             problems.append(f"{f['path']}: {'removed' if f['path'] not in later else 'rewritten'}")
     return problems

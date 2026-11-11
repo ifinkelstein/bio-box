@@ -1,0 +1,254 @@
+{
+ "key": "A",
+ "step": "equiv",
+ "stage": "S1",
+ "release": "rL.1",
+ "threads": 1,
+ "started_utc": "2026-11-10T04:39:41+00:00",
+ "result": {
+  "checks": [
+   {
+    "name": "seq_locator raw_digest,contig_len",
+    "columns": [
+     "raw_digest",
+     "contig_len"
+    ],
+    "pilot_rows": 27258,
+    "new_rows": 27258,
+    "only_pilot": 0,
+    "only_new": 0,
+    "equal": true
+   },
+   {
+    "name": "contig_index",
+    "columns": [
+     "contig_uid",
+     "raw_digest",
+     "contig_len",
+     "is_default_variant"
+    ],
+    "pilot_rows": 27258,
+    "new_rows": 27258,
+    "only_pilot": 0,
+    "only_new": 0,
+    "equal": true
+   },
+   {
+    "name": "contig_occurrence",
+    "columns": [
+     "source_uid",
+     "source_release",
+     "l0_object_sha256",
+     "record_ordinal",
+     "accession",
+     "original_header",
+     "raw_digest",
+     "contig_uid",
+     "line_width"
+    ],
+    "pilot_rows": 34076,
+    "new_rows": 34076,
+    "only_pilot": 0,
+    "only_new": 0,
+    "equal": true
+   },
+   {
+    "name": "genes: pilot protein_occurrence vs new feature_protein",
+    "columns": [
+     "contig_uid",
+     "start",
+     "end",
+     "strand",
+     "protein_uid"
+    ],
+    "pilot_rows": 2398087,
+    "new_rows": 2398087,
+    "only_pilot": 0,
+    "only_new": 0,
+    "equal": true
+   },
+   {
+    "name": "protein_occurrence (common columns)",
+    "columns": [
+     "protein_uid",
+     "contig_uid",
+     "slot_ordinal",
+     "genome_uid",
+     "start",
+     "end",
+     "strand",
+     "tax_order",
+     "is_species_rep",
+     "tier",
+     "assembly_quality",
+     "dist_to_contig_end_bp"
+    ],
+    "pilot_rows": 2398087,
+    "new_rows": 2398087,
+    "only_pilot": 0,
+    "only_new": 0,
+    "equal": true
+   },
+   {
+    "name": "slot_protein",
+    "columns": [
+     "contig_uid",
+     "slot_ordinal",
+     "protein_uid",
+     "genetic_code",
+     "edit_type"
+    ],
+    "pilot_rows": 2398087,
+    "new_rows": 2398087,
+    "only_pilot": 0,
+    "only_new": 0,
+    "equal": true
+   },
+   {
+    "name": "protein_seq",
+    "columns": [
+     "protein_uid",
+     "protein_digest",
+     "length",
+     "seq"
+    ],
+    "pilot_rows": 1134550,
+    "new_rows": 1134550,
+    "only_pilot": 0,
+    "only_new": 0,
+    "equal": true
+   },
+   {
+    "name": "igr (common columns)",
+    "columns": [
+     "contig_uid",
+     "start",
+     "end",
+     "strand",
+     "left_slot",
+     "right_slot"
+    ],
+    "pilot_rows": 1542772,
+    "new_rows": 1542772,
+    "only_pilot": 0,
+    "only_new": 0,
+    "equal": true
+   },
+   {
+    "name": "tapes (common columns, lists compared whole)",
+    "columns": [
+     "contig_uid",
+     "tax_order_bucket",
+     "genome_uid",
+     "contig_len",
+     "is_circular",
+     "n_slots",
+     "tier",
+     "assembly_quality",
+     "feature_kinds",
+     "strands",
+     "start_bps",
+     "end_bps",
+     "delta_bp_prev_slots",
+     "junction_topology_prevs",
+     "orfs_to_contig_starts",
+     "orfs_to_contig_ends",
+     "slot_flags",
+     "protein_uids"
+    ],
+    "pilot_rows": 27258,
+    "new_rows": 27258,
+    "only_pilot": 0,
+    "only_new": 0,
+    "equal": true
+   },
+   {
+    "name": "tape columns only in pilot / only in new",
+    "only_pilot": [],
+    "only_new": [
+     "feature_uids"
+    ]
+   },
+   {
+    "name": "cluster counts",
+    "pilot": {
+     "nr50": 297082,
+     "nr90": 534101
+    },
+    "new": {
+     "nr50": 297082,
+     "nr90": 534101
+    },
+    "equal": true
+   },
+   {
+    "name": "cluster_member membership",
+    "columns": [
+     "member_uid",
+     "level",
+     "cluster_uid",
+     "rep_uid",
+     "cluster_params_hash"
+    ],
+    "pilot_rows": 2269100,
+    "new_rows": 2269100,
+    "only_pilot": 0,
+    "only_new": 0,
+    "equal": true
+   },
+   {
+    "name": "cluster_member_aln",
+    "columns": [
+     "member_uid",
+     "level",
+     "rep_uid",
+     "qstart",
+     "qend",
+     "tstart",
+     "tend",
+     "pident",
+     "alnlen",
+     "cigar"
+    ],
+    "pilot_rows": 2269100,
+    "new_rows": 2269100,
+    "only_pilot": 0,
+    "only_new": 0,
+    "equal": true
+   },
+   {
+    "name": "token_dict (token_id, level, source, key, n_slots)",
+    "columns": [
+     "token_id",
+     "level",
+     "source",
+     "key",
+     "n_slots"
+    ],
+    "pilot_rows": 836585,
+    "new_rows": 836585,
+    "only_pilot": 0,
+    "only_new": 0,
+    "equal": true
+   },
+   {
+    "name": "tape_tokens",
+    "columns": [
+     "contig_uid",
+     "family_tokens",
+     "nr50_tokens",
+     "nr90_tokens"
+    ],
+    "pilot_rows": 27258,
+    "new_rows": 27258,
+    "only_pilot": 0,
+    "only_new": 0,
+    "equal": true
+   }
+  ],
+  "all_equal": true
+ },
+ "error": null,
+ "inner_wall_s": 30.57,
+ "self_peak_rss_mb": 2536.4
+}

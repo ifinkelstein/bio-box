@@ -1,0 +1,16 @@
+{
+ "key": "A",
+ "step": "dim",
+ "stage": "S1",
+ "release": "rL.1",
+ "threads": 1,
+ "started_utc": "2026-11-10T04:39:19+00:00",
+ "result": {
+  "contigs": 27258,
+  "genomes": 27258,
+  "circular": 0
+ },
+ "error": null,
+ "inner_wall_s": 0.55,
+ "self_peak_rss_mb": 326.4
+}

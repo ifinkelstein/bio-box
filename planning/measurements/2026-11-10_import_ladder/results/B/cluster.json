@@ -1,0 +1,27 @@
+{
+ "key": "B",
+ "step": "cluster",
+ "stage": "P1",
+ "release": "rL.2",
+ "threads": 16,
+ "started_utc": "2026-11-10T04:48:05+00:00",
+ "result": {
+  "proteins": 2053075,
+  "clusters": {
+   "nr90": 1395712,
+   "nr50": 761833
+  },
+  "aligned": {
+   "nr90": 2053075,
+   "nr50": 2053075
+  },
+  "threads": 16,
+  "protein_seq_files_read": [
+   "l0seq/protein_seq/gene_call_version=pyrodigal-3.7.1-gv-0.3.2-p2/stage=P1/protein_prefix=all/part-0.parquet",
+   "l0seq/protein_seq/gene_call_version=pyrodigal-3.7.1-gv-0.3.2-p2/stage=S1/protein_prefix=all/part-0.parquet"
+  ]
+ },
+ "error": null,
+ "inner_wall_s": 1316.4,
+ "self_peak_rss_mb": 9570.9
+}

@@ -1,0 +1,39 @@
+{
+ "seed": 20261109,
+ "species_with_complete_genome": 11973,
+ "stages": {
+  "P1": {
+   "genomes": 250,
+   "bp": 1016625803,
+   "contigs": 539,
+   "proteins": 926923,
+   "proteins_missing": 0,
+   "archaea": 13,
+   "translation_tables": {
+    "11": 215,
+    "None": 29,
+    "4": 6
+   },
+   "max_genome_bp": 12540293,
+   "min_genome_bp": 317910,
+   "file": "/private/tmp/claude-502/-Users-ilya-Work-25-projects-all-the-data/bfa9ef61-c05a-4538-a14b-d02e18030529/scratchpad/ladder/selection/stage_P1.tsv"
+  },
+  "P2": {
+   "genomes": 2250,
+   "bp": 9610306916,
+   "contigs": 5044,
+   "proteins": 8733342,
+   "proteins_missing": 0,
+   "archaea": 100,
+   "translation_tables": {
+    "11": 1980,
+    "25": 1,
+    "None": 238,
+    "4": 31
+   },
+   "max_genome_bp": 13605706,
+   "min_genome_bp": 156700,
+   "file": "/private/tmp/claude-502/-Users-ilya-Work-25-projects-all-the-data/bfa9ef61-c05a-4538-a14b-d02e18030529/scratchpad/ladder/selection/stage_P2.tsv"
+  }
+ }
+}

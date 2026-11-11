@@ -78,6 +78,48 @@
    false
   ]
  ],
+ "contig_dim": [
+  [
+   "contig_uid",
+   "fixed_size_binary[16]",
+   false
+  ],
+  [
+   "genome_uid",
+   "fixed_size_binary[16]",
+   false
+  ],
+  [
+   "contig_len",
+   "int64",
+   false
+  ],
+  [
+   "is_circular",
+   "bool",
+   false
+  ],
+  [
+   "tier",
+   "uint8",
+   true
+  ],
+  [
+   "assembly_quality",
+   "string",
+   true
+  ],
+  [
+   "tax_order",
+   "uint32",
+   true
+  ],
+  [
+   "is_species_rep",
+   "bool",
+   false
+  ]
+ ],
  "contig_index": [
   [
    "contig_uid",
@@ -97,6 +139,38 @@
   [
    "is_default_variant",
    "bool",
+   false
+  ]
+ ],
+ "contig_label": [
+  [
+   "contig_uid",
+   "fixed_size_binary[16]",
+   false
+  ],
+  [
+   "accession",
+   "string",
+   false
+  ],
+  [
+   "original_header",
+   "string",
+   false
+  ],
+  [
+   "n_records",
+   "uint32",
+   false
+  ],
+  [
+   "l0_object_sha256",
+   "fixed_size_binary[32]",
+   false
+  ],
+  [
+   "record_ordinal",
+   "uint64",
    false
   ]
  ],
@@ -186,16 +260,6 @@
    false
   ],
   [
-   "tax_order_bucket",
-   "uint32",
-   true
-  ],
-  [
-   "genome_uid",
-   "fixed_size_binary[16]",
-   true
-  ],
-  [
    "contig_len",
    "int64",
    false
@@ -209,16 +273,6 @@
    "n_slots",
    "uint32",
    false
-  ],
-  [
-   "tier",
-   "uint8",
-   true
-  ],
-  [
-   "assembly_quality",
-   "string",
-   true
   ],
   [
    "feature_kinds",
@@ -268,6 +322,85 @@
   [
    "protein_uids",
    "list<item: fixed_size_binary[16]>",
+   false
+  ],
+  [
+   "feature_uids",
+   "list<item: fixed_size_binary[16]>",
+   false
+  ]
+ ],
+ "feature": [
+  [
+   "feature_uid",
+   "fixed_size_binary[16]",
+   false
+  ],
+  [
+   "contig_uid",
+   "fixed_size_binary[16]",
+   false
+  ],
+  [
+   "start",
+   "int64",
+   false
+  ],
+  [
+   "end",
+   "int64",
+   false
+  ],
+  [
+   "strand",
+   "int8",
+   false
+  ],
+  [
+   "kind",
+   "uint8",
+   false
+  ]
+ ],
+ "feature_protein": [
+  [
+   "contig_uid",
+   "fixed_size_binary[16]",
+   false
+  ],
+  [
+   "feature_uid",
+   "fixed_size_binary[16]",
+   false
+  ],
+  [
+   "start",
+   "int64",
+   false
+  ],
+  [
+   "end",
+   "int64",
+   false
+  ],
+  [
+   "strand",
+   "int8",
+   false
+  ],
+  [
+   "protein_uid",
+   "fixed_size_binary[16]",
+   false
+  ],
+  [
+   "genetic_code",
+   "uint8",
+   false
+  ],
+  [
+   "edit_type",
+   "string",
    false
   ]
  ],
@@ -324,6 +457,38 @@
   ],
   [
    "release_id",
+   "string",
+   false
+  ]
+ ],
+ "genome_input": [
+  [
+   "contig_uid",
+   "fixed_size_binary[16]",
+   false
+  ],
+  [
+   "genome_uid",
+   "fixed_size_binary[16]",
+   false
+  ],
+  [
+   "is_circular",
+   "bool",
+   false
+  ],
+  [
+   "kind",
+   "string",
+   false
+  ],
+  [
+   "genetic_code",
+   "uint8",
+   false
+  ],
+  [
+   "assembly_quality",
    "string",
    false
   ]
@@ -387,13 +552,13 @@
    false
   ],
   [
-   "left_slot",
-   "uint32",
+   "left_feature_uid",
+   "fixed_size_binary[16]",
    true
   ],
   [
-   "right_slot",
-   "uint32",
+   "right_feature_uid",
+   "fixed_size_binary[16]",
    true
   ]
  ],
@@ -531,6 +696,103 @@
    false
   ]
  ],
+ "l1_ncrna": [
+  [
+   "feature_uid",
+   "fixed_size_binary[16]",
+   false
+  ],
+  [
+   "contig_uid",
+   "fixed_size_binary[16]",
+   false
+  ],
+  [
+   "start",
+   "int64",
+   false
+  ],
+  [
+   "end",
+   "int64",
+   false
+  ],
+  [
+   "strand",
+   "int8",
+   false
+  ],
+  [
+   "model_acc",
+   "string",
+   false
+  ],
+  [
+   "model_name",
+   "string",
+   false
+  ],
+  [
+   "model_len",
+   "uint32",
+   false
+  ],
+  [
+   "mdl_start",
+   "uint32",
+   false
+  ],
+  [
+   "mdl_end",
+   "uint32",
+   false
+  ],
+  [
+   "mdl_kind",
+   "string",
+   false
+  ],
+  [
+   "bitscore",
+   "float",
+   false
+  ],
+  [
+   "evalue_zref",
+   "double",
+   false
+  ],
+  [
+   "ga_bits",
+   "float",
+   false
+  ],
+  [
+   "z_mb",
+   "double",
+   false
+  ],
+  [
+   "trunc_5p",
+   "bool",
+   false
+  ],
+  [
+   "trunc_3p",
+   "bool",
+   false
+  ],
+  [
+   "gc",
+   "float",
+   false
+  ],
+  [
+   "contig_len",
+   "int64",
+   false
+  ]
+ ],
  "ledger": [
   [
    "object_key",
@@ -571,6 +833,28 @@
    "tool_versions_json",
    "string",
    true
+  ]
+ ],
+ "member_cluster": [
+  [
+   "member_uid",
+   "fixed_size_binary[16]",
+   false
+  ],
+  [
+   "level",
+   "string",
+   false
+  ],
+  [
+   "cluster_uid",
+   "fixed_size_binary[16]",
+   false
+  ],
+  [
+   "rep_uid",
+   "fixed_size_binary[16]",
+   false
   ]
  ],
  "neighborhoods": [
@@ -653,6 +937,21 @@
    "policy_hash",
    "string",
    false
+  ],
+  [
+   "anchor_feature_uid",
+   "fixed_size_binary[16]",
+   false
+  ],
+  [
+   "feature_uid",
+   "fixed_size_binary[16]",
+   false
+  ],
+  [
+   "tape_version",
+   "string",
+   true
   ]
  ],
  "protein_occurrence": [
@@ -663,16 +962,6 @@
   ],
   [
    "contig_uid",
-   "fixed_size_binary[16]",
-   false
-  ],
-  [
-   "slot_ordinal",
-   "uint32",
-   false
-  ],
-  [
-   "genome_uid",
    "fixed_size_binary[16]",
    false
   ],
@@ -692,28 +981,13 @@
    false
   ],
   [
-   "tax_order",
-   "uint32",
-   true
-  ],
-  [
-   "is_species_rep",
-   "bool",
-   false
-  ],
-  [
-   "tier",
-   "uint8",
-   false
-  ],
-  [
-   "assembly_quality",
-   "string",
-   false
-  ],
-  [
    "dist_to_contig_end_bp",
    "uint32",
+   false
+  ],
+  [
+   "feature_uid",
+   "fixed_size_binary[16]",
    false
   ]
  ],
@@ -735,6 +1009,18 @@
   ],
   [
    "seq",
+   "string",
+   false
+  ]
+ ],
+ "release_def": [
+  [
+   "position",
+   "uint16",
+   false
+  ],
+  [
+   "stage",
    "string",
    false
   ]
@@ -920,16 +1206,6 @@
    false
   ],
   [
-   "left_slot",
-   "uint32",
-   true
-  ],
-  [
-   "right_slot",
-   "uint32",
-   true
-  ],
-  [
    "orientation",
    "uint8",
    true
@@ -962,6 +1238,16 @@
   [
    "genetic_code",
    "uint8",
+   true
+  ],
+  [
+   "left_feature_uid",
+   "fixed_size_binary[16]",
+   true
+  ],
+  [
+   "right_feature_uid",
+   "fixed_size_binary[16]",
    true
   ]
  ],
@@ -1125,6 +1411,11 @@
    "error",
    "string",
    true
+  ],
+  [
+   "seed_json",
+   "string",
+   true
   ]
  ],
  "seq_locator": [
@@ -1141,90 +1432,6 @@
   [
    "contig_len",
    "int64",
-   false
-  ]
- ],
- "slot_pairs": [
-  [
-   "anchor_token",
-   "uint64",
-   false
-  ],
-  [
-   "partner_token",
-   "uint64",
-   false
-  ],
-  [
-   "contig_uid",
-   "fixed_size_binary[16]",
-   false
-  ],
-  [
-   "anchor_ordinal",
-   "uint32",
-   false
-  ],
-  [
-   "partner_ordinal",
-   "uint32",
-   false
-  ],
-  [
-   "orf_offset",
-   "int16",
-   false
-  ],
-  [
-   "junction_topology",
-   "uint8",
-   false
-  ],
-  [
-   "delta_bp",
-   "int32",
-   false
-  ],
-  [
-   "flags",
-   "uint8",
-   false
-  ],
-  [
-   "tier",
-   "uint8",
-   true
-  ],
-  [
-   "tax_order",
-   "uint32",
-   true
-  ]
- ],
- "slot_protein": [
-  [
-   "contig_uid",
-   "fixed_size_binary[16]",
-   false
-  ],
-  [
-   "slot_ordinal",
-   "uint32",
-   false
-  ],
-  [
-   "protein_uid",
-   "fixed_size_binary[16]",
-   false
-  ],
-  [
-   "genetic_code",
-   "uint8",
-   false
-  ],
-  [
-   "edit_type",
-   "string",
    false
   ]
  ],
@@ -1247,6 +1454,18 @@
   [
    "nr90_tokens",
    "list<item: uint64>",
+   false
+  ],
+  [
+   "domain_family_tokens",
+   "list<item: list<item: uint64>>",
+   true
+  ]
+ ],
+ "tape_version_def": [
+  [
+   "producer",
+   "string",
    false
   ]
  ],
@@ -1351,6 +1570,63 @@
   [
    "n_slots",
    "uint64",
+   false
+  ]
+ ],
+ "token_postings": [
+  [
+   "token_id",
+   "uint64",
+   false
+  ],
+  [
+   "contig_uid",
+   "fixed_size_binary[16]",
+   false
+  ],
+  [
+   "ordinal",
+   "uint32",
+   false
+  ],
+  [
+   "seg_idx",
+   "uint16",
+   false
+  ],
+  [
+   "feature_uid",
+   "fixed_size_binary[16]",
+   false
+  ],
+  [
+   "start",
+   "int64",
+   false
+  ],
+  [
+   "end",
+   "int64",
+   false
+  ],
+  [
+   "strand",
+   "int8",
+   false
+  ],
+  [
+   "n_slots",
+   "uint32",
+   false
+  ],
+  [
+   "is_circular",
+   "bool",
+   false
+  ],
+  [
+   "contig_len",
+   "int64",
    false
   ]
  ]

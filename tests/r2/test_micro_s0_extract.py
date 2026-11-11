@@ -36,7 +36,7 @@ def exported(tmp_path_factory):
     d = tmp_path_factory.mktemp("extract")
     root = d / "store"
     ingest([SourceObject(FIX / o["file"], "s", "1") for o in CONTRACT["objects"]], root, "S0", shard_bases=200_000)
-    store = SeqStore(root)
+    store = SeqStore(root, ["S0"])
     contigs = [ids.contig_uid(s) for s in _seqs()]
     out = d / "out.fa.gz"
     report = extract(store, contigs, out)
@@ -62,7 +62,7 @@ def test_rewrite_is_byte_identical(exported, tmp_path):
 
 def test_index_slices_equal_store_and_count_blocks(exported):
     _, store, contigs, out, _ = exported
-    bg = BgzfFasta(out)
+    bg = BgzfFasta(out, name_sorted=False)  # an export keeps the caller's record order
     rng = random.Random(7)
     for cu in contigs:
         n = len(store.get(cu))

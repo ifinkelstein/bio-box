@@ -20,6 +20,7 @@ bio-box = "biobox.cli:main"
 [dependency-groups]
 dev = [
     "hypothesis>=6",
+    "mutmut>=3.8.1",
     "polars>=2.1.0",
     "pytest>=8",
 ]
@@ -38,4 +39,32 @@ markers = [
     "r2: micro-corpus and micro-S0 fixture builds (TEST_ARCHITECTURE §8)",
     "r3: golden set with real tools; needs BIOBOX_GOLDEN_DIR (TEST_ARCHITECTURE §8)",
     "covers(*ids): plan test IDs a test covers, recorded in test_run (data_layer_and_tests.md §4.12)",
+]
+
+# D-01 mutation testing. Fast pass: `mutmut run`. Final verdict: scripts/mutation_recheck.py
+# reruns every mutant the fast pass left alive against the full test selection.
+# The fast pass attributes a test to a function only when the test calls it in-process during the
+# stats run; tests that reach it through a subprocess, or only through a module-scoped fixture that
+# the first test pays for, are not attributed, so an alive mutant here is not yet a survivor.
+# Run with BIOBOX_TEST_RUN_DIR unset (conftest then writes no test_run rows).
+[tool.mutmut]
+source_paths = ["src"]
+only_mutate = [
+    "src/biobox/l0seq/*",
+    "src/biobox/l1/*",
+    "src/biobox/l3/*",
+    "src/biobox/io.py",
+    "src/biobox/ids.py",
+    "src/biobox/layout.py",
+]
+pytest_add_cli_args_test_selection = ["tests/r1", "tests/r2"]
+pytest_add_cli_args = ["-p", "no:cacheprovider"]
+# R0 is not selected; the R1/R2 tests that read plan documents, profiles or scripts need them in the copy
+also_copy = ["scripts", "container", "planning", "profiles", "golden.yaml", "golden.lock.yaml", "refdb.yaml", "PLAN.md", "STAGES.md", "00-spec.md", "README.md"]
+# statements that start on a matching line (raise, log, warn, print) are not mutated: they only build messages
+do_not_mutate_patterns = [
+    '^\s*raise\s',
+    '^\s*(log|logger|logging)\.\w+\(',
+    '^\s*warnings\.warn\(',
+    '^\s*print\(',
 ]

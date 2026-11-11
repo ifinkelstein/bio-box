@@ -12,6 +12,14 @@ A dark ORF is a stop-to-stop ORF of at least `MIN_AA` residues that
     1. is not a called gene's own ORF (same strand and same stop codon), and
     2. has less than `MAX_GENE_OVERLAP` of its span inside called genes (either strand),
        unless it touches the `END_BP` at either end of a linear contig, where all frames are kept.
+
+Stops are read off the translation (`*`), so ORF boundaries follow the genetic code: under
+code 4 TGA is not a stop, under code 15 TAG is not a stop (it reads as Q), and so on.
+
+Supported genetic codes (`supported_codes()`): every NCBI table pyhmmer's Easel has (1-6, 9-14,
+16, 21-25; verified against pyhmmer in this environment) plus code 15 (table 11 with TAG read as
+glutamine, Q), which Easel lacks and is translated here explicitly. Any other code raises
+`ValueError` naming the code (`check_code`).
 """
 
 from __future__ import annotations
@@ -40,14 +48,48 @@ class Orf:
     partial: bool
 
 
-def _translate(nt: str, code: int) -> str:
+_EXPLICIT = {15: (11, {"TAG": "Q"})}  # code -> (base table pyhmmer has, codon overrides)
+
+
+def _easel_code(code: int) -> pyhmmer.easel.GeneticCode | None:
     if code not in _CODES:
-        _CODES[code] = pyhmmer.easel.GeneticCode(code)
+        try:
+            _CODES[code] = pyhmmer.easel.GeneticCode(code)
+        except Exception:  # pyhmmer raises InvalidParameter for a table it lacks
+            return None
+    return _CODES[code]
+
+
+def check_code(code: int) -> None:
+    """Raise `ValueError` naming the code if it cannot be translated."""
+    if code in _EXPLICIT:
+        return
+    if not isinstance(code, int) or _easel_code(code) is None:
+        raise ValueError(f"genetic code {code!r} is not supported (no translation table)")
+
+
+def supported_codes() -> list[int]:
+    return sorted({c for c in range(1, 34) if c in _EXPLICIT or _easel_code(c) is not None})
+
+
+def _translate(nt: str, code: int) -> str:
+    check_code(code)
+    base, over = _EXPLICIT.get(code, (code, {}))
     n = len(nt) - len(nt) % 3
     if n == 0:
         return ""
     seq = pyhmmer.easel.TextSequence(name=b"f", sequence=nt[:n]).digitize(_DNA)
-    return seq.translate(_CODES[code]).textize().sequence
+    aa = seq.translate(_easel_code(base)).textize().sequence
+    if over:
+        up, chars = nt[:n].upper(), list(aa)
+        for codon, r in over.items():
+            i = up.find(codon)
+            while i >= 0:
+                if i % 3 == 0:
+                    chars[i // 3] = r
+                i = up.find(codon, i + 1)
+        aa = "".join(chars)
+    return aa
 
 
 def _runs(aa: str) -> list[tuple[int, int, bool, bool]]:

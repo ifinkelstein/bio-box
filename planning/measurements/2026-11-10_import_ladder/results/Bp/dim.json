@@ -1,0 +1,16 @@
+{
+ "key": "Bp",
+ "step": "dim",
+ "stage": "P1",
+ "release": "rL.2p",
+ "threads": 1,
+ "started_utc": "2026-11-10T06:41:07+00:00",
+ "result": {
+  "contigs": 32815,
+  "genomes": 29755,
+  "circular": 0
+ },
+ "error": null,
+ "inner_wall_s": 0.61,
+ "self_peak_rss_mb": 325.5
+}

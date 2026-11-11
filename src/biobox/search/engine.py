@@ -1,8 +1,14 @@
 """Profile search rounds and the iteration controller (operations O-SEARCH, O-ITER; SEARCH_PLAN §4.1, SD-10).
 
 Every round is an `hmmsearch` of one profile against the whole target at the fixed search
-space (Z_prot = domZ = 1e8). Round 1 searches with the seed: an HMM as given, or a profile
-built from a sequence (what phmmer and the first round of jackhmmer do) or from an MSA.
+space (Z_prot = domZ = 1e8). Round 1 searches with the seed: an HMM as given (from a pack
+library or a user's file), or a profile built from a sequence (what phmmer and the first round
+of jackhmmer do), from an MSA, or from unaligned seed sequences (`build_from_sequences`).
+
+The target is never held whole (card W-19): a search reads it from the pack's shards one block of
+`BLOCK_RESIDUES` residues at a time (`stream_target`), each block searched across the run's threads while the next
+one is read by a thread of its own (card W-21: two blocks in memory, never more), and keeps only the hits (and, for a round that builds a next profile, its hits' sequences). At the fixed Z a
+target's scores and E-values do not depend on what it is searched with, so this is one search of the target.
 
 Per round k:
 
@@ -27,9 +33,13 @@ At S0 there are no NR50 representatives, so "new representatives" are new target
 
 from __future__ import annotations
 
+import contextlib
 import io
 import math
+import queue
 import random
+import re
+import threading
 from dataclasses import dataclass, field
 from typing import Callable, Iterator
 
@@ -39,28 +49,135 @@ from pyhmmer.plan7 import Background, Builder, TraceAligner
 from biobox.l1.domains import DOM_Z, Z_PROT, iter_hmms
 
 AMINO = pyhmmer.easel.Alphabet.amino()
+# residues per block of a target read from the pack (card W-19): about 100 to 150 MB of digitized sequences with
+# their Easel records, for proteins of about 300 aa (estimate); a search holds two blocks at a time: the one it
+# searches and the one read ahead (card W-21)
+BLOCK_RESIDUES = 2**25
 BUILDER_SEED = 42
 FALLBACK_FAMILY_BITS = 25.0  # family calls on the seed for models without GA cutoffs
 
 
 @dataclass
 class Target:
+    """What a search reads: `size` sequences, given as blocks of digitized sequences, read afresh by each call of
+    `blocks()` (one pass over the target); `seqs` holds the text of the sequences a search kept
+    (`search(keep_sequences=True)`: the hits of a round that builds the next profile), or all of them for a target
+    loaded whole (`load_target`). `blocks_read` counts the blocks of the last pass."""
     kind: str  # protein | dark_orf
-    uids: list[bytes]
-    seqs: dict[bytes, str]
-    block: pyhmmer.easel.DigitalSequenceBlock
+    size: int
+    _blocks: Callable[[], Iterator[pyhmmer.easel.DigitalSequenceBlock]]
+    seqs: dict[bytes, str] = field(default_factory=dict)
+    blocks_read: int = 0
 
-    @property
-    def size(self) -> int:
-        return len(self.uids)
+    def blocks(self) -> Iterator[pyhmmer.easel.DigitalSequenceBlock]:
+        """One pass over the target. The next block is read in a background thread while the caller searches the
+        current one (`prefetch`, card W-21). A caller must drop each block before it asks for the next (it is not
+        held here either), so at most two blocks are alive at once; close the generator to stop the reader."""
+        self.blocks_read = 0
+        it = prefetch(self._blocks)
+        try:
+            while True:
+                try:
+                    box = [next(it)]  # a box, so that this frame holds no block while the caller has it
+                except StopIteration:
+                    return
+                self.blocks_read += 1
+                yield box.pop()
+        finally:
+            it.close()
+
+
+def prefetch(make: Callable[[], Iterator], ahead: int = 2) -> Iterator:
+    """The items of `make()`, read by a thread of its own (card W-21) so that whoever consumes them does not wait
+    for the reading while it has an item to work on.
+
+    Memory: at most `ahead` (two) items exist at once, counting the one the consumer works on, provided the
+    consumer drops an item before it asks for the next. The reader takes a permit before it reads an item, and the
+    permit comes back when the consumer asks for the item after it, so the reader is one item ahead and never more.
+
+    An exception in the reader is raised in the consumer, at the place of the item it failed on, after the items
+    before it. Closing the generator (or a consumer that raises, whose generator is closed) stops the reader: it
+    wakes, closes the source iterator in its own thread and ends; `close` waits for it."""
+    items: queue.Queue = queue.Queue()
+    permits = threading.Semaphore(ahead)
+    stop = threading.Event()
+    done = object()
+
+    def read() -> None:
+        src = None
+        try:
+            src = make()
+            while True:
+                permits.acquire()
+                if stop.is_set():
+                    return
+                try:
+                    item = next(src)
+                except StopIteration:
+                    items.put((done, None))
+                    return
+                items.put((None, item))
+                del item
+        except BaseException as e:  # surfaced in the consumer
+            items.put((e, None))
+        finally:
+            if src is not None and hasattr(src, "close"):
+                with contextlib.suppress(Exception):
+                    src.close()
+
+    reader = threading.Thread(target=read, name="biobox-prefetch", daemon=True)
+    reader.start()
+    first = True
+    try:
+        while True:
+            if not first:
+                permits.release()  # the consumer is done with the item before this one
+            first = False
+            while True:
+                try:
+                    tag, item = items.get(timeout=1.0)
+                    break
+                except queue.Empty:
+                    if not reader.is_alive() and items.empty():
+                        raise RuntimeError("the target reader ended without a result")
+            if tag is done:
+                return
+            if tag is not None:
+                raise tag
+            box = [item]
+            del item
+            yield box.pop()
+    finally:
+        stop.set()
+        permits.release(ahead + 1)
+        reader.join()
 
 
 def load_target(kind: str, records: Iterator[tuple[str, str]]) -> Target:
+    """A small target held whole, in one block (tests and small inputs; a search reads a pack's shards with
+    `stream_target`)."""
     seqs = {bytes.fromhex(n): s for n, s in records}
     uids = sorted(seqs)
     block = pyhmmer.easel.TextSequenceBlock(
         pyhmmer.easel.TextSequence(name=u.hex().encode(), sequence=seqs[u]) for u in uids).digitize(AMINO)
-    return Target(kind, uids, seqs, block)
+    return Target(kind, len(uids), lambda: iter([block]), seqs)
+
+
+def stream_target(kind: str, paths: list, size: int, block_residues: int | None = None) -> Target:
+    """A target read from its pack shards (`paths`, in pack order) a block of about `block_residues` residues
+    (default `BLOCK_RESIDUES`) at a time, never held whole (card W-19); `size` is its number of sequences (the pack
+    manifest's `n_seq`: a searchable target holds each name once). A block is searched by pyhmmer across the
+    search's threads, and at the fixed Z (`Z_PROT`, `DOM_Z`) a sequence's scores and E-values do not depend on the
+    other sequences searched with it, so the hits are those of one search of the whole target."""
+    from biobox.search import fastz
+
+    n = int(block_residues or BLOCK_RESIDUES)
+
+    def blocks():
+        for p in paths:
+            yield from fastz.blocks(p, AMINO, n)
+
+    return Target(kind, size, blocks)
 
 
 def text(x) -> str:
@@ -98,9 +215,85 @@ def build_from_msa(name: str, msa):
     return hmm
 
 
+def build_from_sequences(name: str, records: list[tuple[str, str]]):
+    """A profile from unaligned seeds, as hmmalign + hmmbuild would make it with no multiple aligner:
+    a single-sequence profile of the first seed, every seed aligned to it (trimmed to the model's
+    match states) and the profile built from that alignment. Returns (profile, alignment)."""
+    first = build_from_sequence(f"{name}_first", records[0][1])
+    block = pyhmmer.easel.DigitalSequenceBlock(AMINO, [_digital(n, s) for n, s in records])
+    msa = pyhmmer.hmmer.hmmalign(first, block, trim=True, digitize=True, cpus=1)
+    return build_from_msa(name, msa), msa
+
+
 def read_msa(path) -> pyhmmer.easel.DigitalMSA:
     with pyhmmer.easel.MSAFile(str(path), digital=True, alphabet=AMINO) as fh:
         return fh.read()
+
+
+def _model_keys(hmm) -> set[str]:
+    acc = text(hmm.accession)
+    return {k for k in (acc, acc.split(".")[0], text(hmm.name)) if k}
+
+
+def read_hmm_file(data: bytes, model: str | None = None):
+    """The one HMMER3 profile in a user's file, or the one `model` names (name or accession, with or
+    without version). ValueError says why when the file holds none, several, or a non-protein one."""
+    try:
+        with pyhmmer.plan7.HMMFile(io.BytesIO(data)) as fh:
+            hmms = list(fh)
+    except (ValueError, EOFError, OSError, RuntimeError) as e:
+        raise ValueError(f"not an HMMER3 profile file ({e})") from None
+    if not hmms:
+        raise ValueError("not an HMMER3 profile file (no model in it)")
+    names = [text(h.accession) or text(h.name) for h in hmms]
+    if model is None:
+        if len(hmms) > 1:
+            raise ValueError(f"{len(hmms)} models in the file ({', '.join(names[:5])}"
+                             f"{', ...' if len(names) > 5 else ''}); name one with `model:` (name or accession)")
+        hmm = hmms[0]
+    else:
+        match = [h for h in hmms if model in _model_keys(h)]
+        if not match:
+            raise ValueError(f"no model {model!r} in the file (it holds {', '.join(names[:5])}"
+                             f"{', ...' if len(names) > 5 else ''})")
+        if len(match) > 1:
+            raise ValueError(f"model {model!r} names {len(match)} models in the file; give a unique accession")
+        hmm = match[0]
+    if not hmm.alphabet.is_amino():
+        raise ValueError(f"model {text(hmm.name)} is not an amino-acid profile; protein targets need an "
+                         "amino-acid profile")
+    return hmm
+
+
+_NUCLEOTIDE = set("ACGTUN")
+
+
+def read_seed_fasta(data: bytes) -> list[tuple[str, str]]:
+    """(name, sequence) of a protein FASTA of seeds, in file order; ValueError says why it is unusable:
+    fewer than 2 sequences, a duplicate name, an empty sequence, a character outside A-Z, or only
+    nucleotide letters."""
+    try:
+        with pyhmmer.easel.SequenceFile(io.BytesIO(data), format="fasta") as fh:
+            recs = [(text(s.name), s.sequence) for s in fh]
+    except (ValueError, EOFError, OSError, RuntimeError) as e:
+        raise ValueError(f"not a FASTA file ({e})") from None
+    if len(recs) < 2:
+        raise ValueError(f"{len(recs)} sequence(s); a profile from sequences needs at least 2 "
+                         "(give one sequence as a `sequence` seed)")
+    out, seen = [], set()
+    for name, seq in recs:
+        if name in seen:
+            raise ValueError(f"duplicate sequence name {name!r}")
+        seen.add(name)
+        seq = re.sub(r"\s+", "", seq).upper().rstrip("*")
+        if not seq:
+            raise ValueError(f"sequence {name!r} is empty")
+        if not re.fullmatch(r"[A-Z]+", seq):
+            raise ValueError(f"sequence {name!r} has characters outside A-Z")
+        out.append((name, seq))
+    if set("".join(s for _, s in out)) <= _NUCLEOTIDE:
+        raise ValueError("every sequence holds only nucleotide letters (ACGTUN); give protein sequences")
+    return out
 
 
 def find_model(paths: list, key: str):
@@ -114,12 +307,12 @@ def find_model(paths: list, key: str):
     return None
 
 
-def families_of(seq: str, model_paths: list) -> set[str]:
+def families_of(seq: str, model_paths: list, threads: int) -> set[str]:
     """Library families on one sequence, at each model's GA cutoff (25 bits without one)."""
     out = set()
     target = pyhmmer.easel.DigitalSequenceBlock(AMINO, [_digital("seed", seq)])
     for p in model_paths:
-        for hits in pyhmmer.hmmsearch(list(iter_hmms(p)), target, Z=Z_PROT, domZ=DOM_Z):
+        for hits in pyhmmer.hmmsearch(list(iter_hmms(p)), target, cpus=threads, Z=Z_PROT, domZ=DOM_Z):
             q = hits.query
             ga = q.cutoffs.gathering if q.cutoffs.gathering_available() else None
             cut = ga[0] if ga else FALLBACK_FAMILY_BITS
@@ -128,24 +321,52 @@ def families_of(seq: str, model_paths: list) -> set[str]:
     return out
 
 
-def search(hmm, target: Target, inclusion_bits: float, domain_bits: float, cpus: int = 1) -> dict[bytes, dict]:
-    """Included targets -> {seq_bitscore, seq_evalue_zref, domains: [...]} for one profile."""
+def search(hmm, target: Target, inclusion_bits: float, domain_bits: float, threads: int, *,
+           keep_sequences: bool = False) -> dict[bytes, dict]:
+    """Included targets -> {seq_bitscore, seq_evalue_zref, domains: [...]} for one profile, one block of the
+    target at a time (`Target.blocks`). With `keep_sequences`, the text of each included target's sequence is kept
+    in `target.seqs` (for the next round's alignment), read from the block it was found in."""
     out = {}
-    for hits in pyhmmer.hmmsearch([hmm], target.block, cpus=cpus, Z=Z_PROT, domZ=DOM_Z,
+    with contextlib.closing(target.blocks()) as blocks:  # closing it stops the reader of a failed search
+        for block in blocks:
+            _search_block(hmm, block, target, out, inclusion_bits, domain_bits, threads, keep_sequences)
+            del block  # not held while the next one is asked for: two blocks at most (`Target.blocks`)
+    return out
+
+
+def _search_block(hmm, block, target: Target, out: dict, inclusion_bits: float, domain_bits: float, threads: int,
+                  keep_sequences: bool) -> None:
+    """One block against the profile; its hits into `out`. A function of its own so that nothing here (the hits
+    of pyhmmer refer to the block) outlives the block."""
+    found = []
+    for hits in pyhmmer.hmmsearch([hmm], block, cpus=threads, Z=Z_PROT, domZ=DOM_Z,
                                   T=inclusion_bits, incT=inclusion_bits):
         for hit in hits:
             if hit.score < inclusion_bits:
                 continue
             doms = sorted(hit.domains, key=lambda d: -d.score)
             keep = [d for i, d in enumerate(doms) if i == 0 or d.score >= domain_bits]
-            out[bytes.fromhex(text(hit.name))] = {
+            uid = bytes.fromhex(text(hit.name))
+            found.append(uid)
+            out[uid] = {
                 "seq_bitscore": hit.score, "seq_evalue_zref": hit.evalue,
                 "domains": sorted(({"bitscore": d.score, "evalue_zref": d.i_evalue, "env_start": d.env_from - 1,
                                     "env_end": d.env_to, "ali_start": d.alignment.target_from - 1,
                                     "ali_end": d.alignment.target_to, "hmm_from": d.alignment.hmm_from - 1,
                                     "hmm_to": d.alignment.hmm_to} for d in keep), key=lambda d: d["env_start"]),
             }
-    return out
+    if keep_sequences:
+        _keep(block, {u.hex() for u in found if u not in target.seqs}, target.seqs)
+
+
+def _keep(block, names: set[str], seqs: dict[bytes, str]) -> None:
+    """The text of the sequences of `block` named in `names`, into `seqs`."""
+    if not names:
+        return
+    for s in block:
+        n = text(s.name)
+        if n in names:
+            seqs[bytes.fromhex(n)] = s.textize().sequence
 
 
 def tail_expectation(hmm, bits: float, size: int) -> float:
@@ -201,7 +422,8 @@ def iterate(seed_hmm, seed_msa_text: bytes | None, seed_seq: str | None, target:
     seen: set[bytes] = set()
     round1_context: set[str] | None = None
     for k in range(1, s.max_rounds + 1):
-        hits = search(hmm, target, s.inclusion_bits, s.domain_bits, s.cpus)
+        # a round that may build a next profile keeps its hits' sequences: the alignment reads them
+        hits = search(hmm, target, s.inclusion_bits, s.domain_bits, threads=s.cpus, keep_sequences=k < s.max_rounds)
         labels = {u: _label(u, h, hmm.M, s, partial) for u, h in hits.items()}
         kept = sorted(u for u, (lab, _) in labels.items() if lab == "keep")
         new = [u for u in kept if u not in seen]
@@ -271,7 +493,7 @@ def shuffled(seq: str, seed: int) -> str:
 def negative_control(seed_seq: str, target: Target, s: Settings, seed: int) -> dict:
     """MR-09: a composition-preserving shuffle of the seed, searched as round 1."""
     hmm = build_from_sequence("shuffled_seed", shuffled(seed_seq, seed))
-    n = len(search(hmm, target, s.inclusion_bits, s.domain_bits, s.cpus))
+    n = len(search(hmm, target, s.inclusion_bits, s.domain_bits, threads=s.cpus))
     exp = tail_expectation(hmm, s.inclusion_bits, target.size)
     return {"kind": "shuffled_seed", "n_hits": n, "expectation": exp, "allowed": math.ceil(exp),
             "pass": n <= math.ceil(exp)}
