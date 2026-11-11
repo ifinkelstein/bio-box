@@ -49,6 +49,18 @@ databases:
     # seed alignments of the same release as `pfam`; not scanned by any producer. Approved by the
     # PI on 2026-11-11 for the MMseqs2 profile comparison (card 0-09a)
     used_by: [measurement 0-09a]
+  - name: rfam_clanin
+    version: "15.1"
+    released: 2026-01
+    url: https://ftp.ebi.ac.uk/pub/databases/Rfam/15.1/Rfam.clanin
+    file: Rfam.clanin
+    sha256: 8055b3aec9be36004663b7b7643ea128b906e6c9656266189afd30fc0da34a1d
+    bytes: 5778
+    license: CC0
+    # clan membership of the same Rfam release as `rfam` (151 clans). 6 KB, so it is kept in the
+    # repository at src/biobox/l1/rfam_sets/Rfam-15.1.clanin, not on /stor (AGENTS 7.3). Approved by
+    # the PI on 2026-11-11 for clan competition (DEC-28, card E-08)
+    used_by: [O-SCAN (ncRNA)]
 pending:
   - name: phrogs
     note: >-
