@@ -973,6 +973,38 @@ def test_w17_release_verify_warns_for_each_lookup_table_the_release_lacks(world,
     assert capsys.readouterr().err == ""
 
 
+@pytest.mark.covers("W-18")
+def test_w18_nbr_takes_anchors_from_a_file_one_uid_per_line(world, capsys, tmp_path):
+    """Card W-18 (3): `--anchors-file` gives the same answer as the comma-separated argument (1,957 uids made a 64 KB
+    argument on rN.1); blank lines are skipped; a file together with another anchor source, a missing file and a line
+    that is not a uid are refused with exit 2."""
+    root = world[0]
+    hit, _ = _seed(root)
+    row = _run(world, _recipe(hit, hit, tool="jackhmmer", mx=2))
+    assert row["status"] == "ok", row["error"]
+    anchors = sorted(h["target_uid"].hex() for h in runner.read_hits(_rdir(root, row["run_id"].hex()))
+                     if h["target_kind"] == "protein")
+    f = tmp_path / "anchors.txt"
+    f.write_text("\n".join(anchors[:1] + [""] + anchors[1:]) + "\n")
+    where = ["--root", str(root), *_dirs(root), "--window", "5g", "--release", REL, "--json"]
+    assert cli.main(["nbr", "summarize", ",".join(anchors), *where]) == 0
+    want = capsys.readouterr().out
+    assert want
+    assert cli.main(["nbr", "summarize", "--anchors-file", str(f), *where]) == 0
+    assert capsys.readouterr().out == want
+    assert cli.main(["nbr", "--anchors-file", str(f), *where]) == 0  # the plain `nbr`, counts and rows
+    plain = capsys.readouterr().out
+    assert cli.main(["nbr", "--anchors", ",".join(anchors), *where]) == 0
+    assert capsys.readouterr().out == plain
+    assert cli.main(["nbr", "summarize", anchors[0], "--anchors-file", str(f), *where]) == 2
+    assert "--anchors-file" in capsys.readouterr().err
+    assert cli.main(["nbr", "summarize", "--anchors-file", str(tmp_path / "none.txt"), *where]) == 2
+    assert "none.txt" in capsys.readouterr().err
+    (tmp_path / "bad.txt").write_text(anchors[0] + "\nnot-a-uid\n")
+    assert cli.main(["nbr", "summarize", "--anchors-file", str(tmp_path / "bad.txt"), *where]) == 2
+    assert "not-a-uid" in capsys.readouterr().err
+
+
 # --- W-05: exports a person can open, against brute-force joins over the Parquet files ----------------------
 
 W05_HIT_COLUMNS = ["accession", "header", "contig_len", "start", "end", "strand", "length", "seq_bitscore",

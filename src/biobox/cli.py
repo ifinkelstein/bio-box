@@ -8,8 +8,10 @@
     bio-box search hits <run> --root R [--runs DIR] --format tsv|faa [--round N] [--library L] [--out FILE]
     bio-box search hmm --root R --release R1 --hmm FILE --bits 30 [--neighbors 5] --positive ACC:START-END|TEXT
                 --out DIR [--model NAME] [--profile P | --pack-dir P --runs DIR --work DIR]
+    bio-box find --root R --release R1 (--accession ACC[:START-END] | --protein UID) [--tape-version T]
     bio-box nbr --root R --anchors <run|uid,uid,...> --window 10g --strand any --edge truncate [--json]
                 [--tape-version T] [--runs DIR]
+    bio-box nbr [summarize] --anchors-file FILE ...   (protein uids one per line, in place of the anchors argument)
     bio-box nbr <run|uid,uid,...> --root R --window 5g --format tsv [--release R] [--out DIR] [--runs DIR]
     bio-box nbr summarize <run|uid,uid,...> --root R --window 5g --by pfam,nr50 [--top 50] [--release R]
                 [--json | --format tsv] [--out FILE] [--runs DIR]
@@ -329,6 +331,24 @@ def _nbr(a) -> int:
             print(f"refused: nbr: unknown action {a.action!r} (expected summarize)", file=sys.stderr)
             return 2
         a.action, a.source = None, a.action
+    if a.anchors_file:  # card W-18: protein uids one per line, for a list too long for one argument
+        if a.source or a.anchors:
+            print("refused: --anchors-file is the anchors; give it without --anchors or a run id or uid list",
+                  file=sys.stderr)
+            return 2
+        try:
+            lines = Path(a.anchors_file).read_text(encoding="utf-8").splitlines()
+        except (OSError, UnicodeDecodeError) as e:
+            print(f"refused: --anchors-file {a.anchors_file}: {e}", file=sys.stderr)
+            return 2
+        words = [x.strip() for x in lines if x.strip() and not x.lstrip().startswith("#")]
+        bad = next((x for x in words if not re.fullmatch(r"[0-9a-fA-F]{32}", x)), None)
+        if bad is not None or not words:
+            print(f"refused: --anchors-file {a.anchors_file}: "
+                  + (f"{bad!r} is not a protein uid (32 hex digits)" if words else "no protein uids in it"),
+                  file=sys.stderr)
+            return 2
+        a.anchors = ",".join(words)
     if a.action == "summarize" and not (a.source or a.anchors):
         print("refused: nbr summarize needs a run id or a list of protein uids", file=sys.stderr)
         return 2
@@ -427,20 +447,8 @@ def _positive_uid(root: Path, files, spec: str, tape_version: str, gene_call_ver
     The contigs are found by a scan of `contig_label` (sorted by contig_uid: no table is sorted by accession or
     header, and a substring cannot prune); their tapes are read by contig_uid, which prunes (AGENTS §4.4)."""
     m = _SPAN.match(spec)
-    where = f"accession = {export._q(m['acc'])}" if m else f"contains(original_header, {export._q(spec)})"
-    with export.open_store(root, release=files.release, gene_call_version=gene_call_version, manifest=files,
-                           threads=threads, relations=("lab", "cidx", "dim")) as st:
-        st.con.execute(f"CREATE TEMP TABLE _c AS SELECT DISTINCT contig_uid FROM lab WHERE {where}")
-        export._annotate_contigs(st.con, with_ordinals=False)  # each contig's label as `search hits` shows it
-        labels = {cu: (acc, header) for cu, acc, header in
-                  st.con.execute("SELECT contig_uid, accession, header FROM _lab").fetchall()}
-    genes = []
-    for cu, tape in sorted(nbr._tapes(files, tape_version, set(labels)).items()):
-        for k, pu in enumerate(tape["protein_uids"]):
-            if pu is not None:
-                genes.append({"protein_uid": pu, "contig_uid": cu, "start": tape["start_bps"][k],
-                              "end": tape["end_bps"][k], "strand": tape["strands"][k], "accession": labels[cu][0],
-                              "header": labels[cu][1]})
+    genes, labels = find_genes(root, files, accession=m["acc"] if m else None, text=None if m else spec,
+                               tape_version=tape_version, gene_call_version=gene_call_version, threads=threads)
     if m:
         start, end = int(m["start"]), int(m["end"])
         exact = [g for g in genes if (g["start"], g["end"]) == (start, end)]
@@ -460,10 +468,119 @@ def _positive_uid(root: Path, files, spec: str, tape_version: str, gene_call_ver
     if not labels:
         return None, [f"{head} matched no protein: no contig of release {files.release} has the accession "
                       f"{m['acc']} (the accession column of `bio-box search hits --format tsv`)"]
+    miss, near = _span_miss(genes, m)
+    return None, [f"{head} matched no protein of release {files.release}: {miss}", *_gene_lines(near)]
+
+
+def _span_miss(genes: list[dict], m: re.Match) -> tuple[str, list[dict]]:
+    """Why no gene of the accession has the span `m` (a `_SPAN` match), and the genes that overlap it."""
+    start, end = int(m["start"]), int(m["end"])
     near = [g for g in genes if g["start"] < end and g["end"] > start]
-    return None, [f"{head} matched no protein of release {files.release}: no gene of {m['acc']} starts at {start} "
-                  f"and ends at {end} (0-based, end exclusive, as `search hits --format tsv` prints them)"
-                  + ("; the genes there:" if near else "; no gene overlaps that interval"), *_gene_lines(near)]
+    return (f"no gene of {m['acc']} starts at {start} and ends at {end} (0-based, end exclusive, as `search hits "
+            f"--format tsv` prints them)" + ("; the genes there:" if near else "; no gene overlaps that interval"), near)
+
+
+def _contig_labels(root: Path, files, gene_call_version: str, threads: int | None, *, where: str | None = None,
+                   contigs=()) -> dict[bytes, tuple[str, str]]:
+    """{contig_uid: (accession, header)} as `search hits` shows them, for the contigs of `contig_label` that satisfy
+    the SQL condition `where`, else for the contig uids `contigs`. A scan of `contig_label` when `where` is given
+    (no table is sorted by accession or header); by uid it prunes (AGENTS §4.4)."""
+    import pyarrow as pa
+
+    with export.open_store(root, release=files.release, gene_call_version=gene_call_version, manifest=files,
+                           threads=threads, relations=("lab", "cidx", "dim")) as st:
+        if where is not None:
+            st.con.execute(f"CREATE TEMP TABLE _c AS SELECT DISTINCT contig_uid FROM lab WHERE {where}")
+        else:
+            st.con.register("_cin", pa.table({"contig_uid": pa.array(sorted(contigs), pa.binary(16))}))
+            st.con.execute("CREATE TEMP TABLE _c AS SELECT DISTINCT contig_uid FROM _cin")
+        export._annotate_contigs(st.con, with_ordinals=False)
+        return {cu: (acc, header) for cu, acc, header in
+                st.con.execute("SELECT contig_uid, accession, header FROM _lab").fetchall()}
+
+
+def find_genes(root: Path, files, *, accession: str | None = None, text: str | None = None,
+               protein: bytes | None = None, tape_version: str, gene_call_version: str,
+               threads: int | None = None) -> tuple[list[dict], dict[bytes, tuple[str, str]]]:
+    """The genes of one release that one of three keys names, with the label of every contig the key matched
+    (`bio-box find` and `search hmm --positive`; card W-18). Give exactly one key: `accession` (every gene of the
+    contigs of that accession: the CDS slots of their tapes in `tape_version`), `text` (the same for the contigs whose
+    header contains it, case-sensitive), or `protein` (every gene that carries that protein uid, from
+    `protein_occurrence`). Each gene is a dict with protein_uid, contig_uid, feature_uid, start, end (0-based,
+    half-open), strand (+1 or -1), accession and header; sorted by accession, contig_uid, start, end, strand. The
+    feature_uid is the gene's identity; no ordinal is returned (AGENTS §3.3). Returns (genes, labels), where labels
+    is {contig_uid: (accession, header)} of the matched contigs, so a caller can tell a contig without a gene from no
+    contig at all."""
+    if sum(k is not None for k in (accession, text, protein)) != 1:
+        raise ValueError("find_genes: give exactly one of accession, text, protein")
+    genes: list[dict] = []
+    if protein is not None:
+        occ = {(o["contig_uid"], o["feature_uid"]): o
+               for o in nbr.occurrences(root, {protein}, gene_call_version, files=files)}
+        labels = _contig_labels(root, files, gene_call_version, threads, contigs={cu for cu, _ in occ})
+        genes = [{"protein_uid": o["protein_uid"], "contig_uid": cu, "feature_uid": fu, "start": o["start"],
+                  "end": o["end"], "strand": o["strand"], "accession": labels[cu][0], "header": labels[cu][1]}
+                 for (cu, fu), o in occ.items() if cu in labels]
+    else:
+        where = (f"accession = {export._q(accession)}" if accession is not None
+                 else f"contains(original_header, {export._q(text)})")
+        labels = _contig_labels(root, files, gene_call_version, threads, where=where)
+        for cu, tape in nbr._tapes(files, tape_version, set(labels)).items():
+            for k, pu in enumerate(tape["protein_uids"]):
+                if pu is not None:
+                    genes.append({"protein_uid": pu, "contig_uid": cu, "feature_uid": tape["feature_uids"][k],
+                                  "start": tape["start_bps"][k], "end": tape["end_bps"][k],
+                                  "strand": tape["strands"][k], "accession": labels[cu][0], "header": labels[cu][1]})
+    genes.sort(key=lambda g: (g["accession"] or "", g["contig_uid"], g["start"], g["end"], g["strand"]))
+    return genes, labels
+
+
+FIND_COLUMNS = ("accession", "contig_uid", "start", "end", "strand", "feature_uid", "protein_uid")
+
+
+def _find(a) -> int:
+    """`bio-box find` (card W-18): the genes an accession (optionally with a span) or a protein uid names, one TSV row
+    each: accession, contig_uid, start, end (0-based, half-open), strand, feature_uid, protein_uid. 2 when it names no
+    gene."""
+    root = Path(a.root)
+
+    def refuse(msg, more=()) -> int:
+        print(f"refused: {msg}", file=sys.stderr)
+        for line in more:
+            print(line, file=sys.stderr)
+        return 2
+
+    try:
+        files, _ = _release_files_or_refusal(a, root)
+    except (ValueError, OSError) as e:
+        return refuse(e)
+    tv = nbr.resolve_tape_version(a.gene_call_version, a.tape_version)
+    if a.protein is not None:
+        if not re.fullmatch(r"[0-9a-fA-F]{32}", a.protein):
+            return refuse(f"--protein {a.protein!r} is not a protein uid (32 hex digits)")
+        genes, _ = find_genes(root, files, protein=bytes.fromhex(a.protein), tape_version=tv,
+                              gene_call_version=a.gene_call_version, threads=a.threads)
+        if not genes:
+            return refuse(f"no gene of release {files.release} carries protein {a.protein.lower()}")
+    else:
+        m = _SPAN.match(a.accession)
+        acc = m["acc"] if m else a.accession
+        genes, labels = find_genes(root, files, accession=acc, tape_version=tv, gene_call_version=a.gene_call_version,
+                                   threads=a.threads)
+        if not labels:
+            return refuse(f"no contig of release {files.release} has the accession {acc} (the accession column of "
+                          "`bio-box search hits --format tsv`)")
+        if m:
+            miss, near = _span_miss(genes, m)
+            genes = [g for g in genes if (g["start"], g["end"]) == (int(m["start"]), int(m["end"]))]
+            if not genes:
+                return refuse(miss, _gene_lines(near))
+        elif not genes:
+            return refuse(f"no gene of {acc} in tape version {tv} of release {files.release}")
+    _print(["\t".join(FIND_COLUMNS)] + ["\t".join([g["accession"] or "", g["contig_uid"].hex(), str(g["start"]),
+                                                   str(g["end"]), f"{g['strand']:+d}", g["feature_uid"].hex(),
+                                                   g["protein_uid"].hex()]) for g in genes])
+    return 0
 
 
 def _recipe_text(a, positive_uid: str) -> str:
@@ -973,10 +1090,20 @@ def main(argv: list[str] | None = None) -> int:
     e.add_argument("--release", required=True, help="needs manifests/release=<R>.json (bio-box release manifest)")
     e.add_argument("--out", help="write this file (default: stdout)")
     e.add_argument("--threads", type=int, help=f"DuckDB threads (default {export.EXPORT_THREADS})")
+    fd = sub.add_parser("find", parents=[common], help="the genes an accession or a protein uid names (card W-18)")
+    fd.add_argument("--release", required=True)
+    what = fd.add_mutually_exclusive_group(required=True)
+    what.add_argument("--accession", help="a contig accession, or ACCESSION:START-END for the gene with those "
+                                          "coordinates (0-based, end exclusive, as `search hits --format tsv` prints)")
+    what.add_argument("--protein", help="a protein uid (32 hex digits): every gene of the release that carries it")
+    fd.add_argument("--tape-version", help="tapes to read for --accession (default: the gene-call producer's)")
+    fd.add_argument("--threads", type=int, help=f"DuckDB threads (default {export.EXPORT_THREADS})")
     n = sub.add_parser("nbr", parents=[common])
     n.add_argument("action", nargs="?", help="summarize: families and clusters per window; otherwise the anchors")
     n.add_argument("source", nargs="?", help="summarize: run_id or protein uids (uid,uid,...)")
     n.add_argument("--anchors", help="run_id or protein uids (uid,uid,...)")
+    n.add_argument("--anchors-file", help="protein uids, one per line (blank lines and # comments skipped), instead "
+                                          "of --anchors or the uid list")
     n.add_argument("--window", default="10g")
     n.add_argument("--strand", default="any")
     n.add_argument("--operon-gap")
@@ -1079,7 +1206,7 @@ def main(argv: list[str] | None = None) -> int:
         if not command:
             p.error("run-step needs a command after --")
         a.command = command
-    return {"pack": _pack, "search": _search, "nbr": _nbr, "export": _export, "run-step": _run_step,
+    return {"pack": _pack, "search": _search, "nbr": _nbr, "find": _find, "export": _export, "run-step": _run_step,
             "release": _release, "stage": _stage, "build-stage": _build_stage}[a.cmd](a)
 
 

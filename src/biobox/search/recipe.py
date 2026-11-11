@@ -185,7 +185,15 @@ def normalize(raw: dict) -> dict:
     neg = ctl.get("negative", "shuffled_seed")
     if neg not in ("shuffled_seed", "none"):
         raise RecipeError("controls.negative: shuffled_seed or none")
-    out["controls"] = {"positive": [_seed(p, f"controls.positive[{i}]") for i, p in enumerate(pos)], "negative": neg}
+    positives = [_seed(p, f"controls.positive[{i}]") for i, p in enumerate(pos)]
+    for i, p in enumerate(positives):
+        if p["kind"] not in RUN_POSITIVE_KINDS:  # card W-18: the paper check and the submit check agree
+            raise RecipeError(
+                f"controls.positive[{i}]: kind {p['kind']} cannot be a positive control: the release records no "
+                f"{p['kind']} to resolve it through (a positive control is one of {', '.join(RUN_POSITIVE_KINDS)}); "
+                "find the protein's uid with `bio-box find --release R --accession ACC:START-END` and give "
+                "{protein_uid: UID}")
+    out["controls"] = {"positive": positives, "negative": neg}
     outs = list(r.get("outputs", ["hits", "hmm_per_round", "msa_per_round", "neighborhoods", "summary"]))
     if set(outs) - set(OUTPUTS):
         raise RecipeError(f"outputs: unknown {sorted(set(outs) - set(OUTPUTS))}")

@@ -32,7 +32,8 @@
 #   --env K=V        an extra `singularity --env` (repeatable), e.g. PYTHONPATH=<tree>/src
 #   --log FILE       stdout and stderr of the unit (default: <profile tmp>/logs/<unit>.log);
 #                    its last line is "pod_run: <unit> exited <code>", also after a stop, when
-#                    "pod_run: <unit> received SIGTERM" comes before it. run-step's and build-stage's
+#                    "pod_run: <unit> received SIGTERM" comes before it, and the unit's totals line
+#                    "pod_run: <unit> usage CPUUsageNSec=<ns> MemoryPeak=<bytes>" (card W-18) just before it. run-step's and build-stage's
 #                    lines carry a timestamp and are written as they happen (card C-13)
 # Watch it with `systemctl --user status <unit>` and the log; stop it with
 # `systemctl --user stop <unit>` (run-step forwards the SIGTERM to its step).
@@ -98,6 +99,9 @@ mkdir -p "$(dirname "$LOG")"
 # had no last line). The sh traps SIGTERM, SIGINT and SIGHUP: a trapped signal waits until the
 # command it runs has ended (POSIX), then the sh says which signal came and writes the exit line.
 # A trap that is not empty is reset in the command it starts, so bio-box still gets the signal.
+# Card W-18: --collect discards the unit's accounting when it ends, so before the exit line the sh asks the
+# user manager for it while the unit still exists and logs "pod_run: <unit> usage CPUUsageNSec=<ns> MemoryPeak=<bytes>"
+# (nothing when systemd reports no accounting, e.g. `[not set]`).
 # PYTHONUNBUFFERED: a step command's own output reaches the log as it is written.
 # BIOBOX_POD_UNIT (card W-13), set after the caller's --env so it cannot be unset: the unit ends with
 # its main process (systemd-run --collect starts a service; systemd then stops whatever is left in
@@ -106,7 +110,7 @@ mkdir -p "$(dirname "$LOG")"
 systemd-run --user --unit="$UNIT" --collect --quiet --same-dir \
   -p MemoryMax="$MEM" -p MemorySwapMax=0 -p CPUQuota="$((THREADS * 100))%" -p OOMPolicy=continue \
   -p StandardOutput="append:$LOG" -p StandardError="append:$LOG" \
-  /bin/sh -c 'unit=$1; shift; sig=""; trap "sig=TERM" TERM; trap "sig=INT" INT; trap "sig=HUP" HUP; "$@"; rc=$?; [ -z "$sig" ] || echo "pod_run: $unit received SIG$sig"; echo "pod_run: $unit exited $rc"; exit $rc' sh "$UNIT" \
+  /bin/sh -c 'unit=$1; shift; sig=""; trap "sig=TERM" TERM; trap "sig=INT" INT; trap "sig=HUP" HUP; "$@"; rc=$?; [ -z "$sig" ] || echo "pod_run: $unit received SIG$sig"; use=$(systemctl --user show "$unit" -p CPUUsageNSec -p MemoryPeak 2>/dev/null | tr "\n" " "); case "$use" in *=[0-9]*) echo "pod_run: $unit usage ${use% }";; esac; echo "pod_run: $unit exited $rc"; exit $rc' sh "$UNIT" \
   "$NICE_BIN" -n "$NICE" "$SING" exec --cleanenv --env PYTHONUNBUFFERED=1 --bind /sys/fs/cgroup:/sys/fs/cgroup:ro "${BINDS[@]}" \
   --env "BIOBOX_IMAGE_DIGEST=$SUM" "${ENVS[@]}" --env "BIOBOX_POD_UNIT=$UNIT" "$IMAGE" python -m biobox.cli "$@"
 

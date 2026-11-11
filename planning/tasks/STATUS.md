@@ -127,7 +127,7 @@ Last full suite on the integration branch before the C-11 merge: 1,053 passed, 1
 pinned image; 3 min 40 s wall for the slowest shard, against 13.5 min in one process). The skips
 need samtools, bgzip, Prodigal or the golden set. Tests no longer run on the laptop (AGENTS.md §5.5).
 
-## Merged (80 cards)
+## Merged (81 cards)
 
 | Card | Merge | What it did | Audit notes |
 |---|---|---|---|
@@ -210,6 +210,7 @@ need samtools, bgzip, Prodigal or the golden set. Tests no longer run on the lap
 | E-02 | merge after W-07 | G-04 spike-in panel, test only: 5 `cmemit` sequences from each of 20 Rfam families, each one detectable alone at its family's GA, planted in a 68 kb random contig; recovery with an exact binomial interval; skips without Rfam | **97 of 100 recovered, interval (0.915, 0.994); no hit on background** (*measured*, wilkcomp02, Infernal 1.1.5); asserted bound 0.90. The producer's hits equal `cmsearch`'s own. The 3 losses (two tRNA, one group II intron) score above GA alone and are found with `--max`: Infernal's filter pipeline at Z = 1e5 Mb drops them, not the producer. The first panel, with unscreened draws, recovered 67 of 100, all but 3 for weak draws. Family recovery only; subtype assignment waits for PI card 0-08. Rfam for the test is a copy at `/tmp/if2453/golden/rfam/` on the pod |
 | W-17 | `79632dc` | On a release without `member_cluster` (built before B-27), `nbr summarize` and the exports read `cluster_member` and say on stderr that it is the slow path; the exports' label columns fall back to `contig_occurrence` the same way; `release verify` warns (exit unchanged) for each lookup table the release lacks | Before: `nr50` keys 0 where the brute-force oracle has 62, with exit 0. The catalog's own `contig_label` view is still empty on such a release (card W-18). Branch suite 1,240 passed, 12 skipped |
 | B-38 | this merge | `partners_of` reads each `tape_tokens` row group once per query, in batches of at most 16 row groups on up to 8 threads; memory bound about 300 MB (*derived*) | On `rN.1` (*measured*, wilkcomp02, read-only, 4 CPUs): 3,509 anchors 12.35 s before, 0.52 s after, 0.78 s for the plain join; 10 anchors 0.33 s, 0.14 s, 0.47 s. Answers equal by sha256. No switch to a join: it ties in a middle band and loses elsewhere. Branch suite 1,237 passed, 12 skipped |
+| W-18 | merge after B-38 | Six small defects from the trial search: `open_catalog`'s DuckDB temp directory is under the system temp directory, never the data root; a `protein_accession` positive control is refused by the recipe parser (the release records none); `nbr --anchors-file`; `pod_run.sh` logs the unit's CPU and memory totals before the exit line; `bio-box find --accession ACC[:START-END] | --protein UID`, shared with `search hmm --positive`; the catalog's `contig_label` view falls back to `contig_occurrence` on a release without label files | One existing test migrated (the `protein_accession` case of a W-08 test, now a refusal). The `usage` line of `pod_run.sh` is tested with fakes only: check one real unit log. Merge conflict with W-17 in one test file, both sides appended; both kept. Pod suite 1,255 passed, 13 skipped |
 
 Decisions DEC-18 to DEC-23 were approved by the PI on 2026-11-09 and are in `planning/DECISIONS.md`.
 

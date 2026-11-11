@@ -123,7 +123,11 @@ grep "steps done" "$BBTMP/logs/c06-build.log"
 ls "$ROOT/runs/stage=S0"
 ```
 
-- The last line is `pod_run: c06-build exited 0`. The number is the exit code.
+- The last line is `pod_run: c06-build exited 0`. The number is the exit code. The line before it,
+  `pod_run: c06-build usage CPUUsageNSec=<ns> MemoryPeak=<bytes>`, is what the unit cost (card W-18):
+  CPU time in nanoseconds and the peak memory of the whole unit, read from `systemctl --user show` just
+  before the unit ends, because `--collect` discards them afterwards. It is absent when systemd keeps no
+  accounting for the unit.
 - The log has a line ending in `build-stage: stage S0 and release rC6.1: all N steps done`, and a
   `run-step: ... published N files` line for each step that runs a command (the `features` slot is
   empty). `--library` is optional and repeats: N is 12 plus one per `--library` (derived from
@@ -510,6 +514,19 @@ is one row per gene; `--format faa` is one record per protein, named by protein 
 --format tsv --out DIR` writes one file per anchor locus. `nbr summarize` counts families and
 clusters around the anchors. `export proteins` needs the release's manifest; it reads the root only
 and takes no `--profile`.
+
+**Anchors from a file, and finding a gene** (card W-18). `nbr` takes a long list of protein uids from a
+file, one uid per line (blank lines and `#` lines are skipped), in place of the comma-separated
+argument; `find` prints the genes an accession or a protein uid names, one row each: accession,
+contig uid, start, end (0-based, end exclusive), strand, feature uid, protein uid. `ACC:START-END`
+names one gene, as `search hmm --positive` does (it uses the same lookup). `--accession ACC` alone lists
+every gene of that contig; `--protein UID` every gene that carries the protein.
+
+```bash
+bio-box nbr summarize --anchors-file "$WORK/anchors.txt" --root "$ROOT" --profile "$PROFILE" --release rC6.1 --window 5g --by pfam,nr50
+bio-box find --root "$ROOT" --release rC6.1 --accession NC_001416.1:200-1000
+bio-box find --root "$ROOT" --release rC6.1 --protein 0123456789abcdef0123456789abcdef
+```
 
 **One command.** `search hmm` (card W-07) does all of the above for an HMM file: it writes the recipe,
 runs it, and writes the exports into `--out DIR`. `--bits` is the inclusion threshold;

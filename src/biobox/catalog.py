@@ -756,9 +756,14 @@ def label_view_sql(files: list[str], n_stages: int) -> str:
     cols = ("contig_uid, accession, original_header, n_records, l0_object_sha256, record_ordinal, "
             "n_records::BIGINT AS n_occurrences")
     if not files:
-        spec = TABLES["contig_label"]
-        typed = [f'CAST(NULL AS {duck_type(f.type)}) AS "{f.name}"' for f in spec.schema]
-        return f"CREATE VIEW contig_label AS SELECT {', '.join(typed)}, CAST(NULL AS BIGINT) AS n_occurrences WHERE false"
+        # a release built before card B-27 has no contig_label files (card W-18): the same rows from
+        # `contig_occurrence` (a view created before this one; empty and typed when the release has none),
+        # one per contig, as the registry table would hold them. Not pruned by contig_uid: the slow path.
+        return ("CREATE VIEW contig_label AS SELECT contig_uid, "
+                f"arg_min(accession, {_FIRST}) AS accession, arg_min(original_header, {_FIRST}) AS original_header, "
+                f"count(*)::UINTEGER AS n_records, arg_min(l0_object_sha256, {_FIRST}) AS l0_object_sha256, "
+                f"arg_min(record_ordinal, {_FIRST}) AS record_ordinal, count(*)::BIGINT AS n_occurrences "
+                "FROM contig_occurrence GROUP BY contig_uid")
     rows = f"read_parquet([{', '.join(_sql_str(p) for p in files)}], hive_partitioning = false)"
     if n_stages <= 1:
         return f"CREATE VIEW contig_label AS SELECT {cols} FROM {rows}"
@@ -1816,8 +1821,10 @@ def open_catalog(path: Path, local_dir: Path | None = None, threads: int | None 
 
     The catalog file is attached read-only, under its file name without `.duckdb` (the name a plain
     `duckdb.connect` gives it), to a DuckDB instance of this connection's own, and made the default
-    database (card B-34; module docstring). `threads`, `memory_limit` and `temp_directory` (default: the
-    catalog path + `.tmp`, as for a file connection) configure that instance.
+    database (card B-34; module docstring). `threads`, `memory_limit` and `temp_directory` configure that
+    instance. DuckDB spills into `temp_directory`, by default a directory of this process under the system
+    temporary directory, never a path under the data root or beside the catalog file (card W-18, W-03's rule:
+    a reader may not be able to write the root, and one who can must not write into it).
 
     Registers the Python functions of `PY_FUNCTIONS` over the store under `root` (default: the root the
     catalog was built from, in `catalog_info`), with an LRU of `cache_blocks` decoded blocks per shard, and
@@ -1836,7 +1843,8 @@ def open_catalog(path: Path, local_dir: Path | None = None, threads: int | None 
             shutil.copyfile(path, tmp)
             os.replace(tmp, local)
         path = local
-    config = {"temp_directory": str(temp_directory if temp_directory is not None else f"{path}.tmp")}
+    spill = temp_directory if temp_directory is not None else Path(tempfile.gettempdir()) / f"biobox-duckdb-{os.getpid()}"
+    config = {"temp_directory": str(spill)}
     if threads is not None:
         config["threads"] = threads
     if memory_limit is not None:
