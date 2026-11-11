@@ -33,8 +33,18 @@ Before any step (exit 2, nothing run): a bad name; `--stage` not among the relea
 whose own ingest estimate exceeds the profile's `cpu_min_per_process` (one process reads each object
 whole, also in batches, card B-30); and `--scan-jobs` × `--scan-cpus`, or `--threads`, above the threads `run-step` allows at
 the start of the call (`runstep.choose_threads`: the profile's cap for the hour and weekday, the day
-cap while the host is busy). The ingest estimate is skipped when ingest's run record exists. Before
-each step: a `STOP` file in the root exits 75, as `run-step` does. A `STOP` that appears while a step
+cap while the host is busy). The ingest estimate is skipped when ingest's run record exists. Then
+clustering's estimate, when every stage of the release has a gene-call run record and the cluster step
+none (below). Before each step: a `STOP` file in the root exits 75, as `run-step` does.
+
+Clustering (card B-36, DEC-25). The release's clustering is one process that may pass the profile's
+`cpu_min_per_process`, but only under the profile's own cap for it, `cluster_cpu_min_max`. Its CPU-minutes
+are estimated from the rows of the release's `protein_seq` files (`cluster_cpu_min`, `release_proteins`):
+before any step when every stage is gene-called, else (a stage of this call is not yet) just before the
+cluster step's command. An estimate over `cluster_cpu_min_max` is refused (exit 2) and so, in a profile
+without that key, is one over `cpu_min_per_process`: there is then no exemption. With the key, the cluster
+step's run record gives `cpu_budget_reason: exempt: DEC-25` beside `over_cpu_budget`. Every other step keeps
+the 300 CPU-minute rule. The exemption ends when card B-37 splits clustering. A `STOP` that appears while a step
 runs lets the step's command finish; `run-step` then publishes nothing of it and exits 75, so the next
 call runs that step again from the start (the documented rule of card C-02; its cost in C-10: S1a's
 gene calling, 57.7 s and 4.98 CPU-minutes, ran twice, *measured*).
@@ -113,6 +123,7 @@ import dataclasses
 import gzip
 import hashlib
 import json
+import math
 import os
 import queue
 import shutil
@@ -154,6 +165,21 @@ INGEST_FIXED_CPU_MIN = 0.07
 # 2026-11-10_import_ladder/README.md); the larger rate is used (card C-13). Applied to every library. It is
 # an estimate for libraries other than Pfam.
 SCAN_CPU_MIN_PER_M = 7.96
+# Clustering (card B-36, DEC-25). Measured, wilkcomp02, 2026-11-10, the clustering run records of the 10 Gbp
+# rebuild, 16 threads each (branch build/r10, planning/measurements/2026-11-10_rebuild_10gbp.md, "Per-step numbers,
+# phase 1"): `rN.1b` 284.10 CPU-minutes for 2,053,075 proteins and `rN.1` 2,195.91 for 10,620,684. The estimate is
+# the power law through those two points (derived):
+#     cpu_min(n) = 284.10 × (n / 2,053,075) ** b,   b = ln(2,195.91 / 284.10) / ln(10,620,684 / 2,053,075) = 1.244
+# It is exact at both. The third measured point, `rN.1a` (84.75 CPU-minutes for 1,134,550 proteins, phages only, whose
+# proteins are shorter), it overestimates by about 60% (derived: 135.8 against 84.75): the safe side for a refusal.
+# Above 10.6 M proteins it is extrapolated: no clustering that large has been measured. n is the rows of the release's
+# `protein_seq` files, which counts a protein shared by two stages twice (10,634,028 rows for 10,620,684 proteins in
+# `rN.1`, measured), so it errs high as well.
+CLUSTER_CPU_MIN_LO, CLUSTER_PROTEINS_LO = 284.10, 2_053_075
+CLUSTER_CPU_MIN_HI, CLUSTER_PROTEINS_HI = 2195.91, 10_620_684
+CLUSTER_EXPONENT = math.log(CLUSTER_CPU_MIN_HI / CLUSTER_CPU_MIN_LO) / math.log(CLUSTER_PROTEINS_HI / CLUSTER_PROTEINS_LO)
+# The reason the clustering step's run record gives (`cpu_budget_reason`) when the profile sets `cluster_cpu_min_max`.
+CLUSTER_EXEMPT = "exempt: DEC-25"
 # Scan shards are planned to fill 80% of the CPU-minute budget, not all of it (card C-11): the rate above
 # is Pfam's on wilkcomp02, so a shard sized to the whole budget passes it whenever a library is slower
 # than Pfam or the host is loaded, and a process over the budget breaks AGENTS §7.2. The margin covers a
@@ -208,7 +234,7 @@ class Step:
     run_stage: str  # run-step's --stage: the stage, or the release for a release step
     name: str  # run-step's --step
     argv: tuple[str, ...] | None  # the bio-box arguments; None for an empty slot
-    check: str | None = None  # "ingest" or "scan": the CPU-minute estimate made before it
+    check: str | None = None  # "ingest", "scan" or "cluster": the CPU-minute estimate made before it
     module: str = "biobox.cli"  # what `python -m` runs: the bio-box CLI, or biobox.l1.domains for a rescan
     scratch: str | None = None  # the step's own scratch directory (its --tmp, card C-13), or None
 
@@ -269,7 +295,7 @@ def steps(prof: Profile, b: Build) -> list[Step]:
         *(Step(s, scan_name(lib), st("domains", "--library", lib.name, "--library-version", lib.version,
                                      "--hmm", str(Path(lib.hmm).resolve()), "--cutoff", lib.cutoff, "--cpus", n),
                check="scan") for lib in b.libraries),
-        own(r, "cluster", lambda t: rl("cluster", *stages, "--tmp", t, "--threads", n)),
+        own(r, "cluster", lambda t: rl("cluster", *stages, "--tmp", t, "--threads", n), check="cluster"),
         own(r, "tokens", lambda t: rl("tokens", *stages, "--tmp", t)),
         own(r, "postings", lambda t: rl("postings", *stages, "--tmp", t)),
         own(r, "dim", lambda t: rl("dim", *stages, "--tmp", t)),
@@ -358,6 +384,47 @@ def scan_cpu_min(residues: int) -> float:
     return residues * SCAN_CPU_MIN_PER_M / 1e6
 
 
+def cluster_cpu_min(proteins: int) -> float:
+    """CPU-minutes of a release's clustering in one process (the derived power law above the constants)."""
+    return CLUSTER_CPU_MIN_LO * (proteins / CLUSTER_PROTEINS_LO) ** CLUSTER_EXPONENT
+
+
+def release_proteins(root: Path, stages: Sequence[str], gene_call_version: str) -> tuple[int | None, str | None]:
+    """(rows of the `protein_seq` files of `stages`, None), the files those listed in each stage's gene-call run
+    record (an explicit list, AGENTS §3.9) and their counts read from the Parquet footers; or (None, the first stage
+    without a gene-call run record)."""
+    total = 0
+    for s in stages:
+        path = Path(root) / "runs" / f"stage={s}" / "genecall.json"
+        if not path.exists():
+            return None, s
+        prefix = f"l0seq/protein_seq/gene_call_version={gene_call_version}/stage={s}/"
+        total += sum(pq.read_metadata(Path(root) / o["path"]).num_rows
+                     for o in json.loads(path.read_text())["outputs"] if o["path"].startswith(prefix))
+    return total, None
+
+
+def cluster_refusal(prof: Profile, release: str, proteins: int) -> str | None:
+    """Why clustering `proteins` proteins for `release` may not start (DEC-25), or None. With the profile's
+    `cluster_cpu_min_max` the estimate may pass `cpu_min_per_process` up to that cap; without it there is no
+    exemption and `cpu_min_per_process` holds."""
+    est = cluster_cpu_min(proteins)
+    how = (f"clustering of release {release} over {proteins:,} proteins (the protein_seq rows of its stages) is "
+           f"estimated at {est:,.1f} CPU-minutes in one process (a power law through {CLUSTER_CPU_MIN_LO} CPU-min at "
+           f"{CLUSTER_PROTEINS_LO:,} and {CLUSTER_CPU_MIN_HI} at {CLUSTER_PROTEINS_HI:,} proteins, measured on "
+           f"wilkcomp02, 2026-11-10; extrapolated above {CLUSTER_PROTEINS_HI:,})")
+    cap = prof.cluster_cpu_min_max
+    if cap is None:
+        if est > prof.cpu_min_per_process:
+            return (f"{how}, over the profile's cpu_min_per_process of {prof.cpu_min_per_process} (AGENTS §7.2). The "
+                    f"profile has no cluster_cpu_min_max, so the DEC-25 exemption for clustering does not apply")
+        return None
+    if est > cap:
+        return (f"{how}, over the profile's cluster_cpu_min_max of {cap} (DEC-25: clustering's own cap until card B-37 "
+                f"splits it). Raise cluster_cpu_min_max only with the PI's agreement")
+    return None
+
+
 def _refusal(prof: Profile, b: Build, root: Path, plan: list[Step], allowance: int, now: datetime) -> str | None:
     """Why the build may not start (module docstring), or None. `allowance` is `scan_allowance` at `now`."""
     for what, name in (("stage", b.stage), ("release", b.release)):
@@ -409,7 +476,23 @@ def _refusal(prof: Profile, b: Build, root: Path, plan: list[Step], allowance: i
                     f"alone holds {big[2]:,} bytes, estimated at {ingest_cpu_min(big[2]):,.1f} CPU-minutes, over "
                     f"the profile's cpu_min_per_process of {prof.cpu_min_per_process} (AGENTS §7.2). Split that "
                     f"object into smaller files")
+    cluster = next(s for s in plan if s.check == "cluster")
+    if not _record(root, cluster).exists():
+        n, _ = release_proteins(root, stages, b.gene_call_version)
+        if n is not None:  # every stage is gene-called: the estimate is known now (else at the cluster step)
+            return cluster_refusal(prof, b.release, n)
     return None
+
+
+def _cluster_gate(prof: Profile, b: Build, root: Path) -> str | None:
+    """Before the cluster step's command (card B-36): why it may not start, or None. The release's stages are
+    `--stages`, else its `release_def` (`_refusal` has checked both)."""
+    stages = list(b.stages) if b.stages is not None else catalog.release_stages(root, b.release)
+    n, missing = release_proteins(root, stages, b.gene_call_version)
+    if n is None:
+        return (f"release {b.release}: stage {missing} has no gene-call run record (runs/stage={missing}/genecall.json), "
+                f"so its clustering cannot be estimated before launch (DEC-25)")
+    return cluster_refusal(prof, b.release, n)
 
 
 def shard_residues(prof: Profile) -> int:
@@ -495,9 +578,9 @@ def build_stage(prof: Profile, b: Build, *, run: Runner | None = None,
         """The threads run-step allows now (read again at every call, card C-12)."""
         return scan_allowance(prof, clock(), load())
 
-    def one(step: Step) -> int | None:
+    def one(step: Step, **kw: str) -> int | None:
         """Run `step` (STOP checked first, then held while its threads do not fit the allowance); its non-zero exit
-        code, else None."""
+        code, else None. `kw` goes on to `run` (`budget_reason` for clustering, card B-36)."""
         if (root / "STOP").exists():
             _say(f"{root / 'STOP'} exists; stopping before {step.run_stage}.{step.name}")
             return runstep.EXIT_STOP
@@ -508,7 +591,7 @@ def build_stage(prof: Profile, b: Build, *, run: Runner | None = None,
             if step.scratch is not None:
                 _fresh_scratch(step)
         cmd: Sequence[str] = [sys.executable, "-m", step.module, *step.argv]
-        code = run(prof, root, step.run_stage, step.name, cmd, threads=n)
+        code = run(prof, root, step.run_stage, step.name, cmd, threads=n, **kw)
         if code != 0:
             _say(f"{step.run_stage}.{step.name} exited {code}; stopping here; the next call resumes at this step"
                  + ("" if step.scratch is None else f", after removing its scratch {step.scratch}"))
@@ -526,6 +609,13 @@ def build_stage(prof: Profile, b: Build, *, run: Runner | None = None,
                 code = _scan_in_shards(prof, b, root, step, one, _hook, jobs, cpus, shard_run, allow)
             elif step.check == "ingest" and not _record(root, step).exists() and _batched(prof, b, root):
                 code = _ingest_in_batches(prof, b, root, one, _hook, jobs * cpus, shard_run, allow)
+            elif step.check == "cluster":
+                why = None if _record(root, step).exists() else _cluster_gate(prof, b, root)
+                if why is not None:
+                    _say(f"refused before {step.run_stage}.{step.name}: {why}")
+                    return runstep.EXIT_REFUSED
+                exempt = prof.cluster_cpu_min_max is not None
+                code = one(step, **({"budget_reason": CLUSTER_EXEMPT} if exempt else {}))
             else:
                 code = one(step)
             if code is not None:
