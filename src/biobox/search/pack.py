@@ -218,11 +218,21 @@ def manifest_tape_version(manifest: dict) -> str:
 # --- streaming readers (card W-16) ------------------------------------------------------------------------------
 
 
+def _batches(path: Path, cols: list[str], batch_rows: int) -> Iterator[pa.RecordBatch]:
+    """Batches of at most `batch_rows` rows of `cols` of one Parquet file, read one row group at a time. Not
+    `ParquetFile.iter_batches`: it reads ahead, a whole file at a time (64 readers of 26 MB files held 1.03 GB
+    of Arrow memory, against 28 MB read a row group each: measured, wilkcomp02, 2026-11-10, pyarrow of image
+    bio-box-test_74b3e05)."""
+    pf = pq.ParquetFile(path)
+    for i in range(pf.metadata.num_row_groups):
+        yield from pf.read_row_group(i, columns=cols, use_threads=False).to_batches(max_chunksize=batch_rows)
+
+
 def _file_rows(path: Path, cols: list[str], batch_rows: int) -> Iterator[tuple]:
     """The rows of one Parquet file as tuples of `cols`, `batch_rows` at a time; the file must be sorted by its
     first column (ValueError otherwise, since `_merged` relies on it)."""
     prev = None
-    for b in pq.ParquetFile(path).iter_batches(batch_size=batch_rows, columns=cols):
+    for b in _batches(path, cols, batch_rows):
         lists = [b.column(c).to_pylist() for c in cols]
         del b
         keys = lists[0]
@@ -344,7 +354,9 @@ class _Sorter:
         self.dir.mkdir(parents=True, exist_ok=True)
         path = self.dir / f"run-{self._k:06d}.parquet"
         self._k += 1
-        with pq.ParquetWriter(path, self.schema, compression="zstd", compression_level=1) as w:
+        # no statistics: a merged run has thousands of row groups, and min/max of sequences would fill its footer
+        with pq.ParquetWriter(path, self.schema, compression="zstd", compression_level=1,
+                              write_statistics=False) as w:
             for chunk in _chunks(rows, MERGE_BATCH):
                 w.write_table(_table(chunk, self.schema), row_group_size=MERGE_BATCH)
         return path
@@ -358,7 +370,7 @@ class _Sorter:
 
     def _read(self, path: Path) -> Iterator[tuple]:
         names = self.schema.names
-        for b in pq.ParquetFile(path).iter_batches(batch_size=MERGE_BATCH):
+        for b in _batches(path, names, MERGE_BATCH):
             yield from zip(*(b.column(n).to_pylist() for n in names))
 
     def _merge(self, paths: list[Path]) -> Iterator[tuple]:
@@ -508,7 +520,7 @@ def _build_unique(rf: ReleaseFiles, out: Path, gcv: str, scratch: Path, shard_by
     w = _Shards(out / "unique", ".faa.zst", shard_bytes, "unique")
     try:
         for f in files:
-            for b in pq.ParquetFile(f).iter_batches(batch_size=BATCH_ROWS, columns=["protein_uid", "seq"]):
+            for b in _batches(f, ["protein_uid", "seq"], BATCH_ROWS):
                 for row in zip(b.column("protein_uid").to_pylist(), b.column("seq").to_pylist()):
                     proteins.add(row)
         _log(f"unique: sorting {proteins.n:,} rows")
@@ -593,7 +605,7 @@ def _contig_genes(occ: list[Path], scratch: Path) -> _Sorter:
     that gives them back in (contig_uid, start, end, strand) order."""
     genes = _Sorter(scratch / "genes", _GENE_SORT, None, "dark_orf genes")
     for f in occ:
-        for b in pq.ParquetFile(f).iter_batches(batch_size=BATCH_ROWS, columns=list(_GENE_SORT.names)):
+        for b in _batches(f, list(_GENE_SORT.names), BATCH_ROWS):
             for row in zip(*(b.column(n).to_pylist() for n in _GENE_SORT.names)):
                 genes.add(row)
     return genes
@@ -828,7 +840,7 @@ def _count_source(rf: ReleaseFiles, manifest: dict, target: str, out: Path) -> i
                        pa.schema([pa.field("protein_uid", UID)]), None, None)
         try:
             for f in _protein_files(rf, gcv):
-                for b in pq.ParquetFile(f).iter_batches(batch_size=BATCH_ROWS, columns=["protein_uid"]):
+                for b in _batches(f, ["protein_uid"], BATCH_ROWS):
                     for u in b.column("protein_uid").to_pylist():
                         uids.add((u,))
             return sum(1 for _ in itertools.groupby(uids.rows()))
