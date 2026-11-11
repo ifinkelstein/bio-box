@@ -20,7 +20,8 @@ exceed the 10x build's by at most `GROWTH_BOUND` (32 MiB), on any host, and it d
 of regions. Before card W-16 the build held every region, gene and strand of the release in Python
 objects: 329.6 MiB at 10x (11,631 regions) and 516.7 MiB at 200x (231,152 regions), 187.2 MiB more (measured,
 wilkcomp02, 2026-11-10, this test on the tree before W-16); on the 10 Gbp release `rN.1` it filled a 32 GiB
-cap (measured, wilkcomp02, 2026-11-10, planning/measurements/2026-11-10_trial_search_rN1.md).
+cap (measured, wilkcomp02, 2026-11-10, planning/measurements/2026-11-10_trial_search_rN1.md). With the
+streaming build: 330.2 MiB at 10x and 330.4 MiB at 200x, 0.2 MiB more (measured, wilkcomp02, 2026-11-10).
 """
 
 from __future__ import annotations

@@ -18,6 +18,7 @@ import platform
 import random
 import re
 import shutil
+import signal
 import subprocess
 import sys
 from pathlib import Path
@@ -189,6 +190,216 @@ def test_c12_small_shards_fail_unless_last_and_pack_is_deterministic(world, tmp_
 def test_pack_is_outside_the_release_manifest(world):
     man = catalog.build_manifest(world[0], REL, ["S0"])
     assert not any(f["path"].startswith(("search_pack/", "search/")) for f in man["files"])
+
+
+# --- W-16: the streaming build gives the bytes of the whole-release build -----------------------------------
+
+
+def _w16_oracle(root: Path, release: str, producers: list[str] | None = None) -> dict[str, tuple[list, list | None]]:
+    """The pack's records and meta rows by the rules of the module docstring, computed with every table of the
+    release held in memory (the shape of the build before card W-16, written here separately): per target the
+    FASTA records (name, sequence) and, for the regions, the `search_region` rows, both in pack order."""
+    from collections import Counter, defaultdict
+
+    from biobox.l0seq.store import SeqStore
+    from biobox.l3.geometry import junction
+
+    rf = catalog.ReleaseFiles.of(root, release)
+    producers = sorted(producers) if producers else [V]
+    tv, iv = tapes.tape_version(producers), igr.igr_version(producers)
+    lengths, circular, strands = {}, set(), {}
+    for f in rf.table("contig_tapes", tape_version=tv):
+        for r in pq.read_table(f).to_pylist():
+            lengths[r["contig_uid"]] = r["contig_len"]
+            if r["is_circular"]:
+                circular.add(r["contig_uid"])
+            strands.update(zip(r["feature_uids"], r["strands"]))
+    genes = defaultdict(list)
+    for f in rf.table("protein_occurrence", gene_call_version=V):
+        for r in pq.read_table(f).to_pylist():
+            genes[r["contig_uid"]].append((r["start"], r["end"], r["strand"]))
+    counts = defaultdict(Counter)
+    for f in rf.table("feature_protein", gene_call_version=V):
+        for r in pq.read_table(f).to_pylist():
+            counts[r["contig_uid"]][r["genetic_code"]] += 1
+    prots = {}
+    for f in rf.table("protein_seq", gene_call_version=V):
+        for r in pq.read_table(f).to_pylist():
+            prots[r["protein_uid"]] = r["seq"]
+
+    def region(kind, cu, s, e, strand, n, **kw):
+        row = {"region_uid": ids.region_uid(cu, s, e, strand), "target_kind": kind, "contig_uid": cu, "start": s,
+               "end": e, "strand": strand, "n_residues": n, "orientation": None, "gc": None,
+               "dist_to_contig_end_bp": None, "partial": False, "at_contig_end": False, "gene_overlap_frac": None,
+               "genetic_code": None, "left_feature_uid": None, "right_feature_uid": None}
+        row.update(kw)
+        return row
+
+    def gc(seq: bytes) -> float:
+        s = seq.upper()
+        acgt = sum(s.count(b) for b in (b"A", b"C", b"G", b"T"))
+        return (s.count(b"G") + s.count(b"C")) / acgt if acgt else 0.0
+
+    store = SeqStore(root, rf)
+    igr_rows, dark_rows = [], []
+    for f in rf.table("igr", igr_version=iv):
+        for r in pq.read_table(f, partitioning=None).to_pylist():
+            cu, s, e = r["contig_uid"], r["start"], r["end"]
+            if e - s < pack.IGR_MIN_NT:
+                continue
+            circ, L = cu in circular, lengths[cu]
+            seq = store.get(cu, s, e, 1, circular=circ)
+            lf, rt = r["left_feature_uid"], r["right_feature_uid"]
+            igr_rows.append((region("igr", cu, s, e, 1, e - s, left_feature_uid=lf, right_feature_uid=rt,
+                                    orientation=junction((0, 1, strands[lf]), (2, 3, strands[rt])) if lf and rt else None,
+                                    gc=gc(seq), dist_to_contig_end_bp=None if circ else min(s, L - e),
+                                    partial=not circ and (s == 0 or e == L)), seq.decode()))
+    for cu in sorted(lengths):
+        code = counts[cu].most_common(1)[0][0] if cu in counts else 11
+        for o, frac, at_end in orfs.dark_orfs(store.get(cu), cu in circular, sorted(genes.get(cu, [])), code):
+            dark_rows.append((region("dark_orf", cu, o.start, o.end, o.strand, len(o.aa), partial=o.partial,
+                                     at_contig_end=at_end, gene_overlap_frac=frac, genetic_code=code), o.aa))
+    store.close()
+    out = {"unique": (sorted((u.hex(), s.replace("*", "")) for u, s in prots.items()), None)}
+    for t, rows in (("igr", igr_rows), ("dark_orf", dark_rows)):
+        rows.sort(key=lambda x: (x[0]["region_uid"], x[1]))
+        out[t] = ([(m["region_uid"].hex(), s) for m, s in rows], [m for m, _ in rows])
+    return out
+
+
+def _w16_expected_files(oracle: dict, d: Path, shard_bytes: int, rg_rows: int) -> dict[str, bytes]:
+    """The oracle written with the pack's two file writers: FASTA shards by `fastz.write_records` and the meta
+    rows by one `pq.write_table` of the whole table."""
+    suffix = {"unique": ".faa.zst", "igr": ".fna.zst", "dark_orf": ".faa.zst"}
+    for t, (records, meta) in oracle.items():
+        fastz.write_records(d / t, suffix[t], records, shard_bytes)
+        if meta is not None:
+            pq.write_table(pa.Table.from_pylist(meta, schema=table("search_region").schema), d / f"{t}/{t}_meta.parquet",
+                           compression="zstd", row_group_size=rg_rows)
+    return {p.relative_to(d).as_posix(): p.read_bytes() for p in sorted(d.rglob("*")) if p.is_file()}
+
+
+def _w16_pack_files(pdir: Path) -> dict[str, bytes]:
+    return {p.relative_to(pdir).as_posix(): p.read_bytes() for p in sorted(pdir.rglob("*"))
+            if p.is_file() and p.parts[len(pdir.parts)] in ("unique", "igr", "dark_orf")}
+
+
+@pytest.mark.covers("W-16", "D-01")
+def test_w16_fixture_pack_equals_the_in_memory_oracle(world, tmp_path):
+    root, d, man = world
+    got = _w16_pack_files(pack.find(_packs(world), REL))
+    want = _w16_expected_files(_w16_oracle(root, REL), tmp_path / "want", pack.SHARD_TEXT_BYTES, 122_880)
+    assert sorted(got) == sorted(want)
+    assert {k: v == want[k] for k, v in got.items()} == {k: True for k in want}
+    assert man["targets"]["igr"]["n_seq"] and man["targets"]["dark_orf"]["n_seq"] and man["targets"]["unique"]["n_seq"]
+
+
+@pytest.mark.covers("W-16", "MR-20")
+def test_w16_two_producer_pack_equals_the_in_memory_oracle(two, tmp_path):
+    root, _, man, _, _ = two
+    got = _w16_pack_files(pack.pack_dir(_packs_of(root), TWO, man["pack_id"]))
+    want = _w16_expected_files(_w16_oracle(root, TWO, [V, NEW]), tmp_path / "want", pack.SHARD_TEXT_BYTES, 122_880)
+    assert {k: v == want.get(k) for k, v in got.items()} == {k: True for k in want}
+
+
+@pytest.mark.covers("W-16", "D-01")
+def test_w16_many_runs_shards_and_row_groups_give_the_oracles_bytes(world, tmp_path, monkeypatch):
+    """Caps far below the fixture's size, so every part goes through several sorted runs and merge passes, input
+    batches, shards and meta row groups: the files still equal the whole-table oracle written with the same shard
+    size and row group size, and the pack verifies."""
+    root, d, _ = world
+    monkeypatch.setattr(pack, "RUN_ROWS", 50)
+    monkeypatch.setattr(pack, "FAN_IN", 3)  # several merge passes
+    monkeypatch.setattr(pack, "MERGE_BATCH", 16)
+    monkeypatch.setattr(pack, "META_ROW_GROUP_ROWS", 64)
+    monkeypatch.setattr(pack, "BATCH_ROWS", 7)
+    monkeypatch.setattr(pack, "TAPE_BATCH_ROWS", 1)
+    man = pack.build(root, REL, models={"test-1": d / "a.hmm"}, shard_text_bytes=20_000, packs=tmp_path / "p")
+    pdir = pack.pack_dir(tmp_path / "p", REL, man["pack_id"])
+    assert pq.ParquetFile(pdir / "dark_orf/dark_orf_meta.parquet").metadata.num_row_groups > 2
+    assert sum(1 for s in man["shards"] if s["target"] == "dark_orf") > 1
+    got = _w16_pack_files(pdir)
+    want = _w16_expected_files(_w16_oracle(root, REL), tmp_path / "want", 20_000, 64)
+    assert sorted(got) == sorted(want)
+    assert {k: v == want[k] for k, v in got.items()} == {k: True for k in want}
+    assert pack.verify(root, REL, packs=tmp_path / "p", min_shard_bytes=0) == []
+    assert [p.name for p in pack.release_dir(tmp_path / "p", REL).iterdir()] == [pdir.name]  # no scratch left
+
+
+_W16_STAMP = re.compile(r"^\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d[+-]\d\d:\d\d pack build: ")
+
+
+@pytest.mark.covers("W-16", "C-13")
+def test_w16_progress_lines_one_per_part_and_per_shard_on_stderr(world, tmp_path, capsys):
+    root, d, _ = world
+    man = pack.build(root, REL, models={"test-1": d / "a.hmm"}, shard_text_bytes=20_000, packs=tmp_path / "p")
+    cap = capsys.readouterr()
+    assert cap.out == ""
+    lines = cap.err.splitlines()
+    assert lines and all(_W16_STAMP.match(x) for x in lines), [x for x in lines if not _W16_STAMP.match(x)]
+    msgs = [_W16_STAMP.sub("", x) for x in lines]
+    for t in ("unique", "igr", "dark_orf", "models"):
+        assert sum(m.startswith(f"{t}: start") for m in msgs) == 1, t
+    for t in ("unique", "igr", "dark_orf"):
+        assert sum(m.startswith(f"{t}: done") for m in msgs) == 1, t
+    for s in man["shards"]:
+        t, name = s["target"], Path(s["path"]).name
+        want = f"{t}: shard {name} written: {s['n_seq']:,} sequences" if t != "models" else f"models: {name} written"
+        assert sum(m.startswith(want) for m in msgs) == 1, want
+    assert msgs[-1].startswith(f"release {REL}: pack {man['pack_id']} written")
+
+
+_W16_HELD = r"""
+import signal, sys
+from pathlib import Path
+from biobox.search import pack
+root, packs, release, models, flag, point = sys.argv[1:7]
+log = pack._log
+
+
+def held(msg):  # the build stops here until a signal comes
+    log(msg)
+    if msg.startswith(point):
+        Path(flag).write_text(msg)
+        signal.pause()
+
+
+pack._log = held
+pack.build(Path(root), release, models={"test-1": Path(models)}, packs=Path(packs))
+"""
+
+
+@pytest.mark.parametrize("point", ["igr: sorting", "dark_orf: start"])
+@pytest.mark.covers("W-16")
+def test_w16_sigterm_removes_the_building_and_scratch_directories_and_the_next_build_starts_again(
+        world, tmp_path, point):
+    root, d, man = world
+    packs, flag = tmp_path / "packs", tmp_path / "held"
+    p = subprocess.Popen([sys.executable, "-c", _W16_HELD, str(root), str(packs), REL, str(d / "a.hmm"), str(flag),
+                          point], stderr=subprocess.PIPE, text=True)
+    try:
+        assert _wait_for(flag.exists, timeout=120), "the build never reached " + point
+        base = pack.release_dir(packs, REL)
+        assert sorted(x.name.split("-")[0] for x in base.iterdir()) == [".building", ".scratch"]
+        p.send_signal(signal.SIGTERM)
+        _, err = p.communicate(timeout=60)
+    finally:
+        if p.poll() is None:
+            p.kill()
+    assert p.returncode == 143, err
+    assert "stopped by a signal (exit 143)" in err and "the next call starts again" in err, err
+    assert list(base.iterdir()) == []  # neither directory is left, and no pack
+    again = pack.build(root, REL, models={"test-1": d / "a.hmm"}, packs=packs)
+    assert again["pack_id"] == man["pack_id"]
+
+
+@pytest.mark.covers("W-16", "W-03")
+def test_w16_a_missing_pack_names_the_build_command_with_model_optional(world, tmp_path):
+    with pytest.raises(pack.NoPack) as e:
+        pack.find(tmp_path / "none", REL, root=world[0])
+    msg = str(e.value)
+    cmd = f"bio-box pack build --root {world[0]} --release {REL} --pack-dir {tmp_path / 'none'} (add --model"
+    assert cmd in msg and "if it has any" in msg, msg
 
 
 def test_dark_orfs_translate_their_own_coordinates(world):
