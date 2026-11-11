@@ -815,7 +815,8 @@ def pair_macro_sql() -> list[str]:
     version (`catalog_tape_version()`) on `contig_uid`. Each side of a lookup by token reads one
     `token_bucket` and the row groups whose `token_id` range holds the token, also when the token comes
     from `token_of` or a joined table (card B-31: `token_rows` joins the token in). Q3 (`partners_of`)
-    takes its anchors from the postings and the tokens near them from `tape_tokens` of the anchors'
+    takes its anchors from the postings and the tokens near them (at the family level every domain's family,
+    card B-39; see partners_of_sql) from `tape_tokens` of the anchors'
     contigs (`bb_partner_counts`), so its partner side reads row groups in proportion to the anchors'
     contigs, not to the release: exactly the `tape_tokens` row groups whose footer `contig_uid` range holds
     an anchor contig, at most min(C, R) for C anchor contigs and R row groups (10 anchor contigs: at most 10).
@@ -931,6 +932,16 @@ def partners_of_sql(create: str = "CREATE MACRO") -> str:
     catalog built before card B-38, whose stored macro calls card B-31's `bb_slot_tokens` per contig, runs
     this one.
 
+    What a partner is (card B-39). The loci of A are its anchor slots, the distinct (contig, slot) of A's
+    postings: at the family level every slot with an included domain of A, canonical or not (card B-21). The
+    partner slots of a locus are the slots within k of it on its contig. A partner is a token on a partner slot:
+    at the NR50 and NR90 levels the slot's one cluster token; at the family level every distinct family with an
+    included domain on the slot (the families of its postings, `tape_tokens.domain_family_tokens`), so both
+    families of a two-domain neighbour are partners, and a model hitting the slot's protein twice counts once.
+    `n_loci` counts the loci with the partner on one of their partner slots, `n_pairs` the (locus, partner slot)
+    pairs that hold it. A release whose `tape_tokens` predate card B-39 has no domain families: its family
+    partners are each slot's canonical family (`family_tokens`) only, and the lookup says so once on stderr.
+
     Anchors come from the postings of A (by token_id); the partner slots are the slots within k of each
     anchor on its contig (slot_dist 1..k, each slot once per anchor), and their tokens come from `tape_tokens`
     of the anchors' contigs through a point lookup by contig_uid (card B-31) that reads only the row groups
@@ -940,7 +951,10 @@ def partners_of_sql(create: str = "CREATE MACRO") -> str:
     structs (`_all`), so each of those row groups is read once (card B-38), and the function counts per token
     the loci (distinct (contig, anchor slot)) and the pairs (partner slots that hold it). Postings are sorted
     by token_id, so the earlier near side (postings filtered by contig_uid) read the whole token level of the
-    release. A hub is still refused here (its anchors are many).
+    release; for the same reason the family postings of the partner slots cannot be looked up by slot (one
+    literal slot read 9 of 9 family-level row groups on the 100x store, *measured*, wilkcomp02, 2026-11-11,
+    tests/r2/test_scale_layout.py::test_b39_family_postings_of_neighbour_slots_cannot_prune), hence the domain
+    families in `tape_tokens` (card B-39). A hub is still refused here (its anchors are many).
 
     No switch to a plain SQL join (card B-38): neither join prunes, and the lookup wins or ties at every anchor
     count measured on `rN.1` (10 Gbp, 93 `tape_tokens` row groups, k = 3; seconds, median of 3 runs on a fresh
@@ -1290,6 +1304,8 @@ def _register_lookup_udf(con: duckdb.DuckDBPyConnection, store) -> None:
 
 
 TAPE_TOKEN_LISTS = ("family_tokens", "nr50_tokens", "nr90_tokens")  # a slot's levels, in this order
+# card B-39: per slot, the family of every family posting (seg_idx order); absent from tape_tokens written before it
+TAPE_DOMAIN_FAMILIES = "domain_family_tokens"
 # threads that read tape_tokens row groups for one partners_of query (card B-38): the connection's DuckDB threads,
 # at most this many; a cap that bounds the row groups in flight (TapeTokenLookup), not a measured optimum
 TAPE_READ_THREADS_MAX = 8
@@ -1348,14 +1364,23 @@ class TapeTokenLookup(_Touches, KeyLookup):
     fixed cost per row group in Python, about 1.9 ms each (0.23 s for 119 row groups of at most 1,024 slots,
     *measured*, wilkcomp02, 2026-11-10, cProfile of the B-38 test store), which batching pays once per batch.
 
+    Every family of a slot (card B-39): `domain_family_tokens` holds per slot the family of each of its family
+    postings (one per included domain, in seg_idx order), so `slot_tokens` also returns, per slot asked, every
+    distinct family on it; read with the other lists from the same row groups, so the pruning and the reads are
+    those of the canonical family before the card. A file written before card B-39 lacks the column (a row of a
+    file may also hold a null): those slots give their canonical family (`family_tokens`) only, and the lookup
+    says so once on stderr (`note_old`).
+
     Memory (AGENTS §4.1): the LRU of at most `cache_row_groups` decoded row groups, which lives as long as the
     connection and serves repeated queries, plus at most `threads` + 1 batches being read or used. A decoded row
-    group holds 9 bytes per slot and level (value, validity) and 28 bytes per contig (key, three int32 offsets):
-    at most 131,072 x (3 x 9 + 28) bytes, about 7.2 MB, for a row group at the slot cap of AGENTS §4.6 with one
-    slot per contig, and about 3.5 MB with long contigs (*derived*). A batch holds at most max(TAPE_BATCH_BYTES,
-    one row group), so at most 32 x 7.2 + 9 x 7.2 MB, about 300 MB, with the default cache and the most threads
-    (*derived*). The query's own arrays are 8 bytes per slot asked (in), 27 bytes per slot (out) and 16 per
-    contig, which the macro bounds by its hub refusal (PARTNERS_MAX_ROWS anchors, each with at most 2k slots).
+    group holds 9 bytes per slot and level (value, validity), 4 bytes per slot and 8 per domain family (offsets,
+    values) and 32 bytes per contig (key, four int32 offsets): at most 131,072 x (3 x 9 + 4 + 8 + 32) bytes, about
+    9.3 MB, for a row group at the slot cap of AGENTS §4.6 with one slot per contig and one domain per slot, and
+    about 5.1 MB with long contigs (*derived*; card B-38's 7.2 and 3.5 MB before the domain list). A batch holds at
+    most max(TAPE_BATCH_BYTES, one row group), so at most 32 x 9.3 + 9 x 9.3 MB, about 380 MB, with the default
+    cache and the most threads (*derived*). The query's own arrays are 8 bytes per slot asked (in), 27 bytes per
+    slot and 16 per domain family on it (out) and 16 per contig, which the macro bounds by its hub refusal
+    (PARTNERS_MAX_ROWS anchors, each with at most 2k slots).
 
     `row_groups_read` and `files_hit` (per file) count decodes (a cache hit counts nothing); `touched_since`
     (`_Touches`) also counts the row groups the cache served.
@@ -1371,12 +1396,21 @@ class TapeTokenLookup(_Touches, KeyLookup):
         self._unit_of: dict = {}  # (file, row group) -> the cached batch that holds it
         self._held = 0  # row groups the cached batches hold
         self._bytes: dict = {}  # (file, row group) -> its decoded bytes, from the footer (see the class docstring)
+        self.has_domains = []  # per file: whether it holds TAPE_DOMAIN_FAMILIES (card B-39)
+        self.old_slots = 0  # slots asked whose row had no domain families, answered from family_tokens
+        self._noted = False
         for fi, f in enumerate(self._files):
             md = f.metadata
-            lists = [i for i in range(md.num_columns) if md.schema.column(i).path.split(".")[0] in TAPE_TOKEN_LISTS]
+            top = [md.schema.column(i).path.split(".")[0] for i in range(md.num_columns)]
+            lists = [i for i, c in enumerate(top) if c in TAPE_TOKEN_LISTS]
+            doms = [i for i, c in enumerate(top) if c == TAPE_DOMAIN_FAMILIES]
+            self.has_domains.append(bool(doms))
             for g in f.row_groups:
                 rg = md.row_group(g)
-                self._bytes[(fi, g)] = 9 * sum(rg.column(i).num_values for i in lists) + 28 * rg.num_rows
+                slots = rg.column(lists[0]).num_values if lists else 0
+                self._bytes[(fi, g)] = (9 * sum(rg.column(i).num_values for i in lists) + 28 * rg.num_rows
+                                        + (4 * rg.num_rows + 4 * slots + 8 * sum(rg.column(i).num_values for i in doms)
+                                           if doms else 0))
 
     def _batches(self, locs: list) -> list[tuple]:
         """`locs` (sorted) cut into batches: one file, at most TAPE_BATCH_ROW_GROUPS row groups and, past the first,
@@ -1395,11 +1429,22 @@ class TapeTokenLookup(_Touches, KeyLookup):
 
     def _read(self, batch: tuple):
         """The row groups of `batch` (one file) decoded together: ([(offsets, values, valid or None) per level],
-        keys). Touches no state of the lookup, so several threads may run it."""
+        keys, domain families). The domain families (card B-39) are (row offsets into slots, slot offsets into
+        values, values, valid rows or None), or None for a file without the column. Touches no state of the
+        lookup, so several threads may run it."""
         fi = batch[0][0]
         f = self._files[fi]
-        t = pq.ParquetFile(f.path, metadata=f.metadata).read_row_groups([g for _, g in batch], columns=self.columns,
+        cols = self.columns + ([TAPE_DOMAIN_FAMILIES] if self.has_domains[fi] else [])
+        t = pq.ParquetFile(f.path, metadata=f.metadata).read_row_groups([g for _, g in batch], columns=cols,
                                                                          use_threads=False)
+        doms = None
+        if self.has_domains[fi]:
+            a = t.column(TAPE_DOMAIN_FAMILIES).combine_chunks()
+            inner = a.values  # read whole and combined: offsets start at 0
+            v = inner.values
+            vals = np.frombuffer(v.buffers()[1], np.uint64, len(v), v.offset * 8) if len(v) else np.zeros(0, np.uint64)
+            doms = (a.offsets.to_numpy(zero_copy_only=False), inner.offsets.to_numpy(zero_copy_only=False), vals,
+                    None if a.null_count == 0 else a.is_valid().to_numpy(zero_copy_only=False))
         levels = []
         for c in TAPE_TOKEN_LISTS:
             a = t.column(c).combine_chunks()
@@ -1408,7 +1453,7 @@ class TapeTokenLookup(_Touches, KeyLookup):
                     else np.zeros(0, np.uint64))  # a null token's value is never used (valid is False)
             valid = None if v.null_count == 0 else v.is_valid().to_numpy(zero_copy_only=False)
             levels.append((a.offsets.to_numpy(zero_copy_only=False), vals, valid))
-        return levels, t.column(self.key_column).combine_chunks().cast(pa.binary())
+        return levels, t.column(self.key_column).combine_chunks().cast(pa.binary()), doms
 
     def _decoded_from(self, batch: tuple, out):
         """Count the decode of each row group of `batch` and keep the batch in the cache."""
@@ -1469,17 +1514,36 @@ class TapeTokenLookup(_Touches, KeyLookup):
     def get(self, key):  # noqa: D102
         raise NotImplementedError("TapeTokenLookup: use slot_tokens()")
 
-    def slot_tokens(self, keys: list, lens: np.ndarray, js: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
+    def note_old(self) -> None:
+        """Say once on stderr that some slots were answered from the canonical family only (card B-39)."""
+        if self.old_slots and not self._noted:
+            import sys
+
+            self._noted = True
+            n_old = sum(not h for h in self.has_domains)
+            print(f"biobox: partners_of: {n_old} of {len(self.has_domains)} tape_tokens files of this release have no "
+                  f"{TAPE_DOMAIN_FAMILIES} (written before card B-39), or rows without it: family partners on those "
+                  "slots are their canonical family only (family_tokens), not every domain; rebuild the release's "
+                  "tokens (biobox.l3.tokens) for every family", file=sys.stderr)
+
+    def slot_tokens(self, keys: list, lens: np.ndarray, js: np.ndarray
+                    ) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
         """The tokens of slots of contigs: contig c (`keys[c]`, bytes or None) owns the next `lens[c]` entries of
-        `js`, 0-based slots of its tape. Returns (tok, ok), each of shape (len(js), 3), levels in TAPE_TOKEN_LISTS
-        order: tok[s, L] is slot s's level-L token where ok[s, L]; a slot outside its tape, a null token and a
-        contig no row group holds give none. Each row group whose footer range holds one of the keys is visited
-        once (`_visit`): served by the cache, or decoded."""
+        `js`, 0-based slots of its tape. Returns (tok, ok, fam_s, fam_t). tok and ok have shape (len(js), 3),
+        levels in TAPE_TOKEN_LISTS order: tok[s, L] is slot s's level-L token where ok[s, L] (at the family level
+        the canonical family); a slot outside its tape, a null token and a contig no row group holds give none.
+        fam_s and fam_t list every family on the slots (card B-39): fam_t[x] is a family of slot fam_s[x], one entry
+        per family posting of the slot (`TAPE_DOMAIN_FAMILIES`, so a model twice on a slot is two entries), or
+        the canonical family where the row has no domain families (`note_old`). Each row group whose footer range
+        holds one of the keys is visited once (`_visit`): served by the cache, or decoded."""
         lens = np.asarray(lens, np.int64)
         js = np.asarray(js, np.int64)
         starts = np.concatenate([[0], np.cumsum(lens)]).astype(np.int64)
         tok = np.zeros((len(js), len(TAPE_TOKEN_LISTS)), np.uint64)
         ok = np.zeros(tok.shape, bool)
+        fam_s: list[np.ndarray] = []
+        fam_t: list[np.ndarray] = []
+        old = [0]
         need: dict[tuple[int, int], list[int]] = {}  # (file, row group) -> the contigs it may hold
         for c, key in enumerate(keys):
             if key is None or lens[c] == 0:
@@ -1489,7 +1553,7 @@ class TapeTokenLookup(_Touches, KeyLookup):
                     need.setdefault((fi, f.row_groups[j]), []).append(c)
 
         def use(decoded, locs) -> None:
-            levels, rg_keys = decoded
+            levels, rg_keys, doms = decoded
             cs = np.unique(np.concatenate([np.asarray(need[loc], np.int64) for loc in locs]))
             idx = pc.index_in(pa.array([keys[c] for c in cs], pa.binary()), value_set=rg_keys)
             found = idx.is_valid().to_numpy(zero_copy_only=False)
@@ -1507,10 +1571,34 @@ class TapeTokenLookup(_Touches, KeyLookup):
                     pos = np.minimum(o + np.where(inside, j, 0), len(vals) - 1)
                     tok[sid, L] = vals[pos]
                     ok[sid, L] = inside if valid is None else inside & valid[pos]
+            # every family of the slots (card B-39); the canonical one where the row has no domain families
+            new = np.zeros(len(sid), bool) if doms is None else (np.ones(len(sid), bool) if doms[3] is None
+                                                                  else doms[3][row])
+            if (~new).any():
+                s = sid[~new]
+                s = s[ok[s, 0]]
+                fam_s.append(s)
+                fam_t.append(tok[s, 0])
+                old[0] += int((~new).sum())
+            if new.any():
+                outer, inner, dvals, _ = doms
+                r, jj, s = row[new], j[new], sid[new]
+                o = outer[r]
+                inside = (jj >= 0) & (jj < outer[r + 1] - o)
+                slot = (o + jj)[inside]
+                s = s[inside]
+                a, b = inner[slot].astype(np.int64), inner[slot + 1].astype(np.int64)
+                n = b - a
+                if n.sum():
+                    fam_s.append(np.repeat(s, n))
+                    fam_t.append(dvals[np.repeat(a - np.concatenate([[0], np.cumsum(n)[:-1]]), n)
+                                       + np.arange(int(n.sum()))])
 
         with self._lock:
             self._visit(sorted(need), use)
-        return tok, ok
+            self.old_slots += old[0]
+        cat = (lambda xs, dt: np.concatenate(xs).astype(dt) if xs else np.zeros(0, dt))  # noqa: E731
+        return tok, ok, cat(fam_s, np.int64), cat(fam_t, np.uint64)
 
 
 class _Lazy:
@@ -1546,8 +1634,10 @@ def _register_tape_udf(con: duckdb.DuckDBPyConnection, tapes: _Lazy) -> None:
 
     Per row: a list of partner slots as structs (c: contig_uid, i: the anchor's slot, j: the partner's slot,
     0-based); returns one struct (t: token, l: loci, p: pairs) per token found on those slots in `tape_tokens`
-    (family, NR50 and NR90; null tokens and slots outside the tape give none): `l` the distinct (c, i) whose
-    slots hold `t`, `p` the slots that hold it. An empty list when no slot has a token, NULL for a NULL row.
+    (NR50 and NR90 from their lists; at the family level every distinct family on the slot, from
+    `domain_family_tokens`, card B-39, or the canonical `family_tokens` where a release predates it; null tokens
+    and slots outside the tape give none): `l` the distinct (c, i) whose slots hold `t`, `p` the slots that hold
+    it. An empty list when no slot has a token, NULL for a NULL row.
     `partners_of` passes every partner slot of a query in one row, so `TapeTokenLookup.slot_tokens` sees the
     whole query at once and reads each row group once. Counting here (`counts`) replaced an unnest of every
     (slot, token) and two group-bys that took most of the macro's DuckDB time (card B-38 probe of the hub on
@@ -1572,11 +1662,22 @@ def _register_tape_udf(con: duckdb.DuckDBPyConnection, tapes: _Lazy) -> None:
             return np.zeros(0, np.uint64), np.zeros(0, np.int64), np.zeros(0, np.int64)
         order = known[np.argsort(codes[known], kind="stable")]  # the slots grouped by contig
         lens = np.bincount(codes[known], minlength=len(enc.dictionary))
-        tok, ok = tapes.get().slot_tokens(enc.dictionary.to_pylist(), lens, js[order])
-        t = tok[ok]  # row-major: each slot's tokens in turn
+        lookup = tapes.get()
+        tok, ok, fam_s, fam_t = lookup.slot_tokens(enc.dictionary.to_pylist(), lens, js[order])
+        lookup.note_old()
+        # the cluster levels as before card B-39: a slot's NR50 and NR90 token, row-major
+        cs, cl = np.nonzero(ok[:, 1:])
+        # the family level: every distinct family on the slot (a model twice on one slot counts once)
+        if len(fam_s):
+            k = np.lexsort((fam_t, fam_s))
+            fam_s, fam_t = fam_s[k], fam_t[k]
+            first = np.ones(len(fam_s), bool)
+            first[1:] = (fam_s[1:] != fam_s[:-1]) | (fam_t[1:] != fam_t[:-1])
+            fam_s, fam_t = fam_s[first], fam_t[first]
+        t = np.concatenate([tok[:, 1:][cs, cl], fam_t]).astype(np.uint64)
         if not len(t):
             return np.zeros(0, np.uint64), np.zeros(0, np.int64), np.zeros(0, np.int64)
-        locus = np.repeat(codes[order] * (int(iis.max()) + 2) + (iis[order] + 1), ok.sum(axis=1))
+        locus = (codes[order] * (int(iis.max()) + 2) + (iis[order] + 1))[np.concatenate([cs, fam_s]).astype(np.int64)]
         g = pa.table({"t": t, "l": locus}).group_by("t", use_threads=False).aggregate(
             [("l", "count"), ("l", "count_distinct")])
         return (g.column("t").to_numpy(), g.column("l_count_distinct").to_numpy().astype(np.int64),

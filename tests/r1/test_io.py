@@ -379,7 +379,8 @@ def test_slot_bounded_row_groups_match_the_greedy_oracle(slots, cap, rows, cuts)
 
 def tok_row(i: int, n: int) -> dict:
     return {"contig_uid": uid(i), "family_tokens": [None if k % 3 == 0 else k for k in range(n)],
-            "nr50_tokens": list(range(n)), "nr90_tokens": [7] * n}
+            "nr50_tokens": list(range(n)), "nr90_tokens": [7] * n,
+            "domain_family_tokens": [[] if k % 3 == 0 else [k] for k in range(n)]}  # card B-39: the fourth list
 
 
 @pytest.mark.covers("LY-04")
@@ -590,7 +591,8 @@ def test_duck_batches_cast_blob_lists_to_uid_lists():
     con = duckdb.connect()
     sql = ("SELECT from_hex(lpad(to_hex(i), 32, '0')) AS contig_uid, "
            "[from_hex(lpad(to_hex(i), 16, '0')), from_hex(lpad(to_hex(i + 1), 16, '0'))] AS family_tokens, "
-           "[1, 2] AS nr50_tokens, [3, 4] AS nr90_tokens FROM range(3) t(i) ORDER BY 1")
+           "[1, 2] AS nr50_tokens, [3, 4] AS nr90_tokens, [[5], []] AS domain_family_tokens "  # card B-39
+           "FROM range(3) t(i) ORDER BY 1")
     spec = table("tape_tokens")
     with pytest.raises(ValueError, match="family_tokens"):
         list(duck_batches(con, sql, spec))  # list<blob> is not list<uint64>

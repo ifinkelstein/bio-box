@@ -741,13 +741,17 @@ def _oracle_tokens(root: Path, release: str, libraries: list[str], tv: str = TV)
 
     Card B-21: the dictionary holds every model with an included domain on a slot, not only the canonical
     ones, and a family's `n_slots` counts the slots whose protein has at least one domain of the model; the
-    tape tokens keep the canonical family."""
+    tape tokens keep the canonical family. Card B-39: `domain_family_tokens` lists per slot the token of each
+    distinct (envelope start, library, accession) domain of the protein, ordered by (envelope start, token,
+    library, accession), [] without one."""
     tps = _rows(root, f"l3/tapes/tape_version={tv}/stage=*/part-*.parquet", ["contig_uid", "protein_uids"])
     best: dict[bytes, tuple] = {}
     models: dict[bytes, set] = defaultdict(set)  # protein -> {(source, accession)} of its included domains
+    segs: dict[bytes, set] = defaultdict(set)  # protein -> {(envelope start, source, library, accession)}
     for rank, lib in enumerate(libraries):
         for r in _rows(root, f"l1/domains/library={lib}/stage=*/part-*.parquet"):
             models[r["protein_uid"]].add((libraries.index(lib) + 1, r["model_acc"]))
+            segs[r["protein_uid"]].add((r["env_start"], libraries.index(lib) + 1, lib, r["model_acc"]))
             key = (rank, -r["dom_bitscore"], r["model_acc"], r["env_start"])
             if r["protein_uid"] not in best or key < best[r["protein_uid"]][0]:
                 best[r["protein_uid"]] = (key, lib, r["model_acc"])
@@ -776,8 +780,14 @@ def _oracle_tokens(root: Path, release: str, libraries: list[str], tv: str = TV)
     names = {0: "mmseqs2", **{i + 1: lib for i, lib in enumerate(libraries)}}
     dict_rows = sorted(({"token_id": t, "level": lv, "source": names[s], "key": k, "n_slots": uses[(lv, s, k)]}
                         for (lv, s, k), t in tid.items()), key=lambda r: r["token_id"])
+    def domain_families(pu) -> list[int]:
+        doms = sorted((e, tid[("family", src, acc)], lib, acc) for e, src, lib, acc in segs.get(pu, ())) if pu else []
+        return [t for _, t, _, _ in doms]
+
+    proteins = {t["contig_uid"]: t["protein_uids"] for t in tps}
     tok_rows = [{"contig_uid": cu, **{f"{lvl}_tokens": [None if s[lvl] is None else tid[(lvl, *s[lvl])] for s in slots]
-                                      for lvl in LEVEL_BITS}}
+                                      for lvl in LEVEL_BITS},
+                 "domain_family_tokens": [domain_families(pu) for pu in proteins[cu]]}
                 for cu, slots in sorted(per_contig, key=lambda x: x[0])]
     return dict_rows, tok_rows
 
@@ -971,7 +981,8 @@ def test_b09_tapes_without_slots_get_three_empty_lists(built, tmp_path):
     dict_rows, tok_rows = got = _written_tokens(fresh, REL + "-empty", tv0)
     assert got == _oracle_tokens(fresh, REL + "-empty", ["test-1"], tv0)
     assert dict_rows == []
-    assert tok_rows == [{"contig_uid": cu, "family_tokens": [], "nr50_tokens": [], "nr90_tokens": []}
+    assert tok_rows == [{"contig_uid": cu, "family_tokens": [], "nr50_tokens": [], "nr90_tokens": [],
+                         "domain_family_tokens": []}  # card B-39: the fourth list
                         for cu in sorted(_tapes_of_tv(root))]
     assert res == {"tokens": {"family": 0, "nr50": 0, "nr90": 0}, "contigs": len(tok_rows), "files": 2}
 

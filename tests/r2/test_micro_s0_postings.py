@@ -412,9 +412,6 @@ def _b39_oracle(tps: dict, slot_toks: dict, anchor: int, k: int) -> list[tuple[i
 
 
 @pytest.mark.covers("Q3")
-@pytest.mark.xfail(strict=True, reason="card B-39: partners_of takes family partners from tape_tokens.family_tokens "
-                   "(canonical only); a lookup of the neighbour slots' family postings by slot cannot prune "
-                   "(test_scale_layout.py::test_b39_family_postings_of_neighbour_slots_cannot_prune)")
 def test_b39_partners_of_counts_every_family_of_a_neighbour(pfam, tmp_path):
     """Card B-39: since card B-21 a slot holds one family posting per included domain, so the family-level partners
     of a locus are the families of every included domain on the slots near it, not only the canonical family of
@@ -447,6 +444,100 @@ def test_b39_partners_of_counts_every_family_of_a_neighbour(pfam, tmp_path):
            for a in anchors if family(got[a]) != family(want[a])}
     assert not bad, f"family-level partners differ from the oracle for {len(bad)} of {len(anchors)} anchors: {bad}"
     assert got == want
+
+
+@pytest.mark.covers("LY-02", "C-04")
+@pytest.mark.parametrize("which", ["built", "pfam"])
+def test_b39_domain_families_agree_with_the_family_postings_slot_for_slot(built, pfam, which):
+    """Card B-39: `tape_tokens.domain_family_tokens` holds, for every slot, the token of each of its family postings
+    in seg_idx order (`token_postings` as written by biobox.l3.postings), [] for a slot without one; its lists are
+    as long as the tape's. On the fixture and on the fixture with the Pfam library (a two-domain protein, a model
+    twice on one protein, a protein with domains of two libraries)."""
+    root = built[0] if which == "built" else pfam[0]
+    seg: dict[tuple[bytes, int], dict[int, int]] = defaultdict(dict)
+    for r in _written(root):
+        if _level(r["token_id"]) == "family":
+            seg[(r["contig_uid"], r["ordinal"])][r["seg_idx"]] = r["token_id"]
+    tps = _tapes_of(root, TV)
+    n_multi = 0
+    for r in _rows(root, f"l3/tape_tokens/tape_version={TV}/release={REL}/part-*.parquet"):
+        cu, dom = r["contig_uid"], r["domain_family_tokens"]
+        assert dom is not None and len(dom) == tps[cu]["n_slots"] == len(r["family_tokens"])
+        for i, toks in enumerate(dom):
+            s = seg.get((cu, i), {})
+            assert sorted(s) == list(range(len(s))), (cu, i, s)
+            assert toks == [s[k] for k in range(len(s))], (cu.hex(), i)
+            assert (r["family_tokens"][i] is None) == (not toks)  # the canonical family is one of them
+            assert r["family_tokens"][i] is None or r["family_tokens"][i] in toks
+            n_multi += len(toks) > 1
+    assert (n_multi > 0) == (which == "pfam")
+
+
+def _without_domain_families(root: Path, dst: Path) -> Path:
+    """A copy of `root` whose tape_tokens files lack `domain_family_tokens`, as a release written before card B-39:
+    the same rows, row groups and footer statistics, the other columns only."""
+    shutil.copytree(root, dst)
+    for f in sorted(dst.glob(f"l3/tape_tokens/tape_version={TV}/release={REL}/part-*.parquet")):
+        pf = pq.ParquetFile(f)
+        t = pf.read().drop_columns(["domain_family_tokens"])
+        sizes = [pf.metadata.row_group(g).num_rows for g in range(pf.metadata.num_row_groups)]
+        f.unlink()
+        with pq.ParquetWriter(f, t.schema, compression="zstd") as w:
+            off = 0
+            for n in sizes:
+                w.write_table(t.slice(off, n), row_group_size=n)
+                off += n
+    return dst
+
+
+@pytest.mark.covers("Q3", "LY-09")
+def test_b39_a_release_without_domain_families_answers_from_the_canonical_family(pfam, tmp_path, capfd):
+    """Card B-39: a release whose tape_tokens were written before the card has no `domain_family_tokens`. Its
+    catalog still opens and partners_of answers from `family_tokens`: every level equals the brute-force count over
+    the canonical families (the B-35 oracle's rule), and stderr says so once per connection, whatever the number of
+    queries. Its cluster-level rows are those of the release with the column, row for row (cluster levels do not
+    change with card B-39); its family rows lack the non-canonical family PF00664."""
+    root, p, _ = pfam
+    old = _without_domain_families(root, tmp_path / "old")
+    tid = {k: r["token_id"] for k, r in _family_dict(root).items()}
+    tps = _tapes_of(root, TV)
+    toks = {r["contig_uid"]: r for r in _rows(root, f"l3/tape_tokens/tape_version={TV}/release={REL}/part-*.parquet")}
+    canon = {(cu, i): {t[f"{lvl}_tokens"][i] for lvl in LEVELS} - {None} for cu, t in toks.items()
+             for i in range(tps[cu]["n_slots"])}
+    near = {toks[cu]["nr90_tokens"][j] for cu, i in _slots_of(root, p["two"])
+            for j, _ in window(i, tps[cu]["n_slots"], tps[cu]["is_circular"], 1)} - {None}  # next to the two-domain protein
+    anchors = sorted(near | set(sorted({t for r in toks.values() for t in r["nr90_tokens"] if t is not None})[::7])) \
+        + sorted(tid.values())
+    got = {}
+    for name, r in (("new", root), ("old", old)):
+        con = catalog.open_catalog(catalog.generate_catalog(catalog.build_manifest(r, REL, ["S0"]), tmp_path / f"{name}.duckdb"))
+        try:
+            capfd.readouterr()
+            got[name] = {a: con.execute("SELECT partner_token, n_loci, n_pairs FROM partners_of(?, ?)", [a, B39_K]).fetchall()
+                         for a in anchors}
+            err = capfd.readouterr().err
+        finally:
+            con.close()
+        assert err.count("domain_family_tokens") == (name == "old"), (name, err)
+    # the old release's anchors are its family postings (every domain, card B-21); its partners the canonical tokens
+    _, all_toks = _b39_slot_tokens(root)
+    for a in anchors:
+        loci: dict[int, set] = defaultdict(set)
+        pairs: Counter = Counter()
+        for (cu, i), s in sorted(all_toks.items()):
+            if a not in s:
+                continue
+            t = tps[cu]
+            for j, _ in window(i, t["n_slots"], t["is_circular"], B39_K):
+                for b in canon[(cu, j)]:
+                    loci[b].add((cu, i))
+                    pairs[b] += 1
+        want = sorted(((b, len(s), pairs[b]) for b, s in loci.items()), key=lambda g: (-g[1], g[0]))
+        assert got["old"][a] == want, a
+        cluster = lambda rows: [r for r in rows if r[0] >> 61 in CLUSTER_BITS]  # noqa: E731
+        assert cluster(got["new"][a]) == cluster(got["old"][a]), a
+    assert any(tid["PF00664"] in [t for t, _, _ in g] for g in got["new"].values())
+    assert not any(tid["PF00664"] in [t for t, _, _ in g] for g in got["old"].values())
 
 
 @pytest.mark.covers("D-01", "D-04", "LY-08")
@@ -898,7 +989,9 @@ def test_b11_partners_of_refuses_a_hub_token(tmp_path):
     tspec = table("tape_tokens")
     tt = pa.table({"contig_uid": pa.array(keys, pa.binary(16)), "family_tokens": pa.array([[None, None]] * len(keys), pa.list_(pa.uint64())),
                    "nr50_tokens": pa.array([[None, None]] * len(keys), pa.list_(pa.uint64())),
-                   "nr90_tokens": pa.array([ttok[k] for k in keys], pa.list_(pa.uint64()))}).cast(tspec.schema)
+                   "nr90_tokens": pa.array([ttok[k] for k in keys], pa.list_(pa.uint64())),
+                   "domain_family_tokens": pa.array([[[], []]] * len(keys), pa.list_(pa.list_(pa.uint64())))}  # B-39
+                  ).cast(tspec.schema)
     io.write_table([tt], tspec, root / f"l3/tape_tokens/tape_version={tv}/release={REL}/part-0.parquet", max_slots=131_072,
                    slots_column="nr90_tokens")
     con = catalog.open_catalog(catalog.generate_catalog(catalog.build_manifest(root, REL, []), tmp_path / "c.duckdb"))
