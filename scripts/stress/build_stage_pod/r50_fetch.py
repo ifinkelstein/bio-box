@@ -7,7 +7,9 @@
 The ladder's fetch.py (planning/measurements/2026-11-10_import_ladder/scripts/fetch.py) with the same
 source, tool and pace: NCBI Datasets v2 REST API, 20 accessions per request, one connection, at most 3
 requests per second, generic user agent, no key, no email; an accession missing from a batch is retried
-alone, then through the genomes FTP over HTTPS. Added here: every FASTA is checked against the md5 the
+alone, then (only with --ftp-fallback) through the genomes FTP over HTTPS. The fallback finds the
+assembly directory by listing its parent, a URL form sources.yaml does not list, so it is off by
+default and such an accession is listed as failed. Added here: every FASTA is checked against the md5 the
 source ships beside it (md5sum.txt in the Datasets zip; md5checksums.txt in the FTP directory, on the
 .fna.gz); a file that fails is fetched once more alone, then listed as failed. One log line per genome.
 
@@ -165,7 +167,7 @@ class Fetcher:
         raise RuntimeError(f"{url[:160]}: {err}")
 
 
-def run_stage(F: Fetcher, stage: str, tsv: Path, out: Path, batch: int) -> dict:
+def run_stage(F: Fetcher, stage: str, tsv: Path, out: Path, batch: int, ftp_fallback: bool) -> dict:
     out.mkdir(parents=True, exist_ok=True)
     tmpd = out / ".tmp"
     tmpd.mkdir(exist_ok=True)
@@ -275,6 +277,10 @@ def run_stage(F: Fetcher, stage: str, tsv: Path, out: Path, batch: int) -> dict:
                 raise
             except Exception as e:  # noqa: BLE001
                 F.line(stage, acc, "single_error", str(e)[:200])
+            if not ftp_fallback:
+                R["failed"][acc] = "not returned by Datasets v2 (alone or in its batch); FTP fallback off"
+                F.line(stage, acc, "FAILED", "not returned by Datasets; FTP fallback off")
+                continue
             try:
                 via_ftp(acc)
                 R["fallback_ftp"].append(acc)
@@ -314,6 +320,9 @@ def main(argv: list[str]) -> int:
     ap.add_argument("log", type=Path)
     ap.add_argument("--stages", default="P3,P4,P5,P6")
     ap.add_argument("--batch", type=int, default=20)
+    ap.add_argument("--ftp-fallback", action="store_true",
+                    help="use the FTP fallback; it lists the assembly's parent directory, a URL form sources.yaml "
+                         "does not list, so it is off by default")
     a = ap.parse_args(argv)
     a.genomes.mkdir(parents=True, exist_ok=True)
     marks = a.log.parent
@@ -324,7 +333,8 @@ def main(argv: list[str]) -> int:
     summary = {"started_utc": now(), "stages": {}}
     try:
         for stage in a.stages.split(","):
-            summary["stages"][stage] = run_stage(F, stage, a.selection / f"stage_{stage}.tsv", a.genomes / stage, a.batch)
+            summary["stages"][stage] = run_stage(F, stage, a.selection / f"stage_{stage}.tsv", a.genomes / stage, a.batch,
+                                                 a.ftp_fallback)
     except (Refused, Stopped, Exception) as e:  # noqa: BLE001
         summary.update({"finished_utc": now(), "stopped": f"{type(e).__name__}: {e}", "http": F.R})
         write_json(marks / "FAILED", summary)
