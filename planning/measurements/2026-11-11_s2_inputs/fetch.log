@@ -1,0 +1,11 @@
+s2_fetch start 2026-11-11T23:09:17Z host wilkcomp02.ccbb.utexas.edu
+hpgc try 1 start 2026-11-11T23:09:17Z https://ndownloader.figshare.com/files/59221811
+hpgc try 1 rc=0 bytes=560950249 2026-11-11T23:09:28Z
+hpgc 560950249 bytes md5 03c4f8ae0ce599af7cc256c9f53a56c1 sha256 f908dbc8521ea900919e06a9b094fc15d74c74ff4db9157d897fcbc445b6394a 2026-11-11T23:09:32Z
+plsdb_fasta try 1 start 2026-11-11T23:09:32Z https://ccb-microbe.cs.uni-saarland.de/plsdb2025/download_fasta
+plsdb_fasta try 1 rc=0 bytes=7425668755 2026-11-11T23:14:30Z
+plsdb_fasta 7425668755 bytes md5 3bfc8075fb17be484d224908f05b6064 sha256 e654c106d8a15a2d5d55a8b680087377cb84e654e63d41bca181fc69a23e587a 2026-11-11T23:15:10Z
+plsdb_meta try 1 start 2026-11-11T23:15:10Z https://ccb-microbe.cs.uni-saarland.de/plsdb2025/download_meta.tar.gz
+plsdb_meta try 1 rc=0 bytes=3655621310 2026-11-11T23:17:38Z
+plsdb_meta 3655621310 bytes md5 7a48636e8288c6cbdea1fa1b3c7f8b09 sha256 fa9da9bcf3126beb72f12cbe3efe4555138dacdfb7c217d977a658bc10e53e00 2026-11-11T23:17:58Z
+s2_fetch done 2026-11-11T23:17:58Z

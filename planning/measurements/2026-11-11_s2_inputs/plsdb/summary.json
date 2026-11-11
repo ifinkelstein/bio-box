@@ -1,0 +1,141 @@
+{
+ "source": "/tmp/if2453/s2/dl/plsdb_download_fasta",
+ "records": 72556,
+ "bp": 7297669596,
+ "length": {
+  "min": 200,
+  "median": 53665.5,
+  "max": 11850240,
+  "mean": 100579.8,
+  "under_200000": 63711,
+  "deciles": [
+   3991,
+   6647,
+   16081,
+   35489,
+   53667,
+   75191,
+   100988,
+   140077,
+   221159
+  ]
+ },
+ "repeats": {
+  "distinct_contig_uids": 68693,
+  "uids_seen_more_than_once": 2003,
+  "records_repeating_an_earlier_record": 3863,
+  "distinct_by_either_strand": 68650,
+  "records_repeating_an_earlier_record_on_either_strand": 3906,
+  "distinct_sequences_whose_reverse_complement_is_another": 43
+ },
+ "bases": {
+  "A": 1743173822,
+  "C": 1903932544,
+  "G": 1914014529,
+  "T": 1736487322,
+  "N": 52643,
+  "iupac_other": 8736,
+  "non_iupac": 0,
+  "lowercase": 0
+ },
+ "records_with_n": 379,
+ "records_with_non_acgt": 613,
+ "headers": {
+  "tokens_per_header": {
+   "5": 158,
+   "6": 206,
+   "7": 4176,
+   "8": 5802,
+   "9": 50912,
+   "10": 3929,
+   "11": 4137,
+   "12": 470,
+   "13": 2147,
+   "14": 402,
+   "15": 84,
+   "16": 73,
+   "17": 24,
+   "18": 24,
+   "19": 10,
+   "20": 2
+  },
+  "first_token_shapes": {
+   "NZ_CP#.#": 44586,
+   "CP#.#": 8765,
+   "NC_#.#": 3743,
+   "NZ_AP#.#": 2708,
+   "OW#.#": 1221,
+   "AP#.#": 905,
+   "NZ_LR#.#": 887,
+   "LR#.#": 772,
+   "NZ_MT#.#": 543,
+   "NZ_MN#.#": 527
+  },
+  "distinct_shapes": 142,
+  "keyword_counts": {
+   ",": 69305,
+   ";": 2,
+   "=": 152,
+   "circular": 3,
+   "complete": 66802,
+   "linear": 5,
+   "partial": 1,
+   "plasmid": 72554,
+   "sample": 71
+  },
+  "accessions_distinct": 72556,
+  "accessions_repeated": 0
+ },
+ "overlap": {
+  "P1/store": {
+   "same": 120,
+   "reverse_complement": 0,
+   "distinct_uids_same": 118
+  },
+  "P2/store": {
+   "same": 1294,
+   "reverse_complement": 0,
+   "distinct_uids_same": 1267
+  },
+  "P3/fasta": {
+   "same": 1191,
+   "reverse_complement": 1,
+   "distinct_uids_same": 1175
+  },
+  "P3/store": {
+   "same": 1191,
+   "reverse_complement": 1,
+   "distinct_uids_same": 1175
+  },
+  "P4/fasta": {
+   "same": 1516,
+   "reverse_complement": 0,
+   "distinct_uids_same": 1504
+  },
+  "P5/fasta": {
+   "same": 1714,
+   "reverse_complement": 0,
+   "distinct_uids_same": 1693
+  },
+  "P6/fasta": {
+   "same": 1309,
+   "reverse_complement": 1,
+   "distinct_uids_same": 1291
+  },
+  "S1/store": {
+   "same": 2,
+   "reverse_complement": 0,
+   "distinct_uids_same": 2
+  }
+ },
+ "stage_sets": {
+  "P1/store": 539,
+  "P2/store": 5018,
+  "P3/fasta": 9108,
+  "P3/store": 9108,
+  "P4/fasta": 4006,
+  "P5/fasta": 4112,
+  "P6/fasta": 4228,
+  "S1/store": 27258
+ }
+}
