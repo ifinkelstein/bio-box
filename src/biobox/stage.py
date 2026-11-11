@@ -2,7 +2,7 @@
 
     bio-box build-stage --profile P --root R --stage S --release REL [--stages S0,S1]
         --genomes genomes.json --objects objects.json [--library NAME VERSION HMM CUTOFF ...]
-        [--tmp D] [--threads N] [--scan-jobs J] [--scan-cpus C] [--gene-call-version V]
+        [--tmp D] [--threads N] [--scan-jobs J] [--scan-cpus C] [--cluster-parts N] [--gene-call-version V]
 
 No workflow engine: the list `steps` returns and the run records `run-step` writes. Each step is
 `runstep.run_step` running `python -m biobox.cli stage ...` or `python -m biobox.cli release ...`
@@ -83,6 +83,22 @@ directory (`--tmp`, cleaned as above); the pass-1 runs and the decision table th
 `<scratch>` itself (`--runs-tmp`), are made again when lost, before the plan and before the batches
 (`_rescan_lost_ingest`, as below), and are removed after the merge.
 
+Clustering in parts (card B-41, `biobox.l2.cluster`). When the release's clustering in one process is
+estimated over `SHARD_MARGIN` of the budget (`cluster_cpu_min`), or `--cluster-parts N` forces it, or a
+plan of it is already published, the cluster step runs as steps of its own (`_cluster_in_parts`):
+`cluster.plan` (the FASTA and `createdb`), then one step per module call of the fixed list
+(`l2cluster.calls()`), a per-query call as `<call>.cut` and, when cut into more than one part,
+`<call>.part-<p>` for each part (run up to J at once with C threads each within the allowance, as scan
+shards) and the join under the call's own name; then `cluster` (`release cluster finish`: the tables)
+under the cluster step's own name, so its run record is the clustering's. Parts are cut at
+`SHARD_MARGIN` of the budget from the call's measured share (or into N), never from J, C or the hour;
+the files are those of clustering in one process, byte for byte; the records (`l2/cluster_plan/`) are
+a build's own, never in a manifest. The MMseqs2 databases live in `<scratch>/biobox-cluster/`; a join's
+parts are removed once it is published, the work directory once the tables are. A call that finds the
+plan published first makes again every published step whose outputs are not in scratch, in order
+(`_redo_lost_cluster`, `bio-box release cluster redo`), each of which must reproduce its record. The
+DEC-25 estimate and its refusals above still come first, until that exemption is removed.
+
 Lost scratch (card C-12). A reboot clears `/tmp`; a shard's run record then still exists while its
 run in scratch is gone, so `run-step` would never scan it again and the merge would refuse. Before
 the merge, every shard's run is checked against its published record (`domains.run_problem`: missing,
@@ -143,6 +159,7 @@ from biobox import catalog, runstep
 from biobox.l0seq import store
 from biobox.l1 import domains
 from biobox.l1.genecall import GENE_CALL_VERSION
+from biobox.l2 import cluster as l2cluster
 from biobox.profile import Profile
 
 # Measured, wilkcomp02, 2026-11-10: one ingest process took 42.9 CPU-minutes for 9,596,180,328 bp of
@@ -227,6 +244,7 @@ class Build:
     scan_jobs: int | None = None  # J, scan shards at once; None: the allowance // C (`scan_slots`)
     scan_cpus: int | None = None  # C, threads per scan shard; None: DEFAULT_SCAN_CPUS, or the allowance if smaller
     shard_bases: int | None = None  # ingest's batch size (`--shard-bases`); None: the store's default (card B-30)
+    cluster_parts: int | None = None  # clustering in parts, every per-query call in this many (card B-41); None: auto
 
 
 @dataclass(frozen=True)
@@ -440,6 +458,8 @@ def _refusal(prof: Profile, b: Build, root: Path, plan: list[Step], allowance: i
         return "a library is given twice"
     if threads_of(prof, b) < 1:
         return f"--threads {threads_of(prof, b)}: must be at least 1"
+    if b.cluster_parts is not None and (isinstance(b.cluster_parts, bool) or b.cluster_parts < 1):
+        return f"--cluster-parts {b.cluster_parts}: must be at least 1"
     jobs, cpus = scan_slots(b, allowance)
     if jobs < 1 or cpus < 1:
         return f"--scan-jobs {jobs} and --scan-cpus {cpus}: each must be at least 1"
@@ -614,8 +634,11 @@ def build_stage(prof: Profile, b: Build, *, run: Runner | None = None,
                 if why is not None:
                     _say(f"refused before {step.run_stage}.{step.name}: {why}")
                     return runstep.EXIT_REFUSED
-                exempt = prof.cluster_cpu_min_max is not None
-                code = one(step, **({"budget_reason": CLUSTER_EXEMPT} if exempt else {}))
+                if not _record(root, step).exists() and _cluster_split(prof, b, root):
+                    code = _cluster_in_parts(prof, b, root, one, _hook, jobs, cpus, shard_run, allow)
+                else:
+                    exempt = prof.cluster_cpu_min_max is not None
+                    code = one(step, **({"budget_reason": CLUSTER_EXEMPT} if exempt else {}))
             else:
                 code = one(step)
             if code is not None:
@@ -1023,3 +1046,129 @@ def _rescan_lost_ingest(prof: Profile, b: Build, root: Path, jobs: int, hook: Ho
                      f"the PI")
             return code
     return None
+
+
+# --- clustering in parts (card B-41) -------------------------------------------------------------------------
+
+
+def _release_stages(b: Build, root: Path) -> list[str]:
+    return list(b.stages) if b.stages is not None else catalog.release_stages(root, b.release)
+
+
+def _cluster_split(prof: Profile, b: Build, root: Path) -> bool:
+    """Whether the release clusters in parts: an earlier call planned it so (its plan is published), the call forces
+    it (`--cluster-parts`), or its estimate in one process exceeds `SHARD_MARGIN` of the budget (as a scan is
+    sharded and ingest batched). The gate (`_cluster_gate`) has run, so the protein count is known."""
+    if (root / l2cluster.plan_dir(b.release) / f"{l2cluster.PLAN_STEP}.json").exists() or b.cluster_parts is not None:
+        return True
+    n, _ = release_proteins(root, _release_stages(b, root), b.gene_call_version)
+    est = cluster_cpu_min(n)
+    if est <= SHARD_MARGIN * prof.cpu_min_per_process:
+        return False
+    _say(f"{b.release}.cluster: clustering {n:,} proteins is estimated at {est:,.1f} CPU-minutes in one process, over "
+         f"{SHARD_MARGIN:.0%} of the profile's cpu_min_per_process of {prof.cpu_min_per_process} (AGENTS §7.2); it "
+         f"runs in parts (card B-41): a plan, one step per module call, each per-query call cut into parts of at "
+         f"most {SHARD_MARGIN * prof.cpu_min_per_process:g} CPU-minutes, then the tables")
+    return True
+
+
+def cluster_steps(prof: Profile, b: Build) -> Callable[..., Step]:
+    """A maker of the steps of clustering in parts: `make("plan")`, `make("step", name, threads)`,
+    `make("finish")` and `make("redo", name)`, each `bio-box release cluster <action>` with the scratch directory
+    (`--tmp`: the work directory is under it, the same for every step) and the plan's cut: `--cluster-parts`, else
+    `SHARD_MARGIN` of the budget per part."""
+    root, scratch, n = str(Path(b.root).resolve()), str(scratch_of(prof, b)), threads_of(prof, b)
+    stages = () if b.stages is None else ("--stages", ",".join(b.stages))
+    cut = (("--parts", str(b.cluster_parts)) if b.cluster_parts is not None
+           else ("--part-cpu-min", repr(SHARD_MARGIN * prof.cpu_min_per_process)))
+
+    def cl(action: str, *extra: str) -> tuple[str, ...]:
+        return ("release", "cluster", action, "--root", root, "--gene-call-version", b.gene_call_version,
+                "--release", b.release, *extra, "--tmp", scratch)
+
+    def make(action: str, name: str | None = None, threads: int | None = None) -> Step:
+        if action == "plan":
+            return Step(b.release, l2cluster.PLAN_STEP, cl("plan", *stages, *cut))
+        if action == "finish":
+            return Step(b.release, l2cluster.FINAL_STEP, cl("finish", "--threads", str(n)))
+        if action == "redo":
+            return Step(b.release, f"{name}.redo", cl("redo", "--name", name, "--threads", str(n)))
+        return Step(b.release, name, cl("step", "--name", name, "--threads", str(n if threads is None else threads)))
+
+    return make
+
+
+def _cluster_in_parts(prof: Profile, b: Build, root: Path, one: Callable[..., int | None], hook: Hook | None,
+                      jobs: int, cpus: int, run: Runner | None, allow: Callable[[], int]) -> int | None:
+    """The release's clustering in parts (card B-41, `biobox.l2.cluster`): its plan step, then each module call in
+    order, a per-query call as its cut step and, when cut into more than one part, its part steps (up to `jobs` at
+    once with `cpus` threads each within the allowance of the hour, as scan shards run) and its join, each other
+    call as one step; then `cluster` (the tables) under the cluster step's own name, so its run record is the
+    clustering's. Every step is a `run-step` of `--threads` threads (the parts of `cpus`), so a call after a kill
+    skips each step already published. A call that finds the plan published first makes again, in order, every
+    published step whose outputs are not in scratch (`_redo_lost_cluster`). A join's parts are removed once it is
+    published; the work directory once the tables are. `run` stands in for the parts' run-step processes (tests)."""
+    make = cluster_steps(prof, b)
+    scratch = scratch_of(prof, b)
+    first = make("plan")
+    if _record(root, first).exists() and not _intent(root, first).exists():
+        code = _redo_lost_cluster(prof, b, root, hook, allow)
+        if code is not None:
+            return code
+    code = one(first)
+    if code is not None:
+        return code
+    if hook is not None:
+        hook(f"after:{first.name}")
+    if run is None:
+        run = _process_runner(_profile_file(prof, scratch))
+    for c in l2cluster.calls():
+        parts = 1
+        if c.split:
+            cut = make("step", f"{c.name}.cut")
+            code = one(cut)
+            if code is not None:
+                return code
+            if hook is not None:
+                hook(f"after:{cut.name}")
+            parts = len(l2cluster.read_record(root, b.release, cut.name)["parts"])
+            if parts > 1:
+                subs = [make("step", l2cluster.part_name(c.name, k), cpus) for k in range(parts)]
+                code = _run_shards(prof, root, cut, subs, jobs, cpus, run, hook, allow)
+                if code is not None:
+                    return code
+        s = make("step", c.name)
+        code = one(s)
+        if code is not None:
+            return code
+        if parts > 1:
+            l2cluster.clean_parts(root, b.release, c.name, scratch)
+        if hook is not None:
+            hook(f"after:{s.name}")
+    code = one(make("finish"))  # its hook is the cluster step's, after this returns
+    if code is not None:
+        return code
+    shutil.rmtree(l2cluster.work_dir(scratch, root, b.release), ignore_errors=True)
+    return None
+
+
+def _redo_lost_cluster(prof: Profile, b: Build, root: Path, hook: Hook | None, allow: Callable[[], int]) -> int | None:
+    """Before clustering in parts goes on after its plan is published (a reboot clears /tmp): every published step
+    whose outputs are not in the work directory as its record holds them (`l2cluster.lost`) is made again, in step
+    order, one at a time (`bio-box release cluster redo`, each its own process under the cap and nice of a run-step,
+    `_rescan_process`; `STOP` checked before each), `after:<step>.redo` to `hook` as each ends. The records stay as
+    published: each must be reproduced, and one that is not stops the build naming the step. Return None when every
+    output is in place, else the failing code (75 for STOP)."""
+    scratch = scratch_of(prof, b)
+    names = l2cluster.lost(root, b.release, scratch)
+    if not names:
+        return None
+    _say(f"{b.release}.cluster: {len(names)} published step(s) have no outputs in scratch as their records hold them, "
+         f"from {names[0]} (in {l2cluster.work_dir(scratch, root, b.release)}); making them again in order, each to "
+         f"its record")
+    make = cluster_steps(prof, b)
+    code = _launch(prof, root, [make("redo", x) for x in names], 1, threads_of(prof, b), _rescan_process, hook, allow)
+    if code is not None and code != runstep.EXIT_STOP:
+        _say(f"{b.release}.cluster: a step could not be made again to its record (above); clustering does not go on. "
+             f"A record that is not reproduced is not the clustering of these inputs: tell the PI")
+    return code

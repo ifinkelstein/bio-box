@@ -11,7 +11,9 @@ hook, or a `STOP` file) resumes on the next call and ends byte-identical; the CP
 refuses ingest before any step (card B-30); a scan estimated over the budget runs as a plan step,
 one step per shard and a merge step, whose files equal the unsharded build's byte for byte, and a
 build killed between shards resumes at the next shard (card B-24); a second stage and a release
-over both stages, built by a second call, change no file of the first.
+over both stages, built by a second call, change no file of the first. Clustering in parts (card
+B-41): forced into parts, the build equals the one-process build; it is chosen above 80% of the
+budget; a scratch database lost after its record is made again and the build ends byte-identical.
 
 The test profile's small-file floor is 1,000 bytes, as in `test_builders_out`: at the pod's real
 64 MiB floor a second release's manifest is refused until card C-09 merges.
@@ -37,6 +39,7 @@ from biobox import catalog, cli, runstep
 from biobox import stage as bs
 from biobox.l1 import domains
 from biobox.l1.genecall import GENE_CALL_VERSION as V
+from biobox.l2 import cluster as l2cluster
 
 sys.path.insert(0, str(Path(__file__).parent))
 import test_builders_out as c08  # noqa: E402
@@ -1180,3 +1183,142 @@ def test_b36_a_release_under_the_cap_runs_and_its_cluster_record_names_dec25(dir
 def test_b36_a_profile_without_the_cap_writes_no_reason(built):
     """The default build of this file (a profile without `cluster_cpu_min_max`): no record carries a reason."""
     assert not any("cpu_budget_reason" in json.loads(v) for v in records(built).values())
+
+
+# --- clustering in parts (card B-41) --------------------------------------------------------------------------------
+
+PLAN_RECORDS = "l2/cluster_plan/"  # the split clustering's records: a build's own, never in a manifest
+
+
+def check_parts_equal_direct(direct, root: Path) -> None:
+    """Every file but the split clustering's records is the direct (one-process) build's, byte for byte; so are the
+    manifest and the catalog, which never list those records."""
+    got = {k: v for k, v in c08.tree(root).items() if not k.startswith(PLAN_RECORDS)}
+    want = c08.tree(direct["root"])
+    assert sorted(got) == sorted(want)
+    assert c08.data(got) == c08.data(want)
+    man = c08.check_manifest(root, REL, direct["manifest"])
+    assert catalog.verify_manifest(man) == []
+    c08.check_catalog(root, REL, man, Path(direct["prof"].tmp) / "staging")
+
+
+def release_steps_done(root: Path) -> list[str]:
+    return sorted(n.removeprefix(f"stage={REL}/") for n in record_names(root) if n.startswith(f"stage={REL}/"))
+
+
+def parts_of(direct, root: Path) -> bs.Build:
+    return dataclasses.replace(build_of(direct, root), cluster_parts=2)
+
+
+@pytest.fixture(scope="module")
+def in_parts(direct, tmp_path_factory):
+    """One build-stage call with every per-query call of clustering forced into 2 parts, and its hook points."""
+    root = tmp_path_factory.mktemp("b41-parts") / "root"
+    seen: list[str] = []
+    assert bs.build_stage(direct["prof"], parts_of(direct, root), run=runner, _hook=seen.append) == 0
+    return root, seen
+
+
+@pytest.mark.covers("B-37", "MR-16")
+def test_b41_a_release_clustered_in_parts_equals_the_build_that_clusters_in_one_process(direct, in_parts):
+    root, seen = in_parts
+    check_parts_equal_direct(direct, root)
+    done = release_steps_done(root)
+    calls = l2cluster.calls()
+    want = {l2cluster.PLAN_STEP, l2cluster.FINAL_STEP, *(c.name for c in calls),
+            *(f"{c.name}.cut" for c in calls if c.split)}
+    parts = [n for n in done if ".part-" in n]
+    assert set(done) == want | set(parts) | set(NAMES[8:])
+    # every per-query call with two keys or more ran as two part steps; each part is a run-step of its own
+    by_call = {c.name: [p for p in parts if p.startswith(f"{c.name}.part-")] for c in calls if c.split}
+    assert all(len(v) in (0, 2) for v in by_call.values()) and sum(len(v) == 2 for v in by_call.values()) >= 12
+    # each step but the tables left its record in the cluster_plan artifact; none is in the manifest (checked above)
+    recs = {p.name.removesuffix(".json") for p in (root / PLAN_RECORDS / f"release={REL}").glob("*.json")}
+    assert recs == set(done) - {l2cluster.FINAL_STEP} - set(NAMES[8:])
+    # in order: the plan, each call (its parts before its join), the tables under the cluster step's name
+    order = [p.removeprefix("after:") for p in seen]
+    i, j = order.index(l2cluster.PLAN_STEP), order.index(l2cluster.FINAL_STEP)
+    assert order[j - 1] == calls[-1].name and set(order[i:j]) == recs
+    for c in calls:
+        k = order.index(c.name)
+        assert all(order.index(p) < k for p in by_call.get(c.name, []))
+    # the work directory and the parts are gone
+    assert not l2cluster.work_dir(bs.scratch_of(direct["prof"], parts_of(direct, root)), root.resolve(), REL).exists()
+
+
+def test_b41_a_second_call_after_clustering_in_parts_starts_nothing(direct, in_parts, tmp_path, monkeypatch):
+    root = tmp_path / "root"
+    shutil.copytree(in_parts[0], root, symlinks=True)
+    before, files = records(root), c08.tree(root)
+
+    def no_command(*a, **k):
+        raise AssertionError("a step command was started on the second call")
+
+    monkeypatch.setattr(runstep, "_execute", no_command)
+    assert bs.build_stage(direct["prof"], parts_of(direct, root), run=runner) == 0
+    assert records(root) == before and c08.tree(root) == files
+
+
+@pytest.mark.covers("B-37")
+def test_b41_clustering_runs_in_parts_when_its_estimate_passes_80_percent_of_the_budget(direct, capped, tmp_path):
+    """The routing (`_cluster_split`): in one process while the estimate fits 80% of the budget (the default, as an
+    unsharded scan), in parts above that, when forced, or when a plan is already published."""
+    root = capped[0]
+    b = build_of(direct, root)
+    est = bs.cluster_cpu_min(fixture_proteins(root, "S0"))
+    assert est > 0
+    over = dataclasses.replace(direct["prof"], cpu_min_per_process=est / 0.8 * 0.999)
+    under = dataclasses.replace(direct["prof"], cpu_min_per_process=est / 0.8 * 1.001)
+    assert bs._cluster_split(over, b, root) is True and bs._cluster_split(under, b, root) is False
+    assert bs._cluster_split(direct["prof"], b, root) is False  # the fixture at 300 CPU-minutes: one process
+    assert bs._cluster_split(direct["prof"], dataclasses.replace(b, cluster_parts=1), root) is True
+    copy = tmp_path / "root"
+    shutil.copytree(root, copy, symlinks=True)
+    plan = copy / PLAN_RECORDS / f"release={REL}" / f"{l2cluster.PLAN_STEP}.json"
+    plan.parent.mkdir(parents=True)
+    plan.write_text("{}")
+    assert bs._cluster_split(direct["prof"], build_of(direct, copy), copy) is True
+    # the plan step's cut: the forced count, else 80% of the budget per part
+    argv = bs.cluster_steps(direct["prof"], b)("plan").argv
+    assert argv[argv.index("--part-cpu-min") + 1] == repr(0.8 * 300)
+    argv = bs.cluster_steps(direct["prof"], dataclasses.replace(b, cluster_parts=4))("plan").argv
+    assert argv[argv.index("--parts") + 1] == "4" and "--part-cpu-min" not in argv
+
+
+@pytest.mark.covers("B-37", "D-03")
+def test_b41_a_scratch_database_lost_after_its_record_is_made_again_and_the_build_ends_byte_identical(direct, tmp_path):
+    """A build killed after the NR50 cascade's last prefilter; then the joined NR90 cascade prefilter is deleted from
+    scratch (its parts were removed when the join was published). The next call makes the parts and the join again
+    (each to its record), then goes on from the step after the kill, and ends byte-identical."""
+    root = tmp_path / "root"
+    b = parts_of(direct, root)
+    pref90 = next(c for c in l2cluster.calls() if c.name.startswith("cluster.nr90.") and c.module == "prefilter")
+    last50 = [c for c in l2cluster.calls() if c.name.startswith("cluster.nr50.") and c.module == "prefilter"][-1]
+
+    def kill(point: str) -> None:
+        if point == f"after:{last50.name}":
+            raise Killed(point)
+
+    with pytest.raises(Killed):
+        bs.build_stage(direct["prof"], b, run=runner, _hook=kill)
+    w = l2cluster.work_dir(bs.scratch_of(direct["prof"], b), root.resolve(), REL)
+    gone = list((w / pref90.output).parent.glob(Path(pref90.output).name + "*"))
+    assert gone
+    for p in gone:
+        p.unlink()
+    parts = sorted(n for n in release_steps_done(root) if n.startswith(f"{pref90.name}.part-"))
+    assert len(parts) == 2
+    started: list[str] = []
+
+    def recording(prof, root_, stage, step, cmd, **kw):
+        if not (Path(root_) / "runs" / f"stage={stage}" / f"{step}.json").exists():
+            started.append(step)
+        return runner(prof, root_, stage, step, cmd, **kw)
+
+    seen: list[str] = []
+    assert bs.build_stage(direct["prof"], b, run=recording, _hook=seen.append) == 0
+    redone = [p.removeprefix("after:").removesuffix(".redo") for p in seen if p.endswith(".redo")]
+    assert redone == [*parts, pref90.name]
+    after = l2cluster.calls()[[c.name for c in l2cluster.calls()].index(last50.name) + 1]
+    assert started[0] == (f"{after.name}.cut" if after.split else after.name)  # nothing published ran again
+    check_parts_equal_direct(direct, root)
