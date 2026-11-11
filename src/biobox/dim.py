@@ -20,6 +20,7 @@ from pathlib import Path
 import duckdb
 
 from biobox import catalog, io, layout, ledger
+from biobox.l0seq.store import stored_by
 from biobox.l1.genecall import DUCK_MEMORY_LIMIT
 from biobox.registry.schemas import table
 
@@ -43,10 +44,17 @@ def run(root, release: str, stages: list[str], tmp=None, max_file_bytes: int = l
     under `out` (default `root`; card C-08). Refuses, before any work, when the release's partition
     already holds a file in `root` or `out`; with `out` given, `tmp` may lie under neither.
 
-    Errors: a default-variant contig without a `genome_input` row, a `genome_input` row whose
-    contig is not a default-variant contig of the given stages, and a contig whose `genome_input`
-    rows differ between stages. Identical rows from several stages collapse to one.
-    Returns `{"contigs": n, "genomes": g, "circular": c}`.
+    A contig shared by genomes of two stages (DEC-26, card C-20) belongs to the stage that stored it
+    first, the one whose `contig_index` holds its default variant: its row is that stage's genome, and a
+    different row of another stage is skipped and listed (`_views`). Identical rows from several stages
+    collapse to one.
+
+    Errors: a default-variant contig without a `genome_input` row; a `genome_input` row whose contig
+    is not a default-variant contig of the given stages (naming the stage on disk that owns it, which
+    the release must then list); two different rows for a contig from the stages that own it (two
+    genomes of one stage, or two stages both holding its default variant).
+    Returns `{"contigs": n, "genomes": g, "circular": c}`, and `"skipped"` (one entry per skipped row:
+    contig, stage, genome, owning stage, the genome kept) when there is one.
     """
     root = Path(root)
     if out is not None:
@@ -61,49 +69,109 @@ def run(root, release: str, stages: list[str], tmp=None, max_file_bytes: int = l
     base = out / rel_base
     if not stages:
         raise ValueError(f"release {release}: no stages")
-    idx, gin = [], []
-    for s in stages:  # in the release's order; the output is sorted by contig_uid and does not depend on it
-        found = io.part_files(root / f"l0seq/contig_index/stage={s}")
-        if not found:
+    for s in stages:  # every listed stage has contig_index files
+        if not io.part_files(root / f"l0seq/contig_index/stage={s}"):
             raise FileNotFoundError(f"stage {s}: no contig_index files under {root}")
-        idx += found
-        gin += io.part_files(root / f"l0seq/genome_input/stage={s}")
     catalog.define_release(root, release, stages, out=out)
     scratch = Path(tempfile.mkdtemp(prefix="biobox-dim-", dir=tmp))
     con = duckdb.connect(config={"threads": 1, "memory_limit": DUCK_MEMORY_LIMIT,
                                  "temp_directory": str(scratch / "duckdb")})
     try:
-        con.execute("CREATE VIEW ci AS SELECT DISTINCT contig_uid, contig_len "
-                    f"FROM read_parquet({_sql_list(idx)}) WHERE is_default_variant")
-        if gin:
-            con.execute("CREATE VIEW gi AS SELECT contig_uid, genome_uid, is_circular, assembly_quality "
-                        f"FROM read_parquet({_sql_list(gin)})")
-        else:
-            con.execute("CREATE VIEW gi AS SELECT NULL::BLOB AS contig_uid, NULL::BLOB AS genome_uid, "
-                        "NULL::BOOLEAN AS is_circular, NULL::VARCHAR AS assembly_quality WHERE false")
-        n, first = con.execute("SELECT count(*), min(contig_uid) FROM ci "
-                               "WHERE contig_uid NOT IN (SELECT contig_uid FROM gi)").fetchall()[0]
-        if n:
-            raise ValueError(f"{n} default-variant contigs have no genome_input row; first: {first.hex()}")
-        n, first = con.execute("SELECT count(*), min(contig_uid) FROM gi "
-                               "WHERE contig_uid NOT IN (SELECT contig_uid FROM ci)").fetchall()[0]
-        if n:
-            raise ValueError(f"{n} genome_input rows name a contig that contig_index does not hold as a "
-                             f"default variant; first: {first.hex()}")
-        n, first = con.execute("SELECT count(*), min(contig_uid) FROM (SELECT contig_uid FROM gi "
-                               "GROUP BY contig_uid HAVING count(DISTINCT (genome_uid, is_circular, "
-                               "assembly_quality)) > 1)").fetchall()[0]
-        if n:
-            raise ValueError(f"{n} contigs have conflicting genome_input rows across stages; first: {first.hex()}")
-        con.execute("CREATE VIEW dim AS SELECT ci.contig_uid, g.genome_uid, ci.contig_len, g.is_circular, "
-                    "NULL::UTINYINT AS tier, g.assembly_quality, NULL::UINTEGER AS tax_order, "
-                    "false AS is_species_rep FROM ci JOIN (SELECT DISTINCT contig_uid, genome_uid, "
-                    "is_circular, assembly_quality FROM gi) g USING (contig_uid)")
+        why = _views(con, root, release, stages)
+        if why is not None:
+            raise ValueError(why)
         contigs, genomes, circular = con.execute(
             "SELECT count(*), count(DISTINCT genome_uid), count(*) FILTER (WHERE is_circular) FROM dim").fetchall()[0]
+        skipped = [{"contig_uid": cu.hex(), "stage": s, "genome_uid": g.hex(), "owner_stage": o,
+                    "kept_genome_uid": k.hex()} for cu, s, g, o, k in con.execute(
+                        "SELECT contig_uid, stage, genome_uid, owner_stage, kept_genome_uid FROM skipped "
+                        "ORDER BY contig_uid, stage").fetchall()]
         io.write_parts(io.duck_batches(con, "SELECT * FROM dim ORDER BY contig_uid", spec), spec, base,
                        EST_ROW_BYTES, max_file_bytes)
-        return {"contigs": contigs, "genomes": genomes, "circular": circular}
+        res = {"contigs": contigs, "genomes": genomes, "circular": circular}
+        return {**res, "skipped": skipped} if skipped else res
+    finally:
+        con.close()
+        shutil.rmtree(scratch, ignore_errors=True)
+
+
+def _stage_files(root: Path, rel: str, stages: list[str], cols: str) -> str:
+    """The rows of every listed stage's files under `rel`, each with its `stage`, as one SQL query (None: no file)."""
+    parts = [f"SELECT '{s}' AS stage, {cols} FROM read_parquet({_sql_list(fs)}, hive_partitioning = false)"
+             for s in stages if (fs := io.part_files(root / rel / f"stage={s}"))]
+    return " UNION ALL ".join(parts) if parts else None
+
+
+def _views(con, root: Path, release: str, stages: list[str]) -> str | None:
+    """Make the views `dim` (the table's rows) and `skipped` (genome_input rows of a contig that another stage
+    owns, DEC-26) over the release's stages, or return why the release is refused.
+
+    A contig's owning stage is the stage whose `contig_index` holds its default variant: ingest stores a
+    sequence once, in the first stage that sees it. Its row comes from that stage's `genome_input`; another
+    stage's row for the same contig that differs is skipped (that genome is one contig short here, the
+    accepted consequence of DEC-26). Without a row in an owning stage, the contig's rows must all agree, as
+    before. Refused: a default-variant contig without any row; a row naming a contig that no listed stage
+    owns (the stage on disk that owns it is named); two different rows from the owning stages (two genomes
+    in one stage, or two stages that both hold the default variant)."""
+    ci = _stage_files(root, "l0seq/contig_index", stages, "contig_uid, contig_len, is_default_variant")
+    gi = _stage_files(root, "l0seq/genome_input", stages, "contig_uid, genome_uid, is_circular, assembly_quality")
+    con.execute(f"CREATE TEMP TABLE own AS SELECT DISTINCT stage, contig_uid, contig_len FROM ({ci}) "
+                "WHERE is_default_variant")
+    con.execute("CREATE TEMP TABLE gi AS " + (gi if gi else
+                "SELECT NULL::VARCHAR AS stage, NULL::BLOB AS contig_uid, NULL::BLOB AS genome_uid, "
+                "NULL::BOOLEAN AS is_circular, NULL::VARCHAR AS assembly_quality WHERE false"))
+    con.execute("CREATE TEMP VIEW ci AS SELECT DISTINCT contig_uid, contig_len FROM own")
+    n, first = con.execute("SELECT count(*), min(contig_uid) FROM ci "
+                           "WHERE contig_uid NOT IN (SELECT contig_uid FROM gi)").fetchall()[0]
+    if n:
+        return f"{n} default-variant contigs have no genome_input row; first: {first.hex()}"
+    n, first = con.execute("SELECT count(*), min(contig_uid) FROM gi "
+                           "WHERE contig_uid NOT IN (SELECT contig_uid FROM ci)").fetchall()[0]
+    if n:
+        msg = (f"{n} genome_input rows name a contig that contig_index does not hold as a default variant; "
+               f"first: {first.hex()}")
+        owner = stored_by(root, [first], skip=set(stages)).get(first)
+        if owner is not None:
+            (first_stage,), = con.execute("SELECT min(stage) FROM gi WHERE contig_uid = ?", [first]).fetchall()
+            msg += (f" (in stage {first_stage}'s genome_input): stage {owner} stored it first and owns it (DEC-26), "
+                    f"and release {release} lists stages {stages} without it; list stage {owner} in the release")
+        return msg
+    # the row of each contig: from its owning stage(s), else the only row it has
+    con.execute("CREATE TEMP TABLE gio AS SELECT gi.*, (o.stage IS NOT NULL) AS from_owner FROM gi "
+                "LEFT JOIN own o ON o.stage = gi.stage AND o.contig_uid = gi.contig_uid")
+    con.execute("CREATE TEMP TABLE chosen AS "
+                "SELECT DISTINCT contig_uid, genome_uid, is_circular, assembly_quality FROM gio g "
+                "WHERE from_owner OR NOT EXISTS (SELECT 1 FROM gio x WHERE x.contig_uid = g.contig_uid AND x.from_owner)")
+    n, first = con.execute("SELECT count(*), min(contig_uid) FROM (SELECT contig_uid FROM chosen "
+                           "GROUP BY contig_uid HAVING count(*) > 1)").fetchall()[0]
+    if n:
+        return (f"{n} contigs have conflicting genome_input rows in the stages that own them (two genomes of one "
+                f"stage, or two stages holding the default variant); first: {first.hex()}")
+    con.execute("CREATE TEMP VIEW skipped AS SELECT g.contig_uid, g.stage, g.genome_uid, "
+                "(SELECT min(o.stage) FROM own o WHERE o.contig_uid = g.contig_uid) AS owner_stage, "
+                "c.genome_uid AS kept_genome_uid FROM gio g JOIN chosen c USING (contig_uid) "
+                "WHERE NOT g.from_owner AND (g.genome_uid IS DISTINCT FROM c.genome_uid "
+                "OR g.is_circular IS DISTINCT FROM c.is_circular OR g.assembly_quality IS DISTINCT FROM c.assembly_quality)")
+    con.execute("CREATE TEMP VIEW dim AS SELECT ci.contig_uid, c.genome_uid, ci.contig_len, c.is_circular, "
+                "NULL::UTINYINT AS tier, c.assembly_quality, NULL::UINTEGER AS tax_order, "
+                "false AS is_species_rep FROM ci JOIN chosen c USING (contig_uid)")
+    return None
+
+
+def owner_problem(root, release: str, stages: list[str], tmp=None) -> str | None:
+    """Why `contig_dim` of `release` over `stages` would be refused (`run`'s checks, DEC-26), or None; reads only.
+    `build-stage` calls it before a release's clustering (card C-20), so a release that lists a later stage
+    without the stage that owns one of its contigs is refused before hours of work, naming that stage."""
+    root = Path(root)
+    stages = catalog.check_stages(stages)
+    for s in stages:
+        if not io.part_files(root / f"l0seq/contig_index/stage={s}"):
+            return f"stage {s}: no contig_index files under {root}"
+    scratch = Path(tempfile.mkdtemp(prefix="biobox-dim-", dir=tmp))
+    con = duckdb.connect(config={"threads": 1, "memory_limit": DUCK_MEMORY_LIMIT,
+                                 "temp_directory": str(scratch / "duckdb")})
+    try:
+        return _views(con, root, release, stages)
     finally:
         con.close()
         shutil.rmtree(scratch, ignore_errors=True)

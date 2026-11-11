@@ -57,7 +57,8 @@ import pyarrow.parquet as pq
 
 from biobox import ids, io, layout, ledger, provenance
 from biobox.l0seq.inputs import GenomeInput, iter_genome_input
-from biobox.l0seq.store import SeqStore
+from biobox.l0seq.store import OWNED_BY as SKIP_REASON
+from biobox.l0seq.store import ContigOwners, SeqStore
 from biobox.registry.schemas import table
 
 __all__ = ["Z_NT_MB", "library_version", "producer", "read_models", "run"]
@@ -265,11 +266,18 @@ def _search(exe: str, cm: Path, models: dict[str, Model], batch: _Batch, cpus: i
     return pa.RecordBatch.from_pylist(rows, schema=_HIT_SCRATCH), contigs
 
 
-def _contigs(store: SeqStore, genomes: Iterable[GenomeInput]) -> Iterator[tuple[bytes, bytes, bool]]:
-    """(contig_uid, upper-case sequence, circular) of every contig of the genomes, one at a time, in input order."""
+def _contigs(store: SeqStore, genomes: Iterable[GenomeInput], owners: ContigOwners | None = None,
+             skipped: dict[bytes, str] | None = None) -> Iterator[tuple[bytes, bytes, bool]]:
+    """(contig_uid, upper-case sequence, circular) of every contig of the genomes, one at a time, in input order.
+    A contig that another stage owns (DEC-26) is not searched: it goes into `skipped` with its owner."""
     for g in genomes:
         circ = set(g.circular)
         for cu in g.contig_uids:
+            if owners is not None:
+                s = owners.owner(cu)
+                if s != owners.stage:
+                    skipped[cu] = s
+                    continue
             yield cu, store.get(cu).upper(), cu in circ
 
 
@@ -281,7 +289,10 @@ def run(root: Path, stage: str, cm_path: Path, cpus: int, genomes: Iterable[Geno
     `cpus`: cmsearch worker threads (`--cpu`), given explicitly; the output bytes do not depend on it.
     `genomes`: any iterable, consumed once; None reads the stage's `genome_input` table (which also says
     which contigs are circular). `seq_stages`: the stages whose sequences the genomes may name (card
-    B-28), default the stage itself. `tmp` holds the private scratch directory (system temp by default)
+    B-28), default the stage itself. A contig that another stage stored first (DEC-26, card C-20) is that
+    stage's: it is not searched here, and is listed in the result (`skipped_contigs`) and in the ledger
+    (reason `owned_by:<stage>`, counts 0); a hit does not depend on the other contigs searched, so nothing
+    else changes. `tmp` holds the private scratch directory (system temp by default)
     and may lie under neither the root nor `out`. `batch_bases`: bases per cmsearch call; the output
     does not depend on it. `max_file_bytes`: each table is cut into parts of at most this many
     estimated bytes.
@@ -310,7 +321,10 @@ def run(root: Path, stage: str, cm_path: Path, cpus: int, genomes: Iterable[Geno
         raise ValueError(f"{cm_path}: {len(no_ga)} model(s) without a GA cutoff, first {no_ga[0]}; --cut_ga needs one")
     flank = max(max(m.w, m.maxl) for m in models.values())
     tools = {**provenance.tool_versions("infernal", "pyarrow"), LIBRARY: library_version(cm_path)}
-    store = SeqStore(root, [stage] if seq_stages is None else list(seq_stages))
+    stages = list(dict.fromkeys([stage, *([] if seq_stages is None else seq_stages)]))
+    store = SeqStore(root, stages)
+    owners = ContigOwners(root, stage, stages)
+    skipped: dict[bytes, str] = {}
     scratch = Path(tempfile.mkdtemp(prefix="biobox-ncrna-", dir=tmp))
     try:
         cm = cm_path
@@ -336,7 +350,7 @@ def run(root: Path, stage: str, cm_path: Path, cpus: int, genomes: Iterable[Geno
                 stats["hits"] += hits.num_rows
                 b.path.unlink()
 
-            for cu, seq, circ in _contigs(store, genomes):
+            for cu, seq, circ in _contigs(store, genomes, owners, skipped):
                 if batch is None:
                     batch = _Batch(scratch / "batch.fna")
                 batch.add(cu, seq, flank if circ else None)
@@ -350,19 +364,26 @@ def run(root: Path, stage: str, cm_path: Path, cpus: int, genomes: Iterable[Geno
         finally:
             hits_w.close()
             contigs_w.close()
-        _publish(out, stage, prod, scratch, tools, max_file_bytes)
-        return {**stats, "producer": prod, "models": len(models), "flank": flank}
+        _publish(out, stage, prod, scratch, tools, max_file_bytes, skipped)
+        return {**stats, "producer": prod, "models": len(models), "flank": flank,
+                "skipped_contigs": [{"contig_uid": cu.hex(), "owner_stage": s} for cu, s in sorted(skipped.items())]}
     finally:
         store.close()
         shutil.rmtree(scratch, ignore_errors=True)
 
 
-def _publish(out: Path, stage: str, prod: str, scratch: Path, tools: dict[str, str], max_file_bytes: int) -> None:
-    """Sort the scratch hits into the producer's `feature` and `l1_ncrna` files and write the ledger."""
+def _publish(out: Path, stage: str, prod: str, scratch: Path, tools: dict[str, str], max_file_bytes: int,
+             skipped: dict[bytes, str] | None = None) -> None:
+    """Sort the scratch hits into the producer's `feature` and `l1_ncrna` files and write the ledger; a contig in
+    `skipped` (owned by another stage, DEC-26) has one ledger row, reason `owned_by:<stage>`, counts 0."""
     feat_dir, hit_dir, _ = _paths(stage, prod)
+    skipped = skipped or {}
     con = duckdb.connect(config={"threads": 1, "memory_limit": DUCK_MEMORY_LIMIT,
                                  "temp_directory": str(scratch / "duckdb"), "preserve_insertion_order": True})
     try:
+        con.register("skipped", pa.table({"contig_uid": pa.array(list(skipped), pa.binary(16)),
+                                          "reason": pa.array([f"{SKIP_REASON}{s}" for s in skipped.values()],
+                                                             pa.string())}))
         con.execute(f"CREATE VIEW hits AS SELECT DISTINCT * FROM read_parquet({_sql_path(scratch / 'hits.parquet')})")
         con.execute("CREATE VIEW contigs AS SELECT contig_uid, sum(n_in) AS n_in, sum(n_rejected) AS n_rejected "
                     f"FROM read_parquet({_sql_path(scratch / 'contigs.parquet')}) GROUP BY contig_uid")
@@ -380,11 +401,15 @@ def _publish(out: Path, stage: str, prod: str, scratch: Path, tools: dict[str, s
         def ledger_rows() -> Iterator[dict]:
             """Per contig (every contig searched, also one without a hit), in contig_uid order: hits in, kept,
             and the hits longer than a circular contig rejected."""
-            reader = con.sql("SELECT contig_uid, n_in, n_rejected FROM contigs ORDER BY contig_uid"
+            reader = con.sql("SELECT contig_uid, n_in, n_rejected, NULL AS reason FROM contigs UNION ALL "
+                             "SELECT contig_uid, 0, 0, reason FROM skipped ORDER BY contig_uid"
                              ).to_arrow_reader(io.ROW_GROUP_ROWS)
             try:
                 for b in reader:
-                    for cu, n, rej in zip(*(b.column(i).to_pylist() for i in range(3))):
+                    for cu, n, rej, why in zip(*(b.column(i).to_pylist() for i in range(4))):
+                        if why is not None:  # a contig another stage owns: not searched here
+                            yield ledger.row(cu, "contig", 0, 0, reason=why, tools=tools)
+                            continue
                         if rej:
                             yield ledger.row(cu, "contig", n, n - rej, n_rejected=rej, reason=REJECT_CIRCLE,
                                              tools=tools)

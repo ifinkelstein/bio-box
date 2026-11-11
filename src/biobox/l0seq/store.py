@@ -122,6 +122,63 @@ def index_files(root: Path) -> list[Path]:
     return io.part_files(Path(root) / INDEX_DIR, "stage=*/part-*.parquet")
 
 
+OWNED_BY = "owned_by:"  # ledger reason of a contig that another stage owns (DEC-26), followed by that stage's name
+
+
+def stages_on_disk(root: Path) -> list[str]:
+    """The stages whose `seq_locator` directory exists in the root, sorted by name: the stages a new stage's ingest
+    compares its sequences against (`locator_files`). `build-stage` passes them to gene calling (card C-20), whose
+    genomes may name a contig that one of them stored first; nothing is read from a stage that holds none."""
+    base = Path(root) / LOCATOR_DIR
+    return sorted(p.name.removeprefix("stage=") for p in base.glob("stage=*") if p.is_dir()) if base.is_dir() else []
+
+
+def stored_by(root: Path, contig_uids, skip=()) -> dict[bytes, str]:
+    """For each of `contig_uids`, the stage on disk (not in `skip`) whose `contig_index` holds its default variant,
+    where one does. For error messages that name a contig's owning stage (DEC-26); a reader never uses it to choose
+    what to read (AGENTS §3.9)."""
+    out: dict[bytes, str] = {}
+    want = list(dict.fromkeys(contig_uids))
+    for s in stages_on_disk(root):
+        if s in skip:
+            continue
+        look = KeyLookup(io.part_files(Path(root) / INDEX_DIR / f"stage={s}"), "contig_uid", ["is_default_variant"])
+        for cu in want:
+            if cu not in out and any(r["is_default_variant"] for r in look.get(cu)):
+                out[cu] = s
+    return out
+
+
+class ContigOwners:
+    """Which stage owns each contig (DEC-26, card C-20): the stage whose `contig_index` holds the contig's default
+    variant. Ingest writes a sequence once, in the first stage that sees it, and a later stage's `contig_index`
+    holds no default variant of a contig an earlier stage stored, so that stage is unique; it owns the contig's
+    gene calls, IGRs and tape. `stages` are the stages to look in, `stage` (the caller's own) first; one key
+    lookup per stage at most. A contig owned by none of them raises KeyError naming the stage on disk that owns
+    it, if any."""
+
+    def __init__(self, root: Path, stage: str, stages):
+        self.root, self.stage = Path(root), stage
+        self.stages = list(dict.fromkeys([stage, *stages]))
+        self._index = {s: KeyLookup(io.part_files(self.root / INDEX_DIR / f"stage={s}"), "contig_uid",
+                                    ["is_default_variant"]) for s in self.stages}
+
+    def owner(self, contig_uid: bytes) -> str:
+        for s in self.stages:
+            if any(r["is_default_variant"] for r in self._index[s].get(contig_uid)):
+                return s
+        raise KeyError(missing_contig(self.root, contig_uid, self.stages))
+
+
+def missing_contig(root: Path, contig_uid: bytes, stages) -> str:
+    """The message for a contig that none of `stages` holds: the stage on disk that owns it, if one does."""
+    found = stored_by(root, [contig_uid], skip=set(stages)).get(contig_uid)
+    if found is None:
+        return f"contig_uid {contig_uid.hex()} is in none of the stages {list(stages)} read, nor in any stage on disk"
+    return (f"contig_uid {contig_uid.hex()} is in none of the stages {list(stages)} read: stage {found} stored it "
+            f"first and owns it (DEC-26); read that stage too (seq_stages, --seq-stages)")
+
+
 def _sql_path(p: Path) -> str:
     return "'" + str(p).replace("'", "''") + "'"
 

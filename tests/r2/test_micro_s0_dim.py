@@ -8,6 +8,7 @@ from __future__ import annotations
 import shutil
 from pathlib import Path
 
+import pyarrow as pa
 import pyarrow.parquet as pq
 import pytest
 import yaml
@@ -147,6 +148,59 @@ def test_second_build_for_a_release_refuses_to_overwrite(built):
     with pytest.raises(FileExistsError):
         dim.run(root, REL, ["S0"])
     assert _out(root).read_bytes() == before
+
+
+def _shared_store(root: Path, tmp_path: Path) -> tuple[Path, bytes, bytes]:
+    """S0 as `_store`; S1 ingests T4 again beside a new contig N and lists both in one genome (card C-20). S0 stored
+    T4 first, so S0 owns it (DEC-26); S1's contig_index holds N only."""
+    _store(root)
+    t4 = fasta.read(FIX / "NC_000866.4.fna.gz")[0].seq
+    new = t4[:5000][::-1]
+    src = tmp_path / "s1.fna"
+    src.write_bytes(b">t4 again\n" + t4 + b"\n>new\n" + new + b"\n")
+    ingest([SourceObject(src, "s", "1")], root, "S1", shard_bases=200_000)  # the store's parameters, as `_store`
+    cu_t4, cu_new = ids.contig_uid(t4), ids.contig_uid(new)
+    write_genome_input(root, "S1", [GenomeInput((cu_t4, cu_new), 11, kind="prokaryote")])
+    return root, cu_t4, cu_new
+
+
+@pytest.mark.covers("C-01")
+def test_a_contig_shared_across_stages_keeps_its_owning_stages_genome_and_the_later_row_is_listed_skipped(tmp_path):
+    root, cu_t4, cu_new = _shared_store(tmp_path / "s", tmp_path)
+    res = dim.run(root, "rShared", ["S0", "S1"], tmp=tmp_path)
+    later = ids.genome_uid([cu_t4, cu_new])
+    assert res["contigs"] == 4 and res["genomes"] == 4
+    assert res["skipped"] == [{"contig_uid": cu_t4.hex(), "stage": "S1", "genome_uid": later.hex(),
+                               "owner_stage": "S0", "kept_genome_uid": ids.genome_uid([cu_t4]).hex()}]
+    rows = {r["contig_uid"]: r for r in pq.read_table(_out(root, "rShared")).to_pylist()}
+    assert rows[cu_t4]["genome_uid"] == ids.genome_uid([cu_t4])  # S0's genome, not S1's
+    assert rows[cu_new]["genome_uid"] == later
+    assert len(rows) == 4
+
+
+def test_a_release_with_the_later_stage_but_not_the_owning_stage_is_refused_naming_it(tmp_path):
+    root, cu_t4, _ = _shared_store(tmp_path / "s", tmp_path)
+    with pytest.raises(ValueError, match=rf"genome_input rows name a contig that contig_index does not hold.*"
+                                         rf"{cu_t4.hex()}.*stage S0 .*DEC-26"):
+        dim.run(root, "rLate", ["S1"], tmp=tmp_path)
+    assert not _out(root, "rLate").exists()
+
+
+def test_a_contig_in_two_genomes_of_one_stage_is_still_refused(tmp_path):
+    root = tmp_path / "s"
+    ingest([SourceObject(FIX / o["file"], "s", "1") for o in CONTRACT["objects"]], root, "S0", shard_bases=200_000)
+    spec = table("genome_input")
+    rows = [{"contig_uid": g.contig_uids[0], "genome_uid": ids.genome_uid(list(g.contig_uids)),
+             "is_circular": bool(g.circular), "kind": g.kind, "genetic_code": g.genetic_code,
+             "assembly_quality": g.assembly_quality} for g in _genomes()]
+    rows.append({**rows[0], "genome_uid": b"\x01" * 16})  # written past write_genome_input, which refuses it
+    d = root / spec.location / "stage=S0"
+    d.mkdir(parents=True)
+    pq.write_table(pa.Table.from_pylist(sorted(rows, key=lambda r: r["contig_uid"]), schema=spec.schema),
+                   d / "part-0.parquet")
+    with pytest.raises(ValueError, match="conflicting genome_input rows"):
+        dim.run(root, "rTwo", ["S0"])
+    assert not _out(root, "rTwo").exists()
 
 
 @pytest.mark.covers("D-01")
