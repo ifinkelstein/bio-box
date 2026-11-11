@@ -223,6 +223,25 @@ estimate: about five times that run; the PI may change it). Every other step kee
   `over_cpu_budget` is still true when the step used more than 300 CPU-minutes (section 5).
 - The exemption ends when card B-37 splits clustering into processes under the budget.
 
+**Clustering in parts (card B-41).** When clustering in one process is estimated above 80% of the
+profile's `cpu_min_per_process` (240 CPU-minutes of 300), `build-stage` clusters the release in
+parts, each step its own `run-step` under `runs/stage=<release>/`:
+
+- `cluster.plan` (the proteins into MMseqs2's database), then one step per MMseqs2 module call that
+  the two `cluster` workflow calls make (`cluster.<level>.<kk>.<module>`, 42 in all, with the step
+  between and after them), then `cluster` (the tables) last, under the cluster step's own name.
+- Each per-query call (`prefilter`, `align`, `rescorediagonal`) has a `.cut` step and, when cut into
+  more than one part, one `.part-<p>` step per part before the call's own step, which joins them.
+  Parts run several at once like scan shards, with `--scan-jobs` and `--scan-cpus`, within the hour's
+  allowance. A part is estimated at 80% of the budget at most, from the call's measured share.
+- `--cluster-parts N` cuts every per-query call into N parts whatever the estimate (for trials).
+- The files are those of clustering in one process, byte for byte (tested on the fixture and a
+  constructed set; not yet on the pod). The steps' records are in `l2/cluster_plan/release=<R>/`,
+  never in a manifest.
+- MMseqs2's databases are under `$BBTMP/scratch/biobox-cluster/<release>-<key>/`, and are removed when
+  `cluster` publishes. Their size is not yet measured.
+- The DEC-25 estimate and its refusal above still come first, until the exemption is removed.
+
 A shard that fails stops new launches. Shards already running go on to their own end and publish if
 no `STOP` file exists then, and `build-stage` exits with the failed shard's code. A `STOP` file is
 different: a shard whose command ends while `STOP` exists publishes nothing (section 3). The next call
@@ -296,6 +315,7 @@ What `run-step` leaves, and what it does at the next start:
 | `$BBTMP/staging/<stage>.<step>/` | the step was killed, failed or stopped | removes it and runs the step again |
 | `$BBTMP/scratch/<stage>.<step>/` (a step's own scratch) | the step was killed, failed or stopped | `build-stage` removes it before that step's next attempt (log: `removing ..., left by an earlier attempt`), and removes it once the step succeeds. In C-10 a stopped clustering step left 1.2 GB there (measured, wilkcomp02, 2026-11-10) |
 | a scan shard's run missing from `$BBTMP/scratch/biobox-domain-scan/<plan>/` while its run record exists | scratch was cleared (a reboot) or damaged between the shards and the merge | `build-stage`, before the merge, scans exactly those shards again into scratch (log: `scanning it again`); the new run must have the sha256 the shard's published record holds, else the build stops naming the shard (tell the PI) |
+| a clustering step's database missing from `$BBTMP/scratch/biobox-cluster/<release>-<key>/` while its record exists (card B-41) | scratch was cleared (a reboot) or damaged during clustering in parts | `build-stage`, before it goes on, makes exactly those steps again, in order (log: `making them again in order`); each must reproduce its published record, else the build stops naming the step (tell the PI) |
 | `$ROOT/runs/stage=<S>/<step>.json` (run record) | the step finished | skips the step if every listed output is in the root with its recorded size |
 | `$ROOT/runs/stage=<S>/<step>.publishing.json` (intent file) | killed while publishing | finishes the publish, or undoes it, then reruns (see below) |
 | `$ROOT/.incoming/<stage>.<step>/` | killed while publishing | uses it to finish the publish, then removes it |
@@ -669,7 +689,7 @@ exemption; the fixture's clustering is far under 300 CPU-minutes). Appendix B li
 
 | Limit | What happens | Card |
 |---|---|---|
-| Clustering is one process | a release's clustering may run above 300 CPU-minutes, up to the profile's `cluster_cpu_min_max` (20000), under DEC-25; a release estimated above that (about 62.7 M proteins, derived, section 2) is refused, exit 2. The estimate is a fit by protein count, extrapolated above 10.6 M proteins | B-36, B-37 |
+| Clustering's DEC-25 cap | above 80% of the budget a release's clustering runs in parts (card B-41, section 2), but the DEC-25 estimate still refuses one over the profile's `cluster_cpu_min_max` (20000; about 62.7 M proteins, derived, section 2), exit 2, until the split has passed on the pod and the exemption is removed. The estimate is a fit by protein count, extrapolated above 10.6 M proteins. At 95 M proteins a prefilter part's own k-mer index of the whole target would take about 333 CPU-minutes (derived: 12.44 CPU-seconds per 59,000 targets, B-37 design §3), so no part fits the budget there; the cut then refuses | B-36, B-37, B-41 |
 | Ingest of a stage over about 60 Gbp | `build-stage` refuses before any step (exit 2): one ingest process runs at about 3.7 Mbp/s (measured, wilkcomp02), so it would pass 300 CPU-minutes. Split the stage into smaller stages | B-30 |
 | Shard size is Pfam's | shards are cut at 80% of the budget at Pfam's rate (7.96 CPU-minutes per million residues, measured in C-10). A library more than 1.25 times slower per residue than that (derived: 1 / 0.8; above 9.95 CPU-minutes per million residues, derived) passes 300 CPU-minutes per shard, and the run record says `over_cpu_budget`. Lower `--scan-cpus` does not help, since the budget counts CPU-minutes | C-11, C-13 |
 | `pod_run.sh` CPU quota | the unit's quota is `--threads` of `pod_run.sh` (default the night cap, 56), fixed at launch, whatever `--scan-jobs` × `--scan-cpus` is. By day it is above the day cap: the day cap is held by `build-stage` and `run-step`, not by the quota. A `run-step` launched alone keeps the thread count it chose at its start until it ends (at most 300 CPU-minutes) | C-07, C-11, C-12 |
@@ -900,6 +920,10 @@ Last line: `01563e192ab22a5931d55e224a2dbb07`.
 - `git push pod`. Agents never push.
 - Single release steps by hand (`bio-box release cluster ...`, `bio-box stage genecall ...`).
   Only `build-stage` ran them.
+- Clustering in parts (card B-41, section 2) in a build unit, and on a real release: it was tested in
+  the test suite on the pod (the fixture and a constructed set, through `build-stage` on the fixture),
+  not in a build launched with `pod_run.sh`. The reclustering of `rN.1b` in parts (2.05 M proteins,
+  the card's acceptance) and the removal of the DEC-25 exemption have not been done.
 - A build at the real profile's 64 MiB floor and 200G cap, and a real Pfam scan (card C-10).
 - Inputs outside `/tmp/if2453` (they need an extra `--bind`, section 2), and `--digest` refusing a
   wrong image (the script's `die` path was read, not run).

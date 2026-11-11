@@ -967,6 +967,22 @@ ARTIFACTS: dict[str, ArtifactSpec] = {
         in_manifest=False,
         small_ok=True,
     ),
+    # A release's clustering in parts (card B-41, `biobox.l2.cluster`): one record per step (the plan, each module
+    # call, each cut, part and join), written once each so that `bio-box run-step` can publish the step. A build's
+    # own records, like `domain_scan`: never in a release manifest, so a release is the same whether its clustering
+    # ran in one process or in parts.
+    "cluster_plan": ArtifactSpec(
+        name="cluster_plan",
+        layer="L2",
+        location="l2/cluster_plan",
+        partition_keys=("release",),
+        pattern=r"cluster\.[A-Za-z0-9_.-]+\.json",
+        doc="a release's clustering in parts: the plan (cluster.plan.json: the release's protein_seq files and the "
+            "cut policy) and one record per step (cluster.<step>.json: its inputs' and outputs' digests, sha256 over "
+            "(key, entry) of each MMseqs2 database, and for a cut its parts), as sorted-key JSON",
+        in_manifest=False,
+        small_ok=True,
+    ),
     # A release's own records (card C-08): one file per release, the release in the file name
     # (`release=<R>.json`, `release=<R>.duckdb`), so the artifact has no partition directories. Both
     # hold the data root's absolute path (the manifest's `root`; the catalog's `catalog_info.root` and
