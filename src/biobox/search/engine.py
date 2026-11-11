@@ -6,8 +6,8 @@ library or a user's file), or a profile built from a sequence (what phmmer and t
 of jackhmmer do), from an MSA, or from unaligned seed sequences (`build_from_sequences`).
 
 The target is never held whole (card W-19): a search reads it from the pack's shards one block of
-`BLOCK_RESIDUES` residues at a time (`stream_target`), each block searched across the run's threads, and
-keeps only the hits (and, for a round that builds a next profile, its hits' sequences). At the fixed Z a
+`BLOCK_RESIDUES` residues at a time (`stream_target`), each block searched across the run's threads while the next
+one is read by a thread of its own (card W-21: two blocks in memory, never more), and keeps only the hits (and, for a round that builds a next profile, its hits' sequences). At the fixed Z a
 target's scores and E-values do not depend on what it is searched with, so this is one search of the target.
 
 Per round k:
@@ -33,10 +33,13 @@ At S0 there are no NR50 representatives, so "new representatives" are new target
 
 from __future__ import annotations
 
+import contextlib
 import io
 import math
+import queue
 import random
 import re
+import threading
 from dataclasses import dataclass, field
 from typing import Callable, Iterator
 
@@ -47,7 +50,8 @@ from biobox.l1.domains import DOM_Z, Z_PROT, iter_hmms
 
 AMINO = pyhmmer.easel.Alphabet.amino()
 # residues per block of a target read from the pack (card W-19): about 100 to 150 MB of digitized sequences with
-# their Easel records, for proteins of about 300 aa (estimate); a search holds one block at a time
+# their Easel records, for proteins of about 300 aa (estimate); a search holds two blocks at a time: the one it
+# searches and the one read ahead (card W-21)
 BLOCK_RESIDUES = 2**25
 BUILDER_SEED = 42
 FALLBACK_FAMILY_BITS = 25.0  # family calls on the seed for models without GA cutoffs
@@ -66,10 +70,87 @@ class Target:
     blocks_read: int = 0
 
     def blocks(self) -> Iterator[pyhmmer.easel.DigitalSequenceBlock]:
+        """One pass over the target. The next block is read in a background thread while the caller searches the
+        current one (`prefetch`, card W-21). A caller must drop each block before it asks for the next (it is not
+        held here either), so at most two blocks are alive at once; close the generator to stop the reader."""
         self.blocks_read = 0
-        for block in self._blocks():
-            self.blocks_read += 1
-            yield block
+        it = prefetch(self._blocks)
+        try:
+            while True:
+                try:
+                    box = [next(it)]  # a box, so that this frame holds no block while the caller has it
+                except StopIteration:
+                    return
+                self.blocks_read += 1
+                yield box.pop()
+        finally:
+            it.close()
+
+
+def prefetch(make: Callable[[], Iterator], ahead: int = 2) -> Iterator:
+    """The items of `make()`, read by a thread of its own (card W-21) so that whoever consumes them does not wait
+    for the reading while it has an item to work on.
+
+    Memory: at most `ahead` (two) items exist at once, counting the one the consumer works on, provided the
+    consumer drops an item before it asks for the next. The reader takes a permit before it reads an item, and the
+    permit comes back when the consumer asks for the item after it, so the reader is one item ahead and never more.
+
+    An exception in the reader is raised in the consumer, at the place of the item it failed on, after the items
+    before it. Closing the generator (or a consumer that raises, whose generator is closed) stops the reader: it
+    wakes, closes the source iterator in its own thread and ends; `close` waits for it."""
+    items: queue.Queue = queue.Queue()
+    permits = threading.Semaphore(ahead)
+    stop = threading.Event()
+    done = object()
+
+    def read() -> None:
+        src = None
+        try:
+            src = make()
+            while True:
+                permits.acquire()
+                if stop.is_set():
+                    return
+                try:
+                    item = next(src)
+                except StopIteration:
+                    items.put((done, None))
+                    return
+                items.put((None, item))
+                del item
+        except BaseException as e:  # surfaced in the consumer
+            items.put((e, None))
+        finally:
+            if src is not None and hasattr(src, "close"):
+                with contextlib.suppress(Exception):
+                    src.close()
+
+    reader = threading.Thread(target=read, name="biobox-prefetch", daemon=True)
+    reader.start()
+    first = True
+    try:
+        while True:
+            if not first:
+                permits.release()  # the consumer is done with the item before this one
+            first = False
+            while True:
+                try:
+                    tag, item = items.get(timeout=1.0)
+                    break
+                except queue.Empty:
+                    if not reader.is_alive() and items.empty():
+                        raise RuntimeError("the target reader ended without a result")
+            if tag is done:
+                return
+            if tag is not None:
+                raise tag
+            box = [item]
+            del item
+            yield box.pop()
+    finally:
+        stop.set()
+        permits.release(ahead + 1)
+        reader.join()
 
 
 def load_target(kind: str, records: Iterator[tuple[str, str]]) -> Target:
@@ -246,27 +327,36 @@ def search(hmm, target: Target, inclusion_bits: float, domain_bits: float, threa
     target at a time (`Target.blocks`). With `keep_sequences`, the text of each included target's sequence is kept
     in `target.seqs` (for the next round's alignment), read from the block it was found in."""
     out = {}
-    for block in target.blocks():
-        found = []
-        for hits in pyhmmer.hmmsearch([hmm], block, cpus=threads, Z=Z_PROT, domZ=DOM_Z,
-                                      T=inclusion_bits, incT=inclusion_bits):
-            for hit in hits:
-                if hit.score < inclusion_bits:
-                    continue
-                doms = sorted(hit.domains, key=lambda d: -d.score)
-                keep = [d for i, d in enumerate(doms) if i == 0 or d.score >= domain_bits]
-                uid = bytes.fromhex(text(hit.name))
-                found.append(uid)
-                out[uid] = {
-                    "seq_bitscore": hit.score, "seq_evalue_zref": hit.evalue,
-                    "domains": sorted(({"bitscore": d.score, "evalue_zref": d.i_evalue, "env_start": d.env_from - 1,
-                                        "env_end": d.env_to, "ali_start": d.alignment.target_from - 1,
-                                        "ali_end": d.alignment.target_to, "hmm_from": d.alignment.hmm_from - 1,
-                                        "hmm_to": d.alignment.hmm_to} for d in keep), key=lambda d: d["env_start"]),
-                }
-        if keep_sequences:
-            _keep(block, {u.hex() for u in found if u not in target.seqs}, target.seqs)
+    with contextlib.closing(target.blocks()) as blocks:  # closing it stops the reader of a failed search
+        for block in blocks:
+            _search_block(hmm, block, target, out, inclusion_bits, domain_bits, threads, keep_sequences)
+            del block  # not held while the next one is asked for: two blocks at most (`Target.blocks`)
     return out
+
+
+def _search_block(hmm, block, target: Target, out: dict, inclusion_bits: float, domain_bits: float, threads: int,
+                  keep_sequences: bool) -> None:
+    """One block against the profile; its hits into `out`. A function of its own so that nothing here (the hits
+    of pyhmmer refer to the block) outlives the block."""
+    found = []
+    for hits in pyhmmer.hmmsearch([hmm], block, cpus=threads, Z=Z_PROT, domZ=DOM_Z,
+                                  T=inclusion_bits, incT=inclusion_bits):
+        for hit in hits:
+            if hit.score < inclusion_bits:
+                continue
+            doms = sorted(hit.domains, key=lambda d: -d.score)
+            keep = [d for i, d in enumerate(doms) if i == 0 or d.score >= domain_bits]
+            uid = bytes.fromhex(text(hit.name))
+            found.append(uid)
+            out[uid] = {
+                "seq_bitscore": hit.score, "seq_evalue_zref": hit.evalue,
+                "domains": sorted(({"bitscore": d.score, "evalue_zref": d.i_evalue, "env_start": d.env_from - 1,
+                                    "env_end": d.env_to, "ali_start": d.alignment.target_from - 1,
+                                    "ali_end": d.alignment.target_to, "hmm_from": d.alignment.hmm_from - 1,
+                                    "hmm_to": d.alignment.hmm_to} for d in keep), key=lambda d: d["env_start"]),
+            }
+    if keep_sequences:
+        _keep(block, {u.hex() for u in found if u not in target.seqs}, target.seqs)
 
 
 def _keep(block, names: set[str], seqs: dict[bytes, str]) -> None:

@@ -183,12 +183,36 @@ def release_files(job: dict) -> ReleaseFiles:
     return ReleaseFiles.of(Path(job["root"]), job["release"])
 
 
-def _families(files: ReleaseFiles) -> dict[bytes, set[str]]:
-    out: dict[bytes, set[str]] = {}
-    for f in sorted(files.table("l1_domains"), key=str):
-        for r in pq.read_table(f, columns=["protein_uid", "model_acc"]).to_pylist():
-            out.setdefault(r["protein_uid"], set()).add(r["model_acc"])
-    return out
+class _Families:
+    """The library families (`model_acc` of `l1_domains`) of the proteins asked for, read from the release's domain
+    files one row group at a time with only the two columns needed, and only the rows of the proteins asked for kept
+    (card W-21): memory follows the question (the hits and their neighbours), never the release's domain table.
+    Row groups whose `protein_uid` range (their statistics) cannot hold a protein asked for are not read.
+    `rows_materialized` counts the rows that became Python objects."""
+
+    def __init__(self, files: ReleaseFiles):
+        self.paths = sorted(files.table("l1_domains"), key=str)
+        self.rows_materialized = 0
+
+    def of(self, uids) -> dict[bytes, set[str]]:
+        want = sorted(set(uids))
+        out: dict[bytes, set[str]] = {}
+        if not want:
+            return out
+        for f in self.paths:
+            pf = pq.ParquetFile(f)
+            col = pf.schema_arrow.get_field_index("protein_uid")
+            for i in range(pf.metadata.num_row_groups):
+                st = pf.metadata.row_group(i).column(col).statistics
+                if st is not None and st.has_min_max and (st.max < want[0] or st.min > want[-1]):
+                    continue
+                t = pf.read_row_group(i, columns=["protein_uid", "model_acc"], use_threads=False)
+                values = pa.array(want, t.schema.field("protein_uid").type)
+                t = t.filter(pc.is_in(t.column("protein_uid"), value_set=values))
+                self.rows_materialized += t.num_rows
+                for u, a in zip(t.column("protein_uid").to_pylist(), t.column("model_acc").to_pylist()):
+                    out.setdefault(u, set()).add(a)
+        return out
 
 
 def _has_domains(files: ReleaseFiles) -> bool:
@@ -364,7 +388,7 @@ def main(job_path: str) -> int:
         cpus=cpus)
     files = release_files(job)
     partial = _partial(files, job, target)
-    fams = _families(files) if target.kind == "protein" and cur["foreign_domain_alarm"] else None
+    fams = _Families(files) if target.kind == "protein" and cur["foreign_domain_alarm"] else None
     policy = nbr.Policy.parse(**recipe["context"])
     # the one tape version the run reads: its pack's (card B-16), the gene-call producer's for an older job
     tv = job.get("tape_version") or tape_version([job["gene_call_version"]])
@@ -372,20 +396,22 @@ def main(job_path: str) -> int:
     warnings = []
     if fams is None and "drift_alarm" in it["stop"]:
         warnings.append("drift_alarm not evaluated: no stored library hits for this target kind")
-    if fams is not None and not fams and it["max"] > 1 and "drift_alarm" in it["stop"] and not _has_domains(files):
+    if fams is not None and it["max"] > 1 and "drift_alarm" in it["stop"] and not _has_domains(files):
         warnings.append("drift_alarm could not be evaluated: the release has no domain annotations (l1_domains is empty)")
     if not (target.kind == "protein" and have_tapes) and "context_lost" in it["stop"]:
         warnings.append("context_lost not evaluated: no tapes for this target kind")
 
     def families(uids):
-        return {u: fams.get(u, set()) for u in uids}
+        got = fams.of(uids)
+        return {u: got.get(u, set()) for u in uids}
 
     def context(uids):
         rows, _ = nbr.fetch(root, set(uids), policy, job["gene_call_version"], tape_version=tv, files=files)
         ctx: dict[bytes, set[str]] = {u: set() for u in uids}
+        near = fams.of({r["protein_uid"] for r in rows if r["offset"] != 0}) if fams else {}
         for r in rows:
             if r["offset"] != 0:
-                ctx[r["anchor_protein_uid"]] |= fams.get(r["protein_uid"], set()) if fams else set()
+                ctx[r["anchor_protein_uid"]] |= near.get(r["protein_uid"], set())
         return ctx
 
     hit_rows, prof_rows, rounds_log, first = [], [], [], {}
