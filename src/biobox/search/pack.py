@@ -3,6 +3,7 @@
     <pack dir>/release=<R>/<pack_id>/
       pack_manifest.json         shards, meta files, counts, sources, rules, builder versions, and the
                                  tape_version the region flanks (feature uids) refer to
+      pack_verified.json         the build's record that the pack verified (card W-19), naming the manifest
       unique/part-<k>.faa.zst    every exact-unique protein, named by protein_uid hex
       igr/part-<k>.fna.zst       IGRs >= 30 nt (+ strand), named by region_uid hex
       igr/igr_meta.parquet       search_region rows for the IGRs
@@ -28,6 +29,17 @@ off the data root because on shared storage every release's pack has files under
 (LY-04; planning/measurements/2026-11-10_search_pack_size.md). `build` writes the pack under a
 temporary name in `release=<R>/` and renames it to its `pack_id`; it never overwrites a pack, and it is a
 no-op, before any work, when a pack built from the same inputs (`_fingerprint`) is there and verifies.
+
+Verified once, at build (card W-19). Before it renames the pack into place, `build` runs the checks of `verify`
+on it (every file's size and sha256, each shard's record count, each target's count against its sources; not the
+shard-size rule, which `pack verify` keeps) and writes `pack_verified.json`: the pack id and the full BLAKE3 of
+the manifest's bytes. The record sits beside the manifest, not in it, so the manifest, and the pack id that is its
+hash, are what they were before W-19: a rebuild of the same inputs gives the same pack id. A search checks only
+the manifest, the record and the files' sizes (`search_check`), reads no shard to do it and writes nothing into
+the pack directory. A pack built before W-19 has no record: a search verifies it in full for that run, with its
+scratch in the run's work directory (`verify_dir(scratch=...)`), and `build` with the same inputs, a no-op that
+verifies the pack in full, adds the record without touching the pack's files. `verify` accepts the record and
+checks that it names the manifest.
 
 A pack holds the release's files only (card B-28): every input is listed by `catalog.ReleaseFiles`,
 from the release manifest when there is one, else from the stages of the release's `release_def`, so
@@ -111,6 +123,9 @@ TAPE_BATCH_ROWS = 64  # tape rows (contigs, each with its slot lists) per batch 
 _STOP_CODES = {signal.SIGTERM: 143, signal.SIGHUP: 129}  # exit codes of a build stopped by a signal (128 + signum)
 
 MANIFEST = "pack_manifest.json"
+# card W-19: the build's record that it verified the pack (C-12), beside the manifest and not in it, so the manifest
+# and the pack id (its hash) are what they were before the record existed (module docstring)
+VERIFIED = "pack_verified.json"
 # the manifest keys that, with each target's `sources`, say what a pack was built from (`_fingerprint`)
 FINGERPRINT_KEYS = ("pack_format", "release_id", "gene_call_version", "igr_version", "tape_version", "z", "rules",
                     "builder", "missing_targets")
@@ -745,6 +760,7 @@ def _build(root: Path, release: str, gcv: str, models: dict[str, Path] | None, s
             have, pid = read_manifest(d)
             if _fingerprint(have) == want and not verify_dir(root, release, d, release_manifest=release_manifest):
                 _log(f"release {release}: pack {pid.hex()} is there, built from the same inputs: nothing to do")
+                _add_record(d, release)  # a pack built before W-19 has none; it has just verified in full
                 return {**have, "pack_id": pid.hex()}  # built from the same inputs: a no-op
     base.mkdir(parents=True, exist_ok=True)
     tag = f"{os.getpid()}-{os.urandom(4).hex()}"
@@ -755,11 +771,21 @@ def _build(root: Path, release: str, gcv: str, models: dict[str, Path] | None, s
         _log(f"release {release}: building in {out} (scratch {scratch})")
         manifest, data = _build_into(out, root, rf, head, sources, gcv, iv, tv, models or {}, shard_text_bytes,
                                      scratch)
-        final = pack_dir(packs, release, pack_id_of(data))
+        pid = pack_id_of(data)
+        # card W-19: verify once, here, and record it beside the manifest; a search then checks the record and the
+        # sizes only. The shard-size rule is not a property of the files and is left to `pack verify`.
+        _log(f"release {release}: verifying the pack (C-12)")
+        problems = _problems(rf, release, out, manifest, 0, scratch)
+        if problems:
+            raise ValueError(f"the pack built in {out} does not verify (C-12): {problems[:3]}")
+        _write_record(out, pid, release, data)
+        _log(f"release {release}: the pack verifies; record {VERIFIED} written")
+        final = pack_dir(packs, release, pid)
         if final.exists():
             if not verify_dir(root, release, final, release_manifest=release_manifest):
                 shutil.rmtree(out)
                 _log(f"release {release}: pack {final.name} is there already and verifies; this build removed")
+                _add_record(final, release)
                 return {**manifest, "pack_id": final.name}
             raise FileExistsError(f"{final}: a pack with this pack_id exists and does not verify; a pack is never "
                                   "overwritten: remove it, then build again")
@@ -773,7 +799,7 @@ def _build(root: Path, release: str, gcv: str, models: dict[str, Path] | None, s
                  "call starts again")
         raise
     shutil.rmtree(scratch, ignore_errors=True)
-    _log(f"release {release}: pack {final.name} written: {len(manifest['shards']) + len(manifest['meta']) + 1} "
+    _log(f"release {release}: pack {final.name} written: {len(manifest['shards']) + len(manifest['meta']) + 2} "
          f"files, {sum(s['bytes'] for s in manifest['shards'] + manifest['meta']):,} bytes in shards and meta")
     return {**manifest, "pack_id": final.name}
 
@@ -821,6 +847,87 @@ def read_manifest(pdir: Path) -> tuple[dict, bytes]:
     return json.loads(data), pack_id_of(data)
 
 
+# --- the build's verification record and the search's check (card W-19) -------------------------------------------
+
+
+def _record_bytes(pid: bytes, release: str, manifest_bytes: bytes) -> bytes:
+    """The record a build writes once the pack verifies (`VERIFIED`): which pack, by its id and the full BLAKE3 of
+    its manifest's bytes. No timestamp or host: the same inputs give the same bytes (D-01)."""
+    return json.dumps({"pack_id": pid.hex(), "release_id": release,
+                       "manifest_blake3": blake3(manifest_bytes).hexdigest(),
+                       "check": "pack verify (C-12) at build: every listed file's size and sha256, each shard's "
+                                "record count, each target's count against its sources", "problems": []},
+                      sort_keys=True, indent=1).encode()
+
+
+def read_record(pdir: Path) -> dict | None:
+    """The build's verification record of the pack in `pdir`, None when there is none (a pack built before W-19)
+    or it is not JSON."""
+    try:
+        return json.loads((Path(pdir) / VERIFIED).read_bytes())
+    except FileNotFoundError:
+        return None
+    except ValueError:
+        return {}
+
+
+def _record_matches(rec: dict, pid: bytes, release: str, manifest_bytes: bytes) -> bool:
+    return (rec.get("pack_id") == pid.hex() and rec.get("release_id") == release and rec.get("problems") == []
+            and rec.get("manifest_blake3") == blake3(manifest_bytes).hexdigest())
+
+
+def _write_record(d: Path, pid: bytes, release: str, manifest_bytes: bytes) -> None:
+    """Write the record into the pack directory `d`, under a temporary name renamed into place."""
+    tmp = d / f".{VERIFIED}.tmp-{os.getpid()}"
+    tmp.write_bytes(_record_bytes(pid, release, manifest_bytes))
+    os.replace(tmp, d / VERIFIED)
+
+
+def _add_record(d: Path, release: str) -> None:
+    """Add the record to a pack that has just verified in full and has none (built before W-19): the pack's own
+    files are not touched. A pack directory this user cannot write keeps no record; the build says so."""
+    if (d / VERIFIED).exists():
+        return
+    data = (d / MANIFEST).read_bytes()
+    try:
+        _write_record(d, pack_id_of(data), release, data)
+    except OSError as e:
+        _log(f"release {release}: pack {d.name} verified, but its record could not be written ({e}); every search "
+             "of it verifies it in full")
+        return
+    _log(f"release {release}: pack {d.name} verified; its record {VERIFIED} added (the pack's files are unchanged)")
+
+
+def search_check(pdir: Path, release: str) -> tuple[list[str], bool]:
+    """What a search checks of its pack (card W-19), and whether the build recorded that the pack verified:
+    (problems, recorded). The checks: the manifest's hash is the directory's name (the pack id), the pack is of
+    `release`, every file the manifest lists is there with the size the manifest gives, and a record, when there
+    is one, names this manifest (its pack id and full BLAKE3). It reads the manifest and the record and stats the
+    files; it reads no shard and writes nothing. `recorded` is False for a pack built before W-19 (no record): the
+    caller verifies it in full (`verify_dir`). `pack verify` stays the full check."""
+    pdir = Path(pdir)
+    data = (pdir / MANIFEST).read_bytes()
+    manifest, pid = json.loads(data), pack_id_of(data)
+    problems = []
+    if pdir.name != pid.hex():
+        problems.append(f"{pdir}: the directory is not named by the manifest hash {pid.hex()}")
+    if manifest.get("release_id") != release:
+        problems.append(f"{pdir}: a pack of release {manifest.get('release_id')}, not {release}")
+    for entry in manifest["shards"] + manifest["meta"]:
+        try:
+            size = (pdir / entry["path"]).stat().st_size
+        except FileNotFoundError:
+            problems.append(f"{entry['path']}: listed but missing")
+            continue
+        if size != entry["bytes"]:
+            problems.append(f"{entry['path']}: {size} bytes, manifest says {entry['bytes']}")
+    rec = read_record(pdir)
+    recorded = rec is not None and _record_matches(rec, pid, release, data)
+    if rec is not None and not recorded:
+        problems.append(f"{VERIFIED}: does not name this manifest (pack id {pid.hex()})")
+    return problems, recorded
+
+
 def _count_records(path: Path) -> int:
     """The FASTA records of a zstd shard, counted while decompressing (a header is a line that starts with `>`)."""
     n, at_line_start = 0, True
@@ -831,12 +938,13 @@ def _count_records(path: Path) -> int:
     return n
 
 
-def _count_source(rf: ReleaseFiles, manifest: dict, target: str, out: Path) -> int | None:
+def _count_source(rf: ReleaseFiles, manifest: dict, target: str, out: Path, scratch: Path | None = None) -> int | None:
     gcv = manifest["gene_call_version"]
     if target == "unique":
-        # distinct protein uids through a sorter, in a scratch directory beside the pack (dot-named, so `find`
-        # and `build` pass it by), removed after
-        uids = _Sorter(out.parent / f".verify-{os.getpid()}-{os.urandom(4).hex()}",
+        # distinct protein uids through a sorter, in a scratch directory under `scratch` (a search's: its work
+        # directory, so a search writes nothing into the pack directory; card W-19), else beside the pack
+        # (dot-named, so `find` and `build` pass it by); removed after
+        uids = _Sorter((scratch or out.parent) / f".verify-{os.getpid()}-{os.urandom(4).hex()}",
                        pa.schema([pa.field("protein_uid", UID)]), None, None)
         try:
             for f in _protein_files(rf, gcv):
@@ -873,8 +981,11 @@ def verify(root: Path, release: str, pack_id: bytes | None = None,
 
 
 def verify_dir(root: Path, release: str, out: Path, pack_id: bytes | None = None,
-               min_shard_bytes: int = layout.TARGET_FILE_BYTES, release_manifest: dict | None = None) -> list[str]:
-    """`verify` of the pack in the directory `out`: also, the directory is named by the manifest's hash."""
+               min_shard_bytes: int = layout.TARGET_FILE_BYTES, release_manifest: dict | None = None, *,
+               scratch: Path | None = None) -> list[str]:
+    """`verify` of the pack in the directory `out`: also, the directory is named by the manifest's hash, and the
+    build's verification record, when there is one, names this manifest. The distinct proteins are counted through
+    a sorter under `scratch` (default: beside the pack)."""
     root, out = Path(root).resolve(), Path(out)
     if not (out / MANIFEST).exists():
         return [f"{out}: no {MANIFEST}"]
@@ -882,15 +993,27 @@ def verify_dir(root: Path, release: str, out: Path, pack_id: bytes | None = None
         rf = ReleaseFiles.of(root, release, release_manifest)
     except FileNotFoundError as e:
         return [f"release {release}: {e}"]
-    manifest, pid = read_manifest(out)
+    data = (out / MANIFEST).read_bytes()
+    manifest, pid = json.loads(data), pack_id_of(data)
     problems = []
     if pack_id is not None and pack_id != pid:
         problems.append(f"pack_id {pack_id.hex()} differs from the manifest hash {pid.hex()}")
     if out.name != pid.hex():
         problems.append(f"{out}: the directory is not named by the manifest hash {pid.hex()}")
+    rec = read_record(out)
+    if rec is not None and not _record_matches(rec, pid, release, data):
+        problems.append(f"{VERIFIED}: does not name this manifest (pack id {pid.hex()})")
+    return problems + _problems(rf, release, out, manifest, min_shard_bytes, scratch)
+
+
+def _problems(rf: ReleaseFiles, release: str, out: Path, manifest: dict, min_shard_bytes: int,
+              scratch: Path | None) -> list[str]:
+    """The checks of `verify_dir` on the pack's contents, whatever its directory is called (the build runs them on
+    its temporary directory before renaming it: card W-19)."""
+    problems = []
     if manifest.get("release_id") != release:
         problems.append(f"{out}: a pack of release {manifest.get('release_id')}, not {release}")
-    listed = {MANIFEST}
+    listed = {MANIFEST, VERIFIED}
     by_target: dict[str, list[dict]] = defaultdict(list)
     for entry in manifest["shards"] + manifest["meta"]:
         listed.add(entry["path"])
@@ -927,7 +1050,7 @@ def verify_dir(root: Path, release: str, out: Path, pack_id: bytes | None = None
                 n = _count_records(p)
                 if n != s["n_seq"]:
                     problems.append(f"{s['path']}: {n} records, manifest says {s['n_seq']}")
-        expect = _count_source(rf, manifest, target, out)
+        expect = _count_source(rf, manifest, target, out, scratch)
         if expect is not None and expect != info["n_seq"]:
             problems.append(f"{target}: {info['n_seq']} sequences, its source has {expect}")
     return problems
