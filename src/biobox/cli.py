@@ -1051,7 +1051,9 @@ def main(argv: list[str] | None = None) -> int:
     pk = sub.add_parser("pack", parents=[common])
     pk.add_argument("action", choices=["build", "verify"])
     pk.add_argument("--release", required=True)
-    pk.add_argument("--model", action="append", default=[], help="library=path to an HMM file")
+    pk.add_argument("--model", action="append", default=[],
+                    help="<library>-<version>=<HMM file>, once for each domain library of the release; optional: "
+                         "give none when the release has none (an hmm_file or sequences seed needs no model)")
     pk.add_argument("--pack-dir", help=PACK_DIR_HELP)
     pk.add_argument("--profile", help=PROFILE_DIRS_HELP)
     s = sub.add_parser("search", parents=[common])
