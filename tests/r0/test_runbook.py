@@ -34,6 +34,7 @@ pytestmark = [pytest.mark.r0, pytest.mark.covers("C-06")]
 
 ROOT = Path(__file__).resolve().parents[2]
 RUNBOOK = ROOT / "RUNBOOK.md"
+AGENT_GUIDE = ROOT / "AGENT_GUIDE.md"  # for agents that use releases; its commands are checked the same way
 POD_RUN = ROOT / "scripts" / "pod_run.sh"
 POD_PYTEST = ROOT / "scripts" / "pod_pytest.sh"
 PROFILE = ROOT / "profiles" / "wilkcomp02.yaml"
@@ -194,9 +195,9 @@ def check_module(module: str, args: list[str]) -> list[str]:
     return []
 
 
-def read_commands() -> list[tuple[int, str]]:
-    assert RUNBOOK.is_file(), f"{RUNBOOK} does not exist"
-    return commands(RUNBOOK.read_text())
+def read_commands(path: Path = RUNBOOK) -> list[tuple[int, str]]:
+    assert path.is_file(), f"{path} does not exist"
+    return commands(path.read_text())
 
 
 # --- the checker itself: it must reject what it is meant to reject ---------------------------------
@@ -241,8 +242,9 @@ def test_the_runbook_has_commands():
     assert len(read_commands()) >= 20
 
 
-def test_every_bio_box_command_in_the_runbook_is_one_the_parser_accepts():
-    bad = [f"RUNBOOK.md:{n}: {p}" for n, cmd in read_commands() for p in check(cmd)]
+@pytest.mark.parametrize("doc", [RUNBOOK, AGENT_GUIDE], ids=lambda p: p.name)
+def test_every_bio_box_command_in_the_runbook_is_one_the_parser_accepts(doc):
+    bad = [f"{doc.name}:{n}: {p}" for n, cmd in read_commands(doc) for p in check(cmd)]
     assert not bad, "\n".join(bad)
 
 
@@ -479,4 +481,21 @@ def test_c14_no_command_block_uses_a_nested_quote_python_one_liner():
     """Card C-14 (4): `python -c '...'` with quotes inside survives no `ssh '...' bash -c "..."`; the runbook uses
     script files, which take their arguments without quoting."""
     bad = [f"RUNBOOK.md:{n}: {c[:60]}" for n, c in read_commands() if re.search(r"(?:python|biopy)\s+-c\b", c)]
+    assert not bad, "\n".join(bad)
+
+
+# --- GUIDE.md, the user guide: its commands are checked as the runbook's are --------------------------------
+
+
+@pytest.mark.parametrize("doc", [ROOT / "GUIDE.md"], ids=lambda p: p.name)
+def test_every_bio_box_command_in_the_user_guide_is_one_the_parser_accepts(doc):
+    """GUIDE.md prints commands for a scientist to copy: each is read and checked as the runbook's are, and every pack,
+    search and nbr command names its directories or the profile (W-03)."""
+    cmds = commands(doc.read_text())
+    assert cmds, f"{doc.name} has no command in a bash block"
+    bad = [f"{doc.name}:{n}: {p}" for n, cmd in cmds for p in check(cmd)]
+    for n, cmd in cmds:
+        args = bio_box_args(cmd)
+        if args and args[0] in ("pack", "search", "nbr"):
+            bad += [f"{doc.name}:{n}: {p}" for p in search_dir_problems(args)]
     assert not bad, "\n".join(bad)

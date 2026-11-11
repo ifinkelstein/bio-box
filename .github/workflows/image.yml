@@ -46,7 +46,11 @@ jobs:
           tags: ${{ env.IMAGE }}:${{ github.sha }},${{ env.IMAGE }}:latest
           cache-from: type=gha
       - name: tests inside the image (R0-R2)
-        run: docker run --rm ${{ env.IMAGE }}-test:${{ github.sha }} pytest -q
+        # --init: without an init process pytest is PID 1 and never reaps the orphans of a signalled
+        # step, so a process that has exited stays a zombie and still answers kill(pid, 0)
+        # (tests/r2/test_runstep_resume.py::test_signal_while_the_command_runs). The pod and the
+        # Actions runner both have an init.
+        run: docker run --rm --init ${{ env.IMAGE }}-test:${{ github.sha }} pytest -q
       - name: doctor inside the image
         run: docker run --rm ${{ env.IMAGE }}:${{ github.sha }} python -m biobox.doctor
       - name: native tools inside the image

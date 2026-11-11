@@ -12,6 +12,8 @@ WORKDIR /opt/bio-box
 COPY --chown=$MAMBA_USER:$MAMBA_USER pyproject.toml uv.lock README.md ./
 # the conda pins are half of the container lock that C-08 checks tool versions against
 COPY --chown=$MAMBA_USER:$MAMBA_USER container/environment.yml ./container/environment.yml
+# biobox.provenance reads the frozen reference libraries from here (DEC-12)
+COPY --chown=$MAMBA_USER:$MAMBA_USER refdb.yaml ./
 COPY --chown=$MAMBA_USER:$MAMBA_USER src ./src
 ENV UV_PROJECT_ENVIRONMENT=/opt/bio-box/.venv UV_LINK_MODE=copy UV_PYTHON_DOWNLOADS=never
 RUN uv sync --frozen --no-dev --python /opt/conda/bin/python
@@ -28,6 +30,8 @@ COPY --chown=$MAMBA_USER:$MAMBA_USER scripts ./scripts
 COPY --chown=$MAMBA_USER:$MAMBA_USER golden.yaml golden.lock.yaml ./
 # R0 checks test IDs against the plan documents
 COPY --chown=$MAMBA_USER:$MAMBA_USER 00-spec.md PLAN.md STAGES.md ./
+# R0 checks the runbook's commands against the parsers
+COPY --chown=$MAMBA_USER:$MAMBA_USER RUNBOOK.md ./
 COPY --chown=$MAMBA_USER:$MAMBA_USER planning ./planning
 # the host-profile tests read the shipped profile
 COPY --chown=$MAMBA_USER:$MAMBA_USER profiles ./profiles

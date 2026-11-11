@@ -1,7 +1,9 @@
 """The `--genomes` and `--objects` files of `bio-box build-stage` for card C-10, from the import ladder's inputs.
 
     python make_inputs.py phage SRC_FASTA_GZ N OUT_DIR
-    python make_inputs.py prok LOCK_JSON SELECTION_TSV OUT_DIR
+    python make_inputs.py prok LOCK_JSON SELECTION_TSV OUT_DIR [--source-release datasets-v2-YYYY-MM-DD]
+
+--source-release labels every prok object (default datasets-v2-2026-11-09, the ladder's fetch date).
 
 phage: the first N records of the INPHARED FASTA, copied byte for byte (header and sequence lines as in
 the source) to OUT_DIR/phage_first<N>.fa; every record its own genome (kind virus, genetic code 11,
@@ -51,6 +53,14 @@ def genome(uids: list[bytes], seen: set, code: int, kind: str, quality: str) -> 
 
 
 def main(argv: list[str]) -> int:
+    release = "datasets-v2-2026-11-09"
+    if "--source-release" in argv:
+        k = argv.index("--source-release")
+        if k + 1 >= len(argv):
+            print(USAGE, file=sys.stderr)
+            return 2
+        release = argv[k + 1]
+        argv = argv[:k] + argv[k + 2 :]
     if any(a in ("-h", "--help") for a in argv) or len(argv) != 4 or argv[0] not in ("phage", "prok"):
         print(USAGE, file=sys.stderr if len(argv) != 4 else sys.stdout)
         return 0 if any(a in ("-h", "--help") for a in argv) else 2
@@ -83,7 +93,7 @@ def main(argv: list[str]) -> int:
             dropped += d
             genomes += [g] if g else []
             objects.append({"path": v["file"], "source_name": "ncbi_genomes",
-                            "source_release": "datasets-v2-2026-11-09", "license": "INSDC public data",
+                            "source_release": release, "license": "INSDC public data",
                             "redistributable": True, "retrieved_at": v["retrieved_utc"]})
     (out / "genomes.json").write_text(json.dumps(genomes))
     (out / "objects.json").write_text(json.dumps(objects, indent=1))
