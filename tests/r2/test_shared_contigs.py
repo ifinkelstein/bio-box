@@ -316,10 +316,12 @@ def test_the_ncrna_producer_skips_a_shared_contig_and_ledgers_it(direct_s1, tmp_
     from biobox.l1 import ncrna
 
     lib = FIX / "rfam15.1_micro_s0.cm.gz"
+    # card E-07: the fixture library's models on whole contigs (S1 is not gene-called here, so no intergenic models)
+    model_set = FIX / "ncrna_set_whole.tsv"
     out = tmp_path / "o"
-    res = ncrna.run(direct_s1, "S1", lib, 2, out=out, tmp=tmp_path, seq_stages=["S1", "S0"])
+    res = ncrna.run(direct_s1, "S1", lib, 2, out=out, tmp=tmp_path, seq_stages=["S1", "S0"], model_set=model_set)
     assert res["skipped_contigs"] == [{"contig_uid": cu.hex(), "owner_stage": "S0"} for cu in sorted(SHARED)]
-    prod = ncrna.producer(lib)
+    prod = ncrna.producer(lib, model_set)
     feats = {r["contig_uid"] for r in _rows(out, f"l1/feature/producer={prod}/stage=S1", ["contig_uid"])}
     assert feats and not feats & SHARED
     rows = ledger.read(out, "S1", f"ncrna-{prod}")
