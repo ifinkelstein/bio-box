@@ -434,8 +434,10 @@ under the data root is refused before anything is read.
 Search commands that run for more than a moment go through `scripts/pod_run.sh`, so they run in a
 capped unit.
 
-**Pack.** Build the search pack of a release once. `--model` is `<library>-<version>=<HMM file>`
-and must match a domain library of the release. A second build from the same inputs finds the pack
+**Pack.** Build the search pack of a release once. `--model` is `<library>-<version>=<HMM file>`,
+once for each domain library of the release; it is optional, and a release with no domain library
+(the 10 Gbp release `rN.1` has none) is built without it. A search seeded by an HMM file or by
+sequences needs no model in the pack. A second build from the same inputs finds the pack
 and changes nothing; a pack is never overwritten. A search whose pack is missing exits 2 and names
 the `pack build` command.
 

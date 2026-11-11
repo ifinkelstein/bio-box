@@ -47,7 +47,11 @@ Record: `planning/measurements/2026-11-10_trial_search_rN1.md` (all *measured*, 
   and the NCBI Datasets v2 source is on no approved list (AGENTS §8). Waiting for the PI.**
 - Waiting for the PI: the download source; best-complete-per-species (11,973) or GTDB representatives only
   (9,635); adding `Pfam-A.seed` to `refdb.yaml` for a repeat of 0-09a.
-- Running: W-16 (pack build in bounded memory; the real pack of `rN.1`).
+- **A real search ran end to end on `rN.1`** (second trial, `planning/measurements/2026-11-11_trial_search_rN1_second.md`,
+  branch `trial/search-rN1-2`): `bio-box search hmm` with Pfam `RNA_pol` gave the same 1,957 proteins as
+  `hmmsearch` on the export, in 534 s, but the worker peaked at 26.27 GiB. Cards W-19 (memory and start-up,
+  running) and W-20 (output wording). Outputs: `/tmp/if2453/trial2/out/rnap` on the pod.
+- Running: W-19, B-41 (split clustering, fixture only), B-39.
 
 ### 10 Gbp rebuild, 18:20 CST
 
@@ -145,7 +149,7 @@ Last full suite on the integration branch before the C-11 merge: 1,053 passed, 1
 pinned image; 3 min 40 s wall for the slowest shard, against 13.5 min in one process). The skips
 need samtools, bgzip, Prodigal or the golden set. Tests no longer run on the laptop (AGENTS.md §5.5).
 
-## Merged (81 cards)
+## Merged (82 cards)
 
 | Card | Merge | What it did | Audit notes |
 |---|---|---|---|
@@ -229,6 +233,7 @@ need samtools, bgzip, Prodigal or the golden set. Tests no longer run on the lap
 | W-17 | `79632dc` | On a release without `member_cluster` (built before B-27), `nbr summarize` and the exports read `cluster_member` and say on stderr that it is the slow path; the exports' label columns fall back to `contig_occurrence` the same way; `release verify` warns (exit unchanged) for each lookup table the release lacks | Before: `nr50` keys 0 where the brute-force oracle has 62, with exit 0. The catalog's own `contig_label` view is still empty on such a release (card W-18). Branch suite 1,240 passed, 12 skipped |
 | B-38 | this merge | `partners_of` reads each `tape_tokens` row group once per query, in batches of at most 16 row groups on up to 8 threads; memory bound about 300 MB (*derived*) | On `rN.1` (*measured*, wilkcomp02, read-only, 4 CPUs): 3,509 anchors 12.35 s before, 0.52 s after, 0.78 s for the plain join; 10 anchors 0.33 s, 0.14 s, 0.47 s. Answers equal by sha256. No switch to a join: it ties in a middle band and loses elsewhere. Branch suite 1,237 passed, 12 skipped |
 | W-18 | merge after B-38 | Six small defects from the trial search: `open_catalog`'s DuckDB temp directory is under the system temp directory, never the data root; a `protein_accession` positive control is refused by the recipe parser (the release records none); `nbr --anchors-file`; `pod_run.sh` logs the unit's CPU and memory totals before the exit line; `bio-box find --accession ACC[:START-END] | --protein UID`, shared with `search hmm --positive`; the catalog's `contig_label` view falls back to `contig_occurrence` on a release without label files | One existing test migrated (the `protein_accession` case of a W-08 test, now a refusal). The `usage` line of `pod_run.sh` is tested with fakes only: check one real unit log. Merge conflict with W-17 in one test file, both sides appended; both kept. Pod suite 1,255 passed, 13 skipped |
+| W-16 | this merge | `pack build` and `pack verify` stream: regions are written through a stable external merge sort and shards as they fill; progress lines on stderr; a signal removes the build's temporary directories; the missing-pack message no longer implies `--model` is required | Peak memory no longer grows with regions: 330 MiB at 10× and at 200× (it grew 175 MiB before). Fixture pack byte-identical, same pack id. **The pack of `rN.1` built under a 32 GiB cap: 750 MiB peak, 5,282 s wall, 86.0 CPU-minutes, 5.51 GB, verified** (*measured*, wilkcomp02, unit `w16-pack`); it is at `/tmp/if2453/w16/packs`. The pack is 32% over the earlier size estimate (dark ORFs twice as dense as on the fixture). Pod suite 1,264 passed, 13 skipped |
 
 Decisions DEC-18 to DEC-23 were approved by the PI on 2026-11-09 and are in `planning/DECISIONS.md`.
 
