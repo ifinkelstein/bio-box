@@ -2557,3 +2557,17 @@ def test_w13_a_refused_wait_run_writes_no_pending_record(world, tmp_path, capsys
     assert not runner.pending_path(d).exists()
     assert not (tmp_path / "work").exists()
 
+
+
+@pytest.mark.covers("W-14")
+def test_w14_peak_memory_is_the_workers_own_not_the_runners(world):
+    """Linux hands a process's memory image at exec to the `ru_maxrss` of what it execs, so `wait4` on a worker
+    forked from a big runner reports at least the runner's peak (card C-15). The runner here holds 768 MiB
+    (written, so resident); the worker is a fresh interpreter that holds a small part of that."""
+    held = b"\x01" * (768 << 20)
+    hit, _ = _seed(world[0])
+    row = _run(world, _recipe(hit, hit))
+    assert len(held) == 768 << 20
+    assert row["status"] == "ok", (row["error"], row["status"])
+    print(f"recorded peak MiB: {row['peak_rss_bytes'] / 2**20:.0f}")
+    assert 1 << 20 < row["peak_rss_bytes"] < 768 << 20, row["peak_rss_bytes"]
