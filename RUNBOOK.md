@@ -119,14 +119,19 @@ How to tell it finished:
 
 ```bash
 tail -n 3 "$BBTMP/logs/c06-build.log"
-grep "all 13 steps done" "$BBTMP/logs/c06-build.log"
+grep "steps done" "$BBTMP/logs/c06-build.log"
 ls "$ROOT/runs/stage=S0"
 ```
 
 - The last line is `pod_run: c06-build exited 0`. The number is the exit code.
-- The log has a line ending in `build-stage: stage S0 and release rC6.1: all 13 steps done`, and a
-  `run-step: ... published N files` line for each of the 12 steps that run a command (the
-  `features` slot is empty).
+- The log has a line ending in `build-stage: stage S0 and release rC6.1: all N steps done`, and a
+  `run-step: ... published N files` line for each step that runs a command (the `features` slot is
+  empty). `--library` is optional and repeats: N is 12 plus one per `--library` (derived from
+  `plan` in `src/biobox/stage.py`, which prints `len(plan)`; measured, wilkcomp02, 2026-11-10: units
+  `r10-S1-1` and `r10-P1-1`, which ran without `--library`, printed `all 12 steps done`).
+  With one library, as in the commands here, the line is `all 13 steps done` and 12 steps run a command;
+  with none it is `all 12 steps done` and 11 run a command. A scan that runs in shards adds plan, shard and
+  merge steps, but the count in the line stays the same.
 - `systemctl --user status` says `could not be found`: the unit has ended.
 - `pod_run: c06-build received SIGTERM` just before the last line: the unit was stopped
   (`systemctl --user stop`, section 3). Relaunch to resume (section 4).
@@ -176,12 +181,28 @@ This fixture launch runs two shards of one thread at once; the scratch profile a
 bash "$TREE/scripts/pod_run.sh" --profile "$PROFILE" --image "$IMAGE" --digest "$DIGEST" --bind /tmp/if2453 --env PYTHONPATH="$PYTHONPATH_POD" --threads 2 c11-build build-stage --profile "$PROFILE" --root "$ROOT" --stage S0 --release rC6.1 --stages S0 --genomes "$WORK/inputs/genomes-S0.json" --objects "$WORK/inputs/objects-S0.json" --library test 1 "$WORK/inputs/lib.hmm" gathering --scan-jobs 2 --scan-cpus 1
 ```
 
-For a real Pfam scan by day, with the real profile: `--scan-jobs 10 --scan-cpus 4`.
+For a real Pfam scan, with the real profile, do not take the whole cap. The cap (40 threads by day, 56 at
+night and at weekends, section 10) is a total over everything of ours on the pod: your build, other
+agents' builds and tests, searches, and the PI's work, all together (AGENTS 7.2). `build-stage` counts
+only its own threads, so it cannot see the others; you must. Count the threads the other jobs of ours use
+now (`systemctl --user list-units`, `top`, section 1) and choose J so that all together stay at or under the cap:
 
-A shard that fails stops new launches. Shards already running finish and publish, then
-`build-stage` exits with the failed shard's code. The next call runs only the shards that have no
-run record, then the merge. While shards run, the log holds one `run-step:` line per shard as it
-ends, in the order they end.
+```text
+J = floor((cap - other threads) / C)       C = --scan-cpus, default 4; J at least 1
+```
+
+`cap` is the one for the hour (the allowance). `other threads` is what else of ours runs, and what you
+will start during the build. A worked example (derived, from the formula; the 40 is the profile's
+`max_threads_day`): by day, with cap 40, one other build that runs 16 threads and C = 4, J =
+floor((40 - 16) / 4) = 6, so `--scan-jobs 6 --scan-cpus 4`, 24 threads, 40 in all. With nothing else
+running, the same formula gives J = 10, which is the whole cap: leave a margin if anything may start
+during the hours the scan runs. A smaller J only makes the scan take longer; the output is the same.
+
+A shard that fails stops new launches. Shards already running go on to their own end and publish if
+no `STOP` file exists then, and `build-stage` exits with the failed shard's code. A `STOP` file is
+different: a shard whose command ends while `STOP` exists publishes nothing (section 3). The next call
+runs only the shards that have no run record, then the merge. While shards run, the log holds one
+`run-step:` line per shard as it ends, in the order they end.
 
 ## 3. Pause with STOP, and resume
 
@@ -193,10 +214,17 @@ touch "$ROOT/STOP"
 
 - A new launch exits 75 and runs nothing. The log says `STOP exists; not starting`.
 - A running build checks before each step and exits 75 at the next step boundary. During a scan
-  in shards it checks before each shard launch, launches no more, and waits for the shards that run.
+  in shards it checks before each shard launch, launches no more, and waits for the shards that run
+  (`_launch` in `src/biobox/stage.py`: `launching no more shards, waiting for the N running`).
 - A step that is running when the file appears finishes its command. `run-step` then publishes
   nothing, leaves its staging directory and exits 75. The log says `STOP appeared; not publishing`.
-  The next call runs that step again from the start.
+  The next call runs that step again from the start. A scan shard is such a step (each shard is its
+  own `run-step`), so this is the one rule for shards too: a shard that ended before the file appeared
+  is published and kept; a shard still running when the file appears runs its command to the end and
+  publishes nothing (the check is after the command, in `run_step` of `src/biobox/runstep.py`), and
+  `build-stage` launches no more and exits 75 once they have ended. Those shards run again from the
+  start in the next call; the shards with a run record do not. A shard is cut to at most 80% of 300 CPU-minutes (240, derived: 300 × 0.8), so
+  a `STOP` costs at most that much per running shard, as an upper bound from the plan, not measured.
 - So a `STOP` inside a step costs that step's whole work, done twice. On the pod a `STOP` during
   stage S1a's gene calling cost 57.7 s and 4.98 CPU-minutes (measured, wilkcomp02, 2026-11-10,
   card C-10, the rerun's run record); during a release's clustering it would cost up to 1,575.2 s
@@ -290,16 +318,20 @@ names. Fields:
 | `image_digest`, `host` | the image sha256 that `pod_run.sh --digest` passed in, and the host |
 | `outputs` | each published file: `path`, `bytes`, `sha256` |
 
+These commands run `$WORK/rb.py`, a script file saved from Appendix B. It is a Python file and not a
+`python -c` string, so a command survives one level of quoting, such as `ssh host 'bash -c "..."'`; a
+`python -c` string with quotes inside it does not (`unexpected EOF`, found in card C-14).
+
 One record:
 
 ```bash
-biopy -c "import json, sys; r = json.load(open(sys.argv[1])); print({k: r[k] for k in ('stage', 'step', 'wall_s', 'cpu_min', 'peak_rss_bytes', 'threads', 'exit_code', 'over_cpu_budget')}, r['mem_cap']['how'], len(r['outputs']), 'outputs')" "$ROOT/runs/stage=S0/genecall.json"
+biopy "$WORK/rb.py" record "$ROOT/runs/stage=S0/genecall.json"
 ```
 
 Every record in the root, in start order:
 
 ```bash
-biopy -c 'import duckdb, sys; con = duckdb.connect(config={"threads": 2}); con.sql("SELECT stage, step, wall_s, cpu_min, peak_rss_bytes, mem_cap.how AS cap FROM read_json_auto(?, filename = true, union_by_name = true) WHERE filename NOT LIKE ? ORDER BY started_at", params=[sys.argv[1] + "/runs/*/*.json", "%.publishing.json"]).show(max_width=200, max_rows=60)' "$ROOT"
+biopy "$WORK/rb.py" records "$ROOT"
 ```
 
 The ledger is a Parquet table, one file per step: `ledger/stage=<S>/step=<name>/part-0.parquet`,
@@ -310,7 +342,7 @@ and for clustering `ledger/release=<R>/step=cluster/part-0.parquet`. One row per
 A release's catalog has the view `ledger`. Totals per step, with each object counted once:
 
 ```bash
-biopy -c 'import sys; from pathlib import Path; from biobox import catalog; con = catalog.open_catalog(Path(sys.argv[1]) / "catalog" / f"release={sys.argv[2]}.duckdb", threads=2); con.sql("SELECT stage, release, step, count(*) AS objects, sum(n_in) AS n_in, sum(n_kept) AS n_kept, sum(n_merged) AS n_merged, sum(n_rejected) AS n_rejected FROM (SELECT stage, release, step, object_key, min(n_in) AS n_in, min(n_kept) AS n_kept, min(n_merged) AS n_merged, sum(n_rejected) AS n_rejected FROM ledger GROUP BY ALL) GROUP BY ALL ORDER BY ALL").show(max_width=250)' "$ROOT" rC6.2
+biopy "$WORK/rb.py" ledger "$ROOT" rC6.2
 ```
 
 Two checks. Balance (L-01): per object, `n_in = n_kept + n_merged + sum(n_rejected)`. Chain (L-03):
@@ -318,7 +350,7 @@ along each edge, the downstream `n_in` equals the upstream `n_kept`. Each return
 problems; an empty list is a pass. The chain check needs a release whose stages are one stage.
 
 ```bash
-biopy -c 'import sys; from pathlib import Path; from biobox import ledger; root = Path(sys.argv[1]); print("balance (L-01):", ledger.check_balance(root, "S0", ["ingest", "genecall", "domains-test-1", "cluster"], "rC6.1")); print("chain (L-03):", ledger.check_chain(root, "S0", "rC6.1"))' "$ROOT"
+biopy "$WORK/rb.py" checks "$ROOT" S0 rC6.1 ingest,genecall,domains-test-1,cluster
 ```
 
 ## 6. Verify a release
@@ -345,7 +377,7 @@ Open the catalog and read from it. The catalog is a DuckDB file that names the r
 from; it reads the root's Parquet files by the manifest's list.
 
 ```bash
-biopy -c 'import sys; from pathlib import Path; from biobox import catalog; con = catalog.open_catalog(Path(sys.argv[1]) / "catalog" / f"release={sys.argv[2]}.duckdb", threads=2); print(con.execute("SELECT key, value FROM catalog_info ORDER BY key").fetchall()); print("contigs", con.execute("SELECT count(*) FROM contig_index").fetchone()[0])' "$ROOT" rC6.2
+biopy "$WORK/rb.py" catalog "$ROOT" rC6.2
 ```
 
 An earlier release must still verify after a later one is built. Check `rC6.1` the same way:
@@ -543,7 +575,7 @@ a profile value is missing from this table.
 | Nice | 19 (one big process), 15 (many small ones) | profile `nice_monolithic`, `nice_fanout`; AGENTS 7.2 says 19 |
 | CPU-minutes per process | 300 | profile `cpu_min_per_process`; AGENTS 7.2 |
 | Scan shard size | 30,150,753 residues: 80% of `cpu_min_per_process` (300) at 7.96 CPU-minutes per million residues (derived: 300 × 0.8 / 7.96 × 10^6; the rate of the Pfam scan of stage P1 in card C-10, measured on wilkcomp02, 2026-11-10: 2,343.74 CPU-minutes for 294.5 M residues). The 80% leaves room for a scan 25% slower per residue (derived: 1 / 0.8) | `SHARD_MARGIN` and `SCAN_CPU_MIN_PER_M` in `src/biobox/stage.py`; cards C-11, C-13 |
-| Scan shards at once | `--scan-jobs` J × `--scan-cpus` C at most the threads `run-step` allows when `build-stage` starts (40 by day, 56 at night when idle); defaults C = 4, J = allowance // C (10 by day, 14 at night). The allowance is read again before each step and before each shard launch; a launch that would pass it waits | `scan_slots` and `_launch` in `src/biobox/stage.py`; cards C-11, C-12 |
+| Scan shards at once | `--scan-jobs` J × `--scan-cpus` C at most the threads `run-step` allows when `build-stage` starts (40 by day, 56 at night when idle); defaults C = 4, J = allowance // C (10 by day, 14 at night). The cap is a total over everything of ours on the pod, and `build-stage` counts only its own threads: choose J = floor((cap - other threads) / C) (section 2). The allowance is read again before each step and before each shard launch; a launch that would pass it waits | `scan_slots` and `_launch` in `src/biobox/stage.py`; cards C-11, C-12 |
 | Unit CPU quota | the night cap, 56: a ceiling fixed at launch; `build-stage` holds the limit of the hour | `scripts/pod_run.sh --threads`, profile `max_threads_night`; card C-12 |
 | Smallest data file | 64 MiB (67108864 bytes), except tables the registry marks `small_ok` | profile `small_file_floor_bytes`; AGENTS 7.3 says 64 MB |
 | Work directory | `/tmp/if2453/bio-box` | profile `tmp`; AGENTS 7.3 |
@@ -614,7 +646,7 @@ so that they ran long enough to be watched; `--fault` is not for real searches.
 | 2 | `pod_run.sh ... c06-build build-stage ...` | 2026-11-10 | `pod_run: log /tmp/if2453/c06/tmp/logs/c06-build.log; watch: systemctl --user status c06-build` (the first launch ran without `--digest`; the same command with `--digest` ran as `c06-rebuild`, below) |
 | 2 | `systemctl --user status c06-build --no-pager` | 2026-11-10 | `└─2081436 /opt/bio-box/.venv/bin/python -m biobox.cli stage inputs --root /tmp/if2453/c06/root --gene-call-version pyrodigal-3.7.1-gv-0.3.2-p2 --stage S0 --genomes /tmp/if2453/c06/inputs/genomes-S0.json` |
 | 2 | `tail -n 3 "$BBTMP/logs/c06-build.log"` | 2026-11-10 | `pod_run: c06-build exited 0` |
-| 2 | `grep "all 13 steps done" "$BBTMP/logs/c06-build.log"` | 2026-11-10 | `build-stage: stage S0 and release rC6.1: all 13 steps done` (run on the `c06-rebuild` log) |
+| 2 | `grep "steps done" "$BBTMP/logs/c06-build.log"` | 2026-11-10 | `build-stage: stage S0 and release rC6.1: all 13 steps done` (run on the `c06-rebuild` log) |
 | 2 | `ls "$ROOT/runs/stage=S0"` | 2026-11-10 | `tapes.json` |
 | 2 | second call, `pod_run.sh ... --digest "$DIGEST" ... c06-build-again build-stage ...` (and `c06-rebuild`) | 2026-11-10 | `pod_run: c06-rebuild exited 0` (every step `skipped: run record and outputs present`) |
 | 2 | second stage and release, `... c06-s1g build-stage ... --stage S1 --release rC6.2 --stages S0,S1 ...` | 2026-11-10 | `pod_run: c06-s1g exited 0` |
@@ -627,7 +659,7 @@ so that they ran long enough to be watched; `--fault` is not for real searches.
 | 4 | relaunch after the stop (unit `c06-s1g`) | 2026-11-10 | `pod_run: c06-s1g exited 0` |
 | 4 | `ls -d "$ROOT" "$BBTMP"` | 2026-11-10 | `/tmp/if2453/c06/tmp` |
 | 4 | `find "$ROOT/runs" -name '*.publishing.json'` | 2026-11-10 | `(no output)` |
-| 5 | record one-liner | 2026-11-10 | `{'stage': 'S0', 'step': 'genecall', 'wall_s': 3.446, 'cpu_min': 0.066808, 'peak_rss_bytes': 335257600, 'threads': 2, 'exit_code': 0, 'over_cpu_budget': False} inherited 5 outputs` |
+| 5 | record one-liner (before card C-14: now `rb.py record`, same output; see Not yet tested) | 2026-11-10 | `{'stage': 'S0', 'step': 'genecall', 'wall_s': 3.446, 'cpu_min': 0.066808, 'peak_rss_bytes': 335257600, 'threads': 2, 'exit_code': 0, 'over_cpu_budget': False} inherited 5 outputs` |
 | 5 | all records, DuckDB | 2026-11-10 | `  24 rows                                                         6 columns` |
 | 5 | ledger totals, DuckDB | 2026-11-10 | `│ NULL    │ rC6.2   │ cluster             │       2 │   1707 │   1684 │       23 │          0 │` (then the table's bottom border) |
 | 5 | balance and chain checks | 2026-11-10 | `chain (L-03): []` |
@@ -681,6 +713,70 @@ small_file_floor_bytes: 1000
 require_mem_cap: true
 ```
 
+Helper script `$WORK/rb.py`, used by sections 5 and 6 and below. Save it with an editor or `scp`; the
+commands that use it then have no quotes inside quotes.
+
+```python
+"""Read run records, the ledger and the catalog: rb.py record|records|ledger|checks|catalog|recipe ARGS."""
+import json
+import sys
+from pathlib import Path
+
+from biobox import catalog, ledger
+
+
+def open_cat(root, release):
+    return catalog.open_catalog(Path(root) / "catalog" / f"release={release}.duckdb", threads=2)
+
+
+def record(path):
+    r = json.load(open(path))
+    keys = ("stage", "step", "wall_s", "cpu_min", "peak_rss_bytes", "threads", "exit_code", "over_cpu_budget")
+    print({k: r[k] for k in keys}, r["mem_cap"]["how"], len(r["outputs"]), "outputs")
+
+
+def records(root):
+    import duckdb
+    con = duckdb.connect(config={"threads": 2})
+    con.sql("SELECT stage, step, wall_s, cpu_min, peak_rss_bytes, mem_cap.how AS cap "
+            "FROM read_json_auto(?, filename = true, union_by_name = true) "
+            "WHERE filename NOT LIKE ? ORDER BY started_at",
+            params=[root + "/runs/*/*.json", "%.publishing.json"]).show(max_width=200, max_rows=60)
+
+
+def totals(root, release):
+    open_cat(root, release).sql(
+        "SELECT stage, release, step, count(*) AS objects, sum(n_in) AS n_in, sum(n_kept) AS n_kept, "
+        "sum(n_merged) AS n_merged, sum(n_rejected) AS n_rejected FROM (SELECT stage, release, step, object_key, "
+        "min(n_in) AS n_in, min(n_kept) AS n_kept, min(n_merged) AS n_merged, sum(n_rejected) AS n_rejected "
+        "FROM ledger GROUP BY ALL) GROUP BY ALL ORDER BY ALL").show(max_width=250)
+
+
+def checks(root, stage, release, steps):
+    print("balance (L-01):", ledger.check_balance(Path(root), stage, steps.split(","), release))
+    print("chain (L-03):", ledger.check_chain(Path(root), stage, release))
+
+
+def info(root, release):
+    con = open_cat(root, release)
+    print(con.execute("SELECT key, value FROM catalog_info ORDER BY key").fetchall())
+    print("contigs", con.execute("SELECT count(*) FROM contig_index").fetchone()[0])
+
+
+def recipe(root, out):
+    con = open_cat(root, "rC6.1")
+    uid = con.execute("SELECT lower(hex(protein_uid)) FROM l1_domains ORDER BY 1 LIMIT 1").fetchone()[0]
+    Path(out).write_text(f"recipe: fixture_phmmer\nwritten_against: rC6.1\nseed: [{{protein_uid: {uid}}}]\n"
+                         f"target: unique\ntool: phmmer\niterations: {{max: 1, inclusion_bits: 25}}\n"
+                         f"controls: {{positive: [{{protein_uid: {uid}}}]}}\n")
+    print(uid)
+
+
+COMMANDS = {"record": record, "records": records, "ledger": totals, "checks": checks, "catalog": info,
+            "recipe": recipe}
+COMMANDS[sys.argv[1]](*sys.argv[2:])
+```
+
 Fixture inputs: the genome and object lists for stages `S0` and `S1` and an HMM library, made with
 the helpers of `tests/r2/test_builders_out.py`. Save this as `$WORK/prep.py`.
 
@@ -713,13 +809,14 @@ fixture search recipe, `$WORK/recipe.yaml`, that searches for one library-hit pr
 as its own positive control. It prints the protein uid.
 
 ```bash
-biopy -c 'import sys; from pathlib import Path; from biobox import catalog; con = catalog.open_catalog(Path(sys.argv[1]) / "catalog" / "release=rC6.1.duckdb", threads=2); uid = con.execute("SELECT lower(hex(protein_uid)) FROM l1_domains ORDER BY 1 LIMIT 1").fetchone()[0]; Path(sys.argv[2]).write_text(f"recipe: fixture_phmmer\nwritten_against: rC6.1\nseed: [{{protein_uid: {uid}}}]\ntarget: unique\ntool: phmmer\niterations: {{max: 1, inclusion_bits: 25}}\ncontrols: {{positive: [{{protein_uid: {uid}}}]}}\n"); print(uid)' "$ROOT" "$WORK/recipe.yaml"
+biopy "$WORK/rb.py" recipe "$ROOT" "$WORK/recipe.yaml"
 ```
 
 Last line: `01563e192ab22a5931d55e224a2dbb07`.
 
 ## Not yet tested
 
+- `$WORK/rb.py` (Appendix B), which replaced the `python -c` one-liners of sections 5 and 6 and Appendix B in card C-14. It holds the same code, but was not run on the pod: C-14 may run only the test suite there. Run each of its commands once, and through `ssh`, and correct this line.
 - Recovery from an intent file (a kill during publishing). It cannot be hit by hand at fixture
   size; `tests/r2/test_runstep_resume.py` kills a step at each publish point with an injected hook.
 - A reboot. A kill by `systemctl --user stop` was tested; the machine was not rebooted.
