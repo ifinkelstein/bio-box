@@ -2,9 +2,11 @@
 
 Micro-S0 is built as in test_micro_s0_l3 (a 6-model domain library from lambda proteins for the
 family tokens, NR50/NR90 clusters from MMseqs2 or the deterministic stand-in). The oracle is a
-plain Python loop over the tape rows and the tape-token rows read with pyarrow: one posting per
-(slot, level) with a token, every one at `seg_idx` 0 (per-domain family postings with
-`seg_idx` > 0 are a later card). Neighbour questions over the catalog's `token_postings` view are
+plain Python loop over the files read with pyarrow: one NR50 and one NR90 posting per slot with a
+token in the tape tokens, at `seg_idx` 0, and (card B-21) one family posting per included domain of
+the slot's protein, from the `l1_domains` rows of the release's family libraries, with `seg_idx`
+the domain's rank on the protein by envelope start (ties: library precedence, then accession).
+Neighbour questions over the catalog's `token_postings` view are
 checked against `pairs_of_contig` (tests/oracles/pairs_oracle.py), which survives as the pair oracle
 (AGENTS §3.5); the pair macros' pruning and the hub refusal are tested here on postings written for the
 purpose (card B-11).
@@ -16,7 +18,7 @@ import hashlib
 import random
 import shutil
 import sys
-from collections import Counter
+from collections import Counter, defaultdict
 from pathlib import Path
 
 import duckdb
@@ -64,21 +66,42 @@ def _rows(root: Path, glob: str) -> list[dict]:
     return [r for f in sorted(root.glob(glob)) for r in pq.read_table(f, partitioning=None).to_pylist()]
 
 
+def _posting(t: dict, i: int, tid: int, seg: int) -> dict:
+    return {"token_id": tid, "contig_uid": t["contig_uid"], "ordinal": i, "seg_idx": seg,
+            "feature_uid": t["feature_uids"][i], "start": t["start_bps"][i], "end": t["end_bps"][i],
+            "strand": t["strands"][i], "n_slots": t["n_slots"], "is_circular": t["is_circular"],
+            "contig_len": t["contig_len"]}
+
+
+def _family_segments(root: Path, release: str = REL) -> tuple[dict[tuple[str, str], int], dict[bytes, list]]:
+    """(the release's family tokens by (library, accession), protein -> its (library, accession) in segment order)
+    (card B-21), by a loop over every `l1_domains` row of the libraries the release's `token_dict` names as family
+    sources: the distinct (envelope start, library precedence, accession) of each protein, sorted."""
+    fam = {(r["source"], r["key"]): r["token_id"] for r in _rows(root, f"l3/token_dict/release={release}/part-*.parquet")
+           if r["level"] == "family"}
+    precedence = {lib: tid >> 56 & 31 for (lib, _), tid in fam.items()}
+    doms: dict[bytes, set] = {}
+    for lib, src in precedence.items():
+        for r in _rows(root, f"l1/domains/library={lib}/stage=*/part-*.parquet"):
+            doms.setdefault(r["protein_uid"], set()).add((r["env_start"], src, r["model_acc"], lib))
+    return fam, {pu: [(lib, acc) for _, _, acc, lib in sorted(segs)] for pu, segs in doms.items()}
+
+
 def _oracle(root: Path, release: str = REL, tv: str = TV) -> list[dict]:
-    """Every (slot, level) with a token, from the tapes and the tape tokens read straight from the files."""
+    """Every posting, from the tapes, the tape tokens and the domains read straight from the files: per slot its
+    NR50 and NR90 tokens (seg_idx 0) and one family posting per included domain of its protein (card B-21)."""
     tps = {r["contig_uid"]: r for r in _rows(root, f"l3/tapes/tape_version={tv}/stage=*/part-*.parquet")}
+    fam, segs = _family_segments(root, release)
     out = []
     for tok in _rows(root, f"l3/tape_tokens/tape_version={tv}/release={release}/part-*.parquet"):
         t = tps[tok["contig_uid"]]
         for i in range(t["n_slots"]):
-            for lvl in LEVELS:
-                tid = tok[f"{lvl}_tokens"][i]
-                if tid is None:
-                    continue
-                out.append({"token_id": tid, "contig_uid": t["contig_uid"], "ordinal": i, "seg_idx": 0,
-                            "feature_uid": t["feature_uids"][i], "start": t["start_bps"][i], "end": t["end_bps"][i],
-                            "strand": t["strands"][i], "n_slots": t["n_slots"], "is_circular": t["is_circular"],
-                            "contig_len": t["contig_len"]})
+            for lvl in ("nr50", "nr90"):
+                if (tid := tok[f"{lvl}_tokens"][i]) is not None:
+                    out.append(_posting(t, i, tid, 0))
+            pu = t["protein_uids"][i]
+            for seg, model in enumerate(segs.get(pu, []) if pu is not None else []):
+                out.append(_posting(t, i, fam[model], seg))
     return out
 
 
@@ -131,13 +154,24 @@ def test_b10_postings_equal_the_oracle(built):
     want, got = _oracle(root), _written(root)
     assert sorted(map(_key, got)) == sorted(map(_key, want))
     assert len(got) == len(set(map(_key, got)))
-    # the row count is the number of non-null tokens over every slot and level of the tape tokens
+    # the row count: the non-null NR50 and NR90 tokens over every slot of the tape tokens, and one family row per
+    # included domain on a slot (card B-21), which is at least one per canonical family of the tape tokens
     toks = _rows(root, f"l3/tape_tokens/tape_version={TV}/release={REL}/part-*.parquet")
     by_level = {lvl: sum(t is not None for r in toks for t in r[f"{lvl}_tokens"]) for lvl in LEVELS}
+    canonical = by_level["family"]
+    by_level["family"] = sum(_level(r["token_id"]) == "family" for r in want)
     assert res["rows"] == len(got) == sum(by_level.values())
     assert res["rows_by_level"] == by_level == dict(Counter(_level(r["token_id"]) for r in got))
-    assert by_level["family"] > 0 and by_level["nr50"] > 0 and by_level["nr90"] > 0  # the synthetic library maps
+    assert by_level["family"] >= canonical > 0 and by_level["nr50"] > 0 and by_level["nr90"] > 0  # the library maps
+    print(f"B-21 fixture: {canonical} canonical family slots, {by_level['family']} family postings, "
+          f"{res['rows']} postings ({res['rows'] - by_level['family'] + canonical} before B-21)")
     assert res["tape_version"] == TV
+    # the canonical family of each slot in the tape tokens is one of the slot's family postings
+    fam_on = {(r["contig_uid"], r["ordinal"], r["token_id"]) for r in got if _level(r["token_id"]) == "family"}
+    for r in toks:
+        for i, f in enumerate(r["family_tokens"]):
+            assert f is None or (r["contig_uid"], i, f) in fam_on
+    assert all(r["seg_idx"] == 0 for r in got if _level(r["token_id"]) != "family")
     files = _files(root)
     assert res["buckets"] == len(files) and res["files"] == sum(len(fs) for fs in files.values())
     # every file and every bucket in part order is sorted by the spec's sort key
@@ -145,7 +179,6 @@ def test_b10_postings_equal_the_oracle(built):
         rows = [r for f in fs for r in pq.read_table(f, partitioning=None).to_pylist()]
         keys = [tuple(r[c] for c in SORT) for r in rows]
         assert keys == sorted(keys)
-    assert all(r["seg_idx"] == 0 for r in got)
 
 
 def test_b10_ordinals_name_the_features_of_the_tape(built):
@@ -211,6 +244,165 @@ def test_b10_a_non_cds_slot_has_no_postings_and_shifts_later_ordinals(built, tmp
 
 def _tapes_of(root: Path, tv: str) -> dict[bytes, dict]:
     return {r["contig_uid"]: r for r in _rows(root, f"l3/tapes/tape_version={tv}/stage=*/part-*.parquet")}
+
+
+# --- card B-21: one family posting per included domain ----------------------------------------------
+
+PFAM = "pfam-38.2"  # sorts before the fixture's "test-1", so it is the first library in precedence
+
+
+def _family_dict(root: Path, release: str = REL) -> dict[str, dict]:
+    return {r["key"]: r for r in _rows(root, f"l3/token_dict/release={release}/part-*.parquet") if r["level"] == "family"}
+
+
+@pytest.fixture(scope="module")
+def pfam(built, tmp_path_factory):
+    """The fixture with a second domain library, `pfam-38.2`, written here as the B-09 tests write theirs, on three
+    real proteins on slots, two without a domain of the fixture's library and one with one:
+
+        two    PF00664 at envelope start 10 (score 50) and PF00005 at 300 (score 80): two families; the
+               canonical one is PF00005 (first library, higher score), and it is segment 1
+        rep    PF00400 at 5 and at 200: one model twice
+        mixed  PF00072 at 0, beside its test-1 domain (ranked by envelope start, then library precedence)
+
+    Tokens and postings of the release are rebuilt. Yields (root, proteins by role)."""
+    root = built[0]
+    fresh = _fresh(root, tmp_path_factory.mktemp("b21"), "pfam", (POST, "l3/token_dict", "l3/tape_tokens"))
+    on_slots = sorted({pu for t in _tapes_of(root, TV).values() for pu in t["protein_uids"] if pu is not None})
+    test_doms = {r["protein_uid"] for r in _rows(root, "l1/domains/library=test-1/stage=S0/part-*.parquet")}
+    bare = [pu for pu in on_slots if pu not in test_doms]
+    p = {"two": bare[0], "rep": bare[1], "mixed": sorted(test_doms & set(on_slots))[0]}
+    rows = [micro._dom(p["two"], "PF00664", 50.0, 10), micro._dom(p["two"], "PF00005", 80.0, 300),
+            micro._dom(p["rep"], "PF00400", 20.0, 5), micro._dom(p["rep"], "PF00400", 20.0, 200),
+            micro._dom(p["mixed"], "PF00072", 30.0, 0)]
+    micro._write_sorted("l1_domains", rows, fresh / f"l1/domains/library={PFAM}/stage=S0/part-0.parquet")
+    tokens.run(fresh, REL, ["S0"])
+    res = postings.run(fresh, REL, ["S0"])
+    yield fresh, p, res
+
+
+def _slots_of(root: Path, pu: bytes) -> list[tuple[bytes, int]]:
+    return sorted((cu, i) for cu, t in _tapes_of(root, TV).items() for i, x in enumerate(t["protein_uids"]) if x == pu)
+
+
+@pytest.mark.covers("LY-02", "C-04")
+def test_b21_a_protein_with_two_pfam_domains_posts_both_families_on_its_slot(pfam):
+    """The card's acceptance: both families of the two-domain protein have a posting on each of its slots, with
+    seg_idx 0 and 1 by envelope start; every posting equals the oracle over the domain table."""
+    root, p, res = pfam
+    got = _written(root)
+    want = _oracle(root)
+    assert sorted(map(_key, got)) == sorted(map(_key, want))
+    assert res["rows_by_level"]["family"] == sum(_level(r["token_id"]) == "family" for r in want)
+    tid = {k: r["token_id"] for k, r in _family_dict(root).items()}
+    fam = defaultdict(list)
+    for r in got:
+        if _level(r["token_id"]) == "family":
+            fam[(r["contig_uid"], r["ordinal"])].append((r["seg_idx"], r["token_id"]))
+    two, rep, mixed = (_slots_of(root, p[k]) for k in ("two", "rep", "mixed"))
+    assert two and rep and mixed
+    for s in two:
+        assert sorted(fam[s]) == [(0, tid["PF00664"]), (1, tid["PF00005"])]
+    for s in rep:
+        assert sorted(fam[s]) == [(0, tid["PF00400"]), (1, tid["PF00400"])]
+    for s in mixed:
+        assert len(fam[s]) >= 2 and tid["PF00072"] in [t for _, t in fam[s]]
+        assert sorted(seg for seg, _ in fam[s]) == list(range(len(fam[s])))
+    # the tape tokens keep the canonical family (PF00005: first library, higher score), not segment 0
+    toks = {r["contig_uid"]: r for r in _rows(root, f"l3/tape_tokens/tape_version={TV}/release={REL}/part-*.parquet")}
+    assert [toks[cu]["family_tokens"][i] for cu, i in two] == [tid["PF00005"]] * len(two)
+    # a model that is never canonical is a token, and counts the slots it is on
+    d = _family_dict(root)
+    assert d["PF00664"]["source"] == PFAM and d["PF00664"]["n_slots"] == len(two)
+    assert d["PF00400"]["n_slots"] == len(rep)
+    canon = {t for r in toks.values() for t in r["family_tokens"] if t is not None}
+    assert tid["PF00664"] not in canon
+
+
+@pytest.mark.covers("LY-02")
+def test_b21_cluster_tokens_and_postings_do_not_change(built, pfam):
+    """Card B-21: the cluster levels' token ids, tape tokens and postings are those of the build without the
+    second library (local ids are ranked within level and source, so new family keys cannot move them)."""
+    root = built[0]
+    fresh, _, _ = pfam
+    old_dict, new_dict = (_rows(r, f"l3/token_dict/release={REL}/part-*.parquet") for r in (root, fresh))
+    clusters = lambda rows: [r for r in rows if r["level"] != "family"]  # noqa: E731
+    assert clusters(new_dict) == clusters(old_dict) and clusters(old_dict)
+    old_tok, new_tok = (_rows(r, f"l3/tape_tokens/tape_version={TV}/release={REL}/part-*.parquet") for r in (root, fresh))
+    cl = lambda rows: [(r["contig_uid"], r["nr50_tokens"], r["nr90_tokens"]) for r in rows]  # noqa: E731
+    assert cl(new_tok) == cl(old_tok)
+    cp = lambda rows: sorted(_key(r) for r in rows if _level(r["token_id"]) != "family")  # noqa: E731
+    assert cp(_written(fresh)) == cp(_written(root)) and cp(_written(root))
+    # the fixture's library is second now: its family ids carry source 2 (release-local, AGENTS §3.4)
+    assert {r["token_id"] >> 56 & 31 for r in new_dict if r["source"] == "test-1"} == {2}
+
+
+@pytest.mark.covers("Q4")
+def test_b21_fusions_of_finds_two_families_on_one_slot(pfam, tmp_path):
+    """fusions_of over the built postings equals a brute-force search of the oracle's postings for every ordered pair
+    of family tokens that share a slot, and finds the two-domain protein's slots."""
+    root, p, _ = pfam
+    want = defaultdict(list)
+    by_slot = defaultdict(list)
+    for r in _oracle(root):
+        if _level(r["token_id"]) == "family":
+            by_slot[(r["contig_uid"], r["ordinal"])].append(r)
+    for (cu, i), rs in by_slot.items():
+        for a in rs:
+            for b in rs:
+                if a["seg_idx"] != b["seg_idx"]:
+                    want[(a["token_id"], b["token_id"])].append((cu, a["feature_uid"], i, a["seg_idx"], b["seg_idx"]))
+    tid = {k: r["token_id"] for k, r in _family_dict(root).items()}
+    tps = _tapes_of(root, TV)
+    two = _slots_of(root, p["two"])
+    assert sorted(want[(tid["PF00664"], tid["PF00005"])]) == sorted((cu, tps[cu]["feature_uids"][i], i, 0, 1) for cu, i in two)
+    assert (tid["PF00400"], tid["PF00400"]) in want
+    rng = random.Random(21)
+    apart = [(a, b) for a, b in (tuple(rng.sample(sorted(tid.values()), 2)) for _ in range(30)) if (a, b) not in want]
+    assert apart
+    con = catalog.open_catalog(catalog.generate_catalog(catalog.build_manifest(root, REL, ["S0"]), tmp_path / "c.duckdb"))
+    try:
+        for a, b in sorted(want) + apart:
+            got = con.execute("SELECT contig_uid, feature_uid, ordinal, anchor_seg_idx, partner_seg_idx "
+                              "FROM fusions_of(?, ?)", [a, b]).fetchall()
+            assert got == sorted(want.get((a, b), []), key=lambda r: (r[0], r[2], r[3], r[4])), (a, b)
+    finally:
+        con.close()
+
+
+@pytest.mark.covers("D-01", "D-04", "LY-08")
+def test_b21_bytes_do_not_depend_on_the_order_of_domain_rows(pfam, tmp_path):
+    root, _, _ = pfam
+    want = _digests(root)
+    fresh = _fresh(root, tmp_path, "shuffled")
+    rng = random.Random(211)
+    for f in sorted(fresh.glob("l1/domains/**/*.parquet")):
+        t = pq.read_table(f, partitioning=None)
+        idx = list(range(t.num_rows))
+        rng.shuffle(idx)
+        pq.write_table(t.take(idx), f, row_group_size=max(1, t.num_rows // 3))
+    postings.run(fresh, REL, ["S0"], tmp=tmp_path)
+    assert _digests(fresh) == want
+
+
+def test_b21_tape_tokens_that_disagree_with_the_domains_are_refused(pfam, tmp_path):
+    """Family postings come from the domains, the canonical family from the tape tokens: a store where they no longer
+    agree (domains removed or added after the tokens were made) is refused, and nothing is written."""
+    root, p, _ = pfam
+    contigs = lambda *roles: "(" + "|".join(sorted({cu.hex() for r in roles for cu, _ in _slots_of(root, p[r])})) + ")"  # noqa: E731
+    gone = _fresh(root, tmp_path, "gone")
+    shutil.rmtree(gone / f"l1/domains/library={PFAM}")  # every protein given a Pfam domain has a Pfam canonical family
+    with pytest.raises(ValueError, match=f"contig {contigs('two', 'rep', 'mixed')}.*canonical family"):
+        postings.run(gone, REL, ["S0"])
+    assert not (gone / POST).exists()
+    unknown = _fresh(root, tmp_path, "unknown")
+    f = unknown / f"l1/domains/library={PFAM}/stage=S0/part-0.parquet"
+    rows = pq.read_table(f, partitioning=None).to_pylist() + [micro._dom(p["two"], "PF99999", 10.0, 500)]
+    f.unlink()
+    micro._write_sorted("l1_domains", rows, f)
+    with pytest.raises(ValueError, match=f"contig {contigs('two')}.*PF99999.*token_dict"):
+        postings.run(unknown, REL, ["S0"])
+    assert not (unknown / POST).exists()
 
 
 # --- layout --------------------------------------------------------------------------------------
@@ -490,7 +682,9 @@ LONG_LIMIT = "115MB"  # 2 GB x 690,000 / 12,048,866 slots = 114.5 MB, rounded up
 def _long_contigs(root: Path, groups=LONG) -> str:
     """Tapes of `groups` (stage, contigs, slots per contig), written directly (no gene calls), and their
     tape tokens at the three levels. One slot in 20 has no protein (no token at any level); 3 CDSs in
-    1,000 have a family, near P2's 26,485 of 8,722,859 slots (measured, rL.3). Returns the tape version."""
+    1,000 have a family, near P2's 26,485 of 8,722,859 slots (measured, rL.3). Since card B-21 family
+    postings come from domains: each family slot has a protein with one domain of its family's model
+    (`micro.back_families`, which also writes the family rows of `token_dict`). Returns the tape version."""
     rng = random.Random(29)
     tv = tapes.tape_version(["synthetic-b29"])
     by_stage: dict[str, list[dict]] = {}
@@ -505,10 +699,12 @@ def _long_contigs(root: Path, groups=LONG) -> str:
                  **tapes.build_tape(slots, 1000 * n_slots, circular), "protein_uids": [None] * n_slots,
                  "feature_uids": [ids.feature_uid(cu, s, e, st, ids.KIND["cds"]) for s, e, st in slots]})
             cds = [rng.random() >= 0.05 for _ in range(n_slots)]
-            tok = lambda lvl, n_keys, p_none: [  # noqa: E731
-                LEVEL_BITS[lvl] << 61 | rng.randrange(n_keys) if k and rng.random() >= p_none else None for k in cds]
+            tok = lambda lvl, n_keys, p_none: [  # noqa: E731  (family tokens have library source 1)
+                LEVEL_BITS[lvl] << 61 | (lvl == "family") << 56 | rng.randrange(n_keys)
+                if k and rng.random() >= p_none else None for k in cds]
             tok_rows.append({"contig_uid": cu, "family_tokens": tok("family", 3_000, 0.997),
                              "nr50_tokens": tok("nr50", 60_000, 0.0), "nr90_tokens": tok("nr90", 200_000, 0.0)})
+    micro.back_families(root, REL, by_stage, tok_rows)
     spec = table("contig_tapes")
     for stage, rows in by_stage.items():
         rows.sort(key=lambda r: r["contig_uid"])
