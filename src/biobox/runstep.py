@@ -35,9 +35,26 @@ Order of work:
    sets them) or `none`.
    Run the command (inside `systemd-run --user --scope -p MemoryMax=<mem_scope> -p
    MemorySwapMax=0` when opened) at the profile's nice, in its own session and process group,
-   and measure wall time, CPU-minutes and peak RSS (`os.wait4`). SIGTERM and SIGINT to run-step
-   meanwhile are forwarded to that process group; run-step waits for the command, publishes
-   nothing, leaves staging and exits 128 + the signal number.
+   and measure wall time and CPU-minutes (`os.wait4`). The step's peak memory (card C-15) is not
+   run-step's `wait4`: Linux counts the launcher's image, forked into the child before `exec`, in
+   the child's `ru_maxrss`. The command runs under a small measuring helper (`_MEASURE`) that
+   spawns it and records, as `peak_rss_bytes` with `peak_rss_source`:
+   - `scope_memory_peak` when run-step opened a scope for this step: that scope's cgroup
+     `memory.peak`, read before the scope goes away. It holds only this step and the helper, and
+     counts what the cap counts: every process of the step together, page cache charged to it
+     included.
+   - `child_maxrss` otherwise, notably under an inherited cap: the `ru_maxrss` of the step's
+     process tree as the helper's `wait4` sees it (the largest single process, not the sum; the
+     helper's own image as a floor: a step that allocates nothing recorded 10.5 MiB, and one that
+     writes 192 MiB recorded 203.0 MiB, from a launcher holding 512 MiB whose steps both recorded
+     about 606 MiB before; measured, wilkcomp02, 2026-11-10, `test_c15_peak_memory_is_the_steps_own_not_the_launchers`).
+     An inherited cgroup is the whole `scripts/pod_run.sh` unit:
+     build-stage, every run-step and every shard running at once, over the unit's life, so its
+     `memory.peak` is not one step's and is not used.
+   - `unmeasured` (and null) if the helper wrote nothing.
+   The record's `argv` is the command under its limits, without the helper. SIGTERM and SIGINT
+   to run-step meanwhile are forwarded to that process group; run-step waits for the command,
+   publishes nothing, leaves staging and exits 128 + the signal number.
 6. Command failed: exit with its code (1 if killed); staging is left for inspection.
    `STOP` appeared meanwhile: exit 75 without publishing.
 7. Publish (all or nothing): refuse empty staging, a final path that exists (append-only,
@@ -458,10 +475,86 @@ def _signal_group(pgid: int, signum: int) -> None:
         pass
 
 
+# The step's measuring helper (card C-15), run as `python -I -S -c _MEASURE OUT CGROUP_FILE CGROUP_ROOT -- CMD...`
+# inside the step's limits (after `nice`, so inside a scope run-step opens). Linux carries a process's memory image
+# at `exec` into the `ru_maxrss` of what it execs (fs/exec.c, `exec_mmap`), and a child forked by run-step starts
+# with run-step's image, so `wait4` on that child reports at least the launcher's peak: every record of the B-30
+# probe read 344.0 MB (measured, wilkcomp02, 2026-11-10). This helper is a fresh, small interpreter (stdlib only,
+# no site): it spawns the command, waits for it with `wait4` and writes, to OUT, the command tree's `ru_maxrss`
+# (the largest single process of it, with the helper's own image as a floor) and, when CGROUP_FILE is given, the
+# `memory.peak` of the cgroup it runs in. It then ends as the command ended (same exit code, or killed by the same
+# signal). SIGTERM, SIGINT and SIGHUP reach the command through its process group, so the helper only waits.
+_MEASURE = r"""
+import json, os, signal, sys
+out, cgroup_file, cgroup_root, cmd = sys.argv[1], sys.argv[2], sys.argv[3], sys.argv[5:]
+GROUP = (signal.SIGTERM, signal.SIGINT, signal.SIGHUP)
+for s in GROUP:
+    signal.signal(s, lambda signum, frame: None)
+try:
+    pid = os.posix_spawnp(cmd[0], cmd, os.environ, setsigdef=(*GROUP, signal.SIGPIPE, signal.SIGXFSZ))
+except OSError as e:
+    print(f"run-step: cannot run {cmd[0]}: {e}", file=sys.stderr, flush=True)
+    os._exit(127)
+_, status, ru = os.wait4(pid, 0)
+peak = None
+if cgroup_file:
+    try:
+        with open(cgroup_file) as f:
+            rel = next(ln[3:].strip() for ln in f if ln.startswith("0::"))
+        with open(os.path.join(cgroup_root, rel.lstrip("/"), "memory.peak")) as f:
+            peak = int(f.read().strip())
+    except (OSError, StopIteration, ValueError):
+        peak = None
+maxrss = ru.ru_maxrss if sys.platform == "darwin" else ru.ru_maxrss * 1024
+with open(out + ".tmp", "w") as f:
+    json.dump({"maxrss_bytes": maxrss, "memory_peak_bytes": peak}, f)
+os.replace(out + ".tmp", out)
+if os.WIFSIGNALED(status):
+    sig = os.WTERMSIG(status)
+    try:
+        import resource
+        resource.setrlimit(resource.RLIMIT_CORE, (0, 0))  # the helper's own death writes no core file
+    except (ImportError, OSError, ValueError):
+        pass
+    try:
+        signal.signal(sig, signal.SIG_DFL)
+    except (OSError, ValueError):  # SIGKILL and SIGSTOP cannot be caught and need no reset
+        pass
+    os.kill(os.getpid(), sig)
+    os._exit(128 + sig)
+os._exit(os.waitstatus_to_exitcode(status))
+"""
+
+
+def measured(cmd: Sequence[str], out: Path, scope: bool, *, proc_root: str | Path | None = None,
+             cgroup_root: str | Path | None = None) -> list[str]:
+    """`cmd` under the measuring helper (`_MEASURE`), which writes the step's peak memory to `out`. With `scope`
+    (run-step opened a scope for this step alone) it also reads that scope's `memory.peak`."""
+    cgroup_file = str(Path(PROC_ROOT if proc_root is None else proc_root) / "self" / "cgroup") if scope else ""
+    root = str(CGROUP_ROOT if cgroup_root is None else cgroup_root) if scope else ""
+    return [sys.executable, "-I", "-S", "-c", _MEASURE, str(out), cgroup_file, root, "--", *cmd]
+
+
+def step_peak(out: Path) -> tuple[int | None, str]:
+    """The step's peak memory in bytes and where it comes from, from the helper's file `out` (removed after):
+    `scope_memory_peak` (the memory.peak of the scope run-step opened for this step), else `child_maxrss` (the
+    largest `ru_maxrss` in the step's process tree, measured from the helper), else (None, `unmeasured`)."""
+    try:
+        got = json.loads(out.read_text())
+    except (OSError, ValueError):
+        return None, "unmeasured"
+    finally:
+        out.unlink(missing_ok=True)
+    if got.get("memory_peak_bytes") is not None:
+        return int(got["memory_peak_bytes"]), "scope_memory_peak"
+    return int(got["maxrss_bytes"]), "child_maxrss"
+
+
 def _execute(argv: list[str], env: dict[str, str]) -> tuple[int, float, float, int, int | None]:
     """Run argv in its own session (so its process group can be signalled as one; a systemd-run
-    scope keeps that group); return (exit status, wall seconds, CPU minutes, peak RSS bytes, the
-    signal forwarded or None). SIGTERM and SIGINT received meanwhile are forwarded to the group,
+    scope keeps that group); return (exit status, wall seconds, CPU minutes, `ru_maxrss` in bytes
+    (at least run-step's own peak: card C-15; `step_peak` gives the step's), the signal forwarded
+    or None). SIGTERM and SIGINT received meanwhile are forwarded to the group,
     and the command is still waited for; handlers are installed only in the main thread and the
     previous ones restored after."""
     received: list[int] = []
@@ -547,10 +640,17 @@ def run_step(prof: Profile, root: str | Path, stage: str, step: str, cmd: Sequen
 
     env = dict(os.environ, BIOBOX_STAGING=str(stage_dir), BIOBOX_ROOT=str(root), BIOBOX_THREADS=str(n_threads))
     env.update({v: str(n_threads) for v in THREAD_VARS})
-    argv = build_argv(cmd, nice_value, prof.mem_scope, inherited=cap if cap["how"] == "inherited" else None,
-                      system=system, which=which)
+    inherited = cap if cap["how"] == "inherited" else None
+    argv = build_argv(cmd, nice_value, prof.mem_scope, inherited=inherited, system=system, which=which)
+    peak_file = stage_dir.parent / f"{stage}.{step}.peak.json"
+    peak_file.unlink(missing_ok=True)
+    opened = scope_argv(cmd, nice_value, mem_max=prof.mem_scope, inherited=inherited, system=system,
+                        which=which)[1] == "scope"
     started_at = datetime.now(timezone.utc).isoformat(timespec="seconds")
-    code, wall, cpu_min, rss, sig = _execute(argv, env)
+    code, wall, cpu_min, _, sig = _execute(
+        build_argv(measured(cmd, peak_file, opened, proc_root=proc_root, cgroup_root=cgroup_root), nice_value,
+                   prof.mem_scope, inherited=inherited, system=system, which=which), env)
+    rss, rss_source = step_peak(peak_file)
 
     if sig is not None:
         _err(f"{signal.Signals(sig).name} received; forwarded to {stage}.{step}, which exited {code}; "
@@ -566,7 +666,7 @@ def run_step(prof: Profile, root: str | Path, stage: str, step: str, cmd: Sequen
     meta = {
         "stage": stage, "step": step, "argv": argv, "threads": n_threads, "nice": nice_value,
         "started_at": started_at, "wall_s": round(wall, 3), "cpu_min": round(cpu_min, 6),
-        "peak_rss_bytes": rss, "host": socket.gethostname(), "exit_code": code,
+        "peak_rss_bytes": rss, "peak_rss_source": rss_source, "host": socket.gethostname(), "exit_code": code,
         "image_digest": os.environ.get("BIOBOX_IMAGE_DIGEST", "none"), "over_cpu_budget": over,
         "mem_cap": cap,
     }
