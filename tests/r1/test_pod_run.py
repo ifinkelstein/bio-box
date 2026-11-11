@@ -85,3 +85,18 @@ def test_c13_python_in_the_unit_runs_unbuffered():
     text = POD_RUN.read_text()
     exec_line = next(ln for ln in text.splitlines() if "exec --cleanenv" in ln and not ln.lstrip().startswith("#"))
     assert "--env PYTHONUNBUFFERED=1" in exec_line
+
+
+def _launch_command() -> str:
+    """The `systemd-run ...` command of pod_run.sh, its continuation lines joined."""
+    text = POD_RUN.read_text().replace("\\\n", " ")
+    return next(ln for ln in text.splitlines() if ln.startswith("systemd-run "))
+
+
+@pytest.mark.covers("W-13")
+def test_w13_the_unit_tells_bio_box_its_name_after_the_callers_env():
+    """Card W-13 (1): `bio-box search run` without --wait refuses inside a pod_run.sh unit, which it knows by
+    BIOBOX_POD_UNIT. The script sets it after the caller's own --env options, so a caller cannot unset it."""
+    cmd = _launch_command()
+    assert '--env "BIOBOX_POD_UNIT=$UNIT"' in cmd, cmd
+    assert cmd.index('"${ENVS[@]}"') < cmd.index('--env "BIOBOX_POD_UNIT=$UNIT"') < cmd.index('"$IMAGE" python')

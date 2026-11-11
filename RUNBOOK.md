@@ -11,11 +11,12 @@ Where a command runs:
 - `bio-box ...` inside the image is the function defined in section 0. A long job is started with
   `scripts/pod_run.sh`, which opens the memory-capped systemd unit on the host and runs
   `python -m biobox.cli ...` inside the image.
-- Values like `S0`, `S1`, `rC6.1`, `rC6.2` and `c06-build` are the fixture names used when the
-  commands were tested. Replace them with your own stage, release and unit names.
+- Values like `S0`, `S1`, `rC6.1`, `rC6.2`, `c06-build` and `w13-search` are the fixture names used
+  when the commands were tested. Replace them with your own stage, release and unit names.
 
 The commands were tested on a small fixture build in a scratch data root with a scratch copy of
-the host profile. Where the real profile differs, the text says so. The real profile is
+the host profile (sections 1 to 6 and 8 in `/tmp/if2453/c06`, card C-06; section 7 and the search
+part of section 9 in `/tmp/if2453/w13`, card W-13). Where the real profile differs, the text says so. The real profile is
 `profiles/wilkcomp02.yaml`; section 10 copies its values.
 
 ## 0. Set up the shell
@@ -210,7 +211,8 @@ systemctl --user stop c06-build
 ```
 
 The log of a stopped unit ends with `pod_run: c06-build received SIGTERM` and then
-`pod_run: c06-build exited 143`.
+`pod_run: c06-build exited 143`. The code is the command's own: a search that is stopped records the
+run as `stopped` and exits 1 (section 7).
 
 Resume: remove the file, then launch the same build command again (section 2), with a new unit name.
 
@@ -225,7 +227,10 @@ Steps with a run record are skipped. The step that stopped runs again.
 Relaunch the same command from section 2 with a new unit name. That is the whole recovery.
 
 First check that the data root and `tmp` are still there. After a reboot `/tmp` may have been
-cleared. If `$ROOT` was under `/tmp` and is gone, the build is gone with it.
+cleared. If `$ROOT` was under `/tmp` and is gone, the build is gone with it. The search packs and
+runs are under `tmp` too (`$BBTMP/packs`, `$BBTMP/search/$USER`, section 7): if they are gone,
+build the pack again; the runs are lost. A search whose runner was killed reads as `failed` with
+`runner exited without closing the run`; start it again.
 
 ```bash
 ls -d "$ROOT" "$BBTMP"
@@ -351,16 +356,34 @@ bio-box release verify --root "$ROOT" --release rC6.1
 
 ## 7. Search
 
+The search path writes nothing under the data root (card W-03): a user who can read a release may
+not be able to write its root. The search pack and the runs live outside the data root, under the
+profile's `tmp`:
+
+- the pack of release `R`: `$BBTMP/packs/release=<R>/<pack id>/`, one per host (a pack is a cache
+  of a release, shared by every user);
+- the runs: `$BBTMP/search/$USER/runs/run=<run id>/`, one directory per user; each run's pending
+  record is `$BBTMP/search/$USER/runs/pending/run=<run id>.json`;
+- the runs' work directories: `$BBTMP/search/$USER/work/<run id>/`, removed when the run closes.
+
+Every `pack`, `search` and `nbr` command below passes `--profile "$PROFILE"`, which gives these
+directories. `scripts/pod_run.sh` does not export `BIOBOX_PROFILE`, and the `bio-box` function of
+section 0 does not either, so a command without `--profile` falls back to `/tmp/atd/packs` and
+`/tmp/atd/search`, which are not ours. In place of `--profile`, name the directories: `--pack-dir`
+(pack, run, hits, nbr), `--runs` (run, status, cancel, hits, nbr) and `--work` (run). A directory
+under the data root is refused before anything is read.
+
 Search commands that run for more than a moment go through `scripts/pod_run.sh`, so they run in a
-capped unit. Always give `--work` a directory under your own scratch: the default is
-`/tmp/atd/search`, which is not ours.
+capped unit.
 
 **Pack.** Build the search pack of a release once. `--model` is `<library>-<version>=<HMM file>`
-and must match a domain library of the release.
+and must match a domain library of the release. A second build from the same inputs finds the pack
+and changes nothing; a pack is never overwritten. A search whose pack is missing exits 2 and names
+the `pack build` command.
 
 ```bash
-bash "$TREE/scripts/pod_run.sh" --profile "$PROFILE" --image "$IMAGE" --bind /tmp/if2453 --env PYTHONPATH="$PYTHONPATH_POD" c06-pack pack build --root "$ROOT" --release rC6.1 --model test-1="$WORK/inputs/lib.hmm"
-bio-box pack verify --root "$ROOT" --release rC6.1
+bash "$TREE/scripts/pod_run.sh" --profile "$PROFILE" --image "$IMAGE" --digest "$DIGEST" --bind /tmp/if2453 --env PYTHONPATH="$PYTHONPATH_POD" w13-pack pack build --root "$ROOT" --release rC6.1 --model test-1="$WORK/inputs/lib.hmm" --profile "$PROFILE"
+bio-box pack verify --root "$ROOT" --release rC6.1 --profile "$PROFILE"
 ```
 
 **Recipe.** A YAML file; its format is in the docstring of `src/biobox/search/recipe.py`. A recipe
@@ -368,57 +391,71 @@ without a positive control is refused. Appendix B writes a fixture recipe.
 
 **Run.** Pass `--profile` so the run takes the profile's thread cap, nice and memory cap, and
 refuses to start uncapped. `--cpus` and `--mem-gb` may only lower what the profile allows. Pass
-`--wait`: the runner then stays in the unit until the run ends. Without `--wait` the runner is a
-detached child that dies when the unit's main process exits, and the run is recorded as `failed`
-(section 11).
+`--wait`: the run then runs in the unit's main process, which keeps the unit alive until the run
+closes.
 
 ```bash
-bash "$TREE/scripts/pod_run.sh" --profile "$PROFILE" --image "$IMAGE" --bind /tmp/if2453 --env PYTHONPATH="$PYTHONPATH_POD" c06-search search run "$WORK/recipe.yaml" --root "$ROOT" --release rC6.1 --work "$WORK/search-work" --profile "$PROFILE" --wait
+bash "$TREE/scripts/pod_run.sh" --profile "$PROFILE" --image "$IMAGE" --digest "$DIGEST" --bind /tmp/if2453 --env PYTHONPATH="$PYTHONPATH_POD" w13-search search run "$WORK/recipe.yaml" --root "$ROOT" --release rC6.1 --profile "$PROFILE" --wait
 ```
 
-The log `$BBTMP/logs/c06-search.log` ends with the run id and its status, then
-`pod_run: c06-search exited 0`. Set `RUN` to that run id. To know the id before the run starts, add
-`--run-id` and a 32-digit hex number of your own.
+As soon as the run is pending, the log `$BBTMP/logs/w13-search.log` has the line
+`search run: <run id> running; pending record <path>`. Set `RUN` to that run id. The log ends with
+the run id and its status, then `pod_run: w13-search exited 0` (`exited 1` when the status is not
+`ok`). To choose the id yourself, add `--run-id` and 32 hex digits.
 
-**Status.** While the unit runs, use the unit and the log. `search status` finds a run only when it
-has ended.
+`search run` without `--wait` inside a `pod_run.sh` unit is refused (exit 2); the log says to add
+`--wait`. The reason is what `systemd-run --collect` starts: a transient service, which ends when
+its main process exits, and systemd then stops every process left in the unit's cgroup
+(`KillMode=control-group`, from `systemctl --user show -p KillMode <unit>`). A detached runner
+cannot outlive the command that started it: before card W-13 such a run ended
+`failed: runner exited without closing the run` (measured, wilkcomp02, 2026-11-10, card C-06).
+`pod_run.sh` sets `BIOBOX_POD_UNIT` to the unit's name, and that is how `bio-box` knows it is in a
+unit.
+
+**Status.** `search status` reads the run's pending record while it runs and its record once it has
+closed. Run it from any shell of this account:
 
 ```bash
-systemctl --user status c06-search --no-pager
-RUN=6592f8dad89ce024c8140f2228c1ab24
-bio-box search status "$RUN" --root "$ROOT"
+systemctl --user status w13-search --no-pager
+RUN=77e72f990d18af9b0e4420807244e2e3
+bio-box search status "$RUN" --root "$ROOT" --profile "$PROFILE"
 ```
 
-The status line is JSON: `status` is `ok`, `failed`, `stopped`, `oom`, `timeout` or `output_cap`.
+The status line is JSON. While the run runs it is `{"run_id": "...", "status": "running"}`. Once it
+has closed, `status` is `ok`, `failed`, `stopped`, `oom`, `timeout` or `output_cap`, with `error`,
+`rounds`, `final_round` and `stop_reason`. A runner that was killed without closing its run (SIGKILL,
+a reboot) reads as `failed` with `runner exited without closing the run`.
 
-**Cancel.** Stop the unit. The runner takes the SIGTERM, ends the worker and records the run as
-`stopped` with the error `cancelled`.
+**Cancel.** From any shell of this account:
 
 ```bash
-systemctl --user stop c06-search3
-bio-box search status a1b2c3d4e5f60718293a4b5c6d7e8f90 --root "$ROOT"
+bio-box search cancel "$RUN" --root "$ROOT" --profile "$PROFILE"
 ```
 
-`bio-box search cancel <run id> --root R` signals the runner of a run started without `--wait`. It
-prints nothing and exits 0, also when the runner is already gone. Under `pod_run.sh` there is no
-such runner, so use `systemctl --user stop`.
+It sends SIGTERM to the run's runner (the process its pending record names, and only while that
+process holds the run's lock). The runner ends the worker and records the run as `stopped` with the
+error `cancelled`. It prints nothing and exits 0, also when the run has already closed. The unit's
+log then ends with `<run id>` and `stopped`, then `pod_run: <unit> exited 1`.
+
+Stopping the unit does the same: `systemctl --user stop <unit>`. Its log then ends with
+`pod_run: <unit> received SIGTERM` and `pod_run: <unit> exited 1`.
 
 **Hits and neighbourhoods.** All of these read the release the run ran against.
 
 ```bash
-RUN=6592f8dad89ce024c8140f2228c1ab24
-bio-box search hits "$RUN" --root "$ROOT"
-bio-box search hits "$RUN" --root "$ROOT" --format tsv --out "$WORK/hits.tsv"
-bio-box search hits "$RUN" --root "$ROOT" --format faa --out "$WORK/hits.faa"
-bio-box nbr "$RUN" --root "$ROOT" --window 5g --format tsv --out "$WORK/nbr"
-bio-box nbr summarize "$RUN" --root "$ROOT" --window 5g --by pfam,nr50
+bio-box search hits "$RUN" --root "$ROOT" --profile "$PROFILE"
+bio-box search hits "$RUN" --root "$ROOT" --profile "$PROFILE" --format tsv --out "$WORK/hits.tsv"
+bio-box search hits "$RUN" --root "$ROOT" --profile "$PROFILE" --format faa --out "$WORK/hits.faa"
+bio-box nbr "$RUN" --root "$ROOT" --profile "$PROFILE" --window 5g --format tsv --out "$WORK/nbr"
+bio-box nbr summarize "$RUN" --root "$ROOT" --profile "$PROFILE" --window 5g --by pfam,nr50
 bio-box export proteins --root "$ROOT" --release rC6.1 --out "$WORK/proteins.faa"
 ```
 
 `search hits` without `--format` prints the kept hits as a table (`--json` for JSON). `--format tsv`
 is one row per gene; `--format faa` is one record per protein, named by protein uid. `nbr ...
 --format tsv --out DIR` writes one file per anchor locus. `nbr summarize` counts families and
-clusters around the anchors. `export proteins` needs the release's manifest.
+clusters around the anchors. `export proteins` needs the release's manifest; it reads the root only
+and takes no `--profile`.
 
 ## 8. Run the test suite on the pod
 
@@ -445,16 +482,23 @@ What is ours, all under `/tmp/if2453/`:
   `build-stage` removes itself (section 4), and the scan shards' runs in `biobox-domain-scan/`,
   removed after the merge.
 - `$BBTMP/logs/`: unit logs.
-- `$WORK/search-work/<run id>/`: a search run's work directory.
+- `$BBTMP/packs/release=<R>/<pack id>/`: the search pack of a release (section 7). It is a cache of
+  the release, shared by every user of the host: `pack build` makes it again from the release.
+- `$BBTMP/search/$USER/`: your searches (section 7). `runs/run=<run id>/` is a closed run's record
+  and hits; `runs/pending/run=<run id>.json` is a run's pending record (and `.stderr`, the runner's
+  stderr of a run submitted outside a unit); `work/<run id>/` is a run's work directory, which the
+  run removes when it closes. One is left only when the runner was killed (SIGKILL, a reboot).
 - `$TREE`, `$WORK` and `/tmp/if2453/ci-tmp/<name>-*`: your mirrored trees and pytest directories.
 
 Never delete:
 
 - anything under `/stor`;
-- anything that is not yours: another user's files, and another agent's directories under
-  `/tmp/if2453/` (`c10`, `b24`, `ci/<other name>`, and so on);
+- anything that is not yours: another user's files, another user's `$BBTMP/search/<user>/`, and
+  another agent's directories under `/tmp/if2453/` (`c10`, `b24`, `ci/<other name>`, and so on);
 - a staging directory, `.incoming` directory or root file of a step that has an intent file
   (`*.publishing.json`) and no run record (section 4);
+- the pending record or work directory of a search whose `bio-box search status` says `running`,
+  and a pack while any search runs;
 - any file of a data root: a root is append-only. If a root is wrong, tell the PI.
 
 Before you remove anything, check that none of the units you launched is still running, and look
@@ -464,6 +508,7 @@ for intent files.
 systemctl --user list-units --type=service --no-pager
 find "$ROOT/runs" -name '*.publishing.json'
 ls -l "$BBTMP/staging"
+ls "$BBTMP/packs" "$BBTMP/search/$USER/runs" "$BBTMP/search/$USER/work"
 ```
 
 Then remove leftovers one directory at a time, by exact path. Never use a glob and never `rm -rf`.
@@ -471,7 +516,7 @@ Then remove leftovers one directory at a time, by exact path. Never use a glob a
 ```bash
 rm -r "$BBTMP/staging/S9.demo"
 rm -r "$BBTMP/scratch/S9.demo"
-rm -r "$WORK/search-work/3d96a70ba10c7f5cd895de3d838153ae"
+rm -r "$BBTMP/search/$USER/work/3d96a70ba10c7f5cd895de3d838153ae"
 ```
 
 Old logs: list first.
@@ -502,6 +547,9 @@ a profile value is missing from this table.
 | Unit CPU quota | the night cap, 56: a ceiling fixed at launch; `build-stage` holds the limit of the hour | `scripts/pod_run.sh --threads`, profile `max_threads_night`; card C-12 |
 | Smallest data file | 64 MiB (67108864 bytes), except tables the registry marks `small_ok` | profile `small_file_floor_bytes`; AGENTS 7.3 says 64 MB |
 | Work directory | `/tmp/if2453/bio-box` | profile `tmp`; AGENTS 7.3 |
+| Search pack directory | `<tmp>/packs` (`/tmp/if2453/bio-box/packs`), outside the data root; with `--profile`, else `--pack-dir` | profile `tmp`; `default_pack_base` in `src/biobox/search/runner.py`; card W-03 |
+| Search runs and work directories | `<tmp>/search/<user>/runs` and `<tmp>/search/<user>/work`, one per user, outside the data root; with `--profile`, else `--runs` and `--work` | profile `tmp`; `default_runs_dir`, `default_work_base` in `src/biobox/search/runner.py`; card W-03 |
+| `search run` in a `pod_run.sh` unit | only with `--wait`; without it, refused (exit 2) | `BIOBOX_POD_UNIT` in `scripts/pod_run.sh` and `src/biobox/cli.py`; card W-13 |
 | Durable results | `/stor/work/Wilke/if2453/all-the-data` | profile `durable` |
 | Bulk results | `/stor/scratch/Wilke/if2453/all-the-data` | profile `bulk` |
 | Results reach the data root | one `rsync`, then an atomic rename | AGENTS 7.3 |
@@ -525,13 +573,12 @@ The scratch profile used for the tests in this file differs from the real one in
 | `pod_run.sh` CPU quota | the unit's quota is `--threads` of `pod_run.sh` (default the night cap, 56), fixed at launch, whatever `--scan-jobs` × `--scan-cpus` is. By day it is above the day cap: the day cap is held by `build-stage` and `run-step`, not by the quota. A `run-step` launched alone keeps the thread count it chose at its start until it ends (at most 300 CPU-minutes) | C-07, C-11, C-12 |
 | The image on the pod is old | the pod has the test image `bio-box-test_74b3e05.sif`, not an image built from the current source. The current source is bound in with `PYTHONPATH` (section 0) | 0-02 |
 | `rL.*` releases on `/stor` | they are in the pre-B-17 layout: current readers and `verify_manifest` may not read them. `rL.1` and `rL.2` also fail verification on one file, `l0/l0_manifest.parquet` | B-17, B-22 |
+| Search packs and runs inside an old root | a root written before card W-03 may hold `search_pack/` and `search/` (the pack and runs were then written into the root). Nothing reads or writes them now; the manifest leaves them out (`catalog.EXCLUDED_TREES`). Build the pack again into the pack directory (section 7) | W-03, W-13 |
+| No detached search in a unit | `search run` without `--wait` in a `pod_run.sh` unit is refused (exit 2): the unit would stop the detached runner when the command returns (section 7). Use `--wait`; `search status` and `search cancel` work on a `--wait` run from another shell | W-13 |
+| `pod_run.sh` and the profile | `pod_run.sh --profile` sets the unit's limits only; it does not pass the profile to `bio-box` (no `BIOBOX_PROFILE` in the image). Give `bio-box` its own `--profile`, or the pack, runs and work directories (section 7) | W-03, W-13 |
 
 Found while writing this runbook, no card yet (reported to the PI):
 
-- `bio-box search run` without `--wait`, started with `scripts/pod_run.sh`, records the run as
-  `failed` with `runner exited without closing the run`, because the unit ends with its main
-  process and takes the detached runner with it. Use `--wait`.
-- `search status` of a run started with `--wait` finds nothing until the run has ended.
 - The card text says `bio-box doctor`; the command is `python -m biobox.doctor`.
 
 ## 12. Contact
@@ -544,6 +591,16 @@ Run on 2026-11-10 between 07:25 and 07:45 (pod local time), in `/tmp/if2453/c06`
 `c06-*`, the scratch profile of Appendix B, and the image of section 0. "Last line" is the last line
 the command printed. A command that prints nothing has `(no output)`. Variables were set as in
 section 0.
+
+The rows of section 7, and the rows marked W-13, were run on 2026-11-10 between 15:35 and 15:42 (pod
+local time) by card W-13, in `/tmp/if2453/w13` (`WORK`; `ROOT=$WORK/root`, `BBTMP=$WORK/tmp`,
+`PROFILE=$WORK/profile.yaml`), with units named `w13-*`, the tree of the W-13 branch
+(`TREE=/tmp/if2453/ci/W-13`) and the same image. Its scratch profile is Appendix B's with `tmp`,
+`durable` and `bulk` under `/tmp/if2453/w13` and `max_threads_day` and `max_threads_night` 4. The
+fixture of Appendix B was built there first, with the section 2 command as unit `w13-build` and
+`--threads 4` (`pod_run: w13-build exited 0`). The two searches that were cancelled and stopped
+used the runner's test hook `--fault timeout --wall-s 900` (its worker waits until it is stopped),
+so that they ran long enough to be watched; `--fault` is not for real searches.
 
 | Section | Command | Date run | Last line |
 |---|---|---|---|
@@ -565,7 +622,8 @@ section 0.
 | 3 | `touch "$ROOT/STOP"`, then a launch | 2026-11-10 | `pod_run: c06-s1 exited 75` (log: `STOP exists; not starting stage S1`) |
 | 3 | `touch "$ROOT/STOP"` while `S1.igr` ran (unit `c06-s1d`) | 2026-11-10 | `pod_run: c06-s1d exited 75` (log: `STOP appeared; not publishing S1.igr, staging left at ...`) |
 | 3 | `rm "$ROOT/STOP"` | 2026-11-10 | `(no output)` |
-| 3 | `systemctl --user stop c06-s1e` while `rC6.2.cluster` ran | 2026-11-10 | `(no output)`; log: `build-stage: rC6.2.cluster exited 143; stopping here; the next call resumes at this step`, the log's last line then (before card C-13 the wrapper wrote no exit line after a stop; its trap is tested by `tests/r1/test_pod_run.py`, not yet on the pod) |
+| 3 | `systemctl --user stop c06-s1e` while `rC6.2.cluster` ran | 2026-11-10 | `(no output)`; log: `build-stage: rC6.2.cluster exited 143; stopping here; the next call resumes at this step`, the log's last line then (before card C-13 the wrapper wrote no exit line after a stop; its trap is tested by `tests/r1/test_pod_run.py`, and on the pod by W-13, next row) |
+| 3 | W-13: `systemctl --user stop w13-stop` while a search ran in it (section 7) | 2026-11-10 | `(no output)`, exit 0; the log's last two lines: `pod_run: w13-stop received SIGTERM`, then `pod_run: w13-stop exited 1` |
 | 4 | relaunch after the stop (unit `c06-s1g`) | 2026-11-10 | `pod_run: c06-s1g exited 0` |
 | 4 | `ls -d "$ROOT" "$BBTMP"` | 2026-11-10 | `/tmp/if2453/c06/tmp` |
 | 4 | `find "$ROOT/runs" -name '*.publishing.json'` | 2026-11-10 | `(no output)` |
@@ -577,22 +635,29 @@ section 0.
 | 6 | `bio-box release verify --root "$ROOT" --release rC6.2`, and with `--previous rC6.1` | not run on the pod; tested on the fixture | `tests/r2/test_build_stage.py` (card C-13): exit 0 and `release ...: verified` on a built release, exit 1 naming the file on a damaged copy, and `append-only against ...: ok` or `... rewritten` |
 | 6 | open the catalog of `rC6.2` | 2026-11-10 | `contigs 3` |
 | 6 | verify `rC6.1` | 2026-11-10 | `rC6.1 stages ['S0'] files 25 hash 98fbb4855e3d7e997db13336c32b7864 problems 0` (the python one-liner, as above) |
-| 7 | `pod_run.sh ... c06-pack pack build ...` | 2026-11-10 | `pod_run: c06-pack exited 0` |
-| 7 | `bio-box pack verify --root "$ROOT" --release rC6.1` | 2026-11-10 | `pack rC6.1: verified` |
-| 7 | `pod_run.sh ... c06-search search run ... --wait` | 2026-11-10 | `pod_run: c06-search exited 0` (log: run id and `ok`) |
-| 7 | `bio-box search status "$RUN" --root "$ROOT"` | 2026-11-10 | `{"run_id": "6592f8dad89ce024c8140f2228c1ab24", "status": "ok", "error": null, "rounds": 1, "final_round": 1, "stop_reason": "max_rounds"}` |
-| 7 | `systemctl --user stop c06-search3` (run with `--run-id a1b2c3d4e5f60718293a4b5c6d7e8f90`), then `search status` | 2026-11-10 | `{"run_id": "a1b2c3d4e5f60718293a4b5c6d7e8f90", "status": "stopped", "error": "cancelled", "rounds": null, "final_round": null, "stop_reason": null}` |
-| 7 | `bio-box search hits "$RUN" --root "$ROOT"` | 2026-11-10 | `protein	01563e192ab22a5931d55e224a2dbb07	2598.22509765625	2598.05859375	0.0	0	1132	1	keep` |
+| 7 | `pod_run.sh ... w13-pack pack build ... --profile "$PROFILE"` | 2026-11-10 | `pod_run: w13-pack exited 0` (the pack in `$BBTMP/packs/release=rC6.1/16f032d9f9785d4852e2192fd63996be`; nothing under `$ROOT`) |
+| 7 | `bio-box pack verify --root "$ROOT" --release rC6.1 --profile "$PROFILE"` | 2026-11-10 | `pack rC6.1: verified` |
+| 7 | `pod_run.sh ... w13-search search run ... --profile "$PROFILE" --wait` | 2026-11-10 | `pod_run: w13-search exited 0` (log, before it: `search run: 77e72f990d18af9b0e4420807244e2e3 running; pending record /tmp/if2453/w13/tmp/search/if2453/runs/pending/run=77e72f990d18af9b0e4420807244e2e3.json`, then the run id and `ok`) |
+| 7 | `systemctl --user status w13-cancel --no-pager` while a search ran in it | 2026-11-10 | the unit's process tree (`sh`, `Singularity runtime parent`, the runner `python -m biobox.cli search run ...`, its worker); `systemctl --user show -p Type -p KillMode w13-cancel`: `Type=simple`, `KillMode=control-group` |
+| 7 | `bio-box search status "$RUN" --root "$ROOT" --profile "$PROFILE"`, from another shell while unit `w13-cancel` ran the search `131313131313131313131313131313c1` | 2026-11-10 | `{"run_id": "131313131313131313131313131313c1", "status": "running"}` |
+| 7 | `bio-box search status "$RUN" --root "$ROOT" --profile "$PROFILE"` of the `ok` run | 2026-11-10 | `{"run_id": "77e72f990d18af9b0e4420807244e2e3", "status": "ok", "error": null, "rounds": 1, "final_round": 1, "stop_reason": "max_rounds"}` |
+| 7 | `bio-box search cancel "$RUN" --root "$ROOT" --profile "$PROFILE"`, from another shell, of the running `131313131313131313131313131313c1` | 2026-11-10 | `(no output)`, exit 0. The unit's log then ended `131313131313131313131313131313c1	stopped` and `pod_run: w13-cancel exited 1`; `search status` then: `{"run_id": "131313131313131313131313131313c1", "status": "stopped", "error": "cancelled", "rounds": null, "final_round": null, "stop_reason": null}` |
+| 7 | `systemctl --user stop w13-stop` while it ran the search `13131313131313131313131313131351`, then `search status` | 2026-11-10 | `{"run_id": "13131313131313131313131313131351", "status": "stopped", "error": "cancelled", "rounds": null, "final_round": null, "stop_reason": null}`; the log ended `pod_run: w13-stop received SIGTERM`, `pod_run: w13-stop exited 1` |
+| 7 | `pod_run.sh ... w13-nowait search run ... --profile "$PROFILE"` (no `--wait`) | 2026-11-10 | `pod_run: w13-nowait exited 2`; log, before it: ``refused: search run without --wait in the pod_run.sh unit w13-nowait: the unit ends when this command returns, and systemd stops the detached runner with it. Add --wait: the run then keeps the unit until it closes, and `bio-box search status` and `search cancel` work on it from another shell`` |
+| 7 | `bio-box search hits "$RUN" --root "$ROOT" --profile "$PROFILE"` | 2026-11-10 | `protein	01563e192ab22a5931d55e224a2dbb07	2598.22509765625	2598.05859375	0.0	0	1132	1	keep` |
 | 7 | `bio-box search hits ... --format tsv --out "$WORK/hits.tsv"` | 2026-11-10 | `(no output)`, exit 0 |
 | 7 | `bio-box search hits ... --format faa --out "$WORK/hits.faa"` | 2026-11-10 | `(no output)`, exit 0 |
 | 7 | `bio-box nbr "$RUN" ... --format tsv --out "$WORK/nbr"` | 2026-11-10 | `(no output)`, exit 0; one file `locus_NC_001416.1_1afb879accb6db3171514adc98a253cb.tsv` |
 | 7 | `bio-box nbr summarize "$RUN" ... --by pfam,nr50` | 2026-11-10 | `nr50		true					0	0.0	0	0	genome_uid			` |
 | 7 | `bio-box export proteins ... --out "$WORK/proteins.faa"` | 2026-11-10 | `(no output)`, exit 0 |
-| 7 | `bio-box search cancel 3d96a70ba10c7f5cd895de3d838153ae --root "$ROOT"` (runner already gone) | 2026-11-10 | `(no output)`, exit 0 |
+| 7 | `bio-box search cancel "$RUN" ...` of a run that has closed | not run on the pod by W-13; tested | `tests/r2/test_micro_s0_search.py` (card W-13): exit 0, and nothing is signalled. Card C-06 ran it on the pod before W-03 (`--root` alone, runner already gone): `(no output)`, exit 0 |
+| 7 | `ls -d "$ROOT/search_pack" "$ROOT/search"` after every command above | 2026-11-10 | `ls: cannot access '/tmp/if2453/w13/root/search': No such file or directory` (and the same for `search_pack`): the search wrote nothing under the root |
 | 8 | `sh scripts/pod_pytest.sh C-06 tests/r0 -k nothing_matches_this` (laptop) | 2026-11-10 | `140 deselected in 1.09s` (exit 5: nothing selected) |
 | 8 | `sh scripts/pod_pytest.sh C-06 tests/r0/test_runbook.py` (laptop) | 2026-11-10 | `20 passed in 3.48s` |
 | 8 | `sh scripts/pod_pytest.sh C-06 --shards 8` (laptop) | 2026-11-10 | `shard 7: 121 passed, 8 xfailed in 509.90s (0:08:29)` (eight shard lines, no failure; 1023 passed, 10 skipped, 8 xfailed in all) |
-| 9 | `rm -r` of a staging directory, a scratch directory and a search work directory | 2026-11-10 | `(no output)`, exit 0 each. The staging directory was an empty directory made for this test |
+| 9 | `rm -r` of a staging directory and a scratch directory | 2026-11-10 | `(no output)`, exit 0 each. The staging directory was an empty directory made for this test |
+| 9 | W-13: `ls "$BBTMP/packs" "$BBTMP/search/$USER/runs" "$BBTMP/search/$USER/work"` | 2026-11-10 | `/tmp/if2453/w13/tmp/search/if2453/work:` (empty: every run had removed its work directory; `runs` held `pending` and the three runs of section 7, `packs` held `release=rC6.1`) |
+| 9 | W-13: `rm -r "$BBTMP/search/$USER/work/3d96a70ba10c7f5cd895de3d838153ae"` | 2026-11-10 | `(no output)`, exit 0. An empty directory made for this test |
 | 9 | `find "$BBTMP/logs" -name '*.log' -mtime +30` | 2026-11-10 | `(no output)` |
 
 ## Appendix B. Rehearse on the fixture
@@ -670,6 +735,10 @@ Last line: `01563e192ab22a5931d55e224a2dbb07`.
 - A build at the real profile's 64 MiB floor and 200G cap, and a real Pfam scan (card C-10).
 - Inputs outside `/tmp/if2453` (they need an extra `--bind`, section 2), and `--digest` refusing a
   wrong image (the script's `die` path was read, not run).
-- Card C-13's changes in a real unit: the exit line after `systemctl --user stop`, the timestamped
-  log lines, the per-step scratch directories and `bio-box release verify` were tested in the
-  test suite on the pod (`scripts/pod_pytest.sh`), not in a build launched with `pod_run.sh`.
+- Card C-13's changes in a real build unit: the timestamped log lines, the per-step scratch
+  directories and `bio-box release verify` were tested in the test suite on the pod
+  (`scripts/pod_pytest.sh`), not in a build launched with `pod_run.sh`. The exit line after
+  `systemctl --user stop` was seen in a real unit by card W-13, in a search unit (section 3), not in
+  a build unit.
+- `search run` without `--wait` outside a `pod_run.sh` unit (a submitted, detached runner, for
+  example from the `bio-box` function of section 0). It is tested in the test suite, not on the pod.

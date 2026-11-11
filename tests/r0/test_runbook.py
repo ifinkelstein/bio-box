@@ -329,3 +329,89 @@ def test_every_script_the_runbook_names_exists():
     assert named, "the runbook names no script"
     missing = sorted(s for s in named if not (ROOT / s).is_file())
     assert not missing, f"RUNBOOK.md names scripts that do not exist: {missing}"
+
+
+# --- W-13 (amended after W-03): the search commands name the directories outside the data root ----------------
+
+
+def bio_box_args(cmd: str) -> list[str] | None:
+    """The `bio-box` arguments of a command line (after `bio-box`, or after the unit of `pod_run.sh`), or None."""
+    if re.match(r"^[\w-]+\(\)\s*\{", cmd) or re.match(r"^\w+=\(", cmd):
+        return None
+    t = tokens(cmd)
+    for i, tok in enumerate(t):
+        if tok.endswith("pod_run.sh"):
+            known, j = options_of(POD_RUN), i + 1
+            while j < len(t) and t[j].startswith("--"):
+                j += 2 if known.get(t[j]) else 1
+            return t[j + 1:]
+        if tok == "bio-box":
+            return t[i + 1:]
+    return None
+
+
+# What each search command needs when it has no --profile (card W-03): one option of each group.
+SEARCH_DIRS = {
+    ("pack", "build"): [("--pack-dir",)],
+    ("pack", "verify"): [("--pack-dir",)],
+    ("search", "run"): [("--pack-dir",), ("--runs", "--out"), ("--work",)],
+    ("search", "status"): [("--runs",)],
+    ("search", "cancel"): [("--runs",)],
+    ("search", "hits"): [("--runs",), ("--pack-dir",)],
+    ("nbr", None): [("--runs",), ("--pack-dir",)],
+}
+
+
+def search_dir_problems(args: list[str]) -> list[str]:
+    key = (args[0], args[1] if args[0] != "nbr" else None) if args else None
+    if key not in SEARCH_DIRS or "--profile" in args:
+        return []
+    return [f"{' '.join(args[:2])}: no --profile and none of {group}"
+            for group in SEARCH_DIRS[key] if not any(o in args for o in group)]
+
+
+@pytest.mark.covers("W-13", "W-03")
+def test_w13_the_checker_of_search_directories_rejects_a_command_with_neither():
+    assert search_dir_problems(["search", "status", "X", "--root", "X"])
+    assert search_dir_problems(["pack", "build", "--root", "X", "--release", "X"])
+    assert search_dir_problems(["nbr", "summarize", "X", "--root", "X", "--runs", "X"])  # no --pack-dir
+    assert not search_dir_problems(["search", "status", "X", "--root", "X", "--profile", "X"])
+    assert not search_dir_problems(["search", "cancel", "X", "--root", "X", "--runs", "X"])
+
+
+@pytest.mark.covers("W-13", "W-03")
+def test_w13_every_pack_search_and_nbr_command_names_its_directories_or_the_profile():
+    """Card W-13 (c): since W-03 the pack and the runs live outside the data root, and `pod_run.sh` does not export
+    BIOBOX_PROFILE, so every pack, search and nbr command of the runbook passes --profile or the directories."""
+    found, bad = 0, []
+    for n, cmd in read_commands():
+        args = bio_box_args(cmd)
+        if args and args[0] in ("pack", "search", "nbr"):
+            found += 1
+            bad += [f"RUNBOOK.md:{n}: {p}" for p in search_dir_problems(args)]
+    assert found >= 10, found
+    assert not bad, "\n".join(bad)
+
+
+@pytest.mark.covers("W-13")
+def test_w13_the_search_section_watches_and_cancels_a_wait_run_with_bio_box():
+    """Card W-13: a `--wait` run has a pending record, so section 7 watches it with `search status` and stops it with
+    `search cancel`; the runbook no longer says status finds a run only once it has ended, nor that the default
+    work directory is /tmp/atd/search, and it says what `search run` without --wait does in a unit."""
+    text = RUNBOOK.read_text()
+    search = section_of(text, "## 7. ")
+    cmds = [bio_box_args(c) or [] for _, c in commands(search)]
+    runs = [a for a in cmds if a[:2] == ["search", "run"]]
+    assert runs and all("--wait" in a for a in runs)
+    assert any(a[:2] == ["search", "status"] for a in cmds) and any(a[:2] == ["search", "cancel"] for a in cmds)
+    assert "finds a run only when it has ended" not in text
+    assert "finds nothing until the run has ended" not in text
+    assert "default is\n`/tmp/atd/search`" not in text and "the default is `/tmp/atd/search`" not in text
+    assert "outside the data root" in search
+    assert "without `--wait`" in search and "BIOBOX_POD_UNIT" in search
+    clean = section_of(text, "## 9. ")  # what is ours under /tmp, and what may be cleaned
+    assert "$BBTMP/packs" in clean and "$BBTMP/search/$USER" in clean
+    known = section_of(text, "## 11. ")
+    assert "runner exited without closing the run" not in known  # W-13 fixed both search notes
+    appendix = section_of(text, "## Appendix A")
+    assert "search cancel" in appendix and "w13-" in appendix

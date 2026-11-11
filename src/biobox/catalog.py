@@ -114,10 +114,12 @@ PY_FUNCTIONS = {
 }
 
 
-# Trees under the data root that carry their own manifests and are not release files: the
-# search pack (search_pack/release=<R>/pack_manifest.json, verified by C-12) and search runs
-# (search/run_index.json), which are written after the release is signed; and run-step records
-# (runs/stage=<S>/<step>.json, card C-02), which hold timestamps and host names.
+# Trees under the data root that are not release files: run-step records (runs/stage=<S>/<step>.json,
+# card C-02), which hold timestamps and host names; and two trees of roots written before card W-03,
+# whose search path wrote the search pack (search_pack/release=<R>/) and search runs
+# (search/run=<run_id>/ and search/run_index.json) into the root. Since W-03 nothing writes either
+# tree: the pack and the runs live outside the data root (`biobox.search.runner`, "Where things
+# live"). They stay listed so that an old root still builds and verifies its manifest.
 EXCLUDED_TREES = ("search_pack", "search", "runs")
 
 
