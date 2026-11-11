@@ -17,6 +17,20 @@ passed on the integration branch.
 - Held: W-13, until W-03 merges (same search files). E-07 waits for PI card 0-08.
 - Then: the merge to `main`; then pull the image by digest; then the 50 Gbp build.
 
+### Trial search on `rN.1`, 22:50 CST: a search cannot run on it yet
+
+Record: `planning/measurements/2026-11-10_trial_search_rN1.md` (all *measured*, wilkcomp02, read-only root).
+- Current code opens and verifies `rN.1` (60 s), finds T7 by accession, and exports all 10.6 M proteins (88 s).
+- **Blocker:** `pack build` holds every region in memory; it hit a 32 GiB cap in the dark-ORF part and
+  thrashed, so no pack exists and `search run` refuses. Card W-16.
+- **Wrong answer:** `nbr summarize --by nr50` exits 0 with every neighbour `unannotated`, because `rN.1`
+  predates `member_cluster` (B-27). Card W-17. The rebuild's releases need the newer tables: card C-17.
+- The answer by hand (`hmmsearch` on the export, Pfam `RNA_pol`, 30 bits): 1,957 proteins, 1,931 in phages
+  (equal to the 2026-11-09 walk-through) and 26 in prokaryotes; T7 gp1 scores 367.7 bits.
+- Ten more rough edges: cards W-18 and W-15.
+- Night threads: the PI raised the scan to 12 shards (48 threads) from the P2 stage, leaving 8 for tests;
+  driver unit `r10-p2-driver2` replaced `r10-p2-driver` at 22:09 CST.
+
 ### 10 Gbp rebuild, 18:20 CST
 
 - Phase 1 is done: releases `rN.1a`, `rN.1b`, `rN.1` in `/tmp/if2453/r10/root` on the pod, all verified

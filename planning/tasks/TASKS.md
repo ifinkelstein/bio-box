@@ -559,6 +559,32 @@ Why: `search hmm --positive ACCESSION:START-END` scans every row group of `conti
 Do: measure first on `rN.1` (read-only) how long the positive lookup takes and how many row groups it reads. If it is over a second, add a per-stage lookup table sorted by accession (accession, `contig_uid`), written by the step that writes `contig_label`, and resolve `--positive` through it with O(1) row groups; keep the header-substring form as the documented slow path. Also accept a protein accession where the release records one. Stop and report if the measurement shows the scan is cheap: then only document it.
 Accept: the measurement, labelled; if the table is added, `profile_query` shows one row group per stage for an accession lookup.
 
+### W-16 `pack build` holds every region of the release in memory
+**M** · blocks every search on a release of 10 Gbp or more · found 2026-11-10 by the trial search on `rN.1` (AGENTS §4.1, §4.2)
+Files: `src/biobox/search/pack.py`, tests
+Evidence (*measured*, wilkcomp02, unit `trial-pack`, `planning/measurements/2026-11-10_trial_search_rN1.md`): on `rN.1` (10.6 M proteins) the `unique` and `igr` parts finished; the dark-ORF part reached the unit's 32 GiB cap, then thrashed at about one CPU for 41 minutes without being killed; stopped by hand after 9,528 s and 155.1 CPU-minutes, with 4.66 GB on disk and no manifest. `_build_igr` and `_build_dark_orf` hold every region of the release in Python lists before writing. No search could run.
+Do: reproduce first with a memory test on the 100× synthetic store (peak RSS of the pack build under a bound that the current code breaks; state the bound). Then stream: read regions one row group or one contig at a time, write shards as they fill, and keep the output byte-identical to today's on the fixture (the pack id must not change for the same inputs). Print one progress line per part and per shard to stderr (a build takes hours and says nothing today). A build stopped by a signal removes its `.building-*` directory or reuses it on the next call; say which. The refusal message of a search without a pack, and the runbook, must not suggest `--model` is required when the release has no domain library (add `RUNBOOK.md` and `src/biobox/cli.py` to Files for those lines only).
+Accept: the memory test fails first and passes after; fixture pack byte-identical; then on the pod (Pod: yes) the pack of `rN.1` builds under a 32G cap, read-only root, at most 4 threads, with peak memory, wall time, CPU-minutes and size recorded.
+
+### W-17 `nbr summarize` reports every neighbour as unannotated when the release has no `member_cluster`
+**L** · found 2026-11-10 by the trial search on `rN.1` · a wrong answer with exit 0
+Files: `src/biobox/search/nbr.py` or wherever `nbr summarize` resolves cluster levels, `src/biobox/cli.py` (`release verify`, one check), tests
+Evidence (*measured*, wilkcomp02): on `rN.1`, built before card B-27, `nbr summarize <1,957 uids> --window 5g --by nr50` exits 0 with `n_keys {"nr50": 0}` and all 24,473 neighbours `unannotated`; an SQL check finds no neighbour without an NR50 cluster. The missing `member_cluster` becomes an empty view.
+Do: test first on a fixture release with its `member_cluster` files removed from the manifest. `nbr summarize` (and any export that reads `member_cluster`) then either answers correctly from `cluster_member`, with a note on stderr that it is the slow path, or refuses with exit 2 naming the missing table and the command that builds it; choose the fallback if it is a few lines, and say which. `release verify` reports, as a warning line and not a failure, each lookup table that current readers use and the release lacks. Do not edit `catalog.py` (card B-38 is in it): if the fix must be there, stop and report.
+Accept: the test fails first; with the table present, output is unchanged.
+
+### W-18 Small defects from the trial search
+**L** · Depends: W-16, B-38 (same files) · found 2026-11-10
+Files: `src/biobox/catalog.py`, `src/biobox/cli.py`, `src/biobox/search/recipe.py`, `scripts/pod_run.sh`, `RUNBOOK.md`, tests
+Do, each with a test first: (1) `open_catalog` puts DuckDB's temporary directory under the data root by default: put it under the profile's `tmp` or the system temporary directory, never under the root (W-03's rule). (2) A recipe's `protein_accession` positive control is accepted by the recipe parser and refused at submit: make the two agree. (3) `nbr` takes anchors only as one comma-separated argument (64 KB for 1,957 uids): accept `--anchors-file`. (4) `pod_run.sh --collect` loses the unit's CPU and memory totals when it ends: write them to the log before the exit line. (5) Add `bio-box find --release R (--accession ACC[:START-END] | --protein UID)`, printing contig, coordinates, strand, `feature_uid` and protein uid; `search hmm --positive` uses the same function (see card W-15 for its speed).
+Accept: the tests.
+
+### C-17 Give `rN.1` and `rN.2` the lookup tables current readers need
+**M** · Depends: the rebuild's phase 2 · Pod: yes
+Why: the 10 Gbp rebuild runs on the tree at `740d049`, before cards B-27 (`contig_label`, `member_cluster`) and B-21 (per-domain postings). Its releases lack those tables, so `nbr summarize` and the exports are wrong or slow on them (card W-17).
+Do: when `rN.2` is built and verified, define a new release `rN.3` over the same three stages and build only its release steps (cluster, tokens, postings, dim, manifest, catalog) with the current code, in the same root, after checking on a copy of the release definition in a scratch root that the current `build-stage` accepts stages built at `740d049` (if it refuses, stop and report what it refuses). No stage file is rewritten (AGENTS §3.10). Record whether the clusters equal `rN.2`'s row for row, the peak memory of the per-domain postings step (card B-40 is then done by this run), and the time. `contig_label` is per stage and stays the fallback view.
+Accept: `rN.3` verifies; `nbr summarize --by nr50,pfam` on it answers with clusters and families; the measurement file.
+
 ### C-09 The file-size rule does not refuse small release records
 **L** · Depends: C-08 (found in its report) · blocks the second release under C-04
 Files: `src/biobox/contracts.py` (`check_file_sizes`), `src/biobox/registry/schemas.py` (a `small_ok` flag on `ArtifactSpec` if it lacks one), `tests/r2/test_micro_s0_contracts.py`, `tests/registry/operations.yaml` (drop `catalog` and `release_manifest` from `external` if R0 accepts it)
