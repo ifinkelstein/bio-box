@@ -220,6 +220,25 @@ def _pending_notice(run_id: str, info: Path) -> None:
     print(f"search run: {run_id} running; pending record {info}", file=sys.stderr, flush=True)
 
 
+def _positive_prefs(controls_json: str | None) -> dict[bytes, tuple[str | None, str | None]]:
+    """{protein_uid: (accession, header text)} for the positive controls of a run's `controls_json` (card W-20), so
+    the FASTA's `example=` names the control's own contig: a label `ACCESSION:START-END` names its accession, any
+    other label is header text (as `search hmm --positive` reads it). A control without a label names no contig."""
+    out: dict[bytes, tuple[str | None, str | None]] = {}
+    for p in (json.loads(controls_json) if controls_json else {}).get("positive", []):
+        label = p.get("label")
+        if label and p.get("uid"):
+            m = _SPAN.match(label)
+            out[bytes.fromhex(p["uid"])] = (m["acc"], None) if m else (None, label)
+    return out
+
+
+def _close_pending(final: Path) -> None:
+    """Remove the pending record of a run that has closed (card W-20): `status` and `cancel` answer from the run's
+    own record (`run.parquet`) from then on. Beside the run directory `final`, as `runner.pending_path` says."""
+    runner.pending_path(Path(final).resolve()).unlink(missing_ok=True)
+
+
 def _search(a) -> int:
     root = Path(a.root)
     if a.action == "run":
@@ -252,6 +271,7 @@ def _search(a) -> int:
         except RecipeError as e:
             print(f"refused: {e}", file=sys.stderr)
             return 2
+        _close_pending(out if out is not None else runner.run_dir(runs, row["run_id"]))
         _print(export.ndjson([export.run_record(row)]) if a.json else [row["run_id"].hex() + "\t" + row["status"]])
         return 0 if row["status"] == "ok" else 1
     d = _run_path(a, a.target)
@@ -266,6 +286,10 @@ def _search(a) -> int:
         try:
             runner.cancel(d)
         except FileNotFoundError:
+            if (d / "run.parquet").exists():  # card W-20: a closed run has no pending record; its own record answers
+                print(f"run {a.target} is already closed ({runner.status(d)['status']}): nothing to cancel",
+                      file=sys.stderr)
+                return 0
             print(f"refused: no pending run {a.target} (looked for {runner.pending_path(d)})", file=sys.stderr)
             return 2
         return 0
@@ -281,9 +305,10 @@ def _search(a) -> int:
             print("refused: --json and --format are exclusive", file=sys.stderr)
             return 2
         make = export.hits_tsv if a.format == "tsv" else export.hits_faa
+        more = {"prefer": _positive_prefs(runner.read_run(d)["controls_json"])} if a.format == "faa" else {}
         try:
             _emit(make(root, hits, release=release, tape_version=tv, gene_call_version=a.gene_call_version,
-                       manifest=manifest, library=a.library, threads=a.threads), a.out)
+                       manifest=manifest, library=a.library, threads=a.threads, **more), a.out)
         except ValueError as e:
             print(f"refused: {e}", file=sys.stderr)
             return 2
@@ -305,6 +330,8 @@ def _search(a) -> int:
         cols = ["target_kind", "target_uid", "seq_bitscore", "bitscore", "evalue_zref", "env_start", "env_end",
                 "n_occurrences", "curation_label"]
         _print(["\t".join(cols)] + ["\t".join(str(r[c]) for c in cols) for r in recs])
+        print(f"showing {len(recs)} of {len(hits)} rows" + (" (--top_n 0 shows all)" if len(recs) < len(hits) else ""),
+              file=sys.stderr)
     return 0
 
 
@@ -404,8 +431,19 @@ def _nbr(a) -> int:
             return 2
         return 0
     if a.action == "summarize":
+        by = [x.strip() for x in a.by.split(",") if x.strip()]
+        if "pfam" in by and not any(True for _ in files.entries("l1_domains")):
+            # card W-20: as `search hmm` does, say so once and leave the level out (it would report every neighbour
+            # as unannotated, share 1.0)
+            by = [x for x in by if x != "pfam"]
+            if not by:
+                print(f"refused: release {release} has no domain library, so --by pfam has nothing to summarize; "
+                      "use --by nr50,nr90", file=sys.stderr)
+                return 2
+            print(f"note: release {release} has no domain library: the pfam level is left out; summarizing at "
+                  f"{','.join(by)}", file=sys.stderr)
         try:
-            s = nbr.summarize(root, uids, policy, [x.strip() for x in a.by.split(",") if x.strip()], release=release,
+            s = nbr.summarize(root, uids, policy, by, release=release,
                               gene_call_version=a.gene_call_version, tape_version=tv, top_n=a.top,
                               manifest=files.manifest)
         except ValueError as e:
@@ -653,6 +691,7 @@ def _search_hmm(a) -> int:
                          runs=runs, pending=True, on_pending=_pending_notice, gene_call_version=a.gene_call_version)
     except RecipeError as e:
         return refuse(e)
+    _close_pending(runner.run_dir(runs, row["run_id"]))  # card W-20
     rid, status = row["run_id"].hex(), row["status"]
     levels = "pfam,nr50" if libraries else "nr50,nr90"
     window = f"{a.neighbors}g"
@@ -662,6 +701,7 @@ def _search_hmm(a) -> int:
     try:
         (tmp / "recipe.yaml").write_text(text, encoding="utf-8")
         if status == "ok":
+            (tmp / "README.txt").write_text(export.README_TEXT, encoding="utf-8")  # card W-20
             where = ["--root", str(root), "--gene-call-version", a.gene_call_version, "--runs", str(runs),
                      "--pack-dir", str(packs)]
             opts = (["--library", a.library] if a.library else []) + (["--threads", str(a.threads)] if a.threads else [])
@@ -685,7 +725,7 @@ def _search_hmm(a) -> int:
         print(f"search hmm: run {rid} ended {status}: {row.get('error')}; {out} holds the recipe it ran",
               file=sys.stderr)
         return 1
-    _print([f"recipe\t{out / 'recipe.yaml'}", f"hits\t{out / 'hits.tsv'}\t{counts[0]} genes of {counts[1]} proteins",
+    _print([f"recipe\t{out / 'recipe.yaml'}", f"readme\t{out / 'README.txt'}", f"hits\t{out / 'hits.tsv'}\t{counts[0]} genes of {counts[1]} proteins",
             f"fasta\t{out / 'hits.faa'}", f"neighbors\t{out / 'neighbors.tsv'}\tlevels {levels}, window {window}",
             f"loci\t{out / 'loci'}\t{counts[2]} tables"])
     if not libraries:
@@ -1084,6 +1124,11 @@ def _build_stage(a) -> int:
 
 
 def main(argv: list[str] | None = None) -> int:
+    with nbr.noted_once():  # card W-20: a note about the release (the slow path) once per command, not per store opened
+        return _main(argv)
+
+
+def _main(argv: list[str] | None = None) -> int:
     argv = list(sys.argv[1:] if argv is None else argv)
     if argv[:2] == ["search", "hmm"]:  # card W-07: its own options, and no recipe or run positional
         return _search_hmm(_hmm_parser().parse_args(argv[2:]))

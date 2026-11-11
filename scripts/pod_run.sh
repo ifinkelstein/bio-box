@@ -102,6 +102,12 @@ mkdir -p "$(dirname "$LOG")"
 # Card W-18: --collect discards the unit's accounting when it ends, so before the exit line the sh asks the
 # user manager for it while the unit still exists and logs "pod_run: <unit> usage CPUUsageNSec=<ns> MemoryPeak=<bytes>"
 # (nothing when systemd reports no accounting, e.g. `[not set]`).
+# Card W-20: systemd itself expands `${NAME}` (and `$NAME` as a word of its own) in a unit's command line before
+# any shell runs (man systemd.service, "Command lines": "Basic environment variable substitution is supported"; a
+# literal dollar sign is written `$$`), so the old `${use% }` was always empty (measured on wilkcomp02, 2026-11-11).
+# The wrapper therefore holds no `${`: `paste -sd" "` joins the two lines without a trailing space. The two
+# totals come in the order systemd prints them (measured on wilkcomp02, 2026-11-11, unit w20-usage:
+# `pod_run: w20-usage usage MemoryPeak=426106880 CPUUsageNSec=4151944000`).
 # PYTHONUNBUFFERED: a step command's own output reaches the log as it is written.
 # BIOBOX_POD_UNIT (card W-13), set after the caller's --env so it cannot be unset: the unit ends with
 # its main process (systemd-run --collect starts a service; systemd then stops whatever is left in
@@ -110,7 +116,7 @@ mkdir -p "$(dirname "$LOG")"
 systemd-run --user --unit="$UNIT" --collect --quiet --same-dir \
   -p MemoryMax="$MEM" -p MemorySwapMax=0 -p CPUQuota="$((THREADS * 100))%" -p OOMPolicy=continue \
   -p StandardOutput="append:$LOG" -p StandardError="append:$LOG" \
-  /bin/sh -c 'unit=$1; shift; sig=""; trap "sig=TERM" TERM; trap "sig=INT" INT; trap "sig=HUP" HUP; "$@"; rc=$?; [ -z "$sig" ] || echo "pod_run: $unit received SIG$sig"; use=$(systemctl --user show "$unit" -p CPUUsageNSec -p MemoryPeak 2>/dev/null | tr "\n" " "); case "$use" in *=[0-9]*) echo "pod_run: $unit usage ${use% }";; esac; echo "pod_run: $unit exited $rc"; exit $rc' sh "$UNIT" \
+  /bin/sh -c 'unit=$1; shift; sig=""; trap "sig=TERM" TERM; trap "sig=INT" INT; trap "sig=HUP" HUP; "$@"; rc=$?; [ -z "$sig" ] || echo "pod_run: $unit received SIG$sig"; use=$(systemctl --user show "$unit" -p CPUUsageNSec -p MemoryPeak 2>/dev/null | paste -sd" " -); case "$use" in *=[0-9]*) echo "pod_run: $unit usage $use";; esac; echo "pod_run: $unit exited $rc"; exit $rc' sh "$UNIT" \
   "$NICE_BIN" -n "$NICE" "$SING" exec --cleanenv --env PYTHONUNBUFFERED=1 --bind /sys/fs/cgroup:/sys/fs/cgroup:ro "${BINDS[@]}" \
   --env "BIOBOX_IMAGE_DIGEST=$SUM" "${ENVS[@]}" --env "BIOBOX_POD_UNIT=$UNIT" "$IMAGE" python -m biobox.cli "$@"
 

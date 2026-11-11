@@ -165,3 +165,13 @@ def test_w18_the_totals_come_after_a_stop_notice_and_before_the_exit_line(tmp_pa
     assert log.read_text().splitlines()[-3:] == ["pod_run: w18-unit received SIGTERM",
                                                   "pod_run: w18-unit usage CPUUsageNSec=5 MemoryPeak=6",
                                                   "pod_run: w18-unit exited 143"]
+
+
+@pytest.mark.covers("W-20")
+def test_w20_the_units_command_line_has_no_braced_expansion_for_systemd_to_eat():
+    """Card W-20 (1): systemd expands `${NAME}` (and `$NAME` as a word of its own) in a unit's command line itself,
+    before any shell sees it, so `${use% }` became an empty variable and the usage line was always empty (measured on
+    wilkcomp02, trial2-hmm: a test unit running `echo "[${use% }] [$use]"` logged `[] [A=1 B=2 ]`). The wrapper
+    handed to systemd-run must hold no `${`; the escape `$${` would not do either, because the other tests here run
+    the wrapper in a plain sh, where it would not be undone."""
+    assert "${" not in wrapper()

@@ -155,6 +155,76 @@ def nbr_summary_tsv(summary: dict) -> Iterator[str]:
                 yield "\t".join(_tsv_cell(c, r.get(c)) for c in cols)
 
 
+README_TEXT = """\
+Files written by `bio-box search hmm` (README.txt; card W-20)
+
+recipe.yaml     the recipe the run ran.
+hits.tsv        one row per gene of a hit protein.
+hits.faa        one record per hit protein: >protein_uid, then length, scores, n_genes and one example gene.
+neighbors.tsv   which protein families and clusters sit next to the hits (one table per level).
+loci/           one table per anchor locus (a hit gene and the genes around it), locus_<accession>_<feature_uid>.tsv.
+
+Conventions, the same in every file
+  Coordinates (start, end) are 0-based and half-open: the first base of a contig is 0 and `end` is the first base
+  after the gene. A GenBank range 3171..5822 is start 3170, end 5822.
+  Strand is +1 or -1 (never 1, (+1) or "plus"). A gene on a circular contig that crosses the origin has end greater
+  than the contig length.
+  Uids (protein_uid, contig_uid, feature_uid, genome_uid, nr90, nr50, nr50_rep, cluster_uid, rep_uid) are 32 hex
+  digits. nr90 and nr50 are cluster uids of the release at 90% and 50% identity, not numbers to compare across
+  releases.
+  An ordinal (position of a gene in its contig's tape) means something only inside its tape_version and is always
+  written beside the feature_uid of the gene; use feature_uid to name a gene.
+  Scores: seq_bitscore and hit_seq_bitscore in bits, one decimal; seq_evalue_zref at the reference database size,
+  scientific notation with two significant digits. An empty cell means no value.
+
+hits.tsv columns
+  accession, header   the first source record of the contig (by source file hash, then record number).
+  n_records           how many source records the contig has: records of the input FASTA that hold this identical
+                      sequence and were stored as one contig. It is not a count of hits.
+  contig_len          length of the contig's default variant, in bases.
+  start, end, strand  the gene (see conventions).
+  length              the protein's length in amino acids.
+  seq_bitscore        the protein's best sequence score in the run; seq_evalue_zref its E-value.
+  pfam_architecture   names of the domain library's hits on the protein, in order along it, a run of one name
+                      written once, joined with +; - for none (also for a release with no domain library).
+  protein_uid         the protein. nr90, nr50: its clusters; nr50_rep: the representative protein of its nr50 cluster.
+  genome_uid          the genome of the contig, from the release's contig_dim.
+  tier                present only when the release's contig_dim has tiers (the tiering step does not exist yet, so
+                      it is left out of every table built so far).
+  contig_uid, feature_uid, ordinal, tape_version   the gene's identity; see conventions.
+  dist_to_contig_end_bp   from the gene caller: 0 for a gene it reports as partial at a linear contig end (it runs
+                      off the end or stops within a codon of it, whatever the distance in bases); the contig's
+                      length for any gene of a circular contig, which has no end; otherwise the distance in bases
+                      from the gene to the nearer end.
+
+loci/*.tsv: the first line is the contig's header, the second `key=value` facts of the locus (anchor_feature_uid,
+anchor_ordinal, anchor_protein_uid, censored = a linear contig end cut the window, ...), the third the column names.
+  offset              the slot's place relative to the anchor in coordinate order (lower coordinates negative).
+  offset_rel          the same relative to the anchor's strand: positive is downstream of the anchor along the
+                      anchor's strand, so on a -1 anchor the signs are the opposite of offset.
+  ordinal, feature_uid, start, end, strand, protein_uid   the slot's gene.
+  length_aa, pfam_architecture, nr90, nr50   as in hits.tsv, empty for a slot that is not a protein.
+  hit_seq_bitscore    the slot protein's score in the run, empty when it is not a hit.
+  delta_bp            the gap in bases to the anchor; empty at the anchor.
+  crosses_origin      true when the slot lies across the origin of a circular contig.
+
+neighbors.tsv: a block of header lines (# key<TAB>json), then one table per level (pfam, nr50 or nr90), blank-line
+separated. The offsets are relative to the anchor's strand (as offset_rel above), not coordinate order.
+  level, key          the level, and the family (library:model_acc) or cluster uid that is counted.
+  unannotated         true for the row of neighbours that have no family or cluster at that level.
+  library, model_acc, model_name   the family (pfam level); at the cluster levels model_name is the name most members
+                      of the cluster carry, empty when none has one.
+  cluster_uid, rep_uid, rep_length   the cluster, its representative protein and that protein's length (cluster levels).
+  n_loci              anchor loci with such a neighbour; share_of_loci is n_loci over all anchor loci.
+  n_neighbors         neighbour genes counted (a gene in the windows of two anchors counts twice).
+  n_genomes           genomes with such a neighbour; genome_basis says what was counted: genome_uid from contig_dim,
+                      else contig_uid.
+  offsets             offset:count pairs, comma-separated, offset relative to the anchor's strand.
+  modal_offset        the commonest of those offsets.
+  same_strand_share   the share of those neighbours on the anchor's strand.
+"""
+
+
 def ndjson(records: Iterable[dict]) -> Iterator[str]:
     for r in records:
         yield json.dumps(r, sort_keys=False, separators=(",", ":"))
@@ -192,6 +262,7 @@ LOCUS_TSV_COLUMNS = ["offset", "offset_rel", "ordinal", "feature_uid", "start", 
                      "length_aa", "pfam_architecture", "nr90", "nr50", "hit_seq_bitscore", "delta_bp", "crosses_origin"]
 _BITS = {"seq_bitscore", "hit_seq_bitscore"}
 _EVALUE = {"seq_evalue_zref"}
+_STRAND = {"strand"}  # card W-20: `+1` or `-1` in every table a person opens (AGENTS §3.1), as `bio-box find` writes it
 EXPORT_THREADS = 4  # DuckDB threads of an export without --threads (DuckDB's own default is every core of the host)
 EXPORT_MEMORY_LIMIT = "2GB"  # larger sorts and aggregations spill into a scratch directory outside the data root
 _BATCH_ROWS = 8192
@@ -230,6 +301,8 @@ def cell(col: str, v) -> str:
         return f"{v:.1f}"
     if col in _EVALUE:
         return f"{v:.1e}"
+    if col in _STRAND:
+        return f"{v:+d}"
     if isinstance(v, bool):
         return "true" if v else "false"
     if isinstance(v, bytes):
@@ -451,10 +524,21 @@ def _load_hits(con, hits: list[dict]) -> None:
 _GENE_ORDER = 'l.accession NULLS LAST, o.contig_uid, o.start, o."end", o.strand'
 
 
-def _hit_genes(con, hits: list[dict], tape_version: str, library: str | None) -> None:
+def _hit_genes(con, hits: list[dict], tape_version: str, library: str | None,
+               prefer: dict[bytes, tuple[str | None, str | None]] | None = None) -> None:
     """Temp table `_genes`: one row per protein_occurrence of a hit protein with the columns of HITS_TSV_COLUMNS,
-    plus `gene_rank` (1 for the protein's first gene in the table's order) and `n_genes`."""
+    plus `gene_rank` (1 for the protein's first gene in the table's order) and `n_genes`.
+
+    `prefer` (card W-20): {protein_uid: (accession, header text)}, the contig a positive control names. A gene on a
+    contig with that accession (or whose header contains that text) ranks before the protein's others, so the
+    FASTA's `example=` can be found by the control's own accession."""
     _load_hits(con, hits)
+    con.register("_pref_in", pa.table({
+        "protein_uid": pa.array(sorted(prefer or {}), pa.binary(16)),
+        "accession": pa.array([(prefer or {})[u][0] for u in sorted(prefer or {})], pa.string()),
+        "text": pa.array([(prefer or {})[u][1] for u in sorted(prefer or {})], pa.string())}))
+    con.execute("CREATE OR REPLACE TEMP TABLE _pref AS SELECT * FROM _pref_in")
+    con.unregister("_pref_in")
     con.execute("CREATE OR REPLACE TEMP TABLE _p AS SELECT protein_uid FROM _h")
     con.execute("""CREATE OR REPLACE TEMP TABLE _occ AS
                    SELECT DISTINCT protein_uid, contig_uid, feature_uid, start, "end", strand, dist_to_contig_end_bp
@@ -474,7 +558,11 @@ def _hit_genes(con, hits: list[dict], tape_version: str, library: str | None) ->
                            o.protein_uid, cl.nr90, cl.nr50, cl.nr50_rep, d.genome_uid, d.tier, o.contig_uid,
                            o.feature_uid, r.ordinal, {_q(tape_version)} AS tape_version, o.dist_to_contig_end_bp,
                            l.n_records,
-                           row_number() OVER (PARTITION BY o.protein_uid ORDER BY {_GENE_ORDER}) AS gene_rank,
+                           row_number() OVER (PARTITION BY o.protein_uid ORDER BY
+                               CASE WHEN pf.protein_uid IS NOT NULL
+                                         AND (l.accession = pf.accession
+                                              OR (pf.text IS NOT NULL AND contains(coalesce(l.header, ''), pf.text)))
+                                    THEN 0 ELSE 1 END, {_GENE_ORDER}) AS gene_rank,
                            count(*) OVER (PARTITION BY o.protein_uid) AS n_genes
                     FROM _occ o JOIN _h h ON h.protein_uid = o.protein_uid
                     LEFT JOIN _lab l ON l.contig_uid = o.contig_uid
@@ -483,7 +571,8 @@ def _hit_genes(con, hits: list[dict], tape_version: str, library: str | None) ->
                     LEFT JOIN _ord r ON r.contig_uid = o.contig_uid AND r.feature_uid = o.feature_uid
                     LEFT JOIN _plen p ON p.protein_uid = o.protein_uid
                     LEFT JOIN _cl cl ON cl.protein_uid = o.protein_uid
-                    LEFT JOIN _arch a ON a.protein_uid = o.protein_uid""")
+                    LEFT JOIN _arch a ON a.protein_uid = o.protein_uid
+                    LEFT JOIN _pref pf ON pf.protein_uid = o.protein_uid""")
 
 
 def hits_tsv(root: Path, hits: list[dict], *, release: str | None, tape_version: str, gene_call_version: str,
@@ -503,22 +592,28 @@ def hits_tsv(root: Path, hits: list[dict], *, release: str | None, tape_version:
     with open_store(root, release=release, gene_call_version=gene_call_version, tape_version=tape_version,
                     manifest=manifest, threads=threads, tmp=tmp) as st:
         _hit_genes(st.con, hits, tape_version, st.library(library))
-        yield "\t".join(HITS_TSV_COLUMNS)
+        # card W-20: `tier` is a column only when the release's contig_dim has one for some gene (the tiering step
+        # does not exist yet, so contig_dim.tier is NULL in every release built so far: an always-empty column)
+        cols = HITS_TSV_COLUMNS if st.con.execute("SELECT count(tier) FROM _genes").fetchall()[0][0] else \
+            [c for c in HITS_TSV_COLUMNS if c != "tier"]
+        yield "\t".join(cols)
         for r in _stream(st.con, 'SELECT * FROM _genes ORDER BY accession NULLS LAST, contig_uid, start, "end", '
                                  "strand, protein_uid"):
-            yield _tsv_line(HITS_TSV_COLUMNS, r)
+            yield _tsv_line(cols, r)
 
 
 def hits_faa(root: Path, hits: list[dict], *, release: str | None, tape_version: str, gene_call_version: str,
              manifest: dict | None = None, library: str | None = None, threads: int | None = None,
-             tmp=None) -> Iterator[str]:
+             tmp=None, prefer: dict[bytes, tuple[str | None, str | None]] | None = None) -> Iterator[str]:
     """`search hits --format faa`: one record per hit protein by protein_uid, named by its uid, the sequence as
     `protein_seq` stores it on one line. The description: length, seq_bitscore, seq_evalue_zref, the number of
-    genes and the first gene of `hits_tsv` as `example=ACCESSION:start-end(strand) header`."""
+    genes and one gene as `example=ACCESSION:start-end strand=+1 header` (start-end 0-based, half-open): the first
+    gene of `hits_tsv`, or, for a protein in `prefer` (`_hit_genes`: the contig a positive control names), the
+    first gene on that contig."""
     with open_store(root, release=release, gene_call_version=gene_call_version, tape_version=tape_version,
                     manifest=manifest, threads=threads, tmp=tmp) as st:
         con = st.con
-        _hit_genes(con, hits, tape_version, st.library(library))
+        _hit_genes(con, hits, tape_version, st.library(library), prefer)
         con.execute("CREATE OR REPLACE TEMP TABLE _seq AS SELECT protein_uid, min(seq) AS seq FROM prot "
                     "WHERE protein_uid IN (SELECT protein_uid FROM _p) GROUP BY protein_uid")
         sql = """SELECT h.protein_uid, p.length, h.seq_bitscore, h.seq_evalue_zref, coalesce(g.n_genes, 0) AS n_genes,
@@ -533,7 +628,7 @@ def hits_faa(root: Path, hits: list[dict], *, release: str | None, tape_version:
                     f"seq_evalue_zref={cell('seq_evalue_zref', r['seq_evalue_zref'])} n_genes={r['n_genes']}")
             if r["contig_uid"] is not None:
                 desc += (f" example={r['accession'] or r['contig_uid'].hex()}:{r['start']}-{r['end']}"
-                         f"({r['strand']:+d})")
+                         f" strand={cell('strand', r['strand'])}")
                 if r["header"]:
                     desc += " " + cell("header", r["header"])
             yield f">{r['protein_uid'].hex()} {desc}"

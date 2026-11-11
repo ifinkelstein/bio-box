@@ -34,6 +34,7 @@ occurrence in a stage the release does not hold is not found.
 
 from __future__ import annotations
 
+import contextlib
 import hashlib
 import json
 import re
@@ -439,9 +440,32 @@ def _sql_str(s: str) -> str:
     return "'" + str(s).replace("'", "''") + "'"
 
 
+_NOTED: set | None = None  # the notes this command has printed (see `noted_once`); None outside one
+
+
+@contextlib.contextmanager
+def noted_once():
+    """Within it, `slow_path_note` prints each (release, lookup, source) once (card W-20): `bio-box search hmm` opens
+    nine stores and printed the same note nine times. Library calls outside it print every time. Re-entrant."""
+    global _NOTED
+    if _NOTED is not None:
+        yield
+        return
+    _NOTED = set()
+    try:
+        yield
+    finally:
+        _NOTED = None
+
+
 def slow_path_note(release: str | None, lookup: str, source: str) -> None:
     """One stderr line (card W-17): the release has no `lookup` files (it was built before card B-27), so the
-    reader answers from `source`, which cannot prune a lookup by this key. Never an empty view in its place."""
+    reader answers from `source`, which cannot prune a lookup by this key. Never an empty view in its place.
+    Once per command inside `noted_once` (card W-20)."""
+    if _NOTED is not None:
+        if (release, lookup, source) in _NOTED:
+            return
+        _NOTED.add((release, lookup, source))
     print(f"note: release {release} has no {lookup} files (built before card B-27); reading {source} instead "
           f"(the slow path: every row group is scanned)", file=sys.stderr)
 
