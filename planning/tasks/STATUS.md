@@ -28,6 +28,10 @@ passed on the integration branch.
   then about 2.5 h for the `rN.2` clustering. State is under `/tmp/if2453/r10/phase2/`: `driver.log`,
   then `DONE` or `FAILED`; `touch HALT` there stops it before its next launch; launching the driver
   again resumes. Its STOP-based switch of the shard count first runs at 20:00 and is untested.
+- 21:24 CST: the 20:00 switch to 8 shards worked (`r10-p2-S1-2` launched at 20:22 with 32 threads); S1's
+  scan and release `rN.1a` finished at 21:18 (exit 0, 9 shards); P1 is scanning (`r10-p2-P1-3`).
+- `plan/task-cards` at `7a34965`: 76 cards; pod suite 1,227 passed, 12 skipped; `ci` and `cross-host`
+  green again after the one red run on `f7c511e` (a C-15 test, corrected).
 - Not yet synced to `/stor`. `build/r10` is pushed but not merged into `plan/task-cards`.
 - Found: cards B-35 (`partners_of` 12 times slower than the query it replaced), B-36 (clustering
   2,195.9 CPU-minutes in one process; PI decision), C-14 (runbook), C-15 (peak memory in run records).
