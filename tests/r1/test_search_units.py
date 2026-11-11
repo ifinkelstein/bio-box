@@ -601,6 +601,10 @@ UID32 = "ab" * 16
 @pytest.mark.parametrize("kind,value", [("protein_uid", UID32), ("region_uid", UID32), ("sequence", "MKVLAAGIVGLLL"),
                                         ("protein_accession", "MJ0613")])
 def test_w08_shorthand_with_label_equals_the_long_form(kind, value):
+    s, _ = recipe.load(BASE.replace("seed: [{sequence: MKVLAAGIVGLLL}]", "seed: [{%s: %s, label: x}]" % (kind, value)))
+    assert s["seed"][0] == {"kind": kind, "value": value, "label": "x"}
+    if kind not in recipe.RUN_POSITIVE_KINDS:  # card W-18: a positive of this kind is refused on paper
+        return
     short = BASE.replace("{positive: [{sequence: MKVLAAGIVGLLL}]}",
                          "{positive: [{%s: %s, label: T7 gp1}]}" % (kind, value))
     long = BASE.replace("{positive: [{sequence: MKVLAAGIVGLLL}]}",
@@ -609,8 +613,23 @@ def test_w08_shorthand_with_label_equals_the_long_form(kind, value):
     b, _ = recipe.load(long)
     assert a == b and a["controls"]["positive"][0]["label"] == "T7 gp1"
     assert recipe.recipe_hash(a) == recipe.recipe_hash(b)
-    s, _ = recipe.load(BASE.replace("seed: [{sequence: MKVLAAGIVGLLL}]", "seed: [{%s: %s, label: x}]" % (kind, value)))
-    assert s["seed"][0] == {"kind": kind, "value": a["controls"]["positive"][0]["value"], "label": "x"}
+    assert s["seed"][0]["value"] == a["controls"]["positive"][0]["value"]
+
+
+@pytest.mark.covers("W-18")
+@pytest.mark.parametrize("form", ["{protein_accession: MJ0613, label: x}", "{kind: protein_accession, value: MJ0613}"])
+def test_w18_a_positive_control_the_runner_cannot_resolve_is_refused_by_the_parser(form):
+    """Card W-18 (2): the parser and the submit path agree. A `protein_accession` positive control was valid on paper
+    and refused at submit ("not executable"): the release records no protein accession to resolve it through, so the
+    recipe parser refuses it, naming the kinds that run and the command that finds a protein's uid."""
+    text = BASE.replace("{positive: [{sequence: MKVLAAGIVGLLL}]}", "{positive: [%s]}" % form)
+    with pytest.raises(RecipeError, match="protein_accession") as e:
+        recipe.load(text)
+    assert "protein_uid" in str(e.value) and "bio-box find" in str(e.value)
+    for kind in recipe.RUN_POSITIVE_KINDS:  # and every kind the runner takes is still accepted
+        value = "MKVLAAGIVGLLL" if kind == "sequence" else UID32
+        r, _ = recipe.load(BASE.replace("{positive: [{sequence: MKVLAAGIVGLLL}]}", "{positive: [{%s: %s}]}" % (kind, value)))
+        assert recipe.executable(r) == []
 
 
 def test_w08_two_kind_keys_in_one_entry_are_refused():
