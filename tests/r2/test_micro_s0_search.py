@@ -2436,3 +2436,124 @@ def test_w03_a_search_with_no_pack_exits_2_naming_the_command_that_builds_it(wor
     assert not empty.exists()  # never built implicitly
     assert not (tmp_path / "runs").exists()
 
+
+# --- W-13: a run started with --wait is watched and cancelled as a submitted one is ------------------------------
+
+W13_RID = "13" * 16  # given with --run-id, so the test knows where the run's records go before it starts
+
+
+def _w13_wait_command(root: Path, rec: Path, runs: Path, work: Path) -> list[str]:
+    """`bio-box search run --wait` as a separate process, the way `scripts/pod_run.sh` starts it in a unit: its
+    worker sleeps until it is stopped (`fault=timeout`), under a wall far beyond the test."""
+    return [sys.executable, "-m", "biobox.cli", "search", "run", str(rec), "--root", str(root), "--release", REL,
+            "--wait", "--run-id", W13_RID, "--cpus", "1", "--wall-s", "300", "--work", str(work), "--fault", "timeout",
+            "--runs", str(runs), "--pack-dir", str(_packs_of(root))]
+
+
+@pytest.mark.covers("W-13")
+def test_w13_a_run_started_with_wait_has_a_pending_record_and_is_cancelled_from_another_shell(world, tmp_path, capsys):
+    """Card W-13 (2): measured on the pod, a `--wait` run had no pending record while it ran, so `search status`
+    found nothing and `search cancel` could not be used. Now it writes the record `submit` writes (the same keys:
+    the runner's pid and start time and the lock it holds), so another process sees `running` and cancels it."""
+    root = world[0]
+    hit, _ = _seed(root)
+    rec = tmp_path / "r.yaml"
+    rec.write_text(_recipe(hit, hit))
+    runs, work = tmp_path / "runs", tmp_path / "work"
+    d = runner.run_dir(runs, W13_RID)
+    where = ["--root", str(root), "--runs", str(runs)]
+    with (tmp_path / "stderr.txt").open("w") as err:
+        proc = subprocess.Popen(_w13_wait_command(root, rec, runs, work), stdout=subprocess.PIPE, stderr=err, text=True)
+        try:
+            assert _wait_for(lambda: (work / W13_RID / "worker.pid").exists()), (tmp_path / "stderr.txt").read_text()
+            info = json.loads(runner.pending_path(d).read_text())
+            assert sorted(info) == ["lock", "pid", "run_id", "start", "status"]  # the keys `submit` writes
+            assert (info["run_id"], info["pid"], info["status"]) == (W13_RID, proc.pid, "running")
+            assert Path(info["lock"]).resolve() == (work / W13_RID / runner.LOCK_NAME).resolve()
+            if platform.system() == "Linux":
+                assert info["start"] == runner.proc_start_time(proc.pid)
+            capsys.readouterr()
+            assert cli.main(["search", "status", W13_RID, *where]) == 0
+            assert json.loads(capsys.readouterr().out) == {"run_id": W13_RID, "status": "running"}
+            # a second runner of the same run id is refused, and leaves the live run's records alone
+            assert cli.main(_w13_wait_command(root, rec, runs, work)[3:]) == 2
+            assert "running" in capsys.readouterr().err
+            assert json.loads(runner.pending_path(d).read_text()) == info
+            assert (work / W13_RID / "worker.pid").exists()
+            assert cli.main(["search", "cancel", W13_RID, *where]) == 0
+            out, _ = proc.communicate(timeout=60)
+        finally:
+            if proc.poll() is None:
+                proc.kill()
+                proc.wait()
+    assert out.splitlines() == [f"{W13_RID}\tstopped"]
+    assert proc.returncode == 1  # a run that did not end `ok`
+    st = runner.status(d)
+    assert (st["status"], st["error"]) == ("stopped", "cancelled"), st
+    assert sorted(p.name for p in d.iterdir()) == ["run.parquet"]
+    # the run id is in the log as soon as the run is pending, so a unit's log names it while it runs
+    assert f"search run: {W13_RID} running" in (tmp_path / "stderr.txt").read_text()
+
+
+@pytest.mark.covers("W-13")
+def test_w13_a_closed_wait_run_reads_as_closed_and_cancel_signals_nothing(world, tmp_path, capsys):
+    """The pending record stays once the run has closed (as a submitted run's does): status reads the closed run,
+    and cancel finds no live runner, signals nothing and exits 0."""
+    root = world[0]
+    runs, work = tmp_path / "runs", tmp_path / "work"
+    where = ["--root", str(root), "--runs", str(runs)]
+    assert cli.main(["search", "run", str(_w03_recipe(root, tmp_path)), "--release", REL, "--wait", "--cpus", "1",
+                     "--work", str(work), "--pack-dir", str(_packs(world)), *where]) == 0
+    rid = capsys.readouterr().out.split()[0]
+    d = runner.run_dir(runs, rid)
+    info = json.loads(runner.pending_path(d).read_text())
+    assert (info["run_id"], info["pid"]) == (rid, os.getpid())
+    assert not runner._runner_live(info)  # the lock went with the work directory
+    assert not (work / rid).exists()
+    assert cli.main(["search", "status", rid, *where]) == 0
+    assert json.loads(capsys.readouterr().out)["status"] == "ok"
+    assert cli.main(["search", "cancel", rid, *where]) == 0  # this process is the recorded pid: not signalled
+    assert runner.status(d)["status"] == "ok"
+
+
+@pytest.mark.covers("W-13")
+def test_w13_the_runner_submit_starts_is_told_the_pending_record_is_submits(world, tmp_path, monkeypatch):
+    """`submit` writes the pending record of the runner it starts (`search run --wait`); it passes `--submitted`, so
+    that runner does not write one too. The record is the one `submit` wrote, and the run cancels as before."""
+    root = world[0]
+    runs, work, seen = tmp_path / "runs", tmp_path / "work", {}
+    real_popen = subprocess.Popen
+
+    def spy(cmd, *a, **kw):
+        seen["cmd"] = list(cmd)
+        return real_popen(cmd, *a, **kw)
+
+    monkeypatch.setattr(runner.subprocess, "Popen", spy)
+    rid = runner.submit(root, _w03_recipe(root, tmp_path), REL, runner.Limits(cpus=1, wall_s=300), work,
+                        fault="timeout", packs=_packs(world), runs=runs)
+    monkeypatch.undo()
+    assert seen["cmd"][seen["cmd"].index("run"):].count("--wait") == 1 and "--submitted" in seen["cmd"]
+    d = runner.run_dir(runs, rid)
+    def stamp():
+        st = runner.pending_path(d).stat()
+        return st.st_ino, st.st_mtime_ns, runner.pending_path(d).read_text()
+
+    written = stamp()
+    assert _wait_for(lambda: (work / rid / "worker.pid").exists())
+    assert stamp() == written  # the runner left it alone: a rewrite by rename would change the inode
+    runner.cancel(d)
+    assert _wait_for(lambda: runner.status(d)["status"] != "running")
+    assert runner.status(d)["status"] == "stopped"
+
+
+@pytest.mark.covers("W-13")
+def test_w13_a_refused_wait_run_writes_no_pending_record(world, tmp_path, capsys):
+    root = world[0]
+    runs = tmp_path / "runs"
+    d = runner.run_dir(runs, W13_RID)
+    d.mkdir(parents=True)  # a run directory is written once
+    assert cli.main(_w13_wait_command(root, _w03_recipe(root, tmp_path), runs, tmp_path / "work")[3:]) == 2
+    assert "exists" in capsys.readouterr().err
+    assert not runner.pending_path(d).exists()
+    assert not (tmp_path / "work").exists()
+
