@@ -480,3 +480,20 @@ def test_c14_no_command_block_uses_a_nested_quote_python_one_liner():
     script files, which take their arguments without quoting."""
     bad = [f"RUNBOOK.md:{n}: {c[:60]}" for n, c in read_commands() if re.search(r"(?:python|biopy)\s+-c\b", c)]
     assert not bad, "\n".join(bad)
+
+
+# --- GUIDE.md, the user guide: its commands are checked as the runbook's are --------------------------------
+
+
+@pytest.mark.parametrize("doc", [ROOT / "GUIDE.md"], ids=lambda p: p.name)
+def test_every_bio_box_command_in_the_user_guide_is_one_the_parser_accepts(doc):
+    """GUIDE.md prints commands for a scientist to copy: each is read and checked as the runbook's are, and every pack,
+    search and nbr command names its directories or the profile (W-03)."""
+    cmds = commands(doc.read_text())
+    assert cmds, f"{doc.name} has no command in a bash block"
+    bad = [f"{doc.name}:{n}: {p}" for n, cmd in cmds for p in check(cmd)]
+    for n, cmd in cmds:
+        args = bio_box_args(cmd)
+        if args and args[0] in ("pack", "search", "nbr"):
+            bad += [f"{doc.name}:{n}: {p}" for p in search_dir_problems(args)]
+    assert not bad, "\n".join(bad)
