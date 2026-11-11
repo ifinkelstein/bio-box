@@ -1,0 +1,250 @@
+{
+ "nuccore_rows": 72556,
+ "nuccore_columns": [
+  "NUCCORE_UID",
+  "NUCCORE_ACC",
+  "NUCCORE_Description",
+  "NUCCORE_CreateDate",
+  "NUCCORE_Completeness",
+  "NUCCORE_Genome",
+  "NUCCORE_Length",
+  "NUCCORE_DuplicatedEntry",
+  "NUCCORE_Source",
+  "ASSEMBLY_UID",
+  "BIOSAMPLE_UID",
+  "BIOSAMPLE_last_update",
+  "TAXONOMY_UID",
+  "NUCCORE_GC",
+  "NUCCORE_Topology",
+  "VIRAL_category",
+  "VIRAL_putative",
+  "UMAP_D1",
+  "UMAP_D2",
+  "STATUS",
+  "STATUS_note"
+ ],
+ "nuccore_distinct_acc": 72556,
+ "nuccore_length_sum": 7297669596,
+ "topology": {
+  "circular": 66511,
+  "linear": 6045
+ },
+ "completeness": {
+  "complete": 68703,
+  "": 3853
+ },
+ "genome": {
+  "plasmid": 72556
+ },
+ "source": {
+  "refseq": 59471,
+  "insd": 13085
+ },
+ "status": {
+  "": 72360,
+  "suppressed": 196
+ },
+ "with_assembly": 57392,
+ "with_biosample": 67355,
+ "taxonomy_rows": 7439,
+ "nuccore_with_taxonomy_row": 72556,
+ "superkingdom": {
+  "Bacteria": 71949,
+  "Archaea": 607
+ },
+ "nucc_identical_rows": 3906,
+ "nucc_identical_targets": 2029,
+ "fasta_records": 72556,
+ "fasta_in_nuccore": 72556,
+ "fasta_only": 0,
+ "nuccore_only": 0,
+ "length_differs": 0,
+ "overlap_same_by_stage": {
+  "P1/store": {
+   "records": 120,
+   "topology": {
+    "circular": 97,
+    "linear": 23
+   },
+   "source": {
+    "refseq": 105,
+    "insd": 15
+   },
+   "completeness": {
+    "complete": 111,
+    "": 9
+   }
+  },
+  "P2/store": {
+   "records": 1294,
+   "topology": {
+    "circular": 1131,
+    "linear": 163
+   },
+   "source": {
+    "refseq": 1193,
+    "insd": 101
+   },
+   "completeness": {
+    "complete": 1220,
+    "": 74
+   }
+  },
+  "P3/fasta": {
+   "records": 1191,
+   "topology": {
+    "circular": 1129,
+    "linear": 62
+   },
+   "source": {
+    "refseq": 598,
+    "insd": 593
+   },
+   "completeness": {
+    "complete": 1165,
+    "": 26
+   }
+  },
+  "P3/store": {
+   "records": 1191,
+   "topology": {
+    "circular": 1129,
+    "linear": 62
+   },
+   "source": {
+    "refseq": 598,
+    "insd": 593
+   },
+   "completeness": {
+    "complete": 1165,
+    "": 26
+   }
+  },
+  "P4/fasta": {
+   "records": 1516,
+   "topology": {
+    "circular": 1384,
+    "linear": 132
+   },
+   "source": {
+    "refseq": 1487,
+    "insd": 29
+   },
+   "completeness": {
+    "complete": 1451,
+    "": 65
+   }
+  },
+  "P5/fasta": {
+   "records": 1714,
+   "topology": {
+    "circular": 1529,
+    "linear": 185
+   },
+   "source": {
+    "refseq": 1712,
+    "insd": 2
+   },
+   "completeness": {
+    "complete": 1619,
+    "": 95
+   }
+  },
+  "P6/fasta": {
+   "records": 1309,
+   "topology": {
+    "circular": 1069,
+    "linear": 240
+   },
+   "source": {
+    "refseq": 1289,
+    "insd": 20
+   },
+   "completeness": {
+    "complete": 1201,
+    "": 108
+   }
+  },
+  "S1/store": {
+   "records": 2,
+   "topology": {
+    "circular": 2
+   },
+   "source": {
+    "refseq": 2
+   },
+   "completeness": {
+    "complete": 2
+   }
+  }
+ },
+ "accession_check": {
+  "P1/store": {
+   "stage_accessions": 539,
+   "plsdb_accessions_found": 118,
+   "of_which_content_match": 118,
+   "content_match_without_accession_match": 2
+  },
+  "P2/store": {
+   "stage_accessions": 5018,
+   "plsdb_accessions_found": 1260,
+   "of_which_content_match": 1260,
+   "content_match_without_accession_match": 34
+  },
+  "P3/fasta": {
+   "stage_accessions": 9108,
+   "plsdb_accessions_found": 1157,
+   "of_which_content_match": 1157,
+   "content_match_without_accession_match": 34
+  },
+  "P3/store": {
+   "stage_accessions": 9108,
+   "plsdb_accessions_found": 1157,
+   "of_which_content_match": 1157,
+   "content_match_without_accession_match": 34
+  },
+  "P4/fasta": {
+   "stage_accessions": 4006,
+   "plsdb_accessions_found": 1476,
+   "of_which_content_match": 1476,
+   "content_match_without_accession_match": 40
+  },
+  "P5/fasta": {
+   "stage_accessions": 4112,
+   "plsdb_accessions_found": 1691,
+   "of_which_content_match": 1691,
+   "content_match_without_accession_match": 23
+  },
+  "P6/fasta": {
+   "stage_accessions": 4228,
+   "plsdb_accessions_found": 1270,
+   "of_which_content_match": 1270,
+   "content_match_without_accession_match": 39
+  },
+  "S1/store": {
+   "stage_accessions": 34076,
+   "plsdb_accessions_found": 0,
+   "of_which_content_match": 0,
+   "content_match_without_accession_match": 2
+  }
+ },
+ "union": {
+  "stages_counted": [
+   "P1",
+   "P2",
+   "P3",
+   "P4",
+   "P5",
+   "P6",
+   "S1"
+  ],
+  "plsdb_records_in_any_P_stage": 7139,
+  "distinct_uids_in_any_P_stage": 7046,
+  "plsdb_records_in_two_or_more_P_stages": 5,
+  "plsdb_records_in_any_stage_incl_S1": 7139,
+  "P_records_by_topology": {
+   "circular": 6334,
+   "linear": 805
+  }
+ }
+}
