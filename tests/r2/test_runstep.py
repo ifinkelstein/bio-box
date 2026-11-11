@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import os
 import re
 import shutil
 import subprocess
@@ -476,6 +477,101 @@ def test_c13_run_step_and_build_stage_lines_are_timestamped_and_in_time_order_in
         "build-stage: done",
     ], lines
     assert all(STAMPED.match(ln) for ln in lines if not ln.startswith("command "))
+
+
+# --- card C-15: a run record's peak memory is the step's, not its launcher's ----------------------------------------
+#
+# The B-30 probe on the 1,000x stage found every run record at 344.0 MB, the oracle's included (measured, wilkcomp02,
+# 2026-11-10). A launcher HOLDER keeps PARENT_MIB of written bytes resident and runs two steps through run-step in its
+# own process, as `bio-box run-step` runs inside its CLI process: `big` writes BIG_MIB, `small` writes nothing. Each
+# record must show that step's own peak: the two differ by about BIG_MIB, and both are below the launcher's.
+
+MIB = 2**20
+PARENT_MIB, BIG_MIB = 512, 192
+
+HOLDER = r"""
+import sys
+from pathlib import Path
+from biobox import profile, runstep
+held = b"\x01" * (int(sys.argv[3]) << 20)  # written, so resident when run-step starts a step
+prof, root, cmd = profile.load(sys.argv[1]), Path(sys.argv[2]), sys.argv[4:]
+codes = [runstep.run_step(prof, root, "S0", step, [*cmd, step, mib], threads=1)
+         for step, mib in (("big", "%MIB%"), ("small", "0"))]
+assert len(held) == int(sys.argv[3]) << 20
+sys.exit(max(codes))
+""".replace("%MIB%", str(BIG_MIB))
+
+ALLOCATES = r"""
+import os, pathlib, sys
+block = b"\x02" * (int(sys.argv[2]) << 20)  # written, so resident
+p = pathlib.Path(os.environ["BIOBOX_STAGING"]) / f"ledger/stage=S0/step={sys.argv[1]}/part-0.parquet"
+p.parent.mkdir(parents=True)
+p.write_bytes(b"x" * 10)
+"""
+
+
+@pytest.mark.covers("C-15")
+def test_c15_peak_memory_is_the_steps_own_not_the_launchers(prof, root, tmp_path):
+    argv = [sys.executable, "-c", HOLDER, str(tmp_path / "profile.yaml"), str(root), str(PARENT_MIB),
+            sys.executable, "-c", ALLOCATES]
+    res = subprocess.run(argv, capture_output=True, text=True, timeout=300)
+    assert res.returncode == 0, res.stderr
+    big, small = (json.loads(record_path(root, s).read_text()) for s in ("big", "small"))
+    peaks = {"big": big["peak_rss_bytes"] / MIB, "small": small["peak_rss_bytes"] / MIB}
+    print(f"recorded peak MiB: {peaks}")
+    assert small["peak_rss_bytes"] < PARENT_MIB * MIB, peaks  # the launcher's image is not the step's
+    assert big["peak_rss_bytes"] < PARENT_MIB * MIB, peaks
+    assert big["peak_rss_bytes"] >= BIG_MIB * MIB, peaks  # what the step itself wrote is counted
+    assert big["peak_rss_bytes"] - small["peak_rss_bytes"] >= (BIG_MIB - 32) * MIB, peaks
+    assert big["peak_rss_source"] == small["peak_rss_source"] == "child_maxrss"
+
+
+# A fake /proc/self/cgroup and cgroup v2 tree, and a stand-in `systemd-run` that drops its own options and execs the
+# rest (as the real one does with --scope): run-step opens a scope, and the step's measuring helper, inside it, reads
+# the scope's memory.peak.
+SCOPE = "user.slice/user-1000.slice/user@1000.service/app.slice/run-c15.scope"
+
+
+def _cgroup_tree(tmp_path: Path, memory_max: str, memory_peak: int) -> tuple[Path, Path]:
+    proc, cg = tmp_path / "proc", tmp_path / "cg"
+    (proc / "self").mkdir(parents=True)
+    (proc / "self" / "cgroup").write_text(f"0::/{SCOPE}\n")
+    (cg / SCOPE).mkdir(parents=True)
+    (cg / SCOPE / "memory.max").write_text(memory_max + "\n")
+    (cg / SCOPE / "memory.peak").write_text(f"{memory_peak}\n")
+    return proc, cg
+
+
+@pytest.mark.covers("C-15")
+def test_c15_an_opened_scope_records_its_memory_peak(prof, root, tmp_path, monkeypatch):
+    bindir = tmp_path / "bin"
+    bindir.mkdir()
+    (bindir / "systemd-run").write_text('#!/bin/sh\nwhile [ "$1" != nice ]; do shift; done\nexec "$@"\n')
+    (bindir / "systemd-run").chmod(0o755)
+    monkeypatch.setenv("PATH", f"{bindir}:{os.environ.get('PATH', '')}")
+    peak = 3 * 2**30 + 12345
+    proc, cg = _cgroup_tree(tmp_path, "max", peak)
+    which = lambda n: str(bindir / n) if n == "systemd-run" else shutil.which(n)  # noqa: E731
+    assert run(prof, root, "occ", fake("--out", f"{OCC}/part-0.parquet=10"), system="Linux", which=which,
+               proc_root=proc, cgroup_root=cg) == 0
+    rec = json.loads(record_path(root, "occ").read_text())
+    assert rec["mem_cap"]["how"] == "opened"
+    assert rec["peak_rss_bytes"] == peak and rec["peak_rss_source"] == "scope_memory_peak"
+
+
+@pytest.mark.covers("C-15")
+def test_c15_an_inherited_cgroup_peak_is_not_the_steps(prof, root, tmp_path):
+    """Under `scripts/pod_run.sh` the cgroup with the cap is the whole unit: build-stage, every run-step and every
+    shard running at once. Its memory.peak is theirs together over the unit's life, so the record does not take it."""
+    unit_peak = 50 * 2**30
+    proc, cg = _cgroup_tree(tmp_path, str(32 * 2**30), unit_peak)
+    no_systemd = lambda n: None if n == "systemd-run" else shutil.which(n)  # noqa: E731
+    assert run(prof, root, "occ", fake("--out", f"{OCC}/part-0.parquet=10"), system="Linux", which=no_systemd,
+               proc_root=proc, cgroup_root=cg) == 0
+    rec = json.loads(record_path(root, "occ").read_text())
+    assert rec["mem_cap"]["how"] == "inherited"
+    assert rec["peak_rss_source"] == "child_maxrss"
+    assert 1 << 20 < rec["peak_rss_bytes"] < 1 << 30
 
 
 def test_cli_stop_exit_code(prof, root, tmp_path):
