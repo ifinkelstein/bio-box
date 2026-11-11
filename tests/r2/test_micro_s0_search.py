@@ -2571,3 +2571,170 @@ def test_w14_peak_memory_is_the_workers_own_not_the_runners(world):
     assert row["status"] == "ok", (row["error"], row["status"])
     print(f"recorded peak MiB: {row['peak_rss_bytes'] / 2**20:.0f}")
     assert 1 << 20 < row["peak_rss_bytes"] < 768 << 20, row["peak_rss_bytes"]
+
+
+# --- W-07: one command ----------------------------------------------------------------------------------------
+
+
+def _w07_labels(root: Path) -> dict[bytes, tuple[str, str]]:
+    """(accession, header) of each contig's first source record by (l0_object_sha256, record_ordinal), by a loop
+    over the contig_label files."""
+    out: dict[bytes, tuple[str, str]] = {}
+    for r in sorted(_pq(root, "l0seq/contig_label"), key=lambda r: (r["l0_object_sha256"], r["record_ordinal"])):
+        out.setdefault(r["contig_uid"], (r["accession"], r["original_header"]))
+    return out
+
+
+def _w07_genes(root: Path) -> list[dict]:
+    """Every gene of the store (protein_occurrence) with its contig's accession and header."""
+    labels = _w07_labels(root)
+    return [{**r, "accession": labels[r["contig_uid"]][0], "header": labels[r["contig_uid"]][1]}
+            for r in _pq(root, "l1/protein_occurrence")]
+
+
+def _w07_spec(root: Path, protein: bytes) -> str:
+    """`ACCESSION:START-END` of the protein's first gene, as `search hits --format tsv` prints those columns."""
+    g = min((g for g in _w07_genes(root) if g["protein_uid"] == protein), key=lambda g: (g["accession"], g["start"]))
+    return f"{g['accession']}:{g['start']}-{g['end']}"
+
+
+def _w07_hmm(world, tmp_path: Path) -> tuple[Path, bytes]:
+    """The library's TEST0000 model as a user's HMM file, and a protein the library assigns to it."""
+    root, d, _ = world
+    return (_write_hmms(tmp_path / "in" / "lam0.hmm", _library_models(d / "a.hmm", ["TEST0000"])),
+            sorted(_stored(root, "TEST0000"))[0])
+
+
+def _w07_files(d: Path) -> dict[str, bytes]:
+    return {p.relative_to(d).as_posix(): p.read_bytes() for p in sorted(d.rglob("*")) if p.is_file()}
+
+
+def _w07_all_hits(d: Path) -> list[tuple]:
+    """Every hit row of a run, every round and label, without the run id."""
+    return sorted(tuple(sorted((k, v) for k, v in h.items() if k != "run_id"))
+                  for h in runner.read_hits(d, final_only=False))
+
+
+def _w07_separate(root: Path, packs: Path, runs: Path, rid: str, window: str, by: str, out: Path, capsys) -> None:
+    """The separate commands of section 7 of the runbook, each writing what `search hmm` writes into `out`."""
+    w = ["--root", str(root), "--pack-dir", str(packs), "--runs", str(runs)]
+    assert cli.main(["search", "hits", rid, *w, "--format", "tsv", "--out", str(out / "hits.tsv")]) == 0
+    assert cli.main(["search", "hits", rid, *w, "--format", "faa", "--out", str(out / "hits.faa")]) == 0
+    assert cli.main(["nbr", rid, *w, "--window", window, "--format", "tsv", "--out", str(out / "loci")]) == 0
+    capsys.readouterr()
+    assert cli.main(["nbr", "summarize", rid, *w, "--window", window, "--by", by, "--format", "tsv"]) == 0
+    (out / "neighbors.tsv").write_text(capsys.readouterr().out)  # as `> neighbors.tsv` in a shell
+
+
+@pytest.mark.covers("W-07", "W-02", "W-05", "W-06")
+def test_w07_search_hmm_writes_what_the_separate_commands_write_and_its_recipe_reruns(world, tmp_path, capsys):
+    """The acceptance of card W-07 on the fixture: the one command's files are byte-identical to those of the
+    separate commands (`search run`, `search hits` as TSV and FASTA, `nbr summarize`, `nbr --format tsv`) with the
+    same recipe; and the recipe it writes into DIR, run again through `search run`, gives the same hits."""
+    root = world[0]
+    hmm, pos = _w07_hmm(world, tmp_path)
+    spec = _w07_spec(root, pos)
+    out, runs, work = tmp_path / "out", tmp_path / "runs", tmp_path / "work"
+    code = cli.main(["search", "hmm", "--root", str(root), "--release", REL, "--hmm", str(hmm), "--bits", "25",
+                     "--neighbors", "5", "--positive", spec, "--out", str(out), "--cpus", "1",
+                     "--pack-dir", str(_packs(world)), "--runs", str(runs), "--work", str(work)])
+    got = capsys.readouterr()
+    assert code == 0, got.err
+    rid, status = got.out.splitlines()[0].split("\t")
+    assert status == "ok"
+    assert sorted(p.name for p in out.iterdir()) == ["hits.faa", "hits.tsv", "loci", "neighbors.tsv", "recipe.yaml"]
+    assert not list(tmp_path.glob(".out*"))  # no temporary directory left beside DIR
+    # the recipe in DIR is the one the run ran: the file seed, the bits, the window, the resolved positive control
+    run1 = runner.read_run(runner.run_dir(runs, rid))
+    assert run1["recipe_yaml"] == (out / "recipe.yaml").read_text()
+    r, _ = rcp.load(out / "recipe.yaml")
+    assert r["seed"][0]["kind"] == "hmm_file" and Path(r["seed"][0]["value"]) == hmm.resolve()
+    assert (r["tool"]["name"], r["iterations"]["max"], r["iterations"]["inclusion_bits"]) == ("hmmsearch", 1, 25.0)
+    assert r["context"]["window"] == "5g"
+    assert r["controls"]["positive"] == [{"kind": "protein_uid", "value": pos.hex(), "label": spec}]
+    assert json.loads(run1["controls_json"])["positive"][0]["recovered"]
+    # run again through `search run`: the same hits
+    runs2 = tmp_path / "runs2"
+    assert cli.main(["search", "run", str(out / "recipe.yaml"), "--root", str(root), "--release", REL, "--wait",
+                     "--cpus", "1", "--pack-dir", str(_packs(world)), "--runs", str(runs2), "--work", str(work)]) == 0
+    rid2, status2 = capsys.readouterr().out.split()
+    assert status2 == "ok" and rid2 != rid
+    hits1 = _w07_all_hits(runner.run_dir(runs, rid))
+    assert hits1 and hits1 == _w07_all_hits(runner.run_dir(runs2, rid2))
+    assert run1["recipe_hash"] == runner.read_run(runner.run_dir(runs2, rid2))["recipe_hash"]
+    # the separate commands on that run: byte-identical files
+    sep = tmp_path / "sep"
+    _w07_separate(root, _packs(world), runs2, rid2, "5g", "pfam,nr50", sep, capsys)
+    mine = _w07_files(out)
+    assert mine.pop("recipe.yaml")
+    assert any(k.startswith("loci/") for k in mine) and len(mine["hits.tsv"].splitlines()) > 1
+    assert pos.hex().encode() in mine["hits.faa"]
+    assert mine == _w07_files(sep)
+
+
+@pytest.mark.covers("W-07", "W-06")
+def test_w07_search_hmm_on_a_release_without_a_domain_library_summarizes_at_the_cluster_levels(world, tmp_path, capsys):
+    """A release may have no domain library (`rN.1` has none): the command still works, its neighbour summary is
+    at the cluster levels only, and it says so."""
+    root = _copy(world, tmp_path)
+    shutil.rmtree(root / "l1/domains")
+    assert not (root / f"manifests/release={REL}.json").exists()  # the release's files come from its release_def
+    hmm, pos = _w07_hmm(world, tmp_path)
+    out, runs = tmp_path / "out", tmp_path / "runs"
+    code = cli.main(["search", "hmm", "--root", str(root), "--release", REL, "--hmm", str(hmm), "--bits", "25",
+                     "--positive", _w07_spec(root, pos), "--out", str(out), "--cpus", "1",
+                     "--pack-dir", str(_packs_of(root)), "--runs", str(runs), "--work", str(tmp_path / "work")])
+    got = capsys.readouterr()
+    assert code == 0, got.err
+    rid = got.out.splitlines()[0].split("\t")[0]
+    assert f"release {REL} has no domain library" in got.out and "nr50,nr90" in got.out, got.out
+    summary = (out / "neighbors.tsv").read_text()
+    assert '# levels\t["nr50","nr90"]' in summary.splitlines()
+    tsv = [line.split("\t") for line in (out / "hits.tsv").read_text().splitlines()]
+    col = tsv[0].index("pfam_architecture")
+    assert len(tsv) > 1 and {row[col] for row in tsv[1:]} == {"-"}
+    sep = tmp_path / "sep"
+    _w07_separate(root, _packs_of(root), runs, rid, "5g", "nr50,nr90", sep, capsys)  # --neighbors defaults to 5
+    mine = _w07_files(out)
+    mine.pop("recipe.yaml")
+    assert mine == _w07_files(sep)
+
+
+@pytest.mark.covers("W-07", "S-04")
+def test_w07_a_positive_that_names_no_protein_or_several_is_refused_listing_what_matched(world, tmp_path, capsys):
+    """The positive control is resolved to a protein uid through the release's own lookup (contig labels, then the
+    contig's slots in the pack's tape version). Zero or several proteins: exit 2, nothing run or written, and the
+    message lists what matched."""
+    root = world[0]
+    hmm, pos = _w07_hmm(world, tmp_path)
+    out, runs = tmp_path / "out", tmp_path / "runs"
+    base = ["search", "hmm", "--root", str(root), "--release", REL, "--hmm", str(hmm), "--bits", "25", "--out",
+            str(out), "--cpus", "1", "--pack-dir", str(_packs(world)), "--runs", str(runs), "--work",
+            str(tmp_path / "work")]
+    genes = _w07_genes(root)
+    lam = [g for g in genes if "phage lambda" in g["header"]]
+    lam_proteins = {g["protein_uid"] for g in lam}
+    assert len(lam_proteins) > 20
+
+    def refused(spec: str) -> str:
+        assert cli.main(base + ["--positive", spec]) == 2, spec
+        assert not out.exists() and not runs.exists(), spec
+        return capsys.readouterr().err
+
+    err = refused("phage lambda")  # a header substring: every protein of the lambda contig
+    assert f"matched {len(lam_proteins)} proteins" in err, err
+    listed = set(re.findall(r"\b([0-9a-f]{32})\b", err))
+    assert listed and listed <= {p.hex() for p in lam_proteins}
+    g = min(lam, key=lambda g: g["start"])
+    assert f"{g['accession']}:{g['start']}-{g['end']}" in err  # each line is the exact form to give instead
+    err = refused(f"{g['accession']}:{g['start'] + 1}-{g['end']}")  # no gene there: the overlapping gene is listed
+    assert "matched no protein" in err and f"{g['accession']}:{g['start']}-{g['end']}" in err, err
+    assert "no contig" in refused("NC_999999.9:0-90")
+    assert "matched no protein" in refused("no contig header holds this")
+    # the exact gene resolves to its protein; at a threshold nothing passes the control is not recovered: the run
+    # ends `failed` (exit 1) and DIR holds the recipe it ran, nothing else
+    assert cli.main(base + ["--positive", _w07_spec(root, pos), "--bits", "100000"]) == 1
+    assert "positive control" in capsys.readouterr().err
+    assert sorted(p.name for p in out.iterdir()) == ["recipe.yaml"]
+    r, _ = rcp.load(out / "recipe.yaml")
+    assert r["controls"]["positive"][0]["value"] == pos.hex()

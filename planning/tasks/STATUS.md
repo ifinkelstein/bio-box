@@ -113,7 +113,7 @@ Last full suite on the integration branch before the C-11 merge: 1,053 passed, 1
 pinned image; 3 min 40 s wall for the slowest shard, against 13.5 min in one process). The skips
 need samtools, bgzip, Prodigal or the golden set. Tests no longer run on the laptop (AGENTS.md §5.5).
 
-## Merged (76 cards)
+## Merged (77 cards)
 
 | Card | Merge | What it did | Audit notes |
 |---|---|---|---|
@@ -192,6 +192,7 @@ need samtools, bgzip, Prodigal or the golden set. Tests no longer run on the lap
 | B-21 | merge after `17ce0ed` | One family posting per included domain (`seg_idx` = rank by `env_start`); `token_dict` holds every model on a slot; `tape_tokens.family_tokens` keeps the canonical family; no schema change | `fusions_of` equals a brute-force oracle over the domain table. Cluster tokens and postings unchanged. Family postings about double at 10 Gbp, about 7% more postings in all (*derived*). Not measured at scale: card B-40. `partners_of` still reports canonical families only: card B-39 |
 | W-14 | merge after B-21 | A search run's peak memory is the worker's own, through `run-step`'s measuring helper | With a 768 MiB runner: 1,014 MiB before, 322 MiB after (*measured*, wilkcomp02). The helper dies with the runner (PR_SET_PDEATHSIG, Linux), so the worker still notices. A run killed for timeout or memory now has no peak: card C-16 |
 | B-36 | this merge | DEC-25: `build-stage` estimates clustering CPU-minutes before launch and refuses above the profile's `cluster_cpu_min_max` (20,000 on wilkcomp02, set by the PI on 2026-11-10; it was 12,000 at the merge); without the key there is no exemption; the cluster record carries `cpu_budget_reason: exempt: DEC-25` | Fit: 284.10 × (n / 2,053,075)^1.244 CPU-minutes, exact at the two upper measured points, 60% high for the phage-only set (*derived*). At 20,000 the cap is reached at about 62.7 M proteins (*derived*), above the 50 Gbp build's roughly 50 M (*estimate*). A stage with no gene-call run record cannot be estimated and is refused |
+| W-07 | this merge | `bio-box search hmm --hmm FILE --release R --bits 30 --neighbors 5 --positive ACCESSION:START-END --out DIR`: writes the recipe, the hit table, the FASTA, the neighbour summary and the per-locus tables; always waits; needs the release's pack; `nbr summarize` gains `--out` | On the fixture its files are byte-identical to the separate commands, and its recipe rerun gives the same hits. Works on a release with no domain library (cluster levels only, with a note). The card's old acceptance (`rS1.pilot1`, 1,931 proteins) was replaced: that release cannot be opened by current code. Pod suite 1,235 passed, 12 skipped. Not yet run on a real release. The positive lookup scans all of `contig_label`: card W-15 |
 
 Decisions DEC-18 to DEC-23 were approved by the PI on 2026-11-09 and are in `planning/DECISIONS.md`.
 

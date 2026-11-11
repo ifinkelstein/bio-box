@@ -6,11 +6,13 @@
     bio-box search status|cancel <run> --root R [--runs DIR]
     bio-box search hits <run> --root R [--runs DIR] [--round N] [--members] [--json] [--top_n 50]
     bio-box search hits <run> --root R [--runs DIR] --format tsv|faa [--round N] [--library L] [--out FILE]
+    bio-box search hmm --root R --release R1 --hmm FILE --bits 30 [--neighbors 5] --positive ACC:START-END|TEXT
+                --out DIR [--model NAME] [--profile P | --pack-dir P --runs DIR --work DIR]
     bio-box nbr --root R --anchors <run|uid,uid,...> --window 10g --strand any --edge truncate [--json]
                 [--tape-version T] [--runs DIR]
     bio-box nbr <run|uid,uid,...> --root R --window 5g --format tsv [--release R] [--out DIR] [--runs DIR]
     bio-box nbr summarize <run|uid,uid,...> --root R --window 5g --by pfam,nr50 [--top 50] [--release R]
-                [--json | --format tsv] [--runs DIR]
+                [--json | --format tsv] [--out FILE] [--runs DIR]
     bio-box export proteins --root R --release R [--out FILE]
     bio-box run-step --profile P --root R --stage S --step NAME [--nice monolithic|fanout] [--threads N] -- CMD ...
     bio-box release define --root R --release R1 --stages S0,S1 [--out DIR]
@@ -58,6 +60,19 @@ unit (BIOBOX_POD_UNIT, which the script sets) that is refused (exit 2): the unit
 started with `systemd-run --collect`, which ends when its main process exits and stops every process
 left in its cgroup, the detached runner included; a unit stays alive only as long as its main process
 runs, and with `--wait` the main process is the runner.
+
+`search hmm` (card W-07) is the discovery workflow in one command: it writes a recipe for a user's HMM file
+(`hmm_file` seed, `hmmsearch`, one round at `--bits`, window `--neighbors` genes), runs it in this process
+as `search run --wait` does (so it may run inside a `pod_run.sh` unit), then writes into `--out DIR` what the
+separate commands write: `recipe.yaml` (the recipe it ran), `hits.tsv` and `hits.faa` (`search hits --format
+tsv|faa`), `neighbors.tsv` (`nbr summarize --format tsv`, by `pfam,nr50`; by `nr50,nr90` when the release has
+no domain library) and `loci/` (`nbr --format tsv`), each by calling that command. DIR must be new or empty
+and outside the data root; it is filled under a temporary name beside it and renamed into place. The positive
+control (`--positive`) is required. It names one gene as `ACCESSION:START-END` (the accession, start and end
+`search hits --format tsv` prints: 0-based, end exclusive) or is a substring of a contig header; it is resolved
+through the release's contig labels and the slots of the pack's tape version, and anything but exactly one
+protein is refused (exit 2) with a list of what matched. A missing pack is refused with the `pack build`
+command, as `search run` refuses it; it is never built here.
 """
 
 from __future__ import annotations
@@ -65,11 +80,14 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import re
+import shutil
 import sys
 from datetime import datetime
 from pathlib import Path
 
 import pyarrow.parquet as pq
+import yaml
 
 from biobox import catalog
 from biobox.l1.genecall import GENE_CALL_VERSION
@@ -366,7 +384,7 @@ def _nbr(a) -> int:
         except ValueError as e:
             print(f"refused: {e}", file=sys.stderr)
             return 2
-        _print(export.ndjson(export.nbr_summary_records(s)) if a.json else export.nbr_summary_tsv(s))
+        _emit(export.ndjson(export.nbr_summary_records(s)) if a.json else export.nbr_summary_tsv(s), a.out)
         return 0
     rows, counts = nbr.fetch(root, uids, policy, a.gene_call_version, tape_version=tv, files=files)
     if a.json:
@@ -374,6 +392,212 @@ def _nbr(a) -> int:
     else:
         print(json.dumps(counts))
     return 0
+
+
+_SPAN = re.compile(r"^(?P<acc>\S+):(?P<start>\d+)-(?P<end>\d+)$")  # --positive ACCESSION:START-END
+POSITIVE_SHOWN = 20  # genes listed when a positive control matches no protein or several
+
+
+def _release_files_or_refusal(a, root: Path):
+    """(the release's files, its domain libraries) for `search hmm`: the files as `search hits` and `nbr` read them
+    (`export.release_files`: the manifest, else the release_def stages; card W-12), the libraries those of its
+    `l1_domains` files. ValueError, naming `bio-box release define`, for a release with neither."""
+    files = export.release_files(root, a.release, export.release_manifest(root, a.release))
+    return files, sorted({str(parts["library"]) for _, parts in files.entries("l1_domains")})
+
+
+def _gene_line(g: dict) -> str:
+    where = g["accession"] or g["contig_uid"].hex()
+    return f"  {where}:{g['start']}-{g['end']}({g['strand']:+d})\t{g['protein_uid'].hex()}\t{g['header'] or ''}"
+
+
+def _gene_lines(genes: list[dict]) -> list[str]:
+    genes = sorted(genes, key=lambda g: (g["accession"] or "", g["contig_uid"], g["start"], g["end"], g["strand"]))
+    lines = [_gene_line(g) for g in genes[:POSITIVE_SHOWN]]
+    return lines + ([f"  ... and {len(genes) - POSITIVE_SHOWN} more genes"] if len(genes) > POSITIVE_SHOWN else [])
+
+
+def _positive_uid(root: Path, files, spec: str, tape_version: str, gene_call_version: str,
+                  threads: int | None = None) -> tuple[str | None, list[str]]:
+    """The protein uid (hex) `--positive` names, and no lines; or None and the lines of a refusal that list what
+    matched. `ACCESSION:START-END` names the gene of a contig with that accession (`contig_label`, as `search hits
+    --format tsv` shows it) and those coordinates; any other text is a substring of contig headers (case-sensitive)
+    and names every gene of those contigs. A gene is a CDS slot of the contig's tape in `tape_version` (the pack's).
+
+    The contigs are found by a scan of `contig_label` (sorted by contig_uid: no table is sorted by accession or
+    header, and a substring cannot prune); their tapes are read by contig_uid, which prunes (AGENTS §4.4)."""
+    m = _SPAN.match(spec)
+    where = f"accession = {export._q(m['acc'])}" if m else f"contains(original_header, {export._q(spec)})"
+    with export.open_store(root, release=files.release, gene_call_version=gene_call_version, manifest=files,
+                           threads=threads, relations=("lab", "cidx", "dim")) as st:
+        st.con.execute(f"CREATE TEMP TABLE _c AS SELECT DISTINCT contig_uid FROM lab WHERE {where}")
+        export._annotate_contigs(st.con, with_ordinals=False)  # each contig's label as `search hits` shows it
+        labels = {cu: (acc, header) for cu, acc, header in
+                  st.con.execute("SELECT contig_uid, accession, header FROM _lab").fetchall()}
+    genes = []
+    for cu, tape in sorted(nbr._tapes(files, tape_version, set(labels)).items()):
+        for k, pu in enumerate(tape["protein_uids"]):
+            if pu is not None:
+                genes.append({"protein_uid": pu, "contig_uid": cu, "start": tape["start_bps"][k],
+                              "end": tape["end_bps"][k], "strand": tape["strands"][k], "accession": labels[cu][0],
+                              "header": labels[cu][1]})
+    if m:
+        start, end = int(m["start"]), int(m["end"])
+        exact = [g for g in genes if (g["start"], g["end"]) == (start, end)]
+    else:
+        exact = genes
+    proteins = sorted({g["protein_uid"] for g in exact})
+    if len(proteins) == 1:
+        return proteins[0].hex(), []
+    head = f"positive control {spec!r}"
+    if proteins:
+        return None, [f"{head} matched {len(proteins)} proteins at {len(exact)} genes of release {files.release}; "
+                      "a positive control is one protein: give one of these genes as ACCESSION:START-END",
+                      *_gene_lines(exact)]
+    if not m:
+        return None, [f"{head} matched no protein of release {files.release}: no contig header contains this text "
+                      "(case-sensitive)"]
+    if not labels:
+        return None, [f"{head} matched no protein: no contig of release {files.release} has the accession "
+                      f"{m['acc']} (the accession column of `bio-box search hits --format tsv`)"]
+    near = [g for g in genes if g["start"] < end and g["end"] > start]
+    return None, [f"{head} matched no protein of release {files.release}: no gene of {m['acc']} starts at {start} "
+                  f"and ends at {end} (0-based, end exclusive, as `search hits --format tsv` prints them)"
+                  + ("; the genes there:" if near else "; no gene overlaps that interval"), *_gene_lines(near)]
+
+
+def _recipe_text(a, positive_uid: str) -> str:
+    """The recipe `search hmm` runs and writes into DIR (recipe.load documents every key)."""
+    seed = {"hmm_file": str(Path(a.hmm).resolve())}  # hashed by the file's sha256, not its path (card W-02)
+    if a.model:
+        seed["model"] = a.model
+    name = re.sub(r"[^a-z0-9]+", "_", Path(a.hmm).stem.lower()).strip("_") or "seed"
+    return yaml.safe_dump({
+        "recipe": f"hmm_{name}", "written_against": a.release, "seed": [seed], "target": "unique",
+        "tool": "hmmsearch", "iterations": {"max": 1, "inclusion_bits": float(a.bits)},
+        "context": {"window": f"{a.neighbors}g"},
+        "controls": {"positive": [{"protein_uid": positive_uid, "label": a.positive}]},
+    }, sort_keys=False)
+
+
+def _count(path: Path, prefix: str = "") -> int:
+    with open(path, encoding="utf-8") as fh:
+        return sum(1 for line in fh if line.startswith(prefix))
+
+
+def _search_hmm(a) -> int:
+    """`bio-box search hmm` (card W-07; module docstring): check everything that can be checked, run, then write DIR
+    by calling the separate commands. 2: refused before the run; 1: the run ended other than `ok` (DIR then holds
+    the recipe it ran); an export's own code when it fails (DIR is then not written; the run stays)."""
+    root = Path(a.root)
+
+    def refuse(msg, more=()) -> int:
+        print(f"refused: {msg}", file=sys.stderr)
+        for line in more:
+            print(line, file=sys.stderr)
+        return 2
+
+    if not a.positive:
+        return refuse("search hmm needs a positive control, a protein the search must find: --positive "
+                      "ACCESSION:START-END (one gene: its accession, start and end as `bio-box search hits --format "
+                      "tsv` prints them) or --positive 'TEXT' (a substring of the contig's header). A search without "
+                      "one is refused (S-04)")
+    if a.neighbors < 1:
+        return refuse(f"--neighbors {a.neighbors}: give at least 1 gene on each side")
+    out = Path(a.out)
+    try:
+        pack.outside_root(root, out, "the output directory")
+    except ValueError as e:
+        return refuse(e)
+    if out.exists() and (not out.is_dir() or any(out.iterdir())):
+        return refuse(f"the output directory {out} is not empty: search hmm writes into a new or empty directory")
+    try:
+        limits = _limits(a)
+        packs, runs = _packs(a), _runs(a)
+        work = Path(a.work) if a.work else runner.default_work_base(_profile_tmp(a))
+        tv = pack.manifest_tape_version(pack.read_manifest(pack.find(packs, a.release, root=root))[0])
+        files, libraries = _release_files_or_refusal(a, root)
+        export._Store(None, libraries).library(a.library)  # several libraries need --library, as `search hits` says
+    except (ValueError, OSError) as e:  # a missing pack (pack.NoPack) names the `pack build` command
+        return refuse(e)
+    uid, lines = _positive_uid(root, files, a.positive, tv, a.gene_call_version, a.threads)
+    if uid is None:
+        return refuse(lines[0], lines[1:])
+    text = _recipe_text(a, uid)
+    try:  # in the foreground, with a pending record: `search status` and `search cancel` work on it (card W-13)
+        row = runner.run(root, text, a.release, limits=limits, work_base=work, argv=sys.argv, packs=packs,
+                         runs=runs, pending=True, on_pending=_pending_notice, gene_call_version=a.gene_call_version)
+    except RecipeError as e:
+        return refuse(e)
+    rid, status = row["run_id"].hex(), row["status"]
+    levels = "pfam,nr50" if libraries else "nr50,nr90"
+    window = f"{a.neighbors}g"
+    tmp = out.parent / f".{out.name}.tmp-{os.getpid()}"
+    shutil.rmtree(tmp, ignore_errors=True)
+    tmp.mkdir(parents=True)
+    try:
+        (tmp / "recipe.yaml").write_text(text, encoding="utf-8")
+        if status == "ok":
+            where = ["--root", str(root), "--gene-call-version", a.gene_call_version, "--runs", str(runs),
+                     "--pack-dir", str(packs)]
+            opts = (["--library", a.library] if a.library else []) + (["--threads", str(a.threads)] if a.threads else [])
+            (tmp / "loci").mkdir()
+            for argv in (["search", "hits", rid, *where, *opts, "--format", "tsv", "--out", str(tmp / "hits.tsv")],
+                         ["search", "hits", rid, *where, *opts, "--format", "faa", "--out", str(tmp / "hits.faa")],
+                         ["nbr", "summarize", rid, *where, "--window", window, "--by", levels, "--format", "tsv",
+                          "--out", str(tmp / "neighbors.tsv")],
+                         ["nbr", rid, *where, *opts, "--window", window, "--format", "tsv", "--out", str(tmp / "loci")]):
+                code = main(argv)
+                if code != 0:
+                    print(f"search hmm: run {rid} closed ok, but `bio-box {' '.join(argv[:2])} ...` exited {code}; "
+                          f"nothing was written to {out}; the run is {runner.run_dir(runs, rid)}", file=sys.stderr)
+                    return code
+            counts = (_count(tmp / "hits.tsv") - 1, _count(tmp / "hits.faa", ">"), len(list((tmp / "loci").iterdir())))
+        os.replace(tmp, out)  # an empty DIR is replaced; a DIR that gained files meanwhile is not (OSError)
+    finally:
+        shutil.rmtree(tmp, ignore_errors=True)
+    print(f"{rid}\t{status}")
+    if status != "ok":
+        print(f"search hmm: run {rid} ended {status}: {row.get('error')}; {out} holds the recipe it ran",
+              file=sys.stderr)
+        return 1
+    _print([f"recipe\t{out / 'recipe.yaml'}", f"hits\t{out / 'hits.tsv'}\t{counts[0]} genes of {counts[1]} proteins",
+            f"fasta\t{out / 'hits.faa'}", f"neighbors\t{out / 'neighbors.tsv'}\tlevels {levels}, window {window}",
+            f"loci\t{out / 'loci'}\t{counts[2]} tables"])
+    if not libraries:
+        print(f"note\trelease {a.release} has no domain library: the neighbour summary is at the cluster levels "
+              f"{levels} only, and pfam_architecture is -")
+    return 0
+
+
+def _hmm_parser() -> argparse.ArgumentParser:
+    """`bio-box search hmm` (card W-07): its own parser, since `search`'s others take a recipe or a run."""
+    h = argparse.ArgumentParser(prog="bio-box search hmm", description="search a release with an HMM file and write "
+                                "the recipe, hits, FASTA and neighbour tables into --out (card W-07)")
+    h.add_argument("--root", required=True)
+    h.add_argument("--gene-call-version", default=GENE_CALL_VERSION)
+    h.add_argument("--release", required=True)
+    h.add_argument("--hmm", required=True, help="the HMM file (HMMER3); a file of several models needs --model")
+    h.add_argument("--model", help="the model of --hmm to search with, by name or accession")
+    h.add_argument("--bits", type=float, required=True, help="inclusion threshold in bits (iterations.inclusion_bits)")
+    h.add_argument("--neighbors", type=int, default=5, help="genes on each side of a hit in the neighbour tables "
+                                                            "(window <N>g; default 5)")
+    h.add_argument("--positive", help="required: a protein the search must find, as ACCESSION:START-END (one gene, "
+                                      "as `search hits --format tsv` prints it) or a substring of its contig's header")
+    h.add_argument("--out", required=True, help="a new or empty directory outside the data root")
+    h.add_argument("--profile", help="host profile YAML (default: $BIOBOX_PROFILE); caps cpus and memory, and gives "
+                                     "the pack, runs and work directories")
+    h.add_argument("--pack-dir", help=PACK_DIR_HELP)
+    h.add_argument("--runs", help=RUNS_HELP)
+    h.add_argument("--work", help="parent of the run's work directory (default: <profile tmp>/search/<user>/work "
+                                  "with a profile, else $BIOBOX_SEARCH_WORK or /tmp/atd/search)")
+    h.add_argument("--cpus", type=int, help=f"worker cpus (default {DEFAULT_CPUS}, or the profile's cap if lower)")
+    h.add_argument("--mem-gb", type=float, help="memory cap in GB (default: the profile's mem_scope, else none)")
+    h.add_argument("--cpu-min", type=float, default=300.0)
+    h.add_argument("--wall-s", type=float, default=6 * 3600.0)
+    h.add_argument("--library", help="domain library of pfam_architecture (default: the only one, else the pfam one)")
+    h.add_argument("--threads", type=int, help=f"DuckDB threads of the exports (default {export.EXPORT_THREADS})")
+    return h
 
 
 def _export(a) -> int:
@@ -690,6 +914,8 @@ def _build_stage(a) -> int:
 
 def main(argv: list[str] | None = None) -> int:
     argv = list(sys.argv[1:] if argv is None else argv)
+    if argv[:2] == ["search", "hmm"]:  # card W-07: its own options, and no recipe or run positional
+        return _search_hmm(_hmm_parser().parse_args(argv[2:]))
     command: list[str] = []
     if argv[:1] == ["run-step"] and "--" in argv:  # everything after the first `--` is the step command
         i = argv.index("--")
@@ -706,7 +932,8 @@ def main(argv: list[str] | None = None) -> int:
     pk.add_argument("--pack-dir", help=PACK_DIR_HELP)
     pk.add_argument("--profile", help=PROFILE_DIRS_HELP)
     s = sub.add_parser("search", parents=[common])
-    s.add_argument("action", choices=["run", "status", "cancel", "hits"])
+    s.add_argument("action", choices=["run", "status", "cancel", "hits"],
+                   help="see also `bio-box search hmm --help`: an HMM file to hits and neighbour tables in one command")
     s.add_argument("target", help="recipe path (run), or the run: its directory or its run id in --runs")
     s.add_argument("--release")
     s.add_argument("--wait", action="store_true", help="run: run here until the run closes; its pending record "
@@ -758,7 +985,8 @@ def main(argv: list[str] | None = None) -> int:
                                      "the run's)")
     n.add_argument("--format", choices=["tsv"], help="summarize: tsv (the default without --json); otherwise one "
                                                      "table per anchor locus")
-    n.add_argument("--out", help="--format tsv without summarize: one file per locus in this directory")
+    n.add_argument("--out", help="--format tsv without summarize: one file per locus in this directory; summarize: "
+                                 "write the summary to this file (default: stdout)")
     n.add_argument("--library", help="--format tsv without summarize: domain library of pfam_architecture")
     n.add_argument("--threads", type=int, help=f"--format tsv without summarize: DuckDB threads (default "
                                                f"{export.EXPORT_THREADS})")

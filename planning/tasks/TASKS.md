@@ -552,6 +552,13 @@ Why: B-21's family run ranks every domain row of the release with a DuckDB windo
 Do: on a copy of the release definition in a scratch root (never the rebuild's root), rebuild tokens and postings of `rN.2` with the current code under a 32G cap and 8 threads; record peak memory (run record, after C-15), wall time, CPU-minutes, family postings and total postings, against B-21's derived 3.5 M family postings without P2 and about 14.6 M more with it. If the peak exceeds 16 GB or a number misses its estimate by more than 20%, stop and report.
 Accept: a measurement file with every number labelled.
 
+### W-15 Find a positive control by accession without scanning
+**M** · Depends: W-07, B-27 (found in the W-07 report; AGENTS §4.4)
+Files: `src/biobox/registry/schemas.py` (one lookup table, then the lock by `scripts/update_schema_lock.py`), the builder that writes `contig_label`, `src/biobox/cli.py` (`search hmm --positive`), tests
+Why: `search hmm --positive ACCESSION:START-END` scans every row group of `contig_label`, which is sorted by contig, not by accession. Not measured on a large release. A header substring cannot prune at all, and on real releases nearly always names a contig with many genes, so it is refused with a list.
+Do: measure first on `rN.1` (read-only) how long the positive lookup takes and how many row groups it reads. If it is over a second, add a per-stage lookup table sorted by accession (accession, `contig_uid`), written by the step that writes `contig_label`, and resolve `--positive` through it with O(1) row groups; keep the header-substring form as the documented slow path. Also accept a protein accession where the release records one. Stop and report if the measurement shows the scan is cheap: then only document it.
+Accept: the measurement, labelled; if the table is added, `profile_query` shows one row group per stage for an accession lookup.
+
 ### C-09 The file-size rule does not refuse small release records
 **L** · Depends: C-08 (found in its report) · blocks the second release under C-04
 Files: `src/biobox/contracts.py` (`check_file_sizes`), `src/biobox/registry/schemas.py` (a `small_ok` flag on `ArtifactSpec` if it lacks one), `tests/r2/test_micro_s0_contracts.py`, `tests/registry/operations.yaml` (drop `catalog` and `release_manifest` from `external` if R0 accepts it)
