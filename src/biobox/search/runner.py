@@ -246,11 +246,18 @@ def memory_cap(limits: Limits, *, system: str | None = None, which=None, proc_ro
 
 
 def worker_argv(job: Path, limits: Limits, *, inherited: dict | None = None, system: str | None = None,
-                which=shutil.which) -> tuple[list[str], str]:
+                which=shutil.which, peak_file: Path | None = None) -> tuple[list[str], str]:
     """The worker's argv and how it is limited ("scope", "inherited", "nice", "bare"), by
-    run-step's helper; `inherited` is the cap `memory_cap` found above the runner, if any."""
-    return runstep.scope_argv(worker_command(job), limits.nice, mem_max=_mem_max(limits),
-                              cpu_quota=limits.cpus * 100, inherited=inherited, system=system, which=which)
+    run-step's helper; `inherited` is the cap `memory_cap` found above the runner, if any.
+    With `peak_file` (card W-14) the worker runs under run-step's measuring helper
+    (`runstep.measured`), inside the limits, which writes the worker's own peak memory there."""
+    kw = dict(mem_max=_mem_max(limits), cpu_quota=limits.cpus * 100, inherited=inherited, system=system,
+              which=which)
+    cmd = worker_command(job)
+    argv, kind = runstep.scope_argv(cmd, limits.nice, **kw)
+    if peak_file is None:
+        return argv, kind
+    return runstep.scope_argv(runstep.measured(cmd, peak_file, kind == "scope"), limits.nice, **kw)[0], kind
 
 
 def _tighter(limits: Limits, cap_bytes: int | None) -> bool:
@@ -294,6 +301,19 @@ def worker_env(limits: Limits, kind: str, system: str, base: dict[str, str],
     return env
 
 
+def _die_with_runner() -> None:
+    """Linux: SIGKILL this process when the runner dies. The worker watches its parent (`worker._watch_parent`),
+    and since card W-14 its parent is run-step's measuring helper, which would outlive a dead runner; the
+    setting survives the `exec` of the helper (through `systemd-run` and `nice`)."""
+    if platform.system() != "Linux":
+        return
+    import ctypes
+    parent = os.getppid()
+    ctypes.CDLL(None, use_errno=True).prctl(1, signal.SIGKILL)  # PR_SET_PDEATHSIG
+    if os.getppid() != parent:  # the runner died before the setting took
+        os._exit(1)
+
+
 def _preexec(limits: Limits, kind: str, system: str, cap_bytes: int | None = None, renice: bool = False):
     """Runs in the child before exec: its own session (so the runner signals the group), its
     niceness when no `nice` binary sets it (`renice`), and its rlimits (inherited through
@@ -302,6 +322,7 @@ def _preexec(limits: Limits, kind: str, system: str, cap_bytes: int | None = Non
 
     def fn():
         os.setsid()
+        _die_with_runner()
         if renice:
             os.nice(limits.nice)
         for which, value in lims.items():
@@ -527,12 +548,14 @@ def run(root: Path, recipe_src: Path | str, release: str, *, limits: Limits = Li
         inherited = cap if cap["how"] == "inherited" else None
         cap_bytes = inherited["memory_max_bytes"] if inherited else None
         argv, kind = worker_argv(work / "job.json", limits, inherited=inherited, system=system)
+        peak_file = work / "peak.json"  # the worker's own peak (card W-14), not `wait4`'s on a fork of this runner
+        launch, _ = worker_argv(work / "job.json", limits, inherited=inherited, system=system, peak_file=peak_file)
         env = worker_env(limits, kind, system, os.environ, cap_bytes=cap_bytes)
         # an inherited unit is shared with the runner: only kills after this point are the worker's
         baseline = _oom_kills_now(inherited["cgroup"]) if inherited else 0
         renice = kind == "bare" or (kind == "inherited" and argv[0] != "nice")
         with open(work / "stderr.txt", "w") as err:
-            proc = subprocess.Popen(argv, stdout=subprocess.DEVNULL, stderr=err,
+            proc = subprocess.Popen(launch, stdout=subprocess.DEVNULL, stderr=err,
                                     preexec_fn=_preexec(limits, kind, system, cap_bytes, renice), env=env)
             rc, ru, timed_out = _wait(proc, limits.wall_s, cancelled)
         # only a capped cgroup is evidence (the scope's own, or the unit's the cap was inherited
@@ -549,8 +572,8 @@ def run(root: Path, recipe_src: Path | str, release: str, *, limits: Limits = Li
     wall = time.monotonic() - t0
     cpu_min = (ru.ru_utime + ru.ru_stime) / 60 if ru is not None else None
     rss = None
-    if ru is not None:
-        rss = ru.ru_maxrss if platform.system() == "Darwin" else ru.ru_maxrss * 1024
+    if ru is not None:  # the helper's file; if the worker never ran or was killed without it, `unmeasured`
+        rss = runstep.step_peak(work / "peak.json")[0]
     row = {
         "run_id": run_id, "recipe_hash": rh, "recipe_yaml": text, "argv": list(argv or []),
         "tool_versions_json": json.dumps(provenance.tool_versions("bio-box", "pyhmmer", "pyarrow"), sort_keys=True),
