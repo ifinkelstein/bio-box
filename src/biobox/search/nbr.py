@@ -37,6 +37,7 @@ from __future__ import annotations
 import hashlib
 import json
 import re
+import sys
 from dataclasses import asdict, dataclass
 from pathlib import Path
 
@@ -438,6 +439,13 @@ def _sql_str(s: str) -> str:
     return "'" + str(s).replace("'", "''") + "'"
 
 
+def slow_path_note(release: str | None, lookup: str, source: str) -> None:
+    """One stderr line (card W-17): the release has no `lookup` files (it was built before card B-27), so the
+    reader answers from `source`, which cannot prune a lookup by this key. Never an empty view in its place."""
+    print(f"note: release {release} has no {lookup} files (built before card B-27); reading {source} instead "
+          f"(the slow path: every row group is scanned)", file=sys.stderr)
+
+
 def _store_files(root: Path, name: str, want: dict[str, str], manifest) -> list[tuple[Path, dict]]:
     """(path, partitions) of one table's files whose partitions include `want`: from a `catalog.ReleaseFiles`
     (card B-28), or from a release manifest dict (AGENTS §3.9). Readers never list the registry location (no
@@ -502,6 +510,10 @@ def summarize(root: Path, anchors: set[bytes], policy: Policy, by=("pfam", "nr50
         largest = 0
         for name, spec_name, want, select, parts in views:
             found = _store_files(root, spec_name, want, files)
+            if name == "members" and not found:  # a release built before card B-27 (card W-17)
+                found = _store_files(root, "cluster_member", want, files)
+                if found:
+                    slow_path_note(release, "member_cluster", "cluster_member")
             _store_view(con, name, found, select, parts)
             largest = max(largest, catalog.row_groups_of(p for p, _ in found))
         catalog.set_join_key_filter(con, largest)  # keys from _nb prune to the row groups that hold them (card B-27)

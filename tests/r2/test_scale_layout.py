@@ -66,19 +66,20 @@ def _cap(table: str) -> int:
     return CONTIG_CAP if table in CONTIG_TABLES else TOKEN_CAP if table == "token_dict" else ROW_CAP
 
 
-def _scaled_write_table(real):
+def _scaled_write_table(real, slot_caps: dict | None = None):
+    """`real` with the scaled caps; `slot_caps` overrides SLOT_CAP for the list tables it names (card B-38)."""
     def write_table(batches, spec, path, *, row_group_rows=bio.ROW_GROUP_ROWS, max_slots=None, **kw):
         cap = _cap(spec.name)
         if max_slots is not None:
-            max_slots = min(max_slots, SLOT_CAP)
+            max_slots = min(max_slots, (slot_caps or {}).get(spec.name, SLOT_CAP))
         return real(batches, spec, path, row_group_rows=min(row_group_rows, cap), max_slots=max_slots, **kw)
     return write_table
 
 
-def _build(out: Path, copies: int) -> dict:
+def _build(out: Path, copies: int, slot_caps: dict | None = None) -> dict:
     """`synth_scale.py` at `copies` into `out`, with the scaled row-group caps."""
     mp = pytest.MonkeyPatch()
-    mp.setattr(bio, "write_table", _scaled_write_table(bio.write_table))
+    mp.setattr(bio, "write_table", _scaled_write_table(bio.write_table, slot_caps))
     t0 = time.perf_counter()
     argv = sys.argv
     sys.argv = [str(SCRIPT), str(REPO), str(out), str(copies), "--shard-bases", str(2**26), "--seed", str(SEED)]
@@ -560,6 +561,125 @@ def test_b35_partner_reads_with_many_anchor_contigs_are_every_row_group(store, r
     assert total >= MIN_RG and len(anchors) > total * math.log(total), (len(anchors), total)
     assert s["row_groups_scanned"] == hold == total, (s, hold)
     assert prof["result"] == _partners_oracle(store, fam, 10)
+
+
+# --- card B-38: a many-anchor partners_of reads each tape_tokens row group once; its time against the join ------
+
+B38_SLOT_CAP = 1024  # tape_tokens slots per row group in the B-38 store, so the table has more row groups than the
+# partner lookup's cache holds (the fixture's three contigs carry about 850 slots per copy, so about 85 row groups
+# at 100x, *derived*; the test checks the count before it measures)
+B38_RUNS = 5  # timed runs per query and token, each on a fresh connection; the median is compared
+B38_TIME_MARGIN = 1.25  # partners_of's median may be this many times the join's (a timing tolerance, not a measurement)
+B38_K = 10
+# The same answer as partners_of(?, 10) by plain SQL joins, for the timing (card B-38). TAPE_JOIN: the anchors'
+# windows joined to tape_tokens on contig_uid (DuckDB's own scan, which prunes by the join filter). POSTINGS_JOIN:
+# the ladder's form, the postings self-join on contig_uid (r10_queries.py), at every level; it equals the macro
+# here because every synthetic protein has at most one domain (card B-39 is about the difference).
+TAPE_JOIN_SQL = f"""
+    WITH _anchor AS (SELECT * FROM token_slots(?)),
+         _off AS (SELECT contig_uid, ordinal::BIGINT AS _i, n_slots::BIGINT AS _n, is_circular AS _c,
+                         unnest(range(-least({B38_K}, n_slots::BIGINT), least({B38_K}, n_slots::BIGINT) + 1)) AS _d
+                  FROM _anchor),
+         _win AS (SELECT DISTINCT contig_uid, _i, _n, CASE WHEN _c THEN ((_i + _d) % _n + _n) % _n ELSE _i + _d END AS _j
+                  FROM _off WHERE _d <> 0),
+         _near AS (SELECT w.contig_uid, w._i,
+                          unnest([t.family_tokens[w._j + 1], t.nr50_tokens[w._j + 1], t.nr90_tokens[w._j + 1]]) AS _tok
+                   FROM _win w JOIN tape_tokens t ON t.contig_uid = w.contig_uid
+                   WHERE w._j >= 0 AND w._j < w._n AND w._j <> w._i
+                     AND t.release = catalog_release() AND t.tape_version = catalog_tape_version())
+    SELECT _tok AS partner_token, count(DISTINCT (contig_uid, _i)) AS n_loci, count(*) AS n_pairs
+    FROM _near WHERE _tok IS NOT NULL GROUP BY _tok ORDER BY n_loci DESC, partner_token"""
+POSTINGS_JOIN_SQL = f"""
+    WITH a AS (SELECT DISTINCT contig_uid, ordinal, n_slots, is_circular FROM token_rows(?)),
+         p AS (SELECT DISTINCT token_id, contig_uid, ordinal FROM token_postings
+               WHERE release = catalog_release() AND tape_version = catalog_tape_version()
+                 AND contig_uid IN (SELECT contig_uid FROM a)),
+         nb AS (SELECT a.contig_uid, a.ordinal AS _i, p.token_id AS _tok FROM a JOIN p USING (contig_uid)
+                WHERE slot_dist(a.ordinal, p.ordinal, a.n_slots, a.is_circular) BETWEEN 1 AND {B38_K})
+    SELECT _tok AS partner_token, count(DISTINCT (contig_uid, _i)) AS n_loci, count(*) AS n_pairs
+    FROM nb GROUP BY _tok ORDER BY n_loci DESC, partner_token"""
+
+
+@pytest.fixture(scope="module")
+def store_b38(tmp_path_factory):
+    """The 100x store with `tape_tokens` cut at B38_SLOT_CAP slots per row group (every other cap as `store`)."""
+    s = _build(tmp_path_factory.mktemp("scale_b38"), COPIES, {"tape_tokens": B38_SLOT_CAP})
+    yield s
+    s["con"].close()
+
+
+def _tape_lookup(con):
+    """The connection's `tape_tokens` point lookup (built on first use)."""
+    return dict(catalog._LOOKUPS[id(con)])["bb_partner_counts"].get()
+
+
+def _b38_tokens(s: dict) -> dict[str, int]:
+    t = s["rep"]["tokens"]
+    return {"nr90 (10 loci)": t["nr90_a"][1], "family (COPIES loci)": t["family_a"][1], "hub": t["hub"]}
+
+
+@pytest.mark.covers("Q3", "LY-06")
+def test_b38_many_anchor_partners_of_reads_each_row_group_once(store_b38, record_property):
+    """Card B-38: `tape_tokens` has more row groups than the partner lookup's cache holds, and the anchors of the
+    family token and of the hub touch more of them than that. Cold, a `partners_of` query decodes each row group it
+    touches exactly once (`row_groups_read` counts every decode, card B-35); warm, on the same connection, each is
+    decoded at most once or served by the cache. The touched row groups are exactly those whose footer range holds
+    an anchor contig, and the answer equals the B-35 oracle."""
+    rec = {}
+    for name in ("family (COPIES loci)", "hub"):
+        tok = _b38_tokens(store_b38)[name]
+        con = _fresh(store_b38)
+        anchors = _anchor_contigs(con, tok)
+        hold = _footer_row_groups(store_b38, "tape_tokens", anchors)
+        cold = catalog.profile_query(con, PARTNERS_SQL, [tok])
+        warm = catalog.profile_query(con, PARTNERS_SQL, [tok])
+        cache = _tape_lookup(con).cache_row_groups
+        (c,), (w,) = _lookup_scans(cold, "tape_tokens"), _lookup_scans(warm, "tape_tokens")
+        rec[name] = {"anchor_contigs": len(anchors), "hold": hold, "cache": cache,
+                     **{f"{n}_{k}": s[k] for n, s in (("cold", c), ("warm", w))
+                        for k in ("row_groups_scanned", "row_groups_read", "row_groups_cached", "row_groups_total")}}
+        assert c["row_groups_total"] > cache and hold > cache, rec[name]  # the case under test
+        assert c["row_groups_scanned"] == hold and c["row_groups_read"] == hold, rec[name]
+        assert w["row_groups_scanned"] == hold and w["row_groups_read"] + w["row_groups_cached"] == hold, rec[name]
+        assert cold["result"] == warm["result"] == _partners_oracle(store_b38, tok, B38_K)
+    record_property("b38_reads", json.dumps(rec))
+    print("b38_reads", json.dumps(rec))  # shown with pytest -s
+
+
+@pytest.mark.covers("Q3", "LY-06")
+def test_b38_many_anchor_partners_of_is_no_slower_than_the_join(store_b38, record_property):
+    """Card B-38: wall time of `partners_of` against the same answer by plain SQL joins (TAPE_JOIN_SQL,
+    POSTINGS_JOIN_SQL), each run B38_RUNS times on a fresh connection (cold lookup caches), alternating, for anchor
+    sets of 10, COPIES and the hub's loci. All three give the oracle's answer. With the most anchors (the hub) the
+    macro's median is at most B38_TIME_MARGIN times the median of TAPE_JOIN_SQL, the join that answers from the
+    same table; the postings self-join is recorded for information only (since card B-21 it answers from other
+    rows, card B-39). Wall time on a shared host varies by more than the 1% the two were apart in one run, hence
+    the margin; the deterministic acceptance of card B-38 is the row-group counts of
+    test_b38_many_anchor_partners_of_reads_each_row_group_once (each touched row group read once), which stay
+    exact. Every median is recorded (`b38_times`)."""
+    import statistics
+
+    out = {}
+    for name, tok in _b38_tokens(store_b38).items():
+        times: dict[str, list[float]] = {"partners_of": [], "tape_join": [], "postings_join": []}
+        got = {}
+        for _ in range(B38_RUNS):
+            for q, sql in (("partners_of", PARTNERS_SQL), ("tape_join", TAPE_JOIN_SQL), ("postings_join", POSTINGS_JOIN_SQL)):
+                con = _fresh(store_b38)
+                t = time.perf_counter()
+                got[q] = con.execute(sql, [tok]).fetchall()
+                times[q].append(time.perf_counter() - t)
+        oracle = _partners_oracle(store_b38, tok, B38_K)
+        assert {q: r == oracle for q, r in got.items()} == dict.fromkeys(times, True), name
+        con = _fresh(store_b38)
+        (loci, contigs), = con.execute("SELECT count(*), count(DISTINCT contig_uid) FROM token_slots(?)", [tok]).fetchall()
+        out[name] = {"anchors": loci, "anchor_contigs": contigs,
+                     **{f"{q}_median_s": round(statistics.median(ts), 4) for q, ts in times.items()},
+                     **{f"{q}_s": [round(x, 4) for x in ts] for q, ts in times.items()}}
+    record_property("b38_times", json.dumps(out))
+    print("b38_times", json.dumps(out))  # shown with pytest -s
+    hub = out["hub"]
+    assert hub["partners_of_median_s"] <= B38_TIME_MARGIN * hub["tape_join_median_s"], json.dumps(out)
 
 
 def test_build_time(store, record_property):

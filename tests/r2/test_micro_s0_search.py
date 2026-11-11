@@ -1096,6 +1096,94 @@ def test_w06_cli_summary_json_matches_the_lock_and_tsv_reads_back(world, capsys)
     assert "--release" in capsys.readouterr().err
 
 
+# --- W-17: a release built before card B-27 has no member_cluster; readers must not answer from an empty view ---
+
+
+def _pre_b27(world, tmp_path, *, manifest: bool, labels: bool = False) -> Path:
+    """A copy of the world's root as a release built before card B-27 leaves it: no `member_cluster` files (and,
+    with `labels`, no `contig_label` files), listed by a manifest of the remaining files or, without one, by the
+    release_def stages."""
+    root = _copy(world, tmp_path)
+    shutil.rmtree(root / "l2/member_cluster")
+    if labels:
+        shutil.rmtree(root / "l0seq/contig_label")
+    assert (root / f"l2/cluster_member/release={REL}").is_dir()
+    catalog.manifest_path(root, REL).unlink(missing_ok=True)
+    if manifest:
+        catalog.write_manifest(catalog.build_manifest(root, REL, ["S0"]))
+        assert not [f for f in catalog.read_manifest(catalog.manifest_path(root, REL))["files"]
+                    if f["table"] == "member_cluster"]
+    return root
+
+
+@pytest.mark.covers("W-17", "W-06")
+@pytest.mark.parametrize("manifest", [False, True], ids=["release_def", "manifest"])
+def test_w17_summary_of_a_release_without_member_cluster_equals_the_brute_force_loop(world, tmp_path, capsys, manifest):
+    """The answer is the loop over the tapes and `cluster_member` (the oracle of W-06), not all `unannotated`; the
+    slow path says so once on stderr, and a release with the table says nothing."""
+    root = _pre_b27(world, tmp_path, manifest=manifest)
+    anchors = _w06_anchors(root)
+    want = _oracle_summary(root, anchors, "5g")
+    assert [r for r in want["rows"] if r["level"] == "nr50" and not r["unannotated"]], "the world has no cluster"
+    capsys.readouterr()
+    got = nbr.summarize(root, anchors, nbr.Policy.parse(window="5g"), by=("pfam", "nr50"), release=REL, top_n=0,
+                        manifest=catalog.read_manifest(catalog.manifest_path(root, REL)) if manifest else None)
+    err = capsys.readouterr().err.splitlines()
+    _compare(got, want)
+    assert got["header"]["n_keys"]["nr50"] > 0
+    assert len(err) == 1 and "member_cluster" in err[0] and "slow" in err[0], err
+    nbr.summarize(world[0], anchors, nbr.Policy.parse(window="5g"), by=("pfam", "nr50"), release=REL, top_n=0)
+    assert capsys.readouterr().err == ""
+
+
+@pytest.mark.covers("W-17")
+def test_w17_cli_summary_without_member_cluster_prints_what_the_release_with_it_prints(world, tmp_path, capsys):
+    (tmp_path / "x").mkdir()
+    root = _pre_b27(world, tmp_path / "x", manifest=True)
+    uids = ",".join(sorted(u.hex() for u in _w06_anchors(root)))
+    for fmt in (["--json"], ["--format", "tsv"]):
+        args = ["nbr", "summarize", uids, "--window", "5g", "--by", "pfam,nr50", "--release", REL, *fmt]
+        assert cli.main([*args, "--root", str(world[0]), *_dirs(world[0])]) == 0
+        want = capsys.readouterr().out
+        assert cli.main([*args, "--root", str(root), *_dirs(root)]) == 0
+        out = capsys.readouterr()
+        assert out.out == want and "member_cluster" in out.err
+
+
+@pytest.mark.covers("W-17")
+def test_w17_export_annotations_without_member_cluster_read_cluster_member(world, tmp_path, capsys):
+    """`search hits` and `nbr --format tsv` take `nr90`/`nr50` from `member_cluster`: without it they read
+    `cluster_member`, never an empty relation."""
+    root = _pre_b27(world, tmp_path, manifest=True, labels=True)
+    sqls = ("SELECT member_uid, level, cluster_uid, rep_uid FROM clus ORDER BY level, member_uid",
+            "SELECT contig_uid, arg_min(accession, (l0_object_sha256, record_ordinal)), "
+            "arg_min(original_header, (l0_object_sha256, record_ordinal)), sum(n_records)::BIGINT FROM lab "
+            "GROUP BY contig_uid ORDER BY contig_uid")
+    rows = {}
+    for r in (world[0], root):
+        with export.open_store(r, release=REL, gene_call_version=V, relations=("clus", "lab")) as st:
+            rows[r] = [st.con.execute(sql).fetchall() for sql in sqls]
+    assert rows[root][0] and rows[root][1] and rows[root] == rows[world[0]]
+    err = capsys.readouterr().err
+    assert "member_cluster" in err and "contig_label" in err
+
+
+@pytest.mark.covers("W-17")
+def test_w17_release_verify_warns_for_each_lookup_table_the_release_lacks(world, tmp_path, capsys):
+    root = _pre_b27(world, tmp_path, manifest=True, labels=True)
+    assert cli.main(["release", "verify", "--root", str(root), "--release", REL]) == 0  # a warning, not a failure
+    err = capsys.readouterr().err.splitlines()
+    assert sorted(t for t in ("member_cluster", "contig_label") if sum(t in x and x.startswith("warning") for x in err) == 1) \
+        == ["contig_label", "member_cluster"], err
+    # a release that has both says nothing
+    (tmp_path / "g").mkdir()
+    good = _copy(world, tmp_path / "g")
+    catalog.manifest_path(good, REL).unlink(missing_ok=True)
+    catalog.write_manifest(catalog.build_manifest(good, REL, ["S0"]))
+    assert cli.main(["release", "verify", "--root", str(good), "--release", REL]) == 0
+    assert capsys.readouterr().err == ""
+
+
 # --- W-05: exports a person can open, against brute-force joins over the Parquet files ----------------------
 
 W05_HIT_COLUMNS = ["accession", "header", "contig_len", "start", "end", "strand", "length", "seq_bitscore",
