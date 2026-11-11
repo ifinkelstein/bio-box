@@ -31,6 +31,24 @@ Record: `planning/measurements/2026-11-10_trial_search_rN1.md` (all *measured*, 
 - Night threads: the PI raised the scan to 12 shards (48 threads) from the P2 stage, leaving 8 for tests;
   driver unit `r10-p2-driver2` replaced `r10-p2-driver` at 22:09 CST.
 
+### State at 01:40 CST, 2026-11-11
+
+- `plan/task-cards`: 81 cards merged; pod suite 1,255 passed, 13 skipped.
+- Rebuild: `rN.1a` and `rN.1b` have Pfam. The large stage is scanning under driver `r10-p2-driver3` at 10 night
+  shards (40 threads). 12 shards (48 threads) was refused at 23:15: `run-step` allows only the day cap, 40,
+  whenever the load average is above 8, which our own test runs cause. Marker `phase2/FAILED.2315-refused-48`.
+- Design B-37 (`planning/design/B-37_split_clustering.md`): split clustering equals the workflow row for row
+  with one flag; implementing card B-41. No PI decision needed.
+- Measurement 0-09a (`planning/measurements/2026-11-11_mmseqs_profile_vs_hmmsearch.md`): MMseqs2 profile
+  search is 27 to 95 times cheaper than `hmmsearch` and recovers 50 to 63% of protein-family pairs at 99%
+  precision, with profiles sampled from the HMMs (no seed alignments on the pod).
+- 50 Gbp inputs (`planning/measurements/2026-11-11_r50_inputs.md`): 11,973 genomes selected, 2,497 present
+  and verified, 9,476 to fetch in four stages P3 to P6. **The fetch is not started: no `sources.yaml` exists
+  and the NCBI Datasets v2 source is on no approved list (AGENTS §8). Waiting for the PI.**
+- Waiting for the PI: the download source; best-complete-per-species (11,973) or GTDB representatives only
+  (9,635); adding `Pfam-A.seed` to `refdb.yaml` for a repeat of 0-09a.
+- Running: W-16 (pack build in bounded memory; the real pack of `rN.1`).
+
 ### 10 Gbp rebuild, 18:20 CST
 
 - Phase 1 is done: releases `rN.1a`, `rN.1b`, `rN.1` in `/tmp/if2453/r10/root` on the pod, all verified
