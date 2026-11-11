@@ -358,6 +358,7 @@ SEARCH_DIRS = {
     ("search", "status"): [("--runs",)],
     ("search", "cancel"): [("--runs",)],
     ("search", "hits"): [("--runs",), ("--pack-dir",)],
+    ("search", "hmm"): [("--pack-dir",), ("--runs",), ("--work",)],  # card W-07
     ("nbr", None): [("--runs",), ("--pack-dir",)],
 }
 
@@ -415,6 +416,20 @@ def test_w13_the_search_section_watches_and_cancels_a_wait_run_with_bio_box():
     assert "runner exited without closing the run" not in known  # W-13 fixed both search notes
     appendix = section_of(text, "## Appendix A")
     assert "search cancel" in appendix and "w13-" in appendix
+
+
+@pytest.mark.covers("W-07")
+def test_w07_the_search_section_shows_the_one_command_with_its_positive_control_and_output_directory():
+    """Card W-07: section 7 shows `search hmm` in a `pod_run.sh` unit with a positive control and `--out`, and says
+    what it writes, that it waits for its run, what a missing pack does and what a release without a domain library
+    gives."""
+    search = section_of(RUNBOOK.read_text(), "## 7. ")
+    hmm = [a for a in (bio_box_args(c) or [] for _, c in commands(search)) if a[:2] == ["search", "hmm"]]
+    assert hmm and all({"--positive", "--out", "--hmm", "--bits", "--release"} <= set(a) for a in hmm), hmm
+    assert any("pod_run.sh" in c for _, c in commands(search) if "search hmm" in c)
+    for words in ("recipe.yaml", "hits.tsv", "hits.faa", "neighbors.tsv", "loci/", "no domain library",
+                  "pack build", "foreground"):
+        assert words in search, words
 
 
 # --- C-14: errors found by the 10 Gbp rebuild ---------------------------------------------------------------

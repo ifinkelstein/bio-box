@@ -511,6 +511,32 @@ is one row per gene; `--format faa` is one record per protein, named by protein 
 clusters around the anchors. `export proteins` needs the release's manifest; it reads the root only
 and takes no `--profile`.
 
+**One command.** `search hmm` (card W-07) does all of the above for an HMM file: it writes the recipe,
+runs it, and writes the exports into `--out DIR`. `--bits` is the inclusion threshold;
+`--neighbors N` the genes on each side (window `Ng`, default 5); `--model` picks one model of a file
+that holds several. `--positive` is required: a protein the search must find, given as
+`ACCESSION:START-END` (one gene, with the accession, start and end that `search hits --format tsv`
+prints: 0-based, end exclusive) or as a substring of its contig's header (case-sensitive). It must
+name exactly one protein of the release; otherwise the command exits 2 and lists the genes that
+matched, each as `ACCESSION:START-END`, so one can be given instead. `$POSITIVE` below is such a
+gene. The run runs in the foreground, as `search run --wait`, so it may run in a `pod_run.sh` unit;
+`search status` and `search cancel` work on it from another shell.
+
+```bash
+bash "$TREE/scripts/pod_run.sh" --profile "$PROFILE" --image "$IMAGE" --digest "$DIGEST" --bind /tmp/if2453 --env PYTHONPATH="$PYTHONPATH_POD" w07-hmm search hmm --root "$ROOT" --release rC6.1 --profile "$PROFILE" --hmm "$WORK/inputs/lib.hmm" --model lam0 --bits 25 --neighbors 5 --positive "$POSITIVE" --out "$WORK/hmm"
+```
+
+`DIR` must be new or empty and outside the data root. It then holds `recipe.yaml` (the recipe the
+run ran; `search run DIR/recipe.yaml` runs it again), `hits.tsv` and `hits.faa` (as `search hits
+--format tsv|faa`), `neighbors.tsv` (as `nbr summarize --format tsv`) and `loci/` (one table per
+locus, as `nbr --format tsv`); each is written by that command, so the files are the same. The log
+ends with the run id and `ok`, then one line per file. The run itself is in the runs directory, as
+for `search run`. A release with no domain library (the 10 Gbp release `rN.1` has none) is
+searched all the same: the neighbour summary is by `nr50,nr90` instead of `pfam,nr50`, and the log
+says so in a line that begins `note`. A run that ends other than `ok` exits 1 and leaves only
+`recipe.yaml` in `DIR`. When the release has no pack, the command exits 2 and prints the
+`pack build` command to run; it does not build the pack.
+
 ## 8. Run the test suite on the pod
 
 Run these on the laptop, in the repository checkout. The script copies the working tree to the pod
@@ -633,6 +659,7 @@ exemption; the fixture's clustering is far under 300 CPU-minutes). Appendix B li
 | Search packs and runs inside an old root | a root written before card W-03 may hold `search_pack/` and `search/` (the pack and runs were then written into the root). Nothing reads or writes them now; the manifest leaves them out (`catalog.EXCLUDED_TREES`). Build the pack again into the pack directory (section 7) | W-03, W-13 |
 | No detached search in a unit | `search run` without `--wait` in a `pod_run.sh` unit is refused (exit 2): the unit would stop the detached runner when the command returns (section 7). Use `--wait`; `search status` and `search cancel` work on a `--wait` run from another shell | W-13 |
 | `pod_run.sh` and the profile | `pod_run.sh --profile` sets the unit's limits only; it does not pass the profile to `bio-box` (no `BIOBOX_PROFILE` in the image). Give `bio-box` its own `--profile`, or the pack, runs and work directories (section 7) | W-03, W-13 |
+| `search hmm --positive` reads all contig labels | the accession or header of the positive control is looked up in every row group of `contig_label`: no table is sorted by accession, and a header substring cannot prune. The contig's genes are then read from its tape by contig uid, which prunes. Not measured on a large release | W-07 |
 
 Found while writing this runbook, no card yet (reported to the PI):
 
@@ -864,3 +891,8 @@ Last line: `01563e192ab22a5931d55e224a2dbb07`.
   a build unit.
 - `search run` without `--wait` outside a `pod_run.sh` unit (a submitted, detached runner, for
   example from the `bio-box` function of section 0). It is tested in the test suite, not on the pod.
+- `search hmm` (section 7) in a `pod_run.sh` unit, and on a real release. Card W-07 tested it in the
+  test suite on the pod, on the fixture: its files equal those of the separate commands byte for
+  byte, its recipe run again through `search run` gives the same hits, a fixture release without a
+  domain library gives the summary by `nr50,nr90`, and its refusals (no positive control, one that
+  matches no protein or several, no pack, `DIR` under the root or not empty) exit 2.
