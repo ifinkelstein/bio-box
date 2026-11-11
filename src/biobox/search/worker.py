@@ -1,7 +1,9 @@
 """The search process the runner launches under its limits: `python -c BOOT <job.json>`.
 
 It reads only the staged shards and, of the data root, the files of the job's release (`release_files`,
-card B-28: its manifest's, else those of its `release_def` stages), writes `hits.parquet`, `profiles.parquet`,
+card B-28: its manifest's, else those of its `release_def` stages). It never holds the target (card W-19): each
+search reads the shards a block of `block_residues` residues at a time (`engine.stream_target`) and keeps its hits;
+the partial targets come from row groups filtered in Arrow. It writes `hits.parquet`, `profiles.parquet`,
 `neighborhoods.parquet` and `result.json` to the job's `out` directory, and checks the output
 cap after every round. A MemoryError exits with EXIT_OOM so the runner records `oom`; any
 other failure exits non-zero and the runner records `failed`. Neither writes hits.
@@ -33,6 +35,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 
 import pyarrow as pa
+import pyarrow.compute as pc
 import pyarrow.parquet as pq
 
 from biobox.l3.tapes import tape_version
@@ -193,16 +196,28 @@ def _has_domains(files: ReleaseFiles) -> bool:
     return any(pq.ParquetFile(f).metadata.num_rows > 0 for f in files.table("l1_domains"))
 
 
+def _uids_where(path: Path, uid: str, col: str, keep) -> set[bytes]:
+    """The `uid` values of the rows of one Parquet file whose `col` passes `keep` (an Arrow predicate), read one row
+    group at a time, so only the matching uids become Python objects (card W-19: no whole table in memory)."""
+    out: set[bytes] = set()
+    pf = pq.ParquetFile(path)
+    for i in range(pf.metadata.num_row_groups):
+        t = pf.read_row_group(i, columns=[uid, col], use_threads=False)
+        out.update(t.filter(keep(t.column(col))).column(uid).to_pylist())
+    return out
+
+
 def _partial(files: ReleaseFiles, job: dict, target: engine.Target) -> set[bytes]:
+    """The partial targets: proteins with a gene at a contig end (`dist_to_contig_end_bp` 0), regions flagged
+    `partial` in the pack's meta file."""
     if target.kind == "protein":
         paths = files.table("protein_occurrence", gene_call_version=job["gene_call_version"])
-        return {r["protein_uid"] for f in paths
-                for r in pq.read_table(f, columns=["protein_uid", "dist_to_contig_end_bp"]).to_pylist()
-                if r["dist_to_contig_end_bp"] == 0}
+        return set().union(*(_uids_where(f, "protein_uid", "dist_to_contig_end_bp", lambda c: pc.equal(c, 0))
+                             for f in paths))
     meta = Path(job["meta"]) if job.get("meta") else None
     if meta is None or not meta.exists():
         return set()
-    return {r["region_uid"] for r in pq.read_table(meta, columns=["region_uid", "partial"]).to_pylist() if r["partial"]}
+    return _uids_where(meta, "region_uid", "partial", lambda c: pc.fill_null(c, False))
 
 
 def _round_fault(kind: str | None, k: int) -> None:
@@ -316,7 +331,9 @@ def main(job_path: str) -> int:
     recipe = job["recipe"]
     run_id = bytes.fromhex(job["run_id"])
     it, cur = recipe["iterations"], recipe["curation"]
-    target = engine.load_target(job["target_kind"], (r for p in job["shards"] for r in fastz.read_records(Path(p))))
+    # the target is read from its shards a block at a time, never held (card W-19)
+    target = engine.stream_target(job["target_kind"], [Path(p) for p in job["shards"]], int(job["target_size"]),
+                                  job.get("block_residues"))
     seed = job["seed"]
     model_paths = [Path(p) for p in job["models"]]
     seed_seq = seed.get("sequence")
@@ -420,7 +437,7 @@ def main(job_path: str) -> int:
     result = {"status": status, "error": error, "rounds": last.k, "final_round": final_round,
               "stop_reason": last.checks.get("stop"), "controls": controls, "warnings": warnings,
               "target_size": target.size, "rounds_log": rounds_log, "n_final": len(final), "n_neighborhood_rows": n_nbr,
-              "tape_version": tv, "threads": peaks.report()}
+              "tape_version": tv, "threads": peaks.report(), "target_blocks": target.blocks_read}
     (out / "result.json").write_text(json.dumps(result, sort_keys=True, default=str))
     return 0
 

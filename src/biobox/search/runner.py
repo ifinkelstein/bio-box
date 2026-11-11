@@ -3,11 +3,18 @@
 A run is a recorded job:
 
   1. The recipe is checked on paper (`recipe.load`) and against the release (`resolve`):
-     the pack must verify (C-12), every seed, model ID and positive control must be in it,
+     the pack must pass the search's check, every seed, model ID and positive control must be in it,
      and nothing in the recipe may be beyond what this build runs. A file seed (`hmm_file`,
      `msa`, `sequences`) is read once here: its sha256 replaces its path in the recipe hash
      and the query hash, and its bytes are staged for the worker. Refusals raise
-     RecipeError and record nothing.
+     RecipeError and record nothing. Card W-19: the checks come in two parts. `prepare` reads
+     the pack's manifest and a file seed only, which is what the run id needs; a run with a
+     pending record (`pending`) writes it next, so `search status` answers within seconds;
+     then `check`: the pack by its manifest, the build's verification record and its files'
+     sizes (`pack.search_check`; a pack built before W-19 has no record and is verified in full,
+     its scratch in the work directory, never in the pack directory), and the seed and positive
+     controls by key lookups in the shards (`_records`), never a set of every name. A refusal
+     found by `check` removes the pending record again. Nothing is written into the pack directory.
   2. The target's shards are copied to `<work>/<run_id>/` and checked against the pack
      manifest's sha256; their total must fit the /tmp quota.
   3. `biobox.search.worker` runs in a child process started the way run-step starts a step
@@ -52,6 +59,7 @@ by its id in a runs directory (`run_dir`).
 
 from __future__ import annotations
 
+import bisect
 import copy
 import fcntl
 import getpass
@@ -65,6 +73,7 @@ import signal
 import socket
 import subprocess
 import sys
+import tempfile
 import time
 from dataclasses import asdict, dataclass
 from datetime import datetime, timezone
@@ -147,9 +156,19 @@ def _outside(root: Path, path: Path, what: str) -> Path:
         raise RecipeError(str(e)) from None
 
 
-def resolve(root: Path, r: dict, release: str, packs: Path) -> dict:
+def resolve(root: Path, r: dict, release: str, packs: Path, *, scratch: Path | None = None) -> dict:
     """Submit-time checks against the release's pack in the pack directory `packs`; returns the job's seed
-    and positives. A missing pack is refused with the command that builds it; it is never built here."""
+    and positives. A missing pack is refused with the command that builds it; it is never built here. Two parts
+    (card W-19): `prepare`, which reads the recipe, the pack's manifest and a file seed, and `check`, which may take
+    longer (a full verify of a pack built before W-19, whose scratch goes under `scratch`; the key lookups in the
+    shards); `run` writes its pending record between them."""
+    return check(root, release, prepare(root, r, release, packs), scratch=scratch)
+
+
+def prepare(root: Path, r: dict, release: str, packs: Path) -> dict:
+    """The first part of `resolve`: what the run id needs, read quickly. The recipe is executable, the release has
+    one pack in `packs` (its manifest and pack id), and a file seed is read and hashed (its sha256 replaces its
+    path in the recipe hash). No shard is read. Refusals raise RecipeError."""
     gaps = rcp.executable(r)
     if gaps:
         raise RecipeError("not executable in this build: " + "; ".join(gaps))
@@ -157,40 +176,104 @@ def resolve(root: Path, r: dict, release: str, packs: Path) -> dict:
         pdir = pack.find(packs, release, root=root)
     except (FileNotFoundError, ValueError) as e:
         raise RecipeError(str(e)) from None
-    problems = pack.verify_dir(root, release, pdir)
-    if problems:
-        raise RecipeError(f"search pack for {release} does not verify (C-12): {problems[:3]}")
     manifest, pid = pack.read_manifest(pdir)
     tname = r["target"]
     shards = [s for s in manifest["shards"] if s["target"] == tname]
     models = [s for s in manifest["shards"] if s["target"] == "models"]
-    target_ids = {n for s in shards for n, _ in fastz.read_records(pdir / s["path"])}
     seed = dict(r["seed"][0])
-    if seed["kind"] == "protein_uid":
-        uniq = {n: q for s in manifest["shards"] if s["target"] == "unique"
-                for n, q in fastz.read_records(pdir / s["path"])}
-        if seed["value"] not in uniq:
-            raise RecipeError(f"seed protein_uid {seed['value']} is not in release {release}")
-        seed["sequence"] = uniq[seed["value"]]
-    elif seed["kind"] == "sequence":
+    if seed["kind"] == "sequence":
         seed["sequence"] = seed["value"]
-    elif seed["kind"] == "hmm":
-        if engine.find_model([pdir / m["path"] for m in models], seed["value"]) is None:
-            raise RecipeError(f"model {seed['value']} is not in the release's libraries")
     seed_bytes = None
     if seed["kind"] in rcp.FILE_SEED_KINDS:
         seed, seed_bytes = _read_seed_file(seed)
         r = copy.deepcopy(r)
         r["seed"][0]["sha256"] = seed["sha256"]  # what recipe_hash covers in place of the path
+    return {"manifest": manifest, "pack_id": pid, "shards": shards, "models": models, "seed": seed,
+            "positives": None, "pack_dir": pdir, "recipe": r, "seed_bytes": seed_bytes,
+            "target_size": manifest["targets"][tname]["n_seq"]}
+
+
+def check(root: Path, release: str, res: dict, *, scratch: Path | None = None) -> dict:
+    """The second part of `resolve`, on what `prepare` returned (updated and returned): the pack, the seed and the
+    positive controls.
+
+    The pack (card W-19): `pack.search_check`, the manifest, the build's verification record and each file's size.
+    A pack built before W-19 has no record: it is verified in full (`pack.verify_dir`, C-12) for this run, with its
+    sorter's scratch under `scratch` (default: a temporary directory), never in the pack directory, and stderr says
+    so. A `protein_uid` seed and the positive controls are looked up by key in the shards (`_records`): no set of
+    every name is built."""
+    pdir, manifest = res["pack_dir"], res["manifest"]
+    problems, recorded = pack.search_check(pdir, release)
+    if problems:
+        raise RecipeError(f"search pack {pdir} of {release} fails the search's check (manifest, record, file sizes): "
+                          f"{problems[:3]}; check it in full with: bio-box pack verify --root {root} --release "
+                          f"{release} --pack-dir {pdir.parent.parent}")
+    if not recorded:
+        print(f"note: search pack {pdir.name} of release {release} was built before card W-19 and holds no record "
+              f"that its build verified it: verifying it in full for this run (C-12); `bio-box pack build` with the "
+              "same inputs adds the record without building again", file=sys.stderr, flush=True)
+        with tempfile.TemporaryDirectory(prefix=".verify-", dir=_scratch_base(scratch)) as tmp:
+            problems = pack.verify_dir(root, release, pdir, scratch=Path(tmp))
+        if problems:
+            raise RecipeError(f"search pack for {release} does not verify (C-12): {problems[:3]}")
+    seed = res["seed"]
+    if seed["kind"] == "protein_uid":
+        got = _records(pdir, [s for s in manifest["shards"] if s["target"] == "unique"], [seed["value"]])
+        if seed["value"] not in got:
+            raise RecipeError(f"seed protein_uid {seed['value']} is not in release {release}")
+        seed["sequence"] = got[seed["value"]]
+    elif seed["kind"] == "hmm":
+        if engine.find_model([pdir / m["path"] for m in res["models"]], seed["value"]) is None:
+            raise RecipeError(f"model {seed['value']} is not in the release's libraries")
+    tname = res["recipe"]["target"]
+    wanted = [(p, ids.protein_uid(p["value"]).hex() if p["kind"] == "sequence" else p["value"])
+              for p in res["recipe"]["controls"]["positive"]]
+    found = _records(pdir, res["shards"], [uid for _, uid in wanted])
     positives = []
-    for p in r["controls"]["positive"]:
-        uid = ids.protein_uid(p["value"]).hex() if p["kind"] == "sequence" else p["value"]
-        if uid not in target_ids:
+    for p, uid in wanted:
+        if uid not in found:
             raise RecipeError(f"positive control {p.get('label', p['value'][:20])} is not in target {tname}: "
                               "it could never be recovered")
         positives.append({"kind": p["kind"], "uid": uid, "label": p.get("label")})
-    return {"manifest": manifest, "pack_id": pid, "shards": shards, "models": models, "seed": seed,
-            "positives": positives, "pack_dir": pdir, "recipe": r, "seed_bytes": seed_bytes}
+    res.update(seed=seed, positives=positives)
+    return res
+
+
+def _scratch_base(scratch: Path | None) -> str | None:
+    if scratch is None:
+        return None
+    Path(scratch).mkdir(parents=True, exist_ok=True)
+    return str(scratch)
+
+
+def _records(pdir: Path, shards: list[dict], names: list[str]) -> dict[str, str]:
+    """{name: sequence} of those of `names` that are records of the target whose shards (manifest entries, in pack
+    order) are `shards` (card W-19). A target's records are in name order across its shards (`pack`, module
+    docstring), so each name is sought in the one shard whose first name is at or before it (`fastz.first_name`
+    reads a shard's first header only), and `fastz.lookup` reads that shard only up to the name's place."""
+    def unreadable(path: Path, e: Exception):
+        return RecipeError(f"search pack {pdir}: {path.relative_to(pdir)} cannot be read ({e}); check the pack in full "
+                           f"with: bio-box pack verify --pack-dir {pdir.parent.parent} ...")
+
+    firsts = []
+    for s in shards:
+        try:
+            firsts.append((fastz.first_name(pdir / s["path"]), pdir / s["path"]))
+        except (OSError, ValueError) as e:  # a damaged zstd frame (Arrow's IOError or Invalid), or not ASCII
+            raise unreadable(pdir / s["path"], e) from None
+    firsts = [(n, p) for n, p in firsts if n is not None]
+    by_shard: dict[Path, set[str]] = {}
+    for name in names:
+        i = bisect.bisect_right([n for n, _ in firsts], name) - 1
+        if i >= 0:
+            by_shard.setdefault(firsts[i][1], set()).add(name)
+    found: dict[str, str] = {}
+    for path, want in by_shard.items():
+        try:
+            found.update(fastz.lookup(path, want))
+        except (OSError, ValueError) as e:
+            raise unreadable(path, e) from None
+    return found
 
 
 def _read_seed_file(seed: dict) -> tuple[dict, bytes]:
@@ -497,7 +580,7 @@ def run(root: Path, recipe_src: Path | str, release: str, *, limits: Limits = Li
         if out.exists():
             raise RecipeError(f"{out} exists: a run directory is written once")
     r, text = rcp.load(Path(recipe_src) if isinstance(recipe_src, Path) else recipe_src)
-    res = resolve(root, r, release, packs)
+    res = prepare(root, r, release, packs)  # quick: the manifest and a file seed (card W-19)
     pack_tv = pack.manifest_tape_version(res["manifest"])
     if tape_version is not None and tape_version != pack_tv:
         raise RecipeError(f"tape version {tape_version} is not the tape version {pack_tv} of the {release} pack: "
@@ -511,23 +594,40 @@ def run(root: Path, recipe_src: Path | str, release: str, *, limits: Limits = Li
         raise RecipeError(f"{final} exists: a run directory is written once")
     work = work_base / run_id.hex()
     lock_fd = _take_lock(work, run_id.hex()) if pending else None  # before the directory is cleaned
+    cancelled: list = []
+    prev = signal.signal(signal.SIGTERM, lambda *_: cancelled.append("requested")) \
+        if hasattr(signal, "SIGTERM") and _main_thread() else None
+    t0 = time.monotonic()
+    try:
+        # card W-19 (5): the pending record, and so `search status`, before any long work; after the SIGTERM handler,
+        # so from here a cancel is recorded as `stopped`
+        info = None
+        if pending:
+            info = _write_pending(final, run_id.hex(), os.getpid(), work / LOCK_NAME)
+            if on_pending is not None:
+                on_pending(run_id.hex(), info)
+        # the long part of the checks: a refusal here records nothing, and takes back the pending record
+        res = check(root, release, res, scratch=work if pending else work_base)
+    except BaseException:
+        if prev is not None:
+            signal.signal(signal.SIGTERM, prev)
+        if pending:
+            if info is not None:
+                info.unlink(missing_ok=True)
+            os.close(lock_fd)
+            shutil.rmtree(work, ignore_errors=True)
+        raise
     if work.exists():  # `submit` made this directory and holds runner.lock in it: keep that file
         for child in work.iterdir():
             if child.name != LOCK_NAME:
                 shutil.rmtree(child) if child.is_dir() else child.unlink()
     out = work / "out"
     out.mkdir(parents=True)
-    cancelled: list = []
-    prev = signal.signal(signal.SIGTERM, lambda *_: cancelled.append("requested")) \
-        if hasattr(signal, "SIGTERM") and _main_thread() else None
-    t0 = time.monotonic()
     sums: list[bytes] = []
     rc, ru, result = None, None, {}
     try:
-        if pending:  # after the SIGTERM handler: from here a cancel is recorded as `stopped`
-            info = _write_pending(final, run_id.hex(), os.getpid(), work / LOCK_NAME)
-            if on_pending is not None:
-                on_pending(run_id.hex(), info)
+        if cancelled:
+            raise _RunFailure("stopped", "cancelled")  # a cancel during the checks: no worker is started
         shards, models, sums = _stage(res, work, limits)
         seed_file = None
         if res["seed_bytes"] is not None:  # the bytes read and hashed at submit, not the path's later content
@@ -540,6 +640,8 @@ def run(root: Path, recipe_src: Path | str, release: str, *, limits: Limits = Li
                "seed_file": str(seed_file) if seed_file else None,
                "positives": res["positives"], "target_kind": rcp.RUN_TARGETS[r["target"]],
                "shards": [str(p) for p in shards], "models": [str(p) for p in models],
+               # card W-19: the worker reads the target a block at a time and needs only its size from the manifest
+               "target_size": res["target_size"], "block_residues": engine.BLOCK_RESIDUES,
                "meta": str(res["pack_dir"] / f"{r['target']}/{r['target']}_meta.parquet") if r["target"] != "unique" else None,
                "gene_call_version": gene_call_version, "tape_version": pack_tv, "cpus": limits.cpus,
                "max_output_bytes": int(r["max_output_gb"] * GB), "fault": fault,
@@ -643,7 +745,7 @@ def submit(root: Path, recipe_path: Path, release: str, limits: Limits = Limits(
     else:
         runs = _outside(root, Path(runs) if runs is not None else default_runs_dir(), "the runs directory")
     r, _ = rcp.load(Path(recipe_path))
-    res = resolve(root, r, release, packs)
+    res = resolve(root, r, release, packs, scratch=work_base)  # never into the pack directory (card W-19)
     run_id = new_run_id(rcp.recipe_hash(res["recipe"]), release, res["pack_id"], datetime.now(timezone.utc))
     final = (out if out is not None else run_dir(runs, run_id)).resolve()
     if final.exists():
