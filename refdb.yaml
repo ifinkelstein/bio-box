@@ -37,6 +37,18 @@ databases:
     cutoff: gathering        # Rfam GA lines (Infernal --cut_ga)
     license: CC0
     used_by: [O-SCAN (ncRNA), O-ARRAY]
+  - name: pfam_seed
+    version: "38.2"
+    released: 2026-01
+    url: https://ftp.ebi.ac.uk/pub/databases/Pfam/releases/Pfam38.2/Pfam-A.seed.gz
+    file: Pfam-A.seed.gz
+    upstream_md5: 7a37e1237d5d20c35b236c9f5a9ac797   # matched on download, 2026-11-11
+    sha256: c53a1397f6741c3501f21db2179ad7810d98ddf9f3b3172257bd71ca07ba8c3b
+    bytes: 194369799
+    license: CC0
+    # seed alignments of the same release as `pfam`; not scanned by any producer. Approved by the
+    # PI on 2026-11-11 for the MMseqs2 profile comparison (card 0-09a)
+    used_by: [measurement 0-09a]
 pending:
   - name: phrogs
     note: >-
