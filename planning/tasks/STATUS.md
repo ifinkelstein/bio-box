@@ -109,7 +109,7 @@ Last full suite on the integration branch before the C-11 merge: 1,053 passed, 1
 pinned image; 3 min 40 s wall for the slowest shard, against 13.5 min in one process). The skips
 need samtools, bgzip, Prodigal or the golden set. Tests no longer run on the laptop (AGENTS.md §5.5).
 
-## Merged (72 cards)
+## Merged (76 cards)
 
 | Card | Merge | What it did | Audit notes |
 |---|---|---|---|
@@ -184,6 +184,10 @@ need samtools, bgzip, Prodigal or the golden set. Tests no longer run on the lap
 | C-15 | this merge | A run record's `peak_rss_bytes` is the step's own, measured by a small helper process that spawns the step, with `peak_rss_source` beside it: `scope_memory_peak` when `run-step` opened a scope for the step alone, else `child_maxrss` | Cause confirmed: Linux carries the launcher's image into the child's `ru_maxrss`. Under a 512 MiB launcher a 192 MiB step and an empty step both recorded about 606 MiB before, 203.0 and 10.5 MiB after (*measured*, wilkcomp02). On the pod (inherited cap) the number is the largest single process of the step, not the sum of processes running at once. **Every peak in a run record written before this merge is the launcher's**, including the 10 Gbp rebuild's. Pod suite 1,186 passed, 12 skipped. Same defect in the search runner: card W-14 |
 | C-14 | merge before this one | Runbook: the done line is 12 steps plus one per `--library`; the day shard count is a formula of what else of ours is running under the 40-thread total; the `STOP` rule stated once (a shard still running when `STOP` appears runs to the end, publishes nothing and reruns; shards that ended before are kept); six quoted `python -c` one-liners replaced by a script `rb.py` printed in Appendix B | The one-liners were in §5, §6 and Appendix B, not §0. `rb.py` has not been run on the pod; the runbook says so |
 | B-30 | this merge | Ingest as batch processes when the one-process estimate exceeds 80% of the CPU budget: pass-1 shards by source object, a plan, one process per batch (one shard each, DEC-21), a merge; `bio-box stage ingest pass1\|plan\|batch\|merge`; one new artifact `ingest_plan`, not in manifests | Byte-identical to the single-process ingest on the fixture and on the 1,000× stage, where the largest process used 0.248 CPU-min against 3.761 for one process, and the batch path cost 33% more CPU in total (*measured*, wilkcomp02, before the merge with C-13). Small stages build as before. Pod suite with C-14: 1,205 passed, 12 skipped. Open: pass-1 shards are cut at the whole-ingest rate (about 13 times too many); a batch reads whole objects, so it can read far more than `shard_bases`; `stage.py` imports a private helper from `cli.py` |
+| B-35 | `17ce0ed` | `profile_query` counts row groups served by the lookup cache (`row_groups_read`, `row_groups_cached`); the many-anchor bound of `partners_of` is stated and tested | The lookup itself was already right: a 10-anchor query reads 7 of 26 `tape_tokens` row groups on `rN.1b` (*measured*); with many anchor contigs it reads all of them, by design of the sort key. Not fixed: 9.5 s for 3,509 anchors on `rN.1`: card B-38. Pod suite 1,207 passed, 12 skipped. This commit also corrects a C-15 test that failed on Actions (`f7c511e`), where `run-step` opens a scope |
+| B-21 | merge after `17ce0ed` | One family posting per included domain (`seg_idx` = rank by `env_start`); `token_dict` holds every model on a slot; `tape_tokens.family_tokens` keeps the canonical family; no schema change | `fusions_of` equals a brute-force oracle over the domain table. Cluster tokens and postings unchanged. Family postings about double at 10 Gbp, about 7% more postings in all (*derived*). Not measured at scale: card B-40. `partners_of` still reports canonical families only: card B-39 |
+| W-14 | merge after B-21 | A search run's peak memory is the worker's own, through `run-step`'s measuring helper | With a 768 MiB runner: 1,014 MiB before, 322 MiB after (*measured*, wilkcomp02). The helper dies with the runner (PR_SET_PDEATHSIG, Linux), so the worker still notices. A run killed for timeout or memory now has no peak: card C-16 |
+| B-36 | this merge | DEC-25: `build-stage` estimates clustering CPU-minutes before launch and refuses above the profile's `cluster_cpu_min_max` (12,000 on wilkcomp02, *estimate*); without the key there is no exemption; the cluster record carries `cpu_budget_reason: exempt: DEC-25` | Fit: 284.10 × (n / 2,053,075)^1.244 CPU-minutes, exact at the two upper measured points, 60% high for the phage-only set (*derived*). **The cap is reached at about 41.6 M proteins (*derived*), below the 50 Gbp build: raise it first.** A stage with no gene-call run record cannot be estimated and is refused |
 
 Decisions DEC-18 to DEC-23 were approved by the PI on 2026-11-09 and are in `planning/DECISIONS.md`.
 
@@ -209,14 +213,10 @@ The thread cap is the sum over all our processes: 40 by day, 56 at night.
 
 | Card | Model | State |
 |---|---|---|
-| B-30 (continued) | Opus | Its first merge conflicted in `cli.py` and `stage.py` against C-13 and W-03; the agent is merging `plan/task-cards` and W-13 into `task/B-30` and rerunning its suite |
-| C-14 runbook errors | Sonnet | reported done, `task/C-14` at `56c6e78`; merging next |
-| B-36 clustering cap (DEC-25) | Opus | started 2026-11-10, built on C-15, C-14 and B-30 |
-| B-21 per-domain family postings | Opus | started 2026-11-10 |
-| W-14 search run peak memory | Sonnet | started 2026-11-10 |
-| B-35 `partners_of` pruning | Opus | started 2026-11-10 |
-| B-30 ingest by batch processes | Opus | **reported done, not merged**: `task/B-30` at `1db6817`, pushed; its own suite 1,163 passed, 12 skipped; built before W-03 and C-13 merged. Next: audit, merge, integration suite. Batch build equals single-process file for file; on the 1,000× stage the largest process used 0.248 CPU-min and the batch path costs 33% more CPU in total (*measured*, agent's run). Open from its report: run records' peak RSS reads 344 MB for every step (looks inherited from the parent; a `run-step` defect, needs a card); pass-1 shards are cut at the whole-ingest rate |
-| 10 Gbp rebuild with `build-stage` (not a card; branch `build/r10`, pod root `/tmp/if2453/r10`) | Opus | started 2026-11-10 |
+| 10 Gbp rebuild, phase 2 (Pfam), on the pod under `r10-p2-driver` | none (the driver runs alone) | see "10 Gbp rebuild" above; 4 S1 shards published by 19:47 CST |
+| Trial search on `rN.1` (not a card; branch `trial/search-rN1`, pod scratch `/tmp/if2453/trial`) | Opus | started 2026-11-10: custom-HMM search with neighbourhoods, read-only, to find what a user trips over |
+
+Cards written and not started: B-37 (split clustering; design first), B-38, B-39, B-40, C-16, W-07 (the one command), E-02, E-07 (waits for PI card 0-08).
 
 ## Next, in order
 

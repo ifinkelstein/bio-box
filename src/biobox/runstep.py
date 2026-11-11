@@ -589,8 +589,10 @@ def run_step(prof: Profile, root: str | Path, stage: str, step: str, cmd: Sequen
              clock: Callable[[], datetime] = datetime.now, load: Callable[[], float] = _load1,
              which: Callable[[str], str | None] = shutil.which, system: str | None = None,
              proc_root: str | Path | None = None, cgroup_root: str | Path | None = None,
-             _hook: Hook | None = None) -> int:
+             budget_reason: str | None = None, _hook: Hook | None = None) -> int:
     """Run one step; return the exit code for `bio-box run-step` (0, 75 for STOP, else non-zero).
+    `budget_reason`, when given, is written to the run record as `cpu_budget_reason` (card B-36:
+    `build-stage` gives `exempt: DEC-25` for clustering); `over_cpu_budget` is kept as it is.
     `proc_root` and `cgroup_root` (tests only) stand in for /proc and /sys/fs/cgroup.
     `_hook` (tests only) is called with each publish point name: after_intent, after_rsync,
     after_rename:<i>, before_record, after_record; an exception it raises is not caught."""
@@ -670,6 +672,8 @@ def run_step(prof: Profile, root: str | Path, stage: str, step: str, cmd: Sequen
         "image_digest": os.environ.get("BIOBOX_IMAGE_DIGEST", "none"), "over_cpu_budget": over,
         "mem_cap": cap,
     }
+    if budget_reason is not None:
+        meta["cpu_budget_reason"] = budget_reason
     try:
         record = _publish(root, stage_dir, incoming, intent_path, meta, prof.small_file_floor_bytes,
                           which, hook)

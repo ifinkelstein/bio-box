@@ -532,6 +532,26 @@ Evidence (*measured*, wilkcomp02, 2026-11-10): on `rN.1` (10 Gbp, 93 `tape_token
 Do: reproduce on a synthetic store with more `tape_tokens` row groups than the cache holds, with `profile_query` (`row_groups_read` now counts re-reads). Then make a many-anchor query read each row group at most once (visit anchors in row-group order, or size the cache to the query within a stated memory bound), and compare the time with the plain SQL join on the same store; if the join is faster above some anchor count, use it there and say where the switch is. Bounded memory (AGENTS §4.1): state the bound.
 Accept: the reproduction fails first; no row group is read twice in one query; on the 100× store the many-anchor query is no slower than the join; results equal the B-35 oracle.
 
+### C-16 A killed step or search has no peak memory
+**M** · Depends: C-15, W-14 (found in the W-14 report)
+Files: `src/biobox/runstep.py`, `src/biobox/search/runner.py`, tests
+Why: the measuring helper writes its file after the command ends. When the helper itself is killed (wall timeout, the OOM killer, SIGKILL of the group) nothing is written, so `peak_rss_bytes` is null (`unmeasured`) for exactly the runs where the peak matters most. Before C-15 and W-14 those runs had a number, a wrong one.
+Do: reproduce first (a step and a search killed for memory under a cap, and for wall time). Then record a peak for them: where the run has a cgroup of its own, read its `memory.peak` or `memory.events` from the parent after the kill; else have the helper sample and write as it goes, at a stated interval, so the last sample survives. Say in the record which source was used. No schema change in `search_run`; if one is needed, stop and report.
+Accept: the reproduction fails first; an OOM-killed run records a peak within 20% of its cap.
+
+### B-39 `partners_of` reports only canonical families
+**M** · Depends: B-21, B-38 (same code)
+Files: `src/biobox/catalog.py`, tests
+Why: since B-21 the postings hold one family posting per included domain, so anchors can be any domain of a protein, but `partners_of` takes partner tokens from `tape_tokens.family_tokens`, the canonical family only. A neighbour's second domain is invisible to it, while `fusions_of` and the Q1/Q4 macros see it.
+Do: test first on the B-21 fixture (a neighbour with two domains). Then take family-level partners from the postings of the neighbour slots, keeping the lookup's pruning (AGENTS §4.4), and say in the macro's doc what a partner is at each level. Cluster levels are unchanged.
+Accept: the test fails first; cluster-level results are byte-identical to before; the family-level result equals a brute-force oracle over the domain table.
+
+### B-40 Measure the per-domain postings step at 10 Gbp
+**M** · Depends: B-21 · Pod: yes, when `rN.2` (Pfam on all three stages) exists
+Why: B-21's family run ranks every domain row of the release with a DuckDB window and joins it to the unnested slots; it was tested at about 2,000 domain rows only (AGENTS §4.1, §4.2).
+Do: on a copy of the release definition in a scratch root (never the rebuild's root), rebuild tokens and postings of `rN.2` with the current code under a 32G cap and 8 threads; record peak memory (run record, after C-15), wall time, CPU-minutes, family postings and total postings, against B-21's derived 3.5 M family postings without P2 and about 14.6 M more with it. If the peak exceeds 16 GB or a number misses its estimate by more than 20%, stop and report.
+Accept: a measurement file with every number labelled.
+
 ### C-09 The file-size rule does not refuse small release records
 **L** · Depends: C-08 (found in its report) · blocks the second release under C-04
 Files: `src/biobox/contracts.py` (`check_file_sizes`), `src/biobox/registry/schemas.py` (a `small_ok` flag on `ArtifactSpec` if it lacks one), `tests/r2/test_micro_s0_contracts.py`, `tests/registry/operations.yaml` (drop `catalog` and `release_manifest` from `external` if R0 accepts it)
