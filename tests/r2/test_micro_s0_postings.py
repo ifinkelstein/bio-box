@@ -29,7 +29,7 @@ import pytest
 from biobox import catalog, contracts, ids, io, provenance
 from biobox.l3 import postings, tapes, tokens
 from biobox.registry.schemas import conformance_problems, table
-from oracles.pairs_oracle import pairs_of_contig
+from oracles.pairs_oracle import pairs_of_contig, window
 
 sys.path.insert(0, str(Path(__file__).parent))
 import test_micro_s0_l3 as micro  # noqa: E402
@@ -368,6 +368,85 @@ def test_b21_fusions_of_finds_two_families_on_one_slot(pfam, tmp_path):
             assert got == sorted(want.get((a, b), []), key=lambda r: (r[0], r[2], r[3], r[4])), (a, b)
     finally:
         con.close()
+
+
+# --- card B-39: partners_of at the family level counts every included domain of a neighbour ------------
+
+B39_K = 3
+CLUSTER_BITS = (LEVEL_BITS["nr50"], LEVEL_BITS["nr90"])
+
+
+def _b39_slot_tokens(root: Path) -> tuple[dict[bytes, dict], dict[tuple[bytes, int], set[int]]]:
+    """(tapes by contig, (contig, slot) -> the slot's tokens at every level), by a loop over the files (card B-39):
+    the NR50 and NR90 tokens of the slot in `tape_tokens`, and the family token (`token_dict`) of every included
+    domain of the slot's protein, from every `l1_domains` row of the release's family libraries
+    (`_family_segments`). A model that hits a protein twice is one token on the slot."""
+    tps = _tapes_of(root, TV)
+    fam, segs = _family_segments(root)
+    out = {}
+    for tok in _rows(root, f"l3/tape_tokens/tape_version={TV}/release={REL}/part-*.parquet"):
+        t = tps[tok["contig_uid"]]
+        for i in range(t["n_slots"]):
+            s = {tok[f"{lvl}_tokens"][i] for lvl in ("nr50", "nr90")} - {None}
+            pu = t["protein_uids"][i]
+            s |= {fam[m] for m in segs.get(pu, [])} if pu is not None else set()
+            out[(t["contig_uid"], i)] = s
+    return tps, out
+
+
+def _b39_oracle(tps: dict, slot_toks: dict, anchor: int, k: int) -> list[tuple[int, int, int]]:
+    """partners_of(anchor, k) by brute force: the anchor loci are the slots that hold `anchor`; every token of every
+    slot within k of a locus (`window`) is a partner, with its loci (distinct anchor slots) and pairs (one per
+    (anchor slot, partner slot) that holds it), ranked as the macro ranks them."""
+    loci: dict[int, set] = defaultdict(set)
+    pairs: Counter = Counter()
+    for (cu, i), s in sorted(slot_toks.items()):
+        if anchor not in s:
+            continue
+        t = tps[cu]
+        for j, _ in window(i, t["n_slots"], t["is_circular"], k):
+            for b in slot_toks[(cu, j)]:
+                loci[b].add((cu, i))
+                pairs[b] += 1
+    return sorted(((b, len(s), pairs[b]) for b, s in loci.items()), key=lambda g: (-g[1], g[0]))
+
+
+@pytest.mark.covers("Q3")
+@pytest.mark.xfail(strict=True, reason="card B-39: partners_of takes family partners from tape_tokens.family_tokens "
+                   "(canonical only); a lookup of the neighbour slots' family postings by slot cannot prune "
+                   "(test_scale_layout.py::test_b39_family_postings_of_neighbour_slots_cannot_prune)")
+def test_b39_partners_of_counts_every_family_of_a_neighbour(pfam, tmp_path):
+    """Card B-39: since card B-21 a slot holds one family posting per included domain, so the family-level partners
+    of a locus are the families of every included domain on the slots near it, not only the canonical family of
+    `tape_tokens`. For the NR90 tokens of the slots next to the two-domain protein, and for every family token of the
+    release as anchor, partners_of equals the brute-force oracle over the domain table and the tapes: the
+    non-canonical family PF00664 is a partner of the slots next to the two-domain protein. Cluster-level partners
+    (NR50, NR90) equal the oracle as before."""
+    root, p, _ = pfam
+    tps, slot_toks = _b39_slot_tokens(root)
+    tid = {k: r["token_id"] for k, r in _family_dict(root).items()}
+    toks = {r["contig_uid"]: r for r in _rows(root, f"l3/tape_tokens/tape_version={TV}/release={REL}/part-*.parquet")}
+    two = _slots_of(root, p["two"])
+    near = sorted({toks[cu]["nr90_tokens"][j] for cu, i in two
+                   for j, _ in window(i, tps[cu]["n_slots"], tps[cu]["is_circular"], 1)} - {None})
+    assert near
+    anchors = near + sorted(tid.values())
+    con = catalog.open_catalog(catalog.generate_catalog(catalog.build_manifest(root, REL, ["S0"]), tmp_path / "c.duckdb"))
+    try:
+        got = {a: con.execute("SELECT partner_token, n_loci, n_pairs FROM partners_of(?, ?)", [a, B39_K]).fetchall()
+               for a in anchors}
+    finally:
+        con.close()
+    want = {a: _b39_oracle(tps, slot_toks, a, B39_K) for a in anchors}
+    cluster = lambda rows: [r for r in rows if r[0] >> 61 in CLUSTER_BITS]  # noqa: E731
+    family = lambda rows: [r for r in rows if r[0] >> 61 == LEVEL_BITS["family"]]  # noqa: E731
+    assert {a: cluster(g) for a, g in got.items()} == {a: cluster(w) for a, w in want.items()}
+    assert all(tid["PF00664"] in [t for t, _, _ in want[a]] for a in near)  # the case under test
+    bad = {a: {"missing": sorted(set(family(want[a])) - set(family(got[a]))),
+               "extra": sorted(set(family(got[a])) - set(family(want[a])))}
+           for a in anchors if family(got[a]) != family(want[a])}
+    assert not bad, f"family-level partners differ from the oracle for {len(bad)} of {len(anchors)} anchors: {bad}"
+    assert got == want
 
 
 @pytest.mark.covers("D-01", "D-04", "LY-08")
