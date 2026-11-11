@@ -22,21 +22,33 @@ least half of it (the E-02 rule).
 | intergenic, margin 0 | 0.118 | 99.2 | **913** | 2.09 | 0.906 | 0.860 | 0.929 | 97/100 | 27 of 364 tRNAs, 7 of 78 riboswitches/T-box, 7 rRNA model hits, 62 of 377 sRNAs; 36 families entirely |
 | intergenic, margin 50 | 0.196 | 134.9 | 1,241 | 1.54 | 0.935 | 0.922 | 0.903 | 97/100 | 17 tRNAs, 5 riboswitches, 7 rRNA model hits, 44 sRNAs; 20 families |
 | intergenic, margin 200 | 0.411 | 133.8 | **1,231** | 1.55 | 0.983 | 0.965 | 0.997 | 97/100 | 1 tRNA, 18 sRNAs (antisense RNAs and elements inside coding sequence); 9 families |
-| intergenic, margin 0, `--notrunc` | 0.118 | PENDING | | | | | | not run | |
-| intergenic, margin 200, `--notrunc` | 0.411 | PENDING | | | | | | not run | |
-| whole genome, `--hmmonly` (batch B, 9.0 Mbp) | 1.005 | PENDING | | | | | | PENDING | |
-| reduced model set (258 models, scaling only) | 1.004 | PENDING | | | | | | (panel subset) | |
-| the E-02 panel's 20 models (scaling only) | 1.004 | 2.2 | 20.4 | | 486/486 of the panel families' truth hits | | 1.000 | | |
+| intergenic, margin 0, `--notrunc` | 0.118 | 33.8 | **311** | 6.14 | 0.868 | 0.837 | 0.880 | not run | 27 tRNAs, 8 riboswitches, 39 rRNA model hits, 69 sRNAs; 42 families entirely |
+| intergenic, margin 200, `--notrunc` | 0.411 | 86.4 | **796** | 2.40 | 0.980 | 0.957 | 0.997 | not run | 1 tRNA, 22 sRNAs (margin 200's 18, and MicL and AsrC cut at a boundary); 11 families |
+| whole genome, `--hmmonly` (batch B, 9.0 Mbp) | 1.005 | 39.3 | 725 | 2.63 | 0.505 | 0.750 | 0.846 | 21/100 | 128 of 183 tRNAs, all 22 CRISPR repeats, 11 rRNA hits, 6 riboswitches; 24 of 96 families |
+| reduced model set, 258 models (scaling only) | 1.004 | 34.1 | 314 | 6.09 | 1 (by construction) | 1 | 1 | (its 20 are in it) | every family with no hit in these 8 genomes (3,969 models) |
+| the E-02 panel's 20 models (scaling only) | 1.004 | 2.2 | 20.4 | 93 | 486/486 of the panel families' truth hits | 1 | 1.000 | 97/100 | every other family |
+
+Speed-up is *derived*: the truth's CPU-s over the option's, on the same genomes (12,450.1 CPU-s for all
+eight; 6,197.7 for batch B against `--hmmonly`). The spike-in column is the E-02 contig scanned as one
+intergenic-style record with the panel's 20 models (item 4); `--notrunc` was not run on it.
+
+Peak RSS per `cmsearch` at `--cpu 2`: 4.8 GiB at most for whole genomes, 6.4 GiB for intergenic records
+(3.8 GiB with `--notrunc`), 0.84 GiB with `--hmmonly`.
 
 The headline: **scanning only intergenic regions does not cut Infernal's cost in proportion to the bases.**
 At margin 0 it searches 11.8% of the bases for 48% of the CPU; at margins 50 and 200 it searches 19.6%
 and 41.1% for 65% and 64%. The reason is measured, not guessed: for every one of the 14,144 short records
-`cmsearch` re-searches both ends for truncated hits, and on records shorter than about twice a model's
-window that re-search covers the whole record again: summed over the 4,227 models it re-searched
+`cmsearch` re-searches both ends for truncated hits, and on records this short the re-searched ends cover
+most of the record again (my reading of the counts that follow): summed over the 4,227 models it re-searched
 21.1 G residues at margin 0, more than the 18.0 G residues of the main search, against 9.6 M for the
-whole genomes (table "Runs"). And `--rfam` buys nothing at our Z: with `-Z 1e5` the default pipeline
-already uses the Rfam-level filter thresholds (every filter stage of every model passed the same number
-of windows with and without `--rfam`).
+whole genomes (table in item 2). Turning that re-search off (`--notrunc`) makes intergenic scanning pay:
+margin 200 then costs 796 CPU-hours per 10 Gbp (2.4 times cheaper than the truth) at 98.0% hit and 95.7%
+family recall, and margin 0 costs 311 (6.1 times cheaper) at 86.8% and 83.7%. And `--rfam` buys nothing at
+our Z: with `-Z 1e5` the default pipeline already uses the Rfam-level filter thresholds (every filter stage
+of every model passed the same number of windows with and without `--rfam`). `--hmmonly` is 2.6 times
+cheaper and loses half the hits with GA cutoffs (likely because GA is set on CM scores; my reading). The model set is the other
+lever: cost is additive over models, and the 258 families that hit these genomes cost 16% of the full
+library's CPU.
 
 ## Genomes and store
 
@@ -191,7 +203,25 @@ Why they are lost (from the gene calls each lost hit overlaps, `compare` output 
   Actino-pnp, cspA, AS1726, ASdes, ASpks, RsaE, Ms_AS-5, 5_ureB_sRNA, MicL, AsdA, RalA, AsrC, ES205, Erse,
   Ysr276, Ysr251, npcTB_6715.
 
-PENDING: `--notrunc` on margins 0 and 200 (cost and loss without the truncated-hit re-search).
+### Without the truncated-hit re-search (`--notrunc`)
+
+Added to the card's list after the residue counts above pointed at the re-search (it replaced the
+intergenic `--rfam` runs, see "not measured"). `--notrunc` stops cmsearch from looking for hits truncated
+at a record's ends; it changes nothing else.
+
+| run | CPU-min | wall s | CPU/wall | peak RSS MiB | residues re-searched | hits | recovered | exact | recall (hits) | families recovered | precision (hits) | lost: not scanned | lost: cut |
+|---|---|---|---|---|---|---|---|---|---|---|---|---|---|
+| igr_m0_notrunc | 33.79 | 1,058.8 | 1.92 | 2,989 | 0 | 1,104 | 972 | 867 | 0.868 | 216 (0.837) | 0.880 | 51 | 97 |
+| igr_m200_notrunc | 86.43 | 2,648.0 | 1.96 | 3,846 | 0 | 1,100 | 1,097 | 1,090 | 0.980 | 247 (0.957) | 0.997 | 16 | 7 |
+
+Against the same margins with truncation on: margin 0 costs 2.94 times less (5,953.3 / 2,027.4 CPU-s,
+*derived*) and recovers 43 fewer hits; margin 200 costs 1.55 times less (8,026.7 / 5,185.6) and recovers 4
+fewer. The extra losses are hits cut at a record boundary that cmsearch could still report as truncated
+hits (5' or 3') when allowed: at margin 0 mostly rRNA model hits on operons split by spurious calls (38 rRNA
+model hits cut, against 6) and sRNAs; at margin 200 two sRNA families (MicL, AsrC) become fragments. Lost by
+class, `--notrunc` margin 0: tRNA 27, rRNA 39, riboswitch or T-box 8, cis leader 3, housekeeping 2, sRNA and
+other 69; margin 200: tRNA 1, sRNA and other 22. Families lost entirely at margin 200: DnaX, AS1726, ASdes,
+ASpks, Ms_AS-5, 5_ureB_sRNA, MicL, AsdA, AsrC, Erse, Ysr276.
 
 ## 3. Cheaper variants of the whole-genome scan
 
@@ -211,11 +241,21 @@ every filter threshold the output prints ("expected" P-values, for example SSU_r
 Viterbi 0.02, Forward 2e-4, CYK 1e-4, in both). So at `-Z 1e5` the default size-dependent pipeline is
 already the Rfam-level one: the producer already runs the fast heuristics, and the 3 spike-ins E-02 loses
 are lost to them (item 4). A cheaper pipeline would need thresholds stricter than Rfam's (`--F1` and
-following, or `--hmmonly`), which costs sensitivity that Rfam's curators did not accept.
+following, or `--hmmonly`); of those this card measured only `--hmmonly` (next).
 
 ### (a') `--hmmonly` (batch B)
 
-PENDING.
+Since `--rfam` is no cheaper, the next fast setting in `cmsearch -h` was run on batch B: each model's
+filter profile HMM alone, no CM stage, still with `--cut_ga`. `wgB_hmmonly`: 39.26 CPU-min, 1,183.5 s
+wall, 860 MiB peak RSS, 227 hits. Against batch B's 380 truth hits: 192 recovered (0.505), 33 at the exact
+coordinates, precision 0.846, 72 of 96 families (0.750). Lost by class: tRNA 128 of 183, CRISPR repeats 22
+of 22, rRNA 11, riboswitch or T-box 6, cis leader 4, sRNA and other 13, housekeeping 2, intron 2. Families
+lost entirely (24): 5_8S_rRNA, 6S, Intron_gpII, TPP, Purine, T-box, PyrR, L13_leader, L20_leader, sR5, sR9,
+CRISPR-DR22, CRISPR-DR25, rli38, Actino-pnp, asd, RatA, LSU_rRNA_eukarya, Mcr7, Spy491311c, ncRv12659,
+pemK, S10-Clostridia, trpB. CPU 2.63 times less than `wgB_default` (*derived*, 6,197.7 / 2,355.6), 725
+CPU-hours per 10 Gbp. My reading: the GA cutoffs are calibrated on CM bit scores, which HMM-only scores of
+structured RNAs rarely reach, so this is not a usable setting with GA; it would need its own thresholds,
+which Rfam does not provide.
 
 ### (b) Reduced model set: how cost scales with the number of models
 
@@ -226,17 +266,27 @@ the E-02 panel's 20 (all 20 already among the 258), so 258 models, fetched with 
 | models | run | CPU-s measured | CPU-s predicted from the full run's per-model lines | share of the full library's CPU |
 |---|---|---|---|---|
 | 4,227 | wgA_default + wgB_default | 12,450.1 | 12,403.2 (sum of all) | 1 |
-| 258 | wgA_subset + wgB_subset | PENDING | 2,029.4 | 0.163 (predicted) |
+| 258 | wgA_subset + wgB_subset | 2,044.1 (1,196.7 + 847.4) | 2,029.4 | 0.164 |
 | 20 | wgAll_panel20 | 133.2 | 135.1 | 0.0107 |
 
-Cost is additive over models: each model's own "# CPU time" line in the full run predicts the 20-model run
-within 1.4%. It does not scale with the count alone: the 258 models are 6.1% of the library and about
+The 258-model runs found all 1,120 truth hits at the same coordinates (as they must: GA is a bit score and
+Z is fixed; this checks that), at 313.6 CPU-hours per 10 Gbp (*derived*); peak RSS 4.8 GiB, as the full
+library (the large rRNA models are in both). Cost is additive over models: each model's own "# CPU time"
+line in the full run predicts the 258-model runs within 0.7% and the 20-model run within 1.4%. It does not scale with the count alone: the 258 models are 6.1% of the library and about
 16% of its CPU, because they include the long rRNA models (the library's models named rRNA cost 866 CPU-s
 of 12,403 in the full run, 7%; LSU_rRNA_eukarya alone 315 CPU-s, the most expensive model) and tmRNA and
 RNase P. The 3,969 models with no hit in these genomes cost 84% of the CPU (*derived*, 1 - 2,029.4 /
 12,403.2). By class (sum of per-model CPU in the full run, *measured*): sRNA and other 10,572 CPU-s
 (85%), rRNA 866, cis leader or motif 601, housekeeping 111, riboswitch or T-box 102, intron 79, CRISPR 63,
 tRNA 9.
+
+The 258 models' share of each run's per-model CPU (*measured* lines, summed): whole genome 16.4%,
+intergenic margin 0 55.7%, margin 200 29.3%, margin 0 `--notrunc` 36.2%, margin 200 `--notrunc` 22.2%,
+whole genome `--hmmonly` 9.1%. The share grows on intergenic records because the truncated-hit re-search
+covers about one window W at each end, and the long rRNA and RNase P models have the largest W. So the two
+levers multiply only in part: margin 200 with `--notrunc` and the 258 models would cost about 1,146 CPU-s
+here, 176 CPU-hours per 10 Gbp (*derived* from the per-model lines of `igr_m200_notrunc`, 1,146.0 /
+18,106,231 × 1e10 / 3,600; not run as one scan), 10.9 times less than the truth.
 
 ## 4. The E-02 spike-in panel under each variant
 
@@ -251,32 +301,45 @@ hit's decision does not depend on the other models).
 |---|---|---|---|---|
 | producer settings (`g04_default`) | 97/100 | 0.915 to 0.994 | 0 | RF00005 18758-18837 (+), RF00005 29073-29145 (-), RF00029 27517-27600 (-) |
 | `--rfam` (`g04_rfam`) | 97/100 | 0.915 to 0.994 | 0 | the same three |
-| `--hmmonly` (`g04_hmmonly`) | PENDING | | | |
+| `--hmmonly` (`g04_hmmonly`) | 21/100 | 0.135 to 0.303 | 0 | 79; recovered only tmRNA 5/5, Cobalamin 5/5, and 2 of 5 each of 5_8S, Intron_gpI, yybP-ykoY, Lysine, Glycine, 1 Purine |
 
-Both reproduce the test's 97 of 100 and its three misses exactly. Since `--rfam` is the default here, the
+The producer settings and `--rfam` reproduce the test's 97 of 100 and its three misses exactly. Since `--rfam` is the default here, the
 3% that E-02 attributes to "Infernal's filter pipeline at Z = 1e5" is the Rfam-level pipeline's own loss.
 
 ## 5. Reading (my interpretation)
 
-PENDING the last runs; draft: Intergenic scanning is not the cheap cut card 0-09 option (e) assumed. Its
-cost is set by the number of records as much as by the bases, so the margin that keeps recall (200 bases:
-98.3% of hits, 96.5% of families, all tRNA, rRNA, riboswitch, housekeeping and leader hits but one tRNA)
-saves only a third of the CPU (1,231 against 1,910 CPU-hours per 10 Gbp); margin 0 halves it but loses one
-tRNA in 13 and one riboswitch in 11, mostly to spurious short ORFs, so a gene caller's mistakes would
-become ncRNA losses. What intergenic scanning can never find, at any margin, is the cis-antisense RNAs
-and elements inside coding sequence (9 families here, 16 hits in *M. tuberculosis* and *E. coli*). The
-`--rfam` switch is already on in effect. The cost is in the 3,969 models that hit nothing here (84% of
-CPU), so the larger lever is the model set (card 0-08 option 2b), which cuts cost in proportion to the
-models' own CPU, not to their number; and the two levers multiply only partly, because the per-record
-overhead of intergenic records is per model too.
+Intergenic scanning as the producer would run it today is not the cut that card 0-09 option (e) assumed:
+its cost follows the number of records as much as the bases, because cmsearch re-searches each short
+record's ends for truncated hits, so the margin that keeps recall (200 bases: 98.3% of hits, 96.5% of
+families, every rRNA, riboswitch, housekeeping and leader hit and all tRNAs but one) saves only a third of
+the CPU (1,231 against 1,910 CPU-hours per 10 Gbp). With `--notrunc` the same margin costs 796 at nearly
+the same recall (98.0%, 95.7%), which is the intergenic option worth deciding on; margin 0 is cheaper still
+(311) but loses one tRNA in 13 and one riboswitch in 10, nearly all to short spurious ORFs that pyrodigal
+calls across tRNAs and leaders, so a gene caller's mistakes become ncRNA losses, and the archaeon suffers
+most. What no margin can find is RNA inside coding sequence: cis-antisense RNAs and elements such as the
+dnaX frameshift signal (9 to 11 families here, most of them *M. tuberculosis* antisense RNAs); if those
+matter, intergenic scanning is the wrong tool for them whatever it costs. The fast-heuristics switch is
+not a lever at our Z (the producer already runs it), and `--hmmonly` is not usable with GA cutoffs. The
+larger lever is the model set (card 0-08 option 2b): 3,969 of the 4,227 models hit nothing in these eight
+genomes and carry 84% of the CPU, and cost is additive per model, so a subset's price can be read off the
+per-model lines before it is chosen. The two levers multiply only in part (about 176 CPU-hours per 10 Gbp
+for margin 200, `--notrunc` and these 258 models, *derived*), because the long rRNA and RNase P models
+that any subset keeps are the ones whose per-record cost is largest. These are eight complete, well-called
+genomes; metagenome contigs, with more and shorter records and more gene-calling errors, would push both
+the cost per base of intergenic scanning and its losses up, and that is not measured here.
 
 ## What was not measured, and why
 
 - Rfam's own `--nohmmonly` recipe and clan competition: slower, not a cheaper variant; clan competition is
   card 0-08 question 1, not cost.
 - Intergenic plus `--rfam`: not run; `--rfam` is identical to the default at this Z (item 3a), so it would
-  repeat the intergenic rows. Lane 1's `igr_m200_rfam` was stopped at its start for this reason and lane
-  2's `--rfam` intergenic jobs were dropped (logs `lane1.log`, `lane2.log`).
+  repeat the intergenic rows. Lane 1's `igr_m200_rfam` was stopped 17 s after its start for this reason and
+  lane 2's three `--rfam` intergenic jobs were dropped (logs `lane1.log`, `lane2.log`); `--hmmonly` on batch
+  B and `--notrunc` on margins 0 and 200 ran in their place.
+- `--hmmonly` on batch A and `--notrunc` at margin 50: not run (time).
+- Intergenic with the 258 models as one scan: not run; the row in item 3b is *derived* from per-model lines.
+- `--notrunc` on the E-02 contig: not run; the contig is one linear record, so only hits at its two ends
+  could change.
 - Metagenome contigs, other gene callers, and eukaryotic genomes: not in this subset.
 - The spike-in panel under the intergenic margins in its real sense (planted RNAs next to genes): the card
   asked for the whole contig as one region; the panel contig has no genes.
@@ -294,11 +357,12 @@ systemd-run --user --unit=m09c-lane<k> --collect --quiet -p MemoryMax=16G -p Mem
   nice -n 19 bash /tmp/if2453/m09c/tree/scripts/stress/annotation_cost/infernal_lane.sh <k>
 ```
 
-Lanes 1 and 2 started at 07:03 CST; lane 2 was stopped at 10:58 while it waited and replaced by lane 3;
-lane 1 was replaced by lane 4 at the start of its last job (see "not measured"). Before each job the lane
-summed `ps -u if2453 -o pcpu=` (without the ps line) and started only when that plus 200% was at most
-4000% on weekdays 08:00 to 20:00 CST, else 5600%; the account was at 997% to 4,419% at the starts (every
-start in the logs), and no job had to wait. Every job runs in the image:
+Lanes 1 and 2 started at 07:03 CST; lane 2 was stopped at 10:58 while it waited and replaced by lane 3
+(10:58 to 11:27); lane 1 was stopped at 11:03, at the start of its last job, and replaced by lane 4 (11:03
+to 12:05). Before each job the lane summed `ps -u if2453 -o pcpu=` (without the ps line) and started
+only when that plus 200% was at most 4000% on weekdays 08:00 to 20:00 CST, else 5600%; the account was at
+997% to 4,419% at the starts (every start in the logs), and no job had to wait. At most two `cmsearch`
+processes ran at once; the largest used 134.9 CPU-minutes (`igr_m50_default`). Every job runs in the image:
 
 ```bash
 singularity exec --cleanenv --bind /tmp/if2453 --env PYTHONPATH=/tmp/if2453/m09c/tree/src:/tmp/if2453/pilot_s1/pydeps \
