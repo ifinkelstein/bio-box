@@ -105,7 +105,9 @@ mkdir -p "$(dirname "$LOG")"
 # Card W-20: systemd itself expands `${NAME}` (and `$NAME` as a word of its own) in a unit's command line before
 # any shell runs (man systemd.service, "Command lines": "Basic environment variable substitution is supported"; a
 # literal dollar sign is written `$$`), so the old `${use% }` was always empty (measured on wilkcomp02, 2026-11-11).
-# The wrapper therefore holds no `${`: `paste -sd" "` joins the two lines without a trailing space.
+# The wrapper therefore holds no `${`: `paste -sd" "` joins the two lines without a trailing space. The two
+# totals come in the order systemd prints them (measured on wilkcomp02, 2026-11-11, unit w20-usage:
+# `pod_run: w20-usage usage MemoryPeak=426106880 CPUUsageNSec=4151944000`).
 # PYTHONUNBUFFERED: a step command's own output reaches the log as it is written.
 # BIOBOX_POD_UNIT (card W-13), set after the caller's --env so it cannot be unset: the unit ends with
 # its main process (systemd-run --collect starts a service; systemd then stops whatever is left in

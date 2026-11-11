@@ -1257,6 +1257,8 @@ def _w05_cell(col: str, v) -> str:
         return f"{v:.1f}"
     if col in W05_EVALUE:
         return f"{v:.1e}"
+    if col == "strand":  # card W-20: +1 or -1 everywhere (migrated from the bare `str(v)`)
+        return f"{v:+d}"
     if isinstance(v, bool):
         return "true" if v else "false"
     if isinstance(v, bytes):
@@ -1372,7 +1374,8 @@ def test_w05_search_hits_tsv_equals_a_brute_force_join_over_the_parquet_files(w0
     # without contig_dim (the world itself) genome and tier are empty, not guessed
     bare = list(export.hits_tsv(world[0], made, release=REL, tape_version=tapes.tape_version([V]),
                                 gene_call_version=V))
-    assert bare == _w05_tsv(W05_HIT_COLUMNS, _w05_oracle_genes(world[0], made, {}))
+    # (card W-20: and no `tier` column at all, since no gene has one; migrated from an always-empty column)
+    assert bare == _w05_tsv([c for c in W05_HIT_COLUMNS if c != "tier"], _w05_oracle_genes(world[0], made, {}))
 
 
 @pytest.mark.covers("W-05")
@@ -1385,7 +1388,7 @@ def test_w05_search_hits_faa_sequences_equal_protein_seq(w05, capsys):
         for pu in sorted({g["protein_uid"] for g in genes}):
             mine = [g for g in genes if g["protein_uid"] == pu]
             g = mine[0]
-            place = f"{g['accession'] or g['contig_uid'].hex()}:{g['start']}-{g['end']}({g['strand']:+d})"
+            place = f"{g['accession'] or g['contig_uid'].hex()}:{g['start']}-{g['end']} strand={g['strand']:+d}"  # W-20
             desc = (f"length={prot[pu]['length']} seq_bitscore={_w05_cell('seq_bitscore', g['seq_bitscore'])} "
                     f"seq_evalue_zref={_w05_cell('seq_evalue_zref', g['seq_evalue_zref'])} n_genes={len(mine)} "
                     f"example={place}" + (f" {_w05_cell('header', g['header'])}" if g["header"] else ""))
@@ -2828,8 +2831,8 @@ def test_w13_a_run_started_with_wait_has_a_pending_record_and_is_cancelled_from_
 
 @pytest.mark.covers("W-13")
 def test_w13_a_closed_wait_run_reads_as_closed_and_cancel_signals_nothing(world, tmp_path, capsys):
-    """The pending record stays once the run has closed (as a submitted run's does): status reads the closed run,
-    and cancel finds no live runner, signals nothing and exits 0."""
+    """The pending record goes when the run has closed (card W-20; migrated: it used to stay): status reads the
+    closed run from its own record, and cancel finds no live runner, signals nothing and exits 0."""
     root = world[0]
     runs, work = tmp_path / "runs", tmp_path / "work"
     where = ["--root", str(root), "--runs", str(runs)]
@@ -2837,9 +2840,7 @@ def test_w13_a_closed_wait_run_reads_as_closed_and_cancel_signals_nothing(world,
                      "--work", str(work), "--pack-dir", str(_packs(world)), *where]) == 0
     rid = capsys.readouterr().out.split()[0]
     d = runner.run_dir(runs, rid)
-    info = json.loads(runner.pending_path(d).read_text())
-    assert (info["run_id"], info["pid"]) == (rid, os.getpid())
-    assert not runner._runner_live(info)  # the lock went with the work directory
+    assert not runner.pending_path(d).exists()
     assert not (work / rid).exists()
     assert cli.main(["search", "status", rid, *where]) == 0
     assert json.loads(capsys.readouterr().out)["status"] == "ok"
@@ -2973,7 +2974,8 @@ def test_w07_search_hmm_writes_what_the_separate_commands_write_and_its_recipe_r
     assert code == 0, got.err
     rid, status = got.out.splitlines()[0].split("\t")
     assert status == "ok"
-    assert sorted(p.name for p in out.iterdir()) == ["hits.faa", "hits.tsv", "loci", "neighbors.tsv", "recipe.yaml"]
+    assert sorted(p.name for p in out.iterdir()) == ["README.txt", "hits.faa", "hits.tsv", "loci", "neighbors.tsv",
+                                                     "recipe.yaml"]  # card W-20: README.txt
     assert not list(tmp_path.glob(".out*"))  # no temporary directory left beside DIR
     # the recipe in DIR is the one the run ran: the file seed, the bits, the window, the resolved positive control
     run1 = runner.read_run(runner.run_dir(runs, rid))
@@ -2997,7 +2999,7 @@ def test_w07_search_hmm_writes_what_the_separate_commands_write_and_its_recipe_r
     sep = tmp_path / "sep"
     _w07_separate(root, _packs(world), runs2, rid2, "5g", "pfam,nr50", sep, capsys)
     mine = _w07_files(out)
-    assert mine.pop("recipe.yaml")
+    assert mine.pop("recipe.yaml") and mine.pop("README.txt")  # card W-20: README.txt is `search hmm`'s own
     assert any(k.startswith("loci/") for k in mine) and len(mine["hits.tsv"].splitlines()) > 1
     assert pos.hex().encode() in mine["hits.faa"]
     assert mine == _w07_files(sep)
@@ -3028,6 +3030,7 @@ def test_w07_search_hmm_on_a_release_without_a_domain_library_summarizes_at_the_
     _w07_separate(root, _packs_of(root), runs, rid, "5g", "nr50,nr90", sep, capsys)  # --neighbors defaults to 5
     mine = _w07_files(out)
     mine.pop("recipe.yaml")
+    mine.pop("README.txt")  # card W-20
     assert mine == _w07_files(sep)
 
 
@@ -3375,3 +3378,176 @@ def test_w19_the_pending_record_exists_before_the_pack_check_and_the_lookups(wor
                    runs=runs, run_id=rid2, pending=True)
     assert not runner.pending_path(runner.run_dir(runs, rid2)).exists()
     assert not (tmp_path / "work" / rid2.hex()).exists() and not runner.run_dir(runs, rid2).exists()
+
+
+# --- W-20: output wording and small defects from the second trial ---------------------------------------------
+
+
+def _w20_run_hmm(world, tmp_path, root=None, packs=None):
+    """`search hmm` on the world's (or `root`'s) release; returns (exit code, out dir, runs dir)."""
+    root = world[0] if root is None else root
+    hmm, pos = _w07_hmm(world, tmp_path)
+    out, runs = tmp_path / "out", tmp_path / "runs"
+    code = cli.main(["search", "hmm", "--root", str(root), "--release", REL, "--hmm", str(hmm), "--bits", "25",
+                     "--positive", _w07_spec(world[0], pos), "--out", str(out), "--cpus", "1",
+                     "--pack-dir", str(packs or _packs(world)), "--runs", str(runs), "--work", str(tmp_path / "work")])
+    return code, out, runs
+
+
+@pytest.mark.covers("W-20")
+def test_w20_nbr_summarize_by_pfam_on_a_release_without_a_domain_library_says_so_and_drops_the_level(world, tmp_path,
+                                                                                                    capsys):
+    root = _copy(world, tmp_path)
+    shutil.rmtree(root / "l1/domains")
+    uids = ",".join(sorted(u.hex() for u in _w06_anchors(world[0])))
+    args = ["nbr", "summarize", uids, "--window", "5g", "--release", REL, "--root", str(root), *_dirs(root),
+            "--format", "tsv"]
+    capsys.readouterr()
+    assert cli.main([*args, "--by", "pfam,nr50"]) == 0
+    got = capsys.readouterr()
+    assert got.err.count("no domain library") == 1 and "pfam" in got.err, got.err
+    assert '# levels\t["nr50"]' in got.out.splitlines() and "\tpfam\t" not in got.out
+    assert cli.main([*args, "--by", "nr50"]) == 0  # the same answer without being told
+    want = capsys.readouterr()
+    assert want.out == got.out and "domain library" not in want.err
+    assert cli.main([*args, "--by", "pfam"]) == 2  # nothing left to summarize
+    assert "no domain library" in capsys.readouterr().err
+    # a release with a library keeps the level and says nothing
+    assert cli.main(["nbr", "summarize", uids, "--window", "5g", "--release", REL, "--root", str(world[0]),
+                     *_dirs(world[0]), "--format", "tsv", "--by", "pfam,nr50"]) == 0
+    got = capsys.readouterr()
+    assert '# levels\t["pfam","nr50"]' in got.out.splitlines() and "domain library" not in got.err
+
+
+@pytest.mark.covers("W-20")
+def test_w20_the_slow_path_note_prints_once_per_command(world, tmp_path, capsys):
+    root = _pre_b27(world, tmp_path, manifest=True, labels=True)
+    capsys.readouterr()
+    code, out, runs = _w20_run_hmm(world, tmp_path, root=root, packs=_packs_of(root))
+    err = capsys.readouterr().err
+    assert code == 0, err
+    for name in ("member_cluster", "contig_label"):
+        notes = [x for x in err.splitlines() if x.startswith("note:") and f"has no {name} files" in x]
+        assert len(notes) == 1, (name, err)
+
+
+@pytest.mark.covers("W-20")
+def test_w20_search_hits_table_says_how_many_rows_of_how_many_it_shows(w05, capsys, monkeypatch):
+    root, rid, _ = w05
+    rows = _w05_final_hits(root, rid)
+    n = 3 * len(rows)  # the fixture run has one kept hit: the table reads it three times over
+    monkeypatch.setattr(runner, "read_hits", lambda d, round_=None, final_only=True: rows * 3)
+    base = ["search", "hits", rid, "--root", str(root), *_dirs(root)]
+    capsys.readouterr()
+    assert cli.main([*base, "--top_n", "2"]) == 0
+    got = capsys.readouterr()
+    assert len(got.out.splitlines()) == 3  # the column line and two rows: stdout stays a clean table
+    assert f"showing 2 of {n} rows" in got.err, got.err
+    assert cli.main([*base, "--top_n", "0"]) == 0
+    assert f"showing {n} of {n} rows" in capsys.readouterr().err
+
+
+@pytest.mark.covers("W-20", "W-13")
+def test_w20_the_pending_record_goes_when_the_run_closes_and_status_and_cancel_still_answer(world, tmp_path, capsys):
+    root = world[0]
+    runs, work = tmp_path / "runs", tmp_path / "work"
+    where = ["--root", str(root), "--runs", str(runs)]
+    assert cli.main(["search", "run", str(_w03_recipe(root, tmp_path)), "--release", REL, "--wait", "--cpus", "1",
+                     "--work", str(work), "--pack-dir", str(_packs(world)), *where]) == 0
+    rid = capsys.readouterr().out.split()[0]
+    d = runner.run_dir(runs, rid)
+    assert (d / "run.parquet").exists() and not runner.pending_path(d).exists()
+    assert cli.main(["search", "status", rid, *where]) == 0
+    assert json.loads(capsys.readouterr().out)["status"] == "ok"
+    assert cli.main(["search", "cancel", rid, *where]) == 0  # a closed run: nothing to cancel, said so, not refused
+    err = capsys.readouterr().err
+    assert "closed" in err and "refused" not in err, err
+    assert cli.main(["search", "cancel", "f" * 32, *where]) == 2  # a run that never existed is still refused
+    assert "no pending run" in capsys.readouterr().err
+
+
+@pytest.mark.covers("W-20", "W-07", "W-05")
+def test_w20_search_hmm_writes_a_readme_and_one_strand_convention(world, tmp_path, capsys):
+    capsys.readouterr()
+    code, out, runs = _w20_run_hmm(world, tmp_path)
+    err = capsys.readouterr().err
+    assert code == 0, err
+    readme = (out / "README.txt").read_text()
+    # the facts a reader needs, and every column of every table named in it
+    assert "0-based" in readme and "half-open" in readme and "+1" in readme and "-1" in readme
+    assert "n_records" in readme and "anchor's strand" in readme and "dist_to_contig_end_bp" in readme
+    words = set(re.findall(r"[A-Za-z_][A-Za-z0-9_]*", readme))
+    neighbors_cols = set(export.SUMMARY_TSV_COLUMNS["pfam"]) | set(export.SUMMARY_TSV_COLUMNS["nr"]) \
+        | set(export.SUMMARY_TSV_STATS)
+    for col in [*export.HITS_TSV_COLUMNS, *export.LOCUS_TSV_COLUMNS, *sorted(neighbors_cols)]:
+        assert col in words, f"README.txt does not describe {col}"
+    # strand is +1 or -1 in every exported file
+    tsv = [x.split("\t") for x in (out / "hits.tsv").read_text().splitlines()]
+    col = tsv[0].index("strand")
+    assert len(tsv) > 1 and {r[col] for r in tsv[1:]} <= {"+1", "-1"}
+    loci = sorted((out / "loci").iterdir())
+    assert loci
+    for f in loci:
+        rows = [x.split("\t") for x in f.read_text().splitlines() if not x.startswith("#")]
+        c = rows[0].index("strand")
+        assert {r[c] for r in rows[1:]} <= {"+1", "-1"}, f
+    faa = (out / "hits.faa").read_text()
+    assert not re.search(r"\([+-]1\)", faa) and re.search(r" strand=[+-]1", faa)
+    assert sorted(p.name for p in out.iterdir()) == ["README.txt", "hits.faa", "hits.tsv", "loci", "neighbors.tsv",
+                                                     "recipe.yaml"]
+
+
+@pytest.mark.covers("W-20", "W-05")
+def test_w20_tier_is_a_column_only_when_the_release_has_tiers(w05, world):
+    root, rid, dims = w05
+    made = _w05_hits(root)
+    tv = tapes.tape_version([V])
+    with_tier = next(iter(export.hits_tsv(root, made, release=REL, tape_version=tv, gene_call_version=V))).split("\t")
+    no_tier = next(iter(export.hits_tsv(world[0], made, release=REL, tape_version=tv, gene_call_version=V))).split("\t")
+    assert "tier" in with_tier and "tier" not in no_tier
+    assert [c for c in with_tier if c != "tier"] == no_tier
+    # `dist_to_contig_end_bp` is the gene caller's: 0 for a gene that runs off a linear contig end, the contig's
+    # length on a circular contig (README.txt says so), so it stays
+    assert "dist_to_contig_end_bp" in no_tier
+
+
+@pytest.mark.covers("W-20", "W-05")
+def test_w20_the_fasta_example_names_the_positive_controls_contig(w05, tmp_path):
+    """A protein on several contigs: its example is the first gene in sort order, unless a control names it. No
+    protein of the fixture sits on two contigs, so a copy of it gets one: a gene of another contig is given the
+    protein of a hit (protein_occurrence only; the exports read the tapes for ordinals and slots, not proteins)."""
+    src, rid, dims = w05
+    root = tmp_path / "a"
+    shutil.copytree(src, root)
+    made = _w05_hits(root)
+    pu = made[0]["target_uid"]
+    tables = {f: pq.read_table(f, partitioning=None)
+              for f in sorted((root / "l1/protein_occurrence").rglob("*.parquet"))}
+    home = {r["contig_uid"] for t in tables.values() for r in t.to_pylist() if r["protein_uid"] == pu}
+    f, j = next((f, j) for f, t in tables.items() for j, r in enumerate(t.to_pylist())
+                if r["contig_uid"] not in home and r["protein_uid"] != pu)
+    col = tables[f].column("protein_uid").to_pylist()
+    col[j] = pu
+    tables[f] = tables[f].set_column(tables[f].schema.get_field_index("protein_uid"), "protein_uid",
+                                     pa.array(col, tables[f].schema.field("protein_uid").type))
+    pq.write_table(tables[f], f)
+    gs = [g for g in _w05_oracle_genes(root, made, dims) if g["protein_uid"] == pu]
+    assert len({g["accession"] for g in gs}) > 1, "the protein is on one contig"
+    last = gs[-1]  # not the first in sort order
+    assert last["accession"] != gs[0]["accession"]
+    tv = tapes.tape_version([V])
+
+    def example(prefer):
+        lines = list(export.hits_faa(root, made, release=REL, tape_version=tv, gene_call_version=V, prefer=prefer))
+        head = next(x for x in lines if x.startswith(">" + pu.hex()))
+        return re.search(r"example=(\S+)", head).group(1)
+
+    assert example(None).startswith(f"{gs[0]['accession']}:")
+    assert example({pu: (last["accession"], None)}).startswith(f"{last['accession']}:")
+    assert example({pu: (None, last["header"])}).startswith(f"{last['accession']}:")
+    # what the CLI hands over: a control labelled with a span names its accession, any other label is header text
+    controls = json.dumps({"positive": [{"kind": "protein_uid", "uid": pu.hex(), "label": "NC_001604:3170-5822"},
+                                        {"kind": "protein_uid", "uid": (b"\x01" * 16).hex(), "label": "T7 gp1"},
+                                        {"kind": "protein_uid", "uid": (b"\x02" * 16).hex(), "label": None}]})
+    assert cli._positive_prefs(controls) == {pu: ("NC_001604", None), b"\x01" * 16: (None, "T7 gp1")}
+    assert cli._positive_prefs(None) == {}

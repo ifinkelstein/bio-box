@@ -124,7 +124,9 @@ ls "$ROOT/runs/stage=S0"
 ```
 
 - The last line is `pod_run: c06-build exited 0`. The number is the exit code. The line before it,
-  `pod_run: c06-build usage CPUUsageNSec=<ns> MemoryPeak=<bytes>`, is what the unit cost (card W-18):
+  `pod_run: c06-build usage MemoryPeak=<bytes> CPUUsageNSec=<ns>` (the two in the order systemd prints
+  them; before card W-20 the line was always empty, and a real unit printed `pod_run: w20-usage usage
+  MemoryPeak=426106880 CPUUsageNSec=4151944000`, measured on wilkcomp02, 2026-11-11), is what the unit cost (card W-18):
   CPU time in nanoseconds and the peak memory of the whole unit, read from `systemctl --user show` just
   before the unit ends, because `--collect` discards them afterwards. It is absent when systemd keeps no
   accounting for the unit.
@@ -440,8 +442,9 @@ profile's `tmp`:
 
 - the pack of release `R`: `$BBTMP/packs/release=<R>/<pack id>/`, one per host (a pack is a cache
   of a release, shared by every user);
-- the runs: `$BBTMP/search/$USER/runs/run=<run id>/`, one directory per user; each run's pending
-  record is `$BBTMP/search/$USER/runs/pending/run=<run id>.json`;
+- the runs: `$BBTMP/search/$USER/runs/run=<run id>/`, one directory per user; each running run's
+  pending record is `$BBTMP/search/$USER/runs/pending/run=<run id>.json`, removed when the run closes
+  (card W-20; the closed run's own record, `run.parquet`, then answers `status` and `cancel`);
 - the runs' work directories: `$BBTMP/search/$USER/work/<run id>/`, removed when the run closes.
 
 Every `pack`, `search` and `nbr` command below passes `--profile "$PROFILE"`, which gives these
@@ -514,7 +517,8 @@ bio-box search cancel "$RUN" --root "$ROOT" --profile "$PROFILE"
 
 It sends SIGTERM to the run's runner (the process its pending record names, and only while that
 process holds the run's lock). The runner ends the worker and records the run as `stopped` with the
-error `cancelled`. It prints nothing and exits 0, also when the run has already closed. The unit's
+error `cancelled`. It prints nothing and exits 0. For a run that has already closed it exits 0 and
+says on stderr that the run is closed; a run id that never existed is refused (exit 2). The unit's
 log then ends with `<run id>` and `stopped`, then `pod_run: <unit> exited 1`.
 
 Stopping the unit does the same: `systemctl --user stop <unit>`. Its log then ends with
@@ -531,7 +535,13 @@ bio-box nbr summarize "$RUN" --root "$ROOT" --profile "$PROFILE" --window 5g --b
 bio-box export proteins --root "$ROOT" --release rC6.1 --out "$WORK/proteins.faa"
 ```
 
-`search hits` without `--format` prints the kept hits as a table (`--json` for JSON). `--format tsv`
+`search hits` without `--format` prints the kept hits as a table (`--json` for JSON) and says on stderr
+how many rows it shows of how many (`--top_n 0` shows all). `nbr summarize --by pfam,...` on a
+release with no domain library says so on stderr and leaves the `pfam` level out. Strand is `+1` or
+`-1` in every table, coordinates are 0-based and half-open, and the offsets of `neighbors.tsv` are
+relative to the anchor's strand (card W-20; `search hmm` writes these and every column's meaning into
+`README.txt`; `tier` is a column of `hits.tsv` only when the release has tiers, none has yet).
+`--format tsv`
 is one row per gene; `--format faa` is one record per protein, named by protein uid. `nbr ...
 --format tsv --out DIR` writes one file per anchor locus. `nbr summarize` counts families and
 clusters around the anchors. `export proteins` needs the release's manifest; it reads the root only
@@ -565,7 +575,8 @@ gene. The run runs in the foreground, as `search run --wait`, so it may run in a
 bash "$TREE/scripts/pod_run.sh" --profile "$PROFILE" --image "$IMAGE" --digest "$DIGEST" --bind /tmp/if2453 --env PYTHONPATH="$PYTHONPATH_POD" w07-hmm search hmm --root "$ROOT" --release rC6.1 --profile "$PROFILE" --hmm "$WORK/inputs/lib.hmm" --model lam0 --bits 25 --neighbors 5 --positive "$POSITIVE" --out "$WORK/hmm"
 ```
 
-`DIR` must be new or empty and outside the data root. It then holds `recipe.yaml` (the recipe the
+`DIR` must be new or empty and outside the data root. It then holds `README.txt` (what each file and
+column means), `recipe.yaml` (the recipe the
 run ran; `search run DIR/recipe.yaml` runs it again), `hits.tsv` and `hits.faa` (as `search hits
 --format tsv|faa`), `neighbors.tsv` (as `nbr summarize --format tsv`) and `loci/` (one table per
 locus, as `nbr --format tsv`); each is written by that command, so the files are the same. The log
@@ -615,8 +626,9 @@ What is ours, all under `/tmp/if2453/`:
   when no `pack build` or `pack verify` of that release is running (`ps -u "$USER" -o pid,args`),
   by exact path.
 - `$BBTMP/search/$USER/`: your searches (section 7). `runs/run=<run id>/` is a closed run's record
-  and hits; `runs/pending/run=<run id>.json` is a run's pending record (and `.stderr`, the runner's
-  stderr of a run submitted outside a unit); `work/<run id>/` is a run's work directory, which the
+  and hits; `runs/pending/run=<run id>.json` is a running run's pending record, which the run
+  removes when it closes (`.stderr` beside it is the runner's stderr of a run submitted outside a unit,
+  and stays); `work/<run id>/` is a run's work directory, which the
   run removes when it closes. One is left only when the runner was killed (SIGKILL, a reboot).
 - `$TREE`, `$WORK` and `/tmp/if2453/ci-tmp/<name>-*`: your mirrored trees and pytest directories.
 
