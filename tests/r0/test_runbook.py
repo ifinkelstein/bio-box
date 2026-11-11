@@ -34,6 +34,7 @@ pytestmark = [pytest.mark.r0, pytest.mark.covers("C-06")]
 
 ROOT = Path(__file__).resolve().parents[2]
 RUNBOOK = ROOT / "RUNBOOK.md"
+AGENT_GUIDE = ROOT / "AGENT_GUIDE.md"  # for agents that use releases; its commands are checked the same way
 POD_RUN = ROOT / "scripts" / "pod_run.sh"
 POD_PYTEST = ROOT / "scripts" / "pod_pytest.sh"
 PROFILE = ROOT / "profiles" / "wilkcomp02.yaml"
@@ -194,9 +195,9 @@ def check_module(module: str, args: list[str]) -> list[str]:
     return []
 
 
-def read_commands() -> list[tuple[int, str]]:
-    assert RUNBOOK.is_file(), f"{RUNBOOK} does not exist"
-    return commands(RUNBOOK.read_text())
+def read_commands(path: Path = RUNBOOK) -> list[tuple[int, str]]:
+    assert path.is_file(), f"{path} does not exist"
+    return commands(path.read_text())
 
 
 # --- the checker itself: it must reject what it is meant to reject ---------------------------------
@@ -241,8 +242,9 @@ def test_the_runbook_has_commands():
     assert len(read_commands()) >= 20
 
 
-def test_every_bio_box_command_in_the_runbook_is_one_the_parser_accepts():
-    bad = [f"RUNBOOK.md:{n}: {p}" for n, cmd in read_commands() for p in check(cmd)]
+@pytest.mark.parametrize("doc", [RUNBOOK, AGENT_GUIDE], ids=lambda p: p.name)
+def test_every_bio_box_command_in_the_runbook_is_one_the_parser_accepts(doc):
+    bad = [f"{doc.name}:{n}: {p}" for n, cmd in read_commands(doc) for p in check(cmd)]
     assert not bad, "\n".join(bad)
 
 

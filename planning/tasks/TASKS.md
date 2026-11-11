@@ -646,6 +646,36 @@ Evidence (*measured*, wilkcomp02, unit `r50-rN3-1`): the three parts of the NR90
 Do: refit the per-call constants from `rN.3`'s run records (every call and part, in `runs/stage=rN.3/`), labelled *measured* at 10.6 M proteins; keep the 100,000-protein figures in the comment; cut parts so the estimate with the new constants stays at 80% of the budget; restate the table of parts at 10 M, 50 M and 95 M.
 Accept: a test that the estimate of each `rN.3` part is within 20% of its record.
 
+### W-22 One place for a release's search pack, and no writes into it
+**M** · found 2026-11-11 writing `GUIDE.md` and `AGENT_GUIDE.md`
+Files: `src/biobox/search/pack.py`, `src/biobox/cli.py`, `profiles/wilkcomp02.yaml`, `RUNBOOK.md`, `GUIDE.md`, `AGENT_GUIDE.md`, tests
+Why: the only pack of `rN.1` is in an agent's scratch directory (`/tmp/if2453/w16/packs`, and a copy with its verification record in `/tmp/if2453/w19/packs`); every search must name it with `--pack-dir`. `pack verify`, and `pack build` on an existing pack, still write a `.verify-*` scratch directory into the pack directory (card W-19 moved only the search's).
+Do: the profile names one pack directory per host, and `search` and `nbr` find a release's pack there without `--pack-dir`; `pack verify` and a no-op `pack build` write their scratch under the profile's `tmp`; a pack directory may be read-only for everyone but its builder. Update both guides and the runbook.
+Accept: tests first; a search with only `--profile` finds the pack; `pack verify` against a read-only pack directory succeeds.
+
+### W-23 Commands a user needs and does not have
+**M** · found 2026-11-11 writing the guides · each item small; test first for each
+Files: `src/biobox/cli.py`, `src/biobox/search/export.py`, `src/biobox/catalog.py` (reading only, unless an item needs a helper), `GUIDE.md`, `AGENT_GUIDE.md`, `RUNBOOK.md`, tests
+Do: (1) `bio-box releases --root R`: one line per release with its stages, proteins, domain libraries, whether it has the lookup tables, and its pack if the profile's pack directory holds one. (2) `bio-box seq --root R --release REL --protein UID` (and `--contig ACC:START-END`): one sequence as FASTA, by key, without exporting the release (today a cluster representative's sequence means exporting 10.6 M proteins and searching the file). (3) `bio-box sql --root R --release REL FILE`: runs a query through `open_catalog`, read-only, temporary files under the profile's `tmp`, and prints the row groups read (`profile_query`). (4) `hits.tsv` gains `stage` and the genome's `kind` beside each gene, so a split by source needs no SQL. (5) `find` and `--positive` accept 1-based inclusive coordinates as `ACC:START..END` (the GenBank form) beside the 0-based `ACC:START-END`, and print both. (6) After a search, one line per output file with its row count.
+Accept: the tests; both guides use the new commands in place of their work-arounds.
+
+### W-24 Silent fallbacks in the search readers
+**M** · found 2026-11-11 writing `AGENT_GUIDE.md` · each is a wrong or incomplete answer with exit 0
+Files: `src/biobox/cli.py`, `src/biobox/search/nbr.py`, `src/biobox/search/export.py`, `src/biobox/catalog.py`, tests
+Do, test first for each: (1) `search hits` and `nbr` on a run fall back to the gene-call tape version when the run's pack cannot be found (`_run_tape_version`): refuse, naming the pack. (2) `nbr summarize RUN --release OTHER` mixes one release's run with another release's files: refuse unless the releases are equal. (3) On a release built before card B-21, `fusions_of` and the family postings hold only canonical families and say nothing: detect it (the release has domains but no non-canonical family posting where the domain table has one, or a marker the token step records) and print one note, as `partners_of` does for card B-39's column. (4) `neighbors.tsv` gives `key` and `cluster_uid` the same value and an empty `model_name` at cluster levels: drop the duplicate or fill `model_name` with the representative's uid and length, and say which in the README.
+Accept: the tests.
+
+### C-23 A release does not record the code that built it
+**L** · found 2026-11-11 writing `AGENT_GUIDE.md`
+Files: `src/biobox/stage.py`, `src/biobox/catalog.py` (`catalog_info`), tests
+Why: only `STATUS.md` says `rN.1` was built by the tree at `740d049`; readers behave differently on releases built before cards B-21, B-27 and B-39, and nothing in the release says which it is. Run records hold the image digest, but the source was bound in from outside the image.
+Do: each run record gains the source tree's identity (the git commit when the tree is a checkout, else a hash of the `biobox` package's files, computed once per process); `catalog_info` gains `built_by` (the distinct identities of the release's run records) without changing the manifest's bytes for equal inputs (the manifest must stay a function of the data, not of who built it: say how you keep that). `bio-box releases` (card W-23) prints it.
+Accept: tests first; the manifest hash of the fixture is unchanged.
+
+### 0-10 Where a user's results live
+**H** (PI decision) · raised 2026-11-11 by the agent guide
+A search's outputs are small files (tables of kilobytes to megabytes). The pod's local `/tmp` is cleared on reboot; `/stor` refuses files under 64 MB except registry tables marked `small_ok` (AGENTS §7.3). So a user's results have no durable home on the pod today. Options: (a) results are copied off the pod by the user and nothing durable is kept there; (b) a results area on `/stor` where each run is one archive (a tar per run or per day), written by a command; (c) an exemption for a results directory, agreed with the storage's owner. Recommendation: (b).
+
 ### C-19 An older release fails verification once a library is scanned on its stages
 **M** · found 2026-11-11 at the end of the 10 Gbp rebuild · check first whether current code still does it
 Evidence (*measured*, wilkcomp02, tree `740d049`, `/tmp/if2453/r10/phase2/verify.json`): after Pfam was scanned on stages S1, P1 and P2, releases `rN.1a`, `rN.1b` and `rN.1` (built before the scan, so without domains) each report `not in manifest: l1/domains/library=pfam-38.2/stage=<S>/part-0.parquet` and the matching ledger file, and `verify` exits 1. `rN.2`, built after, verifies with no problems. Nothing in the old releases changed: a later step added files to their stages, which the rules allow (AGENTS §3.10: a stage never rewrites an earlier stage's file; adding a library's files is not a rewrite).
