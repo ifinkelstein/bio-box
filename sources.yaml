@@ -16,6 +16,27 @@ sources:
     license: INSDC (public)
     selection: planning/measurements/2026-11-11_r50_inputs/selection/all.tsv (GTDB R226, best complete genome per species)
     used_by: [scripts/stress/build_stage_pod/r50_fetch.py]
+  - name: hpgc_huge_phages
+    what: the Huge Phage Genome Collection, 7,230 non-redundant phage genomes over 200 kbp, one gzipped FASTA
+    url: https://ndownloader.figshare.com/files/59221811
+    record: https://doi.org/10.6084/m9.figshare.30506864.v1 (Figshare "HPGC_genomes", version 1, published 2025-11-03, author Linxing Chen)
+    file: HPGC.7230.genomes.final.fasta.gz
+    bytes: 560950249
+    checksum: md5 03c4f8ae0ce599af7cc256c9f53a56c1 (published by Figshare)
+    license: CC BY 4.0
+    note: >-
+      The link comes from the data statement of the preprint "A prevalent huge phage clade in human and
+      animal gut microbiomes"; the Figshare record names no paper. A later preprint reports 43 of the
+      7,230 as non-viral. Approved by the PI on 2026-11-11.
+  - name: plsdb
+    what: PLSDB plasmids, release 2024_05_31_v2 (72,360 records), sequences and metadata
+    url: https://ccb-microbe.cs.uni-saarland.de/plsdb2025/download_fasta
+    url_meta: https://ccb-microbe.cs.uni-saarland.de/plsdb2025/download_meta.tar.gz
+    checksum: none published; the archive is built on request. Record our own sha256 and check the record count against the metadata
+    license: none stated on the site; the sequences are INSDC records. The site asks for citation of doi:10.1093/nar/gkab1111 and doi:10.1093/nar/gky1050
+    note: >-
+      Prefer the Figshare-archived copy of the same release if it carries a checksum and a licence; add
+      its URL here before using it. Approved by the PI on 2026-11-11.
   - name: ncbi_ftp_genome
     what: fallback for an assembly the Datasets endpoint does not return; the same FASTA by its FTP path
     url: https://ftp.ncbi.nlm.nih.gov/genomes/all/{GCA_or_GCF}/{nnn}/{nnn}/{nnn}/{assembly_dir}/{assembly_dir}_genomic.fna.gz
