@@ -50,6 +50,14 @@ directory (`--runs`). A `<run>` argument is a run directory, or a run id in the 
 with a host profile (`--profile`, else $BIOBOX_PROFILE): `<tmp>/packs` and `<tmp>/search/<user>/runs`;
 without one, `biobox.search.runner.default_pack_base()` and `default_runs_dir()`. A search whose pack is
 missing exits 2 with the command that builds it.
+
+`search run --wait` runs the search in this process and writes the same pending record as a submitted
+run, so `search status` and `search cancel` work on it from another shell (card W-13). Without `--wait`
+the run is submitted: a detached runner, and the command returns at once. Inside a `scripts/pod_run.sh`
+unit (BIOBOX_POD_UNIT, which the script sets) that is refused (exit 2): the unit is a transient service
+started with `systemd-run --collect`, which ends when its main process exits and stops every process
+left in its cgroup, the detached runner included; a unit stays alive only as long as its main process
+runs, and with `--wait` the main process is the runner.
 """
 
 from __future__ import annotations
@@ -180,9 +188,21 @@ def _limits(a) -> runner.Limits:
     return runner.Limits(cpus=cpus, cpu_min=a.cpu_min, wall_s=a.wall_s, mem_gb=mem_gb, **extra)
 
 
+def _pending_notice(run_id: str, info: Path) -> None:
+    """`search run --wait` (card W-13): the run id, as soon as the run is pending, so a unit's log names it."""
+    print(f"search run: {run_id} running; pending record {info}", file=sys.stderr, flush=True)
+
+
 def _search(a) -> int:
     root = Path(a.root)
     if a.action == "run":
+        unit = os.environ.get("BIOBOX_POD_UNIT")
+        if unit and not a.wait:  # card W-13: decided by what `systemd-run --collect` allows (module docstring)
+            print(f"refused: search run without --wait in the pod_run.sh unit {unit}: the unit ends when this "
+                  "command returns, and systemd stops the detached runner with it. Add --wait: the run then keeps "
+                  "the unit until it closes, and `bio-box search status` and `search cancel` work on it from "
+                  "another shell", file=sys.stderr)
+            return 2
         try:
             limits = _limits(a)
             tmp = _profile_tmp(a)
@@ -201,7 +221,7 @@ def _search(a) -> int:
                 return 0
             row = runner.run(root, Path(a.target), a.release, limits=limits, work_base=work, argv=sys.argv,
                              run_id=bytes.fromhex(a.run_id) if a.run_id else None, fault=a.fault, packs=packs,
-                             runs=runs, out=out)
+                             runs=runs, out=out, pending=not a.submitted, on_pending=_pending_notice)
         except RecipeError as e:
             print(f"refused: {e}", file=sys.stderr)
             return 2
@@ -689,7 +709,9 @@ def main(argv: list[str] | None = None) -> int:
     s.add_argument("action", choices=["run", "status", "cancel", "hits"])
     s.add_argument("target", help="recipe path (run), or the run: its directory or its run id in --runs")
     s.add_argument("--release")
-    s.add_argument("--wait", action="store_true")
+    s.add_argument("--wait", action="store_true", help="run: run here until the run closes; its pending record "
+                                                         "lets `status` and `cancel` find it meanwhile (card W-13)")
+    s.add_argument("--submitted", action="store_true", help=argparse.SUPPRESS)  # the runner `submit` starts
     s.add_argument("--run-id")
     s.add_argument("--work", help="run: parent of the run's work directory (default: <profile tmp>/search/<user>/"
                                   "work with a profile, else $BIOBOX_SEARCH_WORK or /tmp/atd/search)")

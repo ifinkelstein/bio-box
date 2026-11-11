@@ -99,12 +99,16 @@ mkdir -p "$(dirname "$LOG")"
 # command it runs has ended (POSIX), then the sh says which signal came and writes the exit line.
 # A trap that is not empty is reset in the command it starts, so bio-box still gets the signal.
 # PYTHONUNBUFFERED: a step command's own output reaches the log as it is written.
+# BIOBOX_POD_UNIT (card W-13), set after the caller's --env so it cannot be unset: the unit ends with
+# its main process (systemd-run --collect starts a service; systemd then stops whatever is left in
+# its cgroup), so a detached process cannot outlive the command. `bio-box search run` reads it and
+# refuses to run without --wait here.
 systemd-run --user --unit="$UNIT" --collect --quiet --same-dir \
   -p MemoryMax="$MEM" -p MemorySwapMax=0 -p CPUQuota="$((THREADS * 100))%" -p OOMPolicy=continue \
   -p StandardOutput="append:$LOG" -p StandardError="append:$LOG" \
   /bin/sh -c 'unit=$1; shift; sig=""; trap "sig=TERM" TERM; trap "sig=INT" INT; trap "sig=HUP" HUP; "$@"; rc=$?; [ -z "$sig" ] || echo "pod_run: $unit received SIG$sig"; echo "pod_run: $unit exited $rc"; exit $rc' sh "$UNIT" \
   "$NICE_BIN" -n "$NICE" "$SING" exec --cleanenv --env PYTHONUNBUFFERED=1 --bind /sys/fs/cgroup:/sys/fs/cgroup:ro "${BINDS[@]}" \
-  --env "BIOBOX_IMAGE_DIGEST=$SUM" "${ENVS[@]}" "$IMAGE" python -m biobox.cli "$@"
+  --env "BIOBOX_IMAGE_DIGEST=$SUM" "${ENVS[@]}" --env "BIOBOX_POD_UNIT=$UNIT" "$IMAGE" python -m biobox.cli "$@"
 
 echo "pod_run: started $UNIT (MemoryMax=$MEM, MemorySwapMax=0, CPUQuota=$((THREADS * 100))%, nice $NICE)"
 echo "pod_run: image $IMAGE $SUM"
