@@ -13,10 +13,11 @@ that `open_catalog` registers on each connection (DEC-17): `seq_get` and `seq_sl
 `bb_seq`, `seq_get_circular` calls `bb_seq_circular`, `seq_raw` calls `bb_seq_raw`. They
 resolve keys through `SeqStore` point lookups, never through SQL on `contig_index` or
 `seq_locator`, so a fetch reads O(1) index row groups also when the keys come from a joined
-table (AGENTS §4.4, card B-14). `partners_of` calls `bb_slot_tokens`, its point lookup of
-`tape_tokens` (card B-31).
+table (AGENTS §4.4, card B-14). `partners_of` calls `bb_partner_counts`, a point lookup of
+`tape_tokens` (card B-31), once per query with every partner slot, so each row group is read once
+(card B-38).
 
-The stored catalog holds `bb_seq`, `bb_seq_circular`, `bb_seq_raw` and `bb_slot_tokens` as stand-in
+The stored catalog holds `bb_seq`, `bb_seq_circular`, `bb_seq_raw` and `bb_partner_counts` as stand-in
 macros that raise an error naming `biobox.catalog.open_catalog` (card B-34), so a catalog opened with
 plain `duckdb` has every view and macro, and the sequence macros and `partners_of` fail there with that
 message. `open_catalog` shadows each stand-in on its connection with a temporary macro of the same name
@@ -110,7 +111,8 @@ PY_FUNCTIONS = {
     "bb_seq": ("_cuid, _s, _e, _strand", "VARCHAR", "seq_get and seq_slice"),
     "bb_seq_circular": ("_cuid, _s, _e, _strand", "VARCHAR", "seq_get_circular"),
     "bb_seq_raw": ("_rd, _s, _e", "VARCHAR", "seq_raw"),
-    "bb_slot_tokens": ("_cuid, _js", "UBIGINT[][]", "partners_of"),
+    # a whole query per call (card B-38; card B-31's bb_slot_tokens was called per contig)
+    "bb_partner_counts": ("_w", "STRUCT(t UBIGINT, l BIGINT, p BIGINT)[]", "partners_of"),
 }
 
 
@@ -809,7 +811,7 @@ def pair_macro_sql() -> list[str]:
     `token_bucket` and the row groups whose `token_id` range holds the token, also when the token comes
     from `token_of` or a joined table (card B-31: `token_rows` joins the token in). Q3 (`partners_of`)
     takes its anchors from the postings and the tokens near them from `tape_tokens` of the anchors'
-    contigs (`bb_slot_tokens`), so its partner side reads row groups in proportion to the anchors'
+    contigs (`bb_partner_counts`), so its partner side reads row groups in proportion to the anchors'
     contigs, not to the release: exactly the `tape_tokens` row groups whose footer `contig_uid` range holds
     an anchor contig, at most min(C, R) for C anchor contigs and R row groups (10 anchor contigs: at most 10).
     That is the bound when the anchors are few. When they are many it is every row group: contig uids are
@@ -817,7 +819,7 @@ def pair_macro_sql() -> list[str]:
     fewer than one once C > R ln R. The 10 Gbp rebuild read 26 of 26 for 345 anchors on 243 contigs
     (`rN.1b`) and 19 of 19 for an NR50 cluster of 2,139 slots (`rN.1a`) (*measured*, wilkcomp02,
     2026-11-10, `scripts/stress/build_stage_pod/r10_queries.py`); only a `tape_tokens` sorted otherwise
-    could do better (card B-35). The geometry helpers
+    could do better (card B-35). Each of those row groups is read once per query (card B-38). The geometry helpers
     reproduce `pairs_of_contig` (tests/oracles/pairs_oracle.py) and `biobox.l3.geometry`:
 
         pair_offset    signed shortest offset from slot _i to slot _j (j - i on a linear contig); on a
@@ -914,16 +916,45 @@ def pair_macro_sql() -> list[str]:
               FROM token_rows(_a) a JOIN token_rows(_b) b
                 ON b.contig_uid = a.contig_uid AND b.ordinal = a.ordinal AND b.seg_idx <> a.seg_idx
               ORDER BY a.contig_uid, a.ordinal, anchor_seg_idx, partner_seg_idx""",
-        # Q3 (counts; z_score ranking arrives with pair_stats): every token at every level within k slots
-        # of the loci of A. Anchors come from the postings of A (by token_id); the partner slots are the
-        # slots within k of each anchor on its contig (slot_dist 1..k, each slot once per anchor), and their
-        # tokens come from `tape_tokens` of the anchors' contigs through `bb_slot_tokens` (card B-31), a
-        # point lookup by contig_uid that reads only the row groups holding those contigs: at most one per
-        # anchor contig, and every row group once the anchor contigs outnumber the row groups by about
-        # ln(row groups) (see pair_macro_sql; card B-35). Postings are sorted by token_id, so the earlier near
-        # side (postings filtered by contig_uid) read the whole token level of the release. A hub is still
-        # refused here (its anchors are many)
-        f"""CREATE MACRO partners_of(_a, _k) AS TABLE
+        partners_of_sql(),
+    ]
+
+
+def partners_of_sql(create: str = "CREATE MACRO") -> str:
+    """Q3 `partners_of(_a, _k)` (counts; z_score ranking arrives with pair_stats): every token at every level
+    within k slots of the loci of A. `open_catalog` creates it again as a temporary macro (`create`), so a
+    catalog built before card B-38, whose stored macro calls card B-31's `bb_slot_tokens` per contig, runs
+    this one.
+
+    Anchors come from the postings of A (by token_id); the partner slots are the slots within k of each
+    anchor on its contig (slot_dist 1..k, each slot once per anchor), and their tokens come from `tape_tokens`
+    of the anchors' contigs through a point lookup by contig_uid (card B-31) that reads only the row groups
+    holding those contigs: at most one per anchor contig, and every row group once the anchor contigs
+    outnumber the row groups by about ln(row groups) (see pair_macro_sql; card B-35). Every partner slot of
+    the query goes to `bb_partner_counts` in one call, as one list of (contig, anchor slot, partner slot)
+    structs (`_all`), so each of those row groups is read once (card B-38), and the function counts per token
+    the loci (distinct (contig, anchor slot)) and the pairs (partner slots that hold it). Postings are sorted
+    by token_id, so the earlier near side (postings filtered by contig_uid) read the whole token level of the
+    release. A hub is still refused here (its anchors are many).
+
+    No switch to a plain SQL join (card B-38): neither join prunes, and the lookup wins or ties at every anchor
+    count measured on `rN.1` (10 Gbp, 93 `tape_tokens` row groups, k = 3; seconds, median of 3 runs on a fresh
+    connection, 4 threads; *measured*, wilkcomp02, 2026-11-10, card B-38 probe `b38_rn1.py`, units b38-base and
+    b38-new; tape join = the anchor windows joined to `tape_tokens`, the same answer from the same table, 93 of
+    93 row groups every time; postings self-join = the ladder's form, 197 of 197 `token_postings` row groups):
+
+        anchors (contigs)   before B-38            after          tape join   postings self-join
+        10 (8)              0.33 (8 reads)         0.14 (8)       0.47        0.39
+        100 (29)            0.84 (27)              0.23 (27)      0.49        0.44
+        300 (291)           4.61 (191 of 92)       0.47 (92)      0.45        0.40
+        989 (645)           7.57 (316 of 93)       0.47 (93)      0.44        0.44
+        2,950 (2,331)       13.24 (588 of 93)      0.54 (93)      0.76        2.38
+        3,509 (2,399)       12.35 (543 of 93)      0.52 (93)      0.78        2.40
+
+    Every answer equal (sha256 of the rows). The tape join was 3 and 6% faster at 291 and 645 anchor contigs,
+    where both read every row group: a tie within the timing tolerance of the B-38 test (1.25x), and no count
+    above which a join stays faster."""
+    return f"""{create} partners_of(_a, _k) AS TABLE
               WITH _anchor AS (
                      SELECT * FROM token_slots(_a)
                      WHERE (SELECT CASE WHEN count(*) > {PARTNERS_MAX_ROWS} THEN error('partners_of: token has more '
@@ -937,15 +968,12 @@ def pair_macro_sql() -> list[str]:
                      SELECT DISTINCT contig_uid, _i, _n,
                             CASE WHEN _c THEN ((_i + _d) % _n + _n) % _n ELSE _i + _d END AS _j
                      FROM _off WHERE _d <> 0),
-                   _per AS (
-                     SELECT contig_uid, list(_i ORDER BY _i, _j) AS _is, list(_j ORDER BY _i, _j) AS _js
-                     FROM _win WHERE _j >= 0 AND _j < _n AND _j <> _i GROUP BY contig_uid),
-                   _slots AS (
-                     SELECT contig_uid, unnest(_is) AS _i, unnest(bb_slot_tokens(contig_uid, _js)) AS _toks FROM _per),
-                   _near AS (SELECT contig_uid, _i, unnest(_toks) AS _tok FROM _slots)
-              SELECT _tok AS partner_token, count(DISTINCT (contig_uid, _i)) AS n_loci, count(*) AS n_pairs
-              FROM _near GROUP BY _tok ORDER BY n_loci DESC, partner_token""",
-    ]
+                   _all AS (
+                     SELECT list({{'c': contig_uid, 'i': _i, 'j': _j}}) AS _w
+                     FROM _win WHERE _j >= 0 AND _j < _n AND _j <> _i),
+                   _n AS (SELECT unnest(bb_partner_counts(_w)) AS _r FROM _all)
+              SELECT _r.t AS partner_token, _r.l AS n_loci, _r.p AS n_pairs
+              FROM _n ORDER BY n_loci DESC, partner_token"""
 
 
 def macro_sql() -> list[str]:
@@ -1102,7 +1130,7 @@ def generate_catalog(manifest: dict, out_path: Path | None = None, root: Path | 
 
 _READERS: dict[int, object] = {}
 # id(connection) -> its point lookups outside DuckDB's scans, as (function name, _Lazy): the tape tokens of
-# bb_slot_tokens (card B-31) and the token keys of token_of (card B-34); `profile_query` reports their reads
+# bb_partner_counts (cards B-31, B-38) and the token keys of token_of (card B-34); `profile_query` reports their reads
 _LOOKUPS: dict[int, list] = {}
 
 
@@ -1256,7 +1284,13 @@ def _register_lookup_udf(con: duckdb.DuckDBPyConnection, store) -> None:
         con.execute(stmt)
 
 
-TAPE_TOKEN_LISTS = ("family_tokens", "nr50_tokens", "nr90_tokens")  # bb_slot_tokens returns a slot's tokens in this order
+TAPE_TOKEN_LISTS = ("family_tokens", "nr50_tokens", "nr90_tokens")  # a slot's levels, in this order
+# threads that read tape_tokens row groups for one partners_of query (card B-38): the connection's DuckDB threads,
+# at most this many; a cap that bounds the row groups in flight (TapeTokenLookup), not a measured optimum
+TAPE_READ_THREADS_MAX = 8
+# a batch of tape_tokens row groups read and decoded together (card B-38): caps that bound memory, not measured optima
+TAPE_BATCH_ROW_GROUPS = 16
+TAPE_BATCH_BYTES = 4 << 20
 
 
 class _Touches:
@@ -1291,60 +1325,187 @@ class _Touches:
 class TapeTokenLookup(_Touches, KeyLookup):
     """`tape_tokens` rows by `contig_uid` from the release's files of one tape version (card B-31).
 
-    The footer statistics and binary search of `KeyLookup` (one row group read per contig, at most
-    `cache_row_groups` decoded row groups held), with its own decoding: a row group is held as numpy arrays
-    per token list (offsets, values with nulls as 0, validity), so finding a slot's tokens is array
-    indexing, never a pyarrow call or a Python object per slot. `row(key)` gives (levels, row index);
-    `get` of the base class is not available. `row_groups_read` and `files_hit` (per file) count decodes
-    (a cache hit counts nothing); `touched_since` (`_Touches`) also counts the row groups the cache served.
+    The footer statistics of `KeyLookup` (a contig is looked for only in the row groups whose `contig_uid`
+    range holds it), with its own decoding: a row group is held as numpy arrays per token list (offsets,
+    values with nulls as 0, validity) and its keys as one Arrow array, so finding slots' tokens is array
+    indexing, never a Python object per slot or per contig. `slot_tokens` answers a whole query in one call
+    (card B-38): it visits the row groups that may hold the query's contigs once each, in file and row-group
+    order, whatever order the contigs came in, so no row group is decoded twice in one call. Before card B-38
+    the lookup was called per contig in DuckDB's order and kept `cache_row_groups` (32) row groups: with more
+    row groups than that, a query decoded some again, 556 decodes of 93 row groups for 3,509 anchors on `rN.1`
+    in 9.5 s (*measured*, wilkcomp02, 2026-11-10, card B-35). `get` of the base class is not available.
+
+    Row groups the cache does not hold are read in batches of consecutive row groups of one file (one Parquet
+    read and one numpy decoding per batch, at most TAPE_BATCH_ROW_GROUPS row groups and, past the first, at most
+    TAPE_BATCH_BYTES decoded bytes as the footer counts them), by `threads` threads (`open_catalog` passes the
+    connection's DuckDB thread count, at most TAPE_READ_THREADS_MAX), at most `threads` batches ahead of the one
+    in use. A batch is cached as one entry and counts as its row groups. On small row groups the time was the
+    fixed cost per row group in Python, about 1.9 ms each (0.23 s for 119 row groups of at most 1,024 slots,
+    *measured*, wilkcomp02, 2026-11-10, cProfile of the B-38 test store), which batching pays once per batch.
+
+    Memory (AGENTS §4.1): the LRU of at most `cache_row_groups` decoded row groups, which lives as long as the
+    connection and serves repeated queries, plus at most `threads` + 1 batches being read or used. A decoded row
+    group holds 9 bytes per slot and level (value, validity) and 28 bytes per contig (key, three int32 offsets):
+    at most 131,072 x (3 x 9 + 28) bytes, about 7.2 MB, for a row group at the slot cap of AGENTS §4.6 with one
+    slot per contig, and about 3.5 MB with long contigs (*derived*). A batch holds at most max(TAPE_BATCH_BYTES,
+    one row group), so at most 32 x 7.2 + 9 x 7.2 MB, about 300 MB, with the default cache and the most threads
+    (*derived*). The query's own arrays are 8 bytes per slot asked (in), 27 bytes per slot (out) and 16 per
+    contig, which the macro bounds by its hub refusal (PARTNERS_MAX_ROWS anchors, each with at most 2k slots).
+
+    `row_groups_read` and `files_hit` (per file) count decodes (a cache hit counts nothing); `touched_since`
+    (`_Touches`) also counts the row groups the cache served.
     """
 
-    def __init__(self, files, cache_row_groups: int = 32):
+    def __init__(self, files, cache_row_groups: int = 32, threads: int = 1):
         super().__init__(files, "contig_uid", TAPE_TOKEN_LISTS, cache_row_groups)
         self._touches_init()
+        self.threads = max(1, min(int(threads), TAPE_READ_THREADS_MAX))
         self.files_hit = [0] * len(self._files)
         self.row_groups_total = sum(len(f.row_groups) for f in self._files)
+        self._units: OrderedDict = OrderedDict()  # cached batches: tuple of (file, row group) -> decoded
+        self._unit_of: dict = {}  # (file, row group) -> the cached batch that holds it
+        self._held = 0  # row groups the cached batches hold
+        self._bytes: dict = {}  # (file, row group) -> its decoded bytes, from the footer (see the class docstring)
+        for fi, f in enumerate(self._files):
+            md = f.metadata
+            lists = [i for i in range(md.num_columns) if md.schema.column(i).path.split(".")[0] in TAPE_TOKEN_LISTS]
+            for g in f.row_groups:
+                rg = md.row_group(g)
+                self._bytes[(fi, g)] = 9 * sum(rg.column(i).num_values for i in lists) + 28 * rg.num_rows
 
-    def _decoded(self, fi: int, g: int):
-        hit = self._cache.pop((fi, g), None)
-        if hit is not None:
-            self._cache[(fi, g)] = hit
-            self._touch((fi, g), fi, False)
-            return hit
+    def _batches(self, locs: list) -> list[tuple]:
+        """`locs` (sorted) cut into batches: one file, at most TAPE_BATCH_ROW_GROUPS row groups and, past the first,
+        at most TAPE_BATCH_BYTES."""
+        out, cur, size = [], [], 0
+        for loc in locs:
+            b = self._bytes[loc]
+            if cur and (loc[0] != cur[0][0] or len(cur) == TAPE_BATCH_ROW_GROUPS or size + b > TAPE_BATCH_BYTES):
+                out.append(tuple(cur))
+                cur, size = [], 0
+            cur.append(loc)
+            size += b
+        if cur:
+            out.append(tuple(cur))
+        return out
+
+    def _read(self, batch: tuple):
+        """The row groups of `batch` (one file) decoded together: ([(offsets, values, valid or None) per level],
+        keys). Touches no state of the lookup, so several threads may run it."""
+        fi = batch[0][0]
         f = self._files[fi]
-        t = pq.ParquetFile(f.path, metadata=f.metadata).read_row_group(g, columns=self.columns)
-        self.row_groups_read += 1
-        self.files_hit[fi] += 1
-        self._touch((fi, g), fi, True)
+        t = pq.ParquetFile(f.path, metadata=f.metadata).read_row_groups([g for _, g in batch], columns=self.columns,
+                                                                         use_threads=False)
         levels = []
         for c in TAPE_TOKEN_LISTS:
             a = t.column(c).combine_chunks()
-            v = a.values  # a row group read whole: offsets start at 0 and index `values`
-            levels.append((a.offsets.to_numpy(zero_copy_only=False).astype(np.int64),
-                           v.fill_null(0).to_numpy(zero_copy_only=False).astype(np.uint64),
-                           v.is_valid().to_numpy(zero_copy_only=False)))
-        out = (levels, t.column(self.key_column).to_pylist())
-        if self.cache_row_groups > 0:
-            self._cache[(fi, g)] = out
-            if len(self._cache) > self.cache_row_groups:
-                self._cache.popitem(last=False)
+            v = a.values  # row groups read whole and combined: offsets start at 0 and index `values`
+            vals = (np.frombuffer(v.buffers()[1], np.uint64, len(v), v.offset * 8) if len(v)
+                    else np.zeros(0, np.uint64))  # a null token's value is never used (valid is False)
+            valid = None if v.null_count == 0 else v.is_valid().to_numpy(zero_copy_only=False)
+            levels.append((a.offsets.to_numpy(zero_copy_only=False), vals, valid))
+        return levels, t.column(self.key_column).combine_chunks().cast(pa.binary())
+
+    def _decoded_from(self, batch: tuple, out):
+        """Count the decode of each row group of `batch` and keep the batch in the cache."""
+        for loc in batch:
+            self.row_groups_read += 1
+            self.files_hit[loc[0]] += 1
+            self._touch(loc, loc[0], True)
+        if 0 < len(batch) <= self.cache_row_groups:
+            self._units[batch] = out
+            self._unit_of.update(dict.fromkeys(batch, batch))
+            self._held += len(batch)
+            while self._held > self.cache_row_groups:
+                old, _ = self._units.popitem(last=False)
+                for loc in old:
+                    del self._unit_of[loc]
+                self._held -= len(old)
         return out
 
-    def get(self, key):  # noqa: D102
-        raise NotImplementedError("TapeTokenLookup: use row()")
+    def _visit(self, locs: list, use) -> None:
+        """Call `use(decoded, row_groups)` so that every row group of `locs` is in exactly one call: first the
+        cached batches that hold some of them, then the others in batches (`_batches`), read by `threads`
+        threads at most `threads` batches ahead (the memory bound above)."""
+        hits: dict[tuple, list] = {}
+        misses = []
+        for loc in locs:
+            unit = self._unit_of.get(loc)
+            if unit is None:
+                misses.append(loc)
+            else:
+                hits.setdefault(unit, []).append(loc)
+        for unit, ls in hits.items():
+            self._units.move_to_end(unit)
+            for loc in ls:
+                self._touch(loc, loc[0], False)
+            use(self._units[unit], ls)
+        batches = self._batches(misses)
+        if self.threads == 1 or len(batches) < 2:
+            for b in batches:
+                use(self._decoded_from(b, self._read(b)), b)
+            return
+        from collections import deque
+        from concurrent.futures import ThreadPoolExecutor
 
-    def row(self, key: bytes) -> tuple[list, int] | None:
-        """(the row group's token lists as (offsets, values, valid) per level, the contig's row in it), or None
-        when no file holds the contig."""
-        with self._lock:
+        with ThreadPoolExecutor(self.threads) as ex:
+            todo, ahead = iter(batches), deque()
+            for b in todo:
+                ahead.append((b, ex.submit(self._read, b)))
+                if len(ahead) == self.threads:
+                    break
+            while ahead:
+                b, fut = ahead.popleft()
+                got = fut.result()
+                nxt = next(todo, None)
+                if nxt is not None:
+                    ahead.append((nxt, ex.submit(self._read, nxt)))
+                use(self._decoded_from(b, got), b)
+
+    def get(self, key):  # noqa: D102
+        raise NotImplementedError("TapeTokenLookup: use slot_tokens()")
+
+    def slot_tokens(self, keys: list, lens: np.ndarray, js: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
+        """The tokens of slots of contigs: contig c (`keys[c]`, bytes or None) owns the next `lens[c]` entries of
+        `js`, 0-based slots of its tape. Returns (tok, ok), each of shape (len(js), 3), levels in TAPE_TOKEN_LISTS
+        order: tok[s, L] is slot s's level-L token where ok[s, L]; a slot outside its tape, a null token and a
+        contig no row group holds give none. Each row group whose footer range holds one of the keys is visited
+        once (`_visit`): served by the cache, or decoded."""
+        lens = np.asarray(lens, np.int64)
+        js = np.asarray(js, np.int64)
+        starts = np.concatenate([[0], np.cumsum(lens)]).astype(np.int64)
+        tok = np.zeros((len(js), len(TAPE_TOKEN_LISTS)), np.uint64)
+        ok = np.zeros(tok.shape, bool)
+        need: dict[tuple[int, int], list[int]] = {}  # (file, row group) -> the contigs it may hold
+        for c, key in enumerate(keys):
+            if key is None or lens[c] == 0:
+                continue
             for fi, f in enumerate(self._files):
-                first, last = bisect.bisect_left(f.maxs, key), bisect.bisect_right(f.mins, key)
-                for j in range(first, last):
-                    levels, keys = self._decoded(fi, f.row_groups[j])
-                    a = bisect.bisect_left(keys, key)
-                    if a < len(keys) and keys[a] == key:
-                        return levels, a
-        return None
+                for j in range(bisect.bisect_left(f.maxs, key), bisect.bisect_right(f.mins, key)):
+                    need.setdefault((fi, f.row_groups[j]), []).append(c)
+
+        def use(decoded, locs) -> None:
+            levels, rg_keys = decoded
+            cs = np.unique(np.concatenate([np.asarray(need[loc], np.int64) for loc in locs]))
+            idx = pc.index_in(pa.array([keys[c] for c in cs], pa.binary()), value_set=rg_keys)
+            found = idx.is_valid().to_numpy(zero_copy_only=False)
+            cs, rows = cs[found], idx.drop_null().to_numpy(zero_copy_only=False).astype(np.int64)
+            if not len(cs):
+                return
+            n = lens[cs]
+            # the slots of the found contigs, as positions in js, and the tape row of each
+            sid = np.repeat(starts[cs] - np.concatenate([[0], np.cumsum(n)[:-1]]), n) + np.arange(int(n.sum()))
+            row, j = np.repeat(rows, n), js[sid]
+            for L, (offs, vals, valid) in enumerate(levels):
+                o = offs[row]
+                inside = (j >= 0) & (j < offs[row + 1] - o)
+                if len(vals):
+                    pos = np.minimum(o + np.where(inside, j, 0), len(vals) - 1)
+                    tok[sid, L] = vals[pos]
+                    ok[sid, L] = inside if valid is None else inside & valid[pos]
+
+        with self._lock:
+            self._visit(sorted(need), use)
+        return tok, ok
 
 
 class _Lazy:
@@ -1367,50 +1528,74 @@ class _Lazy:
         return self._lookup
 
 
+def _offsets(lengths) -> pa.Array:
+    """List offsets (int32) from list lengths; refuses more than int32 can index."""
+    out = np.concatenate([[0], np.cumsum(np.asarray(lengths, np.int64))])
+    if out[-1] > np.iinfo(np.int32).max:
+        raise ValueError(f"bb_partner_counts: {out[-1]} values are more than one list can hold")
+    return pa.array(out.astype(np.int32), pa.int32())
+
+
 def _register_tape_udf(con: duckdb.DuckDBPyConnection, tapes: _Lazy) -> None:
-    """Register `bb_slot_tokens(contig_uid, js)` over `tapes` (card B-31): for each 0-based slot of the list
-    `js`, the non-null tokens of that slot of the contig's tape tokens, family then NR50 then NR90; an empty
-    list for a slot outside the tape or a contig without tape tokens, NULL for a NULL argument. One call per
-    contig (the macro groups its slots), so a contig is looked up once and its slots are read with numpy.
-    Registered as `bb_slot_tokens_udf`, shadowing the stored stand-in (`_shadow`, card B-34)."""
+    """Register `bb_partner_counts(slots)` over `tapes` (card B-38; card B-31 had `bb_slot_tokens`, per contig).
 
-    def bb_slot_tokens(cuids: pa.Array, jss: pa.Array) -> pa.Array:
-        lookup = tapes.get()
-        cus = cuids.to_pylist()
-        lens = pc.list_value_length(jss).fill_null(0).to_numpy(zero_copy_only=False).astype(np.int64)
-        flat = pc.list_flatten(jss).fill_null(-1).to_numpy(zero_copy_only=False).astype(np.int64)
-        starts = np.concatenate([[0], np.cumsum(lens)])
-        null = np.array([cu is None or not jss[r].is_valid for r, cu in enumerate(cus)], dtype=bool)
-        toks, masks = [], []
-        for r, cu in enumerate(cus):
-            if null[r]:
+    Per row: a list of partner slots as structs (c: contig_uid, i: the anchor's slot, j: the partner's slot,
+    0-based); returns one struct (t: token, l: loci, p: pairs) per token found on those slots in `tape_tokens`
+    (family, NR50 and NR90; null tokens and slots outside the tape give none): `l` the distinct (c, i) whose
+    slots hold `t`, `p` the slots that hold it. An empty list when no slot has a token, NULL for a NULL row.
+    `partners_of` passes every partner slot of a query in one row, so `TapeTokenLookup.slot_tokens` sees the
+    whole query at once and reads each row group once. Counting here (`counts`) replaced an unnest of every
+    (slot, token) and two group-bys that took most of the macro's DuckDB time (card B-38 probe of the hub on
+    the B-38 test store). Registered as `bb_partner_counts_udf`, shadowing the stored stand-in (`_shadow`,
+    card B-34)."""
+
+    out_type = pa.struct([("t", pa.uint64()), ("l", pa.int64()), ("p", pa.int64())])
+
+    def whole(a):  # DuckDB may pass, and pyarrow return, a ChunkedArray
+        return a.combine_chunks() if isinstance(a, pa.ChunkedArray) else a
+
+    def counts(flat) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+        """(tokens, loci, pairs) of one row's slots, in no order. The slots are sorted by contig for the lookup;
+        the counts are one Arrow hash aggregate (count, count_distinct of the locus) per token: sorting the
+        tokens instead took 18 ms of 69 for the hub, and numpy's np.unique 44 ms of 110 (card B-38 probe)."""
+        enc = whole(pc.dictionary_encode(whole(pc.struct_field(flat, "c"))))  # the distinct contigs, each slot's
+        codes = enc.indices.fill_null(-1).to_numpy(zero_copy_only=False).astype(np.int64)
+        js = whole(pc.struct_field(flat, "j")).fill_null(-1).to_numpy(zero_copy_only=False).astype(np.int64)
+        iis = whole(pc.struct_field(flat, "i")).fill_null(-1).to_numpy(zero_copy_only=False).astype(np.int64)
+        known = np.flatnonzero(codes >= 0)
+        if not len(known):
+            return np.zeros(0, np.uint64), np.zeros(0, np.int64), np.zeros(0, np.int64)
+        order = known[np.argsort(codes[known], kind="stable")]  # the slots grouped by contig
+        lens = np.bincount(codes[known], minlength=len(enc.dictionary))
+        tok, ok = tapes.get().slot_tokens(enc.dictionary.to_pylist(), lens, js[order])
+        t = tok[ok]  # row-major: each slot's tokens in turn
+        if not len(t):
+            return np.zeros(0, np.uint64), np.zeros(0, np.int64), np.zeros(0, np.int64)
+        locus = np.repeat(codes[order] * (int(iis.max()) + 2) + (iis[order] + 1), ok.sum(axis=1))
+        g = pa.table({"t": t, "l": locus}).group_by("t", use_threads=False).aggregate(
+            [("l", "count"), ("l", "count_distinct")])
+        return (g.column("t").to_numpy(), g.column("l_count_distinct").to_numpy().astype(np.int64),
+                g.column("l_count").to_numpy().astype(np.int64))
+
+    def bb_partner_counts(wss: pa.Array) -> pa.Array:
+        wss = whole(wss)
+        valid = wss.is_valid().to_numpy(zero_copy_only=False)
+        parts, sizes = [], []
+        for r in range(len(wss)):  # one row per partners_of query
+            if not valid[r]:
+                sizes.append(0)
                 continue
-            js = flat[starts[r]:starts[r + 1]]
-            hit = lookup.row(cu)
-            tok = np.zeros((len(js), len(TAPE_TOKEN_LISTS)), np.uint64)
-            ok = np.zeros(tok.shape, bool)
-            if hit is not None:
-                levels, i = hit
-                for L, (offs, vals, valid) in enumerate(levels):
-                    o, n = offs[i], offs[i + 1] - offs[i]
-                    inside = (js >= 0) & (js < n)
-                    pos = o + np.where(inside, js, 0)
-                    if len(vals):
-                        tok[:, L] = vals[np.minimum(pos, len(vals) - 1)]
-                        ok[:, L] = inside & valid[np.minimum(pos, len(vals) - 1)]
-            toks.append(tok)
-            masks.append(ok)
-        tok = np.concatenate(toks) if toks else np.zeros((0, len(TAPE_TOKEN_LISTS)), np.uint64)
-        ok = np.concatenate(masks) if masks else np.zeros(tok.shape, bool)
-        inner_offsets = np.concatenate([[0], np.cumsum(ok.sum(axis=1))]).astype(np.int32)
-        inner = pa.ListArray.from_arrays(pa.array(inner_offsets, pa.int32()), pa.array(tok[ok], pa.uint64()))
-        outer_lens = np.where(null, 0, lens)
-        outer_offsets = np.concatenate([[0], np.cumsum(outer_lens)]).astype(np.int32)
-        return pa.ListArray.from_arrays(pa.array(outer_offsets, pa.int32()), inner, mask=pa.array(null))
+            t, loci, pairs = counts(whole(wss[r].values))
+            parts.append(pa.StructArray.from_arrays([pa.array(t, pa.uint64()), pa.array(loci, pa.int64()),
+                                                     pa.array(pairs, pa.int64())], fields=list(out_type)))
+            sizes.append(len(t))
+        values = pa.concat_arrays(parts) if parts else pa.array([], out_type)
+        return pa.ListArray.from_arrays(_offsets(sizes), values, mask=pa.array(~valid))
 
-    con.create_function("bb_slot_tokens_udf", bb_slot_tokens, ["BLOB", "BIGINT[]"], "UBIGINT[][]",
-                        type="arrow", null_handling="special", side_effects=False)
-    _shadow(con, "bb_slot_tokens")
+    con.create_function("bb_partner_counts_udf", bb_partner_counts, ["STRUCT(c BLOB, i BIGINT, j BIGINT)[]"],
+                        "STRUCT(t UBIGINT, l BIGINT, p BIGINT)[]", type="arrow", null_handling="special",
+                        side_effects=False)
+    _shadow(con, "bb_partner_counts")
 
 
 def _tape_token_files(con: duckdb.DuckDBPyConnection, root: Path) -> list[Path]:
@@ -1681,11 +1866,14 @@ def open_catalog(path: Path, local_dir: Path | None = None, threads: int | None 
     # the tape tokens and token keys the views read: under the build root, as every view's files (`root`
     # moves the shards only)
     built = Path(con.execute("SELECT value FROM catalog_info WHERE key = 'root'").fetchall()[0][0])
-    tapes = _Lazy(TapeTokenLookup, _tape_token_files(con, built))
+    (n_threads,), = con.execute("SELECT current_setting('threads')::BIGINT").fetchall()
+    tapes = _Lazy(lambda files: TapeTokenLookup(files, threads=n_threads), _tape_token_files(con, built))
     _register_tape_udf(con, tapes)
+    # a catalog built before card B-38 stores a partners_of that calls bb_slot_tokens per contig
+    con.execute(partners_of_sql("CREATE OR REPLACE TEMP MACRO"))
     keys = _Lazy(TokenKeyLookup, _token_dict_files(con, built))
     _register_token_udf(con, keys)
-    _LOOKUPS[id(con)] = [("bb_slot_tokens", tapes), ("bb_token_of", keys)]
+    _LOOKUPS[id(con)] = [("bb_partner_counts", tapes), ("bb_token_of", keys)]
     attach_search(con, runs, pack)
     return con
 
@@ -1755,8 +1943,8 @@ def profile_query(con: duckdb.DuckDBPyConnection, sql: str, params: list | None 
     the sequence functions read from the shards (blocks decompressed, compressed bytes read,
     bytes decoded), and `index` the row groups their point lookups read from `seq_locator` and
     `contig_index` (`KeyLookup.row_groups_read`; a cache hit counts nothing); both are zero when
-    the query reads no sequence. The `tape_tokens` row groups that `bb_slot_tokens` reads by point lookup
-    (`partners_of`, card B-31) are one more entry of `scans`, with `"lookup": "bb_slot_tokens"` and
+    the query reads no sequence. The `tape_tokens` row groups that `bb_partner_counts` reads by point lookup
+    (`partners_of`, card B-31) are one more entry of `scans`, with `"lookup": "bb_partner_counts"` and
     `rows_scanned` None, and so are the `token_dict` row groups of `token_of` (`"lookup": "bb_token_of"`,
     card B-34). For these two, `row_groups_scanned` is the distinct row groups the query touched, whether
     the lookup decoded them from the file (`row_groups_read`, decodes) or its row-group cache, which lives
@@ -1813,7 +2001,7 @@ def profile_query(con: duckdb.DuckDBPyConnection, sql: str, params: list | None 
         walk(op)
     for c in info.get("children", []):
         walk(c)
-    # the point lookups of bb_slot_tokens (partners_of, card B-31) and of token_of (card B-34) read Parquet
+    # the point lookups of bb_partner_counts (partners_of, cards B-31, B-38) and of token_of (card B-34) read Parquet
     # outside DuckDB's scans: each is listed as one more scan of its table (`tape_tokens`, `token_dict`), the
     # distinct row groups the query touched (decoded or served by the cache, card B-35) of the files' total
     for (fn, lazy), (mark, n_before) in zip(lookups, lookups_before):
