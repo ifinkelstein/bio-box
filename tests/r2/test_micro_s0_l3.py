@@ -737,11 +737,17 @@ def _rows(root: Path, glob: str, columns=None) -> list[dict]:
 
 def _oracle_tokens(root: Path, release: str, libraries: list[str], tv: str = TV) -> tuple[list[dict], list[dict]]:
     """The in-memory algorithm of tokens.run before card B-09, kept here as a brute-force reference:
-    every tape, domain and cluster row in Python dicts. Returns (token_dict rows, tape_tokens rows)."""
+    every tape, domain and cluster row in Python dicts. Returns (token_dict rows, tape_tokens rows).
+
+    Card B-21: the dictionary holds every model with an included domain on a slot, not only the canonical
+    ones, and a family's `n_slots` counts the slots whose protein has at least one domain of the model; the
+    tape tokens keep the canonical family."""
     tps = _rows(root, f"l3/tapes/tape_version={tv}/stage=*/part-*.parquet", ["contig_uid", "protein_uids"])
     best: dict[bytes, tuple] = {}
+    models: dict[bytes, set] = defaultdict(set)  # protein -> {(source, accession)} of its included domains
     for rank, lib in enumerate(libraries):
         for r in _rows(root, f"l1/domains/library={lib}/stage=*/part-*.parquet"):
+            models[r["protein_uid"]].add((libraries.index(lib) + 1, r["model_acc"]))
             key = (rank, -r["dom_bitscore"], r["model_acc"], r["env_start"])
             if r["protein_uid"] not in best or key < best[r["protein_uid"]][0]:
                 best[r["protein_uid"]] = (key, lib, r["model_acc"])
@@ -759,7 +765,9 @@ def _oracle_tokens(root: Path, release: str, libraries: list[str], tv: str = TV)
         return out
 
     per_contig = [(t["contig_uid"], [keys(pu) for pu in t["protein_uids"]]) for t in tps]
-    uses = Counter((lvl, *k) for _, slots in per_contig for s in slots for lvl, k in s.items() if k is not None)
+    uses = Counter((lvl, *k) for _, slots in per_contig for s in slots for lvl, k in s.items()
+                   if k is not None and lvl != "family")
+    uses.update(("family", *m) for t in tps for pu in t["protein_uids"] if pu is not None for m in models.get(pu, ()))
     tid: dict[tuple, int] = {}
     for lvl, bits in LEVEL_BITS.items():
         for src in sorted({s for (lv, s, _) in uses if lv == lvl}):
@@ -812,6 +820,40 @@ def _write_sorted(spec_name: str, rows: list[dict], path: Path) -> None:
     io.write_table([pa.Table.from_pylist(rows, schema=spec.schema)], spec, path)
 
 
+SYN_LIB = "synfam-1"
+
+
+def _syn_acc(tok: int) -> str:
+    """The model accession of a synthetic family token (zero-padded, so code point order is local order)."""
+    return f"SYN{tok & (2**56 - 1):08d}"
+
+
+def back_families(root: Path, release: str, tapes_by_stage: dict[str, list[dict]], tok_rows: list[dict],
+                  library: str = SYN_LIB) -> None:
+    """Card B-21: family postings come from `l1_domains` through `token_dict`, so synthetic tape tokens that carry
+    family tokens need both. Each slot with a family token gets a protein of its own (set in the tape rows, which
+    the caller writes afterwards) with one included domain of a model named for the token, in the stage of its
+    tape, and `token_dict` gets one family row per token (source `library`). Family tokens must have source 1."""
+    fam = {r["contig_uid"]: r["family_tokens"] for r in tok_rows}
+    doms: dict[str, list[dict]] = defaultdict(list)
+    uses: Counter = Counter()
+    for stage, rows in tapes_by_stage.items():
+        for t in rows:
+            pus = list(t["protein_uids"])
+            for i, f in enumerate(fam[t["contig_uid"]]):
+                if f is None:
+                    continue
+                assert f >> 61 == LEVEL_BITS["family"] and (f >> 56) & 31 == 1, f
+                pus[i] = hashlib.blake2b(t["contig_uid"] + i.to_bytes(4, "big"), digest_size=16).digest()
+                doms[stage].append(_dom(pus[i], _syn_acc(f), 10.0, 0))
+                uses[f] += 1
+            t["protein_uids"] = pus
+    for stage, rows in sorted(doms.items()):
+        _write_sorted("l1_domains", rows, root / f"l1/domains/library={library}/stage={stage}/part-0.parquet")
+    _write_sorted("token_dict", [{"token_id": f, "level": "family", "source": library, "key": _syn_acc(f), "n_slots": n}
+                                 for f, n in uses.items()], root / f"l3/token_dict/release={release}/part-0.parquet")
+
+
 @pytest.mark.covers("C-04")
 def test_b09_canonical_families_and_cluster_keys_on_synthetic_mappings(built, tmp_path):
     """Library precedence, bitscore and accession ties, key order and unused keys, on real protein uids."""
@@ -846,17 +888,23 @@ def test_b09_canonical_families_and_cluster_keys_on_synthetic_mappings(built, tm
     by_key = {(r["level"], r["source"], r["key"]): r for r in dict_rows}
     uses = Counter(pu for t in tps.values() for pu in t["protein_uids"])
     fam = [k for k in by_key if k[0] == "family"]
-    assert sorted(fam, key=lambda k: by_key[k]["token_id"]) == [  # by source, then key in code point order
-        ("family", "zzz-1", "A1"), ("family", "zzz-1", "M1"), ("family", "zzz-1", "Q2"), ("family", "zzz-1", "b10"),
-        ("family", "mmm-1", "B2"), ("family", "mmm-1", "b9"), ("family", "aaa-1", "a")]  # "TOP" is on no slot
+    # card B-21: every model with an included domain on a slot is a token, canonical or not ("TOP" and "zzz" lose
+    # the canonical choice on p[0] and p[4] but are tokens), by source, then key in code point order
+    assert sorted(fam, key=lambda k: by_key[k]["token_id"]) == [
+        ("family", "zzz-1", k) for k in ("A1", "M1", "M2", "Q1", "Q2", "Z9", "b10")] + [
+        ("family", "mmm-1", k) for k in ("B2", "TOP", "b9")] + [("family", "aaa-1", k) for k in ("a", "zzz")]
+    with_model = defaultdict(set)  # (library, accession) -> proteins with a domain of it
+    for lib, rows in libs.items():
+        for d in rows:
+            with_model[(lib, d["model_acc"])].add(d["protein_uid"])
     for (lv, src, key), r in by_key.items():
         tid = r["token_id"]
         if lv == "family":
             assert tid >> 61 == 1 and (tid >> 56) & 31 == order.index(src) + 1
-            assert r["n_slots"] == sum(uses[pu] for pu, f in want_family.items() if f == (src, key))
+            assert r["n_slots"] == sum(uses[pu] for pu in with_model[(src, key)]) > 0  # "b10" twice on p[3]: once
     assert [(by_key[("nr90", "mmseqs2", c.hex())]["token_id"]) for c in (lo, mid, hi)] == [3 << 61 | i for i in range(3)]
     assert by_key[("nr90", "mmseqs2", hi.hex())]["n_slots"] == uses[p[0]] + uses[p[3]]
-    assert res["tokens"] == {"family": 7, "nr50": 2, "nr90": 3} and res["contigs"] == len(tps)
+    assert res["tokens"] == {"family": 12, "nr50": 2, "nr90": 3} and res["contigs"] == len(tps)
     tid_of = {(r["level"], r["token_id"]): (r["source"], r["key"]) for r in dict_rows}
     for r in tok_rows:
         for i, pu in enumerate(tps[r["contig_uid"]]["protein_uids"]):
@@ -1004,7 +1052,13 @@ def test_b09_token_files_conform_and_the_manifest_accepts_them(built):
     counted = con.execute("SELECT level, sum(n_slots) FROM token_dict GROUP BY 1 ORDER BY 1").fetchall()
     on_slots = [(lvl, con.execute(f"SELECT count(t) FROM (SELECT unnest({lvl}_tokens) AS t FROM tape_tokens)").fetchall()[0][0])
                 for lvl in sorted(LEVELS)]
-    assert counted == on_slots
+    # card B-21: a family counts the slots it is on as any included domain (its postings, one slot once), which the
+    # tape tokens' canonical families are a part of; the cluster levels count the tape tokens
+    posted = dict(con.execute("SELECT d.level, count(*) FROM (SELECT DISTINCT token_id, contig_uid, ordinal FROM "
+                              "token_postings) p JOIN token_dict d ON d.token_id = p.token_id GROUP BY 1").fetchall())
+    assert counted == [(lvl, posted[lvl]) for lvl in sorted(LEVELS)]
+    assert [c for c in counted if c[0] != "family"] == [c for c in on_slots if c[0] != "family"]
+    assert dict(counted)["family"] >= dict(on_slots)["family"] > 0
 
 
 def test_b09_tokens_never_load_every_tape(built, tmp_path, monkeypatch):
@@ -1093,6 +1147,7 @@ def _write_syn_tapes(root: Path, contigs: list[tuple[str, list[tuple[int, int, i
         pick = lambda base, k, p_none: [None if rng.random() < p_none else base | rng.randrange(k) for _ in slots]  # noqa: E731
         tok_rows.append({"contig_uid": cu, "family_tokens": pick(FAM, 3, 0.3), "nr50_tokens": pick(NR50, 3, 0.2),
                          "nr90_tokens": pick(NR90, 4, 0.1)})
+    back_families(root, SYN_REL, {"S0": tape_rows}, tok_rows)  # card B-21: family postings come from domains
     for name, rows, path in (("contig_tapes", tape_rows, f"l3/tapes/tape_version={tv}/stage=S0/part-0.parquet"),
                              ("tape_tokens", tok_rows, f"l3/tape_tokens/tape_version={tv}/release={SYN_REL}/part-0.parquet")):
         spec = table(name)
