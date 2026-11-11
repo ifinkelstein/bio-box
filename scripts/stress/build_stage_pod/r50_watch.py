@@ -1,7 +1,11 @@
 """Guard of the 50 Gbp build (planning/measurements/2026-11-11_build_r50.md). Host side, standard library only.
 
     python3 -I r50_watch.py --root R --scratch D --since FILE --state DIR [--unit-prefix r50-]
-                            [--tmp-min-gb 200] [--scratch-max-gb 300] [--cpu-max 300]
+                            [--tmp-min-gb 200] [--scratch-max-gb 300] [--cpu-max 300] [--cluster-cpu-max N]
+                            [--stages S,REL,...]
+
+--cluster-cpu-max is the limit for clustering steps (default --cpu-max); --stages limits the run records read to
+those stages and releases.
 
 Prints one JSON line and exits 0 when the build may go on, 3 when it must stop (the reasons are in the line):
 
@@ -122,7 +126,14 @@ def main() -> int:
     ap.add_argument("--tmp-min-gb", type=float, default=200)
     ap.add_argument("--scratch-max-gb", type=float, default=300)
     ap.add_argument("--cpu-max", type=float, default=300)
+    ap.add_argument("--cluster-cpu-max", type=float, default=None,
+                    help="the limit for clustering steps (`cluster.*` records, `release cluster` commands); "
+                         "default --cpu-max")
+    ap.add_argument("--stages", default=None,
+                    help="comma list: read only run records of these stages and releases (runs/stage=<S>/)")
     a = ap.parse_args()
+    only = None if a.stages is None else {f"stage={s}" for s in a.stages.split(",")}
+    ccap = a.cpu_max if a.cluster_cpu_max is None else a.cluster_cpu_max
     reasons = []
     out = {"time": time.strftime("%Y-%m-%dT%H:%M:%S%z")}
     free = shutil.disk_usage("/tmp").free / 1e9
@@ -147,7 +158,7 @@ def main() -> int:
     since = Path(a.since).stat().st_mtime
     recs = []
     for f in Path(a.root, "runs").glob("stage=*/*.json"):
-        if f.name.endswith(".publishing.json"):
+        if f.name.endswith(".publishing.json") or (only is not None and f.parent.name not in only):
             continue
         try:
             if f.stat().st_mtime < since:
@@ -156,15 +167,17 @@ def main() -> int:
         except (OSError, ValueError):
             continue
         cm = r.get("cpu_min")
-        if cm is not None and cm > a.cpu_max:
-            reasons.append(f"run record {f.parent.name}/{f.name}: {cm:.1f} CPU-minutes, over {a.cpu_max:g}")
+        cap = ccap if f.name.startswith("cluster") else a.cpu_max
+        if cm is not None and cm > cap:
+            reasons.append(f"run record {f.parent.name}/{f.name}: {cm:.1f} CPU-minutes, over {cap:g}")
         recs.append(cm or 0)
     out["records"] = {"n": len(recs), "max_cpu_min": round(max(recs), 2) if recs else None}
     lv = live(a.unit_prefix)
     out["live"] = lv[:4]
     for r in lv:
-        if r["cpu_min"] > a.cpu_max:
-            reasons.append(f"step {r['step']} (pid {r['pid']}) has used {r['cpu_min']:.1f} CPU-minutes, over {a.cpu_max:g}")
+        cap = ccap if r["step"].startswith("release cluster") else a.cpu_max
+        if r["cpu_min"] > cap:
+            reasons.append(f"step {r['step']} (pid {r['pid']}) has used {r['cpu_min']:.1f} CPU-minutes, over {cap:g}")
     out["reasons"] = reasons
     print(json.dumps(out), flush=True)
     return 3 if reasons else 0

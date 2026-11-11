@@ -21,7 +21,8 @@
 #       the driver. --threads 16 (gene calling), --scan-jobs 4 --scan-cpus 4 (ingest batches, if any).
 #   B2  P6 the same, but every stage is then gene-called, so it runs on into rM.1's release steps: clustering of
 #       about 47 M proteins in parts (card B-41), tokens, postings, dim, manifest, catalog. --threads 32,
-#       --scan-jobs 8 --scan-cpus 4 (32 threads: the day budget of this work), fixed for the whole launch.
+#       --cluster-parts CLUSTER_PARTS, --scan-jobs REL_JOBS --scan-cpus REL_CPUS (4 parts of 8 threads at once:
+#       32 threads, the day budget of this work), fixed for the whole launch.
 #       Then `release verify` of rM.1 must pass.
 #   B3  P3, P4, P5, P6: the Pfam scan, `build-stage --stage S --release rM.1 ... --library pfam 38.2 <file>
 #       gathering` (rM.1's release steps all have run records, so only the scan runs, in shards), then
@@ -38,8 +39,9 @@
 # for the unit to end (exit 75) and relaunches with the new count. The shard that ends first after STOP publishes
 # nothing and is rerun. Only scan launches switch; a STOP during clustering would discard a step.
 #
-# Guard (r50_watch.py, once a minute while a unit runs): a run record of this driver's time or a step command still
-# running with more than 300 CPU-minutes, scratch over 300 GB, or /tmp under 200 GB free: the driver writes
+# Guard (r50_watch.py, once a minute while a unit runs): a run record of this driver's stages and releases, or a step
+# command still running, with more than 280 CPU-minutes for a clustering step (CLUSTER_CPU_MAX) or 300 for any
+# other, scratch over 300 GB, or /tmp under 200 GB free: the driver writes
 # ROOT/STOP with the reason (build-stage stops at its next step boundary), waits for the unit and stops, FAILED.
 # The STOP is left for a person to read and remove.
 #
@@ -77,6 +79,18 @@ NIGHT_JOBS=${NIGHT_JOBS:-10}
 CPUS=4
 LEAD_MIN=${LEAD_MIN:-90}
 INPUT_WAIT_S=${INPUT_WAIT_S:-3600}
+# Release phases (rM.1, rM.2): clustering of about 47 M proteins in parts. --cluster-parts cuts every per-query
+# call into CLUSTER_PARTS parts (the only cut build-stage exposes; its own cut aims at 240 CPU-minutes a part from
+# estimates that ran 25% to 36% low at 10.6 M proteins, card C-22). REL_JOBS parts run at once with REL_CPUS
+# threads each: 4 × 8 = 32 threads, and at most 4 prefilter parts, each holding the whole target index, at once
+# (8.06 GB per part at 10.6 M, measured in rN.3; about 35 GB at 47 M, estimate) under the unit's 200G.
+CLUSTER_PARTS=${CLUSTER_PARTS:-24}
+REL_JOBS=${REL_JOBS:-4}
+REL_CPUS=${REL_CPUS:-8}
+# The guard's limits: a clustering step over CLUSTER_CPU_MAX (280, the coordinator's line, 2026-11-11) or any
+# other step over 300 CPU-minutes writes STOP.
+CLUSTER_CPU_MAX=${CLUSTER_CPU_MAX:-280}
+GUARD_STAGES=P3,P4,P5,P6,rM.1,rM.2
 STEP=domains-pfam-38.2
 mkdir -p "$STATE"
 [ -e "$STATE/since" ] || touch "$STATE/since"
@@ -144,7 +158,8 @@ wait_inputs() {  # $1: stage
 }
 guard() {  # run the watcher; on a reason, write STOP once
   local line rc
-  line=$(python3 -I "$BIN/r50_watch.py" --root "$ROOT" --scratch "$SCRATCH" --since "$STATE/since" --state "$STATE")
+  line=$(python3 -I "$BIN/r50_watch.py" --root "$ROOT" --scratch "$SCRATCH" --since "$STATE/since" --state "$STATE" \
+    --cluster-cpu-max "$CLUSTER_CPU_MAX" --stages "$GUARD_STAGES")
   rc=$?
   echo "$line" >> "$STATE/guard.jsonl"
   if [ "$rc" = 3 ] && [ "$GUARD_STOPPED" = 0 ]; then
@@ -157,7 +172,7 @@ guard() {  # run the watcher; on a reason, write STOP once
 }
 next_unit() {  # $1: tag
   local n
-  n=$(($(wc -l < "$STATE/units" 2> /dev/null || echo 0) + 1))
+  n=$(($( [ -e "$STATE/units" ] && wc -l < "$STATE/units" || echo 0) + 1))
   echo "r50-$1-$n"
 }
 launch() {  # $1 unit, $2 pod_run --threads, rest: build-stage arguments
@@ -224,6 +239,7 @@ stage_only() {  # $1 stage
   else
     log "B1 $s: ingest ran as one process (no batch line in the log)"
   fi
+  log "B1 $s: gene-call result (card C-20: contigs an earlier stage owns are skipped): $(grep '"step": "genecall"' "$UNITLOGS/$unit.log" | tail -n 1 | cut -c1-600)"
   if [ "$RC" = 2 ] && [ -e "$ROOT/runs/stage=$s/tapes.json" ] \
      && grep -Eq "build-stage: refused before rM\.1\.cluster: release rM\.1: stage P[3-6] has no gene-call run record" "$UNITLOGS/$unit.log"; then
     log "B1 $s: stage steps done; build-stage stopped at rM.1's cluster gate as expected: $(grep 'refused before rM.1.cluster' "$UNITLOGS/$unit.log" | tail -n 1 | cut -c1-200)"
@@ -245,7 +261,7 @@ release_phase() {  # $1 release, $2 stage, $3 tag, $4 "lib" for --library
   echo "$unit $s $rel release ${4:-}" >> "$STATE/units"
   launch "$unit" "$BIG_THREADS" --stage "$s" --release "$rel" --stages "$ALL" \
     --genomes "$W/inputs/$s/genomes.json" --objects "$W/inputs/$s/objects.json" "${lib[@]}" \
-    --threads "$BIG_THREADS" --scan-jobs $((BIG_THREADS / CPUS)) --scan-cpus "$CPUS"
+    --threads "$BIG_THREADS" --scan-jobs "$REL_JOBS" --scan-cpus "$REL_CPUS" --cluster-parts "$CLUSTER_PARTS"
   wait_unit "$unit" "$s"
   [ "$RC" = 0 ] || fail "$rel: $unit exit '$RC' (read $UNITLOGS/$unit.log)"
   log "$rel: $(grep 'steps done' "$UNITLOGS/$unit.log" | tail -n 1 | cut -c1-200)"
