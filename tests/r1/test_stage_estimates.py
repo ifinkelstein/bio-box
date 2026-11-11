@@ -85,8 +85,8 @@ def test_b36_the_cluster_estimate_is_below_none_of_the_three_measured_points(n, 
 
 
 @pytest.mark.covers("B-36")
-def test_b36_the_shipped_profile_caps_clustering_at_12000_cpu_minutes():
-    assert _profile().cluster_cpu_min_max == 12000
+def test_b36_the_shipped_profile_caps_clustering_at_20000_cpu_minutes():
+    assert _profile().cluster_cpu_min_max == 20000
 
 
 def _write_profile(tmp_path: Path, **change) -> Path:

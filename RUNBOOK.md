@@ -201,14 +201,14 @@ during the hours the scan runs. A smaller J only makes the scan take longer; the
 **Clustering's own cap (DEC-25).** A release's clustering is one process, and on a large release it
 passes 300 CPU-minutes: 2,195.91 CPU-minutes for 10,620,684 proteins (measured, wilkcomp02,
 2026-11-10, run record `rN.1.cluster`). DEC-25 exempts this one step from the 300 CPU-minute rule
-under its own cap, the profile's `cluster_cpu_min_max` (12000 in `profiles/wilkcomp02.yaml`, an
+under its own cap, the profile's `cluster_cpu_min_max` (20000 in `profiles/wilkcomp02.yaml`, an
 estimate: about five times that run; the PI may change it). Every other step keeps the 300-minute rule.
 
 - `build-stage` estimates clustering's CPU-minutes before it starts it, from the release's protein
   count: a power law through 284.10 CPU-minutes at 2,053,075 proteins and 2,195.91 at 10,620,684
   (measured, wilkcomp02, 2026-11-10, `rN.1b` and `rN.1`; the fit is derived and extrapolated above
-  10.6 M proteins). At the cap of 12000 it refuses a release of more than about 41.6 M proteins
-  (derived: 10,620,684 × (12000 / 2195.91)^(1 / 1.244)).
+  10.6 M proteins). At the cap of 20000 it refuses a release of more than about 62.7 M proteins
+  (derived: 10,620,684 × (20000 / 2195.91)^(1 / 1.244)).
 - When every stage of the release has its gene-call run record, the check is made before any step;
   otherwise just before the cluster step's command, once this call's stage is gene-called.
 - An estimate over `cluster_cpu_min_max` is refused, exit 2. The log line starts `build-stage: refused`
@@ -596,7 +596,7 @@ a profile value is missing from this table.
 | Memory cap required | true: `run-step` and the search runner refuse to start uncapped | profile `require_mem_cap` |
 | Nice | 19 (one big process), 15 (many small ones) | profile `nice_monolithic`, `nice_fanout`; AGENTS 7.2 says 19 |
 | CPU-minutes per process | 300 | profile `cpu_min_per_process`; AGENTS 7.2 |
-| CPU-minutes of a release's clustering | 12000, estimated before launch; refused above it. The one exemption from the 300 (DEC-25), until card B-37. An estimate: about five times the 2,195.91 measured for 10,620,684 proteins (wilkcomp02, 2026-11-10). Without the key, clustering over 300 is refused | profile `cluster_cpu_min_max`; DEC-25; `cluster_refusal` in `src/biobox/stage.py`; card B-36 |
+| CPU-minutes of a release's clustering | 20000, estimated before launch; refused above it. The one exemption from the 300 (DEC-25), until card B-37. Set by the PI on 2026-11-10 for the 50 Gbp build: about nine times the 2,195.91 measured for 10,620,684 proteins (wilkcomp02, 2026-11-10). Without the key, clustering over 300 is refused | profile `cluster_cpu_min_max`; DEC-25; `cluster_refusal` in `src/biobox/stage.py`; card B-36 |
 | Scan shard size | 30,150,753 residues: 80% of `cpu_min_per_process` (300) at 7.96 CPU-minutes per million residues (derived: 300 × 0.8 / 7.96 × 10^6; the rate of the Pfam scan of stage P1 in card C-10, measured on wilkcomp02, 2026-11-10: 2,343.74 CPU-minutes for 294.5 M residues). The 80% leaves room for a scan 25% slower per residue (derived: 1 / 0.8) | `SHARD_MARGIN` and `SCAN_CPU_MIN_PER_M` in `src/biobox/stage.py`; cards C-11, C-13 |
 | Scan shards at once | `--scan-jobs` J × `--scan-cpus` C at most the threads `run-step` allows when `build-stage` starts (40 by day, 56 at night when idle); defaults C = 4, J = allowance // C (10 by day, 14 at night). The cap is a total over everything of ours on the pod, and `build-stage` counts only its own threads: choose J = floor((cap - other threads) / C) (section 2). The allowance is read again before each step and before each shard launch; a launch that would pass it waits | `scan_slots` and `_launch` in `src/biobox/stage.py`; cards C-11, C-12 |
 | Unit CPU quota | the night cap, 56: a ceiling fixed at launch; `build-stage` holds the limit of the hour | `scripts/pod_run.sh --threads`, profile `max_threads_night`; card C-12 |
@@ -624,7 +624,7 @@ exemption; the fixture's clustering is far under 300 CPU-minutes). Appendix B li
 
 | Limit | What happens | Card |
 |---|---|---|
-| Clustering is one process | a release's clustering may run above 300 CPU-minutes, up to the profile's `cluster_cpu_min_max` (12000), under DEC-25; a release estimated above that (about 41.6 M proteins, derived, section 2) is refused, exit 2. The estimate is a fit by protein count, extrapolated above 10.6 M proteins | B-36, B-37 |
+| Clustering is one process | a release's clustering may run above 300 CPU-minutes, up to the profile's `cluster_cpu_min_max` (20000), under DEC-25; a release estimated above that (about 62.7 M proteins, derived, section 2) is refused, exit 2. The estimate is a fit by protein count, extrapolated above 10.6 M proteins | B-36, B-37 |
 | Ingest of a stage over about 60 Gbp | `build-stage` refuses before any step (exit 2): one ingest process runs at about 3.7 Mbp/s (measured, wilkcomp02), so it would pass 300 CPU-minutes. Split the stage into smaller stages | B-30 |
 | Shard size is Pfam's | shards are cut at 80% of the budget at Pfam's rate (7.96 CPU-minutes per million residues, measured in C-10). A library more than 1.25 times slower per residue than that (derived: 1 / 0.8; above 9.95 CPU-minutes per million residues, derived) passes 300 CPU-minutes per shard, and the run record says `over_cpu_budget`. Lower `--scan-cpus` does not help, since the budget counts CPU-minutes | C-11, C-13 |
 | `pod_run.sh` CPU quota | the unit's quota is `--threads` of `pod_run.sh` (default the night cap, 56), fixed at launch, whatever `--scan-jobs` × `--scan-cpus` is. By day it is above the day cap: the day cap is held by `build-stage` and `run-step`, not by the quota. A `run-step` launched alone keeps the thread count it chose at its start until it ends (at most 300 CPU-minutes) | C-07, C-11, C-12 |
