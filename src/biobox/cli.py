@@ -19,6 +19,10 @@
     bio-box release verify --root R --release R2 [--previous R1]
     bio-box stage inputs --root R --stage S --genomes genomes.json [--out DIR]
     bio-box stage ingest --root R --stage S --objects objects.json [--shard-bases N] [--line-width N] [--tmp D]
+    bio-box stage ingest pass1 --root R --stage S --objects F --shard K --pass1-bytes N [--shard-bases N] --tmp D
+    bio-box stage ingest plan --root R --stage S --objects F [--shard-bases N] [--line-width N] --tmp D
+    bio-box stage ingest batch --root R --stage S --objects F --batch J --tmp D
+    bio-box stage ingest merge --root R --stage S --objects F --tmp D
     bio-box stage genecall|igr|tapes --root R --stage S [--tmp D] [--producers P,Q] [--workers N] [--out DIR]
     bio-box stage domains --root R --stage S --library pfam --library-version 38.2 --hmm F --cutoff gathering
     bio-box stage domains plan --root R --stage S --library L --library-version V --hmm F --cutoff C --shard-residues N
@@ -396,6 +400,8 @@ def _run_step(a) -> int:
 RELEASE_STEPS = ("define", "cluster", "tokens", "postings", "dim", "manifest", "catalog", "verify")
 STAGE_STEPS = ("inputs", "ingest", "genecall", "igr", "tapes", "domains", "ncrna")
 DOMAIN_ACTIONS = ("plan", "shard", "merge")  # `stage domains plan|shard|merge` (card B-24)
+INGEST_ACTIONS = ("pass1", "plan", "batch", "merge")  # `stage ingest pass1|plan|batch|merge` (card B-30)
+STEP_ACTIONS = {"domains": DOMAIN_ACTIONS, "ingest": INGEST_ACTIONS}
 PACK_DIR_HELP = ("the pack directory, outside the data root (card W-03); default: <profile tmp>/packs with a host "
                  "profile, else packs beside $BIOBOX_SEARCH_WORK or /tmp/atd/search")
 RUNS_HELP = ("the runs directory, outside the data root (card W-03); default: <profile tmp>/search/<user>/runs with "
@@ -581,8 +587,9 @@ def _source_objects(path: str):
 def _stage_step(a, root: Path, out: Path) -> dict:
     tmp = Path(a.tmp) if a.tmp else None
     mfb = {} if a.max_file_bytes is None else {"max_file_bytes": a.max_file_bytes}
-    if a.action is not None and a.step != "domains":
-        raise ValueError(f"stage {a.step}: {a.action} is a step of stage domains only")
+    if a.action is not None and a.action not in STEP_ACTIONS.get(a.step, ()):
+        raise ValueError(f"stage {a.step}: {a.action} is not one of its actions "
+                         f"({'; '.join(f'{s}: ' + ', '.join(v) for s, v in STEP_ACTIONS.items())})")
     if a.step == "inputs":
         from biobox.l0seq.inputs import write_genome_input
 
@@ -595,7 +602,23 @@ def _stage_step(a, root: Path, out: Path) -> dict:
         if not a.objects:
             raise ValueError("stage ingest needs --objects")
         kw = {k: v for k, v in (("shard_bases", a.shard_bases), ("line_width", a.line_width)) if v is not None}
-        return ingest(_source_objects(a.objects), root, a.stage, tmp=tmp, out=out, **kw, **mfb)
+        if a.action is None:
+            return ingest(_source_objects(a.objects), root, a.stage, tmp=tmp, out=out, **kw, **mfb)
+        from biobox.l0seq import store  # in batch processes (card B-30)
+
+        need = {"pass1": ("shard", "pass1_bytes"), "batch": ("batch",)}.get(a.action, ())
+        missing = [f"--{n.replace('_', '-')}" for n in need if getattr(a, n) is None]
+        if missing:
+            raise ValueError(f"stage ingest {a.action} needs {', '.join(missing)}")
+        objs = _source_objects(a.objects)
+        shared = {"runs_tmp": Path(a.runs_tmp) if a.runs_tmp else None}
+        if a.action == "pass1":
+            return store.ingest_pass1(objs, root, a.stage, a.shard, a.pass1_bytes, tmp=tmp, out=out, **kw, **shared)
+        if a.action == "plan":
+            return store.ingest_plan(objs, root, a.stage, tmp=tmp, out=out, **kw, **shared)
+        if a.action == "batch":
+            return store.ingest_batch(objs, root, a.stage, a.batch, tmp=tmp, out=out, **shared)
+        return store.ingest_merge(objs, root, a.stage, tmp=tmp, out=out, **mfb, **shared)
     if a.step == "genecall":
         from biobox.l1.genecall import run
 
@@ -765,9 +788,10 @@ def main(argv: list[str] | None = None) -> int:
                                        "release= partition must be in this release's with the same sha256 (R-09)")
     st = sub.add_parser("stage", parents=[common], help="per-stage builder steps (card C-08)")
     st.add_argument("step", choices=STAGE_STEPS)
-    st.add_argument("action", nargs="?", choices=DOMAIN_ACTIONS,
+    st.add_argument("action", nargs="?", choices=tuple(dict.fromkeys(DOMAIN_ACTIONS + INGEST_ACTIONS)),
                     help="domains in shards (card B-24): plan, then shard (one call per --shard K), then merge; "
-                         "without it, the whole scan in one process")
+                         "ingest in batch processes (card B-30): pass1 (one call per --shard K), plan, batch (one "
+                         "call per --batch J), then merge; without it, the whole step in one process")
     st.add_argument("--stage", required=True)
     st.add_argument("--out", help=OUT_HELP)
     st.add_argument("--tmp", help="scratch directory (system temp by default; under neither the root nor --out)")
@@ -789,7 +813,12 @@ def main(argv: list[str] | None = None) -> int:
     st.add_argument("--cpus", type=int, default=1, help="domains: hmmsearch threads; ncrna: cmsearch threads (--cpu)")
     st.add_argument("--cm", help="ncrna: the Rfam covariance-model library (.cm or .cm.gz; card E-01)")
     st.add_argument("--shard-residues", type=int, help="domains plan: residues per shard at most")
-    st.add_argument("--shard", type=int, help="domains shard: the shard to scan (0-based)")
+    st.add_argument("--shard", type=int, help="domains shard: the shard to scan; ingest pass1: the pass-1 shard "
+                                             "(0-based)")
+    st.add_argument("--pass1-bytes", type=int, help="ingest pass1: bytes of source file per pass-1 shard at most")
+    st.add_argument("--batch", type=int, help="ingest batch: the batch to write (0-based)")
+    st.add_argument("--runs-tmp", help="ingest pass1|plan|batch|merge: the scratch directory the steps share for "
+                                       "the pass-1 runs and the decision table (default: --tmp)")
     bs = sub.add_parser("build-stage", parents=[common], help="a stage and its release, step by step under "
                                                               "run-step (card C-04)")
     bs.add_argument("--profile", required=True, help="host profile YAML (profiles/wilkcomp02.yaml)")

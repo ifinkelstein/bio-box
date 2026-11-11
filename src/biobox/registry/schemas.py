@@ -935,6 +935,23 @@ ARTIFACTS: dict[str, ArtifactSpec] = {
             "(card B-22)",
         small_ok=True,
     ),
+    # A stage's ingest by batch processes (card B-30, `biobox.l0seq.store`): one record per pass-1 shard (its
+    # objects and its scratch run's sha256) and the plan (the batches and the decision table's sha256), written
+    # once each by the pass-1 and plan steps so that `bio-box run-step` can publish them. A build's own records,
+    # like `domain_scan`: never in a release manifest, so a release is the same whether ingest was batched or not.
+    "ingest_plan": ArtifactSpec(
+        name="ingest_plan",
+        layer="L0-seq",
+        location="l0seq/ingest_plan",
+        partition_keys=("stage",),
+        pattern=r"(plan|pass1-\d{5})\.json",
+        doc="a stage's ingest in batch processes: each pass-1 shard's record (pass1-<k>.json: its source objects "
+            "by sha256, size and record count, and its scratch run's sha256) and the plan (plan.json: the "
+            "objects in sha256 order, the batches of at most shard_bases new bases, one shard each), as "
+            "sorted-key JSON",
+        in_manifest=False,
+        small_ok=True,
+    ),
     # A stage's domain scan in shards (card B-24, `biobox.l1.domains`): the plan and one record per shard
     # (its scratch run's sha256 and counts), written once each by the plan and shard steps so that
     # `bio-box run-step` can publish them. A build's own records, like `runs/`: never in a release manifest,
