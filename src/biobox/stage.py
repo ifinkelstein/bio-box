@@ -29,9 +29,9 @@ the shards' runs there are the merge's input (below). The release steps take the
 use it defines the release (the cluster step writes the definition), and later the steps verify it.
 
 Before any step (exit 2, nothing run): a bad name; `--stage` not among the release's stages; no
-`--stages` and no `release_def`; `--stages` that disagree with the `release_def`; ingest whose
-estimated CPU-minutes exceed the profile's `cpu_min_per_process` (ingest is one process until card
-B-30); and `--scan-jobs` × `--scan-cpus`, or `--threads`, above the threads `run-step` allows at
+`--stages` and no `release_def`; `--stages` that disagree with the `release_def`; a source object
+whose own ingest estimate exceeds the profile's `cpu_min_per_process` (one process reads each object
+whole, also in batches, card B-30); and `--scan-jobs` × `--scan-cpus`, or `--threads`, above the threads `run-step` allows at
 the start of the call (`runstep.choose_threads`: the profile's cap for the hour and weekday, the day
 cap while the host is busy). The ingest estimate is skipped when ingest's run record exists. Before
 each step: a `STOP` file in the root exits 75, as `run-step` does. A `STOP` that appears while a step
@@ -60,6 +60,18 @@ then `domains-<lib>-<ver>.shard-<k>` for each shard (`... shard --shard K --cpus
 the inputs, the budget and the margin only, never on J or C, and the merged files are those of the
 scan in one process, byte for byte. The shards' scratch runs live under the scratch directory and
 are removed after the merge.
+
+Ingest in batches (card B-30). When ingest's estimate in one process exceeds `SHARD_MARGIN` of the
+budget (or a pass-1 record of the stage is already published), ingest runs as steps of its own
+(`ingest_steps`, `biobox.l0seq.store`): `ingest.pass1-<k>` for each pass-1 shard (the objects by name,
+cut at `pass1_bytes`: what fits the margin at `INGEST_CPU_MIN`), `ingest.plan`, `ingest.batch-<j>` for
+each batch of the plan (one shard each, DEC-21), then the merge under the step name `ingest`. Each is a
+one-thread `run-step`; the pass-1 and batch steps run up to J × C at once within the allowance, as scan
+shards do. The files are those of ingest in one process, byte for byte; the pass-1 and plan records
+(`l0seq/ingest_plan/`) are a build's own, never in a manifest. Each of these steps has its own scratch
+directory (`--tmp`, cleaned as above); the pass-1 runs and the decision table they hand on live in
+`<scratch>` itself (`--runs-tmp`), are made again when lost, before the plan and before the batches
+(`_rescan_lost_ingest`, as below), and are removed after the merge.
 
 Lost scratch (card C-12). A reboot clears `/tmp`; a shard's run record then still exists while its
 run in scratch is gone, so `run-step` would never scan it again and the merge would refuse. Before
@@ -117,6 +129,7 @@ import pyarrow.parquet as pq
 import yaml
 
 from biobox import catalog, runstep
+from biobox.l0seq import store
 from biobox.l1 import domains
 from biobox.l1.genecall import GENE_CALL_VERSION
 from biobox.profile import Profile
@@ -187,6 +200,7 @@ class Build:
     gene_call_version: str = GENE_CALL_VERSION
     scan_jobs: int | None = None  # J, scan shards at once; None: the allowance // C (`scan_slots`)
     scan_cpus: int | None = None  # C, threads per scan shard; None: DEFAULT_SCAN_CPUS, or the allowance if smaller
+    shard_bases: int | None = None  # ingest's batch size (`--shard-bases`); None: the store's default (card B-30)
 
 
 @dataclass(frozen=True)
@@ -246,8 +260,8 @@ def steps(prof: Profile, b: Build) -> list[Step]:
     s, r = b.stage, b.release
     return [
         Step(s, "inputs", st("inputs", "--genomes", str(Path(b.genomes).resolve()))),
-        own(s, "ingest", lambda t: st("ingest", "--objects", str(Path(b.objects).resolve()), "--tmp", t),
-            check="ingest"),
+        own(s, "ingest", lambda t: st("ingest", "--objects", str(Path(b.objects).resolve()), "--tmp", t,
+                                      *_shard_bases(b)), check="ingest"),
         own(s, "genecall", lambda t: st("genecall", "--tmp", t, "--workers", n)),
         Step(s, "features", None),  # other feature producers: none yet
         own(s, "igr", lambda t: st("igr", "--tmp", t)),
@@ -296,8 +310,32 @@ def input_bytes(objects: Path) -> int:
     return total
 
 
+_SIZES: dict[tuple, list[tuple[Path, int, int]]] = {}  # object_sizes, by the objects' paths, sizes and mtimes
+
+
+def object_sizes(objects: Path) -> list[tuple[Path, int, int]]:
+    """(path, bytes on disk, bytes of FASTA) of each source object of `--objects`, in the file's order (paths as
+    `input_bytes` takes them). Decompressing is the cost, so a result is kept for the call's objects while none
+    of them changes size or mtime (the refusal and the batch decision read it in one call)."""
+    objects = Path(objects)
+    paths = []
+    for o in json.loads(objects.read_text()):
+        p = Path(o["path"])
+        paths.append(p if p.is_absolute() else objects.parent / p)
+    key = tuple((str(p), p.stat().st_size, p.stat().st_mtime_ns) for p in paths)
+    if key not in _SIZES:
+        if len(_SIZES) > 8:
+            _SIZES.clear()
+        _SIZES[key] = [(p, p.stat().st_size, fasta_bytes(p)) for p in paths]
+    return _SIZES[key]
+
+
 def ingest_cpu_min(n_bytes: int) -> float:
     return INGEST_FIXED_CPU_MIN + n_bytes * INGEST_CPU_MIN / INGEST_BP
+
+
+def _shard_bases(b: Build) -> tuple[str, ...]:
+    return () if b.shard_bases is None else ("--shard-bases", str(b.shard_bases))
 
 
 def stage_residues(root: Path, stage: str, gene_call_version: str) -> int:
@@ -360,14 +398,17 @@ def _refusal(prof: Profile, b: Build, root: Path, plan: list[Step], allowance: i
         return f"release {b.release} lists stages {stages}, not stage {b.stage}"
     ingest = next(s for s in plan if s.check == "ingest")
     if not _record(root, ingest).exists():
-        n = input_bytes(b.objects)
-        est = ingest_cpu_min(n)
-        if est > prof.cpu_min_per_process:
-            return (f"ingest of stage {b.stage} reads {n:,} bytes of FASTA, estimated at {est:,.1f} CPU-minutes "
-                    f"in one process ({INGEST_CPU_MIN} CPU-min per {INGEST_BP:,} bp plus {INGEST_FIXED_CPU_MIN} "
-                    f"CPU-min to start, measured on wilkcomp02, 2026-11-10), over the profile's "
-                    f"cpu_min_per_process of {prof.cpu_min_per_process} "
-                    f"(AGENTS §7.2). Split the stage into smaller ones; ingest by batch processes is card B-30")
+        sizes = object_sizes(b.objects)
+        n = sum(f for _, _, f in sizes)
+        big = max(sizes, key=lambda t: (t[2], str(t[0])), default=None)
+        if big is not None and ingest_cpu_min(big[2]) > prof.cpu_min_per_process:
+            return (f"ingest of stage {b.stage} reads {n:,} bytes of FASTA, estimated at {ingest_cpu_min(n):,.1f} "
+                    f"CPU-minutes in one process ({INGEST_CPU_MIN} CPU-min per {INGEST_BP:,} bp plus "
+                    f"{INGEST_FIXED_CPU_MIN} CPU-min to start, measured on wilkcomp02, 2026-11-10). In batch "
+                    f"processes (card B-30) each source object is read whole by one process, and {big[0].name} "
+                    f"alone holds {big[2]:,} bytes, estimated at {ingest_cpu_min(big[2]):,.1f} CPU-minutes, over "
+                    f"the profile's cpu_min_per_process of {prof.cpu_min_per_process} (AGENTS §7.2). Split that "
+                    f"object into smaller files")
     return None
 
 
@@ -483,6 +524,8 @@ def build_stage(prof: Profile, b: Build, *, run: Runner | None = None,
         if step.argv is not None:
             if step.check == "scan" and not _record(root, step).exists() and _sharded(prof, b, root, step):
                 code = _scan_in_shards(prof, b, root, step, one, _hook, jobs, cpus, shard_run, allow)
+            elif step.check == "ingest" and not _record(root, step).exists() and _batched(prof, b, root):
+                code = _ingest_in_batches(prof, b, root, one, _hook, jobs * cpus, shard_run, allow)
             else:
                 code = one(step)
             if code is not None:
@@ -732,3 +775,161 @@ def _launch(prof: Profile, root: Path, todo: list[Step], jobs: int, cpus: int, r
     if failed:
         return failed[min(failed)]
     return runstep.EXIT_STOP if stopped else None
+
+
+# --- ingest by batch processes (card B-30) -------------------------------------------------------------------
+
+
+def _batched(prof: Profile, b: Build, root: Path) -> bool:
+    """Whether ingest runs as batch processes: an earlier call published a pass-1 record of the stage, or its
+    estimate in one process exceeds `SHARD_MARGIN` of the budget (as a scan is sharded)."""
+    if (root / store.plan_dir(b.stage) / "pass1-00000.json").exists():
+        return True
+    sizes = object_sizes(b.objects)
+    n = sum(f for _, _, f in sizes)
+    if ingest_cpu_min(n) <= SHARD_MARGIN * prof.cpu_min_per_process:
+        return False
+    _say(f"{b.stage}.ingest: {n:,} bytes of FASTA are estimated at {ingest_cpu_min(n):,.1f} CPU-minutes in one process "
+         f"({INGEST_CPU_MIN} CPU-min per {INGEST_BP:,} bp, measured on wilkcomp02, 2026-11-10), over {SHARD_MARGIN:.0%} "
+         f"of the profile's cpu_min_per_process of {prof.cpu_min_per_process} (AGENTS §7.2); it runs as pass-1 shards "
+         f"of at most {pass1_bytes(prof, b, root):,} bytes of file, a plan, one step per batch and a merge")
+    return True
+
+
+def pass1_bytes(prof: Profile, b: Build, root: Path) -> int:
+    """Bytes of source file per pass-1 shard: the published pass-1 records' (an earlier call cut them), else what
+    fits `SHARD_MARGIN` of the budget at the measured rate (`INGEST_CPU_MIN` per `INGEST_BP` bytes of FASTA, after
+    the `INGEST_FIXED_CPU_MIN` every process pays to start), in bytes on disk at the stage's ratio of FASTA bytes
+    to bytes on disk; at least one. A pure function of the inputs and the profile."""
+    if (root / store.plan_dir(b.stage) / "pass1-00000.json").exists():
+        return store.read_pass1(root, b.stage, 0)["pass1_bytes"]
+    sizes = object_sizes(b.objects)
+    on_disk, fasta = sum(d for _, d, _ in sizes), sum(f for _, _, f in sizes)
+    ratio = max(1.0, fasta / on_disk) if on_disk else 1.0
+    per_shard = SHARD_MARGIN * prof.cpu_min_per_process - INGEST_FIXED_CPU_MIN
+    return max(1, int(per_shard * INGEST_BP / INGEST_CPU_MIN / ratio))
+
+
+def ingest_steps(prof: Profile, b: Build, n_pass1: int, per_shard: int, n_batches: int | None) -> list[Step]:
+    """The steps of ingest in batch processes: `ingest.pass1-<k>` for each pass-1 shard, `ingest.plan`, then (once
+    the plan is published and `n_batches` known) `ingest.batch-<j>` for each batch and the merge under the step
+    name `ingest`, so its run record is the ingest's. Every one is a one-thread process with its own scratch
+    directory, `<scratch>/<stage>.<step>`, as `--tmp` (card C-13); the pass-1 runs and the decision table they
+    pass on to each other are in `<scratch>` itself (`--runs-tmp`), as a scan's shard runs are."""
+    root, tmp, objs = str(Path(b.root).resolve()), str(scratch_of(prof, b)), str(Path(b.objects).resolve())
+
+    def ig(name: str, action: str, *extra: str) -> Step:
+        mine = str(Path(tmp) / f"{b.stage}.{name}")
+        return Step(b.stage, name, ("stage", "ingest", action, "--root", root, "--gene-call-version",
+                                    b.gene_call_version, "--stage", b.stage, "--objects", objs, "--tmp", mine,
+                                    "--runs-tmp", tmp, *extra), scratch=mine)
+
+    first = [*(ig(f"ingest.pass1-{k:05d}", "pass1", "--shard", str(k), "--pass1-bytes", str(per_shard),
+                  *_shard_bases(b)) for k in range(n_pass1)),
+             ig("ingest.plan", "plan", *_shard_bases(b))]
+    if n_batches is None:
+        return first
+    return [*first, *(ig(f"ingest.batch-{j:04d}", "batch", "--batch", str(j)) for j in range(n_batches)),
+            ig("ingest", "merge")]
+
+
+def _own_scratch(run: Runner, todo: list[Step]) -> Runner:
+    """`run` around steps launched by `_launch`, each given a fresh own scratch directory before it runs and having
+    it removed once it exits 0, as `one` does for a step (card C-13)."""
+    mine = {s.name: s for s in todo if s.scratch is not None}
+
+    def wrapped(prof: Profile, root: Path, stage: str, step: str, cmd: Sequence[str], *, threads: int) -> int:
+        s = mine.get(step)
+        if s is not None:
+            _fresh_scratch(s)
+        code = run(prof, root, stage, step, cmd, threads=threads)
+        if s is not None and code == 0:
+            shutil.rmtree(s.scratch, ignore_errors=True)
+        return code
+
+    return wrapped
+
+
+def _ingest_in_batches(prof: Profile, b: Build, root: Path, one: Callable[[Step], int | None], hook: Hook | None,
+                       jobs: int, run: Runner | None, allow: Callable[[], int]) -> int | None:
+    """Ingest as its pass-1 steps, its plan step, its batch steps and its merge step (`ingest_steps`), each a
+    `run-step` of one thread, up to `jobs` at once within the allowance of the hour (`_launch`); a call after a
+    kill skips every step already published. A scratch run lost after its record was published is made again
+    first (`_rescan_lost_ingest`): before the plan, the pass-1 runs; before the batches, the pass-1 runs and the
+    decision table. `run` stands in for the steps' run-step processes (tests only). The scratch runs are removed
+    once the merge is published."""
+    from biobox.cli import _source_objects
+
+    per_shard = pass1_bytes(prof, b, root)
+    # the objects as the steps read them (`--objects`, resolved), so the pass-1 order here is theirs
+    n_pass1 = len(store.pass1_shards(_source_objects(str(Path(b.objects).resolve())), per_shard))
+    first = ingest_steps(prof, b, n_pass1, per_shard, None)
+    plan = first[-1]
+    if run is None:
+        run = _process_runner(_profile_file(prof, scratch_of(prof, b)))
+    jobs = max(1, jobs)
+    code = _run_shards(prof, root, plan, first[:-1], jobs, 1, _own_scratch(run, first[:-1]), hook, allow)
+    if code is not None:
+        return code
+    if not _record(root, plan).exists() or _intent(root, plan).exists():
+        code = _rescan_lost_ingest(prof, b, root, jobs, hook, allow, plan=False)
+        if code is not None:
+            return code
+    code = one(plan)
+    if code is not None:
+        return code
+    if hook is not None:
+        hook(f"after:{plan.name}")
+    batches = store.read_ingest_plan(root, b.stage)["batches"]
+    for j, x in enumerate(batches):
+        if ingest_cpu_min(x["bases_read"]) > prof.cpu_min_per_process:
+            _say(f"{b.stage}.ingest.batch-{j:04d}: warning: it reads {x['bases_read']:,} bp, estimated at "
+                 f"{ingest_cpu_min(x['bases_read']):,.1f} CPU-minutes, over the budget; a batch is the objects that "
+                 f"hold at most shard_bases new bases (DEC-21) and cannot be split")
+    subs = ingest_steps(prof, b, n_pass1, per_shard, len(batches))
+    code = _rescan_lost_ingest(prof, b, root, jobs, hook, allow, plan=True)
+    if code is not None:
+        return code
+    code = _run_shards(prof, root, plan, subs[n_pass1 + 1:-1], jobs, 1, _own_scratch(run, subs[n_pass1 + 1:-1]), hook,
+                       allow)
+    if code is not None:
+        return code
+    code = one(subs[-1])  # the merge; its hook is the ingest step's, after this returns
+    if code is not None:
+        return code
+    shutil.rmtree(store.ingest_runs_dir(scratch_of(prof, b), root, b.stage), ignore_errors=True)
+    return None
+
+
+def _rescan_lost_ingest(prof: Profile, b: Build, root: Path, jobs: int, hook: Hook | None, allow: Callable[[], int],
+                        plan: bool) -> int | None:
+    """Make again the scratch runs whose record is published but which are missing or fail its sha256
+    (`store.ingest_run_problems`; a reboot clears /tmp): each pass-1 run, then (with `plan`) the decision table,
+    each by `python -m biobox.l0seq.store rescan` in its own process (`_rescan_process`, as a scan shard's rescan),
+    `after:<step>.rescan` to `hook` as each ends. The records stay as published: a rescan must reproduce its
+    record's sha256, and one that does not stops the build with an error naming the shard. Return None when
+    every run is in place, else the failing code (75 for STOP)."""
+    scratch = scratch_of(prof, b)
+    lost = store.ingest_run_problems(root, b.stage, scratch)
+    base = ("rescan", "--root", str(root), "--stage", b.stage, "--objects", str(Path(b.objects).resolve()),
+            "--tmp", str(scratch))
+    pass1 = [Step(b.stage, f"ingest.pass1-{k:05d}.rescan", (*base, "--pass1", str(k)), module="biobox.l0seq.store")
+             for what, k, _ in lost if what == "pass1"]
+    phases = [pass1, [Step(b.stage, "ingest.plan.rescan", (*base, "--plan"), module="biobox.l0seq.store")]
+                     if plan and any(what == "plan" for what, _, _ in lost) else []]
+    for what, k, why in lost:
+        if what == "pass1" or plan:
+            _say(f"{b.stage}.ingest.{'plan' if k is None else f'pass1-{k:05d}'}: its record exists, but its run in "
+                 f"{scratch} {why}; making it again into scratch (its published record stays; the new run must "
+                 f"reproduce it)")
+    for todo in phases:
+        if not todo:
+            continue
+        code = _launch(prof, root, todo, jobs, 1, _rescan_process, hook, allow)
+        if code is not None:
+            if code != runstep.EXIT_STOP:
+                _say(f"{b.stage}.ingest: a scratch run could not be made again to its record (above); the steps "
+                     f"after it do not run. A record whose rescan differs is not the ingest of these inputs: tell "
+                     f"the PI")
+            return code
+    return None

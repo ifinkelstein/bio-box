@@ -33,6 +33,10 @@ stored in that stage, and its `l0_manifest` partition lists only the objects it 
 (card B-22). `store_params.json` (the `store_params` artifact) is written once, by the first
 stage; every later stage checks it and writes none.
 
+A stage too large for one process (AGENTS §7.2) is ingested by batch processes (card B-30): pass-1 shards,
+a plan, one process per batch (one shard each, DEC-21) and a merge, whose files are `ingest`'s byte for byte;
+their records are the `ingest_plan` artifact, `l0seq/ingest_plan/stage=<S>/` (section below `_write_tables`).
+
 `SeqStore` loads neither index (card B-13): `seq_locator` and `contig_index` are looked up
 through `KeyLookup` (footers once, one row group per key) and each shard's `.fai` is bisected
 on disk (`BgzfFasta`). It reads only the stages it is opened for (card B-28): `SeqStore(root, ["S0"])`,
@@ -41,9 +45,12 @@ or `SeqStore(root, catalog.ReleaseFiles.of(root, "rS0.1"))` for a release's file
 
 from __future__ import annotations
 
+import argparse
+import hashlib
 import json
 import os
 import shutil
+import sys
 import tempfile
 from collections.abc import Callable
 from dataclasses import dataclass, field
@@ -166,11 +173,14 @@ class _Scratch:
         self._writer.close()
 
 
+def _order_key(t: tuple[bytes, SourceObject]) -> tuple:
+    return (t[0], t[1].source_name, t[1].source_release, t[1].precedence, Path(t[1].path).name, str(t[1].path))
+
+
 def _object_order(objects: list[SourceObject]) -> list[tuple[bytes, SourceObject]]:
     """(sha256, object) in ascending sha256; ties (the same bytes listed twice) by the object's fields."""
     keyed = [(ids.sha256_file(o.path), o) for o in objects]
-    return sorted(keyed, key=lambda t: (t[0], t[1].source_name, t[1].source_release, t[1].precedence,
-                                        Path(t[1].path).name, str(t[1].path)))
+    return sorted(keyed, key=_order_key)
 
 
 def _batches(per_object: list[tuple[int, int]], shard_bases: int) -> list[list[int]]:
@@ -188,11 +198,12 @@ def _batches(per_object: list[tuple[int, int]], shard_bases: int) -> list[list[i
     return batches
 
 
-def _wanted(con, batch_rows: int = io.ROW_GROUP_ROWS):
+def _wanted(con, batch_rows: int = io.ROW_GROUP_ROWS, objects: tuple[int, int] | None = None):
     """(obj_idx, record_ordinal, raw_digest, contig_len) of every first occurrence, in object then
-    record order."""
+    record order; with `objects` (first, last), of the objects in that range only (one batch, card B-30)."""
+    where = "" if objects is None else f"WHERE obj_idx BETWEEN {int(objects[0])} AND {int(objects[1])} "
     reader = con.sql("SELECT obj_idx, record_ordinal, raw_digest, contig_len FROM new_seq "
-                     "ORDER BY obj_idx, record_ordinal").to_arrow_reader(batch_rows)
+                     f"{where}ORDER BY obj_idx, record_ordinal").to_arrow_reader(batch_rows)
     try:
         for b in reader:
             yield from zip(*(b.column(i).to_pylist() for i in range(4)))
@@ -319,14 +330,8 @@ def ingest(
         for base, what in ((root, "the data root"), (out, "the output directory")):
             if Path(tmp).resolve().is_relative_to(base.resolve()):
                 raise ValueError(f"{tmp}: the scratch directory may not lie under {what}")
-    for base in dict.fromkeys([root.resolve(), out.resolve()]):
-        left = stage_files(base, stage)
-        if left:
-            raise FileExistsError(
-                f"{left[0]}: stage {stage} already has {len(left)} ingest file(s) under {base}; ingest "
-                f"writes a stage once. A direct call needs a clean stage directory: if an earlier ingest "
-                f"died, remove {', '.join(stage_dirs(stage))} and run it again, or ingest under run-step")
-    params = {"format": STORE_FORMAT, "shard_bases": shard_bases, "line_width": line_width, "bgzf_level": BGZF_LEVEL}
+    _refuse_stage_written(root, out, stage, stage_dirs(stage))
+    params = _params(shard_bases, line_width)
     new_params = _check_params(root, out, params)
 
     ordered = _object_order(objects)
@@ -366,6 +371,21 @@ def ingest(
     _write_l0_manifest(out, stage, ordered, stats, max_file_bytes)
     hook("l0_manifest")
     return report
+
+
+def _refuse_stage_written(root: Path, out: Path, stage: str, dirs: list[str]) -> None:
+    """FileExistsError when any file (a temporary one included) is in `dirs` of the stage under `root` or `out`."""
+    for base in dict.fromkeys([Path(root).resolve(), Path(out).resolve()]):
+        left = sorted(p for d in dirs if (base / d).is_dir() for p in (base / d).rglob("*") if not p.is_dir())
+        if left:
+            raise FileExistsError(
+                f"{left[0]}: stage {stage} already has {len(left)} ingest file(s) under {base}; ingest "
+                f"writes a stage once. A direct call needs a clean stage directory: if an earlier ingest "
+                f"died, remove {', '.join(stage_dirs(stage))} and run it again, or ingest under run-step")
+
+
+def _params(shard_bases: int, line_width: int) -> dict:
+    return {"format": STORE_FORMAT, "shard_bases": shard_bases, "line_width": line_width, "bgzf_level": BGZF_LEVEL}
 
 
 def _params_bytes(params: dict) -> bytes:
@@ -429,6 +449,29 @@ def _decide_and_write(con, root: Path, out: Path, stage: str, ordered: list[tupl
                       old_idx: list[Path], scratch: Path, shard_bases: int, line_width: int, max_file_bytes: int,
                       hook: Callable[[str], None]) -> dict:
     con.execute(f"CREATE VIEW seen AS SELECT * FROM read_parquet({_sql_path(seen_path)})")
+    _old_views(con, old_loc, old_idx)
+    kept, batches, _ = _decide(con, scratch / "new_seq.parquet", len(ordered), shard_bases)
+    shard_of = _shard_paths(stage, len(batches))
+
+    # pass 2: one batch's first occurrences at a time, one shard per batch
+    def unchanged(i: int, path: Path) -> None:
+        if _stat(path) != stats[i]:
+            raise ValueError(f"{path}: changed since the first pass (size or mtime)")
+
+    wanted = _wanted(con)
+    nxt = next(wanted, None)
+    try:
+        for j, batch in enumerate(batches):
+            nxt = _write_shard(out / shard_of[j], [(i, Path(ordered[i][1].path)) for i in batch], wanted, nxt,
+                               unchanged, line_width)
+            hook(f"shard:{j}")
+    finally:
+        wanted.close()
+    return _write_tables(con, out, stage, ordered, n_in, kept, batches, max_file_bytes, hook)
+
+
+def _old_views(con, old_loc: list[Path], old_idx: list[Path]) -> None:
+    """Views `old_loc` and `old_idx` over the earlier stages' `seq_locator` and `contig_index` files."""
     con.execute("CREATE VIEW old_loc AS " + (
         f"SELECT raw_digest FROM read_parquet({_sql_files(old_loc)}, union_by_name = true)" if old_loc
         else "SELECT NULL::BLOB AS raw_digest WHERE false"))
@@ -436,8 +479,17 @@ def _decide_and_write(con, root: Path, out: Path, stage: str, ordered: list[tupl
         f"SELECT contig_uid, raw_digest, is_default_variant FROM read_parquet({_sql_files(old_idx)}, "
         "union_by_name = true)" if old_idx
         else "SELECT NULL::BLOB AS contig_uid, NULL::BLOB AS raw_digest, NULL::BOOLEAN AS is_default_variant WHERE false"))
+
+
+def _shard_paths(stage: str, n: int) -> list[str]:
+    return [f"l0seq/seq_shards/stage={stage}/shard-{j:04d}.fa.gz" for j in range(n)]
+
+
+def _decide(con, new_path: Path, n_objects: int, shard_bases: int) -> tuple[list[int], list[list[int]], list[int]]:
+    """Over the views `seen` and `old_loc`: write the stage's new sequences to `new_path` (the view `new_seq`)
+    and cut the objects into batches (`_batches`). Returns (sequences kept per object, the batches, new bases
+    per object)."""
     # new digests: not in any earlier stage, each at its first occurrence by (object sha256, ordinal)
-    new_path = scratch / "new_seq.parquet"
     con.execute(f"""
         COPY (SELECT raw_digest, contig_len, obj_idx, record_ordinal FROM (
                 SELECT s.raw_digest, s.contig_len, s.obj_idx, s.record_ordinal,
@@ -446,46 +498,51 @@ def _decide_and_write(con, root: Path, out: Path, stage: str, ordered: list[tupl
               WHERE rn = 1 ORDER BY obj_idx, record_ordinal)
         TO {_sql_path(new_path)} (FORMAT parquet)""")
     con.execute(f"CREATE VIEW new_seq AS SELECT * FROM read_parquet({_sql_path(new_path)})")
-    kept = [0] * len(ordered)
+    kept, new_bases = [0] * n_objects, [0] * n_objects
     per_object = []
     for i, n, bases in con.execute("SELECT obj_idx, count(*), sum(contig_len) FROM new_seq "
                                    "GROUP BY obj_idx ORDER BY obj_idx").fetchall():
-        kept[i] = n
+        kept[i], new_bases[i] = n, int(bases)
         per_object.append((i, int(bases)))
-    batches = _batches(per_object, shard_bases)
-    shard_of = [f"l0seq/seq_shards/stage={stage}/shard-{j:04d}.fa.gz" for j in range(len(batches))]
+    return kept, _batches(per_object, shard_bases), new_bases
+
+
+def _write_shard(path: Path, members: list[tuple[int, Path]], wanted, nxt, check: Callable[[int, Path], None],
+                 line_width: int):
+    """Pass 2 for one batch: read its objects (`members`, (obj_idx, path) in order; `check` is called on each
+    before it is read) for their first occurrences, which `wanted` yields in object then record order (`nxt` is
+    the next one, read already), and write them as one shard sorted by `raw_digest`. Only this batch's
+    sequences are held. Returns the next first occurrence after the batch's (None at the end)."""
+    seqs: dict[bytes, bytes] = {}
+    for i, src in members:
+        check(i, src)
+        for k, rec in enumerate(fasta.iter_records(src)):
+            if nxt is None or nxt[0] != i:
+                break  # nothing more to keep from this object
+            if nxt[1] == k:
+                # stored bytes are identified by their digest (AGENTS §3.2): hash again (about
+                # 3 s per 240 s at 1,000x, card B-23), after the cheap length check
+                if len(rec.seq) != nxt[3] or ids.raw_digest(rec.seq) != nxt[2]:
+                    raise ValueError(f"{src}: record {k} changed since the first pass")
+                seqs[nxt[2]] = rec.seq
+                nxt = next(wanted, None)
+        rec = None
+        if nxt is not None and nxt[0] == i:
+            raise ValueError(f"{src}: fewer records than in the first pass")
+    write_bgzf_fasta(((rd.hex(), seqs[rd]) for rd in sorted(seqs)), path, line_width, BGZF_LEVEL)
+    del seqs
+    return nxt
+
+
+def _write_tables(con, out: Path, stage: str, ordered: list[tuple[bytes, SourceObject]], n_in: list[int],
+                  kept: list[int], batches: list[list[int]], max_file_bytes: int, hook: Callable[[str], None]) -> dict:
+    """The stage's tables but `l0_manifest`, over the views `seen`, `old_idx` and `new_seq`, from one connection:
+    `contig_occurrence`, `contig_label`, `contig_index`, `seq_locator` (each sequence's shard is its batch's) and
+    the ledger, in that order, `hook` called after each. Returns ingest's counts."""
+    shard_of = _shard_paths(stage, len(batches))
     con.register("batch_of", pa.table({
         "obj_idx": pa.array([i for b in batches for i in b], pa.uint32()),
         "shard": pa.array([shard_of[j] for j, b in enumerate(batches) for _ in b], pa.string())}))
-
-    # pass 2: one batch's first occurrences at a time, one shard per batch
-    wanted = _wanted(con)
-    nxt = next(wanted, None)
-    try:
-        for j, batch in enumerate(batches):
-            seqs: dict[bytes, bytes] = {}
-            for i in batch:
-                path = Path(ordered[i][1].path)
-                if _stat(path) != stats[i]:
-                    raise ValueError(f"{path}: changed since the first pass (size or mtime)")
-                for k, rec in enumerate(fasta.iter_records(path)):
-                    if nxt is None or nxt[0] != i:
-                        break  # nothing more to keep from this object
-                    if nxt[1] == k:
-                        # stored bytes are identified by their digest (AGENTS §3.2): hash again (about
-                        # 3 s per 240 s at 1,000x, card B-23), after the cheap length check
-                        if len(rec.seq) != nxt[3] or ids.raw_digest(rec.seq) != nxt[2]:
-                            raise ValueError(f"{path}: record {k} changed since the first pass")
-                        seqs[nxt[2]] = rec.seq
-                        nxt = next(wanted, None)
-                rec = None
-                if nxt is not None and nxt[0] == i:
-                    raise ValueError(f"{path}: fewer records than in the first pass")
-            write_bgzf_fasta(((rd.hex(), seqs[rd]) for rd in sorted(seqs)), out / shard_of[j], line_width, BGZF_LEVEL)
-            del seqs
-            hook(f"shard:{j}")
-    finally:
-        wanted.close()
     n_new = sum(kept)
 
     # contig_occurrence: partitioned by source, sorted by (object sha, ordinal)
@@ -546,6 +603,559 @@ def _decide_and_write(con, root: Path, out: Path, stage: str, ordered: list[tupl
     hook("ledger")
     return {"objects": len(ordered), "records": sum(n_in), "new_sequences": n_new, "index_rows": n_idx,
             "shards": len(batches)}
+
+
+# --- ingest by batch processes (card B-30) -----------------------------------------------------------------
+#
+# The single-process `ingest` above is cut into processes, each under the CPU-minute budget (AGENTS §7.2), that
+# give its files byte for byte:
+#
+# - `ingest_pass1`, one process per pass-1 shard: the objects in `pass1_order` (by name and path: no read is
+#   needed to sort them) cut into runs of at most `pass1_bytes` bytes of file (`pass1_shards`; an object above
+#   that is a shard of its own). Each streams its objects' records into a scratch run of the rows pass 1 writes
+#   (`_SEEN`, with the object's pass-1 index for `obj_idx`) and publishes its record `pass1-<k>.json` (the
+#   objects' names, sizes, sha256 and record counts, and the run's sha256).
+# - `ingest_plan`: one DuckDB connection over the pass-1 runs, each object numbered by its rank in sha256 order
+#   as `ingest` numbers it, makes `ingest`'s decisions (`_decide`): the new sequences (the scratch decision
+#   table `new_seq.parquet`) and the batches, a pure function of the sorted inputs and `shard_bases` (DEC-21).
+#   It publishes `plan.json`: the objects in sha256 order, each batch's objects and shard, the earlier stages'
+#   index files it decided against, and the decision table's sha256.
+# - `ingest_batch`, one process per batch: its objects read again (each checked against the plan's size and
+#   sha256) for its new sequences, written as its shard (`_write_shard`, as `ingest` writes it).
+# - `ingest_merge`, under the step name `ingest`: the tables, ledger, `store_params` and `l0_manifest`
+#   (`_write_tables`, as `ingest` writes them) over the same views, once every batch's shard is published.
+#
+# The pass-1 cut decides only which process reads which object: no output depends on it, nor on the order of
+# the objects given. The scratch runs live in `ingest_runs_dir` (under `tmp`, never in the root); when scratch
+# is lost after a record was published (a reboot clears /tmp), `rescan_pass1` and `rescan_plan` make a run
+# again, and it must have the sha256 its record holds (`ingest_run_problems` names what is missing).
+
+PLAN_DIR = ARTIFACTS["ingest_plan"].location
+PLAN_FORMAT = 1
+RUNS_DIR = "biobox-ingest"  # under the scratch directory: one directory per root and stage
+NEW_SEQ = "new_seq.parquet"  # the plan's decision table, in the stage's runs directory
+
+
+def plan_dir(stage: str) -> str:
+    """The root-relative directory of the stage's `ingest_plan` records."""
+    return f"{PLAN_DIR}/stage={stage}"
+
+
+def _pass1_rel(stage: str, k: int) -> str:
+    return f"{plan_dir(stage)}/pass1-{k:05d}.json"
+
+
+def _plan_rel(stage: str) -> str:
+    return f"{plan_dir(stage)}/plan.json"
+
+
+def _table_dirs(stage: str) -> list[str]:
+    """The stage's ingest directories but the shards': what only the merge writes."""
+    return [d for d in stage_dirs(stage) if not d.startswith("l0seq/seq_shards/")]
+
+
+def _pass1_key(o: SourceObject) -> tuple:
+    return (Path(o.path).name, str(o.path), o.source_name, o.source_release, o.precedence, o.license,
+            o.redistributable, o.retrieved_at.isoformat())
+
+
+def pass1_order(objects: list[SourceObject]) -> list[SourceObject]:
+    """The objects in pass-1 order: by file name, then path and the other fields. Nothing is read to sort them."""
+    return sorted(objects, key=_pass1_key)
+
+
+def pass1_shards(objects: list[SourceObject], pass1_bytes: int) -> list[list[int]]:
+    """Indices into `pass1_order(objects)`, cut into maximal runs of at most `pass1_bytes` bytes of file (the size
+    on disk); an object above that is a shard of its own. A stage without objects is one empty shard."""
+    if isinstance(pass1_bytes, bool) or not isinstance(pass1_bytes, int) or pass1_bytes < 1:
+        raise ValueError(f"pass1_bytes {pass1_bytes!r}: must be a positive integer")
+    order = pass1_order(objects)
+    return _batches([(i, Path(o.path).stat().st_size) for i, o in enumerate(order)], pass1_bytes) or [[]]
+
+
+def _runs_base(tmp: Path | None, runs: Path | None) -> Path | None:
+    """Where the batch steps' shared runs live: `runs` when given, else `tmp` (one directory for both)."""
+    return tmp if runs is None else runs
+
+
+def ingest_runs_dir(tmp: Path | None, root: Path, stage: str) -> Path:
+    """The scratch directory of the stage's pass-1 runs and decision table: under `tmp` (else the system's),
+    named by the root and the stage, so two roots or stages never mix their runs."""
+    key = hashlib.sha256(f"{Path(root).resolve()}\n{stage}".encode()).hexdigest()[:16]
+    return Path(tmp if tmp is not None else tempfile.gettempdir()) / RUNS_DIR / f"{stage}-{key}"
+
+
+def _json_bytes(doc: dict) -> bytes:
+    return json.dumps(doc, sort_keys=True, indent=1).encode() + b"\n"
+
+
+def _find(root: Path, out: Path | None, rel: str) -> Path | None:
+    """`rel` in the root, else in `out` (written by a direct call into another output root)."""
+    for base in [Path(root)] + ([] if out is None else [Path(out)]):
+        if (base / rel).is_file():
+            return base / rel
+    return None
+
+
+def _doc(root: Path, out: Path | None, rel: str, what: str) -> tuple[bytes, dict]:
+    p = _find(root, out, rel)
+    if p is None:
+        raise FileNotFoundError(f"{Path(root) / rel}: no {what}")
+    raw = p.read_bytes()
+    return raw, json.loads(raw)
+
+
+def _write_once(root: Path, out: Path, rel: str, data: bytes, what: str) -> None:
+    for base in dict.fromkeys([Path(root).resolve(), Path(out).resolve()]):
+        if (base / rel).exists():
+            raise FileExistsError(f"{base / rel}: {what} is written once; refusing to overwrite")
+    _write_new(Path(out) / rel, data)
+
+
+def read_pass1(root: Path, stage: str, k: int, out: Path | None = None) -> dict:
+    """The published record of pass-1 shard k (from the root, else from `out`)."""
+    return _doc(root, out, _pass1_rel(stage, k), f"record of pass-1 shard {k} of stage {stage}")[1]
+
+
+def read_ingest_plan(root: Path, stage: str, out: Path | None = None) -> dict:
+    """The stage's published ingest plan (from the root, else from `out`)."""
+    return _doc(root, out, _plan_rel(stage), f"ingest plan of stage {stage}; write it with ingest_plan")[1]
+
+
+def _hint(stage: str, what: str) -> str:
+    return (f"its record is published, so make it again into this scratch directory: python -m biobox.l0seq.store "
+            f"rescan --stage {stage} {what} (build-stage rescans lost runs itself)")
+
+
+def _run_why(path: Path, sha256: str) -> str | None:
+    if not path.is_file():
+        return "is missing"
+    if ids.sha256_file(path).hex() != sha256:
+        return "differs from the sha256 its record holds"
+    return None
+
+
+def _checked_run(path: Path, sha256: str, what: str, stage: str, how: str) -> Path:
+    """`path`, a scratch run whose record holds `sha256`; FileNotFoundError or ValueError naming the rescan."""
+    why = _run_why(path, sha256)
+    if why == "is missing":
+        raise FileNotFoundError(f"{path}: the scratch run of {what} of stage {stage} is missing; {_hint(stage, how)}")
+    if why is not None:
+        raise ValueError(f"{path}: the scratch run of {what} of stage {stage} {why}; {_hint(stage, how)}")
+    return path
+
+
+def _duck(scratch: Path):
+    return duckdb.connect(config={"threads": 1, "memory_limit": DUCK_MEMORY_LIMIT,
+                                  "temp_directory": str(Path(scratch) / "duckdb"), "preserve_insertion_order": True})
+
+
+def _pass1_run(order: list[SourceObject], members: list[int], path: Path) -> list[dict]:
+    """Pass 1 over the objects `members` (indices into `order`): their records into the scratch run `path`, as
+    `ingest` writes them, `obj_idx` being the pass-1 index. Returns each object's name, size, sha256, records and
+    bases."""
+    seen = _Scratch(path, _SEEN)
+    docs = []
+    try:
+        for ci in members:
+            obj = order[ci]
+            src = Path(obj.path)
+            size, sha = src.stat().st_size, ids.sha256_file(src)
+            src_uid = ids.source_uid(obj.source_name, obj.source_release)
+            n = bases = 0
+            for k, rec in enumerate(fasta.iter_records(src)):
+                seen.add((obj.source_name, src_uid, obj.source_release, sha, k, rec.accession, rec.header,
+                          ids.raw_digest(rec.seq), ids.contig_uid(rec.seq), rec.line_width, len(rec.seq),
+                          obj.precedence, ci))
+                n, bases = k + 1, bases + len(rec.seq)
+            rec = None
+            docs.append({"index": ci, "name": src.name, "bytes": size, "sha256": sha.hex(), "records": n,
+                         "bases": bases})
+    finally:
+        seen.close()
+    return docs
+
+
+def ingest_pass1(objects: list[SourceObject], root: Path, stage: str, k: int, pass1_bytes: int,
+                 shard_bases: int = SHARD_BASES, line_width: int = LINE_WIDTH, tmp: Path | None = None,
+                 out: Path | None = None, runs_tmp: Path | None = None) -> dict:
+    """Pass 1 of shard `k` of `pass1_shards(objects, pass1_bytes)`: its run into scratch (`ingest_runs_dir` under
+    `runs_tmp`, the scratch the batch steps share; default `tmp`, this step's own) and its record under `out`
+    (default `root`). Refuses, before it reads a source, a stage whose ingest files exist, a shard whose record or
+    a plan exists (in `root` or `out`), and store parameters other than the store's."""
+    root = Path(root)
+    out = root if out is None else Path(out)
+    ledger.check_scratch(tmp, root, out)
+    ledger.check_scratch(runs_tmp, root, out)
+    tmp = _runs_base(tmp, runs_tmp)
+    _refuse_stage_written(root, out, stage, stage_dirs(stage))
+    shards = pass1_shards(objects, pass1_bytes)
+    if isinstance(k, bool) or not isinstance(k, int) or not 0 <= k < len(shards):
+        raise ValueError(f"pass-1 shard {k!r}: stage {stage} has {len(shards)} at {pass1_bytes} bytes per shard")
+    rel = _pass1_rel(stage, k)
+    for r, what in ((rel, f"pass-1 shard {k}"), (_plan_rel(stage), "the plan")):
+        if _find(root, out, r) is not None:
+            raise FileExistsError(f"{r}: {what} of stage {stage} is written already; refusing to run it again")
+    params = _params(shard_bases, line_width)
+    _check_params(root, out, params)
+    path = ingest_runs_dir(tmp, root, stage) / f"pass1-{k:05d}.parquet"
+    path.parent.mkdir(parents=True, exist_ok=True)
+    part = path.with_name(f".{path.name}.tmp-{os.getpid()}")
+    try:
+        docs = _pass1_run(pass1_order(objects), shards[k], part)
+    except BaseException:
+        part.unlink(missing_ok=True)
+        raise
+    os.replace(part, path)  # a run left by an attempt that died before its record is replaced
+    rec = {"format": PLAN_FORMAT, "stage": stage, "shard": k, "shards": len(shards), "pass1_bytes": pass1_bytes,
+           "store_params": params, "objects": docs, "records": sum(d["records"] for d in docs),
+           "run_sha256": ids.sha256_file(path).hex(), "run_bytes": path.stat().st_size}
+    _write_once(root, out, rel, _json_bytes(rec), f"the record of pass-1 shard {k}")
+    return {"shard": k, "shards": len(shards), "objects": len(docs), "records": rec["records"]}
+
+
+def _pass1_records(objects: list[SourceObject], root: Path, out: Path | None,
+                   stage: str) -> tuple[list[SourceObject], list[tuple[bytes, dict]]]:
+    """(pass1_order(objects), every pass-1 record as (bytes, doc)), each checked to be of these objects."""
+    _, r0 = _doc(root, out, _pass1_rel(stage, 0), f"record of pass-1 shard 0 of stage {stage}")
+    shards = pass1_shards(objects, r0["pass1_bytes"])
+    if len(shards) != r0["shards"]:
+        raise ValueError(f"stage {stage}: the objects make {len(shards)} pass-1 shards, the records {r0['shards']}; "
+                         "the records are of another object list")
+    order = pass1_order(objects)
+    recs = []
+    for k, members in enumerate(shards):
+        raw, r = _doc(root, out, _pass1_rel(stage, k), f"record of pass-1 shard {k} of stage {stage}; run that shard")
+        if (r["shard"], r["shards"], r["pass1_bytes"]) != (k, r0["shards"], r0["pass1_bytes"]) or \
+                [(d["index"], d["name"]) for d in r["objects"]] != [(i, Path(order[i].path).name) for i in members]:
+            raise ValueError(f"the record of pass-1 shard {k} of stage {stage} is not of these objects")
+        recs.append((raw, r))
+    return order, recs
+
+
+def _file_docs(root: Path, files: list[Path]) -> list[dict]:
+    return [{"path": f.relative_to(root).as_posix(), "bytes": f.stat().st_size} for f in files]
+
+
+def _earlier(root: Path) -> dict:
+    """The earlier stages' index files a stage's decisions depend on, root-relative with their sizes."""
+    return {"seq_locator": _file_docs(root, locator_files(root)), "contig_index": _file_docs(root, index_files(root))}
+
+
+def _seen_view(con, runs: list[Path], obj_of: list[int]) -> None:
+    """The view `seen` over the pass-1 runs, each object numbered by its rank in sha256 order (`obj_of`, by
+    pass-1 index): the rows `ingest`'s own pass 1 writes."""
+    con.register("obj_map", pa.table({"pass1_idx": pa.array(range(len(obj_of)), pa.uint32()),
+                                      "obj_idx": pa.array(obj_of, pa.uint32())}))
+    cols = ", ".join(f's."{n}"' for n in _SEEN.names if n != "obj_idx")
+    con.execute(f"CREATE VIEW seen AS SELECT {cols}, m.obj_idx FROM read_parquet({_sql_files(runs)}) s "
+                "JOIN obj_map m ON s.obj_idx = m.pass1_idx")
+
+
+def _sha_order(order: list[SourceObject], recs: list[tuple[bytes, dict]]) -> list[dict]:
+    """The pass-1 records' objects in `ingest`'s order (`_object_order`: sha256, then the object's fields; then
+    the pass-1 index)."""
+    docs = {d["index"]: d for _, r in recs for d in r["objects"]}
+    return [docs[ci] for ci in sorted(docs, key=lambda ci: (_order_key((bytes.fromhex(docs[ci]["sha256"]), order[ci])),
+                                                            ci))]
+
+
+def _make_plan(order: list[SourceObject], recs: list[tuple[bytes, dict]], runs: list[Path], root: Path, stage: str,
+               params: dict, dest: Path, tmp: Path | None) -> dict:
+    """`ingest`'s decisions over the pass-1 runs: the decision table written to `dest`, the plan returned."""
+    docs = _sha_order(order, recs)
+    obj_of = [0] * len(order)
+    for rank, d in enumerate(docs):
+        obj_of[d["index"]] = rank
+    earlier = _earlier(root)
+    scratch = Path(tempfile.mkdtemp(prefix="biobox-ingest-plan-", dir=tmp))
+    try:
+        con = _duck(scratch)
+        try:
+            _seen_view(con, runs, obj_of)
+            _old_views(con, locator_files(root), index_files(root))
+            kept, batches, new_bases = _decide(con, dest, len(docs), params["shard_bases"])
+        finally:
+            con.close()
+    finally:
+        shutil.rmtree(scratch, ignore_errors=True)
+    shard_of = _shard_paths(stage, len(batches))
+    return {"format": PLAN_FORMAT, "stage": stage, "store_params": params, "pass1_bytes": recs[0][1]["pass1_bytes"],
+            "pass1_sha256": [hashlib.sha256(raw).hexdigest() for raw, _ in recs], "earlier": earlier,
+            "objects": [{**d, "kept": kept[i], "kept_bases": new_bases[i]} for i, d in enumerate(docs)],
+            "batches": [{"shard": shard_of[j], "objects": b, "new_sequences": sum(kept[i] for i in b),
+                         "new_bases": sum(new_bases[i] for i in b), "bases_read": sum(docs[i]["bases"] for i in b)}
+                        for j, b in enumerate(batches)],
+            "records": sum(d["records"] for d in docs), "new_sequences": sum(kept),
+            "new_seq_sha256": ids.sha256_file(dest).hex(), "new_seq_bytes": dest.stat().st_size}
+
+
+def _runs(recs: list[tuple[bytes, dict]], tmp: Path | None, root: Path, stage: str) -> list[Path]:
+    d = ingest_runs_dir(tmp, root, stage)
+    return [_checked_run(d / f"pass1-{k:05d}.parquet", r["run_sha256"], f"pass-1 shard {k}", stage, f"--pass1 {k}")
+            for k, (_, r) in enumerate(recs)]
+
+
+def ingest_plan(objects: list[SourceObject], root: Path, stage: str, shard_bases: int = SHARD_BASES,
+                line_width: int = LINE_WIDTH, tmp: Path | None = None, out: Path | None = None,
+                runs_tmp: Path | None = None) -> dict:
+    """The stage's decisions from its pass-1 runs: the decision table into scratch (both under `runs_tmp`, default
+    `tmp`; DuckDB spills into `tmp`), the plan under `out` (default `root`). Needs every pass-1 record and a run
+    with its sha256. Refuses a stage whose ingest files or plan exist, and store parameters other than the store's
+    or the pass-1 records'."""
+    root = Path(root)
+    out = root if out is None else Path(out)
+    ledger.check_scratch(tmp, root, out)
+    ledger.check_scratch(runs_tmp, root, out)
+    shared = _runs_base(tmp, runs_tmp)
+    _refuse_stage_written(root, out, stage, stage_dirs(stage))
+    rel = _plan_rel(stage)
+    if _find(root, out, rel) is not None:
+        raise FileExistsError(f"{rel}: the plan of stage {stage} is written once; refusing to overwrite")
+    params = _params(shard_bases, line_width)
+    _check_params(root, out, params)
+    order, recs = _pass1_records(objects, root, out, stage)
+    if any(r["store_params"] != params for _, r in recs):
+        raise ValueError(f"stage {stage}: the pass-1 records were made with other store parameters than {params}")
+    runs = _runs(recs, shared, root, stage)
+    dest = ingest_runs_dir(shared, root, stage) / NEW_SEQ
+    part = dest.with_name(f".{dest.name}.tmp-{os.getpid()}")
+    try:
+        doc = _make_plan(order, recs, runs, root, stage, params, part, tmp)
+    except BaseException:
+        part.unlink(missing_ok=True)
+        raise
+    os.replace(part, dest)
+    _write_once(root, out, rel, _json_bytes(doc), "the ingest plan")
+    return {"objects": len(doc["objects"]), "records": doc["records"], "new_sequences": doc["new_sequences"],
+            "batches": len(doc["batches"])}
+
+
+def _check_plan_objects(order: list[SourceObject], plan: dict, stage: str) -> None:
+    if sorted(d["index"] for d in plan["objects"]) != list(range(len(order))) or \
+            any(Path(order[d["index"]].path).name != d["name"] for d in plan["objects"]):
+        raise ValueError(f"the plan of stage {stage} is of another object list")
+
+
+def ingest_batch(objects: list[SourceObject], root: Path, stage: str, j: int, tmp: Path | None = None,
+                 out: Path | None = None, runs_tmp: Path | None = None) -> dict:
+    """Batch `j` of the stage's plan: its objects read again for their new sequences, written as its shard under
+    `out` (default `root`), as `ingest` writes it. Each object must have the size and sha256 of pass 1. Refuses a
+    stage whose tables exist and a shard that exists, in `root` or `out`; needs the plan's decision table in
+    scratch (under `runs_tmp`, default `tmp`) with its sha256."""
+    root = Path(root)
+    out = root if out is None else Path(out)
+    ledger.check_scratch(tmp, root, out)
+    ledger.check_scratch(runs_tmp, root, out)
+    _refuse_stage_written(root, out, stage, _table_dirs(stage))
+    _, plan = _doc(root, out, _plan_rel(stage), f"ingest plan of stage {stage}")
+    if isinstance(j, bool) or not isinstance(j, int) or not 0 <= j < len(plan["batches"]):
+        raise ValueError(f"batch {j!r}: the plan of stage {stage} has {len(plan['batches'])} batches")
+    b = plan["batches"][j]
+    for base in dict.fromkeys([root.resolve(), out.resolve()]):
+        d = base / b["shard"]
+        if d.parent.is_dir() and any(p.name.startswith((d.name, f".{d.name}")) for p in d.parent.iterdir()):
+            raise FileExistsError(f"{d}: the shard of batch {j} of stage {stage} is written already (or a "
+                                  "temporary file of it); refusing to write it again")
+    params = plan["store_params"]
+    _check_params(root, out, params)
+    order = pass1_order(objects)
+    _check_plan_objects(order, plan, stage)
+    new = _checked_run(ingest_runs_dir(_runs_base(tmp, runs_tmp), root, stage) / NEW_SEQ, plan["new_seq_sha256"],
+                       "the plan's decision table", stage, "--plan")
+    docs = plan["objects"]
+
+    def unchanged(i: int, src: Path) -> None:
+        if src.stat().st_size != docs[i]["bytes"] or ids.sha256_file(src).hex() != docs[i]["sha256"]:
+            raise ValueError(f"{src}: changed since pass 1 (its size or sha256 is not the plan's); the stage must "
+                             "be ingested again from the start")
+
+    scratch = Path(tempfile.mkdtemp(prefix="biobox-ingest-batch-", dir=tmp))
+    try:
+        con = _duck(scratch)
+        try:
+            con.execute(f"CREATE VIEW new_seq AS SELECT * FROM read_parquet({_sql_path(new)})")
+            wanted = _wanted(con, objects=(b["objects"][0], b["objects"][-1]))
+            try:
+                nxt = _write_shard(out / b["shard"], [(i, Path(order[docs[i]["index"]].path)) for i in b["objects"]],
+                                   wanted, next(wanted, None), unchanged, params["line_width"])
+            finally:
+                wanted.close()
+        finally:
+            con.close()
+    finally:
+        shutil.rmtree(scratch, ignore_errors=True)
+    if nxt is not None:
+        raise RuntimeError(f"batch {j} of stage {stage}: the decision table holds sequences outside its objects")
+    return {"batch": j, "shard": b["shard"], "objects": len(b["objects"]), "new_sequences": b["new_sequences"],
+            "new_bases": b["new_bases"]}
+
+
+def ingest_merge(objects: list[SourceObject], root: Path, stage: str, tmp: Path | None = None,
+                 max_file_bytes: int = layout.MAX_FILE_BYTES, out: Path | None = None,
+                 runs_tmp: Path | None = None, _hook: Callable[[str], None] | None = None) -> dict:
+    """The stage's tables, ledger, `store_params` (its first stage only) and `l0_manifest` under `out` (default
+    `root`), as `ingest` writes them, from the plan and the pass-1 runs. Needs every batch's shard published (in
+    `root` or `out`), every scratch run (under `runs_tmp`, default `tmp`) with the sha256 its record holds, and the
+    earlier stages' index files the plan decided against. `_hook` (tests only) is called at `ingest`'s points from
+    "contig_occurrence" on."""
+    root = Path(root)
+    out = root if out is None else Path(out)
+    hook = _hook or _no_hook
+    ledger.check_scratch(tmp, root, out)
+    ledger.check_scratch(runs_tmp, root, out)
+    shared = _runs_base(tmp, runs_tmp)
+    _refuse_stage_written(root, out, stage, _table_dirs(stage))
+    raw, plan = _doc(root, out, _plan_rel(stage), f"ingest plan of stage {stage}")
+    params = plan["store_params"]
+    new_params = _check_params(root, out, params)
+    missing = [b["shard"] for b in plan["batches"]
+               if any(_find(root, out, b["shard"] + s) is None for s in ("", ".fai", ".gzi"))]
+    if missing:
+        raise FileNotFoundError(f"stage {stage}: {', '.join(missing)} not published; run those batches first")
+    if _earlier(root) != plan["earlier"]:
+        raise ValueError(f"stage {stage}: the earlier stages' seq_locator and contig_index files are not those its "
+                         "plan decided against; ingest the stage again from the start")
+    order, recs = _pass1_records(objects, root, out, stage)
+    _check_plan_objects(order, plan, stage)
+    if [hashlib.sha256(r).hexdigest() for r, _ in recs] != plan["pass1_sha256"]:
+        raise ValueError(f"stage {stage}: the pass-1 records are not those the plan was made from")
+    runs = _runs(recs, shared, root, stage)
+    new = _checked_run(ingest_runs_dir(shared, root, stage) / NEW_SEQ, plan["new_seq_sha256"],
+                       "the plan's decision table", stage, "--plan")
+    docs = plan["objects"]
+    ordered = [(bytes.fromhex(d["sha256"]), order[d["index"]]) for d in docs]
+    obj_of = [0] * len(order)
+    for rank, d in enumerate(docs):
+        obj_of[d["index"]] = rank
+    scratch = Path(tempfile.mkdtemp(prefix="biobox-ingest-merge-", dir=tmp))
+    try:
+        con = _duck(scratch)
+        try:
+            _seen_view(con, runs, obj_of)
+            _old_views(con, locator_files(root), index_files(root))
+            con.execute(f"CREATE VIEW new_seq AS SELECT * FROM read_parquet({_sql_path(new)})")
+            report = _write_tables(con, out, stage, ordered, [d["records"] for d in docs], [d["kept"] for d in docs],
+                                   [b["objects"] for b in plan["batches"]], max_file_bytes, hook)
+        finally:
+            con.close()
+    finally:
+        shutil.rmtree(scratch, ignore_errors=True)
+    if new_params is not None:
+        _write_new(out / PARAMS_PATH, new_params)
+    _write_l0_manifest(out, stage, ordered, [(d["bytes"], 0) for d in docs], max_file_bytes)
+    hook("l0_manifest")
+    return report
+
+
+def ingest_run_problems(root: Path, stage: str, tmp: Path | None) -> list[tuple[str, int | None, str]]:
+    """The scratch runs whose record is published in the root but which cannot be used as they are, as (what,
+    shard, why): ("pass1", k, ...) for a pass-1 run, then ("plan", None, ...) for the decision table; why is "is
+    missing" or "differs from the sha256 its record holds". Empty when every published run is in place."""
+    d = ingest_runs_dir(tmp, root, stage)
+    found: list[tuple[str, int | None, str]] = []
+    p0 = _find(root, None, _pass1_rel(stage, 0))
+    for k in range(json.loads(p0.read_bytes())["shards"] if p0 is not None else 0):
+        p = _find(root, None, _pass1_rel(stage, k))
+        why = None if p is None else _run_why(d / f"pass1-{k:05d}.parquet", json.loads(p.read_bytes())["run_sha256"])
+        if why is not None:
+            found.append(("pass1", k, why))
+    p = _find(root, None, _plan_rel(stage))
+    why = None if p is None else _run_why(d / NEW_SEQ, json.loads(p.read_bytes())["new_seq_sha256"])
+    if why is not None:
+        found.append(("plan", None, why))
+    return found
+
+
+def rescan_pass1(objects: list[SourceObject], root: Path, stage: str, k: int, tmp: Path | None = None) -> dict:
+    """Pass 1 of shard k again into scratch, for a shard whose record is published in the root but whose run is
+    gone or damaged. The record is not written again: the new run must reproduce it (its objects and its sha256),
+    else it is deleted, the run in scratch is left as it was, and a ValueError names the shard."""
+    root = Path(root)
+    ledger.check_scratch(tmp, root)
+    _refuse_stage_written(root, root, stage, _table_dirs(stage))
+    name = f"pass-1 shard {k} of stage {stage}"
+    _, rec = _doc(root, None, _pass1_rel(stage, k), f"record of {name} to scan again for")
+    shards = pass1_shards(objects, rec["pass1_bytes"])
+    order = pass1_order(objects)
+    if len(shards) != rec["shards"] or shards[k] != [d["index"] for d in rec["objects"]]:
+        raise ValueError(f"{name}: these objects make other pass-1 shards than its record's")
+    for d in rec["objects"]:
+        src = Path(order[d["index"]].path)
+        if src.name != d["name"] or src.stat().st_size != d["bytes"]:
+            raise ValueError(f"{name}: {src} is not the object its record lists (name or size); scanned again, it "
+                             "cannot reproduce the published record, so the plan and the merge cannot run")
+    path = ingest_runs_dir(tmp, root, stage) / f"pass1-{k:05d}.parquet"
+    path.parent.mkdir(parents=True, exist_ok=True)
+    new = path.with_name(f".rescan-{os.getpid()}-{path.name}")
+    try:
+        docs = _pass1_run(order, shards[k], new)
+    except BaseException:
+        new.unlink(missing_ok=True)
+        raise
+    have = ids.sha256_file(new).hex()
+    if docs != rec["objects"] or have != rec["run_sha256"]:
+        new.unlink()
+        raise ValueError(f"{name}: scanned again, its run has sha256 {have}, the record holds {rec['run_sha256']}; "
+                         "the published record is not the pass 1 of these inputs, so the plan and the merge cannot "
+                         "run (the run in scratch is left as it was)")
+    os.replace(new, path)
+    return {"pass1": k, "objects": len(docs), "run_sha256": have}
+
+
+def rescan_plan(objects: list[SourceObject], root: Path, stage: str, tmp: Path | None = None) -> dict:
+    """The plan's decision table again into scratch, for a plan published in the root whose table is gone or
+    damaged; every pass-1 run must be in place (rescan those first). The new table and plan must equal the
+    published ones, else the table is deleted and a ValueError names the plan."""
+    root = Path(root)
+    ledger.check_scratch(tmp, root)
+    _refuse_stage_written(root, root, stage, _table_dirs(stage))
+    _, plan = _doc(root, None, _plan_rel(stage), f"ingest plan of stage {stage} to make again")
+    order, recs = _pass1_records(objects, root, None, stage)
+    if [hashlib.sha256(r).hexdigest() for r, _ in recs] != plan["pass1_sha256"]:
+        raise ValueError(f"the plan of stage {stage}: the pass-1 records are not those it was made from")
+    runs = _runs(recs, tmp, root, stage)
+    dest = ingest_runs_dir(tmp, root, stage) / NEW_SEQ
+    new = dest.with_name(f".rescan-{os.getpid()}-{dest.name}")
+    try:
+        doc = _make_plan(order, recs, runs, root, stage, plan["store_params"], new, tmp)
+    except BaseException:
+        new.unlink(missing_ok=True)
+        raise
+    if doc != plan:
+        new.unlink()
+        raise ValueError(f"the plan of stage {stage}: made again, its decision table has sha256 "
+                         f"{doc['new_seq_sha256']}, the plan holds {plan['new_seq_sha256']} (or the plan differs); "
+                         "the published plan is not the one of these inputs, so the batches and the merge cannot run")
+    os.replace(new, dest)
+    return {"plan": True, "new_sequences": doc["new_sequences"], "new_seq_sha256": doc["new_seq_sha256"]}
+
+
+def main(argv: list[str] | None = None) -> int:
+    """`python -m biobox.l0seq.store rescan --root R --stage S --objects F --tmp D (--pass1 K | --plan)`:
+    `rescan_pass1` or `rescan_plan` in its own process, as build-stage runs it (card B-30). It writes nothing into
+    the root, so it is not a run-step. Prints one JSON line; exit 2 with the reason on a refusal."""
+    ap = argparse.ArgumentParser(prog="python -m biobox.l0seq.store")
+    ap.add_argument("action", choices=["rescan"])
+    for name in ("--root", "--stage", "--objects", "--tmp"):
+        ap.add_argument(name, required=True)
+    what = ap.add_mutually_exclusive_group(required=True)
+    what.add_argument("--pass1", type=int, help="the pass-1 shard to scan again")
+    what.add_argument("--plan", action="store_true", help="make the plan's decision table again")
+    a = ap.parse_args(argv)
+    from biobox.cli import _source_objects
+
+    try:
+        objs = _source_objects(a.objects)
+        if a.plan:
+            res = rescan_plan(objs, Path(a.root), a.stage, tmp=Path(a.tmp))
+        else:
+            res = rescan_pass1(objs, Path(a.root), a.stage, a.pass1, tmp=Path(a.tmp))
+    except (ValueError, FileNotFoundError, FileExistsError) as e:
+        print(f"ingest rescan: {e}", file=sys.stderr)
+        return 2
+    print(json.dumps({"action": a.action, "result": res, "stage": a.stage}, sort_keys=True))
+    return 0
 
 
 class SeqStore:
@@ -674,3 +1284,7 @@ class SeqStore:
         for r in rows:
             lines.extend(fasta.format_record(r["original_header"], self.raw(r["raw_digest"]), r["line_width"]))
         return lines
+
+
+if __name__ == "__main__":
+    sys.exit(main())
