@@ -3069,3 +3069,309 @@ def test_w07_a_positive_that_names_no_protein_or_several_is_refused_listing_what
     assert sorted(p.name for p in out.iterdir()) == ["recipe.yaml"]
     r, _ = rcp.load(out / "recipe.yaml")
     assert r["controls"]["positive"][0]["value"] == pos.hex()
+
+
+# --- W-19: a search holds its hits, not its target; it checks its pack by the build's record; it writes nothing
+# into the pack directory; its pending record comes first ---------------------------------------------------------
+
+_W19_RECORD = getattr(pack, "VERIFIED", "pack_verified.json")  # the build's verification record (card W-19)
+
+
+@pytest.fixture(scope="module")
+def w19_small(world, tmp_path_factory):
+    """The world's release packed in small shards, so every searchable target has several."""
+    root, d, _ = world
+    packs = tmp_path_factory.mktemp("w19") / "packs"
+    man = pack.build(root, REL, models={"test-1": d / "a.hmm"}, shard_text_bytes=20_000, packs=packs)
+    return packs, man
+
+
+def _w19_shards(packs: Path, man: dict, target: str) -> list[Path]:
+    pdir = pack.pack_dir(packs, REL, man["pack_id"])
+    return [pdir / s["path"] for s in man["shards"] if s["target"] == target]
+
+
+def _w19_whole_block(hmm, records: list[tuple[str, str]], bits: float) -> dict:
+    """The oracle: one pyhmmer search of every record held in one block (the worker's search before card W-19,
+    written here separately), with every reported domain."""
+    block = pyhmmer.easel.TextSequenceBlock(
+        pyhmmer.easel.TextSequence(name=n.encode(), sequence=s) for n, s in records).digitize(engine.AMINO)
+    out = {}
+    for hits in pyhmmer.hmmsearch([hmm], block, cpus=1, Z=1e8, domZ=1e8, T=bits, incT=bits):
+        for h in hits:
+            if h.score >= bits:
+                out[engine.text(h.name)] = (h.score, h.evalue, sorted(
+                    (d.score, d.i_evalue, d.env_from, d.env_to, d.alignment.hmm_from, d.alignment.hmm_to)
+                    for d in h.domains))
+    return out
+
+
+@pytest.mark.covers("W-19")
+def test_w19_a_target_searched_block_by_block_scores_as_one_whole_block(world, w19_small):
+    """Card W-19 (1): the target is read from the pack's shards a block at a time (`engine.stream_target`), not
+    held. At the fixed Z every score and E-value is that of one search of the whole target: compared exactly, for
+    a library model and a single-sequence profile, on both protein targets, with blocks of a few sequences."""
+    root, d, _ = world
+    packs, man = w19_small
+    lib = engine.find_model([d / "a.hmm"], "TEST0000")
+    prof = engine.build_from_sequence("w19", next(iter(domains.load_proteins(root, V, "S0").values())).rstrip("*"))
+    for target, kind in (("unique", "protein"), ("dark_orf", "dark_orf")):
+        paths = _w19_shards(packs, man, target)
+        records = [r for p in paths for r in fastz.read_records(p)]
+        assert len(paths) > 1 and len(records) == man["targets"][target]["n_seq"]
+        for hmm, bits in ((lib, 10.0), (prof, 10.0)):
+            want = _w19_whole_block(hmm, records, bits)
+            t = engine.stream_target(kind, paths, man["targets"][target]["n_seq"], block_residues=500)
+            got = engine.search(hmm, t, bits, -1e9, threads=2, keep_sequences=True)
+            assert t.size == len(records) and t.blocks_read > 1, (target, t.blocks_read)
+            assert {u.hex(): (h["seq_bitscore"], h["seq_evalue_zref"], sorted(
+                (x["bitscore"], x["evalue_zref"], x["env_start"] + 1, x["env_end"], x["hmm_from"] + 1, x["hmm_to"])
+                for x in h["domains"])) for u, h in got.items()} == want
+            seqs = dict(records)
+            assert {u.hex(): s for u, s in t.seqs.items()} == {n: seqs[n] for n in want}  # the hits' sequences only
+        if target == "unique":
+            assert want, "the library model finds no protein: the comparison would be empty"
+
+
+@pytest.mark.covers("W-19")
+def test_w19_a_run_in_blocks_of_a_few_sequences_gives_the_hits_of_one_block(world, tmp_path, monkeypatch):
+    """Card W-19 (1), through the runner and the worker: an iterative run whose target is read in blocks of about
+    300 residues has the hits, controls and rounds of the same run read in one block. Both runs have one run id,
+    from which the negative control's shuffle is seeded, in runs directories of their own."""
+    root, d, _ = world
+    hit, _ = _seed(root)
+    text = _recipe(hit, hit, tool="jackhmmer", mx=3)
+    rid, rows = b"\x07" * 16, {}
+    for block in (300, 1 << 30):
+        monkeypatch.setattr(engine, "BLOCK_RESIDUES", block, raising=False)
+        runs, work = tmp_path / f"runs{block}", tmp_path / f"work{block}"
+        row = runner.run(root, text, REL, limits=LIMITS, work_base=work, packs=_packs(world), runs=runs, run_id=rid,
+                         keep_work=True)
+        assert row["status"] == "ok", row["error"]
+        res = json.loads((work / rid.hex() / "out" / "result.json").read_text())
+        rows[block] = (row, res, _w07_all_hits(runner.run_dir(runs, rid)))
+    assert rows[300][1]["target_blocks"] > 1 and rows[1 << 30][1]["target_blocks"] == 1, \
+        {b: r[1].get("target_blocks") for b, r in rows.items()}
+    (a, _, ha), (b, _, hb) = rows[300], rows[1 << 30]
+    assert ha == hb != []
+    for k in ("rounds", "final_round", "stop_reason", "controls_json", "target_size", "rounds_json"):
+        assert a[k] == b[k], k
+
+
+def _w19_between(names: list[str]) -> str:
+    """A name that sorts between two adjacent names of `names` (sorted), is none of them, and holds a letter (an
+    all-digit name would be read as an integer by YAML)."""
+    for x, y in zip(names, names[1:]):
+        for k in range(1, min(int(y, 16) - int(x, 16), 64)):
+            name = f"{int(x, 16) + k:032x}"
+            if not name.isdigit():
+                return name
+    raise AssertionError("no gap between adjacent names")
+
+
+@pytest.mark.covers("W-19", "S-04")
+def test_w19_positive_controls_and_seeds_are_looked_up_without_a_set_of_every_name(world, w19_small, monkeypatch):
+    """Card W-19 (2): the positive control, and a `protein_uid` seed, are looked up by key in the pack's shards
+    (sorted by name: card W-16), not by reading every record into a set. The oracle reads every record whole;
+    the runner then may not call `fastz.read_records` at all. Names at the start and end of each shard and in the
+    middle are found, with their sequences; names before the first, after the last and between two records are
+    refused, as before."""
+    root = world[0]
+    packs, man = w19_small
+    oracle = {}
+    for target in ("unique", "dark_orf"):
+        recs = [list(fastz.read_records(p)) for p in _w19_shards(packs, man, target)]
+        names = sorted(n for r in recs for n, _ in r)
+        present = sorted({r[0][0] for r in recs} | {r[-1][0] for r in recs} | {recs[1][len(recs[1]) // 2][0]})
+        absent = ["0" * 30 + "ab", "f" * 32, _w19_between(names)]  # before the first, after the last, between two
+        assert not set(absent) & set(names)
+        oracle[target] = (dict(x for r in recs for x in r), present, absent)
+        for p in _w19_shards(packs, man, target):  # the shard-level lookup against the whole-shard oracle
+            whole = dict(fastz.read_records(p))
+            ask = set(present) | set(absent) | set(list(whole)[:3])
+            assert fastz.lookup(p, ask) == {n: whole[n] for n in ask if n in whole}
+
+    def whole_read(*a, **k):
+        raise AssertionError("the runner read every record of a shard")
+
+    monkeypatch.setattr(fastz, "read_records", whole_read)
+    seqs, present, absent = oracle["unique"]
+    other = present[0]
+    for name in present:
+        r, _ = rcp.load(_recipe(bytes.fromhex(name), bytes.fromhex(other)))
+        res = runner.resolve(root, r, REL, packs)
+        assert res["seed"]["sequence"] == seqs[name]
+        r, _ = rcp.load(_recipe(bytes.fromhex(other), bytes.fromhex(name)))
+        assert [p["uid"] for p in runner.resolve(root, r, REL, packs)["positives"]] == [name]
+    for name in absent:
+        r, _ = rcp.load(_recipe(bytes.fromhex(other), bytes.fromhex(name)))
+        with pytest.raises(RecipeError, match="could never be recovered"):
+            runner.resolve(root, r, REL, packs)
+        r, _ = rcp.load(_recipe(bytes.fromhex(name), bytes.fromhex(other)))
+        with pytest.raises(RecipeError, match="is not in release"):
+            runner.resolve(root, r, REL, packs)
+    seqs, present, absent = oracle["dark_orf"]
+    for name, ok in [(n, True) for n in present] + [(n, False) for n in absent]:
+        r, _ = rcp.load(f"recipe: dark\nwritten_against: {REL}\nseed: [{{sequence: {seqs[present[0]]}}}]\n"
+                        f"target: dark_orf\ntool: phmmer\niterations: {{max: 1, inclusion_bits: 20}}\n"
+                        f"controls: {{positive: [{{region_uid: {name}}}]}}\n")
+        if ok:
+            assert [p["uid"] for p in runner.resolve(root, r, REL, packs)["positives"]] == [name]
+        else:
+            with pytest.raises(RecipeError, match="could never be recovered"):
+                runner.resolve(root, r, REL, packs)
+
+
+def _w19_packs(world, tmp_path: Path, recorded: bool) -> Path:
+    """A copy of the world's pack directory; without the build's verification record when not `recorded` (a pack
+    built before card W-19)."""
+    packs = tmp_path / "packs"
+    shutil.copytree(_packs(world), packs)
+    if not recorded:
+        (pack.find(packs, REL) / _W19_RECORD).unlink(missing_ok=True)
+    return packs
+
+
+def _w19_snapshot(packs: Path) -> dict:
+    """Every path under the pack directory with its mode, mtime and (for a file) bytes: a directory made and removed
+    inside it changes its parent's mtime."""
+    return {p.relative_to(packs).as_posix(): (p.stat().st_mode, p.stat().st_mtime_ns,
+                                              p.read_bytes() if p.is_file() else None)
+            for p in [packs, *sorted(packs.rglob("*"))]}
+
+
+@pytest.mark.covers("W-19", "W-03", "C-12")
+@pytest.mark.parametrize("recorded", [True, False], ids=["recorded", "built_before_w19"])
+@pytest.mark.skipif(os.geteuid() == 0, reason="root ignores file permissions, so a read-only pack cannot be made")
+def test_w19_a_search_against_a_read_only_pack_directory_succeeds_and_writes_nothing_into_it(
+        world, tmp_path, request, monkeypatch, capsys, recorded):
+    """Card W-19 (3) and (4): a search checks a pack its build verified by the manifest and the file sizes only (no
+    full verify: `pack.verify_dir` is not called); a pack built before W-19 has no record and is verified in full
+    once for the run, with its scratch in the run's work directory, and stderr says so. Either way the pack
+    directory is read-only and nothing in it changes."""
+    root = world[0]
+    packs = _w19_packs(world, tmp_path, recorded)
+    _read_only(packs, request)
+    with pytest.raises(PermissionError):
+        (pack.release_dir(packs, REL) / "probe").write_text("")
+    before = _w19_snapshot(packs)
+    calls = []
+    real = pack.verify_dir
+
+    def counted(*a, **k):
+        calls.append(1)
+        return real(*a, **k)
+
+    monkeypatch.setattr(pack, "verify_dir", counted)
+    hit, _ = _seed(root)
+    capsys.readouterr()
+    row = runner.run(root, _recipe(hit, hit, tool="jackhmmer", mx=2), REL, limits=LIMITS, work_base=tmp_path / "work",
+                     packs=packs, runs=tmp_path / "runs", pending=True)
+    err = capsys.readouterr().err
+    assert row["status"] == "ok", row["error"]
+    assert _w19_snapshot(packs) == before
+    assert len(calls) == (0 if recorded else 1)
+    assert ("built before card W-19" in err) == (not recorded), err
+    assert not (tmp_path / "work" / row["run_id"].hex()).exists()  # the full verify's scratch went with the run
+
+
+@pytest.mark.covers("W-19", "C-12")
+def test_w19_a_damaged_pack_is_still_refused_or_failed(world, tmp_path):
+    """What the search-time check still catches. A file whose size differs from the manifest: refused, naming `pack
+    verify`. A byte flipped in a target shard of a pack with a record (same size): refused naming `pack verify` when
+    the key lookup cannot decompress the shard, else the run fails at staging, which hashes the staged shards
+    against the manifest (zstd frames carry no checksum here, so which one depends on the byte). The same byte in a
+    pack built before W-19: refused by the full verify."""
+    root = world[0]
+    hit, _ = _seed(root)
+    text = _recipe(hit, hit)
+    for recorded, how in ((True, "truncate"), (True, "flip"), (False, "flip")):
+        sub = tmp_path / f"{recorded}-{how}"
+        packs = _w19_packs(world, sub, recorded)
+        p = pack.find(packs, REL) / "unique/part-0.faa.zst"
+        b = bytearray(p.read_bytes())
+        if how == "truncate":
+            del b[-1]
+        else:
+            b[-5] ^= 0xFF
+        p.write_bytes(bytes(b))
+        kw = dict(limits=LIMITS, work_base=sub / "work", packs=packs, runs=sub / "runs")
+        if recorded and how == "flip":
+            try:
+                row = runner.run(root, text, REL, **kw)
+            except RecipeError as e:
+                assert "pack verify" in str(e), e
+            else:
+                assert row["status"] == "failed" and "sha256 differs" in row["error"], row["error"]
+        else:
+            with pytest.raises(RecipeError, match="pack verify" if how == "truncate" else "does not verify"):
+                runner.run(root, text, REL, **kw)
+
+
+@pytest.mark.covers("W-19", "C-12", "D-01")
+def test_w19_the_build_records_its_verification_beside_the_manifest_and_records_an_older_pack(
+        world, tmp_path, monkeypatch):
+    """Card W-19 (3): the build verifies the pack before it renames it into place and writes the record beside the
+    manifest, not in it, so the manifest, and the pack id that is its hash, are those of a pack built before
+    W-19. `pack build` on such a pack (the same inputs) builds nothing and adds the record; `pack verify` checks the
+    record against the manifest."""
+    root, d, man = world
+    pdir = pack.find(_packs(world), REL)
+    manifest, pid = pack.read_manifest(pdir)
+    assert set(manifest) == {*pack.FINGERPRINT_KEYS, "targets", "shards", "meta"}  # no new key
+    rec = json.loads((pdir / _W19_RECORD).read_text())
+    assert rec["pack_id"] == pid.hex() == man["pack_id"] and rec["problems"] == []
+    packs = _w19_packs(world, tmp_path, recorded=False)
+    files = {k: v for k, v in _stat_tree(packs).items() if v[2] is not None}
+
+    def no_build(*a, **k):
+        raise AssertionError("built again")
+
+    monkeypatch.setattr(pack, "_build_into", no_build)
+    again = pack.build(root, REL, models={"test-1": d / "a.hmm"}, packs=packs)
+    monkeypatch.undo()
+    assert again["pack_id"] == man["pack_id"]
+    after = {k: v for k, v in _stat_tree(packs).items() if v[2] is not None}
+    new = f"release={REL}/{man['pack_id']}/{_W19_RECORD}"
+    assert after.pop(new)[2] == hashlib.sha256((pdir / _W19_RECORD).read_bytes()).hexdigest()
+    assert after == files  # every other file as it was: same inode, mtime and bytes
+    assert pack.verify(root, REL, packs=packs) == []
+    copy = pack.find(packs, REL) / _W19_RECORD
+    copy.write_text(json.dumps({**rec, "pack_id": "00" * 16}))
+    assert any(_W19_RECORD in p for p in pack.verify(root, REL, packs=packs))
+
+
+@pytest.mark.covers("W-19", "W-13")
+def test_w19_the_pending_record_exists_before_the_pack_check_and_the_lookups(world, tmp_path, monkeypatch):
+    """Card W-19 (5): with a pending record (`search hmm`, `search run --wait`) the record, and so `search status`,
+    exists before any long work: the full verify of a pack built before W-19 and the key lookups in the shards. A
+    refusal found after the record is written removes it again."""
+    root = world[0]
+    packs = _w19_packs(world, tmp_path, recorded=False)
+    runs, rid = tmp_path / "runs", b"\x19" * 16
+    pend = runner.pending_path(runner.run_dir(runs, rid))
+    seen = {"verify": [], "lookup": []}
+    real_verify, real_lookup = pack.verify_dir, getattr(fastz, "lookup", None)
+
+    def verify(*a, **k):
+        seen["verify"].append(pend.exists())
+        return real_verify(*a, **k)
+
+    def lookup(*a, **k):
+        seen["lookup"].append(pend.exists())
+        return real_lookup(*a, **k)
+
+    monkeypatch.setattr(pack, "verify_dir", verify)
+    monkeypatch.setattr(fastz, "lookup", lookup, raising=False)
+    hit, _ = _seed(root)
+    row = runner.run(root, _recipe(hit, hit), REL, limits=LIMITS, work_base=tmp_path / "work", packs=packs, runs=runs,
+                     run_id=rid, pending=True)
+    assert row["status"] == "ok", row["error"]
+    assert seen["verify"] == [True] and seen["lookup"] and all(seen["lookup"]), seen
+    # a positive control not in the target, found once the record exists: refused, and the record is gone again
+    rid2 = b"\x20" * 16
+    with pytest.raises(RecipeError, match="could never be recovered"):
+        runner.run(root, _recipe(hit, b"\xab" * 16), REL, limits=LIMITS, work_base=tmp_path / "work", packs=packs,
+                   runs=runs, run_id=rid2, pending=True)
+    assert not runner.pending_path(runner.run_dir(runs, rid2)).exists()
+    assert not (tmp_path / "work" / rid2.hex()).exists() and not runner.run_dir(runs, rid2).exists()

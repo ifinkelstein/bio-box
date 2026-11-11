@@ -602,7 +602,18 @@ What is ours, all under `/tmp/if2453/`:
   removed after the merge.
 - `$BBTMP/logs/`: unit logs.
 - `$BBTMP/packs/release=<R>/<pack id>/`: the search pack of a release (section 7). It is a cache of
-  the release, shared by every user of the host: `pack build` makes it again from the release.
+  the release, shared by every user of the host: `pack build` makes it again from the release. Its
+  `pack_verified.json` is the build's record that the pack verified (card W-19); a search reads it and
+  writes nothing into the pack directory. A pack built before W-19 has none, and every search of it
+  verifies it in full first (its log says so); `pack build` with the same inputs adds the record
+  without building again.
+- `$BBTMP/packs/release=<R>/.building-<pid>-<hex>/` and `.scratch-<pid>-<hex>/`: a pack build's
+  temporary pack and its sort's scratch, and `.verify-<pid>-<hex>/`: the scratch of a `pack verify`
+  (or of the verify a `pack build` runs). Each is removed by the command that made it, also when it
+  is stopped by SIGTERM, SIGHUP or Ctrl-C; one is left only when that command was killed (SIGKILL,
+  the OOM killer, a reboot). They are dot-named, so `ls` shows them only with `-a`. Remove one only
+  when no `pack build` or `pack verify` of that release is running (`ps -u "$USER" -o pid,args`),
+  by exact path.
 - `$BBTMP/search/$USER/`: your searches (section 7). `runs/run=<run id>/` is a closed run's record
   and hits; `runs/pending/run=<run id>.json` is a run's pending record (and `.stderr`, the runner's
   stderr of a run submitted outside a unit); `work/<run id>/` is a run's work directory, which the

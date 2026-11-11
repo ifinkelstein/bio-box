@@ -5,6 +5,11 @@ space (Z_prot = domZ = 1e8). Round 1 searches with the seed: an HMM as given (fr
 library or a user's file), or a profile built from a sequence (what phmmer and the first round
 of jackhmmer do), from an MSA, or from unaligned seed sequences (`build_from_sequences`).
 
+The target is never held whole (card W-19): a search reads it from the pack's shards one block of
+`BLOCK_RESIDUES` residues at a time (`stream_target`), each block searched across the run's threads, and
+keeps only the hits (and, for a round that builds a next profile, its hits' sequences). At the fixed Z a
+target's scores and E-values do not depend on what it is searched with, so this is one search of the target.
+
 Per round k:
 
   1. Keep targets whose sequence bitscore is >= `inclusion_bits`; for each, every domain
@@ -41,28 +46,57 @@ from pyhmmer.plan7 import Background, Builder, TraceAligner
 from biobox.l1.domains import DOM_Z, Z_PROT, iter_hmms
 
 AMINO = pyhmmer.easel.Alphabet.amino()
+# residues per block of a target read from the pack (card W-19): about 100 to 150 MB of digitized sequences with
+# their Easel records, for proteins of about 300 aa (estimate); a search holds one block at a time
+BLOCK_RESIDUES = 2**25
 BUILDER_SEED = 42
 FALLBACK_FAMILY_BITS = 25.0  # family calls on the seed for models without GA cutoffs
 
 
 @dataclass
 class Target:
+    """What a search reads: `size` sequences, given as blocks of digitized sequences, read afresh by each call of
+    `blocks()` (one pass over the target); `seqs` holds the text of the sequences a search kept
+    (`search(keep_sequences=True)`: the hits of a round that builds the next profile), or all of them for a target
+    loaded whole (`load_target`). `blocks_read` counts the blocks of the last pass."""
     kind: str  # protein | dark_orf
-    uids: list[bytes]
-    seqs: dict[bytes, str]
-    block: pyhmmer.easel.DigitalSequenceBlock
+    size: int
+    _blocks: Callable[[], Iterator[pyhmmer.easel.DigitalSequenceBlock]]
+    seqs: dict[bytes, str] = field(default_factory=dict)
+    blocks_read: int = 0
 
-    @property
-    def size(self) -> int:
-        return len(self.uids)
+    def blocks(self) -> Iterator[pyhmmer.easel.DigitalSequenceBlock]:
+        self.blocks_read = 0
+        for block in self._blocks():
+            self.blocks_read += 1
+            yield block
 
 
 def load_target(kind: str, records: Iterator[tuple[str, str]]) -> Target:
+    """A small target held whole, in one block (tests and small inputs; a search reads a pack's shards with
+    `stream_target`)."""
     seqs = {bytes.fromhex(n): s for n, s in records}
     uids = sorted(seqs)
     block = pyhmmer.easel.TextSequenceBlock(
         pyhmmer.easel.TextSequence(name=u.hex().encode(), sequence=seqs[u]) for u in uids).digitize(AMINO)
-    return Target(kind, uids, seqs, block)
+    return Target(kind, len(uids), lambda: iter([block]), seqs)
+
+
+def stream_target(kind: str, paths: list, size: int, block_residues: int | None = None) -> Target:
+    """A target read from its pack shards (`paths`, in pack order) a block of about `block_residues` residues
+    (default `BLOCK_RESIDUES`) at a time, never held whole (card W-19); `size` is its number of sequences (the pack
+    manifest's `n_seq`: a searchable target holds each name once). A block is searched by pyhmmer across the
+    search's threads, and at the fixed Z (`Z_PROT`, `DOM_Z`) a sequence's scores and E-values do not depend on the
+    other sequences searched with it, so the hits are those of one search of the whole target."""
+    from biobox.search import fastz
+
+    n = int(block_residues or BLOCK_RESIDUES)
+
+    def blocks():
+        for p in paths:
+            yield from fastz.blocks(p, AMINO, n)
+
+    return Target(kind, size, blocks)
 
 
 def text(x) -> str:
@@ -206,24 +240,43 @@ def families_of(seq: str, model_paths: list, threads: int) -> set[str]:
     return out
 
 
-def search(hmm, target: Target, inclusion_bits: float, domain_bits: float, threads: int) -> dict[bytes, dict]:
-    """Included targets -> {seq_bitscore, seq_evalue_zref, domains: [...]} for one profile."""
+def search(hmm, target: Target, inclusion_bits: float, domain_bits: float, threads: int, *,
+           keep_sequences: bool = False) -> dict[bytes, dict]:
+    """Included targets -> {seq_bitscore, seq_evalue_zref, domains: [...]} for one profile, one block of the
+    target at a time (`Target.blocks`). With `keep_sequences`, the text of each included target's sequence is kept
+    in `target.seqs` (for the next round's alignment), read from the block it was found in."""
     out = {}
-    for hits in pyhmmer.hmmsearch([hmm], target.block, cpus=threads, Z=Z_PROT, domZ=DOM_Z,
-                                  T=inclusion_bits, incT=inclusion_bits):
-        for hit in hits:
-            if hit.score < inclusion_bits:
-                continue
-            doms = sorted(hit.domains, key=lambda d: -d.score)
-            keep = [d for i, d in enumerate(doms) if i == 0 or d.score >= domain_bits]
-            out[bytes.fromhex(text(hit.name))] = {
-                "seq_bitscore": hit.score, "seq_evalue_zref": hit.evalue,
-                "domains": sorted(({"bitscore": d.score, "evalue_zref": d.i_evalue, "env_start": d.env_from - 1,
-                                    "env_end": d.env_to, "ali_start": d.alignment.target_from - 1,
-                                    "ali_end": d.alignment.target_to, "hmm_from": d.alignment.hmm_from - 1,
-                                    "hmm_to": d.alignment.hmm_to} for d in keep), key=lambda d: d["env_start"]),
-            }
+    for block in target.blocks():
+        found = []
+        for hits in pyhmmer.hmmsearch([hmm], block, cpus=threads, Z=Z_PROT, domZ=DOM_Z,
+                                      T=inclusion_bits, incT=inclusion_bits):
+            for hit in hits:
+                if hit.score < inclusion_bits:
+                    continue
+                doms = sorted(hit.domains, key=lambda d: -d.score)
+                keep = [d for i, d in enumerate(doms) if i == 0 or d.score >= domain_bits]
+                uid = bytes.fromhex(text(hit.name))
+                found.append(uid)
+                out[uid] = {
+                    "seq_bitscore": hit.score, "seq_evalue_zref": hit.evalue,
+                    "domains": sorted(({"bitscore": d.score, "evalue_zref": d.i_evalue, "env_start": d.env_from - 1,
+                                        "env_end": d.env_to, "ali_start": d.alignment.target_from - 1,
+                                        "ali_end": d.alignment.target_to, "hmm_from": d.alignment.hmm_from - 1,
+                                        "hmm_to": d.alignment.hmm_to} for d in keep), key=lambda d: d["env_start"]),
+                }
+        if keep_sequences:
+            _keep(block, {u.hex() for u in found if u not in target.seqs}, target.seqs)
     return out
+
+
+def _keep(block, names: set[str], seqs: dict[bytes, str]) -> None:
+    """The text of the sequences of `block` named in `names`, into `seqs`."""
+    if not names:
+        return
+    for s in block:
+        n = text(s.name)
+        if n in names:
+            seqs[bytes.fromhex(n)] = s.textize().sequence
 
 
 def tail_expectation(hmm, bits: float, size: int) -> float:
@@ -279,7 +332,8 @@ def iterate(seed_hmm, seed_msa_text: bytes | None, seed_seq: str | None, target:
     seen: set[bytes] = set()
     round1_context: set[str] | None = None
     for k in range(1, s.max_rounds + 1):
-        hits = search(hmm, target, s.inclusion_bits, s.domain_bits, threads=s.cpus)
+        # a round that may build a next profile keeps its hits' sequences: the alignment reads them
+        hits = search(hmm, target, s.inclusion_bits, s.domain_bits, threads=s.cpus, keep_sequences=k < s.max_rounds)
         labels = {u: _label(u, h, hmm.M, s, partial) for u, h in hits.items()}
         kept = sorted(u for u, (lab, _) in labels.items() if lab == "keep")
         new = [u for u in kept if u not in seen]

@@ -620,7 +620,22 @@ Files: `src/biobox/search/export.py`, `src/biobox/search/nbr.py`, `src/biobox/cl
 Do, each with a test first: (1) `pod_run.sh`'s usage line (W-18) is always empty in a real unit, because systemd expands `${...}` in the unit's command: escape it or compute the totals outside the unit's command line; check on one real unit. (2) `nbr summarize --by pfam,...` on a release with no domain library exits 0 with every neighbour `unannotated` at the pfam level: say on stderr that the release has no domain library and drop the level, as `search hmm` does. (3) The slow-path note for a missing `member_cluster` prints nine times in one command: once. (4) The `search hits` table stops at 50 rows without saying so: say how many of how many. (5) The pending record stays after a run closes: remove it. (6) Outputs: state in each header or a `README` written beside the files that coordinates are 0-based half-open and how strand and the neighbour offsets are written (one convention for strand: `+1`/`-1`, AGENTS §3.1; offsets relative to the anchor's strand, said so); `tier` empty in every row and `dist_to_contig_end_bp` 0 for genes that run off an edge: fix or drop; the FASTA's `example=` should name the hit's own contig; document `n_records`.
 Accept: the tests; the fixture outputs change only as listed, and the W-07 byte-identity test is updated in the same commit.
 
-### C-09 The file-size rule does not refuse small release records
+### B-42 Finish split clustering: the real release, then end the exemption
+**M** · Depends: B-41, the rebuild's phase 2 (nothing may write in the root meanwhile) · Pod: yes
+Do: (1) on the pod, recluster `rN.1b` (2,053,075 proteins) in parts with the current code into a scratch root that reads the stage files without changing them (never the rebuild's root as the output), and compare with its published clusters row for row; every run record under 300 CPU-minutes; record wall time, CPU-minutes, the work directory's peak size on disk and each step's peak memory. (2) If equal: remove the DEC-25 exemption from `stage.py`, the profile key and the runbook in a separate commit, and propose the text of a decision row saying it has ended (the PI adds the row). If not equal: stop and report which members move.
+Accept: the measurement file; the equality; then the removal.
+
+### B-43 A shared prefilter index for split clustering
+**M** · Depends: B-41 · needed above about 68 M proteins
+Evidence (*measured*, wilkcomp02, MMseqs2 18.8cc5c, 2026-11-11, B-41 report, `/tmp/if2453/b41/idx.sh`): `prefilter` uses a prebuilt index only when the index itself is given as the target (`db.idx`); it then equals the workflow's output on the sensitive NR50 calls (`-s 2`, `-s 3`, with `--comp-bias-corr 1 --diag-score 1`) at 0.5 to 0.8 CPU-s against 5.2, but aborts with `munmap_chunk(): invalid pointer` on the `-s 1 --comp-bias-corr 0 --diag-score 0` calls (the NR90 step and NR50 step 0). Without a shared index each part rebuilds it: at 95 M proteins that alone is about 333 CPU-minutes per part (*derived*), over the budget, and at 50 M the largest prefilter call costs about 3.7 times its unsplit CPU (*derived*).
+Do: use the shared index on the calls where it works, with a test that the result equals the rebuilt one; for the calls where it crashes, find the cause (the parameters the index was built with against those the call asks for; try an index built with the call's own settings) or, if it is a defect of this MMseqs2 version, say which version fixes it and propose the pin change for the PI (`container/environment.yml` is the PI's to change). State the part sizes and total CPU at 50 M and 95 M with whatever works.
+Accept: equality tests on the fixture and the constructed set; the derived budget table.
+
+### W-21 Read the next target block while searching
+**L** · Depends: W-19
+Why: after W-19 one thread reads each block of the target while the search threads wait: about 2 of 4 CPUs were busy on `rN.1` and the search passes took about 234 s against 121 s before (*measured*, W-19 report).
+Do: prefetch the next block in a background thread (one block ahead; memory bound: two blocks); results identical. Also make `worker._families` stream `l1_domains` instead of loading every row when `foreign_domain_alarm` is on (it would grow with a Pfam-annotated release).
+Accept: the W-19 memory test still passes with its bound restated; on the fixture, hits unchanged; on the pod the `rN.1` search time recorded against 294 s.
 
 ### C-09 The file-size rule does not refuse small release records
 **L** · Depends: C-08 (found in its report) · blocks the second release under C-04
