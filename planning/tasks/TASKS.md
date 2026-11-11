@@ -496,6 +496,13 @@ Evidence (*measured*, wilkcomp02, the B-30 probe on the 1,000× stage): every st
 Do: reproduce first (a step that allocates a known amount, and one that allocates almost nothing, launched from a parent holding more memory than either; the two records must differ and the small one must be below the parent's). Then record the step's own peak: the scope's `memory.peak` where a cgroup is present, else a measure that excludes the pre-`exec` image. Say in the record which source was used.
 Accept: the reproduction fails first and passes after; AGENTS §4.2 memory tests that read run records still pass.
 
+### W-14 A search run's peak memory is the runner's, not the worker's
+**L** · Depends: C-15 (found in its report)
+Files: `src/biobox/search/runner.py`, `tests/r2/test_micro_s0_search.py`
+Why: `search_run.peak_rss_bytes` comes from `wait4` on a forked worker, as run records did before C-15, so it is at least the runner's own peak.
+Do: reproduce first, as C-15's test does (a runner holding more memory than its worker). Then measure through the same helper as `run-step` (`runstep.measured` and `runstep.step_peak`); do not write a second helper. Record the source beside the number if the table has room without a schema change; if a schema change is needed, stop and report.
+Accept: the reproduction fails first and passes after.
+
 ### B-35 `partners_of` reads every `tape_tokens` row group
 **M** · Depends: B-31, B-34 · found 2026-11-10 by the 10 Gbp rebuild (AGENTS §4.4)
 Files: `src/biobox/catalog.py` (the neighbour macros), `src/biobox/registry/schemas.py` only if the sort key must change (then the lock, by `scripts/update_schema_lock.py`), tests

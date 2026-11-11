@@ -109,7 +109,7 @@ Last full suite on the integration branch before the C-11 merge: 1,053 passed, 1
 pinned image; 3 min 40 s wall for the slowest shard, against 13.5 min in one process). The skips
 need samtools, bgzip, Prodigal or the golden set. Tests no longer run on the laptop (AGENTS.md §5.5).
 
-## Merged (69 cards)
+## Merged (70 cards)
 
 | Card | Merge | What it did | Audit notes |
 |---|---|---|---|
@@ -181,6 +181,7 @@ need samtools, bgzip, Prodigal or the golden set. Tests no longer run on the lap
 | W-03 | this merge | The search pack and search runs live outside the data root: packs at `<pack-dir>/release=<R>/<pack_id>/`, runs in `--runs`; with a profile the defaults are `<tmp>/packs` and `<tmp>/search/<user>/{runs,work}`. A pack is never overwritten; a second build is a no-op. `run_index.json` is gone | A full search (pack verify, run, status, hits, `nbr`) against a read-only root leaves every file's sha256 unchanged. A pack, run or work directory under the root is refused. Two pack builds are byte-identical. The fixture pack is 2.1 MB (*measured*); about 3.4 GB at 10 Gbp (*derived*, `planning/measurements/2026-11-10_search_pack_size.md`). `RUNBOOK.md` is not yet updated: card W-13. Old runs and packs under `<root>/search` and `<root>/search_pack` on the pod are no longer read; removing them is the PI's call |
 | C-13 | `b23839b` | Seven defects from the first real build: each step has its own scratch directory, removed before a new attempt; `run-step` and `build-stage` lines are timestamped and line-buffered; `pod_run.sh` writes its exit line after a stop and runs Python unbuffered; `bio-box release verify`; Pfam rate constant 7.96 CPU-min per M residues (*measured*, C-10); a fixed ingest term 0.07 CPU-min (*measured*, C-10); a test for `STOP` inside a step | Pod suite 1,172 passed, 12 skipped. Shards are now planned at 30,150,753 residues (*derived*: 300 × 0.8 / 7.96). The `STOP` test passed on first run (it tests the existing rule). Not run in a real pod unit by this card; W-13 confirmed the exit line under systemd |
 | W-13 | this merge | A `search run --wait` writes the pending record, so `search status` and `search cancel` work from another shell; `search run` without `--wait` inside a `pod_run.sh` unit is refused (exit 2), because the unit is `Type=simple`, `KillMode=control-group` and systemd kills a detached runner when the main process exits (*measured*, wilkcomp02); `RUNBOOK.md` brought up to date with W-03 | Pod suite 1,183 passed, 12 skipped. On the pod (units `w13-*`): status showed `running`, cancel ended the run `stopped`, and a unit stopped with `systemctl` ended its log with `received SIGTERM` and the exit line. The two long runs used the test hook `--fault timeout` |
+| C-15 | this merge | A run record's `peak_rss_bytes` is the step's own, measured by a small helper process that spawns the step, with `peak_rss_source` beside it: `scope_memory_peak` when `run-step` opened a scope for the step alone, else `child_maxrss` | Cause confirmed: Linux carries the launcher's image into the child's `ru_maxrss`. Under a 512 MiB launcher a 192 MiB step and an empty step both recorded about 606 MiB before, 203.0 and 10.5 MiB after (*measured*, wilkcomp02). On the pod (inherited cap) the number is the largest single process of the step, not the sum of processes running at once. **Every peak in a run record written before this merge is the launcher's**, including the 10 Gbp rebuild's. Pod suite 1,186 passed, 12 skipped. Same defect in the search runner: card W-14 |
 
 Decisions DEC-18 to DEC-23 were approved by the PI on 2026-11-09 and are in `planning/DECISIONS.md`.
 
@@ -207,7 +208,10 @@ The thread cap is the sum over all our processes: 40 by day, 56 at night.
 | Card | Model | State |
 |---|---|---|
 | B-30 (continued) | Opus | Its first merge conflicted in `cli.py` and `stage.py` against C-13 and W-03; the agent is merging `plan/task-cards` and W-13 into `task/B-30` and rerunning its suite |
-| C-15 peak memory in run records | Opus | started 2026-11-10 |
+| C-14 runbook errors | Sonnet | reported done, `task/C-14` at `56c6e78`; merging next |
+| B-36 clustering cap (DEC-25) | Opus | started 2026-11-10, built on C-15, C-14 and B-30 |
+| B-21 per-domain family postings | Opus | started 2026-11-10 |
+| W-14 search run peak memory | Sonnet | started 2026-11-10 |
 | B-35 `partners_of` pruning | Opus | started 2026-11-10 |
 | B-30 ingest by batch processes | Opus | **reported done, not merged**: `task/B-30` at `1db6817`, pushed; its own suite 1,163 passed, 12 skipped; built before W-03 and C-13 merged. Next: audit, merge, integration suite. Batch build equals single-process file for file; on the 1,000× stage the largest process used 0.248 CPU-min and the batch path costs 33% more CPU in total (*measured*, agent's run). Open from its report: run records' peak RSS reads 344 MB for every step (looks inherited from the parent; a `run-step` defect, needs a card); pass-1 shards are cut at the whole-ingest rate |
 | 10 Gbp rebuild with `build-stage` (not a card; branch `build/r10`, pod root `/tmp/if2453/r10`) | Opus | started 2026-11-10 |
