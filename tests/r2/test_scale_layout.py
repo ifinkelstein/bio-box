@@ -453,6 +453,115 @@ def test_partners_of_reads_grow_with_the_anchors_not_the_release(store, store2x,
     record_property("partner_reads", json.dumps({"1x": one["reads"], "2x": two["reads"], "totals": [one["total"], two["total"]]}))
 
 
+# --- card B-35: what the partner side reads, with few anchor contigs and with many -------------------
+
+PARTNERS_SQL = "SELECT partner_token, n_loci, n_pairs FROM partners_of(?, 10)"
+
+
+def _lookup_scans(prof: dict, table: str) -> list[dict]:
+    """The profiled scans of `table` that a point lookup of the catalog made (`"lookup"` set)."""
+    return [s for s in prof["scans"] if s.get("lookup") and s["files"] and _table_of(s["files"][0]) == table]
+
+
+def _anchor_contigs(con, tok: int) -> list[bytes]:
+    return sorted(r[0] for r in con.execute(
+        "SELECT DISTINCT contig_uid FROM token_postings WHERE release = catalog_release() AND token_id = ?", [tok]).fetchall())
+
+
+@pytest.mark.covers("Q3", "LY-06")
+def test_b35_partner_reads_served_by_the_cache_are_counted(store, record_property):
+    """Card B-35: `profile_query` counts the `tape_tokens` row groups a `partners_of` query touches, read from the
+    file or served by the lookup's row-group cache. A query with 10 anchor contigs touches exactly the row groups
+    whose footer range holds one of them (the oracle), at most 10, cold on a fresh connection and warm after a query
+    that cached row groups on the same connection; warm, the cached ones are counted as such, and the answer is the
+    same. The same holds for `token_of`'s lookup of `token_dict`."""
+    fam, tok = store["rep"]["tokens"]["family_a"][1], store["rep"]["tokens"]["nr90_a"][1]
+    key = store["rep"]["tokens"]["nr90_a"][0]
+    con = _fresh(store)
+    anchors = _anchor_contigs(con, tok)
+    assert len(anchors) == 10
+    hold = _footer_row_groups(store, "tape_tokens", anchors)
+    cold = catalog.profile_query(con, PARTNERS_SQL, [tok])
+    many = catalog.profile_query(con, PARTNERS_SQL, [fam])  # caches the row groups of the family's 100 contigs
+    warm = catalog.profile_query(con, PARTNERS_SQL, [tok])
+    assert warm["result"] == cold["result"] and len(cold["result"]) > 0
+    got = {name: _lookup_scans(p, "tape_tokens") for name, p in (("cold", cold), ("many", many), ("warm", warm))}
+    record_property("b35_tape_tokens", json.dumps({n: [{k: s.get(k) for k in ("row_groups_scanned", "row_groups_read",
+                                                    "row_groups_cached", "row_groups_total")} for s in v]
+                                                   for n, v in got.items()} | {"hold": hold}))
+    for name in ("cold", "warm"):
+        assert len(got[name]) == 1 and got[name][0]["row_groups_scanned"] == hold <= 10, (name, got[name], hold)
+    for name in ("cold", "warm"):
+        (s,) = got[name]
+        assert s["row_groups_read"] + s["row_groups_cached"] == hold, (name, s, hold)
+    assert got["cold"][0]["row_groups_cached"] == 0
+    assert got["warm"][0]["row_groups_cached"] >= 1, got["warm"]
+    # token_of: its row group is cached after the first lookup on the connection; a repeat still reads it
+    t_cold = _lookup_scans(catalog.profile_query(con, "SELECT token_of('nr90', ?)", [key]), "token_dict")
+    t_warm = _lookup_scans(catalog.profile_query(con, "SELECT token_of('nr90', ?)", [key]), "token_dict")
+    assert len(t_warm) == 1 and 1 <= t_warm[0]["row_groups_scanned"] <= MAX_RG_PER_KEY, (t_cold, t_warm)
+    assert t_warm[0]["row_groups_cached"] == t_warm[0]["row_groups_scanned"] and t_warm[0]["row_groups_read"] == 0
+
+
+def _partners_oracle(store, tok: int, k: int) -> list[tuple[int, int, int]]:
+    """Oracle for partners_of(tok, k), by brute force over the release's files read whole with pyarrow: the anchor
+    slots are the (contig, ordinal) of every `token_postings` row of `tok`; a partner is every non-null token at
+    every level of `tape_tokens` on a slot within k of an anchor (`pairs_oracle.window`, slot count and topology
+    from `contig_tapes`); (token, loci, pairs) ranked as the macro ranks them."""
+    from collections import Counter, defaultdict
+
+    from oracles.pairs_oracle import window
+
+    anchors: dict[bytes, set[int]] = defaultdict(set)
+    for p in _files(store, "token_postings"):
+        t = pq.read_table(p, columns=["token_id", "contig_uid", "ordinal"], partitioning=None)
+        t = t.filter(pc.equal(t.column("token_id"), pa.scalar(tok, pa.uint64())))
+        for cu, o in zip(t.column("contig_uid").to_pylist(), t.column("ordinal").to_pylist()):
+            anchors[cu].add(o)
+    shape = {}
+    for p in _files(store, "contig_tapes"):
+        for r in pq.read_table(p, columns=["contig_uid", "n_slots", "is_circular"], partitioning=None).to_pylist():
+            shape[r["contig_uid"]] = (r["n_slots"], r["is_circular"])
+    loci: dict[int, set] = defaultdict(set)
+    pairs: Counter = Counter()
+    for p in _files(store, "tape_tokens"):
+        for r in pq.read_table(p, partitioning=None).to_pylist():
+            cu = r["contig_uid"]
+            if cu not in anchors:
+                continue
+            n, circ = shape[cu]
+            cols = [r[f"{lv}_tokens"] for lv in ("family", "nr50", "nr90")]
+            for i in sorted(anchors[cu]):
+                for j, _ in window(i, n, circ, k):
+                    for c in cols:
+                        if c[j] is not None:
+                            loci[c[j]].add((cu, i))
+                            pairs[c[j]] += 1
+    return sorted(((b, len(s), pairs[b]) for b, s in loci.items()), key=lambda g: (-g[1], g[0]))
+
+
+@pytest.mark.covers("Q3", "LY-06")
+def test_b35_partner_reads_with_many_anchor_contigs_are_every_row_group(store, record_property):
+    """Card B-35, the bound when the anchor contigs are many: the partner side touches exactly the `tape_tokens` row
+    groups whose footer range holds an anchor contig (the oracle), never more than there are anchor contigs or row
+    groups. Contig uids are random, so C anchor contigs over R row groups leave about R * exp(-C / R) row groups
+    untouched (derived), fewer than one once C > R ln R: then every row group is read, as the 10 Gbp rebuild
+    measured (19 of 19, 26 of 26). The family token here lies on 100 contigs. The answer equals a brute-force count."""
+    import math
+
+    fam = store["rep"]["tokens"]["family_a"][1]
+    con = _fresh(store)
+    anchors = _anchor_contigs(con, fam)
+    prof = catalog.profile_query(con, PARTNERS_SQL, [fam])
+    (s,) = _lookup_scans(prof, "tape_tokens")
+    hold, total = _footer_row_groups(store, "tape_tokens", anchors), s["row_groups_total"]
+    record_property("b35_many", json.dumps({"anchor_contigs": len(anchors), "read": s["row_groups_scanned"], "hold": hold,
+                                            "of": total, "expected_untouched": total * math.exp(-len(anchors) / total)}))
+    assert total >= MIN_RG and len(anchors) > total * math.log(total), (len(anchors), total)
+    assert s["row_groups_scanned"] == hold == total, (s, hold)
+    assert prof["result"] == _partners_oracle(store, fam, 10)
+
+
 def test_build_time(store, record_property):
     record_property("build_s", round(store["build_s"], 1))
     assert store["build_s"] < 300, f"{store['build_s']:.0f} s for the {COPIES}x build and queries (card D-05: under 5 minutes)"

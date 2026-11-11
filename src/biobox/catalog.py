@@ -810,7 +810,14 @@ def pair_macro_sql() -> list[str]:
     from `token_of` or a joined table (card B-31: `token_rows` joins the token in). Q3 (`partners_of`)
     takes its anchors from the postings and the tokens near them from `tape_tokens` of the anchors'
     contigs (`bb_slot_tokens`), so its partner side reads row groups in proportion to the anchors'
-    contigs, not to the release. The geometry helpers
+    contigs, not to the release: exactly the `tape_tokens` row groups whose footer `contig_uid` range holds
+    an anchor contig, at most min(C, R) for C anchor contigs and R row groups (10 anchor contigs: at most 10).
+    That is the bound when the anchors are few. When they are many it is every row group: contig uids are
+    random, so C contigs leave about R * exp(-C / R) of the R row groups untouched (*derived*, uniform keys),
+    fewer than one once C > R ln R. The 10 Gbp rebuild read 26 of 26 for 345 anchors on 243 contigs
+    (`rN.1b`) and 19 of 19 for an NR50 cluster of 2,139 slots (`rN.1a`) (*measured*, wilkcomp02,
+    2026-11-10, `scripts/stress/build_stage_pod/r10_queries.py`); only a `tape_tokens` sorted otherwise
+    could do better (card B-35). The geometry helpers
     reproduce `pairs_of_contig` (tests/oracles/pairs_oracle.py) and `biobox.l3.geometry`:
 
         pair_offset    signed shortest offset from slot _i to slot _j (j - i on a linear contig); on a
@@ -911,9 +918,11 @@ def pair_macro_sql() -> list[str]:
         # of the loci of A. Anchors come from the postings of A (by token_id); the partner slots are the
         # slots within k of each anchor on its contig (slot_dist 1..k, each slot once per anchor), and their
         # tokens come from `tape_tokens` of the anchors' contigs through `bb_slot_tokens` (card B-31), a
-        # point lookup by contig_uid that reads only the row groups holding those contigs. Postings are
-        # sorted by token_id, so the earlier near side (postings filtered by contig_uid) read the whole
-        # token level of the release. A hub is still refused here (its anchors are many)
+        # point lookup by contig_uid that reads only the row groups holding those contigs: at most one per
+        # anchor contig, and every row group once the anchor contigs outnumber the row groups by about
+        # ln(row groups) (see pair_macro_sql; card B-35). Postings are sorted by token_id, so the earlier near
+        # side (postings filtered by contig_uid) read the whole token level of the release. A hub is still
+        # refused here (its anchors are many)
         f"""CREATE MACRO partners_of(_a, _k) AS TABLE
               WITH _anchor AS (
                      SELECT * FROM token_slots(_a)
@@ -1250,19 +1259,49 @@ def _register_lookup_udf(con: duckdb.DuckDBPyConnection, store) -> None:
 TAPE_TOKEN_LISTS = ("family_tokens", "nr50_tokens", "nr90_tokens")  # bb_slot_tokens returns a slot's tokens in this order
 
 
-class TapeTokenLookup(KeyLookup):
+class _Touches:
+    """The row groups a point lookup touched, for `profile_query` (card B-35).
+
+    Every access to a row group, decoded from its file or served by the lookup's row-group cache, stamps it
+    with a running count (`stamp`); `touched_since(mark)` gives the row groups accessed since `mark` (an earlier
+    value of `stamp`) with their files, and those of them decoded in that span. A cache hit is a read the
+    query made: counting decodes only, a query whose row groups an earlier query on the same connection had
+    cached reported no read at all (10 Gbp rebuild, 2026-11-10). Holds one entry per row group touched, so
+    at most the table's row groups."""
+
+    def _touches_init(self) -> None:
+        self.stamp = 0
+        self._last_touch: dict = {}  # row group -> (stamp of its last access, file index)
+        self._last_decode: dict = {}  # row group -> stamp of its last decode
+
+    def _touch(self, rg, fi: int, decoded: bool) -> None:
+        self._last_touch[rg] = (self.stamp, fi)
+        if decoded:
+            self._last_decode[rg] = self.stamp
+        self.stamp += 1
+
+    def touched_since(self, mark: int) -> tuple[dict, set]:
+        """({row group: file index} accessed at or after `mark`, the set of those decoded at or after it)."""
+        with self._lock:
+            touched = {rg: fi for rg, (s, fi) in self._last_touch.items() if s >= mark}
+            decoded = {rg for rg, s in self._last_decode.items() if s >= mark}
+        return touched, decoded
+
+
+class TapeTokenLookup(_Touches, KeyLookup):
     """`tape_tokens` rows by `contig_uid` from the release's files of one tape version (card B-31).
 
     The footer statistics and binary search of `KeyLookup` (one row group read per contig, at most
     `cache_row_groups` decoded row groups held), with its own decoding: a row group is held as numpy arrays
     per token list (offsets, values with nulls as 0, validity), so finding a slot's tokens is array
     indexing, never a pyarrow call or a Python object per slot. `row(key)` gives (levels, row index);
-    `get` of the base class is not available. `files_hit` counts row groups read per file (a cache hit
-    counts nothing).
+    `get` of the base class is not available. `row_groups_read` and `files_hit` (per file) count decodes
+    (a cache hit counts nothing); `touched_since` (`_Touches`) also counts the row groups the cache served.
     """
 
     def __init__(self, files, cache_row_groups: int = 32):
         super().__init__(files, "contig_uid", TAPE_TOKEN_LISTS, cache_row_groups)
+        self._touches_init()
         self.files_hit = [0] * len(self._files)
         self.row_groups_total = sum(len(f.row_groups) for f in self._files)
 
@@ -1270,11 +1309,13 @@ class TapeTokenLookup(KeyLookup):
         hit = self._cache.pop((fi, g), None)
         if hit is not None:
             self._cache[(fi, g)] = hit
+            self._touch((fi, g), fi, False)
             return hit
         f = self._files[fi]
         t = pq.ParquetFile(f.path, metadata=f.metadata).read_row_group(g, columns=self.columns)
         self.row_groups_read += 1
         self.files_hit[fi] += 1
+        self._touch((fi, g), fi, True)
         levels = []
         for c in TAPE_TOKEN_LISTS:
             a = t.column(c).combine_chunks()
@@ -1391,7 +1432,7 @@ def _token_dict_files(con: duckdb.DuckDBPyConnection, root: Path) -> list[Path]:
     return [Path(root) / p for (p,) in rows if classify(p)[1].get("release") == rel]
 
 
-class TokenKeyLookup:
+class TokenKeyLookup(_Touches):
     """`token_dict` rows by (level, key) from footer statistics, without loading the table (card B-34).
 
     `token_dict` is sorted by `token_id` = level | source | local, and `local` is the key's rank within
@@ -1407,8 +1448,8 @@ class TokenKeyLookup:
     run of unknown keys (`tests/r2/test_scale_layout.py`). A row group without `key` statistics (a
     `token_dict` written before card B-34) is read whenever it meets the level: right answers, no pruning.
 
-    Counters as `TapeTokenLookup`: `row_groups_read`, `files_hit` per file, `row_groups_total`. At most
-    `cache_row_groups` decoded row groups are held.
+    Counters as `TapeTokenLookup`: `row_groups_read`, `files_hit` per file, `row_groups_total`, and
+    `touched_since` (card B-35). At most `cache_row_groups` decoded row groups are held.
     """
 
     COLUMNS = ("token_id", "level", "key")
@@ -1423,6 +1464,7 @@ class TokenKeyLookup:
         self.files_hit = [0] * len(self.files)
         self._cache: OrderedDict = OrderedDict()
         self._lock = threading.Lock()
+        self._touches_init()
         rgs = []  # (token_id min, token_id max, key min, key max, file index, row group)
         self._metadata = []
         for fi, path in enumerate(self.files):
@@ -1492,14 +1534,16 @@ class TokenKeyLookup:
         return False
 
     def _decoded(self, i: int) -> pa.Table:
+        fi, g = self._where[i]
         hit = self._cache.pop(i, None)
         if hit is not None:
             self._cache[i] = hit
+            self._touch(i, fi, False)
             return hit
-        fi, g = self._where[i]
         t = pq.ParquetFile(self.files[fi], metadata=self._metadata[fi]).read_row_group(g, columns=list(self.COLUMNS))
         self.row_groups_read += 1
         self.files_hit[fi] += 1
+        self._touch(i, fi, True)
         if self.cache_row_groups > 0:
             self._cache[i] = t
             if len(self._cache) > self.cache_row_groups:
@@ -1714,8 +1758,12 @@ def profile_query(con: duckdb.DuckDBPyConnection, sql: str, params: list | None 
     the query reads no sequence. The `tape_tokens` row groups that `bb_slot_tokens` reads by point lookup
     (`partners_of`, card B-31) are one more entry of `scans`, with `"lookup": "bb_slot_tokens"` and
     `rows_scanned` None, and so are the `token_dict` row groups of `token_of` (`"lookup": "bb_token_of"`,
-    card B-34). The lookups `default_digest`, `digest_len` and `contig_len_of` of `open_catalog`
-    count in `index`. Counts, not time, decide layouts (LY-06).
+    card B-34). For these two, `row_groups_scanned` is the distinct row groups the query touched, whether
+    the lookup decoded them from the file (`row_groups_read`, decodes) or its row-group cache, which lives
+    as long as the connection, served them (`row_groups_cached`), so a query reports the same rows read
+    cold or after another query on the connection (card B-35). The lookups `default_digest`, `digest_len`
+    and `contig_len_of` of `open_catalog` count in `index` (decodes only). Counts, not time, decide
+    layouts (LY-06).
     """
     store = seq_reader(con)
     before = store.counters() if store is not None else None
@@ -1729,11 +1777,11 @@ def profile_query(con: duckdb.DuckDBPyConnection, sql: str, params: list | None 
     index_before = index_counts()
     lookups = _LOOKUPS.get(id(con), [])
 
-    def lookup_counts(lazy) -> tuple[int, list[int]]:
+    def lookup_mark(lazy) -> tuple[int, int]:  # (stamp, decodes) before the query; a lookup built by it starts at 0
         t = lazy.peek()
-        return (0, []) if t is None else (t.row_groups_read, list(t.files_hit))
+        return (0, 0) if t is None else (t.stamp, t.row_groups_read)
 
-    lookups_before = [lookup_counts(lazy) for _, lazy in lookups]
+    lookups_before = [lookup_mark(lazy) for _, lazy in lookups]
     with tempfile.TemporaryDirectory() as d:
         out = Path(d) / "profile.json"
         con.execute("PRAGMA enable_profiling = 'json'")
@@ -1766,20 +1814,23 @@ def profile_query(con: duckdb.DuckDBPyConnection, sql: str, params: list | None 
     for c in info.get("children", []):
         walk(c)
     # the point lookups of bb_slot_tokens (partners_of, card B-31) and of token_of (card B-34) read Parquet
-    # outside DuckDB's scans: each is listed as one more scan of its table (`tape_tokens`, `token_dict`), row
-    # groups read of the files' total
-    for (fn, lazy), (n_before, hit_before) in zip(lookups, lookups_before):
-        n_after, hit_after = lookup_counts(lazy)
-        if n_after > n_before:
-            t = lazy.peek()
-            hit_before = hit_before or [0] * len(hit_after)
+    # outside DuckDB's scans: each is listed as one more scan of its table (`tape_tokens`, `token_dict`), the
+    # distinct row groups the query touched (decoded or served by the cache, card B-35) of the files' total
+    for (fn, lazy), (mark, n_before) in zip(lookups, lookups_before):
+        t = lazy.peek()
+        if t is None:
+            continue
+        touched, decoded = t.touched_since(mark)
+        if touched:
             scans.append({
                 "files": [str(p) for p in t.files],
-                "files_read": sum(a > b for a, b in zip(hit_after, hit_before)),
-                "row_groups_scanned": n_after - n_before,
+                "files_read": len(set(touched.values())),
+                "row_groups_scanned": len(touched),
                 "row_groups_total": t.row_groups_total,
                 "rows_scanned": None,
                 "lookup": fn,
+                "row_groups_read": t.row_groups_read - n_before,
+                "row_groups_cached": len(touched.keys() - decoded),
             })
     bgzf =({k: v - before[k] for k, v in store.counters().items()} if store is not None
             else {"blocks_read": 0, "compressed_bytes_read": 0, "uncompressed_bytes_decoded": 0})
