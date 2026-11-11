@@ -489,7 +489,9 @@ def _write_tables(mm: MMseqs, w: Path, f: Path, out: Path, release: str, n_prot:
 #
 #   cluster.plan                   the FASTA and `createdb` (`plan`), into the work directory
 #   <call>                         a call that runs whole: one-process modules, and a per-query call in one part
-#   <call>.cut                     a per-query call's parts (`cut`): from its input's keys and the budget
+#   <call>.cut                     a per-query call's parts (`cut`): from its input's keys and the budget; for a
+#                                  prefilter call that shares an index (`INDEX_SETTINGS`, card B-43) cut into more
+#                                  than one part, also that index of its target (`createindex`, one process)
 #   <call>.part-<p>, <call>        its parts, then their join under the call's own name
 #   cluster                        `finish`: TSVs, the Python side and the tables, as `run` writes them
 #
@@ -498,7 +500,8 @@ def _write_tables(mm: MMseqs, w: Path, f: Path, out: Path, release: str, n_prot:
 # the database's type and (key, entry) pairs in key order (`db_digest`), not over files (the `.0`, `.1` layout
 # depends on the thread count). The MMseqs2 databases stay in the work directory, `<tmp>/biobox-cluster/<R>-<key>`
 # (`work_dir`, `key` from the root and the plan's inputs); the published files are `run`'s only. A part's files
-# stay until its join is published (`clean_parts`); the work directory is removed after `cluster` publishes.
+# and its call's shared index (`parts/<call>/target.idx`, made by the cut) stay until its join is published
+# (`clean_parts`); the work directory is removed after `cluster` publishes.
 #
 # The parts are a pure function of the input's sorted keys, their sizes and the plan's cut, never of threads or
 # the hour: a forced count (`parts`, for tests and trials), or what fits `part_cpu_min` (80% of the budget in
@@ -538,6 +541,55 @@ MEASURED_TOTAL_CPU_S = 489.8
 # to 78,316 targets (*derived* in the B-37 design §3 from the 4-part run: (282.2 - 132.9) / 12, measured, same
 # host and day), taken per target at the smaller count (the larger rate, *derived*: 12.44 / 59,000).
 PREFILTER_INDEX_CPU_S_PER_TARGET = 12.44 / 59_000
+# Card B-43, the shared index (measured, wilkcomp02, MMseqs2 18.8cc5c, 2026-11-11, B-37 design §7, one thread unless
+# said): `createindex` with the NR50 step-1 settings took 39.58, 78.05 and 136.40 CPU-s over the first 250,000,
+# 500,000 and 1,000,000 proteins of stage S1 (15.0 to 16.8 at 58,787 to 78,316 targets, 1 and 2 threads); the rate is
+# the largest at 250,000 targets or more, *derived*: 39.58 / 250,000. A part searching the index pays only its load:
+# 0.28 CPU-s per extra part at 59,338 targets, 2 threads ((22.57 - 21.73) / 3, the 4 parts against the whole query)
+# and 1.29 CPU-s for a 1,000-query part at 1,000,000 targets (load and its work); the rate is the larger, *derived*:
+# 0.28 / 59,338. (A rebuilding part of the same 1,000 queries took 46.0, 72.9 and 147.7 CPU-s at 250,000, 500,000
+# and 1,000,000 targets: 1.5e-4 to 1.8e-4 per target, so the rate above, 2.1e-4, is on the safe side.)
+CREATEINDEX_CPU_S_PER_TARGET = 39.58 / 250_000
+PREFILTER_INDEX_LOAD_CPU_S_PER_TARGET = 0.28 / 59_338
+#
+# Budget (*derived*, the code's own model; 300 CPU-minutes per process, parts cut at 80% of it, 240). n proteins; one
+# process T(n) = 284.10 (n / 2,053,075)^1.244 (`biobox.stage.cluster_cpu_min`, B-36); a call's estimate
+# E = T(n) CALL_CPU_S / 489.8; a prefilter call's targets t = f n, f measured at 100,000 S1 proteins: 0.783 (NR90
+# step), 0.632 (NR50 step 0), 0.593 and 0.588 (NR50 steps 1, 2; shared index); a part's overhead o = t x 2.108e-4
+# (rebuilding) or t x 4.72e-6 (shared index) CPU-s; parts p = ceil(E / (240 - o)), refused when o >= 240; the index
+# I = t x 1.583e-4 CPU-s, one process; total = sum(E + p o) + sum(I) + the one-process modules (10.0 of 489.8).
+#
+#   n      T(n)     total in parts       parts of the four prefilter calls          largest single process
+#                   rebuilt   shared     (NR90 step, NR50 steps 0, 1, 2)            (rebuilt / shared)
+#   10 M   2,036    2,148     2,103      1, 1, 1, 2 (o 27.5, 22.2; 20.9 or 0.5)     kmermatcher 12.2 / index 15.5
+#   50 M   15,079   18,910    16,918     8, 5; rebuilt 7, 14; shared 4, 8           kmermatcher 90.5 / 90.5 (index 78)
+#   95 M   33,506   refused   refused    NR90 step: o = 261.5 >= 240, no cut fits;  kmermatcher 201.0; index 148.7
+#                                        NR50 step 0: 47; steps 1, 2: rebuilt 47, 92; shared 9, 17
+#
+# At 95 M the shared index turns the NR50 steps' per-part tables, 47 x 198.1 + 92 x 196.3 = 27,371 CPU-min, into
+# (9 + 17) x 4.4 + 148.7 + 147.4 = 410; the NR90 step still cannot be cut under the budget. The first process over
+# 300 CPU-minutes: a rebuilding NR90-step part at 109.0 M proteins (the cut refuses from 87.2 M, where o reaches 240);
+# NR50 step 0 at 135.1 M (refused from 108.1 M); kmermatcher (0.6% of T) at 131.1 M; createindex at 191.6 M (over 240
+# from 153.3 M, also refused by the cut). Above about 87 M proteins clustering in parts needs the index on the NR90 step
+# too, which needs an MMseqs2 that does not abort there (B-37 design §7).
+
+# The shared index (card B-43). A prefilter uses a prebuilt index only when the index itself (`<db>.idx`) is its
+# target. At the settings below a part searching the index of its call's target, built with the call's own settings
+# (`index_argv`), asking for the self hit, gives the rebuilt call's entries exactly (measured, B-37 design §7: on the
+# fixture and the constructed set as query and as half of the keys, at 100,000 S1 proteins in 4 parts, at 1,000,000
+# targets; tests at 2 and 4 parts); its call's cut step builds that index once (one process) when the call is cut
+# into more than one part. With `--diag-score 0` (the NR90 step and NR50 step 0: `-s 1 --comp-bias-corr 0
+# --diag-score 0`) MMseqs2 18.8cc5c aborts (`munmap_chunk(): invalid pointer`) whenever the target is an index, at
+# any -s, -k, bias, thread count, load mode, index split, subset or compatibility check, so their parts keep building
+# the table themselves. The choice is this table, keyed by `prefilter_settings` and checked against `calls()` by a
+# test, never a try and a caught crash.
+INDEX_SETTINGS = frozenset({("2", "1", "1", "15"), ("3", "1", "1", "15")})
+# createindex takes these from the call's own argv (`createindex -h`: the k-mer table's settings) ...
+_INDEX_FLAGS = ("--seed-sub-mat", "-k", "--alph-size", "--comp-bias-corr", "--comp-bias-corr-scale", "--max-seq-len",
+                "--max-seqs", "--mask", "--mask-prob", "--mask-lower-case", "--mask-n-repeat", "--spaced-kmer-mode",
+                "-s", "--k-score", "--split", "--split-memory-limit")
+# ... and these are its own: the whole index (sequences, headers, k-mer table), never an old one reused
+_INDEX_OWN = ("--index-subset", "0", "--check-compatible", "0")
 
 
 def _kmermatcher(db: str, out: str, min_id: str) -> tuple[str, ...]:
@@ -670,6 +722,20 @@ class Call:
         p = self.positional
         flagged = [self.argv[i + 1] for i, a in enumerate(self.argv) if a == "--filter-file"]
         return list(dict.fromkeys(p[:self.out_index] + p[self.out_index + 1:] + flagged))
+
+    @property
+    def shares_index(self) -> bool:
+        """A prefilter call whose parts search one shared index of its target (card B-43, `INDEX_SETTINGS`)."""
+        return self.module == "prefilter" and prefilter_settings(self) in INDEX_SETTINGS
+
+
+def _opt(argv: Sequence[str], flag: str) -> str:
+    return argv[list(argv).index(flag) + 1]
+
+
+def prefilter_settings(c: Call) -> tuple[str, str, str, str]:
+    """A prefilter call's (`-s`, `--comp-bias-corr`, `--diag-score`, `--min-ungapped-score`), as in its argv."""
+    return tuple(_opt(c.argv, f) for f in ("-s", "--comp-bias-corr", "--diag-score", "--min-ungapped-score"))
 
 
 def calls() -> list[Call]:
@@ -1096,9 +1162,10 @@ class _Ctx:
     plan_sha256: str
     w: Path
     threads: int
+    shared_index: bool = True  # False (tests only): every prefilter part builds its table, as before card B-43
 
 
-def _ctx(root: Path, release: str, tmp: Path, out: Path | None, threads: int) -> _Ctx:
+def _ctx(root: Path, release: str, tmp: Path, out: Path | None, threads: int, shared_index: bool = True) -> _Ctx:
     raw = _record_raw(root, release, PLAN_STEP, out)
     if raw is None:
         raise FileNotFoundError(f"release {release}: no plan of clustering in parts; run {PLAN_STEP} first")
@@ -1111,7 +1178,8 @@ def _ctx(root: Path, release: str, tmp: Path, out: Path | None, threads: int) ->
         raise ValueError(f"threads {threads!r}: give the thread count explicitly (at least 1)")
     ledger.check_scratch(tmp, root, out)
     w = _work_dir(tmp, root, {k: p[k] for k in _INPUT_KEYS})
-    return _Ctx(Path(root), None if out is None else Path(out), release, p, hashlib.sha256(raw).hexdigest(), w, threads)
+    return _Ctx(Path(root), None if out is None else Path(out), release, p, hashlib.sha256(raw).hexdigest(), w, threads,
+                shared_index)
 
 
 def _producers() -> dict[str, str]:
@@ -1150,18 +1218,92 @@ def _cut_doc(ctx: _Ctx, c: Call) -> dict:
     seq = c.module == "prefilter"
     est = ctx.plan["release_cpu_min"] * CALL_CPU_S[c.name] / MEASURED_TOTAL_CPU_S
     overhead = 0.0
-    if seq:  # every part builds the k-mer index of the whole target
+    if seq:  # every part builds the k-mer index of the whole target, or loads the shared one
         with open(ctx.w / f"{c.positional[1]}.index", "rb") as fh:
             targets = sum(1 for line in fh if line.strip())
-        overhead = PREFILTER_INDEX_CPU_S_PER_TARGET * targets / 60
+        overhead = part_overhead_cpu_min(c, targets, ctx.shared_index)
 
     def rows() -> Iterator[tuple[int, int]]:
         for k, _, n in index_rows(ctx.w / src):
             yield k, (max(0, n - 2) if seq else n)  # a sequence entry is its residues, a newline and a NUL
 
     got = cut(rows, est, overhead_cpu_min=overhead, **ctx.plan["cut"])
-    return {"split": src, "units": "residues" if seq else "entry_bytes", "cpu_min": round(est, 6),
-            "overhead_cpu_min": round(overhead, 6), "parts": got}
+    doc = {"split": src, "units": "residues" if seq else "entry_bytes", "cpu_min": round(est, 6),
+           "overhead_cpu_min": round(overhead, 6), "parts": got}
+    if seq and c.shares_index and ctx.shared_index and len(got) > 1:
+        doc["index_cpu_min"] = round(index_cpu_min(targets), 6)
+        budget = ctx.plan["cut"].get("part_cpu_min")
+        if budget is not None and doc["index_cpu_min"] > budget:
+            raise ValueError(f"{c.name}: the shared index of its {targets:,} targets is estimated at "
+                             f"{doc['index_cpu_min']:,.1f} CPU-minutes in one process, over the part budget of "
+                             f"{budget:g} (and every part building the table itself would cost more); refused")
+    return doc
+
+
+def part_dir(c: Call) -> str:
+    """The work directory's directory of call `c`'s parts (and its shared index), removed after its join."""
+    return f"parts/{c.name}"
+
+
+def index_path(c: Call) -> str:
+    """The shared index of call `c`'s target, the target of its parts (card B-43)."""
+    return f"{part_dir(c)}/target.idx"
+
+
+def index_argv(c: Call) -> tuple[str, ...]:
+    """`createindex` of call `c`'s target (linked in as `<part dir>/target`) with the call's own k-mer table
+    settings; ValueError for a call that does not share an index."""
+    if not c.shares_index:
+        raise ValueError(f"{c.name}: not a call whose parts search a shared index (INDEX_SETTINGS)")
+    d = part_dir(c)
+    return ("createindex", f"{d}/target", f"{d}/index-tmp", *(x for f in _INDEX_FLAGS for x in (f, _opt(c.argv, f))),
+            *_INDEX_OWN)
+
+
+def part_overhead_cpu_min(c: Call, targets: int, shared: bool = True) -> float:
+    """What every part of prefilter call `c` pays whatever its size, at `targets` targets: the load of the shared
+    index where the call has one (`shared`), else building the target's k-mer table itself."""
+    rate = PREFILTER_INDEX_LOAD_CPU_S_PER_TARGET if shared and c.shares_index else PREFILTER_INDEX_CPU_S_PER_TARGET
+    return rate * targets / 60
+
+
+def index_cpu_min(targets: int) -> float:
+    """The estimate of one `createindex` process over `targets` targets."""
+    return CREATEINDEX_CPU_S_PER_TARGET * targets / 60
+
+
+def _make_index(ctx: _Ctx, c: Call, log: Path, target_digest: str) -> dict:
+    """The shared index of call `c`'s target (whose recorded digest is `target_digest`): the target linked in under
+    the part directory (`createsubdb` of all its keys, so no module finds an index beside the target itself), then
+    `index_argv`. Returns the cut record's `index` (`index_doc`)."""
+    d, target = part_dir(c), c.positional[1]
+    (ctx.w / d).mkdir(parents=True, exist_ok=True)
+    with open(ctx.w / d / "target.ids", "w") as fh:
+        for key, _, _ in index_rows(ctx.w / target):
+            fh.write(f"{key}\n")
+    for rel in (f"{d}/target", index_path(c)):
+        _clear(ctx.w, rel)
+    _mm(ctx.w, log, ("createsubdb", f"{d}/target.ids", target, f"{d}/target", "--subdb-mode", "1"), None)
+    scratch = ctx.w / d / "index-tmp"
+    shutil.rmtree(scratch, ignore_errors=True)
+    scratch.mkdir()
+    argv = index_argv(c)
+    try:
+        _mm(ctx.w, log, argv, ctx.threads)
+    finally:
+        shutil.rmtree(scratch, ignore_errors=True)
+    if not Path(ctx.w / f"{index_path(c)}.dbtype").is_file():
+        raise FileNotFoundError(f"{ctx.w / index_path(c)}: createindex wrote no index")
+    return {"index": index_doc(c, target_digest)}
+
+
+def index_doc(c: Call, target_digest: str) -> dict:
+    """The cut record's account of call `c`'s shared index: where it is, how it is made, from what, and `id`, a
+    sha256 over those. Not a digest of its bytes: MMseqs2 18.8cc5c writes another index each time from the same
+    target at one thread (measured, B-37 design §7); the parts' outputs, which are the same each time, are the
+    check (a part made again over a new index must reproduce its record)."""
+    doc = {"path": index_path(c), "argv": list(index_argv(c)), "target": {c.positional[1]: target_digest}}
+    return {**doc, "id": hashlib.sha256(_json_bytes(doc)).hexdigest()}
 
 
 def _run_call(ctx: _Ctx, c: Call, log: Path, name: str) -> tuple[list[str], dict[str, str]]:
@@ -1182,18 +1324,15 @@ def _run_call(ctx: _Ctx, c: Call, log: Path, name: str) -> tuple[list[str], dict
     return list(c.argv), _outputs(ctx.w, paths)
 
 
-def _parts_rel(c: Call) -> str:
-    return f"parts/{c.name}"
-
-
 def _run_part(ctx: _Ctx, c: Call, k: int, cut_doc: dict, log: Path, name: str,
               self_matches: bool) -> tuple[list[str], dict[str, str]]:
     """Part `k` of call `c`: its keys of the split input as a sub-database (linked for a sequence database, copied
     for a result database, as the B-37 replay made them), the module over it with the other databases whole (a
-    prefilter part asking for the self hit), into `parts/<call>/out-<k>`."""
+    prefilter part asking for the self hit, and searching its call's shared index when the cut built one), into
+    `parts/<call>/out-<k>`."""
     pos = PER_QUERY[c.module]
     src, p = c.positional[pos], cut_doc["parts"][k]
-    rel = _parts_rel(c)
+    rel = part_dir(c)
     (ctx.w / rel).mkdir(parents=True, exist_ok=True)
     ids_path = ctx.w / rel / f"ids-{k:05d}"
     n = 0
@@ -1211,6 +1350,11 @@ def _run_part(ctx: _Ctx, c: Call, k: int, cut_doc: dict, log: Path, name: str,
                      "1" if c.module == "prefilter" else "0"), None)
     argv = list(c.argv)
     argv[1 + pos], argv[1 + c.out_index] = pin, pout
+    if "index" in cut_doc:
+        if not Path(ctx.w / f"{index_path(c)}.dbtype").is_file():
+            raise FileNotFoundError(f"{name}: the shared index {ctx.w / index_path(c)} is missing; make it again with "
+                                    f"{c.name}.cut (bio-box release cluster redo)")
+        argv[2] = index_path(c)  # the target: the index itself, else prefilter builds the table again
     if c.module == "prefilter" and self_matches:
         i = argv.index("--add-self-matches")
         argv[i + 1] = "1"
@@ -1230,8 +1374,11 @@ def _execute(ctx: _Ctx, name: str, self_matches: bool = True) -> dict:
            "module": c.module}
     if kind == "cut":
         src = c.positional[PER_QUERY[c.module]]
-        return {**doc, "inputs": _input_digests(ctx, dict.fromkeys([src, *c.positional[1:2]] if c.module == "prefilter"
-                                                                   else [src])), **_cut_doc(ctx, c)}
+        doc = {**doc, "inputs": _input_digests(ctx, dict.fromkeys([src, *c.positional[1:2]] if c.module == "prefilter"
+                                                                  else [src])), **_cut_doc(ctx, c)}
+        if "index_cpu_min" in doc:  # a call that shares an index, in more than one part: its index, once
+            doc |= _make_index(ctx, c, log, doc["inputs"][c.positional[1]])
+        return doc
     cut_doc = read_record(ctx.root, ctx.release, f"{c.name}.cut", ctx.out) if c.split else None
     if c.split and cut_doc is None:
         raise FileNotFoundError(f"{name}: {c.name}.cut has no record; run it first")
@@ -1240,10 +1387,13 @@ def _execute(ctx: _Ctx, name: str, self_matches: bool = True) -> dict:
             raise ValueError(f"{name}: {c.name} is cut into {len(cut_doc['parts'])} part(s)")
         argv, outputs = _run_part(ctx, c, k, cut_doc, log, name, self_matches)
         p = cut_doc["parts"][k]
+        inputs = _input_digests(ctx, c.inputs)
+        if "index" in cut_doc:
+            inputs[index_path(c)] = cut_doc["index"]["id"]
         return {**doc, "part": k, "first": p["first"], "last": p["last"], "keys": p["keys"], "argv": argv,
-                "inputs": _input_digests(ctx, c.inputs), "outputs": outputs}
+                "inputs": inputs, "outputs": outputs}
     if c.split and len(cut_doc["parts"]) > 1:  # the join of the parts, under the call's own name
-        rel, n = _parts_rel(c), len(cut_doc["parts"])
+        rel, n = part_dir(c), len(cut_doc["parts"])
         inputs = {}
         for j in range(n):
             rec = read_record(ctx.root, ctx.release, part_name(c.name, j), ctx.out)
@@ -1262,14 +1412,15 @@ def _execute(ctx: _Ctx, name: str, self_matches: bool = True) -> dict:
 
 
 def step(root: Path, release: str, name: str, tmp: Path, threads: int, *, out: Path | None = None,
-         _self_matches: bool = True) -> dict:
+         _self_matches: bool = True, _shared_index: bool = True) -> dict:
     """Step `name` of clustering in parts (module docstring) with `threads` MMseqs2 threads: its work in the work
     directory under `tmp`, its record under `out` (default `root`). Refuses a step whose record exists, a release
     whose cluster tables are written, and a step whose inputs have no record. `_self_matches` False (tests only)
-    runs prefilter parts as the naive split did, without asking for the self hit."""
+    runs prefilter parts as the naive split did, without asking for the self hit; `_shared_index` False (tests
+    only) has every prefilter part build its table, as before card B-43."""
     root = Path(root)
     out_root = root if out is None else Path(out)
-    ctx = _ctx(root, release, tmp, out, threads)
+    ctx = _ctx(root, release, tmp, out, threads, _shared_index)
     ledger.refuse_written(root, out_root, _table_dirs(release), f"clustering of release {release}")
     if _find(root, out, _rel(release, name)) is not None:
         raise FileExistsError(f"{_rel(release, name)}: step {name} of release {release} is done once")
@@ -1297,7 +1448,7 @@ def sequence(root: Path, release: str, out: Path | None = None) -> list[str]:
 
 
 def clean_parts(root: Path, release: str, name: str, tmp: Path, out: Path | None = None) -> None:
-    """Remove the parts of call `name` from the work directory, once its join is published."""
+    """Remove the parts of call `name` (and its shared index) from the work directory, once its join is published."""
     if read_record(root, release, name, out) is None:
         raise FileNotFoundError(f"{name}: its join is not published; its parts are still its input")
     shutil.rmtree(work_dir(tmp, root, release, out) / f"parts/{name}", ignore_errors=True)
@@ -1306,7 +1457,8 @@ def clean_parts(root: Path, release: str, name: str, tmp: Path, out: Path | None
 def lost(root: Path, release: str, tmp: Path, out: Path | None = None) -> list[str]:
     """Every step with a record whose outputs are not in the work directory as its record holds them (missing, or
     another digest), in step order: what `redo` must make again before the build goes on (a reboot clears /tmp).
-    A cut has no outputs; a part whose join is published and in place is not needed again."""
+    A cut has no outputs, but a cut that built a shared index is listed when that index is missing; the index and a
+    part are not needed again once their call's join is published and in place."""
     if read_record(root, release, PLAN_STEP, out) is None:
         return []
     w, good, bad = work_dir(tmp, root, release, out), {}, []
@@ -1314,16 +1466,20 @@ def lost(root: Path, release: str, tmp: Path, out: Path | None = None) -> list[s
     def ok(name: str) -> bool | None:
         if name not in good:
             rec = read_record(root, release, name, out)
-            good[name] = None if rec is None else all(_digest(w / p) == d for p, d in rec["outputs"].items())
+            good[name] = None if rec is None else all(_digest(w / p) == d for p, d in rec.get("outputs", {}).items())
         return good[name]
 
     for name in sequence(root, release, out):
-        if read_record(root, release, name, out) is None:
+        rec = read_record(root, release, name, out)
+        if rec is None:
             break
-        if name.endswith(".cut"):
-            continue
         m = _PART.fullmatch(name)
-        if m and ok(m["call"]):
+        call = m["call"] if m else name[:-4] if name.endswith(".cut") else None
+        if call is not None and ok(call):
+            continue
+        if name.endswith(".cut"):  # its shared index: made again when missing (its bytes are not its record's)
+            if "index" in rec and not Path(w / f"{rec['index']['path']}.dbtype").is_file():
+                bad.append(name)
             continue
         if not ok(name):
             bad.append(name)
@@ -1390,10 +1546,11 @@ def finish(root: Path, release: str, tmp: Path, threads: int, *, out: Path | Non
 def run_split(root: Path, release: str, gene_call_version: str, stages: list[str], *, tmp: Path,
               parts: int | None = None, part_cpu_min: float | None = None, threads: int = 1, out: Path | None = None,
               until: str | None = None, max_file_bytes: int = layout.MAX_FILE_BYTES, memory_limit: str | None = None,
-              _self_matches: bool = True) -> dict | None:
+              _self_matches: bool = True, _shared_index: bool = True) -> dict | None:
     """Clustering in parts in this process: the plan, every step without a record in order (each join's parts
     removed once it is recorded), `finish`, then the work directory removed. A step with a record is passed over,
-    so a call resumes; `until` stops before that step (`FINAL_STEP`: before `finish`). The files are `run`'s."""
+    so a call resumes; `until` stops before that step (`FINAL_STEP`: before `finish`). The files are `run`'s.
+    `_self_matches`, `_shared_index`: as `step` (tests only)."""
     root, tmp = Path(root), Path(tmp)
     tmp.mkdir(parents=True, exist_ok=True)
     if read_record(root, release, PLAN_STEP, out) is None:
@@ -1406,7 +1563,7 @@ def run_split(root: Path, release: str, gene_call_version: str, stages: list[str
             break
         if todo[0] == until:
             return None
-        step(root, release, todo[0], tmp, threads, out=out, _self_matches=_self_matches)
+        step(root, release, todo[0], tmp, threads, out=out, _self_matches=_self_matches, _shared_index=_shared_index)
         c, kind, _ = _parse(todo[0])
         if kind == "call" and c.split and len(read_record(root, release, f"{c.name}.cut", out)["parts"]) > 1:
             clean_parts(root, release, c.name, tmp, out)

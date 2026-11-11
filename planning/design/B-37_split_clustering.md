@@ -73,7 +73,7 @@ Cost of splitting: 4 splits used 646.7 CPU-s against 489.8 (*measured*), almost 
 in parts against 132.9 unsplit, because each part builds the whole target's k-mer index: 12.4 CPU-s per extra
 part at 59,000 to 78,000 targets (*derived*: (282.2 − 132.9) / 12). Splitting `align` costs little (NR90
 cascade step: 137.3 in parts against 139.5; all NR50 `align`: 167.8 against 159.7). A shared precomputed index (`createindex`) gave identical output but `prefilter` rebuilt its table
-anyway, so the saving is not shown.
+anyway, so the saving is not shown (B-41 found why, and card B-43 uses it where it works: section 7).
 
 Budget (*derived*). Total for one process, the B-36 fit `284.10 × (n / 2,053,075)^1.244`: 2,195.9 CPU-min at
 10.62 M (measured), about 33,600 at 95 M (extrapolated). The one-process modules, at their measured share
@@ -137,6 +137,87 @@ build ends byte-identical; a part's estimate over 80% of the budget is cut small
 Accept: as card B-37 (equal row for row on the fixture and on the 2.05 M stage; every record under 300
 CPU-minutes); then remove the DEC-25 exemption from `stage.py` and the runbook. Stop if any equality fails, or if
 at 2.05 M a one-process module passes 240 CPU-minutes.
+
+## 7. A shared prefilter index (card B-43)
+
+Measured on wilkcomp02, 2026-11-11, MMseqs2 `18.8cc5c` in `bio-box-test_74b3e05.sif`, at most 2 threads, in
+`systemd-run --user --scope -p MemoryMax=16G -p MemorySwapMax=0 nice -n 19`; scripts and outputs in
+`/tmp/if2453/b43` (`exp1.sh` to `exp6.sh`, `e1/<input>/table.tsv`, `e*.out`). `prefilter` uses a prebuilt index
+only when the index itself (`<db>.idx`) is its target (B-41).
+
+**Why `-s 1 --comp-bias-corr 0 --diag-score 0` aborts.** Every attempt below aborted with `munmap_chunk(): invalid
+pointer` (exit -6) after its scoring pass, on the fixture (854 proteins) and on the constructed set (29,998): an
+index built with the call's own `-s 1 --comp-bias-corr 0 -k 0 --mask 1 --spaced-kmer-mode 1 --alph-size aa:21,nucl:5
+--split 0`; the same with the whole query, half the keys as query, `--add-self-matches 0` or `1`; prefilter at 2
+threads; `--db-load-mode 1`, `2`, `3`; the index built at 2 threads; with `--split 1`; `--index-subset 1` and `4`
+(`2` and `3` are refused: "Index was not built with `prefilter` support"); `--check-compatible 1` and `2` over an
+old index of other settings and over a fresh one; `-k 6` and `-k 7` in both commands. One setting changed at a time,
+with the index rebuilt to match:
+
+| `-s` | `--comp-bias-corr` | `--diag-score` | `--min-ungapped-score` | against the index |
+|---|---|---|---|---|
+| 1, 2, 3 | 0 or 1 | 0 | 0 or 15 | aborts (6 combinations) |
+| 1, 2, 3 | 0 or 1 | 1 | 0 or 15 | equal to the rebuilt call, whole query and half (6 combinations, both inputs) |
+
+So the abort follows `--diag-score 0` alone, whatever the index was built with: it is a defect of this MMseqs2 in
+prefilter's path without diagonal scoring when the target is an index, and no index setting avoids it. Smallest
+reproducer (`exp4.sh`, fixture, one thread): `mmseqs createdb in.faa db; mmseqs createindex db tmp; mmseqs prefilter
+db db.idx pf --diag-score 0` exits 134 (`Aborted`); the same with `--diag-score 1` exits 0. Changing the calls'
+`--diag-score` is not an option: it changes the workflow's results. Whether a newer MMseqs2 differs is **unknown**
+(no changelog offline; nothing was downloaded).
+
+**Where it works it is exact.** With `--diag-score 1` (the NR50 cascade's `-s 2` and `-s 3` steps) a part against
+the index, asking for the self hit, equals the rebuilt call entry for entry: on the fixture and the constructed set
+(whole query and half); on the 100,000-protein S1 sample's step-1 and step-2 targets (59,338 and 58,787) whole and in
+4 parts; for a 1,000-query part at 250,000, 500,000 and 1,000,000 S1 targets. Every part log says `Process
+prefiltering step 1 of 1`. Tests (`tests/r2/test_cluster_split.py`, `test_b43_*`): at 2 and 4 parts the joined result
+of both calls equals the workflow's call and B-41's rebuilt parts; the whole query against the index (1 part) equals
+it too; the parts' logs show the index read and no table built; a lost index is made again and the build ends
+byte-identical.
+
+**The index's bytes are not reproducible.** The same index built twice from the split path's target at one thread
+gave other bytes in its DBR index entries (2 of 22 entries, 40 of 12,077 bytes, on the constructed set; on the
+fixture another entry at 2 threads); built from `createdb`'s own database it was equal at 1 and 2 threads and run to
+run (`exp3.sh`, `exp5.sh`). The parts' outputs were the same every time. So the cut's record holds what the index is
+made of (path, `createindex` argv, target digest, and their sha256 `id`), not a digest of its bytes; a part's record
+names that `id`; a part made again over a new index must reproduce its own output digest, which is the check.
+
+**Cost** (one thread unless said). `createindex`: 39.58, 78.05, 136.40 CPU-s at 250,000, 500,000, 1,000,000 targets
+(15.0 to 16.8 at 58,787 to 78,316, fixed cost dominating); the code takes 1.583e-4 CPU-s per target (*derived*,
+the largest rate at 250,000 or more). A part's load of the index: 0.28 CPU-s per extra part at 59,338 targets (2
+threads) and at most 1.29 CPU-s at 1,000,000; the code takes 4.72e-6 per target (*derived*). A part rebuilding the
+table: 46.0, 72.9, 147.7 CPU-s at the three sizes (1.5e-4 to 1.8e-4 per target), so B-41's 2.108e-4 is on the safe
+side and is kept. Index size: 1.51, 1.83, 2.45 GB at the three sizes, about 1.26 KB per target over 1.2 GB
+(*derived*); a part's peak RSS is the same as a rebuilding part's (2.12 against 2.11 GB at 1,000,000 targets).
+
+Budget (*derived*, the code's model; the formulas are in `biobox/l2/cluster.py` beside
+`PREFILTER_INDEX_CPU_S_PER_TARGET`):
+
+| n proteins | one process | in parts, rebuilt | in parts, shared index | NR50 steps 1, 2 parts (rebuilt / shared) | largest single process |
+|---|---|---|---|---|---|
+| 10 M | 2,036 | 2,148 | 2,103 | 1, 2 / 1, 2 | kmermatcher 12.2; index 15.5 |
+| 50 M | 15,079 | 18,910 | 16,918 | 7, 14 / 4, 8 | kmermatcher 90.5; index 78.3 |
+| 95 M | 33,506 | refused | refused | 47, 92 / 9, 17 | NR90-step part: 261.5 of overhead alone |
+
+At 95 M the shared index turns the NR50 steps' rebuilt tables (27,371 CPU-min) into 410, but the NR90 step (78% of
+the proteins as targets) cannot be cut: each part's own table is estimated at 261.5 CPU-min, over 240. The cut
+refuses the NR90 step from 87.2 M proteins and NR50 step 0 from 108.1 M; the first process over 300 CPU-minutes would
+be an NR90-step part at 109.0 M; `kmermatcher` (0.6% of the one-process total) passes 300 at 131.1 M and
+`createindex` at 191.6 M (over 240 from 153.3 M). With the measured rebuild rate at 1,000,000 targets (1.46e-4)
+instead of 2.108e-4, an NR90-step part at 95 M would carry about 181 CPU-min of table and fit, at about 31 parts and
+5,600 CPU-min of tables (*estimate*, extrapolated 74 times).
+
+### Proposal: an MMseqs2 for the `--diag-score 0` calls (for the PI; `container/environment.yml` is not changed)
+
+A version change is the only way found to give the NR90 step and NR50 step 0 a shared index. Proposal: pin a newer
+MMseqs2 release in `container/environment.yml` only after it passes, in the image built from it: (1) `exp4.sh`'s
+reproducer exits 0 with `--diag-score 0`; (2) the B-41 module list test (`-v 3` log) passes, or the list is updated in
+the same card; (3) `tests/r2/test_cluster_split.py` at 1, 2 and 4 parts on the fixture and the constructed set, with
+those two calls added to `INDEX_SETTINGS` (their parts against the index equal the rebuilt calls entry for entry);
+(4) `cluster.run` with the new version equals today's clusters row for row on the fixture and on `rN.1b` (2,053,075
+proteins): DEC-24 clusters every release from scratch, so a version whose clusters differ would move members between
+releases without any input changing. If (4) fails, the change needs a decision row, not a pin. Which version fixes
+the abort is unknown here; nothing was downloaded.
 
 ## Appendix: commands (on wilkcomp02, in `/tmp/if2453/b37`)
 

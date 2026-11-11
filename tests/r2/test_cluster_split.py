@@ -298,3 +298,133 @@ def test_b41_a_step_that_cannot_reproduce_its_record_is_refused_naming_it(built,
     assert cluster.lost(fx["root"], REL, tmp, out=out) == [name]
     with pytest.raises(ValueError, match=re.escape(name)):
         cluster.redo(fx["root"], REL, name, tmp, threads=1, out=out)
+
+
+# --- the shared prefilter index (card B-43) ------------------------------------------------------------------
+#
+# A prefilter call in `cluster.INDEX_SETTINGS` (the NR50 cascade's `-s 2` and `-s 3` steps), cut into more than one
+# part, has its cut step build one `createindex` index of its target with the call's own settings; each part then
+# searches that index (`<part dir>/target.idx` as its target) instead of building the target's k-mer table again.
+# The oracle is the call rebuilt: the workflow's own call (the 1-part build) and B-41's parts, each building the
+# table (`_shared_index=False`).
+
+
+def index_calls() -> list[cluster.Call]:
+    return [c for c in cluster.calls() if c.shares_index]
+
+
+@pytest.fixture(scope="module")
+def rebuilt(built):
+    """For each input, the split build at 4 parts with every prefilter part building its own table (B-41's way)."""
+    out = {}
+    for name, b in built.items():
+        out[name] = b["base"] / "rebuilt-4"
+        cluster.run_split(b["root"], REL, V, ["S0"], parts=4, threads=THREADS, tmp=b["base"] / "tmp-rebuilt-4",
+                          out=out[name], _shared_index=False)
+    return out
+
+
+@pytest.fixture(scope="module")
+def stopped(built):
+    """For each input, the split build at 2 parts stopped before its tables, so its work directory (the databases
+    and every step's log) is still there: (output root, scratch directory)."""
+    out = {}
+    for name, b in built.items():
+        o, t = b["base"] / "stopped-2", b["base"] / "tmp-stopped-2"
+        cluster.run_split(b["root"], REL, V, ["S0"], parts=2, threads=THREADS, tmp=t, out=o, until=cluster.FINAL_STEP)
+        out[name] = (o, t)
+    return out
+
+
+@pytest.mark.parametrize("name", sorted(INPUTS))
+def test_b43_parts_that_search_the_shared_index_equal_the_rebuilt_call(built, rebuilt, name):
+    b = built[name]
+    one = digests(b["split"][1])  # every call whole: the workflow's own calls, each building its table
+    assert len(index_calls()) == 2
+    assert digests(rebuilt[name]) == one
+    old = records(rebuilt[name])
+    for n in (2, 4):
+        recs = records(b["split"][n])
+        for c in index_calls():
+            cut = recs[f"{c.name}.cut"]
+            assert len(cut["parts"]) == n  # every NR50 cascade step's input has 4 keys or more
+            assert cut["index"] == cluster.index_doc(c, cut["inputs"][c.positional[1]])
+            assert cut["index"]["argv"] == list(cluster.index_argv(c)) and "outputs" not in cut
+            for k in range(n):
+                part = recs[cluster.part_name(c.name, k)]
+                argv, pd = part["argv"], cluster.part_dir(c)
+                assert argv[1:4] == [f"{pd}/in-{k:05d}", cluster.index_path(c), f"{pd}/out-{k:05d}"]
+                assert argv[argv.index("--add-self-matches") + 1] == "1"
+                assert part["inputs"][cluster.index_path(c)] == cut["index"]["id"]
+            assert recs[c.name]["outputs"] == {c.output: one[c.name][c.output]}, (name, n, c.name)
+        # no other call has an index, and B-41's parts searched the target itself
+        assert [k for k, r in recs.items() if "index" in r] == [f"{c.name}.cut" for c in index_calls()]
+    assert not [k for k, r in old.items() if "index" in r]
+    for c in index_calls():
+        assert old[cluster.part_name(c.name, 0)]["argv"][2] == c.positional[1]
+
+
+@pytest.mark.parametrize("name", sorted(INPUTS))
+def test_b43_the_whole_call_against_the_shared_index_equals_the_workflows_call(built, stopped, name, tmp_path):
+    """The index-proven calls in one part: the whole query against the index built with the call's settings (the
+    self hit asked for) gives the workflow's database, entry for entry."""
+    o, t = stopped[name]
+    w = cluster.work_dir(t, built[name]["root"], REL, out=o)
+    one = digests(built[name]["split"][1])
+    for c in index_calls():
+        d = tmp_path / c.name
+        (d / "index-tmp").mkdir(parents=True)
+        (d / "all.ids").write_text("".join(f"{k}\n" for k, _, _ in cluster.index_rows(w / c.positional[1])))
+        subprocess.run(["mmseqs", "createsubdb", str(d / "all.ids"), c.positional[1], str(d / "target"),
+                        "--subdb-mode", "1", "-v", "1"], check=True, cwd=w)
+        argv = list(cluster.index_argv(c))
+        argv[1], argv[2] = str(d / "target"), str(d / "index-tmp")
+        subprocess.run(["mmseqs", *argv, "-v", "1", "--threads", str(THREADS)], check=True, cwd=w)
+        pf = list(c.argv)
+        pf[2], pf[3] = str(d / "target.idx"), str(d / "out")
+        pf[pf.index("--add-self-matches") + 1] = "1"
+        subprocess.run(["mmseqs", *pf, "-v", "1", "--threads", str(THREADS)], check=True, cwd=w)
+        assert cluster.db_digest(d / "out") == one[c.name][c.output], (name, c.name)
+
+
+def test_b43_an_index_part_reads_the_index_and_every_other_prefilter_part_builds_its_table(built, stopped):
+    for name in INPUTS:
+        o, t = stopped[name]
+        w = cluster.work_dir(t, built[name]["root"], REL, out=o)
+        for c in (c for c in cluster.calls() if c.module == "prefilter"):
+            log = (w / "logs" / f"{cluster.part_name(c.name, 0)}.log").read_text()
+            assert cluster.PREFILTER_ONE_STEP in log
+            if c.shares_index:
+                assert "Index version" in log and "counting k-mers" not in log, (name, c.name)
+                assert "### createindex " in (w / "logs" / f"{c.name}.cut.log").read_text()
+            else:
+                assert "counting k-mers" in log, (name, c.name)
+            # the index went with the parts when the join was published
+            assert not (w / cluster.part_dir(c)).exists()
+
+
+def test_b43_a_lost_shared_index_is_made_again_to_its_digest_and_the_build_ends_byte_identical(built, tmp_path):
+    """The NR50 step-1 prefilter's join is lost after its parts and index were removed: `lost` names its cut (the
+    index), its parts and the join; each is made again by a step of one thread to its record (the build's steps had
+    two): the parts over a new index must reproduce their outputs' digests (the index's own bytes differ from build
+    to build in MMseqs2 18.8cc5c, so its record holds what it is made from), and the build ends byte-identical. A
+    part whose index is missing is refused, naming the cut that makes it."""
+    fx = built["fixture"]
+    tmp, out = tmp_path / "tmp", tmp_path / "out"
+    cluster.run_split(fx["root"], REL, V, ["S0"], parts=2, threads=THREADS, tmp=tmp, out=out,
+                      until=cluster.FINAL_STEP)
+    w = cluster.work_dir(tmp, fx["root"], REL, out=out)
+    c = index_calls()[0]
+    assert cluster.lost(fx["root"], REL, tmp, out=out) == []
+    assert not (w / cluster.part_dir(c)).exists()
+    for p in (w / c.output).parent.glob(Path(c.output).name + "*"):
+        p.unlink()
+    parts = [cluster.part_name(c.name, k) for k in range(2)]
+    assert cluster.lost(fx["root"], REL, tmp, out=out) == [f"{c.name}.cut", *parts, c.name]
+    with pytest.raises(FileNotFoundError, match=re.escape(f"{c.name}.cut")):
+        cluster.redo(fx["root"], REL, parts[0], tmp, threads=1, out=out)
+    for name in cluster.lost(fx["root"], REL, tmp, out=out):
+        assert cluster.redo(fx["root"], REL, name, tmp, threads=1, out=out)["verified"]
+    assert cluster.lost(fx["root"], REL, tmp, out=out) == []
+    cluster.run_split(fx["root"], REL, V, ["S0"], parts=2, threads=THREADS, tmp=tmp, out=out)
+    assert tree(out) == tree(fx["oracle"])
