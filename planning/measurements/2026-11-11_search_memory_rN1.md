@@ -179,3 +179,60 @@ The verify's scratch went to the run's work directory, which the run removed.
    `unique` and the recipe's `curation.foreign_domain_alarm` is on; `rN.1` has no domain table, so this run did
    not show it.
    On a release with Pfam hits it would grow with the release.
+
+## Addendum, card W-21: the next block is read while the current one is searched (2026-11-11)
+
+Question: with a reader thread one block ahead (`engine.prefetch`, two blocks in memory), does the same search on
+`rN.1` still give the same answer, and how much of the 294 s and the 234 s of searching is left? Every number is
+*measured* on wilkcomp02, 2026-11-11, 06:03 to 06:08 CST, unless it is labelled *derived*.
+
+Setup. Code: branch `task/W-21` (`origin/plan/task-cards` `fed123f`, then the W-21 commit), mirrored to
+`/tmp/if2453/ci/W-21` by `scripts/pod_pytest.sh`. Same image, profile (`tmp` moved to `/tmp/if2453/w21/tmp`),
+root (`/tmp/if2453/r10/root`, bound `:ro`), pack (`/tmp/if2453/w19/packs`, the copy with its record, bound `:ro`),
+query (`/tmp/if2453/trial2/work/RNA_pol.hmm`) and command as section 2, through `/tmp/if2453/w21/go.sh` (the W-19
+`go.sh` with the paths changed): `pod_run.sh` unit `w21-hmm`, `--mem 32G --threads 4`, sampler every 15 s. Written
+only under `/tmp/if2453/w21`; nothing under `/tmp/if2453/r10` or `/stor`; no `r10-*` unit touched.
+Load before launch (06:03:47, Wednesday night, cap 5,600%): the sum of `ps -u if2453 -o pcpu=` without `ps` was
+3,987.1% (load average 41.3), plus 400% is 4,387% (the helper's own cap line says 4,000%: it treats 05:00 to 20:00
+as day, the card says 08:00 to 20:00 on weekdays). The CPUs were that busy with this account's other pod runs
+(the pod suites of other cards), so the search ran on a loaded pod and its times are, if anything, long.
+
+| Search | W-21 | W-19 | Source |
+|---|---|---|---|
+| Wall time, whole command | 244.6 s | 293.6 s (trial 534 s) | *derived*: launch 06:03:47.5 to the log's last write 06:07:52.1 (`stat`) |
+| Wall time, the run | 210.2 s | 258.1 s | `run.parquet` `wall_s` |
+| Search passes (staging done to the worker's neighbourhood step) | about 190 s | about 234 s (trial about 121 s) | *derived* from the samples: about 06:04:12 (launch plus the 25 s the W-19 run took to stage) to about 06:07:20, where the worker's resident size jumps (the `nbr.fetch` step) |
+| CPUs busy while searching | about 2.6 of 4 | about 2.0 of 4 | *derived*: `CPUUsageNSec` rises 387.9 s over the 151 s from 06:04:19 to 06:06:50 |
+| CPU, whole unit / the worker | 9.53 CPU-minutes at least (571,858,183,000 ns at 06:07:50) / 8.27 | 9.08 / 7.92 | sampler / `run.parquet` `cpu_min_max_pid` |
+| Run id in the log / first `search status` | 6.4 s / 10.0 s after launch | 6.4 s / 10.4 s | `go.sh` |
+| Peak memory, worker, while it searched | 737,692 kB = 720.4 MiB | 490.2 MiB | largest sampled `VmHWM` of the worker (06:06:05 on, the second pass) |
+| Peak memory, worker, whole process | 1,916,227,584 B = 1.78 GiB | 1.34 GiB | `run.parquet` `peak_rss_bytes` |
+| Peak memory, runner, until the exports / with them | 382,280 kB = 373.3 MiB / 1,286,708 kB = 1.23 GiB (06:07:50) | 377.0 MiB / 1.34 GiB | sampled `VmHWM` of `search hmm` |
+| Unit memory | `MemoryPeak` 4,570,214,400 B (page cache included) | 4,074,512,384 B | sampler / `pod_run` usage line |
+
+Answer. `check.py` (the W-19 run `afe0cce5...` against this run `b7d67df5...`): the 1,984 hit rows of
+`hits.parquet` are equal in every column but the run id (every score and E-value compared exactly, order too);
+status, target size, rounds, final round, stop reason, pack id, both shards' sha256 and Z equal; the positive
+control (T7 gp1 `2eef240a...`) is recovered; the negative control has 0 hits; the 1,957 proteins of `hits.tsv` are
+the same ones (0 only in either run); `neighbors.tsv` is byte-identical. `hits.tsv`, `hits.faa` and the locus
+tables are not byte-identical to the W-19 run's, because the code under test includes card W-20 (merged into the
+base before this card): its `hits.tsv` has no `tier` column, `hits.faa` has `strand=+1` in `example=`, and there
+is a `README.txt` (card W-20's wording changes). Which other cells of `hits.tsv` and of the locus tables differ
+was not itemised, and no pre-W-21 run on the W-20 code was made, so the byte-identity of the exports to the same
+code without W-21 rests on `hits.parquet` above and on the unit tests that pin the bytes (W-07, W-19), which pass
+unchanged. No hit row, score or order differs.
+
+The W-19 memory test with its bound unchanged (the growth of the 100x search over the 10x search: at most
+8 MiB): worker 338,198,528 B = 322.5 MiB at 10x (8,701 dark ORFs) and 339,566,592 B = 323.8 MiB at 100x (86,427),
+1.3 MiB more (W-19 had 322.7 and 324.0 MiB, 1.2 MiB more), runner heap 16,798,805 and 16,798,848 B
+(`pod_pytest.sh W-21 -s tests/r2/test_w19_search_memory.py`, 2026-11-11 05:12 to 05:14 CST). Two blocks of 2**16
+residues are too small to show in the allocator noise; the bound needed no restating.
+
+Reading. The search is faster but not back to the trial's 121 s: 190 s against 234 s on a loaded pod, with about
+2.6 of 4 CPUs busy against about 2. The wall time of the command fell by 49 s (17%), the run by 48 s (19%). The
+memory rose: while searching by about 230 MiB, which is about the second block (a block is about 2**25 residues
+digitized, *estimate* 100 to 150 MB; the bound is two blocks), and in the run record by 0.44 GiB (1.34 to 1.78
+GiB, +33%, above the card's 20% line, so reported here). The run record's peak is reached after the search, in
+the neighbourhood step; that the reader's blocks (freed by then) leave it higher is probably the allocator keeping
+the reader thread's arena, not tested. Neither number grows with the target (card W-19's test) and both are far
+under the 32 GiB cap.
