@@ -682,6 +682,110 @@ def test_b38_many_anchor_partners_of_is_no_slower_than_the_join(store_b38, recor
     assert hub["partners_of_median_s"] <= B38_TIME_MARGIN * hub["tape_join_median_s"], json.dumps(out)
 
 
+# --- card B-39: the family postings of the neighbour slots, looked up by slot --------------------------
+
+FAMILY_TOKENS = (1 << 61, (2 << 61) - 1)  # the family level's token ids (PLAN.md §4.1: level (3) | source | local)
+
+
+def _stats(md, g: int, column: str):
+    ci = next(i for i in range(md.num_columns) if md.schema.column(i).path == column)
+    st = md.row_group(g).column(ci).statistics
+    return st.min, st.max
+
+
+def _family_slot_footer(store, cuids: list[bytes]) -> dict[str, int]:
+    """Oracle from the `token_postings` footers: the row groups whose token_id range meets the family level, and of
+    those the ones whose contig_uid range holds one of `cuids` (what zone maps on the sort key can keep)."""
+    lo, hi = FAMILY_TOKENS
+    out = {"row_groups": 0, "family_row_groups": 0, "holding": 0}
+    for p in _files(store, "token_postings"):
+        md = pq.ParquetFile(p).metadata
+        for g in range(md.num_row_groups):
+            out["row_groups"] += 1
+            t0, t1 = _stats(md, g, "token_id")
+            if t1 < lo or t0 > hi:
+                continue
+            out["family_row_groups"] += 1
+            c0, c1 = _stats(md, g, "contig_uid")
+            out["holding"] += any(c0 <= c <= c1 for c in cuids)
+    return out
+
+
+def _domain_footer(store, puids: set[bytes]) -> dict[str, int]:
+    """The `l1_domains` row groups whose protein_uid range holds one of `puids` (the table's sort key), from the
+    footers: what a lookup of the neighbours' domains by protein would read, for comparison."""
+    out = {"row_groups": 0, "holding": 0}
+    for p in _files(store, "l1_domains"):
+        md = pq.ParquetFile(p).metadata
+        for g in range(md.num_row_groups):
+            out["row_groups"] += 1
+            u0, u1 = _stats(md, g, "protein_uid")
+            out["holding"] += any(u0 <= u <= u1 for u in puids)
+    return out
+
+
+def _neighbour_slots(con, tok: int, k: int) -> list[tuple[bytes, int]]:
+    """The slots within k of the loci of `tok` (`pairs_oracle.window`), as (contig_uid, ordinal)."""
+    from oracles.pairs_oracle import window
+
+    rows = con.execute("SELECT DISTINCT contig_uid, ordinal, n_slots, is_circular FROM token_slots(?)", [tok]).fetchall()
+    return sorted({(cu, j) for cu, i, n, circ in rows for j, _ in window(i, n, circ, k)})
+
+
+B39_SLOTS_SQL = """SELECT count(*), sum(p.seg_idx) FROM b39_slots s JOIN token_postings p
+                   ON p.contig_uid = s.contig_uid AND p.ordinal = s.ordinal
+                   WHERE p.release = catalog_release() AND p.tape_version = catalog_tape_version()
+                     AND p.token_id BETWEEN ? AND ?"""
+B39_SLOT_SQL = """SELECT count(*), sum(seg_idx) FROM token_postings
+                  WHERE release = catalog_release() AND tape_version = catalog_tape_version()
+                    AND token_id BETWEEN ? AND ? AND contig_uid = ? AND ordinal = ?"""
+
+
+@pytest.mark.covers("Q3", "LY-06")
+def test_b39_family_postings_of_neighbour_slots_cannot_prune(store, record_property):
+    """Card B-39 (evidence for its stop): the family postings of the slots near the loci of a token, looked up by
+    slot in `token_postings`, which is sorted by (token_id, contig_uid, ordinal, seg_idx). The slots are joined in,
+    or one slot is given as literals. Zone maps can keep only the row groups whose token_id range meets the family
+    level and whose contig_uid range holds a key; a row group of many tokens spans almost every contig_uid, so that
+    is every family-level row group of the release, whatever the number of slots (the footer oracle). The scans
+    read at least that. Recorded beside: the `tape_tokens` row groups partners_of touches for the same anchors
+    (B-35, B-38) and the `l1_domains` row groups a lookup of the neighbours' proteins would touch (footers)."""
+    rec = {}
+    lo, hi = FAMILY_TOKENS
+    tapes = {}
+    for p in _files(store, "contig_tapes"):
+        for r in pq.read_table(p, columns=["contig_uid", "protein_uids"], partitioning=None).to_pylist():
+            tapes[r["contig_uid"]] = r["protein_uids"]
+    for name, tok in (("nr90 (10 loci)", store["rep"]["tokens"]["nr90_a"][1]),
+                      ("family (COPIES loci)", store["rep"]["tokens"]["family_a"][1])):
+        con = _fresh(store)
+        slots = _neighbour_slots(con, tok, 10)
+        cuids = sorted({cu for cu, _ in slots})
+        tbl = pa.table({"contig_uid": pa.array([cu for cu, _ in slots], pa.binary()),
+                        "ordinal": pa.array([j for _, j in slots], pa.uint32())})
+        joined = catalog.profile_query(_fresh(store, {"b39_slots": tbl}), B39_SLOTS_SQL, [lo, hi])
+        one = catalog.profile_query(_fresh(store), B39_SLOT_SQL, [lo, hi, *slots[0]])
+        part = catalog.profile_query(_fresh(store), PARTNERS_SQL, [tok])
+        footer, footer_one = _family_slot_footer(store, cuids), _family_slot_footer(store, [slots[0][0]])
+        puids = {tapes[cu][j] for cu, j in slots if tapes[cu][j] is not None}
+        post = lambda q: [(s["row_groups_scanned"], s["row_groups_total"]) for s in q["scans"]  # noqa: E731
+                          if s["files"] and _table_of(s["files"][0]) == "token_postings"]
+        rec[name] = {"neighbour_slots": len(slots), "neighbour_contigs": len(cuids), "neighbour_proteins": len(puids),
+                     "postings_footer": footer, "postings_footer_one_slot": footer_one,
+                     "postings_joined_slots_read": post(joined), "postings_one_slot_read": post(one),
+                     "family_postings_found": joined["result"][0][0],
+                     "partners_of_tape_tokens": [(s["row_groups_scanned"], s["row_groups_total"])
+                                                 for s in _lookup_scans(part, "tape_tokens")],
+                     "l1_domains_footer": _domain_footer(store, puids)}
+        assert footer["family_row_groups"] >= MIN_RG, rec[name]
+        assert footer["holding"] == footer["family_row_groups"], rec[name]
+        assert footer_one["holding"] == footer["family_row_groups"], rec[name]
+        assert sum(n for n, _ in post(joined)) >= footer["holding"], rec[name]
+        assert sum(n for n, _ in post(one)) >= footer_one["holding"], rec[name]
+    record_property("b39_slot_lookup", json.dumps(rec))
+    print("b39_slot_lookup", json.dumps(rec))  # shown with pytest -s
+
+
 def test_build_time(store, record_property):
     record_property("build_s", round(store["build_s"], 1))
     assert store["build_s"] < 300, f"{store['build_s']:.0f} s for the {COPIES}x build and queries (card D-05: under 5 minutes)"

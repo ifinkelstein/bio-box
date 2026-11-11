@@ -2,10 +2,14 @@
 
 Tapes carry stable keys (`protein_uid`); a release maps each slot to tokens at three levels:
 
-    family  the model of each included domain of the protein (card B-21); `tape_tokens` holds one
-            per slot, the canonical domain: the first library in `libraries` order with an
+    family  the model of each included domain of the protein (card B-21); `tape_tokens.family_tokens`
+            holds one per slot, the canonical domain: the first library in `libraries` order with an
             included domain, and in it the domain with the highest bitscore (ties: model
-            accession, then envelope start)
+            accession, then envelope start); `tape_tokens.domain_family_tokens` (card B-39) holds per
+            slot a list with the token of every distinct included domain (library, model, envelope
+            start) in the order of `biobox.l3.postings`' `seg_idx` (envelope start, token id, library,
+            accession), so element s is the token of the slot's family posting with seg_idx s; a
+            model hitting a protein twice is in it twice, and a slot without a domain has []
     nr50    the protein's NR50 cluster in this release
     nr90    the protein's NR90 cluster in this release
 
@@ -23,7 +27,8 @@ occurs on a slot when the slot's protein has an included domain of the model, ca
 Writes, under `<root>/l3/`, through `biobox.io.write_table`:
 
     token_dict/release=<R>/part-<k>.parquet                     token_id -> level, source, key, n_slots
-    tape_tokens/tape_version=<tv>/release=<R>/part-<k>.parquet  per contig: one list per level
+    tape_tokens/tape_version=<tv>/release=<R>/part-<k>.parquet  per contig: one list per level, and the
+                                                                list of every slot's domain families
 
 `n_slots` is the number of slots that carry the token: for a cluster, the slots of its members;
 for a family, the slots whose protein has at least one included domain of the model.
@@ -36,7 +41,7 @@ and the release's `release_def` (`biobox.catalog.define_release`) if it has none
 stages are read (card B-25): tapes and domains of a stage the release does not list are ignored.
 The tape version is that of `producers` (default: the gene-call producer alone, card B-07); a
 non-CDS slot has no protein and so no token (a null in each list), and a tape without slots has
-three empty lists.
+four empty lists.
 
 Bounded memory (AGENTS §4.1): one DuckDB connection (`DUCK_MEMORY_LIMIT`, one thread, spilling
 into a private scratch directory) unnests the tapes' `protein_uids` with their ordinals, joins them
@@ -221,6 +226,7 @@ def run(root: Path, release: str, stages: list[str], gene_call_version: str = GE
     con = duckdb.connect(config={"threads": 1, "memory_limit": DUCK_MEMORY_LIMIT,
                                  "temp_directory": str(scratch / "duckdb"), "preserve_insertion_order": True})
     slots, keys = _sql_str(scratch / "slots.parquet"), _sql_str(scratch / "keys.parquet")
+    plist = _sql_str(scratch / "protein_families.parquet")
     try:
         con.execute(f"CREATE VIEW tapes AS SELECT * FROM {tape_src}")
         # family of a protein: the smallest (library rank, -bitscore, accession, envelope start)
@@ -261,6 +267,17 @@ def run(root: Path, release: str, stages: list[str], gene_call_version: str = GE
         if too_many:
             raise ValueError("more than 2^56 keys at one (level, source): widen the token local field")
         counts = dict(con.execute(f"SELECT lv, count(*) FROM read_parquet({keys}) GROUP BY lv").fetchall())
+        # card B-39: the family tokens of each protein's distinct included domains in the order of the postings'
+        # seg_idx (biobox.l3.postings._family_run: envelope start, token id, library, accession), one list per
+        # protein. An unordered list() then list_sort of structs in that field order, which DuckDB can spill
+        con.execute(
+            "COPY (SELECT protein_uid, list_transform(list_sort(list({'e': env_start, 't': token_id, 'l': lib, "
+            "'a': model_acc})), lambda x: x.t) AS toks FROM ("
+            "  SELECT d.protein_uid, d.env_start, d.lib, d.model_acc, k.token_id FROM ("
+            f"    SELECT protein_uid, env_start, lib, model_acc, min(rank) + 1 AS src FROM ({doms}) "
+            "     GROUP BY protein_uid, env_start, lib, model_acc) d "
+            f"  JOIN read_parquet({keys}) k ON k.lv = {lv_fam} AND k.src = d.src AND k.key = d.model_acc) "
+            f"GROUP BY protein_uid) TO {plist} (FORMAT parquet, COMPRESSION zstd)")
         (n_tapes, n_slots), = con.execute("SELECT count(*), coalesce(sum(len(protein_uids)), 0) FROM tapes").fetchall()
 
         n_dict = _write_parts(
@@ -274,10 +291,13 @@ def run(root: Path, release: str, stages: list[str], gene_call_version: str = GE
             con, "SELECT contig_uid, "
                  "coalesce(list_transform(l, lambda x: x.f), []::UBIGINT[]) AS family_tokens, "
                  "coalesce(list_transform(l, lambda x: x.a), []::UBIGINT[]) AS nr50_tokens, "
-                 "coalesce(list_transform(l, lambda x: x.b), []::UBIGINT[]) AS nr90_tokens FROM ("
+                 "coalesce(list_transform(l, lambda x: x.b), []::UBIGINT[]) AS nr90_tokens, "
+                 "coalesce(list_transform(l, lambda x: x.d), []::UBIGINT[][]) AS domain_family_tokens FROM ("
                  "  SELECT s.fidx, s.rn, s.contig_uid, list_sort(list({'o': s.ord, 'f': kf.token_id, "
-                 "    'a': k50.token_id, 'b': k90.token_id}) FILTER (WHERE s.ord IS NOT NULL)) AS l "
+                 "    'a': k50.token_id, 'b': k90.token_id, 'd': coalesce(pf.toks, []::UBIGINT[])}) "
+                 "    FILTER (WHERE s.ord IS NOT NULL)) AS l "
                  f"  FROM read_parquet({slots}) s "
+                 f"  LEFT JOIN read_parquet({plist}) pf ON pf.protein_uid = s.pu "
                  f"  LEFT JOIN read_parquet({keys}) kf ON kf.lv = {lv_fam} AND kf.src = s.fam_src AND kf.key = s.fam_key "
                  f"  LEFT JOIN read_parquet({keys}) k50 ON k50.lv = {lv_50} AND k50.key = s.nr50_key "
                  f"  LEFT JOIN read_parquet({keys}) k90 ON k90.lv = {lv_90} AND k90.key = s.nr90_key "

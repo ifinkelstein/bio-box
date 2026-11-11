@@ -1455,6 +1455,11 @@
    "nr90_tokens",
    "list<item: uint64>",
    false
+  ],
+  [
+   "domain_family_tokens",
+   "list<item: list<item: uint64>>",
+   true
   ]
  ],
  "tape_version_def": [

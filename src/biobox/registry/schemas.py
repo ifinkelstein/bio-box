@@ -689,12 +689,16 @@ _SPECS = [
             _f("family_tokens", pa.list_(pa.uint64())),
             _f("nr50_tokens", pa.list_(pa.uint64())),
             _f("nr90_tokens", pa.list_(pa.uint64())),
+            # card B-39: per slot, the family token of each of its family postings in seg_idx order (one per
+            # included domain; [] for a slot without one). Null in files written before the card (LY-09)
+            _f("domain_family_tokens", pa.list_(pa.list_(pa.uint64())), nullable=True),
         ]),
         primary_key=("contig_uid", "tape_version", "release"),
         sort_key=("contig_uid",),
         partition_keys=("tape_version", "release"),
-        list_columns=("family_tokens", "nr50_tokens", "nr90_tokens"),
-        doc="data_layer_and_tests.md §1 L3 (`tape_tokens_<release>`): token columns, recomputed per release",
+        list_columns=("family_tokens", "nr50_tokens", "nr90_tokens", "domain_family_tokens"),
+        doc="data_layer_and_tests.md §1 L3 (`tape_tokens_<release>`): token columns, recomputed per release; "
+            "`family_tokens` is the canonical family, `domain_family_tokens` every family posting's (card B-39)",
     ),
     # --- phase B (card B-03): added beside the legacy tables they replaced; B-17 removed those ---
     TableSpec(
