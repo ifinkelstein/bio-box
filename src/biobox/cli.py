@@ -722,6 +722,12 @@ def _verify(a) -> int:
           f"{','.join(man['stages'])}, {len(man['files'])} files, {len(man.get('artifacts', []))} artifacts, manifest "
           f"hash {catalog.manifest_hash(man)})")
     failed = bool(problems)
+    have = {f["table"] for f in man["files"]}
+    for lookup, source in (("member_cluster", "cluster_member"), ("contig_label", "contig_occurrence")):
+        if source in have and lookup not in have:  # a release built before card B-27 (card W-17): a warning only
+            print(f"warning: release {a.release} has no {lookup} files (built before card B-27); readers fall back to "
+                  f"{source}, which cannot prune. A release built with the current code has the table "
+                  f"(card C-17 builds one over these stages)", file=sys.stderr)
     if a.previous:
         prev = load(a.previous)
         if prev is None:

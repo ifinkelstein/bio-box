@@ -213,6 +213,12 @@ _RELATIONS = {
     "cidx": ("contig_index", (), ("contig_uid", "contig_len", "is_default_variant"), ()),
     "tape": ("contig_tapes", ("tape_version",), ("contig_uid", "feature_uids"), ()),
 }
+# Where a release built before card B-27 (no `member_cluster`, no `contig_label`) is read instead: the table the
+# lookup is sorted from and its columns. Slower (it cannot prune by member or contig), never empty (card W-17).
+_PRE_B27 = {
+    "clus": ("cluster_member", ("member_uid", "level", "cluster_uid", "rep_uid")),
+    "lab": ("contig_occurrence", ("contig_uid", "accession", "original_header", "l0_object_sha256", "record_ordinal")),
+}
 
 
 def cell(col: str, v) -> str:
@@ -330,7 +336,7 @@ class open_store:
         import duckdb
 
         from biobox.catalog import row_groups_of, set_join_key_filter
-        from biobox.search.nbr import _store_files
+        from biobox.search.nbr import _store_files, slow_path_note
 
         root, release, gcv, tv, manifest, threads, tmp, relations = self.args
         manifest = release_files(root, release, manifest)  # refuses an undefined release before anything is opened
@@ -345,9 +351,19 @@ class open_store:
                 spec_name, filt, cols, keep = _RELATIONS[name]
                 want = {k: values[k] for k in filt}
                 files = [] if None in want.values() else _store_files(root, spec_name, want, manifest)
+                if name in _PRE_B27 and not files and None not in want.values():
+                    # a release built before card B-27 has no lookup table: read its source, say so (card W-17)
+                    spec_name, cols = _PRE_B27[name]
+                    files = _store_files(root, spec_name, want if name == "clus" else {}, manifest)
+                    if files:
+                        slow_path_note(release, _RELATIONS[name][0], spec_name)
                 if name == "dom":
                     libraries = {str(p["library"]) for _, p in files}
-                _view(self.con, name, spec_name, files, cols, keep)
+                if spec_name == "contig_occurrence":  # one row per source record: the label's n_records is 1
+                    _view(self.con, f"{name}_raw", spec_name, files, cols, keep)
+                    self.con.execute(f"CREATE TEMP VIEW {name} AS SELECT *, 1::UINTEGER AS n_records FROM {name}_raw")
+                else:
+                    _view(self.con, name, spec_name, files, cols, keep)
                 largest = max(largest, row_groups_of(p for p, _ in files))
             set_join_key_filter(self.con, largest)
         except BaseException:
