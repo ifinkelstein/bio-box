@@ -415,3 +415,53 @@ def test_w13_the_search_section_watches_and_cancels_a_wait_run_with_bio_box():
     assert "runner exited without closing the run" not in known  # W-13 fixed both search notes
     appendix = section_of(text, "## Appendix A")
     assert "search cancel" in appendix and "w13-" in appendix
+
+
+# --- C-14: errors found by the 10 Gbp rebuild ---------------------------------------------------------------
+
+
+@pytest.mark.covers("C-14")
+def test_c14_the_done_line_counts_12_steps_plus_one_per_library():
+    """Card C-14 (1): `build-stage` prints `all <len(plan)> steps done`; the plan is 12 steps and one scan per
+    `--library`, so 13 with one library and 12 with none. Section 2 says `--library` is optional and shows both."""
+    build = section_of(RUNBOOK.read_text(), "## 2. ")
+    assert "`--library` is optional" in build
+    assert "all 12 steps done" in build and "all 13 steps done" in build
+    for ln in build.splitlines():
+        if "all 13 steps done" in ln:
+            assert "one `--library`" in ln or "one library" in ln, ln
+
+
+@pytest.mark.covers("C-14")
+def test_c14_the_scan_recommendation_leaves_room_under_a_cap_that_is_a_total():
+    """Card C-14 (2): J x C = 40 by day is the whole cap; the cap is the total over everything of ours on the pod, so
+    section 2 gives J as a formula of what else runs, with a worked example, and not `--scan-jobs 10 --scan-cpus 4`."""
+    text = RUNBOOK.read_text()
+    build = section_of(text, "## 2. ")
+    assert "--scan-jobs 10 --scan-cpus 4" not in text
+    assert "total" in build and "everything of ours" in build
+    assert "worked example" in build and "other threads" in build
+    limits = section_of(text, "## 10. Limits")
+    assert "total" in limits
+
+
+@pytest.mark.covers("C-14")
+def test_c14_the_stop_rule_for_running_shards_is_stated_once_and_both_sections_agree():
+    """Card C-14 (3): a shard (a `run-step`) whose command ends while `STOP` exists publishes nothing and exits 75
+    (runstep.py, after the command), and `build-stage` launches no more shards (stage.py `_launch`). So section 2 does
+    not say shards at a `STOP` `finish and publish`; section 3 states the rule and section 2 points to it."""
+    text = RUNBOOK.read_text()
+    build, stop = section_of(text, "## 2. "), section_of(text, "## 3. ")
+    assert "finish and publish" not in build and "finish and publish" not in stop
+    assert "finish and publish" not in section_of(text, "## 11. ")
+    assert "shard" in stop and "publishes nothing" in stop and "launches no more" in stop
+    assert "(section 3)" in build.split("A shard that fails", 1)[1]
+    assert stop.count("`runstep.py`") + stop.count("runstep.py") >= 1
+
+
+@pytest.mark.covers("C-14")
+def test_c14_no_command_block_uses_a_nested_quote_python_one_liner():
+    """Card C-14 (4): `python -c '...'` with quotes inside survives no `ssh '...' bash -c "..."`; the runbook uses
+    script files, which take their arguments without quoting."""
+    bad = [f"RUNBOOK.md:{n}: {c[:60]}" for n, c in read_commands() if re.search(r"(?:python|biopy)\s+-c\b", c)]
+    assert not bad, "\n".join(bad)
