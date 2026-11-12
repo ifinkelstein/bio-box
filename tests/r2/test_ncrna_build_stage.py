@@ -38,7 +38,7 @@ pytestmark = [pytest.mark.r2, pytest.mark.covers("E-07", "D-01", "MR-20"), rg.ne
 
 GENE_CALL_DIRS = (f"l1/feature/producer={V}/", f"l0seq/protein_seq/gene_call_version={V}/",
                   f"l1/feature_protein/gene_call_version={V}/", f"l1/protein_occurrence/gene_call_version={V}/")
-SHARD_RECORDS = ("l1/domain_scan/",)
+SHARD_RECORDS = ("l1/ncrna_scan/",)  # card E-08: the `ncrna_scan` artifact (card E-07 had them under domain_scan)
 
 
 def set_file(direct) -> Path:
@@ -128,13 +128,47 @@ def test_the_memory_term_bounds_the_shards_at_once_and_refuses_a_cap_below_one(d
     assert bs.ncrna_jobs(10, 2, 16 * gib) == 2  # 16 GiB holds two cmsearch of 6.4 GiB
     assert bs.ncrna_jobs(10, 4, 16 * gib) == 1
     assert bs.ncrna_jobs(10, 2, 6 * gib) == 0
-    assert bs.ncrna_shard_bases(direct["prof"]) == int(0.8 * 300 * 1e10 / (247.4 * 60))
+    # card E-08 (E-07 report (d)): shards are cut at the slower of the two measured shard rates, 304.0 CPU-hours
+    # per 10 Gbp (derived in planning/measurements/2026-11-11_ncrna_producer.md), not the design note's 247.4
+    assert bs.ncrna_shard_bases(direct["prof"]) == int(0.8 * 300 * 1e10 / (304.0 * 60)) == 131_578_947
     root = tmp_path / "root"
     assert bs.build_stage(direct["prof"], with_ncrna(direct, root), run=c04.runner,
                           mem_cap=lambda: 4 * gib) == runstep.EXIT_REFUSED
     assert "above the memory cap" in capsys.readouterr().err
     assert not (root / "l1/ncrna").exists()
     assert not any(n.startswith("stage=S0/ncrna-") for n in c04.record_names(root))
+
+
+@pytest.mark.covers("E-08")
+def test_a_shard_planned_at_80_percent_stays_under_the_budget_at_the_slower_measured_rate(direct):
+    """E-07 report (d): the two measured shards ran at 206.6 and 304.0 CPU-hours per 10 Gbp (derived, E-07's pod
+    check). A shard cut at 80% of the 300 CPU-minute budget at the slower rate uses 240 CPU-minutes at that rate,
+    and at the faster one less; at the design note's 247.4 it would have used 295 at the slower rate."""
+    prof = direct["prof"]
+    bases = bs.ncrna_shard_bases(prof)
+    assert bs.NCRNA_CPU_H_PER_10GBP == 304.0
+    for rate in (206.6, 254.5, 304.0):  # shard 0, both shards, shard 1 (E-07's measurement)
+        assert bases * rate * 60 / 1e10 <= 0.8 * prof.cpu_min_per_process + 1e-6
+    assert bs.ncrna_cpu_min(bases) == pytest.approx(240.0, abs=1e-4)
+
+
+@pytest.mark.covers("C-08", "E-08")
+def test_check_provenance_passes_on_a_release_with_ncrna_tapes(direct, with_cm):
+    """E-07 report (a): a release whose tapes carry the ncRNA producer passes C-08. The fixture library is a subset
+    of Rfam 15.1, so its version is `sha` + 12 hex digits; with that as the lock's `rfam` the release passes, and with
+    the repository's lock (Rfam 15.1) the only problems are that version's."""
+    from biobox import catalog, provenance
+    from biobox.l1 import ncrna
+
+    p = producer(direct)
+    man = catalog.build_manifest(with_cm, c04.REL, ["S0"])
+    defs = [f for f in man["files"] if f["table"] == "tape_version_def"]
+    assert defs and any(f["partitions"]["tape_version"] == tapes.tape_version([V, p]) for f in defs)
+    assert any(f["table"] == "ledger" and f["partitions"]["step"] == f"ncrna-{p}" for f in man["files"])
+    lock = {**provenance.locked_versions(), "rfam": ncrna.library_version(rg.LIB)}
+    assert provenance.check_provenance(man, lock) == []
+    probs = provenance.check_provenance(man)
+    assert probs and all("rfam" in x for x in probs), probs
 
 
 def test_a_missing_set_is_refused_before_any_step(direct, tmp_path, capsys):

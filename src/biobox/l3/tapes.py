@@ -208,7 +208,8 @@ def run(root: Path, stage: str, circular: set[bytes] | frozenset | None = None,
         "WHERE is_default_variant), "
         f"f AS (SELECT DISTINCT * FROM {_source(feats, 'feature_uid, contig_uid, start, \"end\", strand, kind', '')}), "
         f"fp AS {_source(fp, 'feature_uid, protein_uid', 'NULL::BLOB AS feature_uid, NULL::BLOB AS protein_uid')}, "
-        "g AS " + _source(gi, "contig_uid, is_circular", "NULL::BLOB AS contig_uid, NULL::BOOLEAN AS is_circular") + " "
+        # one row per contig: genome_input lists a contig once per genome (DEC-27), which agree on its topology
+        "g AS " + _source(gi, "DISTINCT contig_uid, is_circular","NULL::BLOB AS contig_uid, NULL::BOOLEAN AS is_circular") + " "
         "SELECT coalesce(c.contig_uid, f.contig_uid) AS contig_uid, c.contig_len, g.is_circular, f.feature_uid, "
         f'f.start, f."end", f.strand, f.kind, CASE WHEN f.kind = {KIND_CDS} THEN fp.protein_uid END AS protein_uid '
         "FROM c FULL OUTER JOIN f ON f.contig_uid = c.contig_uid "

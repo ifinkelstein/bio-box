@@ -12,9 +12,30 @@ names the models; the producer fetches them from the Rfam library (`cmfetch -f`)
 So no model searches a base twice: the two model sets are disjoint and the regions of a contig are disjoint.
 Both use Infernal's own filter pipeline, each model's GA cutoff (`--cut_ga`) and the fixed nucleotide search space
 `Z_nt = 1e5` Mb (DEC-04), so a stored E-value does not change as the corpus grows and a hit's GA decision does not
-depend on the other models or contigs searched. Every hit at or above GA is kept (clan competition is card E-08).
-A hit's locus is a `feature` row of kind ncrna; two models that hit the same coordinates and strand share one
-feature (and its `feature_uid`) and keep one `l1_ncrna` row each.
+depend on the other models or contigs searched. Every hit at or above GA is an `l1_ncrna` row.
+
+Clan competition (card E-08, DEC-28 (4), `compete`). The models' clans are Rfam's `Rfam.clanin` of the library's
+release (`rfam_sets/Rfam-15.1.clanin`, pinned by sha256 in refdb.yaml as `rfam_clanin`; `read_clans` refuses a file
+with another sha256): each line a clan accession, then the NAMES of its member models, tab-separated. Two hits
+compete when they lie on the same contig and strand, share at least one base (on a circular contig also around the
+origin: a hit across it has end > contig_len and covers bases below end - n at the start), and their models are in
+one clan. Hits rank by bit score, higher first, then by model accession, then by (start, end), so no two tie. In rank
+order, a hit is kept when it shares no base with a competitor already kept, else it loses (greedy), so no two kept
+hits of a clan overlap on a strand, and a hit that only a loser overlaps is kept. A hit of a model in no clan never
+competes. Hits of different clans, or on opposite strands, never compete: nested and antisense RNAs are real.
+
+Against Rfam's own tool (Infernal 1.1.5 `cmscan --clanin --oclan --fmt 2`, established on the binary in
+planning/measurements/2026-11-11_ncrna_clans.md): the overlap is the same (one shared base on a strand, within a
+clan), and cmscan marks `=`, and drops with `--oskip`, a hit that overlaps a better hit which overlaps no better hit
+itself (marked `^`); a hit whose better competitors all overlap better ones is marked `$` and kept. Every hit cmscan
+drops, the producer drops, and every `*` or `^` hit it keeps; they differ only in chains of four or more hits, where
+cmscan keeps a hit that overlaps a better `$` hit (so two overlapping hits of one clan can both stay) and the producer
+drops it, the `$` hit being kept. Ties: the producer breaks them by accession; cmscan's order among equal scores was
+not established. Every hit stays in `l1_ncrna` with its clan (null for a model in no clan) and `clan_winner` (true for a hit
+that won or never competed, false for one that lost). Only the winners' loci are `feature` rows of kind ncrna, so
+only winners go on the tape; two winning models that hit the same coordinates and strand share one feature (and its
+`feature_uid`) and keep one `l1_ncrna` row each. A losing row's `feature_uid` names its coordinates (AGENTS §3.3),
+which have no feature unless a winner has the same ones.
 
 Regions (`regions`): the intergenic bases of a contig are those no gene call of the stage's gene-call version
 covers (either strand; the runs `biobox.l1.igr.igrs_of_contig` gives); a region is a maximal run of bases that lie
@@ -35,22 +56,33 @@ context; a hit longer than the circle is impossible on the molecule and is count
 (`exceeds_circle`). On a linear contig cmsearch may report hits truncated by the contig's ends, which keep their
 truncation flags.
 
-The producer is `infernal-<infernal version>-rfam-<library version>-<set version>-<REGION_RULE>`. Infernal's version
-is read from the binary (`cmsearch -h`); the library's is the `refdb.yaml` version whose sha256 is the file's
-(`Rfam.cm.gz` of Rfam 15.1 gives `15.1`), else `sha` + the first 12 hex digits of its sha256; the set's is its name
-without hyphens when the file is a frozen set of `FROZEN_SETS` (`prok-1` gives `prok1`), else `sha` + 12 hex
-digits of the file's sha256; `REGION_RULE` (`igr200nt`) names the margin and `--notrunc`. A change of any of them
-is a new producer, so a new tape version.
+The producer is `infernal-<infernal version>-rfam-<library version>-<set version>-<REGION_RULE>-<CLAN_RULE>`.
+Infernal's version is read from the binary (`cmsearch -h`); the library's is the `refdb.yaml` version whose sha256 is
+the file's (`Rfam.cm.gz` of Rfam 15.1 gives `15.1`), else `sha` + the first 12 hex digits of its sha256; the set's is
+its name without hyphens when the file is a frozen set of `FROZEN_SETS` (`prok-1` gives `prok1`), else `sha` + 12 hex
+digits of the file's sha256; `REGION_RULE` (`igr200nt`) names the margin and `--notrunc`; `CLAN_RULE` (`clan1`)
+names the overlap rule above, version 1, with the clan file refdb.yaml pins. Card E-07's producer had no clan tail
+and put every hit's locus on the tape; this card's writes the winners' only, so its features differ and its name must
+too, or a tape built before clan competition could not be told from one built after (the tape version hashes the
+producer names). A change of any part is a new producer, so a new tape version. The gene-call version whose
+intergenic regions were scanned is not in the name (one producer, run on a stage's current gene calls); it is in
+each ledger row's tool versions (`gene_call_version`, which C-08 checks as a gene-call version) and in the step's
+result, when the set has intergenic models.
 
 Writes, under the output root `out` (the data root by default; `$BIOBOX_STAGING` under run-step, card C-08), all
 through `biobox.io.write_parts`:
 
-    l1/feature/producer=<p>/stage=<S>/part-<k>.parquet     kind ncrna, sorted by (contig_uid, start, end, strand)
-    l1/ncrna/producer=<p>/stage=<S>/part-<k>.parquet       one row per hit (registry `l1_ncrna`)
-    ledger/stage=<S>/step=ncrna-<p>/part-0.parquet          per contig: hits in, kept
+    l1/feature/producer=<p>/stage=<S>/part-<k>.parquet     kind ncrna, the winners' loci, sorted by (contig_uid,
+                                                            start, end, strand)
+    l1/ncrna/producer=<p>/stage=<S>/part-<k>.parquet       one row per hit (registry `l1_ncrna`), losers included
+    ledger/stage=<S>/step=ncrna-<p>/part-0.parquet          per contig: hits in, kept (winners), merged (clan losers),
+                                                            rejected (longer than a circular contig)
 
 A contig that another stage stored first (DEC-26, card C-20) is that stage's: it is not searched here and has one
-ledger row, reason `owned_by:<stage>`, counts 0.
+ledger row, reason `owned_by:<stage>`, counts 0. A contig in several genomes of the stage (`genome_input` lists it
+once per genome, DEC-27, card C-21a) is searched once, for the genome with the least `genome_uid`; beside its `ok`
+row it has a ledger row with reason `owned_by:<stage>/<genome_uid>` and the same counts, and the result lists it
+with `owner_genome`.
 
 Two ways to scan a stage, with byte-identical output (card E-07, as card B-24 shards the domain scan):
 
@@ -58,14 +90,18 @@ Two ways to scan a stage, with byte-identical output (card E-07, as card B-24 sh
 - In shards, each its own process under the 300 CPU-minute limit (AGENTS §7.2): `plan` cuts the stage's contigs,
   sorted by `contig_uid` (its `genome_input` rows), into shards of at most `scan_bases` genome bases (each contig's
   `contig_len` in the stage's `contig_index`; a contig another stage owns counts 0; a contig longer than the limit
-  is a shard of its own) and writes the plan, `l1/domain_scan/library=<p>/stage=<S>/plan.json` (the `domain_scan`
-  artifact of the registry, its library partition naming this producer); `scan_shard` scans shard k into two
+  is a shard of its own) and writes the plan, `l1/ncrna_scan/producer=<p>/stage=<S>/plan.json` (the `ncrna_scan`
+  artifact of the registry, card E-08); `scan_shard` scans shard k into two
   sorted scratch runs, `<tmp>/biobox-ncrna-scan/<plan>/shard-<k>.hits.parquet` and `.contigs.parquet` (`<plan>`: the
   first 16 hex of the plan's sha256), and writes its record `.../shard-<k>.json` beside the plan (the runs' sha256
   and counts); `merge` checks every run against its record and writes the runs as `run` writes its files (one
   DuckDB sort of the same rows by the same statement). A run lost from scratch after its record was published is
   scanned again by `rescan_shard` (`python -m biobox.l1.ncrna rescan`, as card C-12 does for domains), which must
-  reproduce the record's sha256. Shards are a pure function of the sorted contigs and the limit.
+  reproduce the record's sha256. Shards are a pure function of the sorted contigs and the limit. Clan competition
+  runs in the merge, over all of a contig's hits, as in `run`. A stage planned by card E-07's code has its plan and
+  records under the `domain_scan` artifact (`l1/domain_scan/library=<p>/stage=<S>/`, the library partition naming
+  the producer, which the `domain_scan` artifact still claims): every reader looks in `ncrna_scan` first, then
+  there (`_LEGACY_SCAN`), and a plan or record there counts as written. Nothing new is written there.
 
 Bounded memory (AGENTS §4.1): contigs and the gene calls are streamed in `contig_uid` order (one contig's genes at a
 time) and each contig's records are appended to a FASTA batch file in a private scratch directory; a batch of at
@@ -78,6 +114,7 @@ nor on the thread count. Nothing is published if a batch fails.
 from __future__ import annotations
 
 import argparse
+import bisect
 import gzip
 import hashlib
 import json
@@ -97,14 +134,15 @@ import pyarrow.parquet as pq
 
 from biobox import ids, io, layout, ledger, provenance
 from biobox.l0seq.inputs import GenomeInput
-from biobox.l0seq.store import INDEX_DIR, ContigOwners, SeqStore
+from biobox.l0seq.store import INDEX_DIR, OWNER_SEP, ContigOwners, SeqStore, skipped_entry
 from biobox.l0seq.store import OWNED_BY as SKIP_REASON
 from biobox.l1.genecall import GENE_CALL_VERSION
 from biobox.l1.igr import igrs_of_contig
 from biobox.registry.schemas import ARTIFACTS, table
 
-__all__ = ["DEFAULT_SET", "MARGIN", "REGION_RULE", "Z_NT_MB", "library_version", "merge", "plan", "producer",
-           "read_models", "read_set", "regions", "rescan_shard", "run", "scan_shard", "set_version"]
+__all__ = ["CLAN_RULE", "DEFAULT_SET", "MARGIN", "REGION_RULE", "Z_NT_MB", "clan_version", "compete", "find_plan",
+           "library_version", "merge", "plan", "producer", "read_clans", "read_models", "read_set", "regions",
+           "rescan_shard", "run", "scan_shard", "set_version"]
 
 Z_NT_MB = 1e5  # the nucleotide search space in Mb for every cmsearch of the release line (DEC-04)
 KIND_NCRNA = ids.KIND["ncrna"]
@@ -116,6 +154,10 @@ DEFAULT_SET = "prok-1"
 # Frozen model sets: name -> sha256 of the file. A frozen file is never regenerated; a new set is a new file
 # with a new name (DEC-28). prok-1: planning/design/0-08_ncrna_models.md, 588 models, 23 of them whole-genome.
 FROZEN_SETS = {"prok-1": "092660962def1ec76466de3816558451f478637ffb43d141ef684273f68d6179"}
+# Clan competition (card E-08): Rfam's clan file, its refdb.yaml entry, and the rule's version in the producer name
+CLANIN = SET_DIR / "Rfam-15.1.clanin"
+CLAN_LIBRARY = "rfam_clanin"
+CLAN_RULE = "clan1"  # version 1: same contig, strand and clan, one shared base; greedy by rank (`compete`)
 # bases of records searched by one cmsearch call: chosen, not tuned. Each call reads and configures every
 # model of its CM file again, so a batch should be large beside that; the scratch FASTA is about this size
 BATCH_BASES = 50_000_000
@@ -279,9 +321,91 @@ def read_set(model_set: str | Path) -> list[SetModel]:
 
 
 def producer(cm_path: Path, model_set: str | Path = DEFAULT_SET) -> str:
-    """`infernal-<version>-rfam-<version>-<set version>-<region rule>`, read from the binary, the library file and
-    the set file (module docstring)."""
-    return f"infernal-{infernal_version()}-{LIBRARY}-{library_version(cm_path)}-{set_version(model_set)}-{REGION_RULE}"
+    """`infernal-<version>-rfam-<version>-<set version>-<region rule>-<clan rule>`, read from the binary, the library
+    file and the set file (module docstring)."""
+    return (f"infernal-{infernal_version()}-{LIBRARY}-{library_version(cm_path)}-{set_version(model_set)}-"
+            f"{REGION_RULE}-{CLAN_RULE}")
+
+
+# --- clan competition (card E-08) ------------------------------------------------------------------------------
+
+
+def _clan_entry() -> dict:
+    for db in provenance.refdb_libraries():
+        if db["name"] == CLAN_LIBRARY:
+            return db
+    raise ValueError(f"refdb.yaml has no {CLAN_LIBRARY} entry; clan competition needs Rfam's pinned clan file")
+
+
+def clan_version() -> str:
+    """The clan file's version, as refdb.yaml's `rfam_clanin` entry gives it (the ledger records it)."""
+    return _clan_entry()["version"]
+
+
+def read_clans(path: Path = CLANIN) -> dict[str, str]:
+    """Model name -> clan accession from a `Rfam.clanin` file (each line a clan accession, then the names of its
+    member models, tab-separated). ValueError when the file's sha256 is not refdb.yaml's `rfam_clanin`, a line is not
+    `CL<digits>` with at least one member, or a model is in two clans."""
+    path = Path(path)
+    want = _clan_entry().get("sha256")
+    if _sha256(path) != want:
+        raise ValueError(f"{path}: sha256 {_sha256(path)} is not the {CLAN_LIBRARY} file refdb.yaml pins ({want})")
+    out: dict[str, str] = {}
+    for k, ln in enumerate(path.read_text().splitlines(), 1):
+        if not ln.strip():
+            continue
+        acc, *names = ln.split("\t")
+        if not (acc.startswith("CL") and acc[2:].isdigit()) or not names or not all(names):
+            raise ValueError(f"{path}: line {k} is not a clan accession and its member names: {ln!r}")
+        for m in names:
+            if m in out:
+                raise ValueError(f"{path}: model {m} is in clans {out[m]} and {acc}")
+            out[m] = acc
+    return out
+
+
+def _rank(h: dict) -> tuple:
+    """A hit's rank, smallest first: higher bit score, then smaller model accession, then smaller (start, end)."""
+    return (-h["bitscore"], h["model_acc"], h["start"], h["end"])
+
+
+def compete(hits: list[dict], clans: dict[str, str]) -> list[tuple[str | None, bool]]:
+    """Clan competition among the hits of one contig (module docstring): for each hit, in input order, its clan (None
+    for a model in no clan) and whether it is kept. Per (strand, clan), in rank order (`_rank`), a hit is kept when it
+    shares no base with a hit already kept, else it loses. Each hit is a dict with model_name, model_acc, start, end,
+    strand, bitscore and contig_len; on a circular contig a hit across the origin has end > contig_len.
+
+    The kept hits of a group are disjoint around the circle, so their intervals (and, for one across the origin, its
+    copy shifted by -contig_len) are disjoint on the line and sorted by start are sorted by end: a candidate meets one
+    of them exactly when the last that starts before the candidate's end ends after its start (`bisect`)."""
+    out = [(clans.get(h["model_name"]), True) for h in hits]
+    groups: dict[tuple, list[int]] = {}
+    for i, h in enumerate(hits):
+        if out[i][0] is not None:
+            groups.setdefault((h["strand"], out[i][0]), []).append(i)
+    lost: set[int] = set()
+    for idx in groups.values():
+        if len(idx) < 2:
+            continue
+        starts: list[int] = []  # the kept intervals, sorted by start
+        ends: list[int] = []
+        for i in sorted(idx, key=lambda k: _rank(hits[k])):
+            h, n = hits[i], hits[i]["contig_len"]
+            mine = [(h["start"], h["end"])] + ([(h["start"] - n, h["end"] - n)] if h["end"] > n else [])
+            meets_kept = False
+            for s, e in mine:
+                k = bisect.bisect_left(starts, e) - 1  # the last kept interval that starts before e
+                if k >= 0 and ends[k] > s:
+                    meets_kept = True
+                    break
+            if meets_kept:
+                lost.add(i)
+                continue
+            for s, e in mine:
+                k = bisect.bisect_left(starts, s)
+                starts.insert(k, s)
+                ends.insert(k, e)
+    return [(c, i not in lost) for i, (c, _) in enumerate(out)]
 
 
 def _paths(stage: str, prod: str) -> tuple[str, str, str]:
@@ -540,19 +664,20 @@ def _range_rows(files: list[Path], cols: list[str], lo: bytes | None = None, hi:
                     yield row
 
 
-def _with_genes(contigs: Iterable[tuple[bytes, bool]], feats: Iterator[tuple] | None
-                ) -> Iterator[tuple[bytes, bool, list[tuple[int, int]]]]:
-    """(contig_uid, circular, its genes) for each of `contigs` (sorted by contig_uid), the genes from the sorted
-    gene-call rows `feats` (contig_uid, start, end): a merge join, one contig's genes held at a time."""
+def _with_genes(contigs: Iterable[tuple[bytes, bool, bytes | None]], feats: Iterator[tuple] | None
+                ) -> Iterator[tuple[bytes, bool, list[tuple[int, int]], bytes | None]]:
+    """(contig_uid, circular, its genes, owner genome) for each of `contigs` ((contig_uid, circular, owner genome),
+    sorted by contig_uid, as `_distinct` gives them), the genes from the sorted gene-call rows `feats` (contig_uid,
+    start, end): a merge join, one contig's genes held at a time."""
     cur = None if feats is None else next(feats, None)
-    for cu, circ in contigs:
+    for cu, circ, owner in contigs:
         while cur is not None and cur[0] < cu:
             cur = next(feats, None)
         genes = []
         while cur is not None and cur[0] == cu:
             genes.append((cur[1], cur[2]))
             cur = next(feats, None)
-        yield cu, circ, genes
+        yield cu, circ, genes, owner
 
 
 def _gene_files(root: Path, stage: str, gene_call_version: str) -> list[Path]:
@@ -576,6 +701,7 @@ class _Scan:
         self.contigs_w = pq.ParquetWriter(self.contigs_path, _CONTIG_SCRATCH, compression="zstd", write_statistics=False)
         self.batches: dict[str, _Batch | None] = {"whole": None, "igr": None}
         self.stats = {"contigs": 0, "bases": 0, "batches": 0, "hits": 0, "regions": 0, "region_bases": 0}
+        self.shared: dict[bytes, str] = {}  # contig in several genomes of the stage -> its owner (DEC-27)
 
     def _flush(self, kind: str) -> None:
         b = self.batches[kind]
@@ -638,10 +764,12 @@ class _Scan:
             self.contigs_w.close()
 
 
-def _scan(root: Path, stage: str, lib: _Library, contigs: Iterator[tuple[bytes, bool, list]], stages: list[str],
-          cpus: int, scratch: Path, batch_bases: int) -> tuple[_Scan, dict[bytes, str]]:
-    """Search `contigs` ((contig_uid, circular, genes), sorted by contig_uid) into scratch; a contig another stage
-    owns is not searched (DEC-26) and is returned with its owner."""
+def _scan(root: Path, stage: str, lib: _Library, contigs: Iterator[tuple[bytes, bool, list, bytes | None]],
+          stages: list[str], cpus: int, scratch: Path, batch_bases: int) -> tuple[_Scan, dict[bytes, str]]:
+    """Search `contigs` ((contig_uid, circular, genes, owner genome), sorted by contig_uid) into scratch; a contig
+    another stage owns is not searched (DEC-26) and is returned with its owner. A contig in several genomes of this
+    stage (DEC-27) is searched once, for its owner genome, and `sc.shared` holds it with that owner
+    (`<stage>/<genome_uid>`), which its contig row carries as the reason of the other genomes' skip."""
     exe = shutil.which("cmsearch")
     if exe is None:
         raise FileNotFoundError("cmsearch (Infernal) not on PATH")
@@ -651,12 +779,15 @@ def _scan(root: Path, stage: str, lib: _Library, contigs: Iterator[tuple[bytes, 
     sc = _Scan(exe, lib, cpus, scratch, batch_bases, MARGIN)
     ok = False
     try:
-        for cu, circ, genes in contigs:
+        for cu, circ, genes, genome in contigs:
             s = owners.owner(cu)
             if s != stage:
                 skipped[cu] = s
                 sc.skip(cu, s)
                 continue
+            if genome is not None:
+                sc.shared[cu] = f"{stage}{OWNER_SEP}{genome.hex()}"
+                sc.skip(cu, sc.shared[cu])
             sc.contig(cu, store.get(cu).upper(), circ, genes)
         ok = True
     finally:
@@ -679,8 +810,14 @@ def _check_args(cpus: int, batch_bases: int) -> None:
         raise ValueError(f"batch_bases must be at least 1, got {batch_bases}")
 
 
-def _tools(cm_path: Path) -> dict[str, str]:
-    return {**provenance.tool_versions("infernal", "pyarrow"), LIBRARY: library_version(cm_path)}
+def _tools(cm_path: Path, gene_call_version: str | None) -> dict[str, str]:
+    """The ledger's tool versions: Infernal, pyarrow, the library's and the clan file's versions, and the gene-call
+    version whose intergenic regions were scanned (none for a set without intergenic models)."""
+    out = {**provenance.tool_versions("infernal", "pyarrow"), LIBRARY: library_version(cm_path),
+           CLAN_LIBRARY: clan_version()}
+    if gene_call_version is not None:
+        out["gene_call_version"] = gene_call_version
+    return out
 
 
 def run(root: Path, stage: str, cm_path: Path, cpus: int, genomes: Iterable[GenomeInput] | None = None, *,
@@ -696,7 +833,8 @@ def run(root: Path, stage: str, cm_path: Path, cpus: int, genomes: Iterable[Geno
     intergenic regions the set's intergenic models search (needed only when the set has such models).
     `seq_stages`: the stages whose sequences the genomes may name (card B-28), default the stage itself. A contig
     that another stage stored first (DEC-26, card C-20) is that stage's: it is not searched here, and is listed in
-    the result (`skipped_contigs`) and in the ledger (reason `owned_by:<stage>`, counts 0). `tmp` holds the private
+    the result (`skipped_contigs`) and in the ledger (reason `owned_by:<stage>`, counts 0). A contig in several
+    genomes of the stage is searched once and listed with its owner genome (module docstring). `tmp` holds the private
     scratch directory (system temp by default) and may lie under neither the root nor `out`. `batch_bases`: bases
     per cmsearch call; the output does not depend on it. `max_file_bytes`: each table is cut into parts of at most
     this many estimated bytes.
@@ -715,10 +853,13 @@ def run(root: Path, stage: str, cm_path: Path, cpus: int, genomes: Iterable[Geno
     ledger.refuse_written(root, out, [feat_dir, hit_dir, step_dir], f"ncRNA features {prod} of stage {stage}")
     members, _ = _check_set(cm_path, model_set)
     gene_files = _gene_files(root, stage, gene_call_version)
-    if any(not m.whole_genome for m in members) and not gene_files:
+    igr = any(not m.whole_genome for m in members)
+    if igr and not gene_files:
         raise FileNotFoundError(f"stage {stage}: no gene calls of {gene_call_version}, whose intergenic regions the "
                                 "set's intergenic models search; run gene calling first")
-    tools = _tools(cm_path)
+    gcv = gene_call_version if igr else None
+    tools = _tools(cm_path, gcv)
+    clans = read_clans()
     stages = list(dict.fromkeys([stage, *([] if seq_stages is None else seq_stages)]))
     scratch = _mkscratch("biobox-ncrna-", tmp)
     try:
@@ -727,60 +868,108 @@ def run(root: Path, stage: str, cm_path: Path, cpus: int, genomes: Iterable[Geno
             gi = _genome_input_files(root, stage)
             if not gi:
                 raise FileNotFoundError(f"stage {stage}: no genome_input")
-            contigs = ((cu, bool(c)) for cu, c in _range_rows(gi, ["contig_uid", "is_circular"]))
+            contigs = _distinct(_range_rows(gi, ["contig_uid", "is_circular", "genome_uid"]))
         else:
-            contigs = _distinct(iter(sorted({(cu, cu in set(g.circular)) for g in genomes for cu in g.contig_uids})))
+            contigs = _distinct(iter(sorted({(cu, cu in set(g.circular), ids.genome_uid(list(g.contig_uids)))
+                                             for g in genomes for cu in g.contig_uids})))
         feats = _range_rows(gene_files, ["contig_uid", "start", "end"]) if lib.igr else None
         sc, skipped = _scan(root, stage, lib, _with_genes(contigs, feats), stages, cpus, scratch, batch_bases)
-        _publish(out, stage, prod, [sc.hits_path], [sc.contigs_path], scratch, tools, max_file_bytes)
+        losers = _publish(out, stage, prod, [sc.hits_path], [sc.contigs_path], scratch, tools, clans, max_file_bytes)
         return {**sc.stats, "producer": prod, "models": len(lib.whole) + len(lib.igr), "models_whole": len(lib.whole),
                 "models_intergenic": len(lib.igr), "flank": lib.flank_whole, "flank_igr": lib.flank_igr,
-                "skipped_contigs": [{"contig_uid": cu.hex(), "owner_stage": s} for cu, s in sorted(skipped.items())]}
+                "gene_call_version": gcv, "clan_losers": losers,
+                "skipped_contigs": [skipped_entry(cu, s) for cu, s in sorted({**skipped, **sc.shared}.items())]}
     finally:
         shutil.rmtree(scratch, ignore_errors=True)
 
 
+def _decide(con: duckdb.DuckDBPyConnection, clans: dict[str, str], path: Path) -> int:
+    """Write the distinct hits (the view `hits`) to `path` in the table's order with their clan and `clan_winner`
+    (`compete` over each contig's hits, one contig held at a time); returns the losers."""
+    cols = _HIT_SCRATCH.names
+    sql = (f'SELECT {", ".join(chr(34) + c + chr(34) for c in cols)} FROM hits '
+           'ORDER BY contig_uid, start, "end", strand, model_acc, bitscore')
+    w = pq.ParquetWriter(path, _HIT_SCRATCH, compression="zstd", write_statistics=False)
+    losers = 0
+
+    def flush(rows: list[dict]) -> None:
+        nonlocal losers
+        for r, (c, won) in zip(rows, compete(rows, clans)):
+            r["clan"], r["clan_winner"] = c, won
+            losers += not won
+        w.write_batch(pa.RecordBatch.from_pylist(rows, schema=_HIT_SCRATCH))
+
+    reader = con.sql(sql).to_arrow_reader(io.ROW_GROUP_ROWS)
+    try:
+        cur: list[dict] = []
+        for b in reader:
+            for r in b.to_pylist():
+                if cur and r["contig_uid"] != cur[0]["contig_uid"]:
+                    flush(cur)
+                    cur = []
+                cur.append(r)
+        if cur:
+            flush(cur)
+    finally:
+        reader.close()
+        w.close()
+    return losers
+
+
 def _publish(out: Path, stage: str, prod: str, hit_files: list[Path], contig_files: list[Path], scratch: Path,
-             tools: dict[str, str], max_file_bytes: int) -> None:
-    """Sort the scratch hits into the producer's `feature` and `l1_ncrna` files and write the ledger: per contig
-    searched, hits in and kept (and the hits longer than a circular contig rejected); a contig owned by another
-    stage (DEC-26) has one row, reason `owned_by:<stage>`, counts 0. The one writer of `run` and `merge`, so their
-    files are the same."""
+             tools: dict[str, str], clans: dict[str, str], max_file_bytes: int) -> int:
+    """Decide clan competition over the scratch hits (`_decide`), sort them into the producer's `feature` (the
+    winners' loci) and `l1_ncrna` (every hit) files and write the ledger: per contig searched, hits in, kept (the
+    winners), merged (the clan losers) and the hits longer than a circular contig rejected; a contig owned by another
+    stage (DEC-26) has one row, reason `owned_by:<stage>`, counts 0; one in several genomes of the stage (DEC-27) has
+    a row, reason `owned_by:<stage>/<genome_uid>`, after its `ok` row and with its counts. The one writer of `run`
+    and `merge`, so their files are the same. Returns the clan losers."""
     feat_dir, hit_dir, _ = _paths(stage, prod)
     con = duckdb.connect(config={"threads": 1, "memory_limit": DUCK_MEMORY_LIMIT,
                                  "temp_directory": str(scratch / "duckdb"), "preserve_insertion_order": True})
     try:
         con.execute(f"CREATE VIEW hits AS SELECT DISTINCT * FROM read_parquet({_sql_files(hit_files)})")
-        con.execute("CREATE VIEW contigs AS SELECT contig_uid, sum(n_in) AS n_in, sum(n_rejected) AS n_rejected, "
-                    f"max(reason) AS reason FROM read_parquet({_sql_files(contig_files)}) GROUP BY contig_uid")
+        decided = scratch / "decided.parquet"
+        losers = _decide(con, clans, decided)
+        con.execute(f"CREATE VIEW decided AS SELECT * FROM read_parquet({_sql_path(decided)})")
+        con.execute("CREATE VIEW contigs AS SELECT c.contig_uid, c.n_in, c.n_rejected, c.reason, "
+                    "coalesce(d.lost, 0) AS lost FROM (SELECT contig_uid, sum(n_in) AS n_in, sum(n_rejected) AS "
+                    f"n_rejected, max(reason) AS reason FROM read_parquet({_sql_files(contig_files)}) GROUP BY "
+                    "contig_uid) c LEFT JOIN (SELECT contig_uid, count(*) FILTER (WHERE NOT clan_winner) AS lost "
+                    "FROM decided GROUP BY contig_uid) d ON d.contig_uid = c.contig_uid")
         spec = table("feature")
         io.write_parts(io.duck_batches(
             con, f'SELECT DISTINCT feature_uid, contig_uid, start, "end", strand, {KIND_NCRNA}::UTINYINT AS kind '
-                 'FROM hits ORDER BY contig_uid, start, "end", strand', spec),
+                 'FROM decided WHERE clan_winner ORDER BY contig_uid, start, "end", strand', spec),
             spec, out / feat_dir, EST_FEATURE_ROW, max_file_bytes)
         spec = table("l1_ncrna")
         cols = ", ".join(f'"{c}"' for c in spec.schema.names)
         io.write_parts(io.duck_batches(
-            con, f'SELECT {cols} FROM hits ORDER BY contig_uid, start, "end", strand, model_acc', spec),
+            con, f'SELECT {cols} FROM decided ORDER BY contig_uid, start, "end", strand, model_acc', spec),
             spec, out / hit_dir, EST_NCRNA_ROW, max_file_bytes)
 
         def ledger_rows() -> Iterator[dict]:
-            reader = con.sql("SELECT contig_uid, n_in, n_rejected, reason FROM contigs ORDER BY contig_uid"
+            reader = con.sql("SELECT contig_uid, n_in, n_rejected, reason, lost FROM contigs ORDER BY contig_uid"
                              ).to_arrow_reader(io.ROW_GROUP_ROWS)
             try:
                 for b in reader:
-                    for cu, n, rej, why in zip(*(b.column(i).to_pylist() for i in range(4))):
-                        if why is not None:  # a contig another stage owns: not searched here
-                            yield ledger.row(cu, "contig", 0, 0, reason=why, tools=tools)
+                    for cu, n, rej, why, lost in zip(*(b.column(i).to_pylist() for i in range(5))):
+                        if why is not None and OWNER_SEP not in why.removeprefix(SKIP_REASON):
+                            yield ledger.row(cu, "contig", 0, 0, reason=why, tools=tools)  # another stage's
                             continue
+                        kept = n - rej - lost
                         if rej:
-                            yield ledger.row(cu, "contig", n, n - rej, n_rejected=rej, reason=REJECT_CIRCLE,
+                            yield ledger.row(cu, "contig", n, kept, lost, n_rejected=rej, reason=REJECT_CIRCLE,
                                              tools=tools)
-                        yield ledger.row(cu, "contig", n, n - rej, tools=tools)
+                        yield ledger.row(cu, "contig", n, kept, lost, tools=tools)
+                        if why is not None:  # searched once for the genome that owns it (DEC-27); its reason
+                            # sorts after `ok` and repeats the contig's counts (L-01)
+                            yield ledger.row(cu, "contig", n, kept, lost, reason=why, tools=tools)
             finally:
                 reader.close()
 
         ledger.write(out, stage, f"ncrna-{prod}", ledger_rows())
+        return losers
     finally:
         con.close()
 
@@ -789,8 +978,14 @@ def _publish(out: Path, stage: str, prod: str, hit_files: list[Path], contig_fil
 
 
 def scan_dir(stage: str, prod: str) -> str:
-    """The root-relative directory of the shard plan and records of one producer and stage (the registry's
-    `domain_scan` artifact, its library partition naming the producer)."""
+    """The root-relative directory of the shard plan and records of one producer and stage: the registry's
+    `ncrna_scan` artifact (card E-08)."""
+    return f"{ARTIFACTS['ncrna_scan'].location}/producer={prod}/stage={stage}"
+
+
+def _legacy_scan_dir(stage: str, prod: str) -> str:
+    """Where card E-07's code wrote them: the `domain_scan` artifact, its library partition naming the producer.
+    Read, and counted as written, never written."""
     return f"{ARTIFACTS['domain_scan'].location}/library={prod}/stage={stage}"
 
 
@@ -802,31 +997,49 @@ def _shard_rel(stage: str, prod: str, k: int) -> str:
     return f"{scan_dir(stage, prod)}/shard-{k:05d}.json"
 
 
+def _rels(stage: str, prod: str, name: str) -> list[str]:
+    """The root-relative paths a record `name` (plan.json, shard-<k>.json) may have: `ncrna_scan`, then E-07's."""
+    return [f"{scan_dir(stage, prod)}/{name}", f"{_legacy_scan_dir(stage, prod)}/{name}"]
+
+
+def _find_record(root: Path, out: Path | None, stage: str, prod: str, name: str) -> Path | None:
+    """A plan or shard record in the root, else in `out`, each at `ncrna_scan` first, then where E-07 wrote it."""
+    for base in [Path(root)] + ([] if out is None else [Path(out)]):
+        for rel in _rels(stage, prod, name):
+            if (base / rel).is_file():
+                return base / rel
+    return None
+
+
+def _refuse_record(root: Path, out: Path, stage: str, prod: str, name: str, what: str) -> None:
+    """FileExistsError when the record `name` exists in the root or `out`, at either of its places."""
+    for base in dict.fromkeys([Path(root).resolve(), Path(out).resolve()]):
+        for rel in _rels(stage, prod, name):
+            if (base / rel).exists():
+                raise FileExistsError(f"{base / rel}: {what}; refusing to overwrite")
+
+
+def find_plan(root: Path, stage: str, prod: str) -> Path | None:
+    """The published shard plan of one producer and stage in the root (`ncrna_scan`, else E-07's place), or None."""
+    return _find_record(root, None, stage, prod, "plan.json")
+
+
 def _json_bytes(doc: dict) -> bytes:
     return json.dumps(doc, sort_keys=True, indent=1).encode() + b"\n"
 
 
-def _write_once(root: Path, out: Path, rel: str, data: bytes, what: str) -> None:
-    for base in dict.fromkeys([Path(root).resolve(), Path(out).resolve()]):
-        if (base / rel).exists():
-            raise FileExistsError(f"{base / rel}: {what} is written once; refusing to overwrite")
-    path = Path(out) / rel
+def _write_once(root: Path, out: Path, stage: str, prod: str, name: str, data: bytes, what: str) -> None:
+    """Write the record `name` at `ncrna_scan` under `out`, unless it exists in the root or `out` (either place)."""
+    _refuse_record(root, out, stage, prod, name, f"{what} is written once")
+    path = Path(out) / scan_dir(stage, prod) / name
     path.parent.mkdir(parents=True, exist_ok=True)
     tmp = path.with_name(f".{path.name}.tmp-{os.getpid()}")
     tmp.write_bytes(data)
     os.replace(tmp, path)
 
 
-def _find(root: Path, out: Path | None, rel: str) -> Path | None:
-    """`rel` in the root, else in `out` (written earlier by a direct call into another output root)."""
-    for base in [Path(root)] + ([] if out is None else [Path(out)]):
-        if (base / rel).is_file():
-            return base / rel
-    return None
-
-
 def _plan_bytes(root: Path, stage: str, prod: str, out: Path | None = None) -> bytes:
-    p = _find(root, out, _plan_rel(stage, prod))
+    p = _find_record(root, out, stage, prod, "plan.json")
     if p is None:
         raise FileNotFoundError(f"{Path(root) / _plan_rel(stage, prod)}: no shard plan for ncrna-{prod} of stage "
                                 f"{stage}; write it with ncrna.plan")
@@ -901,10 +1114,7 @@ def plan(root: Path, stage: str, cm_path: Path, scan_bases: int, *, model_set: s
     cm_path = Path(cm_path)
     prod = producer(cm_path, model_set)
     ledger.refuse_written(root, out, list(_paths(stage, prod)), f"ncRNA features {prod} of stage {stage}")
-    rel = _plan_rel(stage, prod)
-    for base in dict.fromkeys([root.resolve(), out.resolve()]):
-        if (base / rel).exists():
-            raise FileExistsError(f"{base / rel}: the shard plan is written once; refusing to overwrite")
+    _refuse_record(root, out, stage, prod, "plan.json", "the shard plan is written once")
     members, _ = _check_set(cm_path, model_set)
     gi = _genome_input_files(root, stage)
     idx = io.part_files(root / INDEX_DIR / f"stage={stage}")
@@ -923,7 +1133,7 @@ def plan(root: Path, stage: str, cm_path: Path, scan_bases: int, *, model_set: s
            "scan_bases": scan_bases, "files": {"genome_input": _file_docs(root, gi), "contig_index": _file_docs(root, idx),
                                                "genes": _file_docs(root, genes)},
            "contigs": sum(s["contigs"] for s in shards), "bases": sum(s["bases"] for s in shards), "shards": shards}
-    _write_once(root, out, rel, _json_bytes(doc), "the shard plan")
+    _write_once(root, out, stage, prod, "plan.json", _json_bytes(doc), "the shard plan")
     return {"shards": len(shards), "contigs": doc["contigs"], "bases": doc["bases"], "producer": prod}
 
 
@@ -959,9 +1169,9 @@ def _shard_scan(root: Path, stage: str, cm_path: Path, model_set, k: int, cpus: 
     read = {"contigs": 0}
 
     def contigs():
-        for cu, c in _range_rows(gi, ["contig_uid", "is_circular"], lo, hi):
+        for cu, c, g in _range_rows(gi, ["contig_uid", "is_circular", "genome_uid"], lo, hi):
             read["contigs"] += 1
-            yield cu, bool(c)
+            yield cu, bool(c), g
 
     feats = _range_rows(genes, ["contig_uid", "start", "end"], lo, hi) if lib.igr else None
     stages = list(dict.fromkeys([stage, *([] if seq_stages is None else seq_stages)]))
@@ -974,12 +1184,20 @@ def _shard_scan(root: Path, stage: str, cm_path: Path, model_set, k: int, cpus: 
     return raw, s, sc, skipped, prod
 
 
-def _distinct(contigs: Iterator[tuple[bytes, bool]]) -> Iterator[tuple[bytes, bool]]:
-    last = None
-    for cu, c in contigs:
-        if cu != last:
-            yield cu, c
-        last = cu
+def _distinct(rows: Iterator[tuple[bytes, bool, bytes]]) -> Iterator[tuple[bytes, bool, bytes | None]]:
+    """(contig_uid, circular, owner genome) once per contig of `rows` (contig_uid, circular, genome_uid), sorted by
+    contig_uid: `genome_input` lists a contig once per genome (DEC-27), and the genomes agree on its topology. The
+    owner genome is the least genome_uid of a contig in more than one genome of the stage, else None."""
+    cur = None  # [contig_uid, circular, least genome_uid, rows]
+    for cu, c, g in rows:
+        if cur is not None and cu == cur[0]:
+            cur[2], cur[3] = min(cur[2], g), cur[3] + 1
+            continue
+        if cur is not None:
+            yield cur[0], cur[1], cur[2] if cur[3] > 1 else None
+        cur = [cu, bool(c), g, 1]
+    if cur is not None:
+        yield cur[0], cur[1], cur[2] if cur[3] > 1 else None
 
 
 def _sorted_runs(sc: _Scan, scratch: Path, hits_path: Path, contigs_path: Path) -> None:
@@ -1021,10 +1239,8 @@ def scan_shard(root: Path, stage: str, cm_path: Path, k: int, cpus: int, *, mode
     ledger.check_scratch(tmp, root, out)
     prod = producer(Path(cm_path), model_set)
     ledger.refuse_written(root, out, list(_paths(stage, prod)), f"ncRNA features {prod} of stage {stage}")
-    rel = _shard_rel(stage, prod, k)
-    for base in dict.fromkeys([root.resolve(), out.resolve()]):
-        if (base / rel).exists():
-            raise FileExistsError(f"{base / rel}: shard {k} is scanned once; refusing to overwrite")
+    name = f"shard-{k:05d}.json"
+    _refuse_record(root, out, stage, prod, name, f"shard {k} is scanned once")
     scratch = _mkscratch("biobox-ncrna-", tmp)
     try:
         raw, s, sc, skipped, prod = _shard_scan(root, stage, cm_path, model_set, k, cpus, seq_stages, scratch, out)
@@ -1037,14 +1253,14 @@ def scan_shard(root: Path, stage: str, cm_path: Path, k: int, cpus: int, *, mode
            "last": s["last"], "contigs": s["contigs"], "bases": s["bases"], "hits": sc.stats["hits"],
            "skipped": len(skipped), "hits_sha256": ids.sha256_file(hits_path).hex(),
            "contigs_sha256": ids.sha256_file(contigs_path).hex()}
-    _write_once(root, out, rel, _json_bytes(rec), f"the record of shard {k}")
+    _write_once(root, out, stage, prod, name, _json_bytes(rec), f"the record of shard {k}")
     return {"shard": k, "contigs": s["contigs"], "bases": s["bases"], "hits": sc.stats["hits"],
             "regions": sc.stats["regions"], "batches": sc.stats["batches"]}
 
 
 def shard_record(root: Path, stage: str, prod: str, k: int) -> dict | None:
     """The published record of shard k (in the root), or None when there is none."""
-    p = _find(root, None, _shard_rel(stage, prod, k))
+    p = _find_record(root, None, stage, prod, f"shard-{k:05d}.json")
     return None if p is None else json.loads(p.read_bytes())
 
 
@@ -1113,13 +1329,14 @@ def merge(root: Path, stage: str, cm_path: Path, *, model_set: str | Path = DEFA
     ledger.refuse_written(root, out_root, list(_paths(stage, prod)), f"ncRNA features {prod} of stage {stage}")
     raw = _plan_bytes(root, stage, prod, out)
     p, digest = json.loads(raw), hashlib.sha256(raw).hexdigest()
-    missing = [k for k in range(len(p["shards"])) if _find(root, out, _shard_rel(stage, prod, k)) is None]
+    records = [_find_record(root, out, stage, prod, f"shard-{k:05d}.json") for k in range(len(p["shards"]))]
+    missing = [k for k, r in enumerate(records) if r is None]
     if missing:
         raise FileNotFoundError(f"ncrna-{prod} of stage {stage}: no record of shard {', '.join(map(str, missing))} "
                                 f"of {len(p['shards'])}; scan it with ncrna.scan_shard")
     hits, contigs, n_hits = [], [], 0
     for k in range(len(p["shards"])):
-        rec = json.loads(_find(root, out, _shard_rel(stage, prod, k)).read_bytes())
+        rec = json.loads(records[k].read_bytes())
         if rec["plan_sha256"] != digest or rec["shard"] != k:
             raise ValueError(f"shard {k}: its record is of another plan or shard")
         for path, key in zip(run_paths(tmp, root, stage, prod, k, out), ("hits_sha256", "contigs_sha256")):
@@ -1132,12 +1349,15 @@ def merge(root: Path, stage: str, cm_path: Path, *, model_set: str | Path = DEFA
         hits.append(h)
         contigs.append(c)
         n_hits += rec["hits"]
+    gcv = p["gene_call_version"] if p["files"]["genes"] else None  # the plan read gene calls iff the set has
+    clans = read_clans()                                            # intergenic models
     scratch = _mkscratch("biobox-ncrna-merge-", tmp)
     try:
-        _publish(out_root, stage, prod, hits, contigs, scratch, _tools(cm_path), max_file_bytes)
+        losers = _publish(out_root, stage, prod, hits, contigs, scratch, _tools(cm_path, gcv), clans, max_file_bytes)
     finally:
         shutil.rmtree(scratch, ignore_errors=True)
-    return {"producer": prod, "shards": len(p["shards"]), "contigs": p["contigs"], "bases": p["bases"], "hits": n_hits}
+    return {"producer": prod, "shards": len(p["shards"]), "contigs": p["contigs"], "bases": p["bases"], "hits": n_hits,
+            "gene_call_version": gcv, "clan_losers": losers}
 
 
 def main(argv: list[str] | None = None) -> int:

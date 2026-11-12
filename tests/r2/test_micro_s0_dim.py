@@ -186,19 +186,51 @@ def test_a_release_with_the_later_stage_but_not_the_owning_stage_is_refused_nami
     assert not _out(root, "rLate").exists()
 
 
-def test_a_contig_in_two_genomes_of_one_stage_is_still_refused(tmp_path):
+@pytest.mark.covers("C-01")
+def test_a_contig_in_two_genomes_of_one_stage_keeps_the_least_genome_and_lists_the_other_skipped(tmp_path):
+    """DEC-27 (card C-21a) migrates C-20's `test_a_contig_in_two_genomes_of_one_stage_is_still_refused`: a contig may
+    be in several genomes of one stage. Until card C-21b adds `n_genomes` and `genome_dim`, `contig_dim` keeps one row
+    per contig, its genome the one with the least `genome_uid` (the genome that writes the contig's gene calls), and
+    the other genomes' rows are listed under `skipped`, as C-20 lists a later stage's. The refusal of a real conflict
+    within one stage is the next test."""
+    root = tmp_path / "s"
+    ingest([SourceObject(FIX / o["file"], "s", "1") for o in CONTRACT["objects"]], root, "S0", shard_bases=200_000)
+    single = _genomes()
+    lam, t4 = single[0].contig_uids[0], single[1].contig_uids[0]
+    both = GenomeInput((lam, t4), 11, kind="virus", assembly_quality="mag_hq")  # lambda and T4 in one more genome
+    write_genome_input(root, "S0", [*single, both])
+    res = dim.run(root, "rTwo", ["S0"], tmp=tmp_path)
+    g_both = ids.genome_uid([lam, t4])
+    kept = {cu: min(ids.genome_uid([cu]), g_both) for cu in (lam, t4)}
+    other = {cu: max(ids.genome_uid([cu]), g_both) for cu in (lam, t4)}
+    rows = {r["contig_uid"]: r for r in pq.read_table(_out(root, "rTwo")).to_pylist()}
+    assert len(rows) == 3
+    for cu in (lam, t4):
+        assert rows[cu]["genome_uid"] == kept[cu]
+        assert rows[cu]["assembly_quality"] == ("mag_hq" if kept[cu] == g_both else "complete")
+    m = single[2].contig_uids[0]
+    assert rows[m]["genome_uid"] == ids.genome_uid([m])
+    assert res["skipped"] == sorted(
+        ({"contig_uid": cu.hex(), "stage": "S0", "genome_uid": other[cu].hex(), "owner_stage": "S0",
+          "kept_genome_uid": kept[cu].hex()} for cu in (lam, t4)), key=lambda r: r["contig_uid"])
+    assert res["contigs"] == 3 and res["genomes"] == len({r["genome_uid"] for r in rows.values()})
+
+
+def test_two_genomes_of_one_stage_that_disagree_on_a_contigs_topology_are_refused(tmp_path):
+    """A real conflict within one stage is still refused: two rows that disagree on the contig's own fact
+    (`is_circular`). `write_genome_input` refuses to write them (C-21a), so the file is written past it."""
     root = tmp_path / "s"
     ingest([SourceObject(FIX / o["file"], "s", "1") for o in CONTRACT["objects"]], root, "S0", shard_bases=200_000)
     spec = table("genome_input")
     rows = [{"contig_uid": g.contig_uids[0], "genome_uid": ids.genome_uid(list(g.contig_uids)),
              "is_circular": bool(g.circular), "kind": g.kind, "genetic_code": g.genetic_code,
              "assembly_quality": g.assembly_quality} for g in _genomes()]
-    rows.append({**rows[0], "genome_uid": b"\x01" * 16})  # written past write_genome_input, which refuses it
+    rows.append({**rows[0], "genome_uid": b"\x01" * 16, "is_circular": not rows[0]["is_circular"]})
     d = root / spec.location / "stage=S0"
     d.mkdir(parents=True)
-    pq.write_table(pa.Table.from_pylist(sorted(rows, key=lambda r: r["contig_uid"]), schema=spec.schema),
-                   d / "part-0.parquet")
-    with pytest.raises(ValueError, match="conflicting genome_input rows"):
+    pq.write_table(pa.Table.from_pylist(sorted(rows, key=lambda r: (r["contig_uid"], r["genome_uid"])),
+                                        schema=spec.schema), d / "part-0.parquet")
+    with pytest.raises(ValueError, match="conflicting genome_input rows.*is_circular"):
         dim.run(root, "rTwo", ["S0"])
     assert not _out(root, "rTwo").exists()
 
