@@ -88,10 +88,9 @@ but the runbook and `scripts/pod_pytest.sh` still use `bio-box-test_74b3e05.sif`
 - Measurement 0-08a, the Rfam sample scan (`/tmp/if2453/m08a`, units `m08a-*`, 20 shards done at 13:07 CST; branch
   `measure/0-08a` pushed at `935dcac`). When `DONE` exists: copy `report/2026-11-12_rfam_sample.md` to
   `planning/measurements/` and `0-08a_prok-2_proposed.tsv` to `planning/design/`, write the interpretation, merge.
-- Search pack directory (W-22): `/tmp/if2453/bio-box/packs` was created at 13:00 CST; unit `pack-copy-rN3` was
-  copying the `rN.3` pack (7.3 GB) from `/tmp/if2453/r50/packs/release=rN.3/a334c89ccf048904f297de3b2597af22` into
-  `/tmp/if2453/bio-box/packs/release=rN.3/`. When the unit has ended: compare `du -s` of the two, then `chmod -R go-w`
-  the copy. The `rN.1` pack (`/tmp/if2453/w19/packs/release=rN.1/71917a4167c7aebe1b7ff44d18a99306`, with its
+- Search pack directory (W-22): `/tmp/if2453/bio-box/packs` holds the `rN.3` pack (copied 2026-11-12 from
+  `/tmp/if2453/r50/packs/release=rN.3/a334c89ccf048904f297de3b2597af22`; equal `du -s`, 7,573,492 KB; with its
+  `pack_verified.json`; `chmod -R go-w` done). The `rN.1` pack (`/tmp/if2453/w19/packs/release=rN.1/71917a4167c7aebe1b7ff44d18a99306`, with its
   verification record) may be copied the same way. Nothing was moved or deleted.
 - An orphaned search worker from W-14's `test_runner_death_is_reported` sat idle in a test scope from 2026-11-10
   until the PI stopped it on 2026-11-12: a killed runner leaves its worker alive. Put that in card C-16's brief.
