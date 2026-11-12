@@ -641,6 +641,29 @@ Accept: the fixture build fails first with the KeyError above and passes after; 
 Why: under DEC-26 a genome that shares a contig with an earlier stage is one contig short in `contig_dim`, and a shared contig carries the gene calls of whichever genome was built first. With one genome per species that is 4 contigs in 54,265 (*measured*); identical plasmids across isolates of one species will make it common.
 Design questions: `contig_dim` keyed by (contig, genome), or a separate membership table, and what every join by `contig_uid` then means (a hit on a shared plasmid belongs to several genomes: counts by genome fan out, counts by contig do not); whether gene calls stay one set per contig (content-addressed, the first genome's) or become per genome context, and what that does to `feature_uid`; how releases stay independent of build order. Write the note with the numbers from a real redundant set before any code.
 
+### C-21a `genome_input` lists a shared contig in every genome
+**M** · Depends: C-20 · DEC-27 · Spec: `planning/design/C-21_shared_contigs.md` §3, §6
+Files: `src/biobox/l0seq/inputs.py`, `src/biobox/registry/schemas.py` (`genome_input` key and sort key only), `src/biobox/l0seq/store.py` (ownership helper only), `src/biobox/l1/genecall.py`, `src/biobox/l1/ncrna.py` (minimal), `src/biobox/dim.py`, `src/biobox/l3/tapes.py` (one line, added 2026-11-12: its join on raw `genome_input` rows put each feature of a contig in N genomes on the tape N times and duplicated posting keys; found by this card's agent), `scripts/stress/build_stage_pod/make_inputs.py`, tests
+Do, test first: `genome_input` may list a contig in more than one genome, within a stage and across stages; key (`contig_uid`, `genome_uid`, stage), sort key (`contig_uid`, `genome_uid`). `inputs` stops refusing a contig in two genomes of one stage; it still refuses a contig twice in one genome, a genome listed twice, and genomes that disagree on a shared contig's kind, genetic code or topology. Within a stage the genome with the least `genome_uid` writes the shared contig's calls; across stages the owning stage does (DEC-26). Every genome is still called whole; the other genomes' rows are dropped before writing and each skip goes to the result and the ledger. `contig_dim` keeps one row per contig with the owning genome; the others are listed as skipped (`n_genomes`, `genome_dim` and the membership view are card C-21b). `make_inputs.py` lists every record in its genome; `--drop-repeats` keeps the old behaviour byte for byte, for the stages already made with it. The same stage built with its genomes in two orders gives identical files.
+Accept: the tests; no duplicated key in any table a release reads.
+
+### C-21b Genome membership: the view, `genome_dim`, and `contig_dim.n_genomes`
+**M** · Depends: C-21a · DEC-27 · Spec: the design note §3 and §6
+Files: `src/biobox/registry/schemas.py` (`genome_dim`, one nullable appended column on `contig_dim`), the locks by `scripts/update_schema_lock.py`, `src/biobox/dim.py`, `src/biobox/catalog.py` (a `genome_member` view over the release's stages' `genome_input`, and the macros that report a genome), tests
+Do: as the design note specifies: membership read through a view, so it depends on the release's set of stages and not their order, and no earlier file is rewritten; `contig_dim` keeps one row per contig with a deterministic representative genome, `n_genomes`, and genome-level attributes null where its genomes disagree; genome-level attributes per release in `genome_dim`. A lookup of a contig's genomes prunes (AGENTS §4.4; check with `profile_query`, including on a store split into 20 stages). Releases built before this card answer as today.
+Accept: tests first on the C-21a fixture; the pruning check.
+
+### C-21c Counts by genome fan out; counts by locus do not
+**M** · Depends: C-21b · DEC-27
+Files: `src/biobox/catalog.py`, `src/biobox/search/nbr.py`, `src/biobox/search/export.py`, tests
+Do: every count that is by genome takes distinct genomes through `genome_member`; every count by contig, locus or neighbour never joins it except as a semi-join. The design note found `nbr summarize`'s `_aggregate` would inflate neighbour and locus counts once a contig has two genomes: test first with a genome that repeats an existing contig, across `q1_count`'s tier filter, a new `q1_genomes`, `partners_of`, `nbr summarize`, `hits.tsv`, the JSON output and the locus tables. A hit on a shared contig lists every genome that carries it.
+Accept: the tests; outputs on a release without shared contigs are byte-identical to before.
+
+### C-21f Measure context-free gene calling
+**M** (measurement) · Pod: yes · Depends: C-21a · DEC-27 defers the decision on gene calls to this
+Do: on stage P1's 250 genomes, call genes under the design note's policy p3 (viral contigs as today; other contigs of 100 kb or more trained on the contig alone; shorter ones in meta mode) and compare with the stored calls: per contig class, the fraction of genes with identical coordinates, start-only differences, genes gained and lost, and the CPU cost (meta mode was about 5.8 times single mode per base, *derived* in the note). About 1 CPU-hour (*estimate*). An annotation truth set would need a source added to `sources.yaml` by the PI; without it, report agreement with today's calls only and say so.
+Accept: a measurement file; the PI then decides whether calls become a function of the contig alone.
+
 ### C-22 Split-clustering estimates run 25% low at 10 M proteins
 **L** · Depends: B-41 · found 2026-11-11 building `rN.3`
 Evidence (*measured*, wilkcomp02, unit `r50-rN3-1`): the three parts of the NR90 `align` call used 263.5, 260.3 and 260.6 CPU-minutes against an estimate of 208.5 each: under the 300 budget, 25% over the estimate. The per-call shares in `cluster.CALL_CPU_S` were measured on 100,000 proteins.
