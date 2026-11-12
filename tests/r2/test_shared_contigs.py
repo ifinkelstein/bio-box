@@ -16,11 +16,15 @@ The fixture (built from the micro-S0 genomes, written as new FASTA objects):
 
 P is the first 8,000 bases of phage T4. Both stages are built with `build-stage` (every step a real run-step
 subprocess), each with a release: in order A, S0 then S1; in order B, S1 then S0. The result depends on that order
-for the shared contigs only, and the tests say so: their calls, IGRs, tapes and `contig_dim` genome come from the
-stage built first; every other row of a release over both stages is the same in both orders.
+for the shared contigs only, and the tests say so: their calls, IGRs and tapes come from the stage built first;
+every other row of a release over both stages is the same in both orders.
 
-Card C-21a (DEC-27) adds a stage whose own genomes share a contig (section at the end): `genome_input` lists it in
+Card C-21a (DEC-27) adds a stage whose own genomes share a contig (section near the end): `genome_input` lists it in
 each, the genome with the least `genome_uid` writes its calls, and the stage does not depend on the genomes' order.
+
+Card C-21b (DEC-27, last section) reads a release's membership through the catalog view `genome_member` and writes
+`genome_dim` and `contig_dim.n_genomes`; `contig_dim`'s genome of a shared contig is the least of its genomes, so
+membership and the dimension tables do not depend on the build order or on the order `release_def` lists the stages.
 """
 
 from __future__ import annotations
@@ -44,7 +48,7 @@ from biobox.l0seq.store import revcomp
 from biobox.l1 import genecall
 from biobox.l1.genecall import GENE_CALL_VERSION as V
 from biobox.l3 import tapes
-from biobox.registry.schemas import table
+from biobox.registry.schemas import conformance_problems, table
 
 sys.path.insert(0, str(Path(__file__).parent))
 import test_builders_out as c08  # noqa: E402
@@ -258,17 +262,19 @@ def duplicated_keys(root: Path, rel: str) -> dict[str, int]:
     return dup
 
 
-def test_contig_dim_keeps_the_owning_stages_genome_and_the_order_decides_which_that_is(world):
-    """DEC-26's accepted consequence, stated: the genome of a shared contig in `contig_dim` is the genome of the
-    stage built first. Every other contig has the same row in both orders."""
+def test_contig_dim_keeps_the_least_genome_of_a_shared_contig_whatever_the_build_order(world):
+    """Card C-21b (DEC-27) migrates C-20's `test_contig_dim_keeps_the_owning_stages_genome_and_the_order_decides_which_
+    that_is`: DEC-26 gave a shared contig the genome of the stage built first, so its `contig_dim` row depended on the
+    build order. Now its genome is the least `genome_uid` of all its genomes, a function of the release's set of
+    stages, and every row is the same in both orders, the shared contigs' too."""
     a = {r["contig_uid"]: r for r in _release_rows(world["a"], "rC20.a2", "contig_dim")}
     b = {r["contig_uid"]: r for r in _release_rows(world["b"], "rC20.b2", "contig_dim")}
     want = {cu for s in STAGES for g in genome_inputs(s) for cu in g.contig_uids}
     assert set(a) == set(b) == want
-    for cu in want - SHARED:
+    for cu in want:
         assert {k: v for k, v in a[cu].items() if k != "_stage"} == {k: v for k, v in b[cu].items() if k != "_stage"}
-    assert a[CU["P"]]["genome_uid"] == genome_uid(("M", "P")) and b[CU["P"]]["genome_uid"] == genome_uid(("M_RC", "P"))
-    assert a[CU["L"]]["genome_uid"] == genome_uid(("L",)) and b[CU["L"]]["genome_uid"] == genome_uid(("M_ROT", "L"))
+    assert a[CU["P"]]["genome_uid"] == min(genome_uid(("M", "P")), genome_uid(("M_RC", "P")))
+    assert a[CU["L"]]["genome_uid"] == min(genome_uid(("L",)), genome_uid(("M_ROT", "L")))
 
 
 def test_the_genes_of_every_unshared_contig_are_the_same_in_both_orders(world):
@@ -564,3 +570,125 @@ def test_c21a_the_ncrna_producer_searches_a_shared_contig_once_and_ledgers_the_s
     ncrna.merge(root, W_STAGE, lib, model_set=ms, tmp=scratch, out=o3)
     produced = {k: v for k, v in c08.tree(o3).items() if not k.startswith(("l1/ncrna_scan/", "l1/domain_scan/"))}
     assert produced == c08.tree(tmp_path / "o")
+
+
+# --- card C-21b (DEC-27): genome membership, `genome_dim` and `contig_dim.n_genomes` ------------------------------
+#
+# A release's membership is the union of its stages' `genome_input` rows, read through the catalog view `genome_member`
+# (contig, genome, stage) and the macro `genomes_of`. `contig_dim` keeps one row per contig, its genome the least of
+# the contig's genomes and `n_genomes` their number; `genome_dim` holds every genome whole. The oracle is the fixture's
+# own genome lists (`W_GENOMES`, `STAGES`) and sequence lengths, not the code under test.
+
+LEN = {CU[n]: len(s) for n, s in SEQ.items()}
+
+
+def _con(root: Path, rel: str):
+    return catalog.open_catalog(catalog.catalog_path(root, rel))
+
+
+def _member(root: Path, rel: str) -> list[tuple]:
+    con = _con(root, rel)
+    try:
+        return con.execute("SELECT contig_uid, genome_uid, stage FROM genome_member ORDER BY ALL").fetchall()
+    finally:
+        con.close()
+
+
+def _strip(rows: list[dict]) -> list[dict]:
+    return [{k: v for k, v in r.items() if k != "_stage"} for r in rows]
+
+
+@pytest.mark.covers("C-01")
+def test_c21b_genome_member_lists_every_genome_of_a_contig_shared_within_a_stage(within):
+    want = sorted((CU[n], W_GUID[names], W_STAGE) for names, *_ in W_GENOMES for n in names)
+    assert _member(within["root"], W_REL) == want
+    con = _con(within["root"], W_REL)
+    try:
+        least_first = [(g,) for g in sorted(W_GUID.values())]
+        assert con.execute("SELECT genome_uid FROM genomes_of(?)", [[CU["P"]]]).fetchall() == least_first
+        lit = f"[from_hex('{CU['P'].hex()}')]"
+        assert con.execute(f"SELECT genome_uid FROM genomes_of({lit})").fetchall() == least_first
+        two = con.execute("SELECT contig_uid, genome_uid FROM genomes_of(?)", [[CU["M"], CU["L"]]]).fetchall()
+        assert two == sorted([(CU["M"], W_GUID[("M", "P")]), (CU["L"], W_GUID[("L", "P")])])
+        assert con.execute("SELECT count(*) FROM genomes_of(?)", [[CU["M_RC"]]]).fetchone()[0] == 0  # not in it
+    finally:
+        con.close()
+
+
+@pytest.mark.covers("C-01")
+def test_c21b_contig_dim_counts_a_shared_contigs_genomes_and_keeps_the_least(within):
+    rows = {r["contig_uid"]: r for r in _release_rows(within["root"], W_REL, "contig_dim")}
+    assert len(rows) == 4
+    assert (rows[CU["P"]]["genome_uid"], rows[CU["P"]]["n_genomes"]) == (min(W_GUID.values()), 3)
+    for names, *_ in W_GENOMES:
+        assert (rows[CU[names[0]]]["genome_uid"], rows[CU[names[0]]]["n_genomes"]) == (W_GUID[names], 1)
+    assert {r["assembly_quality"] for r in rows.values()} == {"complete"}  # the genomes agree
+
+
+@pytest.mark.covers("C-01")
+def test_c21b_genome_dim_holds_every_genome_whole(within):
+    root = within["root"]
+    rows = _strip(_release_rows(root, W_REL, "genome_dim"))
+    want = [{"genome_uid": W_GUID[names], "n_contigs": len(names), "genome_len": sum(LEN[CU[n]] for n in names),
+             "kind": kind, "genetic_code": code, "assembly_quality": "complete", "tier": None, "tax_order": None,
+             "is_species_rep": False} for names, code, kind, _ in W_GENOMES]
+    assert rows == sorted(want, key=lambda r: r["genome_uid"])
+    man = catalog.read_manifest(catalog.manifest_path(root, W_REL))
+    files = [root / f["path"] for f in man["files"] if f["table"] == "genome_dim"]
+    assert files and all(f"release={W_REL}/" in p.as_posix() for p in files)
+    for p in files:
+        assert conformance_problems(pq.read_table(p, partitioning=None), table("genome_dim")) == []
+    con = _con(root, W_REL)
+    try:
+        cols = ", ".join(table("genome_dim").schema.names)
+        got = con.execute(f"SELECT {cols} FROM genome_dim_now() ORDER BY genome_uid").fetchall()
+        assert got == [tuple(r.values()) for r in rows]
+    finally:
+        con.close()
+
+
+@pytest.mark.covers("D-01")
+def test_c21b_membership_and_dims_across_stages_do_not_depend_on_the_build_order(world):
+    """Orders A and B build S0 and S1 the other way round, so each owns the shared contigs' calls in one of them
+    (DEC-26). Membership, `contig_dim` and `genome_dim` are the same in both, byte for byte, and S1's genome that
+    shares P with S0 is whole in `genome_dim` in order A, where S0 owns P."""
+    a_rel, b_rel = "rC20.a2", "rC20.b2"
+    want = sorted((cu, ids.genome_uid(list(g.contig_uids)), s) for s in STAGES for g in genome_inputs(s)
+                  for cu in g.contig_uids)
+    assert _member(world["a"], a_rel) == _member(world["b"], b_rel) == want
+    for name in ("contig_dim", "genome_dim"):
+        got = []
+        for root, rel in ((world["a"], a_rel), (world["b"], b_rel)):
+            man = catalog.read_manifest(catalog.manifest_path(root, rel))
+            got.append([(root / f["path"]).read_bytes() for f in man["files"] if f["table"] == name])
+        assert got[0] and got[0] == got[1], name
+    dims = {r["contig_uid"]: r for r in _release_rows(world["a"], a_rel, "contig_dim")}
+    assert {cu for cu, r in dims.items() if r["n_genomes"] == 2} == SHARED
+    assert {r["n_genomes"] for cu, r in dims.items() if cu not in SHARED} == {1}
+    genomes = {r["genome_uid"]: r for r in _release_rows(world["a"], a_rel, "genome_dim")}
+    assert len(genomes) == sum(len(STAGES[s]["genomes"]) for s in STAGES)
+    for s in STAGES:
+        for g in genome_inputs(s):
+            r = genomes[ids.genome_uid(list(g.contig_uids))]
+            assert (r["n_contigs"], r["genome_len"], r["kind"], r["genetic_code"]) == (
+                len(g.contig_uids), sum(LEN[cu] for cu in g.contig_uids), g.kind, g.genetic_code)
+
+
+@pytest.mark.covers("D-01")
+def test_c21b_dims_and_membership_do_not_depend_on_the_order_release_def_lists_the_stages(world, tmp_path):
+    got = []
+    for k, stages in enumerate((["S0", "S1"], ["S1", "S0"])):
+        root, rel = tmp_path / f"r{k}", f"rC21b.o{k}"
+        shutil.copytree(world["a"], root, symlinks=True)
+        dim.run(root, rel, stages, tmp=tmp_path)
+        man = catalog.build_manifest(root, rel, stages)
+        con = catalog.open_catalog(catalog.generate_catalog(man, tmp_path / f"c{k}.duckdb"))
+        try:
+            mem = con.execute("SELECT contig_uid, genome_uid, stage FROM genome_member ORDER BY ALL").fetchall()
+        finally:
+            con.close()
+        files = {name: [(root / f["path"]).read_bytes() for f in man["files"] if f["table"] == name]
+                 for name in ("contig_dim", "genome_dim")}
+        assert mem and files["contig_dim"] and files["genome_dim"]
+        got.append((mem, files))
+    assert got[0] == got[1]

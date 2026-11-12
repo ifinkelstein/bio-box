@@ -821,6 +821,63 @@ def label_view_sql(files: list[str], n_stages: int) -> str:
             f"FROM {rows} GROUP BY contig_uid")
 
 
+def genome_member_sql(create: str = "CREATE VIEW") -> str:
+    """The catalog's `genome_member` (card C-21b, DEC-27): which genomes hold a contig, one row per (contig_uid,
+    genome_uid, stage) of the `genome_input` files of the release's stages, the key of that table. A contig in
+    several genomes, of one stage or of several, has a row in each; a genome listed by two stages has a row per
+    stage, so a count of genomes is `count(DISTINCT genome_uid)`. The membership is the union of the stages' rows,
+    so it depends on the release's set of stages and not on their order, and no stage file is rewritten.
+
+    A projection of the `genome_input` view, with no aggregate: DuckDB pushes no join filter through one
+    (`label_view_sql`), and each stage file is sorted by contig_uid, so a lookup by contig, by a literal key or by
+    keys from a joined table, reads in each stage file only the row groups whose contig_uid range holds a key (one
+    per key, two where its rows straddle a row-group cut): the reads per key grow with the stages, not the rows
+    (tests/r2/test_genome_member_scale.py, 20 stages). `open_catalog` creates it as a temporary view (`create`) for
+    a catalog built before the card, whose `genome_input` view is there but which has no `genome_member`."""
+    return f"{create} genome_member AS SELECT contig_uid, genome_uid, stage FROM genome_input"
+
+
+GENOME_MACROS = {
+    # card C-21b: genome dimension rows of this catalog's release only, as contig_dim_now() (card B-12)
+    "genome_dim_now": "() AS TABLE SELECT * FROM genome_dim WHERE release = catalog_release()",
+    # card C-21b: the distinct (contig, genome) pairs of a list of contigs, as tapes_of takes its contigs (card B-07):
+    # `genomes_of([x])` for one, `genomes_of((SELECT list(contig_uid) FROM t))` for keys from a table. The list
+    # is filtered in with `IN`, a semi-join whose keys reach the genome_input scan as a filter, so the scan reads
+    # only the row groups that hold a key. A table macro called once per row of a joined table (`FROM t,
+    # genomes_of(t.contig_uid)`) read every row group whatever its body (4,059 of 4,059 for 10 keys against 177
+    # with the list, 20 stages; measured, wilkcomp02, 2026-11-12, DuckDB 2.0, tests/r2/test_genome_member_scale.py
+    # store), hence a list and not one key
+    "genomes_of": """(_cuids) AS TABLE
+              SELECT DISTINCT contig_uid, genome_uid FROM genome_member
+              WHERE contig_uid IN (SELECT DISTINCT unnest(_cuids)::BLOB)
+              ORDER BY contig_uid, genome_uid""",
+}
+
+
+def genome_macro_sql(create: str = "CREATE MACRO") -> list[str]:
+    """`genome_dim_now()` and `genomes_of(_cuids)` (card C-21b); `open_catalog` creates them as temporary macros
+    (`create`) for a catalog built before the card."""
+    return [f"{create} {name}{body}" for name, body in GENOME_MACROS.items()]
+
+
+def _add_genome_objects(con: duckdb.DuckDBPyConnection) -> None:
+    """Card C-21b for a catalog built before it (design note §5): create, as temporary objects on this connection,
+    whichever of `genome_dim` (an empty typed view: such a release has no genome_dim file), `genome_member`,
+    `genome_dim_now` and `genomes_of` the catalog does not hold. A catalog built since holds them all, and nothing
+    is created."""
+    db = con.execute("SELECT current_database()").fetchone()[0]
+    views = {r[0] for r in con.execute("SELECT view_name FROM duckdb_views() WHERE database_name = ?", [db]).fetchall()}
+    macros = {r[0] for r in con.execute("SELECT function_name FROM duckdb_functions() WHERE database_name = ? "
+                                        "AND function_type = 'table_macro'", [db]).fetchall()}
+    if "genome_dim" not in views:
+        con.execute("CREATE TEMP VIEW" + _view_sql(TABLES["genome_dim"], []).removeprefix("CREATE VIEW"))
+    if "genome_member" not in views:
+        con.execute(genome_member_sql("CREATE TEMP VIEW"))
+    for name, stmt in zip(GENOME_MACROS, genome_macro_sql("CREATE TEMP MACRO")):
+        if name not in macros:
+            con.execute(stmt)
+
+
 # DuckDB 2.0 turns the keys of a hash join's build side into a filter on the probe side's scan. Up to
 # `dynamic_or_filter_threshold` keys (default 50) the filter is the list of keys, and a scan of a table sorted
 # by the key reads only the row groups whose min/max statistics hold one of them; above it only the keys' min
@@ -1089,6 +1146,7 @@ def macro_sql() -> list[str]:
         "(SELECT token_id FROM token_dict WHERE release = catalog_release() AND level = _level AND key = _key)",
         # dimension rows of this catalog's release only (card B-12)
         "CREATE MACRO contig_dim_now() AS TABLE SELECT * FROM contig_dim WHERE release = catalog_release()",
+        *genome_macro_sql(),  # genome_dim_now() and genomes_of(_cuid) (card C-21b)
         *pair_macro_sql(),
         # Q2: tapes of a list of contigs (every tape version) with this release's tokens. Each side is
         # filtered by `IN` over the unnested list before the join, which prunes row groups by contig_uid
@@ -1205,6 +1263,7 @@ def generate_catalog(manifest: dict, out_path: Path | None = None, root: Path | 
                 con.execute(_view_sql(TABLES[name], sorted(by_table[name]), widest.get(name)))
         label_stages = {f["partitions"].get("stage") for f in manifest["files"] if f["table"] == "contig_label"}
         con.execute(label_view_sql([p for p, _ in sorted(by_table["contig_label"])], len(label_stages)))
+        con.execute(genome_member_sql())  # the release's membership over its stages' genome_input (card C-21b)
         con.execute("CREATE TABLE catalog_info (key VARCHAR, value VARCHAR)")
         con.executemany("INSERT INTO catalog_info VALUES (?, ?)", [
             ("release_id", manifest["release_id"]),
@@ -2071,6 +2130,8 @@ def open_catalog(path: Path, local_dir: Path | None = None, threads: int | None 
     _register_tape_udf(con, tapes)
     # a catalog built before card B-38 stores a partners_of that calls bb_slot_tokens per contig
     con.execute(partners_of_sql("CREATE OR REPLACE TEMP MACRO"))
+    # a catalog built before card C-21b has no genome_member, genome_dim, genomes_of or genome_dim_now
+    _add_genome_objects(con)
     keys = _Lazy(TokenKeyLookup, _token_dict_files(con, built))
     _register_token_udf(con, keys)
     _LOOKUPS[id(con)] = [("bb_partner_counts", tapes), ("bb_token_of", keys)]

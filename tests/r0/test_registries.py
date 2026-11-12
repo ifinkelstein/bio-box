@@ -47,9 +47,11 @@ REMOVED_COLUMNS = {
     "search_region": {"left_slot", "right_slot"},
 }
 # AGENTS §3.6, DEC-20: attributes that change without the sequence live only in the dimension tables
-# (genome_input holds the gene caller's inputs, among them the assembly quality it was given)
-DIMENSION_COLUMNS = {"tier": {"contig_dim"}, "tax_order": {"contig_dim"}, "tax_order_bucket": set(),
-                     "is_species_rep": {"contig_dim"}, "assembly_quality": {"contig_dim", "genome_input"}}
+# (genome_input holds the gene caller's inputs, among them the assembly quality it was given); card C-21b
+# (DEC-27) adds the second dimension table AGENTS §3.6 names, genome_dim
+DIMENSION_COLUMNS = {"tier": {"contig_dim", "genome_dim"}, "tax_order": {"contig_dim", "genome_dim"},
+                     "tax_order_bucket": set(), "is_species_rep": {"contig_dim", "genome_dim"},
+                     "assembly_quality": {"contig_dim", "genome_dim", "genome_input"}}
 
 
 def _documented_test_ids() -> set[str]:
@@ -188,6 +190,22 @@ def test_b17_foreign_keys_name_final_tables_and_no_ordinal():
     edges = {(c, p) for c, _, p, _ in FOREIGN_KEYS}
     assert {("feature", "contig_index"), ("feature_protein", "feature"), ("feature_protein", "protein_seq"),
             ("protein_occurrence", "feature_protein")} <= edges
+
+
+@pytest.mark.covers("C-01", "LY-09")
+def test_c21b_genome_dim_is_registered_and_n_genomes_is_appended_nullable():
+    # card C-21b (DEC-27; design note planning/design/C-21_shared_contigs.md §2a, §3)
+    g = TABLES["genome_dim"]
+    assert (g.location, g.layer, g.partition_keys) == ("dim/genome_dim", "dim", ("release",))
+    assert (g.primary_key, g.sort_key, g.small_ok) == (("genome_uid", "release"), ("genome_uid",), False)
+    assert g.schema.names == ["genome_uid", "n_contigs", "genome_len", "kind", "genetic_code", "assembly_quality",
+                              "tier", "tax_order", "is_species_rep"]
+    assert g.enums["kind"] == TABLES["genome_input"].enums["kind"]
+    assert g.enums["assembly_quality"] == TABLES["genome_input"].enums["assembly_quality"]
+    d = TABLES["contig_dim"].schema
+    assert d.names[-1] == "n_genomes" and d.field("n_genomes").nullable and d.field("n_genomes").type == pa.uint32()
+    assert d.names[:-1] == ["contig_uid", "genome_uid", "contig_len", "is_circular", "tier", "assembly_quality",
+                            "tax_order", "is_species_rep"]
 
 
 def test_tape_tables_are_partitioned_by_tape_version():
