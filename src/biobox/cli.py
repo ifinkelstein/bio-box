@@ -1008,6 +1008,17 @@ def _distinct(paths, column: str) -> int:
     return len(seen)
 
 
+def _release_genomes(files, release: str, dims: list) -> int | None:
+    """The genomes of a release for `release_summary` (card C-21c); None without `contig_dim`."""
+    if not dims:
+        return None
+    gdim = files.table("genome_dim", release=release)
+    if gdim:
+        return sum(pq.read_metadata(p).num_rows for p in gdim)
+    member = files.table("genome_input")
+    return _distinct(member or dims, "genome_uid")
+
+
 def release_names(root: Path) -> list[str]:
     """Every release the root names: a manifest `manifests/release=<R>.json` or a release definition
     `release_def/release=<R>/`, so a release defined but not yet given a manifest is found too."""
@@ -1027,8 +1038,11 @@ def release_summary(root: Path, release: str, packs: Path | None = None) -> dict
     """What one release holds, for `bio-box releases` (card W-23), from its file list (the manifest, else its
     `release_def` stages: `catalog.ReleaseFiles`) and Parquet footers, never a scan of a large table: `contigs` the
     rows of its `contig_dim`, `proteins` its `nr90` members (`member_cluster`, else `cluster_member`, by row-group
-    statistics on `level`), `genomes` the distinct `genome_uid` of `contig_dim` (one column read: no footer holds a
-    distinct count); None where the release has no such table. `libraries` its domain libraries, `ncrna` its ncRNA
+    statistics on `level`), `genomes` every genome of the release (card C-21c): the rows of its `genome_dim` (one per
+    genome, from footers), else, for a release built before card C-21b, the distinct `genome_uid` of its stages'
+    `genome_input` (the catalog's `genome_member`; one column read: no footer holds a distinct count), else of its
+    `contig_dim`, which names one genome per contig and so misses a genome whose every contig another genome also
+    holds; None where the release has no `contig_dim`. `libraries` its domain libraries, `ncrna` its ncRNA
     producers, `lookups` whether it has the tables and column current readers use (cards B-27, B-39), and with a pack
     directory `pack`, the id of the release's pack there or None."""
     root = Path(root)
@@ -1042,7 +1056,7 @@ def release_summary(root: Path, release: str, packs: Path | None = None) -> dict
     tok = files.table("tape_tokens", release=release)
     rec.update({
         "stages": list(files.stages),
-        "genomes": _distinct(dims, "genome_uid") if dims else None,
+        "genomes": _release_genomes(files, release, dims),
         "contigs": sum(pq.read_metadata(p).num_rows for p in dims) if dims else None,
         "proteins": _level_rows(clus, "nr90") if clus else None,
         "libraries": sorted({str(parts["library"]) for _, parts in files.entries("l1_domains")}),

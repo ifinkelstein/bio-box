@@ -389,7 +389,8 @@ def test_w23_hits_tsv_names_each_genes_stage_and_genome_kind(store, tmp_path):
             for k, u in enumerate(sorted(picked))]
     lines = list(export.hits_tsv(root, hits, release=rr.R2, tape_version=TV, gene_call_version=V))
     cols = lines[0].split("\t")
-    assert cols[-2:] == ["stage", "kind"] and cols == [c for c in export.HITS_TSV_COLUMNS if c != "tier"]
+    # card C-21c appended n_genomes and genome_uids after them
+    assert cols[-4:-2] == ["stage", "kind"] and cols == [c for c in export.HITS_TSV_COLUMNS if c != "tier"]
     rows = [dict(zip(cols, x.split("\t"))) for x in lines[1:]]
     want = {(r["feature_uid"].hex(), r["_stage"], kind[(r["contig_uid"], r["_stage"])]) for r in occ
             if r["protein_uid"] in picked}

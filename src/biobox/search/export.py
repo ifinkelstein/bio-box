@@ -9,6 +9,11 @@ version; removing or renaming a key needs a version bump. Bytes are lowercase he
 end, strand, genome_uid, tier`. Card B-17 renamed `slot_ordinal` to `ordinal` and dropped `genome_uid`
 and `tier` from the stored rows; version 2 records that change, and the two come back joined from the
 run's release's `contig_dim` at export time (null when the release has no row for the contig).
+Card C-21c (DEC-27) appends `n_genomes` and `genome_uids` to every occurrence (keys added at the same
+version): the genomes that hold the contig, its `contig_dim` genome and every genome the release's
+`genome_input` lists it in, in uid order (null when the release records none); `genome_uid` stays the
+least of them. hits.tsv and each locus table's facts line end with the same two fields, on every
+release; on a release whose contigs each lie in one genome they are 1 and that genome.
 
 An ordinal is never exported alone (AGENTS §3.3, card B-16): a record or table row with an ordinal
 carries the `feature_uid` beside it and the `tape_version` it belongs to. Cluster ids are cluster uids,
@@ -91,7 +96,8 @@ def hit_records(hits: list[dict], occurrences: dict[bytes, list[dict]] | None = 
     """Best domain first per target, targets by descending sequence score. Each occurrence's `ordinal`
     is valid inside `tape_version` (nbr.occurrences looks it up there) and travels with its `feature_uid`.
     `genome_uid` and `tier` are not stored on an occurrence (AGENTS §3.6): they come from `dims`
-    (`contig_dims`, the release's `contig_dim` rows by contig), null for a contig it lacks."""
+    (`contig_dims`, the release's `contig_dim` rows by contig), null for a contig it lacks; `n_genomes` and
+    `genome_uids` (card C-21c) every genome that holds the contig, null when the release records none."""
     rows = sorted(hits, key=lambda r: (-(r["seq_bitscore"] or 0), r["target_uid"], -r["bitscore"]))
     dims = dims or {}
     for r in rows[:top_n] if top_n else rows:
@@ -101,7 +107,9 @@ def hit_records(hits: list[dict], occurrences: dict[bytes, list[dict]] | None = 
             {"contig_uid": o["contig_uid"], "ordinal": o["ordinal"], "feature_uid": o["feature_uid"],
              "start": o["start"], "end": o["end"], "strand": o["strand"],
              "genome_uid": dims.get(o["contig_uid"], {}).get("genome_uid"),
-             "tier": dims.get(o["contig_uid"], {}).get("tier")} for o in shown]})
+             "tier": dims.get(o["contig_uid"], {}).get("tier"),
+             "n_genomes": len(dims.get(o["contig_uid"], {}).get("genome_uids") or []) or None,
+             "genome_uids": dims.get(o["contig_uid"], {}).get("genome_uids") or None} for o in shown]})
 
 
 def run_record(row: dict) -> dict:
@@ -190,7 +198,8 @@ hits.tsv columns
   pfam_architecture   names of the domain library's hits on the protein, in order along it, a run of one name
                       written once, joined with +; - for none (also for a release with no domain library).
   protein_uid         the protein. nr90, nr50: its clusters; nr50_rep: the representative protein of its nr50 cluster.
-  genome_uid          the genome of the contig, from the release's contig_dim.
+  genome_uid          the genome of the contig, from the release's contig_dim: when the contig lies in several
+                      genomes (an identical plasmid in two isolates, say), the least of their uids.
   tier                present only when the release's contig_dim has tiers (the tiering step does not exist yet, so
                       it is left out of every table built so far).
   contig_uid, feature_uid, ordinal, tape_version   the gene's identity; see conventions.
@@ -202,9 +211,14 @@ hits.tsv columns
                       for example a phage stage and a prokaryote stage), so hits split by source with no SQL.
   kind                the kind of the genome the contig belongs to in that stage, as its inputs declared it:
                       virus, prokaryote or plasmid; empty when the stage recorded no genome for the contig.
+  n_genomes           how many genomes of the release hold this contig (1 for most; more when the identical
+                      sequence is a contig of several genomes); empty when the release records no genome for it.
+  genome_uids         those genomes, comma-separated, in uid order. A gene is still one row, however many genomes
+                      hold its contig: count genomes from this column, not from rows.
 
 loci/*.tsv: the first line is the contig's header, the second `key=value` facts of the locus (anchor_feature_uid,
-anchor_ordinal, anchor_protein_uid, censored = a linear contig end cut the window, ...), the third the column names.
+anchor_ordinal, anchor_protein_uid, censored = a linear contig end cut the window, ..., n_genomes and genome_uids as
+in hits.tsv), the third the column names.
   offset              the slot's place relative to the anchor in coordinate order (lower coordinates negative).
   offset_rel          the same relative to the anchor's strand: positive is downstream of the anchor along the
                       anchor's strand, so on a -1 anchor the signs are the opposite of offset.
@@ -227,7 +241,8 @@ separated. The offsets are relative to the anchor's strand (as offset_rel above)
   n_loci              anchor loci with such a neighbour; share_of_loci is n_loci over all anchor loci.
   n_neighbors         neighbour genes counted (a gene in the windows of two anchors counts twice).
   n_genomes           genomes with such a neighbour; genome_basis says what was counted: genome_uid from contig_dim,
-                      else contig_uid.
+                      else contig_uid. A neighbour on a contig of several genomes counts in each of them here, and
+                      once in n_loci and n_neighbors.
   offsets             offset:count pairs, comma-separated, offset relative to the anchor's strand.
   modal_offset        the commonest of those offsets.
   same_strand_share   the share of those neighbours on the anchor's strand.
@@ -266,7 +281,8 @@ def lock_problems(locked: dict, current: dict | None = None) -> list[str]:
 HITS_TSV_COLUMNS = ["accession", "header", "contig_len", "start", "end", "strand", "length", "seq_bitscore",
                     "seq_evalue_zref", "pfam_architecture", "protein_uid", "nr90", "nr50", "nr50_rep", "genome_uid",
                     "tier", "contig_uid", "feature_uid", "ordinal", "tape_version", "dist_to_contig_end_bp",
-                    "n_records", "stage", "kind"]  # card W-23 appended stage and kind
+                    "n_records", "stage", "kind",  # card W-23 appended stage and kind
+                    "n_genomes", "genome_uids"]  # card C-21c: every genome that holds the contig
 LOCUS_TSV_COLUMNS = ["offset", "offset_rel", "ordinal", "feature_uid", "start", "end", "strand", "protein_uid",
                      "length_aa", "pfam_architecture", "nr90", "nr50", "hit_seq_bitscore", "delta_bp", "crosses_origin"]
 _BITS = {"seq_bitscore", "hit_seq_bitscore"}
@@ -283,7 +299,7 @@ _RELATIONS = {
     "occ": ("protein_occurrence", ("gene_call_version",),
             ("protein_uid", "contig_uid", "feature_uid", "start", "end", "strand", "dist_to_contig_end_bp"), ("stage",)),
     # card W-23: the kind of the genome a contig belongs to in a stage (virus, prokaryote, plasmid), sorted by contig
-    "gin": ("genome_input", (), ("contig_uid", "kind"), ("stage",)),
+    "gin": ("genome_input", (), ("contig_uid", "genome_uid", "kind"), ("stage",)),  # card C-21c: and its genomes
     "prot": ("protein_seq", ("gene_call_version",), ("protein_uid", "length", "seq"), ()),
     "dom": ("l1_domains", (), ("protein_uid", "model_acc", "model_name", "env_start"), ("library",)),
     # by member and by contig: the lookup tables of card B-27, sorted by those keys (cluster_member and
@@ -492,10 +508,25 @@ def _annotate_proteins(con, library: str | None) -> None:
                     FROM l WHERE prev IS DISTINCT FROM model_name GROUP BY protein_uid""")
 
 
-def _annotate_contigs(con, with_ordinals: bool) -> None:
+def _annotate_genomes(con) -> None:
+    """Temp table `_gens` for the contigs of `_c` (card C-21c)."""
+    con.execute("""CREATE OR REPLACE TEMP TABLE _gens AS
+                   SELECT contig_uid, count(*) AS n_genomes,
+                          string_agg(lower(hex(genome_uid)), ',' ORDER BY genome_uid) AS genome_uids
+                   FROM (SELECT DISTINCT contig_uid, genome_uid FROM (
+                           SELECT contig_uid, genome_uid FROM dim WHERE contig_uid IN (SELECT contig_uid FROM _c)
+                           UNION ALL
+                           SELECT contig_uid, genome_uid FROM gin WHERE contig_uid IN (SELECT contig_uid FROM _c)))
+                   GROUP BY contig_uid""")
+
+
+def _annotate_contigs(con, with_ordinals: bool, genomes: bool = False) -> None:
     """Temp tables for the contig uids of temp table `_c`: `_lab` (accession and header of the contig's first
     source record by (l0_object_sha256, record_ordinal), as the catalog's `contig_label`, and the number of
-    records), `_clen` (default variant's length), `_dim` (genome_uid, tier of the release's `contig_dim`) and,
+    records), `_clen` (default variant's length), `_dim` (genome_uid, tier of the release's `contig_dim`), with
+    `genomes` (the relations `dim` and `gin` open) `_gens` (card C-21c: `n_genomes` and `genome_uids`, the contig's
+    `contig_dim` genome and every genome of the release's `genome_input` that holds it, comma-separated hex in uid
+    order; one row per contig, so no join fans out) and,
     `with_ordinals`, `_ord` (each slot's feature_uid and ordinal in the tape version's tapes).
 
     `_lab` reads `contig_label` (card B-27): one row per contig and stage, with that stage's first record and
@@ -510,6 +541,8 @@ def _annotate_contigs(con, with_ordinals: bool) -> None:
                 "WHERE is_default_variant AND contig_uid IN (SELECT contig_uid FROM _c) GROUP BY contig_uid")
     con.execute("CREATE OR REPLACE TEMP TABLE _dim AS SELECT contig_uid, min(genome_uid) AS genome_uid, "
                 "min(tier) AS tier FROM dim WHERE contig_uid IN (SELECT contig_uid FROM _c) GROUP BY contig_uid")
+    if genomes:
+        _annotate_genomes(con)
     if with_ordinals:
         con.execute("""CREATE OR REPLACE TEMP TABLE _ord AS
                        SELECT DISTINCT * FROM (
@@ -559,7 +592,7 @@ def _hit_genes(con, hits: list[dict], tape_version: str, library: str | None,
                    FROM occ WHERE protein_uid IN (SELECT protein_uid FROM _p)
                    GROUP BY protein_uid, contig_uid, feature_uid, start, "end", strand, dist_to_contig_end_bp""")
     con.execute("CREATE OR REPLACE TEMP TABLE _c AS SELECT DISTINCT contig_uid FROM _occ")
-    _annotate_contigs(con, with_ordinals=True)
+    _annotate_contigs(con, with_ordinals=True, genomes=True)
     _annotate_proteins(con, library)
     # card W-23: the genome kind of each contig in each stage (genome_input; empty where a stage has none)
     con.execute("CREATE OR REPLACE TEMP TABLE _kind AS SELECT contig_uid, stage, min(kind) AS kind FROM gin "
@@ -575,7 +608,7 @@ def _hit_genes(con, hits: list[dict], tape_version: str, library: str | None,
                            h.seq_bitscore, h.seq_evalue_zref, coalesce(a.arch, '-') AS pfam_architecture,
                            o.protein_uid, cl.nr90, cl.nr50, cl.nr50_rep, d.genome_uid, d.tier, o.contig_uid,
                            o.feature_uid, r.ordinal, {_q(tape_version)} AS tape_version, o.dist_to_contig_end_bp,
-                           l.n_records, o.stage, k.kind,
+                           l.n_records, o.stage, k.kind, gs.n_genomes, gs.genome_uids,
                            row_number() OVER (PARTITION BY o.protein_uid ORDER BY
                                CASE WHEN pf.protein_uid IS NOT NULL
                                          AND (l.accession = pf.accession
@@ -591,7 +624,8 @@ def _hit_genes(con, hits: list[dict], tape_version: str, library: str | None,
                     LEFT JOIN _cl cl ON cl.protein_uid = o.protein_uid
                     LEFT JOIN _arch a ON a.protein_uid = o.protein_uid
                     LEFT JOIN _pref pf ON pf.protein_uid = o.protein_uid
-                    LEFT JOIN _kind k ON k.contig_uid = o.contig_uid AND k.stage = o.stage""")
+                    LEFT JOIN _kind k ON k.contig_uid = o.contig_uid AND k.stage = o.stage
+                    LEFT JOIN _gens gs ON gs.contig_uid = o.contig_uid""")
 
 
 def hits_tsv(root: Path, hits: list[dict], *, release: str | None, tape_version: str, gene_call_version: str,
@@ -607,8 +641,10 @@ def hits_tsv(root: Path, hits: list[dict], *, release: str | None, tape_version:
     the library (`_Store.library`) in order, `-` for none; nr90, nr50, nr50_rep: cluster uids and the NR50
     representative (`member_cluster` of the release: `cluster_member` by member); genome_uid, tier: `contig_dim` of
     the release; ordinal:
-    the gene's slot in `tape_version`, beside its feature_uid (AGENTS §3.3); stage, kind (card W-23, last): the stage
-    of the gene's `protein_occurrence` file and the `genome_input` kind of its contig in that stage."""
+    the gene's slot in `tape_version`, beside its feature_uid (AGENTS §3.3); stage, kind (card W-23): the stage
+    of the gene's `protein_occurrence` file and the `genome_input` kind of its contig in that stage; n_genomes,
+    genome_uids (card C-21c, last): every genome that holds the contig (`_annotate_contigs`). One row per gene: a
+    contig in several genomes lists them in genome_uids and is not repeated."""
     with open_store(root, release=release, gene_call_version=gene_call_version, tape_version=tape_version,
                     manifest=manifest, threads=threads, tmp=tmp) as st:
         _hit_genes(st.con, hits, tape_version, st.library(library))
@@ -660,7 +696,8 @@ def _locus_head(r: dict) -> tuple[str, list[str]]:
     facts = [("contig_uid", r["contig_uid"]), ("anchor_feature_uid", r["anchor_feature_uid"]),
              ("anchor_ordinal", r["anchor_ordinal"]), ("anchor_protein_uid", r["anchor_protein_uid"]),
              ("tape_version", r["tape_version"]), ("policy_hash", r["policy_hash"]),
-             ("censored", bool(r["flags"] & 1))]
+             ("censored", bool(r["flags"] & 1)),
+             ("n_genomes", r["n_genomes"]), ("genome_uids", r["genome_uids"])]  # card C-21c
     name = f"locus_{_SAFE.sub('_', r['accession'] or r['contig_uid'].hex())}_{r['anchor_feature_uid'].hex()}.tsv"
     return name, [f"# {title}", "# " + "\t".join(f"{k}={cell(k, v)}" for k, v in facts), "\t".join(LOCUS_TSV_COLUMNS)]
 
@@ -674,7 +711,8 @@ def locus_tables(root: Path, rows: list[dict], *, release: str | None, gene_call
 
     Lines: `# <header of the contig's first source record>` (the contig uid without one), `# key=value` facts
     of the locus (contig_uid, anchor_feature_uid, anchor_ordinal, anchor_protein_uid, tape_version,
-    policy_hash, censored: a linear contig end cut the window), the column line and one row per slot.
+    policy_hash, censored: a linear contig end cut the window; n_genomes, genome_uids: every genome that holds
+    the contig, card C-21c), the column line and one row per slot.
     hit_seq_bitscore: the slot protein's score in the run (`hit_bits`); length_aa, pfam_architecture, nr90,
     nr50 as in `hits_tsv` (empty for a non-CDS slot); delta_bp: the gap to the anchor (empty at the anchor);
     crosses_origin: flag bit 1. Name: `locus_<accession>_<anchor_feature_uid>.tsv`, characters other than
@@ -682,7 +720,7 @@ def locus_tables(root: Path, rows: list[dict], *, release: str | None, gene_call
     from biobox.registry.schemas import table
 
     with open_store(root, release=release, gene_call_version=gene_call_version, manifest=manifest, threads=threads,
-                    tmp=tmp, relations=("prot", "dom", "clus", "lab", "cidx", "dim")) as st:
+                    tmp=tmp, relations=("prot", "dom", "clus", "lab", "cidx", "dim", "gin")) as st:
         con = st.con
         library = st.library(library)
         con.register("_nb_in", pa.Table.from_pylist(rows, schema=table("neighborhoods").schema))
@@ -695,15 +733,16 @@ def locus_tables(root: Path, rows: list[dict], *, release: str | None, gene_call
         con.unregister("_hb_in")
         con.execute("CREATE TEMP TABLE _p AS SELECT DISTINCT protein_uid FROM _nb WHERE protein_uid IS NOT NULL")
         con.execute("CREATE TEMP TABLE _c AS SELECT DISTINCT contig_uid FROM _nb")
-        _annotate_contigs(con, with_ordinals=False)
+        _annotate_contigs(con, with_ordinals=False, genomes=True)
         _annotate_proteins(con, library)
         sql = """SELECT n.contig_uid, n.anchor_feature_uid, n.anchor_ordinal, n.anchor_protein_uid, n.tape_version,
                         n.policy_hash, n.flags, l.accession, l.header, n."offset", n.offset_rel, n.ordinal,
                         n.feature_uid, n.start, n."end", n.strand, n.protein_uid, p.length AS length_aa,
                         CASE WHEN n.protein_uid IS NULL THEN NULL ELSE coalesce(a.arch, '-') END AS pfam_architecture,
                         cl.nr90, cl.nr50, b.seq_bitscore AS hit_seq_bitscore, n.delta_bp,
-                        (n.flags::INTEGER & 2) = 2 AS crosses_origin
+                        (n.flags::INTEGER & 2) = 2 AS crosses_origin, gs.n_genomes, gs.genome_uids
                  FROM _nb n LEFT JOIN _lab l ON l.contig_uid = n.contig_uid
+                 LEFT JOIN _gens gs ON gs.contig_uid = n.contig_uid
                  LEFT JOIN _plen p ON p.protein_uid = n.protein_uid LEFT JOIN _arch a ON a.protein_uid = n.protein_uid
                  LEFT JOIN _cl cl ON cl.protein_uid = n.protein_uid LEFT JOIN _hb b ON b.protein_uid = n.protein_uid
                  ORDER BY l.accession NULLS LAST, n.contig_uid, n.anchor_ordinal, n."offset" """
@@ -759,21 +798,33 @@ def protein_seqs(root: Path, uids, *, release: str, gene_call_version: str, mani
 
 
 def contig_dims(root: Path, release: str | None, contigs: set[bytes], manifest: dict | None = None) -> dict[bytes, dict]:
-    """{contig_uid: {genome_uid, tier, is_circular}} from the release's `contig_dim` for the contigs (files from
-    `release_files`); a contig without a row is absent."""
+    """{contig_uid: {genome_uid, tier, is_circular, genome_uids}} for the contigs (files from `release_files`):
+    `genome_uid`, `tier`, `is_circular` from the release's `contig_dim` (null for a contig without a row), and
+    `genome_uids` (card C-21c) every genome that holds the contig, in uid order: its `contig_dim` genome and every
+    genome the release's `genome_input` lists it in. A contig in neither table is absent."""
     import pyarrow.parquet as pq
 
     from biobox.search.nbr import _store_files
 
     if release is None or not contigs:
         return {}
+    files = release_files(root, release, manifest)
     out: dict[bytes, dict] = {}
-    for path, _ in _store_files(Path(root), "contig_dim", {"release": release}, release_files(root, release, manifest)):
+    genomes: dict[bytes, set[bytes]] = {}
+    for path, _ in _store_files(Path(root), "contig_dim", {"release": release}, files):
         t = pq.read_table(path, columns=["contig_uid", "genome_uid", "tier", "is_circular"], partitioning=None,
                           filters=[("contig_uid", "in", sorted(contigs))])
         for r in t.to_pylist():
             out.setdefault(r["contig_uid"], {"genome_uid": r["genome_uid"], "tier": r["tier"],
                                              "is_circular": r["is_circular"]})
+            genomes.setdefault(r["contig_uid"], set()).add(r["genome_uid"])
+    for path, _ in _store_files(Path(root), "genome_input", {}, files):
+        t = pq.read_table(path, columns=["contig_uid", "genome_uid"], partitioning=None,
+                          filters=[("contig_uid", "in", sorted(contigs))])
+        for r in t.to_pylist():
+            genomes.setdefault(r["contig_uid"], set()).add(r["genome_uid"])
+    for cu, gs in genomes.items():
+        out.setdefault(cu, {"genome_uid": None, "tier": None, "is_circular": None})["genome_uids"] = sorted(gs)
     return out
 
 

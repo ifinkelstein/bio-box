@@ -678,8 +678,9 @@ def test_s13_cli_json_records_match_the_locked_schemas(world, tmp_path):
         for o in h["occurrences"]:
             tape = tps[bytes.fromhex(o["contig_uid"])]
             # card B-17 renamed slot_ordinal to ordinal; card W-05 (search_hit/2) joins genome_uid and tier back
-            # from contig_dim at export time
-            assert set(o) == {"contig_uid", "ordinal", "feature_uid", "start", "end", "strand", "genome_uid", "tier"}
+            # from contig_dim at export time; card C-21c appends n_genomes and genome_uids (every genome of the contig)
+            assert set(o) == {"contig_uid", "ordinal", "feature_uid", "start", "end", "strand", "genome_uid", "tier",
+                              "n_genomes", "genome_uids"}
             assert tape["feature_uids"][o["ordinal"]].hex() == o["feature_uid"]
             assert feats[bytes.fromhex(o["feature_uid"])]["start"] == o["start"]
     for r in nb:
@@ -1222,7 +1223,8 @@ def test_w18_nbr_takes_anchors_from_a_file_one_uid_per_line(world, capsys, tmp_p
 W05_HIT_COLUMNS = ["accession", "header", "contig_len", "start", "end", "strand", "length", "seq_bitscore",
                    "seq_evalue_zref", "pfam_architecture", "protein_uid", "nr90", "nr50", "nr50_rep", "genome_uid",
                    "tier", "contig_uid", "feature_uid", "ordinal", "tape_version", "dist_to_contig_end_bp", "n_records",
-                   "stage", "kind"]  # card W-23: the gene's stage and its genome's kind, appended
+                   "stage", "kind",  # card W-23: the gene's stage and its genome's kind, appended
+                   "n_genomes", "genome_uids"]  # card C-21c: every genome that holds the contig, appended
 W05_LOCUS_COLUMNS = ["offset", "offset_rel", "ordinal", "feature_uid", "start", "end", "strand", "protein_uid",
                      "length_aa", "pfam_architecture", "nr90", "nr50", "hit_seq_bitscore", "delta_bp", "crosses_origin"]
 W05_BITS, W05_EVALUE = {"seq_bitscore", "hit_seq_bitscore"}, {"seq_evalue_zref"}
@@ -1314,9 +1316,21 @@ def _w05_scores(hits: list[dict]) -> dict[bytes, tuple[float, float]]:
     return score
 
 
+def _w05_genomes(root: Path, dims: dict) -> dict[bytes, list[bytes]]:
+    """Card C-21c: every genome that holds a contig, in uid order: its genome in `dims` (contig_dim) and every genome
+    the root's genome_input lists it in."""
+    out: dict[bytes, set] = {}
+    for cu, d in dims.items():
+        out.setdefault(cu, set()).add(d["genome_uid"])
+    for r in _pq(root, "l0seq/genome_input") if (root / "l0seq/genome_input").exists() else []:
+        out.setdefault(r["contig_uid"], set()).add(r["genome_uid"])
+    return {cu: sorted(gs) for cu, gs in out.items()}
+
+
 def _w05_oracle_genes(root: Path, hits: list[dict], dims: dict) -> list[dict]:
     """One dict per gene of a hit protein, in the export's order (accession, contig, coordinates, protein)."""
     s, score, tv = _w05_store(root), _w05_scores(hits), tapes.tape_version([V])
+    genomes = _w05_genomes(root, dims)
     # card W-23: each gene's stage is its occurrence file's, its kind the genome_input kind of the contig in that stage
     kinds = {(r["contig_uid"], f.parent.name.removeprefix("stage=")): r["kind"]
              for f in sorted((root / "l0seq/genome_input").rglob("*.parquet"))
@@ -1338,7 +1352,9 @@ def _w05_oracle_genes(root: Path, hits: list[dict], dims: dict) -> list[dict]:
                "genome_uid": d and d["genome_uid"], "tier": d and d["tier"], "contig_uid": cu,
                "feature_uid": o["feature_uid"], "ordinal": s["tapes"][cu]["feature_uids"].index(o["feature_uid"]),
                "tape_version": tv, "dist_to_contig_end_bp": o["dist_to_contig_end_bp"], "n_records": n,
-               "stage": o["_stage"], "kind": kinds.get((cu, o["_stage"]))}
+               "stage": o["_stage"], "kind": kinds.get((cu, o["_stage"])),
+               "n_genomes": len(genomes[cu]) if cu in genomes else None,
+               "genome_uids": ",".join(g.hex() for g in genomes[cu]) if cu in genomes else None}
         out.append(((acc is None, acc or "", cu, o["start"], o["end"], o["strand"], pu), row))
     return [r for _, r in sorted(out, key=lambda x: x[0])]
 
@@ -1430,10 +1446,11 @@ def test_w05_hit_json_is_version_2_with_genome_and_tier_joined_from_contig_dim(w
         assert recs and all(h["schema"] == "search_hit/2" and list(h) == locked["search_hit"]["keys"] for h in recs)
         occ = [o for h in recs for o in h["occurrences"]]
         assert occ and all(list(o) == ["contig_uid", "ordinal", "feature_uid", "start", "end", "strand", "genome_uid",
-                                       "tier"] for o in occ)
+                                       "tier", "n_genomes", "genome_uids"] for o in occ)  # card C-21c: two appended
         for o in occ:
             d = dims[bytes.fromhex(o["contig_uid"])]
             assert (o["genome_uid"], o["tier"]) == ((d["genome_uid"].hex(), d["tier"]) if want_dim else (None, None))
+            assert (o["n_genomes"], o["genome_uids"]) == ((1, [d["genome_uid"].hex()]) if want_dim else (None, None))
 
 
 def _w05_oracle_loci(root: Path, hits: list[dict], window: str) -> list[tuple[str, list[str]]]:
@@ -1442,6 +1459,9 @@ def _w05_oracle_loci(root: Path, hits: list[dict], window: str) -> list[tuple[st
     r1 = _r1()
     policy = nbr.Policy.parse(window=window)
     s, score, tv = _w05_store(root), _w05_scores(hits), tapes.tape_version([V])
+    dim_dir = root / f"dim/contig_dim/release={REL}"
+    genomes = _w05_genomes(root, {r["contig_uid"]: r for r in (_pq(root, dim_dir.relative_to(root).as_posix())
+                                                               if dim_dir.exists() else [])})
     loci = []
     for cu, t in s["tapes"].items():
         slots = list(zip(t["start_bps"], t["end_bps"], t["strands"]))
@@ -1466,7 +1486,10 @@ def _w05_oracle_loci(root: Path, hits: list[dict], window: str) -> list[tuple[st
             cens = any(fl & 1 for _, d, _, _, fl in got if d == 0)
             facts = [("contig_uid", cu.hex()), ("anchor_feature_uid", t["feature_uids"][i].hex()), ("anchor_ordinal", i),
                      ("anchor_protein_uid", apu.hex()), ("tape_version", tv), ("policy_hash", policy.hash()),
-                     ("censored", "true" if cens else "false")]
+                     ("censored", "true" if cens else "false"),
+                     # card C-21c: every genome that holds the contig
+                     ("n_genomes", len(genomes[cu]) if cu in genomes else ""),
+                     ("genome_uids", ",".join(g.hex() for g in genomes.get(cu, [])))]
             lines = [f"# {_w05_cell('header', hdr) if hdr else cu.hex()}",
                      "# " + "\t".join(f"{k}={v}" for k, v in facts)] + _w05_tsv(W05_LOCUS_COLUMNS, rows)
             name = f"locus_{re.sub(r'[^A-Za-z0-9._-]', '_', acc or cu.hex())}_{t['feature_uids'][i].hex()}.tsv"

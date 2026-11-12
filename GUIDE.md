@@ -179,6 +179,7 @@ so use `feature_uid` to name a gene.
 | `n_records` | how many input records carried this identical contig sequence; not a hit count |
 | `genome_uid`, `contig_uid`, `feature_uid`, `ordinal`, `tape_version` | the genome, the contig and the gene |
 | `stage`, `kind` | the build stage the gene comes from (on `rN.*`: `S1` phages, `P1` and `P2` prokaryotes) and its genome's kind (`virus`, `prokaryote`, `plasmid`), so hits split by source with a filter on one column |
+| `n_genomes`, `genome_uids` | how many genomes of the release carry the gene's contig, and which (comma-separated); 1 and the one genome unless the contig is shared, for example an identical plasmid in several isolates (card C-21c). `genome_uid` stays the contig's one representative genome |
 
 A locus table (`loci/*.tsv`): line 1 the contig header, line 2 facts (`anchor_feature_uid`, `anchor_protein_uid`,
 `censored=true` when a contig end cut the window), then one row per gene. `offset` counts genes from the hit in

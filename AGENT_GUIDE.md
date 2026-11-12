@@ -185,10 +185,12 @@ it), `hits.tsv`, `hits.faa`, `neighbors.tsv`, `loci/`. The run is `<profile tmp>
   decimal; `seq_evalue_zref` at the fixed Z = 1e8 (DEC-04), two significant digits. Empty cell = no value.
 - `hits.tsv`, one row per gene of a hit protein: `accession header contig_len start end strand length
   seq_bitscore seq_evalue_zref pfam_architecture protein_uid nr90 nr50 nr50_rep genome_uid [tier] contig_uid
-  feature_uid ordinal tape_version dist_to_contig_end_bp n_records stage kind`. `tier` appears only when some gene
+  feature_uid ordinal tape_version dist_to_contig_end_bp n_records stage kind n_genomes genome_uids`. `tier` appears only when some gene
   has one (none does yet). `stage` is the build stage of the gene (`S1` phages, `P1`, `P2` prokaryotes on `rN.*`),
   `kind` its genome's kind from the stage's inputs (`virus`, `prokaryote`, `plasmid`; empty if none recorded). `pfam_architecture` is `-` without a library. `n_records` counts source records of the
   contig, not hits. `dist_to_contig_end_bp` 0 = partial gene at a linear end; contig length on a circular contig.
+  `n_genomes` and `genome_uids` (card C-21c): every genome of the release that carries the contig; `genome_uid` is
+  its one representative. The JSON occurrences and the locus tables' facts lines carry the same two.
 - `hits.faa`: `>protein_uid length= seq_bitscore= seq_evalue_zref= n_genes= example=ACC:start-end strand=+1
   header`, sequence on one line. `example` is the control's own contig for the control, else the first gene.
 - `neighbors.tsv`: `# key<TAB>json` header lines (`n_anchor_proteins`, `n_anchor_loci`, `n_censored_loci`,
@@ -328,7 +330,9 @@ and the commands; do not choose one.** Remove the 3.7 GB FASTA when done: `rm "$
 Lead with the answer in one or two sentences, then the evidence:
 
 - Every number labelled *measured* (wilkcomp02, date, command) or *derived* (formula, inputs). Counts with their
-  unit, split by source: proteins (distinct sequences), genes, contigs, genomes (`contig_dim.genome_uid`).
+  unit, split by source: proteins (distinct sequences), genes, contigs, genomes (`contig_dim.genome_uid`, or every
+  genome that carries a hit contig: `genome_uids` of `hits.tsv`, the `genome_member` view; they differ only where a
+  contig is shared, card C-21c).
 - To reproduce: the release and its manifest hash, the run id, recipe hash and pack id (`search_run`), the image
   sha256, the commit of `$TREE` (the laptop's `git rev-parse HEAD` when mirrored), the query file's `sha256sum`.
 - The independent check (§6) and its result; what `sql` says on stderr each SQL statement read.
@@ -370,7 +374,7 @@ Each is stated where it applies above; this is the checklist. The card or decisi
 | What is next to them | `neighbors.tsv` and `loci/`. With Pfam names: summarize the same proteins on `rN.2`/`rN.3` (no pack needed, below) |
 | Are families A and B ever fused | `rN.3`: `fusions_of` (§5). `rN.2`: `pfam_architecture` of a family-A search's hits, or a self-join of `l1_domains` on `protein_uid` (a full scan: say so) |
 | Export sequences | Hits: `hits.faa`. Some proteins or a contig region: `seq` (§4). Every protein: `export proteins` (§6) |
-| How many genomes have it | The stage split query of §5 (`count(DISTINCT genome_uid)`); define genome as `contig_dim.genome_uid`. By source only: `stage`, `kind` of `hits.tsv` |
+| How many genomes have it | The stage split query of §5 (`count(DISTINCT genome_uid)`); define genome as `contig_dim.genome_uid` (one per contig) or count every carrier through `genome_member` or `hits.tsv`'s `genome_uids`, and say which. By source only: `stage`, `kind` of `hits.tsv` |
 | What releases exist | `releases` (§2) |
 | Taxonomy of the hits | Not available (no taxonomy in any release yet). Give `accession` and `header` of `hits.tsv`, labelled as source headers |
 | Compare two releases | `release verify --root ... --release rN.3 --previous rN.2`; run the same search on both (a pack each) and compare `protein_uid` sets |
