@@ -6,9 +6,15 @@
     bio-box search status|cancel <run> --root R [--runs DIR]
     bio-box search hits <run> --root R [--runs DIR] [--round N] [--members] [--json] [--top_n 50]
     bio-box search hits <run> --root R [--runs DIR] --format tsv|faa [--round N] [--library L] [--out FILE]
-    bio-box search hmm --root R --release R1 --hmm FILE --bits 30 [--neighbors 5] --positive ACC:START-END|TEXT
-                --out DIR [--model NAME] [--profile P | --pack-dir P --runs DIR --work DIR]
-    bio-box find --root R --release R1 (--accession ACC[:START-END] | --protein UID) [--tape-version T]
+    bio-box search hmm --root R --release R1 --hmm FILE --bits 30 [--neighbors 5]
+                --positive ACC:START-END|ACC:START..END|TEXT --out DIR [--model NAME]
+                [--profile P | --pack-dir P --runs DIR --work DIR]
+    bio-box find --root R --release R1 (--accession ACC[:START-END|:START..END] | --protein UID) [--tape-version T]
+    bio-box releases --root R [--profile P | --pack-dir P] [--json]
+    bio-box seq --root R --release R1 (--protein UID [UID ...] | --proteins-file F
+                | --contig ACC[:START-END|:START..END] [--strand -1]) [--out FILE]
+    bio-box sql --root R --release R1 (FILE | -e QUERY) [--runs DIR ...] [--profile P] [--format tsv|json]
+                [--out FILE]
     bio-box nbr --root R --anchors <run|uid,uid,...> --window 10g --strand any --edge truncate [--json]
                 [--tape-version T] [--runs DIR]
     bio-box nbr [summarize] --anchors-file FILE ...   (protein uids one per line, in place of the anchors argument)
@@ -82,10 +88,26 @@ tsv|faa`), `neighbors.tsv` (`nbr summarize --format tsv`, by `pfam,nr50`; by `nr
 no domain library) and `loci/` (`nbr --format tsv`), each by calling that command. DIR must be new or empty
 and outside the data root; it is filled under a temporary name beside it and renamed into place. The positive
 control (`--positive`) is required. It names one gene as `ACCESSION:START-END` (the accession, start and end
-`search hits --format tsv` prints: 0-based, end exclusive) or is a substring of a contig header; it is resolved
+`search hits --format tsv` prints: 0-based, end exclusive), as `ACCESSION:START..END` (GenBank) or is a substring of a contig header; it is resolved
 through the release's contig labels and the slots of the pack's tape version, and anything but exactly one
 protein is refused (exit 2) with a list of what matched. A missing pack is refused with the `pack build`
 command, as `search run` refuses it; it is never built here.
+
+Coordinates (card W-23, `parse_span`): wherever a gene or region is named by accession, `ACC:START-END` is
+bio-box's own form (0-based, end exclusive, as every table prints it) and `ACC:START..END` is GenBank's
+(1-based, both ends included): `NC_001604:3171..5822` is `NC_001604:3170-5822`. Anything else after the last
+colon made of digits, dots and dashes is refused (exit 2) with both spellings. `find` prints both forms.
+
+`releases`, `seq` and `sql` (card W-23) read a release without exporting it. `releases` lists every release
+the root's manifests and release definitions name, from the manifest's file list and Parquet footers (genomes
+take one column of `contig_dim`: no footer holds a distinct count). `seq` prints proteins by uid, or a contig
+slice by accession or contig uid, read by key (`export.protein_seqs`, `contig_slice`). `sql` runs SELECT
+statements on the release's catalog (`sql_connection`: read-only; see there for the protections it relies on)
+and prints to stderr the row groups each statement read.
+
+Every command that writes an output file given by `--out` (and `search hmm`, for each file in its DIR) prints
+to stderr one line per file: `wrote PATH: N rows|sequences|records` (`N tables, M rows` for a directory of
+locus tables), card W-23.
 """
 
 from __future__ import annotations
@@ -226,14 +248,18 @@ def _pending_notice(run_id: str, info: Path) -> None:
 
 def _positive_prefs(controls_json: str | None) -> dict[bytes, tuple[str | None, str | None]]:
     """{protein_uid: (accession, header text)} for the positive controls of a run's `controls_json` (card W-20), so
-    the FASTA's `example=` names the control's own contig: a label `ACCESSION:START-END` names its accession, any
-    other label is header text (as `search hmm --positive` reads it). A control without a label names no contig."""
+    the FASTA's `example=` names the control's own contig: a label `ACCESSION:START-END` (or the GenBank form
+    `ACCESSION:START..END`, card W-23) names its accession, any other label is header text (as `search hmm
+    --positive` reads it). A control without a label names no contig."""
     out: dict[bytes, tuple[str | None, str | None]] = {}
     for p in (json.loads(controls_json) if controls_json else {}).get("positive", []):
         label = p.get("label")
         if label and p.get("uid"):
-            m = _SPAN.match(label)
-            out[bytes.fromhex(p["uid"])] = (m["acc"], None) if m else (None, label)
+            try:
+                span = parse_span(label)
+            except SpanError:
+                span = None
+            out[bytes.fromhex(p["uid"])] = (span[0], None) if span else (None, label)
     return out
 
 
@@ -463,8 +489,44 @@ def _nbr(a) -> int:
     return 0
 
 
-_SPAN = re.compile(r"^(?P<acc>\S+):(?P<start>\d+)-(?P<end>\d+)$")  # --positive ACCESSION:START-END
 POSITIVE_SHOWN = 20  # genes listed when a positive control matches no protein or several
+_SPAN_0 = re.compile(r"^(\d+)-(\d+)$")  # START-END: 0-based, end exclusive (bio-box's own form)
+_SPAN_GB = re.compile(r"^(\d+)\.\.(\d+)$")  # START..END: 1-based, both ends included (GenBank's form)
+_SPAN_LIKE = re.compile(r"^[\d.\-]*\d[\d.\-]*$")  # digits, dots and dashes: meant as coordinates
+
+
+class SpanError(ValueError):
+    """Coordinates after `ACCESSION:` in neither form `parse_span` reads; the message shows both spellings."""
+
+
+def parse_span(spec: str) -> tuple[str, int, int] | None:
+    """(accession, start, end), 0-based and half-open, of a gene or region named `ACCESSION:START-END` (0-based, end
+    exclusive, as bio-box prints) or `ACCESSION:START..END` (1-based, both ends included: GenBank's form, so
+    `NC_001604:3171..5822` is `NC_001604:3170-5822`), card W-23. None when `spec` names no coordinates: no colon,
+    whitespace in the accession, or text after the last colon other than digits with dots or dashes. SpanError for
+    such text in neither form (`3171.-5822`, `3171...5822`, `3171`), and for a GenBank start of 0 or after its end."""
+    acc, sep, tail = spec.rpartition(":")
+    if not sep or not acc or re.search(r"\s", acc) or not _SPAN_LIKE.match(tail):
+        return None
+    m = _SPAN_0.match(tail)
+    if m:
+        return acc, int(m[1]), int(m[2])
+    m = _SPAN_GB.match(tail)
+    if m and 1 <= int(m[1]) <= int(m[2]):
+        return acc, int(m[1]) - 1, int(m[2])
+    nums = [int(x) for x in re.findall(r"\d+", tail)]
+    a, b = (nums + nums)[:2] if len(nums) < 2 else nums[:2]
+    a1 = max(a, 1)
+    raise SpanError(f"{spec!r} is not a span bio-box reads; write one of the two forms. If {a} and {b} are GenBank's "
+                    f"coordinates (1-based, both ends included): {acc}:{a1}..{max(b, a1)}, which is "
+                    f"{acc}:{a1 - 1}-{max(b, a1)} in bio-box's own form. If they are bio-box's (0-based, end "
+                    f"exclusive, as `find` and `search hits` print them): {acc}:{a}-{b}, which is GenBank "
+                    f"{acc}:{a + 1}..{b}")
+
+
+def span_forms(acc: str, start: int, end: int) -> tuple[str, str]:
+    """A span in both forms `parse_span` reads: `ACC:START-END` (0-based, half-open) and `ACC:START..END` (GenBank)."""
+    return f"{acc}:{start}-{end}", f"{acc}:{start + 1}..{end}"
 
 
 def _release_files_or_refusal(a, root: Path):
@@ -476,8 +538,10 @@ def _release_files_or_refusal(a, root: Path):
 
 
 def _gene_line(g: dict) -> str:
-    where = g["accession"] or g["contig_uid"].hex()
-    return f"  {where}:{g['start']}-{g['end']}({g['strand']:+d})\t{g['protein_uid'].hex()}\t{g['header'] or ''}"
+    """One gene of a refusal's list: its span in bio-box's form with its strand, the GenBank form (card W-23), its
+    protein uid and its contig's header."""
+    zero, gb = span_forms(g["accession"] or g["contig_uid"].hex(), g["start"], g["end"])
+    return f"  {zero}({g['strand']:+d})\t{gb}\t{g['protein_uid'].hex()}\t{g['header'] or ''}"
 
 
 def _gene_lines(genes: list[dict]) -> list[str]:
@@ -489,18 +553,22 @@ def _gene_lines(genes: list[dict]) -> list[str]:
 def _positive_uid(root: Path, files, spec: str, tape_version: str, gene_call_version: str,
                   threads: int | None = None) -> tuple[str | None, list[str]]:
     """The protein uid (hex) `--positive` names, and no lines; or None and the lines of a refusal that list what
-    matched. `ACCESSION:START-END` names the gene of a contig with that accession (`contig_label`, as `search hits
-    --format tsv` shows it) and those coordinates; any other text is a substring of contig headers (case-sensitive)
-    and names every gene of those contigs. A gene is a CDS slot of the contig's tape in `tape_version` (the pack's).
+    matched. `ACCESSION:START-END` (or the GenBank form `ACCESSION:START..END`, `parse_span`; card W-23) names the
+    gene of a contig with that accession (`contig_label`, as `search hits --format tsv` shows it) and those
+    coordinates; coordinates in neither form are refused with both spellings; any other text is a substring of
+    contig headers (case-sensitive) and names every gene of those contigs. A gene is a CDS slot of the contig's tape
+    in `tape_version` (the pack's).
 
     The contigs are found by a scan of `contig_label` (sorted by contig_uid: no table is sorted by accession or
     header, and a substring cannot prune); their tapes are read by contig_uid, which prunes (AGENTS §4.4)."""
-    m = _SPAN.match(spec)
-    genes, labels = find_genes(root, files, accession=m["acc"] if m else None, text=None if m else spec,
+    try:
+        m = parse_span(spec)
+    except SpanError as e:
+        return None, [f"positive control: {e}"]
+    genes, labels = find_genes(root, files, accession=m[0] if m else None, text=None if m else spec,
                                tape_version=tape_version, gene_call_version=gene_call_version, threads=threads)
     if m:
-        start, end = int(m["start"]), int(m["end"])
-        exact = [g for g in genes if (g["start"], g["end"]) == (start, end)]
+        exact = [g for g in genes if (g["start"], g["end"]) == (m[1], m[2])]
     else:
         exact = genes
     proteins = sorted({g["protein_uid"] for g in exact})
@@ -516,17 +584,18 @@ def _positive_uid(root: Path, files, spec: str, tape_version: str, gene_call_ver
                       "(case-sensitive)"]
     if not labels:
         return None, [f"{head} matched no protein: no contig of release {files.release} has the accession "
-                      f"{m['acc']} (the accession column of `bio-box search hits --format tsv`)"]
+                      f"{m[0]} (the accession column of `bio-box search hits --format tsv`)"]
     miss, near = _span_miss(genes, m)
     return None, [f"{head} matched no protein of release {files.release}: {miss}", *_gene_lines(near)]
 
 
-def _span_miss(genes: list[dict], m: re.Match) -> tuple[str, list[dict]]:
-    """Why no gene of the accession has the span `m` (a `_SPAN` match), and the genes that overlap it."""
-    start, end = int(m["start"]), int(m["end"])
+def _span_miss(genes: list[dict], span: tuple[str, int, int]) -> tuple[str, list[dict]]:
+    """Why no gene of the accession has the span (`parse_span`'s), and the genes that overlap it."""
+    acc, start, end = span
     near = [g for g in genes if g["start"] < end and g["end"] > start]
-    return (f"no gene of {m['acc']} starts at {start} and ends at {end} (0-based, end exclusive, as `search hits "
-            f"--format tsv` prints them)" + ("; the genes there:" if near else "; no gene overlaps that interval"), near)
+    return (f"no gene of {acc} starts at {start} and ends at {end} (0-based, end exclusive, as `search hits "
+            f"--format tsv` prints them; GenBank {start + 1}..{end})"
+            + ("; the genes there:" if near else "; no gene overlaps that interval"), near)
 
 
 def _contig_labels(root: Path, files, gene_call_version: str, threads: int | None, *, where: str | None = None,
@@ -584,13 +653,16 @@ def find_genes(root: Path, files, *, accession: str | None = None, text: str | N
     return genes, labels
 
 
-FIND_COLUMNS = ("accession", "contig_uid", "start", "end", "strand", "feature_uid", "protein_uid")
+# card W-23 appended the gene's span in both forms `parse_span` reads: `span` (ACC:START-END, 0-based, half-open)
+# and `genbank_span` (ACC:START..END, 1-based, both ends included)
+FIND_COLUMNS = ("accession", "contig_uid", "start", "end", "strand", "feature_uid", "protein_uid", "span",
+                "genbank_span")
 
 
 def _find(a) -> int:
-    """`bio-box find` (card W-18): the genes an accession (optionally with a span) or a protein uid names, one TSV row
-    each: accession, contig_uid, start, end (0-based, half-open), strand, feature_uid, protein_uid. 2 when it names no
-    gene."""
+    """`bio-box find` (card W-18): the genes an accession (optionally with a span, in either form of `parse_span`) or a
+    protein uid names, one TSV row each: accession, contig_uid, start, end (0-based, half-open), strand, feature_uid,
+    protein_uid, and the span in both forms (card W-23). 2 when it names no gene or the span is in neither form."""
     root = Path(a.root)
 
     def refuse(msg, more=()) -> int:
@@ -612,8 +684,11 @@ def _find(a) -> int:
         if not genes:
             return refuse(f"no gene of release {files.release} carries protein {a.protein.lower()}")
     else:
-        m = _SPAN.match(a.accession)
-        acc = m["acc"] if m else a.accession
+        try:
+            m = parse_span(a.accession)
+        except SpanError as e:
+            return refuse(f"--accession {e}")
+        acc = m[0] if m else a.accession
         genes, labels = find_genes(root, files, accession=acc, tape_version=tv, gene_call_version=a.gene_call_version,
                                    threads=a.threads)
         if not labels:
@@ -621,14 +696,16 @@ def _find(a) -> int:
                           "`bio-box search hits --format tsv`)")
         if m:
             miss, near = _span_miss(genes, m)
-            genes = [g for g in genes if (g["start"], g["end"]) == (int(m["start"]), int(m["end"]))]
+            genes = [g for g in genes if (g["start"], g["end"]) == (m[1], m[2])]
             if not genes:
                 return refuse(miss, _gene_lines(near))
         elif not genes:
             return refuse(f"no gene of {acc} in tape version {tv} of release {files.release}")
     _print(["\t".join(FIND_COLUMNS)] + ["\t".join([g["accession"] or "", g["contig_uid"].hex(), str(g["start"]),
                                                    str(g["end"]), f"{g['strand']:+d}", g["feature_uid"].hex(),
-                                                   g["protein_uid"].hex()]) for g in genes])
+                                                   g["protein_uid"].hex(),
+                                                   *span_forms(g["accession"] or g["contig_uid"].hex(), g["start"],
+                                                               g["end"])]) for g in genes])
     return 0
 
 
@@ -666,7 +743,8 @@ def _search_hmm(a) -> int:
     if not a.positive:
         return refuse("search hmm needs a positive control, a protein the search must find: --positive "
                       "ACCESSION:START-END (one gene: its accession, start and end as `bio-box search hits --format "
-                      "tsv` prints them) or --positive 'TEXT' (a substring of the contig's header). A search without "
+                      "tsv` prints them, 0-based, end exclusive), ACCESSION:START..END (the same gene in GenBank's "
+                      "1-based form) or --positive 'TEXT' (a substring of the contig's header). A search without "
                       "one is refused (S-04)")
     if a.neighbors < 1:
         return refuse(f"--neighbors {a.neighbors}: give at least 1 gene on each side")
@@ -751,7 +829,9 @@ def _hmm_parser() -> argparse.ArgumentParser:
     h.add_argument("--neighbors", type=int, default=5, help="genes on each side of a hit in the neighbour tables "
                                                             "(window <N>g; default 5)")
     h.add_argument("--positive", help="required: a protein the search must find, as ACCESSION:START-END (one gene, "
-                                      "as `search hits --format tsv` prints it) or a substring of its contig's header")
+                                      "as `search hits --format tsv` prints it: 0-based, end exclusive), as "
+                                      "ACCESSION:START..END (GenBank: 1-based, inclusive) or a substring of its "
+                                      "contig's header")
     h.add_argument("--out", required=True, help="a new or empty directory outside the data root")
     h.add_argument("--profile", help="host profile YAML (default: $BIOBOX_PROFILE); caps cpus and memory, and gives "
                                      "the pack, runs and work directories")
@@ -1215,7 +1295,8 @@ def _main(argv: list[str] | None = None) -> int:
     fd.add_argument("--release", required=True)
     what = fd.add_mutually_exclusive_group(required=True)
     what.add_argument("--accession", help="a contig accession, or ACCESSION:START-END for the gene with those "
-                                          "coordinates (0-based, end exclusive, as `search hits --format tsv` prints)")
+                                          "coordinates (0-based, end exclusive, as `search hits --format tsv` "
+                                          "prints), or ACCESSION:START..END (GenBank: 1-based, inclusive)")
     what.add_argument("--protein", help="a protein uid (32 hex digits): every gene of the release that carries it")
     fd.add_argument("--tape-version", help="tapes to read for --accession (default: the gene-call producer's)")
     fd.add_argument("--threads", type=int, help=f"DuckDB threads (default {export.EXPORT_THREADS})")
