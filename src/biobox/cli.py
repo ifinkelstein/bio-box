@@ -702,7 +702,9 @@ def _contig_labels(root: Path, files, gene_call_version: str, threads: int | Non
                    contigs=()) -> dict[bytes, tuple[str, str]]:
     """{contig_uid: (accession, header)} as `search hits` shows them, for the contigs of `contig_label` that satisfy
     the SQL condition `where`, else for the contig uids `contigs`. A scan of `contig_label` when `where` is given
-    (no table is sorted by accession or header); by uid it prunes (AGENTS §4.4)."""
+    (no table is sorted by accession or header); by uid it prunes (AGENTS §4.4). The scan is cheap at today's sizes
+    (card W-15: 0.03 to 0.05 s, one row group per stage on `rN.3`, *measured*; about 1 s at 1 M label rows,
+    *derived*; `planning/measurements/2026-11-12_positive_lookup_rN3.md`)."""
     import pyarrow as pa
 
     with export.open_store(root, release=files.release, gene_call_version=gene_call_version, manifest=files,
@@ -1128,7 +1130,7 @@ def _seq(a) -> int:
     if re.fullmatch(r"[0-9a-fA-F]{32}", acc):  # a contig uid: accessions are never 32 hex digits
         cu = bytes.fromhex(acc)
         name = _contig_labels(root, files, a.gene_call_version, a.threads, contigs={cu}).get(cu, (None,))[0]
-    else:  # by accession: a scan of contig_label, which is sorted by contig (card W-15)
+    else:  # by accession: a scan of contig_label, which is sorted by contig; cheap at today's sizes (card W-15)
         labels = _contig_labels(root, files, a.gene_call_version, a.threads, where=f"accession = {export._q(acc)}")
         if len(labels) != 1:
             return refuse(f"no contig of release {a.release} has the accession {acc}" if not labels else
