@@ -446,6 +446,13 @@ also reports any unlisted file in the release's scope. It writes nothing. It pri
 then `release rC6.2: verified (...)` with the stages, the file count and the manifest hash. Exit 0
 is a pass, 1 a failure (a missing manifest is one).
 
+Files that a later step adds to the release's stages for a library, producer or step the release
+does not use there are not its concern (card C-19): a Pfam scan of a stage after the release was
+built does not fail it. A second part beside a file the release lists still does. If the release
+has a library's domain files for some of its stages only, `verify` prints a `warning:` line naming
+the stages on each side; the exit code is unchanged. That release's family tokens cover only the
+first stages' genes; a release built after the other stages are scanned covers them all.
+
 ```bash
 bio-box release verify --root "$ROOT" --release rC6.2
 ```

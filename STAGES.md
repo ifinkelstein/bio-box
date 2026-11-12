@@ -1,6 +1,6 @@
 # Staged accretion plan: from 14 genomes on wilkcomp02 to rented bare metal
 
-Status: plan only. Nothing here has been run. Date: 2026-10-28; S2C, the search tiers and the test-harness gates added 2026-10-29.
+Status: partly built. The plan below is dated 2026-10-28 (S2C, the search tiers and the test-harness gates added 2026-10-29). What has been built, how it maps to the stages below, and where the plan has been superseded is in the next section, added 2026-11-11 at the PI's request. Where that section and a stage card disagree, that section and `planning/DECISIONS.md` win.
 
 This file is authoritative for stage numbering. Detail lives in:
 - [`planning/sources_and_sizing.md`](planning/sources_and_sizing.md): sources, versions, licenses, unit-rate formulas, envelope checks.
@@ -10,6 +10,45 @@ This file is authoritative for stage numbering. Detail lives in:
 - [`planning/search/SEARCH_PLAN.md`](planning/search/SEARCH_PLAN.md): ad hoc search design (SD-01..SD-21), search pack, tiers ST0–ST5, S-tests (S-01..S-13, plus S-02d).
 - [`planning/tests/TEST_ARCHITECTURE.md`](planning/tests/TEST_ARCHITECTURE.md): operation registry (O-*), failures F-01..F-15, MR-01..MR-19, workflow manifests, micro-corpus, synthetic and null worlds, LY-01..LY-10, rings R0–R5, `test_run`.
 - [`audits/SYNTHESIS_2.md`](audits/SYNTHESIS_2.md): decision record D-01..D-28.
+
+---
+
+## Status and mapping, 2026-11-11
+
+Day-to-day state is in [`planning/tasks/STATUS.md`](planning/tasks/STATUS.md); this section says how what exists maps to the ladder. Numbers are *measured* on wilkcomp02 unless labelled; sources are the measurement files named.
+
+### What exists
+
+All data is in one root on the pod's local disk (`/tmp/if2453/r10/root`), not yet synced to the data root on `/stor`. Inputs and reference files are archived under `all-the-data/provisional/` and listed in `sources.yaml` and `refdb.yaml`.
+
+| Name in the root | Plan stage | Content | State |
+|---|---|---|---|
+| golden set (fixtures, `/tmp/if2453/golden`) | S0 | 15 golden genomes, the test harness | built and used by every test ring; the release `rS0.1` and its gate have not been cut (card E-06) |
+| stage `S1` | S1 | INPHARED 14Apr2025: 34,076 records, 27,258 distinct sequences | built, with Pfam 38.2 |
+| stage `H1` | beside S1 (not in the original ladder) | Huge Phage Genome Collection, 7,230 genomes over 200 kbp, 1.96 Gbp; 516 already in `S1` | fetched, inputs ready (card C-24); added by the PI 2026-11-11 |
+| (not yet a stage) | S2 | PLSDB 2024_05_31_v2: 72,556 records (196 suppressed), 7.30 Gbp; 7,139 already contigs of `P1` to `P6` | fetched; waits for DEC-27's cards |
+| stages `P1`, `P2` | S2C, phase 1 | 250 and 2,247 complete prokaryote genomes, 10.6 Gbp with `S1` | built, with Pfam 38.2 |
+| stages `P3` to `P6` | S2C, phase 1 | 9,469 complete prokaryote genomes, 39.9 Gbp | building (2026-11-11 to about 2026-11-15, *estimate*) |
+| (not fetched) | S2C, phase 2 | the rest of the ≤20-per-species set | confirmed by the PI 2026-11-11; card C-25 |
+
+Releases: `rN.1`, `rN.2`, `rN.3` over `S1`, `P1`, `P2` (10.6 M proteins; `rN.3` is the one built by current code, with Pfam and the lookup tables); `rM.1` and `rM.2` over all seven stages (about 46.6 M proteins, *estimate*) are being built. These are provisional names: no release has been signed, so none is `rS<k>.<n>` yet.
+
+**S2C in two phases.** The stage card below defines S2C as at most 20 complete genomes per GTDB species: 25,458 genomes, 106.4 Gbp. What is being built first is one genome per species, the best complete one by CheckM2 completeness minus five times contamination: 11,973 selected, 11,966 fetched (7 not served by NCBI), 50.5 Gbp (`planning/measurements/2026-11-11_r50_inputs.md`). Phase 2 adds the remaining genomes of the ≤20-per-species set: 13,485 genomes and about 55.9 Gbp (*derived*: 25,458 − 11,973 and 106.4 − 50.5; whether every phase-1 genome is in the plan's ≤20 set is not yet checked, since the plan's rule also uses ANI diversity). Phase 2 is where genomes of one species share plasmids and prophages byte for byte, so it runs after the cards of DEC-27 (a contig may belong to several genomes), and it is the natural first use of representatives-only Pfam annotation (card 0-09).
+
+### Where the stage cards below are superseded
+
+- **Clusters.** Every release clusters all of its proteins from scratch; `mmseqs clusterupdate` is not used (DEC-24). Clustering runs in parts, each under the CPU budget (cards B-41, B-43, C-22); it is exempt from the 300 CPU-minute rule only under a cap (DEC-25). Where a stage card says "`clusterupdate`", read "recluster the release". The plan's principle that L2 is "incremental with a crosswalk" is replaced: cluster ids are not stable across releases (39.9% of NR50 ids changed between two early releases, *measured*), and a lineage table is an open PI decision (card 0-07).
+- **Pairs and statistics.** `slot_pairs` is not materialized; neighbour questions are answered from `token_postings` and the tapes (DEC-19). `pair_stats` and the null models (L4) are not built: phase F of the task cards. Every "science check" below that ranks modules by a score waits for that; today a neighbour count is a count, not a significance.
+- **Shared contigs.** A contig stored by an earlier stage belongs to that stage (DEC-26); a contig may belong to several genomes (DEC-27, cards C-21a to C-21f). The S2C card's line that a plasmid already supplied at S2 "gains the chromosome context, not a second copy" now has a defined meaning: the sequence is stored once, its gene calls belong to the first stage that stored it, and membership in each genome is recorded.
+- **Non-coding RNA.** A curated Rfam set on intergenic regions with clan competition (DEC-28), not full Rfam on whole genomes: 254.5 CPU-hours per 10 Gbp against 1,910 (`planning/measurements/2026-11-11_ncrna_producer.md`). Not yet in any release.
+- **Annotation cost.** Pfam is 443 CPU-hours per 10 Gbp; that, not ingest, sets how far the pod can go. Three measurements (card 0-09) support: representatives-only Pfam for redundant sets, the curated ncRNA set above, and a larger host for whatever remains. The core-hour columns of the ladder table predate these measurements.
+- **Not done from the S1 and S2 cards:** PHROGs (its server's certificate had expired at fetch time; `refdb.yaml`, pending), geNomad regime classification, intron and frameshift stitching at scale, MOB/Rep/conjugation calls, IntegronFinder, the trap panel, the DuckLake spike. Gene calling uses the standard code for prokaryotes and the phage mode for viruses; alternative genetic codes in huge phages are not handled (card C-24 reports how many genomes it affects).
+- **Search tiers.** A custom-HMM search with neighbourhoods runs end to end on a 10 Gbp release (`planning/measurements/2026-11-11_trial_search_rN1_second.md`, `2026-11-11_search_memory_rN1.md`): the capability of ST1 and part of ST2. None of the published-result replays that certify a tier has been run.
+- **Hosts.** The pod does everything so far. TACC is the intended next host for scan shards (card C-18, deferred by the PI); the plan's Hetzner and AWS steps are unchanged and not started.
+
+### What the PI has decided since this plan was written
+
+DEC-18 to DEC-28 in [`planning/DECISIONS.md`](planning/DECISIONS.md). Open decisions: 0-04 (slim postings), 0-05 (size budgets), 0-07 (cluster lineage), 0-09 (how to cut annotation cost), 0-10 (where a user's results live), B-44 (an MMseqs2 without the index abort, needed above about 74 to 87 M proteins).
 
 ---
 
@@ -241,6 +280,8 @@ Each card lists six things:
 - **Portability:** P1 runs after this gate (§5).
 
 ### S2C: Complete prokaryotic genomes (GTDB R226, assembly level `Complete Genome`)
+
+**Status 2026-11-11:** built in two phases (see "Status and mapping" at the top). Phase 1, one best complete genome per species (11,973 genomes, 50.5 Gbp), is stages `P1` to `P6`. Phase 2, the rest of the set defined here, was confirmed by the PI on 2026-11-11 and is card C-25. "`clusterupdate`" below is superseded by DEC-24.
 
 Inserted and approved 2026-10-29 ([SEARCH_PLAN SD-16, §6.1](planning/search/SEARCH_PLAN.md)): ≤20 complete genomes per GTDB species, chosen by CheckM2 quality then ANI diversity. Releases are `rS2C.<n>`; no other stage is renumbered. Optional follow-on **S2C-b** (the remaining complete genomes, uncapped; est. 7,500–54,000 core-h for all complete genomes together) is appended after the S2C gate only if the signed-off first-10 questions include strain-level work (defense hotspots, pangenome turnover); it costs an L2/L4 recompute and exercises accretion at scale.
 

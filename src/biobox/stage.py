@@ -220,6 +220,12 @@ SCAN_CPU_MIN_PER_M = 7.96
 CLUSTER_CPU_MIN_LO, CLUSTER_PROTEINS_LO = 284.10, 2_053_075
 CLUSTER_CPU_MIN_HI, CLUSTER_PROTEINS_HI = 2195.91, 10_620_684
 CLUSTER_EXPONENT = math.log(CLUSTER_CPU_MIN_HI / CLUSTER_CPU_MIN_LO) / math.log(CLUSTER_PROTEINS_HI / CLUSTER_PROTEINS_LO)
+# This is the release's estimate for the DEC-25 gate and for whether clustering runs in parts. The parts' own cut uses
+# the per-call model of `biobox.l2.cluster.call_cpu_min` (card C-22), fitted on the per-call records of the clustering of
+# `rN.3` (10.6 M proteins) and `rC.1b` (2.05 M); `tests/r1/test_cluster_call_estimates.py` asserts that the two agree within 20% at both
+# measured sizes (the calls and the one-process rest sum to -1.0% and -3.1% of this estimate at 10.6 M and 2.05 M
+# proteins, derived). Above 10.6 M both are extrapolations; at 50 M the per-call work (15,772 CPU-minutes, derived)
+# is 4.6% above this estimate (15,079).
 # The reason the clustering step's run record gives (`cpu_budget_reason`) when the profile sets `cluster_cpu_min_max`.
 CLUSTER_EXEMPT = "exempt: DEC-25"
 # Scan shards are planned to fill 80% of the CPU-minute budget, not all of it (card C-11): the rate above
