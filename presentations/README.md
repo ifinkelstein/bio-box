@@ -11,6 +11,22 @@
 | `diagrams/d*.svg` | Rendered diagrams referenced by the deck. |
 | `diagrams/mermaid-config.json`, `puppeteer-config.json` | Theme, plus the path to the system Chrome that mermaid-cli uses. |
 | `render.sh` | Re-renders every `.mmd` to `.svg` with mermaid-cli 11.12; exits non-zero if any diagram fails to parse. |
+| `all-the-data-deck.pptx`, `diagrams/png/d*.png` | PowerPoint version (16:9, 51 slides): the 46 HTML slides in order with titles, bullets, tables, source lines and speaker notes, plus a 5-slide section "Update, 12 November 2026" before the appendix, built only from `planning/tasks/STATUS.md` and `planning/DECISIONS.md` DEC-24 to DEC-29. The PNGs are the diagrams rendered at 3× from the SVGs. Built by `build_pptx.py`. |
+| `build_pptx.py` | Builds the `.pptx` from the HTML (the update slides are in the script as `UPDATE_HTML`) and renders the diagram PNGs. |
+
+## Rebuilding the PowerPoint deck
+
+From the repository root (Python packages come through `uv run --with`; nothing is added to `pyproject.toml` or `uv.lock`):
+
+```sh
+# Diagrams: SVG -> PNG with the installed Google Chrome (the SVGs have HTML labels, which
+# rsvg-convert and Inkscape do not draw). Only needed when a diagram changes.
+uv run --no-project --with playwright==1.48.0 python presentations/build_pptx.py --diagrams
+# Deck
+uv run --no-project --with python-pptx==1.0.2 --with beautifulsoup4==4.12.3 python presentations/build_pptx.py
+```
+
+Text heights are estimated from the Arial metrics on the host; each slide takes the largest sizes that fit (body 18 to 16 pt, tables 18 to 12 pt, notes and source lines 14 and 12 pt). Check a rebuild by rendering it (`soffice --headless --convert-to pdf`, then `pdftoppm -png`) and looking at every slide.
 
 ## How this brief was rewritten
 
@@ -47,4 +63,5 @@
 - reveal.js loads from cdnjs, so the deck needs network on first open. The diagrams are local SVGs.
 - Headless `--print-to-pdf` produced an empty file; export to PDF manually as described above.
 - Numbers are estimates until S0 measures real rates; the deck says so on the slides that use them.
+- In the `.pptx`, the run-step sequence diagram (slide 17) shares its slide with eight boxes and is about 2.2 in tall, so its labels are small; the full-size render is `diagrams/png/d06_runstep.png`. Only slides 1, 2 and 42 of the HTML deck have speaker notes, so only those (and the update slides) have notes in the `.pptx`.
 - The deck predates the 2026-10-29 search round: it has no stage S2C (complete prokaryotic genomes), no search tiers ST0–ST5 and no search pack. See `planning/search/SEARCH_PLAN.md`.

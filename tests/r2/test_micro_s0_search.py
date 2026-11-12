@@ -1220,7 +1220,8 @@ def test_w18_nbr_takes_anchors_from_a_file_one_uid_per_line(world, capsys, tmp_p
 
 W05_HIT_COLUMNS = ["accession", "header", "contig_len", "start", "end", "strand", "length", "seq_bitscore",
                    "seq_evalue_zref", "pfam_architecture", "protein_uid", "nr90", "nr50", "nr50_rep", "genome_uid",
-                   "tier", "contig_uid", "feature_uid", "ordinal", "tape_version", "dist_to_contig_end_bp", "n_records"]
+                   "tier", "contig_uid", "feature_uid", "ordinal", "tape_version", "dist_to_contig_end_bp", "n_records",
+                   "stage", "kind"]  # card W-23: the gene's stage and its genome's kind, appended
 W05_LOCUS_COLUMNS = ["offset", "offset_rel", "ordinal", "feature_uid", "start", "end", "strand", "protein_uid",
                      "length_aa", "pfam_architecture", "nr90", "nr50", "hit_seq_bitscore", "delta_bp", "crosses_origin"]
 W05_BITS, W05_EVALUE = {"seq_bitscore", "hit_seq_bitscore"}, {"seq_evalue_zref"}
@@ -1315,8 +1316,15 @@ def _w05_scores(hits: list[dict]) -> dict[bytes, tuple[float, float]]:
 def _w05_oracle_genes(root: Path, hits: list[dict], dims: dict) -> list[dict]:
     """One dict per gene of a hit protein, in the export's order (accession, contig, coordinates, protein)."""
     s, score, tv = _w05_store(root), _w05_scores(hits), tapes.tape_version([V])
+    # card W-23: each gene's stage is its occurrence file's, its kind the genome_input kind of the contig in that stage
+    kinds = {(r["contig_uid"], f.parent.name.removeprefix("stage=")): r["kind"]
+             for f in sorted((root / "l0seq/genome_input").rglob("*.parquet"))
+             for r in pq.read_table(f, partitioning=None).to_pylist()}
+    occs = [{**o, "_stage": f.parent.name.removeprefix("stage=")}
+            for f in sorted((root / f"l1/protein_occurrence/gene_call_version={V}").rglob("*.parquet"))
+            for o in pq.read_table(f, partitioning=None).to_pylist()]
     out = []
-    for o in _pq(root, f"l1/protein_occurrence/gene_call_version={V}"):
+    for o in occs:
         pu, cu = o["protein_uid"], o["contig_uid"]
         if pu not in score:
             continue
@@ -1328,7 +1336,8 @@ def _w05_oracle_genes(root: Path, hits: list[dict], dims: dict) -> list[dict]:
                "nr90": c90 and c90["cluster_uid"], "nr50": c50 and c50["cluster_uid"], "nr50_rep": c50 and c50["rep_uid"],
                "genome_uid": d and d["genome_uid"], "tier": d and d["tier"], "contig_uid": cu,
                "feature_uid": o["feature_uid"], "ordinal": s["tapes"][cu]["feature_uids"].index(o["feature_uid"]),
-               "tape_version": tv, "dist_to_contig_end_bp": o["dist_to_contig_end_bp"], "n_records": n}
+               "tape_version": tv, "dist_to_contig_end_bp": o["dist_to_contig_end_bp"], "n_records": n,
+               "stage": o["_stage"], "kind": kinds.get((cu, o["_stage"]))}
         out.append(((acc is None, acc or "", cu, o["start"], o["end"], o["strand"], pu), row))
     return [r for _, r in sorted(out, key=lambda x: x[0])]
 

@@ -43,10 +43,16 @@ wilkcomp02 (local disk: gone after a reboot) holds
 | `rN.2` | the same with Pfam 38.2 | tree `740d049` | none |
 | `rN.3` | the same stages, release steps rebuilt with current code (card C-17); being built | current | none |
 
-Find the current state; do not trust the table above:
+Find the current state; do not trust the table above. `releases` (card W-23; `src/biobox/cli.py`,
+`release_summary`) prints one line per release of the root, with a manifest or only a `release_def`: stages,
+genomes, contigs, distinct proteins (from the manifest's file list and Parquet footers; genomes read one column of
+`contig_dim`), domain libraries (`pfam-38.2(not P3)` when a library covers some of its stages only), ncRNA
+producers, whether it has `member_cluster`, `contig_label` and the `domain_family_tokens` column (`no`: an older
+release, slow paths), and the pack it has in the pack directory named (`-` for none). `--json` gives one object per
+release.
 
 ```bash
-ls /tmp/if2453/r10/root/manifests
+bash "$SCR/img.sh" python -m biobox.cli releases --root /tmp/if2453/r10/root --pack-dir /tmp/if2453/w16/packs
 find /tmp/if2453 -maxdepth 5 -name pack_manifest.json
 ls -l /tmp/if2453/images
 ```
@@ -104,18 +110,21 @@ free -g
 df -h /tmp
 ```
 
-**1. Positive control** (required: a protein the search must find). Name it as `ACCESSION:START-END`, 0-based
-half-open (GenBank `3171..5822` is `3170-5822`). Code: `find` in `src/biobox/cli.py`.
+**1. Positive control** (required: a protein the search must find). Name it as `ACCESSION:START..END` (GenBank:
+1-based, both ends included, as the scientist's record gives it) or `ACCESSION:START-END` (bio-box: 0-based,
+half-open; GenBank `3171..5822` is `3170-5822`); do not convert by hand. Any other spelling exits 2 and shows both
+forms. Code: `parse_span` and `find` in `src/biobox/cli.py`.
 
 ```bash
 bash "$SCR/img.sh" python -m biobox.cli find --root /tmp/if2453/r10/root --release rN.1 --accession NC_001604
-bash "$SCR/img.sh" python -m biobox.cli find --root /tmp/if2453/r10/root --release rN.1 --accession NC_001604:3170-5822
+bash "$SCR/img.sh" python -m biobox.cli find --root /tmp/if2453/r10/root --release rN.1 --accession NC_001604:3171..5822
 bash "$SCR/img.sh" python -m biobox.cli find --root /tmp/if2453/r10/root --release rN.1 --protein 2eef240afefddcd2c8ac7660eb50e384
 ```
 
-Output: a header line, then `accession contig_uid start end strand feature_uid protein_uid` per gene. The second
-printed `NC_001604 719747a8fef97b2380955d92845861db 3170 5822 +1 39f9ef263e234b012d2671634468546e
-2eef240afefddcd2c8ac7660eb50e384` in 4.49 s (measured, [T2]). Exit 2 when it names no gene.
+Output: a header line, then `accession contig_uid start end strand feature_uid protein_uid span genbank_span` per
+gene. With the 0-based form, the second printed `NC_001604 719747a8fef97b2380955d92845861db 3170 5822 +1
+39f9ef263e234b012d2671634468546e 2eef240afefddcd2c8ac7660eb50e384` in 4.49 s (measured, [T2], before the two span
+columns existed); it now ends `NC_001604:3170-5822 NC_001604:3171..5822`. Exit 2 when it names no gene.
 
 **2. The query.** The scientist's HMM file, or one model from Pfam on the pod (read-only):
 
@@ -166,8 +175,9 @@ it), `hits.tsv`, `hits.faa`, `neighbors.tsv`, `loci/`. The run is `<profile tmp>
   decimal; `seq_evalue_zref` at the fixed Z = 1e8 (DEC-04), two significant digits. Empty cell = no value.
 - `hits.tsv`, one row per gene of a hit protein: `accession header contig_len start end strand length
   seq_bitscore seq_evalue_zref pfam_architecture protein_uid nr90 nr50 nr50_rep genome_uid [tier] contig_uid
-  feature_uid ordinal tape_version dist_to_contig_end_bp n_records`. `tier` appears only when some gene has one
-  (none does yet). `pfam_architecture` is `-` without a library. `n_records` counts source records of the
+  feature_uid ordinal tape_version dist_to_contig_end_bp n_records stage kind`. `tier` appears only when some gene
+  has one (none does yet). `stage` is the build stage of the gene (`S1` phages, `P1`, `P2` prokaryotes on `rN.*`),
+  `kind` its genome's kind from the stage's inputs (`virus`, `prokaryote`, `plasmid`; empty if none recorded). `pfam_architecture` is `-` without a library. `n_records` counts source records of the
   contig, not hits. `dist_to_contig_end_bp` 0 = partial gene at a linear end; contig length on a circular contig.
 - `hits.faa`: `>protein_uid length= seq_bitscore= seq_evalue_zref= n_genes= example=ACC:start-end strand=+1
   header`, sequence on one line. `example` is the control's own contig for the control, else the first gene.
@@ -183,41 +193,43 @@ it), `hits.tsv`, `hits.faa`, `neighbors.tsv`, `loci/`. The run is `<profile tmp>
   strand (positive downstream). `censored=true`: a linear contig end cut the window.
 - Name a gene by `feature_uid` (or accession and range), a protein by `protein_uid`, a family by `model_acc`, a
   cluster by its uid **with the release** (cluster uids change between releases, 0-07); never a bare ordinal or a token.
+- Every command given `--out` (and `search hmm` for each file in its DIR) prints to stderr `wrote PATH: N rows`
+  (`sequences` for FASTA, `records` for JSON lines; `N tables, M rows` for `loci/`): report those counts.
+- One sequence without exporting the release: `seq --protein UID [UID ...]` (or `--proteins-file`), `seq --contig
+  ACC:START..END` or `ACC:START-END` or a contig uid, `--strand -1`; read by key (`export.protein_seqs`,
+  `cli.contig_slice`). Headers: `>uid release=R length=N`, or `>contig_uid release=R accession=A start=S end=E
+  strand=+1 contig_len=N` (0-based, half-open).
+
+```bash
+bash "$SCR/img.sh" python -m biobox.cli seq --root /tmp/if2453/r10/root --release rN.1 --protein 2eef240afefddcd2c8ac7660eb50e384
+bash "$SCR/img.sh" python -m biobox.cli seq --root /tmp/if2453/r10/root --release rN.1 --contig NC_001604:3171..5822 --strand -1 --out "$SCR/out/t7_gene1_rc.fna"
+```
 
 ## 5. Questions the one command does not answer: the catalog
 
 The catalog `catalog/release=<R>.duckdb` holds views over the release's files and macros
 (`src/biobox/catalog.py`: `macro_sql`, `pair_macro_sql`, `partners_of_sql`; tables in
-`src/biobox/registry/schemas.py`). Open it only with `catalog.open_catalog`, from a local copy, spilling into
-your scratch: a plain `duckdb` connection fails on the sequence macros and `partners_of`. Save `$SCR/q.py`:
-
-```python
-"""q.py CATALOG SQLFILE SCRATCH [RUN_DIR ...]: each ;-separated statement, its rows and what it read."""
-import sys
-from pathlib import Path
-
-from biobox import catalog
-
-cat, sql, scr = Path(sys.argv[1]), Path(sys.argv[2]), Path(sys.argv[3])
-con = catalog.open_catalog(cat, local_dir=scr / "cat", temp_directory=scr / "duck", threads=4,
-                           memory_limit="8GB", runs=[Path(d) for d in sys.argv[4:]])
-for stmt in [s.strip() for s in sql.read_text().split(";") if s.strip()]:
-    p = catalog.profile_query(con, stmt)
-    print("--", " ".join(stmt.split())[:120])
-    for row in p["result"][:200]:
-        print("\t".join("" if v is None else v.hex() if isinstance(v, bytes) else str(v) for v in row))
-    print(f"-- rows {len(p['result'])}; bytes_read {p['bytes_read']}")
-    for s in p["scans"]:
-        print(f"-- read {s['row_groups_scanned']} of {s['row_groups_total']} row groups "
-              f"{s.get('lookup') or ''} {s['files'][0] if s['files'] else ''}")
-```
+`src/biobox/registry/schemas.py`). Query it with `bio-box sql` (card W-23; `_sql` and `sql_connection` in
+`src/biobox/cli.py`): it opens the catalog with `catalog.open_catalog` (a plain `duckdb` connection fails on the
+sequence macros and `partners_of`) from a copy in a scratch directory under the profile's `tmp` (or the system's
+temporary directory), where DuckDB also spills, never under the root. It runs only statements DuckDB's parser
+calls SELECT (also `SHOW`, `DESCRIBE`, `SUMMARIZE`, `FROM ...`), on a connection that cannot write: the catalog is
+attached read-only and external access is off, with only the release's and the runs' files readable, so `COPY ...
+TO`, `CREATE`, `ATTACH`, `INSTALL`, `LOAD`, `SET` and `PRAGMA` are refused (exit 2). Each statement's rows go to
+stdout (a TSV table with its column line, a blank line between statements; `--format json` for one statement, one
+object per row) or to `--out FILE` outside the root; stderr has, per statement, its row count and the row groups it
+read per table (`catalog.profile_query`). `--runs` attaches closed runs (a run directory, or a runs directory: its
+runs of this release); with `--profile` and no `--runs`, your runs directory. Write the statements in a file
+(`;`-separated) or give one with `-e`:
 
 ```bash
-bash "$SCR/img.sh" python "$SCR/q.py" /tmp/if2453/r10/root/catalog/release=rN.1.duckdb "$SCR/q1.sql" "$SCR"
+bash "$SCR/img.sh" python -m biobox.cli sql --root /tmp/if2453/r10/root --release rN.1 --profile "$TREE/profiles/wilkcomp02.yaml" "$SCR/q1.sql"
+bash "$SCR/img.sh" python -m biobox.cli sql --root /tmp/if2453/r10/root --release rN.1 -e "SELECT key, value FROM catalog_info ORDER BY key"
 ```
 
-Uids are BLOBs: write a literal as `unhex('2eef...')`; q.py prints them as hex. One example per object
-(numbers measured on `rN.1`, [T1] §1); put a `LIMIT` on anything that may return many rows:
+Uids are BLOBs: write a literal as `unhex('2eef...')`; `sql` prints them as hex. One example per object
+(numbers measured on `rN.1`, [T1] §1); put a `LIMIT` on anything that may return many rows (the rows of a statement
+are held in memory before they are printed):
 
 ```sql
 SELECT key, value FROM catalog_info ORDER BY key;              -- release_id, manifest_hash, root, tape_version, stages
@@ -242,17 +254,19 @@ SELECT o.stage, count(DISTINCT o.protein_uid) AS proteins, count(*) AS genes, co
   FROM protein_occurrence o LEFT JOIN contig_dim_now() d ON d.contig_uid = o.contig_uid
   WHERE o.protein_uid IN (SELECT target_uid FROM search_hit WHERE target_kind = 'protein') GROUP BY 1 ORDER BY 1;
 SELECT run, status, recipe_hash, pack_id, ran_against, z_prot, wall_s, cpu_min_max_pid, peak_rss_bytes FROM search_run;
-COPY (SELECT DISTINCT lower(hex(target_uid)) FROM search_hit WHERE target_kind = 'protein' ORDER BY 1)
-  TO '/tmp/if2453/bio-box/q/<task>/uids.txt' (HEADER false);
+SELECT DISTINCT lower(hex(target_uid)) AS "#protein_uid" FROM search_hit WHERE target_kind = 'protein' ORDER BY 1;
 ```
 
-The last three need the run directory as `RUN_DIR`. Keys for `token_of`: a cluster uid as lowercase hex at
+The last three need the run attached (`--runs` with the run directory). The stage split is also in `hits.tsv`
+(columns `stage` and `kind`); the query adds genomes and contigs. The last, alone in its own file `$SCR/uids.sql`
+and run with `--out "$SCR/uids.txt"`, writes a file `nbr --anchors-file` reads (its column line starts with `#`, so
+it is skipped as a comment; `sql` refuses `COPY ... TO`). Keys for `token_of`: a cluster uid as lowercase hex at
 `nr50`/`nr90`, a `model_acc` as `l1_domains` stores it at `family` (take it from `domains_of` of a known
 protein; `PF00000.0` above is a placeholder). `token_of` turns a stable key into a token inside the query; the
 token id itself never leaves the query.
 
-**Pruning rule (AGENTS §4.4).** A lookup by a key a table is sorted by reads one or two row groups per key; q.py
-prints what each statement read: report it with any number from SQL. Cheap: by `protein_uid` (`slots_of`,
+**Pruning rule (AGENTS §4.4).** A lookup by a key a table is sorted by reads one or two row groups per key; `sql`
+prints on stderr what each statement read: report it with any number from SQL. Cheap: by `protein_uid` (`slots_of`,
 `protein_of`, `domains_of`, `member_cluster`), by `contig_uid` (`contig_label`, `contig_len_of`, `seq_get`,
 `contig_dim_now()`, `tapes_of`), by stable key (`token_of`, `token_rows`, `partners_of` with few loci).
 Expensive (every row group; seconds to minutes at 10 Gbp, an estimate; say so): by accession or header
@@ -294,8 +308,8 @@ print("control", sys.argv[3], ours.get(sys.argv[3]), theirs.get(sys.argv[3]))
 ```
 
 Expect what both trials found ([T2] §3): the same protein set (0 only in either), scores equal to 0.1 bit, the
-control in both. Then split the hits by stage with the `protein_occurrence` query of §5 (phages are stage `S1`,
-prokaryotes `P1`, `P2`). Neighbours can be checked the same way: an independent SQL window (each contig's genes
+control in both. Then split the hits by source with the `stage` and `kind` columns of `hits.tsv` (phages are stage
+`S1`, prokaryotes `P1`, `P2`), and genomes per stage with the stage query of §5. Neighbours can be checked the same way: an independent SQL window (each contig's genes
 by start, end, strand) gave the same 2,581 locus tables ([T2] §3). **If a check disagrees, report both answers
 and the commands; do not choose one.** Remove the 3.7 GB FASTA when done: `rm "$SCR/proteins.faa"`.
 
@@ -307,7 +321,7 @@ Lead with the answer in one or two sentences, then the evidence:
   unit, split by source: proteins (distinct sequences), genes, contigs, genomes (`contig_dim.genome_uid`).
 - To reproduce: the release and its manifest hash, the run id, recipe hash and pack id (`search_run`), the image
   sha256, the commit of `$TREE` (the laptop's `git rev-parse HEAD` when mirrored), the query file's `sha256sum`.
-- The independent check (§6) and its result; what q.py says each SQL query read.
+- The independent check (§6) and its result; what `sql` says on stderr each SQL statement read.
 - What the release cannot tell: no Pfam on `rN.1` (clusters have uids, no names); no ncRNA; no taxonomy; no
   tiers; neighbour counts are counts, not significance (no enrichment statistic exists).
 - Where the outputs are (`$SCR` on the pod's `/tmp`: gone after a reboot; offer to copy them to the laptop).
@@ -331,7 +345,9 @@ Each is stated where it applies above; this is the checklist. The card or decisi
   `--pack-dir` and `--runs`, uses `/tmp/atd`, which is not ours (W-03).
 - `search hits` without `--format` shows 50 rows (`--top_n 0` for all) (W-20).
 - `--positive 'TEXT'` (a header substring) nearly always matches many genes and is refused with a list (W-15).
-- Cluster uids, `ACC:START-END`, offsets and the thread total: §4, §3 step 1, §1 (0-07, W-20, AGENTS §7.2).
+- Cluster uids, `ACC:START-END` against `ACC:START..END` (two dots: GenBank, 1-based), offsets and the thread
+  total: §4, §3 step 1, §1 (0-07, W-20, W-23, AGENTS §7.2).
+- `sql` refuses anything but SELECT, `COPY ... TO` included: write results with `--out` (W-23).
 
 ## 9. Decision table
 
@@ -341,8 +357,9 @@ Each is stated where it applies above; this is the checklist. The card or decisi
 | Homologs of a sequence they give | Write `$SCR/recipe.yaml` (below); `pod_run.sh ... search run "$SCR/recipe.yaml" --root ... --release rN.1 --profile ... --pack-dir ... --cpus 4 --mem-gb 30 --wait`; then the exports below; `tool: jackhmmer` with `max: 3` to iterate |
 | What is next to them | `neighbors.tsv` and `loci/`. With Pfam names: summarize the same proteins on `rN.2`/`rN.3` (no pack needed, below) |
 | Are families A and B ever fused | `rN.3`: `fusions_of` (§5). `rN.2`: `pfam_architecture` of a family-A search's hits, or a self-join of `l1_domains` on `protein_uid` (a full scan: say so) |
-| Export sequences | Hits: `hits.faa`. Every protein: `export proteins` (§6). A contig region: `seq_get` (§5) |
-| How many genomes have it | The stage split query of §5 (`count(DISTINCT genome_uid)`); define genome as `contig_dim.genome_uid` |
+| Export sequences | Hits: `hits.faa`. Some proteins or a contig region: `seq` (§4). Every protein: `export proteins` (§6) |
+| How many genomes have it | The stage split query of §5 (`count(DISTINCT genome_uid)`); define genome as `contig_dim.genome_uid`. By source only: `stage`, `kind` of `hits.tsv` |
+| What releases exist | `releases` (§2) |
 | Taxonomy of the hits | Not available (no taxonomy in any release yet). Give `accession` and `header` of `hits.tsv`, labelled as source headers |
 | Compare two releases | `release verify --root ... --release rN.3 --previous rN.2`; run the same search on both (a pack each) and compare `protein_uid` sets |
 | Is it significant / enriched | No statistic exists (cards F-01 to F-03): report counts and shares only, and say so |
@@ -371,5 +388,12 @@ bash "$SCR/img.sh" python -m biobox.cli nbr summarize "$RUN" --root /tmp/if2453/
 bash "$SCR/img.sh" python -m biobox.cli nbr summarize --anchors-file "$SCR/uids.txt" --root /tmp/if2453/r10/root --release rN.2 --profile "$TREE/profiles/wilkcomp02.yaml" --window 5g --by pfam,nr50 --format tsv --out "$SCR/out/neighbors_pfam.tsv"
 ```
 
-`uids.txt` is the `COPY` of §5 (protein uids are content hashes, the same in every release over these stages).
+`uids.txt` is the last query of §5, with `AND run = '<run id>'` added to keep one run, written with `sql --out`;
+`--profile` attaches your runs of the release (protein uids are content hashes, the same in every release over
+these stages):
+
+```bash
+bash "$SCR/img.sh" python -m biobox.cli sql --root /tmp/if2453/r10/root --release rN.1 --profile "$TREE/profiles/wilkcomp02.yaml" "$SCR/uids.sql" --out "$SCR/uids.txt"
+```
+
 If the summary reports 0 anchor loci, pass `--tape-version` with the release's `tape_version` from `catalog_info`.

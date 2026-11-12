@@ -49,6 +49,8 @@ pytestmark = [pytest.mark.r2, pytest.mark.covers("MR-16", "C-11"),
 REL = "rB41.1"
 THREADS = 2
 PLAN_RECORDS = "l2/cluster_plan/"  # the split build's own records: never in a manifest
+# card B-45: the plan's cut with a forced table over the part budget (each part would rebuild it at 300 CPU-minutes)
+DEC29 = {"part_cpu_min": 240.0, "rebuild_cpu_min": 300.0, "one_process_cpu_min_max": 20000.0}
 
 
 # --- inputs ---------------------------------------------------------------------------------------------
@@ -138,6 +140,11 @@ def built(tmp_path_factory):
             split[n] = base / name / f"split-{n}"
             cluster.run_split(root, REL, V, ["S0"], parts=n, threads=THREADS, tmp=base / name / f"tmp-{n}",
                               out=split[n])
+        # card B-45: a forced per-part table over the part budget, so the calls whose parts rebuild it run as one
+        # process (DEC-29) under the plan's one-process cap
+        split["dec29"] = base / name / "split-dec29"
+        cluster.run_split(root, REL, V, ["S0"], threads=THREADS, tmp=base / name / "tmp-dec29", out=split["dec29"],
+                          **DEC29)
         out[name] = {"root": root, "oracle": oracle, "split": split, "base": base / name}
     fx = out["fixture"]
     fx["naive"] = base / "fixture" / "naive-4"
@@ -243,7 +250,7 @@ def test_b41_every_intermediate_database_is_the_same_at_any_part_count(built, na
     b = built[name]
     one = digests(b["split"][1])
     assert len(one) == len(cluster.calls()) and all(one.values())
-    for n in (2, 4):
+    for n in (2, 4, "dec29"):
         assert digests(b["split"][n]) == one, n
 
 
@@ -256,6 +263,51 @@ def test_b41_without_the_self_hit_the_prefilter_parts_give_other_intermediates(b
     prefilters = [c.name for c in cluster.calls() if c.module == "prefilter"]
     assert set(prefilters) <= set(differ), differ
     assert all(digests(fx["split"][4])[n] == one[n] for n in differ)  # with the flag, the same parts are equal
+
+
+# --- one process for a call that cannot be split (card B-45, DEC-29) ------------------------------------------------
+
+
+@pytest.mark.covers("B-45")
+@pytest.mark.parametrize("name", sorted(INPUTS))
+def test_b45_a_call_run_as_one_process_under_dec29_equals_the_workflows(built, name):
+    """With each part's own table forced over the part budget, the two prefilters whose parts rebuild it (the NR90
+    step and NR50 step 0) run as one process, the workflow's own call, and the build equals `cluster.run` file for
+    file; every other call is cut as before (the two sensitive prefilters into two parts that share an index)."""
+    b = built[name]
+    out = b["split"]["dec29"]
+    assert tree(out) == tree(b["oracle"])
+    recs = records(out)
+    assert recs[cluster.PLAN_STEP]["cut"] == DEC29
+    one = []
+    for c in (c for c in cluster.calls() if c.split):
+        cut = recs[f"{c.name}.cut"]
+        parts = [k for k in recs if k.startswith(f"{c.name}.part-")]
+        if c.module == "prefilter" and not c.shares_index:
+            one.append(c.name)
+            assert cut["one_process"]["decision"] == "DEC-29" and cut["one_process"]["cpu_min_max"] == 20000.0
+            assert len(cut["parts"]) == 1 and parts == [] and cut["overhead_cpu_min"] == 300.0
+            argv = recs[c.name]["argv"]
+            assert argv == list(c.argv)  # the workflow's call: its own table, the self hit as the workflow asks
+            assert argv[2] == c.positional[1] and argv[argv.index("--add-self-matches") + 1] == "0"
+        else:
+            assert "one_process" not in cut
+            if c.shares_index:
+                assert len(cut["parts"]) == len(parts) == 2 and "index" in cut
+    assert one == ["cluster.nr90.11.prefilter", "cluster.nr50.11.prefilter"]
+
+
+@pytest.mark.covers("B-45")
+def test_b45_without_the_cap_the_split_build_is_refused_at_the_cut_naming_dec29(built, tmp_path):
+    fx = built["fixture"]
+    out = tmp_path / "out"
+    cut = {k: v for k, v in DEC29.items() if k != "one_process_cpu_min_max"}
+    with pytest.raises(ValueError, match="no number of parts fits it.*DEC-29"):
+        cluster.run_split(fx["root"], REL, V, ["S0"], threads=THREADS, tmp=tmp_path / "tmp", out=out, **cut)
+    names = [c.name for c in cluster.calls()]
+    first = "cluster.nr90.11.prefilter"
+    recs = records(out)
+    assert f"{first}.cut" not in recs and names[names.index(first) - 1] in recs
 
 
 # --- lost scratch -----------------------------------------------------------------------------------------------

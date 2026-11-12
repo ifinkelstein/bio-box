@@ -1,0 +1,16 @@
+{
+ "argv": [
+  "python",
+  "/tmp/if2453/ci/c21f/scripts/stress/c21f_context_free/envcheck.py",
+  "/tmp/if2453/r10/root",
+  "/tmp/if2453/c21f/work"
+ ],
+ "cpu_min": 0.0469,
+ "exit_code": 0,
+ "host": "wilkcomp02.ccbb.utexas.edu",
+ "peak_rss_mib": 248.0,
+ "started_at": "2026-11-12T13:57:51+00:00",
+ "sys_min": 0.0195,
+ "user_min": 0.0275,
+ "wall_s": 2.92
+}

@@ -261,7 +261,10 @@ estimate: about five times that run; the PI may change it). Every other step kee
   clustering estimated over `cpu_min_per_process` is refused, exit 2, and the log line says so.
 - With the key, the cluster step's run record holds `cpu_budget_reason: exempt: DEC-25`, and
   `over_cpu_budget` is still true when the step used more than 300 CPU-minutes (section 5).
-- The exemption ends when card B-37 splits clustering into processes under the budget.
+- When the release clusters in parts (below) and the profile has the key, this check does not use the
+  release's one-process estimate: it checks each call the plan runs as one process (DEC-29, below)
+  against `cluster_cpu_min_max` (card B-45). A profile without the key gets the check above in either mode.
+- The one-process clustering step ends with card B-42 (2); the key stays for DEC-29.
 
 **Clustering in parts (card B-41).** When clustering in one process is estimated above 80% of the
 profile's `cpu_min_per_process` (240 CPU-minutes of 300), `build-stage` clusters the release in
@@ -280,7 +283,30 @@ parts, each step its own `run-step` under `runs/stage=<release>/`:
   never in a manifest.
 - MMseqs2's databases are under `$BBTMP/scratch/biobox-cluster/<release>-<key>/`, and are removed when
   `cluster` publishes. Their size is not yet measured.
-- The DEC-25 estimate and its refusal above still come first, until the exemption is removed.
+- The DEC-25 estimate and its refusal above still come first (in parts, call by call: above).
+
+**A call that cannot be split runs as one process (DEC-29, card B-45).** The NR90 step's prefilter
+(`cluster.nr90.11.prefilter`) and NR50 step 0 (`cluster.nr50.11.prefilter`) cannot search a shared index
+in MMseqs2 18.8cc5c (card B-44), so each of their parts rebuilds the k-mer table of the whole target. From
+about 68.3 M targets that table alone is 240 CPU-minutes a part (derived: 240 × 60 / 2.108e-4 CPU-seconds
+per target), and no number of parts fits the budget: about 74 M proteins for the NR90 step and 108 M for
+NR50 step 0 (derived, DEC-29). Then:
+
+- With `cluster_cpu_min_max` in the profile, `build-stage` gives it to the plan
+  (`release cluster plan --one-process-cpu-min-max`), which records it in its `cut`. The call's `.cut`
+  step makes it one part, the workflow's own call, and its record holds `one_process` with the reason and
+  the estimate (its work plus its own table). Above the cap the cut is refused, exit 2.
+- Just before the call's step `build-stage` checks the estimate against the profile's cap again and
+  refuses (exit 2, `refused before <release>.<call>`) above it or when the profile has no key. Its run
+  record holds `cpu_budget_reason: exempt: DEC-29`, with `over_cpu_budget` true above 300 CPU-minutes.
+- Without the key the cut refuses the call as before: `no number of parts fits it`, naming DEC-29.
+- At 95 M proteins the NR90 step's prefilter as one process is about 3,945 CPU-minutes (derived: 3,629 of
+  work and 316.4 for the table, the extrapolated model in `src/biobox/l2/cluster.py`), and the whole
+  clustering in parts about 37,963 (derived, same place). Nothing that large has been measured.
+- `release cluster plan` prints, under `one_process`, which calls may run as one process, from how many
+  targets, and whether this release can reach that. `release cluster step --name <call>.cut` prints the
+  cut's `one_process` when it is one.
+- This ends when an MMseqs2 without the abort is pinned (card B-44).
 
 A shard that fails stops new launches. Shards already running go on to their own end and publish if
 no `STOP` file exists then, and `build-stage` exits with the failed shard's code. A `STOP` file is
@@ -400,7 +426,7 @@ names. Fields:
 | `wall_s`, `cpu_min`, `peak_rss_bytes` | wall seconds, CPU-minutes, peak resident bytes of the step command |
 | `mem_cap` | `how` is `inherited` (the unit's cap, with `memory_max_bytes`), `opened` or `none` |
 | `exit_code`, `over_cpu_budget` | `over_cpu_budget` is true above the profile's `cpu_min_per_process` |
-| `cpu_budget_reason` | only in a release's `cluster` record, when the profile sets `cluster_cpu_min_max`: `exempt: DEC-25` (section 2) |
+| `cpu_budget_reason` | only in a release's `cluster` record, when the profile sets `cluster_cpu_min_max` and the release clusters in one process: `exempt: DEC-25`; and in the record of a clustering call run as one process in parts: `exempt: DEC-29` (section 2) |
 | `image_digest`, `host` | the image sha256 that `pod_run.sh --digest` passed in, and the host |
 | `outputs` | each published file: `path`, `bytes`, `sha256` |
 
@@ -585,23 +611,47 @@ how many rows it shows of how many (`--top_n 0` shows all). `nbr summarize --by 
 release with no domain library says so on stderr and leaves the `pfam` level out. Strand is `+1` or
 `-1` in every table, coordinates are 0-based and half-open, and the offsets of `neighbors.tsv` are
 relative to the anchor's strand (card W-20; `search hmm` writes these and every column's meaning into
-`README.txt`; `tier` is a column of `hits.tsv` only when the release has tiers, none has yet).
+`README.txt`; `tier` is a column of `hits.tsv` only when the release has tiers, none has yet; its last two columns,
+`stage` and `kind`, give each gene's build stage and its genome's kind, card W-23).
 `--format tsv`
 is one row per gene; `--format faa` is one record per protein, named by protein uid. `nbr ...
 --format tsv --out DIR` writes one file per anchor locus. `nbr summarize` counts families and
 clusters around the anchors. `export proteins` needs the release's manifest; it reads the root only
-and takes no `--profile`.
+and takes no `--profile`. Every one of these given `--out` prints one stderr line per file it wrote,
+`wrote PATH: N rows` (`sequences` for FASTA, `records` for JSON lines, `N tables, M rows` for a
+directory of locus tables; card W-23).
+
+**What a root holds, one sequence, and SQL** (card W-23). `releases` prints one line per release
+of the root (a manifest or only a `release_def`): stages, genomes, contigs, distinct proteins, domain
+libraries, ncRNA producers, whether it has the lookup tables of cards B-27 and B-39, and with
+`--profile` (or `--pack-dir`) its pack. `seq` prints proteins by uid (`--protein`, several, or
+`--proteins-file`) or one stretch of a contig (`--contig` by accession or contig uid, `--strand -1`)
+as FASTA, read by key, never by exporting the release. `sql` runs SELECT statements on the release's
+catalog through `open_catalog` on a read-only connection (external access off, only the release's and
+the runs' files readable; `COPY ... TO`, `CREATE`, `ATTACH`, `SET` and the like exit 2), with DuckDB's
+temporary files in a scratch directory under the profile's `tmp`, and prints on stderr the row groups
+each statement read; `--runs` (or the profile) attaches runs of the release.
+
+```bash
+bio-box releases --root "$ROOT" --profile "$PROFILE"
+bio-box seq --root "$ROOT" --release rC6.1 --protein 0123456789abcdef0123456789abcdef
+bio-box seq --root "$ROOT" --release rC6.1 --contig NC_001416.1:201..1000 --strand -1
+bio-box sql --root "$ROOT" --release rC6.1 --profile "$PROFILE" -e "SELECT key, value FROM catalog_info"
+```
 
 **Anchors from a file, and finding a gene** (card W-18). `nbr` takes a long list of protein uids from a
 file, one uid per line (blank lines and `#` lines are skipped), in place of the comma-separated
 argument; `find` prints the genes an accession or a protein uid names, one row each: accession,
-contig uid, start, end (0-based, end exclusive), strand, feature uid, protein uid. `ACC:START-END`
-names one gene, as `search hmm --positive` does (it uses the same lookup). `--accession ACC` alone lists
+contig uid, start, end (0-based, end exclusive), strand, feature uid, protein uid, and the gene in both
+coordinate forms (`span`, `genbank_span`). `ACC:START-END` (0-based, end exclusive) or `ACC:START..END`
+(GenBank: 1-based, both ends included; card W-23) names one gene, as `search hmm --positive` does (it
+uses the same lookup); any other spelling exits 2 and shows both forms. `--accession ACC` alone lists
 every gene of that contig; `--protein UID` every gene that carries the protein.
 
 ```bash
 bio-box nbr summarize --anchors-file "$WORK/anchors.txt" --root "$ROOT" --profile "$PROFILE" --release rC6.1 --window 5g --by pfam,nr50
 bio-box find --root "$ROOT" --release rC6.1 --accession NC_001416.1:200-1000
+bio-box find --root "$ROOT" --release rC6.1 --accession NC_001416.1:201..1000
 bio-box find --root "$ROOT" --release rC6.1 --protein 0123456789abcdef0123456789abcdef
 ```
 
@@ -610,7 +660,8 @@ runs it, and writes the exports into `--out DIR`. `--bits` is the inclusion thre
 `--neighbors N` the genes on each side (window `Ng`, default 5); `--model` picks one model of a file
 that holds several. `--positive` is required: a protein the search must find, given as
 `ACCESSION:START-END` (one gene, with the accession, start and end that `search hits --format tsv`
-prints: 0-based, end exclusive) or as a substring of its contig's header (case-sensitive). It must
+prints: 0-based, end exclusive), as `ACCESSION:START..END` (the same gene in GenBank's 1-based form) or
+as a substring of its contig's header (case-sensitive). It must
 name exactly one protein of the release; otherwise the command exits 2 and lists the genes that
 matched, each as `ACCESSION:START-END`, so one can be given instead. `$POSITIVE` below is such a
 gene. The run runs in the foreground, as `search run --wait`, so it may run in a `pod_run.sh` unit;
@@ -625,6 +676,7 @@ column means), `recipe.yaml` (the recipe the
 run ran; `search run DIR/recipe.yaml` runs it again), `hits.tsv` and `hits.faa` (as `search hits
 --format tsv|faa`), `neighbors.tsv` (as `nbr summarize --format tsv`) and `loci/` (one table per
 locus, as `nbr --format tsv`); each is written by that command, so the files are the same. The log
+has a `wrote PATH: N ...` line for each of `hits.tsv`, `hits.faa`, `neighbors.tsv` and `loci/`, then
 ends with the run id and `ok`, then one line per file. The run itself is in the runs directory, as
 for `search run`. A release with no domain library (the 10 Gbp release `rN.1` has none) is
 searched all the same: the neighbour summary is by `nr50,nr90` instead of `pfam,nr50`, and the log
@@ -729,7 +781,7 @@ a profile value is missing from this table.
 | Memory cap required | true: `run-step` and the search runner refuse to start uncapped | profile `require_mem_cap` |
 | Nice | 19 (one big process), 15 (many small ones) | profile `nice_monolithic`, `nice_fanout`; AGENTS 7.2 says 19 |
 | CPU-minutes per process | 300 | profile `cpu_min_per_process`; AGENTS 7.2 |
-| CPU-minutes of a release's clustering | 20000, estimated before launch; refused above it. The one exemption from the 300 (DEC-25), until card B-37. Set by the PI on 2026-11-10 for the 50 Gbp build: about nine times the 2,195.91 measured for 10,620,684 proteins (wilkcomp02, 2026-11-10). Without the key, clustering over 300 is refused | profile `cluster_cpu_min_max`; DEC-25; `cluster_refusal` in `src/biobox/stage.py`; card B-36 |
+| CPU-minutes of a release's clustering | 20000, estimated before launch; refused above it. The one exemption from the 300 (DEC-25), until card B-37. Set by the PI on 2026-11-10 for the 50 Gbp build: about nine times the 2,195.91 measured for 10,620,684 proteins (wilkcomp02, 2026-11-10). Without the key, clustering over 300 is refused. In parts it is the cap of each call that runs as one process because no number of parts fits it (DEC-29, card B-45) | profile `cluster_cpu_min_max`; DEC-25, DEC-29; `cluster_refusal`, `one_process_refusal` in `src/biobox/stage.py`; cards B-36, B-45 |
 | ncRNA scan shard size | 131,578,947 genome bases: 80% of `cpu_min_per_process` (300) at 304.0 CPU-hours per 10 Gbp, the slower of the two shards of card E-07's pod check (derived in `planning/measurements/2026-11-11_ncrna_producer.md`; the design note's 247.4 gave 161,681,487). Shards at once: at most the unit's `MemoryMax` / (6.4 GiB per two `cmsearch` threads) | `NCRNA_CPU_H_PER_10GBP`, `NCRNA_JOB_GIB` in `src/biobox/stage.py`; cards E-07, E-08 |
 | Scan shard size | 30,150,753 residues: 80% of `cpu_min_per_process` (300) at 7.96 CPU-minutes per million residues (derived: 300 × 0.8 / 7.96 × 10^6; the rate of the Pfam scan of stage P1 in card C-10, measured on wilkcomp02, 2026-11-10: 2,343.74 CPU-minutes for 294.5 M residues). The 80% leaves room for a scan 25% slower per residue (derived: 1 / 0.8) | `SHARD_MARGIN` and `SCAN_CPU_MIN_PER_M` in `src/biobox/stage.py`; cards C-11, C-13 |
 | Scan shards at once | `--scan-jobs` J × `--scan-cpus` C at most the threads `run-step` allows when `build-stage` starts (40 by day, 56 at night when idle); defaults C = 4, J = allowance // C (10 by day, 14 at night). The cap is a total over everything of ours on the pod, and `build-stage` counts only its own threads: choose J = floor((cap - other threads) / C) (section 2). The allowance is read again before each step and before each shard launch; a launch that would pass it waits | `scan_slots` and `_launch` in `src/biobox/stage.py`; cards C-11, C-12 |
@@ -758,7 +810,7 @@ exemption; the fixture's clustering is far under 300 CPU-minutes). Appendix B li
 
 | Limit | What happens | Card |
 |---|---|---|
-| Clustering's DEC-25 cap | above 80% of the budget a release's clustering runs in parts (card B-41, section 2), but the DEC-25 estimate still refuses one over the profile's `cluster_cpu_min_max` (20000; about 62.7 M proteins, derived, section 2), exit 2, until the split has passed on the pod and the exemption is removed. The estimate is a fit by protein count, extrapolated above 10.6 M proteins. At 95 M proteins a prefilter part's own k-mer index of the whole target would take about 333 CPU-minutes (derived: 12.44 CPU-seconds per 59,000 targets, B-37 design §3), so no part fits the budget there; the cut then refuses | B-36, B-37, B-41 |
+| Clustering's DEC-25 cap | above 80% of the budget a release's clustering runs in parts (card B-41, section 2). In one process the DEC-25 estimate refuses one over the profile's `cluster_cpu_min_max` (20000; about 62.7 M proteins, derived, section 2), exit 2; in parts, with the key, only a call run as one process over the cap is refused (card B-45). The estimate is a fit by protein count, extrapolated above 10.6 M proteins. From about 74 M proteins a part of the NR90 step's prefilter would spend 240 CPU-minutes or more on its own k-mer table of the whole target (derived, section 2), so no part fits the budget; that call then runs as one process under `cluster_cpu_min_max` (DEC-29), or is refused without the key | B-36, B-37, B-41, B-45 |
 | Ingest of a stage over about 60 Gbp | `build-stage` refuses before any step (exit 2): one ingest process runs at about 3.7 Mbp/s (measured, wilkcomp02), so it would pass 300 CPU-minutes. Split the stage into smaller stages | B-30 |
 | Shard size is Pfam's | shards are cut at 80% of the budget at Pfam's rate (7.96 CPU-minutes per million residues, measured in C-10). A library more than 1.25 times slower per residue than that (derived: 1 / 0.8; above 9.95 CPU-minutes per million residues, derived) passes 300 CPU-minutes per shard, and the run record says `over_cpu_budget`. Lower `--scan-cpus` does not help, since the budget counts CPU-minutes | C-11, C-13 |
 | `pod_run.sh` CPU quota | the unit's quota is `--threads` of `pod_run.sh` (default the night cap, 56), fixed at launch, whatever `--scan-jobs` × `--scan-cpus` is. By day it is above the day cap: the day cap is held by `build-stage` and `run-step`, not by the quota. A `run-step` launched alone keeps the thread count it chose at its start until it ends (at most 300 CPU-minutes) | C-07, C-11, C-12 |

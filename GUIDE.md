@@ -43,30 +43,44 @@ mkdir -p "$WORK"
 cp /tmp/if2453/trial2/work/RNA_pol.hmm "$WORK/"   # Pfam PF00940, T7-like RNA polymerase: the worked example
 ```
 
+The table in section 1 will age; `releases` lists what the root holds now, one line per release: its stages,
+genomes, contigs and distinct proteins, its domain libraries (Pfam or none), whether it has the lookup tables of
+the current code (`member_cluster`, `contig_label`, `domain_family_tokens`; `no` means slower lookups, section 8),
+and the search pack it has in the pack directory you name (card W-23):
+
+```bash
+bio-box releases --root "$ROOT" --pack-dir "$PACKS"
+```
+
 ## 3. Choose a positive control
 
 A positive control is one protein of the release that your model must find; if the run misses it, the run ends
 `failed` (`positive control not recovered`) with no tables, so a wrong cutoff or model shows up as a failure, not a
 short list. Pick a protein whose family you trust and that scores well above the cutoff.
 
-You name it by one gene, `ACCESSION:START-END`. Coordinates in bio-box are 0-based and half-open: `START` is the
-GenBank start minus 1, `END` is the GenBank end. T7 gene 1 (GenBank `NC_001604`, 3171..5822) is
-`NC_001604:3170-5822`. Find it with `find`:
+You name it by one gene, in either of two forms. GenBank's, copied from a record: `ACCESSION:START..END`, 1-based
+with both ends included, so T7 gene 1 (GenBank `NC_001604`, 3171..5822) is `NC_001604:3171..5822`. Or bio-box's
+own, which every table it writes uses: `ACCESSION:START-END`, 0-based and half-open (`START` is the GenBank start
+minus 1, `END` the GenBank end), so the same gene is `NC_001604:3170-5822`. Two dots or one dash decide which;
+anything else (`3171.-5822`, `3171...5822`) is refused with both spellings of what you may have meant. Find it with
+`find`:
 
 ```bash
 bio-box find --root "$ROOT" --release rN.1 --accession NC_001604
-bio-box find --root "$ROOT" --release rN.1 --accession NC_001604:3170-5822
+bio-box find --root "$ROOT" --release rN.1 --accession NC_001604:3171..5822
 bio-box find --root "$ROOT" --release rN.1 --protein 2eef240afefddcd2c8ac7660eb50e384
 ```
 
-Columns: accession, contig_uid, start, end, strand, feature_uid, protein_uid. The first lists the 49 genes of the
-T7 genome; the second the one gene, with its protein uid; the third every gene that carries that protein (33, in 33
-T7 isolates). Each took about 4 s on `rN.1` and printed an expected `note: ... slow path` line (*measured*,
-`planning/measurements/2026-11-11_trial_search_rN1_second.md` section 1; section 8 below).
+Columns: accession, contig_uid, start, end, strand, feature_uid, protein_uid, then the gene in both forms, `span`
+(`NC_001604:3170-5822`) and `genbank_span` (`NC_001604:3171..5822`). The first lists the 49 genes of the T7 genome;
+the second the one gene, with its protein uid; the third every gene that carries that protein (33, in 33 T7
+isolates). Each took about 4 s on `rN.1` and printed an expected `note: ... slow path` line (*measured*,
+`planning/measurements/2026-11-11_trial_search_rN1_second.md` section 1, with the 0-based form; section 8 below).
 
 `--positive` also accepts text from a contig's header (case-sensitive), such as `'Enterobacteria phage T7'`. On a
 real release that text names many contigs and every gene on them, so the command stops with exit 2 and lists up to
-20 matching genes, each as `ACCESSION:START-END(strand)`, protein uid and header. Copy one gene from that list.
+20 matching genes, each as `ACCESSION:START-END(strand)`, the same as `ACCESSION:START..END`, protein uid and
+header. Copy one gene from that list.
 
 ## 4. Run a search
 
@@ -88,7 +102,7 @@ nothing can write into it. After it, the search:
 | `--model` | the model to use, by name or accession, when the file holds several |
 | `--bits` | inclusion cutoff, in bits, on the full-sequence score (E-value cutoffs are refused) |
 | `--neighbors` | genes on each side of each hit in the neighbour tables (default 5) |
-| `--positive` | the positive control, `ACCESSION:START-END` or header text (section 3) |
+| `--positive` | the positive control, `ACCESSION:START..END` (GenBank), `ACCESSION:START-END` or header text (section 3) |
 | `--out` | a new or empty directory, outside the data root, for the results |
 | `--cpus`, `--mem-gb` | search threads, and its memory limit in GB; never above the profile's caps |
 | `--library`, `--threads` | the domain library for `pfam_architecture` when there are several; export threads (default 4) |
@@ -117,8 +131,10 @@ bio-box search cancel "$RUN" --root "$ROOT" --profile "$PROFILE"
 ```
 
 `status` prints `"status": "running"`, then `ok` or another status (`failed`, `stopped`, `oom`, `timeout`) with
-the reason. `cancel` (or `systemctl --user stop pi-rnap`) ends the run `stopped`. A finished log ends with the run
-id and `ok`, one line per file, and `pod_run: pi-rnap exited 0`. `exited 2`: refused before the search (positive
+the reason. `cancel` (or `systemctl --user stop pi-rnap`) ends the run `stopped`. A finished log has one line per
+output file with what it holds (`wrote .../hits.tsv: 2581 rows`, `.../hits.faa: 1957 sequences`, `.../loci: 2581
+tables, ... rows`; every command given `--out` prints such a line), then the run id and `ok`, one line per file, and
+`pod_run: pi-rnap exited 0`. `exited 2`: refused before the search (positive
 control, missing pack, `--out` not empty; the log says which). `exited 1`: the run ended other than `ok`, and
 `--out` holds only `recipe.yaml`.
 
@@ -156,6 +172,7 @@ so use `feature_uid` to name a gene.
 | `dist_to_contig_end_bp` | 0: the gene caller marked the gene partial at a contig end (it runs off it); otherwise the distance to the nearer end; the contig length for a circular contig |
 | `n_records` | how many input records carried this identical contig sequence; not a hit count |
 | `genome_uid`, `contig_uid`, `feature_uid`, `ordinal`, `tape_version` | the genome, the contig and the gene |
+| `stage`, `kind` | the build stage the gene comes from (on `rN.*`: `S1` phages, `P1` and `P2` prokaryotes) and its genome's kind (`virus`, `prokaryote`, `plasmid`), so hits split by source with a filter on one column |
 
 A locus table (`loci/*.tsv`): line 1 the contig header, line 2 facts (`anchor_feature_uid`, `anchor_protein_uid`,
 `censored=true` when a contig end cut the window), then one row per gene. `offset` counts genes from the hit in
@@ -185,7 +202,8 @@ A locus is one hit gene with its window; the hit is not its own neighbour. `neig
 Read rows by `n_loci`. In the example the top NR50 cluster (`fa4cb451...`) is in 663 of 2,581 loci (25.7%,
 *derived*), commonest at +4; the third (`5fe1410c...`) sits at -1 in 476 of its 481 loci (*measured*, second trial
 file). On `rN.1` (no Pfam) a cluster is only an id. To name one, look up its representative: `bio-box find
---protein <rep_uid>` gives an accession and coordinates, and `export proteins` the sequence (section 7). In T7's own
+--protein <rep_uid>` gives an accession and coordinates, and `bio-box seq --protein <rep_uid>` the sequence
+(section 7). In T7's own
 locus the -1 and +3 neighbours fall where T7's protein kinase (gene 0.7) and DNA ligase (gene 1.3) are, so those two
 clusters are probably those families; no file says so. On `rN.2` the neighbours carry Pfam names.
 
@@ -222,16 +240,32 @@ bio-box nbr "$RUN" --root "$ROOT" --profile "$PROFILE" --pack-dir "$PACKS" --win
 Each took 6 to 13 s and at most 1.3 GB of memory on `rN.1` (*measured*, second trial file, section 2). On a
 release with Pfam use `--by pfam,nr50`. `nbr summarize --top 0` lists every cluster, not 50.
 
-Below: every protein of the release as FASTA named by protein uid (88.2 s, 3.7 GB, 2.28 GB of memory on `rN.1`,
-*measured*, `planning/measurements/2026-11-10_trial_search_rN1.md`); one protein's sequence and genes; and a check
-that the release is intact (it re-reads every file; about 60 s on `rN.1`, *measured*, the same file).
+Below: one protein's sequence and its genes (`seq` reads the protein by its uid: it takes several uids, or
+`--proteins-file` with one per line, and `--out FILE`); a stretch of a contig, by accession in either coordinate
+form, or by contig uid, `--strand -1` for the reverse complement (an end past the contig's length crosses the
+origin of a circular contig); every protein of the release as FASTA named by protein uid, which you need only to
+search all of them with another tool (88.2 s, 3.7 GB, 2.28 GB of memory on `rN.1`, *measured*,
+`planning/measurements/2026-11-10_trial_search_rN1.md`); and a check that the release is intact (it re-reads every
+file; about 60 s on `rN.1`, *measured*, the same file).
 
 ```bash
-bio-box export proteins --root "$ROOT" --release rN.1 --out "$WORK/proteins.faa"
 REP=2eef240afefddcd2c8ac7660eb50e384   # T7 gp1 here; put a rep_uid from neighbors.tsv or nr50_rep from hits.tsv
-grep -A 1 "^>$REP" "$WORK/proteins.faa"
+bio-box seq --root "$ROOT" --release rN.1 --protein "$REP"
 bio-box find --root "$ROOT" --release rN.1 --protein "$REP"
+bio-box seq --root "$ROOT" --release rN.1 --contig NC_001604:3171..5822
+bio-box seq --root "$ROOT" --release rN.1 --contig NC_001604:3171..5822 --strand -1 --out "$WORK/t7_gene1_rc.fna"
+bio-box export proteins --root "$ROOT" --release rN.1 --out "$WORK/proteins.faa"
 bio-box release verify --root "$ROOT" --release rN.1
+```
+
+A FASTA header from `seq` names the uid and the release, and for a stretch of contig its accession, `start` and
+`end` (0-based, half-open), `strand` and the contig's length. Any other question about the release (how many hits
+per genome, which genes sit on a contig, what a cluster holds) is a SELECT on its catalog with `bio-box sql`; the
+agent guide (`AGENT_GUIDE.md` section 5) lists the tables and gives examples. It runs nothing that writes, and
+says on stderr how much of each table each statement read:
+
+```bash
+bio-box sql --root "$ROOT" --release rN.1 -e "SELECT key, value FROM catalog_info ORDER BY key"
 ```
 
 ## 8. Limits and rough edges today
@@ -242,7 +276,8 @@ bio-box release verify --root "$ROOT" --release rN.1
   default; `rN.2` needs one built (RUNBOOK section 7).
 - `rN.1` and `rN.2` were built before card B-27, so cluster and contig-name lookups read whole tables and print a
   `note: ... slow path` line; answers are the same, a few seconds slower. `rN.3` will not need it (card C-17).
-- Looking up `--positive` reads every contig name of the release, about 4 s on `rN.1` (card W-15).
+- Looking up `--positive`, `find --accession` or `seq --contig ACCESSION` reads every contig name of the release,
+  about 4 s on `rN.1` (card W-15); `seq --contig` with a contig uid does not.
 - Clusters have no names or products; on a release without Pfam a neighbour is only an id (no card yet).
 - NR50 and NR90 ids change between releases when a cluster gains a member (PI card 0-07).
 - A contig whose identical sequence appears in two genomes of different build stages belongs to the first genome

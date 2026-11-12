@@ -1,0 +1,22 @@
+{
+ "argv": [
+  "python",
+  "/tmp/if2453/ci/c21f/scripts/stress/c21f_context_free/recall.py",
+  "/tmp/if2453/r10/root",
+  "P1",
+  "/tmp/if2453/c21f/out/p3-0of1",
+  "p3",
+  "--tmp",
+  "/tmp/if2453/c21f/tmp",
+  "--shard",
+  "0/1"
+ ],
+ "cpu_min": 13.9844,
+ "exit_code": 0,
+ "host": "wilkcomp02.ccbb.utexas.edu",
+ "peak_rss_mib": 585.9,
+ "started_at": "2026-11-12T13:58:04+00:00",
+ "sys_min": 0.3743,
+ "user_min": 13.6102,
+ "wall_s": 839.771
+}
