@@ -10,8 +10,11 @@ An `igr_version` is `<tape_version>-igr1` (card B-20) and is checked through its
 A `tape_version` names no tool versions (card B-07): it is resolved to its producers through the
 manifest's `tape_version_def` files, which must hash to it (`biobox.l3.tapes.tape_version`), and
 each producer must name its tool versions as a gene-call version does and equal the lock. The ncRNA
-producer (card E-01) is `infernal-<v>-rfam-<v>`: Infernal's version must be the conda pin, and the Rfam
-library's the version `refdb.yaml` freezes (the lock includes the refdb libraries for this).
+producer (card E-01) is `infernal-<v>-rfam-<v>`, with an optional `-<set>-<region rule>` tail (card E-07) and an
+optional `-<clan rule>` after it (card E-08): Infernal's version must be the conda pin, and the Rfam
+library's the version `refdb.yaml` freezes (the lock includes the refdb libraries for this, `rfam_clanin` among
+them). A ledger row's tool versions may also name the gene-call version the step read (`gene_call_version`, the
+ncRNA producer's intergenic regions, card E-08); that is checked as a gene-call version is.
 """
 
 from __future__ import annotations
@@ -53,8 +56,14 @@ STEP_TOOLS = {"ingest": ("pyarrow",), "tape-*": ("pyarrow",), "genecall": ("pyro
               "domains-*": ("pyhmmer", "pyarrow"), "cluster": ("mmseqs2", "pyarrow"),
               "ncrna-*": ("infernal", "rfam", "pyarrow")}
 GENE_CALL_RE = re.compile(r"^pyrodigal-(?P<pyrodigal>[^-]+)-gv-(?P<gv>[^-]+)-p\d+$")
-# the ncRNA producer (card E-01, biobox.l1.ncrna): Infernal's version and the Rfam library's
-NCRNA_RE = re.compile(r"^infernal-(?P<infernal>[^-]+)-rfam-(?P<rfam>[^-]+)$")
+# the ncRNA producer (biobox.l1.ncrna): Infernal's version and the Rfam library's (card E-01), then optionally the
+# model set's version and the region rule (card E-07, `-prok1-igr200nt`), then optionally the clan rule (card E-08,
+# `-clan1`). Only the two tool versions are checked against the lock; the set and rules name what was scanned.
+NCRNA_RE = re.compile(r"^infernal-(?P<infernal>[^-]+)-rfam-(?P<rfam>[^-]+)"
+                      r"(?:-(?P<set>[0-9a-z]+)-(?P<region>igr\d+nt)(?:-(?P<clan>clan\d+))?)?$")
+# a ledger's tool versions may name the gene-call version a step read (the ncRNA producer's intergenic regions, card
+# E-08): it is checked as a gene-call version (its pyrodigal versions equal the lock), not as a tool of the lock
+LEDGER_GENE_CALL_KEY = "gene_call_version"
 
 
 def tool_versions(*names: str) -> dict[str, str]:
@@ -137,9 +146,13 @@ def check_provenance(manifest: dict, lock: dict[str, str] | None = None) -> list
                     problems.append(f"{f['path']}: {step} ledger row without tool versions")
                     break
                 missing = [t for t in need if t not in tv]
-                wrong = {t: (v, lock.get(t)) for t, v in tv.items() if lock.get(t) != v}
-                if missing or wrong:
-                    problems.append(f"{f['path']}: {step} tool versions missing {missing}, differ {wrong}")
+                wrong = {t: (v, lock.get(t)) for t, v in tv.items() if t != LEDGER_GENE_CALL_KEY and lock.get(t) != v}
+                gcv = tv.get(LEDGER_GENE_CALL_KEY)
+                gcv_problems = [] if gcv is None else _gene_call_problems(
+                    f["path"], f"{step} ledger {LEDGER_GENE_CALL_KEY}={gcv}", gcv, lock)
+                if missing or wrong or gcv_problems:
+                    problems += ([f"{f['path']}: {step} tool versions missing {missing}, differ {wrong}"]
+                                 if missing or wrong else []) + gcv_problems
                     break
     return problems + _tape_version_problems(manifest, root, lock)
 

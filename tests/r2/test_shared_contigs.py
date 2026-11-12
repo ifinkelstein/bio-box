@@ -562,5 +562,5 @@ def test_c21a_the_ncrna_producer_searches_a_shared_contig_once_and_ledgers_the_s
     for k in range(p["shards"]):
         ncrna.scan_shard(root, W_STAGE, lib, k, 1, model_set=ms, tmp=scratch, out=o3)
     ncrna.merge(root, W_STAGE, lib, model_set=ms, tmp=scratch, out=o3)
-    produced = {k: v for k, v in c08.tree(o3).items() if not k.startswith("l1/domain_scan/")}
+    produced = {k: v for k, v in c08.tree(o3).items() if not k.startswith(("l1/ncrna_scan/", "l1/domain_scan/"))}
     assert produced == c08.tree(tmp_path / "o")

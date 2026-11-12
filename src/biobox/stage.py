@@ -242,12 +242,14 @@ DEFAULT_SCAN_CPUS = 4
 # allowance changes at the edges of the day window and with the load average, so a minute's delay is small beside a
 # step or a shard. Not measured; never below a second (no tighter polling).
 RECHECK_S = 60.0
-# The ncRNA scan (card E-07, DEC-28): 247.4 CPU-hours per 10 Gbp, *derived* in planning/design/0-08_ncrna_models.md
-# §4 (the set prok-1 on intergenic regions at margin 200 with --notrunc, its 23 in-CDS models on whole genomes,
-# from per-model CPU measured on wilkcomp02, 2026-11-11, measurement 0-09c). Shards are cut by genome bases at
-# SHARD_MARGIN of the budget at this rate: 161,681,487 bases at 300 CPU-minutes (derived: 0.8 × 300 × 60 /
-# (247.4 × 3600 / 1e10)); the pod check of card E-07 measures it (planning/measurements/2026-11-11_ncrna_producer.md).
-NCRNA_CPU_H_PER_10GBP = 247.4
+# The ncRNA scan (cards E-07, E-08, DEC-28): 304.0 CPU-hours per 10 Gbp, the slower of the two shards of card E-07's
+# pod check (*derived* there: shard 1's CPU-seconds / its bases × 1e10 / 3,600, from run records *measured* on
+# wilkcomp02, 2026-11-11, planning/measurements/2026-11-11_ncrna_producer.md; shard 0 ran at 206.6, both together at
+# 254.5; the design note's per-model derivation gave 247.4). Per-base cost follows the genomes' intergenic records, so
+# the slower measured rate is used (card E-08): a shard cut at SHARD_MARGIN of the budget at this rate uses 240 of
+# 300 CPU-minutes when it runs at the slower rate, where at 247.4 it would have used 295 (derived: 240 × 304.0 /
+# 247.4). Shard size: 131,578,947 genome bases at 300 CPU-minutes (derived: 0.8 × 300 × 1e10 / (304.0 × 60)).
+NCRNA_CPU_H_PER_10GBP = 304.0
 # Peak RSS of one `cmsearch --cpu 2` on intergenic records, 6.4 GiB at most (*measured*, wilkcomp02, 2026-11-11,
 # measurement 0-09c, full library; 4.8 GiB on whole genomes). A shard of C threads is counted at 6.4 GiB per two
 # threads (derived; an over-estimate, since card E-01 measured 12.3 GiB at --cpu 8 on whole genomes, not 25.6).
@@ -915,14 +917,15 @@ def _ncrna_sharded(prof: Profile, b: Build, root: Path, step: Step) -> bool:
     """Whether the ncRNA scan runs in shards: its estimate in one process exceeds `SHARD_MARGIN` of the budget, or
     an earlier call planned it in shards (its plan is published)."""
     prod = step.name.removeprefix("ncrna-")
-    if (root / ncrna.scan_dir(b.stage, prod) / "plan.json").exists():
+    if ncrna.find_plan(root, b.stage, prod) is not None:  # the `ncrna_scan` artifact, or where card E-07 put it
         return True
     bases = stage_bases(root, b.stage)
     est = ncrna_cpu_min(bases)
     if est <= SHARD_MARGIN * prof.cpu_min_per_process:
         return False
     _say(f"{b.stage}.{step.name}: the scan of {bases:,} genome bases is estimated at {est:,.1f} CPU-minutes in one "
-         f"process ({NCRNA_CPU_H_PER_10GBP} CPU-hours per 10 Gbp, derived in planning/design/0-08_ncrna_models.md), "
+         f"process ({NCRNA_CPU_H_PER_10GBP} CPU-hours per 10 Gbp, derived in planning/measurements/"
+         "2026-11-11_ncrna_producer.md), "
          f"over {SHARD_MARGIN:.0%} of the profile's cpu_min_per_process of {prof.cpu_min_per_process} (AGENTS §7.2); "
          f"it runs in shards of at most {ncrna_shard_bases(prof):,} bases, one step each")
     return True
