@@ -1103,6 +1103,7 @@ def test_b46_token_bytes_do_not_depend_on_the_number_of_protein_ranges(built, tm
         assert _digests(fresh, TOKEN_DIRS) == want, k
 
 
+@pytest.mark.covers("K-02")
 def test_b46_memory_limit_sets_the_number_of_ranges():
     assert [tokens.limit_bytes(s) for s in ("2GB", "115MB", "1.5GiB", " 512 kib ", "7B")] == [
         2 * 10**9, 115 * 10**6, 3 * 2**29, 512 * 1024, 7]
