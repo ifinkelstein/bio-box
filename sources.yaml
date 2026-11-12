@@ -29,7 +29,11 @@ sources:
       animal gut microbiomes"; the Figshare record names no paper. A later preprint reports 43 of the
       7,230 as non-viral. Approved by the PI on 2026-11-11.
   - name: plsdb
-    what: PLSDB plasmids, release 2024_05_31_v2 (72,360 records), sequences and metadata
+    what: >-
+      PLSDB plasmids, release 2024_05_31_v2, sequences and metadata: 72,556 records in the FASTA, of
+      which 196 are marked suppressed in the metadata (72,360 without them); fetched 2026-11-11,
+      FASTA sha256 e654c106…587a, metadata archive sha256 fa9da9bc…3e00 (full values in
+      planning/measurements/2026-11-11_s2_inputs.md)
     url: https://ccb-microbe.cs.uni-saarland.de/plsdb2025/download_fasta
     url_meta: https://ccb-microbe.cs.uni-saarland.de/plsdb2025/download_meta.tar.gz
     checksum: none published; the archive is built on request. Record our own sha256 and check the record count against the metadata
