@@ -1,0 +1,51 @@
+# Measured: per-query calls of the clustering of two releases, one row per part (card C-22).
+# Host wilkcomp02.ccbb.utexas.edu, 2026-11-11, MMseqs2 18.8cc5c, read-only copy of run records and cut records.
+# rN.3 (10,620,684 proteins): /tmp/if2453/r10/root/runs/stage=rN.3/cluster.*.json (cpu_min, threads) and
+#   /tmp/if2453/r10/root/l2/cluster_plan/release=rN.3/*.cut.json (parts: cpu_min = the estimate that was used, keys, units).
+# rC.1b (2,053,075 proteins, the same stages S1,P1 as rN.1b, a scratch-root build): the same files under
+#   /tmp/if2453/r50/compat/root/ (runs/stage=rC.1b, l2/cluster_plan/release=rC.1b).
+# Both ran before card B-43 (every prefilter part rebuilt the target's table). Columns:
+#   est_old_cpu_min  the cut record's estimate (the share of the release's one-process estimate, plus the part overhead)
+#   cpu_min          measured CPU-minutes of the step's run record (`cpu_min`; the call's own step or its part's step)
+#   queries          keys of the split input; units = residues (prefilter) or entry bytes (the others) of the part
+#   targets          prefilter only, derived: the cut record's overhead_cpu_min x 60 / (12.44 / 59,000), rounded
+#   one_process_rest  row of every clustering step that is not a per-query call (plan, cuts, kmermatcher, clust, ...,
+#                    cluster): the clustering's records less the per-query rows; tokens .. catalog are not clustering
+sample	step	parts	part	est_old_cpu_min	cpu_min	proteins	queries	units	unit_kind	targets	threads
+rN.3	cluster.nr50.01.rescorediagonal	1	0	1.148	2.395	10620684	8278537	814098617	entry_bytes		16
+rN.3	cluster.nr50.06.rescorediagonal	1	0	1.412	1.441	10620684	5196591	342977366	entry_bytes		16
+rN.3	cluster.nr50.07.align	1	0	65.424	60.396	10620684	5196591	167430531	entry_bytes		16
+rN.3	cluster.nr50.11.prefilter	1	0	104.014	34.138	10620684	4210724	1266193392	residues	4210724	16
+rN.3	cluster.nr50.12.align	1	0	230.454	313.837	10620684	4210724	961138640	entry_bytes		16
+rN.3	cluster.nr50.15.prefilter	1	0	139.209	72.870	10620684	3141911	926728559	residues	3141911	16
+rN.3	cluster.nr50.16.align	1	0	191.185	210.883	10620684	3141911	869122135	entry_bytes		16
+rN.3	cluster.nr50.19.prefilter	2	0	141.303	82.887	10620684	1513236	446907276	residues	2999008	4
+rN.3	cluster.nr50.19.prefilter	2	1	141.303	83.977	10620684	1485772	446906819	residues	2999008	4
+rN.3	cluster.nr50.20.align	1	0	228.853	219.008	10620684	2999008	883440719	entry_bytes		16
+rN.3	cluster.nr50.members	1	0	103.864	67.594	10620684	2966200	87441246	entry_bytes		16
+rN.3	cluster.nr90.01.rescorediagonal	1	0	1.332	2.629	10620684	10620684	480718888	entry_bytes		16
+rN.3	cluster.nr90.06.rescorediagonal	1	0	1.497	2.458	10620684	8546571	306417472	entry_bytes		16
+rN.3	cluster.nr90.07.align	1	0	42.569	52.975	10620684	8546571	259562849	entry_bytes		16
+rN.3	cluster.nr90.11.prefilter	1	0	146.233	98.543	10620684	8363309	2639280400	residues	8363309	16
+rN.3	cluster.nr90.12.align	3	0	208.487	263.517	10620684	2790216	712599212	entry_bytes		4
+rN.3	cluster.nr90.12.align	3	1	208.487	260.324	10620684	2787110	712599152	entry_bytes		4
+rN.3	cluster.nr90.12.align	3	2	208.487	260.559	10620684	2785983	712599077	entry_bytes		4
+rN.3	cluster.nr90.members	1	0	62.120	28.459	10620684	8278537	92753583	entry_bytes		16
+rN.3	one_process_rest	1	0		55.443	10620684					
+rC.1b	cluster.nr50.01.rescorediagonal	1	0	0.148	0.357	2053075	1395712	58245611	entry_bytes		16
+rC.1b	cluster.nr50.06.rescorediagonal	1	0	0.183	0.353	2053075	1048925	32749945	entry_bytes		16
+rC.1b	cluster.nr50.07.align	1	0	8.464	6.802	2053075	1048925	23786783	entry_bytes		16
+rC.1b	cluster.nr50.11.prefilter	1	0	14.781	5.162	2053075	921613	249281723	residues	921613	16
+rC.1b	cluster.nr50.12.align	1	0	29.815	39.446	2053075	921613	109549428	entry_bytes		16
+rC.1b	cluster.nr50.15.prefilter	1	0	19.340	10.351	2053075	784957	210104758	residues	784957	16
+rC.1b	cluster.nr50.16.align	1	0	24.735	31.677	2053075	784957	158337507	entry_bytes		16
+rC.1b	cluster.nr50.19.prefilter	1	0	36.533	20.458	2053075	767512	206770502	residues	767512	16
+rC.1b	cluster.nr50.20.align	1	0	29.608	35.396	2053075	767512	202861569	entry_bytes		16
+rC.1b	cluster.nr50.members	1	0	13.438	10.666	2053075	761833	16075323	entry_bytes		16
+rC.1b	cluster.nr90.01.rescorediagonal	1	0	0.172	0.554	2053075	2053075	65627969	entry_bytes		16
+rC.1b	cluster.nr90.06.rescorediagonal	1	0	0.194	0.362	2053075	1444105	31189288	entry_bytes		16
+rC.1b	cluster.nr90.07.align	1	0	5.507	4.476	2053075	1444105	30164641	entry_bytes		16
+rC.1b	cluster.nr90.11.prefilter	1	0	20.061	8.506	2053075	1406903	393789271	residues	1406903	16
+rC.1b	cluster.nr90.12.align	1	0	80.920	91.564	2053075	1406903	238594813	entry_bytes		16
+rC.1b	cluster.nr90.members	1	0	8.037	5.532	2053075	1395712	16709202	entry_bytes		16
+rC.1b	one_process_rest	1	0		12.222	2053075					
