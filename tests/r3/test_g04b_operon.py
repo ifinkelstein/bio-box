@@ -244,8 +244,11 @@ def test_one_kept_ssu_and_lsu_per_operon_and_every_other_planted_gene_kept(opero
     for name in ("sdsr_srac", "trna_hpnc", "trna_rtt"):
         here = _in(name, operon_run, hits)
         assert here and all(r["clan_winner"] for r in here), here
-        if name != "trna_rtt":
-            assert {r["strand"] for r in here} == {1, -1} and _overlap(here[0], here[1])
+        if name != "trna_rtt":  # the antisense partners: a hit on each strand, overlapping
+            assert any(a["strand"] == 1 and b["strand"] == -1 and _overlap(a, b) for a in here for b in here), here
+        else:  # tRNA and RtT nested on one strand
+            assert any(a["model_acc"] == "RF00005" and b["model_acc"] == "RF00391" and a["strand"] == b["strand"]
+                       and _overlap(a, b) for a in here for b in here), here
     # no two kept hits of one clan overlap on a strand
     kept = [r for r in hits if r["clan_winner"] and r["clan"] is not None]
     for a in kept:
