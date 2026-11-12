@@ -12,6 +12,7 @@ dependencies = [
     "pyrodigal>=3",
     "pyrodigal-gv>=0.3",
     "pyyaml>=6",
+    "zombi2==0.54.0",
 ]
 
 [project.scripts]
