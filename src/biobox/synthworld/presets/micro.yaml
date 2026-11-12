@@ -1,0 +1,66 @@
+# synthworld preset `micro`: backbone parameters (synthworld_spec.md §5.1; card F-02 session 1).
+# Every leaf is {v: value, tag: asserted | fitted | derived, why: source}. `backbone.load_preset`
+# resolves the leaves to their values; the resolved mapping is what the world records and digests.
+# Only the backbone (species tree, gene order, strands, families, copies, groups) is here. Sequences,
+# IGRs, motifs, plasmids, vehicles, hubs, decoys, NOGD and the assembly mix come in later sessions.
+name: {v: micro, tag: asserted, why: "synthworld_spec §5.1"}
+default_seed: {v: 20261112, tag: asserted, why: "§5.1: the default seed is fixed and committed"}
+
+species:
+  n_extant: {v: 46, tag: asserted, why: "§5.1: 46 extant tips, including one clonal burst of 4"}
+  birth: {v: 1.0, tag: asserted, why: "spike §1 tree: birth 1.0"}
+  death: {v: 0.3, tag: asserted, why: "spike §1 tree: death 0.3"}
+  burst_size: {v: 4, tag: asserted, why: "§5.1: one clonal burst of 4"}
+  burst_depth: {v: 0.02, tag: asserted, why: "a short-branch cluster: its root sits this fraction of the crown height below the present"}
+
+root_scramble:
+  # DEC-15 (c). ZOMBI2 lays the root out with every gene on + and all declared families in one block at
+  # the end of the chromosome (spike §2.3). synthworld replaces the species tree's stem with a stem of its
+  # own on which only inversions and transpositions run, so the root genome the tree starts from has a
+  # scrambled order and strands; groups move as whole blocks and are never cut.
+  stem_length: {v: 1.0, tag: asserted, why: "time units; only the product rate x length matters"}
+  transposition_passes: {v: 4.0, tag: asserted, why: "expected transpositions started per gene on the stem"}
+  inversion_passes: {v: 2.0, tag: asserted, why: "expected inversions started per gene on the stem"}
+
+genomes:
+  initial_families: {v: 1000, tag: derived, why: "spike §5: 1,000 root families gave 1,454 genes per genome (mean) with groups; §5.1 target mean about 1,500"}
+  chromosomes: {v: 1, tag: asserted, why: "one circular chromosome; plasmids (§5.1: 0-2 of 20-200 genes) are a later session"}
+  topology: {v: circular, tag: asserted, why: "chromosome"}
+  duplication: {v: 0.02, tag: asserted, why: "spike §1 rates, per copy"}
+  transfer: {v: 0.05, tag: asserted, why: "spike §1"}
+  loss: {v: 0.12, tag: asserted, why: "spike §1"}
+  inversion: {v: 0.05, tag: asserted, why: "spike §1"}
+  transposition: {v: 0.02, tag: asserted, why: "spike §1"}
+  translocation: {v: 0.0, tag: asserted, why: "one chromosome"}
+  origination_per_root_family: {v: 0.05, tag: asserted, why: "spike §1: origination 0.05 x initial_families per lineage"}
+  duplication_extent: {v: 2, tag: asserted, why: "spike §1 geometric means"}
+  loss_extent: {v: 2, tag: asserted, why: "spike §1"}
+  transfer_extent: {v: 3, tag: asserted, why: "spike §1"}
+  inversion_extent: {v: 5, tag: asserted, why: "spike §1"}
+  transposition_extent: {v: 3, tag: asserted, why: "spike §1"}
+  translocation_extent: {v: 3, tag: asserted, why: "spike §1"}
+  inversion_probability: {v: 0.5, tag: asserted, why: "spike §1"}
+  transfer_to: {v: uniform, tag: asserted, why: "spike §1; distance decay is a later knob"}
+  replacement: {v: 0.0, tag: asserted, why: "DEC-15 (b): 0 in every world with groups"}
+  max_family_size: {v: 10, tag: asserted, why: "ZOMBI2 default growth guard"}
+
+modules:
+  # Planted adjacency modules: ZOMBI2 adjacent groups. Sizes cycle 2..6; the 3 x 3 strength grid is
+  # together {0.3, 0.7, 1.0} x member transfer rate {0.05, 0.15, 0.30} (module i: together[i % 3],
+  # member_transfer[(i // 3) % 3]). DEC-15 (a) puts every adjacency-scored module at fates "group",
+  # so §5.3's "per-family loss" fates axis is replaced by the member transfer rate.
+  count: {v: 25, tag: asserted, why: "§5.1: 25 modules, sizes 2-6, strength grid 3 x 3"}
+  sizes: {v: [2, 3, 4, 5, 6], tag: asserted, why: "§5.1"}
+  together: {v: [0.3, 0.7, 1.0], tag: asserted, why: "§5.3 together grid"}
+  member_transfer: {v: [0.05, 0.15, 0.30], tag: asserted, why: "second strength axis (DEC-15 (a) fixes fates); spike §1 used 0.15"}
+  member_loss: {v: 0.03, tag: asserted, why: "spike §1 member loss, so modules survive and travel"}
+  fates: {v: group, tag: asserted, why: "DEC-15 (a)"}
+  scored: {v: true, tag: asserted, why: "adjacency-scored modules"}
+
+profile_only:
+  # Groups that co-transfer but are not kept adjacent (ZOMBI2 adjacent=False): §5.1 "3 profile_only".
+  count: {v: 3, tag: asserted, why: "§5.1"}
+  size: {v: 3, tag: asserted, why: "a mid-grid module size"}
+  together: {v: 1.0, tag: asserted, why: "every member transfer carries the group"}
+  member_transfer: {v: 0.15, tag: asserted, why: "spike §1"}
+  member_loss: {v: 0.03, tag: asserted, why: "spike §1"}

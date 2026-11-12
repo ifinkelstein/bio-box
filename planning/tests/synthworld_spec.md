@@ -1,6 +1,6 @@
 # `synthworld`: synthetic-world generator spec
 
-Status: **planning only** (2026-10-29). Nothing is installed or implemented. This file settles `TEST_ARCHITECTURE.md` §11 item 1 ("Zombi fit at micro-corpus size, ALF fallback") and specifies the generator behind §6.1 (micro-corpus), §6.2 (synthetic worlds, null worlds), MR-18, and `PLAN.md` §5 rows B-SIM and B-NULL.
+Status: **planning only** (2026-10-29). Nothing is installed or implemented. **Update 2026-11-12 (card F-02 session 1):** the backbone (§2.1 S1–S2, §2.2, §6.1, the backbone half of §5.1) is implemented in `src/biobox/synthworld/` on `zombi2==0.54.0` under DEC-15; §2.1, §2.2, §2.6, §5.1 and §6.1 carry the spike's corrections (`synthworld_spike.md` §7). The rest of this file is still a plan. This file settles `TEST_ARCHITECTURE.md` §11 item 1 ("Zombi fit at micro-corpus size, ALF fallback") and specifies the generator behind §6.1 (micro-corpus), §6.2 (synthetic worlds, null worlds), MR-18, and `PLAN.md` §5 rows B-SIM and B-NULL.
 
 Conventions used throughout come from the store (`PLAN.md` §4.0–4.1, `planning/data_layer_and_tests.md` §2):
 - Coordinates are 0-based half-open on the stored contig. Strand is `int8` (+1/−1).
@@ -113,11 +113,27 @@ Run once, on a laptop, before sign-off. Results go into this file.
 | S10 | **Contamination and duplicates.** Foreign contigs from a distant clade or an outgroup world with a different GC are added to chosen assemblies. Exact duplicates are written as separate "sources" under new accessions and BioProjects. Near-duplicates at 99.9% ANI (a mutation fraction drawn per genome, biased to synonymous and IGR sites). A mock FCS-GX sidecar flags the contaminant contigs (MR-19). | custom | `truth_contam`, `truth_dup`, `sidecars/fcs_gx_mock.parquet` |
 | S11 | **Emit.** Per-source FASTA and an ingest manifest (accession, BioProject, `source_class`, `replicon_class`, `molecule_type`, synthetic `tax_lineage` with an optional mislabel rate, biome). Truth Parquet tables. A convenience truth GFF. `manifest.json` with digests (§6.2). | custom | world directory |
 
+**S1–S2 as built (F-02 session 1; DEC-15; spike §7 items 1, 8 and 10).**
+- *Clonal burst.* ZOMBI2 grows `n_extant − (burst − 1)` tips; `synthworld` grafts a random binary subtree of `burst` tips onto one extant tip (chosen from stream `S1/clonal_burst`), rooted `burst_depth` × crown height before the present.
+- *Root scramble (DEC-15 (c)).* ZOMBI2 lays the root out with every gene on + and all declared families in one block at the end of each chromosome (spike §2.3), which plants adjacency between modules that a null does not have. `synthworld` replaces the species tree's stem with a stem of `root_scramble.stem_length` on which only inversions and transpositions run (`changing_at` skyline; every other rate, the declared families' own rates included, is 0 there). Groups move whole and are never cut. Every build checks the result against ZOMBI2's `initial_genome.tsv`: + fraction in [0.4, 0.6], ≤ 5% of non-unit initial adjacencies kept, ≤ 50% of declared genes' outside neighbours declared (derived thresholds; `micro` default seed measured 0.488, 0.29% and 3.0%).
+- *Groups (DEC-15 (a), (b)).* Adjacency is guaranteed only for `fates="group"`: with `fates="family"` units break, mostly by tandem copies landing inside them (spike §2.2; on `micro` at the default seed 264 of 3,842 multi-member units, 6.9%, measured on wilkcomp02 2026-11-12 by `tests/r2/test_synthworld_backbone.py`). An adjacency-scored group must have `fates="group"`; a group with `fates="family"` is allowed only unscored. Truth is computed from the realized order in every case. `replacement` is 0 in every world with groups (ZOMBI2 refuses any value above 0 with groups).
+- *`together`* is the probability that a transfer starting on a member carries the whole group. At extent > 1 the realized co-transfer share differs from the dial (spike §2.3), so truth counts `event` ids from `genome_events.tsv` and never derives transfers from the dial.
+
 ### 2.2 Backbone interface (the only ZOMBI2 coupling)
 
 `synthworld.backbone` reads five ZOMBI2 outputs into typed tables: species tree, `gene_order.tsv`, gene trees (`gene_trees.tsv` with `--compact`), `genome_events.tsv` and `groups.tsv` ([output files](https://aadavin.github.io/zombi2/docs/output-files/)).
 
-An R1 schema test pins the columns. Any adapter (Zombi 1 `_GENOME.tsv`, or the in-house fallback) must produce the same tables. The raw ZOMBI2 directory, including `run.zombi2`, is kept under `worlds/<id>/zombi2/` for audit.
+An R1 schema test pins the columns. Any adapter (Zombi 1 `_GENOME.tsv`, or the in-house fallback) must produce the same tables. The raw ZOMBI2 directory is kept under `worlds/<id>/zombi2/` for audit.
+
+**As built (F-02 session 1; spike §7 items 4–6).** `biobox.synthworld.backbone` is the only module that imports ZOMBI2. `build(preset, seed, out)` writes `out/zombi2/` (`OrderedGenomesResult.write(compact=True)`) and `out/backbone/`: `genomes.tsv`, `genes.tsv` (the realized order of every extant genome with strand, family, copy label, unit), `families.tsv`, `groups.tsv`, `truth_units.tsv`, `truth_adjacency.tsv` and `backbone.json`; the module docstring fixes the columns. Pinned ZOMBI2 0.54.0 headers (`backbone.PINNED_HEADERS`, checked on every build):
+- `gene_order.tsv`: `lineage chromosome topology position strand family copy`; `copy` is `g<id>`, `family` an integer id;
+- `genome_events.tsv`: 11 columns, `time kind family parents children chromosome start length dest_chromosome dest_position event`; transfer kinds are `transfer_additive` and `transfer_replacing`;
+- `rearrangement_events.tsv`: `time kind lineage chromosome start length dest_chromosome dest_position flipped cuts`;
+- `groups.tsv`: `group unit family gene`, `gene` a bare integer; `adjacent=False` groups write no rows; declared names map to ids through `genome_summary.json` `families.names`;
+- `gene_trees.tsv`: `family complete extant`; the leaf label is `<lineage>_<copy>`;
+- `initial_genome.tsv`: `chromosome topology position strand family copy`.
+
+Extancy comes from the species tree's fates (`gene_order.tsv` rows of extant lineages) or from the `extant` gene trees, never from an `n` prefix in a `complete` gene tree: those also label lost copies. Copy ids are re-minted at every speciation; a unit id is kept across speciations, so a unit is keyed by (genome, unit). Groups can be declared only from the Python API, which writes no `run.zombi2`; `synthworld` records its own provenance in `backbone.json` (ZOMBI2 and numpy versions, the resolved preset and its digest, the master seed and derived tool seeds). Where a CLI `run.zombi2` or `.log` exists it holds timestamps and absolute paths and is not byte-stable, so it is not used.
 
 ### 2.3 Family sequence model (replaces "hmmemit at set divergence")
 
@@ -175,7 +191,7 @@ Difficulty knobs:
 
 | part | estimate |
 |---|---|
-| ZOMBI2 ordered run | seconds (**verify**, §1.4) |
+| ZOMBI2 ordered run | seconds (**verify**, §1.4). Measured: the whole `micro` backbone (species tree, burst graft, scramble stem, ZOMBI2 run and write, adapter tables, digests) took 17.5 s and 19.6 s wall in two runs (wilkcomp02, 2026-11-12, one process inside `bio-box-test_74b3e05.sif` at nice 19 with the host near its 40-thread guest cap; `scripts/pod_pytest.sh F-02 -s tests/r2/test_synthworld_backbone.py`, `test_micro_backbone_runtime_within_budget`) |
 | S4 evolver: about 3,000 families × ~300 sites × ~200 tree nodes, vectorized | under 2 min single core (estimate, measured at S−1) |
 | `cmemit` | about 50 calls |
 | all of `synthworld` | target ≤ 3 min, leaving ≥ 12 min of the 15-min micro-corpus budget for the bio-box build (`TEST_ARCHITECTURE.md` §6.1) |
@@ -519,7 +535,7 @@ All parameters live in `presets/<name>.yaml`. Each one is tagged `asserted`, `fi
 | parameter | value |
 |---|---|
 | synthetic genomes | 46 extant tips, including one clonal burst of 4. Plus 2 exact and 2 near (99.9%) duplicates, for ~50 genome records. The three real genomes (λ, T4, *M. genitalium*) are added by the corpus builder, not by `synthworld`. |
-| genome size | chromosome mean ≈ 1,500 genes, range 1,000–4,000 (tip-level origination/loss balance); 0–2 plasmids of 20–200 genes |
+| genome size | chromosome mean ≈ 1,500 genes; 0–2 plasmids of 20–200 genes. The range 1,000–4,000 first written here is not what one root genome with uniform rates gives: the spike measured about ±9% across tips (spike §7 item 7), and the F-02 `micro` backbone at the default seed has mean 1,509, range 1,393–1,708 (measured, wilkcomp02, 2026-11-12, `test_micro_backbone_runtime_within_budget`). A wider spread needs lineage-varying rates (`varying_among('lineages', Drift(...))`, untested) or another sizing approach. Plasmids are not built yet (ZOMBI2 deals root genes round-robin over replicons, so unequal replicon sizes need their own mechanism). |
 | model panel | 200 Pfam HMMs for planted families, plus 100 held-out HMMs for dark families (`dark_fraction` 0.3); 20 Rfam CMs |
 | genetic codes | one clade with code 4, one tip with code 25 |
 
@@ -546,6 +562,8 @@ All parameters live in `presets/<name>.yaml`. Each one is tagged `asserted`, `fi
 | contamination | 3 genomes |
 
 **Seeds.** The default seed is fixed and committed. CI also builds one rotating seed per nightly run (R3), so seed-specific luck is caught.
+
+**Backbone rates (F-02 session 1).** §5.1 first gave no DTL or rearrangement rates (spike §7 item 7). `src/biobox/synthworld/presets/micro.yaml` now holds them, each tagged: the spike's rates (duplication 0.02, transfer 0.05, loss 0.12, inversion 0.05, transposition 0.02 per copy; origination 0.05 × root families per lineage; geometric extents 2, 2, 3, 5, 3; `inversion_probability` 0.5; uniform recipients; replacement 0), 1,000 root families on one circular chromosome, the root scramble of §2.1, and the modules: 25 adjacent groups of sizes 2–6 at `fates="group"` on a 3 × 3 grid of `together` {0.3, 0.7, 1.0} × member transfer rate {0.05, 0.15, 0.30} (member loss 0.03), plus 3 `profile_only` groups (`adjacent=False`) of 3. Because DEC-15 (a) fixes `fates`, the member transfer rate replaces §5.3's "per-family loss" axis in the grid; the "origin depth" axis is not available for adjacent groups (spike §7 item 3). Vehicles, hubs, decoys and NOGD are not in the backbone yet.
 
 ### 5.2 `stage` (R5 calibration at S2C, S5, S6; B-SIM)
 
@@ -602,7 +620,8 @@ All parameters live in `presets/<name>.yaml`. Each one is tagged `asserted`, `fi
   - `hmmemit --seed` in cross-checks.
 
   Seed 0 is never passed, because it means arbitrary in HMMER and Infernal ([hmmemit](https://www.mankier.com/1/hmmemit), [cmemit](https://manpages.debian.org/trixie/infernal/cmemit.1.en.html)).
-- ZOMBI2 runs in one fixed engine. Ordered runs are serial (§1.4 item 4); the phage run uses the same engine. Parallel and serial ZOMBI2 runs differ at the same seed ([reproducibility](https://aadavin.github.io/zombi2/docs/reproducibility/)).
+- ZOMBI2 runs in one fixed engine. `simulate_genomes_ordered` has no `parallel` argument and the CLI refuses `--parallel` at the ordered resolution, so ordered runs are always serial (spike §4 and §7 item 9); the phage run uses the same engine. Parallel and serial ZOMBI2 runs differ at the same seed only at the family resolution ([reproducibility](https://aadavin.github.io/zombi2/docs/reproducibility/)). macOS-vs-Linux digest equality is still unchecked.
+- **As built** (`src/biobox/synthworld/seeds.py`): "as ints" means the 16 bytes read as four big-endian uint32 words; a tool seed is the stream's first uint32 taken mod (2³¹ − 1), plus 1, so it lies in [1, 2³¹ − 1]. Component paths in use: `S1/species_tree` (ZOMBI2 species seed), `S1/clonal_burst` (burst tip and split times), `S2/genomes` (ZOMBI2 genomes seed). Renaming a path changes every world (a MAJOR bump, §6.3). The `micro` backbone is byte-identical across two builds and across a subprocess with another `PYTHONHASHSEED` and thread count (`tests/r2/test_synthworld_backbone.py`).
 
 ### 6.2 Outputs and hashing
 
