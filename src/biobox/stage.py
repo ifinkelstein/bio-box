@@ -110,8 +110,18 @@ the files are those of clustering in one process, byte for byte; the records (`l
 a build's own, never in a manifest. The MMseqs2 databases live in `<scratch>/biobox-cluster/`; a join's
 parts are removed once it is published, the work directory once the tables are. A call that finds the
 plan published first makes again every published step whose outputs are not in scratch, in order
-(`_redo_lost_cluster`, `bio-box release cluster redo`), each of which must reproduce its record. The
-DEC-25 estimate and its refusals above still come first, until that exemption is removed.
+(`_redo_lost_cluster`, `bio-box release cluster redo`), each of which must reproduce its record.
+
+One process for a call that cannot be split (card B-45, DEC-29). A prefilter whose parts each rebuild the
+target's k-mer table (no shared index with `--diag-score 0`, card B-44) cannot be cut once that table alone
+fills the part budget. With the profile's `cluster_cpu_min_max`, which the plan step is given as
+`--one-process-cpu-min-max` and records in its cut, such a call's cut makes it one part, the workflow's own
+call, and refuses it when its estimate (work plus table) is over that cap; without the key the cut refuses it.
+Before the call's step is launched its estimate is checked against the profile again (`one_process_refusal`,
+exit 2 above the cap or without the key), and the step runs with `budget_reason` `exempt: DEC-29`. The DEC-25
+estimate above still comes first: in one process as before; in parts (card B-45) with the cap it checks each
+call the published cuts run as one process, not the release's estimate in one process; without the key it is
+the same in either mode, until card B-42 (2).
 
 Lost scratch (card C-12). A reboot clears `/tmp`; a shard's run record then still exists while its
 run in scratch is gone, so `run-step` would never scan it again and the merge would refuse. Before
@@ -228,6 +238,9 @@ CLUSTER_EXPONENT = math.log(CLUSTER_CPU_MIN_HI / CLUSTER_CPU_MIN_LO) / math.log(
 # is 4.6% above this estimate (15,079).
 # The reason the clustering step's run record gives (`cpu_budget_reason`) when the profile sets `cluster_cpu_min_max`.
 CLUSTER_EXEMPT = "exempt: DEC-25"
+# The reason the run record of a clustering call run as one process because no number of parts fits it gives (card
+# B-45, DEC-29: `biobox.l2.cluster._one_process_doc`).
+DEC29_EXEMPT = "exempt: DEC-29"
 # Scan shards are planned to fill 80% of the CPU-minute budget, not all of it (card C-11): the rate above
 # is Pfam's on wilkcomp02, so a shard sized to the whole budget passes it whenever a library is slower
 # than Pfam or the host is loaded, and a process over the budget breaks AGENTS §7.2. The margin covers a
@@ -492,10 +505,17 @@ def release_proteins(root: Path, stages: Sequence[str], gene_call_version: str) 
     return total, None
 
 
-def cluster_refusal(prof: Profile, release: str, proteins: int) -> str | None:
-    """Why clustering `proteins` proteins for `release` may not start (DEC-25), or None. With the profile's
+def cluster_refusal(prof: Profile, release: str, proteins: int,
+                    one_process: Sequence[tuple[str, float]] | None = None) -> str | None:
+    """Why clustering `proteins` proteins for `release` may not start (DEC-25, DEC-29), or None. With the profile's
     `cluster_cpu_min_max` the estimate may pass `cpu_min_per_process` up to that cap; without it there is no
-    exemption and `cpu_min_per_process` holds."""
+    exemption and `cpu_min_per_process` holds.
+
+    `one_process` (card B-45) is given when the release clusters in parts: the (call, estimate) of each call its plan
+    runs as one process so far (`l2cluster.one_process_calls`, from the published cuts). With the cap, each of those is
+    checked against it, and not the release's estimate in one process; a call cut later is checked by its cut (the
+    plan holds the cap) and again before its launch (`one_process_refusal`). Without the cap the check is the one above
+    in either mode (until card B-42 (2))."""
     est = cluster_cpu_min(proteins)
     how = (f"clustering of release {release} over {proteins:,} proteins (the protein_seq rows of its stages) is "
            f"estimated at {est:,.1f} CPU-minutes in one process (a power law through {CLUSTER_CPU_MIN_LO} CPU-min at "
@@ -507,9 +527,31 @@ def cluster_refusal(prof: Profile, release: str, proteins: int) -> str | None:
             return (f"{how}, over the profile's cpu_min_per_process of {prof.cpu_min_per_process} (AGENTS §7.2). The "
                     f"profile has no cluster_cpu_min_max, so the DEC-25 exemption for clustering does not apply")
         return None
+    if one_process is not None:  # in parts: only the calls that run as one process may pass the 300 (DEC-29)
+        for name, cpu_min in one_process:
+            why = one_process_refusal(prof, release, name, cpu_min)
+            if why is not None:
+                return why
+        return None
     if est > cap:
         return (f"{how}, over the profile's cluster_cpu_min_max of {cap} (DEC-25: clustering's own cap until card B-37 "
                 f"splits it). Raise cluster_cpu_min_max only with the PI's agreement")
+    return None
+
+
+def one_process_refusal(prof: Profile, release: str, call: str, cpu_min: float) -> str | None:
+    """Why `call` of release `release`'s clustering in parts, which its cut runs as one process because no number of
+    parts fits it (DEC-29, card B-45), estimated at `cpu_min` CPU-minutes (its work and its own k-mer table), may not
+    be launched, or None: only under the profile's `cluster_cpu_min_max`, and not above it."""
+    how = (f"{call} of release {release}'s clustering runs as one process (DEC-29: no number of parts fits it, since "
+           f"each part would rebuild the target's k-mer table, card B-44), estimated at {cpu_min:,.1f} CPU-minutes")
+    cap = prof.cluster_cpu_min_max
+    if cap is None:
+        return (f"{how}; DEC-29 allows that only under the profile's cluster_cpu_min_max, and this profile has no "
+                f"cluster_cpu_min_max (the 300 CPU-minute rule of AGENTS §7.2 holds)")
+    if cpu_min > cap:
+        return (f"{how}, over the profile's cluster_cpu_min_max of {cap}. Raise cluster_cpu_min_max only with the PI's "
+                f"agreement")
     return None
 
 
@@ -578,8 +620,16 @@ def _refusal(prof: Profile, b: Build, root: Path, plan: list[Step], allowance: i
     if not _record(root, cluster).exists():
         n, _ = release_proteins(root, stages, b.gene_call_version)
         if n is not None:  # every stage is gene-called: the estimate is known now (else at the cluster step)
-            return cluster_refusal(prof, b.release, n)
+            return cluster_refusal(prof, b.release, n, _one_process(prof, b, root))
     return None
+
+
+def _one_process(prof: Profile, b: Build, root: Path) -> list[tuple[str, float]] | None:
+    """For `cluster_refusal` (card B-45): when the release clusters in parts, the calls its published cuts run as one
+    process (DEC-29); None when it clusters in one process."""
+    if not _cluster_split(prof, b, root, quiet=True):
+        return None
+    return l2cluster.one_process_calls(root, b.release)
 
 
 def _cluster_gate(prof: Profile, b: Build, root: Path) -> str | None:
@@ -590,7 +640,7 @@ def _cluster_gate(prof: Profile, b: Build, root: Path) -> str | None:
     if n is None:
         return (f"release {b.release}: stage {missing} has no gene-call run record (runs/stage={missing}/genecall.json), "
                 f"so its clustering cannot be estimated before launch (DEC-25)")
-    return cluster_refusal(prof, b.release, n)
+    return cluster_refusal(prof, b.release, n, _one_process(prof, b, root))
 
 
 def shard_residues(prof: Profile) -> int:
@@ -1315,16 +1365,19 @@ def _release_stages(b: Build, root: Path) -> list[str]:
     return list(b.stages) if b.stages is not None else catalog.release_stages(root, b.release)
 
 
-def _cluster_split(prof: Profile, b: Build, root: Path) -> bool:
+def _cluster_split(prof: Profile, b: Build, root: Path, quiet: bool = False) -> bool:
     """Whether the release clusters in parts: an earlier call planned it so (its plan is published), the call forces
     it (`--cluster-parts`), or its estimate in one process exceeds `SHARD_MARGIN` of the budget (as a scan is
-    sharded and ingest batched). The gate (`_cluster_gate`) has run, so the protein count is known."""
+    sharded and ingest batched). Every stage of the release is gene-called, so the protein count is known. `quiet`:
+    no log line (the gate asks it, card B-45)."""
     if (root / l2cluster.plan_dir(b.release) / f"{l2cluster.PLAN_STEP}.json").exists() or b.cluster_parts is not None:
         return True
     n, _ = release_proteins(root, _release_stages(b, root), b.gene_call_version)
     est = cluster_cpu_min(n)
     if est <= SHARD_MARGIN * prof.cpu_min_per_process:
         return False
+    if quiet:
+        return True
     _say(f"{b.release}.cluster: clustering {n:,} proteins is estimated at {est:,.1f} CPU-minutes in one process, over "
          f"{SHARD_MARGIN:.0%} of the profile's cpu_min_per_process of {prof.cpu_min_per_process} (AGENTS §7.2); it "
          f"runs in parts (card B-41): a plan, one step per module call, each per-query call cut into parts of at "
@@ -1336,11 +1389,14 @@ def cluster_steps(prof: Profile, b: Build) -> Callable[..., Step]:
     """A maker of the steps of clustering in parts: `make("plan")`, `make("step", name, threads)`,
     `make("finish")` and `make("redo", name)`, each `bio-box release cluster <action>` with the scratch directory
     (`--tmp`: the work directory is under it, the same for every step) and the plan's cut: `--cluster-parts`, else
-    `SHARD_MARGIN` of the budget per part."""
+    `SHARD_MARGIN` of the budget per part, and the profile's `cluster_cpu_min_max` as the one-process cap when it
+    sets one (card B-45, DEC-29)."""
     root, scratch, n = str(Path(b.root).resolve()), str(scratch_of(prof, b)), threads_of(prof, b)
     stages = () if b.stages is None else ("--stages", ",".join(b.stages))
     cut = (("--parts", str(b.cluster_parts)) if b.cluster_parts is not None
            else ("--part-cpu-min", repr(SHARD_MARGIN * prof.cpu_min_per_process)))
+    if prof.cluster_cpu_min_max is not None:  # card B-45: a call no number of parts fits runs as one process under it
+        cut += ("--one-process-cpu-min-max", repr(float(prof.cluster_cpu_min_max)))
 
     def cl(action: str, *extra: str) -> tuple[str, ...]:
         return ("release", "cluster", action, "--root", root, "--gene-call-version", b.gene_call_version,
@@ -1383,7 +1439,7 @@ def _cluster_in_parts(prof: Profile, b: Build, root: Path, one: Callable[..., in
     if run is None:
         run = _process_runner(_profile_file(prof, scratch))
     for c in l2cluster.calls():
-        parts = 1
+        parts, kw = 1, {}
         if c.split:
             cut = make("step", f"{c.name}.cut")
             code = one(cut)
@@ -1391,14 +1447,21 @@ def _cluster_in_parts(prof: Profile, b: Build, root: Path, one: Callable[..., in
                 return code
             if hook is not None:
                 hook(f"after:{cut.name}")
-            parts = len(l2cluster.read_record(root, b.release, cut.name)["parts"])
+            rec = l2cluster.read_record(root, b.release, cut.name)
+            parts = len(rec["parts"])
             if parts > 1:
                 subs = [make("step", l2cluster.part_name(c.name, k), cpus) for k in range(parts)]
                 code = _run_shards(prof, root, cut, subs, jobs, cpus, run, hook, allow)
                 if code is not None:
                     return code
+            if "one_process" in rec:  # card B-45: no number of parts fits it; one process under the cap (DEC-29)
+                why = one_process_refusal(prof, b.release, c.name, rec["one_process"]["cpu_min"])
+                if why is not None and not _record(root, make("step", c.name)).exists():
+                    _say(f"refused before {b.release}.{c.name}: {why}")
+                    return runstep.EXIT_REFUSED
+                kw = {"budget_reason": DEC29_EXEMPT}
         s = make("step", c.name)
-        code = one(s)
+        code = one(s, **kw)
         if code is not None:
             return code
         if parts > 1:

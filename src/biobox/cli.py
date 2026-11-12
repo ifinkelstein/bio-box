@@ -27,6 +27,7 @@
     bio-box release cluster|tokens|postings|dim|manifest|catalog --root R --release R1 [--stages S0,S1]
                 [--tmp D] [--threads N] [--producers P,Q] [--libraries L,M] [--tape-version T] [--out DIR]
     bio-box release cluster plan --root R --release R1 [--stages S0,S1] --tmp D (--parts N | --part-cpu-min M)
+        [--one-process-cpu-min-max C]
     bio-box release cluster step|redo --root R --release R1 --name STEP --tmp D --threads N
     bio-box release cluster finish --root R --release R1 --tmp D --threads N
     bio-box release verify --root R --release R2 [--previous R1]
@@ -1360,7 +1361,8 @@ def _release_step(a, root: Path, stages: list[str], out: Path) -> dict:
             if tmp is None:
                 raise ValueError("release cluster plan needs --tmp (the scratch directory of the work)")
             return cluster.plan(root, a.release, a.gene_call_version, stages, tmp, parts=a.parts,
-                                part_cpu_min=a.part_cpu_min, out=out)
+                                part_cpu_min=a.part_cpu_min, one_process_cpu_min_max=a.one_process_cpu_min_max,
+                                out=out)
         return cluster.run(root, a.release, a.gene_call_version, stages, threads=a.threads, tmp=tmp, out=out)
     if a.step == "tokens":
         from biobox.l3 import tokens
@@ -1836,6 +1838,10 @@ def _main(argv: list[str] | None = None) -> int:
     rl.add_argument("--parts", type=int, help="cluster plan: cut every per-query call into this many parts (forced)")
     rl.add_argument("--part-cpu-min", type=float, help="cluster plan: the CPU-minutes a part may be estimated at "
                                                        "(build-stage gives 80%% of cpu_min_per_process)")
+    rl.add_argument("--one-process-cpu-min-max", type=float,
+                    help="cluster plan: the cap under which a call that no number of parts fits runs as one process "
+                         "(DEC-29, card B-45; build-stage gives the profile's cluster_cpu_min_max); without it such a "
+                         "call is refused")
     rl.add_argument("--stages", help="S0,S1: the release's stages in order; defines the release once")
     rl.add_argument("--tmp", help="scratch directory (system temp by default; never under the data root)")
     rl.add_argument("--threads", type=int, default=1, help="cluster: MMseqs2 threads")

@@ -783,14 +783,43 @@ _SPECS = [
             _f("assembly_quality", pa.string(), nullable=True),
             _f("tax_order", pa.uint32(), nullable=True),
             _f("is_species_rep", pa.bool_()),
+            # card C-21b (DEC-27): the number of genomes of the release that hold the contig. Null in files
+            # written before the card (LY-09)
+            _f("n_genomes", pa.uint32(), nullable=True),
         ]),
         primary_key=("contig_uid", "release"),
         sort_key=("contig_uid",),
         partition_keys=("release",),
         enums={"assembly_quality": _ASSEMBLY_QUALITY},
         doc=(
-            "planning/tasks/TASKS.md §2; DEC-20. Contig attributes that change without the sequence changing; "
-            "the only place they live (AGENTS §3.6)"
+            "planning/tasks/TASKS.md §2; DEC-20, DEC-27. Contig attributes that change without the sequence "
+            "changing; the only place they live (AGENTS §3.6). One row per contig: genome_uid is the least of "
+            "its genomes in the release, n_genomes their number, and a genome attribute is null where they disagree"
+        ),
+    ),
+    TableSpec(
+        name="genome_dim",
+        location="dim/genome_dim",
+        layer="dim",
+        schema=pa.schema([
+            _f("genome_uid", UID),
+            _f("n_contigs", pa.uint32()),
+            _f("genome_len", COORD),
+            _f("kind", pa.string(), nullable=True),
+            _f("genetic_code", pa.uint8(), nullable=True),
+            _f("assembly_quality", pa.string(), nullable=True),
+            _f("tier", pa.uint8(), nullable=True),
+            _f("tax_order", pa.uint32(), nullable=True),
+            _f("is_species_rep", pa.bool_()),
+        ]),
+        primary_key=("genome_uid", "release"),
+        sort_key=("genome_uid",),
+        partition_keys=("release",),
+        enums={"kind": ("prokaryote", "virus", "plasmid"), "assembly_quality": _ASSEMBLY_QUALITY},
+        doc=(
+            "card C-21b; DEC-27, AGENTS §3.6. Genome attributes per release, one row per genome of the release's "
+            "genome_input: its distinct contigs and their bases; kind, genetic_code and assembly_quality are null "
+            "where the genome's rows in the release's stages disagree"
         ),
     ),
     TableSpec(

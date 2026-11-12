@@ -1322,3 +1322,123 @@ def test_b41_a_scratch_database_lost_after_its_record_is_made_again_and_the_buil
     after = l2cluster.calls()[[c.name for c in l2cluster.calls()].index(last50.name) + 1]
     assert started[0] == (f"{after.name}.cut" if after.split else after.name)  # nothing published ran again
     check_parts_equal_direct(direct, root)
+
+
+# --- one process for a clustering call that cannot be split (card B-45, DEC-29) -------------------------------------
+#
+# The forced per-part table (`rebuild_cpu_min`) is a plan parameter that build-stage never passes, so these builds
+# start from a plan step run through run-step by hand (`plan_forced`, `cluster.plan` with the forced numbers, as the
+# plan step would publish it); build-stage then finds the plan published, clusters in parts and makes every cut from
+# that plan. The numbers are relative to the fixture's own one-process estimate T(n), so the cap lies under T(n) (the
+# release in one process is refused) and over the one-process calls' estimates.
+
+FAST = ["cluster.nr90.11.prefilter", "cluster.nr50.11.prefilter"]  # the prefilters whose parts rebuild their table
+
+_PLAN_FORCED = (
+    "import os, sys\nfrom pathlib import Path\nfrom biobox.l2 import cluster\na = sys.argv[1:]\n"
+    "cluster.plan(Path(a[0]), a[1], a[2], [a[3]], Path(a[4]), part_cpu_min=float(a[5]), "
+    "one_process_cpu_min_max=float(a[6]), rebuild_cpu_min=float(a[7]), out=Path(os.environ['BIOBOX_STAGING']))\n")
+
+
+def forced_numbers(root: Path) -> tuple[int, float, float, float]:
+    """(proteins, T(n), part budget, forced table): a part budget twice the shared index's estimate (so the sensitive
+    prefilters' index fits it) and a forced table half as large again (so it fills the budget)."""
+    n = fixture_proteins(root, "S0")
+    part = 2 * l2cluster.index_cpu_min(n)
+    return n, bs.cluster_cpu_min(n), part, 1.5 * part
+
+
+def plan_forced(direct, root: Path, plan_cap: float) -> None:
+    b = build_of(direct, root)
+    scratch = bs.scratch_of(direct["prof"], b)
+    scratch.mkdir(parents=True, exist_ok=True)
+    _, _, part, rebuild = forced_numbers(root)
+    cmd = [sys.executable, "-c", _PLAN_FORCED, str(Path(root).resolve()), REL, V, "S0", str(scratch), repr(part),
+           repr(plan_cap), repr(rebuild)]
+    assert runner(direct["prof"], root, REL, l2cluster.PLAN_STEP, cmd) == 0
+
+
+@pytest.mark.covers("B-45", "B-36")
+def test_b45_the_plan_step_carries_the_profiles_one_process_cap(direct, tmp_path):
+    b = build_of(direct, tmp_path / "root")
+    assert direct["prof"].cluster_cpu_min_max is None
+    assert "--one-process-cpu-min-max" not in bs.cluster_steps(direct["prof"], b)("plan").argv
+    for parts in (None, 4):
+        prof = dataclasses.replace(direct["prof"], cluster_cpu_min_max=20000)
+        argv = bs.cluster_steps(prof, dataclasses.replace(b, cluster_parts=parts))("plan").argv
+        assert argv[argv.index("--one-process-cpu-min-max") + 1] == repr(20000.0)
+        # the other steps carry nothing of it: the cut reads it from the plan
+        assert "--one-process-cpu-min-max" not in bs.cluster_steps(prof, b)("step", f"{FAST[0]}.cut").argv
+
+
+@pytest.mark.covers("B-45")
+def test_b45_release_cluster_plan_records_the_cap_and_shows_the_one_process_calls(direct, capped, tmp_path, capsys):
+    root, out, tmp = capped[0], tmp_path / "out", tmp_path / "tmp"
+    assert cli.main(["release", "cluster", "plan", "--root", str(root), "--gene-call-version", V, "--release", REL,
+                     "--stages", "S0", "--tmp", str(tmp), "--part-cpu-min", "240", "--one-process-cpu-min-max",
+                     "20000", "--out", str(out)]) == 0
+    res = json.loads(capsys.readouterr().out)["result"]
+    assert res["cut"] == {"part_cpu_min": 240.0, "one_process_cpu_min_max": 20000.0}
+    assert sorted(res["one_process"]["calls"]) == sorted(FAST)
+    assert not any(v["possible"] for v in res["one_process"]["calls"].values())  # the fixture is far too small
+    assert "DEC-29" in res["one_process"]["why"] and res["one_process"]["cpu_min_max"] == 20000.0
+    assert l2cluster.read_record(root, REL, l2cluster.PLAN_STEP, out)["cut"] == res["cut"]
+
+
+@pytest.mark.covers("B-45", "B-36")
+def test_b45_in_parts_a_release_over_the_whole_release_cap_runs_its_unsplittable_calls_as_one_process(
+        direct, capped, tmp_path):
+    root = tmp_path / "root"
+    shutil.copytree(capped[0], root, symlinks=True)
+    n, whole, part, rebuild = forced_numbers(root)
+    cap = (rebuild + whole) / 2
+    assert rebuild * 1.05 < cap < whole
+    prof = dataclasses.replace(direct["prof"], cluster_cpu_min_max=cap)
+    assert bs.cluster_refusal(prof, REL, n) is not None  # in one process this release is refused: T(n) > cap
+    plan_forced(direct, root, cap)
+    calls = Calls()
+    assert bs.build_stage(prof, build_of(direct, root), run=calls) == 0
+    exempt = {s: kw["budget_reason"] for s, kw in calls.seen if "budget_reason" in kw}
+    assert exempt == {name: "exempt: DEC-29" for name in FAST}
+    for name in FAST:
+        cut = l2cluster.read_record(root, REL, f"{name}.cut")
+        assert len(cut["parts"]) == 1 and cut["one_process"]["cpu_min"] <= cap
+        rec = json.loads((root / "runs" / f"stage={REL}" / f"{name}.json").read_bytes())
+        assert rec["cpu_budget_reason"] == "exempt: DEC-29"
+    others = {k: json.loads(v) for k, v in records(root).items()
+              if k not in {f"stage={REL}/{name}.json" for name in FAST}}
+    assert not any("cpu_budget_reason" in r for r in others.values())
+    check_parts_equal_direct(direct, root)
+
+
+@pytest.mark.covers("B-45", "B-36")
+def test_b45_a_one_process_call_over_the_profiles_cap_is_refused_before_its_launch(direct, capped, tmp_path, capsys):
+    """The plan allowed the call (its own cap was high); the profile's cap, read before the call's launch, is under
+    the call's estimate: refused (exit 2) after its cut, before its step. A second call is refused before any step,
+    since the published cut is over the cap; and a profile without `cluster_cpu_min_max` is refused too."""
+    root = tmp_path / "root"
+    shutil.copytree(capped[0], root, symlinks=True)
+    _, _, _, rebuild = forced_numbers(root)
+    plan_forced(direct, root, 1e9)
+    first = FAST[0]
+    prof = dataclasses.replace(direct["prof"], cluster_cpu_min_max=rebuild / 2)
+    calls = Calls()
+    assert bs.build_stage(prof, build_of(direct, root), run=calls) == runstep.EXIT_REFUSED
+    err = capsys.readouterr().err
+    assert f"refused before {REL}.{first}" in err and "DEC-29" in err and "cluster_cpu_min_max" in err
+    assert l2cluster.read_record(root, REL, f"{first}.cut")["one_process"]["decision"] == "DEC-29"
+    assert f"stage={REL}/{first}.json" not in records(root)
+    seen = [s for s, _ in calls.seen]
+    assert seen[-1] == f"{first}.cut" and first not in seen
+    before = records(root)
+    calls = Calls()
+    assert bs.build_stage(prof, build_of(direct, root), run=calls) == runstep.EXIT_REFUSED
+    err = capsys.readouterr().err
+    assert "refused before any step" in err and first in err and "DEC-29" in err
+    assert calls.seen == [] and records(root) == before
+    calls = Calls()
+    none = dataclasses.replace(direct["prof"], cluster_cpu_min_max=None)
+    assert bs.build_stage(none, build_of(direct, root), run=calls) == runstep.EXIT_REFUSED
+    err = capsys.readouterr().err
+    assert f"refused before {REL}.{first}" in err and "no cluster_cpu_min_max" in err and "DEC-29" in err
+    assert f"stage={REL}/{first}.json" not in records(root)
