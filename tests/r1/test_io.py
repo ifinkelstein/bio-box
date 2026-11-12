@@ -52,7 +52,7 @@ def occ_rows(n: int, first: int = 0) -> list[dict]:
 def dim_row(i: int, tax_order: int | None = None) -> dict:
     return {"contig_uid": uid(i), "genome_uid": uid(3), "contig_len": 1000 + i % 1000, "is_circular": False,
             "tier": None if i % 3 == 0 else 1, "assembly_quality": "complete", "tax_order": tax_order,
-            "is_species_rep": i % 2 == 0}
+            "is_species_rep": i % 2 == 0, "n_genomes": 1}  # n_genomes: card C-21b appended it
 
 
 def tape_row(i: int, n: int) -> dict:
