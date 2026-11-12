@@ -45,7 +45,9 @@ A release names its stages (card B-25): `define_release` writes its `release_def
 while the release is built, never enters it. A file under `release=<R>` is R's only (card B-33): a
 release's manifest lists its stages' files, its own `release=` files, the `tape_version_def` of each tape
 version those use, and the unpartitioned files, so a later release's files neither enter an earlier
-release's manifest nor stop it verifying.
+release's manifest nor stop it verifying. Nor do files a later step adds to one of its stages for a library,
+producer, version or step the release does not use there (card C-19: a library scanned after the release was
+built); `verify_manifest` still reports a second part beside a file the release lists.
 
     stages = define_release(root, "rS0.1", ["S0"])   # later: release_stages(root, "rS0.1")
     manifest = build_manifest(root, "rS0.1", stages)
@@ -356,6 +358,14 @@ def define_release(root: Path, release: str, stages, out: Path | None = None) ->
 #       files use that version, through a `tape_version` partition or the tape version an `igr_version`
 #       names (`<tape_version>-igr1`, card B-20), so that C-08 finds every definition it needs;
 #   (d) no partition (`store_params`, `id_history`, `test_run`): to every release.
+# Verification draws (a) narrower (card C-19): later steps may add files to a stage (a domain library scanned
+# after a release was built, with its ledger), which AGENTS §3.10 allows, and they are not an earlier release's.
+# A stage file with partitions besides `stage` and the registry's bucket keys (`TableSpec.bucket_keys`), such
+# as `library`, `producer`, `gene_call_version`, `igr_version`, `tape_version` or the ledger's `step`
+# (`_owner_key`), is the release's concern only when its manifest lists a file of the same table or artifact,
+# stage and values of those keys: the libraries, producers, versions and steps a release uses are the
+# partitions of the files it lists, so an older manifest needs no new field. A stage file with no such key
+# (`contig_index`, `seq_shards`) is every listing release's, as in (a).
 # The table of each partitioned file in (c), and the version key that places it.
 VERSION_ONLY = {"tape_version_def": "tape_version"}
 
@@ -407,6 +417,36 @@ def _in_release(stages: set[str], release_id: str, tape_versions: set[str] = fro
             return value == release_id
         return value in tape_versions
     return keep
+
+
+def _owner_key(name: str, parts: dict[str, str]) -> tuple | None:
+    """For a stage file of table or artifact `name`, what in the stage made it (card C-19, scope note above):
+    (name, stage, its other partitions but the registry's bucket keys, sorted). None for a file outside any
+    stage, or one whose only partitions are its stage and buckets: no library, producer, version or step
+    sets it apart, so every release listing the stage owns it."""
+    if "stage" not in parts:
+        return None
+    spec = TABLES.get(name)
+    buckets = spec.bucket_keys if spec is not None else ()
+    rest = tuple(sorted((k, v) for k, v in parts.items() if k != "stage" and k not in buckets))
+    return (name, parts["stage"], rest) if rest else None
+
+
+def partial_libraries(manifest: dict) -> list[tuple[str, list[str], list[str]]]:
+    """(library, the release's stages it has domain files for, those it has none for) for every library the
+    manifest lists domain files of for some but not all of its stages, by library name (card C-19): the
+    release's family tokens then cover only the first stages' genes, as for a release built before a stage
+    was scanned. Stages in the release's order."""
+    have: dict[str, set[str]] = {}
+    for f in manifest["files"]:
+        if f["table"] == "l1_domains":
+            have.setdefault(f["partitions"]["library"], set()).add(f["partitions"]["stage"])
+    out = []
+    for lib in sorted(have):
+        missing = [s for s in manifest["stages"] if s not in have[lib]]
+        if missing:
+            out.append((lib, [s for s in manifest["stages"] if s in have[lib]], missing))
+    return out
 
 
 def manifest_path(root: Path, release: str) -> Path:
@@ -635,18 +675,23 @@ def _claimed_by(rel: str) -> tuple[str, dict[str, str]] | None:
 
 def verify_manifest(manifest: dict, root: Path | None = None) -> list[str]:
     """LY-10: every listed file exists with its sha256 and size, and no unlisted .parquet or artifact file
-    exists in the release's scope (card B-33, as `build_manifest` draws it). A file of a stage the release
-    does not list (card B-25), of another release's `release=` partition, or defining a tape version none
-    of the listed files uses is not the release's and is ignored; any other stray is reported, also one no
-    table claims, except in the trees `build_manifest` leaves out (`EXCLUDED_TREES`: the search pack and
-    runs, written after the release, card B-28)."""
+    exists in the release's scope (card B-33, as `build_manifest` draws it, narrowed by card C-19). A file of
+    a stage the release does not list (card B-25), of another release's `release=` partition, or defining a
+    tape version none of the listed files uses is not the release's and is ignored; so is a file under a
+    listed stage of a library, producer, version or step the release does not use there (`_owner_key`: no
+    listed file has its table, stage and partitions), such as a library scanned on the stage after the
+    release was built. Any other stray is reported: a second part beside a listed file, a file of a stage
+    table with no such partition, and one no table claims, except in the trees `build_manifest` leaves out
+    (`EXCLUDED_TREES`: the search pack and runs, written after the release, card B-28)."""
     root = Path(root or manifest["root"])
     used = _used_tape_versions(f["partitions"] for f in manifest["files"])
     in_release = _in_release(set(manifest["stages"]), manifest["release_id"], used)
     problems = []
     listed = set()
+    owned = {None}  # with the (table, stage, partitions) of every listed stage file that has more than a stage
     for f in manifest["files"] + manifest.get("artifacts", []):
         listed.add(f["path"])
+        owned.add(_owner_key(f.get("table") or f["artifact"], f["partitions"]))
         p = root / f["path"]
         if not p.exists():
             problems.append(f"missing: {f['path']}")
@@ -664,6 +709,8 @@ def verify_manifest(manifest: dict, root: Path | None = None) -> list[str]:
             continue
         hit = _claimed_by(rel)
         if hit is not None and not in_release(*hit):
+            continue
+        if hit is not None and _owner_key(*hit) not in owned:  # added to the stage by a step the release does not use
             continue
         problems.append(f"not in manifest: {rel}")
     return problems
