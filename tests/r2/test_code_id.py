@@ -26,22 +26,46 @@ PKG = Path(biobox.__file__).resolve().parent
 
 BUILD = r"""
 import hashlib, json, sys
+from datetime import datetime
 from pathlib import Path
+import yaml
 sys.path.insert(0, sys.argv[2])
 import biobox
 assert Path(biobox.__file__).resolve().is_relative_to(Path(sys.argv[3]).resolve()), biobox.__file__
-from test_micro_s0_catalog import _build
-from biobox import catalog
-root = _build(Path(sys.argv[1]))
+import test_micro_s0_catalog as fx
+from biobox import catalog, codeid, profile, runstep
+out = Path(sys.argv[1])
+root = fx._build(out)
+# Plus build-stage's `inputs` step (the direct build has no genome_input), started by run-step as build-stage starts
+# every step, so the root holds a real run record of this code beside the files the manifest lists.
+work = out.parent / (out.name + "-work")
+work.mkdir(parents=True)
+genomes = []
+for o in fx.CONTRACT["objects"]:
+    cu = fx.ids.contig_uid(fx.fasta.read(fx.FIX / o["file"])[0].seq).hex()
+    genomes.append({"contig_uids": [cu], "genetic_code": o["genetic_code"], "kind": o["kind"],
+                    "circular": [cu] if o["topology"] == "circular" else []})
+(work / "genomes.json").write_text(json.dumps(genomes))
+(work / "profile.yaml").write_text(yaml.safe_dump({
+    "max_threads_day": 1, "max_threads_night": 1, "mem_scope": "4G", "tmp": str(work / "tmp"),
+    "durable": str(work / "durable"), "bulk": str(work / "bulk"), "nice_monolithic": 19, "nice_fanout": 15,
+    "day_start_hour": 8, "day_end_hour": 20, "cpu_min_per_process": 300, "small_file_floor_bytes": 1}))
+code = runstep.run_step(profile.load(work / "profile.yaml"), root, "S0", "inputs",
+                        [sys.executable, "-m", "biobox.cli", "stage", "inputs", "--root", str(root), "--stage", "S0",
+                         "--genomes", str(work / "genomes.json")],
+                        clock=lambda: datetime(2026, 11, 9, 12, 0), load=lambda: 0.0)
+assert code == 0, code
+rec = json.loads((root / "runs" / "stage=S0" / "inputs.json").read_text())
+ident = codeid.code_identity()
+assert (rec["code_id"], rec["code_commit"]) == (ident["code_id"], ident["code_commit"]), rec
 man = catalog.build_manifest(root, "rS0.test", ["S0"])
+assert any(f.get("table") == "genome_input" for f in man["files"]), "the run-step output is in the manifest"
 h = hashlib.sha256()
 for f in man["files"] + man["artifacts"]:
     h.update(f["path"].encode() + (root / f["path"]).read_bytes())
-from biobox import codeid
-ident = codeid.code_identity()
 portable = {k: v for k, v in man.items() if k != "root"}
-print("RESULT", hashlib.sha256(catalog.manifest_bytes(portable)).hexdigest(), h.hexdigest(), ident["code_id"],
-      ident["code_commit"])
+print("RESULT", hashlib.sha256(catalog.manifest_bytes(portable)).hexdigest(), h.hexdigest(), rec["code_id"],
+      rec["code_commit"])
 """
 
 
@@ -186,9 +210,10 @@ def test_describe_built_by_lines():
 
 
 def _build_with(src: Path, out: Path, git_commit: str | None = None) -> tuple:
-    """Build the micro-S0 fixture in a child process that imports the package copy at `src`; return (sha256 of the
-    manifest's bytes without `root`, sha256 over the listed files, code_id, code_commit). `git_commit` puts a
-    stand-in `git` that answers that commit first on PATH."""
+    """Build the micro-S0 fixture in a child process that imports the package copy at `src`, plus an `inputs` step
+    through `run_step`; return (sha256 of the manifest's bytes without `root`, sha256 over the listed files, and the
+    code_id and code_commit of the run record that step wrote into the root). `git_commit` puts a stand-in `git` that
+    answers that commit first on PATH."""
     env = dict(os.environ)
     env["PYTHONPATH"] = os.pathsep.join([str(src.parent)] + ([env["PYTHONPATH"]] if env.get("PYTHONPATH") else []))
     if git_commit is not None:
@@ -217,6 +242,6 @@ def test_manifest_is_a_function_of_the_data_not_of_the_code(tmp_path):
     (pkg / "_c23_probe.txt").write_text("a harmless extra file\n")
     commit = "0123456789abcdef0123456789abcdef01234567"
     other = _build_with(pkg, tmp_path / "third" / "r3", git_commit=commit)
-    assert other[2] != one[2]  # the code ids (what every run record's meta takes) differ
-    assert other[3] == commit and one[3] is None  # and so do the commits
+    assert other[2] != one[2]  # the run records in the two roots name different code
+    assert other[3] == commit and one[3] is None  # and different commits
     assert other[:2] == one[:2]  # the manifests are byte-identical and so are the files they list
