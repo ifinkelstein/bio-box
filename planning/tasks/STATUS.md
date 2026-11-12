@@ -5,9 +5,37 @@ The running record of the cards in [`TASKS.md`](TASKS.md). Updated at every merg
 by an agent on its own branch `task/<ID>`, audited by the orchestrating session, and merged after its
 tests passed on the merged tree.
 
-## Handoff, 2026-11-12 10:30 CST (current; the dated sections under "History" are superseded where they differ)
+## Handoff, 2026-11-12 13:10 CST (current; the dated sections under "History" are superseded where they differ)
 
-Written so a new session can continue without the conversation that produced this file.
+Written so a new session can continue without the conversation that produced this file. The orchestrating session
+ended at 13:10 CST; the PI restarts it. **Agents of that session stop with it**: every card listed under "Agents
+running" below must be restarted from its card (check its branch first: a pushed branch holds work to continue, an
+unpushed one holds nothing you can see). Pod jobs (systemd units) keep running.
+
+**First steps for the new session.**
+1. `git fetch origin`; make an integration worktree of `plan/task-cards` (the old one,
+   `/private/tmp/claude-502/-Users-ilya-Work-25-projects-all-the-data/bfa9ef61-c05a-4538-a14b-d02e18030529/scratchpad/wt-plan`,
+   may be gone; the main checkout at `/Users/ilya/Work/25 projects/all-the-data` is on an old branch, `task/W-23`, so
+   do not merge there).
+2. Check GitHub Actions on `770f886` (the C-21b merge; `ci` and `cross-host`; the manifest hash changes with C-21b's
+   new schema): `scripts/orchestrator/watch_ci.sh <worktree> 770f88694b617d864a5495637f948718b8b24e7e`.
+3. Merge W-22 (below), then restart the cards in "Agents running", B-46 first.
+4. Re-arm watchers on the pod jobs below with `scripts/orchestrator/watch_until.sh '<remote test>' '<remote report>'
+   [interval]` (one short ssh call per interval; long-held ssh sessions drop with exit 255 when the laptop sleeps
+   or the pod closes them). For a full suite that must survive drops: `pod_pytest.sh <name> tests/r0/test_runbook.py`
+   to sync, then on the pod `bash /tmp/if2453/ci-tmp/detached_suite.sh <name> 2`, poll `systemctl --user is-active
+   'ci-<name>-*'` and `tail -n 1 /tmp/if2453/ci-tmp/<name>-detached/log.*`.
+
+**Ready to merge: W-22** (one pack directory per host), branch `task/W-22` at `ca10a5d`, pushed; branch suite 1,470
+passed, 17 skipped. A first merge into `plan/task-cards` (after C-21b) merged cleanly (`cli.py`, `RUNBOOK.md`
+auto-merged) and was aborted before its merged-tree tests finished, only because the session ended. To do: merge,
+run `tests/r0 tests/r2/test_micro_s0_search.py tests/r2/test_w23_commands.py tests/r2/test_shared_contigs.py` on the
+merged tree, commit with a STATUS row, push. What it does: `pack verify` and a no-op `pack build` put their scratch
+under the profile's `<tmp>/search/<user>/work`, never in the pack directory; a pack build that cannot write the
+pack directory exits 2; the guides find packs through `--profile` alone, at `<tmp>/packs` =
+`/tmp/if2453/bio-box/packs` on wilkcomp02 (no new profile key; adding one needs `profile.py`, a question for the
+PI). Not changed: `nbr` and `search hits` still fall back silently to the gene-call tape version when the run's
+pack is elsewhere (card W-24 item 1).
 
 **How the work runs.** One card per agent, in its own worktree (`.claude/worktrees/agent-*`) on branch
 `task/<ID>` (measurements: `measure/<ID>`); tests only on the pod (`sh scripts/pod_pytest.sh <ID> [--shards 2]
@@ -22,20 +50,22 @@ not the job).
 
 **Branches.** `plan/task-cards` on GitHub (repository `ifinkelstein/bio-box`, public): 96 cards and the
 measurements in the table below; also the pptx deck (`presentations/all-the-data-deck.pptx`, 51 slides) and the
-flank-tools review behind card W-25 (`planning/design/W-25_flank_tools_review.md`; W-25 waits for the PI). Last green `ci` and `cross-host`: `3ff6bc4` (2026-11-12); the fixture's
-manifest hash is `5b7fceb8fe80436513cd0f0ab8305838` since C-21a (it was `74a96a99…` after E-08). `main` has pull
+flank-tools review behind card W-25 (`planning/design/W-25_flank_tools_review.md`; W-25 waits for the PI). Last
+`ci` and `cross-host` confirmed green: `eb58e99` (the B-45 merge, 2026-11-12), manifest hash
+`5b7fceb8fe80436513cd0f0ab8305838` (since C-21a; `74a96a99…` after E-08); `770f886` (C-21b) not yet checked. The
+manifest hash includes a hash of every registered schema, so it changes with any schema change (found by C-23). `main` has pull
 requests 1 and 2 (87 cards) and is behind; its image passes its own suite (`ghcr.io/ifinkelstein/bio-box-test@sha256:7f97bc7b…`,
 `ghcr.io/ifinkelstein/bio-box@sha256:927cf824…`, on the pod as `~/bio-box/images/bio-box{,-test}_80d4c55.sif`),
 but the runbook and `scripts/pod_pytest.sh` still use `bio-box-test_74b3e05.sif`.
 
-**Agents running.**
+**Agents running when the session ended (they stop with it; restart each from its card).**
 
-| Card | Branch | State | To continue |
+| Card | Branch at 13:10 | State | To continue |
 |---|---|---|---|
-| C-21c counts by genome through `genome_member` | `task/C-21c` | started 2026-11-12 evening | audit, merge; then PLSDB and C-25 are unblocked on this side |
-| W-22 one pack directory per host | `task/W-22` | on its pod test run | audit, merge, then W-24 and W-15 (same files) |
-| C-23 run records name their code | `task/C-23` | sent back: on the current branch its pinned fixture manifest hash fails (`0ea1eb31…` against `e42fea7f…`, files hash unchanged); re-measuring at `dcc726d` without the card | if the hash at `dcc726d` equals the branch's, re-pin and merge; if not, the card changes the manifest: stop. Then C-16 (same `runstep.py`) |
-| B-46 tokens out of memory at 46 M proteins | `task/B-46` | started 2026-11-12 afternoon; reproduces on `rM.1`'s inputs read-only into `/tmp/if2453/b46` | audit, merge, sync the tree to `/tmp/if2453/ci/r50` between scans, `touch /tmp/if2453/r50/driver/RELEASE_OK` |
+| B-46 tokens out of memory at 46 M proteins (**first**: blocks `rM.2`) | `task/B-46`, not pushed | started 12:15; was to reproduce on `rM.1`'s inputs read-only into `/tmp/if2453/b46` (look there for its scratch). It was told: merge C-21b (in `plan/task-cards`) before measuring the later release steps, since `rM.2` will run C-21b's `dim` | restart from the card; then merge, and see "On the pod" for how the build resumes |
+| C-23 run records name their code | `task/C-23` at `fc4e84a`, pushed (merges `dcc726d`; the card's code is done and audited) | its test pinned the fixture's manifest hash, which moves with every schema change (E-08's columns moved it; C-21b moves it again). It was told to replace the pin with a differential test: build the fixture from two package copies whose `code_id` differ (an extra harmless file in one; a different fake commit), assert the run records' `code_id` differ and the manifests and listed files are byte-identical; keep the same-code-two-paths case; drop the constants; merge the current tip; full suite | restart with that instruction on top of `fc4e84a`; then merge; then C-16 (same `runstep.py`) |
+| C-21c counts by genome through `genome_member` | `task/C-21c`, not pushed | started 12:40 | restart from the card (it includes the `bio-box releases` genome count added 2026-11-12) |
+| W-24 silent fallbacks in the search readers | `task/W-24`, not pushed | started 13:00; to merge W-22 when it lands | restart after W-22 is merged; then W-15 |
 
 **On the pod now** (wilkcomp02; account thread cap 40 by day, 56 at night, a total over everything we run).
 - The 50 Gbp build, unit `r50-driver` (log `/tmp/if2453/r50/driver.log`, step log `/tmp/if2453/r50/tmp/logs/r50-P6-5.log`;
@@ -45,20 +75,32 @@ but the runbook and `scripts/pod_pytest.sh` still use `bio-box-test_74b3e05.sif`
   8,192,065 NR50 clusters), then **`rM.1.tokens` failed at 10:57 (DuckDB out of memory in the slot join; card
   B-46)**. The driver was relaunched at 11:00 with `SKIP_RM1=1`: it skips `rM.1`, scans Pfam on P3 to P6 now (about
   midday Saturday, *estimate*; each scan launch ends with the same tokens failure after the scan is published,
-  which the driver accepts), then waits for `/tmp/if2453/r50/driver/RELEASE_OK`. **To finish:** merge B-46, sync
-  the fixed tree to `/tmp/if2453/ci/r50` (rsync as `pod_pytest.sh` does) only while no scan unit runs, then
-  `touch /tmp/if2453/r50/driver/RELEASE_OK`; the driver builds `rM.2`. `rM.1` can then be finished by relaunching
-  its release steps with the fixed code.
-- Measurement 0-08a, the Rfam sample scan (`/tmp/if2453/m08a`, units `m08a-*`, 16 shards done at 10:12 CST; branch
-  `measure/0-08a` pushed). When `DONE` exists: copy `report/2026-11-12_rfam_sample.md` to `planning/measurements/`
-  and `0-08a_prok-2_proposed.tsv` to `planning/design/`, write the interpretation, merge.
+  which the driver accepts), then waits for `/tmp/if2453/r50/driver/RELEASE_OK`. At 13:07 CST it was scanning P3
+  (unit `r50-P3-6`, launched 11:00). **To finish:** merge B-46, sync the fixed tree of `plan/task-cards` to
+  `/tmp/if2453/ci/r50` (rsync as `pod_pytest.sh` does) only while the driver is waiting (its log says "scans done;
+  waiting for .../RELEASE_OK"), never during a scan, then `touch /tmp/if2453/r50/driver/RELEASE_OK`; the driver
+  builds `rM.2` (with C-21b's `dim` and B-45's plan option; at 46 M proteins B-45 changes no cut). `rM.1` can then
+  be finished by relaunching its release steps with the fixed code. The driver and its `SKIP_RM1` mode are in
+  `scripts/stress/build_stage_pod/r50_driver.sh` (the pod copy in `/tmp/if2453/r50/bin` equals it). Watch: remote
+  test `[ -e /tmp/if2453/r50/driver/DONE ] || [ -e /tmp/if2453/r50/driver/FAILED ] || [ -e /tmp/if2453/r10/root/STOP ]
+  || ! systemctl --user is-active --quiet r50-driver || grep -q 'waiting for /tmp/if2453/r50/driver/RELEASE_OK'
+  /tmp/if2453/r50/driver.log`.
+- Measurement 0-08a, the Rfam sample scan (`/tmp/if2453/m08a`, units `m08a-*`, 20 shards done at 13:07 CST; branch
+  `measure/0-08a` pushed at `935dcac`). When `DONE` exists: copy `report/2026-11-12_rfam_sample.md` to
+  `planning/measurements/` and `0-08a_prok-2_proposed.tsv` to `planning/design/`, write the interpretation, merge.
+- Search pack directory (W-22): `/tmp/if2453/bio-box/packs` holds the `rN.3` pack (copied 2026-11-12 from
+  `/tmp/if2453/r50/packs/release=rN.3/a334c89ccf048904f297de3b2597af22`; equal `du -s`, 7,573,492 KB; with its
+  `pack_verified.json`; `chmod -R go-w` done). The `rN.1` pack (`/tmp/if2453/w19/packs/release=rN.1/71917a4167c7aebe1b7ff44d18a99306`, with its
+  verification record) may be copied the same way. Nothing was moved or deleted.
+- An orphaned search worker from W-14's `test_runner_death_is_reported` sat idle in a test scope from 2026-11-10
+  until the PI stopped it on 2026-11-12: a killed runner leaves its worker alive. Put that in card C-16's brief.
 - Data root `/tmp/if2453/r10/root` (46 GB; stages S1, P1 to P6; releases `rN.1a`, `rN.1b`, `rN.1`, `rN.2`, `rN.3`)
   is on local disk, which a reboot clears, and **not yet copied to `/stor`**. Our files on the local disk total
   about 350 to 390 GB of its 1.1 TB (543 GB free), mostly scratch.
 
 **Next, in order.**
-1. B-46 first, in the next free agent slot (it blocks `rM.2`). Merge C-21b, W-22, C-23, B-45 as they report; then
-   start C-21c, C-16, W-24, W-15 (four at a time).
+1. Merge W-22. Restart B-46, C-23, C-21c and W-24 (four at a time); then C-16 (after C-23) and W-15 (after W-24).
+   The PI may approve W-25 (flank comparison); it then joins the queue.
 2. When `rM.2` is built and verified: copy the data root to `/stor/scratch/Wilke/if2453/all-the-data/` (one
    `rsync`, atomic rename; files under 64 MB only as `small_ok` tables allow, AGENTS §7.3), then clear obsolete
    scratch (old pack copies under `w16`, `w19`; finished measurement directories).
@@ -382,6 +424,14 @@ probed by hand on the pod).
 ## Open items for the PI
 
 Added 2026-11-12, recommendation first:
+- Card W-25 (proposed): group a search's loci by their flanks (Domainator/BiG-SCAPE distances on flank tokens,
+  UPGMA, context types, conservation, synteny figure; review in `planning/design/W-25_flank_tools_review.md`).
+  Needs a go-ahead.
+- Card C-21b: a contig's genomes are looked up at one row group per stage file (19 at 20 stages, *measured*); a
+  per-release copy of the membership sorted by contig would make it one. Recommendation: not yet, until a search
+  needs it.
+- Card W-22: the host's pack directory is the profile's `<tmp>/packs`; an explicit `packs:` key in the profile needs
+  a change to `profile.py`. Recommendation: not needed now.
 - Card C-21f: whether gene calls become a function of the contig alone (DEC-27 deferred it to this measurement).
   Under policy p3, 99.47% of P1's calls are unchanged (chromosomes 99.78%; contigs under 100 kb 86.14%), at +1.06%
   CPU. Recommendation: keep today's calls for now and decide before S2C phase 2, when shared plasmids become common;
