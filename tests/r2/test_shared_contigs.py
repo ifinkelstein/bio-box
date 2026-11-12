@@ -18,6 +18,9 @@ P is the first 8,000 bases of phage T4. Both stages are built with `build-stage`
 subprocess), each with a release: in order A, S0 then S1; in order B, S1 then S0. The result depends on that order
 for the shared contigs only, and the tests say so: their calls, IGRs, tapes and `contig_dim` genome come from the
 stage built first; every other row of a release over both stages is the same in both orders.
+
+Card C-21a (DEC-27) adds a stage whose own genomes share a contig (section at the end): `genome_input` lists it in
+each, the genome with the least `genome_uid` writes its calls, and the stage does not depend on the genomes' order.
 """
 
 from __future__ import annotations
@@ -218,6 +221,12 @@ def test_every_contig_of_every_genome_has_its_tape_and_igrs_in_a_release_over_bo
 def test_no_key_is_duplicated_in_any_table_a_release_over_both_stages_reads(world, order):
     root = world[order]
     rel = {"a": "rC20.a2", "b": "rC20.b2"}[order]
+    assert duplicated_keys(root, rel) == {}
+
+
+def duplicated_keys(root: Path, rel: str) -> dict[str, int]:
+    """Per table of the release's manifest (but `PER_STAGE_BY_DESIGN`), the number of primary-key values held by more
+    than one row; a table without any is not listed."""
     man = catalog.read_manifest(catalog.manifest_path(root, rel))
     by = defaultdict(list)
     for f in man["files"]:
@@ -246,7 +255,7 @@ def test_no_key_is_duplicated_in_any_table_a_release_over_both_stages_reads(worl
                             "HAVING count(*) > 1)").fetchall()
         if n:
             dup[name] = n
-    assert dup == {}
+    return dup
 
 
 def test_contig_dim_keeps_the_owning_stages_genome_and_the_order_decides_which_that_is(world):
@@ -325,3 +334,208 @@ def test_the_ncrna_producer_skips_a_shared_contig_and_ledgers_it(direct_s1, tmp_
     rows = ledger.read(out, "S1", f"ncrna-{prod}")
     assert {r["object_key"] for r in rows if r["reason_code"] == "owned_by:S0"} == SHARED
     assert ledger.check_balance(out, "S1", [f"ncrna-{prod}"]) == []
+
+
+# --- card C-21a (DEC-27): a contig in several genomes of one stage --------------------------------------------------
+#
+# Stage S2 holds three genomes that share the plasmid P:
+#
+#     GA = (M, P)        prokaryote, code 4, M circular: single mode, trained on M and P
+#     GB = (M_ROT, P)    prokaryote, code 4, M_ROT circular: single mode, P in the same mode and code as GA
+#     GC = (L, P)        prokaryote, code 4, 56.5 kb: under 100 kb, so meta mode: P in another mode
+#
+# `genome_input` lists P in all three. P's calls are written once, by the genome with the least genome_uid (DEC-27),
+# whichever that is; the others' calls of P are dropped and the skip is recorded. A genome whose code differs from
+# another's for P would be refused at `stage inputs` (the design note's rule, test_micro_s0_inputs.py). The stage is
+# built twice with build-stage, in two fresh roots, with the genomes and the contigs of each listed in opposite orders.
+
+W_STAGE, W_REL = "S2", "rC21.w"
+W_OBJECTS = [("w_hostA.fna", [("hostA chromosome", M), ("hostA plasmid", P)]),
+             ("w_hostB.fna", [("hostB chromosome", M_ROT), ("hostB plasmid", P)]),
+             ("w_small.fna", [("small host phage", L), ("small host plasmid", P)])]
+W_GENOMES = [(("M", "P"), 4, "prokaryote", ("M",)), (("M_ROT", "P"), 4, "prokaryote", ("M_ROT",)),
+             (("L", "P"), 4, "prokaryote", ())]
+W_GUID = {names: genome_uid(names) for names, *_ in W_GENOMES}
+W_OWNER = min(W_GUID, key=W_GUID.get)  # the contig names of the genome that writes P's calls
+SEQ = {"M": M, "L": L, "P": P, "M_RC": M_RC, "M_ROT": M_ROT}
+
+
+def w_genomes(order: int = 1) -> list[GenomeInput]:
+    """The stage's genomes; order -1 lists the genomes, and the contigs of each, the other way round."""
+    return [GenomeInput(tuple(CU[n] for n in names[::order]), code, kind=kind, circular=tuple(CU[n] for n in circ))
+            for names, code, kind, circ in W_GENOMES[::order]]
+
+
+def _genomes_json(genomes: list[GenomeInput]) -> str:
+    return json.dumps([{"contig_uids": [u.hex() for u in x.contig_uids], "genetic_code": x.genetic_code,
+                        "kind": x.kind, "circular": [u.hex() for u in x.circular],
+                        "assembly_quality": x.assembly_quality} for x in genomes])
+
+
+def w_inputs(base: Path) -> Path:
+    """The FASTA objects of stage S2 and its objects JSON file."""
+    base.mkdir(parents=True, exist_ok=True)
+    objs = []
+    for name, recs in W_OBJECTS:
+        lines = [ln for h, s in recs for ln in fasta.format_record(h, s, 80)]
+        (base / name).write_bytes(b"\n".join(lines) + b"\n")
+        objs.append({"path": str(base / name), "source_name": "c21a_fixture", "source_release": "1",
+                     "license": "INSDC (public)", "redistributable": True})
+    (base / "objects.json").write_text(json.dumps(objs))
+    return base / "objects.json"
+
+
+@pytest.fixture(scope="module")
+def within(tmp_path_factory):
+    d = tmp_path_factory.mktemp("c21a")
+    prof = c08.profile_at(d / "prof")
+    objects = w_inputs(d / "inputs")
+    codes, roots = {}, {}
+    for order in (1, -1):
+        g = d / "inputs" / f"genomes{order}.json"
+        g.write_text(_genomes_json(w_genomes(order)))
+        roots[order] = d / f"order{order}" / "root"
+        b = bs.Build(root=roots[order], stage=W_STAGE, release=W_REL, stages=(W_STAGE,), genomes=g, objects=objects,
+                     threads=1)
+        codes[order] = bs.build_stage(prof, b, run=runner)
+    return {"d": d, "codes": codes, "roots": roots, "root": roots[1]}
+
+
+def _oracle_calls(names: tuple[str, ...], code: int) -> set[tuple[int, int, int]]:
+    """P's genes as pyrodigal itself gives them for the genome `names` (independent of `genecall`): meta mode below
+    100 kb of genome, else single mode trained on the genome's contigs in contig_uid order; 0-based half-open."""
+    import pyrodigal
+
+    seqs = {CU[n]: SEQ[n].upper().decode() for n in names}
+    if sum(len(s) for s in seqs.values()) < 100_000:
+        finder = pyrodigal.GeneFinder(meta=True)
+    else:
+        finder = pyrodigal.GeneFinder(meta=False)
+        finder.train(*(seqs[cu] for cu in sorted(seqs)), translation_table=code)
+    return {(g.begin - 1, g.end, g.strand) for g in finder.find_genes(P.upper().decode())}
+
+
+def test_c21a_a_stage_whose_genomes_share_a_contig_builds_through_build_stage(within):
+    assert within["codes"] == {1: 0, -1: 0}
+
+
+@pytest.mark.covers("C-01")
+def test_c21a_genome_input_lists_the_shared_contig_in_every_genome(within):
+    rows = _rows(within["root"], f"l0seq/genome_input/stage={W_STAGE}")
+    got = [(r["contig_uid"], r["genome_uid"]) for r in rows]
+    want = {(CU[n], W_GUID[names]) for names, *_ in W_GENOMES for n in names}
+    assert sorted(got) == got and set(got) == want and len(got) == len(want)
+    assert {gu for cu, gu in got if cu == CU["P"]} == set(W_GUID.values())
+
+
+@pytest.mark.covers("D-01")
+def test_c21a_the_shared_contig_has_one_call_set_the_least_genomes(within):
+    """P's genes are those of the genome with the least genome_uid, by pyrodigal run directly as the oracle; the three
+    genomes call P differently, so the rule decides something."""
+    root = within["root"]
+    by_genome = {names: _oracle_calls(names, code) for names, code, *_ in W_GENOMES}
+    assert len({frozenset(v) for v in by_genome.values()}) > 1
+    feats = [r for r in _rows(root, f"l1/feature/producer={V}/stage={W_STAGE}") if r["contig_uid"] == CU["P"]]
+    assert {(r["start"], r["end"], r["strand"]) for r in feats} == by_genome[W_OWNER]
+    assert len(feats) == len(by_genome[W_OWNER])
+    for rel in (f"l1/feature_protein/gene_call_version={V}/stage={W_STAGE}",
+                f"l1/protein_occurrence/gene_call_version={V}/stage={W_STAGE}"):
+        rows = [r for r in _rows(root, rel) if r["contig_uid"] == CU["P"]]
+        assert sorted(r["feature_uid"] for r in rows) == sorted(r["feature_uid"] for r in feats), rel
+
+
+@pytest.mark.covers("L-01")
+def test_c21a_the_ledger_records_the_skip_naming_the_owning_genome(within):
+    root = within["root"]
+    rows = [r for r in ledger.read(root, W_STAGE, "genecall") if r["object_key"] == CU["P"]]
+    assert sorted(r["reason_code"] for r in rows) == ["ok", f"owned_by:{W_STAGE}/{W_GUID[W_OWNER].hex()}"]
+    assert ledger.check_balance(root, W_STAGE, ["genecall"]) == []
+
+
+def test_c21a_contig_dim_holds_one_row_per_contig_with_the_owning_genome(within):
+    rows = _release_rows(within["root"], W_REL, "contig_dim")
+    by = {r["contig_uid"]: r["genome_uid"] for r in rows}
+    assert len(rows) == len(by) == 4
+    assert by[CU["P"]] == W_GUID[W_OWNER]
+    for names, *_ in W_GENOMES:
+        assert by[CU[names[0]]] == W_GUID[names]
+
+
+def test_c21a_no_key_is_duplicated_and_the_release_verifies(within):
+    for root in within["roots"].values():
+        assert duplicated_keys(root, W_REL) == {}
+        man = catalog.read_manifest(catalog.manifest_path(root, W_REL))
+        assert catalog.verify_manifest(man, root) == []
+
+
+def test_c21a_every_tape_holds_each_feature_of_its_contig_once(within):
+    """IGRs and tapes are per contig: one tape for P, whose slots are its features, each once and in order."""
+    root = within["root"]
+    feats = defaultdict(list)
+    rows = _release_rows(root, W_REL, "feature")
+    for r in sorted(rows, key=lambda r: (r["start"], r["end"], r["strand"], r["kind"])):
+        feats[r["contig_uid"]].append(r["feature_uid"])
+    tapes_ = _release_rows(root, W_REL, "contig_tapes")
+    assert sorted(t["contig_uid"] for t in tapes_) == sorted(feats)
+    for t in tapes_:
+        assert t["feature_uids"] == feats[t["contig_uid"]], t["contig_uid"].hex()
+        assert t["n_slots"] == len(feats[t["contig_uid"]])
+    igr = defaultdict(int)
+    for r in _release_rows(root, W_REL, "igr"):
+        igr[r["contig_uid"]] += 1
+    assert set(igr) == set(feats)
+
+
+@pytest.mark.covers("D-01")
+def test_c21a_the_stage_does_not_depend_on_the_order_of_its_genomes(within):
+    """AGENTS §4.3: every file of the two roots (but run records, manifests and the catalog, which hold the root's
+    path) is the same, byte for byte."""
+    a, b = (c08.data(c08.tree(within["roots"][k])) for k in (1, -1))
+    assert a and a == b
+
+
+@pytest.fixture(scope="module")
+def direct_w(within):
+    """Stage S2's inputs and ingest called directly in a fresh root (no gene calls yet)."""
+    root = within["d"] / "direct-w"
+    ingest([SourceObject(within["d"] / "inputs" / name, "c21a_fixture", "1", "INSDC (public)", True)
+            for name, _ in W_OBJECTS], root, W_STAGE)
+    write_genome_input(root, W_STAGE, w_genomes())
+    return root
+
+
+def test_c21a_gene_calling_reports_the_skip_and_does_not_depend_on_genome_order(direct_w, tmp_path):
+    want = [{"contig_uid": CU["P"].hex(), "owner_stage": W_STAGE, "owner_genome": W_GUID[W_OWNER].hex()}]
+    res = genecall.run(direct_w, W_STAGE, out=tmp_path / "o1", tmp=tmp_path)
+    assert res["skipped_contigs"] == want
+    assert res["genes"] == sum(1 for _ in _rows(tmp_path / "o1", f"l1/feature/producer={V}/stage={W_STAGE}"))
+    # the genomes given explicitly, in either order, and called two at a time: the same files. Each genome's contigs
+    # are given in contig_uid order, as `genome_input` gives them: single mode trains on them in the order given, and
+    # that order is not this card's question
+    for k, (order, workers) in enumerate(((1, 2), (-1, 1), (-1, 2))):
+        o = tmp_path / f"e{k}"
+        gs = [GenomeInput(tuple(sorted(g.contig_uids)), g.genetic_code, kind=g.kind, circular=g.circular)
+              for g in w_genomes(order)]
+        r = genecall.run(direct_w, W_STAGE, genomes=gs, out=o, tmp=tmp_path, workers=workers)
+        assert r == res
+        assert c08.tree(o) == c08.tree(tmp_path / "o1"), (order, workers)
+
+
+def test_c21a_the_ncrna_producer_searches_a_shared_contig_once_and_ledgers_the_skip(direct_w, tmp_path):
+    if shutil.which("cmsearch") is None:
+        pytest.skip("cmsearch (Infernal) is in the image")
+    from biobox.l1 import ncrna
+
+    lib = FIX / "rfam15.1_micro_s0.cm.gz"
+    res = ncrna.run(direct_w, W_STAGE, lib, 2, out=tmp_path / "o", tmp=tmp_path)
+    assert res["skipped_contigs"] == [{"contig_uid": CU["P"].hex(), "owner_stage": W_STAGE,
+                                       "owner_genome": W_GUID[W_OWNER].hex()}]
+    assert res["contigs"] == 4
+    prod = ncrna.producer(lib)
+    rows = ledger.read(tmp_path / "o", W_STAGE, f"ncrna-{prod}")
+    assert sorted(r["reason_code"] for r in rows if r["object_key"] == CU["P"]) == [
+        "ok", f"owned_by:{W_STAGE}/{W_GUID[W_OWNER].hex()}"]
+    assert ledger.check_balance(tmp_path / "o", W_STAGE, [f"ncrna-{prod}"]) == []
+    res2 = ncrna.run(direct_w, W_STAGE, lib, 2, genomes=w_genomes(-1), out=tmp_path / "o2", tmp=tmp_path)
+    assert res2 == res
+    assert c08.tree(tmp_path / "o2") == c08.tree(tmp_path / "o")
