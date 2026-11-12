@@ -1087,6 +1087,34 @@ def test_b09_tokens_never_load_every_tape(built, tmp_path, monkeypatch):
     assert list(parent.iterdir()) == []  # the private scratch directory is removed
 
 
+@pytest.mark.covers("D-01", "LY-08")
+def test_b46_token_bytes_do_not_depend_on_the_number_of_protein_ranges(built, tmp_path, monkeypatch):
+    """Card B-46: slots, cluster rows and domain rows are split into protein ranges by a hash, and the cluster keys
+    numbered from a sorted stream; the files are the same with one range (the fixture at 2 GB) as with many, with
+    ranges routed in several passes (fewer files open than ranges), and with ranges left empty."""
+    root, _, _, _ = built
+    want = _digests(root, TOKEN_DIRS)
+    assert tokens.n_ranges(sum(t["n_slots"] for t in _tapes_of_tv(root).values()), "2GB") == 1
+    for k, open_files in ((2, 512), (16, 7), (300, 512)):
+        monkeypatch.setattr(tokens, "n_ranges", lambda n_rows, limit, k=k: k)
+        monkeypatch.setattr(tokens, "ROUTE_OPEN_FILES", open_files)
+        fresh = _fresh(root, tmp_path, f"k{k}", TOKEN_DIRS)
+        tokens.run(fresh, REL, ["S0"])
+        assert _digests(fresh, TOKEN_DIRS) == want, k
+
+
+def test_b46_memory_limit_sets_the_number_of_ranges():
+    assert [tokens.limit_bytes(s) for s in ("2GB", "115MB", "1.5GiB", " 512 kib ", "7B")] == [
+        2 * 10**9, 115 * 10**6, 3 * 2**29, 512 * 1024, 7]
+    for bad in ("2", "2 GBs", "80%", "", "GB"):
+        with pytest.raises(ValueError, match="memory limit"):
+            tokens.limit_bytes(bad)
+    per = 2 * 10**9 // tokens.RANGE_ROW_BYTES
+    assert [tokens.n_ranges(n, "2GB") for n in (0, 1, per, per + 1, 4 * per, 4 * per + 1)] == [1, 1, 1, 2, 4, 8]
+    # rM.1: 91,631,686 cluster rows at NR50 and NR90, its largest input (measured, wilkcomp02, 2026-11-12)
+    assert tokens.n_ranges(91_631_686, "2GB") == 64
+
+
 def test_b09_refusals(built, tmp_path):
     root, _, _, _ = built
     fresh = _fresh(root, tmp_path, "s", TOKEN_DIRS)
