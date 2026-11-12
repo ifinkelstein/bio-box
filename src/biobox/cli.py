@@ -118,9 +118,11 @@ import os
 import re
 import shutil
 import sys
+import tempfile
 from datetime import datetime
 from pathlib import Path
 
+import duckdb
 import pyarrow.parquet as pq
 import yaml
 
@@ -1099,6 +1101,180 @@ def _seq(a) -> int:
     return 0
 
 
+def sql_connection(root: Path, release: str, *, runs=(), tmp: Path | None = None, threads: int = 4,
+                   memory_limit: str = "4GB"):
+    """(a read-only connection to the release's catalog, its scratch directory) for `bio-box sql` (card W-23). The
+    caller closes the connection and removes the scratch directory.
+
+    The catalog is opened with `catalog.open_catalog`, so the sequence functions, `partners_of` and `token_of` work,
+    from a copy in a scratch directory made under `tmp` (the profile's; default: the system's temporary directory;
+    refused under the data root), which also holds DuckDB's temporary directory (card W-18: never under the root).
+    The search runs in `runs` (run directories) are attached (`catalog.attach_search`). The protections it relies on,
+    each enforced by DuckDB on this connection, not by reading the query's text:
+
+    - the catalog is attached READ_ONLY and is the default database, so CREATE, INSERT, UPDATE, DELETE, DROP and
+      ALTER on it fail;
+    - external access is disabled (`enable_external_access = false`, which DuckDB refuses to turn back on while the
+      database runs) with `allowed_paths` set to exactly the files the catalog's views and the runs read (the
+      manifest's file list, `catalog_files`, and each run's Parquet files), so no other file on the host can be read
+      or written: COPY ... TO, EXPORT, ATTACH, INSTALL and LOAD of any path fail, and `allowed_paths` and
+      `allowed_directories` cannot be changed any more. DuckDB writes even a listed path through a temporary file
+      beside it, which is not allowed, so a listed file cannot be overwritten either (both measured on wilkcomp02,
+      DuckDB 2.0.0, 2026-11-12, and tested). The one directory DuckDB still writes is its own temporary directory, in
+      the scratch directory, outside the root;
+    - extensions are neither installed nor loaded automatically.
+
+    `bio-box sql` also runs only statements that DuckDB's own parser classifies as SELECT (`_sql`)."""
+    root = Path(root)
+    path = catalog.catalog_path(root, release)
+    if not path.is_file():
+        raise FileNotFoundError(f"release {release} has no catalog at {path}; it is built by: bio-box release catalog "
+                                f"--root {root} --release {release}")
+    if tmp is not None:
+        Path(tmp).mkdir(parents=True, exist_ok=True)
+    scratch = Path(tempfile.mkdtemp(prefix="biobox-sql-", dir=tmp))
+    try:
+        pack.outside_root(root, scratch, "the scratch directory of bio-box sql")
+        (scratch / "duckdb" / "profile").mkdir(parents=True)
+        con = catalog.open_catalog(path, local_dir=scratch / "catalog", threads=threads, memory_limit=memory_limit,
+                                   temp_directory=scratch / "duckdb", runs=list(runs))
+    except BaseException:
+        shutil.rmtree(scratch, ignore_errors=True)
+        raise
+    try:
+        built = Path(con.execute("SELECT value FROM catalog_info WHERE key = 'root'").fetchall()[0][0])
+        allowed = {str(built / p) for (p,) in con.execute("SELECT path FROM catalog_files").fetchall()}
+        for d in runs:
+            for name in catalog.SEARCH_RUN_FILES.values():
+                if (Path(d) / name).is_file():
+                    allowed |= {str(Path(d) / name), str((Path(d) / name).resolve())}
+        con.execute("SET autoinstall_known_extensions = false")
+        con.execute("SET autoload_known_extensions = false")
+        if allowed:
+            con.execute(f"SET allowed_paths = [{', '.join(catalog._sql_str(p) for p in sorted(allowed))}]")
+        con.execute("SET enable_external_access = false")
+    except BaseException:
+        con.close()
+        shutil.rmtree(scratch, ignore_errors=True)
+        raise
+    return con, scratch
+
+
+def _sql_runs(a, tmp: Path | None) -> tuple[list[Path], int] | str:
+    """The closed runs of the release `bio-box sql` attaches: each `--runs` value is a run directory or a runs
+    directory (its `run=*` directories); with neither, the runs directory of the host profile, when there is one.
+    Returns (runs of the release, runs of other releases left out), or a refusal message."""
+    dirs = [Path(x) for x in a.runs] if a.runs else ([runner.default_runs_dir(tmp)] if tmp is not None else [])
+    found: list[Path] = []
+    for d in dirs:
+        if (d / "run.parquet").is_file():
+            found.append(d)
+        elif d.is_dir():
+            found += sorted(p.parent for p in d.glob("run=*/run.parquet"))
+        elif a.runs:
+            return f"refused: --runs {d}: neither a run directory nor a runs directory"
+    mine = [d for d in found if _run_release(d) == a.release]
+    return mine, len(found) - len(mine)
+
+
+def _sql_cell(v) -> str:
+    if v is None:
+        return ""
+    if isinstance(v, bool):
+        return "true" if v else "false"
+    if isinstance(v, (bytes, bytearray)):
+        return bytes(v).hex()
+    return str(v).replace("\t", " ").replace("\n", " ").replace("\r", " ")
+
+
+def _scan_name(path: str, built: Path) -> str:
+    """The registry table a scanned file belongs to (`catalog.classify`), or the search run file's table."""
+    p = Path(path)
+    try:
+        hit = catalog.classify(p.relative_to(built).as_posix())
+        if hit is not None:
+            return hit[0].name
+    except (ValueError, catalog.LayoutError):
+        pass
+    return {f: t for t, f in catalog.SEARCH_RUN_FILES.items()}.get(p.name, p.name)
+
+
+def _sql(a) -> int:
+    """`bio-box sql` (card W-23): SELECT statements on the release's catalog (`sql_connection`), each statement's rows
+    as a TSV table (a blank line between tables) or, for one statement, JSON (one object per row), to stdout or
+    `--out` (refused under the data root); on stderr, per statement, its rows and the row groups it read per table
+    (`catalog.profile_query`). 2: refused before anything ran; 1: a statement failed."""
+    root = Path(a.root)
+
+    def refuse(msg) -> int:
+        print(f"refused: {msg}", file=sys.stderr)
+        return 2
+
+    if (a.file is None) == (a.query is None):
+        return refuse("bio-box sql takes a query as a FILE or with -e QUERY, one of the two")
+    try:
+        text = Path(a.file).read_text(encoding="utf-8") if a.file is not None else a.query
+    except (OSError, UnicodeDecodeError) as e:
+        return refuse(f"{a.file}: {e}")
+    try:
+        stmts = duckdb.extract_statements(text)
+    except duckdb.Error as e:
+        return refuse(f"the query does not parse: {e}")
+    if not stmts:
+        return refuse("no statement in the query")
+    for k, s in enumerate(stmts, 1):  # by DuckDB's parser, before anything runs
+        kind = str(s.type).rsplit(".", 1)[-1]
+        if kind != "SELECT":
+            return refuse(f"statement {k} is a {kind} statement ({' '.join(s.query.split())[:80]}); bio-box sql runs "
+                          "SELECT statements only (also SHOW, DESCRIBE, SUMMARIZE and FROM ...), on a read-only "
+                          "connection: nothing is written, attached, installed, loaded or set")
+    if a.format == "json" and len(stmts) > 1:
+        return refuse(f"--format json takes one statement; the query has {len(stmts)}")
+    try:
+        if a.out is not None:
+            pack.outside_root(root, Path(a.out), "--out")
+        tmp = _profile_tmp(a)
+        got = _sql_runs(a, tmp)
+        if isinstance(got, str):
+            print(got, file=sys.stderr)
+            return 2
+        runs, others = got
+        con, scratch = sql_connection(root, a.release, runs=runs, tmp=tmp, threads=a.threads,
+                                      memory_limit=a.memory_limit)
+    except (ValueError, OSError) as e:
+        return refuse(e)
+    if others:
+        print(f"note: {others} runs of other releases left out", file=sys.stderr)
+    try:
+        built = Path(con.execute("SELECT value FROM catalog_info WHERE key = 'root'").fetchall()[0][0])
+        out: list[str] = []
+        for k, s in enumerate(stmts, 1):
+            try:
+                p = catalog.profile_query(con, s.query, profile_dir=scratch / "duckdb" / "profile")
+            except duckdb.Error as e:
+                print(f"sql: statement {k} failed: {e}", file=sys.stderr)
+                return 1
+            if a.format == "json":
+                out += [json.dumps({c: export._plain(v) for c, v in zip(p["columns"], row)}, default=str)
+                        for row in p["result"]]
+            else:
+                out += ([""] if k > 1 else []) + ["\t".join(p["columns"])]
+                out += ["\t".join(_sql_cell(v) for v in row) for row in p["result"]]
+            reads = [f"{_scan_name(sc['files'][0], built)} {sc['row_groups_scanned']} of "
+                     f"{'?' if sc['row_groups_total'] is None else sc['row_groups_total']} row groups"
+                     + (f" ({sc['lookup']})" if sc.get("lookup") else "") for sc in p["scans"] if sc["files"]]
+            seq = p["bgzf"]["blocks_read"], sum(p["index"].values())
+            print(f"sql: statement {k}: {len(p['result'])} rows; read "
+                  + (", ".join(reads) or "no Parquet row group")
+                  + (f"; sequence: {seq[0]} BGZF blocks, {seq[1]} index row groups" if any(seq) else ""),
+                  file=sys.stderr)
+    finally:
+        con.close()
+        shutil.rmtree(scratch, ignore_errors=True)
+    _emit(out, a.out, "records" if a.format == "json" else "rows")
+    return 0
+
+
 RELEASES_COLUMNS = ("release", "manifest", "stages", "genomes", "contigs", "proteins", "libraries", "ncrna",
                     "member_cluster", "contig_label", "domain_family_tokens")
 
@@ -1595,6 +1771,23 @@ def _main(argv: list[str] | None = None) -> int:
     sq.add_argument("--strand", type=int, choices=[1, -1], default=1, help="--contig: 1 or -1 (reverse complement)")
     sq.add_argument("--out", help="write this file (default: stdout)")
     sq.add_argument("--threads", type=int, help=f"DuckDB threads (default {export.EXPORT_THREADS})")
+    ql = sub.add_parser("sql", parents=[common], help="SELECT statements on a release's catalog, read-only, with the "
+                                                      "row groups each read (card W-23)")
+    ql.add_argument("--release", required=True)
+    ql.add_argument("file", nargs="?", help="a file of SQL statements separated by ;")
+    ql.add_argument("-e", "--execute", dest="query", help="the SQL statements, in place of FILE")
+    ql.add_argument("--runs", nargs="+", action="extend", help="closed search runs to attach (search_run, search_hit, "
+                                                               "...): run directories or runs directories; default "
+                                                               "with a profile: its runs directory. Runs of other "
+                                                               "releases are left out")
+    ql.add_argument("--profile", help="host profile YAML (default: $BIOBOX_PROFILE): its tmp holds the scratch "
+                                      "directory, and its runs directory is attached")
+    ql.add_argument("--format", choices=["tsv", "json"], default="tsv", help="tsv: a table per statement; json: one "
+                                                                             "object per row (one statement)")
+    ql.add_argument("--out", help="write the results to this file, outside the data root (default: stdout)")
+    ql.add_argument("--threads", type=int, default=4, help="DuckDB threads (default 4)")
+    ql.add_argument("--memory-limit", default="4GB", help="DuckDB memory limit; larger work spills into the scratch "
+                                                          "directory (default 4GB)")
     n = sub.add_parser("nbr", parents=[common])
     n.add_argument("action", nargs="?", help="summarize: families and clusters per window; otherwise the anchors")
     n.add_argument("source", nargs="?", help="summarize: run_id or protein uids (uid,uid,...)")
@@ -1724,7 +1917,7 @@ def _main(argv: list[str] | None = None) -> int:
         a.command = command
     return {"pack": _pack, "search": _search, "nbr": _nbr, "find": _find, "export": _export, "run-step": _run_step,
             "release": _release, "stage": _stage, "build-stage": _build_stage, "releases": _releases,
-            "seq": _seq}[a.cmd](a)
+            "seq": _seq, "sql": _sql}[a.cmd](a)
 
 
 if __name__ == "__main__":
