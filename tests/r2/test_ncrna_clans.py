@@ -2,15 +2,25 @@
 
 The rule under test (`biobox.l1.ncrna.compete`): two hits compete when they lie on the same contig and strand, share
 at least one base (on a circular contig, around the origin too: a hit across it has end > contig_len), and their
-models are in one clan of `Rfam.clanin`. A hit loses when a competitor ranks above it; rank is the bit score, higher
-first, then the model accession, then (start, end), so no two hits tie. A hit of a model in no clan never competes.
+models are in one clan of `Rfam.clanin`. Rank is the bit score, higher first, then the model accession, then (start,
+end), so no two hits tie. Taken in rank order, a hit is kept when it shares no base with a competitor already kept,
+else it loses. A hit of a model in no clan never competes.
 
-The oracle (AGENTS §5.2) is written here, separately: overlap by intersecting the sets of bases each hit covers
-(positions modulo the contig length), and a loop over every ordered pair of hits. It is compared with the producer's
-function on seeded random hit sets (ties, nested hits, opposite strands, hits across the origin, models in no clan)
-and on hand-made edge cases. The clan mapping in these tests is written by hand (the function takes a mapping); the
-repository's clan file is read by `ncrna.read_clans`, checked here against its sha256 in refdb.yaml and a parse of
-this file.
+Oracles (AGENTS §5.2), written here, separately from the producer:
+
+- a brute-force loop: overlap by intersecting the sets of bases each hit covers (positions modulo the contig length),
+  the hits taken in rank order by a sort of this file's own key, each compared with every hit kept before it. It is
+  compared with the producer's function on seeded random hit sets (ties, nested hits, opposite strands, hits across
+  the origin, models in no clan) and on hand-made edge cases;
+- the `cmscan` binary (Infernal 1.1.5, `--clanin --oclan --fmt 2`) on constructed cases: single-sequence models built
+  with `cmbuild` from segments of a seeded random sequence, so their hits fall where the segments are (chains of
+  three and four hits of one clan, a one-base overlap, a tie, opposite strands, a model in no clan nested in one of a
+  clan). The producer's function, given cmscan's own hits, must drop every hit cmscan marks `=` and keep every hit it
+  marks `*` or `^`; cmscan keeps every `$` hit (one whose better competitors all overlap better ones), the producer
+  keeps it unless a kept better hit overlaps it, which happens in the chain of four only.
+
+The clan mapping of the loop's cases is written by hand (the function takes a mapping); the repository's clan file is
+read by `ncrna.read_clans`, checked here against its sha256 in refdb.yaml and a parse of this file.
 """
 
 from __future__ import annotations
@@ -18,6 +28,7 @@ from __future__ import annotations
 import hashlib
 import random
 import shutil
+import subprocess
 from pathlib import Path
 
 import pytest
@@ -70,14 +81,26 @@ def better(a: dict, b: dict) -> bool:
 
 
 def oracle(hits: list[dict], clans: dict[str, str]) -> list[tuple[str | None, bool]]:
-    out = []
-    for i, h in enumerate(hits):
-        c = clans.get(h["model_name"])
-        lost = c is not None and any(
-            j != i and clans.get(g["model_name"]) == c and g["strand"] == h["strand"] and bases(g) & bases(h)
-            and better(g, h) for j, g in enumerate(hits))
-        out.append((c, not lost))
-    return out
+    """Each hit's clan and whether it is kept: in rank order (a selection sort by `better`), kept when no hit kept
+    before it has its clan and strand and shares a base with it."""
+    order, left = [], list(range(len(hits)))
+    while left:
+        best = left[0]
+        for j in left[1:]:
+            if better(hits[j], hits[best]):
+                best = j
+        order.append(best)
+        left.remove(best)
+    kept: list[int] = []
+    won = [True] * len(hits)
+    for i in order:
+        h, c = hits[i], clans.get(hits[i]["model_name"])
+        if c is not None and any(clans.get(hits[j]["model_name"]) == c and hits[j]["strand"] == h["strand"]
+                                 and bases(hits[j]) & bases(h) for j in kept):
+            won[i] = False
+        else:
+            kept.append(i)
+    return [(clans.get(h["model_name"]), w) for h, w in zip(hits, won)]
 
 
 def hit(name: str, start: int, end: int, strand: int, score: float, n: int) -> dict:
@@ -120,9 +143,12 @@ EDGES = [
     # across the origin of a circular contig (end > n) against a hit at its start, and one just short of it
     [hit("tRNA", 990, 1030, 1, 50.0, 1000), hit("tRNA-Sec", 29, 60, 1, 40.0, 1000),
      hit("tmRNA", 30, 90, 1, 45.0, 1000)],
-    # a chain: A beats B, B overlaps C but A does not; C ranks below B, which overlaps it
+    # a chain: A beats B, B overlaps C but A does not; C ranks below B, which loses, so C is kept
     [hit("tmRNA", 100, 400, 1, 300.0, 2000), hit("tRNA", 350, 450, 1, 200.0, 2000),
      hit("tRNA-Sec", 440, 600, 1, 100.0, 2000)],
+    # a chain of four, each overlapping the next only: the first and third are kept
+    [hit("SSU_rRNA_bacteria", 0, 70, -1, 70.0, 2000), hit("SSU_rRNA_archaea", 60, 120, -1, 60.0, 2000),
+     hit("SSU_rRNA_bacteria", 110, 160, -1, 50.0, 2000), hit("SSU_rRNA_archaea", 150, 190, -1, 40.0, 2000)],
     # models in no clan never compete, even with the same locus
     [hit("RtT", 10, 80, 1, 50.0, 1000), hit("Bacillaceae-1", 10, 80, 1, 70.0, 1000)],
     [],
@@ -130,7 +156,7 @@ EDGES = [
 
 
 @pytest.mark.parametrize("case", range(len(EDGES)))
-def test_competition_equals_the_pairwise_loop_on_edge_cases(case):
+def test_competition_equals_the_brute_force_loop_on_edge_cases(case):
     hits = EDGES[case]
     assert _ncrna().compete(hits, CLANS) == oracle(hits, CLANS)
 
@@ -145,13 +171,14 @@ def test_competition_edge_cases_say_what_the_rule_is():
     assert won[3] == [True, True]
     assert won[4] == [False, True, True]  # tRNA shares base 171 with tmRNA; tRNA-Sec starts where tmRNA ends
     assert won[5] == [True, False, True]  # base 29 is in both; tmRNA starts at 30, after tRNA's end (30), beats tRNA-Sec
-    assert won[6] == [True, False, False]  # C loses to B although B loses to A
-    assert won[7] == [True, True]
-    assert [c for c, _ in nc.compete(EDGES[7], CLANS)] == [None, None]
+    assert won[6] == [True, False, True]  # C is overlapped only by B, which A beat
+    assert won[7] == [True, False, True, False]
+    assert won[8] == [True, True]
+    assert [c for c, _ in nc.compete(EDGES[8], CLANS)] == [None, None]
 
 
 @pytest.mark.covers("MR-04", "C-05")
-def test_competition_equals_the_pairwise_loop_on_random_hit_sets():
+def test_competition_equals_the_brute_force_loop_on_random_hit_sets():
     nc = _ncrna()
     rng = random.Random(20261111)
     checked = lost = cross = 0
@@ -170,6 +197,92 @@ def test_competition_equals_the_pairwise_loop_on_random_hit_sets():
         lost += sum(not w for _, w in want)
         cross += sum(h["end"] > n for h in hits)
     assert checked > 3000 and lost > 300 and cross > 100  # the sets exercise losing and the origin
+
+
+# --- against cmscan on constructed cases ---------------------------------------------------------------------------
+
+
+CMBUILD, CMPRESS, CMSCAN = (shutil.which(t) for t in ("cmbuild", "cmpress", "cmscan"))
+
+
+def parse_fmt2(path: Path) -> list[dict]:
+    """`cmscan --fmt 2 --tblout` rows: model name, clan, sequence coordinates (to 0-based half-open), strand, score,
+    olp. A model without an accession is named by its name, as `ncrna.read_models` does."""
+    out = []
+    for ln in path.read_text().splitlines():
+        if ln.startswith("#") or not ln.strip():
+            continue
+        f = ln.split()
+        lo, hi = sorted((int(f[9]), int(f[10])))
+        out.append({"model_name": f[1], "model_acc": f[1] if f[2] == "-" else f[2],
+                    "clan": None if f[5] == "-" else f[5], "start": lo - 1, "end": hi,
+                    "strand": 1 if f[11] == "+" else -1, "bitscore": float(f[16]), "olp": f[19]})
+    return out
+
+
+@pytest.mark.skipif(None in (CMBUILD, CMPRESS, CMSCAN), reason="Infernal (cmbuild, cmpress, cmscan) not on PATH; it "
+                                                               "is in the test image")
+def test_competition_against_cmscan_on_constructed_cases(tmp_path):
+    rng = random.Random(20261111)
+
+    def rs(n: int) -> str:
+        return "".join(rng.choice("ACGT") for _ in range(n))
+
+    def rc(s: str) -> str:
+        return s.translate(str.maketrans("ACGT", "TGCA"))[::-1]
+
+    x1, x3, y, z, w, t, s = rs(60), rs(60), rs(80), rs(50), rs(50), rs(40), rs(220)
+    segments = {
+        "cA": x1, "cB": x1[40:] + x3[:20], "cC": x3[10:40],  # chain of three: A > B > C, A and C apart
+        "dD": y[:50], "dE": y[49:79],  # one shared base
+        "nF": z, "nG": z[10:40],  # G, in no clan, nested in F
+        "sI": w, "sJ": rc(w[10:40]),  # one clan, opposite strands
+        "tK": t, "tL": t,  # a tie: the same segment
+        "p1": s[0:70], "p2": s[60:120], "p3": s[110:160], "p4": s[150:190],  # chain of four
+    }
+    clans = {"cA": "CLX01", "cB": "CLX01", "cC": "CLX01", "dD": "CLX02", "dE": "CLX02", "nF": "CLX03",
+             "sI": "CLX03", "sJ": "CLX03", "tK": "CLX04", "tL": "CLX04", "p1": "CLX05", "p2": "CLX05",
+             "p3": "CLX05", "p4": "CLX05"}
+    contig = "".join([rs(300), x1 + x3, rs(300), y, rs(300), z, rs(300), w, rs(300), t, rs(300), s, rs(300)])
+    fa = tmp_path / "contig.fa"
+    fa.write_text(">c\n" + contig + "\n")
+    db = tmp_path / "db.cm"
+    with open(db, "w") as out:
+        for name, seq in segments.items():
+            sto, cm = tmp_path / f"{name}.sto", tmp_path / f"{name}.cm"
+            sto.write_text(f"# STOCKHOLM 1.0\n\ns1 {seq}\n#=GC SS_cons {'.' * len(seq)}\n//\n")
+            subprocess.run([CMBUILD, "-F", "--enone", "-n", name, str(cm), str(sto)], check=True, capture_output=True)
+            out.write(cm.read_text())
+    subprocess.run([CMPRESS, "-F", str(db)], check=True, capture_output=True)
+    clanin = tmp_path / "clanin"
+    by: dict[str, list[str]] = {}
+    for m, c in clans.items():
+        by.setdefault(c, []).append(m)
+    clanin.write_text("".join(c + "\t" + "\t".join(ms) + "\n" for c, ms in sorted(by.items())))
+    tbl = tmp_path / "hits.tbl"
+    subprocess.run([CMSCAN, "--cpu", "1", "-T", "10", "--incT", "10", "--notrunc", "--noali", "--fmt", "2", "--clanin",
+                    str(clanin), "--oclan", "--tblout", str(tbl), "-o", str(tmp_path / "hits.out"), str(db), str(fa)],
+                   check=True, capture_output=True)
+    scanned = parse_fmt2(tbl)
+    assert sorted(h["model_name"] for h in scanned) == sorted(segments)  # each model hits once, where it was cut
+    hits = [{**h, "contig_len": len(contig)} for h in scanned]
+    got = _ncrna().compete(hits, clans)
+    assert got == oracle(hits, clans)
+    olp = {h["model_name"]: h["olp"] for h in scanned}
+    won = {h["model_name"]: w for h, (_, w) in zip(hits, got)}
+    for name in segments:
+        if olp[name] == "=":
+            assert not won[name], name
+        elif olp[name] in "*^":
+            assert won[name], name
+    # what the binary shows: one shared base is an overlap; the chain of three keeps its third; strands and a model
+    # in no clan never compete; in the chain of four cmscan keeps p4 (`$`, overlapped only by p3, itself `$`) where
+    # the producer drops it under the kept p3
+    assert (olp["dE"], olp["cB"], olp["cC"], olp["tL"]) == ("=", "=", "$", "=")
+    assert {olp[m] for m in ("nF", "nG", "sI", "sJ")} == {"*"}
+    assert [olp[m] for m in ("p1", "p2", "p3", "p4")] == ["^", "=", "$", "$"]
+    assert [won[m] for m in ("p1", "p2", "p3", "p4")] == [True, False, True, False]
+    assert won["cC"] and won["tK"] and not won["tL"]
 
 
 # --- the clan file -------------------------------------------------------------------------------------------------

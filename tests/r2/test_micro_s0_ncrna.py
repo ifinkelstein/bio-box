@@ -229,7 +229,7 @@ def test_rows_equal_the_cmsearch_binary_after_the_coordinate_conversion(world, o
 @pytest.mark.covers("C-02", "C-05", "E-08")
 def test_features_are_the_distinct_loci_of_the_winning_hits(world):
     """Card E-08 migration (DEC-28): a feature is the locus of a hit that won its clan's competition or whose model is
-    in no clan; a losing hit stays in `l1_ncrna`, flagged, with no feature of its own. The flags equal the pairwise
+    in no clan; a losing hit stays in `l1_ncrna`, flagged, with no feature of its own. The flags equal the brute-force
     oracle of `test_ncrna_clans` over the clan file as parsed there."""
     import test_ncrna_clans as cl
 

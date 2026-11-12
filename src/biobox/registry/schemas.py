@@ -313,8 +313,9 @@ _SPECS = [
             "mdl_kind 'hmm' for a model searched by its profile HMM alone; trunc_5p/trunc_3p for a hit cut by a "
             "linear contig's end; gc the hit's GC fraction; contig_len the real target size (bases searched). "
             "Card E-08 (DEC-28 (4)): clan the Rfam clan of the model (Rfam.clanin), null for a model in no clan; "
-            "clan_winner false for a hit that lost clan competition (a better hit of its clan shares a base with it "
-            "on its strand), true otherwise. Only winners have a `feature` row: a losing row's feature_uid names its "
+            "clan_winner false for a hit that lost clan competition (taken in rank order, it shares a base on its "
+            "strand with a better hit of its clan that was kept), true otherwise. Only winners have a `feature` row: "
+            "a losing row's feature_uid names its "
             "coordinates, which have no feature unless a winner has the same ones. Both are null in files written "
             "before card E-08 (producers without the `-clan1` tail), whose every hit has a feature"
         ),

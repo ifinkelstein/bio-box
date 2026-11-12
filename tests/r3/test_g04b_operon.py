@@ -24,8 +24,10 @@ searched with `--notrunc` (as `test_g04_spikeins` does). Oracles (AGENTS §5.2),
 - `cmsearch --cut_ga --notrunc -Z 1e5` on the contig: every hit it reports is one `l1_ncrna` row (all hits stay);
 - `cmscan --cut_ga --notrunc -Z 1e5 --fmt 2 --clanin <Rfam.clanin cut to the panel's models> --oclan` on the contig
   with the same models (cmscan refuses a clan file that names a model its database lacks): its `olp` column marks a
-  hit `=` when it overlaps a better-scoring hit of its clan (`--oclan`: only within clans). A producer hit is a clan
-  loser exactly when cmscan marks it `=`.
+  hit `=` when it overlaps a better-scoring hit of its clan that overlaps no better one (`--oclan`: only within
+  clans), and `$` when its better competitors all overlap better ones. The panel has no chain, so no `$`; a producer
+  hit is a clan loser exactly when cmscan marks it `=` (where the two rules differ, in chains of four or more, see
+  `test_ncrna_clans`).
 
 Expectations, written before any result was seen: per operon exactly one kept SSU hit and one kept LSU hit on the
 rRNA genes, the others of those clans present and flagged; 5S and the tRNAs kept; at the tRNA cluster one of tRNA and
@@ -210,6 +212,7 @@ def test_every_hit_of_the_binary_is_a_row_and_cmscan_reports_the_same_hits(opero
 
 def test_a_hit_loses_exactly_when_cmscan_marks_it_below_a_better_hit_of_its_clan(operon_run):
     olp = {(h["start"], h["end"], h["strand"], h["acc"]): h for h in operon_run["scanned"]}
+    assert not [h for h in operon_run["scanned"] if h["olp"] == "$"]  # no chain on the panel: the marks decide
     clans = cl.clan_file()
     lost = 0
     for r in operon_run["hits"]:

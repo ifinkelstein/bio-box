@@ -18,13 +18,20 @@ Clan competition (card E-08, DEC-28 (4), `compete`). The models' clans are Rfam'
 release (`rfam_sets/Rfam-15.1.clanin`, pinned by sha256 in refdb.yaml as `rfam_clanin`; `read_clans` refuses a file
 with another sha256): each line a clan accession, then the NAMES of its member models, tab-separated. Two hits
 compete when they lie on the same contig and strand, share at least one base (on a circular contig also around the
-origin: a hit across it has end > contig_len and covers bases end - n and below at the start), and their models are
-in one clan. Hits rank by bit score, higher first, then by model accession, then by (start, end), so no two tie. A hit
-loses when a competitor ranks above it, whether or not that competitor itself loses: `cmscan --clanin --oclan
---fmt 2` marks `=` exactly the hits that overlap a better-scoring hit of their clan (see
-planning/measurements/2026-11-11_ncrna_clans.md for how that was established on the binary). A hit of a model in no
-clan never competes. Hits of different clans, or on opposite strands, never compete: nested and antisense RNAs are
-real. Every hit stays in `l1_ncrna` with its clan (null for a model in no clan) and `clan_winner` (true for a hit
+origin: a hit across it has end > contig_len and covers bases below end - n at the start), and their models are in
+one clan. Hits rank by bit score, higher first, then by model accession, then by (start, end), so no two tie. In rank
+order, a hit is kept when it shares no base with a competitor already kept, else it loses (greedy), so no two kept
+hits of a clan overlap on a strand, and a hit that only a loser overlaps is kept. A hit of a model in no clan never
+competes. Hits of different clans, or on opposite strands, never compete: nested and antisense RNAs are real.
+
+Against Rfam's own tool (Infernal 1.1.5 `cmscan --clanin --oclan --fmt 2`, established on the binary in
+planning/measurements/2026-11-11_ncrna_clans.md): the overlap is the same (one shared base on a strand, within a
+clan), and cmscan marks `=`, and drops with `--oskip`, a hit that overlaps a better hit which overlaps no better hit
+itself (marked `^`); a hit whose better competitors all overlap better ones is marked `$` and kept. Every hit cmscan
+drops, the producer drops, and every `*` or `^` hit it keeps; they differ only in chains of four or more hits, where
+cmscan keeps a hit that overlaps a better `$` hit (so two overlapping hits of one clan can both stay) and the producer
+drops it, the `$` hit being kept. Ties: the producer breaks them by accession; cmscan's order among equal scores was
+not established. Every hit stays in `l1_ncrna` with its clan (null for a model in no clan) and `clan_winner` (true for a hit
 that won or never competed, false for one that lost). Only the winners' loci are `feature` rows of kind ncrna, so
 only winners go on the tape; two winning models that hit the same coordinates and strand share one feature (and its
 `feature_uid`) and keep one `l1_ncrna` row each. A losing row's `feature_uid` names its coordinates (AGENTS §3.3),
@@ -104,6 +111,7 @@ nor on the thread count. Nothing is published if a batch fails.
 from __future__ import annotations
 
 import argparse
+import bisect
 import gzip
 import hashlib
 import json
@@ -146,7 +154,7 @@ FROZEN_SETS = {"prok-1": "092660962def1ec76466de3816558451f478637ffb43d141ef6842
 # Clan competition (card E-08): Rfam's clan file, its refdb.yaml entry, and the rule's version in the producer name
 CLANIN = SET_DIR / "Rfam-15.1.clanin"
 CLAN_LIBRARY = "rfam_clanin"
-CLAN_RULE = "clan1"  # version 1: same contig, strand and clan, one shared base; the best-ranked hit wins (`compete`)
+CLAN_RULE = "clan1"  # version 1: same contig, strand and clan, one shared base; greedy by rank (`compete`)
 # bases of records searched by one cmsearch call: chosen, not tuned. Each call reads and configures every
 # model of its CM file again, so a batch should be large beside that; the scratch FASTA is about this size
 BATCH_BASES = 50_000_000
@@ -360,13 +368,13 @@ def _rank(h: dict) -> tuple:
 
 def compete(hits: list[dict], clans: dict[str, str]) -> list[tuple[str | None, bool]]:
     """Clan competition among the hits of one contig (module docstring): for each hit, in input order, its clan (None
-    for a model in no clan) and whether it is kept. A hit loses when a hit of the same clan on the same strand shares
-    a base with it and ranks above it (`_rank`). Each hit is a dict with model_name, model_acc, start, end, strand,
-    bitscore and contig_len; on a circular contig a hit across the origin has end > contig_len.
+    for a model in no clan) and whether it is kept. Per (strand, clan), in rank order (`_rank`), a hit is kept when it
+    shares no base with a hit already kept, else it loses. Each hit is a dict with model_name, model_acc, start, end,
+    strand, bitscore and contig_len; on a circular contig a hit across the origin has end > contig_len.
 
-    Per (strand, clan) the hits, and a copy shifted by -contig_len of each that crosses the origin, are swept in start
-    order: every pair whose intervals intersect is found once (a later start below the earlier end), and its
-    lower-ranked hit is marked lost."""
+    The kept hits of a group are disjoint around the circle, so their intervals (and, for one across the origin, its
+    copy shifted by -contig_len) are disjoint on the line and sorted by start are sorted by end: a candidate meets one
+    of them exactly when the last that starts before the candidate's end ends after its start (`bisect`)."""
     out = [(clans.get(h["model_name"]), True) for h in hits]
     groups: dict[tuple, list[int]] = {}
     for i, h in enumerate(hits):
@@ -376,19 +384,24 @@ def compete(hits: list[dict], clans: dict[str, str]) -> list[tuple[str | None, b
     for idx in groups.values():
         if len(idx) < 2:
             continue
-        ivs = []
-        for i in idx:
-            h = hits[i]
-            ivs.append((h["start"], h["end"], i))
-            if h["end"] > h["contig_len"]:  # its bases past the origin, at the contig's start
-                ivs.append((h["start"] - h["contig_len"], h["end"] - h["contig_len"], i))
-        ivs.sort()
-        for a, (_, end_a, i) in enumerate(ivs):
-            for start_b, _, j in ivs[a + 1:]:
-                if start_b >= end_a:
+        starts: list[int] = []  # the kept intervals, sorted by start
+        ends: list[int] = []
+        for i in sorted(idx, key=lambda k: _rank(hits[k])):
+            h, n = hits[i], hits[i]["contig_len"]
+            mine = [(h["start"], h["end"])] + ([(h["start"] - n, h["end"] - n)] if h["end"] > n else [])
+            meets_kept = False
+            for s, e in mine:
+                k = bisect.bisect_left(starts, e) - 1  # the last kept interval that starts before e
+                if k >= 0 and ends[k] > s:
+                    meets_kept = True
                     break
-                if i != j:
-                    lost.add(max(i, j, key=lambda k: _rank(hits[k])))
+            if meets_kept:
+                lost.add(i)
+                continue
+            for s, e in mine:
+                k = bisect.bisect_left(starts, s)
+                starts.insert(k, s)
+                ends.insert(k, e)
     return [(c, i not in lost) for i, (c, _) in enumerate(out)]
 
 
