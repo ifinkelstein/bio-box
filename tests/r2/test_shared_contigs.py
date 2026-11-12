@@ -325,10 +325,12 @@ def test_the_ncrna_producer_skips_a_shared_contig_and_ledgers_it(direct_s1, tmp_
     from biobox.l1 import ncrna
 
     lib = FIX / "rfam15.1_micro_s0.cm.gz"
+    # card E-07: the fixture library's models on whole contigs (S1 is not gene-called here, so no intergenic models)
+    model_set = FIX / "ncrna_set_whole.tsv"
     out = tmp_path / "o"
-    res = ncrna.run(direct_s1, "S1", lib, 2, out=out, tmp=tmp_path, seq_stages=["S1", "S0"])
+    res = ncrna.run(direct_s1, "S1", lib, 2, out=out, tmp=tmp_path, seq_stages=["S1", "S0"], model_set=model_set)
     assert res["skipped_contigs"] == [{"contig_uid": cu.hex(), "owner_stage": "S0"} for cu in sorted(SHARED)]
-    prod = ncrna.producer(lib)
+    prod = ncrna.producer(lib, model_set)
     feats = {r["contig_uid"] for r in _rows(out, f"l1/feature/producer={prod}/stage=S1", ["contig_uid"])}
     assert feats and not feats & SHARED
     rows = ledger.read(out, "S1", f"ncrna-{prod}")
@@ -521,21 +523,44 @@ def test_c21a_gene_calling_reports_the_skip_and_does_not_depend_on_genome_order(
         assert c08.tree(o) == c08.tree(tmp_path / "o1"), (order, workers)
 
 
+@pytest.mark.covers("L-01", "D-01")
 def test_c21a_the_ncrna_producer_searches_a_shared_contig_once_and_ledgers_the_skip(direct_w, tmp_path):
-    if shutil.which("cmsearch") is None:
-        pytest.skip("cmsearch (Infernal) is in the image")
+    """Under card E-07's scan (a model set of whole-genome and intergenic models, on whole contigs and on the regions
+    between the stage's gene calls), P is searched once and ledgered for the genome that owns it; the files are the
+    same with the genomes given in the other order, and scanned in shards."""
+    if shutil.which("cmsearch") is None or shutil.which("cmfetch") is None:
+        pytest.skip("cmsearch and cmfetch (Infernal) are in the image")
     from biobox.l1 import ncrna
 
-    lib = FIX / "rfam15.1_micro_s0.cm.gz"
-    res = ncrna.run(direct_w, W_STAGE, lib, 2, out=tmp_path / "o", tmp=tmp_path)
+    import test_ncrna_regions as rg
+
+    root, scratch = tmp_path / "root", tmp_path / "scratch"
+    scratch.mkdir()
+    shutil.copytree(direct_w, root, symlinks=True)
+    genecall.run(root, W_STAGE, tmp=scratch)  # the intergenic models search between these genes
+    ms = rg.write_set(tmp_path / "mixed.tsv", rg.MIXED)
+    lib = rg.LIB
+    res = ncrna.run(root, W_STAGE, lib, 2, model_set=ms, out=tmp_path / "o", tmp=scratch)
+    owner = f"owned_by:{W_STAGE}/{W_GUID[W_OWNER].hex()}"
     assert res["skipped_contigs"] == [{"contig_uid": CU["P"].hex(), "owner_stage": W_STAGE,
                                        "owner_genome": W_GUID[W_OWNER].hex()}]
-    assert res["contigs"] == 4
-    prod = ncrna.producer(lib)
+    assert res["contigs"] == 4 and res["bases"] == sum(len(SEQ[n]) for n in ("M", "M_ROT", "L", "P"))
+    assert res["regions"] > 0
+    prod = ncrna.producer(lib, ms)
     rows = ledger.read(tmp_path / "o", W_STAGE, f"ncrna-{prod}")
-    assert sorted(r["reason_code"] for r in rows if r["object_key"] == CU["P"]) == [
-        "ok", f"owned_by:{W_STAGE}/{W_GUID[W_OWNER].hex()}"]
+    assert sorted(r["reason_code"] for r in rows if r["object_key"] == CU["P"]) == ["ok", owner]
+    assert len({r["object_key"] for r in rows}) == 4
     assert ledger.check_balance(tmp_path / "o", W_STAGE, [f"ncrna-{prod}"]) == []
-    res2 = ncrna.run(direct_w, W_STAGE, lib, 2, genomes=w_genomes(-1), out=tmp_path / "o2", tmp=tmp_path)
+    # the genomes given explicitly, the other way round: the same files
+    res2 = ncrna.run(root, W_STAGE, lib, 2, genomes=w_genomes(-1), model_set=ms, out=tmp_path / "o2", tmp=scratch)
     assert res2 == res
     assert c08.tree(tmp_path / "o2") == c08.tree(tmp_path / "o")
+    # in shards (each big contig a shard of its own): the files `run` writes
+    o3 = tmp_path / "o3"
+    p = ncrna.plan(root, W_STAGE, lib, len(M), model_set=ms, tmp=scratch, out=o3)
+    assert p["shards"] >= 2 and p["contigs"] == 4
+    for k in range(p["shards"]):
+        ncrna.scan_shard(root, W_STAGE, lib, k, 1, model_set=ms, tmp=scratch, out=o3)
+    ncrna.merge(root, W_STAGE, lib, model_set=ms, tmp=scratch, out=o3)
+    produced = {k: v for k, v in c08.tree(o3).items() if not k.startswith("l1/domain_scan/")}
+    assert produced == c08.tree(tmp_path / "o")

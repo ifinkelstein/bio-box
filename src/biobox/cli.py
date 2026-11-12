@@ -35,10 +35,14 @@
     bio-box stage domains plan --root R --stage S --library L --library-version V --hmm F --cutoff C --shard-residues N
     bio-box stage domains shard --root R --stage S --library L --library-version V --hmm F --shard K --cpus N --tmp D
     bio-box stage domains merge --root R --stage S --library L --library-version V --tmp D
-    bio-box stage ncrna --root R --stage S --cm Rfam.cm.gz --cpus N [--tmp D] [--seq-stages S0,S1] [--out DIR]
+    bio-box stage ncrna --root R --stage S --cm Rfam.cm.gz [--ncrna-set prok-1] --cpus N [--tmp D] [--seq-stages S0,S1]
+                [--out DIR]
+    bio-box stage ncrna plan --root R --stage S --cm F [--ncrna-set SET] --scan-bases N [--tmp D]
+    bio-box stage ncrna shard --root R --stage S --cm F [--ncrna-set SET] --shard K --cpus N --tmp D [--seq-stages S0,S1]
+    bio-box stage ncrna merge --root R --stage S --cm F [--ncrna-set SET] --tmp D
     bio-box build-stage --profile P --root R --stage S --release R1 [--stages S0,S1] --genomes genomes.json
                 --objects objects.json [--library NAME VERSION HMM CUTOFF ...] [--tmp D] [--threads N]
-                [--scan-jobs J] [--scan-cpus C] [--cluster-parts N]
+                [--scan-jobs J] [--scan-cpus C] [--cluster-parts N] [--ncrna-cm Rfam.cm.gz [--ncrna-set prok-1]]
 
 `build-stage` (card C-04, `biobox.stage`) runs every `stage` step and then every `release` step of
 one stage and its release, each as a `run-step`; a second call skips what is done.
@@ -790,7 +794,8 @@ CLUSTER_ACTIONS = ("plan", "step", "finish", "redo")  # `release cluster plan|st
 STAGE_STEPS = ("inputs", "ingest", "genecall", "igr", "tapes", "domains", "ncrna")
 DOMAIN_ACTIONS = ("plan", "shard", "merge")  # `stage domains plan|shard|merge` (card B-24)
 INGEST_ACTIONS = ("pass1", "plan", "batch", "merge")  # `stage ingest pass1|plan|batch|merge` (card B-30)
-STEP_ACTIONS = {"domains": DOMAIN_ACTIONS, "ingest": INGEST_ACTIONS}
+NCRNA_ACTIONS = ("plan", "shard", "merge")  # `stage ncrna plan|shard|merge` (card E-07)
+STEP_ACTIONS = {"domains": DOMAIN_ACTIONS, "ingest": INGEST_ACTIONS, "ncrna": NCRNA_ACTIONS}
 PACK_DIR_HELP = ("the pack directory, outside the data root (card W-03); default: <profile tmp>/packs with a host "
                  "profile, else packs beside $BIOBOX_SEARCH_WORK or /tmp/atd/search")
 RUNS_HELP = ("the runs directory, outside the data root (card W-03); default: <profile tmp>/search/<user>/runs with "
@@ -870,7 +875,9 @@ def _verify(a) -> int:
     file there with its size and sha256, and no unlisted file in the release's scope) and, with `--previous P`, P's
     manifest against the release's (`contracts.check_append_only`, R-09: every file of P outside P's own `release=`
     partition is listed with the same sha256). Writes nothing. Prints each problem, then one line per check; exit 0
-    when there is no problem, else 1 (a missing manifest is a problem)."""
+    when there is no problem, else 1 (a missing manifest is a problem). Warnings, which leave the exit code as it is,
+    go to stderr: a lookup table the release lacks (card W-17), and a domain library the release has files of for
+    some of its stages only (card C-19, `catalog.partial_libraries`)."""
     from biobox import contracts
 
     root = Path(a.root)
@@ -898,6 +905,11 @@ def _verify(a) -> int:
             print(f"warning: release {a.release} has no {lookup} files (built before card B-27); readers fall back to "
                   f"{source}, which cannot prune. A release built with the current code has the table "
                   f"(card C-17 builds one over these stages)", file=sys.stderr)
+    for lib, scanned, unscanned in catalog.partial_libraries(man):  # card C-19: a warning only
+        print(f"warning: release {a.release} has domain files of library {lib} for stages {','.join(scanned)} but "
+              f"not {','.join(unscanned)} (not scanned when the release was built); its {lib} family tokens cover the "
+              f"genes of {','.join(scanned)} only. A release built after those stages are scanned covers them all",
+              file=sys.stderr)
     if a.previous:
         prev = load(a.previous)
         if prev is None:
@@ -1069,12 +1081,25 @@ def _stage_step(a, root: Path, out: Path) -> dict:
         kw = {} if a.max_slots is None else {"max_slots": a.max_slots}
         return tapes.run(root, a.stage, gene_call_version=a.gene_call_version, producers=_csv(a.producers), tmp=tmp,
                          out=out, **kw, **mfb)
-    if a.step == "ncrna":  # card E-01
+    if a.step == "ncrna":  # cards E-01, E-07
         from biobox.l1 import ncrna
 
-        if not a.cm:
-            raise ValueError("stage ncrna needs --cm")
-        return ncrna.run(root, a.stage, Path(a.cm), a.cpus, tmp=tmp, out=out, seq_stages=_csv(a.seq_stages), **mfb)
+        need = {None: ("cm",), "plan": ("cm", "scan_bases"), "shard": ("cm", "shard"), "merge": ("cm",)}[a.action]
+        missing = [f"--{n.replace('_', '-')}" for n in need if getattr(a, n) in (None, "")]  # shard 0 is given
+        if missing:
+            raise ValueError(f"stage ncrna{'' if a.action is None else ' ' + a.action} needs {', '.join(missing)}")
+        kw = {"model_set": a.ncrna_set}
+        cm = Path(a.cm)
+        if a.action == "plan":
+            return ncrna.plan(root, a.stage, cm, a.scan_bases, gene_call_version=a.gene_call_version, tmp=tmp,
+                              out=out, **kw)
+        if a.action == "shard":
+            return ncrna.scan_shard(root, a.stage, cm, a.shard, a.cpus, seq_stages=_csv(a.seq_stages), tmp=tmp,
+                                    out=out, **kw)
+        if a.action == "merge":
+            return ncrna.merge(root, a.stage, cm, tmp=tmp, out=out, **kw, **mfb)
+        return ncrna.run(root, a.stage, cm, a.cpus, gene_call_version=a.gene_call_version, tmp=tmp, out=out,
+                         seq_stages=_csv(a.seq_stages), **kw, **mfb)
     from biobox.l1 import domains
 
     need = {None: ("library", "library_version", "hmm", "cutoff"),  # the whole scan in this process
@@ -1119,7 +1144,8 @@ def _build_stage(a) -> int:
                     objects=Path(a.objects), stages=None if a.stages is None else tuple(_csv(a.stages)),
                     libraries=libs, tmp=Path(a.tmp) if a.tmp else None, threads=a.threads,
                     gene_call_version=a.gene_call_version, scan_jobs=a.scan_jobs, scan_cpus=a.scan_cpus,
-                    cluster_parts=a.cluster_parts)
+                    cluster_parts=a.cluster_parts, ncrna_cm=Path(a.ncrna_cm) if a.ncrna_cm else None,
+                    ncrna_set=a.ncrna_set)
     return stage.build_stage(profile.load(a.profile), b)
 
 
@@ -1253,8 +1279,9 @@ def _main(argv: list[str] | None = None) -> int:
                                        "release= partition must be in this release's with the same sha256 (R-09)")
     st = sub.add_parser("stage", parents=[common], help="per-stage builder steps (card C-08)")
     st.add_argument("step", choices=STAGE_STEPS)
-    st.add_argument("action", nargs="?", choices=tuple(dict.fromkeys(DOMAIN_ACTIONS + INGEST_ACTIONS)),
-                    help="domains in shards (card B-24): plan, then shard (one call per --shard K), then merge; "
+    st.add_argument("action", nargs="?", choices=tuple(dict.fromkeys(DOMAIN_ACTIONS + INGEST_ACTIONS + NCRNA_ACTIONS)),
+                    help="domains (card B-24) or ncrna (card E-07) in shards: plan, then shard (one call per --shard "
+                         "K), then merge; "
                          "ingest in batch processes (card B-30): pass1 (one call per --shard K), plan, batch (one "
                          "call per --batch J), then merge; without it, the whole step in one process")
     st.add_argument("--stage", required=True)
@@ -1267,7 +1294,7 @@ def _main(argv: list[str] | None = None) -> int:
     st.add_argument("--line-width", type=int, help="ingest: FASTA line width of the shards")
     st.add_argument("--prefix-width", type=int, choices=[0, 1, 2], help="genecall: protein_seq bucket width")
     st.add_argument("--workers", type=int, default=1, help="genecall: genomes called at once")
-    st.add_argument("--seq-stages", help="genecall: S0,S1: the stages whose sequences the genomes name "
+    st.add_argument("--seq-stages", help="genecall, ncrna: S0,S1: the stages whose sequences the genomes name "
                                          "(default: the stage itself)")
     st.add_argument("--producers", help="igr, tapes: the tape version's producers (default: the gene caller)")
     st.add_argument("--max-slots", type=int, help="tapes: slots per row group")
@@ -1277,9 +1304,12 @@ def _main(argv: list[str] | None = None) -> int:
     st.add_argument("--cutoff", help="domains: gathering, trusted, noise or none")
     st.add_argument("--cpus", type=int, default=1, help="domains: hmmsearch threads; ncrna: cmsearch threads (--cpu)")
     st.add_argument("--cm", help="ncrna: the Rfam covariance-model library (.cm or .cm.gz; card E-01)")
+    st.add_argument("--ncrna-set", default="prok-1", help="ncrna: the model set, a frozen set's name (prok-1) or a "
+                                                          "set file (card E-07)")
     st.add_argument("--shard-residues", type=int, help="domains plan: residues per shard at most")
-    st.add_argument("--shard", type=int, help="domains shard: the shard to scan; ingest pass1: the pass-1 shard "
-                                             "(0-based)")
+    st.add_argument("--scan-bases", type=int, help="ncrna plan: genome bases per shard at most")
+    st.add_argument("--shard", type=int, help="domains or ncrna shard: the shard to scan; ingest pass1: the pass-1 "
+                                             "shard (0-based)")
     st.add_argument("--pass1-bytes", type=int, help="ingest pass1: bytes of source file per pass-1 shard at most")
     st.add_argument("--batch", type=int, help="ingest batch: the batch to write (0-based)")
     st.add_argument("--runs-tmp", help="ingest pass1|plan|batch|merge: the scratch directory the steps share for "
@@ -1306,6 +1336,9 @@ def _main(argv: list[str] | None = None) -> int:
     bs.add_argument("--cluster-parts", type=int, help="cluster in parts (card B-41), every per-query call cut into "
                                                       "this many (default: in parts only when clustering in one "
                                                       "process is estimated over 80%% of the budget, cut by it)")
+    bs.add_argument("--ncrna-cm", help="the Rfam library (Rfam.cm.gz): run the ncRNA producer in the features slot and "
+                                       "build IGRs, tapes, tokens and postings of both producers (card E-07)")
+    bs.add_argument("--ncrna-set", default="prok-1", help="the ncRNA model set: a frozen set's name or a set file")
     a = p.parse_args(argv)
     if a.cmd == "search" and a.action == "run" and not a.release:
         p.error("search run needs --release")

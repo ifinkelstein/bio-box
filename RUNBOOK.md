@@ -204,6 +204,36 @@ floor((40 - 16) / 4) = 6, so `--scan-jobs 6 --scan-cpus 4`, 24 threads, 40 in al
 running, the same formula gives J = 10, which is the whole cap: leave a margin if anything may start
 during the hours the scan runs. A smaller J only makes the scan take longer; the output is the same.
 
+**Non-coding RNA (card E-07, DEC-28).** `--ncrna-cm <Rfam.cm.gz>` puts the ncRNA producer in the
+`features` slot, as a step named `ncrna-<producer>`. The producer scans the model set `--ncrna-set`
+(default `prok-1`, the frozen file `src/biobox/l1/rfam_sets/prok-1.tsv`: 588 Rfam 15.1 models): its
+intergenic models on the stage's intergenic regions widened by 200 bases into the flanking genes, with
+`cmsearch --notrunc`, and its 23 whole-genome models (RNA inside coding sequence) on whole contigs. It
+fetches the set's models from the library with `cmfetch` into scratch. The producer's name carries the
+library, the set and the region rule, for example `infernal-1.1.5-rfam-15.1-prok1-igr200nt`, so a new set
+is a new step and a new tape version. The IGR, tape, token and posting steps then get `--producers
+<gene caller>,<ncRNA producer>`: the release's tapes are those of both producers. The gene-call files are
+the same with or without `--ncrna-cm`. The step counts as one step in `all N steps done`.
+
+- Threads: each `cmsearch` runs with `--scan-cpus` threads (default 4, at most `--threads`).
+- Shards: a scan estimated above 80% of `cpu_min_per_process` runs as `ncrna-<p>.plan`, one
+  `ncrna-<p>.shard-<k>` per shard and the merge, as a domain scan does. The estimate is the stage's
+  genome bases at 247.4 CPU-hours per 10 Gbp (derived in `planning/design/0-08_ncrna_models.md`; checked on
+  the pod in `planning/measurements/2026-11-11_ncrna_producer.md`). A shard holds at most 161,681,487
+  genome bases at 300 CPU-minutes (derived: 0.8 × 300 × 60 / (247.4 × 3600 / 1e10)).
+- Memory: each `cmsearch` is counted at 6.4 GiB per two threads (measured peak 6.4 GiB at `--cpu 2` on
+  intergenic records, measurement 0-09c). Shards at once are at most the unit's `MemoryMax` divided by
+  that, so a 16G unit runs two shards of two threads. A unit too small for one `cmsearch` is refused
+  (exit 2, `above the memory cap`) before the scan; raise `pod_run.sh --mem` or lower `--scan-cpus`.
+- A contig another stage owns is skipped and named in the ledger (`owned_by:<stage>`), as gene calling
+  skips it (DEC-26).
+- Its plan and shard records are in `l1/domain_scan/library=<producer>/stage=<S>/`, the shards' runs in
+  `$BBTMP/scratch/biobox-ncrna-scan/<plan>/`; a run lost from scratch is scanned again before the merge
+  (`python -m biobox.l1.ncrna rescan`, log: `scanning it again`), as for a domain scan (section 4).
+
+The library must be the `refdb.yaml` file for the name to say `rfam-15.1`; another file is named by its
+sha256. The release's C-08 check does not yet accept this name (open question of card E-07).
+
 **Clustering's own cap (DEC-25).** A release's clustering is one process, and on a large release it
 passes 300 CPU-minutes: 2,195.91 CPU-minutes for 10,620,684 proteins (measured, wilkcomp02,
 2026-11-10, run record `rN.1.cluster`). DEC-25 exempts this one step from the 300 CPU-minute rule
@@ -316,7 +346,7 @@ What `run-step` leaves, and what it does at the next start:
 |---|---|---|
 | `$BBTMP/staging/<stage>.<step>/` | the step was killed, failed or stopped | removes it and runs the step again |
 | `$BBTMP/scratch/<stage>.<step>/` (a step's own scratch) | the step was killed, failed or stopped | `build-stage` removes it before that step's next attempt (log: `removing ..., left by an earlier attempt`), and removes it once the step succeeds. In C-10 a stopped clustering step left 1.2 GB there (measured, wilkcomp02, 2026-11-10) |
-| a scan shard's run missing from `$BBTMP/scratch/biobox-domain-scan/<plan>/` while its run record exists | scratch was cleared (a reboot) or damaged between the shards and the merge | `build-stage`, before the merge, scans exactly those shards again into scratch (log: `scanning it again`); the new run must have the sha256 the shard's published record holds, else the build stops naming the shard (tell the PI) |
+| a scan shard's run missing from `$BBTMP/scratch/biobox-domain-scan/<plan>/` (or, for the ncRNA scan, `biobox-ncrna-scan/<plan>/`) while its run record exists | scratch was cleared (a reboot) or damaged between the shards and the merge | `build-stage`, before the merge, scans exactly those shards again into scratch (log: `scanning it again`); the new run must have the sha256 the shard's published record holds, else the build stops naming the shard (tell the PI) |
 | a clustering step's database missing from `$BBTMP/scratch/biobox-cluster/<release>-<key>/` while its record exists (card B-41) | scratch was cleared (a reboot) or damaged during clustering in parts | `build-stage`, before it goes on, makes exactly those steps again, in order (log: `making them again in order`); each must reproduce its published record, else the build stops naming the step (tell the PI) |
 | `$ROOT/runs/stage=<S>/<step>.json` (run record) | the step finished | skips the step if every listed output is in the root with its recorded size |
 | `$ROOT/runs/stage=<S>/<step>.publishing.json` (intent file) | killed while publishing | finishes the publish, or undoes it, then reruns (see below) |
@@ -407,6 +437,13 @@ biopy "$WORK/rb.py" checks "$ROOT" S0 rC6.1 ingest,genecall,domains-test-1,clust
 also reports any unlisted file in the release's scope. It writes nothing. It prints each problem,
 then `release rC6.2: verified (...)` with the stages, the file count and the manifest hash. Exit 0
 is a pass, 1 a failure (a missing manifest is one).
+
+Files that a later step adds to the release's stages for a library, producer or step the release
+does not use there are not its concern (card C-19): a Pfam scan of a stage after the release was
+built does not fail it. A second part beside a file the release lists still does. If the release
+has a library's domain files for some of its stages only, `verify` prints a `warning:` line naming
+the stages on each side; the exit code is unchanged. That release's family tokens cover only the
+first stages' genes; a release built after the other stages are scanned covers them all.
 
 ```bash
 bio-box release verify --root "$ROOT" --release rC6.2
@@ -609,8 +646,8 @@ What is ours, all under `/tmp/if2453/`:
 
 - `$BBTMP/staging/<stage>.<step>/`: leftovers of killed or failed steps.
 - `$BBTMP/scratch/`: builder scratch: one directory per step, `<stage>.<step>/`, which
-  `build-stage` removes itself (section 4), and the scan shards' runs in `biobox-domain-scan/`,
-  removed after the merge.
+  `build-stage` removes itself (section 4), and the scan shards' runs in `biobox-domain-scan/` and
+  `biobox-ncrna-scan/`, removed after the merge.
 - `$BBTMP/logs/`: unit logs.
 - `$BBTMP/packs/release=<R>/<pack id>/`: the search pack of a release (section 7). It is a cache of
   the release, shared by every user of the host: `pack build` makes it again from the release. Its
@@ -685,6 +722,7 @@ a profile value is missing from this table.
 | Nice | 19 (one big process), 15 (many small ones) | profile `nice_monolithic`, `nice_fanout`; AGENTS 7.2 says 19 |
 | CPU-minutes per process | 300 | profile `cpu_min_per_process`; AGENTS 7.2 |
 | CPU-minutes of a release's clustering | 20000, estimated before launch; refused above it. The one exemption from the 300 (DEC-25), until card B-37. Set by the PI on 2026-11-10 for the 50 Gbp build: about nine times the 2,195.91 measured for 10,620,684 proteins (wilkcomp02, 2026-11-10). Without the key, clustering over 300 is refused | profile `cluster_cpu_min_max`; DEC-25; `cluster_refusal` in `src/biobox/stage.py`; card B-36 |
+| ncRNA scan shard size | 161,681,487 genome bases: 80% of `cpu_min_per_process` (300) at 247.4 CPU-hours per 10 Gbp (derived in `planning/design/0-08_ncrna_models.md` §4 from per-model CPU measured in 0-09c; pod check in `planning/measurements/2026-11-11_ncrna_producer.md`). Shards at once: at most the unit's `MemoryMax` / (6.4 GiB per two `cmsearch` threads) | `NCRNA_CPU_H_PER_10GBP`, `NCRNA_JOB_GIB` in `src/biobox/stage.py`; card E-07 |
 | Scan shard size | 30,150,753 residues: 80% of `cpu_min_per_process` (300) at 7.96 CPU-minutes per million residues (derived: 300 × 0.8 / 7.96 × 10^6; the rate of the Pfam scan of stage P1 in card C-10, measured on wilkcomp02, 2026-11-10: 2,343.74 CPU-minutes for 294.5 M residues). The 80% leaves room for a scan 25% slower per residue (derived: 1 / 0.8) | `SHARD_MARGIN` and `SCAN_CPU_MIN_PER_M` in `src/biobox/stage.py`; cards C-11, C-13 |
 | Scan shards at once | `--scan-jobs` J × `--scan-cpus` C at most the threads `run-step` allows when `build-stage` starts (40 by day, 56 at night when idle); defaults C = 4, J = allowance // C (10 by day, 14 at night). The cap is a total over everything of ours on the pod, and `build-stage` counts only its own threads: choose J = floor((cap - other threads) / C) (section 2). The allowance is read again before each step and before each shard launch; a launch that would pass it waits | `scan_slots` and `_launch` in `src/biobox/stage.py`; cards C-11, C-12 |
 | Unit CPU quota | the night cap, 56: a ceiling fixed at launch; `build-stage` holds the limit of the hour | `scripts/pod_run.sh --threads`, profile `max_threads_night`; card C-12 |
