@@ -486,7 +486,12 @@ not be able to write its root. The search pack and the runs live outside the dat
 profile's `tmp`:
 
 - the pack of release `R`: `$BBTMP/packs/release=<R>/<pack id>/`, one per host (a pack is a cache
-  of a release, shared by every user);
+  of a release, shared by every user). `$BBTMP/packs` (real: `/tmp/if2453/bio-box/packs`) is the
+  host's one pack directory (card W-22): `pack`, `search`, `nbr` and `releases` find a release's pack
+  there with only `--profile`. Only a `pack build` that makes a pack writes into it, so it may be
+  read-only for everyone but its builder: `pack verify`, a `pack build` that finds the pack already
+  built, and every search write nothing there (their scratch goes to `$BBTMP/search/$USER/work`), and
+  a `pack build` that cannot write it exits 2;
 - the runs: `$BBTMP/search/$USER/runs/run=<run id>/`, one directory per user; each running run's
   pending record is `$BBTMP/search/$USER/runs/pending/run=<run id>.json`, removed when the run closes
   (card W-20; the closed run's own record, `run.parquet`, then answers `status` and `cancel`);
@@ -507,7 +512,9 @@ once for each domain library of the release; it is optional, and a release with 
 (the 10 Gbp release `rN.1` has none) is built without it. A search seeded by an HMM file or by
 sequences needs no model in the pack. A second build from the same inputs finds the pack
 and changes nothing; a pack is never overwritten. A search whose pack is missing exits 2 and names
-the `pack build` command.
+the `pack build` command. `pack verify` re-reads every file of the pack and writes nothing into the
+pack directory; it sorts the release's protein uids in `$BBTMP/search/$USER/work/.verify-*`, removed
+when it ends (card W-22).
 
 ```bash
 bash "$TREE/scripts/pod_run.sh" --profile "$PROFILE" --image "$IMAGE" --digest "$DIGEST" --bind /tmp/if2453 --env PYTHONPATH="$PYTHONPATH_POD" w13-pack pack build --root "$ROOT" --release rC6.1 --model test-1="$WORK/inputs/lib.hmm" --profile "$PROFILE"
@@ -690,17 +697,21 @@ What is ours, all under `/tmp/if2453/`:
   verifies it in full first (its log says so); `pack build` with the same inputs adds the record
   without building again.
 - `$BBTMP/packs/release=<R>/.building-<pid>-<hex>/` and `.scratch-<pid>-<hex>/`: a pack build's
-  temporary pack and its sort's scratch, and `.verify-<pid>-<hex>/`: the scratch of a `pack verify`
-  (or of the verify a `pack build` runs). Each is removed by the command that made it, also when it
-  is stopped by SIGTERM, SIGHUP or Ctrl-C; one is left only when that command was killed (SIGKILL,
-  the OOM killer, a reboot). They are dot-named, so `ls` shows them only with `-a`. Remove one only
-  when no `pack build` or `pack verify` of that release is running (`ps -u "$USER" -o pid,args`),
-  by exact path.
+  temporary pack and its sort's scratch (the build's check of its new pack sorts there too). Each is
+  removed by the command that made it, also when it is stopped by SIGTERM, SIGHUP or Ctrl-C; one is
+  left only when that command was killed (SIGKILL, the OOM killer, a reboot). They are dot-named, so
+  `ls` shows them only with `-a`. Remove one only when no `pack build` of that release is running
+  (`ps -u "$USER" -o pid,args`), by exact path. Nothing else writes into `$BBTMP/packs` (card W-22).
 - `$BBTMP/search/$USER/`: your searches (section 7). `runs/run=<run id>/` is a closed run's record
   and hits; `runs/pending/run=<run id>.json` is a running run's pending record, which the run
   removes when it closes (`.stderr` beside it is the runner's stderr of a run submitted outside a unit,
   and stays); `work/<run id>/` is a run's work directory, which the
   run removes when it closes. One is left only when the runner was killed (SIGKILL, a reboot).
+- `$BBTMP/search/$USER/work/.verify-<pid>-<hex>/`: the scratch of a `pack verify`, or of the verify a
+  `pack build` runs on a pack it finds already built (card W-22; before W-22 it was in the pack
+  directory, `$BBTMP/packs/release=<R>/`, where one left by an older tree may still be). Removed by
+  the command that made it; one is left only when that command was killed. Remove one only when no
+  `pack verify` or `pack build` is running, by exact path.
 - `$TREE`, `$WORK` and `/tmp/if2453/ci-tmp/<name>-*`: your mirrored trees and pytest directories.
 
 Never delete:
@@ -762,7 +773,7 @@ a profile value is missing from this table.
 | Unit CPU quota | the night cap, 56: a ceiling fixed at launch; `build-stage` holds the limit of the hour | `scripts/pod_run.sh --threads`, profile `max_threads_night`; card C-12 |
 | Smallest data file | 64 MiB (67108864 bytes), except tables the registry marks `small_ok` | profile `small_file_floor_bytes`; AGENTS 7.3 says 64 MB |
 | Work directory | `/tmp/if2453/bio-box` | profile `tmp`; AGENTS 7.3 |
-| Search pack directory | `<tmp>/packs` (`/tmp/if2453/bio-box/packs`), outside the data root; with `--profile`, else `--pack-dir` | profile `tmp`; `default_pack_base` in `src/biobox/search/runner.py`; card W-03 |
+| Search pack directory | `<tmp>/packs` (`/tmp/if2453/bio-box/packs`), the host's one, outside the data root; with `--profile`, else `--pack-dir`. Only a `pack build` that makes a pack writes into it: it may be read-only for all but its builder | profile `tmp`; `default_pack_base` in `src/biobox/search/runner.py`; cards W-03, W-22 |
 | Search runs and work directories | `<tmp>/search/<user>/runs` and `<tmp>/search/<user>/work`, one per user, outside the data root; with `--profile`, else `--runs` and `--work` | profile `tmp`; `default_runs_dir`, `default_work_base` in `src/biobox/search/runner.py`; card W-03 |
 | `search run` in a `pod_run.sh` unit | only with `--wait`; without it, refused (exit 2) | `BIOBOX_POD_UNIT` in `scripts/pod_run.sh` and `src/biobox/cli.py`; card W-13 |
 | Durable results | `/stor/work/Wilke/if2453/all-the-data` | profile `durable` |
