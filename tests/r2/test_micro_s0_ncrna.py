@@ -226,18 +226,34 @@ def test_rows_equal_the_cmsearch_binary_after_the_coordinate_conversion(world, o
         assert 0 <= r["start"] < r["end"] <= r["contig_len"]  # no fixture hit crosses an origin (C-05)
 
 
-@pytest.mark.covers("C-02", "C-05")
-def test_features_are_the_distinct_loci_of_the_hits(world):
+@pytest.mark.covers("C-02", "C-05", "E-08")
+def test_features_are_the_distinct_loci_of_the_winning_hits(world):
+    """Card E-08 migration (DEC-28): a feature is the locus of a hit that won its clan's competition or whose model is
+    in no clan; a losing hit stays in `l1_ncrna`, flagged, with no feature of its own. The flags equal the pairwise
+    oracle of `test_ncrna_clans` over the clan file as parsed there."""
+    import test_ncrna_clans as cl
+
+    hits = world["hits"]
+    flags = cl.oracle(hits, cl.clan_file())
+    assert [(r["clan"], r["clan_winner"]) for r in hits] == flags
     feats = world["features"]
-    want = sorted({(r["feature_uid"], r["contig_uid"], r["start"], r["end"], r["strand"]) for r in world["hits"]},
-                  key=lambda t: (t[1], t[2], t[3], t[4]))
+    want = sorted({(r["feature_uid"], r["contig_uid"], r["start"], r["end"], r["strand"])
+                   for r, (_, won) in zip(hits, flags) if won}, key=lambda t: (t[1], t[2], t[3], t[4]))
     assert [(f["feature_uid"], f["contig_uid"], f["start"], f["end"], f["strand"]) for f in feats] == want
     assert {f["kind"] for f in feats} == {NCRNA}
     assert len({f["feature_uid"] for f in feats}) == len(feats)
-    # tRNA and tRNA-Sec on overlapping loci of M. genitalium: both kept (no clan rule in the spec or decisions)
-    sec = [r for r in world["hits"] if r["model_acc"] == "RF01852"]
-    assert sec and all(any(t["model_acc"] == "RF00005" and t["contig_uid"] == s["contig_uid"]
-                           and t["start"] < s["end"] and s["start"] < t["end"] for t in world["hits"]) for s in sec)
+    # tRNA and tRNA-Sec on overlapping loci of M. genitalium: one clan (CL00001), so where they overlap on one strand
+    # one of them loses, and no two kept hits of a clan overlap on a strand
+    sec = [r for r in hits if r["model_acc"] == "RF01852"]
+    pairs = [(s, t) for s in sec for t in hits if t["model_acc"] == "RF00005" and t["contig_uid"] == s["contig_uid"]
+             and t["strand"] == s["strand"] and t["start"] < s["end"] and s["start"] < t["end"]]
+    assert pairs and all(not (s["clan_winner"] and t["clan_winner"]) for s, t in pairs)
+    assert any(not r["clan_winner"] for r in hits)
+    for a in hits:
+        for b in hits:
+            if a is not b and a["clan_winner"] and b["clan_winner"] and a["clan"] is not None:
+                assert not (a["clan"] == b["clan"] and a["contig_uid"] == b["contig_uid"]
+                            and a["strand"] == b["strand"] and cl.bases(a) & cl.bases(b)), (a, b)
 
 
 def test_producer_names_infernal_and_the_library(world, monkeypatch):
@@ -246,15 +262,16 @@ def test_producer_names_infernal_and_the_library(world, monkeypatch):
     assert infernal == provenance.locked_versions()["infernal"]
     sha = hashlib.sha256(LIB.read_bytes()).hexdigest()
     set_sha = hashlib.sha256(SET.read_bytes()).hexdigest()  # card E-07: the set and the region rule
-    assert world["producer"] == f"infernal-{infernal}-rfam-sha{sha[:12]}-sha{set_sha[:12]}-igr200nt"
+    # card E-08: and the clan rule, since the features (winners only) differ from card E-07's
+    assert world["producer"] == f"infernal-{infernal}-rfam-sha{sha[:12]}-sha{set_sha[:12]}-igr200nt-clan1"
     nc = _ncrna()
     # a file whose sha256 refdb.yaml lists is named by its version there (Rfam.cm.gz of 15.1 gives 15.1)
     rfam = next(db for db in provenance.refdb_libraries() if db["name"] == "rfam")
     assert rfam["version"] == "15.1"
     monkeypatch.setattr(provenance, "refdb_libraries", lambda repo=None: [{**rfam, "sha256": sha}])
     assert nc.library_version(LIB) == "15.1"
-    assert nc.producer(LIB, SET) == f"infernal-{infernal}-rfam-15.1-sha{set_sha[:12]}-igr200nt"
-    assert nc.producer(LIB) == f"infernal-{infernal}-rfam-15.1-prok1-igr200nt"  # the frozen set by default
+    assert nc.producer(LIB, SET) == f"infernal-{infernal}-rfam-15.1-sha{set_sha[:12]}-igr200nt-clan1"
+    assert nc.producer(LIB) == f"infernal-{infernal}-rfam-15.1-prok1-igr200nt-clan1"  # the frozen set by default
 
 
 @pytest.mark.covers("C-08", "L-01")

@@ -296,6 +296,8 @@ _SPECS = [
             _f("trunc_3p", pa.bool_()),
             _f("gc", pa.float32()),
             _f("contig_len", COORD),
+            _f("clan", pa.string(), nullable=True),  # card E-08; appended 2026-11-11 (LY-09)
+            _f("clan_winner", pa.bool_(), nullable=True),  # card E-08; appended 2026-11-11 (LY-09)
         ]),
         primary_key=("feature_uid", "model_acc", "producer"),
         sort_key=("contig_uid", "start", "end", "strand", "model_acc"),
@@ -309,7 +311,12 @@ _SPECS = [
             "start/end 0-based half-open on the contig, end > contig_len for a hit across the origin of a circular "
             "contig; mdl_start/mdl_end 0-based half-open on the model (of model_len consensus columns, CLEN); "
             "mdl_kind 'hmm' for a model searched by its profile HMM alone; trunc_5p/trunc_3p for a hit cut by a "
-            "linear contig's end; gc the hit's GC fraction; contig_len the real target size (bases searched)"
+            "linear contig's end; gc the hit's GC fraction; contig_len the real target size (bases searched). "
+            "Card E-08 (DEC-28 (4)): clan the Rfam clan of the model (Rfam.clanin), null for a model in no clan; "
+            "clan_winner false for a hit that lost clan competition (a better hit of its clan shares a base with it "
+            "on its strand), true otherwise. Only winners have a `feature` row: a losing row's feature_uid names its "
+            "coordinates, which have no feature unless a winner has the same ones. Both are null in files written "
+            "before card E-08 (producers without the `-clan1` tail), whose every hit has a feature"
         ),
     ),
     TableSpec(
@@ -968,6 +975,22 @@ ARTIFACTS: dict[str, ArtifactSpec] = {
         pattern=r"(plan|shard-\d{5})\.json",
         doc="a stage's shard plan for one domain library (plan.json: proteins by protein_uid cut by cumulative "
             "residues) and each scanned shard's record (shard-<k>.json), as sorted-key JSON",
+        in_manifest=False,
+        small_ok=True,
+    ),
+    # A stage's ncRNA scan in shards (cards E-07, E-08, `biobox.l1.ncrna`): the plan and one record per shard, as
+    # `domain_scan` holds a domain scan's, under the producer's name. A build's own records: never in a release
+    # manifest. Card E-07 wrote them under `domain_scan` (library=<producer>); that artifact still claims those files
+    # and the producer reads them there when they are not here.
+    "ncrna_scan": ArtifactSpec(
+        name="ncrna_scan",
+        layer="L1",
+        location="l1/ncrna_scan",
+        partition_keys=("producer", "stage"),
+        pattern=r"(plan|shard-\d{5})\.json",
+        doc="a stage's shard plan for one ncRNA producer (plan.json: contigs by contig_uid cut by cumulative genome "
+            "bases) and each scanned shard's record (shard-<k>.json: its scratch runs' sha256 and counts), as "
+            "sorted-key JSON",
         in_manifest=False,
         small_ok=True,
     ),
