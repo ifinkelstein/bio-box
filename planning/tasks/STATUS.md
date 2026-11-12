@@ -39,10 +39,15 @@ but the runbook and `scripts/pod_pytest.sh` still use `bio-box-test_74b3e05.sif`
 **On the pod now** (wilkcomp02; account thread cap 40 by day, 56 at night, a total over everything we run).
 - The 50 Gbp build, unit `r50-driver` (log `/tmp/if2453/r50/driver.log`, step log `/tmp/if2453/r50/tmp/logs/r50-P6-5.log`;
   state `/tmp/if2453/r50/driver/{DONE,FAILED}`; pause `touch /tmp/if2453/r50/driver/HALT`; `FAILED.1409-C20` there is
-  the old C-20 failure, renamed). Stages P3 to P6 are ingested and gene-called. Release `rM.1` (about 46.6 M
-  proteins) finished its last clustering call at 09:52 CST and is in `release cluster finish`; then the Pfam
-  scan of P3 to P6 (about midday Saturday) and `rM.2` (early Sunday), *estimates* in
-  `planning/measurements/2026-11-11_build_r50.md`.
+  the old C-20 failure, renamed; `FAILED.1057-tokens` the one below). Stages P3 to P6 are ingested and gene-called.
+  Release `rM.1` published its clustering at 10:53 CST (*measured*: 45,815,843 proteins, 31,183,876 NR90 and
+  8,192,065 NR50 clusters), then **`rM.1.tokens` failed at 10:57 (DuckDB out of memory in the slot join; card
+  B-46)**. The driver was relaunched at 11:00 with `SKIP_RM1=1`: it skips `rM.1`, scans Pfam on P3 to P6 now (about
+  midday Saturday, *estimate*; each scan launch ends with the same tokens failure after the scan is published,
+  which the driver accepts), then waits for `/tmp/if2453/r50/driver/RELEASE_OK`. **To finish:** merge B-46, sync
+  the fixed tree to `/tmp/if2453/ci/r50` (rsync as `pod_pytest.sh` does) only while no scan unit runs, then
+  `touch /tmp/if2453/r50/driver/RELEASE_OK`; the driver builds `rM.2`. `rM.1` can then be finished by relaunching
+  its release steps with the fixed code.
 - Measurement 0-08a, the Rfam sample scan (`/tmp/if2453/m08a`, units `m08a-*`, 16 shards done at 10:12 CST; branch
   `measure/0-08a` pushed). When `DONE` exists: copy `report/2026-11-12_rfam_sample.md` to `planning/measurements/`
   and `0-08a_prok-2_proposed.tsv` to `planning/design/`, write the interpretation, merge.
@@ -51,7 +56,8 @@ but the runbook and `scripts/pod_pytest.sh` still use `bio-box-test_74b3e05.sif`
   about 350 to 390 GB of its 1.1 TB (543 GB free), mostly scratch.
 
 **Next, in order.**
-1. Merge C-21b, W-22, C-23, B-45 as they report; then start C-21c, C-16, W-24, W-15 (four at a time).
+1. B-46 first, in the next free agent slot (it blocks `rM.2`). Merge C-21b, W-22, C-23, B-45 as they report; then
+   start C-21c, C-16, W-24, W-15 (four at a time).
 2. When `rM.2` is built and verified: copy the data root to `/stor/scratch/Wilke/if2453/all-the-data/` (one
    `rsync`, atomic rename; files under 64 MB only as `small_ok` tables allow, AGENTS §7.3), then clear obsolete
    scratch (old pack copies under `w16`, `w19`; finished measurement directories).
