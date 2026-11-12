@@ -724,7 +724,15 @@ Accept: the reproduction fails first and passes after; the existing scope tests 
 ### B-42 Finish split clustering: the real release, then end the exemption
 **M** · Depends: B-41, the rebuild's phase 2 (nothing may write in the root meanwhile) · Pod: yes
 Do: (1) on the pod, recluster `rN.1b` (2,053,075 proteins) in parts with the current code into a scratch root that reads the stage files without changing them (never the rebuild's root as the output), and compare with its published clusters row for row; every run record under 300 CPU-minutes; record wall time, CPU-minutes, the work directory's peak size on disk and each step's peak memory. (2) If equal: remove the DEC-25 exemption from `stage.py`, the profile key and the runbook in a separate commit, and propose the text of a decision row saying it has ended (the PI adds the row). If not equal: stop and report which members move.
+Amended 2026-11-12 (DEC-29): step (2) narrows the exemption instead of removing it. The one-process clustering step of DEC-25 ends; `cluster_cpu_min_max` and its gate stay for the unsplittable calls of DEC-29 (card B-45). Do (2) after B-45 is merged, and change the runbook's text on DEC-25 to DEC-29.
 Accept: the measurement file; the equality; then the removal.
+
+### B-45 Run an unsplittable clustering call as one process (DEC-29)
+**M** · Depends: B-41, B-43, C-22 (merged) · DEC-29 · before any release above about 74 M proteins
+Files: `src/biobox/l2/cluster.py`, `src/biobox/stage.py`, `RUNBOOK.md`, tests
+Why: the cut refuses a prefilter call whose per-part table rebuild alone exceeds the part budget (`cluster.py`, the C-22 table: the NR90 step's prefilter from about 74 M proteins, NR50 step 0 from about 108 M, *derived*). DEC-29 runs that call unsplit instead.
+Do, test first: when the cut would refuse a call for that reason and the profile sets `cluster_cpu_min_max`, plan the call as one part (its own table, `--add-self-matches` as today, the log check for `Process prefiltering step 1 of 1` unchanged), with its estimate (work plus table) checked against `cluster_cpu_min_max` before launch and refused above it, and run it with `budget_reason` `exempt: DEC-29`; without `cluster_cpu_min_max` keep today's refusal and name DEC-29 in it. Every other call is cut as today. The one-part call's output equals the workflow's (the 1-part equality test of B-41 covers it; add the case to it with a forced overhead over the budget on the fixture and the constructed set). `release cluster plan` shows which calls run as one process and why. Restate the C-22 table's 95 M row with the call as one process, and the total.
+Accept: the tests fail first; equality at 1, 2 and 4 parts unchanged; with the profile key absent the refusal is unchanged except its text.
 
 ### B-43 A shared prefilter index for split clustering
 **M** · Depends: B-41 · needed above about 68 M proteins
