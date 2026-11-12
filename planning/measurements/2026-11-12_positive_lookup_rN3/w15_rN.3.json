@@ -1,0 +1,213 @@
+{
+ "release": "rN.3",
+ "root": "/tmp/if2453/r10/root",
+ "threads": 2,
+ "tape_version": "t-ca596dd85040",
+ "contig_label": [],
+ "contig_occurrence": [
+  {
+   "path": "/tmp/if2453/r10/root/l0seq/contig_occurrence/stage=S1/source=inphared/part-0.parquet",
+   "parts": {
+    "source": "inphared",
+    "stage": "S1"
+   },
+   "rows": 34076,
+   "row_groups": 1
+  },
+  {
+   "path": "/tmp/if2453/r10/root/l0seq/contig_occurrence/stage=P1/source=ncbi_genomes/part-0.parquet",
+   "parts": {
+    "source": "ncbi_genomes",
+    "stage": "P1"
+   },
+   "rows": 539,
+   "row_groups": 1
+  },
+  {
+   "path": "/tmp/if2453/r10/root/l0seq/contig_occurrence/stage=P2/source=ncbi_genomes/part-0.parquet",
+   "parts": {
+    "source": "ncbi_genomes",
+    "stage": "P2"
+   },
+   "rows": 5018,
+   "row_groups": 1
+  }
+ ],
+ "picks": [
+  "PQ006425",
+  "NC_054918",
+  "MK327939",
+  "CP089929.1"
+ ],
+ "profile": [
+  {
+   "accession": "PQ006425",
+   "seconds": 0.047,
+   "n_contigs": 1,
+   "scans": [
+    {
+     "files": [
+      "/tmp/if2453/r10/root/l0seq/contig_occurrence/stage=P1/source=ncbi_genomes/part-0.parquet, /tmp/if2453/r10/root/l0seq/contig_occurrence/stage=P2/source=ncbi_genomes/part-0.parquet, /tmp/if2453/r10/root/l0seq/contig_occurrence/stage=S1/source=inphared/part-0.parquet"
+     ],
+     "files_read": 3,
+     "row_groups_scanned": 3,
+     "row_groups_total": 3,
+     "rows_scanned": 1
+    }
+   ],
+   "bytes_read": 832975
+  },
+  {
+   "accession": "NC_054918",
+   "seconds": 0.0344,
+   "n_contigs": 1,
+   "scans": [
+    {
+     "files": [
+      "/tmp/if2453/r10/root/l0seq/contig_occurrence/stage=P1/source=ncbi_genomes/part-0.parquet, /tmp/if2453/r10/root/l0seq/contig_occurrence/stage=P2/source=ncbi_genomes/part-0.parquet, /tmp/if2453/r10/root/l0seq/contig_occurrence/stage=S1/source=inphared/part-0.parquet"
+     ],
+     "files_read": 3,
+     "row_groups_scanned": 3,
+     "row_groups_total": 3,
+     "rows_scanned": 1
+    }
+   ],
+   "bytes_read": 832975
+  },
+  {
+   "accession": "MK327939",
+   "seconds": 0.0448,
+   "n_contigs": 1,
+   "scans": [
+    {
+     "files": [
+      "/tmp/if2453/r10/root/l0seq/contig_occurrence/stage=P1/source=ncbi_genomes/part-0.parquet, /tmp/if2453/r10/root/l0seq/contig_occurrence/stage=P2/source=ncbi_genomes/part-0.parquet, /tmp/if2453/r10/root/l0seq/contig_occurrence/stage=S1/source=inphared/part-0.parquet"
+     ],
+     "files_read": 3,
+     "row_groups_scanned": 3,
+     "row_groups_total": 3,
+     "rows_scanned": 1
+    }
+   ],
+   "bytes_read": 832975
+  },
+  {
+   "accession": "CP089929.1",
+   "seconds": 0.0404,
+   "n_contigs": 1,
+   "scans": [
+    {
+     "files": [
+      "/tmp/if2453/r10/root/l0seq/contig_occurrence/stage=P1/source=ncbi_genomes/part-0.parquet, /tmp/if2453/r10/root/l0seq/contig_occurrence/stage=P2/source=ncbi_genomes/part-0.parquet, /tmp/if2453/r10/root/l0seq/contig_occurrence/stage=S1/source=inphared/part-0.parquet"
+     ],
+     "files_read": 3,
+     "row_groups_scanned": 3,
+     "row_groups_total": 3,
+     "rows_scanned": 1
+    }
+   ],
+   "bytes_read": 832975
+  },
+  {
+   "header_substring": "Escherichia coli",
+   "seconds": 0.0423,
+   "n_contigs": 38,
+   "scans": [
+    {
+     "files": [
+      "/tmp/if2453/r10/root/l0seq/contig_occurrence/stage=P1/source=ncbi_genomes/part-0.parquet, /tmp/if2453/r10/root/l0seq/contig_occurrence/stage=P2/source=ncbi_genomes/part-0.parquet, /tmp/if2453/r10/root/l0seq/contig_occurrence/stage=S1/source=inphared/part-0.parquet"
+     ],
+     "files_read": 3,
+     "row_groups_scanned": 3,
+     "row_groups_total": 3,
+     "rows_scanned": 42
+    }
+   ],
+   "bytes_read": 1158313
+  }
+ ],
+ "timings": [
+  {
+   "accession": "PQ006425",
+   "spec": "PQ006425:2125-3166",
+   "labels_s": 0.1935,
+   "find_genes_s": 0.274,
+   "positive_uid_s": 0.1598,
+   "n_genes": 4,
+   "positive": "9d5abe1b1bc15fffbf25c6f7ddf558de",
+   "refusal": []
+  },
+  {
+   "accession": "NC_054918",
+   "spec": "NC_054918:68661-69225",
+   "labels_s": 0.1114,
+   "find_genes_s": 0.1452,
+   "positive_uid_s": 0.1524,
+   "n_genes": 266,
+   "positive": "35989ea11da92925d81294b7ec6be32e",
+   "refusal": []
+  },
+  {
+   "accession": "MK327939",
+   "spec": "MK327939:68661-69225",
+   "labels_s": 0.1007,
+   "find_genes_s": 0.1474,
+   "positive_uid_s": 0.155,
+   "n_genes": 266,
+   "positive": "35989ea11da92925d81294b7ec6be32e",
+   "refusal": []
+  },
+  {
+   "accession": "CP089929.1",
+   "spec": "CP089929.1:6927102-6928320",
+   "labels_s": 0.0756,
+   "find_genes_s": 0.299,
+   "positive_uid_s": 0.3098,
+   "n_genes": 10737,
+   "positive": "205d563f9aa59678ee80d60bf9d8209d",
+   "refusal": []
+  }
+ ],
+ "end_to_end": [
+  {
+   "cmd": "-m biobox.cli find --root /tmp/if2453/r10/root --release rN.3 --accession PQ006425:2125-3166 --threads 2",
+   "seconds": 2.671,
+   "rc": 0,
+   "stdout_lines": 2,
+   "stderr": [
+    "note: release rN.3 has no contig_label files (built before card B-27); reading contig_occurrence instead (the slow path: every row group is scanned)"
+   ]
+  },
+  {
+   "cmd": "-m biobox.cli find --root /tmp/if2453/r10/root --release rN.3 --accession NC_054918:68661-69225 --threads 2",
+   "seconds": 2.087,
+   "rc": 0,
+   "stdout_lines": 2,
+   "stderr": [
+    "note: release rN.3 has no contig_label files (built before card B-27); reading contig_occurrence instead (the slow path: every row group is scanned)"
+   ]
+  },
+  {
+   "cmd": "-m biobox.cli find --root /tmp/if2453/r10/root --release rN.3 --accession MK327939:68661-69225 --threads 2",
+   "seconds": 2.055,
+   "rc": 0,
+   "stdout_lines": 2,
+   "stderr": [
+    "note: release rN.3 has no contig_label files (built before card B-27); reading contig_occurrence instead (the slow path: every row group is scanned)"
+   ]
+  },
+  {
+   "cmd": "-m biobox.cli find --root /tmp/if2453/r10/root --release rN.3 --accession CP089929.1:6927102-6928320 --threads 2",
+   "seconds": 2.435,
+   "rc": 0,
+   "stdout_lines": 2,
+   "stderr": [
+    "note: release rN.3 has no contig_label files (built before card B-27); reading contig_occurrence instead (the slow path: every row group is scanned)"
+   ]
+  },
+  {
+   "cmd": "python -c 'import biobox.cli'",
+   "seconds": 1.976
+  }
+ ]
+}

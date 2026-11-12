@@ -22,7 +22,7 @@ host profile's pack directory `/tmp/if2453/bio-box/packs`, card W-22):
 |---|---|---|
 | `rN.1` | 27,258 phage genomes and 2,497 complete prokaryote genomes; 12,048,866 genes; 10,620,684 distinct proteins; NR50 2,966,200 and NR90 8,278,537 clusters; no Pfam (*measured*, `planning/tasks/STATUS.md`, "10 Gbp rebuild"; `planning/measurements/2026-11-10_trial_search_rN1.md`) | yes; until the operator copies it into the profile's pack directory, in `/tmp/if2453/w19/packs` (section 2) |
 | `rN.2` | the same genomes with Pfam 38.2 domains | none yet: ask the operator for one (RUNBOOK section 7, `pack build`) |
-| `rN.3` | the same genomes, built by the current code (card C-17) | being built |
+| `rN.3` | the same genomes with Pfam 38.2, built by the current code (card C-17): the one to use | yes, in the profile's pack directory (`/tmp/if2453/bio-box/packs`), found with `--profile` alone |
 
 ## 2. Before you start
 
@@ -283,9 +283,12 @@ bio-box sql --root "$ROOT" --release rN.1 -e "SELECT key, value FROM catalog_inf
   `releases`, `search` and `nbr` command needs `--pack-dir /tmp/if2453/w19/packs` (section 2); `rN.2` needs one
   built (RUNBOOK section 7).
 - `rN.1` and `rN.2` were built before card B-27, so cluster and contig-name lookups read whole tables and print a
-  `note: ... slow path` line; answers are the same, a few seconds slower. `rN.3` will not need it (card C-17).
-- Looking up `--positive`, `find --accession` or `seq --contig ACCESSION` reads every contig name of the release,
-  about 4 s on `rN.1` (card W-15); `seq --contig` with a contig uid does not.
+  `note: ... slow path` line; answers are the same, a few seconds slower. `rN.3` has the cluster lookup table but
+  still prints the note for contig names: that table is written per stage at ingest, and its stages were ingested
+  before card B-27.
+- Looking up `--positive`, `find --accession` or `seq --contig ACCESSION` reads every contig name of the release:
+  0.03 to 0.05 s on `rN.3`, inside a command that takes 2.1 to 2.7 s, nearly all of it start-up (*measured*,
+  `planning/measurements/2026-11-12_positive_lookup_rN3.md`, card W-15); `seq --contig` with a contig uid does not.
 - Clusters have no names or products; on a release without Pfam a neighbour is only an id (no card yet).
 - NR50 and NR90 ids change between releases when a cluster gains a member (PI card 0-07).
 - A contig whose identical sequence appears in two genomes of different build stages belongs to the first genome
