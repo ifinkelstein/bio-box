@@ -26,7 +26,11 @@ PKG = Path(biobox.__file__).resolve().parent
 
 # The manifest hash and the sha256 over every manifest-listed file of the micro-S0 fixture, measured on the pod on
 # the tree before card C-23 (the same fixture build as tests/r2/test_micro_s0_catalog.py): this card must not move them.
-BASELINE_MANIFEST_HASH = "e42fea7f024ff237a6cfa1102ff54493"
+# Measured on wilkcomp02, 2026-11-12, on a detached worktree of origin/plan/task-cards dcc726d WITHOUT card C-23 (the
+# manifest hash covers every registered table's schema hash, so it moves when a card changes a schema: it was
+# e42fea7f024ff237a6cfa1102ff54493 at d1ca70f, before E-08 added columns `clan` and `clan_winner`; the files hash
+# did not move because the fixture has no file of that table).
+BASELINE_MANIFEST_HASH = "0ea1eb31aafd1f12ba0f1db37ee8c1fd"
 BASELINE_FILES_SHA256 = "8ff62c46a63ee6246bec2c0ca2379feb14d3cd26a4d29b87210dc8abc22d6e13"
 
 BUILD = r"""
