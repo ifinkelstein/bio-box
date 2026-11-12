@@ -1021,6 +1021,8 @@ Do: a design note fixing the unit of counting (locus, vehicle, species represent
 ### F-02 `synthworld` generator
 **M**, one spec section per session · Depends: B-07
 Do: implement `planning/tests/synthworld_spec.md` on ZOMBI2 0.54.0 under the DEC-15 conditions; outputs are FASTA plus truth tables, fed through the normal builders.
+Approved by the PI 2026-11-12: add `zombi2==0.54.0` with `uv add` (the one new dependency; `pyproject.toml` and `uv.lock` are in Files for that line only; if the resolution would change any existing pin, stop and report). `container/environment.yml` is not changed: until an image holds the package, pod tests import it from a directory of its own (never the shared `/tmp/if2453/pilot_s1/pydeps`), and a test that needs it skips where it is absent and runs on GitHub Actions.
+Sessions: (1) the backbone (spec §2.1, §2.2, §6.1, the `micro` preset's backbone parameters of §5.1, the three DEC-15 conditions as tests, and the corrections of the spike's §6): gene order, strands, families, copies and groups with their truth, no sequences; later sessions take §2.3 to §2.5 (sequences, IGRs, RNA motifs), §3 (truth tables), §4 (null worlds), §6.2 to §6.4 and §7, one section each, each ending with the list of what remains.
 
 ### F-03 Implement `pair_stats`, then calibrate
 **M** · Depends: F-01, F-02
