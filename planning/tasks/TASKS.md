@@ -644,6 +644,7 @@ Design questions: `contig_dim` keyed by (contig, genome), or a separate membersh
 ### C-22 Split-clustering estimates run 25% low at 10 M proteins
 **L** · Depends: B-41 · found 2026-11-11 building `rN.3`
 Evidence (*measured*, wilkcomp02, unit `r50-rN3-1`): the three parts of the NR90 `align` call used 263.5, 260.3 and 260.6 CPU-minutes against an estimate of 208.5 each: under the 300 budget, 25% over the estimate. The per-call shares in `cluster.CALL_CPU_S` were measured on 100,000 proteins.
+More evidence from the finished `rN.3` (*measured*, `planning/measurements/2026-11-11_build_r50.md`): `cluster.nr50.12.align` ran as one part at 313.84 CPU-minutes against an estimate of 230.5 (+36%, `over_cpu_budget: true`: the one process over 300); `nr90.07.align` +24%, `nr50.16.align` +10%, `nr90.11.prefilter` −33%, `nr50.19.prefilter` −41%. The whole clustering was 2,174.3 CPU-minutes in 64 steps against 2,195.9 in one process. The 50 Gbp build was launched with `--cluster-parts 24` and a guard at 280 CPU-minutes as a stopgap; its run records (`runs/stage=rM.1/`) are a second, larger sample when they exist.
 Do: refit the per-call constants from `rN.3`'s run records (every call and part, in `runs/stage=rN.3/`), labelled *measured* at 10.6 M proteins; keep the 100,000-protein figures in the comment; cut parts so the estimate with the new constants stays at 80% of the budget; restate the table of parts at 10 M, 50 M and 95 M.
 Accept: a test that the estimate of each `rN.3` part is within 20% of its record.
 

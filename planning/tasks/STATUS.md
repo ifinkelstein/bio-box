@@ -53,6 +53,30 @@ Record: `planning/measurements/2026-11-10_trial_search_rN1.md` (all *measured*, 
   running) and W-20 (output wording). Outputs: `/tmp/if2453/trial2/out/rnap` on the pod.
 - Running: W-19, B-41 (split clustering, fixture only), B-39.
 
+### State at 20:45 CST, 2026-11-11
+
+- `main` has the task-card work (pull requests 1 and 2); the image built from it passes its own suite on
+  Actions and on the pod (1,322 passed, 9 skipped) and is at `~/bio-box/images/bio-box{,-test}_80d4c55.sif`.
+  The repository and both container packages are public since 2026-11-11.
+- `plan/task-cards`: 89 cards merged. Decisions DEC-25 to DEC-28 recorded today.
+- **`rN.3` is built and verified** (`planning/measurements/2026-11-11_build_r50.md`): the current-code release
+  over the 10 Gbp stages, with clusters equal to `rN.2` row for row, built by clustering in parts. A search on
+  it gives the same 1,957 RNA polymerase hits, now with Pfam names on the neighbours; worker peak 2.51 GiB.
+  Its pack is at `/tmp/if2453/r50/packs`.
+- **The 50 Gbp build is running** under unit `r50-driver`: P3 is gene-called (one shared contig skipped,
+  DEC-26), P4 to P6 follow tonight; then release `rM.1` (about 46.6 M proteins, clustering in 24 parts,
+  expected about midday Thursday), then the Pfam scan (about midday Saturday), then `rM.2` (early Sunday).
+  All projections are *derived* or *estimate* in that file. State: `/tmp/if2453/r50/driver/{DONE,FAILED}`,
+  log `/tmp/if2453/r50/driver.log`; pause with `touch /tmp/if2453/r50/driver/HALT`. A guard writes `STOP` in
+  the root if a clustering step passes 280 CPU-minutes.
+- Split-clustering estimates miss: NR90 `align` parts +25%, NR50 `align` +36% and over 300 CPU-minutes once
+  (313.84). Card C-22 refits them.
+- Fetched, verified and archived in `all-the-data/provisional/`: the 50 Gbp genomes, HPGC huge phages (stage
+  H1 inputs ready, card C-24), PLSDB (waits for DEC-27's cards), INPHARED and the GTDB metadata.
+  `sources.yaml` and `refdb.yaml` were checked against the files on disk.
+- Not yet on permanent storage: the data root itself (`/tmp/if2453/r10/root`, growing).
+- Running: E-07 (ncRNA producer for DEC-28). Guides: `GUIDE.md`, `AGENT_GUIDE.md`.
+
 ### 10 Gbp rebuild, 18:20 CST
 
 - Phase 1 is done: releases `rN.1a`, `rN.1b`, `rN.1` in `/tmp/if2453/r10/root` on the pod, all verified
