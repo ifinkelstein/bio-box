@@ -38,7 +38,7 @@ not the job).
 **Branches.** `plan/task-cards` on GitHub (repository `ifinkelstein/bio-box`, public): 105 cards (and the first session of F-02) and the
 measurements in the table below; also the pptx deck (`presentations/all-the-data-deck.pptx`, 51 slides) and the
 flank-tools review behind card W-25 (`planning/design/W-25_flank_tools_review.md`; W-25 approved). Last
-`ci` and `cross-host` confirmed green: `4cd8dfc` (2026-11-12; it holds the C-21b merge), manifest hash
+`ci` and `cross-host` confirmed green: `cb6d3b2` (2026-11-12, the C-21c merge). **`ci` is red at `7d00cc1`** (run 43327988144): one C-16 test, `test_c16_a_search_killed_at_its_wall_time_records_its_peak`, compares a scope's `memory.peak` (269 MiB) with the worker's VmHWM (357 MiB), a wrong oracle that only runs where a scope opens (Actions, not the pod) and is flaky there; the C-16 agent is correcting it on `task/C-16` and must show 5 consecutive green runs. `cross-host` is green. Manifest hash
 `f6126b00d45e9284d2799c3a699c992c` (since C-21b's new schema; `5b7fceb8…` after C-21a). The
 manifest hash includes a hash of every registered schema, so it changes with any schema change (found by C-23). `main` has pull
 requests 1 and 2 (87 cards) and is behind; its image passes its own suite (`ghcr.io/ifinkelstein/bio-box-test@sha256:7f97bc7b…`,
