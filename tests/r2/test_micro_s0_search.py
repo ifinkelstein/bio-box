@@ -2295,15 +2295,233 @@ def test_runner_death_is_reported_and_the_worker_does_not_outlive_it(world, tmp_
     rec.write_text(_recipe(hit, hit))
     work = tmp_path / "work"
     rid = runner.submit(root, rec, REL, runner.Limits(cpus=1, wall_s=300), work, fault="timeout", **_at(root))
-    assert _wait_for(lambda: (work / rid / "worker.pid").exists())
-    worker_pid = int((work / rid / "worker.pid").read_text())
     runner_pid = json.loads(runner.pending_path(_rdir(root, rid)).read_text())["pid"]
-    os.kill(runner_pid, signal.SIGKILL)
-    assert _wait_for(lambda: not _alive(runner_pid), 10)
-    st = runner.status(_rdir(root, rid))
-    assert st["status"] == "failed" and "without closing" in st["error"]
-    assert _wait_for(lambda: not _alive(worker_pid), 10), "worker outlived its runner"
-    assert not _rdir(root, rid).exists()
+    groups = []
+    try:  # card C-16: on any outcome, no process of the run is left behind
+        assert _wait_for(lambda: (work / rid / "worker.pid").exists())
+        worker_pid = int((work / rid / "worker.pid").read_text())
+        groups += _group_of(worker_pid)
+        os.kill(runner_pid, signal.SIGKILL)
+        assert _wait_for(lambda: not _alive(runner_pid), 10)
+        st = runner.status(_rdir(root, rid))
+        assert st["status"] == "failed" and "without closing" in st["error"]
+        assert _wait_for(lambda: not _alive(worker_pid), 10), "worker outlived its runner"
+        assert not _rdir(root, rid).exists()
+    finally:
+        _reap([runner_pid], groups)
+
+
+# --- C-16: no process of a run outlives its runner; a killed search has a peak ----------------------------------------
+
+
+def _group_members(pgid: int) -> list[int]:
+    """The live processes (not zombies) of process group `pgid`, from /proc (proc(5): fields 3 and 5 of `stat`)."""
+    out = []
+    for e in os.listdir("/proc"):
+        if not e.isdigit():
+            continue
+        try:
+            s = Path(f"/proc/{e}/stat").read_text()
+        except OSError:
+            continue
+        f = s[s.rindex(")") + 2:].split()
+        if int(f[2]) == pgid and f[0] not in ("Z", "X"):
+            out.append(int(e))
+    return out
+
+
+def _group_of(pid: int) -> list[int]:
+    """[the process group of `pid`], or [] when it is gone or there is no /proc to find its members in."""
+    if not Path("/proc/self/stat").exists():
+        return []
+    try:
+        return [os.getpgid(pid)]
+    except ProcessLookupError:
+        return []
+
+
+def _describe(pids: list[int]) -> list[str]:
+    out = []
+    for p in pids:
+        try:
+            out.append(f"{p}: " + Path(f"/proc/{p}/cmdline").read_bytes().replace(b"\0", b" ").decode()[:160])
+        except OSError:
+            out.append(f"{p}: gone")
+    return out
+
+
+def _reap(pids: list[int], groups: list[int]) -> None:
+    """Kill every process of the run a test started (its runner's pid and the measuring helper's process group, which
+    holds the worker) and wait until they are gone, so that no test leaves a process behind on any outcome. A pid is
+    signalled only while its pending-record owner is still that process (`_alive`); a group only while it has
+    members."""
+    for g in groups:
+        for p in _group_members(g):
+            try:
+                os.kill(p, signal.SIGKILL)
+            except (ProcessLookupError, PermissionError):
+                pass
+    for p in pids:
+        if _alive(p):
+            try:
+                os.kill(p, signal.SIGKILL)
+            except (ProcessLookupError, PermissionError):
+                pass
+    assert _wait_for(lambda: not any(_alive(p) for p in pids) and not any(_group_members(g) for g in groups), 30), \
+        _describe([p for g in groups for p in _group_members(g)])
+
+
+@pytest.mark.covers("C-16", "W-14")
+@pytest.mark.skipif(platform.system() != "Linux", reason="a process group's members are read from /proc")
+def test_c16_no_process_of_a_run_outlives_its_killed_runner(world, tmp_path):
+    """After SIGKILL of the runner, the measuring helper (W-14: the worker's parent, leader of its process group) and the
+    worker are gone too, not only the worker's pid: on 2026-11-12 a helper and its idle worker of W-14's runner-death
+    test were found alive in the test's scope 36 hours later."""
+    root, d, _ = world
+    hit, _ = _seed(root)
+    rec = tmp_path / "r.yaml"
+    rec.write_text(_recipe(hit, hit))
+    work = tmp_path / "work"
+    rid = runner.submit(root, rec, REL, runner.Limits(cpus=1, wall_s=300), work, fault="timeout", **_at(root))
+    runner_pid = json.loads(runner.pending_path(_rdir(root, rid)).read_text())["pid"]
+    groups = []
+    try:
+        assert _wait_for(lambda: (work / rid / "worker.pid").exists())
+        worker_pid = int((work / rid / "worker.pid").read_text())
+        groups += _group_of(worker_pid)
+        assert groups and groups[0] != worker_pid and len(_group_members(groups[0])) == 2, \
+            _describe(_group_members(groups[0]))  # the helper leads the group; the worker is in it
+        os.kill(runner_pid, signal.SIGKILL)
+        assert _wait_for(lambda: not _alive(runner_pid), 10)
+        assert _wait_for(lambda: not _group_members(groups[0]), 10), \
+            f"left behind: {_describe(_group_members(groups[0]))}"
+        st = runner.status(_rdir(root, rid))
+        assert st["status"] == "failed" and "without closing" in st["error"]
+    finally:
+        _reap([runner_pid], groups)
+
+
+# Holds a search worker in its start-up, before `worker.main` arms its parent watch, until a gate file exists (at most
+# 120 s): a `sitecustomize` on PYTHONPATH, which the worker (`python -c BOOT`) imports and the measuring helper
+# (`python -I -S`) and the runner's own processes, by their command lines, do not act on.
+_GATE_SITE = r"""
+import os, sys, time
+_gate = os.environ.get("BIOBOX_TEST_WORKER_GATE")
+if _gate and any("worker.entry" in a for a in getattr(sys, "orig_argv", ())):
+    with open(_gate + ".waiting.tmp", "w") as f:
+        f.write(str(os.getpid()))
+    os.replace(_gate + ".waiting.tmp", _gate + ".waiting")
+    _t = time.monotonic()
+    while not os.path.exists(_gate) and time.monotonic() - _t < 120:
+        time.sleep(0.05)
+"""
+
+
+@pytest.mark.covers("C-16", "W-14")
+@pytest.mark.skipif(platform.system() != "Linux", reason="PR_SET_PDEATHSIG and /proc are Linux's")
+def test_c16_a_worker_still_starting_when_its_runner_dies_does_not_outlive_it(world, tmp_path, monkeypatch):
+    """The runner dies while the worker is still importing, before its parent watch (`worker._watch_parent`) records
+    the parent to watch: the helper dies with the runner (PR_SET_PDEATHSIG), the worker is reparented, and the watch
+    then takes the new parent for its own and never fires. Injected condition: the worker is held in its start-up
+    until the runner is dead."""
+    site = tmp_path / "site"
+    site.mkdir()
+    (site / "sitecustomize.py").write_text(_GATE_SITE)
+    gate = tmp_path / "gate"
+    monkeypatch.setenv("PYTHONPATH", os.pathsep.join(filter(None, [str(site), os.environ.get("PYTHONPATH")])))
+    monkeypatch.setenv("BIOBOX_TEST_WORKER_GATE", str(gate))
+    root, d, _ = world
+    hit, _ = _seed(root)
+    rec = tmp_path / "r.yaml"
+    rec.write_text(_recipe(hit, hit))
+    work = tmp_path / "work"
+    rid = runner.submit(root, rec, REL, runner.Limits(cpus=1, wall_s=300), work, fault="timeout", **_at(root))
+    runner_pid = json.loads(runner.pending_path(_rdir(root, rid)).read_text())["pid"]
+    waiting = Path(f"{gate}.waiting")
+    groups = []
+    try:
+        assert _wait_for(waiting.exists, 60), "the worker never reached the gate"
+        worker_pid = int(waiting.read_text())
+        groups += _group_of(worker_pid)
+        assert groups, "the worker is gone before its runner was killed"
+        os.kill(runner_pid, signal.SIGKILL)
+        assert _wait_for(lambda: not _alive(runner_pid), 10)
+        gate.write_text("")  # the worker may go on starting now
+        assert _wait_for(lambda: not _group_members(groups[0]), 15), \
+            f"left behind: {_describe(_group_members(groups[0]))}"
+    finally:
+        gate.write_text("")
+        _reap([runner_pid], groups)
+
+
+def _vm_hwm(pid: int) -> int | None:
+    """The kernel's high-water mark of a process's resident memory (VmHWM in /proc/<pid>/status), in bytes."""
+    try:
+        for line in Path(f"/proc/{pid}/status").read_text().splitlines():
+            if line.startswith("VmHWM:"):
+                return int(line.split()[1]) * 1024
+    except (OSError, ValueError):
+        pass
+    return None
+
+
+@pytest.mark.covers("C-16")
+@pytest.mark.skipif(platform.system() != "Linux", reason="the worker's resident peak is read from /proc")
+def test_c16_a_search_killed_at_its_wall_time_records_its_peak(world, tmp_path):
+    """The runner's wall timeout SIGKILLs the worker's process group, the measuring helper included, so before card
+    C-16 the run row's peak was null. The worker of the `timeout` fault sleeps once started, so its resident peak, read
+    by this test from /proc while it sleeps, is what the record must hold (a scope's memory.peak also counts the
+    helper and the page cache charged to the scope, so there it may only be larger)."""
+    root, d, _ = world
+    hit, _ = _seed(root)
+    rec = tmp_path / "r.yaml"
+    rec.write_text(_recipe(hit, hit))
+    work = tmp_path / "work"
+    rid = runner.submit(root, rec, REL, runner.Limits(cpus=1, wall_s=20), work, fault="timeout", **_at(root))
+    runner_pid = json.loads(runner.pending_path(_rdir(root, rid)).read_text())["pid"]
+    groups = []
+    try:
+        assert _wait_for(lambda: (work / rid / "worker.pid").exists())
+        worker_pid = int((work / rid / "worker.pid").read_text())
+        groups += _group_of(worker_pid)
+        hwm = _vm_hwm(worker_pid)
+        assert hwm, "the worker was gone before its peak could be read"
+        assert _wait_for(lambda: runner.status(_rdir(root, rid))["status"] != "running", 120)
+        row = runner.read_run(_rdir(root, rid))
+    finally:
+        _reap([runner_pid], groups)
+    lim = json.loads(row["limits_json"])
+    print(f"worker VmHWM MiB {hwm / 2**20:.1f}; recorded {row['peak_rss_bytes'] and row['peak_rss_bytes'] / 2**20} "
+          f"({lim.get('peak_rss_source')}, mem_cap {lim['mem_cap']['how']})")
+    assert row["status"] == "timeout", row["error"]
+    assert row["peak_rss_bytes"] is not None, "a search killed at its wall time has no peak"
+    if lim["mem_cap"]["how"] == "opened":
+        assert lim["peak_rss_source"] == "scope_memory_peak_sampled"
+        assert row["peak_rss_bytes"] >= 0.8 * hwm
+    else:
+        assert lim["peak_rss_source"] == "child_hwm_sampled"
+        assert abs(row["peak_rss_bytes"] - hwm) <= 0.2 * hwm
+
+
+_C16_OOM = runner.Limits(cpus=1, wall_s=LIMITS.wall_s, mem_gb=1)
+
+
+@pytest.mark.covers("C-16", "S-05")
+@pytest.mark.skipif(runner.memory_cap(_C16_OOM)["how"] != "opened",
+                    reason="needs systemd-run and no cgroup cap above this process, so that the worker's scope has a "
+                           "MemoryMax the kernel enforces (GitHub Actions; on the pod, inside the image, the worker is "
+                           "held by RLIMIT_AS and ends with a MemoryError, not a kill)")
+def test_c16_an_oom_killed_search_records_a_peak_within_20_percent_of_its_cap(world):
+    """The card's acceptance with the kernel's own OOM killer: the `oom` fault allocates twice the scope's MemoryMax."""
+    hit, _ = _seed(world[0])
+    row = _run(world, _recipe(hit, hit), fault="oom", limits=_C16_OOM)
+    lim = json.loads(row["limits_json"])
+    cap = _C16_OOM.mem_gb * runner.GB
+    print(f"recorded peak MiB: {row['peak_rss_bytes'] and row['peak_rss_bytes'] / 2**20} "
+          f"({lim.get('peak_rss_source')}); cap {cap / 2**20:.0f} MiB")
+    assert row["status"] == "oom", row["error"]
+    assert lim["peak_rss_source"] in ("scope_memory_peak", "scope_memory_peak_sampled"), lim
+    assert 0.8 * cap <= row["peak_rss_bytes"] <= 1.2 * cap, row["peak_rss_bytes"]
 
 
 @pytest.mark.covers("A-01")

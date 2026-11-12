@@ -40,6 +40,11 @@ A run is a recorded job:
      exception in any worker thread, traceback in stderr) and anything else -> `failed`.
      Only runs whose worker wrote its result (`ok`, `failed`-by-control, `output_cap`) carry
      hits; the others write `run.parquet` alone, never an empty or partial hits file (S-05).
+     `peak_rss_bytes` is the worker's own (card W-14: run-step's measuring helper), also for a
+     worker killed with its helper at the wall timeout: the helper's last sample (card C-16).
+     Where it came from (`runstep.step_peak`) is `peak_rss_source` in `limits_json`.
+     No process of a run outlives its runner: the runner's death kills the helper
+     (`_die_with_runner`), and the helper's kills the worker (PR_SET_PDEATHSIG, card C-16).
   5. The run directory is written next to its final place and renamed in.
 
 Where things live (card W-03): nothing in the search path writes under the data root, which a user
@@ -387,7 +392,9 @@ def worker_env(limits: Limits, kind: str, system: str, base: dict[str, str],
 def _die_with_runner() -> None:
     """Linux: SIGKILL this process when the runner dies. The worker watches its parent (`worker._watch_parent`),
     and since card W-14 its parent is run-step's measuring helper, which would outlive a dead runner; the
-    setting survives the `exec` of the helper (through `systemd-run` and `nice`)."""
+    setting survives the `exec` of the helper (through `systemd-run` and `nice`). The helper sets the same on the
+    worker (card C-16), so the worker dies with it, even while it is still importing: its own watch takes the parent
+    it finds when it starts, and a worker reparented before that would take its new parent and never exit."""
     if platform.system() != "Linux":
         return
     import ctypes
@@ -673,9 +680,9 @@ def run(root: Path, recipe_src: Path | str, release: str, *, limits: Limits = Li
             signal.signal(signal.SIGTERM, prev)
     wall = time.monotonic() - t0
     cpu_min = (ru.ru_utime + ru.ru_stime) / 60 if ru is not None else None
-    rss = None
-    if ru is not None:  # the helper's file; if the worker never ran or was killed without it, `unmeasured`
-        rss = runstep.step_peak(work / "peak.json")[0]
+    rss, rss_source = None, "unmeasured"
+    if ru is not None:  # the helper's file: final, or its last sample when the wall timeout killed it (card C-16)
+        rss, rss_source = runstep.step_peak(work / "peak.json")
     row = {
         "run_id": run_id, "recipe_hash": rh, "recipe_yaml": text, "argv": list(argv or []),
         "tool_versions_json": json.dumps(provenance.tool_versions("bio-box", "pyhmmer", "pyarrow"), sort_keys=True),
@@ -691,7 +698,9 @@ def run(root: Path, recipe_src: Path | str, release: str, *, limits: Limits = Li
         "stop_reason": result.get("stop_reason"),
         "controls_json": json.dumps(result["controls"], sort_keys=True, default=str) if result.get("controls") else None,
         "warnings_json": json.dumps(result.get("warnings", [])) if result else None,
-        "limits_json": json.dumps({**asdict(limits), "mem_cap": cap}, sort_keys=True), "error": error,
+        # card C-16: where `peak_rss_bytes` came from (`runstep.step_peak`), here, as search_run has no column for it
+        "limits_json": json.dumps({**asdict(limits), "mem_cap": cap, "peak_rss_source": rss_source}, sort_keys=True),
+        "error": error,
         "seed_json": json.dumps(res["seed"], sort_keys=True),
     }
     try:
