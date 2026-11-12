@@ -71,7 +71,16 @@ directory (`--pack-dir`, `biobox.search.pack`); a run into `--out DIR`, else `ru
 directory (`--runs`). A `<run>` argument is a run directory, or a run id in the runs directory. Defaults,
 with a host profile (`--profile`, else $BIOBOX_PROFILE): `<tmp>/packs` and `<tmp>/search/<user>/runs`;
 without one, `biobox.search.runner.default_pack_base()` and `default_runs_dir()`. A search whose pack is
-missing exits 2 with the command that builds it.
+missing exits 2 with the command that builds it. `search hits` and `nbr` on a closed run whose pack the pack
+directory lacks exit 2 naming the pack (card W-24): a run's genes are named in its pack's tape version, which
+only the pack's manifest records. `nbr` reads a run with its own release's files; `--release` naming another
+release is refused (card W-24), and the run's proteins go to another release as protein uids.
+
+The profile's `<tmp>/packs` is the host's one pack directory (card W-22): `pack`, `search`, `nbr` and
+`releases` find a release's pack there with only `--profile`; `--pack-dir` names another. Only a `pack build`
+that makes a pack writes into it, so it may be read-only for everyone but its builder: `pack verify` and a
+no-op `pack build` sort under the profile's `<tmp>/search/<user>/work` (without a profile, the system
+temporary directory), and a build that cannot write the pack directory is refused (exit 2).
 
 `search run --wait` runs the search in this process and writes the same pending record as a submitted
 run, so `search status` and `search cancel` work on it from another shell (card W-13). Without `--wait`
@@ -219,35 +228,57 @@ def _run_release(d: Path) -> str | None:
     return pq.read_table(path, columns=["ran_against"]).column("ran_against")[0].as_py()
 
 
-def _run_tape_version(d: Path, packs: Path, gene_call_version: str) -> str:
-    """The tape version a closed run read: its pack's (card B-16), the pack found by the run's pack_id in
-    the pack directory `packs`; the gene-call producer's when the run or its pack is not on disk."""
-    path = Path(d) / "run.parquet"
-    if path.exists():
-        row = pq.read_table(path, columns=["ran_against", "pack_id"]).to_pylist()[0]
-        pdir = pack.pack_dir(packs, row["ran_against"], row["pack_id"])
-        if (pdir / pack.MANIFEST).exists():
-            return pack.manifest_tape_version(pack.read_manifest(pdir)[0])
-    return nbr.resolve_tape_version(gene_call_version)
+class RunPackMissing(ValueError):
+    """A closed run's pack is not in the pack directory, so the tape version that names its genes is unknown."""
+
+
+def _run_tape_version(d: Path, packs: Path) -> str:
+    """The tape version a closed run read: its pack's (card B-16), the pack found by the run's pack_id in the pack
+    directory `packs`. RunPackMissing, naming the run's release, its pack id and where it was looked for, when that
+    pack is not there (card W-24): the gene-call producer's tape version, the fallback before, names other slots once
+    a release has a second producer, and the answer was wrong with exit 0."""
+    row = pq.read_table(Path(d) / "run.parquet", columns=["run_id", "ran_against", "pack_id"]).to_pylist()[0]
+    pdir = pack.pack_dir(packs, row["ran_against"], row["pack_id"])
+    if not (pdir / pack.MANIFEST).is_file():
+        raise RunPackMissing(
+            f"run {row['run_id'].hex()} searched pack {row['pack_id'].hex()} of release {row['ran_against']}, which is "
+            f"not in the pack directory {packs} (no {pdir / pack.MANIFEST}); the run's genes are named in that pack's "
+            "tape version, which only its manifest records. Give the pack directory that holds it with --pack-dir")
+    return pack.manifest_tape_version(pack.read_manifest(pdir)[0])
+
+
+def _verify_scratch(a) -> Path | None:
+    """Where `pack verify` and a no-op `pack build` sort (card W-22): the profile's per-user work directory
+    (`<tmp>/search/<user>/work`, where a search's own verify sorts), else None (the system temporary directory);
+    never the pack directory, which may be read-only for all but its builder."""
+    tmp = _profile_tmp(a)
+    return runner.default_work_base(tmp) if tmp is not None else None
 
 
 def _pack(a) -> int:
-    """`pack build|verify` (card W-03): the release's pack in the pack directory, never under the root."""
+    """`pack build|verify` (card W-03): the release's pack in the pack directory, never under the root. Only a
+    build that makes a pack writes into the pack directory (card W-22)."""
     packs = _packs(a)
+    scratch = _verify_scratch(a)
     if a.action == "build":
         models = dict(m.split("=", 1) for m in a.model)
         try:
             man = pack.build(Path(a.root), a.release, a.gene_call_version, {k: Path(v) for k, v in models.items()},
-                             packs=packs)
+                             packs=packs, scratch=scratch)
         except (ValueError, FileExistsError) as e:
             print(f"refused: {e}", file=sys.stderr)
+            return 2
+        except PermissionError as e:  # card W-22: a pack directory may be read-only for all but its builder
+            print(f"refused: {e}. A pack directory may be read-only for all but its builder: ask the owner of "
+                  f"{packs} to build the pack, or build it into a pack directory of your own with --pack-dir",
+                  file=sys.stderr)
             return 2
         recs = (export.record("pack_target", {"release_id": a.release, "pack_id": man["pack_id"], "target": t,
                                               "shards": sum(1 for s in man["shards"] if s["target"] == t), **info})
                 for t, info in sorted(man["targets"].items()))
         _print(export.ndjson(recs))
         return 0
-    problems = pack.verify(Path(a.root), a.release, packs=packs)
+    problems = pack.verify(Path(a.root), a.release, packs=packs, scratch=scratch)
     _print(problems or [f"pack {a.release}: verified"])
     return 1 if problems else 0
 
@@ -366,8 +397,12 @@ def _search(a) -> int:
     if not (d / "run.parquet").exists():
         print(f"refused: no closed run {a.target} (looked for {d})", file=sys.stderr)
         return 2
+    try:
+        tv = _run_tape_version(d, _packs(a))
+    except RunPackMissing as e:
+        print(f"refused: {e}", file=sys.stderr)
+        return 2
     hits = runner.read_hits(d, a.round)
-    tv = _run_tape_version(d, _packs(a), a.gene_call_version)
     release = _run_release(d)
     manifest = export.release_manifest(root, release)
     if a.format:  # card W-05 (files: the manifest's, else the release_def stages: card W-12): one row per gene (tsv) or one record per protein (faa)
@@ -412,14 +447,18 @@ def _anchor_run(a, source: str) -> Path | None:
     return d if (d / "run.parquet").exists() else None
 
 
-def _anchors(a, source: str, tape_version: str | None, gene_call_version: str):
+def _anchors(a, source: str, tape_version: str | None):
     """Anchor proteins from a recorded run's protein hits (a run directory, or a run id in the runs
     directory) or a comma-separated list of protein uids: (uids, tape version, the run's release or None),
-    or a refusal message."""
+    or a refusal message. A run's tape version is its pack's: a run whose pack the pack directory lacks is
+    refused (card W-24)."""
     d = _anchor_run(a, source)
     if d is not None:
+        try:
+            run_tv = _run_tape_version(d, _packs(a))
+        except RunPackMissing as e:
+            return f"refused: {e}"
         uids = {h["target_uid"] for h in runner.read_hits(d) if h["target_kind"] == "protein"}
-        run_tv = _run_tape_version(d, _packs(a), gene_call_version)
         if tape_version is not None and tape_version != run_tv:
             return f"refused: tape version {tape_version} is not the tape version {run_tv} that run {source} read"
         return uids, run_tv, _run_release(d)
@@ -469,11 +508,19 @@ def _nbr(a) -> int:
         print("refused: nbr needs --anchors", file=sys.stderr)
         return 2
     source = a.source or a.anchors
-    got = _anchors(a, source, a.tape_version, a.gene_call_version)
+    got = _anchors(a, source, a.tape_version)
     if isinstance(got, str):
         print(got, file=sys.stderr)
         return 2
     uids, tv, run_release = got
+    if run_release is not None and a.release is not None and a.release != run_release:
+        # card W-24: a run's anchors and tape version are its release's; another release's tapes, clusters and
+        # contig_dim read with them gave an answer of neither release, with exit 0
+        print(f"refused: run {source} ran against release {run_release}, not {a.release}: nbr reads a run with its "
+              f"own release's files (drop --release, or name {run_release}). To place the run's proteins in release "
+              f"{a.release}, give them as protein uids: write them one per line (bio-box sql, the last query of "
+              f"AGENT_GUIDE.md section 5) and pass --anchors-file FILE --release {a.release}", file=sys.stderr)
+        return 2
     policy = nbr.Policy.parse(a.window, a.strand, a.operon_gap, a.edge, a.circular)
     release = a.release or run_release
     if release is None:
@@ -1344,8 +1391,9 @@ DOMAIN_ACTIONS = ("plan", "shard", "merge")  # `stage domains plan|shard|merge` 
 INGEST_ACTIONS = ("pass1", "plan", "batch", "merge")  # `stage ingest pass1|plan|batch|merge` (card B-30)
 NCRNA_ACTIONS = ("plan", "shard", "merge")  # `stage ncrna plan|shard|merge` (card E-07)
 STEP_ACTIONS = {"domains": DOMAIN_ACTIONS, "ingest": INGEST_ACTIONS, "ncrna": NCRNA_ACTIONS}
-PACK_DIR_HELP = ("the pack directory, outside the data root (card W-03); default: <profile tmp>/packs with a host "
-                 "profile, else packs beside $BIOBOX_SEARCH_WORK or /tmp/atd/search")
+PACK_DIR_HELP = ("the pack directory, outside the data root (card W-03); default: <profile tmp>/packs, the host's one "
+                 "pack directory (card W-22), with a host profile, else packs beside $BIOBOX_SEARCH_WORK or "
+                 "/tmp/atd/search")
 RUNS_HELP = ("the runs directory, outside the data root (card W-03); default: <profile tmp>/search/<user>/runs with "
              "a host profile, else runs in $BIOBOX_SEARCH_WORK or /tmp/atd/search")
 PROFILE_DIRS_HELP = "host profile YAML (default: $BIOBOX_PROFILE); its tmp holds the default pack and runs directories"
@@ -1447,6 +1495,7 @@ def _verify(a) -> int:
     print(f"release {a.release}: {'verified' if not problems else f'{len(problems)} problems'} (stages "
           f"{','.join(man['stages'])}, {len(man['files'])} files, {len(man.get('artifacts', []))} artifacts, manifest "
           f"hash {catalog.manifest_hash(man)})")
+    print(catalog.describe_built_by(catalog.built_by(root, a.release, man["stages"])))  # card C-23: information only
     failed = bool(problems)
     have = {f["table"] for f in man["files"]}
     for lookup, source in (("member_cluster", "cluster_member"), ("contig_label", "contig_occurrence")):
@@ -1817,7 +1866,8 @@ def _main(argv: list[str] | None = None) -> int:
     n.add_argument("--circular", default="auto")
     n.add_argument("--json", action="store_true")
     n.add_argument("--top_n", type=int, default=0)
-    n.add_argument("--tape-version", help="tapes to read (default: the run's pack's, else the gene-call producer's)")
+    n.add_argument("--tape-version", help="tapes to read (default: a run's pack's, refused when --pack-dir lacks the "
+                                          "pack; protein uids: the gene-call producer's)")
     n.add_argument("--by", default="pfam,nr50", help="summarize: levels, some of pfam,nr50,nr90")
     n.add_argument("--top", type=int, default=nbr.SUMMARY_TOP, help="summarize: rows per level (0: all)")
     n.add_argument("--release", help="summarize, --format tsv: release of the clusters and contig_dim (default: "

@@ -1045,6 +1045,39 @@ def run_cli(*argv: str) -> int:
     return cli.main([str(a) for a in argv])
 
 
+def test_c23_a_built_release_names_the_code_that_built_it(built, tmp_path, capsys):
+    """Card C-23: `release verify` prints one `built by:` line (information, exit code unchanged); a copy whose run
+    records predate the card says so, and still verifies; the catalog's `built_by` is the same JSON."""
+    import json
+
+    import duckdb
+
+    from biobox import codeid
+
+    me = codeid.code_identity()["code_id"]
+    assert run_cli("release", "verify", "--root", built, "--release", REL) == 0
+    lines = [x for x in capsys.readouterr().out.splitlines() if x.startswith("built by:")]
+    assert len(lines) == 1 and me[:12] in lines[0]
+    root = tmp_path / "old"
+    shutil.copytree(built, root, symlinks=True)
+    for p in (root / "runs").rglob("*.json"):  # records as written before the card
+        rec = json.loads(p.read_text())
+        for k in ("code_id", "code_version", "code_commit"):
+            rec.pop(k, None)
+        p.write_text(json.dumps(rec))
+    assert run_cli("release", "verify", "--root", root, "--release", REL) == 0
+    lines = [x for x in capsys.readouterr().out.splitlines() if x.startswith("built by:")]
+    assert lines == ["built by: unknown: built before card C-23"]
+    con = duckdb.connect(str(catalog.catalog_path(built, REL)), read_only=True)
+    try:
+        info = dict(con.execute("SELECT key, value FROM catalog_info").fetchall())
+    finally:
+        con.close()
+    got = json.loads(info["built_by"])
+    assert [c["code_id"] for c in got["code"]] == [me] and got["code"][0]["steps"] > 3
+    assert got["unknown_steps"] == 0
+
+
 @pytest.mark.covers("C-13", "LY-10")
 def test_c13_release_verify_passes_a_built_release_and_fails_a_damaged_copy(built, tmp_path, capsys):
     assert run_cli("release", "verify", "--root", built, "--release", REL) == 0

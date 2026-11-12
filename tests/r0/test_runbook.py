@@ -499,3 +499,51 @@ def test_every_bio_box_command_in_the_user_guide_is_one_the_parser_accepts(doc):
         if args and args[0] in ("pack", "search", "nbr"):
             bad += [f"{doc.name}:{n}: {p}" for p in search_dir_problems(args)]
     assert not bad, "\n".join(bad)
+
+
+# --- W-22: one place for a release's search pack ------------------------------------------------------------------
+
+
+def cli_args(cmd: str) -> list[str] | None:
+    """The `bio-box` arguments of a command line, also when it calls `python -m biobox.cli` (the agent guide's form)."""
+    args = bio_box_args(cmd)
+    if args is not None:
+        return args
+    t = tokens(cmd)
+    for i, tok in enumerate(t):
+        if tok == "-m" and i + 1 < len(t) and t[i + 1] == "biobox.cli":
+            return t[i + 2:]
+    return None
+
+
+def profile_pack_dir() -> Path:
+    """The pack directory `bio-box` takes from the shipped host profile when given only `--profile`."""
+    return cli._packs(argparse.Namespace(pack_dir=None, profile=str(PROFILE)))
+
+
+@pytest.mark.covers("W-22")
+@pytest.mark.parametrize("doc", [ROOT / "GUIDE.md", AGENT_GUIDE, RUNBOOK], ids=lambda p: p.name)
+def test_w22_the_documents_find_the_pack_through_the_profile(doc):
+    """Card W-22: the host profile names the host's one pack directory, so no command of the guides or the runbook
+    that passes `--profile` also names a pack directory, and each document says where the profile's is."""
+    assert profile_pack_dir() == Path("/tmp/if2453/bio-box/packs")
+    bad = []
+    for n, cmd in commands(doc.read_text()):
+        args = cli_args(cmd)
+        if args and "--profile" in args and "--pack-dir" in args:
+            bad.append(f"{doc.name}:{n}: {' '.join(args[:2])} names --pack-dir beside --profile")
+    assert not bad, "\n".join(bad)
+    assert str(profile_pack_dir()) in doc.read_text(), f"{doc.name} does not say where the profile's pack directory is"
+
+
+@pytest.mark.covers("W-22")
+def test_w22_the_runbook_puts_the_scratch_of_a_pack_verify_under_the_profiles_tmp():
+    """Card W-22: `pack verify` and a no-op `pack build` write their scratch under the profile's tmp, so the cleaning
+    section lists `.verify-*` there and no longer in the pack directory, and section 7 says a pack directory may be
+    read-only for all but its builder. The agent guide no longer warns that both write scratch into it."""
+    text = RUNBOOK.read_text()
+    clean = section_of(text, "## 9. ")
+    assert "$BBTMP/search/$USER/work/.verify-" in clean
+    assert not re.search(r"\$BBTMP/packs/release=<R>/[^\n]*\n?[^\n]*\.verify-", clean)
+    assert "read-only" in section_of(text, "## 7. ")
+    assert "both write scratch there" not in AGENT_GUIDE.read_text()

@@ -131,9 +131,11 @@ def nbr_summary_records(summary: dict) -> Iterator[dict]:
                                      "policy_hash": h.get("policy_hash"), **r})
 
 
+# At the cluster levels `key` is the cluster uid: the TSV does not repeat it as `cluster_uid` (card W-24); the
+# `nbr_summary/1` records keep that key (a key leaves a record only with a version bump, S-13)
 SUMMARY_TSV_COLUMNS = {
     "pfam": ["level", "key", "unannotated", "library", "model_acc", "model_name"],
-    "nr": ["level", "key", "unannotated", "cluster_uid", "rep_uid", "rep_length", "model_name"],
+    "nr": ["level", "key", "unannotated", "rep_uid", "rep_length", "model_name"],
 }
 SUMMARY_TSV_STATS = ["n_loci", "share_of_loci", "n_neighbors", "n_genomes", "genome_basis", "offsets", "modal_offset",
                      "same_strand_share"]
@@ -177,8 +179,8 @@ Conventions, the same in every file
   after the gene. A GenBank range 3171..5822 is start 3170, end 5822.
   Strand is +1 or -1 (never 1, (+1) or "plus"). A gene on a circular contig that crosses the origin has end greater
   than the contig length.
-  Uids (protein_uid, contig_uid, feature_uid, genome_uid, nr90, nr50, nr50_rep, cluster_uid, rep_uid) are 32 hex
-  digits. nr90 and nr50 are cluster uids of the release at 90% and 50% identity, not numbers to compare across
+  Uids (protein_uid, contig_uid, feature_uid, genome_uid, nr90, nr50, nr50_rep, rep_uid, and key at the cluster
+  levels of neighbors.tsv) are 32 hex digits. nr90 and nr50 are cluster uids of the release at 90% and 50% identity, not numbers to compare across
   releases.
   An ordinal (position of a gene in its contig's tape) means something only inside its tape_version and is always
   written beside the feature_uid of the gene; use feature_uid to name a gene.
@@ -228,11 +230,14 @@ in hits.tsv), the third the column names.
 
 neighbors.tsv: a block of header lines (# key<TAB>json), then one table per level (pfam, nr50 or nr90), blank-line
 separated. The offsets are relative to the anchor's strand (as offset_rel above), not coordinate order.
-  level, key          the level, and the family (library:model_acc) or cluster uid that is counted.
+  level, key          the level, and what is counted: at the pfam level key is the family (library:model_acc); at
+                      the cluster levels key is the cluster uid (written once: there is no separate cluster_uid
+                      column; the --json records of `bio-box nbr summarize` carry it again as cluster_uid).
   unannotated         true for the row of neighbours that have no family or cluster at that level.
-  library, model_acc, model_name   the family (pfam level); at the cluster levels model_name is the name most members
-                      of the cluster carry, empty when none has one.
-  cluster_uid, rep_uid, rep_length   the cluster, its representative protein and that protein's length (cluster levels).
+  library, model_acc, model_name   the family (pfam level). At the cluster levels model_name is the domain name most
+                      members of the cluster carry, empty when none has one, and so empty on a release without a
+                      domain library; the cluster is then named only by its uid and its representative.
+  rep_uid, rep_length the cluster's representative protein and that protein's length in amino acids (cluster levels).
   n_loci              anchor loci with such a neighbour; share_of_loci is n_loci over all anchor loci.
   n_neighbors         neighbour genes counted (a gene in the windows of two anchors counts twice).
   n_genomes           genomes with such a neighbour; genome_basis says what was counted: genome_uid from contig_dim,

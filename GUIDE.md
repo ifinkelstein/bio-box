@@ -15,11 +15,12 @@ every gene that carries a hit protein it reads the genes on either side, in cont
 hit sequences, one table per hit locus, and counts of which clusters (and Pfam families) sit next to your hits.
 
 What exists, on the pod `wilkcomp02`, in the data root `/tmp/if2453/r10/root` (a search pack is a read-only copy
-of a release's proteins laid out for searching, one per release, shared):
+of a release's proteins laid out for searching, one per release, shared; the pod's packs belong in one place, the
+host profile's pack directory `/tmp/if2453/bio-box/packs`, card W-22):
 
 | Release | Contents | Search pack |
 |---|---|---|
-| `rN.1` | 27,258 phage genomes and 2,497 complete prokaryote genomes; 12,048,866 genes; 10,620,684 distinct proteins; NR50 2,966,200 and NR90 8,278,537 clusters; no Pfam (*measured*, `planning/tasks/STATUS.md`, "10 Gbp rebuild"; `planning/measurements/2026-11-10_trial_search_rN1.md`) | yes, `/tmp/if2453/w19/packs` |
+| `rN.1` | 27,258 phage genomes and 2,497 complete prokaryote genomes; 12,048,866 genes; 10,620,684 distinct proteins; NR50 2,966,200 and NR90 8,278,537 clusters; no Pfam (*measured*, `planning/tasks/STATUS.md`, "10 Gbp rebuild"; `planning/measurements/2026-11-10_trial_search_rN1.md`) | yes; until the operator copies it into the profile's pack directory, in `/tmp/if2453/w19/packs` (section 2) |
 | `rN.2` | the same genomes with Pfam 38.2 domains | none yet: ask the operator for one (RUNBOOK section 7, `pack build`) |
 | `rN.3` | the same genomes, built by the current code (card C-17) | being built |
 
@@ -37,19 +38,25 @@ Then your own directories; keep every file you pass under `/tmp/if2453`, which i
 
 ```bash
 export ROOT=/tmp/if2453/r10/root
-export PACKS=/tmp/if2453/w19/packs
 export WORK=/tmp/if2453/pi-search
 mkdir -p "$WORK"
 cp /tmp/if2453/trial2/work/RNA_pol.hmm "$WORK/"   # Pfam PF00940, T7-like RNA polymerase: the worked example
 ```
 
+Where the search pack is: the commands below pass `--profile "$PROFILE"` and so find a release's pack in the
+profile's pack directory, `/tmp/if2453/bio-box/packs` (`$BBTMP/packs`; card W-22); you never name it. Until the
+operator has copied `rN.1`'s pack there (as of 2026-11-12 it is in `/tmp/if2453/w19/packs`), add `--pack-dir
+/tmp/if2453/w19/packs` to each `releases`, `search` and `nbr` command; without it a search says `no search pack
+of release rN.1 in the pack directory /tmp/if2453/bio-box/packs` and exits 2, and `releases` shows `-` for the
+pack. The pack directory may be read-only for you: a search writes nothing into it.
+
 The table in section 1 will age; `releases` lists what the root holds now, one line per release: its stages,
 genomes, contigs and distinct proteins, its domain libraries (Pfam or none), whether it has the lookup tables of
 the current code (`member_cluster`, `contig_label`, `domain_family_tokens`; `no` means slower lookups, section 8),
-and the search pack it has in the pack directory you name (card W-23):
+and the search pack it has in the profile's pack directory (card W-23):
 
 ```bash
-bio-box releases --root "$ROOT" --pack-dir "$PACKS"
+bio-box releases --root "$ROOT" --profile "$PROFILE"
 ```
 
 ## 3. Choose a positive control
@@ -87,7 +94,7 @@ header. Copy one gene from that list.
 One command, in a capped unit (`pi-rnap` is the unit's name; use a new name for every launch):
 
 ```bash
-bash "$TREE/scripts/pod_run.sh" --profile "$PROFILE" --image "$IMAGE" --digest "$DIGEST" --mem 32G --threads 4 --bind /tmp/if2453 --bind /tmp/if2453/r10:/tmp/if2453/r10:ro --env PYTHONPATH="$PYTHONPATH_POD" pi-rnap search hmm --root "$ROOT" --release rN.1 --profile "$PROFILE" --pack-dir "$PACKS" --hmm "$WORK/RNA_pol.hmm" --bits 30 --neighbors 5 --positive NC_001604:3170-5822 --out "$WORK/rnap" --cpus 4 --mem-gb 30
+bash "$TREE/scripts/pod_run.sh" --profile "$PROFILE" --image "$IMAGE" --digest "$DIGEST" --mem 32G --threads 4 --bind /tmp/if2453 --bind /tmp/if2453/r10:/tmp/if2453/r10:ro --env PYTHONPATH="$PYTHONPATH_POD" pi-rnap search hmm --root "$ROOT" --release rN.1 --profile "$PROFILE" --hmm "$WORK/RNA_pol.hmm" --bits 30 --neighbors 5 --positive NC_001604:3170-5822 --out "$WORK/rnap" --cpus 4 --mem-gb 30
 ```
 
 Before `pi-rnap` are the unit's limits: 32 GB of memory, 4 CPUs, the image, and the release bound read-only so
@@ -96,8 +103,7 @@ nothing can write into it. After it, the search:
 | Flag | Meaning |
 |---|---|
 | `--root`, `--release` | the data root, and the release in it to search |
-| `--profile` | the host profile: thread and memory caps, and where runs are kept |
-| `--pack-dir` | where the release's search pack is |
+| `--profile` | the host profile: thread and memory caps, where runs are kept, and the pack directory where the release's search pack is (`/tmp/if2453/bio-box/packs`) |
 | `--hmm` | your HMM file (HMMER3 format) |
 | `--model` | the model to use, by name or accession, when the file holds several |
 | `--bits` | inclusion cutoff, in bits, on the full-sequence score (E-value cutoffs are refused) |
@@ -106,7 +112,7 @@ nothing can write into it. After it, the search:
 | `--out` | a new or empty directory, outside the data root, for the results |
 | `--cpus`, `--mem-gb` | search threads, and its memory limit in GB; never above the profile's caps |
 | `--library`, `--threads` | the domain library for `pfam_architecture` when there are several; export threads (default 4) |
-| `--runs`, `--work` | where runs and their scratch go, if not where the profile says |
+| `--runs`, `--work`, `--pack-dir` | where runs and their scratch go, and where the pack is, if not where the profile says (section 2) |
 | `--cpu-min`, `--wall-s` | limits of the search itself (defaults 300 CPU-minutes, 6 hours) |
 
 The worked example is this exact search. It found 1,957 proteins at 30 bits or more, 1,931 in phages and 26 in
@@ -189,7 +195,7 @@ A locus is one hit gene with its window; the hit is not its own neighbour. `neig
 
 | Column | Meaning |
 |---|---|
-| `key`, `cluster_uid` | the cluster (the same value twice), or the Pfam family at the `pfam` level |
+| `key` | the cluster's uid at the `nr50` and `nr90` levels, the Pfam family at the `pfam` level |
 | `rep_uid`, `rep_length` | the cluster's representative protein and its length |
 | `model_name` | on a release with Pfam, the domain name most members carry; empty otherwise |
 | `n_loci`, `share_of_loci` | hit loci with at least one such neighbour, and the share of all loci |
@@ -224,17 +230,17 @@ A higher cutoff needs no new run: filter `seq_bitscore` in `hits.tsv`. A lower o
 ```bash
 cp "$WORK/rnap/recipe.yaml" "$WORK/rnap25.yaml"
 sed -i 's/inclusion_bits: 30.0/inclusion_bits: 25.0/' "$WORK/rnap25.yaml"
-bash "$TREE/scripts/pod_run.sh" --profile "$PROFILE" --image "$IMAGE" --digest "$DIGEST" --mem 32G --threads 4 --bind /tmp/if2453 --bind /tmp/if2453/r10:/tmp/if2453/r10:ro --env PYTHONPATH="$PYTHONPATH_POD" pi-rnap25 search run "$WORK/rnap25.yaml" --root "$ROOT" --release rN.1 --profile "$PROFILE" --pack-dir "$PACKS" --cpus 4 --mem-gb 30 --wait
+bash "$TREE/scripts/pod_run.sh" --profile "$PROFILE" --image "$IMAGE" --digest "$DIGEST" --mem 32G --threads 4 --bind /tmp/if2453 --bind /tmp/if2453/r10:/tmp/if2453/r10:ro --env PYTHONPATH="$PYTHONPATH_POD" pi-rnap25 search run "$WORK/rnap25.yaml" --root "$ROOT" --release rN.1 --profile "$PROFILE" --cpus 4 --mem-gb 30 --wait
 ```
 
 Then, with `RUN` set to the new run id from `$BBTMP/logs/pi-rnap25.log`, the tables, the hit sequences, and the
 neighbours with a wider window (`10g` is 10 genes on each side; `5kb` is 5,000 bases):
 
 ```bash
-bio-box search hits "$RUN" --root "$ROOT" --profile "$PROFILE" --pack-dir "$PACKS" --format tsv --out "$WORK/rnap25_hits.tsv"
-bio-box search hits "$RUN" --root "$ROOT" --profile "$PROFILE" --pack-dir "$PACKS" --format faa --out "$WORK/rnap25_hits.faa"
-bio-box nbr summarize "$RUN" --root "$ROOT" --profile "$PROFILE" --pack-dir "$PACKS" --window 10g --by nr50,nr90 --out "$WORK/rnap25_neighbors_10g.tsv"
-bio-box nbr "$RUN" --root "$ROOT" --profile "$PROFILE" --pack-dir "$PACKS" --window 10g --format tsv --out "$WORK/rnap25_loci_10g"
+bio-box search hits "$RUN" --root "$ROOT" --profile "$PROFILE" --format tsv --out "$WORK/rnap25_hits.tsv"
+bio-box search hits "$RUN" --root "$ROOT" --profile "$PROFILE" --format faa --out "$WORK/rnap25_hits.faa"
+bio-box nbr summarize "$RUN" --root "$ROOT" --profile "$PROFILE" --window 10g --by nr50,nr90 --out "$WORK/rnap25_neighbors_10g.tsv"
+bio-box nbr "$RUN" --root "$ROOT" --profile "$PROFILE" --window 10g --format tsv --out "$WORK/rnap25_loci_10g"
 ```
 
 Each took 6 to 13 s and at most 1.3 GB of memory on `rN.1` (*measured*, second trial file, section 2). On a
@@ -272,8 +278,10 @@ bio-box sql --root "$ROOT" --release rN.1 -e "SELECT key, value FROM catalog_inf
 
 - The data is on the pod's local disk (`/tmp`), not yet copied to permanent storage; a reboot may clear it. No card
   yet (`STATUS.md`, "Plan for larger imports", step 1).
-- Only `rN.1` has a search pack, and it is in a work directory (`/tmp/if2453/w19/packs`), not the profile's
-  default; `rN.2` needs one built (RUNBOOK section 7).
+- Only `rN.1` has a search pack. Until the operator copies it into the profile's pack directory
+  (`/tmp/if2453/bio-box/packs`, card W-22), it is in a work directory (`/tmp/if2453/w19/packs`) and every
+  `releases`, `search` and `nbr` command needs `--pack-dir /tmp/if2453/w19/packs` (section 2); `rN.2` needs one
+  built (RUNBOOK section 7).
 - `rN.1` and `rN.2` were built before card B-27, so cluster and contig-name lookups read whole tables and print a
   `note: ... slow path` line; answers are the same, a few seconds slower. `rN.3` will not need it (card C-17).
 - Looking up `--positive`, `find --accession` or `seq --contig ACCESSION` reads every contig name of the release,

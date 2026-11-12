@@ -21,6 +21,7 @@ import shutil
 import signal
 import subprocess
 import sys
+import tempfile
 from pathlib import Path
 
 import pyarrow as pa
@@ -3583,3 +3584,192 @@ def test_w20_the_fasta_example_names_the_positive_controls_contig(w05, tmp_path)
                                         {"kind": "protein_uid", "uid": (b"\x02" * 16).hex(), "label": None}]})
     assert cli._positive_prefs(controls) == {pu: ("NC_001604", None), b"\x01" * 16: (None, "T7 gp1")}
     assert cli._positive_prefs(None) == {}
+
+
+# --- W-22: one place for a release's pack, the profile's pack directory, and no writes into it ---------------------
+#
+# The host profile's pack directory is `<tmp>/packs` (`runner.default_pack_base`, card W-03). `pack verify` and a
+# no-op `pack build` count the release's distinct proteins through an external sort whose scratch went beside the
+# pack until card W-22. The fixture's few hundred proteins never fill a sorter's buffer (`pack.RUN_ROWS`), so a sort
+# that writes nothing would hide where its scratch goes: these tests lower the buffer to a few rows, and the sort
+# writes its runs as it would on a real release.
+
+_W22_USER = "w22user"
+_W22_RUN_ROWS = 8  # rows a sorter holds before it writes a run, here (`pack.RUN_ROWS` is 65,536)
+
+
+def _w22_profile(world, tmp_path: Path, recorded: bool = True) -> tuple[Path, Path, Path]:
+    """A host profile (`_w03_profile`, tmp `<tmp_path>/ptmp`) whose pack directory, `<tmp>/packs`, holds a copy of the
+    world's pack, without the build's verification record when not `recorded` (a pack built before card W-19);
+    (profile path, the profile's tmp, its pack directory)."""
+    prof = _w03_profile(tmp_path)
+    ptmp = tmp_path / "ptmp"
+    packs = ptmp / "packs"
+    shutil.copytree(_packs(world), packs)
+    if not recorded:
+        (pack.find(packs, REL) / _W19_RECORD).unlink()
+    return prof, ptmp, packs
+
+
+def _w22_sorter_dirs(monkeypatch) -> list[Path]:
+    """The directories every `pack._Sorter` is given from now on (its scratch), with sorters that write a run every
+    `_W22_RUN_ROWS` rows."""
+    seen: list[Path] = []
+    real = pack._Sorter.__init__
+
+    def init(self, directory, *a, **k):
+        seen.append(Path(directory))
+        real(self, directory, *a, **k)
+
+    monkeypatch.setattr(pack._Sorter, "__init__", init)
+    monkeypatch.setattr(pack, "RUN_ROWS", _W22_RUN_ROWS)
+    return seen
+
+
+def _w22_no_profile(monkeypatch, tmp_path: Path) -> Path:
+    """No host profile from the environment, a fixed user name, and the system temporary directory (`tempfile`'s)
+    in `<tmp_path>/systemp`; returns the latter."""
+    monkeypatch.delenv("BIOBOX_PROFILE", raising=False)
+    monkeypatch.setenv("LOGNAME", _W22_USER)
+    systemp = tmp_path / "systemp"
+    systemp.mkdir()
+    monkeypatch.setattr(tempfile, "tempdir", str(systemp))
+    return systemp
+
+
+@pytest.mark.covers("W-22", "C-12", "W-19")
+@pytest.mark.parametrize("mode", ["writable", "read_only"])
+@pytest.mark.parametrize("how", ["profile", "pack_dir"])
+@pytest.mark.skipif(os.geteuid() == 0, reason="root ignores file permissions, so a read-only pack cannot be made")
+def test_w22_pack_verify_writes_nothing_into_the_pack_directory(world, tmp_path, request, monkeypatch, capsys, how,
+                                                                mode):
+    """Card W-22: `pack verify` finds the pack in the profile's pack directory with only `--profile`, or in the one
+    `--pack-dir` names; it verifies, and nothing in the pack directory changes (no file or directory is made and
+    removed in it either: the snapshot holds each directory's mtime), writable or read-only. Its sort's scratch is
+    under the profile's tmp (outside the pack directory), else in the system temporary directory, and is removed."""
+    root = world[0]
+    prof, ptmp, packs = _w22_profile(world, tmp_path)
+    systemp = _w22_no_profile(monkeypatch, tmp_path)
+    if mode == "read_only":
+        _read_only(packs, request)
+        with pytest.raises(PermissionError):
+            (pack.release_dir(packs, REL) / "probe").write_text("")
+    before = _w19_snapshot(packs)
+    dirs = _w22_sorter_dirs(monkeypatch)
+    where = ["--profile", str(prof)] if how == "profile" else ["--pack-dir", str(packs)]
+    capsys.readouterr()
+    assert cli.main(["pack", "verify", "--root", str(root), "--release", REL, *where]) == 0
+    assert capsys.readouterr().out.strip() == f"pack {REL}: verified"
+    assert _w19_snapshot(packs) == before
+    base = ptmp if how == "profile" else systemp
+    assert dirs, "the verify sorted nothing"
+    for d in dirs:
+        assert d.is_relative_to(base) and not d.is_relative_to(packs), (d, base)
+        assert not d.exists(), d  # removed by the verify
+    # the sort did write its runs (so where it wrote is what the assertions above saw): the protein count needs more
+    # than one run of `_W22_RUN_ROWS` rows
+    assert world[2]["targets"]["unique"]["n_seq"] > 2 * _W22_RUN_ROWS
+
+
+@pytest.mark.covers("W-22", "C-12", "W-19", "D-01")
+@pytest.mark.parametrize("recorded", [True, False], ids=["recorded", "built_before_w19"])
+@pytest.mark.skipif(os.geteuid() == 0, reason="root ignores file permissions, so a read-only pack cannot be made")
+def test_w22_a_no_op_pack_build_against_a_read_only_pack_directory_succeeds_and_writes_nothing(
+        world, tmp_path, request, monkeypatch, capsys, recorded):
+    """Card W-22: `pack build` of a release whose pack, built from the same inputs, is in the profile's read-only
+    pack directory builds nothing and changes nothing there: its full verify of that pack sorts under the profile's
+    tmp. A pack built before card W-19 has no record; one that cannot be written is said so on stderr, and the build
+    still exits 0 with the pack's id (every search of it then verifies it in full, as before)."""
+    root, d, man = world
+    prof, ptmp, packs = _w22_profile(world, tmp_path, recorded)
+    _w22_no_profile(monkeypatch, tmp_path)
+    _read_only(packs, request)
+    before = _w19_snapshot(packs)
+    dirs = _w22_sorter_dirs(monkeypatch)
+
+    def no_build(*a, **k):
+        raise AssertionError("built again")
+
+    monkeypatch.setattr(pack, "_build_into", no_build)
+    capsys.readouterr()
+    code = cli.main(["pack", "build", "--root", str(root), "--release", REL, "--model", f"test-1={d / 'a.hmm'}",
+                     "--profile", str(prof)])
+    got = capsys.readouterr()
+    assert code == 0, got.err
+    assert {json.loads(x)["pack_id"] for x in got.out.splitlines()} == {man["pack_id"]}
+    assert "nothing to do" in got.err
+    assert ("could not be written" in got.err) == (not recorded), got.err
+    assert _w19_snapshot(packs) == before
+    assert dirs and all(x.is_relative_to(ptmp) and not x.is_relative_to(packs) and not x.exists() for x in dirs), dirs
+
+
+@pytest.mark.covers("W-22", "W-03")
+@pytest.mark.skipif(os.geteuid() == 0, reason="root ignores file permissions, so a read-only pack cannot be made")
+def test_w22_a_pack_build_into_a_read_only_pack_directory_is_refused(world, tmp_path, request, monkeypatch, capsys):
+    """Card W-22: a pack directory may be read-only for everyone but its builder. Anyone else's `pack build` of a
+    release that has no pack there is refused (exit 2), naming the directory, and leaves it as it was."""
+    root, d, _ = world
+    prof, ptmp, packs = _w22_profile(world, tmp_path)
+    _w22_no_profile(monkeypatch, tmp_path)
+    shutil.rmtree(pack.release_dir(packs, REL))
+    _read_only(packs, request)
+    before = _w19_snapshot(packs)
+    capsys.readouterr()
+    code = cli.main(["pack", "build", "--root", str(root), "--release", REL, "--model", f"test-1={d / 'a.hmm'}",
+                     "--profile", str(prof)])
+    err = capsys.readouterr().err
+    assert code == 2, err
+    assert "refused" in err and str(packs) in err, err
+    assert _w19_snapshot(packs) == before
+
+
+@pytest.mark.covers("W-22", "W-03", "W-19", "W-07")
+@pytest.mark.skipif(os.geteuid() == 0, reason="root ignores file permissions, so a read-only pack cannot be made")
+def test_w22_search_and_nbr_with_only_the_profile_find_the_pack_in_its_pack_directory(world, tmp_path, request,
+                                                                                    monkeypatch, capsys):
+    """Card W-22 acceptance: a search given only `--profile` (no `--pack-dir`, `--runs` or `--work`) finds the
+    release's pack in the profile's pack directory, read-only, and writes nothing there; `search hits`, `nbr` and
+    `nbr summarize` on its run, with only `--profile`, write what `search hmm` wrote; `releases` names the pack.
+    With the pack elsewhere, the refusal names the profile's pack directory."""
+    root, _, man = world
+    prof, ptmp, packs = _w22_profile(world, tmp_path)
+    _w22_no_profile(monkeypatch, tmp_path)
+    _read_only(packs, request)
+    before = _w19_snapshot(packs)
+    hmm, pos = _w07_hmm(world, tmp_path)
+    out = tmp_path / "out"
+    only = ["--root", str(root), "--profile", str(prof)]
+    capsys.readouterr()
+    code = cli.main(["search", "hmm", *only, "--release", REL, "--hmm", str(hmm), "--bits", "25",
+                     "--positive", _w07_spec(root, pos), "--out", str(out), "--cpus", "1"])
+    got = capsys.readouterr()
+    assert code == 0, got.err
+    rid, status = got.out.splitlines()[0].split("\t")
+    assert status == "ok"
+    run = ptmp / "search" / _W22_USER / "runs" / f"run={rid}"
+    assert runner.read_run(run)["pack_id"].hex() == man["pack_id"]
+    sep = tmp_path / "sep"
+    for argv in (["search", "hits", rid, "--format", "tsv", "--out", str(sep / "hits.tsv")],
+                 ["search", "hits", rid, "--format", "faa", "--out", str(sep / "hits.faa")],
+                 ["nbr", "summarize", rid, "--window", "5g", "--by", "pfam,nr50", "--format", "tsv",
+                  "--out", str(sep / "neighbors.tsv")],
+                 ["nbr", rid, "--window", "5g", "--format", "tsv", "--out", str(sep / "loci")]):
+        assert cli.main([*argv, *only]) == 0, (argv, capsys.readouterr().err)
+    mine = _w07_files(out)
+    assert mine.pop("recipe.yaml") and mine.pop("README.txt")
+    assert mine == _w07_files(sep) and any(k.startswith("loci/") for k in mine)
+    capsys.readouterr()
+    assert cli.main(["releases", *only, "--json"]) == 0
+    listed = {r["release"]: r.get("pack") for r in map(json.loads, capsys.readouterr().out.splitlines())}
+    assert listed[REL] == man["pack_id"], listed
+    assert _w19_snapshot(packs) == before
+    # the same search with the profile's pack directory empty: refused, naming that directory
+    other = tmp_path / "other"
+    other.mkdir()
+    prof2, ptmp2, packs2 = _w22_profile(world, other)
+    shutil.rmtree(packs2)
+    code = cli.main(["search", "hmm", "--root", str(root), "--profile", str(prof2), "--release", REL, "--hmm",
+                     str(hmm), "--bits", "25", "--positive", _w07_spec(root, pos), "--out", str(other / "out"),
+                     "--cpus", "1"])
+    err = capsys.readouterr().err
+    assert code == 2 and f"pack directory {packs2}" in err and "pack build" in err, err
