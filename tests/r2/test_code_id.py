@@ -24,15 +24,6 @@ pytestmark = pytest.mark.r2
 
 PKG = Path(biobox.__file__).resolve().parent
 
-# The manifest hash and the sha256 over every manifest-listed file of the micro-S0 fixture, measured on the pod on
-# the tree before card C-23 (the same fixture build as tests/r2/test_micro_s0_catalog.py): this card must not move them.
-# Measured on wilkcomp02, 2026-11-12, on a detached worktree of origin/plan/task-cards dcc726d WITHOUT card C-23 (the
-# manifest hash covers every registered table's schema hash, so it moves when a card changes a schema: it was
-# e42fea7f024ff237a6cfa1102ff54493 at d1ca70f, before E-08 added columns `clan` and `clan_winner`; the files hash
-# did not move because the fixture has no file of that table).
-BASELINE_MANIFEST_HASH = "0ea1eb31aafd1f12ba0f1db37ee8c1fd"
-BASELINE_FILES_SHA256 = "8ff62c46a63ee6246bec2c0ca2379feb14d3cd26a4d29b87210dc8abc22d6e13"
-
 BUILD = r"""
 import hashlib, json, sys
 from pathlib import Path
@@ -46,7 +37,11 @@ man = catalog.build_manifest(root, "rS0.test", ["S0"])
 h = hashlib.sha256()
 for f in man["files"] + man["artifacts"]:
     h.update(f["path"].encode() + (root / f["path"]).read_bytes())
-print("RESULT", catalog.manifest_hash(man), h.hexdigest())
+from biobox import codeid
+ident = codeid.code_identity()
+portable = {k: v for k, v in man.items() if k != "root"}
+print("RESULT", hashlib.sha256(catalog.manifest_bytes(portable)).hexdigest(), h.hexdigest(), ident["code_id"],
+      ident["code_commit"])
 """
 
 
@@ -190,19 +185,38 @@ def test_describe_built_by_lines():
 # --- the manifest is not touched -----------------------------------------------------------
 
 
-def _build_with(src: Path, out: Path) -> tuple[str, str]:
+def _build_with(src: Path, out: Path, git_commit: str | None = None) -> tuple:
+    """Build the micro-S0 fixture in a child process that imports the package copy at `src`; return (sha256 of the
+    manifest's bytes without `root`, sha256 over the listed files, code_id, code_commit). `git_commit` puts a
+    stand-in `git` that answers that commit first on PATH."""
     env = dict(os.environ)
     env["PYTHONPATH"] = os.pathsep.join([str(src.parent)] + ([env["PYTHONPATH"]] if env.get("PYTHONPATH") else []))
+    if git_commit is not None:
+        bin_ = out.parent / f"bin-{git_commit[:7]}"
+        bin_.mkdir(parents=True)
+        (bin_ / "git").write_text(f"#!/bin/sh\nprintf 'true\\n{git_commit}\\n'\n")
+        (bin_ / "git").chmod(0o755)
+        env["PATH"] = str(bin_) + os.pathsep + env.get("PATH", "")
     tests = Path(__file__).resolve().parent
     r = subprocess.run([sys.executable, "-c", BUILD, str(out), str(tests), str(src)], env=env, capture_output=True,
                        text=True)
     assert r.returncode == 0, r.stderr[-2000:]
     line = next(x for x in r.stdout.splitlines() if x.startswith("RESULT "))
-    return tuple(line.split()[1:])
+    got = line.split()[1:]
+    return (got[0], got[1], got[2], None if got[3] == "None" else got[3])
 
 
 def test_manifest_is_a_function_of_the_data_not_of_the_code(tmp_path):
+    """The same data built by code with different identities (another install path, another file in the package,
+    another commit) gives one manifest, byte for byte, and the same bytes in every listed file. No pinned hash: the
+    manifest covers every registered schema's hash, so a constant would be a snapshot (AGENTS 5.2)."""
     one = _build_with(_copy_pkg(tmp_path / "src1"), tmp_path / "r1")
-    two = _build_with(_copy_pkg(tmp_path / "other" / "src2"), tmp_path / "r2")
-    assert one == two
-    assert one == (BASELINE_MANIFEST_HASH, BASELINE_FILES_SHA256)
+    same = _build_with(_copy_pkg(tmp_path / "other" / "src2"), tmp_path / "r2")
+    assert one == same  # the same code at another path: even the identity is equal
+    pkg = _copy_pkg(tmp_path / "third" / "src3")
+    (pkg / "_c23_probe.txt").write_text("a harmless extra file\n")
+    commit = "0123456789abcdef0123456789abcdef01234567"
+    other = _build_with(pkg, tmp_path / "third" / "r3", git_commit=commit)
+    assert other[2] != one[2]  # the code ids (what every run record's meta takes) differ
+    assert other[3] == commit and one[3] is None  # and so do the commits
+    assert other[:2] == one[:2]  # the manifests are byte-identical and so are the files they list
