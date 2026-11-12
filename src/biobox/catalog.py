@@ -1125,6 +1125,48 @@ def catalog_path(root: Path, release: str) -> Path:
     return Path(root) / f"catalog/release={release}.duckdb"
 
 
+def built_by(root: Path, release_id: str, stages) -> str:
+    """JSON text naming the code that built a release (card C-23): `{"code": [{code_id, code_version, code_commit,
+    steps}, ...] sorted by code_id and commit, "unknown_steps": N}`. It reads the published run records under
+    `runs/stage=<S>/` for each of the release's stages and `runs/stage=<release>/` for its own steps (not the
+    `.publishing.json` intent files). A record from before card C-23 has no `code_id` and counts in `unknown_steps`;
+    a release with no record at all gives no code and zero unknown steps. Run records are a build's own, outside
+    the manifest (`EXCLUDED_TREES`), so this never touches the manifest's bytes."""
+    found: dict[tuple, int] = {}
+    unknown = 0
+    for stage in [*stages, release_id]:
+        d = Path(root) / "runs" / f"stage={stage}"
+        if not d.is_dir():
+            continue
+        for p in sorted(d.glob("*.json")):
+            if p.name.endswith(".publishing.json"):
+                continue
+            try:
+                rec = json.loads(p.read_text())
+            except (OSError, ValueError):
+                unknown += 1
+                continue
+            if not isinstance(rec, dict) or not rec.get("code_id"):
+                unknown += 1
+                continue
+            key = (rec["code_id"], rec.get("code_version"), rec.get("code_commit"))
+            found[key] = found.get(key, 0) + 1
+    code = [{"code_id": k[0], "code_version": k[1], "code_commit": k[2], "steps": n}
+            for k, n in sorted(found.items(), key=lambda kv: (kv[0][0], kv[0][1] or "", kv[0][2] or ""))]
+    return json.dumps({"code": code, "unknown_steps": unknown}, sort_keys=True)
+
+
+def describe_built_by(text: str) -> str:
+    """One line for `built_by`'s JSON (`release verify`, card W-23's `releases`)."""
+    b = json.loads(text)
+    if not b["code"]:
+        return "built by: unknown: built before card C-23"
+    parts = [f"{c['code_id'][:12]} (version {c['code_version'] or 'unknown'}, commit "
+             f"{(c['code_commit'] or 'unknown')[:12]}, {c['steps']} steps)" for c in b["code"]]
+    extra = f"; {b['unknown_steps']} steps unknown: built before card C-23" if b["unknown_steps"] else ""
+    return "built by: " + ", ".join(parts) + extra
+
+
 def generate_catalog(manifest: dict, out_path: Path | None = None, root: Path | None = None,
                      tape_version: str | None = None, out: Path | None = None) -> Path:
     """Write the catalog under a temporary name and rename it into place (atomic on one filesystem).
@@ -1171,6 +1213,8 @@ def generate_catalog(manifest: dict, out_path: Path | None = None, root: Path | 
             ("duckdb_version", duckdb.__version__),
             ("tape_version", tape_version),
             ("stages", json.dumps(manifest.get("stages", []))),  # the release's stages, in order (card B-28)
+            # the code that built the release's steps (card C-23): information only, never in the manifest
+            ("built_by", built_by(root, manifest["release_id"], manifest.get("stages", []))),
         ])
         con.execute("CREATE TABLE catalog_files AS SELECT * FROM (VALUES (NULL::VARCHAR, NULL::VARCHAR, NULL::VARCHAR, NULL::BIGINT, NULL::BIGINT)) "
                     "t(path, \"table\", sha256, \"rows\", row_groups) WHERE false")

@@ -898,6 +898,7 @@ def _verify(a) -> int:
     print(f"release {a.release}: {'verified' if not problems else f'{len(problems)} problems'} (stages "
           f"{','.join(man['stages'])}, {len(man['files'])} files, {len(man.get('artifacts', []))} artifacts, manifest "
           f"hash {catalog.manifest_hash(man)})")
+    print(catalog.describe_built_by(catalog.built_by(root, a.release, man["stages"])))  # card C-23: information only
     failed = bool(problems)
     have = {f["table"] for f in man["files"]}
     for lookup, source in (("member_cluster", "cluster_member"), ("contig_label", "contig_occurrence")):

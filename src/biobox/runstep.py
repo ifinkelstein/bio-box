@@ -95,7 +95,7 @@ from collections.abc import Callable, Iterator, Sequence
 from datetime import datetime, timezone
 from pathlib import Path
 
-from biobox import contracts, ids
+from biobox import codeid, contracts, ids
 from biobox.catalog import LayoutError, classify, classify_artifact
 from biobox.doctor import cgroup_memory
 from biobox.profile import Profile
@@ -670,7 +670,7 @@ def run_step(prof: Profile, root: str | Path, stage: str, step: str, cmd: Sequen
         "started_at": started_at, "wall_s": round(wall, 3), "cpu_min": round(cpu_min, 6),
         "peak_rss_bytes": rss, "peak_rss_source": rss_source, "host": socket.gethostname(), "exit_code": code,
         "image_digest": os.environ.get("BIOBOX_IMAGE_DIGEST", "none"), "over_cpu_budget": over,
-        "mem_cap": cap,
+        "mem_cap": cap, **codeid.code_identity(),  # card C-23: the code that ran, beside the image digest
     }
     if budget_reason is not None:
         meta["cpu_budget_reason"] = budget_reason
