@@ -25,6 +25,7 @@ import pytest
 from biobox import fasta, ids
 from biobox.l0seq import SourceObject, ingest
 from biobox.l0seq.inputs import GenomeInput, write_genome_input
+from biobox.l1.genecall import GENE_CALL_VERSION as V
 from biobox.l1.genecall import run as call_genes
 
 sys.path.insert(0, str(Path(__file__).parent))
@@ -200,6 +201,63 @@ def test_a_shard_whose_runs_were_lost_is_scanned_again_to_its_record(stage, tmp_
     assert files(copy, prod) == files(stage["out"], prod)
     with pytest.raises(FileExistsError):
         nc.scan_shard(copy, "S", rg.LIB, 0, 1, model_set=ms, tmp=scratch)
+
+
+@pytest.mark.covers("E-08", "LY-10")
+def test_records_are_the_ncrna_scan_artifact_and_e07_records_under_domain_scan_stay_readable(stage, tmp_path):
+    """E-07 report (b): the plan and shard records are the registry's `ncrna_scan` artifact
+    (`l1/ncrna_scan/producer=<p>/stage=<S>/`). A stage planned by card E-07's code has them under the `domain_scan`
+    artifact (`l1/domain_scan/library=<p>/stage=<S>/`); they are read from there, a plan there counts as written, and
+    the merge gives the same files."""
+    import shutil
+
+    from biobox.registry.schemas import ARTIFACTS
+
+    nc = _ncrna()
+    spec = ARTIFACTS["ncrna_scan"]
+    assert (spec.location, spec.partition_keys, spec.in_manifest, spec.small_ok) == (
+        "l1/ncrna_scan", ("producer", "stage"), False, True)
+    root, ms, prod = stage["root"], stage["set"], stage["producer"]
+    lengths = [len(stage["seqs"][cu]) for cu in sorted(stage["seqs"])]
+    copy = tmp_path / "root"
+    shutil.copytree(root, copy, symlinks=True)
+    scratch = tmp_path / "scratch"
+    scratch.mkdir()
+    nc.plan(copy, "S", rg.LIB, limit_for(lengths, 2), model_set=ms, tmp=scratch)
+    for j in range(2):
+        nc.scan_shard(copy, "S", rg.LIB, j, 1, model_set=ms, tmp=scratch)
+    new = copy / f"l1/ncrna_scan/producer={prod}/stage=S"
+    assert sorted(p.name for p in new.iterdir()) == ["plan.json", "shard-00000.json", "shard-00001.json"]
+    assert not (copy / "l1/domain_scan").exists()
+    old = copy / f"l1/domain_scan/library={prod}/stage=S"  # where card E-07 wrote them
+    old.parent.mkdir(parents=True)
+    new.rename(old)
+    assert nc.read_plan(copy, "S", prod)["producer"] == prod
+    assert nc.find_plan(copy, "S", prod) == old / "plan.json"
+    assert nc.shard_record(copy, "S", prod, 1)["shard"] == 1
+    assert nc.run_problem(copy, "S", prod, 1, scratch) is None
+    with pytest.raises(FileExistsError):
+        nc.plan(copy, "S", rg.LIB, 1, model_set=ms, tmp=scratch)
+    with pytest.raises(FileExistsError):
+        nc.scan_shard(copy, "S", rg.LIB, 0, 1, model_set=ms, tmp=scratch)
+    res = nc.merge(copy, "S", rg.LIB, model_set=ms, tmp=scratch)
+    assert files(copy, prod) == files(stage["out"], prod)
+    assert res["gene_call_version"] == V and not new.exists()
+
+
+@pytest.mark.covers("E-08", "C-08")
+def test_the_ledger_and_the_result_name_the_gene_call_version_scanned(stage):
+    """E-07 report (c): the gene-call version whose intergenic regions were scanned is in the result and in every
+    ledger row's tool versions (not in the producer name)."""
+    import json
+
+    from biobox import ledger
+
+    assert stage["report"]["gene_call_version"] == V
+    assert V not in stage["producer"]
+    rows = ledger.read(stage["out"], "S", f"ncrna-{stage['producer']}")
+    assert rows and all(json.loads(r["tool_versions_json"])["gene_call_version"] == V for r in rows)
+    assert all(json.loads(r["tool_versions_json"])["rfam_clanin"] == "15.1" for r in rows)
 
 
 def test_a_shard_refuses_another_library_or_set(stage, tmp_path):

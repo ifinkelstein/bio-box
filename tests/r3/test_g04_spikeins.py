@@ -327,3 +327,30 @@ def test_g04_rfam_spike_ins_are_recovered(panel_run):
     lines += case2
     print("\n" + "\n".join(lines))
     assert k / n >= MIN_OVERALL, "\n".join(lines)
+
+
+@pytest.mark.covers("E-08")
+def test_g04_recovered_spike_ins_are_recovered_by_kept_hits(panel_run):
+    """Card E-08 (DEC-28): a hit that loses its clan's competition stays in `l1_ncrna` but is no feature. A planted
+    sequence counts here only when a kept hit (`clan_winner`) of its family recovers it, by the rule above; the panel's
+    planted sequences lie 200 to 800 bases apart, so competition can only be between models on one planted sequence
+    (tRNA and tRNA-Sec, the two bacterial RNase P models). Every planted sequence recovered by some hit is listed with
+    its kept-hit status, and recovery by kept hits must keep the panel's bound."""
+    truth, hits = panel_run["truth"], panel_run["hits"]
+
+    def found(t, rows):
+        need = MIN_OVERLAP * (t["end"] - t["start"])
+        return any(h["model_acc"] == t["family"] and h["strand"] == t["strand"]
+                   and _overlap(h["start"], h["end"], t["start"], t["end"]) >= need for h in rows)
+
+    kept = [h for h in hits if h["clan_winner"]]
+    k_all = sum(found(t, hits) for t in truth)
+    k_kept = sum(found(t, kept) for t in truth)
+    lost = [f"  {t['family']} {t['start']}-{t['end']} strand {t['strand']}: recovered only by a hit that lost to "
+            + ", ".join(f"{h['model_name']} {h['bitscore']:.1f}" for h in kept if h["strand"] == t["strand"]
+                        and _overlap(h["start"], h["end"], t["start"], t["end"]))
+            for t in truth if found(t, hits) and not found(t, kept)]
+    msg = (f"G-04 with clan competition: {k_kept}/{len(truth)} recovered by kept hits ({k_all} by any hit); "
+           f"{sum(not h['clan_winner'] for h in hits)} of {len(hits)} hits lose\n" + "\n".join(lost))
+    print("\n" + msg)
+    assert k_kept / len(truth) >= MIN_OVERALL, msg

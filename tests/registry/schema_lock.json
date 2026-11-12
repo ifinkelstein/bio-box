@@ -791,6 +791,16 @@
    "contig_len",
    "int64",
    false
+  ],
+  [
+   "clan",
+   "string",
+   true
+  ],
+  [
+   "clan_winner",
+   "bool",
+   true
   ]
  ],
  "ledger": [
