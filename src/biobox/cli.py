@@ -911,6 +911,141 @@ def _export(a) -> int:
     return 0
 
 
+# --- card W-23: releases, seq, sql ---------------------------------------------------------------------------
+
+
+def _level_rows(paths, level: str) -> int:
+    """Rows at `level` of cluster membership files sorted by level first (`member_cluster`, `cluster_member`): from
+    each row group's statistics on `level`; the column of a row group is read only where it holds several levels or
+    has no statistics, so a file costs its footer and at most a row group per level boundary."""
+    import pyarrow.compute as pc
+
+    n = 0
+    for p in paths:
+        pf = pq.ParquetFile(p)
+        k = pf.schema_arrow.get_field_index("level")
+        for i in range(pf.metadata.num_row_groups):
+            rg = pf.metadata.row_group(i)
+            st = rg.column(k).statistics
+            lo, hi = (st.min, st.max) if st is not None and st.has_min_max else (None, None)
+            lo, hi = (x.decode() if isinstance(x, bytes) else x for x in (lo, hi))
+            if lo is not None and lo == hi:
+                n += rg.num_rows if lo == level else 0
+            elif lo is not None and not lo <= level <= hi:
+                continue
+            else:
+                n += pc.sum(pc.equal(pf.read_row_group(i, columns=["level"]).column(0), level)).as_py() or 0
+    return n
+
+
+def _distinct(paths, column: str) -> int:
+    """Distinct values of one column of the files, read a row group at a time."""
+    seen: set = set()
+    for p in paths:
+        pf = pq.ParquetFile(p)
+        for i in range(pf.metadata.num_row_groups):
+            seen.update(pf.read_row_group(i, columns=[column]).column(0).to_pylist())
+    return len(seen)
+
+
+def release_names(root: Path) -> list[str]:
+    """Every release the root names: a manifest `manifests/release=<R>.json` or a release definition
+    `release_def/release=<R>/`, so a release defined but not yet given a manifest is found too."""
+    from biobox.registry.schemas import table
+
+    names = set()
+    man = Path(root) / "manifests"
+    if man.is_dir():
+        names |= {p.name[len("release="):-len(".json")] for p in man.glob("release=*.json")}
+    defs = Path(root) / table("release_def").location
+    if defs.is_dir():
+        names |= {p.name[len("release="):] for p in defs.iterdir() if p.is_dir() and p.name.startswith("release=")}
+    return sorted(names)
+
+
+def release_summary(root: Path, release: str, packs: Path | None = None) -> dict:
+    """What one release holds, for `bio-box releases` (card W-23), from its file list (the manifest, else its
+    `release_def` stages: `catalog.ReleaseFiles`) and Parquet footers, never a scan of a large table: `contigs` the
+    rows of its `contig_dim`, `proteins` its `nr90` members (`member_cluster`, else `cluster_member`, by row-group
+    statistics on `level`), `genomes` the distinct `genome_uid` of `contig_dim` (one column read: no footer holds a
+    distinct count); None where the release has no such table. `libraries` its domain libraries, `ncrna` its ncRNA
+    producers, `lookups` whether it has the tables and column current readers use (cards B-27, B-39), and with a pack
+    directory `pack`, the id of the release's pack there or None."""
+    root = Path(root)
+    rec: dict = {"release": release, "manifest": catalog.manifest_path(root, release).is_file()}
+    try:
+        files = catalog.ReleaseFiles.of(root, release)
+    except (FileNotFoundError, ValueError, OSError) as e:
+        return {**rec, "stages": None, "error": str(e)}
+    dims = files.table("contig_dim", release=release)
+    clus = files.table("member_cluster", release=release) or files.table("cluster_member", release=release)
+    tok = files.table("tape_tokens", release=release)
+    rec.update({
+        "stages": list(files.stages),
+        "genomes": _distinct(dims, "genome_uid") if dims else None,
+        "contigs": sum(pq.read_metadata(p).num_rows for p in dims) if dims else None,
+        "proteins": _level_rows(clus, "nr90") if clus else None,
+        "libraries": sorted({str(parts["library"]) for _, parts in files.entries("l1_domains")}),
+        "ncrna": sorted({str(parts["producer"]) for _, parts in files.entries("l1_ncrna")}),
+        "lookups": {"member_cluster": bool(files.table("member_cluster", release=release)),
+                    "contig_label": bool(files.table("contig_label")),
+                    "domain_family_tokens": bool(tok) and all(catalog.TAPE_DOMAIN_FAMILIES in pq.read_schema(p).names
+                                                              for p in tok)},
+    })
+    if files.manifest is not None:  # card C-19: a library scanned on some of the release's stages only
+        partial = {lib: missing for lib, _, missing in catalog.partial_libraries(files.manifest)}
+        if partial:
+            rec["partial_libraries"] = partial
+    if packs is not None:
+        try:
+            rec["pack"] = pack.find(packs, release).name
+        except pack.NoPack:
+            rec["pack"] = None
+        except ValueError:
+            rec["pack"] = "several"
+    return rec
+
+
+RELEASES_COLUMNS = ("release", "manifest", "stages", "genomes", "contigs", "proteins", "libraries", "ncrna",
+                    "member_cluster", "contig_label", "domain_family_tokens")
+
+
+def _releases(a) -> int:
+    """`bio-box releases` (card W-23): one line per release of the root (`release_summary`); `--json`, one object per
+    line. With a profile or `--pack-dir`, the pack each release has there."""
+    root = Path(a.root)
+    packs = _packs(a) if (a.pack_dir or a.profile or os.environ.get("BIOBOX_PROFILE")) else None
+    recs = [release_summary(root, r, packs) for r in release_names(root)]
+    if not recs:
+        print(f"note: no release under {root} (no manifests/release=*.json and no release_def/release=*)",
+              file=sys.stderr)
+    for r in recs:
+        if "error" in r:
+            print(f"note: release {r['release']}: {r['error']}", file=sys.stderr)
+    if a.json:
+        _print(json.dumps(r, sort_keys=False) for r in recs)
+        return 0
+
+    def text(v) -> str:
+        if v is None:
+            return "-"
+        if isinstance(v, bool):
+            return "yes" if v else "no"
+        if isinstance(v, list):
+            return ",".join(v) or "-"
+        return str(v)
+
+    cols = RELEASES_COLUMNS + (("pack",) if packs is not None else ())
+    rows = []
+    for r in recs:
+        flat = {**r, **r.get("lookups", {})}
+        libs = [f"{x}(not {','.join(r['partial_libraries'][x])})" if x in r.get("partial_libraries", {}) else x
+                for x in r.get("libraries", [])]
+        rows.append("\t".join(text(libs if c == "libraries" else flat.get(c)) for c in cols))
+    _print(["\t".join(cols), *rows])
+    return 0
+
+
 def _run_step(a) -> int:
     from biobox import profile, runstep
 
@@ -1349,6 +1484,12 @@ def _main(argv: list[str] | None = None) -> int:
     what.add_argument("--protein", help="a protein uid (32 hex digits): every gene of the release that carries it")
     fd.add_argument("--tape-version", help="tapes to read for --accession (default: the gene-call producer's)")
     fd.add_argument("--threads", type=int, help=f"DuckDB threads (default {export.EXPORT_THREADS})")
+    rs = sub.add_parser("releases", parents=[common], help="every release of the root: stages, counts, libraries, "
+                                                            "lookup tables and pack (card W-23)")
+    rs.add_argument("--profile", help="host profile YAML (default: $BIOBOX_PROFILE); with one, the pack of each "
+                                      "release in the profile's pack directory is named")
+    rs.add_argument("--pack-dir", help="a pack directory to name each release's pack from, in place of the profile's")
+    rs.add_argument("--json", action="store_true", help="one JSON object per release")
     n = sub.add_parser("nbr", parents=[common])
     n.add_argument("action", nargs="?", help="summarize: families and clusters per window; otherwise the anchors")
     n.add_argument("source", nargs="?", help="summarize: run_id or protein uids (uid,uid,...)")
@@ -1477,7 +1618,7 @@ def _main(argv: list[str] | None = None) -> int:
             p.error("run-step needs a command after --")
         a.command = command
     return {"pack": _pack, "search": _search, "nbr": _nbr, "find": _find, "export": _export, "run-step": _run_step,
-            "release": _release, "stage": _stage, "build-stage": _build_stage}[a.cmd](a)
+            "release": _release, "stage": _stage, "build-stage": _build_stage, "releases": _releases}[a.cmd](a)
 
 
 if __name__ == "__main__":

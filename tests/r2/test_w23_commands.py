@@ -115,7 +115,8 @@ def _releases(capsys, *args) -> dict[str, dict]:
     return {r["release"]: r for r in map(json.loads, capsys.readouterr().out.splitlines())}
 
 
-def test_w23_releases_lists_each_release_with_its_stages_counts_libraries_and_lookups(rel, capsys):
+def test_w23_releases_lists_each_release_with_its_stages_counts_libraries_and_lookups(rel, capsys, monkeypatch):
+    monkeypatch.delenv("BIOBOX_PROFILE", raising=False)
     want = _release_oracle(rel)
     assert want["genomes"] == want["contigs"] == 3 and want["proteins"] > 100
     recs = _releases(capsys, "--root", str(rel))
