@@ -69,6 +69,40 @@ def summary(rows: list[dict]) -> dict:
             "first": rows[0]["accession"] if rows else None, "last": rows[-1]["accession"] if rows else None}
 
 
+def complete_genomes(gtdb: Path, sha: dict, watch: set | None = None, levels: dict | None = None):
+    """Yield (key, row) for every complete genome, in file order; record each metadata file's sha256 in `sha`.
+
+    Complete: ncbi_assembly_level = 'Complete Genome'. key = (0 if the score parses else 1, -score, GTDB accession),
+    so sorting by key gives the quality order: checkm2_completeness - 5 * checkm2_contamination descending, a value
+    that does not parse last, ties by GTDB accession (with its RS_/GB_ prefix). Shared with c25_select.py, which
+    passes `watch` (accessions without the prefix) to have `levels[accession] = ncbi_assembly_level` recorded for
+    any of them, complete or not.
+    """
+    for name in FILES:
+        p = gtdb / name
+        sha[name] = hashlib.sha256(p.read_bytes()).hexdigest()
+        with gzip.open(p, "rt", newline="") as fh:
+            for r in csv.DictReader(fh, delimiter="\t"):
+                if watch is not None:
+                    bare = r["accession"][3:] if r["accession"][:3] in ("RS_", "GB_") else r["accession"]
+                    if bare in watch:
+                        levels[bare] = r["ncbi_assembly_level"]
+                if r["ncbi_assembly_level"] != "Complete Genome":
+                    continue
+                comp, cont = num(r["checkm2_completeness"]), num(r["checkm2_contamination"])
+                score = None if comp is None or cont is None else comp - 5 * cont
+                gacc = r["accession"]
+                row = {"gtdb_accession": gacc, "accession": gacc[3:] if gacc[:3] in ("RS_", "GB_") else gacc,
+                       "gtdb_taxonomy": r["gtdb_taxonomy"], "genome_size": int(r["genome_size"]),
+                       "contig_count": int(r["contig_count"]), "protein_count": num(r["protein_count"], int),
+                       "translation_table": num(r["ncbi_translation_table"], int),
+                       "gtdb_representative": r["gtdb_representative"] == "t",
+                       "checkm2_completeness": comp, "checkm2_contamination": cont, "quality_score": score,
+                       "gtdb_genome_representative": r.get("gtdb_genome_representative", "")}
+                # sort key: score descending, missing last, then GTDB accession ascending
+                yield (0 if score is not None else 1, -(score or 0.0), gacc), row
+
+
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
     ap.add_argument("gtdb", type=Path)
@@ -82,28 +116,12 @@ def main() -> int:
     best: dict[str, tuple] = {}
     n_complete = n_complete_rep = 0
     sha = {}
-    for name in FILES:
-        p = a.gtdb / name
-        sha[name] = hashlib.sha256(p.read_bytes()).hexdigest()
-        with gzip.open(p, "rt", newline="") as fh:
-            for r in csv.DictReader(fh, delimiter="\t"):
-                if r["ncbi_assembly_level"] != "Complete Genome":
-                    continue
-                n_complete += 1
-                n_complete_rep += r["gtdb_representative"] == "t"
-                comp, cont = num(r["checkm2_completeness"]), num(r["checkm2_contamination"])
-                score = None if comp is None or cont is None else comp - 5 * cont
-                gacc = r["accession"]
-                row = {"gtdb_accession": gacc, "accession": gacc[3:] if gacc[:3] in ("RS_", "GB_") else gacc,
-                       "gtdb_taxonomy": r["gtdb_taxonomy"], "genome_size": int(r["genome_size"]),
-                       "contig_count": int(r["contig_count"]), "protein_count": num(r["protein_count"], int),
-                       "translation_table": num(r["ncbi_translation_table"], int),
-                       "gtdb_representative": r["gtdb_representative"] == "t"}
-                # sort key: score descending, missing last, then GTDB accession ascending
-                key = (0 if score is not None else 1, -(score or 0.0), gacc)
-                cur = best.get(row["gtdb_taxonomy"])
-                if cur is None or key < cur[0]:
-                    best[row["gtdb_taxonomy"]] = (key, row)
+    for key, row in complete_genomes(a.gtdb, sha):
+        n_complete += 1
+        n_complete_rep += row["gtdb_representative"]
+        cur = best.get(row["gtdb_taxonomy"])
+        if cur is None or key < cur[0]:
+            best[row["gtdb_taxonomy"]] = (key, row)
     picked = {sp: v[1] for sp, v in best.items()}
 
     # the ladder's P1 and P2, recomputed and compared byte for byte
