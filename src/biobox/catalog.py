@@ -964,11 +964,7 @@ def pair_macro_sql() -> list[str]:
         # value DuckDB pushes into the postings scan as a join filter, so the scan reads the row groups whose
         # token_id range holds it. `token_id = _tok` with a subquery read every row group (20 of 20 at 1,000x,
         # 2026-11-10 phase B exit); with a literal the bucket filter also prunes files, as before
-        """CREATE MACRO token_rows(_tok) AS TABLE
-              SELECT p.* FROM (SELECT (_tok)::UBIGINT AS _t) _k
-              JOIN token_postings p ON p.token_id = _k._t
-              WHERE p.release = catalog_release() AND p.tape_version = catalog_tape_version()
-                AND token_bucket_ok(p.token_bucket, _tok)""",
+        token_rows_sql(),
         """CREATE MACRO token_slots(_tok) AS TABLE
               SELECT DISTINCT contig_uid, ordinal, feature_uid, start, "end", strand, n_slots, is_circular, contig_len
               FROM token_rows(_tok)""",
@@ -1028,6 +1024,18 @@ def pair_macro_sql() -> list[str]:
               ORDER BY a.contig_uid, a.ordinal, anchor_seg_idx, partner_seg_idx""",
         partners_of_sql(),
     ]
+
+
+def token_rows_sql(create: str = "CREATE MACRO", check: str | None = None) -> str:
+    """`token_rows(_tok)`: every posting of a token in this catalog's release and tape version (see
+    pair_macro_sql). `check`, a function of one UBIGINT that returns it, is applied to the token on the join's
+    one-row build side (`open_catalog` passes `bb_family_check_udf`, card W-24)."""
+    tok = "(_tok)::UBIGINT" if check is None else f"{check}((_tok)::UBIGINT)"
+    return f"""{create} token_rows(_tok) AS TABLE
+              SELECT p.* FROM (SELECT {tok} AS _t) _k
+              JOIN token_postings p ON p.token_id = _k._t
+              WHERE p.release = catalog_release() AND p.tape_version = catalog_tape_version()
+                AND token_bucket_ok(p.token_bucket, _tok)"""
 
 
 def partners_of_sql(create: str = "CREATE MACRO") -> str:
@@ -1829,6 +1837,152 @@ def _token_dict_files(con: duckdb.DuckDBPyConnection, root: Path) -> list[Path]:
     return [Path(root) / p for (p,) in rows if classify(p)[1].get("release") == rel]
 
 
+def _posting_files(con: duckdb.DuckDBPyConnection, root: Path) -> list[Path]:
+    """The catalog's `token_postings` files of its release and served tape version (`catalog_files`), under `root`."""
+    info = dict(con.execute("SELECT key, value FROM catalog_info").fetchall())
+    rows = con.execute("SELECT path FROM catalog_files WHERE \"table\" = 'token_postings' ORDER BY path").fetchall()
+    return [Path(root) / p for (p,) in rows
+            if classify(p)[1].get("release") == info["release_id"]
+            and classify(p)[1].get("tape_version") == info.get("tape_version")]
+
+
+def _domain_files(con: duckdb.DuckDBPyConnection, root: Path) -> list[tuple[Path, str]]:
+    """The catalog's `l1_domains` files (its release's stages), under `root`, each with its library."""
+    rows = con.execute("SELECT path FROM catalog_files WHERE \"table\" = 'l1_domains' ORDER BY path").fetchall()
+    return [(Path(root) / p, classify(p)[1].get("library", "")) for (p,) in rows]
+
+
+FAMILY_LEVEL = 1  # `token_id >> 61` of a family token (biobox.l3.tokens.LEVELS; tokens imports this module)
+
+
+class FamilyPostingsCheck:
+    """Whether a release's family postings hold every included domain of a slot (card B-21), for a note (card W-24).
+
+    Before card B-21 a slot had one family posting, its canonical family (`tape_tokens.family_tokens`), at segment
+    0; since it, one per included domain, segments 0, 1, ... by envelope start. On a release built before it,
+    `fusions_of` finds no fusion and a family lookup (`token_rows`, and through it `token_slots`, `q1_count`,
+    `pairs_of` and the anchors of `partners_of`) misses every domain but the canonical one, with nothing said.
+    Neither the postings nor the token dictionary record the code that wrote them (card C-23), so the release is
+    recognised by what its files hold, cheapest first, and only when a family token is looked up (`noted`):
+
+    1. a marker the token step writes: `tape_tokens.domain_family_tokens` (card B-39, which came after B-21) in its
+       schema. Postings of such a release are complete. No file is read past its footer.
+    2. a family posting at segment 1 or more: the `seg_idx` maximum of a `token_postings` row group (min/max
+       statistics on the sort key, AGENTS §3.7; a row group without them is read). Only family postings have such
+       a segment. Footers only, unless statistics are missing. Complete.
+    3. otherwise the postings hold one family per slot. They are complete exactly when no protein has two included
+       domains (distinct library, model, envelope start: the postings' segments); the domain table decides.
+       Each `l1_domains` file is sorted by protein (registry sort key), so a protein's rows are adjacent and the scan
+       stops at the first protein with two, normally in the first row group; a protein whose two domains come from
+       two libraries is found by one grouping over the files, run only when there are several libraries and no
+       file has such a protein.
+
+    A release with no domain files has no family postings to miss. The answer is computed once per connection."""
+
+    def __init__(self, release: str, tape_token_files: list[Path], posting_files: list[Path],
+                 domain_files: list[tuple[Path, str]], tmp: Path | None = None):
+        self.release = release
+        self.tape_token_files, self.posting_files, self.domain_files = tape_token_files, posting_files, domain_files
+        self.tmp = tmp
+        self.reason: str | None = None  # how the answer was found: "marker", "segments", "domains", "no domains"
+        self._complete: bool | None = None
+        self._noted = False
+        self._lock = threading.Lock()
+
+    def complete(self) -> bool:
+        with self._lock:
+            if self._complete is None:
+                self._complete, self.reason = self._decide()
+            return self._complete
+
+    def _decide(self) -> tuple[bool, str]:
+        if not self.domain_files:
+            return True, "no domains"
+        if any(TAPE_DOMAIN_FAMILIES in pq.read_schema(f).names for f in self.tape_token_files):
+            return True, "marker"
+        for f in self.posting_files:
+            md = pq.read_metadata(f)
+            si = {md.schema.column(i).path: i for i in range(md.num_columns)}["seg_idx"]
+            for g in range(md.num_row_groups):
+                rg = md.row_group(g)
+                if rg.num_rows == 0:
+                    continue
+                st = rg.column(si).statistics
+                top = st.max if st is not None and st.has_min_max else \
+                    pc.max(pq.ParquetFile(f, metadata=md).read_row_group(g, columns=["seg_idx"]).column(0)).as_py()
+                if top:
+                    return True, "segments"
+        return not self._two_domains(), "domains"
+
+    def _two_domains(self) -> bool:
+        """Whether some protein of the domain files has two distinct included domains."""
+        for path, _ in self.domain_files:
+            pf = pq.ParquetFile(path)
+            cur, seen = None, set()
+            for g in range(pf.metadata.num_row_groups):
+                t = pf.read_row_group(g, columns=["protein_uid", "model_acc", "env_start"])
+                for pu, acc, start in zip(*(t.column(c).to_pylist() for c in t.column_names)):
+                    if pu != cur:
+                        cur, seen = pu, set()
+                    seen.add((acc, start))
+                    if len(seen) > 1:
+                        return True
+        if len({lib for _, lib in self.domain_files}) < 2:
+            return False
+        if self.tmp is not None:
+            Path(self.tmp).mkdir(parents=True, exist_ok=True)
+        scratch = Path(tempfile.mkdtemp(prefix="biobox-family-check-", dir=self.tmp))
+        con = duckdb.connect(config={"threads": 1, "memory_limit": "1GB", "temp_directory": str(scratch / "duckdb")})
+        try:
+            src = " UNION ALL ".join(
+                f"SELECT DISTINCT protein_uid, {_sql_str(lib)} AS lib FROM read_parquet({_sql_str(str(p))}, "
+                "hive_partitioning = false)" for p, lib in self.domain_files)
+            return bool(con.execute(f"SELECT 1 FROM (SELECT DISTINCT protein_uid, lib FROM ({src})) GROUP BY protein_uid "
+                                    "HAVING count(*) > 1 LIMIT 1").fetchall())
+        finally:
+            con.close()
+            shutil.rmtree(scratch, ignore_errors=True)
+
+    def noted(self, tokens) -> None:
+        """Print the note once (per connection) when `tokens` holds a family token and the postings are not
+        complete."""
+        if self._noted:
+            return
+        vals = np.asarray(tokens.fill_null(0).to_numpy(zero_copy_only=False), np.uint64)
+        if not np.any((vals >> np.uint64(61)) == FAMILY_LEVEL) or self.complete():
+            return
+        with self._lock:
+            if self._noted:
+                return
+            self._noted = True
+        import sys
+
+        print(f"biobox: release {self.release} was built before card B-21: its token_postings hold one family posting "
+              "per slot, the slot's canonical family, though its domain table has proteins with two or more included "
+              "domains. fusions_of finds no fusion there, and family lookups (token_rows, token_slots, q1_count, "
+              "pairs_of, the anchors of partners_of) miss every domain but the canonical one; rebuild the release's "
+              "tokens and postings (biobox.l3.tokens, biobox.l3.postings) for every domain", file=sys.stderr)
+
+
+def _register_family_check(con: duckdb.DuckDBPyConnection, check: FamilyPostingsCheck) -> None:
+    """`token_rows` again, as a temporary macro on this connection (card W-24): the token passes through
+    `bb_family_check_udf`, which returns it unchanged and, for a family token on a release whose family postings
+    lack the non-canonical domains (`FamilyPostingsCheck`), says so once on stderr. Every macro that reads postings
+    reads them through `token_rows` (temporary objects come first in DuckDB's search path, also inside the stored
+    macros: `_shadow`), so `fusions_of`, `token_slots`, `q1_count`, `pairs_of` and `partners_of` say it too. The
+    function sits on the one-row build side of the token join, so the postings scan still prunes by the joined
+    token (card B-31)."""
+
+    def bb_family_check(toks):
+        whole = toks.combine_chunks() if isinstance(toks, pa.ChunkedArray) else toks
+        check.noted(whole)
+        return whole
+
+    con.create_function("bb_family_check_udf", bb_family_check, ["UBIGINT"], "UBIGINT", type="arrow",
+                        null_handling="special", side_effects=False)
+    con.execute(token_rows_sql("CREATE OR REPLACE TEMP MACRO", "bb_family_check_udf"))
+
+
 class TokenKeyLookup(_Touches):
     """`token_dict` rows by (level, key) from footer statistics, without loading the table (card B-34).
 
@@ -2086,6 +2240,10 @@ def open_catalog(path: Path, local_dir: Path | None = None, threads: int | None 
     _register_tape_udf(con, tapes)
     # a catalog built before card B-38 stores a partners_of that calls bb_slot_tokens per contig
     con.execute(partners_of_sql("CREATE OR REPLACE TEMP MACRO"))
+    # card W-24: a family lookup on a release built before card B-21 says that its postings are canonical only
+    rel = con.execute("SELECT value FROM catalog_info WHERE key = 'release_id'").fetchall()[0][0]
+    _register_family_check(con, FamilyPostingsCheck(rel, _tape_token_files(con, built), _posting_files(con, built),
+                                                    _domain_files(con, built), tmp=temp_directory))
     # a catalog built before card C-21b has no genome_member, genome_dim, genomes_of or genome_dim_now
     _add_genome_objects(con)
     keys = _Lazy(TokenKeyLookup, _token_dict_files(con, built))
