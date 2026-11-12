@@ -195,7 +195,7 @@ A locus is one hit gene with its window; the hit is not its own neighbour. `neig
 
 | Column | Meaning |
 |---|---|
-| `key`, `cluster_uid` | the cluster (the same value twice), or the Pfam family at the `pfam` level |
+| `key` | the cluster's uid at the `nr50` and `nr90` levels, the Pfam family at the `pfam` level |
 | `rep_uid`, `rep_length` | the cluster's representative protein and its length |
 | `model_name` | on a release with Pfam, the domain name most members carry; empty otherwise |
 | `n_loci`, `share_of_loci` | hit loci with at least one such neighbour, and the share of all loci |

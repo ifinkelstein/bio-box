@@ -71,7 +71,10 @@ directory (`--pack-dir`, `biobox.search.pack`); a run into `--out DIR`, else `ru
 directory (`--runs`). A `<run>` argument is a run directory, or a run id in the runs directory. Defaults,
 with a host profile (`--profile`, else $BIOBOX_PROFILE): `<tmp>/packs` and `<tmp>/search/<user>/runs`;
 without one, `biobox.search.runner.default_pack_base()` and `default_runs_dir()`. A search whose pack is
-missing exits 2 with the command that builds it.
+missing exits 2 with the command that builds it. `search hits` and `nbr` on a closed run whose pack the pack
+directory lacks exit 2 naming the pack (card W-24): a run's genes are named in its pack's tape version, which
+only the pack's manifest records. `nbr` reads a run with its own release's files; `--release` naming another
+release is refused (card W-24), and the run's proteins go to another release as protein uids.
 
 The profile's `<tmp>/packs` is the host's one pack directory (card W-22): `pack`, `search`, `nbr` and
 `releases` find a release's pack there with only `--profile`; `--pack-dir` names another. Only a `pack build`
@@ -225,16 +228,23 @@ def _run_release(d: Path) -> str | None:
     return pq.read_table(path, columns=["ran_against"]).column("ran_against")[0].as_py()
 
 
-def _run_tape_version(d: Path, packs: Path, gene_call_version: str) -> str:
-    """The tape version a closed run read: its pack's (card B-16), the pack found by the run's pack_id in
-    the pack directory `packs`; the gene-call producer's when the run or its pack is not on disk."""
-    path = Path(d) / "run.parquet"
-    if path.exists():
-        row = pq.read_table(path, columns=["ran_against", "pack_id"]).to_pylist()[0]
-        pdir = pack.pack_dir(packs, row["ran_against"], row["pack_id"])
-        if (pdir / pack.MANIFEST).exists():
-            return pack.manifest_tape_version(pack.read_manifest(pdir)[0])
-    return nbr.resolve_tape_version(gene_call_version)
+class RunPackMissing(ValueError):
+    """A closed run's pack is not in the pack directory, so the tape version that names its genes is unknown."""
+
+
+def _run_tape_version(d: Path, packs: Path) -> str:
+    """The tape version a closed run read: its pack's (card B-16), the pack found by the run's pack_id in the pack
+    directory `packs`. RunPackMissing, naming the run's release, its pack id and where it was looked for, when that
+    pack is not there (card W-24): the gene-call producer's tape version, the fallback before, names other slots once
+    a release has a second producer, and the answer was wrong with exit 0."""
+    row = pq.read_table(Path(d) / "run.parquet", columns=["run_id", "ran_against", "pack_id"]).to_pylist()[0]
+    pdir = pack.pack_dir(packs, row["ran_against"], row["pack_id"])
+    if not (pdir / pack.MANIFEST).is_file():
+        raise RunPackMissing(
+            f"run {row['run_id'].hex()} searched pack {row['pack_id'].hex()} of release {row['ran_against']}, which is "
+            f"not in the pack directory {packs} (no {pdir / pack.MANIFEST}); the run's genes are named in that pack's "
+            "tape version, which only its manifest records. Give the pack directory that holds it with --pack-dir")
+    return pack.manifest_tape_version(pack.read_manifest(pdir)[0])
 
 
 def _verify_scratch(a) -> Path | None:
@@ -387,8 +397,12 @@ def _search(a) -> int:
     if not (d / "run.parquet").exists():
         print(f"refused: no closed run {a.target} (looked for {d})", file=sys.stderr)
         return 2
+    try:
+        tv = _run_tape_version(d, _packs(a))
+    except RunPackMissing as e:
+        print(f"refused: {e}", file=sys.stderr)
+        return 2
     hits = runner.read_hits(d, a.round)
-    tv = _run_tape_version(d, _packs(a), a.gene_call_version)
     release = _run_release(d)
     manifest = export.release_manifest(root, release)
     if a.format:  # card W-05 (files: the manifest's, else the release_def stages: card W-12): one row per gene (tsv) or one record per protein (faa)
@@ -433,14 +447,18 @@ def _anchor_run(a, source: str) -> Path | None:
     return d if (d / "run.parquet").exists() else None
 
 
-def _anchors(a, source: str, tape_version: str | None, gene_call_version: str):
+def _anchors(a, source: str, tape_version: str | None):
     """Anchor proteins from a recorded run's protein hits (a run directory, or a run id in the runs
     directory) or a comma-separated list of protein uids: (uids, tape version, the run's release or None),
-    or a refusal message."""
+    or a refusal message. A run's tape version is its pack's: a run whose pack the pack directory lacks is
+    refused (card W-24)."""
     d = _anchor_run(a, source)
     if d is not None:
+        try:
+            run_tv = _run_tape_version(d, _packs(a))
+        except RunPackMissing as e:
+            return f"refused: {e}"
         uids = {h["target_uid"] for h in runner.read_hits(d) if h["target_kind"] == "protein"}
-        run_tv = _run_tape_version(d, _packs(a), gene_call_version)
         if tape_version is not None and tape_version != run_tv:
             return f"refused: tape version {tape_version} is not the tape version {run_tv} that run {source} read"
         return uids, run_tv, _run_release(d)
@@ -490,11 +508,19 @@ def _nbr(a) -> int:
         print("refused: nbr needs --anchors", file=sys.stderr)
         return 2
     source = a.source or a.anchors
-    got = _anchors(a, source, a.tape_version, a.gene_call_version)
+    got = _anchors(a, source, a.tape_version)
     if isinstance(got, str):
         print(got, file=sys.stderr)
         return 2
     uids, tv, run_release = got
+    if run_release is not None and a.release is not None and a.release != run_release:
+        # card W-24: a run's anchors and tape version are its release's; another release's tapes, clusters and
+        # contig_dim read with them gave an answer of neither release, with exit 0
+        print(f"refused: run {source} ran against release {run_release}, not {a.release}: nbr reads a run with its "
+              f"own release's files (drop --release, or name {run_release}). To place the run's proteins in release "
+              f"{a.release}, give them as protein uids: write them one per line (bio-box sql, the last query of "
+              f"AGENT_GUIDE.md section 5) and pass --anchors-file FILE --release {a.release}", file=sys.stderr)
+        return 2
     policy = nbr.Policy.parse(a.window, a.strand, a.operon_gap, a.edge, a.circular)
     release = a.release or run_release
     if release is None:
@@ -1825,7 +1851,8 @@ def _main(argv: list[str] | None = None) -> int:
     n.add_argument("--circular", default="auto")
     n.add_argument("--json", action="store_true")
     n.add_argument("--top_n", type=int, default=0)
-    n.add_argument("--tape-version", help="tapes to read (default: the run's pack's, else the gene-call producer's)")
+    n.add_argument("--tape-version", help="tapes to read (default: a run's pack's, refused when --pack-dir lacks the "
+                                          "pack; protein uids: the gene-call producer's)")
     n.add_argument("--by", default="pfam,nr50", help="summarize: levels, some of pfam,nr50,nr90")
     n.add_argument("--top", type=int, default=nbr.SUMMARY_TOP, help="summarize: rows per level (0: all)")
     n.add_argument("--release", help="summarize, --format tsv: release of the clusters and contig_dim (default: "

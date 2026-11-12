@@ -193,7 +193,7 @@ it), `hits.tsv`, `hits.faa`, `neighbors.tsv`, `loci/`. The run is `<profile tmp>
   header`, sequence on one line. `example` is the control's own contig for the control, else the first gene.
 - `neighbors.tsv`: `# key<TAB>json` header lines (`n_anchor_proteins`, `n_anchor_loci`, `n_censored_loci`,
   `n_neighbors`, `n_keys`, `policy`, ...), then one table per level. pfam: `level key unannotated library
-  model_acc model_name`; nr50/nr90: `level key unannotated cluster_uid rep_uid rep_length model_name`; then
+  model_acc model_name`; nr50/nr90: `level key unannotated rep_uid rep_length model_name` (`key` is the cluster uid; card W-24); then
   `n_loci share_of_loci n_neighbors n_genomes genome_basis offsets modal_offset same_strand_share`. `offsets`
   (`offset:count,...`) and `modal_offset` are relative to the anchor's strand.
 - `loci/locus_<accession>_<anchor_feature_uid>.tsv`: `# <header>`, then `# contig_uid=... anchor_feature_uid=...
