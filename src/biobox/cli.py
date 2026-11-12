@@ -870,7 +870,9 @@ def _verify(a) -> int:
     file there with its size and sha256, and no unlisted file in the release's scope) and, with `--previous P`, P's
     manifest against the release's (`contracts.check_append_only`, R-09: every file of P outside P's own `release=`
     partition is listed with the same sha256). Writes nothing. Prints each problem, then one line per check; exit 0
-    when there is no problem, else 1 (a missing manifest is a problem)."""
+    when there is no problem, else 1 (a missing manifest is a problem). Warnings, which leave the exit code as it is,
+    go to stderr: a lookup table the release lacks (card W-17), and a domain library the release has files of for
+    some of its stages only (card C-19, `catalog.partial_libraries`)."""
     from biobox import contracts
 
     root = Path(a.root)
@@ -898,6 +900,11 @@ def _verify(a) -> int:
             print(f"warning: release {a.release} has no {lookup} files (built before card B-27); readers fall back to "
                   f"{source}, which cannot prune. A release built with the current code has the table "
                   f"(card C-17 builds one over these stages)", file=sys.stderr)
+    for lib, scanned, unscanned in catalog.partial_libraries(man):  # card C-19: a warning only
+        print(f"warning: release {a.release} has domain files of library {lib} for stages {','.join(scanned)} but "
+              f"not {','.join(unscanned)} (not scanned when the release was built); its {lib} family tokens cover the "
+              f"genes of {','.join(scanned)} only. A release built after those stages are scanned covers them all",
+              file=sys.stderr)
     if a.previous:
         prev = load(a.previous)
         if prev is None:
