@@ -122,7 +122,9 @@ def index_files(root: Path) -> list[Path]:
     return io.part_files(Path(root) / INDEX_DIR, "stage=*/part-*.parquet")
 
 
-OWNED_BY = "owned_by:"  # ledger reason of a contig that another stage owns (DEC-26), followed by that stage's name
+# ledger reason of a contig that another stage owns (DEC-26), followed by that stage's name, or that another genome of
+# the same stage owns (DEC-27), followed by `<stage>/<genome_uid hex>` (`ContigOwners.owner`)
+OWNED_BY = "owned_by:"
 
 
 def stages_on_disk(root: Path) -> list[str]:
@@ -155,19 +157,37 @@ class ContigOwners:
     holds no default variant of a contig an earlier stage stored, so that stage is unique; it owns the contig's
     gene calls, IGRs and tape. `stages` are the stages to look in, `stage` (the caller's own) first; one key
     lookup per stage at most. A contig owned by none of them raises KeyError naming the stage on disk that owns
-    it, if any."""
+    it, if any.
 
-    def __init__(self, root: Path, stage: str, stages):
+    Within the caller's stage, a contig in several of its genomes belongs to the genome with the least
+    `genome_uid` (DEC-27, card C-21a): `shared` maps each such contig to that genome (`inputs.shared_contigs`)."""
+
+    def __init__(self, root: Path, stage: str, stages, shared: dict[bytes, bytes] | None = None):
         self.root, self.stage = Path(root), stage
         self.stages = list(dict.fromkeys([stage, *stages]))
+        self.shared = {} if shared is None else dict(shared)
         self._index = {s: KeyLookup(io.part_files(self.root / INDEX_DIR / f"stage={s}"), "contig_uid",
                                     ["is_default_variant"]) for s in self.stages}
 
-    def owner(self, contig_uid: bytes) -> str:
+    def owner(self, contig_uid: bytes, genome_uid: bytes | None = None) -> str:
+        """The owning stage; with `genome_uid`, a contig of the caller's stage that another of its genomes owns is
+        `<stage>/<that genome_uid in hex>` (`OWNER_SEP`). Either way, the owner is the caller exactly when the
+        result is `self.stage`, and the result is what follows `OWNED_BY` in a skip's ledger reason."""
         for s in self.stages:
             if any(r["is_default_variant"] for r in self._index[s].get(contig_uid)):
-                return s
+                g = self.shared.get(contig_uid) if s == self.stage and genome_uid is not None else None
+                return s if g is None or g == genome_uid else f"{s}{OWNER_SEP}{g.hex()}"
         raise KeyError(missing_contig(self.root, contig_uid, self.stages))
+
+
+OWNER_SEP = "/"  # between the stage and the genome in an owner within a stage (`ContigOwners.owner`)
+
+
+def skipped_entry(contig_uid: bytes, owner: str) -> dict:
+    """A producer's result entry for a contig it skipped (C-20): the contig, the owning stage and, for a contig that
+    another genome of the producer's own stage owns (C-21a), that genome."""
+    stage, _, genome = owner.partition(OWNER_SEP)
+    return {"contig_uid": contig_uid.hex(), "owner_stage": stage, **({"owner_genome": genome} if genome else {})}
 
 
 def missing_contig(root: Path, contig_uid: bytes, stages) -> str:

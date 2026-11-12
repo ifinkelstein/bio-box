@@ -721,11 +721,13 @@ _SPECS = [
             _f("genetic_code", pa.uint8()),
             _f("assembly_quality", pa.string()),
         ]),
-        primary_key=("contig_uid", "stage"),
-        sort_key=("contig_uid",),
+        # DEC-27 (card C-21a): a contig is listed once per genome that holds it, also within a stage. Files written
+        # before it hold one row per contig, so they are sorted by (contig_uid, genome_uid) too.
+        primary_key=("contig_uid", "genome_uid", "stage"),
+        sort_key=("contig_uid", "genome_uid"),
         partition_keys=("stage",),
         enums={"kind": ("prokaryote", "virus", "plasmid"), "assembly_quality": _ASSEMBLY_QUALITY},
-        doc="planning/tasks/TASKS.md §2; DEC-18. The gene caller's per-contig inputs, persisted per stage",
+        doc="planning/tasks/TASKS.md §2; DEC-18, DEC-27. The gene caller's inputs per contig and genome, per stage",
     ),
     TableSpec(
         name="feature",

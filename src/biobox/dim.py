@@ -47,12 +47,14 @@ def run(root, release: str, stages: list[str], tmp=None, max_file_bytes: int = l
     A contig shared by genomes of two stages (DEC-26, card C-20) belongs to the stage that stored it
     first, the one whose `contig_index` holds its default variant: its row is that stage's genome, and a
     different row of another stage is skipped and listed (`_views`). Identical rows from several stages
-    collapse to one.
+    collapse to one. A contig in several genomes of its owning stage (DEC-27, card C-21a) keeps the
+    genome with the least `genome_uid`, the one that writes its gene calls; the others are listed as
+    skipped too, until card C-21b counts a contig's genomes.
 
     Errors: a default-variant contig without a `genome_input` row; a `genome_input` row whose contig
     is not a default-variant contig of the given stages (naming the stage on disk that owns it, which
-    the release must then list); two different rows for a contig from the stages that own it (two
-    genomes of one stage, or two stages both holding its default variant).
+    the release must then list); rows for a contig from the stages that own it that disagree on its
+    topology, or two different rows for one genome (two stages both holding its default variant).
     Returns `{"contigs": n, "genomes": g, "circular": c}`, and `"skipped"` (one entry per skipped row:
     contig, stage, genome, owning stage, the genome kept) when there is one.
     """
@@ -85,7 +87,7 @@ def run(root, release: str, stages: list[str], tmp=None, max_file_bytes: int = l
         skipped = [{"contig_uid": cu.hex(), "stage": s, "genome_uid": g.hex(), "owner_stage": o,
                     "kept_genome_uid": k.hex()} for cu, s, g, o, k in con.execute(
                         "SELECT contig_uid, stage, genome_uid, owner_stage, kept_genome_uid FROM skipped "
-                        "ORDER BY contig_uid, stage").fetchall()]
+                        "ORDER BY contig_uid, stage, genome_uid").fetchall()]
         io.write_parts(io.duck_batches(con, "SELECT * FROM dim ORDER BY contig_uid", spec), spec, base,
                        EST_ROW_BYTES, max_file_bytes)
         res = {"contigs": contigs, "genomes": genomes, "circular": circular}
@@ -107,12 +109,13 @@ def _views(con, root: Path, release: str, stages: list[str]) -> str | None:
     owns, DEC-26) over the release's stages, or return why the release is refused.
 
     A contig's owning stage is the stage whose `contig_index` holds its default variant: ingest stores a
-    sequence once, in the first stage that sees it. Its row comes from that stage's `genome_input`; another
-    stage's row for the same contig that differs is skipped (that genome is one contig short here, the
-    accepted consequence of DEC-26). Without a row in an owning stage, the contig's rows must all agree, as
-    before. Refused: a default-variant contig without any row; a row naming a contig that no listed stage
-    owns (the stage on disk that owns it is named); two different rows from the owning stages (two genomes
-    in one stage, or two stages that both hold the default variant)."""
+    sequence once, in the first stage that sees it. Its row comes from that stage's `genome_input`, from the
+    genome with the least `genome_uid` when the stage lists it in several (DEC-27); every other row that
+    differs is skipped (that genome is one contig short here: DEC-26's consequence, until card C-21b). Without
+    a row in an owning stage, the row is chosen the same way from all its rows. Refused: a default-variant
+    contig without any row; a row naming a contig that no listed stage owns (the stage on disk that owns it is
+    named); candidate rows that disagree on `is_circular`; two different rows for the chosen genome (two
+    stages that both hold the default variant)."""
     ci = _stage_files(root, "l0seq/contig_index", stages, "contig_uid, contig_len, is_default_variant")
     gi = _stage_files(root, "l0seq/genome_input", stages, "contig_uid, genome_uid, is_circular, assembly_quality")
     con.execute(f"CREATE TEMP TABLE own AS SELECT DISTINCT stage, contig_uid, contig_len FROM ({ci}) "
@@ -136,22 +139,30 @@ def _views(con, root: Path, release: str, stages: list[str]) -> str | None:
             msg += (f" (in stage {first_stage}'s genome_input): stage {owner} stored it first and owns it (DEC-26), "
                     f"and release {release} lists stages {stages} without it; list stage {owner} in the release")
         return msg
-    # the row of each contig: from its owning stage(s), else the only row it has
+    # the rows each contig's row is chosen from: its owning stage's, else all it has
     con.execute("CREATE TEMP TABLE gio AS SELECT gi.*, (o.stage IS NOT NULL) AS from_owner FROM gi "
                 "LEFT JOIN own o ON o.stage = gi.stage AND o.contig_uid = gi.contig_uid")
-    con.execute("CREATE TEMP TABLE chosen AS "
-                "SELECT DISTINCT contig_uid, genome_uid, is_circular, assembly_quality FROM gio g "
+    con.execute("CREATE TEMP TABLE cand AS SELECT contig_uid, genome_uid, is_circular, assembly_quality FROM gio g "
                 "WHERE from_owner OR NOT EXISTS (SELECT 1 FROM gio x WHERE x.contig_uid = g.contig_uid AND x.from_owner)")
+    n, first = con.execute("SELECT count(*), min(contig_uid) FROM (SELECT contig_uid FROM cand "
+                           "GROUP BY contig_uid HAVING count(DISTINCT is_circular) > 1)").fetchall()[0]
+    if n:
+        return (f"{n} contigs have conflicting genome_input rows in the stages that own them: their genomes disagree "
+                f"on is_circular, the contig's own topology; first: {first.hex()}")
+    # several genomes of the owning stage (DEC-27): the one with the least genome_uid, which writes the gene calls
+    con.execute("CREATE TEMP TABLE chosen AS SELECT DISTINCT c.* FROM cand c JOIN "
+                "(SELECT contig_uid, min(genome_uid) AS genome_uid FROM cand GROUP BY contig_uid) USING (contig_uid, "
+                "genome_uid)")
     n, first = con.execute("SELECT count(*), min(contig_uid) FROM (SELECT contig_uid FROM chosen "
                            "GROUP BY contig_uid HAVING count(*) > 1)").fetchall()[0]
     if n:
-        return (f"{n} contigs have conflicting genome_input rows in the stages that own them (two genomes of one "
-                f"stage, or two stages holding the default variant); first: {first.hex()}")
+        return (f"{n} contigs have conflicting genome_input rows in the stages that own them (two stages holding the "
+                f"default variant, with different rows for one genome); first: {first.hex()}")
     con.execute("CREATE TEMP VIEW skipped AS SELECT g.contig_uid, g.stage, g.genome_uid, "
                 "(SELECT min(o.stage) FROM own o WHERE o.contig_uid = g.contig_uid) AS owner_stage, "
                 "c.genome_uid AS kept_genome_uid FROM gio g JOIN chosen c USING (contig_uid) "
-                "WHERE NOT g.from_owner AND (g.genome_uid IS DISTINCT FROM c.genome_uid "
-                "OR g.is_circular IS DISTINCT FROM c.is_circular OR g.assembly_quality IS DISTINCT FROM c.assembly_quality)")
+                "WHERE g.genome_uid IS DISTINCT FROM c.genome_uid "
+                "OR g.is_circular IS DISTINCT FROM c.is_circular OR g.assembly_quality IS DISTINCT FROM c.assembly_quality")
     con.execute("CREATE TEMP VIEW dim AS SELECT ci.contig_uid, c.genome_uid, ci.contig_len, c.is_circular, "
                 "NULL::UTINYINT AS tier, c.assembly_quality, NULL::UINTEGER AS tax_order, "
                 "false AS is_species_rep FROM ci JOIN chosen c USING (contig_uid)")

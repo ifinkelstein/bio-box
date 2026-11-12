@@ -4,8 +4,9 @@
 
 `bio-box stage inputs` has no dry-run flag: it parses `--genomes` with `biobox.cli._genomes` (JSON list
 to `GenomeInput`), then `l0seq.inputs.write_genome_input` refuses a partition already written, checks
-the genomes in `_rows` (no contig twice in a genome, circular contigs inside their genome, no contig in
-two genomes) and writes. This runs the parsing and `_rows` only, never `write_genome_input`, so no
+the genomes in `_rows` (no contig twice in a genome, circular contigs inside their genome, no genome
+listed twice, and a contig in several genomes only when they agree on its kind, genetic code and
+topology: DEC-27, card C-21a) and writes. This runs the parsing and `_rows` only, never `write_genome_input`, so no
 root is read or written. It also parses `--objects` as `stage ingest` does (`cli._source_objects`),
 checks each object path is a file, checks the stage name (`catalog.check_stages`), each genome's kind
 and assembly quality against the `genome_input` schema's enums, and asks `genecall._finder` which

@@ -79,7 +79,10 @@ through `biobox.io.write_parts`:
                                                             rejected (longer than a circular contig)
 
 A contig that another stage stored first (DEC-26, card C-20) is that stage's: it is not searched here and has one
-ledger row, reason `owned_by:<stage>`, counts 0.
+ledger row, reason `owned_by:<stage>`, counts 0. A contig in several genomes of the stage (`genome_input` lists it
+once per genome, DEC-27, card C-21a) is searched once, for the genome with the least `genome_uid`; beside its `ok`
+row it has a ledger row with reason `owned_by:<stage>/<genome_uid>` and the same counts, and the result lists it
+with `owner_genome`.
 
 Two ways to scan a stage, with byte-identical output (card E-07, as card B-24 shards the domain scan):
 
@@ -131,7 +134,7 @@ import pyarrow.parquet as pq
 
 from biobox import ids, io, layout, ledger, provenance
 from biobox.l0seq.inputs import GenomeInput
-from biobox.l0seq.store import INDEX_DIR, ContigOwners, SeqStore
+from biobox.l0seq.store import INDEX_DIR, OWNER_SEP, ContigOwners, SeqStore, skipped_entry
 from biobox.l0seq.store import OWNED_BY as SKIP_REASON
 from biobox.l1.genecall import GENE_CALL_VERSION
 from biobox.l1.igr import igrs_of_contig
@@ -661,19 +664,20 @@ def _range_rows(files: list[Path], cols: list[str], lo: bytes | None = None, hi:
                     yield row
 
 
-def _with_genes(contigs: Iterable[tuple[bytes, bool]], feats: Iterator[tuple] | None
-                ) -> Iterator[tuple[bytes, bool, list[tuple[int, int]]]]:
-    """(contig_uid, circular, its genes) for each of `contigs` (sorted by contig_uid), the genes from the sorted
-    gene-call rows `feats` (contig_uid, start, end): a merge join, one contig's genes held at a time."""
+def _with_genes(contigs: Iterable[tuple[bytes, bool, bytes | None]], feats: Iterator[tuple] | None
+                ) -> Iterator[tuple[bytes, bool, list[tuple[int, int]], bytes | None]]:
+    """(contig_uid, circular, its genes, owner genome) for each of `contigs` ((contig_uid, circular, owner genome),
+    sorted by contig_uid, as `_distinct` gives them), the genes from the sorted gene-call rows `feats` (contig_uid,
+    start, end): a merge join, one contig's genes held at a time."""
     cur = None if feats is None else next(feats, None)
-    for cu, circ in contigs:
+    for cu, circ, owner in contigs:
         while cur is not None and cur[0] < cu:
             cur = next(feats, None)
         genes = []
         while cur is not None and cur[0] == cu:
             genes.append((cur[1], cur[2]))
             cur = next(feats, None)
-        yield cu, circ, genes
+        yield cu, circ, genes, owner
 
 
 def _gene_files(root: Path, stage: str, gene_call_version: str) -> list[Path]:
@@ -697,6 +701,7 @@ class _Scan:
         self.contigs_w = pq.ParquetWriter(self.contigs_path, _CONTIG_SCRATCH, compression="zstd", write_statistics=False)
         self.batches: dict[str, _Batch | None] = {"whole": None, "igr": None}
         self.stats = {"contigs": 0, "bases": 0, "batches": 0, "hits": 0, "regions": 0, "region_bases": 0}
+        self.shared: dict[bytes, str] = {}  # contig in several genomes of the stage -> its owner (DEC-27)
 
     def _flush(self, kind: str) -> None:
         b = self.batches[kind]
@@ -759,10 +764,12 @@ class _Scan:
             self.contigs_w.close()
 
 
-def _scan(root: Path, stage: str, lib: _Library, contigs: Iterator[tuple[bytes, bool, list]], stages: list[str],
-          cpus: int, scratch: Path, batch_bases: int) -> tuple[_Scan, dict[bytes, str]]:
-    """Search `contigs` ((contig_uid, circular, genes), sorted by contig_uid) into scratch; a contig another stage
-    owns is not searched (DEC-26) and is returned with its owner."""
+def _scan(root: Path, stage: str, lib: _Library, contigs: Iterator[tuple[bytes, bool, list, bytes | None]],
+          stages: list[str], cpus: int, scratch: Path, batch_bases: int) -> tuple[_Scan, dict[bytes, str]]:
+    """Search `contigs` ((contig_uid, circular, genes, owner genome), sorted by contig_uid) into scratch; a contig
+    another stage owns is not searched (DEC-26) and is returned with its owner. A contig in several genomes of this
+    stage (DEC-27) is searched once, for its owner genome, and `sc.shared` holds it with that owner
+    (`<stage>/<genome_uid>`), which its contig row carries as the reason of the other genomes' skip."""
     exe = shutil.which("cmsearch")
     if exe is None:
         raise FileNotFoundError("cmsearch (Infernal) not on PATH")
@@ -772,12 +779,15 @@ def _scan(root: Path, stage: str, lib: _Library, contigs: Iterator[tuple[bytes, 
     sc = _Scan(exe, lib, cpus, scratch, batch_bases, MARGIN)
     ok = False
     try:
-        for cu, circ, genes in contigs:
+        for cu, circ, genes, genome in contigs:
             s = owners.owner(cu)
             if s != stage:
                 skipped[cu] = s
                 sc.skip(cu, s)
                 continue
+            if genome is not None:
+                sc.shared[cu] = f"{stage}{OWNER_SEP}{genome.hex()}"
+                sc.skip(cu, sc.shared[cu])
             sc.contig(cu, store.get(cu).upper(), circ, genes)
         ok = True
     finally:
@@ -823,7 +833,8 @@ def run(root: Path, stage: str, cm_path: Path, cpus: int, genomes: Iterable[Geno
     intergenic regions the set's intergenic models search (needed only when the set has such models).
     `seq_stages`: the stages whose sequences the genomes may name (card B-28), default the stage itself. A contig
     that another stage stored first (DEC-26, card C-20) is that stage's: it is not searched here, and is listed in
-    the result (`skipped_contigs`) and in the ledger (reason `owned_by:<stage>`, counts 0). `tmp` holds the private
+    the result (`skipped_contigs`) and in the ledger (reason `owned_by:<stage>`, counts 0). A contig in several
+    genomes of the stage is searched once and listed with its owner genome (module docstring). `tmp` holds the private
     scratch directory (system temp by default) and may lie under neither the root nor `out`. `batch_bases`: bases
     per cmsearch call; the output does not depend on it. `max_file_bytes`: each table is cut into parts of at most
     this many estimated bytes.
@@ -857,16 +868,17 @@ def run(root: Path, stage: str, cm_path: Path, cpus: int, genomes: Iterable[Geno
             gi = _genome_input_files(root, stage)
             if not gi:
                 raise FileNotFoundError(f"stage {stage}: no genome_input")
-            contigs = ((cu, bool(c)) for cu, c in _range_rows(gi, ["contig_uid", "is_circular"]))
+            contigs = _distinct(_range_rows(gi, ["contig_uid", "is_circular", "genome_uid"]))
         else:
-            contigs = _distinct(iter(sorted({(cu, cu in set(g.circular)) for g in genomes for cu in g.contig_uids})))
+            contigs = _distinct(iter(sorted({(cu, cu in set(g.circular), ids.genome_uid(list(g.contig_uids)))
+                                             for g in genomes for cu in g.contig_uids})))
         feats = _range_rows(gene_files, ["contig_uid", "start", "end"]) if lib.igr else None
         sc, skipped = _scan(root, stage, lib, _with_genes(contigs, feats), stages, cpus, scratch, batch_bases)
         losers = _publish(out, stage, prod, [sc.hits_path], [sc.contigs_path], scratch, tools, clans, max_file_bytes)
         return {**sc.stats, "producer": prod, "models": len(lib.whole) + len(lib.igr), "models_whole": len(lib.whole),
                 "models_intergenic": len(lib.igr), "flank": lib.flank_whole, "flank_igr": lib.flank_igr,
                 "gene_call_version": gcv, "clan_losers": losers,
-                "skipped_contigs": [{"contig_uid": cu.hex(), "owner_stage": s} for cu, s in sorted(skipped.items())]}
+                "skipped_contigs": [skipped_entry(cu, s) for cu, s in sorted({**skipped, **sc.shared}.items())]}
     finally:
         shutil.rmtree(scratch, ignore_errors=True)
 
@@ -909,8 +921,9 @@ def _publish(out: Path, stage: str, prod: str, hit_files: list[Path], contig_fil
     """Decide clan competition over the scratch hits (`_decide`), sort them into the producer's `feature` (the
     winners' loci) and `l1_ncrna` (every hit) files and write the ledger: per contig searched, hits in, kept (the
     winners), merged (the clan losers) and the hits longer than a circular contig rejected; a contig owned by another
-    stage (DEC-26) has one row, reason `owned_by:<stage>`, counts 0. The one writer of `run` and `merge`, so their
-    files are the same. Returns the clan losers."""
+    stage (DEC-26) has one row, reason `owned_by:<stage>`, counts 0; one in several genomes of the stage (DEC-27) has
+    a row, reason `owned_by:<stage>/<genome_uid>`, after its `ok` row and with its counts. The one writer of `run`
+    and `merge`, so their files are the same. Returns the clan losers."""
     feat_dir, hit_dir, _ = _paths(stage, prod)
     con = duckdb.connect(config={"threads": 1, "memory_limit": DUCK_MEMORY_LIMIT,
                                  "temp_directory": str(scratch / "duckdb"), "preserve_insertion_order": True})
@@ -941,14 +954,17 @@ def _publish(out: Path, stage: str, prod: str, hit_files: list[Path], contig_fil
             try:
                 for b in reader:
                     for cu, n, rej, why, lost in zip(*(b.column(i).to_pylist() for i in range(5))):
-                        if why is not None:  # a contig another stage owns: not searched here
-                            yield ledger.row(cu, "contig", 0, 0, reason=why, tools=tools)
+                        if why is not None and OWNER_SEP not in why.removeprefix(SKIP_REASON):
+                            yield ledger.row(cu, "contig", 0, 0, reason=why, tools=tools)  # another stage's
                             continue
                         kept = n - rej - lost
                         if rej:
                             yield ledger.row(cu, "contig", n, kept, lost, n_rejected=rej, reason=REJECT_CIRCLE,
                                              tools=tools)
                         yield ledger.row(cu, "contig", n, kept, lost, tools=tools)
+                        if why is not None:  # searched once for the genome that owns it (DEC-27); its reason
+                            # sorts after `ok` and repeats the contig's counts (L-01)
+                            yield ledger.row(cu, "contig", n, kept, lost, reason=why, tools=tools)
             finally:
                 reader.close()
 
@@ -1153,9 +1169,9 @@ def _shard_scan(root: Path, stage: str, cm_path: Path, model_set, k: int, cpus: 
     read = {"contigs": 0}
 
     def contigs():
-        for cu, c in _range_rows(gi, ["contig_uid", "is_circular"], lo, hi):
+        for cu, c, g in _range_rows(gi, ["contig_uid", "is_circular", "genome_uid"], lo, hi):
             read["contigs"] += 1
-            yield cu, bool(c)
+            yield cu, bool(c), g
 
     feats = _range_rows(genes, ["contig_uid", "start", "end"], lo, hi) if lib.igr else None
     stages = list(dict.fromkeys([stage, *([] if seq_stages is None else seq_stages)]))
@@ -1168,12 +1184,20 @@ def _shard_scan(root: Path, stage: str, cm_path: Path, model_set, k: int, cpus: 
     return raw, s, sc, skipped, prod
 
 
-def _distinct(contigs: Iterator[tuple[bytes, bool]]) -> Iterator[tuple[bytes, bool]]:
-    last = None
-    for cu, c in contigs:
-        if cu != last:
-            yield cu, c
-        last = cu
+def _distinct(rows: Iterator[tuple[bytes, bool, bytes]]) -> Iterator[tuple[bytes, bool, bytes | None]]:
+    """(contig_uid, circular, owner genome) once per contig of `rows` (contig_uid, circular, genome_uid), sorted by
+    contig_uid: `genome_input` lists a contig once per genome (DEC-27), and the genomes agree on its topology. The
+    owner genome is the least genome_uid of a contig in more than one genome of the stage, else None."""
+    cur = None  # [contig_uid, circular, least genome_uid, rows]
+    for cu, c, g in rows:
+        if cur is not None and cu == cur[0]:
+            cur[2], cur[3] = min(cur[2], g), cur[3] + 1
+            continue
+        if cur is not None:
+            yield cur[0], cur[1], cur[2] if cur[3] > 1 else None
+        cur = [cu, bool(c), g, 1]
+    if cur is not None:
+        yield cur[0], cur[1], cur[2] if cur[3] > 1 else None
 
 
 def _sorted_runs(sc: _Scan, scratch: Path, hits_path: Path, contigs_path: Path) -> None:
