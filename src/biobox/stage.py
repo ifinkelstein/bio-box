@@ -3,6 +3,7 @@
     bio-box build-stage --profile P --root R --stage S --release REL [--stages S0,S1]
         --genomes genomes.json --objects objects.json [--library NAME VERSION HMM CUTOFF ...]
         [--tmp D] [--threads N] [--scan-jobs J] [--scan-cpus C] [--cluster-parts N] [--gene-call-version V]
+        [--ncrna-cm Rfam.cm.gz [--ncrna-set prok-1]]
 
 No workflow engine: the list `steps` returns and the run records `run-step` writes. Each step is
 `runstep.run_step` running `python -m biobox.cli stage ...` or `python -m biobox.cli release ...`
@@ -11,8 +12,13 @@ with `--out` left to `$BIOBOX_STAGING` (card C-08), in this order:
     inputs, ingest, genecall, features, igr, tapes, domains-<lib>-<ver> (one per --library),
     cluster, tokens, postings, dim, manifest, catalog
 
-`features` is the slot for feature producers other than the gene caller. It has no command yet
-and is passed over. A domain scan over the CPU budget runs as several steps (below). The stage
+`features` is the slot for feature producers other than the gene caller. Without `--ncrna-cm` it has no
+command and is passed over. With `--ncrna-cm F` (card E-07) it is the ncRNA producer
+(`biobox.l1.ncrna`, model set `--ncrna-set`, default `prok-1`), a step named `ncrna-<producer>`, and the
+IGR, tape, token and posting steps are given both producers (`--producers <gene caller>,<ncRNA
+producer>`), which makes a tape version of its own by design; the gene-call files are the same with or
+without it. The ncRNA scan runs with `--cpus` C (`--scan-cpus`, default `DEFAULT_SCAN_CPUS`, at most
+`--threads`). A domain or ncRNA scan over the CPU budget runs as several steps (below). The stage
 steps are recorded under `runs/stage=<S>/`, the release steps under `runs/stage=<REL>/`.
 
 Contigs shared across stages (card C-20, DEC-26). Ingest stores a sequence once, in the first stage that sees
@@ -116,6 +122,17 @@ run like the shards: up to J at once within the allowance, `STOP` before each la
 stay as published: a rescan must reproduce its record's sha256, and one that does not stops the
 build before the merge with an error naming the shard.
 
+The ncRNA scan in shards (card E-07). Its estimate is the stage's genome bases (the `contig_len` of the
+default variants in the stage's `contig_index`, listed in ingest's run record) at `NCRNA_CPU_H_PER_10GBP`;
+over `SHARD_MARGIN` of the budget (or with its plan published) it runs as `ncrna-<p>.plan` (`bio-box stage
+ncrna plan`, shards of at most `ncrna_shard_bases(profile)` genome bases), `ncrna-<p>.shard-<k>` and the merge
+under the step's own name, exactly as a domain scan does, with the same pool, hours, STOP and lost-scratch
+rescans (`python -m biobox.l1.ncrna rescan`). The pool has one more term, memory: each `cmsearch` holds up to
+`ncrna_job_bytes(C)`, so at most `cap // ncrna_job_bytes(C)` shards run at once under the memory cap this
+process runs in (the `pod_run.sh` unit's, `runstep.detect_cap`); a cap below one shard is refused (exit 2)
+before the scan starts. The shards and the one-process step are given `--seq-stages` (every stage on disk) when
+they start, as gene calling is, so a contig another stage owns is skipped and recorded (DEC-26).
+
 Up to J shards run at once (`--scan-jobs`, default: the allowance at the start // C; fewer while
 the allowance of the hour is smaller, above), each its own `bio-box
 run-step` process (`python -m biobox.cli run-step --threads C -- ...`, `--scan-cpus`, default
@@ -165,7 +182,7 @@ import yaml
 
 from biobox import catalog, dim, runstep
 from biobox.l0seq import store
-from biobox.l1 import domains
+from biobox.l1 import domains, ncrna
 from biobox.l1.genecall import GENE_CALL_VERSION
 from biobox.l2 import cluster as l2cluster
 from biobox.profile import Profile
@@ -219,6 +236,16 @@ DEFAULT_SCAN_CPUS = 4
 # allowance changes at the edges of the day window and with the load average, so a minute's delay is small beside a
 # step or a shard. Not measured; never below a second (no tighter polling).
 RECHECK_S = 60.0
+# The ncRNA scan (card E-07, DEC-28): 247.4 CPU-hours per 10 Gbp, *derived* in planning/design/0-08_ncrna_models.md
+# §4 (the set prok-1 on intergenic regions at margin 200 with --notrunc, its 23 in-CDS models on whole genomes,
+# from per-model CPU measured on wilkcomp02, 2026-11-11, measurement 0-09c). Shards are cut by genome bases at
+# SHARD_MARGIN of the budget at this rate: 161,681,487 bases at 300 CPU-minutes (derived: 0.8 × 300 × 60 /
+# (247.4 × 3600 / 1e10)); the pod check of card E-07 measures it (planning/measurements/2026-11-11_ncrna_producer.md).
+NCRNA_CPU_H_PER_10GBP = 247.4
+# Peak RSS of one `cmsearch --cpu 2` on intergenic records, 6.4 GiB at most (*measured*, wilkcomp02, 2026-11-11,
+# measurement 0-09c, full library; 4.8 GiB on whole genomes). A shard of C threads is counted at 6.4 GiB per two
+# threads (derived; an over-estimate, since card E-01 measured 12.3 GiB at --cpu 8 on whole genomes, not 25.6).
+NCRNA_JOB_GIB, NCRNA_JOB_THREADS = 6.4, 2
 CUTOFFS = ("gathering", "trusted", "noise", "none")
 _READ = 1 << 20  # bytes per read when decompressing an input to count it
 
@@ -253,6 +280,8 @@ class Build:
     scan_cpus: int | None = None  # C, threads per scan shard; None: DEFAULT_SCAN_CPUS, or the allowance if smaller
     shard_bases: int | None = None  # ingest's batch size (`--shard-bases`); None: the store's default (card B-30)
     cluster_parts: int | None = None  # clustering in parts, every per-query call in this many (card B-41); None: auto
+    ncrna_cm: Path | None = None  # the Rfam library of the ncRNA producer in the `features` slot (card E-07); None: none
+    ncrna_set: str = ncrna.DEFAULT_SET  # its model set: a frozen set's name or a set file
 
 
 @dataclass(frozen=True)
@@ -260,7 +289,7 @@ class Step:
     run_stage: str  # run-step's --stage: the stage, or the release for a release step
     name: str  # run-step's --step
     argv: tuple[str, ...] | None  # the bio-box arguments; None for an empty slot
-    check: str | None = None  # "ingest", "scan" or "cluster": the CPU-minute estimate made before it
+    check: str | None = None  # "ingest", "scan", "ncrna" or "cluster": the CPU-minute estimate made before it
     module: str = "biobox.cli"  # what `python -m` runs: the bio-box CLI, or biobox.l1.domains for a rescan
     scratch: str | None = None  # the step's own scratch directory (its --tmp, card C-13), or None
 
@@ -292,11 +321,32 @@ def scan_name(lib: Library) -> str:
     return f"domains-{lib.name}-{lib.version}"
 
 
+def ncrna_set_arg(b: Build) -> str:
+    """`--ncrna-set` as the steps pass it: a set file given by path, made absolute; else the frozen set's name."""
+    p = Path(b.ncrna_set)
+    return str(p.resolve()) if p.is_file() else b.ncrna_set
+
+
+def ncrna_name(b: Build) -> str:
+    """The ncRNA step's name, `ncrna-<producer>`: a new producer (library, set or region rule) is a new step."""
+    return f"ncrna-{ncrna.producer(Path(b.ncrna_cm), ncrna_set_arg(b))}"
+
+
+def ncrna_cpus(prof: Profile, b: Build) -> int:
+    """cmsearch threads of the ncRNA scan: `--scan-cpus`, else `DEFAULT_SCAN_CPUS`, at most `--threads`."""
+    return min(threads_of(prof, b), b.scan_cpus if b.scan_cpus is not None else DEFAULT_SCAN_CPUS)
+
+
 def steps(prof: Profile, b: Build) -> list[Step]:
     """The fixed list of steps for `b` (module docstring)."""
     root, n, tmp = str(Path(b.root).resolve()), str(threads_of(prof, b)), str(scratch_of(prof, b))
     common = ("--root", root, "--gene-call-version", b.gene_call_version)
     stages = () if b.stages is None else ("--stages", ",".join(b.stages))
+    prods: tuple[str, ...] = ()
+    features = Step(b.stage, "features", None)  # other feature producers: none
+    if b.ncrna_cm is not None:
+        name = ncrna_name(b)
+        prods = ("--producers", f"{b.gene_call_version},{name.removeprefix('ncrna-')}")
 
     def st(sub: str, *extra: str) -> tuple[str, ...]:
         return ("stage", sub, *common, "--stage", b.stage, *extra)
@@ -310,20 +360,24 @@ def steps(prof: Profile, b: Build) -> list[Step]:
         return Step(run_stage, name, argv(mine), scratch=mine, **kw)
 
     s, r = b.stage, b.release
+    if b.ncrna_cm is not None:
+        features = own(s, name, lambda t: st("ncrna", "--cm", str(Path(b.ncrna_cm).resolve()), "--ncrna-set",
+                                                      ncrna_set_arg(b), "--cpus", str(ncrna_cpus(prof, b)), "--tmp", t),
+                       check="ncrna")
     return [
         Step(s, "inputs", st("inputs", "--genomes", str(Path(b.genomes).resolve()))),
         own(s, "ingest", lambda t: st("ingest", "--objects", str(Path(b.objects).resolve()), "--tmp", t,
                                       *_shard_bases(b)), check="ingest"),
         own(s, "genecall", lambda t: st("genecall", "--tmp", t, "--workers", n)),
-        Step(s, "features", None),  # other feature producers: none yet
-        own(s, "igr", lambda t: st("igr", "--tmp", t)),
-        own(s, "tapes", lambda t: st("tapes", "--tmp", t)),
+        features,
+        own(s, "igr", lambda t: st("igr", "--tmp", t, *prods)),
+        own(s, "tapes", lambda t: st("tapes", "--tmp", t, *prods)),
         *(Step(s, scan_name(lib), st("domains", "--library", lib.name, "--library-version", lib.version,
                                      "--hmm", str(Path(lib.hmm).resolve()), "--cutoff", lib.cutoff, "--cpus", n),
                check="scan") for lib in b.libraries),
         own(r, "cluster", lambda t: rl("cluster", *stages, "--tmp", t, "--threads", n), check="cluster"),
-        own(r, "tokens", lambda t: rl("tokens", *stages, "--tmp", t)),
-        own(r, "postings", lambda t: rl("postings", *stages, "--tmp", t)),
+        own(r, "tokens", lambda t: rl("tokens", *stages, "--tmp", t, *prods)),
+        own(r, "postings", lambda t: rl("postings", *stages, "--tmp", t, *prods)),
         own(r, "dim", lambda t: rl("dim", *stages, "--tmp", t)),
         Step(r, "manifest", rl("manifest")),
         Step(r, "catalog", rl("catalog")),
@@ -464,6 +518,14 @@ def _refusal(prof: Profile, b: Build, root: Path, plan: list[Step], allowance: i
             return f"library {lib.name}: cutoff {lib.cutoff!r} is not one of {', '.join(CUTOFFS)}"
     if len(set(names)) != len(names):
         return "a library is given twice"
+    if b.ncrna_cm is not None:
+        ns = next(s for s in plan if s.check == "ncrna")
+        if not runstep._NAME.fullmatch(ns.name):
+            return f"bad ncRNA step name {ns.name!r}"
+        try:
+            ncrna.read_set(ncrna_set_arg(b))
+        except (FileNotFoundError, ValueError) as e:
+            return f"--ncrna-set: {e}"
     if threads_of(prof, b) < 1:
         return f"--threads {threads_of(prof, b)}: must be at least 1"
     if b.cluster_parts is not None and (isinstance(b.cluster_parts, bool) or b.cluster_parts < 1):
@@ -572,9 +634,15 @@ def scan_steps(prof: Profile, b: Build, step: Step, n_shards: int | None, cpus: 
             Step(b.stage, step.name, dm("merge", "--tmp", tmp))]
 
 
+def unit_cap() -> int | None:
+    """Bytes of the memory cap this process runs under (the `pod_run.sh` unit's), or None (`runstep.detect_cap`)."""
+    cap = runstep.detect_cap()
+    return None if cap is None else cap["memory_max_bytes"]
+
+
 def build_stage(prof: Profile, b: Build, *, run: Runner | None = None,
                 clock: Callable[[], datetime] = datetime.now, load: Callable[[], float] = runstep._load1,
-                _hook: Hook | None = None) -> int:
+                mem_cap: Callable[[], int | None] = unit_cap, _hook: Hook | None = None) -> int:
     """Run the steps of `b` in order; return 0, the first step's non-zero exit code, 75 for STOP, or 2
     for a refusal (module docstring). `run` (tests only) stands in for `runstep.run_step`, also for the
     scan shards, which it is then called for from one thread each; without it each shard is its own
@@ -584,11 +652,15 @@ def build_stage(prof: Profile, b: Build, *, run: Runner | None = None,
     step or shard launch is held for the allowance (card C-12). An exception that `_hook` raises
     is not caught; shards then running are waited for first. The clock and the load are read at the
     start, then before each step without a run record, before each shard launch and at each check
-    while a launch is held."""
+    while a launch is held. `mem_cap` (tests only) gives the memory cap the ncRNA shards share (card E-07)."""
     shard_run = run
     run = runstep.run_step if run is None else run
     root = Path(b.root).resolve()
-    plan = steps(prof, b)
+    try:
+        plan = steps(prof, b)
+    except (FileNotFoundError, ValueError) as e:  # the ncRNA producer's name needs its library, set and binary
+        _say(f"refused before any step: {e}")
+        return runstep.EXIT_REFUSED
     if (root / "STOP").exists():
         _say(f"{root / 'STOP'} exists; not starting stage {b.stage}")
         return runstep.EXIT_STOP
@@ -649,6 +721,22 @@ def build_stage(prof: Profile, b: Build, *, run: Runner | None = None,
                 else:
                     exempt = prof.cluster_cpu_min_max is not None
                     code = one(step, **({"budget_reason": CLUSTER_EXEMPT} if exempt else {}))
+            elif step.check == "ncrna":
+                sharded = not _record(root, step).exists() and _ncrna_sharded(prof, b, root, step)
+                nc_cpus, nc_jobs = ncrna_cpus(prof, b), jobs if sharded else 1
+                if not _record(root, step).exists() or _intent(root, step).exists():
+                    cap = mem_cap()
+                    nc_jobs = ncrna_jobs(nc_jobs, nc_cpus, cap)
+                    if nc_jobs < 1:
+                        _say(f"refused before {step.run_stage}.{step.name}: one cmsearch of {nc_cpus} threads is "
+                             f"counted at {ncrna_job_bytes(nc_cpus) / 2**30:.1f} GiB, above the memory cap of "
+                             f"{cap / 2**30:.1f} GiB this build runs under; give the unit more memory or lower "
+                             "--scan-cpus")
+                        return runstep.EXIT_REFUSED
+                if sharded:
+                    code = _ncrna_in_shards(prof, b, root, step, one, _hook, nc_jobs, nc_cpus, shard_run, allow)
+                else:
+                    code = one(with_seq_stages(step, root, b.stage))
             elif step.name == "genecall":
                 code = one(with_seq_stages(step, root, b.stage))
             else:
@@ -765,6 +853,147 @@ def _rescan_lost(prof: Profile, b: Build, root: Path, scan: Step, shards: list[S
                          ("rescan", "--root", str(root), "--stage", b.stage, "--library", lib.name,
                           "--library-version", lib.version, "--hmm", hmm, "--shard", str(k), "--cpus", str(cpus),
                           "--tmp", str(scratch)), module="biobox.l1.domains"))
+    if not todo:
+        return None
+    code = _launch(prof, root, todo, jobs, cpus, _rescan_process, hook, allow)
+    if code is not None and code != runstep.EXIT_STOP:
+        _say(f"{b.stage}.{scan.name}: a shard could not be scanned again to its record (above); the merge does not "
+             f"run. A record whose rescan differs is not the scan of these inputs: tell the PI")
+    return code
+
+
+# --- the ncRNA scan in shards (card E-07) --------------------------------------------------------------------
+
+
+def ncrna_cpu_min(bases: int) -> float:
+    """CPU-minutes of the ncRNA scan of `bases` genome bases at `NCRNA_CPU_H_PER_10GBP` (derived)."""
+    return bases * NCRNA_CPU_H_PER_10GBP * 60 / 1e10
+
+
+def ncrna_shard_bases(prof: Profile) -> int:
+    """Genome bases per ncRNA scan shard: what fits in `SHARD_MARGIN` of the profile's `cpu_min_per_process` at
+    `NCRNA_CPU_H_PER_10GBP`, at least one. Nothing else: not the jobs, not the threads."""
+    return max(1, int(SHARD_MARGIN * prof.cpu_min_per_process * 1e10 / (NCRNA_CPU_H_PER_10GBP * 60)))
+
+
+def ncrna_job_bytes(cpus: int) -> int:
+    """Memory one cmsearch of `cpus` threads is counted at: `NCRNA_JOB_GIB` per `NCRNA_JOB_THREADS` threads, rounded
+    up to whole pairs (constants above)."""
+    return int(math.ceil(cpus / NCRNA_JOB_THREADS) * NCRNA_JOB_GIB * 2**30)
+
+
+def ncrna_jobs(jobs: int, cpus: int, cap_bytes: int | None) -> int:
+    """ncRNA shards at once: `jobs`, and no more than fit `cap_bytes` (the memory cap the build runs under) at
+    `ncrna_job_bytes(cpus)` each; `jobs` when there is no cap to see. 0 means not even one fits."""
+    return jobs if cap_bytes is None else min(jobs, cap_bytes // ncrna_job_bytes(cpus))
+
+
+def stage_bases(root: Path, stage: str) -> int:
+    """Genome bases the stage's ncRNA scan reads: the `contig_len` of the default variants in the stage's
+    `contig_index` files listed in its ingest run record (an explicit list, AGENTS §3.9; a contig another stage
+    stored is not in it, DEC-26), one row group at a time."""
+    rec = json.loads((Path(root) / "runs" / f"stage={stage}" / "ingest.json").read_text())
+    prefix = f"{store.INDEX_DIR}/stage={stage}/"
+    total = 0
+    for o in rec["outputs"]:
+        if not o["path"].startswith(prefix):
+            continue
+        pf = pq.ParquetFile(Path(root) / o["path"])
+        for i in range(pf.num_row_groups):
+            t = pf.read_row_group(i, columns=["contig_len", "is_default_variant"])
+            total += pc.sum(pc.filter(t.column("contig_len"), t.column("is_default_variant"))).as_py() or 0
+    return total
+
+
+def _ncrna_sharded(prof: Profile, b: Build, root: Path, step: Step) -> bool:
+    """Whether the ncRNA scan runs in shards: its estimate in one process exceeds `SHARD_MARGIN` of the budget, or
+    an earlier call planned it in shards (its plan is published)."""
+    prod = step.name.removeprefix("ncrna-")
+    if (root / ncrna.scan_dir(b.stage, prod) / "plan.json").exists():
+        return True
+    bases = stage_bases(root, b.stage)
+    est = ncrna_cpu_min(bases)
+    if est <= SHARD_MARGIN * prof.cpu_min_per_process:
+        return False
+    _say(f"{b.stage}.{step.name}: the scan of {bases:,} genome bases is estimated at {est:,.1f} CPU-minutes in one "
+         f"process ({NCRNA_CPU_H_PER_10GBP} CPU-hours per 10 Gbp, derived in planning/design/0-08_ncrna_models.md), "
+         f"over {SHARD_MARGIN:.0%} of the profile's cpu_min_per_process of {prof.cpu_min_per_process} (AGENTS §7.2); "
+         f"it runs in shards of at most {ncrna_shard_bases(prof):,} bases, one step each")
+    return True
+
+
+def ncrna_scan_steps(prof: Profile, b: Build, step: Step, n_shards: int | None, cpus: int,
+                     seq_stages: Sequence[str] = ()) -> list[Step]:
+    """The steps of the ncRNA scan `step` in shards: its plan (with its own scratch), then (once the plan is
+    published and `n_shards` known) one step per shard, each scanning with `cpus` threads and reading the sequences
+    of `seq_stages`, then the merge under the step's own name, so its run record is the scan's."""
+    root, tmp = str(Path(b.root).resolve()), str(scratch_of(prof, b))
+
+    def nc(action: str, *extra: str) -> tuple[str, ...]:
+        return ("stage", "ncrna", action, "--root", root, "--gene-call-version", b.gene_call_version, "--stage",
+                b.stage, "--cm", str(Path(b.ncrna_cm).resolve()), "--ncrna-set", ncrna_set_arg(b), *extra)
+
+    mine = str(Path(tmp) / f"{b.stage}.{step.name}.plan")
+    plan = Step(b.stage, f"{step.name}.plan", nc("plan", "--scan-bases", str(ncrna_shard_bases(prof)), "--tmp", mine),
+                scratch=mine)
+    if n_shards is None:
+        return [plan]
+    seq = ("--seq-stages", ",".join(seq_stages)) if seq_stages else ()
+    return [plan,
+            *(Step(b.stage, f"{step.name}.shard-{k:05d}", nc("shard", "--shard", str(k), "--cpus", str(cpus),
+                                                             "--tmp", tmp, *seq)) for k in range(n_shards)),
+            Step(b.stage, step.name, nc("merge", "--tmp", tmp))]
+
+
+def _ncrna_in_shards(prof: Profile, b: Build, root: Path, step: Step, one: Callable[[Step], int | None],
+                     hook: Hook | None, jobs: int, cpus: int, run: Runner | None,
+                     allow: Callable[[], int]) -> int | None:
+    """The ncRNA scan `step` as its plan step, its shard steps (up to `jobs` at once, `cpus` threads each, within the
+    allowance of the hour, `_run_shards`) and its merge step (`ncrna_scan_steps`), as `_scan_in_shards` runs a domain
+    scan; a shard whose scratch runs are lost is scanned again first (`_rescan_lost_ncrna`). The shards' scratch runs
+    are removed once the merge is published."""
+    prod = step.name.removeprefix("ncrna-")
+    first = ncrna_scan_steps(prof, b, step, None, cpus)[0]
+    code = one(first)
+    if code is not None:
+        return code
+    if hook is not None:
+        hook(f"after:{first.name}")
+    shards = len(ncrna.read_plan(root, b.stage, prod)["shards"])
+    seq = [b.stage, *(s for s in store.stages_on_disk(root) if s != b.stage)]
+    subs = ncrna_scan_steps(prof, b, step, shards, cpus, seq)
+    if run is None:
+        run = _process_runner(_profile_file(prof, scratch_of(prof, b)))
+    code = _run_shards(prof, root, step, subs[1:-1], jobs, cpus, run, hook, allow)
+    if code is not None:
+        return code
+    code = _rescan_lost_ncrna(prof, b, root, step, subs[1:-1], jobs, cpus, seq, hook, allow)
+    if code is not None:
+        return code
+    code = one(subs[-1])  # the merge; its hook is the scan step's, after this returns
+    if code is not None:
+        return code
+    shutil.rmtree(ncrna.run_paths(scratch_of(prof, b), root, b.stage, prod, 0)[0].parent, ignore_errors=True)
+    return None
+
+
+def _rescan_lost_ncrna(prof: Profile, b: Build, root: Path, scan: Step, shards: list[Step], jobs: int, cpus: int,
+                       seq: Sequence[str], hook: Hook | None, allow: Callable[[], int]) -> int | None:
+    """Before the ncRNA merge: each shard whose scratch runs are missing or fail the sha256 its published record holds
+    is scanned again into scratch (`python -m biobox.l1.ncrna rescan`), as `_rescan_lost` does for a domain scan."""
+    prod = scan.name.removeprefix("ncrna-")
+    scratch = scratch_of(prof, b)
+    todo = []
+    for k, s in enumerate(shards):
+        why = ncrna.run_problem(root, b.stage, prod, k, scratch)
+        if why is None:
+            continue
+        _say(f"{b.stage}.{s.name}: its run record exists, but its runs in {scratch} {why}; scanning it again into "
+             f"scratch (its published record stays; the new runs must reproduce it)")
+        todo.append(Step(b.stage, f"{s.name}.rescan",
+                         ("rescan", "--root", str(root), "--stage", b.stage, "--cm", str(Path(b.ncrna_cm).resolve()),
+                          "--ncrna-set", ncrna_set_arg(b), "--shard", str(k), "--cpus", str(cpus), "--tmp",
+                          str(scratch), "--seq-stages", ",".join(seq)), module="biobox.l1.ncrna"))
     if not todo:
         return None
     code = _launch(prof, root, todo, jobs, cpus, _rescan_process, hook, allow)

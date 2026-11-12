@@ -9,6 +9,12 @@ one linear synthetic contig of seeded uniform-random background (A, C, G, T equa
 coordinates (0-based half-open, strand +1 or -1; a minus-strand sequence is planted as its reverse
 complement). The producer (`biobox.l1.ncrna.run`) then searches that contig.
 
+Card E-07 migration: the producer scans a model set, intergenic models on the intergenic regions of the stage's
+gene calls with `--notrunc` (DEC-28). Here the set is the panel's 20 models, all intergenic, and the stage's gene
+calls are constructed as none (an empty gene-call partition: the synthetic contig holds no gene), so the whole
+contig is one intergenic region and is searched as one record with `--notrunc`, the configuration the producer
+gives a contig without genes.
+
 Panel rule (written before any result was seen): the families are the accessions of `PANEL`, chosen by
 category to cover tRNA (RF00005, RF01852), rRNA fragments that are short (RF00001, RF00002), seven
 riboswitches (RF00162, RF00167, RF00059, RF00050, RF00174, RF00504, RF00168), bacterial RNase P (RF00010,
@@ -269,7 +275,17 @@ def panel_run(tmp_path_factory):
     ingest([SourceObject(fna, "g04", "1", "CC0-1.0", True)], root, "S0")
     cu = ids.contig_uid(contig)
     write_genome_input(root, "S0", [GenomeInput((cu,), 11, kind="bacteria", circular=())])
-    report = ncrna.run(root, "S0", lib, cpus=2, tmp=scratch)
+    # card E-07: the panel as the model set, every model intergenic; the contig holds no gene (an empty gene-call
+    # partition), so it is one intergenic region searched with --notrunc
+    from biobox.l1.genecall import GENE_CALL_VERSION
+    from biobox.registry.schemas import table
+
+    panel_set = base / "panel.tsv"
+    panel_set.write_text("acc\tname\twhole_genome\n" + "".join(f"{a}\t{n}\t0\n" for a, n in PANEL.items()))
+    io.write_parts([], table("feature"), root / f"l1/feature/producer={GENE_CALL_VERSION}/stage=S0", 24)
+    report = ncrna.run(root, "S0", lib, cpus=2, tmp=scratch, model_set=panel_set)
+    assert report["models_intergenic"] == len(PANEL) and report["regions"] == 1
+    assert report["region_bases"] == len(contig)
     import pyarrow.parquet as pq
 
     rel = f"l1/ncrna/producer={report['producer']}/stage=S0"
