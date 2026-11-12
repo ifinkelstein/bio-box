@@ -657,6 +657,7 @@ Accept: tests first on the C-21a fixture; the pruning check.
 **M** · Depends: C-21b · DEC-27
 Files: `src/biobox/catalog.py`, `src/biobox/search/nbr.py`, `src/biobox/search/export.py`, tests
 Do: every count that is by genome takes distinct genomes through `genome_member`; every count by contig, locus or neighbour never joins it except as a semi-join. The design note found `nbr summarize`'s `_aggregate` would inflate neighbour and locus counts once a contig has two genomes: test first with a genome that repeats an existing contig, across `q1_count`'s tier filter, a new `q1_genomes`, `partners_of`, `nbr summarize`, `hits.tsv`, the JSON output and the locus tables. A hit on a shared contig lists every genome that carries it.
+Added 2026-11-12 (W-23 merge): `bio-box releases` counts genomes as the distinct `genome_uid` of `contig_dim`, which under C-21a holds only each contig's owner genome, so a genome whose every contig another genome owns is not counted. Count them through `genome_member` (or `genome_dim`, card C-21b); add `src/biobox/cli.py` to Files for that count only.
 Accept: the tests; outputs on a release without shared contigs are byte-identical to before.
 
 ### C-21f Measure context-free gene calling

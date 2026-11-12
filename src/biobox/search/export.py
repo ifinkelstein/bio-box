@@ -196,6 +196,10 @@ hits.tsv columns
                       off the end or stops within a codon of it, whatever the distance in bases); the contig's
                       length for any gene of a circular contig, which has no end; otherwise the distance in bases
                       from the gene to the nearer end.
+  stage               the build stage whose gene calls hold the gene (a release is built over one or more stages,
+                      for example a phage stage and a prokaryote stage), so hits split by source with no SQL.
+  kind                the kind of the genome the contig belongs to in that stage, as its inputs declared it:
+                      virus, prokaryote or plasmid; empty when the stage recorded no genome for the contig.
 
 loci/*.tsv: the first line is the contig's header, the second `key=value` facts of the locus (anchor_feature_uid,
 anchor_ordinal, anchor_protein_uid, censored = a linear contig end cut the window, ...), the third the column names.
@@ -257,7 +261,7 @@ def lock_problems(locked: dict, current: dict | None = None) -> list[str]:
 HITS_TSV_COLUMNS = ["accession", "header", "contig_len", "start", "end", "strand", "length", "seq_bitscore",
                     "seq_evalue_zref", "pfam_architecture", "protein_uid", "nr90", "nr50", "nr50_rep", "genome_uid",
                     "tier", "contig_uid", "feature_uid", "ordinal", "tape_version", "dist_to_contig_end_bp",
-                    "n_records"]
+                    "n_records", "stage", "kind"]  # card W-23 appended stage and kind
 LOCUS_TSV_COLUMNS = ["offset", "offset_rel", "ordinal", "feature_uid", "start", "end", "strand", "protein_uid",
                      "length_aa", "pfam_architecture", "nr90", "nr50", "hit_seq_bitscore", "delta_bp", "crosses_origin"]
 _BITS = {"seq_bitscore", "hit_seq_bitscore"}
@@ -272,7 +276,9 @@ _SAFE = re.compile(r"[^A-Za-z0-9._-]")
 # open_store's arguments; a null value matches no file), the columns, and partition values kept as columns.
 _RELATIONS = {
     "occ": ("protein_occurrence", ("gene_call_version",),
-            ("protein_uid", "contig_uid", "feature_uid", "start", "end", "strand", "dist_to_contig_end_bp"), ()),
+            ("protein_uid", "contig_uid", "feature_uid", "start", "end", "strand", "dist_to_contig_end_bp"), ("stage",)),
+    # card W-23: the kind of the genome a contig belongs to in a stage (virus, prokaryote, plasmid), sorted by contig
+    "gin": ("genome_input", (), ("contig_uid", "kind"), ("stage",)),
     "prot": ("protein_seq", ("gene_call_version",), ("protein_uid", "length", "seq"), ()),
     "dom": ("l1_domains", (), ("protein_uid", "model_acc", "model_name", "env_start"), ("library",)),
     # by member and by contig: the lookup tables of card B-27, sorted by those keys (cluster_member and
@@ -540,12 +546,19 @@ def _hit_genes(con, hits: list[dict], tape_version: str, library: str | None,
     con.execute("CREATE OR REPLACE TEMP TABLE _pref AS SELECT * FROM _pref_in")
     con.unregister("_pref_in")
     con.execute("CREATE OR REPLACE TEMP TABLE _p AS SELECT protein_uid FROM _h")
+    # a gene's stage is the stage of its protein_occurrence file (card W-23); a contig's genes are written by one
+    # stage only (DEC-26), and should two stages hold the same gene the first stage by name is kept
     con.execute("""CREATE OR REPLACE TEMP TABLE _occ AS
-                   SELECT DISTINCT protein_uid, contig_uid, feature_uid, start, "end", strand, dist_to_contig_end_bp
-                   FROM occ WHERE protein_uid IN (SELECT protein_uid FROM _p)""")
+                   SELECT protein_uid, contig_uid, feature_uid, start, "end", strand, dist_to_contig_end_bp,
+                          min(stage) AS stage
+                   FROM occ WHERE protein_uid IN (SELECT protein_uid FROM _p)
+                   GROUP BY protein_uid, contig_uid, feature_uid, start, "end", strand, dist_to_contig_end_bp""")
     con.execute("CREATE OR REPLACE TEMP TABLE _c AS SELECT DISTINCT contig_uid FROM _occ")
     _annotate_contigs(con, with_ordinals=True)
     _annotate_proteins(con, library)
+    # card W-23: the genome kind of each contig in each stage (genome_input; empty where a stage has none)
+    con.execute("CREATE OR REPLACE TEMP TABLE _kind AS SELECT contig_uid, stage, min(kind) AS kind FROM gin "
+                "WHERE contig_uid IN (SELECT contig_uid FROM _c) GROUP BY contig_uid, stage")
     lost = con.execute("SELECT o.feature_uid, o.contig_uid FROM _occ o ANTI JOIN _ord r "
                        "ON r.contig_uid = o.contig_uid AND r.feature_uid = o.feature_uid "
                        "ORDER BY o.contig_uid, o.feature_uid").fetchall()
@@ -557,7 +570,7 @@ def _hit_genes(con, hits: list[dict], tape_version: str, library: str | None,
                            h.seq_bitscore, h.seq_evalue_zref, coalesce(a.arch, '-') AS pfam_architecture,
                            o.protein_uid, cl.nr90, cl.nr50, cl.nr50_rep, d.genome_uid, d.tier, o.contig_uid,
                            o.feature_uid, r.ordinal, {_q(tape_version)} AS tape_version, o.dist_to_contig_end_bp,
-                           l.n_records,
+                           l.n_records, o.stage, k.kind,
                            row_number() OVER (PARTITION BY o.protein_uid ORDER BY
                                CASE WHEN pf.protein_uid IS NOT NULL
                                          AND (l.accession = pf.accession
@@ -572,7 +585,8 @@ def _hit_genes(con, hits: list[dict], tape_version: str, library: str | None,
                     LEFT JOIN _plen p ON p.protein_uid = o.protein_uid
                     LEFT JOIN _cl cl ON cl.protein_uid = o.protein_uid
                     LEFT JOIN _arch a ON a.protein_uid = o.protein_uid
-                    LEFT JOIN _pref pf ON pf.protein_uid = o.protein_uid""")
+                    LEFT JOIN _pref pf ON pf.protein_uid = o.protein_uid
+                    LEFT JOIN _kind k ON k.contig_uid = o.contig_uid AND k.stage = o.stage""")
 
 
 def hits_tsv(root: Path, hits: list[dict], *, release: str | None, tape_version: str, gene_call_version: str,
@@ -588,7 +602,8 @@ def hits_tsv(root: Path, hits: list[dict], *, release: str | None, tape_version:
     the library (`_Store.library`) in order, `-` for none; nr90, nr50, nr50_rep: cluster uids and the NR50
     representative (`member_cluster` of the release: `cluster_member` by member); genome_uid, tier: `contig_dim` of
     the release; ordinal:
-    the gene's slot in `tape_version`, beside its feature_uid (AGENTS §3.3)."""
+    the gene's slot in `tape_version`, beside its feature_uid (AGENTS §3.3); stage, kind (card W-23, last): the stage
+    of the gene's `protein_occurrence` file and the `genome_input` kind of its contig in that stage."""
     with open_store(root, release=release, gene_call_version=gene_call_version, tape_version=tape_version,
                     manifest=manifest, threads=threads, tmp=tmp) as st:
         _hit_genes(st.con, hits, tape_version, st.library(library))
@@ -720,9 +735,27 @@ def _protein_fasta(root, release, gene_call_version, manifest, threads, tmp) -> 
             yield r["seq"]
 
 
+def protein_seqs(root: Path, uids, *, release: str, gene_call_version: str, manifest=None, threads: int | None = None,
+                 tmp=None) -> tuple[dict[bytes, tuple[int, str]], list[dict]]:
+    """({protein_uid: (length, sequence)} for those of `uids` the release's `protein_seq` holds, and what the lookup
+    read: `catalog.profile_query`'s scans), for `bio-box seq --protein` (card W-23). By key: the uids go into a temp
+    table and `protein_seq` is filtered by `IN (SELECT ...)`, which reads the row groups that hold them (card B-27,
+    AGENTS §4.4), not the release; files from `release_files`."""
+    from biobox.catalog import profile_query
+
+    with open_store(root, release=release, gene_call_version=gene_call_version, manifest=manifest, threads=threads,
+                    tmp=tmp, relations=("prot",)) as st:
+        st.con.register("_p_in", pa.table({"protein_uid": pa.array(sorted(set(uids)), pa.binary(16))}))
+        st.con.execute("CREATE TEMP TABLE _p AS SELECT protein_uid FROM _p_in")
+        st.con.unregister("_p_in")
+        got = profile_query(st.con, "SELECT protein_uid, max(length) AS length, min(seq) AS seq FROM prot "
+                                    "WHERE protein_uid IN (SELECT protein_uid FROM _p) GROUP BY protein_uid")
+    return {u: (int(n), s) for u, n, s in got["result"]}, got["scans"]
+
+
 def contig_dims(root: Path, release: str | None, contigs: set[bytes], manifest: dict | None = None) -> dict[bytes, dict]:
-    """{contig_uid: {genome_uid, tier}} from the release's `contig_dim` for the contigs (files from `release_files`);
-    a contig without a row is absent."""
+    """{contig_uid: {genome_uid, tier, is_circular}} from the release's `contig_dim` for the contigs (files from
+    `release_files`); a contig without a row is absent."""
     import pyarrow.parquet as pq
 
     from biobox.search.nbr import _store_files
@@ -731,10 +764,11 @@ def contig_dims(root: Path, release: str | None, contigs: set[bytes], manifest: 
         return {}
     out: dict[bytes, dict] = {}
     for path, _ in _store_files(Path(root), "contig_dim", {"release": release}, release_files(root, release, manifest)):
-        t = pq.read_table(path, columns=["contig_uid", "genome_uid", "tier"], partitioning=None,
+        t = pq.read_table(path, columns=["contig_uid", "genome_uid", "tier", "is_circular"], partitioning=None,
                           filters=[("contig_uid", "in", sorted(contigs))])
         for r in t.to_pylist():
-            out.setdefault(r["contig_uid"], {"genome_uid": r["genome_uid"], "tier": r["tier"]})
+            out.setdefault(r["contig_uid"], {"genome_uid": r["genome_uid"], "tier": r["tier"],
+                                             "is_circular": r["is_circular"]})
     return out
 
 

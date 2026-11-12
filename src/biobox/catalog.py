@@ -2091,8 +2091,13 @@ def attach_search(con: duckdb.DuckDBPyConnection, runs=(), pack: Path | None = N
 # --- LY-06: storage units read per query -------------------------------------
 
 
-def profile_query(con: duckdb.DuckDBPyConnection, sql: str, params: list | None = None) -> dict:
+def profile_query(con: duckdb.DuckDBPyConnection, sql: str, params: list | None = None,
+                  profile_dir: Path | None = None) -> dict:
     """Run `sql` with profiling and return what it read, from DuckDB's own profiler.
+
+    `result` holds the rows and `columns` their names. DuckDB writes its profile into a temporary directory
+    under `profile_dir` (default: the system's): a connection with external access disabled may write only
+    into its allowed directories (card W-23, `bio-box sql`).
 
     `scans` has one entry per Parquet scan: files read, row groups scanned and the total the
     scan could have read. `bytes_read` is DuckDB's I/O counter for the query. `bgzf` is what
@@ -2126,12 +2131,14 @@ def profile_query(con: duckdb.DuckDBPyConnection, sql: str, params: list | None 
         return (0, 0) if t is None else (t.stamp, t.row_groups_read)
 
     lookups_before = [lookup_mark(lazy) for _, lazy in lookups]
-    with tempfile.TemporaryDirectory() as d:
+    with tempfile.TemporaryDirectory(dir=profile_dir) as d:
         out = Path(d) / "profile.json"
         con.execute("PRAGMA enable_profiling = 'json'")
         con.execute(f"PRAGMA profiling_output = {_sql_str(str(out))}")  # keeps the profile off stdout
         try:
-            result = con.execute(sql, params or []).fetchall()
+            cur = con.execute(sql, params or [])
+            columns = [c[0] for c in cur.description or []]
+            result = cur.fetchall()
         finally:
             con.execute("PRAGMA disable_profiling")
         # DuckDB 2.0 writes no profile for some plans (count(*) filtered only on hive keys);
@@ -2179,5 +2186,5 @@ def profile_query(con: duckdb.DuckDBPyConnection, sql: str, params: list | None 
     bgzf =({k: v - before[k] for k, v in store.counters().items()} if store is not None
             else {"blocks_read": 0, "compressed_bytes_read": 0, "uncompressed_bytes_decoded": 0})
     index = {k: v - index_before[k] for k, v in index_counts().items()}
-    return {"result": result, "scans": scans, "bytes_read": info.get("io", {}).get("total_bytes_read"), "bgzf": bgzf,
+    return {"result": result, "columns": columns, "scans": scans, "bytes_read": info.get("io", {}).get("total_bytes_read"), "bgzf": bgzf,
             "index": index}

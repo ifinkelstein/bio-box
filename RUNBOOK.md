@@ -585,23 +585,47 @@ how many rows it shows of how many (`--top_n 0` shows all). `nbr summarize --by 
 release with no domain library says so on stderr and leaves the `pfam` level out. Strand is `+1` or
 `-1` in every table, coordinates are 0-based and half-open, and the offsets of `neighbors.tsv` are
 relative to the anchor's strand (card W-20; `search hmm` writes these and every column's meaning into
-`README.txt`; `tier` is a column of `hits.tsv` only when the release has tiers, none has yet).
+`README.txt`; `tier` is a column of `hits.tsv` only when the release has tiers, none has yet; its last two columns,
+`stage` and `kind`, give each gene's build stage and its genome's kind, card W-23).
 `--format tsv`
 is one row per gene; `--format faa` is one record per protein, named by protein uid. `nbr ...
 --format tsv --out DIR` writes one file per anchor locus. `nbr summarize` counts families and
 clusters around the anchors. `export proteins` needs the release's manifest; it reads the root only
-and takes no `--profile`.
+and takes no `--profile`. Every one of these given `--out` prints one stderr line per file it wrote,
+`wrote PATH: N rows` (`sequences` for FASTA, `records` for JSON lines, `N tables, M rows` for a
+directory of locus tables; card W-23).
+
+**What a root holds, one sequence, and SQL** (card W-23). `releases` prints one line per release
+of the root (a manifest or only a `release_def`): stages, genomes, contigs, distinct proteins, domain
+libraries, ncRNA producers, whether it has the lookup tables of cards B-27 and B-39, and with
+`--profile` (or `--pack-dir`) its pack. `seq` prints proteins by uid (`--protein`, several, or
+`--proteins-file`) or one stretch of a contig (`--contig` by accession or contig uid, `--strand -1`)
+as FASTA, read by key, never by exporting the release. `sql` runs SELECT statements on the release's
+catalog through `open_catalog` on a read-only connection (external access off, only the release's and
+the runs' files readable; `COPY ... TO`, `CREATE`, `ATTACH`, `SET` and the like exit 2), with DuckDB's
+temporary files in a scratch directory under the profile's `tmp`, and prints on stderr the row groups
+each statement read; `--runs` (or the profile) attaches runs of the release.
+
+```bash
+bio-box releases --root "$ROOT" --profile "$PROFILE"
+bio-box seq --root "$ROOT" --release rC6.1 --protein 0123456789abcdef0123456789abcdef
+bio-box seq --root "$ROOT" --release rC6.1 --contig NC_001416.1:201..1000 --strand -1
+bio-box sql --root "$ROOT" --release rC6.1 --profile "$PROFILE" -e "SELECT key, value FROM catalog_info"
+```
 
 **Anchors from a file, and finding a gene** (card W-18). `nbr` takes a long list of protein uids from a
 file, one uid per line (blank lines and `#` lines are skipped), in place of the comma-separated
 argument; `find` prints the genes an accession or a protein uid names, one row each: accession,
-contig uid, start, end (0-based, end exclusive), strand, feature uid, protein uid. `ACC:START-END`
-names one gene, as `search hmm --positive` does (it uses the same lookup). `--accession ACC` alone lists
+contig uid, start, end (0-based, end exclusive), strand, feature uid, protein uid, and the gene in both
+coordinate forms (`span`, `genbank_span`). `ACC:START-END` (0-based, end exclusive) or `ACC:START..END`
+(GenBank: 1-based, both ends included; card W-23) names one gene, as `search hmm --positive` does (it
+uses the same lookup); any other spelling exits 2 and shows both forms. `--accession ACC` alone lists
 every gene of that contig; `--protein UID` every gene that carries the protein.
 
 ```bash
 bio-box nbr summarize --anchors-file "$WORK/anchors.txt" --root "$ROOT" --profile "$PROFILE" --release rC6.1 --window 5g --by pfam,nr50
 bio-box find --root "$ROOT" --release rC6.1 --accession NC_001416.1:200-1000
+bio-box find --root "$ROOT" --release rC6.1 --accession NC_001416.1:201..1000
 bio-box find --root "$ROOT" --release rC6.1 --protein 0123456789abcdef0123456789abcdef
 ```
 
@@ -610,7 +634,8 @@ runs it, and writes the exports into `--out DIR`. `--bits` is the inclusion thre
 `--neighbors N` the genes on each side (window `Ng`, default 5); `--model` picks one model of a file
 that holds several. `--positive` is required: a protein the search must find, given as
 `ACCESSION:START-END` (one gene, with the accession, start and end that `search hits --format tsv`
-prints: 0-based, end exclusive) or as a substring of its contig's header (case-sensitive). It must
+prints: 0-based, end exclusive), as `ACCESSION:START..END` (the same gene in GenBank's 1-based form) or
+as a substring of its contig's header (case-sensitive). It must
 name exactly one protein of the release; otherwise the command exits 2 and lists the genes that
 matched, each as `ACCESSION:START-END`, so one can be given instead. `$POSITIVE` below is such a
 gene. The run runs in the foreground, as `search run --wait`, so it may run in a `pod_run.sh` unit;
@@ -625,6 +650,7 @@ column means), `recipe.yaml` (the recipe the
 run ran; `search run DIR/recipe.yaml` runs it again), `hits.tsv` and `hits.faa` (as `search hits
 --format tsv|faa`), `neighbors.tsv` (as `nbr summarize --format tsv`) and `loci/` (one table per
 locus, as `nbr --format tsv`); each is written by that command, so the files are the same. The log
+has a `wrote PATH: N ...` line for each of `hits.tsv`, `hits.faa`, `neighbors.tsv` and `loci/`, then
 ends with the run id and `ok`, then one line per file. The run itself is in the runs directory, as
 for `search run`. A release with no domain library (the 10 Gbp release `rN.1` has none) is
 searched all the same: the neighbour summary is by `nr50,nr90` instead of `pfam,nr50`, and the log
