@@ -21,8 +21,8 @@
 #       the driver. --threads 16 (gene calling), --scan-jobs 4 --scan-cpus 4 (ingest batches, if any).
 #   B2  P6 the same, but every stage is then gene-called, so it runs on into rM.1's release steps: clustering of
 #       about 47 M proteins in parts (card B-41), tokens, postings, dim, manifest, catalog. --threads 32,
-#       --cluster-parts CLUSTER_PARTS, --scan-jobs REL_JOBS --scan-cpus REL_CPUS (4 parts of 8 threads at once:
-#       32 threads, the day budget of this work), fixed for the whole launch.
+#       --cluster-parts CLUSTER_PARTS, --scan-jobs REL_JOBS --scan-cpus REL_CPUS (3 parts of 10 threads at once:
+#       30 threads, under the day budget of this work), fixed for the whole launch.
 #       Then `release verify` of rM.1 must pass.
 #   B3  P3, P4, P5, P6: the Pfam scan, `build-stage --stage S --release rM.1 ... --library pfam 38.2 <file>
 #       gathering` (rM.1's release steps all have run records, so only the scan runs, in shards), then
@@ -81,12 +81,14 @@ LEAD_MIN=${LEAD_MIN:-90}
 INPUT_WAIT_S=${INPUT_WAIT_S:-3600}
 # Release phases (rM.1, rM.2): clustering of about 47 M proteins in parts. --cluster-parts cuts every per-query
 # call into CLUSTER_PARTS parts (the only cut build-stage exposes; its own cut aims at 240 CPU-minutes a part from
-# estimates that ran 25% to 36% low at 10.6 M proteins, card C-22). REL_JOBS parts run at once with REL_CPUS
-# threads each: 4 × 8 = 32 threads, and at most 4 prefilter parts, each holding the whole target index, at once
-# (8.06 GB per part at 10.6 M, measured in rN.3; about 35 GB at 47 M, estimate) under the unit's 200G.
+# estimates that ran 25% to 36% low at 10.6 M proteins, card C-22; the NR90 align call, about 4,975 CPU-minutes at
+# 47 M (derived: 625.5 × 6.36 × 1.25), needs at least 20 parts to stay under 280). REL_JOBS parts run at once with
+# REL_CPUS threads each: 3 × 10 = 30 threads, so at most 3 prefilter parts, each holding the whole target's index
+# or table (about 1.26 KB per target, B-43; 11.7 GB for the NR90 step at 10.6 M in rN.3; about 47 GB at 47 M,
+# derived), are in memory at once under the unit's 200G.
 CLUSTER_PARTS=${CLUSTER_PARTS:-24}
-REL_JOBS=${REL_JOBS:-4}
-REL_CPUS=${REL_CPUS:-8}
+REL_JOBS=${REL_JOBS:-3}
+REL_CPUS=${REL_CPUS:-10}
 # The guard's limits: a clustering step over CLUSTER_CPU_MAX (280, the coordinator's line, 2026-11-11) or any
 # other step over 300 CPU-minutes writes STOP.
 CLUSTER_CPU_MAX=${CLUSTER_CPU_MAX:-280}
