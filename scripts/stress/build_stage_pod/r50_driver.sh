@@ -92,6 +92,11 @@ REL_CPUS=${REL_CPUS:-10}
 # The guard's limits: a clustering step over CLUSTER_CPU_MAX (280, the coordinator's line, 2026-11-11) or any
 # other step over 300 CPU-minutes writes STOP.
 CLUSTER_CPU_MAX=${CLUSTER_CPU_MAX:-280}
+# SKIP_RM1=1 (added 2026-11-12, card B-46): rM.1's tokens step fails at about 46 M proteins (DuckDB's memory limit
+# in the slot join). With it set, the driver skips rM.1's release phase and its verify, scans P3 to P6 anyway (each
+# scan launch then ends with rM.1.tokens failing after the scan is published: accepted, nothing else is), and waits
+# before rM.2 until STATE/RELEASE_OK exists, which the coordinator writes once the fixed tree is synced to TREE.
+SKIP_RM1=${SKIP_RM1:-0}
 GUARD_STAGES=P3,P4,P5,P6,rM.1,rM.2
 STEP=domains-pfam-38.2
 mkdir -p "$STATE"
@@ -286,6 +291,11 @@ scan_phase() {  # $1 stage
     wait_unit "$unit" "$s" "$j"
     if [ "$RC" = 0 ]; then log "B3 $s: $(grep "$s.$STEP " "$UNITLOGS/$unit.log" | tail -n 1 | cut -c1-200)"; return; fi
     if [ "$RC" = 75 ] && [ "$SWITCHING" != 0 ]; then continue; fi
+    if [ "$SKIP_RM1" = 1 ] && [ "$RC" = 1 ] && [ -e "$ROOT/runs/stage=$s/$STEP.json" ] \
+       && grep -q "build-stage: rM.1.tokens exited 1" "$UNITLOGS/$unit.log"; then
+      log "B3 $s: scan published; rM.1.tokens failed after it, as expected under SKIP_RM1 (card B-46)"
+      return
+    fi
     fail "B3 $s: $unit exit '$RC' is not 0 and not a switch (read $UNITLOGS/$unit.log)"
   done
 }
@@ -293,12 +303,25 @@ scan_phase() {  # $1 stage
 log "driver start (pid $$), state $STATE, root $ROOT"
 rm -f "$STATE/DONE"
 for s in P3 P4 P5; do stage_only "$s"; done
-release_phase rM.1 P6 P6
-verify rM.1 || fail "rM.1 does not verify (read $STATE/verify-rM.1.log)"
+if [ "$SKIP_RM1" = 1 ]; then
+  log "SKIP_RM1: rM.1's release phase skipped (card B-46)"
+else
+  release_phase rM.1 P6 P6
+  verify rM.1 || fail "rM.1 does not verify (read $STATE/verify-rM.1.log)"
+fi
 for s in P3 P4 P5 P6; do scan_phase "$s"; done
+if [ "$SKIP_RM1" = 1 ]; then
+  said=0
+  until [ -e "$STATE/RELEASE_OK" ]; do
+    halt_check "rM.2 (waiting for $STATE/RELEASE_OK)"
+    [ "$said" = 1 ] || log "scans done; waiting for $STATE/RELEASE_OK (the fixed tree, card B-46) before rM.2"
+    said=1
+    sleep 300
+  done
+fi
 release_phase rM.2 P6 rM2 lib
 verify rM.2 || fail "rM.2 does not verify (read $STATE/verify-rM.2.log)"
-verify rM.1 || log "rM.1 reports problems after the scans (card C-19 if they are only the new domain files)"
+[ "$SKIP_RM1" = 1 ] || verify rM.1 || log "rM.1 reports problems after the scans (card C-19 if they are only the new domain files)"
 verify rN.3 || log "rN.3 reports problems after the scans (read $STATE/verify-rN.3.log)"
 touch "$STATE/DONE"
 log "DONE"
