@@ -12,7 +12,7 @@ databases:
     file: Pfam-A.hmm.gz
     upstream_md5: 7ab3c4e215d0daaea3004e37c4e24f8a   # matched on download, 2026-10-30
     sha256: 2d82087b6c5c60d762cc767f98e8260b273134c215ab7efccf7440614a4e5dab
-    bytes: 273842176
+    bytes: 418160514   # corrected 2026-11-11: the size of the file whose sha256 is above (it read 273842176)
     cutoff: gathering        # Pfam GA lines
     license: CC0
     used_by: [O-SCAN]
