@@ -39,7 +39,7 @@ wilkcomp02 (local disk: gone after a reboot) holds
 
 | Release | Content | Built by | Search pack |
 |---|---|---|---|
-| `rN.1` | 27,258 phage + 2,497 complete prokaryote genomes, stages `S1,P1,P2`; 10,620,684 proteins; NR90, NR50; no Pfam | tree `740d049` (before B-27, B-21, B-39) | `/tmp/if2453/w16/packs` (no `pack_verified.json`); a copy with it at `/tmp/if2453/w19/packs` |
+| `rN.1` | 27,258 phage + 2,497 complete prokaryote genomes, stages `S1,P1,P2`; 10,620,684 proteins; NR90, NR50; no Pfam | tree `740d049` (before B-27, B-21, B-39) | `/tmp/if2453/w19/packs` (with `pack_verified.json`; an older copy without it at `/tmp/if2453/w16/packs`), until the operator copies it into the profile's pack directory `/tmp/if2453/bio-box/packs` (card W-22) |
 | `rN.2` | the same with Pfam 38.2 | tree `740d049` | none |
 | `rN.3` | the same stages, release steps rebuilt with current code (card C-17); being built | current | none |
 
@@ -48,11 +48,18 @@ Find the current state; do not trust the table above. `releases` (card W-23; `sr
 genomes, contigs, distinct proteins (from the manifest's file list and Parquet footers; genomes read one column of
 `contig_dim`), domain libraries (`pfam-38.2(not P3)` when a library covers some of its stages only), ncRNA
 producers, whether it has `member_cluster`, `contig_label` and the `domain_family_tokens` column (`no`: an older
-release, slow paths), and the pack it has in the pack directory named (`-` for none). `--json` gives one object per
-release.
+release, slow paths), and the pack it has in the profile's pack directory (`-` for none). `--json` gives one object
+per release.
+
+The host profile names the host's one pack directory: its `tmp` plus `/packs`, `/tmp/if2453/bio-box/packs` on
+wilkcomp02 (card W-22; `_packs` in `src/biobox/cli.py`, `default_pack_base` in `src/biobox/search/runner.py`).
+`releases`, `search`, `nbr` and `pack verify` find a release's pack there with only `--profile`; `--pack-dir` names
+another directory. If `releases` shows `-` for a release that should have a pack, look for one with the `find`
+below; as of 2026-11-12 `rN.1`'s is still in `/tmp/if2453/w19/packs`, so add `--pack-dir /tmp/if2453/w19/packs` to
+every `releases`, `search` and `nbr` command until the operator has copied it.
 
 ```bash
-bash "$SCR/img.sh" python -m biobox.cli releases --root /tmp/if2453/r10/root --pack-dir /tmp/if2453/w16/packs
+bash "$SCR/img.sh" python -m biobox.cli releases --root /tmp/if2453/r10/root --profile "$TREE/profiles/wilkcomp02.yaml"
 find /tmp/if2453 -maxdepth 5 -name pack_manifest.json
 ls -l /tmp/if2453/images
 ```
@@ -93,7 +100,7 @@ IMAGE=/path/to/the.sif                      # $IMAGE
 TREE=/tmp/if2453/ci/<task>                  # $TREE; the image runs this source
 exec systemd-run --user --scope --quiet -p MemoryMax=16G -p MemorySwapMax=0 -p CPUQuota=400% nice -n 19 \
   singularity exec --cleanenv --env PYTHONPATH="$TREE/src:/tmp/if2453/pilot_s1/pydeps" --env OMP_NUM_THREADS=2 \
-  --bind /tmp/if2453 --bind /tmp/if2453/r10:/tmp/if2453/r10:ro --bind /tmp/if2453/w16:/tmp/if2453/w16:ro \
+  --bind /tmp/if2453 --bind /tmp/if2453/r10:/tmp/if2453/r10:ro \
   --bind /stor/scratch/Wilke/if2453/all-the-data/l0/refdb:/refdb:ro --bind /sys/fs/cgroup:/sys/fs/cgroup:ro \
   "$IMAGE" "$@"
 ```
@@ -132,15 +139,18 @@ columns existed); it now ends `NC_001604:3170-5822 NC_001604:3171..5822`. Exit 2
 bash "$SCR/img.sh" hmmfetch -o "$SCR/RNA_pol.hmm" /refdb/pfam/38.2/Pfam-A.hmm.gz RNA_pol
 ```
 
-**3. The pack.** A search needs a pack of the same release (`find` above). None: `search hmm` exits 2 and
-prints the `pack build` command. Do not build one without asking: `rN.1`'s took 5,282 s, 86.0 CPU-minutes,
-5.51 GB (measured, wilkcomp02, unit `w16-pack`, row W-16 of STATUS.md). Prefer a pack with `pack_verified.json`;
-without it every search first verifies the whole pack, about 130 s more (derived from samples, [T3] §4).
+**3. The pack.** A search needs a pack of the same release in the profile's pack directory,
+`/tmp/if2453/bio-box/packs` (§2; `releases` names it). None: `search hmm` exits 2, names the pack directory it
+looked in and prints the `pack build` command. Do not build one without asking: `rN.1`'s took 5,282 s, 86.0
+CPU-minutes, 5.51 GB (measured, wilkcomp02, unit `w16-pack`, row W-16 of STATUS.md). Prefer a pack with
+`pack_verified.json`; without it every search first verifies the whole pack, about 130 s more (derived from
+samples, [T3] §4). The pack directory may be read-only for you: a search, `pack verify` and a `pack build` that
+finds the pack built write nothing into it (card W-22).
 
 **4. Run** in a `pod_run.sh` unit (4 CPUs, 32G; one long line; flags in `scripts/pod_run.sh` and `_hmm_parser`):
 
 ```bash
-bash "$TREE/scripts/pod_run.sh" --profile "$TREE/profiles/wilkcomp02.yaml" --image "$IMAGE" --digest "$DIGEST" --mem 32G --threads 4 --bind /tmp/if2453 --bind /tmp/if2453/r10:/tmp/if2453/r10:ro --bind /tmp/if2453/w16:/tmp/if2453/w16:ro --env PYTHONPATH="$TREE/src:/tmp/if2453/pilot_s1/pydeps" --log "$SCR/logs/qrnap-hmm-1.log" qrnap-hmm-1 search hmm --root /tmp/if2453/r10/root --release rN.1 --hmm "$SCR/RNA_pol.hmm" --bits 30 --neighbors 5 --positive NC_001604:3170-5822 --out "$SCR/out/rnap" --profile "$TREE/profiles/wilkcomp02.yaml" --pack-dir /tmp/if2453/w16/packs --cpus 4 --mem-gb 30
+bash "$TREE/scripts/pod_run.sh" --profile "$TREE/profiles/wilkcomp02.yaml" --image "$IMAGE" --digest "$DIGEST" --mem 32G --threads 4 --bind /tmp/if2453 --bind /tmp/if2453/r10:/tmp/if2453/r10:ro --env PYTHONPATH="$TREE/src:/tmp/if2453/pilot_s1/pydeps" --log "$SCR/logs/qrnap-hmm-1.log" qrnap-hmm-1 search hmm --root /tmp/if2453/r10/root --release rN.1 --hmm "$SCR/RNA_pol.hmm" --bits 30 --neighbors 5 --positive NC_001604:3170-5822 --out "$SCR/out/rnap" --profile "$TREE/profiles/wilkcomp02.yaml" --cpus 4 --mem-gb 30
 ```
 
 `--out` must be new or empty and outside the root; `--model NAME` picks one model of a multi-model file.
@@ -337,7 +347,9 @@ Each is stated where it applies above; this is the checklist. The card or decisi
   means code older than W-20 (W-20).
 - Old releases fail `release verify` once a library is scanned on their stages (C-19).
 - A pack is per release; only `rN.1` has one. A pack built before W-19 is verified in full by every search (W-19).
-- Never run `pack verify` or `pack build` on a pack directory you did not make: both write scratch there (RUNBOOK §9).
+- Packs live in the profile's pack directory, `/tmp/if2453/bio-box/packs`; `rN.1`'s is still in
+  `/tmp/if2453/w19/packs` until the operator copies it (§2; W-22). `pack verify` writes nothing into a pack
+  directory (its scratch is in `<profile tmp>/search/<user>/work`, W-22); never run `pack build` without asking.
 - `/tmp` is local disk: roots, packs, runs and your outputs vanish on a reboot (RUNBOOK §4).
 - A contig shared by genomes of two stages belongs to the first; the later genome is one contig short in
   `contig_dim`. Not in `rN.*`; it is in the 50 Gbp set (DEC-26, C-21).
@@ -354,7 +366,7 @@ Each is stated where it applies above; this is the checklist. The card or decisi
 | The scientist asks | Do |
 |---|---|
 | Homologs of a family (an HMM) | §3 on the release with a pack; check with §6 |
-| Homologs of a sequence they give | Write `$SCR/recipe.yaml` (below); `pod_run.sh ... search run "$SCR/recipe.yaml" --root ... --release rN.1 --profile ... --pack-dir ... --cpus 4 --mem-gb 30 --wait`; then the exports below; `tool: jackhmmer` with `max: 3` to iterate |
+| Homologs of a sequence they give | Write `$SCR/recipe.yaml` (below); `pod_run.sh ... search run "$SCR/recipe.yaml" --root ... --release rN.1 --profile ... --cpus 4 --mem-gb 30 --wait`; then the exports below; `tool: jackhmmer` with `max: 3` to iterate |
 | What is next to them | `neighbors.tsv` and `loci/`. With Pfam names: summarize the same proteins on `rN.2`/`rN.3` (no pack needed, below) |
 | Are families A and B ever fused | `rN.3`: `fusions_of` (§5). `rN.2`: `pfam_architecture` of a family-A search's hits, or a self-join of `l1_domains` on `protein_uid` (a full scan: say so) |
 | Export sequences | Hits: `hits.faa`. Some proteins or a contig region: `seq` (§4). Every protein: `export proteins` (§6) |
@@ -381,10 +393,10 @@ A positive control is `protein_uid` or `sequence` (the exact sequence of a prote
 format in `src/biobox/search/recipe.py`. Exports of a run, and a summary of given proteins on another release:
 
 ```bash
-bash "$SCR/img.sh" python -m biobox.cli search hits "$RUN" --root /tmp/if2453/r10/root --profile "$TREE/profiles/wilkcomp02.yaml" --pack-dir /tmp/if2453/w16/packs --format tsv --out "$SCR/out/seq/hits.tsv"
-bash "$SCR/img.sh" python -m biobox.cli search hits "$RUN" --root /tmp/if2453/r10/root --profile "$TREE/profiles/wilkcomp02.yaml" --pack-dir /tmp/if2453/w16/packs --format faa --out "$SCR/out/seq/hits.faa"
-bash "$SCR/img.sh" python -m biobox.cli nbr "$RUN" --root /tmp/if2453/r10/root --profile "$TREE/profiles/wilkcomp02.yaml" --pack-dir /tmp/if2453/w16/packs --window 5g --format tsv --out "$SCR/out/seq/loci"
-bash "$SCR/img.sh" python -m biobox.cli nbr summarize "$RUN" --root /tmp/if2453/r10/root --profile "$TREE/profiles/wilkcomp02.yaml" --pack-dir /tmp/if2453/w16/packs --window 5g --by nr50,nr90 --format tsv --out "$SCR/out/seq/neighbors.tsv"
+bash "$SCR/img.sh" python -m biobox.cli search hits "$RUN" --root /tmp/if2453/r10/root --profile "$TREE/profiles/wilkcomp02.yaml" --format tsv --out "$SCR/out/seq/hits.tsv"
+bash "$SCR/img.sh" python -m biobox.cli search hits "$RUN" --root /tmp/if2453/r10/root --profile "$TREE/profiles/wilkcomp02.yaml" --format faa --out "$SCR/out/seq/hits.faa"
+bash "$SCR/img.sh" python -m biobox.cli nbr "$RUN" --root /tmp/if2453/r10/root --profile "$TREE/profiles/wilkcomp02.yaml" --window 5g --format tsv --out "$SCR/out/seq/loci"
+bash "$SCR/img.sh" python -m biobox.cli nbr summarize "$RUN" --root /tmp/if2453/r10/root --profile "$TREE/profiles/wilkcomp02.yaml" --window 5g --by nr50,nr90 --format tsv --out "$SCR/out/seq/neighbors.tsv"
 bash "$SCR/img.sh" python -m biobox.cli nbr summarize --anchors-file "$SCR/uids.txt" --root /tmp/if2453/r10/root --release rN.2 --profile "$TREE/profiles/wilkcomp02.yaml" --window 5g --by pfam,nr50 --format tsv --out "$SCR/out/neighbors_pfam.tsv"
 ```
 
