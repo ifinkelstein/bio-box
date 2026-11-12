@@ -994,13 +994,7 @@ def pair_macro_sql() -> list[str]:
         f"""CREATE MACRO pair_flags(_d, _i, _j, _n, _circ) AS
               (CASE WHEN NOT _circ AND (_i::BIGINT < {k_max} OR _n::BIGINT - 1 - _i::BIGINT < {k_max}) THEN {cens} ELSE 0 END)
               + (CASE WHEN pair_crosses(_d, _i, _j, _circ) THEN {cross} ELSE 0 END)""",
-        # Q1: loci (anchor slots) of A with B on another slot within k; _tier NULL for every tier, else
-        # the contigs of that tier in this release's contig_dim (a contig without a row matches no tier)
-        """CREATE MACRO q1_count(_a, _b, _k, _tier) AS (
-              SELECT count(DISTINCT (a.contig_uid, a.ordinal))
-              FROM token_slots(_a) a JOIN token_slots(_b) b ON b.contig_uid = a.contig_uid
-              WHERE slot_dist(a.ordinal, b.ordinal, a.n_slots, a.is_circular) BETWEEN 1 AND _k
-                AND (_tier IS NULL OR a.contig_uid IN (SELECT contig_uid FROM contig_dim_now() WHERE tier = _tier)))""",
+        *q1_macro_sql(),  # Q1: q1_count and q1_genomes (card C-21c)
         # Q4: every (A slot, B slot) within k, with the geometry of pairs_of_contig
         """CREATE MACRO pairs_of(_a, _b, _k) AS TABLE
               SELECT contig_uid, anchor_feature_uid, partner_feature_uid, anchor_ordinal, partner_ordinal,
@@ -1027,6 +1021,36 @@ def pair_macro_sql() -> list[str]:
                 ON b.contig_uid = a.contig_uid AND b.ordinal = a.ordinal AND b.seg_idx <> a.seg_idx
               ORDER BY a.contig_uid, a.ordinal, anchor_seg_idx, partner_seg_idx""",
         partners_of_sql(),
+    ]
+
+
+def q1_macro_sql(create: str = "CREATE MACRO") -> list[str]:
+    """Q1 over the postings of this catalog's release; `open_catalog` creates both again as temporary macros
+    (`create`), so a catalog built before card C-21c has `q1_genomes` and the tier filter below.
+
+    `q1_count(_a, _b, _k, _tier)`: the loci (anchor slots) of A with B on another slot within k, a count by locus.
+    `_tier` NULL counts every locus; else a locus counts when its contig is of that tier: its `contig_dim` row has
+    the tier, or one of the genomes that hold it has (`genome_member` and `genome_dim`; card C-21c, DEC-27). Both are
+    semi-joins (`IN`), so a contig in several genomes counts each of its loci once, and in every tier one of its
+    genomes has. A contig without a dimension or membership row matches no tier.
+
+    `q1_genomes(_a, _b, _k)` (card C-21c): the genomes that hold a contig with such a locus, each once, a count by
+    genome: distinct `genome_uid` of `genome_member` over the loci's contigs. Those contigs reach the `genome_input`
+    scan as a semi-join, so it reads the row groups that hold them (one per contig and stage file, two where its rows
+    straddle a cut; AGENTS §4.4, tests/r2/test_c21c_genome_counts.py), not the release's membership."""
+    loci = """FROM token_slots(_a) a JOIN token_slots(_b) b ON b.contig_uid = a.contig_uid
+              WHERE slot_dist(a.ordinal, b.ordinal, a.n_slots, a.is_circular) BETWEEN 1 AND _k"""
+    return [
+        f"""{create} q1_count(_a, _b, _k, _tier) AS (
+              SELECT count(DISTINCT (a.contig_uid, a.ordinal))
+              {loci}
+                AND (_tier IS NULL
+                     OR a.contig_uid IN (SELECT contig_uid FROM contig_dim_now() WHERE tier = _tier)
+                     OR a.contig_uid IN (SELECT contig_uid FROM genome_member WHERE genome_uid IN
+                                           (SELECT genome_uid FROM genome_dim_now() WHERE tier = _tier))))""",
+        f"""{create} q1_genomes(_a, _b, _k) AS (
+              SELECT count(DISTINCT genome_uid) FROM genome_member
+              WHERE contig_uid IN (SELECT a.contig_uid {loci}))""",
     ]
 
 
@@ -2088,6 +2112,9 @@ def open_catalog(path: Path, local_dir: Path | None = None, threads: int | None 
     con.execute(partners_of_sql("CREATE OR REPLACE TEMP MACRO"))
     # a catalog built before card C-21b has no genome_member, genome_dim, genomes_of or genome_dim_now
     _add_genome_objects(con)
+    # a catalog built before card C-21c has no q1_genomes, and a q1_count whose tier filter reads contig_dim only
+    for stmt in q1_macro_sql("CREATE OR REPLACE TEMP MACRO"):
+        con.execute(stmt)
     keys = _Lazy(TokenKeyLookup, _token_dict_files(con, built))
     _register_token_udf(con, keys)
     _LOOKUPS[id(con)] = [("bb_partner_counts", tapes), ("bb_token_of", keys)]
