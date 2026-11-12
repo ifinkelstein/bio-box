@@ -505,7 +505,7 @@ def _write_tables(mm: MMseqs, w: Path, f: Path, out: Path, release: str, n_prot:
 #
 # The parts are a pure function of the input's sorted keys, their sizes and the plan's cut, never of threads or
 # the hour: a forced count (`parts`, for tests and trials), or what fits `part_cpu_min` (80% of the budget in
-# build-stage) at the call's estimate (`CALL_CPU_S`). Lost scratch: `lost` names every recorded step whose
+# build-stage) at the call's estimate (`call_cpu_min`, from the call's own input, card C-22). Lost scratch: `lost` names every recorded step whose
 # outputs are missing or are not its record's, and `redo` makes each again, which must reproduce its record.
 
 PLAN_FORMAT = 1
@@ -523,20 +523,55 @@ _SUB_MAT = "aa:blosum62.out,nucl:nucleotide.out"
 _PCA, _PCB = "substitution:1.100,context:1.400", "substitution:4.100,context:5.800"
 _INDEX_BLOCK = 1 << 22  # bytes per block when reading an MMseqs2 index
 
-# CPU-seconds of each per-query call, measured on wilkcomp02, 2026-11-11, MMseqs2 18.8cc5c, 2 threads per process,
-# for 100,000 proteins of stage S1 replayed one module call per process (the B-37 design §2, run `s1_100k_s1`,
-# `times.jsonl`), and the run's total over all its 48 calls, 489.8. A call's estimate for a release is its share
-# of the release's estimate in one process (`biobox.stage.cluster_cpu_min`, card B-36), *derived*: the shares were
-# measured at 100,000 proteins only (the one-process modules' share was the same at 25,000 and 50,000).
-CALL_CPU_S = {
-    "cluster.nr90.01.rescorediagonal": 0.297, "cluster.nr90.06.rescorediagonal": 0.334,
-    "cluster.nr90.07.align": 9.495, "cluster.nr90.11.prefilter": 26.062, "cluster.nr90.12.align": 139.51,
-    "cluster.nr50.01.rescorediagonal": 0.256, "cluster.nr50.06.rescorediagonal": 0.315,
-    "cluster.nr50.07.align": 14.593, "cluster.nr50.11.prefilter": 19.9, "cluster.nr50.12.align": 51.403,
-    "cluster.nr50.15.prefilter": 28.588, "cluster.nr50.16.align": 42.644, "cluster.nr50.19.prefilter": 58.334,
-    "cluster.nr50.20.align": 51.046, "cluster.nr90.members": 13.856, "cluster.nr50.members": 23.167,
+# What one per-query call costs (card C-22; `call_cpu_min`). The earlier model (cards B-37, B-41) gave each call a
+# fixed share of the release's one-process estimate (`biobox.stage.cluster_cpu_min`, card B-36): CPU-seconds measured
+# on wilkcomp02, 2026-11-11, MMseqs2 18.8cc5c, 2 threads per process, for 100,000 proteins of stage S1 replayed one
+# module call per process (B-37 design §2, run `s1_100k_s1`), of 489.8 in all:
+#   NR90: 01 rescorediagonal 0.297, 06 rescorediagonal 0.334, 07 align 9.495, 11 prefilter 26.062, 12 align 139.51,
+#         members 13.856;  NR50: 01 0.256, 06 0.315, 07 align 14.593, 11 prefilter 19.9, 12 align 51.403,
+#         15 prefilter 28.588, 16 align 42.644, 19 prefilter 58.334, 20 align 51.046, members 23.167.
+# At 10.6 M proteins (clustering of `rN.3`) the measured CPU-minutes were 24% to 36% above the estimate on three
+# `align` calls and 33% to 67% below it on four prefilter calls (planning/measurements/2026-11-11_build_r50.md): a
+# call's CPU does not follow the release's protein count, it follows its own input (its queries and, for a prefilter,
+# its targets), which the cut knows when it cuts.
+#
+# The model (*derived* from the measured table `tests/r1/c22_cluster_calls_measured.tsv`: every per-query call and
+# part of the clustering of `rN.3`, 10,620,684 proteins, and of `rC.1b`, 2,053,075, both wilkcomp02, 2026-11-11, run
+# records under /tmp/if2453/r10/root and /tmp/if2453/r50/compat/root):
+#
+#     work(call, n, u) = r_call * u * (n / N0) ** g_call            CPU-minutes, the call's own work
+#     part estimate    = work * (part's units / the call's units) + o                      (`cut`)
+#
+# u is the units of the call's own input as the cut splits it (residues of the query sequences for a prefilter,
+# bytes of the result entries for the others); n is the release's proteins; N0 = 10,620,684; o is what every part
+# pays whatever its size (`part_overhead_cpu_min`: the target's table, rebuilt or loaded). r_call is the measured
+# CPU-minutes per 10^9 units at N0 (for a prefilter, less the one table build the call's own process makes, at the
+# rebuild rate below), and g_call = ln(r(N0) / r(2,053,075)) / ln(N0 / 2,053,075) from the two samples, kept at 0 when
+# negative (the call got no dearer per unit with size): 0.12 to 0.21 for the `align` calls that grew (0.09 for the NR50
+# member alignment), 0.37 to 0.65 for the prefilters (their cost grows with the targets as well as the queries), 0 for
+# the rest. Simpler forms fail on the sample: one rate per module is 1.8 times wide for the `align` calls (2.0e-7 to
+# 3.7e-7 CPU-minutes per entry byte at N0), one rate per query is 1.4 times wide for the four cascade `align` calls
+# (6.7e-5 to 9.4e-5), and the share of a release total is the model above. Against the sample: every `rN.3` part is
+# within 1% of its record (one sample per call: a calibration, `tests/r1/test_cluster_call_estimates.py`), and in
+# `rC.1b`, a fifth of the size, every call of 2 CPU-minutes or more is within 10%; that is a check only for the calls
+# whose g is 0 (`nr90.12.align` -4%, `nr50.12.align` -9%, `nr90.members` -7%), since g is fitted from that sample.
+# Extrapolation: above 10.6 M proteins both the input sizes (below) and g are extrapolated from two samples, a factor
+# of 5 apart in n; nothing at 46.6 M or 95 M has been measured (no run record of the 50 Gbp build's clustering,
+# `runs/stage=rM.1/cluster.*`, existed on 2026-11-11 when this was fitted).
+#
+# Per call: (r, g), r in CPU-minutes per 10^9 units at N0.
+CALL_N0 = 10_620_684
+CALL_FIT = {
+    "cluster.nr90.01.rescorediagonal": (5.47, 0.0), "cluster.nr90.06.rescorediagonal": (8.02, 0.0),
+    "cluster.nr90.07.align": (204.09, 0.19), "cluster.nr90.11.prefilter": (26.20, 0.65),
+    "cluster.nr90.12.align": (366.92, 0.0),
+    "cluster.nr50.01.rescorediagonal": (2.94, 0.0), "cluster.nr50.06.rescorediagonal": (4.20, 0.0),
+    "cluster.nr50.07.align": (360.72, 0.14), "cluster.nr50.11.prefilter": (15.27, 0.42),
+    "cluster.nr50.12.align": (326.53, 0.0), "cluster.nr50.15.prefilter": (66.72, 0.37),
+    "cluster.nr50.16.align": (242.64, 0.12), "cluster.nr50.19.prefilter": (163.11, 0.39),
+    "cluster.nr50.20.align": (247.90, 0.21),
+    "cluster.nr90.members": (306.82, 0.0), "cluster.nr50.members": (773.02, 0.09),
 }
-MEASURED_TOTAL_CPU_S = 489.8
 # Each prefilter part builds the k-mer index of the whole target again: 12.44 CPU-seconds per extra part at 59,000
 # to 78,316 targets (*derived* in the B-37 design §3 from the 4-part run: (282.2 - 132.9) / 12, measured, same
 # host and day), taken per target at the smaller count (the larger rate, *derived*: 12.44 / 59,000).
@@ -552,26 +587,36 @@ PREFILTER_INDEX_CPU_S_PER_TARGET = 12.44 / 59_000
 CREATEINDEX_CPU_S_PER_TARGET = 39.58 / 250_000
 PREFILTER_INDEX_LOAD_CPU_S_PER_TARGET = 0.28 / 59_338
 #
-# Budget (*derived*, the code's own model; 300 CPU-minutes per process, parts cut at 80% of it, 240). n proteins; one
-# process T(n) = 284.10 (n / 2,053,075)^1.244 (`biobox.stage.cluster_cpu_min`, B-36); a call's estimate
-# E = T(n) CALL_CPU_S / 489.8; a prefilter call's targets t = f n, f measured at 100,000 S1 proteins: 0.783 (NR90
-# step), 0.632 (NR50 step 0), 0.593 and 0.588 (NR50 steps 1, 2; shared index); a part's overhead o = t x 2.108e-4
-# (rebuilding) or t x 4.72e-6 (shared index) CPU-s; parts p = ceil(E / (240 - o)), refused when o >= 240; the index
-# I = t x 1.583e-4 CPU-s, one process; total = sum(E + p o) + sum(I) + the one-process modules (10.0 of 489.8).
+# Budget (card C-22; *derived* from the model above, 300 CPU-minutes per process, parts cut at 80% of it, 240; the
+# per-call input sizes at 10.0 M, 50 M and 95 M are *extrapolated* from the two samples as u(n) = u(N0) (n / N0)^b, b the
+# call's growth between 2.05 M and 10.6 M proteins, 0.9 to 1.6 for the units, 0.8 to 1.1 for the targets; every
+# figure below 10.6 M is thus an interpolation and every figure above it an extrapolation, no clustering that large
+# has been measured). A part's overhead o is the table's rebuild (t x 2.108e-4 CPU-s, t targets), or the shared index's
+# load (t x 4.72e-6) for the two NR50 calls that share one (`INDEX_SETTINGS`) in more than one part; a call that is
+# one part builds its own table, and is one part only when work + rebuild fits 240. Parts p = ceil(work / (240 - o));
+# the index I = t x 1.583e-4 CPU-s, one process. The one-process steps (the plan, kmermatcher, clust, the tables) are
+# `rest`, 12.2 and 55.4 CPU-min at 2.05 M and 10.6 M, grown as n^0.92. B-36's one-process estimate T(n) =
+# 284.10 (n / 2,053,075)^1.244 (`biobox.stage.cluster_cpu_min`, the DEC-25 gate) is beside it.
 #
-#   n      T(n)     total in parts       parts of the four prefilter calls          largest single process
-#                   rebuilt   shared     (NR90 step, NR50 steps 0, 1, 2)            (rebuilt / shared)
-#   10 M   2,036    2,148     2,103      1, 1, 1, 2 (o 27.5, 22.2; 20.9 or 0.5)     kmermatcher 12.2 / index 15.5
-#   50 M   15,079   18,910    16,918     8, 5; rebuilt 7, 14; shared 4, 8           kmermatcher 90.5 / 90.5 (index 78)
-#   95 M   33,506   refused   refused    NR90 step: o = 261.5 >= 240, no cut fits;  kmermatcher 201.0; index 148.7
-#                                        NR50 step 0: 47; steps 1, 2: rebuilt 47, 92; shared 9, 17
+#   parts          NR90: 07 align | 11 prefilter | 12 align     NR50: 07 | 11 pf | 12 | 15 pf | 16 | 19 pf | 20    members
+#   10.0 M         1 | 1 (o 27.5) | 4                           1 | 1 (14.0) | 2 | 1 | 1 | 1 | 1                       1, 1
+#   10.6 M (rN.3)  1 | 1 (29.4) | 4 (was 3, 260 each)       1 | 1 (14.8) | 2 (was 1, 313.8) | 1 | 1 | 1 (was 2) | 1   1, 1
+#   50 M           3 | 14 (157.7) | 26                          2 | 1 (62.0) | 11 | 2 (0.9) | 6 | 5 (0.9) | 6        1, 2
+#   95 M           6 | refused (o 316.4) | 61                    5 | 4 (112.2) | 24 | 5 (1.6) | 12 | 11 (1.5) | 11     2, 4
 #
-# At 95 M the shared index turns the NR50 steps' per-part tables, 47 x 198.1 + 92 x 196.3 = 27,371 CPU-min, into
-# (9 + 17) x 4.4 + 148.7 + 147.4 = 410; the NR90 step still cannot be cut under the budget. The first process over
-# 300 CPU-minutes: a rebuilding NR90-step part at 109.0 M proteins (the cut refuses from 87.2 M, where o reaches 240);
-# NR50 step 0 at 135.1 M (refused from 108.1 M); kmermatcher (0.6% of T) at 131.1 M; createindex at 191.6 M (over 240
-# from 153.3 M, also refused by the cut). Above about 87 M proteins clustering in parts needs the index on the NR90 step
-# too, which needs an MMseqs2 that does not abort there (B-37 design §7).
+#   n        total in parts   of which: work + rest + indexes + overheads     one process T(n)
+#   10.0 M   2,004            see the parts above (no index is built)           2,036
+#   50 M     18,107           15,540 + 231 + 59 + 2,276                         15,079
+#   95 M     34,018 (without the refused call's 3,629 of work)                   33,506
+#
+# The work without the overheads, 15,772 CPU-min at 50 M, is 4.6% above T(50 M): the two estimates agree where both
+# are fitted (`test_c22_the_whole_release_estimate_agrees_with_the_sum_of_the_calls`: the calls and the one-process
+# rest sum to -1.0% and -3.1% of T at 10.6 M and 2.05 M) and differ by that much outside. The cost of cutting finely is
+# the overheads: 2,276 CPU-min at 50 M, 2,208 of them in the NR90 step's 14 rebuilt tables. Above about 74 M proteins the NR90 step's rebuilt table alone reaches 240
+# CPU-min a part (o = 240 at t = 68.3 M targets, *derived*, extrapolating t as above; B-43 estimated 87 M with t linear
+# in n) and the cut refuses it: clustering that large in parts needs an MMseqs2 whose `prefilter` does not abort on a
+# shared index with `--diag-score 0` (B-37 design §7, card B-44). The one-process `createindex` of the shared index
+# passes 240 CPU-min at 153.3 M proteins and 300 at 191.6 M (*derived*, B-43's rate).
 
 # The shared index (card B-43). A prefilter uses a prebuilt index only when the index itself (`<db>.idx`) is its
 # target. At the settings below a part searching the index of its call's target, built with the call's own settings
@@ -1213,26 +1258,43 @@ def _outputs(w: Path, paths: Iterable[str]) -> dict[str, str]:
     return got
 
 
+def call_cpu_min(name: str, proteins: int, units: int) -> float:
+    """The estimate of per-query call `name`'s own work, CPU-minutes, over `units` (residues of the queries for a
+    prefilter, entry bytes for the others) in a release of `proteins` proteins: the model above `CALL_FIT`, without
+    the per-part overhead (`part_overhead_cpu_min`)."""
+    rate, growth = CALL_FIT[name]
+    return rate * 1e-9 * units * (proteins / CALL_N0) ** growth
+
+
 def _cut_doc(ctx: _Ctx, c: Call) -> dict:
     src = c.positional[PER_QUERY[c.module]]
     seq = c.module == "prefilter"
-    est = ctx.plan["release_cpu_min"] * CALL_CPU_S[c.name] / MEASURED_TOTAL_CPU_S
-    overhead = 0.0
-    if seq:  # every part builds the k-mer index of the whole target, or loads the shared one
-        with open(ctx.w / f"{c.positional[1]}.index", "rb") as fh:
-            targets = sum(1 for line in fh if line.strip())
-        overhead = part_overhead_cpu_min(c, targets, ctx.shared_index)
 
     def rows() -> Iterator[tuple[int, int]]:
         for k, _, n in index_rows(ctx.w / src):
             yield k, (max(0, n - 2) if seq else n)  # a sequence entry is its residues, a newline and a NUL
 
+    est = call_cpu_min(c.name, ctx.plan["proteins"], sum(u for _, u in rows()))
+    overhead, targets = 0.0, 0
+    if seq:  # every part builds the k-mer index of the whole target, or loads the shared one
+        with open(ctx.w / f"{c.positional[1]}.index", "rb") as fh:
+            targets = sum(1 for line in fh if line.strip())
+        overhead = part_overhead_cpu_min(c, targets, ctx.shared_index)
+    budget = ctx.plan["cut"].get("part_cpu_min")
     got = cut(rows, est, overhead_cpu_min=overhead, **ctx.plan["cut"])
+    if seq and c.shares_index and ctx.shared_index and len(got) == 1:
+        # no shared index is made for one part (below): it builds its own table, and is one part only if that fits
+        # the budget; else it is two, which share the index (card C-22)
+        rebuilt = part_overhead_cpu_min(c, targets, False)
+        if budget is None or est + rebuilt <= budget:
+            overhead = rebuilt
+            got = cut(rows, est, overhead_cpu_min=rebuilt, **ctx.plan["cut"])
+        else:
+            got = cut(rows, est, overhead_cpu_min=overhead, parts=2)
     doc = {"split": src, "units": "residues" if seq else "entry_bytes", "cpu_min": round(est, 6),
            "overhead_cpu_min": round(overhead, 6), "parts": got}
     if seq and c.shares_index and ctx.shared_index and len(got) > 1:
         doc["index_cpu_min"] = round(index_cpu_min(targets), 6)
-        budget = ctx.plan["cut"].get("part_cpu_min")
         if budget is not None and doc["index_cpu_min"] > budget:
             raise ValueError(f"{c.name}: the shared index of its {targets:,} targets is estimated at "
                              f"{doc['index_cpu_min']:,.1f} CPU-minutes in one process, over the part budget of "
