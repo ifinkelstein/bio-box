@@ -209,30 +209,38 @@ during the hours the scan runs. A smaller J only makes the scan take longer; the
 (default `prok-1`, the frozen file `src/biobox/l1/rfam_sets/prok-1.tsv`: 588 Rfam 15.1 models): its
 intergenic models on the stage's intergenic regions widened by 200 bases into the flanking genes, with
 `cmsearch --notrunc`, and its 23 whole-genome models (RNA inside coding sequence) on whole contigs. It
-fetches the set's models from the library with `cmfetch` into scratch. The producer's name carries the
-library, the set and the region rule, for example `infernal-1.1.5-rfam-15.1-prok1-igr200nt`, so a new set
-is a new step and a new tape version. The IGR, tape, token and posting steps then get `--producers
+fetches the set's models from the library with `cmfetch` into scratch. Overlapping hits of models in one
+Rfam clan on one strand compete (card E-08): the best bit score wins, every hit stays in `l1_ncrna` with its
+`clan` and `clan_winner`, and only winners become features on the tape (clan file
+`src/biobox/l1/rfam_sets/Rfam-15.1.clanin`, pinned in `refdb.yaml` as `rfam_clanin`). The producer's name
+carries the library, the set, the region rule and the clan rule, for example
+`infernal-1.1.5-rfam-15.1-prok1-igr200nt-clan1`, so a new set or rule is a new step and a new tape version
+(card E-07's producer, without `-clan1`, kept every hit on the tape). The IGR, tape, token and posting steps then get `--producers
 <gene caller>,<ncRNA producer>`: the release's tapes are those of both producers. The gene-call files are
 the same with or without `--ncrna-cm`. The step counts as one step in `all N steps done`.
 
 - Threads: each `cmsearch` runs with `--scan-cpus` threads (default 4, at most `--threads`).
 - Shards: a scan estimated above 80% of `cpu_min_per_process` runs as `ncrna-<p>.plan`, one
   `ncrna-<p>.shard-<k>` per shard and the merge, as a domain scan does. The estimate is the stage's
-  genome bases at 247.4 CPU-hours per 10 Gbp (derived in `planning/design/0-08_ncrna_models.md`; checked on
-  the pod in `planning/measurements/2026-11-11_ncrna_producer.md`). A shard holds at most 161,681,487
-  genome bases at 300 CPU-minutes (derived: 0.8 × 300 × 60 / (247.4 × 3600 / 1e10)).
+  genome bases at 304.0 CPU-hours per 10 Gbp, the slower of the two shards measured on the pod (derived in
+  `planning/measurements/2026-11-11_ncrna_producer.md`; card E-08). A shard holds at most 131,578,947
+  genome bases at 300 CPU-minutes (derived: 0.8 × 300 × 1e10 / (304.0 × 60)).
 - Memory: each `cmsearch` is counted at 6.4 GiB per two threads (measured peak 6.4 GiB at `--cpu 2` on
   intergenic records, measurement 0-09c). Shards at once are at most the unit's `MemoryMax` divided by
   that, so a 16G unit runs two shards of two threads. A unit too small for one `cmsearch` is refused
   (exit 2, `above the memory cap`) before the scan; raise `pod_run.sh --mem` or lower `--scan-cpus`.
 - A contig another stage owns is skipped and named in the ledger (`owned_by:<stage>`), as gene calling
   skips it (DEC-26).
-- Its plan and shard records are in `l1/domain_scan/library=<producer>/stage=<S>/`, the shards' runs in
-  `$BBTMP/scratch/biobox-ncrna-scan/<plan>/`; a run lost from scratch is scanned again before the merge
-  (`python -m biobox.l1.ncrna rescan`, log: `scanning it again`), as for a domain scan (section 4).
+- Its plan and shard records are in `l1/ncrna_scan/producer=<producer>/stage=<S>/` (card E-08; a stage
+  planned by card E-07's code has them in `l1/domain_scan/library=<producer>/stage=<S>/`, where they are
+  still read), the shards' runs in `$BBTMP/scratch/biobox-ncrna-scan/<plan>/`; a run lost from scratch is
+  scanned again before the merge (`python -m biobox.l1.ncrna rescan`, log: `scanning it again`), as for a
+  domain scan (section 4).
+- The ledger's tool versions and the step's result name the gene-call version whose intergenic regions were
+  scanned (`gene_call_version`).
 
 The library must be the `refdb.yaml` file for the name to say `rfam-15.1`; another file is named by its
-sha256. The release's C-08 check does not yet accept this name (open question of card E-07).
+sha256, which the release's C-08 check reports as differing from the lock.
 
 **Clustering's own cap (DEC-25).** A release's clustering is one process, and on a large release it
 passes 300 CPU-minutes: 2,195.91 CPU-minutes for 10,620,684 proteins (measured, wilkcomp02,
@@ -715,7 +723,7 @@ a profile value is missing from this table.
 | Nice | 19 (one big process), 15 (many small ones) | profile `nice_monolithic`, `nice_fanout`; AGENTS 7.2 says 19 |
 | CPU-minutes per process | 300 | profile `cpu_min_per_process`; AGENTS 7.2 |
 | CPU-minutes of a release's clustering | 20000, estimated before launch; refused above it. The one exemption from the 300 (DEC-25), until card B-37. Set by the PI on 2026-11-10 for the 50 Gbp build: about nine times the 2,195.91 measured for 10,620,684 proteins (wilkcomp02, 2026-11-10). Without the key, clustering over 300 is refused | profile `cluster_cpu_min_max`; DEC-25; `cluster_refusal` in `src/biobox/stage.py`; card B-36 |
-| ncRNA scan shard size | 161,681,487 genome bases: 80% of `cpu_min_per_process` (300) at 247.4 CPU-hours per 10 Gbp (derived in `planning/design/0-08_ncrna_models.md` §4 from per-model CPU measured in 0-09c; pod check in `planning/measurements/2026-11-11_ncrna_producer.md`). Shards at once: at most the unit's `MemoryMax` / (6.4 GiB per two `cmsearch` threads) | `NCRNA_CPU_H_PER_10GBP`, `NCRNA_JOB_GIB` in `src/biobox/stage.py`; card E-07 |
+| ncRNA scan shard size | 131,578,947 genome bases: 80% of `cpu_min_per_process` (300) at 304.0 CPU-hours per 10 Gbp, the slower of the two shards of card E-07's pod check (derived in `planning/measurements/2026-11-11_ncrna_producer.md`; the design note's 247.4 gave 161,681,487). Shards at once: at most the unit's `MemoryMax` / (6.4 GiB per two `cmsearch` threads) | `NCRNA_CPU_H_PER_10GBP`, `NCRNA_JOB_GIB` in `src/biobox/stage.py`; cards E-07, E-08 |
 | Scan shard size | 30,150,753 residues: 80% of `cpu_min_per_process` (300) at 7.96 CPU-minutes per million residues (derived: 300 × 0.8 / 7.96 × 10^6; the rate of the Pfam scan of stage P1 in card C-10, measured on wilkcomp02, 2026-11-10: 2,343.74 CPU-minutes for 294.5 M residues). The 80% leaves room for a scan 25% slower per residue (derived: 1 / 0.8) | `SHARD_MARGIN` and `SCAN_CPU_MIN_PER_M` in `src/biobox/stage.py`; cards C-11, C-13 |
 | Scan shards at once | `--scan-jobs` J × `--scan-cpus` C at most the threads `run-step` allows when `build-stage` starts (40 by day, 56 at night when idle); defaults C = 4, J = allowance // C (10 by day, 14 at night). The cap is a total over everything of ours on the pod, and `build-stage` counts only its own threads: choose J = floor((cap - other threads) / C) (section 2). The allowance is read again before each step and before each shard launch; a launch that would pass it waits | `scan_slots` and `_launch` in `src/biobox/stage.py`; cards C-11, C-12 |
 | Unit CPU quota | the night cap, 56: a ceiling fixed at launch; `build-stage` holds the limit of the hour | `scripts/pod_run.sh --threads`, profile `max_threads_night`; card C-12 |
