@@ -1,50 +1,83 @@
-# Sequence sources an agent may fetch from (AGENTS.md §8). Only the URL forms listed here, with
-# the variable parts named in braces. No key, no email address and no identifying User-Agent is
-# sent in any request. Every fetched file is checked against the provider's own checksum and
-# recorded with a sha256 of our own.
+# Sequence sources an agent may fetch from (AGENTS.md §8), and what has been fetched from each.
+# Only the URL forms listed here may be fetched, with the variable parts named in braces. No key,
+# no email address and no identifying User-Agent is sent in any request. Every fetched file is
+# checked against the provider's own checksum where one exists and recorded with a sha256 of ours.
 #
-# Approved by the PI on 2026-11-11 for the 50 Gbp build (planning/measurements/2026-11-11_r50_inputs.md).
-# The same endpoint was used for the import ladder's 2,497 genomes on 2026-11-09, before this
-# file existed.
+# `stored` gives the durable copy under the data root on wilkcomp02,
+# /stor/scratch/Wilke/if2453/all-the-data (each directory has a MANIFEST.sha256 for its archives).
+# Reference libraries (Pfam, Rfam, NCBIfam) are in refdb.yaml, not here.
+#
+# Last checked against the files on disk: 2026-11-11.
 version: 1
 sources:
+  - name: inphared
+    what: INPHARED phage genomes, release 14Apr2025, one gzipped FASTA and its metadata table; stage S1
+    url: not recorded when it was fetched (2026-11-09, before this file existed). The project page is https://github.com/RyanCook94/inphared
+    files:
+      - {file: 14Apr2025_genomes.fa.gz, bytes: 643340443, sha256: 63249428ad35f633cd994a59abe3d6ba1512946dd5bb9d68ed796791241e399c}
+      - {file: 14Apr2025_data.tsv.gz, bytes: 1872894, sha256: 9e7096d9a742bb05120d3c3b68f64b27277d2aade90b5bcfe9d394cc013ebb10}
+    records: 34,076 records; 27,258 distinct sequences after the input script dropped 6,818 repeats (DEC-27 ends that dropping)
+    license: AGPL-3.0 for the INPHARED code; the sequences are INSDC records
+    stored: provisional/s1_inputs/inphared_14Apr2025.tar (sha256 627b077c6d3000458ef8646d02324de4433f3986137a408e574f4087e349f936)
+    note: no further fetch from this source is approved until its exact download URL is added here
+  - name: gtdb_metadata
+    what: GTDB release 226 genome metadata for bacteria and archaea; used to select genomes, not ingested
+    url: not recorded when it was fetched (2026-11-09). GTDB's release directory is https://data.gtdb.ecogenomic.org/releases/release226/226.0/
+    files:
+      - {file: bac120_metadata_r226.tsv.gz, bytes: 235663508, sha256: 45f1614aff80c19752860880b47b3cdeb66def8ff66dc106909b28bb2bd9bcbf}
+      - {file: ar53_metadata_r226.tsv.gz, bytes: 5673200, sha256: f12310f223e6dd27dc942379de1cfbeec5ebd2b917786cf2ce28695555eab6e5}
+    license: CC BY-SA 4.0 (GTDB's stated licence; not re-verified on 2026-11-11)
+    stored: provisional/s1_inputs/gtdb_r226_metadata.tar (sha256 d686a3bf3541eeb4610798da39a0174c0661d15a3485ef19d850e10aab77a817)
+    note: no further fetch from this source is approved until its exact download URL is added here
   - name: ncbi_datasets_genome
-    what: genome assemblies as nucleotide FASTA, by assembly accession (GCA_/GCF_), batches of at most 20
+    what: genome assemblies as nucleotide FASTA, by assembly accession (GCA_/GCF_), batches of at most 20; stages P1 to P6
     url: https://api.ncbi.nlm.nih.gov/datasets/v2/genome/accession/{accessions}/download?include_annotation_type=GENOME_FASTA
     checksum: md5sum.txt inside the returned archive
     limits: one connection; at most 3 requests per second; stop after 5 refusals in a row (HTTP 403, 429, 503)
     license: INSDC (public)
-    selection: planning/measurements/2026-11-11_r50_inputs/selection/all.tsv (GTDB R226, best complete genome per species)
+    selection: planning/measurements/2026-11-11_r50_inputs/selection/all.tsv (GTDB R226, best complete genome per species, 11,973 genomes)
+    fetched: >-
+      2,497 genomes on 2026-11-09 (stages P1, P2) and 9,469 of 9,476 on 2026-11-11 (stages P3 to P6);
+      7 accessions were not served (listed in planning/measurements/2026-11-11_r50_inputs.md). Per-file
+      sha256 values are in each stage's lock.json inside the archives
+    stored: provisional/r50_inputs/ (ladder_genomes_P1.tar, ladder_genomes_P2.tar, genomes_P3.tar to genomes_P6.tar, r10_inputs.tar, r50_selection_and_inputs.tar)
     used_by: [scripts/stress/build_stage_pod/r50_fetch.py]
-  - name: hpgc_huge_phages
-    what: the Huge Phage Genome Collection, 7,230 non-redundant phage genomes over 200 kbp, one gzipped FASTA
-    url: https://ndownloader.figshare.com/files/59221811
-    record: https://doi.org/10.6084/m9.figshare.30506864.v1 (Figshare "HPGC_genomes", version 1, published 2025-11-03, author Linxing Chen)
-    file: HPGC.7230.genomes.final.fasta.gz
-    bytes: 560950249
-    checksum: md5 03c4f8ae0ce599af7cc256c9f53a56c1 (published by Figshare)
-    license: CC BY 4.0
-    note: >-
-      The link comes from the data statement of the preprint "A prevalent huge phage clade in human and
-      animal gut microbiomes"; the Figshare record names no paper. A later preprint reports 43 of the
-      7,230 as non-viral. Approved by the PI on 2026-11-11.
-  - name: plsdb
-    what: >-
-      PLSDB plasmids, release 2024_05_31_v2, sequences and metadata: 72,556 records in the FASTA, of
-      which 196 are marked suppressed in the metadata (72,360 without them); fetched 2026-11-11,
-      FASTA sha256 e654c106…587a, metadata archive sha256 fa9da9bc…3e00 (full values in
-      planning/measurements/2026-11-11_s2_inputs.md)
-    url: https://ccb-microbe.cs.uni-saarland.de/plsdb2025/download_fasta
-    url_meta: https://ccb-microbe.cs.uni-saarland.de/plsdb2025/download_meta.tar.gz
-    checksum: none published; the archive is built on request. Record our own sha256 and check the record count against the metadata
-    license: none stated on the site; the sequences are INSDC records. The site asks for citation of doi:10.1093/nar/gkab1111 and doi:10.1093/nar/gky1050
-    note: >-
-      Prefer the Figshare-archived copy of the same release if it carries a checksum and a licence; add
-      its URL here before using it. Approved by the PI on 2026-11-11.
+    approved: by the PI on 2026-11-11
   - name: ncbi_ftp_genome
     what: fallback for an assembly the Datasets endpoint does not return; the same FASTA by its FTP path
     url: https://ftp.ncbi.nlm.nih.gov/genomes/all/{GCA_or_GCF}/{nnn}/{nnn}/{nnn}/{assembly_dir}/{assembly_dir}_genomic.fna.gz
     checksum: md5checksums.txt in the same directory
     limits: one connection; at most 3 requests per second
     license: INSDC (public)
+    fetched: nothing. The fetch script needs the parent directory's listing to find {assembly_dir}, and that URL form is not listed, so the fallback is off
     used_by: [scripts/stress/build_stage_pod/r50_fetch.py]
+    approved: by the PI on 2026-11-11
+  - name: hpgc_huge_phages
+    what: the Huge Phage Genome Collection, 7,230 non-redundant phage genomes over 200 kbp, one gzipped FASTA; stage H1
+    url: https://ndownloader.figshare.com/files/59221811
+    record: https://doi.org/10.6084/m9.figshare.30506864.v1 (Figshare "HPGC_genomes", version 1, published 2025-11-03, author Linxing Chen)
+    files:
+      - {file: HPGC.7230.genomes.final.fasta.gz, bytes: 560950249, sha256: f908dbc8521ea900919e06a9b094fc15d74c74ff4db9157d897fcbc445b6394a}
+    checksum: md5 03c4f8ae0ce599af7cc256c9f53a56c1 (published by Figshare; matched on 2026-11-11)
+    records: 7,230 records, 1,961,987,211 bp; 516 are already contigs of stage S1
+    license: CC BY 4.0
+    stored: provisional/s2_inputs/HPGC.7230.genomes.final.fasta.gz; the stage inputs are in provisional/s2_inputs/s2_inputs.tar
+    note: >-
+      The link comes from the data statement of the preprint "A prevalent huge phage clade in human and
+      animal gut microbiomes"; the Figshare record names no paper. A later preprint reports 43 of the
+      7,230 as non-viral; they are kept (PI, 2026-11-11).
+    approved: by the PI on 2026-11-11
+  - name: plsdb
+    what: PLSDB plasmids, release 2024_05_31_v2, sequences and metadata; not yet a stage (waits for DEC-27's cards)
+    url: https://ccb-microbe.cs.uni-saarland.de/plsdb2025/download_fasta
+    url_meta: https://ccb-microbe.cs.uni-saarland.de/plsdb2025/download_meta.tar.gz
+    files:
+      - {file: sequences.fasta, bytes: 7425668755, sha256: e654c106d8a15a2d5d55a8b680087377cb84e654e63d41bca181fc69a23e587a}
+      - {file: meta.tar.gz, bytes: 3655621310, sha256: fa9da9bcf3126beb72f12cbe3efe4555138dacdfb7c217d977a658bc10e53e00}
+    checksum: none published; the archive is built on request. The FASTA equals the sequences.fasta.bz2 inside the metadata archive byte for byte
+    records: >-
+      72,556 records, 7,297,669,596 bp; 196 are marked suppressed in the metadata (72,360 without
+      them); 7,139 are already contigs of stages P1 to P6
+    license: none stated on the site; the sequences are INSDC records. The site asks for citation of doi:10.1093/nar/gkab1111 and doi:10.1093/nar/gky1050
+    stored: provisional/s2_inputs/plsdb_2024_05_31_v2_sequences.fasta and plsdb_2024_05_31_v2_meta.tar.gz
+    approved: by the PI on 2026-11-11
