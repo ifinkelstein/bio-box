@@ -5,7 +5,7 @@ M2, the tRNA (RF00005) and tRNA-Sec (RF01852) models alone on the 8 genomes of m
 
     python ncrna_set.py records   <wg.fna> <wg.map.json> <genomes,|all> <chunk> <overlap> <out.fna> <out.map.json>
     python ncrna_set.py collect   <tbl> <records.map.json> <wg.map.json> <out.jsonl>
-    python ncrna_set.py m2compare <m09c dir> <trna.cm> <accs,> <default.jsonl> <out.json> <max.jsonl>...
+    python ncrna_set.py m2compare <m09c dir> <trna.cm> <accs,> <genomes,|all> <default.jsonl> <out.json> <max.jsonl>...
 
 `records` cuts the producer's whole-genome records of 0-09c (`fa/wg_all.fna`: linear contigs whole, circular ones
 with a flank of 5,746 bases each side) into chunks of at most `chunk` bases overlapping by `overlap` bases (a chunk
@@ -174,9 +174,10 @@ def _wrap(ivs: list[tuple[int, int]], n: int) -> list[tuple[int, int]]:
     return out
 
 
-def m2compare(m09c: Path, trna_cm: Path, accs: str, dpath: Path, out: Path, xpaths: list[Path]) -> None:
-    """The default scan `dpath` against the --max scans `xpaths` (together covering the 8 genomes), both restricted to
-    the models `accs` (comma list); the default scan is first checked against 0-09c's whole-genome truth."""
+def m2compare(m09c: Path, trna_cm: Path, accs: str, genomes: str, dpath: Path, out: Path, xpaths: list[Path]) -> None:
+    """The default scan `dpath` against the --max scans `xpaths` (which together cover the genomes `genomes`, a comma
+    list or all), both restricted to the models `accs` (comma list) and to those genomes; the default scan of all 8
+    genomes is first checked against 0-09c's whole-genome truth."""
     sys.path.insert(0, str(Path(__file__).resolve().parent))
     import infernal_igr as ig
     from biobox.l1 import ncrna
@@ -194,8 +195,9 @@ def m2compare(m09c: Path, trna_cm: Path, accs: str, dpath: Path, out: Path, xpat
     truth_trna = sorted((t["contig"], t["start"], t["end"], t["strand"], t["acc"]) for t in truth if t["acc"] in TRNA)
     d_all_keys = sorted((h["contig"], h["start"], h["end"], h["strand"], h["acc"]) for h in D_all)
     default_equals_truth = d_all_keys == truth_trna
-    D = [h for h in D_all if h["acc"] in want]
-    X = [h for p in xpaths for h in _hits(p) if h["acc"] in want]
+    gs = set(meta["genomes"]) if genomes == "all" else set(genomes.split(","))
+    D = [h for h in D_all if h["acc"] in want and h["genome"] in gs]
+    X = [h for p in xpaths for h in _hits(p) if h["acc"] in want and h["genome"] in gs]
     d_keys = sorted((h["contig"], h["start"], h["end"], h["strand"], h["acc"]) for h in D)
     genes = ig.genes(root)
     igr_runs = ig.igrs(root)
@@ -216,7 +218,7 @@ def m2compare(m09c: Path, trna_cm: Path, accs: str, dpath: Path, out: Path, xpat
     dset = set(d_keys)
     x_exact = sum((h["contig"], h["start"], h["end"], h["strand"], h["acc"]) in dset for h in X)
     only_x = []
-    per_genome = {g: {"default": 0, "max": 0, "max_only": 0, "default_only": 0} for g in sorted(meta["genomes"])}
+    per_genome = {g: {"default": 0, "max": 0, "max_only": 0, "default_only": 0} for g in sorted(gs)}
     for h in D:
         per_genome[h["genome"]]["default"] += 1
         if not same_locus(h, [x for x in X if x["contig"] == h["contig"]]):
@@ -248,7 +250,7 @@ def m2compare(m09c: Path, trna_cm: Path, accs: str, dpath: Path, out: Path, xpat
                        "bases_intergenic": in_igr, "bases_in_margin200_regions": in_m200,
                        "truth_hits_here_any_model_any_strand": at_truth})
     scores_d = sorted(h["score"] - ga[h["acc"]] for h in D)
-    res = {"models": list(want), "ga": ga, "clen": clen, "default_hits": len(D), "max_hits": len(X),
+    res = {"models": list(want), "genomes": sorted(gs), "ga": ga, "clen": clen, "default_hits": len(D), "max_hits": len(X),
            "default_scan_both_models_hits": len(D_all), "truth_trna_hits_both_models": len(truth_trna),
            "default_equals_0-09c_truth_restricted": default_equals_truth,
            "max_hits_at_default_coords": x_exact, "max_only_loci": len(only_x),
@@ -424,7 +426,7 @@ def main(argv: list[str]) -> int:
     elif cmd == "collect":
         collect(Path(a[0]), Path(a[1]), Path(a[2]), Path(a[3]))
     elif cmd == "m2compare":
-        m2compare(Path(a[0]), Path(a[1]), a[2], Path(a[3]), Path(a[4]), [Path(x) for x in a[5:]])
+        m2compare(Path(a[0]), Path(a[1]), a[2], a[3], Path(a[4]), Path(a[5]), [Path(x) for x in a[6:]])
     elif cmd == "sample":
         sample(Path(a[0]), a[1], int(a[2]), Path(a[3]))
     elif cmd == "m5run":
