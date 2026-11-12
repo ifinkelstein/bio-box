@@ -602,20 +602,29 @@ PREFILTER_INDEX_LOAD_CPU_S_PER_TARGET = 0.28 / 59_338
 #   10.0 M         1 | 1 (o 27.5) | 4                           1 | 1 (14.0) | 2 | 1 | 1 | 1 | 1                       1, 1
 #   10.6 M (rN.3)  1 | 1 (29.4) | 4 (was 3, 260 each)       1 | 1 (14.8) | 2 (was 1, 313.8) | 1 | 1 | 1 (was 2) | 1   1, 1
 #   50 M           3 | 14 (157.7) | 26                          2 | 1 (62.0) | 11 | 2 (0.9) | 6 | 5 (0.9) | 6        1, 2
-#   95 M           6 | refused (o 316.4) | 61                    5 | 4 (112.2) | 24 | 5 (1.6) | 12 | 11 (1.5) | 11     2, 4
+#   95 M           6 | 1, one process (DEC-29) | 61              5 | 4 (112.2) | 24 | 5 (1.6) | 12 | 11 (1.5) | 11     2, 4
 #
 #   n        total in parts   of which: work + rest + indexes + overheads     one process T(n)
 #   10.0 M   2,004            see the parts above (no index is built)           2,036
 #   50 M     18,107           15,540 + 231 + 59 + 2,276                         15,079
-#   95 M     34,018 (without the refused call's 3,629 of work)                   33,506
+#   95 M     37,963           34,018 for the rest of the calls (as before card B-45, which left this call out as
+#                             refused) + 3,945 for the NR90 step's prefilter as one process: 3,629 of work and 316.4
+#                             for its own table, under the profile's cluster_cpu_min_max of 20,000 (card B-45)  33,506
+#
+# Card B-45 (DEC-29): the call the cut refused at 95 M now runs unsplit, one process of about 3,945 CPU-minutes
+# (*derived*: 3,629 + 316.4), the only process over the 300 of AGENTS §7.2 at that size; one process instead of more
+# parts because every part would pay the 316.4 again. The total in parts is 13% above T(95 M) (*derived*: 37,963 /
+# 33,506), all of it extrapolated (above).
 #
 # The work without the overheads, 15,772 CPU-min at 50 M, is 4.6% above T(50 M): the two estimates agree where both
 # are fitted (`test_c22_the_whole_release_estimate_agrees_with_the_sum_of_the_calls`: the calls and the one-process
 # rest sum to -1.0% and -3.1% of T at 10.6 M and 2.05 M) and differ by that much outside. The cost of cutting finely is
 # the overheads: 2,276 CPU-min at 50 M, 2,208 of them in the NR90 step's 14 rebuilt tables. Above about 74 M proteins the NR90 step's rebuilt table alone reaches 240
 # CPU-min a part (o = 240 at t = 68.3 M targets, *derived*, extrapolating t as above; B-43 estimated 87 M with t linear
-# in n) and the cut refuses it: clustering that large in parts needs an MMseqs2 whose `prefilter` does not abort on a
-# shared index with `--diag-score 0` (B-37 design §7, card B-44). The one-process `createindex` of the shared index
+# in n) and no number of parts fits it: the call then runs as one process under the plan's one-process cap (DEC-29,
+# card B-45, `_one_process_doc`), and is refused without that cap, until an MMseqs2 whose `prefilter` does not abort on
+# a shared index with `--diag-score 0` is pinned (B-37 design §7, card B-44). NR50 step 0 reaches the same case at
+# about 108 M proteins (*derived*, DEC-29). The one-process `createindex` of the shared index
 # passes 240 CPU-min at 153.3 M proteins and 300 at 191.6 M (*derived*, B-43's rate).
 
 # The shared index (card B-43). A prefilter uses a prebuilt index only when the index itself (`<db>.idx`) is its
@@ -1156,24 +1165,46 @@ def _make_db(root: Path, w: Path, plan_: dict) -> tuple[int, dict[str, str]]:
     return n, {p: _digest(w / p) for p in ("db", "db_h", "prot.parquet")}
 
 
-def plan(root: Path, release: str, gene_call_version: str, stages: list[str], tmp: Path, *,
-         parts: int | None = None, part_cpu_min: float | None = None, out: Path | None = None) -> dict:
-    """Step `cluster.plan`: the release's proteins (the `protein_seq` files of `stages`, card B-25) into the MMseqs2
-    database of a fresh work directory, and the plan record under `out` (default `root`): the files, the MMseqs2
-    version, the cut (`parts`, a forced count, or `part_cpu_min`, the CPU-minutes a part may be estimated at), the
-    protein count, the release's estimate in one process and the outputs' digests. Refuses when the release's
-    cluster tables or the plan exist in `root` or `out`."""
-    root = Path(root)
-    out_root = root if out is None else Path(out)
-    if tmp is None:
-        raise ValueError("clustering in parts needs a scratch directory (--tmp)")
-    ledger.check_scratch(tmp, root, out_root)
+def _plan_cut(parts: int | None, part_cpu_min: float | None, one_process_cpu_min_max: float | None,
+              rebuild_cpu_min: float | None) -> dict:
+    """The plan's `cut` (`plan`): ValueError for a bad value. The two optional keys are written only when given, so a
+    plan without them is the plan of before card B-45, byte for byte."""
     if (parts is None) == (part_cpu_min is None):
         raise ValueError("give exactly one of parts (a forced count) and part_cpu_min (the budget of a part)")
     if parts is not None and (isinstance(parts, bool) or not isinstance(parts, int) or parts < 1):
         raise ValueError(f"parts {parts!r}: must be a positive integer")
     if part_cpu_min is not None and not part_cpu_min > 0:
         raise ValueError(f"part_cpu_min {part_cpu_min!r}: must be positive")
+    doc: dict = {"parts": parts} if parts is not None else {"part_cpu_min": part_cpu_min}
+    for key, v in (("one_process_cpu_min_max", one_process_cpu_min_max), ("rebuild_cpu_min", rebuild_cpu_min)):
+        if v is None:
+            continue
+        if isinstance(v, bool) or not isinstance(v, (int, float)) or not math.isfinite(v) or v < 0:
+            raise ValueError(f"{key} {v!r}: must be a finite number of CPU-minutes, at least 0")
+        doc[key] = float(v)
+    return doc
+
+
+def plan(root: Path, release: str, gene_call_version: str, stages: list[str], tmp: Path, *,
+         parts: int | None = None, part_cpu_min: float | None = None, one_process_cpu_min_max: float | None = None,
+         rebuild_cpu_min: float | None = None, out: Path | None = None) -> dict:
+    """Step `cluster.plan`: the release's proteins (the `protein_seq` files of `stages`, card B-25) into the MMseqs2
+    database of a fresh work directory, and the plan record under `out` (default `root`): the files, the MMseqs2
+    version, the cut (`parts`, a forced count, or `part_cpu_min`, the CPU-minutes a part may be estimated at), the
+    protein count, the release's estimate in one process and the outputs' digests. Refuses when the release's
+    cluster tables or the plan exist in `root` or `out`.
+
+    Card B-45 (DEC-29), both recorded in the plan's `cut` when given, so every cut is a function of the plan:
+    `one_process_cpu_min_max`, the cap under which a call that cannot be split (`_cut_doc`) runs as one process
+    (build-stage gives the profile's `cluster_cpu_min_max`; without it such a call is refused); `rebuild_cpu_min`
+    (tests and trials) forces the estimate of a prefilter part's own k-mer table to that many CPU-minutes. The result
+    shows which calls may run as one process and why (`one_process_outlook`)."""
+    root = Path(root)
+    out_root = root if out is None else Path(out)
+    if tmp is None:
+        raise ValueError("clustering in parts needs a scratch directory (--tmp)")
+    ledger.check_scratch(tmp, root, out_root)
+    cut_ = _plan_cut(parts, part_cpu_min, one_process_cpu_min_max, rebuild_cpu_min)
     stages = catalog.check_stages(stages)
     catalog.verify_release_def(root, release, stages)
     ledger.refuse_written(root, out_root, _table_dirs(release), f"clustering of release {release}")
@@ -1183,7 +1214,7 @@ def plan(root: Path, release: str, gene_call_version: str, stages: list[str], tm
     inputs = {"format": PLAN_FORMAT, "release": release, "stages": stages, "gene_call_version": gene_call_version,
               "mmseqs2": provenance.tool_versions("mmseqs2")["mmseqs2"],
               "files": [[{"path": p.relative_to(root).as_posix(), "bytes": p.stat().st_size} for p in g] for g in files],
-              "cut": {"parts": parts} if parts is not None else {"part_cpu_min": part_cpu_min}}
+              "cut": cut_}
     w = _work_dir(tmp, root, inputs)
     if w.exists():
         shutil.rmtree(w)  # an earlier attempt of this plan that left no record
@@ -1195,7 +1226,8 @@ def plan(root: Path, release: str, gene_call_version: str, stages: list[str], tm
 
     doc = {**inputs, "proteins": n, "release_cpu_min": round(cluster_cpu_min(n), 6), "outputs": outputs}
     _write_record(root, out_root, release, PLAN_STEP, doc)
-    return {"proteins": n, "release_cpu_min": doc["release_cpu_min"], "cut": doc["cut"]}
+    return {"proteins": n, "release_cpu_min": doc["release_cpu_min"], "cut": doc["cut"],
+            "one_process": one_process_outlook(n, doc["cut"])}
 
 
 @dataclass(frozen=True)
@@ -1275,24 +1307,30 @@ def _cut_doc(ctx: _Ctx, c: Call) -> dict:
             yield k, (max(0, n - 2) if seq else n)  # a sequence entry is its residues, a newline and a NUL
 
     est = call_cpu_min(c.name, ctx.plan["proteins"], sum(u for _, u in rows()))
+    plan_cut = ctx.plan["cut"]
+    kw = {k: plan_cut[k] for k in ("parts", "part_cpu_min") if k in plan_cut}  # how `cut` cuts
+    shared = seq and c.shares_index and ctx.shared_index
     overhead, targets = 0.0, 0
     if seq:  # every part builds the k-mer index of the whole target, or loads the shared one
         with open(ctx.w / f"{c.positional[1]}.index", "rb") as fh:
             targets = sum(1 for line in fh if line.strip())
-        overhead = part_overhead_cpu_min(c, targets, ctx.shared_index)
-    budget = ctx.plan["cut"].get("part_cpu_min")
-    got = cut(rows, est, overhead_cpu_min=overhead, **ctx.plan["cut"])
-    if seq and c.shares_index and ctx.shared_index and len(got) == 1:
+        overhead = part_overhead_cpu_min(c, targets, True) if shared else _rebuild_cpu_min(plan_cut, c, targets)
+    budget = plan_cut.get("part_cpu_min")
+    units = "residues" if seq else "entry_bytes"
+    if seq and not shared and budget is not None and overhead >= budget:
+        return _one_process_doc(c, plan_cut, rows, src, units, est, overhead, targets, budget)
+    got = cut(rows, est, overhead_cpu_min=overhead, **kw)
+    if shared and len(got) == 1:
         # no shared index is made for one part (below): it builds its own table, and is one part only if that fits
         # the budget; else it is two, which share the index (card C-22)
-        rebuilt = part_overhead_cpu_min(c, targets, False)
+        rebuilt = _rebuild_cpu_min(plan_cut, c, targets)
         if budget is None or est + rebuilt <= budget:
             overhead = rebuilt
-            got = cut(rows, est, overhead_cpu_min=rebuilt, **ctx.plan["cut"])
+            got = cut(rows, est, overhead_cpu_min=rebuilt, **kw)
         else:
             got = cut(rows, est, overhead_cpu_min=overhead, parts=2)
-    doc = {"split": src, "units": "residues" if seq else "entry_bytes", "cpu_min": round(est, 6),
-           "overhead_cpu_min": round(overhead, 6), "parts": got}
+    doc = {"split": src, "units": units, "cpu_min": round(est, 6), "overhead_cpu_min": round(overhead, 6),
+           "parts": got}
     if seq and c.shares_index and ctx.shared_index and len(got) > 1:
         doc["index_cpu_min"] = round(index_cpu_min(targets), 6)
         if budget is not None and doc["index_cpu_min"] > budget:
@@ -1332,6 +1370,89 @@ def part_overhead_cpu_min(c: Call, targets: int, shared: bool = True) -> float:
 def index_cpu_min(targets: int) -> float:
     """The estimate of one `createindex` process over `targets` targets."""
     return CREATEINDEX_CPU_S_PER_TARGET * targets / 60
+
+
+# --- one process for a call that cannot be split (card B-45, DEC-29) ---------------------------------------------
+#
+# A prefilter whose parts cannot share an index (`--diag-score 0`: the NR90 step and NR50 step 0, card B-44) has every
+# part rebuild the k-mer table of the whole target. Once that table alone reaches the part budget no number of parts
+# fits it. DEC-29: such a call runs unsplit, as the workflow runs it (its own table, the workflow's own
+# `--add-self-matches 0`, the query database being the target), when the plan holds a one-process cap (the profile's
+# `cluster_cpu_min_max`, which build-stage passes to the plan), and is refused when its estimate (work plus table) is
+# over that cap; without the cap it is refused as before card B-45. build-stage checks the estimate against the
+# profile again before the call's launch and runs it with the run-step reason `exempt: DEC-29`.
+
+DEC29 = "DEC-29"
+
+
+def _rebuild_cpu_min(plan_cut: dict, c: Call, targets: int) -> float:
+    """What a part of prefilter call `c` pays to build the k-mer table of its `targets` targets itself: the plan's
+    forced `rebuild_cpu_min` (tests and trials), else the measured rate (`part_overhead_cpu_min`, not shared)."""
+    forced = plan_cut.get("rebuild_cpu_min")
+    return part_overhead_cpu_min(c, targets, False) if forced is None else float(forced)
+
+
+def _one_process_doc(c: Call, plan_cut: dict, rows: Callable[[], Iterable[tuple[int, int]]], src: str, units: str,
+                     est: float, table: float, targets: int, budget: float) -> dict:
+    """The cut record of call `c`, whose part's own table (`table` CPU-minutes) alone fills the part budget: one part
+    under the plan's one-process cap, its `one_process` saying why and its estimate; else a ValueError (above the cap,
+    or no cap: the refusal of before card B-45, naming DEC-29)."""
+    why = (f"{c.name}: the per-part overhead of {table:.3f} CPU-minutes alone fills the part budget of {budget:.3f}: "
+           f"no number of parts fits it (each part would rebuild the k-mer table of all {targets:,} targets: the call "
+           "has no shared index, card B-44)")
+    cap = plan_cut.get("one_process_cpu_min_max")
+    if cap is None:
+        raise ValueError(f"{why}. {DEC29} runs such a call as one process only under the profile's "
+                         "cluster_cpu_min_max (build-stage gives it to the plan as --one-process-cpu-min-max), and this "
+                         "plan has none; refused")
+    one = est + table
+    if one > cap:
+        raise ValueError(f"{why}. As one process ({DEC29}) it is estimated at {one:,.3f} CPU-minutes (its work "
+                         f"{est:,.3f} and its own table {table:,.3f}), over the one-process cap of {cap:g} (the "
+                         "profile's cluster_cpu_min_max); refused")
+    return {"split": src, "units": units, "cpu_min": round(est, 6), "overhead_cpu_min": round(table, 6),
+            "parts": cut(rows, est, overhead_cpu_min=table, parts=1),
+            "one_process": {"decision": DEC29, "cpu_min": round(one, 6), "cpu_min_max": cap, "why": why}}
+
+
+def one_process_outlook(proteins: int, plan_cut: dict) -> dict:
+    """What `release cluster plan` shows of DEC-29 for a plan's `cut` over `proteins` proteins: the calls whose parts
+    rebuild their table (the prefilters that cannot share an index), for each the targets from which a part's table
+    alone fills the part budget (`from_targets`; 0 when the table is forced over it, None when it never is) and
+    whether this release can reach it (`possible`: a call's targets are a subset of the release's proteins). Which
+    calls do run as one process is known at their cuts (each cut record's `one_process`). A forced count is never
+    DEC-29's case."""
+    budget = plan_cut.get("part_cpu_min")
+    cap = plan_cut.get("one_process_cpu_min_max")
+    calls_ = {}
+    if budget is not None:
+        forced = plan_cut.get("rebuild_cpu_min")
+        if forced is None:
+            start = math.ceil(budget * 60 / PREFILTER_INDEX_CPU_S_PER_TARGET)
+        else:
+            start = 0 if forced >= budget else None
+        for c in calls():
+            if c.module == "prefilter" and not c.shares_index:
+                calls_[c.name] = {"from_targets": start, "possible": start is not None and proteins >= start}
+    why = (f"each part of these prefilters rebuilds the k-mer table of its whole target (MMseqs2 cannot share an index "
+           f"with --diag-score 0, card B-44); from `from_targets` targets that table alone fills the part budget, and "
+           f"the call then runs as one process ({DEC29}) "
+           + (f"if its estimate (work plus table) is at most {cap:g} CPU-minutes" if cap is not None else
+              "only under the profile's cluster_cpu_min_max, which this plan does not have: it is refused"))
+    return {"calls": calls_, "cpu_min_max": cap, "why": why}
+
+
+def one_process_calls(root: Path, release: str, out: Path | None = None) -> list[tuple[str, float]]:
+    """(call, its one-process estimate) of every published cut that runs its call as one process (DEC-29) and whose
+    call is not yet done (no record of its own), in call order: what build-stage checks against the profile's cap
+    before it launches anything."""
+    got = []
+    for c in calls():
+        if c.module == "prefilter":
+            rec = read_record(root, release, f"{c.name}.cut", out)
+            if rec is not None and "one_process" in rec and read_record(root, release, c.name, out) is None:
+                got.append((c.name, rec["one_process"]["cpu_min"]))
+    return got
 
 
 def _make_index(ctx: _Ctx, c: Call, log: Path, target_digest: str) -> dict:
@@ -1489,7 +1610,8 @@ def step(root: Path, release: str, name: str, tmp: Path, threads: int, *, out: P
     doc = _execute(ctx, name, _self_matches)
     _write_record(root, out_root, release, name, doc)
     return {"step": name, "outputs": sorted(doc.get("outputs", {})),
-            **({"parts": len(doc["parts"])} if name.endswith(".cut") else {})}
+            **({"parts": len(doc["parts"])} if name.endswith(".cut") else {}),
+            **({"one_process": doc["one_process"]} if "one_process" in doc else {})}
 
 
 def sequence(root: Path, release: str, out: Path | None = None) -> list[str]:
@@ -1606,19 +1728,22 @@ def finish(root: Path, release: str, tmp: Path, threads: int, *, out: Path | Non
 
 
 def run_split(root: Path, release: str, gene_call_version: str, stages: list[str], *, tmp: Path,
-              parts: int | None = None, part_cpu_min: float | None = None, threads: int = 1, out: Path | None = None,
-              until: str | None = None, max_file_bytes: int = layout.MAX_FILE_BYTES, memory_limit: str | None = None,
-              _self_matches: bool = True, _shared_index: bool = True) -> dict | None:
+              parts: int | None = None, part_cpu_min: float | None = None,
+              one_process_cpu_min_max: float | None = None, rebuild_cpu_min: float | None = None, threads: int = 1,
+              out: Path | None = None, until: str | None = None, max_file_bytes: int = layout.MAX_FILE_BYTES,
+              memory_limit: str | None = None, _self_matches: bool = True, _shared_index: bool = True) -> dict | None:
     """Clustering in parts in this process: the plan, every step without a record in order (each join's parts
     removed once it is recorded), `finish`, then the work directory removed. A step with a record is passed over,
     so a call resumes; `until` stops before that step (`FINAL_STEP`: before `finish`). The files are `run`'s.
-    `_self_matches`, `_shared_index`: as `step` (tests only)."""
+    `one_process_cpu_min_max`, `rebuild_cpu_min`: as `plan` (card B-45). `_self_matches`, `_shared_index`: as `step`
+    (tests only)."""
     root, tmp = Path(root), Path(tmp)
     tmp.mkdir(parents=True, exist_ok=True)
     if read_record(root, release, PLAN_STEP, out) is None:
         if until == PLAN_STEP:
             return None
-        plan(root, release, gene_call_version, stages, tmp, parts=parts, part_cpu_min=part_cpu_min, out=out)
+        plan(root, release, gene_call_version, stages, tmp, parts=parts, part_cpu_min=part_cpu_min,
+             one_process_cpu_min_max=one_process_cpu_min_max, rebuild_cpu_min=rebuild_cpu_min, out=out)
     while True:
         todo = [n for n in sequence(root, release, out) if read_record(root, release, n, out) is None]
         if not todo:
