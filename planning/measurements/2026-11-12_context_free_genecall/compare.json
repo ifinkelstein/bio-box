@@ -1,0 +1,257 @@
+{
+ "bases_by_class": {
+  "chromosome": 939743485,
+  "lt100k_linear": 5540566,
+  "other_ge100k": 71341752
+ },
+ "cost": {
+  "all": {
+   "p2": {
+    "bases": 1016625803,
+    "cpu_s": 817.4338158520001,
+    "find_cpu_s": 358.79418397200016,
+    "modes": "single",
+    "train_cpu_s": 458.6396318799999
+   },
+   "p3": {
+    "bases": 1016625803,
+    "cpu_s": 826.0891595119997,
+    "find_cpu_s": 374.6566402489996,
+    "modes": "meta,single-self",
+    "train_cpu_s": 451.4325192630001
+   }
+  },
+  "chromosome": {
+   "p2": {
+    "bases": 939743485,
+    "cpu_s": 790.5956950959998,
+    "find_cpu_s": 331.95606321599985,
+    "modes": "single",
+    "train_cpu_s": 458.6396318799999
+   },
+   "p3": {
+    "bases": 939743485,
+    "cpu_s": 752.5516990839997,
+    "find_cpu_s": 331.068942904,
+    "modes": "single-self",
+    "train_cpu_s": 421.4827561799996
+   }
+  },
+  "lt100k_linear": {
+   "p2": {
+    "bases": 5540566,
+    "cpu_s": 1.4942618320000847,
+    "find_cpu_s": 1.4942618320000847,
+    "modes": "single",
+    "train_cpu_s": 0.0
+   },
+   "p3": {
+    "bases": 5540566,
+    "cpu_s": 18.199249988999934,
+    "find_cpu_s": 18.199249988999934,
+    "modes": "meta",
+    "train_cpu_s": 0.0
+   }
+  },
+  "other_ge100k": {
+   "p2": {
+    "bases": 71341752,
+    "cpu_s": 25.343858924000212,
+    "find_cpu_s": 25.343858924000212,
+    "modes": "single",
+    "train_cpu_s": 0.0
+   },
+   "p3": {
+    "bases": 71341752,
+    "cpu_s": 55.338210439000186,
+    "find_cpu_s": 25.388447355999723,
+    "modes": "single-self",
+    "train_cpu_s": 29.949763083000462
+   }
+  }
+ },
+ "done": {
+  "/tmp/if2453/c21f/out/p2-0of1": {
+   "bases": {
+    "single": 1016625803
+   },
+   "contigs": 539,
+   "find_cpu_s": {
+    "single": 358.79418397200016
+   },
+   "genes": 927920,
+   "genomes": 250,
+   "host": "wilkcomp02.ccbb.utexas.edu",
+   "policy": "p2",
+   "pyrodigal": "3.7.1",
+   "pyrodigal_gv": "0.3.2",
+   "read_cpu_s": 7.198433041999994,
+   "rusage": {
+    "maxrss_mib": 615.1,
+    "sys_s": 25.346246,
+    "user_s": 805.343047
+   },
+   "shard": "0/1",
+   "stage": "P1",
+   "train_cpu_s": {
+    "single": 458.6396318799999
+   },
+   "wall_s": 827.847
+  },
+  "/tmp/if2453/c21f/out/p3-0of1": {
+   "bases": {
+    "meta": 5540566,
+    "single-self": 1011085237
+   },
+   "contigs": 539,
+   "find_cpu_s": {
+    "meta": 18.199249988999934,
+    "single-self": 356.45739025999967
+   },
+   "genes": 928470,
+   "genomes": 250,
+   "host": "wilkcomp02.ccbb.utexas.edu",
+   "policy": "p3",
+   "pyrodigal": "3.7.1",
+   "pyrodigal_gv": "0.3.2",
+   "read_cpu_s": 7.227720152000506,
+   "rusage": {
+    "maxrss_mib": 585.9,
+    "sys_s": 22.381488,
+    "user_s": 816.533343
+   },
+   "shard": "0/1",
+   "stage": "P1",
+   "train_cpu_s": {
+    "meta": 0.0,
+    "single-self": 451.4325192630001
+   },
+   "wall_s": 836.804
+  }
+ },
+ "p2_runs": [
+  "/tmp/if2453/c21f/out/p2-0of1"
+ ],
+ "p2_vs_stored": {
+  "all": {
+   "contigs": 539,
+   "contigs_changed": 0,
+   "gained": 0,
+   "gained_frac": 0.0,
+   "identical": 927920,
+   "identical_frac": 1.0,
+   "lost": 0,
+   "lost_frac": 0.0,
+   "recalled": 927920,
+   "start_only": 0,
+   "start_only_frac": 0.0,
+   "stored": 927920
+  },
+  "chromosome": {
+   "contigs": 250,
+   "contigs_changed": 0,
+   "gained": 0,
+   "gained_frac": 0.0,
+   "identical": 859139,
+   "identical_frac": 1.0,
+   "lost": 0,
+   "lost_frac": 0.0,
+   "recalled": 859139,
+   "start_only": 0,
+   "start_only_frac": 0.0,
+   "stored": 859139
+  },
+  "lt100k_linear": {
+   "contigs": 176,
+   "contigs_changed": 0,
+   "gained": 0,
+   "gained_frac": 0.0,
+   "identical": 5684,
+   "identical_frac": 1.0,
+   "lost": 0,
+   "lost_frac": 0.0,
+   "recalled": 5684,
+   "start_only": 0,
+   "start_only_frac": 0.0,
+   "stored": 5684
+  },
+  "other_ge100k": {
+   "contigs": 113,
+   "contigs_changed": 0,
+   "gained": 0,
+   "gained_frac": 0.0,
+   "identical": 63097,
+   "identical_frac": 1.0,
+   "lost": 0,
+   "lost_frac": 0.0,
+   "recalled": 63097,
+   "start_only": 0,
+   "start_only_frac": 0.0,
+   "stored": 63097
+  }
+ },
+ "p3_runs": [
+  "/tmp/if2453/c21f/out/p3-0of1"
+ ],
+ "p3_vs_stored": {
+  "all": {
+   "contigs": 539,
+   "contigs_changed": 347,
+   "gained": 1777,
+   "gained_frac": 0.001915035778946461,
+   "identical": 922984,
+   "identical_frac": 0.9946805759117165,
+   "lost": 1227,
+   "lost_frac": 0.0013223122682989913,
+   "recalled": 928470,
+   "start_only": 3709,
+   "start_only_frac": 0.003997111819984482,
+   "stored": 927920
+  },
+  "chromosome": {
+   "contigs": 250,
+   "contigs_changed": 79,
+   "gained": 219,
+   "gained_frac": 0.00025490636555900733,
+   "identical": 857267,
+   "identical_frac": 0.9978210743546737,
+   "lost": 497,
+   "lost_frac": 0.0005784861355380213,
+   "recalled": 858861,
+   "start_only": 1375,
+   "start_only_frac": 0.0016004395097882881,
+   "stored": 859139
+  },
+  "lt100k_linear": {
+   "contigs": 176,
+   "contigs_changed": 155,
+   "gained": 349,
+   "gained_frac": 0.061400422237860665,
+   "identical": 4896,
+   "identical_frac": 0.8613652357494722,
+   "lost": 192,
+   "lost_frac": 0.03377902885292048,
+   "recalled": 5841,
+   "start_only": 596,
+   "start_only_frac": 0.10485573539760731,
+   "stored": 5684
+  },
+  "other_ge100k": {
+   "contigs": 113,
+   "contigs_changed": 113,
+   "gained": 1209,
+   "gained_frac": 0.0191609743727911,
+   "identical": 60821,
+   "identical_frac": 0.9639285544479135,
+   "lost": 538,
+   "lost_frac": 0.008526554352821845,
+   "recalled": 63768,
+   "start_only": 1738,
+   "start_only_frac": 0.027544891199264624,
+   "stored": 63097
+  }
+ },
+ "stored_files": [
+  "/tmp/if2453/r10/root/l1/feature/producer=pyrodigal-3.7.1-gv-0.3.2-p2/stage=P1/part-0.parquet"
+ ]
+}

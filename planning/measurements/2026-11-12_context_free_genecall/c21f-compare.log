@@ -1,0 +1,33 @@
+check: SELECT count(*) FROM p2_contigs: 539
+check: SELECT count(*) FROM p3_contigs: 539
+check: SELECT count(DISTINCT contig_uid) FROM p2_contigs: 539
+check: SELECT count(*) FROM p2_contigs a JOIN p3_contigs b USING (contig_uid) WHERE a.contig_len = b.contig_len AND a.cls = b.cls: 539
+
+### p2 re-call against the stored calls (control)
+
+| class | contigs | changed contigs | stored genes | re-called | identical | start only | lost | gained |
+|---|---|---|---|---|---|---|---|---|
+| chromosome | 250 | 0 | 859,139 | 859,139 | 859,139 (100.00%) | 0 (0.00%) | 0 (0.00%) | 0 (0.00%) |
+| other_ge100k | 113 | 0 | 63,097 | 63,097 | 63,097 (100.00%) | 0 (0.00%) | 0 (0.00%) | 0 (0.00%) |
+| lt100k_linear | 176 | 0 | 5,684 | 5,684 | 5,684 (100.00%) | 0 (0.00%) | 0 (0.00%) | 0 (0.00%) |
+| all | 539 | 0 | 927,920 | 927,920 | 927,920 (100.00%) | 0 (0.00%) | 0 (0.00%) | 0 (0.00%) |
+
+### p3 against the stored calls
+
+| class | contigs | changed contigs | stored genes | re-called | identical | start only | lost | gained |
+|---|---|---|---|---|---|---|---|---|
+| chromosome | 250 | 79 | 859,139 | 858,861 | 857,267 (99.78%) | 1,375 (0.16%) | 497 (0.06%) | 219 (0.03%) |
+| other_ge100k | 113 | 113 | 63,097 | 63,768 | 60,821 (96.39%) | 1,738 (2.75%) | 538 (0.85%) | 1,209 (1.92%) |
+| lt100k_linear | 176 | 155 | 5,684 | 5,841 | 4,896 (86.14%) | 596 (10.49%) | 192 (3.38%) | 349 (6.14%) |
+| all | 539 | 347 | 927,920 | 928,470 | 922,984 (99.47%) | 3,709 (0.40%) | 1,227 (0.13%) | 1,777 (0.19%) |
+
+### CPU by class (thread CPU seconds: training + finding)
+
+| class | bases | p2 modes | p2 train s | p2 find s | p3 modes | p3 train s | p3 find s | p3 / p2 |
+|---|---|---|---|---|---|---|---|---|
+| chromosome | 939,743,485 | single | 458.6 | 332.0 | single-self | 421.5 | 331.1 | 0.95 |
+| other_ge100k | 71,341,752 | single | 0.0 | 25.3 | single-self | 29.9 | 25.4 | 2.18 |
+| lt100k_linear | 5,540,566 | single | 0.0 | 1.5 | meta | 0.0 | 18.2 | 12.18 |
+| all | 1,016,625,803 | single | 458.6 | 358.8 | meta,single-self | 451.4 | 374.7 | 1.01 |
+timed: {"argv": ["python", "/tmp/if2453/ci/c21f/scripts/stress/c21f_context_free/compare.py", "--stored", "/tmp/if2453/r10/root/l1/feature/producer=pyrodigal-3.7.1-gv-0.3.2-p2/stage=P1", "--p2", "/tmp/if2453/c21f/out/p2-0of1", "--p3", "/tmp/if2453/c21f/out/p3-0of1", "--out", "/tmp/if2453/c21f/out/compare.json"], "cpu_min": 0.0834, "exit_code": 0, "host": "wilkcomp02.ccbb.utexas.edu", "peak_rss_mib": 338.9, "started_at": "2026-11-12T14:12:29+00:00", "sys_min": 0.0217, "user_min": 0.0617, "wall_s": 4.49}
+launch: c21f-compare exited 0

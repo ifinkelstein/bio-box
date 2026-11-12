@@ -1,0 +1,194 @@
+{
+ "domain_files": [
+  "/tmp/if2453/r10/root/l1/domains/library=pfam-38.2/stage=P1/part-0.parquet"
+ ],
+ "feature_protein_files": [
+  "/tmp/if2453/r10/root/l1/feature_protein/gene_call_version=pyrodigal-3.7.1-gv-0.3.2-p2/stage=P1/part-0.parquet"
+ ],
+ "gained": {
+  "all": {
+   "median_nt": 237.0,
+   "n": 1777
+  },
+  "chromosome": {
+   "median_nt": 198.0,
+   "n": 219
+  },
+  "lt100k_linear": {
+   "median_nt": 219.0,
+   "n": 349
+  },
+  "other_ge100k": {
+   "median_nt": 243.0,
+   "n": 1209
+  }
+ },
+ "lost": {
+  "all": {
+   "median_nt": 228.0,
+   "n": 1227,
+   "with_domain": 0.19315403422982885,
+   "with_domain_n": 237
+  },
+  "chromosome": {
+   "median_nt": 237.0,
+   "n": 497,
+   "with_domain": 0.14688128772635814,
+   "with_domain_n": 73
+  },
+  "lt100k_linear": {
+   "median_nt": 211.5,
+   "n": 192,
+   "with_domain": 0.3177083333333333,
+   "with_domain_n": 61
+  },
+  "other_ge100k": {
+   "median_nt": 225.0,
+   "n": 538,
+   "with_domain": 0.19144981412639406,
+   "with_domain_n": 103
+  }
+ },
+ "per_contig": [
+  {
+   "bin": "d 200k-500k",
+   "cls": "chromosome",
+   "contigs": 4,
+   "median_identical": 0.9890995845502036,
+   "min_identical": 0.9485714285714286,
+   "under_99": 2
+  },
+  {
+   "bin": "e 500k-1M",
+   "cls": "chromosome",
+   "contigs": 11,
+   "median_identical": 1.0,
+   "min_identical": 0.991494532199271,
+   "under_99": 0
+  },
+  {
+   "bin": "f 1M-3M",
+   "cls": "chromosome",
+   "contigs": 78,
+   "median_identical": 1.0,
+   "min_identical": 0.9830388692579505,
+   "under_99": 5
+  },
+  {
+   "bin": "g >=3M",
+   "cls": "chromosome",
+   "contigs": 157,
+   "median_identical": 1.0,
+   "min_identical": 0.9734019734019734,
+   "under_99": 16
+  },
+  {
+   "bin": "a <10k",
+   "cls": "lt100k_linear",
+   "contigs": 45,
+   "median_identical": 0.8888888888888888,
+   "min_identical": 0.0,
+   "under_99": 28
+  },
+  {
+   "bin": "b 10k-100k",
+   "cls": "lt100k_linear",
+   "contigs": 131,
+   "median_identical": 0.8888888888888888,
+   "min_identical": 0.0,
+   "under_99": 117
+  },
+  {
+   "bin": "c 100k-200k",
+   "cls": "other_ge100k",
+   "contigs": 50,
+   "median_identical": 0.9096349804578447,
+   "min_identical": 0.7016129032258065,
+   "under_99": 49
+  },
+  {
+   "bin": "d 200k-500k",
+   "cls": "other_ge100k",
+   "contigs": 27,
+   "median_identical": 0.9489247311827957,
+   "min_identical": 0.8454810495626822,
+   "under_99": 26
+  },
+  {
+   "bin": "e 500k-1M",
+   "cls": "other_ge100k",
+   "contigs": 15,
+   "median_identical": 0.9673202614379085,
+   "min_identical": 0.9240506329113924,
+   "under_99": 15
+  },
+  {
+   "bin": "f 1M-3M",
+   "cls": "other_ge100k",
+   "contigs": 18,
+   "median_identical": 0.983427473286303,
+   "min_identical": 0.9355916030534351,
+   "under_99": 14
+  },
+  {
+   "bin": "g >=3M",
+   "cls": "other_ge100k",
+   "contigs": 3,
+   "median_identical": 0.989501312335958,
+   "min_identical": 0.982373678025852,
+   "under_99": 2
+  }
+ ],
+ "start_only": {
+  "all": {
+   "longer": 1835,
+   "median_abs_shift_nt": 45.0,
+   "n": 3709,
+   "shorter": 1874,
+   "shorter_cutting_a_domain": 375
+  },
+  "chromosome": {
+   "longer": 436,
+   "median_abs_shift_nt": 45.0,
+   "n": 1375,
+   "shorter": 939,
+   "shorter_cutting_a_domain": 175
+  },
+  "lt100k_linear": {
+   "longer": 371,
+   "median_abs_shift_nt": 36.0,
+   "n": 596,
+   "shorter": 225,
+   "shorter_cutting_a_domain": 57
+  },
+  "other_ge100k": {
+   "longer": 1028,
+   "median_abs_shift_nt": 45.0,
+   "n": 1738,
+   "shorter": 710,
+   "shorter_cutting_a_domain": 143
+  }
+ },
+ "stored": {
+  "all": {
+   "median_nt": 825.0,
+   "n": 927920,
+   "with_domain": 0.8160509526683335
+  },
+  "chromosome": {
+   "median_nt": 825.0,
+   "n": 859139,
+   "with_domain": 0.8196298852688564
+  },
+  "lt100k_linear": {
+   "median_nt": 676.5,
+   "n": 5684,
+   "with_domain": 0.6885995777621393
+  },
+  "other_ge100k": {
+   "median_nt": 834.0,
+   "n": 63097,
+   "with_domain": 0.7788008938618318
+  }
+ }
+}
