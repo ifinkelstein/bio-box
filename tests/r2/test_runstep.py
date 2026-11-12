@@ -130,6 +130,18 @@ def test_image_digest_defaults_to_none(prof, root, monkeypatch):
     assert json.loads(record_path(root, "occ").read_text())["image_digest"] == "none"
 
 
+def test_record_names_the_code_that_ran_it(prof, root):
+    """Card C-23: the run record's meta has the code identity (`biobox.codeid`), beside the image digest."""
+    from biobox import codeid
+
+    assert run(prof, root, "occ", fake("--out", f"{OCC}/part-0.parquet=10")) == 0
+    rec = json.loads(record_path(root, "occ").read_text())
+    want = codeid.code_identity()
+    assert (rec["code_id"], rec["code_version"], rec["code_commit"]) == (
+        want["code_id"], want["code_version"], want["code_commit"])
+    assert len(rec["code_id"]) == 64
+
+
 def test_over_cpu_budget_is_a_warning(prof, root, tmp_path):
     p = tmp_path / "zero_budget.yaml"
     data = {f: getattr(prof, f) for f in prof.__dataclass_fields__}
