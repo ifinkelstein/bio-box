@@ -29,7 +29,10 @@ ordered (inner, outer), possible because every list is oriented to its anchor; a
 union (m_u = m_d = 0) gives J = A = 1 with 0 positions: nothing compared is never similar. Combined:
 1 − (w·(1 − J) + (1 − w)·(1 − A)). w is chosen on the planted test (below): the largest w on the grid 0, 0.05, …, 1 at
 which every planted between-type distance exceeds every within-type distance, i.e. as much weight on the default J as
-still separates a rearranged context. The test computes it from the oracle and asserts the constant equals it.
+still separates a rearranged context. The test computes it from the oracle and asserts the constant equals it: w =
+0.2 (*derived* on the planted world of `tests/r2/test_w25_flanks.py`: the tightest pairs are T1 against its rearranged
+copy, 0.667·(1 − w), and the insertion copy against the unannotated copy, 0.571 − 0.238·w, so the margin is
+0.095 − 0.429·w, positive below w = 0.222). On that world J alone (w = 1) cannot separate the rearranged copy (J = 0).
 
 **Grouping and collapsing.** Groups by the anchor protein's own cluster (`anchor-nr90`, default; `anchor-nr50`), or
 one group `all`. In a group, loci with equal (up list, down list, cut_up, cut_down) collapse to one leaf with a count;
@@ -61,8 +64,9 @@ feature_uids), `distance_j.tsv`, `distance_a.tsv`, `positions.tsv` (square, leav
 `ID=feature_uid`, `protein_uid`, `token`, `offset_rel`) and `gff/protein_groups.tsv` (protein_uid, group). No ordinal
 appears anywhere; genes are named by feature_uid.
 
-**Bounds and determinism.** One group's matrices at a time (three K×K arrays: about 72 MB at K = 2,000, *derived*:
-2·2,000²·8 + 2,000²·2 bytes, plus the UPGMA working copy). Pure Python and NumPy over explicitly sorted inputs; DuckDB
+**Bounds and determinism.** One group's matrices at a time (three K×K arrays and the UPGMA working copy: 112 MB at
+K = 2,000, *derived*: 2·2,000²·8 + 2,000²·4 + 2,000²·8 bytes; 124 MB *measured* on rN.3,
+`planning/measurements/2026-11-12_flanks_rN3.md`). Pure Python and NumPy over explicitly sorted inputs; DuckDB
 reads are ordered; no clock, path or hash order in any output.
 
 **Not done.** The figure: matplotlib is not in `uv.lock` or the image (checked 2026-11-12), so it waits for the PI

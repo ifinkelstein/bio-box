@@ -14,7 +14,8 @@ the papers (Domainator, BiG-SCAPE, Flankophile); no code is copied.
 Loci are grouped by the anchor's own cluster; within a group, loci with equal lists and cuts collapse to one leaf (named
 by the least feature_uid of its loci). Per group, at most `max_leaves` leaves (the least names) go into the pairwise
 step: the J, A and positions matrices, a UPGMA tree weighted by each leaf's loci (so it equals UPGMA on the loci), and
-context types from cutting it at `cut`. Only one group's matrices are held at a time (about 72 MB at 2,000 leaves).
+context types from cutting it at `cut`. Only one group's matrices are held at a time (112 MB at 2,000 leaves, derived:
+two float64 and one int32 K x K matrix and the UPGMA working copy).
 """
 
 from __future__ import annotations

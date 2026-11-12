@@ -222,6 +222,33 @@ ls "$WORK"/rnap/loci/locus_NC_001604_*
 column -t -s $'\t' "$WORK/rnap/loci/locus_NC_001604_39f9ef263e234b012d2671634468546e.tsv"
 ```
 
+### Which loci share a context: `nbr flanks`
+
+`nbr flanks` groups a run's loci by what flanks them (card W-25; method in `planning/design/W-25_flanks.md`). Each
+flanking gene becomes a token: its NR50 cluster (`--level nr50`, the default), NR90 cluster or Pfam architecture
+(`--level pfam`), with its side and its strand relative to the hit; a gene without one is a token of its own, so
+unannotated genes never make two loci look alike. Loci are grouped by the hit protein's own NR90 cluster
+(`--group-by anchor-nr50` or `none` for wider groups); loci with identical flanks collapse into one leaf; each group
+gets two distance matrices, a UPGMA tree and context types (the tree cut at `--cut`, default 0.5):
+
+```bash
+bio-box nbr flanks "$RUN" --root "$ROOT" --profile "$PROFILE" --window 5g --level nr50 --out "$WORK/rnap_flanks"
+```
+
+| File | What it is for |
+|---|---|
+| `context_types.tsv` | one row per hit locus (named by the hit gene's `feature_uid`): its `group`, `context_type`, stage, kind, genomes, and `cut_up`/`cut_down` when a contig end cut the window |
+| `conservation.tsv` | per group, context type and neighbour: `share_of_loci`, `modal_offset` (along the hit's strand), `same_strand_share`, `n_genomes`; read it as `neighbors.tsv` per context type |
+| `groups.tsv` | the run's settings as `# key` lines, then per group its loci, leaves and number of context types; `sampled=true` when a group had more than `--max-loci` leaves (2,000) and only the first 2,000 by name went into the tree |
+| `groups/<group>/` | `distance_j.tsv` (1 − shared share of tokens), `distance_a.tsv` (1 − shared share of adjacent token pairs: it also sees a changed gene order), `positions.tsv` (positions compared), `tree.nwk`, `leaves.tsv` (each leaf's tokens and loci) |
+
+`--distance a` builds the tree on the order-aware distance instead; `--export gff` adds one GFF3 per locus for
+outside viewers. A locus cut by a contig end is compared only over the genes both loci have on that side. On `rN.3`
+the RNA polymerase run (2,581 loci) took about 15 s and at most 1.6 GB, and gave 432 groups and 598 context types; no
+type holds both phage and prokaryote loci (*measured*, `planning/measurements/2026-11-12_flanks_rN3.md`). On phages
+use `nr50`: at `pfam` most phage genes have no domain, each is its own token, and nearly every locus becomes its own
+type (same file). No figure yet (matplotlib is not in the image).
+
 ## 7. Going further with the separate commands
 
 `search hmm` is these commands in a row; each can be run alone on a finished run, with its own window or format.

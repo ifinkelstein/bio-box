@@ -203,6 +203,20 @@ it), `hits.tsv`, `hits.faa`, `neighbors.tsv`, `loci/`. The run is `<profile tmp>
   offset_rel ordinal feature_uid start end strand protein_uid length_aa pfam_architecture nr90 nr50
   hit_seq_bitscore delta_bp crosses_origin`. `offset` is coordinate order; `offset_rel` follows the anchor's
   strand (positive downstream). `censored=true`: a linear contig end cut the window.
+- `nbr flanks RUN --out DIR` (card W-25, `src/biobox/search/flanks.py`, design `planning/design/W-25_flanks.md`):
+  `README.txt`, `groups.tsv` (`# key<TAB>json` settings; `group n_loci n_leaves n_leaves_in_tree sampled
+  n_context_types`), `context_types.tsv` (one row per locus: `feature_uid group context_type leaf in_tree contig_uid
+  accession start end strand anchor_protein_uid anchor_nr90 anchor_nr50 stage kind genome_uid n_genomes genome_uids
+  tax_order cut_up cut_down n_up n_down`), `conservation.tsv` (`group context_type key unannotated n_loci_type n_loci
+  share_of_loci n_neighbors n_genomes offsets modal_offset same_strand_share`, offsets along the anchor's strand),
+  `groups/<group>/{leaves.tsv,distance_j.tsv,distance_a.tsv,positions.tsv,tree.nwk}` (leaves named by the least
+  `feature_uid` of their loci), `gff/` with `--export gff`. J = 1 − Jaccard of flank tokens (id, side, strand
+  relative to the anchor), A = 1 − Jaccard of adjacent token pairs; a gene with no id at `--level` is a token of its
+  own. Defaults: `--window 5g --level nr50 --group-by anchor-nr90 --max-loci 2000 --cut 0.5 --distance j`; only gene
+  windows. `sampled=true`: only the 2,000 leaves with the least names are in the tree; the rest have `in_tree=false`
+  and no context type: say so. On phages prefer `nr50`: at `pfam` unannotated genes split nearly every locus into
+  its own type (measured, `planning/measurements/2026-11-12_flanks_rN3.md`). Without `--profile`, give `--runs` and
+  `--pack-dir`.
 - Name a gene by `feature_uid` (or accession and range), a protein by `protein_uid`, a family by `model_acc`, a
   cluster by its uid **with the release** (cluster uids change between releases, 0-07); never a bare ordinal or a token.
 - Every command given `--out` (and `search hmm` for each file in its DIR) prints to stderr `wrote PATH: N rows`
@@ -372,6 +386,7 @@ Each is stated where it applies above; this is the checklist. The card or decisi
 | Homologs of a family (an HMM) | §3 on the release with a pack; check with §6 |
 | Homologs of a sequence they give | Write `$SCR/recipe.yaml` (below); `pod_run.sh ... search run "$SCR/recipe.yaml" --root ... --release rN.1 --profile ... --cpus 4 --mem-gb 30 --wait`; then the exports below; `tool: jackhmmer` with `max: 3` to iterate |
 | What is next to them | `neighbors.tsv` and `loci/`. With Pfam names: summarize the same proteins on `rN.2`/`rN.3` (no pack needed, below) |
+| Which hits share a genomic context | `nbr flanks "$RUN" ... --out "$SCR/out/flanks"` (§4); report context types and `conservation.tsv` rows, and the level and cut used |
 | Are families A and B ever fused | `rN.3`: `fusions_of` (§5). `rN.2`: `pfam_architecture` of a family-A search's hits, or a self-join of `l1_domains` on `protein_uid` (a full scan: say so) |
 | Export sequences | Hits: `hits.faa`. Some proteins or a contig region: `seq` (§4). Every protein: `export proteins` (§6) |
 | How many genomes have it | The stage split query of §5 (`count(DISTINCT genome_uid)`); define genome as `contig_dim.genome_uid` (one per contig) or count every carrier through `genome_member` or `hits.tsv`'s `genome_uids`, and say which. By source only: `stage`, `kind` of `hits.tsv` |
@@ -402,6 +417,7 @@ bash "$SCR/img.sh" python -m biobox.cli search hits "$RUN" --root /tmp/if2453/r1
 bash "$SCR/img.sh" python -m biobox.cli nbr "$RUN" --root /tmp/if2453/r10/root --profile "$TREE/profiles/wilkcomp02.yaml" --window 5g --format tsv --out "$SCR/out/seq/loci"
 bash "$SCR/img.sh" python -m biobox.cli nbr summarize "$RUN" --root /tmp/if2453/r10/root --profile "$TREE/profiles/wilkcomp02.yaml" --window 5g --by nr50,nr90 --format tsv --out "$SCR/out/seq/neighbors.tsv"
 bash "$SCR/img.sh" python -m biobox.cli nbr summarize --anchors-file "$SCR/uids.txt" --root /tmp/if2453/r10/root --release rN.2 --profile "$TREE/profiles/wilkcomp02.yaml" --window 5g --by pfam,nr50 --format tsv --out "$SCR/out/neighbors_pfam.tsv"
+bash "$SCR/img.sh" python -m biobox.cli nbr flanks "$RUN" --root /tmp/if2453/r10/root --profile "$TREE/profiles/wilkcomp02.yaml" --window 5g --level nr50 --out "$SCR/out/flanks"
 ```
 
 `uids.txt` is the last query of §5, with `AND run = '<run id>'` added to keep one run, written with `sql --out`;
