@@ -22,7 +22,9 @@ timestamps, so the same inputs give the same pack_id (D-01).
 
 The pack lives outside the data root (card W-03), in a pack directory (`bio-box pack build
 --pack-dir DIR`; by default `<profile tmp>/packs` with a host profile, else beside the search work
-directory, `runner.default_pack_base`); a pack directory inside the root is refused. It is a derived,
+directory, `runner.default_pack_base`); a pack directory inside the root is refused. The host profile's
+`<tmp>/packs` is the host's one pack directory (card W-22): `pack`, `search`, `nbr` and `releases` find a
+release's pack there with only `--profile`. It is a derived,
 rebuildable cache of a release, not a release file: the same inputs give the same bytes and the same
 `pack_id`, its own manifest records what it was built from, and `verify` (C-12) checks it. It is kept
 off the data root because on shared storage every release's pack has files under the 64 MiB floor
@@ -40,6 +42,14 @@ the pack directory. A pack built before W-19 has no record: a search verifies it
 scratch in the run's work directory (`verify_dir(scratch=...)`), and `build` with the same inputs, a no-op that
 verifies the pack in full, adds the record without touching the pack's files. `verify` accepts the record and
 checks that it names the manifest.
+
+Nothing but a build writes into the pack directory (card W-22), so it may be read-only for everyone but its
+builder. `verify`, and the full verify of an existing pack that a no-op `build` runs, sort the release's protein
+uids under `scratch` (the CLI gives the profile's per-user work directory, `<tmp>/search/<user>/work`), else
+under the system temporary directory (`tempfile.gettempdir()`), never beside the pack. A no-op `build` of a pack
+without a record, in a directory its caller cannot write, adds no record and says so (`_add_record`). A build that
+makes a pack writes only into `release=<R>/` of the pack directory: its `.building-*` and `.scratch-*` directories
+and the renamed pack.
 
 A pack holds the release's files only (card B-28): every input is listed by `catalog.ReleaseFiles`,
 from the release manifest when there is one, else from the stages of the release's `release_def`, so
@@ -84,6 +94,7 @@ import json
 import os
 import shutil
 import signal
+import tempfile
 import threading
 from collections import Counter, defaultdict
 from collections.abc import Callable, Iterable, Iterator
@@ -701,14 +712,16 @@ def _stop_on_signals():
 
 def build(root: Path, release: str, gene_call_version: str = GENE_CALL_VERSION,
           models: dict[str, Path] | None = None, shard_text_bytes: int = SHARD_TEXT_BYTES,
-          producers: list[str] | None = None, release_manifest: dict | None = None, *, packs: Path) -> dict:
+          producers: list[str] | None = None, release_manifest: dict | None = None, *, packs: Path,
+          scratch: Path | None = None) -> dict:
     """Build the release's pack from the data root into the pack directory `packs` (card W-03), at
     `<packs>/release=<R>/<pack_id>/`; returns the manifest (with `pack_id`).
 
     `packs` may not lie under the root (ValueError, before anything is read). When a pack of the release
     built from the same inputs is there and verifies, nothing is built or written and its manifest is
-    returned. Otherwise the pack is written under a temporary name in `release=<R>/` and renamed to its
-    pack_id; if a pack of that id is there already (and does not verify), FileExistsError: a pack is never
+    returned; that verify sorts under `scratch` (default: the system temporary directory), never in the pack
+    directory (card W-22). Otherwise the pack is written under a temporary name in `release=<R>/` and renamed
+    to its pack_id; if a pack of that id is there already (and does not verify), FileExistsError: a pack is never
     overwritten. A build stopped by SIGTERM or SIGHUP removes its temporary and scratch directories and raises
     `Stopped` (a SystemExit with code 128 + signum; card W-16); so does SIGINT, with KeyboardInterrupt.
 
@@ -720,11 +733,13 @@ def build(root: Path, release: str, gene_call_version: str = GENE_CALL_VERSION,
     root = Path(root).resolve()
     packs = outside_root(root, packs, "the pack directory")
     with _stop_on_signals():
-        return _build(root, release, gene_call_version, models, shard_text_bytes, producers, release_manifest, packs)
+        return _build(root, release, gene_call_version, models, shard_text_bytes, producers, release_manifest, packs,
+                      scratch)
 
 
 def _build(root: Path, release: str, gcv: str, models: dict[str, Path] | None, shard_text_bytes: int,
-           producers: list[str] | None, release_manifest: dict | None, packs: Path) -> dict:
+           producers: list[str] | None, release_manifest: dict | None, packs: Path, verify_scratch: Path | None
+           ) -> dict:
     rf = ReleaseFiles.of(root, release, release_manifest)
     _log(f"release {release}: checking genetic codes")
     _check_codes(rf, gcv)
@@ -758,7 +773,8 @@ def _build(root: Path, release: str, gcv: str, models: dict[str, Path] | None, s
     for d in sorted(p for p in base.iterdir() if not p.name.startswith(".")) if base.is_dir() else []:
         if (d / MANIFEST).is_file():
             have, pid = read_manifest(d)
-            if _fingerprint(have) == want and not verify_dir(root, release, d, release_manifest=release_manifest):
+            if _fingerprint(have) == want and not verify_dir(root, release, d, release_manifest=release_manifest,
+                                                             scratch=verify_scratch):
                 _log(f"release {release}: pack {pid.hex()} is there, built from the same inputs: nothing to do")
                 _add_record(d, release)  # a pack built before W-19 has none; it has just verified in full
                 return {**have, "pack_id": pid.hex()}  # built from the same inputs: a no-op
@@ -782,7 +798,7 @@ def _build(root: Path, release: str, gcv: str, models: dict[str, Path] | None, s
         _log(f"release {release}: the pack verifies; record {VERIFIED} written")
         final = pack_dir(packs, release, pid)
         if final.exists():
-            if not verify_dir(root, release, final, release_manifest=release_manifest):
+            if not verify_dir(root, release, final, release_manifest=release_manifest, scratch=verify_scratch):
                 shutil.rmtree(out)
                 _log(f"release {release}: pack {final.name} is there already and verifies; this build removed")
                 _add_record(final, release)
@@ -942,9 +958,11 @@ def _count_source(rf: ReleaseFiles, manifest: dict, target: str, out: Path, scra
     gcv = manifest["gene_call_version"]
     if target == "unique":
         # distinct protein uids through a sorter, in a scratch directory under `scratch` (a search's: its work
-        # directory, so a search writes nothing into the pack directory; card W-19), else beside the pack
-        # (dot-named, so `find` and `build` pass it by); removed after
-        uids = _Sorter((scratch or out.parent) / f".verify-{os.getpid()}-{os.urandom(4).hex()}",
+        # directory, card W-19; `pack verify`'s: the profile's work directory, card W-22), else under the system
+        # temporary directory; never beside the pack, so nothing but a build writes into the pack directory (card
+        # W-22); removed after
+        base = Path(scratch) if scratch is not None else Path(tempfile.gettempdir())
+        uids = _Sorter(base / f".verify-{os.getpid()}-{os.urandom(4).hex()}",
                        pa.schema([pa.field("protein_uid", UID)]), None, None)
         try:
             for f in _protein_files(rf, gcv):
@@ -969,15 +987,16 @@ def _count_source(rf: ReleaseFiles, manifest: dict, target: str, out: Path, scra
 
 def verify(root: Path, release: str, pack_id: bytes | None = None,
            min_shard_bytes: int = layout.TARGET_FILE_BYTES, release_manifest: dict | None = None, *,
-           packs: Path) -> list[str]:
+           packs: Path, scratch: Path | None = None) -> list[str]:
     """C-12: problems with the release's pack in the pack directory `packs` (the one of `pack_id`, when
     given; `find`); empty means it verifies. Sequence counts are checked against the release's files under
-    `root` (`release_manifest`, as for `build`)."""
+    `root` (`release_manifest`, as for `build`). Nothing is written into `packs` (card W-22): the count of
+    distinct proteins sorts under `scratch` (`verify_dir`)."""
     try:
         out = find(packs, release, pack_id, root=root)
     except (FileNotFoundError, ValueError) as e:
         return [str(e)]
-    return verify_dir(root, release, out, pack_id, min_shard_bytes, release_manifest)
+    return verify_dir(root, release, out, pack_id, min_shard_bytes, release_manifest, scratch=scratch)
 
 
 def verify_dir(root: Path, release: str, out: Path, pack_id: bytes | None = None,
@@ -985,7 +1004,7 @@ def verify_dir(root: Path, release: str, out: Path, pack_id: bytes | None = None
                scratch: Path | None = None) -> list[str]:
     """`verify` of the pack in the directory `out`: also, the directory is named by the manifest's hash, and the
     build's verification record, when there is one, names this manifest. The distinct proteins are counted through
-    a sorter under `scratch` (default: beside the pack)."""
+    a sorter under `scratch` (default: the system temporary directory; never beside the pack, card W-22)."""
     root, out = Path(root).resolve(), Path(out)
     if not (out / MANIFEST).exists():
         return [f"{out}: no {MANIFEST}"]

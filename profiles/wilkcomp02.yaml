@@ -6,6 +6,9 @@ max_threads_day: 40
 max_threads_night: 56
 mem_scope: 200G
 tmp: /tmp/if2453/bio-box
+# Card W-22: the host's one search pack directory is <tmp>/packs, /tmp/if2453/bio-box/packs
+# (runner.default_pack_base, card W-03); pack, search, nbr and releases find a release's pack there with
+# only --profile. Only a pack build writes into it, so it may be read-only for all but its builder.
 durable: /stor/work/Wilke/if2453/all-the-data
 bulk: /stor/scratch/Wilke/if2453/all-the-data
 nice_monolithic: 19

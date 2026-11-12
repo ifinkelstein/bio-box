@@ -76,6 +76,12 @@ directory lacks exit 2 naming the pack (card W-24): a run's genes are named in i
 only the pack's manifest records. `nbr` reads a run with its own release's files; `--release` naming another
 release is refused (card W-24), and the run's proteins go to another release as protein uids.
 
+The profile's `<tmp>/packs` is the host's one pack directory (card W-22): `pack`, `search`, `nbr` and
+`releases` find a release's pack there with only `--profile`; `--pack-dir` names another. Only a `pack build`
+that makes a pack writes into it, so it may be read-only for everyone but its builder: `pack verify` and a
+no-op `pack build` sort under the profile's `<tmp>/search/<user>/work` (without a profile, the system
+temporary directory), and a build that cannot write the pack directory is refused (exit 2).
+
 `search run --wait` runs the search in this process and writes the same pending record as a submitted
 run, so `search status` and `search cancel` work on it from another shell (card W-13). Without `--wait`
 the run is submitted: a detached runner, and the command returns at once. Inside a `scripts/pod_run.sh`
@@ -241,23 +247,38 @@ def _run_tape_version(d: Path, packs: Path) -> str:
     return pack.manifest_tape_version(pack.read_manifest(pdir)[0])
 
 
+def _verify_scratch(a) -> Path | None:
+    """Where `pack verify` and a no-op `pack build` sort (card W-22): the profile's per-user work directory
+    (`<tmp>/search/<user>/work`, where a search's own verify sorts), else None (the system temporary directory);
+    never the pack directory, which may be read-only for all but its builder."""
+    tmp = _profile_tmp(a)
+    return runner.default_work_base(tmp) if tmp is not None else None
+
+
 def _pack(a) -> int:
-    """`pack build|verify` (card W-03): the release's pack in the pack directory, never under the root."""
+    """`pack build|verify` (card W-03): the release's pack in the pack directory, never under the root. Only a
+    build that makes a pack writes into the pack directory (card W-22)."""
     packs = _packs(a)
+    scratch = _verify_scratch(a)
     if a.action == "build":
         models = dict(m.split("=", 1) for m in a.model)
         try:
             man = pack.build(Path(a.root), a.release, a.gene_call_version, {k: Path(v) for k, v in models.items()},
-                             packs=packs)
+                             packs=packs, scratch=scratch)
         except (ValueError, FileExistsError) as e:
             print(f"refused: {e}", file=sys.stderr)
+            return 2
+        except PermissionError as e:  # card W-22: a pack directory may be read-only for all but its builder
+            print(f"refused: {e}. A pack directory may be read-only for all but its builder: ask the owner of "
+                  f"{packs} to build the pack, or build it into a pack directory of your own with --pack-dir",
+                  file=sys.stderr)
             return 2
         recs = (export.record("pack_target", {"release_id": a.release, "pack_id": man["pack_id"], "target": t,
                                               "shards": sum(1 for s in man["shards"] if s["target"] == t), **info})
                 for t, info in sorted(man["targets"].items()))
         _print(export.ndjson(recs))
         return 0
-    problems = pack.verify(Path(a.root), a.release, packs=packs)
+    problems = pack.verify(Path(a.root), a.release, packs=packs, scratch=scratch)
     _print(problems or [f"pack {a.release}: verified"])
     return 1 if problems else 0
 
@@ -1356,8 +1377,9 @@ DOMAIN_ACTIONS = ("plan", "shard", "merge")  # `stage domains plan|shard|merge` 
 INGEST_ACTIONS = ("pass1", "plan", "batch", "merge")  # `stage ingest pass1|plan|batch|merge` (card B-30)
 NCRNA_ACTIONS = ("plan", "shard", "merge")  # `stage ncrna plan|shard|merge` (card E-07)
 STEP_ACTIONS = {"domains": DOMAIN_ACTIONS, "ingest": INGEST_ACTIONS, "ncrna": NCRNA_ACTIONS}
-PACK_DIR_HELP = ("the pack directory, outside the data root (card W-03); default: <profile tmp>/packs with a host "
-                 "profile, else packs beside $BIOBOX_SEARCH_WORK or /tmp/atd/search")
+PACK_DIR_HELP = ("the pack directory, outside the data root (card W-03); default: <profile tmp>/packs, the host's one "
+                 "pack directory (card W-22), with a host profile, else packs beside $BIOBOX_SEARCH_WORK or "
+                 "/tmp/atd/search")
 RUNS_HELP = ("the runs directory, outside the data root (card W-03); default: <profile tmp>/search/<user>/runs with "
              "a host profile, else runs in $BIOBOX_SEARCH_WORK or /tmp/atd/search")
 PROFILE_DIRS_HELP = "host profile YAML (default: $BIOBOX_PROFILE); its tmp holds the default pack and runs directories"
