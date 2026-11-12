@@ -135,12 +135,49 @@ def _print(lines) -> None:
         sys.stdout.write(line + "\n")
 
 
-def _emit(lines, out: str | None) -> None:
-    """To stdout, or to the file `out` (written under a temporary name and renamed into place)."""
+_WRITTEN: dict[str, str] = {}  # card W-23: output path -> what it holds ("12 rows"), for every file written here
+_QUIET = False  # set by `search hmm` while the commands it calls write into its temporary directory
+
+
+def _wrote(path, text: str) -> None:
+    """One stderr line for an output file written (card W-23): `wrote PATH: N rows|sequences|records`."""
+    _WRITTEN[str(path)] = text
+    if not _QUIET:
+        print(f"wrote {path}: {text}", file=sys.stderr)
+
+
+class _Tally:
+    """The lines of an output, counted as they pass (card W-23): `sequences` counts FASTA records, `records` NDJSON
+    lines, `rows` the rows of a TSV of blank-line-separated tables, each a column line and its rows (`#` lines are
+    not rows)."""
+
+    def __init__(self, lines, unit: str):
+        self.lines, self.unit, self.n = lines, unit, 0
+
+    def __iter__(self):
+        fresh = True
+        for line in self.lines:
+            if self.unit == "sequences":
+                self.n += line.startswith(">")
+            elif self.unit == "records":
+                self.n += 1
+            elif not line:
+                fresh = True
+            elif not line.startswith("#"):
+                self.n += not fresh
+                fresh = False
+            yield line
+
+
+def _emit(lines, out: str | None, unit: str = "rows") -> None:
+    """To stdout, or to the file `out` (written under a temporary name and renamed into place), then one line on
+    stderr with what it holds, counted in `unit` (`_Tally`)."""
     if out is None:
         _print(lines)
     else:
-        export.write_lines(lines, Path(out))
+        t = _Tally(lines, unit)
+        export.write_lines(t, Path(out))
+        _wrote(out, f"{t.n} {unit}")
 
 
 def _profile_tmp(a) -> Path | None:
@@ -338,7 +375,8 @@ def _search(a) -> int:
         more = {"prefer": _positive_prefs(runner.read_run(d)["controls_json"])} if a.format == "faa" else {}
         try:
             _emit(make(root, hits, release=release, tape_version=tv, gene_call_version=a.gene_call_version,
-                       manifest=manifest, library=a.library, threads=a.threads, **more), a.out)
+                       manifest=manifest, library=a.library, threads=a.threads, **more), a.out,
+                  "rows" if a.format == "tsv" else "sequences")
         except ValueError as e:
             print(f"refused: {e}", file=sys.stderr)
             return 2
@@ -454,8 +492,11 @@ def _nbr(a) -> int:
             if a.out is None:
                 _print(line for k, (_, lines) in enumerate(tables) for line in ([""] if k else []) + lines)
             else:
+                n_tables = n_rows = 0
                 for name, lines in tables:
                     export.write_lines(lines, Path(a.out) / name)
+                    n_tables, n_rows = n_tables + 1, n_rows + len(lines) - 3  # a header, the facts, the columns
+                _wrote(a.out, f"{n_tables} tables, {n_rows} rows")  # card W-23
         except ValueError as e:
             print(f"refused: {e}", file=sys.stderr)
             return 2
@@ -479,7 +520,8 @@ def _nbr(a) -> int:
         except ValueError as e:
             print(f"refused: {e}", file=sys.stderr)
             return 2
-        _emit(export.ndjson(export.nbr_summary_records(s)) if a.json else export.nbr_summary_tsv(s), a.out)
+        _emit(export.ndjson(export.nbr_summary_records(s)) if a.json else export.nbr_summary_tsv(s), a.out,
+              "records" if a.json else "rows")
         return 0
     rows, counts = nbr.fetch(root, uids, policy, a.gene_call_version, tape_version=tv, files=files)
     if a.json:
@@ -780,6 +822,9 @@ def _search_hmm(a) -> int:
     tmp = out.parent / f".{out.name}.tmp-{os.getpid()}"
     shutil.rmtree(tmp, ignore_errors=True)
     tmp.mkdir(parents=True)
+    global _QUIET
+    quiet = _QUIET
+    _QUIET = True  # card W-23: the commands below write into tmp; the lines name the files once DIR is in place
     try:
         (tmp / "recipe.yaml").write_text(text, encoding="utf-8")
         if status == "ok":
@@ -801,7 +846,11 @@ def _search_hmm(a) -> int:
             counts = (_count(tmp / "hits.tsv") - 1, _count(tmp / "hits.faa", ">"), len(list((tmp / "loci").iterdir())))
         os.replace(tmp, out)  # an empty DIR is replaced; a DIR that gained files meanwhile is not (OSError)
     finally:
+        _QUIET = quiet
         shutil.rmtree(tmp, ignore_errors=True)
+    if status == "ok":
+        for name in ("hits.tsv", "hits.faa", "neighbors.tsv", "loci"):
+            _wrote(out / name, _WRITTEN[str(tmp / name)])
     print(f"{rid}\t{status}")
     if status != "ok":
         print(f"search hmm: run {rid} ended {status}: {row.get('error')}; {out} holds the recipe it ran",
@@ -858,7 +907,7 @@ def _export(a) -> int:
               file=sys.stderr)
         return 2
     _emit(export.protein_fasta(root, release=a.release, gene_call_version=a.gene_call_version, manifest=manifest,
-                               threads=a.threads), a.out)
+                               threads=a.threads), a.out, "sequences")
     return 0
 
 
