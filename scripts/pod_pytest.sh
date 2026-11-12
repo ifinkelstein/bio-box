@@ -11,6 +11,8 @@
 #   that run at once; each prints its own summary line and the script fails if any shard fails.
 #   The whole suite takes about 13 minutes in one process on the pod and about 3 with 8 shards.
 # The image on the pod has MMseqs2 and the HMMER binaries, so tests that skip on a laptop run here.
+# BIOBOX_PEER_MANIFEST (a path on the pod, under /tmp/if2453) is passed into the image when set: the
+#   cross-host test (card D-04) compares the fixture's manifest hash with the one another host recorded.
 set -eu
 NAME=$1
 shift
@@ -27,6 +29,8 @@ HOST=${BIOBOX_POD:-if2453@wilkcomp02.ccbb.utexas.edu}
 CI=${BIOBOX_POD_CI:-/tmp/if2453/ci}
 IMAGE=${BIOBOX_POD_IMAGE:-/stor/home/if2453/bio-box/images/bio-box-test_74b3e05.sif}
 PYDEPS=${BIOBOX_POD_PYDEPS:-/tmp/if2453/pilot_s1/pydeps}
+PEER_ENV=""
+[ -z "${BIOBOX_PEER_MANIFEST:-}" ] || PEER_ENV="--env BIOBOX_PEER_MANIFEST=$BIOBOX_PEER_MANIFEST"
 TOP=${BIOBOX_TREE:-$(git rev-parse --show-toplevel)}  # BIOBOX_TREE: test a tree other than the current directory's
 DST="$CI/$NAME"
 ARGS=""
@@ -42,7 +46,7 @@ rsync -a --delete -e "ssh -o BatchMode=yes" \
 # the scope's memory cap (card C-07: inside the image the directory is otherwise empty).
 run() {  # run <basetemp suffix> <pytest args string>
   ssh -o BatchMode=yes "$HOST" "systemd-run --user --scope --quiet -p MemoryMax=32G -p MemorySwapMax=0 nice -n 19 \
-    singularity exec --cleanenv --env PYTHONPATH=$DST/src:$PYDEPS $GOLDEN_ENV \
+    singularity exec --cleanenv --env PYTHONPATH=$DST/src:$PYDEPS $GOLDEN_ENV $PEER_ENV \
     --env OMP_NUM_THREADS=2 --bind /tmp/if2453 --bind /sys/fs/cgroup:/sys/fs/cgroup:ro --pwd '$DST' '$IMAGE' \
     python -m pytest -q -p no:cacheprovider --basetemp=/tmp/if2453/ci-tmp/$NAME-$1 $2"
 }
