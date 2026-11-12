@@ -735,9 +735,27 @@ def _protein_fasta(root, release, gene_call_version, manifest, threads, tmp) -> 
             yield r["seq"]
 
 
+def protein_seqs(root: Path, uids, *, release: str, gene_call_version: str, manifest=None, threads: int | None = None,
+                 tmp=None) -> tuple[dict[bytes, tuple[int, str]], list[dict]]:
+    """({protein_uid: (length, sequence)} for those of `uids` the release's `protein_seq` holds, and what the lookup
+    read: `catalog.profile_query`'s scans), for `bio-box seq --protein` (card W-23). By key: the uids go into a temp
+    table and `protein_seq` is filtered by `IN (SELECT ...)`, which reads the row groups that hold them (card B-27,
+    AGENTS §4.4), not the release; files from `release_files`."""
+    from biobox.catalog import profile_query
+
+    with open_store(root, release=release, gene_call_version=gene_call_version, manifest=manifest, threads=threads,
+                    tmp=tmp, relations=("prot",)) as st:
+        st.con.register("_p_in", pa.table({"protein_uid": pa.array(sorted(set(uids)), pa.binary(16))}))
+        st.con.execute("CREATE TEMP TABLE _p AS SELECT protein_uid FROM _p_in")
+        st.con.unregister("_p_in")
+        got = profile_query(st.con, "SELECT protein_uid, max(length) AS length, min(seq) AS seq FROM prot "
+                                    "WHERE protein_uid IN (SELECT protein_uid FROM _p) GROUP BY protein_uid")
+    return {u: (int(n), s) for u, n, s in got["result"]}, got["scans"]
+
+
 def contig_dims(root: Path, release: str | None, contigs: set[bytes], manifest: dict | None = None) -> dict[bytes, dict]:
-    """{contig_uid: {genome_uid, tier}} from the release's `contig_dim` for the contigs (files from `release_files`);
-    a contig without a row is absent."""
+    """{contig_uid: {genome_uid, tier, is_circular}} from the release's `contig_dim` for the contigs (files from
+    `release_files`); a contig without a row is absent."""
     import pyarrow.parquet as pq
 
     from biobox.search.nbr import _store_files
@@ -746,10 +764,11 @@ def contig_dims(root: Path, release: str | None, contigs: set[bytes], manifest: 
         return {}
     out: dict[bytes, dict] = {}
     for path, _ in _store_files(Path(root), "contig_dim", {"release": release}, release_files(root, release, manifest)):
-        t = pq.read_table(path, columns=["contig_uid", "genome_uid", "tier"], partitioning=None,
+        t = pq.read_table(path, columns=["contig_uid", "genome_uid", "tier", "is_circular"], partitioning=None,
                           filters=[("contig_uid", "in", sorted(contigs))])
         for r in t.to_pylist():
-            out.setdefault(r["contig_uid"], {"genome_uid": r["genome_uid"], "tier": r["tier"]})
+            out.setdefault(r["contig_uid"], {"genome_uid": r["genome_uid"], "tier": r["tier"],
+                                             "is_circular": r["is_circular"]})
     return out
 
 

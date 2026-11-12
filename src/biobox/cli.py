@@ -426,6 +426,22 @@ def _anchors(a, source: str, tape_version: str | None, gene_call_version: str):
         return f"refused: {source} is neither a closed run (in {_runs(a)} or as a directory) nor protein uids"
 
 
+def _uid_file(path: str, flag: str) -> list[str] | str:
+    """The protein uids of a file, one per line (blank lines and `#` lines skipped): `nbr --anchors-file` (card W-18)
+    and `seq --proteins-file` (card W-23); a refusal message instead when it cannot be read, holds no uid, or holds a
+    line that is not one."""
+    try:
+        lines = Path(path).read_text(encoding="utf-8").splitlines()
+    except (OSError, UnicodeDecodeError) as e:
+        return f"refused: {flag} {path}: {e}"
+    words = [x.strip() for x in lines if x.strip() and not x.lstrip().startswith("#")]
+    bad = next((x for x in words if not re.fullmatch(r"[0-9a-fA-F]{32}", x)), None)
+    if bad is not None or not words:
+        return (f"refused: {flag} {path}: "
+                + (f"{bad!r} is not a protein uid (32 hex digits)" if words else "no protein uids in it"))
+    return words
+
+
 def _nbr(a) -> int:
     root = Path(a.root)
     if a.action not in (None, "summarize"):  # `nbr <run_id|uids>`: the first positional is the anchors
@@ -438,17 +454,9 @@ def _nbr(a) -> int:
             print("refused: --anchors-file is the anchors; give it without --anchors or a run id or uid list",
                   file=sys.stderr)
             return 2
-        try:
-            lines = Path(a.anchors_file).read_text(encoding="utf-8").splitlines()
-        except (OSError, UnicodeDecodeError) as e:
-            print(f"refused: --anchors-file {a.anchors_file}: {e}", file=sys.stderr)
-            return 2
-        words = [x.strip() for x in lines if x.strip() and not x.lstrip().startswith("#")]
-        bad = next((x for x in words if not re.fullmatch(r"[0-9a-fA-F]{32}", x)), None)
-        if bad is not None or not words:
-            print(f"refused: --anchors-file {a.anchors_file}: "
-                  + (f"{bad!r} is not a protein uid (32 hex digits)" if words else "no protein uids in it"),
-                  file=sys.stderr)
+        words = _uid_file(a.anchors_file, "--anchors-file")
+        if isinstance(words, str):
+            print(words, file=sys.stderr)
             return 2
         a.anchors = ",".join(words)
     if a.action == "summarize" and not (a.source or a.anchors):
@@ -1006,6 +1014,91 @@ def release_summary(root: Path, release: str, packs: Path | None = None) -> dict
     return rec
 
 
+def contig_slice(root: Path, files, contig_uid: bytes, start: int, end: int | None, strand: int,
+                 circular: bool) -> tuple[bytes, int, dict]:
+    """(the bases of `contig_uid`'s default variant from `start` to `end`, 0-based and half-open, on `strand`; the
+    contig's length; what was read) for `bio-box seq --contig` (card W-23). Read by key through `SeqStore` over the
+    release's files: one row group of `contig_index` and of `seq_locator` per key and the BGZF blocks of the slice
+    (`reads`: the store's counters). `end` None is the contig's end; on a circular contig `end` may pass its length
+    (across the origin). KeyError for a contig the release does not hold, ValueError for a slice outside it."""
+    from biobox.l0seq.store import SeqStore
+
+    store = SeqStore(root, files)
+    try:
+        n = store.length_of(store.default_digest(contig_uid))
+        seq = store.get(contig_uid, start, n if end is None else end, strand, circular)
+        reads = {"index_row_groups_read": store.index.row_groups_read,
+                 "locator_row_groups_read": store.locator.row_groups_read, **store.counters()}
+    finally:
+        store.close()
+    return seq, n, reads
+
+
+def _seq(a) -> int:
+    """`bio-box seq` (card W-23): proteins by uid, or one contig slice, as FASTA, read by key from the release's files
+    (never by exporting the release). 2 when a key names nothing in the release."""
+    root = Path(a.root)
+
+    def refuse(msg) -> int:
+        print(f"refused: {msg}", file=sys.stderr)
+        return 2
+
+    try:
+        files = export.release_files(root, a.release, export.release_manifest(root, a.release))
+    except (ValueError, OSError) as e:
+        return refuse(e)
+    if a.contig is None:
+        if a.strand != 1:
+            return refuse("--strand is for --contig; a protein has one strand")
+        words = list(a.protein or [])
+        if a.proteins_file:
+            got = _uid_file(a.proteins_file, "--proteins-file")
+            if isinstance(got, str):
+                print(got, file=sys.stderr)
+                return 2
+            words = got
+        bad = next((w for w in words if not re.fullmatch(r"[0-9a-fA-F]{32}", w)), None)
+        if bad is not None:
+            return refuse(f"--protein {bad!r} is not a protein uid (32 hex digits)")
+        uids = list(dict.fromkeys(bytes.fromhex(w) for w in words))  # in the order given, each once
+        seqs, _ = export.protein_seqs(root, uids, release=a.release, gene_call_version=a.gene_call_version,
+                                      manifest=files, threads=a.threads)
+        missing = [u.hex() for u in uids if u not in seqs]
+        if missing:
+            return refuse(f"{len(missing)} of {len(uids)} proteins are not in release {a.release}: "
+                          f"{', '.join(missing[:20])}" + (" ..." if len(missing) > 20 else "") + "; nothing written")
+        _emit((line for u in uids for line in (f">{u.hex()} release={a.release} length={seqs[u][0]}", seqs[u][1])),
+              a.out, "sequences")
+        return 0
+    try:
+        span = parse_span(a.contig)
+    except SpanError as e:
+        return refuse(f"--contig {e}")
+    acc, start, end = span if span else (a.contig, 0, None)
+    if re.fullmatch(r"[0-9a-fA-F]{32}", acc):  # a contig uid: accessions are never 32 hex digits
+        cu = bytes.fromhex(acc)
+        name = _contig_labels(root, files, a.gene_call_version, a.threads, contigs={cu}).get(cu, (None,))[0]
+    else:  # by accession: a scan of contig_label, which is sorted by contig (card W-15)
+        labels = _contig_labels(root, files, a.gene_call_version, a.threads, where=f"accession = {export._q(acc)}")
+        if len(labels) != 1:
+            return refuse(f"no contig of release {a.release} has the accession {acc}" if not labels else
+                          f"{len(labels)} contigs of release {a.release} have the accession {acc}: "
+                          f"{', '.join(sorted(c.hex() for c in labels))}; give one by its contig uid")
+        cu, name = next(iter(labels)), acc
+    circular = bool(export.contig_dims(root, a.release, {cu}, files).get(cu, {}).get("is_circular"))
+    try:
+        seq, n, _ = contig_slice(root, files, cu, start, end, a.strand, circular)
+    except KeyError:
+        return refuse(f"contig {cu.hex()} is not in release {a.release}")
+    except ValueError as e:
+        return refuse(f"--contig {a.contig}: {e} (0-based, end exclusive; an end past the contig's length only on a "
+                      f"circular contig{'' if circular else ', and this one is linear'})")
+    head = (f">{cu.hex()} release={a.release} accession={name or '-'} start={start} end={n if end is None else end} "
+            f"strand={a.strand:+d} contig_len={n}")
+    _emit([head, seq.decode("ascii")], a.out, "sequences")
+    return 0
+
+
 RELEASES_COLUMNS = ("release", "manifest", "stages", "genomes", "contigs", "proteins", "libraries", "ncrna",
                     "member_cluster", "contig_label", "domain_family_tokens")
 
@@ -1490,6 +1583,18 @@ def _main(argv: list[str] | None = None) -> int:
                                       "release in the profile's pack directory is named")
     rs.add_argument("--pack-dir", help="a pack directory to name each release's pack from, in place of the profile's")
     rs.add_argument("--json", action="store_true", help="one JSON object per release")
+    sq = sub.add_parser("seq", parents=[common], help="proteins by uid or a contig slice, as FASTA, read by key "
+                                                      "(card W-23)")
+    sq.add_argument("--release", required=True)
+    which = sq.add_mutually_exclusive_group(required=True)
+    which.add_argument("--protein", nargs="+", action="extend", help="protein uids (32 hex digits); repeatable")
+    which.add_argument("--proteins-file", help="protein uids, one per line (blank lines and # comments skipped)")
+    which.add_argument("--contig", help="ACC, ACC:START-END (0-based, end exclusive) or ACC:START..END (GenBank: "
+                                        "1-based, inclusive); ACC may be a contig uid. An end past the contig's "
+                                        "length crosses the origin of a circular contig")
+    sq.add_argument("--strand", type=int, choices=[1, -1], default=1, help="--contig: 1 or -1 (reverse complement)")
+    sq.add_argument("--out", help="write this file (default: stdout)")
+    sq.add_argument("--threads", type=int, help=f"DuckDB threads (default {export.EXPORT_THREADS})")
     n = sub.add_parser("nbr", parents=[common])
     n.add_argument("action", nargs="?", help="summarize: families and clusters per window; otherwise the anchors")
     n.add_argument("source", nargs="?", help="summarize: run_id or protein uids (uid,uid,...)")
@@ -1618,7 +1723,8 @@ def _main(argv: list[str] | None = None) -> int:
             p.error("run-step needs a command after --")
         a.command = command
     return {"pack": _pack, "search": _search, "nbr": _nbr, "find": _find, "export": _export, "run-step": _run_step,
-            "release": _release, "stage": _stage, "build-stage": _build_stage, "releases": _releases}[a.cmd](a)
+            "release": _release, "stage": _stage, "build-stage": _build_stage, "releases": _releases,
+            "seq": _seq}[a.cmd](a)
 
 
 if __name__ == "__main__":
