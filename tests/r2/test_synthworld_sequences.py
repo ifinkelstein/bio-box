@@ -103,13 +103,19 @@ def test_same_seed_gives_byte_identical_sequences_in_a_subprocess(world, tmp_pat
     dst = _copy_backbone(out, tmp_path / "copy")
     env = dict(os.environ, PYTHONHASHSEED="4242", OMP_NUM_THREADS="1", OPENBLAS_NUM_THREADS="1",
                MKL_NUM_THREADS="1", NUMEXPR_NUM_THREADS="1")
-    code = ("import resource, sys; from biobox.synthworld import sequences; sequences.build(sys.argv[1]); "
-            "print(resource.getrusage(resource.RUSAGE_SELF).ru_maxrss)")
+    # the child's own peak RSS is VmHWM (per address space, so reset by exec); getrusage's ru_maxrss is
+    # kept across execve and would report the forking pytest process's peak instead
+    code = ("import os, sys; from biobox.synthworld import sequences; sequences.build(sys.argv[1]); "
+            "p = '/proc/self/status'; "
+            "print(next((l.split()[1] for l in open(p) if l.startswith('VmHWM')), -1) if os.path.exists(p) else -1)")
     proc = subprocess.run([sys.executable, "-c", code, str(dst)], check=True, env=env, cwd=tmp_path,
                           capture_output=True, text=True)
     assert _tree_sha(dst / "sequences") == _tree_sha(out / "sequences")
-    # bounded memory: the sequence stage holds one family at a time (the child's own peak RSS, Linux KiB)
-    rss_mb = int(proc.stdout.split()[-1]) / 1024
+    # bounded memory: the sequence stage holds one family at a time (kB; -1 where /proc is absent)
+    hwm_kb = int(proc.stdout.split()[-1])
+    if hwm_kb < 0:
+        return
+    rss_mb = hwm_kb / 1024
     record_property("sequences_child_maxrss_mb", round(rss_mb, 1))
     print(f"\nsequence stage child peak RSS {rss_mb:.0f} MB")
     assert rss_mb < 1024
