@@ -1,0 +1,24 @@
+{
+ "argv": [
+  "python",
+  "/tmp/if2453/ci/c21f/scripts/stress/c21f_context_free/detail.py",
+  "--feature-protein",
+  "/tmp/if2453/r10/root/l1/feature_protein/gene_call_version=pyrodigal-3.7.1-gv-0.3.2-p2/stage=P1",
+  "--domains",
+  "/tmp/if2453/r10/root/l1/domains/library=pfam-38.2/stage=P1",
+  "--p2",
+  "/tmp/if2453/c21f/out/p2-0of1",
+  "--p3",
+  "/tmp/if2453/c21f/out/p3-0of1",
+  "--out",
+  "/tmp/if2453/c21f/out/detail.json"
+ ],
+ "cpu_min": 0.0732,
+ "exit_code": 0,
+ "host": "wilkcomp02.ccbb.utexas.edu",
+ "peak_rss_mib": 456.4,
+ "started_at": "2026-11-12T14:15:03+00:00",
+ "sys_min": 0.023,
+ "user_min": 0.0503,
+ "wall_s": 4.064
+}

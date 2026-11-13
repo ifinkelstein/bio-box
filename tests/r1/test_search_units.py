@@ -552,7 +552,10 @@ def test_w06_summary_records_and_tsv_carry_the_same_numbers():
                                                                                  "release", "tape_version", "policy",
                                                                                  "n_keys")}
     assert same_numbers(back["rows"], recs[1:])
-    assert {"cluster_uid", "rep_length"} <= set(next(r for r in back["rows"] if r["level"] == "nr50"))
+    # card W-24: at the cluster levels the TSV names the cluster once, as `key`; the records keep `cluster_uid`
+    nr50 = next(r for r in back["rows"] if r["level"] == "nr50")
+    assert {"key", "rep_length"} <= set(nr50) and "cluster_uid" not in nr50
+    assert all(r["cluster_uid"] == r["key"] for r in recs[1:] if r["level"] != "pfam" and not r["unannotated"])
     with pytest.raises(ValueError, match="nr70"):
         nbr.summarize_rows(TINY, ("pfam", "nr70"))
 

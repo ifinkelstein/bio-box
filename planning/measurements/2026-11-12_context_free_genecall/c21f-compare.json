@@ -1,0 +1,22 @@
+{
+ "argv": [
+  "python",
+  "/tmp/if2453/ci/c21f/scripts/stress/c21f_context_free/compare.py",
+  "--stored",
+  "/tmp/if2453/r10/root/l1/feature/producer=pyrodigal-3.7.1-gv-0.3.2-p2/stage=P1",
+  "--p2",
+  "/tmp/if2453/c21f/out/p2-0of1",
+  "--p3",
+  "/tmp/if2453/c21f/out/p3-0of1",
+  "--out",
+  "/tmp/if2453/c21f/out/compare.json"
+ ],
+ "cpu_min": 0.0834,
+ "exit_code": 0,
+ "host": "wilkcomp02.ccbb.utexas.edu",
+ "peak_rss_mib": 338.9,
+ "started_at": "2026-11-12T14:12:29+00:00",
+ "sys_min": 0.0217,
+ "user_min": 0.0617,
+ "wall_s": 4.49
+}

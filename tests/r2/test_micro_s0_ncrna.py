@@ -10,6 +10,12 @@ full-Rfam `cmsearch --cut_ga -Z 100000` over the three contigs (planning/measure
 leaving out the rRNA subunit models (thousands of columns, slow). tRNA and tRNA-Sec hit overlapping loci of
 M. genitalium, so overlapping hits of two models are exercised.
 
+Card E-07 migration: the producer now scans a model set, its intergenic models on intergenic regions and its
+whole-genome models on whole contigs (DEC-28). These tests give it the set `ncrna_set_whole.tsv`, the nine models
+above all scanned on whole contigs, so it scans as card E-01 did and the oracle below is unchanged; the producer's
+name now carries the set and the region rule. Regions, the set and shards are tested in `test_ncrna_regions.py`,
+`test_ncrna_shards.py` and `test_ncrna_build_stage.py`.
+
 The oracle (AGENTS §5.2) is the `cmsearch` binary itself, run here on the fixture contigs read from the
 source FASTA, its `--tblout` parsed by a parser of this file. The builder's rows, after its coordinate
 conversion, must equal it. A tRNA of M. genitalium is planted across the origin of two circular contigs (one
@@ -54,6 +60,7 @@ pytestmark = [pytest.mark.r2, pytest.mark.covers("E-01"),
 FIX = Path(__file__).resolve().parents[1] / "fixtures" / "micro_s0"
 CONTRACT = yaml.safe_load((FIX / "sources.yaml").read_text())
 LIB = FIX / "rfam15.1_micro_s0.cm.gz"
+SET = FIX / "ncrna_set_whole.tsv"  # card E-07: every model of LIB on whole contigs, as card E-01 scanned
 NCRNA = ids.KIND["ncrna"]
 Z = "100000"  # DEC-04: Z_nt = 1e5 Mb
 FAMILIES = {"RF00001", "RF00005", "RF00011", "RF00023", "RF00028", "RF00169", "RF01804", "RF01852", "RF02111"}
@@ -158,7 +165,7 @@ def world(tmp_path_factory):
     tapes.run(root, "S0", tmp=scratch)
     before = base / "before"  # the root as the ncRNA step finds it
     shutil.copytree(root, before)
-    report = _ncrna().run(root, "S0", LIB, cpus=1, tmp=scratch)
+    report = _ncrna().run(root, "S0", LIB, cpus=1, tmp=scratch, model_set=SET)
     after_ncrna = _digests(root)
     p = report["producer"]
     igr.run(root, "S0", producers=[V, p], tmp=scratch)
@@ -219,18 +226,34 @@ def test_rows_equal_the_cmsearch_binary_after_the_coordinate_conversion(world, o
         assert 0 <= r["start"] < r["end"] <= r["contig_len"]  # no fixture hit crosses an origin (C-05)
 
 
-@pytest.mark.covers("C-02", "C-05")
-def test_features_are_the_distinct_loci_of_the_hits(world):
+@pytest.mark.covers("C-02", "C-05", "E-08")
+def test_features_are_the_distinct_loci_of_the_winning_hits(world):
+    """Card E-08 migration (DEC-28): a feature is the locus of a hit that won its clan's competition or whose model is
+    in no clan; a losing hit stays in `l1_ncrna`, flagged, with no feature of its own. The flags equal the brute-force
+    oracle of `test_ncrna_clans` over the clan file as parsed there."""
+    import test_ncrna_clans as cl
+
+    hits = world["hits"]
+    flags = cl.oracle(hits, cl.clan_file())
+    assert [(r["clan"], r["clan_winner"]) for r in hits] == flags
     feats = world["features"]
-    want = sorted({(r["feature_uid"], r["contig_uid"], r["start"], r["end"], r["strand"]) for r in world["hits"]},
-                  key=lambda t: (t[1], t[2], t[3], t[4]))
+    want = sorted({(r["feature_uid"], r["contig_uid"], r["start"], r["end"], r["strand"])
+                   for r, (_, won) in zip(hits, flags) if won}, key=lambda t: (t[1], t[2], t[3], t[4]))
     assert [(f["feature_uid"], f["contig_uid"], f["start"], f["end"], f["strand"]) for f in feats] == want
     assert {f["kind"] for f in feats} == {NCRNA}
     assert len({f["feature_uid"] for f in feats}) == len(feats)
-    # tRNA and tRNA-Sec on overlapping loci of M. genitalium: both kept (no clan rule in the spec or decisions)
-    sec = [r for r in world["hits"] if r["model_acc"] == "RF01852"]
-    assert sec and all(any(t["model_acc"] == "RF00005" and t["contig_uid"] == s["contig_uid"]
-                           and t["start"] < s["end"] and s["start"] < t["end"] for t in world["hits"]) for s in sec)
+    # tRNA and tRNA-Sec on overlapping loci of M. genitalium: one clan (CL00001), so where they overlap on one strand
+    # one of them loses, and no two kept hits of a clan overlap on a strand
+    sec = [r for r in hits if r["model_acc"] == "RF01852"]
+    pairs = [(s, t) for s in sec for t in hits if t["model_acc"] == "RF00005" and t["contig_uid"] == s["contig_uid"]
+             and t["strand"] == s["strand"] and t["start"] < s["end"] and s["start"] < t["end"]]
+    assert pairs and all(not (s["clan_winner"] and t["clan_winner"]) for s, t in pairs)
+    assert any(not r["clan_winner"] for r in hits)
+    for a in hits:
+        for b in hits:
+            if a is not b and a["clan_winner"] and b["clan_winner"] and a["clan"] is not None:
+                assert not (a["clan"] == b["clan"] and a["contig_uid"] == b["contig_uid"]
+                            and a["strand"] == b["strand"] and cl.bases(a) & cl.bases(b)), (a, b)
 
 
 def test_producer_names_infernal_and_the_library(world, monkeypatch):
@@ -238,14 +261,19 @@ def test_producer_names_infernal_and_the_library(world, monkeypatch):
     infernal = re.search(r"^# INFERNAL (\S+)", help_text, re.M)[1]
     assert infernal == provenance.locked_versions()["infernal"]
     sha = hashlib.sha256(LIB.read_bytes()).hexdigest()
-    assert world["producer"] == f"infernal-{infernal}-rfam-sha{sha[:12]}"
+    set_sha = hashlib.sha256(SET.read_bytes()).hexdigest()  # card E-07: the set and the region rule
+    # card E-08: and the clan rule, since the features (winners only) differ from card E-07's
+    assert world["producer"] == f"infernal-{infernal}-rfam-sha{sha[:12]}-sha{set_sha[:12]}-igr200nt-clan1"
     nc = _ncrna()
     # a file whose sha256 refdb.yaml lists is named by its version there (Rfam.cm.gz of 15.1 gives 15.1)
     rfam = next(db for db in provenance.refdb_libraries() if db["name"] == "rfam")
     assert rfam["version"] == "15.1"
     monkeypatch.setattr(provenance, "refdb_libraries", lambda repo=None: [{**rfam, "sha256": sha}])
     assert nc.library_version(LIB) == "15.1"
-    assert nc.producer(LIB) == f"infernal-{infernal}-rfam-15.1"
+    assert nc.producer(LIB, SET) == f"infernal-{infernal}-rfam-15.1-sha{set_sha[:12]}-igr200nt-clan1"
+    # the frozen set by default: prok-2 since card E-09 (DEC-30); prok-1 keeps its name (card E-07's default)
+    assert nc.producer(LIB) == f"infernal-{infernal}-rfam-15.1-prok2-igr200nt-clan1"
+    assert nc.producer(LIB, "prok-1") == f"infernal-{infernal}-rfam-15.1-prok1-igr200nt-clan1"
 
 
 @pytest.mark.covers("C-08", "L-01")
@@ -258,7 +286,7 @@ def test_ledger_records_tool_and_library_versions_and_balances(world):
     for r in rows:
         tv = json.loads(r["tool_versions_json"])
         assert tv["infernal"] == lock["infernal"] and tv["pyarrow"] == lock["pyarrow"]
-        assert tv["rfam"] == p.rsplit("-", 1)[1]
+        assert tv["rfam"] == _ncrna().library_version(LIB)  # card E-07: no longer the producer's last field
     by = {r["object_key"]: r["n_in"] for r in rows}
     assert sum(by.values()) == len(world["hits"])
     assert ledger.check_balance(root, "S0", [step]) == []
@@ -302,7 +330,7 @@ def planted(world, oracle):
     root = d / "root"
     ingest(objs, root, "P")
     write_genome_input(root, "P", genomes)
-    report = _ncrna().run(root, "P", LIB, cpus=1, tmp=world["scratch"])
+    report = _ncrna().run(root, "P", LIB, cpus=1, tmp=world["scratch"], model_set=SET)
     hits = _rows(root, f"l1/ncrna/producer={report['producer']}/stage=P")
     return {"want": want, "hits": hits, "trna": trna, "lengths": lengths}
 
@@ -340,7 +368,7 @@ def test_bytes_do_not_depend_on_threads_order_or_batches(world, tmp_path, varian
     genomes = list(world["genomes"])
     kw = {"cpus": 4} if variant == "4 threads" else {"cpus": 1, "genomes": genomes[::-1], "batch_bases": 1}
     out = tmp_path / "out"
-    rep = _ncrna().run(world["before"], "S0", LIB, tmp=world["scratch"], out=out, **kw)
+    rep = _ncrna().run(world["before"], "S0", LIB, tmp=world["scratch"], out=out, model_set=SET, **kw)
     if "batch_bases" in kw:
         assert rep["batches"] == len(genomes)
     assert sorted(_digests(out)) == sorted(world["ncrna_files"])
@@ -357,7 +385,7 @@ def test_under_run_step_equals_the_direct_call(world, tmp_path):
     scratch = tmp_path / "scratch"
     scratch.mkdir()
     step = c08.Step("S0", "ncrna", lambda r: ["stage", "ncrna", "--root", str(r), "--stage", "S0", "--cm", str(LIB),
-                                              "--cpus", "2", "--tmp", str(scratch)], None)
+                                              "--ncrna-set", str(SET), "--cpus", "2", "--tmp", str(scratch)], None)
     prof = c08.profile_at(tmp_path / "prof")
     assert c08.run_cli(prof, root, step) == 0
     got, before = c08.tree(root), c08.tree(world["before"])
@@ -371,19 +399,19 @@ def test_refuses_before_any_work(world, tmp_path):
     nc = _ncrna()
     out = tmp_path / "out"
     with pytest.raises(FileExistsError, match="writes its partitions once"):
-        nc.run(world["root"], "S0", LIB, cpus=1, tmp=world["scratch"], out=out)
+        nc.run(world["root"], "S0", LIB, cpus=1, tmp=world["scratch"], out=out, model_set=SET)
     assert not out.exists() or c08.tree(out) == {}
     planted = sorted(world["ncrna_files"])[-1]  # a killed attempt's file in the output directory
     (out / planted).parent.mkdir(parents=True, exist_ok=True)
     shutil.copy(world["root"] / planted, out / planted)
     with pytest.raises(FileExistsError, match="writes its partitions once"):
-        nc.run(world["before"], "S0", LIB, cpus=1, tmp=world["scratch"], out=out)
+        nc.run(world["before"], "S0", LIB, cpus=1, tmp=world["scratch"], out=out, model_set=SET)
     assert sorted(c08.tree(out)) == [planted]
     for bad in (0, None, 1.5, True):
         with pytest.raises(ValueError, match="cpus"):
-            nc.run(world["before"], "S0", LIB, cpus=bad, tmp=world["scratch"], out=tmp_path / "o2")
+            nc.run(world["before"], "S0", LIB, cpus=bad, tmp=world["scratch"], out=tmp_path / "o2", model_set=SET)
     with pytest.raises(ValueError, match="scratch"):
-        nc.run(world["before"], "S0", LIB, cpus=1, tmp=world["before"] / "tmp", out=tmp_path / "o3")
+        nc.run(world["before"], "S0", LIB, cpus=1, tmp=world["before"] / "tmp", out=tmp_path / "o3", model_set=SET)
     assert not (tmp_path / "o2").exists() and not (tmp_path / "o3").exists()
 
 

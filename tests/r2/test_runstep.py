@@ -130,6 +130,18 @@ def test_image_digest_defaults_to_none(prof, root, monkeypatch):
     assert json.loads(record_path(root, "occ").read_text())["image_digest"] == "none"
 
 
+def test_record_names_the_code_that_ran_it(prof, root):
+    """Card C-23: the run record's meta has the code identity (`biobox.codeid`), beside the image digest."""
+    from biobox import codeid
+
+    assert run(prof, root, "occ", fake("--out", f"{OCC}/part-0.parquet=10")) == 0
+    rec = json.loads(record_path(root, "occ").read_text())
+    want = codeid.code_identity()
+    assert (rec["code_id"], rec["code_version"], rec["code_commit"]) == (
+        want["code_id"], want["code_version"], want["code_commit"])
+    assert len(rec["code_id"]) == 64
+
+
 def test_over_cpu_budget_is_a_warning(prof, root, tmp_path):
     p = tmp_path / "zero_budget.yaml"
     data = {f: getattr(prof, f) for f in prof.__dataclass_fields__}
@@ -582,3 +594,190 @@ def test_cli_stop_exit_code(prof, root, tmp_path):
     code = cli.main(["run-step", "--profile", str(tmp_path / "profile.yaml"), "--root", str(root),
                      "--stage", "S0", "--step", "occ", "--", *fake()])
     assert code == 75
+
+
+# --- C-16: a killed step has a peak ---------------------------------------------------------------------------------
+
+HOLD_MIB = 256
+# The end of a step that is to be killed: it says it is ready in the marker named by its last argument (its pid and
+# process group, written under a temporary name and renamed), then waits to be killed.
+MARK = r"""
+with open(sys.argv[-1] + ".tmp", "w") as f:
+    f.write(f"{os.getpid()} {os.getpgid(0)}")
+os.replace(sys.argv[-1] + ".tmp", sys.argv[-1])
+while True:
+    signal.pause()
+"""
+# writes argv[1] MiB, so that they are resident, and holds them
+HOLD = "import os, signal, sys\nblock = b'\\x03' * (int(sys.argv[1]) << 20)\n" + MARK
+# plays the kernel's part in a stand-in cgroup tree: sets the scope's memory.peak (argv[1]) to argv[2]
+SCOPED = "import os, signal, sys\nopen(sys.argv[1], 'w').write(sys.argv[2] + '\\n')\n" + MARK
+
+
+def _wait_for(pred, timeout: float) -> bool:
+    """Poll `pred` every 0.05 s until it holds or `timeout` seconds pass (AGENTS §5.3)."""
+    import time
+
+    deadline = time.monotonic() + timeout
+    while time.monotonic() < deadline:
+        if pred():
+            return True
+        time.sleep(0.05)
+    return False
+
+
+def failed_path(prof, step) -> Path:
+    return Path(prof.tmp) / "staging" / f"S0.{step}.failed.json"
+
+
+def _sampled(prof, step) -> dict:
+    """What the measuring helper has written so far for a running step (its file beside staging), or {}."""
+    try:
+        return json.loads((Path(prof.tmp) / "staging" / f"S0.{step}.peak.json").read_text())
+    except (OSError, ValueError):
+        return {}
+
+
+def _hold_and_kill(prof, root, step, cmd, kill, sampled, **kw) -> list[int]:
+    """Run `cmd` as step `step` in a thread, with a marker path as its last argument; once the marker exists, kill
+    the step's own process (`kill="step"`) or its whole process group, the measuring helper included
+    (`kill="group"`), after the helper's file satisfies `sampled`. Whatever the outcome, the step's process group is
+    gone when this returns. Returns run-step's exit codes."""
+    import signal
+
+    marker = Path(prof.tmp) / f"{step}.marker"
+    codes: list[int] = []
+    t = threading.Thread(target=lambda: codes.append(run(prof, root, step, [*cmd, str(marker)], threads=1, **kw)))
+    t.start()
+    pgid = None
+    try:
+        assert _wait_for(marker.exists, 60), "the step never said it was ready"
+        pid, pgid = map(int, marker.read_text().split())
+        if kill == "group":
+            # Not asserted: before card C-16 the helper writes nothing until the command ends; the test goes on to
+            # show what the record then lacks.
+            _wait_for(lambda: sampled(_sampled(prof, step)), 30)
+            os.killpg(pgid, signal.SIGKILL)
+        else:
+            os.kill(pid, signal.SIGKILL)
+        t.join(60)
+    finally:
+        if pgid is not None:
+            try:
+                os.killpg(pgid, signal.SIGKILL)
+            except (ProcessLookupError, PermissionError):
+                pass
+        t.join(60)
+    assert not t.is_alive()
+    return codes
+
+
+class C16PeakEvidence(UserWarning):
+    """Not a fault: a peak a C-16 test saw, put in the warnings summary so that the plain `pytest -q` of GitHub Actions
+    (where the scope-only tests run) shows it in the log."""
+
+
+def _evidence(record_property, name: str, text: str) -> None:
+    import warnings
+
+    record_property(name, text)
+    print(text)
+    warnings.warn(C16PeakEvidence(f"{name}: {text}"), stacklevel=2)
+
+
+@pytest.mark.covers("C-16")
+@pytest.mark.parametrize("kill", ["step", "group"])
+def test_c16_a_killed_step_records_its_peak_and_where_it_came_from(prof, root, kill, record_property):
+    """A step killed alone (as the kernel's OOM killer takes the largest process of a cgroup: the helper survives and
+    measures it) or with its whole process group (a scope stopped after an OOM kill, `systemctl kill`, SIGKILL of the
+    group: the helper dies too). Before card C-16 a failed step left no record and its helper's file was deleted,
+    and a killed helper wrote nothing. Constructed truth: the step wrote HOLD_MIB MiB before it was killed.
+
+    Without a scope (the pod) the record is the step's own resident high-water mark: the HOLD_MIB MiB and the
+    interpreter's pages, within 20% above. In a scope (GitHub Actions) it is the scope's memory.peak, which counts
+    what is charged to the scope, not a process's resident set: the HOLD_MIB MiB are anonymous pages the step wrote
+    inside the scope (a fresh image from `exec`, MemorySwapMax=0), so they are charged there and bound it from below;
+    what else is charged (the helper, page cache the scope read first) is not a share of any process's RSS, so the
+    only upper bound is the scope's MemoryMax, which a charge never passes."""
+    held = lambda s: max(s.get("maxrss_bytes") or 0, s.get("memory_peak_bytes") or 0) >= HOLD_MIB * MIB  # noqa: E731
+    codes = _hold_and_kill(prof, root, "hold", [sys.executable, "-c", HOLD, str(HOLD_MIB)], kill, held)
+    assert codes == [1]
+    assert root_files(root) == []  # nothing published, as before
+    assert failed_path(prof, "hold").exists(), "a killed step left no record of its attempt"
+    att = json.loads(failed_path(prof, "hold").read_text())
+    _evidence(record_property, f"c16_killed_step_peak_{kill}",
+              f"recorded {att['peak_rss_bytes'] and round(att['peak_rss_bytes'] / MIB, 1)} MiB "
+              f"({att['peak_rss_source']}, mem_cap {att['mem_cap']['how']}); the step wrote {HOLD_MIB} MiB")
+    scope = att["mem_cap"]["how"] == "opened"
+    expected = {("step", True): "scope_memory_peak", ("step", False): "child_maxrss",
+                ("group", True): "scope_memory_peak_sampled", ("group", False): "child_hwm_sampled"}[kill, scope]
+    assert att["peak_rss_source"] == expected, att
+    upper = runstep.size_bytes(prof.mem_scope) if scope else 1.2 * HOLD_MIB * MIB
+    assert HOLD_MIB * MIB <= att["peak_rss_bytes"] <= upper, att["peak_rss_bytes"] / MIB
+    assert (att["stage"], att["step"], att["exit_code"]) == ("S0", "hold", -9)
+
+
+@pytest.mark.covers("C-16")
+def test_c16_a_scope_killed_with_its_helper_keeps_the_last_sampled_memory_peak(prof, root, tmp_path, monkeypatch):
+    """An opened scope (the C-15 stand-ins: a `systemd-run` that execs the command, a cgroup tree whose memory.peak the
+    step itself sets, as the kernel would) whose every process is killed: the record has the scope's memory.peak as the
+    helper last read it, and says so."""
+    bindir = tmp_path / "bin"
+    bindir.mkdir()
+    (bindir / "systemd-run").write_text('#!/bin/sh\nwhile [ "$1" != nice ]; do shift; done\nexec "$@"\n')
+    (bindir / "systemd-run").chmod(0o755)
+    monkeypatch.setenv("PATH", f"{bindir}:{os.environ.get('PATH', '')}")
+    proc, cg = _cgroup_tree(tmp_path, "max", 4096)
+    peak = 5 * 2**30 + 777
+    which = lambda n: str(bindir / n) if n == "systemd-run" else shutil.which(n)  # noqa: E731
+    cmd = [sys.executable, "-c", SCOPED, str(cg / SCOPE / "memory.peak"), str(peak)]
+    codes = _hold_and_kill(prof, root, "scoped", cmd, "group", lambda s: s.get("memory_peak_bytes") == peak,
+                           system="Linux", which=which, proc_root=proc, cgroup_root=cg)
+    assert codes == [1]
+    assert failed_path(prof, "scoped").exists(), "a killed step left no record of its attempt"
+    att = json.loads(failed_path(prof, "scoped").read_text())
+    assert att["mem_cap"]["how"] == "opened"
+    assert (att["peak_rss_bytes"], att["peak_rss_source"]) == (peak, "scope_memory_peak_sampled")
+
+
+OOM_CAP = "256M"
+GROWS = r"""
+blocks = []
+for _ in range(64):  # 1 GiB in 16 MiB blocks, each written so that it is resident
+    blocks.append(b"\x04" * (16 << 20))
+"""
+
+
+@pytest.mark.covers("C-16")
+@pytest.mark.skipif(runstep.memory_cap(OOM_CAP, require=False)["how"] != "opened",
+                    reason="needs systemd-run and no cgroup cap above this process, so that run-step opens a scope "
+                           "whose MemoryMax the kernel enforces (GitHub Actions; not inside the image on the pod)")
+def test_c16_an_oom_killed_step_records_a_peak_within_20_percent_of_its_cap(prof, root, tmp_path, record_property):
+    """The card's acceptance with the kernel's own OOM killer: a step that grows past its scope's MemoryMax. The
+    record (the scope's memory.peak) is compared with the cap, not with a process's resident set: the kernel OOM-kills
+    when a charge cannot be met at memory.max, so the high-water mark is then at the cap and never above it."""
+    p = tmp_path / "tight.yaml"
+    data = {f: getattr(prof, f) for f in prof.__dataclass_fields__}
+    data["mem_scope"] = OOM_CAP
+    p.write_text(yaml.safe_dump(data))
+    tight = profile.load(p)
+    assert run(tight, root, "grows", [sys.executable, "-c", GROWS], threads=1) == 1
+    assert failed_path(tight, "grows").exists(), "an OOM-killed step left no record of its attempt"
+    att = json.loads(failed_path(tight, "grows").read_text())
+    cap = runstep.size_bytes(OOM_CAP)
+    _evidence(record_property, "c16_oom_step_peak",
+              f"recorded {att['peak_rss_bytes'] and round(att['peak_rss_bytes'] / MIB, 1)} MiB "
+              f"({att['peak_rss_source']}); cap {cap / MIB:.1f} MiB")
+    assert att["peak_rss_source"] in ("scope_memory_peak", "scope_memory_peak_sampled"), att
+    assert 0.8 * cap <= att["peak_rss_bytes"] <= 1.2 * cap, att["peak_rss_bytes"] / MIB
+
+
+@pytest.mark.covers("C-16")
+def test_c16_the_next_attempt_removes_the_record_of_a_failed_one(prof, root):
+    assert run(prof, root, "occ", fake("--out", f"{OCC}/part-0.parquet=10", "--exit", "3")) == 3
+    assert failed_path(prof, "occ").exists(), "a failed step left no record of its attempt"
+    att = json.loads(failed_path(prof, "occ").read_text())
+    assert att["exit_code"] == 3 and att["peak_rss_source"] in ("child_maxrss", "scope_memory_peak")
+    assert run(prof, root, "occ", fake("--out", f"{OCC}/part-0.parquet=10")) == 0
+    assert not failed_path(prof, "occ").exists()
+    assert json.loads(record_path(root, "occ").read_text())["exit_code"] == 0

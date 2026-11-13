@@ -21,6 +21,7 @@ import shutil
 import signal
 import subprocess
 import sys
+import tempfile
 from pathlib import Path
 
 import pyarrow as pa
@@ -677,8 +678,9 @@ def test_s13_cli_json_records_match_the_locked_schemas(world, tmp_path):
         for o in h["occurrences"]:
             tape = tps[bytes.fromhex(o["contig_uid"])]
             # card B-17 renamed slot_ordinal to ordinal; card W-05 (search_hit/2) joins genome_uid and tier back
-            # from contig_dim at export time
-            assert set(o) == {"contig_uid", "ordinal", "feature_uid", "start", "end", "strand", "genome_uid", "tier"}
+            # from contig_dim at export time; card C-21c appends n_genomes and genome_uids (every genome of the contig)
+            assert set(o) == {"contig_uid", "ordinal", "feature_uid", "start", "end", "strand", "genome_uid", "tier",
+                              "n_genomes", "genome_uids"}
             assert tape["feature_uids"][o["ordinal"]].hex() == o["feature_uid"]
             assert feats[bytes.fromhex(o["feature_uid"])]["start"] == o["start"]
     for r in nb:
@@ -1220,7 +1222,9 @@ def test_w18_nbr_takes_anchors_from_a_file_one_uid_per_line(world, capsys, tmp_p
 
 W05_HIT_COLUMNS = ["accession", "header", "contig_len", "start", "end", "strand", "length", "seq_bitscore",
                    "seq_evalue_zref", "pfam_architecture", "protein_uid", "nr90", "nr50", "nr50_rep", "genome_uid",
-                   "tier", "contig_uid", "feature_uid", "ordinal", "tape_version", "dist_to_contig_end_bp", "n_records"]
+                   "tier", "contig_uid", "feature_uid", "ordinal", "tape_version", "dist_to_contig_end_bp", "n_records",
+                   "stage", "kind",  # card W-23: the gene's stage and its genome's kind, appended
+                   "n_genomes", "genome_uids"]  # card C-21c: every genome that holds the contig, appended
 W05_LOCUS_COLUMNS = ["offset", "offset_rel", "ordinal", "feature_uid", "start", "end", "strand", "protein_uid",
                      "length_aa", "pfam_architecture", "nr90", "nr50", "hit_seq_bitscore", "delta_bp", "crosses_origin"]
 W05_BITS, W05_EVALUE = {"seq_bitscore", "hit_seq_bitscore"}, {"seq_evalue_zref"}
@@ -1312,11 +1316,30 @@ def _w05_scores(hits: list[dict]) -> dict[bytes, tuple[float, float]]:
     return score
 
 
+def _w05_genomes(root: Path, dims: dict) -> dict[bytes, list[bytes]]:
+    """Card C-21c: every genome that holds a contig, in uid order: its genome in `dims` (contig_dim) and every genome
+    the root's genome_input lists it in."""
+    out: dict[bytes, set] = {}
+    for cu, d in dims.items():
+        out.setdefault(cu, set()).add(d["genome_uid"])
+    for r in _pq(root, "l0seq/genome_input") if (root / "l0seq/genome_input").exists() else []:
+        out.setdefault(r["contig_uid"], set()).add(r["genome_uid"])
+    return {cu: sorted(gs) for cu, gs in out.items()}
+
+
 def _w05_oracle_genes(root: Path, hits: list[dict], dims: dict) -> list[dict]:
     """One dict per gene of a hit protein, in the export's order (accession, contig, coordinates, protein)."""
     s, score, tv = _w05_store(root), _w05_scores(hits), tapes.tape_version([V])
+    genomes = _w05_genomes(root, dims)
+    # card W-23: each gene's stage is its occurrence file's, its kind the genome_input kind of the contig in that stage
+    kinds = {(r["contig_uid"], f.parent.name.removeprefix("stage=")): r["kind"]
+             for f in sorted((root / "l0seq/genome_input").rglob("*.parquet"))
+             for r in pq.read_table(f, partitioning=None).to_pylist()}
+    occs = [{**o, "_stage": f.parent.name.removeprefix("stage=")}
+            for f in sorted((root / f"l1/protein_occurrence/gene_call_version={V}").rglob("*.parquet"))
+            for o in pq.read_table(f, partitioning=None).to_pylist()]
     out = []
-    for o in _pq(root, f"l1/protein_occurrence/gene_call_version={V}"):
+    for o in occs:
         pu, cu = o["protein_uid"], o["contig_uid"]
         if pu not in score:
             continue
@@ -1328,7 +1351,10 @@ def _w05_oracle_genes(root: Path, hits: list[dict], dims: dict) -> list[dict]:
                "nr90": c90 and c90["cluster_uid"], "nr50": c50 and c50["cluster_uid"], "nr50_rep": c50 and c50["rep_uid"],
                "genome_uid": d and d["genome_uid"], "tier": d and d["tier"], "contig_uid": cu,
                "feature_uid": o["feature_uid"], "ordinal": s["tapes"][cu]["feature_uids"].index(o["feature_uid"]),
-               "tape_version": tv, "dist_to_contig_end_bp": o["dist_to_contig_end_bp"], "n_records": n}
+               "tape_version": tv, "dist_to_contig_end_bp": o["dist_to_contig_end_bp"], "n_records": n,
+               "stage": o["_stage"], "kind": kinds.get((cu, o["_stage"])),
+               "n_genomes": len(genomes[cu]) if cu in genomes else None,
+               "genome_uids": ",".join(g.hex() for g in genomes[cu]) if cu in genomes else None}
         out.append(((acc is None, acc or "", cu, o["start"], o["end"], o["strand"], pu), row))
     return [r for _, r in sorted(out, key=lambda x: x[0])]
 
@@ -1420,10 +1446,11 @@ def test_w05_hit_json_is_version_2_with_genome_and_tier_joined_from_contig_dim(w
         assert recs and all(h["schema"] == "search_hit/2" and list(h) == locked["search_hit"]["keys"] for h in recs)
         occ = [o for h in recs for o in h["occurrences"]]
         assert occ and all(list(o) == ["contig_uid", "ordinal", "feature_uid", "start", "end", "strand", "genome_uid",
-                                       "tier"] for o in occ)
+                                       "tier", "n_genomes", "genome_uids"] for o in occ)  # card C-21c: two appended
         for o in occ:
             d = dims[bytes.fromhex(o["contig_uid"])]
             assert (o["genome_uid"], o["tier"]) == ((d["genome_uid"].hex(), d["tier"]) if want_dim else (None, None))
+            assert (o["n_genomes"], o["genome_uids"]) == ((1, [d["genome_uid"].hex()]) if want_dim else (None, None))
 
 
 def _w05_oracle_loci(root: Path, hits: list[dict], window: str) -> list[tuple[str, list[str]]]:
@@ -1432,6 +1459,9 @@ def _w05_oracle_loci(root: Path, hits: list[dict], window: str) -> list[tuple[st
     r1 = _r1()
     policy = nbr.Policy.parse(window=window)
     s, score, tv = _w05_store(root), _w05_scores(hits), tapes.tape_version([V])
+    dim_dir = root / f"dim/contig_dim/release={REL}"
+    genomes = _w05_genomes(root, {r["contig_uid"]: r for r in (_pq(root, dim_dir.relative_to(root).as_posix())
+                                                               if dim_dir.exists() else [])})
     loci = []
     for cu, t in s["tapes"].items():
         slots = list(zip(t["start_bps"], t["end_bps"], t["strands"]))
@@ -1456,7 +1486,10 @@ def _w05_oracle_loci(root: Path, hits: list[dict], window: str) -> list[tuple[st
             cens = any(fl & 1 for _, d, _, _, fl in got if d == 0)
             facts = [("contig_uid", cu.hex()), ("anchor_feature_uid", t["feature_uids"][i].hex()), ("anchor_ordinal", i),
                      ("anchor_protein_uid", apu.hex()), ("tape_version", tv), ("policy_hash", policy.hash()),
-                     ("censored", "true" if cens else "false")]
+                     ("censored", "true" if cens else "false"),
+                     # card C-21c: every genome that holds the contig
+                     ("n_genomes", len(genomes[cu]) if cu in genomes else ""),
+                     ("genome_uids", ",".join(g.hex() for g in genomes.get(cu, [])))]
             lines = [f"# {_w05_cell('header', hdr) if hdr else cu.hex()}",
                      "# " + "\t".join(f"{k}={v}" for k, v in facts)] + _w05_tsv(W05_LOCUS_COLUMNS, rows)
             name = f"locus_{re.sub(r'[^A-Za-z0-9._-]', '_', acc or cu.hex())}_{t['feature_uids'][i].hex()}.tsv"
@@ -2262,15 +2295,268 @@ def test_runner_death_is_reported_and_the_worker_does_not_outlive_it(world, tmp_
     rec.write_text(_recipe(hit, hit))
     work = tmp_path / "work"
     rid = runner.submit(root, rec, REL, runner.Limits(cpus=1, wall_s=300), work, fault="timeout", **_at(root))
-    assert _wait_for(lambda: (work / rid / "worker.pid").exists())
-    worker_pid = int((work / rid / "worker.pid").read_text())
     runner_pid = json.loads(runner.pending_path(_rdir(root, rid)).read_text())["pid"]
-    os.kill(runner_pid, signal.SIGKILL)
-    assert _wait_for(lambda: not _alive(runner_pid), 10)
-    st = runner.status(_rdir(root, rid))
-    assert st["status"] == "failed" and "without closing" in st["error"]
-    assert _wait_for(lambda: not _alive(worker_pid), 10), "worker outlived its runner"
-    assert not _rdir(root, rid).exists()
+    groups = []
+    try:  # card C-16: on any outcome, no process of the run is left behind
+        assert _wait_for(lambda: (work / rid / "worker.pid").exists())
+        worker_pid = int((work / rid / "worker.pid").read_text())
+        groups += _group_of(worker_pid)
+        os.kill(runner_pid, signal.SIGKILL)
+        assert _wait_for(lambda: not _alive(runner_pid), 10)
+        st = runner.status(_rdir(root, rid))
+        assert st["status"] == "failed" and "without closing" in st["error"]
+        assert _wait_for(lambda: not _alive(worker_pid), 10), "worker outlived its runner"
+        assert not _rdir(root, rid).exists()
+    finally:
+        _reap([runner_pid], groups)
+
+
+# --- C-16: no process of a run outlives its runner; a killed search has a peak ----------------------------------------
+
+
+def _group_members(pgid: int) -> list[int]:
+    """The live processes (not zombies) of process group `pgid`, from /proc (proc(5): fields 3 and 5 of `stat`)."""
+    out = []
+    for e in os.listdir("/proc"):
+        if not e.isdigit():
+            continue
+        try:
+            s = Path(f"/proc/{e}/stat").read_text()
+        except OSError:
+            continue
+        f = s[s.rindex(")") + 2:].split()
+        if int(f[2]) == pgid and f[0] not in ("Z", "X"):
+            out.append(int(e))
+    return out
+
+
+def _group_of(pid: int) -> list[int]:
+    """[the process group of `pid`], or [] when it is gone or there is no /proc to find its members in."""
+    if not Path("/proc/self/stat").exists():
+        return []
+    try:
+        return [os.getpgid(pid)]
+    except ProcessLookupError:
+        return []
+
+
+def _describe(pids: list[int]) -> list[str]:
+    out = []
+    for p in pids:
+        try:
+            out.append(f"{p}: " + Path(f"/proc/{p}/cmdline").read_bytes().replace(b"\0", b" ").decode()[:160])
+        except OSError:
+            out.append(f"{p}: gone")
+    return out
+
+
+def _reap(pids: list[int], groups: list[int]) -> None:
+    """Kill every process of the run a test started (its runner's pid and the measuring helper's process group, which
+    holds the worker) and wait until they are gone, so that no test leaves a process behind on any outcome. A pid is
+    signalled only while its pending-record owner is still that process (`_alive`); a group only while it has
+    members."""
+    for g in groups:
+        for p in _group_members(g):
+            try:
+                os.kill(p, signal.SIGKILL)
+            except (ProcessLookupError, PermissionError):
+                pass
+    for p in pids:
+        if _alive(p):
+            try:
+                os.kill(p, signal.SIGKILL)
+            except (ProcessLookupError, PermissionError):
+                pass
+    assert _wait_for(lambda: not any(_alive(p) for p in pids) and not any(_group_members(g) for g in groups), 30), \
+        _describe([p for g in groups for p in _group_members(g)])
+
+
+@pytest.mark.covers("C-16", "W-14")
+@pytest.mark.skipif(platform.system() != "Linux", reason="a process group's members are read from /proc")
+def test_c16_no_process_of_a_run_outlives_its_killed_runner(world, tmp_path):
+    """After SIGKILL of the runner, the measuring helper (W-14: the worker's parent, leader of its process group) and the
+    worker are gone too, not only the worker's pid: on 2026-11-12 a helper and its idle worker of W-14's runner-death
+    test were found alive in the test's scope 36 hours later."""
+    root, d, _ = world
+    hit, _ = _seed(root)
+    rec = tmp_path / "r.yaml"
+    rec.write_text(_recipe(hit, hit))
+    work = tmp_path / "work"
+    rid = runner.submit(root, rec, REL, runner.Limits(cpus=1, wall_s=300), work, fault="timeout", **_at(root))
+    runner_pid = json.loads(runner.pending_path(_rdir(root, rid)).read_text())["pid"]
+    groups = []
+    try:
+        assert _wait_for(lambda: (work / rid / "worker.pid").exists())
+        worker_pid = int((work / rid / "worker.pid").read_text())
+        groups += _group_of(worker_pid)
+        assert groups and groups[0] != worker_pid and len(_group_members(groups[0])) == 2, \
+            _describe(_group_members(groups[0]))  # the helper leads the group; the worker is in it
+        os.kill(runner_pid, signal.SIGKILL)
+        assert _wait_for(lambda: not _alive(runner_pid), 10)
+        assert _wait_for(lambda: not _group_members(groups[0]), 10), \
+            f"left behind: {_describe(_group_members(groups[0]))}"
+        st = runner.status(_rdir(root, rid))
+        assert st["status"] == "failed" and "without closing" in st["error"]
+    finally:
+        _reap([runner_pid], groups)
+
+
+# Holds a search worker in its start-up, before `worker.main` arms its parent watch, until a gate file exists (at most
+# 120 s): a `sitecustomize` on PYTHONPATH, which the worker (`python -c BOOT`) imports and the measuring helper
+# (`python -I -S`) and the runner's own processes, by their command lines, do not act on.
+_GATE_SITE = r"""
+import os, sys, time
+_gate = os.environ.get("BIOBOX_TEST_WORKER_GATE")
+if _gate and any("worker.entry" in a for a in getattr(sys, "orig_argv", ())):
+    with open(_gate + ".waiting.tmp", "w") as f:
+        f.write(str(os.getpid()))
+    os.replace(_gate + ".waiting.tmp", _gate + ".waiting")
+    _t = time.monotonic()
+    while not os.path.exists(_gate) and time.monotonic() - _t < 120:
+        time.sleep(0.05)
+"""
+
+
+@pytest.mark.covers("C-16", "W-14")
+@pytest.mark.skipif(platform.system() != "Linux", reason="PR_SET_PDEATHSIG and /proc are Linux's")
+def test_c16_a_worker_still_starting_when_its_runner_dies_does_not_outlive_it(world, tmp_path, monkeypatch):
+    """The runner dies while the worker is still importing, before its parent watch (`worker._watch_parent`) records
+    the parent to watch: the helper dies with the runner (PR_SET_PDEATHSIG), the worker is reparented, and the watch
+    then takes the new parent for its own and never fires. Injected condition: the worker is held in its start-up
+    until the runner is dead."""
+    site = tmp_path / "site"
+    site.mkdir()
+    (site / "sitecustomize.py").write_text(_GATE_SITE)
+    gate = tmp_path / "gate"
+    monkeypatch.setenv("PYTHONPATH", os.pathsep.join(filter(None, [str(site), os.environ.get("PYTHONPATH")])))
+    monkeypatch.setenv("BIOBOX_TEST_WORKER_GATE", str(gate))
+    root, d, _ = world
+    hit, _ = _seed(root)
+    rec = tmp_path / "r.yaml"
+    rec.write_text(_recipe(hit, hit))
+    work = tmp_path / "work"
+    rid = runner.submit(root, rec, REL, runner.Limits(cpus=1, wall_s=300), work, fault="timeout", **_at(root))
+    runner_pid = json.loads(runner.pending_path(_rdir(root, rid)).read_text())["pid"]
+    waiting = Path(f"{gate}.waiting")
+    groups = []
+    try:
+        assert _wait_for(waiting.exists, 60), "the worker never reached the gate"
+        worker_pid = int(waiting.read_text())
+        groups += _group_of(worker_pid)
+        assert groups, "the worker is gone before its runner was killed"
+        os.kill(runner_pid, signal.SIGKILL)
+        assert _wait_for(lambda: not _alive(runner_pid), 10)
+        gate.write_text("")  # the worker may go on starting now
+        assert _wait_for(lambda: not _group_members(groups[0]), 15), \
+            f"left behind: {_describe(_group_members(groups[0]))}"
+    finally:
+        gate.write_text("")
+        _reap([runner_pid], groups)
+
+
+def _proc_status(pid: int) -> dict[str, int]:
+    """The `kB` fields of /proc/<pid>/status (VmHWM, RssAnon, ...), in bytes; {} once the process is gone."""
+    out = {}
+    try:
+        for line in Path(f"/proc/{pid}/status").read_text().splitlines():
+            key, _, value = line.partition(":")
+            parts = value.split()
+            if len(parts) == 2 and parts[1] == "kB":
+                out[key] = int(parts[0]) * 1024
+    except (OSError, ValueError):
+        return {}
+    return out
+
+
+class C16PeakEvidence(UserWarning):
+    """Not a fault: a peak a C-16 test saw, put in the warnings summary so that the plain `pytest -q` of GitHub Actions
+    (where the scope-only tests run) shows it in the log."""
+
+
+def _evidence(record_property, name: str, text: str) -> None:
+    import warnings
+
+    record_property(name, text)
+    print(text)
+    warnings.warn(C16PeakEvidence(f"{name}: {text}"), stacklevel=2)
+
+
+@pytest.mark.covers("C-16")
+@pytest.mark.skipif(platform.system() != "Linux", reason="the worker's resident memory is read from /proc")
+def test_c16_a_search_killed_at_its_wall_time_records_its_peak(world, tmp_path, record_property):
+    """The runner's wall timeout SIGKILLs the worker's process group, the measuring helper included, so before card
+    C-16 the run row's peak was null. The worker of the `timeout` fault sleeps once started; this test reads its
+    /proc status while it sleeps, and the oracle depends on what the record measures.
+
+    Without a scope of its own (the pod: an inherited cap) the record is the largest VmHWM in the worker's process
+    tree, the same per-process high-water mark the test reads: within 20% of it.
+
+    In a scope (GitHub Actions) the record is the scope's memory.peak, the high-water mark of the memory charged to
+    the scope's cgroup, which is not a process's resident set: VmHWM also counts file-backed pages mapped from the
+    interpreter, its shared libraries and the page cache, which are charged to whichever cgroup first read them,
+    often another one, so memory.peak may be well below VmHWM (269.3 MiB against a VmHWM of 357.3 MiB, GitHub
+    Actions run 43327988144, 2026-11-12). A true lower bound is the worker's anonymous resident memory (RssAnon): the
+    worker is a fresh image from `exec` (no page shared copy-on-write with a parent), every anonymous page of it was
+    faulted in by the worker inside the scope and is charged there, the scope has MemorySwapMax=0 so none is swapped
+    out, and memory.peak never falls. The helper samples every 0.2 s through the 20 s wall, so its last sample comes
+    after this read, and the record is at least RssAnon, with no factor."""
+    root, d, _ = world
+    hit, _ = _seed(root)
+    rec = tmp_path / "r.yaml"
+    rec.write_text(_recipe(hit, hit))
+    work = tmp_path / "work"
+    rid = runner.submit(root, rec, REL, runner.Limits(cpus=1, wall_s=20), work, fault="timeout", **_at(root))
+    runner_pid = json.loads(runner.pending_path(_rdir(root, rid)).read_text())["pid"]
+    groups = []
+    try:
+        assert _wait_for(lambda: (work / rid / "worker.pid").exists())
+        worker_pid = int((work / rid / "worker.pid").read_text())
+        groups += _group_of(worker_pid)
+        st = _proc_status(worker_pid)
+        assert st.get("VmHWM") and st.get("RssAnon"), "the worker was gone before its memory could be read"
+        hwm, anon = st["VmHWM"], st["RssAnon"]
+        assert _wait_for(lambda: runner.status(_rdir(root, rid))["status"] != "running", 120)
+        row = runner.read_run(_rdir(root, rid))
+    finally:
+        _reap([runner_pid], groups)
+    lim = json.loads(row["limits_json"])
+    _evidence(record_property, "c16_wall_timeout_search_peak",
+              f"worker VmHWM {hwm / 2**20:.1f} MiB, RssAnon {anon / 2**20:.1f} MiB; recorded "
+              f"{row['peak_rss_bytes'] and round(row['peak_rss_bytes'] / 2**20, 1)} MiB "
+              f"({lim.get('peak_rss_source')}, mem_cap {lim['mem_cap']['how']})")
+    assert row["status"] == "timeout", row["error"]
+    assert row["peak_rss_bytes"] is not None, "a search killed at its wall time has no peak"
+    if lim["mem_cap"]["how"] == "opened":
+        assert lim["peak_rss_source"] == "scope_memory_peak_sampled"
+        assert row["peak_rss_bytes"] >= anon, (row["peak_rss_bytes"], anon)
+    else:
+        assert lim["peak_rss_source"] == "child_hwm_sampled"
+        assert abs(row["peak_rss_bytes"] - hwm) <= 0.2 * hwm
+
+
+_C16_OOM = runner.Limits(cpus=1, wall_s=LIMITS.wall_s, mem_gb=1)
+
+
+@pytest.mark.covers("C-16", "S-05")
+@pytest.mark.skipif(runner.memory_cap(_C16_OOM)["how"] != "opened",
+                    reason="needs systemd-run and no cgroup cap above this process, so that the worker's scope has a "
+                           "MemoryMax the kernel enforces (GitHub Actions; on the pod, inside the image, the worker is "
+                           "held by RLIMIT_AS and ends with a MemoryError, not a kill)")
+def test_c16_an_oom_killed_search_records_a_peak_within_20_percent_of_its_cap(world, record_property):
+    """The card's acceptance with the kernel's own OOM killer: the `oom` fault allocates twice the scope's MemoryMax.
+    The record is the scope's memory.peak, compared with the cap, not with a process's resident set: the kernel
+    OOM-kills when a charge cannot be met at memory.max, so the high-water mark is then at the cap (within one charge
+    batch) and never above it."""
+    hit, _ = _seed(world[0])
+    row = _run(world, _recipe(hit, hit), fault="oom", limits=_C16_OOM)
+    lim = json.loads(row["limits_json"])
+    cap = _C16_OOM.mem_gb * runner.GB
+    _evidence(record_property, "c16_oom_search_peak",
+              f"recorded {row['peak_rss_bytes'] and round(row['peak_rss_bytes'] / 2**20, 1)} MiB "
+              f"({lim.get('peak_rss_source')}); cap {cap / 2**20:.1f} MiB; status {row['status']}")
+    assert row["status"] == "oom", row["error"]
+    assert lim["peak_rss_source"] in ("scope_memory_peak", "scope_memory_peak_sampled"), lim
+    assert 0.8 * cap <= row["peak_rss_bytes"] <= 1.2 * cap, row["peak_rss_bytes"]
 
 
 @pytest.mark.covers("A-01")
@@ -3551,3 +3837,192 @@ def test_w20_the_fasta_example_names_the_positive_controls_contig(w05, tmp_path)
                                         {"kind": "protein_uid", "uid": (b"\x02" * 16).hex(), "label": None}]})
     assert cli._positive_prefs(controls) == {pu: ("NC_001604", None), b"\x01" * 16: (None, "T7 gp1")}
     assert cli._positive_prefs(None) == {}
+
+
+# --- W-22: one place for a release's pack, the profile's pack directory, and no writes into it ---------------------
+#
+# The host profile's pack directory is `<tmp>/packs` (`runner.default_pack_base`, card W-03). `pack verify` and a
+# no-op `pack build` count the release's distinct proteins through an external sort whose scratch went beside the
+# pack until card W-22. The fixture's few hundred proteins never fill a sorter's buffer (`pack.RUN_ROWS`), so a sort
+# that writes nothing would hide where its scratch goes: these tests lower the buffer to a few rows, and the sort
+# writes its runs as it would on a real release.
+
+_W22_USER = "w22user"
+_W22_RUN_ROWS = 8  # rows a sorter holds before it writes a run, here (`pack.RUN_ROWS` is 65,536)
+
+
+def _w22_profile(world, tmp_path: Path, recorded: bool = True) -> tuple[Path, Path, Path]:
+    """A host profile (`_w03_profile`, tmp `<tmp_path>/ptmp`) whose pack directory, `<tmp>/packs`, holds a copy of the
+    world's pack, without the build's verification record when not `recorded` (a pack built before card W-19);
+    (profile path, the profile's tmp, its pack directory)."""
+    prof = _w03_profile(tmp_path)
+    ptmp = tmp_path / "ptmp"
+    packs = ptmp / "packs"
+    shutil.copytree(_packs(world), packs)
+    if not recorded:
+        (pack.find(packs, REL) / _W19_RECORD).unlink()
+    return prof, ptmp, packs
+
+
+def _w22_sorter_dirs(monkeypatch) -> list[Path]:
+    """The directories every `pack._Sorter` is given from now on (its scratch), with sorters that write a run every
+    `_W22_RUN_ROWS` rows."""
+    seen: list[Path] = []
+    real = pack._Sorter.__init__
+
+    def init(self, directory, *a, **k):
+        seen.append(Path(directory))
+        real(self, directory, *a, **k)
+
+    monkeypatch.setattr(pack._Sorter, "__init__", init)
+    monkeypatch.setattr(pack, "RUN_ROWS", _W22_RUN_ROWS)
+    return seen
+
+
+def _w22_no_profile(monkeypatch, tmp_path: Path) -> Path:
+    """No host profile from the environment, a fixed user name, and the system temporary directory (`tempfile`'s)
+    in `<tmp_path>/systemp`; returns the latter."""
+    monkeypatch.delenv("BIOBOX_PROFILE", raising=False)
+    monkeypatch.setenv("LOGNAME", _W22_USER)
+    systemp = tmp_path / "systemp"
+    systemp.mkdir()
+    monkeypatch.setattr(tempfile, "tempdir", str(systemp))
+    return systemp
+
+
+@pytest.mark.covers("W-22", "C-12", "W-19")
+@pytest.mark.parametrize("mode", ["writable", "read_only"])
+@pytest.mark.parametrize("how", ["profile", "pack_dir"])
+@pytest.mark.skipif(os.geteuid() == 0, reason="root ignores file permissions, so a read-only pack cannot be made")
+def test_w22_pack_verify_writes_nothing_into_the_pack_directory(world, tmp_path, request, monkeypatch, capsys, how,
+                                                                mode):
+    """Card W-22: `pack verify` finds the pack in the profile's pack directory with only `--profile`, or in the one
+    `--pack-dir` names; it verifies, and nothing in the pack directory changes (no file or directory is made and
+    removed in it either: the snapshot holds each directory's mtime), writable or read-only. Its sort's scratch is
+    under the profile's tmp (outside the pack directory), else in the system temporary directory, and is removed."""
+    root = world[0]
+    prof, ptmp, packs = _w22_profile(world, tmp_path)
+    systemp = _w22_no_profile(monkeypatch, tmp_path)
+    if mode == "read_only":
+        _read_only(packs, request)
+        with pytest.raises(PermissionError):
+            (pack.release_dir(packs, REL) / "probe").write_text("")
+    before = _w19_snapshot(packs)
+    dirs = _w22_sorter_dirs(monkeypatch)
+    where = ["--profile", str(prof)] if how == "profile" else ["--pack-dir", str(packs)]
+    capsys.readouterr()
+    assert cli.main(["pack", "verify", "--root", str(root), "--release", REL, *where]) == 0
+    assert capsys.readouterr().out.strip() == f"pack {REL}: verified"
+    assert _w19_snapshot(packs) == before
+    base = ptmp if how == "profile" else systemp
+    assert dirs, "the verify sorted nothing"
+    for d in dirs:
+        assert d.is_relative_to(base) and not d.is_relative_to(packs), (d, base)
+        assert not d.exists(), d  # removed by the verify
+    # the sort did write its runs (so where it wrote is what the assertions above saw): the protein count needs more
+    # than one run of `_W22_RUN_ROWS` rows
+    assert world[2]["targets"]["unique"]["n_seq"] > 2 * _W22_RUN_ROWS
+
+
+@pytest.mark.covers("W-22", "C-12", "W-19", "D-01")
+@pytest.mark.parametrize("recorded", [True, False], ids=["recorded", "built_before_w19"])
+@pytest.mark.skipif(os.geteuid() == 0, reason="root ignores file permissions, so a read-only pack cannot be made")
+def test_w22_a_no_op_pack_build_against_a_read_only_pack_directory_succeeds_and_writes_nothing(
+        world, tmp_path, request, monkeypatch, capsys, recorded):
+    """Card W-22: `pack build` of a release whose pack, built from the same inputs, is in the profile's read-only
+    pack directory builds nothing and changes nothing there: its full verify of that pack sorts under the profile's
+    tmp. A pack built before card W-19 has no record; one that cannot be written is said so on stderr, and the build
+    still exits 0 with the pack's id (every search of it then verifies it in full, as before)."""
+    root, d, man = world
+    prof, ptmp, packs = _w22_profile(world, tmp_path, recorded)
+    _w22_no_profile(monkeypatch, tmp_path)
+    _read_only(packs, request)
+    before = _w19_snapshot(packs)
+    dirs = _w22_sorter_dirs(monkeypatch)
+
+    def no_build(*a, **k):
+        raise AssertionError("built again")
+
+    monkeypatch.setattr(pack, "_build_into", no_build)
+    capsys.readouterr()
+    code = cli.main(["pack", "build", "--root", str(root), "--release", REL, "--model", f"test-1={d / 'a.hmm'}",
+                     "--profile", str(prof)])
+    got = capsys.readouterr()
+    assert code == 0, got.err
+    assert {json.loads(x)["pack_id"] for x in got.out.splitlines()} == {man["pack_id"]}
+    assert "nothing to do" in got.err
+    assert ("could not be written" in got.err) == (not recorded), got.err
+    assert _w19_snapshot(packs) == before
+    assert dirs and all(x.is_relative_to(ptmp) and not x.is_relative_to(packs) and not x.exists() for x in dirs), dirs
+
+
+@pytest.mark.covers("W-22", "W-03")
+@pytest.mark.skipif(os.geteuid() == 0, reason="root ignores file permissions, so a read-only pack cannot be made")
+def test_w22_a_pack_build_into_a_read_only_pack_directory_is_refused(world, tmp_path, request, monkeypatch, capsys):
+    """Card W-22: a pack directory may be read-only for everyone but its builder. Anyone else's `pack build` of a
+    release that has no pack there is refused (exit 2), naming the directory, and leaves it as it was."""
+    root, d, _ = world
+    prof, ptmp, packs = _w22_profile(world, tmp_path)
+    _w22_no_profile(monkeypatch, tmp_path)
+    shutil.rmtree(pack.release_dir(packs, REL))
+    _read_only(packs, request)
+    before = _w19_snapshot(packs)
+    capsys.readouterr()
+    code = cli.main(["pack", "build", "--root", str(root), "--release", REL, "--model", f"test-1={d / 'a.hmm'}",
+                     "--profile", str(prof)])
+    err = capsys.readouterr().err
+    assert code == 2, err
+    assert "refused" in err and str(packs) in err, err
+    assert _w19_snapshot(packs) == before
+
+
+@pytest.mark.covers("W-22", "W-03", "W-19", "W-07")
+@pytest.mark.skipif(os.geteuid() == 0, reason="root ignores file permissions, so a read-only pack cannot be made")
+def test_w22_search_and_nbr_with_only_the_profile_find_the_pack_in_its_pack_directory(world, tmp_path, request,
+                                                                                    monkeypatch, capsys):
+    """Card W-22 acceptance: a search given only `--profile` (no `--pack-dir`, `--runs` or `--work`) finds the
+    release's pack in the profile's pack directory, read-only, and writes nothing there; `search hits`, `nbr` and
+    `nbr summarize` on its run, with only `--profile`, write what `search hmm` wrote; `releases` names the pack.
+    With the pack elsewhere, the refusal names the profile's pack directory."""
+    root, _, man = world
+    prof, ptmp, packs = _w22_profile(world, tmp_path)
+    _w22_no_profile(monkeypatch, tmp_path)
+    _read_only(packs, request)
+    before = _w19_snapshot(packs)
+    hmm, pos = _w07_hmm(world, tmp_path)
+    out = tmp_path / "out"
+    only = ["--root", str(root), "--profile", str(prof)]
+    capsys.readouterr()
+    code = cli.main(["search", "hmm", *only, "--release", REL, "--hmm", str(hmm), "--bits", "25",
+                     "--positive", _w07_spec(root, pos), "--out", str(out), "--cpus", "1"])
+    got = capsys.readouterr()
+    assert code == 0, got.err
+    rid, status = got.out.splitlines()[0].split("\t")
+    assert status == "ok"
+    run = ptmp / "search" / _W22_USER / "runs" / f"run={rid}"
+    assert runner.read_run(run)["pack_id"].hex() == man["pack_id"]
+    sep = tmp_path / "sep"
+    for argv in (["search", "hits", rid, "--format", "tsv", "--out", str(sep / "hits.tsv")],
+                 ["search", "hits", rid, "--format", "faa", "--out", str(sep / "hits.faa")],
+                 ["nbr", "summarize", rid, "--window", "5g", "--by", "pfam,nr50", "--format", "tsv",
+                  "--out", str(sep / "neighbors.tsv")],
+                 ["nbr", rid, "--window", "5g", "--format", "tsv", "--out", str(sep / "loci")]):
+        assert cli.main([*argv, *only]) == 0, (argv, capsys.readouterr().err)
+    mine = _w07_files(out)
+    assert mine.pop("recipe.yaml") and mine.pop("README.txt")
+    assert mine == _w07_files(sep) and any(k.startswith("loci/") for k in mine)
+    capsys.readouterr()
+    assert cli.main(["releases", *only, "--json"]) == 0
+    listed = {r["release"]: r.get("pack") for r in map(json.loads, capsys.readouterr().out.splitlines())}
+    assert listed[REL] == man["pack_id"], listed
+    assert _w19_snapshot(packs) == before
+    # the same search with the profile's pack directory empty: refused, naming that directory
+    other = tmp_path / "other"
+    other.mkdir()
+    prof2, ptmp2, packs2 = _w22_profile(world, other)
+    shutil.rmtree(packs2)
+    code = cli.main(["search", "hmm", "--root", str(root), "--profile", str(prof2), "--release", REL, "--hmm",
+                     str(hmm), "--bits", "25", "--positive", _w07_spec(root, pos), "--out", str(other / "out"),
+                     "--cpus", "1"])
+    err = capsys.readouterr().err
+    assert code == 2 and f"pack directory {packs2}" in err and "pack build" in err, err

@@ -1,0 +1,109 @@
+{
+ "source": "/tmp/if2453/s2/dl/HPGC.7230.genomes.final.fasta.gz",
+ "records": 7230,
+ "bp": 1961987211,
+ "length": {
+  "min": 200008,
+  "median": 248500.5,
+  "max": 735411,
+  "mean": 271367.5,
+  "under_200000": 0,
+  "deciles": [
+   207406,
+   215710,
+   224791,
+   235843,
+   248504,
+   263817,
+   284180,
+   318601,
+   364554
+  ]
+ },
+ "repeats": {
+  "distinct_contig_uids": 7228,
+  "uids_seen_more_than_once": 1,
+  "records_repeating_an_earlier_record": 2,
+  "distinct_by_either_strand": 7228,
+  "records_repeating_an_earlier_record_on_either_strand": 2,
+  "distinct_sequences_whose_reverse_complement_is_another": 0
+ },
+ "bases": {
+  "A": 597860025,
+  "C": 383282206,
+  "G": 383888153,
+  "T": 596745509,
+  "N": 201866,
+  "iupac_other": 9452,
+  "non_iupac": 0,
+  "lowercase": 0
+ },
+ "records_with_n": 502,
+ "records_with_non_acgt": 525,
+ "headers": {
+  "tokens_per_header": {
+   "1": 7230
+  },
+  "first_token_shapes": {
+   "huge_phage_#": 7230
+  },
+  "distinct_shapes": 1,
+  "keyword_counts": {
+   "phage": 7230
+  },
+  "accessions_distinct": 7230,
+  "accessions_repeated": 0
+ },
+ "overlap": {
+  "P1/store": {
+   "same": 0,
+   "reverse_complement": 0,
+   "distinct_uids_same": 0
+  },
+  "P2/store": {
+   "same": 0,
+   "reverse_complement": 0,
+   "distinct_uids_same": 0
+  },
+  "P3/fasta": {
+   "same": 0,
+   "reverse_complement": 0,
+   "distinct_uids_same": 0
+  },
+  "P3/store": {
+   "same": 0,
+   "reverse_complement": 0,
+   "distinct_uids_same": 0
+  },
+  "P4/fasta": {
+   "same": 0,
+   "reverse_complement": 0,
+   "distinct_uids_same": 0
+  },
+  "P5/fasta": {
+   "same": 0,
+   "reverse_complement": 0,
+   "distinct_uids_same": 0
+  },
+  "P6/fasta": {
+   "same": 0,
+   "reverse_complement": 0,
+   "distinct_uids_same": 0
+  },
+  "S1/store": {
+   "same": 516,
+   "reverse_complement": 0,
+   "distinct_uids_same": 514
+  }
+ },
+ "stage_sets": {
+  "P1/store": 539,
+  "P2/store": 5018,
+  "P3/fasta": 9108,
+  "P3/store": 9108,
+  "P4/fasta": 4006,
+  "P5/fasta": 4112,
+  "P6/fasta": 4228,
+  "S1/store": 27258
+ }
+}

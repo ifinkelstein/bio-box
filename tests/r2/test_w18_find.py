@@ -20,13 +20,17 @@ from biobox.l3 import tapes  # noqa: E402
 
 pytestmark = [pytest.mark.r2, pytest.mark.covers("W-18")]
 
-FIND_COLUMNS = ["accession", "contig_uid", "start", "end", "strand", "feature_uid", "protein_uid"]
+# card W-23 appended the gene's span in both forms: 0-based half-open and 1-based inclusive (GenBank)
+FIND_COLUMNS = ["accession", "contig_uid", "start", "end", "strand", "feature_uid", "protein_uid", "span",
+                "genbank_span"]
 
 
 def _oracle(root: Path, keep) -> list[list[str]]:
     """The rows `find` must print, in coordinate order within each contig."""
     rows = {(g["contig_uid"], g["feature_uid"]): [g["accession"], g["contig_uid"].hex(), str(g["start"]), str(g["end"]),
-                                                  f"{g['strand']:+d}", g["feature_uid"].hex(), g["protein_uid"].hex()]
+                                                  f"{g['strand']:+d}", g["feature_uid"].hex(), g["protein_uid"].hex(),
+                                                  f"{g['accession']}:{g['start']}-{g['end']}",
+                                                  f"{g['accession']}:{g['start'] + 1}..{g['end']}"]
             for g in _w07_genes(root) if keep(g)}
     return sorted(rows.values(), key=lambda r: (r[0], r[1], int(r[2]), int(r[3]), r[4]))
 

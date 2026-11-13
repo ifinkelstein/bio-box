@@ -9,6 +9,12 @@ one linear synthetic contig of seeded uniform-random background (A, C, G, T equa
 coordinates (0-based half-open, strand +1 or -1; a minus-strand sequence is planted as its reverse
 complement). The producer (`biobox.l1.ncrna.run`) then searches that contig.
 
+Card E-07 migration: the producer scans a model set, intergenic models on the intergenic regions of the stage's
+gene calls with `--notrunc` (DEC-28). Here the set is the panel's 20 models, all intergenic, and the stage's gene
+calls are constructed as none (an empty gene-call partition: the synthetic contig holds no gene), so the whole
+contig is one intergenic region and is searched as one record with `--notrunc`, the configuration the producer
+gives a contig without genes.
+
 Panel rule (written before any result was seen): the families are the accessions of `PANEL`, chosen by
 category to cover tRNA (RF00005, RF01852), rRNA fragments that are short (RF00001, RF00002), seven
 riboswitches (RF00162, RF00167, RF00059, RF00050, RF00174, RF00504, RF00168), bacterial RNase P (RF00010,
@@ -269,7 +275,17 @@ def panel_run(tmp_path_factory):
     ingest([SourceObject(fna, "g04", "1", "CC0-1.0", True)], root, "S0")
     cu = ids.contig_uid(contig)
     write_genome_input(root, "S0", [GenomeInput((cu,), 11, kind="bacteria", circular=())])
-    report = ncrna.run(root, "S0", lib, cpus=2, tmp=scratch)
+    # card E-07: the panel as the model set, every model intergenic; the contig holds no gene (an empty gene-call
+    # partition), so it is one intergenic region searched with --notrunc
+    from biobox.l1.genecall import GENE_CALL_VERSION
+    from biobox.registry.schemas import table
+
+    panel_set = base / "panel.tsv"
+    panel_set.write_text("acc\tname\twhole_genome\n" + "".join(f"{a}\t{n}\t0\n" for a, n in PANEL.items()))
+    io.write_parts([], table("feature"), root / f"l1/feature/producer={GENE_CALL_VERSION}/stage=S0", 24)
+    report = ncrna.run(root, "S0", lib, cpus=2, tmp=scratch, model_set=panel_set)
+    assert report["models_intergenic"] == len(PANEL) and report["regions"] == 1
+    assert report["region_bases"] == len(contig)
     import pyarrow.parquet as pq
 
     rel = f"l1/ncrna/producer={report['producer']}/stage=S0"
@@ -311,3 +327,30 @@ def test_g04_rfam_spike_ins_are_recovered(panel_run):
     lines += case2
     print("\n" + "\n".join(lines))
     assert k / n >= MIN_OVERALL, "\n".join(lines)
+
+
+@pytest.mark.covers("E-08")
+def test_g04_recovered_spike_ins_are_recovered_by_kept_hits(panel_run):
+    """Card E-08 (DEC-28): a hit that loses its clan's competition stays in `l1_ncrna` but is no feature. A planted
+    sequence counts here only when a kept hit (`clan_winner`) of its family recovers it, by the rule above; the panel's
+    planted sequences lie 200 to 800 bases apart, so competition can only be between models on one planted sequence
+    (tRNA and tRNA-Sec, the two bacterial RNase P models). Every planted sequence recovered by some hit is listed with
+    its kept-hit status, and recovery by kept hits must keep the panel's bound."""
+    truth, hits = panel_run["truth"], panel_run["hits"]
+
+    def found(t, rows):
+        need = MIN_OVERLAP * (t["end"] - t["start"])
+        return any(h["model_acc"] == t["family"] and h["strand"] == t["strand"]
+                   and _overlap(h["start"], h["end"], t["start"], t["end"]) >= need for h in rows)
+
+    kept = [h for h in hits if h["clan_winner"]]
+    k_all = sum(found(t, hits) for t in truth)
+    k_kept = sum(found(t, kept) for t in truth)
+    lost = [f"  {t['family']} {t['start']}-{t['end']} strand {t['strand']}: recovered only by a hit that lost to "
+            + ", ".join(f"{h['model_name']} {h['bitscore']:.1f}" for h in kept if h["strand"] == t["strand"]
+                        and _overlap(h["start"], h["end"], t["start"], t["end"]))
+            for t in truth if found(t, hits) and not found(t, kept)]
+    msg = (f"G-04 with clan competition: {k_kept}/{len(truth)} recovered by kept hits ({k_all} by any hit); "
+           f"{sum(not h['clan_winner'] for h in hits)} of {len(hits)} hits lose\n" + "\n".join(lost))
+    print("\n" + msg)
+    assert k_kept / len(truth) >= MIN_OVERALL, msg

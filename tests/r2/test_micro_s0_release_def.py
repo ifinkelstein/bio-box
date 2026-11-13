@@ -145,7 +145,7 @@ def test_b25_rebuild_after_a_later_stage_gives_byte_identical_release_files(ladd
                 f"l0seq/protein_seq/gene_call_version={V}/stage=S1", f"l3/tapes/tape_version={tapes.tape_version([V])}/stage=S1"):
         assert (a / rel).is_dir() and (b / rel).is_dir(), rel
     release_files = sorted(p for p in snap if f"release={REL}/" in p or "/step=cluster/" in p)
-    want = {"release_def", "token_dict", "tape_tokens", "token_postings", "contig_dim"} | (
+    want = {"release_def", "token_dict", "tape_tokens", "token_postings", "contig_dim", "genome_dim"} | (  # C-21b
         {"cluster_member", "cluster_member_aln", "member_cluster", "ledger"} if MMSEQS else set())  # B-27
     assert {f["table"] for f in ladder["m1"]["files"] if f["path"] in release_files} == want
     for p in release_files:

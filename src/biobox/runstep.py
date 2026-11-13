@@ -23,7 +23,8 @@ Order of work:
 3. Resume: `<root>/runs/stage=<S>/<step>.json` exists and every output it lists is in the root
    with its recorded size: exit 0. A listed output missing or of another size is an error;
    nothing is rebuilt over existing files.
-4. Remove a staging or `<root>/.incoming/<stage>.<step>/` directory left by an earlier attempt.
+4. Remove a staging or `<root>/.incoming/<stage>.<step>/` directory, and the record of a failed
+   attempt (step 6), left by an earlier attempt.
 5. Decide the memory cap (card C-07, `memory_cap`). A cgroup v2 `memory.max` already above
    run-step (its own cgroup or an ancestor, read by `doctor.cgroup_memory`) is inherited: no
    scope is opened, unless `systemd-run` is present and `mem_scope` is tighter than that cap.
@@ -51,12 +52,22 @@ Order of work:
      An inherited cgroup is the whole `scripts/pod_run.sh` unit:
      build-stage, every run-step and every shard running at once, over the unit's life, so its
      `memory.peak` is not one step's and is not used.
+   - `scope_memory_peak_sampled` or `child_hwm_sampled` (card C-16) when the helper was killed
+     with the command (a stopped scope, SIGKILL of the process group): its last sample, taken
+     every `SAMPLE_S` seconds while the command ran, of the scope's `memory.peak` or of the
+     largest `VmHWM` (the kernel's per-process high-water mark) in the step's process tree.
    - `unmeasured` (and null) if the helper wrote nothing.
+   The command dies when the helper dies (PR_SET_PDEATHSIG, on Linux).
    The record's `argv` is the command under its limits, without the helper. SIGTERM and SIGINT
    to run-step meanwhile are forwarded to that process group; run-step waits for the command,
    publishes nothing, leaves staging and exits 128 + the signal number.
 6. Command failed: exit with its code (1 if killed); staging is left for inspection.
    `STOP` appeared meanwhile: exit 75 without publishing.
+   A command that failed, was killed or was stopped by a forwarded signal leaves the record of
+   its attempt (card C-16), `<profile tmp>/staging/<stage>.<step>.failed.json` (`failed_path`):
+   what a run record holds but outputs, `forwarded_signal` beside it, the peak memory and its
+   source among them; the log line says the peak too. It is outside the root and is not a run
+   record; the next attempt of the step removes it with the earlier staging.
 7. Publish (all or nothing): refuse empty staging, a final path that exists (append-only,
    AGENTS §3.10), a path no registry table or artifact claims (LY-10), and small files by the
    rule of `contracts.check_file_sizes` (LY-04). Then write the intent file atomically (every
@@ -95,7 +106,7 @@ from collections.abc import Callable, Iterator, Sequence
 from datetime import datetime, timezone
 from pathlib import Path
 
-from biobox import contracts, ids
+from biobox import codeid, contracts, ids
 from biobox.catalog import LayoutError, classify, classify_artifact
 from biobox.doctor import cgroup_memory
 from biobox.profile import Profile
@@ -475,40 +486,134 @@ def _signal_group(pgid: int, signum: int) -> None:
         pass
 
 
+# The measuring helper's sampling interval in seconds (card C-16). Each sample reads one file (a scope's memory.peak)
+# or two small files per process of the step (its /proc status and its threads' children lists), and the helper
+# writes only when the peak has grown; so a fifth of a second costs little. A step whose helper is killed loses what
+# it grew in its last 0.2 s: the `oom` fault, which only touches pages, touched 4 GB in a scope on the pod in 4.5 to
+# 5.2 s, its imports included (measured, wilkcomp02, 2026-11-10, card A-07), so at least 0.77 GB/s and at least
+# 0.15 GB in 0.2 s (derived); a real step grows more slowly (estimate).
+SAMPLE_S = 0.2
+
 # The step's measuring helper (card C-15), run as `python -I -S -c _MEASURE OUT CGROUP_FILE CGROUP_ROOT -- CMD...`
 # inside the step's limits (after `nice`, so inside a scope run-step opens). Linux carries a process's memory image
 # at `exec` into the `ru_maxrss` of what it execs (fs/exec.c, `exec_mmap`), and a child forked by run-step starts
 # with run-step's image, so `wait4` on that child reports at least the launcher's peak: every record of the B-30
 # probe read 344.0 MB (measured, wilkcomp02, 2026-11-10). This helper is a fresh, small interpreter (stdlib only,
-# no site): it spawns the command, waits for it with `wait4` and writes, to OUT, the command tree's `ru_maxrss`
+# no site): it starts the command, waits for it with `wait4` and writes, to OUT, the command tree's `ru_maxrss`
 # (the largest single process of it, with the helper's own image as a floor) and, when CGROUP_FILE is given, the
-# `memory.peak` of the cgroup it runs in. It then ends as the command ended (same exit code, or killed by the same
-# signal). SIGTERM, SIGINT and SIGHUP reach the command through its process group, so the helper only waits.
+# `memory.peak` of the cgroup it runs in, with `"final": true`. It then ends as the command ended (same exit code,
+# or killed by the same signal). SIGTERM, SIGINT and SIGHUP reach the command through its process group, so the
+# helper only waits.
+# Card C-16: the file is written as the command runs, too, so that a helper killed with its command (a wall timeout
+# or a stopped scope kills the whole process group; nothing a process does after SIGKILL) leaves its last sample.
+# Every SAMPLE_S seconds a thread reads the scope's `memory.peak` (with CGROUP_FILE; the kernel's high-water mark of
+# the cgroup) or else the largest `VmHWM` (the kernel's high-water mark of one process's resident memory) over the
+# command's process tree, found through /proc/<pid>/task/<tid>/children, and rewrites OUT with `"final": false`
+# when the value has grown. Without /proc (macOS) nothing is sampled. The command is started by fork and exec, not
+# posix_spawn, so that on Linux it gets PR_SET_PDEATHSIG (SIGKILL) first: it dies when the helper dies. The search
+# runner kills the helper when it dies itself (`search.runner._die_with_runner`), so a worker never outlives its
+# runner, even one still importing, before its own parent watch (`search.worker._watch_parent`) is armed.
 _MEASURE = r"""
-import json, os, signal, sys
+import json, os, signal, sys, threading
 out, cgroup_file, cgroup_root, cmd = sys.argv[1], sys.argv[2], sys.argv[3], sys.argv[5:]
+SAMPLE_S = @SAMPLE_S@
 GROUP = (signal.SIGTERM, signal.SIGINT, signal.SIGHUP)
 for s in GROUP:
     signal.signal(s, lambda signum, frame: None)
-try:
-    pid = os.posix_spawnp(cmd[0], cmd, os.environ, setsigdef=(*GROUP, signal.SIGPIPE, signal.SIGXFSZ))
-except OSError as e:
-    print(f"run-step: cannot run {cmd[0]}: {e}", file=sys.stderr, flush=True)
-    os._exit(127)
-_, status, ru = os.wait4(pid, 0)
-peak = None
+peak_path = None
 if cgroup_file:
     try:
         with open(cgroup_file) as f:
             rel = next(ln[3:].strip() for ln in f if ln.startswith("0::"))
-        with open(os.path.join(cgroup_root, rel.lstrip("/"), "memory.peak")) as f:
-            peak = int(f.read().strip())
-    except (OSError, StopIteration, ValueError):
-        peak = None
+        peak_path = os.path.join(cgroup_root, rel.lstrip("/"), "memory.peak")
+    except (OSError, StopIteration):
+        peak_path = None
+
+
+def read_int(path):
+    try:
+        with open(path) as f:
+            return int(f.read().strip())
+    except (OSError, ValueError):
+        return None
+
+
+def tree_hwm(top):
+    best, todo, seen = None, [top], set()
+    while todo:
+        p = todo.pop()
+        if p in seen:
+            continue
+        seen.add(p)
+        try:
+            with open(f"/proc/{p}/status") as f:
+                for ln in f:
+                    if ln.startswith("VmHWM:"):
+                        v = int(ln.split()[1]) * 1024
+                        best = v if best is None or v > best else best
+                        break
+            tids = os.listdir(f"/proc/{p}/task")
+        except (OSError, ValueError):
+            continue
+        for t in tids:
+            try:
+                with open(f"/proc/{p}/task/{t}/children") as f:
+                    todo.extend(int(c) for c in f.read().split())
+            except (OSError, ValueError):
+                pass
+    return best
+
+
+def save(rec):
+    with open(out + ".tmp", "w") as f:
+        json.dump(rec, f)
+    os.replace(out + ".tmp", out)
+
+
+libc = None
+if sys.platform.startswith("linux"):
+    try:
+        import ctypes
+        libc = ctypes.CDLL(None)
+    except (ImportError, OSError):
+        libc = None
+me = os.getpid()
+pid = os.fork()
+if pid == 0:
+    try:
+        if libc is not None:
+            libc.prctl(1, int(signal.SIGKILL))  # PR_SET_PDEATHSIG: the command dies when this helper dies
+            if os.getppid() != me:  # the helper died before the setting took
+                os._exit(1)
+        for s in (*GROUP, signal.SIGPIPE, signal.SIGXFSZ):
+            signal.signal(s, signal.SIG_DFL)
+        os.execvp(cmd[0], cmd)
+    except BaseException as e:
+        try:
+            os.write(2, f"run-step: cannot run {cmd[0]}: {e}\n".encode())
+        finally:
+            os._exit(127)
+seen = {"maxrss_bytes": None, "memory_peak_bytes": None}
+stop = threading.Event()
+
+
+def sample():
+    key = "memory_peak_bytes" if peak_path else "maxrss_bytes"
+    while not stop.wait(SAMPLE_S):
+        v = read_int(peak_path) if peak_path else (tree_hwm(pid) if os.path.isdir("/proc/self") else None)
+        if v is not None and (seen[key] is None or v > seen[key]):
+            seen[key] = v
+            save({**seen, "final": False})
+
+
+sampler = threading.Thread(target=sample, daemon=True)
+sampler.start()
+_, status, ru = os.wait4(pid, 0)
+stop.set()
+sampler.join()
+peak = read_int(peak_path) if peak_path else None
 maxrss = ru.ru_maxrss if sys.platform == "darwin" else ru.ru_maxrss * 1024
-with open(out + ".tmp", "w") as f:
-    json.dump({"maxrss_bytes": maxrss, "memory_peak_bytes": peak}, f)
-os.replace(out + ".tmp", out)
+save({"maxrss_bytes": maxrss, "memory_peak_bytes": peak, "final": True})
 if os.WIFSIGNALED(status):
     sig = os.WTERMSIG(status)
     try:
@@ -523,7 +628,7 @@ if os.WIFSIGNALED(status):
     os.kill(os.getpid(), sig)
     os._exit(128 + sig)
 os._exit(os.waitstatus_to_exitcode(status))
-"""
+""".replace("@SAMPLE_S@", repr(SAMPLE_S))
 
 
 def measured(cmd: Sequence[str], out: Path, scope: bool, *, proc_root: str | Path | None = None,
@@ -536,18 +641,32 @@ def measured(cmd: Sequence[str], out: Path, scope: bool, *, proc_root: str | Pat
 
 
 def step_peak(out: Path) -> tuple[int | None, str]:
-    """The step's peak memory in bytes and where it comes from, from the helper's file `out` (removed after):
-    `scope_memory_peak` (the memory.peak of the scope run-step opened for this step), else `child_maxrss` (the
-    largest `ru_maxrss` in the step's process tree, measured from the helper), else (None, `unmeasured`)."""
+    """The step's peak memory in bytes and where it comes from, from the helper's file `out` (removed after).
+    Written when the command ended: `scope_memory_peak` (the memory.peak of the scope run-step opened for this step),
+    else `child_maxrss` (the largest `ru_maxrss` in the step's process tree, measured from the helper). Card C-16: a
+    helper killed before its command ended left only its last sample, taken at most `SAMPLE_S` seconds before:
+    `scope_memory_peak_sampled` (the scope's memory.peak) or `child_hwm_sampled` (the largest VmHWM in the step's
+    process tree). Else (None, `unmeasured`)."""
     try:
         got = json.loads(out.read_text())
     except (OSError, ValueError):
         return None, "unmeasured"
     finally:
         out.unlink(missing_ok=True)
+        out.with_name(out.name + ".tmp").unlink(missing_ok=True)  # a sample a killed helper was writing
+    tail ="" if got.get("final", True) else "_sampled"
     if got.get("memory_peak_bytes") is not None:
-        return int(got["memory_peak_bytes"]), "scope_memory_peak"
-    return int(got["maxrss_bytes"]), "child_maxrss"
+        return int(got["memory_peak_bytes"]), "scope_memory_peak" + tail
+    if got.get("maxrss_bytes") is not None:
+        return int(got["maxrss_bytes"]), ("child_maxrss" if not tail else "child_hwm_sampled")
+    return None, "unmeasured"
+
+
+def failed_path(tmp: str | Path, stage: str, step: str) -> Path:
+    """The record of a step's last attempt whose command failed or was killed (card C-16):
+    `<profile tmp>/staging/<stage>.<step>.failed.json`, beside the staging it left. Outside the root, so it is never a
+    run record (`catalog.built_by` reads those) and never marks the step done; the next attempt removes it."""
+    return Path(tmp) / "staging" / f"{stage}.{step}.failed.json"
 
 
 def _execute(argv: list[str], env: dict[str, str]) -> tuple[int, float, float, int, int | None]:
@@ -635,9 +754,11 @@ def run_step(prof: Profile, root: str | Path, stage: str, step: str, cmd: Sequen
         _err(f"not starting {stage}.{step}: {e}")
         return EXIT_REFUSED
 
+    failed = failed_path(prof.tmp, stage, step)
     for stale in (incoming, stage_dir):
         if stale.exists():
             shutil.rmtree(stale)
+    failed.unlink(missing_ok=True)  # an earlier attempt's (card C-16)
     stage_dir.mkdir(parents=True)
 
     env = dict(os.environ, BIOBOX_STAGING=str(stage_dir), BIOBOX_ROOT=str(root), BIOBOX_THREADS=str(n_threads))
@@ -653,27 +774,31 @@ def run_step(prof: Profile, root: str | Path, stage: str, step: str, cmd: Sequen
         build_argv(measured(cmd, peak_file, opened, proc_root=proc_root, cgroup_root=cgroup_root), nice_value,
                    prof.mem_scope, inherited=inherited, system=system, which=which), env)
     rss, rss_source = step_peak(peak_file)
-
-    if sig is not None:
-        _err(f"{signal.Signals(sig).name} received; forwarded to {stage}.{step}, which exited {code}; "
-             f"nothing published, staging left at {stage_dir}")
-        return 128 + sig
-    if code != 0:
-        _err(f"{stage}.{step} failed with exit {code}; nothing published, staging left at {stage_dir}")
-        return code if code > 0 else 1
-    if (root / "STOP").exists():
-        _err(f"{root / 'STOP'} appeared; not publishing {stage}.{step}, staging left at {stage_dir}")
-        return EXIT_STOP
     over = cpu_min > prof.cpu_min_per_process
     meta = {
         "stage": stage, "step": step, "argv": argv, "threads": n_threads, "nice": nice_value,
         "started_at": started_at, "wall_s": round(wall, 3), "cpu_min": round(cpu_min, 6),
         "peak_rss_bytes": rss, "peak_rss_source": rss_source, "host": socket.gethostname(), "exit_code": code,
         "image_digest": os.environ.get("BIOBOX_IMAGE_DIGEST", "none"), "over_cpu_budget": over,
-        "mem_cap": cap,
+        "mem_cap": cap, **codeid.code_identity(),  # card C-23: the code that ran, beside the image digest
     }
     if budget_reason is not None:
         meta["cpu_budget_reason"] = budget_reason
+
+    if sig is not None or code != 0:  # card C-16: the attempt's record, its peak memory with it
+        _atomic_write(failed, _record_bytes({**meta, "forwarded_signal": signal.Signals(sig).name if sig else None}))
+        peak = f"peak memory {rss / 2**20:.1f} MiB ({rss_source})" if rss is not None else "peak memory unmeasured"
+    if sig is not None:
+        _err(f"{signal.Signals(sig).name} received; forwarded to {stage}.{step}, which exited {code}; {peak}; "
+             f"nothing published, staging left at {stage_dir}, attempt recorded in {failed}")
+        return 128 + sig
+    if code != 0:
+        _err(f"{stage}.{step} failed with exit {code}; {peak}; nothing published, staging left at {stage_dir}, "
+             f"attempt recorded in {failed}")
+        return code if code > 0 else 1
+    if (root / "STOP").exists():
+        _err(f"{root / 'STOP'} appeared; not publishing {stage}.{step}, staging left at {stage_dir}")
+        return EXIT_STOP
     try:
         record = _publish(root, stage_dir, incoming, intent_path, meta, prof.small_file_floor_bytes,
                           which, hook)

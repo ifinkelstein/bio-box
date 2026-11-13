@@ -1,0 +1,13 @@
+# Test model set (card E-07): the nine models of rfam15.1_micro_s0.cm.gz, every one scanned on whole contigs.
+# With it the producer scans as card E-01 did (whole contigs, every model of the fixture library), so the E-01
+# tests keep their oracle (the cmsearch binary on the whole contigs) and need no gene calls.
+acc	name	whole_genome
+RF00001	5S_rRNA	1
+RF00005	tRNA	1
+RF00011	RNaseP_bact_b	1
+RF00023	tmRNA	1
+RF00028	Intron_gpI	1
+RF00169	Bacteria_small_SRP	1
+RF01804	Lambda_thermo	1
+RF01852	tRNA-Sec	1
+RF02111	IS009	1

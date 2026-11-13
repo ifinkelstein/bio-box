@@ -1,0 +1,40 @@
+h1 inputs start Wed Nov 11 05:18:29 PM CST 2026
+{"records": 7230, "bp": 1961987211, "genomes": 7228, "contigs": 7228, "contigs_not_listed_again": 2, "objects": 1, "fasta": "/tmp/if2453/s2/genomes/H1/HPGC.7230.genomes.final.fasta", "fasta_bytes": 1962116403, "fasta_sha256": "ae929270d8a50328e516bd7874cbe926441542d0b6fe235cda73fca244afe3b5", "codes": {"11": 7228}, "sha256": {"genomes.json": "f3e7392c762bb69006c06af4912d0d15e039fe45d8c79cca18e04f21dfe8d766", "objects.json": "65995d84ac7cbd50a92536dcb5e9152f513f52aa78431605a50405a8b32aa2ca", "dropped_records.tsv": "79c869746a6daa6fdef896b08c788669d7c03c60e746125951c6a2a6b42b72fe"}}
+make_inputs.py phage check start Wed Nov 11 05:18:53 PM CST 2026
+{"records_copied": 7230, "genomes": 7228, "contigs": 7228, "contigs_not_listed_again": 2, "objects": 1, "codes": {"11": 7228}}
+genomes.json identical to make_inputs.py phage
+FASTA copy identical to make_inputs.py phage
+check start Wed Nov 11 05:19:12 PM CST 2026
+{
+ "stage": "H1",
+ "genomes": 7228,
+ "genome_input_rows": 7228,
+ "distinct_genome_uids": 7228,
+ "circular_rows": 0,
+ "kinds": [
+  "virus"
+ ],
+ "codes": [
+  11
+ ],
+ "assembly_quality": [
+  "complete"
+ ],
+ "gene_call_mode": {
+  "virus": "gv-meta"
+ },
+ "objects": [
+  {
+   "path": "/tmp/if2453/s2/genomes/H1/HPGC.7230.genomes.final.fasta",
+   "source_name": "hpgc_huge_phages",
+   "source_release": "figshare:10.6084/m9.figshare.30506864.v1",
+   "license": "CC BY 4.0",
+   "redistributable": true,
+   "retrieved_at": "2026-11-11T23:09:28+00:00",
+   "bytes": 1962116403
+  }
+ ],
+ "biobox": "/tmp/if2453/s2/tree/src/biobox/cli.py",
+ "problems": []
+}
+check rc=0 Wed Nov 11 05:19:16 PM CST 2026

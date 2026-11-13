@@ -14,7 +14,17 @@ done
 if [ -z "$id" ]; then echo "NO RUN FOUND for $BRANCH"; exit 2; fi
 k=1
 while [ $k -le "$N" ]; do
-  gh run watch "$id" --repo "$REPO" --interval 30 > /dev/null 2>&1
+  # `gh run watch` can return before the run has finished (seen 2026-11-12, card C-16): poll the status itself
+  # and read the conclusion only once it is completed; give up after 2 hours.
+  w=0
+  st=""
+  while [ $w -lt 240 ]; do
+    st=$(gh run view "$id" --repo "$REPO" --json status --jq .status 2>/dev/null)
+    [ "$st" = "completed" ] && break
+    w=$((w + 1))
+    sleep 30
+  done
+  if [ "$st" != "completed" ]; then echo "attempt $k of $N: NOT COMPLETED after 2 hours (run $id, status '$st')"; exit 4; fi
   c=$(gh run view "$id" --repo "$REPO" --json conclusion --jq .conclusion 2>/dev/null)
   echo "attempt $k of $N: $c (run $id)"
   if [ "$c" != "success" ]; then

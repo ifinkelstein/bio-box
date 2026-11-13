@@ -118,6 +118,11 @@
    "is_species_rep",
    "bool",
    false
+  ],
+  [
+   "n_genomes",
+   "uint32",
+   true
   ]
  ],
  "contig_index": [
@@ -401,6 +406,53 @@
   [
    "edit_type",
    "string",
+   false
+  ]
+ ],
+ "genome_dim": [
+  [
+   "genome_uid",
+   "fixed_size_binary[16]",
+   false
+  ],
+  [
+   "n_contigs",
+   "uint32",
+   false
+  ],
+  [
+   "genome_len",
+   "int64",
+   false
+  ],
+  [
+   "kind",
+   "string",
+   true
+  ],
+  [
+   "genetic_code",
+   "uint8",
+   true
+  ],
+  [
+   "assembly_quality",
+   "string",
+   true
+  ],
+  [
+   "tier",
+   "uint8",
+   true
+  ],
+  [
+   "tax_order",
+   "uint32",
+   true
+  ],
+  [
+   "is_species_rep",
+   "bool",
    false
   ]
  ],
@@ -791,6 +843,16 @@
    "contig_len",
    "int64",
    false
+  ],
+  [
+   "clan",
+   "string",
+   true
+  ],
+  [
+   "clan_winner",
+   "bool",
+   true
   ]
  ],
  "ledger": [

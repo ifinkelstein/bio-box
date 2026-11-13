@@ -204,6 +204,52 @@ floor((40 - 16) / 4) = 6, so `--scan-jobs 6 --scan-cpus 4`, 24 threads, 40 in al
 running, the same formula gives J = 10, which is the whole cap: leave a margin if anything may start
 during the hours the scan runs. A smaller J only makes the scan take longer; the output is the same.
 
+**Non-coding RNA (card E-07, DEC-28).** `--ncrna-cm <Rfam.cm.gz>` puts the ncRNA producer in the
+`features` slot, as a step named `ncrna-<producer>`. The producer scans the model set `--ncrna-set`
+(default `prok-2`, DEC-30, the frozen file `src/biobox/l1/rfam_sets/prok-2.tsv`: 770 Rfam 15.1 models,
+`prok-1`'s 588 plus 182 long-tail models with a hit on measurement 0-08a's sample; `--ncrna-set prok-1`
+still scans card E-07's set, and a stage scanned with it keeps its producer name): its
+intergenic models on the stage's intergenic regions widened by 200 bases into the flanking genes, with
+`cmsearch --notrunc`, and its whole-genome models (RNA inside coding sequence; 34 in `prok-2`, 23 in
+`prok-1`) on whole contigs. It
+fetches the set's models from the library with `cmfetch` into scratch. Overlapping hits of models in one
+Rfam clan on one strand compete (card E-08): the best bit score wins, every hit stays in `l1_ncrna` with its
+`clan` and `clan_winner`, and only winners become features on the tape (clan file
+`src/biobox/l1/rfam_sets/Rfam-15.1.clanin`, pinned in `refdb.yaml` as `rfam_clanin`). The producer's name
+carries the library, the set, the region rule and the clan rule, for example
+`infernal-1.1.5-rfam-15.1-prok2-igr200nt-clan1` (`-prok1-` with `prok-1`), so a new set or rule is a new
+step and a new tape version
+(card E-07's producer, without `-clan1`, kept every hit on the tape). The IGR, tape, token and posting steps then get `--producers
+<gene caller>,<ncRNA producer>`: the release's tapes are those of both producers. The gene-call files are
+the same with or without `--ncrna-cm`. The step counts as one step in `all N steps done`.
+
+- Threads: each `cmsearch` runs with `--scan-cpus` threads (default 4, at most `--threads`).
+- Shards: a scan estimated above 80% of `cpu_min_per_process` runs as `ncrna-<p>.plan`, one
+  `ncrna-<p>.shard-<k>` per shard and the merge, as a domain scan does. The estimate is the stage's
+  genome bases at the set's rate (card E-09): 304.0 CPU-hours per 10 Gbp for `prok-1`, the slower of the
+  two shards measured on the pod (derived in `planning/measurements/2026-11-11_ncrna_producer.md`; card
+  E-08), times the set's cost relative to `prok-1`. `prok-2` costs 299.7 against 254.5 (derived in
+  `planning/measurements/2026-11-12_rfam_sample.md`), so its rate is 358.0 (derived: 304.0 × 299.7 /
+  254.5). A shard holds at most 111,734,541 genome bases with `prok-2` and 131,578,947 with `prok-1`, at
+  300 CPU-minutes (derived: 0.8 × 300 × 1e10 / (rate × 60)). A set file that is not a frozen set is
+  planned at the dearest frozen set's rate.
+- Memory: each `cmsearch` is counted at 6.4 GiB per two threads (measured peak 6.4 GiB at `--cpu 2` on
+  intergenic records, measurement 0-09c). Shards at once are at most the unit's `MemoryMax` divided by
+  that, so a 16G unit runs two shards of two threads. A unit too small for one `cmsearch` is refused
+  (exit 2, `above the memory cap`) before the scan; raise `pod_run.sh --mem` or lower `--scan-cpus`.
+- A contig another stage owns is skipped and named in the ledger (`owned_by:<stage>`), as gene calling
+  skips it (DEC-26).
+- Its plan and shard records are in `l1/ncrna_scan/producer=<producer>/stage=<S>/` (card E-08; a stage
+  planned by card E-07's code has them in `l1/domain_scan/library=<producer>/stage=<S>/`, where they are
+  still read), the shards' runs in `$BBTMP/scratch/biobox-ncrna-scan/<plan>/`; a run lost from scratch is
+  scanned again before the merge (`python -m biobox.l1.ncrna rescan`, log: `scanning it again`), as for a
+  domain scan (section 4).
+- The ledger's tool versions and the step's result name the gene-call version whose intergenic regions were
+  scanned (`gene_call_version`).
+
+The library must be the `refdb.yaml` file for the name to say `rfam-15.1`; another file is named by its
+sha256, which the release's C-08 check reports as differing from the lock.
+
 **Clustering's own cap (DEC-25).** A release's clustering is one process, and on a large release it
 passes 300 CPU-minutes: 2,195.91 CPU-minutes for 10,620,684 proteins (measured, wilkcomp02,
 2026-11-10, run record `rN.1.cluster`). DEC-25 exempts this one step from the 300 CPU-minute rule
@@ -223,7 +269,10 @@ estimate: about five times that run; the PI may change it). Every other step kee
   clustering estimated over `cpu_min_per_process` is refused, exit 2, and the log line says so.
 - With the key, the cluster step's run record holds `cpu_budget_reason: exempt: DEC-25`, and
   `over_cpu_budget` is still true when the step used more than 300 CPU-minutes (section 5).
-- The exemption ends when card B-37 splits clustering into processes under the budget.
+- When the release clusters in parts (below) and the profile has the key, this check does not use the
+  release's one-process estimate: it checks each call the plan runs as one process (DEC-29, below)
+  against `cluster_cpu_min_max` (card B-45). A profile without the key gets the check above in either mode.
+- The one-process clustering step ends with card B-42 (2); the key stays for DEC-29.
 
 **Clustering in parts (card B-41).** When clustering in one process is estimated above 80% of the
 profile's `cpu_min_per_process` (240 CPU-minutes of 300), `build-stage` clusters the release in
@@ -242,7 +291,30 @@ parts, each step its own `run-step` under `runs/stage=<release>/`:
   never in a manifest.
 - MMseqs2's databases are under `$BBTMP/scratch/biobox-cluster/<release>-<key>/`, and are removed when
   `cluster` publishes. Their size is not yet measured.
-- The DEC-25 estimate and its refusal above still come first, until the exemption is removed.
+- The DEC-25 estimate and its refusal above still come first (in parts, call by call: above).
+
+**A call that cannot be split runs as one process (DEC-29, card B-45).** The NR90 step's prefilter
+(`cluster.nr90.11.prefilter`) and NR50 step 0 (`cluster.nr50.11.prefilter`) cannot search a shared index
+in MMseqs2 18.8cc5c (card B-44), so each of their parts rebuilds the k-mer table of the whole target. From
+about 68.3 M targets that table alone is 240 CPU-minutes a part (derived: 240 × 60 / 2.108e-4 CPU-seconds
+per target), and no number of parts fits the budget: about 74 M proteins for the NR90 step and 108 M for
+NR50 step 0 (derived, DEC-29). Then:
+
+- With `cluster_cpu_min_max` in the profile, `build-stage` gives it to the plan
+  (`release cluster plan --one-process-cpu-min-max`), which records it in its `cut`. The call's `.cut`
+  step makes it one part, the workflow's own call, and its record holds `one_process` with the reason and
+  the estimate (its work plus its own table). Above the cap the cut is refused, exit 2.
+- Just before the call's step `build-stage` checks the estimate against the profile's cap again and
+  refuses (exit 2, `refused before <release>.<call>`) above it or when the profile has no key. Its run
+  record holds `cpu_budget_reason: exempt: DEC-29`, with `over_cpu_budget` true above 300 CPU-minutes.
+- Without the key the cut refuses the call as before: `no number of parts fits it`, naming DEC-29.
+- At 95 M proteins the NR90 step's prefilter as one process is about 3,945 CPU-minutes (derived: 3,629 of
+  work and 316.4 for the table, the extrapolated model in `src/biobox/l2/cluster.py`), and the whole
+  clustering in parts about 37,963 (derived, same place). Nothing that large has been measured.
+- `release cluster plan` prints, under `one_process`, which calls may run as one process, from how many
+  targets, and whether this release can reach that. `release cluster step --name <call>.cut` prints the
+  cut's `one_process` when it is one.
+- This ends when an MMseqs2 without the abort is pinned (card B-44).
 
 A shard that fails stops new launches. Shards already running go on to their own end and publish if
 no `STOP` file exists then, and `build-stage` exits with the failed shard's code. A `STOP` file is
@@ -316,7 +388,7 @@ What `run-step` leaves, and what it does at the next start:
 |---|---|---|
 | `$BBTMP/staging/<stage>.<step>/` | the step was killed, failed or stopped | removes it and runs the step again |
 | `$BBTMP/scratch/<stage>.<step>/` (a step's own scratch) | the step was killed, failed or stopped | `build-stage` removes it before that step's next attempt (log: `removing ..., left by an earlier attempt`), and removes it once the step succeeds. In C-10 a stopped clustering step left 1.2 GB there (measured, wilkcomp02, 2026-11-10) |
-| a scan shard's run missing from `$BBTMP/scratch/biobox-domain-scan/<plan>/` while its run record exists | scratch was cleared (a reboot) or damaged between the shards and the merge | `build-stage`, before the merge, scans exactly those shards again into scratch (log: `scanning it again`); the new run must have the sha256 the shard's published record holds, else the build stops naming the shard (tell the PI) |
+| a scan shard's run missing from `$BBTMP/scratch/biobox-domain-scan/<plan>/` (or, for the ncRNA scan, `biobox-ncrna-scan/<plan>/`) while its run record exists | scratch was cleared (a reboot) or damaged between the shards and the merge | `build-stage`, before the merge, scans exactly those shards again into scratch (log: `scanning it again`); the new run must have the sha256 the shard's published record holds, else the build stops naming the shard (tell the PI) |
 | a clustering step's database missing from `$BBTMP/scratch/biobox-cluster/<release>-<key>/` while its record exists (card B-41) | scratch was cleared (a reboot) or damaged during clustering in parts | `build-stage`, before it goes on, makes exactly those steps again, in order (log: `making them again in order`); each must reproduce its published record, else the build stops naming the step (tell the PI) |
 | `$ROOT/runs/stage=<S>/<step>.json` (run record) | the step finished | skips the step if every listed output is in the root with its recorded size |
 | `$ROOT/runs/stage=<S>/<step>.publishing.json` (intent file) | killed while publishing | finishes the publish, or undoes it, then reruns (see below) |
@@ -362,7 +434,7 @@ names. Fields:
 | `wall_s`, `cpu_min`, `peak_rss_bytes` | wall seconds, CPU-minutes, peak resident bytes of the step command |
 | `mem_cap` | `how` is `inherited` (the unit's cap, with `memory_max_bytes`), `opened` or `none` |
 | `exit_code`, `over_cpu_budget` | `over_cpu_budget` is true above the profile's `cpu_min_per_process` |
-| `cpu_budget_reason` | only in a release's `cluster` record, when the profile sets `cluster_cpu_min_max`: `exempt: DEC-25` (section 2) |
+| `cpu_budget_reason` | only in a release's `cluster` record, when the profile sets `cluster_cpu_min_max` and the release clusters in one process: `exempt: DEC-25`; and in the record of a clustering call run as one process in parts: `exempt: DEC-29` (section 2) |
 | `image_digest`, `host` | the image sha256 that `pod_run.sh --digest` passed in, and the host |
 | `outputs` | each published file: `path`, `bytes`, `sha256` |
 
@@ -408,6 +480,13 @@ also reports any unlisted file in the release's scope. It writes nothing. It pri
 then `release rC6.2: verified (...)` with the stages, the file count and the manifest hash. Exit 0
 is a pass, 1 a failure (a missing manifest is one).
 
+Files that a later step adds to the release's stages for a library, producer or step the release
+does not use there are not its concern (card C-19): a Pfam scan of a stage after the release was
+built does not fail it. A second part beside a file the release lists still does. If the release
+has a library's domain files for some of its stages only, `verify` prints a `warning:` line naming
+the stages on each side; the exit code is unchanged. That release's family tokens cover only the
+first stages' genes; a release built after the other stages are scanned covers them all.
+
 ```bash
 bio-box release verify --root "$ROOT" --release rC6.2
 ```
@@ -441,7 +520,12 @@ not be able to write its root. The search pack and the runs live outside the dat
 profile's `tmp`:
 
 - the pack of release `R`: `$BBTMP/packs/release=<R>/<pack id>/`, one per host (a pack is a cache
-  of a release, shared by every user);
+  of a release, shared by every user). `$BBTMP/packs` (real: `/tmp/if2453/bio-box/packs`) is the
+  host's one pack directory (card W-22): `pack`, `search`, `nbr` and `releases` find a release's pack
+  there with only `--profile`. Only a `pack build` that makes a pack writes into it, so it may be
+  read-only for everyone but its builder: `pack verify`, a `pack build` that finds the pack already
+  built, and every search write nothing there (their scratch goes to `$BBTMP/search/$USER/work`), and
+  a `pack build` that cannot write it exits 2;
 - the runs: `$BBTMP/search/$USER/runs/run=<run id>/`, one directory per user; each running run's
   pending record is `$BBTMP/search/$USER/runs/pending/run=<run id>.json`, removed when the run closes
   (card W-20; the closed run's own record, `run.parquet`, then answers `status` and `cancel`);
@@ -462,7 +546,9 @@ once for each domain library of the release; it is optional, and a release with 
 (the 10 Gbp release `rN.1` has none) is built without it. A search seeded by an HMM file or by
 sequences needs no model in the pack. A second build from the same inputs finds the pack
 and changes nothing; a pack is never overwritten. A search whose pack is missing exits 2 and names
-the `pack build` command.
+the `pack build` command. `pack verify` re-reads every file of the pack and writes nothing into the
+pack directory; it sorts the release's protein uids in `$BBTMP/search/$USER/work/.verify-*`, removed
+when it ends (card W-22).
 
 ```bash
 bash "$TREE/scripts/pod_run.sh" --profile "$PROFILE" --image "$IMAGE" --digest "$DIGEST" --bind /tmp/if2453 --env PYTHONPATH="$PYTHONPATH_POD" w13-pack pack build --root "$ROOT" --release rC6.1 --model test-1="$WORK/inputs/lib.hmm" --profile "$PROFILE"
@@ -540,23 +626,47 @@ how many rows it shows of how many (`--top_n 0` shows all). `nbr summarize --by 
 release with no domain library says so on stderr and leaves the `pfam` level out. Strand is `+1` or
 `-1` in every table, coordinates are 0-based and half-open, and the offsets of `neighbors.tsv` are
 relative to the anchor's strand (card W-20; `search hmm` writes these and every column's meaning into
-`README.txt`; `tier` is a column of `hits.tsv` only when the release has tiers, none has yet).
+`README.txt`; `tier` is a column of `hits.tsv` only when the release has tiers, none has yet; its last two columns,
+`stage` and `kind`, give each gene's build stage and its genome's kind, card W-23).
 `--format tsv`
 is one row per gene; `--format faa` is one record per protein, named by protein uid. `nbr ...
 --format tsv --out DIR` writes one file per anchor locus. `nbr summarize` counts families and
 clusters around the anchors. `export proteins` needs the release's manifest; it reads the root only
-and takes no `--profile`.
+and takes no `--profile`. Every one of these given `--out` prints one stderr line per file it wrote,
+`wrote PATH: N rows` (`sequences` for FASTA, `records` for JSON lines, `N tables, M rows` for a
+directory of locus tables; card W-23).
+
+**What a root holds, one sequence, and SQL** (card W-23). `releases` prints one line per release
+of the root (a manifest or only a `release_def`): stages, genomes, contigs, distinct proteins, domain
+libraries, ncRNA producers, whether it has the lookup tables of cards B-27 and B-39, and with
+`--profile` (or `--pack-dir`) its pack. `seq` prints proteins by uid (`--protein`, several, or
+`--proteins-file`) or one stretch of a contig (`--contig` by accession or contig uid, `--strand -1`)
+as FASTA, read by key, never by exporting the release. `sql` runs SELECT statements on the release's
+catalog through `open_catalog` on a read-only connection (external access off, only the release's and
+the runs' files readable; `COPY ... TO`, `CREATE`, `ATTACH`, `SET` and the like exit 2), with DuckDB's
+temporary files in a scratch directory under the profile's `tmp`, and prints on stderr the row groups
+each statement read; `--runs` (or the profile) attaches runs of the release.
+
+```bash
+bio-box releases --root "$ROOT" --profile "$PROFILE"
+bio-box seq --root "$ROOT" --release rC6.1 --protein 0123456789abcdef0123456789abcdef
+bio-box seq --root "$ROOT" --release rC6.1 --contig NC_001416.1:201..1000 --strand -1
+bio-box sql --root "$ROOT" --release rC6.1 --profile "$PROFILE" -e "SELECT key, value FROM catalog_info"
+```
 
 **Anchors from a file, and finding a gene** (card W-18). `nbr` takes a long list of protein uids from a
 file, one uid per line (blank lines and `#` lines are skipped), in place of the comma-separated
 argument; `find` prints the genes an accession or a protein uid names, one row each: accession,
-contig uid, start, end (0-based, end exclusive), strand, feature uid, protein uid. `ACC:START-END`
-names one gene, as `search hmm --positive` does (it uses the same lookup). `--accession ACC` alone lists
+contig uid, start, end (0-based, end exclusive), strand, feature uid, protein uid, and the gene in both
+coordinate forms (`span`, `genbank_span`). `ACC:START-END` (0-based, end exclusive) or `ACC:START..END`
+(GenBank: 1-based, both ends included; card W-23) names one gene, as `search hmm --positive` does (it
+uses the same lookup); any other spelling exits 2 and shows both forms. `--accession ACC` alone lists
 every gene of that contig; `--protein UID` every gene that carries the protein.
 
 ```bash
 bio-box nbr summarize --anchors-file "$WORK/anchors.txt" --root "$ROOT" --profile "$PROFILE" --release rC6.1 --window 5g --by pfam,nr50
 bio-box find --root "$ROOT" --release rC6.1 --accession NC_001416.1:200-1000
+bio-box find --root "$ROOT" --release rC6.1 --accession NC_001416.1:201..1000
 bio-box find --root "$ROOT" --release rC6.1 --protein 0123456789abcdef0123456789abcdef
 ```
 
@@ -565,7 +675,8 @@ runs it, and writes the exports into `--out DIR`. `--bits` is the inclusion thre
 `--neighbors N` the genes on each side (window `Ng`, default 5); `--model` picks one model of a file
 that holds several. `--positive` is required: a protein the search must find, given as
 `ACCESSION:START-END` (one gene, with the accession, start and end that `search hits --format tsv`
-prints: 0-based, end exclusive) or as a substring of its contig's header (case-sensitive). It must
+prints: 0-based, end exclusive), as `ACCESSION:START..END` (the same gene in GenBank's 1-based form) or
+as a substring of its contig's header (case-sensitive). It must
 name exactly one protein of the release; otherwise the command exits 2 and lists the genes that
 matched, each as `ACCESSION:START-END`, so one can be given instead. `$POSITIVE` below is such a
 gene. The run runs in the foreground, as `search run --wait`, so it may run in a `pod_run.sh` unit;
@@ -580,6 +691,7 @@ column means), `recipe.yaml` (the recipe the
 run ran; `search run DIR/recipe.yaml` runs it again), `hits.tsv` and `hits.faa` (as `search hits
 --format tsv|faa`), `neighbors.tsv` (as `nbr summarize --format tsv`) and `loci/` (one table per
 locus, as `nbr --format tsv`); each is written by that command, so the files are the same. The log
+has a `wrote PATH: N ...` line for each of `hits.tsv`, `hits.faa`, `neighbors.tsv` and `loci/`, then
 ends with the run id and `ok`, then one line per file. The run itself is in the runs directory, as
 for `search run`. A release with no domain library (the 10 Gbp release `rN.1` has none) is
 searched all the same: the neighbour summary is by `nr50,nr90` instead of `pfam,nr50`, and the log
@@ -609,8 +721,8 @@ What is ours, all under `/tmp/if2453/`:
 
 - `$BBTMP/staging/<stage>.<step>/`: leftovers of killed or failed steps.
 - `$BBTMP/scratch/`: builder scratch: one directory per step, `<stage>.<step>/`, which
-  `build-stage` removes itself (section 4), and the scan shards' runs in `biobox-domain-scan/`,
-  removed after the merge.
+  `build-stage` removes itself (section 4), and the scan shards' runs in `biobox-domain-scan/` and
+  `biobox-ncrna-scan/`, removed after the merge.
 - `$BBTMP/logs/`: unit logs.
 - `$BBTMP/packs/release=<R>/<pack id>/`: the search pack of a release (section 7). It is a cache of
   the release, shared by every user of the host: `pack build` makes it again from the release. Its
@@ -619,17 +731,21 @@ What is ours, all under `/tmp/if2453/`:
   verifies it in full first (its log says so); `pack build` with the same inputs adds the record
   without building again.
 - `$BBTMP/packs/release=<R>/.building-<pid>-<hex>/` and `.scratch-<pid>-<hex>/`: a pack build's
-  temporary pack and its sort's scratch, and `.verify-<pid>-<hex>/`: the scratch of a `pack verify`
-  (or of the verify a `pack build` runs). Each is removed by the command that made it, also when it
-  is stopped by SIGTERM, SIGHUP or Ctrl-C; one is left only when that command was killed (SIGKILL,
-  the OOM killer, a reboot). They are dot-named, so `ls` shows them only with `-a`. Remove one only
-  when no `pack build` or `pack verify` of that release is running (`ps -u "$USER" -o pid,args`),
-  by exact path.
+  temporary pack and its sort's scratch (the build's check of its new pack sorts there too). Each is
+  removed by the command that made it, also when it is stopped by SIGTERM, SIGHUP or Ctrl-C; one is
+  left only when that command was killed (SIGKILL, the OOM killer, a reboot). They are dot-named, so
+  `ls` shows them only with `-a`. Remove one only when no `pack build` of that release is running
+  (`ps -u "$USER" -o pid,args`), by exact path. Nothing else writes into `$BBTMP/packs` (card W-22).
 - `$BBTMP/search/$USER/`: your searches (section 7). `runs/run=<run id>/` is a closed run's record
   and hits; `runs/pending/run=<run id>.json` is a running run's pending record, which the run
   removes when it closes (`.stderr` beside it is the runner's stderr of a run submitted outside a unit,
   and stays); `work/<run id>/` is a run's work directory, which the
   run removes when it closes. One is left only when the runner was killed (SIGKILL, a reboot).
+- `$BBTMP/search/$USER/work/.verify-<pid>-<hex>/`: the scratch of a `pack verify`, or of the verify a
+  `pack build` runs on a pack it finds already built (card W-22; before W-22 it was in the pack
+  directory, `$BBTMP/packs/release=<R>/`, where one left by an older tree may still be). Removed by
+  the command that made it; one is left only when that command was killed. Remove one only when no
+  `pack verify` or `pack build` is running, by exact path.
 - `$TREE`, `$WORK` and `/tmp/if2453/ci-tmp/<name>-*`: your mirrored trees and pytest directories.
 
 Never delete:
@@ -684,13 +800,14 @@ a profile value is missing from this table.
 | Memory cap required | true: `run-step` and the search runner refuse to start uncapped | profile `require_mem_cap` |
 | Nice | 19 (one big process), 15 (many small ones) | profile `nice_monolithic`, `nice_fanout`; AGENTS 7.2 says 19 |
 | CPU-minutes per process | 300 | profile `cpu_min_per_process`; AGENTS 7.2 |
-| CPU-minutes of a release's clustering | 20000, estimated before launch; refused above it. The one exemption from the 300 (DEC-25), until card B-37. Set by the PI on 2026-11-10 for the 50 Gbp build: about nine times the 2,195.91 measured for 10,620,684 proteins (wilkcomp02, 2026-11-10). Without the key, clustering over 300 is refused | profile `cluster_cpu_min_max`; DEC-25; `cluster_refusal` in `src/biobox/stage.py`; card B-36 |
+| CPU-minutes of a release's clustering | 20000, estimated before launch; refused above it. The one exemption from the 300 (DEC-25), until card B-37. Set by the PI on 2026-11-10 for the 50 Gbp build: about nine times the 2,195.91 measured for 10,620,684 proteins (wilkcomp02, 2026-11-10). Without the key, clustering over 300 is refused. In parts it is the cap of each call that runs as one process because no number of parts fits it (DEC-29, card B-45) | profile `cluster_cpu_min_max`; DEC-25, DEC-29; `cluster_refusal`, `one_process_refusal` in `src/biobox/stage.py`; cards B-36, B-45 |
+| ncRNA scan shard size | `prok-2` (the default): 111,734,541 genome bases, 80% of `cpu_min_per_process` (300) at 358.0 CPU-hours per 10 Gbp (derived: 304.0 × 299.7 / 254.5, the set's cost relative to `prok-1` from `planning/measurements/2026-11-12_rfam_sample.md`). `prok-1`: 131,578,947 at 304.0, the slower of the two shards of card E-07's pod check (derived in `planning/measurements/2026-11-11_ncrna_producer.md`; the design note's 247.4 gave 161,681,487). Shards at once: at most the unit's `MemoryMax` / (6.4 GiB per two `cmsearch` threads) | `NCRNA_CPU_H_PER_10GBP`, `NCRNA_SET_COST`, `NCRNA_JOB_GIB` in `src/biobox/stage.py`; cards E-07, E-08, E-09 |
 | Scan shard size | 30,150,753 residues: 80% of `cpu_min_per_process` (300) at 7.96 CPU-minutes per million residues (derived: 300 × 0.8 / 7.96 × 10^6; the rate of the Pfam scan of stage P1 in card C-10, measured on wilkcomp02, 2026-11-10: 2,343.74 CPU-minutes for 294.5 M residues). The 80% leaves room for a scan 25% slower per residue (derived: 1 / 0.8) | `SHARD_MARGIN` and `SCAN_CPU_MIN_PER_M` in `src/biobox/stage.py`; cards C-11, C-13 |
 | Scan shards at once | `--scan-jobs` J × `--scan-cpus` C at most the threads `run-step` allows when `build-stage` starts (40 by day, 56 at night when idle); defaults C = 4, J = allowance // C (10 by day, 14 at night). The cap is a total over everything of ours on the pod, and `build-stage` counts only its own threads: choose J = floor((cap - other threads) / C) (section 2). The allowance is read again before each step and before each shard launch; a launch that would pass it waits | `scan_slots` and `_launch` in `src/biobox/stage.py`; cards C-11, C-12 |
 | Unit CPU quota | the night cap, 56: a ceiling fixed at launch; `build-stage` holds the limit of the hour | `scripts/pod_run.sh --threads`, profile `max_threads_night`; card C-12 |
 | Smallest data file | 64 MiB (67108864 bytes), except tables the registry marks `small_ok` | profile `small_file_floor_bytes`; AGENTS 7.3 says 64 MB |
 | Work directory | `/tmp/if2453/bio-box` | profile `tmp`; AGENTS 7.3 |
-| Search pack directory | `<tmp>/packs` (`/tmp/if2453/bio-box/packs`), outside the data root; with `--profile`, else `--pack-dir` | profile `tmp`; `default_pack_base` in `src/biobox/search/runner.py`; card W-03 |
+| Search pack directory | `<tmp>/packs` (`/tmp/if2453/bio-box/packs`), the host's one, outside the data root; with `--profile`, else `--pack-dir`. Only a `pack build` that makes a pack writes into it: it may be read-only for all but its builder | profile `tmp`; `default_pack_base` in `src/biobox/search/runner.py`; cards W-03, W-22 |
 | Search runs and work directories | `<tmp>/search/<user>/runs` and `<tmp>/search/<user>/work`, one per user, outside the data root; with `--profile`, else `--runs` and `--work` | profile `tmp`; `default_runs_dir`, `default_work_base` in `src/biobox/search/runner.py`; card W-03 |
 | `search run` in a `pod_run.sh` unit | only with `--wait`; without it, refused (exit 2) | `BIOBOX_POD_UNIT` in `scripts/pod_run.sh` and `src/biobox/cli.py`; card W-13 |
 | Durable results | `/stor/work/Wilke/if2453/all-the-data` | profile `durable` |
@@ -712,7 +829,7 @@ exemption; the fixture's clustering is far under 300 CPU-minutes). Appendix B li
 
 | Limit | What happens | Card |
 |---|---|---|
-| Clustering's DEC-25 cap | above 80% of the budget a release's clustering runs in parts (card B-41, section 2), but the DEC-25 estimate still refuses one over the profile's `cluster_cpu_min_max` (20000; about 62.7 M proteins, derived, section 2), exit 2, until the split has passed on the pod and the exemption is removed. The estimate is a fit by protein count, extrapolated above 10.6 M proteins. At 95 M proteins a prefilter part's own k-mer index of the whole target would take about 333 CPU-minutes (derived: 12.44 CPU-seconds per 59,000 targets, B-37 design §3), so no part fits the budget there; the cut then refuses | B-36, B-37, B-41 |
+| Clustering's DEC-25 cap | above 80% of the budget a release's clustering runs in parts (card B-41, section 2). In one process the DEC-25 estimate refuses one over the profile's `cluster_cpu_min_max` (20000; about 62.7 M proteins, derived, section 2), exit 2; in parts, with the key, only a call run as one process over the cap is refused (card B-45). The estimate is a fit by protein count, extrapolated above 10.6 M proteins. From about 74 M proteins a part of the NR90 step's prefilter would spend 240 CPU-minutes or more on its own k-mer table of the whole target (derived, section 2), so no part fits the budget; that call then runs as one process under `cluster_cpu_min_max` (DEC-29), or is refused without the key | B-36, B-37, B-41, B-45 |
 | Ingest of a stage over about 60 Gbp | `build-stage` refuses before any step (exit 2): one ingest process runs at about 3.7 Mbp/s (measured, wilkcomp02), so it would pass 300 CPU-minutes. Split the stage into smaller stages | B-30 |
 | Shard size is Pfam's | shards are cut at 80% of the budget at Pfam's rate (7.96 CPU-minutes per million residues, measured in C-10). A library more than 1.25 times slower per residue than that (derived: 1 / 0.8; above 9.95 CPU-minutes per million residues, derived) passes 300 CPU-minutes per shard, and the run record says `over_cpu_budget`. Lower `--scan-cpus` does not help, since the budget counts CPU-minutes | C-11, C-13 |
 | `pod_run.sh` CPU quota | the unit's quota is `--threads` of `pod_run.sh` (default the night cap, 56), fixed at launch, whatever `--scan-jobs` × `--scan-cpus` is. By day it is above the day cap: the day cap is held by `build-stage` and `run-step`, not by the quota. A `run-step` launched alone keeps the thread count it chose at its start until it ends (at most 300 CPU-minutes) | C-07, C-11, C-12 |

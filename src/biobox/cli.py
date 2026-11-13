@@ -6,21 +6,32 @@
     bio-box search status|cancel <run> --root R [--runs DIR]
     bio-box search hits <run> --root R [--runs DIR] [--round N] [--members] [--json] [--top_n 50]
     bio-box search hits <run> --root R [--runs DIR] --format tsv|faa [--round N] [--library L] [--out FILE]
-    bio-box search hmm --root R --release R1 --hmm FILE --bits 30 [--neighbors 5] --positive ACC:START-END|TEXT
-                --out DIR [--model NAME] [--profile P | --pack-dir P --runs DIR --work DIR]
-    bio-box find --root R --release R1 (--accession ACC[:START-END] | --protein UID) [--tape-version T]
+    bio-box search hmm --root R --release R1 --hmm FILE --bits 30 [--neighbors 5]
+                --positive ACC:START-END|ACC:START..END|TEXT --out DIR [--model NAME]
+                [--profile P | --pack-dir P --runs DIR --work DIR]
+    bio-box find --root R --release R1 (--accession ACC[:START-END|:START..END] | --protein UID) [--tape-version T]
+    bio-box releases --root R [--profile P | --pack-dir P] [--json]
+    bio-box seq --root R --release R1 (--protein UID [UID ...] | --proteins-file F
+                | --contig ACC[:START-END|:START..END] [--strand -1]) [--out FILE]
+    bio-box sql --root R --release R1 (FILE | -e QUERY) [--runs DIR ...] [--profile P] [--format tsv|json]
+                [--out FILE]
     bio-box nbr --root R --anchors <run|uid,uid,...> --window 10g --strand any --edge truncate [--json]
                 [--tape-version T] [--runs DIR]
     bio-box nbr [summarize] --anchors-file FILE ...   (protein uids one per line, in place of the anchors argument)
     bio-box nbr <run|uid,uid,...> --root R --window 5g --format tsv [--release R] [--out DIR] [--runs DIR]
     bio-box nbr summarize <run|uid,uid,...> --root R --window 5g --by pfam,nr50 [--top 50] [--release R]
                 [--json | --format tsv] [--out FILE] [--runs DIR]
+    bio-box nbr flanks <run|uid,uid,...> --root R --out DIR [--window 5g] [--level nr50|nr90|pfam]
+                [--group-by anchor-nr90|anchor-nr50|none] [--max-loci 2000] [--cut 0.5] [--distance j|a|combined]
+                [--export gff] [--figure [--figure-rows 60]] [--release R] [--runs DIR]
+                (card W-25, biobox.search.flanks; --figure: card W-27)
     bio-box export proteins --root R --release R [--out FILE]
     bio-box run-step --profile P --root R --stage S --step NAME [--nice monolithic|fanout] [--threads N] -- CMD ...
     bio-box release define --root R --release R1 --stages S0,S1 [--out DIR]
     bio-box release cluster|tokens|postings|dim|manifest|catalog --root R --release R1 [--stages S0,S1]
                 [--tmp D] [--threads N] [--producers P,Q] [--libraries L,M] [--tape-version T] [--out DIR]
     bio-box release cluster plan --root R --release R1 [--stages S0,S1] --tmp D (--parts N | --part-cpu-min M)
+        [--one-process-cpu-min-max C]
     bio-box release cluster step|redo --root R --release R1 --name STEP --tmp D --threads N
     bio-box release cluster finish --root R --release R1 --tmp D --threads N
     bio-box release verify --root R --release R2 [--previous R1]
@@ -35,10 +46,14 @@
     bio-box stage domains plan --root R --stage S --library L --library-version V --hmm F --cutoff C --shard-residues N
     bio-box stage domains shard --root R --stage S --library L --library-version V --hmm F --shard K --cpus N --tmp D
     bio-box stage domains merge --root R --stage S --library L --library-version V --tmp D
-    bio-box stage ncrna --root R --stage S --cm Rfam.cm.gz --cpus N [--tmp D] [--seq-stages S0,S1] [--out DIR]
+    bio-box stage ncrna --root R --stage S --cm Rfam.cm.gz [--ncrna-set prok-2] --cpus N [--tmp D] [--seq-stages S0,S1]
+                [--out DIR]
+    bio-box stage ncrna plan --root R --stage S --cm F [--ncrna-set SET] --scan-bases N [--tmp D]
+    bio-box stage ncrna shard --root R --stage S --cm F [--ncrna-set SET] --shard K --cpus N --tmp D [--seq-stages S0,S1]
+    bio-box stage ncrna merge --root R --stage S --cm F [--ncrna-set SET] --tmp D
     bio-box build-stage --profile P --root R --stage S --release R1 [--stages S0,S1] --genomes genomes.json
                 --objects objects.json [--library NAME VERSION HMM CUTOFF ...] [--tmp D] [--threads N]
-                [--scan-jobs J] [--scan-cpus C] [--cluster-parts N]
+                [--scan-jobs J] [--scan-cpus C] [--cluster-parts N] [--ncrna-cm Rfam.cm.gz [--ncrna-set prok-2]]
 
 `build-stage` (card C-04, `biobox.stage`) runs every `stage` step and then every `release` step of
 one stage and its release, each as a `run-step`; a second call skips what is done.
@@ -60,7 +75,16 @@ directory (`--pack-dir`, `biobox.search.pack`); a run into `--out DIR`, else `ru
 directory (`--runs`). A `<run>` argument is a run directory, or a run id in the runs directory. Defaults,
 with a host profile (`--profile`, else $BIOBOX_PROFILE): `<tmp>/packs` and `<tmp>/search/<user>/runs`;
 without one, `biobox.search.runner.default_pack_base()` and `default_runs_dir()`. A search whose pack is
-missing exits 2 with the command that builds it.
+missing exits 2 with the command that builds it. `search hits` and `nbr` on a closed run whose pack the pack
+directory lacks exit 2 naming the pack (card W-24): a run's genes are named in its pack's tape version, which
+only the pack's manifest records. `nbr` reads a run with its own release's files; `--release` naming another
+release is refused (card W-24), and the run's proteins go to another release as protein uids.
+
+The profile's `<tmp>/packs` is the host's one pack directory (card W-22): `pack`, `search`, `nbr` and
+`releases` find a release's pack there with only `--profile`; `--pack-dir` names another. Only a `pack build`
+that makes a pack writes into it, so it may be read-only for everyone but its builder: `pack verify` and a
+no-op `pack build` sort under the profile's `<tmp>/search/<user>/work` (without a profile, the system
+temporary directory), and a build that cannot write the pack directory is refused (exit 2).
 
 `search run --wait` runs the search in this process and writes the same pending record as a submitted
 run, so `search status` and `search cancel` work on it from another shell (card W-13). Without `--wait`
@@ -78,10 +102,26 @@ tsv|faa`), `neighbors.tsv` (`nbr summarize --format tsv`, by `pfam,nr50`; by `nr
 no domain library) and `loci/` (`nbr --format tsv`), each by calling that command. DIR must be new or empty
 and outside the data root; it is filled under a temporary name beside it and renamed into place. The positive
 control (`--positive`) is required. It names one gene as `ACCESSION:START-END` (the accession, start and end
-`search hits --format tsv` prints: 0-based, end exclusive) or is a substring of a contig header; it is resolved
+`search hits --format tsv` prints: 0-based, end exclusive), as `ACCESSION:START..END` (GenBank) or is a substring of a contig header; it is resolved
 through the release's contig labels and the slots of the pack's tape version, and anything but exactly one
 protein is refused (exit 2) with a list of what matched. A missing pack is refused with the `pack build`
 command, as `search run` refuses it; it is never built here.
+
+Coordinates (card W-23, `parse_span`): wherever a gene or region is named by accession, `ACC:START-END` is
+bio-box's own form (0-based, end exclusive, as every table prints it) and `ACC:START..END` is GenBank's
+(1-based, both ends included): `NC_001604:3171..5822` is `NC_001604:3170-5822`. Anything else after the last
+colon made of digits, dots and dashes is refused (exit 2) with both spellings. `find` prints both forms.
+
+`releases`, `seq` and `sql` (card W-23) read a release without exporting it. `releases` lists every release
+the root's manifests and release definitions name, from the manifest's file list and Parquet footers (genomes
+take one column of `contig_dim`: no footer holds a distinct count). `seq` prints proteins by uid, or a contig
+slice by accession or contig uid, read by key (`export.protein_seqs`, `contig_slice`). `sql` runs SELECT
+statements on the release's catalog (`sql_connection`: read-only; see there for the protections it relies on)
+and prints to stderr the row groups each statement read.
+
+Every command that writes an output file given by `--out` (and `search hmm`, for each file in its DIR) prints
+to stderr one line per file: `wrote PATH: N rows|sequences|records` (`N tables, M rows` for a directory of
+locus tables), card W-23.
 """
 
 from __future__ import annotations
@@ -92,9 +132,11 @@ import os
 import re
 import shutil
 import sys
+import tempfile
 from datetime import datetime
 from pathlib import Path
 
+import duckdb
 import pyarrow.parquet as pq
 import yaml
 
@@ -109,12 +151,49 @@ def _print(lines) -> None:
         sys.stdout.write(line + "\n")
 
 
-def _emit(lines, out: str | None) -> None:
-    """To stdout, or to the file `out` (written under a temporary name and renamed into place)."""
+_WRITTEN: dict[str, str] = {}  # card W-23: output path -> what it holds ("12 rows"), for every file written here
+_QUIET = False  # set by `search hmm` while the commands it calls write into its temporary directory
+
+
+def _wrote(path, text: str) -> None:
+    """One stderr line for an output file written (card W-23): `wrote PATH: N rows|sequences|records`."""
+    _WRITTEN[str(path)] = text
+    if not _QUIET:
+        print(f"wrote {path}: {text}", file=sys.stderr)
+
+
+class _Tally:
+    """The lines of an output, counted as they pass (card W-23): `sequences` counts FASTA records, `records` NDJSON
+    lines, `rows` the rows of a TSV of blank-line-separated tables, each a column line and its rows (`#` lines are
+    not rows)."""
+
+    def __init__(self, lines, unit: str):
+        self.lines, self.unit, self.n = lines, unit, 0
+
+    def __iter__(self):
+        fresh = True
+        for line in self.lines:
+            if self.unit == "sequences":
+                self.n += line.startswith(">")
+            elif self.unit == "records":
+                self.n += 1
+            elif not line:
+                fresh = True
+            elif not line.startswith("#"):
+                self.n += not fresh
+                fresh = False
+            yield line
+
+
+def _emit(lines, out: str | None, unit: str = "rows") -> None:
+    """To stdout, or to the file `out` (written under a temporary name and renamed into place), then one line on
+    stderr with what it holds, counted in `unit` (`_Tally`)."""
     if out is None:
         _print(lines)
     else:
-        export.write_lines(lines, Path(out))
+        t = _Tally(lines, unit)
+        export.write_lines(t, Path(out))
+        _wrote(out, f"{t.n} {unit}")
 
 
 def _profile_tmp(a) -> Path | None:
@@ -153,35 +232,57 @@ def _run_release(d: Path) -> str | None:
     return pq.read_table(path, columns=["ran_against"]).column("ran_against")[0].as_py()
 
 
-def _run_tape_version(d: Path, packs: Path, gene_call_version: str) -> str:
-    """The tape version a closed run read: its pack's (card B-16), the pack found by the run's pack_id in
-    the pack directory `packs`; the gene-call producer's when the run or its pack is not on disk."""
-    path = Path(d) / "run.parquet"
-    if path.exists():
-        row = pq.read_table(path, columns=["ran_against", "pack_id"]).to_pylist()[0]
-        pdir = pack.pack_dir(packs, row["ran_against"], row["pack_id"])
-        if (pdir / pack.MANIFEST).exists():
-            return pack.manifest_tape_version(pack.read_manifest(pdir)[0])
-    return nbr.resolve_tape_version(gene_call_version)
+class RunPackMissing(ValueError):
+    """A closed run's pack is not in the pack directory, so the tape version that names its genes is unknown."""
+
+
+def _run_tape_version(d: Path, packs: Path) -> str:
+    """The tape version a closed run read: its pack's (card B-16), the pack found by the run's pack_id in the pack
+    directory `packs`. RunPackMissing, naming the run's release, its pack id and where it was looked for, when that
+    pack is not there (card W-24): the gene-call producer's tape version, the fallback before, names other slots once
+    a release has a second producer, and the answer was wrong with exit 0."""
+    row = pq.read_table(Path(d) / "run.parquet", columns=["run_id", "ran_against", "pack_id"]).to_pylist()[0]
+    pdir = pack.pack_dir(packs, row["ran_against"], row["pack_id"])
+    if not (pdir / pack.MANIFEST).is_file():
+        raise RunPackMissing(
+            f"run {row['run_id'].hex()} searched pack {row['pack_id'].hex()} of release {row['ran_against']}, which is "
+            f"not in the pack directory {packs} (no {pdir / pack.MANIFEST}); the run's genes are named in that pack's "
+            "tape version, which only its manifest records. Give the pack directory that holds it with --pack-dir")
+    return pack.manifest_tape_version(pack.read_manifest(pdir)[0])
+
+
+def _verify_scratch(a) -> Path | None:
+    """Where `pack verify` and a no-op `pack build` sort (card W-22): the profile's per-user work directory
+    (`<tmp>/search/<user>/work`, where a search's own verify sorts), else None (the system temporary directory);
+    never the pack directory, which may be read-only for all but its builder."""
+    tmp = _profile_tmp(a)
+    return runner.default_work_base(tmp) if tmp is not None else None
 
 
 def _pack(a) -> int:
-    """`pack build|verify` (card W-03): the release's pack in the pack directory, never under the root."""
+    """`pack build|verify` (card W-03): the release's pack in the pack directory, never under the root. Only a
+    build that makes a pack writes into the pack directory (card W-22)."""
     packs = _packs(a)
+    scratch = _verify_scratch(a)
     if a.action == "build":
         models = dict(m.split("=", 1) for m in a.model)
         try:
             man = pack.build(Path(a.root), a.release, a.gene_call_version, {k: Path(v) for k, v in models.items()},
-                             packs=packs)
+                             packs=packs, scratch=scratch)
         except (ValueError, FileExistsError) as e:
             print(f"refused: {e}", file=sys.stderr)
+            return 2
+        except PermissionError as e:  # card W-22: a pack directory may be read-only for all but its builder
+            print(f"refused: {e}. A pack directory may be read-only for all but its builder: ask the owner of "
+                  f"{packs} to build the pack, or build it into a pack directory of your own with --pack-dir",
+                  file=sys.stderr)
             return 2
         recs = (export.record("pack_target", {"release_id": a.release, "pack_id": man["pack_id"], "target": t,
                                               "shards": sum(1 for s in man["shards"] if s["target"] == t), **info})
                 for t, info in sorted(man["targets"].items()))
         _print(export.ndjson(recs))
         return 0
-    problems = pack.verify(Path(a.root), a.release, packs=packs)
+    problems = pack.verify(Path(a.root), a.release, packs=packs, scratch=scratch)
     _print(problems or [f"pack {a.release}: verified"])
     return 1 if problems else 0
 
@@ -222,14 +323,18 @@ def _pending_notice(run_id: str, info: Path) -> None:
 
 def _positive_prefs(controls_json: str | None) -> dict[bytes, tuple[str | None, str | None]]:
     """{protein_uid: (accession, header text)} for the positive controls of a run's `controls_json` (card W-20), so
-    the FASTA's `example=` names the control's own contig: a label `ACCESSION:START-END` names its accession, any
-    other label is header text (as `search hmm --positive` reads it). A control without a label names no contig."""
+    the FASTA's `example=` names the control's own contig: a label `ACCESSION:START-END` (or the GenBank form
+    `ACCESSION:START..END`, card W-23) names its accession, any other label is header text (as `search hmm
+    --positive` reads it). A control without a label names no contig."""
     out: dict[bytes, tuple[str | None, str | None]] = {}
     for p in (json.loads(controls_json) if controls_json else {}).get("positive", []):
         label = p.get("label")
         if label and p.get("uid"):
-            m = _SPAN.match(label)
-            out[bytes.fromhex(p["uid"])] = (m["acc"], None) if m else (None, label)
+            try:
+                span = parse_span(label)
+            except SpanError:
+                span = None
+            out[bytes.fromhex(p["uid"])] = (span[0], None) if span else (None, label)
     return out
 
 
@@ -296,8 +401,12 @@ def _search(a) -> int:
     if not (d / "run.parquet").exists():
         print(f"refused: no closed run {a.target} (looked for {d})", file=sys.stderr)
         return 2
+    try:
+        tv = _run_tape_version(d, _packs(a))
+    except RunPackMissing as e:
+        print(f"refused: {e}", file=sys.stderr)
+        return 2
     hits = runner.read_hits(d, a.round)
-    tv = _run_tape_version(d, _packs(a), a.gene_call_version)
     release = _run_release(d)
     manifest = export.release_manifest(root, release)
     if a.format:  # card W-05 (files: the manifest's, else the release_def stages: card W-12): one row per gene (tsv) or one record per protein (faa)
@@ -308,7 +417,8 @@ def _search(a) -> int:
         more = {"prefer": _positive_prefs(runner.read_run(d)["controls_json"])} if a.format == "faa" else {}
         try:
             _emit(make(root, hits, release=release, tape_version=tv, gene_call_version=a.gene_call_version,
-                       manifest=manifest, library=a.library, threads=a.threads, **more), a.out)
+                       manifest=manifest, library=a.library, threads=a.threads, **more), a.out,
+                  "rows" if a.format == "tsv" else "sequences")
         except ValueError as e:
             print(f"refused: {e}", file=sys.stderr)
             return 2
@@ -341,14 +451,18 @@ def _anchor_run(a, source: str) -> Path | None:
     return d if (d / "run.parquet").exists() else None
 
 
-def _anchors(a, source: str, tape_version: str | None, gene_call_version: str):
+def _anchors(a, source: str, tape_version: str | None):
     """Anchor proteins from a recorded run's protein hits (a run directory, or a run id in the runs
     directory) or a comma-separated list of protein uids: (uids, tape version, the run's release or None),
-    or a refusal message."""
+    or a refusal message. A run's tape version is its pack's: a run whose pack the pack directory lacks is
+    refused (card W-24)."""
     d = _anchor_run(a, source)
     if d is not None:
+        try:
+            run_tv = _run_tape_version(d, _packs(a))
+        except RunPackMissing as e:
+            return f"refused: {e}"
         uids = {h["target_uid"] for h in runner.read_hits(d) if h["target_kind"] == "protein"}
-        run_tv = _run_tape_version(d, _packs(a), gene_call_version)
         if tape_version is not None and tape_version != run_tv:
             return f"refused: tape version {tape_version} is not the tape version {run_tv} that run {source} read"
         return uids, run_tv, _run_release(d)
@@ -358,11 +472,27 @@ def _anchors(a, source: str, tape_version: str | None, gene_call_version: str):
         return f"refused: {source} is neither a closed run (in {_runs(a)} or as a directory) nor protein uids"
 
 
+def _uid_file(path: str, flag: str) -> list[str] | str:
+    """The protein uids of a file, one per line (blank lines and `#` lines skipped): `nbr --anchors-file` (card W-18)
+    and `seq --proteins-file` (card W-23); a refusal message instead when it cannot be read, holds no uid, or holds a
+    line that is not one."""
+    try:
+        lines = Path(path).read_text(encoding="utf-8").splitlines()
+    except (OSError, UnicodeDecodeError) as e:
+        return f"refused: {flag} {path}: {e}"
+    words = [x.strip() for x in lines if x.strip() and not x.lstrip().startswith("#")]
+    bad = next((x for x in words if not re.fullmatch(r"[0-9a-fA-F]{32}", x)), None)
+    if bad is not None or not words:
+        return (f"refused: {flag} {path}: "
+                + (f"{bad!r} is not a protein uid (32 hex digits)" if words else "no protein uids in it"))
+    return words
+
+
 def _nbr(a) -> int:
     root = Path(a.root)
-    if a.action not in (None, "summarize"):  # `nbr <run_id|uids>`: the first positional is the anchors
+    if a.action not in (None, "summarize", "flanks"):  # `nbr <run_id|uids>`: the first positional is the anchors
         if a.source is not None:
-            print(f"refused: nbr: unknown action {a.action!r} (expected summarize)", file=sys.stderr)
+            print(f"refused: nbr: unknown action {a.action!r} (expected summarize or flanks)", file=sys.stderr)
             return 2
         a.action, a.source = None, a.action
     if a.anchors_file:  # card W-18: protein uids one per line, for a list too long for one argument
@@ -370,32 +500,31 @@ def _nbr(a) -> int:
             print("refused: --anchors-file is the anchors; give it without --anchors or a run id or uid list",
                   file=sys.stderr)
             return 2
-        try:
-            lines = Path(a.anchors_file).read_text(encoding="utf-8").splitlines()
-        except (OSError, UnicodeDecodeError) as e:
-            print(f"refused: --anchors-file {a.anchors_file}: {e}", file=sys.stderr)
-            return 2
-        words = [x.strip() for x in lines if x.strip() and not x.lstrip().startswith("#")]
-        bad = next((x for x in words if not re.fullmatch(r"[0-9a-fA-F]{32}", x)), None)
-        if bad is not None or not words:
-            print(f"refused: --anchors-file {a.anchors_file}: "
-                  + (f"{bad!r} is not a protein uid (32 hex digits)" if words else "no protein uids in it"),
-                  file=sys.stderr)
+        words = _uid_file(a.anchors_file, "--anchors-file")
+        if isinstance(words, str):
+            print(words, file=sys.stderr)
             return 2
         a.anchors = ",".join(words)
-    if a.action == "summarize" and not (a.source or a.anchors):
-        print("refused: nbr summarize needs a run id or a list of protein uids", file=sys.stderr)
+    if a.action in ("summarize", "flanks") and not (a.source or a.anchors):
+        print(f"refused: nbr {a.action} needs a run id or a list of protein uids", file=sys.stderr)
         return 2
     if a.action is None and not (a.anchors or a.source):
         print("refused: nbr needs --anchors", file=sys.stderr)
         return 2
     source = a.source or a.anchors
-    got = _anchors(a, source, a.tape_version, a.gene_call_version)
+    got = _anchors(a, source, a.tape_version)
     if isinstance(got, str):
         print(got, file=sys.stderr)
         return 2
     uids, tv, run_release = got
-    policy = nbr.Policy.parse(a.window, a.strand, a.operon_gap, a.edge, a.circular)
+    if run_release is not None and a.release is not None and a.release != run_release:
+        # card W-24: a run's anchors and tape version are its release's; another release's tapes, clusters and
+        # contig_dim read with them gave an answer of neither release, with exit 0
+        print(f"refused: run {source} ran against release {run_release}, not {a.release}: nbr reads a run with its "
+              f"own release's files (drop --release, or name {run_release}). To place the run's proteins in release "
+              f"{a.release}, give them as protein uids: write them one per line (bio-box sql, the last query of "
+              f"AGENT_GUIDE.md section 5) and pass --anchors-file FILE --release {a.release}", file=sys.stderr)
+        return 2
     release = a.release or run_release
     if release is None:
         print("refused: anchors given as protein uids need --release (the release whose files to read: its "
@@ -406,6 +535,9 @@ def _nbr(a) -> int:
     except (FileNotFoundError, ValueError) as e:
         print(f"refused: {e}", file=sys.stderr)
         return 2
+    if a.action == "flanks":  # card W-25
+        return _nbr_flanks(a, root, uids, tv, release, files)
+    policy = nbr.Policy.parse(a.window or "10g", a.strand, a.operon_gap, a.edge, a.circular)
     if a.action is None and a.format == "tsv":  # card W-05: one table per anchor locus
         if a.json:
             print("refused: --json and --format are exclusive", file=sys.stderr)
@@ -424,8 +556,11 @@ def _nbr(a) -> int:
             if a.out is None:
                 _print(line for k, (_, lines) in enumerate(tables) for line in ([""] if k else []) + lines)
             else:
+                n_tables = n_rows = 0
                 for name, lines in tables:
                     export.write_lines(lines, Path(a.out) / name)
+                    n_tables, n_rows = n_tables + 1, n_rows + len(lines) - 3  # a header, the facts, the columns
+                _wrote(a.out, f"{n_tables} tables, {n_rows} rows")  # card W-23
         except ValueError as e:
             print(f"refused: {e}", file=sys.stderr)
             return 2
@@ -449,7 +584,8 @@ def _nbr(a) -> int:
         except ValueError as e:
             print(f"refused: {e}", file=sys.stderr)
             return 2
-        _emit(export.ndjson(export.nbr_summary_records(s)) if a.json else export.nbr_summary_tsv(s), a.out)
+        _emit(export.ndjson(export.nbr_summary_records(s)) if a.json else export.nbr_summary_tsv(s), a.out,
+              "records" if a.json else "rows")
         return 0
     rows, counts = nbr.fetch(root, uids, policy, a.gene_call_version, tape_version=tv, files=files)
     if a.json:
@@ -459,8 +595,112 @@ def _nbr(a) -> int:
     return 0
 
 
-_SPAN = re.compile(r"^(?P<acc>\S+):(?P<start>\d+)-(?P<end>\d+)$")  # --positive ACCESSION:START-END
+def _nbr_flanks(a, root: Path, uids: set[bytes], tv: str | None, release: str, files) -> int:
+    """`nbr flanks` (card W-25, `biobox.search.flanks`): the anchors' loci grouped by their flanks, written into
+    `--out DIR` (new or empty, outside the root). 2: refused before anything is written."""
+    from biobox.search import flanks
+
+    def refuse(msg) -> int:
+        print(f"refused: {msg}", file=sys.stderr)
+        return 2
+
+    try:
+        window = flanks.parse_window(a.window or flanks.DEFAULT_WINDOW)
+    except flanks.FlanksError as e:
+        return refuse(e)
+    level = a.level or flanks.DEFAULT_LEVEL
+    group_by = a.group_by or flanks.DEFAULT_GROUP_BY
+    distance = a.distance or "j"
+    for flag, value, allowed in (("--level", level, flanks.LEVELS), ("--group-by", group_by, flanks.GROUP_BY),
+                                 ("--distance", distance, flanks.DISTANCES), ("--export", a.export or "gff", ("gff",))):
+        if value not in allowed:
+            return refuse(f"{flag} {value}: expected one of {', '.join(allowed)}")
+    cut = flanks.DEFAULT_CUT if a.cut is None else a.cut
+    if not 0 <= cut <= 1:
+        return refuse(f"--cut {cut}: a distance between 0 and 1")
+    max_leaves = flanks.DEFAULT_MAX_LEAVES if a.max_loci is None else a.max_loci
+    if max_leaves < 1:
+        return refuse(f"--max-loci {max_leaves}: at least 1")
+    if a.figure_rows is not None and not a.figure:
+        return refuse("--figure-rows bounds the rows of the figure: give it with --figure")
+    figure_rows = flanks.DEFAULT_FIGURE_ROWS if a.figure_rows is None else a.figure_rows
+    if figure_rows < 1:
+        return refuse(f"--figure-rows {figure_rows}: at least 1")
+    if a.figure:  # card W-27
+        why = flanks.figure_unavailable()
+        if why:
+            return refuse(why)
+    if not a.out:
+        return refuse("nbr flanks writes a directory of tables: give --out DIR (new or empty, outside the root)")
+    out = Path(a.out)
+    try:
+        pack.outside_root(root, out, "the output directory")
+    except ValueError as e:
+        return refuse(e)
+    if out.exists() and (not out.is_dir() or any(out.iterdir())):
+        return refuse(f"the output directory {out} is not empty: nbr flanks writes into a new or empty directory")
+    try:
+        counts, notes = flanks.run(root, uids, out, release=release, files=files, window=window, level=level,
+                                   group_by=group_by, distance=distance, cut=cut, max_leaves=max_leaves,
+                                   export_gff=a.export == "gff", library=a.library,
+                                   gene_call_version=a.gene_call_version, tape_version=tv, threads=a.threads,
+                                   tmp=_profile_tmp(a), figure=a.figure, figure_rows=figure_rows)
+    except ValueError as e:
+        return refuse(e)
+    for line in notes:
+        print(line, file=sys.stderr)
+    _wrote(out / "groups.tsv", f"{counts['groups']} rows")
+    _wrote(out / "context_types.tsv", f"{counts['context_rows']} rows")
+    _wrote(out / "conservation.tsv", f"{counts['conservation_rows']} rows")
+    _wrote(out / "groups", f"{counts['groups']} groups, {counts['leaves']} leaves, at most {counts['peak_leaves']} "
+                           "in one tree")
+    if a.figure:
+        _wrote(out / "groups" / "*" / "figure.{svg,pdf}", f"{counts['figures']} figures, each as SVG and PDF")
+    if a.export == "gff":
+        _wrote(out / "gff", f"{counts['gff']} tables")
+    _print([f"flanks\t{out}\t{counts['loci']} loci in {counts['groups']} groups (level {level}, window {window}g, "
+            f"group by {group_by}, distance {distance}, cut {cut:g})"])
+    return 0
+
+
 POSITIVE_SHOWN = 20  # genes listed when a positive control matches no protein or several
+_SPAN_0 = re.compile(r"^(\d+)-(\d+)$")  # START-END: 0-based, end exclusive (bio-box's own form)
+_SPAN_GB = re.compile(r"^(\d+)\.\.(\d+)$")  # START..END: 1-based, both ends included (GenBank's form)
+_SPAN_LIKE = re.compile(r"^[\d.\-]*\d[\d.\-]*$")  # digits, dots and dashes: meant as coordinates
+
+
+class SpanError(ValueError):
+    """Coordinates after `ACCESSION:` in neither form `parse_span` reads; the message shows both spellings."""
+
+
+def parse_span(spec: str) -> tuple[str, int, int] | None:
+    """(accession, start, end), 0-based and half-open, of a gene or region named `ACCESSION:START-END` (0-based, end
+    exclusive, as bio-box prints) or `ACCESSION:START..END` (1-based, both ends included: GenBank's form, so
+    `NC_001604:3171..5822` is `NC_001604:3170-5822`), card W-23. None when `spec` names no coordinates: no colon,
+    whitespace in the accession, or text after the last colon other than digits with dots or dashes. SpanError for
+    such text in neither form (`3171.-5822`, `3171...5822`, `3171`), and for a GenBank start of 0 or after its end."""
+    acc, sep, tail = spec.rpartition(":")
+    if not sep or not acc or re.search(r"\s", acc) or not _SPAN_LIKE.match(tail):
+        return None
+    m = _SPAN_0.match(tail)
+    if m:
+        return acc, int(m[1]), int(m[2])
+    m = _SPAN_GB.match(tail)
+    if m and 1 <= int(m[1]) <= int(m[2]):
+        return acc, int(m[1]) - 1, int(m[2])
+    nums = [int(x) for x in re.findall(r"\d+", tail)]
+    a, b = (nums + nums)[:2] if len(nums) < 2 else nums[:2]
+    a1 = max(a, 1)
+    raise SpanError(f"{spec!r} is not a span bio-box reads; write one of the two forms. If {a} and {b} are GenBank's "
+                    f"coordinates (1-based, both ends included): {acc}:{a1}..{max(b, a1)}, which is "
+                    f"{acc}:{a1 - 1}-{max(b, a1)} in bio-box's own form. If they are bio-box's (0-based, end "
+                    f"exclusive, as `find` and `search hits` print them): {acc}:{a}-{b}, which is GenBank "
+                    f"{acc}:{a + 1}..{b}")
+
+
+def span_forms(acc: str, start: int, end: int) -> tuple[str, str]:
+    """A span in both forms `parse_span` reads: `ACC:START-END` (0-based, half-open) and `ACC:START..END` (GenBank)."""
+    return f"{acc}:{start}-{end}", f"{acc}:{start + 1}..{end}"
 
 
 def _release_files_or_refusal(a, root: Path):
@@ -472,8 +712,10 @@ def _release_files_or_refusal(a, root: Path):
 
 
 def _gene_line(g: dict) -> str:
-    where = g["accession"] or g["contig_uid"].hex()
-    return f"  {where}:{g['start']}-{g['end']}({g['strand']:+d})\t{g['protein_uid'].hex()}\t{g['header'] or ''}"
+    """One gene of a refusal's list: its span in bio-box's form with its strand, the GenBank form (card W-23), its
+    protein uid and its contig's header."""
+    zero, gb = span_forms(g["accession"] or g["contig_uid"].hex(), g["start"], g["end"])
+    return f"  {zero}({g['strand']:+d})\t{gb}\t{g['protein_uid'].hex()}\t{g['header'] or ''}"
 
 
 def _gene_lines(genes: list[dict]) -> list[str]:
@@ -485,18 +727,22 @@ def _gene_lines(genes: list[dict]) -> list[str]:
 def _positive_uid(root: Path, files, spec: str, tape_version: str, gene_call_version: str,
                   threads: int | None = None) -> tuple[str | None, list[str]]:
     """The protein uid (hex) `--positive` names, and no lines; or None and the lines of a refusal that list what
-    matched. `ACCESSION:START-END` names the gene of a contig with that accession (`contig_label`, as `search hits
-    --format tsv` shows it) and those coordinates; any other text is a substring of contig headers (case-sensitive)
-    and names every gene of those contigs. A gene is a CDS slot of the contig's tape in `tape_version` (the pack's).
+    matched. `ACCESSION:START-END` (or the GenBank form `ACCESSION:START..END`, `parse_span`; card W-23) names the
+    gene of a contig with that accession (`contig_label`, as `search hits --format tsv` shows it) and those
+    coordinates; coordinates in neither form are refused with both spellings; any other text is a substring of
+    contig headers (case-sensitive) and names every gene of those contigs. A gene is a CDS slot of the contig's tape
+    in `tape_version` (the pack's).
 
     The contigs are found by a scan of `contig_label` (sorted by contig_uid: no table is sorted by accession or
     header, and a substring cannot prune); their tapes are read by contig_uid, which prunes (AGENTS §4.4)."""
-    m = _SPAN.match(spec)
-    genes, labels = find_genes(root, files, accession=m["acc"] if m else None, text=None if m else spec,
+    try:
+        m = parse_span(spec)
+    except SpanError as e:
+        return None, [f"positive control: {e}"]
+    genes, labels = find_genes(root, files, accession=m[0] if m else None, text=None if m else spec,
                                tape_version=tape_version, gene_call_version=gene_call_version, threads=threads)
     if m:
-        start, end = int(m["start"]), int(m["end"])
-        exact = [g for g in genes if (g["start"], g["end"]) == (start, end)]
+        exact = [g for g in genes if (g["start"], g["end"]) == (m[1], m[2])]
     else:
         exact = genes
     proteins = sorted({g["protein_uid"] for g in exact})
@@ -512,24 +758,27 @@ def _positive_uid(root: Path, files, spec: str, tape_version: str, gene_call_ver
                       "(case-sensitive)"]
     if not labels:
         return None, [f"{head} matched no protein: no contig of release {files.release} has the accession "
-                      f"{m['acc']} (the accession column of `bio-box search hits --format tsv`)"]
+                      f"{m[0]} (the accession column of `bio-box search hits --format tsv`)"]
     miss, near = _span_miss(genes, m)
     return None, [f"{head} matched no protein of release {files.release}: {miss}", *_gene_lines(near)]
 
 
-def _span_miss(genes: list[dict], m: re.Match) -> tuple[str, list[dict]]:
-    """Why no gene of the accession has the span `m` (a `_SPAN` match), and the genes that overlap it."""
-    start, end = int(m["start"]), int(m["end"])
+def _span_miss(genes: list[dict], span: tuple[str, int, int]) -> tuple[str, list[dict]]:
+    """Why no gene of the accession has the span (`parse_span`'s), and the genes that overlap it."""
+    acc, start, end = span
     near = [g for g in genes if g["start"] < end and g["end"] > start]
-    return (f"no gene of {m['acc']} starts at {start} and ends at {end} (0-based, end exclusive, as `search hits "
-            f"--format tsv` prints them)" + ("; the genes there:" if near else "; no gene overlaps that interval"), near)
+    return (f"no gene of {acc} starts at {start} and ends at {end} (0-based, end exclusive, as `search hits "
+            f"--format tsv` prints them; GenBank {start + 1}..{end})"
+            + ("; the genes there:" if near else "; no gene overlaps that interval"), near)
 
 
 def _contig_labels(root: Path, files, gene_call_version: str, threads: int | None, *, where: str | None = None,
                    contigs=()) -> dict[bytes, tuple[str, str]]:
     """{contig_uid: (accession, header)} as `search hits` shows them, for the contigs of `contig_label` that satisfy
     the SQL condition `where`, else for the contig uids `contigs`. A scan of `contig_label` when `where` is given
-    (no table is sorted by accession or header); by uid it prunes (AGENTS §4.4)."""
+    (no table is sorted by accession or header); by uid it prunes (AGENTS §4.4). The scan is cheap at today's sizes
+    (card W-15: 0.03 to 0.05 s, one row group per stage on `rN.3`, *measured*; about 1 s at 1 M label rows,
+    *derived*; `planning/measurements/2026-11-12_positive_lookup_rN3.md`)."""
     import pyarrow as pa
 
     with export.open_store(root, release=files.release, gene_call_version=gene_call_version, manifest=files,
@@ -580,13 +829,16 @@ def find_genes(root: Path, files, *, accession: str | None = None, text: str | N
     return genes, labels
 
 
-FIND_COLUMNS = ("accession", "contig_uid", "start", "end", "strand", "feature_uid", "protein_uid")
+# card W-23 appended the gene's span in both forms `parse_span` reads: `span` (ACC:START-END, 0-based, half-open)
+# and `genbank_span` (ACC:START..END, 1-based, both ends included)
+FIND_COLUMNS = ("accession", "contig_uid", "start", "end", "strand", "feature_uid", "protein_uid", "span",
+                "genbank_span")
 
 
 def _find(a) -> int:
-    """`bio-box find` (card W-18): the genes an accession (optionally with a span) or a protein uid names, one TSV row
-    each: accession, contig_uid, start, end (0-based, half-open), strand, feature_uid, protein_uid. 2 when it names no
-    gene."""
+    """`bio-box find` (card W-18): the genes an accession (optionally with a span, in either form of `parse_span`) or a
+    protein uid names, one TSV row each: accession, contig_uid, start, end (0-based, half-open), strand, feature_uid,
+    protein_uid, and the span in both forms (card W-23). 2 when it names no gene or the span is in neither form."""
     root = Path(a.root)
 
     def refuse(msg, more=()) -> int:
@@ -608,8 +860,11 @@ def _find(a) -> int:
         if not genes:
             return refuse(f"no gene of release {files.release} carries protein {a.protein.lower()}")
     else:
-        m = _SPAN.match(a.accession)
-        acc = m["acc"] if m else a.accession
+        try:
+            m = parse_span(a.accession)
+        except SpanError as e:
+            return refuse(f"--accession {e}")
+        acc = m[0] if m else a.accession
         genes, labels = find_genes(root, files, accession=acc, tape_version=tv, gene_call_version=a.gene_call_version,
                                    threads=a.threads)
         if not labels:
@@ -617,14 +872,16 @@ def _find(a) -> int:
                           "`bio-box search hits --format tsv`)")
         if m:
             miss, near = _span_miss(genes, m)
-            genes = [g for g in genes if (g["start"], g["end"]) == (int(m["start"]), int(m["end"]))]
+            genes = [g for g in genes if (g["start"], g["end"]) == (m[1], m[2])]
             if not genes:
                 return refuse(miss, _gene_lines(near))
         elif not genes:
             return refuse(f"no gene of {acc} in tape version {tv} of release {files.release}")
     _print(["\t".join(FIND_COLUMNS)] + ["\t".join([g["accession"] or "", g["contig_uid"].hex(), str(g["start"]),
                                                    str(g["end"]), f"{g['strand']:+d}", g["feature_uid"].hex(),
-                                                   g["protein_uid"].hex()]) for g in genes])
+                                                   g["protein_uid"].hex(),
+                                                   *span_forms(g["accession"] or g["contig_uid"].hex(), g["start"],
+                                                               g["end"])]) for g in genes])
     return 0
 
 
@@ -662,7 +919,8 @@ def _search_hmm(a) -> int:
     if not a.positive:
         return refuse("search hmm needs a positive control, a protein the search must find: --positive "
                       "ACCESSION:START-END (one gene: its accession, start and end as `bio-box search hits --format "
-                      "tsv` prints them) or --positive 'TEXT' (a substring of the contig's header). A search without "
+                      "tsv` prints them, 0-based, end exclusive), ACCESSION:START..END (the same gene in GenBank's "
+                      "1-based form) or --positive 'TEXT' (a substring of the contig's header). A search without "
                       "one is refused (S-04)")
     if a.neighbors < 1:
         return refuse(f"--neighbors {a.neighbors}: give at least 1 gene on each side")
@@ -698,6 +956,9 @@ def _search_hmm(a) -> int:
     tmp = out.parent / f".{out.name}.tmp-{os.getpid()}"
     shutil.rmtree(tmp, ignore_errors=True)
     tmp.mkdir(parents=True)
+    global _QUIET
+    quiet = _QUIET
+    _QUIET = True  # card W-23: the commands below write into tmp; the lines name the files once DIR is in place
     try:
         (tmp / "recipe.yaml").write_text(text, encoding="utf-8")
         if status == "ok":
@@ -719,7 +980,11 @@ def _search_hmm(a) -> int:
             counts = (_count(tmp / "hits.tsv") - 1, _count(tmp / "hits.faa", ">"), len(list((tmp / "loci").iterdir())))
         os.replace(tmp, out)  # an empty DIR is replaced; a DIR that gained files meanwhile is not (OSError)
     finally:
+        _QUIET = quiet
         shutil.rmtree(tmp, ignore_errors=True)
+    if status == "ok":
+        for name in ("hits.tsv", "hits.faa", "neighbors.tsv", "loci"):
+            _wrote(out / name, _WRITTEN[str(tmp / name)])
     print(f"{rid}\t{status}")
     if status != "ok":
         print(f"search hmm: run {rid} ended {status}: {row.get('error')}; {out} holds the recipe it ran",
@@ -747,7 +1012,9 @@ def _hmm_parser() -> argparse.ArgumentParser:
     h.add_argument("--neighbors", type=int, default=5, help="genes on each side of a hit in the neighbour tables "
                                                             "(window <N>g; default 5)")
     h.add_argument("--positive", help="required: a protein the search must find, as ACCESSION:START-END (one gene, "
-                                      "as `search hits --format tsv` prints it) or a substring of its contig's header")
+                                      "as `search hits --format tsv` prints it: 0-based, end exclusive), as "
+                                      "ACCESSION:START..END (GenBank: 1-based, inclusive) or a substring of its "
+                                      "contig's header")
     h.add_argument("--out", required=True, help="a new or empty directory outside the data root")
     h.add_argument("--profile", help="host profile YAML (default: $BIOBOX_PROFILE); caps cpus and memory, and gives "
                                      "the pack, runs and work directories")
@@ -774,7 +1041,415 @@ def _export(a) -> int:
               file=sys.stderr)
         return 2
     _emit(export.protein_fasta(root, release=a.release, gene_call_version=a.gene_call_version, manifest=manifest,
-                               threads=a.threads), a.out)
+                               threads=a.threads), a.out, "sequences")
+    return 0
+
+
+# --- card W-23: releases, seq, sql ---------------------------------------------------------------------------
+
+
+def _level_rows(paths, level: str) -> int:
+    """Rows at `level` of cluster membership files sorted by level first (`member_cluster`, `cluster_member`): from
+    each row group's statistics on `level`; the column of a row group is read only where it holds several levels or
+    has no statistics, so a file costs its footer and at most a row group per level boundary."""
+    import pyarrow.compute as pc
+
+    n = 0
+    for p in paths:
+        pf = pq.ParquetFile(p)
+        k = pf.schema_arrow.get_field_index("level")
+        for i in range(pf.metadata.num_row_groups):
+            rg = pf.metadata.row_group(i)
+            st = rg.column(k).statistics
+            lo, hi = (st.min, st.max) if st is not None and st.has_min_max else (None, None)
+            lo, hi = (x.decode() if isinstance(x, bytes) else x for x in (lo, hi))
+            if lo is not None and lo == hi:
+                n += rg.num_rows if lo == level else 0
+            elif lo is not None and not lo <= level <= hi:
+                continue
+            else:
+                n += pc.sum(pc.equal(pf.read_row_group(i, columns=["level"]).column(0), level)).as_py() or 0
+    return n
+
+
+def _distinct(paths, column: str) -> int:
+    """Distinct values of one column of the files, read a row group at a time."""
+    seen: set = set()
+    for p in paths:
+        pf = pq.ParquetFile(p)
+        for i in range(pf.metadata.num_row_groups):
+            seen.update(pf.read_row_group(i, columns=[column]).column(0).to_pylist())
+    return len(seen)
+
+
+def _release_genomes(files, release: str, dims: list) -> int | None:
+    """The genomes of a release for `release_summary` (card C-21c); None without `contig_dim`."""
+    if not dims:
+        return None
+    gdim = files.table("genome_dim", release=release)
+    if gdim:
+        return sum(pq.read_metadata(p).num_rows for p in gdim)
+    member = files.table("genome_input")
+    return _distinct(member or dims, "genome_uid")
+
+
+def release_names(root: Path) -> list[str]:
+    """Every release the root names: a manifest `manifests/release=<R>.json` or a release definition
+    `release_def/release=<R>/`, so a release defined but not yet given a manifest is found too."""
+    from biobox.registry.schemas import table
+
+    names = set()
+    man = Path(root) / "manifests"
+    if man.is_dir():
+        names |= {p.name[len("release="):-len(".json")] for p in man.glob("release=*.json")}
+    defs = Path(root) / table("release_def").location
+    if defs.is_dir():
+        names |= {p.name[len("release="):] for p in defs.iterdir() if p.is_dir() and p.name.startswith("release=")}
+    return sorted(names)
+
+
+def release_summary(root: Path, release: str, packs: Path | None = None) -> dict:
+    """What one release holds, for `bio-box releases` (card W-23), from its file list (the manifest, else its
+    `release_def` stages: `catalog.ReleaseFiles`) and Parquet footers, never a scan of a large table: `contigs` the
+    rows of its `contig_dim`, `proteins` its `nr90` members (`member_cluster`, else `cluster_member`, by row-group
+    statistics on `level`), `genomes` every genome of the release (card C-21c): the rows of its `genome_dim` (one per
+    genome, from footers), else, for a release built before card C-21b, the distinct `genome_uid` of its stages'
+    `genome_input` (the catalog's `genome_member`; one column read: no footer holds a distinct count), else of its
+    `contig_dim`, which names one genome per contig and so misses a genome whose every contig another genome also
+    holds; None where the release has no `contig_dim`. `libraries` its domain libraries, `ncrna` its ncRNA
+    producers, `lookups` whether it has the tables and column current readers use (cards B-27, B-39), and with a pack
+    directory `pack`, the id of the release's pack there or None."""
+    root = Path(root)
+    rec: dict = {"release": release, "manifest": catalog.manifest_path(root, release).is_file()}
+    try:
+        files = catalog.ReleaseFiles.of(root, release)
+    except (FileNotFoundError, ValueError, OSError) as e:
+        return {**rec, "stages": None, "error": str(e)}
+    dims = files.table("contig_dim", release=release)
+    clus = files.table("member_cluster", release=release) or files.table("cluster_member", release=release)
+    tok = files.table("tape_tokens", release=release)
+    rec.update({
+        "stages": list(files.stages),
+        "genomes": _release_genomes(files, release, dims),
+        "contigs": sum(pq.read_metadata(p).num_rows for p in dims) if dims else None,
+        "proteins": _level_rows(clus, "nr90") if clus else None,
+        "libraries": sorted({str(parts["library"]) for _, parts in files.entries("l1_domains")}),
+        "ncrna": sorted({str(parts["producer"]) for _, parts in files.entries("l1_ncrna")}),
+        "lookups": {"member_cluster": bool(files.table("member_cluster", release=release)),
+                    "contig_label": bool(files.table("contig_label")),
+                    "domain_family_tokens": bool(tok) and all(catalog.TAPE_DOMAIN_FAMILIES in pq.read_schema(p).names
+                                                              for p in tok)},
+    })
+    if files.manifest is not None:  # card C-19: a library scanned on some of the release's stages only
+        partial = {lib: missing for lib, _, missing in catalog.partial_libraries(files.manifest)}
+        if partial:
+            rec["partial_libraries"] = partial
+    if packs is not None:
+        try:
+            rec["pack"] = pack.find(packs, release).name
+        except pack.NoPack:
+            rec["pack"] = None
+        except ValueError:
+            rec["pack"] = "several"
+    return rec
+
+
+def contig_slice(root: Path, files, contig_uid: bytes, start: int, end: int | None, strand: int,
+                 circular: bool) -> tuple[bytes, int, dict]:
+    """(the bases of `contig_uid`'s default variant from `start` to `end`, 0-based and half-open, on `strand`; the
+    contig's length; what was read) for `bio-box seq --contig` (card W-23). Read by key through `SeqStore` over the
+    release's files: one row group of `contig_index` and of `seq_locator` per key and the BGZF blocks of the slice
+    (`reads`: the store's counters). `end` None is the contig's end; on a circular contig `end` may pass its length
+    (across the origin). KeyError for a contig the release does not hold, ValueError for a slice outside it."""
+    from biobox.l0seq.store import SeqStore
+
+    store = SeqStore(root, files)
+    try:
+        n = store.length_of(store.default_digest(contig_uid))
+        seq = store.get(contig_uid, start, n if end is None else end, strand, circular)
+        reads = {"index_row_groups_read": store.index.row_groups_read,
+                 "locator_row_groups_read": store.locator.row_groups_read, **store.counters()}
+    finally:
+        store.close()
+    return seq, n, reads
+
+
+def _seq(a) -> int:
+    """`bio-box seq` (card W-23): proteins by uid, or one contig slice, as FASTA, read by key from the release's files
+    (never by exporting the release). 2 when a key names nothing in the release."""
+    root = Path(a.root)
+
+    def refuse(msg) -> int:
+        print(f"refused: {msg}", file=sys.stderr)
+        return 2
+
+    try:
+        files = export.release_files(root, a.release, export.release_manifest(root, a.release))
+    except (ValueError, OSError) as e:
+        return refuse(e)
+    if a.contig is None:
+        if a.strand != 1:
+            return refuse("--strand is for --contig; a protein has one strand")
+        words = list(a.protein or [])
+        if a.proteins_file:
+            got = _uid_file(a.proteins_file, "--proteins-file")
+            if isinstance(got, str):
+                print(got, file=sys.stderr)
+                return 2
+            words = got
+        bad = next((w for w in words if not re.fullmatch(r"[0-9a-fA-F]{32}", w)), None)
+        if bad is not None:
+            return refuse(f"--protein {bad!r} is not a protein uid (32 hex digits)")
+        uids = list(dict.fromkeys(bytes.fromhex(w) for w in words))  # in the order given, each once
+        seqs, _ = export.protein_seqs(root, uids, release=a.release, gene_call_version=a.gene_call_version,
+                                      manifest=files, threads=a.threads)
+        missing = [u.hex() for u in uids if u not in seqs]
+        if missing:
+            return refuse(f"{len(missing)} of {len(uids)} proteins are not in release {a.release}: "
+                          f"{', '.join(missing[:20])}" + (" ..." if len(missing) > 20 else "") + "; nothing written")
+        _emit((line for u in uids for line in (f">{u.hex()} release={a.release} length={seqs[u][0]}", seqs[u][1])),
+              a.out, "sequences")
+        return 0
+    try:
+        span = parse_span(a.contig)
+    except SpanError as e:
+        return refuse(f"--contig {e}")
+    acc, start, end = span if span else (a.contig, 0, None)
+    if re.fullmatch(r"[0-9a-fA-F]{32}", acc):  # a contig uid: accessions are never 32 hex digits
+        cu = bytes.fromhex(acc)
+        name = _contig_labels(root, files, a.gene_call_version, a.threads, contigs={cu}).get(cu, (None,))[0]
+    else:  # by accession: a scan of contig_label, which is sorted by contig; cheap at today's sizes (card W-15)
+        labels = _contig_labels(root, files, a.gene_call_version, a.threads, where=f"accession = {export._q(acc)}")
+        if len(labels) != 1:
+            return refuse(f"no contig of release {a.release} has the accession {acc}" if not labels else
+                          f"{len(labels)} contigs of release {a.release} have the accession {acc}: "
+                          f"{', '.join(sorted(c.hex() for c in labels))}; give one by its contig uid")
+        cu, name = next(iter(labels)), acc
+    circular = bool(export.contig_dims(root, a.release, {cu}, files).get(cu, {}).get("is_circular"))
+    try:
+        seq, n, _ = contig_slice(root, files, cu, start, end, a.strand, circular)
+    except KeyError:
+        return refuse(f"contig {cu.hex()} is not in release {a.release}")
+    except ValueError as e:
+        return refuse(f"--contig {a.contig}: {e} (0-based, end exclusive; an end past the contig's length only on a "
+                      f"circular contig{'' if circular else ', and this one is linear'})")
+    head = (f">{cu.hex()} release={a.release} accession={name or '-'} start={start} end={n if end is None else end} "
+            f"strand={a.strand:+d} contig_len={n}")
+    _emit([head, seq.decode("ascii")], a.out, "sequences")
+    return 0
+
+
+def sql_connection(root: Path, release: str, *, runs=(), tmp: Path | None = None, threads: int = 4,
+                   memory_limit: str = "4GB"):
+    """(a read-only connection to the release's catalog, its scratch directory) for `bio-box sql` (card W-23). The
+    caller closes the connection and removes the scratch directory.
+
+    The catalog is opened with `catalog.open_catalog`, so the sequence functions, `partners_of` and `token_of` work,
+    from a copy in a scratch directory made under `tmp` (the profile's; default: the system's temporary directory;
+    refused under the data root), which also holds DuckDB's temporary directory (card W-18: never under the root).
+    The search runs in `runs` (run directories) are attached (`catalog.attach_search`). The protections it relies on,
+    each enforced by DuckDB on this connection, not by reading the query's text:
+
+    - the catalog is attached READ_ONLY and is the default database, so CREATE, INSERT, UPDATE, DELETE, DROP and
+      ALTER on it fail;
+    - external access is disabled (`enable_external_access = false`, which DuckDB refuses to turn back on while the
+      database runs) with `allowed_paths` set to exactly the files the catalog's views and the runs read (the
+      manifest's file list, `catalog_files`, and each run's Parquet files), so no other file on the host can be read
+      or written: COPY ... TO, EXPORT, ATTACH, INSTALL and LOAD of any path fail, and `allowed_paths` and
+      `allowed_directories` cannot be changed any more. DuckDB writes even a listed path through a temporary file
+      beside it, which is not allowed, so a listed file cannot be overwritten either (both measured on wilkcomp02,
+      DuckDB 2.0.0, 2026-11-12, and tested). The one directory DuckDB still writes is its own temporary directory, in
+      the scratch directory, outside the root;
+    - extensions are neither installed nor loaded automatically.
+
+    `bio-box sql` also runs only statements that DuckDB's own parser classifies as SELECT (`_sql`)."""
+    root = Path(root)
+    path = catalog.catalog_path(root, release)
+    if not path.is_file():
+        raise FileNotFoundError(f"release {release} has no catalog at {path}; it is built by: bio-box release catalog "
+                                f"--root {root} --release {release}")
+    if tmp is not None:
+        Path(tmp).mkdir(parents=True, exist_ok=True)
+    scratch = Path(tempfile.mkdtemp(prefix="biobox-sql-", dir=tmp))
+    try:
+        pack.outside_root(root, scratch, "the scratch directory of bio-box sql")
+        (scratch / "duckdb" / "profile").mkdir(parents=True)
+        con = catalog.open_catalog(path, local_dir=scratch / "catalog", threads=threads, memory_limit=memory_limit,
+                                   temp_directory=scratch / "duckdb", runs=list(runs))
+    except BaseException:
+        shutil.rmtree(scratch, ignore_errors=True)
+        raise
+    try:
+        built = Path(con.execute("SELECT value FROM catalog_info WHERE key = 'root'").fetchall()[0][0])
+        allowed = {str(built / p) for (p,) in con.execute("SELECT path FROM catalog_files").fetchall()}
+        for d in runs:
+            for name in catalog.SEARCH_RUN_FILES.values():
+                if (Path(d) / name).is_file():
+                    allowed |= {str(Path(d) / name), str((Path(d) / name).resolve())}
+        con.execute("SET autoinstall_known_extensions = false")
+        con.execute("SET autoload_known_extensions = false")
+        if allowed:
+            con.execute(f"SET allowed_paths = [{', '.join(catalog._sql_str(p) for p in sorted(allowed))}]")
+        con.execute("SET enable_external_access = false")
+    except BaseException:
+        con.close()
+        shutil.rmtree(scratch, ignore_errors=True)
+        raise
+    return con, scratch
+
+
+def _sql_runs(a, tmp: Path | None) -> tuple[list[Path], int] | str:
+    """The closed runs of the release `bio-box sql` attaches: each `--runs` value is a run directory or a runs
+    directory (its `run=*` directories); with neither, the runs directory of the host profile, when there is one.
+    Returns (runs of the release, runs of other releases left out), or a refusal message."""
+    dirs = [Path(x) for x in a.runs] if a.runs else ([runner.default_runs_dir(tmp)] if tmp is not None else [])
+    found: list[Path] = []
+    for d in dirs:
+        if (d / "run.parquet").is_file():
+            found.append(d)
+        elif d.is_dir():
+            found += sorted(p.parent for p in d.glob("run=*/run.parquet"))
+        elif a.runs:
+            return f"refused: --runs {d}: neither a run directory nor a runs directory"
+    mine = [d for d in found if _run_release(d) == a.release]
+    return mine, len(found) - len(mine)
+
+
+def _sql_cell(v) -> str:
+    if v is None:
+        return ""
+    if isinstance(v, bool):
+        return "true" if v else "false"
+    if isinstance(v, (bytes, bytearray)):
+        return bytes(v).hex()
+    return str(v).replace("\t", " ").replace("\n", " ").replace("\r", " ")
+
+
+def _scan_name(path: str, built: Path) -> str:
+    """The registry table a scanned file belongs to (`catalog.classify`), or the search run file's table."""
+    p = Path(path)
+    try:
+        hit = catalog.classify(p.relative_to(built).as_posix())
+        if hit is not None:
+            return hit[0].name
+    except (ValueError, catalog.LayoutError):
+        pass
+    return {f: t for t, f in catalog.SEARCH_RUN_FILES.items()}.get(p.name, p.name)
+
+
+def _sql(a) -> int:
+    """`bio-box sql` (card W-23): SELECT statements on the release's catalog (`sql_connection`), each statement's rows
+    as a TSV table (a blank line between tables) or, for one statement, JSON (one object per row), to stdout or
+    `--out` (refused under the data root); on stderr, per statement, its rows and the row groups it read per table
+    (`catalog.profile_query`). 2: refused before anything ran; 1: a statement failed."""
+    root = Path(a.root)
+
+    def refuse(msg) -> int:
+        print(f"refused: {msg}", file=sys.stderr)
+        return 2
+
+    if (a.file is None) == (a.query is None):
+        return refuse("bio-box sql takes a query as a FILE or with -e QUERY, one of the two")
+    try:
+        text = Path(a.file).read_text(encoding="utf-8") if a.file is not None else a.query
+    except (OSError, UnicodeDecodeError) as e:
+        return refuse(f"{a.file}: {e}")
+    try:
+        stmts = duckdb.extract_statements(text)
+    except duckdb.Error as e:
+        return refuse(f"the query does not parse: {e}")
+    if not stmts:
+        return refuse("no statement in the query")
+    for k, s in enumerate(stmts, 1):  # by DuckDB's parser, before anything runs
+        kind = str(s.type).rsplit(".", 1)[-1]
+        if kind != "SELECT":
+            return refuse(f"statement {k} is a {kind} statement ({' '.join(s.query.split())[:80]}); bio-box sql runs "
+                          "SELECT statements only (also SHOW, DESCRIBE, SUMMARIZE and FROM ...), on a read-only "
+                          "connection: nothing is written, attached, installed, loaded or set")
+    if a.format == "json" and len(stmts) > 1:
+        return refuse(f"--format json takes one statement; the query has {len(stmts)}")
+    try:
+        if a.out is not None:
+            pack.outside_root(root, Path(a.out), "--out")
+        tmp = _profile_tmp(a)
+        got = _sql_runs(a, tmp)
+        if isinstance(got, str):
+            print(got, file=sys.stderr)
+            return 2
+        runs, others = got
+        con, scratch = sql_connection(root, a.release, runs=runs, tmp=tmp, threads=a.threads,
+                                      memory_limit=a.memory_limit)
+    except (ValueError, OSError) as e:
+        return refuse(e)
+    if others:
+        print(f"note: {others} runs of other releases left out", file=sys.stderr)
+    try:
+        built = Path(con.execute("SELECT value FROM catalog_info WHERE key = 'root'").fetchall()[0][0])
+        out: list[str] = []
+        for k, s in enumerate(stmts, 1):
+            try:
+                p = catalog.profile_query(con, s.query, profile_dir=scratch / "duckdb" / "profile")
+            except duckdb.Error as e:
+                print(f"sql: statement {k} failed: {e}", file=sys.stderr)
+                return 1
+            if a.format == "json":
+                out += [json.dumps({c: export._plain(v) for c, v in zip(p["columns"], row)}, default=str)
+                        for row in p["result"]]
+            else:
+                out += ([""] if k > 1 else []) + ["\t".join(p["columns"])]
+                out += ["\t".join(_sql_cell(v) for v in row) for row in p["result"]]
+            reads = [f"{_scan_name(sc['files'][0], built)} {sc['row_groups_scanned']} of "
+                     f"{'?' if sc['row_groups_total'] is None else sc['row_groups_total']} row groups"
+                     + (f" ({sc['lookup']})" if sc.get("lookup") else "") for sc in p["scans"] if sc["files"]]
+            seq = p["bgzf"]["blocks_read"], sum(p["index"].values())
+            print(f"sql: statement {k}: {len(p['result'])} rows; read "
+                  + (", ".join(reads) or "no Parquet row group")
+                  + (f"; sequence: {seq[0]} BGZF blocks, {seq[1]} index row groups" if any(seq) else ""),
+                  file=sys.stderr)
+    finally:
+        con.close()
+        shutil.rmtree(scratch, ignore_errors=True)
+    _emit(out, a.out, "records" if a.format == "json" else "rows")
+    return 0
+
+
+RELEASES_COLUMNS = ("release", "manifest", "stages", "genomes", "contigs", "proteins", "libraries", "ncrna",
+                    "member_cluster", "contig_label", "domain_family_tokens")
+
+
+def _releases(a) -> int:
+    """`bio-box releases` (card W-23): one line per release of the root (`release_summary`); `--json`, one object per
+    line. With a profile or `--pack-dir`, the pack each release has there."""
+    root = Path(a.root)
+    packs = _packs(a) if (a.pack_dir or a.profile or os.environ.get("BIOBOX_PROFILE")) else None
+    recs = [release_summary(root, r, packs) for r in release_names(root)]
+    if not recs:
+        print(f"note: no release under {root} (no manifests/release=*.json and no release_def/release=*)",
+              file=sys.stderr)
+    for r in recs:
+        if "error" in r:
+            print(f"note: release {r['release']}: {r['error']}", file=sys.stderr)
+    if a.json:
+        _print(json.dumps(r, sort_keys=False) for r in recs)
+        return 0
+
+    def text(v) -> str:
+        if v is None:
+            return "-"
+        if isinstance(v, bool):
+            return "yes" if v else "no"
+        if isinstance(v, list):
+            return ",".join(v) or "-"
+        return str(v)
+
+    cols = RELEASES_COLUMNS + (("pack",) if packs is not None else ())
+    rows = []
+    for r in recs:
+        flat = {**r, **r.get("lookups", {})}
+        libs = [f"{x}(not {','.join(r['partial_libraries'][x])})" if x in r.get("partial_libraries", {}) else x
+                for x in r.get("libraries", [])]
+        rows.append("\t".join(text(libs if c == "libraries" else flat.get(c)) for c in cols))
+    _print(["\t".join(cols), *rows])
     return 0
 
 
@@ -790,9 +1465,11 @@ CLUSTER_ACTIONS = ("plan", "step", "finish", "redo")  # `release cluster plan|st
 STAGE_STEPS = ("inputs", "ingest", "genecall", "igr", "tapes", "domains", "ncrna")
 DOMAIN_ACTIONS = ("plan", "shard", "merge")  # `stage domains plan|shard|merge` (card B-24)
 INGEST_ACTIONS = ("pass1", "plan", "batch", "merge")  # `stage ingest pass1|plan|batch|merge` (card B-30)
-STEP_ACTIONS = {"domains": DOMAIN_ACTIONS, "ingest": INGEST_ACTIONS}
-PACK_DIR_HELP = ("the pack directory, outside the data root (card W-03); default: <profile tmp>/packs with a host "
-                 "profile, else packs beside $BIOBOX_SEARCH_WORK or /tmp/atd/search")
+NCRNA_ACTIONS = ("plan", "shard", "merge")  # `stage ncrna plan|shard|merge` (card E-07)
+STEP_ACTIONS = {"domains": DOMAIN_ACTIONS, "ingest": INGEST_ACTIONS, "ncrna": NCRNA_ACTIONS}
+PACK_DIR_HELP = ("the pack directory, outside the data root (card W-03); default: <profile tmp>/packs, the host's one "
+                 "pack directory (card W-22), with a host profile, else packs beside $BIOBOX_SEARCH_WORK or "
+                 "/tmp/atd/search")
 RUNS_HELP = ("the runs directory, outside the data root (card W-03); default: <profile tmp>/search/<user>/runs with "
              "a host profile, else runs in $BIOBOX_SEARCH_WORK or /tmp/atd/search")
 PROFILE_DIRS_HELP = "host profile YAML (default: $BIOBOX_PROFILE); its tmp holds the default pack and runs directories"
@@ -822,7 +1499,8 @@ def _release_step(a, root: Path, stages: list[str], out: Path) -> dict:
             if tmp is None:
                 raise ValueError("release cluster plan needs --tmp (the scratch directory of the work)")
             return cluster.plan(root, a.release, a.gene_call_version, stages, tmp, parts=a.parts,
-                                part_cpu_min=a.part_cpu_min, out=out)
+                                part_cpu_min=a.part_cpu_min, one_process_cpu_min_max=a.one_process_cpu_min_max,
+                                out=out)
         return cluster.run(root, a.release, a.gene_call_version, stages, threads=a.threads, tmp=tmp, out=out)
     if a.step == "tokens":
         from biobox.l3 import tokens
@@ -870,7 +1548,9 @@ def _verify(a) -> int:
     file there with its size and sha256, and no unlisted file in the release's scope) and, with `--previous P`, P's
     manifest against the release's (`contracts.check_append_only`, R-09: every file of P outside P's own `release=`
     partition is listed with the same sha256). Writes nothing. Prints each problem, then one line per check; exit 0
-    when there is no problem, else 1 (a missing manifest is a problem)."""
+    when there is no problem, else 1 (a missing manifest is a problem). Warnings, which leave the exit code as it is,
+    go to stderr: a lookup table the release lacks (card W-17), and a domain library the release has files of for
+    some of its stages only (card C-19, `catalog.partial_libraries`)."""
     from biobox import contracts
 
     root = Path(a.root)
@@ -891,6 +1571,7 @@ def _verify(a) -> int:
     print(f"release {a.release}: {'verified' if not problems else f'{len(problems)} problems'} (stages "
           f"{','.join(man['stages'])}, {len(man['files'])} files, {len(man.get('artifacts', []))} artifacts, manifest "
           f"hash {catalog.manifest_hash(man)})")
+    print(catalog.describe_built_by(catalog.built_by(root, a.release, man["stages"])))  # card C-23: information only
     failed = bool(problems)
     have = {f["table"] for f in man["files"]}
     for lookup, source in (("member_cluster", "cluster_member"), ("contig_label", "contig_occurrence")):
@@ -898,6 +1579,11 @@ def _verify(a) -> int:
             print(f"warning: release {a.release} has no {lookup} files (built before card B-27); readers fall back to "
                   f"{source}, which cannot prune. A release built with the current code has the table "
                   f"(card C-17 builds one over these stages)", file=sys.stderr)
+    for lib, scanned, unscanned in catalog.partial_libraries(man):  # card C-19: a warning only
+        print(f"warning: release {a.release} has domain files of library {lib} for stages {','.join(scanned)} but "
+              f"not {','.join(unscanned)} (not scanned when the release was built); its {lib} family tokens cover the "
+              f"genes of {','.join(scanned)} only. A release built after those stages are scanned covers them all",
+              file=sys.stderr)
     if a.previous:
         prev = load(a.previous)
         if prev is None:
@@ -1069,12 +1755,25 @@ def _stage_step(a, root: Path, out: Path) -> dict:
         kw = {} if a.max_slots is None else {"max_slots": a.max_slots}
         return tapes.run(root, a.stage, gene_call_version=a.gene_call_version, producers=_csv(a.producers), tmp=tmp,
                          out=out, **kw, **mfb)
-    if a.step == "ncrna":  # card E-01
+    if a.step == "ncrna":  # cards E-01, E-07
         from biobox.l1 import ncrna
 
-        if not a.cm:
-            raise ValueError("stage ncrna needs --cm")
-        return ncrna.run(root, a.stage, Path(a.cm), a.cpus, tmp=tmp, out=out, seq_stages=_csv(a.seq_stages), **mfb)
+        need = {None: ("cm",), "plan": ("cm", "scan_bases"), "shard": ("cm", "shard"), "merge": ("cm",)}[a.action]
+        missing = [f"--{n.replace('_', '-')}" for n in need if getattr(a, n) in (None, "")]  # shard 0 is given
+        if missing:
+            raise ValueError(f"stage ncrna{'' if a.action is None else ' ' + a.action} needs {', '.join(missing)}")
+        kw = {"model_set": a.ncrna_set}
+        cm = Path(a.cm)
+        if a.action == "plan":
+            return ncrna.plan(root, a.stage, cm, a.scan_bases, gene_call_version=a.gene_call_version, tmp=tmp,
+                              out=out, **kw)
+        if a.action == "shard":
+            return ncrna.scan_shard(root, a.stage, cm, a.shard, a.cpus, seq_stages=_csv(a.seq_stages), tmp=tmp,
+                                    out=out, **kw)
+        if a.action == "merge":
+            return ncrna.merge(root, a.stage, cm, tmp=tmp, out=out, **kw, **mfb)
+        return ncrna.run(root, a.stage, cm, a.cpus, gene_call_version=a.gene_call_version, tmp=tmp, out=out,
+                         seq_stages=_csv(a.seq_stages), **kw, **mfb)
     from biobox.l1 import domains
 
     need = {None: ("library", "library_version", "hmm", "cutoff"),  # the whole scan in this process
@@ -1119,7 +1818,8 @@ def _build_stage(a) -> int:
                     objects=Path(a.objects), stages=None if a.stages is None else tuple(_csv(a.stages)),
                     libraries=libs, tmp=Path(a.tmp) if a.tmp else None, threads=a.threads,
                     gene_call_version=a.gene_call_version, scan_jobs=a.scan_jobs, scan_cpus=a.scan_cpus,
-                    cluster_parts=a.cluster_parts)
+                    cluster_parts=a.cluster_parts, ncrna_cm=Path(a.ncrna_cm) if a.ncrna_cm else None,
+                    ncrna_set=a.ncrna_set)
     return stage.build_stage(profile.load(a.profile), b)
 
 
@@ -1189,34 +1889,86 @@ def _main(argv: list[str] | None = None) -> int:
     fd.add_argument("--release", required=True)
     what = fd.add_mutually_exclusive_group(required=True)
     what.add_argument("--accession", help="a contig accession, or ACCESSION:START-END for the gene with those "
-                                          "coordinates (0-based, end exclusive, as `search hits --format tsv` prints)")
+                                          "coordinates (0-based, end exclusive, as `search hits --format tsv` "
+                                          "prints), or ACCESSION:START..END (GenBank: 1-based, inclusive)")
     what.add_argument("--protein", help="a protein uid (32 hex digits): every gene of the release that carries it")
     fd.add_argument("--tape-version", help="tapes to read for --accession (default: the gene-call producer's)")
     fd.add_argument("--threads", type=int, help=f"DuckDB threads (default {export.EXPORT_THREADS})")
+    rs = sub.add_parser("releases", parents=[common], help="every release of the root: stages, counts, libraries, "
+                                                            "lookup tables and pack (card W-23)")
+    rs.add_argument("--profile", help="host profile YAML (default: $BIOBOX_PROFILE); with one, the pack of each "
+                                      "release in the profile's pack directory is named")
+    rs.add_argument("--pack-dir", help="a pack directory to name each release's pack from, in place of the profile's")
+    rs.add_argument("--json", action="store_true", help="one JSON object per release")
+    sq = sub.add_parser("seq", parents=[common], help="proteins by uid or a contig slice, as FASTA, read by key "
+                                                      "(card W-23)")
+    sq.add_argument("--release", required=True)
+    which = sq.add_mutually_exclusive_group(required=True)
+    which.add_argument("--protein", nargs="+", action="extend", help="protein uids (32 hex digits); repeatable")
+    which.add_argument("--proteins-file", help="protein uids, one per line (blank lines and # comments skipped)")
+    which.add_argument("--contig", help="ACC, ACC:START-END (0-based, end exclusive) or ACC:START..END (GenBank: "
+                                        "1-based, inclusive); ACC may be a contig uid. An end past the contig's "
+                                        "length crosses the origin of a circular contig")
+    sq.add_argument("--strand", type=int, choices=[1, -1], default=1, help="--contig: 1 or -1 (reverse complement)")
+    sq.add_argument("--out", help="write this file (default: stdout)")
+    sq.add_argument("--threads", type=int, help=f"DuckDB threads (default {export.EXPORT_THREADS})")
+    ql = sub.add_parser("sql", parents=[common], help="SELECT statements on a release's catalog, read-only, with the "
+                                                      "row groups each read (card W-23)")
+    ql.add_argument("--release", required=True)
+    ql.add_argument("file", nargs="?", help="a file of SQL statements separated by ;")
+    ql.add_argument("-e", "--execute", dest="query", help="the SQL statements, in place of FILE")
+    ql.add_argument("--runs", nargs="+", action="extend", help="closed search runs to attach (search_run, search_hit, "
+                                                               "...): run directories or runs directories; default "
+                                                               "with a profile: its runs directory. Runs of other "
+                                                               "releases are left out")
+    ql.add_argument("--profile", help="host profile YAML (default: $BIOBOX_PROFILE): its tmp holds the scratch "
+                                      "directory, and its runs directory is attached")
+    ql.add_argument("--format", choices=["tsv", "json"], default="tsv", help="tsv: a table per statement; json: one "
+                                                                             "object per row (one statement)")
+    ql.add_argument("--out", help="write the results to this file, outside the data root (default: stdout)")
+    ql.add_argument("--threads", type=int, default=4, help="DuckDB threads (default 4)")
+    ql.add_argument("--memory-limit", default="4GB", help="DuckDB memory limit; larger work spills into the scratch "
+                                                          "directory (default 4GB)")
     n = sub.add_parser("nbr", parents=[common])
-    n.add_argument("action", nargs="?", help="summarize: families and clusters per window; otherwise the anchors")
-    n.add_argument("source", nargs="?", help="summarize: run_id or protein uids (uid,uid,...)")
+    n.add_argument("action", nargs="?", help="summarize: families and clusters per window; flanks: loci grouped by "
+                                             "their flanks (card W-25); otherwise the anchors")
+    n.add_argument("source", nargs="?", help="summarize, flanks: run_id or protein uids (uid,uid,...)")
     n.add_argument("--anchors", help="run_id or protein uids (uid,uid,...)")
     n.add_argument("--anchors-file", help="protein uids, one per line (blank lines and # comments skipped), instead "
                                           "of --anchors or the uid list")
-    n.add_argument("--window", default="10g")
+    n.add_argument("--window", help="10g (genes) or 20kb (bases) on each side; default 10g, flanks: 5g (genes only)")
+    n.add_argument("--level", help="flanks: the token id, nr50 (default), nr90 or pfam (the protein's architecture)")
+    n.add_argument("--group-by", help="flanks: anchor-nr90 (default), anchor-nr50 or none")
+    n.add_argument("--max-loci", type=int, help="flanks: leaves per group in the tree after collapsing identical "
+                                                "loci (default 2000; above it, the leaves with the least feature_uid)")
+    n.add_argument("--cut", type=float, help="flanks: the tree is cut into context types at this distance "
+                                             "(default 0.5)")
+    n.add_argument("--distance", help="flanks: the tree's distance, j (default: 1 - Jaccard of the tokens), a "
+                                      "(1 - adjacency index) or combined")
+    n.add_argument("--export", help="flanks: gff writes one GFF3 per locus and a protein-to-group table")
+    n.add_argument("--figure", action="store_true", help="flanks: also groups/<group>/figure.svg and figure.pdf, "
+                                                         "the synteny figure (card W-27; needs matplotlib)")
+    n.add_argument("--figure-rows", type=int, help="flanks --figure: rows per figure (default 60, "
+                                                   "flanks.DEFAULT_FIGURE_ROWS); above it, the leaf with the most loci "
+                                                   "of each context type, then the leaves with the most loci")
     n.add_argument("--strand", default="any")
     n.add_argument("--operon-gap")
     n.add_argument("--edge", default="truncate")
     n.add_argument("--circular", default="auto")
     n.add_argument("--json", action="store_true")
     n.add_argument("--top_n", type=int, default=0)
-    n.add_argument("--tape-version", help="tapes to read (default: the run's pack's, else the gene-call producer's)")
+    n.add_argument("--tape-version", help="tapes to read (default: a run's pack's, refused when --pack-dir lacks the "
+                                          "pack; protein uids: the gene-call producer's)")
     n.add_argument("--by", default="pfam,nr50", help="summarize: levels, some of pfam,nr50,nr90")
     n.add_argument("--top", type=int, default=nbr.SUMMARY_TOP, help="summarize: rows per level (0: all)")
-    n.add_argument("--release", help="summarize, --format tsv: release of the clusters and contig_dim (default: "
-                                     "the run's)")
+    n.add_argument("--release", help="summarize, flanks, --format tsv: release of the clusters and contig_dim "
+                                     "(default: the run's)")
     n.add_argument("--format", choices=["tsv"], help="summarize: tsv (the default without --json); otherwise one "
                                                      "table per anchor locus")
     n.add_argument("--out", help="--format tsv without summarize: one file per locus in this directory; summarize: "
-                                 "write the summary to this file (default: stdout)")
-    n.add_argument("--library", help="--format tsv without summarize: domain library of pfam_architecture")
-    n.add_argument("--threads", type=int, help=f"--format tsv without summarize: DuckDB threads (default "
+                                 "write the summary to this file (default: stdout); flanks: a new or empty directory")
+    n.add_argument("--library", help="--format tsv without summarize, flanks: domain library of pfam_architecture")
+    n.add_argument("--threads", type=int, help=f"--format tsv without summarize, flanks: DuckDB threads (default "
                                                f"{export.EXPORT_THREADS})")
     n.add_argument("--runs", help=RUNS_HELP)
     n.add_argument("--pack-dir", help=PACK_DIR_HELP)
@@ -1241,6 +1993,10 @@ def _main(argv: list[str] | None = None) -> int:
     rl.add_argument("--parts", type=int, help="cluster plan: cut every per-query call into this many parts (forced)")
     rl.add_argument("--part-cpu-min", type=float, help="cluster plan: the CPU-minutes a part may be estimated at "
                                                        "(build-stage gives 80%% of cpu_min_per_process)")
+    rl.add_argument("--one-process-cpu-min-max", type=float,
+                    help="cluster plan: the cap under which a call that no number of parts fits runs as one process "
+                         "(DEC-29, card B-45; build-stage gives the profile's cluster_cpu_min_max); without it such a "
+                         "call is refused")
     rl.add_argument("--stages", help="S0,S1: the release's stages in order; defines the release once")
     rl.add_argument("--tmp", help="scratch directory (system temp by default; never under the data root)")
     rl.add_argument("--threads", type=int, default=1, help="cluster: MMseqs2 threads")
@@ -1253,8 +2009,9 @@ def _main(argv: list[str] | None = None) -> int:
                                        "release= partition must be in this release's with the same sha256 (R-09)")
     st = sub.add_parser("stage", parents=[common], help="per-stage builder steps (card C-08)")
     st.add_argument("step", choices=STAGE_STEPS)
-    st.add_argument("action", nargs="?", choices=tuple(dict.fromkeys(DOMAIN_ACTIONS + INGEST_ACTIONS)),
-                    help="domains in shards (card B-24): plan, then shard (one call per --shard K), then merge; "
+    st.add_argument("action", nargs="?", choices=tuple(dict.fromkeys(DOMAIN_ACTIONS + INGEST_ACTIONS + NCRNA_ACTIONS)),
+                    help="domains (card B-24) or ncrna (card E-07) in shards: plan, then shard (one call per --shard "
+                         "K), then merge; "
                          "ingest in batch processes (card B-30): pass1 (one call per --shard K), plan, batch (one "
                          "call per --batch J), then merge; without it, the whole step in one process")
     st.add_argument("--stage", required=True)
@@ -1267,7 +2024,7 @@ def _main(argv: list[str] | None = None) -> int:
     st.add_argument("--line-width", type=int, help="ingest: FASTA line width of the shards")
     st.add_argument("--prefix-width", type=int, choices=[0, 1, 2], help="genecall: protein_seq bucket width")
     st.add_argument("--workers", type=int, default=1, help="genecall: genomes called at once")
-    st.add_argument("--seq-stages", help="genecall: S0,S1: the stages whose sequences the genomes name "
+    st.add_argument("--seq-stages", help="genecall, ncrna: S0,S1: the stages whose sequences the genomes name "
                                          "(default: the stage itself)")
     st.add_argument("--producers", help="igr, tapes: the tape version's producers (default: the gene caller)")
     st.add_argument("--max-slots", type=int, help="tapes: slots per row group")
@@ -1277,9 +2034,12 @@ def _main(argv: list[str] | None = None) -> int:
     st.add_argument("--cutoff", help="domains: gathering, trusted, noise or none")
     st.add_argument("--cpus", type=int, default=1, help="domains: hmmsearch threads; ncrna: cmsearch threads (--cpu)")
     st.add_argument("--cm", help="ncrna: the Rfam covariance-model library (.cm or .cm.gz; card E-01)")
+    st.add_argument("--ncrna-set", default="prok-2", help="ncrna: the model set, a frozen set's name (prok-2, the "
+                                                          "default, DEC-30; prok-1) or a set file (card E-07)")
     st.add_argument("--shard-residues", type=int, help="domains plan: residues per shard at most")
-    st.add_argument("--shard", type=int, help="domains shard: the shard to scan; ingest pass1: the pass-1 shard "
-                                             "(0-based)")
+    st.add_argument("--scan-bases", type=int, help="ncrna plan: genome bases per shard at most")
+    st.add_argument("--shard", type=int, help="domains or ncrna shard: the shard to scan; ingest pass1: the pass-1 "
+                                             "shard (0-based)")
     st.add_argument("--pass1-bytes", type=int, help="ingest pass1: bytes of source file per pass-1 shard at most")
     st.add_argument("--batch", type=int, help="ingest batch: the batch to write (0-based)")
     st.add_argument("--runs-tmp", help="ingest pass1|plan|batch|merge: the scratch directory the steps share for "
@@ -1306,6 +2066,10 @@ def _main(argv: list[str] | None = None) -> int:
     bs.add_argument("--cluster-parts", type=int, help="cluster in parts (card B-41), every per-query call cut into "
                                                       "this many (default: in parts only when clustering in one "
                                                       "process is estimated over 80%% of the budget, cut by it)")
+    bs.add_argument("--ncrna-cm", help="the Rfam library (Rfam.cm.gz): run the ncRNA producer in the features slot and "
+                                       "build IGRs, tapes, tokens and postings of both producers (card E-07)")
+    bs.add_argument("--ncrna-set", default="prok-2", help="the ncRNA model set: a frozen set's name (prok-2, the "
+                                                          "default, DEC-30; prok-1) or a set file")
     a = p.parse_args(argv)
     if a.cmd == "search" and a.action == "run" and not a.release:
         p.error("search run needs --release")
@@ -1314,7 +2078,8 @@ def _main(argv: list[str] | None = None) -> int:
             p.error("run-step needs a command after --")
         a.command = command
     return {"pack": _pack, "search": _search, "nbr": _nbr, "find": _find, "export": _export, "run-step": _run_step,
-            "release": _release, "stage": _stage, "build-stage": _build_stage}[a.cmd](a)
+            "release": _release, "stage": _stage, "build-stage": _build_stage, "releases": _releases,
+            "seq": _seq, "sql": _sql}[a.cmd](a)
 
 
 if __name__ == "__main__":
