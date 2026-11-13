@@ -5,6 +5,7 @@
     python3 -I c27_fetch.py fetch BATCH_TSV OUT_DIR LOG [--batch 20] [--max-fail-frac 0.05]
     python3 -I c27_fetch.py need BATCH_TSV          # KiB of disk the batch is expected to take (0.30 bytes per bp)
     python3 -I c27_fetch.py selftest ZIP OUT_DIR
+    python3 -I c27_fetch.py archive KEEP_TSV OUT_TAR LOCK_JSON... [--where-nonempty ani_pick] [--prefix s2c_phase2]
 
 Phase 1's fetch (r50_fetch.py, whose Fetcher, URL and limits this imports unchanged): the NCBI Datasets v2
 genome download listed in sources.yaml (`ncbi_datasets_genome`), 20 accessions per request, one connection, at
@@ -30,16 +31,26 @@ fetch: one batch into OUT_DIR, with lock.json and fetch_result.json (asked, veri
 bytes kept, wall time). Resumable: a genome in lock.json whose .fna.gz has the recorded size is not asked again.
 At the end OUT_DIR/DONE (exit 0) or OUT_DIR/FAILED (exit 1 refused or error, 75 STOP, 3 when more than
 --max-fail-frac of the batch was not served: the chain of batches stops rather than keep asking).
+
+archive: the genomes the selection keeps, as one file for /stor (card C-27; AGENTS.md section 7.3 allows no file
+under 64 MB there): the rows of KEEP_TSV (c25_select.py --ani's remainder.tsv) whose --where-nonempty column is
+set (ani_pick: picked in a species over the cap), each found in exactly one of the LOCK_JSON files and checked
+against its gz_sha256; written as OUT_TAR (GNU tar; members sorted by name, mode 0644, mtime 0, owner 0 and no
+names, so the same inputs give the same bytes) holding <prefix>/<batch>/<acc>.fna.gz, <prefix>/<batch>/lock.json
+(that batch's lock cut to the kept genomes; batch = the lock's directory name) and <prefix>/kept.tsv; written
+under a temporary name and renamed. Prints genomes, bp, bytes and the tar's sha256.
 """
 
 import argparse
 import csv
 import gzip
 import hashlib
+import io
 import json
 import shutil
 import struct
 import sys
+import tarfile
 import time
 import zipfile
 from pathlib import Path
@@ -276,7 +287,77 @@ def split(src: Path, out: Path, batch_bp: int = 10**10) -> dict:
     return plan
 
 
+def sha256_file(path: Path) -> str:
+    h = hashlib.sha256()
+    with open(path, "rb") as fh:
+        for chunk in iter(lambda: fh.read(1 << 22), b""):
+            h.update(chunk)
+    return h.hexdigest()
+
+
+def archive(keep_tsv: Path, out: Path, locks: list[Path], column: str, prefix: str) -> dict:
+    """The kept genomes (rows of keep_tsv with a non-empty `column`) as one deterministic tar; see the docstring."""
+    keep = sorted(r["accession"] for r in read_tsv(keep_tsv)[1] if r.get(column, ""))
+    where: dict[str, tuple[str, Path, dict]] = {}
+    for lp in sorted(locks):
+        for acc, v in json.loads(lp.read_text())["genomes"].items():
+            if acc in where:
+                raise SystemExit(f"{acc} is in two locks: {where[acc][1]} and {lp}")
+            where[acc] = (lp.parent.name, lp, v)
+    missing = [a for a in keep if a not in where]
+    if missing:
+        raise SystemExit(f"{len(missing)} kept genomes are in no lock given, e.g. {missing[:5]}")
+    files: dict[str, tuple[str, Path, dict]] = {}
+    by_batch: dict[str, dict[str, dict]] = {}
+    for acc in keep:
+        b, lp, v = where[acc]
+        f = lp.parent / v["file_name"]
+        if sha256_file(f) != v["gz_sha256"]:
+            raise SystemExit(f"{f}: sha256 differs from its lock's gz_sha256")
+        files[f"{prefix}/{b}/{v['file_name']}"] = (acc, f, v)
+        by_batch.setdefault(b, {})[acc] = v
+    blobs = {f"{prefix}/{b}/lock.json": (json.dumps({"genomes": g}, indent=1, sort_keys=True) + "\n").encode()
+             for b, g in by_batch.items()}
+    cols = ["accession", "batch", "bp", "gz_bytes", "gz_sha256", "sha256"]
+    blobs[f"{prefix}/kept.tsv"] = ("\t".join(cols) + "\n" + "".join(
+        "\t".join([acc, where[acc][0]] + [str(where[acc][2][c]) for c in cols[2:]]) + "\n" for acc in keep)).encode()
+
+    def info(name: str, size: int) -> tarfile.TarInfo:
+        ti = tarfile.TarInfo(name)
+        ti.size, ti.mtime, ti.mode, ti.uid, ti.gid, ti.uname, ti.gname = size, 0, 0o644, 0, 0, "", ""
+        return ti
+
+    out.parent.mkdir(parents=True, exist_ok=True)
+    tmp = out.with_name(f".{out.name}.tmp")
+    try:
+        with tarfile.open(tmp, "w", format=tarfile.GNU_FORMAT) as t:
+            for name in sorted(set(files) | set(blobs)):
+                if name in blobs:
+                    t.addfile(info(name, len(blobs[name])), io.BytesIO(blobs[name]))
+                else:
+                    f = files[name][1]
+                    with open(f, "rb") as fh:
+                        t.addfile(info(name, f.stat().st_size), fh)
+        tmp.replace(out)
+    finally:
+        tmp.unlink(missing_ok=True)
+    return {"genomes": len(keep), "bp": sum(int(where[a][2]["bp"]) for a in keep),
+            "gz_bytes": sum(int(where[a][2]["gz_bytes"]) for a in keep), "batches": len(by_batch),
+            "members": len(files) + len(blobs), "file": out.name, "bytes": out.stat().st_size,
+            "sha256": sha256_file(out)}
+
+
 def main(argv: list[str]) -> int:
+    if argv[:1] == ["archive"]:
+        ap = argparse.ArgumentParser(prog="c27_fetch.py archive")
+        ap.add_argument("keep", type=Path)
+        ap.add_argument("out", type=Path)
+        ap.add_argument("locks", type=Path, nargs="+")
+        ap.add_argument("--where-nonempty", default="ani_pick")
+        ap.add_argument("--prefix", default="s2c_phase2")
+        a = ap.parse_args(argv[1:])
+        print(json.dumps(archive(a.keep, a.out, a.locks, a.where_nonempty, a.prefix), indent=1))
+        return 0
     if argv[:1] == ["selftest"]:
         zpath, out = Path(argv[1]), Path(argv[2])
         out.mkdir(parents=True, exist_ok=True)

@@ -1145,3 +1145,71 @@ def test_fetch_split_into_batches(tmp_path):
     for k in plan["batches"]:
         accs = [r["accession"] for r in _read(out / f"batch_{k}.tsv")]
         assert accs == sorted(accs)
+
+
+def _batch_dir(d: Path, genomes: dict[str, bytes]) -> Path:
+    """A fetched batch as c27_fetch.py leaves it: <acc>.fna.gz files and lock.json with their digests."""
+    import gzip as gz
+    d.mkdir(parents=True)
+    lock = {}
+    for acc, data in genomes.items():
+        p = d / f"{acc}.fna.gz"
+        p.write_bytes(gz.compress(data, mtime=0))
+        lock[acc] = {"bp": _bp(data), "file": str(p), "file_name": p.name, "gz_bytes": p.stat().st_size,
+                     "gz_sha256": _sha(p.read_bytes()), "sha256": _sha(data)}
+    (d / "lock.json").write_text(json.dumps({"genomes": lock}, indent=1))
+    return d / "lock.json"
+
+
+def test_fetch_archive_keeps_the_picked_genomes(tmp_path):
+    """archive: the genomes a selection keeps (rows of its remainder.tsv with a non-empty ani_pick) as one tar, each
+    .fna.gz under <prefix>/<batch>/ with that batch's lock.json cut to the kept genomes, and kept.tsv; files are
+    checked against their lock's gz_sha256 first; the tar is the same bytes on a second run (sorted members, no
+    times or owners); a kept genome missing from every lock, or a file that does not match, is refused."""
+    import tarfile
+    g = {f"GCF_0000002{i:02d}.1": _fasta(f"GCF_0000002{i:02d}.1", 1 + i % 2, 30 + i) for i in range(6)}
+    accs = sorted(g)
+    l1 = _batch_dir(tmp_path / "genomes" / "B01", {a: g[a] for a in accs[:3]})
+    l2 = _batch_dir(tmp_path / "genomes" / "B02", {a: g[a] for a in accs[3:]})
+    keep = [accs[0], accs[2], accs[4]]
+    rem = tmp_path / "remainder.tsv"
+    rem.write_text("accession\tgenome_size\tani_pick\n" + "".join(
+        f"{a}\t{_bp(g[a])}\t{'3' if a in keep else ''}\n" for a in accs) + "GCA_000000999.1\t5\t\n")
+    outs = []
+    for k in (1, 2):
+        tar = tmp_path / f"out{k}" / "kept.tar"
+        p = subprocess.run([sys.executable, "-I", str(FETCH), "archive", str(rem), str(tar), str(l2), str(l1),
+                            "--where-nonempty", "ani_pick", "--prefix", "s2c_phase2"],
+                           check=True, capture_output=True, text=True)
+        outs.append(tar)
+    assert outs[0].read_bytes() == outs[1].read_bytes()
+    summary = json.loads(p.stdout)
+    assert summary["genomes"] == 3 and summary["sha256"] == _sha(outs[0].read_bytes())
+    assert summary["bytes"] == outs[0].stat().st_size and summary["bp"] == sum(_bp(g[a]) for a in keep)
+    assert not list(outs[0].parent.glob(".*"))  # written under a temporary name, then renamed
+    with tarfile.open(outs[0]) as t:
+        names = t.getnames()
+        assert names == sorted(names)
+        assert names == ["s2c_phase2/B01/" + n for n in (f"{accs[0]}.fna.gz", f"{accs[2]}.fna.gz", "lock.json")] + [
+            "s2c_phase2/B02/" + n for n in (f"{accs[4]}.fna.gz", "lock.json")] + ["s2c_phase2/kept.tsv"]
+        for m in t.getmembers():
+            assert (m.mtime, m.uid, m.gid, m.uname, m.gname, m.mode) == (0, 0, 0, "", "", 0o644)
+        orig = {**json.loads(l1.read_text())["genomes"], **json.loads(l2.read_text())["genomes"]}
+        for b, want in (("B01", [accs[0], accs[2]]), ("B02", [accs[4]])):
+            lk = json.loads(t.extractfile(f"s2c_phase2/{b}/lock.json").read())
+            assert lk == {"genomes": {a: orig[a] for a in want}}
+            for a in want:
+                assert t.extractfile(f"s2c_phase2/{b}/{a}.fna.gz").read() == Path(orig[a]["file"]).read_bytes()
+        kept = t.extractfile("s2c_phase2/kept.tsv").read().decode().splitlines()
+        assert kept[0].split("\t")[:2] == ["accession", "batch"]
+        assert [ln.split("\t")[:2] for ln in kept[1:]] == [[accs[0], "B01"], [accs[2], "B01"], [accs[4], "B02"]]
+    # refused: a kept genome no lock lists; a file whose bytes no longer match its lock
+    rem.write_text(rem.read_text().replace("GCA_000000999.1\t5\t", "GCA_000000999.1\t5\t1"))
+    p = subprocess.run([sys.executable, "-I", str(FETCH), "archive", str(rem), str(tmp_path / "x.tar"), str(l1),
+                        str(l2), "--where-nonempty", "ani_pick"], capture_output=True, text=True)
+    assert p.returncode != 0 and "GCA_000000999.1" in p.stderr and not (tmp_path / "x.tar").exists()
+    rem.write_text(rem.read_text().replace("GCA_000000999.1\t5\t1", "GCA_000000999.1\t5\t"))
+    (tmp_path / "genomes" / "B02" / f"{accs[4]}.fna.gz").write_bytes(b"not it")
+    p = subprocess.run([sys.executable, "-I", str(FETCH), "archive", str(rem), str(tmp_path / "y.tar"), str(l1),
+                        str(l2), "--where-nonempty", "ani_pick"], capture_output=True, text=True)
+    assert p.returncode != 0 and "sha256" in p.stderr and not (tmp_path / "y.tar").exists()
