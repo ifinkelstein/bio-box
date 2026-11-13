@@ -1,0 +1,111 @@
+{
+ "gtdb_files_sha256": {
+  "bac120_metadata_r226.tsv.gz": "45f1614aff80c19752860880b47b3cdeb66def8ff66dc106909b28bb2bd9bcbf",
+  "ar53_metadata_r226.tsv.gz": "f12310f223e6dd27dc942379de1cfbeec5ebd2b917786cf2ce28695555eab6e5"
+ },
+ "cap": 20,
+ "species_over_cap": 243,
+ "genomes": 28726,
+ "bp": 119700310300,
+ "contigs": 72718,
+ "archaea_genomes": 0,
+ "rank1_held_by_phase1": {
+  "genomes": 243,
+  "bp": 896511319
+ },
+ "quality_ranks_2_to_cap": {
+  "genomes": 4617,
+  "bp": 17237960968
+ },
+ "pairs_all": 15835149,
+ "pairs_farthest_first": 499624,
+ "representative_complete_species": 157,
+ "largest_species_genomes": 4007,
+ "largest_species_pairs_all": 8026021,
+ "top10": [
+  {
+   "species": "s__Escherichia coli",
+   "genomes": 4007,
+   "bp": 20531019299,
+   "pairs_all": 8026021,
+   "pairs_farthest_first": 75943,
+   "representative_complete": true
+  },
+  {
+   "species": "s__Klebsiella pneumoniae",
+   "genomes": 2312,
+   "bp": 13133272498,
+   "pairs_all": 2671516,
+   "pairs_farthest_first": 43738,
+   "representative_complete": false
+  },
+  {
+   "species": "s__Salmonella enterica",
+   "genomes": 1833,
+   "bp": 8986997203,
+   "pairs_all": 1679028,
+   "pairs_farthest_first": 34637,
+   "representative_complete": true
+  },
+  {
+   "species": "s__Staphylococcus aureus",
+   "genomes": 1475,
+   "bp": 4192576003,
+   "pairs_all": 1087075,
+   "pairs_farthest_first": 27835,
+   "representative_complete": true
+  },
+  {
+   "species": "s__Pseudomonas aeruginosa",
+   "genomes": 920,
+   "bp": 6200861191,
+   "pairs_all": 422740,
+   "pairs_farthest_first": 17290,
+   "representative_complete": true
+  },
+  {
+   "species": "s__Bordetella pertussis",
+   "genomes": 792,
+   "bp": 3341437282,
+   "pairs_all": 313236,
+   "pairs_farthest_first": 14858,
+   "representative_complete": true
+  },
+  {
+   "species": "s__Acinetobacter baumannii",
+   "genomes": 750,
+   "bp": 3029886708,
+   "pairs_all": 280875,
+   "pairs_farthest_first": 14060,
+   "representative_complete": true
+  },
+  {
+   "species": "s__Campylobacter_D jejuni",
+   "genomes": 522,
+   "bp": 884661645,
+   "pairs_all": 135981,
+   "pairs_farthest_first": 9728,
+   "representative_complete": true
+  },
+  {
+   "species": "s__Mycobacterium tuberculosis",
+   "genomes": 505,
+   "bp": 2222427654,
+   "pairs_all": 127260,
+   "pairs_farthest_first": 9405,
+   "representative_complete": true
+  },
+  {
+   "species": "s__Bacillus velezensis",
+   "genomes": 496,
+   "bp": 1994224435,
+   "pairs_all": 122760,
+   "pairs_farthest_first": 9234,
+   "representative_complete": false
+  }
+ ],
+ "to_download": {
+  "genomes": 28483,
+  "bp": 118803798981
+ }
+}
