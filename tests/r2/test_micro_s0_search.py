@@ -2454,24 +2454,52 @@ def test_c16_a_worker_still_starting_when_its_runner_dies_does_not_outlive_it(wo
         _reap([runner_pid], groups)
 
 
-def _vm_hwm(pid: int) -> int | None:
-    """The kernel's high-water mark of a process's resident memory (VmHWM in /proc/<pid>/status), in bytes."""
+def _proc_status(pid: int) -> dict[str, int]:
+    """The `kB` fields of /proc/<pid>/status (VmHWM, RssAnon, ...), in bytes; {} once the process is gone."""
+    out = {}
     try:
         for line in Path(f"/proc/{pid}/status").read_text().splitlines():
-            if line.startswith("VmHWM:"):
-                return int(line.split()[1]) * 1024
+            key, _, value = line.partition(":")
+            parts = value.split()
+            if len(parts) == 2 and parts[1] == "kB":
+                out[key] = int(parts[0]) * 1024
     except (OSError, ValueError):
-        pass
-    return None
+        return {}
+    return out
+
+
+class C16PeakEvidence(UserWarning):
+    """Not a fault: a peak a C-16 test saw, put in the warnings summary so that the plain `pytest -q` of GitHub Actions
+    (where the scope-only tests run) shows it in the log."""
+
+
+def _evidence(record_property, name: str, text: str) -> None:
+    import warnings
+
+    record_property(name, text)
+    print(text)
+    warnings.warn(C16PeakEvidence(f"{name}: {text}"), stacklevel=2)
 
 
 @pytest.mark.covers("C-16")
-@pytest.mark.skipif(platform.system() != "Linux", reason="the worker's resident peak is read from /proc")
-def test_c16_a_search_killed_at_its_wall_time_records_its_peak(world, tmp_path):
+@pytest.mark.skipif(platform.system() != "Linux", reason="the worker's resident memory is read from /proc")
+def test_c16_a_search_killed_at_its_wall_time_records_its_peak(world, tmp_path, record_property):
     """The runner's wall timeout SIGKILLs the worker's process group, the measuring helper included, so before card
-    C-16 the run row's peak was null. The worker of the `timeout` fault sleeps once started, so its resident peak, read
-    by this test from /proc while it sleeps, is what the record must hold (a scope's memory.peak also counts the
-    helper and the page cache charged to the scope, so there it may only be larger)."""
+    C-16 the run row's peak was null. The worker of the `timeout` fault sleeps once started; this test reads its
+    /proc status while it sleeps, and the oracle depends on what the record measures.
+
+    Without a scope of its own (the pod: an inherited cap) the record is the largest VmHWM in the worker's process
+    tree, the same per-process high-water mark the test reads: within 20% of it.
+
+    In a scope (GitHub Actions) the record is the scope's memory.peak, the high-water mark of the memory charged to
+    the scope's cgroup, which is not a process's resident set: VmHWM also counts file-backed pages mapped from the
+    interpreter, its shared libraries and the page cache, which are charged to whichever cgroup first read them,
+    often another one, so memory.peak may be well below VmHWM (269.3 MiB against a VmHWM of 357.3 MiB, GitHub
+    Actions run 43327988144, 2026-11-12). A true lower bound is the worker's anonymous resident memory (RssAnon): the
+    worker is a fresh image from `exec` (no page shared copy-on-write with a parent), every anonymous page of it was
+    faulted in by the worker inside the scope and is charged there, the scope has MemorySwapMax=0 so none is swapped
+    out, and memory.peak never falls. The helper samples every 0.2 s through the 20 s wall, so its last sample comes
+    after this read, and the record is at least RssAnon, with no factor."""
     root, d, _ = world
     hit, _ = _seed(root)
     rec = tmp_path / "r.yaml"
@@ -2484,20 +2512,23 @@ def test_c16_a_search_killed_at_its_wall_time_records_its_peak(world, tmp_path):
         assert _wait_for(lambda: (work / rid / "worker.pid").exists())
         worker_pid = int((work / rid / "worker.pid").read_text())
         groups += _group_of(worker_pid)
-        hwm = _vm_hwm(worker_pid)
-        assert hwm, "the worker was gone before its peak could be read"
+        st = _proc_status(worker_pid)
+        assert st.get("VmHWM") and st.get("RssAnon"), "the worker was gone before its memory could be read"
+        hwm, anon = st["VmHWM"], st["RssAnon"]
         assert _wait_for(lambda: runner.status(_rdir(root, rid))["status"] != "running", 120)
         row = runner.read_run(_rdir(root, rid))
     finally:
         _reap([runner_pid], groups)
     lim = json.loads(row["limits_json"])
-    print(f"worker VmHWM MiB {hwm / 2**20:.1f}; recorded {row['peak_rss_bytes'] and row['peak_rss_bytes'] / 2**20} "
-          f"({lim.get('peak_rss_source')}, mem_cap {lim['mem_cap']['how']})")
+    _evidence(record_property, "c16_wall_timeout_search_peak",
+              f"worker VmHWM {hwm / 2**20:.1f} MiB, RssAnon {anon / 2**20:.1f} MiB; recorded "
+              f"{row['peak_rss_bytes'] and round(row['peak_rss_bytes'] / 2**20, 1)} MiB "
+              f"({lim.get('peak_rss_source')}, mem_cap {lim['mem_cap']['how']})")
     assert row["status"] == "timeout", row["error"]
     assert row["peak_rss_bytes"] is not None, "a search killed at its wall time has no peak"
     if lim["mem_cap"]["how"] == "opened":
         assert lim["peak_rss_source"] == "scope_memory_peak_sampled"
-        assert row["peak_rss_bytes"] >= 0.8 * hwm
+        assert row["peak_rss_bytes"] >= anon, (row["peak_rss_bytes"], anon)
     else:
         assert lim["peak_rss_source"] == "child_hwm_sampled"
         assert abs(row["peak_rss_bytes"] - hwm) <= 0.2 * hwm
@@ -2511,14 +2542,18 @@ _C16_OOM = runner.Limits(cpus=1, wall_s=LIMITS.wall_s, mem_gb=1)
                     reason="needs systemd-run and no cgroup cap above this process, so that the worker's scope has a "
                            "MemoryMax the kernel enforces (GitHub Actions; on the pod, inside the image, the worker is "
                            "held by RLIMIT_AS and ends with a MemoryError, not a kill)")
-def test_c16_an_oom_killed_search_records_a_peak_within_20_percent_of_its_cap(world):
-    """The card's acceptance with the kernel's own OOM killer: the `oom` fault allocates twice the scope's MemoryMax."""
+def test_c16_an_oom_killed_search_records_a_peak_within_20_percent_of_its_cap(world, record_property):
+    """The card's acceptance with the kernel's own OOM killer: the `oom` fault allocates twice the scope's MemoryMax.
+    The record is the scope's memory.peak, compared with the cap, not with a process's resident set: the kernel
+    OOM-kills when a charge cannot be met at memory.max, so the high-water mark is then at the cap (within one charge
+    batch) and never above it."""
     hit, _ = _seed(world[0])
     row = _run(world, _recipe(hit, hit), fault="oom", limits=_C16_OOM)
     lim = json.loads(row["limits_json"])
     cap = _C16_OOM.mem_gb * runner.GB
-    print(f"recorded peak MiB: {row['peak_rss_bytes'] and row['peak_rss_bytes'] / 2**20} "
-          f"({lim.get('peak_rss_source')}); cap {cap / 2**20:.0f} MiB")
+    _evidence(record_property, "c16_oom_search_peak",
+              f"recorded {row['peak_rss_bytes'] and round(row['peak_rss_bytes'] / 2**20, 1)} MiB "
+              f"({lim.get('peak_rss_source')}); cap {cap / 2**20:.1f} MiB; status {row['status']}")
     assert row["status"] == "oom", row["error"]
     assert lim["peak_rss_source"] in ("scope_memory_peak", "scope_memory_peak_sampled"), lim
     assert 0.8 * cap <= row["peak_rss_bytes"] <= 1.2 * cap, row["peak_rss_bytes"]
