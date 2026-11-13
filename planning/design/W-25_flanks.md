@@ -69,6 +69,7 @@ K = 2,000, *derived*: 2·2,000²·8 + 2,000²·4 + 2,000²·8 bytes; 124 MB *mea
 `planning/measurements/2026-11-12_flanks_rN3.md`). Pure Python and NumPy over explicitly sorted inputs; DuckDB
 reads are ordered; no clock, path or hash order in any output.
 
-**Not done.** The figure: matplotlib is not in `uv.lock` or the image (checked 2026-11-12), so it waits for the PI
-(AGENTS §2: no new dependency unless a card names the package for `uv add`). No nucleotide distance, no bp windows, no
+**The figure** was added by card W-27 (2026-11-12, `--figure`; matplotlib approved by the PI).
+
+**Not done.** No nucleotide distance, no bp windows, no
 significance, no NetSyn gap-tolerant score, no Domainator oracle (not in the image), no GenBank export.
