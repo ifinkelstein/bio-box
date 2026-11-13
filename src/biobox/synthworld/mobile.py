@@ -6,8 +6,8 @@
 runs ZOMBI2 a second time (``phages.count`` extant phages on a tree of ``phages.birth``/``death``; one linear
 chromosome per phage; the ``phages.genomes`` rates; a stem with only inversions, so the root has blocks on
 both strands; no groups), then `sequences.build` and `intergenic.build` realize it. Its preset is the host's
-with those values (`phage_preset`): no RNA motifs, the host's other sections as they stand. Its master seed is
-derived from stream ``S6/phages/world``, so none of its streams coincide with the host's; its HMM panel is the
+with those values (`phage_preset`): no RNA motifs, the host's other S1-S5 sections as they stand
+(`PHAGE_SECTIONS`; a later stage's section is left out). Its master seed is derived from stream ``S6/phages/world``, so none of its streams coincide with the host's; its HMM panel is the
 host's (``panel_seed``). Phage ``g<k>`` of that world is ``phage_<k>``, its families ``P<family>`` and its gene
 copies ``ph_<copy_label>``; each phage is one linear record (``phages.fna``), end flanks included.
 
@@ -130,6 +130,11 @@ FORMAT = "synthworld-mobile/1"
 CAS_FAMILY_BASE = 900_000
 ANCHOR_TRIES = 8
 ANCHOR_KINDS = ("root", "originated")
+#: the preset sections the phage set's world reads (S1-S5's); a later stage's section (fusions, ...) stays out
+#: of it, so adding one changes neither the phage world nor this stage's digest
+PHAGE_SECTIONS = ("name", "default_seed", "species", "taxonomy", "root_scramble", "genomes", "modules",
+                  "profile_only", "lineage_rates", "plasmids", "vehicles", "hubs", "decoys", "sequences",
+                  "intergenic", "rna_motifs")
 q6 = sequences.q6
 revcomp = intergenic.revcomp
 
@@ -614,7 +619,7 @@ def phage_preset(preset: dict) -> dict:
     """The phage set's preset: the host's, with the ``phages`` values, no groups or declared families, no burst,
     no lineage axes and no RNA motifs."""
     ph = preset["phages"]
-    p = {k: copy.deepcopy(v) for k, v in preset.items() if k not in ("phages", "prophages", "crispr")}
+    p = {k: copy.deepcopy(v) for k, v in preset.items() if k in PHAGE_SECTIONS}
     p["species"] = dict(p["species"], n_extant=int(ph["count"]), birth=float(ph["birth"]),
                         death=float(ph["death"]), burst_size=1)
     p["genomes"] = dict(p["genomes"], **copy.deepcopy(ph["genomes"]))

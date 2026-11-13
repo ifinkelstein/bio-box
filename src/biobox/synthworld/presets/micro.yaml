@@ -3,8 +3,8 @@
 # resolves the leaves to their values; the resolved mapping is what the world records and digests.
 # The backbone (species tree and taxonomy, gene order, strands, families, copies, groups, plasmids,
 # vehicles, hubs, decoys; sessions 1 and 2), sequences (session 3), and IGRs and RNA motifs (session 4)
-# are here, and phages, prophages and CRISPR arrays (session 5). NOGD, fusions, call errors, the assembly mix
-# and contamination come in later sessions.
+# are here, phages, prophages and CRISPR arrays (session 5), and fusions, splits and NOGD (session 6). Call
+# errors, the assembly mix and contamination come in later sessions.
 name: {v: micro, tag: asserted, why: "synthworld_spec §5.1"}
 default_seed: {v: 20261112, tag: asserted, why: "§5.1: the default seed is fixed and committed"}
 
@@ -272,3 +272,14 @@ crispr:
   decoy_fraction: {v: 0.05, tag: asserted, why: "§3.3 target_kind none: random spacers"}
   target_max_mismatches: {v: 5, tag: asserted, why: "a window within this many mismatches of a spacer is a target (§3.3 rows per spacer x target)"}
   locus_flank: {v: 200, tag: asserted, why: "bases of the Cas operon's cassettes at its two ends"}
+
+fusions:
+  # §2.1 S7: gene fusions, splits and non-orthologous gene displacement, each once on a host species-tree branch
+  # and inherited by its clade (card F-02 session 6; read by `fusions.build`, whose docstring states the model).
+  fusions: {v: 15, tag: asserted, why: "§5.1: 15 fusions"}
+  splits: {v: 5, tag: asserted, why: "§5.1: 5 splits"}
+  nogd: {v: 2, tag: asserted, why: "§5.1: 2 NOGD"}
+  clade_size: {v: [2, 12], tag: asserted, why: "extant genomes below the event branch, as the CRISPR arrays' (§2.1 S7: every extant genome of a chosen clade); estimate"}
+  linker_aa: {v: [0, 10], tag: asserted, why: "§3.3 truth_fusion linker_aa: codons between the two parts, uniform; estimate"}
+  linker_residues: {v: GSAPTEKDNQ, tag: asserted, why: "small and polar residues, drawn uniformly, as flexible linkers; estimate"}
+  split_spacer: {v: [20, 60], tag: asserted, why: "bases between the first half's stop codon and the second half's ATG, an RBS among them; a tight intra-operon IGR (intergenic.junctions.tight runs 0-80); estimate"}
