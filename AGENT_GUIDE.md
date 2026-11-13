@@ -88,6 +88,9 @@ postings and `partners_of` families are complete only after cards B-21 and B-39 
 
 ## 3. The standard workflow (worked example: Pfam RNA_pol, T7 gp1 control)
 
+The worked example runs as one script with its checks in `examples/rnap/` (`examples/README.md`); the steps below
+are the same commands one at a time, for a question of your own.
+
 Placeholders (write them out in every call): `$SCR` your scratch; `$TREE` a checkout of current code on the pod
 (mirror one from the laptop with `sh scripts/pod_pytest.sh <task> tests/r0/test_runbook.py`, which copies the
 tree to `/tmp/if2453/ci/<task>`); `$IMAGE` the `.sif`, `$HOME/bio-box/images/bio-box_64f1bf0.sif`, the image
@@ -171,11 +174,11 @@ bash "$SCR/img.sh" python -m biobox.cli search cancel "$RUN" --root /tmp/if2453/
 `pod_run: ... usage MemoryPeak=<bytes> CPUUsageNSec=<ns>` (the cost to report). Exit 1: the run ended other
 than `ok` and `--out` holds only `recipe.yaml`; exit 2: refused before the run (read the `refused:` line).
 
-**6. Read.** The example ended `2581 genes of 1957 proteins` and `2581 tables`; wall 244.6 s, worker peak
-1.78 GiB, unit `MemoryPeak` 4,570,214,400 B, at least 9.53 CPU-minutes (measured, wilkcomp02, 2026-11-11, [T3]
-W-21 addendum). 1,931 proteins in phages, 26 in prokaryotes; T7 gp1 367.7 bits, E 4.3e-106 ([T2] §3). The top
-NR50 neighbour cluster `fa4cb451607a4dfdd797df9a5e462694` is in 663 of 2,581 loci ([T2]); by position it is
-probably T7 DNA ligase, which no file says (rN.1 has no Pfam).
+**6. Read.** The log's `wrote ...` lines give the counts to report (genes and proteins of `hits.tsv`, the number of
+locus tables) and the `pod_run: ... usage` line the cost. What this exact search finds, and costs, is kept in one
+place: the worked example `examples/rnap/` (card E-11), which reruns it on every milestone release and checks its
+answer; its values on `rN.3` are in `examples/rnap/recorded/rN.3.tsv` and its README (section 3), each labelled. Use
+them to see whether your run of the example behaved, never as your answer to another question.
 
 ## 4. Output contract (`src/biobox/search/export.py`, `src/biobox/cli.py`)
 
@@ -344,8 +347,11 @@ print("control", sys.argv[3], ours.get(sys.argv[3]), theirs.get(sys.argv[3]))
 
 Expect what both trials found ([T2] §3): the same protein set (0 only in either), scores equal to 0.1 bit, the
 control in both. Then split the hits by source with the `stage` and `kind` columns of `hits.tsv` (phages are stage
-`S1`, prokaryotes `P1`, `P2`), and genomes per stage with the stage query of §5. Neighbours can be checked the same way: an independent SQL window (each contig's genes
-by start, end, strand) gave the same 2,581 locus tables ([T2] §3). **If a check disagrees, report both answers
+`S1`, prokaryotes `P1`, `P2`), and genomes per stage with the stage query of §5. Neighbours can be checked the same
+way: an independent SQL window (each contig's genes by start, end, strand) gave the same locus tables ([T2] §3).
+The worked examples do these checks on every milestone release (`examples/README.md`): `examples/rnap/sql/` and
+`examples/_shared/oracle.py` are a cheaper form of this section (`hmmsearch` on the hits and the proteins the
+release's Pfam scan gives the family, not on every protein) to copy. **If a check disagrees, report both answers
 and the commands; do not choose one.** Remove the 3.7 GB FASTA when done: `rm "$SCR/proteins.faa"`.
 
 ## 7. Report to the scientist

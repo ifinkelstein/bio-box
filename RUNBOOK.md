@@ -557,6 +557,32 @@ An earlier release must still verify after a later one is built. Check `rC6.1` t
 bio-box release verify --root "$ROOT" --release rC6.1
 ```
 
+**Before a release is announced: the worked examples** (AGENTS 5.7, card E-11). A release that verifies is not yet a
+milestone. Before it is announced (in `STATUS.md`, `README.md` or `GUIDE.md` as the one to use, or copied to durable
+storage as such), run every worked example under `examples/` on it with one command, read-only on the root, each
+launch inside the account's thread cap (`examples/README.md` says what an example is and holds). It needs the
+release's search pack in the profile's pack directory, and the examples' environment: `TREE`, `PROFILE`, `IMAGE` (with
+matplotlib: the runtime image of section 0 has it), `DIGEST`, `ROOT`, and `OUT`, a new directory outside the root.
+Look first, then start it as a unit of its own: on `rN.3` it took 56 min 55 s and 41.3 CPU-minutes at 2 threads,
+at least 26 minutes of it waiting for room with the account near its day cap (*measured*, wilkcomp02, 2026-11-13;
+the wait *derived* from the `waiting for room` lines; `planning/measurements/2026-11-13_release_examples_rN3.md`):
+
+```bash
+export OUT="$WORK/examples-rN.3"
+bash "$TREE/scripts/release_examples.sh" --dry-run rN.3
+systemd-run --user --unit ex-rN3 --collect --quiet -p MemoryMax=2G -p MemorySwapMax=0 -p StandardOutput=append:"$WORK/examples-rN3.log" -p StandardError=append:"$WORK/examples-rN3.log" --setenv=TREE="$TREE" --setenv=PROFILE="$PROFILE" --setenv=IMAGE="$IMAGE" --setenv=DIGEST="$DIGEST" --setenv=ROOT="$ROOT" --setenv=OUT="$OUT" --setenv=UNIT=ex-rN3 --setenv=USER="$USER" /usr/bin/nice -n 19 bash "$TREE/scripts/release_examples.sh" rN.3
+tail -n 1 "$WORK/examples-rN3.log"
+```
+
+The last line says whether every invariant holds; `$OUT/summary.tsv` has one row per check (example, check, kind,
+expected, observed, verdict), and the script exits 1 when any invariant fails or is missing. **A failed or missing
+invariant stops the announcement**: report it with the example's row, its README's table of what that failure would
+mean, and the step's log under `$OUT/<example>/logs/`. When every invariant holds, finish `$OUT/note.md` (a
+measurement-note skeleton: the run's facts, per-example counts and CPU, every check, `TODO` where the reading goes)
+into `planning/measurements/`, and copy each `$OUT/<example>/recorded_new.tsv` to
+`examples/<example>/recorded/<release>.tsv` in the same commit. A recorded value that `differs` on a new release is
+expected; on a rerun of the same release it means the code or the release changed.
+
 ## 7. Search
 
 The search path writes nothing under the data root (card W-03): a user who can read a release may

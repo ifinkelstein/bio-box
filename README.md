@@ -162,11 +162,12 @@ The specification and plan behind these are [`00-spec.md`](00-spec.md), [`PLAN.m
 | 2026-11-12 | `rM.1` clustered (45,815,843 proteins, *measured*) | STATUS handoff; card B-46 |
 | 2026-11-12 | Split clustering equals the published clusters of `rN.1b` (card B-42) | [`2026-11-12_split_clustering_rN1b.md`](planning/measurements/2026-11-12_split_clustering_rN1b.md) |
 | 2026-11-12 | Locus-context comparison: `nbr flanks` and its synteny figure (cards W-25, W-27) | `2026-11-12_flanks_rN3.md` |
-| 2026-11-12 to 13 | Synthetic-world generator, sessions 1 to 4: backbone, taxonomy and plasmids, families and coding sequences, intergenic regions and RNA motifs (card F-02) | STATUS rows F-02 (1) to (4) |
+| 2026-11-12 to 13 | Synthetic-world generator, sessions 1 to 7: backbone, taxonomy and plasmids, families and coding sequences, intergenic regions and RNA motifs, phages and CRISPR arrays, fusions, call errors and genetic codes 4 and 25, assembly classes, contamination and duplicates (card F-02) | STATUS rows F-02 (1) to (7) |
 | 2026-11-12 | S2C phase-2 candidates fetched: 28,457 of 28,483 genomes (*measured*) | `2026-11-13_s2c_skani_fetch.md` |
 | 2026-11-13 | Image built from `main` (pull request 4): 1,720 tests passed, 22 skipped inside it (*measured* on GitHub Actions, run 43380434543) | STATUS handoff |
 | 2026-11-13 | S2C phase 2 selected for strain diversity with skani: near-clone pairs among a species' 20 fall from 6,930 to 2,895 of 46,170 (*measured*) | [`2026-11-13_s2c_skani_selection.md`](planning/measurements/2026-11-13_s2c_skani_selection.md) |
 | 2026-11-13 | Second worked example and release check: CRISPR-Cas systems carried by Tn7-like transposons (Peters et al. 2017) on `rN.3`; all 19 invariants hold (*measured*) | [`examples/crispr_cas_neighbourhoods/README.md`](examples/crispr_cas_neighbourhoods/README.md) |
+| 2026-11-13 | Worked examples are release checks: one command runs both on a release; on `rN.3` 92 checks ok, none failed (*measured*) | [`examples/README.md`](examples/README.md), [`2026-11-13_release_examples_rN3.md`](planning/measurements/2026-11-13_release_examples_rN3.md) |
 
 **Now** (2026-11-13; STATUS handoff)
 
@@ -176,9 +177,11 @@ The specification and plan behind these are [`00-spec.md`](00-spec.md), [`PLAN.m
   older image until it is done.
 - S2C phase 2 is fetched (13,477 of 13,485 genomes, 2026-11-13); its split into stages is an open item for the PI,
   and its build follows the 50 Gbp release (card C-25).
-- Worked examples are run on a release before it is announced (AGENTS §5.7): the RNA polymerase example is being given
-  the rerunnable form of the CRISPR-Cas one (card E-11).
-- The synthetic-world generator, session 5 (phages and CRISPR arrays, fusions, call errors, assembly; card F-02).
+- Worked examples are run on a release before it is announced (AGENTS §5.7; `scripts/release_examples.sh`): the next
+  release to check is `rM.2`.
+- The synthetic-world generator's last step (emit), and the first build of a synthetic world by the normal builders,
+  compared with its truth (card F-02, session 8).
+- CRISPR arrays as features: MinCED approved by the PI on 2026-11-13 (card E-12); it needs the next image.
 - Merged on 2026-11-13, not yet used by a build: the night thread allowance read from other users' CPU (card C-28).
 
 **Next, in order**
