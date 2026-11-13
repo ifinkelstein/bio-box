@@ -61,7 +61,7 @@ def test_codon_usage_rows_cover_exactly_the_synonymous_codons():
         assert support == set(CODE11_BY_AA[aa].split()), aa
     assert {codons.CODONS[j] for j in np.nonzero(tab[codons.STOP] > 0)[0]} == set(cfg["stop_codons"])
     assert {codons.CODONS[j] for j in np.nonzero(tab[codons.START] > 0)[0]} == set(cfg["start_codons"])
-    assert set(cfg["stop_codons"]) <= set(CODE11_BY_AA["*"]) and set(cfg["start_codons"]) <= STARTS11
+    assert set(cfg["stop_codons"]) <= set(CODE11_BY_AA["*"].split()) and set(cfg["start_codons"]) <= STARTS11
 
 
 def test_codon_usage_follows_gc3():

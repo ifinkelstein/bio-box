@@ -117,3 +117,47 @@ decoys:
   absent_weight: {v: 0.0, tag: asserted, why: "a lineage without the partner never receives the decoy (present weighs 1)"}
   transfer: {v: 0.4, tag: asserted, why: "per copy"}
   loss: {v: 0.4, tag: asserted, why: "per copy: the profile is shaped by transfers more than by the root"}
+
+sequences:
+  # §2.1 S3-S4 and §2.3: family design and protein-coding sequences (card F-02 session 3; read by
+  # `sequences.build`, whose docstring states the model). Pfam numbers below are measured on Pfam 38.2
+  # (wilkcomp02, 2026-11-12, pyhmmer 0.12.3 over Pfam-A.hmm.gz): 30,134 HMMs, all with gathering cutoffs;
+  # match length median 120, 10% 52, 90% 304; over the first 3,000 HMMs in the file the match-site sum of
+  # squared emissions has median 0.102 (10% 0.071, 90% 0.252), and the median transitions are M->I 0.013,
+  # I->I 0.462, M->D 0.0066, D->D 0.385.
+  profiles:
+    source: {v: synthetic, tag: asserted, why: "no Pfam file in CI; 'pfam' reads the panel from the Pfam HMM file passed to sequences.build (§5.1 asks for Pfam)"}
+    pfam_release: {v: "38.2", tag: asserted, why: "refdb.yaml pfam 38.2; recorded with the file's sha256"}
+    n_scan: {v: 200, tag: asserted, why: "§5.1: 200 Pfam HMMs for planted families"}
+    n_dark: {v: 100, tag: asserted, why: "§5.1: 100 held-out HMMs for dark families"}
+    n_promiscuous: {v: 3, tag: asserted, why: "§5.1: 3 promiscuous domains, taken from the scan panel"}
+    pfam_select_p: {v: 0.05, tag: asserted, why: "selection probability per HMM in file order; 300 HMMs are reached after about 7,000 of 30,134 (derived: 300 / (0.05 x about 0.85 in the length range))"}
+    pfam_match_range: {v: [40, 400], tag: asserted, why: "around the measured 10%-90% band of Pfam 38.2 match lengths"}
+    synthetic_match: {v: {median: 120, sigma: 0.72, min: 30, max: 600}, tag: derived, why: "log-normal through the measured Pfam 38.2 median 120 and 90% quantile 304: sigma = ln(304/120)/1.2816"}
+    synthetic_concentration: {v: {median: 22.0, sigma: 1.2}, tag: derived, why: "Dirichlet(A x background) has E[sum pi^2] = (0.0598 A + 1)/(A + 1); A = 22, 4 and 84 give the measured median 0.102, 90% 0.252 and 10% 0.071; sigma = ln(84/4)/(2 x 1.2816)"}
+    synthetic_transitions: {v: {mi: 0.013, ii: 0.462, md: 0.0066, dd: 0.385}, tag: fitted, why: "the measured Pfam 38.2 medians"}
+  architecture:
+    root_source: {v: hmm_sample, tag: asserted, why: "§2.3: root drawn from the profile; real_seed_member is not implemented"}
+    domain_count_weights: {v: [0.6, 0.3, 0.1], tag: asserted, why: "§2.1 S3: 1-3 domains per family"}
+    dark_fraction: {v: 0.3, tag: asserted, why: "§5.1 dark_fraction 0.3"}
+    promiscuous_fraction: {v: 0.1, tag: asserted, why: "§2.1 S3: promiscuous traps prepended to many unrelated families"}
+    n_tail_mean: {v: 20, tag: asserted, why: "geometric; with the domain lengths, a protein length median near 250-300 aa (estimate), to be fitted at §7.1"}
+    c_tail_mean: {v: 25, tag: asserted, why: "geometric; as n_tail_mean"}
+    linker_mean: {v: 20, tag: asserted, why: "geometric; as n_tail_mean"}
+  evolution:
+    difficulty: {v: {easy: {weight: 0.5, identity: [0.6, 0.95]}, medium: {weight: 0.35, identity: [0.35, 0.6]}, hard: {weight: 0.15, identity: [0.25, 0.35]}}, tag: asserted, why: "§5.3 target_identity: easy >= 60%, medium 35-60%, hard 25-35%; the weights and the easy upper end are asserted"}
+    gamma_alpha: {v: 1.0, tag: asserted, why: "§2.3 Γ rate categories; the spec gives no shape"}
+    gamma_categories: {v: 4, tag: asserted, why: "the usual 4 categories"}
+    clock_sigma: {v: 0.3, tag: asserted, why: "§2.3 relaxed-clock multiplier c_b; log-normal, mean 1"}
+    kappa_syn: {v: 3.0, tag: asserted, why: "§2.3 κ_syn; the spec gives no value"}
+    indel_rate: {v: 0.05, tag: asserted, why: "§2.3 v1 tail and linker indels; events per site per expected substitution"}
+    indel_max_length: {v: 10, tag: asserted, why: "§2.3: 1-10 aa"}
+    rate_bounds: {v: [1.0e-6, 50.0], tag: asserted, why: "bounds of the closed-form solve for mu_f"}
+    target_pairs: {v: 256, tag: asserted, why: "pairs drawn for the closed-form solve when a family has more"}
+    exact_identity_max_copies: {v: 600, tag: asserted, why: "realized identities over all pairs up to this many copies"}
+  codons:
+    genetic_code: {v: 11, tag: asserted, why: "codes 4 and 25 are S8's"}
+    gc3_root: {v: 0.5, tag: asserted, why: "§2.3 GC Brownian process; value at the stem"}
+    gc3_sigma: {v: 0.25, tag: asserted, why: "per square-root time unit on the logit scale"}
+    start_codons: {v: {ATG: 0.90, GTG: 0.08, TTG: 0.02}, tag: asserted, why: "near E. coli K-12 usage"}
+    stop_codons: {v: {TAA: 0.64, TGA: 0.29, TAG: 0.07}, tag: asserted, why: "near E. coli K-12 usage"}

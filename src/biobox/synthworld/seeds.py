@@ -10,7 +10,13 @@ The component paths in use (part of the output contract; renaming one changes ev
 
 - ``S1/species_tree``: ZOMBI2 species seed;
 - ``S1/clonal_burst``: the tip a burst is grafted onto, and the burst's split times;
-- ``S2/genomes``: ZOMBI2 ordered-genomes seed.
+- ``S2/genomes``: ZOMBI2 ordered-genomes seed;
+- ``S3/panel``: the synthetic HMM panel; ``S3/panel/<NAME>``: a Pfam HMM's selection, dark and promiscuous
+  draws;
+- ``S3/family/<family_id>``: a family's architecture, target identity, root protein and rate categories;
+- ``S4/lineages``: per species branch, its GC3 step and relaxed-clock multiplier;
+- ``S4/family/<family_id>``: a family's evolution down its gene tree (pairs for the rate solve, root codons,
+  substitutions, synonymous events, indels).
 """
 
 from __future__ import annotations
