@@ -30,14 +30,20 @@
 #       Then `release verify` of rM.2 must pass (rM.1 and rN.3 are verified too and only logged: card C-19).
 #
 # Scan shards follow the clock (as r10_phase2.sh did). build-stage fixes --scan-jobs when it starts; since card
-# C-12 it re-reads the hour's allowance before each launch, but that allowance is the profile's (40 by day, 56 or
-# 40 at night), not this work's (32 by day, 40 at night), so a launch at night with 10 shards would go on with 40
-# threads into the day. The driver therefore runs DAY_JOBS shards (8, 32 threads) when the day window (the
-# profile's day_start_hour to day_end_hour, Monday to Friday) holds now or LEAD_MIN minutes from now, else
-# NIGHT_JOBS (10, 40 threads), and switches between them during a scan: it writes ROOT/STOP, waits for
+# C-12 it re-reads the hour's allowance before each launch, and since card C-28 that allowance is the cap less what
+# the account's processes outside the build use, with the day cap at night only while other users compute; but the
+# cap is the profile's (40 by day), not this work's (32 by day). The driver therefore runs DAY_JOBS shards (8, 32
+# threads) when the day window (the profile's day_start_hour to day_end_hour, Monday to Friday) holds now or
+# LEAD_MIN minutes from now ("day" mode), else ("night" mode) as many as the allowance at the launch gives
+# (`night_jobs`: `python -m biobox.runstep` in the image, the allowance of 4-thread launches divided by 4: 14 on an
+# idle night, 10 while another user computes, fewer while other work of ours runs; NIGHT_JOBS, 10, the day cap's
+# count, when the reading fails, never more), and switches between the modes during a scan: it writes ROOT/STOP, waits for
 # build-stage's "launching no more shards" line, removes STOP at once so the shards still running publish, waits
 # for the unit to end (exit 75) and relaunches with the new count. The shard that ends first after STOP publishes
-# nothing and is rerun. Only scan launches switch; a STOP during clustering would discard a step.
+# nothing and is rerun. Only scan launches switch; a STOP during clustering would discard a step. The night count is
+# read only at a launch, when no build unit of this driver runs: read during a scan it would count the running build
+# (another unit) as other work of ours. A launch that build-stage refuses because another user began to compute
+# between the reading and its start (`--scan-jobs ... run-step allows`, exit 2) is retried after a minute.
 #
 # Guard (r50_watch.py, once a minute while a unit runs): a run record of this driver's stages and releases, or a step
 # command still running, with more than 280 CPU-minutes for a clustering step (CLUSTER_CPU_MAX) or 300 for any
@@ -108,6 +114,7 @@ fail() { log "FAILED: $*"; echo "$*" > "$STATE/FAILED"; exit 1; }
 prof() { sed -n "s/^$1:[[:space:]]*\([^#[:space:]]*\).*/\1/p" "$PROFILE"; }
 DAY_START=$(prof day_start_hour)
 DAY_END=$(prof day_end_hour)
+NIGHT_MAX_JOBS=$(($(prof max_threads_night) / CPUS))
 
 is_day() {  # $1: seconds since the epoch; local time
   local dow h
@@ -115,10 +122,23 @@ is_day() {  # $1: seconds since the epoch; local time
   h=$(date -d "@$1" +%-H)
   [ "$dow" -le 5 ] && [ "$h" -ge "$DAY_START" ] && [ "$h" -lt "$DAY_END" ]
 }
-want_jobs() {
+want_mode() {  # day: the day window holds now or LEAD_MIN minutes from now; else night
   local t
   t=$(date +%s)
-  if is_day "$t" || is_day $((t + LEAD_MIN * 60)); then echo "$DAY_JOBS"; else echo "$NIGHT_JOBS"; fi
+  if is_day "$t" || is_day $((t + LEAD_MIN * 60)); then echo day; else echo night; fi
+}
+night_jobs() {  # shards at once at night (card C-28): the allowance of a 4-thread launch now / CPUS, 1 to NIGHT_MAX_JOBS
+  local a j
+  a=$(RO=none THREADS=1 MEM=4G bash "$BIN/r50_bb.sh" py -m biobox.runstep --profile "$PROFILE" --threads "$CPUS" 2>> "$LOG")
+  if ! [[ "$a" =~ ^[0-9]+$ ]]; then  # no reading: the constant, the day cap's count, never the night's
+    echo "$(date '+%F %T %Z') night_jobs: no allowance read ('$a'); $NIGHT_JOBS shards" >> "$LOG"
+    echo "$NIGHT_JOBS"
+    return
+  fi
+  j=$((a / CPUS))
+  [ "$j" -ge 1 ] || j=1
+  [ "$j" -le "$NIGHT_MAX_JOBS" ] || j=$NIGHT_MAX_JOBS
+  echo "$j"
 }
 pending_shards() {  # shards of stage $1 neither recorded nor running under $2 jobs; -1 when no plan yet
   local plan
@@ -192,8 +212,8 @@ launch() {  # $1 unit, $2 pod_run --threads, rest: build-stage arguments
     "$unit" build-stage --profile "$PROFILE" --root "$ROOT" "$@") >> "$LOG" 2>&1
 }
 exit_of() { sed -n "s/^pod_run: $1 exited \([0-9]*\)$/\1/p" "$UNITLOGS/$1.log" | tail -n 1; }
-wait_unit() {  # $1 unit, $2 stage, $3 jobs (switch shard counts during a scan when $3 is not empty)
-  local unit=$1 s=$2 j=${3:-} k=0 p
+wait_unit() {  # $1 unit, $2 stage, $3 jobs, $4 its mode (switch during a scan when $3 is not empty)
+  local unit=$1 s=$2 j=${3:-} m=${4:-} k=0 p
   SWITCHING=0
   sleep 5
   while systemctl --user is-active --quiet "$unit"; do
@@ -208,11 +228,11 @@ wait_unit() {  # $1 unit, $2 stage, $3 jobs (switch shard counts during a scan w
     guard
     k=$((k + 1))
     [ $((k % 10)) != 1 ] || log "guard: $(tail -n 1 "$STATE/guard.jsonl" | cut -c1-400); unit log: $(grep -E 'run-step|build-stage' "$UNITLOGS/$unit.log" | tail -n 1 | cut -c1-200)"
-    if [ -n "$j" ] && [ "$SWITCHING" = 0 ] && [ "$GUARD_STOPPED" = 0 ] && [ "$(want_jobs)" != "$j" ]; then
+    if [ -n "$j" ] && [ "$SWITCHING" = 0 ] && [ "$GUARD_STOPPED" = 0 ] && [ "$(want_mode)" != "$m" ]; then
       p=$(pending_shards "$s" "$j")
       if [ "$p" -gt 0 ]; then
-        log "switch: the hour wants $(want_jobs) shards at once, $unit runs $j, $p shards wait; writing $ROOT/STOP"
-        echo "r50 driver: switching from $j to $(want_jobs) scan shards at once" > "$ROOT/STOP"
+        log "switch: the hour is $(want_mode) mode, $unit runs $j shards ($m mode), $p shards wait; writing $ROOT/STOP"
+        echo "r50 driver: switching from $m mode ($j scan shards at once) to $(want_mode) mode" > "$ROOT/STOP"
         SWITCHING=1
       fi
     fi
@@ -276,21 +296,27 @@ release_phase() {  # $1 release, $2 stage, $3 tag, $4 "lib" for --library
 
 # B3: the Pfam scan of one stage, the shard count following the clock
 scan_phase() {  # $1 stage
-  local s=$1 unit j q
+  local s=$1 unit j q m
   while :; do
     if [ -e "$ROOT/runs/stage=$s/$STEP.json" ]; then log "B3 $s: scan record present; nothing to do"; return; fi
     wait_quiet "B3 $s"
     halt_check "B3 $s"
-    j=$(want_jobs)
+    m=$(want_mode)
+    if [ "$m" = day ]; then j=$DAY_JOBS; else j=$(night_jobs); fi
     q=$((j * CPUS > BIG_THREADS ? j * CPUS : BIG_THREADS))
     unit=$(next_unit "$s")
     echo "$unit $s rM.1 scan $j" >> "$STATE/units"
     launch "$unit" "$q" --stage "$s" --release rM.1 --stages "$ALL" \
       --genomes "$W/inputs/$s/genomes.json" --objects "$W/inputs/$s/objects.json" \
       --library pfam 38.2 "$PFAM" gathering --threads "$BIG_THREADS" --scan-jobs "$j" --scan-cpus "$CPUS"
-    wait_unit "$unit" "$s" "$j"
+    wait_unit "$unit" "$s" "$j" "$m"
     if [ "$RC" = 0 ]; then log "B3 $s: $(grep "$s.$STEP " "$UNITLOGS/$unit.log" | tail -n 1 | cut -c1-200)"; return; fi
     if [ "$RC" = 75 ] && [ "$SWITCHING" != 0 ]; then continue; fi
+    if [ "$RC" = 2 ] && grep -q "build-stage: refused before any step: --scan-jobs $j .* run-step allows" "$UNITLOGS/$unit.log"; then
+      log "B3 $s: build-stage refused $j shards at its start (the cap fell between the reading and the launch); again in a minute"
+      sleep 60
+      continue
+    fi
     if [ "$SKIP_RM1" = 1 ] && [ "$RC" = 1 ] && [ -e "$ROOT/runs/stage=$s/$STEP.json" ] \
        && grep -q "build-stage: rM.1.tokens exited 1" "$UNITLOGS/$unit.log"; then
       log "B3 $s: scan published; rM.1.tokens failed after it, as expected under SKIP_RM1 (card B-46)"

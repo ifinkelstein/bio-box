@@ -25,6 +25,22 @@ def pytest_configure(config):
     config.addinivalue_line("markers", "covers(*ids): plan test IDs this test covers (data_layer_and_tests.md)")
 
 
+@pytest.fixture(autouse=True, scope="session")
+def _no_reading_of_the_real_hosts_cpu():
+    """Card C-28: no test reads the real host's CPU use by owner or its load average through the default readers
+    of `run-step` and `build-stage` (the night allowance and what the account's other processes use). Each reads an
+    idle host here: no other user computes, nothing else of ours runs. Tests that need a reading inject one. Session
+    scope, so module-scoped fixtures that build through the command line are covered too. A `run-step` started as a
+    subprocess by a test reads the real host, and only reports it (it refuses only above the hour's cap)."""
+    from biobox import runstep
+
+    mp = pytest.MonkeyPatch()
+    mp.setattr(runstep, "read_cpu", lambda: runstep.CpuUse())
+    mp.setattr(runstep, "_load1", lambda: 0.0)
+    yield
+    mp.undo()
+
+
 def _ring(item) -> str:
     for part in Path(str(item.fspath)).parts:
         if len(part) == 2 and part[0] == "r" and part[1].isdigit():
