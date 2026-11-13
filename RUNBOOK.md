@@ -797,8 +797,10 @@ sh scripts/pod_pytest.sh C-06 --shards 8
 ```
 
 The first runs one file. The second runs every test file in 8 processes and prints one summary line
-per shard; it fails if any shard fails. The whole suite takes about 13 minutes in one process and
-about 3 with 8 shards (the script's header, not re-measured here). An exit code 5 with `no tests
+per shard; it fails if any shard fails. Timing: two shards of 2 threads took 3,047 s and 4,761 s
+(51 and 80 minutes) while a 32-thread build ran beside them (measured, wilkcomp02, 2026-11-13, card C-29).
+The shard count must fit the account's thread cap (AGENTS section 7.2, a total over everything the account
+runs), so 8 shards do not fit by day beside a build. An exit code 5 with `no tests
 ran` only means the selection matched nothing.
 
 The image is the test image built from `main` at `64f1bf0`,
