@@ -1,8 +1,9 @@
 # synthworld preset `micro`: backbone parameters (synthworld_spec.md §5.1; card F-02 session 1).
 # Every leaf is {v: value, tag: asserted | fitted | derived, why: source}. `backbone.load_preset`
 # resolves the leaves to their values; the resolved mapping is what the world records and digests.
-# Only the backbone (species tree, gene order, strands, families, copies, groups) is here. Sequences,
-# IGRs, motifs, plasmids, vehicles, hubs, decoys, NOGD and the assembly mix come in later sessions.
+# Only the backbone (species tree and taxonomy, gene order, strands, families, copies, groups, plasmids,
+# vehicles, hubs, decoys) is here (sessions 1 and 2). Sequences, IGRs, motifs, NOGD and the assembly mix
+# come in later sessions.
 name: {v: micro, tag: asserted, why: "synthworld_spec §5.1"}
 default_seed: {v: 20261112, tag: asserted, why: "§5.1: the default seed is fixed and committed"}
 
@@ -12,6 +13,13 @@ species:
   death: {v: 0.3, tag: asserted, why: "spike §1 tree: death 0.3"}
   burst_size: {v: 4, tag: asserted, why: "§5.1: one clonal burst of 4"}
   burst_depth: {v: 0.02, tag: asserted, why: "a short-branch cluster: its root sits this fraction of the crown height below the present"}
+
+taxonomy:
+  # §2.1 S1: a genome's taxon at a rank is the species-tree branch alive at that rank's cut, a fraction of
+  # the crown age (first speciation = 0, present = 1). The clonal burst (burst_depth 0.02) is one species.
+  domain: {v: Bacteria, tag: asserted, why: "one synthetic domain"}
+  ranks: {v: [phylum, class, order, family, genus, species], tag: asserted, why: "§2.1 S1: phylum ... species"}
+  cuts: {v: [0.08, 0.2, 0.35, 0.5, 0.7, 0.9], tag: asserted, why: "deeper ranks cut nearer the present; a species cut after the burst's root would split it"}
 
 root_scramble:
   # DEC-15 (c). ZOMBI2 lays the root out with every gene on + and all declared families in one block at
@@ -24,15 +32,18 @@ root_scramble:
 
 genomes:
   initial_families: {v: 1000, tag: derived, why: "spike §5: 1,000 root families gave 1,454 genes per genome (mean) with groups; §5.1 target mean about 1,500"}
-  chromosomes: {v: 1, tag: asserted, why: "one circular chromosome; plasmids (§5.1: 0-2 of 20-200 genes) are a later session"}
+  chromosomes: {v: 1, tag: asserted, why: "one circular ZOMBI2 chromosome; plasmids are groups excised from it (plasmids, below)"}
   topology: {v: circular, tag: asserted, why: "chromosome"}
-  duplication: {v: 0.02, tag: asserted, why: "spike §1 rates, per copy"}
-  transfer: {v: 0.05, tag: asserted, why: "spike §1"}
-  loss: {v: 0.12, tag: asserted, why: "spike §1"}
+  # duplication, transfer, loss and origination are twice the spike's (session 2): at the spike's rates a
+  # lineage's genome size relaxes over about 20 time units against a crown of about 4, so lineage rate
+  # differences (lineage_rates) could not move sizes far; doubled, the micro default seed reaches the §5.1 range
+  duplication: {v: 0.04, tag: asserted, why: "spike §1 rate x 2 (session 2), per copy"}
+  transfer: {v: 0.1, tag: asserted, why: "spike §1 x 2 (session 2)"}
+  loss: {v: 0.24, tag: asserted, why: "spike §1 x 2 (session 2)"}
   inversion: {v: 0.05, tag: asserted, why: "spike §1"}
   transposition: {v: 0.02, tag: asserted, why: "spike §1"}
   translocation: {v: 0.0, tag: asserted, why: "one chromosome"}
-  origination_per_root_family: {v: 0.05, tag: asserted, why: "spike §1: origination 0.05 x initial_families per lineage"}
+  origination_per_root_family: {v: 0.1, tag: asserted, why: "spike §1 x 2 (session 2): origination 0.1 x initial_families per lineage"}
   duplication_extent: {v: 2, tag: asserted, why: "spike §1 geometric means"}
   loss_extent: {v: 2, tag: asserted, why: "spike §1"}
   transfer_extent: {v: 3, tag: asserted, why: "spike §1"}
@@ -40,7 +51,8 @@ genomes:
   transposition_extent: {v: 3, tag: asserted, why: "spike §1"}
   translocation_extent: {v: 3, tag: asserted, why: "spike §1"}
   inversion_probability: {v: 0.5, tag: asserted, why: "spike §1"}
-  transfer_to: {v: uniform, tag: asserted, why: "spike §1; distance decay is a later knob"}
+  transfer_to: {v: distance, tag: asserted, why: "§2.1 S2, §4.2 item 2: transfers decay with distance (ZOMBI2 Distance); 'uniform' switches it off"}
+  transfer_decay: {v: 4.0, tag: asserted, why: "ZOMBI2 Distance(decay): recipient weight exp(-decay x patristic distance / mean root-to-tip time)"}
   replacement: {v: 0.0, tag: asserted, why: "DEC-15 (b): 0 in every world with groups"}
   max_family_size: {v: 10, tag: asserted, why: "ZOMBI2 default growth guard"}
 
@@ -64,3 +76,44 @@ profile_only:
   together: {v: 1.0, tag: asserted, why: "every member transfer carries the group"}
   member_transfer: {v: 0.15, tag: asserted, why: "spike §1"}
   member_loss: {v: 0.03, tag: asserted, why: "spike §1"}
+
+lineage_rates:
+  # §5.1 genome size 1,000-4,000: one root genome under uniform rates spreads only about +-9% (spike §7
+  # item 7; session 1 measured 1,393-1,708). Each axis is one ZOMBI2 Random('lineages', Drift(LogNormal(0,
+  # sigma))): a multiplier per species branch, its parent's times a mean-corrected step at each split,
+  # shared by the rates the axis lists (one object, one draw). A rate is in at most one axis.
+  axes: {v: [{rates: [loss], sigma: 0.8}, {rates: [duplication, transfer, origination], sigma: 0.8}], tag: fitted, why: "scanned on the default seed (F-02 session 2, 15 configurations, wilkcomp02): sigma <= 0.6, or the spike's rates, never gave both a chromosome <= 1,100 and one >= 3,600 genes; this set with the doubled rates did, mean within 1,500 +- 30%"}
+
+plasmids:
+  # §2.1 S2 "chromosome plus 0-2 plasmid replicons", §5.1 "0-2 plasmids of 20-200 genes". A plasmid is a
+  # ZOMBI2 adjacent group (fates group, together 1) that synthworld excises into its own circular replicon:
+  # ZOMBI2 deals root genes round-robin over its chromosomes and lands originations and arriving transfers
+  # on a uniformly chosen one, so its replicons converge in size. Members carry the per-plasmid rates
+  # divided by the plasmid's size (rates are per copy and a group is hit once per member).
+  sizes: {v: [120, 40], tag: asserted, why: "§5.1: 20-200 genes; two types give 0-2 per genome"}
+  transfer: {v: 0.3, tag: asserted, why: "per plasmid per unit time (conjugation)"}
+  loss: {v: 0.7, tag: fitted, why: "per plasmid per unit time (curing); scanned (session 2): 0.3 left 3 plasmids in some genomes and none without, 0.9 lost one type"}
+  present_weight: {v: 0.0, tag: asserted, why: "entry exclusion: a lineage carrying the plasmid does not receive it again (absent weighs 1)"}
+
+vehicles:
+  # §2.1 S2 vehicles (chassis + cargo): an adjacent group (fates group, together 1) of a chassis family, the
+  # cargo families, and a second chassis family, so cargo always sits between chassis flanks (§8.2 risk 5).
+  cargo: {v: [3, 5, 8], tag: asserted, why: "§5.1: 3 vehicles, each with 3-8 cargo families"}
+  transfer: {v: 0.6, tag: asserted, why: "per vehicle per unit time: mobile"}
+  loss: {v: 0.2, tag: asserted, why: "per vehicle per unit time"}
+
+hubs:
+  # §2.1 S2 hub families: declared single families that transfer far more often than the genome, so each
+  # copy lands in a new neighbourhood (§4.2 item 4; §5.3 hub transfer multiplier).
+  count: {v: 5, tag: asserted, why: "§5.1: 5 hubs"}
+  transfer_multiplier: {v: 20.0, tag: asserted, why: "x genomes.transfer, per copy (2.0)"}
+  loss: {v: 0.1, tag: asserted, why: "per copy; well below the transfer rate, so a hub rarely dies out early (a branching copy line dies with probability about loss / transfer) and fills max_family_size"}
+
+decoys:
+  # §2.1 S2 `Recipients` decoys: a declared family whose transfers are weighted by the presence of a
+  # planted module's first family in the recipient (ZOMBI2 Recipients().weighted_by("genomes:<family>")),
+  # so its phyletic profile follows the module's without adjacency or co-transfer. Signal worlds only (§4.1).
+  partner_modules: {v: [1, 9, 11, 19, 22], tag: fitted, why: "§5.1: 5 decoys. The patchiest modules on the default seed (first family in 14-36 of 46 genomes): with modules 0, 5, 10, 15, 20 (37-46 genomes) a partner's carriers were 0.92 of the contemporaneous lineages, so the rule hardly steered"}
+  absent_weight: {v: 0.0, tag: asserted, why: "a lineage without the partner never receives the decoy (present weighs 1)"}
+  transfer: {v: 0.4, tag: asserted, why: "per copy"}
+  loss: {v: 0.4, tag: asserted, why: "per copy: the profile is shaped by transfers more than by the root"}
