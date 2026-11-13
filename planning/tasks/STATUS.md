@@ -12,7 +12,7 @@ Written so a new session can continue without the conversation that produced thi
 **Mode: running again.** The PI ended the drain of 09:30 CST at about 11:00 CST on 2026-11-13 ("resume"): up to four
 agents, working independently. Card E-11 still waits for the CRISPR example to land.
 
-**State on 2026-11-13 at 13:30 CST.**
+**State on 2026-11-13 at 16:25 CST.**
 - `main` is at pull request 4 (`ad6fd97`). The image built from it (commit `64f1bf0`, Actions run 43380434543: 1,720
   passed, 22 skipped inside it) is the pod's default since card C-29: `~/bio-box/images/bio-box-test_64f1bf0.sif` for
   tests (file sha256 `3d77df6b…`; from `ghcr.io/ifinkelstein/bio-box-test@sha256:cb7cd0f1…`) and `bio-box_64f1bf0.sif`
@@ -21,13 +21,15 @@ agents, working independently. Card E-11 still waits for the CRISPR example to l
   `detached_suite.sh` put only the tree's `src` on `PYTHONPATH`: **no dependency directory any more** (item 5 below is
   history). The running 50 Gbp build keeps the old image until it is done; the next build sets `IMAGE` and `DIGEST` in
   its driver (RUNBOOK §0).
-- The 50 Gbp build: P4's scan published at 08:06 (96 shards, 9.5 hours); P5 is scanning (about shard 41 at 13:00), P6
+- The 50 Gbp build: P4's scan published at 08:06 (96 shards, 9.5 hours); P5 is scanning (about shard 64 of 96 at 16:00), P6
   follows: about Saturday morning.
-- Agents running: F-02 session 7, E-11 (table below). F-02 sessions 5 (S6) and 6 (S7), W-30, C-25 step 2, C-30,
-  C-29, W-31 and C-31 are merged.
-- **Tonight after 20:00** (night cap 56, when the build leaves room): run the whole suite of the merged tree in the new
-  image with `detached_suite.sh integration 2`; the last full pod suite in it was at C-29's branch point, before
-  today's merges (each of which was tested by its own files, and by Actions without the native tools).
+- Agents running: E-11, F-02 session 8 (table below). F-02 sessions 5 (S6), 6 (S7) and 7 (S8 to S10), W-30, C-25
+  step 2, C-30, C-29, W-31 and C-31 are merged. Both Opus agents were stopped by the account's usage limit at about
+  15:45 and resumed at 16:02 (`SendMessage` to the same agent continues it; nothing was lost).
+- **The whole suite has run in the new image on today's tree**: F-02 session 7's branch, rebased on `c3936c2` (every
+  merge of today but C-31's strings), 2 detached shards, 947 passed, 16 skipped and 1,058 passed, 7 skipped: 2,005
+  passed, 23 skipped, none failed (*measured*, wilkcomp02, 2026-11-13, logs read by the orchestrator at 16:02). No
+  separate night run is needed for it.
 - The second worked example is merged: `examples/crispr_cas_neighbourhoods/` (CRISPR-Cas carried by Tn7-like
   transposons, after Peters et al. 2017). `run.sh` reruns it on any release; all 19 invariants hold on `rN.3`. Its
   outputs are on the pod under `/tmp/if2453/ex2/rN.3-b` (local disk).
@@ -71,7 +73,7 @@ pushes, and checks the GitHub Actions run of the pushed commit. Sonnet for tier-
 four agents at once. When a card conflicts with its own text, a decision or a file, the agent stops and reports;
 the card is amended in `TASKS.md` and the agent resumed (B-45, C-21c, E-09 went that way today).
 
-**Branches.** `plan/task-cards` on GitHub (repository `ifinkelstein/bio-box`, public): 117 cards, six
+**Branches.** `plan/task-cards` on GitHub (repository `ifinkelstein/bio-box`, public): 117 cards, seven
 sessions of F-02 and the measurements in the table below; decisions DEC-29 to DEC-33 were added on 2026-11-12.
 `ci` was green at every push of 2026-11-13 up to `d5ba8ed` (F-02 session 6); the run on `dab1700` (C-30) was in
 progress at 13:30. Manifest hash of the fixture: `f6126b00d45e9284d2799c3a699c992c`, equal on Actions and the pod (it
@@ -84,7 +86,7 @@ built the image) and is behind by everything merged on 2026-11-13; nothing merge
 | Card | Branch | State | When it reports |
 |---|---|---|---|
 | E-11 worked examples as release checks: the RNA polymerase example in the CRISPR one's form, a shared checker and launcher, `scripts/release_examples.sh`, the runbook's release step | `task/E-11` | started 2026-11-13 about 13:40, when C-29 merged | audit, merge; then its first use is on `rM.2` |
-| F-02 session 7, spec §2.1 S8 to S11 (call errors and genetic codes 4 and 25, assembly, contamination, emit) | `task/F-02-7` | started 2026-11-13 about 13:05; S8 and S9 in one rewrite of the genomes; measures each step, does not thin the world | audit, merge |
+| F-02 session 8, spec §2.1 S11 (emit: per-source FASTA, ingest manifest, truth in contig coordinates, `manifest.json`) and the `micro` world built by the normal builders on the pod | `task/F-02-8` | started 2026-11-13 about 16:25; truth tables stay TSV, and the session reports what registering them as Parquet would need | audit, merge |
 
 **On the pod** (wilkcomp02; account thread cap 40 by day, 56 at night, a total over everything we run; the PI keeps
 that cap). State on 2026-11-13 at about 11:00 CST:
@@ -123,9 +125,9 @@ that cap). State on 2026-11-13 at about 11:00 CST:
   `c21f`, `e09`, `w25`, `w27`, `w15`, old pack copies under `w16` and `w19`, old `ci/<ID>` trees.
 
 **Next, in order, when the PI says go.**
-1. Merge what the running agents report (F-02 session 7, E-11). Done already (W-31 too): pull requests 3 and 4, the
-   image on the pod and its switch (C-29), C-27 step 4, the CRISPR example, F-02 sessions 5 and 6, W-30, C-25 step 2,
-   C-30. Tonight: the whole suite of the merged tree in the new image (state block above).
+1. Merge what the running agents report (E-11, F-02 session 8). Done already: pull requests 3 and 4, the image on
+   the pod and its switch (C-29), C-27 step 4, the CRISPR example, F-02 sessions 5 to 7, W-30, W-31, C-25 step 2,
+   C-30, C-31.
 2. E-12 (CRISPR arrays) waits for the PI's pin. Agents' commit messages: the harness asks agents for a
    `Co-Authored-By` line and AGENTS §10 forbids footers; say so in each brief ("the project's rule wins: no footer"),
    and squash-merge a branch whose commit carries one (C-31 was merged that way). Two commits already in the history carry the footer (`b423f48`, W-30; `a17aae8`, C-30): removing them needs a force-push, which the rules forbid, so they stay unless the PI says otherwise.
@@ -134,7 +136,7 @@ that cap). State on 2026-11-13 at about 11:00 CST:
    room on the pod after the scans.
 4. After the scans: `rM.2` (above), run the worked examples on it (AGENTS §5.7), then card C-24 (stage H1, huge
    phages), then C-26 (PLSDB).
-5. Cards ready and not started: after F-02 session 7, its truth tables, null worlds, manifest and validation; W-26
+5. Cards ready and not started: after F-02 session 8, the null worlds (§4) and validation (§6.2 to §6.4, §7); W-26
    (accession table; not needed yet), E-10 (tRNA caller; needs the PI's pin). Follow-ups noted in rows below: the
    drivers `s2_*` and `rfam_sample_*` still name `bio-box_80d4c55.sif` (C-29; move each when it is next used); a step
    outlives a SIGKILLed `run-step` (C-16); `dim` reports 0 circular contigs for `rM.1` (B-46); the figure's palette
@@ -312,7 +314,7 @@ Last full suite on the integration branch before the C-11 merge: 1,053 passed, 1
 pinned image; 3 min 40 s wall for the slowest shard, against 13.5 min in one process). The skips
 need samtools, bgzip, Prodigal or the golden set. Tests no longer run on the laptop (AGENTS.md §5.5).
 
-## Merged (117 cards, and measurements)
+## Merged (117 cards, and measurements; F-02 has seven sessions in)
 
 | Card | Merge | What it did | Audit notes |
 |---|---|---|---|
@@ -436,7 +438,8 @@ need samtools, bgzip, Prodigal or the golden set. Tests no longer run on the lap
 | W-28 | `5322460` | `bio-box results archive|flush|list|get` (DEC-33; `src/biobox/search/results.py`): a run's record and the output directories named with `--with` become one deterministic archive (sorted names, fixed times and owners; the same bytes on any host), spooled under the profile's `<tmp>/results/spool`; `flush` writes the spooled archives to `<durable>/results` as one bundle only when it reaches `small_file_floor_bytes` (64 MiB; AGENTS §7.3 outranks DEC-33's "one archive per run"), under a temporary name and renamed; nothing is ever overwritten (the same sha256 is a no-op, another is refused); `list` reads manifests only; `get` restores and checks every sha256 | On the real RNA polymerase run of `rN.3`, into scratch (*measured*, wilkcomp02, 2026-11-12): the search output alone is 12,492,800 bytes, so `flush` wrote nothing; with five `nbr flanks` directories 164,618,240 bytes in 14,264 files, bundled and restored equal (`diff -r` empty). Nothing was written to `/stor`. The profile's `durable` (`/stor/work/Wilke/if2453/all-the-data`) does not exist on the pod: the tool refuses until the PI makes it. A run's record does not hold the user's command line, so outputs are named by hand (card W-29). Merged-tree tests 264 passed; branch tests 227 and 18 passed |
 | W-29 | `5d66152` | A run records the command that made it (`limits_json`, key `command`; no schema change), and every output directory written from a run (`search hmm`, `nbr --out`, `nbr flanks`) holds a `RUN` file naming the run and the release; `results archive RUN --under DIR` finds those directories up to four levels down and refuses one whose `RUN` names another run; `--with` still serves older outputs and single files | Outputs otherwise unchanged (one new file, one README line); the W-07, W-05, W-22 and W-23 tests migrated for it. `RUNBOOK.md` brought up to date with the merge. Full suite on the merged tree (detached, wilkcomp02, 2026-11-13): 1,688 passed, 64 skipped |
 | F-02 (4) | `f204f1f` | `synthworld` intergenic regions, RNA motifs and replicon sequences (`intergenic.py`, `rna.py`): every junction's intergenic sequence by type (tight, loose, divergent, convergent) with promoters, ribosome-binding sites and terminators; 4-base and 1-base gene overlaps made by protein-neutral edits of start and stop codons; RNA motifs emitted from covariance models (a synthetic panel by default; Rfam models on the pod) and evolved along the tree; one nucleotide sequence per replicon, with every gene and motif at coordinates in the data model's convention | *Measured* (wilkcomp02, 2026-11-12/13, `micro`, seed 20261112): 84 replicons, 89,102 genes; the stage takes 42.3 to 42.8 s and 93 MB; with the backbone and sequences about 157 s of the 3 minute target (*derived*), leaving about 23 s for the stages still to come. Slicing each gene from its replicon gives its CDS; junction lengths within 5% of the preset at five quantiles; `cmsearch --cut_ga` finds 872 of 1,078 motifs, 251 of 252 at divergence up to 0.02 and 147 of 240 beyond 0.2: detection falls with divergence, as session 3's proteins do not. `cmemit --exp 1` leaves 15 to 99 of 100 emissions above GA by model, so the default is 1.5 (fitted). The intergenic length model is an estimate, not yet fitted to real genomes; no motifs inside coding sequence. Merged-tree synthworld tests 339 passed (the Rfam ones included); Actions on the branch 1,654 passed, 177 skipped |
-| C-31 | this merge | Skip reasons that named `BIOBOX_POD_PYDEPS` or an older pod image now say what is true (three zombi2 test files, the figure test): strings only, no condition or assertion changed. `pod_pytest.sh`'s header and RUNBOOK §8 give the measured suite times (two shards of 2 threads, 3,047 s and 4,761 s beside a 32-thread build, *measured*, card C-29) in place of the old 13 and 3 minutes, and say the shard count must fit the thread cap | Squash-merged: the branch's commit carried a `Co-Authored-By` footer, which AGENTS §10 forbids. Branch tests 204 and 63 passed, Actions green; merged-tree tests 221 passed |
+| F-02 (7) | this merge | `synthworld` call errors, genetic codes, assembly and sources (`assembly.py`, `sources.py`, spec §2.1 S8 to S10): 200 planted call errors (frameshifts, alternative starts, smORFs, internal stops) with the calls a code-11 caller should make; one clade in genetic code 4 and one genome in code 25 by recoding (S4 unchanged); assembly classes complete, draft and MAG with breaks at repeats first, short contigs and MAG dropout removed, contigs reversed at random, every gene piece placed on its contig; S8's edits and S9's cuts in one rewrite, one new frame, one lift; then three contaminated hosts with a mock FCS-GX sidecar, two exact and two 99.9% ANI duplicates, accessions for every source and contig | *Measured* (wilkcomp02, 2026-11-13, `micro`, seed 20261112, `planning/measurements/2026-11-13_synthworld_assembly.md`): 46 genomes as 18 complete, 18 draft, 10 MAG; 2,431 contigs, 2,110 emitted; all 90,282 genes translate to their protein under their genome's code; every earlier feature read through the four lifts reads its own bases on the contigs or is accounted for (cut, dropped, or changed under a stated rule). pyrodigal as the outside caller never calls a broken gene whole, and on a code-4 genome finds 0.432 of the genes with an internal TGA under table 11 against 0.995 under table 4. S8 and S9 take 17.4 to 19.2 s together and S10 6.6 to 7.2 s, well over the earlier estimates (5 to 6 s each and 1 s); S1 to S10 195 to 209 s (*derived*). Earlier stages keep every digest. A bug found by its own second run and fixed: bases of cut genes counted as intergenic. S11 (emit) is not built; truth tables are TSV (the registry is outside the card's files). **Whole suite on the branch in the new image, rebased on today's tree: 2,005 passed, 23 skipped**; Actions green; merged-tree tests 229 passed |
+| C-31 | `ba7b09f` | Skip reasons that named `BIOBOX_POD_PYDEPS` or an older pod image now say what is true (three zombi2 test files, the figure test): strings only, no condition or assertion changed. `pod_pytest.sh`'s header and RUNBOOK §8 give the measured suite times (two shards of 2 threads, 3,047 s and 4,761 s beside a 32-thread build, *measured*, card C-29) in place of the old 13 and 3 minutes, and say the shard count must fit the thread cap | Squash-merged: the branch's commit carried a `Co-Authored-By` footer, which AGENTS §10 forbids. Branch tests 204 and 63 passed, Actions green; merged-tree tests 221 passed |
 | W-31 | `c3936c2` | `nbr flanks`, three options, all off by default: `--auto-cut gap\|N` chooses each group's cut from its tree (the largest gap between merge distances, or at most N types; never at distance 1); `--colour-weight locus\|leaf\|genome\|anchor-nr90` weights loci before the figure's 10% colour threshold so near-identical loci count once; `--colour-fallback pfam` gives a gene of a rare cluster its Pfam architecture's colour when that architecture is common in the group. Without the flags every output is byte-identical: seven calls on constructed releases, old code against new (123 files), and the CRISPR example's three calls on `rN.3` (2,720, 12 and 11 files), all *measured* | *Measured* (wilkcomp02, 2026-11-13, `planning/measurements/2026-11-13_flanks_context_types.md`), on the 157 Cas7f loci in one group: types 108 at the fixed 0.5 (102 loci alone), 115 by the largest gap, 66 at 0.8, 18 at N = 10 (complete type I-F 72 loci, phages 46, Tn7-like 13 of 19, no type mixing them). The gap rule fails where it was wanted: merge distances are spread evenly between 0.5 and 1. Colours of 1,878 flanking genes: 596 coloured today and 0 of the 39 Cas genes of the Tn7-like loci; with the Pfam fallback 993 and 37 of 39; with the fallback and anchor weighting 599 and 37 of 39, phage-locus genes 139 instead of 535. On the RNA polymerase run (432 groups) types go from 598 to 447 by gap or 441 at 0.8; phage and prokaryote loci never share a type. Cost unchanged (about 46 CPU-s, 4.1 GB). The example's README overstates one thing: 61 of 430 prokaryote Cas genes are coloured at NR50, not none. One pod slip: three of its units ran together for about 40 s (6 threads instead of 2). Defaults are the PI's (open items). Branch tests 246 passed, Actions green; merged-tree tests 959 passed (with `tests/r1`) |
 | C-29 | `98809bd` | Tests and builds on the pod run from the image built from `main` at `64f1bf0`: `pod_pytest.sh` and `detached_suite.sh` default to `~/bio-box/images/bio-box-test_64f1bf0.sif` with only the tree's `src` on `PYTHONPATH` (no dependency directory; `BIOBOX_POD_IMAGE` and `BIOBOX_POD_PYDEPS` stay as overrides); `detached_suite.sh` gains `--own` (the image's own suite), the peer manifest, JUnit files and skip reasons; RUNBOOK §0 names `bio-box_64f1bf0.sif` and its digest for builds and searches, §8 has the image check, and the known-issues row is replaced; closes card 0-02 | *Measured* (wilkcomp02, 2026-11-13, 2 detached shards): the image's own suite 1,722 passed, 20 skipped (Actions 1,720 and 22; the two extra need a memory cap and the peer file). The tree at the branch point in the new image 1,740 passed, 19 skipped; in the old image 1,696 and 63: 44 tests differ, all skipped to passed (zombi2 32, matplotlib 8, samtools 3, polars 1); none passes in the old image and fails in the new. Manifest hash equal to Actions' in both. Both `.sif` files copied to `~/bio-box/images/`, sha256 equal to the `/tmp` copies; nothing there changed. The running 50 Gbp build was not touched and keeps the old image. Merged with one conflict in RUNBOOK's known-issues table (C-28's row kept, the old image row replaced) and one sentence of AGENTS §5.5 brought up to date by the orchestrator. **Correction:** the 297 passed that this merge's commit message gives ran on the wrong tree (the main checkout, an old branch: `BIOBOX_TREE` was not set). Rerun on the merged tree itself, with W-31 on top, in the new default image: `tests/r0`, `tests/r1` and the flanks and command tests, 959 passed. **The whole suite of the merged tree has not run in the new image yet** (day cap): tonight. Follow-ups: stale skip messages and the "13 minutes" timing (card C-31) |
 | C-30 | `dab1700` | `c27_fetch.sh` takes its work directory, bin directory, unit prefix, CPU quota, image and data root from the environment (`C27_WORK`, `C27_BIN`, `C27_UNIT_PREFIX`, `C27_CPU_QUOTA`, `C27_IMAGE`, `C27_DATA_ROOT`), passes them to the chained units, and has a `--dry-run` that prints what it would check and start and touches nothing. With `C27_IMAGE` set Python runs in the image with the data root bound read-only, so the `STOP` check sees it | The defaults are what card C-27 ran, host `python3` included (an image path is not a safe default). Tested through the dry run only, for the defaults and for two other configurations: the real launch path is the old lines with variables substituted and was not run (the card launches nothing). Branch and merged-tree tests 222 passed; Actions on the branch green |
@@ -534,6 +537,13 @@ Still open, recommendation first:
   the target to 4 minutes, measured on an idle machine. Also: should NOGD be allowed on profile-only and Cas module
   members, not only planted ones? Recommendation: planted only, as built; the truth tables stay simple. And the
   session's values to confirm (on the card).
+- Card F-02 (session 7): S1 to S10 now take 195 to 209 s on the loaded pod (*derived*: sums of the stage times of three
+  runs), with S11 still to come: the 4-minute target recommended above still fits. To confirm: (1) contig breaks go to
+  every repeat up to the N50 budget (764 repeat breaks; in 200-kb drafts the repeats alone exceed the planned count, so
+  a random subset is used); (2) contamination comes from the farthest genome of the same world, not from an outgroup
+  world (all three contaminated hosts got the same donor); (3) near duplicates at 99.9% ANI are expected to collapse,
+  as exact ones are; (4) the session's values (on the card). Recommendation: accept (1) and (3); for (2) accept for
+  `micro` and ask for a second donor rule later, since one donor for all hosts is a thin test of a contamination screen.
 - Card B-42: add this decision row (it would be DEC-34)? "**DEC-25's one-process exemption for clustering has ended; DEC-29 is
   clustering's only exemption.** Clustering a release in one process is held to the 300 CPU-minute rule like every other
   step: above 80% of the budget `build-stage` clusters the release in parts, and clustering in one process estimated over

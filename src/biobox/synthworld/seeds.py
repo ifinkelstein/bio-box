@@ -31,7 +31,15 @@ The component paths in use (part of the output contract; renaming one changes ev
 - ``S6/prophage/<prophage_id>``: a prophage's evolution down its clade;
 - ``S6/crispr/<array_id>``: an array's repeat, leader, spacers and their acquisition and deletion; its Cas
   families use ``S3/family/<id>``, ``S4/family/<id>`` and ``S5/family/<id>`` with family numbers 900000 + 10 a
-  + k (`mobile`).
+  + k (`mobile`);
+- ``S7/placement``, ``S7/choose/<event>``, ``S7/<event>``: fusions, splits and NOGD (`fusions`);
+- ``S8/codes``: the code-4 clade and the code-25 genome; ``S8/place``: the genome of each call error;
+  ``S8/error/<id>``: an error's gene or gap and its content; ``S8/recode/<genome_id>``: a code-4 or code-25
+  genome's recoded codons (`assembly`);
+- ``S9/classes``: the assembly class of each genome; ``S9/genome/<genome_id>``: a genome's N50 target or
+  completeness, breaks, rotations, MAG dropout and contig orientations (`assembly`);
+- ``S10/roles``: which genomes are contaminated or duplicated; ``S10/contam/<genome_id>``: a host's contaminant
+  windows; ``S10/near/<genome_id>``: a near duplicate's substitutions (`sources`).
 """
 
 from __future__ import annotations

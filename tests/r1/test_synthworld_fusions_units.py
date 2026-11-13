@@ -227,6 +227,7 @@ def test_phage_world_preset_leaves_the_later_sections_out():
     """Adding a later stage's section to the preset must not change the phage world (and so S6's digest)."""
     p = backbone.load_preset("micro")
     q = mobile.phage_preset(p)
-    assert "fusions" not in q
-    before = {k: v for k, v in p.items() if k not in ("phages", "prophages", "crispr", "fusions")}
+    later = ("fusions", "callerr", "assembly", "contamination", "duplicates")     # S7 (session 6), S8-S10 (session 7)
+    assert not set(later) & set(q) and set(later) <= set(p)
+    before = {k: v for k, v in p.items() if k not in ("phages", "prophages", "crispr") + later}
     assert set(q) == set(before)
