@@ -12,18 +12,41 @@
 # ended DONE, launches the next batch through the same checks. A batch that ends FAILED (refusals, STOP, or more
 # than 5% of it not served; B00, the 7 phase-1 retries, may fail whole) stops the chain.
 # Progress: $W/logs/fetch.log (one line per genome); per batch $W/genomes/<B>/DONE or FAILED; $W/logs/disk.log.
-# Writes only under /tmp/if2453/c27.
+# Writes only under the work directory ($C27_WORK, default /tmp/if2453/c27).
+#
+# Parameters (environment; the defaults are what card C-27 ran). Card C-30:
+#   C27_WORK         work directory                      /tmp/if2453/c27
+#   C27_BIN          directory holding this script and c27_fetch.py   $C27_WORK/bin
+#   C27_UNIT_PREFIX  unit name is <prefix><kk>; the active-unit check looks at <prefix>*   c27-fetch-
+#   C27_CPU_QUOTA    systemd CPUQuota                    200%
+#   C27_IMAGE        .sif to run python from (empty: the host's python3, as C-27 did)
+#   C27_DATA_ROOT    data root; its STOP file is checked   /stor/scratch/Wilke/if2453/all-the-data
+#                    with C27_IMAGE set it is bound read-only into the image, so the fetch's own STOP check sees it
+# `--dry-run` as the first argument prints what launch would check and start, and runs, writes and starts nothing.
 set -u
-W=/tmp/if2453/c27
-BIN=$W/bin
-STOPF=/stor/scratch/Wilke/if2453/all-the-data/STOP
+DRY=0
+if [ "${1:-}" = "--dry-run" ]; then DRY=1; shift; fi
+W=${C27_WORK:-/tmp/if2453/c27}
+BIN=${C27_BIN:-$W/bin}
+PREFIX=${C27_UNIT_PREFIX:-c27-fetch-}
+CPUQ=${C27_CPU_QUOTA:-200%}
+IMAGE=${C27_IMAGE:-}
+DATA_ROOT=${C27_DATA_ROOT:-/stor/scratch/Wilke/if2453/all-the-data}
+STOPF=$DATA_ROOT/STOP
+if [ -n "$IMAGE" ]; then
+  BINDS="--bind $W"
+  case "$BIN" in "$W"/*) ;; *) BINDS="$BINDS --bind $BIN" ;; esac
+  PY="singularity exec --cleanenv $BINDS --bind $DATA_ROOT:$DATA_ROOT:ro $IMAGE python -I"
+else
+  PY="python3 -I"
+fi
 MIN_FREE_KB=244140625  # 250 GB = 250e9 bytes, in KiB
 CMD=$1
 B=$2
 CHAIN=${3:-}
 K=$(echo "$B" | sed 's/^B//')
-UNIT=c27-fetch-$K
-mkdir -p "$W/logs" "$W/genomes"
+UNIT=$PREFIX$K
+[ $DRY -eq 1 ] || mkdir -p "$W/logs" "$W/genomes"
 
 log() { echo "$(date -Is) $*" >> "$W/logs/launch.log"; echo "$*"; }
 disk() { echo "$(date -Is) $1 $B df_avail_kb=$(df -Pk /tmp | awk 'NR==2 {print $4}') du_genomes_b=$(du -sb "$W/genomes" | cut -f1)" >> "$W/logs/disk.log"; }
@@ -32,6 +55,15 @@ halt() { log "HALT $B: $*"; echo "$(date -Is) $B: $*" > "$W/genomes/HALT"; exit 
 case "$CMD" in
 launch)
   TSV=$W/batches/batch_$B.tsv
+  if [ $DRY -eq 1 ]; then
+    echo "batch $TSV"
+    echo "STOP $STOPF"
+    echo "active-check systemctl --user list-units --type=service --state=active --plain --no-legend '${PREFIX}*'"
+    echo "need $PY $BIN/c27_fetch.py need $TSV"
+    echo "fetch $PY $BIN/c27_fetch.py fetch $TSV $W/genomes/$B $W/logs/fetch.log"
+    echo "systemd-run --user --unit=$UNIT --collect --quiet -p MemoryMax=8G -p MemorySwapMax=0 -p CPUQuota=$CPUQ -p StandardOutput=append:$W/logs/$UNIT.out -p StandardError=append:$W/logs/$UNIT.out --setenv=C27_SELF=$UNIT nice -n 19 sh $BIN/c27_fetch.sh run $B $CHAIN"
+    exit 0
+  fi
   [ -f "$TSV" ] || { log "no batch $B: end of chain"; exit 0; }
   if [ -f "$W/genomes/$B/DONE" ]; then
     log "$B already DONE"
@@ -42,18 +74,19 @@ launch)
     exit 0
   fi
   [ ! -e "$STOPF" ] || halt "STOP present"
-  ACTIVE=$(systemctl --user list-units --type=service --state=active --plain --no-legend 'c27-fetch-*' | awk '{print $1}' | grep -v "^${C27_SELF:-none}.service$")
+  ACTIVE=$(systemctl --user list-units --type=service --state=active --plain --no-legend "${PREFIX}*" | awk '{print $1}' | grep -v "^${C27_SELF:-none}.service$")
   [ -z "$ACTIVE" ] || halt "already active: $ACTIVE"
   AVAIL_KB=$(df -Pk /tmp | awk 'NR==2 {print $4}')
-  NEED_KB=$(python3 -I "$BIN/c27_fetch.py" need "$TSV")
+  NEED_KB=$($PY "$BIN/c27_fetch.py" need "$TSV")
   [ $((AVAIL_KB - NEED_KB)) -ge $MIN_FREE_KB ] || halt "/tmp would keep $((AVAIL_KB - NEED_KB)) KiB free, under 250 GB"
   rm -f "$W/genomes/HALT"
   systemctl --user reset-failed "$UNIT" 2>/dev/null
   log "launch $UNIT for $B: avail_kb=$AVAIL_KB need_kb=$NEED_KB chain=$CHAIN"
   exec systemd-run --user --unit="$UNIT" --collect --quiet \
-    -p MemoryMax=8G -p MemorySwapMax=0 -p CPUQuota=200% \
+    -p MemoryMax=8G -p MemorySwapMax=0 -p CPUQuota="$CPUQ" \
     -p StandardOutput=append:$W/logs/$UNIT.out -p StandardError=append:$W/logs/$UNIT.out \
-    --setenv=C27_SELF="$UNIT" --setenv=XDG_RUNTIME_DIR="${XDG_RUNTIME_DIR:-/run/user/$(id -u)}" \
+    --setenv=C27_SELF="$UNIT" --setenv=C27_WORK="$W" --setenv=C27_BIN="$BIN" --setenv=C27_UNIT_PREFIX="$PREFIX" \
+    --setenv=C27_CPU_QUOTA="$CPUQ" --setenv=C27_IMAGE="$IMAGE" --setenv=C27_DATA_ROOT="$DATA_ROOT" --setenv=XDG_RUNTIME_DIR="${XDG_RUNTIME_DIR:-/run/user/$(id -u)}" \
     --setenv=DBUS_SESSION_BUS_ADDRESS="${DBUS_SESSION_BUS_ADDRESS:-unix:path=/run/user/$(id -u)/bus}" \
     nice -n 19 sh "$BIN/c27_fetch.sh" run "$B" "$CHAIN"
   ;;
@@ -61,7 +94,7 @@ run)
   FRAC=0.05
   [ "$B" != B00 ] || FRAC=1.0
   disk start
-  python3 -I "$BIN/c27_fetch.py" fetch "$W/batches/batch_$B.tsv" "$W/genomes/$B" "$W/logs/fetch.log" --max-fail-frac $FRAC
+  $PY "$BIN/c27_fetch.py" fetch "$W/batches/batch_$B.tsv" "$W/genomes/$B" "$W/logs/fetch.log" --max-fail-frac $FRAC
   RC=$?
   disk end
   echo "$(date -Is) $B exit $RC" >> "$W/logs/launch.log"
