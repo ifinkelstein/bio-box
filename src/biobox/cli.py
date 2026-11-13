@@ -26,6 +26,11 @@
                 [--export gff] [--figure [--figure-rows 60]] [--release R] [--runs DIR]
                 (card W-25, biobox.search.flanks; --figure: card W-27)
     bio-box export proteins --root R --release R [--out FILE]
+    bio-box results archive <run> --profile P [--with PATH ...] [--runs DIR] [--results DIR]
+    bio-box results flush --profile P [--results DIR] [--below-floor]
+    bio-box results list --profile P [--results DIR] [--json]
+    bio-box results get RUN_ID --out DIR --profile P [--results DIR]
+                (card W-28, DEC-33, biobox.search.results)
     bio-box run-step --profile P --root R --stage S --step NAME [--nice monolithic|fanout] [--threads N] -- CMD ...
     bio-box release define --root R --release R1 --stages S0,S1 [--out DIR]
     bio-box release cluster|tokens|postings|dim|manifest|catalog --root R --release R1 [--stages S0,S1]
@@ -122,6 +127,16 @@ and prints to stderr the row groups each statement read.
 Every command that writes an output file given by `--out` (and `search hmm`, for each file in its DIR) prints
 to stderr one line per file: `wrote PATH: N rows|sequences|records` (`N tables, M rows` for a directory of
 locus tables), card W-23.
+
+`results` (card W-28, DEC-33; design in `biobox.search.results`) keeps a closed run on the profile's durable
+storage. `archive` writes the run's record and outputs as one deterministic tar, with its manifest line, into a
+spool under the profile's `tmp` (outputs, such as the `search hmm --out DIR`, are named with `--with`: nothing on
+disk links a run to them; a DIR whose `recipe.yaml` is not the run's is refused). `flush` moves the spooled runs to the results area
+(`<durable>/results`, or `--results` inside `durable`) as one bundle, only once the bundle is at least the
+profile's `small_file_floor_bytes` (AGENTS §7.3; `--below-floor` is for the PI's agreement only). Nothing is
+overwritten or deleted there: the same run with the same sha256 is a no-op, with another a refusal (exit 2).
+`list` reads only manifest lines; `get RUN_ID --out DIR` restores a run and checks every sha256 (exit 1 when one
+differs). They need a profile (`--profile`, else $BIOBOX_PROFILE).
 """
 
 from __future__ import annotations
@@ -1453,6 +1468,94 @@ def _releases(a) -> int:
     return 0
 
 
+def _spool_note(where) -> str:
+    from biobox.search import results
+
+    lines = results.spooled(where.spool)
+    total = sum(r["size"] for r in lines)
+    return (f"spool {where.spool}: {len(lines)} runs, {total} bytes; `bio-box results flush` moves them to "
+            f"{where.area} as one bundle once it reaches {where.floor} bytes (profile small_file_floor_bytes, "
+            "AGENTS 7.3)")
+
+
+def _results(a) -> int:
+    """`bio-box results archive|flush|list|get` (card W-28, DEC-33; `biobox.search.results`). 2: refused, nothing
+    written; 1: an archive or file whose sha256 is not the one recorded."""
+    from biobox import profile
+    from biobox.search import results
+
+    def refuse(msg) -> int:
+        print(f"refused: {msg}", file=sys.stderr)
+        return 2
+
+    path = a.profile or os.environ.get("BIOBOX_PROFILE")
+    if not path:
+        return refuse("results needs --profile (or $BIOBOX_PROFILE): the spool is under the profile's tmp and the "
+                      "results area on its durable storage")
+    head = "\t".join([*results.COLUMNS, "where"])
+    try:
+        where = results.places(profile.load(path), Path(a.results) if a.results else None)
+        if a.action == "archive":
+            if not a.run:
+                return refuse("results archive needs the run: its directory, or its run id in --runs")
+            line, state = results.archive(_run_path(a, a.run), [Path(p) for p in a.with_], where)
+            if line["outputs"] == "-":
+                print(f"note: run {line['run_id']} is archived without outputs: give its `search hmm --out` DIR and "
+                      "any other output with --with (nothing on disk links a run to its outputs)", file=sys.stderr)
+            if state == "same":
+                print(f"results archive: run {line['run_id']} is already kept, sha256 {line['sha256']}, in "
+                      f"{line['where']}; nothing written", file=sys.stderr)
+            else:
+                _wrote(line["where"], f"{line['n_files']} files, {line['size']} bytes")
+            _print([head, "\t".join(str(line[c]) for c in [*results.COLUMNS, "where"])])
+            print(_spool_note(where), file=sys.stderr)
+            return 0
+        if a.action == "flush":
+            r = results.flush(where, below_floor=a.below_floor)
+            if r["dropped"]:
+                print(f"note: {r['dropped']} spooled runs were in a bundle already (a flush stopped after its "
+                      "rename); their spool entries are removed", file=sys.stderr)
+            if r["state"] == "empty":
+                print(f"results flush: the spool {where.spool} holds no runs; nothing written", file=sys.stderr)
+            elif r["state"] == "below_floor":
+                print(f"results flush: the spool's {r['runs']} runs make a bundle of {r['size']} bytes, under the "
+                      f"floor of {where.floor} bytes (profile small_file_floor_bytes; AGENTS 7.3: no file under 64 MB "
+                      f"on /stor); nothing written to {where.area}, the runs stay spooled. Flush again when more "
+                      "runs are spooled; --below-floor writes it anyway, only with the PI's agreement",
+                      file=sys.stderr)
+            else:
+                if r["size"] < where.floor:
+                    print(f"warning: {r['bundle']} is {r['size']} bytes, under the floor of {where.floor} "
+                          "(--below-floor): AGENTS 7.3 needs the PI's agreement for it", file=sys.stderr)
+                if r["state"] == "same":
+                    print(f"results flush: {r['bundle']} is there already with the same sha256; nothing written",
+                          file=sys.stderr)
+                _print([f"{r['bundle']}\t{r['runs']} runs\t{r['size']} bytes\tsha256 {r['sha256']}"])
+            return 0
+        if a.action == "list":
+            rows = results.listing(where)
+            if a.json:
+                _print([json.dumps(r, sort_keys=True) for r in rows])
+            else:
+                _print([head] + ["\t".join(str(r[c]) for c in [*results.COLUMNS, "where"]) for r in rows])
+            print(_spool_note(where), file=sys.stderr)
+            for p in results.partials(where.area):
+                print(f"note: {p} is the temporary file of a flush that did not finish; it is not a result and no "
+                      "command reads it. Nothing under /stor is removed by bio-box: ask the PI", file=sys.stderr)
+            return 0
+        if not a.run or not a.out:
+            return refuse("results get needs the run id and --out DIR")
+        line, n = results.get(where, a.run, Path(a.out))
+        _wrote(a.out, f"{n} files")
+        _print([head, "\t".join(str(line[c]) for c in [*results.COLUMNS, "where"])])
+        return 0
+    except results.ResultsError as e:
+        return refuse(e)
+    except results.Corrupt as e:
+        print(f"corrupt: {e}", file=sys.stderr)
+        return 1
+
+
 def _run_step(a) -> int:
     from biobox import profile, runstep
 
@@ -1973,6 +2076,25 @@ def _main(argv: list[str] | None = None) -> int:
     n.add_argument("--runs", help=RUNS_HELP)
     n.add_argument("--pack-dir", help=PACK_DIR_HELP)
     n.add_argument("--profile", help=PROFILE_DIRS_HELP)
+    rr = sub.add_parser("results", help="keep a closed run on the profile's durable storage (card W-28, DEC-33)")
+    rr.add_argument("action", choices=["archive", "flush", "list", "get"],
+                    help="archive: spool the run's archive; flush: move the spool to the results area as one bundle "
+                         "of at least small_file_floor_bytes; list: every kept run; get: restore one")
+    rr.add_argument("run", nargs="?", help="archive: the run's directory, or its run id in --runs; get: its run id")
+    rr.add_argument("--profile", help="host profile YAML (default: $BIOBOX_PROFILE): the spool is <tmp>/results/spool, "
+                                      "the results area <durable>/results")
+    rr.add_argument("--runs", help=RUNS_HELP)
+    rr.add_argument("--results", help="the results area, inside the profile's durable storage (default: "
+                                      "<durable>/results)")
+    rr.add_argument("--with", dest="with_", action="append", default=[], metavar="PATH",
+                    help="archive: an output of the run to keep with it, a file or a directory (an `nbr flanks` DIR, "
+                         "a hits.tsv), and the run's `search hmm --out` DIR; repeatable. Nothing on disk links a run "
+                         "to its outputs, so name each one; a DIR whose recipe.yaml is not the run's is refused")
+    rr.add_argument("--out", help="get: a new or empty directory to restore the run into")
+    rr.add_argument("--below-floor", action="store_true",
+                    help="flush: write the bundle even when it is smaller than the profile's small_file_floor_bytes. "
+                         "This breaks AGENTS.md 7.3 (no file under 64 MB on /stor): only with the PI's agreement")
+    rr.add_argument("--json", action="store_true", help="list: one JSON object per run")
     r = sub.add_parser("run-step", usage="bio-box run-step --profile P --root R --stage S --step NAME "
                                          "[--nice monolithic|fanout] [--threads N] -- CMD [ARGS ...]")
     r.add_argument("--profile", required=True, help="host profile YAML (profiles/wilkcomp02.yaml)")
@@ -2079,7 +2201,7 @@ def _main(argv: list[str] | None = None) -> int:
         a.command = command
     return {"pack": _pack, "search": _search, "nbr": _nbr, "find": _find, "export": _export, "run-step": _run_step,
             "release": _release, "stage": _stage, "build-stage": _build_stage, "releases": _releases,
-            "seq": _seq, "sql": _sql}[a.cmd](a)
+            "seq": _seq, "sql": _sql, "results": _results}[a.cmd](a)
 
 
 if __name__ == "__main__":
