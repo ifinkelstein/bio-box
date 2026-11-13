@@ -271,7 +271,9 @@ def test_producer_names_infernal_and_the_library(world, monkeypatch):
     monkeypatch.setattr(provenance, "refdb_libraries", lambda repo=None: [{**rfam, "sha256": sha}])
     assert nc.library_version(LIB) == "15.1"
     assert nc.producer(LIB, SET) == f"infernal-{infernal}-rfam-15.1-sha{set_sha[:12]}-igr200nt-clan1"
-    assert nc.producer(LIB) == f"infernal-{infernal}-rfam-15.1-prok1-igr200nt-clan1"  # the frozen set by default
+    # the frozen set by default: prok-2 since card E-09 (DEC-30); prok-1 keeps its name (card E-07's default)
+    assert nc.producer(LIB) == f"infernal-{infernal}-rfam-15.1-prok2-igr200nt-clan1"
+    assert nc.producer(LIB, "prok-1") == f"infernal-{infernal}-rfam-15.1-prok1-igr200nt-clan1"
 
 
 @pytest.mark.covers("C-08", "L-01")

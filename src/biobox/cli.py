@@ -46,14 +46,14 @@
     bio-box stage domains plan --root R --stage S --library L --library-version V --hmm F --cutoff C --shard-residues N
     bio-box stage domains shard --root R --stage S --library L --library-version V --hmm F --shard K --cpus N --tmp D
     bio-box stage domains merge --root R --stage S --library L --library-version V --tmp D
-    bio-box stage ncrna --root R --stage S --cm Rfam.cm.gz [--ncrna-set prok-1] --cpus N [--tmp D] [--seq-stages S0,S1]
+    bio-box stage ncrna --root R --stage S --cm Rfam.cm.gz [--ncrna-set prok-2] --cpus N [--tmp D] [--seq-stages S0,S1]
                 [--out DIR]
     bio-box stage ncrna plan --root R --stage S --cm F [--ncrna-set SET] --scan-bases N [--tmp D]
     bio-box stage ncrna shard --root R --stage S --cm F [--ncrna-set SET] --shard K --cpus N --tmp D [--seq-stages S0,S1]
     bio-box stage ncrna merge --root R --stage S --cm F [--ncrna-set SET] --tmp D
     bio-box build-stage --profile P --root R --stage S --release R1 [--stages S0,S1] --genomes genomes.json
                 --objects objects.json [--library NAME VERSION HMM CUTOFF ...] [--tmp D] [--threads N]
-                [--scan-jobs J] [--scan-cpus C] [--cluster-parts N] [--ncrna-cm Rfam.cm.gz [--ncrna-set prok-1]]
+                [--scan-jobs J] [--scan-cpus C] [--cluster-parts N] [--ncrna-cm Rfam.cm.gz [--ncrna-set prok-2]]
 
 `build-stage` (card C-04, `biobox.stage`) runs every `stage` step and then every `release` step of
 one stage and its release, each as a `run-step`; a second call skips what is done.
@@ -2034,8 +2034,8 @@ def _main(argv: list[str] | None = None) -> int:
     st.add_argument("--cutoff", help="domains: gathering, trusted, noise or none")
     st.add_argument("--cpus", type=int, default=1, help="domains: hmmsearch threads; ncrna: cmsearch threads (--cpu)")
     st.add_argument("--cm", help="ncrna: the Rfam covariance-model library (.cm or .cm.gz; card E-01)")
-    st.add_argument("--ncrna-set", default="prok-1", help="ncrna: the model set, a frozen set's name (prok-1) or a "
-                                                          "set file (card E-07)")
+    st.add_argument("--ncrna-set", default="prok-2", help="ncrna: the model set, a frozen set's name (prok-2, the "
+                                                          "default, DEC-30; prok-1) or a set file (card E-07)")
     st.add_argument("--shard-residues", type=int, help="domains plan: residues per shard at most")
     st.add_argument("--scan-bases", type=int, help="ncrna plan: genome bases per shard at most")
     st.add_argument("--shard", type=int, help="domains or ncrna shard: the shard to scan; ingest pass1: the pass-1 "
@@ -2068,7 +2068,8 @@ def _main(argv: list[str] | None = None) -> int:
                                                       "process is estimated over 80%% of the budget, cut by it)")
     bs.add_argument("--ncrna-cm", help="the Rfam library (Rfam.cm.gz): run the ncRNA producer in the features slot and "
                                        "build IGRs, tapes, tokens and postings of both producers (card E-07)")
-    bs.add_argument("--ncrna-set", default="prok-1", help="the ncRNA model set: a frozen set's name or a set file")
+    bs.add_argument("--ncrna-set", default="prok-2", help="the ncRNA model set: a frozen set's name (prok-2, the "
+                                                          "default, DEC-30; prok-1) or a set file")
     a = p.parse_args(argv)
     if a.cmd == "search" and a.action == "run" and not a.release:
         p.error("search run needs --release")
