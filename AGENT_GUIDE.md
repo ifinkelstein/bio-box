@@ -90,9 +90,10 @@ postings and `partners_of` families are complete only after cards B-21 and B-39 
 
 Placeholders (write them out in every call): `$SCR` your scratch; `$TREE` a checkout of current code on the pod
 (mirror one from the laptop with `sh scripts/pod_pytest.sh <task> tests/r0/test_runbook.py`, which copies the
-tree to `/tmp/if2453/ci/<task>`); `$IMAGE` the `.sif` (the trials used `bio-box-test_74b3e05.sif`, sha256
-`c30be58557d756095346308c58cc3098af4bbe66404f67ab87be3f64f147c898`, with the source bound in, RUNBOOK §11);
-`$DIGEST` `sha256:` plus `sha256sum "$IMAGE"`; `$RUN` a run id.
+tree to `/tmp/if2453/ci/<task>`); `$IMAGE` the `.sif`, `$HOME/bio-box/images/bio-box_64f1bf0.sif`, the image
+built from `main` with the locked environment and the source bound in (RUNBOOK §0 and §11; the trials below used
+the older `bio-box-test_74b3e05.sif` with a dependency directory for numpy); `$DIGEST` `sha256:` plus
+`sha256sum "$IMAGE"` (RUNBOOK §0 gives it); `$RUN` a run id.
 
 Once, write `$SCR/img.sh` (runs one short command in the image, capped; the binds of [T2]):
 
@@ -101,7 +102,7 @@ Once, write `$SCR/img.sh` (runs one short command in the image, capped; the bind
 IMAGE=/path/to/the.sif                      # $IMAGE
 TREE=/tmp/if2453/ci/<task>                  # $TREE; the image runs this source
 exec systemd-run --user --scope --quiet -p MemoryMax=16G -p MemorySwapMax=0 -p CPUQuota=400% nice -n 19 \
-  singularity exec --cleanenv --env PYTHONPATH="$TREE/src:/tmp/if2453/pilot_s1/pydeps" --env OMP_NUM_THREADS=2 \
+  singularity exec --cleanenv --env PYTHONPATH="$TREE/src" --env OMP_NUM_THREADS=2 \
   --bind /tmp/if2453 --bind /tmp/if2453/r10:/tmp/if2453/r10:ro \
   --bind /stor/scratch/Wilke/if2453/all-the-data/l0/refdb:/refdb:ro --bind /sys/fs/cgroup:/sys/fs/cgroup:ro \
   "$IMAGE" "$@"
@@ -152,7 +153,7 @@ finds the pack built write nothing into it (card W-22).
 **4. Run** in a `pod_run.sh` unit (4 CPUs, 32G; one long line; flags in `scripts/pod_run.sh` and `_hmm_parser`):
 
 ```bash
-bash "$TREE/scripts/pod_run.sh" --profile "$TREE/profiles/wilkcomp02.yaml" --image "$IMAGE" --digest "$DIGEST" --mem 32G --threads 4 --bind /tmp/if2453 --bind /tmp/if2453/r10:/tmp/if2453/r10:ro --env PYTHONPATH="$TREE/src:/tmp/if2453/pilot_s1/pydeps" --log "$SCR/logs/qrnap-hmm-1.log" qrnap-hmm-1 search hmm --root /tmp/if2453/r10/root --release rN.1 --hmm "$SCR/RNA_pol.hmm" --bits 30 --neighbors 5 --positive NC_001604:3170-5822 --out "$SCR/out/rnap" --profile "$TREE/profiles/wilkcomp02.yaml" --cpus 4 --mem-gb 30
+bash "$TREE/scripts/pod_run.sh" --profile "$TREE/profiles/wilkcomp02.yaml" --image "$IMAGE" --digest "$DIGEST" --mem 32G --threads 4 --bind /tmp/if2453 --bind /tmp/if2453/r10:/tmp/if2453/r10:ro --env PYTHONPATH="$TREE/src" --log "$SCR/logs/qrnap-hmm-1.log" qrnap-hmm-1 search hmm --root /tmp/if2453/r10/root --release rN.1 --hmm "$SCR/RNA_pol.hmm" --bits 30 --neighbors 5 --positive NC_001604:3170-5822 --out "$SCR/out/rnap" --profile "$TREE/profiles/wilkcomp02.yaml" --cpus 4 --mem-gb 30
 ```
 
 `--out` must be new or empty and outside the root; `--model NAME` picks one model of a multi-model file.
@@ -453,5 +454,5 @@ exist, and does not yet (2026-11-12): until then the image cannot start with the
 restore the same way (`results list`, `results get "$RUN" --out "$SCR/back"`):
 
 ```bash
-bash "$TREE/scripts/pod_run.sh" --profile "$TREE/profiles/wilkcomp02.yaml" --image "$IMAGE" --digest "$DIGEST" --mem 8G --threads 1 --bind /tmp/if2453 --bind /stor/work/Wilke/if2453/all-the-data:/stor/work/Wilke/if2453/all-the-data:ro --env PYTHONPATH="$TREE/src:/tmp/if2453/pilot_s1/pydeps" --log "$SCR/logs/qrnap-keep-1.log" qrnap-keep-1 results archive "$RUN" --profile "$TREE/profiles/wilkcomp02.yaml" --under "$SCR/out"
+bash "$TREE/scripts/pod_run.sh" --profile "$TREE/profiles/wilkcomp02.yaml" --image "$IMAGE" --digest "$DIGEST" --mem 8G --threads 1 --bind /tmp/if2453 --bind /stor/work/Wilke/if2453/all-the-data:/stor/work/Wilke/if2453/all-the-data:ro --env PYTHONPATH="$TREE/src" --log "$SCR/logs/qrnap-keep-1.log" qrnap-keep-1 results archive "$RUN" --profile "$TREE/profiles/wilkcomp02.yaml" --under "$SCR/out"
 ```

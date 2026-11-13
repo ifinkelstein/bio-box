@@ -25,10 +25,9 @@ Paste this once per shell. Lines marked `real:` give the value for a real build.
 
 ```bash
 export TREE=/tmp/if2453/ci/C-06                      # real: the checkout that `git push pod` updated
-export IMAGE="$HOME/bio-box/images/bio-box-test_74b3e05.sif"
-export DIGEST=sha256:c30be58557d756095346308c58cc3098af4bbe66404f67ab87be3f64f147c898
-export PYDEPS=/tmp/if2453/pilot_s1/pydeps
-export PYTHONPATH_POD="$TREE/src:$PYDEPS"            # the image is old: the source is bound in (section 11)
+export IMAGE="$HOME/bio-box/images/bio-box_64f1bf0.sif"
+export DIGEST=sha256:cb7353f85316981be5268c2212100322b5fbf1086c32b07e2f9b47802b6afba3
+export PYTHONPATH_POD="$TREE/src"                    # the tree is newer than the image: its source is bound in (section 11)
 export PROFILE=/tmp/if2453/c06/profile.yaml          # real: "$TREE/profiles/wilkcomp02.yaml"
 export MEM=8G                                        # real: 200G (the profile's mem_scope)
 export WORK=/tmp/if2453/c06                          # your scratch directory for inputs and outputs
@@ -43,6 +42,24 @@ biopy() { "${SCOPE[@]}" "${SING[@]}" "$IMAGE" python "$@"; }
 
 `bio-box` and `biopy` run a short command in its own capped scope at nice 19 (AGENTS 7.2). Do not
 use them for a long job: use `scripts/pod_run.sh` (sections 2 and 7).
+
+The image (card C-29). `bio-box_64f1bf0.sif` is the runtime image built from `main` at `64f1bf0`,
+pulled by digest from `ghcr.io/ifinkelstein/bio-box@sha256:2faf4b8de020430d3c5c9dace5569445fdb0eb0057088972793874a799e25bea`.
+`DIGEST` is the sha256 of the `.sif` file, which is what `pod_run.sh --digest` compares (measured with
+`sha256sum` on the pod, 2026-11-13). Its test image, `bio-box-test_64f1bf0.sif`, runs the test suite
+(section 8). The image holds the locked Python environment (`uv.lock`: numpy, matplotlib, zombi2 and
+the rest), MMseqs2 18.8cc5c, HMMER 3.4, Infernal 1.1.5 and skani 0.4.0. Only the tree's `src` goes on
+the path: a dependency directory put before it would shadow the locked packages. Both `.sif` files
+are in `$HOME/bio-box/images/` and in `/tmp/if2453/images/`.
+
+Until card C-29 the pod ran everything in the test image `bio-box-test_74b3e05.sif` (built
+2026-10-30; sha256 `c30be58557d756095346308c58cc3098af4bbe66404f67ab87be3f64f147c898`), which has
+no numpy: the dependency directory `/tmp/if2453/pilot_s1/pydeps` supplied numpy 2.5.4, the
+version `uv.lock` pins. The 50 Gbp build (unit `r50-driver`) runs in that image until it is done: a
+release must not mix image digests in its run records, so do not change its driver, its tree or its
+image while it runs. The next build takes the new image in its driver
+(`scripts/stress/build_stage_pod/r50_driver.sh` or its copy): set `IMAGE` and `DIGEST` to the two
+values above, and `PYPATH` to `$TREE/src` alone, with no `pydeps` directory after it.
 
 ## 1. Before you start
 
@@ -784,6 +801,49 @@ per shard; it fails if any shard fails. The whole suite takes about 13 minutes i
 about 3 with 8 shards (the script's header, not re-measured here). An exit code 5 with `no tests
 ran` only means the selection matched nothing.
 
+The image is the test image built from `main` at `64f1bf0`,
+`$HOME/bio-box/images/bio-box-test_64f1bf0.sif` (sha256 of the file
+`3d77df6b7f0b894b5371e42eaf077dfda09ebc97b1f78f2ed1d2cfc5fa9fbda4`, pulled from
+`ghcr.io/ifinkelstein/bio-box-test@sha256:cb7cd0f1e7146350576e4658de39290647d1cbba39494ce81ba072f3041707bb`),
+with the tree's `src` alone on `PYTHONPATH` (section 0). `BIOBOX_POD_IMAGE` names another image and
+`BIOBOX_POD_PYDEPS` adds directories after `src`, for an image that lacks a package; give neither
+for the image above. A suite that must survive a dropped connection runs as detached units on the
+pod: sync the tree with the first command above, then, on the pod,
+`bash "$TREE/scripts/orchestrator/detached_suite.sh" <name> 2` (the script's header says how to
+poll it).
+
+The image check. Before a new image is used, run its own suite on the pod: the source and tests
+built into the image (`/opt/bio-box`), no `PYTHONPATH`, as the `image` workflow runs it on Actions
+(`.github/workflows/image.yml`). Run on the pod, one suite at a time, after checking the thread cap
+(section 1):
+
+```bash
+BIOBOX_POD_IMAGE="$HOME/bio-box/images/bio-box-test_64f1bf0.sif" BIOBOX_PEER_MANIFEST=/tmp/if2453/ci-peer/right.json bash "$TREE/scripts/orchestrator/detached_suite.sh" --own image-64f1bf0 2
+systemctl --user is-active ci-image-64f1bf0-0 ci-image-64f1bf0-1
+tail -n 1 /tmp/if2453/ci-tmp/image-64f1bf0-detached/log.0 /tmp/if2453/ci-tmp/image-64f1bf0-detached/log.1
+```
+
+Add the two summary lines and compare with the Actions run that built the image. For `64f1bf0`:
+Actions ran 1,720 passed, 22 skipped (measured, run 43380434543); the pod ran 1,722 passed, 20
+skipped, no failure (measured, wilkcomp02, 2026-11-13, card C-29: shards of 894 passed, 14 skipped
+in 53 min and 828 passed, 6 skipped in 80 min, beside the 50 Gbp build). The two that pass only
+here are `test_d05_cross_host_manifest_hash_equal` (`tests/r3/test_cross_host.py`: the peer file
+was given, and the fixture's manifest hash was `f6126b00d45e9284d2799c3a699c992c` on both hosts)
+and `test_c07_detects_the_real_cap_it_runs_under` (`tests/r1/test_runstep_units.py`: it needs a
+cgroup memory cap, which a unit on the pod has and `docker run` on Actions has not). That pair is
+derived: the Actions log prints counts, not skip reasons.
+`BIOBOX_PEER_MANIFEST` is a file holding the `cross-host` workflow's manifest hash for the commit
+(card D-04, `tests/r3/test_cross_host.py` says how to make it); without it that test skips.
+
+The tree's suite in the new image. `plan/task-cards` with card C-29, in `bio-box-test_64f1bf0.sif`
+with the tree's `src` alone on the path: 1,740 passed, 19 skipped, no failure; the same tree in
+`bio-box-test_74b3e05.sif` with `/tmp/if2453/pilot_s1/pydeps` after `src`: 1,696 passed, 63
+skipped (both measured, wilkcomp02, 2026-11-13, card C-29, `detached_suite.sh` with 2 shards). The
+44 that skipped in the old image and pass in the new are the tests that need zombi2 (32), matplotlib
+(8), samtools (3) or polars (1), none of which the old image has; no test changed outcome otherwise.
+The old image's only Python package from the dependency directory was numpy 2.5.4, the version the
+new image holds; every package in both has the same version in both.
+
 ## 9. Clean up /tmp safely
 
 What is ours, all under `/tmp/if2453/`:
@@ -912,7 +972,7 @@ exemption; the fixture's clustering is far under 300 CPU-minutes). Appendix B li
 | Shard size is Pfam's | shards are cut at 80% of the budget at Pfam's rate (7.96 CPU-minutes per million residues, measured in C-10). A library more than 1.25 times slower per residue than that (derived: 1 / 0.8; above 9.95 CPU-minutes per million residues, derived) passes 300 CPU-minutes per shard, and the run record says `over_cpu_budget`. Lower `--scan-cpus` does not help, since the budget counts CPU-minutes | C-11, C-13 |
 | `pod_run.sh` CPU quota | the unit's quota is `--threads` of `pod_run.sh` (default the night cap, 56), fixed at launch, whatever `--scan-jobs` × `--scan-cpus` is. By day it is above the day cap: the day cap is held by `build-stage` and `run-step`, not by the quota. A `run-step` launched alone keeps the thread count it chose at its start until it ends (at most 300 CPU-minutes) | C-07, C-11, C-12 |
 | What the allowance sees | each reading is 5 s of CPU by owner, taken once per launch: work of ours that starts after a shard is launched is subtracted only at the next launch (a shard runs about an hour), a process born and ended inside the window is not seen, and `run-step` does not refuse `--threads` above the allowance (only above the cap). So the total can pass the cap until the build's next launch; leave a margin (section 2). The reading costs 5 s of wall time per launch and per `run-step` | C-28 |
-| The image on the pod is old | the pod has the test image `bio-box-test_74b3e05.sif`, not an image built from the current source. The current source is bound in with `PYTHONPATH` (section 0) | 0-02 |
+| The tree is newer than the image | the images on the pod are built from `main` at `64f1bf0` (2026-11-13), which holds the locked environment; `plan/task-cards` has cards since, so the tree's source is bound in with `PYTHONPATH`, with no dependency directory (section 0). A new image is checked with its own suite before use (section 8). The 50 Gbp build (`r50-driver`) keeps the old image `bio-box-test_74b3e05.sif` until it is done (section 0) | 0-02, C-29 |
 | `rL.*` releases on `/stor` | they are in the pre-B-17 layout: current readers and `verify_manifest` may not read them. `rL.1` and `rL.2` also fail verification on one file, `l0/l0_manifest.parquet` | B-17, B-22 |
 | Search packs and runs inside an old root | a root written before card W-03 may hold `search_pack/` and `search/` (the pack and runs were then written into the root). Nothing reads or writes them now; the manifest leaves them out (`catalog.EXCLUDED_TREES`). Build the pack again into the pack directory (section 7) | W-03, W-13 |
 | No detached search in a unit | `search run` without `--wait` in a `pod_run.sh` unit is refused (exit 2): the unit would stop the detached runner when the command returns (section 7). Use `--wait`; `search status` and `search cancel` work on a `--wait` run from another shell | W-13 |
@@ -936,6 +996,11 @@ Run on 2026-11-10 between 07:25 and 07:45 (pod local time), in `/tmp/if2453/c06`
 `c06-*`, the scratch profile of Appendix B, and the image of section 0. "Last line" is the last line
 the command printed. A command that prints nothing has `(no output)`. Variables were set as in
 section 0.
+
+Rows dated before 2026-11-13 ran in the image that section 0 named then, `bio-box-test_74b3e05.sif`,
+with the dependency directory `/tmp/if2453/pilot_s1/pydeps` after the tree's `src`. The rows marked
+C-29 were run on 2026-11-13 by card C-29 with the images of sections 0 and 8, the tree of the C-29
+branch (`TREE=/tmp/if2453/ci/C-29`) and the real profile, in units named `c29-*` and `ci-*`.
 
 The rows of section 7, and the rows marked W-13, were run on 2026-11-10 between 15:35 and 15:42 (pod
 local time) by card W-13, in `/tmp/if2453/w13` (`WORK`; `ROOT=$WORK/root`, `BBTMP=$WORK/tmp`,
@@ -965,7 +1030,9 @@ its outputs in `/tmp/if2453/w25` (bound read-only), with two scratch profiles: t
 | 1 | `systemctl --user list-units --type=service --type=scope --no-pager` | 2026-11-10 | `To show all installed unit files use 'systemctl list-unit-files'.` |
 | 1 | `df -h /tmp` | 2026-11-10 | `/dev/sdc2       1.1T  165G  879G  16% /` |
 | 1 | `biopy -m biobox.doctor --profile "$PROFILE"` | 2026-11-10 | `}` (the JSON shows `"cgroup_memory_max": "8 GiB"`) |
+| 1 | C-29: `biopy -m biobox.doctor --profile "$PROFILE"` in `bio-box_64f1bf0.sif` | 2026-11-13 | `}` (the JSON shows `"cgroup_memory_max": "8 GiB"`, `mmseqs` `18.8cc5c`, `HMMER 3.4`, `INFERNAL 1.1.5`, `pyrodigal` `3.7.1`) |
 | 2 | `pod_run.sh ... c06-build build-stage ...` | 2026-11-10 | `pod_run: log /tmp/if2453/c06/tmp/logs/c06-build.log; watch: systemctl --user status c06-build` (the first launch ran without `--digest`; the same command with `--digest` ran as `c06-rebuild`, below) |
+| 2 | C-29: `pod_run.sh --profile "$PROFILE" --image "$IMAGE" --digest "$DIGEST" --mem 2G --threads 1 ... c29-digest --help` (section 0's new image and digest) | 2026-11-13 | `pod_run: c29-digest exited 0` (before it, `pod_run: image ... sha256:cb7353f8...afba3` at launch) |
 | 2 | `systemctl --user status c06-build --no-pager` | 2026-11-10 | `└─2081436 /opt/bio-box/.venv/bin/python -m biobox.cli stage inputs --root /tmp/if2453/c06/root --gene-call-version pyrodigal-3.7.1-gv-0.3.2-p2 --stage S0 --genomes /tmp/if2453/c06/inputs/genomes-S0.json` |
 | 2 | `tail -n 3 "$BBTMP/logs/c06-build.log"` | 2026-11-10 | `pod_run: c06-build exited 0` |
 | 2 | `grep "steps done" "$BBTMP/logs/c06-build.log"` | 2026-11-10 | `build-stage: stage S0 and release rC6.1: all 13 steps done` (run on the `c06-rebuild` log) |
@@ -1018,6 +1085,9 @@ its outputs in `/tmp/if2453/w25` (bound read-only), with two scratch profiles: t
 | 8 | `sh scripts/pod_pytest.sh C-06 tests/r0 -k nothing_matches_this` (laptop) | 2026-11-10 | `140 deselected in 1.09s` (exit 5: nothing selected) |
 | 8 | `sh scripts/pod_pytest.sh C-06 tests/r0/test_runbook.py` (laptop) | 2026-11-10 | `20 passed in 3.48s` |
 | 8 | `sh scripts/pod_pytest.sh C-06 --shards 8` (laptop) | 2026-11-10 | `shard 7: 121 passed, 8 xfailed in 509.90s (0:08:29)` (eight shard lines, no failure; 1023 passed, 10 skipped, 8 xfailed in all) |
+| 8 | C-29: the image check, `detached_suite.sh --own image-64f1bf0 2` (pod) | 2026-11-13 | the full suite ran through a script with the same units, binds and test split before `--own` was added to `detached_suite.sh`: shard lines `894 passed, 14 skipped, 59 warnings in 3195.94s (0:53:15)` and `828 passed, 6 skipped, 24 warnings in 4777.45s (1:19:37)`. `--own` itself, on a two-test selection (`-k 'test_the_runbook_has_commands or test_d05_cross_host_manifest_hash_equal'`): `1 passed, 907 deselected in 6.98s` and `1 passed, 1 skipped, 832 deselected, 1 warning in 12.34s` |
+| 8 | C-29: `sh scripts/pod_pytest.sh C-29 tests/r0/test_runbook.py -k c29` (laptop) | 2026-11-13 | `5 failed, 2 passed, 38 deselected in 3.97s` (before the change, in the old image: the card's tests failing first) |
+| 8 | C-29: `sh scripts/pod_pytest.sh C-29 tests/r0` (laptop; the new default image) | 2026-11-13 | `203 passed in 7.72s` |
 | 9 | `rm -r` of a staging directory and a scratch directory | 2026-11-10 | `(no output)`, exit 0 each. The staging directory was an empty directory made for this test |
 | 9 | W-13: `ls "$BBTMP/packs" "$BBTMP/search/$USER/runs" "$BBTMP/search/$USER/work"` | 2026-11-10 | `/tmp/if2453/w13/tmp/search/if2453/work:` (empty: every run had removed its work directory; `runs` held `pending` and the three runs of section 7, `packs` held `release=rC6.1`) |
 | 9 | W-13: `rm -r "$BBTMP/search/$USER/work/3d96a70ba10c7f5cd895de3d838153ae"` | 2026-11-10 | `(no output)`, exit 0. An empty directory made for this test |

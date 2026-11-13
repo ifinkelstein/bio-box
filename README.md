@@ -172,7 +172,8 @@ The specification and plan behind these are [`00-spec.md`](00-spec.md), [`PLAN.m
 
 - The Pfam scans of `P5` and `P6`; `P3`'s finished on 2026-11-12 and `P4`'s on 2026-11-13. Then `rM.2`. The scans are
   expected to end about 2026-11-14 (*estimate*, STATUS).
-- The new image is on the server, pulled by digest; switching the test and build scripts to it is card C-29.
+- Tests on the server run in the image built from `main` since 2026-11-13 (card C-29); the 50 Gbp build keeps the
+  older image until it is done.
 - S2C phase 2 is fetched (13,477 of 13,485 genomes, 2026-11-13); its split into stages is an open item for the PI,
   and its build follows the 50 Gbp release (card C-25).
 - Worked examples are run on a release before it is announced (AGENTS §5.7): the RNA polymerase example is being given

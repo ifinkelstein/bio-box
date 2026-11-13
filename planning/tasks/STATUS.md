@@ -12,16 +12,22 @@ Written so a new session can continue without the conversation that produced thi
 **Mode: running again.** The PI ended the drain of 09:30 CST at about 11:00 CST on 2026-11-13 ("resume"): up to four
 agents, working independently. Card E-11 still waits for the CRISPR example to land.
 
-**State on 2026-11-13 at 12:00 CST.**
-- `main` equals `plan/task-cards` at `ad6fd97` (pull requests 3 and 4). The image built from it (commit `64f1bf0`, Actions
-  run 43380434543: 1,720 passed, 22 skipped inside it) is on the pod as `/tmp/if2453/images/bio-box-test_64f1bf0.sif`
-  (`ghcr.io/ifinkelstein/bio-box-test@sha256:cb7cd0f1e7146350576e4658de39290647d1cbba39494ce81ba072f3041707bb`) and
-  `bio-box_64f1bf0.sif` (`...bio-box@sha256:2faf4b8de020430d3c5c9dace5569445fdb0eb0057088972793874a799e25bea`), with skani
-  0.4.0, matplotlib 3.11.2, zombi2, MMseqs2 18.8cc5c, HMMER 3.4, Infernal 1.1.5 (*measured* in the image). Tests and
-  builds still default to the old image until card C-29 merges.
-- The 50 Gbp build: P4's scan published at 08:06 (96 shards, 9.5 hours); P5 is scanning, P6 follows: about Saturday morning.
-- Agents running: C-29 (image switch), W-31, F-02 session 7 (table below). F-02 sessions 5 (S6) and 6 (S7), W-30,
-  C-25 step 2 and C-30 are merged.
+**State on 2026-11-13 at 13:30 CST.**
+- `main` is at pull request 4 (`ad6fd97`). The image built from it (commit `64f1bf0`, Actions run 43380434543: 1,720
+  passed, 22 skipped inside it) is the pod's default since card C-29: `~/bio-box/images/bio-box-test_64f1bf0.sif` for
+  tests (file sha256 `3d77df6b…`; from `ghcr.io/ifinkelstein/bio-box-test@sha256:cb7cd0f1…`) and `bio-box_64f1bf0.sif`
+  for builds and searches (file sha256 `cb7353f8…`, the runbook's `DIGEST`; from `...bio-box@sha256:2faf4b8d…`), with
+  skani 0.4.0, matplotlib 3.11.2, zombi2, MMseqs2 18.8cc5c, HMMER 3.4, Infernal 1.1.5. `pod_pytest.sh` and
+  `detached_suite.sh` put only the tree's `src` on `PYTHONPATH`: **no dependency directory any more** (item 5 below is
+  history). The running 50 Gbp build keeps the old image until it is done; the next build sets `IMAGE` and `DIGEST` in
+  its driver (RUNBOOK §0).
+- The 50 Gbp build: P4's scan published at 08:06 (96 shards, 9.5 hours); P5 is scanning (about shard 41 at 13:00), P6
+  follows: about Saturday morning.
+- Agents running: W-31, F-02 session 7, E-11 (table below). F-02 sessions 5 (S6) and 6 (S7), W-30, C-25 step 2, C-30
+  and C-29 are merged.
+- **Tonight after 20:00** (night cap 56, when the build leaves room): run the whole suite of the merged tree in the new
+  image with `detached_suite.sh integration 2`; the last full pod suite in it was at C-29's branch point, before
+  today's merges (each of which was tested by its own files, and by Actions without the native tools).
 - The second worked example is merged: `examples/crispr_cas_neighbourhoods/` (CRISPR-Cas carried by Tn7-like
   transposons, after Peters et al. 2017). `run.sh` reruns it on any release; all 19 invariants hold on `rN.3`. Its
   outputs are on the pod under `/tmp/if2453/ex2/rN.3-b` (local disk).
@@ -35,7 +41,7 @@ agents, working independently. Card E-11 still waits for the CRISPR example to l
 - C-28 is merged but **not applied to the running build**: the driver on the pod runs the tree it was started with. Sync
   the tree only between scans (see "to finish the 50 Gbp build"), never during one.
 - Worked examples are release checks (AGENTS §5.7, PI 2026-11-13): card E-11 puts the RNAP example in the same form as
-  the CRISPR one and adds `scripts/release_examples.sh`. **Launch it when card C-29 has merged** (both edit `RUNBOOK.md`).
+  the CRISPR one and adds `scripts/release_examples.sh`; started when C-29 merged.
 - Helpers: `scripts/orchestrator/wait_run.sh <repo> <run id>` (polls an Actions run to completion; `gh run watch` returns early).
 
 **For a new session.**
@@ -49,9 +55,11 @@ agents, working independently. Card E-11 still waits for the CRISPR example to l
    `pod_pytest.sh <name> tests/r0/test_runbook.py` to sync, then on the pod `bash /tmp/if2453/ci-tmp/detached_suite.sh
    <name> 2`, poll `systemctl --user is-active 'ci-<name>-*'` and `tail -n 1 /tmp/if2453/ci-tmp/<name>-detached/log.*`.
 4. Pass `watch_ci.sh` the full sha from `git rev-parse`. `ci_repeat.sh <repo> <branch> <n>` reruns `ci` n times.
-5. Tests that need packages the pod image lacks: `BIOBOX_POD_PYDEPS=/tmp/if2453/pilot_s1/pydeps:/tmp/if2453/pydeps_f02:/tmp/if2453/pydeps_w27`
-   (zombi2, matplotlib; locked wheels, hash-checked; never modify `pilot_s1/pydeps`). The cross-host test needs
-   `BIOBOX_PEER_MANIFEST=/tmp/if2453/ci-peer/right.json` (the Actions `cross-host` job's hash line in a file).
+5. Since card C-29 the pod's test image has every locked package (zombi2 and matplotlib included): set no
+   `BIOBOX_POD_PYDEPS`. The directories `/tmp/if2453/pilot_s1/pydeps`, `pydeps_f02` and `pydeps_w27` are needed only by
+   the running 50 Gbp build's old image (`pilot_s1/pydeps`; never modify it) and can go, with the PI's word, once that
+   build is done. The cross-host test needs `BIOBOX_PEER_MANIFEST=/tmp/if2453/ci-peer/right.json` (the Actions
+   `cross-host` job's hash line in a file).
 
 **How the work runs.** One card per agent, in its own worktree (`.claude/worktrees/agent-*`) on branch
 `task/<ID>` (measurements: `measure/<ID>`); tests only on the pod (`sh scripts/pod_pytest.sh <ID> [paths]`). The
@@ -62,21 +70,21 @@ pushes, and checks the GitHub Actions run of the pushed commit. Sonnet for tier-
 four agents at once. When a card conflicts with its own text, a decision or a file, the agent stops and reports;
 the card is amended in `TASKS.md` and the agent resumed (B-45, C-21c, E-09 went that way today).
 
-**Branches.** `plan/task-cards` on GitHub (repository `ifinkelstein/bio-box`, public): 114 cards, six
+**Branches.** `plan/task-cards` on GitHub (repository `ifinkelstein/bio-box`, public): 115 cards, six
 sessions of F-02 and the measurements in the table below; decisions DEC-29 to DEC-33 were added on 2026-11-12.
-`ci` and `cross-host` were green at `efc4be0` (C-28, the README, AGENTS §5.7). Manifest hash of the fixture:
-`f6126b00d45e9284d2799c3a699c992c`, equal on Actions and the pod (it covers every registered schema's hash, so it
-moves with any schema change). `main` is at pull request 4 (`64f1bf0` built the image) and is behind by what merged
-on 2026-11-13: F-02 session 4, C-28, the README, C-27 step 4. The runbook and `scripts/pod_pytest.sh` still default
-to `bio-box-test_74b3e05.sif` until card C-29 merges.
+`ci` was green at every push of 2026-11-13 up to `d5ba8ed` (F-02 session 6); the run on `dab1700` (C-30) was in
+progress at 13:30. Manifest hash of the fixture: `f6126b00d45e9284d2799c3a699c992c`, equal on Actions and the pod (it
+covers every registered schema's hash, so it moves with any schema change). `main` is at pull request 4 (`64f1bf0`
+built the image) and is behind by everything merged on 2026-11-13; nothing merged since changes
+`container/environment.yml` or `uv.lock`, so no new image is needed yet.
 
-**Agents running (four, the limit).**
+**Agents running.**
 
 | Card | Branch | State | When it reports |
 |---|---|---|---|
-| C-29 switch the pod's tests and builds to the image of `64f1bf0` | `task/C-29` | started 2026-11-13 morning; running the suite in the new image (units `ci-C-29-*`) | audit, merge; the running build keeps its old image until it is relaunched |
-| F-02 session 7, spec §2.1 S8 to S11 (call errors and genetic codes 4 and 25, assembly, contamination, emit) | `task/F-02-7` | started 2026-11-13 14:20; S8 and S9 in one rewrite of the genomes; measures each step, does not thin the world | audit, merge |
-| W-31 `nbr flanks` context types and figure colours on mobile elements: alternatives measured on the CRISPR and RNA polymerase runs, behind flags, defaults unchanged | `task/W-31` | started 2026-11-13 13:10; reads `/tmp/if2453/ex2/rN.3-b`, writes under `/tmp/if2453/w31` | audit, merge; the defaults are the PI's |
+| E-11 worked examples as release checks: the RNA polymerase example in the CRISPR one's form, a shared checker and launcher, `scripts/release_examples.sh`, the runbook's release step | `task/E-11` | started 2026-11-13 about 13:40, when C-29 merged | audit, merge; then its first use is on `rM.2` |
+| F-02 session 7, spec §2.1 S8 to S11 (call errors and genetic codes 4 and 25, assembly, contamination, emit) | `task/F-02-7` | started 2026-11-13 about 13:05; S8 and S9 in one rewrite of the genomes; measures each step, does not thin the world | audit, merge |
+| W-31 `nbr flanks` context types and figure colours on mobile elements: alternatives measured on the CRISPR and RNA polymerase runs, behind flags, defaults unchanged | `task/W-31` | started 2026-11-13 about 12:25; reads `/tmp/if2453/ex2/rN.3-b`, writes under `/tmp/if2453/w31` | audit, merge; the defaults are the PI's |
 
 **On the pod** (wilkcomp02; account thread cap 40 by day, 56 at night, a total over everything we run; the PI keeps
 that cap). State on 2026-11-13 at about 11:00 CST:
@@ -115,19 +123,19 @@ that cap). State on 2026-11-13 at about 11:00 CST:
   `c21f`, `e09`, `w25`, `w27`, `w15`, old pack copies under `w16` and `w19`, old `ci/<ID>` trees.
 
 **Next, in order, when the PI says go.**
-1. Merge what the running agents report (C-29, W-31, F-02 session 7). Done already: pull requests 3 and 4, the
-   image on the pod, C-27 step 4, the CRISPR example, F-02 sessions 5 and 6, W-30, C-25 step 2, C-30.
-2. Card E-11 (the RNA polymerase example as a release check, and `scripts/release_examples.sh`), once C-29 has
-   merged. E-12 (CRISPR arrays) waits for the PI's pin.
+1. Merge what the running agents report (W-31, F-02 session 7, E-11). Done already: pull requests 3 and 4, the
+   image on the pod and its switch (C-29), C-27 step 4, the CRISPR example, F-02 sessions 5 and 6, W-30, C-25 step 2,
+   C-30. Tonight: the whole suite of the merged tree in the new image (state block above).
+2. E-12 (CRISPR arrays) waits for the PI's pin. Card C-31 (tier L: stale skip messages and the old suite timing) can
+   start any time.
 3. Card C-25 step (3): contigs shared by content digest and representatives-only Pfam measured on one stage (DEC-32).
    It needs stage inputs, so it waits for the PI's choice of the stage split (open items) and, for the Pfam part, for
    room on the pod after the scans.
 4. After the scans: `rM.2` (above), run the worked examples on it (AGENTS §5.7), then card C-24 (stage H1, huge
    phages), then C-26 (PLSDB).
-5. Cards ready and not started: F-02 session 7 (§2.1 S8 to S11: call errors and genetic codes 4 and 25, assembly,
-   contamination, emit; S8 and S9 in one rewrite of the genomes), then its truth tables, null worlds, manifest and
-   validation; W-26 (accession table; not needed yet), E-10 (tRNA caller; needs the PI's pin). Follow-ups noted in
-   rows below: `pod_pytest.sh` treats an empty `BIOBOX_POD_PYDEPS` as unset (C-27 step 4; for C-29 to settle); a step
+5. Cards ready and not started: after F-02 session 7, its truth tables, null worlds, manifest and validation; W-26
+   (accession table; not needed yet), E-10 (tRNA caller; needs the PI's pin). Follow-ups noted in rows below: the
+   drivers `s2_*` and `rfam_sample_*` still name `bio-box_80d4c55.sif` (C-29; move each when it is next used); a step
    outlives a SIGKILLed `run-step` (C-16); `dim` reports 0 circular contigs for `rM.1` (B-46); the figure's palette
    beyond 20 families (W-27); `prok-2` costs 1.20 to 1.23 times `prok-1` against a derived 1.178 (E-09).
 
@@ -303,7 +311,7 @@ Last full suite on the integration branch before the C-11 merge: 1,053 passed, 1
 pinned image; 3 min 40 s wall for the slowest shard, against 13.5 min in one process). The skips
 need samtools, bgzip, Prodigal or the golden set. Tests no longer run on the laptop (AGENTS.md §5.5).
 
-## Merged (114 cards, and measurements)
+## Merged (115 cards, and measurements)
 
 | Card | Merge | What it did | Audit notes |
 |---|---|---|---|
@@ -427,7 +435,8 @@ need samtools, bgzip, Prodigal or the golden set. Tests no longer run on the lap
 | W-28 | `5322460` | `bio-box results archive|flush|list|get` (DEC-33; `src/biobox/search/results.py`): a run's record and the output directories named with `--with` become one deterministic archive (sorted names, fixed times and owners; the same bytes on any host), spooled under the profile's `<tmp>/results/spool`; `flush` writes the spooled archives to `<durable>/results` as one bundle only when it reaches `small_file_floor_bytes` (64 MiB; AGENTS §7.3 outranks DEC-33's "one archive per run"), under a temporary name and renamed; nothing is ever overwritten (the same sha256 is a no-op, another is refused); `list` reads manifests only; `get` restores and checks every sha256 | On the real RNA polymerase run of `rN.3`, into scratch (*measured*, wilkcomp02, 2026-11-12): the search output alone is 12,492,800 bytes, so `flush` wrote nothing; with five `nbr flanks` directories 164,618,240 bytes in 14,264 files, bundled and restored equal (`diff -r` empty). Nothing was written to `/stor`. The profile's `durable` (`/stor/work/Wilke/if2453/all-the-data`) does not exist on the pod: the tool refuses until the PI makes it. A run's record does not hold the user's command line, so outputs are named by hand (card W-29). Merged-tree tests 264 passed; branch tests 227 and 18 passed |
 | W-29 | `5d66152` | A run records the command that made it (`limits_json`, key `command`; no schema change), and every output directory written from a run (`search hmm`, `nbr --out`, `nbr flanks`) holds a `RUN` file naming the run and the release; `results archive RUN --under DIR` finds those directories up to four levels down and refuses one whose `RUN` names another run; `--with` still serves older outputs and single files | Outputs otherwise unchanged (one new file, one README line); the W-07, W-05, W-22 and W-23 tests migrated for it. `RUNBOOK.md` brought up to date with the merge. Full suite on the merged tree (detached, wilkcomp02, 2026-11-13): 1,688 passed, 64 skipped |
 | F-02 (4) | `f204f1f` | `synthworld` intergenic regions, RNA motifs and replicon sequences (`intergenic.py`, `rna.py`): every junction's intergenic sequence by type (tight, loose, divergent, convergent) with promoters, ribosome-binding sites and terminators; 4-base and 1-base gene overlaps made by protein-neutral edits of start and stop codons; RNA motifs emitted from covariance models (a synthetic panel by default; Rfam models on the pod) and evolved along the tree; one nucleotide sequence per replicon, with every gene and motif at coordinates in the data model's convention | *Measured* (wilkcomp02, 2026-11-12/13, `micro`, seed 20261112): 84 replicons, 89,102 genes; the stage takes 42.3 to 42.8 s and 93 MB; with the backbone and sequences about 157 s of the 3 minute target (*derived*), leaving about 23 s for the stages still to come. Slicing each gene from its replicon gives its CDS; junction lengths within 5% of the preset at five quantiles; `cmsearch --cut_ga` finds 872 of 1,078 motifs, 251 of 252 at divergence up to 0.02 and 147 of 240 beyond 0.2: detection falls with divergence, as session 3's proteins do not. `cmemit --exp 1` leaves 15 to 99 of 100 emissions above GA by model, so the default is 1.5 (fitted). The intergenic length model is an estimate, not yet fitted to real genomes; no motifs inside coding sequence. Merged-tree synthworld tests 339 passed (the Rfam ones included); Actions on the branch 1,654 passed, 177 skipped |
-| C-30 | this merge | `c27_fetch.sh` takes its work directory, bin directory, unit prefix, CPU quota, image and data root from the environment (`C27_WORK`, `C27_BIN`, `C27_UNIT_PREFIX`, `C27_CPU_QUOTA`, `C27_IMAGE`, `C27_DATA_ROOT`), passes them to the chained units, and has a `--dry-run` that prints what it would check and start and touches nothing. With `C27_IMAGE` set Python runs in the image with the data root bound read-only, so the `STOP` check sees it | The defaults are what card C-27 ran, host `python3` included (an image path is not a safe default). Tested through the dry run only, for the defaults and for two other configurations: the real launch path is the old lines with variables substituted and was not run (the card launches nothing). Branch and merged-tree tests 222 passed; Actions on the branch green |
+| C-29 | this merge | Tests and builds on the pod run from the image built from `main` at `64f1bf0`: `pod_pytest.sh` and `detached_suite.sh` default to `~/bio-box/images/bio-box-test_64f1bf0.sif` with only the tree's `src` on `PYTHONPATH` (no dependency directory; `BIOBOX_POD_IMAGE` and `BIOBOX_POD_PYDEPS` stay as overrides); `detached_suite.sh` gains `--own` (the image's own suite), the peer manifest, JUnit files and skip reasons; RUNBOOK §0 names `bio-box_64f1bf0.sif` and its digest for builds and searches, §8 has the image check, and the known-issues row is replaced; closes card 0-02 | *Measured* (wilkcomp02, 2026-11-13, 2 detached shards): the image's own suite 1,722 passed, 20 skipped (Actions 1,720 and 22; the two extra need a memory cap and the peer file). The tree at the branch point in the new image 1,740 passed, 19 skipped; in the old image 1,696 and 63: 44 tests differ, all skipped to passed (zombi2 32, matplotlib 8, samtools 3, polars 1); none passes in the old image and fails in the new. Manifest hash equal to Actions' in both. Both `.sif` files copied to `~/bio-box/images/`, sha256 equal to the `/tmp` copies; nothing there changed. The running 50 Gbp build was not touched and keeps the old image. Merged with one conflict in RUNBOOK's known-issues table (C-28's row kept, the old image row replaced) and one sentence of AGENTS §5.5 brought up to date by the orchestrator. Merged-tree tests in the new default image: `tests/r0` and `tests/r1`, 297 passed; **the whole suite of the merged tree has not run in the new image yet** (day cap): tonight. Follow-ups: stale skip messages and the "13 minutes" timing (card C-31) |
+| C-30 | `dab1700` | `c27_fetch.sh` takes its work directory, bin directory, unit prefix, CPU quota, image and data root from the environment (`C27_WORK`, `C27_BIN`, `C27_UNIT_PREFIX`, `C27_CPU_QUOTA`, `C27_IMAGE`, `C27_DATA_ROOT`), passes them to the chained units, and has a `--dry-run` that prints what it would check and start and touches nothing. With `C27_IMAGE` set Python runs in the image with the data root bound read-only, so the `STOP` check sees it | The defaults are what card C-27 ran, host `python3` included (an image path is not a safe default). Tested through the dry run only, for the defaults and for two other configurations: the real launch path is the old lines with variables substituted and was not run (the card launches nothing). Branch and merged-tree tests 222 passed; Actions on the branch green |
 | F-02 (6) | `d5ba8ed` | `synthworld` gene fusions, splits and non-orthologous gene displacement (`fusions.py`, spec §2.1 S7 only): each event placed once on a host branch and inherited by its clade; a fusion replaces the bases from A's stop to B's start by a linker (protein A + linker + B without its first residue), on both strands and with overlapping genes; a split inserts a stop, a spacer with a ribosome-binding site and a start between two domains; NOGD replaces a planted-module member's coding sequence by a copy of a new family that shares no domain with it; `edits.tsv` lifts any S6 coordinate into the new frame. `mobile.phage_preset` now reads a fixed list of the S1 to S5 preset sections, so a later stage's section cannot change the phage world | *Measured* (wilkcomp02, 2026-11-13, `micro`, seed 20261112, `planning/measurements/2026-11-13_synthworld_fusions.md`): 15 fusions, 5 splits, 2 NOGD in 81 instances over 38 of 46 genomes; all 90,242 genes translate from their bases to their protein; every S5 and S6 feature carried through both lifts reads the same bases, except those inside a fused pair (asserted); the stage takes 5.0 to 6.3 s and 213 MB; earlier stages keep every digest (the phage and CRISPR stage's equals session 5's). S8 to S11 were not done. **The 3-minute target will not hold**: S1 to S7 take about 177 s on the loaded pod (*derived* from the stage times of one run). Synthworld tests on the branch 424 passed, 6 skipped; merged-tree tests 236 passed; Actions on the branch was still running at the merge, so the run on the merged commit is the check |
 | C-25 (2) | `3a61da8` | The rest of the S2C phase-2 remainder fetched: the 8,868 genomes in species with at most 20 complete genomes (`planning/measurements/2026-11-13_s2c_phase2_fetch.md`; `sources.yaml`), by the committed fetch code unchanged, in four batches of about 9.7 Gbp, each file checked against NCBI's md5, archived as one deterministic tar on `/stor`. No script changed, so no new test | *Measured* (wilkcomp02, 2026-11-13): 8,860 of 8,868 served and verified, 38,636,894,022 bp, 11,217,930,326 bytes kept, 2,188.5 s, no refusal, retry or md5 refetch; no genome's length differs from GTDB's. 8 not served (listed in the note; three species keep only their phase-1 genome); not retried (DEC-31). Tar `provisional/s2c_phase2/s2c_phase2_rest_genomes.tar`, 11,234,908,160 bytes, sha256 `94cc747e…`, read back on `/stor` before the rename. With the first tar, phase 2 is 13,477 genomes and 56,177,990,736 bp on `/stor` (*derived*). The orchestrator read the tar's size and the four batch records on the pod. The note proposes six stages of 9.2 to 9.5 Gbp with each species kept whole, in taxonomy order: the PI's choice. Deviation: the launcher `c27_fetch.sh` has its paths and unit names fixed, so a pod-side copy with six lines changed ran (given verbatim in the note); card C-30. Merged-tree tests 220 passed; Actions on the branch 1,715 passed, 181 skipped |
 | W-30 | `d9d4970` | `bio-box sql --out` counts the rows of a file whose first column name starts with `#` (it reported one too few); the stderr line names the table of a scan over several files, not `part-0.parquet` | Causes: the tally skipped every `#` line as a comment, which is right for `nbr` and `search hmm` files and wrong for `sql`, whose first line is the column line; DuckDB reports a scan of several files as one string `PATH, PATH, ...`, which `catalog.profile_query` keeps as one entry and `catalog.classify` could not place. Any table with more than one file in a release was affected, not three. Fixed in `cli.py` only: `profile_query` still returns the joined string (a later `catalog.py` card if another caller needs it split). No existing assertion changed. Branch tests 241 passed, Actions green; merged-tree tests 261 passed |
