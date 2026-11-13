@@ -349,6 +349,10 @@ says on stderr how much of each table each statement read:
 bio-box sql --root "$ROOT" --release rN.1 -e "SELECT key, value FROM catalog_info ORDER BY key"
 ```
 
+A second worked example, CRISPR-Cas systems carried by Tn7-like transposons (Peters et al. 2017) with TniQ and
+Cas7f as anchors, the same commands, a comparison with the paper and a rerunnable release check, is in
+`examples/crispr_cas_neighbourhoods/README.md`.
+
 ## 8. Limits and rough edges today
 
 - The data is on the pod's local disk (`/tmp`), not yet copied to permanent storage; a reboot may clear it. No card

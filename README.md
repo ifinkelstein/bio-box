@@ -165,16 +165,18 @@ The specification and plan behind these are [`00-spec.md`](00-spec.md), [`PLAN.m
 | 2026-11-12 to 13 | Synthetic-world generator, sessions 1 to 4: backbone, taxonomy and plasmids, families and coding sequences, intergenic regions and RNA motifs (card F-02) | STATUS rows F-02 (1) to (4) |
 | 2026-11-12 | S2C phase-2 candidates fetched: 28,457 of 28,483 genomes (*measured*) | `2026-11-13_s2c_skani_fetch.md` |
 | 2026-11-13 | Image built from `main` (pull request 4): 1,720 tests passed, 22 skipped inside it (*measured* on GitHub Actions, run 43380434543) | STATUS handoff |
+| 2026-11-13 | S2C phase 2 selected for strain diversity with skani: near-clone pairs among a species' 20 fall from 6,930 to 2,895 of 46,170 (*measured*) | [`2026-11-13_s2c_skani_selection.md`](planning/measurements/2026-11-13_s2c_skani_selection.md) |
+| 2026-11-13 | Second worked example and release check: CRISPR-Cas systems carried by Tn7-like transposons (Peters et al. 2017) on `rN.3`; all 19 invariants hold (*measured*) | [`examples/crispr_cas_neighbourhoods/README.md`](examples/crispr_cas_neighbourhoods/README.md) |
 
 **Now** (2026-11-13; STATUS handoff)
 
 - The Pfam scans of `P5` and `P6`; `P3`'s finished on 2026-11-12 and `P4`'s on 2026-11-13. Then `rM.2`. The scans are
   expected to end about 2026-11-14 (*estimate*, STATUS).
 - The new image is on the server, pulled by digest; switching the test and build scripts to it is card C-29.
-- The strain-diversity selection for S2C phase 2: skani on the fetched candidates, which needs the new image (card
-  C-27 step 4).
-- A second worked example, CRISPR-Cas and Tn7 neighbourhoods after Peters et al. 2017. Worked examples are run on a
-  release before it is announced (AGENTS §5.7; card E-11).
+- The fetch of the rest of S2C phase 2: the 8,868 genomes in species with at most 20 (card C-25 step 2).
+- Worked examples are run on a release before it is announced (AGENTS §5.7): the RNA polymerase example is being given
+  the rerunnable form of the CRISPR-Cas one (card E-11).
+- The synthetic-world generator, session 5 (phages and CRISPR arrays, fusions, call errors, assembly; card F-02).
 - Merged on 2026-11-13, not yet used by a build: the night thread allowance read from other users' CPU (card C-28).
 
 **Next, in order**
