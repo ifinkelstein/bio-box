@@ -1,7 +1,7 @@
 # Searching a release with your own HMM
 
 For a scientist who wants hits and gene neighbourhoods, not operations. State as of 2026-11-11 (keeping results:
-2026-11-12); releases,
+2026-11-12; the worked examples in `examples/`: 2026-11-13); releases,
 paths and costs will change. The operator's version of every command is `RUNBOOK.md` (sections 0, 7, 10, 11).
 Numbers carry a label: *measured* (with the file it comes from) or *derived* (with the formula).
 
@@ -116,9 +116,11 @@ nothing can write into it. After it, the search:
 | `--runs`, `--work`, `--pack-dir` | where runs and their scratch go, and where the pack is, if not where the profile says (section 2) |
 | `--cpu-min`, `--wall-s` | limits of the search itself (defaults 300 CPU-minutes, 6 hours) |
 
-The worked example is this exact search. It found 1,957 proteins at 30 bits or more, 1,931 in phages and 26 in
-prokaryotes, on 2,581 genes; T7 gp1 scored 367.7 bits; the same 1,957 proteins as `hmmsearch` (HMMER 3.4) run by
-hand on all exported proteins, scores equal to 0.1 bit (*measured*, second trial file, section 3).
+The worked example is this exact search, kept as a directory that reruns it and checks its answer on every
+milestone release: `examples/rnap/` (card E-11; `examples/README.md` explains the examples). Its README holds the
+numbers this guide used to hold twice: how many proteins and genes it finds in phages and prokaryotes, the control's
+score, its agreement with `hmmsearch` run by hand, its neighbours, its flank groups and its cost, each measured on
+`rN.3` and recorded per release in `examples/rnap/recorded/`.
 
 Cost with the current code, 4 CPUs on a loaded pod: 244.6 s for the whole command, 9.53 CPU-minutes, the search
 process at most 1.78 GiB and the unit 4.57 GB including file cache (*measured*,
@@ -154,7 +156,7 @@ In `--out` (`$WORK/rnap`); the run itself (its record and raw hits) stays in
 |---|---|
 | `README.txt` | every file and column below, written by the command itself |
 | `recipe.yaml` | the exact search, to run again or change (section 7) |
-| `hits.tsv` | one row per gene that carries a hit protein (2,581 rows for 1,957 proteins in the example) |
+| `hits.tsv` | one row per gene that carries a hit protein (more rows than proteins: identical proteins are stored once) |
 | `hits.faa` | one sequence per hit protein, named by protein uid |
 | `neighbors.tsv` | which clusters (and Pfam families) sit near the hits, counted over all hit loci |
 | `loci/` | one table per hit gene and its neighbours: `locus_<accession>_<feature_uid>.tsv` |
@@ -223,8 +225,8 @@ record and tables), `outputs/<name>/` and `FILES.tsv` (every file's size and sha
 ## 6. Reading neighbourhoods
 
 A locus is one hit gene with its window; the hit is not its own neighbour. `neighbors.tsv` starts with
-`# key<TAB>value` totals (example: 2,581 loci on 2,526 contigs, 463 cut by a contig end, 24,473 neighbour genes;
-*measured*, second trial file, section 3), then one table per level (`pfam`, `nr50`, `nr90`), 50 rows at most.
+`# key<TAB>value` totals (loci, contigs, loci cut by a contig end, neighbour genes; the example's are in
+`examples/rnap/README.md`), then one table per level (`pfam`, `nr50`, `nr90`), 50 rows at most.
 
 | Column | Meaning |
 |---|---|
@@ -238,13 +240,12 @@ A locus is one hit gene with its window; the hit is not its own neighbour. `neig
 | `same_strand_share` | the share of those neighbours on the hit's strand |
 | `unannotated` | `true` on the row of neighbours with no cluster or family at that level |
 
-Read rows by `n_loci`. In the example the top NR50 cluster (`fa4cb451...`) is in 663 of 2,581 loci (25.7%,
-*derived*), commonest at +4; the third (`5fe1410c...`) sits at -1 in 476 of its 481 loci (*measured*, second trial
-file). On `rN.1` (no Pfam) a cluster is only an id. To name one, look up its representative: `bio-box find
---protein <rep_uid>` gives an accession and coordinates, and `bio-box seq --protein <rep_uid>` the sequence
-(section 7). In T7's own
-locus the -1 and +3 neighbours fall where T7's protein kinase (gene 0.7) and DNA ligase (gene 1.3) are, so those two
-clusters are probably those families; no file says so. On `rN.2` the neighbours carry Pfam names.
+Read rows by `n_loci`, then `modal_offset`: a cluster or family that sits at one offset in nearly all its loci is a
+conserved neighbour (the example's top rows, with their offsets, are in `examples/rnap/README.md`). On `rN.1` (no
+Pfam) a cluster is only an id. To name one, look up its representative: `bio-box find --protein <rep_uid>` gives an
+accession and coordinates, and `bio-box seq --protein <rep_uid>` the sequence (section 7). On `rN.2` and `rN.3` the
+neighbours carry Pfam names: in T7's own locus the gene at -1 is T7's protein kinase (gene 0.7, `Phage_T7_kinase`)
+and the one at +3 its DNA ligase (gene 1.3), which the example checks on every release.
 
 These are counts, not significance: no enrichment statistic exists yet, and identical genomes count separately
 (T7 gp1 alone is in 33 genomes). Look at one locus:
@@ -276,10 +277,9 @@ bio-box nbr flanks "$RUN" --root "$ROOT" --profile "$PROFILE" --window 5g --leve
 
 `--distance a` builds the tree on the order-aware distance instead; `--export gff` adds one GFF3 per locus for
 outside viewers. A locus cut by a contig end is compared only over the genes both loci have on that side. On `rN.3`
-the RNA polymerase run (2,581 loci) took about 15 s and at most 1.6 GB, and gave 432 groups and 598 context types; no
-type holds both phage and prokaryote loci (*measured*, `planning/measurements/2026-11-12_flanks_rN3.md`). On phages
-use `nr50`: at `pfam` most phage genes have no domain, each is its own token, and nearly every locus becomes its own
-type (same file).
+the RNA polymerase run's groups, context types and cost are in `examples/rnap/README.md`, which runs this command
+with `--figure`. On phages use `nr50`: at `pfam` most phage genes have no domain, each is its own token, and nearly
+every locus becomes its own type (*measured*, `planning/measurements/2026-11-12_flanks_rN3.md`).
 
 `--figure` adds a synteny figure per group, `groups/<group>/figure.svg` and `figure.pdf` (card W-27). Each figure has
 one row per leaf in tree order, with the UPGMA tree at the left and the cut drawn as a dashed line. A row draws the
@@ -291,10 +291,10 @@ genes' commonest Pfam architecture) with the share of loci that hold it. Columns
 accession, the loci collapsed into the leaf, the context type, genome kind, stage, taxonomy (`-`: the release has
 none) and the hit's NR90 cluster. A figure shows at most `--figure-rows` rows (default 60). For a larger group it
 shows the largest leaf of each context type, then the largest remaining leaves, restricts the tree to those, and says
-so in its title. The same inputs give the same bytes; neither file holds a date. On `rN.3`, the RNA polymerase run's
-432 figures took about 4.5 minutes and at most 1.6 GB, against 15 s without them. The T7-like group's figure is in
-`planning/measurements/2026-11-12_flanks_rN3/figures/` (*measured*, same file). The command needs matplotlib, which
-`uv.lock` pins; where it cannot be imported, `--figure` is refused before anything is written.
+so in its title. The same inputs give the same bytes; neither file holds a date. A figure costs about half a second
+per group (*measured*, `planning/measurements/2026-11-12_flanks_rN3.md`); the T7-like group's figure is in
+`examples/rnap/figures/`. The command needs matplotlib, which `uv.lock` pins; where it cannot be imported, `--figure`
+is refused before anything is written.
 
 ## 7. Going further with the separate commands
 
@@ -349,9 +349,10 @@ says on stderr how much of each table each statement read:
 bio-box sql --root "$ROOT" --release rN.1 -e "SELECT key, value FROM catalog_info ORDER BY key"
 ```
 
-A second worked example, CRISPR-Cas systems carried by Tn7-like transposons (Peters et al. 2017) with TniQ and
-Cas7f as anchors, the same commands, a comparison with the paper and a rerunnable release check, is in
-`examples/crispr_cas_neighbourhoods/README.md`.
+The worked examples are in `examples/` (`examples/README.md`): the RNA polymerase search of this guide
+(`examples/rnap/`), and CRISPR-Cas systems carried by Tn7-like transposons (Peters et al. 2017) with TniQ and Cas7f
+as anchors, the same commands and a comparison with the paper (`examples/crispr_cas_neighbourhoods/README.md`). Each
+runs as one command and checks its answer; both are rerun on every milestone release.
 
 ## 8. Limits and rough edges today
 

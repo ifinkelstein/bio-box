@@ -15,12 +15,10 @@
 # What it does, each bio-box step through scripts/pod_run.sh (a capped unit, nice 19), each other tool in a
 # capped scope: fetch the anchor HMMs TniQ (PF06527) and Cas_Csy3 (Cas7f, PF09615) from Pfam by name; search
 # both with their gathering cutoffs; nbr summarize at the paper's windows (20 kb for TniQ, 10 kb for Cas7f); nbr
-# flanks with figures; the SQL checks (sql/checks.sql); the hmmsearch oracle (oracle.py); then check.py against
-# expected.tsv and recorded/$RELEASE.tsv. Writes nothing under ROOT. Exit: check.py's (1 when an invariant fails).
+# flanks with figures; the SQL checks (sql/checks.sql); the hmmsearch oracle (oracle.py); then the shared
+# check.py against expected.tsv and recorded/$RELEASE.tsv. Writes nothing under ROOT. Exit: check.py's (1 when an
+# invariant fails). The launcher (room, bb, tool) and check.py are shared by every example: examples/_shared/.
 set -euo pipefail
-
-die() { echo "run.sh: $*" >&2; exit 2; }
-note() { echo "run.sh: $(date '+%F %T') $*" >&2; }  # stderr: stdout of `tool` may be an output file
 
 : "${TREE:?set TREE}" "${PROFILE:?set PROFILE}" "${IMAGE:?set IMAGE}" "${DIGEST:?set DIGEST}"
 : "${ROOT:?set ROOT}" "${RELEASE:?set RELEASE}" "${OUT:?set OUT}"
@@ -30,7 +28,9 @@ BIND=${BIND:-/tmp/if2453}
 UNIT=${UNIT:-crispr}
 MEM=${MEM:-16G}
 EX="$TREE/examples/crispr_cas_neighbourhoods"
+SHARED="$TREE/examples/_shared"
 PFAM_DIR=$(dirname "$PFAM")
+. "$SHARED/launch.sh"
 
 # The positive controls: the TniQ and the Cas7f of one transposon-associated type I-F element of Photobacterium
 # damselae subsp. damselae 04Ya311, chromosome 2 (NZ_AP026781.1), 0-based half-open (README section 3).
@@ -41,60 +41,11 @@ POS_CAS7F=NZ_AP026781.1:423377-424433
 case "$OUT/" in "$ROOT"/*) die "OUT is under ROOT" ;; esac
 [ -f "$PFAM" ] || die "no Pfam file $PFAM"
 [ -f "$EX/expected.tsv" ] || die "TREE has no $EX/expected.tsv"
+[ -f "$SHARED/check.py" ] || die "TREE has no $SHARED/check.py"
 if [ -e "$OUT" ] && [ -n "$(ls -A "$OUT")" ]; then
   die "OUT $OUT is not empty"
 fi
 mkdir -p "$OUT/logs" "$OUT/hmm" "$OUT/tmp" "$OUT/summary" "$OUT/flanks"
-
-cap() {  # the account's thread cap of this hour (AGENTS 7.2)
-  if [ -n "${CAP:-}" ]; then echo "$CAP"; return; fi
-  local h d
-  h=$(date +%-H)
-  d=$(date +%u)
-  if [ "$d" -le 5 ] && [ "$h" -ge 8 ] && [ "$h" -lt 20 ]; then echo 40; else echo 56; fi
-}
-
-room() {  # wait until this account's CPU (ps %CPU, summed) plus THREADS fits under the cap
-  local total v c
-  while true; do
-    [ ! -e "$ROOT/STOP" ] || die "a STOP file appeared in $ROOT"
-    total=0
-    for v in $(ps -u "$USER" -o pcpu=); do
-      total=$((total + ${v%.*}))
-    done
-    c=$(cap)
-    if [ $(((total + 99) / 100 + THREADS)) -le "$c" ]; then
-      return
-    fi
-    note "waiting for room: account at ${total}% CPU, cap $c threads"
-    sleep 60
-  done
-}
-
-bb() {  # bb NAME ARGS...: one bio-box command in its own unit through the runbook's launcher; waits for it
-  local name=$1
-  shift
-  local unit="$UNIT-$name-$$"
-  local log="$OUT/logs/$name.log"
-  room
-  bash "$TREE/scripts/pod_run.sh" --profile "$PROFILE" --image "$IMAGE" --digest "$DIGEST" --mem "$MEM" \
-    --threads "$THREADS" --bind "$BIND" --bind "$ROOT:$ROOT:ro" --env PYTHONPATH="$TREE/src" \
-    --env TMPDIR="$OUT/tmp" --log "$log" "$unit" "$@" > "$OUT/logs/$name.launch"
-  until grep -q "^pod_run: $unit exited" "$log"; do
-    sleep 5
-  done
-  grep -q "^pod_run: $unit exited 0$" "$log" || die "$name failed; see $log"
-  note "$name: $(grep "^pod_run: $unit usage" "$log" || true)"
-}
-
-tool() {  # tool LOG ARGS...: one non-bio-box command of the image (HMMER, python) in a capped scope
-  local log=$1
-  shift
-  room
-  systemd-run --user --scope --quiet -p MemoryMax=8G -p MemorySwapMax=0 -p CPUQuota=$((THREADS * 100))% \
-    nice -n 19 /usr/bin/time -v -a -o "$log" singularity exec --cleanenv --bind "$BIND" --bind "$ROOT:$ROOT:ro" \
-    --bind "$PFAM_DIR:$PFAM_DIR:ro" "$IMAGE" "$@"
-}
 
 ga() {  # the sequence gathering cutoff of an HMMER3 file of one model
   sed -n 's/^GA  *\([0-9.]*\) .*/\1/p' "$1"
@@ -173,7 +124,7 @@ cp "$OUT/observed_sql.tsv" "$OUT/observed.tsv"
 tail -n +2 "$OUT/observed_bp.tsv" >> "$OUT/observed.tsv"
 tail -n +2 "$OUT/observed_oracle.tsv" >> "$OUT/observed.tsv"
 set +e
-tool "$OUT/logs/check.time" python -I "$EX/check.py" --expected "$EX/expected.tsv" \
+tool "$OUT/logs/check.time" python -I "$SHARED/check.py" --expected "$EX/expected.tsv" \
   --recorded "$EX/recorded/$RELEASE.tsv" --write-recorded "$OUT/recorded_new.tsv" \
   "$OUT/observed.tsv" > "$OUT/check.txt"
 rc=$?

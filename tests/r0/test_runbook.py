@@ -667,3 +667,104 @@ def test_c29_no_document_puts_a_dependency_directory_on_the_path(doc):
     bad = [f"{doc.name}:{n}: {line.strip()[:80]}" for n, line in enumerate(doc.read_text().splitlines(), 1)
            if "PYTHONPATH" in line and "pydeps" in line.lower()]
     assert not bad, "\n".join(bad)
+
+
+# --- E-11: the worked examples are release checks, so their commands are checked here, not at a release ------------
+
+EXAMPLES = Path(__file__).resolve().parents[2] / "examples"
+RELEASE_EXAMPLES = ROOT / "scripts" / "release_examples.sh"
+ASSIGN = re.compile(r'^([A-Z][A-Z0-9_]*)="([^"]*)"$')
+DEFAULT = re.compile(r"^([A-Z][A-Z0-9_]*)=\$\{\1:-([^}]*)\}$")  # THREADS=${THREADS:-2}
+SCRIPT_VALUE = "1"  # what a variable of a script stands for: a value every option type accepts (str, int, float)
+
+
+def script_commands(text: str) -> list[tuple[int, list[str]]]:
+    """(line number, bio-box arguments) of every `bb NAME ARGS...` call of an example's `run.sh` (the shared
+    launcher's form: one bio-box command in its own unit). A trailing backslash joins the next line. The flag groups
+    the script assigns (`S="--root $ROOT ..."`, `S="$S --cpus ..."`) are expanded where they are used unquoted, as the
+    shell splits them; a variable with a default (`THREADS=${THREADS:-2}`) is its default; any other variable stands
+    for a value (`SCRIPT_VALUE`, since a script passes numbers such as `--bits "$GA"` through variables)."""
+    groups: dict[str, str] = {}
+    values: dict[str, str] = {}
+    out: list[tuple[int, list[str]]] = []
+    pending, start = "", 0
+    for n, raw in enumerate(text.splitlines(), 1):
+        line = raw.strip()
+        if not pending and (not line or line.startswith("#")):
+            continue
+        start = start if pending else n
+        if line.endswith("\\"):
+            pending += line[:-1] + " "
+            continue
+        cmd, pending = (pending + line).strip(), ""
+        m, d = ASSIGN.match(cmd), DEFAULT.match(cmd)
+        if d:
+            values[d.group(1)] = d.group(2)
+        if m and "--" in m.group(2):
+            groups[m.group(1)] = re.sub(r"\$\{?([A-Z][A-Z0-9_]*)\}?",
+                                        lambda v: groups.get(v.group(1), v.group(0)), m.group(2))
+            continue
+        if not cmd.startswith("bb "):
+            continue
+        for name, value in groups.items():
+            cmd = re.sub(rf"(?<![\"\w])\${{?{name}}}?(?![\w\"])", lambda _m, v=value: v, cmd)
+        cmd = VAR.sub(lambda v: values.get(v.group(0).strip("${}"), SCRIPT_VALUE), cmd)
+        out.append((start, tokens(cmd)[2:]))  # `bb NAME` and then the bio-box arguments
+    return out
+
+
+def example_scripts() -> list[Path]:
+    return sorted(p for p in EXAMPLES.glob("*/run.sh") if not p.parent.name.startswith("_"))
+
+
+@pytest.mark.covers("E-11")
+def test_e11_the_script_reader_expands_flag_groups_and_rejects_a_wrong_flag():
+    text = ('THREADS=${THREADS:-3}\nS="--root $ROOT --release $RELEASE --profile $PROFILE"\nS="$S --cpus $THREADS"\n'
+            'bb search search hmm $S --hmm "$OUT/a.hmm" --bits "$GA" \\\n  --positive A:1-2 --out "$OUT/x"\n'
+            'bb bad search hmm $S --hmm h --bits 30 --positive A:1-2 --out o --no-such-flag\n'
+            'bb old nbr summarize X --root R --profile P --windows 5g\n')
+    cmds = script_commands(text)
+    assert [n for n, _ in cmds] == [4, 6, 7]
+    assert cmds[0][1][:5] == ["search", "hmm", "--root", "1", "--release"]
+    assert cmds[0][1][cmds[0][1].index("--cpus") + 1] == "3" and cmds[0][1][cmds[0][1].index("--bits") + 1] == "1"
+    assert check_bio_box(cmds[0][1]) == []
+    assert check_bio_box(cmds[1][1]) and check_bio_box(cmds[2][1])  # an unknown flag; a renamed one
+
+
+@pytest.mark.covers("E-11")
+def test_e11_every_bio_box_command_an_example_runs_is_one_the_parser_accepts():
+    """A renamed or removed flag fails here, not at a release check on the pod (card E-11): every `bb` call of every
+    example's `run.sh` is parsed by `biobox.cli`'s parser, and its search and nbr commands name their directories or
+    the profile (W-03)."""
+    scripts = example_scripts()
+    assert {p.parent.name for p in scripts} >= {"crispr_cas_neighbourhoods", "rnap"}
+    bad = []
+    for path in scripts:
+        cmds = script_commands(path.read_text())
+        assert len(cmds) >= 5, f"{path}: only {len(cmds)} bio-box commands read"
+        for n, args in cmds:
+            where = f"{path.relative_to(EXAMPLES.parent)}:{n}"
+            bad += [f"{where}: {p}" for p in check_bio_box(args) + search_dir_problems(args)]
+    assert not bad, "\n".join(bad)
+
+
+@pytest.mark.covers("E-11")
+def test_e11_every_command_block_of_the_examples_readmes_is_one_the_parser_accepts():
+    docs = sorted(EXAMPLES.glob("*/README.md")) + [EXAMPLES / "README.md"]
+    assert len(docs) >= 3
+    bad = [f"{doc.relative_to(EXAMPLES.parent)}:{n}: {p}" for doc in docs for n, cmd in commands(doc.read_text())
+           for p in check(cmd)]
+    assert not bad, "\n".join(bad)
+
+
+@pytest.mark.covers("E-11")
+def test_e11_the_release_procedure_runs_the_examples_before_a_release_is_announced():
+    """Card E-11 and AGENTS §5.7: the runbook's release procedure names the step, and a failed invariant stops the
+    announcement; the guides point to `examples/` for the RNA polymerase numbers instead of holding them."""
+    assert RELEASE_EXAMPLES.is_file()
+    verify = section_of(RUNBOOK.read_text(), "## 6. ")
+    cmds = [c for _, c in commands(verify) if "release_examples.sh" in c]
+    assert any("--dry-run" in c for c in cmds) and any("--dry-run" not in c for c in cmds), cmds
+    assert "announce" in verify and "invariant" in verify
+    for doc in (GUIDE, AGENT_GUIDE):
+        assert "examples/rnap" in doc.read_text(), doc.name

@@ -138,7 +138,8 @@ systemd-run --user --unit ex2-driver-b --collect --quiet -p MemoryMax=2G -p Memo
 (`THREADS`, default 2) fits under the hour's cap (40 by day, 56 at night; AGENTS 7.2), and stops if a `STOP` file
 appears in the root. The steps, as it runs them (`$S`, `$N`, `$F`, `$Q` are the shared flags written out in
 `run.sh`; `bb` launches one `bio-box` command through `scripts/pod_run.sh`, `tool` one HMMER or Python command in a
-capped scope):
+capped scope; both, and the wait for room, are in `examples/_shared/launch.sh`, shared by every example since card
+E-11):
 
 1. The anchors, by name, from the Pfam file on the pod (read-only; nothing is downloaded): `hmmfetch -o
    "$OUT/hmm/anchors.hmm" -f "$PFAM" "$OUT/hmm/anchors.keys"` with the keys `TniQ` and `Cas_Csy3`, then one file
@@ -172,7 +173,7 @@ capped scope):
    -Z 1e8 --domZ 1e8 -T 0 --noali --tblout "$OUT/oracle.tbl" -o "$OUT/logs/hmmsearch.out" "$OUT/hmm/anchors.hmm"
    "$OUT/oracle.faa"`, `python -I "$EX/oracle.py" "$OUT/hmm/anchors.hmm" "$OUT/oracle.tbl" tniq="$OUT/tniq/hits.tsv"
    cas7f="$OUT/cas7f/hits.tsv" > "$OUT/observed_oracle.tsv"`.
-8. `observed.tsv` (the three files' rows), then `python -I "$EX/check.py" --expected "$EX/expected.tsv" --recorded
+8. `observed.tsv` (the three files' rows), then `python -I "$TREE/examples/_shared/check.py" --expected "$EX/expected.tsv" --recorded
    "$EX/recorded/$RELEASE.tsv" --write-recorded "$OUT/recorded_new.tsv" "$OUT/observed.tsv"`.
 
 The run ids (`$RUN_TNIQ`, `$RUN_CAS7F`) are read from the searches' logs (`search run: <id>`). Three tables of
@@ -442,7 +443,7 @@ in `expected.tsv` with the gene's `feature_uid`, written into `sql/checks.sql` a
 | `run.sh` | the whole example as one command (section 6) |
 | `expected.tsv` | the checks: id, assertion, kind, expectation |
 | `recorded/rN.3.tsv` | the recorded values of `rN.3` |
-| `check.py`, `oracle.py` | the comparison, and the `hmmsearch` oracle (standard library only); tested by `tests/r1/test_example_crispr_check.py` |
+| `oracle.py` | the `hmmsearch` oracle (standard library only); the comparison, `check.py`, is shared by every example and lives in `examples/_shared/` since card E-11; both tested by `tests/r1/test_examples_check.py` |
 | `sql/checks.sql`, `sql/checks_bp.sql`, `sql/oracle_uids.sql`, `sql/uids_tniq_cas.sql` | what `run.sh` runs |
 | `sql/q00_models.sql` to `sql/q04_cas5f_lengths.sql` | the tables of section 3 that the check does not need (`q01` is for reading: every TniQ and Cas7f gene with the roles in its base-pair window) |
 | `results/` | this run's small tables: `check.txt`, `observed.tsv`, `tniq_cas_loci.tsv`, `cas7f_10kb.tsv` (`nbr summarize`), `q00_models.tsv`, `q02_paper_organisms.tsv`, `q04_cas5f_lengths.tsv`, `uids_tniq_cas.txt`, `SHA256SUMS` of what stays on the pod |

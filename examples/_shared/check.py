@@ -1,7 +1,8 @@
-"""Compare a run of the CRISPR-Cas example with what it must show (standard library only).
+"""Compare a run of a worked example with what it must show (standard library only; shared by every example under
+`examples/`, card E-11; written for the CRISPR-Cas example).
 
     python -I check.py --expected expected.tsv [--recorded recorded/<release>.tsv] [--write-recorded FILE]
-                       OBSERVED.tsv [OBSERVED.tsv ...]
+                       [--table FILE] OBSERVED.tsv [OBSERVED.tsv ...]
 
 OBSERVED files are TSV with a column line `check_id<TAB>value` (as `bio-box sql --out` and `oracle.py` write
 them); a check id may appear in one file only. `expected.tsv` has one row per check: `check_id`, `asserts` (what
@@ -16,8 +17,10 @@ it asserts, in words), `kind` and `expectation`. Two kinds:
 
 Prints one line per check, `<status>  <check_id>  observed=<v>  expected=<e>`, status one of ok, FAIL (an
 invariant), differs (a recorded value), new (no recorded value for this release), missing (expected but not
-observed) or unexpected (observed, in no row of expected.tsv); then a summary line. Exits 1 when an invariant
-fails or is missing, 2 on a malformed input, else 0.
+observed) or unexpected (observed, in no row of expected.tsv); then a summary line. `--table FILE` also writes the
+same lines as a new TSV file `check, kind, expected, observed, verdict` (`-` for none), which
+`scripts/release_examples.sh` gathers into one summary. Exits 1 when an invariant fails or is missing, 2 on a
+malformed input, else 0.
 """
 
 from __future__ import annotations
@@ -94,6 +97,8 @@ def main(argv: list[str]) -> int:
     ap.add_argument("--expected", required=True)
     ap.add_argument("--recorded", help="recorded/<release>.tsv; absent or missing file: recorded checks are new")
     ap.add_argument("--write-recorded", help="write this run's recorded values to this new file")
+    ap.add_argument("--table", help="write every check's line as TSV (check, kind, expected, observed, verdict) to "
+                                    "this new file")
     ap.add_argument("observed", nargs="+")
     a = ap.parse_args(argv)
     try:
@@ -122,6 +127,7 @@ def main(argv: list[str]) -> int:
     counts = {"ok": 0, "FAIL": 0, "differs": 0, "new": 0, "missing": 0, "unexpected": 0}
     failed = 0
     lines = []
+    table = []  # (check, kind, expected, observed, verdict)
     for r in expected:
         cid, kind, exp = r["check_id"], r["kind"], r["expectation"]
         if cid not in got:
@@ -138,9 +144,19 @@ def main(argv: list[str]) -> int:
                 status = "new" if cid not in rec else ("ok" if same(shown, rec[cid]) else "differs")
         counts[status] += 1
         lines.append(f"{status}\t{cid}\tobserved={shown}\texpected={exp}")
+        table.append((cid, kind, exp, shown, status))
     for cid in sorted(got.keys() - seen):
         counts["unexpected"] += 1
         lines.append(f"unexpected\t{cid}\tobserved={got[cid]}\texpected=-")
+        table.append((cid, "-", "-", got[cid], "unexpected"))
+    if a.table:
+        try:
+            with open(a.table, "x", newline="") as fh:
+                fh.write("check\tkind\texpected\tobserved\tverdict\n")
+                fh.writelines("\t".join(row) + "\n" for row in table)
+        except OSError as e:
+            print(f"check: --table: {e}", file=sys.stderr)
+            return 2
     for line in lines:
         print(line)
     print("check: " + ", ".join(f"{n} {k}" for k, n in counts.items()) + (f"; {failed} invariants failed" if failed
