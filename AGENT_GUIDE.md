@@ -11,6 +11,8 @@ wilkcomp02 and cite their file: [T1] `planning/measurements/2026-11-10_trial_sea
 You may: read releases, run searches, export sequences and tables, query a release's catalog read-only.
 You may not: build, define or change a release; write anything under a data root or under `/stor`; fetch from
 the network (AGENTS §8); start a service; use Docker; edit `~/bio-box` on the pod; run a binary outside the image.
+So you may `results archive` a run (it writes only the local spool; §9) and `results list` or `results get`, but
+never `results flush`, which writes `/stor`: that is the operator's, and `--below-floor` the PI's.
 
 Rules of `AGENTS.md` that bind you (read the sections named):
 
@@ -358,7 +360,8 @@ Lead with the answer in one or two sentences, then the evidence:
 - The independent check (§6) and its result; what `sql` says on stderr each SQL statement read.
 - What the release cannot tell: no Pfam on `rN.1` (clusters have uids, no names); no ncRNA; no taxonomy; no
   tiers; neighbour counts are counts, not significance (no enrichment statistic exists).
-- Where the outputs are (`$SCR` on the pod's `/tmp`: gone after a reboot; offer to copy them to the laptop).
+- Where the outputs are (`$SCR` on the pod's `/tmp`: gone after a reboot; offer to copy them to the laptop), and,
+  if you archived the run (§9), its `results list` line: spooled (still on `/tmp`) or in a bundle on `/stor`.
 
 ## 8. Traps
 
@@ -374,7 +377,11 @@ Each is stated where it applies above; this is the checklist. The card or decisi
 - Packs live in the profile's pack directory, `/tmp/if2453/bio-box/packs`; `rN.1`'s is still in
   `/tmp/if2453/w19/packs` until the operator copies it (§2; W-22). `pack verify` writes nothing into a pack
   directory (its scratch is in `<profile tmp>/search/<user>/work`, W-22); never run `pack build` without asking.
-- `/tmp` is local disk: roots, packs, runs and your outputs vanish on a reboot (RUNBOOK §4).
+- `/tmp` is local disk: roots, packs, runs and your outputs vanish on a reboot (RUNBOOK §4). An archived run stays
+  on `/tmp` too, in the spool, until a flush reaches 64 MiB (W-28, DEC-33).
+- `results archive` keeps only the outputs named with `--with`: the run's record does not say which directories
+  hold its outputs (its `argv` is the worker's command). Name all of them the first time: the same run archived
+  again with other outputs is refused (W-28).
 - A contig shared by genomes of two stages belongs to the first; the later genome is one contig short in
   `contig_dim`. Not in `rN.*`; it is in the 50 Gbp set (DEC-26, C-21).
 - `search run` in a `pod_run.sh` unit needs `--wait` (W-13). A search or `nbr` command without `--profile`, or
@@ -399,6 +406,7 @@ Each is stated where it applies above; this is the checklist. The card or decisi
 | What releases exist | `releases` (§2) |
 | Taxonomy of the hits | Not available (no taxonomy in any release yet). Give `accession` and `header` of `hits.tsv`, labelled as source headers |
 | Compare two releases | `release verify --root ... --release rN.3 --previous rN.2`; run the same search on both (a pack each) and compare `protein_uid` sets |
+| Keep the results | `results archive "$RUN" --with <each output DIR>` (below); report its line. The operator flushes the spool to `/stor` once it holds 64 MiB (RUNBOOK §7, *Keep the results*); never flush yourself |
 | Is it significant / enriched | No statistic exists (cards F-01 to F-03): report counts and shares only, and say so |
 | Run on the larger build | Check STATUS.md for the root and a pack; no pack: ask before building one; the search memory does not grow with the release (W-19) |
 
@@ -435,3 +443,12 @@ bash "$SCR/img.sh" python -m biobox.cli sql --root /tmp/if2453/r10/root --releas
 ```
 
 If the summary reports 0 anchor loci, pass `--tape-version` with the release's `tape_version` from `catalog_info`.
+
+Keep a run and its outputs (card W-28, DEC-33). The command reads the results area on `/stor` (read-only here, so it
+can find an archive of the run already there) and writes only the spool under the profile's `tmp`; the area must
+exist, and does not yet (2026-11-12): until then the image cannot start with the bind, so ask the operator. List and
+restore the same way (`results list`, `results get "$RUN" --out "$SCR/back"`):
+
+```bash
+bash "$TREE/scripts/pod_run.sh" --profile "$TREE/profiles/wilkcomp02.yaml" --image "$IMAGE" --digest "$DIGEST" --mem 8G --threads 1 --bind /tmp/if2453 --bind /stor/work/Wilke/if2453/all-the-data:/stor/work/Wilke/if2453/all-the-data:ro --env PYTHONPATH="$TREE/src:/tmp/if2453/pilot_s1/pydeps" --log "$SCR/logs/qrnap-keep-1.log" qrnap-keep-1 results archive "$RUN" --profile "$TREE/profiles/wilkcomp02.yaml" --with "$SCR/out/rnap" --with "$SCR/out/flanks"
+```

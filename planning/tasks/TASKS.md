@@ -759,6 +759,13 @@ Files: `src/biobox/cli.py` (`bio-box results archive RUN`, `bio-box results list
 Do, test first: one archive per run (tar, deterministic: sorted names, fixed mtimes and owners, so the same run gives the same bytes), written under a temporary name in the results area and renamed into place; a manifest line per archive (run id, release, sha256, size, date of the run from its record, not of the archiving); never overwrites: an existing archive with the same sha256 is a no-op, with another sha256 a refusal; refuses a results area that is not on the profile's durable storage; `results list` reads the manifests. The 64 MB rule (AGENTS §7.3) applies to the archive too: say what is done with a run smaller than that (the PI's rule covers files under 64 MB on `/stor`; propose bundling by day, or ask) and stop for the PI if a small archive cannot be avoided.
 Accept: the tests; one real run archived on the pod and read back equal.
 
+### W-29 A run records the command that made it, and the outputs written from it
+**L** · Depends: W-28 · found 2026-11-12 by card W-28
+Files: `src/biobox/search/runner.py`, `src/biobox/search/export.py`, `src/biobox/search/results.py`, `src/biobox/cli.py`, tests
+Why: `results archive` cannot find a run's output directories: the record's `argv` is the worker's command (`runner.run` reassigns `argv` before the record is written) and exports carry no run id, so the user names each directory with `--with`.
+Do, test first: the run record keeps the user's command line (in `limits_json` or another field that needs no schema change; if one is needed, stop and report); every export written from a run (`search hmm`'s directory, `nbr` outputs, `nbr flanks`) writes a small `RUN` file naming the run id and the release; `results archive RUN` finds directories that carry its `RUN` file under paths the user gives (`--under DIR`), still accepts `--with`, and refuses a directory whose `RUN` names another run.
+Accept: the tests; outputs otherwise unchanged (the `RUN` file is the only new file; the byte-identity tests are migrated for it in the same commit).
+
 ### E-10 A dedicated tRNA caller for phage and archaeal tRNAs
 **H** (the PI adds `trnascan-se` to `container/environment.yml`; approved in principle 2026-11-12, as a later card), then **M** · Depends: 0-08b
 Why (card 0-08b): Infernal's filters at our fixed Z miss 6 of 239 tRNA loci on six genomes, 5 of them in the jumbo phage LAK-A1, and cut three more short (two 91-base archaeal tRNAs); turning the filters off costs about 7,900 CPU-hours per 10 Gbp (*derived*).

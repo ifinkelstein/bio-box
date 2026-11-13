@@ -10,6 +10,9 @@ tmp: /tmp/if2453/bio-box
 # (runner.default_pack_base, card W-03); pack, search, nbr and releases find a release's pack there with
 # only --profile. Only a pack build writes into it, so it may be read-only for all but its builder.
 durable: /stor/work/Wilke/if2453/all-the-data
+# Card W-28 (DEC-33): a user's search results are kept in <durable>/results, as bundles of at least
+# small_file_floor_bytes (`bio-box results flush`), spooled first in <tmp>/results/spool (`results archive`).
+# No key of its own: both follow from durable and tmp. The durable directory is made by the PI.
 bulk: /stor/scratch/Wilke/if2453/all-the-data
 nice_monolithic: 19
 nice_fanout: 15
@@ -23,11 +26,14 @@ day_end_hour: 20
 # DEPLOYMENT-AND-MALLEABILITY.md section 2 (shards under 300 CPU-min; the watchdog acts near 369)
 cpu_min_per_process: 300
 
-# DEC-25, card B-36: the clustering step of a release alone may run as one process above
-# cpu_min_per_process, up to this many CPU-minutes estimated before launch (build-stage refuses above
-# it). ESTIMATE: about five times the 2,195.91 CPU-minutes measured for 10,620,684 proteins (wilkcomp02,
-# 2026-11-10, run record rN.1.cluster); the PI may change it. Optional key: without it clustering gets
-# no exemption. The exemption ends when card B-37 splits clustering.
+# DEC-29 (narrowing DEC-25), cards B-36, B-45, B-42: one clustering call that no number of parts fits
+# (the NR90 step's prefilter from about 74 M proteins, NR50 step 0 from about 108 M; derived, DEC-29)
+# may run as one process above cpu_min_per_process, up to this many CPU-minutes estimated before launch
+# (build-stage refuses above it). Clustering in one process has no exemption since card B-42: above 80%
+# of cpu_min_per_process a release clusters in parts. ESTIMATE: set by the PI on 2026-11-10 for the
+# 50 Gbp build, about nine times the 2,195.91 CPU-minutes measured for 10,620,684 proteins (wilkcomp02,
+# 2026-11-10, run record rN.1.cluster); the PI may change it. Optional key: without it such a call is
+# refused. DEC-29 ends when an MMseqs2 without the prefilter index abort is pinned (card B-44).
 cluster_cpu_min_max: 20000
 
 # planning/data_layer_and_tests.md section 4.11, LY-04 (NFS small-file rule, 64 MB)

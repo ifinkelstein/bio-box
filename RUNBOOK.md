@@ -34,6 +34,7 @@ export MEM=8G                                        # real: 200G (the profile's
 export WORK=/tmp/if2453/c06                          # your scratch directory for inputs and outputs
 export BBTMP=/tmp/if2453/c06/tmp                     # the profile's tmp (real: /tmp/if2453/bio-box)
 export ROOT=/tmp/if2453/c06/root                     # the data root you build into
+export DURABLE=/tmp/if2453/w28/one/durable           # the profile's durable (real: /stor/work/Wilke/if2453/all-the-data)
 SCOPE=(systemd-run --user --scope --quiet -p MemoryMax="$MEM" -p MemorySwapMax=0 nice -n 19)
 SING=(singularity exec --cleanenv --env PYTHONPATH="$PYTHONPATH_POD" --env OMP_NUM_THREADS=2 --bind /tmp/if2453 --bind /sys/fs/cgroup:/sys/fs/cgroup:ro)
 bio-box() { "${SCOPE[@]}" "${SING[@]}" "$IMAGE" python -m biobox.cli "$@"; }
@@ -250,29 +251,32 @@ the same with or without `--ncrna-cm`. The step counts as one step in `all N ste
 The library must be the `refdb.yaml` file for the name to say `rfam-15.1`; another file is named by its
 sha256, which the release's C-08 check reports as differing from the lock.
 
-**Clustering's own cap (DEC-25).** A release's clustering is one process, and on a large release it
-passes 300 CPU-minutes: 2,195.91 CPU-minutes for 10,620,684 proteins (measured, wilkcomp02,
-2026-11-10, run record `rN.1.cluster`). DEC-25 exempts this one step from the 300 CPU-minute rule
-under its own cap, the profile's `cluster_cpu_min_max` (20000 in `profiles/wilkcomp02.yaml`, an
-estimate: about five times that run; the PI may change it). Every other step keeps the 300-minute rule.
+**Clustering's CPU budget (DEC-29).** Clustering in one process has no exemption from the 300
+CPU-minute rule any more: DEC-25 exempted it until clustering was split, and card B-42 ended that once
+the split clustering of `rN.1b` (2,053,075 proteins) equalled its published clusters row for row
+(`planning/measurements/2026-11-12_split_clustering_rN1b.md`). A release whose clustering would pass
+the budget clusters in parts (below), every process under 300 CPU-minutes. The one exemption left is
+DEC-29's: a single clustering call that no number of parts fits runs as one process under the
+profile's `cluster_cpu_min_max` (20000 in `profiles/wilkcomp02.yaml`, set by the PI; below). Every
+other step keeps the 300-minute rule.
 
-- `build-stage` estimates clustering's CPU-minutes before it starts it, from the release's protein
-  count: a power law through 284.10 CPU-minutes at 2,053,075 proteins and 2,195.91 at 10,620,684
-  (measured, wilkcomp02, 2026-11-10, `rN.1b` and `rN.1`; the fit is derived and extrapolated above
-  10.6 M proteins). At the cap of 20000 it refuses a release of more than about 62.7 M proteins
-  (derived: 10,620,684 × (20000 / 2195.91)^(1 / 1.244)).
+- `build-stage` estimates clustering's CPU-minutes in one process before it starts it, from the
+  release's protein count: a power law through 284.10 CPU-minutes at 2,053,075 proteins and 2,195.91
+  at 10,620,684 (measured, wilkcomp02, 2026-11-10, `rN.1b` and `rN.1`; the fit is derived and
+  extrapolated above 10.6 M proteins). Above 80% of `cpu_min_per_process` (240 of 300; about 1.79 M
+  proteins, derived: 2,053,075 × (240 / 284.10)^(1 / 1.244)) the release clusters in parts.
 - When every stage of the release has its gene-call run record, the check is made before any step;
   otherwise just before the cluster step's command, once this call's stage is gene-called.
-- An estimate over `cluster_cpu_min_max` is refused, exit 2. The log line starts `build-stage: refused`
-  and names `cluster_cpu_min_max`.
-- A profile without `cluster_cpu_min_max` (the scratch profile of Appendix B) gives no exemption:
-  clustering estimated over `cpu_min_per_process` is refused, exit 2, and the log line says so.
-- With the key, the cluster step's run record holds `cpu_budget_reason: exempt: DEC-25`, and
-  `over_cpu_budget` is still true when the step used more than 300 CPU-minutes (section 5).
-- When the release clusters in parts (below) and the profile has the key, this check does not use the
-  release's one-process estimate: it checks each call the plan runs as one process (DEC-29, below)
-  against `cluster_cpu_min_max` (card B-45). A profile without the key gets the check above in either mode.
-- The one-process clustering step ends with card B-42 (2); the key stays for DEC-29.
+- In one process (only below 80% of the budget, so it is never refused in practice) an estimate over
+  `cpu_min_per_process` is refused, exit 2, whatever `cluster_cpu_min_max` says; the log line starts
+  `build-stage: refused`, names DEC-29 and says to cluster in parts (`--cluster-parts N`, or let
+  `build-stage` choose). The cluster step's run record holds no `cpu_budget_reason`.
+- In parts, with or without the key, the check does not use the release's one-process estimate: it
+  checks each call the published cuts run as one process (DEC-29, below), against `cluster_cpu_min_max`,
+  and refuses such a call when the profile has no key (cards B-45, B-42). A release over the budget
+  whose calls all fit in parts is not refused, with or without the key.
+- A release clustered in one process by the code of cards B-36 to B-41 with the key has
+  `cpu_budget_reason: exempt: DEC-25` in its `cluster` record; nothing reads it.
 
 **Clustering in parts (card B-41).** When clustering in one process is estimated above 80% of the
 profile's `cpu_min_per_process` (240 CPU-minutes of 300), `build-stage` clusters the release in
@@ -286,12 +290,15 @@ parts, each step its own `run-step` under `runs/stage=<release>/`:
   Parts run several at once like scan shards, with `--scan-jobs` and `--scan-cpus`, within the hour's
   allowance. A part is estimated at 80% of the budget at most, from the call's measured share.
 - `--cluster-parts N` cuts every per-query call into N parts whatever the estimate (for trials).
-- The files are those of clustering in one process, byte for byte (tested on the fixture and a
-  constructed set; not yet on the pod). The steps' records are in `l2/cluster_plan/release=<R>/`,
-  never in a manifest.
+- The files are those of clustering in one process, byte for byte: tested on the fixture and a
+  constructed set, and on the pod, where `rN.1b` (2,053,075 proteins) reclustered in parts by
+  `build-stage` gave its published `cluster_member` and `cluster_member_aln` files with the same sha256,
+  with the default cut and with three parts per call (card B-42,
+  `planning/measurements/2026-11-12_split_clustering_rN1b.md`). The steps' records are in
+  `l2/cluster_plan/release=<R>/`, never in a manifest.
 - MMseqs2's databases are under `$BBTMP/scratch/biobox-cluster/<release>-<key>/`, and are removed when
-  `cluster` publishes. Their size is not yet measured.
-- The DEC-25 estimate and its refusal above still come first (in parts, call by call: above).
+  `cluster` publishes. At 2.05 M proteins they peaked at about 5.6 GB (measured, card B-42).
+- The check above still comes first (in parts, call by call: above).
 
 **A call that cannot be split runs as one process (DEC-29, card B-45).** The NR90 step's prefilter
 (`cluster.nr90.11.prefilter`) and NR50 step 0 (`cluster.nr50.11.prefilter`) cannot search a shared index
@@ -434,7 +441,7 @@ names. Fields:
 | `wall_s`, `cpu_min`, `peak_rss_bytes` | wall seconds, CPU-minutes, peak resident bytes of the step command |
 | `mem_cap` | `how` is `inherited` (the unit's cap, with `memory_max_bytes`), `opened` or `none` |
 | `exit_code`, `over_cpu_budget` | `over_cpu_budget` is true above the profile's `cpu_min_per_process` |
-| `cpu_budget_reason` | only in a release's `cluster` record, when the profile sets `cluster_cpu_min_max` and the release clusters in one process: `exempt: DEC-25`; and in the record of a clustering call run as one process in parts: `exempt: DEC-29` (section 2) |
+| `cpu_budget_reason` | only in the record of a clustering call run as one process in parts: `exempt: DEC-29` (section 2). Before card B-42 a release's `cluster` record clustered in one process with `cluster_cpu_min_max` in the profile held `exempt: DEC-25` |
 | `image_digest`, `host` | the image sha256 that `pod_run.sh --digest` passed in, and the host |
 | `outputs` | each published file: `path`, `bytes`, `sha256` |
 
@@ -699,6 +706,47 @@ says so in a line that begins `note`. A run that ends other than `ok` exits 1 an
 `recipe.yaml` in `DIR`. When the release has no pack, the command exits 2 and prints the
 `pack build` command to run; it does not build the pack.
 
+**Keep the results** (card W-28, DEC-33). The runs directory and every `--out` are on `/tmp`, which
+a reboot may clear. `results` keeps a closed run on the profile's durable storage, in the results
+area `$DURABLE/results` (real: `/stor/work/Wilke/if2453/all-the-data/results`), with no file under
+64 MB on `/stor` (AGENTS 7.3) and nothing there overwritten or deleted (AGENTS 7.5):
+
+- `results archive RUN --with DIR ...` writes the run's directory (its record and tables) and each
+  output named with `--with` (the `search hmm` DIR, the `nbr --format tsv` DIR, an `nbr flanks` DIR,
+  a lone `hits.tsv`) as one tar, with one manifest line, into the spool `$BBTMP/results/spool/` on
+  local disk. Nothing on disk links a run to its outputs (the run's record holds the worker's command
+  line, not yours), so name each one; a DIR whose `recipe.yaml` is not the run's recipe is another
+  run's and is refused. The same run archived again is a no-op (exit 0, said on stderr); with other
+  files or outputs it is refused (exit 2), naming both sha256. The tar has sorted names, mtime 0, no
+  owner, no host or path, and the run's own date (`submitted_at`) in its manifest line: the same run
+  gives the same bytes on any host.
+- `results flush` packs every spooled run into one bundle, `results-<first day>-<last day>-<hash>.tar`,
+  and renames it into the results area only when it is at least `small_file_floor_bytes` (64 MiB);
+  below that it writes nothing there, the runs stay spooled, and it says so on stderr (exit 0). Most
+  runs are far smaller (the `rN.3` RNA polymerase run with its `search hmm` DIR is 12,492,800 bytes,
+  measured below), so they wait in the spool until enough gather. `--below-floor` writes a smaller
+  bundle; it breaks AGENTS 7.3 and needs the PI's agreement. A bundle is copied to a dot-named
+  `.results-*.part-*` file there, read back, then renamed; a flush killed before the rename leaves
+  that file, which no command reads and `results list` names: only the PI removes it.
+- `results list` prints one line per kept run, flushed or spooled, with where it is, from the
+  manifests only (a bundle's first member). `results get RUN --out DIR` restores the run into a new
+  or empty DIR (`FILES.tsv`, `run/`, `outputs/<name>/`) and checks every file's sha256; a mismatch
+  exits 1 and writes no DIR.
+
+The image sees the durable storage only when it is bound, so these run through `pod_run.sh` with
+`--bind "$DURABLE"`. Until the PI has made `/stor/work/Wilke/if2453/all-the-data` (it is not on the
+pod as of 2026-11-12), every `results` command with the real profile fails: without the bind it exits
+2 with `the profile's durable storage ... does not exist`, and with it the image cannot start, since
+it cannot bind a missing directory. The first flush onto `/stor` is the PI's step.
+
+```bash
+bash "$TREE/scripts/pod_run.sh" --profile "$PROFILE" --image "$IMAGE" --digest "$DIGEST" --mem 8G --threads 1 --bind /tmp/if2453 --bind "$DURABLE" --env PYTHONPATH="$PYTHONPATH_POD" w28-archive results archive "$RUN" --profile "$PROFILE" --with "$WORK/hmm" --with "$WORK/nbr"
+bash "$TREE/scripts/pod_run.sh" --profile "$PROFILE" --image "$IMAGE" --digest "$DIGEST" --mem 8G --threads 1 --bind /tmp/if2453 --bind "$DURABLE" --env PYTHONPATH="$PYTHONPATH_POD" w28-flush results flush --profile "$PROFILE"
+bash "$TREE/scripts/pod_run.sh" --profile "$PROFILE" --image "$IMAGE" --digest "$DIGEST" --mem 8G --threads 1 --bind /tmp/if2453 --bind "$DURABLE" --env PYTHONPATH="$PYTHONPATH_POD" w28-list results list --profile "$PROFILE"
+bash "$TREE/scripts/pod_run.sh" --profile "$PROFILE" --image "$IMAGE" --digest "$DIGEST" --mem 8G --threads 1 --bind /tmp/if2453 --bind "$DURABLE" --env PYTHONPATH="$PYTHONPATH_POD" w28-get results get "$RUN" --profile "$PROFILE" --out "$WORK/back"
+tail -n 4 "$BBTMP/logs/w28-flush.log"
+```
+
 ## 8. Run the test suite on the pod
 
 Run these on the laptop, in the repository checkout. The script copies the working tree to the pod
@@ -746,11 +794,17 @@ What is ours, all under `/tmp/if2453/`:
   directory, `$BBTMP/packs/release=<R>/`, where one left by an older tree may still be). Removed by
   the command that made it; one is left only when that command was killed. Remove one only when no
   `pack verify` or `pack build` is running, by exact path.
+- `$BBTMP/results/spool/` (card W-28, section 7): runs archived and not yet flushed, `<run id>.tar` and
+  `<run id>.tsv` each, which `results flush` removes once their bundle is in the results area and read
+  back. `.archive.tmp-*` and `.bundle.tmp-*` there are what a killed `results archive` or `results flush`
+  left; remove one by exact path when no `results` command runs. `.lock` stays.
 - `$TREE`, `$WORK` and `/tmp/if2453/ci-tmp/<name>-*`: your mirrored trees and pytest directories.
 
 Never delete:
 
-- anything under `/stor`;
+- anything under `/stor`, the results area's `.results-*.part-*` files included (ask the PI);
+- a spooled run, `$BBTMP/results/spool/<run id>.tar` or `.tsv`, that `results list` shows only in the
+  spool: it is the run's only archive;
 - anything that is not yours: another user's files, another user's `$BBTMP/search/<user>/`, and
   another agent's directories under `/tmp/if2453/` (`c10`, `b24`, `ci/<other name>`, and so on);
 - a staging directory, `.incoming` directory or root file of a step that has an intent file
@@ -800,7 +854,7 @@ a profile value is missing from this table.
 | Memory cap required | true: `run-step` and the search runner refuse to start uncapped | profile `require_mem_cap` |
 | Nice | 19 (one big process), 15 (many small ones) | profile `nice_monolithic`, `nice_fanout`; AGENTS 7.2 says 19 |
 | CPU-minutes per process | 300 | profile `cpu_min_per_process`; AGENTS 7.2 |
-| CPU-minutes of a release's clustering | 20000, estimated before launch; refused above it. The one exemption from the 300 (DEC-25), until card B-37. Set by the PI on 2026-11-10 for the 50 Gbp build: about nine times the 2,195.91 measured for 10,620,684 proteins (wilkcomp02, 2026-11-10). Without the key, clustering over 300 is refused. In parts it is the cap of each call that runs as one process because no number of parts fits it (DEC-29, card B-45) | profile `cluster_cpu_min_max`; DEC-25, DEC-29; `cluster_refusal`, `one_process_refusal` in `src/biobox/stage.py`; cards B-36, B-45 |
+| CPU-minutes of one clustering call run as one process | 20000, estimated before launch; refused above it. The one exemption from the 300 (DEC-29): a call that no number of parts fits (the NR90 step's prefilter from about 74 M proteins, NR50 step 0 from about 108 M, derived). Set by the PI on 2026-11-10 for the 50 Gbp build: about nine times the 2,195.91 measured for 10,620,684 proteins (wilkcomp02, 2026-11-10). Without the key such a call is refused. Clustering in one process has no exemption since card B-42 (DEC-25's ended): above 80% of the budget a release clusters in parts | profile `cluster_cpu_min_max`; DEC-29 (narrowing DEC-25); `cluster_refusal`, `one_process_refusal` in `src/biobox/stage.py`; cards B-36, B-45, B-42 |
 | ncRNA scan shard size | `prok-2` (the default): 111,734,541 genome bases, 80% of `cpu_min_per_process` (300) at 358.0 CPU-hours per 10 Gbp (derived: 304.0 × 299.7 / 254.5, the set's cost relative to `prok-1` from `planning/measurements/2026-11-12_rfam_sample.md`). `prok-1`: 131,578,947 at 304.0, the slower of the two shards of card E-07's pod check (derived in `planning/measurements/2026-11-11_ncrna_producer.md`; the design note's 247.4 gave 161,681,487). Shards at once: at most the unit's `MemoryMax` / (6.4 GiB per two `cmsearch` threads) | `NCRNA_CPU_H_PER_10GBP`, `NCRNA_SET_COST`, `NCRNA_JOB_GIB` in `src/biobox/stage.py`; cards E-07, E-08, E-09 |
 | Scan shard size | 30,150,753 residues: 80% of `cpu_min_per_process` (300) at 7.96 CPU-minutes per million residues (derived: 300 × 0.8 / 7.96 × 10^6; the rate of the Pfam scan of stage P1 in card C-10, measured on wilkcomp02, 2026-11-10: 2,343.74 CPU-minutes for 294.5 M residues). The 80% leaves room for a scan 25% slower per residue (derived: 1 / 0.8) | `SHARD_MARGIN` and `SCAN_CPU_MIN_PER_M` in `src/biobox/stage.py`; cards C-11, C-13 |
 | Scan shards at once | `--scan-jobs` J × `--scan-cpus` C at most the threads `run-step` allows when `build-stage` starts (40 by day, 56 at night when idle); defaults C = 4, J = allowance // C (10 by day, 14 at night). The cap is a total over everything of ours on the pod, and `build-stage` counts only its own threads: choose J = floor((cap - other threads) / C) (section 2). The allowance is read again before each step and before each shard launch; a launch that would pass it waits | `scan_slots` and `_launch` in `src/biobox/stage.py`; cards C-11, C-12 |
@@ -811,6 +865,8 @@ a profile value is missing from this table.
 | Search runs and work directories | `<tmp>/search/<user>/runs` and `<tmp>/search/<user>/work`, one per user, outside the data root; with `--profile`, else `--runs` and `--work` | profile `tmp`; `default_runs_dir`, `default_work_base` in `src/biobox/search/runner.py`; card W-03 |
 | `search run` in a `pod_run.sh` unit | only with `--wait`; without it, refused (exit 2) | `BIOBOX_POD_UNIT` in `scripts/pod_run.sh` and `src/biobox/cli.py`; card W-13 |
 | Durable results | `/stor/work/Wilke/if2453/all-the-data` | profile `durable` |
+| Results area | `<durable>/results` (`/stor/work/Wilke/if2453/all-the-data/results`), or `--results` inside `durable` (decided on the resolved path and the file system's device, never the spelling); only bundles of at least `small_file_floor_bytes`, never overwritten or deleted; `--below-floor` only with the PI's agreement | profile `durable`, `small_file_floor_bytes`; DEC-33; `biobox.search.results`; card W-28 |
+| Results spool | `<tmp>/results/spool` (`/tmp/if2453/bio-box/results/spool`), local disk: archived runs wait there until a flush reaches the floor | profile `tmp`; card W-28 |
 | Bulk results | `/stor/scratch/Wilke/if2453/all-the-data` | profile `bulk` |
 | Results reach the data root | one `rsync`, then an atomic rename | AGENTS 7.3 |
 | `STOP` file in the data root | exit cleanly before each step | AGENTS 7.4 |
@@ -822,14 +878,14 @@ a profile value is missing from this table.
 
 The scratch profile used for the tests in this file differs from the real one in these keys:
 `max_threads_day` 2, `max_threads_night` 2, `mem_scope` 8G, `tmp`, `durable` and `bulk` under
-`/tmp/if2453/c06`, `small_file_floor_bytes` 1000, and no `cluster_cpu_min_max` (so no clustering
+`/tmp/if2453/c06`, `small_file_floor_bytes` 1000, and no `cluster_cpu_min_max` (so no DEC-29
 exemption; the fixture's clustering is far under 300 CPU-minutes). Appendix B lists it.
 
 ## 11. Known limits today
 
 | Limit | What happens | Card |
 |---|---|---|
-| Clustering's DEC-25 cap | above 80% of the budget a release's clustering runs in parts (card B-41, section 2). In one process the DEC-25 estimate refuses one over the profile's `cluster_cpu_min_max` (20000; about 62.7 M proteins, derived, section 2), exit 2; in parts, with the key, only a call run as one process over the cap is refused (card B-45). The estimate is a fit by protein count, extrapolated above 10.6 M proteins. From about 74 M proteins a part of the NR90 step's prefilter would spend 240 CPU-minutes or more on its own k-mer table of the whole target (derived, section 2), so no part fits the budget; that call then runs as one process under `cluster_cpu_min_max` (DEC-29), or is refused without the key | B-36, B-37, B-41, B-45 |
+| Clustering's budget | above 80% of the budget a release's clustering runs in parts (card B-41, section 2); in one process there is no exemption (card B-42). In parts only a call run as one process is checked: refused over the profile's `cluster_cpu_min_max` (20000) or without the key, exit 2 (cards B-45, B-42). The one-process estimate that chooses parts is a fit by protein count, extrapolated above 10.6 M proteins. From about 74 M proteins a part of the NR90 step's prefilter would spend 240 CPU-minutes or more on its own k-mer table of the whole target (derived, section 2), so no part fits the budget; that call then runs as one process under `cluster_cpu_min_max` (DEC-29), or is refused without the key | B-36, B-37, B-41, B-45, B-42 |
 | Ingest of a stage over about 60 Gbp | `build-stage` refuses before any step (exit 2): one ingest process runs at about 3.7 Mbp/s (measured, wilkcomp02), so it would pass 300 CPU-minutes. Split the stage into smaller stages | B-30 |
 | Shard size is Pfam's | shards are cut at 80% of the budget at Pfam's rate (7.96 CPU-minutes per million residues, measured in C-10). A library more than 1.25 times slower per residue than that (derived: 1 / 0.8; above 9.95 CPU-minutes per million residues, derived) passes 300 CPU-minutes per shard, and the run record says `over_cpu_budget`. Lower `--scan-cpus` does not help, since the budget counts CPU-minutes | C-11, C-13 |
 | `pod_run.sh` CPU quota | the unit's quota is `--threads` of `pod_run.sh` (default the night cap, 56), fixed at launch, whatever `--scan-jobs` × `--scan-cpus` is. By day it is above the day cap: the day cap is held by `build-stage` and `run-step`, not by the quota. A `run-step` launched alone keeps the thread count it chose at its start until it ends (at most 300 CPU-minutes) | C-07, C-11, C-12 |
@@ -838,6 +894,9 @@ exemption; the fixture's clustering is far under 300 CPU-minutes). Appendix B li
 | Search packs and runs inside an old root | a root written before card W-03 may hold `search_pack/` and `search/` (the pack and runs were then written into the root). Nothing reads or writes them now; the manifest leaves them out (`catalog.EXCLUDED_TREES`). Build the pack again into the pack directory (section 7) | W-03, W-13 |
 | No detached search in a unit | `search run` without `--wait` in a `pod_run.sh` unit is refused (exit 2): the unit would stop the detached runner when the command returns (section 7). Use `--wait`; `search status` and `search cancel` work on a `--wait` run from another shell | W-13 |
 | `pod_run.sh` and the profile | `pod_run.sh --profile` sets the unit's limits only; it does not pass the profile to `bio-box` (no `BIOBOX_PROFILE` in the image). Give `bio-box` its own `--profile`, or the pack, runs and work directories (section 7) | W-03, W-13 |
+| A run's outputs are named by hand | `results archive` keeps only the outputs given with `--with`: the run's record holds the worker's command line (`runner.run` reuses the name `argv` for it), not the `search hmm` or `nbr` command that wrote the outputs, and the exports carry no run id. A DIR whose `recipe.yaml` is not the run's is refused | W-28 (no card yet for the record's argv) |
+| The durable storage is not there yet | `/stor/work/Wilke/if2453/all-the-data` (profile `durable`) does not exist on the pod (2026-11-12); `results` with the real profile exits 2 until the PI makes it. The image sees it only with `--bind` | W-28 |
+| Spooled runs are on `/tmp` | until a flush reaches the 64 MiB floor, a run's archive is only in the spool on local disk, which a reboot may clear, as it clears the run itself | W-28 |
 | `search hmm --positive` reads all contig labels | the accession or header of the positive control is looked up in every row group of `contig_label`: no table is sorted by accession, and a header substring cannot prune. The contig's genes are then read from its tape by contig uid, which prunes. Not measured on a large release | W-07 |
 
 Found while writing this runbook, no card yet (reported to the PI):
@@ -864,6 +923,15 @@ fixture of Appendix B was built there first, with the section 2 command as unit 
 `--threads 4` (`pod_run: w13-build exited 0`). The two searches that were cancelled and stopped
 used the runner's test hook `--fault timeout --wall-s 900` (its worker waits until it is stopped),
 so that they ran long enough to be watched; `--fault` is not for real searches.
+
+The rows marked W-28 were run on 2026-11-12 between 23:44 and 23:53 (pod local time) by card W-28, in
+`/tmp/if2453/w28`, on the `rN.3` RNA polymerase run `599bea5d471c84759a0eec02e2ca9225` of card W-25 and
+its outputs in `/tmp/if2453/w25` (bound read-only), with two scratch profiles: the real profile with
+`tmp`, `durable` and `bulk` under `/tmp/if2453/w28/one` or `/tmp/if2453/w28/two`, and the real floor
+(67108864). `DURABLE` was the scratch `durable`, never `/stor`. Each ran in a unit `w28-*` with
+`MemoryMax=8G`, `CPUQuota=100%` and nice 19, through the script `/tmp/if2453/w28/run.sh` (the same
+`singularity exec` as `pod_run.sh`, waiting for the unit), and `results list` once through
+`pod_run.sh` as written in section 7.
 
 | Section | Command | Date run | Last line |
 |---|---|---|---|
@@ -915,6 +983,15 @@ so that they ran long enough to be watched; `--fault` is not for real searches.
 | 7 | `bio-box export proteins ... --out "$WORK/proteins.faa"` | 2026-11-10 | `(no output)`, exit 0 |
 | 7 | `bio-box search cancel "$RUN" ...` of a run that has closed | not run on the pod by W-13; tested | `tests/r2/test_micro_s0_search.py` (card W-13): exit 0, and nothing is signalled. Card C-06 ran it on the pod before W-03 (`--root` alone, runner already gone): `(no output)`, exit 0 |
 | 7 | `ls -d "$ROOT/search_pack" "$ROOT/search"` after every command above | 2026-11-10 | `ls: cannot access '/tmp/if2453/w13/root/search': No such file or directory` (and the same for `search_pack`): the search wrote nothing under the root |
+| 7 | W-28: `results list --profile` the real profile | 2026-11-12 | `refused: the profile's durable storage /stor/work/Wilke/if2453/all-the-data does not exist (it is made by the PI, not by bio-box)`, exit 2 |
+| 7 | W-28: `results archive "$RUN" ... --with` the `search hmm` DIR alone (profile `two`) | 2026-11-12 | `spool /tmp/if2453/w28/two/tmp/results/spool: 1 runs, 12492800 bytes; ...` (2,590 files) |
+| 7 | W-28: `results flush` of that spool | 2026-11-12 | `results flush: the spool's 1 runs make a bundle of 12503040 bytes, under the floor of 67108864 bytes (...); nothing written to /tmp/if2453/w28/two/durable/results, the runs stay spooled. ...`, exit 0; the results area stayed empty |
+| 7 | W-28: `results archive "$RUN" ...` with the `search hmm` DIR and the five `nbr flanks` DIRs (profile `one`) | 2026-11-12 | `spool ...: 1 runs, 164618240 bytes; ...` (14,264 files, sha256 `64cdbd66...7b77`, 9.6 s) |
+| 7 | W-28: the same command again | 2026-11-12 | the same line; before it `results archive: run 599bea5d471c84759a0eec02e2ca9225 is already kept, sha256 64cdbd66...7b77, in .../spool/599bea5d471c84759a0eec02e2ca9225.tar; nothing written`, exit 0 |
+| 7 | W-28: `results archive "$RUN" ...` with other outputs into profile `two`, which keeps the run already | 2026-11-12 | `refused: run 599bea5d471c84759a0eec02e2ca9225 is already archived in ... with sha256 9c305398...d7cf; this archive would be sha256 481bbb76...6fef (...). An archive is never overwritten`, exit 2 |
+| 7 | W-28: `results flush --profile "$PROFILE"` (profile `one`, unit `w28-flush`) | 2026-11-12 | `/tmp/if2453/w28/one/durable/results/results-20261112-20261112-493d4af66eeb856b.tar	1 runs	164628480 bytes	sha256 5ae58462ba605c4289e08804eb03a605ad34f42a0a86db54d6606785026b379c` (7.8 s; `sha256sum` of the file printed the same) |
+| 7 | W-28: `pod_run.sh ... w28-podrun-list results list --profile "$PROFILE"` (with `--bind "$DURABLE"`) | 2026-11-12 | `pod_run: w28-podrun-list exited 0` (before it, the run's line naming the bundle, and `spool ...: 0 runs, 0 bytes; ...`) |
+| 7 | W-28: `results get "$RUN" --profile "$PROFILE" --out "$WORK/back"` (unit `w28-get`) | 2026-11-12 | the run's manifest line; before it `wrote /tmp/if2453/w28/back: 14264 files` (8.7 s). `diff -r` of `back/run` and each `back/outputs/<name>` against the originals: no difference |
 | 8 | `sh scripts/pod_pytest.sh C-06 tests/r0 -k nothing_matches_this` (laptop) | 2026-11-10 | `140 deselected in 1.09s` (exit 5: nothing selected) |
 | 8 | `sh scripts/pod_pytest.sh C-06 tests/r0/test_runbook.py` (laptop) | 2026-11-10 | `20 passed in 3.48s` |
 | 8 | `sh scripts/pod_pytest.sh C-06 --shards 8` (laptop) | 2026-11-10 | `shard 7: 121 passed, 8 xfailed in 509.90s (0:08:29)` (eight shard lines, no failure; 1023 passed, 10 skipped, 8 xfailed in all) |
@@ -1047,6 +1124,9 @@ Last line: `01563e192ab22a5931d55e224a2dbb07`.
 
 ## Not yet tested
 
+- `results flush` onto `/stor` (card W-28): the PI's step. It was run only into a scratch results
+  area under `/tmp/if2453/w28`, at the real floor.
+
 - `$WORK/rb.py` (Appendix B), which replaced the `python -c` one-liners of sections 5 and 6 and Appendix B in card C-14. It holds the same code, but was not run on the pod: C-14 may run only the test suite there. Run each of its commands once, and through `ssh`, and correct this line.
 - Recovery from an intent file (a kill during publishing). It cannot be hit by hand at fixture
   size; `tests/r2/test_runstep_resume.py` kills a step at each publish point with an injected hook.
@@ -1060,10 +1140,6 @@ Last line: `01563e192ab22a5931d55e224a2dbb07`.
 - `git push pod`. Agents never push.
 - Single release steps by hand (`bio-box release cluster ...`, `bio-box stage genecall ...`).
   Only `build-stage` ran them.
-- Clustering in parts (card B-41, section 2) in a build unit, and on a real release: it was tested in
-  the test suite on the pod (the fixture and a constructed set, through `build-stage` on the fixture),
-  not in a build launched with `pod_run.sh`. The reclustering of `rN.1b` in parts (2.05 M proteins,
-  the card's acceptance) and the removal of the DEC-25 exemption have not been done.
 - A build at the real profile's 64 MiB floor and 200G cap, and a real Pfam scan (card C-10).
 - Inputs outside `/tmp/if2453` (they need an extra `--bind`, section 2), and `--digest` refusing a
   wrong image (the script's `die` path was read, not run).

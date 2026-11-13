@@ -596,7 +596,7 @@ PREFILTER_INDEX_LOAD_CPU_S_PER_TARGET = 0.28 / 59_338
 # one part builds its own table, and is one part only when work + rebuild fits 240. Parts p = ceil(work / (240 - o));
 # the index I = t x 1.583e-4 CPU-s, one process. The one-process steps (the plan, kmermatcher, clust, the tables) are
 # `rest`, 12.2 and 55.4 CPU-min at 2.05 M and 10.6 M, grown as n^0.92. B-36's one-process estimate T(n) =
-# 284.10 (n / 2,053,075)^1.244 (`biobox.stage.cluster_cpu_min`, the DEC-25 gate) is beside it.
+# 284.10 (n / 2,053,075)^1.244 (`biobox.stage.cluster_cpu_min`, which decides whether a release clusters in parts) is beside it.
 #
 #   parts          NR90: 07 align | 11 prefilter | 12 align     NR50: 07 | 11 pf | 12 | 15 pf | 16 | 19 pf | 20    members
 #   10.0 M         1 | 1 (o 27.5) | 4                           1 | 1 (14.0) | 2 | 1 | 1 | 1 | 1                       1, 1

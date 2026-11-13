@@ -12,7 +12,8 @@ gate of `build-stage` (`stage.cluster_refusal`) is a pure function of the profil
   rates reach the same case when the part budget is below the table's estimate.
 - `release cluster plan` shows which calls may run as one process and why (`cluster.one_process_outlook`).
 - The release-level gate: clustering in parts is checked call by call (each call the plan runs as one process
-  against the cap), not by the one-process estimate of the whole release; in one process, as before.
+  against the cap), not by the one-process estimate of the whole release, with or without the cap (card B-42); in
+  one process by the 300 CPU-minute budget alone, since DEC-25's one-process exemption ended (card B-42).
 """
 
 from __future__ import annotations
@@ -167,9 +168,9 @@ def test_b45_in_parts_the_gate_checks_the_one_process_calls_not_the_whole_releas
     n = 95_000_000
     prof = _profile(cluster_cpu_min_max=20000)
     assert bs.cluster_cpu_min(n) > 20000
-    # in one process (the unsplit mode): today's check, refused
+    # in one process (the unsplit mode): refused, over the budget; since card B-42 the cap does not apply to it
     why = bs.cluster_refusal(prof, "rX", n)
-    assert why is not None and "cluster_cpu_min_max" in why and "DEC-25" in why
+    assert why is not None and "cpu_min_per_process" in why and "DEC-29" in why and "in parts" in why
     # in parts: no call yet planned as one process, or each under the cap: not refused
     assert bs.cluster_refusal(prof, "rX", n, one_process=[]) is None
     assert bs.cluster_refusal(prof, "rX", n, one_process=[("cluster.nr90.11.prefilter", 3945.4)]) is None
@@ -180,12 +181,19 @@ def test_b45_in_parts_the_gate_checks_the_one_process_calls_not_the_whole_releas
     assert "cluster.nr90.11.prefilter" not in why and "cluster_cpu_min_max of 20000" in why
 
 
-def test_b45_without_the_cap_the_gate_is_unchanged_in_either_mode():
+@pytest.mark.covers("B-42")
+def test_b42_without_the_cap_in_parts_the_gate_checks_only_that_no_call_needs_the_exemption():
+    """B-45 left this open: without the key the gate compared the release's one-process estimate T(n) with the budget
+    in parts too, which refused every large release that splits cleanly. Now in parts it refuses only a call the plan
+    runs as one process (DEC-29), which needs the key; in one process the budget holds as before."""
     prof = _profile(cluster_cpu_min_max=None)
     n = 95_000_000
-    for one in (None, [], [("cluster.nr90.11.prefilter", 1.0)]):
-        why = bs.cluster_refusal(prof, "rX", n, one_process=one)
-        assert why is not None and "no cluster_cpu_min_max" in why and "DEC-25" in why
+    why = bs.cluster_refusal(prof, "rX", n, one_process=None)  # in one process
+    assert why is not None and "cpu_min_per_process" in why and "DEC-29" in why
+    assert bs.cluster_refusal(prof, "rX", n, one_process=[]) is None  # in parts, no call needs the exemption
+    why = bs.cluster_refusal(prof, "rX", n, one_process=[("cluster.nr90.11.prefilter", 1.0)])
+    assert why is not None and "no cluster_cpu_min_max" in why and "DEC-29" in why
+    assert "cluster.nr90.11.prefilter" in why
     assert bs.cluster_refusal(prof, "rX", 1_000, one_process=[]) is None
 
 
