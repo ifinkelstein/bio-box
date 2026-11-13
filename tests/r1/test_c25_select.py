@@ -973,7 +973,11 @@ def test_skani_driver_run_with_stand_in_binary(tmp_path):
     for sh in plan["shards"]:
         subprocess.run([sys.executable, "-I", str(SKANI), "run-shard", str(work), str(sh["k"]), "--skani", str(fake)],
                        check=True, capture_output=True, text=True, env=env)
-        assert json.loads((work / "shards" / str(sh["k"]) / "DONE").read_text())["species"] == len(sh["species"])
+        done = json.loads((work / "shards" / str(sh["k"]) / "DONE").read_text())
+        assert done["species"] == len(sh["species"])
+        # the process's CPU time (its own and its children's: skani) is recorded, for the 300 CPU-minute rule
+        assert done["cpu_s"] > 0 and done["children_maxrss_kb"] > 0
+        assert all(s["cpu_s"] >= 0 for s in done["per_species"])
     table = tmp_path / "ani_pairs.tsv"
     subprocess.run([sys.executable, "-I", str(SKANI), "collect", str(work), str(table)], check=True,
                    capture_output=True, text=True)

@@ -4,7 +4,7 @@
     python3 -I c27_skani.py normalise SKANI_TSV... -o OUT [--expect-query ACC --expect-refs FILE]
     python3 -I c27_skani.py paths OUT_TSV LOCK_JSON...
     python3 -I c27_skani.py plan CANDIDATES_TSV PATHS_TSV WORK [--cap 20] [--min-af 15] [--threads 8]
-                            [--budget-cpu-min 240] [--sketch-cpu-s 2] [--pair-ms 10] [--image SIF]
+                            [--budget-cpu-min 240] [--sketch-cpu-s 0.08] [--pair-ms 14] [--image SIF]
                             [--unavailable FILE] [--dry-run]
     python3 -I c27_skani.py launch WORK [--parallel 2] [--dry-run]
     python3 -I c27_skani.py run-shard WORK K [--skani skani] [--threads N]
@@ -43,16 +43,17 @@ the genomes listed with --unavailable (not served; refused for a rank-1 genome; 
 file is refused), packed
 into shards by first-fit decreasing on an estimate of CPU-minutes, (genomes x sketch-cpu-s + pairs x pair-ms) /
 60, so that each shard process stays under --budget-cpu-min (default 240, under the 300 CPU-minute rule; a
-species over the budget is a shard alone, and plan refuses one over 300). The cost per genome and per pair are
-estimates until step 4 measures one species. Writes WORK/plan.json and WORK/members.tsv; --dry-run writes
-nothing and prints the plan and the unit commands.
+species over the budget is a shard alone, and plan refuses one over 300). The default costs per genome and per
+pair are those measured on one species (Xanthomonas campestris, 104 genomes, 2026-11-13) plus 25%. Writes
+WORK/plan.json and WORK/members.tsv; --dry-run writes nothing and prints the plan and the unit commands.
 
 launch: starts up to --parallel shards that are neither DONE nor active, each as unit c27-skani-<k>
 (systemd-run --user, nice 19, MemoryMax 32G, CPUQuota threads x 100%), running run-shard inside the image.
 
 run-shard: one species at a time (bounded memory: one species' sketches on disk, its pairs in memory), each in
-WORK/species/<id>/ with pairs.tsv, species.json (times) and DONE; a species with DONE is skipped, so a shard
-resumes. At the end WORK/shards/<k>/DONE, or FAILED with the reason.
+WORK/species/<id>/ with pairs.tsv, species.json (wall time of every call, CPU time) and DONE; a species with
+DONE is skipped, so a shard resumes. At the end WORK/shards/<k>/DONE (with the process's CPU seconds, its own
+and its children's, and the children's peak RSS), or FAILED with the reason.
 
 collect: every species DONE -> one table, sorted, for c25_select.py --ani TABLE --require-pairs.
 """
@@ -63,6 +64,7 @@ import hashlib
 import json
 import os
 import re
+import resource
 import shutil
 import subprocess
 import sys
@@ -276,6 +278,12 @@ def cmd_launch(a) -> int:
 
 # --- run -------------------------------------------------------------------------------------------------------
 
+def cpu_s() -> float:
+    """CPU seconds (user + system) of this process and of its waited-for children (skani) so far."""
+    s, c = resource.getrusage(resource.RUSAGE_SELF), resource.getrusage(resource.RUSAGE_CHILDREN)
+    return s.ru_utime + s.ru_stime + c.ru_utime + c.ru_stime
+
+
 def run(cmd: list, log: list) -> float:
     t = time.time()
     subprocess.run([str(c) for c in cmd], check=True, stdout=subprocess.DEVNULL, stderr=subprocess.PIPE)
@@ -292,7 +300,7 @@ def run_species(work: Path, sp: dict, members: list[tuple[str, str]], plan: dict
     cap, min_af = plan["cap"], plan["min_af"]
     ranked = [acc for acc, _ in members]
     path = dict(members)
-    t0 = time.time()
+    t0, c0 = time.time(), cpu_s()
     log: list[dict] = []
     put_text(d / "genomes.txt", "".join(path[g] + "\n" for g in ranked))
     sk = d / "sketches"
@@ -338,9 +346,10 @@ def run_species(work: Path, sp: dict, members: list[tuple[str, str]], plan: dict
     res = {"id": sp["id"], "species": sp["species"], "genomes": len(ranked), "picks": [g for g, _ in picks],
            "pairs": len(pairs), "pairs_quality_top_added": added,
            "pairs_unreported": sum(v[0] == "" for v in pairs.values()), "pairs_sha256": sha,
-           "wall_s": round(time.time() - t0, 3), "calls": log}
+           "wall_s": round(time.time() - t0, 3), "cpu_s": round(cpu_s() - c0, 3), "calls": log}
     put_text(d / "species.json", json.dumps(res, indent=1) + "\n")
-    put_text(d / "DONE", json.dumps({k: res[k] for k in ("id", "genomes", "pairs", "pairs_sha256", "wall_s")}) + "\n")
+    put_text(d / "DONE", json.dumps({k: res[k] for k in ("id", "genomes", "pairs", "pairs_sha256", "wall_s", "cpu_s")})
+             + "\n")
     return res
 
 
@@ -365,8 +374,10 @@ def cmd_run_shard(a) -> int:
         for sp in sh["species"]:
             if STOP.exists():
                 raise RuntimeError(f"STOP present at {STOP}")
+            c0 = cpu_s()
             r = run_species(a.work, sp, members[sp["id"]], plan, a.skani, threads)
-            done.append({"id": sp["id"], "wall_s": r["wall_s"], "pairs": r["pairs"]})
+            done.append({"id": sp["id"], "wall_s": r["wall_s"], "pairs": r["pairs"],
+                         "cpu_s": round(cpu_s() - c0, 3)})  # 0 for a species DONE before this run
     except Exception as e:  # noqa: BLE001
         msg = f"{type(e).__name__}: {e}"
         if isinstance(e, subprocess.CalledProcessError) and e.stderr:
@@ -374,7 +385,9 @@ def cmd_run_shard(a) -> int:
         put_text(mark / "FAILED", json.dumps({"reason": msg, "done": done}) + "\n")
         print(msg, file=sys.stderr)
         return 1
+    kids = resource.getrusage(resource.RUSAGE_CHILDREN)
     put_text(mark / "DONE", json.dumps({"species": len(done), "wall_s": round(time.time() - t0, 3),
+                                        "cpu_s": round(cpu_s(), 3), "children_maxrss_kb": kids.ru_maxrss,
                                         "per_species": done}) + "\n")
     return 0
 
@@ -441,8 +454,10 @@ def main(argv: list[str]) -> int:
     p.add_argument("--min-af", type=float, default=15.0)
     p.add_argument("--threads", type=int, default=8)
     p.add_argument("--budget-cpu-min", type=float, default=240.0)
-    p.add_argument("--sketch-cpu-s", type=float, default=2.0, help="estimate: CPU-seconds to sketch one genome")
-    p.add_argument("--pair-ms", type=float, default=10.0, help="estimate: CPU-milliseconds per sketched pair")
+    p.add_argument("--sketch-cpu-s", type=float, default=0.08,
+                   help="CPU-seconds to sketch one genome (measured 0.065 on X. campestris, 5.1 Mbp, plus 25%%)")
+    p.add_argument("--pair-ms", type=float, default=14.0,
+                   help="CPU-milliseconds per pair (measured 11.4 on X. campestris, plus 25%%)")
     p.add_argument("--image", default="")
     p.add_argument("--unavailable", type=Path, help="file of accessions with no sequence (not served): left out")
     p.add_argument("--dry-run", action="store_true")
