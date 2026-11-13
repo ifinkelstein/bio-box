@@ -332,3 +332,13 @@ duplicates:
   near: {v: 2, tag: asserted, why: "§5.1: 2 near duplicates"}
   near_ani: {v: 0.999, tag: asserted, why: "§2.1 S10: near duplicates at 99.9% ANI"}
   igr_share: {v: 0.5, tag: asserted, why: "share of a near duplicate's substitutions on intergenic bases; the rest are synonymous (§2.1 S10: biased to synonymous and IGR sites); estimate"}
+
+emit:
+  # §2.1 S11: per-source FASTA, the ingest manifest, truth in emitted-contig coordinates, manifest.json (card F-02
+  # session 8; read by `emit.build`, whose docstring states the rules). Only the labels below are drawn; nothing
+  # here changes a base of the world.
+  mislabel_rate: {v: 0.05, tag: asserted, why: "§2.1 S11 optional mislabel rate, §5.3 sampling knob: a source's tax_lineage is that of a genome of another genus with this probability; estimate"}
+  biomes: {v: [soil, marine, freshwater, host-associated, sediment, hot spring], tag: asserted, why: "§2.1 S11 biome: synthetic labels; estimate"}
+  biome_rank: {v: class, tag: asserted, why: "one biome per taxon at this rank, so relatives share a biome; estimate"}
+  source_name: {v: synthworld, tag: asserted, why: "SourceObject.source_name of every emitted source"}
+  license: {v: "synthetic data, CC0", tag: asserted, why: "SourceObject.license; synthetic sequences (§8.2 risk 7 for the Pfam and Rfam terms of a pfam or rfam panel)"}
