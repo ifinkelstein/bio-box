@@ -23,7 +23,12 @@ Order of work:
 3. Resume: `<root>/runs/stage=<S>/<step>.json` exists and every output it lists is in the root
    with its recorded size: exit 0. A listed output missing or of another size is an error;
    nothing is rebuilt over existing files.
-4. Remove a staging or `<root>/.incoming/<stage>.<step>/` directory, and the record of a failed
+4. Decide the threads (card C-28, `_threads`) from the local time and a reading of the CPU in use by owner
+   (`measure_cpu`, 5 s): `--threads` above the cap for a launch of that many is refused (exit 2); the cap is the
+   day cap in the day window, at night when other users compute or the reading failed, and at night for a launch
+   whose CPU budget could run into the day window. Without `--threads` the step gets the allowance, the cap less
+   what the account's processes outside this unit use. One line on stderr names the allowance and the readings.
+   Remove a staging or `<root>/.incoming/<stage>.<step>/` directory, and the record of a failed
    attempt (step 6), left by an earlier attempt.
 5. Decide the memory cap (card C-07, `memory_cap`). A cgroup v2 `memory.max` already above
    run-step (its own cgroup or an ancestor, read by `doctor.cgroup_memory`) is inherited: no
@@ -89,9 +94,12 @@ after a timestamp and is flushed at once (`log`, card C-13), so a unit log is a 
 
 from __future__ import annotations
 
+import argparse
 import contextlib
+import dataclasses
 import fcntl
 import json
+import math
 import os
 import platform
 import re
@@ -103,7 +111,7 @@ import sys
 import threading
 import time
 from collections.abc import Callable, Iterator, Sequence
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 from biobox import codeid, contracts, ids
@@ -115,10 +123,36 @@ from biobox.registry.schemas import ARTIFACTS, TABLES
 EXIT_STOP = 75  # EX_TEMPFAIL (data_layer_and_tests.md §5, STOP file)
 EXIT_REFUSED = 2
 
-# Estimate: a 1-minute load average above this means someone else is computing, so the night
-# cap (which the footprint agreement grants only when no other compute runs) falls back to the
-# day cap. Not measured on wilkcomp02; to be revisited with the pod's idle load.
-BUSY_LOAD = 8.0
+# The night cap (card C-28). AGENTS §7.2 grants 56 threads at night "only when `ps` or `top` shows no other compute".
+# Until this card the code read the 1-minute load average instead (above 8: the day cap); our own scan held it near
+# 42, so no build of ours ever had the night cap: at 23:24 CST on 2026-11-12 the account used 41.1 CPUs and every other
+# user together under 0.5, on a 112-core host (*measured*, `ps`, card C-28). The rule's question is now asked
+# directly (`measure_cpu`): the CPU that processes of other users use over CPU_WINDOW_S seconds, from two reads of
+# every `/proc/<pid>/stat` (utime + stime) that far apart. Inside the image `/proc` is the host's (Singularity shares
+# the PID namespace), so the reading is the same there; a reading that sees no process of another user (hidepid, a
+# namespace) or no /proc fails, and a failed reading gives the day cap.
+#
+# Who is "another user": any uid but the account's own above SYSTEM_UID_MAX (the host's /etc/login.defs SYS_UID_MAX,
+# 999 on wilkcomp02, *measured* 2026-11-13). Root and system accounts (the virus scanner `ampdaemon` and `nessus` of
+# root's, `ampscansvc` of uid 999) are the machine's own daemons, not compute: they are reported and never counted,
+# so a scan of theirs at 0.75 of a core does not take the night cap away. Service accounts with a uid above 999 (the
+# pod's `splunkfwd`, 1002) count as other users; their CPU is far under the threshold (0.007 cores, *measured*, ps
+# lifetime average, 2026-11-13).
+#
+# OTHERS_BUSY_CPUS: other compute means more than half a core used by other users together. *Estimate*, set against
+# the measurements: other login users together used 0.01 cores (ps lifetime averages, wilkcomp02, 2026-11-13, one
+# editor server of another user and splunkfwd), under 0.5 with root's daemons included (card C-28), and one
+# single-threaded job uses 1.0. Half a core is 50 times the measured idle level and catches a one-thread job that
+# computes half the time. A false "busy" costs only speed (one launch at the day cap); a false "idle" would break the
+# rule, so the line sits nearer the idle level than the one-core job.
+OTHERS_BUSY_CPUS = 0.5
+# The window: 5 seconds of wall time per reading, once per launch (a scan shard runs about an hour: 3,291 to 3,727 s at 4
+# threads, *measured*, planning/measurements/2026-11-11_mmseqs_profile_vs_hmmsearch.md, so 5 s is under 0.2% of one,
+# derived). CPU time is counted in clock ticks (100 a second), so 5 s resolves 0.002 cores; the decision is taken once
+# per launch and holds only for that launch, so a reading caught in a burst of another user's work changes one launch,
+# not the build. A process both born and ended inside the window is not seen. *Estimate*: not tuned on the pod.
+CPU_WINDOW_S = 5.0
+SYSTEM_UID_MAX = 999
 
 THREAD_VARS = ("OMP_NUM_THREADS", "OPENBLAS_NUM_THREADS", "MKL_NUM_THREADS", "POLARS_MAX_THREADS")
 FORWARDED = (signal.SIGTERM, signal.SIGINT)
@@ -141,16 +175,186 @@ class Refused(Exception):
 
 
 def _load1() -> float:
+    """The 1-minute load average: reported beside the CPU reading, never used to decide (card C-28)."""
     return os.getloadavg()[0]
 
 
-def choose_threads(prof: Profile, now: datetime, load1: float) -> int:
-    """The thread cap at local time `now`: the profile's cap for the hour and weekday, but never
-    more than the day cap while the 1-minute load average is above `BUSY_LOAD`."""
+@dataclasses.dataclass(frozen=True)
+class CpuUse:
+    """CPUs in use over a window, by owner (card C-28, `measure_cpu`). All zero: an idle host.
+
+    - `others`: processes of other users (uid above `SYSTEM_UID_MAX`, not the account's): "other compute".
+    - `system`: root's and system accounts' processes: reported, never counted.
+    - `own_other`: the account's processes outside this process's cgroup and its process tree (a test suite in its
+      own scope, another agent's build in its own unit): subtracted from the cap.
+    - `own_here`: the account's processes in this process's cgroup or below it (the `pod_run.sh` unit: build-stage,
+      its run-steps and shards), or descended from this process (a scope it opened): the build's own children.
+    - `error`: why there is no reading; then the day cap applies."""
+    others: float = 0.0
+    system: float = 0.0
+    own_other: float = 0.0
+    own_here: float = 0.0
+    window_s: float = 0.0
+    error: str | None = None
+
+
+@dataclasses.dataclass(frozen=True)
+class Allowance:
+    """What may be started now (`allowance`): `threads`, the `cap` it comes from, and `line`, the one line that says
+    the readings and the rule (run-step and build-stage write it to stderr)."""
+    threads: int
+    cap: int
+    line: str
+
+
+def _snapshot(proc: Path) -> dict[int, tuple[int, int, int, int]]:
+    """{pid: (uid, ppid, starttime, utime + stime in ticks)} of every process `proc` shows; one that ends while it is
+    read is left out."""
+    out = {}
+    with os.scandir(proc) as it:
+        for d in it:
+            if not d.name.isdigit():
+                continue
+            try:
+                raw = Path(d.path, "stat").read_bytes()
+                status = Path(d.path, "status").read_text()
+            except OSError:
+                continue
+            rest = raw[raw.rindex(b")") + 2:].split()  # the command may hold spaces and parentheses
+            uid = next((int(ln.split()[2]) for ln in status.splitlines() if ln.startswith("Uid:")), None)
+            if uid is None or len(rest) < 20:
+                continue
+            # fields 4 (ppid), 14 and 15 (utime, stime) and 22 (starttime) of proc(5); rest[0] is field 3
+            out[int(d.name)] = (uid, int(rest[1]), int(rest[19]), int(rest[11]) + int(rest[12]))
+    return out
+
+
+def _cgroup_of(proc: Path, pid: int) -> str | None:
+    """The cgroup v2 path of `pid` (the `0::` line of /proc/<pid>/cgroup), or None."""
+    try:
+        for ln in Path(proc, str(pid), "cgroup").read_text().splitlines():
+            if ln.startswith("0::"):
+                return ln[3:]
+    except OSError:
+        pass
+    return None
+
+
+def measure_cpu(proc_root: str | Path = PROC_ROOT, *, window_s: float = CPU_WINDOW_S, uid: int | None = None,
+                pid: int | None = None, hz: int | None = None, wait: Callable[[float], None] = time.sleep,
+                now: Callable[[], float] = time.monotonic) -> CpuUse:
+    """CPUs used by owner over `window_s` seconds (module constants; card C-28): two reads of every process's
+    `stat` under `proc_root`, `wait(window_s)` apart. A process seen at both reads counts its ticks between them, one
+    seen only at the second (or whose pid now holds another process: another starttime) all its ticks, one seen
+    only at the first nothing. `uid` and `pid` are the account and the process that asks (default: this one); `hz`
+    the clock ticks per second. Never raises: a failure is a reading with `error`."""
+    proc = Path(proc_root)
+    uid = os.getuid() if uid is None else uid
+    pid = os.getpid() if pid is None else pid
+    try:
+        hz = os.sysconf("SC_CLK_TCK") if hz is None else hz
+        if not proc.is_dir():
+            return CpuUse(error=f"no {proc}")
+        first = _snapshot(proc)
+        t0 = now()
+        wait(window_s)
+        second = _snapshot(proc)
+        dt = now() - t0
+    except (OSError, ValueError) as e:
+        return CpuUse(error=f"reading {proc}: {e}")
+    dt = dt if dt > 0 else window_s
+    if not any(u != uid for u, _, _, _ in second.values()):
+        return CpuUse(window_s=dt, error=f"no process of another user is visible under {proc} (hidepid?)")
+    kids: dict[int, list[int]] = {}
+    for p, (_, ppid, _, _) in second.items():
+        kids.setdefault(ppid, []).append(p)
+    tree, todo = set(), [pid]
+    while todo:
+        p = todo.pop()
+        if p not in tree:
+            tree.add(p)
+            todo.extend(kids.get(p, ()))
+    mine = _cgroup_of(proc, pid)
+
+    def in_my_cgroup(p: int) -> bool:
+        cg = _cgroup_of(proc, p)
+        return mine is not None and cg is not None and (cg == mine or cg.startswith(mine.rstrip("/") + "/"))
+
+    sums = {"others": 0, "system": 0, "own_other": 0, "own_here": 0}
+    for p, (u, _, start, ticks) in second.items():
+        before = first.get(p)
+        used = ticks - before[3] if before is not None and before[2] == start else ticks
+        if u == uid:
+            sums["own_here" if p in tree or in_my_cgroup(p) else "own_other"] += used
+        else:
+            sums["system" if u <= SYSTEM_UID_MAX else "others"] += used
+    return CpuUse(**{k: v / hz / dt for k, v in sums.items()}, window_s=dt)
+
+
+def read_cpu() -> CpuUse:
+    """The reading `run-step` and `build-stage` take by default: this host, this process (`measure_cpu`)."""
+    return measure_cpu()
+
+
+def _span(now: datetime, minutes: float) -> list[datetime]:
+    """`now` and each top of the hour after it up to `minutes` later: the times a launch at `now` may still run at,
+    sampled where the profile's cap can change (it changes on the hour)."""
+    out, t = [now], now.replace(minute=0, second=0, microsecond=0)
+    end = now + timedelta(minutes=minutes)
+    while True:
+        t += timedelta(hours=1)
+        if t > end:
+            return out
+        out.append(t)
+
+
+def launch_cap(prof: Profile, now: datetime, use: CpuUse, threads: int | None = None) -> tuple[int, str]:
+    """The thread cap for a launch at local time `now` (card C-28), and why: the profile's cap for the hour and
+    weekday (`Profile.threads_at`); when `threads` is given, the smallest cap of the hours a launch of that many
+    threads may still run in, at most `cpu_min_per_process` / `threads` minutes (its budget at full use), so a launch
+    at night that could run into the day window counts against the day cap; and the day cap at night while other
+    users compute (`OTHERS_BUSY_CPUS`) or the reading failed."""
     cap = prof.threads_at(now.hour, now.weekday())
-    if load1 > BUSY_LOAD:
-        cap = min(cap, prof.max_threads_day)
-    return cap
+    # the window as `Profile.threads_at` defines it, for the message only
+    day = now.weekday() < 5 and prof.day_start_hour <= now.hour < prof.day_end_hour
+    why = f"{now:%a %H:%M}, {'the day window' if day else 'night or weekend'}"
+    if threads:
+        lead = prof.cpu_min_per_process / threads
+        ahead = min(prof.threads_at(t.hour, t.weekday()) for t in _span(now, lead))
+        if ahead < cap:
+            cap, why = ahead, (f"{why}, but a launch of {threads} threads may run {lead:.0f} minutes on its "
+                               f"{prof.cpu_min_per_process} CPU-minute budget, into the day window")
+    if cap > prof.max_threads_day:
+        if use.error is not None:
+            cap, why = prof.max_threads_day, f"{why}, but no reading of other users' CPU ({use.error})"
+        elif use.others > OTHERS_BUSY_CPUS:
+            cap, why = prof.max_threads_day, f"{why}, but other users compute"
+    return cap, why
+
+
+def choose_threads(prof: Profile, now: datetime, use: CpuUse, threads: int | None = None) -> int:
+    """The thread cap at local time `now` (`launch_cap`): no one process may have more threads. The account's other
+    processes are not subtracted here (`allowance` does)."""
+    return launch_cap(prof, now, use, threads)[0]
+
+
+def allowance(prof: Profile, now: datetime, use: CpuUse, *, want: int | None = None, threads: int | None = None,
+              load1: float | None = None) -> Allowance:
+    """What may be started at `now` (card C-28): the cap (`launch_cap`, for a launch of `threads`) less what the
+    account's processes outside this unit use (`use.own_other`, to the nearest CPU, so an idle shell of ours costs
+    nothing), at least 0 and at most `want` when given. The cap is a total over everything the account runs; the
+    build's own processes (`use.own_here`) are not subtracted, since the caller counts them itself. `load1` is only
+    reported."""
+    cap, why = launch_cap(prof, now, use, threads)
+    ours = math.floor(use.own_other + 0.5)
+    n = max(0, cap - ours) if want is None else min(want, max(0, cap - ours))
+    asked = "" if want is None else f" of {want} asked"
+    load = "" if load1 is None else f"; load average {load1:.2f} (not used)"
+    line = (f"allowance {n} thread{'' if n == 1 else 's'}{asked}: cap {cap} ({why}) less {ours} for ours elsewhere; "
+            f"over {use.window_s:.1f} s, other users {use.others:.2f} CPUs (compute above {OTHERS_BUSY_CPUS:g}), "
+            f"system accounts {use.system:.2f} (not counted), ours elsewhere {use.own_other:.2f}, ours in this unit "
+            f"{use.own_here:.2f}{load}")
+    return Allowance(threads=n, cap=cap, line=line)
 
 
 class NoCap(Exception):
@@ -703,15 +907,46 @@ def _execute(argv: list[str], env: dict[str, str]) -> tuple[int, float, float, i
     return proc.returncode, wall, (ru.ru_utime + ru.ru_stime) / 60.0, rss, (received[0] if received else None)
 
 
+def _threads(prof: Profile, stage: str, step: str, threads: int | None, clock: Callable[[], datetime],
+             load: Callable[[], float] | None, cpu: Callable[[], CpuUse] | None) -> int | None:
+    """The step's thread count (`run_step`, card C-28), with its one line on stderr; None when refused."""
+    now, use = clock(), (read_cpu if cpu is None else cpu)()
+    load1 = (_load1 if load is None else load)()
+    if threads is None:  # the lead of the launch depends on its threads: take the allowance at the cap's, then at its own
+        first = allowance(prof, now, use, threads=choose_threads(prof, now, use))
+        a = allowance(prof, now, use, threads=max(1, first.threads), load1=load1)
+        n = max(1, a.threads)
+        _err(f"{stage}.{step}: {a.line}" + ("" if a.threads else "; running 1 thread, the least a step can run"))
+        return n
+    cap = choose_threads(prof, now, use, threads)
+    a = allowance(prof, now, use, want=threads, threads=threads, load1=load1)
+    if threads > cap:
+        _err(f"{stage}.{step}: {a.line}")
+        _err(f"--threads {threads} refused: the cap now is {cap}")
+        return None
+    over = "" if threads <= a.threads else (f"; --threads {threads} is above it: with the account's processes elsewhere "
+                                            f"the total passes the cap while they run")
+    _err(f"{stage}.{step}: {a.line}{over}")
+    return threads
+
+
 def run_step(prof: Profile, root: str | Path, stage: str, step: str, cmd: Sequence[str], *,
              nice: str = "monolithic", threads: int | None = None,
-             clock: Callable[[], datetime] = datetime.now, load: Callable[[], float] = _load1,
+             clock: Callable[[], datetime] = datetime.now, load: Callable[[], float] | None = None,
+             cpu: Callable[[], CpuUse] | None = None,
              which: Callable[[str], str | None] = shutil.which, system: str | None = None,
              proc_root: str | Path | None = None, cgroup_root: str | Path | None = None,
              budget_reason: str | None = None, _hook: Hook | None = None) -> int:
     """Run one step; return the exit code for `bio-box run-step` (0, 75 for STOP, else non-zero).
     `budget_reason`, when given, is written to the run record as `cpu_budget_reason` (card B-36:
     `build-stage` gives `exempt: DEC-29` for a clustering call that no number of parts fits, card B-45); `over_cpu_budget` is kept as it is.
+    The threads (card C-28), decided after the STOP, recovery and resume checks, so a step passed over takes no
+    reading: `cpu()` (default `read_cpu`) gives the CPU in use by owner and `clock()` the local time; `--threads`
+    above the cap for a launch of that many (`choose_threads`) is refused; without it the step gets the allowance
+    (`allowance`: the cap less the account's processes elsewhere), at least 1. A `--threads` above the allowance
+    runs: a fixed-size job of ours is not refused for the account's other work (the launcher that can wait,
+    build-stage, holds for that), and the line says so. One line on stderr names the allowance and the readings;
+    `load()` (default `_load1`, the load average) is only reported.
     `proc_root` and `cgroup_root` (tests only) stand in for /proc and /sys/fs/cgroup.
     `_hook` (tests only) is called with each publish point name: after_intent, after_rsync,
     after_rename:<i>, before_record, after_record; an exception it raises is not caught."""
@@ -728,11 +963,9 @@ def run_step(prof: Profile, root: str | Path, stage: str, step: str, cmd: Sequen
         _err(f"--nice must be monolithic or fanout, got {nice!r}")
         return EXIT_REFUSED
     nice_value = prof.nice_monolithic if nice == "monolithic" else prof.nice_fanout
-    cap = choose_threads(prof, clock(), load())
-    if threads is not None and not 1 <= threads <= cap:
-        _err(f"--threads {threads} refused: the cap now is {cap}")
+    if threads is not None and threads < 1:
+        _err(f"--threads {threads} refused: at least 1")
         return EXIT_REFUSED
-    n_threads = cap if threads is None else threads
 
     if (root / "STOP").exists():
         _err(f"{root / 'STOP'} exists; not starting {stage}.{step}")
@@ -747,6 +980,9 @@ def run_step(prof: Profile, root: str | Path, stage: str, step: str, cmd: Sequen
             return code
     if record_path.exists():
         return _resume(root, record_path)
+    n_threads = _threads(prof, stage, step, threads, clock, load, cpu)
+    if n_threads is None:
+        return EXIT_REFUSED
     try:
         cap = memory_cap(prof.mem_scope, require=prof.require_mem_cap, system=system, which=which,
                          proc_root=proc_root, cgroup_root=cgroup_root)
@@ -814,3 +1050,29 @@ def run_step(prof: Profile, root: str | Path, stage: str, step: str, cmd: Sequen
     intent_path.unlink()
     _err(f"{stage}.{step} published {len(record['outputs'])} files")
     return 0
+
+
+def main(argv: Sequence[str] | None = None, *, clock: Callable[[], datetime] = datetime.now,
+         cpu: Callable[[], CpuUse] | None = None, load: Callable[[], float] | None = None) -> int:
+    """`python -m biobox.runstep --profile P [--threads T] [--want N]` (card C-28): the allowance a launch of T
+    threads (default: the cap's) would get now, as a number on stdout, and its line on stderr. Read-only: it starts
+    nothing. The 50 Gbp driver (`scripts/stress/build_stage_pod/r50_driver.sh`) takes its night shard count from it.
+    `clock`, `cpu` and `load` (tests only) stand in for the readings."""
+    from biobox import profile as profile_mod
+
+    ap = argparse.ArgumentParser(prog="python -m biobox.runstep", description=main.__doc__)
+    ap.add_argument("--profile", required=True)
+    ap.add_argument("--threads", type=int, default=None, help="threads of the launch (its lead to the day window)")
+    ap.add_argument("--want", type=int, default=None, help="at most this many")
+    a = ap.parse_args(argv)
+    prof = profile_mod.load(a.profile)
+    now, use = clock(), (read_cpu if cpu is None else cpu)()
+    got = allowance(prof, now, use, want=a.want, threads=a.threads or choose_threads(prof, now, use),
+                    load1=(_load1 if load is None else load)())
+    _err(got.line)
+    print(got.threads, flush=True)
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

@@ -35,8 +35,8 @@ from biobox.synthworld import backbone
 pytestmark = [pytest.mark.r2, pytest.mark.covers("F-02")]
 needs_zombi2 = pytest.mark.skipif(
     importlib.util.find_spec("zombi2") is None,
-    reason="zombi2 0.54.0 is not importable here: CI installs it by `uv sync`; on the pod add its own "
-           "directory with BIOBOX_POD_PYDEPS (card F-02)")
+    reason="zombi2 0.54.0 is not importable here: CI installs it by `uv sync`; the image built from `main` has it; "
+           "where it is absent, for example on a laptop, the test skips")
 
 REPO = Path(__file__).resolve().parents[2]
 

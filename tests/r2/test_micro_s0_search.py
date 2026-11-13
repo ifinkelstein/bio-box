@@ -1511,7 +1511,9 @@ def test_w05_nbr_tsv_writes_one_table_per_locus_equal_to_the_coordinate_oracle(w
     # --out DIR: one file per locus with the same table
     d = tmp_path / "loci"
     assert cli.main(args + ["--out", str(d)]) == 0
-    assert sorted(p.name for p in d.iterdir()) == sorted(name for name, _ in want)
+    # card W-29: the one new file, `RUN`, names the run and its release; the tables are as before
+    assert (d / "RUN").read_text().startswith(f"run\t{rid}\nrelease\t")
+    assert sorted(p.name for p in d.iterdir() if p.name != "RUN") == sorted(name for name, _ in want)
     for name, lines in want:
         assert (d / name).read_text() == "\n".join(lines) + "\n"
     # anchors given as protein uids need the release named, as nbr summarize does
@@ -3244,6 +3246,14 @@ def _w07_separate(root: Path, packs: Path, runs: Path, rid: str, window: str, by
     (out / "neighbors.tsv").write_text(capsys.readouterr().out)  # as `> neighbors.tsv` in a shell
 
 
+def _w29_run_files(mine: dict, sep: dict, rid_mine: str, rid_sep: str, release: str = REL) -> None:
+    """Card W-29 migration of the byte-identity tests: `search hmm` writes one `RUN` file, at the top of DIR, and the
+    separate `nbr --format tsv --out DIR/loci` writes one in `loci/`. Each names its run and release; both are taken
+    out (checked here) so that every other file is still compared byte for byte, as before."""
+    assert mine.pop("RUN") == f"run\t{rid_mine}\nrelease\t{release}\n".encode()
+    assert sep.pop("loci/RUN") == f"run\t{rid_sep}\nrelease\t{release}\n".encode()
+
+
 @pytest.mark.covers("W-07", "W-02", "W-05", "W-06")
 def test_w07_search_hmm_writes_what_the_separate_commands_write_and_its_recipe_reruns(world, tmp_path, capsys):
     """The acceptance of card W-07 on the fixture: the one command's files are byte-identical to those of the
@@ -3260,8 +3270,8 @@ def test_w07_search_hmm_writes_what_the_separate_commands_write_and_its_recipe_r
     assert code == 0, got.err
     rid, status = got.out.splitlines()[0].split("\t")
     assert status == "ok"
-    assert sorted(p.name for p in out.iterdir()) == ["README.txt", "hits.faa", "hits.tsv", "loci", "neighbors.tsv",
-                                                     "recipe.yaml"]  # card W-20: README.txt
+    assert sorted(p.name for p in out.iterdir()) == ["README.txt", "RUN", "hits.faa", "hits.tsv", "loci",
+                                                     "neighbors.tsv", "recipe.yaml"]  # card W-20: README.txt; W-29: RUN
     assert not list(tmp_path.glob(".out*"))  # no temporary directory left beside DIR
     # the recipe in DIR is the one the run ran: the file seed, the bits, the window, the resolved positive control
     run1 = runner.read_run(runner.run_dir(runs, rid))
@@ -3286,9 +3296,11 @@ def test_w07_search_hmm_writes_what_the_separate_commands_write_and_its_recipe_r
     _w07_separate(root, _packs(world), runs2, rid2, "5g", "pfam,nr50", sep, capsys)
     mine = _w07_files(out)
     assert mine.pop("recipe.yaml") and mine.pop("README.txt")  # card W-20: README.txt is `search hmm`'s own
+    sep_files = _w07_files(sep)
+    _w29_run_files(mine, sep_files, rid, rid2)  # card W-29: the one new file in each
     assert any(k.startswith("loci/") for k in mine) and len(mine["hits.tsv"].splitlines()) > 1
     assert pos.hex().encode() in mine["hits.faa"]
-    assert mine == _w07_files(sep)
+    assert mine == sep_files
 
 
 @pytest.mark.covers("W-07", "W-06")
@@ -3317,7 +3329,9 @@ def test_w07_search_hmm_on_a_release_without_a_domain_library_summarizes_at_the_
     mine = _w07_files(out)
     mine.pop("recipe.yaml")
     mine.pop("README.txt")  # card W-20
-    assert mine == _w07_files(sep)
+    sep_files = _w07_files(sep)
+    _w29_run_files(mine, sep_files, rid, rid)  # card W-29
+    assert mine == sep_files
 
 
 @pytest.mark.covers("W-07", "S-04")
@@ -3355,7 +3369,7 @@ def test_w07_a_positive_that_names_no_protein_or_several_is_refused_listing_what
     # ends `failed` (exit 1) and DIR holds the recipe it ran, nothing else
     assert cli.main(base + ["--positive", _w07_spec(root, pos), "--bits", "100000"]) == 1
     assert "positive control" in capsys.readouterr().err
-    assert sorted(p.name for p in out.iterdir()) == ["recipe.yaml"]
+    assert sorted(p.name for p in out.iterdir()) == ["RUN", "recipe.yaml"]  # card W-29: and the run it names
     r, _ = rcp.load(out / "recipe.yaml")
     assert r["controls"]["positive"][0]["value"] == pos.hex()
 
@@ -3779,8 +3793,8 @@ def test_w20_search_hmm_writes_a_readme_and_one_strand_convention(world, tmp_pat
         assert {r[c] for r in rows[1:]} <= {"+1", "-1"}, f
     faa = (out / "hits.faa").read_text()
     assert not re.search(r"\([+-]1\)", faa) and re.search(r" strand=[+-]1", faa)
-    assert sorted(p.name for p in out.iterdir()) == ["README.txt", "hits.faa", "hits.tsv", "loci", "neighbors.tsv",
-                                                     "recipe.yaml"]
+    assert sorted(p.name for p in out.iterdir()) == ["README.txt", "RUN", "hits.faa", "hits.tsv", "loci",
+                                                     "neighbors.tsv", "recipe.yaml"]  # card W-29: RUN
 
 
 @pytest.mark.covers("W-20", "W-05")
@@ -4010,7 +4024,9 @@ def test_w22_search_and_nbr_with_only_the_profile_find_the_pack_in_its_pack_dire
         assert cli.main([*argv, *only]) == 0, (argv, capsys.readouterr().err)
     mine = _w07_files(out)
     assert mine.pop("recipe.yaml") and mine.pop("README.txt")
-    assert mine == _w07_files(sep) and any(k.startswith("loci/") for k in mine)
+    sep_files = _w07_files(sep)
+    _w29_run_files(mine, sep_files, rid, rid)  # card W-29
+    assert mine == sep_files and any(k.startswith("loci/") for k in mine)
     capsys.readouterr()
     assert cli.main(["releases", *only, "--json"]) == 0
     listed = {r["release"]: r.get("pack") for r in map(json.loads, capsys.readouterr().out.splitlines())}

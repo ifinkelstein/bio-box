@@ -72,6 +72,47 @@ TRUTH = {"T1": ["t1_v1", "t1_v2", "t1_p1", "t1_p2", "t1_ins", "t1_un", "t1_cens"
 SHARED_GENOME = ("t1_v1", "t1_p1")  # one more genome (in P1) holds these two contigs: genome counts go through it
 
 
+# Card W-31: mobile elements with cargo, in a release of their own (`build(root, MOBILE, MOBILE_GENOMES)`).
+#
+#   Anchors in NR90 cluster M (one group), for the cut chosen from the tree:
+#     m1_*  4 loci: up K1 K2 and 3 cargo genes, down K3 K4 and 3 cargo; cargo is a family of its own per locus, so two
+#           m1 loci share 4 of 16 tokens: J = 0.75
+#     m2_*  3 loci: up K1 L1 L2 and 2 cargo, down L3 L4 L5 and 2 cargo: J = 1 - 6/14 within; against m1 they share K1
+#           only: J = 1 - 1/19
+#     mp_*  5 identical phage loci (one leaf), families N1..N10 shared with nobody: J = 1 against the others
+#   Anchors in NR90 clusters Q@phage and Q@sp1..Q@sp12, for the figure's colours (with --group-by none):
+#     ph_*  30 near-identical phage loci, one anchor NR90 cluster, on the contigs of one genome: P1..P10
+#     tn_*  12 transposon-like loci of 12 species, each its own anchor NR90 cluster and genome: TnsB at -1 in all,
+#           a Cas7 at +1 in its own NR50 cluster per species (Cas7@spK) but the one Pfam-like domain Cas7, a Cas6
+#           (one cluster) at +2 in tn_01..tn_03, cargo of its own elsewhere
+def _cargo(tag: str, n: int, side: str, first: int = 0) -> list:
+    return [(f"c_{tag}_{side}{k}", 1) for k in range(first, first + n)]
+
+
+MOBILE = {}
+for _k in range(4):
+    MOBILE[f"m1_{_k}"] = ("P1", "prokaryote", "M", 1, [("K1", 1), ("K2", 1)] + _cargo(f"m1{_k}", 3, "u") + EXTRA,
+                          [("K3", 1), ("K4", 1)] + _cargo(f"m1{_k}", 3, "d") + EXTRA, False)
+for _k in range(3):
+    MOBILE[f"m2_{_k}"] = ("P1", "prokaryote", "M", 1, [("K1", 1), ("L1", 1), ("L2", 1)] + _cargo(f"m2{_k}", 2, "u")
+                          + EXTRA, [("L3", 1), ("L4", 1), ("L5", 1)] + _cargo(f"m2{_k}", 2, "d") + EXTRA, False)
+for _k in range(5):
+    MOBILE[f"mp_{_k}"] = ("S1", "virus", "M", 1, [(f"N{i}", 1) for i in range(1, 6)] + EXTRA,
+                          [(f"N{i}", 1) for i in range(6, 11)] + EXTRA, False)
+for _k in range(30):
+    MOBILE[f"ph_{_k:02d}"] = ("S1", "virus", "Q@phage", 1, [(f"P{i}", 1) for i in range(1, 6)] + EXTRA,
+                              [(f"P{i}", 1) for i in range(6, 11)] + EXTRA, False)
+for _k in range(1, 13):
+    MOBILE[f"tn_{_k:02d}"] = ("P1", "prokaryote", f"Q@sp{_k}", 1, [("TnsB", 1)] + _cargo(f"tn{_k}", 4, "u") + EXTRA,
+                              [(f"Cas7@sp{_k}", 1), ("Cas6", 1) if _k <= 3 else (f"c_tn{_k}_d0", 1)]
+                              + _cargo(f"tn{_k}", 3, "d", 1) + EXTRA, False)
+MOBILE_GENOMES = {f"ph_{k:02d}": "one phage genome" for k in range(30)}
+MOBILE_TYPES = {"M1": [f"m1_{k}" for k in range(4)], "M2": [f"m2_{k}" for k in range(3)],
+                "MP": [f"mp_{k}" for k in range(5)]}
+CUT_LOCI = [n for v in MOBILE_TYPES.values() for n in v]
+COLOUR_LOCI = [n for n in MOBILE if n.startswith(("ph_", "tn_"))]
+
+
 def _uid(text: str) -> bytes:
     return ids.protein_uid(text)
 
@@ -89,14 +130,28 @@ def _write(name: str, rows: list[dict], path: Path, key) -> None:
     bio.write_table([pa.Table.from_pylist(sorted(rows, key=key), schema=spec.schema)], spec, path)
 
 
-def build(root: Path) -> dict:
-    """Write the constructed release under `root`; return {locus name: facts} for the oracle."""
+def build(root: Path, planted: dict | None = None, genomes_of: dict | None = None) -> dict:
+    """Write the constructed release under `root`; return {locus name: facts} for the oracle. `planted` (default:
+    PLANTED, with SHARED_GENOME) is another set of loci (card W-31); `genomes_of` (name -> label) puts the contigs of
+    one label into one genome instead of a genome each. A family named `F@x` is NR50 and NR90 cluster `F@x` and carries
+    the Pfam-like domain `F`, so clusters of one family can differ while their domain is the same."""
+    if planted is None:
+        planted, shared_names = PLANTED, SHARED_GENOME
+    else:
+        shared_names = ()
+    genomes_of = genomes_of or {}
+    label_uid = {lab: ids.genome_uid([ids.contig_uid(f"contig {n}".encode())
+                                      for n, x in genomes_of.items() if x == lab])
+                 for lab in sorted(set(genomes_of.values()))}
     loci, tapes_rows, occ, gin, labels, domains, members, dims = {}, {s: [] for s in STAGES}, {s: [] for s in STAGES}, \
         {s: [] for s in STAGES}, {s: [] for s in STAGES}, {s: [] for s in STAGES}, [], []
-    families = sorted({f for v in PLANTED.values() for side in (v[4], v[5]) for f, _ in side if f} | {"R", "R2"})
+    # the anchors' families ({"R", "R2"} for PLANTED) and every flanking family
+    families = sorted({f for v in planted.values() for side in (v[4], v[5]) for f, _ in side if f}
+                      | {v[2] for v in planted.values()})
+    domain_names = sorted({f.split("@")[0] for f in families})
     fam_members: dict[str, list[bytes]] = {f: [] for f in families}
     genomes: dict[bytes, list[bytes]] = {}
-    for name, (stage, kind, afam, astrand, up, down, cut) in PLANTED.items():
+    for name, (stage, kind, afam, astrand, up, down, cut) in planted.items():
         cu = ids.contig_uid(f"contig {name}".encode())
         # coordinate order: on a + anchor the up side lies at lower coordinates
         genes = ([(f, s * astrand, "u", k) for k, (f, s) in enumerate(up)][::-1] + [(afam, astrand, "anchor", 0)]
@@ -126,13 +181,14 @@ def build(root: Path) -> dict:
                                   **tape, "protein_uids": pus, "feature_uids": fus})
         labels[stage].append({"contig_uid": cu, "accession": name.upper(), "original_header": f"{name} constructed",
                               "n_records": 1, "l0_object_sha256": bytes(32), "record_ordinal": 0})
-        genomes.setdefault(cu, []).append(ids.genome_uid([cu]))
-        gin[stage].append({"contig_uid": cu, "genome_uid": ids.genome_uid([cu]), "is_circular": False, "kind": kind,
+        gu = label_uid[genomes_of[name]] if name in genomes_of else ids.genome_uid([cu])
+        genomes.setdefault(cu, []).append(gu)
+        gin[stage].append({"contig_uid": cu, "genome_uid": gu, "is_circular": False, "kind": kind,
                            "genetic_code": 11, "assembly_quality": "complete"})
         loci[name] = {"contig_uid": cu, "anchor_protein_uid": anchor[0], "feature_uid": anchor[1], "stage": stage,
                       "kind": kind, "anchor_family": afam, "up": up[:W], "down": down[:W], "cut_up": cut,
                       "contig_len": length}
-    shared = [loci[n]["contig_uid"] for n in SHARED_GENOME]
+    shared = [loci[n]["contig_uid"] for n in shared_names]
     gx = ids.genome_uid(shared)
     for cu in shared:
         genomes[cu].append(gx)
@@ -149,8 +205,10 @@ def build(root: Path) -> dict:
         for r in occ[stage]:
             fam = r.pop("_fam")
             if fam:
-                domains[stage].append({"protein_uid": r["protein_uid"], "model_acc": f"PF{families.index(fam):05d}.1",
-                                       "model_name": fam, "model_len": 100, "seq_bitscore": 50.0,
+                dom = fam.split("@")[0]
+                acc = f"PF{domain_names.index(dom):05d}.1"
+                domains[stage].append({"protein_uid": r["protein_uid"], "model_acc": acc, "model_name": dom,
+                                       "model_len": 100, "seq_bitscore": 50.0,
                                        "seq_evalue_zref": 1e-10, "dom_bitscore": 50.0, "dom_ievalue_zref": 1e-10,
                                        "env_start": 1, "env_end": 90, "ali_start": 1, "ali_end": 90, "hmm_from": 1,
                                        "hmm_to": 100, "cutoff": "gathering", "z": 1e8, "dom_z": 1e8})
@@ -586,3 +644,123 @@ def test_w25_a_non_empty_output_directory_is_refused(world, tmp_path, capsys):
     (out / "x").write_text("x")
     assert run_flanks(world, out) == 2
     assert "not empty" in capsys.readouterr().err
+
+
+# --- card W-31: context types from a cut chosen from the tree -------------------------------------------------------
+
+
+@pytest.fixture(scope="module")
+def mobile(tmp_path_factory):
+    root = tmp_path_factory.mktemp("w31") / "root"
+    return root, build(root, MOBILE, MOBILE_GENOMES)
+
+
+def oracle_heights(loci: dict, names: list[str], kind: str = "j") -> list[float]:
+    """Every merge distance of average linkage over `names`, each cluster distance recomputed from its loci."""
+    clusters = [[n] for n in sorted(names)]
+    heights = []
+    while len(clusters) > 1:
+        best = None
+        for i in range(len(clusters)):
+            for j in range(i + 1, len(clusters)):
+                total = sum(oracle_distance(loci, p, q, kind) for p in clusters[i] for q in clusters[j])
+                d = total / (len(clusters[i]) * len(clusters[j]))
+                if best is None or d < best[0]:
+                    best = (d, i, j)
+        d, i, j = best
+        heights.append(d)
+        clusters[i] = clusters[i] + clusters[j]
+        del clusters[j]
+    return heights
+
+
+def group_types(out: Path, loci: dict, group: str) -> set[frozenset]:
+    return {frozenset(v) for (g, _), v in types_of(out, loci).items() if g == group}
+
+
+@pytest.mark.covers("W-31")
+def test_w31_the_fixed_cut_makes_a_type_per_mobile_locus_and_the_largest_gap_recovers_the_planted_types(mobile,
+                                                                                                         tmp_path):
+    """At the fixed cut 0.5 each m1 and m2 locus (core genes and cargo of its own) is a context type of its own: 8 types
+    for 12 loci, 7 of them of one locus. --auto-cut gap cuts each group's tree in the middle of the largest gap between
+    its merge distances below 1 and 1 itself (the oracle's distances: 1 - 6/14, 0.75, 1 - 1/19, then 1): the three
+    planted types m1, m2 and the phage leaf. groups.tsv gives the cut it chose; the oracle's average linkage cut there
+    gives the same types."""
+    root, loci = mobile
+    group = _nr90("M").hex()
+    out = tmp_path / "fixed"
+    assert run_flanks(mobile, out, names=CUT_LOCI) == 0
+    fixed = group_types(out, loci, group)
+    assert len(fixed) == 8 and sum(len(t) == 1 for t in fixed) == 7
+    # the oracle's merges at 0 join the identical phage loci, which nbr flanks collapses into one leaf beforehand
+    heights = sorted({round(h, 9) for h in oracle_heights(loci, CUT_LOCI) if 1e-9 < h < 1 - 1e-9}) + [1.0]
+    assert heights == pytest.approx([1 - 6 / 14, 0.75, 1 - 1 / 19, 1.0])
+    gaps = [(heights[i + 1] - heights[i], i) for i in range(len(heights) - 1)]
+    _, i = max(gaps, key=lambda g: (g[0], -g[1]))
+    want_cut = (heights[i] + heights[i + 1]) / 2
+    out_gap = tmp_path / "gap"
+    assert run_flanks(mobile, out_gap, "--auto-cut", "gap", names=CUT_LOCI) == 0
+    want = {frozenset(v) for v in MOBILE_TYPES.values()}
+    assert group_types(out_gap, loci, group) == want
+    assert oracle_types(loci, CUT_LOCI, "j", want_cut) == want
+    g = {r["group"]: r for r in read_tsv(out_gap / "groups.tsv")}[group]
+    assert float(g["cut"]) == pytest.approx(want_cut, abs=1e-6) and g["n_context_types"] == "3"
+
+
+@pytest.mark.covers("W-31")
+@pytest.mark.parametrize("n, want", [
+    ("3", [["M1"], ["M2"], ["MP"]]),
+    ("2", [["M1", "M2"], ["MP"]]),
+    ("1", [["M1", "M2"], ["MP"]]),  # the phage leaf shares nothing (distance 1): never joined
+    ("8", None),  # as many types as leaves: every leaf its own type
+])
+def test_w31_auto_cut_n_gives_at_most_n_types_and_never_joins_at_distance_1(mobile, tmp_path, n, want):
+    """--auto-cut N: the least cut that leaves at most N context types, never at distance 1 or above (loci that share
+    nothing stay apart, so there may be more than N)."""
+    root, loci = mobile
+    out = tmp_path / "out"
+    assert run_flanks(mobile, out, "--auto-cut", n, names=CUT_LOCI) == 0
+    got = group_types(out, loci, _nr90("M").hex())
+    if want is None:
+        singles = {frozenset([x]) for x in MOBILE_TYPES["M1"] + MOBILE_TYPES["M2"]}
+        assert got == singles | {frozenset(MOBILE_TYPES["MP"])}
+    else:
+        assert got == {frozenset(x for t in ts for x in MOBILE_TYPES[t]) for ts in want}
+
+
+@pytest.mark.covers("W-31")
+def test_w31_auto_cut_leaves_the_distances_and_the_tree_as_the_unflagged_call_writes_them(mobile, tmp_path):
+    """Only the context types depend on the cut: the matrices, positions and tree of --auto-cut gap are byte-identical
+    to the unflagged call's, built here from it; the unflagged groups.tsv has no cut column and its README no W-31
+    section, as before the card."""
+    root, loci = mobile
+    plain, gap = tmp_path / "plain", tmp_path / "gap"
+    assert run_flanks(mobile, plain, names=CUT_LOCI) == 0
+    assert run_flanks(mobile, gap, "--auto-cut", "gap", names=CUT_LOCI) == 0
+    group = _nr90("M").hex()
+    for name in ("distance_j.tsv", "distance_a.tsv", "positions.tsv", "tree.nwk"):
+        assert (plain / "groups" / group / name).read_bytes() == (gap / "groups" / group / name).read_bytes(), name
+    assert "cut" not in read_tsv(plain / "groups.tsv")[0]
+    assert "--auto-cut" not in (plain / "README.txt").read_text()
+    assert "--auto-cut" in (gap / "README.txt").read_text()
+
+
+@pytest.mark.covers("W-31")
+@pytest.mark.parametrize("extra, needle", [
+    (["--auto-cut", "gap", "--cut", "0.4"], "--auto-cut"),
+    (["--auto-cut", "widest"], "--auto-cut"),
+    (["--auto-cut", "0"], "--auto-cut"),
+    (["--colour-weight", "genome"], "--figure"),
+    (["--colour-fallback", "pfam"], "--figure"),
+    (["--figure", "--colour-weight", "species"], "--colour-weight"),
+    (["--figure", "--colour-fallback", "nr90"], "--colour-fallback"),
+    (["--figure", "--colour-fallback", "pfam", "--level", "pfam"], "--level pfam"),
+])
+def test_w31_refusals(world, tmp_path, capsys, extra, needle):
+    """--auto-cut with --cut, or other than gap or a whole number of at least 1; a colour option without --figure or
+    with an unknown value; the Pfam fallback at --level pfam (the families are Pfam architectures already): refused
+    (exit 2) before anything is written."""
+    out = tmp_path / "out"
+    assert run_flanks(world, out, *extra) == 2
+    assert needle in capsys.readouterr().err
+    assert not out.exists()

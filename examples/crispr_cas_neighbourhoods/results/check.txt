@@ -1,0 +1,51 @@
+ok	tniq_control_bits	observed=61.3	expected=>= 27
+ok	cas7f_control_bits	observed=138.5	expected=>= 25
+ok	tniq_control_order	observed=IMPDH tnsA+tnsB tniB . . . . . . . ^ cas5f cas7f cas6f . . . . . . .	expected=== IMPDH tnsA+tnsB tniB . . . . . . . ^ cas5f cas7f cas6f . . . . . . .
+ok	pdam_complete_if_window_has_cas1_and_cas3	observed=true	expected=== true
+ok	icp1_cas7f_window_has_cas1_and_cas3	observed=true	expected=== true
+ok	tniq_cas7f_loci_with_cas1_cas2_cas3	observed=0	expected=== 0
+ok	cas7f_tniq_loci_with_cas1_cas2_cas3	observed=0	expected=== 0
+ok	bp_tniq_cas7f_loci_with_cas1_cas2_cas3	observed=0	expected=== 0
+ok	bp_cas7f_tniq_loci_with_cas1_cas2_cas3	observed=0	expected=== 0
+ok	tniq_cas7f_share_cas5f_at_plus1	observed=0.8	expected=>= 0.5
+ok	tniq_pfam_proteins_not_hit	observed=0	expected=== 0
+ok	cas7f_pfam_proteins_not_hit	observed=0	expected=== 0
+ok	max_bits_diff_search_vs_pfam	observed=0.0	expected=<= 0.1
+ok	oracle_tniq_only_search	observed=0	expected=== 0
+ok	oracle_tniq_only_hmmsearch	observed=0	expected=== 0
+ok	oracle_tniq_max_bits_diff	observed=0.00	expected=<= 0.1
+ok	oracle_cas7f_only_search	observed=0	expected=== 0
+ok	oracle_cas7f_only_hmmsearch	observed=0	expected=== 0
+ok	oracle_cas7f_max_bits_diff	observed=0.00	expected=<= 0.1
+new	tniq_hit_proteins	observed=587	expected=-
+new	cas7f_hit_proteins	observed=114	expected=-
+new	tniq_hits_not_in_pfam	observed=13	expected=-
+new	cas7f_hits_not_in_pfam	observed=0	expected=-
+new	tniq_loci_virus	observed=0	expected=-
+new	tniq_loci_not_virus	observed=635	expected=-
+new	cas7f_loci_virus	observed=46	expected=-
+new	cas7f_loci_not_virus	observed=111	expected=-
+new	tniq_cas7f_loci	observed=20	expected=-
+new	tniq_cas7f_loci_virus	observed=0	expected=-
+new	tniq_cas7f_contigs	observed=18	expected=-
+new	tniq_cas7f_genomes	observed=16	expected=-
+new	tniq_cas7f_loci_with_tnsA_tnsB_tnsC	observed=6	expected=-
+new	tniq_cas7f_loci_with_cas8f_csy1	observed=0	expected=-
+new	tniq_minimal_non_if_loci	observed=3	expected=-
+new	tniq_minimal_ib_loci	observed=0	expected=-
+new	tniq_minimal_ic_loci	observed=3	expected=-
+new	tniq_other_cas_loci	observed=4	expected=-
+new	cas7f_not_virus_loci_without_cas1_cas3	observed=22	expected=-
+new	cas7f_not_virus_loci_without_cas1_cas3_with_tniq	observed=19	expected=-
+new	cas7f_virus_loci_with_cas1_and_cas3	observed=46	expected=-
+new	tniq_cas7f_loci_near_IMPDH	observed=1	expected=-
+new	tniq_cas7f_loci_near_4HBT	observed=0	expected=-
+new	tniq_cas7f_loci_near_SIS	observed=0	expected=-
+new	tniq_cas7f_loci_near_Mg_chelatase	observed=0	expected=-
+new	bp_tniq_loci	observed=622	expected=-
+new	bp_cas7f_loci	observed=157	expected=-
+new	bp_tniq_cas7f_loci	observed=21	expected=-
+new	bp_cas7f_tniq_loci	observed=19	expected=-
+new	bp_tniq_cas7f_loci_with_tnsA_tnsB_tnsC	observed=12	expected=-
+new	bp_tniq_cas7f_loci_with_tnsB	observed=18	expected=-
+check: 19 ok, 0 FAIL, 0 differs, 31 new, 0 missing, 0 unexpected; invariants hold

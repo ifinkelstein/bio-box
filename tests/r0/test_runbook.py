@@ -14,6 +14,9 @@ Shell variables (`$ROOT`, `"${PROFILE}"`) stand for a value; the parser sees a p
 Lines inside a here-document are not commands, and neither is a function or array definition. A
 fenced block of another kind (`text`, `python`, `yaml`) is not read. Section 10's limits table must
 also carry every key and value of `profiles/wilkcomp02.yaml`.
+
+Card C-29: the pod's test scripts and the documents name the image built from `main` and no dependency
+directory; `scripts/pod_pytest.sh` is run with `ssh` and `rsync` replaced by stubs, so nothing leaves the host.
 """
 
 from __future__ import annotations
@@ -21,8 +24,10 @@ from __future__ import annotations
 import argparse
 import importlib
 import importlib.util
+import os
 import re
 import shlex
+import subprocess
 from pathlib import Path
 
 import pytest
@@ -302,6 +307,27 @@ def test_the_unit_quota_is_the_night_cap_and_the_runbook_says_build_stage_holds_
         assert "max_threads_night" in part and "before each shard launch" in part, heading
 
 
+@pytest.mark.covers("C-28")
+def test_c28_the_runbook_states_the_night_rule_as_implemented():
+    """Card C-28: the night cap holds while no other user computes, read as other users' CPU over a window, not as a
+    load average above 8; the allowance of a launch subtracts ours elsewhere; section 1 shows how to read it."""
+    from biobox import runstep
+
+    text = RUNBOOK.read_text()
+    for heading in ("## 1. ", "## 2. ", "## 10. Limits"):
+        part = section_of(text, heading)
+        assert "load average above 8" not in part and "load average is at most 8" not in part, heading
+    limits = section_of(text, "## 10. Limits")
+    row = next(ln for ln in limits.splitlines() if ln.startswith('| "Other compute"'))
+    assert f"{runstep.OTHERS_BUSY_CPUS:g} of a core" in row and f"{runstep.CPU_WINDOW_S:g} s window" in row
+    assert f"uid above {runstep.SYSTEM_UID_MAX}" in row and "OTHERS_BUSY_CPUS" in row and "BUSY_LOAD" not in limits
+    assert any(ln.startswith("| Allowance of a launch") and "ours elsewhere" in ln for ln in limits.splitlines())
+    build = section_of(text, "## 2. ")
+    assert "ours elsewhere" in build and "06:45" in build and "allowance ..." in build
+    first = [c for _, c in commands(section_of(text, "## 1. "))]
+    assert any(c.startswith("biopy -m biobox.runstep") for c in first), first
+
+
 @pytest.mark.covers("C-13")
 def test_c13_the_verify_section_runs_release_verify_with_and_without_a_previous_release():
     """Card C-13 (4): section 6 verifies a release with `bio-box release verify` (the parser check above reads the
@@ -547,3 +573,198 @@ def test_w22_the_runbook_puts_the_scratch_of_a_pack_verify_under_the_profiles_tm
     assert not re.search(r"\$BBTMP/packs/release=<R>/[^\n]*\n?[^\n]*\.verify-", clean)
     assert "read-only" in section_of(text, "## 7. ")
     assert "both write scratch there" not in AGENT_GUIDE.read_text()
+
+
+# --- C-29: tests and builds run in the image built from `main`, with no dependency directory ----------------------
+
+DETACHED = ROOT / "scripts" / "orchestrator" / "detached_suite.sh"
+GUIDE = ROOT / "GUIDE.md"
+POD_IMAGES = "/stor/home/if2453/bio-box/images"
+TEST_SIF = "bio-box-test_64f1bf0.sif"  # ghcr.io/ifinkelstein/bio-box-test@sha256:cb7cd0f1...
+RUNTIME_SIF = "bio-box_64f1bf0.sif"  # ghcr.io/ifinkelstein/bio-box@sha256:2faf4b8d...
+# sha256 of the .sif files on wilkcomp02 (measured, `sha256sum`, 2026-11-13): what `pod_run.sh --digest` compares
+TEST_SIF_SHA256 = "3d77df6b7f0b894b5371e42eaf077dfda09ebc97b1f78f2ed1d2cfc5fa9fbda4"
+RUNTIME_SIF_SHA256 = "cb7353f85316981be5268c2212100322b5fbf1086c32b07e2f9b47802b6afba3"
+
+
+def run_pod_pytest(tmp_path: Path, env_extra: dict[str, str]) -> str:
+    """Run scripts/pod_pytest.sh with `ssh` and `rsync` replaced by stubs; return the remote command of its last
+    `ssh` call (the pytest launch). Nothing leaves the host."""
+    stubs = tmp_path / "bin"
+    stubs.mkdir(parents=True)
+    log = tmp_path / "ssh.log"
+    (stubs / "ssh").write_text(f'#!/bin/sh\nfor a in "$@"; do last=$a; done\nprintf "%s\\n" "$last" >> "{log}"\n')
+    (stubs / "rsync").write_text("#!/bin/sh\nexit 0\n")
+    for stub in stubs.iterdir():
+        stub.chmod(0o755)
+    tree = tmp_path / "tree"
+    tree.mkdir()
+    env = {"PATH": f"{stubs}:{os.environ['PATH']}", "BIOBOX_TREE": str(tree), "BIOBOX_POD_CI": "/ci", **env_extra}
+    subprocess.run(["sh", str(POD_PYTEST), "T", "tests/r0/test_x.py"], env=env, check=True, capture_output=True)
+    return log.read_text().splitlines()[-1]
+
+
+@pytest.mark.covers("C-29")
+def test_c29_pod_pytest_runs_the_new_image_with_only_the_tree_on_the_path(tmp_path):
+    """Card C-29 (3): by default the suite runs in the test image built from `main` at 64f1bf0, whose environment is
+    the locked one, with the tree's source alone on PYTHONPATH (a dependency directory first on the path would shadow
+    the locked packages). The binds and the base temp of before stay."""
+    remote = run_pod_pytest(tmp_path, {})
+    assert f"'{POD_IMAGES}/{TEST_SIF}'" in remote, remote
+    assert re.search(r"--env PYTHONPATH=/ci/T/src\s", remote), remote
+    assert "pydeps" not in remote and "74b3e05" not in remote
+    assert "--bind /tmp/if2453 " in remote and "--bind /sys/fs/cgroup:/sys/fs/cgroup:ro" in remote
+    assert "--basetemp=/tmp/if2453/ci-tmp/T-0" in remote and "MemoryMax=32G" in remote
+
+
+@pytest.mark.covers("C-29")
+def test_c29_pod_pytest_keeps_the_image_and_dependency_overrides(tmp_path):
+    remote = run_pod_pytest(tmp_path, {"BIOBOX_POD_IMAGE": "/x/old.sif", "BIOBOX_POD_PYDEPS": "/a:/b"})
+    assert "'/x/old.sif'" in remote and TEST_SIF not in remote
+    assert re.search(r"--env PYTHONPATH=/ci/T/src:/a:/b\s", remote), remote
+
+
+@pytest.mark.covers("C-29")
+def test_c29_the_detached_suite_defaults_to_the_new_image_and_no_dependency_directory():
+    """Card C-29 (3): detached_suite.sh, the suite as detached units, takes the same defaults and overrides as
+    pod_pytest.sh, adds a dependency directory only when one is given, passes the cross-host peer file on, and can run
+    the image's own suite (`--own`: the source and tests built into the image, no PYTHONPATH)."""
+    text = DETACHED.read_text()
+    assert re.search(rf"^IMAGE=\$\{{BIOBOX_POD_IMAGE:-{POD_IMAGES}/{TEST_SIF}\}}$", text, re.M), "default image"
+    assert re.search(r"^PYDEPS=\$\{BIOBOX_POD_PYDEPS:-\}$", text, re.M), "no default dependency directory"
+    assert "pilot_s1" not in text and "74b3e05" not in text
+    assert "${PYDEPS:+:$PYDEPS}" in text
+    assert "--bind /tmp/if2453 --bind /sys/fs/cgroup:/sys/fs/cgroup:ro" in text
+    assert '"--basetemp=/tmp/if2453/ci-tmp/$NAME-$k"' in text
+    assert '"${1:-}" = --own' in text and "DST=/opt/bio-box" in text and "BIOBOX_PEER_MANIFEST=$" in text
+
+
+@pytest.mark.covers("C-29")
+def test_c29_the_runbook_sets_up_the_new_image_without_a_dependency_directory():
+    """Card C-29 (3): section 0 names the runtime image built from `main` and its sha256, and binds only the tree's
+    source; section 8 has the image check (the image's own suite) in the test image; the known-limits table no longer
+    says the image is old; the runbook says how the next build takes the new image."""
+    text = RUNBOOK.read_text()
+    setup = "\n".join(c for _, c in commands(section_of(text, "## 0. ")))
+    assert f'export IMAGE="$HOME/bio-box/images/{RUNTIME_SIF}"' in setup
+    assert f"export DIGEST=sha256:{RUNTIME_SIF_SHA256}" in setup
+    assert 'export PYTHONPATH_POD="$TREE/src"' in setup
+    assert "pydeps" not in setup.lower() and "74b3e05" not in setup
+    tests = section_of(text, "## 8. ")
+    own = [c for _, c in commands(tests) if "detached_suite.sh" in c and "--own" in c]
+    assert own, "section 8 has no image check"
+    assert TEST_SIF in tests and TEST_SIF_SHA256 in tests and "1,720 passed" in tests
+    known = section_of(text, "## 11. ")
+    assert "The image on the pod is old" not in known
+    assert "r50_driver.sh" in text and "`IMAGE` and `DIGEST`" in text and "`PYPATH`" in text
+
+
+@pytest.mark.covers("C-29")
+@pytest.mark.parametrize("doc", [GUIDE, AGENT_GUIDE, RUNBOOK], ids=lambda p: p.name)
+def test_c29_no_document_puts_a_dependency_directory_on_the_path(doc):
+    """Card C-29 (3): the image holds the locked environment, so no PYTHONPATH a document sets names a dependency
+    directory (`pydeps`)."""
+    bad = [f"{doc.name}:{n}: {line.strip()[:80]}" for n, line in enumerate(doc.read_text().splitlines(), 1)
+           if "PYTHONPATH" in line and "pydeps" in line.lower()]
+    assert not bad, "\n".join(bad)
+
+
+# --- E-11: the worked examples are release checks, so their commands are checked here, not at a release ------------
+
+EXAMPLES = Path(__file__).resolve().parents[2] / "examples"
+RELEASE_EXAMPLES = ROOT / "scripts" / "release_examples.sh"
+ASSIGN = re.compile(r'^([A-Z][A-Z0-9_]*)="([^"]*)"$')
+DEFAULT = re.compile(r"^([A-Z][A-Z0-9_]*)=\$\{\1:-([^}]*)\}$")  # THREADS=${THREADS:-2}
+SCRIPT_VALUE = "1"  # what a variable of a script stands for: a value every option type accepts (str, int, float)
+
+
+def script_commands(text: str) -> list[tuple[int, list[str]]]:
+    """(line number, bio-box arguments) of every `bb NAME ARGS...` call of an example's `run.sh` (the shared
+    launcher's form: one bio-box command in its own unit). A trailing backslash joins the next line. The flag groups
+    the script assigns (`S="--root $ROOT ..."`, `S="$S --cpus ..."`) are expanded where they are used unquoted, as the
+    shell splits them; a variable with a default (`THREADS=${THREADS:-2}`) is its default; any other variable stands
+    for a value (`SCRIPT_VALUE`, since a script passes numbers such as `--bits "$GA"` through variables)."""
+    groups: dict[str, str] = {}
+    values: dict[str, str] = {}
+    out: list[tuple[int, list[str]]] = []
+    pending, start = "", 0
+    for n, raw in enumerate(text.splitlines(), 1):
+        line = raw.strip()
+        if not pending and (not line or line.startswith("#")):
+            continue
+        start = start if pending else n
+        if line.endswith("\\"):
+            pending += line[:-1] + " "
+            continue
+        cmd, pending = (pending + line).strip(), ""
+        m, d = ASSIGN.match(cmd), DEFAULT.match(cmd)
+        if d:
+            values[d.group(1)] = d.group(2)
+        if m and "--" in m.group(2):
+            groups[m.group(1)] = re.sub(r"\$\{?([A-Z][A-Z0-9_]*)\}?",
+                                        lambda v: groups.get(v.group(1), v.group(0)), m.group(2))
+            continue
+        if not cmd.startswith("bb "):
+            continue
+        for name, value in groups.items():
+            cmd = re.sub(rf"(?<![\"\w])\${{?{name}}}?(?![\w\"])", lambda _m, v=value: v, cmd)
+        cmd = VAR.sub(lambda v: values.get(v.group(0).strip("${}"), SCRIPT_VALUE), cmd)
+        out.append((start, tokens(cmd)[2:]))  # `bb NAME` and then the bio-box arguments
+    return out
+
+
+def example_scripts() -> list[Path]:
+    return sorted(p for p in EXAMPLES.glob("*/run.sh") if not p.parent.name.startswith("_"))
+
+
+@pytest.mark.covers("E-11")
+def test_e11_the_script_reader_expands_flag_groups_and_rejects_a_wrong_flag():
+    text = ('THREADS=${THREADS:-3}\nS="--root $ROOT --release $RELEASE --profile $PROFILE"\nS="$S --cpus $THREADS"\n'
+            'bb search search hmm $S --hmm "$OUT/a.hmm" --bits "$GA" \\\n  --positive A:1-2 --out "$OUT/x"\n'
+            'bb bad search hmm $S --hmm h --bits 30 --positive A:1-2 --out o --no-such-flag\n'
+            'bb old nbr summarize X --root R --profile P --windows 5g\n')
+    cmds = script_commands(text)
+    assert [n for n, _ in cmds] == [4, 6, 7]
+    assert cmds[0][1][:5] == ["search", "hmm", "--root", "1", "--release"]
+    assert cmds[0][1][cmds[0][1].index("--cpus") + 1] == "3" and cmds[0][1][cmds[0][1].index("--bits") + 1] == "1"
+    assert check_bio_box(cmds[0][1]) == []
+    assert check_bio_box(cmds[1][1]) and check_bio_box(cmds[2][1])  # an unknown flag; a renamed one
+
+
+@pytest.mark.covers("E-11")
+def test_e11_every_bio_box_command_an_example_runs_is_one_the_parser_accepts():
+    """A renamed or removed flag fails here, not at a release check on the pod (card E-11): every `bb` call of every
+    example's `run.sh` is parsed by `biobox.cli`'s parser, and its search and nbr commands name their directories or
+    the profile (W-03)."""
+    scripts = example_scripts()
+    assert {p.parent.name for p in scripts} >= {"crispr_cas_neighbourhoods", "rnap"}
+    bad = []
+    for path in scripts:
+        cmds = script_commands(path.read_text())
+        assert len(cmds) >= 5, f"{path}: only {len(cmds)} bio-box commands read"
+        for n, args in cmds:
+            where = f"{path.relative_to(EXAMPLES.parent)}:{n}"
+            bad += [f"{where}: {p}" for p in check_bio_box(args) + search_dir_problems(args)]
+    assert not bad, "\n".join(bad)
+
+
+@pytest.mark.covers("E-11")
+def test_e11_every_command_block_of_the_examples_readmes_is_one_the_parser_accepts():
+    docs = sorted(EXAMPLES.glob("*/README.md")) + [EXAMPLES / "README.md"]
+    assert len(docs) >= 3
+    bad = [f"{doc.relative_to(EXAMPLES.parent)}:{n}: {p}" for doc in docs for n, cmd in commands(doc.read_text())
+           for p in check(cmd)]
+    assert not bad, "\n".join(bad)
+
+
+@pytest.mark.covers("E-11")
+def test_e11_the_release_procedure_runs_the_examples_before_a_release_is_announced():
+    """Card E-11 and AGENTS §5.7: the runbook's release procedure names the step, and a failed invariant stops the
+    announcement; the guides point to `examples/` for the RNA polymerase numbers instead of holding them."""
+    assert RELEASE_EXAMPLES.is_file()
+    verify = section_of(RUNBOOK.read_text(), "## 6. ")
+    cmds = [c for _, c in commands(verify) if "release_examples.sh" in c]
+    assert any("--dry-run" in c for c in cmds) and any("--dry-run" not in c for c in cmds), cmds
+    assert "announce" in verify and "invariant" in verify
+    for doc in (GUIDE, AGENT_GUIDE):
+        assert "examples/rnap" in doc.read_text(), doc.name

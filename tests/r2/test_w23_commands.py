@@ -533,7 +533,7 @@ def test_w23_each_export_given_out_prints_its_count_and_none_without(rel, world,
         assert list(wrote) == [str(path)], (argv, wrote)
         m = wrote[str(path)]
         if unit == "tables":
-            files = sorted(path.iterdir())
+            files = sorted(p for p in path.iterdir() if p.name != "RUN")  # card W-29: RUN is no table
             assert int(m["n"]) == len(files) > 0
             assert int(m["rows"]) == sum(len(f.read_text().splitlines()) - 3 for f in files)
             continue
@@ -541,3 +541,43 @@ def test_w23_each_export_given_out_prints_its_count_and_none_without(rel, world,
         n = {"rows": _tsv_rows(text), "sequences": text.count("\n>") + text.startswith(">"),
              "records": len(text.splitlines())}[unit]
         assert m["unit"] == unit and int(m["n"]) == n > 0, (argv, m.group(0))
+
+
+# --- card W-30: the count of `sql --out` and the table names on stderr ------------------------------------------
+
+
+def test_w30_sql_out_counts_the_rows_of_a_file_whose_first_column_starts_with_a_hash(rel, tmp_path, capsys):
+    q = 'SELECT protein_uid AS "#protein_uid" FROM protein_seq ORDER BY 1'
+    out = tmp_path / "uids.txt"
+    assert cli.main(_sql(rel, "-e", q, "--out", str(out))) == 0
+    err = capsys.readouterr().err
+    lines = out.read_text().splitlines()
+    assert lines[0] == "#protein_uid" and len(lines) > 2
+    n = len(lines) - 1  # counted here: the column line is not a row
+    assert f"statement 1: {n} rows" in err, err
+    assert _wrote(err)[str(out)]["n"] == str(n), err
+
+
+@pytest.mark.parametrize("table", ["l1_domains", "protein_occurrence", "contig_occurrence", "protein_seq", "contig_dim"])
+def test_w30_sql_names_the_table_not_the_file_it_read(rel, table, capsys):
+    col = next(iter(catalog.TABLES[table].schema.names))
+    assert cli.main(_sql(rel, "-e", f"SELECT max(hash({col})) AS h FROM {table}")) == 0
+    err = capsys.readouterr().err
+    assert re.search(rf"read {table} \d+ of \d+ row groups", err), err
+    assert ".parquet" not in err, err
+
+
+def test_w30_sql_names_the_table_of_a_table_that_has_a_file_per_stage(store, capsys):
+    root = store["root"]
+    man = catalog.build_manifest(root, rr.R2, ["S0", "S1"])
+    catalog.write_manifest(man)
+    catalog.generate_catalog(man, root=root)
+    for table in ("l1_domains", "protein_occurrence", "contig_occurrence", "protein_seq"):
+        assert len(list((root / catalog.TABLES[table].location).rglob("*.parquet"))) > 1, table  # counted here
+        col = next(iter(catalog.TABLES[table].schema.names))
+        assert cli.main(["sql", "--root", str(root), "--release", rr.R2, "-e",
+                         f"SELECT max(hash({col})) AS h FROM {table}"]) == 0
+        err = capsys.readouterr().err
+        assert re.search(rf"read {table} \d+ of \d+ row groups", err), err
+        assert ".parquet" not in err, err
+

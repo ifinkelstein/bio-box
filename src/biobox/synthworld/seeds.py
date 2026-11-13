@@ -3,7 +3,7 @@
 One master seed (u64) per world. Every stage and entity draws from its own stream,
 ``SeedSequence(seed, spawn_key=blake3("<stage>/<entity>")[:16] as four big-endian uint32)``, so a
 draw never depends on worker count, iteration order, the clock or any global random state.
-External tools (ZOMBI2 ``seed=``, later ``cmemit``/``hmmemit --seed``) get a derived non-zero
+External tools (ZOMBI2 ``seed=``, ``cmemit``/``hmmemit --seed``) get a derived non-zero
 31-bit seed: 0 means "arbitrary" in HMMER and Infernal and is never passed.
 
 The component paths in use (part of the output contract; renaming one changes every world):
@@ -16,7 +16,30 @@ The component paths in use (part of the output contract; renaming one changes ev
 - ``S3/family/<family_id>``: a family's architecture, target identity, root protein and rate categories;
 - ``S4/lineages``: per species branch, its GC3 step and relaxed-clock multiplier;
 - ``S4/family/<family_id>``: a family's evolution down its gene tree (pairs for the rate solve, root codons,
-  substitutions, synonymous events, indels).
+  substitutions, synonymous events, indels);
+- ``S5/family/<family_id>``: a family's cassette layout, root cassettes and their evolution down its gene
+  tree (with its RNA motif, when linked);
+- ``S5/motif/panel``: the synthetic RNA motif models; ``S5/motif/links``: which families carry which model;
+- ``S5/emit/<link>``: a link's clade emissions (synthetic draws, or the ``cmemit --seed`` tool seed);
+- ``S5/origin/<genome_id>/<replicon>``: where a circular replicon is cut;
+- ``S5/tight/<up>/<down>``: not a stream but a BLAKE3 hash of ``<seed>/S5/tight/<up>/<down>`` (families in
+  transcription order), the background tight-junction draw of §2.4;
+- ``S6/phages/world``: the phage set's master seed (its first two uint32 words); the phage set's own streams
+  are these paths under that seed;
+- ``S6/placement``: which phages are integrated, and per prophage and array its ranked branches, insertion
+  points along them and strand; ``S6/anchor/<item>``: the item's anchor family;
+- ``S6/prophage/<prophage_id>``: a prophage's evolution down its clade;
+- ``S6/crispr/<array_id>``: an array's repeat, leader, spacers and their acquisition and deletion; its Cas
+  families use ``S3/family/<id>``, ``S4/family/<id>`` and ``S5/family/<id>`` with family numbers 900000 + 10 a
+  + k (`mobile`);
+- ``S7/placement``, ``S7/choose/<event>``, ``S7/<event>``: fusions, splits and NOGD (`fusions`);
+- ``S8/codes``: the code-4 clade and the code-25 genome; ``S8/place``: the genome of each call error;
+  ``S8/error/<id>``: an error's gene or gap and its content; ``S8/recode/<genome_id>``: a code-4 or code-25
+  genome's recoded codons (`assembly`);
+- ``S9/classes``: the assembly class of each genome; ``S9/genome/<genome_id>``: a genome's N50 target or
+  completeness, breaks, rotations, MAG dropout and contig orientations (`assembly`);
+- ``S10/roles``: which genomes are contaminated or duplicated; ``S10/contam/<genome_id>``: a host's contaminant
+  windows; ``S10/near/<genome_id>``: a near duplicate's substitutions (`sources`).
 """
 
 from __future__ import annotations

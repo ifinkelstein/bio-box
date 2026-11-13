@@ -2,7 +2,7 @@
 """S2C selection for card C-25 (host python3, stdlib only): at most CAP complete genomes per GTDB species.
 
     python3 -I c25_select.py GTDB_DIR PHASE1_ALL_TSV OUT_DIR [--cap 20] [--phase1-not-served ACC,ACC,...]
-                             [--candidates] [--ani PAIRS_TSV [--min-af 15] [--require-pairs]]
+                             [--candidates] [--ani PAIRS_TSV [--min-af 15] [--require-pairs] [--unavailable FILE]]
 
 Rule without --ani, by quality order only:
 GTDB R226 bac120 + ar53 metadata, read by r50_select.complete_genomes (phase 1's reader); a genome is complete when
@@ -35,7 +35,14 @@ c27_skani.py writes: columns genome_a, genome_b, ani, af_a, af_b (bare accession
 a pair given twice keeps its larger ANI). The selection then adds columns ani_pick (1..CAP in the species over
 the cap) and ani_to_nearest_earlier_pick (the ANI to the nearest earlier pick when it was picked, 'unreported'
 for the largest distance), and OUT_DIR/ani_species.tsv: per species over the cap, how many picks differ from the
-quality order, and the minimum pairwise ANI among the CAP picks under each rule with the pairs it rests on.
+quality order, and the minimum pairwise ANI among the CAP picks under each rule with the pairs it rests on; then
+(appended) the genomes left out as unavailable, per rule the lower median of the reported pairwise ANI among the
+picks and the pairs over 99.9 (near-clones), and the table's pairs in the species with those left unreported for
+an empty ani or for the alignment-fraction rule.
+
+--unavailable FILE (with --ani): accessions with no sequence (NCBI did not serve them), so no ANI. In a species
+over the cap they are left out of the pick, which runs on the others in quality order, and the quality rule they
+are compared with is the first CAP of those others; a rank-1 genome cannot be left out (refused).
 """
 
 import argparse
@@ -106,8 +113,12 @@ ANI_COLS = ["genome_a", "genome_b", "ani", "af_a", "af_b"]
 EXTRA_ANI = ["ani_pick", "ani_to_nearest_earlier_pick"]
 SPECIES_COLS = ["species", "complete_genomes", "differ"] + [
     f"{rule}_{c}" for rule in ("ani", "quality")
-    for c in ("min_pairwise_ani", "pairs_reported", "pairs_unreported", "pairs_absent")]
+    for c in ("min_pairwise_ani", "pairs_reported", "pairs_unreported", "pairs_absent")] + [
+    "unavailable"] + [f"{rule}_{c}" for rule in ("ani", "quality")
+                      for c in ("median_pairwise_ani", "pairs_over_99_9")] + [
+    "table_pairs", "table_unreported_empty", "table_unreported_af"]
 UNREPORTED = 0.0  # the ANI of a pair that is not reported: distance 100 - 0 = 100, the largest
+NEAR_CLONE = 99.9  # a pair with ANI above this is counted as a near-clone in the report
 
 
 class TableError(SystemExit):
@@ -133,12 +144,15 @@ def ani_value(ani: str, af_a: str, af_b: str, min_af: float, where: str = "") ->
     return None if max(float(af_a), float(af_b)) < min_af else v
 
 
-def read_ani_table(path: Path, min_af: float) -> tuple[dict[tuple[str, str], float | None], dict]:
+def read_ani_table(path: Path, min_af: float, why: dict | None = None
+                   ) -> tuple[dict[tuple[str, str], float | None], dict]:
     """The normalised table -> {(a, b) with a < b: ANI, or None when not reported}, and counts.
 
     Not reported: an empty ani, or a larger alignment fraction under min_af. A pair given twice keeps its larger
-    ANI (a reported value beats an unreported one), so the result does not depend on row order."""
+    ANI (a reported value beats an unreported one), so the result does not depend on row order. With `why`, each
+    pair left unreported is mapped to 'af' if any of its rows had a value under min_af, else 'empty'."""
     pairs: dict[tuple[str, str], float | None] = {}
+    low_af: set[tuple[str, str]] = set()
     st = {"rows": 0, "rows_empty_ani": 0, "rows_below_min_af": 0, "pairs_given_twice": 0}
     with open(path, newline="") as fh:
         rd = csv.DictReader(fh, delimiter="\t")
@@ -151,16 +165,19 @@ def read_ani_table(path: Path, min_af: float) -> tuple[dict[tuple[str, str], flo
             if a == b:
                 raise TableError(f"{path}: a genome paired with itself: {a}")
             ani = ani_value(r["ani"], r["af_a"], r["af_b"], min_af, str(path))
+            key = (a, b) if a < b else (b, a)
             if r["ani"] == "":
                 st["rows_empty_ani"] += 1
             elif ani is None:
                 st["rows_below_min_af"] += 1
-            key = (a, b) if a < b else (b, a)
+                low_af.add(key)
             if key in pairs:
                 st["pairs_given_twice"] += 1
                 old = pairs[key]
                 ani = old if ani is None else (ani if old is None else max(old, ani))
             pairs[key] = ani
+    if why is not None:
+        why.update({k: "af" if k in low_af else "empty" for k, v in pairs.items() if v is None})
     return pairs, st
 
 
@@ -194,9 +211,9 @@ def fmt_ani(v: float | None) -> str:
     return "unreported" if v == UNREPORTED else repr(v)
 
 
-def pairwise_min(accs: list[str], pairs: dict) -> tuple[float | None, int, int, int]:
-    """(minimum reported ANI, pairs reported, pairs unreported, pairs absent) over all pairs of `accs`."""
-    lo, rep, unrep, absent = None, 0, 0, 0
+def pairwise_values(accs: list[str], pairs: dict) -> tuple[list[float], int, int]:
+    """(the reported ANI values, pairs unreported, pairs absent) over all pairs of `accs`."""
+    vals, unrep, absent = [], 0, 0
     for i, a in enumerate(accs):
         for b in accs[i + 1:]:
             key = (a, b) if a < b else (b, a)
@@ -205,9 +222,25 @@ def pairwise_min(accs: list[str], pairs: dict) -> tuple[float | None, int, int, 
             elif pairs[key] is None:
                 unrep += 1
             else:
-                rep += 1
-                lo = pairs[key] if lo is None else min(lo, pairs[key])
-    return lo, rep, unrep, absent
+                vals.append(pairs[key])
+    return vals, unrep, absent
+
+
+def pairwise_min(accs: list[str], pairs: dict) -> tuple[float | None, int, int, int]:
+    """(minimum reported ANI, pairs reported, pairs unreported, pairs absent) over all pairs of `accs`."""
+    vals, unrep, absent = pairwise_values(accs, pairs)
+    return (min(vals) if vals else None), len(vals), unrep, absent
+
+
+def median_low(vals: list[float]) -> float | None:
+    """The lower median (a value of the list, so it prints as skani printed it); None when empty."""
+    v = sorted(vals)
+    return v[(len(v) - 1) // 2] if v else None
+
+
+def read_accessions(path: Path | None) -> set[str]:
+    """A file of accessions, one per line or separated by white space; the empty set without a file."""
+    return set(path.read_text().split()) if path is not None else set()
 
 
 def quantiles(vals: list[float]) -> dict:
@@ -220,9 +253,12 @@ def quantiles(vals: list[float]) -> dict:
 
 def ani_select(a, ranked: dict, by_acc: dict, cap: int, p1_set: set) -> tuple[dict, dict, list[dict]]:
     """The --ani selection: species -> selected rows, the selection.json block, the ani_species.tsv rows."""
-    pairs, st = read_ani_table(a.ani, a.min_af)
+    why: dict[tuple[str, str], str] = {}
+    pairs, st = read_ani_table(a.ani, a.min_af, why)
     sp_of = {acc: r["gtdb_taxonomy"] for acc, r in by_acc.items()}
+    unavailable = read_accessions(a.unavailable)
     unused = 0
+    tcount: dict[str, dict[str, int]] = {}
     for x, y in sorted(pairs):
         for g in (x, y):
             if g not in sp_of:
@@ -230,6 +266,10 @@ def ani_select(a, ranked: dict, by_acc: dict, cap: int, p1_set: set) -> tuple[di
         if sp_of[x] != sp_of[y]:
             raise TableError(f"{a.ani}: {x} and {y} are in two species")
         unused += len(ranked[sp_of[x]]) <= cap
+        c = tcount.setdefault(sp_of[x], {"table_pairs": 0, "table_unreported_empty": 0, "table_unreported_af": 0})
+        c["table_pairs"] += 1
+        if (x, y) in why:
+            c[f"table_unreported_{why[(x, y)]}"] += 1
     n = {"consulted": 0, "unreported": 0, "absent": 0}
     absent_eg: list[tuple[str, str]] = []
 
@@ -253,51 +293,75 @@ def ani_select(a, ranked: dict, by_acc: dict, cap: int, p1_set: set) -> tuple[di
             r["ani_pick"] = r["ani_to_nearest_earlier_pick"] = ""
     sel, species_rows = {}, []
     mins: dict[str, list[float]] = {"ani": [], "quality": []}
+    medians: dict[str, list[float]] = {"ani": [], "quality": []}
+    clones = {"ani": {"species": 0, "pairs": 0}, "quality": {"species": 0, "pairs": 0}}
     incomplete = {"ani": 0, "quality": 0}
+    unav_over = unav_top = 0
     for sp, rows in ranked.items():
         if len(rows) <= cap:
             sel[sp] = rows
             continue
-        picks = farthest_first([r["accession"] for r in rows], cap, round_fn)
+        avail = [r for r in rows if r["accession"] not in unavailable]
+        if avail[:1] != rows[:1]:
+            raise TableError(f"{sp}: its rank 1 genome {rows[0]['accession']} is listed as unavailable")
+        unav_over += len(rows) - len(avail)
+        unav_top += sum(r["accession"] in unavailable for r in rows[:cap])
+        picks = farthest_first([r["accession"] for r in avail], cap, round_fn)
         for i, (acc, s) in enumerate(picks, 1):
             by_acc[acc]["ani_pick"], by_acc[acc]["ani_to_nearest_earlier_pick"] = str(i), fmt_ani(s)
         sel[sp] = [by_acc[acc] for acc, _ in picks]
         f = [acc for acc, _ in picks]
-        q = [r["accession"] for r in rows[:cap]]
-        row = {"species": sp, "complete_genomes": len(rows), "differ": len(set(f) - set(q))}
+        q = [r["accession"] for r in avail[:cap]]  # quality order among the genomes that have a sequence
+        row = {"species": sp, "complete_genomes": len(rows), "differ": len(set(f) - set(q)),
+               "unavailable": len(rows) - len(avail)}
         for rule, accs in (("ani", f), ("quality", q)):
-            lo, rep, unrep, ab = pairwise_min(accs, pairs)
-            row |= {f"{rule}_min_pairwise_ani": "" if lo is None else repr(lo), f"{rule}_pairs_reported": rep,
-                    f"{rule}_pairs_unreported": unrep, f"{rule}_pairs_absent": ab}
+            vals, unrep, ab = pairwise_values(accs, pairs)
+            lo, med = (min(vals) if vals else None), median_low(vals)
+            n99 = sum(v > NEAR_CLONE for v in vals)
+            row |= {f"{rule}_min_pairwise_ani": "" if lo is None else repr(lo), f"{rule}_pairs_reported": len(vals),
+                    f"{rule}_pairs_unreported": unrep, f"{rule}_pairs_absent": ab,
+                    f"{rule}_median_pairwise_ani": "" if med is None else repr(med), f"{rule}_pairs_over_99_9": n99}
             if lo is not None and unrep == 0 and ab == 0:
                 mins[rule].append(lo)
             else:
                 incomplete[rule] += 1
+            if med is not None:
+                medians[rule].append(med)
+            clones[rule]["species"] += n99 > 0
+            clones[rule]["pairs"] += n99
+        row |= tcount.get(sp, {"table_pairs": 0, "table_unreported_empty": 0, "table_unreported_af": 0})
         species_rows.append(row)
     if n["absent"] and a.require_pairs:
         raise TableError(f"{a.ani}: {n['absent']} pairs the pick consults are not in the ANI table "
                          f"(--require-pairs), for example {absent_eg}")
     a_sel = {r["accession"] for rows in sel.values() for r in rows}
-    q_p1 = {r["accession"] for rows in ranked.values() for r in rows[:cap]} & p1_set
+    q_all = {r["accession"] for rows in ranked.values() for r in rows[:cap]}
+    q_p1 = q_all & p1_set
     assert all(rows[0]["accession"] in a_sel for rows in ranked.values()), "a rank-1 genome was not picked"
     assert q_p1 <= a_sel, f"phase-1 genomes dropped by the ANI rule: {sorted(q_p1 - a_sel)}"
     top = sorted(species_rows, key=lambda r: (-r["complete_genomes"], r["species"]))[:10]
     block = {
         "rule": f"species with more than cap: greedy farthest-first from rank 1 on distance 100 - ANI, ties by "
                 f"quality order; a pair not reported (empty ani, larger alignment fraction under {a.min_af:g}, or "
-                f"absent) counts as distance 100; species with at most cap: all",
+                f"absent) counts as distance 100; genomes listed as unavailable (no sequence) are left out of the "
+                f"pick; species with at most cap: all",
         "table": a.ani.name, "table_sha256": hashlib.sha256(a.ani.read_bytes()).hexdigest(), "min_af": a.min_af,
         "table_counts": st, "table_pairs": len(pairs), "table_pairs_in_species_at_or_under_cap": unused,
         "species_over_cap": len(species_rows), "consulted_pairs": n["consulted"],
         "consulted_unreported": n["unreported"], "consulted_absent": n["absent"],
         "require_pairs": a.require_pairs,
         "selected_differ_from_quality": sum(r["differ"] for r in species_rows),
+        "selected_differ_from_quality_all_ranks": len(a_sel - q_all),
+        "unavailable": {"listed": len(unavailable), "in_species_over_cap": unav_over,
+                        "in_quality_top_cap": unav_top},
         "phase1_subset": True,
         "largest_species": [{"species": r["species"].split(";")[-1], "complete_genomes": r["complete_genomes"],
                              "differ": r["differ"]} for r in top],
         "min_pairwise_ani": {rule: {"species_all_pairs_reported": quantiles(mins[rule]),
                                     "species_with_a_pair_unreported_or_absent": incomplete[rule]}
                              for rule in ("ani", "quality")},
+        "median_pairwise_ani": {rule: quantiles(medians[rule]) for rule in ("ani", "quality")},
+        "near_clone_pairs_over_99_9": clones,
     }
     return sel, block, species_rows
 
@@ -315,6 +379,8 @@ def main() -> int:
                     help="a pair whose larger alignment fraction (percent) is under this is not reported")
     ap.add_argument("--require-pairs", action="store_true",
                     help="refuse when a pair the pick consults is absent from the ANI table")
+    ap.add_argument("--unavailable", type=Path,
+                    help="file of accessions with no sequence (not served): left out of the --ani pick")
     a = ap.parse_args()
     cap = a.cap
     a.out.mkdir(parents=True, exist_ok=True)

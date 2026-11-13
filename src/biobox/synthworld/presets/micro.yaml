@@ -1,9 +1,10 @@
 # synthworld preset `micro`: backbone parameters (synthworld_spec.md §5.1; card F-02 session 1).
 # Every leaf is {v: value, tag: asserted | fitted | derived, why: source}. `backbone.load_preset`
 # resolves the leaves to their values; the resolved mapping is what the world records and digests.
-# Only the backbone (species tree and taxonomy, gene order, strands, families, copies, groups, plasmids,
-# vehicles, hubs, decoys) is here (sessions 1 and 2). Sequences, IGRs, motifs, NOGD and the assembly mix
-# come in later sessions.
+# The backbone (species tree and taxonomy, gene order, strands, families, copies, groups, plasmids,
+# vehicles, hubs, decoys; sessions 1 and 2), sequences (session 3), and IGRs and RNA motifs (session 4)
+# are here, phages, prophages and CRISPR arrays (session 5), and fusions, splits and NOGD (session 6). Call
+# errors, the assembly mix and contamination come in later sessions.
 name: {v: micro, tag: asserted, why: "synthworld_spec §5.1"}
 default_seed: {v: 20261112, tag: asserted, why: "§5.1: the default seed is fixed and committed"}
 
@@ -161,3 +162,173 @@ sequences:
     gc3_sigma: {v: 0.25, tag: asserted, why: "per square-root time unit on the logit scale"}
     start_codons: {v: {ATG: 0.90, GTG: 0.08, TTG: 0.02}, tag: asserted, why: "near E. coli K-12 usage"}
     stop_codons: {v: {TAA: 0.64, TGA: 0.29, TAG: 0.07}, tag: asserted, why: "near E. coli K-12 usage"}
+
+intergenic:
+  # §2.1 S5 and §2.4: cassettes, junctions and replicon sequences (card F-02 session 4; read by
+  # `intergenic.build`, whose docstring states the model). Lengths are clip(round(offset + scale x
+  # exp(sigma z)), min, max), z standard normal, so the median is offset + scale. None is fitted yet:
+  # §2.4 asks for the golden genomes' distributions, which §7.1 measures; these are estimates.
+  junctions:
+    p_tight: {v: 0.55, tag: asserted, why: "§2.4 p_tight for background co-directional pairs; estimate (about half of adjacent co-directional E. coli pairs share an operon)"}
+    tight_overlap: {v: {minus4: 0.6, minus1: 0.06}, tag: asserted, why: "§2.4 -4 (ATGA) and -1 (TAATG) overlaps: the probability that a tight junction tries one. A -4 also needs a downstream second codon starting with A and an upstream last sense codon not ending in C, so only part of the tries are realized; tests/r2/test_synthworld_intergenic.py measures the realized rates"}
+    tight: {v: {offset: 0, scale: 12, sigma: 0.9, min: 0, max: 80}, tag: asserted, why: "§2.4 intra-operon spacing (overlaps apart); estimate, median 12"}
+    loose: {v: {offset: 20, scale: 110, sigma: 0.75, min: 20, max: 800}, tag: asserted, why: "§2.4 co-directional between operons; estimate, median 130"}
+    divergent: {v: {offset: 40, scale: 200, sigma: 0.7, min: 40, max: 1600}, tag: asserted, why: "§2.4 divergent; estimate, median 240 (two promoters)"}
+    convergent: {v: {offset: 0, scale: 70, sigma: 0.9, min: 0, max: 1000}, tag: asserted, why: "§2.4 convergent; estimate, median 70 (terminators only)"}
+    length_event_rate: {v: 0.5, tag: asserted, why: "§2.4 'preferred length inherited with small multiplicative noise': length events per unit time on a copy's length scores (Poisson), so close relatives mostly keep identical lengths"}
+    length_event_rho: {v: 0.9, tag: asserted, why: "a length event's AR(1) correlation; after about 4 events (a crown-deep pair) the scores correlate 0.66"}
+    linear_end_flank: {v: 200, tag: asserted, why: "bases beyond the end genes of a linear replicon (micro has none)"}
+  cassettes:
+    upstream_length: {v: 800, tag: asserted, why: "U holds the longest loose IGR and half the longest divergent one"}
+    downstream_length: {v: 500, tag: asserted, why: "D holds half the longest convergent IGR"}
+    promoter_spacer: {v: {values: [15, 16, 17, 18, 19], weights: [0.1, 0.2, 0.4, 0.2, 0.1]}, tag: asserted, why: "sigma70 -35 to -10 spacer, 17 most common"}
+    utr_min: {v: 4, tag: asserted, why: "each 5' UTR part is utr_min + geometric(utr_mean), at most utr_max; estimate"}
+    utr_mean: {v: 20, tag: asserted, why: "estimate"}
+    utr_max: {v: 120, tag: asserted, why: "estimate"}
+    rbs_spacer: {v: [5, 10], tag: asserted, why: "§2.1 S5: an RBS 5-10 nt before the start"}
+    terminator_gap_mean: {v: 8, tag: asserted, why: "bases from the stop codon to the terminator stem (geometric); estimate"}
+    terminator_gap_max: {v: 30, tag: asserted, why: "estimate"}
+    stem: {v: [6, 10], tag: asserted, why: "intrinsic terminator stem pairs; estimate"}
+    loop: {v: [3, 6], tag: asserted, why: "terminator loop; estimate"}
+    t_tract: {v: 7, tag: asserted, why: "terminator T tract"}
+    element_consensus: {v: 0.7, tag: asserted, why: "the consensus base's probability in a box, RBS or T-tract column"}
+    pair_weights: {v: {GC: 0.3, CG: 0.3, AT: 0.15, TA: 0.15, GT: 0.05, TG: 0.05}, tag: asserted, why: "canonical pairs of terminator stems and of RNA motif pair changes (§2.5 step 3)"}
+  evolution:
+    intergene_speed: {v: 3.0, tag: asserted, why: "§2.4: cassette nucleotides at 3x the gene's synonymous rate (ZOMBI2 intergene_speed 3)"}
+    element_rate_factor: {v: 0.25, tag: asserted, why: "§2.4: elements evolve at a lower rate"}
+  composition:
+    gc_slope: {v: 0.8, tag: asserted, why: "lineage intergenic GC = expit(slope x logit(GC3) + offset); estimate"}
+    gc_offset: {v: -0.25, tag: asserted, why: "IGRs are AT-richer than coding sequence; GC3 0.5 gives 0.438"}
+
+rna_motifs:
+  # §2.5 (card F-02 session 4; `rna`, `intergenic`). The micro default is synthetic, because GitHub Actions
+  # has neither Infernal nor Rfam; 'rfam' reads rfam_models from the Rfam CM library passed to
+  # intergenic.build and emits with cmemit (tests/r2/test_synthworld_rna_rfam.py).
+  source: {v: synthetic, tag: asserted, why: "no Infernal or Rfam in CI; §5.1 asks for Rfam CMs"}
+  rfam_release: {v: "15.1", tag: asserted, why: "refdb.yaml rfam 15.1; recorded with the file's sha256"}
+  rfam_models: {v: [RF00050, RF00059, RF00162, RF00167, RF00168, RF00174, RF00504, RF00522, RF00234, RF01051], tag: asserted, why: "§5.1: 10 CMs; 5' UTR riboswitches and glmS, intergenic models of prok-2 (DEC-30), no two in one Rfam clan"}
+  n_models: {v: 10, tag: asserted, why: "§5.1 RNA motif links 10 CMs x 2 families (the synthetic source's count)"}
+  families_per_model: {v: 2, tag: asserted, why: "§5.1"}
+  family_kinds: {v: [root, originated], tag: asserted, why: "background families only, so no module, plasmid, vehicle, hub or decoy carries a motif"}
+  min_genomes: {v: 15, tag: asserted, why: "linked families present in at least this many genomes"}
+  clade_height: {v: 0.5, tag: asserted, why: "§2.5 h, as a fraction of the species crown age"}
+  exp: {v: 1.5, tag: fitted, why: "§2.5 cmemit --exp. Of 100 emissions per model (seed 11) scored by cmsearch --cut_ga --notrunc, at --exp 1 RF00050 35, RF00059 15, RF00162 47, RF00167 81, RF00168 99, RF00174 99, RF00504 66, RF00522 55, RF00234 96, RF01051 78 reach GA; at 1.5 between 94 and 100 (measured, wilkcomp02, 2026-11-13, Infernal 1.1.5, Rfam 15.1); so 1.5 makes the micro motifs real-like (above GA when undiverged) and lower values are the difficulty knob"}
+  local: {v: false, tag: asserted, why: "§2.5 cmemit -l"}
+  rate_factor: {v: 0.04, tag: asserted, why: "§2.5 step 3: motif events per position (or pair) relative to the cassette's background rate; 0.1 gave a median divergence from the emission of 0.20 and a maximum of 0.70 (measured, wilkcomp02, 2026-11-12, micro default seed), too far for a conserved RNA"}
+  synthetic: {v: {hairpins: [1, 3], stem: [4, 9], loop: [4, 8], linker: [2, 8], unpaired_concentration: 2.0, pair_concentration: 2.0}, tag: asserted, why: "synthetic hairpin chains of 20-110 nt"}
+
+phages:
+  # §2.1 S6 (card F-02 session 5; read by `mobile.build`, whose docstring states the model). The phage set is
+  # a world of its own (world/mobile/phages/): a second ZOMBI2 ordered run, one linear chromosome per phage
+  # and no groups, realized by the S3-S5 code with the host's HMM panel. Every other section of this preset
+  # applies to it as it stands, but rna_motifs (none: no phage family is in min_genomes phages).
+  count: {v: 12, tag: asserted, why: "§5.1: 12 phages"}
+  birth: {v: 1.0, tag: asserted, why: "as the host tree"}
+  death: {v: 0.3, tag: asserted, why: "as the host tree"}
+  genomes:
+    initial_families: {v: 60, tag: asserted, why: "§5.1: 40-80 genes each"}
+    topology: {v: linear, tag: asserted, why: "§2.1 S6: linear topology"}
+    # duplication, transfer and loss were scanned on the default seed (session 5, wilkcomp02, 2026-11-13, 8
+    # settings, backbone only): at 0.01, 0.05 and 0.1 one phage drifted to 31 genes (sizes 31-63); halved, the
+    # 12 phages hold 49-71 genes (mean 60.8) and 0.87 of the families are in two or more phages
+    duplication: {v: 0.005, tag: fitted, why: "per copy; phage genomes carry few paralogs; scanned (above)"}
+    transfer: {v: 0.025, tag: fitted, why: "per copy, extent 3: recombination among related phages (mosaicism); scanned (above)"}
+    loss: {v: 0.05, tag: fitted, why: "per copy, extent 2; scanned (above)"}
+    origination_per_root_family: {v: 0.015, tag: derived, why: "balances the others at 60 genes: loss 2 x 0.05 - duplication 2 x 0.005 - transfer 3 x 0.025 = 0.015 per gene per unit time"}
+    inversion: {v: 0.0, tag: asserted, why: "strand blocks come from the stem only"}
+    transposition: {v: 0.0, tag: asserted, why: "phage gene order is conserved in blocks"}
+    inversion_extent: {v: 10, tag: asserted, why: "a stem inversion flips a block of about 10 genes"}
+    transfer_to: {v: uniform, tag: asserted, why: "a small set of related phages"}
+  root_scramble:
+    stem_length: {v: 1.0, tag: asserted, why: "time units"}
+    inversion_passes: {v: 0.05, tag: asserted, why: "about 3 inversions of about 10 genes on a 60-gene root, so a phage has co-directional blocks on both strands (ZOMBI2 lays the root out on +)"}
+    transposition_passes: {v: 0.0, tag: asserted, why: "no transpositions: blocks stay"}
+
+prophages:
+  # §2.1 S6: some phages integrated in host clades (`mobile`).
+  count: {v: 4, tag: asserted, why: "§5.1: 4 of the 12 phages integrated as prophages"}
+  clade_size: {v: [2, 10], tag: asserted, why: "extant genomes below the integration branch; estimate"}
+  rate: {v: 0.05, tag: asserted, why: "per unit time after integration: substitution events per intergenic base and synonymous events per internal codon (proteins are kept); estimate"}
+
+crispr:
+  # §2.1 S6: CRISPR arrays next to a Cas operon, seeded at species-tree branches (`mobile`). The Cas operon is
+  # planted with the array as one inserted locus inherited down the clade (no ZOMBI2 group: see `mobile`).
+  arrays: {v: 10, tag: asserted, why: "§5.1: 10 arrays"}
+  clade_size: {v: [2, 12], tag: asserted, why: "extant genomes below the seeding branch; estimate"}
+  cas_roles: {v: [cas9, cas1, cas2, csn2], tag: asserted, why: "a type II-A operon (S. pyogenes order)"}
+  repeat_length: {v: 36, tag: asserted, why: "type II-A repeats of S. pyogenes are 36 nt"}
+  repeat_stem: {v: 6, tag: asserted, why: "the repeat's first bases and its last are reverse complements (a partly palindromic repeat)"}
+  spacer_length: {v: 30, tag: asserted, why: "type II-A spacers of S. pyogenes are 30 nt"}
+  leader_length: {v: 150, tag: asserted, why: "estimate"}
+  pam: {v: NGG, tag: asserted, why: "type II-A (SpCas9): 5'-NGG-3' directly 3' of the protospacer on the strand that reads as the spacer"}
+  initial_spacers: {v: 5, tag: asserted, why: "§5.1: 5-40 spacers per array; acquired at the seeding point"}
+  min_spacers: {v: 5, tag: asserted, why: "§5.1 floor: deletions never take an array below it"}
+  max_spacers: {v: 40, tag: asserted, why: "§5.1 ceiling: past it the trailer-end spacers are lost"}
+  acquisitions_mean: {v: 15, tag: asserted, why: "expected acquisitions along the mean path from the seeding point to the clade's genomes; estimate"}
+  deletions_per_spacer: {v: 0.3, tag: asserted, why: "expected deletion events starting at a spacer over the same mean path; estimate"}
+  deletion_mean_length: {v: 1.5, tag: asserted, why: "spacers per deletion, 1 + geometric; estimate"}
+  mismatch_weights: {v: [0.5, 0.2, 0.1, 0.1, 0.05, 0.05], tag: asserted, why: "§5.3 spacer mismatches 0-5"}
+  no_pam_fraction: {v: 0.1, tag: asserted, why: "§5.3 PAM presence: spacers taken where no PAM follows"}
+  decoy_fraction: {v: 0.05, tag: asserted, why: "§3.3 target_kind none: random spacers"}
+  target_max_mismatches: {v: 5, tag: asserted, why: "a window within this many mismatches of a spacer is a target (§3.3 rows per spacer x target)"}
+  locus_flank: {v: 200, tag: asserted, why: "bases of the Cas operon's cassettes at its two ends"}
+
+fusions:
+  # §2.1 S7: gene fusions, splits and non-orthologous gene displacement, each once on a host species-tree branch
+  # and inherited by its clade (card F-02 session 6; read by `fusions.build`, whose docstring states the model).
+  fusions: {v: 15, tag: asserted, why: "§5.1: 15 fusions"}
+  splits: {v: 5, tag: asserted, why: "§5.1: 5 splits"}
+  nogd: {v: 2, tag: asserted, why: "§5.1: 2 NOGD"}
+  clade_size: {v: [2, 12], tag: asserted, why: "extant genomes below the event branch, as the CRISPR arrays' (§2.1 S7: every extant genome of a chosen clade); estimate"}
+  linker_aa: {v: [0, 10], tag: asserted, why: "§3.3 truth_fusion linker_aa: codons between the two parts, uniform; estimate"}
+  linker_residues: {v: GSAPTEKDNQ, tag: asserted, why: "small and polar residues, drawn uniformly, as flexible linkers; estimate"}
+  split_spacer: {v: [20, 60], tag: asserted, why: "bases between the first half's stop codon and the second half's ATG, an RBS among them; a tight intra-operon IGR (intergenic.junctions.tight runs 0-80); estimate"}
+
+callerr:
+  # §2.1 S8: gene-call errors and genetic codes 4 and 25 (card F-02 session 7; read by `assembly.build`, whose
+  # docstring states the model). S4 writes code 11 only, so the code-4 clade and the code-25 genome are recoded
+  # here (changing S4 would change the host world).
+  counts:
+    frameshift_ins: {v: 30, tag: asserted, why: "§5.1 ~200 call errors over six kinds; estimate"}
+    frameshift_del: {v: 30, tag: asserted, why: "§5.1; estimate"}
+    alt_start_upstream: {v: 30, tag: asserted, why: "§5.1; estimate"}
+    alt_start_downstream: {v: 30, tag: asserted, why: "§5.1; estimate"}
+    smorf: {v: 40, tag: asserted, why: "§5.1; estimate"}
+    internal_stop: {v: 40, tag: asserted, why: "§5.1; estimate"}
+  min_gene_codons: {v: 100, tag: asserted, why: "a frameshift or internal stop lies in the middle third of a gene of at least this many codons; estimate"}
+  alt_upstream_codons: {v: [8, 30], tag: asserted, why: "the planted upstream start lies this many codons before the true start (beyond the RBS, which ends 5-10 bases before it); estimate"}
+  alt_downstream_codons: {v: [2, 20], tag: asserted, why: "an internal ATG at this codon index competes with the true start, recoded to TTG; estimate"}
+  smorf_aa: {v: [10, 50], tag: asserted, why: "§2.1 S8: planted smORFs of 10-50 aa (initiator included)"}
+  smorf_min_gap: {v: 150, tag: asserted, why: "a smORF goes into an intergenic gap of at least this many bases; estimate"}
+  smorf_pad: {v: 10, tag: asserted, why: "background bases on each side of a smORF's RBS-spacer-ORF block; estimate"}
+  min_call_codons: {v: 30, tag: asserted, why: "expected_calls lists a code-11 ORF piece of a broken gene only when it has at least this many sense codons (Prodigal's minimum gene is 90 nt); estimate"}
+  code4_clade_size: {v: [2, 6], tag: asserted, why: "§5.1: one clade with code 4; extant genomes below its branch; estimate"}
+  code4_tgg_to_tga: {v: 0.9, tag: asserted, why: "share of internal Trp codons recoded TGG -> TGA in code-4 genomes (TGA is the main Trp codon of Mycoplasma); estimate"}
+  code25_gly_to_tga: {v: 0.1, tag: asserted, why: "share of internal Gly codons recoded to TGA in the code-25 genome; estimate"}
+
+assembly:
+  # §2.1 S9: assembly classes, contig breaks, fragments and their truth (card F-02 session 7; `assembly.build`).
+  class_weights: {v: [0.4, 0.4, 0.2], tag: asserted, why: "§5.1: 40% complete, 40% draft, 20% MAG (complete, draft, mag)"}
+  draft_n50: {v: [50000, 200000], tag: asserted, why: "§5.1: draft N50 50 or 200 kb, one per draft genome, uniformly"}
+  mag_n50: {v: 20000, tag: asserted, why: "§5.1: MAG N50 20 kb"}
+  mag_completeness: {v: [0.70, 0.95], tag: asserted, why: "§5.1: MAG completeness 70-95%, uniform"}
+  min_contig: {v: 500, tag: asserted, why: "§2.1 S9: contigs under 500 bp are dropped"}
+  repeat_min_length: {v: 1000, tag: asserted, why: "§2.1 S9: recent duplicates >= 1 kb"}
+  repeat_min_identity: {v: 0.98, tag: asserted, why: "§2.1 S9: recent duplicates >= 98% identical"}
+  n50_factor: {v: 1.678, tag: derived, why: "breaks per base = n50_factor / N50: uniform breaks give exponential pieces, whose length-weighted median is 1.678 x the mean ((1 + x) e^-x = 1/2)"}
+  reverse_probability: {v: 0.5, tag: asserted, why: "§2.1 S9: each contig is reverse-complemented with p = 0.5"}
+
+contamination:
+  # §2.1 S10: foreign contigs added to chosen assemblies, flagged by a mock FCS-GX sidecar (card F-02 session 7;
+  # read by `sources.build`, whose docstring states the model). Only the main world's distant clades donate
+  # (no outgroup world is built).
+  genomes: {v: 3, tag: asserted, why: "§5.1: contamination in 3 genomes"}
+  contigs: {v: [1, 4], tag: asserted, why: "contaminant contigs per host, uniform; estimate"}
+  contig_length: {v: [3000, 30000], tag: asserted, why: "a contaminant contig is a window of this many bases of a donor contig, uniform; estimate"}
+
+duplicates:
+  # §2.1 S10: exact and near duplicates written as separate sources (`sources.build`).
+  exact: {v: 2, tag: asserted, why: "§5.1: 2 exact duplicates"}
+  near: {v: 2, tag: asserted, why: "§5.1: 2 near duplicates"}
+  near_ani: {v: 0.999, tag: asserted, why: "§2.1 S10: near duplicates at 99.9% ANI"}
+  igr_share: {v: 0.5, tag: asserted, why: "share of a near duplicate's substitutions on intergenic bases; the rest are synonymous (§2.1 S10: biased to synonymous and IGR sites); estimate"}

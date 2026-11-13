@@ -25,10 +25,9 @@ Paste this once per shell. Lines marked `real:` give the value for a real build.
 
 ```bash
 export TREE=/tmp/if2453/ci/C-06                      # real: the checkout that `git push pod` updated
-export IMAGE="$HOME/bio-box/images/bio-box-test_74b3e05.sif"
-export DIGEST=sha256:c30be58557d756095346308c58cc3098af4bbe66404f67ab87be3f64f147c898
-export PYDEPS=/tmp/if2453/pilot_s1/pydeps
-export PYTHONPATH_POD="$TREE/src:$PYDEPS"            # the image is old: the source is bound in (section 11)
+export IMAGE="$HOME/bio-box/images/bio-box_64f1bf0.sif"
+export DIGEST=sha256:cb7353f85316981be5268c2212100322b5fbf1086c32b07e2f9b47802b6afba3
+export PYTHONPATH_POD="$TREE/src"                    # the tree is newer than the image: its source is bound in (section 11)
 export PROFILE=/tmp/if2453/c06/profile.yaml          # real: "$TREE/profiles/wilkcomp02.yaml"
 export MEM=8G                                        # real: 200G (the profile's mem_scope)
 export WORK=/tmp/if2453/c06                          # your scratch directory for inputs and outputs
@@ -44,6 +43,24 @@ biopy() { "${SCOPE[@]}" "${SING[@]}" "$IMAGE" python "$@"; }
 `bio-box` and `biopy` run a short command in its own capped scope at nice 19 (AGENTS 7.2). Do not
 use them for a long job: use `scripts/pod_run.sh` (sections 2 and 7).
 
+The image (card C-29). `bio-box_64f1bf0.sif` is the runtime image built from `main` at `64f1bf0`,
+pulled by digest from `ghcr.io/ifinkelstein/bio-box@sha256:2faf4b8de020430d3c5c9dace5569445fdb0eb0057088972793874a799e25bea`.
+`DIGEST` is the sha256 of the `.sif` file, which is what `pod_run.sh --digest` compares (measured with
+`sha256sum` on the pod, 2026-11-13). Its test image, `bio-box-test_64f1bf0.sif`, runs the test suite
+(section 8). The image holds the locked Python environment (`uv.lock`: numpy, matplotlib, zombi2 and
+the rest), MMseqs2 18.8cc5c, HMMER 3.4, Infernal 1.1.5 and skani 0.4.0. Only the tree's `src` goes on
+the path: a dependency directory put before it would shadow the locked packages. Both `.sif` files
+are in `$HOME/bio-box/images/` and in `/tmp/if2453/images/`.
+
+Until card C-29 the pod ran everything in the test image `bio-box-test_74b3e05.sif` (built
+2026-10-30; sha256 `c30be58557d756095346308c58cc3098af4bbe66404f67ab87be3f64f147c898`), which has
+no numpy: the dependency directory `/tmp/if2453/pilot_s1/pydeps` supplied numpy 2.5.4, the
+version `uv.lock` pins. The 50 Gbp build (unit `r50-driver`) runs in that image until it is done: a
+release must not mix image digests in its run records, so do not change its driver, its tree or its
+image while it runs. The next build takes the new image in its driver
+(`scripts/stress/build_stage_pod/r50_driver.sh` or its copy): set `IMAGE` and `DIGEST` to the two
+values above, and `PYPATH` to `$TREE/src` alone, with no `pydeps` directory after it.
+
 ## 1. Before you start
 
 1. Look for a `STOP` file. If this prints a path, do not start anything.
@@ -54,18 +71,25 @@ ls -d "$ROOT/STOP"
 
 `No such file or directory` is the good answer.
 
-2. Look for other compute. A load average above 8 means someone is computing: the night cap does
-not apply, and you should wait or take the day cap (`run-step` does this by itself).
+2. Look for other compute. The night cap holds only while no other user computes (AGENTS 7.2).
+`run-step` and `build-stage` check this by themselves (card C-28): other users' processes using more
+than half a core together over 5 seconds mean the day cap at night. The load average does not tell:
+our own build holds it near 42. This prints what they read now, and the threads a 4-thread launch
+would get (read-only; it starts nothing):
 
 ```bash
+biopy -m biobox.runstep --profile "$PROFILE" --threads 4
 uptime
 top -b -n 1 -o %CPU -w 120 > "$WORK/top.txt"
 head -n 15 "$WORK/top.txt"
 systemctl --user list-units --type=service --type=scope --no-pager
 ```
 
-The unit list shows the units of this account. Other agents and the PI use the same account, so
-a unit you did not start is not yours. Processes of other users are in `top`.
+The first command prints a number (the allowance) and one line: the cap and why, other users' CPU,
+system accounts' CPU (root and uids up to 999: daemons such as the virus scanner, never counted),
+ours elsewhere (subtracted from the cap) and ours in this unit, over the 5 s window, and the load
+average beside them. The unit list shows the units of this account. Other agents and the PI use the
+same account, so a unit you did not start is not yours. Processes of other users are in `top`.
 
 3. Check free space where the work goes.
 
@@ -167,16 +191,26 @@ shards run at once, each its own `run-step`:
 - `--scan-cpus C`: threads per shard. Default 4.
 - `--scan-jobs J`: shards at once. Default: the allowance when `build-stage` starts, divided by C,
   rounded down.
-- The allowance is the thread count `run-step` allows: 40 by day; 56 at night and at weekends, only
-  while the load average is at most 8.
-- J × C above the allowance when `build-stage` starts is refused before any step (exit 2). The
-  message names J, C and the allowance.
+- The cap is the thread count `run-step` allows one process: 40 by day; 56 at night and at weekends,
+  only while no other user computes (card C-28: other users' processes, not root's or a system
+  account's, use more than half a core together over a 5 s window; a reading that fails gives 40).
+- J × C above the cap when `build-stage` starts is refused before any step (exit 2). The
+  message names J, C and the cap (`run-step allows`).
+- The allowance of a launch is the cap less what ours elsewhere use now: every process of this
+  account outside the build's own unit and process tree (a test suite, another agent's build, a
+  search), to the nearest CPU. The build's own shards are not subtracted; `build-stage` counts them.
 - The allowance is read again before each step and before each shard launch. A build started at
-  night keeps to 40 threads once the day window opens: shards already running finish, and new ones
-  start only while the shards in flight fit the allowance, so fewer run at once. If one shard's C
-  is above the allowance, the launch waits (the log says `holding it`) and starts when the hour or
-  the load allows. The same holds for a step whose `--threads` is above the allowance; the default
-  `--threads` (the smaller cap) never waits.
+  night keeps to 40 threads once the day window opens: new launches start only while the shards in
+  flight fit the allowance, so fewer run at once, and a launch at night whose budget could still run
+  when the day window opens (300 CPU-minutes over C threads: 75 minutes for C = 4, so from 06:45 on a
+  weekday, derived) already counts against 40. If one shard's C is above the allowance, the launch waits (the
+  log says `holding it`) and starts when the hour, other users or ours elsewhere allow. The same
+  holds for a step whose `--threads` is above the allowance, the default `--threads` (the smaller
+  cap) included: it waits while ours elsewhere leave less than it.
+- `build-stage` writes the allowance and the readings behind it in one line at its start and again
+  whenever it changes; every `run-step` writes one such line before its command (`S0.genecall:
+  allowance ...`). `run-step` refuses only `--threads` above the cap; above the allowance it runs
+  and says so, since a fixed-size job of ours is not squeezed out (`build-stage` waits instead).
 - The output is the same, byte for byte, for any J and C, and whenever the allowance changes.
 
 The unit's CPU quota is `pod_run.sh --threads`, which defaults to the profile's night cap
@@ -190,9 +224,12 @@ bash "$TREE/scripts/pod_run.sh" --profile "$PROFILE" --image "$IMAGE" --digest "
 
 For a real Pfam scan, with the real profile, do not take the whole cap. The cap (40 threads by day, 56 at
 night and at weekends, section 10) is a total over everything of ours on the pod: your build, other
-agents' builds and tests, searches, and the PI's work, all together (AGENTS 7.2). `build-stage` counts
-only its own threads, so it cannot see the others; you must. Count the threads the other jobs of ours use
-now (`systemctl --user list-units`, `top`, section 1) and choose J so that all together stay at or under the cap:
+agents' builds and tests, searches, and the PI's work, all together (AGENTS 7.2). Since card C-28
+`build-stage` subtracts what ours elsewhere use at each launch, but it cannot see what will start
+after its shards are launched, and a shard runs about an hour (3,291 to 3,727 s at 4 threads,
+measured, `planning/measurements/2026-11-11_mmseqs_profile_vs_hmmsearch.md`). Count the threads the other jobs of
+ours use now (the first command of section 1, `systemctl --user list-units`, `top`) and what you will
+start, and choose J so that all together stay at or under the cap:
 
 ```text
 J = floor((cap - other threads) / C)       C = --scan-cpus, default 4; J at least 1
@@ -520,6 +557,32 @@ An earlier release must still verify after a later one is built. Check `rC6.1` t
 bio-box release verify --root "$ROOT" --release rC6.1
 ```
 
+**Before a release is announced: the worked examples** (AGENTS 5.7, card E-11). A release that verifies is not yet a
+milestone. Before it is announced (in `STATUS.md`, `README.md` or `GUIDE.md` as the one to use, or copied to durable
+storage as such), run every worked example under `examples/` on it with one command, read-only on the root, each
+launch inside the account's thread cap (`examples/README.md` says what an example is and holds). It needs the
+release's search pack in the profile's pack directory, and the examples' environment: `TREE`, `PROFILE`, `IMAGE` (with
+matplotlib: the runtime image of section 0 has it), `DIGEST`, `ROOT`, and `OUT`, a new directory outside the root.
+Look first, then start it as a unit of its own: on `rN.3` it took 56 min 55 s and 41.3 CPU-minutes at 2 threads,
+at least 26 minutes of it waiting for room with the account near its day cap (*measured*, wilkcomp02, 2026-11-13;
+the wait *derived* from the `waiting for room` lines; `planning/measurements/2026-11-13_release_examples_rN3.md`):
+
+```bash
+export OUT="$WORK/examples-rN.3"
+bash "$TREE/scripts/release_examples.sh" --dry-run rN.3
+systemd-run --user --unit ex-rN3 --collect --quiet -p MemoryMax=2G -p MemorySwapMax=0 -p StandardOutput=append:"$WORK/examples-rN3.log" -p StandardError=append:"$WORK/examples-rN3.log" --setenv=TREE="$TREE" --setenv=PROFILE="$PROFILE" --setenv=IMAGE="$IMAGE" --setenv=DIGEST="$DIGEST" --setenv=ROOT="$ROOT" --setenv=OUT="$OUT" --setenv=UNIT=ex-rN3 --setenv=USER="$USER" /usr/bin/nice -n 19 bash "$TREE/scripts/release_examples.sh" rN.3
+tail -n 1 "$WORK/examples-rN3.log"
+```
+
+The last line says whether every invariant holds; `$OUT/summary.tsv` has one row per check (example, check, kind,
+expected, observed, verdict), and the script exits 1 when any invariant fails or is missing. **A failed or missing
+invariant stops the announcement**: report it with the example's row, its README's table of what that failure would
+mean, and the step's log under `$OUT/<example>/logs/`. When every invariant holds, finish `$OUT/note.md` (a
+measurement-note skeleton: the run's facts, per-example counts and CPU, every check, `TODO` where the reading goes)
+into `planning/measurements/`, and copy each `$OUT/<example>/recorded_new.tsv` to
+`examples/<example>/recorded/<release>.tsv` in the same commit. A recorded value that `differs` on a new release is
+expected; on a rerun of the same release it means the code or the release changed.
+
 ## 7. Search
 
 The search path writes nothing under the data root (card W-03): a user who can read a release may
@@ -714,8 +777,9 @@ area `$DURABLE/results` (real: `/stor/work/Wilke/if2453/all-the-data/results`), 
 - `results archive RUN --with DIR ...` writes the run's directory (its record and tables) and each
   output named with `--with` (the `search hmm` DIR, the `nbr --format tsv` DIR, an `nbr flanks` DIR,
   a lone `hits.tsv`) as one tar, with one manifest line, into the spool `$BBTMP/results/spool/` on
-  local disk. Nothing on disk links a run to its outputs (the run's record holds the worker's command
-  line, not yours), so name each one; a DIR whose `recipe.yaml` is not the run's recipe is another
+  local disk. Since card W-29 an output directory written from a run holds a `RUN` file (the run id and
+  the release), and `--under DIR` finds every such directory up to four levels below DIR, so naming each
+  one is needed only for single files and for directories written before that card; a DIR whose `recipe.yaml` is not the run's recipe is another
   run's and is refused. The same run archived again is a no-op (exit 0, said on stderr); with other
   files or outputs it is refused (exit 2), naming both sha256. The tar has sorted names, mtime 0, no
   owner, no host or path, and the run's own date (`submitted_at`) in its manifest line: the same run
@@ -759,9 +823,54 @@ sh scripts/pod_pytest.sh C-06 --shards 8
 ```
 
 The first runs one file. The second runs every test file in 8 processes and prints one summary line
-per shard; it fails if any shard fails. The whole suite takes about 13 minutes in one process and
-about 3 with 8 shards (the script's header, not re-measured here). An exit code 5 with `no tests
+per shard; it fails if any shard fails. Timing: two shards of 2 threads took 3,047 s and 4,761 s
+(51 and 80 minutes) while a 32-thread build ran beside them (measured, wilkcomp02, 2026-11-13, card C-29).
+The shard count must fit the account's thread cap (AGENTS section 7.2, a total over everything the account
+runs), so 8 shards do not fit by day beside a build. An exit code 5 with `no tests
 ran` only means the selection matched nothing.
+
+The image is the test image built from `main` at `64f1bf0`,
+`$HOME/bio-box/images/bio-box-test_64f1bf0.sif` (sha256 of the file
+`3d77df6b7f0b894b5371e42eaf077dfda09ebc97b1f78f2ed1d2cfc5fa9fbda4`, pulled from
+`ghcr.io/ifinkelstein/bio-box-test@sha256:cb7cd0f1e7146350576e4658de39290647d1cbba39494ce81ba072f3041707bb`),
+with the tree's `src` alone on `PYTHONPATH` (section 0). `BIOBOX_POD_IMAGE` names another image and
+`BIOBOX_POD_PYDEPS` adds directories after `src`, for an image that lacks a package; give neither
+for the image above. A suite that must survive a dropped connection runs as detached units on the
+pod: sync the tree with the first command above, then, on the pod,
+`bash "$TREE/scripts/orchestrator/detached_suite.sh" <name> 2` (the script's header says how to
+poll it).
+
+The image check. Before a new image is used, run its own suite on the pod: the source and tests
+built into the image (`/opt/bio-box`), no `PYTHONPATH`, as the `image` workflow runs it on Actions
+(`.github/workflows/image.yml`). Run on the pod, one suite at a time, after checking the thread cap
+(section 1):
+
+```bash
+BIOBOX_POD_IMAGE="$HOME/bio-box/images/bio-box-test_64f1bf0.sif" BIOBOX_PEER_MANIFEST=/tmp/if2453/ci-peer/right.json bash "$TREE/scripts/orchestrator/detached_suite.sh" --own image-64f1bf0 2
+systemctl --user is-active ci-image-64f1bf0-0 ci-image-64f1bf0-1
+tail -n 1 /tmp/if2453/ci-tmp/image-64f1bf0-detached/log.0 /tmp/if2453/ci-tmp/image-64f1bf0-detached/log.1
+```
+
+Add the two summary lines and compare with the Actions run that built the image. For `64f1bf0`:
+Actions ran 1,720 passed, 22 skipped (measured, run 43380434543); the pod ran 1,722 passed, 20
+skipped, no failure (measured, wilkcomp02, 2026-11-13, card C-29: shards of 894 passed, 14 skipped
+in 53 min and 828 passed, 6 skipped in 80 min, beside the 50 Gbp build). The two that pass only
+here are `test_d05_cross_host_manifest_hash_equal` (`tests/r3/test_cross_host.py`: the peer file
+was given, and the fixture's manifest hash was `f6126b00d45e9284d2799c3a699c992c` on both hosts)
+and `test_c07_detects_the_real_cap_it_runs_under` (`tests/r1/test_runstep_units.py`: it needs a
+cgroup memory cap, which a unit on the pod has and `docker run` on Actions has not). That pair is
+derived: the Actions log prints counts, not skip reasons.
+`BIOBOX_PEER_MANIFEST` is a file holding the `cross-host` workflow's manifest hash for the commit
+(card D-04, `tests/r3/test_cross_host.py` says how to make it); without it that test skips.
+
+The tree's suite in the new image. `plan/task-cards` with card C-29, in `bio-box-test_64f1bf0.sif`
+with the tree's `src` alone on the path: 1,740 passed, 19 skipped, no failure; the same tree in
+`bio-box-test_74b3e05.sif` with `/tmp/if2453/pilot_s1/pydeps` after `src`: 1,696 passed, 63
+skipped (both measured, wilkcomp02, 2026-11-13, card C-29, `detached_suite.sh` with 2 shards). The
+44 that skipped in the old image and pass in the new are the tests that need zombi2 (32), matplotlib
+(8), samtools (3) or polars (1), none of which the old image has; no test changed outcome otherwise.
+The old image's only Python package from the dependency directory was numpy 2.5.4, the version the
+new image holds; every package in both has the same version in both.
 
 ## 9. Clean up /tmp safely
 
@@ -849,7 +958,8 @@ a profile value is missing from this table.
 | Threads by day | 40 | profile `max_threads_day`; AGENTS 7.2 |
 | Threads at night and weekends | 56, only when no other compute runs | profile `max_threads_night`; AGENTS 7.2 |
 | Day window | 08:00 to 20:00, Monday to Friday | profile `day_start_hour` 8, `day_end_hour` 20. An estimate until the PI confirms it with the pod owner (AGENTS 7.2) |
-| "Other compute" | 1-minute load average above 8 | `BUSY_LOAD` in `src/biobox/runstep.py`. An estimate, not measured |
+| "Other compute" | other users' processes (uid above 999 and not ours; root's and system accounts' are daemons, never counted) above 0.5 of a core together, over a 5 s window (two reads of every `/proc/<pid>/stat`); a failed reading counts as busy. Estimates: other login users together used 0.01 cores and root's daemons about 0.3 (ps, wilkcomp02, 2026-11-13, measured); one single-threaded job uses 1. The load average is reported, not used: our own scan holds it near 42 | `OTHERS_BUSY_CPUS`, `CPU_WINDOW_S`, `SYSTEM_UID_MAX`, `measure_cpu` in `src/biobox/runstep.py`; card C-28 |
+| Allowance of a launch | the cap (above) less ours elsewhere: this account's processes outside the build's unit (its cgroup) and process tree, to the nearest CPU, at least 0. At night a launch of T threads counts against the day cap when 300 / T minutes from now reach the day window | `allowance`, `launch_cap` in `src/biobox/runstep.py`; card C-28 |
 | Memory per process or unit | 200G, swap 0 | profile `mem_scope`; AGENTS 7.2; `MemorySwapMax=0` in `scripts/pod_run.sh` |
 | Memory cap required | true: `run-step` and the search runner refuse to start uncapped | profile `require_mem_cap` |
 | Nice | 19 (one big process), 15 (many small ones) | profile `nice_monolithic`, `nice_fanout`; AGENTS 7.2 says 19 |
@@ -857,7 +967,7 @@ a profile value is missing from this table.
 | CPU-minutes of one clustering call run as one process | 20000, estimated before launch; refused above it. The one exemption from the 300 (DEC-29): a call that no number of parts fits (the NR90 step's prefilter from about 74 M proteins, NR50 step 0 from about 108 M, derived). Set by the PI on 2026-11-10 for the 50 Gbp build: about nine times the 2,195.91 measured for 10,620,684 proteins (wilkcomp02, 2026-11-10). Without the key such a call is refused. Clustering in one process has no exemption since card B-42 (DEC-25's ended): above 80% of the budget a release clusters in parts | profile `cluster_cpu_min_max`; DEC-29 (narrowing DEC-25); `cluster_refusal`, `one_process_refusal` in `src/biobox/stage.py`; cards B-36, B-45, B-42 |
 | ncRNA scan shard size | `prok-2` (the default): 111,734,541 genome bases, 80% of `cpu_min_per_process` (300) at 358.0 CPU-hours per 10 Gbp (derived: 304.0 × 299.7 / 254.5, the set's cost relative to `prok-1` from `planning/measurements/2026-11-12_rfam_sample.md`). `prok-1`: 131,578,947 at 304.0, the slower of the two shards of card E-07's pod check (derived in `planning/measurements/2026-11-11_ncrna_producer.md`; the design note's 247.4 gave 161,681,487). Shards at once: at most the unit's `MemoryMax` / (6.4 GiB per two `cmsearch` threads) | `NCRNA_CPU_H_PER_10GBP`, `NCRNA_SET_COST`, `NCRNA_JOB_GIB` in `src/biobox/stage.py`; cards E-07, E-08, E-09 |
 | Scan shard size | 30,150,753 residues: 80% of `cpu_min_per_process` (300) at 7.96 CPU-minutes per million residues (derived: 300 × 0.8 / 7.96 × 10^6; the rate of the Pfam scan of stage P1 in card C-10, measured on wilkcomp02, 2026-11-10: 2,343.74 CPU-minutes for 294.5 M residues). The 80% leaves room for a scan 25% slower per residue (derived: 1 / 0.8) | `SHARD_MARGIN` and `SCAN_CPU_MIN_PER_M` in `src/biobox/stage.py`; cards C-11, C-13 |
-| Scan shards at once | `--scan-jobs` J × `--scan-cpus` C at most the threads `run-step` allows when `build-stage` starts (40 by day, 56 at night when idle); defaults C = 4, J = allowance // C (10 by day, 14 at night). The cap is a total over everything of ours on the pod, and `build-stage` counts only its own threads: choose J = floor((cap - other threads) / C) (section 2). The allowance is read again before each step and before each shard launch; a launch that would pass it waits | `scan_slots` and `_launch` in `src/biobox/stage.py`; cards C-11, C-12 |
+| Scan shards at once | `--scan-jobs` J × `--scan-cpus` C at most the cap `run-step` allows when `build-stage` starts (40 by day, 56 at night when no other user computes); defaults C = 4, J = cap // C (10 by day, 14 at night). The cap is a total over everything of ours on the pod: `build-stage` subtracts what ours elsewhere use at each launch, not what starts later, so choose J = floor((cap - other threads) / C) (section 2). The allowance is read again before each step and before each shard launch; a launch that would pass it waits | `scan_slots` and `_launch` in `src/biobox/stage.py`; cards C-11, C-12, C-28 |
 | Unit CPU quota | the night cap, 56: a ceiling fixed at launch; `build-stage` holds the limit of the hour | `scripts/pod_run.sh --threads`, profile `max_threads_night`; card C-12 |
 | Smallest data file | 64 MiB (67108864 bytes), except tables the registry marks `small_ok` | profile `small_file_floor_bytes`; AGENTS 7.3 says 64 MB |
 | Work directory | `/tmp/if2453/bio-box` | profile `tmp`; AGENTS 7.3 |
@@ -889,12 +999,13 @@ exemption; the fixture's clustering is far under 300 CPU-minutes). Appendix B li
 | Ingest of a stage over about 60 Gbp | `build-stage` refuses before any step (exit 2): one ingest process runs at about 3.7 Mbp/s (measured, wilkcomp02), so it would pass 300 CPU-minutes. Split the stage into smaller stages | B-30 |
 | Shard size is Pfam's | shards are cut at 80% of the budget at Pfam's rate (7.96 CPU-minutes per million residues, measured in C-10). A library more than 1.25 times slower per residue than that (derived: 1 / 0.8; above 9.95 CPU-minutes per million residues, derived) passes 300 CPU-minutes per shard, and the run record says `over_cpu_budget`. Lower `--scan-cpus` does not help, since the budget counts CPU-minutes | C-11, C-13 |
 | `pod_run.sh` CPU quota | the unit's quota is `--threads` of `pod_run.sh` (default the night cap, 56), fixed at launch, whatever `--scan-jobs` × `--scan-cpus` is. By day it is above the day cap: the day cap is held by `build-stage` and `run-step`, not by the quota. A `run-step` launched alone keeps the thread count it chose at its start until it ends (at most 300 CPU-minutes) | C-07, C-11, C-12 |
-| The image on the pod is old | the pod has the test image `bio-box-test_74b3e05.sif`, not an image built from the current source. The current source is bound in with `PYTHONPATH` (section 0) | 0-02 |
+| What the allowance sees | each reading is 5 s of CPU by owner, taken once per launch: work of ours that starts after a shard is launched is subtracted only at the next launch (a shard runs about an hour), a process born and ended inside the window is not seen, and `run-step` does not refuse `--threads` above the allowance (only above the cap). So the total can pass the cap until the build's next launch; leave a margin (section 2). The reading costs 5 s of wall time per launch and per `run-step` | C-28 |
+| The tree is newer than the image | the images on the pod are built from `main` at `64f1bf0` (2026-11-13), which holds the locked environment; `plan/task-cards` has cards since, so the tree's source is bound in with `PYTHONPATH`, with no dependency directory (section 0). A new image is checked with its own suite before use (section 8). The 50 Gbp build (`r50-driver`) keeps the old image `bio-box-test_74b3e05.sif` until it is done (section 0) | 0-02, C-29 |
 | `rL.*` releases on `/stor` | they are in the pre-B-17 layout: current readers and `verify_manifest` may not read them. `rL.1` and `rL.2` also fail verification on one file, `l0/l0_manifest.parquet` | B-17, B-22 |
 | Search packs and runs inside an old root | a root written before card W-03 may hold `search_pack/` and `search/` (the pack and runs were then written into the root). Nothing reads or writes them now; the manifest leaves them out (`catalog.EXCLUDED_TREES`). Build the pack again into the pack directory (section 7) | W-03, W-13 |
 | No detached search in a unit | `search run` without `--wait` in a `pod_run.sh` unit is refused (exit 2): the unit would stop the detached runner when the command returns (section 7). Use `--wait`; `search status` and `search cancel` work on a `--wait` run from another shell | W-13 |
 | `pod_run.sh` and the profile | `pod_run.sh --profile` sets the unit's limits only; it does not pass the profile to `bio-box` (no `BIOBOX_PROFILE` in the image). Give `bio-box` its own `--profile`, or the pack, runs and work directories (section 7) | W-03, W-13 |
-| A run's outputs are named by hand | `results archive` keeps only the outputs given with `--with`: the run's record holds the worker's command line (`runner.run` reuses the name `argv` for it), not the `search hmm` or `nbr` command that wrote the outputs, and the exports carry no run id. A DIR whose `recipe.yaml` is not the run's is refused | W-28 (no card yet for the record's argv) |
+| Older outputs are named by hand | An output directory written before card W-29 has no `RUN` file, and neither has a lone file such as `hits.tsv`: give those to `results archive` with `--with` (a DIR whose `recipe.yaml` is not the run's is refused). Directories written since are found with `--under`, and the run's record holds the user's command line (`limits_json`, key `command`) | W-28, W-29 |
 | The durable storage is not there yet | `/stor/work/Wilke/if2453/all-the-data` (profile `durable`) does not exist on the pod (2026-11-12); `results` with the real profile exits 2 until the PI makes it. The image sees it only with `--bind` | W-28 |
 | Spooled runs are on `/tmp` | until a flush reaches the 64 MiB floor, a run's archive is only in the spool on local disk, which a reboot may clear, as it clears the run itself | W-28 |
 | `search hmm --positive` reads all contig labels | the accession or header of the positive control is looked up in every row group of `contig_label`: no table is sorted by accession, and a header substring cannot prune. The contig's genes are then read from its tape by contig uid, which prunes. Not measured on a large release | W-07 |
@@ -913,6 +1024,11 @@ Run on 2026-11-10 between 07:25 and 07:45 (pod local time), in `/tmp/if2453/c06`
 `c06-*`, the scratch profile of Appendix B, and the image of section 0. "Last line" is the last line
 the command printed. A command that prints nothing has `(no output)`. Variables were set as in
 section 0.
+
+Rows dated before 2026-11-13 ran in the image that section 0 named then, `bio-box-test_74b3e05.sif`,
+with the dependency directory `/tmp/if2453/pilot_s1/pydeps` after the tree's `src`. The rows marked
+C-29 were run on 2026-11-13 by card C-29 with the images of sections 0 and 8, the tree of the C-29
+branch (`TREE=/tmp/if2453/ci/C-29`) and the real profile, in units named `c29-*` and `ci-*`.
 
 The rows of section 7, and the rows marked W-13, were run on 2026-11-10 between 15:35 and 15:42 (pod
 local time) by card W-13, in `/tmp/if2453/w13` (`WORK`; `ROOT=$WORK/root`, `BBTMP=$WORK/tmp`,
@@ -942,7 +1058,9 @@ its outputs in `/tmp/if2453/w25` (bound read-only), with two scratch profiles: t
 | 1 | `systemctl --user list-units --type=service --type=scope --no-pager` | 2026-11-10 | `To show all installed unit files use 'systemctl list-unit-files'.` |
 | 1 | `df -h /tmp` | 2026-11-10 | `/dev/sdc2       1.1T  165G  879G  16% /` |
 | 1 | `biopy -m biobox.doctor --profile "$PROFILE"` | 2026-11-10 | `}` (the JSON shows `"cgroup_memory_max": "8 GiB"`) |
+| 1 | C-29: `biopy -m biobox.doctor --profile "$PROFILE"` in `bio-box_64f1bf0.sif` | 2026-11-13 | `}` (the JSON shows `"cgroup_memory_max": "8 GiB"`, `mmseqs` `18.8cc5c`, `HMMER 3.4`, `INFERNAL 1.1.5`, `pyrodigal` `3.7.1`) |
 | 2 | `pod_run.sh ... c06-build build-stage ...` | 2026-11-10 | `pod_run: log /tmp/if2453/c06/tmp/logs/c06-build.log; watch: systemctl --user status c06-build` (the first launch ran without `--digest`; the same command with `--digest` ran as `c06-rebuild`, below) |
+| 2 | C-29: `pod_run.sh --profile "$PROFILE" --image "$IMAGE" --digest "$DIGEST" --mem 2G --threads 1 ... c29-digest --help` (section 0's new image and digest) | 2026-11-13 | `pod_run: c29-digest exited 0` (before it, `pod_run: image ... sha256:cb7353f8...afba3` at launch) |
 | 2 | `systemctl --user status c06-build --no-pager` | 2026-11-10 | `└─2081436 /opt/bio-box/.venv/bin/python -m biobox.cli stage inputs --root /tmp/if2453/c06/root --gene-call-version pyrodigal-3.7.1-gv-0.3.2-p2 --stage S0 --genomes /tmp/if2453/c06/inputs/genomes-S0.json` |
 | 2 | `tail -n 3 "$BBTMP/logs/c06-build.log"` | 2026-11-10 | `pod_run: c06-build exited 0` |
 | 2 | `grep "steps done" "$BBTMP/logs/c06-build.log"` | 2026-11-10 | `build-stage: stage S0 and release rC6.1: all 13 steps done` (run on the `c06-rebuild` log) |
@@ -995,6 +1113,9 @@ its outputs in `/tmp/if2453/w25` (bound read-only), with two scratch profiles: t
 | 8 | `sh scripts/pod_pytest.sh C-06 tests/r0 -k nothing_matches_this` (laptop) | 2026-11-10 | `140 deselected in 1.09s` (exit 5: nothing selected) |
 | 8 | `sh scripts/pod_pytest.sh C-06 tests/r0/test_runbook.py` (laptop) | 2026-11-10 | `20 passed in 3.48s` |
 | 8 | `sh scripts/pod_pytest.sh C-06 --shards 8` (laptop) | 2026-11-10 | `shard 7: 121 passed, 8 xfailed in 509.90s (0:08:29)` (eight shard lines, no failure; 1023 passed, 10 skipped, 8 xfailed in all) |
+| 8 | C-29: the image check, `detached_suite.sh --own image-64f1bf0 2` (pod) | 2026-11-13 | the full suite ran through a script with the same units, binds and test split before `--own` was added to `detached_suite.sh`: shard lines `894 passed, 14 skipped, 59 warnings in 3195.94s (0:53:15)` and `828 passed, 6 skipped, 24 warnings in 4777.45s (1:19:37)`. `--own` itself, on a two-test selection (`-k 'test_the_runbook_has_commands or test_d05_cross_host_manifest_hash_equal'`): `1 passed, 907 deselected in 6.98s` and `1 passed, 1 skipped, 832 deselected, 1 warning in 12.34s` |
+| 8 | C-29: `sh scripts/pod_pytest.sh C-29 tests/r0/test_runbook.py -k c29` (laptop) | 2026-11-13 | `5 failed, 2 passed, 38 deselected in 3.97s` (before the change, in the old image: the card's tests failing first) |
+| 8 | C-29: `sh scripts/pod_pytest.sh C-29 tests/r0` (laptop; the new default image) | 2026-11-13 | `203 passed in 7.72s` |
 | 9 | `rm -r` of a staging directory and a scratch directory | 2026-11-10 | `(no output)`, exit 0 each. The staging directory was an empty directory made for this test |
 | 9 | W-13: `ls "$BBTMP/packs" "$BBTMP/search/$USER/runs" "$BBTMP/search/$USER/work"` | 2026-11-10 | `/tmp/if2453/w13/tmp/search/if2453/work:` (empty: every run had removed its work directory; `runs` held `pending` and the three runs of section 7, `packs` held `release=rC6.1`) |
 | 9 | W-13: `rm -r "$BBTMP/search/$USER/work/3d96a70ba10c7f5cd895de3d838153ae"` | 2026-11-10 | `(no output)`, exit 0. An empty directory made for this test |
@@ -1134,8 +1255,10 @@ Last line: `01563e192ab22a5931d55e224a2dbb07`.
 - A hard kill of a unit (SIGKILL). `systemctl --user kill --signal=SIGKILL` printed
   `Failed to send signal SIGKILL to auxiliary processes: Invalid argument`, though the unit ended;
   it is not documented here.
-- The night thread cap. The pod was busy (load above 8) at every run, so `run-step` used the day
-  cap.
+- The night thread cap in a build. Until card C-28 the load average decided it, and our own scan
+  held it above 8, so `run-step` used the day cap at every run. Card C-28 read the new measure on
+  the pod once (`biopy -m biobox.runstep --profile "$PROFILE" --threads 4`, section 1; its numbers are
+  in the card's report); no build has run with it yet.
 - `sh scripts/pod_pytest.sh <name> --golden` (the golden ring needs the golden set on the pod).
 - `git push pod`. Agents never push.
 - Single release steps by hand (`bio-box release cluster ...`, `bio-box stage genecall ...`).

@@ -88,11 +88,15 @@ postings and `partners_of` families are complete only after cards B-21 and B-39 
 
 ## 3. The standard workflow (worked example: Pfam RNA_pol, T7 gp1 control)
 
+The worked example runs as one script with its checks in `examples/rnap/` (`examples/README.md`); the steps below
+are the same commands one at a time, for a question of your own.
+
 Placeholders (write them out in every call): `$SCR` your scratch; `$TREE` a checkout of current code on the pod
 (mirror one from the laptop with `sh scripts/pod_pytest.sh <task> tests/r0/test_runbook.py`, which copies the
-tree to `/tmp/if2453/ci/<task>`); `$IMAGE` the `.sif` (the trials used `bio-box-test_74b3e05.sif`, sha256
-`c30be58557d756095346308c58cc3098af4bbe66404f67ab87be3f64f147c898`, with the source bound in, RUNBOOK §11);
-`$DIGEST` `sha256:` plus `sha256sum "$IMAGE"`; `$RUN` a run id.
+tree to `/tmp/if2453/ci/<task>`); `$IMAGE` the `.sif`, `$HOME/bio-box/images/bio-box_64f1bf0.sif`, the image
+built from `main` with the locked environment and the source bound in (RUNBOOK §0 and §11; the trials below used
+the older `bio-box-test_74b3e05.sif` with a dependency directory for numpy); `$DIGEST` `sha256:` plus
+`sha256sum "$IMAGE"` (RUNBOOK §0 gives it); `$RUN` a run id.
 
 Once, write `$SCR/img.sh` (runs one short command in the image, capped; the binds of [T2]):
 
@@ -101,7 +105,7 @@ Once, write `$SCR/img.sh` (runs one short command in the image, capped; the bind
 IMAGE=/path/to/the.sif                      # $IMAGE
 TREE=/tmp/if2453/ci/<task>                  # $TREE; the image runs this source
 exec systemd-run --user --scope --quiet -p MemoryMax=16G -p MemorySwapMax=0 -p CPUQuota=400% nice -n 19 \
-  singularity exec --cleanenv --env PYTHONPATH="$TREE/src:/tmp/if2453/pilot_s1/pydeps" --env OMP_NUM_THREADS=2 \
+  singularity exec --cleanenv --env PYTHONPATH="$TREE/src" --env OMP_NUM_THREADS=2 \
   --bind /tmp/if2453 --bind /tmp/if2453/r10:/tmp/if2453/r10:ro \
   --bind /stor/scratch/Wilke/if2453/all-the-data/l0/refdb:/refdb:ro --bind /sys/fs/cgroup:/sys/fs/cgroup:ro \
   "$IMAGE" "$@"
@@ -152,7 +156,7 @@ finds the pack built write nothing into it (card W-22).
 **4. Run** in a `pod_run.sh` unit (4 CPUs, 32G; one long line; flags in `scripts/pod_run.sh` and `_hmm_parser`):
 
 ```bash
-bash "$TREE/scripts/pod_run.sh" --profile "$TREE/profiles/wilkcomp02.yaml" --image "$IMAGE" --digest "$DIGEST" --mem 32G --threads 4 --bind /tmp/if2453 --bind /tmp/if2453/r10:/tmp/if2453/r10:ro --env PYTHONPATH="$TREE/src:/tmp/if2453/pilot_s1/pydeps" --log "$SCR/logs/qrnap-hmm-1.log" qrnap-hmm-1 search hmm --root /tmp/if2453/r10/root --release rN.1 --hmm "$SCR/RNA_pol.hmm" --bits 30 --neighbors 5 --positive NC_001604:3170-5822 --out "$SCR/out/rnap" --profile "$TREE/profiles/wilkcomp02.yaml" --cpus 4 --mem-gb 30
+bash "$TREE/scripts/pod_run.sh" --profile "$TREE/profiles/wilkcomp02.yaml" --image "$IMAGE" --digest "$DIGEST" --mem 32G --threads 4 --bind /tmp/if2453 --bind /tmp/if2453/r10:/tmp/if2453/r10:ro --env PYTHONPATH="$TREE/src" --log "$SCR/logs/qrnap-hmm-1.log" qrnap-hmm-1 search hmm --root /tmp/if2453/r10/root --release rN.1 --hmm "$SCR/RNA_pol.hmm" --bits 30 --neighbors 5 --positive NC_001604:3170-5822 --out "$SCR/out/rnap" --profile "$TREE/profiles/wilkcomp02.yaml" --cpus 4 --mem-gb 30
 ```
 
 `--out` must be new or empty and outside the root; `--model NAME` picks one model of a multi-model file.
@@ -170,11 +174,11 @@ bash "$SCR/img.sh" python -m biobox.cli search cancel "$RUN" --root /tmp/if2453/
 `pod_run: ... usage MemoryPeak=<bytes> CPUUsageNSec=<ns>` (the cost to report). Exit 1: the run ended other
 than `ok` and `--out` holds only `recipe.yaml`; exit 2: refused before the run (read the `refused:` line).
 
-**6. Read.** The example ended `2581 genes of 1957 proteins` and `2581 tables`; wall 244.6 s, worker peak
-1.78 GiB, unit `MemoryPeak` 4,570,214,400 B, at least 9.53 CPU-minutes (measured, wilkcomp02, 2026-11-11, [T3]
-W-21 addendum). 1,931 proteins in phages, 26 in prokaryotes; T7 gp1 367.7 bits, E 4.3e-106 ([T2] §3). The top
-NR50 neighbour cluster `fa4cb451607a4dfdd797df9a5e462694` is in 663 of 2,581 loci ([T2]); by position it is
-probably T7 DNA ligase, which no file says (rN.1 has no Pfam).
+**6. Read.** The log's `wrote ...` lines give the counts to report (genes and proteins of `hits.tsv`, the number of
+locus tables) and the `pod_run: ... usage` line the cost. What this exact search finds, and costs, is kept in one
+place: the worked example `examples/rnap/` (card E-11), which reruns it on every milestone release and checks its
+answer; its values on `rN.3` are in `examples/rnap/recorded/rN.3.tsv` and its README (section 3), each labelled. Use
+them to see whether your run of the example behaved, never as your answer to another question.
 
 ## 4. Output contract (`src/biobox/search/export.py`, `src/biobox/cli.py`)
 
@@ -343,8 +347,11 @@ print("control", sys.argv[3], ours.get(sys.argv[3]), theirs.get(sys.argv[3]))
 
 Expect what both trials found ([T2] §3): the same protein set (0 only in either), scores equal to 0.1 bit, the
 control in both. Then split the hits by source with the `stage` and `kind` columns of `hits.tsv` (phages are stage
-`S1`, prokaryotes `P1`, `P2`), and genomes per stage with the stage query of §5. Neighbours can be checked the same way: an independent SQL window (each contig's genes
-by start, end, strand) gave the same 2,581 locus tables ([T2] §3). **If a check disagrees, report both answers
+`S1`, prokaryotes `P1`, `P2`), and genomes per stage with the stage query of §5. Neighbours can be checked the same
+way: an independent SQL window (each contig's genes by start, end, strand) gave the same locus tables ([T2] §3).
+The worked examples do these checks on every milestone release (`examples/README.md`): `examples/rnap/sql/` and
+`examples/_shared/oracle.py` are a cheaper form of this section (`hmmsearch` on the hits and the proteins the
+release's Pfam scan gives the family, not on every protein) to copy. **If a check disagrees, report both answers
 and the commands; do not choose one.** Remove the 3.7 GB FASTA when done: `rm "$SCR/proteins.faa"`.
 
 ## 7. Report to the scientist
@@ -379,9 +386,12 @@ Each is stated where it applies above; this is the checklist. The card or decisi
   directory (its scratch is in `<profile tmp>/search/<user>/work`, W-22); never run `pack build` without asking.
 - `/tmp` is local disk: roots, packs, runs and your outputs vanish on a reboot (RUNBOOK §4). An archived run stays
   on `/tmp` too, in the spool, until a flush reaches 64 MiB (W-28, DEC-33).
-- `results archive` keeps only the outputs named with `--with`: the run's record does not say which directories
-  hold its outputs (its `argv` is the worker's command). Name all of them the first time: the same run archived
-  again with other outputs is refused (W-28).
+- `results archive` keeps the run and the output directories it is given: `--under DIR` finds every directory in DIR
+  (up to 4 levels down) whose `RUN` file names the run (`search hmm`, `nbr --out DIR` and `nbr flanks --out DIR` write
+  one, W-29), and `--with PATH` names one by hand (a lone `hits.tsv`, or an output from before W-29, which has no
+  `RUN`). A directory whose `RUN` names another run is refused. Give all of them the first time: the same run
+  archived again with other outputs is refused (W-28). The record's `limits_json` holds the command you typed
+  (`command`).
 - A contig shared by genomes of two stages belongs to the first; the later genome is one contig short in
   `contig_dim`. Not in `rN.*`; it is in the 50 Gbp set (DEC-26, C-21).
 - `search run` in a `pod_run.sh` unit needs `--wait` (W-13). A search or `nbr` command without `--profile`, or
@@ -406,7 +416,7 @@ Each is stated where it applies above; this is the checklist. The card or decisi
 | What releases exist | `releases` (§2) |
 | Taxonomy of the hits | Not available (no taxonomy in any release yet). Give `accession` and `header` of `hits.tsv`, labelled as source headers |
 | Compare two releases | `release verify --root ... --release rN.3 --previous rN.2`; run the same search on both (a pack each) and compare `protein_uid` sets |
-| Keep the results | `results archive "$RUN" --with <each output DIR>` (below); report its line. The operator flushes the spool to `/stor` once it holds 64 MiB (RUNBOOK §7, *Keep the results*); never flush yourself |
+| Keep the results | `results archive "$RUN" --under <the directory that holds your outputs>` (below; `--with` for a file or a DIR without a `RUN`); report its line. The operator flushes the spool to `/stor` once it holds 64 MiB (RUNBOOK §7, *Keep the results*); never flush yourself |
 | Is it significant / enriched | No statistic exists (cards F-01 to F-03): report counts and shares only, and say so |
 | Run on the larger build | Check STATUS.md for the root and a pack; no pack: ask before building one; the search memory does not grow with the release (W-19) |
 
@@ -450,5 +460,5 @@ exist, and does not yet (2026-11-12): until then the image cannot start with the
 restore the same way (`results list`, `results get "$RUN" --out "$SCR/back"`):
 
 ```bash
-bash "$TREE/scripts/pod_run.sh" --profile "$TREE/profiles/wilkcomp02.yaml" --image "$IMAGE" --digest "$DIGEST" --mem 8G --threads 1 --bind /tmp/if2453 --bind /stor/work/Wilke/if2453/all-the-data:/stor/work/Wilke/if2453/all-the-data:ro --env PYTHONPATH="$TREE/src:/tmp/if2453/pilot_s1/pydeps" --log "$SCR/logs/qrnap-keep-1.log" qrnap-keep-1 results archive "$RUN" --profile "$TREE/profiles/wilkcomp02.yaml" --with "$SCR/out/rnap" --with "$SCR/out/flanks"
+bash "$TREE/scripts/pod_run.sh" --profile "$TREE/profiles/wilkcomp02.yaml" --image "$IMAGE" --digest "$DIGEST" --mem 8G --threads 1 --bind /tmp/if2453 --bind /stor/work/Wilke/if2453/all-the-data:/stor/work/Wilke/if2453/all-the-data:ro --env PYTHONPATH="$TREE/src" --log "$SCR/logs/qrnap-keep-1.log" qrnap-keep-1 results archive "$RUN" --profile "$TREE/profiles/wilkcomp02.yaml" --under "$SCR/out"
 ```

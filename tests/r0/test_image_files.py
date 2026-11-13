@@ -1,9 +1,11 @@
 """Ring R0: every repository file the tests read is copied into the test image.
 
 The image is built only on `main`, so a test that reads a top-level document the image does not ship fails there
-and nowhere before it (2026-11-10: `refdb.yaml`, `RUNBOOK.md`; 2026-11-13: `GUIDE.md`, `AGENT_GUIDE.md`). This test
-reads `container/Dockerfile` and the test sources: each top-level file a test names as `ROOT / "<file>"` or
-`REPO / "<file>"` must be the source of a `COPY` line, and so must each top-level directory named the same way.
+and nowhere before it (2026-11-10: `refdb.yaml`, `RUNBOOK.md`; 2026-11-13: `GUIDE.md`, `AGENT_GUIDE.md`, then
+`examples/`, which the tests named as `Path(__file__).resolve().parents[2] / "examples"` and this test did not see).
+This test reads `container/Dockerfile` and the test sources: each top-level file a test names as `ROOT / "<file>"`,
+`REPO / "<file>"` or `parents[2] / "<file>"` must be the source of a `COPY` line, and so must each top-level
+directory named the same way.
 
 The Dockerfile is not itself in the image, so the test skips there; it runs in `ci` and on the pod's mirror.
 """
@@ -20,7 +22,7 @@ pytestmark = [pytest.mark.r0, pytest.mark.covers("C-06")]
 
 ROOT = Path(__file__).resolve().parents[2]
 DOCKERFILE = ROOT / "container" / "Dockerfile"
-NAMED = re.compile(r"""\b(?:ROOT|REPO)\s*/\s*["']([A-Za-z0-9_.-]+)["']""")
+NAMED = re.compile(r"""(?:\b(?:ROOT|REPO)|\bparents\[2\])\s*/\s*["']([A-Za-z0-9_.-]+)["']""")
 
 
 def copied() -> set[str]:

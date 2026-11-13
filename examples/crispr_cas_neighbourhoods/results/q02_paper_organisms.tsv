@@ -1,0 +1,29 @@
+name	stage	contigs	genomes	example_header
+Aliivibrio	P2	17	4	LN554846.1 Aliivibrio wodanis genome assembly AWOD1, chromosome : 1
+Aliivibrio	S1	1	1	PP986400 Aliivibrio phage vB_Alvi_H905, complete genome.
+Anabaena	S1	4	4	KF356198 Anabaena phage A-4L, complete genome.
+Cyanothece		0	0	
+Hydrogenovibrio crunogenus		0	0	
+Nostoc	P2	11	3	CP019636.1 Nostocales cyanobacterium HT-58-2, complete sequence
+Nostoc	S1	7	7	KU234532 Nostoc phage N1, complete genome.
+Photobacterium	P2	3	1	NZ_AP026780.1 Photobacterium damselae subsp. damselae strain 04Ya311 chromosome 1, complete sequence
+Photobacterium	S1	4	4	MN562221 Photobacterium phage PDCC-1, complete genome.
+Photobacterium kishitanii		0	0	
+Photobacterium leiognathi		0	0	
+Pseudoalteromonas	P1	2	1	NZ_CP058972.1 Pseudoalteromonas sp. JSTW chromosome, complete genome
+Pseudoalteromonas	P2	20	9	NZ_AP021846.1 Pseudoalteromonas sp. A25 chromosome 1, complete sequence
+Pseudoalteromonas	S1	41	41	AF155037 Pseudoalteromonas phage PM2, complete genome.
+Pseudoalteromonas rubra		0	0	
+Scytonema		0	0	
+Shewanella	P1	1	1	NZ_CP045503.2 Shewanella eurypsychrophilus strain YLB-08 chromosome, complete genome
+Shewanella	P2	13	10	NC_004347.2 Shewanella oneidensis MR-1, complete sequence
+Shewanella	S1	23	23	KJ002054 Shewanella phage Spp001, complete genome.
+Shewanella baltica		0	0	
+Shewanella putrefaciens		0	0	
+Thiomicrospira crunogena		0	0	
+Vibrio	P1	13	6	CP064172.1 Vibrio cyclitrophicus strain ED008 chromosome 1, complete sequence
+Vibrio	P2	86	35	CP151640.1 Vibrio gazogenes strain DSM 21264 chromosome 1, complete sequence
+Vibrio	S1	1748	1748	AB002632 Vibrio phage fs2 DNA, complete genome.
+Vibrio cholerae	S1	2	2	AY242528 Vibrio cholerae phage VGJphi, complete genome.
+Vibrio fluvialis		0	0	
+Vibrio parahaemolyticus	S1	2	2	AY328852 Vibrio parahaemolyticus phage VP16T, partial sequence.

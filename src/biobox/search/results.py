@@ -7,9 +7,14 @@ Design (card W-28; DEC-33; AGENTS §3.9, §4.3, §7.3, §7.5):
   given with `--with` and named by its own base name: the `search hmm --out DIR` (`hits.tsv`, `hits.faa`,
   `neighbors.tsv`, `loci/`, `README.txt`, `recipe.yaml`, and anything written inside it, such as an
   `nbr flanks --out DIR/flanks`), an `nbr flanks` directory elsewhere, a `hits.tsv` written alone. They are named
-  by hand because nothing on disk links a run to its outputs: the record's `argv` is the worker's command, not
-  the user's (`runner.run` reuses the name), and the exports carry no run id. One check is possible and made: a
-  directory holding a `recipe.yaml` that is not the run's recipe is another run's `search hmm` output, refused.
+  by hand or found (card W-29): every directory export written from a run (`search hmm`, `nbr --out DIR`,
+  `nbr flanks --out DIR`) holds a `RUN` file, the run id and the release (`export.run_file_text`). `--under DIR`
+  (repeatable) finds every directory in DIR or at most `UNDER_DEPTH` (4) levels below it whose `RUN` names this
+  run, without following links and without looking inside a directory it found (an export of the same run nested
+  in it is kept once, in the outer one); a directory whose `RUN` names another run is not taken. `--with DIR`
+  accepts a directory without a `RUN` file as before (a hand-made output, a `hits.tsv` written alone), but refuses
+  one whose `RUN` names another run or another release than the run's own (naming both), and one whose `recipe.yaml`
+  is not the run's recipe. The archive's bytes depend only on the set of directories, not on how they were given.
   Never the pack, the work directory or the pending record. The first member is `FILES.tsv`: each other member's
   path, size and sha256. A symbolic link or any other non-regular file is refused: the archive holds bytes, not
   where they came from.
@@ -68,6 +73,8 @@ from pathlib import Path
 
 import pyarrow.parquet as pq
 
+from biobox.search.export import RUN_FILE, parse_run_file
+
 FILES = "FILES.tsv"            # first member of a run's archive
 MANIFEST = "MANIFEST.tsv"      # first member of a bundle
 ARCHIVE_HEADER = "# bio-box results archive 1"
@@ -78,6 +85,7 @@ BUNDLE_RE = re.compile(r"^results-(\d{8})-(\d{8})-([0-9a-f]{16})\.tar$")
 RUN_ID_RE = re.compile(r"^[0-9a-f]{32}$")
 NAME_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._+-]*$")
 BLOCK = 1 << 20
+UNDER_DEPTH = 4  # `--under DIR` looks in DIR and at most this many directory levels below it (card W-29)
 
 
 class ResultsError(ValueError):
@@ -239,14 +247,67 @@ def run_date(record: dict) -> str:
     return record["submitted_at"].astimezone(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
 
 
+def read_run_file(path: Path) -> tuple[str, str] | None:
+    """(run id, release) of the `RUN` file of directory `path`; None when it has none (or it is not a regular
+    file); ResultsError when it is not a RUN file."""
+    f = Path(path) / RUN_FILE
+    if f.is_symlink() or not f.is_file():
+        return None
+    try:
+        return parse_run_file(f.read_text(encoding="utf-8"))
+    except (ValueError, UnicodeDecodeError) as e:
+        raise ResultsError(f"{f} is not a RUN file ({e})") from None
+
+
 def check_output(record: dict, path: Path) -> None:
-    """Refuse an output directory that is another run's: a `search hmm --out DIR` holds the recipe its run ran
-    (`recipe.yaml`, the record's `recipe_yaml` byte for byte, card W-07), so a DIR whose recipe is not this run's
-    belongs to another run. Other outputs carry nothing that names their run, and are taken as given."""
+    """Refuse an output directory that is another run's. A `RUN` file (card W-29) names its run and release: another
+    run, or this run's id with another release, is refused, naming both. A `search hmm --out DIR` holds the recipe
+    its run ran (`recipe.yaml`, the record's `recipe_yaml` byte for byte, card W-07), so a DIR whose recipe is not
+    this run's belongs to another run. Other outputs carry nothing that names their run, and are taken as given."""
+    named = read_run_file(path) if Path(path).is_dir() else None
+    if named is not None and named != (record["run_id"].hex(), record["ran_against"]):
+        raise ResultsError(f"{path} holds a RUN file that names run {named[0]} (release {named[1]}), not run "
+                           f"{record['run_id'].hex()} (release {record['ran_against']}): it is another run's output")
     recipe = Path(path) / "recipe.yaml"
     if Path(path).is_dir() and recipe.is_file() and recipe.read_text(encoding="utf-8") != record["recipe_yaml"]:
         raise ResultsError(f"{path} holds a recipe.yaml that is not the recipe run {record['run_id'].hex()} ran: it is "
                            "another run's output (`search hmm` writes the run's recipe there)")
+
+
+def find_under(record: dict, run_dir: Path, under: list[Path], named: list[Path] = ()) -> list[Path]:
+    """Every directory in or below the directories `under` (to `UNDER_DEPTH` levels, links not followed) whose `RUN`
+    file names this run and release, sorted by path; a found directory's own subdirectories are not searched, and a
+    directory that is, or is inside, one of `named` (the `--with` directories) is left to them. A directory whose
+    `RUN` names another run is not this run's and is passed over. ResultsError when `under` is not a directory."""
+    me = record["run_id"].hex()
+    rd = Path(run_dir).resolve()
+    taken = [Path(n).resolve() for n in named]
+    found: dict[Path, Path] = {}
+    for top in under:
+        top = Path(top)
+        if not top.is_dir():
+            raise ResultsError(f"--under {top} is not a directory")
+        base = len(top.resolve().parts)
+        for dirpath, dirnames, _ in os.walk(top):
+            here = Path(dirpath).resolve()
+            dirnames[:] = sorted(n for n in dirnames if not (Path(dirpath) / n).is_symlink())
+            if len(here.parts) - base >= UNDER_DEPTH:
+                dirnames[:] = []
+            if here == rd or any(t == here or t in here.parents for t in taken):
+                dirnames[:] = []
+                continue
+            try:
+                got = read_run_file(here)
+            except ResultsError:
+                got = None  # not one of ours; only `--with` is strict about it
+            if got is not None and got[0] == me:
+                found[here] = Path(dirpath)
+                dirnames[:] = []
+    out: list[Path] = []
+    for here in sorted(found):  # an export of the run inside another is kept once, in the outer one
+        if not any(o.resolve() in here.parents for o in out):
+            out.append(found[here])
+    return out
 
 
 def _members(base: str, path: Path) -> list[tuple[str, Path]]:

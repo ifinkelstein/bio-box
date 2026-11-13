@@ -88,6 +88,10 @@ transfer and the lineage of their label ``<event>_<lineage>``; leaves have kind 
 length above the node (the root's reaches back to the family's origination).
 ``digest`` is BLAKE3-128 over the sorted (path, sha256) list of every file but backbone.json.
 
+``build_phages(params, seed, out, panel_seed=...)`` writes a phage set's backbone in the same shape (card
+F-02 session 5; `mobile`): one linear chromosome per phage, no groups, the scramble statistics recorded but
+not enforced, and ``role`` and ``panel_seed`` added to backbone.json.
+
 ``species_branches(out)`` reads the complete species tree (extinct lineages and the scramble stem included)
 from ``out/zombi2/species_complete.nwk``, so later stages need not read ZOMBI2's files (card F-02 session 3).
 """
@@ -897,6 +901,27 @@ def build(params: dict | str, seed: int, out) -> Backbone:
     p = load_preset(params) if isinstance(params, str) else copy.deepcopy(params)
     check_dec15(p)
     check_preset(p)
+    return _build(p, seed, out, None)
+
+
+def build_phages(params: dict, seed: int, out, *, panel_seed: int) -> Backbone:
+    """The backbone of a world's phage set (spec §2.1 S6; card F-02 session 5): the same ZOMBI2 ordered run
+    and adapter tables as `build`, from a preset that `mobile.phage_preset` derives from the host's (linear
+    topology, no groups and no declared families, no burst, no lineage axes). DEC-15 governs worlds with
+    groups, and a phage set has none, so the root scramble is not enforced: its stem only spreads the root's
+    genes over both strands (ZOMBI2 lays the root out on +). ``backbone.json`` also records ``role``
+    ``phage_set`` and ``panel_seed``, the host world's seed, from which `sequences.build` draws the HMM
+    panel, so phage families take their domains from the host's panel."""
+    p = copy.deepcopy(params)
+    check_preset(p)
+    if _declared_groups(p) or _declared_singles(p):
+        raise ValueError("a phage set declares no groups and no single families")
+    if p["genomes"]["topology"] != "linear" or int(p["genomes"]["chromosomes"]) != 1:
+        raise ValueError("a phage set is one linear chromosome per phage")
+    return _build(p, seed, out, {"role": "phage_set", "panel_seed": seeds.check_seed(panel_seed)})
+
+
+def _build(p: dict, seed: int, out, extra: dict | None) -> Backbone:
     seed = seeds.check_seed(seed)
     out = Path(out)
     if out.exists():
@@ -918,7 +943,8 @@ def build(params: dict | str, seed: int, out) -> Backbone:
     grouped_pairs = {frozenset(q) for g in groups if g.adjacent for q in zip(g.members, g.members[1:])}
     stats = scramble_stats(init, root, declared={f.family for f in families if f.kind not in ("root", "originated")},
                            grouped_pairs=grouped_pairs)
-    check_scrambled(stats)
+    if extra is None:
+        check_scrambled(stats)
     bdir = tmp / "backbone"
     for name, rows in (("genomes.tsv", genomes), ("genes.tsv", genes), ("families.tsv", families),
                        ("groups.tsv", groups), ("truth_units.tsv", units), ("truth_adjacency.tsv", adjacency),
@@ -937,6 +963,8 @@ def build(params: dict | str, seed: int, out) -> Backbone:
            "scramble": stats, "taxonomy": {"crown": tx["crown"], "present": tx["present"],
                                            "cut_times": tx["cut_times"]},
            "files": files, "digest": digest}
+    if extra:
+        doc.update(extra)
     (bdir / "backbone.json").write_text(json.dumps(doc, indent=1, sort_keys=True) + "\n", encoding="utf-8")
     tmp.rename(out)
     return read(out)
@@ -965,6 +993,6 @@ def read(out) -> Backbone:
                     events=t["events.tsv"], gene_tree_nodes=t["gene_tree_nodes.tsv"], meta=doc)
 
 
-__all__ = ["Backbone", "Dec15Error", "SchemaError", "SpeciesBranch", "build", "read", "load_preset",
+__all__ = ["Backbone", "Dec15Error", "SchemaError", "SpeciesBranch", "build", "build_phages", "read", "load_preset",
            "check_dec15", "check_preset", "check_schema", "scramble_stats", "check_scrambled", "cut_taxonomy",
            "name_taxa", "parse_newick", "species_branches"]

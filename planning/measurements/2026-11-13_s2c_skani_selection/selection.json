@@ -1,0 +1,327 @@
+{
+ "gtdb_release": "R226",
+ "gtdb_files_sha256": {
+  "bac120_metadata_r226.tsv.gz": "45f1614aff80c19752860880b47b3cdeb66def8ff66dc106909b28bb2bd9bcbf",
+  "ar53_metadata_r226.tsv.gz": "f12310f223e6dd27dc942379de1cfbeec5ebd2b917786cf2ce28695555eab6e5"
+ },
+ "cap": 20,
+ "rule": "ncbi_assembly_level = 'Complete Genome'; per gtdb_taxonomy ranked by checkm2_completeness - 5 x checkm2_contamination desc (unparsed last), ties by GTDB accession; species with more than cap: greedy farthest-first from rank 1 on distance 100 - ANI, ties by quality order; a pair not reported (empty ani, larger alignment fraction under 15, or absent) counts as distance 100; genomes listed as unavailable (no sequence) are left out of the pick; species with at most cap: all",
+ "metadata_columns_named_ani": [],
+ "complete_genomes": 49324,
+ "species_with_complete_genome": 11973,
+ "complete_genomes_checkm2_unparsed": 0,
+ "complete_genomes_checkm2_nonfinite": 0,
+ "selected": {
+  "genomes": 25458,
+  "bp": 106712605589,
+  "contigs": 57105,
+  "proteins": 98208753,
+  "proteins_missing": 0,
+  "archaea": 706,
+  "translation_tables": {
+   "11": 23384,
+   "25": 5,
+   "4": 545,
+   "None": 1524
+  },
+  "max_genome_bp": 16040666,
+  "min_genome_bp": 142117,
+  "first": "GCA_000007325.1",
+  "last": "GCF_964212655.1"
+ },
+ "selected_gtdb_representative": 9540,
+ "phase1": {
+  "file": "all.tsv",
+  "sha256": "e68d2576067d4d83f77a50384865de5470e6dff1a42716a06148cdf26c0efeaf",
+  "genomes": 11973,
+  "rank1_equals_file": true,
+  "rank1_bp": 50498943687,
+  "not_in_selection": [],
+  "not_served": [
+   {
+    "accession": "GCA_900637225.1",
+    "species_rank": 1,
+    "species_complete_genomes": 1
+   },
+   {
+    "accession": "GCA_902153285.2",
+    "species_rank": 1,
+    "species_complete_genomes": 1
+   },
+   {
+    "accession": "GCA_902502775.2",
+    "species_rank": 1,
+    "species_complete_genomes": 3
+   },
+   {
+    "accession": "GCA_902502895.2",
+    "species_rank": 1,
+    "species_complete_genomes": 2
+   },
+   {
+    "accession": "GCA_963667335.1",
+    "species_rank": 1,
+    "species_complete_genomes": 1
+   },
+   {
+    "accession": "GCA_963921365.2",
+    "species_rank": 1,
+    "species_complete_genomes": 1
+   },
+   {
+    "accession": "GCF_040719245.2",
+    "species_rank": 1,
+    "species_complete_genomes": 1
+   }
+  ]
+ },
+ "remainder": {
+  "genomes": 13485,
+  "bp": 56213661902,
+  "contigs": 30050,
+  "proteins": 52154809,
+  "proteins_missing": 0,
+  "archaea": 164,
+  "translation_tables": {
+   "11": 12818,
+   "4": 354,
+   "None": 313
+  },
+  "max_genome_bp": 14598830,
+  "min_genome_bp": 142701,
+  "first": "GCA_000007325.1",
+  "last": "GCF_964212645.1"
+ },
+ "ani_step": {
+  "species_over_cap": 243,
+  "genomes_in_species_over_cap": 28726,
+  "selected_in_species_over_cap": 4860,
+  "max_selected_differ_keep_rank1": 3368,
+  "max_selected_differ_any": 3497,
+  "remainder_in_species_over_cap": {
+   "genomes": 4617,
+   "bp": 17541096714
+  },
+  "bp_bounds_keep_rank1": {
+   "min": 106013943010,
+   "max": 107275959885,
+   "quality_order": 106409469843,
+   "remainder_min": 55514999323,
+   "remainder_max": 56777016198
+  },
+  "species_score_tie_at_cut": 102,
+  "selected_decided_by_accession_at_cut": 485,
+  "species_rank1_score_equals_rank_cap_plus_1": 5
+ },
+ "by_species_size": [
+  {
+   "bin": "1",
+   "species": 8785,
+   "selected_genomes": 8785,
+   "selected_bp": 37006319407,
+   "remainder_genomes": 0,
+   "remainder_bp": 0
+  },
+  {
+   "bin": "2",
+   "species": 1424,
+   "selected_genomes": 2848,
+   "selected_bp": 12227101087,
+   "remainder_genomes": 1424,
+   "remainder_bp": 6150018913
+  },
+  {
+   "bin": "3-5",
+   "species": 970,
+   "selected_genomes": 3532,
+   "selected_bp": 15480667068,
+   "remainder_genomes": 2562,
+   "remainder_bp": 11308171909
+  },
+  {
+   "bin": "6-10",
+   "species": 370,
+   "selected_genomes": 2777,
+   "selected_bp": 12084497529,
+   "remainder_genomes": 2407,
+   "remainder_bp": 10495929606
+  },
+  {
+   "bin": "11-20",
+   "species": 181,
+   "selected_genomes": 2656,
+   "selected_bp": 11476412465,
+   "remainder_genomes": 2475,
+   "remainder_bp": 10718444760
+  },
+  {
+   "bin": "21-50",
+   "species": 147,
+   "selected_genomes": 2940,
+   "selected_bp": 11137095426,
+   "remainder_genomes": 2793,
+   "remainder_bp": 10592259589
+  },
+  {
+   "bin": "51-100",
+   "species": 47,
+   "selected_genomes": 940,
+   "selected_bp": 3530346825,
+   "remainder_genomes": 893,
+   "remainder_bp": 3359476311
+  },
+  {
+   "bin": "101+",
+   "species": 49,
+   "selected_genomes": 980,
+   "selected_bp": 3770165782,
+   "remainder_genomes": 931,
+   "remainder_bp": 3589360814
+  }
+ ],
+ "ani": {
+  "rule": "species with more than cap: greedy farthest-first from rank 1 on distance 100 - ANI, ties by quality order; a pair not reported (empty ani, larger alignment fraction under 15, or absent) counts as distance 100; genomes listed as unavailable (no sequence) are left out of the pick; species with at most cap: all",
+  "table": "ani_pairs.tsv",
+  "table_sha256": "2c95c71038b0de851435bbcc7317d48cf99a1324e8abadd860a5467d792a68c1",
+  "min_af": 15.0,
+  "table_counts": {
+   "rows": 513636,
+   "rows_empty_ani": 0,
+   "rows_below_min_af": 0,
+   "pairs_given_twice": 0
+  },
+  "table_pairs": 513636,
+  "table_pairs_in_species_at_or_under_cap": 0,
+  "species_over_cap": 243,
+  "consulted_pairs": 499130,
+  "consulted_unreported": 0,
+  "consulted_absent": 0,
+  "require_pairs": true,
+  "selected_differ_from_quality": 2343,
+  "selected_differ_from_quality_all_ranks": 2347,
+  "unavailable": {
+   "listed": 26,
+   "in_species_over_cap": 26,
+   "in_quality_top_cap": 8
+  },
+  "phase1_subset": true,
+  "largest_species": [
+   {
+    "species": "s__Escherichia coli",
+    "complete_genomes": 4007,
+    "differ": 19
+   },
+   {
+    "species": "s__Klebsiella pneumoniae",
+    "complete_genomes": 2312,
+    "differ": 19
+   },
+   {
+    "species": "s__Salmonella enterica",
+    "complete_genomes": 1833,
+    "differ": 19
+   },
+   {
+    "species": "s__Staphylococcus aureus",
+    "complete_genomes": 1475,
+    "differ": 19
+   },
+   {
+    "species": "s__Pseudomonas aeruginosa",
+    "complete_genomes": 920,
+    "differ": 19
+   },
+   {
+    "species": "s__Bordetella pertussis",
+    "complete_genomes": 792,
+    "differ": 18
+   },
+   {
+    "species": "s__Acinetobacter baumannii",
+    "complete_genomes": 750,
+    "differ": 18
+   },
+   {
+    "species": "s__Campylobacter_D jejuni",
+    "complete_genomes": 522,
+    "differ": 19
+   },
+   {
+    "species": "s__Mycobacterium tuberculosis",
+    "complete_genomes": 505,
+    "differ": 18
+   },
+   {
+    "species": "s__Bacillus velezensis",
+    "complete_genomes": 496,
+    "differ": 19
+   }
+  ],
+  "min_pairwise_ani": {
+   "ani": {
+    "species_all_pairs_reported": {
+     "p0": 93.26,
+     "p10": 95.18,
+     "p25": 96.03,
+     "p50": 97.12,
+     "p75": 98.09,
+     "p90": 98.8,
+     "p100": 99.97,
+     "n": 243
+    },
+    "species_with_a_pair_unreported_or_absent": 0
+   },
+   "quality": {
+    "species_all_pairs_reported": {
+     "p0": 93.77,
+     "p10": 95.69,
+     "p25": 96.77,
+     "p50": 97.59,
+     "p75": 98.44,
+     "p90": 99.09,
+     "p100": 99.98,
+     "n": 243
+    },
+    "species_with_a_pair_unreported_or_absent": 0
+   }
+  },
+  "median_pairwise_ani": {
+   "ani": {
+    "p0": 95.55,
+    "p10": 97.04,
+    "p25": 97.68,
+    "p50": 98.36,
+    "p75": 98.86,
+    "p90": 99.5,
+    "p100": 100.0,
+    "n": 243
+   },
+   "quality": {
+    "p0": 95.69,
+    "p10": 97.42,
+    "p25": 98.01,
+    "p50": 98.61,
+    "p75": 99.03,
+    "p90": 99.8,
+    "p100": 100.0,
+    "n": 243
+   }
+  },
+  "near_clone_pairs_over_99_9": {
+   "ani": {
+    "species": 79,
+    "pairs": 2895
+   },
+   "quality": {
+    "species": 230,
+    "pairs": 6930
+   }
+  }
+ },
+ "outputs_sha256": {
+  "s2c_selected.tsv": "928b6e71b045233a1ad084cff45186246a4c84895223a4904e044f73886dcda1",
+  "remainder.tsv": "48e6072846f6b40e396eea2639db61a2c02528be18e704feafaacc7462b93098",
+  "by_phylum.tsv": "b3a99bef530603218ffca0843b2498b4feb93de760ba1d4319d515b348681902",
+  "ani_species.tsv": "1f6e061ba8e10300651d8b81563cc07f4153e2ebe3f000ef707499d993ec7fd5"
+ }
+}

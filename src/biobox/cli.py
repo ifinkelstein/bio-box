@@ -26,7 +26,7 @@
                 [--export gff] [--figure [--figure-rows 60]] [--release R] [--runs DIR]
                 (card W-25, biobox.search.flanks; --figure: card W-27)
     bio-box export proteins --root R --release R [--out FILE]
-    bio-box results archive <run> --profile P [--with PATH ...] [--runs DIR] [--results DIR]
+    bio-box results archive <run> --profile P [--under DIR ...] [--with PATH ...] [--runs DIR] [--results DIR]
     bio-box results flush --profile P [--results DIR] [--below-floor]
     bio-box results list --profile P [--results DIR] [--json]
     bio-box results get RUN_ID --out DIR --profile P [--results DIR]
@@ -130,8 +130,11 @@ locus tables), card W-23.
 
 `results` (card W-28, DEC-33; design in `biobox.search.results`) keeps a closed run on the profile's durable
 storage. `archive` writes the run's record and outputs as one deterministic tar, with its manifest line, into a
-spool under the profile's `tmp` (outputs, such as the `search hmm --out DIR`, are named with `--with`: nothing on
-disk links a run to them; a DIR whose `recipe.yaml` is not the run's is refused). `flush` moves the spooled runs to the results area
+spool under the profile's `tmp`. Every directory export written from a run (`search hmm`, `nbr --out DIR`, `nbr flanks
+--out DIR`) holds a `RUN` file (card W-29: `run<TAB>ID`, `release<TAB>R`); `--under DIR` (repeatable) finds the
+directories whose `RUN` names the run, in DIR and up to 4 levels below it; `--with PATH` names an output (a file, or a
+directory without a `RUN`, as before). A DIR whose `RUN` names another run, or whose `recipe.yaml` is not the run's,
+is refused (exit 2). `flush` moves the spooled runs to the results area
 (`<durable>/results`, or `--results` inside `durable`) as one bundle, only once the bundle is at least the
 profile's `small_file_floor_bytes` (AGENTS §7.3; `--below-floor` is for the PI's agreement only). Nothing is
 overwritten or deleted there: the same run with the same sha256 is a no-op, with another a refusal (exit 2).
@@ -167,6 +170,7 @@ def _print(lines) -> None:
 
 
 _WRITTEN: dict[str, str] = {}  # card W-23: output path -> what it holds ("12 rows"), for every file written here
+_RUN_FILE = True  # `search hmm` clears it while `nbr` writes loci/: DIR's own RUN file names the run (card W-29)
 _QUIET = False  # set by `search hmm` while the commands it calls write into its temporary directory
 
 
@@ -182,8 +186,8 @@ class _Tally:
     lines, `rows` the rows of a TSV of blank-line-separated tables, each a column line and its rows (`#` lines are
     not rows)."""
 
-    def __init__(self, lines, unit: str):
-        self.lines, self.unit, self.n = lines, unit, 0
+    def __init__(self, lines, unit: str, comments: bool = True):
+        self.lines, self.unit, self.n, self.comments = lines, unit, 0, comments
 
     def __iter__(self):
         fresh = True
@@ -194,19 +198,19 @@ class _Tally:
                 self.n += 1
             elif not line:
                 fresh = True
-            elif not line.startswith("#"):
+            elif not (self.comments and line.startswith("#")):
                 self.n += not fresh
                 fresh = False
             yield line
 
 
-def _emit(lines, out: str | None, unit: str = "rows") -> None:
+def _emit(lines, out: str | None, unit: str = "rows", comments: bool = True) -> None:
     """To stdout, or to the file `out` (written under a temporary name and renamed into place), then one line on
     stderr with what it holds, counted in `unit` (`_Tally`)."""
     if out is None:
         _print(lines)
     else:
-        t = _Tally(lines, unit)
+        t = _Tally(lines, unit, comments)
         export.write_lines(t, Path(out))
         _wrote(out, f"{t.n} {unit}")
 
@@ -245,6 +249,16 @@ def _run_release(d: Path) -> str | None:
     if not path.exists():
         return None
     return pq.read_table(path, columns=["ran_against"]).column("ran_against")[0].as_py()
+
+
+def _run_file_ref(a, source: str) -> tuple[str, str] | None:
+    """(run id, release) for the `RUN` file of an export written from the run `source` names (card W-29); None when
+    `source` is a list of protein uids, which names no run."""
+    d = _anchor_run(a, source)
+    if d is None or not (Path(d) / "run.parquet").exists():
+        return None
+    rec = pq.read_table(Path(d) / "run.parquet", columns=["run_id", "ran_against"]).to_pylist()[0]
+    return rec["run_id"].hex(), rec["ran_against"]
 
 
 class RunPackMissing(ValueError):
@@ -317,7 +331,7 @@ def _limits(a) -> runner.Limits:
         from biobox import profile, runstep
 
         prof = profile.load(path)
-        cap = runstep.choose_threads(prof, datetime.now(), runstep._load1())
+        cap = runstep.choose_threads(prof, datetime.now(), runstep.read_cpu())  # card C-28: others' CPU, not the load
         if a.cpus is not None and a.cpus > cap:
             raise ValueError(f"--cpus {a.cpus} is above the profile's thread cap of {cap} for this hour")
         cpus = min(cpus, cap)
@@ -359,6 +373,19 @@ def _close_pending(final: Path) -> None:
     runner.pending_path(Path(final).resolve()).unlink(missing_ok=True)
 
 
+def _submitted_command(a) -> list[str]:
+    """The user's command line for a run's record (card W-29): this command's own, except in the detached runner
+    `runner.submit` starts (`--submitted`), which is handed the command `submit` was given."""
+    if a.submitted and os.environ.get(runner.USER_COMMAND_ENV):
+        try:
+            got = json.loads(os.environ[runner.USER_COMMAND_ENV])
+        except ValueError:
+            got = None
+        if isinstance(got, list) and all(isinstance(x, str) for x in got):
+            return got
+    return a.user_command
+
+
 def _search(a) -> int:
     root = Path(a.root)
     if a.action == "run":
@@ -383,9 +410,10 @@ def _search(a) -> int:
         try:
             if not a.wait:
                 print(runner.submit(root, Path(a.target), a.release, limits, work, a.fault, packs=packs, runs=runs,
-                                    out=out))
+                                    out=out, command=a.user_command))
                 return 0
-            row = runner.run(root, Path(a.target), a.release, limits=limits, work_base=work, argv=sys.argv,
+            row = runner.run(root, Path(a.target), a.release, limits=limits, work_base=work,
+                             command=_submitted_command(a),
                              run_id=bytes.fromhex(a.run_id) if a.run_id else None, fault=a.fault, packs=packs,
                              runs=runs, out=out, pending=not a.submitted, on_pending=_pending_notice)
         except RecipeError as e:
@@ -571,6 +599,9 @@ def _nbr(a) -> int:
             if a.out is None:
                 _print(line for k, (_, lines) in enumerate(tables) for line in ([""] if k else []) + lines)
             else:
+                ref = _run_file_ref(a, source) if _RUN_FILE else None
+                if ref is not None:  # card W-29: before any table, so a directory of another run is left as it is
+                    export.write_run_file(Path(a.out), *ref)
                 n_tables = n_rows = 0
                 for name, lines in tables:
                     export.write_lines(lines, Path(a.out) / name)
@@ -633,6 +664,24 @@ def _nbr_flanks(a, root: Path, uids: set[bytes], tv: str | None, release: str, f
     cut = flanks.DEFAULT_CUT if a.cut is None else a.cut
     if not 0 <= cut <= 1:
         return refuse(f"--cut {cut}: a distance between 0 and 1")
+    auto = None
+    if a.auto_cut is not None:  # card W-31
+        if a.cut is not None:
+            return refuse("--auto-cut chooses each group's cut from its tree: give --auto-cut or --cut, not both")
+        try:
+            auto = flanks.parse_auto_cut(a.auto_cut)
+        except flanks.FlanksError as e:
+            return refuse(e)
+    colour_weight = a.colour_weight or "locus"
+    colour_fallback = a.colour_fallback or "none"
+    for flag, value, allowed in (("--colour-weight", colour_weight, flanks.COLOUR_WEIGHTS),
+                                 ("--colour-fallback", colour_fallback, flanks.COLOUR_FALLBACKS)):
+        if value not in allowed:
+            return refuse(f"{flag} {value}: expected one of {', '.join(allowed)}")
+    if (a.colour_weight is not None or a.colour_fallback is not None) and not a.figure:
+        return refuse("--colour-weight and --colour-fallback choose the figure's colours: give them with --figure")
+    if colour_fallback == "pfam" and level == "pfam":
+        return refuse("--colour-fallback pfam: at --level pfam the families are Pfam architectures already")
     max_leaves = flanks.DEFAULT_MAX_LEAVES if a.max_loci is None else a.max_loci
     if max_leaves < 1:
         return refuse(f"--max-loci {max_leaves}: at least 1")
@@ -659,7 +708,9 @@ def _nbr_flanks(a, root: Path, uids: set[bytes], tv: str | None, release: str, f
                                    group_by=group_by, distance=distance, cut=cut, max_leaves=max_leaves,
                                    export_gff=a.export == "gff", library=a.library,
                                    gene_call_version=a.gene_call_version, tape_version=tv, threads=a.threads,
-                                   tmp=_profile_tmp(a), figure=a.figure, figure_rows=figure_rows)
+                                   tmp=_profile_tmp(a), figure=a.figure, figure_rows=figure_rows,
+                                   run_file=_run_file_ref(a, a.source or a.anchors), auto=auto,
+                                   colour_weight=colour_weight, colour_fallback=colour_fallback)
     except ValueError as e:
         return refuse(e)
     for line in notes:
@@ -674,7 +725,8 @@ def _nbr_flanks(a, root: Path, uids: set[bytes], tv: str | None, release: str, f
     if a.export == "gff":
         _wrote(out / "gff", f"{counts['gff']} tables")
     _print([f"flanks\t{out}\t{counts['loci']} loci in {counts['groups']} groups (level {level}, window {window}g, "
-            f"group by {group_by}, distance {distance}, cut {cut:g})"])
+            f"group by {group_by}, distance {distance}, "
+            + (f"cut {cut:g})" if auto is None else f"auto cut {auto})")])
     return 0
 
 
@@ -960,7 +1012,7 @@ def _search_hmm(a) -> int:
         return refuse(lines[0], lines[1:])
     text = _recipe_text(a, uid)
     try:  # in the foreground, with a pending record: `search status` and `search cancel` work on it (card W-13)
-        row = runner.run(root, text, a.release, limits=limits, work_base=work, argv=sys.argv, packs=packs,
+        row = runner.run(root, text, a.release, limits=limits, work_base=work, command=a.user_command, packs=packs,
                          runs=runs, pending=True, on_pending=_pending_notice, gene_call_version=a.gene_call_version)
     except RecipeError as e:
         return refuse(e)
@@ -973,9 +1025,13 @@ def _search_hmm(a) -> int:
     tmp.mkdir(parents=True)
     global _QUIET
     quiet = _QUIET
+    global _RUN_FILE
+    run_file = _RUN_FILE
     _QUIET = True  # card W-23: the commands below write into tmp; the lines name the files once DIR is in place
+    _RUN_FILE = False
     try:
         (tmp / "recipe.yaml").write_text(text, encoding="utf-8")
+        export.write_run_file(tmp, rid, a.release)  # card W-29: the run this directory was written from
         if status == "ok":
             (tmp / "README.txt").write_text(export.README_TEXT, encoding="utf-8")  # card W-20
             where = ["--root", str(root), "--gene-call-version", a.gene_call_version, "--runs", str(runs),
@@ -996,6 +1052,7 @@ def _search_hmm(a) -> int:
         os.replace(tmp, out)  # an empty DIR is replaced; a DIR that gained files meanwhile is not (OSError)
     finally:
         _QUIET = quiet
+        _RUN_FILE = run_file
         shutil.rmtree(tmp, ignore_errors=True)
     if status == "ok":
         for name in ("hits.tsv", "hits.faa", "neighbors.tsv", "loci"):
@@ -1341,8 +1398,10 @@ def _sql_cell(v) -> str:
 
 
 def _scan_name(path: str, built: Path) -> str:
-    """The registry table a scanned file belongs to (`catalog.classify`), or the search run file's table."""
-    p = Path(path)
+    """The registry table a scanned file belongs to (`catalog.classify`), or the search run file's table. DuckDB names
+    the files of a scan of several as one string, `PATH, PATH, ...` (`profile_query` keeps it as one entry): the first
+    file stands for the table, as every file of a scan is one table's."""
+    p = Path(path.split(".parquet, ", 1)[0] + ".parquet" if ".parquet, " in path else path)
     try:
         hit = catalog.classify(p.relative_to(built).as_posix())
         if hit is not None:
@@ -1424,7 +1483,7 @@ def _sql(a) -> int:
     finally:
         con.close()
         shutil.rmtree(scratch, ignore_errors=True)
-    _emit(out, a.out, "records" if a.format == "json" else "rows")
+    _emit(out, a.out, "records" if a.format == "json" else "rows", comments=False)  # `#` is a column name here (W-30)
     return 0
 
 
@@ -1498,10 +1557,16 @@ def _results(a) -> int:
         if a.action == "archive":
             if not a.run:
                 return refuse("results archive needs the run: its directory, or its run id in --runs")
-            line, state = results.archive(_run_path(a, a.run), [Path(p) for p in a.with_], where)
+            run_dir = _run_path(a, a.run)
+            outputs = [Path(p) for p in a.with_]
+            if a.under:  # card W-29: the directories that hold this run's RUN file
+                outputs += results.find_under(results.read_record(run_dir), run_dir, [Path(u) for u in a.under],
+                                              outputs)
+            line, state = results.archive(run_dir, outputs, where)
             if line["outputs"] == "-":
-                print(f"note: run {line['run_id']} is archived without outputs: give its `search hmm --out` DIR and "
-                      "any other output with --with (nothing on disk links a run to its outputs)", file=sys.stderr)
+                print(f"note: run {line['run_id']} is archived without outputs: give --under DIR (finds the "
+                      "directories that hold its RUN file) or --with PATH for its `search hmm --out` DIR and any "
+                      "other output", file=sys.stderr)
             if state == "same":
                 print(f"results archive: run {line['run_id']} is already kept, sha256 {line['sha256']}, in "
                       f"{line['where']}; nothing written", file=sys.stderr)
@@ -1933,8 +1998,11 @@ def main(argv: list[str] | None = None) -> int:
 
 def _main(argv: list[str] | None = None) -> int:
     argv = list(sys.argv[1:] if argv is None else argv)
+    user_command = ["bio-box", *argv]  # card W-29: what the user typed, kept in a run's record
     if argv[:2] == ["search", "hmm"]:  # card W-07: its own options, and no recipe or run positional
-        return _search_hmm(_hmm_parser().parse_args(argv[2:]))
+        ns = _hmm_parser().parse_args(argv[2:])
+        ns.user_command = user_command
+        return _search_hmm(ns)
     command: list[str] = []
     if argv[:1] == ["run-step"] and "--" in argv:  # everything after the first `--` is the step command
         i = argv.index("--")
@@ -2054,6 +2122,15 @@ def _main(argv: list[str] | None = None) -> int:
     n.add_argument("--figure-rows", type=int, help="flanks --figure: rows per figure (default 60, "
                                                    "flanks.DEFAULT_FIGURE_ROWS); above it, the leaf with the most loci "
                                                    "of each context type, then the leaves with the most loci")
+    n.add_argument("--auto-cut", help="flanks: choose each group's cut from its tree instead of --cut (card W-31): gap "
+                                      "(the middle of the largest gap between merge distances) or N (at most N "
+                                      "context types); never at distance 1")
+    n.add_argument("--colour-weight", help="flanks --figure: locus (default), leaf, genome or anchor-nr90: weight "
+                                           "each locus by 1/(loci of its unit) before the 10%% colour threshold, so "
+                                           "near-identical loci count once (card W-31)")
+    n.add_argument("--colour-fallback", help="flanks --figure: none (default) or pfam: a grey cluster's gene takes its "
+                                             "Pfam architecture's colour when the architecture is common in the group "
+                                             "(card W-31)")
     n.add_argument("--strand", default="any")
     n.add_argument("--operon-gap")
     n.add_argument("--edge", default="truncate")
@@ -2088,8 +2165,11 @@ def _main(argv: list[str] | None = None) -> int:
                                       "<durable>/results)")
     rr.add_argument("--with", dest="with_", action="append", default=[], metavar="PATH",
                     help="archive: an output of the run to keep with it, a file or a directory (an `nbr flanks` DIR, "
-                         "a hits.tsv), and the run's `search hmm --out` DIR; repeatable. Nothing on disk links a run "
-                         "to its outputs, so name each one; a DIR whose recipe.yaml is not the run's is refused")
+                         "a hits.tsv), and the run's `search hmm --out` DIR; repeatable. A DIR whose RUN file names "
+                         "another run, or whose recipe.yaml is not the run's, is refused")
+    rr.add_argument("--under", action="append", default=[], metavar="DIR",
+                    help="archive: find every directory in DIR (or up to 4 levels below it) whose RUN file names the "
+                         "run (the `search hmm`, `nbr` and `nbr flanks` output directories); repeatable")
     rr.add_argument("--out", help="get: a new or empty directory to restore the run into")
     rr.add_argument("--below-floor", action="store_true",
                     help="flush: write the bundle even when it is smaller than the profile's small_file_floor_bytes. "
@@ -2199,6 +2279,7 @@ def _main(argv: list[str] | None = None) -> int:
         if not command:
             p.error("run-step needs a command after --")
         a.command = command
+    a.user_command = user_command
     return {"pack": _pack, "search": _search, "nbr": _nbr, "find": _find, "export": _export, "run-step": _run_step,
             "release": _release, "stage": _stage, "build-stage": _build_stage, "releases": _releases,
             "seq": _seq, "sql": _sql, "results": _results}[a.cmd](a)
