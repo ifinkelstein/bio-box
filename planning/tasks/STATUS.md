@@ -83,8 +83,9 @@ but the runbook and `scripts/pod_pytest.sh` still use `bio-box-test_74b3e05.sif`
   about 350 to 390 GB of its 1.1 TB (543 GB free), mostly scratch.
 
 **Next, in order.**
-1. Merge B-46, C-23, C-21c and W-24 as they report; then C-16 (after C-23), W-15 (after W-24) and W-25 (after
-   C-21c and W-24).
+1. Merge the running cards as they report (table above). Then, four at a time: C-25 step 1b (the GTDB ANI check; it
+   gates the phase-2 fetch), F-02 session 3, W-28 (results archive), and after the scans C-24 (H1) then C-26 (PLSDB).
+   Cards written and waiting: B-47 (design first), E-10 (needs the PI's pin), W-26.
 2. When `rM.2` is built and verified: copy the data root to `/stor/scratch/Wilke/if2453/all-the-data/` (one
    `rsync`, atomic rename; files under 64 MB only as `small_ok` tables allow, AGENTS §7.3), then clear obsolete
    scratch (old pack copies under `w16`, `w19`; finished measurement directories).
@@ -419,42 +420,33 @@ probed by hand on the pod).
 
 ## Open items for the PI
 
-Added 2026-11-12, recommendation first:
-- Done 2026-11-12: `prok-2` adopted (DEC-30; card E-09 freezes it).
-- Done 2026-11-12: matplotlib approved for the synteny figure (card W-27).
-- Card W-25: confirm the
-  defaults of `nbr flanks`; keep the rule that an unannotated gene is a token of its own at the pfam level (recommendation:
-  keep, and use nr50 on phages).
-- Card C-25: skani for the S2C selection. Without an ANI step the 20 genomes kept in each of 243 heavily sequenced species are
-  the best by CheckM2 and then by accession, which can be near-identical isolates of one project (485 genomes chosen by
-  accession alone; at most 3,368 could differ, *derived*). Recommendation: add skani to `container/environment.yml` (yours)
-  and select for diversity, since strain diversity is why S2C takes 20 per species. Also: retry the 7 genomes NCBI did not
-  serve (5 species have no other complete genome)?
-- Card F-02: accept the `micro` preset's strength grid (member transfer rate by together fraction) in place of the spec's
-  per-family loss axis. Recommendation: accept; it is what ZOMBI2 can vary for adjacent groups.
-- Done 2026-11-12: the PI approved card W-25 (group a search's loci by their flanks; review in
-  `planning/design/W-25_flank_tools_review.md`). It starts after C-21c and W-24 merge (same files).
+Decided by the PI on 2026-11-12 (evening):
+- `prok-2` is the ncRNA model set (DEC-30; card E-09). matplotlib is added for the synteny figure (card W-27).
+- S2C phase 2 selection keeps the ANI-diversity rule, from GTDB's own ANI values if they cover it, else skani; the 7
+  genomes NCBI did not serve are retried once (DEC-31; card C-25 step 1b).
+- S2C phase 2 Pfam on NR90 representatives plus length-different members, the rest inferred and labelled (DEC-32; cards
+  C-25 step 3 and B-47).
+- Gene calls stay in whole-genome context for now; the decision on per-contig calling (card C-21f) is taken before S2C
+  phase 2 is built. Judging which calls are better needs a reference-CDS source in `sources.yaml`.
+- `nbr flanks` defaults and its rule for unannotated genes accepted (card W-25). The F-02 `micro` strength grid accepted.
+- Search results: one archive per run on `/stor` (DEC-33; card W-28).
+- tRNAscan-SE for phage and archaeal tRNAs: approved in principle, as a later card (E-10; the pin in
+  `container/environment.yml` is the PI's).
+- The pod's thread cap stays 40 by day and 56 at night; no request for more.
+- PLSDB is built after stage H1 (card C-26).
+- Earlier the same day: DEC-29 (unsplittable clustering call as one process), W-25 approved, zombi2 approved for F-02.
+
+Still open, recommendation first:
 - Card C-21b: a contig's genomes are looked up at one row group per stage file (19 at 20 stages, *measured*); a
   per-release copy of the membership sorted by contig would make it one. Recommendation: not yet, until a search
   needs it.
 - Card W-22: the host's pack directory is the profile's `<tmp>/packs`; an explicit `packs:` key in the profile needs
   a change to `profile.py`. Recommendation: not needed now.
-- Card C-21f: whether gene calls become a function of the contig alone (DEC-27 deferred it to this measurement).
-  Under policy p3, 99.47% of P1's calls are unchanged (chromosomes 99.78%; contigs under 100 kb 86.14%), at +1.06%
-  CPU. Recommendation: keep today's calls for now and decide before S2C phase 2, when shared plasmids become common;
-  judging which calls are better needs a reference-CDS source in `sources.yaml`.
 - Card E-08: two real features lose by Rfam's own clans (small SRP to large SRP in *B. subtilis*; GlmY to GlmZ in
   *E. coli*), and the greedy rule differs from `cmscan`'s only in chains of four or more overlapping hits.
   Recommendation: accept.
-- Card 0-08b: Infernal's filters miss 6 of 239 tRNA loci on six genomes, 5 in the jumbo phage LAK-A1; turning them
-  off costs about 7,900 CPU-hours per 10 Gbp. Recommendation: a dedicated tRNA caller (tRNAscan-SE) for phage and
-  archaeal tRNAs, which needs a change to `container/environment.yml` (yours).
-- Card C-25: S2C phase 2 needs skani (not in the image) for its ANI-diversity selection, and a choice of annotation
-  (full Pfam about 2,500 CPU-hours, *derived*; or representatives only).
-- Card 0-10: where users' search results live (recommendation: one archive per run on `/stor`).
-- Whether to build PLSDB, and when (inputs fetched; 7,139 of its 72,556 records are already contigs of P1 to P6).
+- Card B-42 will propose the text of a decision row saying DEC-25's one-process exemption has ended.
 - The data root's README on the pod still says the repository is private.
-- Seven genomes of the 50 Gbp selection that NCBI does not serve (recommendation: leave them out).
 - Old search runs and packs under old `/stor` roots: keep or delete (nothing is deleted without you).
 
 Earlier items:
