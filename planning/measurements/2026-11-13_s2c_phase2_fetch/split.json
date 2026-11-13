@@ -1,0 +1,37 @@
+{
+ "batch_bp": 10000000000,
+ "batches": {
+  "B01": {
+   "bp": 9672488870,
+   "first": "GCA_000007325.1",
+   "genomes": 2365,
+   "last": "GCF_001886415.1",
+   "sha256": "78d52f4f0071c191c229d321a63dff96c7fd1e1763bc762713d3a5a0c96d3f54"
+  },
+  "B02": {
+   "bp": 9671298233,
+   "first": "GCF_001886435.1",
+   "genomes": 2268,
+   "last": "GCF_017311125.1",
+   "sha256": "3b5a3f9a8ee981d20cc56b1b503491c197b9d92a7e7dca044d19904ad8d6eaa3"
+  },
+  "B03": {
+   "bp": 9663315646,
+   "first": "GCF_017329545.1",
+   "genomes": 2183,
+   "last": "GCF_030012545.1",
+   "sha256": "63c9a4ed0101e25a69a2527c3e47ad2d020dd539abc54671af4c43ca5ede536b"
+  },
+  "B04": {
+   "bp": 9665462439,
+   "first": "GCF_030012565.1",
+   "genomes": 2052,
+   "last": "GCF_964212645.1",
+   "sha256": "eb3819a3f3b9c2575c5d21084540b9f50b2bd18c83c0db8b728ea49ae75d6fae"
+  }
+ },
+ "n": 4,
+ "rule": "B00: the phase-1 retries; then B(1 + floor(n * bp_before / total_bp)) over the rest sorted by accession, n = max(1, round(total_bp / batch_bp))",
+ "source": "rest.tsv",
+ "source_sha256": "f1b0ca84c6b38f1cd37119fe00afa5fddd5365a55724b2bbf388779967996d2f"
+}
