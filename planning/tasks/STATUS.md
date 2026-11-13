@@ -9,10 +9,10 @@ tests passed on the merged tree.
 
 Written so a new session can continue without the conversation that produced this file.
 
-**Mode: drain** (PI, 2026-11-13 about 09:30 CST): the agents that are running finish and are merged; nothing new is
-launched until the PI says so. Held: card E-11 and F-02 session 5.
+**Mode: running again.** The PI ended the drain of 09:30 CST at about 11:00 CST on 2026-11-13 ("resume"): up to four
+agents, working independently. Card E-11 still waits for the CRISPR example to land.
 
-**State on 2026-11-13 at 09:45 CST** (an earlier version of this block was stamped 10:30 by mistake).
+**State on 2026-11-13 at 11:10 CST.**
 - `main` equals `plan/task-cards` at `ad6fd97` (pull requests 3 and 4). The image built from it (commit `64f1bf0`, Actions
   run 43380434543: 1,720 passed, 22 skipped inside it) is on the pod as `/tmp/if2453/images/bio-box-test_64f1bf0.sif`
   (`ghcr.io/ifinkelstein/bio-box-test@sha256:cb7cd0f1e7146350576e4658de39290647d1cbba39494ce81ba072f3041707bb`) and
@@ -65,12 +65,14 @@ moves with any schema change). `main` is at pull request 4 (`64f1bf0` built the 
 on 2026-11-13: F-02 session 4, C-28, the README, C-27 step 4. The runbook and `scripts/pod_pytest.sh` still default
 to `bio-box-test_74b3e05.sif` until card C-29 merges.
 
-**Agents still running (they drain; nothing new is started).**
+**Agents running (four, the limit).**
 
 | Card | Branch | State | When it reports |
 |---|---|---|---|
-| C-29 switch the pod's tests and builds to the image of `64f1bf0` | `task/C-29` | started 2026-11-13 morning; running the suite in the new image | audit, merge; the running build keeps its old image until it is relaunched |
-| CRISPR-Cas and Tn7 neighbourhoods, a worked example after Peters et al. 2017 | `docs/example-crispr` | started 2026-11-13 morning; running on `rN.3` on the pod | audit, merge; then card E-11 when the drain ends |
+| C-29 switch the pod's tests and builds to the image of `64f1bf0` | `task/C-29` | started 2026-11-13 morning; running the suite in the new image (units `ci-C-29-*`) | audit, merge; the running build keeps its old image until it is relaunched |
+| CRISPR-Cas and Tn7 neighbourhoods, a worked example after Peters et al. 2017 | `docs/example-crispr` | started 2026-11-13 morning; running on `rN.3` on the pod (units `ex2*`) | audit, merge; then launch card E-11 |
+| F-02 session 5, spec §2.1 S6 to S11 (phages and CRISPR, fusions, call errors, assembly, contamination, emit) | `task/F-02-5` | started 2026-11-13 11:05 | audit, merge |
+| C-25 step 2, fetch the 8,868 remainder genomes in species with at most 20 (38.67 Gbp, *derived*) | `task/C-25-2` | started 2026-11-13 11:05; fetches into `/tmp/if2453/c25/genomes/`, archives beside the other phase-2 tar on `/stor`. These genomes are kept by either selection rule, so the fetch does not wait for the PI's answers on the ANI selection | audit, merge; then step 3 (representatives-only Pfam measured on one stage, DEC-32) |
 
 **On the pod** (wilkcomp02; account thread cap 40 by day, 56 at night, a total over everything we run; the PI keeps
 that cap). State on 2026-11-13 at about 11:00 CST:
