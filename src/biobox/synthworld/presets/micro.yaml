@@ -3,7 +3,8 @@
 # resolves the leaves to their values; the resolved mapping is what the world records and digests.
 # The backbone (species tree and taxonomy, gene order, strands, families, copies, groups, plasmids,
 # vehicles, hubs, decoys; sessions 1 and 2), sequences (session 3), and IGRs and RNA motifs (session 4)
-# are here. NOGD, phages, CRISPR, call errors and the assembly mix come in later sessions.
+# are here, and phages, prophages and CRISPR arrays (session 5). NOGD, fusions, call errors, the assembly mix
+# and contamination come in later sessions.
 name: {v: micro, tag: asserted, why: "synthworld_spec §5.1"}
 default_seed: {v: 20261112, tag: asserted, why: "§5.1: the default seed is fixed and committed"}
 
@@ -215,3 +216,59 @@ rna_motifs:
   local: {v: false, tag: asserted, why: "§2.5 cmemit -l"}
   rate_factor: {v: 0.04, tag: asserted, why: "§2.5 step 3: motif events per position (or pair) relative to the cassette's background rate; 0.1 gave a median divergence from the emission of 0.20 and a maximum of 0.70 (measured, wilkcomp02, 2026-11-12, micro default seed), too far for a conserved RNA"}
   synthetic: {v: {hairpins: [1, 3], stem: [4, 9], loop: [4, 8], linker: [2, 8], unpaired_concentration: 2.0, pair_concentration: 2.0}, tag: asserted, why: "synthetic hairpin chains of 20-110 nt"}
+
+phages:
+  # §2.1 S6 (card F-02 session 5; read by `mobile.build`, whose docstring states the model). The phage set is
+  # a world of its own (world/mobile/phages/): a second ZOMBI2 ordered run, one linear chromosome per phage
+  # and no groups, realized by the S3-S5 code with the host's HMM panel. Every other section of this preset
+  # applies to it as it stands, but rna_motifs (none: no phage family is in min_genomes phages).
+  count: {v: 12, tag: asserted, why: "§5.1: 12 phages"}
+  birth: {v: 1.0, tag: asserted, why: "as the host tree"}
+  death: {v: 0.3, tag: asserted, why: "as the host tree"}
+  genomes:
+    initial_families: {v: 60, tag: asserted, why: "§5.1: 40-80 genes each"}
+    topology: {v: linear, tag: asserted, why: "§2.1 S6: linear topology"}
+    # duplication, transfer and loss were scanned on the default seed (session 5, wilkcomp02, 2026-11-13, 8
+    # settings, backbone only): at 0.01, 0.05 and 0.1 one phage drifted to 31 genes (sizes 31-63); halved, the
+    # 12 phages hold 49-71 genes (mean 60.8) and 0.87 of the families are in two or more phages
+    duplication: {v: 0.005, tag: fitted, why: "per copy; phage genomes carry few paralogs; scanned (above)"}
+    transfer: {v: 0.025, tag: fitted, why: "per copy, extent 3: recombination among related phages (mosaicism); scanned (above)"}
+    loss: {v: 0.05, tag: fitted, why: "per copy, extent 2; scanned (above)"}
+    origination_per_root_family: {v: 0.015, tag: derived, why: "balances the others at 60 genes: loss 2 x 0.05 - duplication 2 x 0.005 - transfer 3 x 0.025 = 0.015 per gene per unit time"}
+    inversion: {v: 0.0, tag: asserted, why: "strand blocks come from the stem only"}
+    transposition: {v: 0.0, tag: asserted, why: "phage gene order is conserved in blocks"}
+    inversion_extent: {v: 10, tag: asserted, why: "a stem inversion flips a block of about 10 genes"}
+    transfer_to: {v: uniform, tag: asserted, why: "a small set of related phages"}
+  root_scramble:
+    stem_length: {v: 1.0, tag: asserted, why: "time units"}
+    inversion_passes: {v: 0.05, tag: asserted, why: "about 3 inversions of about 10 genes on a 60-gene root, so a phage has co-directional blocks on both strands (ZOMBI2 lays the root out on +)"}
+    transposition_passes: {v: 0.0, tag: asserted, why: "no transpositions: blocks stay"}
+
+prophages:
+  # §2.1 S6: some phages integrated in host clades (`mobile`).
+  count: {v: 4, tag: asserted, why: "§5.1: 4 of the 12 phages integrated as prophages"}
+  clade_size: {v: [2, 10], tag: asserted, why: "extant genomes below the integration branch; estimate"}
+  rate: {v: 0.05, tag: asserted, why: "per unit time after integration: substitution events per intergenic base and synonymous events per internal codon (proteins are kept); estimate"}
+
+crispr:
+  # §2.1 S6: CRISPR arrays next to a Cas operon, seeded at species-tree branches (`mobile`). The Cas operon is
+  # planted with the array as one inserted locus inherited down the clade (no ZOMBI2 group: see `mobile`).
+  arrays: {v: 10, tag: asserted, why: "§5.1: 10 arrays"}
+  clade_size: {v: [2, 12], tag: asserted, why: "extant genomes below the seeding branch; estimate"}
+  cas_roles: {v: [cas9, cas1, cas2, csn2], tag: asserted, why: "a type II-A operon (S. pyogenes order)"}
+  repeat_length: {v: 36, tag: asserted, why: "type II-A repeats of S. pyogenes are 36 nt"}
+  repeat_stem: {v: 6, tag: asserted, why: "the repeat's first bases and its last are reverse complements (a partly palindromic repeat)"}
+  spacer_length: {v: 30, tag: asserted, why: "type II-A spacers of S. pyogenes are 30 nt"}
+  leader_length: {v: 150, tag: asserted, why: "estimate"}
+  pam: {v: NGG, tag: asserted, why: "type II-A (SpCas9): 5'-NGG-3' directly 3' of the protospacer on the strand that reads as the spacer"}
+  initial_spacers: {v: 5, tag: asserted, why: "§5.1: 5-40 spacers per array; acquired at the seeding point"}
+  min_spacers: {v: 5, tag: asserted, why: "§5.1 floor: deletions never take an array below it"}
+  max_spacers: {v: 40, tag: asserted, why: "§5.1 ceiling: past it the trailer-end spacers are lost"}
+  acquisitions_mean: {v: 15, tag: asserted, why: "expected acquisitions along the mean path from the seeding point to the clade's genomes; estimate"}
+  deletions_per_spacer: {v: 0.3, tag: asserted, why: "expected deletion events starting at a spacer over the same mean path; estimate"}
+  deletion_mean_length: {v: 1.5, tag: asserted, why: "spacers per deletion, 1 + geometric; estimate"}
+  mismatch_weights: {v: [0.5, 0.2, 0.1, 0.1, 0.05, 0.05], tag: asserted, why: "§5.3 spacer mismatches 0-5"}
+  no_pam_fraction: {v: 0.1, tag: asserted, why: "§5.3 PAM presence: spacers taken where no PAM follows"}
+  decoy_fraction: {v: 0.05, tag: asserted, why: "§3.3 target_kind none: random spacers"}
+  target_max_mismatches: {v: 5, tag: asserted, why: "a window within this many mismatches of a spacer is a target (§3.3 rows per spacer x target)"}
+  locus_flank: {v: 200, tag: asserted, why: "bases of the Cas operon's cassettes at its two ends"}

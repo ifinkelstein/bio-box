@@ -23,7 +23,15 @@ The component paths in use (part of the output contract; renaming one changes ev
 - ``S5/emit/<link>``: a link's clade emissions (synthetic draws, or the ``cmemit --seed`` tool seed);
 - ``S5/origin/<genome_id>/<replicon>``: where a circular replicon is cut;
 - ``S5/tight/<up>/<down>``: not a stream but a BLAKE3 hash of ``<seed>/S5/tight/<up>/<down>`` (families in
-  transcription order), the background tight-junction draw of §2.4.
+  transcription order), the background tight-junction draw of §2.4;
+- ``S6/phages/world``: the phage set's master seed (its first two uint32 words); the phage set's own streams
+  are these paths under that seed;
+- ``S6/placement``: which phages are integrated, and per prophage and array its ranked branches, insertion
+  points along them and strand; ``S6/anchor/<item>``: the item's anchor family;
+- ``S6/prophage/<prophage_id>``: a prophage's evolution down its clade;
+- ``S6/crispr/<array_id>``: an array's repeat, leader, spacers and their acquisition and deletion; its Cas
+  families use ``S3/family/<id>``, ``S4/family/<id>`` and ``S5/family/<id>`` with family numbers 900000 + 10 a
+  + k (`mobile`).
 """
 
 from __future__ import annotations

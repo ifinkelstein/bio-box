@@ -829,7 +829,9 @@ def build(world, *, pfam_hmm=None) -> SeqWorld:
     if tmp.exists():
         shutil.rmtree(tmp)
     tmp.mkdir()
-    panel = profiles.panel(cfg["profiles"], seed, pfam_hmm)
+    # a phage set (`backbone.build_phages`) draws its panel from the host world's seed, so the two share it
+    panel_seed = int(bb.get("panel_seed", seed))
+    panel = profiles.panel(cfg["profiles"], panel_seed, pfam_hmm)
     lin = lineage_model(backbone.species_branches(world), cfg, seed)
     genome_of = {}
     with open(world / "backbone" / "genomes.tsv", newline="", encoding="utf-8") as fh:
@@ -895,6 +897,8 @@ def build(world, *, pfam_hmm=None) -> SeqWorld:
            "versions": versions, "stream_paths": ["S3/panel", "S3/panel/<NAME>", "S3/family/<family_id>",
                                                   "S4/lineages", "S4/family/<family_id>"],
            "n_genes": n_genes, "files": files, "digest": digest}
+    if "panel_seed" in bb:
+        doc["panel_seed"] = panel_seed
     (tmp / "sequences.json").write_text(json.dumps(doc, indent=1, sort_keys=True) + "\n", encoding="utf-8")
     tmp.rename(out)
     return read(world, genes=False)
@@ -938,7 +942,7 @@ class SequenceModel:
 def model(world, *, pfam_hmm=None) -> SequenceModel:
     doc = json.loads((Path(world) / "sequences" / "sequences.json").read_text(encoding="utf-8"))
     cfg, seed = doc["sequences_preset"], int(doc["seed"])
-    return SequenceModel(cfg, seed, profiles.panel(cfg["profiles"], seed, pfam_hmm))
+    return SequenceModel(cfg, seed, profiles.panel(cfg["profiles"], int(doc.get("panel_seed", seed)), pfam_hmm))
 
 
 class Placed(NamedTuple):
