@@ -863,7 +863,7 @@ def figure_plan(gid: str, group_loci: list[Locus], kept: list[Leaf], merges, tre
         legend.append((colours[k], f"{names.get(k, k[:8])}  {round(100 * shares[k])}%"))
     if "" in used:
         legend.append((FIGURE_GREY, f"other families (each in < {FIGURE_MIN_SHARE:.0%} of the group's loci"
-                                    + (f", weighted by {weight})" if weight else ")")))
+                                    + (", weighted)" if weight else ")")))
     if None in used:
         legend.append((FIGURE_NONE, f"no id at level {facts['level']} (never shared)"))
     n_loci = len(group_loci)
@@ -879,11 +879,11 @@ def figure_plan(gid: str, group_loci: list[Locus], kept: list[Leaf], merges, tre
     if weight or fallback:
         extra = []
         if weight:
-            extra.append(f"--colour-weight {weight}: each locus weighs 1/(the group's loci of its {weight}), so "
-                         "near-identical loci count once in the %")
+            extra.append(f"--colour-weight {weight}: a locus weighs 1/(loci of its {weight}) in the %, so "
+                         "near-identical loci count once")
         if fallback:
-            extra.append("--colour-fallback pfam: a grey cluster's gene takes its Pfam architecture's colour when "
-                         f"that architecture is in >= {FIGURE_MIN_SHARE:.0%}")
+            extra.append(f"--colour-fallback pfam: a grey cluster takes its Pfam architecture's colour if that is in "
+                         f">= {FIGURE_MIN_SHARE:.0%}")
         title.append("; ".join(extra))
     if len(shown) == len(kept):
         title.append(f"rows: all {len(kept)} leaves in the tree, in tree order; each row draws its leaf's first locus "

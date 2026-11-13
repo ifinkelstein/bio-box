@@ -1,0 +1,177 @@
+{
+ "run": "cas7f_all_nr50",
+ "args": [
+  "nbr",
+  "flanks",
+  "47db59881f7779cb86d7e35984b06705",
+  "--root",
+  "/tmp/if2453/r10/root",
+  "--profile",
+  "/tmp/if2453/w31/tree/profiles/wilkcomp02.yaml",
+  "--runs",
+  "/tmp/if2453/ex2/rN.3-b/runs",
+  "--threads",
+  "2",
+  "--window",
+  "6g",
+  "--level",
+  "nr50",
+  "--group-by",
+  "none"
+ ],
+ "loci": 157,
+ "groups": 1,
+ "classes": {
+  "cast": 19,
+  "phage": 46,
+  "prok": 92
+ },
+ "cli_types_fixed": 108
+}
+{
+ "run": "cas7f_all_pfam",
+ "args": [
+  "nbr",
+  "flanks",
+  "47db59881f7779cb86d7e35984b06705",
+  "--root",
+  "/tmp/if2453/r10/root",
+  "--profile",
+  "/tmp/if2453/w31/tree/profiles/wilkcomp02.yaml",
+  "--runs",
+  "/tmp/if2453/ex2/rN.3-b/runs",
+  "--threads",
+  "2",
+  "--window",
+  "6g",
+  "--level",
+  "pfam",
+  "--group-by",
+  "none"
+ ],
+ "loci": 157,
+ "groups": 1,
+ "classes": {
+  "cast": 19,
+  "phage": 46,
+  "prok": 92
+ },
+ "cli_types_fixed": 152
+}
+{
+ "run": "rnap_nr50",
+ "args": [
+  "nbr",
+  "flanks",
+  "599bea5d471c84759a0eec02e2ca9225",
+  "--root",
+  "/tmp/if2453/r10/root",
+  "--profile",
+  "/tmp/if2453/w31/tree/profiles/wilkcomp02.yaml",
+  "--runs",
+  "/tmp/if2453/w25/runs",
+  "--threads",
+  "2",
+  "--window",
+  "5g",
+  "--level",
+  "nr50"
+ ],
+ "loci": 2581,
+ "groups": 432,
+ "classes": {
+  "phage": 2555,
+  "prok": 26
+ },
+ "cli_types_fixed": 598
+}
+{
+ "run": "tniq_all_nr50",
+ "args": [
+  "nbr",
+  "flanks",
+  "ef8d86b8e0e4b756a8b1d63d9eb92aab",
+  "--root",
+  "/tmp/if2453/r10/root",
+  "--profile",
+  "/tmp/if2453/w31/tree/profiles/wilkcomp02.yaml",
+  "--runs",
+  "/tmp/if2453/ex2/rN.3-b/runs",
+  "--threads",
+  "2",
+  "--window",
+  "10g",
+  "--level",
+  "nr50",
+  "--group-by",
+  "none"
+ ],
+ "loci": 635,
+ "groups": 1,
+ "classes": {
+  "cast": 33,
+  "prok": 602
+ },
+ "cli_types_fixed": 567
+}
+{
+ "run": "tniq_cas_pfam",
+ "args": [
+  "nbr",
+  "flanks",
+  "--anchors-file",
+  "/tmp/if2453/ex2/rN.3-b/uids_tniq_cas.txt",
+  "--release",
+  "rN.3",
+  "--tape-version",
+  "t-ca596dd85040",
+  "--root",
+  "/tmp/if2453/r10/root",
+  "--profile",
+  "/tmp/if2453/w31/tree/profiles/wilkcomp02.yaml",
+  "--runs",
+  "/tmp/if2453/ex2/rN.3-b/runs",
+  "--threads",
+  "2",
+  "--window",
+  "10g",
+  "--level",
+  "pfam",
+  "--group-by",
+  "none"
+ ],
+ "loci": 28,
+ "groups": 1,
+ "classes": {
+  "cast": 27,
+  "prok": 1
+ },
+ "cli_types_fixed": 28
+}
+{
+ "run": "tniq_nr50",
+ "args": [
+  "nbr",
+  "flanks",
+  "ef8d86b8e0e4b756a8b1d63d9eb92aab",
+  "--root",
+  "/tmp/if2453/r10/root",
+  "--profile",
+  "/tmp/if2453/w31/tree/profiles/wilkcomp02.yaml",
+  "--runs",
+  "/tmp/if2453/ex2/rN.3-b/runs",
+  "--threads",
+  "2",
+  "--window",
+  "10g",
+  "--level",
+  "nr50"
+ ],
+ "loci": 635,
+ "groups": 543,
+ "classes": {
+  "cast": 33,
+  "prok": 602
+ },
+ "cli_types_fixed": 614
+}
