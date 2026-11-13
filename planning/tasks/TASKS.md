@@ -730,11 +730,17 @@ Amended 2026-11-12 (DEC-29): step (2) narrows the exemption instead of removing 
 Accept: the measurement file; the equality; then the removal.
 
 ### W-27 The synteny figure of `nbr flanks`
-**M** · Depends: W-25 (merged) · waits for the PI: matplotlib is in neither `uv.lock` nor the image
+**M** · Depends: W-25 (merged) · approved by the PI 2026-11-12: add matplotlib (`uv add matplotlib`, and one line in `container/environment.yml`, which the PI named for this card; the image is rebuilt at the next merge to `main`)
 Files: `src/biobox/search/flanks.py`, `src/biobox/cli.py` (`nbr flanks --figure`), `pyproject.toml` and `uv.lock` (`uv add matplotlib`, once the PI approves; `container/environment.yml` is the PI's), `GUIDE.md`, `AGENT_GUIDE.md`, tests
 Why: card W-25 writes every table the figure needs (each leaf's order in the tree, the tokens per position, context types, metadata) and no figure, because the plotting library is not a locked dependency.
 Do, test first: one figure per group (SVG and PDF, fixed metadata so the bytes carry no date): genes as arrows coloured by family, families below a set share in grey, rows in tree order with the tree beside them, columns for context type, genome kind, stage, taxonomy and the anchor's NR90; a bound on rows per page (say what happens above it). Byte-identical output across runs, thread counts and hash seeds. Also check that the GFF export loads in LoVis4u and clinker if either can be run off the pod, and say so if not.
 Accept: the tests; the figure of the T7-like group of `rN.3`'s RNA polymerase search in `planning/measurements/`.
+
+### E-09 Freeze `prok-2` as the ncRNA model set (DEC-30)
+**M** · Depends: E-07, E-08, 0-08a (merged) · DEC-28, DEC-30
+Files: `src/biobox/l1/rfam_sets/prok-2.tsv` (new), `src/biobox/l1/ncrna.py` (`DEFAULT_SET`, `FROZEN_SETS`, docstrings), `src/biobox/stage.py` and `src/biobox/cli.py` only where they name the default set or its shard rate, `RUNBOOK.md`, tests
+Do, test first: `prok-2.tsv` is `planning/design/0-08a_prok-2_proposed.tsv` with a header that says frozen (770 models, 34 whole genome; check every accession is in Rfam 15.1 and that `prok-1`'s 588 rows are in it with their flags unchanged, by a test that reads both files); its sha256 goes into `FROZEN_SETS`; `DEFAULT_SET` becomes `prok-2`, so the producer name carries `prok2`; `prok-1` stays a frozen set that still loads and gives its old producer name (a stage scanned with it is still read). The provenance check accepts the new producer name. The shard planner's rate: the set is 18% dearer (*derived*, 299.7 against 254.5 CPU-hours per 10 Gbp), so shards cut for `prok-1` would run 18% longer: scale the planning rate by the set (state the formula) so a shard stays inside 80% of the budget; do not change `prok-1`'s. Then measure on the pod (Pod: yes, read-only on the root, into scratch `/tmp/if2453/e09`): the producer with `prok-2` on the 8 genomes of measurement 0-09c, as cards E-07 and E-08 did: hits, families, clan losers, CPU-hours per 10 Gbp against the derived 299.7 (stop and report if it misses by more than 20%), and that every `prok-1` feature is still a feature (or say which clan competition now takes).
+Accept: the tests; the measurement file.
 
 ### W-26 An accession lookup table, before the first stage of a million contigs
 **M** · Depends: W-15 (measured) · not needed for `rM.2`; do it with the first draft-assembly or metagenome stage

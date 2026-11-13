@@ -420,10 +420,9 @@ probed by hand on the pod).
 ## Open items for the PI
 
 Added 2026-11-12, recommendation first:
-- Card 0-08a (`planning/measurements/2026-11-12_rfam_sample.md`): adopt `prok-2` (770 models, 299.7 CPU-hours per 10 Gbp,
-  +18%)? On 100 prokaryotes and 300 phages `prok-1` finds about 92% of the loci, and the long tail does not saturate (the
-  100th genome still adds 1.9 families). Recommendation: adopt `prok-2`, as DEC-28 already says, knowing it is a floor.
-- Card W-25: add matplotlib to `uv.lock` and the image for the synteny figure (card W-27; recommendation: yes); confirm the
+- Done 2026-11-12: `prok-2` adopted (DEC-30; card E-09 freezes it).
+- Done 2026-11-12: matplotlib approved for the synteny figure (card W-27).
+- Card W-25: confirm the
   defaults of `nbr flanks`; keep the rule that an unannotated gene is a token of its own at the pfam level (recommendation:
   keep, and use nr50 on phages).
 - Card C-25: skani for the S2C selection. Without an ANI step the 20 genomes kept in each of 243 heavily sequenced species are
