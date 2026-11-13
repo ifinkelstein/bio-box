@@ -9,7 +9,9 @@
 # --golden also sets BIOBOX_GOLDEN_DIR, so ring R3 runs.
 # --shards N (only without explicit test paths) splits the test files over N pytest processes
 #   that run at once; each prints its own summary line and the script fails if any shard fails.
-#   The whole suite takes about 13 minutes in one process on the pod and about 3 with 8 shards.
+#   Timing (measured, wilkcomp02, 2026-11-13, card C-29): 2 shards of 2 threads took 3,047 s and 4,761 s
+#   (51 and 80 minutes) while a 32-thread build ran beside them. The shard count must fit the account's
+#   thread cap (AGENTS.md §7.2, a total over everything the account runs); 8 shards do not fit by day.
 # The image is the test image built from `main` at 64f1bf0 (card C-29): the locked Python environment (with
 #   matplotlib and zombi2), MMseqs2, HMMER, Infernal and skani, so tests that skip on a laptop run here. Only the
 #   tree's src/ goes on PYTHONPATH: a directory put before it would shadow the image's locked packages.

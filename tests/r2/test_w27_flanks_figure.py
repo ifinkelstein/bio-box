@@ -30,8 +30,9 @@ from biobox.search import flanks
 pytestmark = [pytest.mark.r2, pytest.mark.covers("W-27")]
 
 HAS_MPL = importlib.util.find_spec("matplotlib") is not None
-needs_mpl = pytest.mark.skipif(not HAS_MPL, reason="matplotlib is not importable here (the pod image predates card "
-                                                   "W-27); GitHub Actions installs it from uv.lock and runs this test")
+needs_mpl = pytest.mark.skipif(not HAS_MPL, reason="matplotlib is not importable here (the image built from "
+                                                   "`main` has it; where it is absent, for example on a laptop, the test skips); "
+                                                   "GitHub Actions installs it from uv.lock and runs this test")
 
 _spec = importlib.util.spec_from_file_location("w25_world_for_w27", Path(__file__).with_name("test_w25_flanks.py"))
 w25 = importlib.util.module_from_spec(_spec)
