@@ -30,8 +30,9 @@ COPY --chown=$MAMBA_USER:$MAMBA_USER scripts ./scripts
 COPY --chown=$MAMBA_USER:$MAMBA_USER golden.yaml golden.lock.yaml ./
 # R0 checks test IDs against the plan documents
 COPY --chown=$MAMBA_USER:$MAMBA_USER 00-spec.md PLAN.md STAGES.md ./
-# R0 checks the runbook's commands against the parsers
-COPY --chown=$MAMBA_USER:$MAMBA_USER RUNBOOK.md ./
+# R0 checks the runbook's and the guides' commands against the parsers (tests/r0/test_image_files.py checks
+# that every top-level file a test reads is copied here)
+COPY --chown=$MAMBA_USER:$MAMBA_USER RUNBOOK.md GUIDE.md AGENT_GUIDE.md ./
 COPY --chown=$MAMBA_USER:$MAMBA_USER planning ./planning
 # the host-profile tests read the shipped profile
 COPY --chown=$MAMBA_USER:$MAMBA_USER profiles ./profiles
