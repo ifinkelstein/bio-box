@@ -714,8 +714,9 @@ area `$DURABLE/results` (real: `/stor/work/Wilke/if2453/all-the-data/results`), 
 - `results archive RUN --with DIR ...` writes the run's directory (its record and tables) and each
   output named with `--with` (the `search hmm` DIR, the `nbr --format tsv` DIR, an `nbr flanks` DIR,
   a lone `hits.tsv`) as one tar, with one manifest line, into the spool `$BBTMP/results/spool/` on
-  local disk. Nothing on disk links a run to its outputs (the run's record holds the worker's command
-  line, not yours), so name each one; a DIR whose `recipe.yaml` is not the run's recipe is another
+  local disk. Since card W-29 an output directory written from a run holds a `RUN` file (the run id and
+  the release), and `--under DIR` finds every such directory up to four levels below DIR, so naming each
+  one is needed only for single files and for directories written before that card; a DIR whose `recipe.yaml` is not the run's recipe is another
   run's and is refused. The same run archived again is a no-op (exit 0, said on stderr); with other
   files or outputs it is refused (exit 2), naming both sha256. The tar has sorted names, mtime 0, no
   owner, no host or path, and the run's own date (`submitted_at`) in its manifest line: the same run
@@ -894,7 +895,7 @@ exemption; the fixture's clustering is far under 300 CPU-minutes). Appendix B li
 | Search packs and runs inside an old root | a root written before card W-03 may hold `search_pack/` and `search/` (the pack and runs were then written into the root). Nothing reads or writes them now; the manifest leaves them out (`catalog.EXCLUDED_TREES`). Build the pack again into the pack directory (section 7) | W-03, W-13 |
 | No detached search in a unit | `search run` without `--wait` in a `pod_run.sh` unit is refused (exit 2): the unit would stop the detached runner when the command returns (section 7). Use `--wait`; `search status` and `search cancel` work on a `--wait` run from another shell | W-13 |
 | `pod_run.sh` and the profile | `pod_run.sh --profile` sets the unit's limits only; it does not pass the profile to `bio-box` (no `BIOBOX_PROFILE` in the image). Give `bio-box` its own `--profile`, or the pack, runs and work directories (section 7) | W-03, W-13 |
-| A run's outputs are named by hand | `results archive` keeps only the outputs given with `--with`: the run's record holds the worker's command line (`runner.run` reuses the name `argv` for it), not the `search hmm` or `nbr` command that wrote the outputs, and the exports carry no run id. A DIR whose `recipe.yaml` is not the run's is refused | W-28 (no card yet for the record's argv) |
+| Older outputs are named by hand | An output directory written before card W-29 has no `RUN` file, and neither has a lone file such as `hits.tsv`: give those to `results archive` with `--with` (a DIR whose `recipe.yaml` is not the run's is refused). Directories written since are found with `--under`, and the run's record holds the user's command line (`limits_json`, key `command`) | W-28, W-29 |
 | The durable storage is not there yet | `/stor/work/Wilke/if2453/all-the-data` (profile `durable`) does not exist on the pod (2026-11-12); `results` with the real profile exits 2 until the PI makes it. The image sees it only with `--bind` | W-28 |
 | Spooled runs are on `/tmp` | until a flush reaches the 64 MiB floor, a run's archive is only in the spool on local disk, which a reboot may clear, as it clears the run itself | W-28 |
 | `search hmm --positive` reads all contig labels | the accession or header of the positive control is looked up in every row group of `contig_label`: no table is sorted by accession, and a header substring cannot prune. The contig's genes are then read from its tape by contig uid, which prunes. Not measured on a large release | W-07 |

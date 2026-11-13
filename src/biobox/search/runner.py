@@ -43,6 +43,10 @@ A run is a recorded job:
      `peak_rss_bytes` is the worker's own (card W-14: run-step's measuring helper), also for a
      worker killed with its helper at the wall timeout: the helper's last sample (card C-16).
      Where it came from (`runstep.step_peak`) is `peak_rss_source` in `limits_json`.
+     The command line the user typed (card W-29) is `command` in `limits_json`, as the CLI gave it
+     (`["bio-box", *arguments]`); a submitted run's detached runner is given it in `BIOBOX_USER_COMMAND`.
+     The record's `argv` is the worker's command, as before. The line may hold absolute paths: it is a record of
+     a run (which already holds its host and start time), not a release file, and no manifest-listed file changes.
      No process of a run outlives its runner: the runner's death kills the helper
      (`_die_with_runner`), and the helper's kills the worker (PR_SET_PDEATHSIG, card C-16).
   5. The run directory is written next to its final place and renamed in.
@@ -553,6 +557,9 @@ def _status(rc: int, timed_out: bool, cancelled: bool, out: Path, stderr: str,
     return status, error, (res if res is not None and not (timed_out or cancelled) else {})
 
 
+USER_COMMAND_ENV = "BIOBOX_USER_COMMAND"  # card W-29: the user's command line, for a submitted run's detached runner
+
+
 def new_run_id(recipe_hash: str, release: str, pack_id: bytes, submitted: datetime) -> bytes:
     return blake3(f"{recipe_hash}|{release}|{pack_id.hex()}|{submitted.isoformat()}|".encode()
                   + os.urandom(8)).digest(length=16)
@@ -562,7 +569,7 @@ def run(root: Path, recipe_src: Path | str, release: str, *, limits: Limits = Li
         work_base: Path | None = None, argv: list[str] | None = None, run_id: bytes | None = None,
         fault: str | None = None, gene_call_version: str = GENE_CALL_VERSION, keep_work: bool = False,
         tape_version: str | None = None, packs: Path | None = None, runs: Path | None = None,
-        out: Path | None = None, pending: bool = False, on_pending=None) -> dict:
+        out: Path | None = None, pending: bool = False, on_pending=None, command: list[str] | None = None) -> dict:
     """Run one recipe to completion; returns the search_run row. Refusals raise RecipeError.
 
     The pack is read from the pack directory `packs` (default `default_pack_base()`); the run is written to
@@ -576,6 +583,7 @@ def run(root: Path, recipe_src: Path | str, release: str, *, limits: Limits = Li
     `on_pending(run_id_hex, path)` is called once the record is written. The runner `submit` starts runs
     without it: `submit` writes that record itself."""
     system = platform.system()
+    user_argv = argv  # `argv` is reassigned to the worker's command below
     cap = memory_cap(limits, system=system)  # refused (card C-07) before anything is read or recorded
     root = Path(root).resolve()
     packs = _outside(root, Path(packs) if packs is not None else default_pack_base(), "the pack directory")
@@ -656,7 +664,7 @@ def run(root: Path, recipe_src: Path | str, release: str, *, limits: Limits = Li
         (work / "job.json").write_text(json.dumps(job, sort_keys=True))
         inherited = cap if cap["how"] == "inherited" else None
         cap_bytes = inherited["memory_max_bytes"] if inherited else None
-        argv, kind = worker_argv(work / "job.json", limits, inherited=inherited, system=system)
+        argv, kind = worker_argv(work / "job.json", limits, inherited=inherited, system=system)  # the worker's
         peak_file = work / "peak.json"  # the worker's own peak (card W-14), not `wait4`'s on a fork of this runner
         launch, _ = worker_argv(work / "job.json", limits, inherited=inherited, system=system, peak_file=peak_file)
         env = worker_env(limits, kind, system, os.environ, cap_bytes=cap_bytes)
@@ -699,7 +707,10 @@ def run(root: Path, recipe_src: Path | str, release: str, *, limits: Limits = Li
         "controls_json": json.dumps(result["controls"], sort_keys=True, default=str) if result.get("controls") else None,
         "warnings_json": json.dumps(result.get("warnings", [])) if result else None,
         # card C-16: where `peak_rss_bytes` came from (`runstep.step_peak`), here, as search_run has no column for it
-        "limits_json": json.dumps({**asdict(limits), "mem_cap": cap, "peak_rss_source": rss_source}, sort_keys=True),
+        # card W-29: and the user's command line (`command`), which `argv` above is not once the worker is started
+        "limits_json": json.dumps({**asdict(limits), "mem_cap": cap, "peak_rss_source": rss_source,
+                                   "command": list(command if command is not None else user_argv or [])},
+                                  sort_keys=True),
         "error": error,
         "seed_json": json.dumps(res["seed"], sort_keys=True),
     }
@@ -742,9 +753,10 @@ def _publish(final: Path, row: dict, out: Path, with_outputs: bool) -> None:
 
 def submit(root: Path, recipe_path: Path, release: str, limits: Limits = Limits(),
            work_base: Path | None = None, fault: str | None = None, *, packs: Path | None = None,
-           runs: Path | None = None, out: Path | None = None) -> str:
+           runs: Path | None = None, out: Path | None = None, command: list[str] | None = None) -> str:
     """Check the recipe now, run it detached, return the run_id at once. `packs`, `runs`, `out` and
-    `work_base` as for `run`; the pending record is `pending_path` of the run's directory."""
+    `work_base` as for `run`; the pending record is `pending_path` of the run's directory. `command` (card W-29) is
+    the user's command line, handed to the detached runner in `BIOBOX_USER_COMMAND` for its record."""
     memory_cap(limits)  # card C-07: refuse here, before a runner is started or anything is recorded
     root = Path(root).resolve()
     packs = _outside(root, Path(packs) if packs is not None else default_pack_base(), "the pack directory")
@@ -778,10 +790,11 @@ def submit(root: Path, recipe_path: Path, release: str, limits: Limits = Limits(
     work.mkdir(parents=True, exist_ok=True)
     lock_path = work / LOCK_NAME
     fd = os.open(lock_path, os.O_RDWR | os.O_CREAT, 0o644)
+    env = {**os.environ, USER_COMMAND_ENV: json.dumps(list(command))} if command is not None else None
     try:
         fcntl.flock(fd, fcntl.LOCK_EX)
         proc = subprocess.Popen(cmd, stdout=subprocess.DEVNULL, stderr=open(info.with_suffix(".stderr"), "w"),
-                                start_new_session=True, pass_fds=(fd,))
+                                start_new_session=True, pass_fds=(fd,), env=env)
     finally:
         os.close(fd)  # the runner's copy keeps the lock
     _write_pending(final, run_id.hex(), proc.pid, lock_path)  # our unreaped child: its pid cannot be reused yet

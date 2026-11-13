@@ -193,9 +193,14 @@ the origin.
 
 `--out` and the run are on the pod's `/tmp`, which a reboot may clear. `results` keeps a finished run on the pod's
 permanent storage (card W-28, DEC-33; RUNBOOK section 7, *Keep the results*). `results archive` packs the run and
-every output directory you name with `--with` (the `--out` of `search hmm`, an `nbr flanks` directory) into one
-archive in a waiting area on `/tmp`; name each one, since nothing on disk ties an output to its run, and a
-`search hmm` directory whose `recipe.yaml` is another run's is refused. The permanent storage takes only files of
+its output directories into one archive in a waiting area on `/tmp`. Every directory `search hmm`, `nbr --out DIR` and
+`nbr flanks --out DIR` write holds a small file `RUN` (card W-29: two lines, `run<TAB>ID` and `release<TAB>R`, no path
+or date), so `--under DIR` finds them: every directory in DIR, or up to 4 levels below it, whose `RUN` names this run
+(repeat `--under` for more places). `--with PATH` still names an output by hand: needed for a `hits.tsv` written alone,
+for outputs written before card W-29 (they have no `RUN`), and for a directory outside every `--under`. A directory
+whose `RUN` names another run, or a `search hmm` directory whose `recipe.yaml` is another run's, is refused. The run's
+record keeps the command you typed (`command` in its `limits_json`; its `argv` is the worker's). The same directories
+give the same archive however they were given. The permanent storage takes only files of
 at least 64 MiB (AGENTS 7.3), so the operator's `results flush` moves waiting runs there together once they add up
 to that. A run alone is usually smaller: the worked example's run with its `search hmm` directory is 12,492,800
 bytes, with its five `nbr flanks` directories 164,618,240 (*measured*, RUNBOOK Appendix A, card W-28). Until a
@@ -206,7 +211,7 @@ permanent storage, `/stor/work/Wilke/if2453/all-the-data`, does not exist yet (2
 these commands fail at the image's start, which cannot bind a missing directory.
 
 ```bash
-bash "$TREE/scripts/pod_run.sh" --profile "$PROFILE" --image "$IMAGE" --digest "$DIGEST" --mem 8G --threads 1 --bind /tmp/if2453 --bind /stor/work/Wilke/if2453/all-the-data --env PYTHONPATH="$PYTHONPATH_POD" pi-keep results archive "$RUN" --profile "$PROFILE" --with "$WORK/rnap" --with "$WORK/rnap_flanks"
+bash "$TREE/scripts/pod_run.sh" --profile "$PROFILE" --image "$IMAGE" --digest "$DIGEST" --mem 8G --threads 1 --bind /tmp/if2453 --bind /stor/work/Wilke/if2453/all-the-data --env PYTHONPATH="$PYTHONPATH_POD" pi-keep results archive "$RUN" --profile "$PROFILE" --under "$WORK"
 bash "$TREE/scripts/pod_run.sh" --profile "$PROFILE" --image "$IMAGE" --digest "$DIGEST" --mem 8G --threads 1 --bind /tmp/if2453 --bind /stor/work/Wilke/if2453/all-the-data --env PYTHONPATH="$PYTHONPATH_POD" pi-list results list --profile "$PROFILE"
 bash "$TREE/scripts/pod_run.sh" --profile "$PROFILE" --image "$IMAGE" --digest "$DIGEST" --mem 8G --threads 1 --bind /tmp/if2453 --bind /stor/work/Wilke/if2453/all-the-data --env PYTHONPATH="$PYTHONPATH_POD" pi-get results get "$RUN" --profile "$PROFILE" --out "$WORK/rnap_back"
 ```

@@ -66,6 +66,8 @@ token: its id at the level (NR50 or NR90 cluster uid of the release, or the prot
 A gene with no id at the level is a token of its own (~ and its feature_uid): it is never shared, so unannotated
 neighbours never make two loci similar. A side is cut when a linear contig ends inside the window.
 
+RUN                 the run's id and its release, `key<TAB>value` per line (written when the anchors are a run;
+                    `bio-box results archive --under` finds this directory by it).
 groups.tsv          # key<TAB>json facts of the run, then one row per group: the anchor cluster (or all), its loci,
                     its leaves (loci with equal token lists and cuts collapse into one leaf), the leaves in the tree,
                     sampled = more leaves than --max-loci (the leaves with the least names are in the tree), and the
@@ -1043,9 +1045,10 @@ def write(out_dir: Path, loci: list[Locus], facts: dict, *, window: int, group_b
 def run(root: Path, anchors: set[bytes], out: Path, *, release: str, files, window: int, level: str, group_by: str,
         distance: str, cut: float, max_leaves: int, export_gff: bool, library: str | None, gene_call_version: str,
         tape_version: str | None, threads: int | None = None, tmp=None, figure: bool = False,
-        figure_rows: int = DEFAULT_FIGURE_ROWS) -> tuple[dict, list[str]]:
+        figure_rows: int = DEFAULT_FIGURE_ROWS, run_file: tuple[str, str] | None = None) -> tuple[dict, list[str]]:
     """Load, group and write into `out` (new or empty, outside the root): filled under a temporary name beside it and
-    renamed into place. Returns (counts, notes)."""
+    renamed into place. Returns (counts, notes). `run_file` (card W-29), the (run id, release) the anchors came from,
+    is written as `RUN` in `out`; None when the anchors were given as protein uids."""
     loci, facts = load_loci(root, anchors, window, release=release, files=files, level=level, library=library,
                             gene_call_version=gene_call_version, tape_version=tape_version, threads=threads, tmp=tmp)
     facts.update({"release": release, "level": level, "n_anchor_proteins_given": len(anchors)})
@@ -1057,6 +1060,8 @@ def run(root: Path, anchors: set[bytes], out: Path, *, release: str, files, wind
         counts = write(staging, loci, facts, window=window, group_by=group_by, distance=distance, cut=cut,
                        max_leaves=max_leaves, export_gff=export_gff, notes=notes, figure=figure,
                        figure_rows=figure_rows)
+        if run_file is not None:
+            export.write_run_file(staging, *run_file)
         os.replace(staging, out)  # an empty `out` is replaced; one that gained files meanwhile is not (OSError)
     finally:
         shutil.rmtree(staging, ignore_errors=True)

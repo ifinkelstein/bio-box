@@ -173,6 +173,8 @@ hits.tsv        one row per gene of a hit protein.
 hits.faa        one record per hit protein: >protein_uid, then length, scores, n_genes and one example gene.
 neighbors.tsv   which protein families and clusters sit next to the hits (one table per level).
 loci/           one table per anchor locus (a hit gene and the genes around it), locus_<accession>_<feature_uid>.tsv.
+RUN             the run's id and its release, `key<TAB>value` per line (`bio-box results archive --under` finds this
+                directory by it).
 
 Conventions, the same in every file
   Coordinates (start, end) are 0-based and half-open: the first base of a contig is 0 and `end` is the first base
@@ -826,6 +828,42 @@ def contig_dims(root: Path, release: str | None, contigs: set[bytes], manifest: 
     for cu, gs in genomes.items():
         out.setdefault(cu, {"genome_uid": None, "tier": None, "is_circular": None})["genome_uids"] = sorted(gs)
     return out
+
+
+RUN_FILE = "RUN"
+
+
+def run_file_text(run_id: str, release: str) -> str:
+    """The text of a `RUN` file (card W-29): the run id and the release, one `key<TAB>value` per line, nothing else
+    (no path, host or date), so that the file is the same wherever and whenever the export is written."""
+    return f"run\t{run_id}\nrelease\t{release}\n"
+
+
+def parse_run_file(text: str) -> tuple[str, str]:
+    """(run id, release) of a `RUN` file's text; ValueError when it is not exactly what `run_file_text` writes."""
+    rows = text.split("\n")
+    if len(rows) == 3 and rows[2] == "":
+        k = [r.split("\t") for r in rows[:2]]
+        if [len(x) for x in k] == [2, 2] and k[0][0] == "run" and k[1][0] == "release" and k[0][1] and k[1][1]:
+            return k[0][1], k[1][1]
+    raise ValueError("not a RUN file: expected the two lines `run<TAB>RUN_ID` and `release<TAB>RELEASE`")
+
+
+def write_run_file(directory: Path, run_id: str, release: str) -> Path:
+    """Write `RUN` into `directory` (card W-29). A `RUN` already there that names this run and release is left as it
+    is; one that names another is ValueError, before anything is written."""
+    path = Path(directory) / RUN_FILE
+    want = run_file_text(run_id, release)
+    if path.is_file():
+        try:
+            have = parse_run_file(path.read_text(encoding="utf-8"))
+        except (ValueError, UnicodeDecodeError) as e:
+            raise ValueError(f"{path} is not a RUN file ({e})") from None
+        if have != (run_id, release):
+            raise ValueError(f"{directory} holds a RUN file that names run {have[0]} (release {have[1]}), not run "
+                             f"{run_id} (release {release}): it is another run's output directory")
+        return path
+    return write_lines(want.splitlines(), path)
 
 
 def write_lines(lines: Iterable[str], path: Path) -> Path:

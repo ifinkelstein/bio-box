@@ -148,12 +148,16 @@ def test_w03_search_run_takes_its_directories_from_the_profile_and_the_flags(tmp
     argv = ["search", "run", RECIPE, "--root", str(tmp_path / "root"), "--release", "rS0.1", "--profile", str(prof)]
     assert cli.main(argv) == 0
     assert captured["work"] == t / "search" / "alice" / "work"
+    # card W-29: `submit` is also given the user's command line (`command`); the directories are as before
+    assert captured["kw"].pop("command") == ["bio-box", *argv]
     assert captured["kw"] == {"packs": t / "packs", "runs": t / "search" / "alice" / "runs", "out": None}
     flags = ["--work", str(tmp_path / "w"), "--pack-dir", str(tmp_path / "p"), "--runs", str(tmp_path / "r")]
     assert cli.main(argv + flags) == 0
     assert captured["work"] == tmp_path / "w"
+    assert captured["kw"].pop("command") == ["bio-box", *argv, *flags]
     assert captured["kw"] == {"packs": tmp_path / "p", "runs": tmp_path / "r", "out": None}
     assert cli.main(argv + flags + ["--out", str(tmp_path / "one-run")]) == 0  # --out is the run's own directory
+    assert captured["kw"].pop("command")[-2:] == ["--out", str(tmp_path / "one-run")]
     assert captured["kw"] == {"packs": tmp_path / "p", "runs": None, "out": tmp_path / "one-run"}
 
 
@@ -290,5 +294,5 @@ def test_w07_search_hmm_always_waits_for_its_run_with_a_pending_record(tmp_path,
     assert out.out.splitlines()[0] == "07" * 16 + "\tfailed"
     assert "positive control not recovered" in out.err
     # a run that is not ok leaves the recipe it ran in DIR, and nothing else
-    assert sorted(p.name for p in (tmp_path / "out").iterdir()) == ["recipe.yaml"]
+    assert sorted(p.name for p in (tmp_path / "out").iterdir()) == ["RUN", "recipe.yaml"]  # card W-29: RUN names the run
     assert (tmp_path / "out" / "recipe.yaml").read_text() == seen["recipe"]

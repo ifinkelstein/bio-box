@@ -379,9 +379,12 @@ Each is stated where it applies above; this is the checklist. The card or decisi
   directory (its scratch is in `<profile tmp>/search/<user>/work`, W-22); never run `pack build` without asking.
 - `/tmp` is local disk: roots, packs, runs and your outputs vanish on a reboot (RUNBOOK §4). An archived run stays
   on `/tmp` too, in the spool, until a flush reaches 64 MiB (W-28, DEC-33).
-- `results archive` keeps only the outputs named with `--with`: the run's record does not say which directories
-  hold its outputs (its `argv` is the worker's command). Name all of them the first time: the same run archived
-  again with other outputs is refused (W-28).
+- `results archive` keeps the run and the output directories it is given: `--under DIR` finds every directory in DIR
+  (up to 4 levels down) whose `RUN` file names the run (`search hmm`, `nbr --out DIR` and `nbr flanks --out DIR` write
+  one, W-29), and `--with PATH` names one by hand (a lone `hits.tsv`, or an output from before W-29, which has no
+  `RUN`). A directory whose `RUN` names another run is refused. Give all of them the first time: the same run
+  archived again with other outputs is refused (W-28). The record's `limits_json` holds the command you typed
+  (`command`).
 - A contig shared by genomes of two stages belongs to the first; the later genome is one contig short in
   `contig_dim`. Not in `rN.*`; it is in the 50 Gbp set (DEC-26, C-21).
 - `search run` in a `pod_run.sh` unit needs `--wait` (W-13). A search or `nbr` command without `--profile`, or
@@ -406,7 +409,7 @@ Each is stated where it applies above; this is the checklist. The card or decisi
 | What releases exist | `releases` (§2) |
 | Taxonomy of the hits | Not available (no taxonomy in any release yet). Give `accession` and `header` of `hits.tsv`, labelled as source headers |
 | Compare two releases | `release verify --root ... --release rN.3 --previous rN.2`; run the same search on both (a pack each) and compare `protein_uid` sets |
-| Keep the results | `results archive "$RUN" --with <each output DIR>` (below); report its line. The operator flushes the spool to `/stor` once it holds 64 MiB (RUNBOOK §7, *Keep the results*); never flush yourself |
+| Keep the results | `results archive "$RUN" --under <the directory that holds your outputs>` (below; `--with` for a file or a DIR without a `RUN`); report its line. The operator flushes the spool to `/stor` once it holds 64 MiB (RUNBOOK §7, *Keep the results*); never flush yourself |
 | Is it significant / enriched | No statistic exists (cards F-01 to F-03): report counts and shares only, and say so |
 | Run on the larger build | Check STATUS.md for the root and a pack; no pack: ask before building one; the search memory does not grow with the release (W-19) |
 
@@ -450,5 +453,5 @@ exist, and does not yet (2026-11-12): until then the image cannot start with the
 restore the same way (`results list`, `results get "$RUN" --out "$SCR/back"`):
 
 ```bash
-bash "$TREE/scripts/pod_run.sh" --profile "$TREE/profiles/wilkcomp02.yaml" --image "$IMAGE" --digest "$DIGEST" --mem 8G --threads 1 --bind /tmp/if2453 --bind /stor/work/Wilke/if2453/all-the-data:/stor/work/Wilke/if2453/all-the-data:ro --env PYTHONPATH="$TREE/src:/tmp/if2453/pilot_s1/pydeps" --log "$SCR/logs/qrnap-keep-1.log" qrnap-keep-1 results archive "$RUN" --profile "$TREE/profiles/wilkcomp02.yaml" --with "$SCR/out/rnap" --with "$SCR/out/flanks"
+bash "$TREE/scripts/pod_run.sh" --profile "$TREE/profiles/wilkcomp02.yaml" --image "$IMAGE" --digest "$DIGEST" --mem 8G --threads 1 --bind /tmp/if2453 --bind /stor/work/Wilke/if2453/all-the-data:/stor/work/Wilke/if2453/all-the-data:ro --env PYTHONPATH="$TREE/src:/tmp/if2453/pilot_s1/pydeps" --log "$SCR/logs/qrnap-keep-1.log" qrnap-keep-1 results archive "$RUN" --profile "$TREE/profiles/wilkcomp02.yaml" --under "$SCR/out"
 ```
