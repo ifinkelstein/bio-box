@@ -1014,12 +1014,17 @@ def test_exact_duplicates_repeat_and_near_duplicates_change_only_igr_and_synonym
             continue
         diff = {i: (rep[i], member[i]) for i in range(len(rep)) if rep[i] != member[i]}
         assert len(diff) == int(r["n_mutations"]) == len(muts[r["member_contig_id"]])
-        assert abs(len(diff) - (1 - cfg["near_ani"]) * len(rep)) <= 0.5
         cover = np.zeros(len(rep), dtype=int)
         for p in pieces[r["rep_contig_id"]]:
             s, e = int(p["start"]), int(p["end"])
             for x in range(s, e):
                 cover[x % len(rep)] += 1
+        want_n = round((1 - cfg["near_ani"]) * len(rep))
+        assert len(diff) <= want_n and abs(want_n - (1 - cfg["near_ani"]) * len(rep)) <= 0.5
+        if len(diff) < want_n:          # no site to change: no intergenic base and no whole gene piece
+            assert not (cover == 0).any() and all(p["partial_5"] == "true" or p["partial_3"] == "true"
+                                                  for p in pieces[r["rep_contig_id"]])
+            n_site["no_site"] += 1
         for i, (a, b) in diff.items():
             ref, alt, site = muts[r["member_contig_id"]][i]
             assert (ref, alt) == (a, b)
@@ -1050,6 +1055,6 @@ def test_micro_stage_times(world, record_property):
     for k, v in times.items():
         record_property(k.split()[0] + "_seconds", round(v, 2))
     total = sum(times.values())
-    print("\n" + "; ".join(f"{k} {v:.2f} s" for k, v in times.items()) + f"; S1-S9 {total:.2f} s; "
+    print("\n" + "; ".join(f"{k} {v:.2f} s" for k, v in times.items()) + f"; S1-S10 {total:.2f} s; "
           f"{aw.meta['counts']}; digest {aw.digest}")
     assert times["S8-S9 assembly"] < 120.0

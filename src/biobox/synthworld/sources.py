@@ -22,7 +22,8 @@ reverse-complemented with probability 1/2; they are added to the host's original
 MR-06). A near duplicate (stream ``S10/near/<genome>``) changes round((1 - ``near_ani``) x L) bases of each emitted
 contig of L bases: round(``igr_share`` x n) on bases in no gene piece (to another base, uniform) and the rest on
 synonymous sites, a base of a whole gene piece's internal codon covered by one gene whose change keeps the amino
-acid under the genome's code (uniform over the alternatives); a pool too small passes the rest to the other.
+acid under the genome's code (uniform over the alternatives); a pool too small passes the rest to the other, and a
+contig with neither (one lying wholly inside a gene cut at both its edges) gets fewer changes, possibly none.
 Positions are drawn without replacement, uniformly in each pool. Proteins are therefore unchanged.
 
 Shape on disk (``build(world)``)::
