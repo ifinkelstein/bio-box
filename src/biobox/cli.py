@@ -186,8 +186,8 @@ class _Tally:
     lines, `rows` the rows of a TSV of blank-line-separated tables, each a column line and its rows (`#` lines are
     not rows)."""
 
-    def __init__(self, lines, unit: str):
-        self.lines, self.unit, self.n = lines, unit, 0
+    def __init__(self, lines, unit: str, comments: bool = True):
+        self.lines, self.unit, self.n, self.comments = lines, unit, 0, comments
 
     def __iter__(self):
         fresh = True
@@ -198,19 +198,19 @@ class _Tally:
                 self.n += 1
             elif not line:
                 fresh = True
-            elif not line.startswith("#"):
+            elif not (self.comments and line.startswith("#")):
                 self.n += not fresh
                 fresh = False
             yield line
 
 
-def _emit(lines, out: str | None, unit: str = "rows") -> None:
+def _emit(lines, out: str | None, unit: str = "rows", comments: bool = True) -> None:
     """To stdout, or to the file `out` (written under a temporary name and renamed into place), then one line on
     stderr with what it holds, counted in `unit` (`_Tally`)."""
     if out is None:
         _print(lines)
     else:
-        t = _Tally(lines, unit)
+        t = _Tally(lines, unit, comments)
         export.write_lines(t, Path(out))
         _wrote(out, f"{t.n} {unit}")
 
@@ -1378,8 +1378,10 @@ def _sql_cell(v) -> str:
 
 
 def _scan_name(path: str, built: Path) -> str:
-    """The registry table a scanned file belongs to (`catalog.classify`), or the search run file's table."""
-    p = Path(path)
+    """The registry table a scanned file belongs to (`catalog.classify`), or the search run file's table. DuckDB names
+    the files of a scan of several as one string, `PATH, PATH, ...` (`profile_query` keeps it as one entry): the first
+    file stands for the table, as every file of a scan is one table's."""
+    p = Path(path.split(".parquet, ", 1)[0] + ".parquet" if ".parquet, " in path else path)
     try:
         hit = catalog.classify(p.relative_to(built).as_posix())
         if hit is not None:
@@ -1461,7 +1463,7 @@ def _sql(a) -> int:
     finally:
         con.close()
         shutil.rmtree(scratch, ignore_errors=True)
-    _emit(out, a.out, "records" if a.format == "json" else "rows")
+    _emit(out, a.out, "records" if a.format == "json" else "rows", comments=False)  # `#` is a column name here (W-30)
     return 0
 
 
