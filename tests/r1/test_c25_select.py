@@ -1213,3 +1213,55 @@ def test_fetch_archive_keeps_the_picked_genomes(tmp_path):
     p = subprocess.run([sys.executable, "-I", str(FETCH), "archive", str(rem), str(tmp_path / "y.tar"), str(l1),
                         str(l2), "--where-nonempty", "ani_pick"], capture_output=True, text=True)
     assert p.returncode != 0 and "sha256" in p.stderr and not (tmp_path / "y.tar").exists()
+
+
+# ---- card C-30: the fetch launcher takes its paths as parameters (dry run: no network, no systemd) ----
+
+LAUNCHER = SCRIPT.with_name("c27_fetch.sh")
+_LAUNCH_ENV = ("C27_WORK", "C27_BIN", "C27_UNIT_PREFIX", "C27_CPU_QUOTA", "C27_IMAGE", "C27_DATA_ROOT")
+
+
+def _dry_launch(batch: str, chain: str = "", **env: str) -> str:
+    base = {k: v for k, v in os.environ.items() if k not in _LAUNCH_ENV}
+    args = ["sh", str(LAUNCHER), "--dry-run", "launch", batch] + ([chain] if chain else [])
+    p = subprocess.run(args, env={**base, **env}, capture_output=True, text=True, timeout=60)
+    assert p.returncode == 0, p.stderr
+    return p.stdout
+
+
+def test_c30_dry_run_defaults_print_what_c27_ran():
+    out = _dry_launch("B05", "chain")
+    assert "--unit=c27-fetch-05" in out
+    assert "-p CPUQuota=200%" in out and "-p MemoryMax=8G" in out and "-p MemorySwapMax=0" in out
+    assert "StandardOutput=append:/tmp/if2453/c27/logs/c27-fetch-05.out" in out
+    assert "--setenv=C27_SELF=c27-fetch-05" in out
+    assert "nice -n 19 sh /tmp/if2453/c27/bin/c27_fetch.sh run B05 chain" in out
+    assert "/tmp/if2453/c27/batches/batch_B05.tsv" in out
+    assert "python3 -I /tmp/if2453/c27/bin/c27_fetch.py need" in out
+    assert "STOP /stor/scratch/Wilke/if2453/all-the-data/STOP" in out
+    assert "singularity" not in out  # C-27 ran the host's python3
+
+
+def test_c30_dry_run_takes_work_dir_prefix_quota_image_and_data_root(tmp_path):
+    seen = []
+    for k, (prefix, quota) in enumerate((("c25-fetch-", "100%"), ("zz-", "50%"))):
+        work = tmp_path / f"w{k}"
+        data = tmp_path / f"d{k}"
+        img = tmp_path / f"i{k}.sif"
+        out = _dry_launch("B03", C27_WORK=str(work), C27_UNIT_PREFIX=prefix, C27_CPU_QUOTA=quota,
+                          C27_IMAGE=str(img), C27_DATA_ROOT=str(data))
+        seen.append(out)
+        assert f"--unit={prefix}03 " in out
+        assert f"-p CPUQuota={quota}" in out
+        assert f"StandardOutput=append:{work}/logs/{prefix}03.out" in out
+        assert f"--setenv=C27_SELF={prefix}03" in out
+        assert f"{work}/batches/batch_B03.tsv" in out
+        assert f"sh {work}/bin/c27_fetch.sh run B03" in out
+        assert f"{prefix}*" in out  # the active-unit check looks at this launcher's own units only
+        # python runs from the image, with the data root bound read-only and the STOP file read from it
+        assert f"singularity exec --cleanenv --bind {work} --bind {data}:{data}:ro {img} python -I" in out
+        assert f"STOP {data}/STOP" in out
+        assert "python3" not in out
+        assert "c27-fetch" not in out and "/tmp/if2453/c27" not in out
+        assert not work.exists() and not data.exists()  # a dry run writes nothing
+    assert seen[0] != seen[1]
