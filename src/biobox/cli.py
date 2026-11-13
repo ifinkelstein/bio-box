@@ -664,6 +664,24 @@ def _nbr_flanks(a, root: Path, uids: set[bytes], tv: str | None, release: str, f
     cut = flanks.DEFAULT_CUT if a.cut is None else a.cut
     if not 0 <= cut <= 1:
         return refuse(f"--cut {cut}: a distance between 0 and 1")
+    auto = None
+    if a.auto_cut is not None:  # card W-31
+        if a.cut is not None:
+            return refuse("--auto-cut chooses each group's cut from its tree: give --auto-cut or --cut, not both")
+        try:
+            auto = flanks.parse_auto_cut(a.auto_cut)
+        except flanks.FlanksError as e:
+            return refuse(e)
+    colour_weight = a.colour_weight or "locus"
+    colour_fallback = a.colour_fallback or "none"
+    for flag, value, allowed in (("--colour-weight", colour_weight, flanks.COLOUR_WEIGHTS),
+                                 ("--colour-fallback", colour_fallback, flanks.COLOUR_FALLBACKS)):
+        if value not in allowed:
+            return refuse(f"{flag} {value}: expected one of {', '.join(allowed)}")
+    if (a.colour_weight is not None or a.colour_fallback is not None) and not a.figure:
+        return refuse("--colour-weight and --colour-fallback choose the figure's colours: give them with --figure")
+    if colour_fallback == "pfam" and level == "pfam":
+        return refuse("--colour-fallback pfam: at --level pfam the families are Pfam architectures already")
     max_leaves = flanks.DEFAULT_MAX_LEAVES if a.max_loci is None else a.max_loci
     if max_leaves < 1:
         return refuse(f"--max-loci {max_leaves}: at least 1")
@@ -691,7 +709,8 @@ def _nbr_flanks(a, root: Path, uids: set[bytes], tv: str | None, release: str, f
                                    export_gff=a.export == "gff", library=a.library,
                                    gene_call_version=a.gene_call_version, tape_version=tv, threads=a.threads,
                                    tmp=_profile_tmp(a), figure=a.figure, figure_rows=figure_rows,
-                                   run_file=_run_file_ref(a, a.source or a.anchors))
+                                   run_file=_run_file_ref(a, a.source or a.anchors), auto=auto,
+                                   colour_weight=colour_weight, colour_fallback=colour_fallback)
     except ValueError as e:
         return refuse(e)
     for line in notes:
@@ -706,7 +725,8 @@ def _nbr_flanks(a, root: Path, uids: set[bytes], tv: str | None, release: str, f
     if a.export == "gff":
         _wrote(out / "gff", f"{counts['gff']} tables")
     _print([f"flanks\t{out}\t{counts['loci']} loci in {counts['groups']} groups (level {level}, window {window}g, "
-            f"group by {group_by}, distance {distance}, cut {cut:g})"])
+            f"group by {group_by}, distance {distance}, "
+            + (f"cut {cut:g})" if auto is None else f"auto cut {auto})")])
     return 0
 
 
@@ -2102,6 +2122,15 @@ def _main(argv: list[str] | None = None) -> int:
     n.add_argument("--figure-rows", type=int, help="flanks --figure: rows per figure (default 60, "
                                                    "flanks.DEFAULT_FIGURE_ROWS); above it, the leaf with the most loci "
                                                    "of each context type, then the leaves with the most loci")
+    n.add_argument("--auto-cut", help="flanks: choose each group's cut from its tree instead of --cut (card W-31): gap "
+                                      "(the middle of the largest gap between merge distances) or N (at most N "
+                                      "context types); never at distance 1")
+    n.add_argument("--colour-weight", help="flanks --figure: locus (default), leaf, genome or anchor-nr90: weight "
+                                           "each locus by 1/(loci of its unit) before the 10%% colour threshold, so "
+                                           "near-identical loci count once (card W-31)")
+    n.add_argument("--colour-fallback", help="flanks --figure: none (default) or pfam: a grey cluster's gene takes its "
+                                             "Pfam architecture's colour when the architecture is common in the group "
+                                             "(card W-31)")
     n.add_argument("--strand", default="any")
     n.add_argument("--operon-gap")
     n.add_argument("--edge", default="truncate")
