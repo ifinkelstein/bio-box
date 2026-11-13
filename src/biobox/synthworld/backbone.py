@@ -87,6 +87,9 @@ transfer and the lineage of their label ``<event>_<lineage>``; leaves have kind 
 ``genes.tsv``) or lost (lost copy or extinct lineage) and their ``copy_label``; ``branch_length`` is the
 length above the node (the root's reaches back to the family's origination).
 ``digest`` is BLAKE3-128 over the sorted (path, sha256) list of every file but backbone.json.
+
+``species_branches(out)`` reads the complete species tree (extinct lineages and the scramble stem included)
+from ``out/zombi2/species_complete.nwk``, so later stages need not read ZOMBI2's files (card F-02 session 3).
 """
 
 from __future__ import annotations
@@ -258,6 +261,12 @@ class GeneTreeNode(NamedTuple):
     copy_label: str    # leaves only
     branch_length: float
     extant: bool
+
+
+class SpeciesBranch(NamedTuple):
+    lineage: str       # n<id> or e<id>, as in gene-tree labels
+    parent: str        # empty for the root (the scramble stem)
+    branch_length: float
 
 
 @dataclass
@@ -812,6 +821,15 @@ def _gene_tree_nodes(zdir: Path, extant_copies: set[str]) -> list[GeneTreeNode]:
     return out
 
 
+def species_branches(out) -> list[SpeciesBranch]:
+    """The complete species tree of a built world (extinct lineages and the scramble stem included), one
+    branch per lineage in preorder, the root first: read from ZOMBI2's ``species_complete.nwk`` here so that
+    later stages (sequences) need not know ZOMBI2's files (spec §2.2)."""
+    nodes = parse_newick((Path(out) / "zombi2" / "species_complete.nwk").read_text(encoding="utf-8"))
+    return [SpeciesBranch(label, nodes[parent][1] if parent >= 0 else "", length)
+            for parent, label, length in nodes]
+
+
 def _taxonomy_tables(meta: dict, p: dict, genome_of: dict[str, str]) -> tuple[list[TaxonomyRow], list[Taxon]]:
     tx = meta["taxonomy"]
     by_genome = {genome_of[node]: tx["per_tip"][node] for node in sorted(genome_of, key=genome_of.get)}
@@ -947,6 +965,6 @@ def read(out) -> Backbone:
                     events=t["events.tsv"], gene_tree_nodes=t["gene_tree_nodes.tsv"], meta=doc)
 
 
-__all__ = ["Backbone", "Dec15Error", "SchemaError", "build", "read", "load_preset", "check_dec15",
-           "check_preset", "check_schema", "scramble_stats", "check_scrambled", "cut_taxonomy", "name_taxa",
-           "parse_newick"]
+__all__ = ["Backbone", "Dec15Error", "SchemaError", "SpeciesBranch", "build", "read", "load_preset",
+           "check_dec15", "check_preset", "check_schema", "scramble_stats", "check_scrambled", "cut_taxonomy",
+           "name_taxa", "parse_newick", "species_branches"]
