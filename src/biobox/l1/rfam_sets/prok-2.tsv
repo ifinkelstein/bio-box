@@ -1,8 +1,9 @@
 # Rfam 15.1 model set prok-2 (DEC-30; card E-09). Frozen: a new set is a new file with a new version.
 # prok-1's 588 models with their whole_genome flags, plus the 182 long-tail (rule d) models with a hit at or
 # above GA on the sample of measurement 0-08a (100 prokaryotes stratified by GTDB phylum, 300 phages of stage
-# S1; planning/measurements/2026-11-12_rfam_sample.md); whole_genome 1 also for the 11 added models more than
-# half of whose sample hits lie outside every intergenic region (margin 200). The rows are those of
+# S1; planning/measurements/2026-11-12_rfam_sample.md); whole_genome 1 also for the 11 models more than half
+# of whose sample hits lie outside every intergenic region (margin 200): 7 added models and 4 of prok-1's
+# (RF01670 P17, RF02111 IS009, RF02820 V_AS9, RF02908 rli30, intergenic in prok-1). The rows are those of
 # planning/design/0-08a_prok-2_proposed.tsv (written by scripts/stress/annotation_cost/rfam_sample_report.py),
 # copied with this header on 2026-11-12. 770 models; whole_genome 1 marks the 34 models scanned on whole
 # contigs, every other model is scanned on intergenic regions with a 200-base margin and --notrunc.

@@ -10,8 +10,9 @@ scratch, as two CM files:
 - the set's intergenic models (`whole_genome` 0) search the contig's intergenic regions with a margin of `MARGIN`
   (200) bases into the flanking genes, with `cmsearch --notrunc` (no re-search of record ends for truncated hits);
 - the set's whole-genome models (`whole_genome` 1: RNA inside coding sequence, 23 in prok-1; 34 in prok-2, which adds
-  11 models whose sample hits lie mostly outside every intergenic region) search whole contigs with Infernal's default
-  truncated-hit handling, as card E-01 searched every model.
+  11 models whose sample hits lie mostly outside every intergenic region: 7 new ones and 4 of prok-1's, RF01670,
+  RF02111, RF02820 and RF02908, intergenic in prok-1) search whole contigs with Infernal's default truncated-hit
+  handling, as card E-01 searched every model.
 
 So no model searches a base twice: the two model sets are disjoint and the regions of a contig are disjoint.
 Both use Infernal's own filter pipeline, each model's GA cutoff (`--cut_ga`) and the fixed nucleotide search space
@@ -162,7 +163,7 @@ DEFAULT_SET = "prok-2"  # DEC-30 (card E-09); card E-07's default was prok-1
 # long-tail models with a hit on the sample of measurement 0-08a, 770 models, 34 of them whole-genome (DEC-30,
 # card E-09; planning/measurements/2026-11-12_rfam_sample.md).
 FROZEN_SETS = {"prok-1": "092660962def1ec76466de3816558451f478637ffb43d141ef684273f68d6179",
-               "prok-2": "d7e8d39f8d5a0d640b0017cff0d316914d194bd08b7099e91a35071f2dc5234e"}
+               "prok-2": "4ea4de2309053323382bfc314aee8210468bc7464b7725cf75ff0e0b4600de89"}
 # Clan competition (card E-08): Rfam's clan file, its refdb.yaml entry, and the rule's version in the producer name
 CLANIN = SET_DIR / "Rfam-15.1.clanin"
 CLAN_LIBRARY = "rfam_clanin"

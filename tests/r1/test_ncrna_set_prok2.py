@@ -25,6 +25,9 @@ PROPOSED = REPO / "planning/design/0-08a_prok-2_proposed.tsv"
 MODELS = REPO / "planning/design/0-08_rfam15.1_models.tsv"
 LIB = REPO / "tests/fixtures/micro_s0/rfam15.1_micro_s0.cm.gz"
 PROFILE = REPO / "profiles/wilkcomp02.yaml"
+# item 6 of the measurement: the 11 models the sample rule scans on whole genomes; 4 of them are prok-1 models
+SWITCHED = {"RF01670", "RF02111", "RF02820", "RF02908"}  # P17, IS009, V_AS9, rli30: intergenic in prok-1
+NEW_WHOLE = {"RF01419", "RF01497", "RF02510", "RF02647", "RF02735", "RF02812", "RF03135"}
 
 
 def data_lines(path: Path) -> list[str]:
@@ -54,14 +57,20 @@ def test_every_prok2_model_is_an_rfam_15_1_model_with_its_name():
     assert missing == []
 
 
-def test_prok1_rows_are_in_prok2_with_their_flags_unchanged():
+def test_prok1_rows_are_in_prok2_with_their_flags_unchanged_but_the_four_the_sample_rule_moves():
+    """Card E-09 as corrected 2026-11-12: every prok-1 row is in prok-2 with its name and flag, except four models
+    the sample rule (more than half of their 0-08a hits outside every margin-200 region) moves to whole genome."""
     one = {m.acc: m for m in ncrna.read_set("prok-1")}
     two = {m.acc: m for m in ncrna.read_set("prok-2")}
     assert len(one) == 588
-    assert {a: two.get(a) for a in one} == one  # same name and whole_genome flag
+    want = {a: dataclasses.replace(m, whole_genome=True) if a in SWITCHED else m for a, m in one.items()}
+    assert {a: two.get(a) for a in one} == want  # same name; the flag unchanged but for the four
+    assert all(not one[a].whole_genome for a in SWITCHED)
     added = [m for a, m in two.items() if a not in one]
     assert len(added) == 182
-    assert sum(m.whole_genome for m in added) == 11  # DEC-30: 34 whole genome = prok-1's 23 + 11
+    assert {m.acc for m in added if m.whole_genome} == NEW_WHOLE
+    # DEC-30: 34 whole genome = prok-1's 23 + the 4 moved + 7 new
+    assert sum(m.whole_genome for m in one.values()) == 23 and len(SWITCHED) == 4 and len(NEW_WHOLE) == 7
 
 
 def test_prok2_is_frozen_by_its_sha256_and_is_the_default():
