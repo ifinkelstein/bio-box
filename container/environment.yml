@@ -13,3 +13,4 @@ dependencies:
   - samtools=1.25      # with htslib bgzip; oracle for R-03 slices and R-07 (.fai/.gzi accepted)
   - prodigal=2.6.3     # test oracle only (card D-03): never used to produce outputs; approved by the PI 2026-11-09
   - matplotlib-base=3.11.2  # nbr flanks --figure (card W-27), the uv.lock version; approved by the PI 2026-11-12
+  - skani=0.4.0        # ANI for the S2C phase-2 diversity pick (DEC-31, card C-27); bioconda linux-64 build hec9b1f2_0
