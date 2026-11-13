@@ -11,6 +11,26 @@ Written so a new session can continue without the conversation that produced thi
 
 **Mode: running again.** The PI ended the drain at 23:20 CST on 2026-11-12: up to four agents, working independently.
 
+**State when the session hit its usage limit, 2026-11-13 about 01:35 CST (read this first).**
+- `main` equals `plan/task-cards` at `ad6fd97` (pull requests 3 and 4 merged). The image built from it (Actions run
+  43380434543, commit `64f1bf0`) is **good**: 1,720 passed, 22 skipped inside it; it has skani 0.4.0 and matplotlib.
+  Runtime image `ghcr.io/ifinkelstein/bio-box@sha256:2faf4b8de020430d3c5c9dace5569445fdb0eb0057088972793874a799e25bea`;
+  test image digest `sha256:cb7cd0f1e7146350576e4658de39290647d1cbba39494ce81ba072f3041707bb`. **Not yet pulled to the
+  pod.** Next: `singularity pull` both by digest on the pod, run the test image's suite there, switch `pod_pytest.sh`,
+  `detached_suite.sh`, the runbook and the drivers to it, then card C-27 step (4) (check `c27_skani.py`'s flags against
+  `skani --help` first).
+- **W-29 is not merged.** Branch `task/W-29` at `4d7953d` (pushed) is accepted in substance; its agent did not run the
+  full suite. A merge was made in the integration worktree and aborted at the limit; a full suite of that merged tree
+  was still running on the pod as units `ci-integration-0/1` (logs `/tmp/if2453/ci-tmp/integration-detached/log.*`):
+  if both end green, merge `origin/task/W-29` again (it merges cleanly), and bring `RUNBOOK.md` up to date (its §7
+  bullet on `results archive` and the known-issues row "A run's outputs are named by hand" predate `--under` and the
+  `RUN` file), then commit with a STATUS row.
+- **F-02 session 4 is not merged.** Branch `task/F-02-4` at `cdb5090` (pushed; Actions on it green, 1,654 passed):
+  intergenic regions, RNA motifs and replicon sequences. Merge after W-29; put its modelling choices (listed in its
+  report: junction length medians, overlap rates, the ten Rfam models, motif rates) on card F-02 for the PI.
+- **C-28 (night allowance) was still running** as an agent; its branch `task/C-28` may or may not be pushed: check it.
+- New helper: `scripts/orchestrator/wait_run.sh <repo> <run id>` (polls a run to completion; `gh run watch` returns early).
+
 **For a new session.**
 1. `git fetch origin`. The integration worktree is `.claude/worktrees/integration` in the main checkout, on local
    branch `integration`, which tracks `origin/plan/task-cards`: merge there and push with
