@@ -83,6 +83,10 @@ def test_dec15_b_refuses_replacement_in_a_world_with_groups():
         backbone.check_dec15(p)
     p["modules"]["count"] = 0                  # a world with no groups at all may replace
     p["profile_only"]["count"] = 0
+    with pytest.raises(backbone.Dec15Error, match=r"\(b\)"):
+        backbone.check_dec15(p)                # plasmids and vehicles are groups too (session 2)
+    p["plasmids"]["sizes"] = []
+    p["vehicles"]["cargo"] = []
     backbone.check_dec15(p)
 
 
