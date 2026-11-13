@@ -1,6 +1,7 @@
 # Searching a release with your own HMM
 
-For a scientist who wants hits and gene neighbourhoods, not operations. State as of 2026-11-11; releases,
+For a scientist who wants hits and gene neighbourhoods, not operations. State as of 2026-11-11 (keeping results:
+2026-11-12); releases,
 paths and costs will change. The operator's version of every command is `RUNBOOK.md` (sections 0, 7, 10, 11).
 Numbers carry a label: *measured* (with the file it comes from) or *derived* (with the formula).
 
@@ -188,6 +189,32 @@ downstream of the hit), so on a `-1` hit the two have opposite signs. `hit_seq_b
 neighbour is itself a hit; `delta_bp` is the gap to the hit in bases (no sign); `crosses_origin` marks a gene across
 the origin.
 
+### Keeping your results
+
+`--out` and the run are on the pod's `/tmp`, which a reboot may clear. `results` keeps a finished run on the pod's
+permanent storage (card W-28, DEC-33; RUNBOOK section 7, *Keep the results*). `results archive` packs the run and
+every output directory you name with `--with` (the `--out` of `search hmm`, an `nbr flanks` directory) into one
+archive in a waiting area on `/tmp`; name each one, since nothing on disk ties an output to its run, and a
+`search hmm` directory whose `recipe.yaml` is another run's is refused. The permanent storage takes only files of
+at least 64 MiB (AGENTS 7.3), so the operator's `results flush` moves waiting runs there together once they add up
+to that. A run alone is usually smaller: the worked example's run with its `search hmm` directory is 12,492,800
+bytes, with its five `nbr flanks` directories 164,618,240 (*measured*, RUNBOOK Appendix A, card W-28). Until a
+flush, a run waits on `/tmp`: copy what you need now to your laptop. `results list` says where each kept run is;
+`results get` brings one back into a new directory, every file checked against its sha256. Archiving the same run
+again changes nothing; archiving it with other outputs is refused, so name every output the first time. The
+permanent storage, `/stor/work/Wilke/if2453/all-the-data`, does not exist yet (2026-11-12): until the PI makes it,
+these commands fail at the image's start, which cannot bind a missing directory.
+
+```bash
+bash "$TREE/scripts/pod_run.sh" --profile "$PROFILE" --image "$IMAGE" --digest "$DIGEST" --mem 8G --threads 1 --bind /tmp/if2453 --bind /stor/work/Wilke/if2453/all-the-data --env PYTHONPATH="$PYTHONPATH_POD" pi-keep results archive "$RUN" --profile "$PROFILE" --with "$WORK/rnap" --with "$WORK/rnap_flanks"
+bash "$TREE/scripts/pod_run.sh" --profile "$PROFILE" --image "$IMAGE" --digest "$DIGEST" --mem 8G --threads 1 --bind /tmp/if2453 --bind /stor/work/Wilke/if2453/all-the-data --env PYTHONPATH="$PYTHONPATH_POD" pi-list results list --profile "$PROFILE"
+bash "$TREE/scripts/pod_run.sh" --profile "$PROFILE" --image "$IMAGE" --digest "$DIGEST" --mem 8G --threads 1 --bind /tmp/if2453 --bind /stor/work/Wilke/if2453/all-the-data --env PYTHONPATH="$PYTHONPATH_POD" pi-get results get "$RUN" --profile "$PROFILE" --out "$WORK/rnap_back"
+```
+
+Each writes its lines to `$BBTMP/logs/<unit>.log`. `archive` ends with the archive's line (run id, release, the
+run's date, status, sha256, size, files, outputs, where) and how much is waiting; `get` restores `run/` (the run's
+record and tables), `outputs/<name>/` and `FILES.tsv` (every file's size and sha256).
+
 ## 6. Reading neighbourhoods
 
 A locus is one hit gene with its window; the hit is not its own neighbour. `neighbors.tsv` starts with
@@ -320,7 +347,8 @@ bio-box sql --root "$ROOT" --release rN.1 -e "SELECT key, value FROM catalog_inf
 ## 8. Limits and rough edges today
 
 - The data is on the pod's local disk (`/tmp`), not yet copied to permanent storage; a reboot may clear it. No card
-  yet (`STATUS.md`, "Plan for larger imports", step 1).
+  yet (`STATUS.md`, "Plan for larger imports", step 1). Your own results can be kept (section 5, *Keeping your
+  results*), once the PI has made the permanent results area.
 - Only `rN.1` has a search pack. Until the operator copies it into the profile's pack directory
   (`/tmp/if2453/bio-box/packs`, card W-22), it is in a work directory (`/tmp/if2453/w19/packs`) and every
   `releases`, `search` and `nbr` command needs `--pack-dir /tmp/if2453/w19/packs` (section 2); `rN.2` needs one

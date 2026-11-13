@@ -34,6 +34,7 @@ export MEM=8G                                        # real: 200G (the profile's
 export WORK=/tmp/if2453/c06                          # your scratch directory for inputs and outputs
 export BBTMP=/tmp/if2453/c06/tmp                     # the profile's tmp (real: /tmp/if2453/bio-box)
 export ROOT=/tmp/if2453/c06/root                     # the data root you build into
+export DURABLE=/tmp/if2453/w28/one/durable           # the profile's durable (real: /stor/work/Wilke/if2453/all-the-data)
 SCOPE=(systemd-run --user --scope --quiet -p MemoryMax="$MEM" -p MemorySwapMax=0 nice -n 19)
 SING=(singularity exec --cleanenv --env PYTHONPATH="$PYTHONPATH_POD" --env OMP_NUM_THREADS=2 --bind /tmp/if2453 --bind /sys/fs/cgroup:/sys/fs/cgroup:ro)
 bio-box() { "${SCOPE[@]}" "${SING[@]}" "$IMAGE" python -m biobox.cli "$@"; }
@@ -705,6 +706,47 @@ says so in a line that begins `note`. A run that ends other than `ok` exits 1 an
 `recipe.yaml` in `DIR`. When the release has no pack, the command exits 2 and prints the
 `pack build` command to run; it does not build the pack.
 
+**Keep the results** (card W-28, DEC-33). The runs directory and every `--out` are on `/tmp`, which
+a reboot may clear. `results` keeps a closed run on the profile's durable storage, in the results
+area `$DURABLE/results` (real: `/stor/work/Wilke/if2453/all-the-data/results`), with no file under
+64 MB on `/stor` (AGENTS 7.3) and nothing there overwritten or deleted (AGENTS 7.5):
+
+- `results archive RUN --with DIR ...` writes the run's directory (its record and tables) and each
+  output named with `--with` (the `search hmm` DIR, the `nbr --format tsv` DIR, an `nbr flanks` DIR,
+  a lone `hits.tsv`) as one tar, with one manifest line, into the spool `$BBTMP/results/spool/` on
+  local disk. Nothing on disk links a run to its outputs (the run's record holds the worker's command
+  line, not yours), so name each one; a DIR whose `recipe.yaml` is not the run's recipe is another
+  run's and is refused. The same run archived again is a no-op (exit 0, said on stderr); with other
+  files or outputs it is refused (exit 2), naming both sha256. The tar has sorted names, mtime 0, no
+  owner, no host or path, and the run's own date (`submitted_at`) in its manifest line: the same run
+  gives the same bytes on any host.
+- `results flush` packs every spooled run into one bundle, `results-<first day>-<last day>-<hash>.tar`,
+  and renames it into the results area only when it is at least `small_file_floor_bytes` (64 MiB);
+  below that it writes nothing there, the runs stay spooled, and it says so on stderr (exit 0). Most
+  runs are far smaller (the `rN.3` RNA polymerase run with its `search hmm` DIR is 12,492,800 bytes,
+  measured below), so they wait in the spool until enough gather. `--below-floor` writes a smaller
+  bundle; it breaks AGENTS 7.3 and needs the PI's agreement. A bundle is copied to a dot-named
+  `.results-*.part-*` file there, read back, then renamed; a flush killed before the rename leaves
+  that file, which no command reads and `results list` names: only the PI removes it.
+- `results list` prints one line per kept run, flushed or spooled, with where it is, from the
+  manifests only (a bundle's first member). `results get RUN --out DIR` restores the run into a new
+  or empty DIR (`FILES.tsv`, `run/`, `outputs/<name>/`) and checks every file's sha256; a mismatch
+  exits 1 and writes no DIR.
+
+The image sees the durable storage only when it is bound, so these run through `pod_run.sh` with
+`--bind "$DURABLE"`. Until the PI has made `/stor/work/Wilke/if2453/all-the-data` (it is not on the
+pod as of 2026-11-12), every `results` command with the real profile fails: without the bind it exits
+2 with `the profile's durable storage ... does not exist`, and with it the image cannot start, since
+it cannot bind a missing directory. The first flush onto `/stor` is the PI's step.
+
+```bash
+bash "$TREE/scripts/pod_run.sh" --profile "$PROFILE" --image "$IMAGE" --digest "$DIGEST" --mem 8G --threads 1 --bind /tmp/if2453 --bind "$DURABLE" --env PYTHONPATH="$PYTHONPATH_POD" w28-archive results archive "$RUN" --profile "$PROFILE" --with "$WORK/hmm" --with "$WORK/nbr"
+bash "$TREE/scripts/pod_run.sh" --profile "$PROFILE" --image "$IMAGE" --digest "$DIGEST" --mem 8G --threads 1 --bind /tmp/if2453 --bind "$DURABLE" --env PYTHONPATH="$PYTHONPATH_POD" w28-flush results flush --profile "$PROFILE"
+bash "$TREE/scripts/pod_run.sh" --profile "$PROFILE" --image "$IMAGE" --digest "$DIGEST" --mem 8G --threads 1 --bind /tmp/if2453 --bind "$DURABLE" --env PYTHONPATH="$PYTHONPATH_POD" w28-list results list --profile "$PROFILE"
+bash "$TREE/scripts/pod_run.sh" --profile "$PROFILE" --image "$IMAGE" --digest "$DIGEST" --mem 8G --threads 1 --bind /tmp/if2453 --bind "$DURABLE" --env PYTHONPATH="$PYTHONPATH_POD" w28-get results get "$RUN" --profile "$PROFILE" --out "$WORK/back"
+tail -n 4 "$BBTMP/logs/w28-flush.log"
+```
+
 ## 8. Run the test suite on the pod
 
 Run these on the laptop, in the repository checkout. The script copies the working tree to the pod
@@ -752,11 +794,17 @@ What is ours, all under `/tmp/if2453/`:
   directory, `$BBTMP/packs/release=<R>/`, where one left by an older tree may still be). Removed by
   the command that made it; one is left only when that command was killed. Remove one only when no
   `pack verify` or `pack build` is running, by exact path.
+- `$BBTMP/results/spool/` (card W-28, section 7): runs archived and not yet flushed, `<run id>.tar` and
+  `<run id>.tsv` each, which `results flush` removes once their bundle is in the results area and read
+  back. `.archive.tmp-*` and `.bundle.tmp-*` there are what a killed `results archive` or `results flush`
+  left; remove one by exact path when no `results` command runs. `.lock` stays.
 - `$TREE`, `$WORK` and `/tmp/if2453/ci-tmp/<name>-*`: your mirrored trees and pytest directories.
 
 Never delete:
 
-- anything under `/stor`;
+- anything under `/stor`, the results area's `.results-*.part-*` files included (ask the PI);
+- a spooled run, `$BBTMP/results/spool/<run id>.tar` or `.tsv`, that `results list` shows only in the
+  spool: it is the run's only archive;
 - anything that is not yours: another user's files, another user's `$BBTMP/search/<user>/`, and
   another agent's directories under `/tmp/if2453/` (`c10`, `b24`, `ci/<other name>`, and so on);
 - a staging directory, `.incoming` directory or root file of a step that has an intent file
@@ -817,6 +865,8 @@ a profile value is missing from this table.
 | Search runs and work directories | `<tmp>/search/<user>/runs` and `<tmp>/search/<user>/work`, one per user, outside the data root; with `--profile`, else `--runs` and `--work` | profile `tmp`; `default_runs_dir`, `default_work_base` in `src/biobox/search/runner.py`; card W-03 |
 | `search run` in a `pod_run.sh` unit | only with `--wait`; without it, refused (exit 2) | `BIOBOX_POD_UNIT` in `scripts/pod_run.sh` and `src/biobox/cli.py`; card W-13 |
 | Durable results | `/stor/work/Wilke/if2453/all-the-data` | profile `durable` |
+| Results area | `<durable>/results` (`/stor/work/Wilke/if2453/all-the-data/results`), or `--results` inside `durable` (decided on the resolved path and the file system's device, never the spelling); only bundles of at least `small_file_floor_bytes`, never overwritten or deleted; `--below-floor` only with the PI's agreement | profile `durable`, `small_file_floor_bytes`; DEC-33; `biobox.search.results`; card W-28 |
+| Results spool | `<tmp>/results/spool` (`/tmp/if2453/bio-box/results/spool`), local disk: archived runs wait there until a flush reaches the floor | profile `tmp`; card W-28 |
 | Bulk results | `/stor/scratch/Wilke/if2453/all-the-data` | profile `bulk` |
 | Results reach the data root | one `rsync`, then an atomic rename | AGENTS 7.3 |
 | `STOP` file in the data root | exit cleanly before each step | AGENTS 7.4 |
@@ -844,6 +894,9 @@ exemption; the fixture's clustering is far under 300 CPU-minutes). Appendix B li
 | Search packs and runs inside an old root | a root written before card W-03 may hold `search_pack/` and `search/` (the pack and runs were then written into the root). Nothing reads or writes them now; the manifest leaves them out (`catalog.EXCLUDED_TREES`). Build the pack again into the pack directory (section 7) | W-03, W-13 |
 | No detached search in a unit | `search run` without `--wait` in a `pod_run.sh` unit is refused (exit 2): the unit would stop the detached runner when the command returns (section 7). Use `--wait`; `search status` and `search cancel` work on a `--wait` run from another shell | W-13 |
 | `pod_run.sh` and the profile | `pod_run.sh --profile` sets the unit's limits only; it does not pass the profile to `bio-box` (no `BIOBOX_PROFILE` in the image). Give `bio-box` its own `--profile`, or the pack, runs and work directories (section 7) | W-03, W-13 |
+| A run's outputs are named by hand | `results archive` keeps only the outputs given with `--with`: the run's record holds the worker's command line (`runner.run` reuses the name `argv` for it), not the `search hmm` or `nbr` command that wrote the outputs, and the exports carry no run id. A DIR whose `recipe.yaml` is not the run's is refused | W-28 (no card yet for the record's argv) |
+| The durable storage is not there yet | `/stor/work/Wilke/if2453/all-the-data` (profile `durable`) does not exist on the pod (2026-11-12); `results` with the real profile exits 2 until the PI makes it. The image sees it only with `--bind` | W-28 |
+| Spooled runs are on `/tmp` | until a flush reaches the 64 MiB floor, a run's archive is only in the spool on local disk, which a reboot may clear, as it clears the run itself | W-28 |
 | `search hmm --positive` reads all contig labels | the accession or header of the positive control is looked up in every row group of `contig_label`: no table is sorted by accession, and a header substring cannot prune. The contig's genes are then read from its tape by contig uid, which prunes. Not measured on a large release | W-07 |
 
 Found while writing this runbook, no card yet (reported to the PI):
@@ -870,6 +923,15 @@ fixture of Appendix B was built there first, with the section 2 command as unit 
 `--threads 4` (`pod_run: w13-build exited 0`). The two searches that were cancelled and stopped
 used the runner's test hook `--fault timeout --wall-s 900` (its worker waits until it is stopped),
 so that they ran long enough to be watched; `--fault` is not for real searches.
+
+The rows marked W-28 were run on 2026-11-12 between 23:44 and 23:53 (pod local time) by card W-28, in
+`/tmp/if2453/w28`, on the `rN.3` RNA polymerase run `599bea5d471c84759a0eec02e2ca9225` of card W-25 and
+its outputs in `/tmp/if2453/w25` (bound read-only), with two scratch profiles: the real profile with
+`tmp`, `durable` and `bulk` under `/tmp/if2453/w28/one` or `/tmp/if2453/w28/two`, and the real floor
+(67108864). `DURABLE` was the scratch `durable`, never `/stor`. Each ran in a unit `w28-*` with
+`MemoryMax=8G`, `CPUQuota=100%` and nice 19, through the script `/tmp/if2453/w28/run.sh` (the same
+`singularity exec` as `pod_run.sh`, waiting for the unit), and `results list` once through
+`pod_run.sh` as written in section 7.
 
 | Section | Command | Date run | Last line |
 |---|---|---|---|
@@ -921,6 +983,15 @@ so that they ran long enough to be watched; `--fault` is not for real searches.
 | 7 | `bio-box export proteins ... --out "$WORK/proteins.faa"` | 2026-11-10 | `(no output)`, exit 0 |
 | 7 | `bio-box search cancel "$RUN" ...` of a run that has closed | not run on the pod by W-13; tested | `tests/r2/test_micro_s0_search.py` (card W-13): exit 0, and nothing is signalled. Card C-06 ran it on the pod before W-03 (`--root` alone, runner already gone): `(no output)`, exit 0 |
 | 7 | `ls -d "$ROOT/search_pack" "$ROOT/search"` after every command above | 2026-11-10 | `ls: cannot access '/tmp/if2453/w13/root/search': No such file or directory` (and the same for `search_pack`): the search wrote nothing under the root |
+| 7 | W-28: `results list --profile` the real profile | 2026-11-12 | `refused: the profile's durable storage /stor/work/Wilke/if2453/all-the-data does not exist (it is made by the PI, not by bio-box)`, exit 2 |
+| 7 | W-28: `results archive "$RUN" ... --with` the `search hmm` DIR alone (profile `two`) | 2026-11-12 | `spool /tmp/if2453/w28/two/tmp/results/spool: 1 runs, 12492800 bytes; ...` (2,590 files) |
+| 7 | W-28: `results flush` of that spool | 2026-11-12 | `results flush: the spool's 1 runs make a bundle of 12503040 bytes, under the floor of 67108864 bytes (...); nothing written to /tmp/if2453/w28/two/durable/results, the runs stay spooled. ...`, exit 0; the results area stayed empty |
+| 7 | W-28: `results archive "$RUN" ...` with the `search hmm` DIR and the five `nbr flanks` DIRs (profile `one`) | 2026-11-12 | `spool ...: 1 runs, 164618240 bytes; ...` (14,264 files, sha256 `64cdbd66...7b77`, 9.6 s) |
+| 7 | W-28: the same command again | 2026-11-12 | the same line; before it `results archive: run 599bea5d471c84759a0eec02e2ca9225 is already kept, sha256 64cdbd66...7b77, in .../spool/599bea5d471c84759a0eec02e2ca9225.tar; nothing written`, exit 0 |
+| 7 | W-28: `results archive "$RUN" ...` with other outputs into profile `two`, which keeps the run already | 2026-11-12 | `refused: run 599bea5d471c84759a0eec02e2ca9225 is already archived in ... with sha256 9c305398...d7cf; this archive would be sha256 481bbb76...6fef (...). An archive is never overwritten`, exit 2 |
+| 7 | W-28: `results flush --profile "$PROFILE"` (profile `one`, unit `w28-flush`) | 2026-11-12 | `/tmp/if2453/w28/one/durable/results/results-20261112-20261112-493d4af66eeb856b.tar	1 runs	164628480 bytes	sha256 5ae58462ba605c4289e08804eb03a605ad34f42a0a86db54d6606785026b379c` (7.8 s; `sha256sum` of the file printed the same) |
+| 7 | W-28: `pod_run.sh ... w28-podrun-list results list --profile "$PROFILE"` (with `--bind "$DURABLE"`) | 2026-11-12 | `pod_run: w28-podrun-list exited 0` (before it, the run's line naming the bundle, and `spool ...: 0 runs, 0 bytes; ...`) |
+| 7 | W-28: `results get "$RUN" --profile "$PROFILE" --out "$WORK/back"` (unit `w28-get`) | 2026-11-12 | the run's manifest line; before it `wrote /tmp/if2453/w28/back: 14264 files` (8.7 s). `diff -r` of `back/run` and each `back/outputs/<name>` against the originals: no difference |
 | 8 | `sh scripts/pod_pytest.sh C-06 tests/r0 -k nothing_matches_this` (laptop) | 2026-11-10 | `140 deselected in 1.09s` (exit 5: nothing selected) |
 | 8 | `sh scripts/pod_pytest.sh C-06 tests/r0/test_runbook.py` (laptop) | 2026-11-10 | `20 passed in 3.48s` |
 | 8 | `sh scripts/pod_pytest.sh C-06 --shards 8` (laptop) | 2026-11-10 | `shard 7: 121 passed, 8 xfailed in 509.90s (0:08:29)` (eight shard lines, no failure; 1023 passed, 10 skipped, 8 xfailed in all) |
@@ -1052,6 +1123,9 @@ biopy "$WORK/rb.py" recipe "$ROOT" "$WORK/recipe.yaml"
 Last line: `01563e192ab22a5931d55e224a2dbb07`.
 
 ## Not yet tested
+
+- `results flush` onto `/stor` (card W-28): the PI's step. It was run only into a scratch results
+  area under `/tmp/if2453/w28`, at the real floor.
 
 - `$WORK/rb.py` (Appendix B), which replaced the `python -c` one-liners of sections 5 and 6 and Appendix B in card C-14. It holds the same code, but was not run on the pod: C-14 may run only the test suite there. Run each of its commands once, and through `ssh`, and correct this line.
 - Recovery from an intent file (a kill during publishing). It cannot be hit by hand at fixture
