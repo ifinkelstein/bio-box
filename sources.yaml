@@ -47,8 +47,10 @@ sources:
       list ani_fetch.tsv (28,490 rows, sha256 74f5429a45be0244729cda063a922bf3e7a1e611c99759ca5ad71f2538290843),
       written by c25_select.py --candidates; batches in planning/measurements/2026-11-13_s2c_skani_fetch.md
     fetched_s2c_phase2: >-
-      in progress from 2026-11-12 21:22 CST into /tmp/if2453/c27/genomes/<batch>/ on wilkcomp02 (.fna.gz, per-file
-      sha256 in each batch's lock.json); the 7 phase-1 retries were not served again; nothing archived yet
+      2026-11-12 21:23 to 23:17 CST into /tmp/if2453/c27/genomes/<batch>/ on wilkcomp02 (.fna.gz, per-file sha256
+      in each batch's lock.json): 28,457 of 28,483 genomes served and verified (118,675,230,482 bp, 34,788,621,074
+      bytes kept); 26 not served (listed in planning/measurements/2026-11-13_s2c_skani_fetch.md); the 7 phase-1
+      retries were not served again. On local disk only; the genomes phase 2 keeps are archived after the selection
     used_by: [scripts/stress/build_stage_pod/r50_fetch.py, scripts/stress/build_stage_pod/c27_fetch.py]
     approved: by the PI on 2026-11-11
   - name: ncbi_ftp_genome

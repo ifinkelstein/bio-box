@@ -5,13 +5,11 @@ The running record of the cards in [`TASKS.md`](TASKS.md). Updated at every merg
 by an agent on its own branch `task/<ID>`, audited by the orchestrating session, and merged after its
 tests passed on the merged tree.
 
-## Handoff, 2026-11-12 21:50 CST (current; the dated sections under "History" are superseded where they differ)
+## Handoff, 2026-11-12 23:30 CST (current; the dated sections under "History" are superseded where they differ)
 
 Written so a new session can continue without the conversation that produced this file.
 
-**Mode: draining.** At 21:45 CST the PI said to let the running agents finish and start no new ones; the
-orchestrating session only records, merges what reports, and keeps this file current. Nothing below under "Next" is
-started until the PI says so.
+**Mode: running again.** The PI ended the drain at 23:20 CST on 2026-11-12: up to four agents, working independently.
 
 **For a new session.**
 1. `git fetch origin`. The integration worktree is `.claude/worktrees/integration` in the main checkout, on local
@@ -57,8 +55,8 @@ that cap). State at 21:47 CST:
 - **The 50 Gbp build**, unit `r50-driver` (log `/tmp/if2453/r50/driver.log`; state `/tmp/if2453/r50/driver/`; pause
   `touch /tmp/if2453/r50/driver/HALT`). Release `rM.1` clustered (45,815,843 proteins, 31,183,876 NR90 and 8,192,065
   NR50 clusters, *measured*), then its tokens step ran out of memory (fixed by card B-46, merged). The driver runs with
-  `SKIP_RM1=1`: it scans Pfam on P3 to P6, then waits for `/tmp/if2453/r50/driver/RELEASE_OK`. P3 has 89 of about 96
-  shards (unit `r50-P3-7`, 10 shards at once since 20:40); P4 to P6 follow at about 12 hours each (*estimate*): about
+  `SKIP_RM1=1`: it scans Pfam on P3 to P6, then waits for `/tmp/if2453/r50/driver/RELEASE_OK`. P3's scan was published at 22:37 CST
+  (96 shards, 11.6 hours); P4 is scanning (unit `r50-P4-8`); P5 and P6 follow at about 12 hours each (*estimate*): about
   Saturday midday. The driver writes a temporary `STOP` in the root when it changes the shard count at 08:00 and
   20:00 (its text says "switching"): that is not a failure. **To finish:** when the log says "scans done; waiting for
   .../RELEASE_OK", sync the tree of `plan/task-cards` to `/tmp/if2453/ci/r50` (rsync as `pod_pytest.sh` does; never
@@ -68,13 +66,10 @@ that cap). State at 21:47 CST:
   catalog clean). Watch test: `[ -e /tmp/if2453/r50/driver/DONE ] || [ -e /tmp/if2453/r50/driver/FAILED ] ||
   { [ -e /tmp/if2453/r10/root/STOP ] && ! grep -q 'switching from' /tmp/if2453/r10/root/STOP; } || ! systemctl --user
   is-active --quiet r50-driver || grep -q 'waiting for /tmp/if2453/r50/driver/RELEASE_OK' /tmp/if2453/r50/driver.log`.
-- **The S2C phase-2 candidate fetch** (card C-27): units `c27-fetch-<kk>`, log `/tmp/if2453/c27/logs/launch.log`;
-  3 of 12 batches done, the rest follow by themselves (about 23:30 CST, *estimate*); it halts by itself on refusals,
-  over 5% not served in a batch, a STOP file, or under 250 GB free (529 GB free now). A `HALT` line in the log, or
-  `/tmp/if2453/c27/genomes/HALT`, means it stopped; resume with `sh /tmp/if2453/c27/bin/c27_fetch.sh launch <batch>
-  chain`. When B01 to B12 each hold `DONE`: fill the per-batch table in
-  `planning/measurements/2026-11-13_s2c_skani_fetch.md`, replace the "in progress" text in `sources.yaml`, build
-  `paths.tsv` with `c27_skani.py paths`. skani itself is not run until an image holds it.
+- **The S2C phase-2 candidate fetch** (card C-27) finished at 23:17 CST: 28,457 of 28,483 genomes served and verified
+  (118.7 Gbp; 34.79 GB kept as `.fna.gz` under `/tmp/if2453/c27/genomes/`, local disk only), 26 not served, the 7 phase-1
+  retries refused again (*measured*; `planning/measurements/2026-11-13_s2c_skani_fetch.md`, `sources.yaml`). Next for it:
+  `paths.tsv` and skani, once an image holds skani (card C-27 step 4).
 - Data root `/tmp/if2453/r10/root` (stages S1, P1 to P6; releases `rN.1a`, `rN.1b`, `rN.1`, `rN.2`, `rN.3`): **not
   yet on `/stor`**. `rN.3` is the release to use; its pack is in `/tmp/if2453/bio-box/packs` (found with `--profile`).
 - Scratch that can be cleared once the PI agrees (nothing is deleted without that): `/tmp/if2453/b46`, `m08a`, `m08b`,

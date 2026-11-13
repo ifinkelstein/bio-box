@@ -12,9 +12,10 @@ greedy farthest-first from the best-quality genome. It matches a separately writ
 not depend on input order, and without `--ani` its output is byte-identical to before. The skani driver
 `c27_skani.py` is written and tested against a stand-in binary, and its dry run on the real candidates plans
 499,624 farthest-first pairs in 5 shards (about 1,048 CPU-minutes at the upper cost *estimate*). **The fetch is
-running** as a chain of detached units (`c27-fetch-<kk>`, one per batch of about 9.9 Gbp). At handback (21:34
-CST, 2026-11-12) B00 (the 7 phase-1 retries: all 7 were refused again, so they stay out per DEC-31) and B01 were
-done, and B02 was running. See "State at handback" for how to poll and resume it.
+done** (2026-11-12 23:17 CST; a chain of detached units, one per batch of about 9.9 Gbp): 28,457 of the 28,483
+genomes asked were served and verified (118,675,230,482 bp, 34,788,621,074 bytes kept as `.fna.gz`), 26 were not
+served, and the 7 phase-1 retries were all refused again, so they stay out per DEC-31. No refusal, no md5
+mismatch. The orchestrating session filled in the per-batch table below from each batch's `fetch_result.json`.
 
 ## Step 1: the pin
 
@@ -188,13 +189,26 @@ phase 1's md5 values (`1fd428ef…`, `92c997bc…`). The system's `gzip -t` and 
 |---|---|---|---|---|---|---|---|---|
 | B00 | 7 | 0 | 7 | 24,171 | 0 | 0 | 8 | 4.1 |
 | B01 | 2,406 | 2,396 | 10 | 2,887,732,717 | 2,885,360,389 | 9,971,590,448 | 131 | 597.5 |
-| B02 to B12 | running or queued at handback | | | | | | | |
+| B02 | 2,639 | 2,639 | 0 | 2,897,518,626 | 2,894,797,085 | 10,029,249,403 | 132 | 608.1 |
+| B03 | 2,381 | 2,381 | 0 | 2,885,443,272 | 2,883,179,085 | 10,024,685,232 | 120 | 567.4 |
+| B04 | 2,357 | 2,356 | 1 | 2,896,262,694 | 2,893,986,120 | 10,018,070,116 | 119 | 583.2 |
+| B05 | 2,376 | 2,376 | 0 | 2,907,795,831 | 2,905,558,586 | 10,021,035,912 | 120 | 647.0 |
+| B06 | 2,240 | 2,240 | 0 | 2,912,684,634 | 2,910,576,756 | 10,025,030,041 | 112 | 591.7 |
+| B07 | 2,365 | 2,365 | 0 | 2,905,973,477 | 2,903,772,408 | 10,025,219,391 | 119 | 568.3 |
+| B08 | 2,286 | 2,286 | 0 | 2,910,269,964 | 2,908,202,564 | 10,024,415,755 | 115 | 539.9 |
+| B09 | 2,341 | 2,339 | 2 | 2,907,196,759 | 2,905,037,609 | 10,019,228,143 | 120 | 567.6 |
+| B10 | 2,290 | 2,290 | 0 | 2,910,224,866 | 2,908,110,355 | 10,028,033,691 | 115 | 545.7 |
+| B11 | 2,278 | 2,274 | 4 | 2,895,558,113 | 2,893,555,132 | 10,002,163,928 | 118 | 523.1 |
+| B12 | 2,524 | 2,515 | 9 | 2,898,818,702 | 2,896,484,985 | 9,976,252,796 | 136 | 494.9 |
+| B01 to B12 | 28,483 | 28,457 | 26 | 34,815,479,655 | 34,788,621,074 | 120,164,974,856 | 1,457 | 6,834.4 |
 
 - B01 had 0 refusals, 0 retries and 0 md5 mismatches, and every verified genome's bp equals GTDB's
   `genome_size`. The rates (*derived*) were 240 genomes per min and 4.83 MB/s downloaded.
 - Kept bytes are 0.2930 per bp (*derived*, 2,885,360,389 / 9,847,934,765), close to phase 1's 0.29026 download
   ratio.
-- *Estimate* for all 28,483: about 34.8 GB kept and about 2 h at B01's rate. Finish expected about 23:30 CST.
+- The whole fetch (*measured*, the table's last row; sums *derived*): 34.79 GB kept against the 34.8 GB *estimate*; 113.9
+  minutes of fetching (6,834.4 s), 21:23 to 23:17 CST; 118,675,230,482 bp verified, every genome's bp equal to GTDB's
+  `genome_size` (0 mismatches in every batch); 0 md5 refetches.
 
 **Not served.**
 
@@ -204,6 +218,13 @@ phase 1's md5 values (`1fd428ef…`, `92c997bc…`). The system's `gzip -t` and 
 - B01: 10 GenBank accessions, among them GCA_006228445.1, GCA_006228465.1, GCA_006228485.1, GCA_006228505.1,
   GCA_006228525.1, GCA_006228545.1, GCA_021559635.1, GCA_021559655.1 and GCA_021562195.1. The full list is in
   `genomes/B01/fetch_result.json` (`failed`).
+- All 26 of B01 to B12 (*measured*; each "not returned by Datasets v2 (alone or in its batch)", the FTP fallback
+  failing too): B01: GCA_006228445.1, GCA_006228465.1, GCA_006228485.1, GCA_006228505.1, GCA_006228525.1,
+  GCA_006228545.1, GCA_021559635.1, GCA_021559655.1, GCA_021562195.1, GCA_040822005.1. B04: GCF_006228425.1. B09:
+  GCF_028215935.1, GCF_028471605.1. B11: GCF_039544385.1, GCF_039545775.1, GCF_039602145.1, GCF_039614705.1. B12:
+  GCF_041463605.1, GCF_041463615.1, GCF_041463625.1, GCF_041463635.1, GCF_041463645.1, GCF_041463755.1,
+  GCF_041464225.1, GCF_041486685.1, GCF_041489455.1. Runs of consecutive accessions suggest whole submissions
+  withdrawn. They are missing from the ANI candidates: 26 of 28,483 (0.09%).
 - The likely cause, not checked, is suppressed assemblies.
 
 **Disk** (*measured*, `logs/disk.log`):
@@ -225,10 +246,8 @@ phase 1's md5 values (`1fd428ef…`, `92c997bc…`). The system's `gzip -t` and 
 - To resume after a FAILED or HALT batch: `sh /tmp/if2453/c27/bin/c27_fetch.sh launch <that batch> chain`. A batch
   is resumable: genomes in its `lock.json` are not asked again, and DONE batches are skipped.
 - To stop: `systemctl --user stop c27-fetch-<kk>`, or create the data root's STOP file.
-- After it ends:
-  - fill the table above from each `DONE`;
-  - list every `failed` accession;
-  - put the counts into `sources.yaml` (`fetched_s2c_phase2`);
+- After it ended (done 2026-11-12 by the orchestrating session: the table, the `failed` list, `sources.yaml`); still to
+  do, in step (4):
   - build `paths.tsv` with `c27_skani.py paths` from the phase-1 locks and B01 to B12's locks.
 
 ## Pod use
