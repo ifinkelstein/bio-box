@@ -333,6 +333,10 @@ def idle() -> float:
     return 0.0
 
 
+IDLE = runstep.CpuUse(window_s=5.0)  # card C-28: no other user computes, nothing else of ours runs
+BUSY = runstep.CpuUse(others=runstep.OTHERS_BUSY_CPUS + 1.0, window_s=5.0)  # another user computes
+
+
 def shard(k: int) -> str:
     return f"{SCAN}.shard-{k:05d}"
 
@@ -590,10 +594,11 @@ def test_shards_publishing_at_once_do_not_remove_each_others_incoming_area(direc
 def test_jobs_times_threads_above_the_hours_allowance_is_refused_before_any_step(direct, tmp_path, capsys):
     root = tmp_path / "root"
     prof = direct["prof"]  # day cap 4, night cap 6
-    for when, load, jobs, cpus, allowance in ((NOON, 0.0, 3, 2, 4), (SUNDAY_NIGHT, 20.0, 5, 1, 4),
-                                              (SUNDAY_NIGHT, 0.0, 7, 1, 6), (NOON, 0.0, 1, 5, 4)):
+    # migrated by card C-28: "busy" is another user computing (an injected CPU reading), no longer a load of 20
+    for when, use, jobs, cpus, allowance in ((NOON, IDLE, 3, 2, 4), (SUNDAY_NIGHT, BUSY, 5, 1, 4),
+                                             (SUNDAY_NIGHT, IDLE, 7, 1, 6), (NOON, IDLE, 1, 5, 4)):
         b = jobs_of(direct, root, jobs, cpus)
-        assert bs.build_stage(prof, b, run=runner, clock=lambda: when, load=lambda: load) == runstep.EXIT_REFUSED
+        assert bs.build_stage(prof, b, run=runner, clock=lambda: when, cpu=lambda: use) == runstep.EXIT_REFUSED
         err = capsys.readouterr().err
         assert f"--scan-jobs {jobs}" in err and f"--scan-cpus {cpus}" in err and f"{jobs * cpus}" in err
         assert f"allows {allowance}" in err
@@ -621,9 +626,11 @@ def test_the_defaults_use_the_hours_allowance_and_no_more(direct, tmp_path):
     assert bs.scan_slots(b, 2) == (1, 2)  # fewer threads than the default: one job of all of them
     assert bs.scan_slots(dataclasses.replace(b, scan_cpus=8), 40) == (5, 8)
     assert bs.scan_slots(dataclasses.replace(b, scan_jobs=3), 40) == (3, 4)
-    assert bs.scan_allowance(direct["prof"], NOON, 0.0) == 4
-    assert bs.scan_allowance(direct["prof"], SUNDAY_NIGHT, 0.0) == 6
-    assert bs.scan_allowance(direct["prof"], SUNDAY_NIGHT, 20.0) == 4  # busy host: the day cap
+    assert bs.scan_allowance(direct["prof"], NOON, IDLE) == 4
+    assert bs.scan_allowance(direct["prof"], SUNDAY_NIGHT, IDLE) == 6
+    assert bs.scan_allowance(direct["prof"], SUNDAY_NIGHT, BUSY) == 4  # another user computes: the day cap (C-28)
+    # card C-28: our own load elsewhere does not lower the cap the start is checked against (launches wait for it)
+    assert bs.scan_allowance(direct["prof"], SUNDAY_NIGHT, runstep.CpuUse(own_other=5.0)) == 6
 
 
 # --- refusals before any step ---------------------------------------------------------------------------
@@ -839,6 +846,88 @@ def test_c12_with_the_allowance_below_one_shards_threads_the_build_waits_then_pr
     assert bs.RECHECK_S >= 1
     check_stage_files(direct, root)
     assert scan_records(root) == scan_records(scanned[0])
+
+
+MONDAY_BEFORE_DAY = datetime(2026, 11, 9, 7, 59, 30)  # night by the hour; the day window opens in 30 s
+
+
+def c28_build(direct, planned, tmp_path, monkeypatch, *, when: datetime, cpu, hold: int):
+    """`planned` continued through its shards with six jobs of one thread under `small_budget` (night cap 6, day cap
+    4, one CPU-minute a process), the clock fixed at `when` and the CPU readings from `cpu` (a `Clock` of readings,
+    armed with the clock when the scan's plan step runs), stopped after the scan. Returns the counting runner."""
+    monkeypatch.setattr(bs, "shard_residues", patched_residues(direct))
+    monkeypatch.setattr(bs, "RECHECK_S", 1.0, raising=False)
+    prof, root = small_budget(direct), copy_root(planned, tmp_path)
+    clock = Clock(when, [when])
+    count = InFlight(clock, when, hold=hold)
+
+    def run_(prof_, root_, stage, step, cmd, **kw):
+        if step.endswith(".plan"):
+            cpu.armed = True
+        return count(prof_, root_, stage, step, cmd, **kw)
+
+    def hook(point: str) -> None:
+        count.hook(point)
+        if point == f"after:{SCAN}":
+            raise Killed(point)
+
+    b = dataclasses.replace(jobs_of(direct, root, 6, 1), tmp=tmp_path / "scratch")
+    with pytest.raises(Killed):
+        bs.build_stage(prof, b, run=run_, clock=clock, cpu=cpu, _hook=hook)
+    check_stage_files(direct, root)
+    return count, root
+
+
+@pytest.mark.covers("C-28", "D-01")
+def test_c28_once_another_user_computes_at_night_no_shard_launch_passes_the_day_cap(
+        direct, planned, scanned, tmp_path, monkeypatch):
+    """Six jobs of one thread fit the night cap (6) while no other user computes. The readings say idle for the
+    first three shard launches, then another user computing: after that no shard may start while it would put more
+    than the day cap (4) in flight. The scan's files are the direct build's."""
+    readings = Clock(IDLE, [IDLE] * 3 + [BUSY])
+    count, root = c28_build(direct, planned, tmp_path, monkeypatch, when=SUNDAY_NIGHT, cpu=readings, hold=3)
+    after = {s: t for s, t, _ in count.starts if index(s) >= 3}
+    assert after and all(t <= 4 for t in after.values()), count.starts
+    assert count.held.is_set()
+    assert scan_records(root) == scan_records(scanned[0])
+
+
+@pytest.mark.covers("C-28", "D-01")
+def test_c28_the_accounts_other_processes_are_subtracted_from_every_launch(
+        direct, planned, scanned, tmp_path, monkeypatch):
+    """Another job of ours (a test suite, another agent's build) uses 3 CPUs outside this build's unit at night: the
+    build starts (6 × 1 is within the night cap) and never has more than 6 - 3 shards in flight."""
+    readings = Clock(runstep.CpuUse(own_other=3.0, window_s=5.0), [runstep.CpuUse(own_other=3.0, window_s=5.0)])
+    count, root = c28_build(direct, planned, tmp_path, monkeypatch, when=SUNDAY_NIGHT, cpu=readings, hold=3)
+    assert count.starts and max(t for _, t, _ in count.starts) <= 3, count.starts
+    assert count.held.is_set()
+    assert scan_records(root) == scan_records(scanned[0])
+
+
+@pytest.mark.covers("C-28", "D-01")
+def test_c28_a_launch_at_night_that_could_still_run_when_the_day_window_opens_counts_against_the_day_cap(
+        direct, planned, scanned, tmp_path, monkeypatch):
+    """Card C-28 (3). Card C-12 re-reads the hour before each launch, so nothing new starts above the day cap once
+    the window is open, but shards started just before it run on above it. At 07:59:30 on a Monday the hour is
+    night (cap 6), yet a one-thread shard on a one-CPU-minute budget may run a minute, into the day window: each
+    launch counts against the day cap (4), so no more than 4 are in flight when the window opens."""
+    readings = Clock(IDLE, [IDLE])
+    count, root = c28_build(direct, planned, tmp_path, monkeypatch, when=MONDAY_BEFORE_DAY, cpu=readings, hold=4)
+    assert count.starts and max(t for _, t, _ in count.starts) <= 4, count.starts
+    assert count.held.is_set()
+    assert scan_records(root) == scan_records(scanned[0])
+
+
+@pytest.mark.covers("C-28")
+def test_c28_build_stage_reports_the_allowance_and_its_readings(direct, tmp_path, capsys):
+    """build-stage says the allowance it starts with, and the readings behind it, in one line of its own."""
+    b = dataclasses.replace(jobs_of(direct, tmp_path / "root", 3, 2), stages=None)  # refused later: no release_def
+    use = runstep.CpuUse(others=0.02, own_other=1.2, own_here=0.1, window_s=5.0)
+    assert bs.build_stage(direct["prof"], b, run=runner, clock=lambda: SUNDAY_NIGHT, cpu=lambda: use,
+                          load=lambda: 41.98) == runstep.EXIT_REFUSED
+    lines = [ln for ln in capsys.readouterr().err.splitlines() if "build-stage: " in ln and "allowance" in ln]
+    assert len(lines) == 1, lines
+    assert "allowance 5 threads" in lines[0] and "cap 6" in lines[0] and "load average 41.98" in lines[0]
 
 
 def lost_scratch(scanned, tmp_path: Path) -> tuple[Path, Path]:

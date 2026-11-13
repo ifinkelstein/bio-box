@@ -331,7 +331,7 @@ def _limits(a) -> runner.Limits:
         from biobox import profile, runstep
 
         prof = profile.load(path)
-        cap = runstep.choose_threads(prof, datetime.now(), runstep._load1())
+        cap = runstep.choose_threads(prof, datetime.now(), runstep.read_cpu())  # card C-28: others' CPU, not the load
         if a.cpus is not None and a.cpus > cap:
             raise ValueError(f"--cpus {a.cpus} is above the profile's thread cap of {cap} for this hour")
         cpus = min(cpus, cap)

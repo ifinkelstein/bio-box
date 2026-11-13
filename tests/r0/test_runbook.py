@@ -302,6 +302,27 @@ def test_the_unit_quota_is_the_night_cap_and_the_runbook_says_build_stage_holds_
         assert "max_threads_night" in part and "before each shard launch" in part, heading
 
 
+@pytest.mark.covers("C-28")
+def test_c28_the_runbook_states_the_night_rule_as_implemented():
+    """Card C-28: the night cap holds while no other user computes, read as other users' CPU over a window, not as a
+    load average above 8; the allowance of a launch subtracts ours elsewhere; section 1 shows how to read it."""
+    from biobox import runstep
+
+    text = RUNBOOK.read_text()
+    for heading in ("## 1. ", "## 2. ", "## 10. Limits"):
+        part = section_of(text, heading)
+        assert "load average above 8" not in part and "load average is at most 8" not in part, heading
+    limits = section_of(text, "## 10. Limits")
+    row = next(ln for ln in limits.splitlines() if ln.startswith('| "Other compute"'))
+    assert f"{runstep.OTHERS_BUSY_CPUS:g} of a core" in row and f"{runstep.CPU_WINDOW_S:g} s window" in row
+    assert f"uid above {runstep.SYSTEM_UID_MAX}" in row and "OTHERS_BUSY_CPUS" in row and "BUSY_LOAD" not in limits
+    assert any(ln.startswith("| Allowance of a launch") and "ours elsewhere" in ln for ln in limits.splitlines())
+    build = section_of(text, "## 2. ")
+    assert "ours elsewhere" in build and "06:45" in build and "allowance ..." in build
+    first = [c for _, c in commands(section_of(text, "## 1. "))]
+    assert any(c.startswith("biopy -m biobox.runstep") for c in first), first
+
+
 @pytest.mark.covers("C-13")
 def test_c13_the_verify_section_runs_release_verify_with_and_without_a_previous_release():
     """Card C-13 (4): section 6 verifies a release with `bio-box release verify` (the parser check above reads the

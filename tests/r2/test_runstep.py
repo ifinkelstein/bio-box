@@ -286,26 +286,32 @@ def test_resume_with_a_damaged_output_errors(prof, root, tmp_path, capsys, damag
     assert not marker.exists()
 
 
-@pytest.mark.parametrize("now,load,expected", [
-    (NOON_MONDAY, 0.0, 4),
-    (datetime(2026, 11, 9, 7, 59), 0.0, 6),
-    (datetime(2026, 11, 9, 8, 0), 0.0, 4),
-    (datetime(2026, 11, 9, 19, 59), 0.0, 4),
-    (datetime(2026, 11, 9, 20, 0), 0.0, 6),
-    (NOON_SATURDAY, 0.0, 6),
-    (NIGHT_MONDAY, runstep.BUSY_LOAD + 0.5, 4),
-    (NOON_SATURDAY, runstep.BUSY_LOAD + 0.5, 4),
-    (NIGHT_MONDAY, runstep.BUSY_LOAD, 6),
-    (NOON_MONDAY, runstep.BUSY_LOAD + 0.5, 4),
+# Migrated by card C-28: "busy" is other users' CPU over a window (`runstep.CpuUse`), no longer the load average.
+IDLE = runstep.CpuUse()
+BUSY = runstep.CpuUse(others=runstep.OTHERS_BUSY_CPUS + 0.5)
+AT_THRESHOLD = runstep.CpuUse(others=runstep.OTHERS_BUSY_CPUS)
+
+
+@pytest.mark.parametrize("now,use,expected", [
+    (NOON_MONDAY, IDLE, 4),
+    (datetime(2026, 11, 9, 7, 59), IDLE, 6),
+    (datetime(2026, 11, 9, 8, 0), IDLE, 4),
+    (datetime(2026, 11, 9, 19, 59), IDLE, 4),
+    (datetime(2026, 11, 9, 20, 0), IDLE, 6),
+    (NOON_SATURDAY, IDLE, 6),
+    (NIGHT_MONDAY, BUSY, 4),
+    (NOON_SATURDAY, BUSY, 4),
+    (NIGHT_MONDAY, AT_THRESHOLD, 6),
+    (NOON_MONDAY, BUSY, 4),
 ])
-def test_thread_choice_by_hour_weekday_and_load(prof, now, load, expected):
-    assert runstep.choose_threads(prof, now, load) == expected
+def test_thread_choice_by_hour_weekday_and_load(prof, now, use, expected):
+    assert runstep.choose_threads(prof, now, use) == expected
 
 
 def test_thread_choice_reaches_the_step_at_a_busy_night(prof, root, tmp_path):
     env_file = tmp_path / "env.json"
     assert run(prof, root, "occ", fake("--env", str(env_file), "--out", f"{OCC}/part-0.parquet=10"),
-               clock=lambda: NIGHT_MONDAY, load=lambda: 50.0) == 0
+               clock=lambda: NIGHT_MONDAY, cpu=lambda: BUSY) == 0
     assert json.loads(env_file.read_text())["OMP_NUM_THREADS"] == "4"
     assert json.loads(record_path(root, "occ").read_text())["threads"] == 4
 
@@ -457,7 +463,7 @@ from pathlib import Path
 from biobox import profile, runstep, stage
 prof, root, cmd = profile.load(sys.argv[1]), Path(sys.argv[2]), sys.argv[3:]
 for step in ("a", "b", "a"):  # the third call finds a's run record: skipped
-    runstep.run_step(prof, root, "S0", step, [*cmd, step], threads=1)
+    runstep.run_step(prof, root, "S0", step, [*cmd, step], threads=1, cpu=runstep.CpuUse, load=lambda: 0.0)  # C-28
 stage._say("done")
 """
 SAYS = r"""
@@ -480,9 +486,12 @@ def test_c13_run_step_and_build_stage_lines_are_timestamped_and_in_time_order_in
     with log.open("wb") as fh:
         assert subprocess.run(argv, stdout=fh, stderr=subprocess.STDOUT, timeout=120).returncode == 0
     lines = log.read_text().splitlines()
-    assert [STAMPED.sub(r"\1: ", ln) for ln in lines] == [
+    allowance = re.compile(r"^(run-step: S0\.\w): allowance .*")  # card C-28: one line before each command runs
+    assert [allowance.sub(r"\1: allowance", STAMPED.sub(r"\1: ", ln)) for ln in lines] == [
+        "run-step: S0.a: allowance",
         "command a ran",
         "run-step: S0.a published 1 files",
+        "run-step: S0.b: allowance",
         "command b ran",
         "run-step: S0.b published 1 files",
         "run-step: S0.a skipped: run record and outputs present",
@@ -507,7 +516,7 @@ from pathlib import Path
 from biobox import profile, runstep
 held = b"\x01" * (int(sys.argv[3]) << 20)  # written, so resident when run-step starts a step
 prof, root, cmd = profile.load(sys.argv[1]), Path(sys.argv[2]), sys.argv[4:]
-codes = [runstep.run_step(prof, root, "S0", step, [*cmd, step, mib], threads=1)
+codes = [runstep.run_step(prof, root, "S0", step, [*cmd, step, mib], threads=1, cpu=runstep.CpuUse, load=lambda: 0.0)
          for step, mib in (("big", "%MIB%"), ("small", "0"))]
 assert len(held) == int(sys.argv[3]) << 20
 sys.exit(max(codes))

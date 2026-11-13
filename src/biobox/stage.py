@@ -47,7 +47,8 @@ Before any step (exit 2, nothing run): a bad name; `--stage` not among the relea
 whose own ingest estimate exceeds the profile's `cpu_min_per_process` (one process reads each object
 whole, also in batches, card B-30); and `--scan-jobs` × `--scan-cpus`, or `--threads`, above the threads `run-step` allows at
 the start of the call (`runstep.choose_threads`: the profile's cap for the hour and weekday, the day
-cap while the host is busy). The ingest estimate is skipped when ingest's run record exists. Then
+cap at night while other users compute, card C-28; the account's own other work is not subtracted
+here: launches wait for it, below). The ingest estimate is skipped when ingest's run record exists. Then
 clustering's estimate, when every stage of the release has a gene-call run record and the cluster step
 none (below). Before each step: a `STOP` file in the root exits 75, as `run-step` does.
 
@@ -64,16 +65,25 @@ runs lets the step's command finish; `run-step` then publishes nothing of it and
 call runs that step again from the start (the documented rule of card C-02; its cost in C-10: S1a's
 gene calling, 57.7 s and 4.98 CPU-minutes, ran twice, *measured*).
 
-The hour (card C-12). A build can run past the start of the day window, so the allowance is not
-decided once: it is read again (`clock`, `load`, `runstep.choose_threads`) before each step that has
-no run record and before each scan shard launch. Work is started only while it fits: a step only
-while its `--threads` is at most the allowance, a shard only while the shards in flight and it, at
-`--scan-cpus` each, are at most the allowance. Work already running finishes. When the allowance has
-shrunk below `--scan-jobs` × `--scan-cpus`, fewer shards run at once; below one shard's
-`--scan-cpus` (or a step's `--threads`), the launch is held: build-stage waits on the shards it
-runs, or for `RECHECK_S` seconds when none runs, then checks again (and checks `STOP`). The default
-`--threads` (the smaller cap) is never held. `run-step` itself chooses its threads by the hour when
-it starts. The output bytes depend on none of this.
+The hour (cards C-12, C-28). A build can run past the start of the day window, so the allowance is not
+decided once: it is read again (`clock`, `cpu`, `runstep.allowance`) before each step that has
+no run record and before each scan shard launch. The allowance of a launch of T threads is the cap less
+what the account's processes outside this build use now (`runstep.CpuUse.own_other`, to the nearest
+CPU: a test suite, another agent's build, a search), at least 0; the build's own processes (its cgroup,
+the `pod_run.sh` unit, and its process tree) are not subtracted, since the shards in flight are counted
+here. The cap is the day cap in the day window; at night when other users compute or the reading
+failed; and at night for a launch whose budget (`cpu_min_per_process` / T minutes) could run into the
+day window, so that work started at night under the night cap is not running above the day cap when
+the window opens (card C-12's re-read alone let shards started at 07:59 run on at 56). Work is started
+only while it fits: a step only while its `--threads` is at most the allowance, a shard only while the
+shards in flight and it, at `--scan-cpus` each, are at most the allowance. Work already running
+finishes. When the allowance has shrunk below `--scan-jobs` × `--scan-cpus`, fewer shards run at once;
+below one shard's `--scan-cpus` (or a step's `--threads`), the launch is held: build-stage waits on the
+shards it runs, or for `RECHECK_S` seconds when none runs, then checks again (and checks `STOP`). Since
+card C-28 the default `--threads` (the smaller cap) is held too while the account's other processes
+leave less than it. The allowance is said at the start and again whenever it changes, one line each
+with the readings. `run-step` itself checks its threads against the cap when it starts. The output bytes
+depend on none of this.
 
 A scan in shards (cards B-24, C-11). Residues are known only after gene calling, so a scan step's
 estimate is made when the build reaches it and its record does not exist. When it exceeds
@@ -330,10 +340,12 @@ def threads_of(prof: Profile, b: Build) -> int:
     return b.threads if b.threads is not None else min(prof.max_threads_day, prof.max_threads_night)
 
 
-def scan_allowance(prof: Profile, now: datetime, load1: float) -> int:
-    """The threads `run-step` allows at local time `now` with this 1-minute load average
-    (`runstep.choose_threads`): what the scan shards running at once share."""
-    return runstep.choose_threads(prof, now, load1)
+def scan_allowance(prof: Profile, now: datetime, use: runstep.CpuUse) -> int:
+    """The cap `run-step` holds one process to at local time `now` with this CPU reading (`runstep.choose_threads`:
+    the hour's cap, the day cap at night while other users compute): what `--scan-jobs` × `--scan-cpus` and
+    `--threads` are checked against when the build starts. Each launch then gets less while the account's other
+    processes use CPU (`runstep.allowance`, card C-28)."""
+    return runstep.choose_threads(prof, now, use)
 
 
 def scan_slots(b: Build, allowance: int) -> tuple[int, int]:
@@ -598,7 +610,8 @@ def _refusal(prof: Profile, b: Build, root: Path, plan: list[Step], allowance: i
         return (f"--scan-jobs {jobs} × --scan-cpus {cpus} = {jobs * cpus} threads at once, but run-step allows "
                 f"{allowance} now ({now:%a %H:%M}: the profile's day cap {prof.max_threads_day} on weekdays from "
                 f"{prof.day_start_hour}:00 to {prof.day_end_hour}:00, else the night cap {prof.max_threads_night}, "
-                f"and the day cap while the load average is above {runstep.BUSY_LOAD}); lower one of them")
+                f"and the day cap while other users compute, above {runstep.OTHERS_BUSY_CPUS:g} CPUs); lower one of "
+                f"them")
     if threads_of(prof, b) > allowance:
         return (f"--threads {threads_of(prof, b)} is above the {allowance} threads run-step allows now "
                 f"({now:%a %H:%M}); give at most {min(prof.max_threads_day, prof.max_threads_night)} (the smaller cap, "
@@ -710,18 +723,22 @@ def unit_cap() -> int | None:
 
 
 def build_stage(prof: Profile, b: Build, *, run: Runner | None = None,
-                clock: Callable[[], datetime] = datetime.now, load: Callable[[], float] = runstep._load1,
+                clock: Callable[[], datetime] = datetime.now, load: Callable[[], float] | None = None,
+                cpu: Callable[[], runstep.CpuUse] | None = None,
                 mem_cap: Callable[[], int | None] = unit_cap, _hook: Hook | None = None) -> int:
     """Run the steps of `b` in order; return 0, the first step's non-zero exit code, 75 for STOP, or 2
     for a refusal (module docstring). `run` (tests only) stands in for `runstep.run_step`, also for the
     scan shards, which it is then called for from one thread each; without it each shard is its own
-    `bio-box run-step` process. `clock` and `load` (tests only) give the time and load average the scan
-    allowance is decided at. `_hook` (tests only) is called with `after:<step>` after each step that
+    `bio-box run-step` process. `clock` and `cpu` (tests only) give the time and the CPU reading by owner
+    (`runstep.read_cpu`, card C-28) the allowance is decided at; `load` (default `runstep._load1`) the load
+    average, only reported. `_hook` (tests only) is called with `after:<step>` after each step that
     exited 0 or was passed over (scan shards in the order they end), and with `hold:<step>` each time a
     step or shard launch is held for the allowance (card C-12). An exception that `_hook` raises
-    is not caught; shards then running are waited for first. The clock and the load are read at the
+    is not caught; shards then running are waited for first. The clock and the CPU are read at the
     start, then before each step without a run record, before each shard launch and at each check
     while a launch is held. `mem_cap` (tests only) gives the memory cap the ncRNA shards share (card E-07)."""
+    reading = runstep.read_cpu if cpu is None else cpu
+    load_avg = runstep._load1 if load is None else load
     shard_run = run
     run = runstep.run_step if run is None else run
     root = Path(b.root).resolve()
@@ -733,8 +750,10 @@ def build_stage(prof: Profile, b: Build, *, run: Runner | None = None,
     if (root / "STOP").exists():
         _say(f"{root / 'STOP'} exists; not starting stage {b.stage}")
         return runstep.EXIT_STOP
-    now = clock()
-    allowance = scan_allowance(prof, now, load())
+    now, use = clock(), reading()
+    allowance = scan_allowance(prof, now, use)
+    said = runstep.allowance(prof, now, use, load1=load_avg())
+    _say(f"stage {b.stage}, release {b.release}: {said.line}")
     why = _refusal(prof, b, root, plan, allowance, now)
     if why is not None:
         _say(f"refused before any step: {why}")
@@ -742,10 +761,17 @@ def build_stage(prof: Profile, b: Build, *, run: Runner | None = None,
     scratch_of(prof, b).mkdir(parents=True, exist_ok=True)
     n = threads_of(prof, b)
     jobs, cpus = scan_slots(b, allowance)
+    last = [(said.threads, said.cap)]
 
-    def allow() -> int:
-        """The threads run-step allows now (read again at every call, card C-12)."""
-        return scan_allowance(prof, clock(), load())
+    def allow(threads: int) -> int:
+        """The threads that work in flight may total now, for a launch of `threads` (`runstep.allowance`: read again
+        at every call, cards C-12, C-28): the cap less the account's processes outside this unit. Said again when it
+        changes."""
+        a = runstep.allowance(prof, clock(), reading(), threads=threads, load1=load_avg())
+        if (a.threads, a.cap) != last[0]:
+            _say(f"{a.line} (was {last[0][0]})")
+            last[0] = (a.threads, a.cap)
+        return a.threads
 
     def one(step: Step, **kw: str) -> int | None:
         """Run `step` (STOP checked first, then held while its threads do not fit the allowance); its non-zero exit
@@ -841,12 +867,12 @@ def _fresh_scratch(step: Step) -> None:
     d.mkdir(parents=True)
 
 
-def _hold_step(root: Path, step: Step, need: int, allow: Callable[[], int], hook: Hook | None) -> int | None:
+def _hold_step(root: Path, step: Step, need: int, allow: Callable[[int], int], hook: Hook | None) -> int | None:
     """Wait until a step of `need` threads, which runs alone, fits the allowance `allow()` (card C-12): None then, or
     75 when a `STOP` file appears meanwhile. While it does not fit, check again every `RECHECK_S` seconds."""
     said = None
     while True:
-        a = allow()
+        a = allow(need)
         if need <= a:
             return None
         if a != said:
@@ -863,7 +889,7 @@ def _hold_step(root: Path, step: Step, need: int, allow: Callable[[], int], hook
 
 def _scan_in_shards(prof: Profile, b: Build, root: Path, step: Step, one: Callable[[Step], int | None],
                     hook: Hook | None, jobs: int, cpus: int, run: Runner | None,
-                    allow: Callable[[], int]) -> int | None:
+                    allow: Callable[[int], int]) -> int | None:
     """The scan `step` as its plan step, then its shard steps, up to `jobs` at once with `cpus` threads each and
     within the allowance `allow()` of the hour (`_run_shards`), then the merge step (`scan_steps`); each is a
     `run-step`, so a call after a kill skips every step already published. Before the merge, a shard whose
@@ -895,7 +921,7 @@ def _scan_in_shards(prof: Profile, b: Build, root: Path, step: Step, one: Callab
 
 
 def _rescan_lost(prof: Profile, b: Build, root: Path, scan: Step, shards: list[Step], jobs: int, cpus: int,
-                 hook: Hook | None, allow: Callable[[], int]) -> int | None:
+                 hook: Hook | None, allow: Callable[[int], int]) -> int | None:
     """Before the merge (card C-12): every shard has its run record, but scratch may have been cleared or damaged
     since (a reboot clears /tmp), and its run records stop `run-step` from scanning it again. Each shard whose
     scratch run is missing, fails the sha256 its published record holds, or cannot be checked (a record without
@@ -1028,7 +1054,7 @@ def ncrna_scan_steps(prof: Profile, b: Build, step: Step, n_shards: int | None, 
 
 def _ncrna_in_shards(prof: Profile, b: Build, root: Path, step: Step, one: Callable[[Step], int | None],
                      hook: Hook | None, jobs: int, cpus: int, run: Runner | None,
-                     allow: Callable[[], int]) -> int | None:
+                     allow: Callable[[int], int]) -> int | None:
     """The ncRNA scan `step` as its plan step, its shard steps (up to `jobs` at once, `cpus` threads each, within the
     allowance of the hour, `_run_shards`) and its merge step (`ncrna_scan_steps`), as `_scan_in_shards` runs a domain
     scan; a shard whose scratch runs are lost is scanned again first (`_rescan_lost_ncrna`). The shards' scratch runs
@@ -1059,7 +1085,7 @@ def _ncrna_in_shards(prof: Profile, b: Build, root: Path, step: Step, one: Calla
 
 
 def _rescan_lost_ncrna(prof: Profile, b: Build, root: Path, scan: Step, shards: list[Step], jobs: int, cpus: int,
-                       seq: Sequence[str], hook: Hook | None, allow: Callable[[], int]) -> int | None:
+                       seq: Sequence[str], hook: Hook | None, allow: Callable[[int], int]) -> int | None:
     """Before the ncRNA merge: each shard whose scratch runs are missing or fail the sha256 its published record holds
     is scanned again into scratch (`python -m biobox.l1.ncrna rescan`), as `_rescan_lost` does for a domain scan."""
     prod = scan.name.removeprefix("ncrna-")
@@ -1130,7 +1156,7 @@ def _intent(root: Path, step: Step) -> Path:
 
 
 def _run_shards(prof: Profile, root: Path, scan: Step, shards: list[Step], jobs: int, cpus: int, run: Runner,
-                hook: Hook | None, allow: Callable[[], int]) -> int | None:
+                hook: Hook | None, allow: Callable[[int], int]) -> int | None:
     """Run the shard steps without a run record, up to `jobs` at once (module docstring); return None when
     every shard has its record, else the failed shard's code or 75 for STOP. A shard with a record and no
     intent file is passed over (its hook is called)."""
@@ -1147,7 +1173,7 @@ def _run_shards(prof: Profile, root: Path, scan: Step, shards: list[Step], jobs:
 
 
 def _launch(prof: Profile, root: Path, todo: list[Step], jobs: int, cpus: int, run: Runner,
-            hook: Hook | None, allow: Callable[[], int]) -> int | None:
+            hook: Hook | None, allow: Callable[[int], int]) -> int | None:
     """Start the steps of `todo` in order, at most `jobs` running at once, each in a thread that calls `run`
     and puts its result on a queue; wait on the queue (never poll). Before each launch the allowance is read
     again (`allow()`, card C-12): a step is launched only while the steps running and it, at `cpus` threads each,
@@ -1177,7 +1203,7 @@ def _launch(prof: Profile, root: Path, todo: list[Step], jobs: int, cpus: int, r
                     stopped = True
                     break
                 k, s = pending[0]
-                a = allow()
+                a = allow(cpus)
                 if (running + 1) * cpus > a:
                     held = True
                     if a != said:
@@ -1296,7 +1322,7 @@ def _own_scratch(run: Runner, todo: list[Step]) -> Runner:
 
 
 def _ingest_in_batches(prof: Profile, b: Build, root: Path, one: Callable[[Step], int | None], hook: Hook | None,
-                       jobs: int, run: Runner | None, allow: Callable[[], int]) -> int | None:
+                       jobs: int, run: Runner | None, allow: Callable[[int], int]) -> int | None:
     """Ingest as its pass-1 steps, its plan step, its batch steps and its merge step (`ingest_steps`), each a
     `run-step` of one thread, up to `jobs` at once within the allowance of the hour (`_launch`); a call after a
     kill skips every step already published. A scratch run lost after its record was published is made again
@@ -1346,7 +1372,7 @@ def _ingest_in_batches(prof: Profile, b: Build, root: Path, one: Callable[[Step]
     return None
 
 
-def _rescan_lost_ingest(prof: Profile, b: Build, root: Path, jobs: int, hook: Hook | None, allow: Callable[[], int],
+def _rescan_lost_ingest(prof: Profile, b: Build, root: Path, jobs: int, hook: Hook | None, allow: Callable[[int], int],
                         plan: bool) -> int | None:
     """Make again the scratch runs whose record is published but which are missing or fail its sha256
     (`store.ingest_run_problems`; a reboot clears /tmp): each pass-1 run, then (with `plan`) the decision table,
@@ -1437,7 +1463,7 @@ def cluster_steps(prof: Profile, b: Build) -> Callable[..., Step]:
 
 
 def _cluster_in_parts(prof: Profile, b: Build, root: Path, one: Callable[..., int | None], hook: Hook | None,
-                      jobs: int, cpus: int, run: Runner | None, allow: Callable[[], int]) -> int | None:
+                      jobs: int, cpus: int, run: Runner | None, allow: Callable[[int], int]) -> int | None:
     """The release's clustering in parts (card B-41, `biobox.l2.cluster`): its plan step, then each module call in
     order, a per-query call as its cut step and, when cut into more than one part, its part steps (up to `jobs` at
     once with `cpus` threads each within the allowance of the hour, as scan shards run) and its join, each other
@@ -1497,7 +1523,7 @@ def _cluster_in_parts(prof: Profile, b: Build, root: Path, one: Callable[..., in
     return None
 
 
-def _redo_lost_cluster(prof: Profile, b: Build, root: Path, hook: Hook | None, allow: Callable[[], int]) -> int | None:
+def _redo_lost_cluster(prof: Profile, b: Build, root: Path, hook: Hook | None, allow: Callable[[int], int]) -> int | None:
     """Before clustering in parts goes on after its plan is published (a reboot clears /tmp): every published step
     whose outputs are not in the work directory as its record holds them (`l2cluster.lost`) is made again, in step
     order, one at a time (`bio-box release cluster redo`, each its own process under the cap and nice of a run-step,

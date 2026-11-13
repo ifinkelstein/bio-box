@@ -54,18 +54,25 @@ ls -d "$ROOT/STOP"
 
 `No such file or directory` is the good answer.
 
-2. Look for other compute. A load average above 8 means someone is computing: the night cap does
-not apply, and you should wait or take the day cap (`run-step` does this by itself).
+2. Look for other compute. The night cap holds only while no other user computes (AGENTS 7.2).
+`run-step` and `build-stage` check this by themselves (card C-28): other users' processes using more
+than half a core together over 5 seconds mean the day cap at night. The load average does not tell:
+our own build holds it near 42. This prints what they read now, and the threads a 4-thread launch
+would get (read-only; it starts nothing):
 
 ```bash
+biopy -m biobox.runstep --profile "$PROFILE" --threads 4
 uptime
 top -b -n 1 -o %CPU -w 120 > "$WORK/top.txt"
 head -n 15 "$WORK/top.txt"
 systemctl --user list-units --type=service --type=scope --no-pager
 ```
 
-The unit list shows the units of this account. Other agents and the PI use the same account, so
-a unit you did not start is not yours. Processes of other users are in `top`.
+The first command prints a number (the allowance) and one line: the cap and why, other users' CPU,
+system accounts' CPU (root and uids up to 999: daemons such as the virus scanner, never counted),
+ours elsewhere (subtracted from the cap) and ours in this unit, over the 5 s window, and the load
+average beside them. The unit list shows the units of this account. Other agents and the PI use the
+same account, so a unit you did not start is not yours. Processes of other users are in `top`.
 
 3. Check free space where the work goes.
 
@@ -167,16 +174,26 @@ shards run at once, each its own `run-step`:
 - `--scan-cpus C`: threads per shard. Default 4.
 - `--scan-jobs J`: shards at once. Default: the allowance when `build-stage` starts, divided by C,
   rounded down.
-- The allowance is the thread count `run-step` allows: 40 by day; 56 at night and at weekends, only
-  while the load average is at most 8.
-- J × C above the allowance when `build-stage` starts is refused before any step (exit 2). The
-  message names J, C and the allowance.
+- The cap is the thread count `run-step` allows one process: 40 by day; 56 at night and at weekends,
+  only while no other user computes (card C-28: other users' processes, not root's or a system
+  account's, use more than half a core together over a 5 s window; a reading that fails gives 40).
+- J × C above the cap when `build-stage` starts is refused before any step (exit 2). The
+  message names J, C and the cap (`run-step allows`).
+- The allowance of a launch is the cap less what ours elsewhere use now: every process of this
+  account outside the build's own unit and process tree (a test suite, another agent's build, a
+  search), to the nearest CPU. The build's own shards are not subtracted; `build-stage` counts them.
 - The allowance is read again before each step and before each shard launch. A build started at
-  night keeps to 40 threads once the day window opens: shards already running finish, and new ones
-  start only while the shards in flight fit the allowance, so fewer run at once. If one shard's C
-  is above the allowance, the launch waits (the log says `holding it`) and starts when the hour or
-  the load allows. The same holds for a step whose `--threads` is above the allowance; the default
-  `--threads` (the smaller cap) never waits.
+  night keeps to 40 threads once the day window opens: new launches start only while the shards in
+  flight fit the allowance, so fewer run at once, and a launch at night whose budget could still run
+  when the day window opens (300 CPU-minutes over C threads: 75 minutes for C = 4, so from 06:45 on a
+  weekday, derived) already counts against 40. If one shard's C is above the allowance, the launch waits (the
+  log says `holding it`) and starts when the hour, other users or ours elsewhere allow. The same
+  holds for a step whose `--threads` is above the allowance, the default `--threads` (the smaller
+  cap) included: it waits while ours elsewhere leave less than it.
+- `build-stage` writes the allowance and the readings behind it in one line at its start and again
+  whenever it changes; every `run-step` writes one such line before its command (`S0.genecall:
+  allowance ...`). `run-step` refuses only `--threads` above the cap; above the allowance it runs
+  and says so, since a fixed-size job of ours is not squeezed out (`build-stage` waits instead).
 - The output is the same, byte for byte, for any J and C, and whenever the allowance changes.
 
 The unit's CPU quota is `pod_run.sh --threads`, which defaults to the profile's night cap
@@ -190,9 +207,12 @@ bash "$TREE/scripts/pod_run.sh" --profile "$PROFILE" --image "$IMAGE" --digest "
 
 For a real Pfam scan, with the real profile, do not take the whole cap. The cap (40 threads by day, 56 at
 night and at weekends, section 10) is a total over everything of ours on the pod: your build, other
-agents' builds and tests, searches, and the PI's work, all together (AGENTS 7.2). `build-stage` counts
-only its own threads, so it cannot see the others; you must. Count the threads the other jobs of ours use
-now (`systemctl --user list-units`, `top`, section 1) and choose J so that all together stay at or under the cap:
+agents' builds and tests, searches, and the PI's work, all together (AGENTS 7.2). Since card C-28
+`build-stage` subtracts what ours elsewhere use at each launch, but it cannot see what will start
+after its shards are launched, and a shard runs about an hour (3,291 to 3,727 s at 4 threads,
+measured, `planning/measurements/2026-11-11_mmseqs_profile_vs_hmmsearch.md`). Count the threads the other jobs of
+ours use now (the first command of section 1, `systemctl --user list-units`, `top`) and what you will
+start, and choose J so that all together stay at or under the cap:
 
 ```text
 J = floor((cap - other threads) / C)       C = --scan-cpus, default 4; J at least 1
@@ -850,7 +870,8 @@ a profile value is missing from this table.
 | Threads by day | 40 | profile `max_threads_day`; AGENTS 7.2 |
 | Threads at night and weekends | 56, only when no other compute runs | profile `max_threads_night`; AGENTS 7.2 |
 | Day window | 08:00 to 20:00, Monday to Friday | profile `day_start_hour` 8, `day_end_hour` 20. An estimate until the PI confirms it with the pod owner (AGENTS 7.2) |
-| "Other compute" | 1-minute load average above 8 | `BUSY_LOAD` in `src/biobox/runstep.py`. An estimate, not measured |
+| "Other compute" | other users' processes (uid above 999 and not ours; root's and system accounts' are daemons, never counted) above 0.5 of a core together, over a 5 s window (two reads of every `/proc/<pid>/stat`); a failed reading counts as busy. Estimates: other login users together used 0.01 cores and root's daemons about 0.3 (ps, wilkcomp02, 2026-11-13, measured); one single-threaded job uses 1. The load average is reported, not used: our own scan holds it near 42 | `OTHERS_BUSY_CPUS`, `CPU_WINDOW_S`, `SYSTEM_UID_MAX`, `measure_cpu` in `src/biobox/runstep.py`; card C-28 |
+| Allowance of a launch | the cap (above) less ours elsewhere: this account's processes outside the build's unit (its cgroup) and process tree, to the nearest CPU, at least 0. At night a launch of T threads counts against the day cap when 300 / T minutes from now reach the day window | `allowance`, `launch_cap` in `src/biobox/runstep.py`; card C-28 |
 | Memory per process or unit | 200G, swap 0 | profile `mem_scope`; AGENTS 7.2; `MemorySwapMax=0` in `scripts/pod_run.sh` |
 | Memory cap required | true: `run-step` and the search runner refuse to start uncapped | profile `require_mem_cap` |
 | Nice | 19 (one big process), 15 (many small ones) | profile `nice_monolithic`, `nice_fanout`; AGENTS 7.2 says 19 |
@@ -858,7 +879,7 @@ a profile value is missing from this table.
 | CPU-minutes of one clustering call run as one process | 20000, estimated before launch; refused above it. The one exemption from the 300 (DEC-29): a call that no number of parts fits (the NR90 step's prefilter from about 74 M proteins, NR50 step 0 from about 108 M, derived). Set by the PI on 2026-11-10 for the 50 Gbp build: about nine times the 2,195.91 measured for 10,620,684 proteins (wilkcomp02, 2026-11-10). Without the key such a call is refused. Clustering in one process has no exemption since card B-42 (DEC-25's ended): above 80% of the budget a release clusters in parts | profile `cluster_cpu_min_max`; DEC-29 (narrowing DEC-25); `cluster_refusal`, `one_process_refusal` in `src/biobox/stage.py`; cards B-36, B-45, B-42 |
 | ncRNA scan shard size | `prok-2` (the default): 111,734,541 genome bases, 80% of `cpu_min_per_process` (300) at 358.0 CPU-hours per 10 Gbp (derived: 304.0 × 299.7 / 254.5, the set's cost relative to `prok-1` from `planning/measurements/2026-11-12_rfam_sample.md`). `prok-1`: 131,578,947 at 304.0, the slower of the two shards of card E-07's pod check (derived in `planning/measurements/2026-11-11_ncrna_producer.md`; the design note's 247.4 gave 161,681,487). Shards at once: at most the unit's `MemoryMax` / (6.4 GiB per two `cmsearch` threads) | `NCRNA_CPU_H_PER_10GBP`, `NCRNA_SET_COST`, `NCRNA_JOB_GIB` in `src/biobox/stage.py`; cards E-07, E-08, E-09 |
 | Scan shard size | 30,150,753 residues: 80% of `cpu_min_per_process` (300) at 7.96 CPU-minutes per million residues (derived: 300 × 0.8 / 7.96 × 10^6; the rate of the Pfam scan of stage P1 in card C-10, measured on wilkcomp02, 2026-11-10: 2,343.74 CPU-minutes for 294.5 M residues). The 80% leaves room for a scan 25% slower per residue (derived: 1 / 0.8) | `SHARD_MARGIN` and `SCAN_CPU_MIN_PER_M` in `src/biobox/stage.py`; cards C-11, C-13 |
-| Scan shards at once | `--scan-jobs` J × `--scan-cpus` C at most the threads `run-step` allows when `build-stage` starts (40 by day, 56 at night when idle); defaults C = 4, J = allowance // C (10 by day, 14 at night). The cap is a total over everything of ours on the pod, and `build-stage` counts only its own threads: choose J = floor((cap - other threads) / C) (section 2). The allowance is read again before each step and before each shard launch; a launch that would pass it waits | `scan_slots` and `_launch` in `src/biobox/stage.py`; cards C-11, C-12 |
+| Scan shards at once | `--scan-jobs` J × `--scan-cpus` C at most the cap `run-step` allows when `build-stage` starts (40 by day, 56 at night when no other user computes); defaults C = 4, J = cap // C (10 by day, 14 at night). The cap is a total over everything of ours on the pod: `build-stage` subtracts what ours elsewhere use at each launch, not what starts later, so choose J = floor((cap - other threads) / C) (section 2). The allowance is read again before each step and before each shard launch; a launch that would pass it waits | `scan_slots` and `_launch` in `src/biobox/stage.py`; cards C-11, C-12, C-28 |
 | Unit CPU quota | the night cap, 56: a ceiling fixed at launch; `build-stage` holds the limit of the hour | `scripts/pod_run.sh --threads`, profile `max_threads_night`; card C-12 |
 | Smallest data file | 64 MiB (67108864 bytes), except tables the registry marks `small_ok` | profile `small_file_floor_bytes`; AGENTS 7.3 says 64 MB |
 | Work directory | `/tmp/if2453/bio-box` | profile `tmp`; AGENTS 7.3 |
@@ -890,6 +911,7 @@ exemption; the fixture's clustering is far under 300 CPU-minutes). Appendix B li
 | Ingest of a stage over about 60 Gbp | `build-stage` refuses before any step (exit 2): one ingest process runs at about 3.7 Mbp/s (measured, wilkcomp02), so it would pass 300 CPU-minutes. Split the stage into smaller stages | B-30 |
 | Shard size is Pfam's | shards are cut at 80% of the budget at Pfam's rate (7.96 CPU-minutes per million residues, measured in C-10). A library more than 1.25 times slower per residue than that (derived: 1 / 0.8; above 9.95 CPU-minutes per million residues, derived) passes 300 CPU-minutes per shard, and the run record says `over_cpu_budget`. Lower `--scan-cpus` does not help, since the budget counts CPU-minutes | C-11, C-13 |
 | `pod_run.sh` CPU quota | the unit's quota is `--threads` of `pod_run.sh` (default the night cap, 56), fixed at launch, whatever `--scan-jobs` × `--scan-cpus` is. By day it is above the day cap: the day cap is held by `build-stage` and `run-step`, not by the quota. A `run-step` launched alone keeps the thread count it chose at its start until it ends (at most 300 CPU-minutes) | C-07, C-11, C-12 |
+| What the allowance sees | each reading is 5 s of CPU by owner, taken once per launch: work of ours that starts after a shard is launched is subtracted only at the next launch (a shard runs about an hour), a process born and ended inside the window is not seen, and `run-step` does not refuse `--threads` above the allowance (only above the cap). So the total can pass the cap until the build's next launch; leave a margin (section 2). The reading costs 5 s of wall time per launch and per `run-step` | C-28 |
 | The image on the pod is old | the pod has the test image `bio-box-test_74b3e05.sif`, not an image built from the current source. The current source is bound in with `PYTHONPATH` (section 0) | 0-02 |
 | `rL.*` releases on `/stor` | they are in the pre-B-17 layout: current readers and `verify_manifest` may not read them. `rL.1` and `rL.2` also fail verification on one file, `l0/l0_manifest.parquet` | B-17, B-22 |
 | Search packs and runs inside an old root | a root written before card W-03 may hold `search_pack/` and `search/` (the pack and runs were then written into the root). Nothing reads or writes them now; the manifest leaves them out (`catalog.EXCLUDED_TREES`). Build the pack again into the pack directory (section 7) | W-03, W-13 |
@@ -1135,8 +1157,10 @@ Last line: `01563e192ab22a5931d55e224a2dbb07`.
 - A hard kill of a unit (SIGKILL). `systemctl --user kill --signal=SIGKILL` printed
   `Failed to send signal SIGKILL to auxiliary processes: Invalid argument`, though the unit ended;
   it is not documented here.
-- The night thread cap. The pod was busy (load above 8) at every run, so `run-step` used the day
-  cap.
+- The night thread cap in a build. Until card C-28 the load average decided it, and our own scan
+  held it above 8, so `run-step` used the day cap at every run. Card C-28 read the new measure on
+  the pod once (`biopy -m biobox.runstep --profile "$PROFILE" --threads 4`, section 1; its numbers are
+  in the card's report); no build has run with it yet.
 - `sh scripts/pod_pytest.sh <name> --golden` (the golden ring needs the golden set on the pod).
 - `git push pod`. Agents never push.
 - Single release steps by hand (`bio-box release cluster ...`, `bio-box stage genecall ...`).
