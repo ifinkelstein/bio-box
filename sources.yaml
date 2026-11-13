@@ -58,6 +58,22 @@ sources:
       archive under a temporary name, then renamed): the 4,617 genomes the ANI selection keeps in the 243 species
       over 20 (17,541,096,714 bp, .fna.gz as fetched), each batch's lock.json cut to them, and kept.tsv; selection
       in planning/measurements/2026-11-13_s2c_skani_selection.md
+    selection_s2c_phase2_rest: >-
+      card C-25 step 2: the rows of the ANI selection's remainder.tsv (sha256
+      48e6072846f6b40e396eea2639db61a2c02528be18e704feafaacc7462b93098) with an empty ani_pick, the genomes in
+      species with at most 20 complete genomes, never fetched before: 8,868 genomes, 38,672,565,188 bp; list
+      rest.tsv (sha256 f1b0ca84c6b38f1cd37119fe00afa5fddd5365a55724b2bbf388779967996d2f); batches in
+      planning/measurements/2026-11-13_s2c_phase2_fetch.md
+    fetched_s2c_phase2_rest: >-
+      2026-11-13 11:06 to 11:43 CST into /tmp/if2453/c25/genomes/<batch>/ on wilkcomp02 (.fna.gz, per-file sha256
+      in each batch's lock.json): 8,860 of 8,868 genomes served and verified (38,636,894,022 bp, 11,217,930,326
+      bytes kept); 8 not served (listed in planning/measurements/2026-11-13_s2c_phase2_fetch.md); not retried
+    stored_s2c_phase2_rest: >-
+      provisional/s2c_phase2/s2c_phase2_rest_genomes.tar (11,234,908,160 bytes, sha256
+      94cc747e86c619f80404941508ca5b8b3cffcf5d7302426f32830bd3db7c19df; written 2026-11-13 by c27_fetch.py archive under a temporary name, sha256 read back on /stor,
+      then renamed with mv -n): the 8,860 genomes fetched by card C-25 step 2 (38,636,894,022 bp, .fna.gz as
+      fetched), each batch's lock.json, and kept.tsv; with s2c_phase2_genomes.tar it holds the whole S2C phase-2
+      remainder less the 8 not served (13,477 genomes, 56,177,990,736 bp)
     used_by: [scripts/stress/build_stage_pod/r50_fetch.py, scripts/stress/build_stage_pod/c27_fetch.py]
     approved: by the PI on 2026-11-11
   - name: ncbi_ftp_genome

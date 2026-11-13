@@ -83,7 +83,7 @@ server's network storage, each file with a sha256 in [`sources.yaml`](sources.ya
 | `P3` to `P6` | the same selection, the other 9,469 genomes | 39.9 Gbp (*measured*, `STAGES.md`); the selection is 11,973 genomes, 11,966 fetched, 50.5 Gbp (*measured*, [`2026-11-11_r50_inputs.md`](planning/measurements/2026-11-11_r50_inputs.md)) | genes, clusters; Pfam: `P3` and `P4` done, `P5` and `P6` running | building |
 | `H1` (planned) | Huge Phage Genome Collection | 7,230 genomes, 1,961,987,211 bp, 516 already in `S1` (*measured*, `sources.yaml`) | none | fetched; card C-24 |
 | plasmids (planned) | PLSDB 2024_05_31_v2 | 72,556 records, 7,297,669,596 bp, 7,139 already contigs of `P1` to `P6` (*measured*, `sources.yaml`) | none | fetched; card C-26 |
-| S2C phase 2 (planned) | GTDB R226, up to 20 complete genomes per species | remainder 13,485 genomes, 55.9 Gbp by quality order (*measured*, [`2026-11-12_s2c_selection.md`](planning/measurements/2026-11-12_s2c_selection.md)); 28,457 candidate genomes, 118.7 Gbp, fetched for the diversity pick (*measured*, [`2026-11-13_s2c_skani_fetch.md`](planning/measurements/2026-11-13_s2c_skani_fetch.md)) | none | selection in progress; cards C-27, C-25 |
+| S2C phase 2 (planned) | GTDB R226, up to 20 complete genomes per species, chosen for strain diversity with skani in the 243 species that have more | 13,485 genomes selected, 56.2 Gbp; 13,477 fetched, 56.18 Gbp (*measured* and *derived*, [`2026-11-13_s2c_skani_selection.md`](planning/measurements/2026-11-13_s2c_skani_selection.md), [`2026-11-13_s2c_phase2_fetch.md`](planning/measurements/2026-11-13_s2c_phase2_fetch.md)) | none | fetched and archived; stage split and build to come; card C-25 |
 
 **Releases** (names are provisional: none is signed, so none is `rS<k>.<n>`, `STAGES.md`)
 
@@ -173,7 +173,8 @@ The specification and plan behind these are [`00-spec.md`](00-spec.md), [`PLAN.m
 - The Pfam scans of `P5` and `P6`; `P3`'s finished on 2026-11-12 and `P4`'s on 2026-11-13. Then `rM.2`. The scans are
   expected to end about 2026-11-14 (*estimate*, STATUS).
 - The new image is on the server, pulled by digest; switching the test and build scripts to it is card C-29.
-- The fetch of the rest of S2C phase 2: the 8,868 genomes in species with at most 20 (card C-25 step 2).
+- S2C phase 2 is fetched (13,477 of 13,485 genomes, 2026-11-13); its split into stages is an open item for the PI,
+  and its build follows the 50 Gbp release (card C-25).
 - Worked examples are run on a release before it is announced (AGENTS §5.7): the RNA polymerase example is being given
   the rerunnable form of the CRISPR-Cas one (card E-11).
 - The synthetic-world generator, session 5 (phages and CRISPR arrays, fusions, call errors, assembly; card F-02).

@@ -1,0 +1,7 @@
+stage	genomes	bp	species	genomes_in_species_over_20	phyla	first_species	last_species
+S2C-1	1783	9370307157	579	361	11	s__Archaeoglobus fulgidus	s__Anoxybacillus_A rupiensis
+S2C-2	3102	9371800221	526	1273	1	s__Geobacillus icigianus	s__Hungateiclostridium thermocellum
+S2C-3	2470	9502585395	775	646	28	s__Aristaeella sp900322155	s__Bradyrhizobium diazoefficiens
+S2C-4	1972	9231662797	458	627	1	s__Bradyrhizobium elkanii	s__Edwardsiella piscicida
+S2C-5	2032	9392003904	306	988	1	s__Edwardsiella tarda	s__Vibrio vulnificus_B
+S2C-6	2118	9309631262	541	722	5	s__Vibrio zhugei	s__Akkermansia sp004167605
