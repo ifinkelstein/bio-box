@@ -1120,7 +1120,7 @@ def test_c13_release_verify_checks_a_later_release_against_a_named_previous_one(
     assert run_cli("release", "verify", "--root", root, "--release", later, "--previous", "rNo.1") == 1
 
 
-# --- clustering's own cap (card B-36, DEC-25) ---------------------------------------------------------------------
+# --- clustering's budget (card B-36; card B-42 ended DEC-25's one-process exemption, DEC-29) -----------------------
 
 STAGE_STEPS = ["inputs", "ingest", "genecall", "igr", "tapes", SCAN]
 
@@ -1142,19 +1142,31 @@ class Calls:
         return runner(prof, root, stage, step, cmd, **kw)
 
 
+def one_process(*_a, **_k) -> bool:
+    """A stand-in for `bs._cluster_split` that keeps clustering in one process whatever the estimate. build-stage
+    itself never does that above 80% of the budget (card B-41), so a release over the budget reaches the one-process
+    check (`cluster_refusal`) only through this stand-in; card B-42 keeps the check, now without an exemption."""
+    return False
+
+
 @pytest.fixture(scope="module")
 def capped(direct, tmp_path_factory):
-    """A build on an empty root whose profile caps clustering at 0 CPU-minutes: the stage's proteins are known only
-    after its gene calling, so the stage steps run and the cluster step is refused before its command."""
+    """A build on an empty root whose clustering in one process is estimated over the budget (the estimate made huge,
+    and the routing to parts replaced by `one_process`): the stage's proteins are known only after its gene calling,
+    so the stage steps run and the cluster step is refused before its command (card B-42: no one-process exemption,
+    whatever `cluster_cpu_min_max`, which this profile sets). Before card B-42 a cap of 0 made the refusal."""
     root = tmp_path_factory.mktemp("b36-capped") / "root"
     calls = Calls()
-    prof = dataclasses.replace(direct["prof"], cluster_cpu_min_max=0)
-    code = bs.build_stage(prof, build_of(direct, root), run=calls)
+    prof = dataclasses.replace(direct["prof"], cluster_cpu_min_max=20000)
+    with pytest.MonkeyPatch.context() as mp:
+        mp.setattr(bs, "cluster_cpu_min", lambda proteins: 1e6)
+        mp.setattr(bs, "_cluster_split", one_process)
+        code = bs.build_stage(prof, build_of(direct, root), run=calls)
     return root, code, calls
 
 
-@pytest.mark.covers("B-36")
-def test_b36_a_release_over_the_cap_is_refused_before_the_cluster_steps_command(direct, capped):
+@pytest.mark.covers("B-36", "B-42")
+def test_b36_a_release_over_the_budget_in_one_process_is_refused_before_the_cluster_steps_command(direct, capped):
     root, code, calls = capped
     assert code == runstep.EXIT_REFUSED
     assert [s for s, _ in calls.seen] == STAGE_STEPS  # the cluster step was never handed to run-step
@@ -1162,53 +1174,65 @@ def test_b36_a_release_over_the_cap_is_refused_before_the_cluster_steps_command(
     assert not any(k.startswith("l2/") or f"release={REL}" in k for k in c08.tree(root))
 
 
-@pytest.mark.covers("B-36")
-def test_b36_once_every_stage_is_gene_called_a_release_over_the_cap_is_refused_before_any_step(
-        direct, capped, tmp_path, capsys):
+@pytest.mark.covers("B-36", "B-42")
+def test_b36_once_every_stage_is_gene_called_a_release_over_the_budget_in_one_process_is_refused_before_any_step(
+        direct, capped, tmp_path, capsys, monkeypatch):
+    """The cap does not exempt the release in one process (card B-42); with the routing as it is, the same release
+    clusters in parts and is not refused."""
     root = tmp_path / "root"
     shutil.copytree(capped[0], root, symlinks=True)
     before, files = records(root), c08.tree(root)
     n = fixture_proteins(root, "S0")
     assert n > 0
+    prof = dataclasses.replace(direct["prof"], cpu_min_per_process=bs.cluster_cpu_min(n) / 2, cluster_cpu_min_max=20000)
+    b = build_of(direct, root)
+    assert bs._cluster_split(prof, b, root) is True and bs._cluster_gate(prof, b, root) is None
+    monkeypatch.setattr(bs, "_cluster_split", one_process)
     calls, seen = Calls(), []
-    prof = dataclasses.replace(direct["prof"], cluster_cpu_min_max=0)
-    assert bs.build_stage(prof, build_of(direct, root), run=calls, _hook=seen.append) == runstep.EXIT_REFUSED
+    assert bs.build_stage(prof, b, run=calls, _hook=seen.append) == runstep.EXIT_REFUSED
     err = capsys.readouterr().err
-    assert "refused before any step" in err and "cluster_cpu_min_max" in err and f"{n:,} proteins" in err
+    assert "refused before any step" in err and "cpu_min_per_process" in err and f"{n:,} proteins" in err
+    assert "DEC-29" in err and "in parts" in err
     assert calls.seen == [] and seen == []
     assert records(root) == before and c08.tree(root) == files
 
 
-@pytest.mark.covers("B-36")
-def test_b36_without_the_cap_clustering_over_cpu_min_per_process_is_refused(direct, capped, tmp_path, capsys):
-    """No `cluster_cpu_min_max`: no exemption. A budget of 0 puts the fixture's clustering over it; ingest and the
-    scan have their run records, so neither is estimated again and the refusal is clustering's."""
+@pytest.mark.covers("B-36", "B-42")
+def test_b36_without_the_cap_clustering_over_cpu_min_per_process_in_one_process_is_refused(
+        direct, capped, tmp_path, capsys, monkeypatch):
+    """No `cluster_cpu_min_max`. A budget of 0 puts the fixture's clustering over it; ingest and the scan have their
+    run records, so neither is estimated again. In parts (the routing as it is) the release-level check does not
+    refuse it: no call needs the exemption (card B-42, B-45's open question); in one process it is refused."""
     root = tmp_path / "root"
     shutil.copytree(capped[0], root, symlinks=True)
     before = records(root)
-    calls = Calls()
     prof = dataclasses.replace(direct["prof"], cpu_min_per_process=0, cluster_cpu_min_max=None)
-    assert bs.build_stage(prof, build_of(direct, root), run=calls) == runstep.EXIT_REFUSED
+    b = build_of(direct, root)
+    assert bs._cluster_split(prof, b, root) is True and bs._cluster_gate(prof, b, root) is None
+    monkeypatch.setattr(bs, "_cluster_split", one_process)
+    calls = Calls()
+    assert bs.build_stage(prof, b, run=calls) == runstep.EXIT_REFUSED
     err = capsys.readouterr().err
-    assert "cpu_min_per_process" in err and "no cluster_cpu_min_max" in err and "DEC-25" in err
+    assert "cpu_min_per_process" in err and "cluster_cpu_min_max" in err and "DEC-29" in err
     assert calls.seen == [] and records(root) == before
 
 
-@pytest.mark.covers("B-36")
-def test_b36_a_release_under_the_cap_runs_and_its_cluster_record_names_dec25(direct, capped, tmp_path):
+@pytest.mark.covers("B-36", "B-42")
+def test_b36_a_release_under_the_budget_with_the_cap_runs_in_one_process_and_no_record_names_an_exemption(
+        direct, capped, tmp_path):
+    """Card B-42: the cap no longer marks clustering in one process as exempt (DEC-25's exemption ended); it is under
+    the budget here, so its record has no reason, and only a call run as one process in parts names DEC-29."""
     root = tmp_path / "root"
     shutil.copytree(capped[0], root, symlinks=True)
     calls = Calls()
     prof = dataclasses.replace(direct["prof"], cluster_cpu_min_max=12000)
     assert bs.build_stage(prof, build_of(direct, root), run=calls) == 0
     assert [s for s, _ in calls.seen] == STAGE_STEPS + NAMES[7:]  # the stage steps are resumed (skipped) by run-step
-    assert [s for s, kw in calls.seen if "budget_reason" in kw] == ["cluster"]
-    assert dict(calls.seen)["cluster"]["budget_reason"] == "exempt: DEC-25"
+    assert [s for s, kw in calls.seen if "budget_reason" in kw] == []
     rec = json.loads((root / "runs" / f"stage={REL}" / "cluster.json").read_bytes())
-    assert rec["cpu_budget_reason"] == "exempt: DEC-25"
-    assert rec["over_cpu_budget"] is False  # kept: the fixture's clustering is far under 300 CPU-minutes
-    others = {k: json.loads(v) for k, v in records(root).items() if k != f"stage={REL}/cluster.json"}
-    assert others and not any("cpu_budget_reason" in r for r in others.values())  # only clustering is exempt
+    assert "cpu_budget_reason" not in rec
+    assert rec["over_cpu_budget"] is False  # the fixture's clustering is far under 300 CPU-minutes
+    assert not any("cpu_budget_reason" in json.loads(v) for v in records(root).values())
     check_equals_direct(direct, root)
 
 
@@ -1427,7 +1451,9 @@ def test_b45_in_parts_a_release_over_the_whole_release_cap_runs_its_unsplittable
     cap = (rebuild + whole) / 2
     assert rebuild * 1.05 < cap < whole
     prof = dataclasses.replace(direct["prof"], cluster_cpu_min_max=cap)
-    assert bs.cluster_refusal(prof, REL, n) is not None  # in one process this release is refused: T(n) > cap
+    # in one process this release is refused over a budget of the cap, T(n) > cap: the cap exempts no release in one
+    # process (card B-42; before it, under DEC-25, this was the cap itself)
+    assert bs.cluster_refusal(dataclasses.replace(prof, cpu_min_per_process=cap), REL, n) is not None
     plan_forced(direct, root, cap)
     calls = Calls()
     assert bs.build_stage(prof, build_of(direct, root), run=calls) == 0
@@ -1448,7 +1474,9 @@ def test_b45_in_parts_a_release_over_the_whole_release_cap_runs_its_unsplittable
 def test_b45_a_one_process_call_over_the_profiles_cap_is_refused_before_its_launch(direct, capped, tmp_path, capsys):
     """The plan allowed the call (its own cap was high); the profile's cap, read before the call's launch, is under
     the call's estimate: refused (exit 2) after its cut, before its step. A second call is refused before any step,
-    since the published cut is over the cap; and a profile without `cluster_cpu_min_max` is refused too."""
+    since the published cut is over the cap; and a profile without `cluster_cpu_min_max` is refused too, also before
+    any step since card B-42 (in parts the release-level check, with or without the key, checks the published cuts
+    that run a call as one process)."""
     root = tmp_path / "root"
     shutil.copytree(capped[0], root, symlinks=True)
     _, _, _, rebuild = forced_numbers(root)
@@ -1473,5 +1501,6 @@ def test_b45_a_one_process_call_over_the_profiles_cap_is_refused_before_its_laun
     none = dataclasses.replace(direct["prof"], cluster_cpu_min_max=None)
     assert bs.build_stage(none, build_of(direct, root), run=calls) == runstep.EXIT_REFUSED
     err = capsys.readouterr().err
-    assert f"refused before {REL}.{first}" in err and "no cluster_cpu_min_max" in err and "DEC-29" in err
+    assert "refused before any step" in err and first in err and "no cluster_cpu_min_max" in err and "DEC-29" in err
+    assert calls.seen == [] and records(root) == before
     assert f"stage={REL}/{first}.json" not in records(root)

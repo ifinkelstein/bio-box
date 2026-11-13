@@ -711,7 +711,7 @@ def run_step(prof: Profile, root: str | Path, stage: str, step: str, cmd: Sequen
              budget_reason: str | None = None, _hook: Hook | None = None) -> int:
     """Run one step; return the exit code for `bio-box run-step` (0, 75 for STOP, else non-zero).
     `budget_reason`, when given, is written to the run record as `cpu_budget_reason` (card B-36:
-    `build-stage` gives `exempt: DEC-25` for clustering); `over_cpu_budget` is kept as it is.
+    `build-stage` gives `exempt: DEC-29` for a clustering call that no number of parts fits, card B-45); `over_cpu_budget` is kept as it is.
     `proc_root` and `cgroup_root` (tests only) stand in for /proc and /sys/fs/cgroup.
     `_hook` (tests only) is called with each publish point name: after_intent, after_rsync,
     after_rename:<i>, before_record, after_record; an exception it raises is not caught."""

@@ -28,9 +28,10 @@ class Profile:
     # the search runner then refuse to start when they can neither open a systemd scope nor find a
     # cgroup memory.max above them (inside the image: launch with scripts/pod_run.sh). Optional.
     require_mem_cap: bool = False
-    # Card B-36 (DEC-25): the most CPU-minutes the clustering step of a release may be estimated at in one
-    # process; only clustering is exempt from `cpu_min_per_process`, and only under this cap. Optional: a
-    # profile without it (or with null) gives no exemption, so clustering over `cpu_min_per_process` is refused.
+    # The most CPU-minutes one clustering call may be estimated at when no number of parts fits it and it runs as
+    # one process (DEC-29, card B-45): the only exemption from `cpu_min_per_process`. Optional: a profile without
+    # it (or with null) gives none, and such a call is refused. (Until card B-42 it also capped a release
+    # clustered in one process, DEC-25: that exemption has ended; a release over the budget clusters in parts.)
     cluster_cpu_min_max: int | None = None
 
     def threads_at(self, hour: int, weekday: int = 0) -> int:
