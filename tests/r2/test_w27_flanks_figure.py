@@ -337,3 +337,145 @@ def test_w27_figure_rows_refusals(world, tmp_path, capsys, extra, needle):
     assert run(world, out, *extra) == 2
     assert needle in capsys.readouterr().err
     assert not out.exists()
+
+
+# --- card W-31: colours that count near-identical loci once, and the Pfam fallback ----------------------------------
+#
+# The release of w25.MOBILE: 30 near-identical phage loci (one anchor NR90 cluster, one genome, one leaf) and 12
+# transposon-like loci of 12 species (each its own anchor NR90 cluster, genome and leaf), in one group (--group-by
+# none). By construction every weighting (leaf, genome, anchor NR90 cluster) has the same 13 units: the phage loci one,
+# each tn locus one. The oracle counts the planted lists by unit.
+
+UNIT = {n: ("phage" if n.startswith("ph_") else n) for n in w25.COLOUR_LOCI}
+
+
+@pytest.fixture(scope="module")
+def mobile(tmp_path_factory):
+    root = tmp_path_factory.mktemp("w31fig") / "root"
+    return root, w25.build(root, w25.MOBILE, w25.MOBILE_GENOMES)
+
+
+def run_colours(mobile, out: Path, *extra: str) -> int:
+    root, loci = mobile
+    return cli.main(["nbr", "flanks", w25.anchors(loci, w25.COLOUR_LOCI), "--root", str(root), "--release", w25.REL,
+                     "--out", str(out), "--group-by", "none", "--figure", *extra])
+
+
+def oracle_weighted_shares(loci: dict, names: list[str], unit: dict | None, of=lambda f: f) -> dict[str, float]:
+    """Per family (or `of(family)`, e.g. its domain): the mean over units of the share of the unit's loci whose window
+    holds it; each locus its own unit when `unit` is None."""
+    units: dict[str, list[str]] = {}
+    for n in names:
+        units.setdefault(unit[n] if unit else n, []).append(n)
+    out: dict[str, float] = {}
+    for members in units.values():
+        for n in members:
+            held = {of(f) for side in ("up", "down") for f, _ in loci[n][side] if f}
+            for f in held:
+                out[f] = out.get(f, 0.0) + 1 / len(members) / len(units)
+    return out
+
+
+def drawn_colours(plan, fam: dict[str, str]) -> dict[str, set[str]]:
+    """Planted family -> the colours its drawn genes carry."""
+    got: dict[str, set[str]] = {}
+    for row in plan.rows:
+        for g in row.genes:
+            if not g.anchor and g.key is not None:
+                got.setdefault(fam[g.key], set()).add(g.colour)
+    return got
+
+
+def mobile_families(loci: dict) -> dict[str, str]:
+    names = {f for n in w25.COLOUR_LOCI for side in ("up", "down") for f, _ in loci[n][side] if f}
+    return {w25._nr50(f).hex(): f for f in names}
+
+
+@needs_mpl
+@pytest.mark.covers("W-31")
+@pytest.mark.parametrize("weight", ["leaf", "genome", "anchor-nr90"])
+def test_w31_colour_weight_counts_near_identical_loci_once(mobile, tmp_path, plans, weight):
+    """Unweighted, the 30 phage loci colour P1..P10 (30 of 42 loci) while Cas6, in 3 of the 12 species, is grey (3 of
+    42 < 10%). --colour-weight leaf, genome or anchor-nr90 counts the phage loci once: 13 units, so P1..P10 are grey
+    (1/13) and Cas6 coloured (3/13), as the oracle's weighted shares say for every drawn gene; the legend gives the
+    weighted share."""
+    root, loci = mobile
+    fam = mobile_families(loci)
+    assert run_colours(mobile, tmp_path / "plain") == 0
+    (plain,) = plans.values()
+    plain_colours = drawn_colours(plain, fam)
+    assert plain_colours["P1"] != {flanks.FIGURE_GREY} and plain_colours["Cas6"] == {flanks.FIGURE_GREY}
+    plans.clear()
+    assert run_colours(mobile, tmp_path / "w", "--colour-weight", weight) == 0
+    (plan,) = plans.values()
+    shares = oracle_weighted_shares(loci, w25.COLOUR_LOCI, UNIT)
+    assert shares["P1"] == pytest.approx(1 / 13) and shares["Cas6"] == pytest.approx(3 / 13)
+    got = drawn_colours(plan, fam)
+    for f, colours in got.items():
+        assert (colours == {flanks.FIGURE_GREY}) == (shares[f] < flanks.FIGURE_MIN_SHARE), f
+    assert len(got["Cas6"]) == 1 and len(got["TnsB"]) == 1 and got["TnsB"] != {flanks.FIGURE_GREY}
+    labels = [label for _, label in plan.legend]
+    assert any(f"{round(100 * 3 / 13)}%" in label and "Cas6" in label for label in labels)
+    assert any(weight in line for line in plan.title)
+
+
+@needs_mpl
+@pytest.mark.covers("W-31")
+def test_w31_colour_fallback_colours_a_rare_cluster_by_its_common_pfam_family(mobile, tmp_path, plans):
+    """Each species' Cas7 is its own NR50 cluster (1 of 42 loci, grey) but the 12 share the Pfam-like domain Cas7 (12 of
+    42 loci). --colour-fallback pfam colours the 12 Cas7 genes with one colour of their family, a colour no cluster
+    has; Cas6 stays grey (its family too is in 3 of 42); clusters coloured without the fallback keep their colours;
+    the legend names the family."""
+    root, loci = mobile
+    fam = mobile_families(loci)
+    assert run_colours(mobile, tmp_path / "plain") == 0
+    (plain,) = plans.values()
+    before = drawn_colours(plain, fam)
+    for k in range(1, 13):
+        assert before[f"Cas7@sp{k}"] == {flanks.FIGURE_GREY}
+    plans.clear()
+    assert run_colours(mobile, tmp_path / "fb", "--colour-fallback", "pfam") == 0
+    (plan,) = plans.values()
+    after = drawn_colours(plan, fam)
+    domain = oracle_weighted_shares(loci, w25.COLOUR_LOCI, None, of=lambda f: f.split("@")[0])
+    assert domain["Cas7"] == pytest.approx(12 / 42) and domain["Cas6"] == pytest.approx(3 / 42)
+    cas7 = set().union(*(after[f"Cas7@sp{k}"] for k in range(1, 13)))
+    assert len(cas7) == 1 and cas7 != {flanks.FIGURE_GREY}
+    others = {c for f, cs in after.items() if not f.startswith("Cas7@") for c in cs}
+    assert not cas7 & others
+    assert after["Cas6"] == {flanks.FIGURE_GREY}
+    for f in before:
+        if not f.startswith("Cas7@"):
+            assert after[f] == before[f], f
+    assert any("Cas7" in label and colour in cas7 for colour, label in plan.legend)
+
+
+@needs_mpl
+@pytest.mark.covers("W-31")
+def test_w31_the_default_values_of_the_new_flags_give_the_unflagged_bytes(world, tmp_path):
+    """--colour-weight locus and --colour-fallback none are today's colours: with --figure and --export gff every file
+    is byte-identical to the unflagged call's, built here from it."""
+    plain, explicit = tmp_path / "plain", tmp_path / "explicit"
+    assert run(world, plain, "--figure", "--export", "gff") == 0
+    assert run(world, explicit, "--figure", "--export", "gff", "--colour-weight", "locus",
+               "--colour-fallback", "none") == 0
+    a = sorted(p.relative_to(plain) for p in plain.rglob("*") if p.is_file())
+    b = sorted(p.relative_to(explicit) for p in explicit.rglob("*") if p.is_file())
+    assert a == b and len(a) > 10
+    for p in a:
+        assert (plain / p).read_bytes() == (explicit / p).read_bytes(), p
+
+
+@needs_mpl
+@pytest.mark.covers("W-31")
+def test_w31_the_figure_draws_the_cut_auto_cut_chose(mobile, tmp_path, plans):
+    """With --auto-cut gap the figure's dashed line is at the group's chosen cut (groups.tsv) and its title says how
+    the cut was chosen."""
+    root, loci = mobile
+    out = tmp_path / "out"
+    assert cli.main(["nbr", "flanks", w25.anchors(loci, w25.CUT_LOCI), "--root", str(root), "--release", w25.REL,
+                     "--out", str(out), "--figure", "--auto-cut", "gap"]) == 0
+    (plan,) = plans.values()
+    g = {r["group"]: r for r in w25.read_tsv(out / "groups.tsv")}[plan.group]
+    assert plan.cut == pytest.approx(float(g["cut"]), abs=1e-6)
+    assert any("largest gap" in line for line in plan.title)
