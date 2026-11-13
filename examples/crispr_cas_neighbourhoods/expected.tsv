@@ -1,0 +1,51 @@
+check_id	asserts	kind	expectation
+tniq_control_bits	the TniQ model (PF06527) hits the control TniQ of Photobacterium damselae subsp. damselae 04Ya311 chromosome 2 (NZ_AP026781.1:426340-427525) at or above the model's gathering cutoff	invariant	>= 27
+cas7f_control_bits	the Cas_Csy3 model (Cas7f, PF09615) hits the control Cas7f of the same element (NZ_AP026781.1:423377-424433) at or above its gathering cutoff	invariant	>= 25
+tniq_control_order	the control element, from 10 genes upstream to 10 downstream of TniQ along its strand: an IMPDH gene (an attachment site of the paper), TnsA and TnsB, TnsC (TniB family), then TniQ followed directly by the minimal type I-F Cascade (the Cas8f-Cas5f fusion, seen by Pfam as Cas5f; Cas7f; Cas6f); '.' is a gene with none of the example's domains	invariant	== IMPDH tnsA+tnsB tniB . . . . . . . ^ cas5f cas7f cas6f . . . . . . .
+pdam_complete_if_window_has_cas1_and_cas3	the complete type I-F system on the same chromosome (Cas7f NZ_AP026781.1:687857-688841) has Cas1 and Cas3 within 10 genes: the window sees adaptation and interference genes where they are	invariant	== true
+icp1_cas7f_window_has_cas1_and_cas3	the window of the Cas7f of Vibrio phage ICP1_2011_A (MH310933:48150-49071), a phage-borne complete type I-F system, holds Cas1 and Cas3 domains: the window sees adaptation and interference genes where they are	invariant	== true
+tniq_cas7f_loci_with_cas1_cas2_cas3	no TniQ locus with a Cas7f within 10 genes has a Cas1, Cas2 or Cas3 domain within 10 genes (Peters et al. 2017: the transposon-associated systems lost the adaptation module and cas3)	invariant	== 0
+cas7f_tniq_loci_with_cas1_cas2_cas3	the same from the other anchor: no Cas7f locus with a TniQ within 10 genes has Cas1, Cas2 or Cas3 within 10 genes	invariant	== 0
+bp_tniq_cas7f_loci_with_cas1_cas2_cas3	the same by the paper's base-pair windows, built in SQL from gene coordinates and the release's Pfam scan alone (no search, no nbr): no TniQ gene with a Cas7f within 20 kb has Cas1, Cas2 or Cas3 within 20 kb	invariant	== 0
+bp_cas7f_tniq_loci_with_cas1_cas2_cas3	and no Cas7f gene with a TniQ within 10 kb has Cas1, Cas2 or Cas3 within 10 kb	invariant	== 0
+tniq_cas7f_share_cas5f_at_plus1	in most TniQ loci with a Cas7f, the gene just downstream of tniQ is the Cas8f-Cas5f fusion (a Cas_Csy2 domain): tniQ sits next to the cas genes	invariant	>= 0.5
+tniq_pfam_proteins_not_hit	every protein the release's Pfam scan gave a TniQ domain is a hit of the TniQ search	invariant	== 0
+cas7f_pfam_proteins_not_hit	every protein the release's Pfam scan gave a Cas_Csy3 domain is a hit of the Cas7f search	invariant	== 0
+max_bits_diff_search_vs_pfam	the searches' sequence scores equal the Pfam scan's for the same proteins and models, to 0.1 bit	invariant	<= 0.1
+oracle_tniq_only_search	no TniQ hit scores below the gathering cutoff in hmmsearch run by hand on the hits and the Pfam-annotated proteins	invariant	== 0
+oracle_tniq_only_hmmsearch	no protein hmmsearch scores at or above the TniQ gathering cutoff is missing from the hits	invariant	== 0
+oracle_tniq_max_bits_diff	TniQ scores equal hmmsearch's to 0.1 bit	invariant	<= 0.1
+oracle_cas7f_only_search	no Cas7f hit scores below the gathering cutoff in hmmsearch	invariant	== 0
+oracle_cas7f_only_hmmsearch	no protein hmmsearch scores at or above the Cas_Csy3 gathering cutoff is missing from the hits	invariant	== 0
+oracle_cas7f_max_bits_diff	Cas7f scores equal hmmsearch's to 0.1 bit	invariant	<= 0.1
+tniq_hit_proteins	distinct proteins hit by TniQ at its gathering cutoff	recorded	recorded
+cas7f_hit_proteins	distinct proteins hit by Cas_Csy3 at its gathering cutoff	recorded	recorded
+tniq_hits_not_in_pfam	TniQ hits with no TniQ row in the Pfam scan (sequence score at or above GA, no domain at or above the domain GA)	recorded	recorded
+cas7f_hits_not_in_pfam	Cas7f hits with no Cas_Csy3 row in the Pfam scan	recorded	recorded
+tniq_loci_virus	TniQ hit genes (loci) on virus contigs	recorded	recorded
+tniq_loci_not_virus	TniQ hit genes on prokaryote and plasmid contigs	recorded	recorded
+cas7f_loci_virus	Cas7f hit genes on virus contigs	recorded	recorded
+cas7f_loci_not_virus	Cas7f hit genes on prokaryote and plasmid contigs	recorded	recorded
+tniq_cas7f_loci	TniQ loci with a Cas7f domain within 10 genes: candidate transposon-associated type I-F (I-F3) loci	recorded	recorded
+tniq_cas7f_loci_virus	of those, on virus contigs	recorded	recorded
+tniq_cas7f_contigs	contigs that hold them	recorded	recorded
+tniq_cas7f_genomes	genomes that hold them (contig_dim genome)	recorded	recorded
+tniq_cas7f_loci_with_tnsA_tnsB_tnsC	of those, loci with TnsA, TnsB and TnsC (TniB or TnsC domain) all within 10 genes	recorded	recorded
+tniq_cas7f_loci_with_cas8f_csy1	of those, loci with a Cas_Csy1 (Cas8f) domain within 10 genes; the fused Cas8f part is not seen by Pfam's Cas8f model	recorded	recorded
+tniq_minimal_non_if_loci	TniQ loci with a Cas7 (Cas_Cas7), Cas8b or Cas8c domain, no Cas7f and no Cas1, Cas2 or Cas3 within 10 genes: minimal type I systems of another subtype	recorded	recorded
+tniq_minimal_ib_loci	of those, with a Cas8b domain (type I-B, the paper's cyanobacterial captures)	recorded	recorded
+tniq_minimal_ic_loci	of those, with a Cas8c (Cas_Csd1) domain (type I-C)	recorded	recorded
+tniq_other_cas_loci	TniQ loci with other Cas domains (Cas1, Cas2, Cas3, Cas5, Cas6, Cse1, Cas10, Cas9, Cas12a) but no Cas7f, Cas7, Cas8b or Cas8c within 10 genes	recorded	recorded
+cas7f_not_virus_loci_without_cas1_cas3	Cas7f loci of prokaryotes and plasmids with neither Cas1 nor Cas3 within 10 genes	recorded	recorded
+cas7f_not_virus_loci_without_cas1_cas3_with_tniq	of those, loci with a TniQ within 10 genes (the paper: the cas1-less I-F branch is the transposon-associated one)	recorded	recorded
+cas7f_virus_loci_with_cas1_and_cas3	Cas7f loci of phages with Cas1 and Cas3 within 10 genes (ICP1-like phage type I-F systems)	recorded	recorded
+tniq_cas7f_loci_near_IMPDH	TniQ-Cas7f loci with an IMPDH domain (PF00478, guaB; one of the paper's attachment sites) within 10 genes	recorded	recorded
+tniq_cas7f_loci_near_4HBT	TniQ-Cas7f loci with a 4HBT thioesterase domain (PF03061, the family of yciA, another attachment site) within 10 genes	recorded	recorded
+tniq_cas7f_loci_near_SIS	TniQ-Cas7f loci with an SIS domain (PF01380, as in glmS, the Tn7 attachment site) within 10 genes	recorded	recorded
+tniq_cas7f_loci_near_Mg_chelatase	TniQ-Cas7f loci with a Mg_chelatase domain (PF01078, as in yifB, the Tn6022 site) within 10 genes	recorded	recorded
+bp_tniq_loci	genes with a TniQ domain in the Pfam scan (each a locus)	recorded	recorded
+bp_cas7f_loci	genes with a Cas_Csy3 domain in the Pfam scan	recorded	recorded
+bp_tniq_cas7f_loci	TniQ genes with a Cas7f within 20 kb (base-pair windows)	recorded	recorded
+bp_cas7f_tniq_loci	Cas7f genes with a TniQ within 10 kb (base-pair windows)	recorded	recorded
+bp_tniq_cas7f_loci_with_tnsA_tnsB_tnsC	TniQ genes with a Cas7f within 20 kb that also have TnsA, TnsB and TnsC (TniB or TnsC domain) within 20 kb	recorded	recorded
+bp_tniq_cas7f_loci_with_tnsB	of those TniQ genes, with TnsB within 20 kb	recorded	recorded
