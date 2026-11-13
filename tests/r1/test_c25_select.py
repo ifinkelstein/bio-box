@@ -566,6 +566,95 @@ def test_ani_table_with_a_stranger_is_refused(tmp_path):
         assert p.returncode != 0 and msg in p.stderr, p.stderr
 
 
+def _over_cap_quality(rows: list[dict]) -> tuple[dict, dict]:
+    """accession -> (rank, species size) for every complete genome (the brute-force ranks), and accession -> species."""
+    return _oracle(rows, 10**6), {r["accession"][3:]: r["gtdb_taxonomy"] for r in rows}
+
+
+def test_ani_unavailable_genomes_are_left_out(tmp_path):
+    """--unavailable: genomes NCBI did not serve have no sequence, so no ANI; in a species over the cap they are left
+    out of the farthest-first candidates (not picked as if infinitely far), the pick runs on the others in quality
+    order, and every consulted pair is then in the table (--require-pairs). A rank-1 genome cannot be left out."""
+    rows = _ani_rows(seed=61)
+    world = _ani_world(rows, seed=62)
+    quality, sp_of = _over_cap_quality(rows)
+    unav = sorted(acc for acc, (rk, _) in quality.items()
+                  if (sp_of[acc].endswith("s__W") and rk in (2, 9)) or (sp_of[acc].endswith("s__Y") and rk == 4))
+    assert len(unav) == 3
+    table = tmp_path / "pairs.tsv"
+    table.write_text(_normalised_text({k: v for k, v in world.items() if not set(k) & set(unav)}, random.Random(8)))
+    ufile = tmp_path / "unavailable.txt"
+    ufile.write_text("".join(f"{a}\n" for a in unav))
+    p1 = _phase1_lines(rows)
+    out, _ = _run_cap(tmp_path / "a", rows, p1, ANI_CAP,
+                      ["--ani", str(table), "--unavailable", str(ufile), "--require-pairs"])
+    want = _ff_oracle([r for r in rows if r["accession"][3:] not in unav], world, ANI_CAP)
+    got = _picked(out)
+    assert {sp: set(v) for sp, v in got.items()} == {sp: set(v) for sp, v in want.items()}
+    for sp in want:
+        if sp.endswith(("s__W", "s__X")):
+            assert got[sp] == want[sp]
+    sel = {r["accession"] for r in _read(out / "s2c_selected.tsv")}
+    assert not sel & set(unav)
+    assert not {r["accession"] for r in _read(out / "remainder.tsv")} & set(unav)
+    j = json.loads((out / "selection.json").read_text())["ani"]
+    assert j["unavailable"] == {"listed": 3, "in_species_over_cap": 3, "in_quality_top_cap": sum(
+        quality[a][0] <= ANI_CAP for a in unav)}
+    assert j["consulted_absent"] == 0
+    q_all = {a for a, (rk, _) in quality.items() if rk <= ANI_CAP}
+    assert j["selected_differ_from_quality_all_ranks"] == len(sel - q_all)
+    by_sp = {r["species"]: r for r in _read(out / "ani_species.tsv")}
+    assert {sp.split("s__")[1]: int(r["unavailable"]) for sp, r in by_sp.items()} == {"W": 2, "X": 0, "Y": 1}
+    first = next(acc for acc, (rk, _) in quality.items() if rk == 1 and sp_of[acc].endswith("s__W"))
+    ufile.write_text(first + "\n")
+    _, p = _run_cap(tmp_path / "b", rows, p1, ANI_CAP, ["--ani", str(table), "--unavailable", str(ufile)],
+                    check=False)
+    assert p.returncode != 0 and "rank 1" in p.stderr, p.stderr
+
+
+def test_ani_species_median_near_clones_and_table_counts(tmp_path):
+    """ani_species.tsv: per rule the median (lower median) of the reported pairwise ANI among the picks and the
+    pairs over 99.9 (near-clones); per species the table's pairs, those with an empty ANI (skani printed nothing)
+    and those with a value whose larger alignment fraction is under --min-af; all against the world."""
+    rows = _ani_rows(seed=71)
+    world = _ani_world(rows, seed=72)
+    table = tmp_path / "pairs.tsv"
+    table.write_text(_normalised_text(world, random.Random(9)))
+    out, _ = _run_cap(tmp_path, rows, _phase1_lines(rows), ANI_CAP, ["--ani", str(table)])
+    want = _ff_oracle(rows, world, ANI_CAP)
+    quality, sp_of = _over_cap_quality(rows)
+    sp_rows = _read(out / "ani_species.tsv")
+    medians: dict[str, list] = {"ani": [], "quality": []}
+    over: dict[str, list] = {"ani": [], "quality": []}
+    for r in sp_rows:
+        sp = r["species"]
+        q = sorted((a for a in quality if sp_of[a] == sp), key=lambda a: quality[a][0])[:ANI_CAP]
+        for rule, picks in (("ani", want[sp]), ("quality", q)):
+            vals = [world[(min(x, y), max(x, y))] for x, y in itertools.combinations(picks, 2)]
+            rep = sorted(Fraction(v[0]) for v in vals if v[0] is not None
+                         and max(Fraction(v[1]), Fraction(v[2])) >= 15)
+            med = rep[(len(rep) - 1) // 2] if rep else None
+            got = r[f"{rule}_median_pairwise_ani"]
+            assert (Fraction(got) if got else None) == med
+            n99 = sum(v > Fraction("99.9") for v in rep)
+            assert int(r[f"{rule}_pairs_over_99_9"]) == n99
+            if med is not None:
+                medians[rule].append(med)
+            over[rule].append(n99)
+        mine = [v for k, v in world.items() if sp_of[k[0]] == sp]
+        assert int(r["table_pairs"]) == len(mine)
+        assert int(r["table_unreported_empty"]) == sum(v[0] is None for v in mine)
+        assert int(r["table_unreported_af"]) == sum(v[0] is not None and max(Fraction(v[1]), Fraction(v[2])) < 15
+                                                    for v in mine)
+    j = json.loads((out / "selection.json").read_text())["ani"]
+    for rule in ("ani", "quality"):
+        assert j["near_clone_pairs_over_99_9"][rule] == {"species": sum(n > 0 for n in over[rule]),
+                                                         "pairs": sum(over[rule])}
+        m = sorted(medians[rule])
+        assert Fraction(repr(j["median_pairwise_ani"][rule]["p50"])) == m[(len(m) + 1) // 2 - 1]
+    assert sum(over["quality"]) > 0  # the world has near-clones, or the test proves little
+
+
 def test_candidates_and_fetch_list(tmp_path):
     rows = _hand_rows() + _random_rows(seed=21, n=200)
     p1 = _phase1_lines(rows)
@@ -633,6 +722,58 @@ def test_skani_normalise_hand_made_file(tmp_path):
     p = subprocess.run([sys.executable, "-I", str(SKANI), "normalise", str(bad), "-o", str(tmp_path / "n3.tsv")],
                        capture_output=True, text=True)
     assert p.returncode != 0 and "Align_fraction_ref" in p.stderr
+
+
+# Real skani 0.4.0 output (image bio-box_64f1bf0, wilkcomp02, 2026-11-13; c27/skani_probe): four genomes sketched with
+# `skani sketch --separate-sketches`, three Legionella pneumophila (GCF_001752745.1 and GCF_001752785.1, 3,447,085
+# bp each; GCA_000277065.1, 2,682,626 bp) and GCA_000007385.1 of another species. `dist -q <745 sketch> --rl
+# <the other three sketches>` and `triangle -E -l <all four sketches>`; the paths printed are the FASTA files the
+# sketches were made from, and the pairs with GCA_000007385.1 are absent (below skani's screen).
+_G = "/tmp/if2453/c27/genomes"
+_LP1 = "NZ_CP015927.1 Legionella pneumophila strain Philadelphia_1_ATCC chromosome, complete genome"
+_LP2 = "NZ_CP015929.1 Legionella pneumophila strain Philadelphia_2 chromosome, complete genome"
+_LP02 = ("CP003024.1 Legionella pneumophila subsp. pneumophila str. Hextuple_3a strain Lp02 substr. hextuple 3a "
+         "chromosome, complete genome")
+_HEAD = "\t".join(SKANI_HEADER) + "\n"
+REAL_DIST = _HEAD + "".join("\t".join(f) + "\n" for f in (
+    [f"{_G}/B03/GCF_001752785.1.fna.gz", f"{_G}/B03/GCF_001752745.1.fna.gz", "100.00", "100.00", "100.00", _LP2, _LP1],
+    [f"{_G}/B01/GCA_000277065.1.fna.gz", f"{_G}/B03/GCF_001752745.1.fna.gz", "99.95", "99.91", "77.75", _LP02, _LP1]))
+REAL_TRIANGLE = _HEAD + "".join("\t".join(f) + "\n" for f in (
+    [f"{_G}/B01/GCA_000277065.1.fna.gz", f"{_G}/B03/GCF_001752745.1.fna.gz", "99.95", "99.91", "77.75", _LP02, _LP1],
+    [f"{_G}/B01/GCA_000277065.1.fna.gz", f"{_G}/B03/GCF_001752785.1.fna.gz", "99.95", "99.91", "77.75", _LP02, _LP2],
+    [f"{_G}/B03/GCF_001752745.1.fna.gz", f"{_G}/B03/GCF_001752785.1.fna.gz", "100.00", "100.00", "100.00", _LP1, _LP2]))
+
+
+def test_skani_normalise_real_output(tmp_path):
+    """The normaliser on skani 0.4.0's own output: columns as the binary prints them, the alignment fractions on the
+    right genome (the 2,682,626 bp genome aligns over 99.91% of itself and covers 77.75% of the 3,447,085 bp one,
+    near 100 x 2,682,626 / 3,447,085 = 77.82: an independent check of which fraction is whose), and the pair skani
+    did not print (another species) a row with an empty ANI when it was asked for."""
+    dist, tri = tmp_path / "dist.tsv", tmp_path / "triangle.tsv"
+    dist.write_text(REAL_DIST)
+    tri.write_text(REAL_TRIANGLE)
+    refs = tmp_path / "refs.txt"
+    refs.write_text("GCF_001752785.1\nGCA_000277065.1\nGCA_000007385.1\n")
+    out = tmp_path / "dist_norm.tsv"
+    subprocess.run([sys.executable, "-I", str(SKANI), "normalise", str(dist), "-o", str(out),
+                    "--expect-query", "GCF_001752745.1", "--expect-refs", str(refs)], check=True,
+                   capture_output=True, text=True)
+    assert out.read_text() == (
+        "genome_a\tgenome_b\tani\taf_a\taf_b\n"
+        "GCA_000007385.1\tGCF_001752745.1\t\t\t\n"
+        "GCA_000277065.1\tGCF_001752745.1\t99.95\t99.91\t77.75\n"
+        "GCF_001752745.1\tGCF_001752785.1\t100.00\t100.00\t100.00\n")
+    rows = _read(out)
+    small = next(r for r in rows if r["genome_a"] == "GCA_000277065.1")
+    assert float(small["af_a"]) > float(small["af_b"])
+    assert abs(float(small["af_b"]) - 100 * 2_682_626 / 3_447_085) < 0.1
+    out2 = tmp_path / "tri_norm.tsv"
+    subprocess.run([sys.executable, "-I", str(SKANI), "normalise", str(tri), "-o", str(out2)], check=True,
+                   capture_output=True, text=True)
+    assert out2.read_text().splitlines()[1:] == [
+        "GCA_000277065.1\tGCF_001752745.1\t99.95\t99.91\t77.75",
+        "GCA_000277065.1\tGCF_001752785.1\t99.95\t99.91\t77.75",
+        "GCF_001752745.1\tGCF_001752785.1\t100.00\t100.00\t100.00"]
 
 
 def test_skani_normalised_world_selects_like_oracle(tmp_path):
@@ -716,23 +857,75 @@ def test_skani_driver_dry_run_plan(tmp_path):
     assert q.stdout.count("systemd-run --user --unit c27-skani-") == 2
 
 
+def test_skani_driver_plan_leaves_out_unavailable(tmp_path):
+    """plan refuses candidates without a file unless they are listed with --unavailable (the genomes NCBI did not
+    serve); listed genomes are left out of the species and of the pair counts; a rank-1 genome cannot be."""
+    rows = _ani_rows(seed=81)
+    cand, paths = _driver_inputs(tmp_path, rows, ANI_CAP)
+    ranked = {}
+    for r in _read(cand):
+        ranked.setdefault(r["gtdb_taxonomy"].split("s__")[1], {})[int(r["species_rank"])] = r["accession"]
+    gone = [ranked["W"][3], ranked["X"][2]]
+    lines = paths.read_text().splitlines(keepends=True)
+    paths.write_text("".join(ln for ln in lines if ln.split("\t")[0] not in gone))
+    work = tmp_path / "work"
+    args = [str(cand), str(paths), str(work), "--cap", str(ANI_CAP), "--image", "/img/x.sif"]
+    p = subprocess.run([sys.executable, "-I", str(SKANI), "plan", *args], capture_output=True, text=True)
+    assert p.returncode != 0 and "have no file" in p.stderr
+    ufile = tmp_path / "unavailable.txt"
+    ufile.write_text("\n".join(gone) + "\n")
+    subprocess.run([sys.executable, "-I", str(SKANI), "plan", *args, "--unavailable", str(ufile)], check=True,
+                   capture_output=True, text=True)
+    plan = json.loads((work / "plan.json").read_text())
+    assert plan["unavailable"] == sorted(gone)
+    members = _read(work / "members.tsv")
+    assert not {m["accession"] for m in members} & set(gone)
+    sp = {s["species"].split("s__")[1]: s for sh in plan["shards"] for s in sh["species"]}
+    for name, n in (("W", 13), ("X", 8), ("Y", 6)):
+        assert sp[name]["genomes"] == n
+        assert sp[name]["pairs_farthest_first"] == (ANI_CAP - 1) * n - ANI_CAP * (ANI_CAP - 1) // 2
+        ranks = [int(m["rank"]) for m in members if m["species_id"] == sp[name]["id"]]
+        assert sorted(ranks) == sorted(k for k, a in ranked[name].items() if a not in gone)
+    ufile.write_text("\n".join(gone + [ranked["X"][1]]) + "\n")
+    p = subprocess.run([sys.executable, "-I", str(SKANI), "plan", *args, "--unavailable", str(ufile)],
+                       capture_output=True, text=True)
+    assert p.returncode != 0 and "rank 1" in p.stderr
+
+
 FAKE_SKANI = r'''
-"""Stand-in for the skani binary in tests: sketch copies names; dist and triangle -E print the world's values."""
+"""Stand-in for the skani binary in tests, with skani 0.4.0's behaviour as measured on the pod (2026-11-13): sketch
+refuses an existing output folder and writes one consolidated database (sketches.db2) unless --separate-sketches
+is given, then one <file name>.sketch per genome; dist and triangle -E print the world's values, the FASTA path a
+sketch was made from in the file columns, and only rows where one genome's aligned fraction is > --min-af
+(default 15)."""
 import json, os, re, sys
 from pathlib import Path
 W = {tuple(k.split("|")): v for k, v in json.loads(Path(os.environ["FAKE_SKANI_WORLD"]).read_text()).items()}
 ACC = re.compile(r"(GC[AF]_\d{9}\.\d+)")
 def acc(p): return ACC.search(Path(p).name).group(1)
-def opt(name):
-    return sys.argv[sys.argv.index(name) + 1]
+def opt(name, default=None):
+    return sys.argv[sys.argv.index(name) + 1] if name in sys.argv else default
 cmd = sys.argv[1]
 with open(os.environ["FAKE_SKANI_LOG"], "a") as fh:
     fh.write(" ".join(sys.argv[1:]) + "\n")
 if cmd == "sketch":
-    d = Path(opt("-o")); d.mkdir(parents=True)
-    for ln in Path(opt("-l")).read_text().split():
-        (d / (Path(ln).name + ".sketch")).write_text(ln)
+    d = Path(opt("-o"))
+    if d.exists():
+        print("ERROR  Output directory exists; output directory must not be an existing directory.", file=sys.stderr)
+        sys.exit(1)
+    d.mkdir(parents=True)
+    for name in ("markers.bin", "markers.bin2", "README.txt"):
+        (d / name).write_text("")
+    files = Path(opt("-l")).read_text().split()
+    if "--separate-sketches" in sys.argv:
+        for ln in files:
+            (d / (Path(ln).name + ".sketch")).write_text(ln)
+    else:
+        (d / "sketches.db2").write_text("\n".join(files))
+        (d / "index.db2").write_text("")
     sys.exit(0)
+MIN_AF = float(opt("--min-af", "15"))
+def fasta(p): return Path(p).read_text().strip() if p.endswith(".sketch") else p
 def rows(q, refs):
     out = []
     for r in refs:
@@ -741,7 +934,9 @@ def rows(q, refs):
         if v is None or v[0] is None:
             continue
         afq, afr = (v[1], v[2]) if acc(q) == a else (v[2], v[1])
-        out.append("\t".join([r, q, v[0], afr, afq, "ref name", "query name"]))
+        if not max(float(afq), float(afr)) > MIN_AF:
+            continue
+        out.append("\t".join([fasta(r), fasta(q), v[0], afr, afq, "ref name", "query name"]))
     return out
 head = "Ref_file\tQuery_file\tANI\tAlign_fraction_ref\tAlign_fraction_query\tRef_name\tQuery_name"
 if cmd == "dist":
@@ -789,8 +984,17 @@ def test_skani_driver_run_with_stand_in_binary(tmp_path):
     assert sum(c.startswith("sketch ") for c in calls) == n_over
     assert sum(c.startswith("dist ") for c in calls) == n_over * (ANI_CAP - 1)
     assert sum(c.startswith("triangle ") for c in calls) == n_over
+    # skani 0.4.0 writes a consolidated database unless asked for one file per genome; and the driver asks skani
+    # to print every pair past its screen (--min-af 0), so that c25_select.py --min-af is the one place the
+    # alignment-fraction rule applies and the table shows which pairs it removed
+    assert all("--separate-sketches" in c.split() for c in calls if c.startswith("sketch "))
+    assert all(" --min-af 0 " in f" {c} " for c in calls if c.startswith(("dist ", "triangle ")))
     t = _read(table)
     assert len(t) == len({(r["genome_a"], r["genome_b"]) for r in t})
+    low = [r for r in t if world[(r["genome_a"], r["genome_b"])][0] is not None
+           and max(float(x) for x in world[(r["genome_a"], r["genome_b"])][1:]) < 15]
+    assert low and all((r["ani"], r["af_a"], r["af_b"]) == tuple(world[(r["genome_a"], r["genome_b"])])
+                       for r in low)
     j = json.loads((out / "selection.json").read_text())["ani"]
     assert j["consulted_pairs"] == plan["pairs_farthest_first"] and j["consulted_absent"] == 0
     # a second run of a finished shard asks skani nothing (resumable by markers)

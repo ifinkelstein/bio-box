@@ -4,7 +4,8 @@
     python3 -I c27_skani.py normalise SKANI_TSV... -o OUT [--expect-query ACC --expect-refs FILE]
     python3 -I c27_skani.py paths OUT_TSV LOCK_JSON...
     python3 -I c27_skani.py plan CANDIDATES_TSV PATHS_TSV WORK [--cap 20] [--min-af 15] [--threads 8]
-                            [--budget-cpu-min 240] [--sketch-cpu-s 2] [--pair-ms 10] [--image SIF] [--dry-run]
+                            [--budget-cpu-min 240] [--sketch-cpu-s 2] [--pair-ms 10] [--image SIF]
+                            [--unavailable FILE] [--dry-run]
     python3 -I c27_skani.py launch WORK [--parallel 2] [--dry-run]
     python3 -I c27_skani.py run-shard WORK K [--skani skani] [--threads N]
     python3 -I c27_skani.py collect WORK OUT_TSV
@@ -21,9 +22,15 @@ pick that the rounds did not cover (CAP (CAP-1) / 2 per species at most), so the
 pairwise ANI of both picks. A pair skani was asked for and did not print (below its screen or its --min-af) is
 written as a row with an empty ani: it counts as the largest distance.
 
-skani's command lines (sketch -l LIST -o DIR; dist -q SKETCH --rl LIST -o OUT; triangle -E -l LIST -o OUT; -t
-threads) and its output columns (Ref_file, Query_file, ANI, Align_fraction_ref, Align_fraction_query, Ref_name,
-Query_name) are those of skani's README; check them against `skani <cmd> --help` in the image before the first run.
+skani 0.4.0 as checked in the image (`skani <cmd> --help` and a run on four real genomes, 2026-11-13):
+`sketch --separate-sketches -l LIST -o DIR` writes DIR/<FASTA file name>.sketch per genome (without the flag 0.4.0
+writes one consolidated database, sketches.db2, that dist cannot take as -q); DIR must not exist; .fna.gz is read
+directly. `dist -q SKETCH --rl LIST -o OUT` and `triangle -E -l LIST -o OUT` print the columns Ref_file,
+Query_file, ANI, Align_fraction_ref, Align_fraction_query, Ref_name, Query_name, with the FASTA path a sketch was
+made from in the file columns and each fraction on its own genome; a pair is printed only when one genome's
+aligned fraction is > --min-af (default 15) and it passes the screen (-s, about 80% identity): any other pair is
+absent. The driver passes --min-af 0, so every pair past the screen is printed and c25_select.py --min-af applies
+the 15% rule itself. -t is the number of threads.
 
 normalise: skani's dist/triangle -E output -> the table c25_select.py --ani reads: genome_a < genome_b (bare
 accessions, from the file names), ani, af_a, af_b as skani printed them; a pair printed twice keeps its larger
@@ -31,7 +38,9 @@ ANI; with --expect-query/--expect-refs every pair asked for and not printed beco
 
 paths: accession -> FASTA path from fetch lock.json files (phase 1's and this card's), for plan.
 
-plan: species with more than CAP candidates, in quality order (c25_select.py --candidates' species_rank), packed
+plan: species with more than CAP candidates, in quality order (c25_select.py --candidates' species_rank), less
+the genomes listed with --unavailable (not served; refused for a rank-1 genome; any other candidate without a
+file is refused), packed
 into shards by first-fit decreasing on an estimate of CPU-minutes, (genomes x sketch-cpu-s + pairs x pair-ms) /
 60, so that each shard process stays under --budget-cpu-min (default 240, under the 300 CPU-minute rule; a
 species over the budget is a shard alone, and plan refuses one over 300). The cost per genome and per pair are
@@ -67,6 +76,9 @@ ACC = re.compile(r"^(GC[AF]_\d{9}\.\d+)")
 REQUIRED = ["Ref_file", "Query_file", "ANI", "Align_fraction_ref", "Align_fraction_query"]
 STOP = Path("/stor/scratch/Wilke/if2453/all-the-data/STOP")
 PROCESS_CPU_MIN = 300  # AGENTS.md section 7.2
+# skani prints a pair only when one genome's aligned fraction is > --min-af (default 15): print every pair past the
+# screen, so that c25_select.py --min-af is the one place that rule applies and the table shows what it removed
+PRINT_ALL = ["--min-af", "0"]
 
 
 def put_text(path: Path, text: str) -> str:
@@ -148,17 +160,22 @@ def slug(species: str) -> str:
 
 def build_plan(a) -> tuple[dict, list[tuple]]:
     paths = {r["accession"]: r["path"] for r in read_tsv(a.paths)}
+    unavailable = set(a.unavailable.read_text().split()) if a.unavailable else set()
     by_sp: dict[str, list[dict]] = {}
     for r in read_tsv(a.candidates):
         by_sp.setdefault(r["gtdb_taxonomy"], []).append(r)
     cap = a.cap
-    qtop = cap * (cap - 1) // 2
-    species, members, missing = [], [], []
+    species, members, missing, left_out = [], [], [], []
     for i, sp in enumerate(sorted(s for s, rows in by_sp.items() if len(rows) > cap)):
         rows = sorted(by_sp[sp], key=lambda r: int(r["species_rank"]))
         assert [int(r["species_rank"]) for r in rows] == list(range(1, len(rows) + 1)), f"ranks of {sp}"
+        if rows[0]["accession"] in unavailable:
+            raise SystemExit(f"{sp}: its rank 1 genome {rows[0]['accession']} is listed as unavailable")
+        left_out += [r["accession"] for r in rows if r["accession"] in unavailable]
+        rows = [r for r in rows if r["accession"] not in unavailable]
         n = len(rows)
-        ff = (cap - 1) * n - cap * (cap - 1) // 2
+        ff = sum(n - r for r in range(1, min(cap, n)))  # round r: the r-th pick against the n - r not yet picked
+        qtop = min(cap, n) * (min(cap, n) - 1) // 2
         sid = f"sp{i:03d}_{slug(sp)}"
         for r in rows:
             p = paths.get(r["accession"], "")
@@ -166,7 +183,7 @@ def build_plan(a) -> tuple[dict, list[tuple]]:
                 missing.append(r["accession"])
             members.append((sid, int(r["species_rank"]), r["accession"], p))
         species.append({"id": sid, "species": sp, "genomes": n, "bp": sum(int(r["genome_size"]) for r in rows),
-                        "pairs_farthest_first": ff, "pairs_all": n * (n - 1) // 2,
+                        "pairs_farthest_first": ff, "pairs_quality_top": qtop, "pairs_all": n * (n - 1) // 2,
                         "est_cpu_min": (n * a.sketch_cpu_s + (ff + qtop) * a.pair_ms / 1000) / 60})
     shards: list[dict] = []
     for s in sorted(species, key=lambda s: (-s["est_cpu_min"], s["id"])):
@@ -191,8 +208,10 @@ def build_plan(a) -> tuple[dict, list[tuple]]:
         "species": len(species), "genomes": sum(s["genomes"] for s in species),
         "bp": sum(s["bp"] for s in species),
         "pairs_farthest_first": sum(s["pairs_farthest_first"] for s in species),
-        "pairs_quality_top": qtop * len(species), "pairs_all": sum(s["pairs_all"] for s in species),
+        "pairs_quality_top": sum(s["pairs_quality_top"] for s in species),
+        "pairs_all": sum(s["pairs_all"] for s in species),
         "est_cpu_min_total": sum(s["est_cpu_min"] for s in species),
+        "unavailable": sorted(left_out),
         "missing_paths": len(missing), "missing_paths_first": sorted(missing)[:10],
         "candidates_sha256": hashlib.sha256(a.candidates.read_bytes()).hexdigest(),
         "shards": shards,
@@ -217,7 +236,8 @@ def cmd_plan(a) -> int:
         print(text + "\n# unit commands (launch starts at most --parallel at a time):\n" + cmds)
         return 0
     if plan["missing_paths"]:
-        raise SystemExit(f"{plan['missing_paths']} candidate genomes have no file, e.g. {plan['missing_paths_first']}")
+        raise SystemExit(f"{plan['missing_paths']} candidate genomes have no file, e.g. {plan['missing_paths_first']} "
+                         "(genomes that were not served are listed with --unavailable)")
     if not plan["image"]:
         raise SystemExit("--image is required for a plan that will run")
     a.work.mkdir(parents=True, exist_ok=True)
@@ -276,8 +296,8 @@ def run_species(work: Path, sp: dict, members: list[tuple[str, str]], plan: dict
     log: list[dict] = []
     put_text(d / "genomes.txt", "".join(path[g] + "\n" for g in ranked))
     sk = d / "sketches"
-    shutil.rmtree(sk, ignore_errors=True)
-    run([skani, "sketch", "-t", threads, "-l", d / "genomes.txt", "-o", sk], log)
+    shutil.rmtree(sk, ignore_errors=True)  # skani refuses an existing output folder
+    run([skani, "sketch", "--separate-sketches", "-t", threads, "-l", d / "genomes.txt", "-o", sk], log)
     sketch = {}
     for p in sorted(sk.iterdir()):
         m = ACC.match(p.name)
@@ -291,7 +311,7 @@ def run_species(work: Path, sp: dict, members: list[tuple[str, str]], plan: dict
         r = sum(1 for e in log if e["cmd"][1] == "dist") + 1
         refs, out = d / f"round_{r:02d}.refs", d / f"round_{r:02d}.tsv"
         put_text(refs, "".join(f"{sketch[g]}\n" for g in rest))
-        run([skani, "dist", "-t", threads, "-q", sketch[newest], "--rl", refs, "-o", out], log)
+        run([skani, "dist", "-t", threads, *PRINT_ALL, "-q", sketch[newest], "--rl", refs, "-o", out], log)
         got = parse_skani(out.read_text(), out)
         fill_expected(got, newest, rest)
         sims = {}
@@ -304,7 +324,8 @@ def run_species(work: Path, sp: dict, members: list[tuple[str, str]], plan: dict
     picks = farthest_first(ranked, cap, round_fn)
     qtop = ranked[:cap]
     put_text(d / "quality_top.txt", "".join(f"{sketch[g]}\n" for g in qtop))
-    run([skani, "triangle", "-E", "-t", threads, "-l", d / "quality_top.txt", "-o", d / "quality_top.tsv"], log)
+    run([skani, "triangle", "-E", "-t", threads, *PRINT_ALL, "-l", d / "quality_top.txt", "-o", d / "quality_top.tsv"],
+        log)
     tri = parse_skani((d / "quality_top.tsv").read_text(), d / "quality_top.tsv")
     for i, g in enumerate(qtop):
         fill_expected(tri, g, qtop[i + 1:])
@@ -423,6 +444,7 @@ def main(argv: list[str]) -> int:
     p.add_argument("--sketch-cpu-s", type=float, default=2.0, help="estimate: CPU-seconds to sketch one genome")
     p.add_argument("--pair-ms", type=float, default=10.0, help="estimate: CPU-milliseconds per sketched pair")
     p.add_argument("--image", default="")
+    p.add_argument("--unavailable", type=Path, help="file of accessions with no sequence (not served): left out")
     p.add_argument("--dry-run", action="store_true")
     p = sub.add_parser("launch")
     p.add_argument("work", type=Path)
