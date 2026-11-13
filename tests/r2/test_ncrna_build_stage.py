@@ -130,7 +130,8 @@ def test_the_memory_term_bounds_the_shards_at_once_and_refuses_a_cap_below_one(d
     assert bs.ncrna_jobs(10, 2, 6 * gib) == 0
     # card E-08 (E-07 report (d)): shards are cut at the slower of the two measured shard rates, 304.0 CPU-hours
     # per 10 Gbp (derived in planning/measurements/2026-11-11_ncrna_producer.md), not the design note's 247.4
-    assert bs.ncrna_shard_bases(direct["prof"]) == int(0.8 * 300 * 1e10 / (304.0 * 60)) == 131_578_947
+    # (card E-09: the rate is the set's; this is prok-1's, unchanged)
+    assert bs.ncrna_shard_bases(direct["prof"], "prok-1") == int(0.8 * 300 * 1e10 / (304.0 * 60)) == 131_578_947
     root = tmp_path / "root"
     assert bs.build_stage(direct["prof"], with_ncrna(direct, root), run=c04.runner,
                           mem_cap=lambda: 4 * gib) == runstep.EXIT_REFUSED
@@ -145,11 +146,11 @@ def test_a_shard_planned_at_80_percent_stays_under_the_budget_at_the_slower_meas
     check). A shard cut at 80% of the 300 CPU-minute budget at the slower rate uses 240 CPU-minutes at that rate,
     and at the faster one less; at the design note's 247.4 it would have used 295 at the slower rate."""
     prof = direct["prof"]
-    bases = bs.ncrna_shard_bases(prof)
+    bases = bs.ncrna_shard_bases(prof, "prok-1")  # E-07's measurement was of prok-1 (card E-09: the rate is the set's)
     assert bs.NCRNA_CPU_H_PER_10GBP == 304.0
     for rate in (206.6, 254.5, 304.0):  # shard 0, both shards, shard 1 (E-07's measurement)
         assert bases * rate * 60 / 1e10 <= 0.8 * prof.cpu_min_per_process + 1e-6
-    assert bs.ncrna_cpu_min(bases) == pytest.approx(240.0, abs=1e-4)
+    assert bs.ncrna_cpu_min(bases, "prok-1") == pytest.approx(240.0, abs=1e-4)
 
 
 @pytest.mark.covers("C-08", "E-08")

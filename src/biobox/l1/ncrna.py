@@ -1,13 +1,17 @@
 """Non-coding RNA features from Rfam covariance models with Infernal `cmsearch` (operation O-SCAN, cards E-01, E-07).
 
 What is scanned (DEC-28, the specification `planning/design/0-08_ncrna_models.md` §2, §4, §6). A model set file
-(`rfam_sets/<name>.tsv`: accession, name, and `whole_genome` 0 or 1; `prok-1` by default, 588 models of Rfam 15.1)
-names the models; the producer fetches them from the Rfam library (`cmfetch -f`) into scratch, as two CM files:
+(`rfam_sets/<name>.tsv`: accession, name, and `whole_genome` 0 or 1) names the models: `prok-2` by default (DEC-30,
+card E-09: 770 models of Rfam 15.1, `prok-1`'s 588 plus the 182 long-tail models with a hit on the sample of
+measurement 0-08a); `prok-1` (DEC-28, card E-07) stays a frozen set that loads and keeps its producer name, so a stage
+scanned with it is still read. The producer fetches the set's models from the Rfam library (`cmfetch -f`) into
+scratch, as two CM files:
 
 - the set's intergenic models (`whole_genome` 0) search the contig's intergenic regions with a margin of `MARGIN`
   (200) bases into the flanking genes, with `cmsearch --notrunc` (no re-search of record ends for truncated hits);
-- the set's whole-genome models (`whole_genome` 1: RNA inside coding sequence, 23 in prok-1) search whole contigs
-  with Infernal's default truncated-hit handling, as card E-01 searched every model.
+- the set's whole-genome models (`whole_genome` 1: RNA inside coding sequence, 23 in prok-1; 34 in prok-2, which adds
+  11 models whose sample hits lie mostly outside every intergenic region) search whole contigs with Infernal's default
+  truncated-hit handling, as card E-01 searched every model.
 
 So no model searches a base twice: the two model sets are disjoint and the regions of a contig are disjoint.
 Both use Infernal's own filter pipeline, each model's GA cutoff (`--cut_ga`) and the fixed nucleotide search space
@@ -59,7 +63,8 @@ truncation flags.
 The producer is `infernal-<infernal version>-rfam-<library version>-<set version>-<REGION_RULE>-<CLAN_RULE>`.
 Infernal's version is read from the binary (`cmsearch -h`); the library's is the `refdb.yaml` version whose sha256 is
 the file's (`Rfam.cm.gz` of Rfam 15.1 gives `15.1`), else `sha` + the first 12 hex digits of its sha256; the set's is
-its name without hyphens when the file is a frozen set of `FROZEN_SETS` (`prok-1` gives `prok1`), else `sha` + 12 hex
+its name without hyphens when the file is a frozen set of `FROZEN_SETS` (`prok-2` gives `prok2`, `prok-1` gives
+`prok1`), else `sha` + 12 hex
 digits of the file's sha256; `REGION_RULE` (`igr200nt`) names the margin and `--notrunc`; `CLAN_RULE` (`clan1`)
 names the overlap rule above, version 1, with the clan file refdb.yaml pins. Card E-07's producer had no clan tail
 and put every hit's locus on the tape; this card's writes the winners' only, so its features differ and its name must
@@ -150,10 +155,14 @@ LIBRARY = "rfam"  # the refdb.yaml library this producer reads
 MARGIN = 200  # bases of each flanking gene added to an intergenic region (DEC-28)
 REGION_RULE = f"igr{MARGIN}nt"  # intergenic regions at this margin, searched with --notrunc
 SET_DIR = Path(__file__).resolve().parent / "rfam_sets"
-DEFAULT_SET = "prok-1"
+DEFAULT_SET = "prok-2"  # DEC-30 (card E-09); card E-07's default was prok-1
 # Frozen model sets: name -> sha256 of the file. A frozen file is never regenerated; a new set is a new file
-# with a new name (DEC-28). prok-1: planning/design/0-08_ncrna_models.md, 588 models, 23 of them whole-genome.
-FROZEN_SETS = {"prok-1": "092660962def1ec76466de3816558451f478637ffb43d141ef684273f68d6179"}
+# with a new name (DEC-28). prok-1: planning/design/0-08_ncrna_models.md, 588 models, 23 of them whole-genome
+# (DEC-28, card E-07); still read, so a stage scanned with it keeps its producer name. prok-2: prok-1 plus the 182
+# long-tail models with a hit on the sample of measurement 0-08a, 770 models, 34 of them whole-genome (DEC-30,
+# card E-09; planning/measurements/2026-11-12_rfam_sample.md).
+FROZEN_SETS = {"prok-1": "092660962def1ec76466de3816558451f478637ffb43d141ef684273f68d6179",
+               "prok-2": "d7e8d39f8d5a0d640b0017cff0d316914d194bd08b7099e91a35071f2dc5234e"}
 # Clan competition (card E-08): Rfam's clan file, its refdb.yaml entry, and the rule's version in the producer name
 CLANIN = SET_DIR / "Rfam-15.1.clanin"
 CLAN_LIBRARY = "rfam_clanin"
@@ -287,8 +296,8 @@ def set_path(model_set: str | Path) -> Path:
 
 
 def set_version(model_set: str | Path) -> str:
-    """The set's version in the producer name: a frozen set's name without hyphens (`prok-1` gives `prok1`), else
-    `sha` + the first 12 hex digits of the file's sha256."""
+    """The set's version in the producer name: a frozen set's name without hyphens (`prok-2` gives `prok2`, `prok-1`
+    `prok1`), else `sha` + the first 12 hex digits of the file's sha256."""
     digest = _sha256(set_path(model_set))
     for name, sha in sorted(FROZEN_SETS.items()):
         if sha == digest:
