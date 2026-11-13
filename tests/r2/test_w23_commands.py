@@ -533,7 +533,7 @@ def test_w23_each_export_given_out_prints_its_count_and_none_without(rel, world,
         assert list(wrote) == [str(path)], (argv, wrote)
         m = wrote[str(path)]
         if unit == "tables":
-            files = sorted(path.iterdir())
+            files = sorted(p for p in path.iterdir() if p.name != "RUN")  # card W-29: RUN is no table
             assert int(m["n"]) == len(files) > 0
             assert int(m["rows"]) == sum(len(f.read_text().splitlines()) - 3 for f in files)
             continue
