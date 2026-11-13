@@ -3,7 +3,7 @@
 One master seed (u64) per world. Every stage and entity draws from its own stream,
 ``SeedSequence(seed, spawn_key=blake3("<stage>/<entity>")[:16] as four big-endian uint32)``, so a
 draw never depends on worker count, iteration order, the clock or any global random state.
-External tools (ZOMBI2 ``seed=``, later ``cmemit``/``hmmemit --seed``) get a derived non-zero
+External tools (ZOMBI2 ``seed=``, ``cmemit``/``hmmemit --seed``) get a derived non-zero
 31-bit seed: 0 means "arbitrary" in HMMER and Infernal and is never passed.
 
 The component paths in use (part of the output contract; renaming one changes every world):
@@ -16,7 +16,14 @@ The component paths in use (part of the output contract; renaming one changes ev
 - ``S3/family/<family_id>``: a family's architecture, target identity, root protein and rate categories;
 - ``S4/lineages``: per species branch, its GC3 step and relaxed-clock multiplier;
 - ``S4/family/<family_id>``: a family's evolution down its gene tree (pairs for the rate solve, root codons,
-  substitutions, synonymous events, indels).
+  substitutions, synonymous events, indels);
+- ``S5/family/<family_id>``: a family's cassette layout, root cassettes and their evolution down its gene
+  tree (with its RNA motif, when linked);
+- ``S5/motif/panel``: the synthetic RNA motif models; ``S5/motif/links``: which families carry which model;
+- ``S5/emit/<link>``: a link's clade emissions (synthetic draws, or the ``cmemit --seed`` tool seed);
+- ``S5/origin/<genome_id>/<replicon>``: where a circular replicon is cut;
+- ``S5/tight/<up>/<down>``: not a stream but a BLAKE3 hash of ``<seed>/S5/tight/<up>/<down>`` (families in
+  transcription order), the background tight-junction draw of §2.4.
 """
 
 from __future__ import annotations

@@ -11,24 +11,19 @@ Written so a new session can continue without the conversation that produced thi
 
 **Mode: running again.** The PI ended the drain at 23:20 CST on 2026-11-12: up to four agents, working independently.
 
-**State when the session hit its usage limit, 2026-11-13 about 01:35 CST (read this first).**
-- `main` equals `plan/task-cards` at `ad6fd97` (pull requests 3 and 4 merged). The image built from it (Actions run
-  43380434543, commit `64f1bf0`) is **good**: 1,720 passed, 22 skipped inside it; it has skani 0.4.0 and matplotlib.
-  Runtime image `ghcr.io/ifinkelstein/bio-box@sha256:2faf4b8de020430d3c5c9dace5569445fdb0eb0057088972793874a799e25bea`;
-  test image digest `sha256:cb7cd0f1e7146350576e4658de39290647d1cbba39494ce81ba072f3041707bb`. **Not yet pulled to the
-  pod.** Next: `singularity pull` both by digest on the pod, run the test image's suite there, switch `pod_pytest.sh`,
-  `detached_suite.sh`, the runbook and the drivers to it, then card C-27 step (4) (check `c27_skani.py`'s flags against
-  `skani --help` first).
-- W-29 is merged (2026-11-13, after its full suite passed on the merged tree).
-- **F-02 session 4 is not merged.** Branch `task/F-02-4` at `cdb5090` (pushed; Actions on it green, 1,654 passed):
-  intergenic regions, RNA motifs and replicon sequences. Merge after W-29; put its modelling choices (listed in its
-  report: junction length medians, overlap rates, the ten Rfam models, motif rates) on card F-02 for the PI.
-- **C-28 is ready and not merged.** Branch `task/C-28` at `50ce3bc` (pushed; its full suite 1,698 passed, 64 skipped; Actions
-  green): the night cap now depends on other users' CPU (measured over 5 s from `/proc`), not the load average, and a launch's
-  allowance is the cap less the account's use elsewhere. Audit it (it changes `tests/conftest.py` for every test and adds a
-  5 s read to each `run-step`), merge, and apply it to the 50 Gbp build only between scans. For the PI: the 0.5-core
-  threshold for "other compute", and whether `run-step` should refuse a request above the allowance.
-- New helper: `scripts/orchestrator/wait_run.sh <repo> <run id>` (polls a run to completion; `gh run watch` returns early).
+**State on 2026-11-13 at 10:30 CST.**
+- `main` equals `plan/task-cards` at `ad6fd97` (pull requests 3 and 4). The image built from it (commit `64f1bf0`, Actions
+  run 43380434543: 1,720 passed, 22 skipped inside it) is on the pod as `/tmp/if2453/images/bio-box-test_64f1bf0.sif`
+  (`ghcr.io/ifinkelstein/bio-box-test@sha256:cb7cd0f1e7146350576e4658de39290647d1cbba39494ce81ba072f3041707bb`) and
+  `bio-box_64f1bf0.sif` (`...bio-box@sha256:2faf4b8de020430d3c5c9dace5569445fdb0eb0057088972793874a799e25bea`), with skani
+  0.4.0, matplotlib 3.11.2, zombi2, MMseqs2 18.8cc5c, HMMER 3.4, Infernal 1.1.5 (*measured* in the image). Tests and
+  builds still default to the old image until card C-29 merges.
+- The 50 Gbp build: P4's scan published at 08:06 (96 shards, 9.5 hours); P5 is scanning, P6 follows: about Saturday morning.
+- Agents running: C-29 (image switch), C-27 step 4 (skani selection, branch `task/C-27-4`), `docs/readme` (README rewrite
+  asked by the PI), `docs/example-crispr` (a second worked example after Peters et al. 2017, asked by the PI).
+- Ready and not merged: C-28 (`task/C-28` at `50ce3bc`; audited; merge with one change: the driver reserves 8 night threads
+  for tests and agents). Then F-02 session 5.
+- Helpers: `scripts/orchestrator/wait_run.sh <repo> <run id>` (polls an Actions run to completion; `gh run watch` returns early).
 
 **For a new session.**
 1. `git fetch origin`. The integration worktree is `.claude/worktrees/integration` in the main checkout, on local
@@ -54,7 +49,7 @@ pushes, and checks the GitHub Actions run of the pushed commit. Sonnet for tier-
 four agents at once. When a card conflicts with its own text, a decision or a file, the agent stops and reports;
 the card is amended in `TASKS.md` and the agent resumed (B-45, C-21c, E-09 went that way today).
 
-**Branches.** `plan/task-cards` on GitHub (repository `ifinkelstein/bio-box`, public): 110 cards, three
+**Branches.** `plan/task-cards` on GitHub (repository `ifinkelstein/bio-box`, public): 111 cards, four
 sessions of F-02 and the measurements in the table below; decisions DEC-29 to DEC-33 were added on 2026-11-12.
 `ci` and `cross-host` were green at `54137be`; the runs on `b663ec8`, `83ef837` and `7075c2b` were in progress at
 21:50 (check them: `gh run list --branch plan/task-cards`). Manifest hash of the fixture:
@@ -282,7 +277,7 @@ Last full suite on the integration branch before the C-11 merge: 1,053 passed, 1
 pinned image; 3 min 40 s wall for the slowest shard, against 13.5 min in one process). The skips
 need samtools, bgzip, Prodigal or the golden set. Tests no longer run on the laptop (AGENTS.md §5.5).
 
-## Merged (110 cards, and measurements)
+## Merged (111 cards, and measurements)
 
 | Card | Merge | What it did | Audit notes |
 |---|---|---|---|
@@ -404,7 +399,8 @@ need samtools, bgzip, Prodigal or the golden set. Tests no longer run on the lap
 | F-02 (3) | `88b46a0` | `synthworld` families and coding sequences (`sequences.py`, `profiles.py`, `codons.py`): each family's root protein drawn from a profile HMM (a synthetic panel fitted to Pfam 38.2's statistics by default, since CI has no Pfam file; `source: pfam` reads real models), evolved down its gene tree under a profile-F81 model with gamma rates and a relaxed clock, with the realized substitutions per site as truth; then each gene's CDS (genetic code 11, GC3-weighted codons drifting by lineage, start and stop codons). Output keyed by `copy_label`; one family in memory at a time | *Measured* (wilkcomp02, 2026-11-12, `micro`): 73 to 78 s for the stage (24 s on Actions), about 115 s with the backbone against a 3 minute target; 63 MB peak for 2,698 families and 89,102 genes; realized against expected pairwise identity by quintile 0.286/0.286 to 0.915/0.916 over 6,355 pairs; every CDS translates to its protein with an independent table. **Finding:** under the spec's model `hmmsearch` detection does not fall with divergence (about 81% of 1,928 copies of 40 Pfam families at every depth, 596/698 near the root and 261/339 beyond 3 substitutions per site), because every copy is a fresh draw from the profile; the spec's "target bitscore band" is therefore impossible, and the test asserts what the model does predict. For the PI: should detectability fall with divergence (it needs a model change), and the model's parameter values. The Pfam parity tests skip under `pod_pytest.sh` (it does not bind the Pfam file; run by hand: 3 passed). Not bounded at stage scale: `iter_genome` loads the whole index. Branch tests 247 passed, 3 skipped; Actions 1,550 passed, 174 skipped on the merged tree |
 | B-42 | `273bd74` (with the B-47 design note) | Split clustering proved on a real release, and DEC-25's exemption narrowed to DEC-29's case: `rN.1b` (2,053,075 proteins) reclustered in parts by `build-stage` into a read-only view gives `cluster_member` and `cluster_member_aln` byte-identical to the published files, with the default cut and with every per-query call forced into three parts (0 members moved at NR90 or NR50). In code: a release whose estimate passes 80% of the budget clusters in parts; clustering it in one process over `cpu_min_per_process` is refused whatever `cluster_cpu_min_max` says; the cap now applies only to a call no number of parts fits; in parts the release-level check looks only at such calls (B-45's open question) | *Measured* (wilkcomp02, 2026-11-12, `planning/measurements/2026-11-12_split_clustering_rN1b.md`): default cut 60 steps, 291.68 CPU-minutes, 1,978.7 s, largest step 92.72 CPU-minutes and 3.68 GB; three parts 108 steps, 313.05 CPU-minutes; one process had been 284.10. C-22's estimates are within 20% for every call of 4 CPU-minutes or more. B-36 and B-45 tests migrated (each listed in the report with what it asserted before and after). Three stale comments naming DEC-25 corrected with the merge (`profile.py`, `runstep.py`, `cluster.py`). For the PI: the decision row (below). Scratch `/tmp/if2453/b42` can be cleared. Merged-tree tests 313 passed; branch suite 1,649 passed, 51 skipped |
 | W-28 | `5322460` | `bio-box results archive|flush|list|get` (DEC-33; `src/biobox/search/results.py`): a run's record and the output directories named with `--with` become one deterministic archive (sorted names, fixed times and owners; the same bytes on any host), spooled under the profile's `<tmp>/results/spool`; `flush` writes the spooled archives to `<durable>/results` as one bundle only when it reaches `small_file_floor_bytes` (64 MiB; AGENTS §7.3 outranks DEC-33's "one archive per run"), under a temporary name and renamed; nothing is ever overwritten (the same sha256 is a no-op, another is refused); `list` reads manifests only; `get` restores and checks every sha256 | On the real RNA polymerase run of `rN.3`, into scratch (*measured*, wilkcomp02, 2026-11-12): the search output alone is 12,492,800 bytes, so `flush` wrote nothing; with five `nbr flanks` directories 164,618,240 bytes in 14,264 files, bundled and restored equal (`diff -r` empty). Nothing was written to `/stor`. The profile's `durable` (`/stor/work/Wilke/if2453/all-the-data`) does not exist on the pod: the tool refuses until the PI makes it. A run's record does not hold the user's command line, so outputs are named by hand (card W-29). Merged-tree tests 264 passed; branch tests 227 and 18 passed |
-| W-29 | this merge | A run records the command that made it (`limits_json`, key `command`; no schema change), and every output directory written from a run (`search hmm`, `nbr --out`, `nbr flanks`) holds a `RUN` file naming the run and the release; `results archive RUN --under DIR` finds those directories up to four levels down and refuses one whose `RUN` names another run; `--with` still serves older outputs and single files | Outputs otherwise unchanged (one new file, one README line); the W-07, W-05, W-22 and W-23 tests migrated for it. `RUNBOOK.md` brought up to date with the merge. Full suite on the merged tree (detached, wilkcomp02, 2026-11-13): 1,688 passed, 64 skipped |
+| W-29 | `5d66152` | A run records the command that made it (`limits_json`, key `command`; no schema change), and every output directory written from a run (`search hmm`, `nbr --out`, `nbr flanks`) holds a `RUN` file naming the run and the release; `results archive RUN --under DIR` finds those directories up to four levels down and refuses one whose `RUN` names another run; `--with` still serves older outputs and single files | Outputs otherwise unchanged (one new file, one README line); the W-07, W-05, W-22 and W-23 tests migrated for it. `RUNBOOK.md` brought up to date with the merge. Full suite on the merged tree (detached, wilkcomp02, 2026-11-13): 1,688 passed, 64 skipped |
+| F-02 (4) | this merge | `synthworld` intergenic regions, RNA motifs and replicon sequences (`intergenic.py`, `rna.py`): every junction's intergenic sequence by type (tight, loose, divergent, convergent) with promoters, ribosome-binding sites and terminators; 4-base and 1-base gene overlaps made by protein-neutral edits of start and stop codons; RNA motifs emitted from covariance models (a synthetic panel by default; Rfam models on the pod) and evolved along the tree; one nucleotide sequence per replicon, with every gene and motif at coordinates in the data model's convention | *Measured* (wilkcomp02, 2026-11-12/13, `micro`, seed 20261112): 84 replicons, 89,102 genes; the stage takes 42.3 to 42.8 s and 93 MB; with the backbone and sequences about 157 s of the 3 minute target (*derived*), leaving about 23 s for the stages still to come. Slicing each gene from its replicon gives its CDS; junction lengths within 5% of the preset at five quantiles; `cmsearch --cut_ga` finds 872 of 1,078 motifs, 251 of 252 at divergence up to 0.02 and 147 of 240 beyond 0.2: detection falls with divergence, as session 3's proteins do not. `cmemit --exp 1` leaves 15 to 99 of 100 emissions above GA by model, so the default is 1.5 (fitted). The intergenic length model is an estimate, not yet fitted to real genomes; no motifs inside coding sequence. Merged-tree synthworld tests 339 passed (the Rfam ones included); Actions on the branch 1,654 passed, 177 skipped |
 | DEC-29 | `c3dc901` | The PI chose a CPU exemption for clustering calls that cannot be split under the budget (above about 74 M proteins), over waiting for an MMseqs2 fix or incremental clustering. Card B-45 implements it; card B-42 narrows DEC-25 to it instead of removing it | |
 
 Decisions DEC-18 to DEC-23 were approved by the PI on 2026-11-09 and are in `planning/DECISIONS.md`.
