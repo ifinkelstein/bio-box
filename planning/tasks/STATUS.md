@@ -130,7 +130,7 @@ that cap). State on 2026-11-13 at about 11:00 CST:
 1. Merge what the running agent reports (F-02 session 8). Done already: pull requests 3 and 4, the image on
    the pod and its switch (C-29), C-27 step 4, the CRISPR example, F-02 sessions 5 to 7, W-30, W-31, C-25 step 2,
    C-30, C-31, E-11.
-2. E-12 (CRISPR arrays) waits for the PI's pin. Agents' commit messages: the harness asks agents for a
+2. A pull request bringing `main` up to `plan/task-cards`, once `ci` is green on the push with the MinCED pin: it rebuilds both images (MinCED, `examples/` in the test image). If the solve fails on `minced=0.4.2`, correct the pin. Then pull both images to the pod by digest, check the test image with `detached_suite.sh --own`, copy them to `~/bio-box/images/`, switch the defaults (as card C-29 did: `pod_pytest.sh`, `detached_suite.sh`, RUNBOOK §0 and §8), and launch card E-12 (CRISPR arrays; Opus). Agents' commit messages: the harness asks agents for a
    `Co-Authored-By` line and AGENTS §10 forbids footers; say so in each brief ("the project's rule wins: no footer"),
    and squash-merge a branch whose commit carries one (C-31 was merged that way). Two commits already in the history carry the footer (`b423f48`, W-30; `a17aae8`, C-30): removing them needs a force-push, which the rules forbid, so they stay unless the PI says otherwise.
 3. Card C-25 step (3): contigs shared by content digest and representatives-only Pfam measured on one stage (DEC-32).
@@ -494,6 +494,13 @@ probed by hand on the pod).
 
 ## Open items for the PI
 
+Decided by the PI on 2026-11-13:
+- Worked examples are run on a release before it is called a milestone (AGENTS §5.7; card E-11).
+- MinCED is the CRISPR array caller ("2. yes, do that", about 17:00, to the orchestrator's list whose second item was
+  the pin). `minced=0.4.2` is in `container/environment.yml`; card E-12 is written as a tier-M card and waits for an
+  image that holds it. The pin's version is the orchestrator's from memory of bioconda, not looked up (no outside
+  fetch): the image build on `main` is its check.
+
 Decided by the PI on 2026-11-12 (evening):
 - `prok-2` is the ncRNA model set (DEC-30; card E-09). matplotlib is added for the synteny figure (card W-27).
 - S2C phase 2 selection keeps the ANI-diversity rule, from GTDB's own ANI values if they cover it, else skani; the 7
@@ -580,9 +587,6 @@ Still open, recommendation first:
   strain-rich species in stages of their own. Recommendation: the six as proposed. Also: `provisional/s2c_phase2/` on
   `/stor` has no `MANIFEST.sha256` (the two tars' hashes are in `sources.yaml`; a manifest file would be under 64 MB).
   Recommendation: leave it; `sources.yaml` is the record.
-- Card E-12: a CRISPR array caller pinned in `container/environment.yml` (MinCED is the plan's choice). The CRISPR example
-  cannot check arrays or spacers without it, and no neighbourhood shows an array. Recommendation: pin MinCED; it rides
-  the next image build.
 - Card W-31 (`planning/measurements/2026-11-13_flanks_context_types.md`): defaults of `nbr flanks`, three questions.
   (1) Context types: keep the fixed cut 0.5. The trees of mobile elements have no gap to cut at (merge distances spread
   evenly from 0.5 to 1), so the largest-gap rule made more types than 0.5 in three of four views (115 against 108 on the
