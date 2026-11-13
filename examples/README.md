@@ -7,8 +7,8 @@ failed invariant stops the announcement.
 
 | Example | The question | Anchors | Cost on `rN.3` |
 |---|---|---|---|
-| [`rnap/`](rnap/README.md) | Where are the T7-like RNA polymerases, in phages and prokaryotes, and what sits next to them? (`GUIDE.md` sections 3 to 7, as a check) | Pfam `RNA_pol` (PF00940) at 30 bits; control T7 gene 1 | see its README, section 4 |
-| [`crispr_cas_neighbourhoods/`](crispr_cas_neighbourhoods/README.md) | Minimal type I-F CRISPR-Cas systems carried by Tn7-like transposons (Peters et al. 2017) | Pfam `TniQ` and `Cas_Csy3` at their gathering cutoffs | 22.8 CPU-minutes at 2 threads (*measured*, wilkcomp02, 2026-11-13, its README section 6) |
+| [`rnap/`](rnap/README.md) | Where are the T7-like RNA polymerases, in phages and prokaryotes, and what sits next to them? (`GUIDE.md` sections 3 to 7, as a check) | Pfam `RNA_pol` (PF00940) at 30 bits; control T7 gene 1 | 18.2 and 18.4 CPU-minutes at 2 threads in two runs (*measured*, wilkcomp02, 2026-11-13, its README section 4 and `planning/measurements/2026-11-13_release_examples_rN3.md`) |
+| [`crispr_cas_neighbourhoods/`](crispr_cas_neighbourhoods/README.md) | Minimal type I-F CRISPR-Cas systems carried by Tn7-like transposons (Peters et al. 2017) | Pfam `TniQ` and `Cas_Csy3` at their gathering cutoffs | 22.8 and 22.85 CPU-minutes at 2 threads in two runs (*measured*, wilkcomp02, 2026-11-13, its README section 6 and `planning/measurements/2026-11-13_release_examples_rN3.md`) |
 
 ## What an example holds
 

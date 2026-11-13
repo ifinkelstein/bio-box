@@ -1,0 +1,43 @@
+ok	t7_control_bits	observed=367.7	expected=>= 30
+ok	t7_control_architecture	observed=RPOL_N+RNA_pol	expected=== RPOL_N+RNA_pol
+ok	t7_control_order	observed=ocr Phage_T7_GP04 Gp0_5 Phage_T7_0_6 Phage_T7_kinase ^ Phage_T7_1_1 T7-like_gp12 DNA_ligase_A_M+DNA_ligase_C DUF5464 BC10	expected=== ocr Phage_T7_GP04 Gp0_5 Phage_T7_0_6 Phage_T7_kinase ^ Phage_T7_1_1 T7-like_gp12 DNA_ligase_A_M+DNA_ligase_C DUF5464 BC10
+ok	t7_window_is_the_contig_order	observed=true	expected=== true
+ok	t7_positive_recovered	observed=true	expected=== true
+ok	coord_t7_kinase_offset	observed=-1	expected=== -1
+ok	coord_t7_ligase_offset	observed=3	expected=== 3
+ok	rnap_negative_control_hits	observed=0	expected=== 0
+ok	rnap_loci_virus	observed=2555	expected=>= 1
+ok	rnap_loci_not_virus	observed=26	expected=>= 1
+ok	rnap_loci_missing_windows	observed=0	expected=== 0
+ok	rnap_hits_below_cutoff	observed=0	expected=== 0
+ok	rnap_pfam_proteins_at_cutoff_not_hit	observed=0	expected=== 0
+ok	max_bits_diff_search_vs_pfam	observed=0.0	expected=<= 0.1
+ok	oracle_rnap_only_search	observed=0	expected=== 0
+ok	oracle_rnap_only_hmmsearch	observed=0	expected=== 0
+ok	oracle_rnap_max_bits_diff	observed=0.00	expected=<= 0.1
+ok	rnap_flank_loci_missing	observed=0	expected=== 0
+ok	rnap_hmm_sha256	observed=32e6f0f0b1ef15d23d8ead23095f0b2a5a3323551b899bba99218d75f830e87e	expected=32e6f0f0b1ef15d23d8ead23095f0b2a5a3323551b899bba99218d75f830e87e
+ok	rnap_hit_proteins	observed=1957	expected=1957
+ok	rnap_hit_genes	observed=2581	expected=2581
+ok	rnap_hit_contigs	observed=2526	expected=2526
+ok	rnap_hit_genomes	observed=2526	expected=2526
+ok	rnap_proteins_virus	observed=1931	expected=1931
+ok	rnap_proteins_not_virus	observed=26	expected=26
+ok	rnap_genes_with_architecture	observed=2569	expected=2569
+ok	rnap_hits_not_in_pfam	observed=11	expected=11
+ok	rnap_pfam_proteins	observed=1957	expected=1957
+ok	rnap_pfam_proteins_below_cutoff	observed=11	expected=11
+ok	rnap_summary_loci	observed=2581	expected=2581
+ok	rnap_summary_contigs	observed=2526	expected=2526
+ok	rnap_summary_censored_loci	observed=463	expected=463
+ok	rnap_summary_neighbours	observed=24473	expected=24473
+ok	rnap_top_pfam_neighbour	observed=Phage_T7_1_1	expected=Phage_T7_1_1
+ok	rnap_top_pfam_neighbour_loci	observed=1032	expected=1032
+ok	rnap_flank_groups	observed=432	expected=432
+ok	rnap_flank_leaves	observed=1558	expected=1558
+ok	rnap_flank_context_types	observed=598	expected=598
+ok	rnap_flank_types_mixed_kind	observed=0	expected=0
+ok	t7_flank_group_loci	observed=162	expected=162
+ok	t7_flank_group_types	observed=10	expected=10
+ok	t7_flank_type_kinds	observed=virus	expected=virus
+check: 42 ok, 0 FAIL, 0 differs, 0 new, 0 missing, 0 unexpected; invariants hold

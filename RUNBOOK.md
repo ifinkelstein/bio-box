@@ -563,7 +563,9 @@ storage as such), run every worked example under `examples/` on it with one comm
 launch inside the account's thread cap (`examples/README.md` says what an example is and holds). It needs the
 release's search pack in the profile's pack directory, and the examples' environment: `TREE`, `PROFILE`, `IMAGE` (with
 matplotlib: the runtime image of section 0 has it), `DIGEST`, `ROOT`, and `OUT`, a new directory outside the root.
-Look first, then start it as a unit of its own, since it runs for about an hour with the account near its cap:
+Look first, then start it as a unit of its own: on `rN.3` it took 56 min 55 s and 41.3 CPU-minutes at 2 threads,
+at least 26 minutes of it waiting for room with the account near its day cap (*measured*, wilkcomp02, 2026-11-13;
+the wait *derived* from the `waiting for room` lines; `planning/measurements/2026-11-13_release_examples_rN3.md`):
 
 ```bash
 export OUT="$WORK/examples-rN.3"
