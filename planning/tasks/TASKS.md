@@ -729,6 +729,13 @@ Do: (1) on the pod, recluster `rN.1b` (2,053,075 proteins) in parts with the cur
 Amended 2026-11-12 (DEC-29): step (2) narrows the exemption instead of removing it. The one-process clustering step of DEC-25 ends; `cluster_cpu_min_max` and its gate stay for the unsplittable calls of DEC-29 (card B-45). Do (2) after B-45 is merged, and change the runbook's text on DEC-25 to DEC-29.
 Accept: the measurement file; the equality; then the removal.
 
+### W-27 The synteny figure of `nbr flanks`
+**M** · Depends: W-25 (merged) · waits for the PI: matplotlib is in neither `uv.lock` nor the image
+Files: `src/biobox/search/flanks.py`, `src/biobox/cli.py` (`nbr flanks --figure`), `pyproject.toml` and `uv.lock` (`uv add matplotlib`, once the PI approves; `container/environment.yml` is the PI's), `GUIDE.md`, `AGENT_GUIDE.md`, tests
+Why: card W-25 writes every table the figure needs (each leaf's order in the tree, the tokens per position, context types, metadata) and no figure, because the plotting library is not a locked dependency.
+Do, test first: one figure per group (SVG and PDF, fixed metadata so the bytes carry no date): genes as arrows coloured by family, families below a set share in grey, rows in tree order with the tree beside them, columns for context type, genome kind, stage, taxonomy and the anchor's NR90; a bound on rows per page (say what happens above it). Byte-identical output across runs, thread counts and hash seeds. Also check that the GFF export loads in LoVis4u and clinker if either can be run off the pod, and say so if not.
+Accept: the tests; the figure of the T7-like group of `rN.3`'s RNA polymerase search in `planning/measurements/`.
+
 ### W-26 An accession lookup table, before the first stage of a million contigs
 **M** · Depends: W-15 (measured) · not needed for `rM.2`; do it with the first draft-assembly or metagenome stage
 Files: `src/biobox/registry/schemas.py` (one lookup table, then the lock by `scripts/update_schema_lock.py`), the builder that writes `contig_label`, `src/biobox/cli.py` (`find`, `search hmm --positive`, `seq --contig`), `GUIDE.md`, tests

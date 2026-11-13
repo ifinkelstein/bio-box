@@ -21,6 +21,9 @@
     bio-box nbr <run|uid,uid,...> --root R --window 5g --format tsv [--release R] [--out DIR] [--runs DIR]
     bio-box nbr summarize <run|uid,uid,...> --root R --window 5g --by pfam,nr50 [--top 50] [--release R]
                 [--json | --format tsv] [--out FILE] [--runs DIR]
+    bio-box nbr flanks <run|uid,uid,...> --root R --out DIR [--window 5g] [--level nr50|nr90|pfam]
+                [--group-by anchor-nr90|anchor-nr50|none] [--max-loci 2000] [--cut 0.5] [--distance j|a|combined]
+                [--export gff] [--release R] [--runs DIR]   (card W-25, biobox.search.flanks)
     bio-box export proteins --root R --release R [--out FILE]
     bio-box run-step --profile P --root R --stage S --step NAME [--nice monolithic|fanout] [--threads N] -- CMD ...
     bio-box release define --root R --release R1 --stages S0,S1 [--out DIR]
@@ -486,9 +489,9 @@ def _uid_file(path: str, flag: str) -> list[str] | str:
 
 def _nbr(a) -> int:
     root = Path(a.root)
-    if a.action not in (None, "summarize"):  # `nbr <run_id|uids>`: the first positional is the anchors
+    if a.action not in (None, "summarize", "flanks"):  # `nbr <run_id|uids>`: the first positional is the anchors
         if a.source is not None:
-            print(f"refused: nbr: unknown action {a.action!r} (expected summarize)", file=sys.stderr)
+            print(f"refused: nbr: unknown action {a.action!r} (expected summarize or flanks)", file=sys.stderr)
             return 2
         a.action, a.source = None, a.action
     if a.anchors_file:  # card W-18: protein uids one per line, for a list too long for one argument
@@ -501,8 +504,8 @@ def _nbr(a) -> int:
             print(words, file=sys.stderr)
             return 2
         a.anchors = ",".join(words)
-    if a.action == "summarize" and not (a.source or a.anchors):
-        print("refused: nbr summarize needs a run id or a list of protein uids", file=sys.stderr)
+    if a.action in ("summarize", "flanks") and not (a.source or a.anchors):
+        print(f"refused: nbr {a.action} needs a run id or a list of protein uids", file=sys.stderr)
         return 2
     if a.action is None and not (a.anchors or a.source):
         print("refused: nbr needs --anchors", file=sys.stderr)
@@ -521,7 +524,6 @@ def _nbr(a) -> int:
               f"{a.release}, give them as protein uids: write them one per line (bio-box sql, the last query of "
               f"AGENT_GUIDE.md section 5) and pass --anchors-file FILE --release {a.release}", file=sys.stderr)
         return 2
-    policy = nbr.Policy.parse(a.window, a.strand, a.operon_gap, a.edge, a.circular)
     release = a.release or run_release
     if release is None:
         print("refused: anchors given as protein uids need --release (the release whose files to read: its "
@@ -532,6 +534,9 @@ def _nbr(a) -> int:
     except (FileNotFoundError, ValueError) as e:
         print(f"refused: {e}", file=sys.stderr)
         return 2
+    if a.action == "flanks":  # card W-25
+        return _nbr_flanks(a, root, uids, tv, release, files)
+    policy = nbr.Policy.parse(a.window or "10g", a.strand, a.operon_gap, a.edge, a.circular)
     if a.action is None and a.format == "tsv":  # card W-05: one table per anchor locus
         if a.json:
             print("refused: --json and --format are exclusive", file=sys.stderr)
@@ -586,6 +591,63 @@ def _nbr(a) -> int:
         _print(export.ndjson(export.nbr_records(rows, a.top_n or None)))
     else:
         print(json.dumps(counts))
+    return 0
+
+
+def _nbr_flanks(a, root: Path, uids: set[bytes], tv: str | None, release: str, files) -> int:
+    """`nbr flanks` (card W-25, `biobox.search.flanks`): the anchors' loci grouped by their flanks, written into
+    `--out DIR` (new or empty, outside the root). 2: refused before anything is written."""
+    from biobox.search import flanks
+
+    def refuse(msg) -> int:
+        print(f"refused: {msg}", file=sys.stderr)
+        return 2
+
+    try:
+        window = flanks.parse_window(a.window or flanks.DEFAULT_WINDOW)
+    except flanks.FlanksError as e:
+        return refuse(e)
+    level = a.level or flanks.DEFAULT_LEVEL
+    group_by = a.group_by or flanks.DEFAULT_GROUP_BY
+    distance = a.distance or "j"
+    for flag, value, allowed in (("--level", level, flanks.LEVELS), ("--group-by", group_by, flanks.GROUP_BY),
+                                 ("--distance", distance, flanks.DISTANCES), ("--export", a.export or "gff", ("gff",))):
+        if value not in allowed:
+            return refuse(f"{flag} {value}: expected one of {', '.join(allowed)}")
+    cut = flanks.DEFAULT_CUT if a.cut is None else a.cut
+    if not 0 <= cut <= 1:
+        return refuse(f"--cut {cut}: a distance between 0 and 1")
+    max_leaves = flanks.DEFAULT_MAX_LEAVES if a.max_loci is None else a.max_loci
+    if max_leaves < 1:
+        return refuse(f"--max-loci {max_leaves}: at least 1")
+    if not a.out:
+        return refuse("nbr flanks writes a directory of tables: give --out DIR (new or empty, outside the root)")
+    out = Path(a.out)
+    try:
+        pack.outside_root(root, out, "the output directory")
+    except ValueError as e:
+        return refuse(e)
+    if out.exists() and (not out.is_dir() or any(out.iterdir())):
+        return refuse(f"the output directory {out} is not empty: nbr flanks writes into a new or empty directory")
+    try:
+        counts, notes = flanks.run(root, uids, out, release=release, files=files, window=window, level=level,
+                                   group_by=group_by, distance=distance, cut=cut, max_leaves=max_leaves,
+                                   export_gff=a.export == "gff", library=a.library,
+                                   gene_call_version=a.gene_call_version, tape_version=tv, threads=a.threads,
+                                   tmp=_profile_tmp(a))
+    except ValueError as e:
+        return refuse(e)
+    for line in notes:
+        print(line, file=sys.stderr)
+    _wrote(out / "groups.tsv", f"{counts['groups']} rows")
+    _wrote(out / "context_types.tsv", f"{counts['context_rows']} rows")
+    _wrote(out / "conservation.tsv", f"{counts['conservation_rows']} rows")
+    _wrote(out / "groups", f"{counts['groups']} groups, {counts['leaves']} leaves, at most {counts['peak_leaves']} "
+                           "in one tree")
+    if a.export == "gff":
+        _wrote(out / "gff", f"{counts['gff']} tables")
+    _print([f"flanks\t{out}\t{counts['loci']} loci in {counts['groups']} groups (level {level}, window {window}g, "
+            f"group by {group_by}, distance {distance}, cut {cut:g})"])
     return 0
 
 
@@ -1856,12 +1918,22 @@ def _main(argv: list[str] | None = None) -> int:
     ql.add_argument("--memory-limit", default="4GB", help="DuckDB memory limit; larger work spills into the scratch "
                                                           "directory (default 4GB)")
     n = sub.add_parser("nbr", parents=[common])
-    n.add_argument("action", nargs="?", help="summarize: families and clusters per window; otherwise the anchors")
-    n.add_argument("source", nargs="?", help="summarize: run_id or protein uids (uid,uid,...)")
+    n.add_argument("action", nargs="?", help="summarize: families and clusters per window; flanks: loci grouped by "
+                                             "their flanks (card W-25); otherwise the anchors")
+    n.add_argument("source", nargs="?", help="summarize, flanks: run_id or protein uids (uid,uid,...)")
     n.add_argument("--anchors", help="run_id or protein uids (uid,uid,...)")
     n.add_argument("--anchors-file", help="protein uids, one per line (blank lines and # comments skipped), instead "
                                           "of --anchors or the uid list")
-    n.add_argument("--window", default="10g")
+    n.add_argument("--window", help="10g (genes) or 20kb (bases) on each side; default 10g, flanks: 5g (genes only)")
+    n.add_argument("--level", help="flanks: the token id, nr50 (default), nr90 or pfam (the protein's architecture)")
+    n.add_argument("--group-by", help="flanks: anchor-nr90 (default), anchor-nr50 or none")
+    n.add_argument("--max-loci", type=int, help="flanks: leaves per group in the tree after collapsing identical "
+                                                "loci (default 2000; above it, the leaves with the least feature_uid)")
+    n.add_argument("--cut", type=float, help="flanks: the tree is cut into context types at this distance "
+                                             "(default 0.5)")
+    n.add_argument("--distance", help="flanks: the tree's distance, j (default: 1 - Jaccard of the tokens), a "
+                                      "(1 - adjacency index) or combined")
+    n.add_argument("--export", help="flanks: gff writes one GFF3 per locus and a protein-to-group table")
     n.add_argument("--strand", default="any")
     n.add_argument("--operon-gap")
     n.add_argument("--edge", default="truncate")
@@ -1872,14 +1944,14 @@ def _main(argv: list[str] | None = None) -> int:
                                           "pack; protein uids: the gene-call producer's)")
     n.add_argument("--by", default="pfam,nr50", help="summarize: levels, some of pfam,nr50,nr90")
     n.add_argument("--top", type=int, default=nbr.SUMMARY_TOP, help="summarize: rows per level (0: all)")
-    n.add_argument("--release", help="summarize, --format tsv: release of the clusters and contig_dim (default: "
-                                     "the run's)")
+    n.add_argument("--release", help="summarize, flanks, --format tsv: release of the clusters and contig_dim "
+                                     "(default: the run's)")
     n.add_argument("--format", choices=["tsv"], help="summarize: tsv (the default without --json); otherwise one "
                                                      "table per anchor locus")
     n.add_argument("--out", help="--format tsv without summarize: one file per locus in this directory; summarize: "
-                                 "write the summary to this file (default: stdout)")
-    n.add_argument("--library", help="--format tsv without summarize: domain library of pfam_architecture")
-    n.add_argument("--threads", type=int, help=f"--format tsv without summarize: DuckDB threads (default "
+                                 "write the summary to this file (default: stdout); flanks: a new or empty directory")
+    n.add_argument("--library", help="--format tsv without summarize, flanks: domain library of pfam_architecture")
+    n.add_argument("--threads", type=int, help=f"--format tsv without summarize, flanks: DuckDB threads (default "
                                                f"{export.EXPORT_THREADS})")
     n.add_argument("--runs", help=RUNS_HELP)
     n.add_argument("--pack-dir", help=PACK_DIR_HELP)
