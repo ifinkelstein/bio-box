@@ -317,3 +317,18 @@ assembly:
   repeat_min_identity: {v: 0.98, tag: asserted, why: "§2.1 S9: recent duplicates >= 98% identical"}
   n50_factor: {v: 1.678, tag: derived, why: "breaks per base = n50_factor / N50: uniform breaks give exponential pieces, whose length-weighted median is 1.678 x the mean ((1 + x) e^-x = 1/2)"}
   reverse_probability: {v: 0.5, tag: asserted, why: "§2.1 S9: each contig is reverse-complemented with p = 0.5"}
+
+contamination:
+  # §2.1 S10: foreign contigs added to chosen assemblies, flagged by a mock FCS-GX sidecar (card F-02 session 7;
+  # read by `sources.build`, whose docstring states the model). Only the main world's distant clades donate
+  # (no outgroup world is built).
+  genomes: {v: 3, tag: asserted, why: "§5.1: contamination in 3 genomes"}
+  contigs: {v: [1, 4], tag: asserted, why: "contaminant contigs per host, uniform; estimate"}
+  contig_length: {v: [3000, 30000], tag: asserted, why: "a contaminant contig is a window of this many bases of a donor contig, uniform; estimate"}
+
+duplicates:
+  # §2.1 S10: exact and near duplicates written as separate sources (`sources.build`).
+  exact: {v: 2, tag: asserted, why: "§5.1: 2 exact duplicates"}
+  near: {v: 2, tag: asserted, why: "§5.1: 2 near duplicates"}
+  near_ani: {v: 0.999, tag: asserted, why: "§2.1 S10: near duplicates at 99.9% ANI"}
+  igr_share: {v: 0.5, tag: asserted, why: "share of a near duplicate's substitutions on intergenic bases; the rest are synonymous (§2.1 S10: biased to synonymous and IGR sites); estimate"}

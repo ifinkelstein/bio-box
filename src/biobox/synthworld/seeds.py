@@ -37,7 +37,9 @@ The component paths in use (part of the output contract; renaming one changes ev
   ``S8/error/<id>``: an error's gene or gap and its content; ``S8/recode/<genome_id>``: a code-4 or code-25
   genome's recoded codons (`assembly`);
 - ``S9/classes``: the assembly class of each genome; ``S9/genome/<genome_id>``: a genome's N50 target or
-  completeness, breaks, rotations, MAG dropout and contig orientations (`assembly`).
+  completeness, breaks, rotations, MAG dropout and contig orientations (`assembly`);
+- ``S10/roles``: which genomes are contaminated or duplicated; ``S10/contam/<genome_id>``: a host's contaminant
+  windows; ``S10/near/<genome_id>``: a near duplicate's substitutions (`sources`).
 """
 
 from __future__ import annotations

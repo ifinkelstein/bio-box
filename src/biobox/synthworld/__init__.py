@@ -6,6 +6,7 @@ derivation (`seeds`, spec §6.1), family design and protein-coding sequences (`p
 sequences (`intergenic`, `rna`, spec §2.1 S5, §2.4 and §2.5; session 4), and phages, prophages and CRISPR-Cas
 loci with their spacer targets (`mobile`, spec §2.1 S6; session 5), and gene fusions, splits and
 non-orthologous displacement (`fusions`, spec §2.1 S7; session 6), and gene-call errors, genetic codes 4
-and 25, assembly classes and contigs (`assembly`, spec §2.1 S8-S9; session 7). `backbone` is the only module
+and 25, assembly classes and contigs (`assembly`, spec §2.1 S8-S9; session 7), and contamination,
+duplicates and sources (`sources`, spec §2.1 S10; session 7). `backbone` is the only module
 that imports ZOMBI2 or reads its files.
 """

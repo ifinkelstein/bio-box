@@ -1,8 +1,9 @@
-"""Ring R2: synthworld call errors, genetic codes 4 and 25, and assembly on the `micro` preset (synthworld_spec
-§2.1 S8-S9, §3.3 truth_callerr and truth_edges, §3.2 truth_contig, §5.1, §6.1, §7.3; card F-02 session 7).
+"""Ring R2: synthworld call errors, genetic codes 4 and 25, assembly, contamination and duplicates on the `micro`
+preset (synthworld_spec §2.1 S8-S10, §3.3 truth_callerr, truth_edges, truth_contam and truth_dup, §3.2
+truth_contig, §5.1, §6.1, §7.3; card F-02 session 7).
 
 A module fixture builds the micro world's S1-S7 (ZOMBI2 0.54.0), timing each stage, records every file the
-earlier stages wrote, and builds S8-S9 once. The oracles are written here: FASTA is parsed, reverse complements
+earlier stages wrote, and builds S8-S9 and then S10 once (one fixture, so CI builds the world once). The oracles are written here: FASTA is parsed, reverse complements
 and the genetic codes are spelled out, the S8 frame is rebuilt from the contigs by slicing, the lifts (S5 -> S6
 by insertions.tsv, S6 -> S7 and S7 -> S8 by edits.tsv) are recomputed by this file's own formulas, ORFs are
 scanned by brute force, clades are read from the species tree's Newick, and pyrodigal is the external gene
@@ -30,7 +31,7 @@ import numpy as np
 import pytest
 from blake3 import blake3
 
-from biobox.synthworld import assembly, backbone, fusions, intergenic, mobile, sequences
+from biobox.synthworld import assembly, backbone, fusions, intergenic, mobile, sequences, sources
 
 pytestmark = [pytest.mark.r2, pytest.mark.covers("F-02")]
 needs_zombi2 = pytest.mark.skipif(
@@ -43,6 +44,9 @@ DIGESTS = {"backbone": "025fdd0d27fdc65e678782216ecd21fb", "sequences": "34ebce1
            "replicons": "55bda97155d75148e5cdca7b90a1d7be", "mobile": "0bd7f0db5691de58ea5e1a0df1e6e570",
            "fusions": "db09abf3fe79ae34a73e3ab0664a9b13"}
 EARLIER = ("backbone", "zombi2", "sequences", "replicons", "mobile", "fusions")
+#: the S8-S9 digest of the micro default seed, measured at this session's first green run (wilkcomp02,
+#: 2026-11-13): S10 and later stages must leave it unchanged
+ASSEMBLY_DIGEST = "2f425158dc38f2302c1d02e9ebed30da"
 
 CODE11_BY_AA = {
     "F": "TTT TTC", "L": "TTA TTG CTT CTC CTA CTG", "I": "ATT ATC ATA", "M": "ATG", "V": "GTT GTC GTA GTG",
@@ -131,6 +135,10 @@ def world(tmp_path_factory):
     t0 = time.perf_counter()
     aw = assembly.build(out)
     times["S8-S9 assembly"] = time.perf_counter() - t0
+    before["assembly"] = _tree_sha(out / "assembly")
+    t0 = time.perf_counter()
+    sources.build(out)
+    times["S10 sources"] = time.perf_counter() - t0
     return aw, out, times, before, digests
 
 
@@ -169,8 +177,9 @@ def t(world):
             "s7": {k: v for f in sorted((out / "fusions" / "fasta").glob("*.fna")) for k, v in _fasta(f).items()}}
 
 
-def _species(out: Path):
-    """child -> parent of the complete species tree, from its Newick (parsed here)."""
+def _species(out: Path, lengths: bool = False):
+    """child -> parent of the complete species tree, from its Newick (parsed here); with ``lengths``, also
+    node -> branch length."""
     text = (out / "zombi2" / "species_complete.nwk").read_text(encoding="utf-8").strip()
     tokens, buf = [], ""
     for ch in text:
@@ -181,7 +190,7 @@ def _species(out: Path):
             tokens.append(ch)
         else:
             buf += ch
-    parent, stack, nodes, last, label_next = {}, [], [], None, False
+    parent, stack, nodes, last, label_next, blen = {}, [], [], None, False, {}
     for tok in tokens:
         if tok == "(":
             nodes.append(None)
@@ -201,8 +210,12 @@ def _species(out: Path):
                 nodes.append(name)
                 k = len(nodes) - 1
             parent[k] = stack[-1] if stack else None
+            blen[k] = float(tok.split(":")[1]) if ":" in tok else 0.0
             label_next = False
-    return {nodes[k]: (nodes[p] if p is not None else None) for k, p in parent.items()}
+    par = {nodes[k]: (nodes[p] if p is not None else None) for k, p in parent.items()}
+    if lengths:
+        return par, {nodes[k]: v for k, v in blen.items()}
+    return par
 
 
 def _below(par: dict, node: str, tips) -> set[str]:
@@ -328,11 +341,14 @@ def _orf_pieces(cds: str, min_codons: int):
 @needs_zombi2
 def test_earlier_stages_keep_every_file_and_their_digests(world):
     aw, out, times, before, digests = world
-    for d in EARLIER:
+    for d in EARLIER + ("assembly",):
         assert _tree_sha(out / d) == before[d], d
     assert _stage_digests(out) == digests == DIGESTS
     assert {d: aw.meta[f"{d}_digest"] for d in DIGESTS} == DIGESTS
-    print(f"\nearlier stage digests {digests}")
+    assert aw.digest == ASSEMBLY_DIGEST
+    sw = sources.read(out)
+    assert {d: sw.meta[f"{d}_digest"] for d in DIGESTS} == DIGESTS and sw.meta["assembly_digest"] == aw.digest
+    print(f"\nearlier stage digests {digests}; assembly {aw.digest}; sources {sw.digest}")
 
 
 # --- determinism (§6.1, §6.2; MR-16) ---------------------------------------------------------------------------
@@ -843,6 +859,187 @@ def test_every_earlier_feature_maps_onto_the_contigs_or_is_accounted_for(world, 
             n[f"{kind}_on_dropped"] += any(r["emitted"] == "false" for r, *_ in parts)
     print(f"\nearlier features on the contigs {dict(sorted(n.items()))}")
     assert n["gene_cut"] > 0 and n["elements_whole"] > 100_000
+
+
+# --- S10: contamination, duplicates, sources (truth_contam, truth_dup, the mock FCS-GX sidecar) ------------------------
+
+@pytest.fixture(scope="module")
+def s10(world):
+    _, out, _, _, _ = world
+    sd = out / "sources"
+    seqs = {}
+    for rel in sorted({r["file"] for r in _tsv(sd / "source_contigs.tsv")}):
+        for k, v in _fasta(out / rel).items():
+            seqs[(rel, k)] = v
+    return {"sources": _tsv(sd / "sources.tsv"), "occ": _tsv(sd / "source_contigs.tsv"), "seqs": seqs,
+            "contam": _tsv(sd / "contam.tsv"), "dup": _tsv(sd / "dup.tsv"), "mut": _tsv(sd / "mutations.tsv"),
+            "fcs": _tsv(sd / "sidecars" / "fcs_gx_mock.tsv"), "doc": json.loads((sd / "sources.json").read_text())}
+
+
+@needs_zombi2
+@pytest.mark.covers("F-02", "MR-16")
+def test_same_seed_gives_byte_identical_sources_stage_in_a_subprocess(world, tmp_path, record_property):
+    _, out, _, _, _ = world
+    dst = tmp_path / "copy"
+    dst.mkdir()
+    for d in EARLIER + ("assembly",):
+        shutil.copytree(out / d, dst / d)
+    env = dict(os.environ, PYTHONHASHSEED="77", OMP_NUM_THREADS="1", OPENBLAS_NUM_THREADS="1")
+    code = ("import os, sys, time; from biobox.synthworld import sources; t0 = time.perf_counter(); "
+            "sources.build(sys.argv[1]); dt = time.perf_counter() - t0; p = '/proc/self/status'; "
+            "hwm = next((l.split()[1] for l in open(p) if l.startswith('VmHWM')), -1) if os.path.exists(p) else -1; "
+            "print(hwm, round(dt, 2))")
+    proc = subprocess.run([sys.executable, "-c", code, str(dst)], check=True, env=env, cwd=tmp_path,
+                          capture_output=True, text=True)
+    assert _tree_sha(dst / "sources") == _tree_sha(out / "sources")
+    hwm_kb, secs = proc.stdout.split()[-2:]
+    print(f"\nsources stage in a child: {secs} s wall, VmHWM {int(hwm_kb) / 1024:.0f} MB")
+    record_property("sources_child_seconds", float(secs))
+    if int(hwm_kb) > 0:
+        record_property("sources_child_maxrss_mb", round(int(hwm_kb) / 1024, 1))
+        assert int(hwm_kb) / 1024 < 1024
+
+
+@needs_zombi2
+@pytest.mark.covers("F-02", "MR-06")
+def test_every_source_lists_its_contigs_with_unique_accessions(world, t, s10):
+    _, out, _, _, _ = world
+    cfg = backbone.load_preset("micro")["duplicates"]
+    bb = json.loads((out / "backbone" / "backbone.json").read_text())
+    node_gid = {r["species_node"]: r["genome_id"] for r in _tsv(out / "backbone" / "genomes.tsv")}
+    burst = {node_gid[x] for x in bb["burst_tips"]}
+    for r in s10["occ"]:
+        s = s10["seqs"][(r["file"], r["record"])]
+        assert len(s) == int(r["length"]) and uid(s) == r["contig_uid"]
+    assert len({r["contig_accession"] for r in s10["occ"]}) == len(s10["occ"])
+    assert len({r["accession"] for r in s10["sources"]}) == len(s10["sources"])
+    # the original sources are exactly the emitted contigs, plus the contaminants
+    emitted = collections.Counter(c["contig_id"] for c in t["contigs"] if c["emitted"] == "true")
+    orig = collections.Counter(r["contig_id"] for r in s10["occ"] if r["origin"] == "assembly")
+    assert orig == emitted and all(r["source_label"] == "src_a" for r in s10["occ"] if r["origin"] == "assembly")
+    kinds = collections.Counter(r["kind"] for r in s10["sources"])
+    assert kinds == {"original": len(t["genomes"]), "exact_dup": cfg["exact"], "near_dup": cfg["near"]}
+    bps = collections.defaultdict(set)
+    for r in s10["sources"]:
+        bps[r["bioproject"]].add((r["source_label"], r["genome_id"]))
+        n = sum(1 for o in s10["occ"] if o["accession"] == r["accession"])
+        assert n == int(r["n_contigs"])
+    for bp, members in bps.items():
+        assert len(members) == 1 or {g for lab, g in members} == burst and {lab for lab, _ in members} == {"src_a"}
+    roles = s10["doc"]["roles"]
+    assert not (set(roles["contaminated"]) & set(roles["exact_dup"]) | set(roles["contaminated"]) & set(
+        roles["near_dup"]) | set(roles["exact_dup"]) & set(roles["near_dup"]))
+
+
+@needs_zombi2
+@pytest.mark.covers("F-02", "MR-19")
+def test_contaminants_are_windows_of_the_farthest_genome_and_the_sidecar_flags_them(world, t, s10):
+    _, out, _, _, _ = world
+    cfg = backbone.load_preset("micro")["contamination"]
+    par, blen = _species(out, lengths=True)
+    node_gid = {r["species_node"]: r["genome_id"] for r in _tsv(out / "backbone" / "genomes.tsv")}
+    gid_node = {g: n for n, g in node_gid.items()}
+
+    def dist(x, y):
+        up = {}
+        a, acc = gid_node[x], 0.0
+        while a is not None:
+            up[a] = acc
+            acc += blen[a]
+            a = par[a]
+        b, acc = gid_node[y], 0.0
+        while b not in up:
+            acc += blen[b]
+            b = par[b]
+        return up[b] + acc
+
+    occ = {r["contig_id"]: r for r in s10["occ"] if r["origin"] == "contaminant"}
+    by_host = collections.defaultdict(list)
+    gc = {g["genome_id"]: [] for g in t["genomes"]}
+    for r in s10["contam"]:
+        h, d = r["host_genome_id"], r["donor_genome_id"]
+        by_host[h].append(r)
+        others = sorted(g for g in gc if g != h)
+        far = max(dist(h, g) for g in others)
+        assert d == min(g for g in others if abs(dist(h, g) - far) < 1e-9)
+        assert abs(float(r["tree_distance"]) - far) < 1e-4 * max(1.0, far)
+        o = occ[r["contig_id"]]
+        assert o["genome_id"] == h and o["source_label"] == "src_a"
+        s = s10["seqs"][(o["file"], o["record"])]
+        donor = t["cseq"][r["donor_contig_id"]]
+        win = donor[int(r["donor_start"]):int(r["donor_end"])]
+        assert s == (win if r["orientation"] == "1" else rc(win)) and uid(s) == r["contig_uid"]
+        lo, hi = cfg["contig_length"]
+        assert lo <= len(s) <= hi or len(s) == max(int(c["length"]) for c in t["contigs"]
+                                                   if c["genome_id"] == d and c["emitted"] == "true")
+        assert r["in_mock_mask"] == "true" and r["donor_world"] == "main" and r["kind"] == "cross_clade"
+    assert len(by_host) == cfg["genomes"]
+    assert all(cfg["contigs"][0] <= len(v) <= cfg["contigs"][1] for v in by_host.values())
+    flagged = {r["seq_id"]: r for r in s10["fcs"]}
+    assert set(flagged) == {occ[r["contig_id"]]["contig_accession"] for r in s10["contam"]}
+    for r in s10["contam"]:
+        f = flagged[occ[r["contig_id"]]["contig_accession"]]
+        assert (int(f["start_pos"]), int(f["end_pos"]), int(f["seq_len"])) == (1, int(r["length"]), int(r["length"]))
+        assert f["action"] == "EXCLUDE"
+    host_gc = {c["genome_id"]: [] for c in t["contigs"]}
+    for c in t["contigs"]:
+        host_gc[c["genome_id"]].append(float(c["gc"]))
+    print("\ncontamination: " + "; ".join(
+        f"{h} <- {v[0]['donor_genome_id']} ({len(v)} contigs, {sum(int(x['length']) for x in v)} bp, gc "
+        f"{np.mean([float(x['gc']) for x in v]):.3f} vs host {np.median(host_gc[h]):.3f})" for h, v in sorted(by_host.items())))
+
+
+@needs_zombi2
+@pytest.mark.covers("F-02", "MR-06", "MR-07")
+def test_exact_duplicates_repeat_and_near_duplicates_change_only_igr_and_synonymous_sites(world, t, s10):
+    cfg = backbone.load_preset("micro")["duplicates"]
+    code = {g["genome_id"]: int(g["genetic_code"]) for g in t["genomes"]}
+    occ = {r["contig_id"]: r for r in s10["occ"]}
+    pieces = collections.defaultdict(list)
+    for p in t["pieces"]:
+        pieces[p["contig_id"]].append(p)
+    muts = collections.defaultdict(dict)
+    for m in s10["mut"]:
+        muts[m["member_contig_id"]][int(m["position"])] = (m["ref"], m["alt"], m["site"])
+    per_genome = collections.defaultdict(lambda: [0, 0])
+    n_site = collections.Counter()
+    for r in s10["dup"]:
+        o = occ[r["member_contig_id"]]
+        member = s10["seqs"][(o["file"], o["record"])]
+        rep = t["cseq"][r["rep_contig_id"]]
+        assert len(member) == len(rep) and o["source_label"] == r["member_source_label"]
+        assert r["rep_genome_id"] == r["member_genome_id"] == o["genome_id"]
+        if r["kind"] == "exact":
+            assert member == rep and r["rep_contig_uid"] == r["member_contig_uid"] == uid(rep)
+            continue
+        diff = {i: (rep[i], member[i]) for i in range(len(rep)) if rep[i] != member[i]}
+        assert len(diff) == int(r["n_mutations"]) == len(muts[r["member_contig_id"]])
+        assert abs(len(diff) - (1 - cfg["near_ani"]) * len(rep)) <= 0.5
+        cover = np.zeros(len(rep), dtype=int)
+        for p in pieces[r["rep_contig_id"]]:
+            s, e = int(p["start"]), int(p["end"])
+            for x in range(s, e):
+                cover[x % len(rep)] += 1
+        for i, (a, b) in diff.items():
+            ref, alt, site = muts[r["member_contig_id"]][i]
+            assert (ref, alt) == (a, b)
+            assert (cover[i] == 0) == (site == "igr")
+            n_site[site] += 1
+        for p in pieces[r["rep_contig_id"]]:
+            s, e, st = int(p["start"]), int(p["end"]), int(p["strand"])
+            x, y = _cut(rep, s, e, st), _cut(member, s, e, st)
+            if p["partial_5"] == p["partial_3"] == "false":       # codon by codon (pseudogenes included)
+                tab = CODE[code[r["rep_genome_id"]]]
+                assert [tab[c] for c in codons_of(x)] == [tab[c] for c in codons_of(y)]
+            else:
+                assert x == y
+        per_genome[r["member_genome_id"]][0] += len(diff)
+        per_genome[r["member_genome_id"]][1] += len(rep)
+    assert len(per_genome) == cfg["near"]
+    for g, (n, L) in per_genome.items():
+        assert abs((1 - n / L) - cfg["near_ani"]) <= 0.0002           # §7.3: within 0.02% of target
+    print(f"\nnear duplicates: {dict((g, round(1 - n / L, 6)) for g, (n, L) in per_genome.items())}; sites "
+          f"{dict(n_site)}")
 
 
 # --- runtime (§2.6) -----------------------------------------------------------------------------------------------
