@@ -113,25 +113,34 @@ def test_b36_the_cluster_cap_is_optional_may_be_null_and_must_be_an_int(tmp_path
         profile.load(_write_profile(tmp_path, cpu_min_per_process=None))
 
 
-@pytest.mark.covers("B-36")
-def test_b36_with_the_cap_clustering_over_300_is_allowed_up_to_the_cap_and_refused_above_it():
+@pytest.mark.covers("B-36", "B-42")
+def test_b36_with_the_cap_only_a_call_run_as_one_process_may_pass_300_up_to_the_cap():
+    """Card B-42 (DEC-29 narrows DEC-25): the cap no longer lets the whole release cluster in one process over 300
+    CPU-minutes; that is refused whatever the cap, and the release clusters in parts. Over 300 only a call that no
+    number of parts fits may run, as one process, up to the cap, and above it is refused, naming the cap."""
     import dataclasses
 
     prof = _profile()
     assert bs.cluster_cpu_min(RN1[0]) > prof.cpu_min_per_process
-    assert bs.cluster_refusal(prof, "rN.1", RN1[0]) is None  # the 10 Gbp release: exempt under DEC-25
+    for cap in (20000, 1000):
+        why = bs.cluster_refusal(dataclasses.replace(prof, cluster_cpu_min_max=cap), "rN.1", RN1[0])
+        assert why is not None and "10,620,684" in why and "cpu_min_per_process" in why  # in one process: refused
+        assert "DEC-29" in why and "in parts" in why and "--cluster-parts" in why  # names the split path
+    assert bs.cluster_refusal(prof, "rN.1", RN1[0], one_process=[]) is None  # in parts: nothing passes 300
+    call = "cluster.nr90.11.prefilter"
+    assert bs.cluster_refusal(prof, "rN.1", RN1[0], one_process=[(call, RN1[1])]) is None  # one call, under the cap
     capped = dataclasses.replace(prof, cluster_cpu_min_max=1000)
-    why = bs.cluster_refusal(capped, "rN.1", RN1[0])
-    assert why is not None and "cluster_cpu_min_max" in why and "1000" in why and "10,620,684" in why
+    why = bs.cluster_refusal(capped, "rN.1", RN1[0], one_process=[(call, RN1[1])])
+    assert why is not None and "cluster_cpu_min_max" in why and "1000" in why and call in why
 
 
-@pytest.mark.covers("B-36")
-def test_b36_without_the_cap_clustering_over_the_budget_is_refused():
+@pytest.mark.covers("B-36", "B-42")
+def test_b36_without_the_cap_clustering_over_the_budget_in_one_process_is_refused():
     import dataclasses
 
     prof = dataclasses.replace(_profile(), cluster_cpu_min_max=None)
     why = bs.cluster_refusal(prof, "rN.1", RN1[0])
-    assert why is not None and "cpu_min_per_process" in why and "cluster_cpu_min_max" in why and "DEC-25" in why
+    assert why is not None and "cpu_min_per_process" in why and "cluster_cpu_min_max" in why and "DEC-29" in why
     small = 1000  # proteins: far under the budget at any fitted rate
     assert bs.cluster_cpu_min(small) < prof.cpu_min_per_process
     assert bs.cluster_refusal(prof, "rN.1", small) is None

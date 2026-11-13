@@ -51,14 +51,15 @@ cap while the host is busy). The ingest estimate is skipped when ingest's run re
 clustering's estimate, when every stage of the release has a gene-call run record and the cluster step
 none (below). Before each step: a `STOP` file in the root exits 75, as `run-step` does.
 
-Clustering (card B-36, DEC-25). The release's clustering is one process that may pass the profile's
-`cpu_min_per_process`, but only under the profile's own cap for it, `cluster_cpu_min_max`. Its CPU-minutes
-are estimated from the rows of the release's `protein_seq` files (`cluster_cpu_min`, `release_proteins`):
-before any step when every stage is gene-called, else (a stage of this call is not yet) just before the
-cluster step's command. An estimate over `cluster_cpu_min_max` is refused (exit 2) and so, in a profile
-without that key, is one over `cpu_min_per_process`: there is then no exemption. With the key, the cluster
-step's run record gives `cpu_budget_reason: exempt: DEC-25` beside `over_cpu_budget`. Every other step keeps
-the 300 CPU-minute rule. The exemption ends when card B-37 splits clustering. A `STOP` that appears while a step
+Clustering's budget (cards B-36, B-42; DEC-29). The release's clustering in one process is estimated from the
+rows of the release's `protein_seq` files (`cluster_cpu_min`, `release_proteins`): before any step when every
+stage is gene-called, else (a stage of this call is not yet) just before the cluster step's command. Above
+`SHARD_MARGIN` of the budget the release clusters in parts (below), so in one process it is within the budget;
+should it ever be over `cpu_min_per_process` there, it is refused (exit 2), naming DEC-29 and the way to cluster in
+parts, whatever `cluster_cpu_min_max` says. DEC-25's exemption of the one-process clustering step ended with card
+B-42 (clustering in parts reproduced `rN.1b` byte for byte, planning/measurements/2026-11-12_split_clustering_rN1b.md);
+the one exemption left is DEC-29's, for a call that no number of parts fits (below), under the profile's
+`cluster_cpu_min_max`. Every other step keeps the 300 CPU-minute rule. A `STOP` that appears while a step
 runs lets the step's command finish; `run-step` then publishes nothing of it and exits 75, so the next
 call runs that step again from the start (the documented rule of card C-02; its cost in C-10: S1a's
 gene calling, 57.7 s and 4.98 CPU-minutes, ran twice, *measured*).
@@ -118,10 +119,11 @@ fills the part budget. With the profile's `cluster_cpu_min_max`, which the plan 
 `--one-process-cpu-min-max` and records in its cut, such a call's cut makes it one part, the workflow's own
 call, and refuses it when its estimate (work plus table) is over that cap; without the key the cut refuses it.
 Before the call's step is launched its estimate is checked against the profile again (`one_process_refusal`,
-exit 2 above the cap or without the key), and the step runs with `budget_reason` `exempt: DEC-29`. The DEC-25
-estimate above still comes first: in one process as before; in parts (card B-45) with the cap it checks each
-call the published cuts run as one process, not the release's estimate in one process; without the key it is
-the same in either mode, until card B-42 (2).
+exit 2 above the cap or without the key), and the step runs with `budget_reason` `exempt: DEC-29`. The
+release-level check above still comes first: in one process the release's estimate against the budget; in parts
+(cards B-45, B-42), with or without the key, each call the published cuts run as one process, as before its launch
+(`one_process_refusal`), and never the release's estimate in one process, so a release over the budget whose calls
+all split under it is not refused. A call cut later is checked by its cut and again before its launch.
 
 Lost scratch (card C-12). A reboot clears `/tmp`; a shard's run record then still exists while its
 run in scratch is gone, so `run-step` would never scan it again and the merge would refuse. Before
@@ -217,7 +219,7 @@ INGEST_FIXED_CPU_MIN = 0.07
 # 2026-11-10_import_ladder/README.md); the larger rate is used (card C-13). Applied to every library. It is
 # an estimate for libraries other than Pfam.
 SCAN_CPU_MIN_PER_M = 7.96
-# Clustering (card B-36, DEC-25). Measured, wilkcomp02, 2026-11-10, the clustering run records of the 10 Gbp
+# Clustering (cards B-36, B-42). Measured, wilkcomp02, 2026-11-10, the clustering run records of the 10 Gbp
 # rebuild, 16 threads each (branch build/r10, planning/measurements/2026-11-10_rebuild_10gbp.md, "Per-step numbers,
 # phase 1"): `rN.1b` 284.10 CPU-minutes for 2,053,075 proteins and `rN.1` 2,195.91 for 10,620,684. The estimate is
 # the power law through those two points (derived):
@@ -230,16 +232,16 @@ SCAN_CPU_MIN_PER_M = 7.96
 CLUSTER_CPU_MIN_LO, CLUSTER_PROTEINS_LO = 284.10, 2_053_075
 CLUSTER_CPU_MIN_HI, CLUSTER_PROTEINS_HI = 2195.91, 10_620_684
 CLUSTER_EXPONENT = math.log(CLUSTER_CPU_MIN_HI / CLUSTER_CPU_MIN_LO) / math.log(CLUSTER_PROTEINS_HI / CLUSTER_PROTEINS_LO)
-# This is the release's estimate for the DEC-25 gate and for whether clustering runs in parts. The parts' own cut uses
+# This is the release's estimate for whether clustering runs in parts and for the check of clustering in one process
+# (`cluster_refusal`; no exemption there since card B-42). The parts' own cut uses
 # the per-call model of `biobox.l2.cluster.call_cpu_min` (card C-22), fitted on the per-call records of the clustering of
 # `rN.3` (10.6 M proteins) and `rC.1b` (2.05 M); `tests/r1/test_cluster_call_estimates.py` asserts that the two agree within 20% at both
 # measured sizes (the calls and the one-process rest sum to -1.0% and -3.1% of this estimate at 10.6 M and 2.05 M
 # proteins, derived). Above 10.6 M both are extrapolations; at 50 M the per-call work (15,772 CPU-minutes, derived)
 # is 4.6% above this estimate (15,079).
-# The reason the clustering step's run record gives (`cpu_budget_reason`) when the profile sets `cluster_cpu_min_max`.
-CLUSTER_EXEMPT = "exempt: DEC-25"
 # The reason the run record of a clustering call run as one process because no number of parts fits it gives (card
-# B-45, DEC-29: `biobox.l2.cluster._one_process_doc`).
+# B-45, DEC-29: `biobox.l2.cluster._one_process_doc`). Since card B-42 it is clustering's only reason: the one-process
+# clustering step no longer gets DEC-25's `exempt: DEC-25`.
 DEC29_EXEMPT = "exempt: DEC-29"
 # Scan shards are planned to fill 80% of the CPU-minute budget, not all of it (card C-11): the rate above
 # is Pfam's on wilkcomp02, so a shard sized to the whole budget passes it whenever a library is slower
@@ -507,36 +509,36 @@ def release_proteins(root: Path, stages: Sequence[str], gene_call_version: str) 
 
 def cluster_refusal(prof: Profile, release: str, proteins: int,
                     one_process: Sequence[tuple[str, float]] | None = None) -> str | None:
-    """Why clustering `proteins` proteins for `release` may not start (DEC-25, DEC-29), or None. With the profile's
-    `cluster_cpu_min_max` the estimate may pass `cpu_min_per_process` up to that cap; without it there is no
-    exemption and `cpu_min_per_process` holds.
+    """Why clustering `proteins` proteins for `release` may not start (DEC-29, card B-42), or None.
 
     `one_process` (card B-45) is given when the release clusters in parts: the (call, estimate) of each call its plan
-    runs as one process so far (`l2cluster.one_process_calls`, from the published cuts). With the cap, each of those is
-    checked against it, and not the release's estimate in one process; a call cut later is checked by its cut (the
-    plan holds the cap) and again before its launch (`one_process_refusal`). Without the cap the check is the one above
-    in either mode (until card B-42 (2))."""
-    est = cluster_cpu_min(proteins)
-    how = (f"clustering of release {release} over {proteins:,} proteins (the protein_seq rows of its stages) is "
-           f"estimated at {est:,.1f} CPU-minutes in one process (a power law through {CLUSTER_CPU_MIN_LO} CPU-min at "
-           f"{CLUSTER_PROTEINS_LO:,} and {CLUSTER_CPU_MIN_HI} at {CLUSTER_PROTEINS_HI:,} proteins, measured on "
-           f"wilkcomp02, 2026-11-10; extrapolated above {CLUSTER_PROTEINS_HI:,})")
-    cap = prof.cluster_cpu_min_max
-    if cap is None:
-        if est > prof.cpu_min_per_process:
-            return (f"{how}, over the profile's cpu_min_per_process of {prof.cpu_min_per_process} (AGENTS §7.2). The "
-                    f"profile has no cluster_cpu_min_max, so the DEC-25 exemption for clustering does not apply")
-        return None
+    runs as one process so far (`l2cluster.one_process_calls`, from the published cuts). Each of those is checked as
+    before its launch (`one_process_refusal`: refused above the profile's `cluster_cpu_min_max`, and refused when the
+    profile has no such key), and nothing else: never the release's estimate in one process, which would refuse a
+    large release whose calls all fit the budget in parts (B-45's open question, settled by card B-42). A call cut
+    later is checked by its cut (the plan holds the cap, or refuses it without one) and again before its launch.
+
+    Without `one_process` the release clusters in one process, which has no exemption since card B-42 (DEC-29 narrowed
+    DEC-25's to the calls no number of parts fits): its estimate over `cpu_min_per_process` is refused whatever
+    `cluster_cpu_min_max` says. build-stage never routes such a release there (`_cluster_split` clusters in parts above
+    `SHARD_MARGIN` of the budget), so this refusal is a guard, and it names the way to cluster in parts."""
     if one_process is not None:  # in parts: only the calls that run as one process may pass the 300 (DEC-29)
         for name, cpu_min in one_process:
             why = one_process_refusal(prof, release, name, cpu_min)
             if why is not None:
                 return why
         return None
-    if est > cap:
-        return (f"{how}, over the profile's cluster_cpu_min_max of {cap} (DEC-25: clustering's own cap until card B-37 "
-                f"splits it). Raise cluster_cpu_min_max only with the PI's agreement")
-    return None
+    est = cluster_cpu_min(proteins)
+    if est <= prof.cpu_min_per_process:
+        return None
+    return (f"clustering of release {release} over {proteins:,} proteins (the protein_seq rows of its stages) is "
+            f"estimated at {est:,.1f} CPU-minutes in one process (a power law through {CLUSTER_CPU_MIN_LO} CPU-min at "
+            f"{CLUSTER_PROTEINS_LO:,} and {CLUSTER_CPU_MIN_HI} at {CLUSTER_PROTEINS_HI:,} proteins, measured on "
+            f"wilkcomp02, 2026-11-10; extrapolated above {CLUSTER_PROTEINS_HI:,}), over the profile's "
+            f"cpu_min_per_process of {prof.cpu_min_per_process} (AGENTS §7.2). Clustering in one process has no "
+            f"exemption (card B-42: DEC-29 keeps one only for a call that no number of parts fits, under the profile's "
+            f"cluster_cpu_min_max): cluster the release in parts, as build-stage does by itself above "
+            f"{SHARD_MARGIN:.0%} of the budget, or with --cluster-parts N")
 
 
 def one_process_refusal(prof: Profile, release: str, call: str, cpu_min: float) -> str | None:
@@ -639,7 +641,7 @@ def _cluster_gate(prof: Profile, b: Build, root: Path) -> str | None:
     n, missing = release_proteins(root, stages, b.gene_call_version)
     if n is None:
         return (f"release {b.release}: stage {missing} has no gene-call run record (runs/stage={missing}/genecall.json), "
-                f"so its clustering cannot be estimated before launch (DEC-25)")
+                f"so its clustering cannot be estimated before launch (AGENTS §7.2)")
     return cluster_refusal(prof, b.release, n, _one_process(prof, b, root))
 
 
@@ -776,9 +778,8 @@ def build_stage(prof: Profile, b: Build, *, run: Runner | None = None,
                     return runstep.EXIT_REFUSED
                 if not _record(root, step).exists() and _cluster_split(prof, b, root):
                     code = _cluster_in_parts(prof, b, root, one, _hook, jobs, cpus, shard_run, allow)
-                else:
-                    exempt = prof.cluster_cpu_min_max is not None
-                    code = one(step, **({"budget_reason": CLUSTER_EXEMPT} if exempt else {}))
+                else:  # in one process, within the budget (card B-42: no exemption)
+                    code = one(step)
             elif step.check == "ncrna":
                 sharded = not _record(root, step).exists() and _ncrna_sharded(prof, b, root, step)
                 nc_cpus, nc_jobs = ncrna_cpus(prof, b), jobs if sharded else 1

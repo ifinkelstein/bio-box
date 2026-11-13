@@ -242,29 +242,32 @@ the same with or without `--ncrna-cm`. The step counts as one step in `all N ste
 The library must be the `refdb.yaml` file for the name to say `rfam-15.1`; another file is named by its
 sha256, which the release's C-08 check reports as differing from the lock.
 
-**Clustering's own cap (DEC-25).** A release's clustering is one process, and on a large release it
-passes 300 CPU-minutes: 2,195.91 CPU-minutes for 10,620,684 proteins (measured, wilkcomp02,
-2026-11-10, run record `rN.1.cluster`). DEC-25 exempts this one step from the 300 CPU-minute rule
-under its own cap, the profile's `cluster_cpu_min_max` (20000 in `profiles/wilkcomp02.yaml`, an
-estimate: about five times that run; the PI may change it). Every other step keeps the 300-minute rule.
+**Clustering's CPU budget (DEC-29).** Clustering in one process has no exemption from the 300
+CPU-minute rule any more: DEC-25 exempted it until clustering was split, and card B-42 ended that once
+the split clustering of `rN.1b` (2,053,075 proteins) equalled its published clusters row for row
+(`planning/measurements/2026-11-12_split_clustering_rN1b.md`). A release whose clustering would pass
+the budget clusters in parts (below), every process under 300 CPU-minutes. The one exemption left is
+DEC-29's: a single clustering call that no number of parts fits runs as one process under the
+profile's `cluster_cpu_min_max` (20000 in `profiles/wilkcomp02.yaml`, set by the PI; below). Every
+other step keeps the 300-minute rule.
 
-- `build-stage` estimates clustering's CPU-minutes before it starts it, from the release's protein
-  count: a power law through 284.10 CPU-minutes at 2,053,075 proteins and 2,195.91 at 10,620,684
-  (measured, wilkcomp02, 2026-11-10, `rN.1b` and `rN.1`; the fit is derived and extrapolated above
-  10.6 M proteins). At the cap of 20000 it refuses a release of more than about 62.7 M proteins
-  (derived: 10,620,684 × (20000 / 2195.91)^(1 / 1.244)).
+- `build-stage` estimates clustering's CPU-minutes in one process before it starts it, from the
+  release's protein count: a power law through 284.10 CPU-minutes at 2,053,075 proteins and 2,195.91
+  at 10,620,684 (measured, wilkcomp02, 2026-11-10, `rN.1b` and `rN.1`; the fit is derived and
+  extrapolated above 10.6 M proteins). Above 80% of `cpu_min_per_process` (240 of 300; about 1.79 M
+  proteins, derived: 2,053,075 × (240 / 284.10)^(1 / 1.244)) the release clusters in parts.
 - When every stage of the release has its gene-call run record, the check is made before any step;
   otherwise just before the cluster step's command, once this call's stage is gene-called.
-- An estimate over `cluster_cpu_min_max` is refused, exit 2. The log line starts `build-stage: refused`
-  and names `cluster_cpu_min_max`.
-- A profile without `cluster_cpu_min_max` (the scratch profile of Appendix B) gives no exemption:
-  clustering estimated over `cpu_min_per_process` is refused, exit 2, and the log line says so.
-- With the key, the cluster step's run record holds `cpu_budget_reason: exempt: DEC-25`, and
-  `over_cpu_budget` is still true when the step used more than 300 CPU-minutes (section 5).
-- When the release clusters in parts (below) and the profile has the key, this check does not use the
-  release's one-process estimate: it checks each call the plan runs as one process (DEC-29, below)
-  against `cluster_cpu_min_max` (card B-45). A profile without the key gets the check above in either mode.
-- The one-process clustering step ends with card B-42 (2); the key stays for DEC-29.
+- In one process (only below 80% of the budget, so it is never refused in practice) an estimate over
+  `cpu_min_per_process` is refused, exit 2, whatever `cluster_cpu_min_max` says; the log line starts
+  `build-stage: refused`, names DEC-29 and says to cluster in parts (`--cluster-parts N`, or let
+  `build-stage` choose). The cluster step's run record holds no `cpu_budget_reason`.
+- In parts, with or without the key, the check does not use the release's one-process estimate: it
+  checks each call the published cuts run as one process (DEC-29, below), against `cluster_cpu_min_max`,
+  and refuses such a call when the profile has no key (cards B-45, B-42). A release over the budget
+  whose calls all fit in parts is not refused, with or without the key.
+- A release clustered in one process by the code of cards B-36 to B-41 with the key has
+  `cpu_budget_reason: exempt: DEC-25` in its `cluster` record; nothing reads it.
 
 **Clustering in parts (card B-41).** When clustering in one process is estimated above 80% of the
 profile's `cpu_min_per_process` (240 CPU-minutes of 300), `build-stage` clusters the release in
@@ -278,12 +281,15 @@ parts, each step its own `run-step` under `runs/stage=<release>/`:
   Parts run several at once like scan shards, with `--scan-jobs` and `--scan-cpus`, within the hour's
   allowance. A part is estimated at 80% of the budget at most, from the call's measured share.
 - `--cluster-parts N` cuts every per-query call into N parts whatever the estimate (for trials).
-- The files are those of clustering in one process, byte for byte (tested on the fixture and a
-  constructed set; not yet on the pod). The steps' records are in `l2/cluster_plan/release=<R>/`,
-  never in a manifest.
+- The files are those of clustering in one process, byte for byte: tested on the fixture and a
+  constructed set, and on the pod, where `rN.1b` (2,053,075 proteins) reclustered in parts by
+  `build-stage` gave its published `cluster_member` and `cluster_member_aln` files with the same sha256,
+  with the default cut and with three parts per call (card B-42,
+  `planning/measurements/2026-11-12_split_clustering_rN1b.md`). The steps' records are in
+  `l2/cluster_plan/release=<R>/`, never in a manifest.
 - MMseqs2's databases are under `$BBTMP/scratch/biobox-cluster/<release>-<key>/`, and are removed when
-  `cluster` publishes. Their size is not yet measured.
-- The DEC-25 estimate and its refusal above still come first (in parts, call by call: above).
+  `cluster` publishes. At 2.05 M proteins they peaked at about 5.6 GB (measured, card B-42).
+- The check above still comes first (in parts, call by call: above).
 
 **A call that cannot be split runs as one process (DEC-29, card B-45).** The NR90 step's prefilter
 (`cluster.nr90.11.prefilter`) and NR50 step 0 (`cluster.nr50.11.prefilter`) cannot search a shared index
@@ -426,7 +432,7 @@ names. Fields:
 | `wall_s`, `cpu_min`, `peak_rss_bytes` | wall seconds, CPU-minutes, peak resident bytes of the step command |
 | `mem_cap` | `how` is `inherited` (the unit's cap, with `memory_max_bytes`), `opened` or `none` |
 | `exit_code`, `over_cpu_budget` | `over_cpu_budget` is true above the profile's `cpu_min_per_process` |
-| `cpu_budget_reason` | only in a release's `cluster` record, when the profile sets `cluster_cpu_min_max` and the release clusters in one process: `exempt: DEC-25`; and in the record of a clustering call run as one process in parts: `exempt: DEC-29` (section 2) |
+| `cpu_budget_reason` | only in the record of a clustering call run as one process in parts: `exempt: DEC-29` (section 2). Before card B-42 a release's `cluster` record clustered in one process with `cluster_cpu_min_max` in the profile held `exempt: DEC-25` |
 | `image_digest`, `host` | the image sha256 that `pod_run.sh --digest` passed in, and the host |
 | `outputs` | each published file: `path`, `bytes`, `sha256` |
 
@@ -792,7 +798,7 @@ a profile value is missing from this table.
 | Memory cap required | true: `run-step` and the search runner refuse to start uncapped | profile `require_mem_cap` |
 | Nice | 19 (one big process), 15 (many small ones) | profile `nice_monolithic`, `nice_fanout`; AGENTS 7.2 says 19 |
 | CPU-minutes per process | 300 | profile `cpu_min_per_process`; AGENTS 7.2 |
-| CPU-minutes of a release's clustering | 20000, estimated before launch; refused above it. The one exemption from the 300 (DEC-25), until card B-37. Set by the PI on 2026-11-10 for the 50 Gbp build: about nine times the 2,195.91 measured for 10,620,684 proteins (wilkcomp02, 2026-11-10). Without the key, clustering over 300 is refused. In parts it is the cap of each call that runs as one process because no number of parts fits it (DEC-29, card B-45) | profile `cluster_cpu_min_max`; DEC-25, DEC-29; `cluster_refusal`, `one_process_refusal` in `src/biobox/stage.py`; cards B-36, B-45 |
+| CPU-minutes of one clustering call run as one process | 20000, estimated before launch; refused above it. The one exemption from the 300 (DEC-29): a call that no number of parts fits (the NR90 step's prefilter from about 74 M proteins, NR50 step 0 from about 108 M, derived). Set by the PI on 2026-11-10 for the 50 Gbp build: about nine times the 2,195.91 measured for 10,620,684 proteins (wilkcomp02, 2026-11-10). Without the key such a call is refused. Clustering in one process has no exemption since card B-42 (DEC-25's ended): above 80% of the budget a release clusters in parts | profile `cluster_cpu_min_max`; DEC-29 (narrowing DEC-25); `cluster_refusal`, `one_process_refusal` in `src/biobox/stage.py`; cards B-36, B-45, B-42 |
 | ncRNA scan shard size | 131,578,947 genome bases: 80% of `cpu_min_per_process` (300) at 304.0 CPU-hours per 10 Gbp, the slower of the two shards of card E-07's pod check (derived in `planning/measurements/2026-11-11_ncrna_producer.md`; the design note's 247.4 gave 161,681,487). Shards at once: at most the unit's `MemoryMax` / (6.4 GiB per two `cmsearch` threads) | `NCRNA_CPU_H_PER_10GBP`, `NCRNA_JOB_GIB` in `src/biobox/stage.py`; cards E-07, E-08 |
 | Scan shard size | 30,150,753 residues: 80% of `cpu_min_per_process` (300) at 7.96 CPU-minutes per million residues (derived: 300 × 0.8 / 7.96 × 10^6; the rate of the Pfam scan of stage P1 in card C-10, measured on wilkcomp02, 2026-11-10: 2,343.74 CPU-minutes for 294.5 M residues). The 80% leaves room for a scan 25% slower per residue (derived: 1 / 0.8) | `SHARD_MARGIN` and `SCAN_CPU_MIN_PER_M` in `src/biobox/stage.py`; cards C-11, C-13 |
 | Scan shards at once | `--scan-jobs` J × `--scan-cpus` C at most the threads `run-step` allows when `build-stage` starts (40 by day, 56 at night when idle); defaults C = 4, J = allowance // C (10 by day, 14 at night). The cap is a total over everything of ours on the pod, and `build-stage` counts only its own threads: choose J = floor((cap - other threads) / C) (section 2). The allowance is read again before each step and before each shard launch; a launch that would pass it waits | `scan_slots` and `_launch` in `src/biobox/stage.py`; cards C-11, C-12 |
@@ -814,14 +820,14 @@ a profile value is missing from this table.
 
 The scratch profile used for the tests in this file differs from the real one in these keys:
 `max_threads_day` 2, `max_threads_night` 2, `mem_scope` 8G, `tmp`, `durable` and `bulk` under
-`/tmp/if2453/c06`, `small_file_floor_bytes` 1000, and no `cluster_cpu_min_max` (so no clustering
+`/tmp/if2453/c06`, `small_file_floor_bytes` 1000, and no `cluster_cpu_min_max` (so no DEC-29
 exemption; the fixture's clustering is far under 300 CPU-minutes). Appendix B lists it.
 
 ## 11. Known limits today
 
 | Limit | What happens | Card |
 |---|---|---|
-| Clustering's DEC-25 cap | above 80% of the budget a release's clustering runs in parts (card B-41, section 2). In one process the DEC-25 estimate refuses one over the profile's `cluster_cpu_min_max` (20000; about 62.7 M proteins, derived, section 2), exit 2; in parts, with the key, only a call run as one process over the cap is refused (card B-45). The estimate is a fit by protein count, extrapolated above 10.6 M proteins. From about 74 M proteins a part of the NR90 step's prefilter would spend 240 CPU-minutes or more on its own k-mer table of the whole target (derived, section 2), so no part fits the budget; that call then runs as one process under `cluster_cpu_min_max` (DEC-29), or is refused without the key | B-36, B-37, B-41, B-45 |
+| Clustering's budget | above 80% of the budget a release's clustering runs in parts (card B-41, section 2); in one process there is no exemption (card B-42). In parts only a call run as one process is checked: refused over the profile's `cluster_cpu_min_max` (20000) or without the key, exit 2 (cards B-45, B-42). The one-process estimate that chooses parts is a fit by protein count, extrapolated above 10.6 M proteins. From about 74 M proteins a part of the NR90 step's prefilter would spend 240 CPU-minutes or more on its own k-mer table of the whole target (derived, section 2), so no part fits the budget; that call then runs as one process under `cluster_cpu_min_max` (DEC-29), or is refused without the key | B-36, B-37, B-41, B-45, B-42 |
 | Ingest of a stage over about 60 Gbp | `build-stage` refuses before any step (exit 2): one ingest process runs at about 3.7 Mbp/s (measured, wilkcomp02), so it would pass 300 CPU-minutes. Split the stage into smaller stages | B-30 |
 | Shard size is Pfam's | shards are cut at 80% of the budget at Pfam's rate (7.96 CPU-minutes per million residues, measured in C-10). A library more than 1.25 times slower per residue than that (derived: 1 / 0.8; above 9.95 CPU-minutes per million residues, derived) passes 300 CPU-minutes per shard, and the run record says `over_cpu_budget`. Lower `--scan-cpus` does not help, since the budget counts CPU-minutes | C-11, C-13 |
 | `pod_run.sh` CPU quota | the unit's quota is `--threads` of `pod_run.sh` (default the night cap, 56), fixed at launch, whatever `--scan-jobs` × `--scan-cpus` is. By day it is above the day cap: the day cap is held by `build-stage` and `run-step`, not by the quota. A `run-step` launched alone keeps the thread count it chose at its start until it ends (at most 300 CPU-minutes) | C-07, C-11, C-12 |
@@ -1052,10 +1058,6 @@ Last line: `01563e192ab22a5931d55e224a2dbb07`.
 - `git push pod`. Agents never push.
 - Single release steps by hand (`bio-box release cluster ...`, `bio-box stage genecall ...`).
   Only `build-stage` ran them.
-- Clustering in parts (card B-41, section 2) in a build unit, and on a real release: it was tested in
-  the test suite on the pod (the fixture and a constructed set, through `build-stage` on the fixture),
-  not in a build launched with `pod_run.sh`. The reclustering of `rN.1b` in parts (2.05 M proteins,
-  the card's acceptance) and the removal of the DEC-25 exemption have not been done.
 - A build at the real profile's 64 MiB floor and 200G cap, and a real Pfam scan (card C-10).
 - Inputs outside `/tmp/if2453` (they need an extra `--bind`, section 2), and `--digest` refusing a
   wrong image (the script's `die` path was read, not run).
