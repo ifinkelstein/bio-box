@@ -23,7 +23,8 @@
                 [--json | --format tsv] [--out FILE] [--runs DIR]
     bio-box nbr flanks <run|uid,uid,...> --root R --out DIR [--window 5g] [--level nr50|nr90|pfam]
                 [--group-by anchor-nr90|anchor-nr50|none] [--max-loci 2000] [--cut 0.5] [--distance j|a|combined]
-                [--export gff] [--release R] [--runs DIR]   (card W-25, biobox.search.flanks)
+                [--export gff] [--figure [--figure-rows 60]] [--release R] [--runs DIR]
+                (card W-25, biobox.search.flanks; --figure: card W-27)
     bio-box export proteins --root R --release R [--out FILE]
     bio-box run-step --profile P --root R --stage S --step NAME [--nice monolithic|fanout] [--threads N] -- CMD ...
     bio-box release define --root R --release R1 --stages S0,S1 [--out DIR]
@@ -620,6 +621,15 @@ def _nbr_flanks(a, root: Path, uids: set[bytes], tv: str | None, release: str, f
     max_leaves = flanks.DEFAULT_MAX_LEAVES if a.max_loci is None else a.max_loci
     if max_leaves < 1:
         return refuse(f"--max-loci {max_leaves}: at least 1")
+    if a.figure_rows is not None and not a.figure:
+        return refuse("--figure-rows bounds the rows of the figure: give it with --figure")
+    figure_rows = flanks.DEFAULT_FIGURE_ROWS if a.figure_rows is None else a.figure_rows
+    if figure_rows < 1:
+        return refuse(f"--figure-rows {figure_rows}: at least 1")
+    if a.figure:  # card W-27
+        why = flanks.figure_unavailable()
+        if why:
+            return refuse(why)
     if not a.out:
         return refuse("nbr flanks writes a directory of tables: give --out DIR (new or empty, outside the root)")
     out = Path(a.out)
@@ -634,7 +644,7 @@ def _nbr_flanks(a, root: Path, uids: set[bytes], tv: str | None, release: str, f
                                    group_by=group_by, distance=distance, cut=cut, max_leaves=max_leaves,
                                    export_gff=a.export == "gff", library=a.library,
                                    gene_call_version=a.gene_call_version, tape_version=tv, threads=a.threads,
-                                   tmp=_profile_tmp(a))
+                                   tmp=_profile_tmp(a), figure=a.figure, figure_rows=figure_rows)
     except ValueError as e:
         return refuse(e)
     for line in notes:
@@ -644,6 +654,8 @@ def _nbr_flanks(a, root: Path, uids: set[bytes], tv: str | None, release: str, f
     _wrote(out / "conservation.tsv", f"{counts['conservation_rows']} rows")
     _wrote(out / "groups", f"{counts['groups']} groups, {counts['leaves']} leaves, at most {counts['peak_leaves']} "
                            "in one tree")
+    if a.figure:
+        _wrote(out / "groups" / "*" / "figure.{svg,pdf}", f"{counts['figures']} figures, each as SVG and PDF")
     if a.export == "gff":
         _wrote(out / "gff", f"{counts['gff']} tables")
     _print([f"flanks\t{out}\t{counts['loci']} loci in {counts['groups']} groups (level {level}, window {window}g, "
@@ -1934,6 +1946,11 @@ def _main(argv: list[str] | None = None) -> int:
     n.add_argument("--distance", help="flanks: the tree's distance, j (default: 1 - Jaccard of the tokens), a "
                                       "(1 - adjacency index) or combined")
     n.add_argument("--export", help="flanks: gff writes one GFF3 per locus and a protein-to-group table")
+    n.add_argument("--figure", action="store_true", help="flanks: also groups/<group>/figure.svg and figure.pdf, "
+                                                         "the synteny figure (card W-27; needs matplotlib)")
+    n.add_argument("--figure-rows", type=int, help="flanks --figure: rows per figure (default 60, "
+                                                   "flanks.DEFAULT_FIGURE_ROWS); above it, the leaf with the most loci "
+                                                   "of each context type, then the leaves with the most loci")
     n.add_argument("--strand", default="any")
     n.add_argument("--operon-gap")
     n.add_argument("--edge", default="truncate")

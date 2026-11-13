@@ -20,10 +20,15 @@ two float64 and one int32 K x K matrix and the UPGMA working copy).
 
 from __future__ import annotations
 
+import atexit
+import colorsys
 import json
+import math
 import os
 import re
 import shutil
+import sys
+import tempfile
 import urllib.parse
 from collections import Counter
 from dataclasses import dataclass, field
@@ -86,6 +91,21 @@ groups/<group>/     leaves.tsv: one row per leaf (n_loci, in_tree, tree_order, c
 gff/                (--export gff) one GFF3 per locus, locus_<accession>_<feature_uid>.gff3: a CDS row per gene of
                     the window, 1-based inclusive, ID=feature_uid, protein_uid, token, offset_rel, anchor; and
                     protein_groups.tsv, protein_uid to its id at the level (its own uid when it has none).
+groups/<group>/figure.svg, figure.pdf (--figure; card W-27) the group's synteny figure. One row per leaf in the tree,
+                    in tree order, with the UPGMA tree at the left (the dashed line is --cut). Each row draws its
+                    leaf's first locus (least feature_uid) to scale: kb from the anchor's centre along the anchor's
+                    strand, upstream to the left; a gene is an arrow pointing right when it is on the anchor's strand;
+                    the anchor is black and centred; // marks the end of a linear contig that cut the window. A
+                    family (id at the level) has one colour in every group of the run; in a group, families held by
+                    fewer than 10% of the group's loci are grey, genes with no id white. The legend names the coloured
+                    families (at nr50 or nr90: the cluster uid's first 8 hex digits and its genes' commonest Pfam
+                    architecture) with the share of the group's loci holding each. Columns: the drawn locus's
+                    accession, the loci collapsed into the leaf, context type, genome kind, stage, taxonomy
+                    (tax_order; - where the release has none) and the anchor's NR90 cluster (8 hex digits); a value
+                    that differs between the leaf's loci is given with its count. At most --figure-rows rows (default
+                    60): above it the figure draws the leaf with the most loci of each context type in type order,
+                    then the leaves with the most loci (ties: the least name), restricts the tree to them and says so
+                    in its title. No date is written in either file: the same inputs give the same bytes.
 
 No ordinal is written: genes are named by feature_uid. Ids of clusters are of this release only.
 """
@@ -101,6 +121,7 @@ class Gene:
     strand: int
     key: str | None  # the id at the level; None when the gene has none
     same: bool  # on the anchor's strand
+    arch: str | None = None  # the protein's Pfam architecture (the figure's family names); None without a library
 
 
 @dataclass
@@ -233,7 +254,7 @@ def load_loci(root: Path, anchors: set[bytes], window: int, *, release: str, fil
         loc = loci[k]
         for r in neighbours.get(k, []):
             g = Gene(r["offset_rel"], r["feature_uid"], r["protein_uid"], r["start"], r["end"], r["strand"],
-                     _key(r, level), r["strand"] == loc.strand)
+                     _key(r, level), r["strand"] == loc.strand, r["arch"])
             (loc.up if g.offset_rel < 0 else loc.down).append(g)
         loc.up.sort(key=lambda g: -g.offset_rel)
         loc.down.sort(key=lambda g: g.offset_rel)
@@ -456,6 +477,404 @@ def conservation(loci: list[Locus]) -> list[dict]:
     return sorted(rows, key=lambda r: (r["unannotated"], -r["n_loci"], r["key"]))
 
 
+# --- the figure (card W-27) -----------------------------------------------------------------------------------------
+#
+# One figure per group, groups/<group>/figure.svg and figure.pdf: a row per leaf in the tree, in tree order, with the
+# UPGMA tree at the left and columns at the right. Each row draws its leaf's first locus (the least feature_uid, the
+# leaf's name) to scale: x is bp from the anchor's centre along the anchor's strand (upstream left), a gene is an arrow
+# pointing right when it is on the anchor's strand. Colours: a family (the gene's id at the level) has one colour in
+# every group of a run (ranked over the run by loci holding it, then id); in a group, a family held by fewer than
+# FIGURE_MIN_SHARE of the group's loci is grey; a gene with no id is white; the anchor is black. Above `figure_rows`
+# leaves the figure draws the leaf with the most loci of each context type (in type order), then the leaves with the
+# most loci (ties: the least name), and restricts the tree to them. The figure is planned as data (`figure_plan`, what
+# the tests check) and drawn by `render_figure` with matplotlib's SVG and PDF backends only (no pyplot, no display),
+# the bundled DejaVu fonts named by file, a fixed `svg.hashsalt` and no date in either file, so the bytes depend only
+# on the inputs and the locked matplotlib.
+
+DEFAULT_FIGURE_ROWS = 60
+FIGURE_MIN_SHARE = 0.1
+FIGURE_ANCHOR = "#222222"
+FIGURE_GREY = "#bdbdbd"
+FIGURE_NONE = "#ffffff"
+FIGURE_FILES = ("figure.svg", "figure.pdf")
+# 20 distinct colours, none grey or black (those mean rare, no id and anchor); further families take golden-angle hues
+FIGURE_PALETTE = ("#e69f00", "#56b4e9", "#009e73", "#f0e442", "#0072b2", "#d55e00", "#cc79a7", "#8c564b", "#17becf",
+                  "#bcbd22", "#9467bd", "#ff9da7", "#2ca02c", "#aec7e8", "#ffbb78", "#98df8a", "#c5b0d5", "#c49c94",
+                  "#9edae5", "#f7b6d2")
+FIGURE_COLUMNS = ("accession", "loci", "type", "kind", "stage", "taxon", "anchor NR90")
+_COLUMN_IN = (0.95, 0.38, 0.36, 1.2, 0.85, 0.5, 0.75)  # column widths, inches
+_COLUMN_CHARS = (16, 7, 5, 22, 15, 8, 8)  # longest text per column before it is cut with "~"
+_SVG_HASHSALT = "bio-box W-27"
+_ROW_IN, _TREE_IN, _GENES_IN, _LEGEND_ROW_IN = 0.2, 1.7, 7.4, 0.14
+
+
+@dataclass
+class FigGene:
+    feature_uid: str
+    key: str | None
+    x0: float
+    x1: float
+    forward: bool  # on the anchor's strand: the arrow points right
+    colour: str
+    anchor: bool = False
+
+
+@dataclass
+class FigRow:
+    leaf: str
+    drawn: str  # the feature_uid of the locus drawn (the leaf's first)
+    n_loci: int
+    context_type: int | None
+    genes: list[FigGene]
+    breaks: list[float]  # x of a linear contig's end that cut a side
+    columns: list[str]
+
+
+@dataclass
+class FigurePlan:
+    group: str
+    title: list[str]
+    rows: list[FigRow]
+    segments: list[tuple[float, float, float, float]]  # the tree: (distance, row, distance, row) line ends
+    tree_max: float
+    cut: float
+    half_width: float  # bp on each side of the anchor's centre
+    legend: list[tuple[str, str]]  # (colour, label)
+    columns: list[str] = field(default_factory=lambda: list(FIGURE_COLUMNS))
+    xlabel: str = ""
+    distance: str = "j"
+
+
+def figure_unavailable() -> str | None:
+    """Why --figure cannot run here (matplotlib not importable), or None."""
+    try:
+        _mpl()
+    except ImportError as e:
+        return (f"--figure needs matplotlib, which cannot be imported here ({e}); it is a locked dependency (uv.lock), "
+                "so install the locked environment or run without --figure")
+    return None
+
+
+def _mpl():
+    """matplotlib, imported on first use; its cache goes to a private temporary directory unless MPLCONFIGDIR is set
+    (never the home directory: on the pod that is on /stor, AGENTS §7.3)."""
+    if "matplotlib" not in sys.modules and "MPLCONFIGDIR" not in os.environ:
+        d = tempfile.mkdtemp(prefix="biobox-mpl-")
+        os.environ["MPLCONFIGDIR"] = d
+        atexit.register(shutil.rmtree, d, True)
+    import matplotlib
+    from matplotlib.figure import Figure
+    from matplotlib.font_manager import FontProperties
+    from matplotlib.patches import Patch, Polygon
+
+    return matplotlib, Figure, FontProperties, Patch, Polygon
+
+
+def figure_colour(i: int) -> str:
+    """The run's i-th family colour: the palette, then golden-angle hues at alternating saturation and value."""
+    if i < len(FIGURE_PALETTE):
+        return FIGURE_PALETTE[i]
+    k = i - len(FIGURE_PALETTE)
+    r, g, b = colorsys.hsv_to_rgb((k * 0.6180339887) % 1.0, 0.45 + 0.3 * (k % 2), 0.95 - 0.2 * ((k // 2) % 2))
+    return "#%02x%02x%02x" % (round(r * 255), round(g * 255), round(b * 255))
+
+
+def group_shares(loci: list[Locus]) -> dict[str, float]:
+    """Per family (id at the level) in the flanks of `loci`: the share of the loci that hold it."""
+    held: Counter = Counter()
+    for loc in loci:
+        held.update({g.key for g in loc.up + loc.down if g.key is not None})
+    return {k: held[k] / len(loci) for k in sorted(held)}
+
+
+def run_colours(groups: dict[str, list[Locus]]) -> dict[str, str]:
+    """One colour per family coloured in any group of the run (share >= FIGURE_MIN_SHARE there), ranked by the loci
+    of the run holding it (descending), then id: the same family has the same colour in every group's figure."""
+    held: Counter = Counter()
+    coloured: set[str] = set()
+    for gid in sorted(groups):
+        shares = group_shares(groups[gid])
+        coloured.update(k for k, s in shares.items() if s >= FIGURE_MIN_SHARE)
+        for loc in groups[gid]:
+            held.update({g.key for g in loc.up + loc.down if g.key is not None})
+    ranked = sorted(coloured, key=lambda k: (-held[k], k))
+    return {k: figure_colour(i) for i, k in enumerate(ranked)}
+
+
+def family_names(loci: list[Locus], level: str) -> dict[str, str]:
+    """Each family's legend name: at pfam its architecture; at nr50 or nr90 the cluster uid's first 8 hex digits and
+    the most common Pfam architecture of its genes in the run (ties: the least), when the release has a library."""
+    archs: dict[str, Counter] = {}
+    for loc in loci:
+        for g in loc.up + loc.down:
+            if g.key is not None:
+                c = archs.setdefault(g.key, Counter())
+                if g.arch:
+                    c[g.arch] += 1
+    out = {}
+    for k in sorted(archs):
+        if level == "pfam":
+            out[k] = k
+            continue
+        c = archs[k]
+        best = min(c, key=lambda a: (-c[a], a)) if c else None
+        out[k] = f"{k[:8]} {best}" if best else k[:8]
+    return out
+
+
+def _cut_text(s: str, n: int) -> str:
+    s = str(s).replace("$", "\\$")  # never mathtext
+    return s if len(s) <= n else s[:n - 1] + "~"
+
+
+def _agg(values: list) -> str:
+    """One value, or each value with its count (most first, then by name) when the leaf's loci differ."""
+    c = Counter("-" if v is None else str(v) for v in values)
+    if len(c) == 1:
+        return next(iter(c))
+    return " ".join(f"{v}:{c[v]}" for v in sorted(c, key=lambda v: (-c[v], v)))
+
+
+def _x_of(loc: Locus, g: Gene, side: str) -> tuple[float, float]:
+    """A gene's span in bp from the anchor's centre along the anchor's strand; on a circular contig the copy of it on
+    its side of the anchor nearest the anchor."""
+    centre, s = (loc.start + loc.end) / 2, loc.strand
+    best = None
+    for shift in ((0, -loc.contig_len, loc.contig_len) if loc.circular and loc.contig_len else (0,)):
+        a, b = sorted(((g.start + shift - centre) * s, (g.end + shift - centre) * s))
+        mid = (a + b) / 2
+        if (mid < 0) == (side == "u") and (best is None or abs(mid) < abs(sum(best) / 2)):
+            best = (a, b)
+    if best is None:
+        best = tuple(sorted(((g.start - centre) * s, (g.end - centre) * s)))
+    return best
+
+
+def _breaks(loc: Locus) -> list[float]:
+    """x of each contig end that cut a side: upstream lies at lower coordinates for a + anchor."""
+    centre, s = (loc.start + loc.end) / 2, loc.strand
+    out = []
+    if loc.cut_up:
+        out.append(((0 if s == 1 else loc.contig_len) - centre) * s)
+    if loc.cut_down:
+        out.append(((loc.contig_len if s == 1 else 0) - centre) * s)
+    return out
+
+
+def figure_leaves(kept: list[Leaf], ctype: dict[int, int], tree_order: list[int], rows: int) -> list[int]:
+    """The leaves (indices into `kept`) the figure draws, in tree order: all when at most `rows`; else the leaf with
+    the most loci of each context type in type order (ties: the least name), then the leaves with the most loci."""
+    rank = {i: r for r, i in enumerate(tree_order)}
+    if len(kept) <= rows:
+        return sorted(range(len(kept)), key=rank.get)
+    best = lambda ix: sorted(ix, key=lambda i: (-len(kept[i].loci), kept[i].name))  # noqa: E731
+    by_type: dict[int, list[int]] = {}
+    for i in range(len(kept)):
+        by_type.setdefault(ctype[i], []).append(i)
+    chosen: list[int] = []
+    for t in sorted(by_type):
+        if len(chosen) < rows:
+            chosen.append(best(by_type[t])[0])
+    taken = set(chosen)
+    chosen += [i for i in best(range(len(kept))) if i not in taken][:rows - len(chosen)]
+    return sorted(chosen, key=rank.get)
+
+
+def _segments(n: int, merges: list[tuple[int, int, float]], y: dict[int, int]) -> list[tuple]:
+    """The tree restricted to the drawn leaves (`y`: index -> row): each merge of two drawn subtrees is a junction at
+    its distance, each subtree a line from its own height to it. A subtree without drawn leaves vanishes; one that
+    meets such a subtree keeps its height."""
+    node: dict[int, tuple[float, float] | None] = {i: ((float(y[i]), 0.0) if i in y else None) for i in range(n)}
+    out = []
+    for k, l, h in merges:
+        a, b = node[k], node[l]
+        if a and b:
+            for yy, xx in (a, b):
+                if xx != h:
+                    out.append((xx, yy, h, yy))
+            out.append((h, a[0], h, b[0]))
+            node[k] = ((a[0] + b[0]) / 2, h)
+        else:
+            node[k] = a or b
+        del node[l]
+    return out
+
+
+def figure_plan(gid: str, group_loci: list[Locus], kept: list[Leaf], merges, tree_order: list[int],
+                ctype: dict[int, int], colours: dict[str, str], names: dict[str, str], *, rows: int, facts: dict,
+                window: int, distance: str, cut: float, n_leaves: int) -> FigurePlan:
+    """What one group's figure draws (no matplotlib here)."""
+    shares = group_shares(group_loci)
+    coloured = {k for k, s in shares.items() if s >= FIGURE_MIN_SHARE}
+    shown = figure_leaves(kept, ctype, tree_order, rows)
+    y = {i: r for r, i in enumerate(shown)}
+    used: set[str | None] = set()
+    out_rows = []
+    for i in shown:
+        leaf = kept[i]
+        loc = leaf.loci[0]
+        genes = [FigGene(loc.feature_uid.hex(), loc.anchor_key, -(loc.end - loc.start) / 2, (loc.end - loc.start) / 2,
+                         True, FIGURE_ANCHOR, True)]
+        for side, lst in (("u", loc.up), ("d", loc.down)):
+            for g in lst:
+                x0, x1 = _x_of(loc, g, side)
+                colour = FIGURE_NONE if g.key is None else (colours[g.key] if g.key in coloured else FIGURE_GREY)
+                used.add(g.key if g.key in coloured or g.key is None else "")
+                genes.append(FigGene(g.feature_uid.hex(), g.key, x0, x1, g.same, colour))
+        cols = [loc.accession or loc.contig_uid.hex()[:12], str(len(leaf.loci)), str(ctype[i]),
+                _agg([x.kind for x in leaf.loci]), _agg([x.stage for x in leaf.loci]),
+                _agg([x.tax_order for x in leaf.loci]), _agg([x.nr90.hex()[:8] if x.nr90 else None for x in leaf.loci])]
+        out_rows.append(FigRow(leaf.name.hex(), loc.feature_uid.hex(), len(leaf.loci), ctype[i], genes, _breaks(loc),
+                               cols))
+    segments = _segments(len(kept), merges, y)
+    reach = [abs(v) for r in out_rows for g in r.genes for v in (g.x0, g.x1)] + \
+            [abs(v) for r in out_rows for v in r.breaks]
+    half = max(reach) * 1.03 if reach else 1.0
+    legend = [(FIGURE_ANCHOR, "anchor (the search's hit), centred")]
+    for k in sorted((k for k in used if k), key=lambda k: (-shares[k], colours[k], k)):
+        legend.append((colours[k], f"{names.get(k, k[:8])}  {round(100 * shares[k])}%"))
+    if "" in used:
+        legend.append((FIGURE_GREY, f"other families (each in < {FIGURE_MIN_SHARE:.0%} of the group's loci)"))
+    if None in used:
+        legend.append((FIGURE_NONE, f"no id at level {facts['level']} (never shared)"))
+    n_loci = len(group_loci)
+    title = [f"nbr flanks: group {gid}, {n_loci} loci in {n_leaves} leaves ({len(kept)} in the tree, "
+             f"{len(set(ctype.values()))} context types)",
+             f"release {facts['release']}, level {facts['level']}, window {window}g, distance {distance}, cut {cut:g}; "
+             f"a family's colour is the same in every group of the run; % = share of the group's loci holding it"]
+    if len(shown) == len(kept):
+        title.append(f"rows: all {len(kept)} leaves in the tree, in tree order; each row draws its leaf's first locus "
+                     "(least feature_uid); loci = the loci collapsed into the leaf")
+    else:
+        title.append(f"rows: {len(shown)} of {len(kept)} leaves (--figure-rows {rows}): the leaf with the most loci of "
+                     "each context type, then the leaves with the most loci; the tree is restricted to them")
+    if n_leaves > len(kept):
+        title.append(f"{n_leaves - len(kept)} leaves beyond --max-loci are not in the tree and are not drawn")
+    return FigurePlan(gid, title, out_rows, segments, max((s[2] for s in segments), default=0.0), cut, half, legend,
+                      xlabel="kb from the anchor's centre along its strand (upstream left); // = end of a linear "
+                             "contig", distance=distance)
+
+
+def _ticks(lo: float, hi: float, target: int = 8) -> list[float]:
+    raw = (hi - lo) / target
+    mag = 10 ** math.floor(math.log10(raw)) if raw > 0 else 1.0
+    step = next(m * mag for m in (1, 2, 5, 10) if m * mag >= raw)
+    first = math.ceil(lo / step)
+    return [k * step for k in range(first, math.floor(hi / step) + 1)]
+
+
+def _fmt_tick(v: float, scale: float) -> str:
+    s = f"{v / scale:.6g}"
+    return "0" if s in ("-0", "0") else s
+
+
+def render_figure(plan: FigurePlan, gdir: Path) -> None:
+    """Draw `plan` into gdir/figure.svg and figure.pdf (each under a temporary name, then renamed); one figure at a
+    time, cleared after writing."""
+    matplotlib, Figure, FontProperties, Patch, Polygon = _mpl()
+    fonts = Path(matplotlib.get_data_path()) / "fonts" / "ttf"
+    regular, bold = str(fonts / "DejaVuSans.ttf"), str(fonts / "DejaVuSans-Bold.ttf")
+    fp = lambda size, path=regular: FontProperties(fname=path, size=size)  # noqa: E731
+    n = max(len(plan.rows), 1)
+    ncol = 3
+    legend_rows = math.ceil(len(plan.legend) / ncol)
+    left, gap, cols_in = 0.3, 0.12, sum(_COLUMN_IN)
+    width = left + _TREE_IN + gap + _GENES_IN + 0.2 + cols_in + 0.25
+    head_in = 0.22 + 0.16 * len(plan.title) + 0.28
+    rows_in = n * _ROW_IN
+    axis_in = 0.5
+    legend_in = legend_rows * _LEGEND_ROW_IN + 0.1
+    height = head_in + rows_in + axis_in + legend_in + 0.15
+    rc = {"svg.hashsalt": _SVG_HASHSALT, "svg.fonttype": "none", "pdf.fonttype": 3, "pdf.compression": 6,
+          "font.family": "DejaVu Sans", "axes.unicode_minus": False, "path.simplify": False,
+          "figure.dpi": 72, "savefig.dpi": 72, "savefig.bbox": None}
+    with matplotlib.rc_context(rc):
+        fig = Figure(figsize=(width, height))
+
+        def box(x_in, w_in):
+            return fig.add_axes((x_in / width, (axis_in + legend_in + 0.15) / height, w_in / width, rows_in / height))
+
+        for k, line in enumerate(plan.title):
+            fig.text(left / width, 1 - (0.2 + 0.16 * k) / height, _cut_text(line, 230), va="top", ha="left",
+                     fontproperties=fp(8 if k == 0 else 6.5, bold if k == 0 else regular))
+        tree_ax = box(left, _TREE_IN)
+        gene_ax = box(left + _TREE_IN + gap, _GENES_IN)
+        col_ax = box(left + _TREE_IN + gap + _GENES_IN + 0.2, cols_in)
+        for ax in (tree_ax, gene_ax, col_ax):
+            ax.set_ylim(n - 0.5, -0.5)
+            for side in ("top", "right", "left"):
+                ax.spines[side].set_visible(False)
+            ax.set_yticks([])
+        # tree: distance from 0 (the leaves, at the right) to the root (left)
+        tmax = max(plan.tree_max, plan.cut if plan.cut <= 1 else 0, 1e-6) * 1.04
+        tree_ax.set_xlim(tmax, 0)
+        for x0, y0, x1, y1 in plan.segments:
+            tree_ax.plot([x0, x1], [y0, y1], color="#333333", linewidth=0.7, solid_capstyle="butt")
+        tree_ax.axvline(plan.cut, color="#b2182b", linewidth=0.6, linestyle=(0, (2, 2)))
+        tree_ax.text(plan.cut, -0.75, f"cut {plan.cut:g}", ha="center", va="bottom", color="#b2182b",
+                     fontproperties=fp(6))
+        tt = [t for t in _ticks(0, tmax, 4) if t <= tmax]
+        tree_ax.set_xticks(tt)
+        tree_ax.set_xticklabels([_fmt_tick(t, 1) for t in tt], fontproperties=fp(6))
+        tree_ax.set_xlabel(f"merge distance ({plan.distance})", fontproperties=fp(6.5))
+        # genes
+        half = plan.half_width
+        gene_ax.set_xlim(-half, half)
+        head = 0.022 * 2 * half
+        gene_ax.axvline(0, color="#999999", linewidth=0.4, linestyle=(0, (1, 2)), zorder=0)
+        for r, row in enumerate(plan.rows):
+            if row.context_type is not None and row.context_type % 2 == 0:
+                gene_ax.axhspan(r - 0.5, r + 0.5, color="#f2f2f2", linewidth=0, zorder=0)
+            xs = [v for g in row.genes for v in (g.x0, g.x1)] + row.breaks
+            gene_ax.plot([min(xs), max(xs)], [r, r], color="#8c8c8c", linewidth=0.6, zorder=1)
+            for g in row.genes:
+                hl = min(head, 0.5 * (g.x1 - g.x0))
+                h = 0.34 if g.anchor else 0.3
+                if g.forward:
+                    pts = [(g.x0, r - h), (g.x1 - hl, r - h), (g.x1, r), (g.x1 - hl, r + h), (g.x0, r + h)]
+                else:
+                    pts = [(g.x1, r - h), (g.x0 + hl, r - h), (g.x0, r), (g.x0 + hl, r + h), (g.x1, r + h)]
+                gene_ax.add_patch(Polygon(pts, closed=True, facecolor=g.colour, edgecolor="#000000" if g.anchor
+                                          else "#4d4d4d", linewidth=0.8 if g.anchor else 0.4, zorder=2))
+            for b in row.breaks:
+                d = 0.006 * 2 * half
+                for off in (-d * 0.6, d * 0.6):
+                    gene_ax.plot([b + off - d / 2, b + off + d / 2], [r + 0.38, r - 0.38], color="#b2182b",
+                                 linewidth=1.0, zorder=3)
+        ticks = _ticks(-half, half)
+        gene_ax.set_xticks(ticks)
+        gene_ax.set_xticklabels([_fmt_tick(t, 1000) for t in ticks], fontproperties=fp(6))
+        gene_ax.set_xlabel(plan.xlabel, fontproperties=fp(6.5))
+        # columns
+        col_ax.set_xlim(0, cols_in)
+        col_ax.set_xticks([])
+        col_ax.spines["bottom"].set_visible(False)
+        xs = [sum(_COLUMN_IN[:k]) for k in range(len(_COLUMN_IN))]
+        for name, x in zip(plan.columns, xs):
+            col_ax.text(x, -0.75, name, ha="left", va="bottom", fontproperties=fp(6.5, bold))
+        for r, row in enumerate(plan.rows):
+            for k, (v, x) in enumerate(zip(row.columns, xs)):
+                col_ax.text(x, r, _cut_text(v, _COLUMN_CHARS[k]), ha="left", va="center", fontproperties=fp(6.5))
+        # legend, below everything
+        lax = fig.add_axes((left / width, 0.1 / height, (width - left - 0.25) / width, legend_in / height))
+        lax.set_axis_off()
+        handles = [Patch(facecolor=c, edgecolor="#4d4d4d", linewidth=0.4) for c, _ in plan.legend]
+        lax.legend(handles, [_cut_text(lab, 70) for _, lab in plan.legend], loc="upper left", ncol=ncol,
+                   prop=fp(6.5), frameon=False, borderaxespad=0, handlelength=1.6, handleheight=0.9,
+                   columnspacing=1.5, labelspacing=0.35)
+        for name, fmt, meta in (("figure.svg", "svg", {"Date": None}),
+                                ("figure.pdf", "pdf", {"CreationDate": None, "ModDate": None})):
+            tmp = gdir / f".{name}.tmp-{os.getpid()}"
+            try:
+                fig.savefig(tmp, format=fmt, metadata=meta)
+                os.replace(tmp, gdir / name)
+            finally:
+                if tmp.exists():
+                    tmp.unlink()
+        fig.clear()
+    del fig
+
+
 # --- writing --------------------------------------------------------------------------------------------------------
 
 
@@ -511,15 +930,19 @@ def _gff(loc: Locus) -> list[str]:
 
 
 def write(out_dir: Path, loci: list[Locus], facts: dict, *, window: int, group_by: str, distance: str, cut: float,
-          max_leaves: int, export_gff: bool, notes: list[str]) -> dict:
-    """Write every output into `out_dir` (which exists and is empty); one group's matrices at a time. Returns counts
-    for the stderr lines; appends to `notes` one line per sampled group."""
+          max_leaves: int, export_gff: bool, notes: list[str], figure: bool = False,
+          figure_rows: int = DEFAULT_FIGURE_ROWS) -> dict:
+    """Write every output into `out_dir` (which exists and is empty); one group's matrices, and with `figure` one
+    group's figure, at a time. Returns counts for the stderr lines; appends to `notes` one line per sampled group."""
     groups: dict[str, list[Locus]] = {}
     for loc in loci:
         groups.setdefault(group_of(loc, group_by), []).append(loc)
     order = sorted(groups, key=lambda g: (-len(groups[g]), g))
     ctx_rows, cons_rows, group_rows = [], [], []
     peak_leaves = 0
+    n_figures = 0
+    if figure:
+        colours, fam_names = run_colours(groups), family_names(loci, facts["level"])
     for gid in order:
         leaves = leaves_of(groups[gid], window)
         kept = leaves[:max_leaves]
@@ -573,6 +996,11 @@ def write(out_dir: Path, loci: list[Locus], facts: dict, *, window: int, group_b
                                  "tax_order": loc.tax_order, "cut_up": loc.cut_up, "cut_down": loc.cut_down,
                                  "n_up": len(loc.up), "n_down": len(loc.down)})
         export.write_lines(_tsv(LEAF_COLUMNS, leaf_rows), gdir / "leaves.tsv")
+        if figure:
+            render_figure(figure_plan(gid, groups[gid], kept, merges, tree_order, ctype, colours, fam_names,
+                                      rows=figure_rows, facts=facts, window=window, distance=distance, cut=cut,
+                                      n_leaves=len(leaves)), gdir)
+            n_figures += 1
         for t, ix in enumerate(ranked):
             for r in conservation([loc for i in ix for loc in kept[i].loci]):
                 cons_rows.append({"group": gid, "context_type": t + 1, **r})
@@ -608,13 +1036,14 @@ def write(out_dir: Path, loci: list[Locus], facts: dict, *, window: int, group_b
         export.write_lines(_tsv(["protein_uid", "group"], ({"protein_uid": u, "group": proteins[u]}
                                                           for u in sorted(proteins))), gff / "protein_groups.tsv")
     return {"groups": len(order), "loci": len(loci), "context_rows": len(ctx_rows), "conservation_rows": len(cons_rows),
-            "gff": n_gff, "peak_leaves": peak_leaves,
+            "gff": n_gff, "peak_leaves": peak_leaves, "figures": n_figures,
             "leaves": sum(r["n_leaves"] for r in group_rows)}
 
 
 def run(root: Path, anchors: set[bytes], out: Path, *, release: str, files, window: int, level: str, group_by: str,
         distance: str, cut: float, max_leaves: int, export_gff: bool, library: str | None, gene_call_version: str,
-        tape_version: str | None, threads: int | None = None, tmp=None) -> tuple[dict, list[str]]:
+        tape_version: str | None, threads: int | None = None, tmp=None, figure: bool = False,
+        figure_rows: int = DEFAULT_FIGURE_ROWS) -> tuple[dict, list[str]]:
     """Load, group and write into `out` (new or empty, outside the root): filled under a temporary name beside it and
     renamed into place. Returns (counts, notes)."""
     loci, facts = load_loci(root, anchors, window, release=release, files=files, level=level, library=library,
@@ -626,7 +1055,8 @@ def run(root: Path, anchors: set[bytes], out: Path, *, release: str, files, wind
     notes: list[str] = []
     try:
         counts = write(staging, loci, facts, window=window, group_by=group_by, distance=distance, cut=cut,
-                       max_leaves=max_leaves, export_gff=export_gff, notes=notes)
+                       max_leaves=max_leaves, export_gff=export_gff, notes=notes, figure=figure,
+                       figure_rows=figure_rows)
         os.replace(staging, out)  # an empty `out` is replaced; one that gained files meanwhile is not (OSError)
     finally:
         shutil.rmtree(staging, ignore_errors=True)

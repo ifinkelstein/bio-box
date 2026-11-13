@@ -247,7 +247,22 @@ outside viewers. A locus cut by a contig end is compared only over the genes bot
 the RNA polymerase run (2,581 loci) took about 15 s and at most 1.6 GB, and gave 432 groups and 598 context types; no
 type holds both phage and prokaryote loci (*measured*, `planning/measurements/2026-11-12_flanks_rN3.md`). On phages
 use `nr50`: at `pfam` most phage genes have no domain, each is its own token, and nearly every locus becomes its own
-type (same file). No figure yet (matplotlib is not in the image).
+type (same file).
+
+`--figure` adds a synteny figure per group, `groups/<group>/figure.svg` and `figure.pdf` (card W-27). Each figure has
+one row per leaf in tree order, with the UPGMA tree at the left and the cut drawn as a dashed line. A row draws the
+leaf's first locus to scale, centred on the hit (black), with upstream on the left along the hit's strand; arrows
+point the way each gene runs relative to the hit. A family has the same colour in every group of the run. Families
+found in fewer than 10% of a group's loci are grey, and genes with no id at the level are white. A `//` marks a linear
+contig's end that cuts the window. The legend names each coloured family (at `nr50`, its cluster uid prefix and its
+genes' commonest Pfam architecture) with the share of loci that hold it. Columns at the right give the locus
+accession, the loci collapsed into the leaf, the context type, genome kind, stage, taxonomy (`-`: the release has
+none) and the hit's NR90 cluster. A figure shows at most `--figure-rows` rows (default 60). For a larger group it
+shows the largest leaf of each context type, then the largest remaining leaves, restricts the tree to those, and says
+so in its title. The same inputs give the same bytes; neither file holds a date. On `rN.3`, the RNA polymerase run's
+432 figures took about 4.5 minutes and at most 1.6 GB, against 15 s without them. The T7-like group's figure is in
+`planning/measurements/2026-11-12_flanks_rN3/figures/` (*measured*, same file). The command needs matplotlib, which
+`uv.lock` pins; where it cannot be imported, `--figure` is refused before anything is written.
 
 ## 7. Going further with the separate commands
 

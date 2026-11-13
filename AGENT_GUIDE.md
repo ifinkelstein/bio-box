@@ -216,7 +216,13 @@ it), `hits.tsv`, `hits.faa`, `neighbors.tsv`, `loci/`. The run is `<profile tmp>
   windows. `sampled=true`: only the 2,000 leaves with the least names are in the tree; the rest have `in_tree=false`
   and no context type: say so. On phages prefer `nr50`: at `pfam` unannotated genes split nearly every locus into
   its own type (measured, `planning/measurements/2026-11-12_flanks_rN3.md`). Without `--profile`, give `--runs` and
-  `--pack-dir`.
+  `--pack-dir`. `--figure` (card W-27) also writes `groups/<group>/figure.svg` and `figure.pdf`. Rows are leaves in
+  tree order beside the tree. Each row draws the leaf's first locus, centred on the anchor along its strand. A
+  family's colour is fixed across the run; families held by under 10% of the group's loci are grey and genes with no
+  id are white. The columns give accession, loci in the leaf, context type, kind, stage, taxonomy and anchor NR90. A
+  figure holds at most `--figure-rows` rows (default 60). Above that it draws the largest leaf of each context type,
+  then the largest leaves, and its title says "N of M leaves": report that. Without matplotlib, `--figure` is refused
+  with exit 2. The figure is for people; take numbers from the TSVs.
 - Name a gene by `feature_uid` (or accession and range), a protein by `protein_uid`, a family by `model_acc`, a
   cluster by its uid **with the release** (cluster uids change between releases, 0-07); never a bare ordinal or a token.
 - Every command given `--out` (and `search hmm` for each file in its DIR) prints to stderr `wrote PATH: N rows`
