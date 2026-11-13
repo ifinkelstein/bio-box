@@ -218,3 +218,63 @@ def test_phase1_comparison_and_ani_bounds(tmp_path):
     assert sum(b["selected_genomes"] for b in j["by_species_size"]) == j["selected"]["genomes"]
     ph = _read(out / "by_phylum.tsv")
     assert sum(int(r["remainder_genomes"]) for r in ph) == j["remainder"]["genomes"]
+
+
+NEEDS = SCRIPT.with_name("c25_ani_needs.py")
+
+
+def test_ani_needs_counts_match_brute_force(tmp_path):
+    """Card C-25 (1b): what a skani step would read and compute, against counts written here.
+
+    For each species with more than CAP complete genomes: n genomes; all pairs, counted by enumerating
+    itertools.combinations; and the pairs of a greedy farthest-first pick from rank 1, counted by simulating it
+    (after each of the first CAP-1 picks, the distances from that pick to every genome not yet picked).
+    """
+    rows = _hand_rows() + _random_rows(seed=11, n=300)
+    # species A's representative is one of its complete genomes; the other species' representative is not theirs
+    rows = [dict(r, gtdb_genome_representative="RS_GCF_000000010.1") if r["gtdb_taxonomy"].endswith("s__A") else r
+            for r in rows]
+    shuffled = rows[:]
+    random.Random(5).shuffle(shuffled)
+    outs = []
+    for name, data in (("a", rows), ("b", shuffled)):
+        gt = tmp_path / name
+        gt.mkdir()
+        _write_gz(gt / "bac120_metadata_r226.tsv.gz", data)
+        _write_gz(gt / "ar53_metadata_r226.tsv.gz", [])
+        p = subprocess.run([sys.executable, "-I", str(NEEDS), str(gt), "--cap", str(CAP)],
+                           check=True, capture_output=True, text=True)
+        j = json.loads(p.stdout)
+        j.pop("gtdb_files_sha256")
+        outs.append(j)
+    assert outs[0] == outs[1]
+    j = outs[0]
+
+    comp = [r for r in rows if r["ncbi_assembly_level"] == "Complete Genome"]
+    by_sp: dict[str, list[dict]] = {}
+    for r in comp:
+        by_sp.setdefault(r["gtdb_taxonomy"], []).append(r)
+    over = {sp: g for sp, g in by_sp.items() if len(g) > CAP}
+    assert len(over) >= 3
+    assert j["species_over_cap"] == len(over)
+    assert j["genomes"] == sum(len(g) for g in over.values())
+    assert j["bp"] == sum(int(r["genome_size"]) for g in over.values() for r in g)
+    assert j["pairs_all"] == sum(1 for g in over.values() for _ in itertools.combinations(g, 2))
+    ff = 0
+    for g in over.values():
+        picked, left = 1, len(g) - 1
+        while picked < CAP:
+            ff += left  # distances from the newest pick to every genome not yet picked
+            picked, left = picked + 1, left - 1
+    assert j["pairs_farthest_first"] == ff
+    best = {sp: next(r for r in g if not any(_beats(o, r) for o in g if o is not r)) for sp, g in over.items()}
+    assert j["rank1_held_by_phase1"] == {"genomes": len(over),
+                                         "bp": sum(int(r["genome_size"]) for r in best.values())}
+    assert j["to_download"] == {"genomes": j["genomes"] - len(over),
+                                "bp": j["bp"] - j["rank1_held_by_phase1"]["bp"]}
+    ranked = {sp: sorted(g, key=lambda r: sum(_beats(o, r) for o in g if o is not r)) for sp, g in over.items()}
+    assert j["quality_ranks_2_to_cap"] == {"genomes": sum(len(g[1:CAP]) for g in ranked.values()),
+                                           "bp": sum(int(r["genome_size"]) for g in ranked.values() for r in g[1:CAP])}
+    assert j["representative_complete_species"] == sum(
+        any(r["accession"] == r["gtdb_genome_representative"] for r in g) for g in over.values())
+    assert j["representative_complete_species"] >= 1
