@@ -222,6 +222,48 @@ ls "$WORK"/rnap/loci/locus_NC_001604_*
 column -t -s $'\t' "$WORK/rnap/loci/locus_NC_001604_39f9ef263e234b012d2671634468546e.tsv"
 ```
 
+### Which loci share a context: `nbr flanks`
+
+`nbr flanks` groups a run's loci by what flanks them (card W-25; method in `planning/design/W-25_flanks.md`). Each
+flanking gene becomes a token: its NR50 cluster (`--level nr50`, the default), NR90 cluster or Pfam architecture
+(`--level pfam`), with its side and its strand relative to the hit; a gene without one is a token of its own, so
+unannotated genes never make two loci look alike. Loci are grouped by the hit protein's own NR90 cluster
+(`--group-by anchor-nr50` or `none` for wider groups); loci with identical flanks collapse into one leaf; each group
+gets two distance matrices, a UPGMA tree and context types (the tree cut at `--cut`, default 0.5):
+
+```bash
+bio-box nbr flanks "$RUN" --root "$ROOT" --profile "$PROFILE" --window 5g --level nr50 --out "$WORK/rnap_flanks"
+```
+
+| File | What it is for |
+|---|---|
+| `context_types.tsv` | one row per hit locus (named by the hit gene's `feature_uid`): its `group`, `context_type`, stage, kind, genomes, and `cut_up`/`cut_down` when a contig end cut the window |
+| `conservation.tsv` | per group, context type and neighbour: `share_of_loci`, `modal_offset` (along the hit's strand), `same_strand_share`, `n_genomes`; read it as `neighbors.tsv` per context type |
+| `groups.tsv` | the run's settings as `# key` lines, then per group its loci, leaves and number of context types; `sampled=true` when a group had more than `--max-loci` leaves (2,000) and only the first 2,000 by name went into the tree |
+| `groups/<group>/` | `distance_j.tsv` (1 − shared share of tokens), `distance_a.tsv` (1 − shared share of adjacent token pairs: it also sees a changed gene order), `positions.tsv` (positions compared), `tree.nwk`, `leaves.tsv` (each leaf's tokens and loci) |
+
+`--distance a` builds the tree on the order-aware distance instead; `--export gff` adds one GFF3 per locus for
+outside viewers. A locus cut by a contig end is compared only over the genes both loci have on that side. On `rN.3`
+the RNA polymerase run (2,581 loci) took about 15 s and at most 1.6 GB, and gave 432 groups and 598 context types; no
+type holds both phage and prokaryote loci (*measured*, `planning/measurements/2026-11-12_flanks_rN3.md`). On phages
+use `nr50`: at `pfam` most phage genes have no domain, each is its own token, and nearly every locus becomes its own
+type (same file).
+
+`--figure` adds a synteny figure per group, `groups/<group>/figure.svg` and `figure.pdf` (card W-27). Each figure has
+one row per leaf in tree order, with the UPGMA tree at the left and the cut drawn as a dashed line. A row draws the
+leaf's first locus to scale, centred on the hit (black), with upstream on the left along the hit's strand; arrows
+point the way each gene runs relative to the hit. A family has the same colour in every group of the run. Families
+found in fewer than 10% of a group's loci are grey, and genes with no id at the level are white. A `//` marks a linear
+contig's end that cuts the window. The legend names each coloured family (at `nr50`, its cluster uid prefix and its
+genes' commonest Pfam architecture) with the share of loci that hold it. Columns at the right give the locus
+accession, the loci collapsed into the leaf, the context type, genome kind, stage, taxonomy (`-`: the release has
+none) and the hit's NR90 cluster. A figure shows at most `--figure-rows` rows (default 60). For a larger group it
+shows the largest leaf of each context type, then the largest remaining leaves, restricts the tree to those, and says
+so in its title. The same inputs give the same bytes; neither file holds a date. On `rN.3`, the RNA polymerase run's
+432 figures took about 4.5 minutes and at most 1.6 GB, against 15 s without them. The T7-like group's figure is in
+`planning/measurements/2026-11-12_flanks_rN3/figures/` (*measured*, same file). The command needs matplotlib, which
+`uv.lock` pins; where it cannot be imported, `--figure` is refused before anything is written.
+
 ## 7. Going further with the separate commands
 
 `search hmm` is these commands in a row; each can be run alone on a finished run, with its own window or format.

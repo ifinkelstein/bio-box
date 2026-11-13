@@ -672,26 +672,48 @@ def _hold_and_kill(prof, root, step, cmd, kill, sampled, **kw) -> list[int]:
     return codes
 
 
+class C16PeakEvidence(UserWarning):
+    """Not a fault: a peak a C-16 test saw, put in the warnings summary so that the plain `pytest -q` of GitHub Actions
+    (where the scope-only tests run) shows it in the log."""
+
+
+def _evidence(record_property, name: str, text: str) -> None:
+    import warnings
+
+    record_property(name, text)
+    print(text)
+    warnings.warn(C16PeakEvidence(f"{name}: {text}"), stacklevel=2)
+
+
 @pytest.mark.covers("C-16")
 @pytest.mark.parametrize("kill", ["step", "group"])
-def test_c16_a_killed_step_records_its_peak_and_where_it_came_from(prof, root, kill):
+def test_c16_a_killed_step_records_its_peak_and_where_it_came_from(prof, root, kill, record_property):
     """A step killed alone (as the kernel's OOM killer takes the largest process of a cgroup: the helper survives and
     measures it) or with its whole process group (a scope stopped after an OOM kill, `systemctl kill`, SIGKILL of the
     group: the helper dies too). Before card C-16 a failed step left no record and its helper's file was deleted,
-    and a killed helper wrote nothing. Constructed truth: the step wrote HOLD_MIB MiB before it was killed."""
+    and a killed helper wrote nothing. Constructed truth: the step wrote HOLD_MIB MiB before it was killed.
+
+    Without a scope (the pod) the record is the step's own resident high-water mark: the HOLD_MIB MiB and the
+    interpreter's pages, within 20% above. In a scope (GitHub Actions) it is the scope's memory.peak, which counts
+    what is charged to the scope, not a process's resident set: the HOLD_MIB MiB are anonymous pages the step wrote
+    inside the scope (a fresh image from `exec`, MemorySwapMax=0), so they are charged there and bound it from below;
+    what else is charged (the helper, page cache the scope read first) is not a share of any process's RSS, so the
+    only upper bound is the scope's MemoryMax, which a charge never passes."""
     held = lambda s: max(s.get("maxrss_bytes") or 0, s.get("memory_peak_bytes") or 0) >= HOLD_MIB * MIB  # noqa: E731
     codes = _hold_and_kill(prof, root, "hold", [sys.executable, "-c", HOLD, str(HOLD_MIB)], kill, held)
     assert codes == [1]
     assert root_files(root) == []  # nothing published, as before
     assert failed_path(prof, "hold").exists(), "a killed step left no record of its attempt"
     att = json.loads(failed_path(prof, "hold").read_text())
-    print(f"recorded peak MiB: {att['peak_rss_bytes'] and att['peak_rss_bytes'] / MIB} ({att['peak_rss_source']}, "
-          f"mem_cap {att['mem_cap']['how']})")
+    _evidence(record_property, f"c16_killed_step_peak_{kill}",
+              f"recorded {att['peak_rss_bytes'] and round(att['peak_rss_bytes'] / MIB, 1)} MiB "
+              f"({att['peak_rss_source']}, mem_cap {att['mem_cap']['how']}); the step wrote {HOLD_MIB} MiB")
     scope = att["mem_cap"]["how"] == "opened"
     expected = {("step", True): "scope_memory_peak", ("step", False): "child_maxrss",
                 ("group", True): "scope_memory_peak_sampled", ("group", False): "child_hwm_sampled"}[kill, scope]
     assert att["peak_rss_source"] == expected, att
-    assert HOLD_MIB * MIB <= att["peak_rss_bytes"] <= 1.2 * HOLD_MIB * MIB, att["peak_rss_bytes"] / MIB
+    upper = runstep.size_bytes(prof.mem_scope) if scope else 1.2 * HOLD_MIB * MIB
+    assert HOLD_MIB * MIB <= att["peak_rss_bytes"] <= upper, att["peak_rss_bytes"] / MIB
     assert (att["stage"], att["step"], att["exit_code"]) == ("S0", "hold", -9)
 
 
@@ -730,8 +752,10 @@ for _ in range(64):  # 1 GiB in 16 MiB blocks, each written so that it is reside
 @pytest.mark.skipif(runstep.memory_cap(OOM_CAP, require=False)["how"] != "opened",
                     reason="needs systemd-run and no cgroup cap above this process, so that run-step opens a scope "
                            "whose MemoryMax the kernel enforces (GitHub Actions; not inside the image on the pod)")
-def test_c16_an_oom_killed_step_records_a_peak_within_20_percent_of_its_cap(prof, root, tmp_path):
-    """The card's acceptance with the kernel's own OOM killer: a step that grows past its scope's MemoryMax."""
+def test_c16_an_oom_killed_step_records_a_peak_within_20_percent_of_its_cap(prof, root, tmp_path, record_property):
+    """The card's acceptance with the kernel's own OOM killer: a step that grows past its scope's MemoryMax. The
+    record (the scope's memory.peak) is compared with the cap, not with a process's resident set: the kernel OOM-kills
+    when a charge cannot be met at memory.max, so the high-water mark is then at the cap and never above it."""
     p = tmp_path / "tight.yaml"
     data = {f: getattr(prof, f) for f in prof.__dataclass_fields__}
     data["mem_scope"] = OOM_CAP
@@ -741,8 +765,9 @@ def test_c16_an_oom_killed_step_records_a_peak_within_20_percent_of_its_cap(prof
     assert failed_path(tight, "grows").exists(), "an OOM-killed step left no record of its attempt"
     att = json.loads(failed_path(tight, "grows").read_text())
     cap = runstep.size_bytes(OOM_CAP)
-    print(f"recorded peak MiB: {att['peak_rss_bytes'] and att['peak_rss_bytes'] / MIB} ({att['peak_rss_source']}); "
-          f"cap {cap / MIB} MiB")
+    _evidence(record_property, "c16_oom_step_peak",
+              f"recorded {att['peak_rss_bytes'] and round(att['peak_rss_bytes'] / MIB, 1)} MiB "
+              f"({att['peak_rss_source']}); cap {cap / MIB:.1f} MiB")
     assert att["peak_rss_source"] in ("scope_memory_peak", "scope_memory_peak_sampled"), att
     assert 0.8 * cap <= att["peak_rss_bytes"] <= 1.2 * cap, att["peak_rss_bytes"] / MIB
 

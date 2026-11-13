@@ -5,93 +5,96 @@ The running record of the cards in [`TASKS.md`](TASKS.md). Updated at every merg
 by an agent on its own branch `task/<ID>`, audited by the orchestrating session, and merged after its
 tests passed on the merged tree.
 
-## Handoff, 2026-11-12 14:30 CST (current; the dated sections under "History" are superseded where they differ)
+## Handoff, 2026-11-12 21:50 CST (current; the dated sections under "History" are superseded where they differ)
 
-Written so a new session can continue without the conversation that produced this file. The orchestrating session
-was restarted at 13:13 CST (Fable 5.2 again from about 14:20). **Agents survived that restart**: the four listed
-under "Agents running" kept working in their worktrees. Before restarting any card, list the live agents and look
-for a running `pod_pytest.sh <ID>` process; a second agent started in C-21c's worktree by mistake and stopped
-itself when it saw the first one's files. Pod jobs (systemd units) keep running in any case.
+Written so a new session can continue without the conversation that produced this file.
+
+**Mode: draining.** At 21:45 CST the PI said to let the running agents finish and start no new ones; the
+orchestrating session only records, merges what reports, and keeps this file current. Nothing below under "Next" is
+started until the PI says so.
 
 **For a new session.**
 1. `git fetch origin`. The integration worktree is `.claude/worktrees/integration` in the main checkout, on local
    branch `integration`, which tracks `origin/plan/task-cards`: merge there and push with
    `git push origin HEAD:plan/task-cards`. The main checkout itself is on an old branch; do not merge there.
-2. Re-arm watchers on the pod jobs below with `scripts/orchestrator/watch_until.sh '<remote test>' '<remote report>'
-   [interval]` (one short ssh call per interval; long-held ssh sessions drop with exit 255 when the laptop sleeps
-   or the pod closes them). For a full suite that must survive drops: `pod_pytest.sh <name> tests/r0/test_runbook.py`
-   to sync, then on the pod `bash /tmp/if2453/ci-tmp/detached_suite.sh <name> 2`, poll `systemctl --user is-active
-   'ci-<name>-*'` and `tail -n 1 /tmp/if2453/ci-tmp/<name>-detached/log.*`.
-3. Pass `watch_ci.sh` the full sha from `git rev-parse`, never a typed one.
+2. Agents outlive a restart of the session: list the live agents and look for a running `pod_pytest.sh <ID>` before
+   restarting any card (a second agent once started in a live card's worktree).
+3. Watch pod jobs with `scripts/orchestrator/watch_until.sh '<remote test>' '<remote report>' [interval]` (one short
+   ssh call per interval; long-held ssh sessions drop with exit 255). For a full suite that must survive drops:
+   `pod_pytest.sh <name> tests/r0/test_runbook.py` to sync, then on the pod `bash /tmp/if2453/ci-tmp/detached_suite.sh
+   <name> 2`, poll `systemctl --user is-active 'ci-<name>-*'` and `tail -n 1 /tmp/if2453/ci-tmp/<name>-detached/log.*`.
+4. Pass `watch_ci.sh` the full sha from `git rev-parse`. `ci_repeat.sh <repo> <branch> <n>` reruns `ci` n times.
+5. Tests that need packages the pod image lacks: `BIOBOX_POD_PYDEPS=/tmp/if2453/pilot_s1/pydeps:/tmp/if2453/pydeps_f02:/tmp/if2453/pydeps_w27`
+   (zombi2, matplotlib; locked wheels, hash-checked; never modify `pilot_s1/pydeps`). The cross-host test needs
+   `BIOBOX_PEER_MANIFEST=/tmp/if2453/ci-peer/right.json` (the Actions `cross-host` job's hash line in a file).
 
 **How the work runs.** One card per agent, in its own worktree (`.claude/worktrees/agent-*`) on branch
-`task/<ID>` (measurements: `measure/<ID>`); tests only on the pod (`sh scripts/pod_pytest.sh <ID> [--shards 2]
-[paths]`). The orchestrating session audits each report, merges `--no-ff --no-commit`
-into `plan/task-cards` in an integration worktree, runs the affected tests on the merged tree with
-`env BIOBOX_TREE=<worktree> sh scripts/pod_pytest.sh integration <paths>` (a merged tree identical to the agent's
-tested tree needs no rerun), commits, adds the card's row to the table below, pushes, and checks the GitHub
-Actions run of the pushed commit (`scripts/orchestrator/watch_ci.sh <worktree> <full sha>`). Sonnet for tier-L
-cards, Opus for the rest, at most four agents at once. Long pod jobs run as detached systemd units with
-DONE/FAILED markers, because ssh from a sleeping laptop drops (exit 255 from a watcher means the connection,
-not the job).
+`task/<ID>` (measurements: `measure/<ID>`); tests only on the pod (`sh scripts/pod_pytest.sh <ID> [paths]`). The
+orchestrating session audits each report, merges `--no-ff --no-commit` into the integration worktree, runs the
+affected tests on the merged tree (`env BIOBOX_TREE=<worktree> sh scripts/pod_pytest.sh integration <paths>`; a
+merged tree identical to the agent's tested tree needs no rerun), commits, adds the card's row to the table below,
+pushes, and checks the GitHub Actions run of the pushed commit. Sonnet for tier-L cards, Opus for the rest, at most
+four agents at once. When a card conflicts with its own text, a decision or a file, the agent stops and reports;
+the card is amended in `TASKS.md` and the agent resumed (B-45, C-21c, E-09 went that way today).
 
-**Branches.** `plan/task-cards` on GitHub (repository `ifinkelstein/bio-box`, public): 105 cards (and the first session of F-02) and the
-measurements in the table below; also the pptx deck (`presentations/all-the-data-deck.pptx`, 51 slides) and the
-flank-tools review behind card W-25 (`planning/design/W-25_flank_tools_review.md`; W-25 approved). Last
-`ci` and `cross-host` confirmed green: `cb6d3b2` (2026-11-12, the C-21c merge). **`ci` is red at `7d00cc1`** (run 43327988144): one C-16 test, `test_c16_a_search_killed_at_its_wall_time_records_its_peak`, compares a scope's `memory.peak` (269 MiB) with the worker's VmHWM (357 MiB), a wrong oracle that only runs where a scope opens (Actions, not the pod) and is flaky there; the C-16 agent is correcting it on `task/C-16` and must show 5 consecutive green runs. `cross-host` is green. Manifest hash
-`f6126b00d45e9284d2799c3a699c992c` (since C-21b's new schema; `5b7fceb8…` after C-21a). The
-manifest hash includes a hash of every registered schema, so it changes with any schema change (found by C-23). `main` has pull
-requests 1 and 2 (87 cards) and is behind; its image passes its own suite (`ghcr.io/ifinkelstein/bio-box-test@sha256:7f97bc7b…`,
-`ghcr.io/ifinkelstein/bio-box@sha256:927cf824…`, on the pod as `~/bio-box/images/bio-box{,-test}_80d4c55.sif`),
-but the runbook and `scripts/pod_pytest.sh` still use `bio-box-test_74b3e05.sif`.
+**Branches.** `plan/task-cards` on GitHub (repository `ifinkelstein/bio-box`, public), tip `7075c2b`: 108 cards, two
+sessions of F-02 and the measurements in the table below; decisions DEC-29 to DEC-33 were added on 2026-11-12.
+`ci` and `cross-host` were green at `54137be`; the runs on `b663ec8`, `83ef837` and `7075c2b` were in progress at
+21:50 (check them: `gh run list --branch plan/task-cards`). Manifest hash of the fixture:
+`f6126b00d45e9284d2799c3a699c992c`, equal on Actions and the pod (it covers every registered schema's hash, so it
+moves with any schema change). `main` has pull requests 1 and 2 (87 cards) and is 21 cards behind; its image
+(`ghcr.io/ifinkelstein/bio-box-test@sha256:7f97bc7b…`, on the pod as `~/bio-box/images/bio-box{,-test}_80d4c55.sif`)
+has neither matplotlib nor skani, and the runbook and `scripts/pod_pytest.sh` still use `bio-box-test_74b3e05.sif`.
 
-**Agents running (14:30 CST).**
+**Agents still running (they drain; nothing new is started).**
 
-| Card | Branch | State | To continue |
+| Card | Branch | State | When it reports |
 |---|---|---|---|
-| W-25 group a search's loci by their flanks | `task/W-25` | started 2026-11-12 evening; design note first (`planning/design/W-25_flank_tools_review.md` is the method review) | audit, merge; run on `rN.3`'s RNA polymerase search (2,581 loci) |
+| B-42 recluster `rN.1b` in parts, then narrow DEC-25 to DEC-29's case | `task/B-42` | reclustering on the pod (units `b42-*`, scratch `/tmp/if2453/b42`) | audit; merge only if the clusters equal the published ones row for row; the decision row it proposes is the PI's to add |
+| F-02 session 3, families and coding sequences | `task/F-02-3` | started 21:00 | audit, merge; the model choices it lists (substitution matrix, rates, codons) go to the PI |
 
-**On the pod now** (wilkcomp02; account thread cap 40 by day, 56 at night, a total over everything we run).
-- The 50 Gbp build, unit `r50-driver` (log `/tmp/if2453/r50/driver.log`, step log `/tmp/if2453/r50/tmp/logs/r50-P6-5.log`;
-  state `/tmp/if2453/r50/driver/{DONE,FAILED}`; pause `touch /tmp/if2453/r50/driver/HALT`; `FAILED.1409-C20` there is
-  the old C-20 failure, renamed; `FAILED.1057-tokens` the one below). Stages P3 to P6 are ingested and gene-called.
-  Release `rM.1` published its clustering at 10:53 CST (*measured*: 45,815,843 proteins, 31,183,876 NR90 and
-  8,192,065 NR50 clusters), then **`rM.1.tokens` failed at 10:57 (DuckDB out of memory in the slot join; card
-  B-46)**. The driver was relaunched at 11:00 with `SKIP_RM1=1`: it skips `rM.1`, scans Pfam on P3 to P6 now (about
-  midday Saturday, *estimate*; each scan launch ends with the same tokens failure after the scan is published,
-  which the driver accepts), then waits for `/tmp/if2453/r50/driver/RELEASE_OK`. **B-46 is merged (2026-11-12 14:45): the fix is in `plan/task-cards`.** At 13:07 CST it was scanning P3
-  (unit `r50-P3-6`, launched 11:00). **To finish:** sync the fixed tree of `plan/task-cards` to
-  `/tmp/if2453/ci/r50` (rsync as `pod_pytest.sh` does) only while the driver is waiting (its log says "scans done;
-  waiting for .../RELEASE_OK"), never during a scan, then `touch /tmp/if2453/r50/driver/RELEASE_OK`; the driver
-  builds `rM.2` (with C-21b's `dim` and B-45's plan option; at 46 M proteins B-45 changes no cut). `rM.1` can then
-  be finished by relaunching its release steps with the fixed code. The driver and its `SKIP_RM1` mode are in
-  `scripts/stress/build_stage_pod/r50_driver.sh` (the pod copy in `/tmp/if2453/r50/bin` equals it). Watch: remote
-  test `[ -e /tmp/if2453/r50/driver/DONE ] || [ -e /tmp/if2453/r50/driver/FAILED ] || [ -e /tmp/if2453/r10/root/STOP ]
-  || ! systemctl --user is-active --quiet r50-driver || grep -q 'waiting for /tmp/if2453/r50/driver/RELEASE_OK'
-  /tmp/if2453/r50/driver.log`.
-- Measurement 0-08a, the Rfam sample scan (`/tmp/if2453/m08a`, units `m08a-*`, 20 shards done at 13:07 CST; branch
-  `measure/0-08a` pushed at `935dcac`). When `DONE` exists: copy `report/2026-11-12_rfam_sample.md` to
-  `planning/measurements/` and `0-08a_prok-2_proposed.tsv` to `planning/design/`, write the interpretation, merge.
-- Search pack directory (W-22): `/tmp/if2453/bio-box/packs` holds the `rN.3` pack (copied 2026-11-12 from
-  `/tmp/if2453/r50/packs/release=rN.3/a334c89ccf048904f297de3b2597af22`; equal `du -s`, 7,573,492 KB; with its
-  `pack_verified.json`; `chmod -R go-w` done). The `rN.1` pack (`/tmp/if2453/w19/packs/release=rN.1/71917a4167c7aebe1b7ff44d18a99306`, with its
-  verification record) may be copied the same way. Nothing was moved or deleted.
-- An orphaned search worker from W-14's `test_runner_death_is_reported` sat idle in a test scope from 2026-11-10
-  until the PI stopped it on 2026-11-12: a killed runner leaves its worker alive. Put that in card C-16's brief.
-- Data root `/tmp/if2453/r10/root` (46 GB; stages S1, P1 to P6; releases `rN.1a`, `rN.1b`, `rN.1`, `rN.2`, `rN.3`)
-  is on local disk, which a reboot clears, and **not yet copied to `/stor`**. Our files on the local disk total
-  about 350 to 390 GB of its 1.1 TB (543 GB free), mostly scratch.
+**On the pod** (wilkcomp02; account thread cap 40 by day, 56 at night, a total over everything we run; the PI keeps
+that cap). State at 21:47 CST:
+- **The 50 Gbp build**, unit `r50-driver` (log `/tmp/if2453/r50/driver.log`; state `/tmp/if2453/r50/driver/`; pause
+  `touch /tmp/if2453/r50/driver/HALT`). Release `rM.1` clustered (45,815,843 proteins, 31,183,876 NR90 and 8,192,065
+  NR50 clusters, *measured*), then its tokens step ran out of memory (fixed by card B-46, merged). The driver runs with
+  `SKIP_RM1=1`: it scans Pfam on P3 to P6, then waits for `/tmp/if2453/r50/driver/RELEASE_OK`. P3 has 89 of about 96
+  shards (unit `r50-P3-7`, 10 shards at once since 20:40); P4 to P6 follow at about 12 hours each (*estimate*): about
+  Saturday midday. The driver writes a temporary `STOP` in the root when it changes the shard count at 08:00 and
+  20:00 (its text says "switching"): that is not a failure. **To finish:** when the log says "scans done; waiting for
+  .../RELEASE_OK", sync the tree of `plan/task-cards` to `/tmp/if2453/ci/r50` (rsync as `pod_pytest.sh` does; never
+  during a scan), `touch /tmp/if2453/r50/driver/RELEASE_OK`, and the driver builds `rM.2`; then verify it, copy the
+  data root to `/stor` (it is on local disk, which a reboot clears), and finish `rM.1` by relaunching its release
+  steps. B-46 ran every release step of `rM.1` in scratch already (tokens 22 min, 2.26 GiB; postings, dim, manifest,
+  catalog clean). Watch test: `[ -e /tmp/if2453/r50/driver/DONE ] || [ -e /tmp/if2453/r50/driver/FAILED ] ||
+  { [ -e /tmp/if2453/r10/root/STOP ] && ! grep -q 'switching from' /tmp/if2453/r10/root/STOP; } || ! systemctl --user
+  is-active --quiet r50-driver || grep -q 'waiting for /tmp/if2453/r50/driver/RELEASE_OK' /tmp/if2453/r50/driver.log`.
+- **The S2C phase-2 candidate fetch** (card C-27): units `c27-fetch-<kk>`, log `/tmp/if2453/c27/logs/launch.log`;
+  3 of 12 batches done, the rest follow by themselves (about 23:30 CST, *estimate*); it halts by itself on refusals,
+  over 5% not served in a batch, a STOP file, or under 250 GB free (529 GB free now). A `HALT` line in the log, or
+  `/tmp/if2453/c27/genomes/HALT`, means it stopped; resume with `sh /tmp/if2453/c27/bin/c27_fetch.sh launch <batch>
+  chain`. When B01 to B12 each hold `DONE`: fill the per-batch table in
+  `planning/measurements/2026-11-13_s2c_skani_fetch.md`, replace the "in progress" text in `sources.yaml`, build
+  `paths.tsv` with `c27_skani.py paths`. skani itself is not run until an image holds it.
+- Data root `/tmp/if2453/r10/root` (stages S1, P1 to P6; releases `rN.1a`, `rN.1b`, `rN.1`, `rN.2`, `rN.3`): **not
+  yet on `/stor`**. `rN.3` is the release to use; its pack is in `/tmp/if2453/bio-box/packs` (found with `--profile`).
+- Scratch that can be cleared once the PI agrees (nothing is deleted without that): `/tmp/if2453/b46`, `m08a`, `m08b`,
+  `c21f`, `e09`, `w25`, `w27`, `w15`, old pack copies under `w16` and `w19`, old `ci/<ID>` trees.
 
-**Next, in order.**
-1. Merge B-46, C-23, C-21c and W-24 as they report; then C-16 (after C-23), W-15 (after W-24) and W-25 (after
-   C-21c and W-24).
-2. When `rM.2` is built and verified: copy the data root to `/stor/scratch/Wilke/if2453/all-the-data/` (one
-   `rsync`, atomic rename; files under 64 MB only as `small_ok` tables allow, AGENTS §7.3), then clear obsolete
-   scratch (old pack copies under `w16`, `w19`; finished measurement directories).
-3. C-24 (stage H1, huge phages) once the Pfam scan of P3 to P6 is done (one build in the root at a time); B-42
-   after B-45; then PLSDB (no card yet; needs C-21b and C-21c).
-4. A pull request bringing `main` up to `plan/task-cards`; switch the runbook and `pod_pytest.sh` to the new image.
-5. Finish 0-08a (above). S2C phase 2 (card C-25) waits for the PI.
+**Next, in order, when the PI says go.**
+1. A pull request bringing `main` up to `plan/task-cards` (the PI delegated its timing): it rebuilds the image with
+   matplotlib and skani. Then pull the image by digest to the pod, run its suite there, and switch the runbook,
+   `pod_pytest.sh`, `detached_suite.sh` and the drivers to it. If conda-forge has no `matplotlib-base` 3.11.2 for the
+   image's Python, the build fails there: adjust the pin.
+2. Card C-27 step (4): check `c27_skani.py`'s flags against `skani --help` in the new image, measure one species,
+   then the 499,624 pairs and the selection; then card C-25 step (2), the phase-2 fetch of the genomes kept, and step
+   (3), representatives-only Pfam measured on one stage (DEC-32).
+3. After the scans: `rM.2` (above), then card C-24 (stage H1, huge phages), then C-26 (PLSDB).
+4. Cards ready and not started: F-02 sessions 4 to 8 (IGRs and RNA motifs; phages and CRISPR; truth tables; null
+   worlds; manifest and validation), W-28 (results archive, DEC-33), B-47 (design: inferred Pfam rows, DEC-32), W-26
+   (accession table; not needed yet), E-10 (tRNA caller; needs the PI's pin). Follow-ups noted in rows below: a step
+   outlives a SIGKILLed `run-step` (C-16); `dim` reports 0 circular contigs for `rM.1` (B-46); the figure's palette
+   beyond 20 families (W-27); `prok-2` costs 1.20 to 1.23 times `prok-1` against a derived 1.178 (E-09).
 
 **Waiting for the PI.** Listed under "Open items for the PI" below.
 
@@ -265,7 +268,7 @@ Last full suite on the integration branch before the C-11 merge: 1,053 passed, 1
 pinned image; 3 min 40 s wall for the slowest shard, against 13.5 min in one process). The skips
 need samtools, bgzip, Prodigal or the golden set. Tests no longer run on the laptop (AGENTS.md §5.5).
 
-## Merged (105 cards, and measurements)
+## Merged (108 cards, and measurements)
 
 | Card | Merge | What it did | Audit notes |
 |---|---|---|---|
@@ -376,7 +379,14 @@ need samtools, bgzip, Prodigal or the golden set. Tests no longer run on the lap
 | C-21c | `cb6d3b2` | DEC-27, third part: counts by genome include every genome that carries a contig; counts by contig, locus and neighbour do not fan out. A new macro `q1_genomes` counts genomes through `genome_member`; `q1_count`'s tier filter counts a locus once in each tier its genomes have; `nbr summarize`'s `n_genomes` and `bio-box releases`' genome count go through the view; `hits.tsv`, the JSON occurrences and each locus table's facts line gain `n_genomes` and `genome_uids` (appended, on every release, as ruled) | Tested on two copies of the fixture that differ by one genome repeating two existing contigs: postings, `q1_count`, `partners_of` and the locus and neighbour counts are unchanged, every genome count is up by one. On releases without shared contigs every output equals the old code's once the appended fields are dropped (three roots, old code against new in one process). `q1_genomes` reads at most 2 `genome_input` row groups per contig of 188 or more (*measured* in the pruning test). `genome_basis` keeps its old rule. Not added: an `n_genomes` column on `partners_of` (an existing test selects its three columns). `open_catalog` re-creates the four macros older catalogs hold in an older form in one place (resolved with W-24's). Guides updated with the merge. Merged-tree tests 248 passed; branch suite 1,561 passed, 18 skipped |
 | C-16 | `316d724` | A killed step or search keeps a peak: the measuring helper writes the peak as the command runs (every 0.2 s, when it has grown: the scope's `memory.peak`, else the largest VmHWM of the command's process tree) and once more at the end, so a kill of the helper leaves its last sample; the record names the source (`scope_memory_peak`, `child_maxrss`, or the `_sampled` forms). A failed, killed or signalled step writes `<tmp>/staging/<stage>.<step>.failed.json` (not under `runs/`, which `built_by` reads), removed by the next attempt; a search's source goes into `limits_json` (no schema change). The helper now starts the command with fork and exec under PR_SET_PDEATHSIG, so a command dies with its helper | The orphan: a worker still importing when its runner died took its new parent as the one to watch and lived on (reproduced with a start-up gate); fixed by the helper change. The 36-hour orphan seen on the pod most likely predates W-14's own fix (*inferred*). *Measured* on the pod: a step killed with its group records 265.7 MiB against 256 MiB written; a search killed at its wall time 323.9 MiB, equal to the worker's VmHWM. The two real OOM-killer tests need a scope and skip inside the image; on Actions they are inferred to have passed from the progress characters, with no printed peak. Left: a step still outlives a SIGKILLed `run-step` (on the pod the unit's cgroup ends it). Merged-tree tests 451 passed, 5 skipped; branch suite 1,558 passed, 20 skipped |
 | C-25 (1) | `8b563f2` | Measurement: the S2C selection reproduced from the GTDB R226 metadata without an ANI step (`planning/measurements/2026-11-12_s2c_selection.md`; script `scripts/stress/build_stage_pod/c25_select.py`; lists on the pod under `/tmp/if2453/c25/out`, rebuilt byte for byte by the script) | *Measured*: 49,324 complete genomes in 11,973 species; S2C 25,458 genomes and 106,409,469,843 bp, the plan's numbers exactly; every phase-1 genome is rank 1 of its species; remainder 13,485 genomes, 55,910,526,156 bp, 51,597,124 GTDB proteins (Pseudomonadota 30.23 Gbp). The ANI step can act only in the 243 species with more than 20 complete genomes: at most 3,368 selected genomes could differ (*derived*; 25% of the remainder); in 102 of them the cut falls inside a quality tie and 485 genomes were chosen by accession alone. Five species depend on genomes NCBI did not serve. For the PI: skani or not |
-| F-02 (1) | this merge | `synthworld` backbone (`src/biobox/synthworld/`): from a preset and a seed, the species tree and per genome the realized gene order, strands, families, copies and groups with their truth, on ZOMBI2 0.54.0 (`zombi2==0.54.0` added with `uv add`, approved by the PI; the lock gains only `zombi2` and `tqdm`). DEC-15's conditions are enforced and tested: grouped fates for scored units, replacement refused where groups exist, the root scrambled on a stem of synthworld's own and checked at every build | *Measured* (wilkcomp02, 2026-11-12, `micro`, seed 20261112): 46 genomes, 1,509 genes each on average (1,393 to 1,708), 69,411 adjacency rows, 17.5 to 19.6 s against a 60 s limit; grouped fates break 0 of 2,943 units, per-family fates 264 of 3,842. The image has no ZOMBI2: pod tests import it from `/tmp/if2453/pydeps_f02` (the locked wheel, hash-checked) and skip without it; Actions installs it from the lock. For the PI: the `micro` strength grid uses member transfer rate {0.05, 0.15, 0.30} by together {0.3, 0.7, 1.0}, since a per-family loss axis is not available for adjacent groups. Remaining sessions and seven spec corrections are listed on the card. Merged-tree r0, r1 and backbone tests pass |
+| F-02 (1) | `7d00cc1` | `synthworld` backbone (`src/biobox/synthworld/`): from a preset and a seed, the species tree and per genome the realized gene order, strands, families, copies and groups with their truth, on ZOMBI2 0.54.0 (`zombi2==0.54.0` added with `uv add`, approved by the PI; the lock gains only `zombi2` and `tqdm`). DEC-15's conditions are enforced and tested: grouped fates for scored units, replacement refused where groups exist, the root scrambled on a stem of synthworld's own and checked at every build | *Measured* (wilkcomp02, 2026-11-12, `micro`, seed 20261112): 46 genomes, 1,509 genes each on average (1,393 to 1,708), 69,411 adjacency rows, 17.5 to 19.6 s against a 60 s limit; grouped fates break 0 of 2,943 units, per-family fates 264 of 3,842. The image has no ZOMBI2: pod tests import it from `/tmp/if2453/pydeps_f02` (the locked wheel, hash-checked) and skip without it; Actions installs it from the lock. For the PI: the `micro` strength grid uses member transfer rate {0.05, 0.15, 0.30} by together {0.3, 0.7, 1.0}, since a per-family loss axis is not available for adjacent groups. Remaining sessions and seven spec corrections are listed on the card. Merged-tree r0, r1 and backbone tests pass |
+| W-25 | `5a3cda5` (with 0-08a) | `bio-box nbr flanks RUN`: a search's loci grouped by the anchor's own cluster and compared by their flanks (`src/biobox/search/flanks.py`; design `planning/design/W-25_flanks.md`; method review `planning/design/W-25_flank_tools_review.md`). Tokens are (level id, side, strand relative to the anchor); distances J (1 − Jaccard of token sets) and A (1 − adjacency index), or their combination (w = 0.2, chosen on the planted test); identical loci collapse to one leaf; per group a UPGMA tree, context types from a cut (default 0.5), a conservation table per context type, and an optional GFF export | No figure yet: matplotlib is in neither `uv.lock` nor the image (card W-27, for the PI). Tested on planted contexts against a brute-force oracle (the card's five cases); byte-identical across thread counts and hash seeds. On `rN.3`'s RNA polymerase search (*measured*, wilkcomp02, 2026-11-12, `planning/measurements/2026-11-12_flanks_rN3.md`): 1,957 proteins, 2,581 loci, 432 groups (244 of one locus), 598 context types at nr50; phage and prokaryote loci share none; 15.0 s, 1.41 GB per run, 124 MB more at the 2,000-leaf bound. At the pfam level phage loci split almost one type per locus (2,119 types), because a gene without a domain is a token of its own. For the PI: the defaults (`--level nr50`, `--group-by anchor-nr90`, `--window 5g`, `--cut 0.5`, `--distance j`) and the pfam rule. The GFF export is untested against LoVis4u, clinker and Domainator (none is in the image). Merged-tree tests 260 passed; branch suite 1,580 passed, 19 skipped |
+| 0-08a | `5a3cda5` | Measurement: full Rfam 15.1 on 100 prokaryotes (stratified by phylum) and 300 phages of `rN.3`, to find the long-tail models that hit (`planning/measurements/2026-11-12_rfam_sample.md`; proposed set `planning/design/0-08a_prok-2_proposed.tsv`) | *Measured* (wilkcomp02, 2026-11-12): 412,032,974 bases, 70.17 CPU-hours (13% under the estimate), 11,912 hits, 358 families (341 in prokaryotes, 29 in phages); `prok-1` finds 10,003 of 10,853 distinct loci (92.2%, *derived*); 182 long-tail models hit (91 in one genome), and the 100th prokaryote still adds 1.92 families: no saturation. `prok-2`: 770 models (34 whole genome), 299.7 CPU-hours per 10 Gbp against 254.5 (*derived*). 165 of the 188 model-organism sRNA models never hit here (species-specific; kept). For the PI: adopt `prok-2` |
+| F-02 (2) | `54137be` (with the C-16 test fix) | `synthworld` backbone, the rest (format `synthworld-backbone/2`): a synthetic taxonomy from depth cuts of the species tree (`taxonomy.tsv`, `taxa.tsv`); plasmids as adjacent groups that travel whole and are cut out as their own circular replicons with exact preset sizes (ZOMBI2 cannot make unequal replicons); vehicles, hubs, decoy families, distance-decay transfer, lineage-varying rates; typed `events.tsv`, `gene_tree_nodes.tsv`, `replicons.tsv`. Session 1's files keep their columns (`families.tsv` gains `partner`) | Each planted property is recovered by a brute-force reading of ZOMBI2's raw files. *Measured* (wilkcomp02, 2026-11-12, `micro`, seed 20261112): 36.2 to 36.5 s (limit 60 s); chromosomes 969 to 3,798 genes, mean 1,873 (+25% against the spec's 1,500: the range and the mean cannot both hold); plasmids 0, 1, 2 in 17, 20, 9 genomes; all 146 decoy transfers land where the partner lives; recipients closer against farther 2,911/756 under decay, 1,460/1,423 without. Turnover rates were doubled to reach the size range. Flagged: gene order is barely conserved across the micro tree (about 39 distinct neighbours per root family over 46 copies), for the validation session. For the PI: keep the range and accept the mean, or the reverse. Merged-tree r0, r1 and backbone tests 641 passed |
+| W-27 | `b663ec8` | The synteny figure of `nbr flanks` (`--figure`, `--figure-rows`): per group an SVG and a PDF with the UPGMA tree, genes as arrows on the anchor's strand with the anchor centred, a legend naming each coloured family with its share of the group's loci, marks where a linear contig ends, shading by context type, and columns for accession, loci, context type, kind, stage, taxon and the anchor's NR90. matplotlib added (`uv add`; `matplotlib-base=3.11.2` in `container/environment.yml`; approved by the PI): the lock gains matplotlib and its dependencies, no existing pin changed | At most 60 rows by default (the leaf with the most loci of each context type, then the leaves with the most loci; stated on the figure); at most 20 families in the picked palette, further ones by hue (some look alike). Byte-identical across runs, thread counts and hash seeds; on `rN.3`'s RNA polymerase run two runs gave equal bytes over 3,028 files; about 0.6 s per figure (*derived*), 1.31 to 1.39 GB. Two figures committed under `planning/measurements/2026-11-12_flanks_rN3/figures/`. The image has no matplotlib until it is rebuilt: pod tests import it from `/tmp/if2453/pydeps_w27` (locked wheels, hash-checked) and skip without it. clinker (already on the pod) read two exported loci once given contig FASTA; LoVis4u not checked. Not verified: that conda-forge has `matplotlib-base` 3.11.2 for the image's Python (the next image build shows it). Merged-tree tests 261 passed |
+| C-25 (1b) | this merge | Measurement: GTDB R226 publishes no ANI between two genomes (`planning/measurements/2026-11-12_s2c_ani.md`): its 67 files hold only one row per species cluster with an ANI radius (`sp_clusters_r226.tsv`), and neither the metadata nor the API's genome card has a per-genome or per-pair value | So DEC-31's fallback applies: skani on the 243 species with more than 20 complete genomes. *Measured* from the metadata: 28,726 genomes, 119.7 Gbp; to download 28,483 genomes and 118.8 Gbp (the 243 best are in phase 1), which is 23,866 genomes and 101.6 Gbp more than phase 2 keeps from those species; about 34.5 GB downloaded, 120.3 GB of FASTA (deletable once sketched), about 92 minutes (*derived* from the P3 to P6 fetch); greedy farthest-first needs 499,624 pairs; skani about 4 to 17 CPU-hours (*estimate*, unsourced unit costs: measure on one species first). Card C-27 |
+| C-27 (1 to 3) | `83ef837` | skani for the S2C phase-2 pick (DEC-31's fallback), prepared: `skani=0.4.0` pinned in `container/environment.yml` (bioconda linux-64 build `hec9b1f2_0`; not installed or run anywhere yet); `c25_select.py --ani` (greedy farthest-first from the best-quality genome on 100 − ANI; a pair not reported, or with its larger alignment fraction under 15, counts as distance 100; ties by quality then accession; phase 1 asserted a subset) with a brute-force oracle; `c27_skani.py` (sketch, pairs, normalise; dry run only); `c27_fetch.py` and the fetch itself | The fetch runs on the pod as self-chaining units `c27-fetch-<kk>` into `/tmp/if2453/c27/genomes/` (12 batches of about 9.9 Gbp, kept as `.fna.gz`, each file checked against NCBI's md5; about 34.8 GB and 2 hours in all, *estimate*; stops by itself on refusals, a STOP file, over 5% not served in a batch, or under 250 GB free). *Measured* so far: the 7 phase-1 genomes were not served again (they stay out, DEC-31); batch 1 served 2,396 of 2,406 in 597.5 s. Dry run on the real candidates: 499,624 pairs in 5 shards. To check before step (4): skani's flags and output columns against `skani --help` in the rebuilt image (they were written from its README); the alignment-fraction rule is for the PI to confirm. Merged-tree tests 213 passed |
+| E-09 | this merge | `prok-2` is the frozen default ncRNA model set (DEC-30): 770 models, 34 scanned on whole genomes (`prok-1`'s 23, four `prok-1` models that change, RF01670, RF02111, RF02820 and RF02908, and 7 new ones); the producer name carries `prok2`; `prok-1` still loads with its old name. Shards are planned per set: 358.0 CPU-hours per 10 Gbp for `prok-2` (*derived*: 304.0 × 299.7 / 254.5), 111,734,541 bases a shard; a set file that is not frozen is planned at the dearest frozen set's rate | On the 8 genomes of 0-09c (*measured*, wilkcomp02, 2026-11-12, `planning/measurements/2026-11-12_ncrna_prok2.md`): 1,029 of 1,029 expected hits and no other, 254 families, 52 clan losers (the same as `prok-1`), 977 features; all 1,024 rows of the unchanged models are identical; of the four switched models only IS009 hits: two of its features grow by 33 bases (they had stopped at a region's end), two new loci lie inside genes, none disappears. The 182 added models have no hit on these genomes. Cost 314.1 CPU-hours per 10 Gbp (*derived* from 34.12 measured CPU-minutes), +4.8% against DEC-30's 299.7; the slower shard ran 2.2% above the planning rate. `prok-2` against `prok-1` measured is 1.20 to 1.23, where DEC-30 derived 1.178: cause not established. Merged-tree tests 255 passed; branch suite 1,617 passed, 34 skipped |
 | DEC-29 | `c3dc901` | The PI chose a CPU exemption for clustering calls that cannot be split under the budget (above about 74 M proteins), over waiting for an MMseqs2 fix or incremental clustering. Card B-45 implements it; card B-42 narrows DEC-25 to it instead of removing it | |
 
 Decisions DEC-18 to DEC-23 were approved by the PI on 2026-11-09 and are in `planning/DECISIONS.md`.
@@ -417,37 +427,37 @@ probed by hand on the pod).
 
 ## Open items for the PI
 
-Added 2026-11-12, recommendation first:
-- Card C-25: skani for the S2C selection. Without an ANI step the 20 genomes kept in each of 243 heavily sequenced species are
-  the best by CheckM2 and then by accession, which can be near-identical isolates of one project (485 genomes chosen by
-  accession alone; at most 3,368 could differ, *derived*). Recommendation: add skani to `container/environment.yml` (yours)
-  and select for diversity, since strain diversity is why S2C takes 20 per species. Also: retry the 7 genomes NCBI did not
-  serve (5 species have no other complete genome)?
-- Card F-02: accept the `micro` preset's strength grid (member transfer rate by together fraction) in place of the spec's
-  per-family loss axis. Recommendation: accept; it is what ZOMBI2 can vary for adjacent groups.
-- Done 2026-11-12: the PI approved card W-25 (group a search's loci by their flanks; review in
-  `planning/design/W-25_flank_tools_review.md`). It starts after C-21c and W-24 merge (same files).
+Decided by the PI on 2026-11-12 (evening):
+- `prok-2` is the ncRNA model set (DEC-30; card E-09). matplotlib is added for the synteny figure (card W-27).
+- S2C phase 2 selection keeps the ANI-diversity rule, from GTDB's own ANI values if they cover it, else skani; the 7
+  genomes NCBI did not serve are retried once (DEC-31; card C-25 step 1b).
+- S2C phase 2 Pfam on NR90 representatives plus length-different members, the rest inferred and labelled (DEC-32; cards
+  C-25 step 3 and B-47).
+- Gene calls stay in whole-genome context for now; the decision on per-contig calling (card C-21f) is taken before S2C
+  phase 2 is built. Judging which calls are better needs a reference-CDS source in `sources.yaml`.
+- `nbr flanks` defaults and its rule for unannotated genes accepted (card W-25). The F-02 `micro` strength grid accepted.
+- Search results: one archive per run on `/stor` (DEC-33; card W-28).
+- tRNAscan-SE for phage and archaeal tRNAs: approved in principle, as a later card (E-10; the pin in
+  `container/environment.yml` is the PI's).
+- The pod's thread cap stays 40 by day and 56 at night; no request for more.
+- PLSDB is built after stage H1 (card C-26).
+- Earlier the same day: DEC-29 (unsplittable clustering call as one process), W-25 approved, zombi2 approved for F-02.
+
+Still open, recommendation first:
 - Card C-21b: a contig's genomes are looked up at one row group per stage file (19 at 20 stages, *measured*); a
   per-release copy of the membership sorted by contig would make it one. Recommendation: not yet, until a search
   needs it.
 - Card W-22: the host's pack directory is the profile's `<tmp>/packs`; an explicit `packs:` key in the profile needs
   a change to `profile.py`. Recommendation: not needed now.
-- Card C-21f: whether gene calls become a function of the contig alone (DEC-27 deferred it to this measurement).
-  Under policy p3, 99.47% of P1's calls are unchanged (chromosomes 99.78%; contigs under 100 kb 86.14%), at +1.06%
-  CPU. Recommendation: keep today's calls for now and decide before S2C phase 2, when shared plasmids become common;
-  judging which calls are better needs a reference-CDS source in `sources.yaml`.
 - Card E-08: two real features lose by Rfam's own clans (small SRP to large SRP in *B. subtilis*; GlmY to GlmZ in
   *E. coli*), and the greedy rule differs from `cmscan`'s only in chains of four or more overlapping hits.
   Recommendation: accept.
-- Card 0-08b: Infernal's filters miss 6 of 239 tRNA loci on six genomes, 5 in the jumbo phage LAK-A1; turning them
-  off costs about 7,900 CPU-hours per 10 Gbp. Recommendation: a dedicated tRNA caller (tRNAscan-SE) for phage and
-  archaeal tRNAs, which needs a change to `container/environment.yml` (yours).
-- Card C-25: S2C phase 2 needs skani (not in the image) for its ANI-diversity selection, and a choice of annotation
-  (full Pfam about 2,500 CPU-hours, *derived*; or representatives only).
-- Card 0-10: where users' search results live (recommendation: one archive per run on `/stor`).
-- Whether to build PLSDB, and when (inputs fetched; 7,139 of its 72,556 records are already contigs of P1 to P6).
+- Card F-02: the `micro` world's genome sizes: the spec's mean (about 1,500 genes) and range (1,000 to 4,000) cannot both
+  hold; session 2 reached the range with a mean of 1,873. Recommendation: keep the range.
+- Card B-42 will propose the text of a decision row saying DEC-25's one-process exemption has ended.
+- Card C-27: a pair of genomes whose larger alignment fraction is under 15% is treated as unrelated (distance 100) in the
+  diversity pick, and alignment fraction is otherwise ignored. Recommendation: accept.
 - The data root's README on the pod still says the repository is private.
-- Seven genomes of the 50 Gbp selection that NCBI does not serve (recommendation: leave them out).
 - Old search runs and packs under old `/stor` roots: keep or delete (nothing is deleted without you).
 
 Earlier items:

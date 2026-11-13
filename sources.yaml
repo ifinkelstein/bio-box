@@ -41,7 +41,15 @@ sources:
       7 accessions were not served (listed in planning/measurements/2026-11-11_r50_inputs.md). Per-file
       sha256 values are in each stage's lock.json inside the archives
     stored: provisional/r50_inputs/ (ladder_genomes_P1.tar, ladder_genomes_P2.tar, genomes_P3.tar to genomes_P6.tar, r10_inputs.tar, r50_selection_and_inputs.tar)
-    used_by: [scripts/stress/build_stage_pod/r50_fetch.py]
+    selection_s2c_phase2: >-
+      card C-27 (DEC-31): every complete genome of the 243 GTDB R226 species with more than 20, less the 243
+      phase 1 holds (28,483 genomes, 118,803,798,981 bp), plus one retry of the 7 phase-1 genomes not served;
+      list ani_fetch.tsv (28,490 rows, sha256 74f5429a45be0244729cda063a922bf3e7a1e611c99759ca5ad71f2538290843),
+      written by c25_select.py --candidates; batches in planning/measurements/2026-11-13_s2c_skani_fetch.md
+    fetched_s2c_phase2: >-
+      in progress from 2026-11-12 21:22 CST into /tmp/if2453/c27/genomes/<batch>/ on wilkcomp02 (.fna.gz, per-file
+      sha256 in each batch's lock.json); the 7 phase-1 retries were not served again; nothing archived yet
+    used_by: [scripts/stress/build_stage_pod/r50_fetch.py, scripts/stress/build_stage_pod/c27_fetch.py]
     approved: by the PI on 2026-11-11
   - name: ncbi_ftp_genome
     what: fallback for an assembly the Datasets endpoint does not return; the same FASTA by its FTP path

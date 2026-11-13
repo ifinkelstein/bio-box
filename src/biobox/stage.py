@@ -3,7 +3,7 @@
     bio-box build-stage --profile P --root R --stage S --release REL [--stages S0,S1]
         --genomes genomes.json --objects objects.json [--library NAME VERSION HMM CUTOFF ...]
         [--tmp D] [--threads N] [--scan-jobs J] [--scan-cpus C] [--cluster-parts N] [--gene-call-version V]
-        [--ncrna-cm Rfam.cm.gz [--ncrna-set prok-1]]
+        [--ncrna-cm Rfam.cm.gz [--ncrna-set prok-2]]
 
 No workflow engine: the list `steps` returns and the run records `run-step` writes. Each step is
 `runstep.run_step` running `python -m biobox.cli stage ...` or `python -m biobox.cli release ...`
@@ -14,7 +14,7 @@ with `--out` left to `$BIOBOX_STAGING` (card C-08), in this order:
 
 `features` is the slot for feature producers other than the gene caller. Without `--ncrna-cm` it has no
 command and is passed over. With `--ncrna-cm F` (card E-07) it is the ncRNA producer
-(`biobox.l1.ncrna`, model set `--ncrna-set`, default `prok-1`), a step named `ncrna-<producer>`, and the
+(`biobox.l1.ncrna`, model set `--ncrna-set`, default `prok-2`, DEC-30), a step named `ncrna-<producer>`, and the
 IGR, tape, token and posting steps are given both producers (`--producers <gene caller>,<ncRNA
 producer>`), which makes a tape version of its own by design; the gene-call files are the same with or
 without it. The ncRNA scan runs with `--cpus` C (`--scan-cpus`, default `DEFAULT_SCAN_CPUS`, at most
@@ -135,9 +135,10 @@ stay as published: a rescan must reproduce its record's sha256, and one that doe
 build before the merge with an error naming the shard.
 
 The ncRNA scan in shards (card E-07). Its estimate is the stage's genome bases (the `contig_len` of the
-default variants in the stage's `contig_index`, listed in ingest's run record) at `NCRNA_CPU_H_PER_10GBP`;
+default variants in the stage's `contig_index`, listed in ingest's run record) at the set's `ncrna_rate`
+(`NCRNA_CPU_H_PER_10GBP`, prok-1's, times the set's `NCRNA_SET_COST`, card E-09);
 over `SHARD_MARGIN` of the budget (or with its plan published) it runs as `ncrna-<p>.plan` (`bio-box stage
-ncrna plan`, shards of at most `ncrna_shard_bases(profile)` genome bases), `ncrna-<p>.shard-<k>` and the merge
+ncrna plan`, shards of at most `ncrna_shard_bases(profile, set)` genome bases), `ncrna-<p>.shard-<k>` and the merge
 under the step's own name, exactly as a domain scan does, with the same pool, hours, STOP and lost-scratch
 rescans (`python -m biobox.l1.ncrna rescan`). The pool has one more term, memory: each `cmsearch` holds up to
 `ncrna_job_bytes(C)`, so at most `cap // ncrna_job_bytes(C)` shards run at once under the memory cap this
@@ -265,6 +266,14 @@ RECHECK_S = 60.0
 # 300 CPU-minutes when it runs at the slower rate, where at 247.4 it would have used 295 (derived: 240 × 304.0 /
 # 247.4). Shard size: 131,578,947 genome bases at 300 CPU-minutes (derived: 0.8 × 300 × 1e10 / (304.0 × 60)).
 NCRNA_CPU_H_PER_10GBP = 304.0
+# The planning rate is that of the set the build scans (card E-09, DEC-30): rate(set) = NCRNA_CPU_H_PER_10GBP x
+# NCRNA_SET_COST[set], each frozen set's cost per base relative to prok-1's, whose rate above was measured. prok-2:
+# 299.7 against 254.5 CPU-hours per 10 Gbp (*derived* in planning/measurements/2026-11-12_rfam_sample.md item 6, from
+# the per-model CPU lines of measurement 0-09c scaled to prok-1's measured 254.5), so 1.178 and 358.0 CPU-hours per
+# 10 Gbp (derived: 304.0 x 299.7 / 254.5); a prok-2 shard is 111,734,541 genome bases at 300 CPU-minutes (derived: 0.8
+# x 300 x 1e10 / (358.0 x 60)), where a shard cut at prok-1's rate would use 283 CPU-minutes (derived: 240 x 1.178).
+# A set file that is no frozen set has no derived cost: it is planned at the dearest frozen set's rate.
+NCRNA_SET_COST = {"prok-1": 1.0, "prok-2": 299.7 / 254.5}
 # Peak RSS of one `cmsearch --cpu 2` on intergenic records, 6.4 GiB at most (*measured*, wilkcomp02, 2026-11-11,
 # measurement 0-09c, full library; 4.8 GiB on whole genomes). A shard of C threads is counted at 6.4 GiB per two
 # threads (derived; an over-estimate, since card E-01 measured 12.3 GiB at --cpu 8 on whole genomes, not 25.6).
@@ -924,15 +933,25 @@ def _rescan_lost(prof: Profile, b: Build, root: Path, scan: Step, shards: list[S
 # --- the ncRNA scan in shards (card E-07) --------------------------------------------------------------------
 
 
-def ncrna_cpu_min(bases: int) -> float:
-    """CPU-minutes of the ncRNA scan of `bases` genome bases at `NCRNA_CPU_H_PER_10GBP` (derived)."""
-    return bases * NCRNA_CPU_H_PER_10GBP * 60 / 1e10
+def ncrna_rate(model_set: str | Path = ncrna.DEFAULT_SET) -> float:
+    """CPU-hours per 10 Gbp of the ncRNA scan with `model_set` (a frozen set's name or a set file):
+    `NCRNA_CPU_H_PER_10GBP` x `NCRNA_SET_COST` of the frozen set whose bytes the file has (`ncrna.set_version`), or of
+    the dearest frozen set for a file that is none (constants above)."""
+    v = ncrna.set_version(model_set)
+    cost = next((c for name, c in sorted(NCRNA_SET_COST.items()) if name.replace("-", "") == v),
+                max(NCRNA_SET_COST.values()))
+    return NCRNA_CPU_H_PER_10GBP * cost
 
 
-def ncrna_shard_bases(prof: Profile) -> int:
-    """Genome bases per ncRNA scan shard: what fits in `SHARD_MARGIN` of the profile's `cpu_min_per_process` at
-    `NCRNA_CPU_H_PER_10GBP`, at least one. Nothing else: not the jobs, not the threads."""
-    return max(1, int(SHARD_MARGIN * prof.cpu_min_per_process * 1e10 / (NCRNA_CPU_H_PER_10GBP * 60)))
+def ncrna_cpu_min(bases: int, model_set: str | Path = ncrna.DEFAULT_SET) -> float:
+    """CPU-minutes of the ncRNA scan of `bases` genome bases at the set's `ncrna_rate` (derived)."""
+    return bases * ncrna_rate(model_set) * 60 / 1e10
+
+
+def ncrna_shard_bases(prof: Profile, model_set: str | Path = ncrna.DEFAULT_SET) -> int:
+    """Genome bases per ncRNA scan shard: what fits in `SHARD_MARGIN` of the profile's `cpu_min_per_process` at the
+    set's `ncrna_rate`, at least one. Nothing else: not the jobs, not the threads."""
+    return max(1, int(SHARD_MARGIN * prof.cpu_min_per_process * 1e10 / (ncrna_rate(model_set) * 60)))
 
 
 def ncrna_job_bytes(cpus: int) -> int:
@@ -971,14 +990,16 @@ def _ncrna_sharded(prof: Profile, b: Build, root: Path, step: Step) -> bool:
     if ncrna.find_plan(root, b.stage, prod) is not None:  # the `ncrna_scan` artifact, or where card E-07 put it
         return True
     bases = stage_bases(root, b.stage)
-    est = ncrna_cpu_min(bases)
+    ms = ncrna_set_arg(b)
+    est = ncrna_cpu_min(bases, ms)
     if est <= SHARD_MARGIN * prof.cpu_min_per_process:
         return False
     _say(f"{b.stage}.{step.name}: the scan of {bases:,} genome bases is estimated at {est:,.1f} CPU-minutes in one "
-         f"process ({NCRNA_CPU_H_PER_10GBP} CPU-hours per 10 Gbp, derived in planning/measurements/"
-         "2026-11-11_ncrna_producer.md), "
-         f"over {SHARD_MARGIN:.0%} of the profile's cpu_min_per_process of {prof.cpu_min_per_process} (AGENTS §7.2); "
-         f"it runs in shards of at most {ncrna_shard_bases(prof):,} bases, one step each")
+         f"process ({ncrna_rate(ms):.1f} CPU-hours per 10 Gbp for the set {ncrna.set_version(ms)}: "
+         f"{NCRNA_CPU_H_PER_10GBP} for prok1, derived in planning/measurements/2026-11-11_ncrna_producer.md, times the "
+         f"set's relative cost), over {SHARD_MARGIN:.0%} of the profile's cpu_min_per_process of "
+         f"{prof.cpu_min_per_process} (AGENTS §7.2); it runs in shards of at most {ncrna_shard_bases(prof, ms):,} "
+         "bases, one step each")
     return True
 
 
@@ -994,8 +1015,8 @@ def ncrna_scan_steps(prof: Profile, b: Build, step: Step, n_shards: int | None, 
                 b.stage, "--cm", str(Path(b.ncrna_cm).resolve()), "--ncrna-set", ncrna_set_arg(b), *extra)
 
     mine = str(Path(tmp) / f"{b.stage}.{step.name}.plan")
-    plan = Step(b.stage, f"{step.name}.plan", nc("plan", "--scan-bases", str(ncrna_shard_bases(prof)), "--tmp", mine),
-                scratch=mine)
+    limit = ncrna_shard_bases(prof, ncrna_set_arg(b))  # cut at the rate of the set scanned (card E-09)
+    plan = Step(b.stage, f"{step.name}.plan", nc("plan", "--scan-bases", str(limit), "--tmp", mine), scratch=mine)
     if n_shards is None:
         return [plan]
     seq = ("--seq-stages", ",".join(seq_stages)) if seq_stages else ()

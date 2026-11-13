@@ -358,4 +358,5 @@ def test_the_producer_name_carries_the_clan_rule():
     lib = REPO / "tests/fixtures/micro_s0/rfam15.1_micro_s0.cm.gz"
     if shutil.which("cmsearch") is None:
         pytest.skip("cmsearch (Infernal) not on PATH; it is in the test image")
-    assert nc.producer(lib).endswith("-prok1-igr200nt-clan1")
+    assert nc.producer(lib).endswith("-prok2-igr200nt-clan1")  # the default set since card E-09 (DEC-30)
+    assert nc.producer(lib, "prok-1").endswith("-prok1-igr200nt-clan1")
