@@ -244,7 +244,18 @@ it), `hits.tsv`, `hits.faa`, `neighbors.tsv`, `loci/`. The run is `<profile tmp>
   `--pack-dir`. `--figure` (card W-27) also writes `groups/<group>/figure.svg` and `figure.pdf`. Rows are leaves in
   tree order beside the tree. Each row draws the leaf's first locus, centred on the anchor along its strand. A
   family's colour is fixed across the run; families held by under 10% of the group's loci are grey and genes with no
-  id are white. The columns give accession, loci in the leaf, context type, kind, stage, taxonomy and anchor NR90. A
+  id are white. Colour defaults (DEC-41, card W-32): at `--level nr50` or `nr90`, when the release's manifest lists
+  an `l1_domains` file (of `--library` when given; never decided from directories), `--colour-weight anchor-nr90`
+  (loci weigh 1/(loci of their anchor's NR90 cluster) toward the 10%) and `--colour-fallback pfam` (a rare
+  cluster's gene takes its Pfam architecture's colour when the architecture reaches 10%). One colour per family:
+  a coloured cluster whose genes' commonest architecture stands in for rare clusters anywhere in the run is drawn
+  in that architecture's colour everywhere, and the legend lists "Pfam <architecture>", not the cluster. Otherwise,
+  and always at `pfam`, the defaults are `locus` and `none`, with one `note:` line on stderr at nr50 or nr90. Give
+  `--colour-weight locus --colour-fallback none` for the old colours. The tables (every TSV, Newick and GFF) do not
+  depend on these; `README.txt` gains a paragraph naming them, and `groups.tsv` names them only when given. Report
+  the colour settings with a figure. `--auto-cut N` (at most N types per group; never at distance 1) replaces `--cut`;
+  `--auto-cut gap` is refused (exit 2). The columns give accession, loci in the leaf, context type, kind, stage,
+  taxonomy and anchor NR90. A
   figure holds at most `--figure-rows` rows (default 60). Above that it draws the largest leaf of each context type,
   then the largest leaves, and its title says "N of M leaves": report that. Without matplotlib, `--figure` is refused
   with exit 2. The figure is for people; take numbers from the TSVs.

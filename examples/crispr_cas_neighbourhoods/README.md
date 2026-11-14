@@ -261,8 +261,9 @@ are phages). The genera are: *Vibrio* 41 genomes (6 in P1, 35 in P2), *Pseudoalt
 *Aliivibrio* 4, *Photobacterium* 1. So the I-F3 element is in 7 of 41 *Vibrio* genomes, the one *Photobacterium*, 2
 of 10 *Pseudoalteromonas*, and no *Shewanella* or *Aliivibrio* (*derived* from the two tables; genus by header).
 
-**Figures** (`nbr flanks --figure`, rows in UPGMA order of the flank distance; colours are Pfam architectures,
-grey a family in under 10% of the group's loci, white a gene with no domain):
+**Figures** (`nbr flanks --figure`, rows in UPGMA order of the flank distance; in the two Pfam-level figures colours
+are Pfam architectures, grey a family in under 10% of the group's loci, white a gene with no domain; the NR50 figure
+is described with it):
 
 - `figures/tniq_cas_pfam.svg` (and `.pdf`): the 27 TniQ loci with a Cas domain plus one locus brought in by a shared
   anchor protein (28 loci; `nbr flanks --anchors-file results/uids_tniq_cas.txt --level pfam --window 10g
@@ -280,10 +281,20 @@ grey a family in under 10% of the group's loci, white a gene with no domain):
   `Cas3-like_C_2` domain, no Cas8f domain); and at the bottom the I-F3 elements, TniQ (brown) at -2, a longer
   Cas5f-domain gene at -1, no Cas1, Cas3 or Cas8f. Took 24.5 s and 33.4 CPU-seconds, at most 1.39 GB
   (*measured*, `/usr/bin/time -v`).
-- `figures/cas7f_all_nr50.svg` (and `.pdf`): the same loci at the NR50 level, as `run.sh` draws them. It shows a
-  limit rather than the biology: across 157 loci of many genera each NR50 cluster of a Cas protein is under 10% of
-  the loci, so every prokaryote gene is grey, and the only coloured families are those of the 42 near-identical
-  ICP1 phage loci that form one leaf (section 5).
+- `figures/cas7f_all_nr50.svg` (and `.pdf`): the same loci at the NR50 level, as `run.sh` draws them, with the
+  colour defaults of DEC-41 (card W-32, regenerated 2026-11-14). Across 157 loci of many genera each NR50 cluster of
+  a Cas protein is under 10% of the loci, so the figure counts loci whose Cas7f share an NR90 cluster once
+  (`--colour-weight anchor-nr90`) and gives a rare cluster's gene its Pfam architecture's colour
+  (`--colour-fallback pfam`), one colour per family. Its legend is now Pfam families only: Cas6f (`Cas_Csy4`) 99%,
+  the Cas5f domain (`Cas_Csy2`) 97%, Cas8f (`Cas_Csy1`) 73%, Cas1 71%, three Cas2-Cas3 fusion architectures 26%, 18%
+  and 14%, and TniQ 14% (weighted shares). Of the 720 flanking genes drawn in its 60 rows, 251 are coloured, all in
+  these 8 colours (*measured*, wilkcomp02, 2026-11-14, `figure_stats.py` of
+  `planning/measurements/2026-11-14_flanks_figure_defaults.md`). The Tn7-like I-F3 rows now show their Cas5f, Cas7f
+  and Cas6f genes in colour, beside TniQ (card W-31 measured 37 of their 39 Cas genes coloured under these two
+  settings, against none before; the one-colour rule changes which colour a gene takes, never whether it is grey). Before the card the figure showed a limit rather than the biology: 50 of the 720 genes were
+  coloured, in 13 colours, nearly all of them clusters of the 42 near-identical ICP1 phage loci that form one leaf,
+  and one Cas1 cluster (40% of the loci). The prokaryote Cas genes were mostly grey, not all: W-31 counted 61 of 430
+  coloured (section 5). `--colour-weight locus --colour-fallback none` draws that old figure, byte for byte.
 
 **Context types.** `nbr flanks` cuts each tree at a distance of 0.5. At the Pfam level with 10 genes a side, each of
 the 28 loci of figure 1 is its own context type (28 types), though the tree puts the I-F3 loci together. At the
@@ -343,7 +354,9 @@ Each is a candidate card; the card that covers it is named, or "none".
    The question whether the Pfam level should compare annotated positions only is already open for the PI
    (`planning/measurements/2026-11-12_flanks_rN3.md`, card W-25); this example adds two cases: count leaves rather
    than loci for the colour threshold, and colour NR50 clusters by their Pfam architecture. Card: a W-25/W-27
-   follow-up (none yet).
+   follow-up (none yet). (Since then card W-31 measured both and found the grey-out slightly overstated, 61 of the
+   430 prokaryote Cas genes were coloured by one Cas1 cluster; the PI made both the defaults at NR50 and NR90
+   (DEC-41) and card W-32 regenerated `figures/cas7f_all_nr50.svg` with them, section 3. The fixed cut stays.)
 6. **`bio-box sql` counts one row too few when the first column's name starts with `#`.** The guide's idiom for a
    uid file (`AGENT_GUIDE.md` section 5, `AS "#protein_uid"`) makes the column line look like a comment to the
    counter, which then takes the first row for the column line: `sql: statement 1: 26 rows` and `wrote

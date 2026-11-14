@@ -333,7 +333,23 @@ leaf's first locus to scale, centred on the hit (black), with upstream on the le
 point the way each gene runs relative to the hit. A family has the same colour in every group of the run. Families
 found in fewer than 10% of a group's loci are grey, and genes with no id at the level are white. A `//` marks a linear
 contig's end that cuts the window. The legend names each coloured family (at `nr50`, its cluster uid prefix and its
-genes' commonest Pfam architecture) with the share of loci that hold it. Columns at the right give the locus
+genes' commonest Pfam architecture) with the share of loci that hold it.
+
+At `nr50` and `nr90` two colour rules are on by default when the release has a domain library (DEC-41, card W-32). The
+command decides that from the release's manifest, not from the directories: some file of `l1_domains` must be listed
+there (with `--library L`, one of library `L`). First, `--colour-weight anchor-nr90` counts loci whose hits share an
+NR90 cluster as one toward the 10%, so 42 near-identical phage copies no longer take every colour. Second,
+`--colour-fallback pfam` gives a gene whose cluster is rare the colour of its Pfam architecture when that architecture
+reaches 10%. A species' own cluster of a Cas protein, for example, then shows as "Pfam Cas_Csy4". It also keeps one
+colour per family: a common cluster whose genes carry that architecture is drawn in the same Pfam colour in every
+group, and the legend lists the architecture, not the cluster. On the CRISPR example's 157 Cas7f loci in one group
+this colours 37 of the 39 Cas genes of the Tn7-like loci, where the unweighted colours left them all grey (*measured*,
+`planning/measurements/2026-11-13_flanks_context_types.md`). `--colour-weight locus --colour-fallback none` draws the
+old colours. Without a manifest that lists a library, and always at `pfam`, those old colours are the defaults, and
+`--figure` says so in one `note:` line on stderr (not at `pfam`). The tables never depend on these options; the figure's
+title and `README.txt` say which colours were used. `--auto-cut N` cuts each group's tree into at most N context types
+instead of `--cut` (coarse: on mobile elements it cuts near 1, where a type means loci that share something); there is
+no `--auto-cut gap`. Columns at the right give the locus
 accession, the loci collapsed into the leaf, the context type, genome kind, stage, taxonomy (`-`: the release has
 none) and the hit's NR90 cluster. A figure shows at most `--figure-rows` rows (default 60). For a larger group it
 shows the largest leaf of each context type, then the largest remaining leaves, restricts the tree to those, and says
