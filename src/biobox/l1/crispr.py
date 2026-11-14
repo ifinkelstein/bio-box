@@ -11,16 +11,19 @@ Parameters (`MINCED_ARGS`, given explicitly, so a change of MinCED's defaults ca
 are MinCED's and CRT's own defaults, which Prokka also runs):
 
 - `-minNR 3`: at least three repeats (two spacers). Two copies of a 23 to 47 base direct repeat at spacer distance
-  occur by chance and in repeated genes; a two-repeat array is not called by MinCED's default, and lowering it is a
-  change of producer that needs its false-positive rate measured first (later card).
+  occur by chance and in repeated genes; a two-repeat array is not called by MinCED's default. The minimum is the
+  one parameter a caller may choose (`run(..., min_repeats=k)`, card E-13; default 3, at least 2): it is written in
+  the producer name (`nr<k>`), so a minimum of 2 is another producer with partitions of its own and the default's
+  name, arguments and bytes do not change. Its false-positive rate at 2 is measured in
+  `planning/measurements/2026-11-14_crispr_min_repeats.md`; which minimum a release uses is the PI's.
 - `-minRL 23 -maxRL 47`: repeat length range, CRT's range from the repeats of CRISPRdb.
 - `-minSL 26 -maxSL 50`: spacer length range, CRT's. Spacers of type III systems up to about 70 bases fall outside it
   (stated as a limit; a later card may widen it with the false-positive rate measured).
 - `-searchWL 8`: the length of the k-mer search window that seeds repeat candidates (range 6 to 9).
 
-The producer is `minced-<version>-w8-nr3-r23x47-s26x50` (`PARAM_TAG`): MinCED's version, read from the jar
-(`--version`), and the parameters; a change of either, or of the origin rule below, is a new producer, so new
-partitions and, should arrays go on a tape, a new tape version.
+The producer is `minced-<version>-w8-nr3-r23x47-s26x50` (`PARAM_TAG`; `param_tag(k)` for a minimum of k repeats):
+MinCED's version, read from the jar (`--version`), and the parameters; a change of either, or of the origin rule
+below, is a new producer, so new partitions and, should arrays go on a tape, a new tape version.
 
 Output format. With `-gffFull` MinCED writes a GFF3 file: per array a `repeat_region` line (1-based inclusive range,
 score = repeats, `ID=CRISPR<k>`, `rpt_unit_seq` the consensus repeat) followed by one `repeat_unit` line per repeat
@@ -123,14 +126,15 @@ from biobox.l0seq.store import OWNED_BY as SKIP_REASON
 from biobox.l1.ncrna import _distinct, _genome_input_files, _mkscratch, _range_rows, _sql_files
 from biobox.registry.schemas import table
 
-__all__ = ["CIRC_FLANK", "JAVA_HEAP", "MINCED_ARGS", "PARAM_TAG", "Array", "elements", "minced_version", "parse_gff",
-           "place", "producer", "run"]
+__all__ = ["CIRC_FLANK", "JAVA_HEAP", "MINCED_ARGS", "MIN_REPEATS", "PARAM_TAG", "Array", "elements",
+           "minced_version", "param_tag", "parse_gff", "place", "producer", "run"]
 
 KIND_CRISPR = ids.KIND["crispr_array"]
 STRAND = 1  # every array and element: the strand its sequences are read on (module docstring)
 # MinCED's parameters, in the order they are passed (module docstring). Its defaults, given explicitly
 MINCED_ARGS = (("-searchWL", 8), ("-minNR", 3), ("-minRL", 23), ("-maxRL", 47), ("-minSL", 26), ("-maxSL", 50))
 PARAM_TAG = "w8-nr3-r23x47-s26x50"  # the parameters above in the producer name
+MIN_REPEATS = dict(MINCED_ARGS)["-minNR"]  # the default minimum of repeats (3); `run(min_repeats=k)` chooses another
 MAX_UNIT = 47 + 50  # the longest repeat plus the longest spacer MinCED reports with MINCED_ARGS
 # bases of each circular contig's end and start around it in its record (module docstring); an estimate of a bound,
 # not measured: no reported CRISPR array is half as long
@@ -194,24 +198,46 @@ def minced_version() -> str:
     return _versions(java, str(jar))[0]
 
 
-def producer() -> str:
-    """`minced-<version>-<PARAM_TAG>` (module docstring)."""
-    return f"minced-{minced_version()}-{PARAM_TAG}"
+def _check_min_repeats(min_repeats: int) -> int:
+    if not isinstance(min_repeats, int) or isinstance(min_repeats, bool) or min_repeats < 2:
+        raise ValueError(f"min_repeats {min_repeats!r}: give an integer of at least 2 (MinCED's -minNR; default "
+                         f"{MIN_REPEATS})")
+    return min_repeats
 
 
-def minced_args() -> list[str]:
-    return [str(x) for kv in MINCED_ARGS for x in kv]
+def _params(min_repeats: int = MIN_REPEATS) -> tuple[tuple[str, int], ...]:
+    """MINCED_ARGS with `-minNR` set to `min_repeats` (in place, so the order of the arguments does not change)."""
+    k = _check_min_repeats(min_repeats)
+    return tuple((name, k if name == "-minNR" else v) for name, v in MINCED_ARGS)
 
 
-def _argv(java: str, jar: Path, fna: Path, txt: Path, gff: Path, scratch: Path) -> list[str]:
-    return [java, *JVM_OPTIONS, f"-Djava.io.tmpdir={scratch}", "-jar", str(jar), *minced_args(), "-gffFull",
-            str(fna), str(txt), str(gff)]
+def param_tag(min_repeats: int = MIN_REPEATS) -> str:
+    """The parameters in the producer name: `PARAM_TAG` at the default, `nr<k>` in its place for a minimum of k."""
+    p = dict(_params(min_repeats))
+    return f"w{p['-searchWL']}-nr{p['-minNR']}-r{p['-minRL']}x{p['-maxRL']}-s{p['-minSL']}x{p['-maxSL']}"
 
 
-def _tools(java: str, jar: Path) -> dict[str, str]:
+def producer(min_repeats: int = MIN_REPEATS) -> str:
+    """`minced-<version>-<param_tag(min_repeats)>` (module docstring)."""
+    tag = param_tag(min_repeats)
+    return f"minced-{minced_version()}-{tag}"
+
+
+def minced_args(min_repeats: int = MIN_REPEATS) -> list[str]:
+    return [str(x) for kv in _params(min_repeats) for x in kv]
+
+
+def _argv(java: str, jar: Path, fna: Path, txt: Path, gff: Path, scratch: Path,
+          min_repeats: int = MIN_REPEATS) -> list[str]:
+    return [java, *JVM_OPTIONS, f"-Djava.io.tmpdir={scratch}", "-jar", str(jar), *minced_args(min_repeats),
+            "-gffFull", str(fna), str(txt), str(gff)]
+
+
+def _tools(java: str, jar: Path, min_repeats: int = MIN_REPEATS) -> dict[str, str]:
     """The ledger's tool versions: MinCED's, the JVM's, pyarrow's, and MinCED's arguments."""
     mv, jv = _versions(java, str(jar))
-    return {"minced": mv, "java": jv, **provenance.tool_versions("pyarrow"), "minced_args": " ".join(minced_args())}
+    return {"minced": mv, "java": jv, **provenance.tool_versions("pyarrow"),
+            "minced_args": " ".join(minced_args(min_repeats))}
 
 
 # --- parsing and placing ----------------------------------------------------------------------------------------
@@ -351,13 +377,13 @@ class _Batch:
         self.fh.close()
 
 
-def _search(java: str, jar: Path, batch: _Batch, scratch: Path) -> tuple[pa.RecordBatch, pa.RecordBatch,
-                                                                          pa.RecordBatch]:
+def _search(java: str, jar: Path, batch: _Batch, scratch: Path, min_repeats: int = MIN_REPEATS
+            ) -> tuple[pa.RecordBatch, pa.RecordBatch, pa.RecordBatch]:
     """MinCED on one batch file: its arrays (feature rows), their elements (`l1_crispr` rows) and per contig with an
     array the arrays in and rejected. Deletes the batch's files."""
     gff, txt = batch.path.with_suffix(".gff"), batch.path.with_suffix(".txt")
     try:
-        done = subprocess.run(_argv(java, jar, batch.path, txt, gff, scratch), stdin=subprocess.DEVNULL,
+        done = subprocess.run(_argv(java, jar, batch.path, txt, gff, scratch, min_repeats), stdin=subprocess.DEVNULL,
                               stdout=subprocess.DEVNULL, stderr=subprocess.PIPE, cwd=scratch)
         if done.returncode != 0:
             raise RuntimeError(f"minced exited with code {done.returncode}: "
@@ -414,8 +440,10 @@ class _Scan:
     and rejected (a row of zeros for each contig searched, the counts per batch, the reason for a contig another stage
     owns). Up to `cpus` MinCED processes at once; only this thread writes the scratch files."""
 
-    def __init__(self, java: str, jar: Path, cpus: int, scratch: Path, batch_bases: int):
+    def __init__(self, java: str, jar: Path, cpus: int, scratch: Path, batch_bases: int,
+                 min_repeats: int = MIN_REPEATS):
         self.java, self.jar, self.cpus, self.scratch, self.batch_bases = java, jar, cpus, scratch, batch_bases
+        self.min_repeats = min_repeats
         self.paths = {k: scratch / f"{k}.parquet" for k in ("arrays", "elements", "contigs")}
         self.writers = {k: pq.ParquetWriter(self.paths[k], s, compression="zstd", write_statistics=False)
                         for k, s in (("arrays", _ARRAY_SCRATCH), ("elements", _ELEMENT_SCRATCH),
@@ -452,7 +480,7 @@ class _Scan:
             return
         b.close()
         self._drain(self.cpus - 1)
-        self.running.add(self.pool.submit(_search, self.java, self.jar, b, self.scratch))
+        self.running.add(self.pool.submit(_search, self.java, self.jar, b, self.scratch, self.min_repeats))
 
     def skip(self, cu: bytes, owner: str) -> None:
         self.writers["contigs"].write_batch(pa.RecordBatch.from_arrays(
@@ -493,7 +521,8 @@ class _Scan:
 
 
 def _scan(root: Path, stage: str, contigs: Iterator[tuple[bytes, bool, bytes | None]], stages: list[str], cpus: int,
-          scratch: Path, batch_bases: int, java: str, jar: Path) -> tuple[_Scan, dict[bytes, str]]:
+          scratch: Path, batch_bases: int, java: str, jar: Path,
+          min_repeats: int = MIN_REPEATS) -> tuple[_Scan, dict[bytes, str]]:
     """Search `contigs` ((contig_uid, circular, owner genome), sorted by contig_uid) into scratch; a contig another
     stage owns is not searched (DEC-26) and is returned with its owner. A contig in several genomes of this stage
     (DEC-27) is searched once, for its owner genome, and `sc.shared` holds it with that owner (`<stage>/<genome_uid>`),
@@ -501,7 +530,7 @@ def _scan(root: Path, stage: str, contigs: Iterator[tuple[bytes, bool, bytes | N
     store = SeqStore(root, stages)
     owners = ContigOwners(root, stage, stages)
     skipped: dict[bytes, str] = {}
-    sc = _Scan(java, jar, cpus, scratch, batch_bases)
+    sc = _Scan(java, jar, cpus, scratch, batch_bases, min_repeats)
     ok = False
     try:
         for cu, circ, genome in contigs:
@@ -535,9 +564,12 @@ def _check_args(cpus: int, batch_bases: int) -> None:
 
 def run(root: Path, stage: str, cpus: int, genomes: Iterable[GenomeInput] | None = None, *, tmp=None,
         out: Path | None = None, seq_stages: list[str] | None = None, batch_bases: int = BATCH_BASES,
-        max_file_bytes: int = layout.MAX_FILE_BYTES) -> dict:
+        max_file_bytes: int = layout.MAX_FILE_BYTES, min_repeats: int = MIN_REPEATS) -> dict:
     """Call the CRISPR arrays of the stage's contigs with MinCED and write its features, elements and ledger (module
     docstring).
+
+    `min_repeats`: MinCED's `-minNR`, at least 2 (card E-13); the default 3 is the producer
+    `minced-<version>-w8-nr3-r23x47-s26x50`, any other value a producer of its own (`param_tag`).
 
     `cpus`: MinCED processes at once, given explicitly; the output bytes do not depend on it. `genomes`: any iterable,
     consumed once; None reads the stage's `genome_input` table (which also says which contigs are circular). Contigs
@@ -554,11 +586,12 @@ def run(root: Path, stage: str, cpus: int, genomes: Iterable[GenomeInput] | None
     root = Path(root)
     out = root if out is None else Path(out)
     _check_args(cpus, batch_bases)
+    _check_min_repeats(min_repeats)
     ledger.check_scratch(tmp, root, out)
     java, jar = _tool()
-    prod = producer()
+    prod = producer(min_repeats)
     ledger.refuse_written(root, out, list(_paths(stage, prod)), f"CRISPR arrays {prod} of stage {stage}")
-    tools = _tools(java, jar)
+    tools = _tools(java, jar, min_repeats)
     stages = list(dict.fromkeys([stage, *([] if seq_stages is None else seq_stages)]))
     scratch = _mkscratch("biobox-crispr-", tmp)
     try:
@@ -570,7 +603,7 @@ def run(root: Path, stage: str, cpus: int, genomes: Iterable[GenomeInput] | None
         else:
             contigs = _distinct(iter(sorted({(cu, cu in set(g.circular), ids.genome_uid(list(g.contig_uids)))
                                              for g in genomes for cu in g.contig_uids})))
-        sc, skipped = _scan(root, stage, contigs, stages, cpus, scratch, batch_bases, java, jar)
+        sc, skipped = _scan(root, stage, contigs, stages, cpus, scratch, batch_bases, java, jar, min_repeats)
         rejected = _publish(out, stage, prod, sc, scratch, tools, max_file_bytes)
         return {**sc.stats, "producer": prod, "rejected": rejected, "minced_args": tools["minced_args"],
                 "java": tools["java"],
