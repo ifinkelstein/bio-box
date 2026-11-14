@@ -5,7 +5,7 @@ The running record of the cards in [`TASKS.md`](TASKS.md). Updated at every merg
 by an agent on its own branch `task/<ID>`, audited by the orchestrating session, and merged after its
 tests passed on the merged tree.
 
-## Handoff, 2026-11-14 11:50 CST (current; the dated sections under "History" are superseded where they differ)
+## Handoff, 2026-11-14 12:16 CST (current; the dated sections under "History" are superseded where they differ)
 
 Written so a new session can continue without the conversation that produced this file. Times are the pod's clock
 (CST); read it with `ssh ... date` before writing a time here.
@@ -16,7 +16,7 @@ the PI at the S2C phase 2 build and at a failed release check. The usage limit h
 (2026-11-13 15:45 and 20:55, 2026-11-14 01:40 twice counting the orchestrator): an agent stopped that way is resumed
 with `SendMessage` to the same agent once the limit resets; nothing is lost.
 
-**State on 2026-11-14 at 11:50 CST.**
+**State on 2026-11-14 at 12:16 CST.**
 
 *The one thing running: the 50 Gbp release `rM.2`.*
 - All four Pfam scans are published (P3 2026-11-12 22:37, P4 2026-11-13 08:06, P5 2026-11-13 evening, P6 2026-11-14
@@ -40,7 +40,7 @@ with `SendMessage` to the same agent once the limit resets; nothing is lost.
 - If it is still running on Monday at 08:00 the cap falls to 40: stop it the same way before then and relaunch with
   `REL_CPUS=13 BIG_THREADS=40`. To pause without relaunching: `touch /tmp/if2453/r50/driver/HALT` stops the driver
   before its next launch only; `STOP` in the root stops the build after its running parts.
-- At 11:46 it had finished NR90 and was in NR50's first rescoring (41 steps published since the relaunch; scratch 70 GB; 272 GB free on `/tmp`). Ahead: the rest of NR50, then tokens, postings, the dimension tables, manifest and catalog;
+- At 12:13 it had finished NR90 and was in the alignment of NR50's step 07 (`cluster.nr50.07.align`, three parts live; scratch 78 GB; 266 GB free on `/tmp` at 12:16). Ahead: the rest of NR50, then tokens, postings, the dimension tables, manifest and catalog;
   the driver then verifies `rM.2` and `rN.3` and writes `driver/DONE`, or `driver/FAILED`. Estimate: evening of
   2026-11-14 (about 13,000 to 15,000 CPU-minutes left of card B-43's 16,918 to 18,910 at 50 M proteins, at 48
   threads less the single-thread steps; *estimate*). A watcher in the orchestrating session reports the end.
@@ -60,21 +60,21 @@ with `SendMessage` to the same agent once the limit resets; nothing is lost.
   `detached_suite.sh` put only the tree's `src` on `PYTHONPATH`. The `rM.2` build alone keeps the old image; **the
   next build sets `IMAGE` and `DIGEST` in its driver to the `faec1f4` values of RUNBOOK §0**.
 - `plan/task-cards` is ahead of `main` by F-02 sessions 8 to 10, E-12, C-32, E-13, A-08 and E-14; none changes
-  `container/environment.yml` or `uv.lock`, so no new image is needed. Every push through `feef976` was green on
-  Actions; the run on `25a32d2` (E-14) was not read yet at 09:45.
+  `container/environment.yml` or `uv.lock`, so no new image is needed. Every push through `4b101ba` (the decisions DEC-38 to DEC-42) was green on
+  Actions (read 12:18); the pushes after it change documents only.
 - The fixture's manifest hash is `28ffa9808ecd4829e52f6892f94f7b85` since E-12, equal on Actions and the pod;
   `/tmp/if2453/ci-peer/right.json` holds it.
 
-*Agents.* None running at 09:45. Merged on 2026-11-13 and 14: C-28, C-27 step 4, C-25 step 2, C-29, C-30, C-31, C-32,
+*Agents.* Two running since 12:14 (F-02 session 11 and E-15, restarted at the PI's word; see "Agents running" below). Merged on 2026-11-13 and 14: C-28, C-27 step 4, C-25 step 2, C-29, C-30, C-31, C-32,
 W-30, W-31, A-08, E-11, E-12, E-13, E-14, F-02 sessions 4 to 10 (10 is a measurement), the README, the CRISPR example.
 
 *What is blocked, and on what.* Nothing waits on the PI since 10:45 on 2026-11-14 (DEC-34 to DEC-42).
 - **The statistics track** (F-01, F-03 and the rest of F-02): waits for the synthetic world's redesign (F-02 session
-  11, stopped by the PI at 11:40 with work in its worktree: DEC-36, DEC-37), then the sequence model so that detectability falls with divergence
+  11, running again since 12:14: DEC-36, DEC-37), then the sequence model so that detectability falls with divergence
   (session 12, DEC-39), then the N2 worlds, the ablation worlds and validation.
 - **S2C phase 2** (56 Gbp, fetched and on `/stor`): waits for pod threads. Card C-25 step 3 and cards B-47a to B-47e
   (DEC-34, DEC-35) start when the `rM.2` build ends.
-- **Short CRISPR arrays** on Tn7-like elements: card E-15 (stopped by the PI at 11:40 with work in its worktree; DEC-40).
+- **Short CRISPR arrays** on Tn7-like elements: card E-15 (running again since 12:14; DEC-40).
 - After `rM.2`: stage H1 (card C-24) and PLSDB (card C-26), the CRISPR step on the built stages (DEC-40), then ncRNA
   on the 50 Gbp (DEC-42).
 - **Scratch cleanup on the pod** (DEC-42 allows it): not done yet. Remove only what the decision lists, each target
@@ -125,20 +125,20 @@ F-02 and the measurements in the table below; decisions DEC-29 to DEC-33 were ad
 above says where `main`, the images and Actions stand. The manifest hash of the fixture covers every registered
 schema's hash, so it moves with any schema change (last: card E-12).
 
-**Agents running.** None at 11:50 on 2026-11-14. **The PI stopped the two that were running, at about 11:40** (F-02
-session 11 and E-15), and a stopped agent cannot be resumed: its card needs a new agent, and only when the PI asks.
-Both left uncommitted work in their worktrees, which a new agent should start from, not redo:
+**Agents running.** Two since 12:14 on 2026-11-14 (both Opus). The PI stopped the first agents on these two cards
+at about 11:40 and asked at about 12:10 for both to be restarted; a stopped agent cannot be resumed, so each card has
+a new agent that continues in the stopped agent's worktree from its uncommitted work (told to check that work
+against the decision and the card, commit it early, and say what it kept and changed):
 - F-02 session 11 (the redesign of the `micro` preset over seeds, DEC-36 and DEC-37): worktree
-  `.claude/worktrees/agent-aa711fcf48ad79fd7`, no commit; changes in `backbone.py`, `emit.py`, `mobile.py`,
-  `presets/micro.yaml`, the seed-scan script and four test files, and a new `tests/r2/test_synthworld_preset_seeds.py`.
-  Its fit runs (`f0211-fitC1`, `f0211-fitC2`) were still running on the pod at 11:46; outputs under `/tmp/if2453/f0211/`.
-- E-15 (the filtered two-repeat CRISPR producer, DEC-40): worktree `.claude/worktrees/agent-a6590b8d7db07d738`, no
-  commit; changes in `crispr.py`, `stage.py`, `cli.py`, `provenance.py`, the guides, the runbook and the example, a new
-  `src/biobox/l1/cas_families/`, five new test files and a draft measurement note. Its real-data run (`e15-driver`,
-  `e15-nr3-p2`) was still running on the pod at 11:46; outputs under `/tmp/if2453/e15/`.
-The orchestrator left those four pod units to finish (they are capped, small, and nothing reads them) and did not
-stop them. Queued behind these cards: F-02 session 12 (detectability against divergence, DEC-39), W-32 (figure
-defaults, DEC-41), W-33 (results under `bulk`, tier L).
+  `.claude/worktrees/agent-aa711fcf48ad79fd7`, branch `task/F-02-11`; pod scratch `/tmp/if2453/f0211/`, units
+  `f0211-*`, at most 5 threads while the build runs. The first agent's unit `f0211-crowns` ended failed (its log is
+  the new agent's to read).
+- E-15 (the filtered two-repeat CRISPR producer, DEC-40): worktree `.claude/worktrees/agent-a6590b8d7db07d738`,
+  branch `task/E-15`; pod scratch `/tmp/if2453/e15/`, units `e15-*`, at most 3 threads while the build runs. The
+  first agent's real-data runs on S1, P1 and P2 had ended by 12:13.
+If either is stopped again, its work is in that worktree (committed to its branch if it got that far) and a new
+agent is started only when the PI asks. Queued behind these cards: F-02 session 12 (detectability against
+divergence, DEC-39; after session 11), W-32 (figure defaults, DEC-41), W-33 (results under `bulk`, tier L).
 
 **On the pod** (wilkcomp02; account thread cap 40 by day on weekdays, 56 at night and at weekends, a total over
 everything we run; the PI keeps that cap). State on 2026-11-14 at 09:45 CST:
