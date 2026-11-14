@@ -662,3 +662,69 @@ def test_w33_archive_needs_no_bulk_area_but_flush_list_and_get_refuse_without_it
     code, _, err = _main(capsys, "results", "get", "23" * 16, "--profile", str(prof), "--out", str(tmp_path / "x"))
     assert code == 2 and "does not exist" in err, err
     assert not (tmp_path / "bulk").exists() and not (tmp_path / "durable").exists()
+
+
+# --- card W-34: the command line says what the code does since W-33 ---------------------------------------------
+
+
+def _help(capsys, monkeypatch, *argv) -> str:
+    monkeypatch.setenv("COLUMNS", "300")  # no line wrapping inside a phrase
+    capsys.readouterr()
+    with pytest.raises(SystemExit) as e:
+        cli.main([*argv, "--help"])
+    assert e.value.code == 0
+    return " ".join(capsys.readouterr().out.split())
+
+
+@pytest.mark.covers("W-34")
+@pytest.mark.parametrize("action", [None, "archive", "flush", "list", "get"])
+def test_w34_the_help_of_results_and_each_action_describes_the_bulk_area_and_the_second_archive(
+        capsys, monkeypatch, action):
+    text = _help(capsys, monkeypatch, "results", *([action] if action else []))
+    assert "<bulk>/results" in text, text
+    assert "RUN:SHA256PREFIX" in text and "second archive" in text, text
+    assert "durable" not in text.lower(), text  # since W-33 `results` never reads the profile's `durable`
+    assert "refus" not in text.lower(), text  # another sha256 is a second archive, not a refusal
+
+
+@pytest.mark.covers("W-34")
+def test_w34_results_get_restores_the_archive_named_by_sha256_and_by_run_colon_prefix_alike(
+        tmp_path, capsys, monkeypatch):
+    prof = _profile(tmp_path, floor=1000)
+    run = _make_run(tmp_path / "runs", 36)
+    rid = "24" * 16
+    assert _archive(capsys, prof, run, *_with(_outputs(tmp_path / "o1", 36)))[0] == 0
+    both = _outputs(tmp_path / "o1", 36, extra=True)
+    code, stdout, err = _archive(capsys, prof, run, *_with(both))
+    assert code == 0, err
+    second = _rows(stdout)[0]["sha256"]
+    assert _main(capsys, "results", "flush", "--profile", str(prof))[0] == 0
+    code, stdout, err = _main(capsys, "results", "list", "--profile", str(prof))
+    assert code == 0, err
+    first = [r["sha256"] for r in _rows(stdout) if r["sha256"] != second][0]
+    for i, (want, args) in enumerate([(first, ["--sha256", first[:12]]), (first, [f"{rid}:{first[:12]}"]),
+                                      (second, ["--sha256", second[:8]])]):
+        run_arg = [rid] if args[0] == "--sha256" else []
+        dest = tmp_path / f"back{i}"
+        code, stdout, err = _main(capsys, "results", "get", *run_arg, *args, "--profile", str(prof), "--out",
+                                  str(dest))
+        assert code == 0, err
+        assert _rows(stdout)[0]["sha256"] == want
+        # the files restored say which archive it was; the run's own date and outputs differ between the two
+        assert (dest / "outputs/flanks_nr50").exists() == (want == second)
+        assert (dest / "outputs/rnap/hits.tsv").is_file()
+    both_ok = tmp_path / "both_ok"  # the same value spelled twice (any case, prefix of either) is accepted
+    code, _, err = _main(capsys, "results", "get", f"{rid}:{first[:12]}", "--sha256", first[:12].upper(),
+                         "--profile", str(prof), "--out", str(both_ok))
+    assert code == 0, err
+    assert not (both_ok / "outputs/flanks_nr50").exists()
+    clash = tmp_path / "clash"
+    code, _, err = _main(capsys, "results", "get", f"{rid}:{first[:12]}", "--sha256", second[:12],
+                         "--profile", str(prof), "--out", str(clash))
+    assert code == 2 and "--sha256" in err and not clash.exists(), err
+    none = tmp_path / "none"
+    code, _, err = _main(capsys, "results", "get", rid, "--sha256", "ffffffff", "--profile", str(prof), "--out",
+                         str(none))
+    assert code == 2 and "no archive" in err and not none.exists(), err
+    text = _help(capsys, monkeypatch, "results", "get")
+    assert "--sha256 PREFIX" in text, text

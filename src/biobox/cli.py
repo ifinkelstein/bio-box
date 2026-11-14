@@ -29,7 +29,7 @@
     bio-box results archive <run> --profile P [--under DIR ...] [--with PATH ...] [--runs DIR] [--results DIR]
     bio-box results flush --profile P [--results DIR] [--below-floor]
     bio-box results list --profile P [--results DIR] [--json]
-    bio-box results get RUN_ID --out DIR --profile P [--results DIR]
+    bio-box results get RUN_ID[:SHA256PREFIX] --out DIR --profile P [--sha256 PREFIX] [--results DIR]
                 (card W-28, DEC-33, biobox.search.results)
     bio-box run-step --profile P --root R --stage S --step NAME [--nice monolithic|fanout] [--threads N] -- CMD ...
     bio-box release define --root R --release R1 --stages S0,S1 [--out DIR]
@@ -136,18 +136,21 @@ tsv` (so also `search hmm`'s `loci/`) ends each locus table with the arrays with
 paragraph on both. Arrays are never slots. On a release without arrays every output is as before; the `--json` forms
 never carry arrays.
 
-`results` (card W-28, DEC-33; design in `biobox.search.results`) keeps a closed run on the profile's durable
-storage. `archive` writes the run's record and outputs as one deterministic tar, with its manifest line, into a
-spool under the profile's `tmp`. Every directory export written from a run (`search hmm`, `nbr --out DIR`, `nbr flanks
+`results` (card W-28, DEC-33, amended by card W-33, DEC-42; design in `biobox.search.results`) keeps a closed
+run under the profile's `bulk` area, in `<bulk>/results` (`durable` is not read). `archive` writes the run's record and outputs as one deterministic
+tar, with its manifest line, into a spool under the profile's `tmp`. Every directory export written from a run (`search hmm`, `nbr --out DIR`, `nbr flanks
 --out DIR`) holds a `RUN` file (card W-29: `run<TAB>ID`, `release<TAB>R`); `--under DIR` (repeatable) finds the
 directories whose `RUN` names the run, in DIR and up to 4 levels below it; `--with PATH` names an output (a file, or a
 directory without a `RUN`, as before). A DIR whose `RUN` names another run, or whose `recipe.yaml` is not the run's,
-is refused (exit 2). `flush` moves the spooled runs to the results area
-(`<durable>/results`, or `--results` inside `durable`) as one bundle, only once the bundle is at least the
+is an error (exit 2). `flush` moves the spooled runs to the results area
+(`<bulk>/results`, or `--results` inside `bulk`) as one bundle, only once the bundle is at least the
 profile's `small_file_floor_bytes` (AGENTS §7.3; `--below-floor` is for the PI's agreement only). Nothing is
-overwritten or deleted there: the same run with the same sha256 is a no-op, with another a refusal (exit 2).
-`list` reads only manifest lines; `get RUN_ID --out DIR` restores a run and checks every sha256 (exit 1 when one
-differs). They need a profile (`--profile`, else $BIOBOX_PROFILE).
+overwritten or deleted there: the same run with the same sha256 is a no-op, with another sha256 a second archive
+of the run, beside the first, which is never changed.
+`list` reads only manifest lines, one per archive; `get RUN_ID --out DIR` restores a run and checks every sha256
+(exit 1 when one differs); a run with several archives gives the one with the most files, and
+`get RUN_ID:SHA256PREFIX` (or `get RUN_ID --sha256 PREFIX`) takes another. They need a profile (`--profile`,
+else $BIOBOX_PROFILE).
 """
 
 from __future__ import annotations
@@ -1623,7 +1626,12 @@ def _results(a) -> int:
             return 0
         if not a.run or not a.out:
             return refuse("results get needs the run id and --out DIR")
-        line, n = results.get(where, a.run, Path(a.out))
+        run_id, _, given = a.run.partition(":")
+        if a.sha256 and given and a.sha256.lower() != given.lower():
+            return refuse(f"results get was given two different sha256 prefixes ({given!r} in RUN:SHA256PREFIX, "
+                          f"{a.sha256!r} in --sha256): give one")
+        prefix = a.sha256 or given
+        line, n = results.get(where, f"{run_id}:{prefix}" if prefix else run_id, Path(a.out))
         _wrote(a.out, f"{n} files")
         _print([head, "\t".join(str(line[c]) for c in [*results.COLUMNS, "where"])])
         return 0
@@ -2170,28 +2178,44 @@ def _main(argv: list[str] | None = None) -> int:
     n.add_argument("--runs", help=RUNS_HELP)
     n.add_argument("--pack-dir", help=PACK_DIR_HELP)
     n.add_argument("--profile", help=PROFILE_DIRS_HELP)
-    rr = sub.add_parser("results", help="keep a closed run on the profile's durable storage (card W-28, DEC-33)")
+    rr = sub.add_parser(
+        "results", help="keep a closed run under the profile's bulk area (cards W-28, W-33, DEC-33, DEC-42)",
+        description="Keeps closed runs under <bulk>/results (the profile's `bulk` key). "
+                    "archive: write the run's record and outputs as one tar into the spool under the profile's tmp. "
+                    "A run archived again with other files or outputs is a second archive of it, kept beside the "
+                    "first, which is never changed; the same run with the same sha256 is a no-op. "
+                    "flush: move the spooled archives to <bulk>/results as one bundle, once it is at least "
+                    "small_file_floor_bytes. list: one line per archive kept (a run archived twice has two lines). "
+                    "get RUN --out DIR: restore an archive, every sha256 checked; a run with several archives gives "
+                    "the one with the most files and says which on stderr, and RUN:SHA256PREFIX (or --sha256 PREFIX) "
+                    "takes another. All need a profile (--profile, else $BIOBOX_PROFILE).")
     rr.add_argument("action", choices=["archive", "flush", "list", "get"],
-                    help="archive: spool the run's archive; flush: move the spool to the results area as one bundle "
-                         "of at least small_file_floor_bytes; list: every kept run; get: restore one")
-    rr.add_argument("run", nargs="?", help="archive: the run's directory, or its run id in --runs; get: its run id")
+                    help="archive: spool the run's archive (a second archive when the run is kept already with "
+                         "another sha256); flush: move the spool to <bulk>/results as one bundle of at least "
+                         "small_file_floor_bytes; list: every archive kept; get: restore one")
+    rr.add_argument("run", nargs="?", help="archive: the run's directory, or its run id in --runs; get: its run id, "
+                                           "or RUN:SHA256PREFIX for the archive whose sha256 starts so")
     rr.add_argument("--profile", help="host profile YAML (default: $BIOBOX_PROFILE): the spool is <tmp>/results/spool, "
-                                      "the results area <durable>/results")
+                                      "the results area <bulk>/results")
     rr.add_argument("--runs", help=RUNS_HELP)
-    rr.add_argument("--results", help="the results area, inside the profile's durable storage (default: "
-                                      "<durable>/results)")
+    rr.add_argument("--results", help="the results area, inside the profile's bulk directory (default: "
+                                      "<bulk>/results)")
     rr.add_argument("--with", dest="with_", action="append", default=[], metavar="PATH",
                     help="archive: an output of the run to keep with it, a file or a directory (an `nbr flanks` DIR, "
                          "a hits.tsv), and the run's `search hmm --out` DIR; repeatable. A DIR whose RUN file names "
-                         "another run, or whose recipe.yaml is not the run's, is refused")
+                         "another run, or whose recipe.yaml is not the run's, is an error (exit 2)")
     rr.add_argument("--under", action="append", default=[], metavar="DIR",
                     help="archive: find every directory in DIR (or up to 4 levels below it) whose RUN file names the "
                          "run (the `search hmm`, `nbr` and `nbr flanks` output directories); repeatable")
     rr.add_argument("--out", help="get: a new or empty directory to restore the run into")
+    rr.add_argument("--sha256", metavar="PREFIX",
+                    help="get: the archive of the run whose sha256 starts with PREFIX, the spelled-out form of "
+                         "RUN:SHA256PREFIX (both may be given if they agree; if they differ, exit 2); `results "
+                         "list` shows each archive's sha256")
     rr.add_argument("--below-floor", action="store_true",
                     help="flush: write the bundle even when it is smaller than the profile's small_file_floor_bytes. "
                          "This breaks AGENTS.md 7.3 (no file under 64 MB on /stor): only with the PI's agreement")
-    rr.add_argument("--json", action="store_true", help="list: one JSON object per run")
+    rr.add_argument("--json", action="store_true", help="list: one JSON object per archive")
     r = sub.add_parser("run-step", usage="bio-box run-step --profile P --root R --stage S --step NAME "
                                          "[--nice monolithic|fanout] [--threads N] -- CMD [ARGS ...]")
     r.add_argument("--profile", required=True, help="host profile YAML (profiles/wilkcomp02.yaml)")

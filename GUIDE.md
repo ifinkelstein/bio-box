@@ -234,8 +234,8 @@ flush, a run waits on `/tmp`: copy what you need now to your laptop. `results li
 `results get` brings one back into a new directory, every file checked against its sha256. Archiving the same run
 again changes nothing; archiving it later with further outputs (DEC-42) makes a second archive of the run beside
 the first, which is never changed. `results list` shows both; `results get RUN` takes the one with the most files
-and says which on stderr, and `results get RUN:SHA256PREFIX` takes another. The results are kept under the pod's
-bulk area, in `/stor/scratch/Wilke/if2453/all-the-data/results` (card W-33, DEC-42).
+and says which on stderr, and `results get RUN:SHA256PREFIX` (or `results get RUN --sha256 PREFIX`) takes another. The results are kept under the
+pod's bulk area, in `/stor/scratch/Wilke/if2453/all-the-data/results` (card W-33, DEC-42).
 
 ```bash
 bash "$TREE/scripts/pod_run.sh" --profile "$PROFILE" --image "$IMAGE" --digest "$DIGEST" --mem 8G --threads 1 --bind /tmp/if2453 --bind /stor/scratch/Wilke/if2453/all-the-data --env PYTHONPATH="$PYTHONPATH_POD" pi-keep results archive "$RUN" --profile "$PROFILE" --under "$WORK"
