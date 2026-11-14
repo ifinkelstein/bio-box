@@ -26,6 +26,7 @@ TOOLS = {
     "mmseqs": ["mmseqs", "version"],
     "hmmsearch": ["hmmsearch", "-h"],
     "cmsearch": ["cmsearch", "-h"],
+    "minced": ["minced", "--version"],  # card E-12; prints `minced <version>` first
     "singularity": ["singularity", "--version"],
 }
 PACKAGES = ["bio-box", "pyarrow", "duckdb", "pyrodigal", "pyrodigal-gv", "blake3", "pyyaml"]

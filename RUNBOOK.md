@@ -288,6 +288,26 @@ the same with or without `--ncrna-cm`. The step counts as one step in `all N ste
 The library must be the `refdb.yaml` file for the name to say `rfam-15.1`; another file is named by its
 sha256, which the release's C-08 check reports as differing from the lock.
 
+**CRISPR arrays (card E-12).** `--crispr` adds a step named `crispr-<producer>` after the `features`
+slot: MinCED 0.4.2 (`biobox.l1.crispr`) on every contig the stage owns, with its default parameters given
+explicitly (at least 3 repeats of 23 to 47 bases, spacers of 26 to 50, search window 8). The producer is
+`minced-0.4.2-w8-nr3-r23x47-s26x50`. It writes one `feature` row of kind `crispr_array` per array (strand
++1: MinCED gives no orientation), one `l1_crispr` row per repeat and per spacer (with its bases), and a
+ledger whose tool versions name MinCED, the JVM and the arguments. An array across the origin of a
+circular contig is found once, with end past the contig's length. Off by default; the step counts as one
+step in `all N steps done` (14 with one library). The arrays are not put on the tape: the IGR, tape, token
+and posting steps get no `--producers` for it, so the tape version is the one without `--crispr`.
+
+- Threads: `--scan-cpus` MinCED processes at once (default 4, at most `--threads`), each a JVM with a fixed
+  512 MiB heap. The largest process of the step peaked at 338 to 531 MB on stages P1, P2 and S1, and four
+  processes together at 1.6 to 1.9 GB (measured, wilkcomp02, 2026-11-13,
+  `planning/measurements/2026-11-13_crispr_arrays.md`): a 16G unit is ample.
+- Budget: no shards. The step is refused (exit 2, `refused before ...crispr-...`, `no shards`) when the
+  stage's genome bases at 182.0 CPU-seconds per Gbp (measured on stage P1, section 10) pass 80% of
+  `cpu_min_per_process`: a stage of about 79 Gbp. Split such a stage.
+- A contig another stage owns is skipped and named in the ledger (`owned_by:<stage>`), as gene calling
+  skips it (DEC-26). The step reads sequences only, no gene calls.
+
 **Clustering's CPU budget (DEC-29).** Clustering in one process has no exemption from the 300
 CPU-minute rule any more: DEC-25 exempted it until clustering was split, and card B-42 ended that once
 the split clustering of `rN.1b` (2,053,075 proteins) equalled its published clusters row for row
@@ -966,6 +986,7 @@ a profile value is missing from this table.
 | CPU-minutes per process | 300 | profile `cpu_min_per_process`; AGENTS 7.2 |
 | CPU-minutes of one clustering call run as one process | 20000, estimated before launch; refused above it. The one exemption from the 300 (DEC-29): a call that no number of parts fits (the NR90 step's prefilter from about 74 M proteins, NR50 step 0 from about 108 M, derived). Set by the PI on 2026-11-10 for the 50 Gbp build: about nine times the 2,195.91 measured for 10,620,684 proteins (wilkcomp02, 2026-11-10). Without the key such a call is refused. Clustering in one process has no exemption since card B-42 (DEC-25's ended): above 80% of the budget a release clusters in parts | profile `cluster_cpu_min_max`; DEC-29 (narrowing DEC-25); `cluster_refusal`, `one_process_refusal` in `src/biobox/stage.py`; cards B-36, B-45, B-42 |
 | ncRNA scan shard size | `prok-2` (the default): 111,734,541 genome bases, 80% of `cpu_min_per_process` (300) at 358.0 CPU-hours per 10 Gbp (derived: 304.0 × 299.7 / 254.5, the set's cost relative to `prok-1` from `planning/measurements/2026-11-12_rfam_sample.md`). `prok-1`: 131,578,947 at 304.0, the slower of the two shards of card E-07's pod check (derived in `planning/measurements/2026-11-11_ncrna_producer.md`; the design note's 247.4 gave 161,681,487). Shards at once: at most the unit's `MemoryMax` / (6.4 GiB per two `cmsearch` threads) | `NCRNA_CPU_H_PER_10GBP`, `NCRNA_SET_COST`, `NCRNA_JOB_GIB` in `src/biobox/stage.py`; cards E-07, E-08, E-09 |
+| CRISPR step | one process, `--scan-cpus` MinCED processes of a 512 MiB heap each; refused above 80% of `cpu_min_per_process` (300) at 182.0 CPU-seconds per Gbp: a stage of 79.1 Gbp (derived: 0.8 × 300 × 60 / 182.0). The rate: 185.0 CPU-s for stage P1's 1,016,625,803 bases (run record, wilkcomp02, 2026-11-13, `planning/measurements/2026-11-13_crispr_arrays.md`) | `CRISPR_CPU_S_PER_GBP`, `crispr_refusal` in `src/biobox/stage.py`; `JAVA_HEAP` in `src/biobox/l1/crispr.py`; card E-12 |
 | Scan shard size | 30,150,753 residues: 80% of `cpu_min_per_process` (300) at 7.96 CPU-minutes per million residues (derived: 300 × 0.8 / 7.96 × 10^6; the rate of the Pfam scan of stage P1 in card C-10, measured on wilkcomp02, 2026-11-10: 2,343.74 CPU-minutes for 294.5 M residues). The 80% leaves room for a scan 25% slower per residue (derived: 1 / 0.8) | `SHARD_MARGIN` and `SCAN_CPU_MIN_PER_M` in `src/biobox/stage.py`; cards C-11, C-13 |
 | Scan shards at once | `--scan-jobs` J × `--scan-cpus` C at most the cap `run-step` allows when `build-stage` starts (40 by day, 56 at night when no other user computes); defaults C = 4, J = cap // C (10 by day, 14 at night). The cap is a total over everything of ours on the pod: `build-stage` subtracts what ours elsewhere use at each launch, not what starts later, so choose J = floor((cap - other threads) / C) (section 2). The allowance is read again before each step and before each shard launch; a launch that would pass it waits | `scan_slots` and `_launch` in `src/biobox/stage.py`; cards C-11, C-12, C-28 |
 | Unit CPU quota | the night cap, 56: a ceiling fixed at launch; `build-stage` holds the limit of the hour | `scripts/pod_run.sh --threads`, profile `max_threads_night`; card C-12 |
@@ -1116,6 +1137,7 @@ its outputs in `/tmp/if2453/w25` (bound read-only), with two scratch profiles: t
 | 8 | C-29: the image check, `detached_suite.sh --own image-64f1bf0 2` (pod) | 2026-11-13 | the full suite ran through a script with the same units, binds and test split before `--own` was added to `detached_suite.sh`: shard lines `894 passed, 14 skipped, 59 warnings in 3195.94s (0:53:15)` and `828 passed, 6 skipped, 24 warnings in 4777.45s (1:19:37)`. `--own` itself, on a two-test selection (`-k 'test_the_runbook_has_commands or test_d05_cross_host_manifest_hash_equal'`): `1 passed, 907 deselected in 6.98s` and `1 passed, 1 skipped, 832 deselected, 1 warning in 12.34s` |
 | 8 | C-29: `sh scripts/pod_pytest.sh C-29 tests/r0/test_runbook.py -k c29` (laptop) | 2026-11-13 | `5 failed, 2 passed, 38 deselected in 3.97s` (before the change, in the old image: the card's tests failing first) |
 | 8 | C-29: `sh scripts/pod_pytest.sh C-29 tests/r0` (laptop; the new default image) | 2026-11-13 | `203 passed in 7.72s` |
+| 2 | E-12: `pod_run.sh --profile "$PROFILE" --image "$IMAGE" --digest "$DIGEST" --bind /tmp/if2453 --bind /tmp/if2453/r10/root:/tmp/if2453/r10/root:ro --env PYTHONPATH="$PYTHONPATH_POD" --mem 16G --threads 4 e12-p1 run-step ... --stage P1 --step crispr-minced-0.4.2-w8-nr3-r23x47-s26x50 --threads 4 -- python -m biobox.cli stage crispr ... --cpus 4 ...` (image `bio-box_faec1f4.sif`, into a scratch view of the read-only root; units `e12-p2`, `e12-s1` the same for P2 and S1) | 2026-11-13 | `pod_run: e12-p1 exited 0` (before it, `run-step: P1.crispr-minced-0.4.2-w8-nr3-r23x47-s26x50 published 3 files`; P2 and S1 also exited 0) |
 | 9 | `rm -r` of a staging directory and a scratch directory | 2026-11-10 | `(no output)`, exit 0 each. The staging directory was an empty directory made for this test |
 | 9 | W-13: `ls "$BBTMP/packs" "$BBTMP/search/$USER/runs" "$BBTMP/search/$USER/work"` | 2026-11-10 | `/tmp/if2453/w13/tmp/search/if2453/work:` (empty: every run had removed its work directory; `runs` held `pending` and the three runs of section 7, `packs` held `release=rC6.1`) |
 | 9 | W-13: `rm -r "$BBTMP/search/$USER/work/3d96a70ba10c7f5cd895de3d838153ae"` | 2026-11-10 | `(no output)`, exit 0. An empty directory made for this test |
