@@ -848,6 +848,7 @@ Files: `src/biobox/provenance.py` (a `minced-` producer pattern and the `crispr-
 Why: arrays are features and `l1_crispr` rows but not tape slots (card E-12: putting them on the tape would shift every gene window, and the C-08 provenance check does not know the producer's name), so a neighbourhood still shows cas genes with no array.
 Do, test first: `nbr` and the locus tables gain the arrays that lie within the window in bases, read from `l1_crispr` by contig (one row group per contig: test the pruning), as rows or columns of their own beside the genes, never as slots; outputs on a release without arrays are byte-identical to today's; the provenance check accepts the producer and checks its step's tools. Then the example's array checks as recorded values and, where the paper's claim allows it, invariants.
 Accept: the tests; byte identity on a release without arrays; the example's checks pass on a release that holds arrays.
+Done 2026-11-14 (STATUS row E-14). Left: the `--json` forms of `nbr` and `nbr summarize` carry no arrays (a card that may regenerate `tests/registry/json_schema_lock.json`); a `[requires ...]` invariant that a run does not observe at all is reported `n/a`, not missing; the guides' worked command names a scratch view under `/tmp/if2453/e14`, to be pointed at a release once one holds arrays.
 
 ### E-10 A dedicated tRNA caller for phage and archaeal tRNAs
 **H** (the PI adds `trnascan-se` to `container/environment.yml`; approved in principle 2026-11-12, as a later card), then **M** · Depends: 0-08b

@@ -191,6 +191,30 @@ downstream of the hit), so on a `-1` hit the two have opposite signs. `hit_seq_b
 neighbour is itself a hit; `delta_bp` is the gap to the hit in bases (no sign); `crosses_origin` marks a gene across
 the origin.
 
+**CRISPR arrays beside a locus** (card E-14). On a release that holds CRISPR arrays (the MinCED step of card E-12;
+no release holds them yet, 2026-11-14), every locus table ends with an array section after its gene rows: a line
+`# crispr_arrays<TAB>window_start=..<TAB>window_end=..`, a column line, and one row per array within the window (a
+locus with none has the two lines alone). Arrays are not genes: they have no `offset` or `ordinal` and never count
+toward a gene window, so the gene rows are the same with or without them. The window in bases is, for `--window
+10g`, from the first base of the farthest gene the table shows upstream to the last base of the farthest one
+downstream (a gene across the origin of a circular contig counted on the hit's side), and for `--window 5kb`, from
+5,000 bases before the hit to 5,000 after it. An array is listed when at least one of its bases lies in that span.
+
+| Column | Meaning |
+|---|---|
+| `kind` | `crispr_array` |
+| `feature_uid`, `producer` | the array, and the MinCED setting that called it (`minced-0.4.2-w8-nr3-r23x47-s26x50`: at least 3 repeats) |
+| `start`, `end`, `strand` | the array on the contig, 0-based half-open; strand `+1` always (MinCED does not say which way an array is transcribed) |
+| `n_repeats`, `n_spacers`, `repeat` | its repeats and spacers, and its commonest repeat sequence |
+| `delta_bp` | the gap to the hit in bases, negative when the array overlaps the hit |
+| `side_rel` | `1` downstream of the hit along the hit's strand, `-1` upstream, `0` overlapping it |
+| `partial` | `true` when part of the array lies outside the window |
+| `crosses_origin` | `true` when the array is reached across the origin of a circular contig |
+
+On such a release `neighbors.tsv` also ends with one more table (section 6) and `README.txt` with a paragraph on
+these rows. On a release without arrays every file is exactly as before. The `--json` records of `nbr` and `nbr
+summarize` carry no arrays.
+
 ### Keeping your results
 
 `--out` and the run are on the pod's `/tmp`, which a reboot may clear. `results` keeps a finished run on the pod's
@@ -240,6 +264,11 @@ A locus is one hit gene with its window; the hit is not its own neighbour. `neig
 | `same_strand_share` | the share of those neighbours on the hit's strand |
 | `unannotated` | `true` on the row of neighbours with no cluster or family at that level |
 
+On a release with CRISPR arrays (card E-14; section 5) one more table follows the levels, one row per array producer:
+`kind` (`crispr_array`), `producer`, `n_loci` (all hit loci), `n_loci_with_array` (loci with at least one array within
+the window in bases), `share_of_loci`, `n_loci_partial_only` (loci whose only arrays there run out of the window) and
+`n_arrays` (distinct arrays within some window). The tables before it do not change.
+
 Read rows by `n_loci`, then `modal_offset`: a cluster or family that sits at one offset in nearly all its loci is a
 conserved neighbour (the example's top rows, with their offsets, are in `examples/rnap/README.md`). On `rN.1` (no
 Pfam) a cluster is only an id. To name one, look up its representative: `bio-box find --protein <rep_uid>` gives an
@@ -254,6 +283,22 @@ These are counts, not significance: no enrichment statistic exists yet, and iden
 ls "$WORK"/rnap/loci/locus_NC_001604_*
 column -t -s $'\t' "$WORK/rnap/loci/locus_NC_001604_39f9ef263e234b012d2671634468546e.tsv"
 ```
+
+Arrays beside a locus need a release that holds them. Until one does, a scratch view of `rN.3` with card E-12's
+arrays (stages P1, P2, S1; built by card E-14 under `/tmp/if2453/e14/view`, its own manifest and catalog, the data
+root untouched) shows them. The complete type I-F system of the CRISPR example's control genome (its Cas7f,
+`NZ_AP026781.1:687857-688841`), 10 genes on each side:
+
+```bash
+bio-box nbr 07ba31e0f0e5ffcc30388139b5ec30e4 --root /tmp/if2453/e14/view --release rN.3 --profile "$PROFILE" --window 10g --format tsv --out "$WORK/e14_cas7f"
+```
+
+Its table (`locus_NZ_AP026781.1_099ffda89602165c6368d6a601339856.tsv`) ends with the window `676009` to `697441` and
+the two arrays of the system, one on each side: 27 repeats at 679543-681134 (`side_rel -1`, 6,723 bases before the
+Cas7f) and 21 repeats at 689534-690762 (`side_rel 1`, 693 bases after it), both with the repeat
+`CTTCACTGCCGAGTAGGCAGCTTAGAAA` (*measured*, wilkcomp02, 2026-11-14, `planning/measurements/2026-11-14_arrays_in_neighbourhoods.md`).
+The same command for the TniQ of the Tn7-like element (`28e32e6533f7f55e5bca64f44c89b426`) shows none: its
+one-spacer array has two repeats, below MinCED's minimum of three (card E-13).
 
 ### Which loci share a context: `nbr flanks`
 

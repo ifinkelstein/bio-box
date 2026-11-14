@@ -347,3 +347,94 @@ def test_the_rnap_observer_leaves_out_the_control_rows_when_the_flanks_do_not_ho
     assert p.returncode == 0, p.stderr  # the control's rows are left out: check.py then reports them missing
     got = dict(line.split("\t") for line in p.stdout.splitlines()[1:])
     assert "t7_flank_group_loci" not in got and got["rnap_flank_groups"] == "2"
+
+
+# --- card E-14: checks that need a table not every release holds (`[requires <table>]`) ---------------------------
+
+CONDITIONAL = EXPECTED + (
+    "arr\tan array in the window\tinvariant\t[requires l1_crispr] == true\n"
+    "arr_n\tarrays in the window\trecorded\t[requires l1_crispr] recorded\n"
+)
+
+
+@pytest.mark.covers("E-14")
+def test_a_check_that_requires_a_table_the_release_lacks_is_not_applicable_and_never_recorded(tmp_path):
+    exp = _write(tmp_path / "expected.tsv", CONDITIONAL)
+    rec = _write(tmp_path / "rX.tsv", "check_id\tvalue\ncount\t12\nother\t3\n")
+    new, table = tmp_path / "recorded_new.tsv", tmp_path / "table.tsv"
+    p = _run("--expected", exp, "--recorded", rec, "--write-recorded", str(new), "--table", str(table),
+             _observed(tmp_path, arr="not applicable", arr_n="not applicable"))
+    assert p.returncode == 0, p.stdout + p.stderr
+    assert _status(p.stdout)["arr"] == "n/a" and _status(p.stdout)["arr_n"] == "n/a"
+    # the table lists the checks that apply: release_examples.sh counts an invariant row that is not ok as failed
+    rows = [line.split("\t") for line in table.read_text().splitlines()[1:]]
+    assert [r[0] for r in rows] == ["zero", "floor", "ceiling", "text", "flag", "count", "other"]
+    assert {r[4] for r in rows} == {"ok"}
+    assert "arr\tobserved=not applicable\texpected=[requires l1_crispr] == true" in p.stdout
+    assert p.stdout.splitlines()[-1] == ("check: 7 ok, 2 n/a, 0 FAIL, 0 differs, 0 new, 0 missing, 0 unexpected; "
+                                         "invariants hold")
+    assert new.read_text() == "check_id\tvalue\ncount\t12\nother\t3\n"  # the n/a value is not recorded
+    # not observed at all (a run made before the checks existed): n/a too, not missing
+    p = _run("--expected", exp, "--recorded", rec, _observed(tmp_path))
+    assert p.returncode == 0 and _status(p.stdout)["arr"] == "n/a" and _status(p.stdout)["arr_n"] == "n/a"
+
+
+@pytest.mark.covers("E-14")
+def test_a_check_that_requires_a_table_the_release_holds_is_checked_as_usual(tmp_path):
+    exp = _write(tmp_path / "expected.tsv", CONDITIONAL)
+    new = tmp_path / "recorded_new.tsv"
+    p = _run("--expected", exp, "--write-recorded", str(new), _observed(tmp_path, arr="true", arr_n="2"))
+    assert p.returncode == 0 and _status(p.stdout)["arr"] == "ok" and _status(p.stdout)["arr_n"] == "new"
+    assert new.read_text() == "check_id\tvalue\narr_n\t2\ncount\t12\nother\t3\n"
+    p = _run("--expected", exp, _observed(tmp_path, arr="false", arr_n="0"))
+    assert p.returncode == 1 and _status(p.stdout)["arr"] == "FAIL"
+    assert p.stdout.splitlines()[-1].endswith("; 1 invariants failed")
+
+
+@pytest.mark.covers("E-14")
+def test_not_applicable_does_not_excuse_a_check_that_requires_nothing(tmp_path):
+    exp = _write(tmp_path / "expected.tsv", CONDITIONAL)
+    p = _run("--expected", exp, _observed(tmp_path, zero="not applicable", count="not applicable"))
+    assert p.returncode == 1
+    assert _status(p.stdout)["zero"] == "FAIL" and _status(p.stdout)["count"] == "new"
+    assert _status(p.stdout)["arr"] == "n/a"
+
+
+@pytest.mark.covers("E-14")
+@pytest.mark.parametrize("line", ["bad\tx\tinvariant\t[requires] == true\n",
+                                  "bad\tx\tinvariant\t[requires l1_crispr]== true\n",
+                                  "bad\tx\trecorded\t[requires l1_crispr] == 3\n",
+                                  "bad\tx\tinvariant\t[requires l1_crispr] = true\n"])
+def test_a_malformed_requirement_is_refused(tmp_path, line):
+    exp = _write(tmp_path / "expected.tsv", EXPECTED + line)
+    p = _run("--expected", exp, _observed(tmp_path))
+    assert p.returncode == 2 and p.stdout == "" and p.stderr.startswith("check: ")
+
+
+@pytest.mark.covers("E-14")
+def test_the_crispr_array_checks_all_require_l1_crispr_and_are_not_applicable_on_rn3():
+    """The example's array checks are conditional, so its recorded run of `rN.3` (no arrays) still passes with the
+    same recorded file, and `--write-recorded` writes `recorded/rN.3.tsv` byte for byte."""
+    rows = [line.split("\t") for line in (EX / "expected.tsv").read_text().splitlines()[1:]]
+    arr = [r for r in rows if r[0].startswith("arrays_")]
+    assert arr and all(r[3].startswith("[requires l1_crispr] ") for r in arr)
+    assert not any(r[3].startswith("[requires") for r in rows if not r[0].startswith("arrays_"))
+    assert {r[0] for r in arr if r[2] == "invariant"} == {"arrays_pdam_complete_if_window_has_array",
+                                                          "arrays_nbr_pdam_complete_if_window"}
+    p = _run("--expected", str(EX / "expected.tsv"), "--recorded", str(EX / "recorded" / "rN.3.tsv"),
+             str(EX / "results" / "observed.tsv"))
+    assert p.returncode == 0, p.stdout + p.stderr
+    assert sum(1 for line in p.stdout.splitlines() if line.startswith("n/a\tarrays_")) == len(arr)
+
+
+@pytest.mark.covers("E-14")
+def test_the_rn3_recorded_file_is_what_the_checker_writes_from_the_rn3_run(tmp_path):
+    new = tmp_path / "recorded_new.tsv"
+    obs = EX / "results" / "observed.tsv"
+    na = tmp_path / "observed_arrays.tsv"  # what checks_arrays.sql and run.sh observe on a release without arrays
+    rows = [line.split("\t")[0] for line in (EX / "expected.tsv").read_text().splitlines()[1:]]
+    na.write_text("check_id\tvalue\n" + "".join(f"{c}\tnot applicable\n" for c in rows if c.startswith("arrays_")))
+    p = _run("--expected", str(EX / "expected.tsv"), "--recorded", str(EX / "recorded" / "rN.3.tsv"),
+             "--write-recorded", str(new), str(obs), str(na))
+    assert p.returncode == 0, p.stdout + p.stderr
+    assert new.read_bytes() == (EX / "recorded" / "rN.3.tsv").read_bytes()

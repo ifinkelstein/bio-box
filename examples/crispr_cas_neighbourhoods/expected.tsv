@@ -49,3 +49,16 @@ bp_tniq_cas7f_loci	TniQ genes with a Cas7f within 20 kb (base-pair windows)	reco
 bp_cas7f_tniq_loci	Cas7f genes with a TniQ within 10 kb (base-pair windows)	recorded	recorded
 bp_tniq_cas7f_loci_with_tnsA_tnsB_tnsC	TniQ genes with a Cas7f within 20 kb that also have TnsA, TnsB and TnsC (TniB or TnsC domain) within 20 kb	recorded	recorded
 bp_tniq_cas7f_loci_with_tnsB	of those TniQ genes, with TnsB within 20 kb	recorded	recorded
+arrays_pdam_complete_if_window_has_array	the complete type I-F system of the control chromosome (Cas7f NZ_AP026781.1:687857-688841) has a CRISPR array within its 10-gene window in bases, by SQL from the run's window (sql/checks_arrays.sql): an array is seen where one is (card E-12 found one on each side, 27 and 21 repeats); not applicable on a release without arrays	invariant	[requires l1_crispr] == true
+arrays_nbr_pdam_complete_if_window	the same locus as `bio-box nbr` writes it (the array rows of its locus table in the Cas7f run's loci/, card E-14): at least one array	invariant	[requires l1_crispr] >= 1
+arrays_producers	the CRISPR array producers (MinCED settings) of the release	recorded	[requires l1_crispr] recorded
+arrays_tniq_control_window	arrays within the 10-gene window of the control TniQ (the Tn7-like element of NZ_AP026781.1); the paper's minimal systems carry "a short CRISPR array", which here is a single spacer (2 repeats) that MinCED's default of 3 repeats does not call (card E-12)	recorded	[requires l1_crispr] recorded
+arrays_cas7f_control_window	arrays within the 10-gene window of the control Cas7f	recorded	[requires l1_crispr] recorded
+arrays_control_cas6f_nearest_bp	gap in bases from the control element's Cas6f (NZ_AP026781.1:422775-423375) to the nearest array on its chromosome at the settings in force	recorded	[requires l1_crispr] recorded
+arrays_pdam_complete_if_window	arrays within the 10-gene window of the complete type I-F system's Cas7f	recorded	[requires l1_crispr] recorded
+arrays_icp1_cas7f_window	arrays within the 10-gene window of the Cas7f of phage ICP1_2011_A	recorded	[requires l1_crispr] recorded
+arrays_tniq_cas7f_loci_with_array	TniQ loci with a Cas7f within 10 genes (I-F3 candidates) that have an array within the window	recorded	[requires l1_crispr] recorded
+arrays_cas7f_tniq_loci_with_array	Cas7f loci with a TniQ and no Cas1, Cas2 or Cas3 within 10 genes that have an array within the window	recorded	[requires l1_crispr] recorded
+arrays_cas7f_complete_not_virus_loci_with_array	Cas7f loci of prokaryotes and plasmids with Cas1 and Cas3 within 10 genes (complete type I-F) that have an array within the window	recorded	[requires l1_crispr] recorded
+arrays_cas7f_complete_not_virus_loci	Cas7f loci of prokaryotes and plasmids with Cas1 and Cas3 within 10 genes	recorded	[requires l1_crispr] recorded
+arrays_cas7f_virus_loci_with_array	Cas7f loci of phages that have an array within the window	recorded	[requires l1_crispr] recorded

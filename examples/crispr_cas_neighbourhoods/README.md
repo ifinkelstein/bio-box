@@ -324,7 +324,9 @@ Each is a candidate card; the card that covers it is named, or "none".
 
 1. **CRISPR arrays.** No producer writes `feature` rows of kind `crispr_array` (`ids.KIND` has the kind; `PLAN.md`
    step 4 names MinCED and CRISPRDirection with spacers into a spacer table). Without it the example cannot show an
-   array downstream of *cas6f*, count spacers, or look for self-targeting spacers. Card: none.
+   array downstream of *cas6f*, count spacers, or look for self-targeting spacers. Card: none. (Since then card
+   E-12 wrote the producer and card E-14 shows arrays beside a locus and adds the array checks, section 8; no
+   release holds arrays yet.)
 2. **ncRNA in a release.** The SRP-RNA (*ffs*) attachment site, and any tRNA site, need ncRNA features in the
    release the search runs on. Cards E-07 (ncRNA scan in shards) and E-09 (`prok-2`); `rN.3` has none.
 3. **Taxonomy.** Hosts are named here from FASTA headers; `contig_dim.tax_order` is null. A genus or GTDB species
@@ -385,6 +387,11 @@ of this release that changed), `new` (no recorded value for this release yet), `
   `$OUT/recorded_new.tsv` (written by every run) to `recorded/<release>.tsv` in the commit that records the run;
   never edit another release's file. A `differs` line on a rerun of the same release means the release or the code
   changed: find out which before recording anything.
+- `[requires l1_crispr]` before either expectation (the CRISPR array checks, `arrays_*`, card E-14; section 8):
+  the check needs a release with CRISPR arrays. On a release without them `sql/checks_arrays.sql` and `run.sh`
+  observe `not applicable` and the check's line is `n/a`: neither ok nor failed, not in `--table`'s summary, never
+  written to `recorded_new.tsv`. So the check of `rN.3` (no arrays) is as before and writes `recorded/rN.3.tsv` byte
+  for byte. A check without the prefix that observes `not applicable` fails, as any wrong value does.
 
 **What a failed invariant would mean.**
 
@@ -445,6 +452,7 @@ in `expected.tsv` with the gene's `feature_uid`, written into `sql/checks.sql` a
 | `recorded/rN.3.tsv` | the recorded values of `rN.3` |
 | `oracle.py` | the `hmmsearch` oracle (standard library only); the comparison, `check.py`, is shared by every example and lives in `examples/_shared/` since card E-11; both tested by `tests/r1/test_examples_check.py` |
 | `sql/checks.sql`, `sql/checks_bp.sql`, `sql/oracle_uids.sql`, `sql/uids_tniq_cas.sql` | what `run.sh` runs |
+| `sql/checks_arrays.sql` | the CRISPR array checks (card E-14, section 8): `not applicable` on a release without arrays |
 | `sql/q00_models.sql` to `sql/q04_cas5f_lengths.sql` | the tables of section 3 that the check does not need (`q01` is for reading: every TniQ and Cas7f gene with the roles in its base-pair window) |
 | `results/` | this run's small tables: `check.txt`, `observed.tsv`, `tniq_cas_loci.tsv`, `cas7f_10kb.tsv` (`nbr summarize`), `q00_models.tsv`, `q02_paper_organisms.tsv`, `q04_cas5f_lengths.tsv`, `uids_tniq_cas.txt`, `SHA256SUMS` of what stays on the pod |
 | `figures/` | the three figures of section 3, SVG and PDF |
@@ -452,3 +460,43 @@ in `expected.tsv` with the gene's `feature_uid`, written into `sql/checks.sql` a
 Kept on the pod, not here (`$OUT` = `/tmp/if2453/ex2/rN.3-b` on wilkcomp02, local disk; paths and sha256 in `results/SHA256SUMS`): the runs (`$OUT/runs`), the hit tables and
 locus tables (`$OUT/tniq`, `$OUT/cas7f`), the 20 kb summary of the TniQ run (2,379,860 bytes), and the `nbr flanks`
 outputs.
+
+## 8. CRISPR arrays beside the loci (card E-14)
+
+Card E-12 added CRISPR arrays (MinCED 0.4.2 at its defaults, at least 3 repeats, as `feature` rows of kind
+`crispr_array` and `l1_crispr` rows); card E-14 shows them in `nbr`'s locus tables and `nbr summarize` (`GUIDE.md`
+section 5) and adds these checks. No release holds arrays yet, so on `rN.3` every array check is `n/a` (section 6)
+and `recorded/rN.3.tsv` is unchanged; no `recorded/` file is written for a release without arrays.
+
+**The checks** (`sql/checks_arrays.sql`, and one from `nbr`'s own locus table in `run.sh` step 6b). The window is
+the run's 10-gene window turned into bases (from the least start to the greatest end of its genes); an array is in
+it when it shares at least one base with that span, as `nbr` defines it.
+
+| Check | Kind | Why |
+|---|---|---|
+| `arrays_pdam_complete_if_window_has_array`, `arrays_nbr_pdam_complete_if_window` | invariant | The complete type I-F system of the control chromosome has arrays on both sides, 27 and 21 repeats (card E-12): long enough for any setting to call, so a window that does not see them is a defect. One by SQL, one by `nbr` |
+| `arrays_tniq_control_window`, `arrays_cas7f_control_window`, `arrays_control_cas6f_nearest_bp` | recorded | The paper's minimal systems carry "a short CRISPR array" (Abstract). At MinCED's default the control element has none: its array is one spacer between two repeats, 128 bases from Cas6f, found only with a minimum of 2 (card E-12; card E-13 measures that setting). So this is a value per release and setting (`arrays_producers` names the setting), not an invariant |
+| the other `arrays_*` | recorded | How many I-F3 loci, complete I-F loci and phage I-F loci have an array within 10 genes |
+
+**On a scratch view with arrays** (*measured*, wilkcomp02, 2026-11-14, `planning/measurements/2026-11-14_arrays_in_neighbourhoods.md`):
+`rN.3` plus card E-12's arrays of P1, P2 and S1, with its own manifest and catalog under `/tmp/if2453/e14/view`
+(nothing written to the data root), and the example's two runs of section 3. Not a release, so these values are
+not a `recorded/` file:
+
+| Check | Value |
+|---|---|
+| `arrays_pdam_complete_if_window_has_array` | true (2 arrays: 679543-681134, 27 repeats, 6,723 bases upstream of the Cas7f; 689534-690762, 21 repeats, 693 bases downstream) |
+| `arrays_nbr_pdam_complete_if_window` | 2 |
+| `arrays_tniq_control_window`, `arrays_cas7f_control_window` | 0, 0 |
+| `arrays_control_cas6f_nearest_bp` | 256,168 (the complete system's array) |
+| `arrays_tniq_cas7f_loci_with_array` | 7 of the 20 I-F3 TniQ loci (`tniq_cas7f_loci`) |
+| `arrays_cas7f_tniq_loci_with_array` | 6 of the 19 Cas7f loci with a TniQ and no Cas1, Cas2 or Cas3 |
+| `arrays_cas7f_complete_not_virus_loci_with_array` | 78 of 78 prokaryote and plasmid Cas7f loci with Cas1 and Cas3 |
+| `arrays_cas7f_virus_loci_with_array` | 45 of the 46 phage Cas7f loci |
+| `arrays_icp1_cas7f_window` | 1 |
+| `arrays_producers` | `minced-0.4.2-w8-nr3-r23x47-s26x50` |
+
+So at three repeats every complete I-F system has an array beside it and about a third of the transposon-borne
+ones do (7 of 20, *derived*), which is the paper's picture of short arrays only in part: the rest are below MinCED's
+minimum or absent. `nbr` over the two runs lists 190 (locus, array) pairs, 13 of the 635 TniQ loci and 138 of the
+157 Cas7f loci, and the SQL definition the same 190 pairs.

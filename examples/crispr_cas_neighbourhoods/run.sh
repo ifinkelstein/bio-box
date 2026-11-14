@@ -15,7 +15,8 @@
 # What it does, each bio-box step through scripts/pod_run.sh (a capped unit, nice 19), each other tool in a
 # capped scope: fetch the anchor HMMs TniQ (PF06527) and Cas_Csy3 (Cas7f, PF09615) from Pfam by name; search
 # both with their gathering cutoffs; nbr summarize at the paper's windows (20 kb for TniQ, 10 kb for Cas7f); nbr
-# flanks with figures; the SQL checks (sql/checks.sql); the hmmsearch oracle (oracle.py); then the shared
+# flanks with figures; the SQL checks (sql/checks.sql, and sql/checks_arrays.sql for CRISPR arrays, card E-14:
+# `not applicable` on a release without them); the hmmsearch oracle (oracle.py); then the shared
 # check.py against expected.tsv and recorded/$RELEASE.tsv. Writes nothing under ROOT. Exit: check.py's (1 when an
 # invariant fails). The launcher (room, bb, tool) and check.py are shared by every example: examples/_shared/.
 set -euo pipefail
@@ -110,6 +111,18 @@ bb sql-checks sql $Q "$EX/sql/checks.sql" --out "$OUT/observed_sql.tsv"
 bb sql-checks-bp sql --root "$ROOT" --release "$RELEASE" --threads "$THREADS" "$EX/sql/checks_bp.sql" \
   --out "$OUT/observed_bp.tsv"
 
+# 6b. CRISPR arrays (card E-14): by SQL from the runs' windows and the release's arrays, and as `nbr` wrote them
+#     into the complete type I-F system's locus table (its array rows follow the `# crispr_arrays` line). On a
+#     release without arrays every value is `not applicable`, which check.py reports n/a ([requires l1_crispr]).
+bb sql-checks-arrays sql $Q "$EX/sql/checks_arrays.sql" --out "$OUT/observed_arrays.tsv"
+LOCUS="$OUT/cas7f/loci/locus_NZ_AP026781.1_099ffda89602165c6368d6a601339856.tsv"
+if [ -f "$LOCUS" ] && grep -q '^# crispr_arrays' "$LOCUS"; then
+  NBR_ARRAYS=$(awk '/^# crispr_arrays/ {f = 1; next} f == 1 {f = 2; next} f == 2 {n++} END {print n + 0}' "$LOCUS")
+else
+  NBR_ARRAYS="not applicable"
+fi
+printf 'check_id\tvalue\narrays_nbr_pdam_complete_if_window\t%s\n' "$NBR_ARRAYS" > "$OUT/observed_arrays_nbr.tsv"
+
 # 7. The oracle: hmmsearch (HMMER, in the image) on every hit and every Pfam-annotated protein of the two models.
 bb sql-uids sql $Q "$EX/sql/oracle_uids.sql" --out "$OUT/oracle_uids.txt"
 bb seq-oracle seq --root "$ROOT" --release "$RELEASE" --proteins-file "$OUT/oracle_uids.txt" --out "$OUT/oracle.faa"
@@ -123,6 +136,8 @@ tool "$OUT/logs/oracle.time" python -I "$EX/oracle.py" "$OUT/hmm/anchors.hmm" "$
 cp "$OUT/observed_sql.tsv" "$OUT/observed.tsv"
 tail -n +2 "$OUT/observed_bp.tsv" >> "$OUT/observed.tsv"
 tail -n +2 "$OUT/observed_oracle.tsv" >> "$OUT/observed.tsv"
+tail -n +2 "$OUT/observed_arrays.tsv" >> "$OUT/observed.tsv"
+tail -n +2 "$OUT/observed_arrays_nbr.tsv" >> "$OUT/observed.tsv"
 set +e
 tool "$OUT/logs/check.time" python -I "$SHARED/check.py" --expected "$EX/expected.tsv" \
   --recorded "$EX/recorded/$RELEASE.tsv" --write-recorded "$OUT/recorded_new.tsv" \
