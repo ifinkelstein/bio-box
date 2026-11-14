@@ -760,10 +760,12 @@ def test_one_origination_axis_varies_genome_size_without_a_runaway(micro):
     and duplication + transfer + origination). Now: one lineage axis, on origination alone; ZOMBI2 recorded > 10
     distinct origination multipliers and none other than 1 for duplication, transfer and loss; the chromosome mean
     within 1,500 +- 30% (DEC-37 (1); the per-seed check is tests/r2/test_synthworld_preset_seeds.py); the axis moves
-    size: a genome's chromosome size rises with its branch's origination multiplier (Spearman rank correlation > 0,
-    one-sided permutation p < 0.01, 2,000 permutations, fixed seed); and no runaway: the largest chromosome below the
-    §5.1 range's top, 4,000 genes (the two old axes sent whole worlds to 15,445 genes per genome). Sizes are read from
-    the raw gene order with plasmids excised."""
+    size: a genome's originated genes rise with the origination multiplier its line of descent carried, averaged over
+    time from the living lineages' MRCA (where the rates start) to the present, read from ZOMBI2's
+    `lineage_multipliers.tsv` and the Newick (Spearman rank correlation > 0, one-sided permutation p < 0.01, 2,000
+    permutations, fixed seed); and no runaway: the largest chromosome below the §5.1 range's top, 4,000 genes (the two
+    old axes sent whole worlds to 15,445 genes per genome). Sizes are read from the raw gene order with plasmids
+    excised."""
     bb, out, _ = micro
     extant = {g.species_node for g in bb.genomes}
     reps = _raw_replicons(out, extant, set(_plasmid_sizes(bb.params)))
@@ -796,14 +798,30 @@ def test_one_origination_axis_varies_genome_size_without_a_runaway(micro):
         return sum((x - ma) * (y - mb) for x, y in zip(a, b)) / \
             (sum((x - ma) ** 2 for x in a) * sum((y - mb) ** 2 for y in b)) ** 0.5
 
-    tips = sorted(size_of)
-    rs, rm = ranks([size_of[t] for t in tips]), ranks([float(rows[t]["origination"]) for t in tips])
+    times = _newick_times(out / "zombi2/species_complete.nwk", _t0(out))
+    crown, present = _living_crown(times, extant)
+
+    def path_multiplier(tip):
+        acc, x = 0.0, tip
+        while x is not None:
+            parent, start, end = times[x]
+            if end > crown:
+                acc += float(rows[x]["origination"]) * (end - max(start, crown))
+            x = parent
+        return acc / (present - crown)
+
+    kind = {int(r["family"]): r["kind"] for r in _tsv(out / "backbone/families.tsv")}
+    orig = collections.Counter(g.genome_id for g in bb.genes if g.replicon == 0 and kind[g.family] == "originated")
+    node_of = {g.genome_id: g.species_node for g in bb.genomes}
+    gids = sorted(node_of)
+    rs, rm = ranks([orig[g] for g in gids]), ranks([path_multiplier(node_of[g]) for g in gids])
     rho = corr(rs, rm)
     rng = np.random.default_rng(20261114)
     null = [corr(rs, list(rng.permutation(rm))) for _ in range(2000)]
     p = (1 + sum(x >= rho for x in null)) / 2001
     print(f"\nchromosome genes: min {sizes[0]} median {sizes[len(sizes) // 2]} max {sizes[-1]} mean {mean:.1f}; "
-          f"Spearman with the origination multiplier {rho:.3f} (permutation p {p:.4f})")
+          f"originated genes per genome {min(orig.values())}-{max(orig.values())}, Spearman with the path origination "
+          f"multiplier {rho:.3f} (permutation p {p:.4f})")
     assert rho > 0 and p < 0.01, (rho, p)
     assert sizes[-1] < 4000, sizes[-1]
 

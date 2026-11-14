@@ -31,9 +31,20 @@ What the preset declares, beyond ZOMBI2's anonymous root families (session 2 add
 - ``decoys``: single families ``dec<i>`` whose transfers are weighted by the presence of module
   ``partner_modules[i]``'s first family (``mod<m>.0``) in the recipient (``absent_weight`` without it);
 - ``genomes.transfer_to``: ``distance`` (ZOMBI2 ``Distance(decay=genomes.transfer_decay)``) or ``uniform``;
-  a family with a recipient rule of its own (plasmids, decoys) uses that rule instead;
+  a family with a recipient rule of its own (plasmids, decoys; planted modules and profile-only groups with
+  ``entry_exclusion``) uses that rule instead for its own genes (a segment's rules multiply);
+- ``modules.entry_exclusion``, ``profile_only.entry_exclusion`` (DEC-36): every family of the group gets the
+  recipient rule ``Recipients().weighted_by("genomes:<group>.0", {present: 0, absent: 1})``, so no transfer of a
+  module family lands in a lineage holding the module's first family (ZOMBI2 0.54.0 has no per-group knob;
+  ZOMBI2 makes a transfer with no eligible recipient a no-op); ``member_duplication`` is the members' own
+  duplication rate (null: the run's);
 - ``lineage_rates.axes``: each axis one ZOMBI2 ``Random('lineages', Drift(LogNormal(0, sigma)))`` shared by
-  the run rates it lists (duplication, transfer, loss, origination), so genome size varies among lineages.
+  the run rates it lists (duplication, transfer, loss, origination), so genome size varies among lineages
+  (since DEC-37 ``micro`` has one axis, on origination alone);
+- ``species.crown_age`` (DEC-37 (2), (3)): the drawn tree is rescaled (every branch times one factor) so that
+  the living lineages' most recent common ancestor (MRCA) lies ``crown_age`` before the present; null keeps the
+  drawn tree. ``species.rate_onset``: ``crown`` starts the gene-content rates at that MRCA (rearrangements still
+  run from the first speciation), ``first_speciation`` at the first speciation (the phage set, sessions 1-10).
 
 Shape on disk (``build(params, seed, out)``; ``read(out)`` loads it back)::
 
@@ -73,7 +84,8 @@ plasmid's group, ``unit`` the plasmid's unit (-1 for the chromosome).
 
 ``taxonomy.tax_lineage`` is ``d__<domain>;p__Phylum01;c__Class03;...;s__Species12``: a genome's taxon at a
 rank is the species-tree branch alive at that rank's cut, ``crown + cut x (present - crown)`` with
-``crown`` the first speciation; taxa are numbered per rank in the order of the first genome holding them.
+``crown`` the end of the living lineages' MRCA (DEC-37 (3); the first speciation before session 11, the same
+node at seeds where both sides of the first split have living genomes); taxa are numbered per rank in the order of the first genome holding them.
 ``taxa`` has one row per taxon: the crossing branch (``node``), the cut's absolute time, the number of
 genomes and the taxon of the rank above (``parent``).
 

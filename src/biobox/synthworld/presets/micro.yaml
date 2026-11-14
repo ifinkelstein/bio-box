@@ -14,12 +14,14 @@ species:
   death: {v: 0.3, tag: asserted, why: "spike §1 tree: death 0.3"}
   burst_size: {v: 4, tag: asserted, why: "§5.1: one clonal burst of 4"}
   burst_depth: {v: 0.02, tag: asserted, why: "a short-branch cluster: its root sits this fraction of the crown age below the present"}
-  crown_age: {v: 5.0, tag: fitted, why: "PLACEHOLDER"}
-  rate_onset: {v: crown, tag: asserted, why: "PLACEHOLDER"}
+  # DEC-37 (2), (3): the drawn tree is rescaled (every time times one factor) so that the time from the most recent
+  # common ancestor of the living lineages to the present is crown_age, and the rates start at that ancestor
+  crown_age: {v: 5.0, tag: derived, why: "DEC-37 (2): about the 21-seed median. Over the default and the 20 N2 seeds the crown from the first speciation has median 5.26 (session 10) and the crown from the living MRCA, as DEC-37 (3) measures it, 4.52 (session 11, crowns.tsv); 5.0 lies between them, a round value"}
+  rate_onset: {v: crown, tag: asserted, why: "DEC-37 (2) rates mean the same at every seed: gene-content rates are 0 from the first speciation to the living MRCA and run for exactly crown_age, also at seeds whose first split has a side without living genomes (8 of 21)"}
 
 taxonomy:
   # §2.1 S1: a genome's taxon at a rank is the species-tree branch alive at that rank's cut, a fraction of
-  # the crown age (first speciation = 0, present = 1). The clonal burst (burst_depth 0.02) is one species.
+  # the crown age (the living lineages' MRCA = 0, present = 1; DEC-37 (3)). The clonal burst (burst_depth 0.02) is one species.
   domain: {v: Bacteria, tag: asserted, why: "one synthetic domain"}
   ranks: {v: [phylum, class, order, family, genus, species], tag: asserted, why: "§2.1 S1: phylum ... species"}
   cuts: {v: [0.08, 0.2, 0.35, 0.5, 0.7, 0.9], tag: asserted, why: "deeper ranks cut nearer the present; a species cut after the burst's root would split it"}
@@ -46,7 +48,7 @@ genomes:
   inversion: {v: 0.05, tag: asserted, why: "spike §1"}
   transposition: {v: 0.02, tag: asserted, why: "spike §1"}
   translocation: {v: 0.0, tag: asserted, why: "one chromosome"}
-  origination_per_root_family: {v: 0.15, tag: fitted, why: "PLACEHOLDER"}
+  origination_per_root_family: {v: 0.15, tag: fitted, why: "session 11 scans c_fit1 and f_s (22 seeds, crown 5.0 from the MRCA, one origination axis): chromosome means 1,113-1,880 at sigma 0.2 to 0.3, inside 1,500 +- 30%; 0.1 gave 833 at the default seed (smoke)"}
   duplication_extent: {v: 2, tag: asserted, why: "spike §1 geometric means"}
   loss_extent: {v: 2, tag: asserted, why: "spike §1"}
   transfer_extent: {v: 3, tag: asserted, why: "spike §1"}
@@ -61,15 +63,16 @@ genomes:
 
 modules:
   # Planted adjacency modules: ZOMBI2 adjacent groups. Sizes cycle 2..6; the 3 x 3 strength grid is
-  # together {0.3, 0.7, 1.0} x member transfer rate {0.05, 0.15, 0.30} (module i: together[i % 3],
+  # together {0.3, 0.7, 1.0} x member transfer rate {0.01, 0.06, 0.4} (module i: together[i % 3],
   # member_transfer[(i // 3) % 3]). DEC-15 (a) puts every adjacency-scored module at fates "group",
-  # so §5.3's "per-family loss" fates axis is replaced by the member transfer rate.
+  # so §5.3's "per-family loss" fates axis is replaced by the member transfer rate. DEC-36: entry exclusion,
+  # and the transfer axis means realized transfer events per member family (recorded in truth_module).
   count: {v: 25, tag: asserted, why: "§5.1: 25 modules, sizes 2-6, strength grid 3 x 3"}
   sizes: {v: [2, 3, 4, 5, 6], tag: asserted, why: "§5.1"}
   together: {v: [0.3, 0.7, 1.0], tag: asserted, why: "§5.3 together grid"}
-  member_transfer: {v: [0.05, 0.15, 0.30], tag: asserted, why: "second strength axis (DEC-15 (a) fixes fates); spike §1 used 0.15"}
+  member_transfer: {v: [0.01, 0.06, 0.4], tag: fitted, why: "DEC-36: the axis is realized transfer events per member family, refitted over the 21 seeds so the three levels are distinct (session 11 scans e_s0.5, e_s0.7: pooled medians 5.0, 10.0, 20.8 and 5.0, 9.7, 19.5). Under entry exclusion a member is transferred only into a lineage without the module, so the count saturates near 20 (holes made by losses) and has a floor near 4 (background runs carrying a member): the old rates 0.05, 0.15, 0.30 gave about 5, 18, 20"}
   member_loss: {v: 0.03, tag: asserted, why: "spike §1 member loss, so modules survive and travel"}
-  member_duplication: {v: 0.0, tag: fitted, why: "PLACEHOLDER"}
+  member_duplication: {v: 0.0, tag: asserted, why: "DEC-36 aim: module families stop accumulating copies; with entry exclusion only duplication adds copies to a holder, so the members start no duplication runs of their own (a background run that ends in a unit still copies it, fates group). Session 10 measured this setting (o_crown_noaxes_excl)"}
   entry_exclusion: {v: true, tag: asserted, why: "DEC-36: a lineage that holds the module (its first family) receives none of its families by transfer"}
   fates: {v: group, tag: asserted, why: "DEC-15 (a)"}
   scored: {v: true, tag: asserted, why: "adjacency-scored modules"}
@@ -81,15 +84,18 @@ profile_only:
   together: {v: 1.0, tag: asserted, why: "every member transfer carries the group"}
   member_transfer: {v: 0.15, tag: asserted, why: "spike §1"}
   member_loss: {v: 0.03, tag: asserted, why: "spike §1"}
-  member_duplication: {v: 0.0, tag: fitted, why: "PLACEHOLDER"}
-  entry_exclusion: {v: true, tag: fitted, why: "PLACEHOLDER"}
+  member_duplication: {v: 0.0, tag: asserted, why: "as modules.member_duplication"}
+  entry_exclusion: {v: true, tag: asserted, why: "DEC-36 reason applies to them: planted co-occurrence groups whose families accumulated copies like the modules (a lineage holding the first family receives none of the group by transfer)"}
 
 lineage_rates:
-  # §5.1 genome size 1,000-4,000: one root genome under uniform rates spreads only about +-9% (spike §7
+  # §5.1 genome size: since DEC-37 (1) the chromosome mean within 1,500 +- 30% at every seed; the 1,000-4,000
+  # spread is no longer asked per seed (one root genome under uniform rates spreads about +-9%, spike §7
   # item 7; session 1 measured 1,393-1,708). Each axis is one ZOMBI2 Random('lineages', Drift(LogNormal(0,
   # sigma))): a multiplier per species branch, its parent's times a mean-corrected step at each split,
   # shared by the rates the axis lists (one object, one draw). A rate is in at most one axis.
-  axes: {v: [{rates: [origination], sigma: 0.3}], tag: fitted, why: "PLACEHOLDER"}
+  # DEC-37 (1): one axis, on origination alone (the two axes of sessions 2-10, loss and duplication + transfer +
+  # origination, sent whole worlds to 404 or 15,445 genes per genome); size varies linearly with it, no runaway.
+  axes: {v: [{rates: [origination], sigma: 0.25}], tag: fitted, why: "session 11 scans c_fit1, e_s, f_s (22 seeds; sigma 0.2, 0.25, 0.3, 0.35, 0.5, 0.7, 1.0): the chromosome mean stays within 1,500 +- 30% at all 22 seeds up to sigma 0.3 (0.25: 1,116-1,834) and leaves it at 2 of 22 at 0.35, 6 at 0.5, 9 at 0.7, 11 at 1.0; 0.25 is the largest of the tried values with a margin to both ends"}
 
 plasmids:
   # §2.1 S2 "chromosome plus 0-2 plasmid replicons", §5.1 "0-2 plasmids of 20-200 genes". A plasmid is a
@@ -98,8 +104,8 @@ plasmids:
   # on a uniformly chosen one, so its replicons converge in size. Members carry the per-plasmid rates
   # divided by the plasmid's size (rates are per copy and a group is hit once per member).
   sizes: {v: [120, 40], tag: asserted, why: "§5.1: 20-200 genes; two types give 0-2 per genome"}
-  transfer: {v: 0.3, tag: asserted, why: "per plasmid per unit time (conjugation)"}
-  loss: {v: 0.7, tag: fitted, why: "per plasmid per unit time (curing); scanned (session 2): 0.3 left 3 plasmids in some genomes and none without, 0.9 lost one type"}
+  transfer: {v: 0.8, tag: fitted, why: "per plasmid per unit time (conjugation). DEC-37 (3), session 11 scans c_fit2, e_pls, f_pls (22 seeds each, 8 rate pairs): a unit is also cured by background loss runs that end in it (about 0.24 per unit per unit time, derived: loss 0.24 x sum of P(extent >= k) over k >= 2), so 0.3 against 0.7 dies out; both types survive at 10 to 18 of 22 seeds at every pair tried from 0.5/0.2 to 1.5/0.8 (early loss in the first lineages); 0.8/0.4 gave both types with at most 2 plasmids per genome and some genome without at the most seeds (5 of 22), the other pairs 1 to 4"}
+  loss: {v: 0.4, tag: fitted, why: "per plasmid per unit time (curing); fitted with transfer (above)"}
   present_weight: {v: 0.0, tag: asserted, why: "entry exclusion: a lineage carrying the plasmid does not receive it again (absent weighs 1)"}
 
 vehicles:
