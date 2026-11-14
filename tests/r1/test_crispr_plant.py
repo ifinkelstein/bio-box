@@ -216,3 +216,69 @@ def test_the_reverse_array_reads_as_reverse_complements_in_reverse_order():
     assert [e.seq for e in rels] == [revcomp(e.seq) for e in reversed(els)]
     assert all(rblock[e.start:e.end] == e.seq for e in rels)
     assert {e.seq for e in rels if e.kind == "repeat"} == {revcomp(REPEAT_IE)}
+
+
+# --- card E-13: the shuffle of the first null (`scripts/stress/e13_crispr_min_repeats.py`) ---------------------------
+
+
+def _e13():
+    import importlib.util
+    from pathlib import Path
+
+    path = Path(__file__).resolve().parents[2] / "scripts" / "stress" / "e13_crispr_min_repeats.py"
+    spec = importlib.util.spec_from_file_location("e13_crispr_min_repeats", path)
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+    return mod
+
+
+def _pairs(s: bytes) -> dict[bytes, int]:
+    """Dinucleotide counts by a plain loop (the oracle: not the script's numpy count)."""
+    out: dict[bytes, int] = {}
+    for i in range(len(s) - 1):
+        out[s[i:i + 2]] = out.get(s[i:i + 2], 0) + 1
+    return out
+
+
+def _null_inputs() -> dict[str, bytes]:
+    rng = random.Random(7)
+    at_rich = bytes(rng.choice(b"AAATTTGC") for _ in range(2500))
+    with_n = _random(rng, 1200) + b"NNNNNRYK" + _random(rng, 1300)
+    return {"planted": plant(31, 4000, [(1500, REPEAT_IF, 6, False)]).seq, "at_rich": at_rich, "with_n": with_n,
+            "short": b"ACG", "one_window": _random(rng, 700), "homopolymer_tail": _random(rng, 990) + b"A" * 30}
+
+
+@pytest.mark.covers("E-13")
+@pytest.mark.parametrize("window", [1000, 250])
+def test_the_null_shuffle_keeps_every_windows_dinucleotides_and_ends_and_so_the_contigs(window):
+    e13 = _e13()
+    for name, seq in _null_inputs().items():
+        out = e13.shuffle_windows(seq, e13.contig_rng(13, name.encode().ljust(16, b"\0")), window)
+        assert len(out) == len(seq), name
+        for i in range(0, len(seq), window):
+            w, s = seq[i:i + window], out[i:i + window]
+            assert _pairs(s) == _pairs(w), (name, i)
+            assert (s[:1], s[-1:]) == (w[:1], w[-1:]), (name, i)
+            assert sorted(s) == sorted(w), (name, i)  # the window's base composition
+        assert _pairs(out) == _pairs(seq), name  # the joins' bases are kept, so the contig's dinucleotides are too
+
+
+@pytest.mark.covers("E-13")
+def test_the_null_shuffle_destroys_the_planted_repeats_and_is_seeded():
+    e13 = _e13()
+    c = plant(31, 4000, [(1500, REPEAT_IF, 6, False)])
+    assert c.seq.count(REPEAT_IF) == 6
+    cu = b"\x01" * 16
+    out = e13.shuffle_windows(c.seq, e13.contig_rng(13, cu), 1000)
+    assert out.count(REPEAT_IF) <= 1
+    assert out == e13.shuffle_windows(c.seq, e13.contig_rng(13, cu), 1000)  # same seed and contig: same bases
+    assert out != e13.shuffle_windows(c.seq, e13.contig_rng(14, cu), 1000)
+    assert out != e13.shuffle_windows(c.seq, e13.contig_rng(13, b"\x02" * 16), 1000)
+
+
+@pytest.mark.covers("E-13")
+def test_a_shuffle_that_breaks_the_dinucleotides_is_caught(monkeypatch):
+    e13 = _e13()
+    monkeypatch.setattr(e13, "dishuffle", lambda s, rng: bytes(sorted(s)))  # keeps letters, not their pairs
+    with pytest.raises(AssertionError, match="dinucleotides"):
+        e13.shuffle_windows(_random(random.Random(5), 3000), random.Random(1), 1000)

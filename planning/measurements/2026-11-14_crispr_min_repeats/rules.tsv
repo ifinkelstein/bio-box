@@ -1,0 +1,10 @@
+rule	desc	adds	adds_per_gbp	wrong_estimate	wrong_per_gbp	wrong_basis	chance_shuffle	chance_shuffle_per_gbp	inside_gene	far_from_cas	matches_nr3_repeat	null_shuffle_matches_nr3_repeat	in_genome_without_cas
+A	nr3 everywhere, plus nr2 calls within 10 genes of a Cas gene	346	32.6	248.1	23.38	random placement, upper bound	0	0.0	104	0	41	0	0
+A1	as A, not wholly inside a called gene	242	22.8	136.4	12.85	random placement, upper bound	0	0.0	0	0	38	0	0
+A2	nr3 everywhere, plus nr2 calls within 10 kb of a Cas gene	308	29.02	215.3	20.29	random placement, upper bound	0	0.0	85	0	40	0	0
+A3	as A, the two repeats identical	250	23.56	176.9	16.67	random placement, upper bound	0	0.0	62	0	30	0	0
+A4	nr3 everywhere, plus nr2 calls next to a Cas gene (1 gene), not wholly inside a called gene	90	8.48	38.3	3.61	random placement, upper bound	0	0.0	0	0	18	0	0
+A5	nr3 everywhere, plus nr2 calls within 1 kb of a Cas gene, not wholly inside a called gene	78	7.35	31.4	2.96	random placement, upper bound	0	0.0	0	0	17	0	0
+B	nr2 everywhere	31413	2959.91	31053	2925.99	far from any Cas gene	6	0.565	13416	31053	208	0	12624
+B1	nr2 everywhere, the two repeats identical	21269	2004.09	21005	1979.21	far from any Cas gene	1	0.094	8084	21005	149	0	8125
+B2	nr2 everywhere, not wholly inside a called gene	17997	1695.78	17747	1672.23	far from any Cas gene	2	0.188	0	17747	172	0	7576

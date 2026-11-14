@@ -1,0 +1,34 @@
+{
+ "processes": 4,
+ "seed": 13,
+ "shuffle_cpu_s": 6118.7,
+ "stages": {
+  "P1": {
+   "arrays_nr2": 0,
+   "arrays_nr3": 0,
+   "bases": 1016625803,
+   "contigs": 539,
+   "per_mbp_nr2": 0.0,
+   "per_mbp_nr3": 0.0
+  },
+  "P2": {
+   "arrays_nr2": 6,
+   "arrays_nr3": 0,
+   "bases": 9596180328,
+   "contigs": 5018,
+   "per_mbp_nr2": 0.0006252487755459361,
+   "per_mbp_nr3": 0.0
+  },
+  "S1": {
+   "arrays_nr2": 0,
+   "arrays_nr3": 0,
+   "bases": 1664109938,
+   "contigs": 27258,
+   "per_mbp_nr2": 0.0,
+   "per_mbp_nr3": 0.0
+  }
+ },
+ "tasks": 453,
+ "wall_s": 2419.8,
+ "window": 1000
+}

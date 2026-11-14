@@ -541,3 +541,107 @@ def test_a_lookup_by_contig_and_by_contig_and_feature_uid_reads_at_most_two_row_
     for prof in (by_contig, by_feature):
         (s,) = _scanned(prof)
         assert 1 <= s[0] <= 2 and s[1] == total, _scanned(prof)
+
+
+# --- card E-13: the minimum number of repeats, a parameter named in the producer ------------------------------------
+
+NR2_ARGS = "-searchWL 8 -minNR 2 -minRL 23 -maxRL 47 -minSL 26 -maxSL 50"
+
+
+def _two_repeat_contig() -> plant.Contig:
+    """A planted contig with one array of two repeats and one spacer. The first seed from 21 whose flanking bases leave
+    CRT no column to extend (with two copies a column is extended when both copies agree): the bases before the two
+    repeats differ, and so do the bases after them. The truth is the constructor's, never MinCED's."""
+    for seed in range(21, 60):
+        c = plant.plant(seed, 6000, [(2500, plant.REPEAT_IF, 2, False)])
+        r1, _, r2 = c.arrays[0].elements
+        if c.seq[r1.start - 1] != c.seq[r2.start - 1] and c.seq[r1.end] != c.seq[r2.end]:
+            return c
+    raise AssertionError("no seed in 21..59 gives distinct flanking bases")
+
+
+@pytest.fixture(scope="module")
+def two(tmp_path_factory):
+    """The two-repeat contig in a stage `T`; every run writes into its own `out`, so the root stays as ingested."""
+    base = tmp_path_factory.mktemp("crispr-nr2")
+    root, scratch = base / "root", base / "scratch"
+    scratch.mkdir()
+    c = _two_repeat_contig()
+    ingest(write_objects(base / "o", {"two_repeats": c}), root, "T")
+    write_genome_input(root, "T", genomes_of({"two_repeats": c}))
+    return {"root": root, "scratch": scratch, "base": base, "contig": c}
+
+
+@pytest.mark.covers("E-13", "O-ARRAY", "C-05")
+def test_the_planted_two_repeat_contig_has_no_other_long_repeat():
+    c = _two_repeat_contig()
+    (a,) = c.arrays
+    assert [e.kind for e in a.elements] == ["repeat", "spacer", "repeat"]
+    assert [plant.bases(c, e.start, e.end) for e in a.elements] == [e.seq for e in a.elements]
+    masked = bytearray(c.seq)
+    masked[a.start:a.end] = b"N" * (a.end - a.start)
+    assert [k for k, v in plant._kmers(bytes(masked), 23).items() if v > 1 and b"N" not in k] == []
+
+
+@pytest.mark.covers("E-13", "O-ARRAY", "C-08")
+def test_a_two_repeat_array_is_found_at_a_minimum_of_two_and_not_of_three(two):
+    cr = _crispr()
+    c, base = two["contig"], two["base"]
+    at3 = cr.run(two["root"], "T", 1, tmp=two["scratch"], out=base / "out3")
+    at2 = cr.run(two["root"], "T", 1, tmp=two["scratch"], out=base / "out2", min_repeats=2)
+    v = cr.minced_version()
+    assert at3["producer"] == f"minced-{v}-w8-nr3-r23x47-s26x50" and at3["arrays"] == 0
+    assert at2["producer"] == f"minced-{v}-w8-nr2-r23x47-s26x50" == cr.producer(2) and at2["arrays"] == 1
+    assert at2["minced_args"] == NR2_ARGS
+    p = at2["producer"]
+    got = arrays_of(_rows(base / "out2", f"l1/feature/producer={p}/stage=T"),
+                    _rows(base / "out2", f"l1/crispr/producer={p}/stage=T"))
+    (a,) = c.arrays
+    cu = ids.contig_uid(c.seq)
+    assert got == {cu: [(a.start, a.end, [(e.kind, e.ordinal, e.start, e.end, e.seq.decode()) for e in a.elements])]}
+    rows = ledger.read(base / "out2", "T", f"crispr-{p}")
+    assert rows and all(json.loads(r["tool_versions_json"])["minced_args"] == NR2_ARGS for r in rows)
+    assert ledger.check_balance(base / "out2", "T", [f"crispr-{p}"]) == []
+    # oracle 1 at the same minimum: the binary through its wrapper with -minNR 2, read by this file's parser
+    d = base / "oracle-nr2"
+    d.mkdir()
+    (d / "in.fna").write_bytes(b">" + cu.hex().encode() + b"\n" + c.seq + b"\n")
+    subprocess.run([MINCED, "-minNR", "2", str(d / "in.fna"), str(d / "out.txt")], check=True, capture_output=True,
+                   cwd=d)
+    (rep,) = oracle_text(d / "out.txt").values()
+    assert [(r["range"][0] - 1, r["range"][1], oracle_elements(r)) for r in rep] == \
+        [(s, e, [(k, x, y, q) for k, _, x, y, q in els]) for s, e, els in got[cu]]
+
+
+@pytest.mark.covers("E-13", "D-01", "MR-20")
+def test_the_default_minimum_is_three_and_its_bytes_do_not_change(world, tmp_path):
+    cr = _crispr()
+    assert cr.param_tag() == cr.PARAM_TAG == "w8-nr3-r23x47-s26x50" and cr.param_tag(2) == "w8-nr2-r23x47-s26x50"
+    assert cr.producer() == cr.producer(3) == world["producer"]
+    out = tmp_path / "out"
+    rep = cr.run(world["before"], "P", 1, tmp=world["scratch"], out=out, min_repeats=3)
+    assert rep["producer"] == world["producer"]
+    assert digests(out) == world["files"]  # the explicit 3 writes the default run's bytes, file by file
+
+
+@pytest.mark.covers("E-13", "O-ARRAY")
+def test_at_two_the_planted_arrays_of_three_or_more_repeats_are_unchanged(world, tmp_path):
+    """The planted background holds no 23-base repeat, so a minimum of 2 finds the same arrays, element by element."""
+    out = tmp_path / "out"
+    rep = _crispr().run(world["before"], "P", 1, tmp=world["scratch"], out=out, min_repeats=2)
+    p = rep["producer"]
+    assert p != world["producer"]
+    got = arrays_of(_rows(out, f"l1/feature/producer={p}/stage=P"), _rows(out, f"l1/crispr/producer={p}/stage=P"))
+    assert got == arrays_of(world["features"], world["elements"])
+
+
+@pytest.mark.covers("E-13", "D-03")
+def test_a_minimum_below_two_or_not_an_integer_is_refused_before_any_work(two, tmp_path):
+    cr = _crispr()
+    for k, bad in enumerate((1, 0, -3, True, 2.0, None, "2")):
+        with pytest.raises(ValueError, match="min_repeats"):
+            cr.run(two["root"], "T", 1, tmp=two["scratch"], out=tmp_path / f"o{k}", min_repeats=bad)
+        assert not (tmp_path / f"o{k}").exists()
+    for bad in (1, True):
+        with pytest.raises(ValueError, match="min_repeats"):
+            cr.producer(bad)
