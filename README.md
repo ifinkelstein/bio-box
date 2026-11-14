@@ -179,8 +179,9 @@ The specification and plan behind these are [`00-spec.md`](00-spec.md), [`PLAN.m
 - `rM.2`, the 50 Gbp release with Pfam on every stage, is built and verified (2026-11-14: seven stages, 39,224
   genomes, 45,815,843 proteins, *measured*). It is not yet the release to use: its search pack must first be built
   (card W-35: the pack build has to run in parts to stay under the server's limit per process), then both worked
-  examples run on it (AGENTS §5.7; `scripts/release_examples.sh`). Until then use `rN.3`. The data root is being
-  copied to durable storage.
+  examples run on it (AGENTS §5.7; `scripts/release_examples.sh`). Until then use `rN.3`. The data root (81 GB)
+  has a copy on durable storage since 2026-11-14, and its two independent clustering runs of the same 45.8 M
+  proteins gave byte-identical cluster tables (*measured*; STATUS handoff).
 - Tests, builds and searches on the server run in the images built from `main` at pull request 5 (cards C-29, C-32);
   the `rM.2` build alone keeps the older image, so its run records name one image.
 - S2C phase 2 is fetched (13,477 of 13,485 genomes, 2026-11-13); it is built as six stages of 9.2 to 9.5 Gbp after

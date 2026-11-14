@@ -5,7 +5,7 @@ The running record of the cards in [`TASKS.md`](TASKS.md). Updated at every merg
 by an agent on its own branch `task/<ID>`, audited by the orchestrating session, and merged after its
 tests passed on the merged tree.
 
-## Handoff, 2026-11-14 17:50 CST (current; the dated sections under "History" are superseded where they differ)
+## Handoff, 2026-11-14 18:00 CST (current; the dated sections under "History" are superseded where they differ)
 
 Written so a new session can continue without the conversation that produced this file. Times are the pod's clock
 (CST); read it with `ssh ... date` before writing a time here.
@@ -16,7 +16,7 @@ the PI at the S2C phase 2 build and at a failed release check. The usage limit h
 (2026-11-13 15:45 and 20:55, 2026-11-14 01:40 twice counting the orchestrator, and the weekly limit at about 12:20): an agent stopped that way is resumed
 with `SendMessage` to the same agent once the limit resets; nothing is lost.
 
-**State on 2026-11-14 at 17:50 CST.**
+**State on 2026-11-14 at 18:00 CST.**
 
 *The 50 Gbp release `rM.2` is built and verified* (2026-11-14 17:32 CST).
 - `build-stage: stage P6 and release rM.2: all 13 steps done` at 17:27; `release verify` at 17:30: "release rM.2:
@@ -34,29 +34,48 @@ with `SendMessage` to the same agent once the limit resets; nothing is lost.
 - The build ran in the old image (`bio-box-test_74b3e05.sif` with `pilot_s1/pydeps`) and the tree `5ba68a6`
   (`/tmp/if2453/ci/r50`), as every earlier step of its stages, so its run records name one image. Its tests passed
   in that image before the launch (1,239 passed, 4 skipped, *measured*).
-- **Durable copy**: the data root `/tmp/if2453/r10/root` (81 GB) is being copied to
-  `/stor/scratch/Wilke/if2453/all-the-data/provisional/root_rM2_20261114/` since 17:38, as four uncompressed tars
-  (`l1_and_records.tar`: `l1` with the small directories `catalog`, `dim`, `l0`, `ledger`, `manifests`,
-  `release_def`, `runs`, which together are 26 MB and so cannot be a file of their own on `/stor`; `l3.tar`;
-  `l2.tar`; `l0seq.tar`). Unit `root-backup`, one thread; script, log and hashes in `/tmp/if2453/backup/`
-  (`root_backup.sh`, `backup.log`, `SHA256`). Each tar is written under a dot-named temporary name, read back from
-  `/stor`, its sha256 compared with the same tar stream made again from the source, then renamed; nothing on `/stor`
-  is overwritten; no manifest file is written there (it would be under 64 MB): the hashes are recorded in this file
-  when the copy ends. **Until then a reboot of the pod still loses every build.** Nothing may write into the root
-  while it runs (the two streams would differ).
+- **Durable copy: done** (2026-11-14, 17:38 to 17:55; *measured*, wilkcomp02, unit `root-backup`, script and log in
+  `/tmp/if2453/backup/`: `root_backup.sh`, `backup.log`, `SHA256`). The data root `/tmp/if2453/r10/root`
+  (80,980,451,328 bytes by `du`) is in
+  `/stor/scratch/Wilke/if2453/all-the-data/provisional/root_rM2_20261114/` as four uncompressed tars, 80,971,898,880
+  bytes and 3,347 files in all (*derived*: the sums). Each was written under a dot-named temporary name, read back
+  from `/stor`, its sha256 found equal to that of the same tar stream made again from the source, its member count
+  equal to the source's file count, then renamed; nothing on `/stor` was overwritten; no manifest file was written
+  there (it would be under 64 MB), so these lines are the record:
+
+  | File | Bytes | Files | sha256 |
+  |---|---|---|---|
+  | `l1_and_records.tar` (`l1`, `catalog`, `dim`, `l0`, `ledger`, `manifests`, `release_def`, `runs`) | 9,860,751,360 | 2,113 | `6a60a2a8f983a0c735ff9f4b06096a264f3a659d1f15eb55a7e202911d32d9ab` |
+  | `l3.tar` | 15,692,646,400 | 46 | `5da069d29af6e4b958e387f972d5cf89cf252cb35001b16614b55fde322a7ebf` |
+  | `l2.tar` | 27,176,785,920 | 983 | `ee1590dc93c02d63085a1c41e15ed83079548b4d92fba91a7e7c4c2d31927ef9` |
+  | `l0seq.tar` | 28,241,715,200 | 205 | `693df3987775135e8f019a8872e0fa22978e593be5493a1380042eb15de845d4` |
+
+  To restore: `tar -C <new root> -xf` each of the four (made with `tar --sort=name -C <root> -cf`). The small
+  record directories ride in the first tar because together they are 26 MB. Whatever is added to the root later
+  (arrays, a new stage, a new release) needs a further tar of the new files only; the root's files are never
+  rewritten (AGENTS §3.10), so the four above stay valid.
+- **Two clustering runs of the same 45,815,843 proteins gave the same bytes** (*measured*, wilkcomp02, 2026-11-14
+  17:57, `/tmp/if2453/audit/cmp_rm1_rm2.sh`, sha256 of every file): the 11 files of `cluster_member`,
+  `cluster_member_aln` and `member_cluster` of `rM.1` (clustered 2026-11-11 to 12, 30 threads) and of `rM.2`
+  (clustered today at 32 and then 48 threads, with one pause) are byte-identical. The 443 `cluster_plan` records
+  differ only in the release's name and the plan hash that covers it (one record compared by `diff`; its input and
+  output hashes are equal).
+- **`rM.1` is left as it is** (orchestrator's choice, cheap to reverse): it is clustered and has no tokens,
+  postings or manifest. Its definition now reads the same seven stages and the same Pfam library as `rM.2`, and its
+  clusters are the same bytes, so finishing it would write a second copy of `rM.2` (about 7.3 GB of tokens and
+  postings, *derived* from `rM.2`'s directories) and tell us nothing new. To finish it anyway: relaunch the driver
+  without `SKIP_RM1` (old image and tree); it skips every phase whose result exists.
 - **What `rM.2` still needs before it is announced as the release to use** (AGENTS §5.7):
   1. Its search pack. **Not started, and it cannot be built as it is**: `pack build` is one process, 86.0
      CPU-minutes on `rN.1` (*measured*), so about 350 to 430 at 50 Gbp (*derived*), above the 300 CPU-minutes of
      AGENTS §7.2. Card W-35 (tier M) makes the build run in parts with a byte-identical pack; it is first in the
      queue for a heavy agent.
   2. `scripts/release_examples.sh rM.2` (RUNBOOK §6): needs the pack. A failed invariant stops the announcement.
-- **After the copy ends, in order**: (a) finish `rM.1`'s release steps (tokens, postings, dimension tables,
-  manifest, catalog; the driver skipped them under `SKIP_RM1`, and card B-46 fixed what made them fail): relaunch
-  the driver without `SKIP_RM1` (old image and tree, as the rest of `rM.1`); it skips every phase whose result
-  exists; then a second, small durable copy of what it added. (b) Card C-33: the CRISPR arrays of both producers on
-  the seven built stages and the release that holds them (DEC-40). (c) Card C-24 (stage H1), then C-26 (PLSDB),
-  each with the image of `faec1f4`: **the next build sets `IMAGE` and `DIGEST` in its driver to the values of
-  RUNBOOK §0**. (d) C-25 step 3 and B-47a to B-47e (S2C phase 2), then ncRNA (DEC-42).
+- **Next on the pod, in order** (one build at a time in the root): (a) card C-33: the CRISPR arrays of both
+  producers on the seven built stages and the release that holds them (DEC-40); (b) card C-24 (stage H1), then C-26
+  (PLSDB), each with the image of `faec1f4`: **the next build sets `IMAGE` and `DIGEST` in its driver to the values
+  of RUNBOOK §0**; (c) C-25 step 3 and B-47a to B-47e (S2C phase 2), then ncRNA (DEC-42). Each adds a further tar
+  of its new files to the durable copy.
 - The pod's cap falls to 40 threads on Monday at 08:00 (weekday days): nothing of ours may then use more.
 - Free space on `/tmp`: 374 GB at 17:35 (the build's scratch is gone; the cleanup of 14:41 freed 60 GB).
 
@@ -85,7 +104,7 @@ W-30, W-31, A-08, E-11, E-12, E-13, E-14, F-02 sessions 4 to 10 (10 is a measure
 - **Short CRISPR arrays** on Tn7-like elements: card E-15 is merged (DEC-40; 14 of the 20 Tn7-like TniQ loci of the example now have an array). The arrays enter a release with card C-33 (the CRISPR step on the seven built stages). Open: the chance rate on phages (card E-16).
 - **`rM.2`'s announcement**: waits for its search pack (card W-35: the pack build must run in parts under the CPU
   budget) and then for both worked examples on it (AGENTS §5.7). Until then `rN.3` is the release to use.
-- Builds queued on the pod, one at a time in the root: `rM.1`'s release steps, card C-33 (arrays), stage H1 (card
+- Builds queued on the pod, one at a time in the root: card C-33 (arrays), stage H1 (card
   C-24), PLSDB (card C-26), S2C phase 2, then ncRNA on the 50 Gbp (DEC-42).
 - **Scratch cleanup on the pod** (DEC-42 allows it): the large part was done at 14:41 on 2026-11-14 ("On the pod"
   below says what went and what is left). For the rest: remove only what the decision lists, each target
@@ -158,12 +177,12 @@ everything we run; the PI keeps that cap). State on 2026-11-14 at 17:50 CST:
   (log `/tmp/if2453/r50/driver.log`; state `/tmp/if2453/r50/driver/`; its copy of the driver script is
   `/tmp/if2453/r50/bin/r50_driver.sh`, older than the repository's). `rM.1` is clustered (45,815,843 proteins,
   31,183,876 NR90 and 8,192,065 NR50 clusters, *measured*) and its other release steps are not run: relaunching the
-  driver without `SKIP_RM1` runs them and nothing else (old image and tree; only after the durable copy has ended).
+  driver without `SKIP_RM1` would run them and nothing else, but they are left unrun on purpose (state block: `rM.1` would be a second copy of `rM.2`).
   The files `driver/FAILED.*` are records of earlier stops (2026-11-11, 2026-11-12, and the pause of 09:31 today),
   not of this build's end.
 - Data root `/tmp/if2453/r10/root` (81 GB; stages S1, P1 to P6, each with Pfam 38.2; releases `rN.1a`, `rN.1b`,
-  `rN.1`, `rN.2`, `rN.3`, `rM.2`, all with a manifest, and `rM.1` clustered only): **being copied to `/stor`** since
-  17:38 (unit `root-backup`; state block above). `rN.3` is the release to use; its pack is in
+  `rN.1`, `rN.2`, `rN.3`, `rM.2`, all with a manifest, and `rM.1` clustered only): **on `/stor` since 17:55** as four
+  tars under `provisional/root_rM2_20261114/` (state block above). `rN.3` is the release to use; its pack is in
   `/tmp/if2453/bio-box/packs` (found with `--profile`). `rM.2` has no pack yet (card W-35).
 - **S2C phase 2 inputs**: all on `/stor` under `provisional/s2c_phase2/` (`s2c_phase2_genomes.tar`, 4,617 genomes,
   5,134,489,600 bytes; `s2c_phase2_rest_genomes.tar`, 8,860 genomes, 11,234,908,160 bytes; hashes in `sources.yaml`).
@@ -191,7 +210,7 @@ everything we run; the PI keeps that cap). State on 2026-11-14 at 17:50 CST:
   `pydeps_f02`, `pydeps_w27`. Not listed by the decision and so kept: `/tmp/if2453/b43` (20 GB).
 
 **Next, in order.**
-1. The durable copy of the data root (running), then `rM.1`'s release steps and a second small copy.
+1. Done at 17:55: the durable copy of the data root (hashes in the state block). `rM.1` is left clustered only.
 2. Card W-35 (the pack of `rM.2` in parts), then `scripts/release_examples.sh rM.2`, then the announcement of `rM.2`
    in `README.md` and `GUIDE.md`.
 3. Card C-33 (CRISPR arrays on the built stages), card C-24 (stage H1, huge phages), then C-26 (PLSDB), each with
