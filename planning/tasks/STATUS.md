@@ -68,13 +68,18 @@ with `SendMessage` to the same agent once the limit resets; nothing is lost.
 *Agents.* None running at 09:45. Merged on 2026-11-13 and 14: C-28, C-27 step 4, C-25 step 2, C-29, C-30, C-31, C-32,
 W-30, W-31, A-08, E-11, E-12, E-13, E-14, F-02 sessions 4 to 10 (10 is a measurement), the README, the CRISPR example.
 
-*What is blocked, and on what.*
-- **The statistics track** (F-01, F-03 and the rest of F-02): the synthetic world holds the spec's ranges at its
-  default seed only (F-02 session 10; 6 of 21 seeds in band). Five design questions for the PI, with the
-  orchestrator's recommendations, are under "Open items"; until they are answered the generator is not changed.
-- **S2C phase 2** (56 Gbp, fetched and on `/stor`): no longer blocked on the PI (DEC-34, DEC-35, 2026-11-14). It waits for pod threads: card C-25 step 3 and cards B-47a to B-47e start when the `rM.2` build ends.
-- **Short CRISPR arrays** on Tn7-like elements: the filtered two-repeat producer of card E-13 (PI: yes or no).
-- Nothing else waits on the PI to proceed: after `rM.2`, stage H1 (card C-24) and PLSDB (card C-26) can be built.
+*What is blocked, and on what.* Nothing waits on the PI since 10:45 on 2026-11-14 (DEC-34 to DEC-42).
+- **The statistics track** (F-01, F-03 and the rest of F-02): waits for the synthetic world's redesign (F-02 session
+  11, running: DEC-36, DEC-37), then the change of the sequence model so that detectability falls with divergence
+  (session 12, DEC-39), then the N2 worlds, the ablation worlds and validation.
+- **S2C phase 2** (56 Gbp, fetched and on `/stor`): waits for pod threads. Card C-25 step 3 and cards B-47a to B-47e
+  (DEC-34, DEC-35) start when the `rM.2` build ends.
+- **Short CRISPR arrays** on Tn7-like elements: card E-15 (running; DEC-40).
+- After `rM.2`: stage H1 (card C-24) and PLSDB (card C-26), the CRISPR step on the built stages (DEC-40), then ncRNA
+  on the 50 Gbp (DEC-42).
+- **Scratch cleanup on the pod** (DEC-42 allows it): not done yet. Remove only what the decision lists, each target
+  looked at first (`du`, `ls`), never `/tmp/if2453/r10`, `/tmp/if2453/r50`, `/tmp/if2453/ci/r50`,
+  `/tmp/if2453/pilot_s1` while the `rM.2` build runs, never a running agent's directories, nothing under `/stor`.
 
 *Standing facts a new session needs.*
 - Worked examples are release checks (AGENTS §5.7): `bash "$TREE/scripts/release_examples.sh" <release>` on the pod
@@ -120,7 +125,7 @@ F-02 and the measurements in the table below; decisions DEC-29 to DEC-33 were ad
 above says where `main`, the images and Actions stand. The manifest hash of the fixture covers every registered
 schema's hash, so it moves with any schema change (last: card E-12).
 
-**Agents running.** F-02 session 11 (the redesign of the `micro` preset over seeds, DEC-36 and DEC-37; branch `task/F-02-11`; started 2026-11-14 about 10:35; at most 5 threads beside the `rM.2` build; it changes every world digest once and re-pins them: audit hard).
+**Agents running.** F-02 session 11 (the redesign of the `micro` preset over seeds, DEC-36 and DEC-37; branch `task/F-02-11`; started 2026-11-14 about 10:35; at most 5 threads beside the `rM.2` build; it changes every world digest once and re-pins them: audit hard). E-15 (the filtered two-repeat CRISPR producer, DEC-40; branch `task/E-15`; started about 10:55; at most 3 threads). Queued, one heavy agent at a time after these: F-02 session 12 (detectability against divergence, DEC-39; after session 11, since both re-pin the same digests), W-32 (figure defaults, DEC-41), W-33 (results under `bulk`, tier L).
 
 **On the pod** (wilkcomp02; account thread cap 40 by day on weekdays, 56 at night and at weekends, a total over
 everything we run; the PI keeps that cap). State on 2026-11-14 at 09:45 CST:
@@ -537,7 +542,8 @@ Decided by the PI on 2026-11-14 (about 10:10 CST: "for 1-11, accept your choices
   `rM.2` build holds until it ends.
 - Item 13 of that table (about 10:20, "13. yes"; DEC-36): a planted module does not enter a genome that already holds it, and the strength grid's transfer axis becomes realized transfers per member, refitted to three distinct levels.
 - Items 12, 14 and 15 of that table (about 10:30, "y on12-15"; DEC-37): per seed only the mean genome size within 30%, one lineage-rate axis on origination; a fixed crown age at about the 21-seed median; plasmid rates refitted over 21 seeds and the crown measured from the living lineages. With DEC-36 the redesign is decided and F-02 session 11 starts.
-- Items 16 to 28 of that table are still open (below).
+- Items 16 to 28 of that table (about 10:45, "accept all these defaults"): all accepted as recommended. DEC-38 (clustering in one process has no exemption), DEC-39 (synthetic world: detectability falls with divergence, the Cas operon planted with its array, a 5-minute build target, the sessions' values), DEC-40 (CRISPR: three repeats everywhere, a filtered second producer at two repeats beside Cas genes, arrays by coordinates and not on the tape, the built stages get arrays after `rM.2`), DEC-41 (`nbr flanks` figure defaults), DEC-42 (ncRNA on the 50 Gbp after H1 and PLSDB; results archived under `bulk`; the listed scratch may be removed; the catalog excluded from byte identity; the older items as recommended; the two footer commits stay).
+- **Nothing is open for the PI at 10:50 on 2026-11-14.** The items below are kept for their reasons; each was accepted as its recommendation says.
 
 Decided by the PI on 2026-11-13:
 - Worked examples are run on a release before it is called a milestone (AGENTS §5.7; card E-11).
@@ -564,7 +570,7 @@ Decided by the PI on 2026-11-12 (evening):
 - PLSDB is built after stage H1 (card C-26).
 - Earlier the same day: DEC-29 (unsplittable clustering call as one process), W-25 approved, zombi2 approved for F-02.
 
-Still open, recommendation first:
+Accepted as recommended on 2026-11-14 (kept for their reasons; none is open):
 - Card F-02 (session 3): in the synthetic world a family's copies are found by `hmmsearch` equally often at every divergence
   (about 81%), because the spec's model keeps every copy a draw from the family's profile. Real families get harder to detect
   as they diverge. Should the model change so that detectability falls with divergence (a sharper root, an equilibrium that
