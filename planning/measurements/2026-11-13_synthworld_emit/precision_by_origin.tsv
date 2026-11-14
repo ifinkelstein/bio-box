@@ -1,0 +1,5 @@
+contig_origin	calls	matching_a_truth_gene	precision	unmatched	unmatched_median_codons
+assembly	91569	89159	0.9737	2410	61
+contaminant	115	112	0.9739	3	47
+near_dup	3091	3008	0.9731	83	63
+phage	717	704	0.9819	13	55

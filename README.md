@@ -167,6 +167,7 @@ The specification and plan behind these are [`00-spec.md`](00-spec.md), [`PLAN.m
 | 2026-11-13 | Image built from `main` (pull request 4): 1,720 tests passed, 22 skipped inside it (*measured* on GitHub Actions, run 43380434543) | STATUS handoff |
 | 2026-11-13 | S2C phase 2 selected for strain diversity with skani: near-clone pairs among a species' 20 fall from 6,930 to 2,895 of 46,170 (*measured*) | [`2026-11-13_s2c_skani_selection.md`](planning/measurements/2026-11-13_s2c_skani_selection.md) |
 | 2026-11-13 | Second worked example and release check: CRISPR-Cas systems carried by Tn7-like transposons (Peters et al. 2017) on `rN.3`; all 19 invariants hold (*measured*) | [`examples/crispr_cas_neighbourhoods/README.md`](examples/crispr_cas_neighbourhoods/README.md) |
+| 2026-11-13 | The synthetic-world generator runs end to end (card F-02, session 8), and a synthetic world was built by the normal builders for the first time: 99.0% of 93,883 true genes found by their stop, duplicates and shared contigs handled as designed (*measured*) | [`2026-11-13_synthworld_emit.md`](planning/measurements/2026-11-13_synthworld_emit.md) |
 | 2026-11-13 | Worked examples are release checks: one command runs both on a release; on `rN.3` 92 checks ok, none failed (*measured*) | [`examples/README.md`](examples/README.md), [`2026-11-13_release_examples_rN3.md`](planning/measurements/2026-11-13_release_examples_rN3.md) |
 
 **Now** (2026-11-13; STATUS handoff)
@@ -179,9 +180,9 @@ The specification and plan behind these are [`00-spec.md`](00-spec.md), [`PLAN.m
   and its build follows the 50 Gbp release (card C-25).
 - Worked examples are run on a release before it is announced (AGENTS §5.7; `scripts/release_examples.sh`): the next
   release to check is `rM.2`.
-- The synthetic-world generator's last step (emit), and the first build of a synthetic world by the normal builders,
-  compared with its truth (card F-02, session 8).
-- CRISPR arrays as features: MinCED approved by the PI on 2026-11-13 (card E-12); it needs the next image.
+- The synthetic world's null worlds and its validation against real genomes (card F-02, sessions to come).
+- CRISPR arrays as features: MinCED approved by the PI on 2026-11-13 and in the images built that evening (card
+  E-12); the images go to the server first (card C-32).
 - Merged on 2026-11-13, not yet used by a build: the night thread allowance read from other users' CPU (card C-28).
 
 **Next, in order**
