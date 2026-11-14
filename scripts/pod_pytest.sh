@@ -12,9 +12,10 @@
 #   Timing (measured, wilkcomp02, 2026-11-13, card C-29): 2 shards of 2 threads took 3,047 s and 4,761 s
 #   (51 and 80 minutes) while a 32-thread build ran beside them. The shard count must fit the account's
 #   thread cap (AGENTS.md §7.2, a total over everything the account runs); 8 shards do not fit by day.
-# The image is the test image built from `main` at 64f1bf0 (card C-29): the locked Python environment (with
-#   matplotlib and zombi2), MMseqs2, HMMER, Infernal and skani, so tests that skip on a laptop run here. Only the
-#   tree's src/ goes on PYTHONPATH: a directory put before it would shadow the image's locked packages.
+# The image is the test image built from `main` at faec1f4 (card C-32; card C-29 made the image from `main` the
+#   default): the locked Python environment (with matplotlib and zombi2), MMseqs2, HMMER, Infernal, skani and MinCED,
+#   so tests that skip on a laptop run here. Only the tree's src/ goes on PYTHONPATH: a directory put before it would
+#   shadow the image's locked packages.
 # BIOBOX_POD_IMAGE: another image (a .sif path on the pod). BIOBOX_POD_PYDEPS: directories (colon-separated) put
 #   after the tree's src/ on PYTHONPATH, for an image that lacks a package; none by default.
 # BIOBOX_PEER_MANIFEST (a path on the pod, under /tmp/if2453) is passed into the image when set: the
@@ -33,7 +34,7 @@ while [ $# -gt 0 ]; do
 done
 HOST=${BIOBOX_POD:-if2453@wilkcomp02.ccbb.utexas.edu}
 CI=${BIOBOX_POD_CI:-/tmp/if2453/ci}
-IMAGE=${BIOBOX_POD_IMAGE:-/stor/home/if2453/bio-box/images/bio-box-test_64f1bf0.sif}
+IMAGE=${BIOBOX_POD_IMAGE:-/stor/home/if2453/bio-box/images/bio-box-test_faec1f4.sif}
 PYDEPS=${BIOBOX_POD_PYDEPS:-}
 PEER_ENV=""
 [ -z "${BIOBOX_PEER_MANIFEST:-}" ] || PEER_ENV="--env BIOBOX_PEER_MANIFEST=$BIOBOX_PEER_MANIFEST"
