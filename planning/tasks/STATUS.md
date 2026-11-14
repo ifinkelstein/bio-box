@@ -72,7 +72,7 @@ W-30, W-31, A-08, E-11, E-12, E-13, E-14, F-02 sessions 4 to 10 (10 is a measure
 - **The statistics track** (F-01, F-03 and the rest of F-02): the synthetic world holds the spec's ranges at its
   default seed only (F-02 session 10; 6 of 21 seeds in band). Five design questions for the PI, with the
   orchestrator's recommendations, are under "Open items"; until they are answered the generator is not changed.
-- **S2C phase 2** (56 Gbp, fetched and on `/stor`): the stage split and card B-47's eight questions (PI).
+- **S2C phase 2** (56 Gbp, fetched and on `/stor`): no longer blocked on the PI (DEC-34, DEC-35, 2026-11-14). It waits for pod threads: card C-25 step 3 and cards B-47a to B-47e start when the `rM.2` build ends.
 - **Short CRISPR arrays** on Tn7-like elements: the filtered two-repeat producer of card E-13 (PI: yes or no).
 - Nothing else waits on the PI to proceed: after `rM.2`, stage H1 (card C-24) and PLSDB (card C-26) can be built.
 
@@ -152,8 +152,8 @@ everything we run; the PI keeps that cap). State on 2026-11-14 at 09:45 CST:
 **Next, in order.**
 1. The `rM.2` build's end and the six steps after it (state block above).
 2. Card C-24 (stage H1, huge phages), then C-26 (PLSDB), each with the image of `faec1f4` and `--crispr`.
-3. Waiting on the PI (open items): card C-25 step 3 and the S2C phase 2 build (the stage split; card B-47's
-   questions); F-02's redesign over seeds, then the N2 worlds, the ablation worlds, validation, and F-03; the filtered
+3. Decided on 2026-11-14 (DEC-34, DEC-35): card C-25 step 3 and cards B-47a to B-47e, then the S2C phase 2 build, once the pod is free. Waiting on the PI (open items):
+   F-02's redesign over seeds, then the N2 worlds, the ablation worlds, validation, and F-03; the filtered
    two-repeat CRISPR producer (a card E-15 to be written on a yes).
 4. Cards ready that need no decision: the `--json` forms of `nbr` with arrays (needs a card allowed to regenerate the
    JSON schema lock); W-26 (accession table; not needed yet). E-10 (tRNA caller) needs the PI's pin.
@@ -525,6 +525,18 @@ probed by hand on the pod).
 
 ## Open items for the PI
 
+Decided by the PI on 2026-11-14 (about 10:10 CST: "for 1-11, accept your choices", to the orchestrator's table of 28):
+- S2C phase 2 (DEC-34): the ANI-diversity selection stands as built (its 15% alignment-fraction rule with it); six
+  stages of 9.2 to 9.5 Gbp, each species whole, in taxonomy order; the 34 genomes NCBI did not serve are not retried;
+  gene calls stay in whole-genome context.
+- Pfam by representatives (DEC-35, the eight questions of the B-47 note): each stage's own NR90 clustering; measured
+  rows of an earlier stage are copied, not rescanned; a domain less than 80% inside the alignment is scanned on the
+  member; tokens and postings include inferred rows; stop above 1% wrong or 1% missed pairs; revisit above 10 points
+  more residues scanned; the earlier stage's rows win.
+- So unblocked: card C-25 step 3, cards B-47a to B-47e, and then the phase-2 build. They need pod threads, which the
+  `rM.2` build holds until it ends.
+- Items 12 to 28 of that table are still open (below).
+
 Decided by the PI on 2026-11-13:
 - Worked examples are run on a release before it is called a milestone (AGENTS §5.7; card E-11).
 - MinCED is the CRISPR array caller ("2. yes, do that", about 17:00, to the orchestrator's list whose second item was
@@ -540,7 +552,7 @@ Decided by the PI on 2026-11-12 (evening):
   genomes NCBI did not serve are retried once (DEC-31; card C-25 step 1b).
 - S2C phase 2 Pfam on NR90 representatives plus length-different members, the rest inferred and labelled (DEC-32; cards
   C-25 step 3 and B-47).
-- Gene calls stay in whole-genome context for now; the decision on per-contig calling (card C-21f) is taken before S2C
+- Gene calls stay in whole-genome context (confirmed for phase 2 by DEC-34 on 2026-11-14); the question of card C-21f is closed for S2C
   phase 2 is built. Judging which calls are better needs a reference-CDS source in `sources.yaml`.
 - `nbr flanks` defaults and its rule for unannotated genes accepted (card W-25). The F-02 `micro` strength grid accepted.
 - Search results: one archive per run on `/stor` (DEC-33; card W-28).
@@ -635,7 +647,7 @@ Still open, recommendation first:
   pairs. (3) The session's readings of §4.1 to confirm: decoys and NOGD leave both N0 worlds; N0-full keeps CRISPR-Cas
   loci and excludes pairs inside one locus from null evaluation, N0-strict drops the loci; chassis pairs are excluded,
   cargo pairs are traps; plasmid pairs are null. Recommendation: accept.
-- Card B-42: add this decision row (it would be DEC-34)? "**DEC-25's one-process exemption for clustering has ended; DEC-29 is
+- Card B-42: add this decision row (the next DEC number; DEC-34 and DEC-35 were used on 2026-11-14)? "**DEC-25's one-process exemption for clustering has ended; DEC-29 is
   clustering's only exemption.** Clustering a release in one process is held to the 300 CPU-minute rule like every other
   step: above 80% of the budget `build-stage` clusters the release in parts, and clustering in one process estimated over
   `cpu_min_per_process` is refused whatever `cluster_cpu_min_max` says; that key now caps only a call that no number of parts
@@ -648,26 +660,11 @@ Still open, recommendation first:
   `results archive ... --with ...` then `results flush`; 164.6 MB for the RNA polymerase run); (3) may a run be archived
   again later with further outputs, as a second archive? Recommendation: results under `bulk` beside the other durable
   copies, and yes to (3).
-- Card B-47 (`planning/design/B-47_inferred_domains.md`): eight yes/no questions on how Pfam is inferred from representatives;
-  the note recommends clustering and inferring inside each stage, and the orchestrator recommends yes to 1, 2, 3, 5, 7, 8,
-  "scan" to 4 and "either" to 6.
-- Card C-27 step 4 (`planning/measurements/2026-11-13_s2c_skani_selection.md`), four questions:
-  (1) Keep the ANI selection? It changes 2,347 of the 4,617 genomes picked after rank 1 in the 243 large species; near-clone
-  pairs (ANI above 99.9) among a species' 20 fall from 6,930 to 2,895 of 46,170 (230 species to 79); the spread changes
-  little (median over species of the minimum pairwise ANI 97.59 to 97.12); the remainder grows by 303 Mbp (0.54%), all
-  *measured*. Recommendation: keep it; it removes repeats of one strain, which is what DEC-31 asked for.
-  (2) The 15% alignment-fraction rule never acted (smallest larger fraction 56.47%, *measured*). Recommendation: keep it
-  as stated; it costs nothing and guards a later release.
-  (3) May the 23,840 fetched genomes not kept (about 29.7 GB) and the 13.6 GB of sketches be removed from `/tmp`?
-  Recommendation: yes; the kept genomes are on `/stor` and the pair table is small enough to keep.
-  (4) Retry the 26 genomes NCBI did not serve (8 were in their species' quality top 20)? Recommendation: no; DEC-31 says
-  once, and every species still has 20.
-- Card C-25 step 2 (`planning/measurements/2026-11-13_s2c_phase2_fetch.md`): how S2C phase 2 splits into stages. Proposed:
-  six stages of 9.2 to 9.5 Gbp, species kept whole, in GTDB taxonomy order (1,783 to 3,102 genomes each, *measured*), so
-  a species' strains cluster together and representatives-only Pfam (DEC-32) saves the most; the alternative is
-  strain-rich species in stages of their own. Recommendation: the six as proposed. Also: `provisional/s2c_phase2/` on
-  `/stor` has no `MANIFEST.sha256` (the two tars' hashes are in `sources.yaml`; a manifest file would be under 64 MB).
-  Recommendation: leave it; `sources.yaml` is the record.
+- Scratch on the pod (item 24 of the table of 2026-11-14): may the 23,840 fetched candidate genomes not kept (about
+  29.7 GB), the 13.6 GB of sketches, the local copy of a tar (11.2 GB) and the old test directories listed under "On
+  the pod" be removed from `/tmp`? Recommendation: yes; the kept genomes are on `/stor`.
+- `provisional/s2c_phase2/` on `/stor` has no `MANIFEST.sha256` (the two tars' hashes are in `sources.yaml`; a manifest
+  file would be under 64 MB). Recommendation: leave it; `sources.yaml` is the record.
 - Card W-31 (`planning/measurements/2026-11-13_flanks_context_types.md`): defaults of `nbr flanks`, three questions.
   (1) Context types: keep the fixed cut 0.5. The trees of mobile elements have no gap to cut at (merge distances spread
   evenly from 0.5 to 1), so the largest-gap rule made more types than 0.5 in three of four views (115 against 108 on the
