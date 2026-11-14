@@ -56,9 +56,11 @@
     bio-box stage ncrna plan --root R --stage S --cm F [--ncrna-set SET] --scan-bases N [--tmp D]
     bio-box stage ncrna shard --root R --stage S --cm F [--ncrna-set SET] --shard K --cpus N --tmp D [--seq-stages S0,S1]
     bio-box stage ncrna merge --root R --stage S --cm F [--ncrna-set SET] --tmp D
+    bio-box stage crispr --root R --stage S --cpus N [--tmp D] [--seq-stages S0,S1] [--out DIR]   (card E-12)
     bio-box build-stage --profile P --root R --stage S --release R1 [--stages S0,S1] --genomes genomes.json
                 --objects objects.json [--library NAME VERSION HMM CUTOFF ...] [--tmp D] [--threads N]
                 [--scan-jobs J] [--scan-cpus C] [--cluster-parts N] [--ncrna-cm Rfam.cm.gz [--ncrna-set prok-2]]
+                [--crispr]
 
 `build-stage` (card C-04, `biobox.stage`) runs every `stage` step and then every `release` step of
 one stage and its release, each as a `run-step`; a second call skips what is done.
@@ -1630,7 +1632,7 @@ def _run_step(a) -> int:
 
 RELEASE_STEPS = ("define", "cluster", "tokens", "postings", "dim", "manifest", "catalog", "verify")
 CLUSTER_ACTIONS = ("plan", "step", "finish", "redo")  # `release cluster plan|step|finish|redo` (card B-41)
-STAGE_STEPS = ("inputs", "ingest", "genecall", "igr", "tapes", "domains", "ncrna")
+STAGE_STEPS = ("inputs", "ingest", "genecall", "igr", "tapes", "domains", "ncrna", "crispr")
 DOMAIN_ACTIONS = ("plan", "shard", "merge")  # `stage domains plan|shard|merge` (card B-24)
 INGEST_ACTIONS = ("pass1", "plan", "batch", "merge")  # `stage ingest pass1|plan|batch|merge` (card B-30)
 NCRNA_ACTIONS = ("plan", "shard", "merge")  # `stage ncrna plan|shard|merge` (card E-07)
@@ -1942,6 +1944,10 @@ def _stage_step(a, root: Path, out: Path) -> dict:
             return ncrna.merge(root, a.stage, cm, tmp=tmp, out=out, **kw, **mfb)
         return ncrna.run(root, a.stage, cm, a.cpus, gene_call_version=a.gene_call_version, tmp=tmp, out=out,
                          seq_stages=_csv(a.seq_stages), **kw, **mfb)
+    if a.step == "crispr":  # card E-12
+        from biobox.l1 import crispr
+
+        return crispr.run(root, a.stage, a.cpus, tmp=tmp, out=out, seq_stages=_csv(a.seq_stages), **mfb)
     from biobox.l1 import domains
 
     need = {None: ("library", "library_version", "hmm", "cutoff"),  # the whole scan in this process
@@ -1987,7 +1993,7 @@ def _build_stage(a) -> int:
                     libraries=libs, tmp=Path(a.tmp) if a.tmp else None, threads=a.threads,
                     gene_call_version=a.gene_call_version, scan_jobs=a.scan_jobs, scan_cpus=a.scan_cpus,
                     cluster_parts=a.cluster_parts, ncrna_cm=Path(a.ncrna_cm) if a.ncrna_cm else None,
-                    ncrna_set=a.ncrna_set)
+                    ncrna_set=a.ncrna_set, crispr=a.crispr)
     return stage.build_stage(profile.load(a.profile), b)
 
 
@@ -2226,15 +2232,16 @@ def _main(argv: list[str] | None = None) -> int:
     st.add_argument("--line-width", type=int, help="ingest: FASTA line width of the shards")
     st.add_argument("--prefix-width", type=int, choices=[0, 1, 2], help="genecall: protein_seq bucket width")
     st.add_argument("--workers", type=int, default=1, help="genecall: genomes called at once")
-    st.add_argument("--seq-stages", help="genecall, ncrna: S0,S1: the stages whose sequences the genomes name "
-                                         "(default: the stage itself)")
+    st.add_argument("--seq-stages", help="genecall, ncrna, crispr: S0,S1: the stages whose sequences the genomes "
+                                         "name (default: the stage itself)")
     st.add_argument("--producers", help="igr, tapes: the tape version's producers (default: the gene caller)")
     st.add_argument("--max-slots", type=int, help="tapes: slots per row group")
     st.add_argument("--library", help="domains: library name (pfam)")
     st.add_argument("--library-version", help="domains: library version (38.2)")
     st.add_argument("--hmm", help="domains: the library's HMM file")
     st.add_argument("--cutoff", help="domains: gathering, trusted, noise or none")
-    st.add_argument("--cpus", type=int, default=1, help="domains: hmmsearch threads; ncrna: cmsearch threads (--cpu)")
+    st.add_argument("--cpus", type=int, default=1, help="domains: hmmsearch threads; ncrna: cmsearch threads (--cpu); "
+                                                       "crispr: MinCED processes at once")
     st.add_argument("--cm", help="ncrna: the Rfam covariance-model library (.cm or .cm.gz; card E-01)")
     st.add_argument("--ncrna-set", default="prok-2", help="ncrna: the model set, a frozen set's name (prok-2, the "
                                                           "default, DEC-30; prok-1) or a set file (card E-07)")
@@ -2272,6 +2279,8 @@ def _main(argv: list[str] | None = None) -> int:
                                        "build IGRs, tapes, tokens and postings of both producers (card E-07)")
     bs.add_argument("--ncrna-set", default="prok-2", help="the ncRNA model set: a frozen set's name (prok-2, the "
                                                           "default, DEC-30; prok-1) or a set file")
+    bs.add_argument("--crispr", action="store_true", help="run the CRISPR array producer (MinCED, card E-12) as a "
+                                                          "step after gene calling; its arrays are not put on the tape")
     a = p.parse_args(argv)
     if a.cmd == "search" and a.action == "run" and not a.release:
         p.error("search run needs --release")

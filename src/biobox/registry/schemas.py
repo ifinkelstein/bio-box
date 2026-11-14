@@ -320,6 +320,40 @@ _SPECS = [
             "before card E-08 (producers without the `-clan1` tail), whose every hit has a feature"
         ),
     ),
+    # card E-12 (biobox.l1.crispr): one row per repeat and per spacer of a MinCED CRISPR array; the array is a
+    # `feature` row of kind crispr_array under the same producer
+    TableSpec(
+        name="l1_crispr",
+        location="l1/crispr",
+        layer="L1",
+        schema=pa.schema([
+            _f("feature_uid", UID),
+            _f("contig_uid", UID),
+            _f("region_uid", UID),
+            _f("element", pa.string()),
+            _f("ordinal", pa.uint32()),
+            _f("start", COORD),
+            _f("end", COORD),
+            _f("strand", STRAND),
+            _f("seq", pa.string()),
+            _f("contig_len", COORD),
+        ]),
+        primary_key=("feature_uid", "region_uid", "producer"),
+        sort_key=("contig_uid", "feature_uid", "ordinal"),
+        partition_keys=("producer", "stage"),
+        enums={"strand": STRAND_VALUES, "element": ("repeat", "spacer")},
+        doc=(
+            "card E-12; PLAN.md step 4; 00-spec.md §3.16. One row per repeat and per spacer of a CRISPR array called "
+            "by MinCED (`minced-<v>-<parameters>`). feature_uid = ids.feature_uid(contig_uid, start, end, strand, "
+            "KIND['crispr_array']) of the array, the `feature` row of the same producer; region_uid = "
+            "ids.region_uid(contig_uid, start, end, strand) of the element, its key as a search target. ordinal: "
+            "the element's position in its array from 0 (repeats even, spacers odd), valid only beside feature_uid, "
+            "never a key (AGENTS §3.3). start/end 0-based half-open on the contig; an element of an array across a "
+            "circular contig's origin lies at its position on the contig, end > contig_len when it crosses the "
+            "origin. strand +1: the strand its sequence is read on (MinCED gives no orientation). seq the element's "
+            "bases on that strand, uppercase; contig_len the contig's length"
+        ),
+    ),
     TableSpec(
         name="cluster_member",
         location="l2/cluster_member",

@@ -661,6 +661,58 @@
    false
   ]
  ],
+ "l1_crispr": [
+  [
+   "feature_uid",
+   "fixed_size_binary[16]",
+   false
+  ],
+  [
+   "contig_uid",
+   "fixed_size_binary[16]",
+   false
+  ],
+  [
+   "region_uid",
+   "fixed_size_binary[16]",
+   false
+  ],
+  [
+   "element",
+   "string",
+   false
+  ],
+  [
+   "ordinal",
+   "uint32",
+   false
+  ],
+  [
+   "start",
+   "int64",
+   false
+  ],
+  [
+   "end",
+   "int64",
+   false
+  ],
+  [
+   "strand",
+   "int8",
+   false
+  ],
+  [
+   "seq",
+   "string",
+   false
+  ],
+  [
+   "contig_len",
+   "int64",
+   false
+  ]
+ ],
  "l1_domains": [
   [
    "protein_uid",
