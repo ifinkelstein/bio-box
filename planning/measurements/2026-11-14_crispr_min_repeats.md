@@ -7,6 +7,9 @@ the PI's.
 
 ## Summary
 
+Every number of this summary is *measured* (wilkcomp02, 2026-11-14, the commands of the setup) or *derived* from
+those, with its source and formula in the section it comes from.
+
 - At `-minNR 2` MinCED does not return "the arrays of 3 plus some arrays of 2". It returns a different and much larger
   set: on P1 + P2 (10.61 Gbp) 34,061 arrays against 2,577 at 3; 31,413 of them overlap no array found at 3 (the
   *extra calls*), and only 13,990 of those have two repeats: 17,423 have three or more (up to 816), which the default
