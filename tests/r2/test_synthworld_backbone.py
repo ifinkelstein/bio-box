@@ -186,8 +186,11 @@ def test_dec15_a_fates_family_splits_a_unit_and_the_truth_says_so(micro_family_f
         assert _raw_intact(members, n_genes, order) == u.intact, u
     # and an adjacent pair split by an intruder is not reported as a within-unit adjacency
     same_unit = {(a.genome_id, a.replicon, a.left_position) for a in bb.adjacency if a.same_unit}
-    assert sum(u.n_members - 1 for u in multi if u.intact) <= len(same_unit) <= \
-        sum(u.n_members - 1 for u in multi)
+    # a plasmid is a unit excised as a circular replicon of its own, so it also has its wrap pair (session 11: with
+    # DEC-37 (3)'s plasmid rates there are about 90 plasmid replicons, and the bound without them failed by 52)
+    wraps = sum(1 for r in bb.replicons if r.kind == "plasmid" and r.n_genes >= 3)
+    assert sum(u.n_members - 1 for u in multi if u.intact) + wraps <= len(same_unit) <= \
+        sum(u.n_members - 1 for u in multi) + wraps
 
 
 # --- DEC-15 (b): replacement is refused with groups --------------------------------------------------------

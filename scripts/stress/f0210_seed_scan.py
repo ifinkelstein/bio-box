@@ -308,6 +308,10 @@ def measure(world: Path, params: dict) -> tuple[dict, list[dict]]:
     row["plus_fraction"] = sc["plus_fraction"]
     row["initial_adjacency_kept"] = sc["initial_adjacency_kept"]
     row["declared_clustered"] = sc["declared_clustered"]
+    # the core: root families present in at least 40 of the 46 genomes (test_hub_families_have_more_diverse_neighbours
+    # needs 100 of them)
+    row["root_families_ge40_genomes"] = sum(1 for r in fams.values()
+                                            if r["kind"] == "root" and int(r["n_genomes_present"]) >= 40)
     row["scored_units"] = len(scored)
     row["scored_units_intact"] = sum(u["intact"] == "true" for u in scored)
     # session 11 columns: the crown from the living MRCA, the realized transfer axis per level, entry exclusion
