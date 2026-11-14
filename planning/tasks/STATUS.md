@@ -73,8 +73,11 @@ agents, working independently. Card E-11 still waits for the CRISPR example to l
 5. Since card C-29 the pod's test image has every locked package (zombi2 and matplotlib included): set no
    `BIOBOX_POD_PYDEPS`. The directories `/tmp/if2453/pilot_s1/pydeps`, `pydeps_f02` and `pydeps_w27` are needed only by
    the running 50 Gbp build's old image (`pilot_s1/pydeps`; never modify it) and can go, with the PI's word, once that
-   build is done. The cross-host test needs `BIOBOX_PEER_MANIFEST=/tmp/if2453/ci-peer/right.json` (the Actions
-   `cross-host` job's hash line in a file).
+   build is done. The cross-host test needs `BIOBOX_PEER_MANIFEST` naming a file with the Actions `cross-host` job's
+   hash line. Since card E-12 (a new table) the hash is `28ffa9808ecd4829e52f6892f94f7b85`: use
+   `/tmp/if2453/ci-peer/right_28ffa980.json` for any tree that contains E-12 (`c6924ff` or later).
+   `/tmp/if2453/ci-peer/right.json` still holds the old hash `f6126b00…` for the branches cut before it (C-32, F-02
+   session 10): replace its content with the new line once those two are merged.
 
 **How the work runs.** One card per agent, in its own worktree (`.claude/worktrees/agent-*`) on branch
 `task/<ID>` (measurements: `measure/<ID>`); tests only on the pod (`sh scripts/pod_pytest.sh <ID> [paths]`). The
@@ -88,11 +91,12 @@ the card is amended in `TASKS.md` and the agent resumed (B-45, C-21c, E-09 went 
 
 **Branches.** `plan/task-cards` on GitHub (repository `ifinkelstein/bio-box`, public): 119 cards, nine
 sessions of F-02 and the measurements in the table below; decisions DEC-29 to DEC-33 were added on 2026-11-12.
-`ci` was green at every push of 2026-11-13 up to `d5ba8ed` (F-02 session 6); the run on `dab1700` (C-30) was in
-progress at 13:30. Manifest hash of the fixture: `f6126b00d45e9284d2799c3a699c992c`, equal on Actions and the pod (it
-covers every registered schema's hash, so it moves with any schema change). `main` is at pull request 4 (`64f1bf0`
-built the image) and is behind by everything merged on 2026-11-13; nothing merged since changes
-`container/environment.yml` or `uv.lock`, so no new image is needed yet.
+`ci` and `cross-host` were green at every push of 2026-11-13, the last being `c6924ff` (E-12). Manifest hash of the
+fixture: `28ffa9808ecd4829e52f6892f94f7b85` since E-12 (`f6126b00d45e9284d2799c3a699c992c` before), equal on Actions
+(run 43563397486's commit) and the pod (measured by the E-12 agent); it covers every registered schema's hash, so it
+moves with any schema change. `main` is at pull request 5 (`faec1f4`, which built the current images) and is behind
+by F-02 sessions 8 and 9 and E-12; nothing merged since changes `container/environment.yml` or `uv.lock`, so no new
+image is needed.
 
 **Agents running.**
 
