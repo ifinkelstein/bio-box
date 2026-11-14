@@ -10,7 +10,7 @@ No workflow engine: the list `steps` returns and the run records `run-step` writ
 with `--out` left to `$BIOBOX_STAGING` (card C-08), in this order:
 
     inputs, ingest, genecall, features, [crispr-<producer>], igr, tapes, domains-<lib>-<ver> (one per --library),
-    cluster, tokens, postings, dim, manifest, catalog
+    [crispr-<filtered producer> (one per --library named pfam)], cluster, tokens, postings, dim, manifest, catalog
 
 `features` is the slot for feature producers other than the gene caller. Without `--ncrna-cm` it has no
 command and is passed over. With `--ncrna-cm F` (card E-07) it is the ncRNA producer
@@ -30,6 +30,15 @@ version is the one without `--crispr` (the C-08 check does not know the producer
 exist, is the stage's genome bases (`stage_bases`) at `CRISPR_CPU_S_PER_GBP`; above `SHARD_MARGIN` of the budget the
 step is refused (exit 2), since it has no shards: at the rate measured on stage P1 that is a stage of about 79 Gbp
 (constant below).
+
+Two-repeat arrays beside Cas genes (card E-15, DEC-40). With `--crispr` and a `--library` named `pfam`, a second
+CRISPR step follows the last domain scan step: `crispr-<filtered producer>` (`stage crispr --near-cas --library pfam
+--library-version V`, `crispr.run_near_cas`), the producer of MinCED's calls at 2 repeats kept only beside a Cas gene of
+that Pfam scan (rules in `biobox.l1.crispr`), with the same `--cpus` and `--seq-stages` as the default step, which runs
+before it as above. It reads the default producer's arrays, the stage's gene calls and its Pfam scan, so it can run only
+after all three. With `--crispr` and no `pfam` library only the default producer runs, and the build says so in one line
+when it starts. Its estimate is the default step's times `CRISPR_NEAR_CAS_COST` (constant below), refused (exit 2) above
+`SHARD_MARGIN` of the budget for the same reason.
 
 Contigs shared across stages (card C-20, DEC-26). Ingest stores a sequence once, in the first stage that sees
 it, and that stage owns the contig's genes, IGRs and tape. When gene calling starts, `build-stage` adds
@@ -304,6 +313,13 @@ NCRNA_JOB_GIB, NCRNA_JOB_THREADS = 6.4, 2
 # above SHARD_MARGIN of the budget, which is 79.1 Gbp in one stage (derived: 0.8 x 300 x 60 / 182.0), against 9.6
 # Gbp for the largest stage built so far (P2), so it runs in one process.
 CRISPR_CPU_S_PER_GBP = 182.0
+# The filtered CRISPR step (card E-15): its cost over the default step's on the same stage. MinCED at 2 repeats cost
+# 1.12 to 1.13 times MinCED at 3 (*measured*, wilkcomp02, 2026-11-14, card E-13's run records on P1, P2 and S1,
+# planning/measurements/2026-11-14_crispr_min_repeats.md); with the filter's reads and joins the step cost 1.08, 1.19
+# and 1.14 times the default step on P1, P2 and S1 (*measured*, wilkcomp02, 2026-11-14, run records `cpu_min`
+# 3.355 / 3.109, 31.790 / 26.723, 6.479 / 5.670, planning/measurements/2026-11-14_crispr_two_repeat_producer.md).
+# The largest ratio.
+CRISPR_NEAR_CAS_COST = 1.19
 CUTOFFS = ("gathering", "trusted", "noise", "none")
 _READ = 1 << 20  # bytes per read when decompressing an input to count it
 
@@ -348,7 +364,8 @@ class Step:
     run_stage: str  # run-step's --stage: the stage, or the release for a release step
     name: str  # run-step's --step
     argv: tuple[str, ...] | None  # the bio-box arguments; None for an empty slot
-    check: str | None = None  # "ingest", "scan", "ncrna", "crispr" or "cluster": the CPU-minute estimate before it
+    # "ingest", "scan", "ncrna", "crispr", "crispr-cas" or "cluster": the CPU-minute estimate before it
+    check: str | None = None
     module: str = "biobox.cli"  # what `python -m` runs: the bio-box CLI, or biobox.l1.domains for a rescan
     scratch: str | None = None  # the step's own scratch directory (its --tmp, card C-13), or None
 
@@ -403,6 +420,16 @@ def crispr_name() -> str:
     return f"crispr-{crispr.producer()}"
 
 
+def crispr_near_name(lib: Library) -> str:
+    """The filtered CRISPR step's name, `crispr-<filtered producer>` (card E-15): its Pfam library's version is in it."""
+    return f"crispr-{crispr.near_cas_producer(lib.version)}"
+
+
+def cas_libraries(b: Build) -> tuple[Library, ...]:
+    """The `--library` entries the filtered CRISPR producer reads: those named `crispr.CAS_LIBRARY` (pfam)."""
+    return tuple(lib for lib in b.libraries if lib.name == crispr.CAS_LIBRARY)
+
+
 def crispr_cpus(prof: Profile, b: Build) -> int:
     """MinCED processes at once in the CRISPR step: `--scan-cpus`, else `DEFAULT_SCAN_CPUS`, at most `--threads`."""
     return min(threads_of(prof, b), b.scan_cpus if b.scan_cpus is not None else DEFAULT_SCAN_CPUS)
@@ -442,6 +469,10 @@ def steps(prof: Profile, b: Build) -> list[Step]:
                        check="ncrna")
     arrays = ([own(s, crispr_name(), lambda t: st("crispr", "--cpus", str(crispr_cpus(prof, b)), "--tmp", t),
                    check="crispr")] if b.crispr else [])
+    near = [own(s, crispr_near_name(lib), lambda t, lib=lib: st(
+        "crispr", "--near-cas", "--library", lib.name, "--library-version", lib.version,
+        "--cpus", str(crispr_cpus(prof, b)), "--tmp", t), check="crispr-cas")
+        for lib in (cas_libraries(b) if b.crispr else ())]  # card E-15: after the domain scans
     return [
         Step(s, "inputs", st("inputs", "--genomes", str(Path(b.genomes).resolve()))),
         own(s, "ingest", lambda t: st("ingest", "--objects", str(Path(b.objects).resolve()), "--tmp", t,
@@ -454,6 +485,7 @@ def steps(prof: Profile, b: Build) -> list[Step]:
         *(Step(s, scan_name(lib), st("domains", "--library", lib.name, "--library-version", lib.version,
                                      "--hmm", str(Path(lib.hmm).resolve()), "--cutoff", lib.cutoff, "--cpus", n),
                check="scan") for lib in b.libraries),
+        *near,
         own(r, "cluster", lambda t: rl("cluster", *stages, "--tmp", t, "--threads", n), check="cluster"),
         own(r, "tokens", lambda t: rl("tokens", *stages, "--tmp", t, *prods)),
         own(r, "postings", lambda t: rl("postings", *stages, "--tmp", t, *prods)),
@@ -635,9 +667,9 @@ def _refusal(prof: Profile, b: Build, root: Path, plan: list[Step], allowance: i
         except (FileNotFoundError, ValueError) as e:
             return f"--ncrna-set: {e}"
     if b.crispr:
-        cs = next(s for s in plan if s.check == "crispr")
-        if not runstep._NAME.fullmatch(cs.name):
-            return f"bad CRISPR step name {cs.name!r}"
+        for cs in (s for s in plan if s.check in ("crispr", "crispr-cas")):
+            if not runstep._NAME.fullmatch(cs.name):
+                return f"bad CRISPR step name {cs.name!r}"
     if threads_of(prof, b) < 1:
         return f"--threads {threads_of(prof, b)}: must be at least 1"
     if b.cluster_parts is not None and (isinstance(b.cluster_parts, bool) or b.cluster_parts < 1):
@@ -797,6 +829,9 @@ def build_stage(prof: Profile, b: Build, *, run: Runner | None = None,
     if why is not None:
         _say(f"refused before any step: {why}")
         return runstep.EXIT_REFUSED
+    if b.crispr and not cas_libraries(b):
+        _say(f"--crispr without a --library named {crispr.CAS_LIBRARY}: only the default CRISPR producer runs; the "
+             "producer of two-repeat arrays beside Cas genes (card E-15) needs the stage's Pfam scan")
     scratch_of(prof, b).mkdir(parents=True, exist_ok=True)
     n = threads_of(prof, b)
     jobs, cpus = scan_slots(b, allowance)
@@ -870,7 +905,7 @@ def build_stage(prof: Profile, b: Build, *, run: Runner | None = None,
                     code = _ncrna_in_shards(prof, b, root, step, one, _hook, nc_jobs, nc_cpus, shard_run, allow)
                 else:
                     code = one(with_seq_stages(step, root, b.stage))
-            elif step.check == "crispr":  # card E-12: no shards; refused above the margin of the budget
+            elif step.check in ("crispr", "crispr-cas"):  # cards E-12, E-15: no shards; refused above the margin
                 why = None if _record(root, step).exists() else crispr_refusal(prof, b, root, step)
                 if why is not None:
                     _say(f"refused before {step.run_stage}.{step.name}: {why}")
@@ -1055,17 +1090,19 @@ def stage_bases(root: Path, stage: str) -> int:
 
 
 def crispr_refusal(prof: Profile, b: Build, root: Path, step: Step) -> str | None:
-    """Why the CRISPR step may not start (card E-12), or None: its estimate in one process (the stage's genome bases at
-    `CRISPR_CPU_S_PER_GBP`) is above `SHARD_MARGIN` of the budget, and the step has no shards."""
+    """Why a CRISPR step may not start (cards E-12, E-15), or None: its estimate in one process (the stage's genome
+    bases at `CRISPR_CPU_S_PER_GBP`, times `CRISPR_NEAR_CAS_COST` for the filtered step) is above `SHARD_MARGIN` of the
+    budget, and the step has no shards."""
     bases = stage_bases(root, b.stage)
-    est = crispr_cpu_min(bases)
+    near = step.check == "crispr-cas"
+    est = crispr_cpu_min(bases) * (CRISPR_NEAR_CAS_COST if near else 1.0)
     if est <= SHARD_MARGIN * prof.cpu_min_per_process:
         return None
+    rate = (f"{CRISPR_CPU_S_PER_GBP} CPU-seconds per Gbp, measured in planning/measurements/2026-11-13_crispr_arrays.md"
+            + (f", times {CRISPR_NEAR_CAS_COST} for MinCED at 2 repeats and the filter (card E-15)" if near else ""))
     return (f"the CRISPR step over {bases:,} genome bases is estimated at {est:,.1f} CPU-minutes in one process "
-            f"({CRISPR_CPU_S_PER_GBP} CPU-seconds per Gbp, measured in "
-            f"planning/measurements/2026-11-13_crispr_arrays.md), over {SHARD_MARGIN:.0%} of the profile's "
-            f"cpu_min_per_process of {prof.cpu_min_per_process} (AGENTS §7.2), and it has no shards: split the stage, "
-            "or shard the step in a new card")
+            f"({rate}), over {SHARD_MARGIN:.0%} of the profile's cpu_min_per_process of {prof.cpu_min_per_process} "
+            "(AGENTS §7.2), and it has no shards: split the stage, or shard the step in a new card")
 
 
 def _ncrna_sharded(prof: Profile, b: Build, root: Path, step: Step) -> bool:

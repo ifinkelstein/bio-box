@@ -218,6 +218,12 @@ it), `hits.tsv`, `hits.faa`, `neighbors.tsv`, `loci/`. The run is `<profile tmp>
   An array is in when it shares one base with the span; `partial=true` when it runs out of it; on a circular contig
   it is placed where most of it is inside. `delta_bp` = max(starts) - min(ends) (negative: overlaps the anchor);
   `side_rel` +1/-1/0 along the anchor's strand; `repeat` the commonest repeat; strand always `+1` (no orientation).
+  `producer` is one of two (card E-15, DEC-40): `minced-0.4.2-w8-nr3-r23x47-s26x50` (at least 3 repeats, every
+  contig) or `minced-0.4.2-w8-nr2-r23x47-s26x50-cas1kb-caspfam1-pfam-38.2` (2 repeats or more, kept only within
+  1,000 bases of a gene with one of the 31 Cas families of `src/biobox/l1/cas_families/cas-pfam-1.tsv` in the Pfam
+  scan, not wholly inside a gene, overlapping no 3-repeat array); the two never call the same bases, so count
+  arrays per producer and say which. An array of the second is evidence of a minimal array beside Cas genes, with
+  a chance rate of at most 2.96 per Gbp (card E-13, *derived*).
   Arrays are never slots: gene rows, offsets and ordinals are unchanged. `neighbors.tsv` then ends with a table
   `kind producer n_loci n_loci_with_array share_of_loci n_loci_partial_only n_arrays`, and `README.txt` with a
   paragraph. Without arrays every file is byte-identical to before; the `--json` forms never carry arrays (the

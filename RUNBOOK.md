@@ -313,6 +313,27 @@ and posting steps get no `--producers` for it, so the tape version is the one wi
 - A contig another stage owns is skipped and named in the ledger (`owned_by:<stage>`), as gene calling
   skips it (DEC-26). The step reads sequences only, no gene calls.
 
+**Two-repeat arrays beside Cas genes (card E-15, DEC-40).** With `--crispr` and a `--library` named
+`pfam`, a second CRISPR step follows the last domain scan step: `crispr-<filtered producer>`, which runs
+`bio-box stage crispr --near-cas --library pfam --library-version V`. The producer is
+`minced-0.4.2-w8-nr2-r23x47-s26x50-cas1kb-caspfam1-pfam-38.2` for Pfam 38.2: MinCED at a minimum of 2 repeats,
+a call kept only when it overlaps no array of the default producer, lies within 1,000 bases of a gene with a
+Cas domain (one of the 31 Pfam families of `src/biobox/l1/cas_families/cas-pfam-1.tsv`, in the stage's Pfam
+scan) and lies not wholly inside a called gene; the rules are stated in `src/biobox/l1/crispr.py`. Its files
+are `feature` and `l1_crispr` rows under its own `producer=` partitions and its own ledger, whose rows say
+for each contig the calls rejected by each rule (`overlaps_default`, `far_from_cas`, `inside_gene`) and name
+MinCED, the JVM, the arguments, the gene-call version, the domain library, the family list, the filter and
+the default producer. The default producer's files are read, never rewritten. With `--crispr` and no `pfam`
+library only the default step runs, and the build says so in one line when it starts (`--crispr without a
+--library named pfam: only the default CRISPR producer runs; ...`); the step counts in `all N steps done`
+(15 with one `pfam` library and `--crispr`). Run alone, the step needs the default producer's files, the
+stage's gene calls and its Pfam scan in the root, and refuses (exit 2) without any of them.
+
+- Threads and memory: as the default step (`--scan-cpus` MinCED processes), plus one DuckDB connection of one
+  thread capped at 2 GB for the filter (section 10).
+- Budget: no shards. Its estimate is the default step's times `CRISPR_NEAR_CAS_COST` (section 10); refused as
+  the default step is, above 80% of `cpu_min_per_process`.
+
 **Clustering's CPU budget (DEC-29).** Clustering in one process has no exemption from the 300
 CPU-minute rule any more: DEC-25 exempted it until clustering was split, and card B-42 ended that once
 the split clustering of `rN.1b` (2,053,075 proteins) equalled its published clusters row for row
@@ -1005,6 +1026,7 @@ a profile value is missing from this table.
 | CPU-minutes of one clustering call run as one process | 20000, estimated before launch; refused above it. The one exemption from the 300 (DEC-29): a call that no number of parts fits (the NR90 step's prefilter from about 74 M proteins, NR50 step 0 from about 108 M, derived). Set by the PI on 2026-11-10 for the 50 Gbp build: about nine times the 2,195.91 measured for 10,620,684 proteins (wilkcomp02, 2026-11-10). Without the key such a call is refused. Clustering in one process has no exemption since card B-42 (DEC-25's ended): above 80% of the budget a release clusters in parts | profile `cluster_cpu_min_max`; DEC-29 (narrowing DEC-25); `cluster_refusal`, `one_process_refusal` in `src/biobox/stage.py`; cards B-36, B-45, B-42 |
 | ncRNA scan shard size | `prok-2` (the default): 111,734,541 genome bases, 80% of `cpu_min_per_process` (300) at 358.0 CPU-hours per 10 Gbp (derived: 304.0 × 299.7 / 254.5, the set's cost relative to `prok-1` from `planning/measurements/2026-11-12_rfam_sample.md`). `prok-1`: 131,578,947 at 304.0, the slower of the two shards of card E-07's pod check (derived in `planning/measurements/2026-11-11_ncrna_producer.md`; the design note's 247.4 gave 161,681,487). Shards at once: at most the unit's `MemoryMax` / (6.4 GiB per two `cmsearch` threads) | `NCRNA_CPU_H_PER_10GBP`, `NCRNA_SET_COST`, `NCRNA_JOB_GIB` in `src/biobox/stage.py`; cards E-07, E-08, E-09 |
 | CRISPR step | one process, `--scan-cpus` MinCED processes of a 512 MiB heap each; refused above 80% of `cpu_min_per_process` (300) at 182.0 CPU-seconds per Gbp: a stage of 79.1 Gbp (derived: 0.8 × 300 × 60 / 182.0). The rate: 185.0 CPU-s for stage P1's 1,016,625,803 bases (run record, wilkcomp02, 2026-11-13, `planning/measurements/2026-11-13_crispr_arrays.md`) | `CRISPR_CPU_S_PER_GBP`, `crispr_refusal` in `src/biobox/stage.py`; `JAVA_HEAP` in `src/biobox/l1/crispr.py`; card E-12 |
+| CRISPR step of two-repeat arrays beside Cas genes | one process, as the CRISPR step, plus one DuckDB connection of one thread capped at `DUCK_MEMORY_LIMIT` for the filter; its estimate is the CRISPR step's times 1.19, refused above 80% of `cpu_min_per_process` (300): a stage of 66.5 Gbp (derived: 0.8 × 300 × 60 / (182.0 × 1.19)). The factor: 31.790 against 26.723 CPU-minutes on stage P2, the larger of the three ratios 1.08, 1.19, 1.14 on P1, P2, S1 (run records, wilkcomp02, 2026-11-14, `planning/measurements/2026-11-14_crispr_two_repeat_producer.md`); peak RSS of one process 1.02 GB on P2 | `CRISPR_NEAR_CAS_COST`, `crispr_refusal` in `src/biobox/stage.py`; `run_near_cas` in `src/biobox/l1/crispr.py`; card E-15 |
 | Scan shard size | 30,150,753 residues: 80% of `cpu_min_per_process` (300) at 7.96 CPU-minutes per million residues (derived: 300 × 0.8 / 7.96 × 10^6; the rate of the Pfam scan of stage P1 in card C-10, measured on wilkcomp02, 2026-11-10: 2,343.74 CPU-minutes for 294.5 M residues). The 80% leaves room for a scan 25% slower per residue (derived: 1 / 0.8) | `SHARD_MARGIN` and `SCAN_CPU_MIN_PER_M` in `src/biobox/stage.py`; cards C-11, C-13 |
 | Scan shards at once | `--scan-jobs` J × `--scan-cpus` C at most the cap `run-step` allows when `build-stage` starts (40 by day, 56 at night when no other user computes); defaults C = 4, J = cap // C (10 by day, 14 at night). The cap is a total over everything of ours on the pod: `build-stage` subtracts what ours elsewhere use at each launch, not what starts later, so choose J = floor((cap - other threads) / C) (section 2). The allowance is read again before each step and before each shard launch; a launch that would pass it waits | `scan_slots` and `_launch` in `src/biobox/stage.py`; cards C-11, C-12, C-28 |
 | Unit CPU quota | the night cap, 56: a ceiling fixed at launch; `build-stage` holds the limit of the hour | `scripts/pod_run.sh --threads`, profile `max_threads_night`; card C-12 |

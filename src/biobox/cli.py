@@ -57,6 +57,8 @@
     bio-box stage ncrna shard --root R --stage S --cm F [--ncrna-set SET] --shard K --cpus N --tmp D [--seq-stages S0,S1]
     bio-box stage ncrna merge --root R --stage S --cm F [--ncrna-set SET] --tmp D
     bio-box stage crispr --root R --stage S --cpus N [--tmp D] [--seq-stages S0,S1] [--out DIR]   (card E-12)
+    bio-box stage crispr --near-cas --library pfam --library-version V --root R --stage S --cpus N [--tmp D]
+                [--seq-stages S0,S1] [--gene-call-version G] [--out DIR]   (card E-15: two-repeat arrays beside Cas genes)
     bio-box build-stage --profile P --root R --stage S --release R1 [--stages S0,S1] --genomes genomes.json
                 --objects objects.json [--library NAME VERSION HMM CUTOFF ...] [--tmp D] [--threads N]
                 [--scan-jobs J] [--scan-cpus C] [--cluster-parts N] [--ncrna-cm Rfam.cm.gz [--ncrna-set prok-2]]
@@ -1958,6 +1960,13 @@ def _stage_step(a, root: Path, out: Path) -> dict:
     if a.step == "crispr":  # card E-12
         from biobox.l1 import crispr
 
+        if a.near_cas:  # card E-15: the filtered producer, after gene calls and the Pfam scan
+            if a.library not in (None, crispr.CAS_LIBRARY) or not a.library_version:
+                raise ValueError(f"stage crispr --near-cas needs --library-version, and --library is "
+                                 f"{crispr.CAS_LIBRARY} (the library its Cas family list names), not {a.library!r}")
+            return crispr.run_near_cas(root, a.stage, a.cpus, library_version=a.library_version,
+                                       gene_call_version=a.gene_call_version, tmp=tmp, out=out,
+                                       seq_stages=_csv(a.seq_stages), **mfb)
         return crispr.run(root, a.stage, a.cpus, tmp=tmp, out=out, seq_stages=_csv(a.seq_stages), **mfb)
     from biobox.l1 import domains
 
@@ -2247,8 +2256,13 @@ def _main(argv: list[str] | None = None) -> int:
                                          "name (default: the stage itself)")
     st.add_argument("--producers", help="igr, tapes: the tape version's producers (default: the gene caller)")
     st.add_argument("--max-slots", type=int, help="tapes: slots per row group")
-    st.add_argument("--library", help="domains: library name (pfam)")
-    st.add_argument("--library-version", help="domains: library version (38.2)")
+    st.add_argument("--library", help="domains: library name (pfam); crispr --near-cas: pfam")
+    st.add_argument("--library-version", help="domains: library version (38.2); crispr --near-cas: the version of the "
+                                              "stage's Pfam scan it reads")
+    st.add_argument("--near-cas", action="store_true",
+                    help="crispr: the filtered producer (card E-15, DEC-40): MinCED at 2 repeats, calls kept only "
+                         "beside a Cas gene of the stage's Pfam scan, outside genes and away from the default "
+                         "producer's arrays")
     st.add_argument("--hmm", help="domains: the library's HMM file")
     st.add_argument("--cutoff", help="domains: gathering, trusted, noise or none")
     st.add_argument("--cpus", type=int, default=1, help="domains: hmmsearch threads; ncrna: cmsearch threads (--cpu); "
@@ -2291,7 +2305,9 @@ def _main(argv: list[str] | None = None) -> int:
     bs.add_argument("--ncrna-set", default="prok-2", help="the ncRNA model set: a frozen set's name (prok-2, the "
                                                           "default, DEC-30; prok-1) or a set file")
     bs.add_argument("--crispr", action="store_true", help="run the CRISPR array producer (MinCED, card E-12) as a "
-                                                          "step after gene calling; its arrays are not put on the tape")
+                                                          "step after gene calling, and with a --library named pfam "
+                                                          "the filtered producer of two-repeat arrays beside Cas genes "
+                                                          "after its scan (card E-15); arrays are not put on the tape")
     a = p.parse_args(argv)
     if a.cmd == "search" and a.action == "run" and not a.release:
         p.error("search run needs --release")
