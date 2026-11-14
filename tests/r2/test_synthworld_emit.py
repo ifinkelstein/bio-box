@@ -442,6 +442,11 @@ def test_call_errors_sit_on_their_gene_on_the_emitted_contig(t):
         L = len(t["seq"][cu])               # S9 may rotate a complete circular contig's origin into the gene
         if r["kind"] != "alt_start_upstream":
             assert r["error_pos"] != "" and (int(r["error_pos"]) - s) % L < e - s
+        elif r["alt_start"] == "":
+            # the alternative start lies 8-30 codons upstream (at most 90 bases); a gene whole on a contig whose 5'
+            # end is cut closer than that has its alternative start on no contig (the truth leaves it empty). The
+            # redesigned default world (session 11) has such a gene; the session-8 world had none.
+            assert (s < 90 if st == 1 else L - e < 90), r["callerr_id"]
         else:
             a = int(r["alt_start"])
             up = _cut(t["seq"][cu], a, s) if st == 1 else _cut(t["seq"][cu], e, a + 3, -1)

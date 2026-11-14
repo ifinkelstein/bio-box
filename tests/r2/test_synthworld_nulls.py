@@ -646,7 +646,9 @@ def test_n1_relabel_keeps_profiles_and_transfers_within_the_bounds(worlds, recor
             if r["status"] == "relabeled":
                 x = r["replacement_family_id"]
                 assert x in ok and kind[x] in cfg["kinds"]
-                assert int(r["hamming"]) == len(pres[a] ^ pres.get(x, frozenset())) <= max_h
+                # a module family can be in no genome (4 of the 100 at the default seed since session 11): its
+                # profile is empty, as line `ok` above reads it
+                assert int(r["hamming"]) == len(pres.get(a, frozenset()) ^ pres.get(x, frozenset())) <= max_h
                 assert (int(r["transfers"]), int(r["replacement_transfers"])) == (tr[a], tr[x])
                 used.add(x)
             else:
@@ -663,7 +665,7 @@ def test_n1_relabel_keeps_profiles_and_transfers_within_the_bounds(worlds, recor
                     if a not in mapping and b not in mapping:
                         continue
                     a2, b2 = mapping.get(a, a), mapping.get(b, b)
-                    before = len(pres[a] & pres[b])
+                    before = len(pres.get(a, frozenset()) & pres.get(b, frozenset()))
                     after = len(pres.get(a2, frozenset()) & pres.get(b2, frozenset()))
                     assert abs(after - before) <= ham.get(a, 0) + ham.get(b, 0)
                     n_pairs += 1

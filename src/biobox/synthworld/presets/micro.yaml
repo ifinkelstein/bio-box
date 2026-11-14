@@ -13,7 +13,7 @@ species:
   birth: {v: 1.0, tag: asserted, why: "spike §1 tree: birth 1.0"}
   death: {v: 0.3, tag: asserted, why: "spike §1 tree: death 0.3"}
   burst_size: {v: 4, tag: asserted, why: "§5.1: one clonal burst of 4"}
-  burst_depth: {v: 0.02, tag: asserted, why: "a short-branch cluster: its root sits this fraction of the crown age below the present"}
+  burst_depth: {v: 0.01, tag: derived, why: "a short-branch cluster: its root sits this fraction of the crown age below the present. Session 11: 0.02 x 2.5632 (the default seed's crown before DEC-37) = 0.051 time units; with the crown fixed at 5.0, 0.01 keeps the burst that young (0.05); at 0.02 the burst's orthologous IGRs fell to 0.864 identity (tests/r2/test_synthworld_intergenic.py asks 0.9)"}
   # DEC-37 (2), (3): the drawn tree is rescaled (every time times one factor) so that the time from the most recent
   # common ancestor of the living lineages to the present is crown_age, and the rates start at that ancestor
   crown_age: {v: 5.0, tag: derived, why: "DEC-37 (2): about the 21-seed median. Over the default and the 20 N2 seeds the crown from the first speciation has median 5.26 (session 10) and the crown from the living MRCA, as DEC-37 (3) measures it, 4.52 (session 11, crowns.tsv); 5.0 lies between them, a round value"}
@@ -21,7 +21,7 @@ species:
 
 taxonomy:
   # §2.1 S1: a genome's taxon at a rank is the species-tree branch alive at that rank's cut, a fraction of
-  # the crown age (the living lineages' MRCA = 0, present = 1; DEC-37 (3)). The clonal burst (burst_depth 0.02) is one species.
+  # the crown age (the living lineages' MRCA = 0, present = 1; DEC-37 (3)). The clonal burst (burst_depth 0.01) is one species.
   domain: {v: Bacteria, tag: asserted, why: "one synthetic domain"}
   ranks: {v: [phylum, class, order, family, genus, species], tag: asserted, why: "§2.1 S1: phylum ... species"}
   cuts: {v: [0.08, 0.2, 0.35, 0.5, 0.7, 0.9], tag: asserted, why: "deeper ranks cut nearer the present; a species cut after the burst's root would split it"}
