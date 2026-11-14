@@ -12,7 +12,7 @@ Written so a new session can continue without the conversation that produced thi
 **Mode: running again.** The PI ended the drain of 09:30 CST at about 11:00 CST on 2026-11-13 ("resume"): up to four
 agents, working independently. Card E-11 still waits for the CRISPR example to land.
 
-**State on 2026-11-14 at 01:00 CST.**
+**State on 2026-11-14 at 06:00 CST.**
 - `main` is at pull request 5 (merge commit `faec1f4`, 2026-11-13). The images built from it (Actions run
   43523543525: 2,028 passed, 25 skipped inside the test image) are **the pod's default since card C-32**:
   `~/bio-box/images/bio-box-test_faec1f4.sif` for tests (file sha256 `70263973…`; from
@@ -22,11 +22,20 @@ agents, working independently. Card E-11 still waits for the CRISPR example to l
   samtools 1.25, Prodigal 2.6.3: every tool and Python package at the version of the `64f1bf0` images. `pod_pytest.sh`
   and `detached_suite.sh` put only the tree's `src` on `PYTHONPATH`. The running 50 Gbp build keeps its old image
   until it is done; **the next build sets `IMAGE` and `DIGEST` in its driver to the `faec1f4` values of RUNBOOK §0**.
-- The 50 Gbp build: P4's scan published at 08:06 (96 shards, 9.5 hours) and P5's before 19:26; **P6 is scanning**
-  (unit `r50-P6-11`; 88 of 96 shards waited at 20:00, when the driver switched to 10 shards at once): about Saturday
-  06:00 to 08:00 (*estimate*: 88 shards, 10 at once, about an hour each). Then the driver waits for `RELEASE_OK`.
-- Agents running at 01:00 on 2026-11-14: F-02 session 10 (table below); F-02 session 9 (null worlds), E-12
-  (CRISPR arrays) and C-32 (the image switch) are merged. The usage limit stopped
+- **The 50 Gbp build: all four Pfam scans are published** (P6's at 04:52 on 2026-11-14), **and `rM.2` is building**:
+  the tree of `plan/task-cards` at `5ba68a6` was synced to `/tmp/if2453/ci/r50` at 05:50 (no scan running),
+  `RELEASE_OK` created, and the driver launched unit `r50-rM2-13` at 05:52 (`build-stage --stage P6 --release rM.2`,
+  32 threads, clustering in 24 parts, 3 at once with 10 threads each; log `/tmp/if2453/r50/tmp/logs/r50-rM2-13.log`).
+  Before the sync the current tree's release-step tests ran in the build's own old image (`bio-box-test_74b3e05.sif`
+  with `pilot_s1/pydeps`): 1,239 passed, 4 skipped (*measured*, 04:55 to 05:50), so the release keeps one image.
+  Card C-28's allowance had its first real use: the build's log reads "allowance 53 threads: cap 56 (Sat 05:52, night
+  or weekend) less 3 for ours elsewhere". Expect about ten hours, mostly clustering 46 M proteins (*estimate* from
+  card B-43's 16,918 to 18,910 CPU-minutes at 50 M, at 30 threads). Then the driver verifies `rM.2` and writes `DONE`,
+  or `FAILED`. **After it: the search pack of `rM.2`, `scripts/release_examples.sh rM.2`, the copy of the data root to
+  `/stor`, and `rM.1`'s release steps** (the driver skipped them: `SKIP_RM1`).
+- Agents running at 06:00 on 2026-11-14: E-13 (table below); F-02 session 9 (null worlds), E-12
+  (CRISPR arrays), C-32 (the image switch) and F-02 session 10 (a measurement; no fix) are merged. The usage limit
+  stopped the orchestrator and E-13 at about 01:40; E-13 was resumed at 04:54. The usage limit stopped
   E-12 and F-02 session 9 at about 20:55; both were resumed at 21:20. F-02 sessions 5 to 8 (S6 to S11), W-30, C-25
   step 2, C-30, C-29, W-31, C-31 and E-11 are merged. Both Opus agents were stopped by the account's usage limit at about
   15:45 and resumed at 16:02 (`SendMessage` to the same agent continues it; nothing was lost).
@@ -98,7 +107,7 @@ image is needed.
 
 | Card | Branch | State | When it reports |
 |---|---|---|---|
-| F-02 session 10, the `micro` preset over the 20 N2 seeds: measure genome size and planted share, then refit so both hold at every seed; digests re-pinned once with before-and-after tables | `task/F-02-10` | started 2026-11-14 about 00:15 | audit hard (it changes every world digest), merge; then the N2 worlds and the ablation worlds |
+| E-13 CRISPR arrays at a minimum of two repeats: what MinCED adds and how much of it is false, against shuffled-sequence and random-placement nulls; no default changes | `task/E-13` | started 2026-11-14 about 01:15; at most 4 threads beside the `rM.2` build; writes under `/tmp/if2453/e13` | audit, merge; the setting is the PI's |
 
 **On the pod** (wilkcomp02; account thread cap 40 by day, 56 at night, a total over everything we run; the PI keeps
 that cap). State on 2026-11-13 at about 11:00 CST:
