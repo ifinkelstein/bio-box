@@ -15,9 +15,19 @@ it asserts, in words), `kind` and `expectation`. Two kinds:
   not failed: a new release is expected to differ, and adds its own file (`--write-recorded`) instead of editing
   an old one.
 
+A check that needs a table not every release holds (card E-14: the CRISPR array checks need `l1_crispr`) starts its
+expectation with `[requires <table>] `, for example `[requires l1_crispr] == true` or `[requires l1_crispr]
+recorded`. On a release without that table its SQL observes the value `not applicable`; such a check, or one not
+observed at all (a run made before the check existed), is reported `n/a`: neither ok nor failed, left out of the
+`--table` file (which lists the checks that apply; `scripts/release_examples.sh` counts every invariant row there
+that is not ok as failed), and never written by `--write-recorded`, so a release without the table gets no recorded
+value for it. Any other value is checked as usual. Only a check that says `[requires ...]` can be `n/a`: an
+invariant without it that observes `not applicable` fails, as before.
+
 Prints one line per check, `<status>  <check_id>  observed=<v>  expected=<e>`, status one of ok, FAIL (an
 invariant), differs (a recorded value), new (no recorded value for this release), missing (expected but not
-observed) or unexpected (observed, in no row of expected.tsv); then a summary line. `--table FILE` also writes the
+observed), n/a (above) or unexpected (observed, in no row of expected.tsv); then a summary line (it names n/a only
+when some check is). `--table FILE` also writes the
 same lines as a new TSV file `check, kind, expected, observed, verdict` (`-` for none), which
 `scripts/release_examples.sh` gathers into one summary. Exits 1 when an invariant fails or is missing, 2 on a
 malformed input, else 0.
@@ -27,9 +37,22 @@ from __future__ import annotations
 
 import argparse
 import csv
+import re
 import sys
 
 KINDS = ("invariant", "recorded")
+NOT_APPLICABLE = "not applicable"  # the value a check's SQL observes on a release without the table it requires
+_REQUIRES = re.compile(r"^\[requires ([A-Za-z0-9_]+)\]\s+(\S.*)$")
+
+
+def requires(expectation: str) -> tuple[str | None, str]:
+    """(the table a check requires, or None; the expectation without the `[requires <table>] ` prefix)."""
+    m = _REQUIRES.match(expectation.strip())
+    if m is None:
+        if expectation.strip().startswith("[requires"):
+            raise Malformed(f"expectation {expectation!r}: write `[requires <table>] <expectation>`")
+        return None, expectation
+    return m[1], m[2]
 
 
 class Malformed(Exception):
@@ -109,10 +132,11 @@ def main(argv: list[str]) -> int:
                 raise Malformed(f"{a.expected}: check {r['check_id']} has kind {r['kind']!r}, not one of {KINDS}")
             if r["check_id"] in seen:
                 raise Malformed(f"{a.expected}: check {r['check_id']} listed twice")
-            if r["kind"] == "recorded" and r["expectation"] != "recorded":
+            _, bare = requires(r["expectation"])
+            if r["kind"] == "recorded" and bare != "recorded":
                 raise Malformed(f"{a.expected}: recorded check {r['check_id']} must have the expectation 'recorded'")
             if r["kind"] == "invariant":
-                holds("0", r["expectation"])  # malformed expectations fail here, before any line is printed
+                holds("0", bare)  # malformed expectations fail here, before any line is printed
             seen.add(r["check_id"])
         got = values(a.observed)
         rec: dict[str, str] = {}
@@ -124,13 +148,17 @@ def main(argv: list[str]) -> int:
     except (Malformed, OSError) as e:
         print(f"check: {e}", file=sys.stderr)
         return 2
-    counts = {"ok": 0, "FAIL": 0, "differs": 0, "new": 0, "missing": 0, "unexpected": 0}
+    counts = {"ok": 0, "n/a": 0, "FAIL": 0, "differs": 0, "new": 0, "missing": 0, "unexpected": 0}
     failed = 0
     lines = []
     table = []  # (check, kind, expected, observed, verdict)
     for r in expected:
-        cid, kind, exp = r["check_id"], r["kind"], r["expectation"]
-        if cid not in got:
+        cid, kind = r["check_id"], r["kind"]
+        need, exp = requires(r["expectation"])
+        if need is not None and got.get(cid, NOT_APPLICABLE) == NOT_APPLICABLE:
+            # card E-14: the release lacks the table the check requires (or the run predates the check)
+            status, shown, exp = "n/a", got.get(cid, "-"), r["expectation"]
+        elif cid not in got:
             status = "missing"
             failed += kind == "invariant"
             shown = "-"
@@ -144,7 +172,8 @@ def main(argv: list[str]) -> int:
                 status = "new" if cid not in rec else ("ok" if same(shown, rec[cid]) else "differs")
         counts[status] += 1
         lines.append(f"{status}\t{cid}\tobserved={shown}\texpected={exp}")
-        table.append((cid, kind, exp, shown, status))
+        if status != "n/a":  # the table holds the checks that apply (scripts/release_examples.sh counts it)
+            table.append((cid, kind, exp, shown, status))
     for cid in sorted(got.keys() - seen):
         counts["unexpected"] += 1
         lines.append(f"unexpected\t{cid}\tobserved={got[cid]}\texpected=-")
@@ -159,15 +188,17 @@ def main(argv: list[str]) -> int:
             return 2
     for line in lines:
         print(line)
-    print("check: " + ", ".join(f"{n} {k}" for k, n in counts.items()) + (f"; {failed} invariants failed" if failed
-                                                                            else "; invariants hold"))
+    shown_counts = {k: n for k, n in counts.items() if k != "n/a" or n}  # n/a only when some check is (card E-14)
+    print("check: " + ", ".join(f"{n} {k}" for k, n in shown_counts.items())
+          + (f"; {failed} invariants failed" if failed else "; invariants hold"))
     if a.write_recorded:
         kinds = {r["check_id"]: r["kind"] for r in expected}
+        conditional = {r["check_id"] for r in expected if requires(r["expectation"])[0] is not None}
         try:
             with open(a.write_recorded, "x", newline="") as fh:
                 fh.write("check_id\tvalue\n")
                 for cid in sorted(got):
-                    if kinds.get(cid) == "recorded":
+                    if kinds.get(cid) == "recorded" and not (cid in conditional and got[cid] == NOT_APPLICABLE):
                         fh.write(f"{cid}\t{got[cid]}\n")
         except OSError as e:
             print(f"check: --write-recorded: {e}", file=sys.stderr)
