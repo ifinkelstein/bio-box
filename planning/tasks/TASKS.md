@@ -834,7 +834,7 @@ Do, test first: at NR50 and NR90, when the release has a domain library, `--colo
 Accept: the tests; the tables' byte identity; the regenerated figures; the guides describe the defaults.
 
 ### W-33 Search results are archived under the profile's `bulk` area (DEC-42)
-**L** · Depends: W-28 · DEC-42 (PI, 2026-11-14)
+**L** · Pod: yes (the acceptance bundle only) · Depends: W-28 · DEC-42 (PI, 2026-11-14)
 Files: `src/biobox/search/results.py` (or wherever `results archive`, `list`, `get` and `flush` resolve the durable directory), `src/biobox/profile.py` only if a key must be read differently, `profiles/wilkcomp02.yaml` only if the card's test shows a key is needed, tests in `tests/r1/test_results.py` and `tests/r2/test_results_fixture.py`, `GUIDE.md`, `RUNBOOK.md` (the results section)
 Why: `bio-box results` writes under the profile's `durable` directory, `/stor/work/Wilke/if2453/all-the-data`, which has never existed; our durable copies are under `bulk` (`/stor/scratch/Wilke/if2453/all-the-data`). The PI decided that results go under `bulk`, beside the other durable copies, and that a run may be archived again later as a second archive.
 Do, test first: results resolve under `<bulk>/results/` (state the exact path; nothing is created outside it); archiving a run a second time with further outputs writes a second archive and never changes the first (test: the first archive's bytes are unchanged; `results list` shows both; `results get` says which it takes); nothing under `/stor` is overwritten or deleted. The first real bundle on the pod (the RNA polymerase run, 164.6 MB) is written by the card as its acceptance, with its path, size and sha256 in the report.

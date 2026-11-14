@@ -5,15 +5,15 @@ The running record of the cards in [`TASKS.md`](TASKS.md). Updated at every merg
 by an agent on its own branch `task/<ID>`, audited by the orchestrating session, and merged after its
 tests passed on the merged tree.
 
-## Handoff, 2026-11-14 12:16 CST (current; the dated sections under "History" are superseded where they differ)
+## Handoff, 2026-11-14 14:05 CST (current; the dated sections under "History" are superseded where they differ)
 
 Written so a new session can continue without the conversation that produced this file. Times are the pod's clock
 (CST); read it with `ssh ... date` before writing a time here.
 
 **Mode: the orchestrator works independently** (PI, 2026-11-13 about 21:40), on its own recommendations where a choice
 is cheap to reverse, at most two heavy (Opus) agents at once because of the account's usage limit, and it stops for
-the PI at the S2C phase 2 build and at a failed release check. The usage limit has stopped agents four times
-(2026-11-13 15:45 and 20:55, 2026-11-14 01:40 twice counting the orchestrator): an agent stopped that way is resumed
+the PI at the S2C phase 2 build and at a failed release check. The usage limit has stopped agents five times
+(2026-11-13 15:45 and 20:55, 2026-11-14 01:40 twice counting the orchestrator, and the weekly limit at about 12:20): an agent stopped that way is resumed
 with `SendMessage` to the same agent once the limit resets; nothing is lost.
 
 **State on 2026-11-14 at 12:16 CST.**
@@ -40,7 +40,7 @@ with `SendMessage` to the same agent once the limit resets; nothing is lost.
 - If it is still running on Monday at 08:00 the cap falls to 40: stop it the same way before then and relaunch with
   `REL_CPUS=13 BIG_THREADS=40`. To pause without relaunching: `touch /tmp/if2453/r50/driver/HALT` stops the driver
   before its next launch only; `STOP` in the root stops the build after its running parts.
-- At 12:13 it had finished NR90 and was in the alignment of NR50's step 07 (`cluster.nr50.07.align`, three parts live; scratch 78 GB; 266 GB free on `/tmp` at 12:16). Ahead: the rest of NR50, then tokens, postings, the dimension tables, manifest and catalog;
+- At 13:53 it was in the prefilter of NR50's step 15 (`cluster.nr50.15.prefilter`, parts 18 to 20 of 24 live; scratch 116 GB; 255 GB free on `/tmp` at 14:00). Ahead: the rest of NR50, then tokens, postings, the dimension tables, manifest and catalog;
   the driver then verifies `rM.2` and `rN.3` and writes `driver/DONE`, or `driver/FAILED`. Estimate: evening of
   2026-11-14 (about 13,000 to 15,000 CPU-minutes left of card B-43's 16,918 to 18,910 at 50 M proteins, at 48
   threads less the single-thread steps; *estimate*). A watcher in the orchestrating session reports the end.
@@ -65,7 +65,7 @@ with `SendMessage` to the same agent once the limit resets; nothing is lost.
 - The fixture's manifest hash is `28ffa9808ecd4829e52f6892f94f7b85` since E-12, equal on Actions and the pod;
   `/tmp/if2453/ci-peer/right.json` holds it.
 
-*Agents.* Two running since 12:14 (F-02 session 11 and E-15, restarted at the PI's word; see "Agents running" below). Merged on 2026-11-13 and 14: C-28, C-27 step 4, C-25 step 2, C-29, C-30, C-31, C-32,
+*Agents.* Three running at 14:05: F-02 session 11 and E-15 (restarted at the PI's word at 12:14, stopped by the usage limit, resumed at 14:00) and W-33 (Sonnet); see "Agents running" below. Merged on 2026-11-13 and 14: C-28, C-27 step 4, C-25 step 2, C-29, C-30, C-31, C-32,
 W-30, W-31, A-08, E-11, E-12, E-13, E-14, F-02 sessions 4 to 10 (10 is a measurement), the README, the CRISPR example.
 
 *What is blocked, and on what.* Nothing waits on the PI since 10:45 on 2026-11-14 (DEC-34 to DEC-42).
@@ -136,6 +136,10 @@ against the decision and the card, commit it early, and say what it kept and cha
 - E-15 (the filtered two-repeat CRISPR producer, DEC-40): worktree `.claude/worktrees/agent-a6590b8d7db07d738`,
   branch `task/E-15`; pod scratch `/tmp/if2453/e15/`, units `e15-*`, at most 3 threads while the build runs. The
   first agent's real-data runs on S1, P1 and P2 had ended by 12:13.
+Both were stopped within minutes by the account's weekly usage limit (the fifth such stop; the message gave a
+reset on 2026-11-19 at 13:00) before either had changed a file; the PI logged in again and said to continue, and
+both were resumed with `SendMessage` at 14:00. A third agent (Sonnet) started card W-33 at 14:05; its card now says
+"Pod: yes" for the acceptance bundle only (`<bulk>/results` does not exist yet on `/stor`; *measured*, `ls`, 14:02).
 If either is stopped again, its work is in that worktree (committed to its branch if it got that far) and a new
 agent is started only when the PI asks. Queued behind these cards: F-02 session 12 (detectability against
 divergence, DEC-39; after session 11), W-32 (figure defaults, DEC-41), W-33 (results under `bulk`, tier L).
