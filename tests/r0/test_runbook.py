@@ -580,11 +580,14 @@ def test_w22_the_runbook_puts_the_scratch_of_a_pack_verify_under_the_profiles_tm
 DETACHED = ROOT / "scripts" / "orchestrator" / "detached_suite.sh"
 GUIDE = ROOT / "GUIDE.md"
 POD_IMAGES = "/stor/home/if2453/bio-box/images"
-TEST_SIF = "bio-box-test_64f1bf0.sif"  # ghcr.io/ifinkelstein/bio-box-test@sha256:cb7cd0f1...
-RUNTIME_SIF = "bio-box_64f1bf0.sif"  # ghcr.io/ifinkelstein/bio-box@sha256:2faf4b8d...
+# Card C-32 moved the default from the images of 64f1bf0 (card C-29) to those built from `main` at faec1f4 (MinCED).
+TEST_SIF = "bio-box-test_faec1f4.sif"  # ghcr.io/ifinkelstein/bio-box-test@sha256:aeb6d241...
+RUNTIME_SIF = "bio-box_faec1f4.sif"  # ghcr.io/ifinkelstein/bio-box@sha256:029aab5d...
+OLD_IMAGES = ("74b3e05", "64f1bf0")  # images a default may no longer name
 # sha256 of the .sif files on wilkcomp02 (measured, `sha256sum`, 2026-11-13): what `pod_run.sh --digest` compares
-TEST_SIF_SHA256 = "3d77df6b7f0b894b5371e42eaf077dfda09ebc97b1f78f2ed1d2cfc5fa9fbda4"
-RUNTIME_SIF_SHA256 = "cb7353f85316981be5268c2212100322b5fbf1086c32b07e2f9b47802b6afba3"
+TEST_SIF_SHA256 = "70263973ed38dd782bc2d4e59dd3bc934f8f2769facd3c20c361b694cfc2ddf4"
+RUNTIME_SIF_SHA256 = "d67300aa1321b571fa8da79e74dfccdd87a8dca2e56518f324902efa6b9f098a"
+ACTIONS_PASSED = "2,028 passed"  # the test image's own suite on Actions (measured, image run 43523543525)
 
 
 def run_pod_pytest(tmp_path: Path, env_extra: dict[str, str]) -> str:
@@ -604,27 +607,27 @@ def run_pod_pytest(tmp_path: Path, env_extra: dict[str, str]) -> str:
     return log.read_text().splitlines()[-1]
 
 
-@pytest.mark.covers("C-29")
+@pytest.mark.covers("C-29", "C-32")
 def test_c29_pod_pytest_runs_the_new_image_with_only_the_tree_on_the_path(tmp_path):
-    """Card C-29 (3): by default the suite runs in the test image built from `main` at 64f1bf0, whose environment is
-    the locked one, with the tree's source alone on PYTHONPATH (a dependency directory first on the path would shadow
-    the locked packages). The binds and the base temp of before stay."""
+    """Card C-29 (3): by default the suite runs in the test image built from `main` (since card C-32 at faec1f4),
+    whose environment is the locked one, with the tree's source alone on PYTHONPATH (a dependency directory first on
+    the path would shadow the locked packages). The binds and the base temp of before stay."""
     remote = run_pod_pytest(tmp_path, {})
     assert f"'{POD_IMAGES}/{TEST_SIF}'" in remote, remote
     assert re.search(r"--env PYTHONPATH=/ci/T/src\s", remote), remote
-    assert "pydeps" not in remote and "74b3e05" not in remote
+    assert "pydeps" not in remote and not [old for old in OLD_IMAGES if old in remote], remote
     assert "--bind /tmp/if2453 " in remote and "--bind /sys/fs/cgroup:/sys/fs/cgroup:ro" in remote
     assert "--basetemp=/tmp/if2453/ci-tmp/T-0" in remote and "MemoryMax=32G" in remote
 
 
-@pytest.mark.covers("C-29")
+@pytest.mark.covers("C-29", "C-32")
 def test_c29_pod_pytest_keeps_the_image_and_dependency_overrides(tmp_path):
     remote = run_pod_pytest(tmp_path, {"BIOBOX_POD_IMAGE": "/x/old.sif", "BIOBOX_POD_PYDEPS": "/a:/b"})
     assert "'/x/old.sif'" in remote and TEST_SIF not in remote
     assert re.search(r"--env PYTHONPATH=/ci/T/src:/a:/b\s", remote), remote
 
 
-@pytest.mark.covers("C-29")
+@pytest.mark.covers("C-29", "C-32")
 def test_c29_the_detached_suite_defaults_to_the_new_image_and_no_dependency_directory():
     """Card C-29 (3): detached_suite.sh, the suite as detached units, takes the same defaults and overrides as
     pod_pytest.sh, adds a dependency directory only when one is given, passes the cross-host peer file on, and can run
@@ -632,28 +635,29 @@ def test_c29_the_detached_suite_defaults_to_the_new_image_and_no_dependency_dire
     text = DETACHED.read_text()
     assert re.search(rf"^IMAGE=\$\{{BIOBOX_POD_IMAGE:-{POD_IMAGES}/{TEST_SIF}\}}$", text, re.M), "default image"
     assert re.search(r"^PYDEPS=\$\{BIOBOX_POD_PYDEPS:-\}$", text, re.M), "no default dependency directory"
-    assert "pilot_s1" not in text and "74b3e05" not in text
+    assert "pilot_s1" not in text and not [old for old in OLD_IMAGES if old in text]
     assert "${PYDEPS:+:$PYDEPS}" in text
     assert "--bind /tmp/if2453 --bind /sys/fs/cgroup:/sys/fs/cgroup:ro" in text
     assert '"--basetemp=/tmp/if2453/ci-tmp/$NAME-$k"' in text
     assert '"${1:-}" = --own' in text and "DST=/opt/bio-box" in text and "BIOBOX_PEER_MANIFEST=$" in text
 
 
-@pytest.mark.covers("C-29")
+@pytest.mark.covers("C-29", "C-32")
 def test_c29_the_runbook_sets_up_the_new_image_without_a_dependency_directory():
     """Card C-29 (3): section 0 names the runtime image built from `main` and its sha256, and binds only the tree's
-    source; section 8 has the image check (the image's own suite) in the test image; the known-limits table no longer
-    says the image is old; the runbook says how the next build takes the new image."""
+    source; section 8 has the image check (the image's own suite) in the test image, with the Actions count of the
+    default image (card C-32: faec1f4); the known-limits table no longer says the image is old; the runbook says how
+    the next build takes the new image."""
     text = RUNBOOK.read_text()
     setup = "\n".join(c for _, c in commands(section_of(text, "## 0. ")))
     assert f'export IMAGE="$HOME/bio-box/images/{RUNTIME_SIF}"' in setup
     assert f"export DIGEST=sha256:{RUNTIME_SIF_SHA256}" in setup
     assert 'export PYTHONPATH_POD="$TREE/src"' in setup
-    assert "pydeps" not in setup.lower() and "74b3e05" not in setup
+    assert "pydeps" not in setup.lower() and not [old for old in OLD_IMAGES if old in setup]
     tests = section_of(text, "## 8. ")
     own = [c for _, c in commands(tests) if "detached_suite.sh" in c and "--own" in c]
     assert own, "section 8 has no image check"
-    assert TEST_SIF in tests and TEST_SIF_SHA256 in tests and "1,720 passed" in tests
+    assert TEST_SIF in tests and TEST_SIF_SHA256 in tests and ACTIONS_PASSED in tests
     known = section_of(text, "## 11. ")
     assert "The image on the pod is old" not in known
     assert "r50_driver.sh" in text and "`IMAGE` and `DIGEST`" in text and "`PYPATH`" in text

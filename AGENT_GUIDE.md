@@ -93,9 +93,9 @@ are the same commands one at a time, for a question of your own.
 
 Placeholders (write them out in every call): `$SCR` your scratch; `$TREE` a checkout of current code on the pod
 (mirror one from the laptop with `sh scripts/pod_pytest.sh <task> tests/r0/test_runbook.py`, which copies the
-tree to `/tmp/if2453/ci/<task>`); `$IMAGE` the `.sif`, `$HOME/bio-box/images/bio-box_64f1bf0.sif`, the image
-built from `main` with the locked environment and the source bound in (RUNBOOK §0 and §11; the trials below used
-the older `bio-box-test_74b3e05.sif` with a dependency directory for numpy); `$DIGEST` `sha256:` plus
+tree to `/tmp/if2453/ci/<task>`); `$IMAGE` the `.sif`, `$HOME/bio-box/images/bio-box_faec1f4.sif`, the image
+built from `main` with the locked environment and MinCED, and the source bound in (RUNBOOK §0 and §11; the trials
+below used the older `bio-box-test_74b3e05.sif` with a dependency directory for numpy); `$DIGEST` `sha256:` plus
 `sha256sum "$IMAGE"` (RUNBOOK §0 gives it); `$RUN` a run id.
 
 Once, write `$SCR/img.sh` (runs one short command in the image, capped; the binds of [T2]):

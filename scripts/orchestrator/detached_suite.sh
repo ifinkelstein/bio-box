@@ -14,8 +14,8 @@
 # just before it), and junit.<k>.xml beside it has each test's outcome. Poll with:
 # systemctl --user is-active 'ci-<name>-*'; tail -n 1 .../log.*
 #
-# The image is the test image built from `main` at 64f1bf0 (card C-29), whose environment is the
-# locked one. As in pod_pytest.sh: BIOBOX_POD_IMAGE names another image; BIOBOX_POD_PYDEPS adds
+# The image is the test image built from `main` at faec1f4 (card C-32; it holds MinCED), whose
+# environment is the locked one. As in pod_pytest.sh: BIOBOX_POD_IMAGE names another image; BIOBOX_POD_PYDEPS adds
 # directories after the tree's src/ (none by default: one put on the path would shadow the image's
 # packages); BIOBOX_PEER_MANIFEST (a file under /tmp/if2453) is passed to the cross-host test (D-04).
 set -eu
@@ -28,7 +28,7 @@ NAME=$1
 N=$2
 shift 2
 OUT=/tmp/if2453/ci-tmp/$NAME-detached
-IMAGE=${BIOBOX_POD_IMAGE:-/stor/home/if2453/bio-box/images/bio-box-test_64f1bf0.sif}
+IMAGE=${BIOBOX_POD_IMAGE:-/stor/home/if2453/bio-box/images/bio-box-test_faec1f4.sif}
 PYDEPS=${BIOBOX_POD_PYDEPS:-}
 ENVS=(--env OMP_NUM_THREADS=2)
 [ -z "${BIOBOX_PEER_MANIFEST:-}" ] || ENVS+=(--env "BIOBOX_PEER_MANIFEST=$BIOBOX_PEER_MANIFEST")

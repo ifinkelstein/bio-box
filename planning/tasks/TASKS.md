@@ -762,6 +762,14 @@ Files: `scripts/pod_pytest.sh`, `scripts/orchestrator/detached_suite.sh`, `RUNBO
 Why: card E-12 needs MinCED, which only the images built from `main` at `faec1f4` hold. The steps are card C-29's, on a smaller change: the Python environment is the same lock, the conda layer gains `minced` and its Java.
 Do: (1) the orchestrator pulls both images by digest into `/tmp/if2453/images/` (done before this card starts; the card records the digests and the files' sha256). (2) Run the image's own suite on the pod (`detached_suite.sh --own`, 2 shards, inside the thread cap) and compare with the Actions run's counts inside the image; check `minced` runs (`minced --version`) and that MMseqs2, HMMER, Infernal, skani and samtools report the versions the old image did. (3) Copy both `.sif` files to `~/bio-box/images/` (`rsync --ignore-existing`; nothing there is changed or removed), check their sha256. (4) Switch the defaults and the runbook's names and digest. The running 50 Gbp build is not touched: it keeps its image until it is done.
 Accept: the suite result; the tool versions; the scripts and documents switched; `tests/r0` green.
+Done 2026-11-13 (STATUS row C-32). Follow-up: card A-08.
+
+### A-08 Wall-time bounds in tests fail under load; the examples name an old image
+**L** · found by C-32 (2026-11-13)
+Files: the tests that assert a wall-clock bound on a build step (find them with `rg` for `runtime_within_budget`, `seconds <`, `wall`), `examples/README.md`, `examples/rnap/README.md`, `examples/crispr_cas_neighbourhoods/README.md` (the run instructions only)
+Why: `tests/r2/test_synthworld_fusions.py::test_micro_fusions_runtime_within_budget` asserts under 6.0 s of wall time for a stage that takes 4.96 s alone and took 6.85 s beside a 40-thread scan (*measured*, wilkcomp02, 2026-11-13, card C-32): the suite fails by load on a shared machine, which is not a property of the code. The other synthworld stages have the same kind of bound. Separately, the examples' run instructions still name the `64f1bf0` images.
+Do: for each wall-time assertion, measure CPU time of the stage's own process instead (user plus system, which load does not inflate the same way) and bound that, or record the wall time without asserting it; say which per test and why; no bound is simply raised. In the examples, the run instructions name the current images through the runbook's variables; the records of what ran (results, measurement notes) are not edited.
+Accept: the affected tests pass alone and while a CPU-bound load runs beside them (start one in the test's own scope, a few threads for a few seconds, and show the old assertion failing and the new one passing); `tests/r0` green.
 
 ### C-28 The night thread allowance mistakes our own load for someone else's
 **M** · found 2026-11-10 (`phase2/FAILED.2315-refused-48`) and again 2026-11-12 · Depends: C-12
