@@ -169,21 +169,24 @@ The specification and plan behind these are [`00-spec.md`](00-spec.md), [`PLAN.m
 | 2026-11-13 | Second worked example and release check: CRISPR-Cas systems carried by Tn7-like transposons (Peters et al. 2017) on `rN.3`; all 19 invariants hold (*measured*) | [`examples/crispr_cas_neighbourhoods/README.md`](examples/crispr_cas_neighbourhoods/README.md) |
 | 2026-11-13 | The synthetic-world generator runs end to end (card F-02, session 8), and a synthetic world was built by the normal builders for the first time: 99.0% of 93,883 true genes found by their stop, duplicates and shared contigs handled as designed (*measured*) | [`2026-11-13_synthworld_emit.md`](planning/measurements/2026-11-13_synthworld_emit.md) |
 | 2026-11-13 | Worked examples are release checks: one command runs both on a release; on `rN.3` 92 checks ok, none failed (*measured*) | [`examples/README.md`](examples/README.md), [`2026-11-13_release_examples_rN3.md`](planning/measurements/2026-11-13_release_examples_rN3.md) |
+| 2026-11-13 to 14 | CRISPR arrays: MinCED in the images, arrays as features (2,790 arrays on the 10 Gbp stages, *measured*), shown beside a locus by `bio-box nbr` (cards E-12, E-13, E-14) | [`2026-11-13_crispr_arrays.md`](planning/measurements/2026-11-13_crispr_arrays.md), [`2026-11-14_arrays_in_neighbourhoods.md`](planning/measurements/2026-11-14_arrays_in_neighbourhoods.md) |
+| 2026-11-14 | Pfam 38.2 scanned on every stage of the 50 Gbp set (the last scan, `P6`, published 04:52 CST) | STATUS handoff |
 
-**Now** (2026-11-13; STATUS handoff)
+**Now** (2026-11-14; STATUS handoff)
 
-- The Pfam scans of `P5` and `P6`; `P3`'s finished on 2026-11-12 and `P4`'s on 2026-11-13. Then `rM.2`. The scans are
-  expected to end about 2026-11-14 (*estimate*, STATUS).
-- Tests on the server run in the image built from `main` since 2026-11-13 (card C-29); the 50 Gbp build keeps the
-  older image until it is done.
+- `rM.2`, the 50 Gbp release with Pfam on every stage, is building: the Pfam scans of `P3` to `P6` finished between
+  2026-11-12 and 2026-11-14, and the release steps (clustering about 46 M proteins, then tokens, postings, manifest
+  and catalog) started on 2026-11-14. Then it is verified, its search pack is built, both worked examples are run on
+  it (AGENTS §5.7; `scripts/release_examples.sh`), and the data root is copied to durable storage.
+- Tests, builds and searches on the server run in the images built from `main` at pull request 5 (cards C-29, C-32);
+  the `rM.2` build alone keeps the older image, so its run records name one image.
 - S2C phase 2 is fetched (13,477 of 13,485 genomes, 2026-11-13); its split into stages is an open item for the PI,
   and its build follows the 50 Gbp release (card C-25).
-- Worked examples are run on a release before it is announced (AGENTS §5.7; `scripts/release_examples.sh`): the next
-  release to check is `rM.2`.
-- The synthetic world's null worlds and its validation against real genomes (card F-02, sessions to come).
-- CRISPR arrays as features: MinCED approved by the PI on 2026-11-13 and in the images built that evening (card
-  E-12); the images go to the server first (card C-32).
-- Merged on 2026-11-13, not yet used by a build: the night thread allowance read from other users' CPU (card C-28).
+- CRISPR arrays are called with MinCED and stored as features (card E-12), and `bio-box nbr` shows the arrays beside
+  a locus (card E-14); no release holds them yet. Arrays of two repeats, which Tn7-like elements carry, need a
+  filtered second producer (measured in card E-13; an open item for the PI).
+- The synthetic world has its null worlds (card F-02, session 9) but holds the specification's ranges at its default
+  seed only (session 10): its redesign over seeds is an open item for the PI, and the statistics wait for it.
 
 **Next, in order**
 
