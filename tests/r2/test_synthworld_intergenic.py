@@ -21,6 +21,7 @@ import importlib.util
 import json
 import math
 import os
+import resource
 import shutil
 import statistics
 import subprocess
@@ -99,6 +100,16 @@ def _cut(seq: str, start: int, end: int, strand: int) -> str:
     return s if strand == 1 else rc(s)
 
 
+#: CPU seconds (user plus system, this process and its reaped children) the timed stage used; the runtime test bounds
+#: this, not the wall time, which a shared host's load inflates (card A-08)
+STAGE_CPU: dict[str, float] = {}
+
+
+def _cpu_s() -> float:
+    own, kids = resource.getrusage(resource.RUSAGE_SELF), resource.getrusage(resource.RUSAGE_CHILDREN)
+    return own.ru_utime + own.ru_stime + kids.ru_utime + kids.ru_stime
+
+
 @pytest.fixture(scope="module")
 def world(tmp_path_factory):
     if importlib.util.find_spec("zombi2") is None:
@@ -107,8 +118,9 @@ def world(tmp_path_factory):
     params = backbone.load_preset("micro")
     backbone.build(params, params["default_seed"], out)
     sequences.build(out)
-    t0 = time.perf_counter()
+    t0, c0 = time.perf_counter(), _cpu_s()
     rw = intergenic.build(out)
+    STAGE_CPU["replicons"] = _cpu_s() - c0
     return rw, out, time.perf_counter() - t0
 
 
@@ -633,9 +645,11 @@ def test_the_store_igr_code_finds_the_planted_igrs_and_motifs(tables):
 @needs_zombi2
 def test_micro_replicons_runtime_within_budget(world, record_property):
     rw, _, seconds = world
+    cpu = STAGE_CPU["replicons"]
     record_property("replicons_seconds", round(seconds, 2))
+    record_property("replicons_cpu_seconds", round(cpu, 2))
     c = rw.meta["counts"]
-    print(f"\nF-02 micro replicons: {seconds:.2f} s wall; {c}; digest {rw.digest}")
+    print(f"\nF-02 micro replicons: {seconds:.2f} s wall, {cpu:.2f} s CPU; {c}; digest {rw.digest}")
     # synthworld_spec §2.6: all of synthworld within 3 min; backbone and sequences took about 115 s
-    # (measured, session 3), so this stage gets 60 s
-    assert seconds < 60.0
+    # (measured, session 3), so this stage gets 60 s. A bound on CPU time, not wall time (card A-08)
+    assert cpu < 56.0  # 60 s x 41.35 s CPU / 44.65 s wall (quiet, measured wilkcomp02 2026-11-14)

@@ -17,6 +17,7 @@ import hashlib
 import importlib.util
 import json
 import os
+import resource
 import shutil
 import subprocess
 import sys
@@ -88,6 +89,16 @@ def _cut(seq: str, start: int, end: int, strand: int = 1) -> str:
     return s if strand == 1 else rc(s)
 
 
+#: CPU seconds (user plus system, this process and its reaped children) the timed stage used; the runtime test bounds
+#: this, not the wall time, which a shared host's load inflates (card A-08)
+STAGE_CPU: dict[str, float] = {}
+
+
+def _cpu_s() -> float:
+    own, kids = resource.getrusage(resource.RUSAGE_SELF), resource.getrusage(resource.RUSAGE_CHILDREN)
+    return own.ru_utime + own.ru_stime + kids.ru_utime + kids.ru_stime
+
+
 @pytest.fixture(scope="module")
 def world(tmp_path_factory):
     if importlib.util.find_spec("zombi2") is None:
@@ -97,8 +108,9 @@ def world(tmp_path_factory):
     backbone.build(params, params["default_seed"], out)
     sequences.build(out)
     intergenic.build(out)
-    t0 = time.perf_counter()
+    t0, c0 = time.perf_counter(), _cpu_s()
     mw = mobile.build(out)
+    STAGE_CPU["mobile"] = _cpu_s() - c0
     return mw, out, time.perf_counter() - t0
 
 
@@ -552,8 +564,11 @@ def test_spacer_mix_follows_the_preset(t):
 @needs_zombi2
 def test_micro_mobile_runtime_within_budget(world, record_property):
     mw, _, seconds = world
+    cpu = STAGE_CPU["mobile"]
     record_property("mobile_seconds", round(seconds, 2))
-    print(f"\nF-02 micro mobile stage: {seconds:.2f} s wall; {mw.meta['counts']}; digest {mw.digest}")
+    record_property("mobile_cpu_seconds", round(cpu, 2))
+    print(f"\nF-02 micro mobile stage: {seconds:.2f} s wall, {cpu:.2f} s CPU; {mw.meta['counts']}; digest {mw.digest}")
     # synthworld_spec §2.6: S1-S5 took about 157 s of the 3 minutes (measured, session 4), leaving about 23 s
-    # for S6-S11; this stage is allowed 15 s of them
-    assert seconds < 15.0
+    # for S6-S11; this stage is allowed 15 s of them. The bound is on the stage's CPU time, not its wall time
+    # (card A-08): the wall time grows with the load beside the test, the CPU time does not
+    assert cpu < 14.9  # 15 s x 10.56 s CPU / 10.62 s wall (quiet, measured wilkcomp02 2026-11-14)

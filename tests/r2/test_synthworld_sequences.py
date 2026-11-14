@@ -20,6 +20,7 @@ import importlib.util
 import math
 import os
 import re
+import resource
 import shutil
 import subprocess
 import sys
@@ -82,6 +83,16 @@ def _copy_backbone(src: Path, dst: Path) -> Path:
     return dst
 
 
+#: CPU seconds (user plus system, this process and its reaped children) the timed stage used; the runtime test bounds
+#: this, not the wall time, which a shared host's load inflates (card A-08)
+STAGE_CPU: dict[str, float] = {}
+
+
+def _cpu_s() -> float:
+    own, kids = resource.getrusage(resource.RUSAGE_SELF), resource.getrusage(resource.RUSAGE_CHILDREN)
+    return own.ru_utime + own.ru_stime + kids.ru_utime + kids.ru_stime
+
+
 @pytest.fixture(scope="module")
 def world(tmp_path_factory):
     if importlib.util.find_spec("zombi2") is None:
@@ -89,8 +100,9 @@ def world(tmp_path_factory):
     out = tmp_path_factory.mktemp("micro_seq") / "world"
     params = backbone.load_preset("micro")
     backbone.build(params, params["default_seed"], out)
-    t0 = time.perf_counter()
+    t0, c0 = time.perf_counter(), _cpu_s()
     sw = sequences.build(out)
+    STAGE_CPU["sequences"] = _cpu_s() - c0
     return sw, out, time.perf_counter() - t0
 
 
@@ -447,7 +459,10 @@ def test_gc3_follows_the_lineage_codon_usage(world):
 @needs_zombi2
 def test_micro_sequences_runtime_within_budget(world, record_property):
     sw, _, seconds = world
+    cpu = STAGE_CPU["sequences"]
     record_property("sequences_seconds", round(seconds, 2))
-    print(f"\nF-02 micro sequences: {seconds:.2f} s wall; {sw.meta['n_genes']} genes in {len(sw.families)} families; "
-          f"digest {sw.digest}")
-    assert seconds < 120.0  # synthworld_spec §2.6: the S4 evolver under 2 min single core
+    record_property("sequences_cpu_seconds", round(cpu, 2))
+    print(f"\nF-02 micro sequences: {seconds:.2f} s wall, {cpu:.2f} s CPU; {sw.meta['n_genes']} genes in "
+          f"{len(sw.families)} families; digest {sw.digest}")
+    # synthworld_spec §2.6: the S4 evolver under 2 min single core: a bound on CPU time, not wall time (card A-08)
+    assert cpu < 107.0  # 120 s x 81.57 s CPU / 91.45 s wall (quiet, measured wilkcomp02 2026-11-14)

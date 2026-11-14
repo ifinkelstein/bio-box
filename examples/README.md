@@ -63,8 +63,8 @@ data root, bound read-only), `RELEASE`, and `OUT` (a new or empty scratch direct
 ```bash
 export TREE=/tmp/if2453/e11/tree
 export PROFILE="$TREE/profiles/wilkcomp02.yaml"
-export IMAGE=/tmp/if2453/images/bio-box_64f1bf0.sif
-export DIGEST=sha256:cb7353f85316981be5268c2212100322b5fbf1086c32b07e2f9b47802b6afba3
+export IMAGE="$HOME/bio-box/images/bio-box_faec1f4.sif"       # as RUNBOOK.md section 0 sets it
+export DIGEST=sha256:d67300aa1321b571fa8da79e74dfccdd87a8dca2e56518f324902efa6b9f098a
 export ROOT=/tmp/if2453/r10/root
 export RELEASE=rN.3
 export OUT=/tmp/if2453/<you>/rnap-rN.3

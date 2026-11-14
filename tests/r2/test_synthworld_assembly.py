@@ -21,6 +21,7 @@ import importlib.util
 import json
 import math
 import os
+import resource
 import shutil
 import subprocess
 import sys
@@ -115,6 +116,16 @@ def _stage_digests(out: Path) -> dict[str, str]:
     return {d: json.loads((out / d / f"{d}.json").read_text())["digest"] for d in DIGESTS}
 
 
+#: CPU seconds (user plus system, this process and its reaped children) each timed stage used; the stage-times test
+#: bounds this, not the wall time, which a shared host's load inflates (card A-08)
+STAGE_CPU: dict[str, float] = {}
+
+
+def _cpu_s() -> float:
+    own, kids = resource.getrusage(resource.RUSAGE_SELF), resource.getrusage(resource.RUSAGE_CHILDREN)
+    return own.ru_utime + own.ru_stime + kids.ru_utime + kids.ru_stime
+
+
 @pytest.fixture(scope="module")
 def world(tmp_path_factory):
     if importlib.util.find_spec("zombi2") is None:
@@ -127,18 +138,21 @@ def world(tmp_path_factory):
                      ("S5 replicons", lambda: intergenic.build(out)),
                      ("S6 mobile", lambda: mobile.build(out)),
                      ("S7 fusions", lambda: fusions.build(out))):
-        t0 = time.perf_counter()
+        t0, c0 = time.perf_counter(), _cpu_s()
         fn()
         times[name] = time.perf_counter() - t0
+        STAGE_CPU[name] = _cpu_s() - c0
     before = {d: _tree_sha(out / d) for d in EARLIER}
     digests = _stage_digests(out)
-    t0 = time.perf_counter()
+    t0, c0 = time.perf_counter(), _cpu_s()
     aw = assembly.build(out)
     times["S8-S9 assembly"] = time.perf_counter() - t0
+    STAGE_CPU["S8-S9 assembly"] = _cpu_s() - c0
     before["assembly"] = _tree_sha(out / "assembly")
-    t0 = time.perf_counter()
+    t0, c0 = time.perf_counter(), _cpu_s()
     sources.build(out)
     times["S10 sources"] = time.perf_counter() - t0
+    STAGE_CPU["S10 sources"] = _cpu_s() - c0
     return aw, out, times, before, digests
 
 
@@ -1055,6 +1069,9 @@ def test_micro_stage_times(world, record_property):
     for k, v in times.items():
         record_property(k.split()[0] + "_seconds", round(v, 2))
     total = sum(times.values())
-    print("\n" + "; ".join(f"{k} {v:.2f} s" for k, v in times.items()) + f"; S1-S10 {total:.2f} s; "
-          f"{aw.meta['counts']}; digest {aw.digest}")
-    assert times["S8-S9 assembly"] < 120.0
+    for k, v in STAGE_CPU.items():
+        record_property(k.split()[0] + "_cpu_seconds", round(v, 2))
+    print("\n" + "; ".join(f"{k} {v:.2f} s wall, {STAGE_CPU[k]:.2f} s CPU" for k, v in times.items())
+          + f"; S1-S10 {total:.2f} s wall; {aw.meta['counts']}; digest {aw.digest}")
+    # a bound on the assembly stage's CPU time, not its wall time (card A-08)
+    assert STAGE_CPU["S8-S9 assembly"] < 120.0  # 120 s x 16.15 s CPU / 16.15 s wall (quiet, measured wilkcomp02 2026-11-14)
