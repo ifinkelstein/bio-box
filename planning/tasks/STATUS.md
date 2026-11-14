@@ -120,7 +120,7 @@ F-02 and the measurements in the table below; decisions DEC-29 to DEC-33 were ad
 above says where `main`, the images and Actions stand. The manifest hash of the fixture covers every registered
 schema's hash, so it moves with any schema change (last: card E-12).
 
-**Agents running.** None at 09:45 on 2026-11-14.
+**Agents running.** F-02 session 11 (the redesign of the `micro` preset over seeds, DEC-36 and DEC-37; branch `task/F-02-11`; started 2026-11-14 about 10:35; at most 5 threads beside the `rM.2` build; it changes every world digest once and re-pins them: audit hard).
 
 **On the pod** (wilkcomp02; account thread cap 40 by day on weekdays, 56 at night and at weekends, a total over
 everything we run; the PI keeps that cap). State on 2026-11-14 at 09:45 CST:
@@ -536,7 +536,8 @@ Decided by the PI on 2026-11-14 (about 10:10 CST: "for 1-11, accept your choices
 - So unblocked: card C-25 step 3, cards B-47a to B-47e, and then the phase-2 build. They need pod threads, which the
   `rM.2` build holds until it ends.
 - Item 13 of that table (about 10:20, "13. yes"; DEC-36): a planted module does not enter a genome that already holds it, and the strength grid's transfer axis becomes realized transfers per member, refitted to three distinct levels.
-- Items 12 and 14 to 28 of that table are still open (below). The synthetic world's redesign needs 12, 14 and 15 as well as 13 before it starts.
+- Items 12, 14 and 15 of that table (about 10:30, "y on12-15"; DEC-37): per seed only the mean genome size within 30%, one lineage-rate axis on origination; a fixed crown age at about the 21-seed median; plasmid rates refitted over 21 seeds and the crown measured from the living lineages. With DEC-36 the redesign is decided and F-02 session 11 starts.
+- Items 16 to 28 of that table are still open (below).
 
 Decided by the PI on 2026-11-13:
 - Worked examples are run on a release before it is called a milestone (AGENTS §5.7; card E-11).
@@ -648,7 +649,7 @@ Still open, recommendation first:
   pairs. (3) The session's readings of §4.1 to confirm: decoys and NOGD leave both N0 worlds; N0-full keeps CRISPR-Cas
   loci and excludes pairs inside one locus from null evaluation, N0-strict drops the loci; chassis pairs are excluded,
   cargo pairs are traps; plasmid pairs are null. Recommendation: accept.
-- Card B-42: add this decision row (the next DEC number; DEC-34 to DEC-36 were used on 2026-11-14)? "**DEC-25's one-process exemption for clustering has ended; DEC-29 is
+- Card B-42: add this decision row (the next DEC number; DEC-34 to DEC-37 were used on 2026-11-14)? "**DEC-25's one-process exemption for clustering has ended; DEC-29 is
   clustering's only exemption.** Clustering a release in one process is held to the 300 CPU-minute rule like every other
   step: above 80% of the budget `build-stage` clusters the release in parts, and clustering in one process estimated over
   `cpu_min_per_process` is refused whatever `cluster_cpu_min_max` says; that key now caps only a call that no number of parts
