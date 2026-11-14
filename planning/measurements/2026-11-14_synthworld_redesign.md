@@ -18,7 +18,7 @@ the N2 seeds).
 
 **Outcome: the redesign is in the generator and the preset; three existing assertions cannot hold under it and are
 reported, not loosened (§4).** DEC-36 and DEC-37 (1) and (2) hold at all 22 seeds; DEC-37 (3) holds as a stated share
-(both plasmid types at 15 of 22 seeds). The stage digests of the default world changed once and are re-pinned (§5).
+(both plasmid types at 14 of 22 seeds). The stage digests of the default world changed once and are re-pinned (§5).
 
 ## 1. What the generator does now
 
@@ -88,7 +88,8 @@ the spike's background rates).
 | f_s0.3 | 986-2000 | 20 | 13 | 10 | 0.01: 5.5, 0.06: 9.7, 0.4: 20.2 | 20 | 0.85 / 0.68 / 9 | 17 | 3.4-7.5% |
 | g_s0.25_o0.15 (sigma 0.25, origination 0.15) | 1024-1844 | 21 | 11 | 9 | 0.01: 5.0, 0.06: 9.8, 0.4: 19.7 | 20 | 0.60 / -0.21 / 8 | 14 | 3.2-7.3% |
 | g_s0.25_o0.16 | 1134-1963 | 21 | 12 | 6 | 0.01: 5.0, 0.06: 10.8, 0.4: 19.0 | 20 | 0.78 / 0.83 / 9 | 15 | 3.4-7.6% |
-| **g_s0.2_o0.155 (committed)** | 1149-1795 | 22 | 15 | 11 | 0.01: 5.0, 0.06: 10.9, 0.4: 19.0 | 22 | 0.79 / 0.74 / 8 | 18 | 3.2-7.6% |
+| g_s0.2_o0.155 (burst_depth 0.02) | 1149-1795 | 22 | 15 | 11 | 0.01: 5.0, 0.06: 10.9, 0.4: 19.0 | 22 | 0.79 / 0.74 / 8 | 18 | 3.2-7.6% |
+| **final (committed: g_s0.2_o0.155 with burst_depth 0.01)** | 1152-1799 | 22 | 14 | 10 | 0.01: 5.0, 0.06: 10.6, 0.4: 19.1 | 22 | 0.81 / 0.77 / 10 | 18 | 3.2-7.7% |
 | c_fit3_mt_0.01,0.1,0.5 | 1054-1984 | 21 | 3 | 0 | 0.01: 5.5, 0.1: 16.0, 0.5: 20.2 | 18 | - | 18 | 3.4-8.2% |
 | c_fit3_mt_0.02,0.15,0.8 | 1113-1878 | 22 | 3 | 1 | 0.02: 5.3, 0.15: 17.7, 0.8: 20.2 | 14 | - | 18 | 4.7-8.8% |
 | c_fit3_mt_0.02,0.2,1.5 | 1073-2051 | 21 | 2 | 1 | 0.02: 6.0, 0.2: 20.0, 1.5: 20.6 | 12 | - | 21 | 4.2-9.7% |
@@ -125,7 +126,7 @@ What each fit decided:
 
 ## 4. What cannot be met, and why (stop and report)
 
-1. **Both plasmid types at every seed** (DEC-37 (3)): reached at 15 of 22 seeds with the committed 0.8/0.4, and at 10 to
+1. **Both plasmid types at every seed** (DEC-37 (3)): reached at 14 of 22 seeds with the committed 0.8/0.4, and at 10 to
    18 of 22 at every pair tried from 0.2/0.25 to 1.5/0.8. A plasmid unit is cured at its own rate plus about 0.24 per
    unit per unit time by background loss runs that end in it (ZOMBI2: "a run that ends inside the group takes the whole
    group"; *derived*: 0.24 x sum over k >= 2 of P(extent >= k) = 0.24 at geometric mean 2), and a lineage that carries
@@ -135,16 +136,18 @@ What each fit decided:
    the unit then give some genomes a second copy of a type. So survival at every seed and §5.1's "0-2 plasmids per
    genome" with some genomes carrying none (asserted at the default seed by
    `test_plasmids_are_whole_replicons_of_their_preset_size`) exclude each other in this model: at the committed
-   rates the default seed has 44 and 46 carriers, no genome without a plasmid (0/2/44), so that assertion fails.
+   rates the default seed has 43 and 43 carriers, no genome without a plasmid (0/6/40), so that assertion fails.
 2. **N0's background sizes correlate with the signal's at r >= 0.9** (`test_n0_keeps_the_background_process_in_distribution`):
    the assertion rests on "size is set by the per-lineage rates, which ZOMBI2 draws with the tree" (its docstring), true
    of the two runaway axes DEC-37 (1) removed. With one origination axis the per-lineage spread is small against the
    stochastic spread of a genome's size, so a new draw (N0) of the same lineage rates correlates weakly: r at the
    default seed 0.53 to 0.85 over sigma 0.2 to 1.0, never 0.9, and at sigma 1.0 the default seed's N0 size ratio is
    1.20 (outside [0.9, 1.1]) and 11 of 22 seed means leave the band. No sigma meets both DEC-37 (1) and r >= 0.9 at the
-   default seed. The committed preset gives r 0.79 at the default seed and 0.74 at 20261113.
+   default seed. The committed preset gives r 0.81 at the default seed and 0.77 at 20261113, where the size ratio is 1.101 (just
+   outside [0.9, 1.1]).
 3. **The core genome at the default seed** (`test_hub_families_have_more_diverse_neighbours` needs at least 100 root
-   families present in >= 40 of the 46 genomes to compute its comparator): 9 now, 243 in session 2. The default seed's
+   families present in >= 40 of the 46 genomes to compute its comparator): 7 now (7 to 105 over the 22 seeds, `final`),
+   243 in session 2. The default seed's
    tree is stretched 1.95x to the fixed crown, and session 2 had doubled every turnover rate for a crown of 2.56 (the
    spread DEC-37 (1) no longer asks for); a root gene's expected survival on a lineage falls as exp(-0.48 x T). With the
    spike's rates (duplication 0.02, transfer 0.05, loss 0.12) the core is 36 at the default seed (36 to 237 over 22
@@ -155,32 +158,36 @@ Every other range holds at every seed: chromosome mean (22 of 22), crown age 5.0
 exclusion (0 breaches at 22 of 22), planted + profile-only + decoy share 3.2-7.6% (<= 15.2%), copies per present member
 0.81 to 1.15 (session 10: 2.9 to 7.0), DEC-15 (c) and every scored unit intact (22 of 22).
 
-## 5. The committed preset over the 22 seeds (scan `g_s0.2_o0.155`, identical to the preset as committed)
+## 5. The committed preset over the 22 seeds (scan `final`)
+
+`final.tsv`: the preset as committed (sigma 0.2, origination 0.155, member transfer 0.01/0.06/0.4, plasmids 0.8/0.4,
+burst_depth 0.01; *measured*, the scan command above with no overrides, `--n0`). Session 10's `base.tsv` columns
+plus the crown from the MRCA, the realized levels, N0 and the entry-exclusion replay:
 
 | seed | crown age (MRCA) / from first speciation | genomes | genes per genome mean (min-max) | chromosome mean (min-max) | planted / profile-only / decoy / vehicle / hub / plasmid / background share % | plasmid genomes pls0, pls1 (0/1/2 per genome) | modules all members in >= 9 genomes | copies per present member | DEC-15 (c) plus, kept, clustered; scored units intact | realized transfers per member, level medians | N0 background size ratio, r | module transfers into a holder |
 |---|---|---|---|---|---|---|---|---|---|---|---|---|
-| 20261112 | 5 / 5 | 46 | 1415.8 (1071-1761) | 1261.0 (911-1601) | 5.4 / 0.7 / 0.6 / 8.6 / 3.5 / 10.9 / 70.3 | 44, 46 (0/2/44) | 23 | 1.145 | 0.460, 0.0000, 0.021; 704/704 | 9.0, 17.0, 32.67 | 1.0263, 0.7905 | 0 of 2117 |
-| 20261113 | 5 / 8.435 | 46 | 1188.0 (945-1388) | 1148.9 (945-1348) | 6.5 / 0.9 / 0.3 / 11.9 / 4.1 / 3.3 / 73.1 | 0, 45 (3/41/2) | 22 | 1.044 | 0.459, 0.0019, 0.021; 580/580 | 3.8, 15.0, 22.33 | 1.104, 0.7416 | 0 of 1503 |
-| 1001685937451957930 | 5 / 5 | 46 | 1572.1 (1186-1848) | 1524.2 (1026-1805) | 2.6 / 0.4 / 0.2 / 5.4 / 3.1 / 3.0 / 85.2 | 3, 46 (0/43/3) | 14 | 0.812 | 0.524, 0.0048, 0.021; 440/440 | 1.0, 2.0, 16.5 | 1.0395, 0.8489 | 0 of 722 |
+| 20261112 | 5 / 5 | 46 | 1412.9 (1106-1667) | 1263.3 (946-1547) | 5.3 / 0.7 / 0.6 / 8.7 / 3.5 / 10.6 / 70.6 | 43, 43 (0/6/40) | 22 | 1.148 | 0.460, 0.0000, 0.021; 698/698 | 9.0, 18.75, 30.67 | 1.0219, 0.8096 | 0 of 2065 |
+| 20261113 | 5 / 8.435 | 46 | 1186.0 (955-1384) | 1152.1 (955-1344) | 6.6 / 0.9 / 0.3 / 11.8 / 4.2 / 2.9 / 73.5 | 0, 39 (7/39/0) | 22 | 1.049 | 0.459, 0.0019, 0.021; 591/591 | 3.8, 14.0, 21.67 | 1.101, 0.7721 | 0 of 1517 |
+| 1001685937451957930 | 5 / 5 | 46 | 1550.6 (1063-1841) | 1510.6 (1023-1801) | 2.7 / 0.4 / 0.2 / 5.4 / 3.1 / 2.6 / 85.7 | 0, 46 (0/46/0) | 14 | 0.808 | 0.524, 0.0048, 0.021; 445/445 | 1.0, 2.0, 16.0 | 1.0476, 0.8729 | 0 of 716 |
 | 6329801112132740259 | 5 / 5.136 | 46 | 1887.0 (1134-2212) | 1740.9 (974-2149) | 3.2 / 0.5 / 0.3 / 5.2 / 2.6 / 7.7 / 80.5 | 40, 48 (0/6/38) | 19 | 1.034 | 0.477, 0.0010, 0.032; 638/638 | 8.0, 15.0, 21.0 | 1.0444, 0.9564 | 0 of 1657 |
-| 6036017085589997374 | 5 / 5 | 46 | 1607.5 (1305-1902) | 1444.0 (1145-1742) | 3.3 / 0.5 / 0.1 / 8.5 / 2.4 / 10.2 / 74.9 | 47, 47 (0/2/40) | 17 | 0.859 | 0.412, 0.0019, 0.021; 485/485 | 6.0, 11.0, 19.0 | 1.0476, 0.8838 | 0 of 1295 |
+| 6036017085589997374 | 5 / 5 | 46 | 1591.6 (1322-1903) | 1431.6 (1157-1718) | 3.3 / 0.5 / 0.1 / 8.6 / 2.5 / 10.1 / 74.9 | 47, 43 (0/6/36) | 17 | 0.859 | 0.412, 0.0019, 0.021; 489/489 | 5.33, 11.75, 20.0 | 1.0529, 0.8688 | 0 of 1301 |
 | 4383110225690451409 | 5 / 5 | 46 | 1652.2 (1295-2019) | 1485.3 (1135-1859) | 4.0 / 0.6 / 0.2 / 8.7 / 3.0 / 10.1 / 73.5 | 50, 42 (0/7/32) | 18 | 0.994 | 0.432, 0.0010, 0.065; 633/633 | 5.0, 10.67, 21.0 | 1.0421, 0.9018 | 0 of 1234 |
 | 10975598825187167680 | 5 / 5 | 46 | 1338.2 (1092-1872) | 1301.6 (1085-1832) | 4.2 / 0.4 / 0.2 / 8.3 / 3.7 / 2.7 / 80.5 | 0, 42 (6/38/2) | 17 | 1.055 | 0.522, 0.0029, 0.021; 460/460 | 3.0, 4.0, 19.25 | 1.0381, 0.8405 | 0 of 945 |
 | 5467273169533009601 | 5 / 5.03 | 46 | 1376.0 (890-1689) | 1230.8 (850-1529) | 5.1 / 0.5 / 0.3 / 8.2 / 3.6 / 10.5 / 71.9 | 44, 35 (1/11/34) | 25 | 1.091 | 0.426, 0.0019, 0.043; 661/661 | 7.0, 8.5, 13.33 | 0.9043, 0.5604 | 0 of 1089 |
 | 4734920099712499969 | 5 / 5 | 46 | 1535.2 (1102-1783) | 1372.6 (852-1623) | 4.4 / 0.4 / 0.3 / 7.6 / 3.2 / 10.6 / 73.7 | 48, 43 (0/3/41) | 20 | 0.953 | 0.439, 0.0038, 0.032; 649/649 | 5.0, 15.0, 17.0 | 1.0421, 0.9408 | 0 of 1218 |
-| 1570278518166000558 | 5 / 6.18 | 46 | 1947.1 (1213-2350) | 1795.0 (1053-2190) | 3.1 / 0.5 / 0.5 / 7.3 / 2.5 / 7.8 / 78.2 | 44, 43 (0/6/39) | 18 | 0.963 | 0.454, 0.0010, 0.054; 547/547 | 2.4, 11.5, 14.5 | 0.9943, 0.9074 | 0 of 1234 |
-| 3830344756309592292 | 5 / 5 | 46 | 1508.0 (971-1826) | 1441.9 (931-1701) | 4.9 / 0.4 / 0.2 / 2.3 / 3.2 / 4.4 / 84.7 | 10, 46 (0/36/10) | 20 | 1.028 | 0.435, 0.0010, 0.043; 640/640 | 6.33, 17.67, 18.33 | 0.9779, 0.9589 | 0 of 1665 |
-| 9254619518473077140 | 5 / 7.657 | 46 | 1525.0 (1219-1773) | 1365.0 (1060-1613) | 5.0 / 0.5 / 0.5 / 7.4 / 3.2 / 10.5 / 72.9 | 45, 49 (0/1/42) | 22 | 1.048 | 0.525, 0.0010, 0.043; 697/697 | 12.0, 17.8, 27.0 | 1.0255, 0.8569 | 0 of 1822 |
-| 4701969716356831982 | 5 / 5.087 | 46 | 1400.7 (1125-1641) | 1400.7 (1125-1641) | 4.8 / 0.5 / 0.2 / 4.1 / 3.5 / 0.0 / 86.9 | 0, 0 (46/0/0) | 19 | 0.969 | 0.428, 0.0000, 0.021; 636/636 | 5.0, 6.0, 18.0 | 1.0156, 0.8266 | 0 of 962 |
-| 14843108908847119356 | 5 / 5 | 46 | 1759.5 (1332-2236) | 1759.5 (1332-2236) | 4.0 / 0.5 / 0.2 / 5.2 / 2.8 / 0.0 / 87.2 | 0, 0 (46/0/0) | 19 | 1.015 | 0.550, 0.0029, 0.054; 644/644 | 10.0, 18.0, 25.75 | 1.015, 0.8805 | 0 of 1787 |
-| 1758546030705738202 | 5 / 5 | 46 | 1932.7 (930-2261) | 1782.2 (770-2101) | 2.9 / 0.4 / 0.0 / 6.2 / 2.5 / 7.8 / 80.2 | 44, 41 (0/8/37) | 16 | 0.884 | 0.563, 0.0000, 0.032; 509/509 | 1.67, 6.0, 8.0 | 1.0098, 0.9571 | 0 of 644 |
+| 1570278518166000558 | 5 / 6.18 | 46 | 1951.3 (1239-2309) | 1799.1 (1079-2149) | 3.1 / 0.5 / 0.5 / 7.3 / 2.5 / 7.8 / 78.2 | 43, 46 (0/3/43) | 19 | 0.97 | 0.454, 0.0010, 0.054; 543/543 | 3.4, 11.33, 15.0 | 0.9921, 0.9315 | 0 of 1268 |
+| 3830344756309592292 | 5 / 5 | 46 | 1512.6 (974-1848) | 1441.3 (934-1721) | 4.9 / 0.4 / 0.2 / 2.4 / 3.2 / 4.7 / 84.2 | 12, 46 (0/34/12) | 21 | 1.029 | 0.435, 0.0010, 0.043; 650/650 | 6.33, 17.8, 21.33 | 0.9869, 0.959 | 0 of 1689 |
+| 9254619518473077140 | 5 / 7.657 | 46 | 1526.4 (1240-1745) | 1369.8 (1080-1585) | 4.9 / 0.5 / 0.5 / 7.4 / 3.2 / 10.2 / 73.1 | 45, 45 (0/3/42) | 22 | 1.047 | 0.525, 0.0010, 0.043; 696/696 | 11.0, 17.8, 30.33 | 1.0206, 0.8541 | 0 of 1846 |
+| 4701969716356831982 | 5 / 5.087 | 46 | 1398.2 (1099-1585) | 1398.2 (1099-1585) | 4.9 / 0.5 / 0.2 / 4.1 / 3.5 / 0.0 / 86.7 | 0, 0 (46/0/0) | 19 | 0.968 | 0.428, 0.0000, 0.021; 641/641 | 4.33, 6.67, 18.33 | 1.0185, 0.7793 | 0 of 1001 |
+| 14843108908847119356 | 5 / 5 | 46 | 1756.7 (1341-2240) | 1756.7 (1341-2240) | 4.0 / 0.5 / 0.2 / 5.2 / 2.8 / 0.0 / 87.3 | 0, 0 (46/0/0) | 19 | 1.006 | 0.550, 0.0029, 0.054; 639/639 | 8.0, 19.0, 26.5 | 1.0124, 0.9118 | 0 of 1793 |
+| 1758546030705738202 | 5 / 5 | 46 | 1935.9 (975-2286) | 1786.4 (815-2126) | 2.8 / 0.4 / 0.1 / 6.2 / 2.5 / 7.7 / 80.2 | 43, 43 (0/9/34) | 17 | 0.892 | 0.563, 0.0000, 0.032; 510/510 | 1.5, 5.75, 9.67 | 1.0065, 0.9667 | 0 of 611 |
 | 1995372076782357328 | 5 / 5 | 46 | 1755.2 (1216-2611) | 1589.9 (1056-2451) | 3.8 / 0.7 / 0.6 / 4.7 / 2.8 / 9.4 / 78.1 | 48, 46 (0/0/45) | 20 | 1.118 | 0.483, 0.0048, 0.043; 633/633 | 3.17, 7.6, 25.0 | 1.0052, 0.9679 | 0 of 1260 |
-| 13514522956726874792 | 5 / 9.488 | 46 | 1434.6 (1183-1750) | 1299.8 (1067-1481) | 3.9 / 0.9 / 0.6 / 4.1 / 3.4 / 9.4 / 77.8 | 36, 47 (0/12/31) | 18 | 1.034 | 0.444, 0.0019, 0.054; 540/540 | 5.0, 7.5, 20.67 | 1.018, 0.6872 | 0 of 1082 |
-| 12621855678475765395 | 5 / 7.443 | 46 | 1563.4 (1296-1782) | 1519.9 (1256-1742) | 3.2 / 0.8 / 0.1 / 6.7 / 3.1 / 2.8 / 83.3 | 0, 50 (1/43/0) | 15 | 1.038 | 0.468, 0.0019, 0.032; 519/519 | 4.0, 7.75, 16.67 | 1.0375, 0.575 | 0 of 979 |
-| 7689157899245528466 | 5 / 5 | 46 | 1500.5 (1088-1942) | 1352.7 (928-1782) | 4.9 / 0.7 / 0.2 / 8.2 / 3.2 / 9.8 / 72.9 | 44, 38 (1/8/37) | 23 | 1.065 | 0.546, 0.0019, 0.010; 719/719 | 12.0, 16.0, 24.0 | 1.0521, 0.8928 | 0 of 2123 |
+| 13514522956726874792 | 5 / 9.488 | 46 | 1436.1 (1191-1711) | 1300.5 (1088-1438) | 3.8 / 0.9 / 0.6 / 4.0 / 3.4 / 9.4 / 77.8 | 37, 45 (1/10/33) | 17 | 1.037 | 0.444, 0.0019, 0.054; 532/532 | 5.4, 6.75, 20.33 | 1.0187, 0.6126 | 0 of 1102 |
+| 12621855678475765395 | 5 / 7.443 | 46 | 1567.1 (1324-1789) | 1523.6 (1284-1749) | 3.2 / 0.8 / 0.1 / 6.9 / 3.1 / 2.8 / 83.2 | 0, 50 (0/44/0) | 15 | 1.041 | 0.468, 0.0019, 0.032; 525/525 | 4.0, 7.0, 17.0 | 1.0321, 0.6107 | 0 of 962 |
+| 7689157899245528466 | 5 / 5 | 46 | 1496.0 (1015-1964) | 1349.1 (895-1804) | 4.9 / 0.7 / 0.2 / 8.0 / 3.3 / 9.8 / 73.2 | 44, 37 (0/11/35) | 22 | 1.064 | 0.546, 0.0019, 0.010; 724/724 | 11.8, 16.0, 24.0 | 1.0531, 0.9158 | 0 of 2113 |
 | 13748185708697958051 | 5 / 5 | 46 | 1314.8 (961-1701) | 1314.8 (961-1701) | 3.5 / 0.6 / 0.0 / 3.6 / 3.7 / 0.0 / 88.6 | 0, 0 (46/0/0) | 16 | 0.971 | 0.550, 0.0010, 0.021; 422/422 | 2.5, 14.0, 19.0 | 1.0317, 0.9501 | 0 of 1127 |
-| 15390672246448918260 | 5 / 6.455 | 46 | 1621.9 (1336-1916) | 1580.2 (1296-1876) | 3.1 / 0.4 / 0.3 / 8.6 / 3.0 / 2.6 / 82.0 | 0, 48 (0/44/2) | 18 | 0.926 | 0.416, 0.0000, 0.021; 533/533 | 4.33, 10.67, 25.0 | 0.9532, 0.7738 | 0 of 1091 |
-| 11714203776604047358 | 5 / 5.052 | 46 | 1427.2 (1113-1763) | 1272.4 (953-1603) | 4.5 / 0.7 / 0.2 / 11.1 / 3.4 / 10.8 / 69.2 | 44, 46 (1/2/41) | 19 | 1.068 | 0.473, 0.0029, 0.021; 571/571 | 10.0, 12.0, 17.67 | 1.0963, 0.7318 | 0 of 1477 |
+| 15390672246448918260 | 5 / 6.455 | 46 | 1627.5 (1354-1858) | 1587.5 (1298-1818) | 3.1 / 0.4 / 0.3 / 8.7 / 3.0 / 2.5 / 82.0 | 0, 46 (1/44/1) | 18 | 0.932 | 0.416, 0.0000, 0.021; 539/539 | 5.5, 10.67, 22.5 | 0.9486, 0.8139 | 0 of 1100 |
+| 11714203776604047358 | 5 / 5.052 | 46 | 1427.0 (1099-1728) | 1273.1 (939-1568) | 4.5 / 0.7 / 0.2 / 11.2 / 3.4 / 10.8 / 69.2 | 45, 42 (0/7/37) | 19 | 1.072 | 0.473, 0.0029, 0.021; 563/563 | 10.0, 11.0, 18.67 | 1.0943, 0.7271 | 0 of 1473 |
 
 Realized strength grid (medians over the modules of a cell and the 22 seeds, range in parentheses; realized together =
 share of a module's transfer events carrying every member; powered = seeds at which the cell has a module with every
@@ -188,43 +195,43 @@ member in >= 9 genomes; *measured*):
 
 | member transfer \ together | 0.3 | 0.7 | 1 | level, pooled |
 |---|---|---|---|---|
-| 0.01 | 4.1 (0-19); together 0.17; powered at 21/22 | 5.3 (0-23); together 0.59; powered at 22/22 | 7.0 (0-17); together 1.00; powered at 22/22 | 5.0 |
-| 0.06 | 8.8 (0-21); together 0.18; powered at 22/22 | 12.1 (0-31.67); together 0.55; powered at 20/22 | 12.5 (0-33); together 1.00; powered at 22/22 | 10.9 |
-| 0.4 | 16.4 (0-43.83); together 0.25; powered at 22/22 | 18.8 (0-40); together 0.62; powered at 21/22 | 23.5 (3-36); together 1.00; powered at 22/22 | 19.0 |
+| 0.01 | 4.1 (0-19); together 0.19; powered at 21/22 | 5.2 (0-23); together 0.61; powered at 22/22 | 7.0 (0-17); together 1.00; powered at 22/22 | 5.0 |
+| 0.06 | 8.9 (0-22.33); together 0.19; powered at 22/22 | 10.9 (0-31.5); together 0.54; powered at 20/22 | 12.5 (0-33); together 1.00; powered at 22/22 | 10.6 |
+| 0.4 | 15.8 (0-45); together 0.24; powered at 22/22 | 19.1 (0-40); together 0.62; powered at 21/22 | 23.0 (3-35); together 1.00; powered at 22/22 | 19.1 |
 
 ## 6. The default world before and after (S1-S11 at 20261112; `f0210_world_summary.py`)
 
 Before: `2026-11-14_synthworld_seeds/default_world_summary.json` (session 10); after:
 `2026-11-14_synthworld_redesign/default_world_summary_after.json` (*measured*, wilkcomp02, 2026-11-14, `python
-scripts/stress/f0210_world_summary.py build /tmp/if2453/f0211/world-after 20261112`, then `summary`).
+scripts/stress/f0210_world_summary.py build /tmp/if2453/f0211/world-final 20261112`, then `summary`).
 
 | quantity | before | after |
 |---|---|---|
 | arrays | 10 | 10 |
-| chromosome_genes.max | 3798 | 1601 |
-| chromosome_genes.mean | 1872.7 | 1261.0 |
-| chromosome_genes.min | 969 | 911 |
+| chromosome_genes.max | 3798 | 1547 |
+| chromosome_genes.mean | 1872.7 | 1263.3 |
+| chromosome_genes.min | 969 | 946 |
 | families_with_extant_copies_by_kind.cargo | 16 | 16 |
 | families_with_extant_copies_by_kind.decoy | 5 | 5 |
 | families_with_extant_copies_by_kind.hub | 5 | 5 |
-| families_with_extant_copies_by_kind.originated | 1399 | 5212 |
+| families_with_extant_copies_by_kind.originated | 1399 | 5193 |
 | families_with_extant_copies_by_kind.planted | 100 | 96 |
 | families_with_extant_copies_by_kind.plasmid | 160 | 160 |
 | families_with_extant_copies_by_kind.profile_only | 9 | 9 |
 | families_with_extant_copies_by_kind.root | 998 | 954 |
 | families_with_extant_copies_by_kind.vehicle_chassis | 6 | 6 |
-| genes_per_genome.max | 3918 | 1761 |
-| genes_per_genome.mean | 1937.0 | 1415.8 |
-| genes_per_genome.min | 969 | 1071 |
-| genes_per_genome_by_kind.background | 1318.0 | 995.0 |
-| genes_per_genome_by_kind.decoy | 6.7 | 8.3 |
+| genes_per_genome.max | 3918 | 1667 |
+| genes_per_genome.mean | 1937.0 | 1412.9 |
+| genes_per_genome.min | 969 | 1106 |
+| genes_per_genome_by_kind.background | 1318.0 | 997.5 |
+| genes_per_genome_by_kind.decoy | 6.7 | 8.4 |
 | genes_per_genome_by_kind.hub | 49.3 | 48.9 |
-| genes_per_genome_by_kind.planted | 380.7 | 76.0 |
-| genes_per_genome_by_kind.plasmid | 64.3 | 154.8 |
+| genes_per_genome_by_kind.planted | 380.7 | 75.2 |
+| genes_per_genome_by_kind.plasmid | 64.3 | 149.6 |
 | genes_per_genome_by_kind.profile_only | 29.6 | 10.5 |
-| genes_per_genome_by_kind.vehicle | 88.3 | 122.2 |
+| genes_per_genome_by_kind.vehicle | 88.3 | 122.9 |
 | genomes | 46 | 46 |
-| kinds.assembly/callerr.tsv:kind.alt_code | 6551 | 4971 |
+| kinds.assembly/callerr.tsv:kind.alt_code | 6551 | 5028 |
 | kinds.assembly/callerr.tsv:kind.alt_start_downstream | 30 | 30 |
 | kinds.assembly/callerr.tsv:kind.alt_start_upstream | 30 | 30 |
 | kinds.assembly/callerr.tsv:kind.frameshift_del | 30 | 30 |
@@ -232,19 +239,19 @@ scripts/stress/f0210_world_summary.py build /tmp/if2453/f0211/world-after 202611
 | kinds.assembly/callerr.tsv:kind.internal_stop | 40 | 40 |
 | kinds.assembly/callerr.tsv:kind.smorf | 40 | 40 |
 | kinds.assembly/edits.tsv:kind.alt_start_downstream | 30 | 30 |
-| kinds.assembly/edits.tsv:kind.alt_start_upstream | 88 | 86 |
+| kinds.assembly/edits.tsv:kind.alt_start_upstream | 88 | 75 |
 | kinds.assembly/edits.tsv:kind.frameshift_del | 30 | 30 |
 | kinds.assembly/edits.tsv:kind.frameshift_ins | 30 | 30 |
 | kinds.assembly/edits.tsv:kind.internal_stop | 40 | 40 |
-| kinds.assembly/edits.tsv:kind.recode_codon | 26039 | 19588 |
-| kinds.assembly/edits.tsv:kind.recode_overlap | 334 | 220 |
-| kinds.assembly/edits.tsv:kind.recode_stop | 2189 | 1620 |
+| kinds.assembly/edits.tsv:kind.recode_codon | 26039 | 19877 |
+| kinds.assembly/edits.tsv:kind.recode_overlap | 334 | 232 |
+| kinds.assembly/edits.tsv:kind.recode_stop | 2189 | 1588 |
 | kinds.assembly/edits.tsv:kind.smorf | 40 | 40 |
 | kinds.assembly/genomes.tsv:assembly_class.complete | 18 | 18 |
 | kinds.assembly/genomes.tsv:assembly_class.draft | 18 | 18 |
 | kinds.assembly/genomes.tsv:assembly_class.mag | 10 | 10 |
 | kinds.assembly/replicons.tsv:kind.chromosome | 46 | 46 |
-| kinds.assembly/replicons.tsv:kind.plasmid | 38 | 90 |
+| kinds.assembly/replicons.tsv:kind.plasmid | 38 | 86 |
 | kinds.fusions/edits.tsv:kind.fusion | 52 | 52 |
 | kinds.fusions/edits.tsv:kind.nogd | 15 | 7 |
 | kinds.fusions/edits.tsv:kind.split | 14 | 14 |
@@ -254,112 +261,112 @@ scripts/stress/f0210_world_summary.py build /tmp/if2453/f0211/world-after 202611
 | kinds.fusions/fusions.tsv:kind.fusion | 52 | 52 |
 | kinds.fusions/fusions.tsv:kind.split | 14 | 14 |
 | kinds.fusions/replicons.tsv:kind.chromosome | 46 | 46 |
-| kinds.fusions/replicons.tsv:kind.plasmid | 38 | 90 |
+| kinds.fusions/replicons.tsv:kind.plasmid | 38 | 86 |
 | kinds.mobile/insertions.tsv:kind.crispr | 30 | 30 |
 | kinds.mobile/insertions.tsv:kind.prophage | 16 | 16 |
 | kinds.mobile/replicons.tsv:kind.chromosome | 46 | 46 |
-| kinds.mobile/replicons.tsv:kind.plasmid | 38 | 90 |
+| kinds.mobile/replicons.tsv:kind.plasmid | 38 | 86 |
 | kinds.sources/contam.tsv:kind.cross_clade | 10 | 10 |
-| kinds.sources/dup.tsv:kind.exact | 108 | 71 |
-| kinds.sources/dup.tsv:kind.near | 87 | 124 |
+| kinds.sources/dup.tsv:kind.exact | 108 | 76 |
+| kinds.sources/dup.tsv:kind.near | 87 | 118 |
 | kinds.sources/sources.tsv:kind.exact_dup | 2 | 2 |
 | kinds.sources/sources.tsv:kind.near_dup | 2 | 2 |
 | kinds.sources/sources.tsv:kind.original | 46 | 46 |
 | phages.genes | [12 items] | [12 items] |
 | phages.n | 12 | 12 |
-| planted_share | 0.2153 | 0.067 |
-| plasmid_genomes_by_type.pls0 | 18 | 44 |
-| plasmid_genomes_by_type.pls1 | 20 | 46 |
+| planted_share | 0.2153 | 0.0666 |
+| plasmid_genomes_by_type.pls0 | 18 | 43 |
+| plasmid_genomes_by_type.pls1 | 20 | 43 |
 | prophage_instances | 16 | 16 |
-| seconds.S1-S11 | 238.61 | 208.53 |
-| seconds.S1-S2 backbone | 37.1 | 48.59 |
-| seconds.S10 sources | 6.56 | 5.27 |
-| seconds.S11 emit | 24.52 | 18.36 |
-| seconds.S3-S4 sequences | 86.73 | 73.8 |
-| seconds.S5 replicons | 47.97 | 37.17 |
-| seconds.S6 mobile | 11.47 | 9.02 |
-| seconds.S7 fusions | 5.34 | 3.21 |
-| seconds.S8-S9 assembly | 18.91 | 13.1 |
-| stage_digests.assembly | 2f425158dc38f2302c1d02e9ebed30da | a9157aa3b65d4d67758721921f383011 |
-| stage_digests.backbone | 025fdd0d27fdc65e678782216ecd21fb | 9de0eaf2a8ce45448527454c0b8cba81 |
-| stage_digests.emit | a2f0e448484dab63d41281a5ef6a00c0 | 8b04777a3532b447baa4151876d711a3 |
-| stage_digests.fusions | db09abf3fe79ae34a73e3ab0664a9b13 | f8424b142a12035c30660f0a5fe60de9 |
-| stage_digests.mobile | 0bd7f0db5691de58ea5e1a0df1e6e570 | c2ebc655933e39f906a802a9711c96b6 |
-| stage_digests.replicons | 55bda97155d75148e5cdca7b90a1d7be | 955c6dfb47f812debf149f3d045b2678 |
-| stage_digests.sequences | 34ebce1324413a261acd874d7ee4fe3e | ce0b49129909e5b134dde252e64ab3c9 |
-| stage_digests.sources | 770007bde8615f41d9dd5f2eb912e753 | df3b6f60dbb01a857acec61ab2be3e25 |
-| tsv_rows.assembly/callerr.tsv | 6751 | 5171 |
-| tsv_rows.assembly/contigs.tsv | 2431 | 1907 |
-| tsv_rows.assembly/edits.tsv | 28820 | 21684 |
-| tsv_rows.assembly/gene_contigs.tsv | 92488 | 68037 |
-| tsv_rows.assembly/genes.tsv | 90282 | 66305 |
+| seconds.S1-S11 | 238.61 | 203.87 |
+| seconds.S1-S2 backbone | 37.1 | 53.94 |
+| seconds.S10 sources | 6.56 | 5.47 |
+| seconds.S11 emit | 24.52 | 17.84 |
+| seconds.S3-S4 sequences | 86.73 | 69.06 |
+| seconds.S5 replicons | 47.97 | 34.59 |
+| seconds.S6 mobile | 11.47 | 8.44 |
+| seconds.S7 fusions | 5.34 | 2.96 |
+| seconds.S8-S9 assembly | 18.91 | 11.57 |
+| stage_digests.assembly | 2f425158dc38f2302c1d02e9ebed30da | e8976e16089cc6b0558475d790d70f61 |
+| stage_digests.backbone | 025fdd0d27fdc65e678782216ecd21fb | f51833fa9a0a605cd90b19201f871c00 |
+| stage_digests.emit | a2f0e448484dab63d41281a5ef6a00c0 | d46c15d998991020a53f35ec03de11ab |
+| stage_digests.fusions | db09abf3fe79ae34a73e3ab0664a9b13 | d338a5a84ff766709b4a58d99fccf033 |
+| stage_digests.mobile | 0bd7f0db5691de58ea5e1a0df1e6e570 | be536abec0056be18811b6886b89e3c1 |
+| stage_digests.replicons | 55bda97155d75148e5cdca7b90a1d7be | d74442d291b8cdd57459585bfa91023a |
+| stage_digests.sequences | 34ebce1324413a261acd874d7ee4fe3e | e4667ebdc498d851c2153cb6eaec1569 |
+| stage_digests.sources | 770007bde8615f41d9dd5f2eb912e753 | 80a3e2e9f87f7ab8d02594f4becf74ec |
+| tsv_rows.assembly/callerr.tsv | 6751 | 5228 |
+| tsv_rows.assembly/contigs.tsv | 2431 | 1909 |
+| tsv_rows.assembly/edits.tsv | 28820 | 21942 |
+| tsv_rows.assembly/gene_contigs.tsv | 92488 | 67898 |
+| tsv_rows.assembly/genes.tsv | 90282 | 66174 |
 | tsv_rows.assembly/genomes.tsv | 46 | 46 |
-| tsv_rows.assembly/repeats.tsv | 1344 | 1840 |
-| tsv_rows.assembly/replicons.tsv | 84 | 136 |
-| tsv_rows.backbone/events.tsv | 50898 | 116199 |
-| tsv_rows.backbone/families.tsv | 2698 | 6467 |
-| tsv_rows.backbone/gene_tree_nodes.tsv | 262548 | 270731 |
-| tsv_rows.backbone/genes.tsv | 89102 | 65125 |
+| tsv_rows.assembly/repeats.tsv | 1344 | 1846 |
+| tsv_rows.assembly/replicons.tsv | 84 | 132 |
+| tsv_rows.backbone/events.tsv | 50898 | 115800 |
+| tsv_rows.backbone/families.tsv | 2698 | 6448 |
+| tsv_rows.backbone/gene_tree_nodes.tsv | 262548 | 270213 |
+| tsv_rows.backbone/genes.tsv | 89102 | 64994 |
 | tsv_rows.backbone/genomes.tsv | 46 | 46 |
 | tsv_rows.backbone/groups.tsv | 33 | 33 |
-| tsv_rows.backbone/replicons.tsv | 84 | 136 |
+| tsv_rows.backbone/replicons.tsv | 84 | 132 |
 | tsv_rows.backbone/taxa.tsv | 82 | 82 |
 | tsv_rows.backbone/taxonomy.tsv | 46 | 46 |
-| tsv_rows.backbone/truth_adjacency.tsv | 89102 | 65125 |
+| tsv_rows.backbone/truth_adjacency.tsv | 89102 | 64994 |
 | tsv_rows.backbone/truth_units.tsv | 3912 | 1522 |
-| tsv_rows.emit/ingest.tsv | 2327 | 1896 |
-| tsv_rows.emit/truth/truth_callerr.tsv | 8509 | 6459 |
+| tsv_rows.emit/ingest.tsv | 2327 | 1872 |
+| tsv_rows.emit/truth/truth_callerr.tsv | 8509 | 6540 |
 | tsv_rows.emit/truth/truth_contam.tsv | 10 | 10 |
-| tsv_rows.emit/truth/truth_contig.tsv | 2648 | 2124 |
-| tsv_rows.emit/truth/truth_dup.tsv | 195 | 195 |
-| tsv_rows.emit/truth/truth_edges.tsv | 2217 | 1825 |
-| tsv_rows.emit/truth/truth_family.tsv | 2810 | 6575 |
-| tsv_rows.emit/truth/truth_fusion.tsv | 69 | 68 |
-| tsv_rows.emit/truth/truth_gene.tsv | 93883 | 69641 |
+| tsv_rows.emit/truth/truth_contig.tsv | 2648 | 2125 |
+| tsv_rows.emit/truth/truth_dup.tsv | 195 | 194 |
+| tsv_rows.emit/truth/truth_edges.tsv | 2217 | 1795 |
+| tsv_rows.emit/truth/truth_family.tsv | 2810 | 6556 |
+| tsv_rows.emit/truth/truth_fusion.tsv | 69 | 69 |
+| tsv_rows.emit/truth/truth_gene.tsv | 93883 | 69468 |
 | tsv_rows.emit/truth/truth_genome.tsv | 62 | 62 |
-| tsv_rows.emit/truth/truth_igr.tsv | 92090 | 67883 |
+| tsv_rows.emit/truth/truth_igr.tsv | 92090 | 67766 |
 | tsv_rows.emit/truth/truth_module.tsv | 175 | 175 |
-| tsv_rows.emit/truth/truth_rna.tsv | 1110 | 895 |
-| tsv_rows.emit/truth/truth_spacer_target.tsv | 3887 | 3630 |
-| tsv_rows.emit/truth/truth_traps.tsv | 213 | 473 |
+| tsv_rows.emit/truth/truth_rna.tsv | 1110 | 873 |
+| tsv_rows.emit/truth/truth_spacer_target.tsv | 3887 | 3668 |
+| tsv_rows.emit/truth/truth_traps.tsv | 213 | 474 |
 | tsv_rows.fusions/edits.tsv | 81 | 73 |
 | tsv_rows.fusions/events.tsv | 22 | 22 |
 | tsv_rows.fusions/fusions.tsv | 66 | 66 |
-| tsv_rows.fusions/genes.tsv | 90242 | 66265 |
+| tsv_rows.fusions/genes.tsv | 90242 | 66134 |
 | tsv_rows.fusions/nogd.tsv | 15 | 7 |
 | tsv_rows.fusions/nogd_families.tsv | 2 | 2 |
-| tsv_rows.fusions/replicons.tsv | 84 | 136 |
+| tsv_rows.fusions/replicons.tsv | 84 | 132 |
 | tsv_rows.mobile/arrays.tsv | 30 | 30 |
 | tsv_rows.mobile/cas.tsv | 40 | 40 |
-| tsv_rows.mobile/genes.tsv | 90280 | 66303 |
+| tsv_rows.mobile/genes.tsv | 90280 | 66172 |
 | tsv_rows.mobile/insertions.tsv | 46 | 46 |
 | tsv_rows.mobile/phage_genes.tsv | 730 | 730 |
 | tsv_rows.mobile/phages.tsv | 12 | 12 |
 | tsv_rows.mobile/prophages.tsv | 16 | 16 |
-| tsv_rows.mobile/replicons.tsv | 84 | 136 |
+| tsv_rows.mobile/replicons.tsv | 84 | 132 |
 | tsv_rows.mobile/spacer_targets.tsv | 3462 | 3363 |
 | tsv_rows.mobile/spacers.tsv | 316 | 316 |
-| tsv_rows.replicons/elements.tsv | 171872 | 133881 |
-| tsv_rows.replicons/emissions.tsv | 252 | 163 |
-| tsv_rows.replicons/genes.tsv | 89102 | 65125 |
-| tsv_rows.replicons/junctions.tsv | 89102 | 65125 |
+| tsv_rows.replicons/elements.tsv | 171872 | 133356 |
+| tsv_rows.replicons/emissions.tsv | 252 | 164 |
+| tsv_rows.replicons/genes.tsv | 89102 | 64994 |
+| tsv_rows.replicons/junctions.tsv | 89102 | 64994 |
 | tsv_rows.replicons/lineages.tsv | 117 | 117 |
 | tsv_rows.replicons/links.tsv | 20 | 20 |
 | tsv_rows.replicons/models.tsv | 10 | 10 |
-| tsv_rows.replicons/replicons.tsv | 84 | 136 |
-| tsv_rows.replicons/rna.tsv | 1078 | 852 |
-| tsv_rows.sequences/domains.tsv | 4329 | 10214 |
-| tsv_rows.sequences/families.tsv | 2698 | 6463 |
-| tsv_rows.sequences/genes.tsv | 89102 | 65125 |
+| tsv_rows.replicons/replicons.tsv | 84 | 132 |
+| tsv_rows.replicons/rna.tsv | 1078 | 834 |
+| tsv_rows.sequences/domains.tsv | 4329 | 10191 |
+| tsv_rows.sequences/families.tsv | 2698 | 6444 |
+| tsv_rows.sequences/genes.tsv | 89102 | 64994 |
 | tsv_rows.sequences/lineages.tsv | 117 | 117 |
 | tsv_rows.sequences/panel.tsv | 300 | 300 |
 | tsv_rows.sources/contam.tsv | 10 | 10 |
-| tsv_rows.sources/dup.tsv | 195 | 195 |
-| tsv_rows.sources/mutations.tsv | 3135 | 2838 |
+| tsv_rows.sources/dup.tsv | 195 | 194 |
+| tsv_rows.sources/mutations.tsv | 3135 | 2842 |
 | tsv_rows.sources/sidecars/fcs_gx_mock.tsv | 10 | 10 |
-| tsv_rows.sources/source_contigs.tsv | 2315 | 1884 |
+| tsv_rows.sources/source_contigs.tsv | 2315 | 1860 |
 | tsv_rows.sources/sources.tsv | 50 | 50 |
-| world_digest | f0262027e4ccdcbc72cd7d90f23fbb5c | 9caab69fa23f48573bd1aacdc6c8e81e |
+| world_digest | f0262027e4ccdcbc72cd7d90f23fbb5c | 31085c4d1be9fa94df9238f785a375d6 |
 
 ## 7. Re-pinned digests and migrated assertions
 
@@ -369,15 +376,15 @@ SIGNAL_WORLD), `test_synthworld_assembly.py` (DIGESTS, ASSEMBLY_DIGEST) and `tes
 
 | stage | before | after |
 |---|---|---|
-| backbone | 025fdd0d27fdc65e678782216ecd21fb | 9de0eaf2a8ce45448527454c0b8cba81 |
-| sequences | 34ebce1324413a261acd874d7ee4fe3e | ce0b49129909e5b134dde252e64ab3c9 |
-| replicons | 55bda97155d75148e5cdca7b90a1d7be | 955c6dfb47f812debf149f3d045b2678 |
-| mobile | 0bd7f0db5691de58ea5e1a0df1e6e570 | c2ebc655933e39f906a802a9711c96b6 |
-| fusions | db09abf3fe79ae34a73e3ab0664a9b13 | f8424b142a12035c30660f0a5fe60de9 |
-| assembly | 2f425158dc38f2302c1d02e9ebed30da | a9157aa3b65d4d67758721921f383011 |
-| sources | 770007bde8615f41d9dd5f2eb912e753 | df3b6f60dbb01a857acec61ab2be3e25 |
-| emit | a2f0e448484dab63d41281a5ef6a00c0 | 8b04777a3532b447baa4151876d711a3 |
-| world | f0262027e4ccdcbc72cd7d90f23fbb5c | 9caab69fa23f48573bd1aacdc6c8e81e |
+| backbone | 025fdd0d27fdc65e678782216ecd21fb | f51833fa9a0a605cd90b19201f871c00 |
+| sequences | 34ebce1324413a261acd874d7ee4fe3e | e4667ebdc498d851c2153cb6eaec1569 |
+| replicons | 55bda97155d75148e5cdca7b90a1d7be | d74442d291b8cdd57459585bfa91023a |
+| mobile | 0bd7f0db5691de58ea5e1a0df1e6e570 | be536abec0056be18811b6886b89e3c1 |
+| fusions | db09abf3fe79ae34a73e3ab0664a9b13 | d338a5a84ff766709b4a58d99fccf033 |
+| assembly | 2f425158dc38f2302c1d02e9ebed30da | e8976e16089cc6b0558475d790d70f61 |
+| sources | 770007bde8615f41d9dd5f2eb912e753 | 80a3e2e9f87f7ab8d02594f4becf74ec |
+| emit | a2f0e448484dab63d41281a5ef6a00c0 | d46c15d998991020a53f35ec03de11ab |
+| world | f0262027e4ccdcbc72cd7d90f23fbb5c | 31085c4d1be9fa94df9238f785a375d6 |
 
 Assertions migrated or changed (each with its reason; no other assertion was changed):
 
@@ -405,7 +412,7 @@ Assertions migrated or changed (each with its reason; no other assertion was cha
   `tests/r2/test_synthworld_preset_seeds.py` (six seeds: default, 20261113 and the first four N2 seeds). Its ranges,
   each with its source: chromosome mean 1,050-1,950 (DEC-37 (1)); planted + profile-only + decoy share <= 2 x 114 /
   1,500 (session 10's derivation from §5.1's counts); both plasmid types at >= half the seeds (DEC-37 (3)'s stated share;
-  15 of 22 reached); crown age 5.0 from the MRCA within 1e-6 (DEC-37 (2), (3)); at most one grid cell per seed without a
+  14 of 22 reached); crown age 5.0 from the MRCA within 1e-6 (DEC-37 (2), (3)); at most one grid cell per seed without a
   module whole in 9 genomes (PLAN.md §4.3 min_detectable_count; 18 of 22 seeds have all nine, the rest one fewer);
   pooled level medians each >= 1.5 x the level below and, per seed, the top level's median above the bottom's (DEC-36);
   entry exclusion replayed (0 breaches) and DEC-15 (every scored unit intact).

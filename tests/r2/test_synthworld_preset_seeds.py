@@ -63,7 +63,7 @@ MIN_GENOMES = 9
 #: seeds, planning/measurements/2026-11-14_synthworld_redesign.md; 1.5 leaves room for six seeds' sampling)
 LEVEL_RATIO = 1.5
 #: DEC-37 (3) "or state the survival share": both plasmid types at no fewer than half the seeds (asserted; the
-#: refit reached 15 of 22, planning/measurements/2026-11-14_synthworld_redesign.md)
+#: refit reached 14 of 22, planning/measurements/2026-11-14_synthworld_redesign.md)
 PLASMID_BOTH_SHARE = 0.5
 JOBS = max(1, min(3, len(os.sched_getaffinity(0)) if hasattr(os, "sched_getaffinity") else 1))
 
@@ -278,8 +278,8 @@ def test_genome_size_and_planted_share_hold_at_every_seed(measured):
 @pytest.mark.covers("F-02", "B-SIM")
 def test_both_plasmid_types_live_at_the_share_the_refit_reaches(measured):
     """DEC-37 (3): plasmid rates refitted so that both types survive, or the share reached stated. Session 11
-    reached both types at 15 of 22 seeds (planning/measurements/2026-11-14_synthworld_redesign.md, scan
-    g_s0.2_o0.155): a type is lost in the first few lineages at about a third of the seeds at every rate pair
+    reached both types at 14 of 22 seeds (planning/measurements/2026-11-14_synthworld_redesign.md, scan
+    final): a type is lost in the first few lineages at about a third of the seeds at every rate pair
     tried, so "every seed" is not asserted; at least PLASMID_BOTH_SHARE of the seeds here keep both types."""
     params, out = measured
     names = {f"pls{k}" for k in range(len(params["plasmids"]["sizes"]))}
@@ -302,7 +302,7 @@ def test_every_strength_cell_keeps_a_detectable_module_at_every_seed(measured):
     """The grid: together {0.3, 0.7, 1.0} (the PI's, 2026-11-12, kept by DEC-36) x three member transfer rates (refitted
     by session 11, DEC-36); each of the nine cells holds a module whose members are all present in at least
     MIN_GENOMES genomes, at all but at most one cell per seed (session 11 measured every cell powered at 18 of 22
-    seeds and at most one cell without at the others, scan g_s0.2_o0.155: the lowest transfer level, 0.01, loses
+    seeds and at most one cell without at the others, scan final: the lowest transfer level, 0.01, loses
     modules in some trees)."""
     params, out = measured
     m = params["modules"]

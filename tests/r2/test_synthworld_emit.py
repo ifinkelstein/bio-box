@@ -36,15 +36,15 @@ needs_zombi2 = pytest.mark.skipif(
     reason="zombi2 0.54.0 is not importable here: CI installs it by `uv sync`; on the pod the image has it")
 
 #: the stage digests of sessions 1 to 7 for the micro default seed (measured 2026-11-13): emit must not change them
-DIGESTS = {"backbone": "9de0eaf2a8ce45448527454c0b8cba81", "sequences": "ce0b49129909e5b134dde252e64ab3c9",
-           "replicons": "955c6dfb47f812debf149f3d045b2678", "mobile": "c2ebc655933e39f906a802a9711c96b6",
-           "fusions": "f8424b142a12035c30660f0a5fe60de9", "assembly": "a9157aa3b65d4d67758721921f383011",
-           "sources": "df3b6f60dbb01a857acec61ab2be3e25"}
+DIGESTS = {"backbone": "f51833fa9a0a605cd90b19201f871c00", "sequences": "e4667ebdc498d851c2153cb6eaec1569",
+           "replicons": "d74442d291b8cdd57459585bfa91023a", "mobile": "be536abec0056be18811b6886b89e3c1",
+           "fusions": "d338a5a84ff766709b4a58d99fccf033", "assembly": "e8976e16089cc6b0558475d790d70f61",
+           "sources": "80a3e2e9f87f7ab8d02594f4becf74ec"}
 EARLIER = ("backbone", "zombi2", "sequences", "replicons", "mobile", "fusions", "assembly", "sources")
 #: the S11 digest and the world digest of the micro default seed, measured at this session's first complete emit
 #: (wilkcomp02, 2026-11-13; the same in a separate world build in the runtime image)
-EMIT_DIGEST = "8b04777a3532b447baa4151876d711a3"
-WORLD_DIGEST = "9caab69fa23f48573bd1aacdc6c8e81e"
+EMIT_DIGEST = "d46c15d998991020a53f35ec03de11ab"
+WORLD_DIGEST = "31085c4d1be9fa94df9238f785a375d6"
 
 CODE11_BY_AA = {
     "F": "TTT TTC", "L": "TTA TTG CTT CTC CTA CTG", "I": "ATT ATC ATA", "M": "ATG", "V": "GTT GTC GTA GTG",

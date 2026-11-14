@@ -41,13 +41,13 @@ needs_zombi2 = pytest.mark.skipif(
 
 #: the digests of sessions 1 to 6's stages for the micro default seed (measured 2026-11-13; planning/measurements/
 #: 2026-11-13_synthworld_fusions.md): those stages must not change
-DIGESTS = {"backbone": "9de0eaf2a8ce45448527454c0b8cba81", "sequences": "ce0b49129909e5b134dde252e64ab3c9",
-           "replicons": "955c6dfb47f812debf149f3d045b2678", "mobile": "c2ebc655933e39f906a802a9711c96b6",
-           "fusions": "f8424b142a12035c30660f0a5fe60de9"}
+DIGESTS = {"backbone": "f51833fa9a0a605cd90b19201f871c00", "sequences": "e4667ebdc498d851c2153cb6eaec1569",
+           "replicons": "d74442d291b8cdd57459585bfa91023a", "mobile": "be536abec0056be18811b6886b89e3c1",
+           "fusions": "d338a5a84ff766709b4a58d99fccf033"}
 EARLIER = ("backbone", "zombi2", "sequences", "replicons", "mobile", "fusions")
 #: the S8-S9 digest of the micro default seed, measured at this session's first green run (wilkcomp02,
 #: 2026-11-13): S10 and later stages must leave it unchanged
-ASSEMBLY_DIGEST = "a9157aa3b65d4d67758721921f383011"
+ASSEMBLY_DIGEST = "e8976e16089cc6b0558475d790d70f61"
 
 CODE11_BY_AA = {
     "F": "TTT TTC", "L": "TTA TTG CTT CTC CTA CTG", "I": "ATT ATC ATA", "M": "ATG", "V": "GTT GTC GTA GTG",
