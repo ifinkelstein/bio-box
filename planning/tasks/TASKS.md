@@ -828,7 +828,7 @@ Accept: a measurement note with the comparison and the figures; options behind f
 Done 2026-11-14 (STATUS row W-31). The defaults were decided on 2026-11-14 (DEC-41): card W-32.
 
 ### W-32 `nbr flanks` figure defaults (DEC-41)
-**M** · Depends: W-31, E-14 · DEC-41 (PI, 2026-11-14)
+**M** · Pod: yes (read-only on the data root: the examples' figures regenerated on `rN.3`) · Depends: W-31, E-14 · DEC-41 (PI, 2026-11-14)
 Files: `src/biobox/search/flanks.py`, `src/biobox/cli.py`, `tests/r2/test_w25_flanks.py`, `tests/r2/test_w27_flanks_figure.py`, `GUIDE.md`, `AGENT_GUIDE.md`, `examples/crispr_cas_neighbourhoods/` and `examples/rnap/` (the figures and the README sentences about them; `run.sh` only if a flag it passes goes away), a measurement note
 Do, test first: at NR50 and NR90, when the release has a domain library, `--colour-fallback pfam` and `--colour-weight anchor-nr90` become the defaults (`none` and `locus` stay available); a family that would show in two colours (its common cluster's and the Pfam colour of its rare clusters) takes its Pfam colour throughout; `--auto-cut gap` is removed (`--auto-cut N` stays; the fixed cut 0.5 stays the default). The tables are byte-identical to today's (test); the figures change: migrate the figure tests to the new defaults, each assertion listed with what it asserted before and after, and keep tests of the old behaviour behind the explicit flags. Regenerate the examples' committed figures on `rN.3` and say in their READMEs what changed (the CRISPR example's sentence that prokaryote Cas genes are grey at NR50 is then no longer true; W-31 also found it slightly overstated).
 Accept: the tests; the tables' byte identity; the regenerated figures; the guides describe the defaults.
