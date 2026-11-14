@@ -539,7 +539,10 @@ def summarize(root: Path, anchors: set[bytes], policy: Policy, by=("pfam", "nr50
     if a mapping gives several), the representative's length and the `model_name` most members carry ("" if
     none; ties by name). Rows by `n_loci` descending, then key; shares rounded to 4 decimals. The header holds
     the run-level facts, among them `n_censored_loci` (loci whose window a linear contig end cut).
-    Without a manifest the files are those of the stages of the release's `release_def` (card B-28)."""
+    Without a manifest the files are those of the stages of the release's `release_def` (card B-28).
+
+    On a release that holds CRISPR arrays (card E-14) the result has one more key, `arrays`: `arrays.summary` of the
+    loci's windows (one row per array producer: loci with an array within the window); without arrays no key."""
     from biobox import catalog
 
     by = _check_levels(by)
@@ -572,4 +575,11 @@ def summarize(root: Path, anchors: set[bytes], policy: Policy, by=("pfam", "nr50
     out["header"] = {"release": release, "tape_version": counts["tape_version"], "policy": asdict(policy),
                      "policy_hash": policy.hash(), "n_anchor_proteins_given": len(set(anchors)),
                      "anchors_dropped_by_edge": counts["anchors_dropped_by_edge"], **out["header"]}
+    # card E-14: on a release with CRISPR arrays, the loci with an array within the window (`biobox.search.arrays`),
+    # a table of its own; a release without them gets no key, so every output is as before
+    from biobox.search import arrays
+
+    found = arrays.near(rows, policy, files=files, threads=threads)
+    if found is not None:
+        out["arrays"] = arrays.summary(found, arrays.producers(files))
     return out

@@ -153,7 +153,8 @@ def _tsv_cell(col: str, v) -> str:
 
 def nbr_summary_tsv(summary: dict) -> Iterator[str]:
     """`--format tsv`: the header's facts as `# key<TAB>json` lines, then one table per level (a column line and
-    its rows; offsets as `offset:count,...`), tables separated by a blank line."""
+    its rows; offsets as `offset:count,...`), tables separated by a blank line. On a release with CRISPR arrays
+    (`summary["arrays"]`, card E-14) one more table after them: `arrays.SUMMARY_COLUMNS`, one row per producer."""
     for k, v in record("nbr_summary_header", summary["header"]).items():
         yield f"# {k}\t{json.dumps(v, separators=(',', ':'))}"
     for level in summary["header"]["levels"]:
@@ -163,6 +164,13 @@ def nbr_summary_tsv(summary: dict) -> Iterator[str]:
         for r in summary["rows"]:
             if r["level"] == level:
                 yield "\t".join(_tsv_cell(c, r.get(c)) for c in cols)
+    if summary.get("arrays") is not None:  # card E-14: only on a release that holds CRISPR arrays
+        from biobox.search import arrays
+
+        yield ""
+        yield "\t".join(arrays.SUMMARY_COLUMNS)
+        for r in summary["arrays"]:
+            yield "\t".join(_tsv_cell(c, r.get(c)) for c in arrays.SUMMARY_COLUMNS)
 
 
 README_TEXT = """\
@@ -248,6 +256,28 @@ separated. The offsets are relative to the anchor's strand (as offset_rel above)
   offsets             offset:count pairs, comma-separated, offset relative to the anchor's strand.
   modal_offset        the commonest of those offsets.
   same_strand_share   the share of those neighbours on the anchor's strand.
+"""
+
+# card E-14: appended to README.txt only when the release holds CRISPR arrays, so a README of a release without them
+# is the same bytes as before
+README_ARRAYS = """
+CRISPR arrays (this release holds them; card E-14)
+  Arrays are not genes and not slots: they are found by coordinates in each locus's window in bases. The window
+  of a gene window runs from the least start to the greatest end of the locus's genes (a gene across a circular
+  origin moved to the anchor's side), that of a window in bases from the anchor's start minus the window to its end
+  plus the window. An array is listed when it shares at least one base with that span.
+  loci/*.tsv end with `# crispr_arrays<TAB>window_start=..<TAB>window_end=..` (the span, in the anchor's frame), a
+  column line and one row per array within the window (none: the two lines alone):
+  kind                crispr_array.
+  feature_uid, producer   the array (its stable key) and the MinCED setting that called it.
+  start, end, strand  the array on the contig, as stored (strand +1: MinCED gives no orientation).
+  n_repeats, n_spacers, repeat   its repeats and spacers, and its commonest repeat sequence.
+  delta_bp            the gap in bases to the anchor; negative when the array overlaps it.
+  side_rel            +1 downstream of the anchor along its strand, -1 upstream, 0 overlapping it.
+  partial             true when part of the array lies outside the window.
+  crosses_origin      true when the array is reached across the origin of a circular contig.
+  neighbors.tsv ends with one more table, one row per array producer: kind, producer, n_loci, n_loci_with_array,
+  share_of_loci, n_loci_partial_only (loci whose only arrays in the window are partial), n_arrays.
 """
 
 
@@ -704,10 +734,29 @@ def _locus_head(r: dict) -> tuple[str, list[str]]:
     return name, [f"# {title}", "# " + "\t".join(f"{k}={cell(k, v)}" for k, v in facts), "\t".join(LOCUS_TSV_COLUMNS)]
 
 
+def _array_lines(found: dict) -> list[str]:
+    """A locus table's CRISPR array rows (card E-14, `biobox.search.arrays`): a marker line with the window's base
+    span, the column line, one row per array within the window (none: the two lines alone)."""
+    from biobox.search import arrays
+
+    lo, hi = found["window"]
+    return ([f"{arrays.MARKER}\twindow_start={lo}\twindow_end={hi}", "\t".join(arrays.COLUMNS)]
+            + [_tsv_line(arrays.COLUMNS, a) for a in found["arrays"]])
+
+
+def locus_table_rows(lines: list[str]) -> int:
+    """The data rows of one locus table (`locus_tables`'s lines): its gene rows, and its array rows when it has an
+    array section (card E-14), without the header, facts, column and marker lines."""
+    from biobox.search import arrays
+
+    k = next((i for i, line in enumerate(lines) if line.startswith(arrays.MARKER)), None)
+    return len(lines) - 3 if k is None else len(lines) - 5
+
+
 def locus_tables(root: Path, rows: list[dict], *, release: str | None, gene_call_version: str,
                  hit_bits: dict[bytes, float] | None = None, manifest: dict | None = None,
                  library: str | None = None, threads: int | None = None,
-                 tmp=None) -> Iterator[tuple[str, list[str]]]:
+                 tmp=None, arrays: dict | None = None) -> Iterator[tuple[str, list[str]]]:
     """`nbr --format tsv`: (file name, lines) per anchor locus of `rows` (`nbr.fetch`'s), loci by accession
     (contigs without one last), contig_uid and anchor ordinal; rows by offset.
 
@@ -718,7 +767,13 @@ def locus_tables(root: Path, rows: list[dict], *, release: str | None, gene_call
     hit_seq_bitscore: the slot protein's score in the run (`hit_bits`); length_aa, pfam_architecture, nr90,
     nr50 as in `hits_tsv` (empty for a non-CDS slot); delta_bp: the gap to the anchor (empty at the anchor);
     crosses_origin: flag bit 1. Name: `locus_<accession>_<anchor_feature_uid>.tsv`, characters other than
-    letters, digits, `.`, `_`, `-` as `_`."""
+    letters, digits, `.`, `_`, `-` as `_`.
+
+    `arrays` (card E-14): `biobox.search.arrays.near`'s result for `rows`, or None (a release without CRISPR arrays:
+    the tables are exactly as before). Given, each table ends with its array section after the gene rows: the line
+    `# crispr_arrays<TAB>window_start=LO<TAB>window_end=HI` (the window's base span in the anchor's frame), the
+    column line `arrays.COLUMNS` and one row per array within the window, no blank line (stdout separates tables
+    with one)."""
     from biobox.registry.schemas import table
 
     with open_store(root, release=release, gene_call_version=gene_call_version, manifest=manifest, threads=threads,
@@ -753,12 +808,12 @@ def locus_tables(root: Path, rows: list[dict], *, release: str | None, gene_call
             key = (r["contig_uid"], r["anchor_feature_uid"])
             if key != cur:
                 if cur is not None:
-                    yield name, lines
+                    yield name, lines + ([] if arrays is None else _array_lines(arrays[cur]))
                 cur = key
                 name, lines = _locus_head(r)
             lines.append(_tsv_line(LOCUS_TSV_COLUMNS, r))
         if cur is not None:
-            yield name, lines
+            yield name, lines + ([] if arrays is None else _array_lines(arrays[cur]))
 
 
 def protein_fasta(root: Path, *, release: str, gene_call_version: str, manifest: dict | None = None,

@@ -130,6 +130,12 @@ Every command that writes an output file given by `--out` (and `search hmm`, for
 to stderr one line per file: `wrote PATH: N rows|sequences|records` (`N tables, M rows` for a directory of
 locus tables), card W-23.
 
+CRISPR arrays (card E-14, `biobox.search.arrays`): on a release that holds them (`l1_crispr` files), `nbr --format
+tsv` (so also `search hmm`'s `loci/`) ends each locus table with the arrays within the locus's window in bases,
+`nbr summarize --format tsv` ends with a table of the loci with an array, and `search hmm`'s README.txt with a
+paragraph on both. Arrays are never slots. On a release without arrays every output is as before; the `--json` forms
+never carry arrays.
+
 `results` (card W-28, DEC-33; design in `biobox.search.results`) keeps a closed run on the profile's durable
 storage. `archive` writes the run's record and outputs as one deterministic tar, with its manifest line, into a
 spool under the profile's `tmp`. Every directory export written from a run (`search hmm`, `nbr --out DIR`, `nbr flanks
@@ -162,7 +168,7 @@ import yaml
 
 from biobox import catalog
 from biobox.l1.genecall import GENE_CALL_VERSION
-from biobox.search import export, nbr, pack, runner
+from biobox.search import arrays, export, nbr, pack, runner
 from biobox.search.recipe import RecipeError
 
 
@@ -595,9 +601,11 @@ def _nbr(a) -> int:
                 if h["target_kind"] == "protein" and h.get("seq_bitscore") is not None:
                     bits[h["target_uid"]] = max(bits.get(h["target_uid"], h["seq_bitscore"]), h["seq_bitscore"])
         try:
+            # card E-14: the CRISPR arrays within each locus's window, on a release that holds them (else None)
+            found = arrays.near(rows, policy, files=files, tmp=_profile_tmp(a), threads=a.threads)
             tables = export.locus_tables(root, rows, release=release, gene_call_version=a.gene_call_version,
                                          hit_bits=bits, manifest=files,
-                                         library=a.library, threads=a.threads)
+                                         library=a.library, threads=a.threads, arrays=found)
             if a.out is None:
                 _print(line for k, (_, lines) in enumerate(tables) for line in ([""] if k else []) + lines)
             else:
@@ -607,7 +615,8 @@ def _nbr(a) -> int:
                 n_tables = n_rows = 0
                 for name, lines in tables:
                     export.write_lines(lines, Path(a.out) / name)
-                    n_tables, n_rows = n_tables + 1, n_rows + len(lines) - 3  # a header, the facts, the columns
+                    # a header, the facts, the columns (and the array section's marker and columns, card E-14)
+                    n_tables, n_rows = n_tables + 1, n_rows + export.locus_table_rows(lines)
                 _wrote(a.out, f"{n_tables} tables, {n_rows} rows")  # card W-23
         except ValueError as e:
             print(f"refused: {e}", file=sys.stderr)
@@ -1035,7 +1044,9 @@ def _search_hmm(a) -> int:
         (tmp / "recipe.yaml").write_text(text, encoding="utf-8")
         export.write_run_file(tmp, rid, a.release)  # card W-29: the run this directory was written from
         if status == "ok":
-            (tmp / "README.txt").write_text(export.README_TEXT, encoding="utf-8")  # card W-20
+            # card W-20; card E-14: a paragraph on the CRISPR array rows only for a release that holds arrays
+            readme = export.README_TEXT + (export.README_ARRAYS if arrays.has_arrays(files) else "")
+            (tmp / "README.txt").write_text(readme, encoding="utf-8")
             where = ["--root", str(root), "--gene-call-version", a.gene_call_version, "--runs", str(runs),
                      "--pack-dir", str(packs)]
             opts = (["--library", a.library] if a.library else []) + (["--threads", str(a.threads)] if a.threads else [])

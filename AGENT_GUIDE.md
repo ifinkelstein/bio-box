@@ -209,6 +209,19 @@ it), `hits.tsv`, `hits.faa`, `neighbors.tsv`, `loci/`. The run is `<profile tmp>
   offset_rel ordinal feature_uid start end strand protein_uid length_aa pfam_architecture nr90 nr50
   hit_seq_bitscore delta_bp crosses_origin`. `offset` is coordinate order; `offset_rel` follows the anchor's
   strand (positive downstream). `censored=true`: a linear contig end cut the window.
+- CRISPR arrays (card E-14, `src/biobox/search/arrays.py`), only on a release with `l1_crispr` files (none yet,
+  2026-11-14; `releases` or `catalog_files` say): each locus table ends, after its gene rows and with no blank line,
+  with `# crispr_arrays<TAB>window_start=LO<TAB>window_end=HI`, the columns `kind feature_uid producer start end
+  strand n_repeats n_spacers repeat delta_bp side_rel partial crosses_origin`, and one row per array within the
+  window (none: the two lines alone). Window in bases: `Ng`, least start to greatest end of the table's rows (a row
+  with `crosses_origin` moved by one contig length to the anchor's side); `Wkb`, anchor start - W to anchor end + W.
+  An array is in when it shares one base with the span; `partial=true` when it runs out of it; on a circular contig
+  it is placed where most of it is inside. `delta_bp` = max(starts) - min(ends) (negative: overlaps the anchor);
+  `side_rel` +1/-1/0 along the anchor's strand; `repeat` the commonest repeat; strand always `+1` (no orientation).
+  Arrays are never slots: gene rows, offsets and ordinals are unchanged. `neighbors.tsv` then ends with a table
+  `kind producer n_loci n_loci_with_array share_of_loci n_loci_partial_only n_arrays`, and `README.txt` with a
+  paragraph. Without arrays every file is byte-identical to before; the `--json` forms never carry arrays (the
+  locked record schemas). Count array rows, not lines: `wrote ...: N tables, M rows` counts gene and array rows.
 - `nbr flanks RUN --out DIR` (card W-25, `src/biobox/search/flanks.py`, design `planning/design/W-25_flanks.md`):
   `README.txt`, `groups.tsv` (`# key<TAB>json` settings; `group n_loci n_leaves n_leaves_in_tree sampled
   n_context_types`), `context_types.tsv` (one row per locus: `feature_uid group context_type leaf in_tree contig_uid
@@ -241,6 +254,16 @@ it), `hits.tsv`, `hits.faa`, `neighbors.tsv`, `loci/`. The run is `<profile tmp>
 ```bash
 bash "$SCR/img.sh" python -m biobox.cli seq --root /tmp/if2453/r10/root --release rN.1 --protein 2eef240afefddcd2c8ac7660eb50e384
 bash "$SCR/img.sh" python -m biobox.cli seq --root /tmp/if2453/r10/root --release rN.1 --contig NC_001604:3171..5822 --strand -1 --out "$SCR/out/t7_gene1_rc.fna"
+```
+
+Arrays beside a locus on the scratch view of `rN.3` with card E-12's arrays (`/tmp/if2453/e14/view`, card E-14; its
+own manifest and catalog; not a release to report from): the complete type I-F system of the CRISPR example's control
+genome, by its Cas7f protein, 10 genes a side. Its table ends with two array rows, 27 repeats at 679543-681134
+(`side_rel -1`) and 21 at 689534-690762 (`side_rel 1`) (*measured*, wilkcomp02, 2026-11-14,
+`planning/measurements/2026-11-14_arrays_in_neighbourhoods.md`).
+
+```bash
+bash "$SCR/img.sh" python -m biobox.cli nbr 07ba31e0f0e5ffcc30388139b5ec30e4 --root /tmp/if2453/e14/view --release rN.3 --profile "$TREE/profiles/wilkcomp02.yaml" --window 10g --format tsv --out "$SCR/out/e14_cas7f"
 ```
 
 ## 5. Questions the one command does not answer: the catalog

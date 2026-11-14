@@ -15,6 +15,16 @@ optional `-<clan rule>` after it (card E-08): Infernal's version must be the con
 library's the version `refdb.yaml` freezes (the lock includes the refdb libraries for this, `rfam_clanin` among
 them). A ledger row's tool versions may also name the gene-call version the step read (`gene_call_version`, the
 ncRNA producer's intergenic regions, card E-08); that is checked as a gene-call version is.
+
+The CRISPR array producer (card E-12, `biobox.l1.crispr`; checked since card E-14) is
+`minced-<version>-w<searchWL>-nr<minNR>-r<minRL>x<maxRL>-s<minSL>x<maxSL>` (`MINCED_RE`): MinCED's version must be
+the conda pin, and the rest names MinCED's parameters. Its step `crispr-<producer>` records `minced`, `pyarrow`,
+`java` and `minced_args`. `minced` and `pyarrow` are checked against the lock as every tool is; `java` (the JVM, which
+the conda solve pulls in with MinCED and nothing pins) must be recorded and non-empty, and is not compared with the
+lock; `minced_args` (MinCED's arguments, not a version) must be exactly the arguments the producer's name encodes,
+in `crispr.MINCED_ARGS`'s order. The producer name is checked wherever it appears: the step's name, the `producer=`
+partition of a file (`feature` files of a `minced-` producer, every `l1_crispr` file), and a tape version's
+definition.
 """
 
 from __future__ import annotations
@@ -54,7 +64,8 @@ VERSION_PARTITION = {
 # ledger steps whose output depends on a tool, and the tools they must record
 STEP_TOOLS = {"ingest": ("pyarrow",), "tape-*": ("pyarrow",), "genecall": ("pyrodigal", "pyrodigal-gv", "pyarrow"),
               "domains-*": ("pyhmmer", "pyarrow"), "cluster": ("mmseqs2", "pyarrow"),
-              "ncrna-*": ("infernal", "rfam", "pyarrow")}
+              "ncrna-*": ("infernal", "rfam", "pyarrow"),
+              "crispr-*": ("minced", "java", "minced_args", "pyarrow")}  # card E-14
 GENE_CALL_RE = re.compile(r"^pyrodigal-(?P<pyrodigal>[^-]+)-gv-(?P<gv>[^-]+)-p\d+$")
 # the ncRNA producer (biobox.l1.ncrna): Infernal's version and the Rfam library's (card E-01), then optionally the
 # model set's version and the region rule (card E-07, `-prok1-igr200nt`), then optionally the clan rule (card E-08,
@@ -64,6 +75,22 @@ NCRNA_RE = re.compile(r"^infernal-(?P<infernal>[^-]+)-rfam-(?P<rfam>[^-]+)"
 # a ledger's tool versions may name the gene-call version a step read (the ncRNA producer's intergenic regions, card
 # E-08): it is checked as a gene-call version (its pyrodigal versions equal the lock), not as a tool of the lock
 LEDGER_GENE_CALL_KEY = "gene_call_version"
+# the CRISPR array producer (biobox.l1.crispr, card E-12): MinCED's version, then its parameters (card E-14)
+MINCED_RE = re.compile(r"^minced-(?P<minced>[^-]+)-(?P<params>w(?P<w>\d+)-nr(?P<nr>\d+)-r(?P<rl>\d+)x(?P<rh>\d+)"
+                       r"-s(?P<sl>\d+)x(?P<sh>\d+))$")
+CRISPR_STEP_PREFIX = "crispr-"
+# ledger fields of the crispr step that are not versions of the lock: the JVM (unpinned; recorded, not compared)
+# and MinCED's arguments (compared with the producer's name)
+CRISPR_UNLOCKED = ("java", "minced_args")
+
+
+def minced_args_of(producer: str) -> str | None:
+    """The MinCED arguments a `minced-` producer name encodes, as the producer passes and records them
+    (`crispr.MINCED_ARGS`: -searchWL, -minNR, -minRL, -maxRL, -minSL, -maxSL); None for another name."""
+    m = MINCED_RE.match(producer)
+    if m is None:
+        return None
+    return f"-searchWL {m['w']} -minNR {m['nr']} -minRL {m['rl']} -maxRL {m['rh']} -minSL {m['sl']} -maxSL {m['sh']}"
 
 
 def tool_versions(*names: str) -> dict[str, str]:
@@ -111,7 +138,8 @@ def refdb_libraries(repo: Path = REPO) -> list[dict]:
 def _step_tools(step: str) -> tuple[str, ...] | None:
     if step in STEP_TOOLS:
         return STEP_TOOLS[step]
-    for prefix in ("domains-", "tape-", "ncrna-"):  # one ledger per library, tape version and ncRNA producer
+    # one ledger per library, tape version, ncRNA producer and CRISPR array producer
+    for prefix in ("domains-", "tape-", "ncrna-", CRISPR_STEP_PREFIX):
         if step.startswith(prefix):
             return STEP_TOOLS[prefix + "*"]
     return None
@@ -134,11 +162,18 @@ def check_provenance(manifest: dict, lock: dict[str, str] | None = None) -> list
         iv = f["partitions"].get("igr_version")
         if iv is not None and _igr_tape_version(iv) is None:
             problems.append(f"{f['path']}: igr_version={iv} is not <tape_version>-igr1")
+        prod = f["partitions"].get("producer")
+        if prod is not None and (f["table"] == "l1_crispr" or (f["table"] == "feature" and prod.startswith("minced-"))):
+            problems += _minced_problems(f["path"], f"{f['table']} producer={prod}", prod, lock)  # card E-14
         if f["table"] == "ledger":
             step = f["partitions"]["step"]
             need = _step_tools(step)
             if need is None:
                 continue
+            crispr = step.startswith(CRISPR_STEP_PREFIX)
+            if crispr:  # card E-14: the producer the step is named after
+                problems += _minced_problems(f["path"], f"step {step}", step.removeprefix(CRISPR_STEP_PREFIX), lock)
+            unlocked = (LEDGER_GENE_CALL_KEY, *(CRISPR_UNLOCKED if crispr else ()))
             # one column, a batch at a time: a ledger has one row per contig of the stage (card B-19)
             for raw in _column_values(pq, root / f["path"], "tool_versions_json"):
                 tv = json.loads(raw) if raw else None
@@ -146,13 +181,14 @@ def check_provenance(manifest: dict, lock: dict[str, str] | None = None) -> list
                     problems.append(f"{f['path']}: {step} ledger row without tool versions")
                     break
                 missing = [t for t in need if t not in tv]
-                wrong = {t: (v, lock.get(t)) for t, v in tv.items() if t != LEDGER_GENE_CALL_KEY and lock.get(t) != v}
+                wrong = {t: (v, lock.get(t)) for t, v in tv.items() if t not in unlocked and lock.get(t) != v}
                 gcv = tv.get(LEDGER_GENE_CALL_KEY)
                 gcv_problems = [] if gcv is None else _gene_call_problems(
                     f["path"], f"{step} ledger {LEDGER_GENE_CALL_KEY}={gcv}", gcv, lock)
-                if missing or wrong or gcv_problems:
+                field_problems = _crispr_field_problems(f["path"], step, tv) if crispr else []
+                if missing or wrong or gcv_problems or field_problems:
                     problems += ([f"{f['path']}: {step} tool versions missing {missing}, differ {wrong}"]
-                                 if missing or wrong else []) + gcv_problems
+                                 if missing or wrong else []) + gcv_problems + field_problems
                     break
     return problems + _tape_version_problems(manifest, root, lock)
 
@@ -188,9 +224,37 @@ def _gene_call_problems(where: str, what: str, v: str, lock: dict[str, str]) -> 
     return []
 
 
+def _minced_problems(where: str, what: str, p: str, lock: dict[str, str]) -> list[str]:
+    """`p` must be a CRISPR array producer (`MINCED_RE`, card E-14) whose MinCED version equals the lock."""
+    m = MINCED_RE.match(p)
+    if m is None:
+        return [f"{where}: {what} does not name its tool versions and parameters "
+                "(minced-<version>-w<n>-nr<n>-r<min>x<max>-s<min>x<max>)"]
+    if m["minced"] != lock.get("minced"):
+        return [f"{where}: {what} differs from the lock (minced {lock.get('minced')})"]
+    return []
+
+
+def _crispr_field_problems(where: str, step: str, tv: dict) -> list[str]:
+    """The crispr step's fields that are not versions of the lock (card E-14): `java` recorded and non-empty, and
+    `minced_args` exactly the arguments the step's producer encodes. A field that is absent is reported as missing
+    by the caller."""
+    out = []
+    if "java" in tv and not (isinstance(tv["java"], str) and tv["java"].strip()):
+        out.append(f"{where}: {step} ledger java is empty: the JVM's version must be recorded")
+    want = minced_args_of(step.removeprefix(CRISPR_STEP_PREFIX))
+    if "minced_args" in tv and want is not None and tv["minced_args"] != want:
+        out.append(f"{where}: {step} ledger minced_args {tv['minced_args']!r} are not the arguments its producer "
+                   f"names ({want!r})")
+    return out
+
+
 def _producer_problems(where: str, what: str, p: str, lock: dict[str, str]) -> list[str]:
     """A feature producer names its tool versions: the ncRNA producer (`NCRNA_RE`, card E-01) Infernal's and
-    the Rfam library's, which must equal the lock; any other producer is a gene-call version."""
+    the Rfam library's, which must equal the lock; the CRISPR array producer (`MINCED_RE`, card E-14) MinCED's, which
+    must equal the lock, and its parameters; any other producer is a gene-call version."""
+    if p.startswith("minced-"):
+        return _minced_problems(where, what, p, lock)
     m = NCRNA_RE.match(p)
     if m is None:
         return _gene_call_problems(where, what, p, lock)
