@@ -48,6 +48,8 @@ Definitions (both the observed arrays and the nulls use these, `Windows`):
   start at or after C's end (none: the contig's end, unbounded); an array [a, b) is within K genes of C exactly when
   a < e_K and b > b_K.
 - "within 10 kb": the gap between the array and the gene, max(0, C.start - b, a - C.end), is at most 10,000 bases.
+- The tighter windows `1_gene` (K = 1: the gene next to the array, or one it overlaps) and `1_kb` (a gap of at
+  most 1,000 bases) are measured too, because the minimal arrays of the example lie about 130 bases from Cas6f.
 - On a circular contig every gene is also taken shifted by -n and +n, so windows run across the origin.
 - Repeat identity of an array: of its first two repeats, matching bases over the length when they have one length,
   else 1 - (Levenshtein distance / longer length). For arrays of 3 or more repeats also the mean identity of every
@@ -78,6 +80,8 @@ PROK = ("P1", "P2")
 K_GENES = 10
 BP_WINDOW = 10_000
 NEG, POS = -(10 ** 15), 10 ** 15
+REPEAT_MATCH = 0.8  # identity at which a call's repeat counts as one of its genome's arrays of 3 (`mark`)
+_RC = str.maketrans("ACGTN", "TGCAN")
 # The Cas families of the CRISPR worked example: every role of `examples/crispr_cas_neighbourhoods/sql/
 # q01_loci_by_domains.sql` (and `checks_bp.sql`) whose name starts with `cas` (31 Pfam families); TniQ is the anchor of
 # its Tn7-like loci. Copied from those files on 2026-11-14.
@@ -95,7 +99,7 @@ TNIQ = "PF06527"
 
 
 def _cpu_s() -> float:
-    """CPU-seconds of this process and its waited-for children (pool workers and, through them, MinCED's JVMs)."""
+    """CPU-seconds of this process (DuckDB's threads included) and its waited-for children."""
     s, c = resource.getrusage(resource.RUSAGE_SELF), resource.getrusage(resource.RUSAGE_CHILDREN)
     return s.ru_utime + s.ru_stime + c.ru_utime + c.ru_stime
 
@@ -337,7 +341,7 @@ def cmd_null(a) -> int:
     Path(a.tmp).mkdir(parents=True, exist_ok=True)
     scratch = Path(tempfile.mkdtemp(prefix="e13-null-", dir=a.tmp))
     stages = a.stages.split(",")
-    t0, c0 = time.time(), _cpu_s()
+    t0 = time.time()
     tasks = []
     for s in stages:
         cur, size = [], 0
@@ -371,9 +375,10 @@ def cmd_null(a) -> int:
         fh.write("\t".join(cols) + "\n")
         for r in rows:
             fh.write("\t".join(str(r[c]) for c in cols) + "\n")
-    summary = {"window": a.window, "seed": a.seed, "stages": {}, "cpu_s": round(_cpu_s() - c0, 1),
-               "shuffle_cpu_s": round(shuffle_cpu, 1), "wall_s": round(time.time() - t0, 1), "tasks": len(tasks),
-               "processes": a.cpus}
+    # the pool's workers may be children of a fork server, not of this process, so their CPU is not in this
+    # process's rusage: the run's CPU is the unit's (systemd's "CPU time consumed"); the shuffle's is summed here
+    summary = {"window": a.window, "seed": a.seed, "stages": {}, "shuffle_cpu_s": round(shuffle_cpu, 1),
+               "wall_s": round(time.time() - t0, 1), "tasks": len(tasks), "processes": a.cpus}
     for s, p in per.items():
         mbp = p["bases"] / 1e6
         summary["stages"][s] = {"contigs": p["contigs"], "bases": p["bases"],
@@ -390,9 +395,10 @@ def cmd_null(a) -> int:
 
 class Windows:
     """The windows of a contig's anchor genes (Cas genes, or one TniQ): per anchor copy, (b_K, e_K) for "within K
-    genes" and (start, end) for "within 10 kb" (module docstring)."""
+    genes" and (start, end) for "within B bases" (module docstring)."""
 
-    def __init__(self, starts: np.ndarray, ends: np.ndarray, n: int, circular: bool, anchors: np.ndarray):
+    def __init__(self, starts: np.ndarray, ends: np.ndarray, n: int, circular: bool, anchors: np.ndarray,
+                 k: int = K_GENES):
         shifts = (-n, 0, n) if circular else (0,)
         s_ext = np.concatenate([starts + sh for sh in shifts]) if len(starts) else starts
         e_ext = np.concatenate([ends + sh for sh in shifts]) if len(ends) else ends
@@ -402,8 +408,8 @@ class Windows:
                 c0, c1 = int(starts[i]) + sh, int(ends[i]) + sh
                 left = s_ext[e_ext <= c0]
                 right = e_ext[s_ext >= c1]
-                b.append(int(np.partition(left, -K_GENES)[-K_GENES]) if len(left) >= K_GENES else NEG)
-                e.append(int(np.partition(right, K_GENES - 1)[K_GENES - 1]) if len(right) >= K_GENES else POS)
+                b.append(int(np.partition(left, -k)[-k]) if len(left) >= k else NEG)
+                e.append(int(np.partition(right, k - 1)[k - 1]) if len(right) >= k else POS)
                 cs.append(c0)
                 ce.append(c1)
         self.b, self.e = np.array(b, dtype=np.int64), np.array(e, dtype=np.int64)
@@ -412,17 +418,21 @@ class Windows:
     def near_genes(self, a: int, b: int) -> bool:
         return bool(len(self.b)) and bool(np.any((a < self.e) & (b > self.b)))
 
-    def near_bp(self, a: int, b: int) -> bool:
-        return bool(len(self.cs)) and bool(np.any((self.cs - b <= BP_WINDOW) & (a - self.ce <= BP_WINDOW)))
+    def near_bp(self, a: int, b: int, bp: int = BP_WINDOW) -> bool:
+        return bool(len(self.cs)) and bool(np.any((self.cs - b <= bp) & (a - self.ce <= bp)))
 
-    def start_intervals(self, length: int, n: int) -> tuple[list, list]:
-        """The array starts s in [0, n - length] whose array [s, s + length) is within K genes, and within 10 kb, of
-        an anchor, as closed integer intervals: (b_K - length + 1, e_K - 1) and (C.start - 10 kb - length,
-        C.end + 10 kb), clipped."""
+    def gene_intervals(self, length: int, n: int) -> list:
+        """The array starts s in [0, n - length] whose array [s, s + length) is within K genes of an anchor, as
+        closed integer intervals (b_K - length + 1, e_K - 1), clipped."""
         hi = n - length
         g = [(max(0, int(x) - length + 1), min(hi, int(y) - 1)) for x, y in zip(self.b, self.e)]
-        p = [(max(0, int(x) - BP_WINDOW - length), min(hi, int(y) + BP_WINDOW)) for x, y in zip(self.cs, self.ce)]
-        return [iv for iv in g if iv[0] <= iv[1]], [iv for iv in p if iv[0] <= iv[1]]
+        return [iv for iv in g if iv[0] <= iv[1]]
+
+    def bp_intervals(self, length: int, n: int, bp: int) -> list:
+        """The same for "within `bp` bases": (C.start - bp - length, C.end + bp), clipped."""
+        hi = n - length
+        p = [(max(0, int(x) - bp - length), min(hi, int(y) + bp)) for x, y in zip(self.cs, self.ce)]
+        return [iv for iv in p if iv[0] <= iv[1]]
 
 
 def _union_len(ivs: list[tuple[int, int]]) -> int:
@@ -437,29 +447,36 @@ def _union_len(ivs: list[tuple[int, int]]) -> int:
     return tot + (cur[1] - cur[0] + 1 if cur else 0)
 
 
-def placement_share(length: int, contigs: list[tuple[int, Windows | None]]) -> tuple[float, float]:
+NEAR = ("10_genes", "10_kb", "1_gene", "1_kb")  # the windows beside a Cas gene that are measured
+
+
+def placement_share(length: int, contigs: list[tuple[int, Windows | None, Windows | None]]) -> dict[str, float]:
     """The second null: the probability that an array of `length` bases, its start drawn uniformly from every start
-    at which it fits on a contig of its genome, lies within K genes (first value) and within 10 kb (second) of a Cas
-    gene: f = sum_c |N_c(length)| / sum_c (n_c - length + 1), over the genome's contigs c with n_c >= length, where
-    N_c is the union of the start intervals of `Windows.start_intervals` (no anchor: empty). The expected number of
-    extra calls near a Cas gene, were they placed at random in their own genomes, is the sum of f over them."""
-    num_g = num_p = den = 0
-    for n, w in contigs:
+    at which it fits on a contig of its genome, lies in each window of `NEAR` beside a Cas gene:
+    f = sum_c |N_c(length)| / sum_c (n_c - length + 1), over the genome's contigs c with n_c >= length, where N_c is
+    the union of the start intervals of the window (`Windows.gene_intervals` of the contig's 10-gene and 1-gene
+    windows, `bp_intervals` at 10,000 and 1,000 bases; a contig without a Cas gene: empty). The expected number of
+    calls in a window, were they placed at random in their own genomes, is the sum of f over them."""
+    num = dict.fromkeys(NEAR, 0)
+    den = 0
+    for n, w10, w1 in contigs:
         if n < length:
             continue
         den += n - length + 1
-        if w is not None:
-            g, p = w.start_intervals(length, n)
-            num_g += _union_len(g)
-            num_p += _union_len(p)
-    return (num_g / den, num_p / den) if den else (0.0, 0.0)
+        if w10 is not None:
+            num["10_genes"] += _union_len(w10.gene_intervals(length, n))
+            num["1_gene"] += _union_len(w1.gene_intervals(length, n))
+            num["10_kb"] += _union_len(w10.bp_intervals(length, n, BP_WINDOW))
+            num["1_kb"] += _union_len(w10.bp_intervals(length, n, 1000))
+    return {k: (v / den if den else 0.0) for k, v in num.items()}
 
 
 # --- analyse ---------------------------------------------------------------------------------------------------------
 
 
 def _q(con, sql: str, params=None):
-    return con.execute(sql, params or []).fetch_arrow_table()
+    cur = con.execute(sql, params or [])
+    return cur.to_arrow_table() if hasattr(cur, "to_arrow_table") else cur.fetch_arrow_table()  # DuckDB 2 and 1
 
 
 def _files_sql(files: list[Path]) -> str:
@@ -606,11 +623,13 @@ def _analyse(con, view: Path, null_dir: Path, a, crispr, out: Path) -> dict:
         return gs[lo:hi], ge[lo:hi], {k: np.flatnonzero(f[lo:hi]) for k, f in flags.items()}
 
     cas_win: dict[int, Windows] = {}
+    cas_win1: dict[int, Windows] = {}  # the 1-gene windows (an adjacent gene, or one the array overlaps)
     genome_cas: Counter = Counter()
     for i in np.unique(ci[flags["is_cas"]]):
         s, e, fl = genes_of(int(i))
         r = ct[int(i)]
         cas_win[int(i)] = Windows(s, e, r["contig_len"], r["is_circular"], fl["is_cas"])
+        cas_win1[int(i)] = Windows(s, e, r["contig_len"], r["is_circular"], fl["is_cas"], k=1)
         genome_cas[r["genome_uid"]] += len(fl["is_cas"])
     genome_contigs: dict[bytes, list[int]] = {}
     for i, r in enumerate(ct):
@@ -630,13 +649,16 @@ def _analyse(con, view: Path, null_dir: Path, a, crispr, out: Path) -> dict:
             s3, e3 = np.concatenate([s - n, s, s + n]), np.concatenate([e - n, e, e + n])
         else:
             s3, e3 = s, e
-        f = placement_share(b_ - a_, [(ct[j]["contig_len"], cas_win.get(j)) for j in genome_contigs[r["genome_uid"]]])
-        return {**arr, "genome_uid": r["genome_uid"], "near_10_genes": w is not None and w.near_genes(a_, b_),
-                "near_10_kb": w is not None and w.near_bp(a_, b_),
+        f = placement_share(b_ - a_, [(ct[j]["contig_len"], cas_win.get(j), cas_win1.get(j))
+                                      for j in genome_contigs[r["genome_uid"]]])
+        near = {"near_10_genes": w is not None and w.near_genes(a_, b_),
+                "near_10_kb": w is not None and w.near_bp(a_, b_, BP_WINDOW),
+                "near_1_gene": w is not None and cas_win1[i].near_genes(a_, b_),
+                "near_1_kb": w is not None and w.near_bp(a_, b_, 1000)}
+        return {**arr, "genome_uid": r["genome_uid"], **near,
                 "inside_gene": bool(np.any((s3 <= a_) & (e3 >= b_))),
                 "overlaps_gene": bool(np.any((s3 < b_) & (e3 > a_))),
-                "genome_has_cas": genome_cas[r["genome_uid"]] > 0, "f_10_genes": round(f[0], 6),
-                "f_10_kb": round(f[1], 6)}
+                "genome_has_cas": genome_cas[r["genome_uid"]] > 0, **{f"f_{k}": round(v, 6) for k, v in f.items()}}
 
     # the producers' arrays
     arrays = {(k, s): _arrays(con, view, p, s) for k, p in (("nr2", p2), ("nr3", p3)) for s in STAGES}
@@ -651,8 +673,13 @@ def _analyse(con, view: Path, null_dir: Path, a, crispr, out: Path) -> dict:
         same = sum(1 for x in a3 if x["feature_uid"] in fu2 and fu2[x["feature_uid"]]["repeat"] == x["repeat"]
                    and fu2[x["feature_uid"]]["n_repeats"] == x["n_repeats"])
         ex = [x for x in a2 if not _overlaps(x, by3.get(x["contig_uid"], []))]
+        by2: dict[bytes, list[dict]] = {}
+        for x in a2:
+            by2.setdefault(x["contig_uid"], []).append(x)
         per_stage[s] = {"nr3": len(a3), "nr2": len(a2), "nr3_found_identically_at_nr2": same,
                         "nr3_missing_at_nr2": sum(1 for x in a3 if x["feature_uid"] not in fu2),
+                        "nr3_overlapped_by_no_nr2": sum(1 for x in a3 if not _overlaps(x, by2.get(x["contig_uid"], []))),
+                        "nr2_of_2_repeats": sum(x["n_repeats"] == 2 for x in a2),
                         "nr2_overlapping_nr3_not_equal": sum(1 for x in a2 if x["feature_uid"] not in fu3
                                                              and _overlaps(x, by3.get(x["contig_uid"], []))),
                         "extra": len(ex), "extra_repeats_hist": dict(sorted(Counter(x["n_repeats"] for x in ex).items())),
@@ -663,15 +690,37 @@ def _analyse(con, view: Path, null_dir: Path, a, crispr, out: Path) -> dict:
             nr3_all += [annotate(x) for x in a3]
     res["per_stage"] = per_stage
 
+    # an independent marker of a real CRISPR repeat: the call's repeat matches (identity >= REPEAT_MATCH, either
+    # strand) the first repeat of an array found at 3 in the same genome. It misses true arrays whose repeat family
+    # has no array of 3 in the genome (the minimal I-F3 arrays of the example differ from their host's I-F repeat)
+    known: dict[bytes, set[str]] = {}
+    for x in nr3_all:
+        known.setdefault(x["genome_uid"], set()).add(x["repeat"])
+
+    def mark(x: dict) -> dict:
+        reps = known.get(x["genome_uid"], ())
+        rc = x["repeat"].translate(_RC)[::-1]
+        best = max((max(pair_identity(x["repeat"], r), pair_identity(rc, r)) for r in reps), default=0.0)
+        x["best_nr3_repeat_identity"] = round(best, 4)
+        x["matches_nr3_repeat"] = best >= REPEAT_MATCH
+        return x
+
+    extras = [mark(x) for x in extras]
+
     def tally(xs: list[dict]) -> dict:
         n = len(xs)
-        d = {"n": n}
-        for k in ("near_10_genes", "near_10_kb", "inside_gene", "overlaps_gene"):
+        d = {"n": n, "of_2_repeats": sum(x["n_repeats"] == 2 for x in xs)}
+        for k in ("inside_gene", "overlaps_gene"):
             d[k] = sum(x[k] for x in xs)
+        for k in NEAR:
+            d[f"near_{k}"] = sum(x[f"near_{k}"] for x in xs)
+            d[f"near_{k}_not_inside_gene"] = sum(x[f"near_{k}"] and not x["inside_gene"] for x in xs)
+            d[f"expected_near_{k}_random_placement"] = round(sum(x[f"f_{k}"] for x in xs), 2)
+            d[f"expected_near_{k}_not_inside_gene_random_placement"] = round(
+                sum(x[f"f_{k}"] for x in xs if not x["inside_gene"]), 2)
         d["in_genome_without_cas"] = sum(not x["genome_has_cas"] for x in xs)
-        d["expected_near_10_genes_random_placement"] = round(sum(x["f_10_genes"] for x in xs), 2)
-        d["expected_near_10_kb_random_placement"] = round(sum(x["f_10_kb"] for x in xs), 2)
-        d["near_10_genes_not_inside_gene"] = sum(x["near_10_genes"] and not x["inside_gene"] for x in xs)
+        if xs and "matches_nr3_repeat" in xs[0]:
+            d["matches_nr3_repeat"] = sum(x["matches_nr3_repeat"] for x in xs)
         d["near_10_genes_inside_gene"] = sum(x["near_10_genes"] and x["inside_gene"] for x in xs)
         d["far_not_inside_gene_genome_with_cas"] = sum(not x["near_10_kb"] and not x["near_10_genes"]
                                                         and not x["inside_gene"] and x["genome_has_cas"] for x in xs)
@@ -679,6 +728,8 @@ def _analyse(con, view: Path, null_dir: Path, a, crispr, out: Path) -> dict:
 
     res["extra_p1_p2"] = tally(extras)
     res["extra_by_stage"] = {s: tally([x for x in extras if x["stage"] == s]) for s in PROK}
+    res["extra_of_2_repeats_p1_p2"] = tally([x for x in extras if x["n_repeats"] == 2])
+    res["extra_of_3_or_more_p1_p2"] = tally([x for x in extras if x["n_repeats"] > 2])
     res["nr3_p1_p2"] = tally(nr3_all)
     res["extra_cross"] = dict(sorted(Counter(
         f"near10g={int(x['near_10_genes'])} inside_gene={int(x['inside_gene'])} genome_cas={int(x['genome_has_cas'])}"
@@ -715,6 +766,7 @@ def _analyse(con, view: Path, null_dir: Path, a, crispr, out: Path) -> dict:
                 n3.setdefault(r["contig_uid"], []).append(r)
         null_extra += [annotate(r) for r in nrows if r["stage"] == s and r["min_repeats"] == 2
                        and not _overlaps(r, n3.get(r["contig_uid"], []))]
+    null_extra = [mark(x) for x in null_extra]
     null_bases_prok = sum(ns["stages"][s]["bases"] for s in PROK if s in ns["stages"])
     if not null_bases_prok:
         raise SystemExit(f"{null_dir}: the null holds neither P1 nor P2")
@@ -745,6 +797,8 @@ def _analyse(con, view: Path, null_dir: Path, a, crispr, out: Path) -> dict:
                 "wrong_basis": "random placement, upper bound" if window else "far from any Cas gene",
                 "chance_shuffle": len(kn), "chance_shuffle_per_gbp": round(len(kn) / null_gbp, 3),
                 "inside_gene": sum(x["inside_gene"] for x in kept), "far_from_cas": far,
+                "matches_nr3_repeat": sum(x["matches_nr3_repeat"] for x in kept),
+                "null_shuffle_matches_nr3_repeat": sum(x["matches_nr3_repeat"] for x in kn),
                 "in_genome_without_cas": sum(not x["genome_has_cas"] for x in kept)}
 
     def everything(x):
@@ -761,6 +815,10 @@ def _analyse(con, view: Path, null_dir: Path, a, crispr, out: Path) -> dict:
         rule("A1", "as A, not wholly inside a called gene", not_inside, "10_genes"),
         rule("A2", "nr3 everywhere, plus nr2 calls within 10 kb of a Cas gene", everything, "10_kb"),
         rule("A3", "as A, the two repeats identical", identical, "10_genes"),
+        rule("A4", "nr3 everywhere, plus nr2 calls next to a Cas gene (1 gene), not wholly inside a called gene",
+             not_inside, "1_gene"),
+        rule("A5", "nr3 everywhere, plus nr2 calls within 1 kb of a Cas gene, not wholly inside a called gene",
+             not_inside, "1_kb"),
         rule("B", "nr2 everywhere", everything, None),
         rule("B1", "nr2 everywhere, the two repeats identical", identical, None),
         rule("B2", "nr2 everywhere, not wholly inside a called gene", not_inside, None),
@@ -816,8 +874,8 @@ def _analyse(con, view: Path, null_dir: Path, a, crispr, out: Path) -> dict:
                                             "cas7f_rank_distance", "arrays_nr3", "arrays_nr2", "gains",
                                             "gained_arrays"])
     cols = ["stage", "contig_uid", "genome_uid", "start", "end", "n_repeats", "repeat_len", "spacer_len", "identity",
-            "near_10_genes", "near_10_kb", "inside_gene", "overlaps_gene", "genome_has_cas", "f_10_genes", "f_10_kb",
-            "repeat"]
+            "near_10_genes", "near_10_kb", "near_1_gene", "near_1_kb", "inside_gene", "overlaps_gene", "genome_has_cas",
+            "f_10_genes", "f_10_kb", "f_1_gene", "f_1_kb", "best_nr3_repeat_identity", "matches_nr3_repeat", "repeat"]
     _write_tsv(out / "extra_arrays.tsv", extras, cols)
     _write_tsv(out / "null_extra_arrays.tsv", null_extra, cols)
     return res
