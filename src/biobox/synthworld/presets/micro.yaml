@@ -342,3 +342,14 @@ emit:
   biome_rank: {v: class, tag: asserted, why: "one biome per taxon at this rank, so relatives share a biome; estimate"}
   source_name: {v: synthworld, tag: asserted, why: "SourceObject.source_name of every emitted source"}
   license: {v: "synthetic data, CC0", tag: asserted, why: "SourceObject.license; synthetic sequences (§8.2 risk 7 for the Pfam and Rfam terms of a pfam or rfam panel)"}
+
+nulls:
+  # §4.1 null worlds (card F-02 session 9; read by `nulls`, whose docstring states what each null keeps and destroys).
+  # N0-full and N0-strict change the sections above at the stages where the planted groups are made (`nulls.null_preset`);
+  # nothing here changes the signal world.
+  n1:
+    max_hamming_fraction: {v: 0.1, tag: asserted, why: "§4.1 N1: a replacement's phyletic profile is within Hamming distance d of the module family's, default 10% of genomes (floor of 0.1 x genomes)"}
+    transfer_tolerance: {v: 0.25, tag: asserted, why: "§4.1 N1: a replacement's transfer count is within +-25% of the module family's"}
+    kinds: {v: [root, originated], tag: asserted, why: "§4.1 N1: a replacement is a non-module family; backbone kinds root and originated (no group member, hub, decoy, Cas, NOGD or phage family)"}
+  n2:
+    seeds: {v: 20, tag: asserted, why: "§4.1 N2: calibration uses at least 20 N0 seeds at micro scale (KS power)"}

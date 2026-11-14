@@ -39,7 +39,10 @@ The component paths in use (part of the output contract; renaming one changes ev
 - ``S9/classes``: the assembly class of each genome; ``S9/genome/<genome_id>``: a genome's N50 target or
   completeness, breaks, rotations, MAG dropout and contig orientations (`assembly`);
 - ``S10/roles``: which genomes are contaminated or duplicated; ``S10/contam/<genome_id>``: a host's contaminant
-  windows; ``S10/near/<genome_id>``: a near duplicate's substitutions (`sources`).
+  windows; ``S10/near/<genome_id>``: a near duplicate's substitutions (`sources`);
+- ``S11/biome/<taxon>``, ``S11/mislabel/<source>/<genome>``: labels (`emit`);
+- ``N1/relabel/<family_id>``: N1's replacement of a module family, under the null seed; ``N2/seeds``: the N2
+  calibration seeds (`nulls`).
 """
 
 from __future__ import annotations

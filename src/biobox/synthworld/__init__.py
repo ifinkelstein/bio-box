@@ -9,5 +9,6 @@ non-orthologous displacement (`fusions`, spec §2.1 S7; session 6), and gene-cal
 and 25, assembly classes and contigs (`assembly`, spec §2.1 S8-S9; session 7), and contamination,
 duplicates and sources (`sources`, spec §2.1 S10; session 7), and the emitted world: per-source FASTA, the
 ingest manifest and build-stage inputs, truth in emitted-contig coordinates and the world manifest (`emit`,
-spec §2.1 S11; session 8). `backbone` is the only module that imports ZOMBI2 or reads its files.
+spec §2.1 S11; session 8), and the null worlds N0-full, N0-strict and N1 with the N2 seeds (`nulls`, spec §4.1;
+session 9). `backbone` is the only module that imports ZOMBI2 or reads its files.
 """
