@@ -111,15 +111,15 @@ database 20 times larger with many genomes per species; ours can only be smaller
 Everything runs on the pod host, in `bash`, as `GUIDE.md` section 2 sets it up; the laptop runs nothing. One script
 runs the whole example (section 6 explains it as a check); the steps it runs are listed after it, each one command,
 with the placeholders of the runbook: `$TREE` a checkout of current code (here `/tmp/if2453/ci/ex2`, mirrored from the
-laptop as `scripts/pod_pytest.sh` does), `$PROFILE` the host profile, `$IMAGE` the test image with matplotlib
-(`/tmp/if2453/images/bio-box-test_64f1bf0.sif`), `$DIGEST` its sha256, `$ROOT` the data root (bound read-only),
+laptop as `scripts/pod_pytest.sh` does), `$PROFILE` the host profile, `$IMAGE` the runtime image with matplotlib
+(`bio-box_faec1f4.sif`, RUNBOOK section 0), `$DIGEST` its sha256, `$ROOT` the data root (bound read-only),
 `$OUT` a new scratch directory, and `$EX` this directory in `$TREE`.
 
 ```bash
 export TREE=/tmp/if2453/ci/ex2
 export PROFILE="$TREE/profiles/wilkcomp02.yaml"
-export IMAGE=/tmp/if2453/images/bio-box-test_64f1bf0.sif
-export DIGEST=sha256:3d77df6b7f0b894b5371e42eaf077dfda09ebc97b1f78f2ed1d2cfc5fa9fbda4
+export IMAGE="$HOME/bio-box/images/bio-box_faec1f4.sif"       # as RUNBOOK.md section 0 sets it
+export DIGEST=sha256:d67300aa1321b571fa8da79e74dfccdd87a8dca2e56518f324902efa6b9f098a
 export ROOT=/tmp/if2453/r10/root
 export RELEASE=rN.3
 export OUT=/tmp/if2453/ex2/rN.3-b
