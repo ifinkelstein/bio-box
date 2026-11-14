@@ -839,6 +839,14 @@ Files: `src/biobox/search/results.py` (or wherever `results archive`, `list`, `g
 Why: `bio-box results` writes under the profile's `durable` directory, `/stor/work/Wilke/if2453/all-the-data`, which has never existed; our durable copies are under `bulk` (`/stor/scratch/Wilke/if2453/all-the-data`). The PI decided that results go under `bulk`, beside the other durable copies, and that a run may be archived again later as a second archive.
 Do, test first: results resolve under `<bulk>/results/` (state the exact path; nothing is created outside it); archiving a run a second time with further outputs writes a second archive and never changes the first (test: the first archive's bytes are unchanged; `results list` shows both; `results get` says which it takes); nothing under `/stor` is overwritten or deleted. The first real bundle on the pod (the RNA polymerase run, 164.6 MB) is written by the card as its acceptance, with its path, size and sha256 in the report.
 Accept: the tests; the bundle on `/stor`, read back.
+Done 2026-11-14 (STATUS row W-33). `cli.py` was not in this card's files, so its help text is stale: card W-34.
+
+### W-34 `bio-box results`: the command line says what the code does since W-33
+**L** · Depends: W-33
+Files: `src/biobox/cli.py` (the `results` subcommands only: their help, docstrings and argument parsing), `src/biobox/search/results.py` only to move the two notes it prints on stderr to the command line's side if that is cleaner, `tests/r1/test_results.py`, `GUIDE.md` and `RUNBOOK.md` only where they show the command line
+Why: since card W-33 results are kept under `<bulk>/results` and a run archived again is a second archive, but `bio-box results --help` and its subcommands' help still say `<durable>/results`, that `--results` must be "inside durable storage", and that another sha256 is "a refusal (exit 2)" (*measured* by the W-33 agent: `cli.py`, about lines 139 to 150 and 2173 to 2182). A user reading the help is told the opposite of what happens.
+Do, test first: the help of `results`, `archive`, `flush`, `list` and `get` says `<bulk>/results`, describes the second archive, and names `RUN:SHA256PREFIX`; a test reads each subcommand's `--help` and fails on the words `durable` and `refus` where they describe the old behaviour (see it fail on today's text). `results get` gains `--sha256 PREFIX` as the spelled-out form of `RUN:SHA256PREFIX` (both accepted; giving both with different values is exit 2). No behaviour of `archive`, `flush` or `list` changes; the bundle on `/stor` is not touched and no acceptance run on the pod is needed.
+Accept: the tests; `bio-box results get --help` shown in the report.
 
 ### E-12 CRISPR arrays as features
 **H**, decided (below), then **M** · found by the CRISPR example (2026-11-13) · `PLAN.md` step 4

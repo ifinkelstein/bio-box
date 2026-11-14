@@ -1,6 +1,7 @@
-"""A run's results kept on durable storage: `bio-box results archive|flush|list|get` (card W-28, DEC-33).
+"""A run's results kept under the profile's `bulk` area: `bio-box results archive|flush|list|get` (cards W-28, W-33;
+DEC-33, DEC-42).
 
-Design (card W-28; DEC-33; AGENTS §3.9, §4.3, §7.3, §7.5):
+Design (card W-28; DEC-33; AGENTS §3.9, §4.3, §7.3, §7.5; card W-33, DEC-42 for the place and for a second archive):
 
 - What a run's archive holds. `run/`: every regular file of the run's directory (`run.parquet`, the record, and
   the hits, profiles and neighbourhood tables beside it). `outputs/<name>/`: each output a user would want back,
@@ -33,20 +34,28 @@ Design (card W-28; DEC-33; AGENTS §3.9, §4.3, §7.3, §7.5):
   nothing is written there and the runs stay spooled. `--below-floor` writes a smaller bundle and says it breaks
   §7.3: only with the PI's agreement. So each run is still one archive (DEC-33), and what lands on `/stor` is
   one file of at least 64 MB or nothing. The spool is local disk: a reboot may clear it, as it clears the run.
-- One archive per run, never overwritten, never deleted (AGENTS §7.5). Before a run is spooled or a bundle
-  moved, the run ids are looked up in the spool's and the bundles' manifests: the same run with the same sha256
-  is a no-op (said on stderr, exit 0); with another sha256 it is refused (exit 2), naming both. A bundle is copied
+- An archive is never overwritten, never deleted (AGENTS §7.5). Before a run is spooled or a bundle moved, the run
+  ids are looked up in the spool's and the bundles' manifests: the same run with the same sha256 is a no-op (said
+  on stderr, exit 0). The same run with another sha256 (archived again later, with further outputs: DEC-42) is a
+  second archive of it, written beside the first, which is never touched; the run's archives are told apart by
+  their sha256. A run waiting in the spool keeps its first archive as `<run id>.tar`; a further one waits as
+  `<run id>-<first 16 hex of its sha256>.tar` (and `.tsv`). In a bundle an archive is `<run id>.tar`, or
+  `<run id>-<16 hex>.tar` when the bundle holds two or more of that run. `list` shows every archive; `get RUN`
+  takes the run's archive with the most files (then the most bytes, then the smallest sha256) and says so on
+  stderr, naming the others; `get RUN:SHA256PREFIX` takes the one whose sha256 starts so. A bundle is copied
   to a dot-named temporary file in the results area, read back and checked, then renamed into place; an existing
   bundle of the same name is never replaced. A flush killed before the rename leaves only its dot-named
   temporary file, which `list` names and no reader takes; the tools never remove it (§7.5: ask the PI). The spool's
   entries of a bundle's runs are removed only after the bundle is in place and read back.
-- Where. The results area is `<durable>/results`, the profile's durable storage (`durable`, which RUNBOOK §10
-  calls the durable results), or a directory given with `--results` that must lie inside `durable`. That is
-  decided on the resolved path (symbolic links followed) and on the file system: the area's nearest existing
-  directory must be on the same device as `durable`, so a mount or a link inside `durable` that leads elsewhere
-  is refused. The profile needs no new key. (DEC-33 says "under the data root's parent"; a profile names no data
-  root, and a search runs against roots on `/tmp` as well as on `/stor`, so the durable storage the profile names
-  stands in for it.)
+- Where (DEC-42, card W-33). The results area is `<bulk>/results`, under the profile's `bulk` area (on the pod
+  `/stor/scratch/Wilke/if2453/all-the-data/results`, beside the other durable copies), or a directory given with
+  `--results` that must lie inside `bulk`. That is decided on the resolved path (symbolic links followed) and on
+  the file system: the area's nearest existing directory must be on the same device as `bulk`, so a mount or a
+  link inside `bulk` that leads elsewhere is refused. The profile's `durable` key is not read. The profile needs
+  no new key. `bulk` itself is made by the PI, never by bio-box; `flush` makes `<bulk>/results` (one directory)
+  when it first writes a bundle, and nothing else outside it. `archive` writes only to the local spool, so it runs
+  where `bulk` is missing; `flush`, `list` and `get` refuse (exit 2) then. (DEC-33 says "under the data root's
+  parent"; DEC-42 amended the place.)
 - Reading. `list` reads only manifest lines: the spool's `.tsv` files and the first member of each bundle; it
   never reads a run's archive. The results area has no index file of its own (it would be a small file on
   `/stor`): its bundles are the files whose names match `BUNDLE_RE`. `get RUN --out DIR` copies the run's archive
@@ -65,6 +74,7 @@ import os
 import re
 import secrets
 import shutil
+import sys
 import tarfile
 from contextlib import contextmanager
 from dataclasses import dataclass
@@ -99,24 +109,29 @@ class Corrupt(ValueError):
 @dataclass(frozen=True)
 class Places:
     spool: Path    # local: <profile tmp>/results/spool
-    area: Path     # durable: <profile durable>/results, or --results inside durable
-    durable: Path
+    area: Path     # <profile bulk>/results, or --results inside bulk
+    bulk: Path
     floor: int     # profile small_file_floor_bytes
+    missing: bool = False  # `bulk` does not exist: `area` is unchecked, and only `archive` (the local spool) runs
 
 
 # --- where ------------------------------------------------------------------------------------------------------
 
 
-def check_area(area: Path, durable: Path) -> Path:
-    """The results area, resolved, if it is on the profile's durable storage; else ResultsError. Decided on the
+def _bulk_missing(d: Path) -> ResultsError:
+    return ResultsError(f"the profile's bulk area {d} does not exist (it is made by the PI, not by bio-box)")
+
+
+def check_area(area: Path, bulk: Path) -> Path:
+    """The results area, resolved, if it is on the profile's bulk area; else ResultsError. Decided on the
     resolved path and on the device of its nearest existing directory, never on the path's spelling."""
-    d = Path(durable)
+    d = Path(bulk)
     if not d.is_dir():
-        raise ResultsError(f"the profile's durable storage {d} does not exist (it is made by the PI, not by bio-box)")
+        raise _bulk_missing(d)
     dr = d.resolve(strict=True)
     ar = Path(area).resolve()
     if ar != dr and dr not in ar.parents:
-        raise ResultsError(f"the results area {area} (resolved: {ar}) is not inside the profile's durable storage "
+        raise ResultsError(f"the results area {area} (resolved: {ar}) is not inside the profile's bulk area "
                            f"{d} (resolved: {dr})")
     near = ar
     while not near.exists():
@@ -125,16 +140,26 @@ def check_area(area: Path, durable: Path) -> Path:
         raise ResultsError(f"the results area {area}: {near} is not a directory")
     if os.stat(near).st_dev != os.stat(dr).st_dev:
         raise ResultsError(f"the results area {area} (resolved: {ar}) is on another file system than the profile's "
-                           f"durable storage {dr}")
+                           f"bulk area {dr}")
     return ar
 
 
 def places(prof, results: Path | None = None) -> Places:
-    """The spool, the checked results area and the floor of a host profile (`biobox.profile.Profile`)."""
-    durable = Path(prof.durable)
-    area = check_area(Path(results) if results is not None else durable / "results", durable)
-    return Places(spool=Path(prof.tmp) / "results" / "spool", area=area, durable=durable,
-                  floor=int(prof.small_file_floor_bytes))
+    """The spool, the checked results area and the floor of a host profile (`biobox.profile.Profile`): the area is
+    `<bulk>/results` (card W-33, DEC-42), `results` when given, inside `bulk`. When `bulk` does not exist the area is
+    left unchecked (`missing`): `archive` needs only the local spool; every other action refuses."""
+    bulk = Path(prof.bulk)
+    want = Path(results) if results is not None else bulk / "results"
+    floor = int(prof.small_file_floor_bytes)
+    spool = Path(prof.tmp) / "results" / "spool"
+    if not bulk.is_dir():
+        return Places(spool=spool, area=want, bulk=bulk, floor=floor, missing=True)
+    return Places(spool=spool, area=check_area(want, bulk), bulk=bulk, floor=floor)
+
+
+def _need_bulk(where: Places) -> None:
+    if where.missing:
+        raise _bulk_missing(where.bulk)
 
 
 @contextmanager
@@ -152,9 +177,24 @@ def _locked(spool: Path):
 # --- manifest lines ---------------------------------------------------------------------------------------------
 
 
+def _order(line: dict) -> tuple[str, str]:
+    """A run's archives sort by run id, then sha256: the same order on any host and for any input order."""
+    return line["run_id"], line["sha256"]
+
+
+def member_names(lines: list[dict]) -> dict[tuple[str, str], str]:
+    """The name of each archive in a bundle holding `lines`, by (run id, sha256): `<run id>.tar`, or
+    `<run id>-<16 hex of its sha256>.tar` when the bundle holds two or more archives of that run (card W-33)."""
+    n: dict[str, int] = {}
+    for line in lines:
+        n[line["run_id"]] = n.get(line["run_id"], 0) + 1
+    return {(r["run_id"], r["sha256"]): (f"{r['run_id']}.tar" if n[r["run_id"]] == 1
+                                         else f"{r['run_id']}-{r['sha256'][:16]}.tar") for r in lines}
+
+
 def manifest_text(lines: list[dict]) -> str:
     rows = [MANIFEST_HEADER, "\t".join(COLUMNS)]
-    rows += ["\t".join(str(line[c]) for c in COLUMNS) for line in sorted(lines, key=lambda r: r["run_id"])]
+    rows += ["\t".join(str(line[c]) for c in COLUMNS) for line in sorted(lines, key=_order)]
     return "\n".join(rows) + "\n"
 
 
@@ -409,13 +449,16 @@ def partials(area: Path) -> list[Path]:
     return sorted(area / n for n in os.listdir(area) if n.startswith(".results-") and ".part-" in n)
 
 
+SPOOL_STEM_RE = re.compile(r"^[0-9a-f]{32}(-[0-9a-f]{16})?$")  # <run id>, or <run id>-<16 hex of the sha256>
+
+
 def spooled(spool: Path) -> list[dict]:
     """The spool's complete entries (an archive and its manifest line), each with `where` (the archive's path)."""
     if not spool.is_dir():
         return []
     out = []
     for n in sorted(os.listdir(spool)):
-        if n.endswith(".tsv") and RUN_ID_RE.match(n[:-4]) and (spool / f"{n[:-4]}.tar").is_file():
+        if n.endswith(".tsv") and SPOOL_STEM_RE.match(n[:-4]) and (spool / f"{n[:-4]}.tar").is_file():
             for line in parse_manifest((spool / n).read_text(encoding="utf-8"), str(spool / n)):
                 out.append({**line, "where": str(spool / f"{n[:-4]}.tar"), "kept": "spool"})
     return out
@@ -424,43 +467,58 @@ def spooled(spool: Path) -> list[dict]:
 def flushed(area: Path) -> list[dict]:
     out = []
     for b in bundles(area):
-        out += [{**line, "where": str(b), "kept": "bundle"} for line in _bundle_manifest(b)]
+        lines = _bundle_manifest(b)
+        names = member_names(lines)
+        out += [{**line, "where": str(b), "kept": "bundle", "member": names[(line["run_id"], line["sha256"])]}
+                for line in lines]
     return out
 
 
+def _kept(where: Places) -> list[dict]:
+    """Every archive kept, from the manifests; a missing `bulk` area holds none."""
+    return (flushed(where.area) if not where.missing else []) + spooled(where.spool)
+
+
 def listing(where: Places) -> list[dict]:
-    """Every kept run, flushed and spooled, from manifest lines only; sorted by run id, bundles first."""
-    return sorted(flushed(where.area) + spooled(where.spool), key=lambda r: (r["run_id"], r["kept"] != "bundle"))
+    """Every archive kept, flushed and spooled, from manifest lines only; sorted by run id, bundles first, then by
+    sha256: a run archived again has one line for each of its archives (card W-33)."""
+    _need_bulk(where)
+    return sorted(_kept(where), key=lambda r: (r["run_id"], r["kept"] != "bundle", r["sha256"], r["where"]))
 
 
 def _known(where: Places, run_id: str) -> list[dict]:
-    return [r for r in listing(where) if r["run_id"] == run_id]
+    return [r for r in _kept(where) if r["run_id"] == run_id]
 
 
 # --- archive ----------------------------------------------------------------------------------------------------
 
 
 def archive(run_dir: Path, outputs: list[Path], where: Places, *, publish=os.replace) -> tuple[dict, str]:
-    """Spool a run's archive. Returns (manifest line, state): `spooled`, or `same` when that run is already kept with
-    the same sha256 (nothing written). ResultsError when it is kept with another sha256. `publish` is the rename
+    """Spool a run's archive. Returns (manifest line, state): `spooled`; `second` when the run is kept already with
+    another sha256 (archived again with other files or outputs: a further archive of it, the earlier ones untouched,
+    card W-33); or `same` when that run is already kept with this sha256 (nothing written). `publish` is the rename
     of the archive into the spool (a test replaces it to simulate a crash before it)."""
     with _locked(where.spool):
         tmp = where.spool / f".archive.tmp-{os.getpid()}"
         try:
             line = write_archive(run_dir, outputs, tmp)
             rid = line["run_id"]
-            for k in _known(where, rid):
+            known = _known(where, rid)
+            for k in known:
                 if k["sha256"] == line["sha256"]:
                     return {**line, "where": k["where"]}, "same"
-                raise ResultsError(f"run {rid} is already archived in {k['where']} with sha256 {k['sha256']}; this "
-                                   f"archive would be sha256 {line['sha256']} (the run's files or outputs differ from "
-                                   "those archived). An archive is never overwritten")
-            final = where.spool / f"{rid}.tar"
+            waiting = [k for k in known if k["kept"] == "spool"]  # the spool's first archive of a run is <run id>.tar
+            stem = rid if not waiting else f"{rid}-{line['sha256'][:16]}"
+            final = where.spool / f"{stem}.tar"
             publish(tmp, final)  # local spool: an orphan archive without its manifest line is replaced
-            text = where.spool / f".{rid}.tsv.tmp-{os.getpid()}"
+            text = where.spool / f".{stem}.tsv.tmp-{os.getpid()}"
             text.write_text(manifest_text([line]), encoding="utf-8")
-            os.replace(text, where.spool / f"{rid}.tsv")
-            return {**line, "where": str(final)}, "spooled"
+            os.replace(text, where.spool / f"{stem}.tsv")
+            if known:
+                print(f"note: run {rid} is kept already with {len(known)} other archive(s) (sha256 "
+                      f"{', '.join(k['sha256'] for k in known)}); this one, sha256 {line['sha256']}, is a further "
+                      "archive of it. The earlier ones are not changed", file=sys.stderr)
+            return {**line, "where": str(final)}, ("second" if known else "spooled")
         finally:
             tmp.unlink(missing_ok=True)
 
@@ -475,43 +533,39 @@ def bundle_name(lines: list[dict], manifest: str) -> str:
 
 def _write_bundle(lines: list[dict], spool: Path, dest: Path) -> str:
     manifest = manifest_text(lines)
+    names = member_names(lines)
     with _writer(dest) as tf:
         _add_bytes(tf, MANIFEST, manifest.encode("utf-8"))
-        for line in sorted(lines, key=lambda r: r["run_id"]):
-            _add_file(tf, f"{line['run_id']}.tar", spool / f"{line['run_id']}.tar", line["size"], line["sha256"])
+        for line in sorted(lines, key=_order):
+            _add_file(tf, names[(line["run_id"], line["sha256"])], Path(line["where"]), line["size"], line["sha256"])
     return manifest
 
 
-def _drop(spool: Path, run_id: str) -> None:
-    """Remove a run's spool entry (local disk), its manifest line first: an archive without one is never read."""
-    (spool / f"{run_id}.tsv").unlink(missing_ok=True)
-    (spool / f"{run_id}.tar").unlink(missing_ok=True)
+def _drop(line: dict) -> None:
+    """Remove a spooled archive (local disk), its manifest line first: an archive without one is never read."""
+    tar = Path(line["where"])
+    tar.with_suffix(".tsv").unlink(missing_ok=True)
+    tar.unlink(missing_ok=True)
 
 
 def flush(where: Places, *, below_floor: bool = False, publish=os.rename) -> dict:
     """Pack the spool into one bundle and move it to the results area when it reaches the floor (or `below_floor`).
     Returns what happened: `state` is `empty`, `below_floor` (nothing written), `written` or `same`. `publish` is the
     final rename (a test replaces it to simulate a crash before it)."""
+    _need_bulk(where)
     with _locked(where.spool):
-        kept = {r["run_id"]: r for r in flushed(where.area)}
+        kept = {(r["run_id"], r["sha256"]) for r in flushed(where.area)}  # an archive is a run id and a sha256
         todo, done = [], []
         for line in spooled(where.spool):
-            k = kept.get(line["run_id"])
-            if k is None:
-                todo.append(line)
-            elif k["sha256"] == line["sha256"]:
-                done.append(line)
-            else:
-                raise ResultsError(f"run {line['run_id']} is spooled with sha256 {line['sha256']} and already in "
-                                   f"{k['where']} with sha256 {k['sha256']}; nothing written")
-        for line in done:  # a flush that stopped after its rename: these runs are in a bundle already
-            _drop(where.spool, line["run_id"])
+            (done if (line["run_id"], line["sha256"]) in kept else todo).append(line)
+        for line in done:  # a flush that stopped after its rename: these archives are in a bundle already
+            _drop(line)
         if not todo:
             return {"state": "empty", "runs": 0, "size": 0, "dropped": len(done)}
         local = where.spool / f".bundle.tmp-{os.getpid()}"
         try:
             for line in todo:
-                sha, size = sha256_file(where.spool / f"{line['run_id']}.tar")
+                sha, size = sha256_file(Path(line["where"]))
                 if (sha, size) != (line["sha256"], line["size"]):
                     raise Corrupt(f"the spooled archive of run {line['run_id']} is not the one its manifest line "
                                   f"names (sha256 {sha}, not {line['sha256']}); archive the run again")
@@ -545,7 +599,7 @@ def flush(where: Places, *, below_floor: bool = False, publish=os.rename) -> dic
                 _fsync(where.area)
                 state = "written"
             for line in todo:
-                _drop(where.spool, line["run_id"])
+                _drop(line)
             return {**out, "state": state}
         finally:
             local.unlink(missing_ok=True)
@@ -560,7 +614,7 @@ def _copy_archive(line: dict, dest: Path) -> None:
     with open(dest, "xb") as out:
         if line["kept"] == "bundle":
             with tarfile.open(src_path, "r:") as tf:
-                m = tf.getmember(f"{line['run_id']}.tar")
+                m = tf.getmember(line["member"])
                 src = _Hashing(tf.extractfile(m))
                 shutil.copyfileobj(src, out, BLOCK)
         else:
@@ -610,14 +664,28 @@ def _restore(archive: Path, into: Path) -> int:
 
 
 def get(where: Places, run_id: str, out: Path) -> tuple[dict, int]:
-    """Restore run `run_id` into the new or empty directory `out`, every sha256 checked. Returns (its manifest line,
-    files restored)."""
+    """Restore a run's archive into the new or empty directory `out`, every sha256 checked. `run_id` is the run's id,
+    or `RUN_ID:SHA256PREFIX` for the archive whose sha256 starts so. A run archived more than once (card W-33) has
+    several archives: the bare id takes the one with the most files (then the most bytes, then the smallest
+    sha256), and says which on stderr. Returns (its manifest line, files restored)."""
+    run_id, _, prefix = run_id.partition(":")
     if not RUN_ID_RE.match(run_id):
         raise ResultsError(f"{run_id!r} is not a run id (32 lowercase hex digits)")
+    _need_bulk(where)
     found = _known(where, run_id)
     if not found:
         raise ResultsError(f"run {run_id} is in no bundle of {where.area} and not in the spool {where.spool}")
-    line = found[0]  # a bundle before the spool (listing's order)
+    if prefix:
+        found = [r for r in found if r["sha256"].startswith(prefix.lower())]
+        if not found:
+            raise ResultsError(f"run {run_id} has no archive whose sha256 starts with {prefix!r} (`results list` "
+                               "shows its archives)")
+    shas = sorted({r["sha256"] for r in found})
+    line = min(found, key=lambda r: (-r["n_files"], -r["size"], r["sha256"], r["kept"] != "bundle"))
+    if len(shas) > 1:
+        print(f"results get: run {run_id} has {len(shas)} archives (sha256 {', '.join(shas)}); taking sha256 "
+              f"{line['sha256']} ({line['n_files']} files, {line['size']} bytes: the most files) in {line['where']}. "
+              f"`results get {run_id}:SHA256PREFIX` takes another", file=sys.stderr)
     out = Path(out)
     if out.exists() and (not out.is_dir() or any(out.iterdir())):
         raise ResultsError(f"{out} is not empty: results get restores into a new or empty directory")

@@ -37,7 +37,7 @@ capped-unit launcher that [`RUNBOOK.md`](RUNBOOK.md) §0 and §7 define. [`GUIDE
 | `bio-box seq` | a protein by uid, or a contig slice by accession and coordinates, as FASTA (GUIDE §7) |
 | `bio-box sql` | read-only SELECT statements on a release's catalog (GUIDE §7; AGENT_GUIDE §5) |
 | `bio-box releases` | the releases of a data root: stages, counts, libraries, lookup tables, search pack (GUIDE §2) |
-| `bio-box results` | `archive`, `list` and `get` keep a finished run on durable storage (DEC-33; GUIDE §5). The durable directory does not exist yet, so these wait on an open item for the PI |
+| `bio-box results` | `archive`, `flush`, `list` and `get` keep a finished run with its outputs under the profile's `bulk` area, `<bulk>/results` (DEC-33, DEC-42; GUIDE §5). The first bundle, the RNA polymerase run of `rN.3`, is on `/stor` since 2026-11-14 |
 
 Also there: `search run|status|cancel|hits`, `export proteins` and `release verify` (GUIDE §7).
 

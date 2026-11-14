@@ -232,14 +232,15 @@ to that. A run alone is usually smaller: the worked example's run with its `sear
 bytes, with its five `nbr flanks` directories 164,618,240 (*measured*, RUNBOOK Appendix A, card W-28). Until a
 flush, a run waits on `/tmp`: copy what you need now to your laptop. `results list` says where each kept run is;
 `results get` brings one back into a new directory, every file checked against its sha256. Archiving the same run
-again changes nothing; archiving it with other outputs is refused, so name every output the first time. The
-permanent storage, `/stor/work/Wilke/if2453/all-the-data`, does not exist yet (2026-11-12): until the PI makes it,
-these commands fail at the image's start, which cannot bind a missing directory.
+again changes nothing; archiving it later with further outputs (DEC-42) makes a second archive of the run beside
+the first, which is never changed. `results list` shows both; `results get RUN` takes the one with the most files
+and says which on stderr, and `results get RUN:SHA256PREFIX` takes another. The results are kept under the pod's
+bulk area, in `/stor/scratch/Wilke/if2453/all-the-data/results` (card W-33, DEC-42).
 
 ```bash
-bash "$TREE/scripts/pod_run.sh" --profile "$PROFILE" --image "$IMAGE" --digest "$DIGEST" --mem 8G --threads 1 --bind /tmp/if2453 --bind /stor/work/Wilke/if2453/all-the-data --env PYTHONPATH="$PYTHONPATH_POD" pi-keep results archive "$RUN" --profile "$PROFILE" --under "$WORK"
-bash "$TREE/scripts/pod_run.sh" --profile "$PROFILE" --image "$IMAGE" --digest "$DIGEST" --mem 8G --threads 1 --bind /tmp/if2453 --bind /stor/work/Wilke/if2453/all-the-data --env PYTHONPATH="$PYTHONPATH_POD" pi-list results list --profile "$PROFILE"
-bash "$TREE/scripts/pod_run.sh" --profile "$PROFILE" --image "$IMAGE" --digest "$DIGEST" --mem 8G --threads 1 --bind /tmp/if2453 --bind /stor/work/Wilke/if2453/all-the-data --env PYTHONPATH="$PYTHONPATH_POD" pi-get results get "$RUN" --profile "$PROFILE" --out "$WORK/rnap_back"
+bash "$TREE/scripts/pod_run.sh" --profile "$PROFILE" --image "$IMAGE" --digest "$DIGEST" --mem 8G --threads 1 --bind /tmp/if2453 --bind /stor/scratch/Wilke/if2453/all-the-data --env PYTHONPATH="$PYTHONPATH_POD" pi-keep results archive "$RUN" --profile "$PROFILE" --under "$WORK"
+bash "$TREE/scripts/pod_run.sh" --profile "$PROFILE" --image "$IMAGE" --digest "$DIGEST" --mem 8G --threads 1 --bind /tmp/if2453 --bind /stor/scratch/Wilke/if2453/all-the-data --env PYTHONPATH="$PYTHONPATH_POD" pi-list results list --profile "$PROFILE"
+bash "$TREE/scripts/pod_run.sh" --profile "$PROFILE" --image "$IMAGE" --digest "$DIGEST" --mem 8G --threads 1 --bind /tmp/if2453 --bind /stor/scratch/Wilke/if2453/all-the-data --env PYTHONPATH="$PYTHONPATH_POD" pi-get results get "$RUN" --profile "$PROFILE" --out "$WORK/rnap_back"
 ```
 
 Each writes its lines to `$BBTMP/logs/<unit>.log`. `archive` ends with the archive's line (run id, release, the
@@ -403,7 +404,7 @@ runs as one command and checks its answer; both are rerun on every milestone rel
 
 - The data is on the pod's local disk (`/tmp`), not yet copied to permanent storage; a reboot may clear it. No card
   yet (`STATUS.md`, "Plan for larger imports", step 1). Your own results can be kept (section 5, *Keeping your
-  results*), once the PI has made the permanent results area.
+  results*) under the pod's bulk area.
 - Only `rN.1` has a search pack. Until the operator copies it into the profile's pack directory
   (`/tmp/if2453/bio-box/packs`, card W-22), it is in a work directory (`/tmp/if2453/w19/packs`) and every
   `releases`, `search` and `nbr` command needs `--pack-dir /tmp/if2453/w19/packs` (section 2); `rN.2` needs one
