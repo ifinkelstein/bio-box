@@ -67,6 +67,15 @@ Shape on disk (``build(world)``)::
 of S1-S10; ``world_digest`` BLAKE3-128 over the sorted (stage, digest) lines of every stage, emit included. Each
 stage's json lists the sha256 of its files. One genome's contigs are in memory at a time (the placement tables
 of every genome are small and held whole).
+
+**Null worlds** (card F-02 session 9; `nulls` states the rules). ``build(world, null=...)`` is called by `nulls`
+only, and a world whose preset carries a null marker refuses to be emitted without it. A null world's ``world_id``
+is ``<preset>-<null>-<seed>`` (``<null>.<null seed>`` when N1's null seed is not the world seed); ``emit.json`` and
+``manifest.json`` gain ``null`` (the null world and its null seed); ``truth/truth_null.tsv`` (removed items and the
+rules of null evaluation) and ``truth/truth_null_relabel.tsv`` (N1's relabel; header only in N0) are written. In N1
+a planted module's ``truth_module`` rows list each relabeled member's replacement, with empty ``realized_loci``, the
+NOGD rows are left out, and ``truth_gene.module_id`` and ``truth_fusion.in_module`` follow that membership. With no
+``null`` nothing of the above is written, so a signal world's emit stage is byte for byte what it was.
 """
 
 from __future__ import annotations
@@ -407,6 +416,45 @@ TABLES = {"truth_genome": TruthGenome, "truth_contig": TruthContig, "truth_edges
           "truth_module": TruthModule, "truth_traps": TruthTrap}
 
 
+class TruthNull(NamedTuple):
+    world_id: str
+    release_tag: str
+    null: str
+    kind: str
+    item_id: str
+    family_ids: str
+    action: str
+    rule: str
+
+
+class TruthNullRelabel(NamedTuple):
+    world_id: str
+    release_tag: str
+    module_id: str
+    order_index: int
+    family_id: str
+    replacement_family_id: str
+    status: str
+    hamming: int
+    n_genomes: int
+    replacement_n_genomes: int
+    transfers: int
+    replacement_transfers: int
+
+
+#: written in a null world only (`nulls`), so a signal world's emit stage has the 14 tables above
+NULL_TABLES = {"truth_null": TruthNull, "truth_null_relabel": TruthNullRelabel}
+
+
+def world_id(name: str, seed: int, null: dict | None) -> str:
+    """``<preset>-<seed>``; a null world ``<preset>-<null>-<seed>``, with ``.<null seed>`` after the null when its
+    null seed is not the world seed (N1)."""
+    if not null:
+        return f"{name}-{seed}"
+    ns = null.get("null_seed", seed)
+    return f"{name}-{null['world']}{'' if ns is None or int(ns) == int(seed) else f'.{int(ns)}'}-{seed}"
+
+
 def _cell(v) -> str:
     return "" if v is None else backbone._cell(v)
 
@@ -654,8 +702,10 @@ def _digest(d: dict[str, str], length: int) -> str:
     return blake3("".join(f"{k}\t{v}\n" for k, v in sorted(d.items())).encode()).hexdigest(length=length)
 
 
-def build(world) -> EmitWorld:
-    """Write ``world/emit/`` and ``world/manifest.json`` (module docstring) from a world whose S1-S10 are built."""
+def build(world, *, null: dict | None = None) -> EmitWorld:
+    """Write ``world/emit/`` and ``world/manifest.json`` (module docstring) from a world whose S1-S10 are built.
+    ``null`` (from `nulls` only) makes it a null world's: ``world`` (N0-full, N0-strict or N1), ``null_seed``,
+    ``relabel`` (N1's `nulls.RelabelRow` list) and ``scope`` (`nulls.ScopeRow` list); see `nulls`."""
     world = Path(world)
     docs = {}
     for d, mod in UPSTREAM:
@@ -667,6 +717,25 @@ def build(world) -> EmitWorld:
     cfg = preset["emit"]
     check_config(cfg)
     seed = int(bb["seed"])
+    marker = preset.get("null")
+    if marker is not None and (null is None or null["world"] != marker["world"]):
+        raise ValueError(f"{world} is an {marker['world']} world: its emit stage is written by nulls")
+    if null is not None and null["world"] != "N1" and marker is None:
+        raise ValueError(f"{world}: an {null['world']} world needs the null preset (nulls.null_preset)")
+    # N1 (nulls): ``relabel`` maps a module member to the family now listed in its place (no module lists it then)
+    relabel ={r.family_id: r.replacement_family_id for r in (null or {}).get("relabel", ()) if r.status == "relabeled"}
+    label_module = {r.replacement_family_id: r.module_id for r in (null or {}).get("relabel", ())
+                    if r.status == "relabeled"}
+    is_n1 = bool(null) and null["world"] == "N1"
+
+    def module_of(family_id: str, mod: str) -> str:
+        if not is_n1:
+            return mod
+        fams = family_id.split("+")
+        for f in fams:
+            if f in label_module:
+                return label_module[f]
+        return "" if any(f in relabel for f in fams) else mod
     out = world / "emit"
     if out.exists() or (world / "manifest.json").exists():
         raise FileExistsError(f"{out} or {world}/manifest.json exists; the emit stage is written once")
@@ -675,9 +744,9 @@ def build(world) -> EmitWorld:
         shutil.rmtree(tmp)
     (tmp / "fasta").mkdir(parents=True)
     (tmp / "truth").mkdir()
-    world_id = f"{preset['name']}-{seed}"
+    wid = world_id(preset["name"], seed, null)
     release_tag = "sw-" + _digest({d: docs[d]["digest"] for d, _ in UPSTREAM}, 8)
-    WV = (world_id, release_tag)
+    WV = (wid, release_tag)
     counts = collections.Counter()
 
     # --- the earlier stages' small tables
@@ -798,7 +867,7 @@ def build(world) -> EmitWorld:
                                    "circular": circ, "assembly_quality": aq})
         else:
             counts["genomes_listed_once"] += 1
-        objects.append({"path": rel, "source_name": str(cfg["source_name"]), "source_release": world_id,
+        objects.append({"path": rel, "source_name": str(cfg["source_name"]), "source_release": wid,
                         "license": str(cfg["license"]), "redistributable": True})
         gc = gc_of[g]
         truth_genome_rows.append(TruthGenome(*WV, g, host_genomes[g]["species_node"], lab, s["accession"],
@@ -827,7 +896,7 @@ def build(world) -> EmitWorld:
             listed.add(guid)
             genome_entries.append({"contig_uids": [uid], "genetic_code": 11, "kind": "virus", "circular": [],
                                    "assembly_quality": "complete"})
-        objects.append({"path": rel, "source_name": str(cfg["source_name"]), "source_release": world_id,
+        objects.append({"path": rel, "source_name": str(cfg["source_name"]), "source_release": wid,
                         "license": str(cfg["license"]), "redistributable": True})
         truth_genome_rows.append(TruthGenome(*WV, p["phage_id"], p["species_node"], "src_a", ps["accession"],
                                              ps["bioproject"], guid, "virus", "MGE database", tax, tax, False, "",
@@ -931,6 +1000,7 @@ def build(world) -> EmitWorld:
                 continue
             seen_uid_genes.add(key)
             hgt, arch, mod, veh, op = gene_attrs(g["copy_label"], g["source"])
+            mod = module_of(g["family_id"], mod)
             fuid = ids.feature_uid(bytes.fromhex(pl.occ.uid), pl.start, pl.end, pl.strand, KIND["cds"]).hex()
             out_rows.append(TruthGene(*WV, fuid, g["copy_label"], pl.occ.uid, pl.start, pl.end, pl.strand,
                                       stop_bp(pl.start, pl.end, pl.strand, pl.p3), pl.p5, pl.p3, pl.end > pl.length,
@@ -1143,7 +1213,10 @@ def build(world) -> EmitWorld:
         st_, pls = placer.lifted(r["record"], 7, int(r["start"]), int(r["end"]), int(r["strand"]))
         base = (r["fusion_id"], r["kind"], r["family_a"], r["family_b"], int(r["split_domain_index"]),
                 r["clade_node"], r["genome_id"])
-        tail = (int(r["junction_aa"]), int(r["linker_aa"]), r["gene_ids"], r["expected_arch"], r["in_module"])
+        in_mod = r["in_module"]
+        if is_n1 and (r["family_a"] in relabel or r["family_b"] in relabel):
+            in_mod = ""                 # the pair's families are no longer listed in a module (N1)
+        tail = (int(r["junction_aa"]), int(r["linker_aa"]), r["gene_ids"], r["expected_arch"], in_mod)
         if not pls:
             tf.row(TruthFusion(*WV, "", *base, "", None, None, None, *tail, st_, ""))
             counts[f"fusion_{st_}"] += 1
@@ -1282,11 +1355,14 @@ def build(world) -> EmitWorld:
         if gr["kind"] not in mkind:
             continue
         for k, fam in enumerate(int(x) for x in gr["members"].split(";")):
-            tm.row(TruthModule(*WV, gr["name"], mkind[gr["kind"]], fam_id_of[fam], "core", "", k,
-                               float(gr["together"]), gr["fates"], gr["adjacent"] == "true", "", "",
-                               loci[gr["name"]] if gr["adjacent"] == "true" else None, "", "", ""))
+            fid_ = fam_id_of[fam]
+            n1_row = is_n1 and gr["kind"] == "planted"
+            tm.row(TruthModule(*WV, gr["name"], mkind[gr["kind"]], relabel.get(fid_, fid_) if n1_row else fid_, "core",
+                               "", k, float(gr["together"]), gr["fates"], gr["adjacent"] == "true", "", "",
+                               None if n1_row else loci[gr["name"]] if gr["adjacent"] == "true" else None, "", "",
+                               ""))
     for ev in _tsv(world / "fusions" / "events.tsv"):
-        if ev["kind"] != "nogd":
+        if ev["kind"] != "nogd" or is_n1:
             continue
         k = int(fam_bb[ev["family_a"]]["order_index"]) if ev["family_a"] in fam_bb else -1
         for fam, role in ((ev["family_a"], "nogd_replaced"), (ev["replacement_family"], "nogd_replacement")):
@@ -1335,6 +1411,20 @@ def build(world) -> EmitWorld:
          "treat them as independent")
     tt.close()
 
+    # --- a null world's truth: what was removed, the rules of null evaluation, N1's relabel (`nulls`)
+    if null:
+        t = _Out(tmp / "truth" / "truth_null.tsv", TruthNull)
+        for s in null["scope"]:
+            t.row(TruthNull(*WV, null["world"], s.kind, s.item_id, s.family_ids, s.action, s.rule))
+        t.close()
+        t = _Out(tmp / "truth" / "truth_null_relabel.tsv", TruthNullRelabel)
+        for r in null["relabel"]:
+            t.row(TruthNullRelabel(*WV, r.module_id, r.order_index, r.family_id, r.replacement_family_id, r.status,
+                                   r.hamming, r.n_genomes, r.replacement_n_genomes, r.transfers,
+                                   r.replacement_transfers))
+        t.close()
+        counts["null_relabeled"] = len(relabel)
+
     # --- the stage document and the world manifest
     files = {str(f.relative_to(tmp)): sequences._sha(f) for f in sorted(tmp.rglob("*")) if f.is_file()}
     digest = _digest(files, 16)
@@ -1342,21 +1432,26 @@ def build(world) -> EmitWorld:
     for d, _ in UPSTREAM:
         versions.update(docs[d].get("versions", {}))
     doc = {"format": FORMAT, "seed": seed, "preset": cfg, "params_digest": backbone.params_digest(cfg),
-           "world_id": world_id, "release_tag": release_tag,
+           "world_id": wid, "release_tag": release_tag,
            **{f"{d}_digest": docs[d]["digest"] for d, _ in UPSTREAM},
            "versions": dict(sorted(versions.items())),
            "stream_paths": ["S11/biome/<taxon>", "S11/mislabel/<source>/<genome>"],
            "counts": dict(sorted(counts.items())), "files": files, "digest": digest}
+    if null:
+        doc["null"] = {"world": null["world"], "null_seed": null.get("null_seed")}
+        doc["stream_paths"] = doc["stream_paths"] + (["N1/relabel/<family_id>"] if is_n1 else [])
     (tmp / "emit.json").write_text(json.dumps(doc, indent=1, sort_keys=True) + "\n", encoding="utf-8")
     stage_digests = {d: docs[d]["digest"] for d, _ in UPSTREAM}
     stage_digests["emit"] = digest
-    manifest = {"format": WORLD_FORMAT, "world_id": world_id, "release_tag": release_tag,
+    manifest = {"format": WORLD_FORMAT, "world_id": wid, "release_tag": release_tag,
                 "preset": preset["name"], "params_digest": backbone.params_digest(preset), "seed": seed,
                 "versions": dict(sorted(versions.items())), "panel": docs["sequences"]["panel"],
                 "motif_source": docs["replicons"]["motif_source"],
                 "stages": {d: {"format": docs[d]["format"] if d in docs else FORMAT, "digest": v}
                            for d, v in sorted(stage_digests.items())},
                 "world_digest": _digest(stage_digests, 16)}
+    if null:
+        manifest["null"] = doc["null"]
     tmp.rename(out)
     mtmp = world / "manifest.json.partial"
     mtmp.write_text(json.dumps(manifest, indent=1, sort_keys=True) + "\n", encoding="utf-8")
@@ -1375,5 +1470,5 @@ def read(world) -> EmitWorld:
                      {**doc, "manifest": man})
 
 
-__all__ = ["FORMAT", "WORLD_FORMAT", "TABLES", "check_config", "stop_bp", "assembly_quality", "window", "Placer",
-           "Occ", "Place", "build", "read", "EmitWorld"]
+__all__ = ["FORMAT", "WORLD_FORMAT", "TABLES", "NULL_TABLES", "world_id", "check_config", "stop_bp",
+           "assembly_quality", "window", "Placer", "Occ", "Place", "build", "read", "EmitWorld"]

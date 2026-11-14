@@ -228,7 +228,8 @@ def test_phage_world_preset_leaves_the_later_sections_out():
     p = backbone.load_preset("micro")
     q = mobile.phage_preset(p)
     later = ("fusions", "callerr", "assembly", "contamination", "duplicates",    # S7 (session 6), S8-S10 (session 7)
-             "emit")                                                             # S11 (session 8)
+             "emit",                                                             # S11 (session 8)
+             "nulls")                                                            # null worlds (session 9)
     assert not set(later) & set(q) and set(later) <= set(p)
     before = {k: v for k, v in p.items() if k not in ("phages", "prophages", "crispr") + later}
     assert set(q) == set(before)
