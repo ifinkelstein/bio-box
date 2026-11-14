@@ -176,10 +176,11 @@ The specification and plan behind these are [`00-spec.md`](00-spec.md), [`PLAN.m
 
 **Now** (2026-11-14; STATUS handoff)
 
-- `rM.2`, the 50 Gbp release with Pfam on every stage, is building: the Pfam scans of `P3` to `P6` finished between
-  2026-11-12 and 2026-11-14, and the release steps (clustering about 46 M proteins, then tokens, postings, manifest
-  and catalog) started on 2026-11-14. Then it is verified, its search pack is built, both worked examples are run on
-  it (AGENTS §5.7; `scripts/release_examples.sh`), and the data root is copied to durable storage.
+- `rM.2`, the 50 Gbp release with Pfam on every stage, is built and verified (2026-11-14: seven stages, 39,224
+  genomes, 45,815,843 proteins, *measured*). It is not yet the release to use: its search pack must first be built
+  (card W-35: the pack build has to run in parts to stay under the server's limit per process), then both worked
+  examples run on it (AGENTS §5.7; `scripts/release_examples.sh`). Until then use `rN.3`. The data root is being
+  copied to durable storage.
 - Tests, builds and searches on the server run in the images built from `main` at pull request 5 (cards C-29, C-32);
   the `rM.2` build alone keeps the older image, so its run records name one image.
 - S2C phase 2 is fetched (13,477 of 13,485 genomes, 2026-11-13); it is built as six stages of 9.2 to 9.5 Gbp after

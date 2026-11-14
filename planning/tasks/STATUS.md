@@ -5,7 +5,7 @@ The running record of the cards in [`TASKS.md`](TASKS.md). Updated at every merg
 by an agent on its own branch `task/<ID>`, audited by the orchestrating session, and merged after its
 tests passed on the merged tree.
 
-## Handoff, 2026-11-14 15:45 CST (current; the dated sections under "History" are superseded where they differ)
+## Handoff, 2026-11-14 17:50 CST (current; the dated sections under "History" are superseded where they differ)
 
 Written so a new session can continue without the conversation that produced this file. Times are the pod's clock
 (CST); read it with `ssh ... date` before writing a time here.
@@ -16,41 +16,49 @@ the PI at the S2C phase 2 build and at a failed release check. The usage limit h
 (2026-11-13 15:45 and 20:55, 2026-11-14 01:40 twice counting the orchestrator, and the weekly limit at about 12:20): an agent stopped that way is resumed
 with `SendMessage` to the same agent once the limit resets; nothing is lost.
 
-**State on 2026-11-14 at 15:45 CST.**
+**State on 2026-11-14 at 17:50 CST.**
 
-*The one thing running: the 50 Gbp release `rM.2`.*
-- All four Pfam scans are published (P3 2026-11-12 22:37, P4 2026-11-13 08:06, P5 2026-11-13 evening, P6 2026-11-14
-  04:52). The tree of `plan/task-cards` at `5ba68a6` was synced to `/tmp/if2453/ci/r50` at 05:50, after its
-  release-step tests passed in the build's own old image (`bio-box-test_74b3e05.sif` with `pilot_s1/pydeps`: 1,239
-  passed, 4 skipped, *measured*), so the release keeps one image.
-- First launch: unit `r50-rM2-13`, 05:52 to 09:31, 32 threads (24 clustering parts, 3 at once, 10 threads each). It
-  published 109 steps: the NR90 step through its second prefilter, parts 0 to 20 of 24 (4,119 CPU-minutes, *derived*
-  from the unit's `CPUUsageNSec`).
-- **Relaunched with more threads at the PI's request** ("can increase to 40 threads?", 09:20). More parts at once is
-  not possible: each prefilter part holds about 52 GB and three already fill the unit's 200 GB cap (*measured*:
-  `MemoryPeak` 214,748,364,800). More threads per part is: the orchestrator wrote `STOP` in the root at 09:28, at the
-  end of that prefilter call; `build-stage` let the running parts end, did not publish the three that ended after
-  `STOP` appeared (they are rerun: about 13 minutes of work), and exited 75; the driver wrote `FAILED` (kept as
-  `driver/FAILED.0931-threads`) and ended. `STOP` was removed and the driver relaunched at 09:31 with
-  `SKIP_RM1=1 REL_CPUS=16 BIG_THREADS=48`: **unit `r50-rM2-14`, 48 threads, 3 parts of 16 threads**, under the weekend
-  cap of 56 (the build's log: "allowance 56 threads: cap 56 (Sat 09:31, night or weekend)"). Log
-  `/tmp/if2453/r50/tmp/logs/r50-rM2-14.log`; driver log `/tmp/if2453/r50/driver.log`; the driver's stdout
-  `/tmp/if2453/r50/driver.out`. Its single-process start took 21.5 minutes (09:31:43 to 09:53:16; the first launch spent 13 minutes
-  there), and at 09:53 the three unpublished prefilter parts started again, each with "allowance 16 threads of 16 asked". So a pause costs about 35 minutes: plan for it before the next one.
-- If it is still running on Monday at 08:00 the cap falls to 40: stop it the same way before then and relaunch with
-  `REL_CPUS=13 BIG_THREADS=40`. To pause without relaunching: `touch /tmp/if2453/r50/driver/HALT` stops the driver
-  before its next launch only; `STOP` in the root stops the build after its running parts.
-- At 15:44 the clustering parts were done and the step's single-process finish was running (`release cluster finish`, since 15:37; 1,299 run records; scratch 106 GB; 287 GB free on `/tmp`). Ahead: tokens, postings, the dimension tables, manifest and catalog;
-  the driver then verifies `rM.2` and `rN.3` and writes `driver/DONE`, or `driver/FAILED`. Estimate: evening of
-  2026-11-14 (about 13,000 to 15,000 CPU-minutes left of card B-43's 16,918 to 18,910 at 50 M proteins, at 48
-  threads less the single-thread steps; *estimate*). A watcher in the orchestrating session reports the end.
-- Free space on `/tmp`: 300 GB at 14:41 after the scratch cleanup (240 GB before it); clustering scratch 120 GB at 14:24, 148 GB at the peak of `rM.1`.
-- **After it, in order**: (1) read `driver/verify-rM.2.log`; (2) build the search pack of `rM.2` (RUNBOOK §7;
-  `rN.1`'s took 86 CPU-minutes for 10 Gbp); (3) `scripts/release_examples.sh rM.2` (RUNBOOK §6, AGENTS §5.7; needs
-  the pack; a failed invariant stops the announcement); (4) copy the data root `/tmp/if2453/r10/root` to `/stor` (it
-  is on local disk only: a reboot loses every build); (5) finish `rM.1`'s release steps (the driver skipped them:
-  `SKIP_RM1`; card B-46 ran them clean in scratch); (6) the CRISPR step, both producers since card E-15 (`--crispr` with the stage's Pfam library, or `stage crispr` then `stage crispr --near-cas`), on the seven built stages with the code of `plan/task-cards` in the image of
-  `faec1f4` (about 2.5 CPU-hours for the default producer, 1.19 times that again for the filtered one, *derived*), as stage files of their own for the release after `rM.2`.
+*The 50 Gbp release `rM.2` is built and verified* (2026-11-14 17:32 CST).
+- `build-stage: stage P6 and release rM.2: all 13 steps done` at 17:27; `release verify` at 17:30: "release rM.2:
+  verified (stages S1,P1,P2,P3,P4,P5,P6, 158 files, 154 artifacts, manifest hash
+  2239df7b92ec775058fb9c2ddae3609e)"; `rN.3` verified again after it (manifest hash unchanged,
+  `eee598acd16324d1dd73349cfd6d931f`); the driver wrote `driver/DONE` at 17:32 (*measured*, wilkcomp02,
+  `/tmp/if2453/r50/driver.log`, `driver/verify-rM.2.log`). `bio-box releases`: 39,224 genomes, 54,265 contigs,
+  45,815,843 proteins, Pfam 38.2, with the lookup tables and the domain-family tokens; no search pack yet.
+- Cost of the release steps (*derived* from the two units' `CPUUsageNSec`): 4,119 CPU-minutes in `r50-rM2-13`
+  (05:52 to 09:31, 32 threads) and 10,531 in `r50-rM2-14` (09:31 to 17:27, 48 threads: 3 clustering parts of 16),
+  14,650 in all, against card B-43's estimate of 16,918 to 18,910 at 50 M proteins: 13% under its lower end.
+  Largest single step 238 CPU-minutes; memory peak 177.6 GB in the second unit (the first reached its 200 GB cap);
+  clustering scratch peaked at 148.8 GB. One pause at the PI's request for more threads (09:28 to 09:53, about 35
+  minutes; `driver/FAILED.0931-threads` is its record, not a failure of the build).
+- The build ran in the old image (`bio-box-test_74b3e05.sif` with `pilot_s1/pydeps`) and the tree `5ba68a6`
+  (`/tmp/if2453/ci/r50`), as every earlier step of its stages, so its run records name one image. Its tests passed
+  in that image before the launch (1,239 passed, 4 skipped, *measured*).
+- **Durable copy**: the data root `/tmp/if2453/r10/root` (81 GB) is being copied to
+  `/stor/scratch/Wilke/if2453/all-the-data/provisional/root_rM2_20261114/` since 17:38, as four uncompressed tars
+  (`l1_and_records.tar`: `l1` with the small directories `catalog`, `dim`, `l0`, `ledger`, `manifests`,
+  `release_def`, `runs`, which together are 26 MB and so cannot be a file of their own on `/stor`; `l3.tar`;
+  `l2.tar`; `l0seq.tar`). Unit `root-backup`, one thread; script, log and hashes in `/tmp/if2453/backup/`
+  (`root_backup.sh`, `backup.log`, `SHA256`). Each tar is written under a dot-named temporary name, read back from
+  `/stor`, its sha256 compared with the same tar stream made again from the source, then renamed; nothing on `/stor`
+  is overwritten; no manifest file is written there (it would be under 64 MB): the hashes are recorded in this file
+  when the copy ends. **Until then a reboot of the pod still loses every build.** Nothing may write into the root
+  while it runs (the two streams would differ).
+- **What `rM.2` still needs before it is announced as the release to use** (AGENTS §5.7):
+  1. Its search pack. **Not started, and it cannot be built as it is**: `pack build` is one process, 86.0
+     CPU-minutes on `rN.1` (*measured*), so about 350 to 430 at 50 Gbp (*derived*), above the 300 CPU-minutes of
+     AGENTS §7.2. Card W-35 (tier M) makes the build run in parts with a byte-identical pack; it is first in the
+     queue for a heavy agent.
+  2. `scripts/release_examples.sh rM.2` (RUNBOOK §6): needs the pack. A failed invariant stops the announcement.
+- **After the copy ends, in order**: (a) finish `rM.1`'s release steps (tokens, postings, dimension tables,
+  manifest, catalog; the driver skipped them under `SKIP_RM1`, and card B-46 fixed what made them fail): relaunch
+  the driver without `SKIP_RM1` (old image and tree, as the rest of `rM.1`); it skips every phase whose result
+  exists; then a second, small durable copy of what it added. (b) Card C-33: the CRISPR arrays of both producers on
+  the seven built stages and the release that holds them (DEC-40). (c) Card C-24 (stage H1), then C-26 (PLSDB),
+  each with the image of `faec1f4`: **the next build sets `IMAGE` and `DIGEST` in its driver to the values of
+  RUNBOOK §0**. (d) C-25 step 3 and B-47a to B-47e (S2C phase 2), then ncRNA (DEC-42).
+- The pod's cap falls to 40 threads on Monday at 08:00 (weekday days): nothing of ours may then use more.
+- Free space on `/tmp`: 374 GB at 17:35 (the build's scratch is gone; the cleanup of 14:41 freed 60 GB).
 
 *Code and images.*
 - `main` is at pull request 5 (merge commit `faec1f4`, 2026-11-13). The images built from it are the pod's default
@@ -72,11 +80,13 @@ W-30, W-31, A-08, E-11, E-12, E-13, E-14, F-02 sessions 4 to 10 (10 is a measure
 - **The statistics track** (F-01, F-03 and the rest of F-02): waits for the synthetic world's redesign (F-02 session
   11, running again since 12:14: DEC-36, DEC-37), then the sequence model so that detectability falls with divergence
   (session 12, DEC-39), then the N2 worlds, the ablation worlds and validation.
-- **S2C phase 2** (56 Gbp, fetched and on `/stor`): waits for pod threads. Card C-25 step 3 and cards B-47a to B-47e
-  (DEC-34, DEC-35) start when the `rM.2` build ends.
-- **Short CRISPR arrays** on Tn7-like elements: card E-15 is merged (DEC-40; 14 of the 20 Tn7-like TniQ loci of the example now have an array). The arrays enter a release when the CRISPR step is run on the built stages, after `rM.2`. Open: the chance rate on phages (card E-16).
-- After `rM.2`: stage H1 (card C-24) and PLSDB (card C-26), the CRISPR step on the built stages (DEC-40), then ncRNA
-  on the 50 Gbp (DEC-42).
+- **S2C phase 2** (56 Gbp, fetched and on `/stor`): the pod is free for it since the `rM.2` build ended (17:27).
+  Card C-25 step 3 and cards B-47a to B-47e (DEC-34, DEC-35) are next in the build queue after H1 and PLSDB.
+- **Short CRISPR arrays** on Tn7-like elements: card E-15 is merged (DEC-40; 14 of the 20 Tn7-like TniQ loci of the example now have an array). The arrays enter a release with card C-33 (the CRISPR step on the seven built stages). Open: the chance rate on phages (card E-16).
+- **`rM.2`'s announcement**: waits for its search pack (card W-35: the pack build must run in parts under the CPU
+  budget) and then for both worked examples on it (AGENTS §5.7). Until then `rN.3` is the release to use.
+- Builds queued on the pod, one at a time in the root: `rM.1`'s release steps, card C-33 (arrays), stage H1 (card
+  C-24), PLSDB (card C-26), S2C phase 2, then ncRNA on the 50 Gbp (DEC-42).
 - **Scratch cleanup on the pod** (DEC-42 allows it): the large part was done at 14:41 on 2026-11-14 ("On the pod"
   below says what went and what is left). For the rest: remove only what the decision lists, each target
   looked at first (`du`, `ls`), never `/tmp/if2453/r10`, `/tmp/if2453/r50`, `/tmp/if2453/ci/r50`,
@@ -137,23 +147,24 @@ schema's hash, so it moves with any schema change (last: card E-12).
 Done and merged since: W-34 (Sonnet; the help text of `bio-box results`), at 15:45.
 Done and merged today after the restart: W-33 (14:05 to 14:55) and E-15 (its second agent, 14:00 to 15:25). The
 account's weekly usage limit stopped the two Opus agents at about 12:20 (the fifth such stop; the message gave a
-reset on 2026-11-19 at 13:00); the PI logged in again and both were resumed with `SendMessage` at 14:00. Queued:
-F-02 session 12 (detectability against divergence, DEC-39; after session 11), E-16 (the filtered CRISPR producer's
-chance rate on phages; tier M, Opus, when a heavy slot is free).
+reset on 2026-11-19 at 13:00); the PI logged in again and both were resumed with `SendMessage` at 14:00. Queued
+for the next free heavy slot, in this order: W-35 (the pack build in parts; it blocks `rM.2`'s announcement), C-33
+(arrays on the built stages), F-02 session 12 (detectability against divergence, DEC-39; after session 11), E-16
+(the filtered CRISPR producer's chance rate on phages).
 
 **On the pod** (wilkcomp02; account thread cap 40 by day on weekdays, 56 at night and at weekends, a total over
-everything we run; the PI keeps that cap). State on 2026-11-14 at 09:45 CST:
-- **The 50 Gbp build** (the state block above has the live detail): driver unit `r50-driver` (log
-  `/tmp/if2453/r50/driver.log`; state `/tmp/if2453/r50/driver/`; its copy of the driver script is
-  `/tmp/if2453/r50/bin/r50_driver.sh`, older than the repository's), build unit `r50-rM2-14`. `rM.1` is clustered
-  (45,815,843 proteins, 31,183,876 NR90 and 8,192,065 NR50 clusters, *measured*) and its other release steps are not
-  run. The driver writes a temporary `STOP` in the root when it changes the shard count of a scan (its text says
-  "switching"): that is not a failure. Watch test for the end: `[ -e /tmp/if2453/r50/driver/DONE ] || [ -e
-  /tmp/if2453/r50/driver/FAILED ] || { [ -e /tmp/if2453/r10/root/STOP ] && ! grep -q 'switching from'
-  /tmp/if2453/r10/root/STOP; } || ! systemctl --user is-active --quiet r50-driver`.
-- Data root `/tmp/if2453/r10/root` (stages S1, P1 to P6, each with Pfam 38.2; releases `rN.1a`, `rN.1b`, `rN.1`,
-  `rN.2`, `rN.3`, and `rM.1` and `rM.2` in progress): **not yet on `/stor`**. `rN.3` is the release to use; its pack is
-  in `/tmp/if2453/bio-box/packs` (found with `--profile`).
+everything we run; the PI keeps that cap). State on 2026-11-14 at 17:50 CST:
+- **The 50 Gbp build is done** (the state block above): driver unit `r50-driver` ended with `driver/DONE` at 17:32
+  (log `/tmp/if2453/r50/driver.log`; state `/tmp/if2453/r50/driver/`; its copy of the driver script is
+  `/tmp/if2453/r50/bin/r50_driver.sh`, older than the repository's). `rM.1` is clustered (45,815,843 proteins,
+  31,183,876 NR90 and 8,192,065 NR50 clusters, *measured*) and its other release steps are not run: relaunching the
+  driver without `SKIP_RM1` runs them and nothing else (old image and tree; only after the durable copy has ended).
+  The files `driver/FAILED.*` are records of earlier stops (2026-11-11, 2026-11-12, and the pause of 09:31 today),
+  not of this build's end.
+- Data root `/tmp/if2453/r10/root` (81 GB; stages S1, P1 to P6, each with Pfam 38.2; releases `rN.1a`, `rN.1b`,
+  `rN.1`, `rN.2`, `rN.3`, `rM.2`, all with a manifest, and `rM.1` clustered only): **being copied to `/stor`** since
+  17:38 (unit `root-backup`; state block above). `rN.3` is the release to use; its pack is in
+  `/tmp/if2453/bio-box/packs` (found with `--profile`). `rM.2` has no pack yet (card W-35).
 - **S2C phase 2 inputs**: all on `/stor` under `provisional/s2c_phase2/` (`s2c_phase2_genomes.tar`, 4,617 genomes,
   5,134,489,600 bytes; `s2c_phase2_rest_genomes.tar`, 8,860 genomes, 11,234,908,160 bytes; hashes in `sources.yaml`).
   On `/tmp`: the selection under `/tmp/if2453/c27/out_ani/` and the pair table `/tmp/if2453/c27/ani/ani_pairs.tsv`;
@@ -180,11 +191,14 @@ everything we run; the PI keeps that cap). State on 2026-11-14 at 09:45 CST:
   `pydeps_f02`, `pydeps_w27`. Not listed by the decision and so kept: `/tmp/if2453/b43` (20 GB).
 
 **Next, in order.**
-1. The `rM.2` build's end and the six steps after it (state block above).
-2. Card C-24 (stage H1, huge phages), then C-26 (PLSDB), each with the image of `faec1f4` and `--crispr`.
-3. Decided on 2026-11-14 (DEC-34, DEC-35): card C-25 step 3 and cards B-47a to B-47e, then the S2C phase 2 build, once the pod is free. Waiting on the PI (open items):
-   F-02's redesign over seeds, then the N2 worlds, the ablation worlds, validation, and F-03; the filtered
-   two-repeat CRISPR producer (a card E-15 to be written on a yes).
+1. The durable copy of the data root (running), then `rM.1`'s release steps and a second small copy.
+2. Card W-35 (the pack of `rM.2` in parts), then `scripts/release_examples.sh rM.2`, then the announcement of `rM.2`
+   in `README.md` and `GUIDE.md`.
+3. Card C-33 (CRISPR arrays on the built stages), card C-24 (stage H1, huge phages), then C-26 (PLSDB), each with
+   the image of `faec1f4` and `--crispr`; then card C-25 step 3 and cards B-47a to B-47e and the S2C phase 2 build
+   (DEC-34, DEC-35).
+3b. The statistics track: F-02 session 11 (running), session 12, then the N2 worlds, the ablation worlds,
+   validation, and F-03.
 4. Cards ready that need no decision: the `--json` forms of `nbr` with arrays (needs a card allowed to regenerate the
    JSON schema lock); W-26 (accession table; not needed yet). E-10 (tRNA caller) needs the PI's pin.
 5. Agents' commit messages: the harness asks agents for a `Co-Authored-By` line and AGENTS §10 forbids footers; say
