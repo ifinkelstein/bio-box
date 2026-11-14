@@ -35,8 +35,8 @@ with `SendMessage` to the same agent once the limit resets; nothing is lost.
   `SKIP_RM1=1 REL_CPUS=16 BIG_THREADS=48`: **unit `r50-rM2-14`, 48 threads, 3 parts of 16 threads**, under the weekend
   cap of 56 (the build's log: "allowance 56 threads: cap 56 (Sat 09:31, night or weekend)"). Log
   `/tmp/if2453/r50/tmp/logs/r50-rM2-14.log`; driver log `/tmp/if2453/r50/driver.log`; the driver's stdout
-  `/tmp/if2453/r50/driver.out`. At 09:40 it was still in its single-process start (the first launch spent 13 minutes
-  there before its first clustering step).
+  `/tmp/if2453/r50/driver.out`. Its single-process start took 21.5 minutes (09:31:43 to 09:53:16; the first launch spent 13 minutes
+  there), and at 09:53 the three unpublished prefilter parts started again, each with "allowance 16 threads of 16 asked". So a pause costs about 35 minutes: plan for it before the next one.
 - If it is still running on Monday at 08:00 the cap falls to 40: stop it the same way before then and relaunch with
   `REL_CPUS=13 BIG_THREADS=40`. To pause without relaunching: `touch /tmp/if2453/r50/driver/HALT` stops the driver
   before its next launch only; `STOP` in the root stops the build after its running parts.
