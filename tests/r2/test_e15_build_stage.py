@@ -8,8 +8,9 @@ producer:
   `--crispr` and no `pfam` library (the C-04 fixture's library is `test-1`) the list is card E-12's, unchanged, and
   the build says in one line that only the default producer runs;
 - a build with `--crispr --library pfam 38.2 ...` ends with the default producer's files byte-identical to card
-  E-12's build and the filtered producer's files equal to the direct call on the same stage; a second call runs no
-  step's command again and changes no file;
+  E-12's build and the filtered producer's files equal to the direct call on the same stage; every other file equals
+  the same build's without the filtered step (manifest and catalog apart); a second call runs no step's command again
+  and changes no file;
 - the filtered step's estimate is the default's at `CRISPR_NEAR_CAS_COST` times its rate; above 80% of the budget it is
   refused (exit 2) before it runs, after the default step ran.
 """
@@ -121,6 +122,29 @@ def test_the_build_adds_both_producers_files_and_keeps_the_defaults_bytes(direct
     crispr.run_near_cas(root, "S0", 1, library_version=PFAM_VERSION, tmp=tmp_path / "scratch", out=out,
                         seq_stages=["S0"])
     assert c08.tree(out) == added
+
+
+@pytest.fixture(scope="module")
+def default_only(direct, tmp_path_factory):
+    """The same build (--crispr, the pfam library) with the filtered step taken out of the step list: card E-12's
+    build on this library."""
+    root = tmp_path_factory.mktemp("e15-default-only") / "root"
+    with pytest.MonkeyPatch.context() as mp:
+        mp.setattr(bs, "cas_libraries", lambda b: ())
+        assert cli.main(argv_pfam(direct, root)) == 0
+    return root
+
+
+def test_every_other_file_of_the_build_is_byte_identical(built, default_only):
+    """The filtered step adds its three files and changes no other (the manifest and catalog apart, which list them)."""
+    p2 = near_name().removeprefix("crispr-")
+    mine, before = c08.data(c08.tree(built)), c08.data(c08.tree(default_only))
+    added = {k for k in mine if k not in before}
+    assert {k: mine[k] for k in before} == before
+    assert sorted(added) == sorted([f"l1/feature/producer={p2}/stage=S0/part-0.parquet",
+                                    f"l1/crispr/producer={p2}/stage=S0/part-0.parquet",
+                                    f"ledger/stage=S0/step=crispr-{p2}/part-0.parquet"])
+    assert not (default_only / "runs/stage=S0" / f"{near_name()}.json").exists()
 
 
 def test_a_second_call_runs_no_command_and_changes_no_file(direct, built, tmp_path):
