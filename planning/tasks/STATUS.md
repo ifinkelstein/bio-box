@@ -44,7 +44,7 @@ with `SendMessage` to the same agent once the limit resets; nothing is lost.
   the driver then verifies `rM.2` and `rN.3` and writes `driver/DONE`, or `driver/FAILED`. Estimate: evening of
   2026-11-14 (about 13,000 to 15,000 CPU-minutes left of card B-43's 16,918 to 18,910 at 50 M proteins, at 48
   threads less the single-thread steps; *estimate*). A watcher in the orchestrating session reports the end.
-- Free space on `/tmp`: 292 GB at 09:40; clustering scratch 49 GB then, 148 GB at the peak of `rM.1`.
+- Free space on `/tmp`: 300 GB at 14:41 after the scratch cleanup (240 GB before it); clustering scratch 120 GB at 14:24, 148 GB at the peak of `rM.1`.
 - **After it, in order**: (1) read `driver/verify-rM.2.log`; (2) build the search pack of `rM.2` (RUNBOOK §7;
   `rN.1`'s took 86 CPU-minutes for 10 Gbp); (3) `scripts/release_examples.sh rM.2` (RUNBOOK §6, AGENTS §5.7; needs
   the pack; a failed invariant stops the announcement); (4) copy the data root `/tmp/if2453/r10/root` to `/stor` (it
@@ -77,7 +77,8 @@ W-30, W-31, A-08, E-11, E-12, E-13, E-14, F-02 sessions 4 to 10 (10 is a measure
 - **Short CRISPR arrays** on Tn7-like elements: card E-15 (running again since 12:14; DEC-40).
 - After `rM.2`: stage H1 (card C-24) and PLSDB (card C-26), the CRISPR step on the built stages (DEC-40), then ncRNA
   on the 50 Gbp (DEC-42).
-- **Scratch cleanup on the pod** (DEC-42 allows it): not done yet. Remove only what the decision lists, each target
+- **Scratch cleanup on the pod** (DEC-42 allows it): the large part was done at 14:41 on 2026-11-14 ("On the pod"
+  below says what went and what is left). For the rest: remove only what the decision lists, each target
   looked at first (`du`, `ls`), never `/tmp/if2453/r10`, `/tmp/if2453/r50`, `/tmp/if2453/ci/r50`,
   `/tmp/if2453/pilot_s1` while the `rM.2` build runs, never a running agent's directories, nothing under `/stor`.
 
@@ -160,16 +161,27 @@ everything we run; the PI keeps that cap). State on 2026-11-14 at 09:45 CST:
 - **S2C phase 2 inputs**: all on `/stor` under `provisional/s2c_phase2/` (`s2c_phase2_genomes.tar`, 4,617 genomes,
   5,134,489,600 bytes; `s2c_phase2_rest_genomes.tar`, 8,860 genomes, 11,234,908,160 bytes; hashes in `sources.yaml`).
   On `/tmp`: the selection under `/tmp/if2453/c27/out_ani/` and the pair table `/tmp/if2453/c27/ani/ani_pairs.tsv`;
-  the fetched genomes under `/tmp/if2453/c25/genomes/` (11.2 GB; keep while stages are built from local disk).
+  the fetched genomes as loose files, the 4,617 kept of the 243 large species under `/tmp/if2453/c27/genomes/`
+  (5.1 GB) and the 8,860 of the rest under `/tmp/if2453/c25/genomes/` (11.2 GB): keep both while stages are built
+  from local disk.
 - Scratch views that hold CRISPR arrays for the 10 Gbp stages, read-only on the root: `/tmp/if2453/e12/view` (the
   producer's outputs for S1, P1, P2), `/tmp/if2453/e13/` (the same at two repeats), `/tmp/if2453/e14/view` (a view of
   `rN.3` with the arrays, which the guides' worked command names).
 - Worked examples' outputs on `rN.3`: `/tmp/if2453/e11/acc` (the release check), `/tmp/if2453/ex2/rN.3-b`.
-- Scratch that can be cleared once the PI agrees (nothing is deleted without that): the 23,840 candidate genomes not
-  kept and the sketches (`/tmp/if2453/c27/genomes`, about 29.7 GB, and `/tmp/if2453/c27/skani`, 13.6 GB), the local
-  copy of a tar (`/tmp/if2453/c25/archive/`, 11.2 GB), `/tmp/if2453/b46`, `m08a`, `m08b`, `c21f`, `e09`, `w25`, `w27`,
-  `w15`, `f028`, `f0210`, old pack copies under `w16` and `w19`, old `ci/<ID>` trees, and, once the `rM.2` build is
-  done, the dependency directories `pilot_s1/pydeps`, `pydeps_f02`, `pydeps_w27`.
+- **Scratch removed under DEC-42** (2026-11-14, 14:40 to 14:41; scripts and file lists in `/tmp/if2453/cleanup/`:
+  `verify.sh`, `rm1.sh`, `notkept.txt`, `kept.txt`, `stor.sha256`). First the two tars on `/stor` were read back and
+  their sha256 equal `sources.yaml`'s (*measured*, `sha256sum`, 14:38). Then removed: the 23,840 candidate genomes
+  the ANI selection did not keep (29,662,981,149 bytes, by name from the fetched files less the tar's members; the
+  4,617 kept stay, their names equal the tar's list afterwards), the skani sketches (`/tmp/if2453/c27/skani`,
+  13,614,384,499 bytes), and the local copies of the two tars (`/tmp/if2453/c25/archive/s2c_phase2_rest_genomes.tar`,
+  11,234,908,160 bytes, and `/tmp/if2453/c27/archive/s2c_phase2_genomes.tar`, 5,134,489,600 bytes; their listing
+  and record files stay). In all 59,646,763,408 bytes (*derived*: the sum; *measured* by `df`: free space rose from
+  240.1 to 299.8 GB while the build ran). Nothing under `/stor` was touched.
+- Scratch still to clear under DEC-42, not urgent: `/tmp/if2453/b46` (12 GB; after `rM.1`'s release steps are run in
+  the root, in case its clean scratch run is wanted beside them), `m08a`, `m08b`, `c21f`, `e09`, `w25`, `w27`, `w15`,
+  old pack copies under `w16` and `w19`, old `ci/<ID>` trees (4 GB in all), `f028` and `f0210` once F-02's sessions
+  no longer read them, and, once the `rM.2` build is done, the dependency directories `pilot_s1/pydeps`,
+  `pydeps_f02`, `pydeps_w27`. Not listed by the decision and so kept: `/tmp/if2453/b43` (20 GB).
 
 **Next, in order.**
 1. The `rM.2` build's end and the six steps after it (state block above).
