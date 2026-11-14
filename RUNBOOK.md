@@ -33,7 +33,7 @@ export MEM=8G                                        # real: 200G (the profile's
 export WORK=/tmp/if2453/c06                          # your scratch directory for inputs and outputs
 export BBTMP=/tmp/if2453/c06/tmp                     # the profile's tmp (real: /tmp/if2453/bio-box)
 export ROOT=/tmp/if2453/c06/root                     # the data root you build into
-export DURABLE=/tmp/if2453/w28/one/durable           # the profile's durable (real: /stor/work/Wilke/if2453/all-the-data)
+export DURABLE=/tmp/if2453/w28/one/bulk              # the profile's bulk (real: /stor/scratch/Wilke/if2453/all-the-data; card W-33)
 SCOPE=(systemd-run --user --scope --quiet -p MemoryMax="$MEM" -p MemorySwapMax=0 nice -n 19)
 SING=(singularity exec --cleanenv --env PYTHONPATH="$PYTHONPATH_POD" --env OMP_NUM_THREADS=2 --bind /tmp/if2453 --bind /sys/fs/cgroup:/sys/fs/cgroup:ro)
 bio-box() { "${SCOPE[@]}" "${SING[@]}" "$IMAGE" python -m biobox.cli "$@"; }
@@ -795,9 +795,11 @@ says so in a line that begins `note`. A run that ends other than `ok` exits 1 an
 `pack build` command to run; it does not build the pack.
 
 **Keep the results** (card W-28, DEC-33). The runs directory and every `--out` are on `/tmp`, which
-a reboot may clear. `results` keeps a closed run on the profile's durable storage, in the results
-area `$DURABLE/results` (real: `/stor/work/Wilke/if2453/all-the-data/results`), with no file under
-64 MB on `/stor` (AGENTS 7.3) and nothing there overwritten or deleted (AGENTS 7.5):
+a reboot may clear. `results` keeps a closed run under the profile's `bulk` area (DEC-42, card W-33),
+in the results area `$DURABLE/results` (`$DURABLE` here is the profile's `bulk`; real:
+`/stor/scratch/Wilke/if2453/all-the-data/results`; the profile's `durable` key is not read), with no file
+under 64 MB on `/stor` (AGENTS 7.3) and nothing there overwritten or deleted (AGENTS 7.5). `bulk` itself
+is made by the PI; `flush` makes the one directory `results` in it and nothing else outside it:
 
 - `results archive RUN --with DIR ...` writes the run's directory (its record and tables) and each
   output named with `--with` (the `search hmm` DIR, the `nbr --format tsv` DIR, an `nbr flanks` DIR,
@@ -805,8 +807,10 @@ area `$DURABLE/results` (real: `/stor/work/Wilke/if2453/all-the-data/results`), 
   local disk. Since card W-29 an output directory written from a run holds a `RUN` file (the run id and
   the release), and `--under DIR` finds every such directory up to four levels below DIR, so naming each
   one is needed only for single files and for directories written before that card; a DIR whose `recipe.yaml` is not the run's recipe is another
-  run's and is refused. The same run archived again is a no-op (exit 0, said on stderr); with other
-  files or outputs it is refused (exit 2), naming both sha256. The tar has sorted names, mtime 0, no
+  run's and is refused. The same run archived again is a no-op (exit 0, said on stderr); archived
+  again with other files or outputs (DEC-42: a run may be archived again later) it is a second archive
+  of the run, written beside the first, which is never changed; an archive is told apart by its sha256.
+  The tar has sorted names, mtime 0, no
   owner, no host or path, and the run's own date (`submitted_at`) in its manifest line: the same run
   gives the same bytes on any host.
 - `results flush` packs every spooled run into one bundle, `results-<first day>-<last day>-<hash>.tar`,
@@ -817,16 +821,17 @@ area `$DURABLE/results` (real: `/stor/work/Wilke/if2453/all-the-data/results`), 
   bundle; it breaks AGENTS 7.3 and needs the PI's agreement. A bundle is copied to a dot-named
   `.results-*.part-*` file there, read back, then renamed; a flush killed before the rename leaves
   that file, which no command reads and `results list` names: only the PI removes it.
-- `results list` prints one line per kept run, flushed or spooled, with where it is, from the
-  manifests only (a bundle's first member). `results get RUN --out DIR` restores the run into a new
-  or empty DIR (`FILES.tsv`, `run/`, `outputs/<name>/`) and checks every file's sha256; a mismatch
-  exits 1 and writes no DIR.
+- `results list` prints one line per kept archive, flushed or spooled, with where it is, from the
+  manifests only (a bundle's first member); a run archived twice has two lines. `results get RUN --out DIR`
+  restores the run into a new or empty DIR (`FILES.tsv`, `run/`, `outputs/<name>/`) and checks every
+  file's sha256; a mismatch exits 1 and writes no DIR. A run with several archives: `get RUN` takes the
+  one with the most files (then the most bytes, then the smallest sha256) and says so on stderr, naming
+  all of them; `get RUN:SHA256PREFIX` takes the one whose sha256 starts so.
 
-The image sees the durable storage only when it is bound, so these run through `pod_run.sh` with
-`--bind "$DURABLE"`. Until the PI has made `/stor/work/Wilke/if2453/all-the-data` (it is not on the
-pod as of 2026-11-12), every `results` command with the real profile fails: without the bind it exits
-2 with `the profile's durable storage ... does not exist`, and with it the image cannot start, since
-it cannot bind a missing directory. The first flush onto `/stor` is the PI's step.
+The image sees `bulk` only when it is bound, so these run through `pod_run.sh` with
+`--bind "$DURABLE"` (the profile's `bulk`; the image cannot start when the bound directory is missing).
+`archive` needs only the local spool, so it runs without `bulk`; `flush`, `list` and `get` exit 2 with
+`the profile's bulk area ... does not exist` when `bulk` is missing.
 
 ```bash
 bash "$TREE/scripts/pod_run.sh" --profile "$PROFILE" --image "$IMAGE" --digest "$DIGEST" --mem 8G --threads 1 --bind /tmp/if2453 --bind "$DURABLE" --env PYTHONPATH="$PYTHONPATH_POD" w28-archive results archive "$RUN" --profile "$PROFILE" --with "$WORK/hmm" --with "$WORK/nbr"
@@ -1013,8 +1018,8 @@ a profile value is missing from this table.
 | Search pack directory | `<tmp>/packs` (`/tmp/if2453/bio-box/packs`), the host's one, outside the data root; with `--profile`, else `--pack-dir`. Only a `pack build` that makes a pack writes into it: it may be read-only for all but its builder | profile `tmp`; `default_pack_base` in `src/biobox/search/runner.py`; cards W-03, W-22 |
 | Search runs and work directories | `<tmp>/search/<user>/runs` and `<tmp>/search/<user>/work`, one per user, outside the data root; with `--profile`, else `--runs` and `--work` | profile `tmp`; `default_runs_dir`, `default_work_base` in `src/biobox/search/runner.py`; card W-03 |
 | `search run` in a `pod_run.sh` unit | only with `--wait`; without it, refused (exit 2) | `BIOBOX_POD_UNIT` in `scripts/pod_run.sh` and `src/biobox/cli.py`; card W-13 |
-| Durable results | `/stor/work/Wilke/if2453/all-the-data` | profile `durable` |
-| Results area | `<durable>/results` (`/stor/work/Wilke/if2453/all-the-data/results`), or `--results` inside `durable` (decided on the resolved path and the file system's device, never the spelling); only bundles of at least `small_file_floor_bytes`, never overwritten or deleted; `--below-floor` only with the PI's agreement | profile `durable`, `small_file_floor_bytes`; DEC-33; `biobox.search.results`; card W-28 |
+| Durable directory (`durable`) | `/stor/work/Wilke/if2453/all-the-data`: never existed on the pod (2026-11-12); `results` does not read it (DEC-42) | profile `durable` |
+| Results area | `<bulk>/results` (`/stor/scratch/Wilke/if2453/all-the-data/results`), or `--results` inside `bulk` (decided on the resolved path and the file system's device, never the spelling); only bundles of at least `small_file_floor_bytes`, never overwritten or deleted; a run archived again with other outputs is a second archive; `--below-floor` only with the PI's agreement | profile `bulk`, `small_file_floor_bytes`; DEC-33, DEC-42; `biobox.search.results`; cards W-28, W-33 |
 | Results spool | `<tmp>/results/spool` (`/tmp/if2453/bio-box/results/spool`), local disk: archived runs wait there until a flush reaches the floor | profile `tmp`; card W-28 |
 | Bulk results | `/stor/scratch/Wilke/if2453/all-the-data` | profile `bulk` |
 | Results reach the data root | one `rsync`, then an atomic rename | AGENTS 7.3 |
@@ -1045,7 +1050,7 @@ exemption; the fixture's clustering is far under 300 CPU-minutes). Appendix B li
 | No detached search in a unit | `search run` without `--wait` in a `pod_run.sh` unit is refused (exit 2): the unit would stop the detached runner when the command returns (section 7). Use `--wait`; `search status` and `search cancel` work on a `--wait` run from another shell | W-13 |
 | `pod_run.sh` and the profile | `pod_run.sh --profile` sets the unit's limits only; it does not pass the profile to `bio-box` (no `BIOBOX_PROFILE` in the image). Give `bio-box` its own `--profile`, or the pack, runs and work directories (section 7) | W-03, W-13 |
 | Older outputs are named by hand | An output directory written before card W-29 has no `RUN` file, and neither has a lone file such as `hits.tsv`: give those to `results archive` with `--with` (a DIR whose `recipe.yaml` is not the run's is refused). Directories written since are found with `--under`, and the run's record holds the user's command line (`limits_json`, key `command`) | W-28, W-29 |
-| The durable storage is not there yet | `/stor/work/Wilke/if2453/all-the-data` (profile `durable`) does not exist on the pod (2026-11-12); `results` with the real profile exits 2 until the PI makes it. The image sees it only with `--bind` | W-28 |
+| The bulk area is not there | `results flush`, `list` and `get` exit 2 when the profile's `bulk` (`/stor/scratch/Wilke/if2453/all-the-data`) does not exist; `archive` still spools. Since card W-33 (DEC-42) `results` does not use the profile's `durable` (`/stor/work/Wilke/if2453/all-the-data`, which has never existed). The image sees `bulk` only with `--bind` | W-28, W-33 |
 | Spooled runs are on `/tmp` | until a flush reaches the 64 MiB floor, a run's archive is only in the spool on local disk, which a reboot may clear, as it clears the run itself | W-28 |
 | `search hmm --positive` reads all contig labels | the accession or header of the positive control is looked up in every row group of `contig_label`: no table is sorted by accession, and a header substring cannot prune. The contig's genes are then read from its tape by contig uid, which prunes. Not measured on a large release | W-07 |
 

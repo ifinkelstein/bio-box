@@ -1,5 +1,5 @@
 """Ring R2: card W-28 (DEC-33) on the fixture: a real `search hmm` run on micro-S0 archived with its outputs,
-bundled into a durable area of the test's own (never /stor) at a lowered floor, listed and restored equal."""
+bundled into a bulk area (`<bulk>/results`, card W-33) of the test's own (never /stor) at a lowered floor, listed and restored equal."""
 
 from __future__ import annotations
 
@@ -24,7 +24,7 @@ pytestmark = [pytest.mark.r2, pytest.mark.covers("W-28", "W-07")]
 
 
 def _profile(base: Path, floor: int) -> Path:
-    (base / "durable").mkdir(parents=True)
+    (base / "bulk").mkdir(parents=True)  # card W-33: results go under bulk; durable is not used
     p = base / "profile.yaml"
     p.write_text(yaml.safe_dump({
         "max_threads_day": 2, "max_threads_night": 2, "mem_scope": "8G", "tmp": str(base / "tmp"),
@@ -78,7 +78,7 @@ def test_w28_a_fixture_search_is_archived_with_its_outputs_bundled_listed_and_re
     prof = tmp_path / "one" / "profile.yaml"
     assert cli.main(["results", "flush", "--profile", str(prof)]) == 0
     bundle = Path(capsys.readouterr().out.split("\t")[0])
-    assert bundle.parent == tmp_path / "one" / "durable" / "results" and bundle.is_file()
+    assert bundle.parent == tmp_path / "one" / "bulk" / "results" and bundle.is_file()
     assert sorted(n for n in os.listdir(bundle.parent) if not n.startswith(".")) == [bundle.name]
     assert cli.main(["results", "list", "--profile", str(prof)]) == 0
     rows = capsys.readouterr().out.splitlines()

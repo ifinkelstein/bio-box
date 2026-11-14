@@ -1,7 +1,8 @@
-"""Card W-28 (DEC-33): a run's results archived, bundled onto durable storage, listed and restored (ring R1 by
-directory). Runs here are constructed run directories (a `search_run` record and files of seeded random bytes);
-the durable storage is a directory of the test's own (never /stor); the floor is lowered by the test profile's
-`small_file_floor_bytes`. The fixture run of a real search is in tests/r2/test_results_fixture.py."""
+"""Card W-28 (DEC-33), amended by card W-33 (DEC-42): a run's results archived, bundled into the profile's `bulk` area
+(`<bulk>/results`), listed and restored (ring R1 by directory). Runs here are constructed run directories (a
+`search_run` record and files of seeded random bytes); `bulk` is a directory of the test's own (never /stor); the
+floor is lowered by the test profile's `small_file_floor_bytes`. The fixture run of a real search is in
+tests/r2/test_results_fixture.py."""
 
 from __future__ import annotations
 
@@ -36,8 +37,9 @@ def _clean_env(monkeypatch):
 
 
 def _profile(base: Path, floor: int = 10**6) -> Path:
-    """A host profile whose tmp, durable and bulk are directories of the test; durable exists."""
-    (base / "durable").mkdir(parents=True, exist_ok=True)
+    """A host profile whose tmp, durable and bulk are directories of the test; bulk exists, durable does not (card
+    W-33: results never use it)."""
+    (base / "bulk").mkdir(parents=True, exist_ok=True)
     data = {"max_threads_day": 2, "max_threads_night": 2, "mem_scope": "8G", "tmp": str(base / "tmp"),
             "durable": str(base / "durable"), "bulk": str(base / "bulk"), "nice_monolithic": 19, "nice_fanout": 15,
             "day_start_hour": 8, "day_end_hour": 20, "cpu_min_per_process": 300, "small_file_floor_bytes": floor}
@@ -179,7 +181,7 @@ def test_w28_two_processes_with_other_hash_seeds_spool_the_same_bytes(tmp_path, 
 # --- archive: no-op, refusal, crash -----------------------------------------------------------------------------
 
 
-def test_w28_archiving_a_run_twice_is_a_no_op_and_a_changed_run_is_refused_naming_both_sha256(tmp_path, capsys):
+def test_w28_archiving_a_run_twice_is_a_no_op_and_a_changed_run_is_a_second_archive(tmp_path, capsys):
     prof = _profile(tmp_path)
     run = _make_run(tmp_path / "runs", 3)
     out = _make_out(tmp_path / "rnap", 3)
@@ -193,11 +195,14 @@ def test_w28_archiving_a_run_twice_is_a_no_op_and_a_changed_run_is_refused_namin
     assert code == 0 and "already kept" in err and "nothing written" in err, err
     assert _rows(stdout)[0]["sha256"] == first["sha256"] and _tree(spool) == before
     (out / "hits.tsv").write_bytes(b"changed\n")
+    # card W-33 (DEC-42), migrated: the run with other files is a second archive, not a refusal; the first one's
+    # spool files are as they were
     code, stdout, err = _archive(capsys, prof, run, "--with", str(out))
-    assert code == 2 and "refused" in err and first["sha256"] in err and "never overwritten" in err, err
-    other = [w for w in err.split() if len(w.strip(";.,()")) == 64 and w.strip(";.,()") != first["sha256"]]
-    assert other, err  # the new archive's sha256 is named too
-    assert _tree(spool) == before and not stdout
+    assert code == 0, err
+    second = _rows(stdout)[0]
+    assert second["sha256"] != first["sha256"] and second["run_id"] == first["run_id"]
+    assert all(_tree(spool)[n] == b for n, b in before.items())  # the first archive's bytes and line are unchanged
+    assert len(_visible(spool)) == 4
 
 
 def test_w28_the_run_must_be_closed_and_a_profile_is_required(tmp_path, capsys):
@@ -261,13 +266,13 @@ def test_w28_outputs_are_kept_by_their_names_and_a_search_hmm_directory_of_anoth
 # --- where ------------------------------------------------------------------------------------------------------
 
 
-def test_w28_a_results_area_not_on_the_profiles_durable_storage_is_refused(tmp_path, capsys, monkeypatch):
+def test_w28_a_results_area_not_on_the_profiles_bulk_area_is_refused(tmp_path, capsys, monkeypatch):
     prof = _profile(tmp_path)
-    durable = tmp_path / "durable"
+    durable = tmp_path / "bulk"  # card W-33: what was `durable` is the profile's `bulk`
     elsewhere = tmp_path / "elsewhere"
     elsewhere.mkdir()
     code, _, err = _main(capsys, "results", "list", "--profile", str(prof), "--results", str(elsewhere))
-    assert code == 2 and "not inside the profile's durable storage" in err, err
+    assert code == 2 and "not inside the profile's bulk area" in err, err
     # spelled inside durable, but a link leads out of it: the resolved path decides
     (durable / "away").symlink_to(elsewhere)
     code, _, err = _main(capsys, "results", "list", "--profile", str(prof), "--results", str(durable / "away" / "r"))
@@ -296,7 +301,7 @@ def test_w28_a_results_area_not_on_the_profiles_durable_storage_is_refused(tmp_p
     # inside durable: accepted, and the default is <durable>/results
     assert _main(capsys, "results", "list", "--profile", str(prof), "--results", str(durable / "mine"))[0] == 0
     assert _main(capsys, "results", "list", "--profile", str(prof))[0] == 0
-    # a profile whose durable storage does not exist: refused, nothing made
+    # a profile whose bulk area does not exist: refused, nothing made
     shutil.rmtree(durable)
     code, _, err = _main(capsys, "results", "list", "--profile", str(prof))
     assert code == 2 and "does not exist" in err and not durable.exists(), err
@@ -308,7 +313,7 @@ def test_w28_a_results_area_not_on_the_profiles_durable_storage_is_refused(tmp_p
 def test_w28_a_small_run_never_reaches_the_durable_area_and_a_bundle_over_the_floor_does(tmp_path, capsys):
     floor = 600_000  # lowered for the test; the pod's profile has 67108864
     prof = _profile(tmp_path, floor=floor)
-    area = tmp_path / "durable" / "results"
+    area = tmp_path / "bulk" / "results"
     spool = tmp_path / "tmp/results/spool"
     runs = [_make_run(tmp_path / "runs", n, size=50_000) for n in (11, 12, 13)]  # about 200 kB each
     assert _archive(capsys, prof, runs[0])[0] == 0
@@ -341,7 +346,7 @@ def test_w28_below_floor_writes_a_small_bundle_only_when_asked_and_says_it_break
     assert _archive(capsys, prof, _make_run(tmp_path / "runs", 14))[0] == 0
     code, stdout, err = _main(capsys, "results", "flush", "--profile", str(prof), "--below-floor")
     assert code == 0 and "PI's agreement" in err and "1 runs" in stdout, err
-    assert len(_visible(tmp_path / "durable" / "results")) == 1
+    assert len(_visible(tmp_path / "bulk" / "results")) == 1
 
 
 def test_w28_a_flush_killed_before_its_rename_leaves_nothing_visible_and_the_runs_spooled(tmp_path, capsys):
@@ -428,7 +433,7 @@ def test_w28_list_reads_only_manifests_and_get_restores_every_file_with_its_sha2
     assert read == ["MANIFEST.tsv"]  # the bundle's manifest; no run's archive is read
     rows = _rows(stdout)
     assert [r["run_id"] for r in rows] == ["15" * 16, "16" * 16]
-    assert Path(rows[0]["where"]).parent == tmp_path / "durable" / "results"
+    assert Path(rows[0]["where"]).parent == tmp_path / "bulk" / "results"
     assert rows[1]["where"] == str(tmp_path / "tmp/results/spool" / f"{'16' * 16}.tar")
     assert rows[0]["outputs"] == "flanks_nr50" and rows[0]["run_date"] == "2026-11-03T09:30:05Z"
     assert "1 runs" in err  # the spool's summary
@@ -476,3 +481,184 @@ def test_w28_get_refuses_an_archive_whose_bytes_are_not_its_manifests(tmp_path, 
     (tmp_path / "into").mkdir()
     with pytest.raises(results.Corrupt, match="sha256"):
         results._restore(bad, tmp_path / "into")
+
+
+# --- card W-33 (DEC-42): results under <bulk>/results; a run archived again is a second archive ------------------
+
+
+def _sha(p: Path) -> str:
+    return hashlib.sha256(Path(p).read_bytes()).hexdigest()
+
+
+def _outputs(base: Path, n: int, extra: bool = False) -> list[Path]:
+    """The `search hmm` DIR of run n, and (extra) a second output written later."""
+    outs = [_make_out(base / "rnap", n)]
+    if extra:
+        flanks = base / "flanks_nr50"
+        (flanks / "groups").mkdir(parents=True, exist_ok=True)
+        (flanks / "groups.tsv").write_bytes(_bytes(n + 50, 4000))
+        (flanks / "groups" / "g1.tsv").write_bytes(_bytes(n + 51, 700))
+        outs.append(flanks)
+    return outs
+
+
+def _with(outs: list[Path]) -> list[str]:
+    return [x for o in outs for x in ("--with", str(o))]
+
+
+@pytest.mark.covers("W-33")
+def test_w33_results_resolve_under_bulk_results_and_nothing_is_made_outside_it(tmp_path, capsys):
+    from biobox import profile
+    from biobox.search import results
+
+    prof = _profile(tmp_path, floor=1000)
+    bulk = tmp_path / "bulk"
+    (bulk / "other_durable_copy").mkdir()
+    (bulk / "other_durable_copy" / "keep.txt").write_bytes(b"x")
+    before = _tree(bulk)
+    where = results.places(profile.load(prof))
+    assert where.area == (bulk / "results").resolve()  # the exact path: <bulk>/results
+    run = _make_run(tmp_path / "runs", 31)
+    assert _archive(capsys, prof, run)[0] == 0
+    code, stdout, err = _main(capsys, "results", "flush", "--profile", str(prof))
+    assert code == 0, err
+    bundle = Path(stdout.split("\t")[0])
+    assert bundle.parent == bulk.resolve() / "results" and bundle.is_file()
+    assert sorted(p.name for p in bulk.iterdir()) == ["other_durable_copy", "results"]  # nothing else made in bulk
+    assert not (tmp_path / "durable").exists()  # the profile's `durable` is never created or used
+    after = _tree(bulk)
+    assert {k: v for k, v in after.items() if not k.startswith("results/")} == before  # what was there is as it was
+    assert [k for k in after if k.startswith("results/")] == [f"results/{bundle.name}"]
+    code, stdout, _ = _main(capsys, "results", "list", "--profile", str(prof))
+    assert code == 0 and _rows(stdout)[0]["where"] == str(bundle)
+
+
+@pytest.mark.covers("W-33")
+def test_w33_the_real_profile_names_bulk_as_the_results_parent():
+    from biobox import profile
+    from biobox.search import results
+
+    root = Path(__file__).resolve().parents[2]
+    prof = profile.load(root / "profiles" / "wilkcomp02.yaml")
+    assert prof.bulk == "/stor/scratch/Wilke/if2453/all-the-data"
+    where = results.places(prof)  # does not need /stor: a host without it still resolves the place
+    assert Path(where.area).name == "results" and Path(where.area).parent.name == "all-the-data"
+    assert "/stor/work/" not in str(where.area) and "/scratch/Wilke/if2453/" in str(where.area)
+
+
+@pytest.mark.covers("W-33")
+def test_w33_a_run_archived_again_with_further_outputs_is_a_second_archive_and_the_first_is_never_changed(
+        tmp_path, capsys):
+    prof = _profile(tmp_path, floor=1000)
+    run = _make_run(tmp_path / "runs", 32)
+    rid = "20" * 16
+    assert _archive(capsys, prof, run, *_with(_outputs(tmp_path / "o1", 32)))[0] == 0
+    code, stdout, err = _main(capsys, "results", "flush", "--profile", str(prof))
+    assert code == 0, err
+    first_bundle = Path(stdout.split("\t")[0])
+    first_sha = _sha(first_bundle)  # oracle: hashlib on the file, before
+    first_bytes = first_bundle.read_bytes()
+    both = _outputs(tmp_path / "o1", 32, extra=True)  # later: the same run, with a further output
+    code, stdout, err = _archive(capsys, prof, run, *_with(both))
+    assert code == 0, err
+    second_line = _rows(stdout)[0]
+    code, stdout, err = _main(capsys, "results", "flush", "--profile", str(prof))
+    assert code == 0, err
+    second_bundle = Path(stdout.split("\t")[0])
+    assert second_bundle != first_bundle and second_bundle.parent == first_bundle.parent
+    assert _sha(first_bundle) == first_sha and first_bundle.read_bytes() == first_bytes  # the first is unchanged
+    assert _visible(first_bundle.parent) == sorted([first_bundle.name, second_bundle.name])
+    code, stdout, err = _main(capsys, "results", "list", "--profile", str(prof))  # list shows both
+    assert code == 0, err
+    rows = _rows(stdout)
+    assert [r["run_id"] for r in rows] == [rid, rid]
+    assert {r["where"] for r in rows} == {str(first_bundle), str(second_bundle)}
+    assert {r["outputs"] for r in rows} == {"rnap", "flanks_nr50,rnap"}
+    by_where = {r["where"]: r for r in rows}
+    first_arch = by_where[str(first_bundle)]["sha256"]
+    with tarfile.open(first_bundle) as tf:  # oracle: the bundle's members read with tarfile
+        inner = [m for m in tf.getmembers() if m.name.endswith(".tar")]
+        assert len(inner) == 1
+        assert hashlib.sha256(tf.extractfile(inner[0]).read()).hexdigest() == first_arch
+    dest = tmp_path / "back"  # get says which it takes
+    code, stdout, err = _main(capsys, "results", "get", rid, "--profile", str(prof), "--out", str(dest))
+    assert code == 0, err
+    assert "2 archives" in err and "taking" in err and second_line["sha256"] in err, err
+    assert _rows(stdout)[0]["sha256"] == second_line["sha256"]  # the one with further outputs (the most files)
+    assert (dest / "outputs/flanks_nr50/groups/g1.tsv").read_bytes() == _bytes(32 + 51, 700)
+    dest1 = tmp_path / "back1"  # the first one is reached by its sha256 (a prefix of it, after a colon)
+    code, stdout, err = _main(capsys, "results", "get", f"{rid}:{first_arch[:12]}", "--profile", str(prof),
+                              "--out", str(dest1))
+    assert code == 0, err
+    assert _rows(stdout)[0]["sha256"] == first_arch
+    assert not (dest1 / "outputs/flanks_nr50").exists() and (dest1 / "outputs/rnap/hits.tsv").is_file()
+    code, _, err = _main(capsys, "results", "get", f"{rid}:ffffffff", "--profile", str(prof), "--out",
+                         str(tmp_path / "none"))  # a prefix that names no archive of the run
+    assert code == 2 and "no archive" in err and not (tmp_path / "none").exists(), err
+    code, stdout, err = _archive(capsys, prof, run, *_with(both))  # archiving either again: a no-op
+    assert code == 0 and "already kept" in err and str(second_bundle) in err, err
+    assert _visible(first_bundle.parent) == sorted([first_bundle.name, second_bundle.name])
+
+
+@pytest.mark.covers("W-33")
+def test_w33_two_archives_of_one_run_waiting_in_the_spool_are_kept_apart_and_flush_into_one_bundle(tmp_path, capsys):
+    prof = _profile(tmp_path, floor=1000)
+    run = _make_run(tmp_path / "runs", 33)
+    rid = "21" * 16
+    spool = tmp_path / "tmp/results/spool"
+    assert _archive(capsys, prof, run, *_with(_outputs(tmp_path / "o", 33)))[0] == 0
+    first = _tree(spool)
+    both = _outputs(tmp_path / "o", 33, extra=True)
+    assert _archive(capsys, prof, run, *_with(both))[0] == 0
+    assert all(_tree(spool)[n] == b for n, b in first.items())  # the first archive's files are as they were
+    assert len(_visible(spool)) == 4
+    code, stdout, err = _main(capsys, "results", "list", "--profile", str(prof))
+    assert code == 0 and [r["run_id"] for r in _rows(stdout)] == [rid, rid], err
+    assert len({r["where"] for r in _rows(stdout)}) == 2 and len({r["sha256"] for r in _rows(stdout)}) == 2
+    code, stdout, err = _main(capsys, "results", "flush", "--profile", str(prof))
+    assert code == 0 and "2 runs" in stdout, err  # two archives, one bundle
+    bundle = Path(stdout.split("\t")[0])
+    assert _visible(spool) == []
+    with tarfile.open(bundle) as tf:
+        names = tf.getnames()
+    assert names[0] == "MANIFEST.tsv" and len(names) == 3 and len(set(names)) == 3
+    code, stdout, _ = _main(capsys, "results", "list", "--profile", str(prof))
+    rows = _rows(stdout)
+    assert len(rows) == 2 and {r["where"] for r in rows} == {str(bundle)}
+    for r in rows:  # each restores to what it was archived with
+        dest = tmp_path / f"b{r['sha256'][:6]}"
+        code, _, err = _main(capsys, "results", "get", f"{rid}:{r['sha256']}", "--profile", str(prof), "--out",
+                             str(dest))
+        assert code == 0, err
+        assert (dest / "outputs/flanks_nr50").exists() == (r["outputs"] == "flanks_nr50,rnap")
+
+
+@pytest.mark.covers("W-33")
+def test_w33_nothing_under_bulk_is_overwritten_or_deleted_by_a_second_archive_or_a_repeat_flush(tmp_path, capsys):
+    prof = _profile(tmp_path, floor=1000)
+    bulk = tmp_path / "bulk"
+    run = _make_run(tmp_path / "runs", 34)
+    assert _archive(capsys, prof, run)[0] == 0
+    assert _main(capsys, "results", "flush", "--profile", str(prof))[0] == 0
+    snap = {k: (v, os.stat(bulk / k).st_mtime_ns) for k, v in _tree(bulk).items()}
+    out = _make_out(tmp_path / "rnap", 34)
+    assert _archive(capsys, prof, run, "--with", str(out))[0] == 0
+    assert _main(capsys, "results", "flush", "--profile", str(prof))[0] == 0
+    assert _main(capsys, "results", "flush", "--profile", str(prof))[0] == 0  # nothing left to do
+    now = {k: (v, os.stat(bulk / k).st_mtime_ns) for k, v in _tree(bulk).items()}
+    assert all(now[k] == v for k, v in snap.items())  # every earlier file: same bytes, same mtime
+    assert len(now) == len(snap) + 1
+
+
+@pytest.mark.covers("W-33")
+def test_w33_archive_needs_no_bulk_area_but_flush_list_and_get_refuse_without_it(tmp_path, capsys):
+    prof = _profile(tmp_path, floor=1000)
+    shutil.rmtree(tmp_path / "bulk")
+    run = _make_run(tmp_path / "runs", 35)
+    assert _archive(capsys, prof, run)[0] == 0  # the spool is local; nothing under bulk is read or made
+    for argv in (("flush",), ("list",)):
+        code, _, err = _main(capsys, "results", *argv, "--profile", str(prof))
+        assert code == 2 and "bulk area" in err and "does not exist" in err, err
+    code, _, err = _main(capsys, "results", "get", "23" * 16, "--profile", str(prof), "--out", str(tmp_path / "x"))
+    assert code == 2 and "does not exist" in err, err
+    assert not (tmp_path / "bulk").exists() and not (tmp_path / "durable").exists()
