@@ -1,0 +1,221 @@
+{
+ "arrays": 10,
+ "chromosome_genes": {
+  "max": 1601,
+  "mean": 1261.0,
+  "min": 911
+ },
+ "families_with_extant_copies_by_kind": {
+  "cargo": 16,
+  "decoy": 5,
+  "hub": 5,
+  "originated": 5212,
+  "planted": 96,
+  "plasmid": 160,
+  "profile_only": 9,
+  "root": 954,
+  "vehicle_chassis": 6
+ },
+ "genes_per_genome": {
+  "max": 1761,
+  "mean": 1415.8,
+  "min": 1071
+ },
+ "genes_per_genome_by_kind": {
+  "background": 995.0,
+  "decoy": 8.3,
+  "hub": 48.9,
+  "planted": 76.0,
+  "plasmid": 154.8,
+  "profile_only": 10.5,
+  "vehicle": 122.2
+ },
+ "genomes": 46,
+ "kinds": {
+  "assembly/callerr.tsv:kind": {
+   "alt_code": 4971,
+   "alt_start_downstream": 30,
+   "alt_start_upstream": 30,
+   "frameshift_del": 30,
+   "frameshift_ins": 30,
+   "internal_stop": 40,
+   "smorf": 40
+  },
+  "assembly/edits.tsv:kind": {
+   "alt_start_downstream": 30,
+   "alt_start_upstream": 86,
+   "frameshift_del": 30,
+   "frameshift_ins": 30,
+   "internal_stop": 40,
+   "recode_codon": 19588,
+   "recode_overlap": 220,
+   "recode_stop": 1620,
+   "smorf": 40
+  },
+  "assembly/genomes.tsv:assembly_class": {
+   "complete": 18,
+   "draft": 18,
+   "mag": 10
+  },
+  "assembly/replicons.tsv:kind": {
+   "chromosome": 46,
+   "plasmid": 90
+  },
+  "fusions/edits.tsv:kind": {
+   "fusion": 52,
+   "nogd": 7,
+   "split": 14
+  },
+  "fusions/events.tsv:kind": {
+   "fusion": 15,
+   "nogd": 2,
+   "split": 5
+  },
+  "fusions/fusions.tsv:kind": {
+   "fusion": 52,
+   "split": 14
+  },
+  "fusions/replicons.tsv:kind": {
+   "chromosome": 46,
+   "plasmid": 90
+  },
+  "mobile/insertions.tsv:kind": {
+   "crispr": 30,
+   "prophage": 16
+  },
+  "mobile/replicons.tsv:kind": {
+   "chromosome": 46,
+   "plasmid": 90
+  },
+  "sources/contam.tsv:kind": {
+   "cross_clade": 10
+  },
+  "sources/dup.tsv:kind": {
+   "exact": 71,
+   "near": 124
+  },
+  "sources/sources.tsv:kind": {
+   "exact_dup": 2,
+   "near_dup": 2,
+   "original": 46
+  }
+ },
+ "phages": {
+  "genes": [
+   49,
+   49,
+   50,
+   51,
+   58,
+   59,
+   66,
+   68,
+   68,
+   70,
+   71,
+   71
+  ],
+  "n": 12
+ },
+ "planted_share": 0.067,
+ "plasmid_genomes_by_type": {
+  "pls0": 44,
+  "pls1": 46
+ },
+ "prophage_instances": 16,
+ "seconds": {
+  "S1-S11": 208.53,
+  "S1-S2 backbone": 48.59,
+  "S10 sources": 5.27,
+  "S11 emit": 18.36,
+  "S3-S4 sequences": 73.8,
+  "S5 replicons": 37.17,
+  "S6 mobile": 9.02,
+  "S7 fusions": 3.21,
+  "S8-S9 assembly": 13.1
+ },
+ "stage_digests": {
+  "assembly": "a9157aa3b65d4d67758721921f383011",
+  "backbone": "9de0eaf2a8ce45448527454c0b8cba81",
+  "emit": "8b04777a3532b447baa4151876d711a3",
+  "fusions": "f8424b142a12035c30660f0a5fe60de9",
+  "mobile": "c2ebc655933e39f906a802a9711c96b6",
+  "replicons": "955c6dfb47f812debf149f3d045b2678",
+  "sequences": "ce0b49129909e5b134dde252e64ab3c9",
+  "sources": "df3b6f60dbb01a857acec61ab2be3e25"
+ },
+ "tsv_rows": {
+  "assembly/callerr.tsv": 5171,
+  "assembly/contigs.tsv": 1907,
+  "assembly/edits.tsv": 21684,
+  "assembly/gene_contigs.tsv": 68037,
+  "assembly/genes.tsv": 66305,
+  "assembly/genomes.tsv": 46,
+  "assembly/repeats.tsv": 1840,
+  "assembly/replicons.tsv": 136,
+  "backbone/events.tsv": 116199,
+  "backbone/families.tsv": 6467,
+  "backbone/gene_tree_nodes.tsv": 270731,
+  "backbone/genes.tsv": 65125,
+  "backbone/genomes.tsv": 46,
+  "backbone/groups.tsv": 33,
+  "backbone/replicons.tsv": 136,
+  "backbone/taxa.tsv": 82,
+  "backbone/taxonomy.tsv": 46,
+  "backbone/truth_adjacency.tsv": 65125,
+  "backbone/truth_units.tsv": 1522,
+  "emit/ingest.tsv": 1896,
+  "emit/truth/truth_callerr.tsv": 6459,
+  "emit/truth/truth_contam.tsv": 10,
+  "emit/truth/truth_contig.tsv": 2124,
+  "emit/truth/truth_dup.tsv": 195,
+  "emit/truth/truth_edges.tsv": 1825,
+  "emit/truth/truth_family.tsv": 6575,
+  "emit/truth/truth_fusion.tsv": 68,
+  "emit/truth/truth_gene.tsv": 69641,
+  "emit/truth/truth_genome.tsv": 62,
+  "emit/truth/truth_igr.tsv": 67883,
+  "emit/truth/truth_module.tsv": 175,
+  "emit/truth/truth_rna.tsv": 895,
+  "emit/truth/truth_spacer_target.tsv": 3630,
+  "emit/truth/truth_traps.tsv": 473,
+  "fusions/edits.tsv": 73,
+  "fusions/events.tsv": 22,
+  "fusions/fusions.tsv": 66,
+  "fusions/genes.tsv": 66265,
+  "fusions/nogd.tsv": 7,
+  "fusions/nogd_families.tsv": 2,
+  "fusions/replicons.tsv": 136,
+  "mobile/arrays.tsv": 30,
+  "mobile/cas.tsv": 40,
+  "mobile/genes.tsv": 66303,
+  "mobile/insertions.tsv": 46,
+  "mobile/phage_genes.tsv": 730,
+  "mobile/phages.tsv": 12,
+  "mobile/prophages.tsv": 16,
+  "mobile/replicons.tsv": 136,
+  "mobile/spacer_targets.tsv": 3363,
+  "mobile/spacers.tsv": 316,
+  "replicons/elements.tsv": 133881,
+  "replicons/emissions.tsv": 163,
+  "replicons/genes.tsv": 65125,
+  "replicons/junctions.tsv": 65125,
+  "replicons/lineages.tsv": 117,
+  "replicons/links.tsv": 20,
+  "replicons/models.tsv": 10,
+  "replicons/replicons.tsv": 136,
+  "replicons/rna.tsv": 852,
+  "sequences/domains.tsv": 10214,
+  "sequences/families.tsv": 6463,
+  "sequences/genes.tsv": 65125,
+  "sequences/lineages.tsv": 117,
+  "sequences/panel.tsv": 300,
+  "sources/contam.tsv": 10,
+  "sources/dup.tsv": 195,
+  "sources/mutations.tsv": 2838,
+  "sources/sidecars/fcs_gx_mock.tsv": 10,
+  "sources/source_contigs.tsv": 1884,
+  "sources/sources.tsv": 50
+ },
+ "world_digest": "9caab69fa23f48573bd1aacdc6c8e81e"
+}

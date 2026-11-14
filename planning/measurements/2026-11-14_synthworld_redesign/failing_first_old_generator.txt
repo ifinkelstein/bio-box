@@ -1,0 +1,73 @@
+FFF                                                                      [100%]
+=================================== FAILURES ===================================
+____________ test_genome_size_and_planted_share_hold_at_every_seed _____________
+
+measured = ({'name': 'micro', 'default_seed': 20261112, 'species': {'n_extant': 46, 'birth': 1.0, 'death': 0.3, 'burst_size': 4, ... 46, 'chrom_mean': 987.4782608695652, 'planted_share': 0.37532877432930034, 'plasmid_genomes': {'pls1': 5}, ...}, ...})
+
+    @pytest.mark.covers("F-02", "B-SIM")
+    def test_genome_size_and_planted_share_hold_at_every_seed(measured):
+        params, out = measured
+        bad = {s: (round(r["chrom_mean"], 1), round(r["planted_share"], 4)) for s, r in out.items()
+               if not (CHROM_MEAN[0] <= r["chrom_mean"] <= CHROM_MEAN[1] and r["planted_share"] <= PLANTED_SHARE_MAX)}
+        assert all(r["n_genomes"] == int(params["species"]["n_extant"]) for r in out.values())
+>       assert not bad, f"(chromosome mean, planted share) outside {CHROM_MEAN} and <= {PLANTED_SHARE_MAX:.3f}: {bad}"
+E       AssertionError: (chromosome mean, planted share) outside (1050.0, 1950.0) and <= 0.152: {20261112: (1872.7, 0.2153), 20261113: (700.9, 0.5734), 1001685937451957930: (404.4, 0.6031), 6329801112132740259: (987.5, 0.3753), 6036017085589997374: (14089.5, 0.0425), 4383110225690451409: (2112.9, 0.2489)}
+E       assert not {20261112: (1872.7, 0.2153), 20261113: (700.9, 0.5734), 1001685937451957930: (404.4, 0.6031), 6329801112132740259: (987.5, 0.3753), ...}
+
+tests/r2/test_synthworld_preset_seeds.py:189: AssertionError
+---------------------------- Captured stdout setup -----------------------------
+
+seed 20261112: crown age 2.5632; chromosome mean 1872.7; planted share 0.2153; plasmid genomes {'pls0': 18, 'pls1': 20}; module genomes by cell {(0.3, 0.05): [12, 36, 37], (0.3, 0.15): [29, 42, 43], (0.3, 0.3): [36, 44, 45], (0.7, 0.05): [26, 44, 45], (0.7, 0.15): [3, 38, 44], (0.7, 0.3): [46, 46], (1.0, 0.05): [24, 38, 42], (1.0, 0.15): [40, 46, 46], (1.0, 0.3): [46, 46]}
+
+seed 20261113: crown age 8.2821; chromosome mean 700.9; planted share 0.5734; plasmid genomes {}; module genomes by cell {(0.3, 0.05): [0, 0, 14], (0.3, 0.15): [0, 0, 0], (0.3, 0.3): [0, 43, 46], (0.7, 0.05): [0, 30, 33], (0.7, 0.15): [46, 46, 46], (0.7, 0.3): [46, 46], (1.0, 0.05): [0, 0, 44], (1.0, 0.15): [0, 0, 31], (1.0, 0.3): [46, 46]}
+
+seed 1001685937451957930: crown age 5.2636; chromosome mean 404.4; planted share 0.6031; plasmid genomes {}; module genomes by cell {(0.3, 0.05): [0, 0, 0], (0.3, 0.15): [0, 1, 10], (0.3, 0.3): [0, 6, 43], (0.7, 0.05): [0, 1, 2], (0.7, 0.15): [0, 0, 0], (0.7, 0.3): [0, 46], (1.0, 0.05): [1, 7, 11], (1.0, 0.15): [0, 45, 46], (1.0, 0.3): [46, 46]}
+
+seed 6329801112132740259: crown age 4.1528; chromosome mean 987.5; planted share 0.3753; plasmid genomes {'pls1': 5}; module genomes by cell {(0.3, 0.05): [15, 22, 34], (0.3, 0.15): [7, 13, 19], (0.3, 0.3): [0, 22, 44], (0.7, 0.05): [20, 23, 31], (0.7, 0.15): [12, 40, 46], (0.7, 0.3): [43, 46], (1.0, 0.05): [14, 20, 46], (1.0, 0.15): [39, 45, 46], (1.0, 0.3): [46, 46]}
+
+seed 6036017085589997374: crown age 3.9808; chromosome mean 14089.5; planted share 0.0425; plasmid genomes {'pls0': 22, 'pls1': 5}; module genomes by cell {(0.3, 0.05): [6, 6, 37], (0.3, 0.15): [2, 12, 41], (0.3, 0.3): [32, 39, 43], (0.7, 0.05): [4, 41, 43], (0.7, 0.15): [38, 41, 45], (0.7, 0.3): [43, 45], (1.0, 0.05): [41, 42, 43], (1.0, 0.15): [0, 39, 41], (1.0, 0.3): [45, 46]}
+
+seed 4383110225690451409: crown age 6.1560; chromosome mean 2112.9; planted share 0.2489; plasmid genomes {'pls0': 15}; module genomes by cell {(0.3, 0.05): [0, 0, 29], (0.3, 0.15): [32, 34, 45], (0.3, 0.3): [41, 46, 46], (0.7, 0.05): [0, 9, 45], (0.7, 0.15): [31, 45, 46], (0.7, 0.3): [0, 46], (1.0, 0.05): [12, 37, 39], (1.0, 0.15): [46, 46, 46], (1.0, 0.3): [0, 46]}
+__________________ test_both_plasmid_types_live_at_every_seed __________________
+
+measured = ({'name': 'micro', 'default_seed': 20261112, 'species': {'n_extant': 46, 'birth': 1.0, 'death': 0.3, 'burst_size': 4, ... 46, 'chrom_mean': 987.4782608695652, 'planted_share': 0.37532877432930034, 'plasmid_genomes': {'pls1': 5}, ...}, ...})
+
+    @pytest.mark.covers("F-02", "B-SIM")
+    def test_both_plasmid_types_live_at_every_seed(measured):
+        params, out = measured
+        names = {f"pls{k}" for k in range(len(params["plasmids"]["sizes"]))}
+        bad = {s: r["plasmid_genomes"] for s, r in out.items()
+               if set(r["plasmid_genomes"]) != names or r["max_plasmids"] > 2}
+>       assert not bad, bad
+E       AssertionError: {20261113: {}, 1001685937451957930: {}, 6329801112132740259: {'pls1': 5}, 4383110225690451409: {'pls0': 15}}
+E       assert not {20261113: {}, 1001685937451957930: {}, 6329801112132740259: {'pls1': 5}, 4383110225690451409: {'pls0': 15}}
+
+tests/r2/test_synthworld_preset_seeds.py:198: AssertionError
+_______ test_every_strength_cell_keeps_a_detectable_module_at_every_seed _______
+
+measured = ({'name': 'micro', 'default_seed': 20261112, 'species': {'n_extant': 46, 'birth': 1.0, 'death': 0.3, 'burst_size': 4, ... 46, 'chrom_mean': 987.4782608695652, 'planted_share': 0.37532877432930034, 'plasmid_genomes': {'pls1': 5}, ...}, ...})
+
+    @pytest.mark.covers("F-02", "B-SIM")
+    def test_every_strength_cell_keeps_a_detectable_module_at_every_seed(measured):
+        """The PI's grid (2026-11-12): member transfer {0.05, 0.15, 0.30} x together {0.3, 0.7, 1.0}; each of the nine
+        cells holds a module whose members are all present in at least MIN_GENOMES genomes."""
+        params, out = measured
+        m = params["modules"]
+        assert (m["together"], m["member_transfer"]) == ([0.3, 0.7, 1.0], [0.05, 0.15, 0.30])
+        bad = {s: {c: v for c, v in r["cells"].items() if max(v) < MIN_GENOMES} for s, r in out.items()}
+        assert all(len(r["cells"]) == 9 for r in out.values())
+>       assert not any(bad.values()), {s: v for s, v in bad.items() if v}
+E       AssertionError: {20261113: {(0.3, 0.15): [0, 0, 0]}, 1001685937451957930: {(0.3, 0.05): [0, 0, 0], (0.7, 0.05): [2, 1, 0], (0.7, 0.15): [0, 0, 0]}}
+E       assert not True
+E        +  where True = any(dict_values([{}, {(0.3, 0.15): [0, 0, 0]}, {(0.3, 0.05): [0, 0, 0], (0.7, 0.05): [2, 1, 0], (0.7, 0.15): [0, 0, 0]}, {}, {}, {}]))
+E        +    where dict_values([{}, {(0.3, 0.15): [0, 0, 0]}, {(0.3, 0.05): [0, 0, 0], (0.7, 0.05): [2, 1, 0], (0.7, 0.15): [0, 0, 0]}, {}, {}, {}]) = <built-in method values of dict object at 0x7df1743b78c0>()
+E        +      where <built-in method values of dict object at 0x7df1743b78c0> = {20261112: {}, 20261113: {(0.3, 0.15): [0, 0, 0]}, 1001685937451957930: {(0.3, 0.05): [0, 0, 0], (0.7, 0.05): [2, 1, 0], (0.7, 0.15): [0, 0, 0]}, 6329801112132740259: {}, ...}.values
+
+tests/r2/test_synthworld_preset_seeds.py:210: AssertionError
+=========================== short test summary info ============================
+FAILED tests/r2/test_synthworld_preset_seeds.py::test_genome_size_and_planted_share_hold_at_every_seed
+FAILED tests/r2/test_synthworld_preset_seeds.py::test_both_plasmid_types_live_at_every_seed
+FAILED tests/r2/test_synthworld_preset_seeds.py::test_every_strength_cell_keeps_a_detectable_module_at_every_seed
+3 failed in 589.90s (0:09:49)
+
+[exited with code 1]
