@@ -497,8 +497,8 @@ def test_w31_the_default_values_of_the_new_flags_give_the_unflagged_bytes(world,
     this test compared the explicit flags with the unflagged call, which they then equalled; since DEC-41 the unflagged
     call at nr50 on a release with a domain library is weighted and falls back to Pfam: its tables are the same bytes
     (test_w32_tables_are_byte_identical_to_the_code_before_the_card) and its figures are not. The figures' bytes under
-    the old flags against the old code are compared on the pod (planning/measurements/2026-11-14_flanks_figure_defaults.md),
-    not here: they depend on the matplotlib build."""
+    the old flags against the old code are compared on the pod
+    (planning/measurements/2026-11-14_flanks_figure_defaults.md), not here: they depend on the matplotlib build."""
     explicit = tmp_path / "explicit"
     assert run(world, explicit, "--figure", "--export", "gff", *OLD_COLOURS) == 0
     n, digest, readme = tables_digest(explicit, readme=False)  # README.txt by its own sha256
@@ -533,7 +533,8 @@ def test_w31_the_figure_draws_the_cut_auto_cut_chose(mobile, tmp_path, plans):
 # throughout. The oracle (`oracle_classes`) computes from the planted lists, and the units from context_types.tsv,
 # the class every drawn gene must have: its cluster's colour, its Pfam domain's colour, or grey; genes of one class
 # share one colour in the run, classes differ in colour. The tables' bytes are compared with the code before the
-# card by sha256 (BASE_TABLES, written by that code on the pod: planning/measurements/2026-11-14_flanks_figure_defaults/).
+# card by sha256 (BASE_TABLES, written by that code on the pod:
+# planning/measurements/2026-11-14_flanks_figure_defaults/).
 
 
 def units_from_tables(out: Path, loci: dict) -> dict[str, str]:
@@ -687,7 +688,8 @@ def base_digests(scratch: Path) -> dict:
 # (planning/measurements/2026-11-14_flanks_figure_defaults/base_digests.py)
 _README_BEFORE = "6ac3c22c979b02fec1ef8425fe9332e3127efc7cabe2742ae36291e9f79cd13e"  # README.txt of every call
 BASE_TABLES = {
-    "mobile_colours_none_figure": [8, "7d07d85dd3dd8de2250ee3b3132875ba9a6abbb9a4d22295d6dd4c5275d0818b", _README_BEFORE],
+    "mobile_colours_none_figure": [8, "7d07d85dd3dd8de2250ee3b3132875ba9a6abbb9a4d22295d6dd4c5275d0818b",
+                                   _README_BEFORE],
     "one_colour_figure": [13, "3e27c32b63bd4bc242aaae42d6bb0e969fa96af6b53d6af5af8edd523ed20e0f", _README_BEFORE],
     "world_nr50_gff": [29, "355555ac6402ccb3370d75087b0ef0c1f400e615ca885fed131965e6641485db", _README_BEFORE],
     "world_nr50_gff_figure": [28, "f4d5c8d3677ea301228d4a2c31aa66c3f2a263e7c7a37795eac4b1334c498869", _README_BEFORE],
@@ -723,8 +725,8 @@ def test_w32_tables_are_byte_identical_to_the_code_before_the_card(tmp_path, nam
 @pytest.mark.parametrize("level", ["nr50", "nr90"])
 def test_w32_the_defaults_weight_by_the_anchor_nr90_cluster_and_fall_back_to_pfam(mobile, tmp_path, plans, level):
     """At nr50 and nr90 on a release whose manifest lists a domain library, the unflagged figure of the 42 loci in one
-    group counts the 30 near-identical phage loci once (13 units by anchor NR90 cluster, from context_types.tsv): P1..P10
-    are grey (1/13), Cas6 has its cluster's colour (3/13) and the twelve rare Cas7 clusters one colour, that of the
+    group counts the 30 near-identical phage loci once (13 units by anchor NR90 cluster, from context_types.tsv):
+    P1..P10 are grey (1/13), Cas6 has its cluster's colour (3/13) and the twelve rare Cas7 clusters one colour, that of the
     domain Cas7 (12 of 13 units), as the oracle's classes say; the title names both settings and README.txt says
     which were used. The explicit flags give the same figure plan."""
     root, loci = mobile

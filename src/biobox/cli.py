@@ -22,9 +22,12 @@
     bio-box nbr summarize <run|uid,uid,...> --root R --window 5g --by pfam,nr50 [--top 50] [--release R]
                 [--json | --format tsv] [--out FILE] [--runs DIR]
     bio-box nbr flanks <run|uid,uid,...> --root R --out DIR [--window 5g] [--level nr50|nr90|pfam]
-                [--group-by anchor-nr90|anchor-nr50|none] [--max-loci 2000] [--cut 0.5] [--distance j|a|combined]
-                [--export gff] [--figure [--figure-rows 60]] [--release R] [--runs DIR]
-                (card W-25, biobox.search.flanks; --figure: card W-27)
+                [--group-by anchor-nr90|anchor-nr50|none] [--max-loci 2000] [--cut 0.5 | --auto-cut N]
+                [--distance j|a|combined] [--export gff] [--figure [--figure-rows 60]
+                [--colour-weight locus|leaf|genome|anchor-nr90] [--colour-fallback none|pfam]] [--release R]
+                [--runs DIR]
+                (card W-25, biobox.search.flanks; --figure: card W-27; --auto-cut, colours: W-31; defaults: W-32,
+                DEC-41: anchor-nr90 and pfam at nr50 and nr90 when the release's manifest lists a domain library)
     bio-box export proteins --root R --release R [--out FILE]
     bio-box results archive <run> --profile P [--under DIR ...] [--with PATH ...] [--runs DIR] [--results DIR]
     bio-box results flush --profile P [--results DIR] [--below-floor]
@@ -678,15 +681,17 @@ def _nbr_flanks(a, root: Path, uids: set[bytes], tv: str | None, release: str, f
     if not 0 <= cut <= 1:
         return refuse(f"--cut {cut}: a distance between 0 and 1")
     auto = None
-    if a.auto_cut is not None:  # card W-31
+    if a.auto_cut is not None:  # card W-31; `gap` refused since card W-32 (DEC-41)
         if a.cut is not None:
             return refuse("--auto-cut chooses each group's cut from its tree: give --auto-cut or --cut, not both")
         try:
             auto = flanks.parse_auto_cut(a.auto_cut)
         except flanks.FlanksError as e:
             return refuse(e)
-    colour_weight = a.colour_weight or "locus"
-    colour_fallback = a.colour_fallback or "none"
+    # card W-32 (DEC-41): anchor-nr90 and pfam at nr50 and nr90 when the release's manifest lists a domain library
+    default_weight, default_fallback, no_library = flanks.colour_defaults(level, files, a.library)
+    colour_weight = a.colour_weight or default_weight
+    colour_fallback = a.colour_fallback or default_fallback
     for flag, value, allowed in (("--colour-weight", colour_weight, flanks.COLOUR_WEIGHTS),
                                  ("--colour-fallback", colour_fallback, flanks.COLOUR_FALLBACKS)):
         if value not in allowed:
@@ -716,6 +721,9 @@ def _nbr_flanks(a, root: Path, uids: set[bytes], tv: str | None, release: str, f
         return refuse(e)
     if out.exists() and (not out.is_dir() or any(out.iterdir())):
         return refuse(f"the output directory {out} is not empty: nbr flanks writes into a new or empty directory")
+    if a.figure and no_library and (a.colour_weight is None or a.colour_fallback is None):
+        print(f"note: {no_library}: the figure keeps --colour-weight locus --colour-fallback none (with a domain library the "
+              "defaults are anchor-nr90 and pfam, DEC-41)", file=sys.stderr)
     try:
         counts, notes = flanks.run(root, uids, out, release=release, files=files, window=window, level=level,
                                    group_by=group_by, distance=distance, cut=cut, max_leaves=max_leaves,
@@ -723,7 +731,8 @@ def _nbr_flanks(a, root: Path, uids: set[bytes], tv: str | None, release: str, f
                                    gene_call_version=a.gene_call_version, tape_version=tv, threads=a.threads,
                                    tmp=_profile_tmp(a), figure=a.figure, figure_rows=figure_rows,
                                    run_file=_run_file_ref(a, a.source or a.anchors), auto=auto,
-                                   colour_weight=colour_weight, colour_fallback=colour_fallback)
+                                   colour_weight=colour_weight, colour_fallback=colour_fallback,
+                                   given_colours=(a.colour_weight, a.colour_fallback))
     except ValueError as e:
         return refuse(e)
     for line in notes:
@@ -2148,15 +2157,17 @@ def _main(argv: list[str] | None = None) -> int:
     n.add_argument("--figure-rows", type=int, help="flanks --figure: rows per figure (default 60, "
                                                    "flanks.DEFAULT_FIGURE_ROWS); above it, the leaf with the most loci "
                                                    "of each context type, then the leaves with the most loci")
-    n.add_argument("--auto-cut", help="flanks: choose each group's cut from its tree instead of --cut (card W-31): gap "
-                                      "(the middle of the largest gap between merge distances) or N (at most N "
-                                      "context types); never at distance 1")
-    n.add_argument("--colour-weight", help="flanks --figure: locus (default), leaf, genome or anchor-nr90: weight "
-                                           "each locus by 1/(loci of its unit) before the 10%% colour threshold, so "
-                                           "near-identical loci count once (card W-31)")
-    n.add_argument("--colour-fallback", help="flanks --figure: none (default) or pfam: a grey cluster's gene takes its "
-                                             "Pfam architecture's colour when the architecture is common in the group "
-                                             "(card W-31)")
+    n.add_argument("--auto-cut", help="flanks: choose each group's cut from its tree instead of --cut (card W-31): N, "
+                                      "at most N context types; never at distance 1 (gap was removed, DEC-41)")
+    n.add_argument("--colour-weight", help="flanks --figure: locus, leaf, genome or anchor-nr90: weight each locus by "
+                                           "1/(loci of its unit) before the 10%% colour threshold, so near-identical "
+                                           "loci count once (card W-31). Default (DEC-41): anchor-nr90 at --level nr50 "
+                                           "and nr90 when the release's manifest lists a domain library, else locus")
+    n.add_argument("--colour-fallback", help="flanks --figure: none or pfam: a grey cluster's gene takes its Pfam "
+                                             "architecture's colour when the architecture is common in the group, and "
+                                             "a family so coloured keeps that one colour (cards W-31, W-32). Default "
+                                             "(DEC-41): pfam at --level nr50 and nr90 when the release's manifest "
+                                             "lists a domain library, else none")
     n.add_argument("--strand", default="any")
     n.add_argument("--operon-gap")
     n.add_argument("--edge", default="truncate")
