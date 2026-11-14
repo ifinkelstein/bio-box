@@ -477,6 +477,7 @@ it when it shares at least one base with that span, as `nbr` defines it.
 | `arrays_pdam_complete_if_window_has_array`, `arrays_nbr_pdam_complete_if_window` | invariant | The complete type I-F system of the control chromosome has arrays on both sides, 27 and 21 repeats (card E-12): long enough for any setting to call, so a window that does not see them is a defect. One by SQL, one by `nbr` |
 | `arrays_tniq_control_window`, `arrays_cas7f_control_window`, `arrays_control_cas6f_nearest_bp` | recorded | The paper's minimal systems carry "a short CRISPR array" (Abstract). At MinCED's default the control element has none: its array is one spacer between two repeats, 128 bases from Cas6f, found only with a minimum of 2 (card E-12; card E-13 measures that setting). So this is a value per release and setting (`arrays_producers` names the setting), not an invariant |
 | the other `arrays_*` | recorded | How many I-F3 loci, complete I-F loci and phage I-F loci have an array within 10 genes |
+| `arrays_tniq_cas7f_loci_with_near_cas_array` | recorded | Of the I-F3 TniQ loci, those with an array of the filtered producer of card E-15 (DEC-40: MinCED at 2 repeats, kept within 1 kb of a Cas gene, outside genes and away from every 3-repeat array; its name carries `-cas1kb-`): the single-spacer arrays of the minimal systems. 0 on a release with the default producer only |
 
 **On a scratch view with arrays** (*measured*, wilkcomp02, 2026-11-14, `planning/measurements/2026-11-14_arrays_in_neighbourhoods.md`):
 `rN.3` plus card E-12's arrays of P1, P2 and S1, with its own manifest and catalog under `/tmp/if2453/e14/view`
@@ -500,3 +501,23 @@ So at three repeats every complete I-F system has an array beside it and about a
 ones do (7 of 20, *derived*), which is the paper's picture of short arrays only in part: the rest are below MinCED's
 minimum or absent. `nbr` over the two runs lists 190 (locus, array) pairs, 13 of the 635 TniQ loci and 138 of the
 157 Cas7f loci, and the SQL definition the same 190 pairs.
+
+**With both producers** (card E-15, DEC-40; *measured*, wilkcomp02, 2026-11-14,
+`planning/measurements/2026-11-14_crispr_two_repeat_producer.md`): the same view of `rN.3` with also the filtered
+producer `minced-0.4.2-w8-nr2-r23x47-s26x50-cas1kb-caspfam1-pfam-38.2` of P1, P2 and S1, under
+`/tmp/if2453/e15/relview`. Every check counts the arrays of both producers (the two never share a base at a locus);
+`arrays_producers` names both.
+
+| Check | Value (default producer only) |
+|---|---|
+| `arrays_tniq_cas7f_loci_with_array` | 14 of the 20 I-F3 TniQ loci (7) |
+| `arrays_tniq_cas7f_loci_with_near_cas_array` | 7 |
+| `arrays_tniq_control_window`, `arrays_cas7f_control_window` | 1, 1 (0, 0): the control's 2-repeat array 422557-422647 |
+| `arrays_control_cas6f_nearest_bp` | 128 (256,168) |
+| `arrays_cas7f_tniq_loci_with_array` | 13 (6) |
+| `arrays_cas7f_virus_loci_with_array` | 46 (45) |
+| the others | as above |
+
+So the short arrays of the paper's minimal systems are there once two repeats are allowed beside Cas genes: 7 of
+the 20 transposon-borne I-F3 loci gain one, the control element among them, and 14 of 20 have an array. No release holds these arrays yet, so no
+`recorded/` file is written for them.

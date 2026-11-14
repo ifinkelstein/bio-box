@@ -58,6 +58,7 @@ arrays_control_cas6f_nearest_bp	gap in bases from the control element's Cas6f (N
 arrays_pdam_complete_if_window	arrays within the 10-gene window of the complete type I-F system's Cas7f	recorded	[requires l1_crispr] recorded
 arrays_icp1_cas7f_window	arrays within the 10-gene window of the Cas7f of phage ICP1_2011_A	recorded	[requires l1_crispr] recorded
 arrays_tniq_cas7f_loci_with_array	TniQ loci with a Cas7f within 10 genes (I-F3 candidates) that have an array within the window	recorded	[requires l1_crispr] recorded
+arrays_tniq_cas7f_loci_with_near_cas_array	of those TniQ-Cas7f loci, the ones with an array of the filtered producer within the window (card E-15, DEC-40: MinCED at 2 repeats, kept within 1 kb of a Cas gene, outside genes and away from the default producer's arrays): the single-spacer arrays of the minimal I-F3 systems; 0 on a release with the default producer only	recorded	[requires l1_crispr] recorded
 arrays_cas7f_tniq_loci_with_array	Cas7f loci with a TniQ and no Cas1, Cas2 or Cas3 within 10 genes that have an array within the window	recorded	[requires l1_crispr] recorded
 arrays_cas7f_complete_not_virus_loci_with_array	Cas7f loci of prokaryotes and plasmids with Cas1 and Cas3 within 10 genes (complete type I-F) that have an array within the window	recorded	[requires l1_crispr] recorded
 arrays_cas7f_complete_not_virus_loci	Cas7f loci of prokaryotes and plasmids with Cas1 and Cas3 within 10 genes	recorded	[requires l1_crispr] recorded

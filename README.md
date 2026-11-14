@@ -171,6 +171,8 @@ The specification and plan behind these are [`00-spec.md`](00-spec.md), [`PLAN.m
 | 2026-11-13 | Worked examples are release checks: one command runs both on a release; on `rN.3` 92 checks ok, none failed (*measured*) | [`examples/README.md`](examples/README.md), [`2026-11-13_release_examples_rN3.md`](planning/measurements/2026-11-13_release_examples_rN3.md) |
 | 2026-11-13 to 14 | CRISPR arrays: MinCED in the images, arrays as features (2,790 arrays on the 10 Gbp stages, *measured*), shown beside a locus by `bio-box nbr` (cards E-12, E-13, E-14) | [`2026-11-13_crispr_arrays.md`](planning/measurements/2026-11-13_crispr_arrays.md), [`2026-11-14_arrays_in_neighbourhoods.md`](planning/measurements/2026-11-14_arrays_in_neighbourhoods.md) |
 | 2026-11-14 | Pfam 38.2 scanned on every stage of the 50 Gbp set (the last scan, `P6`, published 04:52 CST) | STATUS handoff |
+| 2026-11-14 | A second CRISPR producer for the short arrays beside Cas genes (DEC-40, card E-15): MinCED at two repeats, kept only within 1 kb of a Cas gene, outside genes and away from the default arrays; 78 calls on 10.6 Gbp, and 14 of the 20 Tn7-like TniQ loci of the worked example now show an array (*measured*) | [`2026-11-14_crispr_two_repeat_producer.md`](planning/measurements/2026-11-14_crispr_two_repeat_producer.md) |
+| 2026-11-14 | Search results are kept under the `bulk` area (DEC-42, card W-33); the first bundle, the RNA polymerase run of `rN.3` with its neighbourhood tables (164.6 MB, *measured*), is on durable storage | STATUS row W-33 |
 
 **Now** (2026-11-14; STATUS handoff)
 
@@ -180,13 +182,15 @@ The specification and plan behind these are [`00-spec.md`](00-spec.md), [`PLAN.m
   it (AGENTS §5.7; `scripts/release_examples.sh`), and the data root is copied to durable storage.
 - Tests, builds and searches on the server run in the images built from `main` at pull request 5 (cards C-29, C-32);
   the `rM.2` build alone keeps the older image, so its run records name one image.
-- S2C phase 2 is fetched (13,477 of 13,485 genomes, 2026-11-13); its split into stages is an open item for the PI,
-  and its build follows the 50 Gbp release (card C-25).
-- CRISPR arrays are called with MinCED and stored as features (card E-12), and `bio-box nbr` shows the arrays beside
-  a locus (card E-14); no release holds them yet. Arrays of two repeats, which Tn7-like elements carry, need a
-  filtered second producer (measured in card E-13; an open item for the PI).
+- S2C phase 2 is fetched (13,477 of 13,485 genomes, 2026-11-13); it is built as six stages of 9.2 to 9.5 Gbp after
+  the 50 Gbp release (DEC-34, DEC-35; card C-25 step 3 and cards B-47a to B-47e).
+- CRISPR arrays are called with MinCED and stored as features (card E-12), `bio-box nbr` shows the arrays beside a
+  locus (card E-14), and a second, filtered producer keeps the short arrays beside Cas genes that Tn7-like elements
+  carry (card E-15); no release holds arrays yet: the built stages get them after `rM.2` (DEC-40). Its chance rate
+  on phages is not measured yet (card E-16).
 - The synthetic world has its null worlds (card F-02, session 9) but holds the specification's ranges at its default
-  seed only (session 10): its redesign over seeds is an open item for the PI, and the statistics wait for it.
+  seed only (session 10): its redesign over seeds was decided on 2026-11-14 (DEC-36, DEC-37) and is being done
+  (session 11); the statistics wait for it and for the sequence model's change (DEC-39).
 
 **Next, in order**
 

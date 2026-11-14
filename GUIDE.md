@@ -203,7 +203,7 @@ downstream (a gene across the origin of a circular contig counted on the hit's s
 | Column | Meaning |
 |---|---|
 | `kind` | `crispr_array` |
-| `feature_uid`, `producer` | the array, and the MinCED setting that called it (`minced-0.4.2-w8-nr3-r23x47-s26x50`: at least 3 repeats) |
+| `feature_uid`, `producer` | the array, and the producer that called it: `minced-0.4.2-w8-nr3-r23x47-s26x50` (MinCED, at least 3 repeats, every contig), or `minced-0.4.2-w8-nr2-r23x47-s26x50-cas1kb-caspfam1-pfam-38.2` (card E-15: MinCED at 2 repeats, kept only within 1 kb of a gene with a Cas domain in the Pfam scan, outside genes and away from every 3-repeat array; the short arrays of minimal CRISPR-Cas systems). A release may hold both; an array is called by one of them only |
 | `start`, `end`, `strand` | the array on the contig, 0-based half-open; strand `+1` always (MinCED does not say which way an array is transcribed) |
 | `n_repeats`, `n_spacers`, `repeat` | its repeats and spacers, and its commonest repeat sequence |
 | `delta_bp` | the gap to the hit in bases, negative when the array overlaps the hit |

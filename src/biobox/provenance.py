@@ -25,6 +25,15 @@ lock; `minced_args` (MinCED's arguments, not a version) must be exactly the argu
 in `crispr.MINCED_ARGS`'s order. The producer name is checked wherever it appears: the step's name, the `producer=`
 partition of a file (`feature` files of a `minced-` producer, every `l1_crispr` file), and a tape version's
 definition.
+
+The second CRISPR producer (card E-15, DEC-40; `crispr.run_near_cas`) is the same name with a tail,
+`-cas<k>kb-<family list tag>-<library>-<version>` (for example `minced-0.4.2-w8-nr2-r23x47-s26x50-cas1kb-caspfam1-
+pfam-38.2`): the library must be one of the lock (refdb.yaml) at its locked version, and the family list tag one of
+the repository's frozen lists (`crispr.CAS_FAMILY_SETS`, the name without hyphens). Its step records the default
+producer's fields and `gene_call_version` (checked as a gene-call version), `domain_library`, `cas_families`,
+`cas_filter` and `overlap_producer`: each must be recorded and equal what the name encodes (the library, the frozen
+list whose tag it names, the filter, and the default producer of the same MinCED version and parameters at
+`DEFAULT_MIN_REPEATS`).
 """
 
 from __future__ import annotations
@@ -75,13 +84,22 @@ NCRNA_RE = re.compile(r"^infernal-(?P<infernal>[^-]+)-rfam-(?P<rfam>[^-]+)"
 # a ledger's tool versions may name the gene-call version a step read (the ncRNA producer's intergenic regions, card
 # E-08): it is checked as a gene-call version (its pyrodigal versions equal the lock), not as a tool of the lock
 LEDGER_GENE_CALL_KEY = "gene_call_version"
-# the CRISPR array producer (biobox.l1.crispr, card E-12): MinCED's version, then its parameters (card E-14)
+# the CRISPR array producer (biobox.l1.crispr, card E-12): MinCED's version, then its parameters (card E-14); the
+# filtered producer of card E-15 adds a tail: the filter (`cas<k>kb`), the Cas family list's tag and the domain library
+# it read (`<name>-<version>`, its `library=` partition)
 MINCED_RE = re.compile(r"^minced-(?P<minced>[^-]+)-(?P<params>w(?P<w>\d+)-nr(?P<nr>\d+)-r(?P<rl>\d+)x(?P<rh>\d+)"
-                       r"-s(?P<sl>\d+)x(?P<sh>\d+))$")
+                       r"-s(?P<sl>\d+)x(?P<sh>\d+))"
+                       r"(?:-(?P<filter>cas\d+kb)-(?P<famset>[0-9a-z]+)-(?P<lib>[a-z0-9_]+)-(?P<libv>[A-Za-z0-9_.]+))?$")
 CRISPR_STEP_PREFIX = "crispr-"
 # ledger fields of the crispr step that are not versions of the lock: the JVM (unpinned; recorded, not compared)
 # and MinCED's arguments (compared with the producer's name)
 CRISPR_UNLOCKED = ("java", "minced_args")
+# the filtered producer's step (card E-15) records these too: none is a version of the lock, each is compared with what
+# the producer's name encodes (its gene-call version, also recorded, is checked as a gene-call version)
+NEAR_CAS_FIELDS = ("gene_call_version", "domain_library", "cas_families", "cas_filter", "overlap_producer")
+NEAR_CAS_UNLOCKED = ("domain_library", "cas_families", "cas_filter", "overlap_producer")
+# the minimum of repeats of the default producer, whose arrays the filtered one may not overlap (DEC-40: 3 everywhere)
+DEFAULT_MIN_REPEATS = 3
 
 
 def minced_args_of(producer: str) -> str | None:
@@ -135,9 +153,17 @@ def refdb_libraries(repo: Path = REPO) -> list[dict]:
     return [{**db, "version": str(db["version"])} for db in doc.get("databases", [])]
 
 
+def _near_cas(producer: str) -> bool:
+    """Whether a `minced-` producer name has the filtered producer's tail (card E-15)."""
+    m = MINCED_RE.match(producer)
+    return m is not None and m["filter"] is not None
+
+
 def _step_tools(step: str) -> tuple[str, ...] | None:
     if step in STEP_TOOLS:
         return STEP_TOOLS[step]
+    if step.startswith(CRISPR_STEP_PREFIX) and _near_cas(step.removeprefix(CRISPR_STEP_PREFIX)):
+        return STEP_TOOLS[CRISPR_STEP_PREFIX + "*"] + NEAR_CAS_FIELDS  # card E-15
     # one ledger per library, tape version, ncRNA producer and CRISPR array producer
     for prefix in ("domains-", "tape-", "ncrna-", CRISPR_STEP_PREFIX):
         if step.startswith(prefix):
@@ -173,7 +199,8 @@ def check_provenance(manifest: dict, lock: dict[str, str] | None = None) -> list
             crispr = step.startswith(CRISPR_STEP_PREFIX)
             if crispr:  # card E-14: the producer the step is named after
                 problems += _minced_problems(f["path"], f"step {step}", step.removeprefix(CRISPR_STEP_PREFIX), lock)
-            unlocked = (LEDGER_GENE_CALL_KEY, *(CRISPR_UNLOCKED if crispr else ()))
+            near = crispr and _near_cas(step.removeprefix(CRISPR_STEP_PREFIX))
+            unlocked = (LEDGER_GENE_CALL_KEY, *(CRISPR_UNLOCKED if crispr else ()), *(NEAR_CAS_UNLOCKED if near else ()))
             # one column, a batch at a time: a ledger has one row per contig of the stage (card B-19)
             for raw in _column_values(pq, root / f["path"], "tool_versions_json"):
                 tv = json.loads(raw) if raw else None
@@ -229,10 +256,30 @@ def _minced_problems(where: str, what: str, p: str, lock: dict[str, str]) -> lis
     m = MINCED_RE.match(p)
     if m is None:
         return [f"{where}: {what} does not name its tool versions and parameters "
-                "(minced-<version>-w<n>-nr<n>-r<min>x<max>-s<min>x<max>)"]
+                "(minced-<version>-w<n>-nr<n>-r<min>x<max>-s<min>x<max>, then for the filtered producer of card E-15 "
+                "-cas<k>kb-<family list>-<library>-<version>)"]
     if m["minced"] != lock.get("minced"):
         return [f"{where}: {what} differs from the lock (minced {lock.get('minced')})"]
+    if m["filter"] is None:
+        return []
+    # card E-15: the domain library it read is a library of the lock (refdb.yaml) at the locked version, and its Cas
+    # family list a frozen list of the repository
+    if m["lib"] not in lock:
+        return [f"{where}: {what} names the domain library {m['lib']}, which is not a library of the lock (refdb.yaml)"]
+    if m["libv"] != lock[m["lib"]]:
+        return [f"{where}: {what} differs from the lock ({m['lib']} {lock[m['lib']]})"]
+    if m["famset"] not in _cas_family_tags():
+        return [f"{where}: {what} names the Cas family list {m['famset']!r}, which is not a frozen family list of the "
+                f"repository ({', '.join(sorted(_cas_family_tags().values()))})"]
     return []
+
+
+def _cas_family_tags() -> dict[str, str]:
+    """tag -> name of the frozen Cas family lists (`biobox.l1.crispr.CAS_FAMILY_SETS`; the tag is the name without
+    hyphens, as the filtered producer's name carries it). Imported here: biobox.l1.crispr imports this module."""
+    from biobox.l1.crispr import CAS_FAMILY_SETS
+
+    return {name.replace("-", ""): name for name in CAS_FAMILY_SETS}
 
 
 def _crispr_field_problems(where: str, step: str, tv: dict) -> list[str]:
@@ -246,6 +293,17 @@ def _crispr_field_problems(where: str, step: str, tv: dict) -> list[str]:
     if "minced_args" in tv and want is not None and tv["minced_args"] != want:
         out.append(f"{where}: {step} ledger minced_args {tv['minced_args']!r} are not the arguments its producer "
                    f"names ({want!r})")
+    m = MINCED_RE.match(step.removeprefix(CRISPR_STEP_PREFIX))
+    if m is None or m["filter"] is None:
+        return out
+    # card E-15: the filter's fields, each what the name encodes (the gene-call version is checked by the caller)
+    expect = {"domain_library": f"{m['lib']}-{m['libv']}", "cas_filter": m["filter"],
+              "cas_families": _cas_family_tags().get(m["famset"]),
+              "overlap_producer": f"minced-{m['minced']}-w{m['w']}-nr{DEFAULT_MIN_REPEATS}-r{m['rl']}x{m['rh']}"
+                                  f"-s{m['sl']}x{m['sh']}"}
+    for k, v in expect.items():
+        if k in tv and tv[k] != v:
+            out.append(f"{where}: {step} ledger {k} {tv[k]!r} is not what its producer names ({v!r})")
     return out
 
 
