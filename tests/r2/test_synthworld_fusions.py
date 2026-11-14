@@ -17,6 +17,7 @@ import hashlib
 import importlib.util
 import json
 import os
+import resource
 import shutil
 import subprocess
 import sys
@@ -102,6 +103,16 @@ def _stage_digests(out: Path) -> dict[str, str]:
                          ("mobile", "mobile"))}
 
 
+#: CPU seconds (user plus system, this process and its reaped children) the timed stage used; the runtime test bounds
+#: this, not the wall time, which a shared host's load inflates (card A-08)
+STAGE_CPU: dict[str, float] = {}
+
+
+def _cpu_s() -> float:
+    own, kids = resource.getrusage(resource.RUSAGE_SELF), resource.getrusage(resource.RUSAGE_CHILDREN)
+    return own.ru_utime + own.ru_stime + kids.ru_utime + kids.ru_stime
+
+
 @pytest.fixture(scope="module")
 def world(tmp_path_factory):
     if importlib.util.find_spec("zombi2") is None:
@@ -114,8 +125,9 @@ def world(tmp_path_factory):
     mobile.build(out)
     before = {d: _tree_sha(out / d) for d in EARLIER}
     digests = _stage_digests(out)
-    t0 = time.perf_counter()
+    t0, c0 = time.perf_counter(), _cpu_s()
     fw = fusions.build(out)
+    STAGE_CPU["fusions"] = _cpu_s() - c0
     return fw, out, time.perf_counter() - t0, before, digests
 
 
@@ -483,8 +495,11 @@ def test_every_earlier_feature_reads_the_same_bases_or_belongs_to_its_event(worl
 @needs_zombi2
 def test_micro_fusions_runtime_within_budget(world, record_property):
     fw, _, seconds, _, _ = world
+    cpu = STAGE_CPU["fusions"]
     record_property("fusions_seconds", round(seconds, 2))
-    print(f"\nF-02 micro fusions stage: {seconds:.2f} s wall; {fw.meta['counts']}; digest {fw.digest}")
+    record_property("fusions_cpu_seconds", round(cpu, 2))
+    print(f"\nF-02 micro fusions stage: {seconds:.2f} s wall, {cpu:.2f} s CPU; {fw.meta['counts']}; digest {fw.digest}")
     # synthworld_spec §2.6: S1-S6 take about 168 s of the 3 minutes (measured, sessions 4 and 5), leaving about
-    # 12 s for S7-S11 (derived); this bound is S7's share, measured at session 6
-    assert seconds < 6.0
+    # 12 s for S7-S11 (derived); this bound is S7's share, measured at session 6. It bounds the CPU time of the
+    # stage, not its wall time (card A-08): the wall time grows with the load beside the test, the CPU time does not
+    assert cpu < 5.9  # 6.0 s x 4.88 s CPU / 4.95 s wall (quiet, measured wilkcomp02 2026-11-14)

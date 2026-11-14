@@ -17,6 +17,7 @@ import hashlib
 import importlib.util
 import json
 import os
+import resource
 import shutil
 import subprocess
 import sys
@@ -118,6 +119,16 @@ def _tree_sha(root: Path) -> dict[str, str]:
             for p in sorted(root.rglob("*")) if p.is_file()}
 
 
+#: CPU seconds (user plus system, this process and its reaped children) each timed stage used; the emit test bounds
+#: this, not the wall time, which a shared host's load inflates (card A-08)
+STAGE_CPU: dict[str, float] = {}
+
+
+def _cpu_s() -> float:
+    own, kids = resource.getrusage(resource.RUSAGE_SELF), resource.getrusage(resource.RUSAGE_CHILDREN)
+    return own.ru_utime + own.ru_stime + kids.ru_utime + kids.ru_stime
+
+
 @pytest.fixture(scope="module")
 def world(tmp_path_factory):
     if importlib.util.find_spec("zombi2") is None:
@@ -132,13 +143,15 @@ def world(tmp_path_factory):
                      ("S7 fusions", lambda: fusions.build(out)),
                      ("S8-S9 assembly", lambda: assembly.build(out)),
                      ("S10 sources", lambda: sources.build(out))):
-        t0 = time.perf_counter()
+        t0, c0 = time.perf_counter(), _cpu_s()
         fn()
         times[name] = time.perf_counter() - t0
+        STAGE_CPU[name] = _cpu_s() - c0
     before = {d: _tree_sha(out / d) for d in EARLIER}
-    t0 = time.perf_counter()
+    t0, c0 = time.perf_counter(), _cpu_s()
     ew = emit.build(out)
     times["S11 emit"] = time.perf_counter() - t0
+    STAGE_CPU["S11 emit"] = _cpu_s() - c0
     return ew, out, times, before
 
 
@@ -567,6 +580,9 @@ def test_micro_stage_times(world, record_property):
         record_property(k.split()[0] + "_seconds", round(v, 2))
     total = sum(times.values())
     record_property("S1-S11_seconds", round(total, 2))
-    print("\n" + "; ".join(f"{k} {v:.2f} s" for k, v in times.items()) + f"; S1-S11 {total:.2f} s; "
-          f"counts {ew.meta['counts']}")
-    assert times["S11 emit"] < 120.0
+    for k, v in STAGE_CPU.items():
+        record_property(k.split()[0] + "_cpu_seconds", round(v, 2))
+    print("\n" + "; ".join(f"{k} {v:.2f} s wall, {STAGE_CPU[k]:.2f} s CPU" for k, v in times.items())
+          + f"; S1-S11 {total:.2f} s wall; counts {ew.meta['counts']}")
+    # a bound on the emit stage's CPU time, not its wall time (card A-08)
+    assert STAGE_CPU["S11 emit"] < 119.8  # 120 s x 23.40 s CPU / 23.43 s wall (quiet, measured wilkcomp02 2026-11-14)
