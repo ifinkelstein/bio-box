@@ -847,6 +847,7 @@ Files: `src/biobox/cli.py` (the `results` subcommands only: their help, docstrin
 Why: since card W-33 results are kept under `<bulk>/results` and a run archived again is a second archive, but `bio-box results --help` and its subcommands' help still say `<durable>/results`, that `--results` must be "inside durable storage", and that another sha256 is "a refusal (exit 2)" (*measured* by the W-33 agent: `cli.py`, about lines 139 to 150 and 2173 to 2182). A user reading the help is told the opposite of what happens.
 Do, test first: the help of `results`, `archive`, `flush`, `list` and `get` says `<bulk>/results`, describes the second archive, and names `RUN:SHA256PREFIX`; a test reads each subcommand's `--help` and fails on the words `durable` and `refus` where they describe the old behaviour (see it fail on today's text). `results get` gains `--sha256 PREFIX` as the spelled-out form of `RUN:SHA256PREFIX` (both accepted; giving both with different values is exit 2). No behaviour of `archive`, `flush` or `list` changes; the bundle on `/stor` is not touched and no acceptance run on the pod is needed.
 Accept: the tests; `bio-box results get --help` shown in the report.
+Done 2026-11-14 (STATUS row W-34).
 
 ### E-12 CRISPR arrays as features
 **H**, decided (below), then **M** · found by the CRISPR example (2026-11-13) · `PLAN.md` step 4
