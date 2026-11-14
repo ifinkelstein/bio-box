@@ -802,6 +802,26 @@ def test_w32_a_family_that_would_show_in_two_colours_takes_its_pfam_colour_throu
 
 @needs_mpl
 @pytest.mark.covers("W-32")
+def test_w32_the_rule_holds_where_the_clusters_genes_carry_no_domain(tmp_path_factory, tmp_path, plans):
+    """Found on the RNA polymerase run of rN.3 (KeyError 'pfam:S-AdoMet_lyase'): a cluster drawn in its family's Pfam
+    colour in a group where none of its genes carries that architecture. Here the common Cas1 cluster's genes in group
+    1 (oa_*) have no domain; its family is still Cas1 (its genes in group 2) and Cas1 is a stand-in in group 2, so in
+    group 1 it is drawn in the Pfam Cas1 colour and the legend's "Pfam Cas1" row gives the cluster's own share
+    there (4 of 4 loci, 100%)."""
+    root = tmp_path_factory.mktemp("w32nodom") / "root"
+    loci = w25.build(root, w25.ONE_COLOUR, no_domain=frozenset((f"oa_{k}", "Cas1@common") for k in range(4)))
+    assert run_one((root, loci), tmp_path / "out", "--figure") == 0
+    g1 = plans[w25._nr90("O@g1").hex()]
+    common = w25._nr50("Cas1@common").hex()
+    pfam = [(c, label) for c, label in g1.legend if label.startswith("Pfam Cas1 ")]
+    assert len(pfam) == 1 and pfam[0][1].endswith(" 100%")
+    drawn = {g.colour for r in g1.rows for g in r.genes if g.key == common}
+    assert drawn == {pfam[0][0]}
+    assert not any(label.startswith(common[:8]) for _, label in g1.legend)
+
+
+@needs_mpl
+@pytest.mark.covers("W-32")
 @pytest.mark.parametrize("how", ["no manifest", "no domain library"])
 def test_w32_without_a_domain_library_in_the_manifest_the_defaults_are_the_old_ones_and_stderr_says_so(
         tmp_path_factory, tmp_path, plans, capsys, how):

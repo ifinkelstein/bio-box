@@ -36,8 +36,8 @@ group. Card W-32 (DEC-41) made the last two the figure's defaults where they app
   of the run, it is held by at least FIGURE_MIN_SHARE of the loci (weighted) and colours a gene of a cluster that is
   grey there. A cluster coloured in some group whose family is a stand-in "would show in two colours"; it is drawn in
   its family's Pfam colour instead, in every group and every row, and is never given a colour or a legend row of its
-  own: each group's legend has one row "Pfam <architecture>" (the architecture's weighted share of the group's loci)
-  and none for the cluster. A cluster whose family is no stand-in keeps its own colour, and two common clusters of one
+  own: each group's legend has one row "Pfam <architecture>" (the architecture's weighted share of the group's loci;
+  in a group where no gene carries the architecture, the absorbed cluster's share) and none for the cluster. A cluster whose family is no stand-in keeps its own colour, and two common clusters of one
   family stay two colours (they are two families at the level).
 - The tables do not change: only figure.svg and figure.pdf do, and README.txt gains the paragraph that says how the
   figure's colours were chosen (`README_W31`). groups.tsv names a colour option in its `#` lines only when it was
@@ -906,6 +906,9 @@ def figure_plan(gid: str, group_loci: list[Locus], kept: list[Leaf], merges, tre
                 x0, x1 = _x_of(loc, g, side)
                 if g.key in absorbed and g.key in coloured:  # the one-colour rule
                     ck = FALLBACK_PREFIX + absorbed[g.key]
+                    # the legend's % is the architecture's share; where no gene of the group carries it (the
+                    # cluster's genes here have another one), the cluster's own
+                    shares.setdefault(ck, shares[g.key])
                 elif g.key is None or g.key in coloured:
                     ck = g.key
                 elif g.arch in stand_in:

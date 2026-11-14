@@ -148,14 +148,15 @@ def _write(name: str, rows: list[dict], path: Path, key) -> None:
 
 
 def build(root: Path, planted: dict | None = None, genomes_of: dict | None = None, *, manifest: bool = True,
-          domains: bool = True) -> dict:
+          domains: bool = True, no_domain: frozenset = frozenset()) -> dict:
     """Write the constructed release under `root`; return {locus name: facts} for the oracle. `planted` (default:
     PLANTED, with SHARED_GENOME) is another set of loci (card W-31); `genomes_of` (name -> label) puts the contigs of
     one label into one genome instead of a genome each. A family named `F@x` is NR50 and NR90 cluster `F@x` and carries
     the Pfam-like domain `F`, so clusters of one family can differ while their domain is the same. Card W-32: with
     `manifest` (the default) the release is published with a manifest (`manifests/release=<R>.json`), as a built
     release is; without it, it has only its `release_def`. Without `domains` no `l1_domains` file is written (a
-    release without a domain library)."""
+    release without a domain library). `no_domain` holds (locus name, family) pairs whose genes in that locus carry
+    no domain, so that one cluster's genes can have a domain in some loci and none in others."""
     with_domains = domains  # the name `domains` is the rows below
     if planted is None:
         planted, shared_names = PLANTED, SHARED_GENOME
@@ -196,7 +197,8 @@ def build(root: Path, planted: dict | None = None, genomes_of: dict | None = Non
             if fam:
                 fam_members[fam].append(pu)
             occ[stage].append({"protein_uid": pu, "contig_uid": cu, "start": start, "end": end, "strand": strand,
-                               "dist_to_contig_end_bp": 0, "feature_uid": fu, "_fam": fam})
+                               "dist_to_contig_end_bp": 0, "feature_uid": fu,
+                               "_fam": None if (name, fam) in no_domain else fam})
         length = pos - GAP + 100
         tape = tapes.build_tape(slots, length, False)
         tapes_rows[stage].append({"contig_uid": cu, "contig_len": length, "is_circular": False, "n_slots": len(slots),
