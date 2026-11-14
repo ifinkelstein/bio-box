@@ -29,6 +29,7 @@ import sys
 import time
 from pathlib import Path
 
+import numpy as np
 import pytest
 
 from biobox.synthworld import backbone
@@ -410,10 +411,119 @@ def _newick_times(path: Path, t0: float):
     return times
 
 
+def _living_crown(times: dict, tips: set[str]) -> tuple[float, float]:
+    """(end time of the living lineages' most recent common ancestor, present), from `_newick_times`'s table: the
+    common ancestor of every tip that ends latest."""
+    common = None
+    for tip in tips:
+        anc, x = set(), tip
+        while x is not None:
+            anc.add(x)
+            x = times[x][0]
+        common = anc if common is None else common & anc
+    return max(times[x][2] for x in common), max(times[t][2] for t in tips)
+
+
 def _t0(out: Path) -> float:
     with open(out / "zombi2/genome_events.tsv", encoding="utf-8") as fh:
         fh.readline()
         return float(fh.readline().split("\t")[0])
+
+
+@pytest.fixture(scope="module")
+def micro_no_exclusion(tmp_path_factory):
+    """The micro world with the planted and profile-only groups' entry exclusion off (DEC-36's rule removed), so
+    the replay below can see transfers into holders when the rule is not there."""
+    if importlib.util.find_spec("zombi2") is None:
+        pytest.skip("zombi2 0.54.0 is not importable here")
+    out = tmp_path_factory.mktemp("micro_noexcl") / "world"
+    params = backbone.load_preset("micro", overrides={"modules": {"entry_exclusion": False},
+                                                      "profile_only": {"entry_exclusion": False}})
+    return backbone.build(params, params["default_seed"], out), out
+
+
+def _module_transfers_into_holders(out: Path, bb) -> tuple[int, int, int]:
+    """Replay ZOMBI2's raw `genome_events.tsv` (speciation rows included) for the planted and profile-only families:
+    the live copies of each family per lineage, updated event by event (all rows of one `event` id are checked before
+    any is applied, so a group's own members do not count). Returns (transfer rows of a module family, rows whose
+    recipient held a live copy of the module's first family just before, rows whose recipient held any member)."""
+    names = _names(out)
+    first, members = {}, {}
+    for g in bb.groups:
+        if g.kind in ("planted", "profile_only"):
+            for f in g.members:
+                first[f], members[f] = names[f"{g.name}.0"], set(g.members)
+    live = collections.defaultdict(collections.Counter)
+    n = into_first = into_any = 0
+    batch, last = [], None
+
+    def apply():
+        nonlocal n, into_first, into_any
+        for r in batch:
+            fam = int(r["family"])
+            if fam in first and r["kind"].startswith("transfer"):
+                rec = r["children"].split(";")[1].split("_")[0]
+                n += 1
+                into_first += live[first[fam]][rec] > 0
+                into_any += any(live[f][rec] > 0 for f in members[fam])
+        for r in batch:
+            fam = int(r["family"])
+            if fam in first:
+                if r["parents"]:
+                    live[fam][r["parents"].split("_")[0]] -= 1
+                for c in r["children"].split(";"):
+                    if c:
+                        live[fam][c.split("_")[0]] += 1
+        batch.clear()
+
+    for r in _tsv(out / "zombi2/genome_events.tsv"):
+        if r["event"] != last:
+            apply()
+            last = r["event"]
+        batch.append(r)
+    apply()
+    # the replay ends with the extant genomes' copies (a check that it tracked every copy)
+    extant = {g.species_node for g in bb.genomes}
+    got = collections.Counter((f, lin) for f, c in live.items() for lin, k in c.items() if lin in extant
+                              for _ in range(k))
+    want = collections.Counter((g.family, g.copy_label.split("_")[0]) for g in bb.genes if g.family in first)
+    assert got == want
+    return n, into_first, into_any
+
+
+@needs_zombi2
+@pytest.mark.covers("F-02", "B-SIM", "DEC-36")
+def test_dec36_no_module_family_is_transferred_into_a_lineage_that_holds_the_module(micro, micro_no_exclusion):
+    """DEC-36 entry exclusion, which ZOMBI2 0.54.0 has no knob for: the adapter gives every planted and profile-only
+    family a recipient rule that weighs 0 a lineage holding the group's first family. Replayed from ZOMBI2's events:
+    no transfer of a module family lands in a lineage that held the module's first family just before (and, with
+    fates "group" keeping planted units whole, none in a lineage holding any member). Without the rule (same seed)
+    such transfers occur, so the replay can see a breach."""
+    bb, out, _ = micro
+    n, into_first, into_any = _module_transfers_into_holders(out, bb)
+    bb0, out0 = micro_no_exclusion
+    n0, into_first0, into_any0 = _module_transfers_into_holders(out0, bb0)
+    print(f"\nmodule-family transfers: with entry exclusion {n} rows, {into_first} into a holder of the first "
+          f"family, {into_any} into a holder of any member; without it {n0} rows, {into_first0} and {into_any0}")
+    assert n > 0 and into_first == 0, (n, into_first)
+    assert into_first0 > 0
+
+
+@needs_zombi2
+@pytest.mark.covers("F-02", "B-SIM")
+def test_species_tree_has_the_preset_crown_age_from_the_living_mrca(micro):
+    """DEC-37 (2), (3): the drawn tree is rescaled so that the time from the most recent common ancestor of the
+    living lineages to the present is `species.crown_age`, read here from ZOMBI2's Newick; the clonal burst is rooted
+    at most burst_depth x that crown age before the present."""
+    bb, out, _ = micro
+    times = _newick_times(out / "zombi2/species_complete.nwk", _t0(out))
+    crown, present = _living_crown(times, {g.species_node for g in bb.genomes})
+    want = float(bb.params["species"]["crown_age"])
+    assert abs((present - crown) - want) <= 1e-6 * want, (present - crown, want)
+    burst_root, _ = _living_crown(times, set(bb.burst_tips))
+    assert present - burst_root <= float(bb.params["species"]["burst_depth"]) * want + 1e-9
+    tx = bb.meta["taxonomy"]
+    assert abs(tx["crown"] - crown) <= 1e-9 * present and abs(tx["present"] - present) <= 1e-9 * present
 
 
 @pytest.fixture(scope="module")
@@ -643,36 +753,72 @@ def test_transfers_decay_with_distance_and_not_without_it(micro, micro_uniform):
 
 @needs_zombi2
 @pytest.mark.covers("F-02", "B-SIM")
-def test_lineage_varying_rates_reach_the_genome_size_range(micro):
-    """§5.1 genome size: chromosomes of about 1,000 to 4,000 genes (uniform rates gave 1,393-1,708,
-    session 1). Reached when the smallest chromosome is at most 1,100 and the largest at least 3,600
-    (within 10% of the range's ends), read from the raw gene order with plasmids excised."""
+def test_one_origination_axis_varies_genome_size_without_a_runaway(micro):
+    """§5.1 genome size as DEC-37 (1) asks it (migrated in session 11 from
+    `test_lineage_varying_rates_reach_the_genome_size_range`, which asserted at the default seed a smallest chromosome
+    <= 1,100 and a largest >= 3,600 genes, and > 10 distinct ZOMBI2 multipliers for each rate of the two axes, loss
+    and duplication + transfer + origination). Now: one lineage axis, on origination alone; ZOMBI2 recorded > 10
+    distinct origination multipliers and none other than 1 for duplication, transfer and loss; the chromosome mean
+    within 1,500 +- 30% (DEC-37 (1); the per-seed check is tests/r2/test_synthworld_preset_seeds.py); the axis moves
+    size: a genome's chromosome size rises with its branch's origination multiplier (Spearman rank correlation > 0,
+    one-sided permutation p < 0.01, 2,000 permutations, fixed seed); and no runaway: the largest chromosome below the
+    §5.1 range's top, 4,000 genes (the two old axes sent whole worlds to 15,445 genes per genome). Sizes are read from
+    the raw gene order with plasmids excised."""
     bb, out, _ = micro
     extant = {g.species_node for g in bb.genomes}
     reps = _raw_replicons(out, extant, set(_plasmid_sizes(bb.params)))
-    sizes = sorted(len(gs) for rs in reps.values() for kind, _, _, gs in rs if kind == "chromosome")
-    print(f"\nchromosome genes: min {sizes[0]} median {sizes[len(sizes) // 2]} max {sizes[-1]}")
+    size_of = {lin: len(gs) for lin, rs in reps.items() for kind, _, _, gs in rs if kind == "chromosome"}
+    sizes = sorted(size_of.values())
     assert sizes == sorted(r.n_genes for r in bb.replicons if r.kind == "chromosome")
-    assert sizes[0] <= 1100 and sizes[-1] >= 3600, sizes
-    # ZOMBI2 recorded a multiplier per species branch for each varying rate, and they differ
-    rows = _tsv(out / "zombi2/lineage_multipliers.tsv")
-    for axis in bb.params["lineage_rates"]["axes"]:
-        for rate in axis["rates"]:
-            vals = {float(r[rate]) for r in rows if r[rate]}
-            assert len(vals) > 10, (rate, len(vals))
+    assert [ax["rates"] for ax in bb.params["lineage_rates"]["axes"]] == [["origination"]]
+    rows = {r["lineage"]: r for r in _tsv(out / "zombi2/lineage_multipliers.tsv")}
+    assert len({float(r["origination"]) for r in rows.values()}) > 10
+    for rate in ("duplication", "transfer", "loss"):
+        assert {float(r[rate]) for r in rows.values()} == {1.0}, rate
+    mean = sum(sizes) / len(sizes)
+    assert 0.7 * 1500 <= mean <= 1.3 * 1500, mean
+
+    def ranks(xs):
+        order = sorted(range(len(xs)), key=lambda i: xs[i])
+        r = [0.0] * len(xs)
+        i = 0
+        while i < len(order):
+            j = i
+            while j + 1 < len(order) and xs[order[j + 1]] == xs[order[i]]:
+                j += 1
+            for k in range(i, j + 1):
+                r[order[k]] = (i + j) / 2
+            i = j + 1
+        return r
+
+    def corr(a, b):
+        ma, mb = sum(a) / len(a), sum(b) / len(b)
+        return sum((x - ma) * (y - mb) for x, y in zip(a, b)) / \
+            (sum((x - ma) ** 2 for x in a) * sum((y - mb) ** 2 for y in b)) ** 0.5
+
+    tips = sorted(size_of)
+    rs, rm = ranks([size_of[t] for t in tips]), ranks([float(rows[t]["origination"]) for t in tips])
+    rho = corr(rs, rm)
+    rng = np.random.default_rng(20261114)
+    null = [corr(rs, list(rng.permutation(rm))) for _ in range(2000)]
+    p = (1 + sum(x >= rho for x in null)) / 2001
+    print(f"\nchromosome genes: min {sizes[0]} median {sizes[len(sizes) // 2]} max {sizes[-1]} mean {mean:.1f}; "
+          f"Spearman with the origination multiplier {rho:.3f} (permutation p {p:.4f})")
+    assert rho > 0 and p < 0.01, (rho, p)
+    assert sizes[-1] < 4000, sizes[-1]
 
 
 @needs_zombi2
 @pytest.mark.covers("F-02", "B-SIM")
 def test_taxonomy_is_cut_from_the_species_tree_at_the_preset_depths(micro):
     """§2.1 S1 synthetic taxonomy from depth cuts. Recomputed from the raw Newick: a genome's taxon at a
-    rank is the species-tree branch alive at that rank's cut, a fraction of the crown age."""
+    rank is the species-tree branch alive at that rank's cut, a fraction of the crown age, measured from the
+    most recent common ancestor of the living lineages (DEC-37 (3); sessions 2 to 10 cut from the first
+    speciation, which is the same node at the default seed only when both of its sides have living genomes)."""
     bb, out, _ = micro
     tx = bb.params["taxonomy"]
     times = _newick_times(out / "zombi2/species_complete.nwk", _t0(out))
-    root = next(lab for lab, v in times.items() if v[0] is None)
-    crown = times[root][2]
-    present = max(e for _, _, e in times.values())
+    crown, present = _living_crown(times, {g.species_node for g in bb.genomes})
     taxa = {(t.rank, t.taxon): t for t in bb.taxa}
     lineage_of = {t.genome_id: t.tax_lineage.split(";") for t in bb.taxonomy}
     assert set(lineage_of) == {g.genome_id for g in bb.genomes}

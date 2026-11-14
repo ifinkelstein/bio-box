@@ -43,7 +43,10 @@ SIGNAL = {"backbone": "025fdd0d27fdc65e678782216ecd21fb", "sequences": "34ebce13
           "sources": "770007bde8615f41d9dd5f2eb912e753", "emit": "a2f0e448484dab63d41281a5ef6a00c0"}
 SIGNAL_WORLD = "f0262027e4ccdcbc72cd7d90f23fbb5c"
 STAGES = ("backbone", "sequences", "replicons", "mobile", "fusions", "assembly", "sources", "emit")
-SEED = 20261112
+DEFAULT_SEED = 20261112
+#: the master seed of every world here; BIOBOX_SYNTHWORLD_NULL_SEED runs the whole module at another seed (card F-02
+#: session 11 runs it at the default seed and at 20261113), where only the pinned digests do not apply
+SEED = int(os.environ.get("BIOBOX_SYNTHWORLD_NULL_SEED", DEFAULT_SEED))
 SEED2 = SEED + 1
 #: worlds built at once; each child is one process (numpy at its thread count)
 JOBS = max(1, min(7, os.cpu_count() or 1))
@@ -258,6 +261,8 @@ def _hypergeom_sf_table(G: int) -> np.ndarray:
 
 @needs_zombi2
 def test_signal_world_keeps_every_stage_digest(worlds):
+    if SEED != DEFAULT_SEED:
+        pytest.skip(f"the digests are pinned at the default seed {DEFAULT_SEED}; this run is at {SEED}")
     W, rep = worlds
     assert _digests(W["signal"]) == SIGNAL
     assert rep["signal"]["world_digest"] == SIGNAL_WORLD
@@ -595,7 +600,9 @@ def test_n1_shares_s1_to_s10_and_the_emitted_contigs_with_its_signal_world(world
         w = W[n]
         for d in nulls.SHARED:
             assert _tree_sha(w / d) == _tree_sha(s / d), (n, d)
-        assert {d: v for d, v in _digests(w).items() if d != "emit"} == {d: v for d, v in SIGNAL.items() if d != "emit"}
+        # the signal world's own digests (pinned in SIGNAL at the default seed by the first test)
+        assert {d: v for d, v in _digests(w).items() if d != "emit"} == \
+            {d: v for d, v in _digests(s).items() if d != "emit"}
         assert _tree_sha(w / "emit" / "fasta") == _tree_sha(s / "emit" / "fasta")
         for f in ("ingest.tsv", "genomes.json", "truth.gff"):
             assert (w / "emit" / f).read_bytes() == (s / "emit" / f).read_bytes(), f

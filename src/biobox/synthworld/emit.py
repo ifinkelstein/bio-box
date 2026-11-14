@@ -44,6 +44,13 @@ overlap on the contig (``overlap_bp``), and ``left_gene_id`` is the gene at the 
 (``domain_arch`` ``acc:start-end``, ``elements`` ``kind:start-end:strand``, ``expected_calls``
 ``start-end:strand``, ``gene_ids``, ``partner_family_ids``).
 
+``truth_module`` ends with two columns the spec's table does not list (card F-02 session 11, DEC-36): the realized
+strength of a planted, profile-only or vehicle group, the same on every member row: ``realized_transfers_per_member``,
+the backbone's transfer events (``backbone/events.tsv`` rows of a transfer kind, all lineages) on the group's
+families divided by its number of families, which is the strength grid's transfer axis; and ``realized_together``,
+the share of the distinct transfer events (``event`` ids) touching a member that carry every member (empty with
+none). Both are empty on NOGD and Cas rows and on N1's relabeled planted rows.
+
 Not computed (empty): ``ref_bitscore`` and ``ref_bitscore_median`` (no scan at build), ``gene_tree_extant``,
 ``origin_node``, ``strength_class``, ``realized_independent_transfers``, ``realized_vehicle_independent_loci``,
 ``powered_expected``; ``truth_igr`` holds the S5 junctions only (junctions made by S6-S8 insertions are not
@@ -374,6 +381,8 @@ class TruthModule(NamedTuple):
     realized_independent_transfers: str
     realized_vehicle_independent_loci: str
     powered_expected: str
+    realized_transfers_per_member: object
+    realized_together: object
 
 
 class TruthTrap(NamedTuple):
@@ -1310,10 +1319,12 @@ def build(world, *, null: dict | None = None) -> EmitWorld:
     fam_id_of = {int(r["family"]): r["family_id"] for r in fam_bb.values()}
     fam_seq = {r["family_id"]: r for r in _tsv(world / "sequences" / "families.tsv")}
     transfers = collections.Counter()
+    event_fams: dict[str, set[int]] = collections.defaultdict(set)
     with open(world / "backbone" / "events.tsv", newline="", encoding="utf-8") as fh:
         for r in csv.DictReader(fh, delimiter="\t"):
             if r["kind"].startswith("transfer"):
                 transfers[int(r["family"])] += 1
+                event_fams[r["event"]].add(int(r["family"]))
     panel_kind = "pfam" if docs["sequences"]["panel"]["source"] == "pfam" else "panel"
     tfm = _Out(tmp / "truth" / "truth_family.tsv", TruthFamily)
     special = ("vehicle_chassis", "cargo", "hub", "decoy")
@@ -1354,23 +1365,29 @@ def build(world, *, null: dict | None = None) -> EmitWorld:
     for gr in groups:
         if gr["kind"] not in mkind:
             continue
-        for k, fam in enumerate(int(x) for x in gr["members"].split(";")):
+        mem = [int(x) for x in gr["members"].split(";")]
+        # DEC-36: the realized strength, transfer events per member family and the share of the group's transfer
+        # events that carry every member (backbone events, all lineages)
+        touching = [fs for fs in event_fams.values() if fs.intersection(mem)]
+        tpm = q6(sum(transfers[f] for f in mem) / len(mem))
+        rtog = q6(sum(set(mem) <= fs for fs in touching) / len(touching)) if touching else None
+        for k, fam in enumerate(mem):
             fid_ = fam_id_of[fam]
             n1_row = is_n1 and gr["kind"] == "planted"
             tm.row(TruthModule(*WV, gr["name"], mkind[gr["kind"]], relabel.get(fid_, fid_) if n1_row else fid_, "core",
                                "", k, float(gr["together"]), gr["fates"], gr["adjacent"] == "true", "", "",
                                None if n1_row else loci[gr["name"]] if gr["adjacent"] == "true" else None, "", "",
-                               ""))
+                               "", None if n1_row else tpm, None if n1_row else rtog))
     for ev in _tsv(world / "fusions" / "events.tsv"):
         if ev["kind"] != "nogd" or is_n1:
             continue
         k = int(fam_bb[ev["family_a"]]["order_index"]) if ev["family_a"] in fam_bb else -1
         for fam, role in ((ev["family_a"], "nogd_replaced"), (ev["replacement_family"], "nogd_replacement")):
             tm.row(TruthModule(*WV, ev["module_id"], "planted", fam, role, ev["clade_node"], k, None, "", True, "",
-                               "", None, "", "", ""))
+                               "", None, "", "", "", None, None))
     for r in cas_rows:
         tm.row(TruthModule(*WV, r["cas_module_id"], "cas_operon", r["family_id"], "core", "", int(r["order_index"]),
-                           None, "", True, "", "", None, "", "", ""))
+                           None, "", True, "", "", None, "", "", "", None, None))
     tm.close()
 
     tt = _Out(tmp / "truth" / "truth_traps.tsv", TruthTrap)

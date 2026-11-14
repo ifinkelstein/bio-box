@@ -571,6 +571,46 @@ def test_family_module_and_trap_tables_are_complete(world, t):
     print(f"\nfamilies {len(fam)}; module rows {len(t['truth']['truth_module'])}; traps {dict(kinds)}")
 
 
+@needs_zombi2
+@pytest.mark.covers("F-02", "B-SIM", "DEC-36")
+def test_truth_module_records_the_realized_strength(world, t):
+    """DEC-36: the truth records the realized value of the grid's transfer axis per module. Recounted here from the
+    backbone's events: per group, the transfer rows on its families over its number of families, and the share of
+    the distinct transfer events (`event` ids) touching a member that carry every member; the same on every member
+    row; empty on NOGD and Cas rows."""
+    _, out, _, _ = world
+    rows = collections.Counter()
+    by_event = collections.defaultdict(set)
+    for e in _tsv(out / "backbone" / "events.tsv"):
+        if e["kind"] in ("transfer_additive", "transfer_replacing"):
+            rows[e["family"]] += 1
+            by_event[e["event"]].add(e["family"])
+    want = {}
+    for g in _tsv(out / "backbone" / "groups.tsv"):
+        if g["kind"] not in ("planted", "profile_only", "vehicle"):
+            continue
+        mem = g["members"].split(";")
+        touching = [fs for fs in by_event.values() if fs & set(mem)]
+        whole = sum(1 for fs in touching if set(mem) <= fs)
+        want[g["name"]] = (sum(rows[f] for f in mem) / len(mem), whole / len(touching) if touching else None)
+    got = collections.defaultdict(set)
+    for r in t["truth"]["truth_module"]:
+        if r["kind"] == "cas_operon" or r["member_role"] != "core":
+            assert r["realized_transfers_per_member"] == "" and r["realized_together"] == "", r
+            continue
+        got[r["module_id"]].add((r["realized_transfers_per_member"], r["realized_together"]))
+    assert set(got) == set(want)
+    for name, vals in got.items():
+        assert len(vals) == 1, name
+        tpm, tog = next(iter(vals))
+        assert abs(float(tpm) - want[name][0]) <= 1e-5 * max(1.0, want[name][0]), (name, tpm, want[name])
+        assert (tog == "") == (want[name][1] is None)
+        if tog:
+            assert abs(float(tog) - want[name][1]) <= 1e-5, (name, tog, want[name])
+    planted = sorted((want[n][0], n) for n in want if n.startswith("mod"))
+    print(f"\nrealized transfers per member, planted modules: min {planted[0]}, max {planted[-1]}")
+
+
 # --- runtime (§2.6) -----------------------------------------------------------------------------------------------
 
 @needs_zombi2

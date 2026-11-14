@@ -43,6 +43,16 @@ def test_taxonomy_takes_the_branch_alive_at_each_cut():
                    "d": ["n2", "n2", "d"]}
 
 
+@pytest.mark.covers("F-02", "B-SIM")
+def test_extant_crown_is_the_living_lineages_mrca_not_the_first_speciation():
+    """DEC-37 (3): the crown is measured from the most recent common ancestor of the living lineages. Root r splits
+    at 1 into x (extinct at 2) and y; y splits at 3 into tips a and b, alive at 5: the MRCA is y, crown age 2, not 4."""
+    nodes = {"r": (None, 1.0), "x": ("r", 2.0), "y": ("r", 3.0), "a": ("y", 5.0), "b": ("y", 5.0)}
+    assert backbone.extant_crown(nodes, ["b", "a"]) == ("y", 3.0, 5.0)
+    nodes = {"r": (None, 1.0), "y": ("r", 3.0), "a": ("y", 5.0), "b": ("y", 5.0), "c": ("r", 5.0)}
+    assert backbone.extant_crown(nodes, ["a", "b", "c"]) == ("r", 1.0, 5.0)
+
+
 def test_taxon_names_number_taxa_by_their_first_genome():
     per_tip = {"g0": ["n7", "n9"], "g1": ["n5", "n5"], "g2": ["n7", "n8"]}
     names, taxa = backbone.name_taxa(per_tip, domain="Bacteria", ranks=["phylum", "genus"],
@@ -73,6 +83,23 @@ def test_micro_preset_has_the_planted_backbone_features_of_section_5_1():
     assert any(ax["sigma"] > 0 for ax in p["lineage_rates"]["axes"])
 
 
+@pytest.mark.covers("F-02", "B-SIM")
+def test_micro_preset_carries_the_redesign_of_dec36_and_dec37():
+    """DEC-37 (1): one lineage axis, on origination alone; (2) a fixed crown age; DEC-36: planted modules with entry
+    exclusion, so their groups carry a recipient weight of 0 for a lineage holding the first family; the together
+    axis of the grid kept, three distinct member transfer rates."""
+    p = backbone.load_preset("micro")
+    assert [ax["rates"] for ax in p["lineage_rates"]["axes"]] == [["origination"]]
+    assert float(p["species"]["crown_age"]) > 0.0
+    assert p["modules"]["entry_exclusion"] is True and p["modules"]["together"] == [0.3, 0.7, 1.0]
+    mt = p["modules"]["member_transfer"]
+    assert len(mt) == 3 and mt == sorted(mt) and len(set(mt)) == 3
+    groups = backbone._declared_groups(p)
+    assert all(g["present_weight"] == 0.0 for g in groups if g["kind"] == "planted")
+    assert all(g["present_weight"] == float(p["plasmids"]["present_weight"]) for g in groups if g["kind"] == "plasmid")
+    assert all(g["present_weight"] is None for g in groups if g["kind"] == "vehicle")
+
+
 @pytest.mark.parametrize("change, match", [
     (lambda p: p["taxonomy"].update(cuts=[0.5, 0.3, 0.6, 0.7, 0.8, 0.9]), "cuts"),
     (lambda p: p["taxonomy"].update(cuts=[0.1, 0.2]), "cuts"),
@@ -83,6 +110,9 @@ def test_micro_preset_has_the_planted_backbone_features_of_section_5_1():
     (lambda p: p["lineage_rates"].update(axes=[{"rates": ["loss"], "sigma": 0.2},
                                                {"rates": ["loss"], "sigma": 0.2}]), "lineage"),
     (lambda p: p["lineage_rates"].update(axes=[{"rates": ["inversion"], "sigma": 0.2}]), "lineage"),
+    (lambda p: p["species"].update(crown_age=0.0), "crown_age"),
+    (lambda p: p["modules"].update(member_duplication=-0.1), "member_duplication"),
+    (lambda p: p["profile_only"].update(entry_exclusion="yes"), "entry_exclusion"),
 ])
 def test_check_preset_refuses_a_malformed_session_2_parameter(change, match):
     p = copy.deepcopy(backbone.load_preset("micro"))

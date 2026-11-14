@@ -1,22 +1,34 @@
-"""Card F-02 session 10: the `micro` backbone (S1-S2) over many seeds, measured from its emitted tables.
+"""Card F-02 sessions 10 and 11: the `micro` backbone (S1-S2) over many seeds, measured from its emitted tables.
 
     python f0210_seed_scan.py scan OUT LABEL [--jobs N] [--seeds default,n2 | s1,s2,...] [--set a.b=JSON ...]
-                                            [--axes R+R:S/R:S | none] [--crown AGE] [--rule R+R] [--keep]
+                                            [--axes R+R:S/R:S | none] [--crown AGE] [--rule R+R] [--n0] [--keep]
     python f0210_seed_scan.py table OUT LABEL [LABEL ...]
+    python f0210_seed_scan.py crowns OUT_TSV [--seeds ...]
 
-scan: builds the backbone of the `micro` preset (the generator of this tree, unchanged) at each seed into
+scan: builds the backbone of the `micro` preset (the generator of this tree) at each seed into
 OUT/worlds/LABEL/<seed>, N seeds at once (one process each), measures it and writes one row per seed to OUT/LABEL.tsv
 and the realized strength grid to OUT/LABEL_grid.tsv. Seeds: ``default`` is the preset's default seed, ``n2`` the 20
 N2 seeds (`nulls.n2_seeds` of the default seed); integers are taken as they are. ``--set`` overrides an existing
 preset leaf by its path (JSON value). ``--axes`` replaces `lineage_rates.axes` (``origination:1.2/duplication+
-transfer+loss:0.8``; ``none`` for no axis). ``--crown`` and ``--rule`` are measurement devices that patch ZOMBI2's
-calls in the worker process, never the generator's code: ``--crown`` rescales each drawn species tree to that crown
-age (`_patch_crown`), ``--rule`` changes the planted and profile-only groups' rates or recipients (`_patch_rule`:
-modbg, modbal, lossT, dup0, excl). The world directory is removed after it is measured unless ``--keep``.
+transfer+loss:0.8``; ``none`` for no axis). ``--n0`` also builds the N0-full backbone at the seed and compares its
+background genome sizes with the signal's as `tests/r2/test_synthworld_nulls.py` does (geometric-mean ratio, Pearson r).
+
+``--crown`` and ``--rule`` are session 10's measurement devices that patch ZOMBI2's calls in the worker process,
+never the generator's code: ``--crown`` rescales each drawn species tree to that crown age measured from the first
+speciation (`_patch_crown`), ``--rule`` changes the planted and profile-only groups' rates or recipients
+(`_patch_rule`: modbg, modbal, lossT, dup0, excl). Since session 11 the generator has a fixed crown age measured from
+the living lineages' MRCA (``species.crown_age``), entry exclusion (``modules.entry_exclusion``,
+``profile_only.entry_exclusion``) and its own member duplication (``member_duplication``), so ``--crown`` is
+meaningful only with ``--set species.crown_age=null`` and ``excl`` only with ``entry_exclusion`` false (the device
+fills a family's recipient rule only where the generator leaves none); the session-10 labels are reproduced with
+those three settings put back. The world directory is removed after it is measured unless ``--keep``.
 table: prints the rows of the labels as a Markdown table.
+crowns: the species trees alone (ZOMBI2's draw at each seed, before any rescaling), one row per seed with the crown
+age from the first speciation and from the living lineages' most recent common ancestor (DEC-37 (3)).
 
 Every number is counted here from the backbone's tables (`genes.tsv`, `families.tsv`, `groups.tsv`, `replicons.tsv`,
-`truth_units.tsv`, `events.tsv`) and the species tree (`zombi2/species_complete.nwk`); the DEC-15 (c) statistics are
+`truth_units.tsv`, `events.tsv`), ZOMBI2's `genome_events.tsv` (the entry-exclusion replay) and
+`lineage_multipliers.tsv`, and the species tree (`zombi2/species_complete.nwk`); the DEC-15 (c) statistics are
 the generator's own (`backbone.json` ``scramble``), with the thresholds of `backbone.check_scrambled`.
 """
 
@@ -147,8 +159,71 @@ def _tree(nwk: Path, extant: set[str]) -> dict:
     stem = nodes[0][2]
     present = max(depth[i] for i, (_, lab, _) in enumerate(nodes) if lab in extant)
     n_internal = len({p for p, _, _ in nodes if p >= 0})
+    tips = [i for i, (_, lab, _) in enumerate(nodes) if lab in extant]
+    _, mrca_depth, _ = backbone.extant_crown({i: (p if p >= 0 else None, depth[i]) for i, (p, _, _) in enumerate(nodes)},
+                                             tips)
     return {"crown_age": round(present - stem, 4), "tree_height": round(present, 4), "n_nodes": len(nodes),
-            "n_speciations": n_internal - 1}
+            "n_speciations": n_internal - 1, "crown_age_mrca": round(present - mrca_depth, 4)}
+
+
+def _ranks(xs: list[float]) -> list[float]:
+    order = sorted(range(len(xs)), key=lambda i: xs[i])
+    r = [0.0] * len(xs)
+    i = 0
+    while i < len(order):
+        j = i
+        while j + 1 < len(order) and xs[order[j + 1]] == xs[order[i]]:
+            j += 1
+        for k in range(i, j + 1):
+            r[order[k]] = (i + j) / 2.0
+        i = j + 1
+    return r
+
+
+def _pearson(a: list[float], b: list[float]) -> float:
+    n = len(a)
+    ma, mb = sum(a) / n, sum(b) / n
+    sab = sum((x - ma) * (y - mb) for x, y in zip(a, b))
+    saa = sum((x - ma) ** 2 for x in a)
+    sbb = sum((y - mb) ** 2 for y in b)
+    return sab / (saa * sbb) ** 0.5 if saa > 0 and sbb > 0 else 0.0
+
+
+def _exclusion_replay(zdir: Path, first_of: dict[int, int], members_of: dict[int, set[int]]) -> tuple[int, int, int]:
+    """Replay ZOMBI2's `genome_events.tsv` (speciation rows included) for the module families: per event id, before
+    any of its rows is applied, count the transfers of a module family whose recipient lineage holds a live copy of
+    the module's first family, and those whose recipient holds a live copy of any of its families. Returns (module
+    transfer rows, into a holder of the first family, into a holder of any member)."""
+    live: dict[int, collections.Counter] = collections.defaultdict(collections.Counter)   # family -> lineage counts
+    rows_ev: list[list[str]] = []
+    n = into_first = into_any = 0
+
+    def flush():
+        nonlocal n, into_first, into_any
+        for kind, fam, parents, kids in rows_ev:
+            if kind.startswith("transfer") and fam in first_of:
+                rec = kids[1].split("_")[0]
+                n += 1
+                into_first += live[first_of[fam]][rec] > 0
+                into_any += any(live[f][rec] > 0 for f in members_of[fam])
+        for kind, fam, parents, kids in rows_ev:
+            if fam not in first_of:
+                continue
+            if parents:
+                live[fam][parents.split("_")[0]] -= 1
+            for k in kids:
+                live[fam][k.split("_")[0]] += 1
+        rows_ev.clear()
+
+    last = None
+    with open(zdir / "genome_events.tsv", newline="", encoding="utf-8") as fh:
+        for r in csv.DictReader(fh, delimiter="\t"):
+            if r["event"] != last:
+                flush()
+                last = r["event"]
+            rows_ev.append([r["kind"], int(r["family"]), r["parents"], [c for c in r["children"].split(";") if c]])
+    flush()
+    return n, into_first, into_any
 
 
 def measure(world: Path, params: dict) -> tuple[dict, list[dict]]:
@@ -235,6 +310,46 @@ def measure(world: Path, params: dict) -> tuple[dict, list[dict]]:
     row["declared_clustered"] = sc["declared_clustered"]
     row["scored_units"] = len(scored)
     row["scored_units_intact"] = sum(u["intact"] == "true" for u in scored)
+    # session 11 columns: the crown from the living MRCA, the realized transfer axis per level, entry exclusion
+    # replayed from ZOMBI2's events, the size spread and its link to the origination axis
+    row["crown_age_mrca"] = tree["crown_age_mrca"]
+    row["rescale_factor"] = round(float(meta.get("crown", {}).get("rescale_factor", 1.0)), 6)
+    levels = sorted(set(mtr))
+    med = []
+    for k, lv in enumerate(levels):
+        v = sorted(r["transfers_per_member"] for r in grid if r["member_transfer"] == lv)
+        m_ = (v[(len(v) - 1) // 2] + v[len(v) // 2]) / 2 if v else 0.0
+        med.append(m_)
+        row[f"tpm_level{k}_median"] = round(m_, 2)
+        row[f"tpm_level{k}_range"] = f"{v[0]}-{v[-1]}" if v else ""
+        row[f"cells_level{k}_unpowered"] = sum(
+            1 for t in together if not any(r["genomes_all_members"] >= MIN_GENOMES for r in grid
+                                           if r["member_transfer"] == lv and r["together"] == t))
+    row["levels_distinct"] = all(a < b for a, b in zip(med, med[1:]))
+    names = {r["name"]: int(f) for f, r in fams.items() if r["name"]}
+    first_of, members_of = {}, {}
+    for name, gr in groups.items():
+        if gr["kind"] in ("planted", "profile_only"):
+            mem = {int(x) for x in gr["members"].split(";")}
+            for f in mem:
+                first_of[f] = names[f"{name}.0"]
+                members_of[f] = mem
+    n_tr, into_first, into_any = _exclusion_replay(world / "zombi2", first_of, members_of)
+    row["module_transfer_rows"] = n_tr
+    row["module_transfers_into_first_holder"] = into_first
+    row["module_transfers_into_any_holder"] = into_any
+    mean_c = sum(chrom) / len(chrom)
+    row["chrom_cv"] = round((sum((c - mean_c) ** 2 for c in chrom) / len(chrom)) ** 0.5 / mean_c, 4)
+    lm = world / "zombi2" / "lineage_multipliers.tsv"
+    rho = ""
+    if lm.exists():
+        mult = {r["lineage"]: r.get("origination", "") for r in _tsv(lm)} if lm.stat().st_size else {}
+        node_of = {g["genome_id"]: g["species_node"] for g in genomes}
+        size_of = {r["genome_id"]: int(r["n_genes"]) for r in reps if r["kind"] == "chromosome"}
+        pairs = [(size_of[g], float(mult[node_of[g]])) for g in gids if mult.get(node_of[g])]
+        if len(pairs) == len(gids):
+            rho = round(_pearson(_ranks([a for a, _ in pairs]), _ranks([b for _, b in pairs])), 4)
+    row["spearman_chrom_vs_origination_multiplier"] = rho
     breaks = []
     if not MEAN_BAND[0] <= row["chrom_mean"] <= MEAN_BAND[1]:
         breaks.append("chrom_mean")
@@ -253,14 +368,27 @@ def measure(world: Path, params: dict) -> tuple[dict, list[dict]]:
     if not (0.4 <= sc["plus_fraction"] <= 0.6 and sc["initial_adjacency_kept"] <= 0.05
             and sc["declared_clustered"] <= 0.5) or row["scored_units_intact"] != row["scored_units"]:
         breaks.append("dec15")
+    if not row["levels_distinct"]:
+        breaks.append("transfer_levels_not_distinct")
+    if params["modules"].get("entry_exclusion") and into_first:
+        breaks.append(f"entry_exclusion_violated:{into_first}")
     row["breaks"] = ";".join(breaks)
     return row, grid
 
 
+def _bg_sizes(world: Path) -> dict[str, int]:
+    kind = {int(r["family"]): r["kind"] for r in _tsv(world / "backbone" / "families.tsv")}
+    c = collections.Counter(r["genome_id"] for r in _tsv(world / "backbone" / "genes.tsv")
+                            if kind[int(r["family"])] in ("root", "originated"))
+    return dict(c)
+
+
 def _one(args) -> tuple[dict, list[dict]]:
-    out, label, seed, sets, rule, crown, keep = args
+    out, label, seed, sets, rule, crown, keep, n0 = args
     os.environ.setdefault("OMP_NUM_THREADS", "1")
-    from biobox.synthworld import backbone
+    import math
+
+    from biobox.synthworld import backbone, nulls
 
     _patch_rule(rule)
     _patch_crown(crown)
@@ -276,6 +404,18 @@ def _one(args) -> tuple[dict, list[dict]]:
     dt = time.perf_counter() - t0
     row, grid = measure(world, params)
     row = {"label": label, "seconds": round(dt, 1), **row}
+    if n0:       # N0-full's background sizes against the signal's (tests/r2/test_synthworld_nulls.py's comparison)
+        w0 = world.with_name(world.name + "_n0full")
+        if w0.exists():
+            shutil.rmtree(w0)
+        backbone.build(nulls.null_preset(params, "N0-full"), seed, w0)
+        a, b = _bg_sizes(world), _bg_sizes(w0)
+        g = sorted(a)
+        ratio = math.exp(sum(math.log(b[x] / a[x]) for x in g) / len(g))
+        row["n0_bg_ratio"] = round(ratio, 4)
+        row["n0_bg_pearson"] = round(_pearson([a[x] for x in g], [b[x] for x in g]), 4)
+        if not keep:
+            shutil.rmtree(w0)
     for r in grid:
         r.update({"label": label, "seed": seed})
     if not keep:
@@ -304,7 +444,7 @@ def _seeds(spec: str) -> list[int]:
 
 def scan(argv: list[str]) -> int:
     out, label = argv[0], argv[1]
-    jobs, seed_spec, sets, rule, crown, keep = 4, "default,n2", [], None, None, False
+    jobs, seed_spec, sets, rule, crown, keep, n0 = 4, "default,n2", [], None, None, False, False
     rest = argv[2:]
     while rest:
         a = rest.pop(0)
@@ -326,12 +466,14 @@ def scan(argv: list[str]) -> int:
             crown = float(rest.pop(0))
         elif a == "--keep":
             keep = True
+        elif a == "--n0":
+            n0 = True
         else:
             raise SystemExit(USAGE)
     seeds = _seeds(seed_spec)
     Path(out).mkdir(parents=True, exist_ok=True)
     with ProcessPoolExecutor(max_workers=jobs) as ex:
-        results = list(ex.map(_one, [(out, label, s, sets, rule, crown, keep) for s in seeds]))
+        results = list(ex.map(_one, [(out, label, s, sets, rule, crown, keep, n0) for s in seeds]))
     rows = [r for r, _ in results]
     grid = [g for _, gs in results for g in gs]
     _write_tsv(Path(out) / f"{label}.tsv", rows)
@@ -356,7 +498,49 @@ def table(argv: list[str]) -> int:
     return 0
 
 
+def crowns(argv: list[str]) -> int:
+    """The species tree of each seed as ZOMBI2 draws it for the backbone (`backbone._run_zombi2`'s call, before any
+    rescaling or burst): crown age from the first speciation and from the living lineages' MRCA."""
+    import zombi2.species as zs
+
+    from biobox.synthworld import backbone, seeds
+
+    out, seed_spec = argv[0], "default,n2"
+    if argv[1:3] and argv[1] == "--seeds":
+        seed_spec = argv[2]
+    sp = backbone.load_preset("micro")["species"]
+    burst = int(sp["burst_size"])
+    rows = []
+    for s in _seeds(seed_spec):
+        tree = zs.simulate_species_tree(float(sp["birth"]), float(sp["death"]),
+                                        n_extant=int(sp["n_extant"]) - (burst - 1) if burst > 1 else int(sp["n_extant"]),
+                                        seed=seeds.tool_seed(s, "S1/species_tree")).complete_tree
+        mrca, t_mrca, present = backbone.extant_crown({i: (n.parent, n.end_time) for i, n in tree.nodes.items()},
+                                                      tree.extant_leaves())
+        root = tree.nodes[tree.root]
+        kids = [c for c in root.children]
+        alive = []
+        for c in kids:
+            stack, n_ext = [c], 0
+            while stack:
+                x = stack.pop()
+                stack.extend(tree.nodes[x].children)
+                n_ext += tree.nodes[x].fate == "extant"
+            alive.append(n_ext)
+        rows.append({"seed": s, "crown_first_speciation": round(present - root.end_time, 4),
+                     "crown_mrca": round(present - t_mrca, 4), "mrca_is_root": mrca == tree.root,
+                     "extant_under_root_children": "/".join(str(a) for a in alive)})
+    Path(out).parent.mkdir(parents=True, exist_ok=True)
+    _write_tsv(Path(out), rows)
+    v = sorted(r["crown_mrca"] for r in rows)
+    print(json.dumps({"n": len(v), "crown_mrca_median": (v[(len(v) - 1) // 2] + v[len(v) // 2]) / 2,
+                      "min": v[0], "max": v[-1]}))
+    return 0
+
+
 def main(argv: list[str]) -> int:
+    if len(argv) >= 2 and argv[0] == "crowns":
+        return crowns(argv[1:])
     if len(argv) < 3 or argv[0] not in ("scan", "table"):
         raise SystemExit(USAGE)
     return scan(argv[1:]) if argv[0] == "scan" else table(argv[1:])

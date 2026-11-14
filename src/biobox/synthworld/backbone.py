@@ -354,6 +354,17 @@ def check_preset(p: dict) -> None:
             raise ValueError(f"decoy partner module {m} is not one of the {n_mod} planted modules")
     if p["genomes"]["transfer_to"] not in ("uniform", "distance"):
         raise ValueError(f"genomes.transfer_to is 'uniform' or 'distance', got {p['genomes']['transfer_to']!r}")
+    ca = p["species"].get("crown_age")
+    if ca is not None and not float(ca) > 0.0:
+        raise ValueError(f"species.crown_age is a positive time or null (the drawn tree as it is), got {ca!r}")
+    if p["species"].get("rate_onset", "first_speciation") not in ("first_speciation", "crown"):
+        raise ValueError(f"species.rate_onset is 'first_speciation' or 'crown', got {p['species']['rate_onset']!r}")
+    for sec in ("modules", "profile_only"):
+        d = p[sec].get("member_duplication")
+        if d is not None and float(d) < 0.0:
+            raise ValueError(f"{sec}.member_duplication is a rate >= 0 or null (the run's), got {d!r}")
+        if not isinstance(p[sec].get("entry_exclusion", False), bool):
+            raise ValueError(f"{sec}.entry_exclusion is true or false, got {p[sec]['entry_exclusion']!r}")
     seen: set[str] = set()
     for ax in p["lineage_rates"]["axes"]:
         if float(ax["sigma"]) < 0:
@@ -368,32 +379,42 @@ def check_preset(p: dict) -> None:
 
 def _declared_groups(p: dict) -> list[dict]:
     """The groups a preset declares, in declaration order: module i, profile-only j, plasmid k, vehicle l.
-    ``duplication`` None means the run's rate."""
+    ``duplication`` None means the run's rate; ``present_weight`` is the recipient weight of a lineage that holds
+    the group's first family (entry exclusion at 0), None for the run's recipient rule."""
+    def own_dup(sec):
+        d = sec.get("member_duplication")
+        return None if d is None else float(d)
+
+    def excl(sec):
+        return 0.0 if sec.get("entry_exclusion") else None
+
     out = []
     m = p["modules"]
     for i in range(int(m["count"])):
         out.append({"name": f"mod{i:02d}", "kind": "planted", "size": int(m["sizes"][i % len(m["sizes"])]),
                     "together": float(m["together"][i % len(m["together"])]),
                     "transfer": float(m["member_transfer"][(i // len(m["together"])) % len(m["member_transfer"])]),
-                    "loss": float(m["member_loss"]), "duplication": None, "adjacent": True,
-                    "fates": m["fates"], "scored": bool(m["scored"])})
+                    "loss": float(m["member_loss"]), "duplication": own_dup(m), "adjacent": True,
+                    "fates": m["fates"], "scored": bool(m["scored"]), "present_weight": excl(m)})
     q = p["profile_only"]
     for j in range(int(q["count"])):
         out.append({"name": f"pro{j:02d}", "kind": "profile_only", "size": int(q["size"]),
                     "together": float(q["together"]), "transfer": float(q["member_transfer"]),
-                    "loss": float(q["member_loss"]), "duplication": None, "adjacent": False,
-                    "fates": "family", "scored": False})
+                    "loss": float(q["member_loss"]), "duplication": own_dup(q), "adjacent": False,
+                    "fates": "family", "scored": False, "present_weight": excl(q)})
     pl = p["plasmids"]
     for k, size in enumerate(int(s) for s in pl["sizes"]):
         out.append({"name": f"pls{k}", "kind": "plasmid", "size": size, "together": 1.0,
                     "transfer": float(pl["transfer"]) / size, "loss": float(pl["loss"]) / size,
-                    "duplication": 0.0, "adjacent": True, "fates": "group", "scored": False})
+                    "duplication": 0.0, "adjacent": True, "fates": "group", "scored": False,
+                    "present_weight": float(pl["present_weight"])})
     ve = p["vehicles"]
     for v, cargo in enumerate(int(c) for c in ve["cargo"]):
         size = cargo + 2
         out.append({"name": f"veh{v}", "kind": "vehicle", "size": size, "together": 1.0,
                     "transfer": float(ve["transfer"]) / size, "loss": float(ve["loss"]) / size,
-                    "duplication": 0.0, "adjacent": True, "fates": "group", "scored": False})
+                    "duplication": 0.0, "adjacent": True, "fates": "group", "scored": False,
+                    "present_weight": None})
     return out
 
 
@@ -536,15 +557,37 @@ def check_schema(zdir: Path) -> None:
             raise SchemaError(f"{name}: header {got!r}, pinned {want!r} (ZOMBI2 {ZOMBI2_VERSION})")
 
 
+def extant_crown(nodes: dict, extant) -> tuple:
+    """The most recent common ancestor of the living lineages and its time: ``nodes`` maps a node to (parent or
+    None, end time); returns (MRCA, MRCA end time, present). The crown age is present - MRCA end time (DEC-37
+    (3)): at a seed whose first speciation has a side with no living descendant the MRCA lies below the root."""
+    extant = sorted(extant)
+    chains = []
+    for tip in extant:
+        chain, x = [], tip
+        while x is not None:
+            chain.append(x)
+            x = nodes[x][0]
+        chains.append(chain)
+    common = set(chains[0]).intersection(*map(set, chains[1:]))
+    mrca = next(x for x in chains[0] if x in common)
+    return mrca, nodes[mrca][1], max(nodes[t][1] for t in extant)
+
+
+def _tree_crown(tree) -> tuple[int, float, float]:
+    return extant_crown({i: (n.parent, n.end_time) for i, n in tree.nodes.items()}, tree.extant_leaves())
+
+
 def _graft_burst(tree, size: int, depth: float, rng, Node, Tree):
     """Graft a clonal burst of ``size`` tips onto one extant tip (spec §2.1 S1): the tip's branch ends
-    ``depth`` x crown height before the present and a random binary subtree of short branches follows."""
+    ``depth`` x crown age before the present (the crown at the living lineages' MRCA, DEC-37 (3)) and a random
+    binary subtree of short branches follows."""
     nodes = {i: Node(n.id, n.parent, n.birth_time, n.end_time, tuple(n.children), n.fate)
              for i, n in tree.nodes.items()}
     extant = sorted(i for i, n in nodes.items() if n.fate == "extant")
     tip = extant[int(rng.integers(len(extant)))]
     present = nodes[tip].end_time
-    crown = present - nodes[tree.root].end_time
+    crown = present - _tree_crown(tree)[1]
     h = min(depth * crown, 0.5 * (present - nodes[tip].birth_time))
     split = present - h
     times = sorted(float(t) for t in rng.uniform(split, present, size - 2))
@@ -574,7 +617,7 @@ def _run_zombi2(p: dict, seed: int, zdir: Path) -> tuple[str, list[str], dict]:
     from zombi2 import species as zspecies
     from zombi2.genomes import family as zfamily, group as zgroup, simulate_genomes_ordered
     from zombi2.params import Distance, Drift, LogNormal, PerCopy, PerLineage, Random, Recipients
-    from zombi2.tree import Node, Tree, with_stem
+    from zombi2.tree import Node, Tree, rescale, with_stem
 
     sp, g, rs = p["species"], p["genomes"], p["root_scramble"]
     if int(g["chromosomes"]) != 1:
@@ -586,12 +629,22 @@ def _run_zombi2(p: dict, seed: int, zdir: Path) -> tuple[str, list[str], dict]:
                                           n_extant=int(sp["n_extant"]) - (burst - 1) if burst > 1
                                           else int(sp["n_extant"]),
                                           seed=species_seed).complete_tree
+    _, mrca_t, present_t = _tree_crown(tree)
+    native_crown = present_t - mrca_t
+    factor = 1.0
+    if sp.get("crown_age") is not None:     # DEC-37 (2): every time times one factor, so the crown age is fixed
+        factor = float(sp["crown_age"]) / native_crown
+        tree = rescale(tree, factor=factor)
     burst_ids: list[int] = []
     if burst > 1:
         tree, burst_ids = _graft_burst(tree, burst, float(sp["burst_depth"]),
                                        seeds.generator(seed, "S1/clonal_burst"), Node, Tree)
     tree = with_stem(tree, float(rs["stem_length"]), mode="set")
     t0, t1 = tree.nodes[tree.root].birth_time, tree.nodes[tree.root].end_time
+    onset = sp.get("rate_onset", "first_speciation")
+    if onset not in ("first_speciation", "crown"):
+        raise ValueError(f"species.rate_onset is 'first_speciation' or 'crown', got {onset!r}")
+    t_on = t1 if onset == "first_speciation" else _tree_crown(tree)[1]
 
     lineage_axis = {}
     for ax in p["lineage_rates"]["axes"]:
@@ -600,12 +653,12 @@ def _run_zombi2(p: dict, seed: int, zdir: Path) -> tuple[str, list[str], dict]:
             lineage_axis.update({r: obj for r in ax["rates"]})
 
     def after(rate: float, scope, axis: str | None = None):
-        """0 on the scramble stem, ``rate`` from the first speciation on; a run rate named in a lineage
-        axis also varies among species branches."""
+        """0 on the scramble stem (and, with ``rate_onset`` crown, up to the living lineages' MRCA), ``rate``
+        from then on; a run rate named in a lineage axis also varies among species branches."""
         rate = float(rate)
         if rate == 0.0:
             return 0.0
-        r = scope(1.0).changing_at({t0: 0.0, t1: rate})
+        r = scope(1.0).changing_at({t0: 0.0, t_on: rate})
         return r.varying_among(lineage_axis[axis]) if axis in lineage_axis else r
 
     def stem_and_after(passes: float, rate: float):
@@ -617,9 +670,12 @@ def _run_zombi2(p: dict, seed: int, zdir: Path) -> tuple[str, list[str], dict]:
     for gr in groups:
         members = [f"{gr['name']}.{j}" for j in range(gr["size"])]
         rule = None
-        if gr["kind"] == "plasmid" and float(p["plasmids"]["present_weight"]) != 1.0:
+        if gr["present_weight"] is not None and float(gr["present_weight"]) != 1.0:
+            # entry exclusion (plasmids; planted modules and profile-only groups, DEC-36): a lineage holding the
+            # group's first family weighs present_weight as a recipient of any of its families. ZOMBI2 0.54.0
+            # reads one weighting per family, so this rule replaces the run's (distance decay) for them.
             rule = Recipients().weighted_by(f"genomes:{members[0]}",
-                                            {"present": float(p["plasmids"]["present_weight"]), "absent": 1.0})
+                                            {"present": float(gr["present_weight"]), "absent": 1.0})
             joint = True
         own = {"transfer": after(gr["transfer"], PerCopy), "loss": after(gr["loss"], PerCopy)}
         if gr["duplication"] is not None:
@@ -659,13 +715,15 @@ def _run_zombi2(p: dict, seed: int, zdir: Path) -> tuple[str, list[str], dict]:
     nodes = {labels[i]: (labels[n.parent] if n.parent is not None else None, n.birth_time, n.end_time)
              for i, n in tree.nodes.items()}
     extant = [labels[i] for i in sorted(tree.extant_leaves())]
-    present = max(tree.nodes[i].end_time for i in tree.extant_leaves())
+    mrca, crown, present = _tree_crown(tree)
     cuts = [float(c) for c in p["taxonomy"]["cuts"]]
     import zombi2
     meta = {"species_seed": species_seed, "genomes_seed": genomes_seed, "zombi2": zombi2.__version__,
             "numpy": np.__version__, "stem": [t0, t1], "joint": joint,
-            "taxonomy": {"crown": t1, "present": present, "cut_times": [t1 + f * (present - t1) for f in cuts],
-                         "per_tip": cut_taxonomy(nodes, extant, crown=t1, present=present, cuts=cuts)}}
+            "crown": {"mrca": labels[mrca], "first_speciation": t1, "native_crown_age": native_crown,
+                      "rescale_factor": factor, "crown_age": present - crown, "rate_onset": t_on},
+            "taxonomy": {"crown": crown, "present": present, "cut_times": [crown + f * (present - crown) for f in cuts],
+                         "per_tip": cut_taxonomy(nodes, extant, crown=crown, present=present, cuts=cuts)}}
     return labels[tree.root], [labels[i] for i in burst_ids], meta | {"extant": extant}
 
 
@@ -960,8 +1018,8 @@ def _build(p: dict, seed: int, out, extra: dict | None) -> Backbone:
            "zombi2_call": "species.simulate_species_tree + genomes.simulate_genomes_ordered (serial engine"
                           f"{', joint=True' if meta['joint'] else ''}); write(compact=True)",
            "scramble_stem": meta["stem"], "root_node": root_node, "burst_tips": burst_tips,
-           "scramble": stats, "taxonomy": {"crown": tx["crown"], "present": tx["present"],
-                                           "cut_times": tx["cut_times"]},
+           "scramble": stats, "crown": meta["crown"],
+           "taxonomy": {"crown": tx["crown"], "present": tx["present"], "cut_times": tx["cut_times"]},
            "files": files, "digest": digest}
     if extra:
         doc.update(extra)

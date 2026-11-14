@@ -620,8 +620,10 @@ def phage_preset(preset: dict) -> dict:
     no lineage axes and no RNA motifs."""
     ph = preset["phages"]
     p = {k: copy.deepcopy(v) for k, v in preset.items() if k in PHAGE_SECTIONS}
+    # the phage set keeps its drawn tree and its rates from the first speciation, as its rates were fitted (session 5);
+    # DEC-37 fixes the host's time scale
     p["species"] = dict(p["species"], n_extant=int(ph["count"]), birth=float(ph["birth"]),
-                        death=float(ph["death"]), burst_size=1)
+                        death=float(ph["death"]), burst_size=1, crown_age=None, rate_onset="first_speciation")
     p["genomes"] = dict(p["genomes"], **copy.deepcopy(ph["genomes"]))
     p["root_scramble"] = copy.deepcopy(ph["root_scramble"])
     p["modules"] = dict(p["modules"], count=0)
