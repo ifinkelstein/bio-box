@@ -129,6 +129,10 @@ search-run directories.
 - CPU per run, CRISPR-Cas and RNA polymerase (*derived* by the script from the units' usage lines): new code 1,355.1
   and 1,114.6 CPU-seconds; old code 1,379.6 and 1,109.2.
 
+**The release check of `rM.2`** with this code (unit `w36-ex-rM2`, 22:38 to 00:06) ended `release_examples.sh: rM.2:
+2 examples, every invariant holds`: 37 invariants hold and 55 recorded values are new
+(`2026-11-14_release_examples_rM2.md`).
+
 ## Proposal (step 5 of the card, not built): label files for old stages without a re-ingest
 
 1. **A stage step `bio-box stage labels --stage S`**, one `run-step` per stage.
