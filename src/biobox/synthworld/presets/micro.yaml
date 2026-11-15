@@ -66,14 +66,14 @@ genomes:
 
 modules:
   # Planted adjacency modules: ZOMBI2 adjacent groups. Sizes cycle 2..6; the 3 x 3 strength grid is
-  # together {0.3, 0.7, 1.0} x member transfer rate {0.01, 0.06, 0.4} (module i: together[i % 3],
+  # together {0.3, 0.7, 1.0} x member transfer rate {0.01, 0.03, 0.4} (module i: together[i % 3],
   # member_transfer[(i // 3) % 3]). DEC-15 (a) puts every adjacency-scored module at fates "group",
   # so §5.3's "per-family loss" fates axis is replaced by the member transfer rate. DEC-36: entry exclusion,
   # and the transfer axis means realized transfer events per member family (recorded in truth_module).
   count: {v: 25, tag: asserted, why: "§5.1: 25 modules, sizes 2-6, strength grid 3 x 3"}
   sizes: {v: [2, 3, 4, 5, 6], tag: asserted, why: "§5.1"}
   together: {v: [0.3, 0.7, 1.0], tag: asserted, why: "§5.3 together grid"}
-  member_transfer: {v: [0.01, 0.06, 0.4], tag: fitted, why: "DEC-36: the axis is realized transfer events per member family, refitted over the 21 seeds so the three levels are distinct (session 11 scans e_s0.5, e_s0.7: pooled medians 5.0, 10.0, 20.8 and 5.0, 9.7, 19.5). Under entry exclusion a member is transferred only into a lineage without the module, so the count saturates near 20 (holes made by losses) and has a floor near 4 (background runs carrying a member): the old rates 0.05, 0.15, 0.30 gave about 5, 18, 20"}
+  member_transfer: {v: [0.01, 0.03, 0.4], tag: fitted, why: "DEC-36: the axis is realized transfer events per member family, refitted so the three levels are distinct. Under entry exclusion a member is transferred only into a lineage without the module, so the count saturates near the holes losses make and has a floor from background runs carrying a member. Session 11 scan z_mt_0.01,0.03,0.4 (22 seeds, the background rates above): pooled medians 2.3, 4.0, 10.3, increasing at 21 of 22 seeds (2.55, 4.1, 9.8 over the six seeds of the per-seed test); 0.01/0.06/0.4 gave 2.1, 6.7, 10.1 at these rates (top step 1.5x, 1.4x over the six seeds), at session 2's background 5.0, 10.0, 20.8"}
   member_loss: {v: 0.03, tag: asserted, why: "spike §1 member loss, so modules survive and travel"}
   member_duplication: {v: 0.0, tag: asserted, why: "DEC-36 aim: module families stop accumulating copies; with entry exclusion only duplication adds copies to a holder, so the members start no duplication runs of their own (a background run that ends in a unit still copies it, fates group). Session 10 measured this setting (o_crown_noaxes_excl)"}
   entry_exclusion: {v: true, tag: asserted, why: "DEC-36: a lineage that holds the module (its first family) receives none of its families by transfer"}
