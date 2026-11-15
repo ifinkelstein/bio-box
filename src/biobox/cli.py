@@ -1699,7 +1699,7 @@ def _run_step(a) -> int:
 
 RELEASE_STEPS = ("define", "cluster", "tokens", "postings", "dim", "manifest", "catalog", "verify")
 CLUSTER_ACTIONS = ("plan", "step", "finish", "redo")  # `release cluster plan|step|finish|redo` (card B-41)
-STAGE_STEPS = ("inputs", "ingest", "genecall", "igr", "tapes", "domains", "ncrna", "crispr")
+STAGE_STEPS = ("inputs", "ingest", "genecall", "igr", "tapes", "domains", "ncrna", "crispr", "labels")
 DOMAIN_ACTIONS = ("plan", "shard", "merge")  # `stage domains plan|shard|merge` (card B-24)
 INGEST_ACTIONS = ("pass1", "plan", "batch", "merge")  # `stage ingest pass1|plan|batch|merge` (card B-30)
 NCRNA_ACTIONS = ("plan", "shard", "merge")  # `stage ncrna plan|shard|merge` (card E-07)
@@ -2027,6 +2027,10 @@ def _stage_step(a, root: Path, out: Path) -> dict:
                                        gene_call_version=a.gene_call_version, tmp=tmp, out=out,
                                        seq_stages=_csv(a.seq_stages), **mfb)
         return crispr.run(root, a.stage, a.cpus, tmp=tmp, out=out, seq_stages=_csv(a.seq_stages), **mfb)
+    if a.step == "labels":  # card C-34: contig_label of a stage ingested before card B-27, from its contig_occurrence
+        from biobox.l0seq import store
+
+        return store.write_labels(root, a.stage, out=out, tmp=tmp, threads=a.cpus, **mfb)
     from biobox.l1 import domains
 
     need = {None: ("library", "library_version", "hmm", "cutoff"),  # the whole scan in this process
@@ -2353,7 +2357,8 @@ def _main(argv: list[str] | None = None) -> int:
     st.add_argument("--hmm", help="domains: the library's HMM file")
     st.add_argument("--cutoff", help="domains: gathering, trusted, noise or none")
     st.add_argument("--cpus", type=int, default=1, help="domains: hmmsearch threads; ncrna: cmsearch threads (--cpu); "
-                                                       "crispr: MinCED processes at once")
+                                                       "crispr: MinCED processes at once; labels: DuckDB threads "
+                                                       "(the files do not depend on it)")
     st.add_argument("--cm", help="ncrna: the Rfam covariance-model library (.cm or .cm.gz; card E-01)")
     st.add_argument("--ncrna-set", default="prok-2", help="ncrna: the model set, a frozen set's name (prok-2, the "
                                                           "default, DEC-30; prok-1) or a set file (card E-07)")

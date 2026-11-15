@@ -49,7 +49,8 @@ release's manifest lists its stages' files, its own `release=` files, the `tape_
 version those use, and the unpartitioned files, so a later release's files neither enter an earlier
 release's manifest nor stop it verifying. Nor do files a later step adds to one of its stages for a library,
 producer, version or step the release does not use there (card C-19: a library scanned after the release was
-built); `verify_manifest` still reports a second part beside a file the release lists.
+built); `verify_manifest` still reports a second part beside a file the release lists. Nor do `contig_label` files
+a stage gained after the release, when its manifest lists none of that stage's (card C-34, `STAGE_ADDED_TABLES`).
 
     stages = define_release(root, "rS0.1", ["S0"])   # later: release_stages(root, "rS0.1")
     manifest = build_manifest(root, "rS0.1", stages)
@@ -367,9 +368,23 @@ def define_release(root: Path, release: str, stages, out: Path | None = None) ->
 # (`_owner_key`), is the release's concern only when its manifest lists a file of the same table or artifact,
 # stage and values of those keys: the libraries, producers, versions and steps a release uses are the
 # partitions of the files it lists, so an older manifest needs no new field. A stage file with no such key
-# (`contig_index`, `seq_shards`) is every listing release's, as in (a).
+# (`contig_index`, `seq_shards`) is every listing release's, as in (a), with one exception (card C-34, below).
 # The table of each partitioned file in (c), and the version key that places it.
 VERSION_ONLY = {"tape_version_def": "tape_version"}
+# Card C-34: stage tables that a later step may add to a stage built before the table existed. `contig_label` is
+# written by ingest since card B-27 and, for a stage ingested before (S1, P1 and P2 of the data root), by `bio-box
+# stage labels` afterwards (`biobox.l0seq.store.write_labels`), as new files. Its only partition is the stage, so by
+# (a) every release listing the stage would own them and report each as `not in manifest`. For a table here the stage
+# itself is what sets a file apart (`_owner_key`): a file of the table under stage S is the release's concern exactly
+# when its manifest lists a file of the table under S. What tells the two cases apart is the manifest alone:
+#   - it lists none for S: the release was built before S had the table, its readers do not read it (they take the
+#     manifest's lists, AGENTS §3.9; for labels, S's `contig_occurrence`, card W-36), and every such file of S was
+#     added after it: ignored;
+#   - it lists one or more for S: each is checked as every listed file is (missing, size, sha256), and any other file
+#     of the table under S is `not in manifest`, as before the card.
+# A changed or missing file of any other table of S, and a path no table claims, are reported as before. No other table
+# is named: the code has no general notion of a stage table added later beyond the partitions of card C-19.
+STAGE_ADDED_TABLES = frozenset({"contig_label"})
 
 
 def _scope(name: str, parts: dict[str, str]) -> tuple[str, str] | None:
@@ -425,13 +440,14 @@ def _owner_key(name: str, parts: dict[str, str]) -> tuple | None:
     """For a stage file of table or artifact `name`, what in the stage made it (card C-19, scope note above):
     (name, stage, its other partitions but the registry's bucket keys, sorted). None for a file outside any
     stage, or one whose only partitions are its stage and buckets: no library, producer, version or step
-    sets it apart, so every release listing the stage owns it."""
+    sets it apart, so every release listing the stage owns it. A table of `STAGE_ADDED_TABLES` (card C-34) has a
+    key with its stage alone, so a release owns its files of a stage only when it lists one of them."""
     if "stage" not in parts:
         return None
     spec = TABLES.get(name)
     buckets = spec.bucket_keys if spec is not None else ()
     rest = tuple(sorted((k, v) for k, v in parts.items() if k != "stage" and k not in buckets))
-    return (name, parts["stage"], rest) if rest else None
+    return (name, parts["stage"], rest) if rest or name in STAGE_ADDED_TABLES else None
 
 
 def partial_libraries(manifest: dict) -> list[tuple[str, list[str], list[str]]]:
@@ -682,9 +698,11 @@ def verify_manifest(manifest: dict, root: Path | None = None) -> list[str]:
     tape version none of the listed files uses is not the release's and is ignored; so is a file under a
     listed stage of a library, producer, version or step the release does not use there (`_owner_key`: no
     listed file has its table, stage and partitions), such as a library scanned on the stage after the
-    release was built. Any other stray is reported: a second part beside a listed file, a file of a stage
-    table with no such partition, and one no table claims, except in the trees `build_manifest` leaves out
-    (`EXCLUDED_TREES`: the search pack and runs, written after the release, card B-28)."""
+    release was built; and a `contig_label` file of a listed stage for which the manifest lists none (card C-34,
+    `STAGE_ADDED_TABLES`: label files `bio-box stage labels` gave a stage after the release was built). Any other
+    stray is reported: a second part beside a listed file, a file of a stage table with no such partition, and one
+    no table claims, except in the trees `build_manifest` leaves out (`EXCLUDED_TREES`: the search pack and runs,
+    written after the release, card B-28)."""
     root = Path(root or manifest["root"])
     used = _used_tape_versions(f["partitions"] for f in manifest["files"])
     in_release = _in_release(set(manifest["stages"]), manifest["release_id"], used)
