@@ -5,7 +5,7 @@ The running record of the cards in [`TASKS.md`](TASKS.md). Updated at every merg
 by an agent on its own branch `task/<ID>`, audited by the orchestrating session, and merged after its
 tests passed on the merged tree.
 
-## Handoff, 2026-11-15 07:10 CST (current; the dated sections under "History" are superseded where they differ)
+## Handoff, 2026-11-15 09:43 CST (current; the dated sections under "History" are superseded where they differ)
 
 Written so a new session can continue without the conversation that produced this file. Times are the pod's clock
 (CST); read it with `ssh ... date` before writing a time here.
@@ -16,7 +16,7 @@ the PI at the S2C phase 2 build and at a failed release check. The usage limit h
 (2026-11-13 15:45 and 20:55, 2026-11-14 01:40 twice counting the orchestrator, and the weekly limit at about 12:20): an agent stopped that way is resumed
 with `SendMessage` to the same agent once the limit resets; nothing is lost.
 
-**State on 2026-11-15 at 07:10 CST.**
+**State on 2026-11-15 at 09:43 CST.**
 
 *The 50 Gbp release `rM.2` is built and verified* (2026-11-14 17:32 CST), *has its pack* (20:54), *passed the
 release check* (2026-11-15 00:06) *and is announced as the release to use* (2026-11-15, `README.md`, `GUIDE.md`).
@@ -116,10 +116,10 @@ release check* (2026-11-15 00:06) *and is announced as the release to use* (2026
 - The fixture's manifest hash is `28ffa9808ecd4829e52f6892f94f7b85` since E-12, equal on Actions and the pod;
   `/tmp/if2453/ci-peer/right.json` holds it.
 
-*Agents.* One running at 07:10 on 2026-11-15: C-24 (stage H1; started 07:20). C-34, E-16, C-33 part 1 and W-36 are done and merged. F-02 session 11 ended at 01:15 with four questions for the PI (open item 5); W-33, E-15, W-34, W-32 and W-35 were done and merged on 2026-11-14; see "Agents running" below. Merged on 2026-11-13 and 14: C-28, C-27 step 4, C-25 step 2, C-29, C-30, C-31, C-32,
+*Agents.* At 09:43 on 2026-11-15: **stage H1 is half-built and stopped, waiting on the PI** (open item 7); starting now: C-26 part 1 (the PLSDB stage's inputs, no build) and E-17 (Sonnet; the E-16 script on stages that share contigs). C-34, E-16, C-33 part 1 and W-36 are done and merged. F-02 session 11 ended at 01:15 with four questions for the PI (open item 5); W-33, E-15, W-34, W-32 and W-35 were done and merged on 2026-11-14; see "Agents running" below. Merged on 2026-11-13 and 14: C-28, C-27 step 4, C-25 step 2, C-29, C-30, C-31, C-32,
 W-30, W-31, A-08, E-11, E-12, E-13, E-14, F-02 sessions 4 to 10 (10 is a measurement), the README, the CRISPR example.
 
-*What is blocked, and on what.* Two things wait on the PI: F-02's redesign (open item 5, since 18:45 on 2026-11-14) and which release holds the CRISPR arrays (open item 6, since 22:19). Everything else was decided at 10:45 (DEC-34 to DEC-42).
+*What is blocked, and on what.* Three things wait on the PI: F-02's redesign (open item 5, since 18:45 on 2026-11-14); which release holds the CRISPR arrays (open item 6, since 22:19; the orchestrator's plan stands meanwhile); and **how the H1 build resumes (open item 7, since 08:54 on 2026-11-15: the pod is idle until then)**. Everything else was decided at 10:45 (DEC-34 to DEC-42).
 - **The statistics track** (F-01, F-03 and the rest of F-02): **waits on the PI** (open item 5). F-02 session 11
   implemented DEC-36 and DEC-37 and stopped: six existing assertions fail in the new world and none may be loosened
   without a decision. Its branch `task/F-02-11` is pushed, not merged, and red on Actions on exactly those six.
@@ -131,7 +131,7 @@ W-30, W-31, A-08, E-11, E-12, E-13, E-14, F-02 sessions 4 to 10 (10 is a measure
 - **`rM.2` is announced** (2026-11-15): pack since 20:54 on 2026-11-14 (card W-35); the release check failed at
   22:15 (lookups by accession for stages S1, P1 and P2) and passed at 00:06 after card W-36. `rN.3` stays the
   release for the 10 Gbp set.
-- Builds queued on the pod, one at a time in the root: stage H1 (card C-24, started), the PLSDB stage (card C-26),
+- Builds queued on the pod, one at a time in the root: stage H1 (card C-24: stopped mid-scan at 08:54 on 2026-11-15, open item 7), the PLSDB stage (card C-26; its inputs are being prepared),
   then **one release over the nine stages** (card C-35) in place of a release per new stage; then S2C phase 2 and
   ncRNA on the built stages (DEC-42).
 - **Scratch cleanup on the pod** (DEC-42 allows it): the large part was done at 14:41 on 2026-11-14 ("On the pod"
@@ -183,7 +183,7 @@ F-02 and the measurements in the table below; decisions DEC-29 to DEC-33 were ad
 above says where `main`, the images and Actions stand. The manifest hash of the fixture covers every registered
 schema's hash, so it moves with any schema change (last: card E-12).
 
-**Agents running** at 07:10 on 2026-11-15: one (C-24, from 07:20); C-34, E-16, C-33 part 1 and W-36 are done and merged; F-02 session 11 has ended.
+**Agents running** at 09:43 on 2026-11-15: C-26 part 1 and E-17, started now; the C-24 agent is idle, waiting on open item 7; C-34, E-16, C-33 part 1 and W-36 are done and merged; F-02 session 11 has ended.
 - F-02 session 11 (Opus; the redesign of the `micro` preset over seeds, DEC-36 and DEC-37): worktree
   `.claude/worktrees/agent-aa711fcf48ad79fd7`, branch `task/F-02-11` at `89cfb46`, pushed, **not merged** (red on
   Actions on six assertions, not the same six as before); pod scratch `/tmp/if2453/f0211/`, units `f0211-*`, at
@@ -198,10 +198,17 @@ schema's hash, so it moves with any schema change (last: card E-12).
   22:19 at the card's own stop condition (open item 6).
 - E-16 (Opus; a measurement: the chance rate of the filtered CRISPR producer on phages, stage S1): done, 02:00
   to 04:50, merged (row E-16).
-- C-24 (Opus; stage H1, the huge phages, as amended on 2026-11-15: the stage only, with Pfam, both CRISPR
-  producers and its label files; no release): started at 07:20 on 2026-11-15, branch `task/C-24`; pod scratch
-  `/tmp/if2453/c24/`, units `c24-*`. **It is now the one agent that writes into the data root** (stage `H1`'s
-  files only).
+- C-24 (Opus; stage H1, the huge phages, as amended: the stage only): started at 07:17 on 2026-11-15, branch
+  `task/C-24` at `5300a59`, pushed, not merged; pod scratch `/tmp/if2453/c24/`, units `c24-*` (none running).
+  **Stopped at 08:54, half-built**: inputs, ingest, gene calls, the default CRISPR producer, IGRs, tapes and 9 of
+  the 14 Pfam scan shards are published (47 files, 1,298,868,963 bytes, all under `stage=H1`; no earlier file
+  changed; the six published releases verify as before); shards 6 and 9 to 12, the scan's merge and the filtered
+  CRISPR producer are not run. Open item 7 says why and what the PI is asked. The agent is idle and keeps its
+  context: it is resumed with `SendMessage` once the PI has answered; `build-stage` skips every published step.
+- C-26 part 1 (Opus; the PLSDB stage `PL1`: its inputs and their record only, no build, nothing in the root):
+  started at 09:45, branch `task/C-26`; pod scratch `/tmp/if2453/c26/`.
+- E-17 (Sonnet; tier L: `e16_crispr_near_cas_phages.py` on a stage that lists contigs another stage stores, as
+  H1 does): started at 09:45, branch `task/E-17`.
 - C-34 (Opus; `stage labels`, the verify rule, and the label files of S1, P1 and P2 in the real root): done,
   02:47 to 07:00, merged (row C-34).
 - C-33 part 1 (Opus; the two CRISPR producers on the seven built stages): done, 01:25 to 02:10, merged (row C-33
@@ -753,6 +760,25 @@ probed by hand on the pod).
    arrays reach a release without option A or B. Option C stays open, for you: it is what ncRNA (DEC-42) and any
    later producer on unchanged proteins will need. If you would rather have a release per stage, say so before
    C-35 starts.
+7. **How the H1 build resumes** (card C-24; the pod is idle on this since 08:54 on 2026-11-15). The agent's own
+   driver stops the build when a step's measured CPU misses its estimate by more than 20% (AGENTS §6). It fired on
+   Pfam scan shard 13, the plan's remainder shard of 1,347 residues: estimate 0.011 CPU-minutes (*derived*: 1,347
+   x 7.96 per million), measured 1.533 (*measured*, its run record), which is the fixed cost of loading Pfam, so
+   142.9 times its estimate. The nine full shards ran at 0.887 to 0.920 of their estimates, ingest at 0.865, gene
+   calling at 0.936, the default CRISPR producer at 0.892 (*measured*). Stopping the unit killed shard 6 near its
+   end and shards 9 to 12 at their start: about 240 CPU-minutes lost (*derived*). The stop was clean and the stage
+   resumes from its published steps; about 1,080 CPU-minutes of scan remain (*derived*: 5 shards at about 215).
+   The agent then tried to narrow its guard (judge only steps estimated at 24 CPU-minutes or more) and **the
+   session's permission check refused that edit as weakening a stop condition**. A refused permission is not
+   worked around, by the agent or by the orchestrator, so nothing was changed and the build was not resumed by
+   another route. **Asked of you, one of**: (a) allow the guard to judge only steps estimated at 24 CPU-minutes
+   or more (the agent's proposal; the orchestrator's recommendation: the rate rule is about rates, and a step of
+   a hundredth of a CPU-minute has none; every step that can matter is far above the threshold); (b) resume with
+   the guard as it is and shard 13's record acknowledged by hand, if you prefer no code change (it would fire
+   again on any later remainder shard); (c) leave H1 as it is for now. Also from this build, not waiting on you:
+   H1 has 1,608,023 distinct proteins where the card estimated 0.6 M (the scan is sized by the code from the real
+   residues, 3,120 CPU-minutes in 14 shards); a release cannot be defined over a stage that is not ingested, so
+   `rM.3` is named only by `--stages` until `PL1` exists (accepted; cards C-26 and C-35 name it the same way).
 
 Decided by the PI on 2026-11-14 (about 10:10 CST: "for 1-11, accept your choices", to the orchestrator's table of 28):
 - S2C phase 2 (DEC-34): the ANI-diversity selection stands as built (its 15% alignment-fraction rule with it); six
