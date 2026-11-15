@@ -51,7 +51,7 @@ Small results are committed beside this file in [`2026-11-15_plsdb_inputs/`](202
   32 GB). Never more than 8 threads of ours at once; nothing else of ours computed (`top` at 09:51 and 10:09: load
   0.22 and 1.45, only our own processes). `/tmp` had 225 GB free at 09:59.
 - Nothing fetched from outside: the PLSDB files are the ones of the S2 inputs note (`/tmp/if2453/s2/dl/`,
-  `/tmp/if2453/s2/plsdb/meta/`), archived under `provisional/s2_inputs/` on `/stor` (only listed, not read).
+  `/tmp/if2453/s2/plsdb/meta/`), archived under `provisional/s2_inputs/` on `/stor` (not touched in this session).
 
 ## 2. The inputs
 
