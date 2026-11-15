@@ -132,6 +132,15 @@ def genecall_files(t: dict[str, str]) -> dict[str, str]:
     return {k: v for k, v in t.items() if k.startswith(GENECALL_DIRS)}
 
 
+PLAN_RECORDS = "l1/genecall_plan/"  # card B-50: the plan's and the batches' records, a build's own, never in a manifest
+
+
+def data_files(t: dict[str, str]) -> dict[str, str]:
+    """`t` without the build records of gene calling in batches (card B-50), as test_ingest_batches.py leaves out
+    l0seq/ingest_plan/."""
+    return {k: v for k, v in t.items() if not k.startswith(PLAN_RECORDS)}
+
+
 @pytest.fixture(scope="module")
 def world(tmp_path_factory):
     """S0 and S1 ingested with their genome inputs (no gene calls), and the one-process call of S1 into `one`."""
@@ -412,8 +421,9 @@ def test_b48_over_the_margin_build_stage_calls_genes_in_batches_and_merges_the_o
         world, one_process_build, prof, tmp_path, monkeypatch, jobs):
     """With the rates raised so that S1 is over the margin, build-stage plans batches, launches at most `jobs` at once
     (each its own process, `--scan-cpus` threads), and the merge is the run-step `genecall`: its record lists exactly
-    the one-process record's outputs, with their sha256, and the root holds the same files; nothing in `runs/` names a
-    batch, and the plan's work directory is removed."""
+    the one-process record's outputs, with their sha256, and the root holds the same files but the build records
+    (card B-50); `runs/stage=S1/` holds a run record for the plan and for each batch beside the merge's (card B-50),
+    and the plan's work directory is removed."""
     over_budget(world, monkeypatch, tmp_path)
     root = s0_root(world, tmp_path / "root")
     live, peak, names = [0], [0], []
@@ -442,8 +452,9 @@ def test_b48_over_the_margin_build_stage_calls_genes_in_batches_and_merges_the_o
     assert rec["outputs"] == one["outputs"]
     assert rec["argv"][rec["argv"].index("genecall") + 1] == "merge"
     assert genecall_files(tree(root)) == genecall_files(tree(one_process_build))
-    assert tree(root) == tree(one_process_build)
-    assert sorted(p.name for p in (root / "runs/stage=S1").iterdir()) == ["genecall.json", "ingest.json", "inputs.json"]
+    assert data_files(tree(root)) == data_files(tree(one_process_build))
+    assert sorted(p.name for p in (root / "runs/stage=S1").iterdir()) == sorted(
+        ["genecall.json", "ingest.json", "inputs.json", "genecall.plan.json", *(f"{x}.json" for x in names)])
     assert not list((tmp_path / "scratch").glob("genecall*/**/plan.json"))
 
 
@@ -472,7 +483,7 @@ def test_b48_stop_between_batches_then_the_next_call_runs_only_the_batches_witho
 
     assert build(prof, b, stop_after_genecall(), batch_run=batch_run) is None
     assert "genecall.batch-00000" not in again and again
-    assert tree(root) == tree(one_process_build)
+    assert data_files(tree(root)) == data_files(tree(one_process_build))
 
 
 _HELD = r"""
@@ -542,7 +553,7 @@ def test_b48_a_killed_batch_leaves_nothing_a_reader_takes_and_the_next_call_give
     assert (left != []) == (sig == signal.SIGKILL), left
     assert not genecall_files(tree(root)) and not (root / "runs/stage=S1/genecall.json").exists()
     assert build(prof, b, stop_after_genecall()) is None
-    assert tree(root) == tree(one_process_build)
+    assert data_files(tree(root)) == data_files(tree(one_process_build))
     assert not wd.exists()
 
 
@@ -596,7 +607,7 @@ def test_b48_a_release_on_a_stage_called_in_batches_is_the_release_on_the_one_pr
             batched = any(p.startswith("after:genecall.batch-") for p in seen)
             assert batched == (how == "batches" and stage == "S1"), (how, stage, seen)
         roots[how] = root
-    a, b = (c08.data(tree(roots[h])) for h in ("one", "batches"))
+    a, b = (c08.data(data_files(tree(roots[h]))) for h in ("one", "batches"))
     assert a == b
     assert len(genecall_files(a)) == 5 and any(x.startswith("l3/") for x in a)
     for rel in ("rB48.0", REL):
