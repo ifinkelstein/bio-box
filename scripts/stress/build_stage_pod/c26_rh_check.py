@@ -95,8 +95,8 @@ def main() -> int:
             r = json.loads(line)
         except ValueError:
             continue
+        what, r = r.get("step", "?"), r.get("result", r)  # run-step prints {"result": ..., "stage": S, "step": N}
         sk = {bytes.fromhex(x["contig_uid"]): x["owner_stage"] for x in r.get("skipped_contigs", [])}
-        what = "genecall" if "genes" in r else "other"  # the CRISPR producers report their skips the same way
         res.setdefault("results_with_skips", []).append(
             {"producer": what, "skipped": len(sk), **{k: r[k] for k in r if k != "skipped_contigs"}})
         need(sk == owned, f"a {what} result's skipped_contigs are not the shared contigs and their stages")

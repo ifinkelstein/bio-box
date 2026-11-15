@@ -17,17 +17,21 @@
 # after its own post-command STOP check, `runstep.run_step`) appears. Between that and the first release step's launch
 # build-stage computes the cluster gate (protein counts from every stage's footers), dim's ownership check
 # (`dim.owner_problem`, DuckDB over every stage's contig_index and genome_input), the parts decision, and in `one()`
-# reads the CPU allowance (`runstep.allowance`, a sampling of the host's CPU) before run-step checks STOP once more
-# before writing anything. So the STOP lands in that window; build-stage says `STOP exists; stopping before
-# <release>.cluster...` and exits 75, and no file of the release is written. Polling every POLL seconds.
+# reads the CPU allowance (`runstep.allowance`, a sampling of the host's CPU over 5 s) before run-step checks STOP
+# once more before it writes anything. So the STOP lands in that window: build-stage says `STOP exists; stopping
+# before <release>.cluster...`, or run-step says `STOP exists; not starting <release>.cluster.plan` (the first
+# launch, measured: build-stage's own check came under a second after the record, run-step's 6 s after), and the
+# launch exits 75 with no file of the release written. Polling every POLL seconds.
 #
 # Modes:
 #   prep    The view (c26_view.py ROOT RH/root P1,P2), the sample (c26_sample.py from the stage's real inputs), its
 #           inputs (make_inputs.py plasmid ... --root RH/root) and a scratch profile (8 threads, the real budget).
-#   run     The launch, the real command's form for the sample stage PLR under release rC26.1 over P1,P2,PLR, with
-#           --library pfam 38.2 <the real Pfam file> gathering --crispr; the STOP watcher. Expects exit 75 at the
-#           release's cluster step, every PLR stage step recorded and nothing of rC26.1 in RH/root; then removes the
-#           STOP it wrote (its own content only). Writes RH/run/OK.
+#   run     UNIT=c26-rh-1 (default): the launch, the real command's form for the sample stage PLR under release
+#           rC26.1 over P1,P2,PLR, with --library pfam 38.2 <the real Pfam file> gathering --crispr; the STOP watcher.
+#           Expects exit 75 at the release's cluster step, every PLR stage step recorded and nothing of rC26.1 in the
+#           view or its scratch; then removes the STOP it wrote (its own content only). UNIT=c26-rh-2: the same
+#           launch again, which must stop the same way and change no file of the view. A unit whose log says it has
+#           ended is only checked, not launched again. Writes RH/run/OK-<unit>.
 #   dim     The dimension tables of a scratch release rC26.2 over P1,P2,PLR, through run-step (`release dim`), in the
 #           view: one row per contig and per genome, the second genomes of the shared plasmids (DEC-27).
 #   check   c26_rh_check.py: DEC-26 and DEC-27 on the rehearsal's files, read only.
@@ -98,12 +102,32 @@ EOF
   log "prep: done"
 }
 
-run() {
-  local unit=c26-rh-1 rc seen="" t0 n
-  [ -e "$RH/run/OK" ] && { log "run: OK present; nothing to do"; return; }
-  [ -e "$RH/root/STOP" ] && fail "$RH/root/STOP exists before the launch"
+listing() {  # $1 file: path, size and type of every file of the view (links listed, not followed), STOP left out
+  find "$RH/root" ! -type d ! -name STOP -printf '%P\t%s\t%y\t%T@\n' | LC_ALL=C sort > "$1"
+}
+
+run() {  # UNIT: c26-rh-1 the first launch, c26-rh-2 the same launch again (every stage step recorded)
+  local unit=${UNIT:-c26-rh-1} rc seen="" n
+  [ -e "$RH/run/OK-$unit" ] && { log "run: OK-$unit present; nothing to do"; return; }
   mkdir -p "$RH/run"
-  find "$RH/root" ! -type d -printf '%P\t%s\t%y\n' | LC_ALL=C sort > "$RH/run/listing-before.tsv"  # links not followed
+  if [ -e "$LOGS/$unit.log" ] && [ -n "$(exit_of "$unit")" ]; then  # launched and ended before: check it only
+    grep -q "launch $unit: " "$LOG" && grep -q "run: the last stage step's record or intent file appeared" "$LOG" \
+      && seen=1
+    log "run: $unit ended before (exit $(exit_of "$unit")); checking it, no new launch"
+  else
+    launch "$unit"
+  fi
+  verify "$unit"
+}
+
+launch() {  # $1 unit: the launch and the STOP watcher
+  local unit=$1
+  if [ -e "$RH/root/STOP" ]; then  # one this driver wrote at the end of an earlier launch goes; any other stops us
+    grep -q "^c26 rehearsal watcher" "$RH/root/STOP" || fail "$RH/root/STOP exists before the launch"
+    rm "$RH/root/STOP"
+    log "run: removed the STOP an earlier launch of this driver left"
+  fi
+  listing "$RH/run/listing-before-$unit.tsv"
   log "launch $unit: build-stage --root $RH/root --stage $STAGE --release $REL --stages $ALL (Pfam 38.2, --crispr)"
   bash "$TREE/scripts/pod_run.sh" --profile "$RH/profile.yaml" --image "$IMAGE" --digest "$DIGEST" --mem 32G \
     --threads "$T" --bind /tmp/if2453 --bind "$ROOT:$ROOT:ro" --bind "$PFAMDIR:$PFAMDIR:ro" \
@@ -121,23 +145,35 @@ run() {
     fi
     sleep "$POLL"
   done
+}
+
+verify() {  # $1 unit: how the launch ended, and what it left
+  local unit=$1 rc n
   rc=$(exit_of "$unit")
-  log "run: $unit exit '$rc'; $(grep -E 'build-stage: .*STOP|refused' "$LOGS/$unit.log" | tail -n 2 | tr '\n' ' ')"
+  log "run: $unit exit '$rc'; $(grep -E 'STOP|refused' "$LOGS/$unit.log" | tail -n 3 | tr '\n' ' ')"
   log "run: usage $(grep -E 'pod_run: .* usage' "$LOGS/$unit.log" | tail -n 1)"
   [ -n "$seen" ] || fail "the watcher never saw crispr-$NEAR's record (exit '$rc')"
   [ "$rc" = 75 ] || fail "$unit exit '$rc', not 75"
-  grep -q "STOP exists; stopping before $REL\.cluster" "$LOGS/$unit.log" || fail "no 'stopping before $REL.cluster' line"
+  # build-stage's own check before the step (`stopping before ...`) or run-step's, before it writes anything (`not
+  # starting ...`): either way at or before the release's first step, never inside it
+  grep -qE "STOP exists; (stopping before|not starting) ($REL\.cluster|stage $STAGE|$STAGE\.)" "$LOGS/$unit.log" \
+    || fail "the launch did not stop at the release's cluster step or before the stage"
+  grep -qE "rC26\.1\.cluster[^ ]* published" "$LOGS/$unit.log" && fail "a release step published"
   for step in inputs ingest genecall "crispr-minced-0.4.2-w8-nr3-r23x47-s26x50" igr tapes domains-pfam-38.2 "crispr-$NEAR"; do
     [ -e "$RH/root/runs/stage=$STAGE/$step.json" ] || fail "no run record $STAGE/$step"
   done
-  n=$(find "$RH/root" "$RH/tmp" -path '*release=rC26.1*' -o -path '*stage=rC26.1*' -o -path '*rC26.1.*' | wc -l)
+  n=$(find "$RH/root" "$RH/tmp" -name '*rC26.1*' | wc -l)
   log "run: paths naming $REL in the view and its scratch: $n"
   [ "$n" = 0 ] || fail "$n paths of $REL"
-  [ -e "$RH/root/release_def/release=$REL" ] && fail "$REL has a release_def"
+  listing "$RH/run/listing-after-$unit.tsv"
+  if [ "$unit" != c26-rh-1 ]; then  # the same launch again changes nothing
+    cmp -s "$RH/run/listing-before-$unit.tsv" "$RH/run/listing-after-$unit.tsv" || fail "$unit changed the view"
+    log "run: $unit left the view's listing unchanged"
+  fi
   grep -q "^c26 rehearsal watcher" "$RH/root/STOP" && rm "$RH/root/STOP"
   log "run: removed the watcher's STOP"
-  touch "$RH/run/OK"
-  log "run: OK"
+  touch "$RH/run/OK-$unit"
+  log "run: OK ($unit)"
 }
 
 dim() {
