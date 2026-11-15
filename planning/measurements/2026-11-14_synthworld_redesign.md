@@ -798,3 +798,436 @@ test is not a rate trade-off: it fails whenever a tandem twin of a planted insta
 setting. So the decisions left are about the tests' premises, not the rates: (i) whether the motif test should allow a
 same-emission twin, (ii) whether the decoy test's 3 transfers is a per-seed requirement for decoys at critical rates,
 (iii) (b) plasmids and (iv) (c) N0's r, with the numbers of §13.
+
+
+## 15. Session 12: the preset of DEC-44, re-pinned
+
+Card F-02, session 12 (branch `task/F-02-12`: session 11's `task/F-02-11` at `5de6adc` with `plan/task-cards` merged,
+which brought DEC-43 to DEC-46; the merge was clean). DEC-44 is the specification. Host and commands for every
+*measured* number in this section: wilkcomp02, 2026-11-15 13:25-18:00 CST (Sunday; the account at 18 to 26 of its 56
+threads with other agents, this session's at most 8), image `bio-box-test_faec1f4.sif`, units `f0212-*` at nice 19,
+one thread per process. Scans: `python scripts/stress/f0210_seed_scan.py scan /tmp/if2453/f0212/<dir> <label> --jobs
+<5|6|7> --seeds default,20261113,n2 [--n0] [--set a.b=JSON ...]` (overrides per label in `session12/<label>.json`);
+full worlds at the default seed: `session12/scripts/igr.py` (builds S1-S5 with the overrides and calls the two
+sequence-level test functions of `tests/r2/test_synthworld_intergenic.py`, the migrated motif test included); the
+scripts are in `session12/scripts/`, the scan tables and logs in `session12/`. Row summaries: `session12/scripts/summ.py`
+(session 11's `vsumm.py` columns plus the DEC-44 ones).
+
+**Outcome: the preset of DEC-44 is in and re-pinned, and two existing assertions outside the migrations fail under it
+(stop and report, §15.6).** The preset is session 11's candidate B with plasmids 0.1/0.3 and decoy transfer 8.0;
+background transfer did not have to move: with DEC-44's plasmid and decoy rates the default world at 0.045 has 206
+equal-length cross-phylum IGR pairs. Clauses (1), (3), (4) and (5) are met, the three migrations are in (§15.2), and
+every stage digest changed once and is re-pinned (§15.3). Clause (2) stops: the decoy rate that holds "3 transfers per
+decoy" at every seed (8.0) makes the null module's root-presence KS fail at both of its seeds (it holds at 22 of 22
+seeds with decoy 0.4), and 16.0, which holds both there, leaves the default world 7 cross-phylum IGR pairs short of
+clause (5). Separately, the default world under the final preset has two contigs of one genome with identical
+sequence, so two truth genes share one `feature_uid` (`test_every_truth_gene_reads_its_s8_gene_on_the_emitted_contig`).
+Neither assertion was changed.
+
+### 15.1 The fits (22 seeds each, one row per scan)
+
+Labels `e_t<T>_l<L>_dec<D>`: candidate B (duplication 0.012, origination 0.035) with background transfer T, loss L =
+(-0.01 + 2 x 0.012 + 3 T) / 2 (session 11's rule, *derived*), hub multiplier 2.0 / T, plasmids 0.1/0.3 and decoy
+transfer D. `final12` is the preset as committed, no overrides, with `--n0`.
+
+| scan | chromosome mean (in band) | default mean | planted share % | copies per present member | exclusion breaches | both plasmid types (default) | some genome without a plasmid | a genome > 2 plasmids | all cells powered | levels pooled (increasing) | core >= 40 genomes: default, range (>= 100) | decoys >= 3 transfers: seeds, fewest, default | N0 ratio range (in [0.9, 1.1]) | N1 unmatched planted at default |
+|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|
+| e_t0.045_l0.076_dec0.4 | 1317-1854 (22/22) | 1460 | 4.4-6.4 | 0.87-1.11 | 0 | 14/22 (yes) | 21/22 | 2 | 21/22 | 4.0, 5.8, 11.5 (18/22) | 136, 136-393 (22) | 9/22, 0, 3 | - | 0 |
+| e_t0.045_l0.076_dec0.8 | 1328-1754 (22/22) | 1536 | 3.9-7.6 | 0.87-1.15 | 0 | 16/22 (yes) | 22/22 | 1 | 22/22 | 3.3, 6.0, 12.0 (19/22) | 177, 156-392 (22) | 15/22, 0, 106 | - | 0 |
+| e_t0.045_l0.076_dec1.2 | 1354-1822 (22/22) | 1492 | 4.7-8.2 | 0.84-1.09 | 0 | 16/22 (yes) | 22/22 | 2 | 20/22 | 3.4, 5.0, 11.0 (18/22) | 156, 156-391 (22) | 15/22, 0, 125 | - | 0 |
+| e_t0.045_l0.076_dec4.0 | 1448-1808 (22/22) | 1654 | 5.6-8.4 | 0.91-1.11 | 0 | 18/22 (yes) | 22/22 | 3 | 22/22 | 3.7, 6.3, 12.0 (19/22) | 195, 182-413 (22) | 21/22, 1, 263 | - | 0 |
+| **e_t0.045_l0.076_dec8.0** | 1403-1815 (22/22) | 1570 | 5.4-8.3 | 0.75-1.11 | 0 | 14/22 (yes) | 21/22 | 0 | 22/22 | 4.0, 6.0, 12.4 (19/22) | 181, 175-406 (22) | **22/22, 14, 220** | - | 0 |
+| e_t0.045_l0.076_dec16.0 | 1420-1739 (22/22) | 1554 | 5.9-8.7 | 0.93-1.22 | 0 | 11/22 (yes) | 22/22 | 0 | 21/22 | 4.5, 7.0, 11.0 (19/22) | 173, 173-374 (22) | 22/22, 22, 314 | - | 0 |
+| e_t0.05_l0.082_dec0.8 | 1381-1740 (22/22) | 1509 | 4.9-7.0 | 0.84-1.13 | 0 | 16/22 (yes) | 22/22 | 3 | 21/22 | 3.6, 5.8, 12.5 (18/22) | 158, 143-412 (22) | 12/22, 0, 149 | - | 0 |
+| e_t0.05_l0.082_dec1.2 | 1301-1788 (22/22) | 1559 | 5.1-8.0 | 0.87-1.10 | 0 | 13/22 (yes) | 21/22 | 0 | 21/22 | 3.5, 6.2, 13.3 (19/22) | 143, 143-376 (22) | 12/22, 0, 0 | - | 0 |
+| e_t0.05_l0.082_dec8.0 | 1450-1770 (22/22) | 1600 | 6.3-8.2 | 0.89-1.12 | 0 | 14/22 (yes) | 22/22 | 2 | 21/22 | 4.5, 6.5, 12.4 (16/22) | 192, 167-365 (22) | 21/22, 0, 269 | - | 0 |
+| e_t0.055_l0.0895_dec8.0 | 1376-1813 (22/22) | 1613 | 4.8-8.4 | 0.84-1.24 | 0 | 13/22 (**no**) | 22/22 | 0 | 20/22 | 4.3, 6.9, 13.0 (18/22) | 177, 129-418 (22) | 21/22, 1, 227 | - | 0 |
+| **final12 (committed)** | 1403-1815 (22/22) | 1570 | 5.4-8.3 | 0.75-1.11 | 0 | 14/22 (yes) | 21/22 | 0 | 22/22 | 4.0, 6.0, 12.4 (19/22) | 181, 175-406 (22) | 22/22, 14, 220 | 0.893-1.086 (21/22) | 0 |
+
+`final12` reproduces `e_t0.045_l0.076_dec8.0` row for row (the overrides and the committed YAML give the same worlds).
+
+**Decoys (DEC-44 (2)).** Why a decoy has fewer than 3 transfers (`decoys.py`, a replay of ZOMBI2's
+`genome_events.tsv` on worlds kept at the seven failing seeds of `dec1.2`, scan `z_dec*` in `session12/`, output in
+`decoys_kept_worlds.txt`): either both crown copies of the decoy die (loss rows, or the lineage dies) before either
+transfers (4 of 7: 0 transfers, 2 or 3 losses, while the partner module is held by many lineages), or the partner
+module is held by at most one lineage from t 0.56 to 1.25 on the tree's clock, so there is no recipient (3 of 7; the
+partners are modules 1, 9, 11, 19 and 22, all at the two lowest member transfer levels, chosen as the patchiest in
+session 2). Both are races against an early clock, so only a much higher rate wins them at every seed: 0.4, 0.8, 1.2,
+4.0, 8.0, 12.0 and 16.0 give 9, 15, 15, 21, 22, 20 and 22 of 22 seeds (12.0 in §15.6 (A)). 8.0 is the smallest
+tried that holds at every seed (the fewest at any seed 14) with every backbone property of this table and the other
+DEC-44 clauses; the test's other two assertions (every decoy transfer lands where the partner is; mean partner share
+among the other lineages <= 0.9) hold in the test itself at the default seed (§15.5); the null module's root-presence
+KS does not (§15.6 (A)). Consequence (*measured*, the default world below): a decoy is now a multi-copy family in its
+partner's carriers, 40.8 decoy genes per genome (2.2 before; 2.5% of the genes), still inside the planted-share bound
+(planted + profile-only + decoy 5.4-8.3% over the 22 seeds against 15.2%).
+
+**Background transfer (DEC-44 (5)).** Full default worlds with plasmids 0.1/0.3 and decoy 8.0 (`igr_t*.log`):
+
+| background transfer, loss, hub multiplier | equal-length cross-phylum IGR pairs (>= 200) | burst IGR identity (>= 0.9) | across phyla | planted motif test (migrated) | best windows another planted instance of the emission |
+|---|---|---|---|---|---|
+| **0.045, 0.076, 44.444444** | **206** | 0.946 | 0.641 | passes (1,150 of 1,159 unique best) | 4 |
+| 0.05, 0.082, 40 | 177 (fails) | 0.943 | 0.682 | passes (1,141 of 1,153) | 3 |
+| 0.055, 0.0895, 36.363636 | 221 | 0.944 | 0.690 | passes (1,079 of 1,095) | 8 |
+
+The count is not monotone in T at one seed (session 11: 195 at 0.045 with its plasmid and decoy rates, 236-262 at
+0.05): it is one draw of the world. 0.045 is the smallest transfer that holds at the default seed, and at 0.05 and
+0.055 a decoy has fewer than 3 transfers at one seed and, at 0.055, the default seed loses a plasmid type (table
+above). So background transfer stays at 0.045, and loss (0.076) and origination (0.035) stay: the chromosome mean is
+inside 1,500 +- 30% at every seed (1,403-1,815) and the core is >= 100 root families in >= 40 genomes at every seed
+(175-406). The member transfer levels stay (0.01/0.03/0.4): pooled medians 4.0, 6.0, 12.4 over 22 seeds, 4.1, 6.2,
+16.0 over the per-seed test's six seeds (`six.py`: steps 1.52x and 2.58x against its 1.5x), so they are still distinct.
+
+**Plasmids (DEC-44 (3)).** At 0.1/0.3 under the final preset both types live at the default seed (pls0 in 35 genomes,
+pls1 in 2; 9 genomes without a plasmid, none with more than 2), and at 14 of 22 seeds (session 11 measured 17 of 22 at
+its preset); some genome is without a plasmid at 21 of 22 seeds, and no genome carries more than 2 at any seed.
+
+**N0 (DEC-44 (4)).** The background size ratio is in [0.9, 1.1] at 21 of 22 seeds (0.893-1.086): at
+10975598825187167680 it is 0.893. The null module runs at the default seed (0.946) and 20261113 (1.026), where it
+holds; the one seed outside is reported here, not asserted (the module does not run there).
+
+### 15.2 The three migrations (DEC-44 (1), (3), (4)); no other assertion changed
+
+- `tests/r2/test_synthworld_intergenic.py::test_every_planted_motif_is_recovered_at_its_truth_coordinates_by_an_independent_scan`
+  (DEC-44 (1)). Before: for every planted instance, `(start, strand) in winners or divergence > 0.3`, where `winners`
+  are the windows of the instance's intergenic region (both strands) at the lowest Hamming distance from the clade's
+  emission. After: `(start, strand) in winners or twin or divergence > 0.3`, where `twin` holds only when the instance
+  is not among the winners and *every* winner is another planted instance of the same emission on the same replicon,
+  at that instance's own start and strand (read from `rna.tsv` by a loop in the test, `planted_at`). Unchanged: the
+  per-instance checks before the scan, the scan itself, the divergence escape, and the count of instances whose own
+  window is the unique best (still >= 0.95 of them). A best window that is no planted instance of the emission fails as
+  before. The test now prints how many instances have only other planted instances of their emission as best windows
+  (4 at the default seed under the final preset; 3 and 8 in the transfer-0.05 and 0.055 worlds of §15.1).
+- `tests/r2/test_synthworld_preset_seeds.py`: `test_both_plasmid_types_live_at_the_share_the_refit_reaches` became
+  `test_both_plasmid_types_live_at_the_default_seed_and_are_reported_per_seed` (DEC-44 (3)). Before: both types at no
+  fewer than half of the six seeds (`PLASMID_BOTH_SHARE` 0.5, removed). After: both types at the default seed; the
+  carriers of each type and the most plasmids in one genome are printed per seed. §5.1's per-genome range is still
+  asserted at the default seed by `test_plasmids_are_whole_replicons_of_their_preset_size` (unchanged).
+- `tests/r2/test_synthworld_nulls.py::test_n0_keeps_the_background_process_in_distribution` (DEC-44 (4)). Before:
+  `0.9 <= ratio <= 1.1 and r >= 0.9`. After: `0.9 <= ratio <= 1.1`; r is still computed, printed and recorded as a
+  property. Every other assertion of the null module is unchanged (KS on root presence, + strand share, tight share,
+  GC, and every other test).
+
+Re-pinned, not migrated: the digests (§15.3). The spec: `synthworld_spec.md` §2.1's plasmid paragraph still says
+"transfer 0.3 and loss 0.7 per plasmid ... (17, 20 and 9 of 46)" and §5.1's backbone paragraph the session-2 rates;
+DEC-44 and the preset supersede both (not edited here, as the brief says).
+
+### 15.3 Re-pinned digests and the default world before and after
+
+Every stage digest of the default world (seed 20261112) changed once (*measured*, wilkcomp02, 2026-11-15, `python
+scripts/stress/f0210_world_summary.py build /tmp/if2453/f0212/world-final 20261112` on the committed tree, then
+`summary`; `session12/default_world_summary_after12.json`). Pinned in `tests/r2/test_synthworld_emit.py` (DIGESTS,
+EMIT_DIGEST, WORLD_DIGEST), `test_synthworld_nulls.py` (SIGNAL, SIGNAL_WORLD), `test_synthworld_assembly.py` (DIGESTS,
+ASSEMBLY_DIGEST) and `test_synthworld_fusions.py` (S6_DIGEST); the pinned tests pass (§15.5):
+
+| stage | pre-redesign (session 10) | session 11 (`89cfb46`) | session 12 |
+|---|---|---|---|
+| backbone | 025fdd0d27fdc65e678782216ecd21fb | 545240f325b552247e0665459ccb1c0e | f65094aa0fb1c9bed885bc6bc2f4e825 |
+| sequences | 34ebce1324413a261acd874d7ee4fe3e | 294beafcfe7efa64b582276549e353b9 | e9bf8833a898541f1bc9606c97d55463 |
+| replicons | 55bda97155d75148e5cdca7b90a1d7be | 98b0a2fada22354766bdf4d12df6ade6 | 1930863ca47dcc67a5fde9deb1d12f84 |
+| mobile | 0bd7f0db5691de58ea5e1a0df1e6e570 | bbe7289e32176b4e9874c706be6ccf03 | 1596365eedc377773ba85ef5aa7ec593 |
+| fusions | db09abf3fe79ae34a73e3ab0664a9b13 | 818031fea3ed35abab093554605474ad | d2f80ac770d8cd78346467aed2efc9c7 |
+| assembly | 2f425158dc38f2302c1d02e9ebed30da | 74ea9afac18fdab3fe8470728679f544 | 03b3e1b97dad03a8b2b7d78d755eebaf |
+| sources | 770007bde8615f41d9dd5f2eb912e753 | a333a1e97bb6c0ba75b0c870f3ad28d8 | 5366fca6f2796b3956265d248b6529d9 |
+| emit | a2f0e448484dab63d41281a5ef6a00c0 | 0f1ae8e62576ee05dc1c2fa9fe78f378 | 267f3a0200ddc3f7639e3c2fd6ffc134 |
+| world | f0262027e4ccdcbc72cd7d90f23fbb5c | 765b20a0d7d0051d62c5036143d6ced5 | 684e539e11bd1ecbc5d3df6fe6405e7f |
+
+The default world (S1-S11 at 20261112; `f0210_world_summary.py summary`; pre-redesign:
+`2026-11-14_synthworld_seeds/default_world_summary.json`, session 11: `default_world_summary_refit.json`, session 12:
+`session12/default_world_summary_after12.json`; all *measured*):
+
+| quantity | pre-redesign (session 10) | session 11 (89cfb46) | session 12 |
+|---|---|---|---|
+| arrays | 10 | 10 | 10 |
+| chromosome_genes.max | 3798 | 1606 | 1801 |
+| chromosome_genes.mean | 1872.7 | 1447.5 | 1570.5 |
+| chromosome_genes.min | 969 | 1243 | 1321 |
+| families_with_extant_copies_by_kind.cargo | 16 | 16 | 16 |
+| families_with_extant_copies_by_kind.decoy | 5 | 5 | 5 |
+| families_with_extant_copies_by_kind.hub | 5 | 5 | 5 |
+| families_with_extant_copies_by_kind.originated | 1399 | 2908 | 1415 |
+| families_with_extant_copies_by_kind.planted | 100 | 100 | 100 |
+| families_with_extant_copies_by_kind.plasmid | 160 | 160 | 160 |
+| families_with_extant_copies_by_kind.profile_only | 9 | 9 | 9 |
+| families_with_extant_copies_by_kind.root | 998 | 999 | 999 |
+| families_with_extant_copies_by_kind.vehicle_chassis | 6 | 6 | 6 |
+| genes_per_genome.max | 3918 | 1741 | 1921 |
+| genes_per_genome.mean | 1937.0 | 1569.2 | 1663.6 |
+| genes_per_genome.min | 969 | 1363 | 1432 |
+| genes_per_genome_by_kind.background | 1318.0 | 1209.9 | 1254.8 |
+| genes_per_genome_by_kind.decoy | 6.7 | 2.2 | 40.8 |
+| genes_per_genome_by_kind.hub | 49.3 | 49.4 | 49.3 |
+| genes_per_genome_by_kind.planted | 380.7 | 71.5 | 77.6 |
+| genes_per_genome_by_kind.plasmid | 64.3 | 121.7 | 93.0 |
+| genes_per_genome_by_kind.profile_only | 29.6 | 9.1 | 8.2 |
+| genes_per_genome_by_kind.vehicle | 88.3 | 105.3 | 139.9 |
+| genomes | 46 | 46 | 46 |
+| kinds.assembly/callerr.tsv:kind.alt_code | 6551 | 5342 | 6300 |
+| kinds.assembly/callerr.tsv:kind.alt_start_downstream | 30 | 30 | 30 |
+| kinds.assembly/callerr.tsv:kind.alt_start_upstream | 30 | 30 | 30 |
+| kinds.assembly/callerr.tsv:kind.frameshift_del | 30 | 30 | 30 |
+| kinds.assembly/callerr.tsv:kind.frameshift_ins | 30 | 30 | 30 |
+| kinds.assembly/callerr.tsv:kind.internal_stop | 40 | 40 | 40 |
+| kinds.assembly/callerr.tsv:kind.smorf | 40 | 40 | 40 |
+| kinds.assembly/edits.tsv:kind.alt_start_downstream | 30 | 30 | 30 |
+| kinds.assembly/edits.tsv:kind.alt_start_upstream | 88 | 87 | 78 |
+| kinds.assembly/edits.tsv:kind.frameshift_del | 30 | 30 | 30 |
+| kinds.assembly/edits.tsv:kind.frameshift_ins | 30 | 30 | 30 |
+| kinds.assembly/edits.tsv:kind.internal_stop | 40 | 40 | 40 |
+| kinds.assembly/edits.tsv:kind.recode_codon | 26039 | 20986 | 24347 |
+| kinds.assembly/edits.tsv:kind.recode_overlap | 334 | 264 | 294 |
+| kinds.assembly/edits.tsv:kind.recode_stop | 2189 | 1816 | 2053 |
+| kinds.assembly/edits.tsv:kind.smorf | 40 | 40 | 40 |
+| kinds.assembly/genomes.tsv:assembly_class.complete | 18 | 18 | 18 |
+| kinds.assembly/genomes.tsv:assembly_class.draft | 18 | 18 | 18 |
+| kinds.assembly/genomes.tsv:assembly_class.mag | 10 | 10 | 10 |
+| kinds.assembly/replicons.tsv:kind.chromosome | 46 | 46 | 46 |
+| kinds.assembly/replicons.tsv:kind.plasmid | 38 | 50 | 37 |
+| kinds.fusions/edits.tsv:kind.fusion | 52 | 52 | 52 |
+| kinds.fusions/edits.tsv:kind.nogd | 15 | 7 | 7 |
+| kinds.fusions/edits.tsv:kind.split | 14 | 14 | 14 |
+| kinds.fusions/events.tsv:kind.fusion | 15 | 15 | 15 |
+| kinds.fusions/events.tsv:kind.nogd | 2 | 2 | 2 |
+| kinds.fusions/events.tsv:kind.split | 5 | 5 | 5 |
+| kinds.fusions/fusions.tsv:kind.fusion | 52 | 52 | 52 |
+| kinds.fusions/fusions.tsv:kind.split | 14 | 14 | 14 |
+| kinds.fusions/replicons.tsv:kind.chromosome | 46 | 46 | 46 |
+| kinds.fusions/replicons.tsv:kind.plasmid | 38 | 50 | 37 |
+| kinds.mobile/insertions.tsv:kind.crispr | 30 | 30 | 30 |
+| kinds.mobile/insertions.tsv:kind.prophage | 16 | 16 | 16 |
+| kinds.mobile/replicons.tsv:kind.chromosome | 46 | 46 | 46 |
+| kinds.mobile/replicons.tsv:kind.plasmid | 38 | 50 | 37 |
+| kinds.sources/contam.tsv:kind.cross_clade | 10 | 10 | 10 |
+| kinds.sources/dup.tsv:kind.exact | 108 | 105 | 110 |
+| kinds.sources/dup.tsv:kind.near | 87 | 120 | 138 |
+| kinds.sources/sources.tsv:kind.exact_dup | 2 | 2 | 2 |
+| kinds.sources/sources.tsv:kind.near_dup | 2 | 2 | 2 |
+| kinds.sources/sources.tsv:kind.original | 46 | 46 | 46 |
+| phages.genes | [12 items] | [12 items] | [12 items] |
+| phages.n | 12 | 12 | 12 |
+| planted_share | 0.2153 | 0.0528 | 0.0761 |
+| plasmid_genomes_by_type.pls0 | 18 | 45 | 35 |
+| plasmid_genomes_by_type.pls1 | 20 | 5 | 2 |
+| prophage_instances | 16 | 16 | 16 |
+| seconds.S1-S11 | 238.61 | 210.1 | 215.9 |
+| seconds.S1-S2 backbone | 37.1 | 31.44 | 51.97 |
+| seconds.S10 sources | 6.56 | 5.89 | 7.56 |
+| seconds.S11 emit | 24.52 | 21.97 | 21.87 |
+| seconds.S3-S4 sequences | 86.73 | 73.79 | 66.72 |
+| seconds.S5 replicons | 47.97 | 43.67 | 39.15 |
+| seconds.S6 mobile | 11.47 | 13.96 | 9.48 |
+| seconds.S7 fusions | 5.34 | 4.51 | 4.02 |
+| seconds.S8-S9 assembly | 18.91 | 14.86 | 15.14 |
+| stage_digests.assembly | 2f425158dc38f2302c1d02e9ebed30da | 74ea9afac18fdab3fe8470728679f544 | 03b3e1b97dad03a8b2b7d78d755eebaf |
+| stage_digests.backbone | 025fdd0d27fdc65e678782216ecd21fb | 545240f325b552247e0665459ccb1c0e | f65094aa0fb1c9bed885bc6bc2f4e825 |
+| stage_digests.emit | a2f0e448484dab63d41281a5ef6a00c0 | 0f1ae8e62576ee05dc1c2fa9fe78f378 | 267f3a0200ddc3f7639e3c2fd6ffc134 |
+| stage_digests.fusions | db09abf3fe79ae34a73e3ab0664a9b13 | 818031fea3ed35abab093554605474ad | d2f80ac770d8cd78346467aed2efc9c7 |
+| stage_digests.mobile | 0bd7f0db5691de58ea5e1a0df1e6e570 | bbe7289e32176b4e9874c706be6ccf03 | 1596365eedc377773ba85ef5aa7ec593 |
+| stage_digests.replicons | 55bda97155d75148e5cdca7b90a1d7be | 98b0a2fada22354766bdf4d12df6ade6 | 1930863ca47dcc67a5fde9deb1d12f84 |
+| stage_digests.sequences | 34ebce1324413a261acd874d7ee4fe3e | 294beafcfe7efa64b582276549e353b9 | e9bf8833a898541f1bc9606c97d55463 |
+| stage_digests.sources | 770007bde8615f41d9dd5f2eb912e753 | a333a1e97bb6c0ba75b0c870f3ad28d8 | 5366fca6f2796b3956265d248b6529d9 |
+| tsv_rows.assembly/callerr.tsv | 6751 | 5542 | 6500 |
+| tsv_rows.assembly/contigs.tsv | 2431 | 2102 | 2239 |
+| tsv_rows.assembly/edits.tsv | 28820 | 23323 | 26942 |
+| tsv_rows.assembly/gene_contigs.tsv | 92488 | 75260 | 79762 |
+| tsv_rows.assembly/genes.tsv | 90282 | 73364 | 77704 |
+| tsv_rows.assembly/genomes.tsv | 46 | 46 | 46 |
+| tsv_rows.assembly/repeats.tsv | 1344 | 1512 | 2005 |
+| tsv_rows.assembly/replicons.tsv | 84 | 96 | 83 |
+| tsv_rows.backbone/events.tsv | 50898 | 39792 | 57310 |
+| tsv_rows.backbone/families.tsv | 2698 | 4208 | 2715 |
+| tsv_rows.backbone/gene_tree_nodes.tsv | 262548 | 213418 | 242674 |
+| tsv_rows.backbone/genes.tsv | 89102 | 72184 | 76524 |
+| tsv_rows.backbone/genomes.tsv | 46 | 46 | 46 |
+| tsv_rows.backbone/groups.tsv | 33 | 33 | 33 |
+| tsv_rows.backbone/replicons.tsv | 84 | 96 | 83 |
+| tsv_rows.backbone/taxa.tsv | 82 | 82 | 82 |
+| tsv_rows.backbone/taxonomy.tsv | 46 | 46 | 46 |
+| tsv_rows.backbone/truth_adjacency.tsv | 89102 | 72184 | 76524 |
+| tsv_rows.backbone/truth_units.tsv | 3912 | 1497 | 1637 |
+| tsv_rows.emit/ingest.tsv | 2327 | 2088 | 2243 |
+| tsv_rows.emit/truth/truth_callerr.tsv | 8509 | 6933 | 8162 |
+| tsv_rows.emit/truth/truth_contam.tsv | 10 | 10 | 10 |
+| tsv_rows.emit/truth/truth_contig.tsv | 2648 | 2349 | 2509 |
+| tsv_rows.emit/truth/truth_dup.tsv | 195 | 225 | 248 |
+| tsv_rows.emit/truth/truth_edges.tsv | 2217 | 1982 | 2131 |
+| tsv_rows.emit/truth/truth_family.tsv | 2810 | 4320 | 2827 |
+| tsv_rows.emit/truth/truth_fusion.tsv | 69 | 69 | 69 |
+| tsv_rows.emit/truth/truth_gene.tsv | 93883 | 76797 | 81649 |
+| tsv_rows.emit/truth/truth_genome.tsv | 62 | 62 | 62 |
+| tsv_rows.emit/truth/truth_igr.tsv | 92090 | 75140 | 79887 |
+| tsv_rows.emit/truth/truth_module.tsv | 175 | 175 | 175 |
+| tsv_rows.emit/truth/truth_rna.tsv | 1110 | 1022 | 1215 |
+| tsv_rows.emit/truth/truth_spacer_target.tsv | 3887 | 3695 | 3781 |
+| tsv_rows.emit/truth/truth_traps.tsv | 213 | 295 | 207 |
+| tsv_rows.fusions/edits.tsv | 81 | 73 | 73 |
+| tsv_rows.fusions/events.tsv | 22 | 22 | 22 |
+| tsv_rows.fusions/fusions.tsv | 66 | 66 | 66 |
+| tsv_rows.fusions/genes.tsv | 90242 | 73324 | 77664 |
+| tsv_rows.fusions/nogd.tsv | 15 | 7 | 7 |
+| tsv_rows.fusions/nogd_families.tsv | 2 | 2 | 2 |
+| tsv_rows.fusions/replicons.tsv | 84 | 96 | 83 |
+| tsv_rows.mobile/arrays.tsv | 30 | 30 | 30 |
+| tsv_rows.mobile/cas.tsv | 40 | 40 | 40 |
+| tsv_rows.mobile/genes.tsv | 90280 | 73362 | 77702 |
+| tsv_rows.mobile/insertions.tsv | 46 | 46 | 46 |
+| tsv_rows.mobile/phage_genes.tsv | 730 | 730 | 730 |
+| tsv_rows.mobile/phages.tsv | 12 | 12 | 12 |
+| tsv_rows.mobile/prophages.tsv | 16 | 16 | 16 |
+| tsv_rows.mobile/replicons.tsv | 84 | 96 | 83 |
+| tsv_rows.mobile/spacer_targets.tsv | 3462 | 3363 | 3363 |
+| tsv_rows.mobile/spacers.tsv | 316 | 316 | 316 |
+| tsv_rows.replicons/elements.tsv | 171872 | 153623 | 161405 |
+| tsv_rows.replicons/emissions.tsv | 252 | 224 | 248 |
+| tsv_rows.replicons/genes.tsv | 89102 | 72184 | 76524 |
+| tsv_rows.replicons/junctions.tsv | 89102 | 72184 | 76524 |
+| tsv_rows.replicons/lineages.tsv | 117 | 117 | 117 |
+| tsv_rows.replicons/links.tsv | 20 | 20 | 20 |
+| tsv_rows.replicons/models.tsv | 10 | 10 | 10 |
+| tsv_rows.replicons/replicons.tsv | 84 | 96 | 83 |
+| tsv_rows.replicons/rna.tsv | 1078 | 984 | 1159 |
+| tsv_rows.sequences/domains.tsv | 4329 | 6655 | 4344 |
+| tsv_rows.sequences/families.tsv | 2698 | 4208 | 2715 |
+| tsv_rows.sequences/genes.tsv | 89102 | 72184 | 76524 |
+| tsv_rows.sequences/lineages.tsv | 117 | 117 | 117 |
+| tsv_rows.sequences/panel.tsv | 300 | 300 | 300 |
+| tsv_rows.sources/contam.tsv | 10 | 10 | 10 |
+| tsv_rows.sources/dup.tsv | 195 | 225 | 248 |
+| tsv_rows.sources/mutations.tsv | 3135 | 3037 | 3488 |
+| tsv_rows.sources/sidecars/fcs_gx_mock.tsv | 10 | 10 | 10 |
+| tsv_rows.sources/source_contigs.tsv | 2315 | 2076 | 2231 |
+| tsv_rows.sources/sources.tsv | 50 | 50 | 50 |
+| world_digest | f0262027e4ccdcbc72cd7d90f23fbb5c | 765b20a0d7d0051d62c5036143d6ced5 | 684e539e11bd1ecbc5d3df6fe6405e7f |
+
+### 15.4 The committed preset over the 22 seeds (scan `final12`)
+
+`final12.tsv`, `final12_grid.tsv` (*measured*, the scan command above with no overrides, `--n0`; `tablegen.py`).
+Session 11's `final.tsv` columns plus the fewest transfers of any decoy and both plasmid types; N0's size ratio is in
+the N0 column. Ranges over the 22 seeds: chromosome mean 1,403-1,815 (22 of 22 inside 1,050-1,950); planted +
+profile-only + decoy share 5.4-8.3%; copies per present member 0.75-1.11; module transfers into a holder 0 at every
+seed; fewest decoy transfers 14-274 (>= 3 at 22 of 22); both plasmid types at 14 of 22 (the default among them), a
+genome without a plasmid at 21 of 22, more than 2 in a genome at 0; N0 size ratio 0.893-1.086 (in [0.9, 1.1] at 21 of
+22; 0.893 at 10975598825187167680); N0 r -0.08 to 0.97; all nine cells powered at 22 of 22; level medians strictly
+increasing at 19 of 22; root families in >= 40 genomes 175-406.
+
+| seed | crown age (MRCA) / from first speciation | genomes | genes per genome mean (min-max) | chromosome mean (min-max) | planted / profile-only / decoy / vehicle / hub / plasmid / background share % | plasmid genomes pls0, pls1 (0/1/2 per genome) | modules all members in >= 9 genomes | copies per present member | DEC-15 (c) plus, kept, clustered; scored units intact | realized transfers per member, level medians | N0 background size ratio, r | module transfers into a holder | fewest decoy transfers | both plasmid types |
+|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|
+| 20261112 | 5 / 5 | 46 | 1663.6 (1432-1921) | 1570.5 (1321-1801) | 4.7 / 0.5 / 2.5 / 8.4 / 3.0 / 5.6 / 75.4 | 35, 2 (9/37/0) | 23 | 1.075 | 0.460, 0.0000, 0.021; 760/760 | 7.0, 7.5, 19.0 | 0.9457, 0.4382 | 0 of 1198 | 220 | yes |
+| 20261113 | 5 / 8.435 | 46 | 1531.3 (1304-1768) | 1436.6 (1208-1648) | 4.3 / 0.6 / 2.5 / 7.3 / 3.2 / 6.2 / 75.9 | 36, 1 (9/37/0) | 21 | 1.047 | 0.459, 0.0019, 0.021; 644/644 | 4.0, 4.4, 16.67 | 1.0261, 0.5746 | 0 of 840 | 229 | yes |
+| 1001685937451957930 | 5 / 5 | 46 | 1576.6 (1338-1811) | 1507.9 (1338-1810) | 4.2 / 0.5 / 2.5 / 5.0 / 3.1 / 4.4 / 80.4 | 24, 7 (19/23/4) | 20 | 0.976 | 0.524, 0.0048, 0.021; 720/720 | 2.0, 3.5, 11.0 | 1.0012, 0.4935 | 0 of 573 | 33 | yes |
+| 6329801112132740259 | 5 / 5.136 | 46 | 1864.6 (1390-2154) | 1808.1 (1350-2114) | 3.8 / 0.5 / 2.2 / 7.4 / 2.6 / 3.0 / 80.4 | 11, 32 (8/33/5) | 21 | 1.088 | 0.477, 0.0010, 0.032; 627/627 | 7.0, 9.0, 20.0 | 0.942, 0.8717 | 0 of 1187 | 252 | yes |
+| 6036017085589997374 | 5 / 5 | 46 | 1679.5 (1339-1875) | 1663.9 (1339-1835) | 5.2 / 0.3 / 2.8 / 7.9 / 2.9 / 0.9 / 79.9 | 0, 18 (28/18/0) | 25 | 1.066 | 0.412, 0.0019, 0.021; 884/884 | 5.5, 8.8, 16.0 | 0.9053, 0.7889 | 0 of 1095 | 274 | no |
+| 4383110225690451409 | 5 / 5 | 46 | 1809.3 (1615-2023) | 1678.9 (1496-1863) | 4.2 / 0.6 / 2.2 / 8.5 / 2.7 / 7.2 / 74.5 | 39, 33 (0/20/26) | 25 | 1.084 | 0.432, 0.0010, 0.065; 786/786 | 3.33, 5.33, 19.0 | 1.0082, 0.2193 | 0 of 924 | 209 | yes |
+| 10975598825187167680 | 5 / 5 | 46 | 1727.2 (1527-2046) | 1645.4 (1483-1926) | 4.8 / 0.5 / 2.3 / 7.4 / 2.9 / 4.7 / 77.5 | 28, 10 (12/30/4) | 24 | 1.106 | 0.522, 0.0029, 0.021; 764/764 | 2.33, 6.0, 10.0 | 0.8927, 0.6439 | 0 of 762 | 169 | yes |
+| 5467273169533009601 | 5 / 5.03 | 46 | 1589.1 (1377-1779) | 1515.2 (1298-1659) | 4.2 / 0.6 / 2.6 / 7.7 / 3.1 / 4.7 / 77.2 | 24, 13 (13/29/4) | 21 | 0.952 | 0.426, 0.0019, 0.043; 645/645 | 4.0, 5.0, 11.5 | 0.9718, 0.0351 | 0 of 807 | 138 | yes |
+| 4734920099712499969 | 5 / 5 | 46 | 1548.3 (1229-1729) | 1448.3 (1156-1579) | 5.4 / 0.7 / 1.8 / 5.4 / 3.2 / 6.5 / 77.1 | 33, 16 (9/25/12) | 23 | 1.112 | 0.439, 0.0038, 0.032; 814/814 | 4.0, 6.33, 13.33 | 1.086, 0.8333 | 0 of 923 | 14 | yes |
+| 1570278518166000558 | 5 / 6.18 | 46 | 1823.4 (1327-2004) | 1814.7 (1327-2004) | 4.1 / 0.3 / 1.8 / 8.0 / 2.7 / 0.5 / 82.6 | 0, 10 (36/10/0) | 23 | 1.024 | 0.454, 0.0010, 0.054; 786/786 | 5.67, 7.0, 16.0 | 0.9818, 0.33 | 0 of 947 | 87 | no |
+| 3830344756309592292 | 5 / 5 | 46 | 1685.3 (1418-1950) | 1637.5 (1299-1843) | 3.5 / 0.5 / 2.1 / 4.1 / 2.9 / 2.8 / 84.0 | 15, 10 (25/17/4) | 21 | 1.085 | 0.435, 0.0010, 0.043; 603/603 | 4.0, 6.33, 10.0 | 0.9427, 0.6206 | 0 of 696 | 150 | yes |
+| 9254619518473077140 | 5 / 7.657 | 46 | 1684.3 (1389-1886) | 1630.4 (1356-1824) | 3.9 / 0.6 / 2.4 / 9.5 / 2.9 / 3.2 / 77.5 | 17, 11 (20/24/2) | 21 | 1.089 | 0.525, 0.0010, 0.043; 645/645 | 5.0, 6.4, 16.0 | 0.971, 0.8377 | 0 of 1026 | 217 | yes |
+| 4701969716356831982 | 5 / 5.087 | 46 | 1426.8 (1289-1725) | 1403.3 (1289-1565) | 4.5 / 0.6 / 2.7 / 2.4 / 3.5 / 1.7 / 84.8 | 2, 21 (25/19/2) | 16 | 0.922 | 0.428, 0.0000, 0.021; 613/613 | 3.17, 2.0, 8.67 | 0.9695, 0.6317 | 0 of 507 | 21 | yes |
+| 14843108908847119356 | 5 / 5 | 46 | 1740.6 (1485-2020) | 1685.8 (1485-1900) | 4.2 / 0.5 / 2.1 / 6.3 / 2.9 / 3.1 / 80.9 | 21, 0 (25/21/0) | 23 | 1.031 | 0.550, 0.0029, 0.054; 792/792 | 6.0, 9.0, 12.5 | 1.0172, 0.6274 | 0 of 992 | 103 | no |
+| 1758546030705738202 | 5 / 5 | 46 | 1737.1 (1041-1956) | 1737.1 (1041-1956) | 3.1 / 0.7 / 1.6 / 7.1 / 2.8 / 0.0 / 84.7 | 0, 0 (46/0/0) | 16 | 0.753 | 0.563, 0.0000, 0.032; 543/543 | 1.5, 1.0, 5.0 | 0.9575, 0.9733 | 0 of 379 | 43 | no |
+| 1995372076782357328 | 5 / 5 | 46 | 1691.8 (1534-1874) | 1646.6 (1494-1790) | 4.1 / 0.5 / 1.9 / 9.8 / 2.9 / 2.7 / 78.2 | 5, 37 (9/32/5) | 20 | 0.966 | 0.483, 0.0048, 0.043; 736/736 | 2.83, 8.83, 12.75 | 0.9617, 0.8447 | 0 of 759 | 35 | yes |
+| 13514522956726874792 | 5 / 9.488 | 46 | 1592.5 (1362-1758) | 1576.8 (1362-1758) | 4.5 / 0.6 / 2.4 / 11.4 / 2.5 / 1.0 / 77.6 | 0, 18 (29/16/1) | 24 | 0.984 | 0.444, 0.0019, 0.054; 754/754 | 4.17, 5.0, 12.33 | 0.973, 0.1002 | 0 of 829 | 189 | no |
+| 12621855678475765395 | 5 / 7.443 | 46 | 1640.1 (1386-1767) | 1601.0 (1386-1734) | 3.8 / 0.6 / 2.0 / 4.8 / 3.0 / 2.4 / 83.4 | 12, 9 (26/19/1) | 19 | 1.041 | 0.468, 0.0019, 0.032; 619/619 | 1.17, 4.0, 7.67 | 0.9447, -0.0787 | 0 of 507 | 84 | yes |
+| 7689157899245528466 | 5 / 5 | 46 | 1530.2 (1221-1749) | 1504.9 (1204-1709) | 5.1 / 0.6 / 2.6 / 4.2 / 3.2 / 1.7 / 82.7 | 1, 26 (20/25/1) | 23 | 1.077 | 0.546, 0.0019, 0.010; 758/758 | 6.0, 10.0, 18.0 | 0.9371, 0.5681 | 0 of 1439 | 224 | yes |
+| 13748185708697958051 | 5 / 5 | 46 | 1604.2 (1336-1860) | 1578.1 (1265-1860) | 4.5 / 0.6 / 1.9 / 4.6 / 3.1 / 1.6 / 83.6 | 10, 0 (36/10/0) | 21 | 1.028 | 0.550, 0.0010, 0.021; 642/642 | 6.0, 5.2, 15.67 | 0.9154, 0.6402 | 0 of 1015 | 18 | no |
+| 15390672246448918260 | 5 / 6.455 | 46 | 1570.8 (1433-1676) | 1553.4 (1433-1676) | 4.2 / 0.7 / 2.0 / 6.4 / 3.2 / 1.1 / 82.5 | 0, 20 (27/18/1) | 22 | 0.933 | 0.416, 0.0000, 0.021; 647/647 | 2.67, 6.0, 11.0 | 1.0021, 0.4566 | 0 of 927 | 24 | no |
+| 11714203776604047358 | 5 / 5.052 | 46 | 1488.5 (1348-1729) | 1485.9 (1348-1683) | 4.8 / 0.6 / 1.8 / 9.4 / 3.3 / 0.2 / 79.9 | 0, 3 (44/1/1) | 24 | 1.023 | 0.473, 0.0029, 0.021; 729/729 | 3.5, 9.67, 16.33 | 0.996, 0.2587 | 0 of 912 | 88 | no |
+
+| member transfer \ together | 0.3 | 0.7 | 1 | level, pooled |
+|---|---|---|---|---|
+| 0.01 | 4.0 (0-13.6); together 0.10; powered at 22/22 | 4.2 (0-15.5); together 0.39; powered at 22/22 | 4.0 (0-13); together 1.00; powered at 22/22 | 4.0 |
+| 0.03 | 5.1 (0-25.67); together 0.13; powered at 22/22 | 6.1 (0-16.75); together 0.38; powered at 22/22 | 7.0 (0-24); together 1.00; powered at 22/22 | 6.0 |
+| 0.4 | 11.2 (0-47.5); together 0.24; powered at 22/22 | 12.4 (0-20.25); together 0.69; powered at 22/22 | 17.0 (5-31); together 1.00; powered at 22/22 | 12.4 |
+
+### 15.5 Test runs on the committed tree
+
+All *measured*, wilkcomp02, 2026-11-15, image `bio-box-test_faec1f4.sif`:
+
+- **Test that failed first**: `tests/r2/test_synthworld_backbone.py::test_decoy_transfers_land_only_where_the_partner_is`
+  on the merged branch before any change (decoy transfer 0.4): `AssertionError: Counter({(1298, True): 54, (1296, True):
+  24, (1299, True): 12, (1300, True): 6, (1297, True): 2})`, "1 failed, 23 deselected in 38.19s" (`first.log`; a
+  detached unit on a mirror of the tree, `python -m pytest -q tests/r2/test_synthworld_backbone.py -k
+  decoy_transfers_land_only_where_the_partner_is`). After the change: decoys 220, 365, 410, 432 and 293 transfers, all
+  where the partner is, mean partner share 0.786 (bound 0.9).
+- **Every synthworld test outside the null module and `tests/r0`**: "1 failed, 503 passed, 6 skipped in 2286.64s"
+  (`env BIOBOX_TREE=<worktree> sh scripts/pod_pytest.sh F-02-12 -s tests/r0 tests/r1/test_synthworld_*.py
+  tests/r2/test_synthworld_{backbone,preset_seeds,sequences,sequences_pfam,intergenic,rna_rfam,mobile,fusions,assembly,emit}.py`;
+  `tests_final12.txt`). The one failure is §15.6 (B). Passing among them: the migrated motif test (1,150 of 1,159
+  instances the unique best window, 4 accepted as another planted instance of the emission), the cross-phylum IGR test
+  (206 pairs, burst identity 0.946), the hub test (181 root families in >= 40 genomes, hubs 304-342 neighbour families
+  against a root median of 60), DEC-15 (a) with fates "family", the plasmid replicon test (9 genomes without a plasmid,
+  none with more than 1), the decoy test, every per-seed test (both plasmid types at 5 of 6 seeds, the default among
+  them; levels pooled 4.08, 6.21, 16.0), and every re-pinned digest.
+- **The null module** at the default seed: "1 failed, 13 passed in 1296.44s"; at 20261113: "1 failed, 12 passed, 1
+  skipped in 1267.37s" (the pinned-digest test skips off the default seed) (`session12/scripts/nulls.sh <seed> 200`, a
+  detached unit at 2 CPUs: `python -m pytest -q -s tests/r2/test_synthworld_nulls.py` with
+  `BIOBOX_SYNTHWORLD_NULL_SEED`; `nulls-20261112.log`, `nulls-20261113.log`). The one failure at each seed is §15.6
+  (A). N1's label pairs pass at both seeds: default 37 of 100 members relabeled, 83 pairs, p 0.992 (`n1`) and 1.000
+  (`n1_s2`); 20261113 45 relabeled, 90 pairs, p 0.760 and 0.174. The naive co-occurrence statistic stays
+  miscalibrated on both N0 worlds (27.0x and 25.5x the calibrated share at p < 1e-3, default seed). N0's size ratio:
+  0.946 at the default seed (from the scan; the test stops at the KS line before printing), 1.026 at 20261113, r 0.438
+  and 0.575 (printed only).
+- **The whole suite** (`bash /tmp/if2453/ci/F-02-12/scripts/orchestrator/detached_suite.sh F-02-12 2 --deselect
+  tests/r2/test_synthworld_nulls.py`, the null module run above): SUITE_LINE.
+
+### 15.6 What fails, and why (stop and report; no assertion changed)
+
+**(A) N0's root-presence KS** (`test_n0_keeps_the_background_process_in_distribution`, the line after the migrated
+one: two-sample KS of the genomes-present counts of the root families, D below 1.628 sqrt((n + m) / (n m)), the
+alpha = 0.01 critical value). Under the committed preset it fails at both seeds the null module runs: default seed
+N0-full D 0.0917 against 0.0728 (N0-strict 0.034 passes), 20261113 N0-strict D 0.0785 against 0.0736 (N0-full 0.052
+passes) (*measured*, the null module, `nulls-2026111{2,3}.log`). Session 11 never reached this line at its presets:
+the r >= 0.9 assertion before it failed first, so a failure here was masked until DEC-44 (4) removed r. Over the 22
+seeds (scan `--n0`, which now also builds N0-strict and computes this KS from the same `families.tsv` columns; it
+reproduces the test's D at both seeds; `kssumm.py`; all *measured*, wilkcomp02, 2026-11-15 15:40-17:15 CST):
+
+| scan | N0-full KS below bound | N0-strict KS below bound | default: full D, strict D (bound) | 20261113: full D, strict D (bound) | null - signal mean root presence, full; strict | N0-full size ratio (in [0.9, 1.1]) | decoys >= 3 transfers: seeds, fewest |
+|---|---|---|---|---|---|---|---|
+| n_dec0.4 (committed, decoy 0.4) | 22/22 | 22/22 | 0.0556, 0.0266 (0.0729) | 0.0561, 0.064 (0.0733) | -1.99 to 1.37; -1.75 to 1.34 | 0.946-1.140 (21/22) | 9/22, 0 |
+| n_s11 (session 11's `89cfb46` preset) | 19/22 | 19/22 | 0.0363, 0.0422 (0.0728) | 0.0343, 0.0195 (0.0731) | -1.02 to 1.92; -1.39 to 2.54 | 0.973-1.091 (22/22) | 7/22 (session 11) |
+| **n_final12 (committed, decoy 8.0)** | 19/22 | 18/22 | **0.0917**, 0.034 (0.0728) | 0.052, **0.0785** (0.0736) | -2.21 to 1.82; -2.19 to 2.03 | 0.893-1.086 (21/22) | 22/22, 14 |
+| n_dec12.0 | 21/22 | 21/22 | 0.0607, 0.027 (0.0728) | 0.0499, 0.0297 (0.0733) | -2.30 to 1.33; -1.57 to 1.60 | 0.899-1.079 (21/22) | 20/22, 0 |
+| n_dec16.0 | 22/22 | 19/22 | 0.0685, 0.0331 (0.0728) | 0.0384, 0.0614 (0.0733) | -1.53 to 1.04; -2.19 to 1.37 | 0.862-1.060 (21/22) | 22/22, 22 |
+
+Every rate changes the whole draw, so neither column is monotone in the decoy rate: 12.0 loses the decoy test at two
+seeds where 8.0 held it. The mean presence of a root family is not shifted one way (null minus signal -2.3 to +1.9
+genomes at every rate), so this reads as the KS being sensitive to one world's draw (the 1,000 root families of one
+world share one tree and are not independent samples, so the alpha = 0.01 bound is exceeded at 0 to 4 of 22 seeds
+rather than at about 1%) more than as a bias from the decoys. 16.0 holds the decoy test at every seed and the KS at both
+seeds the module runs, so it was tried as the clause allows; its full default world (`igr_dec16.log`, background
+transfer 0.045) has **193** equal-length cross-phylum IGR pairs, below DEC-44 (5)'s 200, so 16.0 would reopen the
+transfer refit, whose every step redraws every one of these per-seed properties again. The session stops here rather
+than search further draws: the decoy rate that holds the decoy test at every seed with the other DEC-44 clauses (8.0)
+breaks an existing null assertion at the null module's seeds, which is DEC-44 (2)'s stop. The preset stays at 8.0
+(the smallest rate that holds the clause), the test is not touched. For the PI: (i) keep decoy 8.0 and decide the KS
+(a bound over the 22 seeds, or a presence test that conditions on the tree), or (ii) accept a decoy rate that does not
+hold at every seed (4.0: 21 of 22, fewest 1), or (iii) choose decoy partners among modules at the higher member transfer
+levels (the preset tags `partner_modules` as fitted on session 2's default seed; a decoy fails when its partner module
+is soon held by one lineage, §15.1), which should make a modest rate hold everywhere.
+
+**(B) Two truth genes with one `feature_uid`** (`tests/r2/test_synthworld_emit.py::test_every_truth_gene_reads_its_s8_gene_on_the_emitted_contig`,
+assertion `r["feature_uid"] not in keys`). In the default world under the final preset, genome g036 carries an exact,
+young tandem triplication of a two-gene segment (F000364, F000733: `assembly/repeats.tsv`); S9 breaks the chromosome at
+repeats, so contigs `g036_c0058` (830,022-831,449) and `g036_c0060` (832,931-834,358) are 1,427 bp each with
+identical sequence (`assembly/contigs.tsv`: both `contig_uid` 90a034d056ccbea31575afc643504c8f). `contig_uid` is
+BLAKE3 of the sequence, so both contigs are one contig to the truth (and to `make_inputs`' "distinct contigs"), and the
+3' halves of the copies `n105_g238748` and `n105_g238750` both sit at [0, 708) on + on it: one `feature_uid`, two
+truth rows (*measured*, `world-final/emit/truth/truth_gene.tsv` lines 64,303-64,304). DEC-27 and the emit docstring
+cover an exact duplicate across genomes ("an exact duplicate shares the contig_uid, so its rows are the original's")
+but not identical contigs inside one genome. It is a property of this world's draw, not of a rate: duplication 0.012
+makes young exact tandem copies, and S9's repeat breaks cut them into identical contigs. What the truth should do
+here (one row with both gene ids, or one row and a note of the copies, or S9 joining identical contigs) is a design
+decision for `emit.py`/DEC-27, not this card's; the test is not changed.
+
+### 15.7 What remains of card F-02
+
+- The two decisions of §15.6: (A) the null module's root-presence KS against decoy 8.0 (keep the rate and decide the
+  test, accept a rate that misses some seeds, or move the decoy partners), and (B) how the truth keys genes on two
+  identical contigs of one genome (`emit.py`/DEC-27). Until they are decided the branch is not mergeable on its own
+  tests: §15.5 has exactly these two failures (one in each run), everything else passes.
+- Session 13 (DEC-39): detectability against divergence in the sequence model.
+- §4: the §4.3 ablation worlds and build-time gate, the 20 N2 worlds; §6.2 to §6.4 (macOS against Linux digests, a
+  CLI, `test_run` columns) and §7 (realism against the golden genomes, tool parity), as the card lists.
+- The spec's plasmid paragraph (§2.1) and §5.1's backbone paragraph still give session 2's rates; the preset and
+  DEC-44 supersede them (not edited here).

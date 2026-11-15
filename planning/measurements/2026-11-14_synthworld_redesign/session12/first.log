@@ -1,0 +1,51 @@
+F                                                                        [100%]
+=================================== FAILURES ===================================
+_____________ test_decoy_transfers_land_only_where_the_partner_is ______________
+
+micro = (Backbone(params={'assembly': {'class_weights': [0.4, 0.4, 0.2], 'draft_n50': [50000, 200000], 'mag_completeness': [0....49, n_genomes=4, parent='g__Genus09')]), PosixPath('/tmp/if2453/ci-tmp/F-02-12-first/micro0/world'), 35.12424044101499)
+
+    @needs_zombi2
+    @pytest.mark.covers("F-02", "B-SIM")
+    def test_decoy_transfers_land_only_where_the_partner_is(micro):
+        """§2.1 S2 `Recipients` decoys: a decoy's transfers are weighted by the presence of a planted module's
+        family in the recipient, at the micro weight 0 for an absent partner. Replayed from the raw events:
+        every decoy transfer lands in a lineage that held a live copy of its partner just before."""
+        bb, out, _ = micro
+        names = _names(out)
+        d = bb.params["decoys"]
+        assert float(d["absent_weight"]) == 0.0
+        partner_of = {names[f"dec{i}"]: names[f"mod{m:02d}.0"] for i, m in enumerate(d["partner_modules"])}
+        times = _newick_times(out / "zombi2/species_complete.nwk", _t0(out))
+        live = {p: set() for p in partner_of.values()}
+        landed = collections.Counter()
+        shares = []
+        for r in _tsv(out / "zombi2/genome_events.tsv"):
+            fam = int(r["family"])
+            kids = [c for c in r["children"].split(";") if c]
+            if fam in partner_of and r["kind"].startswith("transfer"):
+                recipient = kids[1].split("_")[0]
+                carriers = {c.split("_")[0] for c in live[partner_of[fam]]}
+                landed[(fam, recipient in carriers)] += 1
+                t, donor = float(r["time"]), r["parents"].split("_")[0]
+                others = {lab for lab, (_, s, e) in times.items() if s <= t < e and lab != donor}
+                shares.append(len(others & carriers) / len(others))
+            if fam in live:
+                if r["parents"]:
+                    live[fam].discard(r["parents"])
+                live[fam].update(kids)
+        mean_share = sum(shares) / len(shares)
+        print(f"\ndecoy transfers (family, partner present): {sorted(landed.items())}; partner carriers among "
+              f"the other contemporaneous lineages at those moments: mean {mean_share:.3f}")
+        assert not any(not ok for _, ok in landed), landed
+>       assert all(landed[(f, True)] >= 3 for f in partner_of), landed
+E       AssertionError: Counter({(1298, True): 54, (1296, True): 24, (1299, True): 12, (1300, True): 6, (1297, True): 2})
+E       assert False
+E        +  where False = all(<generator object test_decoy_transfers_land_only_where_the_partner_is.<locals>.<genexpr> at 0x71b5c0104740>)
+
+tests/r2/test_synthworld_backbone.py:692: AssertionError
+----------------------------- Captured stdout call -----------------------------
+
+decoy transfers (family, partner present): [((1296, True), 24), ((1297, True), 2), ((1298, True), 54), ((1299, True), 12), ((1300, True), 6)]; partner carriers among the other contemporaneous lineages at those moments: mean 0.646
+=========================== short test summary info ============================
+FAILED tests/r2/test_synthworld_backbone.py::test_decoy_transfers_land_only_where_the_partner_is
+1 failed, 23 deselected in 38.19s

@@ -1,0 +1,14 @@
+{"out": "/tmp/if2453/f0212/igr/t0.05", "seed": 20261112, "sets": [["genomes.transfer", 0.05], ["genomes.duplication", 0.012], ["genomes.loss", 0.082], ["genomes.origination_per_root_family", 0.035], ["hubs.transfer_multiplier", 40], ["plasmids.transfer", 0.1], ["plasmids.loss", 0.3], ["decoys.transfer", 8.0]]}
+built S1-S5 in 162.0 s
+
+orthologous IGR identity: burst 0.943 over 1123, across phyla 0.682 over 177
+test_orthologous_igrs_are_near_identical_in_close_relatives: FAIL
+Traceback (most recent call last):
+  File "/tmp/if2453/f0212/scripts/igr.py", line 46, in <module>
+    getattr(tsi, name)(world, tables)
+    ~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^
+AssertionError
+
+
+1153 motif instances in 20 links: the truth window is the unique best scan window for 1141; divergence from the emission median 0.087, max 0.480, 75 above 0.3; best windows another planted instance of the same emission for 3
+test_every_planted_motif_is_recovered_at_its_truth_coordinates_by_an_independent_scan: PASS

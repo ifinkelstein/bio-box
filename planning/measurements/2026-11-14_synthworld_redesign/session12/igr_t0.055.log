@@ -1,0 +1,8 @@
+{"out": "/tmp/if2453/f0212/igr/t0.055", "seed": 20261112, "sets": [["genomes.transfer", 0.055], ["genomes.duplication", 0.012], ["genomes.loss", 0.0895], ["genomes.origination_per_root_family", 0.035], ["hubs.transfer_multiplier", 36.363636], ["plasmids.transfer", 0.1], ["plasmids.loss", 0.3], ["decoys.transfer", 8.0]]}
+built S1-S5 in 160.3 s
+
+orthologous IGR identity: burst 0.944 over 1136, across phyla 0.690 over 221
+test_orthologous_igrs_are_near_identical_in_close_relatives: PASS
+
+1095 motif instances in 20 links: the truth window is the unique best scan window for 1079; divergence from the emission median 0.107, max 0.481, 80 above 0.3; best windows another planted instance of the same emission for 8
+test_every_planted_motif_is_recovered_at_its_truth_coordinates_by_an_independent_scan: PASS

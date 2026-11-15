@@ -1,0 +1,96 @@
+.
+world digests: signal 684e539e11bd1ecbc5d3df6fe6405e7f; n0full 9a66848b544f1880ea3ea29cdb828ae8; n0strict ea00909f77e5f8516b6273a33039b21d; n1 08c343ca583644d77fd48dd833ff70e8; n0full_s2 2062ae8ed4f52fe302083912c48a9df7; n0strict_s2 15494c744b92f04e24ad2e635ed286b6; n1_s2 0dd3f2c5c4d980d8023a9394245bdcc4
+..
+n0full: identical species tree, taxonomy, lineage tables, phage set, prophage clades, codes, classes, call-error plan, sources, contamination and duplicate roles, labels; 236 shared background co-directional family pairs, all of one class in both worlds
+
+n0strict: identical species tree, taxonomy, lineage tables, phage set, prophage clades, codes, classes, call-error plan, sources, contamination and duplicate roles, labels; 219 shared background co-directional family pairs, all of one class in both worlds
+.F
+n0full genomes: tau 23; signal planted 48/80, signal background 21/24746, null 18/21570 above it (one-sided p 0.583)
+
+n0full contexts: tau 18; signal planted 20/80, signal background 20/24746, null 16/21570 above it (one-sided p 0.662)
+
+n0strict genomes: tau 23; signal planted 48/80, signal background 21/24746, null 14/21315 above it (one-sided p 0.819)
+
+n0strict contexts: tau 18; signal planted 20/80, signal background 20/24746, null 11/21315 above it (one-sided p 0.918)
+....
+n0full: naive co-occurrence over 2038 families, 2075703 pairs: lambda 0.114, share at p < 1e-3 0.0270 (27.0x the 0.001 a calibrated test gives)
+
+n0strict: naive co-occurrence over 2036 families, 2071630 pairs: lambda 0.139, share at p < 1e-3 0.0255 (25.5x the 0.001 a calibrated test gives)
+..
+n1: 37 of 100 module members relabeled (13 of 25 modules), 83 evaluated label pairs; unmatched module families' transfers [1, 2, 2, 2, 2, 3, 4, 4, 4, 5, 5, 5, 5, 5, 5, 5, 6, 6, 6, 6, 6, 6, 6, 6, 6, 7, 7, 7, 7, 7, 7, 7, 7, 7, 8, 8, 8, 9, 9, 9, 9, 9, 9, 9, 10, 10, 10, 10, 10, 11, 11, 11, 12, 12, 13, 14, 14, 14, 14, 14, 14, 15, 18]
+
+n1_s2: 37 of 100 module members relabeled (13 of 25 modules), 83 evaluated label pairs; unmatched module families' transfers [1, 2, 2, 2, 2, 3, 4, 4, 4, 5, 5, 5, 5, 5, 5, 5, 6, 6, 6, 6, 6, 6, 6, 6, 6, 7, 7, 7, 7, 7, 7, 7, 7, 7, 8, 8, 8, 9, 9, 9, 9, 9, 9, 9, 10, 10, 10, 10, 10, 11, 11, 11, 12, 12, 13, 14, 14, 14, 14, 14, 14, 15, 18]
+.
+n1: 83 evaluated label pairs adjacent in 0.012 genomes on average, matched random pairs 0.173, one-sided p 0.992; signal module pairs 11.74 against 0.150 (p 0.0005)
+
+n1_s2: 83 evaluated label pairs adjacent in 0.000 genomes on average, matched random pairs 0.182, one-sided p 1.000; signal module pairs 11.74 against 0.150 (p 0.0005)
+.
+signal 1166.89 s, VmHWM 351 MB; n0full 1124.5 s, VmHWM 312 MB; n0full_b 1122.14 s, VmHWM 313 MB; n0full_s2 1133.1 s, VmHWM 297 MB; n0strict 1067.11 s, VmHWM 286 MB; n0strict_b 1073.7 s, VmHWM 288 MB; n0strict_s2 1045.42 s, VmHWM 282 MB; n1 41.66 s, VmHWM 144 MB; n1_b 39.71 s, VmHWM 145 MB; n1_s2 40.68 s, VmHWM 144 MB; fixture wall 1212.9 s with 7 at once
+.
+=================================== FAILURES ===================================
+_____________ test_n0_keeps_the_background_process_in_distribution _____________
+
+worlds = ({'signal': PosixPath('/tmp/if2453/ci-tmp/F-02-12-nulls-20261112/nulls0/signal'), 'n0full': PosixPath('/tmp/if2453/ci-...8ae8'}, 'n0full_s2': {'seconds': 1133.1, 'vmhwm_kb': 304524, 'world_digest': '2062ae8ed4f52fe302083912c48a9df7'}, ...})
+record_property = <function record_property.<locals>.append_property at 0x768eb7500040>
+
+    @needs_zombi2
+    @pytest.mark.covers("F-02", "B-NULL")
+    def test_n0_keeps_the_background_process_in_distribution(worlds, record_property):
+        """Gene content is a new draw of the same process (ZOMBI2's gene-level draws change with the groups), so the
+        background is compared in distribution, each with its stated test:
+    
+        - background genome size: per genome, the root and originated genes; geometric mean of the per-genome ratio
+          null / signal within [0.9, 1.1] (a third of §5.1's +-30% size band). Pearson r over the 46 genomes is printed,
+          not asserted (DEC-44 (4): its bound of 0.9 measured the two lineage-rate axes that DEC-37 (1) removed; with one
+          origination axis a genome's size is mostly a stochastic draw, so a new draw of the same lineage rates
+          correlates weakly, r 0.19-0.99 over 22 seeds, measured in session 11);
+        - phyletic patterns: the genomes-present counts of the 1,000 root families, two-sample Kolmogorov-Smirnov
+          D below the alpha = 0.01 critical value 1.628 sqrt(2 / 1000);
+        - strands: the + share of genes in [0.4, 0.6] (backbone.SCRAMBLE_PLUS, as the signal world);
+        - operons: the tight share of distinct background co-directional family pairs within 4 binomial standard errors
+          of intergenic.junctions.p_tight (the hash rule is a fixed law);
+        - composition: genome GC within 0.01 of the same genome's in the signal world (codon usage and intergenic
+          composition are the lineage's, identical; gene content moves it only through the family mix).
+        """
+        W, _ = worlds
+        s = W["signal"]
+    
+        def bg_sizes(w):
+            kind = {int(r["family"]): r["kind"] for r in _tsv(w / "backbone" / "families.tsv")}
+            c = collections.Counter(r["genome_id"] for r in _tsv(w / "backbone" / "genes.tsv")
+                                    if kind[int(r["family"])] in ("root", "originated"))
+            return np.array([c[g] for g in sorted(c)], dtype=float)
+    
+        def ks(a, b):
+            a, b = np.sort(a), np.sort(b)
+            x = np.union1d(a, b)
+            return float(np.max(np.abs(np.searchsorted(a, x, "right") / len(a) - np.searchsorted(b, x, "right") / len(b))))
+    
+        def gc(w):
+            return np.array([float(r["gc_true"]) for r in _truth(w, "truth_genome") if r["is_phage"] == "false"])
+    
+        p_tight = float(_preset(s)["intergenic"]["junctions"]["p_tight"])
+        root_s = [int(r["n_genomes_present"]) for r in _tsv(s / "backbone" / "families.tsv") if r["kind"] == "root"]
+        sig_sizes, sig_gc = bg_sizes(s), gc(s)
+        for n in ("n0full", "n0strict"):
+            w = W[n]
+            sz = bg_sizes(w)
+            ratio = float(np.exp(np.mean(np.log(sz / sig_sizes))))
+            r = float(np.corrcoef(sz, sig_sizes)[0, 1])
+            assert 0.9 <= ratio <= 1.1, (n, ratio, r)
+            root = [int(x["n_genomes_present"]) for x in _tsv(w / "backbone" / "families.tsv") if x["kind"] == "root"]
+            d = ks(np.array(root), np.array(root_s))
+>           assert d < 1.628 * math.sqrt((len(root) + len(root_s)) / (len(root) * len(root_s))), (n, d)
+E           AssertionError: ('n0full', 0.09168868868868874)
+E           assert 0.09168868868868874 < (1.628 * 0.04473254968142327)
+E            +  where 0.04473254968142327 = <built-in function sqrt>(((1000 + 999) / (1000 * 999)))
+E            +    where <built-in function sqrt> = math.sqrt
+E            +    and   1000 = len([33, 14, 21, 21, 39, 36, ...])
+E            +    and   999 = len([34, 33, 25, 14, 42, 30, ...])
+E            +    and   1000 = len([33, 14, 21, 21, 39, 36, ...])
+E            +    and   999 = len([34, 33, 25, 14, 42, 30, ...])
+
+tests/r2/test_synthworld_nulls.py:406: AssertionError
+=========================== short test summary info ============================
+FAILED tests/r2/test_synthworld_nulls.py::test_n0_keeps_the_background_process_in_distribution
+1 failed, 13 passed in 1296.44s (0:21:36)
