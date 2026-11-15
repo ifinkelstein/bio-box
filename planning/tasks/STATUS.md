@@ -5,7 +5,7 @@ The running record of the cards in [`TASKS.md`](TASKS.md). Updated at every merg
 by an agent on its own branch `task/<ID>`, audited by the orchestrating session, and merged after its
 tests passed on the merged tree.
 
-## Handoff, 2026-11-14 18:59 CST (current; the dated sections under "History" are superseded where they differ)
+## Handoff, 2026-11-14 20:35 CST (current; the dated sections under "History" are superseded where they differ)
 
 Written so a new session can continue without the conversation that produced this file. Times are the pod's clock
 (CST); read it with `ssh ... date` before writing a time here.
@@ -16,7 +16,7 @@ the PI at the S2C phase 2 build and at a failed release check. The usage limit h
 (2026-11-13 15:45 and 20:55, 2026-11-14 01:40 twice counting the orchestrator, and the weekly limit at about 12:20): an agent stopped that way is resumed
 with `SendMessage` to the same agent once the limit resets; nothing is lost.
 
-**State on 2026-11-14 at 18:59 CST.**
+**State on 2026-11-14 at 20:35 CST.**
 
 *The 50 Gbp release `rM.2` is built and verified* (2026-11-14 17:32 CST).
 - `build-stage: stage P6 and release rM.2: all 13 steps done` at 17:27; `release verify` at 17:30: "release rM.2:
@@ -96,7 +96,7 @@ with `SendMessage` to the same agent once the limit resets; nothing is lost.
 - The fixture's manifest hash is `28ffa9808ecd4829e52f6892f94f7b85` since E-12, equal on Actions and the pod;
   `/tmp/if2453/ci-peer/right.json` holds it.
 
-*Agents.* Two running at 18:59: W-35 (the pack of `rM.2`) and F-02 session 11 (stopped at six failing tests, now on a follow-up measurement for the PI); W-33, E-15, W-34 and W-32 were done and merged this afternoon; see "Agents running" below. Merged on 2026-11-13 and 14: C-28, C-27 step 4, C-25 step 2, C-29, C-30, C-31, C-32,
+*Agents.* Two running at 20:35: W-35 (the pack of `rM.2`, in its last process) and F-02 session 11 (stopped at six failing tests; now refitting the background rates, open item 5); W-33, E-15, W-34 and W-32 were done and merged this afternoon; see "Agents running" below. Merged on 2026-11-13 and 14: C-28, C-27 step 4, C-25 step 2, C-29, C-30, C-31, C-32,
 W-30, W-31, A-08, E-11, E-12, E-13, E-14, F-02 sessions 4 to 10 (10 is a measurement), the README, the CRISPR example.
 
 *What is blocked, and on what.* One thing waits on the PI since 18:45 on 2026-11-14: F-02's redesign (open item 5). Everything else was decided at 10:45 (DEC-34 to DEC-42).
@@ -161,14 +161,15 @@ F-02 and the measurements in the table below; decisions DEC-29 to DEC-33 were ad
 above says where `main`, the images and Actions stand. The manifest hash of the fixture covers every registered
 schema's hash, so it moves with any schema change (last: card E-12).
 
-**Agents running** at 18:59 on 2026-11-14: two.
+**Agents running** at 20:35 on 2026-11-14: two.
 - F-02 session 11 (Opus; the redesign of the `micro` preset over seeds, DEC-36 and DEC-37): worktree
-  `.claude/worktrees/agent-aa711fcf48ad79fd7`, branch `task/F-02-11` at `526af48`, pushed, **not merged**; pod
-  scratch `/tmp/if2453/f0211/`, units `f0211-*`. It reported at about 18:45 that it had stopped at six failing
-  assertions (open item 5 has them and the four questions) and was resumed at 18:50 for one measurement only: the
-  same redesign with the crown fixed at the default seed's old age (2.56) instead of the 21-seed median (5.0), in
-  a scratch preset, with a table of which of the six assertions would then hold. It changes no preset, generator
-  or test for that. (It took over, at 12:14, the work of an agent the PI had stopped at about 11:40; if it is
+  `.claude/worktrees/agent-aa711fcf48ad79fd7`, branch `task/F-02-11` at `bb17e0e`, pushed, **not merged** (red on
+  Actions on the same six assertions); pod scratch `/tmp/if2453/f0211/`, units `f0211-*`, at most 8 threads. Its
+  history today: stopped at six failing assertions at about 18:45; measured the old-crown variant until 20:30
+  (open item 5: the crown was not the cause); resumed at 20:33 to refit the background duplication, transfer and
+  loss base rates at the decided crown, which are free preset values, with the core genome, the burst identity and
+  the motif as targets. It hands back with whatever still fails; the plasmid conflict and N0's r are expected to
+  remain for the PI. (It took over, at 12:14, the work of an agent the PI had stopped at about 11:40; if it is
   stopped from outside again, a new agent is started only when the PI asks.)
 - W-35 (Opus; `pack build` in parts under the CPU budget, then the pack of `rM.2`): started at 18:05, branch
   `task/W-35`; pod scratch `/tmp/if2453/w35/`, units `w35-*`, at most 32 threads; it writes the final pack into
@@ -635,15 +636,25 @@ probed by hand on the pod).
    2 fitted them at a crown of 2.56; DEC-37 (2) set "about the median", 5.26, on the orchestrator's recommendation,
    made before that was known). **The four questions**: (a) the background turnover at the fixed crown; (b)
    whether per-genome plasmid counts or survival at every seed gives way; (c) what replaces N0's r of 0.9; (d) the
-   motif clade height and the 0.9 burst identity. **Recommendation, pending the measurement now running**: answer
-   (a) and (d) at once by fixing the crown at the default seed's old age, 2.56, instead of the median, so every
-   rate fitted since session 2 keeps its time unit and the sequence model is not touched; that should also help
-   (b), since plasmid loss grows with the crown age (session 10: about exp(-0.4 x age)); for (b), keep the
-   per-genome range (the builders and the statistics need plasmid-free genomes) and ask for both types at the
-   default seed and a stated share of seeds, not every seed; for (c), replace the per-genome correlation by a test
-   of the two size distributions (mean ratio and a rank test), since the correlation only measured the lineage
-   axis that DEC-37 (1) reduced. The measurement will say whether 2.56 does restore (iii) to (v); if it does not,
-   this recommendation is withdrawn in the next handoff. Nothing is merged until you decide.
+   motif clade height and the 0.9 burst identity.
+   **The orchestrator's first recommendation is withdrawn** (it was: fix the crown at the default seed's old age,
+   2.56, so the rates keep their time unit). Measured at 20:30 (§11 of the note, branch `task/F-02-11` at
+   `bb17e0e`): with the crown at 2.5632 and everything refitted, the core is 38 root families (bound 100), the
+   burst identity 0.882 (lower, not higher), the motif instance still missed, N0's r 0.846; only N1's comparator
+   comes back, and both plasmid types survive at 20 of 22 seeds instead of 14. The cause is elsewhere, shown by
+   single-factor runs at the default seed: the old generator with its two lineage-rate axes gives a core of 243,
+   with entry exclusion added 204, with no lineage axis 35, with the redesign's one origination axis 26 to 47. The
+   old loss axis drifted most lineages to a loss multiplier well below 1, and a shared multiplier kept duplication
+   and transfer low; DEC-37 (1) removed those axes and left the base rates where session 2 had set them for that
+   world. **What happens now, without a decision**: the base rates of the background process are free preset
+   values, so session 11 refits them at the decided crown (5.0), origination beside them, to restore the core, the
+   burst identity and the motif; that answers (a) and probably (d). **What stays for you**: (b), where the
+   recommendation is to keep the per-genome plasmid range (the builders and the statistics need plasmid-free
+   genomes) and ask for both types at the default seed and at a stated share of seeds, not every seed; and (c),
+   where the recommendation is to replace N0's per-genome correlation by a test of the two size distributions,
+   since the correlation measured the lineage axes that DEC-37 (1) removed. If the refit cannot restore the core
+   with one origination axis, the question becomes whether a loss axis comes back (DEC-37 (1)); the session will
+   say, measured. Nothing is merged until you decide (b) and (c).
 
 Decided by the PI on 2026-11-14 (about 10:10 CST: "for 1-11, accept your choices", to the orchestrator's table of 28):
 - S2C phase 2 (DEC-34): the ANI-diversity selection stands as built (its 15% alignment-fraction rule with it); six
