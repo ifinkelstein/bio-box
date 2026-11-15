@@ -247,6 +247,36 @@ floor((40 - 16) / 4) = 6, so `--scan-jobs 6 --scan-cpus 4`, 24 threads, 40 in al
 running, the same formula gives J = 10, which is the whole cap: leave a margin if anything may start
 during the hours the scan runs. A smaller J only makes the scan take longer; the output is the same.
 
+**Gene calling in batches (card B-48).** When the build reaches gene calling (no run record yet), it
+estimates the step from the stage's inputs and says so in one line, `<stage>.genecall: N genomes ...
+estimated at X CPU-minutes in one process`: every genome at the rate of the mode the code calls it in
+(viruses gv-meta; plasmids, and prokaryote genomes under 100 kb, meta; other prokaryotes single) and the
+topology of each contig, per base the caller reads (a circular contig is read with up to 50 kb of its other
+end on each side), times the step's overhead, plus a process's own 15 s (rates and sources in section 10).
+A genome all of whose contigs another stage (or another genome of the stage) owns is not called; its skip is
+in the ledger as before.
+
+- Within 80% of `cpu_min_per_process`: one process, the same command and run record as before.
+- Above it: the genomes, in `genome_uid` order, are cut into the fewest batches of equal estimated cost
+  that each fit 80% of the budget (a genome is never split), and the line lists each batch's estimate and
+  the merge's. Each batch is its own process, `genecall.batch-<j>` in the log, with `--scan-cpus` workers,
+  up to `--scan-jobs` at once within the allowance, `STOP` checked before each launch. A batch is not a
+  `run-step`: it writes its rows into its plan's work directory,
+  `$BBTMP/scratch/genecall/<stage>.<root key>/<plan key>/batch-<j>/`, and nothing into the root, so it has
+  no run record; its line `genecall.batch-<j> done: ... CPU-minutes (estimate ...)` is the record of its
+  cost. Then the merge runs as the step `genecall` (a `run-step`): its files, ledger and printed result are
+  those of the one-process call, byte for byte, so every later step reads it as before. The work directory
+  is removed once the merge is published.
+- Refused (exit 2) before any batch: a genome estimated over 80% of the budget alone, or a merge over it.
+- Resume: a call after a kill or a `STOP` runs only the batches without output, then the merge; a batch
+  killed by SIGKILL leaves a dot-named directory, which the next call removes. Lost scratch only makes the
+  batches run again.
+- To see the plan without building (it writes the plan into the directory given, nothing into the root):
+
+```bash
+bio-box stage genecall plan --root "$ROOT" --stage S0 --seq-stages S0 --runs-tmp "$BBTMP/scratch" --batch-cpu-min 240
+```
+
 **Non-coding RNA (card E-07, DEC-28).** `--ncrna-cm <Rfam.cm.gz>` puts the ncRNA producer in the
 `features` slot, as a step named `ncrna-<producer>`. The producer scans the model set `--ncrna-set`
 (default `prok-2`, DEC-30, the frozen file `src/biobox/l1/rfam_sets/prok-2.tsv`: 770 Rfam 15.1 models,
@@ -1094,6 +1124,7 @@ a profile value is missing from this table.
 | ncRNA scan shard size | `prok-2` (the default): 111,734,541 genome bases, 80% of `cpu_min_per_process` (300) at 358.0 CPU-hours per 10 Gbp (derived: 304.0 × 299.7 / 254.5, the set's cost relative to `prok-1` from `planning/measurements/2026-11-12_rfam_sample.md`). `prok-1`: 131,578,947 at 304.0, the slower of the two shards of card E-07's pod check (derived in `planning/measurements/2026-11-11_ncrna_producer.md`; the design note's 247.4 gave 161,681,487). Shards at once: at most the unit's `MemoryMax` / (6.4 GiB per two `cmsearch` threads) | `NCRNA_CPU_H_PER_10GBP`, `NCRNA_SET_COST`, `NCRNA_JOB_GIB` in `src/biobox/stage.py`; cards E-07, E-08, E-09 |
 | CRISPR step | one process, `--scan-cpus` MinCED processes of a 512 MiB heap each; refused above 80% of `cpu_min_per_process` (300) at 182.0 CPU-seconds per Gbp: a stage of 79.1 Gbp (derived: 0.8 × 300 × 60 / 182.0). The rate: 185.0 CPU-s for stage P1's 1,016,625,803 bases (run record, wilkcomp02, 2026-11-13, `planning/measurements/2026-11-13_crispr_arrays.md`) | `CRISPR_CPU_S_PER_GBP`, `crispr_refusal` in `src/biobox/stage.py`; `JAVA_HEAP` in `src/biobox/l1/crispr.py`; card E-12 |
 | CRISPR step of two-repeat arrays beside Cas genes | one process, as the CRISPR step, plus one DuckDB connection of one thread capped at `DUCK_MEMORY_LIMIT` for the filter; its estimate is the CRISPR step's times 1.19, refused above 80% of `cpu_min_per_process` (300): a stage of 66.5 Gbp (derived: 0.8 × 300 × 60 / (182.0 × 1.19)). The factor: 31.790 against 26.723 CPU-minutes on stage P2, the larger of the three ratios 1.08, 1.19, 1.14 on P1, P2, S1 (run records, wilkcomp02, 2026-11-14, `planning/measurements/2026-11-14_crispr_two_repeat_producer.md`); peak RSS of one process 1.02 GB on P2 | `CRISPR_NEAR_CAS_COST`, `crispr_refusal` in `src/biobox/stage.py`; `run_near_cas` in `src/biobox/l1/crispr.py`; card E-15 |
+| Gene-call step | one process when its estimate is at most 80% of `cpu_min_per_process` (300), else batches of whole genomes in `genome_uid` order, each estimated at most 240 CPU-minutes, its own process (not a run-step) with `--scan-cpus` workers, at most `--scan-jobs` at once within the allowance, then the merge as the run-step `genecall`; refused when one genome alone or the merge is over 240. Rates, CPU-seconds per Mbp read by the caller (a circular contig with its wrap flanks), the calls alone, one thread: single 0.7941 (stage P6), gv-meta 4.2019 (S1), meta 2.9450 linear and 4.4205 circular (PLSDB records of stage PL1); each the larger of two samples of every 30th genome (measured, wilkcomp02, 2026-11-15, card B-48's note and card C-26's sample); circular single and gv-meta 1.5011 times linear (derived from meta mode's ratio; an estimate). The step is the calls times 1.23, the largest record-to-calls ratio of the eight built stages (derived from their run records), plus 15 s a process (estimate); the merge 15 s plus 5.5 µs a gene (derived from stage S1's merge, 0.432 CPU-minutes for 2,398,087 genes). Every built stage's record is within 0 to 16% under its estimate (S1 143.6 against 142.8, H1 169.2 against 146.1, P1 to P6 3% to 9%); S1 in 4 batches: 30.70 to 31.87 CPU-minutes a batch against 36.09 (measured, wilkcomp02, 2026-11-15). Stage PL1: 872.6 CPU-minutes in one process, 4 batches of 218.3 and a merge of 0.8 (derived, `b48_pl1_plan.py`) | `CALL_S_PER_MBP`, `STEP_OVERHEAD`, `PROCESS_S`, `PUBLISH_S_PER_GENE`, `cut_plan` in `src/biobox/l1/genecall.py`; `_genecall`, `genecall_refusal` in `src/biobox/stage.py`; card B-48 |
 | Scan shard size | 30,150,753 residues: 80% of `cpu_min_per_process` (300) at 7.96 CPU-minutes per million residues (derived: 300 × 0.8 / 7.96 × 10^6; the rate of the Pfam scan of stage P1 in card C-10, measured on wilkcomp02, 2026-11-10: 2,343.74 CPU-minutes for 294.5 M residues). The 80% leaves room for a scan 25% slower per residue (derived: 1 / 0.8) | `SHARD_MARGIN` and `SCAN_CPU_MIN_PER_M` in `src/biobox/stage.py`; cards C-11, C-13 |
 | Scan shards at once | `--scan-jobs` J × `--scan-cpus` C at most the cap `run-step` allows when `build-stage` starts (40 by day, 56 at night when no other user computes); defaults C = 4, J = cap // C (10 by day, 14 at night). The cap is a total over everything of ours on the pod: `build-stage` subtracts what ours elsewhere use at each launch, not what starts later, so choose J = floor((cap - other threads) / C) (section 2). The allowance is read again before each step and before each shard launch; a launch that would pass it waits | `scan_slots` and `_launch` in `src/biobox/stage.py`; cards C-11, C-12, C-28 |
 | Unit CPU quota | the night cap, 56: a ceiling fixed at launch; `build-stage` holds the limit of the hour | `scripts/pod_run.sh --threads`, profile `max_threads_night`; card C-12 |

@@ -1,0 +1,71 @@
+{
+ "card": "B-48",
+ "genomes": 68693,
+ "genomes_not_called": 7046,
+ "bases": 7102391741,
+ "bases_called": 5924552875,
+ "genes_expected": 6393185.0,
+ "estimate_cpu_min": 872.645,
+ "largest_genome": {
+  "genome_uid": "5ea2e633ae614f975ff4bdc30a47cc48",
+  "estimate_cpu_min": 1.083
+ },
+ "batch_cpu_min": 240.0,
+ "batches": [
+  {
+   "batch": 0,
+   "first": 0,
+   "genomes": 17367,
+   "bases": 1471826928,
+   "genes_expected": 1588248.4,
+   "estimate_cpu_min": 218.345,
+   "digest": "040273440af903eed0fadcd870dc0ede"
+  },
+  {
+   "batch": 1,
+   "first": 17367,
+   "genomes": 16928,
+   "bases": 1493140979,
+   "genes_expected": 1611248.4,
+   "estimate_cpu_min": 218.355,
+   "digest": "43c9ca960a4e78bb206be601400b8cb3"
+  },
+  {
+   "batch": 2,
+   "first": 34295,
+   "genomes": 16966,
+   "bases": 1484779065,
+   "genes_expected": 1602225.1,
+   "estimate_cpu_min": 218.347,
+   "digest": "8335e579f27e950d4c2e2a555e9ecfeb"
+  },
+  {
+   "batch": 3,
+   "first": 51261,
+   "genomes": 17432,
+   "bases": 1474805903,
+   "genes_expected": 1591463.0,
+   "estimate_cpu_min": 218.348,
+   "digest": "11ec57bf809b109985ed3a4f6f31d7b0"
+  }
+ ],
+ "merge_estimate_cpu_min": 0.836,
+ "rates": {
+  "call_s_per_mbp": {
+   "gv-meta/linear": 4.2019,
+   "gv-meta/circular": 6.307472090000001,
+   "meta/linear": 2.945,
+   "meta/circular": 4.4205,
+   "single/linear": 0.7941,
+   "single/circular": 1.19202351
+  },
+  "step_overhead": 1.23,
+  "process_s": 15.0,
+  "publish_s_per_gene": 5.5e-06
+ },
+ "stage": "PL1",
+ "gene_call_version": "pyrodigal-3.7.1-gv-0.3.2-p2",
+ "budget": 300,
+ "owned_contigs_in_root": 7046,
+ "circular_bases_called": 9312826488
+}

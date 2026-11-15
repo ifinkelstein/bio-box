@@ -50,25 +50,80 @@ scratch files, and the skip is recorded (`skipped_contigs` with `owner_genome`; 
 `owned_by:<stage>/<genome_uid>` and the counts of the contig's `ok` row). Within a stage the output does not depend
 on the order of the genomes.
 
+A genome all of whose contigs another stage (DEC-26) or another genome of this stage (DEC-27) owns is not called
+(card B-48, item 5): every row of its calls would be dropped, so calling it changes no byte. Its contigs are skipped
+and recorded exactly as before (each in `skipped_contigs`; the ledger rows `owned_by:<stage>` with counts 0, or
+`owned_by:<stage>/<genome_uid>` with the counts of the owner's `ok` row), and nothing else of it was ever written:
+not a gene row, a contig row, a mode or a wrapping gene. On stage PL1 that is 7,046 genomes (*derived*, card C-26).
+
 Coordinates are 0-based half-open (pyrodigal reports 1-based inclusive).
 `dist_to_contig_end_bp` is 0 for genes running off a linear contig end and
 equals the contig length on circular contigs, which have no edge.
+
+Gene calling in batches (card B-48). The step is estimated before it starts (`plan`, `genome_cost_us`): each genome
+at the rate of the mode the code calls it in (`mode_of`, the rule of `_finder`) and the topology of each contig, per
+base the caller reads (a circular contig with its wrap flanks, `called_bases`), plus each process's fixed cost and the
+writing's cost per gene; the rates and their sources are the constants below. `build-stage` runs the step in one
+process, as before and with the same argv, when that estimate is within `stage.SHARD_MARGIN` of the budget; else in
+batches: the genomes in `genome_uid` order (the order `iter_genome_input` streams them in) cut into the fewest
+consecutive runs of equal estimated cost each of which fits the margin (`cut_plan`), one process per batch
+(`bio-box stage genecall batch`), then one merge (`... merge`) that is the `run-step` step named `genecall`.
+
+What the one-process call does that could depend on the whole stage, and why batches do not change it:
+
+- Training. Single mode trains on the contigs of one genome (`_finder`); meta and gv-meta train nothing. No step
+  trains on more than one genome, and a batch holds whole genomes, so each genome's calls are those of one process.
+- Which genome writes a contig. DEC-26: the stage whose `contig_index` holds it (the same lookup in every batch).
+  DEC-27: the least `genome_uid` among the stage's genomes that list it, from `shared_contigs` over the whole stage's
+  `genome_input`, which every batch reads whole. So the rows dropped and the skips recorded do not depend on the cut.
+- Row order. Every table is sorted by `_publish` on a key that is unique when one genome writes each contig (the
+  scratch rows' order already varies with the worker count). The merge runs `_publish` once over the scratch rows of
+  every batch: the same rows, so the same order.
+- File cuts (`max_file_bytes`) and the protein bucket width. Both are computed by `_publish` from the sorted stream
+  and from the distinct proteins of the whole stage, which the merge sees whole; `io.write_parts` cuts by the rows'
+  estimated sizes alone, never by how its input was batched.
+- Ids. `feature_uid`, `protein_uid` and `genome_uid` are functions of a row's own fields.
+- The ledger. Its `n_kept` (the first gene of each protein over the stage, in (contig, start, end, strand) order) is a
+  window over every gene of the stage, computed by the merge over all batches; its skip rows come from the union of
+  the batches' skips, and a contig's owner is the same in every batch. Rows are ordered by (contig, reason).
+- The result. `genes` and `wrapping_genes` are sums over the batches, `modes` their union (each the modes of the rows
+  written), `distinct_proteins` the merge's count, `skipped_contigs` the union sorted by contig uid.
+
+So the merge writes the one-process call's files, ledger and result, byte for byte, whatever the number of batches,
+the number at once, the threads of each and the order they finish in; nothing in the root records that the step was
+cut. A batch writes only into the plan's work directory in scratch, never into the root: its scratch rows, its
+skips and `done.json` (counts, its CPU-minutes, wall time and peak RSS, its estimate) into `.batch-<j>.tmp-<pid>-<hex>`,
+renamed to `batch-<j>` at the end. The merge takes only a batch directory whose `done.json` names the plan's digest of
+its genomes; a batch stopped by SIGTERM, SIGHUP or SIGINT removes its temporary directory, one killed by SIGKILL
+leaves it dot-named, and the next driver removes it before it launches anything. A batch with output is not run again.
+The batches are not `run-step` steps: `run-step` publishes only files a registered table or artifact claims, and a
+batch's rows are scratch, as card W-35's parts are (`biobox.search.pack`); each still runs under the memory cap and
+nice of a `run-step`, within the thread allowance of the hour, and `STOP` is checked before each launch
+(`stage._genecall_in_batches`).
 """
 
 from __future__ import annotations
 
+import contextlib
+import json
+import os
 import pickle
 import queue
+import resource
 import shutil
+import signal
 import subprocess
 import sys
 import tempfile
 import threading
-from collections.abc import Iterable, Iterator
+import time
+from collections.abc import Callable, Iterable, Iterator
 from concurrent.futures import ThreadPoolExecutor
+from datetime import datetime
 from pathlib import Path
 
 import duckdb
+from blake3 import blake3
 import numpy as np
 import pyarrow as pa
 import pyarrow.compute as pc
@@ -77,12 +132,12 @@ import pyrodigal
 import pyrodigal_gv
 
 from biobox import ids, io, layout, ledger, provenance
-from biobox.l0seq.inputs import GenomeInput, stage_genomes
+from biobox.l0seq.inputs import GenomeInput, iter_genome_input, stage_genomes
 from biobox.l0seq.lookup import KeyLookup
 from biobox.l0seq.store import OWNED_BY, ContigOwners, SeqStore, missing_contig, skipped_entry
 from biobox.registry.schemas import table
 
-__all__ = ["GENE_CALL_VERSION", "GenomeInput", "call_genome", "run"]
+__all__ = ["GENE_CALL_VERSION", "GenomeInput", "call_genome", "merge", "plan", "run", "run_batch"]
 
 PROTEIN_BYTES_PER_AA = 0.6  # zstd estimate (data_layer_and_tests.md §2A.4); sizes buckets only
 SINGLE_MODE_MIN_BP = 100_000  # Prodigal: below this, use anonymous/meta mode
@@ -113,6 +168,38 @@ EST_FEATURE_PROTEIN_ROW = 40  # estimate: feature_uid and protein_uid, 16 random
 # ordinal, genome and dimension columns; not re-measured
 EST_OCCURRENCE_ROW = 48
 
+# --- the estimate of the step (card B-48; planning/measurements/2026-11-15_genecall_batches.md) ---------------------
+# The calls alone, CPU-seconds per Mbp of the bases the caller reads (`called_bases`: a circular contig with its wrap
+# flanks), by mode and topology (`mode_of`; True = circular). Each is *measured* on wilkcomp02, 2026-11-15, one thread,
+# with the step's own call path (`_call`) timed alone, on every 30th genome: single mode 0.7941 on stage P6 (72
+# genomes, 351.38 Mbp; P2's 0.7838 is the lower of the two), gv-meta 4.2019 on stage S1 (908 genomes, 55.45 Mbp; H1's
+# 3.7795 is the lower), meta 2.9449 on PLSDB's linear records and 4.4204 on its circular ones (180 and 1,874 records of
+# stage PL1, 17.14 and 295.46 Mbp called; card C-26's sample, `c26_rate.py`). Each is the larger measurement, and each is
+# rounded up. The circular rates of single and gv-meta mode are not measured (no stage built so far has a circular
+# contig in those modes): they are the linear rate times meta mode's circular-to-linear ratio, 1.5011 (*derived*:
+# 4.4205 / 2.9449; an *estimate* for those modes).
+CALL_S_PER_MBP = {("single", False): 0.7941, ("single", True): 0.7941 * 1.5011,
+                  ("gv-meta", False): 4.2019, ("gv-meta", True): 4.2019 * 1.5011,
+                  ("meta", False): 2.9450, ("meta", True): 4.4205}
+# The whole step over its calls alone: the reading of the sequences, the rows, the scratch files, the sorting and
+# writing of every table, and the workers' contention, as one factor on the calls. *Derived*, the largest of the eight
+# built stages' run records (wilkcomp02, 2026-11-10 to 15; card B-48's note): each record's cpu_min over its calls at
+# the rates above, 1.0635 (H1) to 1.2252 (S1), rounded up to 1.23. With it every record's estimate is at it or above
+# it, by at most 15.8% (H1).
+STEP_OVERHEAD = 1.23
+# Every process's own cost: interpreter and imports, the store's footers, `genome_input` streamed and its shared
+# contigs. *Estimate* (C-10 measured 0.07 CPU-minutes for a step that does almost nothing; a batch streams the whole
+# stage's genome_input once more), checked against the batches of stage S1 (card B-48's note).
+PROCESS_S = 15.0
+# The merge of a step in batches: `_publish` over every batch's rows, per gene written. *Derived* from the merge of stage
+# S1 in 4 batches (run record, wilkcomp02, 2026-11-15, card B-48's note: 0.432 CPU-minutes for 2,398,087 genes, so
+# (25.95 s - PROCESS_S) / 2,398,087 = 4.57 us a gene), raised by a fifth and rounded up.
+PUBLISH_S_PER_GENE = 0.0000055
+# Genes per Mbp of contig, by mode, for the merge's estimate (the genes are known only after calling). *Measured*:
+# gv-meta 1,441.0 on S1 (2,398,087 genes, 1,664.11 Mbp: its run record's feature rows), single 917.4 on P5 (9,144,001
+# genes, 9,967.90 Mbp), meta 1,079.0 on PLSDB's circular records (card C-26's sample). The largest of each mode.
+GENES_PER_MBP = {"single": 917.4, "gv-meta": 1441.1, "meta": 1079.1}
+
 # unsorted per-gene scratch rows, appended genome by genome
 _GENE_SCRATCH = pa.schema([
     ("contig_uid", pa.binary(16)), ("feature_uid", pa.binary(16)),
@@ -125,12 +212,22 @@ _CONTIG_SCRATCH = pa.schema([("contig_uid", pa.binary(16))])  # every contig, al
 _SCRATCH_FILES = {"genes": "genes.parquet", "candidates": "candidates.parquet", "contigs": "contigs.parquet"}
 
 
+def mode_of(kind: str, bases: int) -> str:
+    """The mode a genome of `kind` and `bases` bases is called in (policy p2, module docstring)."""
+    if kind not in KINDS:
+        raise ValueError(f"unknown genome kind {kind!r}")
+    if kind == "virus":
+        return "gv-meta"
+    if kind == "plasmid" or bases < SINGLE_MODE_MIN_BP:
+        return "meta"
+    return "single"
+
+
 def _finder(genome: GenomeInput, seqs: dict[bytes, str]):
-    if genome.kind not in KINDS:
-        raise ValueError(f"unknown genome kind {genome.kind!r}")
-    if genome.kind == "virus":
+    mode = mode_of(genome.kind, sum(len(s) for s in seqs.values()))
+    if mode == "gv-meta":
         return pyrodigal_gv.ViralGeneFinder(meta=True), "gv-meta"
-    if genome.kind == "plasmid" or sum(len(s) for s in seqs.values()) < SINGLE_MODE_MIN_BP:
+    if mode == "meta":
         return pyrodigal.GeneFinder(meta=True), "meta"
     finder = pyrodigal.GeneFinder(meta=False)
     finder.train(*seqs.values(), translation_table=genome.genetic_code)
@@ -346,15 +443,21 @@ def _genome_bases(store: SeqStore, lengths: KeyLookup, genome: GenomeInput) -> i
 def _owned(genomes: Iterable[GenomeInput], owners: ContigOwners, skipped: dict[bytes, str],
            drop: set[tuple[bytes, bytes]]) -> Iterator[GenomeInput]:
     """The genomes, unchanged; each contig that another stage (DEC-26) or another genome of this stage (DEC-27) owns
-    is added to `skipped` with its owner, and (genome_uid, contig_uid) to `drop`, before its genome is handed on."""
+    is added to `skipped` with its owner, and (genome_uid, contig_uid) to `drop`, before its genome is handed on. A
+    genome all of whose contigs are so owned is not handed on (card B-48, item 5: every row of its calls would be
+    dropped); its skips are recorded all the same."""
     for g in genomes:
         guid = _guid(g)
+        mine = False
         for cu in g.contig_uids:
             s = owners.owner(cu, guid)
             if s != owners.stage:
                 skipped[cu] = s
                 drop.add((guid, cu))
-        yield g
+            else:
+                mine = True
+        if mine:
+            yield g
 
 
 def _drop(genes: pa.RecordBatch, cands: pa.RecordBatch, modes: list[str], n_wrap: int, guids: pa.Array,
@@ -587,58 +690,80 @@ def run(root: Path, stage: str, genomes: Iterable[GenomeInput] | None = None, ve
     if batch_bases < 1:
         raise ValueError(f"batch_bases must be at least 1, got {batch_bases}")
     ledger.check_scratch(tmp, root, out)
-    gcv = f"gene_call_version={version}/stage={stage}"
-    ledger.refuse_written(root, out, [f"l1/feature/producer={version}/stage={stage}", f"l1/feature_protein/{gcv}",
-                                      f"l1/protein_occurrence/{gcv}", f"l0seq/protein_seq/{gcv}",
-                                      f"ledger/stage={stage}/step=genecall"], f"gene calls of stage {stage}")
+    _refuse_written(root, out, stage, version)
     stages = list(dict.fromkeys([stage, *([] if seq_stages is None else seq_stages)]))
     store = SeqStore(root, stages)
     scratch = Path(tempfile.mkdtemp(prefix="biobox-genecall-", dir=tmp))
     try:
         genomes, shared = stage_genomes(root, stage, genomes, tmp=scratch)
-        gs = _Scratch(scratch / _SCRATCH_FILES["genes"], _GENE_SCRATCH)
-        cs = _Scratch(scratch / _SCRATCH_FILES["candidates"], _CANDIDATE_SCRATCH)
-        ks = _Scratch(scratch / _SCRATCH_FILES["contigs"], _CONTIG_SCRATCH)
-        n_genes = n_wrap = 0
-        modes: set[str] = set()
-        # contig -> owner (`ContigOwners.owner`); few: 4 of 54,265 contigs at 50 Gbp were shared at all (C-20)
-        skipped: dict[bytes, str] = {}
-        drop: set[tuple[bytes, bytes]] = set()  # (genome_uid, contig_uid) whose rows are not written
-        lengths = KeyLookup(store.index_files, "contig_uid", ["contig_len", "is_default_variant"])
-        owned = _owned(genomes, ContigOwners(root, stage, stages, shared), skipped, drop)
-        batches = _batches(owned, lambda g: _genome_bases(store, lengths, g), batch_bases, THREAD_MIN_BASES)
-        calls_iter = _called(store, root, batches, workers)
-        try:
-            for batch, (genes, cands, batch_modes, batch_wrap, guids) in calls_iter:
-                pairs = [(_guid(g), cu) for g in batch for cu in g.contig_uids]
-                skip = {p for p in pairs if p in drop}
-                genes, cands, batch_modes, batch_wrap = _drop(genes, cands, batch_modes, batch_wrap, guids, skip)
-                ks.add(pa.RecordBatch.from_arrays(
-                    [pa.array([p[1] for p in pairs if p not in skip], type=pa.binary(16))],
-                    schema=_CONTIG_SCRATCH))
-                gs.add(genes)
-                cs.add(cands)
-                modes.update(batch_modes)
-                n_wrap += batch_wrap
-                n_genes += genes.num_rows
-        finally:
-            calls_iter.close()
-            for s in (gs, cs, ks):
-                s.close()
-        n_prot = _publish(out, stage, version, scratch, prefix_width, max_file_bytes, skipped)
-        return {"genes": n_genes, "distinct_proteins": n_prot, "modes": sorted(modes), "wrapping_genes": n_wrap,
-                "skipped_contigs": [skipped_entry(cu, s) for cu, s in sorted(skipped.items())]}
+        counts, skipped = _call_into(store, root, ContigOwners(root, stage, stages, shared), genomes, workers,
+                                     batch_bases, scratch)
+        files = {k: [scratch / name] for k, name in _SCRATCH_FILES.items()}
+        n_prot = _publish(out, stage, version, files, scratch, prefix_width, max_file_bytes, skipped)
+        return _result(counts, n_prot, skipped)
     finally:
         store.close()
         shutil.rmtree(scratch, ignore_errors=True)
 
 
-def _publish(root: Path, stage: str, version: str, scratch: Path, prefix_width: int | None,
-             max_file_bytes: int, skipped: dict[bytes, str] | None = None) -> int:
-    """Sort the scratch rows into the stage's files, each table cut into parts at `max_file_bytes`;
-    returns the number of distinct proteins. The ledger rows stream from DuckDB to the writer; a contig
-    in `skipped` (owned by another stage, DEC-26) has one ledger row, reason `owned_by:<stage>`, counts 0;
-    one owned by another genome of this stage (DEC-27) has, beside its `ok` row, a row with reason
+def _refuse_written(root: Path, out: Path, stage: str, version: str) -> None:
+    gcv = f"gene_call_version={version}/stage={stage}"
+    ledger.refuse_written(root, out, [f"l1/feature/producer={version}/stage={stage}", f"l1/feature_protein/{gcv}",
+                                      f"l1/protein_occurrence/{gcv}", f"l0seq/protein_seq/{gcv}",
+                                      f"ledger/stage={stage}/step=genecall"], f"gene calls of stage {stage}")
+
+
+def _result(counts: dict, n_prot: int, skipped: dict[bytes, str]) -> dict:
+    """The step's result (the run's printed `result`): the same keys and order whether in one process or merged."""
+    return {"genes": counts["genes"], "distinct_proteins": n_prot, "modes": sorted(counts["modes"]),
+            "wrapping_genes": counts["wrapping_genes"],
+            "skipped_contigs": [skipped_entry(cu, s) for cu, s in sorted(skipped.items())]}
+
+
+def _call_into(store: SeqStore, root: Path, owners: ContigOwners, genomes: Iterable[GenomeInput], workers: int,
+               batch_bases: int, scratch: Path) -> tuple[dict, dict[bytes, str]]:
+    """Call `genomes` and append their rows to the three unsorted scratch files in `scratch` (`_SCRATCH_FILES`);
+    return the counts (genes, wrapping genes and modes of the rows written) and the skipped contigs with their owners.
+    The calling loop of `run`, and of a batch (card B-48)."""
+    gs = _Scratch(scratch / _SCRATCH_FILES["genes"], _GENE_SCRATCH)
+    cs = _Scratch(scratch / _SCRATCH_FILES["candidates"], _CANDIDATE_SCRATCH)
+    ks = _Scratch(scratch / _SCRATCH_FILES["contigs"], _CONTIG_SCRATCH)
+    n_genes = n_wrap = 0
+    modes: set[str] = set()
+    # contig -> owner (`ContigOwners.owner`); few: 4 of 54,265 contigs at 50 Gbp were shared at all (C-20)
+    skipped: dict[bytes, str] = {}
+    drop: set[tuple[bytes, bytes]] = set()  # (genome_uid, contig_uid) whose rows are not written
+    lengths = KeyLookup(store.index_files, "contig_uid", ["contig_len", "is_default_variant"])
+    owned = _owned(genomes, owners, skipped, drop)
+    batches = _batches(owned, lambda g: _genome_bases(store, lengths, g), batch_bases, THREAD_MIN_BASES)
+    calls_iter = _called(store, root, batches, workers)
+    try:
+        for batch, (genes, cands, batch_modes, batch_wrap, guids) in calls_iter:
+            pairs = [(_guid(g), cu) for g in batch for cu in g.contig_uids]
+            skip = {p for p in pairs if p in drop}
+            genes, cands, batch_modes, batch_wrap = _drop(genes, cands, batch_modes, batch_wrap, guids, skip)
+            ks.add(pa.RecordBatch.from_arrays(
+                [pa.array([p[1] for p in pairs if p not in skip], type=pa.binary(16))],
+                schema=_CONTIG_SCRATCH))
+            gs.add(genes)
+            cs.add(cands)
+            modes.update(batch_modes)
+            n_wrap += batch_wrap
+            n_genes += genes.num_rows
+    finally:
+        calls_iter.close()
+        for s in (gs, cs, ks):
+            s.close()
+    return {"genes": n_genes, "wrapping_genes": n_wrap, "modes": sorted(modes)}, skipped
+
+
+def _publish(root: Path, stage: str, version: str, files: dict[str, list[Path]], scratch: Path,
+             prefix_width: int | None, max_file_bytes: int, skipped: dict[bytes, str] | None = None) -> int:
+    """Sort the scratch rows of `files` (each of `_SCRATCH_FILES`' keys: its scratch files, one in one process, one
+    per batch in a merge, card B-48) into the stage's files, each table cut into parts at `max_file_bytes`;
+    returns the number of distinct proteins. DuckDB spills under `scratch`. The ledger rows stream from DuckDB to the
+    writer; a contig in `skipped` (owned by another stage, DEC-26) has one ledger row, reason `owned_by:<stage>`,
+    counts 0; one owned by another genome of this stage (DEC-27) has, beside its `ok` row, a row with reason
     `owned_by:<stage>/<genome_uid>` and the same counts."""
     skipped = skipped or {}
     con = duckdb.connect(config={"threads": 1, "memory_limit": DUCK_MEMORY_LIMIT,
@@ -647,7 +772,8 @@ def _publish(root: Path, stage: str, version: str, scratch: Path, prefix_width: 
         con.register("skipped", pa.table({"contig_uid": pa.array(list(skipped), pa.binary(16)),
                                           "reason": pa.array([f"{SKIP_REASON}{s}" for s in skipped.values()],
                                                              pa.string())}))
-        src = {k: f"read_parquet({_sql_path(scratch / name)})" for k, name in _SCRATCH_FILES.items()}
+        src = {k: "read_parquet([" + ", ".join(_sql_path(p) for p in files[k]) + "], hive_partitioning = false)"
+               for k in _SCRATCH_FILES}
         con.execute(f"CREATE VIEW genes AS SELECT * FROM {src['genes']}")
         con.execute(f"CREATE VIEW candidates AS SELECT * FROM {src['candidates']}")
         con.execute(f"CREATE VIEW contigs AS SELECT DISTINCT contig_uid FROM {src['contigs']}")
@@ -704,3 +830,420 @@ def _publish(root: Path, stage: str, version: str, scratch: Path, prefix_width: 
     finally:
         con.close()
     return n_prot
+
+
+# --- the estimate, the plan, the batches and the merge (card B-48; module docstring) --------------------------------
+
+PLAN_FILE, DONE_FILE, SKIPPED_FILE = "plan.json", "done.json", "skipped.parquet"
+WORK_BASE = "genecall"  # under the scratch directory: <scratch>/genecall/<stage>.<root key>/<plan key>/
+_SKIPPED_SCHEMA = pa.schema([("contig_uid", pa.binary(16)), ("owner", pa.string())])
+_STOP_CODES = {signal.SIGTERM: 143, signal.SIGHUP: 129}  # a batch stopped by a signal exits 128 + signum
+
+
+class Stopped(SystemExit):
+    """A batch ended by SIGTERM or SIGHUP, after its temporary directory was removed; the code is 128 + signum."""
+
+
+def _log(msg: str) -> None:
+    print(f"{datetime.now().astimezone().isoformat(timespec='seconds')} genecall: {msg}", file=sys.stderr, flush=True)
+
+
+def called_bases(n: int, circular: bool) -> int:
+    """Bases the caller reads for a contig of `n` bases: a circular one with `WRAP_FLANK` (or all of it) on each side
+    (`_genes`)."""
+    return n + 2 * min(n, WRAP_FLANK) if circular else n
+
+
+def calls_cpu_s(mode: str, contigs: Iterable[tuple[int, bool]]) -> float:
+    """CPU-seconds of the calls alone of a genome in `mode` with these (length, circular) contigs, at
+    `CALL_S_PER_MBP`: what card C-26's sample and this card's samples measured."""
+    return sum(CALL_S_PER_MBP[(mode, c)] * called_bases(n, c) for n, c in contigs) / 1e6
+
+
+def genome_cost_us(kind: str, contigs: Iterable[tuple[int, bool]]) -> int:
+    """The estimate of one genome in the step, in CPU-microseconds (rounded up): its calls times `STEP_OVERHEAD`."""
+    contigs = list(contigs)
+    mode = mode_of(kind, sum(n for n, _ in contigs))
+    return int(-(-STEP_OVERHEAD * calls_cpu_s(mode, contigs) * 1e6 // 1))
+
+
+def one_process_cpu_min(called: dict[tuple[str, bool], int]) -> float:
+    """The one-process estimate of a stage whose called genomes read `called` bases (with the wrap flanks) by (mode,
+    circular): a process's own cost and `STEP_OVERHEAD` times the calls (genome costs are linear in their bases)."""
+    return (PROCESS_S + STEP_OVERHEAD * sum(CALL_S_PER_MBP[k] * b for k, b in called.items()) / 1e6) / 60
+
+
+def genome_genes(kind: str, bases: int) -> float:
+    """Genes a genome of `kind` and `bases` bases is expected to have (`GENES_PER_MBP`), for the merge's estimate."""
+    return GENES_PER_MBP[mode_of(kind, bases)] * bases / 1e6
+
+
+def merge_cpu_min(genes: float) -> float:
+    """The merge's estimate: a process's own cost and `_publish` over `genes` genes."""
+    return (PROCESS_S + PUBLISH_S_PER_GENE * genes) / 60
+
+
+def _sql_files(files: Iterable[Path]) -> str:
+    return "[" + ", ".join(_sql_path(Path(f)) for f in files) + "]"
+
+
+def stage_items(root: Path, stage: str, stages: list[str], tmp: Path | None = None
+                ) -> Callable[[], Iterator[tuple[bytes, int, int, float, bool]]]:
+    """A maker of the stage's genomes as the plan reads them, one pass each call: (genome_uid, cost in CPU-us, bases,
+    expected genes, called) in genome_uid order (the order `iter_genome_input` streams them in, and so the order a
+    batch counts them in). One DuckDB query a pass: `genome_input` joined to the default variants of `stages`'
+    `contig_index` (the stage that holds one owns the contig, DEC-26) and to the least genome of each contig within
+    the stage (DEC-27); a genome none of whose contigs is its own is not called and costs nothing (item 5). A contig
+    in none of `stages` raises KeyError naming the stage on disk that owns it, as the step does."""
+    from biobox.l0seq.store import INDEX_DIR
+
+    root = Path(root)
+    gi = io.part_files(root / table("genome_input").location / f"stage={stage}")
+    if not gi:
+        raise FileNotFoundError(f"{root / table('genome_input').location}/stage={stage}: no genome_input for stage "
+                                f"{stage}")
+    ci = []
+    for s in stages:
+        files = io.part_files(root / INDEX_DIR / f"stage={s}")
+        if files:
+            lit = "'" + s.replace("'", "''") + "'"
+            ci.append(f"SELECT contig_uid, contig_len, {lit} AS st FROM read_parquet({_sql_files(files)}, "
+                      "hive_partitioning = false) WHERE is_default_variant")
+    own = "'" + stage.replace("'", "''") + "'"
+    sql = (f"WITH gi AS (SELECT genome_uid, contig_uid, is_circular, kind FROM read_parquet({_sql_files(gi)}, "
+           "hive_partitioning = false)), "
+           f"ci AS ({' UNION ALL '.join(ci) if ci else 'SELECT NULL::BLOB AS contig_uid, 0 AS contig_len, NULL AS st'}), "
+           "least AS (SELECT contig_uid, min(genome_uid) AS g FROM gi GROUP BY contig_uid) "
+           f"SELECT gi.genome_uid, gi.contig_uid, gi.is_circular, gi.kind, ci.contig_len, "
+           f"coalesce(ci.st = {own} AND least.g = gi.genome_uid, false) AS mine FROM gi "
+           "LEFT JOIN ci USING (contig_uid) JOIN least USING (contig_uid) ORDER BY gi.genome_uid, gi.contig_uid")
+
+    def items() -> Iterator[tuple[bytes, int, int, float, bool]]:
+        d = Path(tempfile.mkdtemp(prefix="biobox-genecall-plan-", dir=tmp))
+        con = duckdb.connect(config={"threads": 1, "memory_limit": DUCK_MEMORY_LIMIT, "temp_directory": str(d)})
+        try:
+            reader = con.sql(sql).to_arrow_reader(io.ROW_GROUP_ROWS)
+            guid, rows = None, []
+            for b in reader:
+                for r in zip(*(b.column(i).to_pylist() for i in range(6))):
+                    if r[0] != guid:
+                        if rows:
+                            yield _item(root, stages, guid, rows)
+                        guid, rows = r[0], []
+                    rows.append(r)
+            if rows:
+                yield _item(root, stages, guid, rows)
+        finally:
+            con.close()
+            shutil.rmtree(d, ignore_errors=True)
+
+    return items
+
+
+def _item(root: Path, stages: list[str], guid: bytes, rows: list[tuple]) -> tuple[bytes, int, int, float, bool]:
+    for _, cu, _, _, n, _ in rows:
+        if n is None:
+            raise KeyError(missing_contig(root, cu, stages))
+    kind = rows[0][3]
+    contigs = [(n, bool(c)) for _, _, c, _, n, _ in rows]
+    bases = sum(n for n, _ in contigs)
+    if not any(r[5] for r in rows):
+        mode_of(kind, bases)  # an unknown kind is refused here as in the step
+        return guid, 0, bases, 0.0, False
+    return guid, genome_cost_us(kind, contigs), bases, genome_genes(kind, bases), True
+
+
+def cut_plan(items: Callable[[], Iterable[tuple[bytes, int, int, float, bool]]], batch_cpu_min: float,
+             batches: int | None = None) -> dict:
+    """The batches of a step whose genomes `items()` gives, in order, as (genome_uid, cost in CPU-us, bases, expected
+    genes, called), one pass per call (`stage_items`).
+
+    The cut: with N batches, a genome starts batch k at the first genome whose midpoint, in cost from the first
+    genome, is at k/N of the total or past it (`2 N before + N cost >= 2 k total`, exact in integers, as card W-35
+    cuts contigs); a genome is never split. N is `batches` when given, else the fewest from ceil(total / limit) up
+    whose every batch fits `limit` (`batch_cpu_min` less a process's own cost, `PROCESS_S`), one pass over the items
+    per N tried; when none fits (a genome alone is over it), the first N tried. The plan's `bases` are every genome's,
+    `bases_called` those of the genomes called. Each batch: its first genome's index, its genomes, the bases
+    (`bases`) and expected genes of the ones it calls, its estimate (CPU-minutes, its own process
+    included) and the BLAKE3-128 digest of its genome uids in order, which the batch checks. A pure function of the
+    items, the budget and `batches`."""
+    total = n = not_called = bases = bases_called = 0
+    genes = 0.0
+    big, big_uid = 0, None
+    for guid, cost, b, ge, called in items():
+        total, n, bases, genes = total + cost, n + 1, bases + b, genes + ge
+        not_called += not called
+        bases_called += b if called else 0
+        if cost > big:
+            big, big_uid = cost, guid
+    limit = int(batch_cpu_min * 60e6 - PROCESS_S * 1e6)
+    if batches is not None:
+        if isinstance(batches, bool) or batches < 1:
+            raise ValueError(f"batches must be at least 1, got {batches}")
+        tries = [batches]
+    else:
+        first = max(1, -(-total // limit)) if limit > 0 else 1
+        # a batch of the cut holds at most total / N + the largest genome (its genomes' midpoints lie within total / N),
+        # so N = ceil(total / (limit - largest)) fits for certain: the search ends there; no N fits a genome over it
+        tries = range(first, max(first, -(-total // (limit - big))) + 1) if big < limit else [first]
+    cut = None
+    for k in tries:
+        got = _cut(items, k, total)
+        if cut is None:
+            cut = got
+        if max(c["cost_us"] for c in got) <= limit:
+            cut = got
+            break
+    out = []
+    for j, c in enumerate(cut):
+        out.append({"batch": j, "first": c["first"], "genomes": c["genomes"], "bases": c["bases"],
+                    "genes_expected": round(c["genes"], 1),
+                    "estimate_cpu_min": round((PROCESS_S * 1e6 + c["cost_us"]) / 60e6, 3),
+                    "digest": c["digest"].hexdigest(length=16)})
+    one = (PROCESS_S * 1e6 + total) / 60e6
+    return {"card": "B-48", "genomes": n, "genomes_not_called": not_called, "bases": bases,
+            "bases_called": bases_called, "genes_expected": round(genes, 1), "estimate_cpu_min": round(one, 3),
+            "largest_genome": None if big_uid is None else {"genome_uid": big_uid.hex(),
+                                                            "estimate_cpu_min": round(big / 60e6, 3)},
+            "batch_cpu_min": batch_cpu_min, "batches": out, "merge_estimate_cpu_min": round(merge_cpu_min(genes), 3),
+            "rates": {"call_s_per_mbp": {f"{m}/{'circular' if c else 'linear'}": r
+                                         for (m, c), r in sorted(CALL_S_PER_MBP.items())},
+                      "step_overhead": STEP_OVERHEAD, "process_s": PROCESS_S,
+                      "publish_s_per_gene": PUBLISH_S_PER_GENE}}
+
+
+def _cut(items, k: int, total: int) -> list[dict]:
+    cut = [{"first": 0, "genomes": 0, "bases": 0, "genes": 0.0, "cost_us": 0, "digest": blake3()} for _ in range(k)]
+    j, before, i = 0, 0, 0
+    for guid, cost, b, ge, called in items():
+        while j + 1 < k and 2 * k * before + k * cost >= 2 * (j + 1) * total:
+            j += 1
+            cut[j]["first"] = i
+        c = cut[j]
+        c["genomes"] += 1
+        c["cost_us"] += cost
+        if called:
+            c["bases"] += b
+            c["genes"] += ge
+        c["digest"].update(guid)
+        before += cost
+        i += 1
+    for x in cut[j + 1:]:
+        x["first"] = i
+    return cut
+
+
+def plan(root: Path, stage: str, *, version: str = GENE_CALL_VERSION, seq_stages: list[str] | None = None,
+         batch_cpu_min: float, batches: int | None = None, tmp=None) -> dict:
+    """The estimate and the batches of the stage's gene calling (`cut_plan` over `stage_items`), with the stage, the
+    gene-call version and the stages read (`seq_stages`, the stage first). Reads `genome_input` and `contig_index`
+    only; writes nothing (DuckDB spills under `tmp`)."""
+    stages = list(dict.fromkeys([stage, *([] if seq_stages is None else seq_stages)]))
+    p = cut_plan(stage_items(Path(root), stage, stages, tmp), batch_cpu_min, batches)
+    return {"stage": stage, "gene_call_version": version, "seq_stages": stages, **p}
+
+
+def work_dir(scratch: Path, root: Path, stage: str, plan_: dict) -> Path:
+    """Where a plan's batches live: `<scratch>/genecall/<stage>.<root key>/<plan key>/`, the keys BLAKE3 of the root's
+    absolute path and of the plan, so a plan of another root, or another plan of this stage, never shares it."""
+    rk = blake3(str(Path(root).resolve()).encode()).hexdigest(length=8)
+    pk = blake3(json.dumps(plan_, sort_keys=True).encode()).hexdigest(length=16)
+    return Path(scratch) / WORK_BASE / f"{stage}.{rk}" / pk
+
+
+def write_plan(plan_: dict, work: Path) -> Path:
+    """`plan_` as `<work>/plan.json` (sorted-key JSON), written under a temporary name and renamed; the same file is
+    left as it is."""
+    work.mkdir(parents=True, exist_ok=True)
+    path = work / PLAN_FILE
+    data = json.dumps(plan_, sort_keys=True, indent=1).encode()
+    if not path.is_file() or path.read_bytes() != data:
+        t = work / f".{PLAN_FILE}.tmp-{os.getpid()}"
+        t.write_bytes(data)
+        os.replace(t, path)
+    return path
+
+
+def read_plan(path: Path) -> dict:
+    p = json.loads(Path(path).read_text())
+    if p.get("card") != "B-48" or not isinstance(p.get("batches"), list):
+        raise ValueError(f"{path}: not a gene-call plan (card B-48)")
+    return p
+
+
+def batch_name(j: int) -> str:
+    return f"batch-{j:05d}"
+
+
+def batch_done(work: Path, plan_: dict, j: int) -> dict | None:
+    """The record of batch `j` whose output is in `work` and is of the plan's batch (its `done.json` names the plan's
+    digest and genomes, and its files have the recorded sizes), else None."""
+    d = Path(work) / batch_name(j)
+    try:
+        rec = json.loads((d / DONE_FILE).read_text())
+    except (FileNotFoundError, ValueError):
+        return None
+    want = plan_["batches"][j]
+    if rec.get("digest") != want["digest"] or rec.get("genomes") != want["genomes"] or rec.get("first") != want["first"]:
+        return None
+    for name, size in rec.get("files", {}).items():
+        if not (d / name).is_file() or (d / name).stat().st_size != size:
+            return None
+    return rec
+
+
+@contextlib.contextmanager
+def _stop_on_signals():
+    """While a batch runs: SIGTERM and SIGHUP raise `Stopped` (SIGINT raises KeyboardInterrupt, as by default), so its
+    cleanup runs; a second signal during the cleanup is ignored. Main thread only (elsewhere, nothing)."""
+    if threading.current_thread() is not threading.main_thread():
+        yield
+        return
+
+    def stop(signum, frame):
+        for s in _STOP_CODES:
+            signal.signal(s, signal.SIG_IGN)
+        raise Stopped(_STOP_CODES[signum])
+
+    previous = {s: signal.signal(s, stop) for s in _STOP_CODES}
+    try:
+        yield
+    finally:
+        for s, h in previous.items():
+            signal.signal(s, h)
+
+
+def _usage(t0: float) -> dict:
+    """This process's CPU-minutes with its waited-for children (the worker processes), wall seconds since `t0` and
+    the larger peak RSS of the two (KiB, `ru_maxrss` on Linux)."""
+    me, kids = resource.getrusage(resource.RUSAGE_SELF), resource.getrusage(resource.RUSAGE_CHILDREN)
+    return {"cpu_min": round((me.ru_utime + me.ru_stime + kids.ru_utime + kids.ru_stime) / 60, 3),
+            "wall_s": round(time.monotonic() - t0, 1), "peak_rss_kib": max(me.ru_maxrss, kids.ru_maxrss)}
+
+
+def _slice(genomes: Iterable[GenomeInput], first: int, count: int, digest) -> Iterator[GenomeInput]:
+    """The genomes `first` to `first + count` of `genomes`, the digest updated with each one's uid; the rest are not
+    read."""
+    if count == 0:
+        return
+    for i, g in enumerate(genomes):
+        if i < first:
+            continue
+        digest.update(_guid(g))
+        yield g
+        if i + 1 >= first + count:
+            return
+
+
+def run_batch(root: Path, stage: str, plan_path: Path, j: int, *, version: str = GENE_CALL_VERSION, workers: int = 1,
+              batch_bases: int = BATCH_BASES) -> dict:
+    """Batch `j` of the plan at `plan_path` (module docstring): its genomes called as `run` calls them (`_call_into`,
+    `workers` at once), their rows, skips and record written into `<work>/.batch-<j>.tmp-<pid>-<hex>`, renamed to
+    `<work>/batch-<j>` at the end. Writes nothing into the root. A batch whose output is there is not run again. Before
+    any calling, the plan's digest of the batch's genomes is checked against the stage's `genome_input` (ValueError).
+    A signal (SIGTERM, SIGHUP) removes the temporary directory and exits 128 + signum."""
+    t0 = time.monotonic()
+    root, plan_path = Path(root), Path(plan_path)
+    work = plan_path.parent
+    p = read_plan(plan_path)
+    if p["stage"] != stage or p["gene_call_version"] != version:
+        raise ValueError(f"{plan_path}: a plan of stage {p['stage']} and version {p['gene_call_version']}, not "
+                         f"{stage} and {version}")
+    if not 0 <= j < len(p["batches"]):
+        raise ValueError(f"{plan_path}: no batch {j} (the plan has {len(p['batches'])})")
+    if workers < 1:
+        raise ValueError(f"workers must be at least 1, got {workers}")
+    ledger.check_scratch(work, root)
+    want = p["batches"][j]
+    rec = batch_done(work, p, j)
+    if rec is not None:
+        _log(f"batch {j}: its output is in {work / batch_name(j)}; not run again")
+        return rec
+    stages = p["seq_stages"]
+    tmpd = work / f".{batch_name(j)}.tmp-{os.getpid()}-{os.urandom(4).hex()}"
+    tmpd.mkdir()
+    with _stop_on_signals():
+        try:
+            scratch = tmpd / "scratch"
+            scratch.mkdir()
+            d, gen = blake3(), iter_genome_input(root, stage, tmp=scratch)
+            try:
+                for _ in _slice(gen, want["first"], want["genomes"], d):
+                    pass
+            finally:
+                gen.close()
+            if d.hexdigest(length=16) != want["digest"]:
+                raise ValueError(f"{plan_path}: batch {j}'s digest of its genomes is not that of genomes "
+                                 f"{want['first']} to {want['first'] + want['genomes']} of stage {stage}'s "
+                                 "genome_input: the plan was made from other inputs")
+            _log(f"batch {j}: calling {want['genomes']:,} genomes ({want['bases']:,} bases to call, estimate "
+                 f"{want['estimate_cpu_min']:,.2f} CPU-minutes) with {workers} workers, in {tmpd}")
+            store = SeqStore(root, stages)
+            genomes, shared = stage_genomes(root, stage, None, tmp=scratch)
+            try:
+                owners = ContigOwners(root, stage, stages, shared)
+                counts, skipped = _call_into(store, root, owners, _slice(genomes, want["first"], want["genomes"],
+                                                                         blake3()), workers, batch_bases, tmpd)
+            finally:
+                genomes.close()  # the stream stopped after the batch's last genome: close its DuckDB connection
+                store.close()
+            _log(f"batch {j}: writing {counts['genes']:,} genes' rows and {len(skipped):,} skips")
+            pq.write_table(pa.table({"contig_uid": pa.array(sorted(skipped), pa.binary(16)),
+                                     "owner": pa.array([skipped[c] for c in sorted(skipped)], pa.string())},
+                                    schema=_SKIPPED_SCHEMA), tmpd / SKIPPED_FILE)
+            shutil.rmtree(scratch)
+            files = {name: (tmpd / name).stat().st_size for name in (*_SCRATCH_FILES.values(), SKIPPED_FILE)}
+            rec = {"batch": j, "first": want["first"], "genomes": want["genomes"], "digest": want["digest"],
+                   **counts, "skipped": len(skipped), "files": files, "estimate_cpu_min": want["estimate_cpu_min"],
+                   **_usage(t0)}
+            (tmpd / DONE_FILE).write_text(json.dumps(rec, sort_keys=True))
+            os.rename(tmpd, work / batch_name(j))
+        except BaseException:
+            shutil.rmtree(tmpd, ignore_errors=True)
+            raise
+    _log(f"batch {j} done: {rec['genes']:,} genes, {rec['cpu_min']:,.2f} CPU-minutes (estimate "
+         f"{rec['estimate_cpu_min']:,.2f}), wall {rec['wall_s']:,.1f} s, peak RSS {rec['peak_rss_kib'] / 1024:,.1f} MiB")
+    return rec
+
+
+def merge(root: Path, stage: str, plan_path: Path, *, version: str = GENE_CALL_VERSION, out: Path | None = None,
+          tmp=None, prefix_width: int | None = None, max_file_bytes: int = layout.MAX_FILE_BYTES) -> dict:
+    """The step `genecall` of a stage called in batches: `_publish` once over every batch's rows, so the files, the
+    ledger and the result are those of `run` on the stage (module docstring). Refuses, before any work, a stage whose
+    gene-call partitions hold a file (as `run`), a plan of another stage or version, and a plan any batch of which has
+    no output (FileNotFoundError naming them)."""
+    t0 = time.monotonic()
+    root = Path(root)
+    out = root if out is None else Path(out)
+    ledger.check_scratch(tmp, root, out)
+    _refuse_written(root, out, stage, version)
+    plan_path = Path(plan_path)
+    work = plan_path.parent
+    p = read_plan(plan_path)
+    if p["stage"] != stage or p["gene_call_version"] != version:
+        raise ValueError(f"{plan_path}: a plan of stage {p['stage']} and version {p['gene_call_version']}, not "
+                         f"{stage} and {version}")
+    recs = [batch_done(work, p, j) for j in range(len(p["batches"]))]
+    missing = [j for j, r in enumerate(recs) if r is None]
+    if missing:
+        raise FileNotFoundError(f"{work}: no output of batch {', batch '.join(map(str, missing))} of "
+                                f"{len(p['batches'])}; run them first (bio-box stage genecall batch)")
+    skipped: dict[bytes, str] = {}
+    for j in range(len(recs)):
+        t = pq.read_table(work / batch_name(j) / SKIPPED_FILE)
+        for cu, s in zip(t.column("contig_uid").to_pylist(), t.column("owner").to_pylist()):
+            if skipped.setdefault(cu, s) != s:
+                raise ValueError(f"contig {cu.hex()}: two batches name two owners, {skipped[cu]} and {s}")
+    counts = {"genes": sum(r["genes"] for r in recs), "wrapping_genes": sum(r["wrapping_genes"] for r in recs),
+              "modes": sorted({m for r in recs for m in r["modes"]})}
+    files = {k: [work / batch_name(j) / name for j in range(len(recs))] for k, name in _SCRATCH_FILES.items()}
+    scratch = Path(tempfile.mkdtemp(prefix="biobox-genecall-merge-", dir=tmp))
+    try:
+        _log(f"merging {len(recs)} batches: {counts['genes']:,} genes, {len(skipped):,} skipped contigs")
+        n_prot = _publish(out, stage, version, files, scratch, prefix_width, max_file_bytes, skipped)
+    finally:
+        shutil.rmtree(scratch, ignore_errors=True)
+    u = _usage(t0)
+    _log(f"merge done: {n_prot:,} distinct proteins, {u['cpu_min']:,.2f} CPU-minutes (estimate "
+         f"{p['merge_estimate_cpu_min']:,.2f}), wall {u['wall_s']:,.1f} s, peak RSS {u['peak_rss_kib'] / 1024:,.1f} MiB")
+    return _result(counts, n_prot, skipped)

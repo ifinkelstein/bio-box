@@ -1,0 +1,6 @@
+{"genomes": 68693, "genomes_not_called": 7046, "bases": 7102391741, "bases_called": 5924552875, "estimate_cpu_min": 872.645, "merge_estimate_cpu_min": 0.836, "genes_expected": 6393185.0, "owned_contigs_in_root": 7046, "largest_genome": {"genome_uid": "5ea2e633ae614f975ff4bdc30a47cc48", "estimate_cpu_min": 1.083}}
+{"batch": 0, "first": 0, "genomes": 17367, "bases": 1471826928, "estimate_cpu_min": 218.345}
+{"batch": 1, "first": 17367, "genomes": 16928, "bases": 1493140979, "estimate_cpu_min": 218.355}
+{"batch": 2, "first": 34295, "genomes": 16966, "bases": 1484779065, "estimate_cpu_min": 218.347}
+{"batch": 3, "first": 51261, "genomes": 17432, "bases": 1474805903, "estimate_cpu_min": 218.348}
+refusal: None

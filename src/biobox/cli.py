@@ -50,6 +50,9 @@
     bio-box stage ingest batch --root R --stage S --objects F --batch J --tmp D
     bio-box stage ingest merge --root R --stage S --objects F --tmp D
     bio-box stage genecall|igr|tapes --root R --stage S [--tmp D] [--producers P,Q] [--workers N] [--out DIR]
+    bio-box stage genecall plan --root R --stage S --runs-tmp D --batch-cpu-min X [--batches N] [--seq-stages S0,S1]
+    bio-box stage genecall batch --root R --stage S --plan P --batch J [--workers N]   (card B-48)
+    bio-box stage genecall merge --root R --stage S --plan P [--tmp D] [--out DIR]
     bio-box stage domains --root R --stage S --library pfam --library-version 38.2 --hmm F --cutoff gathering
     bio-box stage domains plan --root R --stage S --library L --library-version V --hmm F --cutoff C --shard-residues N
     bio-box stage domains shard --root R --stage S --library L --library-version V --hmm F --shard K --cpus N --tmp D
@@ -1703,7 +1706,9 @@ STAGE_STEPS = ("inputs", "ingest", "genecall", "igr", "tapes", "domains", "ncrna
 DOMAIN_ACTIONS = ("plan", "shard", "merge")  # `stage domains plan|shard|merge` (card B-24)
 INGEST_ACTIONS = ("pass1", "plan", "batch", "merge")  # `stage ingest pass1|plan|batch|merge` (card B-30)
 NCRNA_ACTIONS = ("plan", "shard", "merge")  # `stage ncrna plan|shard|merge` (card E-07)
-STEP_ACTIONS = {"domains": DOMAIN_ACTIONS, "ingest": INGEST_ACTIONS, "ncrna": NCRNA_ACTIONS}
+GENECALL_ACTIONS = ("plan", "batch", "merge")  # `stage genecall plan|batch|merge` (card B-48)
+STEP_ACTIONS = {"domains": DOMAIN_ACTIONS, "ingest": INGEST_ACTIONS, "ncrna": NCRNA_ACTIONS,
+                "genecall": GENECALL_ACTIONS}
 PACK_DIR_HELP = ("the pack directory, outside the data root (card W-03); default: <profile tmp>/packs, the host's one "
                  "pack directory (card W-22), with a host profile, else packs beside $BIOBOX_SEARCH_WORK or "
                  "/tmp/atd/search")
@@ -1982,10 +1987,34 @@ def _stage_step(a, root: Path, out: Path) -> dict:
             return store.ingest_batch(objs, root, a.stage, a.batch, tmp=tmp, out=out, **shared)
         return store.ingest_merge(objs, root, a.stage, tmp=tmp, out=out, **mfb, **shared)
     if a.step == "genecall":
-        from biobox.l1.genecall import run
+        from biobox.l1 import genecall
 
-        return run(root, a.stage, version=a.gene_call_version, prefix_width=a.prefix_width, tmp=tmp,
-                   workers=a.workers, seq_stages=_csv(a.seq_stages), out=out, **mfb)
+        if a.action is None:
+            return genecall.run(root, a.stage, version=a.gene_call_version, prefix_width=a.prefix_width, tmp=tmp,
+                                workers=a.workers, seq_stages=_csv(a.seq_stages), out=out, **mfb)
+        # in batches (card B-48): plan (writes the plan into --runs-tmp only), batch (writes only into the plan's work
+        # directory), merge (the step's files, under --out or $BIOBOX_STAGING)
+        need = {"plan": ("runs_tmp", "batch_cpu_min"), "batch": ("plan", "batch"), "merge": ("plan",)}[a.action]
+        missing = [f"--{n.replace('_', '-')}" for n in need if getattr(a, n) is None]
+        if missing:
+            raise ValueError(f"stage genecall {a.action} needs {', '.join(missing)}")
+        if a.action == "plan":
+            from biobox import ledger
+
+            ledger.check_scratch(a.runs_tmp, root)  # the plan's work directory is scratch, never under the root
+            p = genecall.plan(root, a.stage, version=a.gene_call_version, seq_stages=_csv(a.seq_stages),
+                              batch_cpu_min=a.batch_cpu_min, batches=a.batches, tmp=tmp)
+            path = genecall.write_plan(p, genecall.work_dir(Path(a.runs_tmp), root, a.stage, p))
+            return {"plan": str(path), "batches": len(p["batches"]), "genomes": p["genomes"],
+                    "genomes_not_called": p["genomes_not_called"], "bases": p["bases"],
+                    "estimate_cpu_min": p["estimate_cpu_min"], "largest_genome": p["largest_genome"],
+                    "batch_estimates_cpu_min": [x["estimate_cpu_min"] for x in p["batches"]],
+                    "merge_estimate_cpu_min": p["merge_estimate_cpu_min"], "batch_cpu_min": a.batch_cpu_min}
+        if a.action == "batch":
+            return genecall.run_batch(root, a.stage, Path(a.plan), a.batch, version=a.gene_call_version,
+                                      workers=a.workers)
+        return genecall.merge(root, a.stage, Path(a.plan), version=a.gene_call_version, out=out, tmp=tmp,
+                              prefix_width=a.prefix_width, **mfb)
     if a.step == "igr":
         from biobox.l1 import igr
 
@@ -2332,7 +2361,8 @@ def _main(argv: list[str] | None = None) -> int:
                     help="domains (card B-24) or ncrna (card E-07) in shards: plan, then shard (one call per --shard "
                          "K), then merge; "
                          "ingest in batch processes (card B-30): pass1 (one call per --shard K), plan, batch (one "
-                         "call per --batch J), then merge; without it, the whole step in one process")
+                         "call per --batch J), then merge; genecall in batches (card B-48): plan, batch (one call "
+                         "per --batch J), then merge; without it, the whole step in one process")
     st.add_argument("--stage", required=True)
     st.add_argument("--out", help=OUT_HELP)
     st.add_argument("--tmp", help="scratch directory (system temp by default; under neither the root nor --out)")
@@ -2367,9 +2397,15 @@ def _main(argv: list[str] | None = None) -> int:
     st.add_argument("--shard", type=int, help="domains or ncrna shard: the shard to scan; ingest pass1: the pass-1 "
                                              "shard (0-based)")
     st.add_argument("--pass1-bytes", type=int, help="ingest pass1: bytes of source file per pass-1 shard at most")
-    st.add_argument("--batch", type=int, help="ingest batch: the batch to write (0-based)")
+    st.add_argument("--batch", type=int, help="ingest batch: the batch to write (0-based); genecall batch: the batch "
+                                              "of --plan to call (0-based)")
     st.add_argument("--runs-tmp", help="ingest pass1|plan|batch|merge: the scratch directory the steps share for "
-                                       "the pass-1 runs and the decision table (default: --tmp)")
+                                       "the pass-1 runs and the decision table (default: --tmp); genecall plan: the "
+                                       "scratch directory under which the plan's work directory is made")
+    st.add_argument("--plan", help="genecall batch|merge (card B-48): the plan file (plan.json in its work directory)")
+    st.add_argument("--batch-cpu-min", type=float, help="genecall plan: the CPU-minutes a batch may be estimated at "
+                                                        "(build-stage gives 80%% of cpu_min_per_process)")
+    st.add_argument("--batches", type=int, help="genecall plan: cut into this many batches (forced)")
     bs = sub.add_parser("build-stage", parents=[common], help="a stage and its release, step by step under "
                                                               "run-step (card C-04)")
     bs.add_argument("--profile", required=True, help="host profile YAML (profiles/wilkcomp02.yaml)")
