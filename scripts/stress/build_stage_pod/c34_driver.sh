@@ -30,7 +30,9 @@
 #             the step's run record (skip) or intent file (stop), and the account's allowance for a T-thread launch
 #             (`python -m biobox.runstep`, card C-28; wait while it is under T). A unit that does not end `exited 0`
 #             with its run record published stops the run; nothing in the root is cleaned. Writes C/run/DONE.
-#   after     The same snapshot into C/after, `release verify` of every release again, and `bio-box releases`.
+#   after     The same snapshot into C/after, `release verify` of every release again, `bio-box releases`, and the
+#             lookups `find --accession NC_001604` and `NZ_AP026781.1` on rM.2 and rN.3 (also run in before, to
+#             compare byte for byte).
 #   check     c34_check.py in the image: before against after, the new files against the rehearsal's, and
 #             C/check/root_added.tsv (copied to C/root_added.tsv).
 #   seven     A view of the root with its own release_def (c34_view.py seven, C/view7), the release rC34.v defined
@@ -95,6 +97,16 @@ verify_all() {  # $1 tree, $2 root, $3 directory, $4 label: every release; retur
 }
 
 allowance() { bb "$TREE" py -m biobox.runstep --profile "$PROFILE" --threads "$T" 2>> "$LOG"; }
+
+reads() {  # $1 directory: two lookups by accession on the published releases over S1, P1, P2 (card W-36's controls)
+  local d=$1 r acc
+  for r in rM.2 rN.3; do
+    for acc in NC_001604 NZ_AP026781.1; do
+      bb "$TREE" cli find --root "$ROOT" --release "$r" --accession "$acc" > "$d/find-$r-$acc.out" 2> "$d/find-$r-$acc.err"
+      log "find $r $acc: exit $?: $(wc -l < "$d/find-$r-$acc.out") lines"
+    done
+  done
+}
 
 step_argv() {  # $1 root, $2 stage, $3 scratch base
   echo stage labels --root "$1" --stage "$2" --cpus "$T" --tmp "$3/$2.labels"
@@ -198,6 +210,7 @@ before() {
   fi
   verify_all "$TREE" "$ROOT" "$d" new || fail "a release does not verify before the first write"
   bb "$TREE" cli releases --root "$ROOT" > "$d/releases.tsv" 2> "$d/releases.err"
+  reads "$d"
   snapshot "$d"
   touch "$d/DONE"
 }
@@ -241,6 +254,7 @@ after() {
   verify_all "$TREE" "$ROOT" "$d" new || log "after: a release does NOT verify"
   bb "$TREE" cli releases --root "$ROOT" > "$d/releases.tsv" 2> "$d/releases.err"
   log "after: releases: $(wc -l < "$d/releases.tsv") lines"
+  reads "$d"
   touch "$d/DONE"
 }
 
