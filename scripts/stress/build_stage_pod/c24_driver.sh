@@ -365,7 +365,7 @@ e16() {
     --stage "$STAGE" --cpus 4 --min-repeats 2 --tmp "$C/tmp/view-scratch/$STAGE.crispr-$NR2" --seq-stages "$STAGE,S1"
   rm -rf "$C/e16/out"
   bb py "$TREE/scripts/stress/e16_crispr_near_cas_phages.py" measure --root "$ROOT" --calls "$V" --kept "$ROOT" \
-    --tree "$TREE" --out "$C/e16/out" --stages "$STAGE" --draws 10000 > "$C/e16/measure.log" 2>&1
+    --tree "$TREE" --out "$C/e16/out" --stages "$STAGE" --seq-stages "$STAGE,S1" --draws 10000 > "$C/e16/measure.log" 2>&1
   rc=$?
   log "e16: measure --stages $STAGE exit $rc: $(tail -n 2 "$C/e16/measure.log" | tr '\n' ' ' | cut -c1-400)"
 }

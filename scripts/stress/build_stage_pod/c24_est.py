@@ -16,7 +16,7 @@ calling's CPU-minutes at the like stage's rate per Gbp.
 `rates` reads the stage's run records that exist and compares each with its estimate: `ingest` (as above), each
 `domains-pfam-38.2.shard-<k>` (its plan's residues at `SCAN_CPU_MIN_PER_M`), `crispr-<default producer>` and
 `crispr-<filtered producer>` (the stage's `stage_bases` now). Prints one JSON line; exit 3 when a ratio
-measured / estimate is outside 1 +- 0.20, else 0.
+measured / estimate is outside 1 +- 0.20 for a step estimated at `MIN_JUDGED_CPU_MIN` or more (DEC-43), else 0.
 """
 from __future__ import annotations
 
@@ -32,6 +32,11 @@ from biobox.l1.genecall import GENE_CALL_VERSION
 
 LIB, VER = "pfam", "38.2"
 TOL = 0.20
+# DEC-43 (PI, 2026-11-15): a step estimated under this many CPU-minutes is reported but not judged. Such a step (the
+# scan's last shard of 1,347 residues, estimated at 0.011 CPU-minutes) costs its fixed start-up (reading Pfam's models,
+# 1.533 CPU-minutes measured, wilkcomp02, 2026-11-15) and has no rate. Every step estimated at or above it is still held
+# to 20% (AGENTS §6).
+MIN_JUDGED_CPU_MIN = 24.0
 
 
 def rec(root: Path, stage: str, step: str) -> dict | None:
@@ -93,9 +98,10 @@ def rates(a) -> int:
         if r is None:
             return
         ratio = r["cpu_min"] / est if est > 0 else float("inf")
+        judged = est >= MIN_JUDGED_CPU_MIN
         rows.append({"step": step, "cpu_min": round(r["cpu_min"], 3), "estimate": round(est, 3),
-                     "ratio": round(ratio, 3), "basis": why})
-        if abs(ratio - 1) > TOL:
+                     "ratio": round(ratio, 3), "basis": why, "judged": judged})
+        if judged and abs(ratio - 1) > TOL:
             bad.append(step)
 
     add("ingest", bs.ingest_cpu_min(fasta_bytes(Path(a.objects))), "ingest_cpu_min(FASTA bytes)")
