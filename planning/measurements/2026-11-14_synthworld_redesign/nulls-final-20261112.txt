@@ -1,0 +1,133 @@
+.
+world digests: signal 765b20a0d7d0051d62c5036143d6ced5; n0full 2d50ba9cb38201dd09262061ee9ead9c; n0strict f65098861d6086c61914c605df943956; n1 db53e846e8fe30180565a4b2447edd56; n0full_s2 ff2d879d11dc6a41b0ed3f180b3b838d; n0strict_s2 8ac75deb0f2a132f74a4eeb3c69bfff0; n1_s2 7df65bc45ccb6498b750017e21615676
+..
+n0full: identical species tree, taxonomy, lineage tables, phage set, prophage clades, codes, classes, call-error plan, sources, contamination and duplicate roles, labels; 163 shared background co-directional family pairs, all of one class in both worlds
+
+n0strict: identical species tree, taxonomy, lineage tables, phage set, prophage clades, codes, classes, call-error plan, sources, contamination and duplicate roles, labels; 144 shared background co-directional family pairs, all of one class in both worlds
+.F
+n0full genomes: tau 25; signal planted 37/76, signal background 18/22296, null 31/21556 above it (one-sided p 0.033)
+
+n0full contexts: tau 17; signal planted 18/76, signal background 21/22296, null 24/21556 above it (one-sided p 0.34)
+
+n0strict genomes: tau 25; signal planted 37/76, signal background 18/22296, null 33/20074 above it (one-sided p 0.00953)
+
+n0strict contexts: tau 17; signal planted 18/76, signal background 21/22296, null 29/20074 above it (one-sided p 0.0865)
+....
+n0full: naive co-occurrence over 2793 families, 3899028 pairs: lambda 0.007, share at p < 1e-3 0.0291 (29.1x the 0.001 a calibrated test gives)
+
+n0strict: naive co-occurrence over 2600 families, 3378700 pairs: lambda 0.007, share at p < 1e-3 0.0291 (29.1x the 0.001 a calibrated test gives)
+..
+n1: 41 of 100 module members relabeled (16 of 25 modules), 82 evaluated label pairs; unmatched module families' transfers [0, 0, 0, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 2, 2, 2, 2, 2, 2, 2, 2, 2, 3, 3, 3, 3, 3, 4, 4, 4, 4, 4, 4, 4, 5, 5, 5, 6, 6, 8, 8, 8, 8, 8, 8, 8, 10, 10, 10, 10, 10, 11, 12, 13, 13, 16, 19, 21]
+
+n1_s2: 41 of 100 module members relabeled (16 of 25 modules), 82 evaluated label pairs; unmatched module families' transfers [0, 0, 0, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 2, 2, 2, 2, 2, 2, 2, 2, 2, 3, 3, 3, 3, 3, 4, 4, 4, 4, 4, 4, 4, 5, 5, 5, 6, 6, 8, 8, 8, 8, 8, 8, 8, 10, 10, 10, 10, 10, 11, 12, 13, 13, 16, 19, 21]
+.F
+signal 1228.38 s, VmHWM 304 MB; n0full 1228.03 s, VmHWM 313 MB; n0full_b 1221.21 s, VmHWM 317 MB; n0full_s2 1232.82 s, VmHWM 314 MB; n0strict 1147.82 s, VmHWM 294 MB; n0strict_b 1147.72 s, VmHWM 293 MB; n0strict_s2 1118.31 s, VmHWM 285 MB; n1 38.2 s, VmHWM 138 MB; n1_b 39.14 s, VmHWM 139 MB; n1_s2 38.34 s, VmHWM 139 MB; fixture wall 1276.4 s with 7 at once
+.
+=================================== FAILURES ===================================
+_____________ test_n0_keeps_the_background_process_in_distribution _____________
+
+worlds = ({'signal': PosixPath('/tmp/if2453/ci-tmp/F-02-11-nulls-20261112/nulls0/signal'), 'n0full': PosixPath('/tmp/if2453/ci-...d9c'}, 'n0full_s2': {'seconds': 1232.82, 'vmhwm_kb': 321372, 'world_digest': 'ff2d879d11dc6a41b0ed3f180b3b838d'}, ...})
+record_property = <function record_property.<locals>.append_property at 0x7fe6c0954040>
+
+    @needs_zombi2
+    @pytest.mark.covers("F-02", "B-NULL")
+    def test_n0_keeps_the_background_process_in_distribution(worlds, record_property):
+        """Gene content is a new draw of the same process (ZOMBI2's gene-level draws change with the groups), so the
+        background is compared in distribution, each with its stated test:
+    
+        - background genome size: per genome, the root and originated genes; geometric mean of the per-genome ratio
+          null / signal within [0.9, 1.1] (a third of §5.1's +-30% size band) and Pearson r >= 0.9 over the 46 genomes
+          (size is set by the per-lineage rates, which ZOMBI2 draws with the tree);
+        - phyletic patterns: the genomes-present counts of the 1,000 root families, two-sample Kolmogorov-Smirnov
+          D below the alpha = 0.01 critical value 1.628 sqrt(2 / 1000);
+        - strands: the + share of genes in [0.4, 0.6] (backbone.SCRAMBLE_PLUS, as the signal world);
+        - operons: the tight share of distinct background co-directional family pairs within 4 binomial standard errors
+          of intergenic.junctions.p_tight (the hash rule is a fixed law);
+        - composition: genome GC within 0.01 of the same genome's in the signal world (codon usage and intergenic
+          composition are the lineage's, identical; gene content moves it only through the family mix).
+        """
+        W, _ = worlds
+        s = W["signal"]
+    
+        def bg_sizes(w):
+            kind = {int(r["family"]): r["kind"] for r in _tsv(w / "backbone" / "families.tsv")}
+            c = collections.Counter(r["genome_id"] for r in _tsv(w / "backbone" / "genes.tsv")
+                                    if kind[int(r["family"])] in ("root", "originated"))
+            return np.array([c[g] for g in sorted(c)], dtype=float)
+    
+        def ks(a, b):
+            a, b = np.sort(a), np.sort(b)
+            x = np.union1d(a, b)
+            return float(np.max(np.abs(np.searchsorted(a, x, "right") / len(a) - np.searchsorted(b, x, "right") / len(b))))
+    
+        def gc(w):
+            return np.array([float(r["gc_true"]) for r in _truth(w, "truth_genome") if r["is_phage"] == "false"])
+    
+        p_tight = float(_preset(s)["intergenic"]["junctions"]["p_tight"])
+        root_s = [int(r["n_genomes_present"]) for r in _tsv(s / "backbone" / "families.tsv") if r["kind"] == "root"]
+        sig_sizes, sig_gc = bg_sizes(s), gc(s)
+        for n in ("n0full", "n0strict"):
+            w = W[n]
+            sz = bg_sizes(w)
+            ratio = float(np.exp(np.mean(np.log(sz / sig_sizes))))
+            r = float(np.corrcoef(sz, sig_sizes)[0, 1])
+>           assert 0.9 <= ratio <= 1.1 and r >= 0.9, (n, ratio, r)
+E           AssertionError: ('n0full', 1.0232840204361953, 0.2825795179833992)
+E           assert (1.0232840204361953 <= 1.1 and 0.2825795179833992 >= 0.9)
+
+tests/r2/test_synthworld_nulls.py:400: AssertionError
+__ test_n1_label_pairs_are_no_more_adjacent_than_matched_random_family_pairs ___
+
+worlds = ({'signal': PosixPath('/tmp/if2453/ci-tmp/F-02-11-nulls-20261112/nulls0/signal'), 'n0full': PosixPath('/tmp/if2453/ci-...d9c'}, 'n0full_s2': {'seconds': 1232.82, 'vmhwm_kb': 321372, 'world_digest': 'ff2d879d11dc6a41b0ed3f180b3b838d'}, ...})
+record_property = <function record_property.<locals>.append_property at 0x7fe6aea2bcc0>
+
+    @needs_zombi2
+    @pytest.mark.covers("F-02", "MR-18")
+    def test_n1_label_pairs_are_no_more_adjacent_than_matched_random_family_pairs(worlds, record_property):
+        """Destroyed: the adjacency of module labels. The mean number of genomes in which a label pair is adjacent on the
+        emitted contigs is compared with 2,000 draws of matched random pairs (each label replaced by a root or originated
+        family present in the same number of genomes +-2, fixed seed); one-sided permutation p must be >= 0.01. Positive
+        control: the signal world's module pairs under the same procedure have p <= 1/2001."""
+        W, _ = worlds
+        s = W["signal"]
+        gs, _ = _adjacency(s)
+        pres, kind = _presence(s), _host_kind(s)
+        pool = sorted(f for f, k in kind.items() if k in ("root", "originated") and f in pres)
+        by_n = collections.defaultdict(list)
+        for f in pool:
+            by_n[len(pres[f])].append(f)
+        rng = np.random.default_rng(20261113)
+    
+        def adj(a, b):
+            return len(gs.get((a, b) if a <= b else (b, a), ()))
+    
+        def perm_p(pairs):
+            obs = float(np.mean([adj(a, b) for a, b in pairs]))
+            cands = {}
+            for f in {x for p in pairs for x in p}:
+                k = len(pres.get(f, ()))
+                cands[f] = [x for d in range(-2, 3) for x in by_n.get(k + d, ())]
+            null = np.empty(2000)
+            for i in range(2000):
+                null[i] = np.mean([adj(cands[a][rng.integers(len(cands[a]))], cands[b][rng.integers(len(cands[b]))])
+                                   for a, b in pairs])
+            return obs, float(null.mean()), (1 + int(np.sum(null >= obs))) / 2001
+    
+        sig_pairs = [(a, b) for fs in _modules(s).values() for i, a in enumerate(fs) for b in fs[i + 1:]]
+        obs_s, null_s, p_s = perm_p(sig_pairs)
+        assert p_s <= 1 / 2001 + 1e-12, (obs_s, null_s)
+        for n in ("n1", "n1_s2"):
+            w = W[n]
+            moved = {r["replacement_family_id"] for r in _truth(w, "truth_null_relabel") if r["status"] == "relabeled"}
+            pairs = [(a, b) for fs in _modules(w).values() for i, a in enumerate(fs) for b in fs[i + 1:]
+                     if a in moved or b in moved]
+            obs, null_mean, p = perm_p(pairs)
+>           assert p >= 0.01, (n, obs, null_mean, p)
+E           AssertionError: ('n1', 0.5853658536585366, 0.11250609756097561, 0.005497251374312844)
+E           assert 0.005497251374312844 >= 0.01
+
+tests/r2/test_synthworld_nulls.py:733: AssertionError
+=========================== short test summary info ============================
+FAILED tests/r2/test_synthworld_nulls.py::test_n0_keeps_the_background_process_in_distribution
+FAILED tests/r2/test_synthworld_nulls.py::test_n1_label_pairs_are_no_more_adjacent_than_matched_random_family_pairs
+2 failed, 12 passed in 1353.09s (0:22:33)

@@ -1,0 +1,81 @@
+
+replicon stage child peak RSS 75 MB
+..
+78312 genes, 4740 with protein-neutral overlap edits
+.
+planted overlaps by length: {1: 1681, 4: 3295}
+.
+27968 tight junctions: tried -4 0.561, -1 0.060; realized -4 0.118, -1 0.060
+.
+features across the origin: {'genes': 134, 'juncs': 7, 'elems': 0, 'rna': 0}
+.
+2577 within-unit junctions; 13424 distinct background co-directional pairs, tight 0.5447; 100 distinct pairs of declared families of different groups, tight 0.500
+.
+junction length quantiles (realized, preset) by type: {'codir_tight': (10595, [(4.0, 4), (6.0, 7), (12.0, 12), (20.0, 22), (35.0, 38)]), 'codir_loose': (20140, [(62.0, 62), (85.0, 86), (128.0, 130), (194.0, 202), (300.0, 308)]), 'divergent': (14687, [(122.0, 122), (164.0, 165), (240.0, 240), (358.0, 361), (527.0, 530)]), 'convergent': (14871, [(23.0, 22), (39.0, 38), (71.0, 70), (129.0, 128), (224.0, 222)])}
+.
+genome IGR GC vs lineage intergenic GC: r 0.994, lineage 0.219-0.713, genome 0.317-0.623
+.
+element consensus match (n, planted, background): {'promoter_m35': (33760, 0.694, 0.25), 'promoter_m10': (40535, 0.7, 0.245), 'rbs': (60394, 0.7, 0.252)}; terminators 24476, T tract 0.701
+.
+orthologous IGR identity: burst 0.934 over 1115, across phyla 0.625 over 169
+F
+880 motif instances in 20 links: the truth window is the unique best scan window for 879; divergence from the emission median 0.117, max 0.480, 27 above 0.3
+..
+F-02 micro replicons: 40.59 s wall, 38.94 s CPU; {'genes': 78312, 'genomes': 46, 'junctions': 78312, 'replicons': 142, 'rna': 880}; digest 1b5448a2238ad1020488c5c6d48abfe1
+.
+=================================== FAILURES ===================================
+_________ test_orthologous_igrs_are_near_identical_in_close_relatives __________
+
+world = (RepWorld(seed=20261112, replicons=[RepliconRow(genome_id='g000', replicon=0, record='g000_r0', kind='chromosome', top...53/ci-tmp/F-02-11-0/micro_igr0/world')), PosixPath('/tmp/if2453/ci-tmp/F-02-11-0/micro_igr0/world'), 40.58903936203569)
+tables = {'seqs': {'g000_r0': 'CGGGGGCTCGGGTAACGAACTTGAAAATCGTGGACGAAAGTTGCGCTGTATAGCCTGATCGTCTCAGGGCGCCATACGCTATCCAATTTTTGATGA...ition': '5', ...}, {'genome_id': 'g000', 'replicon': '0', 'left_position': '5', 'right_position': '6', ...}, ...], ...}
+
+    @needs_zombi2
+    def test_orthologous_igrs_are_near_identical_in_close_relatives(world, tables):
+        """The same junction (left family, right family, type) in the clonal burst's genomes against genomes
+        of different phyla: equal-length IGRs share >= 0.9 of their bases within the burst, and at least 0.15
+        more than across phyla."""
+        _, out, _ = world
+        bbj = json.loads((out / "backbone/backbone.json").read_text(encoding="utf-8"))
+        node_gid = {r["species_node"]: r["genome_id"] for r in _tsv(out / "backbone/genomes.tsv")}
+        burst = {node_gid[t] for t in bbj["burst_tips"]}
+        phylum = {r["genome_id"]: r["tax_lineage"].split(";")[1] for r in _tsv(out / "backbone/taxonomy.tsv")}
+        fam = {g["copy_label"]: g["family_id"] for g in tables["genes"]}
+        by_key = collections.defaultdict(dict)
+        for j in tables["juncs"]:
+            if int(j["length"]) < 20:
+                continue
+            key = (fam[j["left_copy"]], fam[j["right_copy"]], j["junction"])
+            by_key[key].setdefault(j["genome_id"], j)
+    
+        def ident(j1, j2):
+            a = _cut(tables["seq_of"][(j1["genome_id"], int(j1["replicon"]))], int(j1["start"]), int(j1["end"]), 1)
+            b = _cut(tables["seq_of"][(j2["genome_id"], int(j2["replicon"]))], int(j2["start"]), int(j2["end"]), 1)
+            return sum(x == y for x, y in zip(a, b)) / len(a) if len(a) == len(b) else None
+    
+        close, far = [], []
+        for key, per in by_key.items():
+            gs = sorted(per)
+            bs = [g for g in gs if g in burst]
+            if len(bs) >= 2:
+                v = ident(per[bs[0]], per[bs[1]])
+                if v is not None:
+                    close.append(v)
+            g1 = gs[0]
+            g2 = next((g for g in gs if phylum[g] != phylum[g1]), None)
+            if g2 is not None:
+                v = ident(per[g1], per[g2])
+                if v is not None:
+                    far.append(v)
+        print(f"\northologous IGR identity: burst {np.mean(close):.3f} over {len(close)}, across phyla "
+              f"{np.mean(far):.3f} over {len(far)}")
+>       assert len(close) >= 200 and len(far) >= 200
+E       assert (1115 >= 200 and 169 >= 200)
+E        +  where 1115 = len([0.9807692307692307, 0.9024390243902439, 0.9942363112391931, 0.8910614525139665, 0.975609756097561, 1.0, ...])
+E        +  and   169 = len([0.4161490683229814, 0.9411764705882353, 0.45018450184501846, 0.26136363636363635, 0.32142857142857145, 0.5046728971962616, ...])
+
+tests/r2/test_synthworld_intergenic.py:531: AssertionError
+=========================== short test summary info ============================
+FAILED tests/r2/test_synthworld_intergenic.py::test_orthologous_igrs_are_near_identical_in_close_relatives
+1 failed, 13 passed in 363.27s (0:06:03)
+
+[exited with code 1]

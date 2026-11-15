@@ -1,0 +1,231 @@
+
+replicon stage child peak RSS 70 MB
+..
+76748 genes, 4677 with protein-neutral overlap edits
+.
+planted overlaps by length: {4: 3111, 1: 1575}
+.
+26573 tight junctions: tried -4 0.601, -1 0.059; realized -4 0.117, -1 0.059
+.
+features across the origin: {'genes': 124, 'juncs': 10, 'elems': 1, 'rna': 0}
+.
+2431 within-unit junctions; 12573 distinct background co-directional pairs, tight 0.5457; 96 distinct pairs of declared families of different groups, tight 0.615
+.F
+genome IGR GC vs lineage intergenic GC: r 0.994, lineage 0.219-0.713, genome 0.330-0.622
+.
+element consensus match (n, planted, background): {'rbs': (59259, 0.699, 0.248), 'promoter_m35': (33884, 0.694, 0.249), 'promoter_m10': (40657, 0.704, 0.242)}; terminators 24824, T tract 0.699
+.
+orthologous IGR identity: burst 0.947 over 1145, across phyla 0.681 over 236
+.F.
+F-02 micro replicons: 32.59 s wall, 32.51 s CPU; {'genes': 76748, 'genomes': 46, 'junctions': 76748, 'replicons': 135, 'rna': 1229}; digest 35716b741dc8095d4c84b0133c611b03
+.............
+F-02 micro backbone: 33.74 s wall, 33.73 s CPU; chromosome genes mean 1513 min 1360 max 1702; plasmids per genome [(1, 3), (2, 43)]; seed 20261112; digest 22dd519ea380b4940567ff2ef0d32d1b
+.
+module-family transfers: with entry exclusion 1306 rows, 0 into a holder of the first family, 401 into a holder of any member; without it 9752 rows, 9565 and 9627
+..F.
+hub neighbour families {1291: 317, 1292: 308, 1293: 323, 1294: 315, 1295: 320} over copies [444, 453, 455, 453, 456]; root median 54 over 193 families
+.
+decoy transfers (family, partner present): [((1296, True), 42), ((1297, True), 20), ((1298, True), 15), ((1299, True), 26), ((1300, True), 23)]; partner carriers among the other contemporaneous lineages at those moments: mean 0.657
+.
+transfer recipients closer/farther than other lineages: decay 4345/1031 over 6508 events; uniform 2421/2280 over 7006
+.
+chromosome genes: min 1360 median 1522 max 1702 mean 1512.8; originated genes per genome 41-144, Spearman with the path origination multiplier 0.806 (permutation p 0.0005)
+....
+seed 20261112: crown age 5.0000; chromosome mean 1512.8; planted share 0.0573; plasmid genomes {'pls0': 45, 'pls1': 44}, at most 2 per genome; realized transfers per member by level (median) [7.0, 12.5, 15.67]; module transfers 1306, into a holder 0; module genomes by cell {(0.3, 0.01): [5, 15, 32], (0.3, 0.06): [16, 29, 34], (0.3, 0.4): [24, 37, 37], (0.7, 0.01): [5, 28, 45], (0.7, 0.06): [17, 41, 44], (0.7, 0.4): [45, 46], (1.0, 0.01): [29, 34, 45], (1.0, 0.06): [46, 46, 46], (1.0, 0.4): [45, 46]}
+
+seed 20261113: crown age 5.0000; chromosome mean 1469.0; planted share 0.0578; plasmid genomes {'pls0': 46, 'pls1': 45}, at most 2 per genome; realized transfers per member by level (median) [5.33, 7.8, 15.33]; module transfers 1109, into a holder 0; module genomes by cell {(0.3, 0.01): [18, 35, 43], (0.3, 0.06): [8, 14, 34], (0.3, 0.4): [34, 42, 46], (0.7, 0.01): [14, 21, 29], (0.7, 0.06): [17, 17, 28], (0.7, 0.4): [43, 44], (1.0, 0.01): [24, 33, 43], (1.0, 0.06): [39, 45, 46], (1.0, 0.4): [46, 46]}
+
+seed 1001685937451957930: crown age 5.0000; chromosome mean 1380.4; planted share 0.0579; plasmid genomes {'pls0': 45, 'pls1': 46}, at most 2 per genome; realized transfers per member by level (median) [1.6, 7.6, 10.67]; module transfers 762, into a holder 0; module genomes by cell {(0.3, 0.01): [4, 30, 33], (0.3, 0.06): [0, 25, 40], (0.3, 0.4): [35, 40, 44], (0.7, 0.01): [0, 4, 30], (0.7, 0.06): [0, 31, 33], (0.7, 0.4): [40, 45], (1.0, 0.01): [45, 46, 46], (1.0, 0.06): [37, 42, 46], (1.0, 0.4): [44, 46]}
+
+seed 6329801112132740259: crown age 5.0000; chromosome mean 1527.8; planted share 0.0562; plasmid genomes {'pls0': 44, 'pls1': 39}, at most 3 per genome; realized transfers per member by level (median) [4.0, 11.5, 14.0]; module transfers 1183, into a holder 0; module genomes by cell {(0.3, 0.01): [10, 28, 30], (0.3, 0.06): [23, 24, 30], (0.3, 0.4): [27, 38, 40], (0.7, 0.01): [10, 25, 32], (0.7, 0.06): [36, 44, 45], (0.7, 0.4): [45, 45], (1.0, 0.01): [13, 27, 44], (1.0, 0.06): [43, 44, 46], (1.0, 0.4): [45, 46]}
+
+seed 6036017085589997374: crown age 5.0000; chromosome mean 1447.9; planted share 0.0594; plasmid genomes {'pls0': 42, 'pls1': 47}, at most 3 per genome; realized transfers per member by level (median) [3.5, 12.0, 13.25]; module transfers 1093, into a holder 0; module genomes by cell {(0.3, 0.01): [3, 15, 39], (0.3, 0.06): [27, 31, 42], (0.3, 0.4): [23, 42, 44], (0.7, 0.01): [11, 33, 36], (0.7, 0.06): [38, 39, 46], (0.7, 0.4): [40, 44], (1.0, 0.01): [35, 38, 39], (1.0, 0.06): [43, 45, 46], (1.0, 0.4): [46, 46]}
+
+seed 4383110225690451409: crown age 5.0000; chromosome mean 1508.4; planted share 0.0503; plasmid genomes {'pls0': 47, 'pls1': 44}, at most 3 per genome; realized transfers per member by level (median) [4.0, 6.0, 18.0]; module transfers 826, into a holder 0; module genomes by cell {(0.3, 0.01): [5, 24, 33], (0.3, 0.06): [13, 32, 38], (0.3, 0.4): [0, 35, 44], (0.7, 0.01): [11, 24, 41], (0.7, 0.06): [0, 27, 38], (0.7, 0.4): [42, 46], (1.0, 0.01): [10, 38, 39], (1.0, 0.06): [32, 38, 45], (1.0, 0.4): [46, 46]}
+.
+both plasmid types at 6 of 6 seeds; most plasmids in one genome {20261112: 2, 20261113: 2, 1001685937451957930: 2, 6329801112132740259: 3, 6036017085589997374: 3, 4383110225690451409: 3}
+..
+cells without a powered module: {}
+.
+realized transfers per member, pooled medians by level: [4.416666666666666, 10.0, 14.0]
+F.
+=================================== FAILURES ===================================
+_______________ test_junction_lengths_follow_the_preset_by_type ________________
+
+tables = {'seqs': {'g000_r0': 'CCCGAACTCATGGATATCGGTTTGTGTCCATGCGACTGGCACACGATATCTTCATTACCAGGATTCTGATGTACATAGATCGGAGCAATGTCTACC...ition': '5', ...}, {'genome_id': 'g000', 'replicon': '0', 'left_position': '5', 'right_position': '6', ...}, ...], ...}
+
+    @needs_zombi2
+    def test_junction_lengths_follow_the_preset_by_type(tables):
+        """Realized lengths by junction type (drawn lengths: no motif raised them; tight ones without a tried
+        overlap) against the preset's quantiles at 0.1 ... 0.9, within max(3 bases, 12%) (derived: copies of one
+        family carry closely inherited length scores, so the effective sample is about the number of distinct
+        family pairs, over a thousand per type; a quantile's standard error is then below 5% of its value)."""
+        J = backbone.load_preset("micro")["intergenic"]["junctions"]
+        by = collections.defaultdict(list)
+        for j in tables["juncs"]:
+            if j["rule"] not in ("drawn", "group"):
+                continue
+            t = int(j["target_length"])
+            if j["junction"] == "codir_tight" and t < 0:
+                continue
+            by[j["junction"]].append(int(j["length"]))
+        report = {}
+        for kind, dist in (("codir_tight", J["tight"]), ("codir_loose", J["loose"]), ("divergent", J["divergent"]),
+                           ("convergent", J["convergent"])):
+            xs = np.array(by[kind])
+            assert len(xs) >= 500, (kind, len(xs))
+            rows = []
+            for q in (0.1, 0.25, 0.5, 0.75, 0.9):
+                got, want = float(np.quantile(xs, q)), _quantile(dist, q)
+                rows.append((q, got, want))
+>               assert abs(got - want) <= max(3.0, 0.12 * want), (kind, rows)
+E               AssertionError: ('codir_tight', [(0.1, 4.0, 4), (0.25, 7.0, 7), (0.5, 12.0, 12), (0.75, 20.0, 22), (0.9, 33.0, 38)])
+E               assert 5.0 <= 4.56
+E                +  where 5.0 = abs((33.0 - 38))
+E                +  and   4.56 = max(3.0, (0.12 * 38))
+
+tests/r2/test_synthworld_intergenic.py:420: AssertionError
+_ test_every_planted_motif_is_recovered_at_its_truth_coordinates_by_an_independent_scan _
+
+world = (RepWorld(seed=20261112, replicons=[RepliconRow(genome_id='g000', replicon=0, record='g000_r0', kind='chromosome', top...3/ci-tmp/F-02-11-0/micro_igr0/world')), PosixPath('/tmp/if2453/ci-tmp/F-02-11-0/micro_igr0/world'), 32.593395655974746)
+tables = {'seqs': {'g000_r0': 'CCCGAACTCATGGATATCGGTTTGTGTCCATGCGACTGGCACACGATATCTTCATTACCAGGATTCTGATGTACATAGATCGGAGCAATGTCTACC...ition': '5', ...}, {'genome_id': 'g000', 'replicon': '0', 'left_position': '5', 'right_position': '6', ...}, ...], ...}
+
+    @needs_zombi2
+    @pytest.mark.covers("F-02", "B-SIM")
+    def test_every_planted_motif_is_recovered_at_its_truth_coordinates_by_an_independent_scan(world, tables):
+        """Each instance cut at its coordinates differs from its clade's emission at exactly its
+        n_subst_from_emission positions, n_compensatory pairs differ at both bases, every pair is canonical;
+        dist_to_start is its distance to its gene's start codon. Scanning both strands of the store's own
+        intergenic region around it (`ncrna.regions`, IGR runs widened by 200) for the emission, by Hamming
+        distance, finds the instance at its coordinates as the best window."""
+        _, out, _ = world
+        em = {r["emission_id"]: r for r in _tsv(out / "replicons/emissions.tsv")}
+        links = {r["link"]: r for r in _tsv(out / "replicons/links.tsv")}
+        gene = {g["copy_label"]: g for g in tables["genes"]}
+        carriers = collections.Counter(g["family_id"] for g in tables["genes"])
+        per_link = collections.Counter(r["link"] for r in tables["rna"])
+        for lk, row in links.items():
+            assert per_link[lk] == carriers[row["family_id"]] > 0
+        genes_by = collections.defaultdict(list)
+        for g in tables["genes"]:
+            genes_by[(g["genome_id"], int(g["replicon"]))].append((int(g["start"]), int(g["end"])))
+        regions = {k: l1_ncrna.regions(v, len(tables["seq_of"][k]), True) for k, v in genes_by.items()}
+        best, n_div = 0, 0
+        divs = []
+        for r in tables["rna"]:
+            key = (r["genome_id"], int(r["replicon"]))
+            seq = tables["seq_of"][key]
+            N = len(seq)
+            s, e, strand = int(r["start"]), int(r["end"]), int(r["strand"])
+            inst = _cut(seq, s, e, strand)
+            ref = em[r["emission_id"]]
+            assert len(inst) == len(ref["sequence"]) == int(r["length"])
+            assert _hamming(inst, ref["sequence"]) == int(r["n_subst_from_emission"])
+            pairs = [(i, j) for i, j in _pairs(ref["structure"])]
+            assert r["structure"] == ref["structure"]
+            assert sum(inst[i] != ref["sequence"][i] and inst[j] != ref["sequence"][j] for i, j in pairs) == \
+                int(r["n_compensatory"])
+            assert all((inst[i], inst[j]) in PAIRS_OK for i, j in pairs if (ref["sequence"][i], ref["sequence"][j]) in PAIRS_OK)
+            g = gene[r["attached_copy"]]
+            assert int(g["strand"]) == strand and g["family_id"] == r["family_id"]
+            gs, ge = int(g["start"]), int(g["end"])
+            dist = (gs - e) % N if strand == 1 else (s - ge) % N
+            assert dist == int(r["dist_to_start"])
+            divs.append(int(r["n_subst_from_emission"]) / len(inst))
+            # the independent scan, both strands of the region that holds the instance
+            reg = next((a, b) for a, b in regions[key] if a <= s and e <= b or a <= s + N and e + N <= b)
+            a, b = reg
+            span = _cut(seq, a, b, 1)
+            L = len(inst)
+            want = np.frombuffer(ref["sequence"].encode(), np.uint8)
+            fwd = np.frombuffer(span.encode(), np.uint8)
+            rev = np.frombuffer(rc(span).encode(), np.uint8)
+            hf = (np.lib.stride_tricks.sliding_window_view(fwd, L) != want).sum(axis=1)
+            hr = (np.lib.stride_tricks.sliding_window_view(rev, L) != want).sum(axis=1)
+            low = int(min(hf.min(), hr.min()))
+            # a window k of the reverse complement covers [len - k - L, len - k) of the span
+            winners = [((a + int(k)) % N, 1) for k in np.nonzero(hf == low)[0]]
+            winners += [((a + len(span) - int(k) - L) % N, -1) for k in np.nonzero(hr == low)[0]]
+>           assert (s, strand) in winners or divs[-1] > 0.3, (r, low, winners[:3])
+E           AssertionError: ({'rna_id': 'n54_g194754.rna', 'link': 'L18', 'model_acc': 'SYNRF0010', 'model_name': 'synRNA10', ...}, 0, [(1213016, -1)])
+E           assert ((1212505, -1) in [(1213016, -1)] or 0.03571428571428571 > 0.3)
+
+tests/r2/test_synthworld_intergenic.py:597: AssertionError
+____________ test_plasmids_are_whole_replicons_of_their_preset_size ____________
+
+micro = (Backbone(params={'assembly': {'class_weights': [0.4, 0.4, 0.2], 'draft_n50': [50000, 200000], 'mag_completeness': [0....2845649, n_genomes=4, parent='g__Genus09')]), PosixPath('/tmp/if2453/ci-tmp/F-02-11-0/micro0/world'), 33.7446079950314)
+
+    @needs_zombi2
+    @pytest.mark.covers("F-02", "B-SIM")
+    def test_plasmids_are_whole_replicons_of_their_preset_size(micro):
+        """§2.1 S2 "chromosome plus 0-2 plasmid replicons"; §5.1 plasmids of 20-200 genes. Tolerance: none,
+        every extant plasmid has exactly its declared genes."""
+        bb, out, _ = micro
+        sizes = _plasmid_sizes(bb.params)
+        node_of = {g.genome_id: g.species_node for g in bb.genomes}
+        reps = _raw_replicons(out, set(node_of.values()), set(sizes))
+        raw_plasmids = {lin: [(name, {c for _, _, c in gs}) for kind, name, _, gs in rs if kind == "plasmid"]
+                        for lin, rs in reps.items()}
+        # every extant plasmid unit is whole: its declared number of genes, contiguous in ZOMBI2's order
+        for lin, ps in raw_plasmids.items():
+            for name, copies in ps:
+                assert len(copies) == sizes[name], (lin, name, len(copies))
+        # and is excised as a replicon of its own holding exactly those genes
+        got = collections.defaultdict(set)
+        for g in bb.genes:
+            got[(g.genome_id, g.replicon)].add(g.copy_label)
+        plasmid_reps = [r for r in bb.replicons if r.kind == "plasmid"]
+        for r in plasmid_reps:
+            assert r.topology == "circular" and r.n_genes == sizes[r.name] == len(got[(r.genome_id, r.replicon)])
+        want = sorted((gid, name, tuple(sorted(c))) for gid, node in node_of.items()
+                      for name, c in raw_plasmids[node])
+        assert sorted((r.genome_id, r.name, tuple(sorted(got[(r.genome_id, r.replicon)])))
+                      for r in plasmid_reps) == want
+        # the chromosome keeps the rest, in ZOMBI2's order
+        for gid, node in node_of.items():
+            chrom = [r for r in bb.replicons if r.genome_id == gid and r.kind == "chromosome"]
+            assert len(chrom) == 1 and chrom[0].replicon == 0
+            raw_chrom = [c for kind, _, _, gs in reps[node] if kind == "chromosome" for _, _, c in gs]
+            ours = [g.copy_label for g in bb.genes if g.genome_id == gid and g.replicon == 0]
+            assert ours == raw_chrom
+        # both plasmid types are realized, some genomes carry none, none carries more than two (§5.1)
+        per = collections.Counter(r.genome_id for r in plasmid_reps)
+        assert {r.name for r in plasmid_reps} == set(sizes)
+>       assert any(per[gid] == 0 for gid in node_of) and max(per.values()) <= 2, sorted(per.values())
+E       AssertionError: [1, 1, 1, 2, 2, 2, ...]
+E       assert (False)
+E        +  where False = any(<generator object test_plasmids_are_whole_replicons_of_their_preset_size.<locals>.<genexpr> at 0x7df891e6a340>)
+
+tests/r2/test_synthworld_backbone.py:578: AssertionError
+____________ test_the_transfer_axis_gives_distinct_realized_levels _____________
+
+measured = ({'name': 'micro', 'default_seed': 20261112, 'species': {'n_extant': 46, 'birth': 1.0, 'death': 0.3, 'burst_size': 4, ...an': 1527.8478260869565, 'planted_share': 0.05615850416877374, 'plasmid_genomes': {'pls0': 44, 'pls1': 39}, ...}, ...})
+
+    @pytest.mark.covers("F-02", "B-SIM")
+    def test_the_transfer_axis_gives_distinct_realized_levels(measured):
+        """DEC-36: the grid's transfer axis is the realized number of transfer events per member family (backbone
+        events.tsv), and the three levels are distinct: pooled over the seeds, each level's median at least LEVEL_RATIO
+        times the level below's; at every seed, the highest level's median above the lowest's."""
+        _, out = measured
+    
+        def median(v):
+            v = sorted(v)
+            return (v[(len(v) - 1) // 2] + v[len(v) // 2]) / 2
+    
+        assert all(len(r["level_values"]) == 3 for r in out.values())
+        pooled = [median([x for r in out.values() for x in r["level_values"][k]]) for k in range(3)]
+        print(f"\nrealized transfers per member, pooled medians by level: {pooled}")
+>       assert all(b >= LEVEL_RATIO * a > 0 for a, b in zip(pooled, pooled[1:])), pooled
+E       AssertionError: [4.416666666666666, 10.0, 14.0]
+E       assert False
+E        +  where False = all(<generator object test_the_transfer_axis_gives_distinct_realized_levels.<locals>.<genexpr> at 0x7df8b8326880>)
+
+tests/r2/test_synthworld_preset_seeds.py:330: AssertionError
+=========================== short test summary info ============================
+FAILED tests/r2/test_synthworld_intergenic.py::test_junction_lengths_follow_the_preset_by_type
+FAILED tests/r2/test_synthworld_intergenic.py::test_every_planted_motif_is_recovered_at_its_truth_coordinates_by_an_independent_scan
+FAILED tests/r2/test_synthworld_backbone.py::test_plasmids_are_whole_replicons_of_their_preset_size
+FAILED tests/r2/test_synthworld_preset_seeds.py::test_the_transfer_axis_gives_distinct_realized_levels
+4 failed, 40 passed in 687.41s (0:11:27)
+
+[exited with code 1]

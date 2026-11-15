@@ -572,3 +572,159 @@ below 1 in most lineages, so most junctions were single-copy, whereas now paralo
 family, right family and type, a different copy) enter the comparison (the low pairs, 0.67 to 0.81, look like such
 pairs). The motif failure is one instance with a near-identical window elsewhere in the same region, which a paralogous
 copy would also explain. N0's r stays below 0.9 at either crown (0.846), as §4 item 2 says.
+
+## 12. The background rates refitted for one lineage axis (question (a))
+
+The orchestrator withdrew the crown hypothesis after §11: the core came from the old lineage axes, and DEC-37 (1)
+removed those axes but left session 2's base rates (duplication 0.04, transfer 0.1, loss 0.24), chosen for a world in
+which most lineages ran far below them. Those base rates are free preset values; this section refits them at the
+decided crown (5.0) with the single origination axis. All *measured*, wilkcomp02, 2026-11-14 20:30 to 2026-11-15
+03:00 CST, at most 8 threads, `f0210_seed_scan.py scan` with the overrides in each `<label>.json`.
+
+**1. What the old world's lineages saw** (`f0210_seed_scan.py effrates`, new: each extant genome's ZOMBI2 multiplier
+averaged over time along its line of descent from the rate onset to the present; the old preset run through this
+tree's generator and kept, `y_oldworld`, which reproduces session 10's table, e.g. 1,873 at the default seed and 11,192
+at 13748185708697958051; per seed in `y_oldworld_effrates.tsv`):
+
+| multiplier (time-averaged per genome) | q10 | q25 | median | q75 | mean |
+|---|---|---|---|---|---|
+| duplication = transfer = origination, 22 seeds (1,012 genomes) | 0.060 | 0.157 | 0.361 | 0.893 | 0.867 |
+| loss, 22 seeds | 0.149 | 0.465 | 0.849 | 1.654 | 1.573 |
+| duplication = transfer = origination, default seed | 0.026 | 0.035 | 0.060 | 0.061 | 0.217 |
+| loss, default seed | 0.287 | 0.433 | 0.451 | 0.679 | 0.577 |
+
+So a typical old lineage saw duplication 0.04 x 0.36 = 0.014, transfer 0.036 and loss 0.24 x 0.85 = 0.20 over the
+seeds, and at the default seed duplication 0.0024, transfer 0.006 and loss 0.108 over its crown of 2.56 (*derived*).
+(This corrects §11's reading that most lineages drifted to a loss multiplier well below 1: it is the shared
+duplication and transfer multiplier that was low; the loss median over the seeds is 0.85.) The old world had a core of
+at least 100 root families at only 8 of the 22 seeds (0 to 743; 243 at the default seed, `y_oldworld`).
+
+**2. The fits** (22 seeds, crown 5.0, one origination axis at sigma 0.2; columns as in §11 plus N1's comparator
+(planted families present with no root or originated family within +-2 genomes of their prevalence, read from the
+backbone) and the burst's paralogous junction keys (per burst genome, chromosome adjacency keys of left family, right
+family and strands occurring more than once)):
+
+| scan | chromosome mean (in band) | default mean | planted share % | copies per present member | exclusion breaches | both plasmid types | a genome > 2 plasmids | genomes without a plasmid at default | all cells powered | levels pooled (increasing) | core >= 40 genomes: default, range (>= 100) | N0 ratio, r at default | N1 unmatched planted at default | burst multicopy junction keys at default |
+|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|
+| y_f0.2_o0.065 | 1354-1783 (22/22) | 1436 | 4.2-6.1 | 0.92-1.10 | 0 | 19/22 | 5 | 0 | 21/22 | 2.1, 6.7, 10.1 (20/22) | 203, 203-464 (22) | - | 0 | 159 of 5157 |
+| y_f0.2_o0.08 | 1452-1812 (22/22) | 1558 | 4.2-6.4 | 0.90-1.10 | 0 | 21/22 | 6 | 0 | 22/22 | 2.0, 7.0, 10.0 (20/22) | 247, 216-488 (22) | - | 0 | 287 of 5614 |
+| y_f0.3_o0.077 | 1340-1856 (22/22) | 1532 | 4.0-5.9 | 0.92-1.14 | 0 | 14/22 | 5 | 0 | 22/22 | 3.0, 8.0, 11.8 (19/22) | 129, 117-365 (22) | - | 0 | 384 of 5699 |
+| y_f0.3_o0.09 | 1408-1882 (22/22) | 1472 | 3.1-7.1 | 0.83-1.08 | 0 | 16/22 | 4 | 1 | 21/22 | 2.7, 7.8, 11.0 (20/22) | 111, 111-352 (22) | - | 0 | 311 of 5575 |
+| y_f0.4_o0.088 | 1289-1818 (22/22) | 1422 | 3.9-6.5 | 0.79-1.09 | 0 | 19/22 | 7 | 0 | 20/22 | 3.0, 8.7, 12.0 (18/22) | 69, 69-263 (18) | - | 0 | 284 of 5125 |
+| y_f0.4_o0.1 | 1396-1849 (22/22) | 1408 | 3.1-5.9 | 0.71-1.10 | 0 | 13/22 | 8 | 0 | 20/22 | 3.0, 8.3, 12.0 (22/22) | 74, 74-264 (17) | - | 0 | 201 of 5371 |
+| y_committed_default | 1263-1263 (1/1) | 1263 | 6.7-6.7 | 1.15-1.15 | 0 | 1/1 | 0 | 0 | 1/1 | 9.0, 18.8, 30.7 (1/1) | 7, 7-7 (0) | - | 13 | 301 of 4392 |
+| y_oldworld | 404-15445 (6/22) | 1873 | 4.2-70.7 | 2.90-7.03 | 19131 | 5/22 | 0 | 17 | 16/22 | 15.2, 75.0, 131.0 (20/22) | 243, 0-743 (8) | - | 0 | 618 of 6911 |
+| z_mt_0.01,0.03,0.4 | 1367-1760 (22/22) | 1448 | 4.4-6.5 | 0.88-1.30 | 0 | 15/22 | 4 | 0 | 21/22 | 2.3, 4.0, 10.3 (21/22) | 253, 228-513 (22) | - | 0 | 203 of 5301 |
+| z_mt_0.005,0.03,0.4 | 1396-1775 (22/22) | 1482 | 4.1-6.2 | 0.87-1.30 | 0 | 12/22 | 3 | 1 | 21/22 | 2.0, 4.5, 10.0 (21/22) | 238, 236-486 (22) | - | 0 | 186 of 5359 |
+| z_mt_0.01,0.035,0.8 | 1361-1737 (22/22) | 1526 | 4.3-6.1 | 0.86-1.19 | 0 | 14/22 | 1 | 0 | 22/22 | 2.3, 4.6, 10.2 (21/22) | 252, 235-490 (22) | - | 0 | 243 of 5568 |
+| z_n0 | 1354-1783 (22/22) | 1436 | 4.2-6.1 | 0.92-1.10 | 0 | 19/22 | 5 | 0 | 21/22 | 2.1, 6.7, 10.1 (20/22) | 203, 203-464 (22) | 1.0417, 0.3748 | 0 | 159 of 5157 |
+| b_t0.05_o0.01 | 1559-1946 (22/22) | 1778 | 3.8-5.5 | 0.85-1.09 | 0 | 15/22 | 2 | 0 | 22/22 | 3.8, 6.0, 9.7 (19/22) | 420, 381-590 (22) | - | 0 | 371 of 6559 |
+| b_t0.05_o0.02 | 1678-2060 (21/22) | 1860 | 3.5-4.8 | 0.89-1.09 | 0 | 15/22 | 5 | 0 | 22/22 | 3.5, 5.6, 10.0 (19/22) | 415, 396-611 (22) | - | 0 | 383 of 6940 |
+| b_t0.045_o0.02 | 1514-1900 (22/22) | 1646 | 3.6-5.8 | 0.79-1.09 | 0 | 20/22 | 2 | 0 | 22/22 | 3.0, 5.4, 10.0 (19/22) | 342, 342-560 (22) | - | 0 | 405 of 6312 |
+| b_t0.045_o0.03 | 1585-1988 (21/22) | 1815 | 3.6-5.4 | 0.82-1.07 | 0 | 17/22 | 2 | 1 | 21/22 | 3.5, 5.0, 10.3 (17/22) | 365, 350-538 (22) | - | 0 | 376 of 6687 |
+| b_t0.05_l0.06_o0.01 | 1415-1847 (22/22) | 1631 | 4.0-5.9 | 0.80-1.11 | 0 | 18/22 | 2 | 0 | 21/22 | 3.1, 5.0, 11.3 (17/22) | 252, 252-477 (22) | - | 0 | 305 of 6139 |
+| b_t0.05_l0.07_o0.02 | 1398-1799 (22/22) | 1555 | 3.7-8.1 | 0.86-1.35 | 0 | 17/22 | 4 | 0 | 22/22 | 3.6, 6.0, 11.0 (18/22) | 222, 201-442 (22) | - | 0 | 282 of 5649 |
+| b_t0.05_l0.08_o0.03 | 1242-1593 (22/22) | 1480 | 3.7-6.3 | 0.80-1.09 | 0 | 19/22 | 3 | 0 | 21/22 | 4.0, 5.6, 12.0 (19/22) | 174, 143-368 (22) | - | 0 | 224 of 5303 |
+| c_t0.05_l0.07_o0.02_mt0.06 | 1380-1715 (22/22) | 1513 | 3.3-7.7 | 0.89-1.34 | 0 | 19/22 | 5 | 0 | 22/22 | 3.5, 8.0, 13.0 (20/22) | 193, 180-465 (22) | 1.0446, 0.5348 | 0 | 263 of 5724 |
+| final4 | 1367-1760 (22/22) | 1448 | 4.4-6.5 | 0.88-1.30 | 0 | 15/22 | 4 | 0 | 21/22 | 2.3, 4.0, 10.3 (21/22) | 253, 228-513 (22) | 1.0233, 0.2826 | 0 | 203 of 5301 |
+| z_pls_0.15-0.3 | 1392-1729 (22/22) | 1405 | 4.1-7.2 | 0.91-1.26 | 0 | 15/22 | 1 | 10 | 22/22 | 2.1, 5.0, 10.0 (19/22) | 211, 206-496 (22) | - | 0 | 208 of 5547 |
+| z_pls_0.1-0.3 | 1389-1776 (22/22) | 1481 | 4.5-6.7 | 0.94-1.39 | 0 | 17/22 | 2 | 4 | 21/22 | 2.4, 4.0, 10.1 (18/22) | 248, 226-494 (22) | - | 0 | 193 of 5675 |
+| z_pls_3.0-0.1 | 1319-1690 (22/22) | 1496 | 4.2-6.0 | 0.95-1.13 | 0 | 22/22 | 7 | 0 | 21/22 | 2.0, 4.2, 11.0 (18/22) | 240, 233-486 (22) | - | 0 | 272 of 5372 |
+
+Labels: `y_f<F>_o<O>`: duplication, transfer and loss at F x session 2's, hub multiplier 20 / F, origination O;
+`y_committed_default`: the preset before this section, default seed only; `z_mt_*`: F 0.2, O 0.065 with member transfer
+levels as named; `b_t<T>_o<O>`, `b_t<T>_l<L>_o<O>`: duplication 0.008, transfer T, loss L (0.048 unless named),
+member transfer 0.01/0.03/0.4; `c_*`: the same with 0.01/0.06/0.4; `final4`: the preset as committed; `z_pls_*`: it with
+plasmid rates as named.
+
+**Full worlds at the default seed** (the sequence-level tests read S3-S5, which the scan does not build; `pod_pytest.sh`
+on scratch copies or the branch, outputs in this directory):
+
+| background (duplication, transfer, loss; origination; member transfer) | burst IGR identity (>= 0.9) | equal-length cross-phylum IGR pairs (>= 200) | planted motif found | other failures | file |
+|---|---|---|---|---|---|
+| 0.04, 0.1, 0.24; 0.155; 0.01/0.06/0.4 (before) | 0.895 | 263 | no | hub core, plasmids | §10 |
+| 0.008, 0.02, 0.048; 0.065; 0.01/0.06/0.4 | 0.934 | 118 | yes | plasmids, levels 1.40x over six seeds | `tests_f0.2.txt` |
+| 0.012, 0.03, 0.072; 0.077; 0.01/0.06/0.4 | 0.934 | 169 | yes | (intergenic only) | `intergenic_f0.3.txt` |
+| 0.008, 0.035, 0.048; 0.04; 0.01/0.06/0.4 | 0.943 | 188 | yes | (intergenic only) | `intergenic_t0.035.txt` |
+| 0.008, 0.05, 0.048; 0.01; 0.01/0.06/0.4 | 0.957 | 262 | no (an exact copy of the emission 257 bases away) | (intergenic only) | `intergenic_t0.05.txt` |
+| 0.008, 0.05, 0.07; 0.02; 0.01/0.06/0.4 | 0.947 | 236 | no (an exact copy 511 bases away) | junction lengths (codir_tight q90 33 against 38, tolerance 4.56), plasmids, levels 1.40x | `tests_t0.05_l0.07.txt` |
+| **0.008, 0.02, 0.048; 0.065; 0.01/0.03/0.4 (committed)** | 0.931 | 150 | yes | see §13 | `tests_final_refit.txt` |
+
+The paralogous-junction account of §11 is refuted by counting: the burst's chromosomes carry adjacency keys occurring
+more than once in 301 of 4,392 keys at the preset before this section (6.9%), 618 of 6,911 in the old world (8.9%), 159
+of 5,157 at factor 0.2 (3.1%); the old world had more repeated junctions than the failing one, and burst identity rose
+to 0.93 at every lower turnover. The cross-phylum pair count instead follows the background transfer (118, 169, 188,
+262 at 0.02, 0.03, 0.035, 0.05): a vertically inherited junction's IGR changes length over the 4.6 time units since the
+phyla split, so equal-length pairs across phyla come mostly from junctions carried between them by transfer. The
+planted-motif test failed at both settings with transfer 0.05 because another, exact copy of the same emission sat in
+the same intergenic region (two samples; a mechanism is not established).
+
+**Chosen**: duplication 0.008, transfer 0.02, loss 0.048 (session 2's x 0.2), origination 0.065 x root families, hub
+multiplier 100 (hub transfer 2.0 kept), member transfer 0.01/0.03/0.4 (refitted because the 0.06 and 0.4 levels fell
+within 1.4x over the per-seed test's six seeds at this background). Transfer 0.05 would meet the cross-phylum count but
+failed the motif test twice and the junction-length test once, and put the levels within 1.4x again; it is not taken.
+
+**The committed preset over the 22 seeds** (`final4.tsv`, with `--n0`):
+
+| seed | crown age (MRCA) / from first speciation | genomes | genes per genome mean (min-max) | chromosome mean (min-max) | planted / profile-only / decoy / vehicle / hub / plasmid / background share % | plasmid genomes pls0, pls1 (0/1/2 per genome) | modules all members in >= 9 genomes | copies per present member | DEC-15 (c) plus, kept, clustered; scored units intact | realized transfers per member, level medians | N0 background size ratio, r | module transfers into a holder |
+|---|---|---|---|---|---|---|---|---|---|---|---|---|
+| 20261112 | 5 / 5 | 46 | 1569.2 (1363-1741) | 1447.5 (1243-1606) | 4.6 / 0.6 / 0.1 / 6.7 / 3.1 / 7.8 / 77.1 | 45, 5 (0/42/4) | 25 | 1.034 | 0.460, 0.0000, 0.021; 763/763 | 2.0, 4.0, 13.0 | 1.0233, 0.2826 | 0 of 759 |
+| 20261113 | 5 / 8.435 | 46 | 1544.2 (1293-1684) | 1422.5 (1265-1524) | 4.8 / 0.5 / 0.2 / 8.1 / 3.2 / 7.9 / 75.3 | 32, 44 (1/16/27) | 21 | 1.019 | 0.459, 0.0019, 0.021; 716/716 | 2.6, 4.0, 10.25 | 1.0616, 0.5 | 0 of 690 |
+| 1001685937451957930 | 5 / 5 | 46 | 1557.0 (1372-1880) | 1517.0 (1332-1840) | 4.7 / 0.5 / 0.3 / 6.7 / 3.2 / 2.6 / 82.0 | 0, 46 (0/46/0) | 20 | 0.988 | 0.524, 0.0048, 0.021; 788/788 | 2.67, 3.25, 5.0 | 1.0907, 0.7628 | 0 of 407 |
+| 6329801112132740259 | 5 / 5.136 | 46 | 1719.0 (1413-1933) | 1644.2 (1394-1814) | 3.9 / 0.5 / 0.4 / 2.9 / 2.9 / 4.3 / 85.0 | 15, 41 (5/26/15) | 20 | 1.0 | 0.477, 0.0010, 0.032; 682/682 | 4.0, 8.0, 11.0 | 1.0011, 0.7523 | 0 of 809 |
+| 6036017085589997374 | 5 / 5 | 46 | 1663.1 (1491-1833) | 1502.2 (1336-1673) | 3.9 / 0.5 / 0.3 / 3.5 / 3.0 / 9.7 / 79.1 | 46, 47 (0/3/41) | 20 | 1.035 | 0.412, 0.0019, 0.021; 716/716 | 3.0, 4.67, 7.0 | 1.024, 0.7624 | 0 of 596 |
+| 4383110225690451409 | 5 / 5 | 46 | 1615.0 (1425-1846) | 1475.9 (1265-1686) | 4.2 / 0.5 / 0.3 / 8.1 / 3.1 / 8.6 / 75.3 | 41, 37 (1/12/33) | 22 | 1.003 | 0.432, 0.0010, 0.065; 743/743 | 2.5, 3.0, 10.0 | 1.0897, 0.9424 | 0 of 627 |
+| 10975598825187167680 | 5 / 5 | 46 | 1722.4 (1526-1884) | 1557.2 (1366-1724) | 4.0 / 0.4 / 0.2 / 6.5 / 2.9 / 9.6 / 76.4 | 48, 46 (0/0/44) | 23 | 1.036 | 0.522, 0.0029, 0.021; 722/722 | 2.0, 3.0, 6.33 | 0.9931, 0.1894 | 0 of 459 |
+| 5467273169533009601 | 5 / 5.03 | 46 | 1524.5 (1307-1643) | 1367.2 (1147-1483) | 4.3 / 0.6 / 0.2 / 6.7 / 3.2 / 10.3 / 74.7 | 45, 46 (0/3/41) | 22 | 1.004 | 0.426, 0.0019, 0.043; 724/724 | 1.0, 3.4, 12.0 | 1.0826, 0.2821 | 0 of 591 |
+| 4734920099712499969 | 5 / 5 | 46 | 1741.6 (1447-1905) | 1601.6 (1327-1745) | 4.5 / 0.4 / 0.2 / 10.1 / 2.8 / 8.0 / 73.9 | 46, 23 (0/23/23) | 21 | 1.053 | 0.439, 0.0038, 0.032; 778/778 | 2.33, 4.8, 12.0 | 1.0111, 0.7247 | 0 of 713 |
+| 1570278518166000558 | 5 / 6.18 | 46 | 1891.2 (1495-2049) | 1759.9 (1335-1889) | 3.9 / 0.5 / 0.1 / 9.1 / 2.6 / 6.9 / 77.0 | 35, 46 (0/11/35) | 22 | 1.029 | 0.454, 0.0010, 0.054; 840/840 | 2.5, 4.0, 11.67 | 1.0206, 0.7384 | 0 of 652 |
+| 3830344756309592292 | 5 / 5 | 46 | 1669.7 (1403-1897) | 1567.9 (1283-1777) | 4.0 / 0.5 / 0.3 / 6.6 / 3.0 / 6.1 / 79.6 | 39, 0 (7/39/0) | 23 | 0.979 | 0.435, 0.0010, 0.043; 765/765 | 3.0, 3.33, 11.5 | 1.0575, 0.8838 | 0 of 603 |
+| 9254619518473077140 | 5 / 7.657 | 46 | 1647.0 (1465-1762) | 1489.6 (1305-1618) | 4.2 / 0.6 / 0.2 / 5.7 / 3.0 / 9.6 / 76.7 | 45, 46 (0/1/45) | 24 | 1.001 | 0.525, 0.0010, 0.043; 777/777 | 3.0, 5.8, 10.5 | 1.0333, 0.7984 | 0 of 724 |
+| 4701969716356831982 | 5 / 5.087 | 46 | 1771.7 (1658-1880) | 1635.2 (1498-1741) | 4.1 / 0.8 / 0.3 / 6.6 / 2.8 / 7.7 / 77.7 | 37, 46 (0/9/37) | 20 | 0.882 | 0.428, 0.0000, 0.021; 683/683 | 1.0, 2.5, 10.67 | 1.0089, 0.4756 | 0 of 615 |
+| 14843108908847119356 | 5 / 5 | 46 | 1665.1 (1378-1948) | 1626.0 (1349-1948) | 3.9 / 0.4 / 0.2 / 5.5 / 3.0 / 2.4 / 84.6 | 0, 45 (2/43/1) | 21 | 1.026 | 0.550, 0.0029, 0.054; 720/720 | 3.0, 7.0, 14.33 | 1.0399, 0.8765 | 0 of 845 |
+| 1758546030705738202 | 5 / 5 | 46 | 1861.0 (1302-2025) | 1741.0 (1182-1905) | 3.7 / 0.5 / 0.3 / 6.5 / 2.7 / 6.5 / 80.0 | 46, 0 (0/46/0) | 21 | 0.964 | 0.563, 0.0000, 0.032; 739/739 | 0.0, 3.0, 7.0 | 0.984, 0.9036 | 0 of 336 |
+| 1995372076782357328 | 5 / 5 | 46 | 1854.0 (1610-2386) | 1718.3 (1457-2226) | 5.7 / 0.5 / 0.3 / 8.8 / 2.7 / 7.3 / 74.7 | 38, 42 (1/10/35) | 20 | 1.296 | 0.483, 0.0048, 0.043; 684/684 | 3.67, 1.0, 10.0 | 0.9923, 0.9867 | 0 of 1111 |
+| 13514522956726874792 | 5 / 9.488 | 46 | 1530.7 (1411-1647) | 1519.4 (1411-1628) | 5.3 / 0.5 / 0.6 / 8.2 / 3.2 / 0.7 / 81.5 | 0, 13 (33/13/0) | 21 | 1.062 | 0.444, 0.0019, 0.054; 866/866 | 1.0, 4.0, 9.17 | 1.0239, 0.2815 | 0 of 562 |
+| 12621855678475765395 | 5 / 7.443 | 46 | 1801.8 (1626-1911) | 1663.6 (1511-1751) | 4.4 / 0.7 / 0.2 / 8.9 / 2.7 / 7.7 / 75.5 | 38, 45 (0/9/37) | 25 | 1.05 | 0.468, 0.0019, 0.032; 799/799 | 2.0, 4.0, 8.0 | 1.0131, 0.5687 | 0 of 571 |
+| 7689157899245528466 | 5 / 5 | 46 | 1424.7 (1220-1621) | 1385.6 (1180-1581) | 4.4 / 0.8 / 0.3 / 4.0 / 3.5 / 2.8 / 84.2 | 0, 45 (1/45/0) | 23 | 1.051 | 0.546, 0.0019, 0.010; 658/658 | 3.0, 5.0, 14.5 | 1.0693, 0.534 | 0 of 834 |
+| 13748185708697958051 | 5 / 5 | 46 | 1489.7 (1339-1749) | 1429.7 (1219-1670) | 4.4 / 0.6 / 0.2 / 2.6 / 3.3 / 4.0 / 84.9 | 23, 0 (23/23/0) | 23 | 0.99 | 0.550, 0.0010, 0.021; 760/760 | 2.0, 4.0, 10.0 | 1.0798, 0.6227 | 0 of 632 |
+| 15390672246448918260 | 5 / 6.455 | 46 | 1843.1 (1627-1963) | 1715.2 (1507-1803) | 4.6 / 0.4 / 0.5 / 7.6 / 2.7 / 6.9 / 77.2 | 35, 42 (3/9/34) | 24 | 1.091 | 0.416, 0.0000, 0.021; 743/743 | 4.0, 4.33, 14.0 | 0.9732, 0.3059 | 0 of 833 |
+| 11714203776604047358 | 5 / 5.052 | 46 | 1634.3 (1357-1744) | 1478.7 (1317-1584) | 4.6 / 0.7 / 0.3 / 5.8 / 3.0 / 9.5 / 76.0 | 45, 44 (0/3/43) | 25 | 1.043 | 0.473, 0.0029, 0.021; 767/767 | 3.0, 6.17, 12.33 | 0.991, 0.5056 | 0 of 935 |
+
+Realized strength grid (`final4_grid.tsv`):
+
+| member transfer \ together | 0.3 | 0.7 | 1 | level, pooled |
+|---|---|---|---|---|
+| 0.01 | 1.9 (0-7.17); together 0.20; powered at 22/22 | 2.3 (0-10); together 0.54; powered at 21/22 | 3.0 (0-10); together 1.00; powered at 22/22 | 2.3 |
+| 0.03 | 3.5 (0-8.5); together 0.24; powered at 22/22 | 4.3 (0-10.75); together 0.54; powered at 22/22 | 5.0 (0-17); together 1.00; powered at 22/22 | 4.0 |
+| 0.4 | 9.8 (1.5-111.17); together 0.30; powered at 22/22 | 10.3 (3.25-18.67); together 0.70; powered at 22/22 | 14.0 (2-24); together 1.00; powered at 22/22 | 10.3 |
+
+## 13. Where the card stands after the refit
+
+Committed tree, default seed unless named (*measured*): every synthworld test outside the null module and `tests/r0`:
+"4 failed, 500 passed, 6 skipped in 1881.21s" (`tests_final_refit.txt`); the null module "2 failed, 12 passed in
+1353.09s" at the default seed and "1 failed, 12 passed, 1 skipped in 1292.63s" at 20261113
+(`nulls-final-*.txt`).
+
+| assertion | bound | value now | cause | owner |
+|---|---|---|---|---|
+| `test_plasmids_are_whole_replicons_of_their_preset_size` | a genome without a plasmid | 0 genomes without (pls0 in 45, pls1 in 5) | §4 item 1 | PI (b) |
+| `test_n0_keeps_the_background_process_in_distribution` | ratio [0.9, 1.1], r >= 0.9 | 1.023, 0.283 (20261113: 1.062, 0.500) | §4 item 2 | PI (c) |
+| `test_orthologous_igrs_are_near_identical_in_close_relatives` | >= 200 cross-phylum pairs | 150 (identity 0.931 passes) | needs background transfer >= about 0.045 (above) | this card: conflicts with the motif result at 0.05 |
+| `test_dec15_a_fates_family_splits_a_unit_and_the_truth_says_so` | a unit broken under fates "family" | none broken | at duplication 0.008 and member duplication 0, no tandem copy lands in a unit in that world | this card |
+| `test_decoy_transfers_land_only_where_the_partner_is` | >= 3 transfers per decoy | decoy 1297: 2 (others 6-54) | its partner module is rare at this draw | this card |
+| `test_n1_label_pairs_are_no_more_adjacent_than_matched_random_family_pairs` | relabeled pairs not more adjacent than random, p | observed 0.585 against 0.113, p 0.0055 (passes at 20261113) | 41 of 100 members relabeled (60 at factor 0.2 with the 0.06 level, where it passed); account not tested | this card |
+
+Resolved by the refit: the hub test's core (253 root families in >= 40 genomes at the default seed, 228-513 over the
+22 seeds), N1's comparator exists (0 unmatched), the burst identity (0.931), the planted motif, the per-seed test (both
+plasmid types at 5 of 6, levels 2.55/4.08/9.83).
+
+**For the PI, (b)** (`z_pls_*`, `final4`; 22 seeds): keeping §5.1's range (at most 2 per genome, some genomes
+without): plasmids 0.15/0.3 give both types at 15 of 22 seeds with some genome without at 22 of 22 and more than 2 at 1;
+0.1/0.3 give 17 of 22, 22 of 22 and 2. Survival at every seed: 3.0/0.1 gives both types at 22 of 22 with every genome a
+carrier at every seed (no genome without at any seed) and more than 2 plasmids in some genome at 7. The committed 0.8/0.4:
+15 of 22, some genome without at 10, more than 2 at 4. **(c)** (`final4`, `--n0`): N0's background size ratio is in
+[0.9, 1.1] at 22 of 22 seeds (0.973-1.091; default 1.023); r >= 0.9 at 3 of 22 (0.19-0.99; default 0.283); a two-sample
+Kolmogorov-Smirnov test of the 46 background sizes (asymptotic p) gives D 0.17-0.72, p >= 0.01 at 11 of 22 seeds
+(default D 0.283, p 0.041; 20261113 D 0.652, p < 1e-4): N0's sizes are shifted from the signal's at about half the
+seeds, so a KS replacement would fail there too; the ratio alone holds everywhere.

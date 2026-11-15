@@ -1,0 +1,95 @@
+
+replicon stage child peak RSS 80 MB
+..
+89209 genes, 5162 with protein-neutral overlap edits
+.
+planted overlaps by length: {1: 1765, 4: 3561}
+.
+29928 tight junctions: tried -4 0.600, -1 0.059; realized -4 0.119, -1 0.059
+.
+features across the origin: {'genes': 118, 'juncs': 7, 'elems': 0, 'rna': 0}
+.
+2336 within-unit junctions; 13886 distinct background co-directional pairs, tight 0.5526; 105 distinct pairs of declared families of different groups, tight 0.514
+.
+junction length quantiles (realized, preset) by type: {'codir_tight': (10219, [(4.0, 4), (6.0, 7), (12.0, 12), (22.0, 22), (38.0, 38)]), 'codir_loose': (21734, [(64.0, 62), (87.0, 86), (129.0, 130), (198.0, 202), (294.0, 308)]), 'divergent': (18016, [(126.0, 122), (169.0, 165), (241.0, 240), (360.0, 361), (532.0, 530)]), 'convergent': (18424, [(23.0, 22), (39.0, 38), (72.0, 70), (132.0, 128), (228.0, 222)])}
+.
+genome IGR GC vs lineage intergenic GC: r 0.993, lineage 0.219-0.713, genome 0.328-0.621
+.
+element consensus match (n, planted, background): {'promoter_m35': (40369, 0.695, 0.245), 'promoter_m10': (48569, 0.697, 0.244), 'rbs': (70050, 0.696, 0.259)}; terminators 29233, T tract 0.691
+.
+orthologous IGR identity: burst 0.957 over 1221, across phyla 0.690 over 262
+.F.
+F-02 micro replicons: 41.54 s wall, 41.53 s CPU; {'genes': 89209, 'genomes': 46, 'junctions': 89209, 'replicons': 125, 'rna': 1599}; digest 615a737b8b5edc16b6e09772401fec2d
+.
+=================================== FAILURES ===================================
+_ test_every_planted_motif_is_recovered_at_its_truth_coordinates_by_an_independent_scan _
+
+world = (RepWorld(seed=20261112, replicons=[RepliconRow(genome_id='g000', replicon=0, record='g000_r0', kind='chromosome', top...ci-tmp/F-02-11B-0/micro_igr0/world')), PosixPath('/tmp/if2453/ci-tmp/F-02-11B-0/micro_igr0/world'), 41.540881359018385)
+tables = {'seqs': {'g000_r0': 'GCCGCCCTCACCAGAGGCCCCATCGGATAGTGCATGGATTATCACAACCGGTCGCGCAAAAGCTTCGATATATCCAAAAACGTGCTCCTTCGTTAA...ition': '5', ...}, {'genome_id': 'g000', 'replicon': '0', 'left_position': '5', 'right_position': '6', ...}, ...], ...}
+
+    @needs_zombi2
+    @pytest.mark.covers("F-02", "B-SIM")
+    def test_every_planted_motif_is_recovered_at_its_truth_coordinates_by_an_independent_scan(world, tables):
+        """Each instance cut at its coordinates differs from its clade's emission at exactly its
+        n_subst_from_emission positions, n_compensatory pairs differ at both bases, every pair is canonical;
+        dist_to_start is its distance to its gene's start codon. Scanning both strands of the store's own
+        intergenic region around it (`ncrna.regions`, IGR runs widened by 200) for the emission, by Hamming
+        distance, finds the instance at its coordinates as the best window."""
+        _, out, _ = world
+        em = {r["emission_id"]: r for r in _tsv(out / "replicons/emissions.tsv")}
+        links = {r["link"]: r for r in _tsv(out / "replicons/links.tsv")}
+        gene = {g["copy_label"]: g for g in tables["genes"]}
+        carriers = collections.Counter(g["family_id"] for g in tables["genes"])
+        per_link = collections.Counter(r["link"] for r in tables["rna"])
+        for lk, row in links.items():
+            assert per_link[lk] == carriers[row["family_id"]] > 0
+        genes_by = collections.defaultdict(list)
+        for g in tables["genes"]:
+            genes_by[(g["genome_id"], int(g["replicon"]))].append((int(g["start"]), int(g["end"])))
+        regions = {k: l1_ncrna.regions(v, len(tables["seq_of"][k]), True) for k, v in genes_by.items()}
+        best, n_div = 0, 0
+        divs = []
+        for r in tables["rna"]:
+            key = (r["genome_id"], int(r["replicon"]))
+            seq = tables["seq_of"][key]
+            N = len(seq)
+            s, e, strand = int(r["start"]), int(r["end"]), int(r["strand"])
+            inst = _cut(seq, s, e, strand)
+            ref = em[r["emission_id"]]
+            assert len(inst) == len(ref["sequence"]) == int(r["length"])
+            assert _hamming(inst, ref["sequence"]) == int(r["n_subst_from_emission"])
+            pairs = [(i, j) for i, j in _pairs(ref["structure"])]
+            assert r["structure"] == ref["structure"]
+            assert sum(inst[i] != ref["sequence"][i] and inst[j] != ref["sequence"][j] for i, j in pairs) == \
+                int(r["n_compensatory"])
+            assert all((inst[i], inst[j]) in PAIRS_OK for i, j in pairs if (ref["sequence"][i], ref["sequence"][j]) in PAIRS_OK)
+            g = gene[r["attached_copy"]]
+            assert int(g["strand"]) == strand and g["family_id"] == r["family_id"]
+            gs, ge = int(g["start"]), int(g["end"])
+            dist = (gs - e) % N if strand == 1 else (s - ge) % N
+            assert dist == int(r["dist_to_start"])
+            divs.append(int(r["n_subst_from_emission"]) / len(inst))
+            # the independent scan, both strands of the region that holds the instance
+            reg = next((a, b) for a, b in regions[key] if a <= s and e <= b or a <= s + N and e + N <= b)
+            a, b = reg
+            span = _cut(seq, a, b, 1)
+            L = len(inst)
+            want = np.frombuffer(ref["sequence"].encode(), np.uint8)
+            fwd = np.frombuffer(span.encode(), np.uint8)
+            rev = np.frombuffer(rc(span).encode(), np.uint8)
+            hf = (np.lib.stride_tricks.sliding_window_view(fwd, L) != want).sum(axis=1)
+            hr = (np.lib.stride_tricks.sliding_window_view(rev, L) != want).sum(axis=1)
+            low = int(min(hf.min(), hr.min()))
+            # a window k of the reverse complement covers [len - k - L, len - k) of the span
+            winners = [((a + int(k)) % N, 1) for k in np.nonzero(hf == low)[0]]
+            winners += [((a + len(span) - int(k) - L) % N, -1) for k in np.nonzero(hr == low)[0]]
+>           assert (s, strand) in winners or divs[-1] > 0.3, (r, low, winners[:3])
+E           AssertionError: ({'rna_id': 'n49_g114799.rna', 'link': 'L05', 'model_acc': 'SYNRF0003', 'model_name': 'synRNA03', ...}, 0, [(1626402, 1)])
+E           assert ((1626659, 1) in [(1626402, 1)] or 0.08 > 0.3)
+
+tests/r2/test_synthworld_intergenic.py:597: AssertionError
+=========================== short test summary info ============================
+FAILED tests/r2/test_synthworld_intergenic.py::test_every_planted_motif_is_recovered_at_its_truth_coordinates_by_an_independent_scan
+1 failed, 13 passed in 371.69s (0:06:11)
+
+[exited with code 1]

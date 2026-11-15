@@ -1,0 +1,313 @@
+.................................................................................................................................................................................................................................................
+placements {'touched': 1323, 'whole': 687, 'dropped': 190, 'cut': 133}
+......................................................................................................
+background identity 0.5630 against 0.5609; -10 box consensus 0.711
+................................................................F.......
+F-02 micro backbone: 32.68 s wall, 32.66 s CPU; chromosome genes mean 1447 min 1243 max 1606; plasmids per genome [(1, 42), (2, 4)]; seed 20261112; digest 545240f325b552247e0665459ccb1c0e
+.
+module-family transfers: with entry exclusion 759 rows, 0 into a holder of the first family, 179 into a holder of any member; without it 6826 rows, 6640 and 6747
+..F.
+hub neighbour families {1291: 299, 1292: 326, 1293: 331, 1294: 300, 1295: 313} over copies [456, 457, 455, 454, 449]; root median 39 over 253 families
+.
+decoy transfers (family, partner present): [((1296, True), 24), ((1297, True), 2), ((1298, True), 54), ((1299, True), 12), ((1300, True), 6)]; partner carriers among the other contemporaneous lineages at those moments: mean 0.646
+F
+transfer recipients closer/farther than other lineages: decay 2299/566 over 3548 events; uniform 1273/1241 over 3765
+.
+chromosome genes: min 1243 median 1450 max 1606 mean 1447.5; originated genes per genome 124-398, Spearman with the path origination multiplier 0.940 (permutation p 0.0005)
+....
+seed 20261112: crown age 5.0000; chromosome mean 1447.5; planted share 0.0528; plasmid genomes {'pls0': 45, 'pls1': 5}, at most 2 per genome; realized transfers per member by level (median) [2.0, 4.0, 13.0]; module transfers 759, into a holder 0; module genomes by cell {(0.3, 0.01): [21, 30, 34], (0.3, 0.03): [17, 32, 39], (0.3, 0.4): [19, 39, 41], (0.7, 0.01): [19, 28, 44], (0.7, 0.03): [10, 15, 18], (0.7, 0.4): [45, 46], (1.0, 0.01): [16, 38, 45], (1.0, 0.03): [22, 35, 45], (1.0, 0.4): [46, 46]}
+
+seed 20261113: crown age 5.0000; chromosome mean 1422.5; planted share 0.0553; plasmid genomes {'pls0': 32, 'pls1': 44}, at most 3 per genome; realized transfers per member by level (median) [2.6, 4.0, 10.25]; module transfers 690, into a holder 0; module genomes by cell {(0.3, 0.01): [6, 9, 37], (0.3, 0.03): [19, 25, 30], (0.3, 0.4): [30, 45, 46], (0.7, 0.01): [0, 5, 40], (0.7, 0.03): [0, 25, 34], (0.7, 0.4): [45, 46], (1.0, 0.01): [23, 29, 30], (1.0, 0.03): [11, 34, 43], (1.0, 0.4): [46, 46]}
+
+seed 1001685937451957930: crown age 5.0000; chromosome mean 1517.0; planted share 0.0548; plasmid genomes {'pls1': 46}, at most 1 per genome; realized transfers per member by level (median) [2.67, 3.25, 5.0]; module transfers 407, into a holder 0; module genomes by cell {(0.3, 0.01): [22, 30, 41], (0.3, 0.03): [2, 35, 42], (0.3, 0.4): [36, 43, 44], (0.7, 0.01): [0, 1, 6], (0.7, 0.03): [0, 21, 45], (0.7, 0.4): [42, 43], (1.0, 0.01): [42, 42, 46], (1.0, 0.03): [33, 40, 42], (1.0, 0.4): [46, 46]}
+
+seed 6329801112132740259: crown age 5.0000; chromosome mean 1644.2; planted share 0.0486; plasmid genomes {'pls0': 15, 'pls1': 41}, at most 2 per genome; realized transfers per member by level (median) [4.0, 8.0, 11.0]; module transfers 809, into a holder 0; module genomes by cell {(0.3, 0.01): [8, 33, 42], (0.3, 0.03): [0, 8, 32], (0.3, 0.4): [12, 12, 42], (0.7, 0.01): [23, 31, 33], (0.7, 0.03): [33, 39, 40], (0.7, 0.4): [41, 44], (1.0, 0.01): [6, 14, 24], (1.0, 0.03): [3, 39, 41], (1.0, 0.4): [46, 46]}
+
+seed 6036017085589997374: crown age 5.0000; chromosome mean 1502.2; planted share 0.0474; plasmid genomes {'pls0': 46, 'pls1': 47}, at most 4 per genome; realized transfers per member by level (median) [3.0, 4.67, 7.0]; module transfers 596, into a holder 0; module genomes by cell {(0.3, 0.01): [3, 5, 32], (0.3, 0.03): [5, 19, 28], (0.3, 0.4): [15, 32, 44], (0.7, 0.01): [4, 39, 40], (0.7, 0.03): [23, 27, 31], (0.7, 0.4): [37, 43], (1.0, 0.01): [6, 37, 44], (1.0, 0.03): [28, 36, 45], (1.0, 0.4): [46, 46]}
+
+seed 4383110225690451409: crown age 5.0000; chromosome mean 1475.9; planted share 0.0496; plasmid genomes {'pls0': 41, 'pls1': 37}, at most 2 per genome; realized transfers per member by level (median) [2.5, 3.0, 10.0]; module transfers 627, into a holder 0; module genomes by cell {(0.3, 0.01): [0, 26, 42], (0.3, 0.03): [13, 23, 31], (0.3, 0.4): [38, 46, 46], (0.7, 0.01): [16, 27, 28], (0.7, 0.03): [14, 35, 39], (0.7, 0.4): [46, 46], (1.0, 0.01): [32, 37, 40], (1.0, 0.03): [3, 6, 20], (1.0, 0.4): [46, 46]}
+.
+both plasmid types at 5 of 6 seeds; most plasmids in one genome {20261112: 2, 20261113: 3, 1001685937451957930: 1, 6329801112132740259: 2, 6036017085589997374: 4, 4383110225690451409: 2}
+..
+cells without a powered module: {1001685937451957930: {(0.7, 0.01): [1, 6, 0]}}
+.
+realized transfers per member, pooled medians by level: [2.55, 4.083333333333334, 9.833333333333332]
+..
+sequence stage child peak RSS 64 MB
+.....
+identity by expectation quintile (expected, realized, pairs): [(np.float64(0.284), np.float64(0.281), 1414), (np.float64(0.451), np.float64(0.45), 1414), (np.float64(0.617), np.float64(0.619), 1414), (np.float64(0.779), np.float64(0.778), 1414), (np.float64(0.92), np.float64(0.92), 1413)]; spearman(mu T, id) -0.988 over 7069 pairs
+.
+unrelated pairs: mean identity excess 0.0002, max shared 5-mer fraction 0.0169
+.
+non-domain composition JS 0.00004 nats over 4119205 residues; protein length median 270, 5% 85, 95% 688
+.
+genome GC3 vs lineage GC3: r 0.989, slope 0.615, lineage range 0.218-0.810, genome range 0.367-0.709
+.
+F-02 micro sequences: 64.54 s wall, 64.40 s CPU; 72184 genes in 4208 families; digest 294beafcfe7efa64b582276549e353b9
+.sss
+replicon stage child peak RSS 70 MB
+..
+72184 genes, 4083 with protein-neutral overlap edits
+.
+planted overlaps by length: {4: 2807, 1: 1374}
+.
+24212 tight junctions: tried -4 0.586, -1 0.057; realized -4 0.116, -1 0.057
+.
+features across the origin: {'genes': 81, 'juncs': 15, 'elems': 4, 'rna': 0}
+.
+2164 within-unit junctions; 12237 distinct background co-directional pairs, tight 0.5443; 83 distinct pairs of declared families of different groups, tight 0.530
+.
+junction length quantiles (realized, preset) by type: {'codir_tight': (8649, [(4.0, 4), (7.0, 7), (12.0, 12), (22.0, 22), (36.0, 38)]), 'codir_loose': (17760, [(63.0, 62), (87.0, 86), (131.0, 130), (202.0, 202), (299.0, 308)]), 'divergent': (14689, [(126.0, 122), (170.0, 165), (241.0, 240), (357.0, 361), (519.0, 530)]), 'convergent': (14846, [(22.0, 22), (39.0, 38), (72.0, 70), (132.0, 128), (225.0, 222)])}
+.
+genome IGR GC vs lineage intergenic GC: r 0.994, lineage 0.219-0.713, genome 0.325-0.629
+.
+element consensus match (n, planted, background): {'rbs': (56792, 0.699, 0.255), 'promoter_m35': (32701, 0.697, 0.248), 'promoter_m10': (39319, 0.702, 0.247)}; terminators 23827, T tract 0.699
+.
+orthologous IGR identity: burst 0.931 over 1082, across phyla 0.631 over 150
+F
+984 motif instances in 20 links: the truth window is the unique best scan window for 984; divergence from the emission median 0.048, max 0.535, 68 above 0.3
+..
+F-02 micro replicons: 43.04 s wall, 41.09 s CPU; {'genes': 72184, 'genomes': 46, 'junctions': 72184, 'replicons': 96, 'rna': 984}; digest 98b0a2fada22354766bdf4d12df6ade6
+.sss
+mobile stage in a child: 10.82 s wall, VmHWM 163 MB
+.
+phage genes per phage [49, 49, 50, 51, 58, 59, 66, 68, 68, 70, 71, 71]; lengths [54249, 54369, 55337, 57577, 61689, 62419, 65445, 68317, 70686, 71704, 71710, 74726]; 70 families, 0.87 in >= 2 phages
+.
+72184 host genes and 222596 S5 elements, motifs and IGRs read the same after 46 insertions
+..
+16 prophage instances of 4 prophages; identity to the phage 0.9427-0.9979
+.
+30 array instances of 10 arrays; spacers per instance 8-22, median 16
+..
+316 spacers, 3363 spacer x target rows {'phage': 1373, 'prophage': 1971, 'none': 19}; brute force agrees on 73 spacers (664 targets)
+.
+316 spacers: decoys 16, PAM present 0.927, mismatches {0: 142, 1: 62, 2: 23, 3: 39, 4: 21, 5: 13}
+.
+F-02 micro mobile stage: 9.84 s wall, 9.82 s CPU; {'array_instances': 30, 'genes': 73362, 'genomes': 46, 'insertions': 46, 'phages': 12, 'prophage_instances': 16, 'replicons': 96, 'spacer_target_rows': 3363, 'spacers': 316}; digest bbe7289e32176b4e9874c706be6ccf03
+.
+earlier stage digests {'backbone': '545240f325b552247e0665459ccb1c0e', 'sequences': '294beafcfe7efa64b582276549e353b9', 'replicons': '98b0a2fada22354766bdf4d12df6ade6', 'mobile': 'bbe7289e32176b4e9874c706be6ccf03'}
+.
+fusions stage in a child: 3.37 s wall, VmHWM 178 MB
+.
+events {'fusion': 15, 'split': 5, 'nogd': 2}; instances 73; clade sizes [2, 2, 2, 2, 2, 2, 2, 2, 3, 3, 3, 3, 3, 3, 3, 4, 5, 5, 5, 5, 6, 6]
+....
+genes by source {'host': 72059, 'nogd': 7, 'fused': 52, 'prophage': 1058, 'split': 28, 'cas': 120}
+.
+features read the same or belong to an event: {'gene': 73237, 'event_parent': 125, 'insertions.tsv': 46, 'prophages.tsv': 16, 'arrays.tsv': 30, 'spacer_targets.tsv': 3363, 'elements.tsv': 153500, 'elements.tsv_in_event': 123, 'rna.tsv': 984, 'rna.tsv_in_event': 0, 'junctions.tsv': 67940, 'junctions.tsv_in_event': 49}
+.
+F-02 micro fusions stage: 3.44 s wall, 3.44 s CPU; {'events': 22, 'fusion_instances': 52, 'genes': 73324, 'genomes': 46, 'genomes_edited': 34, 'nogd_instances': 7, 'replicons': 96, 'split_instances': 14}; digest 818031fea3ed35abab093554605474ad
+.
+earlier stage digests {'backbone': '545240f325b552247e0665459ccb1c0e', 'sequences': '294beafcfe7efa64b582276549e353b9', 'replicons': '98b0a2fada22354766bdf4d12df6ade6', 'mobile': 'bbe7289e32176b4e9874c706be6ccf03', 'fusions': '818031fea3ed35abab093554605474ad'}; assembly 74ea9afac18fdab3fe8470728679f544; sources a333a1e97bb6c0ba75b0c870f3ad28d8
+.
+assembly stage in a child: 13.28 s wall, VmHWM 118 MB
+.
+classes {'draft': 18, 'complete': 18, 'mag': 10}; contigs 2102 (1841 emitted, 59 short, 202 MAG dropout); repeat breaks 815; N50/target geometric mean 1.236, range 0.729-2.272; circular contigs 38; reversed 1075
+.
+edits by kind {'alt_start_upstream': 87, 'smorf': 40, 'frameshift_ins': 30, 'internal_stop': 40, 'frameshift_del': 30, 'alt_start_downstream': 30, 'recode_codon': 20986, 'recode_stop': 1816, 'recode_overlap': 264}
+.
+code 4: ['g031', 'g038', 'g039']; code 25: ['g015']; alt_code genes 5342; Trp as TGA in code 4 0.898
+.
+genes by kind {'CDS': 73164, 'CDS/alt_start_upstream': 30, 'smORF/smorf': 40, 'CDS/frameshift_ins': 30, 'pseudogene/internal_stop': 40, 'CDS/frameshift_del': 30, 'CDS/alt_start_downstream': 30}
+.
+call errors by kind {'frameshift_ins': 30, 'alt_start_upstream': 30, 'smorf': 40, 'internal_stop': 40, 'frameshift_del': 30, 'alt_start_downstream': 30, 'alt_code': 5342}; status {'whole': 4976, 'dropped': 346, 'partial': 220}
+.
+pyrodigal on g024 (code 11): {'alt_start_downstream_exact': 0, 'alt_start_downstream_n': 4, 'alt_start_downstream_stop': 4, 'alt_start_upstream_exact': 0, 'alt_start_upstream_n': 1, 'alt_start_upstream_stop': 1, 'frameshift_del_exact': 0, 'frameshift_del_n': 1, 'frameshift_del_stop': 1, 'frameshift_ins_exact': 0, 'frameshift_ins_n': 1, 'frameshift_ins_stop': 1, 'internal_stop_exact': 0, 'internal_stop_n': 3, 'internal_stop_stop': 2}
+pyrodigal on g031: stop-anchored recall of 1400 genes with an internal TGA, table 11 0.394, table 4 0.996
+.
+genes on contigs {'whole': 71524, 'on_dropped': 2268, 'cut': 1840}
+.
+earlier features on the contigs {'arrays_cut': 2, 'arrays_on_dropped': 0, 'arrays_s8_edit': 6, 'arrays_whole': 22, 'elements_cut': 20, 'elements_on_dropped': 4136, 'elements_s7_event': 123, 'elements_whole': 153480, 'gene_cut': 1608, 'gene_on_dropped': 1838, 'gene_s8_edit': 5779, 'gene_whole': 65937, 'insertions_cut': 7, 'insertions_on_dropped': 2, 'insertions_s8_edit': 6, 'insertions_whole': 33, 'junctions_cut': 158, 'junctions_on_dropped': 1929, 'junctions_s7_event': 49, 'junctions_s8_edit': 69, 'junctions_whole': 67713, 'prophages_cut': 5, 'prophages_on_dropped': 2, 'prophages_whole': 11, 'rna_cut': 2, 'rna_on_dropped': 31, 'rna_whole': 982, 'spacer_targets_on_dropped': 90, 'spacer_targets_whole': 3363}
+.
+sources stage in a child: 5.99 s wall, VmHWM 113 MB
+..
+contamination: g013 <- g000 (3 contigs, 47303 bp, gc 0.461 vs host 0.557); g016 <- g000 (4 contigs, 25462 bp, gc 0.475 vs host 0.541); g030 <- g000 (3 contigs, 47101 bp, gc 0.466 vs host 0.454)
+.
+near duplicates: {'g008': 0.999, 'g031': 0.999001}; sites {'igr': 1519, 'syn': 1518, 'no_site': 1}
+.
+S1-S2 backbone 31.23 s wall, 31.21 s CPU; S3-S4 sequences 64.81 s wall, 64.71 s CPU; S5 replicons 33.31 s wall, 33.28 s CPU; S6 mobile 9.07 s wall, 9.06 s CPU; S7 fusions 3.40 s wall, 3.40 s CPU; S8-S9 assembly 12.90 s wall, 12.87 s CPU; S10 sources 5.55 s wall, 5.55 s CPU; S1-S10 160.27 s wall; {'callerr_alt_code': 5342, 'callerr_alt_start_downstream': 30, 'callerr_alt_start_upstream': 30, 'callerr_frameshift_del': 30, 'callerr_frameshift_ins': 30, 'callerr_internal_stop': 40, 'callerr_smorf': 40, 'contigs': 2102, 'contigs_emitted': 1841, 'edits': 23323, 'genes': 73364, 'genomes': 46, 'genomes_complete': 18, 'genomes_draft': 18, 'genomes_mag': 10}; digest 74ea9afac18fdab3fe8470728679f544
+.
+emit digest 0f1ae8e62576ee05dc1c2fa9fe78f378; world digest 765b20a0d7d0051d62c5036143d6ced5; release_tag sw-c074e4fbcd76fa4c
+..
+emit stage in a child: 18.59 s wall, VmHWM 139 MB
+.
+sources 62; contig occurrences 2088; distinct contigs 1982
+.
+genomes listed 60 (62 sources, 2 exact duplicates listed once); mislabelled 1 of 50; biomes by class 7
+.
+truth_gene rows by occurrence and status {'contaminant_cut': 17, 'contaminant_whole': 110, 'assembly_cut': 3316, 'assembly_whole': 69633, 'near_dup_whole': 2779, 'near_dup_cut': 212, 'phage': 730}
+.
+truth_callerr by status {'whole': 6367, 'dropped': 346, 'partial': 220}
+.
+S5-S7 features on the emitted contigs {'fusion_dropped': 2, 'fusion_s8_edit': 3, 'fusion_whole': 64, 'igr_cut': 300, 'igr_dropped': 2001, 'igr_s7_event': 52, 'igr_s8_edit': 331, 'igr_whole': 72456, 'protospacer_with_s10_mutations': 0, 'rna_cut': 4, 'rna_dropped': 31, 'rna_whole': 987, 'spacer_cut_dropped': 2, 'spacer_cut_whole': 93, 'spacer_whole_dropped': 84, 'spacer_whole_none': 20, 'spacer_whole_whole': 3496}
+.
+contigs emitted 2088 (1982 distinct), dropped 261, circular 40, prophage-bearing 30
+..
+families 4320; module rows 175; traps {'promiscuous_domain': 268, 'mge_cargo': 16, 'hub_family': 5, 'decoy_profile': 5, 'clonal_burst': 1}
+.
+realized transfers per member, planted modules: min (1.0, 'mod01'), max (16.5, 'mod24')
+.
+S1-S2 backbone 31.96 s wall, 31.96 s CPU; S3-S4 sequences 66.46 s wall, 66.42 s CPU; S5 replicons 35.17 s wall, 34.88 s CPU; S6 mobile 9.53 s wall, 9.33 s CPU; S7 fusions 3.39 s wall, 3.39 s CPU; S8-S9 assembly 13.52 s wall, 13.35 s CPU; S10 sources 5.62 s wall, 5.62 s CPU; S11 emit 19.28 s wall, 19.22 s CPU; S1-S11 184.94 s wall; counts {'callerr_dropped': 346, 'callerr_partial': 220, 'callerr_whole_assembly': 4976, 'callerr_whole_contaminant': 1, 'callerr_whole_near_dup': 1390, 'contigs_dropped': 261, 'contigs_emitted': 2088, 'contigs_in_several_genomes': 1, 'families': 4320, 'fusion_assembly_whole': 61, 'fusion_contaminant_whole': 1, 'fusion_dropped': 2, 'fusion_near_dup_whole': 2, 'fusion_s8_edit': 3, 'genes_assembly_cut': 3316, 'genes_assembly_whole': 69633, 'genes_contaminant_cut': 17, 'genes_contaminant_whole': 110, 'genes_near_dup_cut': 212, 'genes_near_dup_whole': 2779, 'genes_phage_whole': 730, 'genomes_listed': 60, 'genomes_listed_once': 2, 'igr_assembly_cut': 275, 'igr_assembly_whole': 69647, 'igr_contaminant_cut': 3, 'igr_contaminant_whole': 115, 'igr_dropped': 2001, 'igr_near_dup_cut': 22, 'igr_near_dup_whole': 2694, 'igr_s7_event': 52, 'igr_s8_edit': 331, 'rna_assembly_cut': 4, 'rna_assembly_whole': 951, 'rna_contaminant_whole': 1, 'rna_dropped': 31, 'rna_near_dup_whole': 35, 'sources': 62, 'spacer_cut_dropped': 2, 'spacer_cut_whole': 93, 'spacer_whole_dropped': 84, 'spacer_whole_none': 20, 'spacer_whole_whole': 3496}
+.
+=================================== FAILURES ===================================
+________ test_dec15_a_fates_family_splits_a_unit_and_the_truth_says_so _________
+
+micro_family_fates = (Backbone(params={'assembly': {'class_weights': [0.4, 0.4, 0.2], 'draft_n50': [50000, 200000], 'mag_completeness': [0....=7.369762022845649, n_genomes=4, parent='g__Genus09')]), PosixPath('/tmp/if2453/ci-tmp/F-02-11-0/micro_family0/world'))
+
+    @needs_zombi2
+    @pytest.mark.covers("F-02", "DEC-15")
+    def test_dec15_a_fates_family_splits_a_unit_and_the_truth_says_so(micro_family_fates):
+        bb, out = micro_family_fates
+        multi = [u for u in bb.units if u.n_members >= 2]
+        broken = [u for u in multi if not u.intact]
+>       assert broken, "fates='family' left every unit intact; the spike measured 10-14% broken"
+E       AssertionError: fates='family' left every unit intact; the spike measured 10-14% broken
+E       assert []
+
+tests/r2/test_synthworld_backbone.py:175: AssertionError
+____________ test_plasmids_are_whole_replicons_of_their_preset_size ____________
+
+micro = (Backbone(params={'assembly': {'class_weights': [0.4, 0.4, 0.2], 'draft_n50': [50000, 200000], 'mag_completeness': [0....845649, n_genomes=4, parent='g__Genus09')]), PosixPath('/tmp/if2453/ci-tmp/F-02-11-0/micro0/world'), 32.68174196709879)
+
+    @needs_zombi2
+    @pytest.mark.covers("F-02", "B-SIM")
+    def test_plasmids_are_whole_replicons_of_their_preset_size(micro):
+        """§2.1 S2 "chromosome plus 0-2 plasmid replicons"; §5.1 plasmids of 20-200 genes. Tolerance: none,
+        every extant plasmid has exactly its declared genes."""
+        bb, out, _ = micro
+        sizes = _plasmid_sizes(bb.params)
+        node_of = {g.genome_id: g.species_node for g in bb.genomes}
+        reps = _raw_replicons(out, set(node_of.values()), set(sizes))
+        raw_plasmids = {lin: [(name, {c for _, _, c in gs}) for kind, name, _, gs in rs if kind == "plasmid"]
+                        for lin, rs in reps.items()}
+        # every extant plasmid unit is whole: its declared number of genes, contiguous in ZOMBI2's order
+        for lin, ps in raw_plasmids.items():
+            for name, copies in ps:
+                assert len(copies) == sizes[name], (lin, name, len(copies))
+        # and is excised as a replicon of its own holding exactly those genes
+        got = collections.defaultdict(set)
+        for g in bb.genes:
+            got[(g.genome_id, g.replicon)].add(g.copy_label)
+        plasmid_reps = [r for r in bb.replicons if r.kind == "plasmid"]
+        for r in plasmid_reps:
+            assert r.topology == "circular" and r.n_genes == sizes[r.name] == len(got[(r.genome_id, r.replicon)])
+        want = sorted((gid, name, tuple(sorted(c))) for gid, node in node_of.items()
+                      for name, c in raw_plasmids[node])
+        assert sorted((r.genome_id, r.name, tuple(sorted(got[(r.genome_id, r.replicon)])))
+                      for r in plasmid_reps) == want
+        # the chromosome keeps the rest, in ZOMBI2's order
+        for gid, node in node_of.items():
+            chrom = [r for r in bb.replicons if r.genome_id == gid and r.kind == "chromosome"]
+            assert len(chrom) == 1 and chrom[0].replicon == 0
+            raw_chrom = [c for kind, _, _, gs in reps[node] if kind == "chromosome" for _, _, c in gs]
+            ours = [g.copy_label for g in bb.genes if g.genome_id == gid and g.replicon == 0]
+            assert ours == raw_chrom
+        # both plasmid types are realized, some genomes carry none, none carries more than two (§5.1)
+        per = collections.Counter(r.genome_id for r in plasmid_reps)
+        assert {r.name for r in plasmid_reps} == set(sizes)
+>       assert any(per[gid] == 0 for gid in node_of) and max(per.values()) <= 2, sorted(per.values())
+E       AssertionError: [1, 1, 1, 1, 1, 1, ...]
+E       assert (False)
+E        +  where False = any(<generator object test_plasmids_are_whole_replicons_of_their_preset_size.<locals>.<genexpr> at 0x71446d972a40>)
+
+tests/r2/test_synthworld_backbone.py:578: AssertionError
+_____________ test_decoy_transfers_land_only_where_the_partner_is ______________
+
+micro = (Backbone(params={'assembly': {'class_weights': [0.4, 0.4, 0.2], 'draft_n50': [50000, 200000], 'mag_completeness': [0....845649, n_genomes=4, parent='g__Genus09')]), PosixPath('/tmp/if2453/ci-tmp/F-02-11-0/micro0/world'), 32.68174196709879)
+
+    @needs_zombi2
+    @pytest.mark.covers("F-02", "B-SIM")
+    def test_decoy_transfers_land_only_where_the_partner_is(micro):
+        """§2.1 S2 `Recipients` decoys: a decoy's transfers are weighted by the presence of a planted module's
+        family in the recipient, at the micro weight 0 for an absent partner. Replayed from the raw events:
+        every decoy transfer lands in a lineage that held a live copy of its partner just before."""
+        bb, out, _ = micro
+        names = _names(out)
+        d = bb.params["decoys"]
+        assert float(d["absent_weight"]) == 0.0
+        partner_of = {names[f"dec{i}"]: names[f"mod{m:02d}.0"] for i, m in enumerate(d["partner_modules"])}
+        times = _newick_times(out / "zombi2/species_complete.nwk", _t0(out))
+        live = {p: set() for p in partner_of.values()}
+        landed = collections.Counter()
+        shares = []
+        for r in _tsv(out / "zombi2/genome_events.tsv"):
+            fam = int(r["family"])
+            kids = [c for c in r["children"].split(";") if c]
+            if fam in partner_of and r["kind"].startswith("transfer"):
+                recipient = kids[1].split("_")[0]
+                carriers = {c.split("_")[0] for c in live[partner_of[fam]]}
+                landed[(fam, recipient in carriers)] += 1
+                t, donor = float(r["time"]), r["parents"].split("_")[0]
+                others = {lab for lab, (_, s, e) in times.items() if s <= t < e and lab != donor}
+                shares.append(len(others & carriers) / len(others))
+            if fam in live:
+                if r["parents"]:
+                    live[fam].discard(r["parents"])
+                live[fam].update(kids)
+        mean_share = sum(shares) / len(shares)
+        print(f"\ndecoy transfers (family, partner present): {sorted(landed.items())}; partner carriers among "
+              f"the other contemporaneous lineages at those moments: mean {mean_share:.3f}")
+        assert not any(not ok for _, ok in landed), landed
+>       assert all(landed[(f, True)] >= 3 for f in partner_of), landed
+E       AssertionError: Counter({(1298, True): 54, (1296, True): 24, (1299, True): 12, (1300, True): 6, (1297, True): 2})
+E       assert False
+E        +  where False = all(<generator object test_decoy_transfers_land_only_where_the_partner_is.<locals>.<genexpr> at 0x71446de183c0>)
+
+tests/r2/test_synthworld_backbone.py:692: AssertionError
+_________ test_orthologous_igrs_are_near_identical_in_close_relatives __________
+
+world = (RepWorld(seed=20261112, replicons=[RepliconRow(genome_id='g000', replicon=0, record='g000_r0', kind='chromosome', top...53/ci-tmp/F-02-11-0/micro_igr0/world')), PosixPath('/tmp/if2453/ci-tmp/F-02-11-0/micro_igr0/world'), 43.04192362702452)
+tables = {'seqs': {'g000_r0': 'AACCAAGACATAGATGCTCTTACAGGCAGACTCACTATCCCCAGAGGAGGGGCGGAGTGCCTAGTAGGATGTGTTAGTGTCTCTCTGCAACAGGAA...ition': '5', ...}, {'genome_id': 'g000', 'replicon': '0', 'left_position': '5', 'right_position': '6', ...}, ...], ...}
+
+    @needs_zombi2
+    def test_orthologous_igrs_are_near_identical_in_close_relatives(world, tables):
+        """The same junction (left family, right family, type) in the clonal burst's genomes against genomes
+        of different phyla: equal-length IGRs share >= 0.9 of their bases within the burst, and at least 0.15
+        more than across phyla."""
+        _, out, _ = world
+        bbj = json.loads((out / "backbone/backbone.json").read_text(encoding="utf-8"))
+        node_gid = {r["species_node"]: r["genome_id"] for r in _tsv(out / "backbone/genomes.tsv")}
+        burst = {node_gid[t] for t in bbj["burst_tips"]}
+        phylum = {r["genome_id"]: r["tax_lineage"].split(";")[1] for r in _tsv(out / "backbone/taxonomy.tsv")}
+        fam = {g["copy_label"]: g["family_id"] for g in tables["genes"]}
+        by_key = collections.defaultdict(dict)
+        for j in tables["juncs"]:
+            if int(j["length"]) < 20:
+                continue
+            key = (fam[j["left_copy"]], fam[j["right_copy"]], j["junction"])
+            by_key[key].setdefault(j["genome_id"], j)
+    
+        def ident(j1, j2):
+            a = _cut(tables["seq_of"][(j1["genome_id"], int(j1["replicon"]))], int(j1["start"]), int(j1["end"]), 1)
+            b = _cut(tables["seq_of"][(j2["genome_id"], int(j2["replicon"]))], int(j2["start"]), int(j2["end"]), 1)
+            return sum(x == y for x, y in zip(a, b)) / len(a) if len(a) == len(b) else None
+    
+        close, far = [], []
+        for key, per in by_key.items():
+            gs = sorted(per)
+            bs = [g for g in gs if g in burst]
+            if len(bs) >= 2:
+                v = ident(per[bs[0]], per[bs[1]])
+                if v is not None:
+                    close.append(v)
+            g1 = gs[0]
+            g2 = next((g for g in gs if phylum[g] != phylum[g1]), None)
+            if g2 is not None:
+                v = ident(per[g1], per[g2])
+                if v is not None:
+                    far.append(v)
+        print(f"\northologous IGR identity: burst {np.mean(close):.3f} over {len(close)}, across phyla "
+              f"{np.mean(far):.3f} over {len(far)}")
+>       assert len(close) >= 200 and len(far) >= 200
+E       assert (1082 >= 200 and 150 >= 200)
+E        +  where 1082 = len([0.9508196721311475, 0.9848484848484849, 0.963855421686747, 1.0, 0.9803921568627451, 0.9754098360655737, ...])
+E        +  and   150 = len([0.3270440251572327, 0.7272727272727273, 0.6759581881533101, 0.640625, 0.76, 0.5217391304347826, ...])
+
+tests/r2/test_synthworld_intergenic.py:531: AssertionError
+=========================== short test summary info ============================
+FAILED tests/r2/test_synthworld_backbone.py::test_dec15_a_fates_family_splits_a_unit_and_the_truth_says_so
+FAILED tests/r2/test_synthworld_backbone.py::test_plasmids_are_whole_replicons_of_their_preset_size
+FAILED tests/r2/test_synthworld_backbone.py::test_decoy_transfers_land_only_where_the_partner_is
+FAILED tests/r2/test_synthworld_intergenic.py::test_orthologous_igrs_are_near_identical_in_close_relatives
+4 failed, 500 passed, 6 skipped in 1881.21s (0:31:21)
+
+[exited with code 1]
