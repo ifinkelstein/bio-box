@@ -12,7 +12,8 @@ and the realized strength grid to OUT/LABEL_grid.tsv. Seeds: ``default`` is the 
 N2 seeds (`nulls.n2_seeds` of the default seed); integers are taken as they are. ``--set`` overrides an existing
 preset leaf by its path (JSON value). ``--axes`` replaces `lineage_rates.axes` (``origination:1.2/duplication+
 transfer+loss:0.8``; ``none`` for no axis). ``--n0`` also builds the N0-full backbone at the seed and compares its
-background genome sizes with the signal's as `tests/r2/test_synthworld_nulls.py` does (geometric-mean ratio, Pearson r).
+background genome sizes with the signal's as `tests/r2/test_synthworld_nulls.py` does (geometric-mean ratio, Pearson r);
+since session 12 it also builds N0-strict and gives, for both, the null module's root-presence KS D and its bound.
 
 ``--crown`` and ``--rule`` are session 10's measurement devices that patch ZOMBI2's calls in the worker process,
 never the generator's code: ``--crown`` rescales each drawn species tree to that crown age measured from the first
@@ -416,6 +417,20 @@ def _bg_sizes(world: Path) -> dict[str, int]:
     return dict(c)
 
 
+def _root_presence(world: Path) -> list[int]:
+    """Genomes-present counts of the root families (families.tsv), as tests/r2/test_synthworld_nulls.py reads them."""
+    return [int(r["n_genomes_present"]) for r in _tsv(world / "backbone" / "families.tsv") if r["kind"] == "root"]
+
+
+def _ks(a: list[int], b: list[int]) -> float:
+    """Two-sample Kolmogorov-Smirnov statistic D (largest gap between the two empirical distribution functions)."""
+    import bisect
+
+    sa, sb = sorted(a), sorted(b)
+    return max(abs(bisect.bisect_right(sa, v) / len(sa) - bisect.bisect_right(sb, v) / len(sb))
+               for v in sorted(set(sa) | set(sb)))
+
+
 def _one(args) -> tuple[dict, list[dict]]:
     out, label, seed, sets, rule, crown, keep, n0 = args
     os.environ.setdefault("OMP_NUM_THREADS", "1")
@@ -458,8 +473,21 @@ def _one(args) -> tuple[dict, list[dict]]:
         p = 2 * sum((-1) ** (k - 1) * math.exp(-2 * k * k * lam * lam) for k in range(1, 101))
         row["n0_bg_ks_d"] = round(d, 4)
         row["n0_bg_ks_p"] = round(min(1.0, max(0.0, p)), 4)
+        # session 12: the null module's root-presence test (two-sample KS of the genomes-present counts of the root
+        # families, D below 1.628 sqrt((n + m) / (n m))) on N0-full and, built here too, N0-strict
+        ws = world.with_name(world.name + "_n0strict")
+        if ws.exists():
+            shutil.rmtree(ws)
+        backbone.build(nulls.null_preset(params, "N0-strict"), seed, ws)
+        rs = _root_presence(world)
+        for tag, w in (("full", w0), ("strict", ws)):
+            rn = _root_presence(w)
+            row[f"n0{tag}_root_ks_d"] = round(_ks(rn, rs), 4)
+            row[f"n0{tag}_root_ks_crit"] = round(1.628 * math.sqrt((len(rn) + len(rs)) / (len(rn) * len(rs))), 4)
+            row[f"n0{tag}_root_mean_minus_signal"] = round(sum(rn) / len(rn) - sum(rs) / len(rs), 3)
         if not keep:
             shutil.rmtree(w0)
+            shutil.rmtree(ws)
     for r in grid:
         r.update({"label": label, "seed": seed})
     if not keep:
