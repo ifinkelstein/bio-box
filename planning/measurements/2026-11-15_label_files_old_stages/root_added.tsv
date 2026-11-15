@@ -1,0 +1,10 @@
+path	bytes	sha256
+l0seq/contig_label/stage=P1/part-0.parquet	34774	d6746012794dde491aee49497707fd30615d56fa79864f739511b08c937b22e1
+l0seq/contig_label/stage=P2/part-0.parquet	311829	c039564eb4c231b91cf7f4fdbb15eaa3c509661b096ba6501a38193288427a00
+l0seq/contig_label/stage=S1/part-0.parquet	1224492	a297d9831c3ee504f0ea7af7b1a9e9dfc5db623525b0a98bb44dc14e94581aed
+ledger/stage=P1/step=labels/part-0.parquet	10911	057648dc9ebb68f9bc55c0f29d73fc5254510e07e6f55324b40c330e62c946b2
+ledger/stage=P2/step=labels/part-0.parquet	84781	facda6be215a4184669b862e7004f0375e2a08f3507a04f3e403cbe958cdcf19
+ledger/stage=S1/step=labels/part-0.parquet	2196	4a739a8df28944da5405df30575c9c0274e9737d32e761fb5204846ba51f6ee1
+runs/stage=P1/labels.json	1350	eeec074c67521550eaf118e68359fd79f68b88c1658f4d01ca792dfbd9e39a1b
+runs/stage=P2/labels.json	1351	61eb12a6ee533e9537ef026c9e05c1009c15ef85265db3ae89fae49f9ee79b45
+runs/stage=S1/labels.json	1351	9bddc762c0dc3a455a6f9fe13e3e3d50b57a0904b29d36d07d107e814ca7fabd
