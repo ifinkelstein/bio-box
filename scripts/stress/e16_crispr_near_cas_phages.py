@@ -3,7 +3,7 @@
 
 Usage:
     python scripts/stress/e16_crispr_near_cas_phages.py measure --root ROOT --calls E13_VIEW --kept E15_VIEW
-        --tree TREE --out DIR [--stages S1,P1,P2] [--draws 10000] [--seed 16] [--e13-extra FILE]
+        --tree TREE --out DIR [--stages S1,P1,P2] [--seq-stages S0,S1] [--draws 10000] [--seed 16] [--e13-extra FILE]
 
 Runs on the pod, in the test or runtime image, one thread; reads only, writes only into `--out` (a new directory).
 Every input is read by an explicit path (AGENTS §3.9; never a glob over `l1/feature` or `l1/crispr`):
@@ -51,6 +51,12 @@ Three readings of the null, all reported:
   at the new place, which is why it is an upper bound on what the rule keeps by chance. Reproduced on P1 + P2 (the
   second oracle check) exactly from the geometry and by Monte Carlo, and compared per call with card E-13's stored
   f_1_kb (`--e13-extra`, its `extra_arrays.tsv`).
+
+Contigs a stage lists but does not store (card E-17, DEC-26): a contig that `genome_input` lists and an earlier stage
+stores (its default variant is in that stage's `contig_index`) is that stage's: both CRISPR producers and gene calling
+skip it in this stage. The null takes the stage's own stored contigs; `--seq-stages S0,S1` (as `bio-box stage crispr`
+takes it) names the stages to look in, and the report gives `contigs_listed`, `contigs_left_out` and
+`contigs_left_out_by_stage`. A listed contig that no named stage stores is an error.
 
 Also, for scale, the arrays of the default producer (3 repeats) placed in the same way: observed and expected within
 1 kb of a Cas gene, and within 10 genes by card E-13's own `Windows` and `placement_share` (its 32.9-fold).
@@ -408,9 +414,12 @@ class Stage:
     fam_names: dict
     cas_gene_total: Counter
     cas_genome_total: dict
+    listed: int = 0  # contigs of genome_input
+    skipped: dict = field(default_factory=dict)  # contig_uid -> the stage that stores a listed contig left out
 
 
-def load_stage(root: Path, calls_view: Path, kept_view: Path, st: str, fams: dict[str, str]) -> Stage:
+def load_stage(root: Path, calls_view: Path, kept_view: Path, st: str, fams: dict[str, str],
+               seq_stages=()) -> Stage:
     import pyarrow as pa
     import pyarrow.compute as pc
 
@@ -423,14 +432,37 @@ def load_stage(root: Path, calls_view: Path, kept_view: Path, st: str, fams: dic
         cu = r["contig_uid"]
         genome_of[cu] = min(genome_of.get(cu, r["genome_uid"]), r["genome_uid"])  # DEC-27: the least genome
         circ[cu] = circ.get(cu, False) or bool(r["is_circular"])
-    ci = _read(root / f"l0seq/contig_index/stage={st}", ["contig_uid", "contig_len"]).to_pylist()
+    ci = _read(root / f"l0seq/contig_index/stage={st}", ["contig_uid", "contig_len", "is_default_variant"]).to_pylist()
     nlen: dict = {}
     for r in ci:
-        if r["contig_uid"] in genome_of:
+        # the contigs the stage stores: it holds their default variant (DEC-26, `ContigOwners`)
+        if r["is_default_variant"] and r["contig_uid"] in genome_of:
             if nlen.setdefault(r["contig_uid"], r["contig_len"]) != r["contig_len"]:
                 raise SystemExit(f"{st}: contig {r['contig_uid'].hex()} has two lengths")
-    if set(nlen) != set(genome_of):
-        raise SystemExit(f"{st}: genome_input and contig_index disagree on the contigs")
+    # a listed contig another stage stores is that stage's (DEC-26): left out, as both CRISPR producers and gene
+    # calling skip it; one that no named stage stores is an error
+    left = sorted(set(genome_of) - set(nlen))
+    skipped: dict = {}  # contig_uid -> the stage that stores it
+    for other in dict.fromkeys(s for s in seq_stages if s != st):
+        todo = [cu for cu in left if cu not in skipped]
+        if not todo:
+            break
+        if not (root / f"l0seq/contig_index/stage={other}").is_dir():
+            continue  # a named stage with no contig_index stores nothing
+        t = _read(root / f"l0seq/contig_index/stage={other}", ["contig_uid", "is_default_variant"])
+        t = t.filter(pc.and_(t.column("is_default_variant"),
+                             pc.is_in(t.column("contig_uid"), value_set=pa.array(todo, pa.binary(16)))))
+        for cu in t.column("contig_uid").to_pylist():
+            skipped.setdefault(cu, other)
+    lost = [cu for cu in left if cu not in skipped]
+    if lost:
+        raise SystemExit(f"{st}: {len(lost)} contigs of genome_input are stored by none of the stages "
+                         f"{list(dict.fromkeys([st, *seq_stages]))} (first {lost[0].hex()}); name the stage that "
+                         f"stores them with --seq-stages")
+    listed = len(genome_of)
+    for cu in skipped:
+        del genome_of[cu]
+        del circ[cu]
     genome_contigs: dict = defaultdict(list)
     for cu in sorted(genome_of):
         genome_contigs[genome_of[cu]].append(cu)
@@ -518,7 +550,7 @@ def load_stage(root: Path, calls_view: Path, kept_view: Path, st: str, fams: dic
             tot[pf] += 1
             gen[pf].add(genome_of.get(cu))
     return Stage(st, contigs, genome_of, dict(genome_contigs), int(sum(nlen.values())), calls, nr3, kept, cas_genes,
-                 fam_names, tot, {k: len(v) for k, v in gen.items()})
+                 fam_names, tot, {k: len(v) for k, v in gen.items()}, listed, skipped)
 
 
 # --- the measurement ----------------------------------------------------------------------------------------------
@@ -586,6 +618,8 @@ def measure_stage(stg: Stage, draws: int, seed: int, fams: dict[str, str], e13mo
     ps_n3 = [r["p_keep"] for r in rows if not r["overlaps_default"]]
     obs = len(stg.kept_producer)
     res = {"stage": st, "bases": stg.bases, "gbp": gbp, "calls_nr2": len(stg.calls), "arrays_nr3": len(stg.nr3),
+           "contigs_listed": stg.listed, "contigs_left_out": len(stg.skipped),
+           "contigs_left_out_by_stage": dict(sorted(Counter(stg.skipped.values()).items())),
            "contigs": len(stg.genome_of), "genomes": len(stg.genome_contigs),
            "circular_contigs": sum(1 for x in stg.contigs.values() if x.circ),
            "cas_genes": len(stg.cas_genes), "genomes_with_cas_gene": len({stg.genome_of.get(x[0]) for x in stg.cas_genes}),
@@ -798,10 +832,11 @@ def cmd_measure(a) -> int:
         raise SystemExit("the example's Cas families differ from card E-13's CAS_FAMILIES")
     summary: dict = {"families": len(fams), "gap": GAP, "producers": {"nr2": NR2, "nr3": NR3, "near": NEAR},
                      "gene_call_version": GENE_CALL, "library": LIBRARY, "stages": {}}
+    seq = [x for x in a.seq_stages.split(",") if x]
     all_rows, fam_rows = [], []
     for st in a.stages.split(","):
         ts = time.time()
-        stg = load_stage(root, Path(a.calls), Path(a.kept), st, fams)
+        stg = load_stage(root, Path(a.calls), Path(a.kept), st, fams, seq)
         print(f"{st}: loaded in {time.time() - ts:.0f} s", file=sys.stderr, flush=True)
         res, rows, extra = measure_stage(stg, a.draws, a.seed, fams, e13)
         summary["stages"][st] = res
@@ -864,6 +899,11 @@ def main(argv=None) -> int:
     m.add_argument("--tree", required=True, help="a checkout (the example's SQL and card E-13's script)")
     m.add_argument("--out", required=True)
     m.add_argument("--stages", default="S1,P1,P2")
+    m.add_argument("--seq-stages", default="",
+                   help="S0,S1: the stages whose sequences a stage's genomes may name, as the producers take it "
+                        "(bio-box stage crispr --seq-stages): a contig that genome_input lists and one of them stores "
+                        "is left out of the null and counted (DEC-26); a listed contig that none stores is an error "
+                        "(default: none)")
     m.add_argument("--draws", type=int, default=10_000)
     m.add_argument("--seed", type=int, default=16)
     m.add_argument("--e13-extra", help="card E-13's extra_arrays.tsv, to compare f per call")

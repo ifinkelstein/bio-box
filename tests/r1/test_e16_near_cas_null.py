@@ -135,3 +135,88 @@ def test_the_poisson_binomial_tail_by_enumeration(e16):
         want = sum(np.prod([q if b else 1 - q for q, b in zip(ps, bits)])
                    for bits in itertools.product((0, 1), repeat=len(ps)) if sum(bits) >= k)
         assert e16.tail_at_least(ps, k) == pytest.approx(want, abs=1e-12)
+
+
+# --- card E-17: a stage whose genome_input lists a contig that another stage stores (DEC-26) ----------------------
+
+CAS_PROT, GENE_PROT = b"\x01" * 16, b"\x02" * 16
+UID_A, UID_B, UID_C = b"\xa0" * 16, b"\xb0" * 16, b"\xc0" * 16  # C: listed by stage H, stored by stage S
+GENOME, CALL_UID = b"\x77" * 16, b"\x55" * 16
+
+
+def _put(path: Path, cols: dict, schema: dict) -> None:
+    """One part file at `path` / part-0.parquet: `cols` {name: list} with the types of `schema` {name: pa type}."""
+    import pyarrow as pa
+    import pyarrow.parquet as pq
+
+    path.mkdir(parents=True, exist_ok=True)
+    pq.write_table(pa.table({k: pa.array(cols.get(k, []), schema[k]) for k in schema}), path / "part-0.parquet")
+
+
+def _stage_on_disk(e16, tmp_path: Path, listed_extra: bool, other_default: bool = True):
+    """Stage H holds the genome of `_linear_genome` (contigs A and B) with one call of 100 bases on A at [60000, 60100),
+    the default array [51500, 51600), the Cas4 gene [50000, 51000) and the other gene [48000, 49500). With
+    `listed_extra`, genome_input lists a third contig C of 70,000 bases that stage S stores (`other_default`: as its
+    default variant) and that H's contig_index does not hold."""
+    import pyarrow as pa
+
+    b16 = pa.binary(16)
+    root, calls, kept = tmp_path / "root", tmp_path / "calls", tmp_path / "kept"
+    listed = [(UID_A, False), (UID_B, False)] + ([(UID_C, True)] if listed_extra else [])
+    _put(root / "l0seq/genome_input/stage=H",
+         {"contig_uid": [u for u, _ in listed], "genome_uid": [GENOME] * len(listed), "is_circular": [c for _, c in listed]},
+         {"contig_uid": b16, "genome_uid": b16, "is_circular": pa.bool_()})
+    idx = {"contig_uid": b16, "contig_len": pa.int64(), "is_default_variant": pa.bool_()}
+    _put(root / "l0seq/contig_index/stage=H", {"contig_uid": [UID_A, UID_B], "contig_len": [100_000, 50_000],
+                                               "is_default_variant": [True, True]}, idx)
+    _put(root / "l0seq/contig_index/stage=S", {"contig_uid": [UID_C], "contig_len": [70_000],
+                                               "is_default_variant": [other_default]}, idx)
+    feat = {"feature_uid": b16, "contig_uid": b16, "start": pa.int64(), "end": pa.int64()}
+    one = {"feature_uid": [CALL_UID], "contig_uid": [UID_A], "start": [60_000], "end": [60_100]}
+    arr = {"feature_uid": [b"\x66" * 16], "contig_uid": [UID_A], "start": [51_500], "end": [51_600]}
+    _put(calls / f"l1/feature/producer={e16.NR2}/stage=H", one, feat)
+    _put(calls / f"l1/feature/producer={e16.NR3}/stage=H", arr, feat)
+    _put(kept / f"l1/feature/producer={e16.NEAR}/stage=H", {}, feat)
+    _put(calls / f"l1/crispr/producer={e16.NR2}/stage=H", {"feature_uid": [CALL_UID], "contig_len": [100_000]},
+         {"feature_uid": b16, "contig_len": pa.int64()})
+    _put(root / f"l1/domains/library={e16.LIBRARY}/stage=H",
+         {"protein_uid": [CAS_PROT], "model_acc": [f"{CAS4}.22"], "model_name": ["Cas4"]},
+         {"protein_uid": b16, "model_acc": pa.string(), "model_name": pa.string()})
+    _put(root / f"l1/feature_protein/gene_call_version={e16.GENE_CALL}/stage=H",
+         {"contig_uid": [UID_A, UID_A], "start": [48_000, 50_000], "end": [49_500, 51_000], "strand": [1, 1],
+          "protein_uid": [GENE_PROT, CAS_PROT]},
+         {"contig_uid": b16, "start": pa.int64(), "end": pa.int64(), "strand": pa.int8(), "protein_uid": b16})
+    return root, calls, kept
+
+
+@pytest.mark.covers("E-17")
+@pytest.mark.parametrize("listed_extra", [False, True])
+def test_a_stage_that_lists_a_contig_another_stage_stores_keeps_the_hand_count(e16, tmp_path, listed_extra):
+    """E-17. The null of stage H on the hand-counted genome: 1,500 of 149,802 starts kept, whether or not
+    genome_input also lists contig C, which stage S stores (it is left out and counted, with its stage)."""
+    root, calls, kept = _stage_on_disk(e16, tmp_path, listed_extra)
+    fams = {CAS4: "cas4"}
+    stg = e16.load_stage(root, calls, kept, "H", fams, seq_stages=["S"])
+    assert set(stg.contigs) == {UID_A, UID_B}
+    res, rows, _ = e16.measure_stage(stg, 20, 16, fams, _load("e13_crispr_min_repeats"))
+    assert (rows[0]["keep_starts"], rows[0]["domain_starts"]) == (1500, 149_802)
+    assert res["nulls"]["N2"]["expected_exact"] == round(1500 / 149_802, 4)
+    assert res["contigs"] == 2 and res["bases"] == 150_000 and res["contigs_listed"] == 2 + listed_extra
+    assert res["contigs_left_out"] == int(listed_extra)
+    assert res["contigs_left_out_by_stage"] == ({"S": 1} if listed_extra else {})
+
+
+@pytest.mark.covers("E-17")
+def test_a_listed_contig_that_no_named_stage_stores_is_still_an_error(e16, tmp_path):
+    root, calls, kept = _stage_on_disk(e16, tmp_path, True)
+    with pytest.raises(SystemExit, match="stored by none of the stages"):
+        e16.load_stage(root, calls, kept, "H", {CAS4: "cas4"})  # stage S not named
+    with pytest.raises(SystemExit, match="stored by none of the stages"):
+        e16.load_stage(root, calls, kept, "H", {CAS4: "cas4"}, seq_stages=["H", "T"])  # T has no contig_index
+
+
+@pytest.mark.covers("E-17")
+def test_a_non_default_variant_in_another_stage_does_not_store_the_contig(e16, tmp_path):
+    root, calls, kept = _stage_on_disk(e16, tmp_path, True, other_default=False)
+    with pytest.raises(SystemExit, match="stored by none of the stages"):
+        e16.load_stage(root, calls, kept, "H", {CAS4: "cas4"}, seq_stages=["S"])
