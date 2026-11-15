@@ -56,6 +56,27 @@ def test_b48_the_calls_rate_of_each_mode_is_at_its_samples_and_within_20_percent
     assert cpu_s <= est <= 1.2 * cpu_s, (name, round(est, 2), cpu_s)
 
 
+# Stage S1 gene-called again in 4 batches by build-stage in a scratch view of the root (wilkcomp02, 2026-11-15, unit
+# b48-s1-batches, 4 workers each, card B-48's note): each batch's bases read and its `done.json` CPU-minutes (its own
+# process and its worker processes), and the merge's run record with the genes it wrote.
+S1_BATCHES = [(416_023_553, 30.86), (416_029_336, 30.70), (416_075_372, 31.87), (415_981_677, 30.78)]
+S1_MERGE = (1_664_109_938, 2_398_087, 0.432473)
+
+
+@pytest.mark.parametrize("j", range(len(S1_BATCHES)))
+def test_b48_each_batch_of_s1_is_at_its_estimate_or_within_20_percent_under_it(j):
+    called, cpu_min = S1_BATCHES[j]
+    est = genecall.one_process_cpu_min({("gv-meta", False): called})  # a batch's estimate: its process and its calls
+    assert cpu_min <= est <= 1.2 * cpu_min, (j, round(est, 2), cpu_min)
+
+
+def test_b48_the_merge_of_s1_is_at_its_estimate_or_within_20_percent_under_it():
+    bases, genes, cpu_min = S1_MERGE
+    assert abs(genecall.genome_genes("virus", bases) - genes) / genes < 0.001  # the expected genes of the plan
+    est = genecall.merge_cpu_min(genecall.genome_genes("virus", bases))
+    assert cpu_min <= est <= 1.2 * cpu_min, (round(est, 3), cpu_min)
+
+
 def test_b48_the_pl1_sample_as_a_whole_is_within_20_percent():
     """Card C-26's sample of PL1, 2,054 records in meta mode (circular and linear together): 1,356.556 CPU-seconds."""
     est = sum(genecall.CALL_S_PER_MBP[("meta", c)] * b / 1e6 for c, b in ((True, 295_462_404), (False, 17_141_185)))

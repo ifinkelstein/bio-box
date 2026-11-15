@@ -191,9 +191,10 @@ STEP_OVERHEAD = 1.23
 # contigs. *Estimate* (C-10 measured 0.07 CPU-minutes for a step that does almost nothing; a batch streams the whole
 # stage's genome_input once more), checked against the batches of stage S1 (card B-48's note).
 PROCESS_S = 15.0
-# The merge of a step in batches: `_publish` over every batch's rows, per gene written. *Measured* on the merge of
-# stage S1 in batches (card B-48's note), rounded up.
-PUBLISH_S_PER_GENE = 0.0001
+# The merge of a step in batches: `_publish` over every batch's rows, per gene written. *Derived* from the merge of stage
+# S1 in 4 batches (run record, wilkcomp02, 2026-11-15, card B-48's note: 0.432 CPU-minutes for 2,398,087 genes, so
+# (25.95 s - PROCESS_S) / 2,398,087 = 4.57 us a gene), raised by a fifth and rounded up.
+PUBLISH_S_PER_GENE = 0.0000055
 # Genes per Mbp of contig, by mode, for the merge's estimate (the genes are known only after calling). *Measured*:
 # gv-meta 1,441.0 on S1 (2,398,087 genes, 1,664.11 Mbp: its run record's feature rows), single 917.4 on P5 (9,144,001
 # genes, 9,967.90 Mbp), meta 1,079.0 on PLSDB's circular records (card C-26's sample). The largest of each mode.
@@ -844,7 +845,7 @@ class Stopped(SystemExit):
 
 
 def _log(msg: str) -> None:
-    print(f"{datetime.now():%Y-%m-%d %H:%M:%S} genecall: {msg}", file=sys.stderr, flush=True)
+    print(f"{datetime.now().astimezone().isoformat(timespec='seconds')} genecall: {msg}", file=sys.stderr, flush=True)
 
 
 def called_bases(n: int, circular: bool) -> int:

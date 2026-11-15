@@ -1,0 +1,23 @@
+{
+ "stage": "P2",
+ "every": 30,
+ "genomes_seen": 2247,
+ "all": {
+  "genomes": 74,
+  "bases": 304636972,
+  "called": 304636972,
+  "genes": 276162,
+  "cpu_s": 238.786,
+  "s_per_mbp_called": 0.7838,
+  "genes_per_mbp": 906.528
+ },
+ "single/linear": {
+  "genomes": 74,
+  "bases": 304636972,
+  "called": 304636972,
+  "genes": 276162,
+  "cpu_s": 238.786,
+  "s_per_mbp_called": 0.7838,
+  "genes_per_mbp": 906.528
+ }
+}
