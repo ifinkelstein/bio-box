@@ -113,4 +113,8 @@ sources:
       them); 7,139 are already contigs of stages P1 to P6
     license: none stated on the site; the sequences are INSDC records. The site asks for citation of doi:10.1093/nar/gkab1111 and doi:10.1093/nar/gky1050
     stored: provisional/s2_inputs/plsdb_2024_05_31_v2_sequences.fasta and plsdb_2024_05_31_v2_meta.tar.gz
+    stage_inputs: >-
+      stage PL1 (card C-26): /tmp/if2453/s2/inputs/PL1/ on wilkcomp02, made 2026-11-15 by make_inputs.py plasmid
+      from the FASTA (hard-linked there as plsdb_2024_05_31_v2_sequences.fasta, sha256 checked) and the archive's
+      nuccore.csv, with --root /tmp/if2453/r10/root; record planning/measurements/2026-11-15_plsdb_inputs.md
     approved: by the PI on 2026-11-11

@@ -1,0 +1,5 @@
+2026-11-15T10:17:33-06:00 run-step: rC26.2.dim: allowance 2 threads of 2 asked: cap 8 (Sun 10:17, night or weekend) less 1 for ours elsewhere; over 5.1 s, other users 0.01 CPUs (compute above 0.5), system accounts 0.08 (not counted), ours elsewhere 1.00, ours in this unit 0.03; load average 1.21 (not used)
+{"release": "rC26.2", "result": {"circular": 153, "contigs": 5742, "genomes": 2785, "shared_contigs": 103}, "stages": ["P1", "P2", "PLR"], "step": "dim"}
+2026-11-15T10:17:36-06:00 run-step: rC26.2.dim published 3 files
+pod_run: c26-rh-dim usage MemoryPeak=612687872 CPUUsageNSec=8723385000
+pod_run: c26-rh-dim exited 0
