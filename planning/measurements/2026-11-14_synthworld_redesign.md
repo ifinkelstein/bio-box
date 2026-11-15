@@ -728,3 +728,73 @@ carrier at every seed (no genome without at any seed) and more than 2 plasmids i
 Kolmogorov-Smirnov test of the 46 background sizes (asymptotic p) gives D 0.17-0.72, p >= 0.01 at 11 of 22 seeds
 (default D 0.283, p 0.041; 20261113 D 0.652, p < 1e-4): N0's sizes are shifted from the signal's at about half the
 seeds, so a KS replacement would fail there too; the ratio alone holds everywhere.
+
+## 14. Last pass: the four failures of this card (measurement; the preset is unchanged)
+
+All *measured*, wilkcomp02, 2026-11-15 00:00-03:30 CST, at most 8 threads. The preset on the branch keeps the values of
+§12 (duplication 0.008, transfer 0.02, loss 0.048, origination 0.065, member transfer 0.01/0.03/0.4); no candidate below
+passed every assertion other than (b) and (c), so none is committed.
+
+**Backbone scans** (22 seeds; transfer 0.04 / 0.045 with duplication 0.012 / 0.015, loss derived so that
+2 loss - 2 dup - 3 transfer = -0.01, origination 0.035, hub multiplier 2.0 / transfer; `d_committed` is the branch
+preset; new column: `decoy_transfers_min`, the fewest transfer rows of any decoy):
+
+| scan | chromosome mean (in band) | default mean | planted share % | copies per present member | exclusion breaches | both plasmid types | a genome > 2 plasmids | genomes without a plasmid at default | all cells powered | levels pooled (increasing) | core >= 40 genomes: default, range (>= 100) | N0 ratio, r at default | N1 unmatched planted at default | burst multicopy junction keys at default |
+|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|
+| d_committed | 1367-1760 (22/22) | 1448 | 4.4-6.5 | 0.88-1.30 | 0 | 15/22 | 4 | 0 | 21/22 | 2.3, 4.0, 10.3 (21/22) | 253, 228-513 (22) | - | 0 | 203 of 5301 |
+| d_t0.04_d0.012_l0.067 | 1401-1764 (22/22) | 1569 | 4.2-5.6 | 0.92-1.19 | 0 | 20/22 | 5 | 2 | 20/22 | 3.0, 5.2, 10.7 (20/22) | 210, 201-437 (22) | - | 0 | 291 of 5500 |
+| d_t0.04_d0.015_l0.0685 | 1398-1724 (22/22) | 1523 | 4.2-5.7 | 0.87-1.14 | 0 | 13/22 | 5 | 0 | 22/22 | 3.5, 5.2, 10.3 (19/22) | 195, 185-425 (22) | - | 0 | 283 of 5486 |
+| d_t0.045_d0.012_l0.076 | 1250-1711 (22/22) | 1388 | 4.3-6.6 | 0.92-1.14 | 0 | 15/22 | 7 | 3 | 21/22 | 3.0, 5.5, 11.7 (18/22) | 168, 143-423 (22) | - | 0 | 204 of 5121 |
+| d_t0.045_d0.015_l0.0775 | 1320-1786 (22/22) | 1460 | 3.8-6.9 | 0.87-1.32 | 0 | 15/22 | 5 | 0 | 20/22 | 3.2, 5.4, 11.2 (19/22) | 156, 156-390 (22) | - | 0 | 263 of 5280 |
+
+Decoys with at least 3 transfers each (the backbone test's bound), seeds out of 22: committed 7, candidates 8, 11, 10, 8
+(default seed minimum 2, 11, 37, 8, 9). **The decoy assertion fails at about two thirds of the seeds at every setting:
+it is a property of the preset (decoy transfer 0.4 against loss 0.4 is critical, so a decoy's copy line often dies or
+stays small, and the partner modules are the patchiest ones by design), not a draw at the default seed.**
+
+**Full worlds at the default seed** (scratch copies of the branch with the candidate values; `tests_candidate_*.txt`,
+`cnulls-*.txt`):
+
+| assertion | committed (§13) | A: transfer 0.045, dup 0.015, loss 0.0775 | B: transfer 0.045, dup 0.012, loss 0.076 |
+|---|---|---|---|
+| cross-phylum IGR pairs >= 200 | 150 | **200** | 195 |
+| DEC-15 (a): a unit broken under fates "family" | none | broken units present (passes) | passes |
+| decoys >= 3 transfers | 2 | 9-49 | 8-90 |
+| N1 label pairs no more adjacent than matched random | p 0.0055 | passes | passes |
+| hub core >= 100 | 253 | 156 | 168 |
+| N1 comparator, burst identity | yes, 0.931 | yes, 0.952 | yes, 0.945 |
+| planted motif found | yes | **no**: twin (below) | yes |
+| junction lengths, per-seed test | pass | pass (levels 3.9/5.9/13.8) | pass (3.5/6.0/12.7) |
+| plasmids (b) | fails | fails | **passes** (3 genomes without) |
+| N0 r (c) | 0.283 | 0.587 | 0.102 |
+| totals | 4 + 2 nulls | backbone/intergenic/per-seed "2 failed, 42 passed"; nulls "2 failed, 12 passed" (digest pin, N0) | "1 failed, 43 passed"; nulls "2 failed, 12 passed" (digest pin, N0) |
+
+**The motif failure is a real second planted instance, not a coincidence.** In the transfer-0.05 world the winning window
+at 1,626,402 is `n49_g114798.rna`, an instance of the same emission (L05.8, family F000199, genome g002) on the gene copy
+`n49_g114798`; the failing instance is on `n49_g114799`. Both copies come from one tandem duplication in lineage n49
+(`events.tsv` event 6336: `duplication 199 n49 ... n49_g98824 -> n49_g114798;n49_g114799`), so each carries the clade's
+emission, and the twin, with fewer substitutions, wins the scan of the shared intergenic region. Candidate A's failure is
+the same (`n89_g193995` and `n89_g193996`, emission L10.3, 8 against 7 substitutions). **The test's premise (one planted
+instance per region, so the instance at its coordinates is the best window) is broken by tandem duplication of a
+motif-carrying gene, a thing the world does.** Same-emission twins within 1 kb (a scratch count over `replicons/rna.tsv`, not in the tree):
+session 10's world 4 (1 closer to the emission), committed 0, transfer 0.035 28 (10 closer), A 16 (4 closer), B 6 (1
+closer); the test failed in 4 of the 9 full worlds built this session. It will fail at transfer 0.04-0.045 with some
+probability at any seed whenever duplication is not zero.
+
+**N1** relabels 11 of 100 members at the preset before §12, 60 at factor 0.2 with the 0.06 level, 41 at the committed
+preset, 39 (A) and 35 (B); session 9 had 27 or 28. Lower turnover gives more background families within 4 genomes of a
+member's profile and 25% of its transfers. The adjacency excess at the committed preset (a scratch script, not in the tree, on the kept null
+worlds): of the 41 replacements, 1 is adjacent to a member of its own module in any genome; of the 82 evaluated pairs,
+the 32 (moved, unmoved) pairs are adjacent in 2 genome instances, the 50 (moved, moved) pairs in 47 (6 pairs adjacent
+somewhere): the excess comes from pairs of replacement families that are adjacent to each other, two neighbouring
+background families whose shared history gives both a module-like profile. The test passes at A and B and at
+20261113.
+
+**What cannot hold together under one origination axis** (measured trade-off): the cross-phylum IGR count needs the
+background transfer at about 0.045 or more (118, 169, 188, 195-200, 236-262 at 0.02, 0.03, 0.035, 0.045, 0.05); the
+other assertions of this card hold there (A: all but the motif and plasmids; B: all but the IGR count by 5). The motif
+test is not a rate trade-off: it fails whenever a tandem twin of a planted instance is closer to the emission, in 4 of
+9 worlds this session, at duplication from 0.008 to 0.04. The decoy test holds at a third of the seeds at every
+setting. So the decisions left are about the tests' premises, not the rates: (i) whether the motif test should allow a
+same-emission twin, (ii) whether the decoy test's 3 transfers is a per-seed requirement for decoys at critical rates,
+(iii) (b) plasmids and (iv) (c) N0's r, with the numbers of §13.

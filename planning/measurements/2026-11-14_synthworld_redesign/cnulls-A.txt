@@ -1,0 +1,108 @@
+F
+world digests: signal 891584e208f2dbe5e45353c5dd39f41a; n0full d50a99f5794e66af3e48424f968352bd; n0strict ce11aaeb9b8e2e9b2b5e248195b033ac; n1 bb09ccfed190ba141f1c38032b9e076c; n0full_s2 39163be2b8e7725760858fac8f36fb1a; n0strict_s2 f067f00ea7d48f34e3df353a31f15a2f; n1_s2 60f0d957a3f2ab1c375ceeb128c7ae59
+..
+n0full: identical species tree, taxonomy, lineage tables, phage set, prophage clades, codes, classes, call-error plan, sources, contamination and duplicate roles, labels; 254 shared background co-directional family pairs, all of one class in both worlds
+
+n0strict: identical species tree, taxonomy, lineage tables, phage set, prophage clades, codes, classes, call-error plan, sources, contamination and duplicate roles, labels; 249 shared background co-directional family pairs, all of one class in both worlds
+.F
+n0full genomes: tau 23; signal planted 44/77, signal background 21/22708, null 18/22018 above it (one-sided p 0.706)
+
+n0full contexts: tau 18; signal planted 21/77, signal background 17/22708, null 21/22018 above it (one-sided p 0.28)
+
+n0strict genomes: tau 23; signal planted 44/77, signal background 21/22708, null 21/20860 above it (one-sided p 0.451)
+
+n0strict contexts: tau 18; signal planted 21/77, signal background 17/22708, null 22/20860 above it (one-sided p 0.182)
+....
+n0full: naive co-occurrence over 1951 families, 1902225 pairs: lambda 0.063, share at p < 1e-3 0.0231 (23.1x the 0.001 a calibrated test gives)
+
+n0strict: naive co-occurrence over 2006 families, 2011015 pairs: lambda 0.059, share at p < 1e-3 0.0202 (20.2x the 0.001 a calibrated test gives)
+..
+n1: 39 of 100 module members relabeled (15 of 25 modules), 86 evaluated label pairs; unmatched module families' transfers [1, 1, 1, 1, 2, 2, 2, 3, 3, 3, 3, 3, 3, 3, 3, 3, 4, 4, 5, 5, 6, 6, 6, 6, 6, 6, 7, 7, 7, 7, 8, 8, 8, 9, 9, 9, 9, 10, 10, 11, 11, 11, 11, 11, 11, 11, 11, 12, 12, 12, 13, 15, 21, 21, 21, 21, 21, 21, 24, 29, 30]
+
+n1_s2: 39 of 100 module members relabeled (16 of 25 modules), 89 evaluated label pairs; unmatched module families' transfers [1, 1, 1, 1, 2, 2, 2, 3, 3, 3, 3, 3, 3, 3, 3, 3, 4, 4, 5, 5, 6, 6, 6, 6, 6, 6, 7, 7, 7, 7, 8, 8, 8, 9, 9, 9, 9, 10, 11, 11, 11, 11, 11, 11, 11, 11, 12, 12, 12, 13, 13, 15, 21, 21, 21, 21, 21, 21, 24, 29, 30]
+.
+n1: 86 evaluated label pairs adjacent in 0.012 genomes on average, matched random pairs 0.139, one-sided p 0.982; signal module pairs 10.31 against 0.116 (p 0.0005)
+
+n1_s2: 89 evaluated label pairs adjacent in 0.090 genomes on average, matched random pairs 0.136, one-sided p 0.592; signal module pairs 10.31 against 0.116 (p 0.0005)
+.
+signal 1155.65 s, VmHWM 348 MB; n0full 1140.22 s, VmHWM 332 MB; n0full_b 1128.09 s, VmHWM 333 MB; n0full_s2 1144.51 s, VmHWM 336 MB; n0strict 1070.9 s, VmHWM 309 MB; n0strict_b 1111.31 s, VmHWM 312 MB; n0strict_s2 987.83 s, VmHWM 278 MB; n1 40.0 s, VmHWM 143 MB; n1_b 39.36 s, VmHWM 143 MB; n1_s2 41.9 s, VmHWM 142 MB; fixture wall 1202.2 s with 7 at once
+.
+=================================== FAILURES ===================================
+__________________ test_signal_world_keeps_every_stage_digest __________________
+
+worlds = ({'signal': PosixPath('/tmp/if2453/ci-tmp/F-02-11A-nulls-20261112/nulls0/signal'), 'n0full': PosixPath('/tmp/if2453/ci...2bd'}, 'n0full_s2': {'seconds': 1144.51, 'vmhwm_kb': 344272, 'world_digest': '39163be2b8e7725760858fac8f36fb1a'}, ...})
+
+    @needs_zombi2
+    def test_signal_world_keeps_every_stage_digest(worlds):
+        if SEED != DEFAULT_SEED:
+            pytest.skip(f"the digests are pinned at the default seed {DEFAULT_SEED}; this run is at {SEED}")
+        W, rep = worlds
+>       assert _digests(W["signal"]) == SIGNAL
+E       AssertionError: assert {'assembly': ...706b6f5', ...} == {'backbone': ...e6ccf03', ...}
+E         
+E         Differing items:
+E         {'backbone': 'e633a8ce9f557de9ee874a2496bb6a75'} != {'backbone': '545240f325b552247e0665459ccb1c0e'}
+E         {'fusions': 'f289d2be71eb5859a590cac0b706b6f5'} != {'fusions': '818031fea3ed35abab093554605474ad'}
+E         {'replicons': 'edd33a0654504fc1b78184e44b987b2d'} != {'replicons': '98b0a2fada22354766bdf4d12df6ade6'}
+E         {'sequences': '65fce1f776e516455abaddc9712a9a2a'} != {'sequences': '294beafcfe7efa64b582276549e353b9'}
+E         {'emit': '40083e478e336b32e9e80fa860ba9df8'} != {'emit': '0f1ae8e62576ee05dc1c2fa9fe78f378'}...
+E         
+E         ...Full output truncated, use '-vv' to show
+
+tests/r2/test_synthworld_nulls.py:267: AssertionError
+_____________ test_n0_keeps_the_background_process_in_distribution _____________
+
+worlds = ({'signal': PosixPath('/tmp/if2453/ci-tmp/F-02-11A-nulls-20261112/nulls0/signal'), 'n0full': PosixPath('/tmp/if2453/ci...2bd'}, 'n0full_s2': {'seconds': 1144.51, 'vmhwm_kb': 344272, 'world_digest': '39163be2b8e7725760858fac8f36fb1a'}, ...})
+record_property = <function record_property.<locals>.append_property at 0x7f19ef758040>
+
+    @needs_zombi2
+    @pytest.mark.covers("F-02", "B-NULL")
+    def test_n0_keeps_the_background_process_in_distribution(worlds, record_property):
+        """Gene content is a new draw of the same process (ZOMBI2's gene-level draws change with the groups), so the
+        background is compared in distribution, each with its stated test:
+    
+        - background genome size: per genome, the root and originated genes; geometric mean of the per-genome ratio
+          null / signal within [0.9, 1.1] (a third of §5.1's +-30% size band) and Pearson r >= 0.9 over the 46 genomes
+          (size is set by the per-lineage rates, which ZOMBI2 draws with the tree);
+        - phyletic patterns: the genomes-present counts of the 1,000 root families, two-sample Kolmogorov-Smirnov
+          D below the alpha = 0.01 critical value 1.628 sqrt(2 / 1000);
+        - strands: the + share of genes in [0.4, 0.6] (backbone.SCRAMBLE_PLUS, as the signal world);
+        - operons: the tight share of distinct background co-directional family pairs within 4 binomial standard errors
+          of intergenic.junctions.p_tight (the hash rule is a fixed law);
+        - composition: genome GC within 0.01 of the same genome's in the signal world (codon usage and intergenic
+          composition are the lineage's, identical; gene content moves it only through the family mix).
+        """
+        W, _ = worlds
+        s = W["signal"]
+    
+        def bg_sizes(w):
+            kind = {int(r["family"]): r["kind"] for r in _tsv(w / "backbone" / "families.tsv")}
+            c = collections.Counter(r["genome_id"] for r in _tsv(w / "backbone" / "genes.tsv")
+                                    if kind[int(r["family"])] in ("root", "originated"))
+            return np.array([c[g] for g in sorted(c)], dtype=float)
+    
+        def ks(a, b):
+            a, b = np.sort(a), np.sort(b)
+            x = np.union1d(a, b)
+            return float(np.max(np.abs(np.searchsorted(a, x, "right") / len(a) - np.searchsorted(b, x, "right") / len(b))))
+    
+        def gc(w):
+            return np.array([float(r["gc_true"]) for r in _truth(w, "truth_genome") if r["is_phage"] == "false"])
+    
+        p_tight = float(_preset(s)["intergenic"]["junctions"]["p_tight"])
+        root_s = [int(r["n_genomes_present"]) for r in _tsv(s / "backbone" / "families.tsv") if r["kind"] == "root"]
+        sig_sizes, sig_gc = bg_sizes(s), gc(s)
+        for n in ("n0full", "n0strict"):
+            w = W[n]
+            sz = bg_sizes(w)
+            ratio = float(np.exp(np.mean(np.log(sz / sig_sizes))))
+            r = float(np.corrcoef(sz, sig_sizes)[0, 1])
+>           assert 0.9 <= ratio <= 1.1 and r >= 0.9, (n, ratio, r)
+E           AssertionError: ('n0full', 0.9974762192879733, 0.5868361176080842)
+E           assert (0.9974762192879733 <= 1.1 and 0.5868361176080842 >= 0.9)
+
+tests/r2/test_synthworld_nulls.py:400: AssertionError
+=========================== short test summary info ============================
+FAILED tests/r2/test_synthworld_nulls.py::test_signal_world_keeps_every_stage_digest
+FAILED tests/r2/test_synthworld_nulls.py::test_n0_keeps_the_background_process_in_distribution
+2 failed, 12 passed in 1285.42s (0:21:25)

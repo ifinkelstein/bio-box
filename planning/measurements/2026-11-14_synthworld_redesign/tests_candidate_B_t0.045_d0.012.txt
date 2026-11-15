@@ -1,0 +1,111 @@
+............
+F-02 micro backbone: 32.14 s wall, 32.12 s CPU; chromosome genes mean 1388 min 1203 max 1601; plasmids per genome [(0, 3), (1, 20), (2, 23)]; seed 20261112; digest 5154c0a7f78545b17b02f4fba0a71a3b
+.
+module-family transfers: with entry exclusion 1180 rows, 0 into a holder of the first family, 353 into a holder of any member; without it 7959 rows, 7747 and 7802
+....
+hub neighbour families {1291: 303, 1292: 327, 1293: 329, 1294: 310, 1295: 315} over copies [457, 452, 459, 454, 452]; root median 53 over 168 families
+.
+decoy transfers (family, partner present): [((1296, True), 18), ((1297, True), 43), ((1298, True), 8), ((1299, True), 90), ((1300, True), 37)]; partner carriers among the other contemporaneous lineages at those moments: mean 0.623
+.
+transfer recipients closer/farther than other lineages: decay 3788/892 over 5712 events; uniform 2081/2066 over 6211
+.
+chromosome genes: min 1203 median 1385 max 1601 mean 1387.9; originated genes per genome 57-205, Spearman with the path origination multiplier 0.887 (permutation p 0.0005)
+....
+replicon stage child peak RSS 74 MB
+..
+68645 genes, 3967 with protein-neutral overlap edits
+.
+planted overlaps by length: {1: 1279, 4: 2729}
+.
+23228 tight junctions: tried -4 0.616, -1 0.055; realized -4 0.117, -1 0.055
+.
+features across the origin: {'genes': 98, 'juncs': 13, 'elems': 2, 'rna': 0}
+.
+2323 within-unit junctions; 12204 distinct background co-directional pairs, tight 0.5614; 86 distinct pairs of declared families of different groups, tight 0.581
+.
+junction length quantiles (realized, preset) by type: {'codir_tight': (7638, [(4.0, 4), (6.0, 7), (12.0, 12), (22.0, 22), (37.0, 38)]), 'codir_loose': (16304, [(65.0, 62), (89.0, 86), (134.0, 130), (206.0, 202), (313.0, 308)]), 'divergent': (13992, [(126.0, 122), (168.0, 165), (243.0, 240), (361.0, 361), (525.8999999999996, 530)]), 'convergent': (14247, [(23.0, 22), (40.0, 38), (73.0, 70), (130.0, 128), (223.0, 222)])}
+.
+genome IGR GC vs lineage intergenic GC: r 0.993, lineage 0.219-0.713, genome 0.324-0.624
+.
+element consensus match (n, planted, background): {'rbs': (53514, 0.697, 0.252), 'promoter_m35': (31215, 0.699, 0.244), 'promoter_m10': (37450, 0.701, 0.248)}; terminators 22866, T tract 0.693
+.
+orthologous IGR identity: burst 0.945 over 951, across phyla 0.635 over 195
+F
+1166 motif instances in 20 links: the truth window is the unique best scan window for 1164; divergence from the emission median 0.071, max 0.563, 77 above 0.3
+..
+F-02 micro replicons: 35.94 s wall, 35.30 s CPU; {'genes': 68645, 'genomes': 46, 'junctions': 68645, 'replicons': 112, 'rna': 1166}; digest 0a3dfa1ea1d3695e89dae8744d41d447
+.
+seed 20261112: crown age 5.0000; chromosome mean 1387.9; planted share 0.0612; plasmid genomes {'pls0': 27, 'pls1': 39}, at most 2 per genome; realized transfers per member by level (median) [6.0, 10.25, 16.0]; module transfers 1180, into a holder 0; module genomes by cell {(0.3, 0.01): [9, 19, 41], (0.3, 0.03): [30, 34, 38], (0.3, 0.4): [32, 42, 43], (0.7, 0.01): [9, 37, 39], (0.7, 0.03): [23, 34, 38], (0.7, 0.4): [44, 46], (1.0, 0.01): [31, 34, 39], (1.0, 0.03): [29, 34, 46], (1.0, 0.4): [45, 46]}
+
+seed 20261113: crown age 5.0000; chromosome mean 1444.6; planted share 0.0608; plasmid genomes {'pls0': 43, 'pls1': 46}, at most 3 per genome; realized transfers per member by level (median) [2.5, 4.67, 10.0]; module transfers 846, into a holder 0; module genomes by cell {(0.3, 0.01): [7, 12, 13], (0.3, 0.03): [7, 30, 36], (0.3, 0.4): [34, 40, 41], (0.7, 0.01): [6, 9, 25], (0.7, 0.03): [0, 39, 43], (0.7, 0.4): [44, 46], (1.0, 0.01): [8, 35, 45], (1.0, 0.03): [19, 32, 46], (1.0, 0.4): [46, 46]}
+
+seed 1001685937451957930: crown age 5.0000; chromosome mean 1379.6; planted share 0.0660; plasmid genomes {'pls1': 46}, at most 1 per genome; realized transfers per member by level (median) [3.0, 3.2, 9.0]; module transfers 630, into a holder 0; module genomes by cell {(0.3, 0.01): [0, 37, 42], (0.3, 0.03): [0, 32, 43], (0.3, 0.4): [40, 41, 45], (0.7, 0.01): [0, 28, 35], (0.7, 0.03): [39, 40, 40], (0.7, 0.4): [45, 45], (1.0, 0.01): [5, 6, 39], (1.0, 0.03): [5, 43, 46], (1.0, 0.4): [46, 46]}
+
+seed 6329801112132740259: crown age 5.0000; chromosome mean 1451.3; planted share 0.0551; plasmid genomes {'pls0': 34, 'pls1': 46}, at most 3 per genome; realized transfers per member by level (median) [5.5, 7.0, 11.0]; module transfers 1107, into a holder 0; module genomes by cell {(0.3, 0.01): [8, 19, 20], (0.3, 0.03): [27, 33, 41], (0.3, 0.4): [25, 43, 43], (0.7, 0.01): [10, 31, 38], (0.7, 0.03): [20, 26, 46], (0.7, 0.4): [45, 46], (1.0, 0.01): [17, 43, 44], (1.0, 0.03): [0, 30, 31], (1.0, 0.4): [46, 46]}
+
+seed 6036017085589997374: crown age 5.0000; chromosome mean 1505.8; planted share 0.0464; plasmid genomes {'pls0': 10, 'pls1': 39}, at most 3 per genome; realized transfers per member by level (median) [4.0, 3.67, 12.67]; module transfers 746, into a holder 0; module genomes by cell {(0.3, 0.01): [11, 12, 21], (0.3, 0.03): [4, 13, 18], (0.3, 0.4): [28, 32, 45], (0.7, 0.01): [2, 24, 46], (0.7, 0.03): [5, 20, 29], (0.7, 0.4): [45, 46], (1.0, 0.01): [6, 19, 40], (1.0, 0.03): [10, 15, 41], (1.0, 0.4): [45, 46]}
+
+seed 4383110225690451409: crown age 5.0000; chromosome mean 1456.6; planted share 0.0492; plasmid genomes {'pls0': 45, 'pls1': 46}, at most 2 per genome; realized transfers per member by level (median) [1.0, 6.0, 13.0]; module transfers 655, into a holder 0; module genomes by cell {(0.3, 0.01): [0, 6, 39], (0.3, 0.03): [25, 29, 32], (0.3, 0.4): [36, 39, 45], (0.7, 0.01): [10, 26, 41], (0.7, 0.03): [16, 19, 32], (0.7, 0.4): [44, 46], (1.0, 0.01): [0, 0, 26], (1.0, 0.03): [29, 34, 44], (1.0, 0.4): [46, 46]}
+.
+both plasmid types at 5 of 6 seeds; most plasmids in one genome {20261112: 2, 20261113: 3, 1001685937451957930: 1, 6329801112132740259: 3, 6036017085589997374: 3, 4383110225690451409: 2}
+..
+cells without a powered module: {}
+.
+realized transfers per member, pooled medians by level: [3.466666666666667, 6.0, 12.666666666666666]
+..
+=================================== FAILURES ===================================
+_________ test_orthologous_igrs_are_near_identical_in_close_relatives __________
+
+world = (RepWorld(seed=20261112, replicons=[RepliconRow(genome_id='g000', replicon=0, record='g000_r0', kind='chromosome', top.../ci-tmp/F-02-11B-0/micro_igr0/world')), PosixPath('/tmp/if2453/ci-tmp/F-02-11B-0/micro_igr0/world'), 35.94335156981833)
+tables = {'seqs': {'g000_r0': 'GCAGCCTAAAACCGAAAAGGGCATCATAAATACTAACGGAGAAGCCCGCTTATCTAGCAAGTTCATTCTTAAATTATATAAAAAGGAAGGTGGAGA...ition': '5', ...}, {'genome_id': 'g000', 'replicon': '0', 'left_position': '5', 'right_position': '6', ...}, ...], ...}
+
+    @needs_zombi2
+    def test_orthologous_igrs_are_near_identical_in_close_relatives(world, tables):
+        """The same junction (left family, right family, type) in the clonal burst's genomes against genomes
+        of different phyla: equal-length IGRs share >= 0.9 of their bases within the burst, and at least 0.15
+        more than across phyla."""
+        _, out, _ = world
+        bbj = json.loads((out / "backbone/backbone.json").read_text(encoding="utf-8"))
+        node_gid = {r["species_node"]: r["genome_id"] for r in _tsv(out / "backbone/genomes.tsv")}
+        burst = {node_gid[t] for t in bbj["burst_tips"]}
+        phylum = {r["genome_id"]: r["tax_lineage"].split(";")[1] for r in _tsv(out / "backbone/taxonomy.tsv")}
+        fam = {g["copy_label"]: g["family_id"] for g in tables["genes"]}
+        by_key = collections.defaultdict(dict)
+        for j in tables["juncs"]:
+            if int(j["length"]) < 20:
+                continue
+            key = (fam[j["left_copy"]], fam[j["right_copy"]], j["junction"])
+            by_key[key].setdefault(j["genome_id"], j)
+    
+        def ident(j1, j2):
+            a = _cut(tables["seq_of"][(j1["genome_id"], int(j1["replicon"]))], int(j1["start"]), int(j1["end"]), 1)
+            b = _cut(tables["seq_of"][(j2["genome_id"], int(j2["replicon"]))], int(j2["start"]), int(j2["end"]), 1)
+            return sum(x == y for x, y in zip(a, b)) / len(a) if len(a) == len(b) else None
+    
+        close, far = [], []
+        for key, per in by_key.items():
+            gs = sorted(per)
+            bs = [g for g in gs if g in burst]
+            if len(bs) >= 2:
+                v = ident(per[bs[0]], per[bs[1]])
+                if v is not None:
+                    close.append(v)
+            g1 = gs[0]
+            g2 = next((g for g in gs if phylum[g] != phylum[g1]), None)
+            if g2 is not None:
+                v = ident(per[g1], per[g2])
+                if v is not None:
+                    far.append(v)
+        print(f"\northologous IGR identity: burst {np.mean(close):.3f} over {len(close)}, across phyla "
+              f"{np.mean(far):.3f} over {len(far)}")
+>       assert len(close) >= 200 and len(far) >= 200
+E       assert (951 >= 200 and 195 >= 200)
+E        +  where 951 = len([0.9775280898876404, 0.957286432160804, 0.9696969696969697, 0.9373601789709173, 0.9583333333333334, 0.9856459330143541, ...])
+E        +  and   195 = len([0.4036363636363636, 0.5835777126099707, 0.8695652173913043, 0.952, 0.9543568464730291, 0.41106719367588934, ...])
+
+tests/r2/test_synthworld_intergenic.py:531: AssertionError
+=========================== short test summary info ============================
+FAILED tests/r2/test_synthworld_intergenic.py::test_orthologous_igrs_are_near_identical_in_close_relatives
+1 failed, 43 passed in 686.92s (0:11:26)
+
+[exited with code 1]

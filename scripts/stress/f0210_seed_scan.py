@@ -336,6 +336,9 @@ def measure(world: Path, params: dict) -> tuple[dict, list[dict]]:
         gs.sort()
         for (_, fa, sa), (_, fb, sb) in zip(gs, gs[1:] + gs[:1]):
             keys[(gid, fa, sa, fb, sb)] += 1
+    # decoys (tests/r2/test_synthworld_backbone.py asks >= 3 transfers each): transfer rows per decoy family
+    dec_tr = [tr_rows.get(f, 0) for f, r in fams.items() if r["kind"] == "decoy"]
+    row["decoy_transfers_min"] = min(dec_tr) if dec_tr else ""
     row["burst_junction_keys"] = len(keys)
     row["burst_junction_keys_multicopy"] = sum(1 for v in keys.values() if v > 1)
     row["scored_units"] = len(scored)
