@@ -209,6 +209,39 @@ def test_w35_pack_build_prints_its_estimate_before_any_work(world, tmp_path, cap
     assert msgs.index(est[0]) < next(i for i, m in enumerate(msgs) if "checking genetic codes" in m)
 
 
+# The run records of the pack of `rN.3` built in 4 parts (measured, wilkcomp02, 2026-11-14, unit `w35-rn3`, each
+# part's `done.json` as the driver logged it; planning/measurements/2026-11-14_pack_build_in_parts.md): name, its
+# protein_seq rows (unique, the last process), its genome bases, its CPU-minutes. 10,634,028 rows, 12,276,916,069 bases
+# and one library in the release.
+RN3_ROWS, RN3_BASES = 10_634_028, 12_276_916_069
+RN3_RECORDS = [("unique", RN3_ROWS, 0, 2.58),
+               ("igr", 0, 3_069_716_420, 2.00), ("igr", 0, 3_068_846_977, 2.13), ("igr", 0, 3_066_992_187, 2.13),
+               ("igr", 0, 3_071_360_485, 1.97),
+               ("dark_orf", 0, 3_069_716_420, 16.65), ("dark_orf", 0, 3_068_846_977, 16.31),
+               ("dark_orf", 0, 3_066_992_187, 16.08), ("dark_orf", 0, 3_071_360_485, 15.69)]
+RN3_ASSEMBLE = 13.19
+# the one-process builds (measured, wilkcomp02): rN.3 79.5 CPU-minutes, one library (2026-11-11, unit r50-rN3-pack,
+# planning/measurements/2026-11-11_build_r50.md); rN.1 86.0, no library (2026-11-11, unit w16-pack,
+# planning/measurements/2026-11-11_pack_build_rN1.md); the same 10,634,028 rows and 12,276,916,069 bases
+ONE_PROCESS = [(1, 79.5), (0, 86.0)]
+
+
+def test_w35_each_estimate_is_at_or_above_its_run_record_and_within_20_percent():
+    """The estimate of every process of the build of `rN.3` in parts, and of the one-process builds of `rN.3` and
+    `rN.1`, is not below its measured CPU-minutes (a part cut by the estimate must not overrun it) and not more than
+    20% above them (AGENTS §6). The records are measurements, not the estimate's own output."""
+    got = []
+    for target, rows, bases, cpu in RN3_RECORDS:
+        got.append((target, bases, pack.part_cpu_min(target, rows=rows, bases=bases), cpu))
+    got.append(("assemble", RN3_BASES, pack.part_cpu_min("assemble", rows=RN3_ROWS, bases=RN3_BASES, libraries=1),
+                RN3_ASSEMBLE))
+    for libs, cpu in ONE_PROCESS:
+        got.append((f"one process, {libs} libraries", RN3_BASES,
+                    pack.one_process_cpu_min(pack.Counts(RN3_ROWS, RN3_BASES, 32_815, libs)), cpu))
+    bad = [(t, b, round(e, 2), c) for t, b, e, c in got if not c <= e <= 1.2 * c]
+    assert not bad, f"(process, bases, estimate, record) outside [record, 1.2 x record]: {bad}"
+
+
 # the dark-ORF rate that puts the world over the budget in one process but leaves its largest contig, M. genitalium
 # (580,076 of 797,481 bases), under it: 203 of 240 CPU-minutes alone, 279 in all (derived)
 HIGH_RATE = 3.5e5

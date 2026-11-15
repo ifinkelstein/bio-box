@@ -1299,22 +1299,30 @@ def _problems(rf: ReleaseFiles, release: str, out: Path, manifest: dict, min_sha
 
 # --- the estimate (card W-35) --------------------------------------------------------------------------------------
 
-# CPU-minutes per unit of each process's work (card W-35; module docstring). Derived from the timestamped progress
-# lines of the one-process build of `rN.3` (measured, wilkcomp02, 2026-11-11, unit `r50-rN3-pack`, log
-# /tmp/if2453/r50/tmp/logs/r50-rN3-pack.log; planning/measurements/2026-11-11_build_r50.md: 79.5 CPU-minutes in 4,861 s
-# of wall time, one CPU; 10,634,028 protein_seq rows, 12,276,916,069 genome bases, one library of 30,134 models), each
-# part's span of wall time taken as its CPU time: unique 55 s reading and about 100 s sorting into one run; IGRs 329 s
-# collecting and about 150 s sorting; dark ORFs 46 s of genes, 3,097 s finding ORFs and about 400 s sorting; the last
-# process the shard writes of the three targets (about 650 s), the models (154 s), the manifest's hashes (26 s) and the
-# verify (154 s); the driver the codes and the input hashes (52 s). Estimates until the build of `rN.3` in parts is
-# measured.
+# CPU-minutes per unit of each process's work (card W-35; module docstring), fitted to the run records of the pack of
+# `rN.3` built in 4 parts (measured, wilkcomp02, 2026-11-14, unit `w35-rn3`, each part's `done.json`;
+# planning/measurements/2026-11-14_pack_build_in_parts.md; 10,634,028 protein_seq rows, 12,276,916,069 genome bases,
+# one library of 30,134 models) and rounded up, so that no part's estimate is below its record
+# (`tests/r2/test_w35_pack_parts.py` holds the records and checks each estimate within [record, 1.2 x record]):
+# - unique: 2.58 CPU-minutes for the 10,634,028 rows (0.238 per million, derived); 0.25.
+# - igr: 1.97 to 2.13 for each quarter of the bases, about 3.07 Gbp (0.68 per Gbp at the slowest, derived); 0.70.
+# - dark_orf: 15.69 to 16.65 for each quarter (5.41 per Gbp at the slowest, derived); 5.45.
+# - the last process: 13.19, of which the models about 2.6 (160 s of wall time in its log), the rest split by its log
+#   into the unique shards and half the verify (about 155 s: 0.24 per million rows, derived) and the region shards, the
+#   manifest's hashes and half the verify (about 512 s: 0.70 per Gbp, derived); 0.25 and 0.70.
+# - the driver: 0.95 (the unit's 89.68 CPU-minutes less the parts' 88.73, derived); 0.075 per Gbp.
+# The rates of the one-process estimate are the same: 93.0 for rN.3 against its 79.5 measured in one process (+17%),
+# 90.4 for rN.1 (no library) against 86.0 (+5%) (derived; measured in planning/measurements/2026-11-11_build_r50.md and
+# 2026-11-11_pack_build_rN1.md). Before the measurement the rates were derived from the one-process log of rN.3
+# (dark_orf 4.81 per Gbp: 11% under the slowest part's record; the last process 0.40 per million rows and 0.80 per
+# Gbp: 27% over its record).
 UNIQUE_CPU_MIN_PER_M_ROWS = 0.25
-IGR_CPU_MIN_PER_GBP = 0.65
-DARK_ORF_CPU_MIN_PER_GBP = 4.81
-ASSEMBLE_CPU_MIN_PER_M_ROWS = 0.40
-ASSEMBLE_CPU_MIN_PER_GBP = 0.80
+IGR_CPU_MIN_PER_GBP = 0.70
+DARK_ORF_CPU_MIN_PER_GBP = 5.45
+ASSEMBLE_CPU_MIN_PER_M_ROWS = 0.25
+ASSEMBLE_CPU_MIN_PER_GBP = 0.70
 MODELS_CPU_MIN_PER_LIBRARY = 2.6  # Pfam-A 38.2, 30,134 models (rN.3's one library)
-DRIVER_CPU_MIN_PER_GBP = 0.07
+DRIVER_CPU_MIN_PER_GBP = 0.075
 PART_START_CPU_MIN = 0.05  # a process's start: imports, opening the release (estimate)
 # the budget without a host profile: AGENTS §7.2's 300 CPU-minutes per process
 DEFAULT_CPU_MIN_PER_PROCESS = 300
