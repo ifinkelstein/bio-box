@@ -141,17 +141,27 @@ manifest and the pack id (its hash) are the same, whatever N, J or the order the
 
 from __future__ import annotations
 
+import argparse
+import bisect
 import contextlib
+import fcntl
 import heapq
 import itertools
 import json
+import math
 import os
+import resource
 import shutil
 import signal
+import subprocess
+import sys
 import tempfile
 import threading
+import time
 from collections import Counter, defaultdict
 from collections.abc import Callable, Iterable, Iterator
+from dataclasses import dataclass
+from datetime import datetime
 from operator import itemgetter
 from pathlib import Path
 
@@ -209,8 +219,11 @@ class Stopped(SystemExit):
     """A build ended by SIGTERM or SIGHUP, after its directories were removed; the exit code is 128 + signum."""
 
 
+_WHO = threading.local()  # who the progress lines name: "pack build", or "pack part <name>" in a part (card W-35)
+
+
 def _log(msg: str) -> None:
-    runstep.log("pack build", msg)
+    runstep.log(getattr(_WHO, "name", "pack build"), msg)
 
 
 def release_dir(packs: Path, release: str) -> Path:
@@ -298,21 +311,71 @@ def manifest_tape_version(manifest: dict) -> str:
 # --- streaming readers (card W-16) ------------------------------------------------------------------------------
 
 
-def _batches(path: Path, cols: list[str], batch_rows: int) -> Iterator[pa.RecordBatch]:
+@dataclass(frozen=True)
+class _Range:
+    """The contig uids [lo, hi) of a part (card W-35); None is unbounded on that side; `empty` holds none."""
+    lo: bytes | None = None
+    hi: bytes | None = None
+    empty: bool = False
+
+    @classmethod
+    def of(cls, part: dict) -> "_Range":
+        """The range of a part of the plan (`_cut`), whose bounds are hex or None."""
+        return cls(None if part["lo"] is None else bytes.fromhex(part["lo"]),
+                   None if part["hi"] is None else bytes.fromhex(part["hi"]), part["empty"])
+
+    def has(self, key: bytes) -> bool:
+        return not self.empty and (self.lo is None or key >= self.lo) and (self.hi is None or key < self.hi)
+
+    def may_hold(self, bounds: tuple[bytes, bytes] | None) -> bool:
+        """Whether a row group whose keys lie in `bounds` (min, max; None when unknown) may hold a key in range."""
+        if self.empty:
+            return False
+        if bounds is None:
+            return True
+        return (self.lo is None or bounds[1] >= self.lo) and (self.hi is None or bounds[0] < self.hi)
+
+    def cut(self, keys: list) -> tuple[int, int]:
+        """The slice of `keys` (sorted) in range."""
+        if self.empty:
+            return 0, 0
+        a = 0 if self.lo is None else bisect.bisect_left(keys, self.lo)
+        z = len(keys) if self.hi is None else bisect.bisect_left(keys, self.hi)
+        return a, max(a, z)
+
+
+def _group_bounds(md: pq.FileMetaData, i: int, name: str) -> tuple[bytes, bytes] | None:
+    """(min, max) of the column `name` in row group `i` from its statistics; None when they are missing."""
+    rg = md.row_group(i)
+    for j in range(rg.num_columns):
+        c = rg.column(j)
+        if c.path_in_schema == name:
+            s = c.statistics
+            if s is not None and s.has_min_max and isinstance(s.min, bytes) and isinstance(s.max, bytes):
+                return s.min, s.max
+            return None
+    return None
+
+
+def _batches(path: Path, cols: list[str], batch_rows: int, rng: _Range | None = None) -> Iterator[pa.RecordBatch]:
     """Batches of at most `batch_rows` rows of `cols` of one Parquet file, read one row group at a time. Not
     `ParquetFile.iter_batches`: it reads ahead, a whole file at a time (64 readers of 26 MB files held 1.03 GB
     of Arrow memory, against 28 MB read a row group each: measured, wilkcomp02, 2026-11-10, pyarrow of image
-    bio-box-test_74b3e05)."""
+    bio-box-test_74b3e05). With `rng` (card W-35), a row group whose statistics on `cols[0]` say it holds no key
+    in range is not read (the rows read are not filtered here)."""
     pf = pq.ParquetFile(path)
     for i in range(pf.metadata.num_row_groups):
+        if rng is not None and not rng.may_hold(_group_bounds(pf.metadata, i, cols[0])):
+            continue
         yield from pf.read_row_group(i, columns=cols, use_threads=False).to_batches(max_chunksize=batch_rows)
 
 
-def _file_rows(path: Path, cols: list[str], batch_rows: int) -> Iterator[tuple]:
+def _file_rows(path: Path, cols: list[str], batch_rows: int, rng: _Range | None = None) -> Iterator[tuple]:
     """The rows of one Parquet file as tuples of `cols`, `batch_rows` at a time; the file must be sorted by its
-    first column (ValueError otherwise, since `_merged` relies on it)."""
+    first column (ValueError otherwise, since `_merged` relies on it). With `rng`, only the rows whose first column
+    is in range (card W-35)."""
     prev = None
-    for b in _batches(path, cols, batch_rows):
+    for b in _batches(path, cols, batch_rows, rng):
         lists = [b.column(c).to_pylist() for c in cols]
         del b
         keys = lists[0]
@@ -320,16 +383,21 @@ def _file_rows(path: Path, cols: list[str], batch_rows: int) -> Iterator[tuple]:
             raise ValueError(f"{path}: rows are not sorted by {cols[0]}")
         if keys:
             prev = keys[-1]
+        if rng is not None:
+            a, z = rng.cut(keys)
+            if (a, z) != (0, len(keys)):
+                lists = [x[a:z] for x in lists]
         yield from zip(*lists)
 
 
-def _merged(files: list[Path], cols: list[str], batch_rows: int | None = None) -> Iterator[tuple]:
+def _merged(files: list[Path], cols: list[str], batch_rows: int | None = None,
+            rng: _Range | None = None) -> Iterator[tuple]:
     """The rows of `files` (each sorted by `cols[0]`) as tuples of `cols`, merged in `cols[0]` order; equal keys
     come in file order, then row order, as reading the files one after another gives them. One batch of
     `batch_rows` rows (default `BATCH_ROWS`) of each file is held at a time (and Arrow's read buffer of its row
-    group)."""
+    group). With `rng`, the rows whose key is in range (card W-35), in the same order."""
     n = batch_rows or BATCH_ROWS
-    return heapq.merge(*(_file_rows(f, cols, n) for f in files), key=itemgetter(0))
+    return heapq.merge(*(_file_rows(f, cols, n, rng) for f in files), key=itemgetter(0))
 
 
 def _grouped(rows: Iterator[tuple]) -> Iterator[tuple[bytes, list[tuple]]]:
@@ -363,12 +431,14 @@ class _Keyed:
         return self._default
 
 
-def _contig_tapes(files: list[Path], with_strands: bool) -> Iterator[tuple[bytes, tuple[int, bool, dict | None]]]:
+def _contig_tapes(files: list[Path], with_strands: bool,
+                  rng: _Range | None = None) -> Iterator[tuple[bytes, tuple[int, bool, dict | None]]]:
     """(contig_uid, (contig_len, is_circular, strand of each feature uid or None)) per contig of the tapes, in
     contig_uid order; a contig on several tape rows takes the last row's length, is circular when any row says
-    so, and has the strands of all its rows (as the whole-release dictionaries before W-16 had them)."""
+    so, and has the strands of all its rows (as the whole-release dictionaries before W-16 had them). With `rng`,
+    the contigs in range (card W-35)."""
     cols = ["contig_uid", "contig_len", "is_circular"] + (["feature_uids", "strands"] if with_strands else [])
-    for cu, rows in _grouped(_merged(files, cols, TAPE_BATCH_ROWS)):
+    for cu, rows in _grouped(_merged(files, cols, TAPE_BATCH_ROWS, rng)):
         strands = None
         if with_strands:
             strands = {}
@@ -377,10 +447,11 @@ def _contig_tapes(files: list[Path], with_strands: bool) -> Iterator[tuple[bytes
         yield cu, (rows[-1][1], any(r[2] for r in rows), strands)
 
 
-def _contig_codes(files: list[Path]) -> Iterator[tuple[bytes, int]]:
+def _contig_codes(files: list[Path], rng: _Range | None = None) -> Iterator[tuple[bytes, int]]:
     """(contig_uid, genetic code) in contig_uid order: the commonest code among the contig's CDS features (ties:
-    the code met first in file order, then row order, as a Counter fed in that order gives it)."""
-    for cu, rows in _grouped(_merged(files, ["contig_uid", "genetic_code"])):
+    the code met first in file order, then row order, as a Counter fed in that order gives it). With `rng`, the
+    contigs in range (card W-35)."""
+    for cu, rows in _grouped(_merged(files, ["contig_uid", "genetic_code"], rng=rng)):
         yield cu, Counter(r[1] for r in rows).most_common(1)[0][0]
 
 
@@ -409,6 +480,25 @@ def _table(rows: list[tuple], schema: pa.Schema) -> pa.Table:
     return pa.Table.from_arrays([pa.array(c, type=f.type) for c, f in zip(cols, schema)], schema=schema)
 
 
+def _write_run(path: Path, schema: pa.Schema, rows: Iterable[tuple]) -> int:
+    """Rows (tuples in the order of `schema`) as a sorted run at `path`, row groups of `MERGE_BATCH` rows; the rows
+    written. A sorter's scratch run, and a part's output (card W-35)."""
+    n = 0
+    # no statistics: a merged run has thousands of row groups, and min/max of sequences would fill its footer
+    with pq.ParquetWriter(path, schema, compression="zstd", compression_level=1, write_statistics=False) as w:
+        for chunk in _chunks(rows, MERGE_BATCH):
+            w.write_table(_table(chunk, schema), row_group_size=MERGE_BATCH)
+            n += len(chunk)
+    return n
+
+
+def _read_run(path: Path, schema: pa.Schema) -> Iterator[tuple]:
+    """The rows of a run (`_write_run`) as tuples, `MERGE_BATCH` rows read at a time."""
+    names = schema.names
+    for b in _batches(path, names, MERGE_BATCH):
+        yield from zip(*(b.column(n).to_pylist() for n in names))
+
+
 class _Sorter:
     """An external merge sort (card W-16) of rows (tuples in the order of `schema`) by `key`, stable: rows with
     equal keys come out in the order they were added. Up to `RUN_ROWS` rows are held; then they are sorted and
@@ -434,11 +524,7 @@ class _Sorter:
         self.dir.mkdir(parents=True, exist_ok=True)
         path = self.dir / f"run-{self._k:06d}.parquet"
         self._k += 1
-        # no statistics: a merged run has thousands of row groups, and min/max of sequences would fill its footer
-        with pq.ParquetWriter(path, self.schema, compression="zstd", compression_level=1,
-                              write_statistics=False) as w:
-            for chunk in _chunks(rows, MERGE_BATCH):
-                w.write_table(_table(chunk, self.schema), row_group_size=MERGE_BATCH)
+        _write_run(path, self.schema, rows)
         return path
 
     def _spill(self) -> None:
@@ -449,9 +535,7 @@ class _Sorter:
             _log(f"{self.what}: {self.n:,} rows read, sorted run {len(self._runs)} written")
 
     def _read(self, path: Path) -> Iterator[tuple]:
-        names = self.schema.names
-        for b in _batches(path, names, MERGE_BATCH):
-            yield from zip(*(b.column(n).to_pylist() for n in names))
+        return _read_run(path, self.schema)
 
     def _merge(self, paths: list[Path]) -> Iterator[tuple]:
         return heapq.merge(*(self._read(p) for p in paths), key=self.key)
@@ -572,17 +656,26 @@ def _write_regions(regions: _Sorter, out: Path, target: str, suffix: str, shard_
     """The sorted regions into the target's FASTA shards and its meta file; the shards' list. A region on two
     tape rows (an IGR of a contig on two stages) is the same row twice, as it was before W-16."""
     _log(f"{target}: sorting {regions.n:,} regions")
+    try:
+        return _write_region_rows(regions.rows(), out, target, suffix, shard_bytes)
+    finally:
+        regions.close()
+
+
+def _write_region_rows(rows: Iterator[tuple], out: Path, target: str, suffix: str, shard_bytes: int) -> list[dict]:
+    """Region rows of `_REGION_SORT` in pack order into the target's FASTA shards and its meta file; the shards'
+    list. The one writer of both builds (card W-35): the one-process build gives it its sorter's rows, the build in
+    parts the merge of its parts' runs."""
     w = _Shards(out / target, suffix, shard_bytes, target)
     meta = _Meta(out / f"{target}/{target}_meta.parquet")
     try:
-        for chunk in _chunks(regions.rows(), BATCH_ROWS):
+        for chunk in _chunks(rows, BATCH_ROWS):
             for r in chunk:
                 w.write(r[0].hex(), r[1])
             meta.add(_table([(r[0], *r[2:]) for r in chunk], _REGION).to_batches()[0])
         shards = w.done()
     finally:
         meta.close()
-        regions.close()
     _log(f"{target}: {meta.path.name} written: {meta.rows:,} rows in {meta.groups} row groups")
     return shards
 
@@ -597,23 +690,34 @@ def _build_unique(rf: ReleaseFiles, out: Path, gcv: str, scratch: Path, shard_by
     files = _protein_files(rf, gcv)
     _log(f"unique: start, {len(files)} protein_seq files, {_n_rows(files):,} rows")
     proteins = _Sorter(scratch / "unique", _PROTEIN_SORT, itemgetter(0), "unique")
-    w = _Shards(out / "unique", ".faa.zst", shard_bytes, "unique")
     try:
-        for f in files:
-            for b in _batches(f, ["protein_uid", "seq"], BATCH_ROWS):
-                for row in zip(b.column("protein_uid").to_pylist(), b.column("seq").to_pylist()):
-                    proteins.add(row)
+        _unique_rows(rf, gcv, proteins)
         _log(f"unique: sorting {proteins.n:,} rows")
-        last = None
-        for row in proteins.rows():
-            if last is not None and row[0] != last[0]:
-                w.write(last[0].hex(), last[1].replace("*", ""))
-            last = row
-        if last is not None:
-            w.write(last[0].hex(), last[1].replace("*", ""))
-        shards = w.done()
+        return _write_unique(proteins.rows(), out, shard_bytes)
     finally:
         proteins.close()
+
+
+def _unique_rows(rf: ReleaseFiles, gcv: str, proteins: _Sorter) -> None:
+    """Every `protein_seq` row of the release into the sorter, in file order, then row order."""
+    for f in _protein_files(rf, gcv):
+        for b in _batches(f, ["protein_uid", "seq"], BATCH_ROWS):
+            for row in zip(b.column("protein_uid").to_pylist(), b.column("seq").to_pylist()):
+                proteins.add(row)
+
+
+def _write_unique(rows: Iterator[tuple], out: Path, shard_bytes: int) -> list[dict]:
+    """Protein rows in protein_uid order, equal uids in reading order, into the `unique` shards, the last row of each
+    uid kept; the shards' list. The one writer of both builds (card W-35)."""
+    w = _Shards(out / "unique", ".faa.zst", shard_bytes, "unique")
+    last = None
+    for row in rows:
+        if last is not None and row[0] != last[0]:
+            w.write(last[0].hex(), last[1].replace("*", ""))
+        last = row
+    if last is not None:
+        w.write(last[0].hex(), last[1].replace("*", ""))
+    shards = w.done()
     _log(f"unique: done, {sum(s['n_seq'] for s in shards):,} proteins in {len(shards)} shards")
     return shards
 
@@ -654,25 +758,7 @@ def _build_igr(rf: ReleaseFiles, out: Path, iv: str, tv: str, store: SeqStore | 
     _log(f"igr: start, {len(files)} IGR files ({_n_rows(files):,} rows), {len(tape_files)} tape files")
     regions = _Sorter(scratch / "igr", _REGION_SORT, itemgetter(0, 1), "igr")
     try:
-        tapes = _Keyed(_contig_tapes(tape_files, True))
-        cols = ["contig_uid", "start", "end", "left_feature_uid", "right_feature_uid"]
-        for cu, rows in _grouped(_merged(files, cols)):
-            rows = [r for r in rows if r[2] - r[1] >= IGR_MIN_NT]
-            if not rows:
-                continue
-            tape = tapes.take(cu)
-            if tape is None:
-                raise ValueError(f"IGR on contig {cu.hex()}, which has no tape of tape version {tv} in the release")
-            L, circ, strands = tape
-            contig = store.get(cu)  # the whole contig once; each IGR is a slice of it
-            for _, s, e, lf, rt in rows:
-                seq = _slice(contig, s, e, circ)
-                # flanks of an IGR never nest, so only their strands matter
-                orient = junction((0, 1, strands[lf]), (2, 3, strands[rt])) if lf and rt else None
-                row = _region("igr", cu, s, e, 1, e - s, left_feature_uid=lf, right_feature_uid=rt,
-                              orientation=orient, gc=_gc(seq), dist_to_contig_end_bp=None if circ else min(s, L - e),
-                              partial=not circ and (s == 0 or e == L))
-                regions.add(_region_row(row, seq.decode("ascii")))
+        _igr_regions(rf, iv, tv, store, regions)
         shards = _write_regions(regions, out, "igr", ".fna.zst", shard_bytes)
     finally:
         regions.close()
@@ -680,12 +766,46 @@ def _build_igr(rf: ReleaseFiles, out: Path, iv: str, tv: str, store: SeqStore | 
     return shards
 
 
-def _contig_genes(occ: list[Path], scratch: Path) -> _Sorter:
+def _igr_regions(rf: ReleaseFiles, iv: str, tv: str, store: SeqStore | None, regions: _Sorter,
+                 rng: _Range | None = None) -> None:
+    """The IGRs of at least `IGR_MIN_NT` of the release (of the contigs in `rng`, card W-35) into the sorter, contig by
+    contig in contig_uid order."""
+    files = _igr_files(rf, iv)
+    tape_files = _tape_files(rf, tv) if store is not None else []
+    tapes = _Keyed(_contig_tapes(tape_files, True, rng))
+    cols = ["contig_uid", "start", "end", "left_feature_uid", "right_feature_uid"]
+    for cu, rows in _grouped(_merged(files, cols, rng=rng)):
+        rows = [r for r in rows if r[2] - r[1] >= IGR_MIN_NT]
+        if not rows:
+            continue
+        tape = tapes.take(cu)
+        if tape is None:
+            raise ValueError(f"IGR on contig {cu.hex()}, which has no tape of tape version {tv} in the release")
+        L, circ, strands = tape
+        contig = store.get(cu)  # the whole contig once; each IGR is a slice of it
+        for _, s, e, lf, rt in rows:
+            seq = _slice(contig, s, e, circ)
+            # flanks of an IGR never nest, so only their strands matter
+            orient = junction((0, 1, strands[lf]), (2, 3, strands[rt])) if lf and rt else None
+            row = _region("igr", cu, s, e, 1, e - s, left_feature_uid=lf, right_feature_uid=rt,
+                          orientation=orient, gc=_gc(seq), dist_to_contig_end_bp=None if circ else min(s, L - e),
+                          partial=not circ and (s == 0 or e == L))
+            regions.add(_region_row(row, seq.decode("ascii")))
+
+
+def _contig_genes(occ: list[Path], scratch: Path, rng: _Range | None = None) -> _Sorter:
     """The genes (contig_uid, start, end, strand) of `protein_occurrence`, which is sorted by protein, in a sorter
-    that gives them back in (contig_uid, start, end, strand) order."""
+    that gives them back in (contig_uid, start, end, strand) order. With `rng`, the genes of the contigs in range
+    (card W-35): each batch's contig column is read first and only those rows taken."""
     genes = _Sorter(scratch / "genes", _GENE_SORT, None, "dark_orf genes")
     for f in occ:
         for b in _batches(f, list(_GENE_SORT.names), BATCH_ROWS):
+            if rng is not None:
+                keep = [i for i, c in enumerate(b.column("contig_uid").to_pylist()) if rng.has(c)]
+                if not keep:
+                    continue
+                if len(keep) < b.num_rows:
+                    b = b.take(pa.array(keep, pa.int64()))
             for row in zip(*(b.column(n).to_pylist() for n in _GENE_SORT.names)):
                 genes.add(row)
     return genes
@@ -698,25 +818,37 @@ def _build_dark_orf(rf: ReleaseFiles, out: Path, gcv: str, tv: str, store: SeqSt
     n_contigs = _n_rows(tape_files)
     _log(f"dark_orf: start, {len(tape_files)} tape files ({n_contigs:,} contigs), {len(occ)} protein_occurrence files")
     regions = _Sorter(scratch / "dark_orf", _REGION_SORT, itemgetter(0, 1), "dark_orf")
-    gene_rows = _contig_genes(occ, scratch) if tape_files else _Sorter(scratch / "genes", _GENE_SORT, None, "genes")
+    try:
+        _dark_orf_regions(rf, gcv, tv, store, scratch, regions, n_contigs)
+        shards = _write_regions(regions, out, "dark_orf", ".faa.zst", shard_bytes)
+    finally:
+        regions.close()
+    _log(f"dark_orf: done, {sum(s['n_seq'] for s in shards):,} dark ORFs in {len(shards)} shards")
+    return shards
+
+
+def _dark_orf_regions(rf: ReleaseFiles, gcv: str, tv: str, store: SeqStore | None, scratch: Path, regions: _Sorter,
+                      n_contigs: int, rng: _Range | None = None) -> None:
+    """The dark ORFs of the release's contigs (those in `rng`, card W-35) into the sorter, contig by contig in
+    contig_uid order; the genes are sorted by contig under `scratch` first."""
+    tape_files = _tape_files(rf, tv) if store is not None else []
+    occ = _occurrence_files(rf, gcv)
+    gene_rows = _contig_genes(occ, scratch, rng) if tape_files else _Sorter(scratch / "genes", _GENE_SORT, None,
+                                                                            "genes")
     try:
         _log(f"dark_orf: {gene_rows.n:,} genes read; finding dark ORFs contig by contig")
         genes = _Keyed(((cu, [r[1:] for r in rows]) for cu, rows in _grouped(gene_rows.rows())), [])
-        codes = _Keyed(_contig_codes(rf.table("feature_protein", gene_call_version=gcv)), 11)
+        codes = _Keyed(_contig_codes(rf.table("feature_protein", gene_call_version=gcv), rng), 11)
         progress = _Progress("dark_orf", n_contigs, regions)
-        for cu, (_, circ, _) in _contig_tapes(tape_files, False):
+        for cu, (_, circ, _) in _contig_tapes(tape_files, False, rng):
             code = codes.take(cu)
             for o, frac, at_end in orfs.dark_orfs(store.get(cu), circ, genes.take(cu), code):
                 row = _region("dark_orf", cu, o.start, o.end, o.strand, len(o.aa), partial=o.partial,
                               at_contig_end=at_end, gene_overlap_frac=frac, genetic_code=code)
                 regions.add(_region_row(row, o.aa))
             progress.tick()
-        shards = _write_regions(regions, out, "dark_orf", ".faa.zst", shard_bytes)
     finally:
         gene_rows.close()
-        regions.close()
-    _log(f"dark_orf: done, {sum(s['n_seq'] for s in shards):,} dark ORFs in {len(shards)} shards")
-    return shards
 
 
 def _build_models(out: Path, models: dict[str, Path]) -> list[dict]:
@@ -799,6 +931,42 @@ def _build(root: Path, release: str, gcv: str, models: dict[str, Path] | None, s
     _check_codes(rf, gcv)
     producers = sorted(producers) if producers is not None else [gcv]
     tv, iv = tape_version(producers), igr_version(producers)
+    head, sources = _head_and_sources(root, rf, release, gcv, iv, tv, models, shard_text_bytes)
+    want = _fingerprint({**head, "targets": {t: {"sources": s} for t, s in sources.items()}})
+    have = _existing(root, release, packs, want, release_manifest, verify_scratch)
+    if have is not None:
+        return have  # built from the same inputs: a no-op
+    base = release_dir(packs, release)
+    base.mkdir(parents=True, exist_ok=True)
+    tag = f"{os.getpid()}-{os.urandom(4).hex()}"
+    out, scratch = base / f".building-{tag}", base / f".scratch-{tag}"
+    out.mkdir()
+    try:
+        scratch.mkdir()
+        _log(f"release {release}: building in {out} (scratch {scratch})")
+        manifest, data = _build_into(out, root, rf, head, sources, gcv, iv, tv, models or {}, shard_text_bytes,
+                                     scratch)
+        final, placed = _place(root, rf, release, out, manifest, data, scratch, packs, release_manifest,
+                               verify_scratch)
+    except BaseException as e:
+        shutil.rmtree(out, ignore_errors=True)
+        shutil.rmtree(scratch, ignore_errors=True)
+        if isinstance(e, (Stopped, KeyboardInterrupt)):
+            why = "SIGINT" if isinstance(e, KeyboardInterrupt) else f"a signal (exit {e.code})"
+            _log(f"release {release}: stopped by {why}; removed {out} and {scratch}; nothing is kept, the next "
+                 "call starts again")
+        raise
+    shutil.rmtree(scratch, ignore_errors=True)
+    if placed:
+        _log(f"release {release}: pack {final.name} written: {len(manifest['shards']) + len(manifest['meta']) + 2} "
+             f"files, {sum(s['bytes'] for s in manifest['shards'] + manifest['meta']):,} bytes in shards and meta")
+    return {**manifest, "pack_id": final.name}
+
+
+def _head_and_sources(root: Path, rf: ReleaseFiles, release: str, gcv: str, iv: str, tv: str,
+                      models: dict[str, Path] | None, shard_text_bytes: int) -> tuple[dict, dict]:
+    """The manifest's head (rules, versions, tools) and each target's `sources` (every input file by path and
+    sha256, the libraries by sha256): what the pack is built from (`_fingerprint`)."""
     seq_files = rf.artifact("seq_shards")
     _log(f"release {release}: hashing the input files")
     seq_hash = _source_hash(root, seq_files)
@@ -822,7 +990,13 @@ def _build(root: Path, release: str, gcv: str, models: dict[str, Path] | None, s
         "builder": provenance.tool_versions("bio-box", "pyhmmer", "pyarrow"),
         "missing_targets": MISSING_AT_S0,
     }
-    want = _fingerprint({**head, "targets": {t: {"sources": s} for t, s in sources.items()}})
+    return head, sources
+
+
+def _existing(root: Path, release: str, packs: Path, want: dict, release_manifest: dict | None,
+              verify_scratch: Path | None) -> dict | None:
+    """The manifest (with `pack_id`) of a pack of the release in `packs` built from the same inputs (`want`, a
+    `_fingerprint`) that verifies in full, its record added when it has none; None when there is no such pack."""
     base = release_dir(packs, release)
     for d in sorted(p for p in base.iterdir() if not p.name.startswith(".")) if base.is_dir() else []:
         if (d / MANIFEST).is_file():
@@ -831,47 +1005,35 @@ def _build(root: Path, release: str, gcv: str, models: dict[str, Path] | None, s
                                                              scratch=verify_scratch):
                 _log(f"release {release}: pack {pid.hex()} is there, built from the same inputs: nothing to do")
                 _add_record(d, release)  # a pack built before W-19 has none; it has just verified in full
-                return {**have, "pack_id": pid.hex()}  # built from the same inputs: a no-op
-    base.mkdir(parents=True, exist_ok=True)
-    tag = f"{os.getpid()}-{os.urandom(4).hex()}"
-    out, scratch = base / f".building-{tag}", base / f".scratch-{tag}"
-    out.mkdir()
-    try:
-        scratch.mkdir()
-        _log(f"release {release}: building in {out} (scratch {scratch})")
-        manifest, data = _build_into(out, root, rf, head, sources, gcv, iv, tv, models or {}, shard_text_bytes,
-                                     scratch)
-        pid = pack_id_of(data)
-        # card W-19: verify once, here, and record it beside the manifest; a search then checks the record and the
-        # sizes only. The shard-size rule is not a property of the files and is left to `pack verify`.
-        _log(f"release {release}: verifying the pack (C-12)")
-        problems = _problems(rf, release, out, manifest, 0, scratch)
-        if problems:
-            raise ValueError(f"the pack built in {out} does not verify (C-12): {problems[:3]}")
-        _write_record(out, pid, release, data)
-        _log(f"release {release}: the pack verifies; record {VERIFIED} written")
-        final = pack_dir(packs, release, pid)
-        if final.exists():
-            if not verify_dir(root, release, final, release_manifest=release_manifest, scratch=verify_scratch):
-                shutil.rmtree(out)
-                _log(f"release {release}: pack {final.name} is there already and verifies; this build removed")
-                _add_record(final, release)
-                return {**manifest, "pack_id": final.name}
-            raise FileExistsError(f"{final}: a pack with this pack_id exists and does not verify; a pack is never "
-                                  "overwritten: remove it, then build again")
-        os.rename(out, final)
-    except BaseException as e:
-        shutil.rmtree(out, ignore_errors=True)
-        shutil.rmtree(scratch, ignore_errors=True)
-        if isinstance(e, (Stopped, KeyboardInterrupt)):
-            why = "SIGINT" if isinstance(e, KeyboardInterrupt) else f"a signal (exit {e.code})"
-            _log(f"release {release}: stopped by {why}; removed {out} and {scratch}; nothing is kept, the next "
-                 "call starts again")
-        raise
-    shutil.rmtree(scratch, ignore_errors=True)
-    _log(f"release {release}: pack {final.name} written: {len(manifest['shards']) + len(manifest['meta']) + 2} "
-         f"files, {sum(s['bytes'] for s in manifest['shards'] + manifest['meta']):,} bytes in shards and meta")
-    return {**manifest, "pack_id": final.name}
+                return {**have, "pack_id": pid.hex()}
+    return None
+
+
+def _place(root: Path, rf: ReleaseFiles, release: str, out: Path, manifest: dict, data: bytes, scratch: Path,
+           packs: Path, release_manifest: dict | None, verify_scratch: Path | None) -> tuple[Path, bool]:
+    """Verify the pack just written in `out` (card W-19), write its record and rename it to `<packs>/release=<R>/<pack
+    id>`; (that directory, whether this build put it there). A pack of that id already there that verifies is kept and
+    `out` removed; one that does not verify is never overwritten (FileExistsError)."""
+    pid = pack_id_of(data)
+    # card W-19: verify once, here, and record it beside the manifest; a search then checks the record and the
+    # sizes only. The shard-size rule is not a property of the files and is left to `pack verify`.
+    _log(f"release {release}: verifying the pack (C-12)")
+    problems = _problems(rf, release, out, manifest, 0, scratch)
+    if problems:
+        raise ValueError(f"the pack built in {out} does not verify (C-12): {problems[:3]}")
+    _write_record(out, pid, release, data)
+    _log(f"release {release}: the pack verifies; record {VERIFIED} written")
+    final = pack_dir(packs, release, pid)
+    if final.exists():
+        if not verify_dir(root, release, final, release_manifest=release_manifest, scratch=verify_scratch):
+            shutil.rmtree(out)
+            _log(f"release {release}: pack {final.name} is there already and verifies; this build removed")
+            _add_record(final, release)
+            return final, False
+        raise FileExistsError(f"{final}: a pack with this pack_id exists and does not verify; a pack is never "
+                              "overwritten: remove it, then build again")
+    os.rename(out, final)
+    return final, True
 
 
 def _build_into(out: Path, root: Path, rf: ReleaseFiles, head: dict, sources: dict, gcv: str, iv: str, tv: str,
@@ -890,6 +1052,12 @@ def _build_into(out: Path, root: Path, rf: ReleaseFiles, head: dict, sources: di
     finally:
         if store is not None:
             store.close()
+    return _write_manifest(out, head, sources, built)
+
+
+def _write_manifest(out: Path, head: dict, sources: dict, built: dict[str, list[dict]]) -> tuple[dict, bytes]:
+    """The manifest of the pack whose files `built` lists (per target, in the order unique, igr, dark_orf, models),
+    written into `out`; (manifest, its bytes). Both builds end here (card W-35)."""
     manifest = {
         **head,
         "targets": {t: {"kind": TARGET_KIND.get(t, t), "n_seq": sum(s["n_seq"] for s in sh),
@@ -1127,3 +1295,505 @@ def _problems(rf: ReleaseFiles, release: str, out: Path, manifest: dict, min_sha
         if expect is not None and expect != info["n_seq"]:
             problems.append(f"{target}: {info['n_seq']} sequences, its source has {expect}")
     return problems
+
+
+# --- the estimate (card W-35) --------------------------------------------------------------------------------------
+
+# CPU-minutes per unit of each process's work (card W-35; module docstring). Derived from the timestamped progress
+# lines of the one-process build of `rN.3` (measured, wilkcomp02, 2026-11-11, unit `r50-rN3-pack`, log
+# /tmp/if2453/r50/tmp/logs/r50-rN3-pack.log; planning/measurements/2026-11-11_build_r50.md: 79.5 CPU-minutes in 4,861 s
+# of wall time, one CPU; 10,634,028 protein_seq rows, 12,276,916,069 genome bases, one library of 30,134 models), each
+# part's span of wall time taken as its CPU time: unique 55 s reading and about 100 s sorting into one run; IGRs 329 s
+# collecting and about 150 s sorting; dark ORFs 46 s of genes, 3,097 s finding ORFs and about 400 s sorting; the last
+# process the shard writes of the three targets (about 650 s), the models (154 s), the manifest's hashes (26 s) and the
+# verify (154 s); the driver the codes and the input hashes (52 s). Estimates until the build of `rN.3` in parts is
+# measured.
+UNIQUE_CPU_MIN_PER_M_ROWS = 0.25
+IGR_CPU_MIN_PER_GBP = 0.65
+DARK_ORF_CPU_MIN_PER_GBP = 4.81
+ASSEMBLE_CPU_MIN_PER_M_ROWS = 0.40
+ASSEMBLE_CPU_MIN_PER_GBP = 0.80
+MODELS_CPU_MIN_PER_LIBRARY = 2.6  # Pfam-A 38.2, 30,134 models (rN.3's one library)
+DRIVER_CPU_MIN_PER_GBP = 0.07
+PART_START_CPU_MIN = 0.05  # a process's start: imports, opening the release (estimate)
+# the budget without a host profile: AGENTS §7.2's 300 CPU-minutes per process
+DEFAULT_CPU_MIN_PER_PROCESS = 300
+
+
+@dataclass(frozen=True)
+class Counts:
+    """What the estimate is made from: the release's `protein_seq` rows (a protein stored by two stages counts twice),
+    its genome bases and contigs (the `contig_len` of its tapes, once per contig) and the domain libraries packed."""
+    proteins: int
+    bases: int
+    contigs: int
+    libraries: int = 0
+
+
+def _margin() -> float:
+    from biobox.stage import SHARD_MARGIN
+
+    return SHARD_MARGIN
+
+
+def _counts(rf: ReleaseFiles, gcv: str, tv: str, libraries: int) -> Counts:
+    proteins = _n_rows(_protein_files(rf, gcv))
+    bases = contigs = 0
+    if rf.table("seq_locator"):  # a protein-only root has no nucleotide targets
+        for _, (length, _, _) in _contig_tapes(_tape_files(rf, tv), False):
+            bases += length
+            contigs += 1
+    return Counts(proteins, bases, contigs, libraries)
+
+
+def release_counts(root: Path, release: str, gene_call_version: str = GENE_CALL_VERSION,
+                   producers: list[str] | None = None, release_manifest: dict | None = None,
+                   libraries: int = 0) -> Counts:
+    """The release's counts for the estimate (`Counts`), read from the files' metadata and the tapes' lengths, one batch
+    of contigs at a time."""
+    rf = ReleaseFiles.of(Path(root).resolve(), release, release_manifest)
+    gcv = gene_call_version
+    return _counts(rf, gcv, tape_version(sorted(producers) if producers else [gcv]), libraries)
+
+
+def part_cpu_min(target: str, *, rows: int = 0, bases: int = 0, libraries: int = 0) -> float:
+    """The estimate of one process of the build: a part of `target` (`unique` over `rows` protein_seq rows, `igr` or
+    `dark_orf` over `bases` genome bases), the last process (`assemble`) or the driver (`driver`) of a release of
+    `rows` rows, `bases` bases and `libraries` domain libraries (rates above)."""
+    m, g = rows / 1e6, bases / 1e9
+    if target == "unique":
+        return PART_START_CPU_MIN + UNIQUE_CPU_MIN_PER_M_ROWS * m
+    if target == "igr":
+        return PART_START_CPU_MIN + IGR_CPU_MIN_PER_GBP * g
+    if target == "dark_orf":
+        return PART_START_CPU_MIN + DARK_ORF_CPU_MIN_PER_GBP * g
+    if target == "assemble":
+        return (PART_START_CPU_MIN + ASSEMBLE_CPU_MIN_PER_M_ROWS * m + ASSEMBLE_CPU_MIN_PER_GBP * g
+                + MODELS_CPU_MIN_PER_LIBRARY * libraries)
+    if target == "driver":
+        return PART_START_CPU_MIN + DRIVER_CPU_MIN_PER_GBP * g
+    raise ValueError(f"no estimate for {target!r}")
+
+
+def one_process_cpu_min(c: Counts) -> float:
+    """The estimate of the build in one process: the work of every part, the last process and the driver."""
+    return (part_cpu_min("unique", rows=c.proteins) + part_cpu_min("igr", bases=c.bases)
+            + part_cpu_min("dark_orf", bases=c.bases)
+            + part_cpu_min("assemble", rows=c.proteins, bases=c.bases, libraries=c.libraries)
+            + part_cpu_min("driver", bases=c.bases) - 4 * PART_START_CPU_MIN)
+
+
+def _rates() -> str:
+    return (f"{UNIQUE_CPU_MIN_PER_M_ROWS} CPU-minutes per million protein_seq rows for unique, {IGR_CPU_MIN_PER_GBP} and "
+            f"{DARK_ORF_CPU_MIN_PER_GBP} per Gbp for igr and dark_orf, {ASSEMBLE_CPU_MIN_PER_M_ROWS} per million rows, "
+            f"{ASSEMBLE_CPU_MIN_PER_GBP} per Gbp and {MODELS_CPU_MIN_PER_LIBRARY} per library for the last process: "
+            "the rates in biobox.search.pack, card W-35")
+
+
+def estimate_line(release: str, c: Counts, budget: int) -> str:
+    """The estimate as `pack build` prints it before any work."""
+    return (f"release {release}: estimate {one_process_cpu_min(c):,.1f} CPU-minutes in one process for {c.bases:,} "
+            f"genome bases in {c.contigs:,} contigs, {c.proteins:,} protein_seq rows and {c.libraries} domain "
+            f"libraries ({_rates()}); the budget of a process is {_margin() * budget:g} CPU-minutes "
+            f"({_margin():.0%} of cpu_min_per_process {budget}, AGENTS §7.2)")
+
+
+def parts_needed(c: Counts, budget: int) -> int:
+    """The fewest parts whose even share of the bases puts each region part within `SHARD_MARGIN` of `budget`."""
+    room = _margin() * budget - PART_START_CPU_MIN
+    rate = max(IGR_CPU_MIN_PER_GBP, DARK_ORF_CPU_MIN_PER_GBP) * c.bases / 1e9
+    return max(1, math.ceil(rate / room)) if room > 0 else 1
+
+
+def one_process_refusal(c: Counts, budget: int) -> str | None:
+    """Why the build may not run in one process, or None: its estimate is over `SHARD_MARGIN` of `budget`, the
+    profile's `cpu_min_per_process` (as `stage` refuses a step with no shards)."""
+    est, lim = one_process_cpu_min(c), _margin() * budget
+    if est <= lim:
+        return None
+    return (f"the pack of {c.bases:,} genome bases and {c.proteins:,} protein_seq rows is estimated at {est:,.1f} "
+            f"CPU-minutes in one process ({_rates()}), over {_margin():.0%} of the profile's cpu_min_per_process of "
+            f"{budget} (AGENTS §7.2): build it in parts, with --parts {parts_needed(c, budget)} or more and --jobs J "
+            "(bio-box pack build --help)")
+
+
+def parts_refusal(parts: list[dict], budget: int, n: int) -> str | None:
+    """Why the build in `n` parts may not run, or None: a process estimated over `SHARD_MARGIN` of `budget`. A region
+    part over it needs more parts (or holds one contig too large for any); `unique` and the last process cannot be cut."""
+    lim = _margin() * budget
+    over = [p for p in parts if p["estimate_cpu_min"] > lim]
+    if not over:
+        return None
+    say = ", ".join(f"{p['name']} {p['estimate_cpu_min']:,.1f} CPU-minutes ({p['contigs']:,} contigs, {p['bases']:,} "
+                    f"bases, {p.get('rows', 0):,} rows)" for p in over)
+    cut = [p for p in over if p["target"] in ("igr", "dark_orf")]
+    if len(cut) < len(over):
+        fix = "unique and the last process are not cut into parts: split the release"
+    elif all(p["contigs"] == 1 for p in cut):
+        fix = "each holds one contig, which no number of parts cuts"
+    else:
+        worst = max(p["estimate_cpu_min"] for p in cut)
+        fix = f"give more parts (--parts {max(n + 1, math.ceil(n * worst / lim))} or more)"
+    return (f"in {n} parts, over {_margin():.0%} of the profile's cpu_min_per_process of {budget} (AGENTS §7.2): "
+            f"{say}; {fix}")
+
+
+# --- the build in parts (card W-35; module docstring) ----------------------------------------------------------------
+
+_MODULE = "biobox.search.pack"  # what `python -m` runs for a part and for the last process
+PARTS_WORK = "scratch/pack"  # the default work base, under the profile's tmp
+RUN, DONE, ASSEMBLED = "run.parquet", "done.json", "assembled.json"
+REGION_TARGETS = ("igr", "dark_orf")
+
+
+def _cut(rf: ReleaseFiles, tv: str, n: int) -> list[dict]:
+    """The release's contigs (its tapes, in uid order) cut into `n` consecutive ranges: contig c starts range k at the
+    first contig whose midpoint, in genome bases from the first contig, is at k/n of the release's bases or past it
+    (`2 n before + n len >= 2 k total`, exact in integers). Each range as {lo, hi (uid hex, None unbounded), empty,
+    contigs, bases}; a range no contig starts holds none. Two passes over the tapes' lengths, one batch at a time."""
+    files = _tape_files(rf, tv) if rf.table("seq_locator") else []
+    total = sum(length for _, (length, _, _) in _contig_tapes(files, False))
+    parts = [{"lo": None, "hi": None, "empty": False, "contigs": 0, "bases": 0} for _ in range(n)]
+    k, before = 0, 0
+    for cu, (length, _, _) in _contig_tapes(files, False):
+        while k + 1 < n and 2 * n * before + n * length >= 2 * (k + 1) * total:
+            k += 1
+            parts[k]["lo"] = parts[k - 1]["hi"] = cu.hex()
+        parts[k]["contigs"] += 1
+        parts[k]["bases"] += length
+        before += length
+    for p in parts[k + 1:]:
+        p["empty"] = True
+    return parts
+
+
+def _done(wdir: Path, part: dict) -> dict | None:
+    """The record of a part whose output is in the work directory `wdir` and is of its range (its `done.json` and its
+    run, of the size the record gives), else None."""
+    try:
+        rec = json.loads((wdir / part["name"] / DONE).read_text())
+    except (FileNotFoundError, ValueError):
+        return None
+    run = wdir / part["name"] / RUN
+    if any(rec.get(k) != part[k] for k in ("lo", "hi", "empty", "target")) or not run.is_file() \
+            or run.stat().st_size != rec.get("run_bytes"):
+        return None
+    return rec
+
+
+def _usage(t0: float) -> dict:
+    """This process's CPU-minutes, wall seconds since `t0` and peak RSS (KiB: `ru_maxrss` on Linux)."""
+    ru = resource.getrusage(resource.RUSAGE_SELF)
+    return {"cpu_min": round((ru.ru_utime + ru.ru_stime) / 60, 3), "wall_s": round(time.monotonic() - t0, 1),
+            "peak_rss_kib": ru.ru_maxrss}
+
+
+def _usage_line(rec: dict, est: float) -> str:
+    return (f"{rec['cpu_min']:,.2f} CPU-minutes (estimate {est:,.2f}), wall {rec['wall_s']:,.1f} s, peak RSS "
+            f"{rec['peak_rss_kib'] / 1024:,.1f} MiB")
+
+
+def _allowance(prof) -> Callable[[int], int]:
+    """The threads work in flight may total now, for a launch of `threads` (`runstep.allowance`, read again at each
+    call, as `build-stage` reads it before each shard): said once and again when it changes."""
+    last: list = [None]
+
+    def allow(threads: int) -> int:
+        a = runstep.allowance(prof, datetime.now(), runstep.read_cpu(), threads=threads)
+        if a.threads != last[0]:
+            _log(a.line)
+            last[0] = a.threads
+        return a.threads
+
+    return allow
+
+
+def _part_runner(cap: dict) -> Callable[..., int]:
+    """Run a part (`stage._launch`'s runner) as its own process in this process's group, under the memory cap `cap`
+    (`runstep.memory_cap`: the one inherited, or a `MemoryMax` scope it opens) at the profile's `nice_monolithic`,
+    with `threads` in the thread variables, as `build-stage` runs a shard rescan. A signal gives 128 + its number."""
+
+    def run(prof, root: Path, stage: str, step: str, cmd, *, threads: int) -> int:
+        argv = runstep.build_argv(list(cmd), prof.nice_monolithic, prof.mem_scope,
+                                  inherited=cap if cap["how"] == "inherited" else None)
+        env = dict(os.environ, BIOBOX_THREADS=str(threads), **{v: str(threads) for v in runstep.THREAD_VARS})
+        code = subprocess.run(argv, env=env, check=False).returncode
+        return code if code >= 0 else 128 - code
+
+    return run
+
+
+def build_in_parts(root: Path, release: str, gene_call_version: str = GENE_CALL_VERSION,
+                   models: dict[str, Path] | None = None, shard_text_bytes: int = SHARD_TEXT_BYTES,
+                   producers: list[str] | None = None, release_manifest: dict | None = None, *, packs: Path, prof,
+                   parts: int, jobs: int | None = None, work: Path | None = None, scratch: Path | None = None,
+                   run: Callable[..., int] | None = None,
+                   allow: Callable[[int], int] | None = None) -> tuple[int, dict | None]:
+    """Build the release's pack in parts (card W-35, module docstring), each its own process: `unique`, `parts`
+    ranges of contigs for each of `igr` and `dark_orf`, then the last process; (0, the manifest with `pack_id`), or
+    (the exit code of a part that failed or was stopped, or 75 for `STOP`, None). The pack is that of `build` with the
+    same arguments, byte for byte.
+
+    `prof` is the host profile: its `cpu_min_per_process` and `SHARD_MARGIN` bound every process's estimate
+    (ValueError before any work otherwise: `parts_refusal`), its memory cap and nice are each part's, its tmp holds the
+    work base (`<tmp>/scratch/pack`, or `work`). At most `jobs` parts run at once (default: the allowance at the start),
+    one thread each, within `allow` (default: `runstep.allowance` read before each launch). `run` (tests) stands in for
+    the runner of a part, with `stage._launch`'s signature. `scratch` is where the full verify of a pack already there
+    sorts (as for `build`). ValueError, before any part, for a work directory under the root or on another file system
+    than the pack directory, or one another driver holds."""
+    root = Path(root).resolve()
+    packs = outside_root(root, packs, "the pack directory")
+    if isinstance(parts, bool) or not isinstance(parts, int) or parts < 1:
+        raise ValueError(f"--parts {parts}: must be a whole number, at least 1")
+    if jobs is not None and (isinstance(jobs, bool) or jobs < 1):
+        raise ValueError(f"--jobs {jobs}: must be at least 1")
+    base_work = outside_root(root, Path(work) if work is not None else Path(prof.tmp) / PARTS_WORK,
+                             "the work directory")
+    with _stop_on_signals():
+        return _build_in_parts(root, release, gene_call_version, models, shard_text_bytes, producers, release_manifest,
+                               packs, prof, parts, jobs, base_work, scratch, run, allow)
+
+
+def _build_in_parts(root: Path, release: str, gcv: str, models: dict[str, Path] | None, shard_text_bytes: int,
+                    producers: list[str] | None, release_manifest: dict | None, packs: Path, prof, n: int,
+                    jobs: int | None, base_work: Path, verify_scratch: Path | None, run, allow
+                    ) -> tuple[int, dict | None]:
+    from biobox import stage
+
+    rf = ReleaseFiles.of(root, release, release_manifest)
+    producers = sorted(producers) if producers is not None else [gcv]
+    tv, iv = tape_version(producers), igr_version(producers)
+    models = {lib: Path(p).resolve() for lib, p in sorted((models or {}).items())}
+    # the estimate of every process, before any work (card W-35)
+    cut = _cut(rf, tv, n)
+    c = Counts(_n_rows(_protein_files(rf, gcv)), sum(p["bases"] for p in cut), sum(p["contigs"] for p in cut),
+               len(models))
+    plan_parts = [{"name": "unique", "target": "unique", "lo": None, "hi": None, "empty": False, "contigs": c.contigs,
+                   "bases": c.bases, "rows": c.proteins}]
+    for t in REGION_TARGETS:
+        plan_parts += [{**p, "name": f"{t}-{k}-of-{n}", "target": t, "rows": 0} for k, p in enumerate(cut)]
+    for p in plan_parts:
+        p["estimate_cpu_min"] = part_cpu_min(p["target"], rows=p["rows"], bases=0 if p["target"] == "unique" else
+                                             p["bases"])
+    last = {"name": "assemble", "target": "assemble", "contigs": c.contigs, "bases": c.bases, "rows": c.proteins,
+            "estimate_cpu_min": part_cpu_min("assemble", rows=c.proteins, bases=c.bases, libraries=c.libraries)}
+    budget = prof.cpu_min_per_process
+    _log(f"release {release}: in {n} parts: " + "; ".join(
+        f"{p['name']} {p['estimate_cpu_min']:,.2f} CPU-minutes ({p['contigs']:,} contigs, {p['bases']:,} bases)"
+        for p in [*plan_parts, last]) + f"; budget {_margin() * budget:g} CPU-minutes per process")
+    why = parts_refusal([*plan_parts, last], budget, n)
+    if why is not None:
+        raise ValueError(why)
+    cap = None
+    if run is None:
+        try:
+            cap = runstep.memory_cap(prof.mem_scope, require=prof.require_mem_cap)
+        except runstep.NoCap as e:
+            raise ValueError(f"no part can start: {e}") from None
+        run = _part_runner(cap)
+    _log(f"release {release}: checking genetic codes")
+    _check_codes(rf, gcv)
+    head, sources = _head_and_sources(root, rf, release, gcv, iv, tv, models, shard_text_bytes)
+    want = _fingerprint({**head, "targets": {t: {"sources": s} for t, s in sources.items()}})
+    wdir = base_work / f"release={release}" / blake3(json.dumps(want, sort_keys=True).encode()).hexdigest()[:32]
+    have = _existing(root, release, packs, want, release_manifest, verify_scratch)
+    if have is not None:
+        return 0, have
+    base = release_dir(packs, release)
+    base.mkdir(parents=True, exist_ok=True)
+    wdir.mkdir(parents=True, exist_ok=True)
+    if os.stat(wdir).st_dev != os.stat(base).st_dev:
+        raise ValueError(f"the work directory {wdir} is on another file system than the pack directory {packs}; the "
+                         "pack is renamed from one into the other: give a --work on the pack directory's file system")
+    lock = open(wdir / ".lock", "a")
+    try:
+        try:
+            fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        except BlockingIOError:
+            raise ValueError(f"another pack build of release {release} in parts holds {wdir / '.lock'}") from None
+        for p in sorted(wdir.iterdir()):
+            if p.name.startswith(".") and p.is_dir():  # a killed part's or last process's (SIGKILL): never taken
+                shutil.rmtree(p)
+                _log(f"release {release}: removed {p}, left by a process that was killed")
+        plan = {"card": "W-35", "root": str(root), "release": release, "release_manifest": release_manifest,
+                "gene_call_version": gcv, "igr_version": iv, "tape_version": tv, "packs": str(Path(packs).resolve()),
+                "models": {lib: str(p) for lib, p in models.items()}, "head": head, "sources": sources,
+                "parts": plan_parts, "assemble": last}
+        plan_path = wdir / f"plan-of-{n}.json"
+        tmp = wdir / f".{plan_path.name}.tmp-{os.getpid()}"
+        tmp.write_text(json.dumps(plan, sort_keys=True, indent=1))
+        os.replace(tmp, plan_path)
+        todo = [p for p in plan_parts if _done(wdir, p) is None]
+        for p in plan_parts:
+            if p not in todo:
+                _log(f"part {p['name']}: its output is there from an earlier call; not run again")
+        allow = allow if allow is not None else _allowance(prof)
+        jobs = jobs if jobs is not None else max(1, allow(1))
+        _log(f"release {release}: {len(todo)} of {len(plan_parts)} parts to run, at most {jobs} at once, one thread "
+             f"each; work directory {wdir}")
+        steps = [stage.Step(release, p["name"], ("part", "--plan", str(plan_path), "--name", p["name"]), module=_MODULE)
+                 for p in todo]
+        code = stage._launch(prof, root, steps, jobs, 1, run, None, allow) if steps else None
+        for p in plan_parts:
+            rec = _done(wdir, p)
+            if rec is not None:
+                _log(f"part {p['name']} done: {rec['rows']:,} rows, {_usage_line(rec, p['estimate_cpu_min'])}"
+                     + ("" if p in todo else " (an earlier call's)"))
+        if code is not None:
+            _log(f"release {release}: stopped before the last process (exit {code}); the parts with output stay in "
+                 f"{wdir}, and the next call runs only the others")
+            return code, None
+        code = stage._launch(prof, root, [stage.Step(release, "assemble", ("assemble", "--plan", str(plan_path)),
+                                                     module=_MODULE)], 1, 1, run, None, allow)
+        if code is not None:
+            _log(f"release {release}: the last process did not finish (exit {code}); the parts stay in {wdir}")
+            return code, None
+        rec = json.loads((wdir / ASSEMBLED).read_text())
+        _log(f"part assemble done: pack {rec['pack_id']}, {_usage_line(rec, last['estimate_cpu_min'])}")
+        man, pid = read_manifest(pack_dir(packs, release, rec["pack_id"]))
+        shutil.rmtree(wdir)  # the parts' runs, the plan and the lock: scratch, once the pack is in place
+    finally:
+        lock.close()
+    _log(f"release {release}: pack {pid.hex()} built in {n} parts; work directory {wdir} removed")
+    return 0, {**man, "pack_id": pid.hex()}
+
+
+def _run_part(plan: dict, wdir: Path, name: str) -> None:
+    """One part (module docstring): its target's rows over its range, sorted into one run, written with its record into
+    a temporary directory renamed to `<wdir>/<name>` at the end."""
+    t0 = time.monotonic()
+    part = next((p for p in plan["parts"] if p["name"] == name), None)
+    if part is None:
+        raise ValueError(f"no part {name} in the plan")
+    if _done(wdir, part) is not None:
+        _log("its output is there already; nothing to do")
+        return
+    tmp = wdir / f".{name}.tmp-{os.getpid()}-{os.urandom(4).hex()}"
+    tmp.mkdir()
+    try:
+        root, target = Path(plan["root"]), part["target"]
+        rf = ReleaseFiles.of(root, plan["release"], plan["release_manifest"])
+        gcv, rng = plan["gene_call_version"], _Range.of(part)
+        _log(f"{target}: start, {part['contigs']:,} contigs, {part['bases']:,} bases (estimate "
+             f"{part['estimate_cpu_min']:,.2f} CPU-minutes), in {tmp}")
+        if target == "unique":
+            schema = _PROTEIN_SORT
+            sorter = _Sorter(tmp / "sort", schema, itemgetter(0), "unique")
+            _unique_rows(rf, gcv, sorter)
+        else:
+            schema = _REGION_SORT
+            sorter = _Sorter(tmp / "sort", schema, itemgetter(0, 1), target)
+            store = SeqStore(root, rf) if rf.table("seq_locator") else None
+            try:
+                if target == "igr":
+                    _igr_regions(rf, plan["igr_version"], plan["tape_version"], store, sorter, rng)
+                else:
+                    _dark_orf_regions(rf, gcv, plan["tape_version"], store, tmp, sorter, part["contigs"], rng)
+            finally:
+                if store is not None:
+                    store.close()
+        try:
+            _log(f"{target}: sorting {sorter.n:,} rows into one run")
+            rows = _write_run(tmp / RUN, schema, sorter.rows())
+        finally:
+            sorter.close()
+        rec = {**{k: part[k] for k in ("name", "target", "lo", "hi", "empty", "contigs", "bases")}, "rows": rows,
+               "run_bytes": (tmp / RUN).stat().st_size, "estimate_cpu_min": part["estimate_cpu_min"], **_usage(t0)}
+        (tmp / DONE).write_text(json.dumps(rec, sort_keys=True, indent=1))
+        os.rename(tmp, wdir / name)
+    except BaseException as e:
+        shutil.rmtree(tmp, ignore_errors=True)
+        if isinstance(e, (Stopped, KeyboardInterrupt)):
+            why = "SIGINT" if isinstance(e, KeyboardInterrupt) else f"a signal (exit {e.code})"
+            _log(f"stopped by {why}; removed {tmp}; the next call runs this part again")
+        raise
+    _log(f"done: {rows:,} rows, {_usage_line(rec, part['estimate_cpu_min'])}")
+
+
+def _assemble(plan: dict, wdir: Path) -> None:
+    """The last process (module docstring): every target's runs merged in part order into the shards and meta files,
+    the models, the manifest; the pack verified, recorded and renamed into the pack directory."""
+    t0 = time.monotonic()
+    root, release, packs = Path(plan["root"]), plan["release"], Path(plan["packs"])
+    rf = ReleaseFiles.of(root, release, plan["release_manifest"])
+    by = {t: [p for p in plan["parts"] if p["target"] == t] for t in ("unique", *REGION_TARGETS)}
+    recs = {p["name"]: _done(wdir, p) for ps in by.values() for p in ps}
+    missing = [k for k, v in recs.items() if v is None]
+    if missing:
+        raise ValueError(f"parts without output in {wdir}: {', '.join(missing)}")
+    shard_bytes = plan["head"]["rules"]["shard_text_bytes"]
+    tag = f"{os.getpid()}-{os.urandom(4).hex()}"
+    out, scratch = wdir / f".building-{tag}", wdir / f".scratch-{tag}"
+    out.mkdir()
+
+    def merged(target: str, schema: pa.Schema, key: Callable) -> Iterator[tuple]:
+        ps = by[target]
+        _log(f"{target}: merging {len(ps)} part runs, {sum(recs[p['name']]['rows'] for p in ps):,} rows")
+        return heapq.merge(*(_read_run(wdir / p["name"] / RUN, schema) for p in ps), key=key)
+
+    try:
+        scratch.mkdir()
+        _log(f"release {release}: building in {out} (scratch {scratch})")
+        built = {
+            "unique": _write_unique(merged("unique", _PROTEIN_SORT, itemgetter(0)), out, shard_bytes),
+            "igr": _write_region_rows(merged("igr", _REGION_SORT, itemgetter(0, 1)), out, "igr", ".fna.zst",
+                                      shard_bytes),
+            "dark_orf": _write_region_rows(merged("dark_orf", _REGION_SORT, itemgetter(0, 1)), out, "dark_orf",
+                                           ".faa.zst", shard_bytes),
+            "models": _build_models(out, {lib: Path(p) for lib, p in plan["models"].items()}),
+        }
+        manifest, data = _write_manifest(out, plan["head"], plan["sources"], built)
+        final, placed = _place(root, rf, release, out, manifest, data, scratch, packs, plan["release_manifest"], wdir)
+        rec = {"pack_id": final.name, "placed": placed, **_usage(t0)}
+        tmp = wdir / f".{ASSEMBLED}.tmp-{os.getpid()}"
+        tmp.write_text(json.dumps(rec, sort_keys=True, indent=1))
+        os.replace(tmp, wdir / ASSEMBLED)
+    except BaseException as e:
+        shutil.rmtree(out, ignore_errors=True)
+        shutil.rmtree(scratch, ignore_errors=True)
+        if isinstance(e, (Stopped, KeyboardInterrupt)):
+            why = "SIGINT" if isinstance(e, KeyboardInterrupt) else f"a signal (exit {e.code})"
+            _log(f"stopped by {why}; removed {out} and {scratch}; the parts stay, and the next call runs this again")
+        raise
+    shutil.rmtree(scratch, ignore_errors=True)
+    if placed:
+        _log(f"release {release}: pack {final.name} written: {len(manifest['shards']) + len(manifest['meta']) + 2} "
+             f"files, {sum(s['bytes'] for s in manifest['shards'] + manifest['meta']):,} bytes in shards and meta")
+    _log(f"done: {_usage_line(rec, plan['assemble']['estimate_cpu_min'])}")
+
+
+def main(argv: list[str] | None = None) -> int:
+    """`python -m biobox.search.pack part --plan P --name N` (one part) or `... assemble --plan P` (the last process):
+    the processes `bio-box pack build --parts` launches (card W-35). 0, or 128 + the signal that stopped it."""
+    ap = argparse.ArgumentParser(prog="python -m biobox.search.pack",
+                                 description="one process of `bio-box pack build --parts` (card W-35)")
+    ap.add_argument("action", choices=["part", "assemble"])
+    ap.add_argument("--plan", required=True, help="the plan the driver wrote, <work>/plan-of-<N>.json")
+    ap.add_argument("--name", help="part: its name in the plan")
+    a = ap.parse_args(argv)
+    if a.action == "part" and not a.name:
+        ap.error("part needs --name")
+    plan_path = Path(a.plan)
+    plan = json.loads(plan_path.read_text())
+    before = getattr(_WHO, "name", None)
+    _WHO.name = f"pack part {a.name if a.action == 'part' else 'assemble'}"
+    try:
+        with _stop_on_signals():
+            if a.action == "part":
+                _run_part(plan, plan_path.parent, a.name)
+            else:
+                _assemble(plan, plan_path.parent)
+    except Stopped as e:
+        return e.code
+    except KeyboardInterrupt:
+        return 130
+    finally:
+        if before is None:
+            del _WHO.name
+        else:
+            _WHO.name = before
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())
