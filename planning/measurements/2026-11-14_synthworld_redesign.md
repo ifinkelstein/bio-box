@@ -476,3 +476,99 @@ item 1), `test_hub_families_have_more_diverse_neighbours` (item 3), `test_orthol
 and `test_every_planted_motif_is_recovered_at_its_truth_coordinates_by_an_independent_scan` (item 4). The per-seed test
 passes (both plasmid types at 4 of its 6 seeds; one unpowered cell at 4383110225690451409; pooled levels 5.6, 12.9,
 20.5), as do the new DEC-36 and crown tests and every re-pinned digest. The null module: §8.
+
+## 11. Follow-up for the PI: the crown at the default seed's old age (measurement only)
+
+**Hypothesis tested** (the orchestrator's, not adopted): four of the five causes in §4 follow from the default world
+being 1.95x older than the one every rate since session 2 was fitted in. **Variant**: `species.crown_age` 2.5632 measured
+from the living lineages' MRCA, the definition of §1. At the default seed the MRCA is the first speciation, so this is
+its old age under both definitions, the rescale factor there is 1 and its tree is the one sessions 1 to 10 used. Also
+`burst_depth` back to 0.02 (0.051 time units, as before), the background turnover unchanged (duplication 0.04,
+transfer 0.1, loss 0.24; this session never changed it), motif clade height unchanged as a fraction (0.5 of the crown,
+so 1.28 time units at the default seed, as before). Refitted only origination, plasmids and member transfer. Set by
+`--set` overrides in the scans and, for the tests, in a scratch copy of the branch (`/tmp/f0211-local/variant`,
+mirrored to `/tmp/if2453/f0211/ci/F-02-11` on the pod); `presets/micro.yaml`, the generator and the tests on the branch
+are unchanged and nothing is re-pinned.
+
+All *measured*, wilkcomp02, 2026-11-14 19:00-21:00 CST, image `bio-box-test_faec1f4.sif`, units `f0211-*`, at most
+8 threads: scans `python scripts/stress/f0210_seed_scan.py scan /tmp/if2453/f0211/scan<V|W|X|VF> <label> --jobs 7 --seeds
+default,20261113,n2 --set species.crown_age=2.5632 --set species.burst_depth=0.02 [...]` (overrides per label in
+`<label>.json`).
+
+**Fits** (22 seeds each; columns as named; "core" = root families present in >= 40 of the 46 genomes):
+
+| scan | chromosome mean (in band) | default mean | planted share % | copies per present member | exclusion breaches | both plasmid types | a genome > 2 plasmids | genomes without a plasmid at default | all cells powered | levels pooled (increasing) | core >= 40 genomes: default, range (>= 100) | N0 ratio, r at default |
+|---|---|---|---|---|---|---|---|---|---|---|---|---|
+| v_o0.25_s0.3 | 1205-2120 (20/22) | 1205 | 3.6-7.4 | 0.96-1.13 | 0 | 18/22 | 9 | 1 | 22/22 | 4.0, 7.6, 11.1 (22/22) | 29, 29-200 (9) | - |
+| v_o0.3_s0.3 | 1271-2313 (17/22) | 1293 | 3.2-7.2 | 0.89-1.12 | 0 | 17/22 | 9 | 0 | 22/22 | 4.0, 7.7, 11.0 (20/22) | 29, 29-206 (10) | - |
+| v_o0.35_s0.3 | 1325-2564 (15/22) | 1367 | 3.6-6.2 | 0.92-1.14 | 0 | 17/22 | 11 | 0 | 21/22 | 4.0, 7.8, 11.8 (20/22) | 30, 30-216 (12) | - |
+| v_o0.3_s0.5 | 1125-2827 (17/22) | 1222 | 3.0-7.6 | 0.96-1.20 | 0 | 18/22 | 8 | 0 | 21/22 | 3.5, 7.3, 10.8 (20/22) | 26, 26-238 (7) | - |
+| v_mt_0.01,0.06,0.4 | 1234-2399 (17/22) | 1297 | 3.3-6.8 | 0.89-1.14 | 0 | 21/22 | 12 | 0 | 22/22 | 3.0, 6.1, 11.0 (20/22) | 42, 42-212 (10) | - |
+| v_mt_0.03,0.15,1.2 | 1242-2280 (17/22) | 1353 | 3.3-7.4 | 0.94-1.15 | 0 | 16/22 | 10 | 0 | 21/22 | 4.3, 9.0, 11.1 (17/22) | 37, 37-201 (8) | - |
+| v_pls_0.5-0.2 | 1224-2289 (16/22) | 1319 | 3.9-7.1 | 0.87-1.16 | 0 | 20/22 | 14 | 0 | 22/22 | 4.0, 8.0, 11.0 (19/22) | 36, 36-222 (9) | - |
+| v_pls_1.2-0.6 | 1248-2272 (17/22) | 1313 | 3.2-7.9 | 0.85-1.16 | 0 | 15/22 | 9 | 1 | 22/22 | 3.7, 7.9, 11.0 (17/22) | 38, 38-258 (9) | - |
+| v_pls_0.3-0.3 | 1268-2348 (17/22) | 1324 | 3.7-7.2 | 0.92-1.11 | 0 | 18/22 | 6 | 1 | 22/22 | 4.0, 7.5, 11.0 (19/22) | 31, 31-203 (9) | - |
+| w_o0.2_s0.3 | 1228-1879 (22/22) | 1228 | 4.5-7.1 | 0.93-1.12 | 0 | 20/22 | 11 | 0 | 21/22 | 3.0, 6.1, 11.0 (20/22) | 38, 38-199 (10) | - |
+| w_o0.15_s0.3 | 1132-1645 (22/22) | 1132 | 3.8-7.4 | 0.92-1.10 | 0 | 18/22 | 10 | 0 | 20/22 | 3.0, 5.5, 10.9 (19/22) | 40, 38-219 (10) | - |
+| w_o0.2_s0.2 | 1222-1734 (22/22) | 1319 | 4.7-7.0 | 0.93-1.15 | 0 | 19/22 | 14 | 0 | 22/22 | 3.0, 6.0, 10.1 (20/22) | 41, 38-213 (9) | - |
+| w_o0.15_s0.2 | 1187-1521 (22/22) | 1200 | 4.9-8.1 | 0.77-1.13 | 0 | 17/22 | 7 | 0 | 19/22 | 3.0, 6.0, 11.0 (19/22) | 47, 47-239 (9) | - |
+
+Chosen: origination 0.2 x root families at sigma 0.3 (the only candidate with the mean in band at 22 of 22 and the most
+plasmid survival, 20 of 22), member transfer 0.01/0.06/0.4 (the committed levels; pooled 3.0/6.1/11.0, each >= 1.8x
+the one below; 0.02/0.1/0.8 gave 4.0/7.6/11.1 with the top step 1.46x), plasmids 0.8/0.4 (the committed pair; survival
+15 to 21 of 22 over the pairs tried at this crown). The fitted variant run again with `--n0` (`variant.tsv`) gives the
+same table as `w_o0.2_s0.3`.
+
+**The variant over the 22 seeds** (`variant.tsv`): chromosome mean 1,228-1,879 (22 of 22 in band; default 1,228);
+planted + profile-only + decoy share 4.5-7.1%; copies per present member 0.93-1.12; exclusion breaches 0; both plasmid
+types at 20 of 22; a genome with more than 2 plasmids at 11; genomes without a plasmid at the default seed 0; all nine
+cells powered at 21 of 22; realized levels pooled 3.0, 6.1, 11.0, strictly increasing at 20 of 22 seeds; core at the
+default seed 38 (38 to 199 over the seeds, >= 100 at 10); N0 at the default seed ratio 0.998, r 0.846 (r 0.17 at
+20261113, >= 0.9 at 10 of 22).
+
+**Why the core stays small** (default seed only, batch X, `x_*`):
+
+| scan | chromosome mean (in band) | default mean | planted share % | copies per present member | exclusion breaches | both plasmid types | a genome > 2 plasmids | genomes without a plasmid at default | all cells powered | levels pooled (increasing) | core >= 40 genomes: default, range (>= 100) | N0 ratio, r at default |
+|---|---|---|---|---|---|---|---|---|---|---|---|---|
+| x_oldaxes | 1392-1392 (1/1) | 1392 | 7.2-7.2 | 1.06-1.06 | 0 | 1/1 | 0 | 2 | 1/1 | 2.0, 7.8, 9.0 (1/1) | 204, 204-204 (1) | - |
+| x_noaxes | 1646-1646 (1/1) | 1646 | 5.1-5.1 | 1.07-1.07 | 0 | 1/1 | 1 | 0 | 1/1 | 5.0, 7.5, 13.3 (1/1) | 35, 35-35 (0) | - |
+| x_oldaxes_noexcl | 1873-1873 (1/1) | 1873 | 21.5-21.5 | 3.76-3.76 | 7708 | 1/1 | 0 | 17 | 1/1 | 11.0, 39.0, 127.7 (1/1) | 243, 243-243 (1) | - |
+
+`x_oldaxes_noexcl` is the old preset in every backbone value (two axes, origination 0.1, no exclusion, old member and
+plasmid rates) run through this session's generator at crown 2.5632: it reproduces session 10's default world (mean
+1,873, planted share 21.5%, core 243), so the variant's machinery is sound. With DEC-36 and the old axes the core is
+204; with the one origination axis it is 26 to 47 at crown 2.5632 over every draw above, and 35 with no axis. **The
+core is set by the two lineage axes that DEC-37 (1) removed, not by the crown**: a mean-corrected log-normal multiplier
+at sigma 0.8 drifted over the splits leaves most lineages well below 1 on loss (the median falls as exp(-0.32 k) after k
+splits, *derived*), and those lineages keep the root families, so many are in >= 40 genomes.
+
+**The six assertions at the default seed** (variant: the six tests themselves on the scratch copy, `pod_pytest.sh` with
+`BIOBOX_TREE=/tmp/f0211-local/variant BIOBOX_POD_CI=/tmp/if2453/f0211/ci`, "4 failed, 34 passed in 595.27s" for the
+backbone and intergenic modules, `variant_backbone_intergenic_tests.txt`; the null module in a detached unit, "2 failed,
+12 passed in 796.98s" with the pinned-digest test failing as expected and ignored, `variant_nulls_default_seed.txt`):
+
+| assertion (default seed unless named) | bound | crown 5.0 (committed) | crown 2.5632 (variant) | crown 5.0, halved turnover (`h_spike`, not refitted) |
+|---|---|---|---|---|
+| plasmids: some genome without one, at most 2 | >= 1 genome with none | fails: 0 (0/6/40) | fails: 0 | fails: 0 (scan) |
+| hub test: root families in >= 40 genomes | >= 100 | fails: 7 | fails: 38 | fails: 36 |
+| burst orthologous IGR identity | >= 0.9 | fails: 0.895 | fails: 0.882 | not measured |
+| planted motif found at its coordinates | best window or divergence > 0.3 | fails (one instance at 27%) | fails (one instance at 8%, another window 1 mismatch away) | not measured |
+| N0 background size ratio, r | [0.9, 1.1], >= 0.9 | fails: 1.022, 0.810 | fails: 0.998, 0.846 | not measured |
+| N1 matched random comparator | candidates exist | fails (none within +-2 genomes) | **passes** | not measured |
+| both plasmid types at every seed (22) | 22 | 14 | 20 | 17 |
+| chromosome mean within 30% at every seed (22) | 22 | 22 | 22 | 16 (origination not refitted) |
+
+What each would still need decided: **crown 5.0**: (a)-(d) of §4. **Crown 2.5632**: an amendment of DEC-37 (2) (a crown
+of 2.56 is the shortest of the 21, not their median), and still (b) plasmids, (c) N0's r, the core (the axes, below)
+and the two sequence-level tests. **Halved turnover at 5.0**: a refit of origination and the rest, and still the core
+(36 at the default seed), (b) and (c).
+
+**Verdict: the hypothesis is wrong for the core genome and for the two sequence-level tests, and right only for N1's
+comparator and, in part, plasmid survival** (20 of 22 at the shorter crown against 14 of 22, *measured*; the early
+loss of a type is less likely when the first splits come sooner in absolute time). The core comes from the lineage
+axes (above). The burst identity is 0.882 at the old burst age and the old crown, below 0.895 at 5.0, so it is not the
+burst's age; my best account, not tested, is the same axes: the old shared multiplier on duplication and transfer was
+below 1 in most lineages, so most junctions were single-copy, whereas now paralogous copies of a junction (same left
+family, right family and type, a different copy) enter the comparison (the low pairs, 0.67 to 0.81, look like such
+pairs). The motif failure is one instance with a near-identical window elsewhere in the same region, which a paralogous
+copy would also explain. N0's r stays below 0.9 at either crown (0.846), as §4 item 2 says.

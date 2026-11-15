@@ -1,0 +1,242 @@
+............
+F-02 micro backbone: 34.59 s wall, 34.58 s CPU; chromosome genes mean 1228 min 1099 max 1448; plasmids per genome [(1, 2), (2, 44)]; seed 20261112; digest 4f6de6e23281724d04b9b54c2d9d1f0a
+.
+module-family transfers: with entry exclusion 957 rows, 0 into a holder of the first family, 191 into a holder of any member; without it 6240 rows, 5968 and 6053
+..F.F
+decoy transfers (family, partner present): [((1296, True), 8), ((1297, True), 5), ((1298, True), 6), ((1299, True), 28), ((1300, True), 15)]; partner carriers among the other contemporaneous lineages at those moments: mean 0.892
+.
+transfer recipients closer/farther than other lineages: decay 3569/930 over 5630 events; uniform 1856/1827 over 5643
+.
+chromosome genes: min 1099 median 1229 max 1448 mean 1227.5; originated genes per genome 116-573, Spearman with the path origination multiplier 0.940 (permutation p 0.0005)
+....
+replicon stage child peak RSS 71 MB
+..
+63746 genes, 3838 with protein-neutral overlap edits
+.
+planted overlaps by length: {1: 1378, 4: 2637}
+.
+22355 tight junctions: tried -4 0.593, -1 0.062; realized -4 0.118, -1 0.062
+.
+features across the origin: {'genes': 128, 'juncs': 8, 'elems': 1, 'rna': 0}
+.
+2236 within-unit junctions; 11419 distinct background co-directional pairs, tight 0.5434; 93 distinct pairs of declared families of different groups, tight 0.473
+.
+junction length quantiles (realized, preset) by type: {'codir_tight': (7731, [(4.0, 4), (7.0, 7), (12.0, 12), (21.0, 22), (35.0, 38)]), 'codir_loose': (16471, [(61.0, 62), (85.0, 86), (127.0, 130), (196.0, 202), (297.0, 308)]), 'divergent': (12093, [(125.0, 122), (169.0, 165), (241.0, 240), (363.0, 361), (537.0, 530)]), 'convergent': (12259, [(24.0, 22), (40.0, 38), (73.0, 70), (134.0, 128), (230.0, 222)])}
+.
+genome IGR GC vs lineage intergenic GC: r 0.994, lineage 0.278-0.648, genome 0.352-0.585
+.
+element consensus match (n, planted, background): {'promoter_m35': (28221, 0.698, 0.24), 'promoter_m10': (33699, 0.7, 0.245), 'rbs': (49249, 0.694, 0.259)}; terminators 20450, T tract 0.701
+.
+orthologous IGR identity: burst 0.882 over 936, across phyla 0.549 over 343
+FF.
+F-02 micro replicons: 35.56 s wall, 34.47 s CPU; {'genes': 63746, 'genomes': 46, 'junctions': 63746, 'replicons': 136, 'rna': 891}; digest 3c0020cdb134fd65026f185258503697
+.
+=================================== FAILURES ===================================
+____________ test_plasmids_are_whole_replicons_of_their_preset_size ____________
+
+micro = (Backbone(params={'assembly': {'class_weights': [0.4, 0.4, 0.2], 'draft_n50': [50000, 200000], 'mag_completeness': [0....15936, n_genomes=4, parent='g__Genus09')]), PosixPath('/tmp/if2453/ci-tmp/F-02-11-0/micro0/world'), 34.593591812066734)
+
+    @needs_zombi2
+    @pytest.mark.covers("F-02", "B-SIM")
+    def test_plasmids_are_whole_replicons_of_their_preset_size(micro):
+        """§2.1 S2 "chromosome plus 0-2 plasmid replicons"; §5.1 plasmids of 20-200 genes. Tolerance: none,
+        every extant plasmid has exactly its declared genes."""
+        bb, out, _ = micro
+        sizes = _plasmid_sizes(bb.params)
+        node_of = {g.genome_id: g.species_node for g in bb.genomes}
+        reps = _raw_replicons(out, set(node_of.values()), set(sizes))
+        raw_plasmids = {lin: [(name, {c for _, _, c in gs}) for kind, name, _, gs in rs if kind == "plasmid"]
+                        for lin, rs in reps.items()}
+        # every extant plasmid unit is whole: its declared number of genes, contiguous in ZOMBI2's order
+        for lin, ps in raw_plasmids.items():
+            for name, copies in ps:
+                assert len(copies) == sizes[name], (lin, name, len(copies))
+        # and is excised as a replicon of its own holding exactly those genes
+        got = collections.defaultdict(set)
+        for g in bb.genes:
+            got[(g.genome_id, g.replicon)].add(g.copy_label)
+        plasmid_reps = [r for r in bb.replicons if r.kind == "plasmid"]
+        for r in plasmid_reps:
+            assert r.topology == "circular" and r.n_genes == sizes[r.name] == len(got[(r.genome_id, r.replicon)])
+        want = sorted((gid, name, tuple(sorted(c))) for gid, node in node_of.items()
+                      for name, c in raw_plasmids[node])
+        assert sorted((r.genome_id, r.name, tuple(sorted(got[(r.genome_id, r.replicon)])))
+                      for r in plasmid_reps) == want
+        # the chromosome keeps the rest, in ZOMBI2's order
+        for gid, node in node_of.items():
+            chrom = [r for r in bb.replicons if r.genome_id == gid and r.kind == "chromosome"]
+            assert len(chrom) == 1 and chrom[0].replicon == 0
+            raw_chrom = [c for kind, _, _, gs in reps[node] if kind == "chromosome" for _, _, c in gs]
+            ours = [g.copy_label for g in bb.genes if g.genome_id == gid and g.replicon == 0]
+            assert ours == raw_chrom
+        # both plasmid types are realized, some genomes carry none, none carries more than two (§5.1)
+        per = collections.Counter(r.genome_id for r in plasmid_reps)
+        assert {r.name for r in plasmid_reps} == set(sizes)
+>       assert any(per[gid] == 0 for gid in node_of) and max(per.values()) <= 2, sorted(per.values())
+E       AssertionError: [1, 1, 2, 2, 2, 2, ...]
+E       assert (False)
+E        +  where False = any(<generator object test_plasmids_are_whole_replicons_of_their_preset_size.<locals>.<genexpr> at 0x765a51e8fe60>)
+
+tests/r2/test_synthworld_backbone.py:578: AssertionError
+________________ test_hub_families_have_more_diverse_neighbours ________________
+
+micro = (Backbone(params={'assembly': {'class_weights': [0.4, 0.4, 0.2], 'draft_n50': [50000, 200000], 'mag_completeness': [0....15936, n_genomes=4, parent='g__Genus09')]), PosixPath('/tmp/if2453/ci-tmp/F-02-11-0/micro0/world'), 34.593591812066734)
+
+    @needs_zombi2
+    @pytest.mark.covers("F-02", "B-SIM")
+    def test_hub_families_have_more_diverse_neighbours(micro):
+        """§2.1 S2 hub families; §4.2 item 4. Neighbour diversity of a family = the number of distinct families
+        next to any of its extant copies, read from the raw gene order. Margin (asserted): every hub at least
+        3x the median root family present in at least 40 of the 46 genomes. (Per copy the gap is small: a
+        transfer of extent 3 that starts on a hub carries its right-hand neighbours with it.)"""
+        bb, out, _ = micro
+        names = _names(out)
+        hubs = [names[f"hub{i}"] for i in range(int(bb.params["hubs"]["count"]))]
+        extant = {g.species_node for g in bb.genomes}
+        chroms = collections.defaultdict(list)
+        for r in _tsv(out / "zombi2/gene_order.tsv"):
+            if r["lineage"] in extant:
+                chroms[(r["lineage"], r["chromosome"])].append((int(r["position"]), int(r["family"])))
+        neighbours = collections.defaultdict(set)
+        copies = collections.Counter()
+        genomes = collections.defaultdict(set)
+        for (lin, _c), genes in chroms.items():
+            fam = [f for _, f in sorted(genes)]
+            n = len(fam)
+            for i, f in enumerate(fam):
+                copies[f] += 1
+                genomes[f].add(lin)
+                neighbours[f] |= {fam[i - 1], fam[(i + 1) % n]}
+        diversity = {f: len(neighbours[f]) for f in copies}
+        n_root = int(bb.params["genomes"]["initial_families"])
+        roots = sorted(diversity[f] for f in copies if f < n_root and len(genomes[f]) >= 40)
+>       assert len(roots) >= 100
+E       assert 38 >= 100
+E        +  where 38 = len([28, 34, 36, 38, 39, 41, ...])
+
+tests/r2/test_synthworld_backbone.py:650: AssertionError
+_________ test_orthologous_igrs_are_near_identical_in_close_relatives __________
+
+world = (RepWorld(seed=20261112, replicons=[RepliconRow(genome_id='g000', replicon=0, record='g000_r0', kind='chromosome', top...3/ci-tmp/F-02-11-0/micro_igr0/world')), PosixPath('/tmp/if2453/ci-tmp/F-02-11-0/micro_igr0/world'), 35.559846935095266)
+tables = {'seqs': {'g000_r0': 'CTCGGAAACTCATCGTAAGCATCCGGAATATCAGGGGGCGTGTTTCCCCTTCCCGGCATTAACACATGGCGCTCAGGAGAGTATACCCCCGATATA...ition': '5', ...}, {'genome_id': 'g000', 'replicon': '0', 'left_position': '5', 'right_position': '6', ...}, ...], ...}
+
+    @needs_zombi2
+    def test_orthologous_igrs_are_near_identical_in_close_relatives(world, tables):
+        """The same junction (left family, right family, type) in the clonal burst's genomes against genomes
+        of different phyla: equal-length IGRs share >= 0.9 of their bases within the burst, and at least 0.15
+        more than across phyla."""
+        _, out, _ = world
+        bbj = json.loads((out / "backbone/backbone.json").read_text(encoding="utf-8"))
+        node_gid = {r["species_node"]: r["genome_id"] for r in _tsv(out / "backbone/genomes.tsv")}
+        burst = {node_gid[t] for t in bbj["burst_tips"]}
+        phylum = {r["genome_id"]: r["tax_lineage"].split(";")[1] for r in _tsv(out / "backbone/taxonomy.tsv")}
+        fam = {g["copy_label"]: g["family_id"] for g in tables["genes"]}
+        by_key = collections.defaultdict(dict)
+        for j in tables["juncs"]:
+            if int(j["length"]) < 20:
+                continue
+            key = (fam[j["left_copy"]], fam[j["right_copy"]], j["junction"])
+            by_key[key].setdefault(j["genome_id"], j)
+    
+        def ident(j1, j2):
+            a = _cut(tables["seq_of"][(j1["genome_id"], int(j1["replicon"]))], int(j1["start"]), int(j1["end"]), 1)
+            b = _cut(tables["seq_of"][(j2["genome_id"], int(j2["replicon"]))], int(j2["start"]), int(j2["end"]), 1)
+            return sum(x == y for x, y in zip(a, b)) / len(a) if len(a) == len(b) else None
+    
+        close, far = [], []
+        for key, per in by_key.items():
+            gs = sorted(per)
+            bs = [g for g in gs if g in burst]
+            if len(bs) >= 2:
+                v = ident(per[bs[0]], per[bs[1]])
+                if v is not None:
+                    close.append(v)
+            g1 = gs[0]
+            g2 = next((g for g in gs if phylum[g] != phylum[g1]), None)
+            if g2 is not None:
+                v = ident(per[g1], per[g2])
+                if v is not None:
+                    far.append(v)
+        print(f"\northologous IGR identity: burst {np.mean(close):.3f} over {len(close)}, across phyla "
+              f"{np.mean(far):.3f} over {len(far)}")
+        assert len(close) >= 200 and len(far) >= 200
+>       assert np.mean(close) >= 0.9 and np.mean(close) >= np.mean(far) + 0.15
+E       assert (np.float64(0.882467506196448) >= 0.9)
+E        +  where np.float64(0.882467506196448) = <function mean at 0x765a8820f4f0>([0.9736842105263158, 0.9032258064516129, 1.0, 0.6710526315789473, 0.675, 0.8142857142857143, ...])
+E        +    where <function mean at 0x765a8820f4f0> = np.mean
+
+tests/r2/test_synthworld_intergenic.py:532: AssertionError
+_ test_every_planted_motif_is_recovered_at_its_truth_coordinates_by_an_independent_scan _
+
+world = (RepWorld(seed=20261112, replicons=[RepliconRow(genome_id='g000', replicon=0, record='g000_r0', kind='chromosome', top...3/ci-tmp/F-02-11-0/micro_igr0/world')), PosixPath('/tmp/if2453/ci-tmp/F-02-11-0/micro_igr0/world'), 35.559846935095266)
+tables = {'seqs': {'g000_r0': 'CTCGGAAACTCATCGTAAGCATCCGGAATATCAGGGGGCGTGTTTCCCCTTCCCGGCATTAACACATGGCGCTCAGGAGAGTATACCCCCGATATA...ition': '5', ...}, {'genome_id': 'g000', 'replicon': '0', 'left_position': '5', 'right_position': '6', ...}, ...], ...}
+
+    @needs_zombi2
+    @pytest.mark.covers("F-02", "B-SIM")
+    def test_every_planted_motif_is_recovered_at_its_truth_coordinates_by_an_independent_scan(world, tables):
+        """Each instance cut at its coordinates differs from its clade's emission at exactly its
+        n_subst_from_emission positions, n_compensatory pairs differ at both bases, every pair is canonical;
+        dist_to_start is its distance to its gene's start codon. Scanning both strands of the store's own
+        intergenic region around it (`ncrna.regions`, IGR runs widened by 200) for the emission, by Hamming
+        distance, finds the instance at its coordinates as the best window."""
+        _, out, _ = world
+        em = {r["emission_id"]: r for r in _tsv(out / "replicons/emissions.tsv")}
+        links = {r["link"]: r for r in _tsv(out / "replicons/links.tsv")}
+        gene = {g["copy_label"]: g for g in tables["genes"]}
+        carriers = collections.Counter(g["family_id"] for g in tables["genes"])
+        per_link = collections.Counter(r["link"] for r in tables["rna"])
+        for lk, row in links.items():
+            assert per_link[lk] == carriers[row["family_id"]] > 0
+        genes_by = collections.defaultdict(list)
+        for g in tables["genes"]:
+            genes_by[(g["genome_id"], int(g["replicon"]))].append((int(g["start"]), int(g["end"])))
+        regions = {k: l1_ncrna.regions(v, len(tables["seq_of"][k]), True) for k, v in genes_by.items()}
+        best, n_div = 0, 0
+        divs = []
+        for r in tables["rna"]:
+            key = (r["genome_id"], int(r["replicon"]))
+            seq = tables["seq_of"][key]
+            N = len(seq)
+            s, e, strand = int(r["start"]), int(r["end"]), int(r["strand"])
+            inst = _cut(seq, s, e, strand)
+            ref = em[r["emission_id"]]
+            assert len(inst) == len(ref["sequence"]) == int(r["length"])
+            assert _hamming(inst, ref["sequence"]) == int(r["n_subst_from_emission"])
+            pairs = [(i, j) for i, j in _pairs(ref["structure"])]
+            assert r["structure"] == ref["structure"]
+            assert sum(inst[i] != ref["sequence"][i] and inst[j] != ref["sequence"][j] for i, j in pairs) == \
+                int(r["n_compensatory"])
+            assert all((inst[i], inst[j]) in PAIRS_OK for i, j in pairs if (ref["sequence"][i], ref["sequence"][j]) in PAIRS_OK)
+            g = gene[r["attached_copy"]]
+            assert int(g["strand"]) == strand and g["family_id"] == r["family_id"]
+            gs, ge = int(g["start"]), int(g["end"])
+            dist = (gs - e) % N if strand == 1 else (s - ge) % N
+            assert dist == int(r["dist_to_start"])
+            divs.append(int(r["n_subst_from_emission"]) / len(inst))
+            # the independent scan, both strands of the region that holds the instance
+            reg = next((a, b) for a, b in regions[key] if a <= s and e <= b or a <= s + N and e + N <= b)
+            a, b = reg
+            span = _cut(seq, a, b, 1)
+            L = len(inst)
+            want = np.frombuffer(ref["sequence"].encode(), np.uint8)
+            fwd = np.frombuffer(span.encode(), np.uint8)
+            rev = np.frombuffer(rc(span).encode(), np.uint8)
+            hf = (np.lib.stride_tricks.sliding_window_view(fwd, L) != want).sum(axis=1)
+            hr = (np.lib.stride_tricks.sliding_window_view(rev, L) != want).sum(axis=1)
+            low = int(min(hf.min(), hr.min()))
+            # a window k of the reverse complement covers [len - k - L, len - k) of the span
+            winners = [((a + int(k)) % N, 1) for k in np.nonzero(hf == low)[0]]
+            winners += [((a + len(span) - int(k) - L) % N, -1) for k in np.nonzero(hr == low)[0]]
+>           assert (s, strand) in winners or divs[-1] > 0.3, (r, low, winners[:3])
+E           AssertionError: ({'rna_id': 'n75_g200738.rna', 'link': 'L04', 'model_acc': 'SYNRF0003', 'model_name': 'synRNA03', ...}, 1, [(150965, 1)])
+E           assert ((149899, 1) in [(150965, 1)] or 0.08 > 0.3)
+
+tests/r2/test_synthworld_intergenic.py:597: AssertionError
+=========================== short test summary info ============================
+FAILED tests/r2/test_synthworld_backbone.py::test_plasmids_are_whole_replicons_of_their_preset_size
+FAILED tests/r2/test_synthworld_backbone.py::test_hub_families_have_more_diverse_neighbours
+FAILED tests/r2/test_synthworld_intergenic.py::test_orthologous_igrs_are_near_identical_in_close_relatives
+FAILED tests/r2/test_synthworld_intergenic.py::test_every_planted_motif_is_recovered_at_its_truth_coordinates_by_an_independent_scan
+4 failed, 34 passed in 595.27s (0:09:55)
+
+[exited with code 1]

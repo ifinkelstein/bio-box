@@ -1,0 +1,1 @@
+{"sets": [["species.crown_age", 2.5632], ["species.burst_depth", 0.02], ["lineage_rates.axes", [{"rates": ["loss"], "sigma": 0.8}, {"rates": ["duplication", "transfer", "origination"], "sigma": 0.8}]], ["genomes.origination_per_root_family", 0.1]], "rule": null, "crown": null, "seeds": [20261112]}
