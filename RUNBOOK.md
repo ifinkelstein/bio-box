@@ -675,8 +675,9 @@ bio-box pack verify --root "$ROOT" --release rC6.1 --profile "$PROFILE"
 one process (a line `release <R>: estimate ... CPU-minutes in one process for ... genome bases`), from
 the release's genome bases and `protein_seq` rows at the rates in `src/biobox/search/pack.py`. Above 80%
 of the profile's `cpu_min_per_process` (240 of 300) it is refused, exit 2, and the message names the
-`--parts` that fits: a release of about 12 Gbp (`rN.3`) fits one process, one of about 50 Gbp (`rM.2`)
-does not (section 10). With `--parts N` the build runs as separate processes, each estimated and
+`--parts` that fits: `rN.3` (12,276,916,069 genome bases) fits one process at an estimate of 93.0
+CPU-minutes, `rM.2` (52,132,698,276 bases) does not at 386.9 (the counts measured and the estimates
+derived by `pack build` on wilkcomp02, 2026-11-14; `planning/measurements/2026-11-14_pack_build_in_parts.md`). With `--parts N` the build runs as separate processes, each estimated and
 checked against the same 240 before any work: `unique` (all proteins), N ranges of contigs for each of
 `igr` and `dark_orf`, then one last process that merges their sorted runs into the pack. The pack is the
 one-process pack byte for byte (same pack id). At most `--jobs J` parts run at once, one thread each,
@@ -1063,7 +1064,7 @@ a profile value is missing from this table.
 | Unit CPU quota | the night cap, 56: a ceiling fixed at launch; `build-stage` holds the limit of the hour | `scripts/pod_run.sh --threads`, profile `max_threads_night`; card C-12 |
 | Smallest data file | 64 MiB (67108864 bytes), except tables the registry marks `small_ok` | profile `small_file_floor_bytes`; AGENTS 7.3 says 64 MB |
 | Work directory | `/tmp/if2453/bio-box` | profile `tmp`; AGENTS 7.3 |
-| Search pack build | one process when its estimate is at most 80% of `cpu_min_per_process` (300), else refused (exit 2) unless `--parts N`: then `unique`, N ranges of contigs for each of `igr` and `dark_orf` and a last process, each estimated and refused above the same 240 before any work, at most `--jobs` at once (one thread each) within the allowance of the hour. Rates: see `pack.py` (derived from `rN.3`'s one-process log until the build in parts is measured; card W-35's measurement note) | `one_process_refusal`, `parts_refusal`, `build_in_parts` in `src/biobox/search/pack.py`; `SHARD_MARGIN` in `src/biobox/stage.py`; card W-35 |
+| Search pack build | one process when its estimate is at most 80% of `cpu_min_per_process` (300), else refused (exit 2) unless `--parts N`: then `unique`, N ranges of contigs for each of `igr` and `dark_orf` and a last process, each estimated and refused above the same 240 before any work, at most `--jobs` at once (one thread each) within the allowance of the hour. Rates (CPU-minutes): 0.25 per million `protein_seq` rows (unique), 0.70 and 5.45 per Gbp (igr, dark_orf), the last process 0.25 per million rows + 0.70 per Gbp + 2.6 per library, fitted to the parts of `rN.3` (measured, wilkcomp02, 2026-11-14, `planning/measurements/2026-11-14_pack_build_in_parts.md`) | `one_process_refusal`, `parts_refusal`, `build_in_parts` in `src/biobox/search/pack.py`; `SHARD_MARGIN` in `src/biobox/stage.py`; card W-35 |
 | Search pack directory | `<tmp>/packs` (`/tmp/if2453/bio-box/packs`), the host's one, outside the data root; with `--profile`, else `--pack-dir`. Only a `pack build` that makes a pack writes into it: it may be read-only for all but its builder | profile `tmp`; `default_pack_base` in `src/biobox/search/runner.py`; cards W-03, W-22 |
 | Search runs and work directories | `<tmp>/search/<user>/runs` and `<tmp>/search/<user>/work`, one per user, outside the data root; with `--profile`, else `--runs` and `--work` | profile `tmp`; `default_runs_dir`, `default_work_base` in `src/biobox/search/runner.py`; card W-03 |
 | `search run` in a `pod_run.sh` unit | only with `--wait`; without it, refused (exit 2) | `BIOBOX_POD_UNIT` in `scripts/pod_run.sh` and `src/biobox/cli.py`; card W-13 |
