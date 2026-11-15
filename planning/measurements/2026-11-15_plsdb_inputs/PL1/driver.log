@@ -1,0 +1,63 @@
+2026-11-15 09:59:48 CST c26 inputs: mode 'inputs' (pid 1971138), tree /tmp/if2453/ci/C-26, image /stor/home/if2453/bio-box/images/bio-box_faec1f4.sif
+2026-11-15 10:00:34 CST inputs: sha256 of /tmp/if2453/s2/dl/plsdb_download_fasta: e654c106d8a15a2d5d55a8b680087377cb84e654e63d41bca181fc69a23e587a
+2026-11-15 10:00:34 CST inputs: /tmp/if2453/s2/inputs/PL1/plsdb_2024_05_31_v2_sequences.fasta 7425668755 bytes, 2 links, inode 54431466
+2026-11-15 10:01:33 CST inputs: make_inputs.py plasmid exit 0: {"records": 72556, "genomes": 68693, "contigs": 68693, "topology": {"circular": 66511, "linear": 6045, "empty": 0}, "quality": {"complete": 68703, "contig": 3853}, "genomes_circular": 62797, "repeated_records": 3863, "repeats_other_topology": 112, "repeats_other_quality": 99, "suppressed": 196, "record_bases": 7297669596, "genome_bases": 7102391741, "meta_rows_not_in_fasta": 0, "memberships": 68693, "contigs_in_several_genomes": 0, "records_repeated_in_genome": 0, "genomes_repeated": 3863, "shared_records": 7139, "owner_records": {"P1": 120, "P2": 1294, "P3": 1189, "P4": 1513, "P5": 1713, "P6" 
+2026-11-15 10:01:33 CST c26 inputs: mode 'inputs' done
+2026-11-15 10:01:51 CST c26 inputs: mode 'check' (pid 1974492), tree /tmp/if2453/ci/C-26, image /stor/home/if2453/bio-box/images/bio-box_faec1f4.sif
+2026-11-15 10:01:56 CST check: s2_check_inputs.py exit 0: { "stage": "PL1", "genomes": 68693, "genome_input_rows": 68693, "distinct_genome_uids": 68693, "circular_rows": 62797, "kinds": [  "plasmid" ], "codes": [  11 ], "assembly_quality": [  "complete",  "contig" ], "gene_call_mode": {  "plasmid": null }, "objects": [  {   "path": "/tmp/if2453/s2/inputs/PL1/plsdb_2024_05_31_v2_sequences.fasta",   "source_name": "plsdb",   "source_release": "2024_05_31_v2",   "license": "INSDC records; PLSDB states no licence (cite doi:10.1093/nar/gkab1111)",   "redistributable": true,   "retrieved_at": "2026-11-11T23:14:30+00:00",   "bytes": 7425668755  } ], "biobox
+2026-11-15 10:01:56 CST check: SUMS: 69ec5621edcef675398d1c3cbd07989ccdd80b96a3dd94110ab387f4494229e9  genomes.json c70d2ec6470394707f976c5f5aef86f05c8c04f8e0e6d86934ff84707b51150a  objects.json 3d04f91367f2d582dff9837c5ba98c2a457844e293e03512d8fe5880d20396bb  repeated_records.tsv 4567837327e4709e3189e99bbbd97ad2a6ed034ca0b9d28bf6217d37589ef297  shared_records.tsv 
+2026-11-15 10:01:56 CST c26 inputs: mode 'check' done
+2026-11-15 10:02:04 CST c26 inputs: mode 'analyze' (pid 1975061), tree /tmp/if2453/ci/C-26, image /stor/home/if2453/bio-box/images/bio-box_faec1f4.sif
+2026-11-15 10:03:44 CST analyze: exit 0: {"gene_call_mode": {"plasmid 4000 bp": "meta", "plasmid 400000 bp": "meta"}, "genetic_codes": {"11": 68693}, "kinds": {"plasmid": 68693}, "p_stage_plasmids": {"bases": 1177635985, "contigs": 7044, "distinct_per_gene": 0.9502, "distinct_proteins": 1067518, "gene_call_version": "pyrodigal-3.7.1-gv-0.3.2-p2", "genes": 1123460, "genes_per_mbp": 953.996, "residues": 316841937, "residues_per_distinct":  
+2026-11-15 10:03:44 CST c26 inputs: mode 'analyze' done
+2026-11-15 10:06:45 CST c26 inputs: mode 'rate' (pid 1994310), tree /tmp/if2453/ci/C-26, image /stor/home/if2453/bio-box/images/bio-box_faec1f4.sif
+2026-11-15 10:06:46.072 CST c26 rehearsal: mode 'prep' (pid 1994431), tree /tmp/if2453/ci/C-26, image /stor/home/if2453/bio-box/images/bio-box_faec1f4.sif
+14 stage directories and store_params.json linked into /tmp/if2453/c26/rh/root (stages ['P1', 'P2'], gene_call_version=pyrodigal-3.7.1-gv-0.3.2-p2)
+{'records': 315, 'picked': 315, 'by_why': {'new': 150, 'new-incomplete': 10, 'new-linear': 10, 'owned:P1': 40, 'owned:P2': 60, 'repeat': 38, 'repeat-owned:P1': 2, 'repeat-owned:P2': 5}}
+2026-11-15 10:08:20.437 CST prep: sample inputs: {"records": 315, "genomes": 288, "contigs": 288, "topology": {"circular": 246, "linear": 69, "empty": 0}, "quality": {"complete": 280, "contig": 35}, "genomes_circular": 220, "repeated_records": 27, "repeats_other_topology": 1, "repeats_other_quality": 0, "suppressed": 6, "record_bases": 13130680, "genome_bases": 12854288, "meta_rows_not_in_fasta": 72241, "memberships": 288, "contigs_in_several_genomes": 0, "records_repeated_in_genome": 0, "genomes_repeated": 27, "shared_records": 107, "owner_records": {"P1": 42, "P2": 65}, "owner_contigs": {"P1": 41, "P2": 62}, "new_contigs": 185, "new_bases": 3340530, "objects": 1, "codes": {"11": 288}}
+2026-11-15 10:08:20.444 CST prep: done
+2026-11-15 10:08:20.446 CST c26 rehearsal: mode 'prep' done
+2026-11-15 10:09:34.633 CST c26 rehearsal: mode 'run' (pid 1999803), tree /tmp/if2453/ci/C-26, image /stor/home/if2453/bio-box/images/bio-box_faec1f4.sif
+2026-11-15 10:09:34.644 CST launch c26-rh-1: build-stage --root /tmp/if2453/c26/rh/root --stage PLR --release rC26.1 --stages P1,P2,PLR (Pfam 38.2, --crispr)
+pod_run: started c26-rh-1 (MemoryMax=32G, MemorySwapMax=0, CPUQuota=700%, nice 19)
+pod_run: image /stor/home/if2453/bio-box/images/bio-box_faec1f4.sif sha256:d67300aa1321b571fa8da79e74dfccdd87a8dca2e56518f324902efa6b9f098a
+pod_run: log /tmp/if2453/c26/logs/c26-rh-1.log; watch: systemctl --user status c26-rh-1
+2026-11-15 10:13:08.023 CST run: the last stage step's record or intent file appeared; wrote /tmp/if2453/c26/rh/root/STOP
+2026-11-15 10:13:13.689 CST run: c26-rh-1 exit '75'; 
+2026-11-15 10:13:13.697 CST run: usage pod_run: c26-rh-1 usage MemoryPeak=1831735296 CPUUsageNSec=631365819000
+2026-11-15 10:13:13.703 CST FAILED: no 'stopping before rC26.1.cluster' line
+2026-11-15 10:16:07.450 CST c26 rehearsal: mode 'run' (pid 2014216), tree /tmp/if2453/ci/C-26, image /stor/home/if2453/bio-box/images/bio-box_faec1f4.sif
+2026-11-15 10:16:07.471 CST run: c26-rh-1 ended before (exit 75); checking it, no new launch
+2026-11-15 10:16:07.484 CST run: c26-rh-1 exit '75'; 2026-11-15T10:13:13-06:00 run-step: /tmp/if2453/c26/rh/root/STOP exists; not starting rC26.1.cluster.plan 
+2026-11-15 10:16:07.497 CST run: usage pod_run: c26-rh-1 usage MemoryPeak=1831735296 CPUUsageNSec=631365819000
+2026-11-15 10:16:07.514 CST run: paths naming rC26.1 in the view and its scratch: 0
+2026-11-15 10:16:07.532 CST run: removed the watcher's STOP
+2026-11-15 10:16:07.537 CST run: OK (c26-rh-1)
+2026-11-15 10:16:07.540 CST c26 rehearsal: mode 'run' done
+2026-11-15 10:16:23.127 CST c26 rehearsal: mode 'run' (pid 2014507), tree /tmp/if2453/ci/C-26, image /stor/home/if2453/bio-box/images/bio-box_faec1f4.sif
+2026-11-15 10:16:23.141 CST launch c26-rh-2: build-stage --root /tmp/if2453/c26/rh/root --stage PLR --release rC26.1 --stages P1,P2,PLR (Pfam 38.2, --crispr)
+pod_run: started c26-rh-2 (MemoryMax=32G, MemorySwapMax=0, CPUQuota=700%, nice 19)
+pod_run: image /stor/home/if2453/bio-box/images/bio-box_faec1f4.sif sha256:d67300aa1321b571fa8da79e74dfccdd87a8dca2e56518f324902efa6b9f098a
+pod_run: log /tmp/if2453/c26/logs/c26-rh-2.log; watch: systemctl --user status c26-rh-2
+2026-11-15 10:16:28.662 CST run: the last stage step's record or intent file appeared; wrote /tmp/if2453/c26/rh/root/STOP
+2026-11-15 10:16:31.757 CST run: c26-rh-2 exit '75'; 2026-11-15T10:16:31-06:00 build-stage: /tmp/if2453/c26/rh/root/STOP exists; not starting stage PLR 
+2026-11-15 10:16:31.765 CST run: usage pod_run: c26-rh-2 usage MemoryPeak=447762432 CPUUsageNSec=6496669000
+2026-11-15 10:16:31.783 CST run: paths naming rC26.1 in the view and its scratch: 0
+2026-11-15 10:16:31.795 CST run: c26-rh-2 left the view's listing unchanged
+2026-11-15 10:16:31.803 CST run: removed the watcher's STOP
+2026-11-15 10:16:31.808 CST run: OK (c26-rh-2)
+2026-11-15 10:16:31.811 CST c26 rehearsal: mode 'run' done
+2026-11-15 10:17:20.467 CST c26 rehearsal: mode 'dim' (pid 2016021), tree /tmp/if2453/ci/C-26, image /stor/home/if2453/bio-box/images/bio-box_faec1f4.sif
+pod_run: started c26-rh-dim (MemoryMax=16G, MemorySwapMax=0, CPUQuota=200%, nice 19)
+pod_run: image /stor/home/if2453/bio-box/images/bio-box_faec1f4.sif sha256:d67300aa1321b571fa8da79e74dfccdd87a8dca2e56518f324902efa6b9f098a
+pod_run: log /tmp/if2453/c26/logs/c26-rh-dim.log; watch: systemctl --user status c26-rh-dim
+2026-11-15 10:17:38.573 CST dim: c26-rh-dim exit '0': 2026-11-15T10:17:36-06:00 run-step: rC26.2.dim published 3 files
+2026-11-15 10:17:38.581 CST c26 rehearsal: mode 'dim' done
+2026-11-15 10:18:10.312 CST c26 rehearsal: mode 'check' (pid 2017525), tree /tmp/if2453/ci/C-26, image /stor/home/if2453/bio-box/images/bio-box_faec1f4.sif
+2026-11-15 10:18:13.594 CST check: exit 0: {"contig_dim": {"distinct_contigs": 5742, "membership_contigs": 5742, "rows": 5742}, "contig_dim_disagreeing_with_membership": 0, "contig_dim_shared": {"rows": 103, "with_two_or_more_genomes": 103}, "contig_index": {"default_variants": 185, "of_them_shared": 0}, "counts_on_shared": {"by_locus_distinct_features": 9136, "features_joined_to_membership": 18272, "genes_rows": 9136, "genomes": 156, "genomes_without_the_stage": 53}, "genecall_ledger_skipped": {"P1": 41, "P2": 62}, "genome_dim": {"distinct": 2785, "membership_genomes": 2785, "rows": 2785}, "owner_genes_on_shared": {"P1": {"contigs_wit
+2026-11-15 10:18:13.598 CST c26 rehearsal: mode 'check' done
+2026-11-15 10:19:20 CST c26 inputs: mode 'analyze' (pid 2019180), tree /tmp/if2453/ci/C-26, image /stor/home/if2453/bio-box/images/bio-box_faec1f4.sif
+2026-11-15 10:20:54 CST analyze: exit 0: {"gene_call_mode": {"plasmid 4000 bp": "meta", "plasmid 400000 bp": "meta"}, "genetic_codes": {"11": 68693}, "genomes": {"all": {"circular": 62797, "n": 68693, "quality": {"complete": 64936, "contig": 3757}}, "on_contigs_an_earlier_stage_owns": {"circular_by_plsdb": 6249, "n": 7046}, "on_contigs_the_stage_stores": {"circular": 56548, "n": 61647, "quality": {"complete": 58259, "contig": 3388}}}, "k 
+2026-11-15 10:20:54 CST c26 inputs: mode 'analyze' done
+2026-11-15 10:30:14 CST rate: exit 0: {"every": 30, "new_first_records_seen": 61647, "modes": ["meta"], "all": {"genomes": 2054, "bases": 186854199, "genes": 200816, "cpu_s": 1356.556, "s_per_mbp": 7.26, "genes_per_mbp": 1074.72}, "circular": {"genomes": 1874, "bases": 169713014, "genes": 183128, "cpu_s": 1306.076, "s_per_mbp": 7.6958, "genes_per_mbp": 1079.045}, "linear": {"genomes": 180, "bases": 17141185, "genes": 17688, "cpu_s": 50.48, "s_per_mbp": 2.9449, "genes_per_mbp": 1031.901}} 
+2026-11-15 10:30:14 CST c26 inputs: mode 'rate' done

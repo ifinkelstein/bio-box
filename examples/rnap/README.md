@@ -121,7 +121,18 @@ context type holds 132 of the 162 loci. Its conserved neighbours (`conservation.
 strand): `916b7b66...` at +1 in 129 of 131 loci that have it, `eb4f50cb...` at +2 in 128 of 130, `fa4cb451...` (the
 DNA ligase's cluster, `DNA_ligase_A_M` by its genes' Pfam names) at +3 in 126 of 131, and `5fe1410c...` (the
 kinase's, `Phage_T7_kinase`) at -1 in 113 of 113. The figure `figures/t7_group_c1bf639f.svg` (and `.pdf`) draws it:
-64 leaves in tree order beside the UPGMA tree, genes coloured by NR50 family, grey below 10% of the group's loci.
+60 of its 64 leaves in tree order beside the UPGMA tree, genes coloured by NR50 family, grey below 10% of the group's
+loci, with the colour defaults of DEC-41 (card W-32, regenerated 2026-11-14 from run `c93ee294...` of the same
+release; its tables are byte-identical to the code's before the card). In one group per anchor NR90 cluster the
+weighting changes nothing; the Pfam fallback and its one-colour rule do. A family whose rarer clusters take its Pfam
+colour somewhere in the run is drawn in that one colour in every group. So five of the conserved neighbours above
+appear in the legend as their Pfam architecture instead of their cluster: the ligase (`DNA_ligase_A_M+DNA_ligase_C`,
+96%), `T7-like_gp12` (95%), `Phage_T7_1_1` (95%), `BC10` (89%) and the kinase (`Phage_T7_kinase`, 88%), each share
+now counted over every cluster of the architecture. Three others are added (`Phage_T7_GP04`, `DUF3310`, `HNH_3`).
+Of the 545 flanking genes drawn, 465 are coloured instead of 419, in 14 colours instead of 13 (*measured*,
+wilkcomp02, 2026-11-14, `figure_stats.py` of `planning/measurements/2026-11-14_flanks_figure_defaults.md`). The
+cluster uids in the text above are still the ones in `conservation.tsv`. `--colour-weight locus --colour-fallback
+none` draws the figure as before, byte for byte.
 
 **The oracle reads fewer proteins than the trials.** `hmmsearch` here scores the hits and the proteins the release's
 Pfam scan gives `RNA_pol` (1,968 proteins, *derived*: 1,957 + 11), not all 10,620,684 proteins of the release as the

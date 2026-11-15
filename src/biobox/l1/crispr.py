@@ -101,6 +101,51 @@ Bounded memory (AGENTS §4.1): contigs are streamed in `contig_uid` order from t
 sequence at a time, appended to a FASTA batch file in a private scratch directory; a batch of at least `batch_bases`
 bases (or the last) is one MinCED process with the fixed heap. Only a batch's parsed rows are held (its arrays, a
 few hundred rows), then appended to the scratch Parquet files. Nothing is published if a batch fails.
+
+The second producer: two-repeat arrays beside Cas genes (card E-15, DEC-40; `run_near_cas`). MinCED's minimum stays 3
+for the default producer above. A second producer runs MinCED exactly as above but at a minimum of 2 repeats
+(`-minNR 2`, `NEAR_CAS_MIN_REPEATS`) and keeps a call only when all three rules hold; the rest are counted in its ledger
+by the first rule they fail, in this order:
+
+(a) `overlaps_default`: it shares no base with an array of the default producer (`producer()`, the same MinCED version
+    and parameters at 3 repeats) on the same contig. Read from that producer's `feature` files of the stage in the
+    root, which must exist (the default step runs first); they are read, never written. "Shares a base": [s, e) and
+    [s', e') with s' < e and s < e'.
+(b) `far_from_cas`: it lies within `CAS_BP` (1,000) bases of a Cas gene. The distance is the gap in bases between the
+    array's span [s, e) and the gene's [gs, ge): max(0, gs - e, s - ge), so 0 when they share a base; "within" is a
+    gap of at most 1,000. A Cas gene is a called gene of the stage (its `feature_protein` rows of `gene_call_version`,
+    by default `biobox.l1.genecall.GENE_CALL_VERSION`) whose protein has at least one row in the stage's domain scan
+    of library `pfam-<library_version>` (`l1_domains`, partition `library=pfam-<version>`) whose `model_acc`, without
+    its `.version` suffix, is one of the Cas families of the frozen list `cas-pfam-1` (`CAS_SET`): the 31 Pfam families
+    of the CRISPR worked example's `cas` roles (`examples/crispr_cas_neighbourhoods/sql/q01_loci_by_domains.sql`), the
+    ones card E-13 measured its rule A5 with. The list lives in `src/biobox/l1/cas_families/cas-pfam-1.tsv`, frozen by
+    its sha256 (`CAS_FAMILY_SETS`); a change of the list is a new file with a new name, so a new producer.
+(c) `inside_gene`: it does not lie wholly inside a called gene of the stage (any gene, Cas or not): wholly inside is
+    gs <= s and e <= ge (an array exactly a gene's span is inside).
+
+On a circular contig of length n every rule is read round the circle: each gene and each default array is also taken
+shifted by -n and +n (positions as stored: a gene or array across the origin has end > n), and a rule holds when it
+holds at one of the three shifts; so a Cas gene just after the origin is 80 bases from an array that ends 50 bases
+before it, and an array across the origin overlaps a default array at the start of the contig. On a linear contig
+there is no shift. A call longer than the circle is rejected (`exceeds_circle`) before the rules, as in the default.
+
+The producer's name is `minced-<version>-w8-nr2-r23x47-s26x50-cas1kb-caspfam1-pfam-<library version>`
+(`near_cas_producer`): MinCED's version and parameters at 2 repeats, then `near_cas_tag`: the filter (`FILTER_TAG`,
+`cas1kb`: rules (a) to (c) with the 1 kb gap; a change of any rule, of the gap or of the default producer it overlaps
+is a new tag), the family list (`caspfam1`, the list's name without hyphens) and the domain library read (`pfam-<v>`,
+its `library=` partition). The gene-call version is in the ledger, not the name (one release has one). Its files are
+`feature` and `l1_crispr` rows under `producer=<name>` and the ledger `step=crispr-<name>`, written as the default's;
+its ledger rows record `minced`, `java`, `pyarrow`, `minced_args` (`-minNR 2`), `gene_call_version`, `domain_library`
+(`pfam-<v>`), `cas_families` (`cas-pfam-1`), `cas_filter` (`cas1kb`) and `overlap_producer` (the default producer's
+name). Per contig: arrays in (calls at 2 placed on the contig), kept, and one row per reason a call was rejected.
+
+The filter's reads (AGENTS §4.4): the contigs with a call go into a table, and the default producer's `feature` files
+and the gene calls (`feature_protein`, both sorted by contig_uid) are read with `contig_uid IN (SELECT ...)`, so a scan
+reads the row groups that hold those contigs (`catalog.set_join_key_filter`); the domain scan (sorted by protein_uid) is
+read for the proteins of the genes within 1 kb of a call only, by the same join filter. Each read is profiled
+(`catalog.profile_query`) and, with `report`, listed in `report["scans"]`. The candidate calls, the genes and default
+arrays of their contigs and the rules live in one DuckDB connection (one thread, `DUCK_MEMORY_LIMIT`, spilling to the
+scratch directory), never in Python objects.
 """
 
 from __future__ import annotations
@@ -123,11 +168,14 @@ from biobox import ids, io, layout, ledger, provenance
 from biobox.l0seq.inputs import GenomeInput
 from biobox.l0seq.store import OWNER_SEP, ContigOwners, SeqStore, skipped_entry
 from biobox.l0seq.store import OWNED_BY as SKIP_REASON
+from biobox.l1.genecall import GENE_CALL_VERSION
 from biobox.l1.ncrna import _distinct, _genome_input_files, _mkscratch, _range_rows, _sql_files
 from biobox.registry.schemas import table
 
-__all__ = ["CIRC_FLANK", "JAVA_HEAP", "MINCED_ARGS", "MIN_REPEATS", "PARAM_TAG", "Array", "elements",
-           "minced_version", "param_tag", "parse_gff", "place", "producer", "run"]
+__all__ = ["CAS_BP", "CAS_FAMILY_SETS", "CAS_LIBRARY", "CAS_SET", "CIRC_FLANK", "FILTER_TAG", "JAVA_HEAP",
+           "MINCED_ARGS", "MIN_REPEATS", "NEAR_CAS_MIN_REPEATS", "PARAM_TAG", "Array", "cas_families", "elements",
+           "minced_version", "near_cas_producer", "near_cas_tag", "param_tag", "parse_gff", "place", "producer", "run",
+           "run_near_cas"]
 
 KIND_CRISPR = ids.KIND["crispr_array"]
 STRAND = 1  # every array and element: the strand its sequences are read on (module docstring)
@@ -152,11 +200,25 @@ EST_FEATURE_ROW = 24  # estimate: feature_uid 16 + delta-coded coordinates (as g
 EST_ELEMENT_ROW = 80  # estimate: two UIDs 32 + coordinates + a 26 to 50 base sequence
 REJECT_CIRCLE = "exceeds_circle"
 
+# The producer of two-repeat arrays beside Cas genes (card E-15, DEC-40; module docstring)
+NEAR_CAS_MIN_REPEATS = 2
+CAS_BP = 1000  # the largest gap in bases between a kept call and a Cas gene (DEC-40; card E-13's rule A5)
+FILTER_TAG = "cas1kb"  # rules (a) to (c) with CAS_BP; any change of them is a new tag, so a new producer
+CAS_LIBRARY = "pfam"  # the domain library whose families the list names
+CAS_FAMILY_DIR = Path(__file__).resolve().parent / "cas_families"
+CAS_SET = "cas-pfam-1"
+CAS_FAMILY_SETS = {"cas-pfam-1": "fc15d2f6f721d0077dfce052b96295ed0e8df709027e34bb8b2e126848e73a75"}  # name -> sha256
+REJECT_OVERLAP, REJECT_FAR, REJECT_INSIDE = "overlaps_default", "far_from_cas", "inside_gene"
+NEAR_CAS_REASONS = (REJECT_CIRCLE, REJECT_FAR, REJECT_INSIDE, REJECT_OVERLAP)  # the ledger's rejection reasons
+
 _ELEMENT_SCRATCH = pa.schema([f for f in table("l1_crispr").schema])
 _ARRAY_SCRATCH = pa.schema([("feature_uid", pa.binary(16)), ("contig_uid", pa.binary(16)), ("start", pa.int64()),
                             ("end", pa.int64()), ("strand", pa.int8())])
 _CONTIG_SCRATCH = pa.schema([("contig_uid", pa.binary(16)), ("n_in", pa.int64()), ("n_rejected", pa.int64()),
                              ("reason", pa.string())])
+# the length and topology of each contig searched, for the filter of `run_near_cas` (rows buffered, then written)
+_TOPO_SCRATCH = pa.schema([("contig_uid", pa.binary(16)), ("contig_len", pa.int64()), ("is_circular", pa.bool_())])
+_TOPO_ROWS = 4096
 _VERSION_RE = re.compile(r"^minced (\S+)", re.M)
 _JAVA_RE = re.compile(r'version "([^"]+)"')
 
@@ -441,13 +503,15 @@ class _Scan:
     owns). Up to `cpus` MinCED processes at once; only this thread writes the scratch files."""
 
     def __init__(self, java: str, jar: Path, cpus: int, scratch: Path, batch_bases: int,
-                 min_repeats: int = MIN_REPEATS):
+                 min_repeats: int = MIN_REPEATS, topology: bool = False):
         self.java, self.jar, self.cpus, self.scratch, self.batch_bases = java, jar, cpus, scratch, batch_bases
         self.min_repeats = min_repeats
-        self.paths = {k: scratch / f"{k}.parquet" for k in ("arrays", "elements", "contigs")}
+        kinds = (("arrays", _ARRAY_SCRATCH), ("elements", _ELEMENT_SCRATCH), ("contigs", _CONTIG_SCRATCH),
+                 *((("topology", _TOPO_SCRATCH),) if topology else ()))
+        self.paths = {k: scratch / f"{k}.parquet" for k, _ in kinds}
         self.writers = {k: pq.ParquetWriter(self.paths[k], s, compression="zstd", write_statistics=False)
-                        for k, s in (("arrays", _ARRAY_SCRATCH), ("elements", _ELEMENT_SCRATCH),
-                                     ("contigs", _CONTIG_SCRATCH))}
+                        for k, s in kinds}
+        self.topo: list[tuple[bytes, int, bool]] | None = [] if topology else None
         self.batch: _Batch | None = None
         self.pool = ThreadPoolExecutor(max_workers=cpus)
         self.running: set[Future] = set()
@@ -487,6 +551,14 @@ class _Scan:
             [pa.array([cu], pa.binary(16)), pa.array([0], pa.int64()), pa.array([0], pa.int64()),
              pa.array([f"{SKIP_REASON}{owner}"], pa.string())], schema=_CONTIG_SCRATCH))
 
+    def _write_topology(self) -> None:
+        if self.topo:
+            cols = list(zip(*self.topo))
+            self.writers["topology"].write_batch(pa.RecordBatch.from_arrays(
+                [pa.array(cols[0], pa.binary(16)), pa.array(cols[1], pa.int64()), pa.array(cols[2], pa.bool_())],
+                schema=_TOPO_SCRATCH))
+            self.topo = []
+
     def contig(self, cu: bytes, seq: bytes, circular: bool) -> None:
         n = len(seq)
         self.stats["contigs"] += 1
@@ -494,6 +566,10 @@ class _Scan:
         self.writers["contigs"].write_batch(pa.RecordBatch.from_arrays(
             [pa.array([cu], pa.binary(16)), pa.array([0], pa.int64()), pa.array([0], pa.int64()),
              pa.array([None], pa.string())], schema=_CONTIG_SCRATCH))
+        if self.topo is not None:
+            self.topo.append((cu, n, bool(circular)))
+            if len(self.topo) >= _TOPO_ROWS:
+                self._write_topology()
         if n == 0:
             return
         f = min(CIRC_FLANK, n) if circular else 0
@@ -510,6 +586,8 @@ class _Scan:
             if ok:
                 self._flush()
                 self._drain(0)
+                if self.topo is not None:
+                    self._write_topology()
         finally:
             for fut in self.running:
                 fut.cancel()
@@ -522,7 +600,7 @@ class _Scan:
 
 def _scan(root: Path, stage: str, contigs: Iterator[tuple[bytes, bool, bytes | None]], stages: list[str], cpus: int,
           scratch: Path, batch_bases: int, java: str, jar: Path,
-          min_repeats: int = MIN_REPEATS) -> tuple[_Scan, dict[bytes, str]]:
+          min_repeats: int = MIN_REPEATS, topology: bool = False) -> tuple[_Scan, dict[bytes, str]]:
     """Search `contigs` ((contig_uid, circular, owner genome), sorted by contig_uid) into scratch; a contig another
     stage owns is not searched (DEC-26) and is returned with its owner. A contig in several genomes of this stage
     (DEC-27) is searched once, for its owner genome, and `sc.shared` holds it with that owner (`<stage>/<genome_uid>`),
@@ -530,7 +608,7 @@ def _scan(root: Path, stage: str, contigs: Iterator[tuple[bytes, bool, bytes | N
     store = SeqStore(root, stages)
     owners = ContigOwners(root, stage, stages)
     skipped: dict[bytes, str] = {}
-    sc = _Scan(java, jar, cpus, scratch, batch_bases, min_repeats)
+    sc = _Scan(java, jar, cpus, scratch, batch_bases, min_repeats, topology)
     ok = False
     try:
         for cu, circ, genome in contigs:
@@ -663,5 +741,239 @@ def _publish(out: Path, stage: str, prod: str, sc: _Scan, scratch: Path, tools: 
 
         ledger.write(out, stage, f"crispr-{prod}", ledger_rows())
         return int(rejected)
+    finally:
+        con.close()
+
+
+# --- card E-15: two-repeat arrays beside Cas genes (module docstring) ------------------------------------------------
+
+_LIBRARY_VERSION_RE = re.compile(r"[A-Za-z0-9_.]+")
+_PFAM_RE = re.compile(r"PF\d{5}")
+
+
+def cas_families(name: str = CAS_SET) -> dict[str, str]:
+    """accession -> role of the frozen Cas family list `name` (`CAS_FAMILY_DIR/<name>.tsv`, module docstring).
+    FileNotFoundError for a name that is not a frozen list; ValueError when the file's sha256 is not the frozen one
+    (`CAS_FAMILY_SETS`) or a line is not `PFxxxxx<TAB>role`."""
+    want = CAS_FAMILY_SETS.get(name)
+    path = CAS_FAMILY_DIR / f"{name}.tsv"
+    if want is None or not path.is_file():
+        raise FileNotFoundError(f"Cas family list {name!r}: not one of the frozen lists {sorted(CAS_FAMILY_SETS)} "
+                                f"in {CAS_FAMILY_DIR}")
+    have = ids.sha256_file(path).hex()
+    if have != want:
+        raise ValueError(f"{path}: sha256 {have} is not the frozen list's {want}; a frozen list is never changed, "
+                         "another list is a new file, a new name and so a new producer")
+    out: dict[str, str] = {}
+    for k, line in enumerate(path.read_text().splitlines(), 1):
+        if not line.strip() or line.startswith("#"):
+            continue
+        f = line.split("\t")
+        if len(f) != 2 or not _PFAM_RE.fullmatch(f[0]) or not f[1] or f[0] in out:
+            raise ValueError(f"{path} line {k}: not `PFxxxxx<TAB>role`, or an accession given twice: {line!r}")
+        out[f[0]] = f[1]
+    return out
+
+
+def _check_library_version(v) -> str:
+    if not isinstance(v, str) or not _LIBRARY_VERSION_RE.fullmatch(v):
+        raise ValueError(f"library version {v!r}: give the {CAS_LIBRARY} library's version as its domain scan names "
+                         "it (38.2 for library=pfam-38.2): letters, digits, '.' and '_' only")
+    return v
+
+
+def near_cas_tag(library_version: str, cas_set: str = CAS_SET) -> str:
+    """The tail of the filtered producer's name: `<FILTER_TAG>-<family list without hyphens>-pfam-<version>`."""
+    return f"{FILTER_TAG}-{cas_set.replace('-', '')}-{CAS_LIBRARY}-{_check_library_version(library_version)}"
+
+
+def near_cas_producer(library_version: str) -> str:
+    """`minced-<version>-<param_tag(2)>-<near_cas_tag(library_version)>` (module docstring)."""
+    return f"{producer(NEAR_CAS_MIN_REPEATS)}-{near_cas_tag(library_version)}"
+
+
+def _near_cas_inputs(root: Path, stage: str, gene_call_version: str, library_version: str) -> dict[str, list[Path]]:
+    """The files the filter reads, from the root: the default producer's `feature` files of the stage, the stage's
+    gene calls (`feature_protein`) and its domain scan of `pfam-<version>`. FileNotFoundError naming the first that
+    is missing."""
+    lib = f"{CAS_LIBRARY}-{library_version}"
+    want = (("default", Path(root) / f"l1/feature/producer={producer()}/stage={stage}",
+             f"the default producer's arrays ({producer()}): run `bio-box stage crispr` without --near-cas first"),
+            ("genes", Path(root) / table("feature_protein").location / f"gene_call_version={gene_call_version}"
+             / f"stage={stage}", f"the gene calls ({gene_call_version})"),
+            ("domains", Path(root) / table("l1_domains").location / f"library={lib}" / f"stage={stage}",
+             f"the domain scan of library {lib}: run `bio-box stage domains` first"))
+    out = {}
+    for key, d, what in want:
+        files = io.part_files(d)
+        if not files:
+            raise FileNotFoundError(f"stage {stage}: {what} not found ({d})")
+        out[key] = files
+    return out
+
+
+def run_near_cas(root: Path, stage: str, cpus: int, *, library_version: str,
+                 gene_call_version: str = GENE_CALL_VERSION, genomes: Iterable[GenomeInput] | None = None, tmp=None,
+                 out: Path | None = None, seq_stages: list[str] | None = None, batch_bases: int = BATCH_BASES,
+                 max_file_bytes: int = layout.MAX_FILE_BYTES, report: dict | None = None) -> dict:
+    """The second CRISPR producer (card E-15, DEC-40; module docstring): MinCED at 2 repeats on the stage's contigs,
+    calls kept only when they overlap no array of the default producer, lie within `CAS_BP` bases of a Cas gene of
+    the stage's `pfam-<library_version>` scan and lie not wholly inside a called gene; written as `feature` and
+    `l1_crispr` rows under the producer `near_cas_producer(library_version)`, with its ledger.
+
+    The arguments are `run`'s, and: `library_version`, the Pfam scan's version (its partition `library=pfam-<v>`);
+    `gene_call_version`, the gene calls read; `report`, when given, gets `scans`: the Parquet scans of the filter's
+    three reads (`catalog.profile_query`). Inputs are read from `root` and must exist there (the default producer's
+    files, the gene calls, the domain scan); every output goes under `out`. Refuses before reading a sequence when one
+    of the producer's partitions of this stage already holds a file in `root` or `out`, or an input is missing."""
+    root = Path(root)
+    out = root if out is None else Path(out)
+    _check_args(cpus, batch_bases)
+    _check_library_version(library_version)
+    ledger.check_scratch(tmp, root, out)
+    families = cas_families()
+    java, jar = _tool()
+    prod = near_cas_producer(library_version)
+    ledger.refuse_written(root, out, list(_paths(stage, prod)), f"CRISPR arrays {prod} of stage {stage}")
+    inputs = _near_cas_inputs(root, stage, gene_call_version, library_version)
+    lib = f"{CAS_LIBRARY}-{library_version}"
+    tools = {**_tools(java, jar, NEAR_CAS_MIN_REPEATS), "gene_call_version": gene_call_version, "domain_library": lib,
+             "cas_families": CAS_SET, "cas_filter": FILTER_TAG, "overlap_producer": producer()}
+    stages = list(dict.fromkeys([stage, *([] if seq_stages is None else seq_stages)]))
+    scratch = _mkscratch("biobox-crispr-", tmp)
+    try:
+        if genomes is None:
+            gi = _genome_input_files(root, stage)
+            if not gi:
+                raise FileNotFoundError(f"stage {stage}: no genome_input")
+            contigs = _distinct(_range_rows(gi, ["contig_uid", "is_circular", "genome_uid"]))
+        else:
+            contigs = _distinct(iter(sorted({(cu, cu in set(g.circular), ids.genome_uid(list(g.contig_uids)))
+                                             for g in genomes for cu in g.contig_uids})))
+        sc, skipped = _scan(root, stage, contigs, stages, cpus, scratch, batch_bases, java, jar,
+                            NEAR_CAS_MIN_REPEATS, topology=True)
+        counts, scans = _publish_near_cas(out, stage, prod, sc, scratch, tools, max_file_bytes, inputs, families)
+        if report is not None:
+            report["scans"] = scans
+        return {**sc.stats, "producer": prod, "kept": counts["ok"], "rejected": counts[REJECT_CIRCLE],
+                "rejected_by_reason": {r: counts[r] for r in NEAR_CAS_REASONS}, "minced_args": tools["minced_args"],
+                "java": tools["java"], "gene_call_version": gene_call_version, "domain_library": lib,
+                "cas_families": CAS_SET, "overlap_producer": producer(),
+                "skipped_contigs": [skipped_entry(cu, s) for cu, s in sorted({**skipped, **sc.shared}.items())]}
+    finally:
+        shutil.rmtree(scratch, ignore_errors=True)
+
+
+def _parquet(files: list[Path]) -> str:
+    """A read of explicit files (AGENTS §3.9), no partition key taken from a path."""
+    return f"read_parquet({_sql_files(files)}, hive_partitioning = false)"
+
+
+def _publish_near_cas(out: Path, stage: str, prod: str, sc: _Scan, scratch: Path, tools: dict[str, str],
+                      max_file_bytes: int, inputs: dict[str, list[Path]], families: dict[str, str]
+                      ) -> tuple[dict[str, int], list[dict]]:
+    """Apply rules (a) to (c) to the scan's calls, write the kept ones as the producer's `feature` and `l1_crispr`
+    files and the ledger: per contig searched, calls in, kept, and one row per reason with its rejected calls (a contig
+    another stage owns: one row, its reason, counts 0; one in several genomes of the stage: also its `owned_by` row,
+    as the default producer's). Returns (calls per verdict over the stage, the profiled scans of the three reads)."""
+    from biobox import catalog  # heavy; only this producer needs it here
+
+    feat_dir, el_dir, _ = _paths(stage, prod)
+    con = duckdb.connect(config={"threads": 1, "memory_limit": DUCK_MEMORY_LIMIT,
+                                 "temp_directory": str(scratch / "duckdb"), "preserve_insertion_order": True})
+    scans: list[dict] = []
+    try:
+        con.execute(f"CREATE VIEW arrays AS SELECT DISTINCT * FROM read_parquet({_sql_path(sc.paths['arrays'])})")
+        con.execute(f"CREATE VIEW elements AS SELECT DISTINCT * FROM read_parquet({_sql_path(sc.paths['elements'])})")
+        con.execute("CREATE VIEW contigs AS SELECT contig_uid, sum(n_in) AS n_in, sum(n_rejected) AS n_rejected, "
+                    f"max(reason) AS reason FROM read_parquet({_sql_files([sc.paths['contigs']])}) GROUP BY contig_uid")
+        con.execute("CREATE TEMP TABLE shifts AS SELECT * FROM (VALUES (-1), (0), (1)) k(s)")
+        # the calls, with their contig's length and topology (on a circle the rules are read at shifts -n, 0, +n)
+        con.execute('CREATE TEMP TABLE cand AS SELECT a.feature_uid, a.contig_uid, a.start, a."end", '
+                    "t.contig_len AS n, t.is_circular AS circ FROM arrays a JOIN (SELECT DISTINCT * FROM "
+                    f"read_parquet({_sql_path(sc.paths['topology'])})) t USING (contig_uid)")
+        con.execute("CREATE TEMP TABLE cc AS SELECT DISTINCT contig_uid FROM cand ORDER BY contig_uid")
+        catalog.set_join_key_filter(con, max(catalog.row_groups_of(fs) for fs in inputs.values()))
+
+        def read(name: str, sql: str) -> None:
+            prof = catalog.profile_query(con, sql, profile_dir=scratch)
+            scans.extend({"table": name, **s} for s in prof["scans"] if s["files"])
+
+        read("feature", f'CREATE TEMP TABLE d3 AS SELECT contig_uid, start, "end" FROM {_parquet(inputs["default"])} '
+                        "WHERE contig_uid IN (SELECT contig_uid FROM cc)")
+        read("feature_protein", f'CREATE TEMP TABLE g AS SELECT contig_uid, start, "end", protein_uid FROM '
+                                f'{_parquet(inputs["genes"])} WHERE contig_uid IN (SELECT contig_uid FROM cc)')
+        # every (call, gene, shift) within CAS_BP bases: the genes rules (b) and (c) can need (a gene a call lies
+        # wholly inside is at gap 0), with the gene's span at that shift
+        con.execute(f"""CREATE TEMP TABLE gnear AS
+            SELECT c.feature_uid, c.start AS s, c."end" AS e, g.protein_uid,
+                   g.start + k.s * c.n AS gs, g."end" + k.s * c.n AS ge
+            FROM cand c JOIN g ON g.contig_uid = c.contig_uid JOIN shifts k ON k.s = 0 OR c.circ
+            WHERE greatest(g.start + k.s * c.n - c."end", c.start - (g."end" + k.s * c.n)) <= {CAS_BP}""")
+        con.execute("CREATE TEMP TABLE pk AS SELECT DISTINCT protein_uid FROM gnear ORDER BY protein_uid")
+        fams = ", ".join(f"'{pf}'" for pf in sorted(families))  # PFxxxxx only (cas_families checks each)
+        read("l1_domains", f"CREATE TEMP TABLE cas AS SELECT DISTINCT protein_uid FROM {_parquet(inputs['domains'])} "
+                           "WHERE protein_uid IN (SELECT protein_uid FROM pk) "
+                           f"AND split_part(model_acc, '.', 1) IN ({fams})")
+        con.execute(f"""CREATE TEMP TABLE cls AS
+            WITH ov AS (SELECT DISTINCT c.feature_uid FROM cand c JOIN d3 ON d3.contig_uid = c.contig_uid
+                        JOIN shifts k ON k.s = 0 OR c.circ
+                        WHERE d3.start + k.s * c.n < c."end" AND c.start < d3."end" + k.s * c.n),
+                 near AS (SELECT DISTINCT feature_uid FROM gnear WHERE protein_uid IN (SELECT protein_uid FROM cas)),
+                 ins AS (SELECT DISTINCT feature_uid FROM gnear WHERE gs <= s AND e <= ge)
+            SELECT c.feature_uid, c.contig_uid,
+                   CASE WHEN ov.feature_uid IS NOT NULL THEN '{REJECT_OVERLAP}'
+                        WHEN near.feature_uid IS NULL THEN '{REJECT_FAR}'
+                        WHEN ins.feature_uid IS NOT NULL THEN '{REJECT_INSIDE}' ELSE 'ok' END AS verdict
+            FROM cand c LEFT JOIN ov ON ov.feature_uid = c.feature_uid
+            LEFT JOIN near ON near.feature_uid = c.feature_uid LEFT JOIN ins ON ins.feature_uid = c.feature_uid""")
+        n_cls, n_arrays = con.execute("SELECT (SELECT count(*) FROM cls), (SELECT count(*) FROM arrays)").fetchall()[0]
+        if n_cls != n_arrays:
+            raise RuntimeError(f"{n_arrays} calls but {n_cls} classified: a call's contig has no length")
+        keep = "(SELECT feature_uid FROM cls WHERE verdict = 'ok')"
+        spec = table("feature")
+        io.write_parts(io.duck_batches(
+            con, f'SELECT feature_uid, contig_uid, start, "end", strand, {KIND_CRISPR}::UTINYINT AS kind FROM arrays '
+                 f'WHERE feature_uid IN {keep} ORDER BY contig_uid, start, "end", strand', spec),
+            spec, out / feat_dir, EST_FEATURE_ROW, max_file_bytes)
+        spec = table("l1_crispr")
+        cols = ", ".join(f'"{c}"' for c in spec.schema.names)
+        io.write_parts(io.duck_batches(
+            con, f"SELECT {cols} FROM elements WHERE feature_uid IN {keep} ORDER BY contig_uid, feature_uid, ordinal",
+            spec), spec, out / el_dir, EST_ELEMENT_ROW, max_file_bytes)
+        verdicts = ("ok", REJECT_OVERLAP, REJECT_FAR, REJECT_INSIDE)
+        con.execute("CREATE TEMP TABLE per AS SELECT contig_uid, "
+                    + ", ".join(f"count(*) FILTER (WHERE verdict = '{v}') AS \"{v}\"" for v in verdicts)
+                    + " FROM cls GROUP BY contig_uid")
+        totals = dict(zip(verdicts, con.execute(
+            "SELECT " + ", ".join(f'coalesce(sum("{v}"), 0)' for v in verdicts) + " FROM per").fetchall()[0]))
+        totals[REJECT_CIRCLE] = con.execute("SELECT coalesce(sum(n_rejected), 0) FROM contigs").fetchall()[0][0]
+
+        def ledger_rows() -> Iterator[dict]:
+            sel = ", ".join(f'coalesce(p."{v}", 0)' for v in verdicts)
+            reader = con.sql(f"SELECT c.contig_uid, c.n_in, c.n_rejected, c.reason, {sel} FROM contigs c "
+                             "LEFT JOIN per p USING (contig_uid) ORDER BY c.contig_uid"
+                             ).to_arrow_reader(io.ROW_GROUP_ROWS)
+            try:
+                for b in reader:
+                    for cu, n, circle, why, ok, ov, far, ins in zip(*(b.column(i).to_pylist() for i in range(8))):
+                        if why is not None and OWNER_SEP not in why.removeprefix(SKIP_REASON):
+                            yield ledger.row(cu, "contig", 0, 0, reason=why, tools=tools)  # another stage's
+                            continue
+                        if n != ok + circle + ov + far + ins:
+                            raise RuntimeError(f"contig {cu.hex()}: {n} calls in, {ok} kept and "
+                                               f"{circle + ov + far + ins} rejected")
+                        rows = [ledger.row(cu, "contig", n, ok, n_rejected=k, reason=r, tools=tools)
+                                for r, k in ((REJECT_CIRCLE, circle), (REJECT_OVERLAP, ov), (REJECT_FAR, far),
+                                             (REJECT_INSIDE, ins)) if k]
+                        rows.append(ledger.row(cu, "contig", n, ok, tools=tools))
+                        if why is not None:  # searched once for the genome that owns it (DEC-27)
+                            rows.append(ledger.row(cu, "contig", n, ok, reason=why, tools=tools))
+                        yield from sorted(rows, key=lambda r: r["reason_code"])
+            finally:
+                reader.close()
+
+        ledger.write(out, stage, f"crispr-{prod}", ledger_rows())
+        return {k: int(v) for k, v in totals.items()}, scans
     finally:
         con.close()

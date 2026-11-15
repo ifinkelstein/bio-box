@@ -261,8 +261,9 @@ are phages). The genera are: *Vibrio* 41 genomes (6 in P1, 35 in P2), *Pseudoalt
 *Aliivibrio* 4, *Photobacterium* 1. So the I-F3 element is in 7 of 41 *Vibrio* genomes, the one *Photobacterium*, 2
 of 10 *Pseudoalteromonas*, and no *Shewanella* or *Aliivibrio* (*derived* from the two tables; genus by header).
 
-**Figures** (`nbr flanks --figure`, rows in UPGMA order of the flank distance; colours are Pfam architectures,
-grey a family in under 10% of the group's loci, white a gene with no domain):
+**Figures** (`nbr flanks --figure`, rows in UPGMA order of the flank distance; in the two Pfam-level figures colours
+are Pfam architectures, grey a family in under 10% of the group's loci, white a gene with no domain; the NR50 figure
+is described with it):
 
 - `figures/tniq_cas_pfam.svg` (and `.pdf`): the 27 TniQ loci with a Cas domain plus one locus brought in by a shared
   anchor protein (28 loci; `nbr flanks --anchors-file results/uids_tniq_cas.txt --level pfam --window 10g
@@ -280,10 +281,20 @@ grey a family in under 10% of the group's loci, white a gene with no domain):
   `Cas3-like_C_2` domain, no Cas8f domain); and at the bottom the I-F3 elements, TniQ (brown) at -2, a longer
   Cas5f-domain gene at -1, no Cas1, Cas3 or Cas8f. Took 24.5 s and 33.4 CPU-seconds, at most 1.39 GB
   (*measured*, `/usr/bin/time -v`).
-- `figures/cas7f_all_nr50.svg` (and `.pdf`): the same loci at the NR50 level, as `run.sh` draws them. It shows a
-  limit rather than the biology: across 157 loci of many genera each NR50 cluster of a Cas protein is under 10% of
-  the loci, so every prokaryote gene is grey, and the only coloured families are those of the 42 near-identical
-  ICP1 phage loci that form one leaf (section 5).
+- `figures/cas7f_all_nr50.svg` (and `.pdf`): the same loci at the NR50 level, as `run.sh` draws them, with the
+  colour defaults of DEC-41 (card W-32, regenerated 2026-11-14). Across 157 loci of many genera each NR50 cluster of
+  a Cas protein is under 10% of the loci, so the figure counts loci whose Cas7f share an NR90 cluster once
+  (`--colour-weight anchor-nr90`) and gives a rare cluster's gene its Pfam architecture's colour
+  (`--colour-fallback pfam`), one colour per family. Its legend is now Pfam families only: Cas6f (`Cas_Csy4`) 99%,
+  the Cas5f domain (`Cas_Csy2`) 97%, Cas8f (`Cas_Csy1`) 73%, Cas1 71%, three Cas2-Cas3 fusion architectures 26%, 18%
+  and 14%, and TniQ 14% (weighted shares). Of the 720 flanking genes drawn in its 60 rows, 251 are coloured, all in
+  these 8 colours (*measured*, wilkcomp02, 2026-11-14, `figure_stats.py` of
+  `planning/measurements/2026-11-14_flanks_figure_defaults.md`). The Tn7-like I-F3 rows now show their Cas5f, Cas7f
+  and Cas6f genes in colour, beside TniQ (card W-31 measured 37 of their 39 Cas genes coloured under these two
+  settings, against none before; the one-colour rule changes which colour a gene takes, never whether it is grey). Before the card the figure showed a limit rather than the biology: 50 of the 720 genes were
+  coloured, in 13 colours, nearly all of them clusters of the 42 near-identical ICP1 phage loci that form one leaf,
+  and one Cas1 cluster (40% of the loci). The prokaryote Cas genes were mostly grey, not all: W-31 counted 61 of 430
+  coloured (section 5). `--colour-weight locus --colour-fallback none` draws that old figure, byte for byte.
 
 **Context types.** `nbr flanks` cuts each tree at a distance of 0.5. At the Pfam level with 10 genes a side, each of
 the 28 loci of figure 1 is its own context type (28 types), though the tree puts the I-F3 loci together. At the
@@ -343,7 +354,9 @@ Each is a candidate card; the card that covers it is named, or "none".
    The question whether the Pfam level should compare annotated positions only is already open for the PI
    (`planning/measurements/2026-11-12_flanks_rN3.md`, card W-25); this example adds two cases: count leaves rather
    than loci for the colour threshold, and colour NR50 clusters by their Pfam architecture. Card: a W-25/W-27
-   follow-up (none yet).
+   follow-up (none yet). (Since then card W-31 measured both and found the grey-out slightly overstated, 61 of the
+   430 prokaryote Cas genes were coloured by one Cas1 cluster; the PI made both the defaults at NR50 and NR90
+   (DEC-41) and card W-32 regenerated `figures/cas7f_all_nr50.svg` with them, section 3. The fixed cut stays.)
 6. **`bio-box sql` counts one row too few when the first column's name starts with `#`.** The guide's idiom for a
    uid file (`AGENT_GUIDE.md` section 5, `AS "#protein_uid"`) makes the column line look like a comment to the
    counter, which then takes the first row for the column line: `sql: statement 1: 26 rows` and `wrote
@@ -477,6 +490,7 @@ it when it shares at least one base with that span, as `nbr` defines it.
 | `arrays_pdam_complete_if_window_has_array`, `arrays_nbr_pdam_complete_if_window` | invariant | The complete type I-F system of the control chromosome has arrays on both sides, 27 and 21 repeats (card E-12): long enough for any setting to call, so a window that does not see them is a defect. One by SQL, one by `nbr` |
 | `arrays_tniq_control_window`, `arrays_cas7f_control_window`, `arrays_control_cas6f_nearest_bp` | recorded | The paper's minimal systems carry "a short CRISPR array" (Abstract). At MinCED's default the control element has none: its array is one spacer between two repeats, 128 bases from Cas6f, found only with a minimum of 2 (card E-12; card E-13 measures that setting). So this is a value per release and setting (`arrays_producers` names the setting), not an invariant |
 | the other `arrays_*` | recorded | How many I-F3 loci, complete I-F loci and phage I-F loci have an array within 10 genes |
+| `arrays_tniq_cas7f_loci_with_near_cas_array` | recorded | Of the I-F3 TniQ loci, those with an array of the filtered producer of card E-15 (DEC-40: MinCED at 2 repeats, kept within 1 kb of a Cas gene, outside genes and away from every 3-repeat array; its name carries `-cas1kb-`): the single-spacer arrays of the minimal systems. 0 on a release with the default producer only |
 
 **On a scratch view with arrays** (*measured*, wilkcomp02, 2026-11-14, `planning/measurements/2026-11-14_arrays_in_neighbourhoods.md`):
 `rN.3` plus card E-12's arrays of P1, P2 and S1, with its own manifest and catalog under `/tmp/if2453/e14/view`
@@ -500,3 +514,23 @@ So at three repeats every complete I-F system has an array beside it and about a
 ones do (7 of 20, *derived*), which is the paper's picture of short arrays only in part: the rest are below MinCED's
 minimum or absent. `nbr` over the two runs lists 190 (locus, array) pairs, 13 of the 635 TniQ loci and 138 of the
 157 Cas7f loci, and the SQL definition the same 190 pairs.
+
+**With both producers** (card E-15, DEC-40; *measured*, wilkcomp02, 2026-11-14,
+`planning/measurements/2026-11-14_crispr_two_repeat_producer.md`): the same view of `rN.3` with also the filtered
+producer `minced-0.4.2-w8-nr2-r23x47-s26x50-cas1kb-caspfam1-pfam-38.2` of P1, P2 and S1, under
+`/tmp/if2453/e15/relview`. Every check counts the arrays of both producers (the two never share a base at a locus);
+`arrays_producers` names both.
+
+| Check | Value (default producer only) |
+|---|---|
+| `arrays_tniq_cas7f_loci_with_array` | 14 of the 20 I-F3 TniQ loci (7) |
+| `arrays_tniq_cas7f_loci_with_near_cas_array` | 7 |
+| `arrays_tniq_control_window`, `arrays_cas7f_control_window` | 1, 1 (0, 0): the control's 2-repeat array 422557-422647 |
+| `arrays_control_cas6f_nearest_bp` | 128 (256,168) |
+| `arrays_cas7f_tniq_loci_with_array` | 13 (6) |
+| `arrays_cas7f_virus_loci_with_array` | 46 (45) |
+| the others | as above |
+
+So the short arrays of the paper's minimal systems are there once two repeats are allowed beside Cas genes: 7 of
+the 20 transposon-borne I-F3 loci gain one, the control element among them, and 14 of 20 have an array. No release holds these arrays yet, so no
+`recorded/` file is written for them.

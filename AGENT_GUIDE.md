@@ -50,7 +50,8 @@ Find the current state; do not trust the table above. `releases` (card W-23; `sr
 genomes, contigs, distinct proteins (from the manifest's file list and Parquet footers; genomes read one column of
 `contig_dim`), domain libraries (`pfam-38.2(not P3)` when a library covers some of its stages only), ncRNA
 producers, whether it has `member_cluster`, `contig_label` and the `domain_family_tokens` column (`no`: an older
-release, slow paths), and the pack it has in the profile's pack directory (`-` for none). `--json` gives one object
+release, slow paths; `partial(not S1,P1,P2)`: those stages have no `contig_label` files and their contig names come
+from the slow path, card W-36), and the pack it has in the profile's pack directory (`-` for none). `--json` gives one object
 per release.
 
 The host profile names the host's one pack directory: its `tmp` plus `/packs`, `/tmp/if2453/bio-box/packs` on
@@ -76,7 +77,9 @@ bash "$SCR/img.sh" python -m biobox.cli release verify --root /tmp/if2453/r10/ro
 ```
 
 The last line is `release rN.1: verified (stages S1,P1,P2, 52 files, ... manifest hash <hex>)` (or `N
-problems`); keep the hash. `warning: ... no member_cluster files (built before card B-27)` means slow paths.
+problems`); keep the hash. `warning: ... no member_cluster files (built before card B-27)` means slow paths, and so
+does `warning: release R: stages S1,P1,P2 have no contig_label files` (card W-36: `rM.2`; their accessions are found
+all the same).
 `not in manifest: l1/domains/library=pfam-38.2/...` lines on `rN.1` are card C-19 (its stages were scanned
 later), not damage: say so in the report. Any other problem: stop.
 
@@ -218,6 +221,12 @@ it), `hits.tsv`, `hits.faa`, `neighbors.tsv`, `loci/`. The run is `<profile tmp>
   An array is in when it shares one base with the span; `partial=true` when it runs out of it; on a circular contig
   it is placed where most of it is inside. `delta_bp` = max(starts) - min(ends) (negative: overlaps the anchor);
   `side_rel` +1/-1/0 along the anchor's strand; `repeat` the commonest repeat; strand always `+1` (no orientation).
+  `producer` is one of two (card E-15, DEC-40): `minced-0.4.2-w8-nr3-r23x47-s26x50` (at least 3 repeats, every
+  contig) or `minced-0.4.2-w8-nr2-r23x47-s26x50-cas1kb-caspfam1-pfam-38.2` (2 repeats or more, kept only within
+  1,000 bases of a gene with one of the 31 Cas families of `src/biobox/l1/cas_families/cas-pfam-1.tsv` in the Pfam
+  scan, not wholly inside a gene, overlapping no 3-repeat array); the two never call the same bases, so count
+  arrays per producer and say which. An array of the second is evidence of a minimal array beside Cas genes, with
+  a chance rate of at most 2.96 per Gbp (card E-13, *derived*).
   Arrays are never slots: gene rows, offsets and ordinals are unchanged. `neighbors.tsv` then ends with a table
   `kind producer n_loci n_loci_with_array share_of_loci n_loci_partial_only n_arrays`, and `README.txt` with a
   paragraph. Without arrays every file is byte-identical to before; the `--json` forms never carry arrays (the
@@ -238,7 +247,18 @@ it), `hits.tsv`, `hits.faa`, `neighbors.tsv`, `loci/`. The run is `<profile tmp>
   `--pack-dir`. `--figure` (card W-27) also writes `groups/<group>/figure.svg` and `figure.pdf`. Rows are leaves in
   tree order beside the tree. Each row draws the leaf's first locus, centred on the anchor along its strand. A
   family's colour is fixed across the run; families held by under 10% of the group's loci are grey and genes with no
-  id are white. The columns give accession, loci in the leaf, context type, kind, stage, taxonomy and anchor NR90. A
+  id are white. Colour defaults (DEC-41, card W-32): at `--level nr50` or `nr90`, when the release's manifest lists
+  an `l1_domains` file (of `--library` when given; never decided from directories), `--colour-weight anchor-nr90`
+  (loci weigh 1/(loci of their anchor's NR90 cluster) toward the 10%) and `--colour-fallback pfam` (a rare
+  cluster's gene takes its Pfam architecture's colour when the architecture reaches 10%). One colour per family:
+  a coloured cluster whose genes' commonest architecture stands in for rare clusters anywhere in the run is drawn
+  in that architecture's colour everywhere, and the legend lists "Pfam <architecture>", not the cluster. Otherwise,
+  and always at `pfam`, the defaults are `locus` and `none`, with one `note:` line on stderr at nr50 or nr90. Give
+  `--colour-weight locus --colour-fallback none` for the old colours. The tables (every TSV, Newick and GFF) do not
+  depend on these; `README.txt` gains a paragraph naming them, and `groups.tsv` names them only when given. Report
+  the colour settings with a figure. `--auto-cut N` (at most N types per group; never at distance 1) replaces `--cut`;
+  `--auto-cut gap` is refused (exit 2). The columns give accession, loci in the leaf, context type, kind, stage,
+  taxonomy and anchor NR90. A
   figure holds at most `--figure-rows` rows (default 60). Above that it draws the largest leaf of each context type,
   then the largest leaves, and its title says "N of M leaves": report that. Without matplotlib, `--figure` is refused
   with exit 2. The figure is for people; take numbers from the TSVs.

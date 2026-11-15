@@ -8,7 +8,9 @@
 -- reached across a circular origin (flags bit 1) moved by one contig length to the anchor's side. An array (a
 -- `feature` row of kind 4, crispr_array, of a `minced-` producer) is within the window when it shares at least one
 -- base with that span, on a circular contig also when moved by one contig length either way. Arrays are counted
--- once per (feature_uid, producer). Keys are feature_uid, never an ordinal (AGENTS 3.3).
+-- once per (feature_uid, producer), of every `minced-` producer the release holds: the default one (at least 3
+-- repeats) and, when the release has it, the filtered one of card E-15 (2 repeats, beside a Cas gene, never
+-- overlapping a default array; its name carries `-cas1kb-`). Keys are feature_uid, never an ordinal (AGENTS 3.3).
 -- Control genes (as in checks.sql): TniQ feature f76022e1d2b79430f7a0ff9febf01a47 and Cas7f feature
 -- b5ab7b2fd228711801fbdf56af1f5fc4 of the Tn7-like element of Photobacterium damselae subsp. damselae 04Ya311
 -- chromosome 2 (NZ_AP026781.1); the complete type I-F system's Cas7f 099ffda89602165c6368d6a601339856 on the same
@@ -68,9 +70,12 @@ inwin AS (  -- (locus, array) pairs: the array shares a base with the window, mo
   JOIN (VALUES (-1), (0), (1)) k(s) ON k.s = 0 OR l.circ
   WHERE a.start + k.s * l.n < l.hi AND a."end" + k.s * l.n > l.lo
 ),
-per AS (  -- arrays within each locus's window
+per AS (  -- arrays within each locus's window; n_near_cas: those of the filtered producer of card E-15 (DEC-40),
+          -- the two-repeat arrays beside Cas genes, whose name carries the filter (`-cas1kb-`)
   SELECT l.*, (SELECT count(*) FROM inwin i WHERE i.anchor = l.anchor AND i.anchor_feature_uid = l.anchor_feature_uid)
-         AS n_arrays
+         AS n_arrays,
+         (SELECT count(*) FROM inwin i WHERE i.anchor = l.anchor AND i.anchor_feature_uid = l.anchor_feature_uid
+            AND regexp_matches(i.producer, '-cas[0-9]+kb-')) AS n_near_cas
   FROM loc l
 ),
 ctl AS (  -- the control chromosome, from the control TniQ's locus in the run (no scan of `feature` by feature_uid)
@@ -99,6 +104,8 @@ UNION ALL SELECT 'arrays_icp1_cas7f_window', coalesce((SELECT v FROM na), CAST((
   FROM per WHERE anchor = 'cas7f' AND anchor_feature_uid = unhex('23032ea6b24e8cc12738c0ef18f3a114')) AS VARCHAR))
 UNION ALL SELECT 'arrays_tniq_cas7f_loci_with_array', coalesce((SELECT v FROM na), CAST((SELECT count(*) FROM per
   WHERE anchor = 'tniq' AND has_cas7f AND n_arrays > 0) AS VARCHAR))
+UNION ALL SELECT 'arrays_tniq_cas7f_loci_with_near_cas_array', coalesce((SELECT v FROM na), CAST((SELECT count(*)
+  FROM per WHERE anchor = 'tniq' AND has_cas7f AND n_near_cas > 0) AS VARCHAR))
 UNION ALL SELECT 'arrays_cas7f_tniq_loci_with_array', coalesce((SELECT v FROM na), CAST((SELECT count(*) FROM per
   WHERE anchor = 'cas7f' AND has_tniq AND NOT has_adapt_or_cas3 AND n_arrays > 0) AS VARCHAR))
 UNION ALL SELECT 'arrays_cas7f_complete_not_virus_loci_with_array', coalesce((SELECT v FROM na), CAST((SELECT count(*)

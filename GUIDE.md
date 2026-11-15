@@ -1,7 +1,7 @@
 # Searching a release with your own HMM
 
 For a scientist who wants hits and gene neighbourhoods, not operations. State as of 2026-11-11 (keeping results:
-2026-11-12; the worked examples in `examples/`: 2026-11-13); releases,
+2026-11-12; the worked examples in `examples/`: 2026-11-13; the 50 Gbp release `rM.2`: 2026-11-15); releases,
 paths and costs will change. The operator's version of every command is `RUNBOOK.md` (sections 0, 7, 10, 11).
 Numbers carry a label: *measured* (with the file it comes from) or *derived* (with the formula).
 
@@ -22,8 +22,9 @@ host profile's pack directory `/tmp/if2453/bio-box/packs`, card W-22):
 | Release | Contents | Search pack |
 |---|---|---|
 | `rN.1` | 27,258 phage genomes and 2,497 complete prokaryote genomes; 12,048,866 genes; 10,620,684 distinct proteins; NR50 2,966,200 and NR90 8,278,537 clusters; no Pfam (*measured*, `planning/tasks/STATUS.md`, "10 Gbp rebuild"; `planning/measurements/2026-11-10_trial_search_rN1.md`) | yes; until the operator copies it into the profile's pack directory, in `/tmp/if2453/w19/packs` (section 2) |
-| `rN.2` | the same genomes with Pfam 38.2 domains | none yet: ask the operator for one (RUNBOOK section 7, `pack build`) |
-| `rN.3` | the same genomes with Pfam 38.2, built by the current code (card C-17): the one to use | yes, in the profile's pack directory (`/tmp/if2453/bio-box/packs`), found with `--profile` alone |
+| `rN.2` | the same genomes with Pfam 38.2 domains | none yet: ask the operator for one (RUNBOOK section 7, `pack build`; a release too large for one process under the CPU budget, such as the 50 Gbp `rM.2`, is built with `pack build --parts N`, card W-35, and gives the same pack) |
+| `rN.3` | the same genomes with Pfam 38.2, built by the current code (card C-17): the one to use for the 10 Gbp set; the worked commands of this guide were run on it | yes, in the profile's pack directory (`/tmp/if2453/bio-box/packs`), found with `--profile` alone |
+| `rM.2` | the 50 Gbp set, since 2026-11-15 **the one to use**: the genomes of `rN.3` and 9,469 more complete prokaryote genomes (stages `P3` to `P6`; *derived*: 39,224 less 29,755), 39,224 genomes in all; 45,815,843 distinct proteins; NR50 8,192,065 and NR90 31,183,876 clusters; Pfam 38.2 on every stage (*measured*, `planning/tasks/STATUS.md` handoff of 2026-11-14). Both worked examples hold on it (*measured*, `planning/measurements/2026-11-14_release_examples_rM2.md`). A search costs about four times what it costs on `rN.3` (the RNA polymerase search 40.9 CPU-minutes, *measured*, the same note). Two limits: it holds no CRISPR arrays yet; and its stages `S1`, `P1` and `P2` have no label table, so a command that looks a contig up by accession prints one `note:` line and scans those stages (a few seconds; card W-36) | yes, in the profile's pack directory, found with `--profile` alone (pack `26e10f05401faeefb78769e83f7f6cb4`, 25.8 GB, built in parts, card W-35) |
 
 ## 2. Before you start
 
@@ -53,7 +54,8 @@ pack. The pack directory may be read-only for you: a search writes nothing into 
 
 The table in section 1 will age; `releases` lists what the root holds now, one line per release: its stages,
 genomes, contigs and distinct proteins, its domain libraries (Pfam or none), whether it has the lookup tables of
-the current code (`member_cluster`, `contig_label`, `domain_family_tokens`; `no` means slower lookups, section 8),
+the current code (`member_cluster`, `contig_label`, `domain_family_tokens`; `no` means slower lookups, section 8;
+`partial(not S1,...)` names the stages without the table),
 and the search pack it has in the profile's pack directory (card W-23):
 
 ```bash
@@ -203,7 +205,7 @@ downstream (a gene across the origin of a circular contig counted on the hit's s
 | Column | Meaning |
 |---|---|
 | `kind` | `crispr_array` |
-| `feature_uid`, `producer` | the array, and the MinCED setting that called it (`minced-0.4.2-w8-nr3-r23x47-s26x50`: at least 3 repeats) |
+| `feature_uid`, `producer` | the array, and the producer that called it: `minced-0.4.2-w8-nr3-r23x47-s26x50` (MinCED, at least 3 repeats, every contig), or `minced-0.4.2-w8-nr2-r23x47-s26x50-cas1kb-caspfam1-pfam-38.2` (card E-15: MinCED at 2 repeats, kept only within 1 kb of a gene with a Cas domain in the Pfam scan, outside genes and away from every 3-repeat array; the short arrays of minimal CRISPR-Cas systems). A release may hold both; an array is called by one of them only |
 | `start`, `end`, `strand` | the array on the contig, 0-based half-open; strand `+1` always (MinCED does not say which way an array is transcribed) |
 | `n_repeats`, `n_spacers`, `repeat` | its repeats and spacers, and its commonest repeat sequence |
 | `delta_bp` | the gap to the hit in bases, negative when the array overlaps the hit |
@@ -232,14 +234,15 @@ to that. A run alone is usually smaller: the worked example's run with its `sear
 bytes, with its five `nbr flanks` directories 164,618,240 (*measured*, RUNBOOK Appendix A, card W-28). Until a
 flush, a run waits on `/tmp`: copy what you need now to your laptop. `results list` says where each kept run is;
 `results get` brings one back into a new directory, every file checked against its sha256. Archiving the same run
-again changes nothing; archiving it with other outputs is refused, so name every output the first time. The
-permanent storage, `/stor/work/Wilke/if2453/all-the-data`, does not exist yet (2026-11-12): until the PI makes it,
-these commands fail at the image's start, which cannot bind a missing directory.
+again changes nothing; archiving it later with further outputs (DEC-42) makes a second archive of the run beside
+the first, which is never changed. `results list` shows both; `results get RUN` takes the one with the most files
+and says which on stderr, and `results get RUN:SHA256PREFIX` (or `results get RUN --sha256 PREFIX`) takes another. The results are kept under the
+pod's bulk area, in `/stor/scratch/Wilke/if2453/all-the-data/results` (card W-33, DEC-42).
 
 ```bash
-bash "$TREE/scripts/pod_run.sh" --profile "$PROFILE" --image "$IMAGE" --digest "$DIGEST" --mem 8G --threads 1 --bind /tmp/if2453 --bind /stor/work/Wilke/if2453/all-the-data --env PYTHONPATH="$PYTHONPATH_POD" pi-keep results archive "$RUN" --profile "$PROFILE" --under "$WORK"
-bash "$TREE/scripts/pod_run.sh" --profile "$PROFILE" --image "$IMAGE" --digest "$DIGEST" --mem 8G --threads 1 --bind /tmp/if2453 --bind /stor/work/Wilke/if2453/all-the-data --env PYTHONPATH="$PYTHONPATH_POD" pi-list results list --profile "$PROFILE"
-bash "$TREE/scripts/pod_run.sh" --profile "$PROFILE" --image "$IMAGE" --digest "$DIGEST" --mem 8G --threads 1 --bind /tmp/if2453 --bind /stor/work/Wilke/if2453/all-the-data --env PYTHONPATH="$PYTHONPATH_POD" pi-get results get "$RUN" --profile "$PROFILE" --out "$WORK/rnap_back"
+bash "$TREE/scripts/pod_run.sh" --profile "$PROFILE" --image "$IMAGE" --digest "$DIGEST" --mem 8G --threads 1 --bind /tmp/if2453 --bind /stor/scratch/Wilke/if2453/all-the-data --env PYTHONPATH="$PYTHONPATH_POD" pi-keep results archive "$RUN" --profile "$PROFILE" --under "$WORK"
+bash "$TREE/scripts/pod_run.sh" --profile "$PROFILE" --image "$IMAGE" --digest "$DIGEST" --mem 8G --threads 1 --bind /tmp/if2453 --bind /stor/scratch/Wilke/if2453/all-the-data --env PYTHONPATH="$PYTHONPATH_POD" pi-list results list --profile "$PROFILE"
+bash "$TREE/scripts/pod_run.sh" --profile "$PROFILE" --image "$IMAGE" --digest "$DIGEST" --mem 8G --threads 1 --bind /tmp/if2453 --bind /stor/scratch/Wilke/if2453/all-the-data --env PYTHONPATH="$PYTHONPATH_POD" pi-get results get "$RUN" --profile "$PROFILE" --out "$WORK/rnap_back"
 ```
 
 Each writes its lines to `$BBTMP/logs/<unit>.log`. `archive` ends with the archive's line (run id, release, the
@@ -332,7 +335,23 @@ leaf's first locus to scale, centred on the hit (black), with upstream on the le
 point the way each gene runs relative to the hit. A family has the same colour in every group of the run. Families
 found in fewer than 10% of a group's loci are grey, and genes with no id at the level are white. A `//` marks a linear
 contig's end that cuts the window. The legend names each coloured family (at `nr50`, its cluster uid prefix and its
-genes' commonest Pfam architecture) with the share of loci that hold it. Columns at the right give the locus
+genes' commonest Pfam architecture) with the share of loci that hold it.
+
+At `nr50` and `nr90` two colour rules are on by default when the release has a domain library (DEC-41, card W-32). The
+command decides that from the release's manifest, not from the directories: some file of `l1_domains` must be listed
+there (with `--library L`, one of library `L`). First, `--colour-weight anchor-nr90` counts loci whose hits share an
+NR90 cluster as one toward the 10%, so 42 near-identical phage copies no longer take every colour. Second,
+`--colour-fallback pfam` gives a gene whose cluster is rare the colour of its Pfam architecture when that architecture
+reaches 10%. A species' own cluster of a Cas protein, for example, then shows as "Pfam Cas_Csy4". It also keeps one
+colour per family: a common cluster whose genes carry that architecture is drawn in the same Pfam colour in every
+group, and the legend lists the architecture, not the cluster. On the CRISPR example's 157 Cas7f loci in one group
+this colours 37 of the 39 Cas genes of the Tn7-like loci, where the unweighted colours left them all grey (*measured*,
+`planning/measurements/2026-11-13_flanks_context_types.md`). `--colour-weight locus --colour-fallback none` draws the
+old colours. Without a manifest that lists a library, and always at `pfam`, those old colours are the defaults, and
+`--figure` says so in one `note:` line on stderr (not at `pfam`). The tables never depend on these options; the figure's
+title and `README.txt` say which colours were used. `--auto-cut N` cuts each group's tree into at most N context types
+instead of `--cut` (coarse: on mobile elements it cuts near 1, where a type means loci that share something); there is
+no `--auto-cut gap`. Columns at the right give the locus
 accession, the loci collapsed into the leaf, the context type, genome kind, stage, taxonomy (`-`: the release has
 none) and the hit's NR90 cluster. A figure shows at most `--figure-rows` rows (default 60). For a larger group it
 shows the largest leaf of each context type, then the largest remaining leaves, restricts the tree to those, and says
@@ -403,7 +422,7 @@ runs as one command and checks its answer; both are rerun on every milestone rel
 
 - The data is on the pod's local disk (`/tmp`), not yet copied to permanent storage; a reboot may clear it. No card
   yet (`STATUS.md`, "Plan for larger imports", step 1). Your own results can be kept (section 5, *Keeping your
-  results*), once the PI has made the permanent results area.
+  results*) under the pod's bulk area.
 - Only `rN.1` has a search pack. Until the operator copies it into the profile's pack directory
   (`/tmp/if2453/bio-box/packs`, card W-22), it is in a work directory (`/tmp/if2453/w19/packs`) and every
   `releases`, `search` and `nbr` command needs `--pack-dir /tmp/if2453/w19/packs` (section 2); `rN.2` needs one
@@ -411,7 +430,9 @@ runs as one command and checks its answer; both are rerun on every milestone rel
 - `rN.1` and `rN.2` were built before card B-27, so cluster and contig-name lookups read whole tables and print a
   `note: ... slow path` line; answers are the same, a few seconds slower. `rN.3` has the cluster lookup table but
   still prints the note for contig names: that table is written per stage at ingest, and its stages were ingested
-  before card B-27.
+  before card B-27. `rM.2` has it for stages P3 to P6 only: `releases` shows `contig_label` as
+  `partial(not S1,P1,P2)`, and the names of those three stages' contigs come from the slow path, with a `note:` line
+  naming the stages (card W-36; before it, `find --accession` found no contig of those stages).
 - Looking up `--positive`, `find --accession` or `seq --contig ACCESSION` reads every contig name of the release:
   0.03 to 0.05 s on `rN.3`, inside a command that takes 2.1 to 2.7 s, nearly all of it start-up (*measured*,
   `planning/measurements/2026-11-12_positive_lookup_rN3.md`, card W-15); `seq --contig` with a contig uid does not.

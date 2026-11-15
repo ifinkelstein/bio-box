@@ -50,8 +50,8 @@ sources:
       2026-11-12 21:23 to 23:17 CST into /tmp/if2453/c27/genomes/<batch>/ on wilkcomp02 (.fna.gz, per-file sha256
       in each batch's lock.json): 28,457 of 28,483 genomes served and verified (118,675,230,482 bp, 34,788,621,074
       bytes kept); 26 not served (listed in planning/measurements/2026-11-13_s2c_skani_fetch.md); the 7 phase-1
-      retries were not served again. On local disk; the 23,840 not kept by the selection stay there until the PI
-      says they may be removed
+      retries were not served again. The 23,840 not kept by the selection were removed from local disk on
+      2026-11-14 (DEC-42); the 4,617 kept are in the tar below and, as loose files, still in that directory
     stored_s2c_phase2: >-
       provisional/s2c_phase2/s2c_phase2_genomes.tar (5,134,489,600 bytes, sha256
       af3ae7c348328e78e7091e7790ba20e3103a1f0bef21eef1be18d36c2e36fcb9; written 2026-11-13 by c27_fetch.py
@@ -113,4 +113,8 @@ sources:
       them); 7,139 are already contigs of stages P1 to P6
     license: none stated on the site; the sequences are INSDC records. The site asks for citation of doi:10.1093/nar/gkab1111 and doi:10.1093/nar/gky1050
     stored: provisional/s2_inputs/plsdb_2024_05_31_v2_sequences.fasta and plsdb_2024_05_31_v2_meta.tar.gz
+    stage_inputs: >-
+      stage PL1 (card C-26): /tmp/if2453/s2/inputs/PL1/ on wilkcomp02, made 2026-11-15 by make_inputs.py plasmid
+      from the FASTA (hard-linked there as plsdb_2024_05_31_v2_sequences.fasta, sha256 checked) and the archive's
+      nuccore.csv, with --root /tmp/if2453/r10/root; record planning/measurements/2026-11-15_plsdb_inputs.md
     approved: by the PI on 2026-11-11

@@ -33,7 +33,7 @@ export MEM=8G                                        # real: 200G (the profile's
 export WORK=/tmp/if2453/c06                          # your scratch directory for inputs and outputs
 export BBTMP=/tmp/if2453/c06/tmp                     # the profile's tmp (real: /tmp/if2453/bio-box)
 export ROOT=/tmp/if2453/c06/root                     # the data root you build into
-export DURABLE=/tmp/if2453/w28/one/durable           # the profile's durable (real: /stor/work/Wilke/if2453/all-the-data)
+export DURABLE=/tmp/if2453/w28/one/bulk              # the profile's bulk (real: /stor/scratch/Wilke/if2453/all-the-data; card W-33)
 SCOPE=(systemd-run --user --scope --quiet -p MemoryMax="$MEM" -p MemorySwapMax=0 nice -n 19)
 SING=(singularity exec --cleanenv --env PYTHONPATH="$PYTHONPATH_POD" --env OMP_NUM_THREADS=2 --bind /tmp/if2453 --bind /sys/fs/cgroup:/sys/fs/cgroup:ro)
 bio-box() { "${SCOPE[@]}" "${SING[@]}" "$IMAGE" python -m biobox.cli "$@"; }
@@ -313,6 +313,56 @@ and posting steps get no `--producers` for it, so the tape version is the one wi
 - A contig another stage owns is skipped and named in the ledger (`owned_by:<stage>`), as gene calling
   skips it (DEC-26). The step reads sequences only, no gene calls.
 
+**Two-repeat arrays beside Cas genes (card E-15, DEC-40).** With `--crispr` and a `--library` named
+`pfam`, a second CRISPR step follows the last domain scan step: `crispr-<filtered producer>`, which runs
+`bio-box stage crispr --near-cas --library pfam --library-version V`. The producer is
+`minced-0.4.2-w8-nr2-r23x47-s26x50-cas1kb-caspfam1-pfam-38.2` for Pfam 38.2: MinCED at a minimum of 2 repeats,
+a call kept only when it overlaps no array of the default producer, lies within 1,000 bases of a gene with a
+Cas domain (one of the 31 Pfam families of `src/biobox/l1/cas_families/cas-pfam-1.tsv`, in the stage's Pfam
+scan) and lies not wholly inside a called gene; the rules are stated in `src/biobox/l1/crispr.py`. Its files
+are `feature` and `l1_crispr` rows under its own `producer=` partitions and its own ledger, whose rows say
+for each contig the calls rejected by each rule (`overlaps_default`, `far_from_cas`, `inside_gene`) and name
+MinCED, the JVM, the arguments, the gene-call version, the domain library, the family list, the filter and
+the default producer. The default producer's files are read, never rewritten. With `--crispr` and no `pfam`
+library only the default step runs, and the build says so in one line when it starts (`--crispr without a
+--library named pfam: only the default CRISPR producer runs; ...`); the step counts in `all N steps done`
+(15 with one `pfam` library and `--crispr`). Run alone, the step needs the default producer's files, the
+stage's gene calls and its Pfam scan in the root, and refuses (exit 2) without any of them.
+
+- Threads and memory: as the default step (`--scan-cpus` MinCED processes), plus one DuckDB connection of one
+  thread capped at 2 GB for the filter (section 10).
+- Budget: no shards. Its estimate is the default step's times `CRISPR_NEAR_CAS_COST` (section 10); refused as
+  the default step is, above 80% of `cpu_min_per_process`.
+
+**Label files of a stage built before card B-27 (card C-34).** Ingest writes a stage's `contig_label` table
+(`l0seq/contig_label/stage=<S>/`) since card B-27. A stage ingested before has none (S1, P1 and P2 of the data root
+until 2026-11-15), and lookups by accession read its `contig_occurrence` instead (card W-36). `bio-box stage labels`
+gives such a stage its label files later, as new files: no step of `build-stage` runs it, so run it once per stage,
+alone, as a `run-step` step named `labels`:
+
+```bash
+bash "$TREE/scripts/pod_run.sh" --profile "$PROFILE" --image "$IMAGE" --digest "$DIGEST" --mem 8G --threads 2 --bind /tmp/if2453 --env PYTHONPATH="$PYTHONPATH_POD" c34-s1 run-step --profile "$PROFILE" --root "$ROOT" --stage S1 --step labels --threads 2 -- python -m biobox.cli stage labels --root "$ROOT" --stage S1 --cpus 2 --tmp "$BBTMP/scratch/S1.labels"
+```
+
+- What it writes: `l0seq/contig_label/stage=<S>/part-<k>.parquet` from the stage's own `contig_occurrence`, with
+  ingest's code (`biobox.l0seq.store.write_labels`), so the bytes are those a re-ingest of the same objects writes
+  (checked by sha256 on the fixture and on S1, card C-34), and the ledger `ledger/stage=<S>/step=labels` (per source
+  object: records in, records that are their contig's first label row, the rest). Every record of the stage is
+  labelled, a contig another stage owns included, as ingest labels it.
+- It refuses (exit 2, `refused: ... the contig_label table of stage S already has ...`) a stage that has label files
+  or the step's ledger, and a stage whose `contig_occurrence` holds another number of records than its ingest ledger
+  counts. Under `run-step` a second call is a resume (exit 0, nothing run).
+- Cost: seconds. On S1, P1 and P2 the step took 2.8 to 3.3 s of wall time in the rehearsal and 2.4 to 2.8 s in the
+  data root, about 0.05 CPU-minutes and about 325 MiB at its peak (measured, wilkcomp02, 2026-11-15, the run records,
+  `planning/measurements/2026-11-15_label_files_old_stages.md`); each unit, with `run-step`'s start-up and its 5 s CPU
+  reading, about 23 s. `--cpus` sets DuckDB's threads; the files do not depend on it.
+- A release published before the files existed does not list them, and `release verify` ignores them: a
+  `contig_label` file of a stage is a release's concern only when its manifest lists a `contig_label` file of that
+  stage (`catalog.STAGE_ADDED_TABLES`). Such a release reads exactly as before (its readers take the manifest's
+  lists): `rM.2` still shows `partial(not S1,P1,P2)` in `bio-box releases`. A release defined afterwards over those
+  stages lists the files and shows `contig_label yes`. A release that lists a stage's label files still fails on a
+  missing, changed or extra one.
+
 **Clustering's CPU budget (DEC-29).** Clustering in one process has no exemption from the 300
 CPU-minute rule any more: DEC-25 exempted it until clustering was split, and card B-42 ended that once
 the split clustering of `rN.1b` (2,053,075 proteins) equalled its published clusters row for row
@@ -554,7 +604,13 @@ does not use there are not its concern (card C-19): a Pfam scan of a stage after
 built does not fail it. A second part beside a file the release lists still does. If the release
 has a library's domain files for some of its stages only, `verify` prints a `warning:` line naming
 the stages on each side; the exit code is unchanged. That release's family tokens cover only the
-first stages' genes; a release built after the other stages are scanned covers them all.
+first stages' genes; a release built after the other stages are scanned covers them all. A release whose
+manifest lists `contig_label` files for some of its stages only (stages ingested before card B-27) gets a
+`warning:` line naming the stages without them (card W-36); the exit code is unchanged, and readers take those
+stages' labels from their `contig_occurrence` (section 11). Label files that `bio-box stage labels` gives such a
+stage later (card C-34, section 2) are not that release's concern: a `contig_label` file of a stage is checked only
+by a release whose manifest lists a `contig_label` file of that stage, and for it a missing, changed or extra one
+still fails. The warning stays, since the release's manifest is as it was.
 
 ```bash
 bio-box release verify --root "$ROOT" --release rC6.2
@@ -649,6 +705,33 @@ when it ends (card W-22).
 bash "$TREE/scripts/pod_run.sh" --profile "$PROFILE" --image "$IMAGE" --digest "$DIGEST" --bind /tmp/if2453 --env PYTHONPATH="$PYTHONPATH_POD" w13-pack pack build --root "$ROOT" --release rC6.1 --model test-1="$WORK/inputs/lib.hmm" --profile "$PROFILE"
 bio-box pack verify --root "$ROOT" --release rC6.1 --profile "$PROFILE"
 ```
+
+**A large release: the pack in parts** (card W-35). Before any work `pack build` prints its estimate in
+one process (a line `release <R>: estimate ... CPU-minutes in one process for ... genome bases`), from
+the release's genome bases and `protein_seq` rows at the rates in `src/biobox/search/pack.py`. Above 80%
+of the profile's `cpu_min_per_process` (240 of 300) it is refused, exit 2, and the message names the
+`--parts` that fits: `rN.3` (12,276,916,069 genome bases) fits one process at an estimate of 93.0
+CPU-minutes, `rM.2` (52,132,698,276 bases) does not at 386.9 (the counts measured and the estimates
+derived by `pack build` on wilkcomp02, 2026-11-14; `planning/measurements/2026-11-14_pack_build_in_parts.md`). With `--parts N` the build runs as separate processes, each estimated and
+checked against the same 240 before any work: `unique` (all proteins), N ranges of contigs for each of
+`igr` and `dark_orf`, then one last process that merges their sorted runs into the pack. The pack is the
+one-process pack byte for byte (same pack id). At most `--jobs J` parts run at once, one thread each,
+and each launch waits while the thread allowance of the hour (section 10) is smaller; every part runs
+under the unit's memory cap at nice 19. Count J against the account's total cap.
+
+```bash
+bash "$TREE/scripts/pod_run.sh" --profile "$PROFILE" --image "$IMAGE" --digest "$DIGEST" --mem 48G --threads 16 --bind /tmp/if2453 --env PYTHONPATH="$PYTHONPATH_POD" w35-pack pack build --root "$ROOT" --release rM.2 --model pfam-38.2="$PFAM" --profile "$PROFILE" --parts 8 --jobs 16
+```
+
+The log has one line per part as it ends (`part <name> done: ... CPU-minutes (estimate ...), wall ...,
+peak RSS ...`). The parts' runs are in `$BBTMP/scratch/pack/release=<R>/<key>/` (`--work` names another
+base, outside the data root and on the pack directory's file system); the pack directory sees only the
+last process's rename. `STOP` in the data root stops launches between parts (exit 75). The same command
+again runs only the parts without output, then the last process, and removes the work directory once the
+pack is in place. A part stopped by a signal removes its own temporary directory; what a killed part
+(SIGKILL) left, a dot-named `.<part>.tmp-*` or `.building-*` there, the next call removes. To give up on
+a build in parts, remove `$BBTMP/scratch/pack/release=<R>/<key>/` by exact path when no `pack build` of
+that release runs.
 
 **Recipe.** A YAML file; its format is in the docstring of `src/biobox/search/recipe.py`. A recipe
 without a positive control is refused. Appendix B writes a fixture recipe.
@@ -795,9 +878,11 @@ says so in a line that begins `note`. A run that ends other than `ok` exits 1 an
 `pack build` command to run; it does not build the pack.
 
 **Keep the results** (card W-28, DEC-33). The runs directory and every `--out` are on `/tmp`, which
-a reboot may clear. `results` keeps a closed run on the profile's durable storage, in the results
-area `$DURABLE/results` (real: `/stor/work/Wilke/if2453/all-the-data/results`), with no file under
-64 MB on `/stor` (AGENTS 7.3) and nothing there overwritten or deleted (AGENTS 7.5):
+a reboot may clear. `results` keeps a closed run under the profile's `bulk` area (DEC-42, card W-33),
+in the results area `$DURABLE/results` (`$DURABLE` here is the profile's `bulk`; real:
+`/stor/scratch/Wilke/if2453/all-the-data/results`; the profile's `durable` key is not read), with no file
+under 64 MB on `/stor` (AGENTS 7.3) and nothing there overwritten or deleted (AGENTS 7.5). `bulk` itself
+is made by the PI; `flush` makes the one directory `results` in it and nothing else outside it:
 
 - `results archive RUN --with DIR ...` writes the run's directory (its record and tables) and each
   output named with `--with` (the `search hmm` DIR, the `nbr --format tsv` DIR, an `nbr flanks` DIR,
@@ -805,8 +890,10 @@ area `$DURABLE/results` (real: `/stor/work/Wilke/if2453/all-the-data/results`), 
   local disk. Since card W-29 an output directory written from a run holds a `RUN` file (the run id and
   the release), and `--under DIR` finds every such directory up to four levels below DIR, so naming each
   one is needed only for single files and for directories written before that card; a DIR whose `recipe.yaml` is not the run's recipe is another
-  run's and is refused. The same run archived again is a no-op (exit 0, said on stderr); with other
-  files or outputs it is refused (exit 2), naming both sha256. The tar has sorted names, mtime 0, no
+  run's and is refused. The same run archived again is a no-op (exit 0, said on stderr); archived
+  again with other files or outputs (DEC-42: a run may be archived again later) it is a second archive
+  of the run, written beside the first, which is never changed; an archive is told apart by its sha256.
+  The tar has sorted names, mtime 0, no
   owner, no host or path, and the run's own date (`submitted_at`) in its manifest line: the same run
   gives the same bytes on any host.
 - `results flush` packs every spooled run into one bundle, `results-<first day>-<last day>-<hash>.tar`,
@@ -817,16 +904,17 @@ area `$DURABLE/results` (real: `/stor/work/Wilke/if2453/all-the-data/results`), 
   bundle; it breaks AGENTS 7.3 and needs the PI's agreement. A bundle is copied to a dot-named
   `.results-*.part-*` file there, read back, then renamed; a flush killed before the rename leaves
   that file, which no command reads and `results list` names: only the PI removes it.
-- `results list` prints one line per kept run, flushed or spooled, with where it is, from the
-  manifests only (a bundle's first member). `results get RUN --out DIR` restores the run into a new
-  or empty DIR (`FILES.tsv`, `run/`, `outputs/<name>/`) and checks every file's sha256; a mismatch
-  exits 1 and writes no DIR.
+- `results list` prints one line per kept archive, flushed or spooled, with where it is, from the
+  manifests only (a bundle's first member); a run archived twice has two lines. `results get RUN --out DIR`
+  restores the run into a new or empty DIR (`FILES.tsv`, `run/`, `outputs/<name>/`) and checks every
+  file's sha256; a mismatch exits 1 and writes no DIR. A run with several archives: `get RUN` takes the
+  one with the most files (then the most bytes, then the smallest sha256) and says so on stderr, naming
+  all of them; `get RUN:SHA256PREFIX` takes the one whose sha256 starts so.
 
-The image sees the durable storage only when it is bound, so these run through `pod_run.sh` with
-`--bind "$DURABLE"`. Until the PI has made `/stor/work/Wilke/if2453/all-the-data` (it is not on the
-pod as of 2026-11-12), every `results` command with the real profile fails: without the bind it exits
-2 with `the profile's durable storage ... does not exist`, and with it the image cannot start, since
-it cannot bind a missing directory. The first flush onto `/stor` is the PI's step.
+The image sees `bulk` only when it is bound, so these run through `pod_run.sh` with
+`--bind "$DURABLE"` (the profile's `bulk`; the image cannot start when the bound directory is missing).
+`archive` needs only the local spool, so it runs without `bulk`; `flush`, `list` and `get` exit 2 with
+`the profile's bulk area ... does not exist` when `bulk` is missing.
 
 ```bash
 bash "$TREE/scripts/pod_run.sh" --profile "$PROFILE" --image "$IMAGE" --digest "$DIGEST" --mem 8G --threads 1 --bind /tmp/if2453 --bind "$DURABLE" --env PYTHONPATH="$PYTHONPATH_POD" w28-archive results archive "$RUN" --profile "$PROFILE" --with "$WORK/hmm" --with "$WORK/nbr"
@@ -1005,16 +1093,18 @@ a profile value is missing from this table.
 | CPU-minutes of one clustering call run as one process | 20000, estimated before launch; refused above it. The one exemption from the 300 (DEC-29): a call that no number of parts fits (the NR90 step's prefilter from about 74 M proteins, NR50 step 0 from about 108 M, derived). Set by the PI on 2026-11-10 for the 50 Gbp build: about nine times the 2,195.91 measured for 10,620,684 proteins (wilkcomp02, 2026-11-10). Without the key such a call is refused. Clustering in one process has no exemption since card B-42 (DEC-25's ended): above 80% of the budget a release clusters in parts | profile `cluster_cpu_min_max`; DEC-29 (narrowing DEC-25); `cluster_refusal`, `one_process_refusal` in `src/biobox/stage.py`; cards B-36, B-45, B-42 |
 | ncRNA scan shard size | `prok-2` (the default): 111,734,541 genome bases, 80% of `cpu_min_per_process` (300) at 358.0 CPU-hours per 10 Gbp (derived: 304.0 × 299.7 / 254.5, the set's cost relative to `prok-1` from `planning/measurements/2026-11-12_rfam_sample.md`). `prok-1`: 131,578,947 at 304.0, the slower of the two shards of card E-07's pod check (derived in `planning/measurements/2026-11-11_ncrna_producer.md`; the design note's 247.4 gave 161,681,487). Shards at once: at most the unit's `MemoryMax` / (6.4 GiB per two `cmsearch` threads) | `NCRNA_CPU_H_PER_10GBP`, `NCRNA_SET_COST`, `NCRNA_JOB_GIB` in `src/biobox/stage.py`; cards E-07, E-08, E-09 |
 | CRISPR step | one process, `--scan-cpus` MinCED processes of a 512 MiB heap each; refused above 80% of `cpu_min_per_process` (300) at 182.0 CPU-seconds per Gbp: a stage of 79.1 Gbp (derived: 0.8 × 300 × 60 / 182.0). The rate: 185.0 CPU-s for stage P1's 1,016,625,803 bases (run record, wilkcomp02, 2026-11-13, `planning/measurements/2026-11-13_crispr_arrays.md`) | `CRISPR_CPU_S_PER_GBP`, `crispr_refusal` in `src/biobox/stage.py`; `JAVA_HEAP` in `src/biobox/l1/crispr.py`; card E-12 |
+| CRISPR step of two-repeat arrays beside Cas genes | one process, as the CRISPR step, plus one DuckDB connection of one thread capped at `DUCK_MEMORY_LIMIT` for the filter; its estimate is the CRISPR step's times 1.19, refused above 80% of `cpu_min_per_process` (300): a stage of 66.5 Gbp (derived: 0.8 × 300 × 60 / (182.0 × 1.19)). The factor: 31.790 against 26.723 CPU-minutes on stage P2, the larger of the three ratios 1.08, 1.19, 1.14 on P1, P2, S1 (run records, wilkcomp02, 2026-11-14, `planning/measurements/2026-11-14_crispr_two_repeat_producer.md`); peak RSS of one process 1.02 GB on P2 | `CRISPR_NEAR_CAS_COST`, `crispr_refusal` in `src/biobox/stage.py`; `run_near_cas` in `src/biobox/l1/crispr.py`; card E-15 |
 | Scan shard size | 30,150,753 residues: 80% of `cpu_min_per_process` (300) at 7.96 CPU-minutes per million residues (derived: 300 × 0.8 / 7.96 × 10^6; the rate of the Pfam scan of stage P1 in card C-10, measured on wilkcomp02, 2026-11-10: 2,343.74 CPU-minutes for 294.5 M residues). The 80% leaves room for a scan 25% slower per residue (derived: 1 / 0.8) | `SHARD_MARGIN` and `SCAN_CPU_MIN_PER_M` in `src/biobox/stage.py`; cards C-11, C-13 |
 | Scan shards at once | `--scan-jobs` J × `--scan-cpus` C at most the cap `run-step` allows when `build-stage` starts (40 by day, 56 at night when no other user computes); defaults C = 4, J = cap // C (10 by day, 14 at night). The cap is a total over everything of ours on the pod: `build-stage` subtracts what ours elsewhere use at each launch, not what starts later, so choose J = floor((cap - other threads) / C) (section 2). The allowance is read again before each step and before each shard launch; a launch that would pass it waits | `scan_slots` and `_launch` in `src/biobox/stage.py`; cards C-11, C-12, C-28 |
 | Unit CPU quota | the night cap, 56: a ceiling fixed at launch; `build-stage` holds the limit of the hour | `scripts/pod_run.sh --threads`, profile `max_threads_night`; card C-12 |
 | Smallest data file | 64 MiB (67108864 bytes), except tables the registry marks `small_ok` | profile `small_file_floor_bytes`; AGENTS 7.3 says 64 MB |
 | Work directory | `/tmp/if2453/bio-box` | profile `tmp`; AGENTS 7.3 |
+| Search pack build | one process when its estimate is at most 80% of `cpu_min_per_process` (300), else refused (exit 2) unless `--parts N`: then `unique`, N ranges of contigs for each of `igr` and `dark_orf` and a last process, each estimated and refused above the same 240 before any work, at most `--jobs` at once (one thread each) within the allowance of the hour. Rates (CPU-minutes): 0.25 per million `protein_seq` rows (unique), 0.70 and 5.45 per Gbp (igr, dark_orf), the last process 0.25 per million rows + 0.70 per Gbp + 2.6 per library, fitted to the parts of `rN.3` (measured, wilkcomp02, 2026-11-14, `planning/measurements/2026-11-14_pack_build_in_parts.md`) | `one_process_refusal`, `parts_refusal`, `build_in_parts` in `src/biobox/search/pack.py`; `SHARD_MARGIN` in `src/biobox/stage.py`; card W-35 |
 | Search pack directory | `<tmp>/packs` (`/tmp/if2453/bio-box/packs`), the host's one, outside the data root; with `--profile`, else `--pack-dir`. Only a `pack build` that makes a pack writes into it: it may be read-only for all but its builder | profile `tmp`; `default_pack_base` in `src/biobox/search/runner.py`; cards W-03, W-22 |
 | Search runs and work directories | `<tmp>/search/<user>/runs` and `<tmp>/search/<user>/work`, one per user, outside the data root; with `--profile`, else `--runs` and `--work` | profile `tmp`; `default_runs_dir`, `default_work_base` in `src/biobox/search/runner.py`; card W-03 |
 | `search run` in a `pod_run.sh` unit | only with `--wait`; without it, refused (exit 2) | `BIOBOX_POD_UNIT` in `scripts/pod_run.sh` and `src/biobox/cli.py`; card W-13 |
-| Durable results | `/stor/work/Wilke/if2453/all-the-data` | profile `durable` |
-| Results area | `<durable>/results` (`/stor/work/Wilke/if2453/all-the-data/results`), or `--results` inside `durable` (decided on the resolved path and the file system's device, never the spelling); only bundles of at least `small_file_floor_bytes`, never overwritten or deleted; `--below-floor` only with the PI's agreement | profile `durable`, `small_file_floor_bytes`; DEC-33; `biobox.search.results`; card W-28 |
+| Durable directory (`durable`) | `/stor/work/Wilke/if2453/all-the-data`: never existed on the pod (2026-11-12); `results` does not read it (DEC-42) | profile `durable` |
+| Results area | `<bulk>/results` (`/stor/scratch/Wilke/if2453/all-the-data/results`), or `--results` inside `bulk` (decided on the resolved path and the file system's device, never the spelling); only bundles of at least `small_file_floor_bytes`, never overwritten or deleted; a run archived again with other outputs is a second archive; `--below-floor` only with the PI's agreement | profile `bulk`, `small_file_floor_bytes`; DEC-33, DEC-42; `biobox.search.results`; cards W-28, W-33 |
 | Results spool | `<tmp>/results/spool` (`/tmp/if2453/bio-box/results/spool`), local disk: archived runs wait there until a flush reaches the floor | profile `tmp`; card W-28 |
 | Bulk results | `/stor/scratch/Wilke/if2453/all-the-data` | profile `bulk` |
 | Results reach the data root | one `rsync`, then an atomic rename | AGENTS 7.3 |
@@ -1045,9 +1135,10 @@ exemption; the fixture's clustering is far under 300 CPU-minutes). Appendix B li
 | No detached search in a unit | `search run` without `--wait` in a `pod_run.sh` unit is refused (exit 2): the unit would stop the detached runner when the command returns (section 7). Use `--wait`; `search status` and `search cancel` work on a `--wait` run from another shell | W-13 |
 | `pod_run.sh` and the profile | `pod_run.sh --profile` sets the unit's limits only; it does not pass the profile to `bio-box` (no `BIOBOX_PROFILE` in the image). Give `bio-box` its own `--profile`, or the pack, runs and work directories (section 7) | W-03, W-13 |
 | Older outputs are named by hand | An output directory written before card W-29 has no `RUN` file, and neither has a lone file such as `hits.tsv`: give those to `results archive` with `--with` (a DIR whose `recipe.yaml` is not the run's is refused). Directories written since are found with `--under`, and the run's record holds the user's command line (`limits_json`, key `command`) | W-28, W-29 |
-| The durable storage is not there yet | `/stor/work/Wilke/if2453/all-the-data` (profile `durable`) does not exist on the pod (2026-11-12); `results` with the real profile exits 2 until the PI makes it. The image sees it only with `--bind` | W-28 |
+| The bulk area is not there | `results flush`, `list` and `get` exit 2 when the profile's `bulk` (`/stor/scratch/Wilke/if2453/all-the-data`) does not exist; `archive` still spools. Since card W-33 (DEC-42) `results` does not use the profile's `durable` (`/stor/work/Wilke/if2453/all-the-data`, which has never existed). The image sees `bulk` only with `--bind` | W-28, W-33 |
 | Spooled runs are on `/tmp` | until a flush reaches the 64 MiB floor, a run's archive is only in the spool on local disk, which a reboot may clear, as it clears the run itself | W-28 |
 | `search hmm --positive` reads all contig labels | the accession or header of the positive control is looked up in every row group of `contig_label`: no table is sorted by accession, and a header substring cannot prune. The contig's genes are then read from its tape by contig uid, which prunes. Not measured on a large release | W-07 |
+| Stages without label files | a release over stages ingested before card B-27 and after it (`rM.2`: S1, P1 and P2 have no `contig_label` files, P3 to P6 have them) reads the labels of the first from their `contig_occurrence`, which is sorted by source record, so a lookup by contig there scans every row group of those stages; the labelled stages still prune. `release verify` warns, naming the stages, and `bio-box releases` shows `partial(not S1,P1,P2)`. Before card W-36 the contigs of those stages had no accession, and `find --accession` refused them. Since 2026-11-15 S1, P1 and P2 have label files (`bio-box stage labels`, card C-34, section 2), so a release defined over them now is fully labelled; `rM.2` and the older releases do not list those files and read as before (limit unchanged for them), and `rM.1` (defined, no manifest) reads its stages' directories and shows `contig_label yes` | W-18, W-36, C-34 |
 
 Found while writing this runbook, no card yet (reported to the PI):
 
@@ -1090,6 +1181,11 @@ its outputs in `/tmp/if2453/w25` (bound read-only), with two scratch profiles: t
 `MemoryMax=8G`, `CPUQuota=100%` and nice 19, through the script `/tmp/if2453/w28/run.sh` (the same
 `singularity exec` as `pod_run.sh`, waiting for the unit), and `results list` once through
 `pod_run.sh` as written in section 7.
+
+The rows marked C-33 were run on 2026-11-15 between 01:29 and 02:08 (pod local time) by card C-33 part 1 with the
+image of `faec1f4` (section 0), the tree of the C-33 branch (`TREE=/tmp/if2453/ci/C-33`), the real profile (the
+rehearsal: a copy with its own `tmp`) and the real data root, through `scripts/stress/build_stage_pod/c33_driver.sh`
+in units named `c33-*`.
 
 | Section | Command | Date run | Last line |
 |---|---|---|---|
@@ -1160,6 +1256,14 @@ its outputs in `/tmp/if2453/w25` (bound read-only), with two scratch profiles: t
 | 8 | C-29: `sh scripts/pod_pytest.sh C-29 tests/r0/test_runbook.py -k c29` (laptop) | 2026-11-13 | `5 failed, 2 passed, 38 deselected in 3.97s` (before the change, in the old image: the card's tests failing first) |
 | 8 | C-29: `sh scripts/pod_pytest.sh C-29 tests/r0` (laptop; the new default image) | 2026-11-13 | `203 passed in 7.72s` |
 | 2 | E-12: `pod_run.sh --profile "$PROFILE" --image "$IMAGE" --digest "$DIGEST" --bind /tmp/if2453 --bind /tmp/if2453/r10/root:/tmp/if2453/r10/root:ro --env PYTHONPATH="$PYTHONPATH_POD" --mem 16G --threads 4 e12-p1 run-step ... --stage P1 --step crispr-minced-0.4.2-w8-nr3-r23x47-s26x50 --threads 4 -- python -m biobox.cli stage crispr ... --cpus 4 ...` (image `bio-box_faec1f4.sif`, into a scratch view of the read-only root; units `e12-p2`, `e12-s1` the same for P2 and S1) | 2026-11-13 | `pod_run: e12-p1 exited 0` (before it, `run-step: P1.crispr-minced-0.4.2-w8-nr3-r23x47-s26x50 published 3 files`; P2 and S1 also exited 0) |
+| 2 | E-15: `pod_run.sh --profile "$PROFILE" --image "$IMAGE" --digest "$DIGEST" --bind /tmp/if2453 --bind /tmp/if2453/r10/root:/tmp/if2453/r10/root:ro --env PYTHONPATH="$PYTHONPATH_POD" --mem 16G --threads 3 e15-near-p1 run-step ... --stage P1 --step crispr-minced-0.4.2-w8-nr2-r23x47-s26x50-cas1kb-caspfam1-pfam-38.2 --threads 3 -- python -m biobox.cli stage crispr --near-cas --library pfam --library-version 38.2 ... --cpus 3 ...` (image `bio-box_faec1f4.sif`, into a scratch view of the read-only root after the default step `e15-nr3-p1`; units `e15-near-p2`, `e15-near-s1` the same for P2 and S1) | 2026-11-14 | `pod_run: e15-near-p1 exited 0` (before it, `run-step: P1.crispr-minced-0.4.2-w8-nr2-r23x47-s26x50-cas1kb-caspfam1-pfam-38.2 published 3 files`; P2 and S1 also exited 0) |
+| 2 | C-33 rehearsal: `scripts/stress/build_stage_pod/c33_driver.sh rehearse` (a scratch root `/tmp/if2453/c33/rehearsal` of symlinks, a scratch profile; units `c33-rh-nr3-s1`, `c33-rh-near-s1`: `pod_run.sh --profile ... --image "$IMAGE" --digest "$DIGEST" --mem 16G --threads 4 --bind /tmp/if2453 --env PYTHONPATH="$TREE/src" --log ... <unit> run-step ... --root /tmp/if2453/c33/rehearsal --stage S1 --step crispr-<producer> --threads 4 -- python -m biobox.cli stage crispr [--near-cas --library pfam --library-version 38.2] --root /tmp/if2453/c33/rehearsal --stage S1 --cpus 4 --tmp ... --seq-stages S1,P1,P2,P3,P4,P5,P6`) | 2026-11-15 | `rehearsal: OK` (before it, `rehearsal: S1 near: 3 files byte-identical to /tmp/if2453/e15/view`; both units `exited 0`) |
+| 6 | C-33: `bio-box release verify --root "$ROOT" --release rM.2` and `--release rN.3` (the real root, bound read-only; before the first write and after the last) | 2026-11-15 | `release rN.3: verified (stages S1,P1,P2, 60 files, 34 artifacts, manifest hash eee598acd16324d1dd73349cfd6d931f)` both times (and `release rM.2: verified (..., 158 files, 154 artifacts, manifest hash 2239df7b92ec775058fb9c2ddae3609e)` both times) |
+| 2 | C-34 rehearsal: `scripts/stress/build_stage_pod/c34_driver.sh rehearse` (a scratch root `/tmp/if2453/c34/rehearsal` of symlinks to S1's, P1's and P2's `contig_occurrence` and ingest ledgers, a scratch profile; units `c34-rh-s1`, `c34-rh-p1`, `c34-rh-p2`: `pod_run.sh --profile ... --image "$IMAGE" --digest "$DIGEST" --mem 8G --threads 2 --bind /tmp/if2453 --env PYTHONPATH="$TREE/src" --log ... <unit> run-step ... --root /tmp/if2453/c34/rehearsal --stage S1 --step labels --threads 2 -- python -m biobox.cli stage labels --root /tmp/if2453/c34/rehearsal --stage S1 --cpus 2 --tmp ...`), then `release verify` of the six releases on a view of the root with those files in place, by the code before the card and by the card's | 2026-11-15 | `rehearsal: OK` (before it, `release rM.2: verified (..., manifest hash 2239df7b92ec775058fb9c2ddae3609e)` with the card's code; the code before the card: 6 of 6 releases `not in manifest: l0seq/contig_label/stage=<S>/part-0.parquet`) |
+| 2 | C-34 oracle: `c34_driver.sh oracle` (unit `c34-oracle-s1`: `pod_run.sh ... c34-oracle-s1 stage ingest --root /tmp/if2453/c34/oracle/root --stage S1 --objects /tmp/if2453/r10/inputs/S1/objects.json --tmp ...`, then `c34_oracle.py`) | 2026-11-15 | `oracle: same` (the label files' sha256 `a297d983…` equal) |
+| 6 | C-34: `bio-box release verify --root "$ROOT" --release R` for `rN.1a`, `rN.1b`, `rN.1`, `rN.2`, `rN.3`, `rM.2` (the real root, bound read-only; before the first write and after the last) | 2026-11-15 | `release rM.2: verified (stages S1,P1,P2,P3,P4,P5,P6, 158 files, 154 artifacts, manifest hash 2239df7b92ec775058fb9c2ddae3609e)` both times, and the other five `verified` with their manifest hashes unchanged |
+| 2 | C-34: `c34_driver.sh run`: the step command of the rehearsal with `--root /tmp/if2453/r10/root` and a copy of the real profile whose `tmp` is `/tmp/if2453/c34/tmp-real`, on S1, P1, P2, one unit at a time (units `c34-s1`, `c34-p1`, `c34-p2`; `planning/measurements/2026-11-15_label_files_old_stages.md`) | 2026-11-15 | `pod_run: c34-p2 exited 0` (each unit `exited 0` after `published 2 files`) |
+| 2 | C-33: `c33_driver.sh run`: the step command of the rehearsal with `--root /tmp/if2453/r10/root` and the real profile, the default producer on S1, P1 to P6, then the filtered one, at most 5 units of 4 threads at once (units `c33-nr3-<s>-<n>`, `c33-near-<s>-<n>`; card C-33 part 1, `planning/measurements/2026-11-15_crispr_arrays_on_built_stages.md`) | 2026-11-15 | `pod_run: c33-near-p6-14 exited 0` (every one of the 14 units `exited 0` after `published 3 files`) |
 | 8 | C-32: the image check, section 8's command with the units named `C-32` (`detached_suite.sh --own C-32 2`, `BIOBOX_POD_IMAGE=/tmp/if2453/images/bio-box-test_faec1f4.sif`, the peer file) (pod) | 2026-11-13 | shard lines `842 passed, 7 skipped, 25 warnings in 5571.68s (1:32:51)` and `1188 passed, 16 skipped, 68 warnings in 3438.38s (0:57:18)` |
 | 8 | C-32: `BIOBOX_POD_CI=/tmp/if2453/c32/ci sh scripts/pod_pytest.sh C-32-red tests/r0/test_runbook.py -k c29` (laptop; before the change, in the old default image; another name so as not to share a base temp with the image check) | 2026-11-13 | `3 failed, 4 passed, 43 deselected in 3.99s` (the card's migrated tests failing first) |
 | 8 | C-32: `sh scripts/pod_pytest.sh C-32 tests/r0` (laptop; the new default image) | 2026-11-13 | `208 passed in 5.52s` (the branch point in the old image: `208 passed in 10.08s`) |

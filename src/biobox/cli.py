@@ -22,14 +22,17 @@
     bio-box nbr summarize <run|uid,uid,...> --root R --window 5g --by pfam,nr50 [--top 50] [--release R]
                 [--json | --format tsv] [--out FILE] [--runs DIR]
     bio-box nbr flanks <run|uid,uid,...> --root R --out DIR [--window 5g] [--level nr50|nr90|pfam]
-                [--group-by anchor-nr90|anchor-nr50|none] [--max-loci 2000] [--cut 0.5] [--distance j|a|combined]
-                [--export gff] [--figure [--figure-rows 60]] [--release R] [--runs DIR]
-                (card W-25, biobox.search.flanks; --figure: card W-27)
+                [--group-by anchor-nr90|anchor-nr50|none] [--max-loci 2000] [--cut 0.5 | --auto-cut N]
+                [--distance j|a|combined] [--export gff] [--figure [--figure-rows 60]
+                [--colour-weight locus|leaf|genome|anchor-nr90] [--colour-fallback none|pfam]] [--release R]
+                [--runs DIR]
+                (card W-25, biobox.search.flanks; --figure: card W-27; --auto-cut, colours: W-31; defaults: W-32,
+                DEC-41: anchor-nr90 and pfam at nr50 and nr90 when the release's manifest lists a domain library)
     bio-box export proteins --root R --release R [--out FILE]
     bio-box results archive <run> --profile P [--under DIR ...] [--with PATH ...] [--runs DIR] [--results DIR]
     bio-box results flush --profile P [--results DIR] [--below-floor]
     bio-box results list --profile P [--results DIR] [--json]
-    bio-box results get RUN_ID --out DIR --profile P [--results DIR]
+    bio-box results get RUN_ID[:SHA256PREFIX] --out DIR --profile P [--sha256 PREFIX] [--results DIR]
                 (card W-28, DEC-33, biobox.search.results)
     bio-box run-step --profile P --root R --stage S --step NAME [--nice monolithic|fanout] [--threads N] -- CMD ...
     bio-box release define --root R --release R1 --stages S0,S1 [--out DIR]
@@ -57,6 +60,8 @@
     bio-box stage ncrna shard --root R --stage S --cm F [--ncrna-set SET] --shard K --cpus N --tmp D [--seq-stages S0,S1]
     bio-box stage ncrna merge --root R --stage S --cm F [--ncrna-set SET] --tmp D
     bio-box stage crispr --root R --stage S --cpus N [--tmp D] [--seq-stages S0,S1] [--out DIR]   (card E-12)
+    bio-box stage crispr --near-cas --library pfam --library-version V --root R --stage S --cpus N [--tmp D]
+                [--seq-stages S0,S1] [--gene-call-version G] [--out DIR]   (card E-15: two-repeat arrays beside Cas genes)
     bio-box build-stage --profile P --root R --stage S --release R1 [--stages S0,S1] --genomes genomes.json
                 --objects objects.json [--library NAME VERSION HMM CUTOFF ...] [--tmp D] [--threads N]
                 [--scan-jobs J] [--scan-cpus C] [--cluster-parts N] [--ncrna-cm Rfam.cm.gz [--ncrna-set prok-2]]
@@ -136,18 +141,21 @@ tsv` (so also `search hmm`'s `loci/`) ends each locus table with the arrays with
 paragraph on both. Arrays are never slots. On a release without arrays every output is as before; the `--json` forms
 never carry arrays.
 
-`results` (card W-28, DEC-33; design in `biobox.search.results`) keeps a closed run on the profile's durable
-storage. `archive` writes the run's record and outputs as one deterministic tar, with its manifest line, into a
-spool under the profile's `tmp`. Every directory export written from a run (`search hmm`, `nbr --out DIR`, `nbr flanks
+`results` (card W-28, DEC-33, amended by card W-33, DEC-42; design in `biobox.search.results`) keeps a closed
+run under the profile's `bulk` area, in `<bulk>/results` (`durable` is not read). `archive` writes the run's record and outputs as one deterministic
+tar, with its manifest line, into a spool under the profile's `tmp`. Every directory export written from a run (`search hmm`, `nbr --out DIR`, `nbr flanks
 --out DIR`) holds a `RUN` file (card W-29: `run<TAB>ID`, `release<TAB>R`); `--under DIR` (repeatable) finds the
 directories whose `RUN` names the run, in DIR and up to 4 levels below it; `--with PATH` names an output (a file, or a
 directory without a `RUN`, as before). A DIR whose `RUN` names another run, or whose `recipe.yaml` is not the run's,
-is refused (exit 2). `flush` moves the spooled runs to the results area
-(`<durable>/results`, or `--results` inside `durable`) as one bundle, only once the bundle is at least the
+is an error (exit 2). `flush` moves the spooled runs to the results area
+(`<bulk>/results`, or `--results` inside `bulk`) as one bundle, only once the bundle is at least the
 profile's `small_file_floor_bytes` (AGENTS §7.3; `--below-floor` is for the PI's agreement only). Nothing is
-overwritten or deleted there: the same run with the same sha256 is a no-op, with another a refusal (exit 2).
-`list` reads only manifest lines; `get RUN_ID --out DIR` restores a run and checks every sha256 (exit 1 when one
-differs). They need a profile (`--profile`, else $BIOBOX_PROFILE).
+overwritten or deleted there: the same run with the same sha256 is a no-op, with another sha256 a second archive
+of the run, beside the first, which is never changed.
+`list` reads only manifest lines, one per archive; `get RUN_ID --out DIR` restores a run and checks every sha256
+(exit 1 when one differs); a run with several archives gives the one with the most files, and
+`get RUN_ID:SHA256PREFIX` (or `get RUN_ID --sha256 PREFIX`) takes another. They need a profile (`--profile`,
+else $BIOBOX_PROFILE).
 """
 
 from __future__ import annotations
@@ -296,16 +304,47 @@ def _verify_scratch(a) -> Path | None:
     return runner.default_work_base(tmp) if tmp is not None else None
 
 
+def _pack_profile(a):
+    """The host profile of a `pack` command (`--profile`, else $BIOBOX_PROFILE), or None without one."""
+    path = getattr(a, "profile", None) or os.environ.get("BIOBOX_PROFILE")
+    if not path:
+        return None
+    from biobox import profile
+
+    return profile.load(path)
+
+
 def _pack(a) -> int:
     """`pack build|verify` (card W-03): the release's pack in the pack directory, never under the root. Only a
-    build that makes a pack writes into the pack directory (card W-22)."""
+    build that makes a pack writes into the pack directory (card W-22). Before any work `pack build` prints its
+    estimate and refuses a build in one process over the budget; `--parts N` builds it in parts (card W-35)."""
     packs = _packs(a)
     scratch = _verify_scratch(a)
     if a.action == "build":
         models = dict(m.split("=", 1) for m in a.model)
+        paths = {k: Path(v) for k, v in models.items()}
         try:
-            man = pack.build(Path(a.root), a.release, a.gene_call_version, {k: Path(v) for k, v in models.items()},
-                             packs=packs, scratch=scratch)
+            pack.outside_root(Path(a.root).resolve(), packs, "the pack directory")
+            if a.parts is None and (a.jobs is not None or a.work is not None):
+                raise ValueError("--jobs and --work are options of a build in parts: give --parts N")
+            prof = _pack_profile(a)
+            if a.parts is not None and prof is None:
+                raise ValueError("--parts needs the host profile (--profile or $BIOBOX_PROFILE): its "
+                                 "cpu_min_per_process, memory cap, nice and tmp are those of every part")
+            budget = prof.cpu_min_per_process if prof is not None else pack.DEFAULT_CPU_MIN_PER_PROCESS
+            counts = pack.release_counts(Path(a.root), a.release, a.gene_call_version, libraries=len(paths))
+            pack._log(pack.estimate_line(a.release, counts, budget))
+            if a.parts is None:
+                why = pack.one_process_refusal(counts, budget)
+                if why is not None:
+                    raise ValueError(why)
+                man = pack.build(Path(a.root), a.release, a.gene_call_version, paths, packs=packs, scratch=scratch)
+            else:
+                code, man = pack.build_in_parts(Path(a.root), a.release, a.gene_call_version, paths, packs=packs,
+                                                prof=prof, parts=a.parts, jobs=a.jobs,
+                                                work=Path(a.work) if a.work else None, scratch=scratch)
+                if code != 0:
+                    return code
         except (ValueError, FileExistsError) as e:
             print(f"refused: {e}", file=sys.stderr)
             return 2
@@ -676,15 +715,17 @@ def _nbr_flanks(a, root: Path, uids: set[bytes], tv: str | None, release: str, f
     if not 0 <= cut <= 1:
         return refuse(f"--cut {cut}: a distance between 0 and 1")
     auto = None
-    if a.auto_cut is not None:  # card W-31
+    if a.auto_cut is not None:  # card W-31; `gap` refused since card W-32 (DEC-41)
         if a.cut is not None:
             return refuse("--auto-cut chooses each group's cut from its tree: give --auto-cut or --cut, not both")
         try:
             auto = flanks.parse_auto_cut(a.auto_cut)
         except flanks.FlanksError as e:
             return refuse(e)
-    colour_weight = a.colour_weight or "locus"
-    colour_fallback = a.colour_fallback or "none"
+    # card W-32 (DEC-41): anchor-nr90 and pfam at nr50 and nr90 when the release's manifest lists a domain library
+    default_weight, default_fallback, no_library = flanks.colour_defaults(level, files, a.library)
+    colour_weight = a.colour_weight or default_weight
+    colour_fallback = a.colour_fallback or default_fallback
     for flag, value, allowed in (("--colour-weight", colour_weight, flanks.COLOUR_WEIGHTS),
                                  ("--colour-fallback", colour_fallback, flanks.COLOUR_FALLBACKS)):
         if value not in allowed:
@@ -714,6 +755,9 @@ def _nbr_flanks(a, root: Path, uids: set[bytes], tv: str | None, release: str, f
         return refuse(e)
     if out.exists() and (not out.is_dir() or any(out.iterdir())):
         return refuse(f"the output directory {out} is not empty: nbr flanks writes into a new or empty directory")
+    if a.figure and no_library and (a.colour_weight is None or a.colour_fallback is None):
+        print(f"note: {no_library}: the figure keeps --colour-weight locus --colour-fallback none (with a domain library the "
+              "defaults are anchor-nr90 and pfam, DEC-41)", file=sys.stderr)
     try:
         counts, notes = flanks.run(root, uids, out, release=release, files=files, window=window, level=level,
                                    group_by=group_by, distance=distance, cut=cut, max_leaves=max_leaves,
@@ -721,7 +765,8 @@ def _nbr_flanks(a, root: Path, uids: set[bytes], tv: str | None, release: str, f
                                    gene_call_version=a.gene_call_version, tape_version=tv, threads=a.threads,
                                    tmp=_profile_tmp(a), figure=a.figure, figure_rows=figure_rows,
                                    run_file=_run_file_ref(a, a.source or a.anchors), auto=auto,
-                                   colour_weight=colour_weight, colour_fallback=colour_fallback)
+                                   colour_weight=colour_weight, colour_fallback=colour_fallback,
+                                   given_colours=(a.colour_weight, a.colour_fallback))
     except ValueError as e:
         return refuse(e)
     for line in notes:
@@ -1202,7 +1247,8 @@ def release_summary(root: Path, release: str, packs: Path | None = None) -> dict
     `genome_input` (the catalog's `genome_member`; one column read: no footer holds a distinct count), else of its
     `contig_dim`, which names one genome per contig and so misses a genome whose every contig another genome also
     holds; None where the release has no `contig_dim`. `libraries` its domain libraries, `ncrna` its ncRNA
-    producers, `lookups` whether it has the tables and column current readers use (cards B-27, B-39), and with a pack
+    producers, `lookups` whether it has the tables and column current readers use (cards B-27, B-39; with
+    `unlabelled_stages` the stages without `contig_label` files when some stages have them, card W-36), and with a pack
     directory `pack`, the id of the release's pack there or None."""
     root = Path(root)
     rec: dict = {"release": release, "manifest": catalog.manifest_path(root, release).is_file()}
@@ -1229,6 +1275,9 @@ def release_summary(root: Path, release: str, packs: Path | None = None) -> dict
         partial = {lib: missing for lib, _, missing in catalog.partial_libraries(files.manifest)}
         if partial:
             rec["partial_libraries"] = partial
+    labelled = {str(parts.get("stage")) for _, parts in files.entries("contig_label")}
+    if labelled and set(files.stages) - labelled:  # card W-36: label files for some of the stages only
+        rec["unlabelled_stages"] = [s for s in files.stages if s not in labelled]
     if packs is not None:
         try:
             rec["pack"] = pack.find(packs, release).name
@@ -1535,6 +1584,8 @@ def _releases(a) -> int:
         flat = {**r, **r.get("lookups", {})}
         libs = [f"{x}(not {','.join(r['partial_libraries'][x])})" if x in r.get("partial_libraries", {}) else x
                 for x in r.get("libraries", [])]
+        if r.get("unlabelled_stages"):  # card W-36: as a partial library
+            flat["contig_label"] = f"partial(not {','.join(r['unlabelled_stages'])})"
         rows.append("\t".join(text(libs if c == "libraries" else flat.get(c)) for c in cols))
     _print(["\t".join(cols), *rows])
     return 0
@@ -1623,7 +1674,12 @@ def _results(a) -> int:
             return 0
         if not a.run or not a.out:
             return refuse("results get needs the run id and --out DIR")
-        line, n = results.get(where, a.run, Path(a.out))
+        run_id, _, given = a.run.partition(":")
+        if a.sha256 and given and a.sha256.lower() != given.lower():
+            return refuse(f"results get was given two different sha256 prefixes ({given!r} in RUN:SHA256PREFIX, "
+                          f"{a.sha256!r} in --sha256): give one")
+        prefix = a.sha256 or given
+        line, n = results.get(where, f"{run_id}:{prefix}" if prefix else run_id, Path(a.out))
         _wrote(a.out, f"{n} files")
         _print([head, "\t".join(str(line[c]) for c in [*results.COLUMNS, "where"])])
         return 0
@@ -1643,7 +1699,7 @@ def _run_step(a) -> int:
 
 RELEASE_STEPS = ("define", "cluster", "tokens", "postings", "dim", "manifest", "catalog", "verify")
 CLUSTER_ACTIONS = ("plan", "step", "finish", "redo")  # `release cluster plan|step|finish|redo` (card B-41)
-STAGE_STEPS = ("inputs", "ingest", "genecall", "igr", "tapes", "domains", "ncrna", "crispr")
+STAGE_STEPS = ("inputs", "ingest", "genecall", "igr", "tapes", "domains", "ncrna", "crispr", "labels")
 DOMAIN_ACTIONS = ("plan", "shard", "merge")  # `stage domains plan|shard|merge` (card B-24)
 INGEST_ACTIONS = ("pass1", "plan", "batch", "merge")  # `stage ingest pass1|plan|batch|merge` (card B-30)
 NCRNA_ACTIONS = ("plan", "shard", "merge")  # `stage ncrna plan|shard|merge` (card E-07)
@@ -1760,6 +1816,11 @@ def _verify(a) -> int:
             print(f"warning: release {a.release} has no {lookup} files (built before card B-27); readers fall back to "
                   f"{source}, which cannot prune. A release built with the current code has the table "
                   f"(card C-17 builds one over these stages)", file=sys.stderr)
+    gaps = catalog.unlabelled_stages(man)
+    if gaps:  # card W-36: a warning only
+        print(f"warning: release {a.release}: stages {','.join(gaps)} have no contig_label files (ingested before "
+              f"card B-27); readers take those stages' labels from their contig_occurrence, which cannot prune a "
+              f"lookup by contig there", file=sys.stderr)
     for lib, scanned, unscanned in catalog.partial_libraries(man):  # card C-19: a warning only
         print(f"warning: release {a.release} has domain files of library {lib} for stages {','.join(scanned)} but "
               f"not {','.join(unscanned)} (not scanned when the release was built); its {lib} family tokens cover the "
@@ -1958,7 +2019,18 @@ def _stage_step(a, root: Path, out: Path) -> dict:
     if a.step == "crispr":  # card E-12
         from biobox.l1 import crispr
 
+        if a.near_cas:  # card E-15: the filtered producer, after gene calls and the Pfam scan
+            if a.library not in (None, crispr.CAS_LIBRARY) or not a.library_version:
+                raise ValueError(f"stage crispr --near-cas needs --library-version, and --library is "
+                                 f"{crispr.CAS_LIBRARY} (the library its Cas family list names), not {a.library!r}")
+            return crispr.run_near_cas(root, a.stage, a.cpus, library_version=a.library_version,
+                                       gene_call_version=a.gene_call_version, tmp=tmp, out=out,
+                                       seq_stages=_csv(a.seq_stages), **mfb)
         return crispr.run(root, a.stage, a.cpus, tmp=tmp, out=out, seq_stages=_csv(a.seq_stages), **mfb)
+    if a.step == "labels":  # card C-34: contig_label of a stage ingested before card B-27, from its contig_occurrence
+        from biobox.l0seq import store
+
+        return store.write_labels(root, a.stage, out=out, tmp=tmp, threads=a.cpus, **mfb)
     from biobox.l1 import domains
 
     need = {None: ("library", "library_version", "hmm", "cutoff"),  # the whole scan in this process
@@ -2037,6 +2109,16 @@ def _main(argv: list[str] | None = None) -> int:
                          "give none when the release has none (an hmm_file or sequences seed needs no model)")
     pk.add_argument("--pack-dir", help=PACK_DIR_HELP)
     pk.add_argument("--profile", help=PROFILE_DIRS_HELP)
+    pk.add_argument("--parts", type=int,
+                    help="build: in parts, each its own process under the CPU budget (card W-35): unique, then N ranges "
+                         "of contigs for each of igr and dark_orf, then one last process; the pack is the one-process "
+                         "build's, byte for byte. Needs the host profile. Without it, a build estimated over 80%% of "
+                         "the profile's cpu_min_per_process is refused (exit 2), naming the N that fits")
+    pk.add_argument("--jobs", type=int,
+                    help="build --parts: parts at once, one thread each (default: the thread allowance at the start; "
+                         "each launch also waits for the allowance of the hour)")
+    pk.add_argument("--work", help="build --parts: the base of the parts' work directory (default: <profile "
+                                   "tmp>/scratch/pack), outside the data root, on the pack directory's file system")
     s = sub.add_parser("search", parents=[common])
     s.add_argument("action", choices=["run", "status", "cancel", "hits"],
                    help="see also `bio-box search hmm --help`: an HMM file to hits and neighbour tables in one command")
@@ -2139,15 +2221,17 @@ def _main(argv: list[str] | None = None) -> int:
     n.add_argument("--figure-rows", type=int, help="flanks --figure: rows per figure (default 60, "
                                                    "flanks.DEFAULT_FIGURE_ROWS); above it, the leaf with the most loci "
                                                    "of each context type, then the leaves with the most loci")
-    n.add_argument("--auto-cut", help="flanks: choose each group's cut from its tree instead of --cut (card W-31): gap "
-                                      "(the middle of the largest gap between merge distances) or N (at most N "
-                                      "context types); never at distance 1")
-    n.add_argument("--colour-weight", help="flanks --figure: locus (default), leaf, genome or anchor-nr90: weight "
-                                           "each locus by 1/(loci of its unit) before the 10%% colour threshold, so "
-                                           "near-identical loci count once (card W-31)")
-    n.add_argument("--colour-fallback", help="flanks --figure: none (default) or pfam: a grey cluster's gene takes its "
-                                             "Pfam architecture's colour when the architecture is common in the group "
-                                             "(card W-31)")
+    n.add_argument("--auto-cut", help="flanks: choose each group's cut from its tree instead of --cut (card W-31): N, "
+                                      "at most N context types; never at distance 1 (gap was removed, DEC-41)")
+    n.add_argument("--colour-weight", help="flanks --figure: locus, leaf, genome or anchor-nr90: weight each locus by "
+                                           "1/(loci of its unit) before the 10%% colour threshold, so near-identical "
+                                           "loci count once (card W-31). Default (DEC-41): anchor-nr90 at --level nr50 "
+                                           "and nr90 when the release's manifest lists a domain library, else locus")
+    n.add_argument("--colour-fallback", help="flanks --figure: none or pfam: a grey cluster's gene takes its Pfam "
+                                             "architecture's colour when the architecture is common in the group, and "
+                                             "a family so coloured keeps that one colour (cards W-31, W-32). Default "
+                                             "(DEC-41): pfam at --level nr50 and nr90 when the release's manifest "
+                                             "lists a domain library, else none")
     n.add_argument("--strand", default="any")
     n.add_argument("--operon-gap")
     n.add_argument("--edge", default="truncate")
@@ -2170,28 +2254,44 @@ def _main(argv: list[str] | None = None) -> int:
     n.add_argument("--runs", help=RUNS_HELP)
     n.add_argument("--pack-dir", help=PACK_DIR_HELP)
     n.add_argument("--profile", help=PROFILE_DIRS_HELP)
-    rr = sub.add_parser("results", help="keep a closed run on the profile's durable storage (card W-28, DEC-33)")
+    rr = sub.add_parser(
+        "results", help="keep a closed run under the profile's bulk area (cards W-28, W-33, DEC-33, DEC-42)",
+        description="Keeps closed runs under <bulk>/results (the profile's `bulk` key). "
+                    "archive: write the run's record and outputs as one tar into the spool under the profile's tmp. "
+                    "A run archived again with other files or outputs is a second archive of it, kept beside the "
+                    "first, which is never changed; the same run with the same sha256 is a no-op. "
+                    "flush: move the spooled archives to <bulk>/results as one bundle, once it is at least "
+                    "small_file_floor_bytes. list: one line per archive kept (a run archived twice has two lines). "
+                    "get RUN --out DIR: restore an archive, every sha256 checked; a run with several archives gives "
+                    "the one with the most files and says which on stderr, and RUN:SHA256PREFIX (or --sha256 PREFIX) "
+                    "takes another. All need a profile (--profile, else $BIOBOX_PROFILE).")
     rr.add_argument("action", choices=["archive", "flush", "list", "get"],
-                    help="archive: spool the run's archive; flush: move the spool to the results area as one bundle "
-                         "of at least small_file_floor_bytes; list: every kept run; get: restore one")
-    rr.add_argument("run", nargs="?", help="archive: the run's directory, or its run id in --runs; get: its run id")
+                    help="archive: spool the run's archive (a second archive when the run is kept already with "
+                         "another sha256); flush: move the spool to <bulk>/results as one bundle of at least "
+                         "small_file_floor_bytes; list: every archive kept; get: restore one")
+    rr.add_argument("run", nargs="?", help="archive: the run's directory, or its run id in --runs; get: its run id, "
+                                           "or RUN:SHA256PREFIX for the archive whose sha256 starts so")
     rr.add_argument("--profile", help="host profile YAML (default: $BIOBOX_PROFILE): the spool is <tmp>/results/spool, "
-                                      "the results area <durable>/results")
+                                      "the results area <bulk>/results")
     rr.add_argument("--runs", help=RUNS_HELP)
-    rr.add_argument("--results", help="the results area, inside the profile's durable storage (default: "
-                                      "<durable>/results)")
+    rr.add_argument("--results", help="the results area, inside the profile's bulk directory (default: "
+                                      "<bulk>/results)")
     rr.add_argument("--with", dest="with_", action="append", default=[], metavar="PATH",
                     help="archive: an output of the run to keep with it, a file or a directory (an `nbr flanks` DIR, "
                          "a hits.tsv), and the run's `search hmm --out` DIR; repeatable. A DIR whose RUN file names "
-                         "another run, or whose recipe.yaml is not the run's, is refused")
+                         "another run, or whose recipe.yaml is not the run's, is an error (exit 2)")
     rr.add_argument("--under", action="append", default=[], metavar="DIR",
                     help="archive: find every directory in DIR (or up to 4 levels below it) whose RUN file names the "
                          "run (the `search hmm`, `nbr` and `nbr flanks` output directories); repeatable")
     rr.add_argument("--out", help="get: a new or empty directory to restore the run into")
+    rr.add_argument("--sha256", metavar="PREFIX",
+                    help="get: the archive of the run whose sha256 starts with PREFIX, the spelled-out form of "
+                         "RUN:SHA256PREFIX (both may be given if they agree; if they differ, exit 2); `results "
+                         "list` shows each archive's sha256")
     rr.add_argument("--below-floor", action="store_true",
                     help="flush: write the bundle even when it is smaller than the profile's small_file_floor_bytes. "
                          "This breaks AGENTS.md 7.3 (no file under 64 MB on /stor): only with the PI's agreement")
-    rr.add_argument("--json", action="store_true", help="list: one JSON object per run")
+    rr.add_argument("--json", action="store_true", help="list: one JSON object per archive")
     r = sub.add_parser("run-step", usage="bio-box run-step --profile P --root R --stage S --step NAME "
                                          "[--nice monolithic|fanout] [--threads N] -- CMD [ARGS ...]")
     r.add_argument("--profile", required=True, help="host profile YAML (profiles/wilkcomp02.yaml)")
@@ -2247,12 +2347,18 @@ def _main(argv: list[str] | None = None) -> int:
                                          "name (default: the stage itself)")
     st.add_argument("--producers", help="igr, tapes: the tape version's producers (default: the gene caller)")
     st.add_argument("--max-slots", type=int, help="tapes: slots per row group")
-    st.add_argument("--library", help="domains: library name (pfam)")
-    st.add_argument("--library-version", help="domains: library version (38.2)")
+    st.add_argument("--library", help="domains: library name (pfam); crispr --near-cas: pfam")
+    st.add_argument("--library-version", help="domains: library version (38.2); crispr --near-cas: the version of the "
+                                              "stage's Pfam scan it reads")
+    st.add_argument("--near-cas", action="store_true",
+                    help="crispr: the filtered producer (card E-15, DEC-40): MinCED at 2 repeats, calls kept only "
+                         "beside a Cas gene of the stage's Pfam scan, outside genes and away from the default "
+                         "producer's arrays")
     st.add_argument("--hmm", help="domains: the library's HMM file")
     st.add_argument("--cutoff", help="domains: gathering, trusted, noise or none")
     st.add_argument("--cpus", type=int, default=1, help="domains: hmmsearch threads; ncrna: cmsearch threads (--cpu); "
-                                                       "crispr: MinCED processes at once")
+                                                       "crispr: MinCED processes at once; labels: DuckDB threads "
+                                                       "(the files do not depend on it)")
     st.add_argument("--cm", help="ncrna: the Rfam covariance-model library (.cm or .cm.gz; card E-01)")
     st.add_argument("--ncrna-set", default="prok-2", help="ncrna: the model set, a frozen set's name (prok-2, the "
                                                           "default, DEC-30; prok-1) or a set file (card E-07)")
@@ -2291,7 +2397,9 @@ def _main(argv: list[str] | None = None) -> int:
     bs.add_argument("--ncrna-set", default="prok-2", help="the ncRNA model set: a frozen set's name (prok-2, the "
                                                           "default, DEC-30; prok-1) or a set file")
     bs.add_argument("--crispr", action="store_true", help="run the CRISPR array producer (MinCED, card E-12) as a "
-                                                          "step after gene calling; its arrays are not put on the tape")
+                                                          "step after gene calling, and with a --library named pfam "
+                                                          "the filtered producer of two-repeat arrays beside Cas genes "
+                                                          "after its scan (card E-15); arrays are not put on the tape")
     a = p.parse_args(argv)
     if a.cmd == "search" and a.action == "run" and not a.release:
         p.error("search run needs --release")

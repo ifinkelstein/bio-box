@@ -1,0 +1,3 @@
+2388abaece6d60d50758f75808cbaf8a35a2535c4f2e4d867c63ef15bb3f7fa2  l1/crispr/producer=minced-0.4.2-w8-nr2-r23x47-s26x50-cas1kb-caspfam1-pfam-38.2/stage=S1/part-0.parquet
+a0dd938760af6b9edae4c23ce4f82f245e998b7f635457ebfcdd7d17774a08e5  l1/feature/producer=minced-0.4.2-w8-nr2-r23x47-s26x50-cas1kb-caspfam1-pfam-38.2/stage=S1/part-0.parquet
+58704c06ac9839ffaf6ab96ab57f3dd72366b3e59f763a5ddc0886c4e2f061a6  ledger/stage=S1/step=crispr-minced-0.4.2-w8-nr2-r23x47-s26x50-cas1kb-caspfam1-pfam-38.2/part-0.parquet

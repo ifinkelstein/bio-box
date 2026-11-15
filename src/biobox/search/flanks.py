@@ -17,10 +17,32 @@ step: the J, A and positions matrices, a UPGMA tree weighted by each leaf's loci
 context types from cutting it at `cut`. Only one group's matrices are held at a time (112 MB at 2,000 leaves, derived:
 two float64 and one int32 K x K matrix and the UPGMA working copy).
 
-Card W-31 adds three options, each off by default (without them every output is what it was before the card):
-`auto_cut` chooses each group's cut from its tree (`--auto-cut gap|N`); `--colour-weight` counts loci by unit (leaf,
-genome or anchor NR90 cluster) toward the figure's colour threshold; `--colour-fallback pfam` colours a grey cluster's
-gene by its Pfam architecture when that is common in the group.
+Card W-31 added three options: `auto_cut` chooses each group's cut from its tree (`--auto-cut N`: at most N context
+types); `--colour-weight` counts loci by unit (leaf, genome or anchor NR90 cluster) toward the figure's colour
+threshold; `--colour-fallback pfam` colours a grey cluster's gene by its Pfam architecture when that is common in the
+group. Card W-32 (DEC-41) made the last two the figure's defaults where they apply and removed `--auto-cut gap`:
+
+- The defaults. At `--level nr50` and `nr90`, when the release has a domain library, `--colour-weight anchor-nr90`
+  and `--colour-fallback pfam` (`colour_defaults`); otherwise, and at `--level pfam` (whose families are Pfam
+  architectures already, so the fallback has nothing to do and is refused), `locus` and `none`, the colours before the
+  card. `locus` and `none` stay available as explicit values. The fixed cut 0.5 stays the default for context types.
+- "The release has a domain library" is read from the release's manifest (`manifests/release=<R>.json`), never from a
+  listing of directories: its `files` list holds at least one file of table `l1_domains` (with `--library L`, one
+  whose `library` partition is L). A release read from its `release_def` alone, without a manifest, counts as having
+  none. Without one, `nbr flanks --figure` keeps the old colours and says so in one line on stderr.
+- The one-colour rule. With the Pfam fallback a family could show in two colours: its common cluster's own and the
+  Pfam colour its rare clusters take. Here a cluster's family is the commonest Pfam architecture of its genes in the
+  run (ties: the least; the name the legend gives the cluster), and an architecture is a stand-in when, in some group
+  of the run, it is held by at least FIGURE_MIN_SHARE of the loci (weighted) and colours a gene of a cluster that is
+  grey there. A cluster coloured in some group whose family is a stand-in "would show in two colours"; it is drawn in
+  its family's Pfam colour instead, in every group and every row, and is never given a colour or a legend row of its
+  own: each group's legend has one row "Pfam <architecture>" (the architecture's weighted share of the group's loci;
+  in a group where no gene carries the architecture, the absorbed cluster's share) and none for the cluster. A cluster whose family is no stand-in keeps its own colour, and two common clusters of one
+  family stay two colours (they are two families at the level).
+- The tables do not change: only figure.svg and figure.pdf do, and README.txt gains the paragraph that says how the
+  figure's colours were chosen (`README_W31`). groups.tsv names a colour option in its `#` lines only when it was
+  given with a value other than `locus` or `none`, as before the card, so that a call without colour options writes
+  the tables it wrote before the card, byte for byte; the figure's title always states the colours it was drawn with.
 """
 
 from __future__ import annotations
@@ -60,10 +82,11 @@ DEFAULT_CUT = 0.5
 # (design note; test_w25_w_is_the_largest_weight_on_j_that_still_separates_the_planted_types)
 W_COMBINED = 0.2
 CUT_TOLERANCE = 1e-9  # a merge at the cut joins a type even when its average carries rounding
-# card W-31 (planning/measurements/2026-11-13_flanks_context_types.md): options, each off by default
-AUTO_CUT_GAP = "gap"
-COLOUR_WEIGHTS = ("locus", "leaf", "genome", "anchor-nr90")  # locus: each locus counts 1 (the default)
+# card W-31 (planning/measurements/2026-11-13_flanks_context_types.md); defaults of card W-32 (DEC-41)
+COLOUR_WEIGHTS = ("locus", "leaf", "genome", "anchor-nr90")  # locus: each locus counts 1
 COLOUR_FALLBACKS = ("none", "pfam")
+COLOUR_OFF = ("locus", "none")  # the colours before card W-32: at --level pfam, and without a domain library
+COLOUR_DEFAULTS = ("anchor-nr90", "pfam")  # at --level nr50 and nr90 with a domain library (DEC-41)
 FALLBACK_PREFIX = "pfam:"  # a figure family key that is a Pfam architecture standing in for its rare clusters
 ANCHOR = "^"
 _SAFE = re.compile(r"[^A-Za-z0-9._-]")
@@ -123,23 +146,29 @@ groups/<group>/figure.svg, figure.pdf (--figure; card W-27) the group's synteny 
 No ordinal is written: genes are named by feature_uid. Ids of clusters are of this release only.
 """
 
-# appended to README.txt only when a card W-31 option was given, so that the default output is unchanged
+# appended to README.txt only when --auto-cut is given or the figure is drawn with weighted or Pfam colours (cards
+# W-31, W-32), so that every other output is what it was before those cards
 README_W31 = """
-Options of card W-31 used in this run (planning/measurements/2026-11-13_flanks_context_types.md):
+Options of cards W-31 and W-32 that shaped this run (planning/measurements/2026-11-13_flanks_context_types.md, DEC-41):
 
---auto-cut gap|N    context types from a cut chosen per group from its tree instead of --cut. gap: the middle of the
-                    largest gap between the distinct merge distances below 1 and 1 itself (ties: the lowest gap). N:
-                    the least cut that leaves at most N types. Never at distance 1 or above, so loci that share nothing
-                    stay apart (there may be more than N types). groups.tsv gives each group's cut (column cut, and
-                    auto_cut in its # lines); the figure draws it.
+--auto-cut N        context types from a cut chosen per group from its tree instead of --cut: the least cut that
+                    leaves at most N types. Never at distance 1 or above, so loci that share nothing stay apart (there
+                    may be more than N types). groups.tsv gives each group's cut (column cut, and auto_cut in its #
+                    lines); the figure draws it. (--auto-cut gap was removed by card W-32.)
 --colour-weight W   (--figure) a family is coloured when its weighted share of the group's loci is at least 10%: each
                     locus weighs 1 / (the group's loci in its unit), the unit being its leaf (W = leaf: identical
                     flanks), its genome (genome: genome_uid) or its anchor's NR90 cluster (anchor-nr90), so that
-                    near-identical loci count once; the legend's % is that share. locus: each locus counts 1 (default).
+                    near-identical loci count once; the legend's % is that share. locus: each locus counts 1.
 --colour-fallback pfam (--figure, level nr50 or nr90) a gene whose cluster is grey but whose Pfam architecture is held
                     by at least 10% of the group's loci (weighted as above) takes the architecture's colour, one per
-                    architecture in the run, named "Pfam <architecture>" in the legend. none: no fallback (default).
+                    architecture in the run, named "Pfam <architecture>" in the legend. One colour per family: a
+                    cluster coloured in some group whose genes' commonest architecture stands in so in some group is
+                    drawn in that architecture's colour everywhere, with no colour or legend row of its own. none: no
+                    fallback.
+Defaults (DEC-41): at level nr50 and nr90, when the release's manifest lists a domain library (an l1_domains file),
+--colour-weight anchor-nr90 --colour-fallback pfam; otherwise, and at level pfam, locus and none.
 """
+README_COLOURS = "This run's figures: --colour-weight {weight} --colour-fallback {fallback}.\n"
 
 
 @dataclass
@@ -483,37 +512,28 @@ def cut_types(n: int, merges: list[tuple[int, int, float]], cut: float) -> list[
     return of
 
 
-def parse_auto_cut(text: str) -> str | int:
-    """--auto-cut (card W-31): `gap` or a number of types N >= 1."""
+def parse_auto_cut(text: str) -> int:
+    """--auto-cut (card W-31): a number of context types N >= 1. `gap` (the largest gap between merge distances) was
+    removed by card W-32 (DEC-41) and is refused with the reason."""
     t = str(text).strip().lower()
-    if t == AUTO_CUT_GAP:
-        return AUTO_CUT_GAP
+    if t == "gap":
+        raise FlanksError("--auto-cut gap was removed (DEC-41): on the trees of mobile elements the largest gap lies "
+                          "among near-identical loci, so it made more context types than the fixed cut "
+                          "(planning/measurements/2026-11-13_flanks_context_types.md); give --auto-cut N (at most N "
+                          "context types per group) or --cut D")
     if re.fullmatch(r"\d+", t) and int(t) >= 1:
         return int(t)
-    raise FlanksError(f"--auto-cut {text}: gap (the largest gap between the tree's merge distances) or a number of "
-                      "context types N of at least 1")
+    raise FlanksError(f"--auto-cut {text}: give --auto-cut N, a number of context types N of at least 1")
 
 
-def auto_cut(merges: list[tuple[int, int, float]], rule: str | int) -> float:
-    """The cut one group's tree gives under `rule` (card W-31), never at distance 1 or above (loci that share nothing
-    stay apart). gap: the middle of the largest gap between the distinct merge distances below 1 (within
-    CUT_TOLERANCE) and 1 itself, ties to the lowest gap; 0 when no merge is below 1. N: the distance of the
-    (items - N)-th merge, so that at most N types remain (fewer on a tie at the cut, more where merges at 1 are not
-    made); 0 when N is at least the number of items, the highest merge below 1 when that merge is at 1 or above."""
+def auto_cut(merges: list[tuple[int, int, float]], rule: int) -> float:
+    """The cut one group's tree gives for at most `rule` = N context types (card W-31), never at distance 1 or above
+    (loci that share nothing stay apart): the distance of the (items - N)-th merge, so that at most N types remain
+    (fewer on a tie at the cut, more where merges at 1 are not made); 0 when N is at least the number of items or no
+    merge is below 1 (within CUT_TOLERANCE), the highest merge below 1 when that merge is at 1 or above."""
     below = sorted(h for _, _, h in merges if h < 1 - CUT_TOLERANCE)
     if not below:
         return 0.0
-    if rule == AUTO_CUT_GAP:
-        levels: list[float] = []
-        for h in below:
-            if not levels or h > levels[-1] + CUT_TOLERANCE:
-                levels.append(h)
-        levels.append(1.0)
-        best, at = -1.0, 0
-        for i in range(len(levels) - 1):
-            if levels[i + 1] - levels[i] > best + CUT_TOLERANCE:
-                best, at = levels[i + 1] - levels[i], i
-        return (levels[at] + levels[at + 1]) / 2
     k = len(merges) + 1 - int(rule)
     if k <= 0:
         return 0.0
@@ -624,6 +644,36 @@ def figure_unavailable() -> str | None:
     return None
 
 
+def manifest_libraries(files) -> list[str] | None:
+    """The domain libraries a release's manifest lists: the `library` partition of every file of table `l1_domains`
+    in its `files` list (sorted, distinct); None when the release has no manifest. `files` is a
+    `catalog.ReleaseFiles` (its `manifest`, None when it was read from the `release_def`) or a manifest dict. Never
+    a listing of directories (AGENTS §3.9)."""
+    manifest = files if isinstance(files, dict) else getattr(files, "manifest", None)
+    if manifest is None:
+        return None
+    return sorted({str(f["partitions"].get("library")) for f in manifest["files"] if f["table"] == "l1_domains"})
+
+
+def colour_defaults(level: str, files, library: str | None = None) -> tuple[str, str, str | None]:
+    """(--colour-weight, --colour-fallback, why not DEC-41's) for `nbr flanks --figure` (card W-32). At level nr50 or
+    nr90, when the release has a domain library (its manifest lists an `l1_domains` file, of `library` when one is
+    named): COLOUR_DEFAULTS, anchor-nr90 and pfam, and None. Otherwise COLOUR_OFF, locus and none, the colours before
+    the card, with the reason at nr50 and nr90 (None at pfam, whose families are Pfam architectures already)."""
+    if level == "pfam":
+        return COLOUR_OFF[0], COLOUR_OFF[1], None
+    release = getattr(files, "release", None) or (files.get("release_id") if isinstance(files, dict) else None)
+    libs = manifest_libraries(files)
+    if libs is None:
+        why = f"release {release} has no manifest, so no domain library is known for the figure's defaults"
+    elif not libs or (library is not None and library not in libs):
+        why = (f"the manifest of release {release} lists no domain library"
+               + (f" {library}" if library is not None and libs else "") + " (no l1_domains file)")
+    else:
+        return COLOUR_DEFAULTS[0], COLOUR_DEFAULTS[1], None
+    return COLOUR_OFF[0], COLOUR_OFF[1], why
+
+
 def _mpl():
     """matplotlib, imported on first use; its cache goes to a private temporary directory unless MPLCONFIGDIR is set
     (never the home directory: on the pod that is on /stor, AGENTS §7.3)."""
@@ -691,13 +741,15 @@ def _fallback_archs(loci: list[Locus], coloured: set[str], weight: str | None) -
             if g.key is not None and g.key not in coloured and g.arch in common}
 
 
-def run_colours(groups: dict[str, list[Locus]], weight: str | None = None,
-                fallback: str | None = None) -> dict[str, str]:
-    """One colour per family coloured in any group of the run (share >= FIGURE_MIN_SHARE there), ranked by the loci
-    of the run holding it (descending), then id: the same family has the same colour in every group's figure. With
-    `weight` the share is weighted (card W-31). With `fallback` "pfam", the architectures that stand in for grey
-    clusters in some group (FALLBACK_PREFIX + architecture) take the colours after them, ranked likewise, so the
-    clusters' colours do not change."""
+def run_palette(groups: dict[str, list[Locus]], weight: str | None = None, fallback: str | None = None,
+                families: dict[str, str] | None = None) -> tuple[dict[str, str], dict[str, str]]:
+    """(colours, absorbed). One colour per family coloured in any group of the run (share >= FIGURE_MIN_SHARE there),
+    ranked by the loci of the run holding it (descending), then id: the same family has the same colour in every
+    group's figure. With `weight` the share is weighted (card W-31). With `fallback` "pfam", the architectures that
+    stand in for grey clusters in some group (FALLBACK_PREFIX + architecture) take the colours after them, ranked
+    likewise. The one-colour rule (card W-32, module docstring): `absorbed` maps each coloured cluster whose family
+    (`families`, from `cluster_families`) is a stand-in to that architecture; such a cluster gets no colour of its own
+    and is drawn in the architecture's. Without `families` nothing is absorbed (as card W-31 drew it)."""
     held: Counter = Counter()
     arch_held: Counter = Counter()
     coloured: set[str] = set()
@@ -711,16 +763,23 @@ def run_colours(groups: dict[str, list[Locus]], weight: str | None = None,
         for loc in groups[gid]:
             held.update({g.key for g in loc.up + loc.down if g.key is not None})
             arch_held.update({g.arch for g in loc.up + loc.down if g.arch})
-    ranked = sorted(coloured, key=lambda k: (-held[k], k))
+    absorbed = {k: families[k] for k in sorted(coloured) if families and families.get(k) in archs}
+    ranked = sorted(coloured - set(absorbed), key=lambda k: (-held[k], k))
     out = {k: figure_colour(i) for i, k in enumerate(ranked)}
     for i, a in enumerate(sorted(archs, key=lambda a: (-arch_held[a], a))):
         out[FALLBACK_PREFIX + a] = figure_colour(len(ranked) + i)
-    return out
+    return out, absorbed
 
 
-def family_names(loci: list[Locus], level: str) -> dict[str, str]:
-    """Each family's legend name: at pfam its architecture; at nr50 or nr90 the cluster uid's first 8 hex digits and
-    the most common Pfam architecture of its genes in the run (ties: the least), when the release has a library."""
+def run_colours(groups: dict[str, list[Locus]], weight: str | None = None,
+                fallback: str | None = None) -> dict[str, str]:
+    """The colours of `run_palette` without the one-colour rule (card W-31's palette)."""
+    return run_palette(groups, weight, fallback)[0]
+
+
+def cluster_families(loci: list[Locus]) -> dict[str, str]:
+    """Each family id at the level that has an architecture -> the most common Pfam architecture of its genes in the
+    run (ties: the least): at nr50 or nr90 the cluster's family, the name the legend gives it."""
     archs: dict[str, Counter] = {}
     for loc in loci:
         for g in loc.up + loc.down:
@@ -728,15 +787,17 @@ def family_names(loci: list[Locus], level: str) -> dict[str, str]:
                 c = archs.setdefault(g.key, Counter())
                 if g.arch:
                     c[g.arch] += 1
-    out = {}
-    for k in sorted(archs):
-        if level == "pfam":
-            out[k] = k
-            continue
-        c = archs[k]
-        best = min(c, key=lambda a: (-c[a], a)) if c else None
-        out[k] = f"{k[:8]} {best}" if best else k[:8]
-    return out
+    return {k: min(c, key=lambda a: (-c[a], a)) for k, c in sorted(archs.items()) if c}
+
+
+def family_names(loci: list[Locus], level: str) -> dict[str, str]:
+    """Each family's legend name: at pfam its architecture; at nr50 or nr90 the cluster uid's first 8 hex digits and
+    the most common Pfam architecture of its genes in the run (ties: the least), when the release has a library."""
+    keys = sorted({g.key for loc in loci for g in loc.up + loc.down if g.key is not None})
+    if level == "pfam":
+        return {k: k for k in keys}
+    best = cluster_families(loci)
+    return {k: f"{k[:8]} {best[k]}" if k in best else k[:8] for k in keys}
 
 
 def _cut_text(s: str, n: int) -> str:
@@ -820,13 +881,16 @@ def _segments(n: int, merges: list[tuple[int, int, float]], y: dict[int, int]) -
 def figure_plan(gid: str, group_loci: list[Locus], kept: list[Leaf], merges, tree_order: list[int],
                 ctype: dict[int, int], colours: dict[str, str], names: dict[str, str], *, rows: int, facts: dict,
                 window: int, distance: str, cut: float, n_leaves: int, weight: str | None = None,
-                fallback: str | None = None, cut_rule: str | int | None = None) -> FigurePlan:
-    """What one group's figure draws (no matplotlib here). `weight`, `fallback` and `cut_rule` (how `cut` was chosen)
-    are card W-31's options; None draws as before the card."""
+                fallback: str | None = None, cut_rule: int | None = None,
+                absorbed: dict[str, str] | None = None) -> FigurePlan:
+    """What one group's figure draws (no matplotlib here). `weight`, `fallback` and `cut_rule` (the N of --auto-cut
+    that chose `cut`) are card W-31's options; None draws as before the card. `absorbed` (card W-32, `run_palette`):
+    the clusters drawn in their family's Pfam colour by the one-colour rule."""
+    absorbed = absorbed or {}
     shares = group_shares(group_loci, weight)
     coloured = {k for k, s in shares.items() if s >= FIGURE_MIN_SHARE}
     stand_in = _fallback_archs(group_loci, coloured, weight) if fallback == "pfam" else set()
-    if stand_in:
+    if stand_in or absorbed:
         shares = {**shares, **{FALLBACK_PREFIX + a: s for a, s in arch_shares(group_loci, weight).items()}}
     shown = figure_leaves(kept, ctype, tree_order, rows)
     y = {i: r for r, i in enumerate(shown)}
@@ -840,7 +904,12 @@ def figure_plan(gid: str, group_loci: list[Locus], kept: list[Leaf], merges, tre
         for side, lst in (("u", loc.up), ("d", loc.down)):
             for g in lst:
                 x0, x1 = _x_of(loc, g, side)
-                if g.key is None or g.key in coloured:
+                if g.key in absorbed and g.key in coloured:  # the one-colour rule
+                    ck = FALLBACK_PREFIX + absorbed[g.key]
+                    # the legend's % is the architecture's share; where no gene of the group carries it (the
+                    # cluster's genes here have another one), the cluster's own
+                    shares.setdefault(ck, shares[g.key])
+                elif g.key is None or g.key in coloured:
                     ck = g.key
                 elif g.arch in stand_in:
                     ck = FALLBACK_PREFIX + g.arch
@@ -870,8 +939,7 @@ def figure_plan(gid: str, group_loci: list[Locus], kept: list[Leaf], merges, tre
     if cut_rule is None:
         cut_text = f"cut {cut:g}"
     else:
-        how = "largest gap" if cut_rule == AUTO_CUT_GAP else f"at most {cut_rule} types"
-        cut_text = f"cut {cut:.4g} ({how}, --auto-cut {cut_rule})"
+        cut_text = f"cut {cut:.4g} (at most {cut_rule} types, --auto-cut {cut_rule})"
     title = [f"nbr flanks: group {gid}, {n_loci} loci in {n_leaves} leaves ({len(kept)} in the tree, "
              f"{len(set(ctype.values()))} context types)",
              f"release {facts['release']}, level {facts['level']}, window {window}g, distance {distance}, {cut_text}; "
@@ -883,8 +951,8 @@ def figure_plan(gid: str, group_loci: list[Locus], kept: list[Leaf], merges, tre
                          "near-identical loci count once")
         if fallback:
             extra.append(f"--colour-fallback pfam: a grey cluster takes its Pfam architecture's colour if that is in "
-                         f">= {FIGURE_MIN_SHARE:.0%}")
-        title.append("; ".join(extra))
+                         f">= {FIGURE_MIN_SHARE:.0%}, and a family so coloured has that one colour throughout")
+        title.extend(extra)  # one line each (card W-32), so that neither is cut at the title's width
     if len(shown) == len(kept):
         title.append(f"rows: all {len(kept)} leaves in the tree, in tree order; each row draws its leaf's first locus "
                      "(least feature_uid); loci = the loci collapsed into the leaf")
@@ -1074,15 +1142,20 @@ def _gff(loc: Locus) -> list[str]:
 
 def write(out_dir: Path, loci: list[Locus], facts: dict, *, window: int, group_by: str, distance: str, cut: float,
           max_leaves: int, export_gff: bool, notes: list[str], figure: bool = False,
-          figure_rows: int = DEFAULT_FIGURE_ROWS, auto: str | int | None = None, colour_weight: str | None = None,
-          colour_fallback: str | None = None) -> dict:
+          figure_rows: int = DEFAULT_FIGURE_ROWS, auto: int | None = None, colour_weight: str | None = None,
+          colour_fallback: str | None = None, given_colours: tuple[str | None, str | None] | None = None) -> dict:
     """Write every output into `out_dir` (which exists and is empty); one group's matrices, and with `figure` one
     group's figure, at a time. Returns counts for the stderr lines; appends to `notes` one line per sampled group.
-    Card W-31: `auto` chooses each group's cut from its tree (`auto_cut`) instead of `cut`; `colour_weight` and
-    `colour_fallback` change the figure's colours. Their defaults (None, "locus", "none") write what the code wrote
-    before the card, byte for byte."""
+    Card W-31: `auto` (N) chooses each group's cut from its tree (`auto_cut`) instead of `cut`; `colour_weight` and
+    `colour_fallback` are the figure's colours (None, "locus" and "none" draw as before the card; the command's
+    defaults are `colour_defaults`). Card W-32: `given_colours`, the (weight, fallback) given on the command line (None
+    where not given), are what groups.tsv records (a value other than locus or none); None records `colour_weight` and
+    `colour_fallback` themselves, as card W-31 did. With the fallback the one-colour rule holds (`run_palette`)."""
     weight = None if colour_weight in (None, "locus") else colour_weight
     fallback = None if colour_fallback in (None, "none") else colour_fallback
+    given_w, given_f = (colour_weight, colour_fallback) if given_colours is None else given_colours
+    record_w = None if given_w in (None, "locus") else given_w
+    record_f = None if given_f in (None, "none") else given_f
     groups: dict[str, list[Locus]] = {}
     for loc in loci:
         groups.setdefault(group_of(loc, group_by), []).append(loc)
@@ -1091,7 +1164,9 @@ def write(out_dir: Path, loci: list[Locus], facts: dict, *, window: int, group_b
     peak_leaves = 0
     n_figures = 0
     if figure:
-        colours, fam_names = run_colours(groups, weight, fallback), family_names(loci, facts["level"])
+        families = cluster_families(loci) if fallback == "pfam" else None
+        colours, absorbed = run_palette(groups, weight, fallback, families)
+        fam_names = family_names(loci, facts["level"])
         fam_names.update({k: f"Pfam {k[len(FALLBACK_PREFIX):]}" for k in colours if k.startswith(FALLBACK_PREFIX)})
     for gid in order:
         leaves = leaves_of(groups[gid], window)
@@ -1150,7 +1225,8 @@ def write(out_dir: Path, loci: list[Locus], facts: dict, *, window: int, group_b
         if figure:
             render_figure(figure_plan(gid, groups[gid], kept, merges, tree_order, ctype, colours, fam_names,
                                       rows=figure_rows, facts=facts, window=window, distance=distance, cut=gcut,
-                                      n_leaves=len(leaves), weight=weight, fallback=fallback, cut_rule=auto), gdir)
+                                      n_leaves=len(leaves), weight=weight, fallback=fallback, cut_rule=auto,
+                                      absorbed=absorbed), gdir)
             n_figures += 1
         for t, ix in enumerate(ranked):
             for r in conservation([loc for i in ix for loc in kept[i].loci]):
@@ -1173,14 +1249,19 @@ def write(out_dir: Path, loci: list[Locus], facts: dict, *, window: int, group_b
         head["cut"] = None
         head["auto_cut"] = auto
         group_columns = GROUP_COLUMNS + ["cut"]
-    if weight:
-        head["colour_weight"] = weight
-    if fallback:
-        head["colour_fallback"] = fallback
+    if record_w:  # card W-32: only a colour option given on the command line, so that the default tables are unchanged
+        head["colour_weight"] = record_w
+    if record_f:
+        head["colour_fallback"] = record_f
     export.write_lines([f"# {k}\t{json.dumps(v, separators=(',', ':'))}" for k, v in head.items()]
                        + list(_tsv(group_columns, group_rows)), out_dir / "groups.tsv")
-    w31 = auto is not None or weight is not None or fallback is not None
-    (out_dir / "README.txt").write_text(README + (README_W31 if w31 else ""), encoding="utf-8")
+    coloured_by_option = figure and (weight is not None or fallback is not None)
+    text = README
+    if auto is not None or coloured_by_option or record_w or record_f:
+        text += README_W31
+        if figure:
+            text += README_COLOURS.format(weight=weight or "locus", fallback=fallback or "none")
+    (out_dir / "README.txt").write_text(text, encoding="utf-8")
     n_gff = 0
     if export_gff:
         gff = out_dir / "gff"
@@ -1206,12 +1287,14 @@ def run(root: Path, anchors: set[bytes], out: Path, *, release: str, files, wind
         distance: str, cut: float, max_leaves: int, export_gff: bool, library: str | None, gene_call_version: str,
         tape_version: str | None, threads: int | None = None, tmp=None, figure: bool = False,
         figure_rows: int = DEFAULT_FIGURE_ROWS, run_file: tuple[str, str] | None = None,
-        auto: str | int | None = None, colour_weight: str | None = None,
-        colour_fallback: str | None = None) -> tuple[dict, list[str]]:
+        auto: int | None = None, colour_weight: str | None = None,
+        colour_fallback: str | None = None,
+        given_colours: tuple[str | None, str | None] | None = None) -> tuple[dict, list[str]]:
     """Load, group and write into `out` (new or empty, outside the root): filled under a temporary name beside it and
     renamed into place. Returns (counts, notes). `run_file` (card W-29), the (run id, release) the anchors came from,
-    is written as `RUN` in `out`; None when the anchors were given as protein uids. `auto`, `colour_weight` and
-    `colour_fallback`: card W-31's options (`write`)."""
+    is written as `RUN` in `out`; None when the anchors were given as protein uids. `auto`, `colour_weight`,
+    `colour_fallback` and `given_colours`: cards W-31 and W-32 (`write`; the command's colour defaults are
+    `colour_defaults`)."""
     loci, facts = load_loci(root, anchors, window, release=release, files=files, level=level, library=library,
                             gene_call_version=gene_call_version, tape_version=tape_version, threads=threads, tmp=tmp)
     facts.update({"release": release, "level": level, "n_anchor_proteins_given": len(anchors)})
@@ -1223,7 +1306,7 @@ def run(root: Path, anchors: set[bytes], out: Path, *, release: str, files, wind
         counts = write(staging, loci, facts, window=window, group_by=group_by, distance=distance, cut=cut,
                        max_leaves=max_leaves, export_gff=export_gff, notes=notes, figure=figure,
                        figure_rows=figure_rows, auto=auto, colour_weight=colour_weight,
-                       colour_fallback=colour_fallback)
+                       colour_fallback=colour_fallback, given_colours=given_colours)
         if run_file is not None:
             export.write_run_file(staging, *run_file)
         os.replace(staging, out)  # an empty `out` is replaced; one that gained files meanwhile is not (OSError)

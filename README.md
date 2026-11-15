@@ -1,7 +1,8 @@
 # bio-box (all-the-data)
 
-**Status, 2026-11-13:** three releases over the 10 Gbp set exist (search `rN.3`), the 50 Gbp set is clustered and
-its Pfam scans are running, and no release has been signed yet. The running record is
+**Status, 2026-11-15:** the 50 Gbp release `rM.2` (seven stages, Pfam on every one) is built, verified, has its
+search pack and passed both worked examples: it is the release to search. The 10 Gbp release `rN.3` stays
+available. No release has been signed yet. The running record is
 [`planning/tasks/STATUS.md`](planning/tasks/STATUS.md); where this file and that one differ, that one is newer.
 
 Numbers here carry the labels [`AGENTS.md`](AGENTS.md) §6 requires: *measured* (on the pod unless stated, with the
@@ -37,7 +38,7 @@ capped-unit launcher that [`RUNBOOK.md`](RUNBOOK.md) §0 and §7 define. [`GUIDE
 | `bio-box seq` | a protein by uid, or a contig slice by accession and coordinates, as FASTA (GUIDE §7) |
 | `bio-box sql` | read-only SELECT statements on a release's catalog (GUIDE §7; AGENT_GUIDE §5) |
 | `bio-box releases` | the releases of a data root: stages, counts, libraries, lookup tables, search pack (GUIDE §2) |
-| `bio-box results` | `archive`, `list` and `get` keep a finished run on durable storage (DEC-33; GUIDE §5). The durable directory does not exist yet, so these wait on an open item for the PI |
+| `bio-box results` | `archive`, `flush`, `list` and `get` keep a finished run with its outputs under the profile's `bulk` area, `<bulk>/results` (DEC-33, DEC-42; GUIDE §5). The first bundle, the RNA polymerase run of `rN.3`, is on `/stor` since 2026-11-14 |
 
 Also there: `search run|status|cancel|hits`, `export proteins` and `release verify` (GUIDE §7).
 
@@ -91,10 +92,10 @@ server's network storage, each file with a sha256 in [`sources.yaml`](sources.ya
 |---|---|---|---|
 | `rN.1` | `S1`, `P1`, `P2` | 12,048,866 genes, 10,620,684 distinct proteins, 2,966,200 NR50 and 8,278,537 NR90 clusters; no Pfam (*measured*, 2026-11-10, STATUS "10 Gbp rebuild") | verified; built before the lookup tables |
 | `rN.2` | the same | the same with Pfam 38.2 | verified |
-| `rN.3` | the same | the same with Pfam 38.2 and the lookup tables, built by current code; clusters equal to `rN.2` row for row (*measured*, `2026-11-11_build_r50.md` §A3) | verified; has a search pack: **the one to use** |
+| `rN.3` | the same | the same with Pfam 38.2 and the lookup tables, built by current code; clusters equal to `rN.2` row for row (*measured*, `2026-11-11_build_r50.md` §A3) | verified; has a search pack; both worked examples hold (2026-11-13); the release to use for the 10 Gbp set |
 | `rN.1a`, `rN.1b` | intermediate releases of the same rebuild | | verified |
-| `rM.1` | `S1`, `P1` to `P6` | 54,265 contigs, 39,224 genomes, 45,815,843 proteins, 31,183,876 NR90 and 8,192,065 NR50 clusters (*measured*, 2026-11-12, STATUS handoff and card B-46) | clustered; its later release steps ran clean in scratch (card B-46) and are to be rerun in the root |
-| `rM.2` | `S1`, `P1` to `P6` | Pfam on every stage | not built: follows the scans |
+| `rM.1` | `S1`, `P1` to `P6` | the same stages and proteins as `rM.2`; its cluster files are byte-identical to `rM.2`'s (*measured*, 2026-11-14, STATUS handoff) | clustered only, left so on purpose (it would be a second copy of `rM.2`; STATUS open items 1 and 6) |
+| `rM.2` | `S1`, `P1` to `P6` | 54,265 contigs, 39,224 genomes, 45,815,843 distinct proteins, 31,183,876 NR90 and 8,192,065 NR50 clusters, Pfam 38.2 on every stage (*measured*, 2026-11-14, STATUS handoff; the cluster counts are `rM.1`'s, whose cluster files are the same bytes) | verified (2026-11-14); search pack `26e10f05…` (25.8 GB); both worked examples hold, 37 invariants (*measured*, 2026-11-15, [`2026-11-14_release_examples_rM2.md`](planning/measurements/2026-11-14_release_examples_rM2.md)): **the one to use**. Known limits: no CRISPR arrays in it yet (STATUS open item 6); its stages `S1`, `P1`, `P2` have no label table, so a lookup by accession scans those stages (card W-36; seconds) |
 
 Non-coding RNA: the producer and its frozen model set exist (DEC-28, DEC-30), but no built stage has been scanned, so no
 release has ncRNA features.
@@ -171,22 +172,34 @@ The specification and plan behind these are [`00-spec.md`](00-spec.md), [`PLAN.m
 | 2026-11-13 | Worked examples are release checks: one command runs both on a release; on `rN.3` 92 checks ok, none failed (*measured*) | [`examples/README.md`](examples/README.md), [`2026-11-13_release_examples_rN3.md`](planning/measurements/2026-11-13_release_examples_rN3.md) |
 | 2026-11-13 to 14 | CRISPR arrays: MinCED in the images, arrays as features (2,790 arrays on the 10 Gbp stages, *measured*), shown beside a locus by `bio-box nbr` (cards E-12, E-13, E-14) | [`2026-11-13_crispr_arrays.md`](planning/measurements/2026-11-13_crispr_arrays.md), [`2026-11-14_arrays_in_neighbourhoods.md`](planning/measurements/2026-11-14_arrays_in_neighbourhoods.md) |
 | 2026-11-14 | Pfam 38.2 scanned on every stage of the 50 Gbp set (the last scan, `P6`, published 04:52 CST) | STATUS handoff |
+| 2026-11-14 | A second CRISPR producer for the short arrays beside Cas genes (DEC-40, card E-15): MinCED at two repeats, kept only within 1 kb of a Cas gene, outside genes and away from the default arrays; 78 calls on 10.6 Gbp, and 14 of the 20 Tn7-like TniQ loci of the worked example now show an array (*measured*) | [`2026-11-14_crispr_two_repeat_producer.md`](planning/measurements/2026-11-14_crispr_two_repeat_producer.md) |
+| 2026-11-14 | Search results are kept under the `bulk` area (DEC-42, card W-33); the first bundle, the RNA polymerase run of `rN.3` with its neighbourhood tables (164.6 MB, *measured*), is on durable storage | STATUS row W-33 |
 
-**Now** (2026-11-14; STATUS handoff)
+**Now** (2026-11-15; STATUS handoff)
 
-- `rM.2`, the 50 Gbp release with Pfam on every stage, is building: the Pfam scans of `P3` to `P6` finished between
-  2026-11-12 and 2026-11-14, and the release steps (clustering about 46 M proteins, then tokens, postings, manifest
-  and catalog) started on 2026-11-14. Then it is verified, its search pack is built, both worked examples are run on
-  it (AGENTS §5.7; `scripts/release_examples.sh`), and the data root is copied to durable storage.
+- `rM.2`, the 50 Gbp release with Pfam on every stage, is the release to use since 2026-11-15. It was built and
+  verified on 2026-11-14 (seven stages, 39,224 genomes, 45,815,843 proteins, *measured*); its search pack was
+  built in 8 parts, since one process would pass the server's limit per process (25.8 GB; card W-35); the release
+  check (AGENTS §5.7; `scripts/release_examples.sh`) first stopped it, because lookups by accession failed for the
+  three stages built before the label table existed, and passed after the readers were fixed (card W-36): both
+  worked examples hold on it, 37 invariants. On it the TniQ loci beside a Cas7f grow from 20 to 60 and the RNA
+  polymerase search finds 2,036 proteins (*measured*, the release check's note). The data root (81 GB) has a copy
+  on durable storage since 2026-11-14, and its two independent clustering runs of the same 45.8 M proteins gave
+  byte-identical cluster tables (*measured*; STATUS handoff).
 - Tests, builds and searches on the server run in the images built from `main` at pull request 5 (cards C-29, C-32);
   the `rM.2` build alone keeps the older image, so its run records name one image.
-- S2C phase 2 is fetched (13,477 of 13,485 genomes, 2026-11-13); its split into stages is an open item for the PI,
-  and its build follows the 50 Gbp release (card C-25).
-- CRISPR arrays are called with MinCED and stored as features (card E-12), and `bio-box nbr` shows the arrays beside
-  a locus (card E-14); no release holds them yet. Arrays of two repeats, which Tn7-like elements carry, need a
-  filtered second producer (measured in card E-13; an open item for the PI).
+- S2C phase 2 is fetched (13,477 of 13,485 genomes, 2026-11-13); it is built as six stages of 9.2 to 9.5 Gbp after
+  the 50 Gbp release (DEC-34, DEC-35; card C-25 step 3 and cards B-47a to B-47e).
+- CRISPR arrays are called with MinCED and stored as features (card E-12), `bio-box nbr` shows the arrays beside a
+  locus (card E-14), and a second, filtered producer keeps the short arrays beside Cas genes that Tn7-like elements
+  carry (card E-15). Both producers have run on the seven built stages (13,477 and 414 arrays, *measured*,
+  2026-11-15, card C-33 part 1); no release lists the arrays yet (STATUS open item 6). On phages the filter keeps
+  14 times what chance gives, all of it one real locus in ICP1-like phages (*measured*, card E-16).
 - The synthetic world has its null worlds (card F-02, session 9) but holds the specification's ranges at its default
-  seed only (session 10): its redesign over seeds is an open item for the PI, and the statistics wait for it.
+  seed only (session 10). Its redesign over seeds (DEC-36, DEC-37; session 11) now holds genome size, the planted
+  share and the strength grid at 22 of 22 seeds (*measured*), but six assertions about plasmids, the core genome
+  and sequence identity fail in the older world it makes; that is an open item for the PI (STATUS, open item 5),
+  and its branch is not merged. The statistics wait for it and for the sequence model's change (DEC-39).
 
 **Next, in order**
 

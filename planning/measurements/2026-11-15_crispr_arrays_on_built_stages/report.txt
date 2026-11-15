@@ -1,0 +1,28 @@
+before: 3347 files; after: 3403 files; new 56; gone 0; size or mtime changed 0; P1 and S1 files hashed before 90, after 106, sha256 changed 0
+new files among P1 and S1 in the after hashes: 16 (all must be the producers')
+root_added.tsv: 56 files, 26958140 bytes
+oracle S1 nr3 against e15: 3 files, equal
+oracle S1 nr3 against e12: 3 files, equal
+oracle S1 near against e15: 3 files, equal
+oracle P1 nr3 against e15: 3 files, equal
+oracle P1 nr3 against e12: 3 files, equal
+oracle P1 near against e15: 3 files, equal
+oracle P2 nr3 against e15: 3 files, equal
+oracle P2 nr3 against e12: 3 files, equal
+oracle P2 near against e15: 3 files, equal
+S1 nr3: arrays 213, calls in 213, rejected {}, contigs 27258 searched, 0 another stage's; 5.085 CPU-min (estimate 5.048, ratio 1.007), 90.0 s, peak 561.3 MB, unit peak 1457700864
+P1 nr3: arrays 286, calls in 286, rejected {}, contigs 539 searched, 0 another stage's; 3.085 CPU-min (estimate 3.084, ratio 1.000), 50.1 s, peak 355.1 MB, unit peak 1777283072
+P2 nr3: arrays 2291, calls in 2291, rejected {}, contigs 5018 searched, 0 another stage's; 26.489 CPU-min (estimate 29.108, ratio 0.910), 404.1 s, peak 476.8 MB, unit peak 1871638528
+P3 nr3: arrays 3921, calls in 3921, rejected {}, contigs 9107 searched, 1 another stage's; 29.195 CPU-min (estimate 30.179, ratio 0.967), 445.2 s, peak 548.2 MB, unit peak 1899618304
+P4 nr3: arrays 2520, calls in 2520, rejected {}, contigs 4005 searched, 1 another stage's; 27.585 CPU-min (estimate 30.262, ratio 0.912), 418.8 s, peak 454.2 MB, unit peak 1845989376
+P5 nr3: arrays 2205, calls in 2205, rejected {}, contigs 4111 searched, 1 another stage's; 27.505 CPU-min (estimate 30.235, ratio 0.910), 418.7 s, peak 475.3 MB, unit peak 1874976768
+P6 nr3: arrays 2041, calls in 2041, rejected {}, contigs 4227 searched, 1 another stage's; 27.938 CPU-min (estimate 30.220, ratio 0.924), 425.4 s, peak 465.7 MB, unit peak 1880981504
+S1 near: arrays 34, calls in 3613, rejected {'far_from_cas': 3360, 'overlaps_default': 219}, contigs 27258 searched, 0 another stage's; 5.487 CPU-min (estimate 6.007, ratio 0.913), 96.7 s, peak 624.4 MB, unit peak 1457348608
+P1 near: arrays 6, calls in 3379, rejected {'far_from_cas': 3076, 'overlaps_default': 294, 'inside_gene': 3}, contigs 539 searched, 0 another stage's; 3.383 CPU-min (estimate 3.670, ratio 0.922), 56.4 s, peak 454.6 MB, unit peak 1809698816
+P2 near: arrays 72, calls in 30682, rejected {'far_from_cas': 28243, 'overlaps_default': 2354, 'inside_gene': 13}, contigs 5018 searched, 0 another stage's; 31.794 CPU-min (estimate 34.639, ratio 0.918), 493.2 s, peak 1067.4 MB, unit peak 1932046336
+P3 near: arrays 118, calls in 39391, rejected {'far_from_cas': 35212, 'overlaps_default': 4039, 'inside_gene': 22}, contigs 9107 searched, 1 another stage's; 33.386 CPU-min (estimate 35.913, ratio 0.930), 516.0 s, peak 1199.3 MB, unit peak 1958182912
+P4 near: arrays 69, calls in 30835, rejected {'far_from_cas': 28194, 'overlaps_default': 2567, 'inside_gene': 5}, contigs 4005 searched, 1 another stage's; 32.606 CPU-min (estimate 36.012, ratio 0.905), 502.7 s, peak 1071.6 MB, unit peak 1900126208
+P5 near: arrays 56, calls in 29779, rejected {'far_from_cas': 27437, 'overlaps_default': 2278, 'inside_gene': 8}, contigs 4111 searched, 1 another stage's; 32.361 CPU-min (estimate 35.980, ratio 0.899), 499.7 s, peak 1108.6 MB, unit peak 1932251136
+P6 near: arrays 59, calls in 30953, rejected {'far_from_cas': 28794, 'overlaps_default': 2090, 'inside_gene': 10}, contigs 4227 searched, 1 another stage's; 32.796 CPU-min (estimate 35.961, ratio 0.912), 505.6 s, peak 1086.3 MB, unit peak 1943547904
+CPU-minutes in all: {'nr3': 146.882, 'near': 171.813}; images ['sha256:d67300aa1321b571fa8da79e74dfccdd87a8dca2e56518f324902efa6b9f098a']; code ids ['6d3c4606bd136e8a66d3a5804819dbbb5d0b5494c8228c0a00cbdba70e8070f4']
+RESULT: all checks pass

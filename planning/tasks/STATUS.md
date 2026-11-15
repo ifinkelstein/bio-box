@@ -5,52 +5,100 @@ The running record of the cards in [`TASKS.md`](TASKS.md). Updated at every merg
 by an agent on its own branch `task/<ID>`, audited by the orchestrating session, and merged after its
 tests passed on the merged tree.
 
-## Handoff, 2026-11-14 09:45 CST (current; the dated sections under "History" are superseded where they differ)
+## Handoff, 2026-11-15 13:18 CST (current; the dated sections under "History" are superseded where they differ)
 
 Written so a new session can continue without the conversation that produced this file. Times are the pod's clock
 (CST); read it with `ssh ... date` before writing a time here.
 
 **Mode: the orchestrator works independently** (PI, 2026-11-13 about 21:40), on its own recommendations where a choice
-is cheap to reverse, at most two heavy (Opus) agents at once because of the account's usage limit, and it stops for
-the PI at the S2C phase 2 build and at a failed release check. The usage limit has stopped agents four times
-(2026-11-13 15:45 and 20:55, 2026-11-14 01:40 twice counting the orchestrator): an agent stopped that way is resumed
+is cheap to reverse, **at most four agents at once** (PI, 2026-11-15, DEC-46; from 2026-11-13 to then the
+orchestrator held it to two Opus agents because of the account's usage limit), and it stops for
+the PI at the S2C phase 2 build and at a failed release check. The usage limit has stopped agents five times
+(2026-11-13 15:45 and 20:55, 2026-11-14 01:40 twice counting the orchestrator, and the weekly limit at about 12:20): an agent stopped that way is resumed
 with `SendMessage` to the same agent once the limit resets; nothing is lost.
 
-**State on 2026-11-14 at 09:45 CST.**
+**State on 2026-11-15 at 13:18 CST.**
 
-*The one thing running: the 50 Gbp release `rM.2`.*
-- All four Pfam scans are published (P3 2026-11-12 22:37, P4 2026-11-13 08:06, P5 2026-11-13 evening, P6 2026-11-14
-  04:52). The tree of `plan/task-cards` at `5ba68a6` was synced to `/tmp/if2453/ci/r50` at 05:50, after its
-  release-step tests passed in the build's own old image (`bio-box-test_74b3e05.sif` with `pilot_s1/pydeps`: 1,239
-  passed, 4 skipped, *measured*), so the release keeps one image.
-- First launch: unit `r50-rM2-13`, 05:52 to 09:31, 32 threads (24 clustering parts, 3 at once, 10 threads each). It
-  published 109 steps: the NR90 step through its second prefilter, parts 0 to 20 of 24 (4,119 CPU-minutes, *derived*
-  from the unit's `CPUUsageNSec`).
-- **Relaunched with more threads at the PI's request** ("can increase to 40 threads?", 09:20). More parts at once is
-  not possible: each prefilter part holds about 52 GB and three already fill the unit's 200 GB cap (*measured*:
-  `MemoryPeak` 214,748,364,800). More threads per part is: the orchestrator wrote `STOP` in the root at 09:28, at the
-  end of that prefilter call; `build-stage` let the running parts end, did not publish the three that ended after
-  `STOP` appeared (they are rerun: about 13 minutes of work), and exited 75; the driver wrote `FAILED` (kept as
-  `driver/FAILED.0931-threads`) and ended. `STOP` was removed and the driver relaunched at 09:31 with
-  `SKIP_RM1=1 REL_CPUS=16 BIG_THREADS=48`: **unit `r50-rM2-14`, 48 threads, 3 parts of 16 threads**, under the weekend
-  cap of 56 (the build's log: "allowance 56 threads: cap 56 (Sat 09:31, night or weekend)"). Log
-  `/tmp/if2453/r50/tmp/logs/r50-rM2-14.log`; driver log `/tmp/if2453/r50/driver.log`; the driver's stdout
-  `/tmp/if2453/r50/driver.out`. Its single-process start took 21.5 minutes (09:31:43 to 09:53:16; the first launch spent 13 minutes
-  there), and at 09:53 the three unpublished prefilter parts started again, each with "allowance 16 threads of 16 asked". So a pause costs about 35 minutes: plan for it before the next one.
-- If it is still running on Monday at 08:00 the cap falls to 40: stop it the same way before then and relaunch with
-  `REL_CPUS=13 BIG_THREADS=40`. To pause without relaunching: `touch /tmp/if2453/r50/driver/HALT` stops the driver
-  before its next launch only; `STOP` in the root stops the build after its running parts.
-- Ahead: the rest of NR90, NR50 (the larger half), then tokens, postings, the dimension tables, manifest and catalog;
-  the driver then verifies `rM.2` and `rN.3` and writes `driver/DONE`, or `driver/FAILED`. Estimate: evening of
-  2026-11-14 (about 13,000 to 15,000 CPU-minutes left of card B-43's 16,918 to 18,910 at 50 M proteins, at 48
-  threads less the single-thread steps; *estimate*). A watcher in the orchestrating session reports the end.
-- Free space on `/tmp`: 292 GB at 09:40; clustering scratch 49 GB then, 148 GB at the peak of `rM.1`.
-- **After it, in order**: (1) read `driver/verify-rM.2.log`; (2) build the search pack of `rM.2` (RUNBOOK §7;
-  `rN.1`'s took 86 CPU-minutes for 10 Gbp); (3) `scripts/release_examples.sh rM.2` (RUNBOOK §6, AGENTS §5.7; needs
-  the pack; a failed invariant stops the announcement); (4) copy the data root `/tmp/if2453/r10/root` to `/stor` (it
-  is on local disk only: a reboot loses every build); (5) finish `rM.1`'s release steps (the driver skipped them:
-  `SKIP_RM1`; card B-46 ran them clean in scratch); (6) the CRISPR step on the seven built stages with the image of
-  `faec1f4` (about 2.5 CPU-hours, *derived*), as stage files of their own for the release after `rM.2`.
+*The 50 Gbp release `rM.2` is built and verified* (2026-11-14 17:32 CST), *has its pack* (20:54), *passed the
+release check* (2026-11-15 00:06) *and is announced as the release to use* (2026-11-15, `README.md`, `GUIDE.md`).
+- `build-stage: stage P6 and release rM.2: all 13 steps done` at 17:27; `release verify` at 17:30: "release rM.2:
+  verified (stages S1,P1,P2,P3,P4,P5,P6, 158 files, 154 artifacts, manifest hash
+  2239df7b92ec775058fb9c2ddae3609e)"; `rN.3` verified again after it (manifest hash unchanged,
+  `eee598acd16324d1dd73349cfd6d931f`); the driver wrote `driver/DONE` at 17:32 (*measured*, wilkcomp02,
+  `/tmp/if2453/r50/driver.log`, `driver/verify-rM.2.log`). `bio-box releases`: 39,224 genomes, 54,265 contigs,
+  45,815,843 proteins, Pfam 38.2, with the lookup tables and the domain-family tokens; no search pack yet.
+- Cost of the release steps (*derived* from the two units' `CPUUsageNSec`): 4,119 CPU-minutes in `r50-rM2-13`
+  (05:52 to 09:31, 32 threads) and 10,531 in `r50-rM2-14` (09:31 to 17:27, 48 threads: 3 clustering parts of 16),
+  14,650 in all, against card B-43's estimate of 16,918 to 18,910 at 50 M proteins: 13% under its lower end.
+  Largest single step 238 CPU-minutes; memory peak 177.6 GB in the second unit (the first reached its 200 GB cap);
+  clustering scratch peaked at 148.8 GB. One pause at the PI's request for more threads (09:28 to 09:53, about 35
+  minutes; `driver/FAILED.0931-threads` is its record, not a failure of the build).
+- The build ran in the old image (`bio-box-test_74b3e05.sif` with `pilot_s1/pydeps`) and the tree `5ba68a6`
+  (`/tmp/if2453/ci/r50`), as every earlier step of its stages, so its run records name one image. Its tests passed
+  in that image before the launch (1,239 passed, 4 skipped, *measured*).
+- **Durable copy: done** (2026-11-14, 17:38 to 17:55; *measured*, wilkcomp02, unit `root-backup`, script and log in
+  `/tmp/if2453/backup/`: `root_backup.sh`, `backup.log`, `SHA256`). The data root `/tmp/if2453/r10/root`
+  (80,980,451,328 bytes by `du`) is in
+  `/stor/scratch/Wilke/if2453/all-the-data/provisional/root_rM2_20261114/` as four uncompressed tars, 80,971,898,880
+  bytes and 3,347 files in all (*derived*: the sums). Each was written under a dot-named temporary name, read back
+  from `/stor`, its sha256 found equal to that of the same tar stream made again from the source, its member count
+  equal to the source's file count, then renamed; nothing on `/stor` was overwritten; no manifest file was written
+  there (it would be under 64 MB), so these lines are the record:
+
+  | File | Bytes | Files | sha256 |
+  |---|---|---|---|
+  | `l1_and_records.tar` (`l1`, `catalog`, `dim`, `l0`, `ledger`, `manifests`, `release_def`, `runs`) | 9,860,751,360 | 2,113 | `6a60a2a8f983a0c735ff9f4b06096a264f3a659d1f15eb55a7e202911d32d9ab` |
+  | `l3.tar` | 15,692,646,400 | 46 | `5da069d29af6e4b958e387f972d5cf89cf252cb35001b16614b55fde322a7ebf` |
+  | `l2.tar` | 27,176,785,920 | 983 | `ee1590dc93c02d63085a1c41e15ed83079548b4d92fba91a7e7c4c2d31927ef9` |
+  | `l0seq.tar` | 28,241,715,200 | 205 | `693df3987775135e8f019a8872e0fa22978e593be5493a1380042eb15de845d4` |
+
+  To restore: `tar -C <new root> -xf` each of the four (made with `tar --sort=name -C <root> -cf`). The small
+  record directories ride in the first tar because together they are 26 MB. Whatever is added to the root later
+  (arrays, a new stage, a new release) needs a further tar of the new files only; the root's files are never
+  rewritten (AGENTS §3.10), so the four above stay valid. **Not yet in the durable copy**: the 65 files added on 2026-11-15, 28,631,175 bytes (*measured*, the orchestrator's listing at 07:02): 56 of the CRISPR producers (card C-33 part 1; list with sha256 in `planning/measurements/2026-11-15_crispr_arrays_on_built_stages/root_added.tsv`) and 9 of the label files of S1, P1 and P2 (card C-34; `planning/measurements/2026-11-15_label_files_old_stages/root_added.tsv`). A tar of them would be under 64 MB (AGENTS §7.3), so they go to `/stor` with stage H1's files (card C-24); they can be made again in about 320 CPU-minutes (*measured*: 146.9 + 171.8).
+- **Two clustering runs of the same 45,815,843 proteins gave the same bytes** (*measured*, wilkcomp02, 2026-11-14
+  17:57, `/tmp/if2453/audit/cmp_rm1_rm2.sh`, sha256 of every file): the 11 files of `cluster_member`,
+  `cluster_member_aln` and `member_cluster` of `rM.1` (clustered 2026-11-11 to 12, 30 threads) and of `rM.2`
+  (clustered today at 32 and then 48 threads, with one pause) are byte-identical. The 443 `cluster_plan` records
+  differ only in the release's name and the plan hash that covers it (one record compared by `diff`; its input and
+  output hashes are equal).
+- **`rM.1` is left as it is** (orchestrator's choice, cheap to reverse): it is clustered and has no tokens,
+  postings or manifest. Its definition now reads the same seven stages and the same Pfam library as `rM.2`, and its
+  clusters are the same bytes, so finishing it would write a second copy of `rM.2` (about 7.3 GB of tokens and
+  postings, *derived* from `rM.2`'s directories) and tell us nothing new. To finish it anyway: relaunch the driver
+  without `SKIP_RM1` (old image and tree); it skips every phase whose result exists.
+- **What `rM.2` still needs before it is announced as the release to use** (AGENTS §5.7):
+  1. Its search pack: **done** (card W-35, 20:54): pack `26e10f05401faeefb78769e83f7f6cb4`, 25.8 GB, built in 8
+     parts because one process would have taken 387 CPU-minutes (*derived*), verified, in the profile's pack
+     directory `/tmp/if2453/bio-box/packs`.
+  2. `scripts/release_examples.sh rM.2` (RUNBOOK §6): **run, and it stopped the announcement** (*measured*,
+     wilkcomp02, 2026-11-14, 22:13 to 22:15, unit `ex-rM2`, tree `/tmp/if2453/ci/rM2post` at `ac24001`, output
+     `/tmp/if2453/ex-rM2/out`, log `/tmp/if2453/ex-rM2/examples.log`): "rM.2: 2 examples, 37 invariant(s) failed or
+     missing (crispr_cas_neighbourhoods: 19, rnap: 18)". Both examples stop at their first step, finding the
+     positive control by accession: `bio-box find` refuses with "no contig of release rM.2 has the accession
+     NC_001604" (phage T7, stage S1) and "... NZ_AP026781.1" (stage P2), though both contigs are in the release.
+     Cause (*measured*, `ls`): `l0seq/contig_label/` has files for P3 to P6 only; S1, P1 and P2 were built before
+     card B-27, and the fallback of card W-18 applies only to a release with no label file at all. So in `rM.2`
+     the contigs of S1, P1 and P2 (32,815 of 54,265, *derived*) have no accession for any lookup, and neither
+     `release verify` nor `bio-box releases` says so. No search was run; the data and the pack are not in doubt.
+     **Card W-36** fixes the readers (per stage: labels where a stage has them, else from `contig_occurrence`),
+     makes `release verify` and `releases` name the unlabelled stages, and reruns the release check on `rM.2`.
+     When every invariant holds: its note into `planning/measurements/`, each example's `recorded/rM.2.tsv`, then
+     the announcement of `rM.2` in `README.md` and `GUIDE.md`. **Until then `rN.3` stays the release to use.**
+     **Fixed and passed** (card W-36, merged 2026-11-15): with the readers fixed, the check ran again from 22:38
+     to 00:06 (unit `w36-ex-rM2`, output `/tmp/if2453/w36/ex-rM2`): "rM.2: 2 examples, every invariant holds", 37
+     invariants ok, 55 recorded values new (*measured*; the orchestrator read `summary.tsv` and ran both lookups
+     and `release verify` again on the merged tree at 01:47). Its note and each example's `recorded/rM.2.tsv` are
+     in the repository. `rM.2` is announced; `rN.3` stays the release for the 10 Gbp set. Known limits of `rM.2`:
+     no CRISPR arrays (open item 6); lookups by accession scan stages S1, P1 and P2 (card C-34 gives them label
+     files); the `[requires l1_crispr]` checks are `n/a` on it.
+- **Next on the pod, in order** (one build at a time in the root): (a) card C-33: the CRISPR arrays of both
+  producers on the seven built stages and the release that holds them (DEC-40); (b) card C-24 (stage H1), then C-26
+  (PLSDB), each with the image of `faec1f4`: **the next build sets `IMAGE` and `DIGEST` in its driver to the values
+  of RUNBOOK §0**; (c) C-25 step 3 and B-47a to B-47e (S2C phase 2), then ncRNA (DEC-42). Each adds a further tar
+  of its new files to the durable copy.
+- The pod's cap falls to 40 threads on Monday at 08:00 (weekday days): nothing of ours may then use more.
+- Free space on `/tmp`: 374 GB at 17:35 (the build's scratch is gone; the cleanup of 14:41 freed 60 GB).
 
 *Code and images.*
 - `main` is at pull request 5 (merge commit `faec1f4`, 2026-11-13). The images built from it are the pod's default
@@ -59,22 +107,39 @@ with `SendMessage` to the same agent once the limit resets; nothing is lost.
   skani 0.4.0, matplotlib, zombi2, MMseqs2 18.8cc5c, HMMER 3.4, Infernal 1.1.5, samtools 1.25. `pod_pytest.sh` and
   `detached_suite.sh` put only the tree's `src` on `PYTHONPATH`. The `rM.2` build alone keeps the old image; **the
   next build sets `IMAGE` and `DIGEST` in its driver to the `faec1f4` values of RUNBOOK §0**.
-- `plan/task-cards` is ahead of `main` by F-02 sessions 8 to 10, E-12, C-32, E-13, A-08 and E-14; none changes
-  `container/environment.yml` or `uv.lock`, so no new image is needed. Every push through `feef976` was green on
-  Actions; the run on `25a32d2` (E-14) was not read yet at 09:45.
+- `plan/task-cards` is ahead of `main` by F-02 sessions 8 to 10, E-12, C-32, E-13, A-08, E-14 and, since the
+  afternoon of 2026-11-14, W-33, E-15, W-34 and W-32; none changes `container/environment.yml` or `uv.lock`, so no
+  new image is needed. Every push through `597ae8b` (the W-32 merge) was green on Actions. **The whole suite on the
+  merged tree at `597ae8b`** (pod, 8 detached shards, test image of `faec1f4`, 18:19 to 19:07; *measured*,
+  `/tmp/if2453/ci-tmp/suite1114-detached/log.*`): 2,235 passed, 23 skipped, none failed (*derived*: the sums of
+  274, 513, 239, 243, 228, 226, 316 and 196 passed and of 0, 4, 1, 3, 5, 9, 1 and 0 skipped), the cross-host test
+  among them with the peer hash of Actions.
 - The fixture's manifest hash is `28ffa9808ecd4829e52f6892f94f7b85` since E-12, equal on Actions and the pod;
   `/tmp/if2453/ci-peer/right.json` holds it.
 
-*Agents.* None running at 09:45. Merged on 2026-11-13 and 14: C-28, C-27 step 4, C-25 step 2, C-29, C-30, C-31, C-32,
+*Agents.* Four at 13:18 on 2026-11-15, after the PI's decisions of about 13:15 (DEC-43 to DEC-46): C-24 (the H1 build, resumed), B-48 (gene calling in batch steps; since 11:10), F-02 session 12 and B-49 (both starting). C-26 part 1 and E-17 are done and merged. C-34, E-16, C-33 part 1 and W-36 are done and merged. F-02 session 11 ended at 01:15 with four questions for the PI (open item 5); W-33, E-15, W-34, W-32 and W-35 were done and merged on 2026-11-14; see "Agents running" below. Merged on 2026-11-13 and 14: C-28, C-27 step 4, C-25 step 2, C-29, C-30, C-31, C-32,
 W-30, W-31, A-08, E-11, E-12, E-13, E-14, F-02 sessions 4 to 10 (10 is a measurement), the README, the CRISPR example.
 
-*What is blocked, and on what.*
-- **The statistics track** (F-01, F-03 and the rest of F-02): the synthetic world holds the spec's ranges at its
-  default seed only (F-02 session 10; 6 of 21 seeds in band). Five design questions for the PI, with the
-  orchestrator's recommendations, are under "Open items"; until they are answered the generator is not changed.
-- **S2C phase 2** (56 Gbp, fetched and on `/stor`): no longer blocked on the PI (DEC-34, DEC-35, 2026-11-14). It waits for pod threads: card C-25 step 3 and cards B-47a to B-47e start when the `rM.2` build ends.
-- **Short CRISPR arrays** on Tn7-like elements: the filtered two-repeat producer of card E-13 (PI: yes or no).
-- Nothing else waits on the PI to proceed: after `rM.2`, stage H1 (card C-24) and PLSDB (card C-26) can be built.
+*What is blocked, and on what.* **Nothing waits on the PI since 13:15 on 2026-11-15** (DEC-43 to DEC-46 answer open
+items 1, 2, 4, 5, 6 and 7 and the PLSDB defaults; item 3 was closed by measurement).
+- **The statistics track** (F-01, F-03 and the rest of F-02): F-02 session 12 (starting) finishes the redesign as
+  DEC-44 decides (the motif test accepts a tandem twin, decoy transfer raised, plasmid rates 0.1 and 0.3, N0's
+  correlation dropped), from session 11's branch and its candidate B, re-pins and merges; then the sequence model
+  so that detectability falls with divergence (session 13, DEC-39), then the N2 worlds, the ablation worlds and
+  validation.
+- **S2C phase 2** (56 Gbp, fetched and on `/stor`): the pod is free for it since the `rM.2` build ended (17:27).
+  Card C-25 step 3 and cards B-47a to B-47e (DEC-34, DEC-35) are next in the build queue after H1 and PLSDB.
+- **Short CRISPR arrays** on Tn7-like elements: card E-15 is merged (DEC-40; 14 of the 20 Tn7-like TniQ loci of the example now have an array). The arrays of both producers are on the seven built stages since 2026-11-15 (card C-33 part 1: 13,477 default and 414 filtered arrays, *measured*); which release holds them is open item 6. The filter's chance rate on phages is measured (card E-16): the rule holds there as it is.
+- **`rM.2` is announced** (2026-11-15): pack since 20:54 on 2026-11-14 (card W-35); the release check failed at
+  22:15 (lookups by accession for stages S1, P1 and P2) and passed at 00:06 after card W-36. `rN.3` stays the
+  release for the 10 Gbp set.
+- Builds queued on the pod, one at a time in the root: stage H1 (card C-24: stopped mid-scan at 08:54 on 2026-11-15, open item 7), the PLSDB stage (card C-26 part 2: its inputs are ready; it also waits for card B-48, since its gene calling would take about 860 CPU-minutes in one process),
+  then **one release over the nine stages** (card C-35) in place of a release per new stage; then S2C phase 2 and
+  ncRNA on the built stages (DEC-42).
+- **Scratch cleanup on the pod** (DEC-42 allows it): the large part was done at 14:41 on 2026-11-14 ("On the pod"
+  below says what went and what is left). For the rest: remove only what the decision lists, each target
+  looked at first (`du`, `ls`), never `/tmp/if2453/r10`, `/tmp/if2453/r50`, `/tmp/if2453/ci/r50`,
+  `/tmp/if2453/pilot_s1` while the `rM.2` build runs, never a running agent's directories, nothing under `/stor`.
 
 *Standing facts a new session needs.*
 - Worked examples are release checks (AGENTS §5.7): `bash "$TREE/scripts/release_examples.sh" <release>` on the pod
@@ -120,41 +185,98 @@ F-02 and the measurements in the table below; decisions DEC-29 to DEC-33 were ad
 above says where `main`, the images and Actions stand. The manifest hash of the fixture covers every registered
 schema's hash, so it moves with any schema change (last: card E-12).
 
-**Agents running.** F-02 session 11 (the redesign of the `micro` preset over seeds, DEC-36 and DEC-37; branch `task/F-02-11`; started 2026-11-14 about 10:35; at most 5 threads beside the `rM.2` build; it changes every world digest once and re-pins them: audit hard).
+**Agents running** at 13:18 on 2026-11-15: four (C-24 resumed, B-48, and F-02 session 12 and B-49 starting; the limit is four, DEC-46); C-26 part 1 and E-17 are done and merged; C-34, E-16, C-33 part 1 and W-36 are done and merged; F-02 session 11 has ended.
+- F-02 session 11 (Opus; the redesign of the `micro` preset over seeds, DEC-36 and DEC-37): worktree
+  `.claude/worktrees/agent-aa711fcf48ad79fd7`, branch `task/F-02-11` at `89cfb46`, pushed, **not merged** (red on
+  Actions on six assertions, not the same six as before); pod scratch `/tmp/if2453/f0211/`, units `f0211-*`, at
+  most 8 threads. Its history: stopped at six failing assertions at about 18:45 on 2026-11-14; measured the
+  old-crown variant until 20:30 (the crown was not the cause); refitted the background base rates until about
+  23:55 (the core genome is back at every seed); made one last, bounded pass on the card's own four failures
+  until about 01:15 on 2026-11-15 and **ended** (branch at `5de6adc`, preset as at `89cfb46`; open item 5 has the
+  result and the four questions). **This agent is no longer running**: the next F-02 session is a new agent,
+  after the PI's answers, starting from the branch and the note.
+- W-36 (Opus; lookups by accession in a partly labelled release, then the release check on `rM.2`): done, 22:25
+  to 01:30, merged (row W-36). It was done by the agent that had started card C-33 at 22:14 and stopped it at
+  22:19 at the card's own stop condition (open item 6).
+- E-16 (Opus; a measurement: the chance rate of the filtered CRISPR producer on phages, stage S1): done, 02:00
+  to 04:50, merged (row E-16).
+- C-24 (Opus; stage H1, the huge phages, as amended: the stage only): started at 07:17 on 2026-11-15, branch
+  `task/C-24`, pushed, not merged; pod scratch `/tmp/if2453/c24/`, units `c24-*`. Stopped at 08:54 half-built (9
+  of 14 Pfam scan shards published) by its own rate guard on a remainder shard; **resumed at 13:20 after DEC-43**
+  (the guard judges only steps estimated at 24 CPU-minutes or more): it runs the five remaining shards (about
+  1,080 CPU-minutes, *derived*), the scan's merge and the filtered CRISPR producer, ends at the cluster gate, then
+  checks the root and reports. It is the one agent that writes into the data root (stage `H1`'s files only).
+- F-02 session 12 (Opus; the redesign finished as DEC-44 decides): starting at 13:25, branch `task/F-02-12` from
+  `task/F-02-11`; pod scratch `/tmp/if2453/f0212/`, units `f0212-*`, at most 8 threads.
+- B-49 (Opus; a release takes an earlier release's clustering when its proteins are the same, DEC-45 (2)):
+  starting at 13:25, branch `task/B-49`; pod scratch `/tmp/if2453/b49/`; read-only on the data root.
+- B-48 (Opus; gene calling in batch steps under the CPU budget, byte-identical to the one-process call): started
+  at 11:10 on 2026-11-15, branch `task/B-48`; pod scratch `/tmp/if2453/b48/`, units `b48-*`; read-only on the
+  data root.
+- C-26 part 1 (Opus; the inputs of the PLSDB stage `PL1`, their record and a rehearsal): done, 09:50 to 11:00,
+  merged (row C-26 (1)). Part 2, the build, is a new session after stage H1 is complete and card B-48 is merged.
+- E-17 (Sonnet; tier L: `e16_crispr_near_cas_phages.py` on a stage that lists contigs another stage stores), as H1 does: done, 09:47 to 10:25 on 2026-11-15, merged (row E-17).
+- C-34 (Opus; `stage labels`, the verify rule, and the label files of S1, P1 and P2 in the real root): done,
+  02:47 to 07:00, merged (row C-34).
+- C-33 part 1 (Opus; the two CRISPR producers on the seven built stages): done, 01:25 to 02:10, merged (row C-33
+  (1)). Part 2 (the release that holds the arrays) needs the PI (open item 6).
+Done and merged since: W-34 (Sonnet; the help text of `bio-box results`), at 15:45; W-32 (Opus; `nbr flanks` figure
+defaults, DEC-41), 15:40 to 18:05; W-35 (Opus; the pack build in parts and the pack of `rM.2`), 18:05 to 22:00.
+Done and merged today after the restart: W-33 (14:05 to 14:55) and E-15 (its second agent, 14:00 to 15:25). The
+account's weekly usage limit stopped the two Opus agents at about 12:20 (the fifth such stop; the message gave a
+reset on 2026-11-19 at 13:00); the PI logged in again and both were resumed with `SendMessage` at 14:00. Queued,
+in this order: C-26 part 2 (the build of `PL1`; after C-24 and B-48), C-35 (the release `rM.3` over the nine
+stages, DEC-45; after C-26 part 2), F-02 session 13 (detectability against divergence, DEC-39; after session 12).
 
 **On the pod** (wilkcomp02; account thread cap 40 by day on weekdays, 56 at night and at weekends, a total over
-everything we run; the PI keeps that cap). State on 2026-11-14 at 09:45 CST:
-- **The 50 Gbp build** (the state block above has the live detail): driver unit `r50-driver` (log
-  `/tmp/if2453/r50/driver.log`; state `/tmp/if2453/r50/driver/`; its copy of the driver script is
-  `/tmp/if2453/r50/bin/r50_driver.sh`, older than the repository's), build unit `r50-rM2-14`. `rM.1` is clustered
-  (45,815,843 proteins, 31,183,876 NR90 and 8,192,065 NR50 clusters, *measured*) and its other release steps are not
-  run. The driver writes a temporary `STOP` in the root when it changes the shard count of a scan (its text says
-  "switching"): that is not a failure. Watch test for the end: `[ -e /tmp/if2453/r50/driver/DONE ] || [ -e
-  /tmp/if2453/r50/driver/FAILED ] || { [ -e /tmp/if2453/r10/root/STOP ] && ! grep -q 'switching from'
-  /tmp/if2453/r10/root/STOP; } || ! systemctl --user is-active --quiet r50-driver`.
-- Data root `/tmp/if2453/r10/root` (stages S1, P1 to P6, each with Pfam 38.2; releases `rN.1a`, `rN.1b`, `rN.1`,
-  `rN.2`, `rN.3`, and `rM.1` and `rM.2` in progress): **not yet on `/stor`**. `rN.3` is the release to use; its pack is
-  in `/tmp/if2453/bio-box/packs` (found with `--profile`).
+everything we run; the PI keeps that cap). State on 2026-11-14 at 17:50 CST:
+- **The 50 Gbp build is done** (the state block above): driver unit `r50-driver` ended with `driver/DONE` at 17:32
+  (log `/tmp/if2453/r50/driver.log`; state `/tmp/if2453/r50/driver/`; its copy of the driver script is
+  `/tmp/if2453/r50/bin/r50_driver.sh`, older than the repository's). `rM.1` is clustered (45,815,843 proteins,
+  31,183,876 NR90 and 8,192,065 NR50 clusters, *measured*) and its other release steps are not run: relaunching the
+  driver without `SKIP_RM1` would run them and nothing else, but they are left unrun on purpose (state block: `rM.1` would be a second copy of `rM.2`).
+  The files `driver/FAILED.*` are records of earlier stops (2026-11-11, 2026-11-12, and the pause of 09:31 today),
+  not of this build's end.
+- Data root `/tmp/if2453/r10/root` (81 GB; stages S1, P1 to P6, each with Pfam 38.2; releases `rN.1a`, `rN.1b`,
+  `rN.1`, `rN.2`, `rN.3`, `rM.2`, all with a manifest, and `rM.1` clustered only): **on `/stor` since 17:55** as four
+  tars under `provisional/root_rM2_20261114/` (state block above). `rM.2` is the release to use since 2026-11-15 and `rN.3` the one for the 10 Gbp set; `rN.3`'s pack is in
+  `/tmp/if2453/bio-box/packs` (found with `--profile`). `rM.2`'s pack is there too since 20:54 (`release=rM.2/26e10f05401faeefb78769e83f7f6cb4`, 25.8 GB; card W-35); a pack is a rebuildable cache and is not in the durable copy.
 - **S2C phase 2 inputs**: all on `/stor` under `provisional/s2c_phase2/` (`s2c_phase2_genomes.tar`, 4,617 genomes,
   5,134,489,600 bytes; `s2c_phase2_rest_genomes.tar`, 8,860 genomes, 11,234,908,160 bytes; hashes in `sources.yaml`).
   On `/tmp`: the selection under `/tmp/if2453/c27/out_ani/` and the pair table `/tmp/if2453/c27/ani/ani_pairs.tsv`;
-  the fetched genomes under `/tmp/if2453/c25/genomes/` (11.2 GB; keep while stages are built from local disk).
+  the fetched genomes as loose files, the 4,617 kept of the 243 large species under `/tmp/if2453/c27/genomes/`
+  (5.1 GB) and the 8,860 of the rest under `/tmp/if2453/c25/genomes/` (11.2 GB): keep both while stages are built
+  from local disk.
 - Scratch views that hold CRISPR arrays for the 10 Gbp stages, read-only on the root: `/tmp/if2453/e12/view` (the
   producer's outputs for S1, P1, P2), `/tmp/if2453/e13/` (the same at two repeats), `/tmp/if2453/e14/view` (a view of
   `rN.3` with the arrays, which the guides' worked command names).
 - Worked examples' outputs on `rN.3`: `/tmp/if2453/e11/acc` (the release check), `/tmp/if2453/ex2/rN.3-b`.
-- Scratch that can be cleared once the PI agrees (nothing is deleted without that): the 23,840 candidate genomes not
-  kept and the sketches (`/tmp/if2453/c27/genomes`, about 29.7 GB, and `/tmp/if2453/c27/skani`, 13.6 GB), the local
-  copy of a tar (`/tmp/if2453/c25/archive/`, 11.2 GB), `/tmp/if2453/b46`, `m08a`, `m08b`, `c21f`, `e09`, `w25`, `w27`,
-  `w15`, `f028`, `f0210`, old pack copies under `w16` and `w19`, old `ci/<ID>` trees, and, once the `rM.2` build is
-  done, the dependency directories `pilot_s1/pydeps`, `pydeps_f02`, `pydeps_w27`.
+- **Scratch removed under DEC-42** (2026-11-14, 14:40 to 14:41; scripts and file lists in `/tmp/if2453/cleanup/`:
+  `verify.sh`, `rm1.sh`, `notkept.txt`, `kept.txt`, `stor.sha256`). First the two tars on `/stor` were read back and
+  their sha256 equal `sources.yaml`'s (*measured*, `sha256sum`, 14:38). Then removed: the 23,840 candidate genomes
+  the ANI selection did not keep (29,662,981,149 bytes, by name from the fetched files less the tar's members; the
+  4,617 kept stay, their names equal the tar's list afterwards), the skani sketches (`/tmp/if2453/c27/skani`,
+  13,614,384,499 bytes), and the local copies of the two tars (`/tmp/if2453/c25/archive/s2c_phase2_rest_genomes.tar`,
+  11,234,908,160 bytes, and `/tmp/if2453/c27/archive/s2c_phase2_genomes.tar`, 5,134,489,600 bytes; their listing
+  and record files stay). In all 59,646,763,408 bytes (*derived*: the sum; *measured* by `df`: free space rose from
+  240.1 to 299.8 GB while the build ran). Nothing under `/stor` was touched.
+- Scratch still to clear under DEC-42, not urgent: `/tmp/if2453/b46` (12 GB; after `rM.1`'s release steps are run in
+  the root, in case its clean scratch run is wanted beside them), `m08a`, `m08b`, `c21f`, `e09`, `w25`, `w27`, `w15`,
+  old pack copies under `w16` and `w19`, old `ci/<ID>` trees (4 GB in all), `f028` and `f0210` once F-02's sessions
+  no longer read them, and, once the `rM.2` build is done, the dependency directories `pilot_s1/pydeps`,
+  `pydeps_f02`, `pydeps_w27`. Not listed by the decision and so kept: `/tmp/if2453/b43` (20 GB).
 
 **Next, in order.**
-1. The `rM.2` build's end and the six steps after it (state block above).
-2. Card C-24 (stage H1, huge phages), then C-26 (PLSDB), each with the image of `faec1f4` and `--crispr`.
-3. Decided on 2026-11-14 (DEC-34, DEC-35): card C-25 step 3 and cards B-47a to B-47e, then the S2C phase 2 build, once the pod is free. Waiting on the PI (open items):
-   F-02's redesign over seeds, then the N2 worlds, the ablation worlds, validation, and F-03; the filtered
-   two-repeat CRISPR producer (a card E-15 to be written on a yes).
+1. Done at 17:55: the durable copy of the data root (hashes in the state block). `rM.1` is left clustered only.
+2. Done on 2026-11-15: card W-36, the release check on `rM.2`, and the announcement of `rM.2`
+   in `README.md` and `GUIDE.md`.
+3. Card C-24 (stage H1, huge phages; running), then C-26 (the PLSDB stage), each with the image of `faec1f4`,
+   `--crispr` and Pfam, **stages only**; then card C-35, one release over the nine stages (it holds the arrays and
+   the label files, which settles open item 6 without options A or B); then card C-25 step 3 and cards B-47a to
+   B-47e and the S2C phase 2 build (DEC-34, DEC-35).
+3b. The statistics track: F-02 session 11's four questions for the PI (open item 5), then its merge, session 12,
+   then the N2 worlds, the ablation worlds,
+   validation, and F-03.
 4. Cards ready that need no decision: the `--json` forms of `nbr` with arrays (needs a card allowed to regenerate the
    JSON schema lock); W-26 (accession table; not needed yet). E-10 (tRNA caller) needs the PI's pin.
 5. Agents' commit messages: the harness asks agents for a `Co-Authored-By` line and AGENTS §10 forbids footers; say
@@ -463,6 +585,17 @@ need samtools, bgzip, Prodigal or the golden set. Tests no longer run on the lap
 | W-28 | `5322460` | `bio-box results archive|flush|list|get` (DEC-33; `src/biobox/search/results.py`): a run's record and the output directories named with `--with` become one deterministic archive (sorted names, fixed times and owners; the same bytes on any host), spooled under the profile's `<tmp>/results/spool`; `flush` writes the spooled archives to `<durable>/results` as one bundle only when it reaches `small_file_floor_bytes` (64 MiB; AGENTS §7.3 outranks DEC-33's "one archive per run"), under a temporary name and renamed; nothing is ever overwritten (the same sha256 is a no-op, another is refused); `list` reads manifests only; `get` restores and checks every sha256 | On the real RNA polymerase run of `rN.3`, into scratch (*measured*, wilkcomp02, 2026-11-12): the search output alone is 12,492,800 bytes, so `flush` wrote nothing; with five `nbr flanks` directories 164,618,240 bytes in 14,264 files, bundled and restored equal (`diff -r` empty). Nothing was written to `/stor`. The profile's `durable` (`/stor/work/Wilke/if2453/all-the-data`) does not exist on the pod: the tool refuses until the PI makes it. A run's record does not hold the user's command line, so outputs are named by hand (card W-29). Merged-tree tests 264 passed; branch tests 227 and 18 passed |
 | W-29 | `5d66152` | A run records the command that made it (`limits_json`, key `command`; no schema change), and every output directory written from a run (`search hmm`, `nbr --out`, `nbr flanks`) holds a `RUN` file naming the run and the release; `results archive RUN --under DIR` finds those directories up to four levels down and refuses one whose `RUN` names another run; `--with` still serves older outputs and single files | Outputs otherwise unchanged (one new file, one README line); the W-07, W-05, W-22 and W-23 tests migrated for it. `RUNBOOK.md` brought up to date with the merge. Full suite on the merged tree (detached, wilkcomp02, 2026-11-13): 1,688 passed, 64 skipped |
 | F-02 (4) | `f204f1f` | `synthworld` intergenic regions, RNA motifs and replicon sequences (`intergenic.py`, `rna.py`): every junction's intergenic sequence by type (tight, loose, divergent, convergent) with promoters, ribosome-binding sites and terminators; 4-base and 1-base gene overlaps made by protein-neutral edits of start and stop codons; RNA motifs emitted from covariance models (a synthetic panel by default; Rfam models on the pod) and evolved along the tree; one nucleotide sequence per replicon, with every gene and motif at coordinates in the data model's convention | *Measured* (wilkcomp02, 2026-11-12/13, `micro`, seed 20261112): 84 replicons, 89,102 genes; the stage takes 42.3 to 42.8 s and 93 MB; with the backbone and sequences about 157 s of the 3 minute target (*derived*), leaving about 23 s for the stages still to come. Slicing each gene from its replicon gives its CDS; junction lengths within 5% of the preset at five quantiles; `cmsearch --cut_ga` finds 872 of 1,078 motifs, 251 of 252 at divergence up to 0.02 and 147 of 240 beyond 0.2: detection falls with divergence, as session 3's proteins do not. `cmemit --exp 1` leaves 15 to 99 of 100 emissions above GA by model, so the default is 1.5 (fitted). The intergenic length model is an estimate, not yet fitted to real genomes; no motifs inside coding sequence. Merged-tree synthworld tests 339 passed (the Rfam ones included); Actions on the branch 1,654 passed, 177 skipped |
+| C-26 (1) | this merge | Part 1: the inputs of the PLSDB plasmid stage `PL1` and their record; no build, nothing in the data root. `make_inputs.py plasmid` (new mode, tests first): one genome per distinct sequence, kind `plasmid`, code 11, topology from `NUCCORE_Topology`, quality from `NUCCORE_Completeness` (`complete`, or `contig` where it is empty; any other value refused). Inputs in `/tmp/if2453/s2/inputs/PL1/` (hashes in the note; `sources.yaml` says where and how). A rehearsal on 315 records in a scratch view with P1 and P2, and the answer to how a stage-only launch ends once every stage is gene-called: a watcher writes `STOP` when the stage's last step is recorded, and `run-step` then refuses the release's first step (exit 75; rehearsed twice) | *Measured* (wilkcomp02, 2026-11-15, `planning/measurements/2026-11-15_plsdb_inputs.md`): 72,556 records, 7,297,669,596 bases; 68,693 genomes of one contig each (3,863 records repeat an earlier record's bytes and become occurrences of its genome, not genomes of their own: the brief expected several genomes; with `genome_uid` as it is, several genomes arise only across stages); 66,511 records circular, 6,045 linear, none empty; 7,139 records are contigs of S1 and P1 to P6 already (7,046 contigs, 1.18 Gbp; none of H1), so **the stage adds 61,647 contigs and 5,924,552,875 bases**. On the rehearsal DEC-26 and DEC-27 hold (103 shared contigs skipped by gene calling and present as second genomes; counts by locus do not fan out). **Found: gene calling of `PL1` is estimated at about 860 CPU-minutes in one process** (*derived*: 7,102 Mbp at 7.26 s per Mbp, the rate *measured* on every 30th record; circular plasmids in meta mode cost 7.70 s per Mbp against 0.93 for the prokaryote stages), 2.9 times the limit of AGENTS §7.2: card B-48 splits gene calling into batch steps before the stage is built. Other estimates: about 6.4 M genes, 1.4 to 1.8 M distinct proteins, the Pfam scan 3,261 to 4,149 CPU-minutes in 14 to 18 shards, ingest 33, both CRISPR producers 39. Left as the card says, for the PI to change if wanted: the 7,658 records PLSDB marks as putative viral stay kind `plasmid`; a repeat that disagrees with its first record on topology (112) or quality (99) takes the first record's. `tests/r0` and `tests/r1` on the branch 1,030 passed; Actions green; merged-tree tests 240 passed |
+| E-17 | `8fdd018` | `scripts/stress/e16_crispr_near_cas_phages.py` runs on a stage that lists contigs another stage stores (DEC-26; stage H1 lists 7,228 and stores 6,714): the null takes the stage's own stored contigs (its default variant is in the stage's `contig_index`, as `ContigOwners` defines it); a listed contig that a stage named with the new `--seq-stages` stores is left out and counted with that stage (`contigs_listed`, `contigs_left_out`, `contigs_left_out_by_stage` in the summary); one that no named stage stores is still an error | Seen failing first on the old script (its own message, and three tests on the missing argument); 4 new test cases on a constructed stage whose expectation is the file's existing hand count; the 14 tests of E-16 unchanged. On the pod, S1 run again read-only with the new script: every S1 value of the committed `summary.json` is equal (34 kept; 2.4334 expected by chance under the card's null; 3.5 s, 221 MB, *measured*, wilkcomp02, 2026-11-15). P1 and P2 were not run again (the change is loud, not silent, where it applies); H1 was not run (half-built, card C-24). Sonnet, tier L. `tests/r0` and the file: 230 passed; Actions green on the branch; merged-tree tests 230 passed |
+| C-34 | `8ba13b9` | `bio-box stage labels --stage S`: the `contig_label` files of a stage ingested before card B-27, written as new files from the stage's own `contig_occurrence` with the code ingest uses (`biobox.l0seq.store.write_labels`), with a ledger and a run record; it refuses a stage that has label files. The verify rule (`catalog.STAGE_ADDED_TABLES`, in `_owner_key`): a `contig_label` file under stage S is a release's concern exactly when its manifest lists a `contig_label` file of S; where it lists none the files were added after the release and are ignored; where it lists one or more they are checked as before and any other file there is still `not in manifest`. The rule is for `contig_label` only. A published release reads as before (its manifest's lists) | **S1, P1 and P2 have their label files in the data root** (*measured*, wilkcomp02, 2026-11-15, `planning/measurements/2026-11-15_label_files_old_stages.md`): 9 files, 1,673,035 bytes (three label files of 27,258, 539 and 5,018 contigs, their ledgers and run records); 3,403 files before, 3,412 after, no earlier file changed (the orchestrator listed the root again: the 65 files added today equal the two agents' lists, the nine have the listed sha256, and the 3,347 files of the durable copy are all there with their sizes). Oracle: on the fixture and on S1 the step's label file has the sha256 of a re-ingest's (a297d983…, 27,258 rows; the re-ingest's `contig_occurrence` also equals the root's byte for byte). All six published releases verify before and after with the same manifest hashes (the orchestrator ran `release verify` of the six with the merged code at 07:04: all verified); **on the code before the card all six fail** once the files exist ("not in manifest"), not the four the card named. `bio-box releases`: the published releases show what they showed (`rM.2` partial, the others no); `rM.1`, which has no manifest, shows yes; a release defined over the seven stages on a scratch view shows `contig_label yes`. Each step 2.4 to 2.8 s, 0.05 CPU-minutes, about 325 MiB; memory test bound 1.25 GiB, peak 503 MiB on 1,000,000 records. Branch: 1,198 passed, 9 skipped on the related tests; the whole suite in 2 shards 2,280 passed, 23 skipped (*derived*: 1,079 + 1,201; 16 + 7); Actions green on the branch; merged-tree tests 248 passed |
+| E-16 | `63d9a49` | Measurement, no fix: the chance rate of the filtered CRISPR producer on phages (`planning/measurements/2026-11-15_crispr_near_cas_phages.md`; `scripts/stress/e16_crispr_near_cas_phages.py` with a test of its null on a constructed genome whose chance is computable by hand). The null places every call at two repeats at random in its own genome, lengths and counts kept, and applies the producer's three rules where each lands; exact and by Monte Carlo (10,000 draws, seed 16). No default, producer or family list changed | **The rule holds on phages as it is** (*measured*, wilkcomp02, 2026-11-15): on S1 2.43 calls are kept by chance (1.46 per Gbp, 95% interval 1.44 to 1.48) against 34 kept (20.4 per Gbp): 14 times chance, and no draw of 10,000 reached 34. On P1 and P2 the same null gives 2.30 per Gbp. All 34 are one real locus, the type I-F system of ICP1-like *Vibrio* phages (30 ICP1 isolates and JSF13, JSF14, JSF17; the orchestrator read the list): each has cas1, cas3, cas5f, cas6f and cas7f within 10 genes; none sits beside a lone Cas4 or Cas3-domain gene, and Cas4, the commonest Cas family in phages (285 genes), attracts 0.43 calls by chance and none in fact. 33 of the 34 are the same array of 3 repeats 59 to 61 bases from the Cas3 gene, which MinCED at a minimum of 3 does not report though it reports a second array 2.8 kb away: in phages the filter mostly recovers arrays the default producer misses (E-13's open finding), not two-repeat arrays. Oracles: the script's rules keep exactly the producer's 34, 6 and 72 on S1, P1 and P2, with the ledger's rejection counts; it reproduces E-13's bound (2.955 per Gbp against 2.96) and E-13's 32.9-fold enrichment at 3 repeats. Seen: on P1 alone the 6 kept calls are not distinguishable from chance (3.46 expected, P 0.14); P1 and P2 together are 3.2 times chance. Whole suite on the branch 2,279 passed, 24 skipped; Actions green |
+| C-33 (1) | `60d4e7e` | Part 1 of the card as amended: the two CRISPR producers on the seven built stages of the data root, each stage and producer its own `run-step` process (`bio-box stage crispr`, then `stage crispr --near-cas --library pfam --library-version 38.2`; `--seq-stages` the stage and then the six others, as `build-stage` gives it; `--cpus 4`, at most 5 units at once), in the runtime image of `faec1f4` from a tree at `0d82b05` (run records name image `sha256:d67300aa…` and `code_id` `6d3c4606…`; the stages' earlier steps name the old image, and both releases verify with the mixed records). A rehearsal on a scratch root of symlinks came first and had to be byte-identical to the views before the real root was touched. Driver and checks: `scripts/stress/build_stage_pod/c33_driver.sh`, `c33_view.py`, `c33_check.py`. No release defined, no release step run, no code under `src/` | *Measured* (wilkcomp02, 2026-11-15, 01:40 to 02:03, `planning/measurements/2026-11-15_crispr_arrays_on_built_stages.md`): **13,477 default arrays and 414 filtered ones** on 52,132,698,276 bases (the filtered producer kept 414 of 168,632 calls at two repeats: 13,841 overlap a default array, 154,316 are far from a Cas gene, 61 lie inside a gene); per stage 213 to 3,921 and 6 to 118. 146.9 and 171.8 CPU-minutes, each stage 0.90 to 1.01 of its estimate; the largest process 33.4 CPU-minutes; peak RSS at most 1.2 GB. **56 files added, 26,958,140 bytes, none changed**: 3,347 files before, 3,403 after, no size, mtime or (for S1 and P1) sha256 changed (the orchestrator listed the root again: the 56 new files and sizes equal the agent's list, and the 3,347 files of the durable copy are all there with their sizes). Oracle: on S1, P1 and P2 the new files are byte-identical to the scratch views of cards E-12 and E-15, 27 of 27 by sha256. `rM.2` and `rN.3` verify before and after with the same manifest hashes. Seen: `release verify`'s "built by" line now counts the new steps under releases that do not list them; the filtered step cost 1.200 times the default on P2, against the factor 1.19; P3 keeps 11.86 filtered arrays per Gbp, the most of the prokaryote stages (7.53 over P1 to P6, *derived*). The 56 files are not yet on `/stor` (a tar of them alone would be under 64 MB). `tests/r0` 212 passed; Actions green on the branch |
+| W-36 | `933eb81` | A release some of whose stages have `contig_label` files and others none (`rM.2`: S1, P1 and P2 were ingested before card B-27) now takes the others' labels from their own `contig_occurrence`, per stage, in the export store's label relation (`find`, `seq --contig`, `search hmm --positive`, `search hits --format tsv` and `faa`, `nbr flanks`, the locus tables) and in the catalog's `contig_label` view; `open_catalog` shadows the view stored in a catalog built before the card, so `rM.2`'s catalog is not rewritten. `release verify` warns naming those stages (exit code unchanged); `bio-box releases` shows `partial(not S1,P1,P2)`. One `note:` line per command on such a release. No release file, manifest, schema or table is written; a release fully labelled, or with no labels, takes the old code path | **The release check passes on `rM.2`** (*measured*, wilkcomp02, 2026-11-14 22:38 to 2026-11-15 00:06, unit `w36-ex-rM2`, `planning/measurements/2026-11-14_release_examples_rM2.md`): "2 examples, every invariant holds", 19 and 18 invariants, 55 recorded values new (`examples/*/recorded/rM.2.tsv`); the largest step, the RNA polymerase search, 40.9 CPU-minutes, 16% under its estimate; 88 minutes of wall time. On `rM.2` the TniQ loci beside a Cas7f are 60 (20 on `rN.3`) and the RNA polymerase search finds 2,036 proteins (1,957). Before the fix `find` refused both positive controls; after it `find --accession NC_001604` returns 49 genes and `NZ_AP026781.1` 1,031 (the orchestrator ran both again on the merged tree, and `release verify` of `rM.2`, which passes with the warning while card C-33's new producer files are being added). Byte identity on `rN.3`: both examples run with and without the card give the same tables (3,559 of 3,567 and 5,623 of 5,628 files identical; the others hold only the run id, the output path or a date). Pruning: a labelled stage's lookup reads 1 of 2 row groups on the fixture; the unlabelled stages are read whole (3 of 3 row groups each on `rM.2`, 0.02 to 0.08 s). Seen: the TniQ search unit peaked at exactly its 16 GiB cap and exited 0 (page cache not separated). Follow-up: card C-34 (label files for the old stages). Branch: 469 passed on the targeted set, the whole suite in 2 shards 2,266 passed, 23 skipped (*derived*: 1,078 + 1,188; 7 + 16); Actions green on the branch; merged-tree tests 272 passed |
+| W-35 | `ac24001` | `pack build` under the CPU budget. Before any work it prints an estimate from the release's genome bases and `protein_seq` rows and refuses (exit 2) a one-process build over 80% of `cpu_min_per_process`, naming the `--parts` that fits. `--parts N [--jobs J]`: a driver cuts the contigs in uid order into N ranges of about equal bases and launches `unique` and N parts each of `igr` and `dark_orf`, each its own one-thread process under the memory cap at `nice 19`, at most J at once within the hour's allowance, `STOP` checked between launches; each part renames its sorted run into place (a part with output is not rerun; a killed part's leftovers are never read); a last process merges the runs in part order through the one-process writers, verifies and renames the pack. The one-process path and its pack ids are unchanged below the margin | **The pack of `rM.2` is built and verified** (*measured*, wilkcomp02, 2026-11-14, `planning/measurements/2026-11-14_pack_build_in_parts.md`): pack `26e10f05401faeefb78769e83f7f6cb4` in `/tmp/if2453/bio-box/packs/release=rM.2/`, 25,794,271,437 bytes, 45,815,843 proteins in 8 shards; 8 parts, 19:21 to 20:54; the largest process 39.3 CPU-minutes (a dark-ORF part), the last one 44.9; 403.0 CPU-minutes in all (*derived*), against an estimate of 386.9 in one process, which was refused; every part within 12% of its estimate; `pack verify` clean; the data root was not written (the orchestrator checked: no file newer than the durable copy). **Byte identity**: `rN.3` rebuilt in 4 parts into scratch is the pack of 2026-11-11, all 10 files by sha256, the same pack id (the orchestrator hashed both again: identical; the old pack's files keep their dates), in 33 minutes of wall time against 81; on the fixture the same at 1, 2, 3 and 5 parts, 1 and 3 jobs, tiny sort caps, after SIGTERM and SIGKILL of a part and after `STOP`. Reported by the agent as a deviation: its own first estimate of `rN.3`'s last process was 21% high; it refitted the rates to the measured parts (a test holds each estimate within 20% above its record) instead of stopping. Open: the dark-ORF work per Gbp is about 11% higher on `rM.2` than on `rN.3`; the scratch peak was not measured. Branch: 689 passed, 2 skipped on the pack and search tests, the whole suite in 2 shards 2,240 passed, 24 skipped (*derived*: 1,071 + 1,169; 12 + 12); Actions green on the branch; merged-tree tests (with W-32) 384 passed |
+| W-32 | `597ae8b` | `nbr flanks --figure` defaults of DEC-41: at `--level nr50` and `nr90`, when the release's manifest lists an `l1_domains` file (with `--library L`, one of that library), `--colour-weight anchor-nr90` and `--colour-fallback pfam`; otherwise, and at `--level pfam`, `locus` and `none` as before, with one note on stderr when a figure is asked of a release without a library. One colour per family: a cluster whose family stands in as a Pfam colour anywhere in the run is drawn in that Pfam colour in every group, legend included; two common clusters of one family stay two colours. `--auto-cut gap` is refused (exit 2, naming `--auto-cut N`); the fixed cut 0.5 stays. Migrated as the card says: tests of the old defaults run under the explicit old flags, the `gap` tests became refusal tests (each listed in the agent's report and the note). Found on the pod and fixed with its own test: `KeyError` in the legend when a cluster is drawn in its family's colour in a group where none of its genes has that domain (the RNA polymerase run) | *Measured* (wilkcomp02, 2026-11-14, `planning/measurements/2026-11-14_flanks_figure_defaults.md`): every table is byte-identical to the code before the card, on 6 constructed calls and on `rN.3` (2,719, 9, 8, 9 and 2,164 files in the five calls of the two examples); only `README.txt` (a paragraph on the colours) and the NR50 figures change; with the explicit old flags the figures too are the old bytes. Regenerated: `cas7f_all_nr50` (251 of 720 genes coloured against 50, in 8 Pfam colours against 13 cluster colours; the Tn7-like loci's Cas genes now in colour) and `t7_group_c1bf639f` (465 of 545 against 419). Both examples' checks hold on `rN.3` (50 ok and 14 n/a; 42 ok; no FAIL). The figure costs 18% more CPU on 432 groups (*derived*: 305.1 / 259.1 s). For the PI: the one-colour rule is run-wide (open item 2). Branch tests 630 passed, 1 skipped; Actions green on the branch; merged-tree tests (with W-34 and E-15) 371 passed; whole suite not run by the agent (the build was running) |
+| W-34 | `e5ca7e4` | `bio-box results --help` says what the code does since W-33: `<bulk>/results`, the second archive, one line per archive in `list`, and `RUN:SHA256PREFIX`; `results get` gains `--sha256 PREFIX` (the same as the colon form; both given and different is exit 2, nothing written). `results` is one parser with the action as a positional, so the four actions share one help text; the parser was not split | A test reads the help of `results` and of each action and fails on `durable` and `refus` (seen failing on the old text: 6 failed), and restores the archive named by `--sha256` and by the colon form alike, checked by the files restored. No behaviour of `archive`, `flush` or `list` changed; nothing on the pod but tests. Branch tests 246 passed; Actions green on the branch; merged-tree tests (with E-15) 268 passed |
+| E-15 | `c483688` | The second CRISPR producer of DEC-40 (`crispr.run_near_cas`; `bio-box stage crispr --near-cas --library pfam --library-version V`; `build-stage --crispr` runs it after the Pfam scan, and only the default producer, saying so, without a `pfam` library): MinCED at a minimum of 2 repeats, a call kept only if (a) it shares no base with an array of the default producer on its contig, (b) its gap to a gene with a domain of one of 31 Cas families is at most 1,000 bases, and (c) it is not wholly inside a called gene; on a circular contig each rule is read at shifts of one contig length. Name `minced-0.4.2-w8-nr2-r23x47-s26x50-cas1kb-caspfam1-pfam-38.2`; the family list is frozen by sha256 in `src/biobox/l1/cas_families/cas-pfam-1.tsv` (the example's `cas` roles, E-13's list). Own `producer=` partitions and ledger (rejections counted by the first rule failed); the default producer's files are read, never written; no schema change. The provenance check knows the name's tail and five ledger fields; the example gains one recorded check. Two agents: the first was stopped by the PI with the code drafted, the second checked it against DEC-40, kept nearly all, and added the cost factor, a test that the build changes no other file, the runbook rows and the note | *Measured* (wilkcomp02, 2026-11-14, `planning/measurements/2026-11-14_crispr_two_repeat_producer.md`): kept on P1 6 of 3,379 calls, on P2 72 of 30,682; together 78, the same set as a brute-force filter over E-13's stored calls and as E-13's rule A5 (the orchestrator read the counts again from the files: 6, 72, and the ledger's rejections add up to the calls). Kept calls are not all two-repeat arrays: on P2 the 72 have 624 elements and spans up to 6,343 bases (a call at 2 that no default array overlaps may have many repeats). The nine default-producer files are byte-identical to E-12's. On a scratch view of `rN.3` with both producers (`/tmp/if2453/e15/view`): the control Tn7-like element shows its array (422557-422647, 2 repeats) within the window, 730 bases from Cas7f; **14 of the 20 Tn7-like TniQ loci have an array** (7 default, 7 filtered: E-13's count). Cost 1.08 to 1.19 times the default step (`CRISPR_NEAR_CAS_COST` 1.19; refused above 66.5 Gbp in one stage, *derived*); peak 1.02 GB on P2. **Open** (card E-16): S1 (phages) keeps 34 calls, 20.4 per Gbp against 7.35 on P1 and P2, and E-13's chance bound was not measured for phages. Branch tests 1,136 passed, 1 skipped; Actions green on the branch; merged-tree tests (with W-33) 308 passed, 1 skipped; whole suite not run on the pod (threads) |
+| W-33 | `ef62865` | `bio-box results` keeps archives under `<bulk>/results` (DEC-42; on the pod `/stor/scratch/Wilke/if2453/all-the-data/results`); the profile's `durable` key is no longer read by it. A run archived again with other files is a second archive beside the first, never a refusal: an archive is a run id and a sha256; `list` shows each; `get RUN` takes the one with the most files and says so on stderr, `get RUN:SHA256PREFIX` takes another. `archive` needs only the local spool, so it runs where `bulk` is missing; `flush`, `list` and `get` refuse then. Migrated, as the card says: the test that a changed run is refused now asserts a second archive with the first one's spool files unchanged; the test profiles make `bulk`, not `durable` | **The first bundle is on `/stor`** (*measured*, wilkcomp02, 2026-11-14; read back by the orchestrator with `ls` and `sha256sum` at 14:55): `results/results-20261112-20261112-493d4af66eeb856b.tar`, 164,628,480 bytes, sha256 `5ae58462…b379c`, the `rN.3` RNA polymerase run `599bea5d…` with its search directory and five `nbr flanks` directories (14,264 files); the same bytes as W-28's scratch bundle of 2026-11-12 (RUNBOOK Appendix A row 7), so the format is unchanged; `results get` restored it equal (`diff -r` empty). It is the only file in `results`; nothing else under `/stor` was written. Not done (card W-34): `cli.py`'s help text still says `<durable>/results` and that another sha256 is refused (the file was not in the card). Branch tests 426 passed, 4 skipped; Actions green on the branch; merged-tree tests 254 passed; whole suite not run (threads) |
 | E-14 | `25a32d2` | CRISPR arrays beside a locus: `nbr --format tsv` and `search hmm`'s locus tables end with the arrays that share a base with the locus's window (a gene window is turned into the base span of its rows; a base window is the anchor plus W on each side), one row per array with `feature_uid`, producer, coordinates, repeats, spacers, the commonest repeat, the gap to the anchor, the side, and flags for partly outside and for across the origin; `nbr summarize --format tsv` ends with loci with an array per producer. Arrays are read from `feature` and `l1_crispr` in one query for all loci by contig, never as slots and with no ordinal. The provenance check knows the `minced-` producer: its version against the lock, `minced_args` equal to what the name encodes, `java` recorded. The CRISPR example gains two invariants and eleven recorded checks marked `[requires l1_crispr]`, which the shared checker reports `n/a` on a release without arrays | Byte identity on a release without arrays: the 635 and 157 locus tables and both summaries of the example's runs on `rN.3` equal the files written by the code before the card (*measured*, wilkcomp02, 2026-11-14). On a scratch view of `rN.3` with E-12's arrays (symlinks and its own manifest and catalog under `/tmp/if2453/e14/view`; neither root written): the complete type I-F system of the control shows its two arrays (27 and 21 repeats, 6,723 and 693 bases from the anchor); 78 of 78 complete prokaryote type I-F loci and 45 of 46 phage Cas7f loci have an array; 7 of 20 Tn7-like TniQ loci do, the control's not among them at three repeats; the pairs from `nbr` equal an SQL definition's, 190 of 190. Pruning: one locus reads the row groups that hold its contig; above as many contigs as a table has row groups every row group is read (card B-27's rule). Arrays add 1.5% to an `nbr` (*derived*). Not done: the `--json` forms carry no arrays (the JSON schema lock is outside the card). Known limit: a `[requires ...]` invariant that a run does not observe at all is `n/a`, not missing. The guides' worked command names the scratch view, which a reboot removes. Whole suite on the branch: 2,160 passed, 23 skipped; Actions green; merged-tree tests 1,054 passed, 1 skipped (the cross-host test among them) |
 | A-08 | `feef976` | The seven synthworld stage-time tests bound the stage's CPU time (user plus system, this process and its reaped children, read around the same call), not its wall time, which is still recorded; each new bound is the old one times the quiet ratio of CPU to wall, so none is looser (fusions 5.9 s against 6.0, sequences 107 against 120, the others within 2%). The three example READMEs' run instructions name the `faec1f4` runtime image and its digest; the records of what ran are unchanged | Shown on the pod: with the test process and two busy children pinned to one core, the old assertion fails (14.97 s of wall time against 6.0) and the new one passes (4.79 s of CPU) in the same run; alone the stage takes 4.95 s wall and 4.88 s CPU (*measured*, wilkcomp02, 2026-11-14). Left as they are, because load is not what they measure: three wall-time assertions that a fault or a lock ends fast, and one ratio of two timings. Branch tests 304 passed, Actions green; merged-tree tests 221 passed (beside the `rM.2` build's 30 threads) |
 | E-13 | `f578a7b` | Measurement: MinCED at a minimum of two repeats against the default of three, on S1, P1 and P2 read-only into a scratch view (`planning/measurements/2026-11-14_crispr_min_repeats.md`; `scripts/stress/e13_crispr_min_repeats.py`). In code: `crispr.run(min_repeats=k)`, with the minimum in the producer name (`nr2` is another producer; the default's name, arguments and bytes are unchanged: all nine default files rewritten by the new code have E-12's sha256) | *Measured* (wilkcomp02, 2026-11-14): arrays at 3 and at 2: P1 286 and 3,379, P2 2,291 and 30,682, S1 213 and 3,613. At 2 MinCED returns a different call set, not the old one plus two-repeat arrays: 17,423 of the 31,413 extra calls on P1 and P2 have three or more repeats (tandem repeats and low-complexity genes, up to 816 repeats), and 210 default arrays change coordinates. Of the extra calls 42.7% lie wholly inside a called gene (5.8% of the arrays at 3) and 40.2% are in genomes with no Cas domain (4.4%). Nulls: a dinucleotide-preserving shuffle in 1,000-base windows gives 0.57 calls per Gbp at 2 and none at 3, against 2,960 extra calls per Gbp in real sequence, so the extra calls are real repeats, not chance; under random placement in the same genome the extra calls are 1.39 to 1.64 times enriched near Cas genes and the arrays at 3 are 32.9 times. Rules, per Gbp: 2 everywhere adds 2,960, nearly all far from any Cas gene; 2 within 1 kb of a Cas-domain gene and not inside a gene adds 7.35, at most 2.96 of them by chance, and keeps all 7 Tn7-like loci of the worked example that gain an array. Cost at 2 is 1.12 to 1.13 times the cost at 3. No default changed; the choice is the PI's. Branch tests 257 passed, 1 skipped; Actions green; merged-tree tests 256 passed, 1 skipped |
@@ -525,6 +658,137 @@ probed by hand on the pod).
 
 ## Open items for the PI
 
+**Decided by the PI on 2026-11-15 at about 13:15** ("1. a, 2 y, 3, yes one release, 4. yes, 5. allowed, 6., leave it, 7. keep run-wide, 8., keep both", then "at most 4 agents at once"): DEC-43 (item 7: the H1 build resumes with the guard narrowed), DEC-44 (item 5: the four tests of the synthetic world), DEC-45 (item 6: one release `rM.3` over nine stages, and a card that lets a release take an earlier clustering; item 1: `rM.1` left), DEC-46 (scratch of finished cards may be removed; item 2: the one-colour rule run-wide; the PLSDB defaults; item 4: at most four agents). Item 3 was closed by measurement (card E-16). **Nothing below is open**; the items are kept as the record of what was asked:
+1. `rM.1` (card B-43's first 50 Gbp release) is left clustered only. It now reads the same stages, the same Pfam
+   library and, *measured*, the same cluster bytes as `rM.2`, so finishing it would write a second copy of `rM.2`.
+   Default: leave it; its cluster files (10.6 GB) stay in the root and in the durable copy.
+2. The one-colour rule of `nbr flanks` figures (DEC-41: "a family that would show in two colours takes its Pfam
+   colour throughout") is applied across the whole run, as the decision's word says. Effect seen in the RNA
+   polymerase example's T7 figure: five conserved neighbours appear in the legend under their Pfam architecture
+   instead of their NR50 cluster, because rarer clusters of the same architecture fall back to Pfam in other
+   groups. The alternative is the rule per group. Default: as implemented (card W-32); `--colour-fallback none`
+   gives cluster colours.
+3. **Closed by measurement** (card E-16, 2026-11-15): the filtered CRISPR producer keeps 20.4 calls per Gbp on
+   phages against 7.35 on prokaryotes because all 34 kept calls on S1 are one real locus, the type I-F system of
+   ICP1-like *Vibrio* phages, present in 33 near-identical genomes; by chance it would keep 2.43 (1.46 per Gbp,
+   lower than the 2.30 per Gbp of P1 and P2 under the same null). Nothing changes.
+4. A third heavy agent while the pod is free at the weekend cap: not taken; the limit of two stands.
+5. **F-02 session 11: the synthetic world's redesign works per seed but breaks six assertions** (branch
+   `task/F-02-11`, not merged; `planning/measurements/2026-11-14_synthworld_redesign.md` on that branch).
+   What holds now over 22 seeds (*measured*, wilkcomp02, 2026-11-14): the crown is 5.0 at every seed; the
+   chromosome mean is 1,152 to 1,799, inside DEC-37's 30% at 22 of 22 (session 10: 6 of 21); the planted share is
+   3.2% to 7.7% (it was 4.3% to 70.8%); no module family enters a genome that holds the module (DEC-36), at 22 of
+   22; the three transfer levels of the strength grid are distinct and increase at 22 of 22 (medians 5.0, 10.6 and
+   19.1 events per member); DEC-15 holds at 22 of 22. What fails, at the default seed: (i) no genome is without a
+   plasmid, and both plasmid types survive at only 14 of 22 seeds at the best rates found: rates that keep both
+   types at every seed make every genome a carrier, so DEC-37 (3) and the spec's "0 to 2 plasmids per genome, some
+   genomes without" exclude each other; (ii) N0's background genome sizes correlate with the signal world's at r
+   0.81 (0.77 at a second seed) where the test asks 0.9: with one mild origination axis, size is no longer set by
+   lineage, and no setting meets both DEC-37 (1) and that bound; (iii) the core genome collapsed: 7 root families
+   are in at least 40 of 60 genomes, where the hub test asks 100 and the old world had 243; (iv) N1 finds no
+   matched comparator family, from the same cause; (v) the intergenic burst identity is 0.895 against 0.9, and one
+   RNA motif instance is missed at 27% divergence. The agent's reading: (iii) to (v) come from the default world
+   being 1.95 times older than the one the turnover rates, the burst and the motif clades were fitted in (session
+   2 fitted them at a crown of 2.56; DEC-37 (2) set "about the median", 5.26, on the orchestrator's recommendation,
+   made before that was known). **The four questions**: (a) the background turnover at the fixed crown; (b)
+   whether per-genome plasmid counts or survival at every seed gives way; (c) what replaces N0's r of 0.9; (d) the
+   motif clade height and the 0.9 burst identity.
+   **The orchestrator's first recommendation is withdrawn** (it was: fix the crown at the default seed's old age,
+   2.56, so the rates keep their time unit). Measured at 20:30 (§11 of the note, branch `task/F-02-11` at
+   `bb17e0e`): with the crown at 2.5632 and everything refitted, the core is 38 root families (bound 100), the
+   burst identity 0.882 (lower, not higher), the motif instance still missed, N0's r 0.846; only N1's comparator
+   comes back, and both plasmid types survive at 20 of 22 seeds instead of 14. The cause is elsewhere, shown by
+   single-factor runs at the default seed: the old generator with its two lineage-rate axes gives a core of 243,
+   with entry exclusion added 204, with no lineage axis 35, with the redesign's one origination axis 26 to 47. The
+   old loss axis drifted most lineages to a loss multiplier well below 1, and a shared multiplier kept duplication
+   and transfer low; DEC-37 (1) removed those axes and left the base rates where session 2 had set them for that
+   world. (The agent later measured the old multipliers: it was the shared duplication and transfer multiplier
+   that ran low, median 0.36 over lineages and 0.06 at the default seed; the loss multiplier's median was 0.85.)
+   **Done without a decision** (the base rates are free preset values; branch at `89cfb46`, *measured* over 22
+   seeds, §12 and §13 of the note): duplication, transfer and loss at 0.2 of session 2's values (0.008, 0.02,
+   0.048), origination 0.065, member transfer 0.01, 0.03 and 0.4. The core is 253 root families at the default
+   seed and 228 to 513 over the seeds (it was 7); the chromosome mean is 1,367 to 1,760, in band at 22 of 22; the
+   planted share 4.4% to 6.5%; no exclusion breach; N1's comparator exists; the burst identity is 0.931 and the
+   motif is found. That answers (a) and (d). **The session ended at about 01:15 on 2026-11-15** (branch at
+   `5de6adc`; §14 of the note) with six assertions failing at the default seed and the finding that what is left
+   is about four tests, not about rates. Its closest preset, **candidate B** (background duplication 0.012,
+   transfer 0.045, loss 0.076, origination 0.035; not committed), passes everything at the default seed except
+   two: the cross-phylum IGR pair count, 195 against 200, and N0's correlation; it keeps the mean in band and the
+   core at 100 or more at 22 of 22 seeds (core 168 at the default seed), and with it the plasmid test passes at the
+   default seed. **The four questions, each with a recommendation**:
+   (1) *The motif test's premise.* It asserts that the planted instance is the best window at its coordinates.
+   A tandem duplication of the gene that carries the motif puts a second copy of the same planted instance 257
+   bases away with fewer substitutions, and the scan rightly prefers it (read from the events of two worlds; it
+   happened in 4 of the 9 full worlds built, at any duplication rate above zero). Recommendation: the test
+   accepts the best window when it is a planted instance of the same emission; that is a correction of the test,
+   written into the next session's card as a migration.
+   (2) *Decoys.* "At least 3 transfers per decoy" holds at 7 to 11 of 22 seeds at every setting tried: decoy
+   transfer 0.4 against loss 0.4 is critical, and the partner modules are rare by design. It is a property of the
+   preset, not a draw. Recommendation: raise the decoys' transfer rate until the bound holds at every seed (a
+   refit, no change of the test), or, if you prefer the rates, ask it at the default seed only; say which.
+   (3) *Plasmids* (b), over 22 seeds (*measured*, at the `89cfb46` preset): at rates 0.8 and 0.4 both types
+   survive at 15 seeds, some genome is plasmid-free at 10, a genome has more than 2 at 4; at 0.1 and 0.3 both
+   survive at 17, some genome is plasmid-free at 22 of 22, more than 2 at 2; at 3.0 and 0.1 both survive at 22 of
+   22 and every genome carries both. Recommendation: 0.1 and 0.3, that is, keep the spec's per-genome range and
+   replace DEC-37 (3)'s "at every seed" by "at the default seed, and reported per seed".
+   (4) *N0's size check* (c), over 22 seeds (*measured*): the ratio of means is in [0.9, 1.1] at 22 of 22 (0.973
+   to 1.091); r is at least 0.9 at 3 seeds; a two-sample KS test passes at only 11 (sizes are tight, so a shift
+   of a few percent is a large KS distance). Recommendation: keep the ratio bound and drop the correlation, which
+   measured the lineage axes that DEC-37 (1) removed.
+   With your four answers the next session (a new agent) takes candidate B, nudges background transfer until the
+   IGR count is at least 200 at the default seed (it follows transfer: 188 at 0.035, 195 to 200 at 0.045, 236 to
+   262 at 0.05, *measured*), refits what moves, re-pins, and merges. Also seen and not explained: N1's label
+   pairs are more adjacent than matched random pairs in 1 of 5 full null-world runs (p 0.0055 at the committed
+   preset; it passes in both candidates), from pairs of relabelled background families that sit beside each
+   other. Nothing of session 11 is merged.
+6. **Which release holds the CRISPR arrays** (card C-33, stopped at its own stop condition at 22:19 on 2026-11-14,
+   nothing written). The arrays themselves can go onto the seven built stages with the code as it is (new
+   producer files; `rM.2` and `rN.3` keep verifying, since a release ignores stage files it does not list), and
+   that part needs no decision. But a release cannot take them without a release of its own, and a release reads
+   only its own `release=<R>` cluster files: a new `rM.3` over the same seven stages would cluster the same
+   45,815,843 proteins again, about 14,087 CPU-minutes (*derived* from `rM.2`'s run records: 14,137.3 for its 449
+   release records less 50.5 for tokens, postings, dimension tables, manifest and catalog; *measured*, wilkcomp02,
+   2026-11-14), to produce bytes we already have twice. The same will happen for every later producer (the ncRNA
+   of DEC-42) and every release that adds no protein. Options: **A**, `rM.3` with a re-clustering; **B**, finish
+   `rM.1` after the arrays are on the stages: it is clustered, names the same seven stages, its cluster files are
+   byte-identical to `rM.2`'s, and its remaining steps cost about 50.5 CPU-minutes, but the name would then sit
+   after `rM.2`, and open item 1 would be reversed; **C**, a card that lets a new release take the clustering of
+   an earlier one when the two cluster plans' input hashes are equal (the files copied or referenced into
+   `release=<new>` with a ledger row, verified), so a release that adds no protein costs tokens, postings and a
+   manifest only. **Recommendation: C**, as a card of tier M once you agree to the rule; it is the only option
+   that also serves ncRNA and later producers, and it keeps release names in order. B is the cheap way to have
+   arrays in a release this weekend if you want that first. Also found on the way, for a small card whatever you
+   choose: the tokens step builds tokens with no cluster levels, without an error, when a release has no
+   `cluster_member` files (`l3/tokens.py`, read in the code, not run). And a new release needs a pack of its own
+   (the pack id covers the release id): about 403 CPU-minutes (*measured* for `rM.2`).
+   **Update, 2026-11-15 07:10 (the orchestrator's plan, cheap to reverse until card C-35 starts)**: the next
+   stages add proteins (H1, then PLSDB), so the release that takes them in must cluster again whatever is chosen
+   here. Cards C-24 and C-26 are therefore amended to build their stages only, and one release over the nine
+   stages follows (card C-35): one clustering run instead of two (about 14,650 CPU-minutes saved, *measured* for
+   `rM.2`), and that release lists the arrays of all nine stages and the label files of all of them. So the
+   arrays reach a release without option A or B. Option C stays open, for you: it is what ncRNA (DEC-42) and any
+   later producer on unchanged proteins will need. If you would rather have a release per stage, say so before
+   C-35 starts.
+7. **How the H1 build resumes** (card C-24; the pod is idle on this since 08:54 on 2026-11-15). The agent's own
+   driver stops the build when a step's measured CPU misses its estimate by more than 20% (AGENTS §6). It fired on
+   Pfam scan shard 13, the plan's remainder shard of 1,347 residues: estimate 0.011 CPU-minutes (*derived*: 1,347
+   x 7.96 per million), measured 1.533 (*measured*, its run record), which is the fixed cost of loading Pfam, so
+   142.9 times its estimate. The nine full shards ran at 0.887 to 0.920 of their estimates, ingest at 0.865, gene
+   calling at 0.936, the default CRISPR producer at 0.892 (*measured*). Stopping the unit killed shard 6 near its
+   end and shards 9 to 12 at their start: about 240 CPU-minutes lost (*derived*). The stop was clean and the stage
+   resumes from its published steps; about 1,080 CPU-minutes of scan remain (*derived*: 5 shards at about 215).
+   The agent then tried to narrow its guard (judge only steps estimated at 24 CPU-minutes or more) and **the
+   session's permission check refused that edit as weakening a stop condition**. A refused permission is not
+   worked around, by the agent or by the orchestrator, so nothing was changed and the build was not resumed by
+   another route. **Asked of you, one of**: (a) allow the guard to judge only steps estimated at 24 CPU-minutes
+   or more (the agent's proposal; the orchestrator's recommendation: the rate rule is about rates, and a step of
+   a hundredth of a CPU-minute has none; every step that can matter is far above the threshold); (b) resume with
+   the guard as it is and shard 13's record acknowledged by hand, if you prefer no code change (it would fire
+   again on any later remainder shard); (c) leave H1 as it is for now. Also from this build, not waiting on you:
+   H1 has 1,608,023 distinct proteins where the card estimated 0.6 M (the scan is sized by the code from the real
+   residues, 3,120 CPU-minutes in 14 shards); a release cannot be defined over a stage that is not ingested, so
+   `rM.3` is named only by `--stages` until `PL1` exists (accepted; cards C-26 and C-35 name it the same way).
+
 Decided by the PI on 2026-11-14 (about 10:10 CST: "for 1-11, accept your choices", to the orchestrator's table of 28):
 - S2C phase 2 (DEC-34): the ANI-diversity selection stands as built (its 15% alignment-fraction rule with it); six
   stages of 9.2 to 9.5 Gbp, each species whole, in taxonomy order; the 34 genomes NCBI did not serve are not retried;
@@ -537,7 +801,8 @@ Decided by the PI on 2026-11-14 (about 10:10 CST: "for 1-11, accept your choices
   `rM.2` build holds until it ends.
 - Item 13 of that table (about 10:20, "13. yes"; DEC-36): a planted module does not enter a genome that already holds it, and the strength grid's transfer axis becomes realized transfers per member, refitted to three distinct levels.
 - Items 12, 14 and 15 of that table (about 10:30, "y on12-15"; DEC-37): per seed only the mean genome size within 30%, one lineage-rate axis on origination; a fixed crown age at about the 21-seed median; plasmid rates refitted over 21 seeds and the crown measured from the living lineages. With DEC-36 the redesign is decided and F-02 session 11 starts.
-- Items 16 to 28 of that table are still open (below).
+- Items 16 to 28 of that table (about 10:45, "accept all these defaults"): all accepted as recommended. DEC-38 (clustering in one process has no exemption), DEC-39 (synthetic world: detectability falls with divergence, the Cas operon planted with its array, a 5-minute build target, the sessions' values), DEC-40 (CRISPR: three repeats everywhere, a filtered second producer at two repeats beside Cas genes, arrays by coordinates and not on the tape, the built stages get arrays after `rM.2`), DEC-41 (`nbr flanks` figure defaults), DEC-42 (ncRNA on the 50 Gbp after H1 and PLSDB; results archived under `bulk`; the listed scratch may be removed; the catalog excluded from byte identity; the older items as recommended; the two footer commits stay).
+- **Nothing is open for the PI at 10:50 on 2026-11-14.** The items below are kept for their reasons; each was accepted as its recommendation says.
 
 Decided by the PI on 2026-11-13:
 - Worked examples are run on a release before it is called a milestone (AGENTS §5.7; card E-11).
@@ -564,7 +829,7 @@ Decided by the PI on 2026-11-12 (evening):
 - PLSDB is built after stage H1 (card C-26).
 - Earlier the same day: DEC-29 (unsplittable clustering call as one process), W-25 approved, zombi2 approved for F-02.
 
-Still open, recommendation first:
+Accepted as recommended on 2026-11-14 (kept for their reasons; none is open):
 - Card F-02 (session 3): in the synthetic world a family's copies are found by `hmmsearch` equally often at every divergence
   (about 81%), because the spec's model keeps every copy a draw from the family's profile. Real families get harder to detect
   as they diverge. Should the model change so that detectability falls with divergence (a sharper root, an equilibrium that

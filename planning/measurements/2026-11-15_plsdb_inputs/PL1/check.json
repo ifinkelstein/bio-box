@@ -1,0 +1,33 @@
+{
+ "stage": "PL1",
+ "genomes": 68693,
+ "genome_input_rows": 68693,
+ "distinct_genome_uids": 68693,
+ "circular_rows": 62797,
+ "kinds": [
+  "plasmid"
+ ],
+ "codes": [
+  11
+ ],
+ "assembly_quality": [
+  "complete",
+  "contig"
+ ],
+ "gene_call_mode": {
+  "plasmid": null
+ },
+ "objects": [
+  {
+   "path": "/tmp/if2453/s2/inputs/PL1/plsdb_2024_05_31_v2_sequences.fasta",
+   "source_name": "plsdb",
+   "source_release": "2024_05_31_v2",
+   "license": "INSDC records; PLSDB states no licence (cite doi:10.1093/nar/gkab1111)",
+   "redistributable": true,
+   "retrieved_at": "2026-11-11T23:14:30+00:00",
+   "bytes": 7425668755
+  }
+ ],
+ "biobox": "/tmp/if2453/ci/C-26/src/biobox/cli.py",
+ "problems": []
+}

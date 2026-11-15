@@ -1,0 +1,37 @@
+# Cas families cas-pfam-1 (card E-15, DEC-40): the Pfam families whose domain makes a called gene a Cas gene for the
+# filtered CRISPR array producer (biobox.l1.crispr, `run_near_cas`). Every role of the CRISPR worked example whose
+# name starts with `cas` (examples/crispr_cas_neighbourhoods/sql/q01_loci_by_domains.sql, copied 2026-11-14), the
+# 31 families card E-13 measured its rule A5 with. Frozen: its sha256 is crispr.CAS_FAMILY_SETS["cas-pfam-1"]; a
+# change of the list is a new file, a new name and so a new producer (`caspfam<k>` in the producer name).
+# accession	role
+PF01867	cas1
+PF09827	cas2
+PF09707	cas2
+PF21384	cas3
+PF18019	cas3
+PF21802	cas3
+PF18395	cas3
+PF22590	cas3
+PF30455	cas3
+PF01930	cas4
+PF09704	cas5
+PF09614	cas5f
+PF09559	cas6
+PF01881	cas6
+PF10040	cas6
+PF09618	cas6f
+PF05107	cas7
+PF09615	cas7f
+PF24121	cas8b
+PF24122	cas8b
+PF09709	cas8c
+PF09481	cas8e
+PF09611	cas8f
+PF16593	cas9
+PF16592	cas9
+PF16595	cas9
+PF22702	cas9
+PF22335	cas10
+PF12469	cas10
+PF09485	cas11e
+PF21918	cas12a

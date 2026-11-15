@@ -25,7 +25,9 @@ accession and header up by `contig_uid` (`contig_occurrence` is sorted by object
 such a lookup cannot prune it): one row per contig of the stage, sorted by `contig_uid`, with its
 first record by (`l0_object_sha256`, `record_ordinal`) and its number of records. It is made from
 one DuckDB sort of the stage's records by (`contig_uid`, `l0_object_sha256`, `record_ordinal`),
-which spills into the private scratch directory, read a batch at a time (`_label_batches`).
+which spills into the private scratch directory, read a batch at a time (`_label_batches`). A stage ingested
+before card B-27 gets the same files later from its own `contig_occurrence`, by the same code (`write_labels`,
+`bio-box stage labels`, card C-34; section near the end of this module).
 
 A stage never rewrites an earlier stage's files (AGENTS §3.10): a sequence already stored
 adds only occurrence rows, a stage's `seq_locator` file holds only the sequences first
@@ -1206,6 +1208,96 @@ def rescan_plan(objects: list[SourceObject], root: Path, stage: str, tmp: Path |
                          "the published plan is not the one of these inputs, so the batches and the merge cannot run")
     os.replace(new, dest)
     return {"plan": True, "new_sequences": doc["new_sequences"], "new_seq_sha256": doc["new_seq_sha256"]}
+
+
+# --- label files for a stage ingested before card B-27 (card C-34) ----------------------------------------------------
+#
+# `bio-box stage labels --stage S` (`write_labels`): a stage ingested before card B-27 has `contig_occurrence` and no
+# `contig_label`. The step makes the table from the stage's own `contig_occurrence` files with ingest's code: a DuckDB
+# view `seen` of the label columns over those files stands for ingest's private scratch table (`obj_idx`, ingest's
+# tie-break between two listings of one object, is a constant: such rows are equal in every label column), then
+# `_label_batches` and `io.write_parts` at `EST_LABEL_ROW`, as `_write_tables` writes them. Every record of the stage
+# is a label row's input, a contig another stage owns (DEC-26) or another genome of the stage holds (DEC-27) included,
+# as ingest labels them, so the files are those an ingest of the same objects since card B-27 writes, byte for byte
+# (the oracle of tests/r2/test_c34_stage_labels.py). The stage's ingest ledger must count exactly the records its
+# `contig_occurrence` holds (a stage ingested whole), and the step refuses a stage that already has label files or a
+# `labels` ledger, in the root or in `out`. Its own ledger, `ledger/stage=S/step=labels`, has one row per source object:
+# records in, kept = records that are their contig's first (the label rows naming the object), merged = the others.
+# A release published before the files existed does not list them and ignores them (`catalog.STAGE_ADDED_TABLES`).
+
+LABELS_STEP = "labels"
+
+
+def occurrence_files(root: Path, stage: str) -> list[Path]:
+    """The stage's `contig_occurrence` files on disk: every `source=` partition of the stage's own directory, by
+    source and then part order (`write_labels`' input; no output depends on the order)."""
+    return io.part_files(Path(root) / f"{table('contig_occurrence').location}/stage={stage}", "source=*/part-*.parquet")
+
+
+def write_labels(root: Path, stage: str, *, out: Path | None = None, tmp: Path | None = None, threads: int = 1,
+                 max_file_bytes: int = layout.MAX_FILE_BYTES) -> dict:
+    """Write `contig_label/stage=<stage>/` and the `labels` ledger under `out` (default `root`; under run-step
+    `$BIOBOX_STAGING`) from the stage's `contig_occurrence` in `root` (section note above). `threads`: DuckDB's; the
+    files do not depend on it. `tmp` holds the private scratch directory (system temp by default), under neither the
+    root nor `out`. FileExistsError when the stage has label files or the step's ledger; FileNotFoundError when it has
+    no `contig_occurrence` or no ingest ledger; ValueError when the two disagree or the stage has no record. Returns
+    counts and the files written (root-relative)."""
+    root = Path(root)
+    out = root if out is None else Path(out)
+    if not isinstance(threads, int) or isinstance(threads, bool) or threads < 1:
+        raise ValueError(f"threads {threads!r}: a positive integer")
+    ledger.check_scratch(tmp, root, out)
+    ledger.refuse_written(root, out, [f"{LABEL_DIR}/stage={stage}", f"ledger/stage={stage}/step={LABELS_STEP}"],
+                          f"the contig_label table of stage {stage}")
+    files = occurrence_files(root, stage)
+    if not files:
+        raise FileNotFoundError(f"stage {stage} has no contig_occurrence files under {root}: not ingested")
+    ingested = ledger.path(root, stage, "ingest")
+    if not ingested.is_file():
+        raise FileNotFoundError(f"{ingested}: stage {stage} has no ingest ledger to check its records against")
+    scratch = Path(tempfile.mkdtemp(prefix="biobox-labels-", dir=tmp))
+    try:
+        con = duckdb.connect(config={"threads": threads, "memory_limit": DUCK_MEMORY_LIMIT,
+                                     "temp_directory": str(scratch / "duckdb"), "preserve_insertion_order": True})
+        try:
+            con.execute(f"CREATE VIEW seen AS SELECT {', '.join(_LABEL_COLUMNS)}, 0::UINTEGER AS obj_idx "
+                        f"FROM read_parquet({_sql_files(files)}, hive_partitioning = false)")
+            (n_records, n_contigs), = con.execute("SELECT count(*), count(DISTINCT contig_uid) FROM seen").fetchall()
+            (n_in,), = con.execute(f"SELECT coalesce(sum(n_in), 0) FROM read_parquet({_sql_path(ingested)}, "
+                                   "hive_partitioning = false)").fetchall()
+            if n_records != n_in:
+                raise ValueError(f"stage {stage}: its contig_occurrence holds {n_records} records, its ingest ledger "
+                                 f"counts {n_in}; the stage is not as ingest left it")
+            if not n_records:
+                raise ValueError(f"stage {stage} has no record: ingest writes no contig_label file for it either")
+            spec = table("contig_label")
+            paths = io.write_parts(_label_batches(con, spec), spec, out / f"{LABEL_DIR}/stage={stage}", EST_LABEL_ROW,
+                                   max_file_bytes)
+            tools = provenance.tool_versions("pyarrow", "duckdb")
+            reader = con.sql(
+                "SELECT l0_object_sha256, count(*) AS n_in, count(*) FILTER (WHERE rn = 1) AS n_kept FROM ("
+                "SELECT l0_object_sha256, row_number() OVER (PARTITION BY contig_uid "
+                "ORDER BY l0_object_sha256, record_ordinal) AS rn FROM seen) "
+                "GROUP BY l0_object_sha256 ORDER BY l0_object_sha256").to_arrow_reader(io.ROW_GROUP_ROWS)
+            n_objects = 0
+
+            def rows():
+                nonlocal n_objects
+                for b in reader:
+                    for sha, n, kept in zip(*(b.column(i).to_pylist() for i in range(3))):
+                        n_objects += 1
+                        yield ledger.row(sha, "l0_object", n, kept, n - kept, tools=tools)
+
+            try:
+                led = ledger.write(out, stage, LABELS_STEP, rows())
+            finally:
+                reader.close()
+        finally:
+            con.close()
+    finally:
+        shutil.rmtree(scratch, ignore_errors=True)
+    return {"records": int(n_records), "contigs": int(n_contigs), "objects": n_objects,
+            "occurrence_files": len(files), "files": [p.relative_to(out).as_posix() for p in [*paths, led]]}
 
 
 def main(argv: list[str] | None = None) -> int:
