@@ -5,7 +5,7 @@ The running record of the cards in [`TASKS.md`](TASKS.md). Updated at every merg
 by an agent on its own branch `task/<ID>`, audited by the orchestrating session, and merged after its
 tests passed on the merged tree.
 
-## Handoff, 2026-11-14 22:06 CST (current; the dated sections under "History" are superseded where they differ)
+## Handoff, 2026-11-14 22:18 CST (current; the dated sections under "History" are superseded where they differ)
 
 Written so a new session can continue without the conversation that produced this file. Times are the pod's clock
 (CST); read it with `ssh ... date` before writing a time here.
@@ -16,7 +16,7 @@ the PI at the S2C phase 2 build and at a failed release check. The usage limit h
 (2026-11-13 15:45 and 20:55, 2026-11-14 01:40 twice counting the orchestrator, and the weekly limit at about 12:20): an agent stopped that way is resumed
 with `SendMessage` to the same agent once the limit resets; nothing is lost.
 
-**State on 2026-11-14 at 22:06 CST.**
+**State on 2026-11-14 at 22:18 CST.**
 
 *The 50 Gbp release `rM.2` is built and verified* (2026-11-14 17:32 CST).
 - `build-stage: stage P6 and release rM.2: all 13 steps done` at 17:27; `release verify` at 17:30: "release rM.2:
@@ -69,11 +69,20 @@ with `SendMessage` to the same agent once the limit resets; nothing is lost.
   1. Its search pack: **done** (card W-35, 20:54): pack `26e10f05401faeefb78769e83f7f6cb4`, 25.8 GB, built in 8
      parts because one process would have taken 387 CPU-minutes (*derived*), verified, in the profile's pack
      directory `/tmp/if2453/bio-box/packs`.
-  2. `scripts/release_examples.sh rM.2` (RUNBOOK §6): started by the orchestrator after the W-35 merge, unit
-     `ex-rM2`, tree `/tmp/if2453/ci/rM2post`, output `/tmp/if2453/ex-rM2/out`, log `/tmp/if2453/ex-rM2/examples.log`.
-     **A failed or missing invariant stops the announcement.** When every invariant holds: finish its `note.md`
-     into `planning/measurements/`, copy each example's `recorded_new.tsv` to `examples/<example>/recorded/rM.2.tsv`,
-     then announce `rM.2` in `README.md` and `GUIDE.md` as the release to use.
+  2. `scripts/release_examples.sh rM.2` (RUNBOOK §6): **run, and it stopped the announcement** (*measured*,
+     wilkcomp02, 2026-11-14, 22:13 to 22:15, unit `ex-rM2`, tree `/tmp/if2453/ci/rM2post` at `ac24001`, output
+     `/tmp/if2453/ex-rM2/out`, log `/tmp/if2453/ex-rM2/examples.log`): "rM.2: 2 examples, 37 invariant(s) failed or
+     missing (crispr_cas_neighbourhoods: 19, rnap: 18)". Both examples stop at their first step, finding the
+     positive control by accession: `bio-box find` refuses with "no contig of release rM.2 has the accession
+     NC_001604" (phage T7, stage S1) and "... NZ_AP026781.1" (stage P2), though both contigs are in the release.
+     Cause (*measured*, `ls`): `l0seq/contig_label/` has files for P3 to P6 only; S1, P1 and P2 were built before
+     card B-27, and the fallback of card W-18 applies only to a release with no label file at all. So in `rM.2`
+     the contigs of S1, P1 and P2 (32,815 of 54,265, *derived*) have no accession for any lookup, and neither
+     `release verify` nor `bio-box releases` says so. No search was run; the data and the pack are not in doubt.
+     **Card W-36** fixes the readers (per stage: labels where a stage has them, else from `contig_occurrence`),
+     makes `release verify` and `releases` name the unlabelled stages, and reruns the release check on `rM.2`.
+     When every invariant holds: its note into `planning/measurements/`, each example's `recorded/rM.2.tsv`, then
+     the announcement of `rM.2` in `README.md` and `GUIDE.md`. **Until then `rN.3` stays the release to use.**
 - **Next on the pod, in order** (one build at a time in the root): (a) card C-33: the CRISPR arrays of both
   producers on the seven built stages and the release that holds them (DEC-40); (b) card C-24 (stage H1), then C-26
   (PLSDB), each with the image of `faec1f4`: **the next build sets `IMAGE` and `DIGEST` in its driver to the values
@@ -99,10 +108,10 @@ with `SendMessage` to the same agent once the limit resets; nothing is lost.
 - The fixture's manifest hash is `28ffa9808ecd4829e52f6892f94f7b85` since E-12, equal on Actions and the pod;
   `/tmp/if2453/ci-peer/right.json` holds it.
 
-*Agents.* Two running at 22:06: F-02 session 11 (stopped at six failing tests; now refitting the background rates, open item 5) and C-33 (arrays on the built stages); W-33, E-15, W-34, W-32 and W-35 were done and merged today; see "Agents running" below. Merged on 2026-11-13 and 14: C-28, C-27 step 4, C-25 step 2, C-29, C-30, C-31, C-32,
+*Agents.* Two running at 22:18: F-02 session 11 (stopped at six failing tests; now refitting the background rates, open item 5) and W-36 (the defect the release check found on `rM.2`); W-33, E-15, W-34, W-32 and W-35 were done and merged today; see "Agents running" below. Merged on 2026-11-13 and 14: C-28, C-27 step 4, C-25 step 2, C-29, C-30, C-31, C-32,
 W-30, W-31, A-08, E-11, E-12, E-13, E-14, F-02 sessions 4 to 10 (10 is a measurement), the README, the CRISPR example.
 
-*What is blocked, and on what.* One thing waits on the PI since 18:45 on 2026-11-14: F-02's redesign (open item 5). Everything else was decided at 10:45 (DEC-34 to DEC-42).
+*What is blocked, and on what.* Two things wait on the PI: F-02's redesign (open item 5, since 18:45 on 2026-11-14) and which release holds the CRISPR arrays (open item 6, since 22:19). Everything else was decided at 10:45 (DEC-34 to DEC-42).
 - **The statistics track** (F-01, F-03 and the rest of F-02): **waits on the PI** (open item 5). F-02 session 11
   implemented DEC-36 and DEC-37 and stopped: six existing assertions fail in the new world and none may be loosened
   without a decision. Its branch `task/F-02-11` is pushed, not merged, and red on Actions on exactly those six.
@@ -111,8 +120,9 @@ W-30, W-31, A-08, E-11, E-12, E-13, E-14, F-02 sessions 4 to 10 (10 is a measure
 - **S2C phase 2** (56 Gbp, fetched and on `/stor`): the pod is free for it since the `rM.2` build ended (17:27).
   Card C-25 step 3 and cards B-47a to B-47e (DEC-34, DEC-35) are next in the build queue after H1 and PLSDB.
 - **Short CRISPR arrays** on Tn7-like elements: card E-15 is merged (DEC-40; 14 of the 20 Tn7-like TniQ loci of the example now have an array). The arrays enter a release with card C-33 (the CRISPR step on the seven built stages). Open: the chance rate on phages (card E-16).
-- **`rM.2`'s announcement**: its search pack exists since 20:54 (card W-35); it waits only for both worked examples
-  on it (AGENTS §5.7; running). Until then `rN.3` is the release to use.
+- **`rM.2`'s announcement**: its search pack exists since 20:54 (card W-35), but the release check failed at 22:15
+  (lookups by accession fail for stages S1, P1 and P2: state block above). It waits for card W-36 and a clean
+  rerun of both worked examples. Until then `rN.3` is the release to use.
 - Builds queued on the pod, one at a time in the root: card C-33 (arrays), stage H1 (card
   C-24), PLSDB (card C-26), S2C phase 2, then ncRNA on the 50 Gbp (DEC-42).
 - **Scratch cleanup on the pod** (DEC-42 allows it): the large part was done at 14:41 on 2026-11-14 ("On the pod"
@@ -164,7 +174,7 @@ F-02 and the measurements in the table below; decisions DEC-29 to DEC-33 were ad
 above says where `main`, the images and Actions stand. The manifest hash of the fixture covers every registered
 schema's hash, so it moves with any schema change (last: card E-12).
 
-**Agents running** at 22:06 on 2026-11-14: two.
+**Agents running** at 22:18 on 2026-11-14: two.
 - F-02 session 11 (Opus; the redesign of the `micro` preset over seeds, DEC-36 and DEC-37): worktree
   `.claude/worktrees/agent-aa711fcf48ad79fd7`, branch `task/F-02-11` at `bb17e0e`, pushed, **not merged** (red on
   Actions on the same six assertions); pod scratch `/tmp/if2453/f0211/`, units `f0211-*`, at most 8 threads. Its
@@ -174,15 +184,19 @@ schema's hash, so it moves with any schema change (last: card E-12).
   the motif as targets. It hands back with whatever still fails; the plasmid conflict and N0's r are expected to
   remain for the PI. (It took over, at 12:14, the work of an agent the PI had stopped at about 11:40; if it is
   stopped from outside again, a new agent is started only when the PI asks.)
-- C-33 (Opus; CRISPR arrays of both producers on the seven built stages and the release that holds them, DEC-40):
-  started after the W-35 merge, branch `task/C-33`; pod scratch `/tmp/if2453/c33/`, units `c33-*`. It is the one
-  agent that writes into the data root (new producer partitions and a new release only).
+- W-36 (Opus; lookups by accession in a partly labelled release, then the release check on `rM.2`): given at 22:25
+  to the agent that had started card C-33 at 22:14 and stopped it at 22:19, at the card's own stop condition,
+  having written nothing (open item 6). Its card is now W-36, branch `task/W-36`; pod scratch `/tmp/if2453/w36/`,
+  units `w36-*`; read-only on the data root.
+  C-33 (CRISPR arrays on the seven built stages, DEC-40) waits: its stage steps (the two producers on each stage,
+  about 158 and 188 CPU-minutes, *derived*) need no decision and are next for a heavy slot after W-36; the release
+  that holds the arrays needs the PI (open item 6).
 Done and merged since: W-34 (Sonnet; the help text of `bio-box results`), at 15:45; W-32 (Opus; `nbr flanks` figure
 defaults, DEC-41), 15:40 to 18:05; W-35 (Opus; the pack build in parts and the pack of `rM.2`), 18:05 to 22:00.
 Done and merged today after the restart: W-33 (14:05 to 14:55) and E-15 (its second agent, 14:00 to 15:25). The
 account's weekly usage limit stopped the two Opus agents at about 12:20 (the fifth such stop; the message gave a
 reset on 2026-11-19 at 13:00); the PI logged in again and both were resumed with `SendMessage` at 14:00. Queued
-for the next free heavy slot, in this order: F-02 session 12 (detectability against divergence, DEC-39; after
+for the next free heavy slot, in this order: C-33 (after W-36), F-02 session 12 (detectability against divergence, DEC-39; after
 session 11 is decided and merged), E-16 (the filtered CRISPR producer's chance rate on phages).
 
 **On the pod** (wilkcomp02; account thread cap 40 by day on weekdays, 56 at night and at weekends, a total over
@@ -225,7 +239,7 @@ everything we run; the PI keeps that cap). State on 2026-11-14 at 17:50 CST:
 
 **Next, in order.**
 1. Done at 17:55: the durable copy of the data root (hashes in the state block). `rM.1` is left clustered only.
-2. `scripts/release_examples.sh rM.2` (running), then the announcement of `rM.2`
+2. Card W-36, then `scripts/release_examples.sh rM.2` again, then the announcement of `rM.2`
    in `README.md` and `GUIDE.md`.
 3. Card C-33 (CRISPR arrays on the built stages), card C-24 (stage H1, huge phages), then C-26 (PLSDB), each with
    the image of `faec1f4` and `--crispr`; then card C-25 step 3 and cards B-47a to B-47e and the S2C phase 2 build
@@ -608,7 +622,7 @@ probed by hand on the pod).
 
 ## Open items for the PI
 
-**Open since the afternoon of 2026-11-14** (items 1 to 4 block nothing: each has a default that stands until you say otherwise; **item 5 blocks the statistics track**):
+**Open since the afternoon of 2026-11-14** (items 1 to 4 block nothing: each has a default that stands until you say otherwise; **item 5 blocks the statistics track and item 6 the release with arrays**):
 1. `rM.1` (card B-43's first 50 Gbp release) is left clustered only. It now reads the same stages, the same Pfam
    library and, *measured*, the same cluster bytes as `rM.2`, so finishing it would write a second copy of `rM.2`.
    Default: leave it; its cluster files (10.6 GB) stay in the root and in the durable copy.
@@ -659,6 +673,26 @@ probed by hand on the pod).
    since the correlation measured the lineage axes that DEC-37 (1) removed. If the refit cannot restore the core
    with one origination axis, the question becomes whether a loss axis comes back (DEC-37 (1)); the session will
    say, measured. Nothing is merged until you decide (b) and (c).
+6. **Which release holds the CRISPR arrays** (card C-33, stopped at its own stop condition at 22:19 on 2026-11-14,
+   nothing written). The arrays themselves can go onto the seven built stages with the code as it is (new
+   producer files; `rM.2` and `rN.3` keep verifying, since a release ignores stage files it does not list), and
+   that part needs no decision. But a release cannot take them without a release of its own, and a release reads
+   only its own `release=<R>` cluster files: a new `rM.3` over the same seven stages would cluster the same
+   45,815,843 proteins again, about 14,087 CPU-minutes (*derived* from `rM.2`'s run records: 14,137.3 for its 449
+   release records less 50.5 for tokens, postings, dimension tables, manifest and catalog; *measured*, wilkcomp02,
+   2026-11-14), to produce bytes we already have twice. The same will happen for every later producer (the ncRNA
+   of DEC-42) and every release that adds no protein. Options: **A**, `rM.3` with a re-clustering; **B**, finish
+   `rM.1` after the arrays are on the stages: it is clustered, names the same seven stages, its cluster files are
+   byte-identical to `rM.2`'s, and its remaining steps cost about 50.5 CPU-minutes, but the name would then sit
+   after `rM.2`, and open item 1 would be reversed; **C**, a card that lets a new release take the clustering of
+   an earlier one when the two cluster plans' input hashes are equal (the files copied or referenced into
+   `release=<new>` with a ledger row, verified), so a release that adds no protein costs tokens, postings and a
+   manifest only. **Recommendation: C**, as a card of tier M once you agree to the rule; it is the only option
+   that also serves ncRNA and later producers, and it keeps release names in order. B is the cheap way to have
+   arrays in a release this weekend if you want that first. Also found on the way, for a small card whatever you
+   choose: the tokens step builds tokens with no cluster levels, without an error, when a release has no
+   `cluster_member` files (`l3/tokens.py`, read in the code, not run). And a new release needs a pack of its own
+   (the pack id covers the release id): about 403 CPU-minutes (*measured* for `rM.2`).
 
 Decided by the PI on 2026-11-14 (about 10:10 CST: "for 1-11, accept your choices", to the orchestrator's table of 28):
 - S2C phase 2 (DEC-34): the ANI-diversity selection stands as built (its 15% alignment-fraction rule with it); six

@@ -177,9 +177,11 @@ The specification and plan behind these are [`00-spec.md`](00-spec.md), [`PLAN.m
 **Now** (2026-11-14; STATUS handoff)
 
 - `rM.2`, the 50 Gbp release with Pfam on every stage, is built and verified (2026-11-14: seven stages, 39,224
-  genomes, 45,815,843 proteins, *measured*). It is not yet the release to use: its search pack must first be built
-  (card W-35: the pack build has to run in parts to stay under the server's limit per process), then both worked
-  examples run on it (AGENTS §5.7; `scripts/release_examples.sh`). Until then use `rN.3`. The data root (81 GB)
+  genomes, 45,815,843 proteins, *measured*). Its search pack is built (25.8 GB, in 8 parts, since one
+  process would pass the server's limit per process; card W-35). It is not yet the release to use: the release
+  check (AGENTS §5.7; `scripts/release_examples.sh`) stopped at its first step on 2026-11-14, because lookups by
+  accession fail for the three stages built before the label table existed (card W-36). Until that is fixed and
+  both worked examples hold on it, use `rN.3`. The data root (81 GB)
   has a copy on durable storage since 2026-11-14, and its two independent clustering runs of the same 45.8 M
   proteins gave byte-identical cluster tables (*measured*; STATUS handoff).
 - Tests, builds and searches on the server run in the images built from `main` at pull request 5 (cards C-29, C-32);
