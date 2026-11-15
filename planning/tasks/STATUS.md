@@ -5,7 +5,7 @@ The running record of the cards in [`TASKS.md`](TASKS.md). Updated at every merg
 by an agent on its own branch `task/<ID>`, audited by the orchestrating session, and merged after its
 tests passed on the merged tree.
 
-## Handoff, 2026-11-14 22:18 CST (current; the dated sections under "History" are superseded where they differ)
+## Handoff, 2026-11-15 00:02 CST (current; the dated sections under "History" are superseded where they differ)
 
 Written so a new session can continue without the conversation that produced this file. Times are the pod's clock
 (CST); read it with `ssh ... date` before writing a time here.
@@ -16,7 +16,7 @@ the PI at the S2C phase 2 build and at a failed release check. The usage limit h
 (2026-11-13 15:45 and 20:55, 2026-11-14 01:40 twice counting the orchestrator, and the weekly limit at about 12:20): an agent stopped that way is resumed
 with `SendMessage` to the same agent once the limit resets; nothing is lost.
 
-**State on 2026-11-14 at 22:18 CST.**
+**State on 2026-11-15 at 00:02 CST.**
 
 *The 50 Gbp release `rM.2` is built and verified* (2026-11-14 17:32 CST).
 - `build-stage: stage P6 and release rM.2: all 13 steps done` at 17:27; `release verify` at 17:30: "release rM.2:
@@ -108,7 +108,7 @@ with `SendMessage` to the same agent once the limit resets; nothing is lost.
 - The fixture's manifest hash is `28ffa9808ecd4829e52f6892f94f7b85` since E-12, equal on Actions and the pod;
   `/tmp/if2453/ci-peer/right.json` holds it.
 
-*Agents.* Two running at 22:18: F-02 session 11 (stopped at six failing tests; now refitting the background rates, open item 5) and W-36 (the defect the release check found on `rM.2`); W-33, E-15, W-34, W-32 and W-35 were done and merged today; see "Agents running" below. Merged on 2026-11-13 and 14: C-28, C-27 step 4, C-25 step 2, C-29, C-30, C-31, C-32,
+*Agents.* Two running at 00:02 on 2026-11-15: F-02 session 11 (its last pass on four failing assertions, open item 5) and W-36 (the defect the release check found on `rM.2`; its rerun of the check was in its last step at 00:02); W-33, E-15, W-34, W-32 and W-35 were done and merged on 2026-11-14; see "Agents running" below. Merged on 2026-11-13 and 14: C-28, C-27 step 4, C-25 step 2, C-29, C-30, C-31, C-32,
 W-30, W-31, A-08, E-11, E-12, E-13, E-14, F-02 sessions 4 to 10 (10 is a measurement), the README, the CRISPR example.
 
 *What is blocked, and on what.* Two things wait on the PI: F-02's redesign (open item 5, since 18:45 on 2026-11-14) and which release holds the CRISPR arrays (open item 6, since 22:19). Everything else was decided at 10:45 (DEC-34 to DEC-42).
@@ -174,16 +174,17 @@ F-02 and the measurements in the table below; decisions DEC-29 to DEC-33 were ad
 above says where `main`, the images and Actions stand. The manifest hash of the fixture covers every registered
 schema's hash, so it moves with any schema change (last: card E-12).
 
-**Agents running** at 22:18 on 2026-11-14: two.
+**Agents running** at 00:02 on 2026-11-15: two.
 - F-02 session 11 (Opus; the redesign of the `micro` preset over seeds, DEC-36 and DEC-37): worktree
-  `.claude/worktrees/agent-aa711fcf48ad79fd7`, branch `task/F-02-11` at `bb17e0e`, pushed, **not merged** (red on
-  Actions on the same six assertions); pod scratch `/tmp/if2453/f0211/`, units `f0211-*`, at most 8 threads. Its
-  history today: stopped at six failing assertions at about 18:45; measured the old-crown variant until 20:30
-  (open item 5: the crown was not the cause); resumed at 20:33 to refit the background duplication, transfer and
-  loss base rates at the decided crown, which are free preset values, with the core genome, the burst identity and
-  the motif as targets. It hands back with whatever still fails; the plasmid conflict and N0's r are expected to
-  remain for the PI. (It took over, at 12:14, the work of an agent the PI had stopped at about 11:40; if it is
-  stopped from outside again, a new agent is started only when the PI asks.)
+  `.claude/worktrees/agent-aa711fcf48ad79fd7`, branch `task/F-02-11` at `89cfb46`, pushed, **not merged** (red on
+  Actions on six assertions, not the same six as before); pod scratch `/tmp/if2453/f0211/`, units `f0211-*`, at
+  most 8 threads. Its history: stopped at six failing assertions at about 18:45 on 2026-11-14; measured the
+  old-crown variant until 20:30 (the crown was not the cause); refitted the background base rates until about
+  23:55 (the core genome is back at every seed; open item 5 has what still fails); resumed at 00:00 on 2026-11-15
+  for one last, bounded pass on the four failures that are the card's own. It then ends, with a preset that
+  passes all but the PI's two, or with the measured trade-off. (It took over, at 12:14, the work of an agent the
+  PI had stopped at about 11:40; if it is stopped from outside again, a new agent is started only when the PI
+  asks.)
 - W-36 (Opus; lookups by accession in a partly labelled release, then the release check on `rM.2`): given at 22:25
   to the agent that had started card C-33 at 22:14 and stopped it at 22:19, at the card's own stop condition,
   having written nothing (open item 6). Its card is now W-36, branch `task/W-36`; pod scratch `/tmp/if2453/w36/`,
@@ -664,15 +665,31 @@ probed by hand on the pod).
    with entry exclusion added 204, with no lineage axis 35, with the redesign's one origination axis 26 to 47. The
    old loss axis drifted most lineages to a loss multiplier well below 1, and a shared multiplier kept duplication
    and transfer low; DEC-37 (1) removed those axes and left the base rates where session 2 had set them for that
-   world. **What happens now, without a decision**: the base rates of the background process are free preset
-   values, so session 11 refits them at the decided crown (5.0), origination beside them, to restore the core, the
-   burst identity and the motif; that answers (a) and probably (d). **What stays for you**: (b), where the
-   recommendation is to keep the per-genome plasmid range (the builders and the statistics need plasmid-free
-   genomes) and ask for both types at the default seed and at a stated share of seeds, not every seed; and (c),
-   where the recommendation is to replace N0's per-genome correlation by a test of the two size distributions,
-   since the correlation measured the lineage axes that DEC-37 (1) removed. If the refit cannot restore the core
-   with one origination axis, the question becomes whether a loss axis comes back (DEC-37 (1)); the session will
-   say, measured. Nothing is merged until you decide (b) and (c).
+   world. (The agent later measured the old multipliers: it was the shared duplication and transfer multiplier
+   that ran low, median 0.36 over lineages and 0.06 at the default seed; the loss multiplier's median was 0.85.)
+   **Done without a decision** (the base rates are free preset values; branch at `89cfb46`, *measured* over 22
+   seeds, §12 and §13 of the note): duplication, transfer and loss at 0.2 of session 2's values (0.008, 0.02,
+   0.048), origination 0.065, member transfer 0.01, 0.03 and 0.4. The core is 253 root families at the default
+   seed and 228 to 513 over the seeds (it was 7); the chromosome mean is 1,367 to 1,760, in band at 22 of 22; the
+   planted share 4.4% to 6.5%; no exclusion breach; N1's comparator exists; the burst identity is 0.931 and the
+   motif is found. That answers (a) and (d). **Six assertions still fail** at the default seed. Four are the
+   card's own and get one more pass (running): 150 cross-phylum IGR pairs where 200 are asked (the count follows
+   background transfer: 236 to 262 at transfer 0.05, where the motif test then fails on an exact second copy of
+   the motif); no unit broken by the "family" fate (it needs some duplication); one decoy with 2 transfers where
+   3 are asked; N1's label pairs more adjacent than matched random pairs (p 0.0055; it passes at a second seed).
+   **Two are yours**:
+   (b) plasmids, over 22 seeds (*measured*): at rates 0.8 and 0.4 (committed) both types survive at 15 seeds, some
+   genome is plasmid-free at 10, a genome has more than 2 at 4; at 0.1 and 0.3 both survive at 17, some genome is
+   plasmid-free at 22 of 22, more than 2 at 2; at 3.0 and 0.1 both survive at 22 of 22 and every genome carries
+   both. Recommendation: 0.1 and 0.3, that is, keep the spec's per-genome range (the builders and the statistics
+   need plasmid-free genomes) and replace DEC-37 (3)'s "at every seed" by "at the default seed, and reported per
+   seed" (17 of 22).
+   (c) N0's background genome sizes against the signal world's, over 22 seeds (*measured*): the ratio of means is
+   in [0.9, 1.1] at 22 of 22 (0.973 to 1.091); r is at least 0.9 at 3 seeds (0.19 to 0.99); a two-sample KS test
+   passes at p 0.01 at only 11 (sizes are now tight, so a shift of a few percent in the mean is a large KS
+   distance). Recommendation, changed from the earlier one: keep the ratio bound and drop the correlation; do not
+   replace it by a distribution test. The correlation measured the lineage axes that DEC-37 (1) removed.
+   Nothing is merged until you decide (b) and (c) and the last pass has reported.
 6. **Which release holds the CRISPR arrays** (card C-33, stopped at its own stop condition at 22:19 on 2026-11-14,
    nothing written). The arrays themselves can go onto the seven built stages with the code as it is (new
    producer files; `rM.2` and `rN.3` keep verifying, since a release ignores stage files it does not list), and
