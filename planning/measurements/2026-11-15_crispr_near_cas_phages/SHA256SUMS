@@ -1,0 +1,12 @@
+# sha256 of the run's outputs in /tmp/if2453/e16/out on wilkcomp02 (2026-11-15). The first four are copied here;
+# the rest are kept on the pod only (per-call tables and the per-draw totals, numpy .npz).
+efd44f7ec3b41170524d4cff475417f90b3784fa957391a01ffd65b5ebebcd36  summary.json
+576abe9eda481f1ff9c343533fa820fa67cb7c52c99bea3109ac3d0cd2b93d79  kept_s1.tsv
+ff7dce886df12923120aa606276ddb1fd99f59d848c357fb906aebb0da1fc32e  families.tsv
+d8cc1e3ce3a1ff727c66cefd9d3e151478cc6136c2ac7012039e3a8f5fec4398  roles.tsv
+05c88f259c21e586720908c648f8cca5e4c4eaafb2268e259c41eccb91afa580  calls_S1.tsv
+ec69514ccd1825c51aa32efa66722aace981e4822b8ad00aa825268d36d44661  calls_P1.tsv
+d711dbe931d3386fe064ac535a65b513a91b9f83219b34e4a4c34697643c676e  calls_P2.tsv
+36a4a8d18f6bd66e2be7f715a8f085cf7913fd63a54c3165b9c353a1b8ca3398  draws_S1.npz
+30f440dac452552f50bf2bc32ae2354d38fa3f82749334bef8f39b474bc96917  draws_P1.npz
+7a3ad95f1e9232a35c05a8b1cd4e3d56e3488941575d50c511c0b5593576cc69  draws_P2.npz

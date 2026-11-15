@@ -192,8 +192,9 @@ The specification and plan behind these are [`00-spec.md`](00-spec.md), [`PLAN.m
   the 50 Gbp release (DEC-34, DEC-35; card C-25 step 3 and cards B-47a to B-47e).
 - CRISPR arrays are called with MinCED and stored as features (card E-12), `bio-box nbr` shows the arrays beside a
   locus (card E-14), and a second, filtered producer keeps the short arrays beside Cas genes that Tn7-like elements
-  carry (card E-15); no release holds arrays yet: the built stages get them after `rM.2` (DEC-40). Its chance rate
-  on phages is not measured yet (card E-16).
+  carry (card E-15). Both producers have run on the seven built stages (13,477 and 414 arrays, *measured*,
+  2026-11-15, card C-33 part 1); no release lists the arrays yet (STATUS open item 6). On phages the filter keeps
+  14 times what chance gives, all of it one real locus in ICP1-like phages (*measured*, card E-16).
 - The synthetic world has its null worlds (card F-02, session 9) but holds the specification's ranges at its default
   seed only (session 10). Its redesign over seeds (DEC-36, DEC-37; session 11) now holds genome size, the planted
   share and the strength grid at 22 of 22 seeds (*measured*), but six assertions about plasmids, the core genome
