@@ -1,0 +1,19 @@
+before: 3412 files; after: 3476; new 64 (64 under stage=H1, 0 of rM.3's definition); gone 0; size or mtime changed 0; S1 files hashed before 56, after 56, sha256 changed 0, new 0
+root_added.tsv: 64 files, 1,331,319,908 bytes
+step crispr-minced-0.4.2-w8-nr2-r23x47-s26x50-cas1kb-caspfam1-pfam-38.2: 5.876 CPU-min, 55.5 s, 601 MiB, 36 threads, estimate 6.569 (ratio 0.895)
+step crispr-minced-0.4.2-w8-nr3-r23x47-s26x50: 4.925 CPU-min, 52.7 s, 406 MiB, 36 threads, estimate 5.52 (ratio 0.892)
+step domains-pfam-38.2: 0.13 CPU-min, 3.1 s, 557 MiB, 36 threads
+step domains-pfam-38.2.plan: 0.171 CPU-min, 5.9 s, 325 MiB, 36 threads
+step genecall: 146.091 CPU-min, 275.5 s, 1859 MiB, 36 threads
+step igr: 0.267 CPU-min, 10.9 s, 741 MiB, 36 threads
+step ingest: 7.645 CPU-min, 438.1 s, 2140 MiB, 36 threads, estimate 8.842 (ratio 0.865)
+step inputs: 0.107 CPU-min, 2.1 s, 325 MiB, 36 threads
+step tapes: 0.318 CPU-min, 13.7 s, 1158 MiB, 36 threads
+scan shards: 14, 2816.56 CPU-min, largest 220.75, ratio to estimate 0.887 to 142.933
+log: 2026-11-15T14:22:36-06:00 build-stage: refused before rM.3.cluster: release rM.3: stage PL1 has no gene-call run record (runs/stage=PL1/genecall.json), so its clustering cannot be estimated before launch (AGENTS §7.2); pod_run: c24-h1-2 exited 2
+contigs: {'genome_input_rows': 7228, 'genomes': 7228, 'contigs': 7228, 'owned': 6714, 'bases_owned': 1819831338, 'stored_by_earlier': {'S1': 514}, 'ledger_skipped': 514, 'ledger_equals_stored_by': True, 'result_skipped': 0, 'result_equals_stored_by': False, 'kinds': ['virus'], 'codes': [11], 'circular': 0}
+genes 2,276,451; distinct proteins 1,608,023; new against protein_seq of S1,P1,P2,P3,P4,P5,P6: 1,602,411; genetic code per gene {15: 49873, 11: 2223678, 4: 2900}
+genetic-code flag: {'owned': {'genomes': 6714, 'genes': 2276451, 'median_gene_bp': 492.0, 'median_of_genome_means_bp': 753.4463483472691, 'genomes_mean_under_half_median': 2, 'share_under_half_median': 0.000298, 'genomes_mean_under_half_median_of_means': 28, 'genomes_with_any_gene_not_code_11': 154, 'genomes_all_genes_not_code_11': 154}, 'all': {'genomes': 7228, 'genes': 2462391, 'median_gene_bp': 489.0, 'median_of_genome_means_bp': 753.7442307692309, 'genomes_mean_under_half_median': 2, 'share_under_half_median': 0.000277, 'genomes_mean_under_half_median_of_means': 29, 'genomes_with_any_gene_not_code_11': 166, 'genomes_all_genes_not_code_11': 166}, 'genomes_without_genes': 0}
+pfam: {'proteins_scanned': 1608023, 'residues_scanned': 391957113, 'shards': 14, 'shard_residues': 30150753, 'domain_rows': 610803, 'proteins_with_domain': 387478, 'models_with_hit': 5346}
+crispr: {'default': {'producer': 'minced-0.4.2-w8-nr3-r23x47-s26x50', 'arrays': 954, 'elements': 15304, 'contigs_searched': 6714, 'contigs_skipped_other_stage': 514, 'calls_in': 954, 'calls_kept': 954, 'rejected': {}, 'arrays_per_gbp': 524.224, 'view_byte_identical': True}, 'near_cas': {'producer': 'minced-0.4.2-w8-nr2-r23x47-s26x50-cas1kb-caspfam1-pfam-38.2', 'arrays': 30, 'elements': 284, 'contigs_searched': 6714, 'contigs_skipped_other_stage': 514, 'calls_in': 11906, 'calls_kept': 30, 'rejected': {'far_from_cas': 10857, 'overlaps_default': 1018, 'inside_gene': 1}, 'arrays_per_gbp': 16.485}}
+RESULT: all checks pass
