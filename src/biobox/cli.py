@@ -55,6 +55,7 @@
     bio-box stage genecall merge --root R --stage S --plan P [--tmp D] [--out DIR]
     bio-box stage domains --root R --stage S --library pfam --library-version 38.2 --hmm F --cutoff gathering
     bio-box stage domains plan --root R --stage S --library L --library-version V --hmm F --cutoff C --shard-residues N
+                [--seq-stages S,S0,S1]   (card B-47b: copy the rows those stages measured)
     bio-box stage domains shard --root R --stage S --library L --library-version V --hmm F --shard K --cpus N --tmp D
     bio-box stage domains merge --root R --stage S --library L --library-version V --tmp D
     bio-box stage ncrna --root R --stage S --cm Rfam.cm.gz [--ncrna-set prok-2] --cpus N [--tmp D] [--seq-stages S0,S1]
@@ -2062,6 +2063,10 @@ def _stage_step(a, root: Path, out: Path) -> dict:
         return store.write_labels(root, a.stage, out=out, tmp=tmp, threads=a.cpus, **mfb)
     from biobox.l1 import domains
 
+    if a.seq_stages is not None and a.action != "plan":  # card B-47b: the plan records what is copied
+        raise ValueError(f"stage domains{'' if a.action is None else ' ' + a.action}: --seq-stages is taken by "
+                         "`stage domains plan` only (the plan leaves out the proteins those stages measured and records "
+                         "them for the merge to copy, card B-47b)")
     need = {None: ("library", "library_version", "hmm", "cutoff"),  # the whole scan in this process
             "plan": ("library", "library_version", "hmm", "cutoff", "shard_residues"),  # card B-24
             "shard": ("library", "library_version", "hmm", "shard"),
@@ -2071,7 +2076,7 @@ def _stage_step(a, root: Path, out: Path) -> dict:
         raise ValueError(f"stage domains{'' if a.action is None else ' ' + a.action} needs {', '.join(missing)}")
     if a.action == "plan":
         return domains.plan(root, a.stage, a.gene_call_version, a.library, a.library_version, Path(a.hmm), a.cutoff,
-                            a.shard_residues, out=out)
+                            a.shard_residues, out=out, seq_stages=_csv(a.seq_stages))
     if a.action == "shard":
         return domains.scan_shard(root, a.stage, a.library, a.library_version, Path(a.hmm), a.shard, a.cpus,
                                   tmp=tmp, out=out)
@@ -2374,7 +2379,8 @@ def _main(argv: list[str] | None = None) -> int:
     st.add_argument("--prefix-width", type=int, choices=[0, 1, 2], help="genecall: protein_seq bucket width")
     st.add_argument("--workers", type=int, default=1, help="genecall: genomes called at once")
     st.add_argument("--seq-stages", help="genecall, ncrna, crispr: S0,S1: the stages whose sequences the genomes "
-                                         "name (default: the stage itself)")
+                                         "name (default: the stage itself); domains plan: the stages whose measured "
+                                         "rows of this library are copied instead of scanning again (card B-47b)")
     st.add_argument("--producers", help="igr, tapes: the tape version's producers (default: the gene caller)")
     st.add_argument("--max-slots", type=int, help="tapes: slots per row group")
     st.add_argument("--library", help="domains: library name (pfam); crispr --near-cas: pfam")

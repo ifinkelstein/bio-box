@@ -32,11 +32,50 @@ a release manifest (a release is the same whether its scans were sharded or not)
 `bio-box run-step` publish each step (a step must publish a file the registry claims). The runs stay
 in scratch on local disk, never in the data root. The plan names its `protein_seq` files and the
 sha256 of the HMM file, which every shard checks. Thread counts are the caller's (`cpus`).
+
+Copies of measured rows (card B-47b, DEC-35 (2)). `plan` given `seq_stages` that name a stage other than its own
+(build-stage passes every stage on disk, as it does to gene calling) leaves out every protein already measured with
+the same scan in one of them, and `merge` copies those proteins' rows instead. At a fixed Z a protein's hits do not
+depend on the other proteins (MR-12), so a copied row is the row a scan would write and the stage's domain files and
+ledger are those of a full scan, byte for byte, whichever stages were built first. A named stage is a source only
+when (`sources`):
+
+- its `domains-<lib>` step is complete: its run record `runs/stage=<S>/domains-<lib>.json` exists (and no
+  `.publishing.json` beside it), and the record lists its domain files and its ledger (with sha256);
+- its shard plan exists: the plan names the proteins it measured (its `files`: every protein of those
+  `protein_seq` files was scanned there, or copied there from a source of its own) and the scan's parameters. A
+  stage scanned in one process (`run`) has no plan, so the sha256 of its HMM file is recorded nowhere, and it is not
+  a source: its proteins are scanned again;
+- its recorded scan is this one (`COMPARED`): the plan's `hmm_sha256` and `cutoff`; its `z` and `dom_z` (a plan
+  written before this card holds neither, and is taken at 1e8: `Z_PROT` and `DOM_Z` have had that value since the
+  module was written, `git log -G` on them); and the `tool_versions_json` of every row of its ledger (pyhmmer and
+  pyarrow), against this process's `provenance.tool_versions`.
+
+"Measured" is decided from those records, never from the presence of rows: a protein scanned with no hit has no row,
+and is measured (it is copied as no rows). When several sources measured a protein it is copied from the first in
+the order `seq_stages` gives; its rows are equal in each (the rule above). The proteins are matched by a merge of
+sorted streams (`_assign`): the stage's `protein_uid`s and each source's, in uid order, one row group at a time, never
+a set of a stage's proteins (AGENTS §4.1). The plan then holds, beside today's keys, `z`, `dom_z`, `tools` and a
+`copy` block: the stages named, the fields compared, each source (its plan and run record with sha256, the
+`protein_seq` files it measured, the domain files copied from with sha256, and the proteins, residues, rows and
+proteins with a hit copied from it), the stages passed over and why, and the totals. Its `proteins` and `residues`
+stay the stage's (the ledger's `n_in`); its shards are cut from the residues actually scanned, and each shard leaves
+out the copied proteins of its uid range (`_shard_proteins`). The merge checks each source file against the plan
+(bytes; sha256 for the domain files), copies the rows of the copied proteins in uid order between the shards' rows,
+checks every copied row's `cutoff`, `z` and `dom_z`, and refuses when the copied counts are not the plan's. The
+scanned and copied counts live in the plan and shard records only (`domain_scan`): never in a manifest, not in the
+ledger, whose rows are a full scan's. Without another stage named the plan, the shards and the merge are exactly
+those of card B-24.
+
+Inferred rows (card B-47c) are measured nowhere and are never copied. The two places that card must narrow are
+`_measured_uids` (the proteins a source measured: today every protein of its plan's files) and `_measured_rows`
+(the rows taken from a source's domain files: today all of them; there, `inferred_from IS NULL`).
 """
 
 from __future__ import annotations
 
 import argparse
+import bisect
 import gzip
 import hashlib
 import io
@@ -65,6 +104,10 @@ EST_ROW_BYTES = 54
 PLAN_FORMAT = 1
 SCAN_DIR = "biobox-domain-scan"  # under the scratch directory: the shards' runs, one directory per plan
 _READ_ROWS = 16_384  # protein_seq rows per read while planning or reading a shard
+# card B-47b: what a source stage's records must equal for its rows to be copied (module docstring)
+COMPARED = ("hmm_sha256", "cutoff", "z", "dom_z", "tools")
+Z_UNRECORDED = 1e8  # the Z of a plan that records none: Z_PROT and DOM_Z have been 1e8 since 74b3e05 (`git log -G`)
+FLUSH_PIECES = 1024  # the merge of a copying plan combines its row slices at least this often (`_merge_copies`)
 
 
 def iter_hmms(path: Path):
@@ -161,6 +204,11 @@ def _names(stage: str, library: str, library_version: str) -> tuple[str, str]:
     return f"l1/domains/library={lib}/stage={stage}", f"domains-{lib}"
 
 
+def _tools() -> dict[str, str]:
+    """The versions of the tools that shape the domain rows, as the ledger records them."""
+    return provenance.tool_versions("pyhmmer", "pyarrow")
+
+
 def _write(out: Path, stage: str, lib_dir: str, step: str, batches, n_in: int, hit: int,
            max_file_bytes: int) -> None:
     """The stage's domain files from sorted `batches`, and the step's ledger: `n_in` proteins in, `hit`
@@ -168,7 +216,7 @@ def _write(out: Path, stage: str, lib_dir: str, step: str, batches, n_in: int, h
     spec = table("l1_domains")
     bio.write_parts(batches, spec, out / lib_dir, EST_ROW_BYTES, max_file_bytes)
     lib = lib_dir.split("/")[2].removeprefix("library=").encode()
-    tools = provenance.tool_versions("pyhmmer", "pyarrow")
+    tools = _tools()
     ledger.write(out, stage, step,
                  sorted([ledger.row(lib, "library", n_in, hit, tools=tools),
                          ledger.row(lib, "library", n_in, hit, n_rejected=n_in - hit,
@@ -286,11 +334,16 @@ def _cut(rows: Iterator[tuple[bytes, int]], shard_residues: int) -> Iterator[dic
 
 
 def plan(root: Path, stage: str, gene_call_version: str, library: str, library_version: str, hmm_path: Path,
-         cutoff: str, shard_residues: int, out: Path | None = None) -> dict:
+         cutoff: str, shard_residues: int, out: Path | None = None, seq_stages: list[str] | None = None) -> dict:
     """Write the stage's shard plan for one library under `out` (default `root`): its proteins sorted by
     protein_uid, cut into shards of at most `shard_residues` residues. Refuses when the stage's domains of
     this library are written already, or a plan exists, in `root` or `out`. Returns the shard count and
-    the totals."""
+    the totals.
+
+    `seq_stages` (card B-47b): when it names a stage other than `stage`, the proteins that the first source among
+    them measured with this scan (`sources`) are left out of the shards and recorded for the merge to copy (module
+    docstring); the plan's `proteins` and `residues` stay the stage's, and the result adds the copied and scanned
+    counts. Without another stage named the plan is card B-24's, byte for byte."""
     root = Path(root)
     out = root if out is None else Path(out)
     if not isinstance(shard_residues, int) or shard_residues < 1:
@@ -304,15 +357,270 @@ def plan(root: Path, stage: str, gene_call_version: str, library: str, library_v
     files = _protein_files(root, gene_call_version, stage)
     if not files:
         raise FileNotFoundError(f"stage {stage}: no protein_seq files for gene_call_version={gene_call_version}")
-    shards = list(_cut(_uid_lengths(files), shard_residues))
-    doc = {"format": PLAN_FORMAT, "stage": stage, "gene_call_version": gene_call_version, "library": library,
-           "library_version": library_version, "cutoff": cutoff, "hmm_sha256": ids.sha256_file(Path(hmm_path)).hex(),
-           "shard_residues": shard_residues,
-           "files": [{"path": f.relative_to(root).as_posix(), "bytes": f.stat().st_size} for f in files],
-           "proteins": sum(s["proteins"] for s in shards), "residues": sum(s["residues"] for s in shards),
-           "shards": shards}
+    hmm_sha256 = ids.sha256_file(Path(hmm_path)).hex()
+    head = {"format": PLAN_FORMAT, "stage": stage, "gene_call_version": gene_call_version, "library": library,
+            "library_version": library_version, "cutoff": cutoff, "hmm_sha256": hmm_sha256,
+            "shard_residues": shard_residues,
+            "files": [{"path": f.relative_to(root).as_posix(), "bytes": f.stat().st_size} for f in files]}
+    named = list(dict.fromkeys(s for s in (seq_stages or ()) if s != stage))
+    if not named:
+        shards = list(_cut(_uid_lengths(files), shard_residues))
+        doc = {**head, "proteins": sum(s["proteins"] for s in shards), "residues": sum(s["residues"] for s in shards),
+               "shards": shards}
+        _write_once(root, out, rel, _json_bytes(doc), "the shard plan")
+        return {"shards": len(shards), "proteins": doc["proteins"], "residues": doc["residues"]}
+    srcs, passed = sources(root, stage, library, library_version, hmm_sha256, cutoff, named)
+    total = {"proteins": 0, "residues": 0}
+    counts = [{"proteins": 0, "residues": 0, "rows": 0, "proteins_with_hit": 0} for _ in srcs]
+
+    def scanned() -> Iterator[tuple[bytes, int]]:
+        for u, n, k, rows in _walk(root, files, srcs, ["protein_uid"]):
+            total["proteins"] += 1
+            total["residues"] += n
+            if k < 0:
+                yield u, n
+                continue
+            c = counts[k]
+            c["proteins"] += 1
+            c["residues"] += n
+            got = sum(t.num_rows for t in rows)
+            c["rows"] += got
+            c["proteins_with_hit"] += got > 0
+
+    shards = list(_cut(scanned(), shard_residues))
+    src_docs = [{**s, **c} for s, c in zip(srcs, counts)]
+    copy = {"seq_stages": list(seq_stages or ()), "compared": list(COMPARED), "sources": src_docs,
+            "passed_over": passed,
+            **{k: sum(c[k] for c in counts) for k in ("proteins", "residues", "rows", "proteins_with_hit")}}
+    doc = {**head, "proteins": total["proteins"], "residues": total["residues"], "shards": shards,
+           "z": Z_PROT, "dom_z": DOM_Z, "tools": _tools(), "copy": copy}
     _write_once(root, out, rel, _json_bytes(doc), "the shard plan")
-    return {"shards": len(shards), "proteins": doc["proteins"], "residues": doc["residues"]}
+    scanned_p, scanned_r = sum(s["proteins"] for s in shards), sum(s["residues"] for s in shards)
+    return {"shards": len(shards), "proteins": doc["proteins"], "residues": doc["residues"],
+            "scanned_proteins": scanned_p, "scanned_residues": scanned_r, "copied_proteins": copy["proteins"],
+            "copied_residues": copy["residues"], "copied_rows": copy["rows"],
+            "sources": [s["stage"] for s in srcs], "passed_over": [p["stage"] for p in passed]}
+
+
+# --- copies of measured rows (card B-47b) ----------------------------------------------------------------------------
+
+
+def _record_rel(stage: str, step: str) -> str:
+    return f"runs/stage={stage}/{step}.json"  # where run-step writes a step's run record (`runstep.run_step`)
+
+
+def _checked(root: Path, files: list[dict], what: str) -> list[Path]:
+    """The paths of `files` (each `path`, `bytes`, and optionally `sha256`) under `root`, each checked against its
+    entry; a missing file or other bytes is a ValueError naming `what`."""
+    out = []
+    for f in files:
+        path = Path(root) / f["path"]
+        if not path.is_file():
+            raise ValueError(f"{path}: missing ({what} lists it)")
+        if path.stat().st_size != f["bytes"]:
+            raise ValueError(f"{path}: {path.stat().st_size} bytes, {what} lists {f['bytes']}")
+        if "sha256" in f and ids.sha256_file(path).hex() != f["sha256"]:
+            raise ValueError(f"{path}: sha256 differs from the one {what} lists")
+        out.append(path)
+    return out
+
+
+def _source(root: Path, s: str, library: str, library_version: str, want: dict) -> tuple[dict | None, str | None]:
+    """(stage `s` as a source of copies, None), or (None, why it is not one): module docstring."""
+    lib_dir, step = _names(s, library, library_version)
+    rec_rel = _record_rel(s, step)
+    rec_path = Path(root) / rec_rel
+    if not rec_path.is_file():
+        return None, (f"no run record {rec_rel}: its {step} step is not complete (or did not run under run-step), so "
+                      f"what it measured is not recorded")
+    if (Path(root) / f"runs/stage={s}/{step}.publishing.json").exists():
+        return None, f"its {step} step is being published (runs/stage={s}/{step}.publishing.json)"
+    plan_rel = _plan_rel(s, library, library_version)
+    if not (Path(root) / plan_rel).is_file():
+        return None, (f"no shard plan {plan_rel}: scanned in one process, which records no sha256 of its HMM file "
+                      f"and no list of the proteins it measured")
+    raw_plan, raw_rec = (Path(root) / plan_rel).read_bytes(), rec_path.read_bytes()
+    p, rec = json.loads(raw_plan), json.loads(raw_rec)
+    if (p.get("stage"), p.get("library"), p.get("library_version")) != (s, library, library_version):
+        return None, f"its plan {plan_rel} is of another stage or library"
+    have = {"hmm_sha256": p.get("hmm_sha256"), "cutoff": p.get("cutoff"), "z": p.get("z", Z_UNRECORDED),
+            "dom_z": p.get("dom_z", Z_UNRECORDED)}
+    for k in ("hmm_sha256", "cutoff", "z", "dom_z"):
+        if have[k] != want[k]:
+            return None, f"its plan records {k} {have[k]!r}, this scan's is {want[k]!r}"
+    outs = rec.get("outputs", [])
+    files = [o for o in outs if o["path"].startswith(lib_dir + "/")]
+    led = [o for o in outs if o["path"].startswith(f"ledger/stage={s}/step={step}/")]
+    if not files or not led:
+        return None, f"its run record {rec_rel} lists no domain files or no ledger of {step}"
+    try:
+        _checked(root, [{k: o[k] for k in ("path", "bytes")} for o in files], f"its run record {rec_rel}")
+        _checked(root, p["files"], f"its plan {plan_rel}")
+        led_paths = _checked(root, led, f"its run record {rec_rel}")
+    except ValueError as e:
+        return None, str(e)
+    tools = {r for f in led_paths for r in pq.read_table(f, columns=["tool_versions_json"], partitioning=None)
+             .column(0).to_pylist()}
+    mine = json.dumps(want["tools"], sort_keys=True)
+    if tools != {mine}:
+        return None, f"its ledger records tool versions {sorted(map(str, tools))}, this scan's are {mine}"
+    return {"stage": s, "plan": {"path": plan_rel, "sha256": hashlib.sha256(raw_plan).hexdigest()},
+            "record": {"path": rec_rel, "sha256": hashlib.sha256(raw_rec).hexdigest()},
+            "protein_files": p["files"],
+            "files": [{"path": o["path"], "bytes": o["bytes"], "sha256": o["sha256"]} for o in files]}, None
+
+
+def sources(root: Path, stage: str, library: str, library_version: str, hmm_sha256: str, cutoff: str,
+            seq_stages: list[str] | None) -> tuple[list[dict], list[dict]]:
+    """(the sources of copies among `seq_stages`, in their order, each named once and never `stage` itself; the
+    stages passed over, each with why), for a scan of `library`-`library_version` with the HMM file of sha256
+    `hmm_sha256` and `cutoff` in this process (module docstring). Reads only small records: run records, plans and
+    the sources' ledgers."""
+    want = {"hmm_sha256": hmm_sha256, "cutoff": cutoff, "z": Z_PROT, "dom_z": DOM_Z, "tools": _tools()}
+    srcs, passed = [], []
+    for s in dict.fromkeys(x for x in (seq_stages or ()) if x != stage):
+        src, why = _source(Path(root), s, library, library_version, want)
+        if src is None:
+            passed.append({"stage": s, "why": why})
+        else:
+            srcs.append(src)
+    return srcs, passed
+
+
+def _measured_uids(root: Path, src: dict, lo: bytes | None = None, hi: bytes | None = None) -> Iterator[bytes]:
+    """The proteins source `src` measured, in strictly increasing uid order (within [lo, hi] when given, reading only
+    the row groups that meet it): every protein of the protein_seq files its plan lists. Card B-47c: once a plan marks
+    the proteins its stage inferred, they are measured nowhere, and this is where they must be left out."""
+    last = None
+    for path in _checked(root, src["protein_files"], f"the plan of {src['stage']}"):
+        pf = pq.ParquetFile(path)
+        col = pf.schema_arrow.get_field_index("protein_uid")
+        for g in range(pf.metadata.num_row_groups):
+            if lo is not None:
+                st = pf.metadata.row_group(g).column(col).statistics
+                if st is not None and st.has_min_max and (bytes(st.max) < lo or bytes(st.min) > hi):
+                    continue
+            for u in pf.read_row_group(g, columns=["protein_uid"]).column(0).to_pylist():
+                if lo is not None and not lo <= u <= hi:
+                    continue
+                if last is not None and u <= last:
+                    raise RuntimeError(f"{path}: protein_seq rows are not in strictly increasing protein_uid order")
+                last = u
+                yield u
+
+
+def _measured_rows(t: pa.Table) -> pa.Table:
+    """The measured rows of a row group of a source's domain file: all of them today. Card B-47c appends
+    `inferred_from` (null for a measured row); inferred rows are never copied, so there this keeps the rows whose
+    `inferred_from` is null (and the column is then read too)."""
+    return t
+
+
+def _assign(mine: Iterator[tuple[bytes, int]], measured: list[Iterator[bytes]]) -> Iterator[tuple[bytes, int, int]]:
+    """(uid, length, k) for each (uid, length) of `mine`: k is the index of the first stream of `measured` that holds
+    the uid, or -1. Every stream is in strictly increasing uid order; this is a merge of sorted streams that holds one
+    uid of each (AGENTS §4.1), never a set."""
+    heads = [next(it, None) for it in measured]
+    for u, n in mine:
+        found = -1
+        for k, it in enumerate(measured):
+            h = heads[k]
+            while h is not None and h < u:
+                h = next(it, None)
+            heads[k] = h
+            if found < 0 and h == u:
+                found = k
+        yield u, n, found
+
+
+class _Rows:
+    """The rows of sorted domain files (`l1_domains`, or a shard's run), one row group at a time, for uids asked in
+    increasing order. `take(u)` gives the rows of u and passes over the rows before it, without reading a row group
+    whose protein_uid maximum is below u; `until(u)` gives every row before u; `rest()` every row left. `columns`
+    None reads the table's columns, conformed to its spec."""
+
+    def __init__(self, paths: list[Path], columns: list[str] | None, measured_only: bool = False):
+        def groups() -> Iterator[tuple[pq.ParquetFile, int]]:
+            for path in paths:
+                pf = pq.ParquetFile(path)
+                for g in range(pf.metadata.num_row_groups):
+                    yield pf, g
+
+        self._groups = groups()
+        self._columns, self._measured = columns, measured_only
+        self._t: pa.Table | None = None
+        self._uids: list[bytes] = []
+        self._pos = 0
+
+    def _load(self, skip_below: bytes | None) -> bool:
+        """Load the next row group (passing over those whose maximum is below `skip_below`); False at the end."""
+        spec = table("l1_domains")
+        for pf, g in self._groups:
+            if skip_below is not None:
+                col = pf.schema_arrow.get_field_index("protein_uid")
+                st = pf.metadata.row_group(g).column(col).statistics
+                if st is not None and st.has_min_max and bytes(st.max) < skip_below:
+                    continue
+            t = pf.read_row_group(g, columns=self._columns or spec.schema.names)
+            if self._measured:
+                t = _measured_rows(t)
+            if self._columns is None:
+                t = pa.Table.from_batches([bio.conform(b, spec) for b in t.to_batches()], schema=spec.schema)
+            self._t, self._uids, self._pos = t, t.column("protein_uid").to_pylist(), 0
+            return True
+        self._t, self._uids, self._pos = None, [], 0
+        return False
+
+    def head(self) -> bytes | None:
+        """The uid of the next row, or None at the end (loading the next row group when this one is used up)."""
+        while self._pos >= len(self._uids):
+            if not self._load(None):
+                return None
+        return self._uids[self._pos]
+
+    def take(self, u: bytes) -> list[pa.Table]:
+        out = []
+        while True:
+            if self._pos >= len(self._uids):
+                if not self._load(u):
+                    return out
+                continue
+            i = bisect.bisect_left(self._uids, u, self._pos)
+            j = bisect.bisect_right(self._uids, u, i)
+            if j > i:
+                out.append(self._t.slice(i, j - i))
+            self._pos = j
+            if j < len(self._uids):
+                return out
+
+    def until(self, u: bytes) -> list[pa.Table]:
+        out = []
+        while self.head() is not None:
+            i = bisect.bisect_left(self._uids, u, self._pos)
+            if i > self._pos:
+                out.append(self._t.slice(self._pos, i - self._pos))
+            self._pos = i
+            if i < len(self._uids):
+                return out
+        return out
+
+    def rest(self) -> list[pa.Table]:
+        out = []
+        while self.head() is not None:
+            out.append(self._t.slice(self._pos))
+            self._pos = len(self._uids)
+        return out
+
+
+def _walk(root: Path, files: list[Path], srcs: list[dict], columns: list[str] | None
+          ) -> Iterator[tuple[bytes, int, int, list[pa.Table]]]:
+    """(uid, length, k, rows) for every protein of the stage's protein_seq `files`, in uid order: k the index of its
+    source in `srcs` (the first that measured it) or -1, and for k >= 0 that source's measured rows of the protein
+    (`columns` of its domain files; empty when it had no hit)."""
+    cursors = [_Rows([Path(root) / f["path"] for f in s["files"]], columns, measured_only=True) for s in srcs]
+    measured = [_measured_uids(root, s) for s in srcs]
+    for u, n, k in _assign(_uid_lengths(files), measured):
+        yield u, n, k, (cursors[k].take(u) if k >= 0 else [])
 
 
 def _shard_proteins(root: Path, p: dict, s: dict) -> dict[bytes, str]:
@@ -334,6 +642,13 @@ def _shard_proteins(root: Path, p: dict, s: dict) -> dict[bytes, str]:
             for u, seq in zip(t.column(0).to_pylist(), t.column(1).to_pylist()):
                 if lo <= u <= hi:
                     out[u] = seq
+    copy = p.get("copy")
+    if copy and copy["sources"] and out:  # card B-47b: the proteins of the range a source measured are copied
+        mine = sorted(out)
+        measured = [_measured_uids(root, src, lo, hi) for src in copy["sources"]]
+        for u, _, k in _assign(((u, 0) for u in mine), measured):
+            if k >= 0:
+                del out[u]
     return out
 
 
@@ -495,6 +810,8 @@ def merge(root: Path, stage: str, library: str, library_version: str, tmp: Path 
         recs.append(rec)
         runs.append(path)
     models: set[str] = set()
+    if "copy" in p:  # card B-47b
+        return _merge_copies(root, out_root, stage, lib_dir, step, p, recs, runs, max_file_bytes)
 
     def batches() -> Iterator[pa.RecordBatch]:
         for path in runs:
@@ -506,6 +823,79 @@ def merge(root: Path, stage: str, library: str, library_version: str, tmp: Path 
     _write(out_root, stage, lib_dir, step, batches(), p["proteins"], hit, max_file_bytes)
     return {"proteins": p["proteins"], "domains": sum(r["domains"] for r in recs), "proteins_with_hit": hit,
             "models_with_hit": len(models), "shards": len(recs)}
+
+
+def _merge_copies(root: Path, out_root: Path, stage: str, lib_dir: str, step: str, p: dict, recs: list[dict],
+                  runs: list[Path], max_file_bytes: int) -> dict:
+    """`merge` of a plan that copies (card B-47b): the shards' rows and the copied rows in uid order, as one sorted
+    stream, written as `run` writes a full scan. Before anything is written: this process's tool versions are the
+    plan's, every file of the stage and of its sources has the bytes the plan lists, and every domain file copied from
+    has the plan's sha256. While writing: every row (copied or scanned) has this scan's cutoff, Z and domZ, and no
+    protein is both copied and scanned. At the end of the stream, before its last rows are given to the writer: the copied proteins,
+    residues, rows and proteins with a hit of each source are the plan's (else a ValueError; under run-step nothing is
+    then published)."""
+    copy, spec = p["copy"], table("l1_domains")
+    if _tools() != p["tools"]:
+        raise ValueError(f"{step} of stage {stage}: this process has tool versions {_tools()}, the plan was made and "
+                         f"its sources compared for {p['tools']}")
+    files = _checked(root, p["files"], "the shard plan")
+    srcs = copy["sources"]
+    for s in srcs:
+        _checked(root, s["files"], f"the shard plan (domain files of {s['stage']})")
+        _checked(root, s["protein_files"], f"the shard plan (proteins of {s['stage']})")
+    counts = [{"proteins": 0, "residues": 0, "rows": 0, "proteins_with_hit": 0} for _ in srcs]
+    models: set[str] = set()
+    scanned = _Rows(runs, None)
+    want = {"cutoff": p["cutoff"], "z": Z_PROT, "dom_z": DOM_Z}
+
+    def flush(pend: list[pa.Table]) -> pa.Table:
+        """The pieces as one table (one chunk per column), every row checked: copied rows carry their source's
+        scan, which is this one, and scanned rows this plan's."""
+        t = pa.concat_tables(pend).combine_chunks()
+        for col, v in want.items():
+            if not pc.all(pc.equal(t.column(col), v)).as_py():
+                raise ValueError(f"{step} of stage {stage}: a row to write has another {col} than {v!r}")
+        models.update(pc.unique(t.column("model_acc")).to_pylist())
+        return t
+
+    def batches() -> Iterator[pa.Table]:
+        # each piece is a slice (a table object of its own, about 7 KB of Arrow metadata with 17 columns), so they
+        # are combined every FLUSH_PIECES pieces as well as every row group's worth of rows (AGENTS §4.1: a slice
+        # per copied protein, held until a row group fills, grew 546 MiB from 8,540 to 85,400 proteins: *measured*,
+        # wilkcomp02, 2026-11-15, tests/r2/test_b47b_copy_memory.py before this rule)
+        pend: list[pa.Table] = []
+        held = 0
+        for u, n, k, rows in _walk(root, files, srcs, None):
+            if k < 0:
+                continue
+            c = counts[k]
+            c["proteins"] += 1
+            c["residues"] += n
+            if not rows:
+                continue
+            c["rows"] += sum(t.num_rows for t in rows)
+            c["proteins_with_hit"] += 1
+            before = scanned.until(u)
+            if scanned.head() == u:
+                raise ValueError(f"protein {u.hex()} is copied from {srcs[k]['stage']} and was also scanned")
+            pend += before + rows
+            held += sum(t.num_rows for t in before) + sum(t.num_rows for t in rows)
+            if held >= bio.ROW_GROUP_ROWS or len(pend) >= FLUSH_PIECES:
+                yield flush(pend)
+                pend, held = [], 0
+        pend += scanned.rest()
+        bad = [(s["stage"], {k: s[k] for k in c}, c) for s, c in zip(srcs, counts) if {k: s[k] for k in c} != c]
+        if bad:
+            raise ValueError(f"{step} of stage {stage}: copied counts differ from the plan's: {bad}")
+        if pend:
+            yield flush(pend)
+
+    hit = sum(r["proteins_with_hit"] for r in recs) + copy["proteins_with_hit"]
+    _write(out_root, stage, lib_dir, step, batches(), p["proteins"], hit, max_file_bytes)
+    return {"proteins": p["proteins"], "domains": sum(r["domains"] for r in recs) + copy["rows"],
+            "proteins_with_hit": hit, "models_with_hit": len(models), "shards": len(recs),
+            "copied_proteins": copy["proteins"], "copied_rows": copy["rows"],
+            "sources": [s["stage"] for s in srcs]}
 
 
 def main(argv: list[str] | None = None) -> int:
