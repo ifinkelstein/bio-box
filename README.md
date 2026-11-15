@@ -191,8 +191,10 @@ The specification and plan behind these are [`00-spec.md`](00-spec.md), [`PLAN.m
   carry (card E-15); no release holds arrays yet: the built stages get them after `rM.2` (DEC-40). Its chance rate
   on phages is not measured yet (card E-16).
 - The synthetic world has its null worlds (card F-02, session 9) but holds the specification's ranges at its default
-  seed only (session 10): its redesign over seeds was decided on 2026-11-14 (DEC-36, DEC-37) and is being done
-  (session 11); the statistics wait for it and for the sequence model's change (DEC-39).
+  seed only (session 10). Its redesign over seeds (DEC-36, DEC-37; session 11) now holds genome size, the planted
+  share and the strength grid at 22 of 22 seeds (*measured*), but six assertions about plasmids, the core genome
+  and sequence identity fail in the older world it makes; that is an open item for the PI (STATUS, open item 5),
+  and its branch is not merged. The statistics wait for it and for the sequence model's change (DEC-39).
 
 **Next, in order**
 
