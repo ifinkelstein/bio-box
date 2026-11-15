@@ -334,6 +334,35 @@ stage's gene calls and its Pfam scan in the root, and refuses (exit 2) without a
 - Budget: no shards. Its estimate is the default step's times `CRISPR_NEAR_CAS_COST` (section 10); refused as
   the default step is, above 80% of `cpu_min_per_process`.
 
+**Label files of a stage built before card B-27 (card C-34).** Ingest writes a stage's `contig_label` table
+(`l0seq/contig_label/stage=<S>/`) since card B-27. A stage ingested before has none (S1, P1 and P2 of the data root
+until 2026-11-15), and lookups by accession read its `contig_occurrence` instead (card W-36). `bio-box stage labels`
+gives such a stage its label files later, as new files: no step of `build-stage` runs it, so run it once per stage,
+alone, as a `run-step` step named `labels`:
+
+```bash
+bash "$TREE/scripts/pod_run.sh" --profile "$PROFILE" --image "$IMAGE" --digest "$DIGEST" --mem 8G --threads 2 --bind /tmp/if2453 --env PYTHONPATH="$PYTHONPATH_POD" c34-s1 run-step --profile "$PROFILE" --root "$ROOT" --stage S1 --step labels --threads 2 -- python -m biobox.cli stage labels --root "$ROOT" --stage S1 --cpus 2 --tmp "$BBTMP/scratch/S1.labels"
+```
+
+- What it writes: `l0seq/contig_label/stage=<S>/part-<k>.parquet` from the stage's own `contig_occurrence`, with
+  ingest's code (`biobox.l0seq.store.write_labels`), so the bytes are those a re-ingest of the same objects writes
+  (checked by sha256 on the fixture and on S1, card C-34), and the ledger `ledger/stage=<S>/step=labels` (per source
+  object: records in, records that are their contig's first label row, the rest). Every record of the stage is
+  labelled, a contig another stage owns included, as ingest labels it.
+- It refuses (exit 2, `refused: ... the contig_label table of stage S already has ...`) a stage that has label files
+  or the step's ledger, and a stage whose `contig_occurrence` holds another number of records than its ingest ledger
+  counts. Under `run-step` a second call is a resume (exit 0, nothing run).
+- Cost: seconds. On S1, P1 and P2 the step took 2.8 to 3.3 s of wall time, 0.05 CPU-minutes and about 325 MiB at
+  its peak (measured, wilkcomp02, 2026-11-15, the rehearsal's run records,
+  `planning/measurements/2026-11-15_label_files_old_stages.md`); each unit, with `run-step`'s start-up and its 5 s CPU
+  reading, about 23 s. `--cpus` sets DuckDB's threads; the files do not depend on it.
+- A release published before the files existed does not list them, and `release verify` ignores them: a
+  `contig_label` file of a stage is a release's concern only when its manifest lists a `contig_label` file of that
+  stage (`catalog.STAGE_ADDED_TABLES`). Such a release reads exactly as before (its readers take the manifest's
+  lists): `rM.2` still shows `partial(not S1,P1,P2)` in `bio-box releases`. A release defined afterwards over those
+  stages lists the files and shows `contig_label yes`. A release that lists a stage's label files still fails on a
+  missing, changed or extra one.
+
 **Clustering's CPU budget (DEC-29).** Clustering in one process has no exemption from the 300
 CPU-minute rule any more: DEC-25 exempted it until clustering was split, and card B-42 ended that once
 the split clustering of `rN.1b` (2,053,075 proteins) equalled its published clusters row for row
@@ -578,7 +607,10 @@ the stages on each side; the exit code is unchanged. That release's family token
 first stages' genes; a release built after the other stages are scanned covers them all. A release whose
 manifest lists `contig_label` files for some of its stages only (stages ingested before card B-27) gets a
 `warning:` line naming the stages without them (card W-36); the exit code is unchanged, and readers take those
-stages' labels from their `contig_occurrence` (section 11).
+stages' labels from their `contig_occurrence` (section 11). Label files that `bio-box stage labels` gives such a
+stage later (card C-34, section 2) are not that release's concern: a `contig_label` file of a stage is checked only
+by a release whose manifest lists a `contig_label` file of that stage, and for it a missing, changed or extra one
+still fails. The warning stays, since the release's manifest is as it was.
 
 ```bash
 bio-box release verify --root "$ROOT" --release rC6.2
