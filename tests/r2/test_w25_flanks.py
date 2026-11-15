@@ -112,6 +112,23 @@ MOBILE_TYPES = {"M1": [f"m1_{k}" for k in range(4)], "M2": [f"m2_{k}" for k in r
 CUT_LOCI = [n for v in MOBILE_TYPES.values() for n in v]
 COLOUR_LOCI = [n for n in MOBILE if n.startswith(("ph_", "tn_"))]
 
+# Card W-32 (DEC-41): the one-colour rule, in a release of its own (`build(root, ONE_COLOUR)`). Grouped by the
+# anchor's NR90 cluster (the default), two groups:
+#     oa_*  4 loci (anchors O@g1): TnsB and the common Cas1 cluster (Cas1@common) upstream, cargo of their own
+#     ob_*  12 loci (anchors O@g2): TnsB upstream; Cas1@common in ob_00..ob_05 (6 of 12), in ob_06..ob_11 a Cas1
+#           cluster of the locus's own (Cas1@spK, 1 of 12 each, under 10%); every Cas1 cluster carries the one
+#           Pfam-like domain Cas1 (12 of 12)
+# With the Pfam fallback the rare Cas1 clusters of group 2 take the colour of the domain Cas1 while Cas1@common is
+# coloured as a cluster: without the rule the family Cas1 would show in two colours.
+ONE_COLOUR = {}
+for _k in range(4):
+    ONE_COLOUR[f"oa_{_k}"] = ("P1", "prokaryote", "O@g1", 1, [("TnsB", 1), ("Cas1@common", 1)]
+                              + _cargo(f"oa{_k}", 3, "u") + EXTRA, _cargo(f"oa{_k}", 5, "d") + EXTRA, False)
+for _k in range(12):
+    ONE_COLOUR[f"ob_{_k:02d}"] = ("P1", "prokaryote", "O@g2", 1,
+                                  [("TnsB", 1), ("Cas1@common" if _k < 6 else f"Cas1@sp{_k}", 1)]
+                                  + _cargo(f"ob{_k}", 3, "u") + EXTRA, _cargo(f"ob{_k}", 5, "d") + EXTRA, False)
+
 
 def _uid(text: str) -> bytes:
     return ids.protein_uid(text)
@@ -130,11 +147,17 @@ def _write(name: str, rows: list[dict], path: Path, key) -> None:
     bio.write_table([pa.Table.from_pylist(sorted(rows, key=key), schema=spec.schema)], spec, path)
 
 
-def build(root: Path, planted: dict | None = None, genomes_of: dict | None = None) -> dict:
+def build(root: Path, planted: dict | None = None, genomes_of: dict | None = None, *, manifest: bool = True,
+          domains: bool = True, no_domain: frozenset = frozenset()) -> dict:
     """Write the constructed release under `root`; return {locus name: facts} for the oracle. `planted` (default:
     PLANTED, with SHARED_GENOME) is another set of loci (card W-31); `genomes_of` (name -> label) puts the contigs of
     one label into one genome instead of a genome each. A family named `F@x` is NR50 and NR90 cluster `F@x` and carries
-    the Pfam-like domain `F`, so clusters of one family can differ while their domain is the same."""
+    the Pfam-like domain `F`, so clusters of one family can differ while their domain is the same. Card W-32: with
+    `manifest` (the default) the release is published with a manifest (`manifests/release=<R>.json`), as a built
+    release is; without it, it has only its `release_def`. Without `domains` no `l1_domains` file is written (a
+    release without a domain library). `no_domain` holds (locus name, family) pairs whose genes in that locus carry
+    no domain, so that one cluster's genes can have a domain in some loci and none in others."""
+    with_domains = domains  # the name `domains` is the rows below
     if planted is None:
         planted, shared_names = PLANTED, SHARED_GENOME
     else:
@@ -174,7 +197,8 @@ def build(root: Path, planted: dict | None = None, genomes_of: dict | None = Non
             if fam:
                 fam_members[fam].append(pu)
             occ[stage].append({"protein_uid": pu, "contig_uid": cu, "start": start, "end": end, "strand": strand,
-                               "dist_to_contig_end_bp": 0, "feature_uid": fu, "_fam": fam})
+                               "dist_to_contig_end_bp": 0, "feature_uid": fu,
+                               "_fam": None if (name, fam) in no_domain else fam})
         length = pos - GAP + 100
         tape = tapes.build_tape(slots, length, False)
         tapes_rows[stage].append({"contig_uid": cu, "contig_len": length, "is_circular": False, "n_slots": len(slots),
@@ -227,12 +251,15 @@ def build(root: Path, planted: dict | None = None, genomes_of: dict | None = Non
                lambda r: (r["contig_uid"], r["genome_uid"]))
         _write("contig_label", labels[stage], root / f"l0seq/contig_label/stage={stage}/part-0.parquet",
                lambda r: r["contig_uid"])
-        _write("l1_domains", domains[stage], root / f"l1/domains/library=pfam-38.2/stage={stage}/part-0.parquet",
-               lambda r: (r["protein_uid"], r["env_start"], r["model_acc"]))
+        if with_domains:
+            _write("l1_domains", domains[stage], root / f"l1/domains/library=pfam-38.2/stage={stage}/part-0.parquet",
+                   lambda r: (r["protein_uid"], r["env_start"], r["model_acc"]))
     _write("member_cluster", members, root / f"l2/member_cluster/release={REL}/part-0.parquet",
            lambda r: (r["level"], r["member_uid"]))
     _write("contig_dim", dims, root / f"dim/contig_dim/release={REL}/part-0.parquet", lambda r: r["contig_uid"])
     catalog.define_release(root, REL, STAGES)
+    if manifest:
+        catalog.write_manifest(catalog.build_manifest(root, REL, STAGES))
     return loci
 
 
@@ -678,14 +705,13 @@ def group_types(out: Path, loci: dict, group: str) -> set[frozenset]:
     return {frozenset(v) for (g, _), v in types_of(out, loci).items() if g == group}
 
 
-@pytest.mark.covers("W-31")
-def test_w31_the_fixed_cut_makes_a_type_per_mobile_locus_and_the_largest_gap_recovers_the_planted_types(mobile,
-                                                                                                         tmp_path):
-    """At the fixed cut 0.5 each m1 and m2 locus (core genes and cargo of its own) is a context type of its own: 8 types
-    for 12 loci, 7 of them of one locus. --auto-cut gap cuts each group's tree in the middle of the largest gap between
-    its merge distances below 1 and 1 itself (the oracle's distances: 1 - 6/14, 0.75, 1 - 1/19, then 1): the three
-    planted types m1, m2 and the phage leaf. groups.tsv gives the cut it chose; the oracle's average linkage cut there
-    gives the same types."""
+@pytest.mark.covers("W-31", "W-32")
+def test_w31_the_fixed_cut_makes_a_type_per_mobile_locus_and_auto_cut_gap_is_refused(mobile, tmp_path, capsys):
+    """At the fixed cut 0.5 (still the default, DEC-41) each m1 and m2 locus (core genes and cargo of its own) is a
+    context type of its own: 8 types for 12 loci, 7 of them of one locus; the oracle's merge distances are 1 - 6/14,
+    0.75, 1 - 1/19, then 1. Card W-32 (DEC-41) removed --auto-cut gap: it is refused (exit 2) with a message that
+    names --auto-cut N, and nothing is written. (Card W-31 asserted here that the largest gap recovered the three
+    planted types; --auto-cut 3 does, test_w31_auto_cut_n_gives_at_most_n_types_and_never_joins_at_distance_1.)"""
     root, loci = mobile
     group = _nr90("M").hex()
     out = tmp_path / "fixed"
@@ -695,16 +721,12 @@ def test_w31_the_fixed_cut_makes_a_type_per_mobile_locus_and_the_largest_gap_rec
     # the oracle's merges at 0 join the identical phage loci, which nbr flanks collapses into one leaf beforehand
     heights = sorted({round(h, 9) for h in oracle_heights(loci, CUT_LOCI) if 1e-9 < h < 1 - 1e-9}) + [1.0]
     assert heights == pytest.approx([1 - 6 / 14, 0.75, 1 - 1 / 19, 1.0])
-    gaps = [(heights[i + 1] - heights[i], i) for i in range(len(heights) - 1)]
-    _, i = max(gaps, key=lambda g: (g[0], -g[1]))
-    want_cut = (heights[i] + heights[i + 1]) / 2
+    capsys.readouterr()
     out_gap = tmp_path / "gap"
-    assert run_flanks(mobile, out_gap, "--auto-cut", "gap", names=CUT_LOCI) == 0
-    want = {frozenset(v) for v in MOBILE_TYPES.values()}
-    assert group_types(out_gap, loci, group) == want
-    assert oracle_types(loci, CUT_LOCI, "j", want_cut) == want
-    g = {r["group"]: r for r in read_tsv(out_gap / "groups.tsv")}[group]
-    assert float(g["cut"]) == pytest.approx(want_cut, abs=1e-6) and g["n_context_types"] == "3"
+    assert run_flanks(mobile, out_gap, "--auto-cut", "gap", names=CUT_LOCI) == 2
+    err = capsys.readouterr().err
+    assert "--auto-cut N" in err and "gap" in err
+    assert not out_gap.exists()
 
 
 @pytest.mark.covers("W-31")
@@ -730,13 +752,14 @@ def test_w31_auto_cut_n_gives_at_most_n_types_and_never_joins_at_distance_1(mobi
 
 @pytest.mark.covers("W-31")
 def test_w31_auto_cut_leaves_the_distances_and_the_tree_as_the_unflagged_call_writes_them(mobile, tmp_path):
-    """Only the context types depend on the cut: the matrices, positions and tree of --auto-cut gap are byte-identical
+    """Only the context types depend on the cut: the matrices, positions and tree of --auto-cut 3 are byte-identical
     to the unflagged call's, built here from it; the unflagged groups.tsv has no cut column and its README no W-31
-    section, as before the card."""
+    section, as before the card. (Card W-32 removed --auto-cut gap, which this test used; N = 3 is the planted
+    number of types.)"""
     root, loci = mobile
     plain, gap = tmp_path / "plain", tmp_path / "gap"
     assert run_flanks(mobile, plain, names=CUT_LOCI) == 0
-    assert run_flanks(mobile, gap, "--auto-cut", "gap", names=CUT_LOCI) == 0
+    assert run_flanks(mobile, gap, "--auto-cut", "3", names=CUT_LOCI) == 0
     group = _nr90("M").hex()
     for name in ("distance_j.tsv", "distance_a.tsv", "positions.tsv", "tree.nwk"):
         assert (plain / "groups" / group / name).read_bytes() == (gap / "groups" / group / name).read_bytes(), name
@@ -747,7 +770,8 @@ def test_w31_auto_cut_leaves_the_distances_and_the_tree_as_the_unflagged_call_wr
 
 @pytest.mark.covers("W-31")
 @pytest.mark.parametrize("extra, needle", [
-    (["--auto-cut", "gap", "--cut", "0.4"], "--auto-cut"),
+    (["--auto-cut", "3", "--cut", "0.4"], "--auto-cut"),
+    (["--auto-cut", "gap"], "--auto-cut N"),  # removed by card W-32 (DEC-41)
     (["--auto-cut", "widest"], "--auto-cut"),
     (["--auto-cut", "0"], "--auto-cut"),
     (["--colour-weight", "genome"], "--figure"),
@@ -757,7 +781,8 @@ def test_w31_auto_cut_leaves_the_distances_and_the_tree_as_the_unflagged_call_wr
     (["--figure", "--colour-fallback", "pfam", "--level", "pfam"], "--level pfam"),
 ])
 def test_w31_refusals(world, tmp_path, capsys, extra, needle):
-    """--auto-cut with --cut, or other than gap or a whole number of at least 1; a colour option without --figure or
+    """--auto-cut with --cut, or other than a whole number of at least 1 (gap since card W-32 too, with a message that
+    names --auto-cut N); a colour option without --figure or
     with an unknown value; the Pfam fallback at --level pfam (the families are Pfam architectures already): refused
     (exit 2) before anything is written."""
     out = tmp_path / "out"

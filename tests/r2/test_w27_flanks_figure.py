@@ -204,7 +204,11 @@ def test_w27_a_family_has_one_colour_in_every_group_and_rare_families_are_grey(w
     """Grouped by the anchor's NR90 cluster, A1..A5 and D1..D5 lie in two groups (R and R2) and carry the same colour
     in both, a different colour per family. In one group of every locus (--group-by none), a family held by fewer
     than FIGURE_MIN_SHARE of the loci (X, one locus of 14) is grey and every other family is coloured, as the
-    planted shares say; the legend names the coloured families (the release's Pfam names at nr50) with their shares."""
+    planted shares say; the legend names the coloured families (the release's Pfam names at nr50) with their shares.
+    Card W-32: the release has a domain library, so the defaults weight each locus by its anchor's NR90 cluster
+    (DEC-41): grouped by that cluster the weighting changes nothing (one unit per group); in one group the shares are
+    the oracle's weighted ones (two units, R and R2). The unweighted assertion is kept under --colour-weight locus
+    --colour-fallback none, the colours before the card."""
     root, loci = world
     out = tmp_path / "out"
     assert run(world, out, "--figure") == 0
@@ -226,9 +230,16 @@ def test_w27_a_family_has_one_colour_in_every_group_and_rare_families_are_grey(w
         assert any(label.startswith(w25._nr50(f).hex()[:8]) and f in label and f"{round(100 * s)}%" in label
                    for label in labels), f
 
+    for (colour, label) in r2.legend:  # the grouped legend's shares are the unweighted ones (one unit per group)
+        for f, s in shares.items():
+            if label.startswith(w25._nr50(f).hex()[:8]):
+                assert label.endswith(f"{round(100 * s)}%"), (f, label)
+
+    # before card W-32 (now behind the explicit flags): unweighted shares over the 14 loci
     plans.clear()
     out_all = tmp_path / "all"
-    assert run(world, out_all, "--figure", "--group-by", "none") == 0
+    assert run(world, out_all, "--figure", "--group-by", "none", "--colour-weight", "locus",
+               "--colour-fallback", "none") == 0
     (plan,) = plans.values()
     shares = oracle_shares(loci, list(loci))
     assert shares["X"] < flanks.FIGURE_MIN_SHARE
@@ -239,6 +250,25 @@ def test_w27_a_family_has_one_colour_in_every_group_and_rare_families_are_grey(w
             f = fam[g.key]
             assert (g.colour == flanks.FIGURE_GREY) == (shares[f] < flanks.FIGURE_MIN_SHARE), f
     assert any(c == flanks.FIGURE_GREY for c, _ in plan.legend)
+
+    # the defaults since card W-32: each locus weighs 1 / (the loci of its anchor's NR90 cluster), from
+    # context_types.tsv's anchor_nr90 column
+    plans.clear()
+    out_def = tmp_path / "all_default"
+    assert run(world, out_def, "--figure", "--group-by", "none") == 0
+    (plan,) = plans.values()
+    unit = units_from_tables(out_def, loci)
+    assert len(set(unit.values())) == 2
+    weighted = oracle_weighted_shares(loci, list(loci), unit)
+    assert weighted["X"] < flanks.FIGURE_MIN_SHARE
+    for row in plan.rows:
+        for g in row.genes:
+            if g.anchor or g.key is None:
+                continue
+            f = fam[g.key]
+            assert (g.colour == flanks.FIGURE_GREY) == (weighted[f] < flanks.FIGURE_MIN_SHARE), f
+    assert any(c == flanks.FIGURE_GREY for c, _ in plan.legend)
+    assert any("--colour-weight anchor-nr90" in line for line in plan.title)
 
 
 @needs_mpl
@@ -392,6 +422,9 @@ def mobile_families(loci: dict) -> dict[str, str]:
     return {w25._nr50(f).hex(): f for f in names}
 
 
+OLD_COLOURS = ("--colour-weight", "locus", "--colour-fallback", "none")  # the defaults before card W-32
+
+
 @needs_mpl
 @pytest.mark.covers("W-31")
 @pytest.mark.parametrize("weight", ["leaf", "genome", "anchor-nr90"])
@@ -399,15 +432,17 @@ def test_w31_colour_weight_counts_near_identical_loci_once(mobile, tmp_path, pla
     """Unweighted, the 30 phage loci colour P1..P10 (30 of 42 loci) while Cas6, in 3 of the 12 species, is grey (3 of
     42 < 10%). --colour-weight leaf, genome or anchor-nr90 counts the phage loci once: 13 units, so P1..P10 are grey
     (1/13) and Cas6 coloured (3/13), as the oracle's weighted shares say for every drawn gene; the legend gives the
-    weighted share."""
+    weighted share. Card W-32: the unweighted run is now the explicit --colour-weight locus --colour-fallback none
+    (it was the unflagged call), and the weighted run gives --colour-fallback none (the Pfam fallback is a default
+    since DEC-41 and would colour the Cas7 clusters, which this test does not ask about)."""
     root, loci = mobile
     fam = mobile_families(loci)
-    assert run_colours(mobile, tmp_path / "plain") == 0
+    assert run_colours(mobile, tmp_path / "plain", *OLD_COLOURS) == 0
     (plain,) = plans.values()
     plain_colours = drawn_colours(plain, fam)
     assert plain_colours["P1"] != {flanks.FIGURE_GREY} and plain_colours["Cas6"] == {flanks.FIGURE_GREY}
     plans.clear()
-    assert run_colours(mobile, tmp_path / "w", "--colour-weight", weight) == 0
+    assert run_colours(mobile, tmp_path / "w", "--colour-weight", weight, "--colour-fallback", "none") == 0
     (plan,) = plans.values()
     shares = oracle_weighted_shares(loci, w25.COLOUR_LOCI, UNIT)
     assert shares["P1"] == pytest.approx(1 / 13) and shares["Cas6"] == pytest.approx(3 / 13)
@@ -426,16 +461,18 @@ def test_w31_colour_fallback_colours_a_rare_cluster_by_its_common_pfam_family(mo
     """Each species' Cas7 is its own NR50 cluster (1 of 42 loci, grey) but the 12 share the Pfam-like domain Cas7 (12 of
     42 loci). --colour-fallback pfam colours the 12 Cas7 genes with one colour of their family, a colour no cluster
     has; Cas6 stays grey (its family too is in 3 of 42); clusters coloured without the fallback keep their colours;
-    the legend names the family."""
+    the legend names the family. Card W-32: the run without the fallback is now the explicit --colour-weight locus
+    --colour-fallback none (it was the unflagged call), and the run with it gives --colour-weight locus (anchor-nr90 is
+    a default since DEC-41 and would colour Cas6, 3 of 13 units)."""
     root, loci = mobile
     fam = mobile_families(loci)
-    assert run_colours(mobile, tmp_path / "plain") == 0
+    assert run_colours(mobile, tmp_path / "plain", *OLD_COLOURS) == 0
     (plain,) = plans.values()
     before = drawn_colours(plain, fam)
     for k in range(1, 13):
         assert before[f"Cas7@sp{k}"] == {flanks.FIGURE_GREY}
     plans.clear()
-    assert run_colours(mobile, tmp_path / "fb", "--colour-fallback", "pfam") == 0
+    assert run_colours(mobile, tmp_path / "fb", "--colour-fallback", "pfam", "--colour-weight", "locus") == 0
     (plan,) = plans.values()
     after = drawn_colours(plan, fam)
     domain = oracle_weighted_shares(loci, w25.COLOUR_LOCI, None, of=lambda f: f.split("@")[0])
@@ -452,31 +489,385 @@ def test_w31_colour_fallback_colours_a_rare_cluster_by_its_common_pfam_family(mo
 
 
 @needs_mpl
-@pytest.mark.covers("W-31")
-def test_w31_the_default_values_of_the_new_flags_give_the_unflagged_bytes(world, tmp_path):
-    """--colour-weight locus and --colour-fallback none are today's colours: with --figure and --export gff every file
-    is byte-identical to the unflagged call's, built here from it."""
-    plain, explicit = tmp_path / "plain", tmp_path / "explicit"
-    assert run(world, plain, "--figure", "--export", "gff") == 0
-    assert run(world, explicit, "--figure", "--export", "gff", "--colour-weight", "locus",
-               "--colour-fallback", "none") == 0
-    a = sorted(p.relative_to(plain) for p in plain.rglob("*") if p.is_file())
-    b = sorted(p.relative_to(explicit) for p in explicit.rglob("*") if p.is_file())
-    assert a == b and len(a) > 10
-    for p in a:
-        assert (plain / p).read_bytes() == (explicit / p).read_bytes(), p
+@pytest.mark.covers("W-31", "W-32")
+def test_w31_the_default_values_of_the_new_flags_give_the_unflagged_bytes(world, tmp_path, plans):
+    """--colour-weight locus and --colour-fallback none are the colours before card W-32: with --figure and --export
+    gff every file but the two figures has the bytes the code before the card wrote for the unflagged call (sha256,
+    BASE_TABLES, README.txt included), and the figure is drawn as before (no colour line in its title). Before W-32
+    this test compared the explicit flags with the unflagged call, which they then equalled; since DEC-41 the unflagged
+    call at nr50 on a release with a domain library is weighted and falls back to Pfam: its tables are the same bytes
+    (test_w32_tables_are_byte_identical_to_the_code_before_the_card) and its figures are not. The figures' bytes under
+    the old flags against the old code are compared on the pod
+    (planning/measurements/2026-11-14_flanks_figure_defaults.md), not here: they depend on the matplotlib build."""
+    explicit = tmp_path / "explicit"
+    assert run(world, explicit, "--figure", "--export", "gff", *OLD_COLOURS) == 0
+    n, digest, readme = tables_digest(explicit, readme=False)  # README.txt by its own sha256
+    want = BASE_TABLES["world_nr50_gff_figure"]
+    assert (n, digest, readme) == (want[0], want[1], want[2])
+    for plan in plans.values():
+        assert not any("--colour-" in line for line in plan.title)
+    assert sorted(p.name for p in explicit.rglob("figure.*")) == ["figure.pdf", "figure.pdf", "figure.svg",
+                                                                   "figure.svg"]
 
 
 @needs_mpl
-@pytest.mark.covers("W-31")
+@pytest.mark.covers("W-31", "W-32")
 def test_w31_the_figure_draws_the_cut_auto_cut_chose(mobile, tmp_path, plans):
-    """With --auto-cut gap the figure's dashed line is at the group's chosen cut (groups.tsv) and its title says how
-    the cut was chosen."""
+    """With --auto-cut 2 the figure's dashed line is at the group's chosen cut (groups.tsv) and its title says how
+    the cut was chosen. (Before card W-32 this used --auto-cut gap, removed by DEC-41, and found "largest gap" in the
+    title.)"""
     root, loci = mobile
     out = tmp_path / "out"
     assert cli.main(["nbr", "flanks", w25.anchors(loci, w25.CUT_LOCI), "--root", str(root), "--release", w25.REL,
-                     "--out", str(out), "--figure", "--auto-cut", "gap"]) == 0
+                     "--out", str(out), "--figure", "--auto-cut", "2"]) == 0
     (plan,) = plans.values()
     g = {r["group"]: r for r in w25.read_tsv(out / "groups.tsv")}[plan.group]
     assert plan.cut == pytest.approx(float(g["cut"]), abs=1e-6)
-    assert any("largest gap" in line for line in plan.title)
+    assert any("at most 2 types" in line and "--auto-cut 2" in line for line in plan.title)
+
+
+# --- card W-32 (DEC-41): the figure's defaults -----------------------------------------------------------------------
+#
+# At --level nr50 and nr90, when the release's manifest lists a domain library, --colour-weight anchor-nr90 and
+# --colour-fallback pfam are the defaults, and a family that would show in two colours takes its Pfam colour
+# throughout. The oracle (`oracle_classes`) computes from the planted lists, and the units from context_types.tsv,
+# the class every drawn gene must have: its cluster's colour, its Pfam domain's colour, or grey; genes of one class
+# share one colour in the run, classes differ in colour. The tables' bytes are compared with the code before the
+# card by sha256 (BASE_TABLES, written by that code on the pod:
+# planning/measurements/2026-11-14_flanks_figure_defaults/).
+
+
+def units_from_tables(out: Path, loci: dict) -> dict[str, str]:
+    """Locus name -> its anchor's NR90 cluster, as context_types.tsv gives it."""
+    names = w25.by_name(loci)
+    return {names[r["feature_uid"]]: r["anchor_nr90"] for r in w25.read_tsv(out / "context_types.tsv")}
+
+
+def oracle_classes(loci: dict, groups: dict[str, list[str]], unit: dict | None, fallback: bool) -> dict:
+    """Per group, per planted flanking family (a cluster, `F@x` or `F`): ("cluster", family), ("pfam", domain) or
+    "grey". Shares are exact fractions: per unit (each locus its own without `unit`), the share of its loci holding
+    the cluster (or its domain, the name before "@"), averaged over the units. A cluster held by at least
+    FIGURE_MIN_SHARE is coloured; a grey cluster whose domain is held by at least FIGURE_MIN_SHARE takes the domain's
+    colour (fallback); a domain that does so in any group of the run takes over every coloured cluster of that domain,
+    in every group (the one-colour rule)."""
+    from fractions import Fraction
+
+    dom = lambda f: f.split("@")[0]  # noqa: E731
+    least = Fraction(flanks.FIGURE_MIN_SHARE).limit_denominator(1000)
+
+    def shares(names: list[str], of) -> dict[str, Fraction]:
+        units: dict[str, list[str]] = {}
+        for n in names:
+            units.setdefault(unit[n] if unit else n, []).append(n)
+        out: dict[str, Fraction] = {}
+        for members in units.values():
+            for n in members:
+                held = set()
+                for side in ("up", "down"):
+                    for f, _ in loci[n][side]:
+                        if f:
+                            held.add(of(f))
+                for x in held:
+                    out[x] = out.get(x, Fraction(0)) + Fraction(1, len(members) * len(units))
+        return out
+
+    per = {}
+    stand_in = set()
+    for g, names in groups.items():
+        cs, ds = shares(names, lambda f: f), shares(names, dom)
+        coloured = {f for f, s in cs.items() if s >= least}
+        per[g] = (cs, ds, coloured)
+        if fallback:
+            for f in cs:
+                if f not in coloured and ds[dom(f)] >= least:
+                    stand_in.add(dom(f))
+    out = {}
+    for g, (cs, ds, coloured) in per.items():
+        cls = {}
+        for f in cs:
+            if f in coloured:
+                cls[f] = ("pfam", dom(f)) if dom(f) in stand_in else ("cluster", f)
+            elif fallback and ds[dom(f)] >= least:
+                cls[f] = ("pfam", dom(f))
+            else:
+                cls[f] = "grey"
+        out[g] = cls
+    return out
+
+
+def check_classes(plans: dict, classes: dict, fam: dict[str, str], uid=None) -> dict:
+    """Every drawn flanking gene has its oracle class's colour: grey for "grey"; one colour per class across the run;
+    no two classes share a colour; each group's legend has one row per class drawn there (a cluster by its uid's
+    first 8 hex digits, a domain as "Pfam <domain>"), none for a cluster drawn in its domain's colour. Returns the
+    colour of each class."""
+    colour: dict = {}
+    for gid, plan in plans.items():
+        drawn = set()
+        for row in plan.rows:
+            for g in row.genes:
+                if g.anchor or g.key is None:
+                    continue
+                c = classes[gid][fam[g.key]]
+                if c == "grey":
+                    assert g.colour == flanks.FIGURE_GREY, (gid, fam[g.key])
+                    continue
+                assert g.colour != flanks.FIGURE_GREY, (gid, fam[g.key])
+                colour.setdefault(c, set()).add(g.colour)
+                drawn.add(c)
+        labels = [label for c, label in plan.legend if c not in (flanks.FIGURE_ANCHOR, flanks.FIGURE_GREY,
+                                                                    flanks.FIGURE_NONE)]
+        want = sorted(("Pfam " + c[1]) if c[0] == "pfam" else (uid or w25._nr50)(c[1]).hex()[:8] for c in drawn)
+        assert sorted(label.split(" ")[0] if not label.startswith("Pfam ") else " ".join(label.split(" ")[:2])
+                      for label in labels) == want, gid
+    for c, cs in colour.items():
+        assert len(cs) == 1, c
+    assert len({next(iter(cs)) for cs in colour.values()}) == len(colour)
+    return {c: next(iter(cs)) for c, cs in colour.items()}
+
+
+def run_one(world_, out: Path, *extra: str, names=None) -> int:
+    root, loci = world_
+    return cli.main(["nbr", "flanks", w25.anchors(loci, names), "--root", str(root), "--release", w25.REL, "--out",
+                     str(out), *extra])
+
+
+# The calls whose tables are compared with the code before the card. name: (fixture, anchors, arguments, README.txt
+# compared). README.txt gains a paragraph on the colours when a figure is drawn with them (card W-32), so it is
+# compared only where the colours do not change: without --figure and at --level pfam.
+CALLS = {
+    "world_nr50_gff_figure": ("world", None, ["--figure", "--export", "gff"], False),
+    "world_nr90_none_combined_figure": ("world", None, ["--figure", "--level", "nr90", "--group-by", "none",
+                                                        "--distance", "combined"], False),
+    "world_pfam_figure": ("world", None, ["--figure", "--level", "pfam"], True),
+    "world_nr50_gff": ("world", None, ["--export", "gff"], True),
+    "mobile_colours_none_figure": ("mobile", "colour", ["--figure", "--group-by", "none"], False),
+    "one_colour_figure": ("one", None, ["--figure"], False),
+}
+
+
+def build_fixture(kind: str, root: Path) -> dict:
+    if kind == "world":
+        return w25.build(root)
+    if kind == "mobile":
+        return w25.build(root, w25.MOBILE, w25.MOBILE_GENOMES)
+    return w25.build(root, w25.ONE_COLOUR)
+
+
+def tables_digest(out: Path, readme: bool) -> tuple[int, str, str | None]:
+    """(files, sha256 of the sorted `path<TAB>sha256` lines of every file but figure.svg and figure.pdf, and README.txt
+    unless `readme`; sha256 of README.txt)."""
+    import hashlib
+
+    lines = []
+    for p in sorted(out.rglob("*")):
+        rel = p.relative_to(out).as_posix()
+        if not p.is_file() or p.name in ("figure.svg", "figure.pdf") or (rel == "README.txt" and not readme):
+            continue
+        lines.append(f"{rel}\t{hashlib.sha256(p.read_bytes()).hexdigest()}\n")
+    text = (out / "README.txt").read_bytes()
+    return len(lines), hashlib.sha256("".join(lines).encode()).hexdigest(), hashlib.sha256(text).hexdigest()
+
+
+def base_digests(scratch: Path) -> dict:
+    """Every call of CALLS on fresh fixtures under `scratch`: name -> [files, digest, README sha256]. Run with the code
+    before the card (src of 4469fab) to write BASE_TABLES."""
+    fixtures: dict[str, tuple] = {}
+    out = {}
+    for name, (kind, which, args, readme) in CALLS.items():
+        if kind not in fixtures:
+            root = scratch / kind / "root"
+            fixtures[kind] = (root, build_fixture(kind, root))
+        names = w25.COLOUR_LOCI if which == "colour" else None
+        d = scratch / "out" / name
+        assert run_one(fixtures[kind], d, *args, names=names) == 0, name
+        out[name] = list(tables_digest(d, readme))
+    return out
+
+
+# written by base_digests with the code of 4469fab (before card W-32) on wilkcomp02, 2026-11-14, in the test image
+# (planning/measurements/2026-11-14_flanks_figure_defaults/base_digests.py)
+_README_BEFORE = "6ac3c22c979b02fec1ef8425fe9332e3127efc7cabe2742ae36291e9f79cd13e"  # README.txt of every call
+BASE_TABLES = {
+    "mobile_colours_none_figure": [8, "7d07d85dd3dd8de2250ee3b3132875ba9a6abbb9a4d22295d6dd4c5275d0818b",
+                                   _README_BEFORE],
+    "one_colour_figure": [13, "3e27c32b63bd4bc242aaae42d6bb0e969fa96af6b53d6af5af8edd523ed20e0f", _README_BEFORE],
+    "world_nr50_gff": [29, "355555ac6402ccb3370d75087b0ef0c1f400e615ca885fed131965e6641485db", _README_BEFORE],
+    "world_nr50_gff_figure": [28, "f4d5c8d3677ea301228d4a2c31aa66c3f2a263e7c7a37795eac4b1334c498869", _README_BEFORE],
+    "world_nr90_none_combined_figure": [8, "8feac075325824bce4e72f6b36b1c58e1f477ca26285820298d068cc095bbb0f",
+                                        _README_BEFORE],
+    "world_pfam_figure": [14, "3e9497be3a8325c619f57e377c0b84b6e1ddf06969fbceddc9f4fb3c0b8d23d6", _README_BEFORE],
+}
+
+
+@needs_mpl
+@pytest.mark.covers("W-32")
+@pytest.mark.parametrize("name", list(CALLS))
+def test_w32_tables_are_byte_identical_to_the_code_before_the_card(tmp_path, name):
+    """The new defaults change the figures only: every other file a call writes (README.txt where the colours do not
+    change) has the bytes the code before card W-32 wrote for the same call on the same constructed release."""
+    kind, which, args, readme = CALLS[name]
+    root = tmp_path / "root"
+    world_ = (root, build_fixture(kind, root))
+    out = tmp_path / "out"
+    assert run_one(world_, out, *args, names=w25.COLOUR_LOCI if which == "colour" else None) == 0
+    n, digest, readme_sha = tables_digest(out, readme)
+    want = BASE_TABLES[name]
+    assert (n, digest) == (want[0], want[1])
+    if readme:
+        assert readme_sha == want[2]
+    else:  # a figure drawn with the new colours: README.txt says how they were chosen
+        text = (out / "README.txt").read_text()
+        assert readme_sha != want[2] and "--colour-weight" in text and "anchor-nr90" in text
+
+
+@needs_mpl
+@pytest.mark.covers("W-32")
+@pytest.mark.parametrize("level", ["nr50", "nr90"])
+def test_w32_the_defaults_weight_by_the_anchor_nr90_cluster_and_fall_back_to_pfam(mobile, tmp_path, plans, level):
+    """At nr50 and nr90 on a release whose manifest lists a domain library, the unflagged figure of the 42 loci in one
+    group counts the 30 near-identical phage loci once (13 units by anchor NR90 cluster, from context_types.tsv):
+    P1..P10 are grey (1/13), Cas6 has its cluster's colour (3/13) and the twelve rare Cas7 clusters one colour, that of the
+    domain Cas7 (12 of 13 units), as the oracle's classes say; the title names both settings and README.txt says
+    which were used. The explicit flags give the same figure plan."""
+    root, loci = mobile
+    fam = mobile_families(loci) if level == "nr50" else {w25._nr90(f).hex(): f for f in mobile_families(loci).values()}
+    out = tmp_path / "out"
+    assert run_colours(mobile, out, "--level", level) == 0
+    (plan,) = plans.values()
+    unit = units_from_tables(out, loci)
+    assert len({unit[n] for n in w25.COLOUR_LOCI}) == 13
+    classes = oracle_classes(loci, {"all": w25.COLOUR_LOCI}, unit, fallback=True)
+    assert classes["all"]["P1"] == "grey" and classes["all"]["Cas6"] == ("cluster", "Cas6")
+    assert classes["all"]["Cas7@sp1"] == ("pfam", "Cas7") and classes["all"]["TnsB"] == ("cluster", "TnsB")
+    check_classes(plans, classes, fam, uid=w25._nr50 if level == "nr50" else w25._nr90)  # the legend's uid prefix
+    assert any("--colour-weight anchor-nr90" in line for line in plan.title)
+    assert any("--colour-fallback pfam" in line for line in plan.title)
+    readme = (out / "README.txt").read_text()
+    assert "--colour-weight anchor-nr90" in readme and "--colour-fallback pfam" in readme
+    first = plan
+    plans.clear()
+    assert run_colours(mobile, tmp_path / "explicit", "--level", level, "--colour-weight", "anchor-nr90",
+                       "--colour-fallback", "pfam") == 0
+    (again,) = plans.values()
+    assert [(r.leaf, [g.colour for g in r.genes]) for r in again.rows] == \
+           [(r.leaf, [g.colour for g in r.genes]) for r in first.rows]
+    assert again.legend == first.legend
+
+
+@pytest.fixture(scope="module")
+def one_colour(tmp_path_factory):
+    root = tmp_path_factory.mktemp("w32one") / "root"
+    return root, w25.build(root, w25.ONE_COLOUR)
+
+
+@needs_mpl
+@pytest.mark.covers("W-32")
+@pytest.mark.parametrize("extra", [[], ["--colour-fallback", "pfam"]])
+def test_w32_a_family_that_would_show_in_two_colours_takes_its_pfam_colour_throughout(one_colour, tmp_path, plans,
+                                                                                       extra):
+    """In group 2 the rare Cas1 clusters (1 of 12 each) take the colour of the domain Cas1 (12 of 12) while the common
+    Cas1 cluster (6 of 12) is coloured as a cluster; the rule draws the common cluster in the domain's colour too, in
+    group 2 and in group 1 (where every Cas1 gene is of the common cluster): one colour for Cas1 in the run, a "Pfam
+    Cas1" row in both legends and none for the cluster; TnsB keeps its cluster's colour, the same in both groups. As
+    the oracle's classes say, with the default flags and with --colour-fallback pfam given. Under --colour-fallback
+    none the common cluster has its own colour and the rare ones are grey, as before."""
+    root, loci = one_colour
+    fam = {w25._nr50(f).hex(): f for n in loci for side in ("up", "down") for f, _ in loci[n][side] if f}
+    out = tmp_path / "out"
+    assert run_one(one_colour, out, "--figure", *extra) == 0
+    assert len(plans) == 2
+    groups: dict[str, list[str]] = {}
+    for n, f in loci.items():
+        groups.setdefault(w25._nr90(f["anchor_family"]).hex(), []).append(n)
+    classes = oracle_classes(loci, groups, units_from_tables(out, loci), fallback=True)
+    g1, g2 = w25._nr90("O@g1").hex(), w25._nr90("O@g2").hex()
+    assert classes[g1]["Cas1@common"] == classes[g2]["Cas1@common"] == classes[g2]["Cas1@sp7"] == ("pfam", "Cas1")
+    assert classes[g1]["TnsB"] == ("cluster", "TnsB")
+    colour = check_classes(plans, classes, fam)
+    cas1 = {g.colour for p in plans.values() for r in p.rows for g in r.genes
+            if g.key is not None and not g.anchor and fam[g.key].startswith("Cas1@")}
+    assert cas1 == {colour[("pfam", "Cas1")]} and colour[("cluster", "TnsB")] not in cas1
+    common = w25._nr50("Cas1@common").hex()[:8]
+    for p in plans.values():
+        labels = [label for _, label in p.legend]
+        assert any(label.startswith("Pfam Cas1 ") for label in labels)
+        assert not any(label.startswith(common) for label in labels)
+
+    plans.clear()
+    assert run_one(one_colour, tmp_path / "none", "--figure", "--colour-fallback", "none") == 0
+    old = oracle_classes(loci, groups, units_from_tables(out, loci), fallback=False)
+    assert old[g2]["Cas1@common"] == ("cluster", "Cas1@common") and old[g2]["Cas1@sp7"] == "grey"
+    check_classes(plans, old, fam)
+
+
+@needs_mpl
+@pytest.mark.covers("W-32")
+def test_w32_the_rule_holds_where_the_clusters_genes_carry_no_domain(tmp_path_factory, tmp_path, plans):
+    """Found on the RNA polymerase run of rN.3 (KeyError 'pfam:S-AdoMet_lyase'): a cluster drawn in its family's Pfam
+    colour in a group where none of its genes carries that architecture. Here the common Cas1 cluster's genes in group
+    1 (oa_*) have no domain; its family is still Cas1 (its genes in group 2) and Cas1 is a stand-in in group 2, so in
+    group 1 it is drawn in the Pfam Cas1 colour and the legend's "Pfam Cas1" row gives the cluster's own share
+    there (4 of 4 loci, 100%)."""
+    root = tmp_path_factory.mktemp("w32nodom") / "root"
+    loci = w25.build(root, w25.ONE_COLOUR, no_domain=frozenset((f"oa_{k}", "Cas1@common") for k in range(4)))
+    assert run_one((root, loci), tmp_path / "out", "--figure") == 0
+    g1 = plans[w25._nr90("O@g1").hex()]
+    common = w25._nr50("Cas1@common").hex()
+    pfam = [(c, label) for c, label in g1.legend if label.startswith("Pfam Cas1 ")]
+    assert len(pfam) == 1 and pfam[0][1].endswith(" 100%")
+    drawn = {g.colour for r in g1.rows for g in r.genes if g.key == common}
+    assert drawn == {pfam[0][0]}
+    assert not any(label.startswith(common[:8]) for _, label in g1.legend)
+
+
+@needs_mpl
+@pytest.mark.covers("W-32")
+@pytest.mark.parametrize("how", ["no manifest", "no domain library"])
+def test_w32_without_a_domain_library_in_the_manifest_the_defaults_are_the_old_ones_and_stderr_says_so(
+        tmp_path_factory, tmp_path, plans, capsys, how):
+    """A release read from its release_def only (no manifest), or whose manifest lists no l1_domains file: the figure
+    is drawn with --colour-weight locus --colour-fallback none (P1..P10 coloured by the 30 phage loci, Cas6 and every
+    Cas7 cluster grey, as the unweighted oracle says) and one stderr line says why; without --figure no line."""
+    root = tmp_path_factory.mktemp("w32nolib") / "root"
+    loci = w25.build(root, w25.MOBILE, w25.MOBILE_GENOMES, manifest=how != "no manifest",
+                     domains=how != "no domain library")
+    mobile_ = (root, loci)
+    capsys.readouterr()
+    assert run_colours(mobile_, tmp_path / "out") == 0
+    err = capsys.readouterr().err
+    lines = [x for x in err.splitlines() if "domain library" in x]
+    assert len(lines) == 1, err
+    assert "--colour-weight locus --colour-fallback none" in lines[0]
+    assert ("manifest" in lines[0])
+    (plan,) = plans.values()
+    classes = oracle_classes(loci, {"all": w25.COLOUR_LOCI}, None, fallback=False)
+    assert classes["all"]["P1"] == ("cluster", "P1") and classes["all"]["Cas6"] == "grey"
+    check_classes(plans, classes, mobile_families(loci))
+    assert not any("--colour-" in line for line in plan.title)
+    assert "--colour-weight" not in (tmp_path / "out" / "README.txt").read_text()
+    assert run_one(mobile_, tmp_path / "plain", "--group-by", "none", names=w25.COLOUR_LOCI) == 0
+    assert "domain library" not in capsys.readouterr().err
+
+
+@needs_mpl
+@pytest.mark.covers("W-32")
+def test_w32_at_level_pfam_the_defaults_do_not_change(mobile, tmp_path, plans, capsys):
+    """At --level pfam the families are Pfam architectures already: the defaults stay locus and none, the title
+    carries no colour line and stderr no note; an explicit --colour-weight anchor-nr90 is still honoured there."""
+    root, loci = mobile
+    capsys.readouterr()
+    assert run_colours(mobile, tmp_path / "out", "--level", "pfam") == 0
+    assert "domain library" not in capsys.readouterr().err
+    (plan,) = plans.values()
+    assert not any("--colour-" in line for line in plan.title)
+    assert "--colour-weight" not in (tmp_path / "out" / "README.txt").read_text()
+    names = {f.split("@")[0] for n in w25.COLOUR_LOCI for side in ("up", "down") for f, _ in loci[n][side] if f}
+    shares = oracle_weighted_shares(loci, w25.COLOUR_LOCI, None, of=lambda f: f.split("@")[0])
+    got = drawn_colours(plan, {d: d for d in names})
+    assert got["P1"] != {flanks.FIGURE_GREY} and shares["P1"] >= flanks.FIGURE_MIN_SHARE
+    assert got["Cas6"] == {flanks.FIGURE_GREY} and shares["Cas6"] < flanks.FIGURE_MIN_SHARE
+    plans.clear()
+    assert run_colours(mobile, tmp_path / "w", "--level", "pfam", "--colour-weight", "anchor-nr90") == 0
+    (weighted,) = plans.values()
+    got = drawn_colours(weighted, {d: d for d in names})
+    assert got["P1"] == {flanks.FIGURE_GREY} and got["Cas6"] != {flanks.FIGURE_GREY}
