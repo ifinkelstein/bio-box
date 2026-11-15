@@ -435,6 +435,31 @@ NR50 step 0 (derived, DEC-29). Then:
   cut's `one_process` when it is one.
 - This ends when an MMseqs2 without the abort is pinned (card B-44).
 
+**A release over the same proteins takes the earlier clustering (card B-49, DEC-45 (2)).** Before the
+cluster step, `build-stage` looks for an earlier release of the root whose clustering in parts is finished
+(all its plan records, and the run record of its step `cluster`) and whose plan record equals the one this
+release's clustering would write, but for the release's name: the same stages in the same order, the same
+`protein_seq` files by path and size, the same distinct protein uids (read from the files' uid column; a uid
+is the hash of its sequence), the same MMseqs2, and the same cut (`--cluster-parts N`, or the default, and the
+profile's `cluster_cpu_min_max`). Its clustering ledger must name today's MMseqs2 and pyarrow. When one is
+found the log says `release <R1> has a finished clustering whose plan equals this release's` and the cluster
+step is `bio-box release cluster reuse --from <R1>`, under the step name `cluster`: no MMseqs2 call; R1's
+`cluster_member`, `cluster_member_aln` and `member_cluster` files are copied to the release's own
+`release=<R2>` directories (each checked by sha256 against R1's run record; never a link; R1's files are
+only read), R1's plan records are written again for R2, and `l2/cluster_plan/release=<R2>/cluster.reuse.json`
+and the clustering ledger (rows `reused:<R1>:<hash>`) name the source. Tokens, postings and the rest then run
+as for any release.
+- Several releases qualify: the first by name is taken. A release clustered in one process records no plan,
+  so it is never a source. A release over more stages than R1 (one stage added), or with one protein changed,
+  takes nothing and is clustered.
+- `--no-reuse` clusters the release anyway. A release whose own clustering has begun (a plan record or a
+  table of its own) is finished as it began.
+- By hand: `bio-box run-step --stage <R2> --step cluster -- python -m biobox.cli release cluster reuse
+  --root R --release R2 --stages S1,... [--from R1] --parts 24 --one-process-cpu-min-max 20000.0 --tmp D`
+  (the cut options must be R1's: `release cluster reuse` refuses, exit 2, naming the plan field that differs).
+- The copies need the source's table bytes again in the root, and twice that while `run-step` publishes them
+  from staging (about 10.6 GB and 21.2 GB for `rM.2`'s, derived from its run record's sizes).
+
 A shard that fails stops new launches. Shards already running go on to their own end and publish if
 no `STOP` file exists then, and `build-stage` exits with the failed shard's code. A `STOP` file is
 different: a shard whose command ends while `STOP` exists publishes nothing (section 3). The next call
@@ -1091,6 +1116,7 @@ a profile value is missing from this table.
 | Nice | 19 (one big process), 15 (many small ones) | profile `nice_monolithic`, `nice_fanout`; AGENTS 7.2 says 19 |
 | CPU-minutes per process | 300 | profile `cpu_min_per_process`; AGENTS 7.2 |
 | CPU-minutes of one clustering call run as one process | 20000, estimated before launch; refused above it. The one exemption from the 300 (DEC-29): a call that no number of parts fits (the NR90 step's prefilter from about 74 M proteins, NR50 step 0 from about 108 M, derived). Set by the PI on 2026-11-10 for the 50 Gbp build: about nine times the 2,195.91 measured for 10,620,684 proteins (wilkcomp02, 2026-11-10). Without the key such a call is refused. Clustering in one process has no exemption since card B-42 (DEC-25's ended): above 80% of the budget a release clusters in parts | profile `cluster_cpu_min_max`; DEC-29 (narrowing DEC-25); `cluster_refusal`, `one_process_refusal` in `src/biobox/stage.py`; cards B-36, B-45, B-42 |
+| A release's clustering taken from an earlier release | only when the earlier release's plan record equals this release's but for the name (stages, `protein_seq` files by path and size, protein uids, MMseqs2, cut) and its ledger names today's MMseqs2 and pyarrow; no MMseqs2 call, the step is copies in 8 MiB blocks (section 2). `--no-reuse` clusters instead | `reuse`, `reuse_source` in `src/biobox/l2/cluster.py`; `_reuse_source` in `src/biobox/stage.py`; DEC-45 (2); card B-49 |
 | ncRNA scan shard size | `prok-2` (the default): 111,734,541 genome bases, 80% of `cpu_min_per_process` (300) at 358.0 CPU-hours per 10 Gbp (derived: 304.0 × 299.7 / 254.5, the set's cost relative to `prok-1` from `planning/measurements/2026-11-12_rfam_sample.md`). `prok-1`: 131,578,947 at 304.0, the slower of the two shards of card E-07's pod check (derived in `planning/measurements/2026-11-11_ncrna_producer.md`; the design note's 247.4 gave 161,681,487). Shards at once: at most the unit's `MemoryMax` / (6.4 GiB per two `cmsearch` threads) | `NCRNA_CPU_H_PER_10GBP`, `NCRNA_SET_COST`, `NCRNA_JOB_GIB` in `src/biobox/stage.py`; cards E-07, E-08, E-09 |
 | CRISPR step | one process, `--scan-cpus` MinCED processes of a 512 MiB heap each; refused above 80% of `cpu_min_per_process` (300) at 182.0 CPU-seconds per Gbp: a stage of 79.1 Gbp (derived: 0.8 × 300 × 60 / 182.0). The rate: 185.0 CPU-s for stage P1's 1,016,625,803 bases (run record, wilkcomp02, 2026-11-13, `planning/measurements/2026-11-13_crispr_arrays.md`) | `CRISPR_CPU_S_PER_GBP`, `crispr_refusal` in `src/biobox/stage.py`; `JAVA_HEAP` in `src/biobox/l1/crispr.py`; card E-12 |
 | CRISPR step of two-repeat arrays beside Cas genes | one process, as the CRISPR step, plus one DuckDB connection of one thread capped at `DUCK_MEMORY_LIMIT` for the filter; its estimate is the CRISPR step's times 1.19, refused above 80% of `cpu_min_per_process` (300): a stage of 66.5 Gbp (derived: 0.8 × 300 × 60 / (182.0 × 1.19)). The factor: 31.790 against 26.723 CPU-minutes on stage P2, the larger of the three ratios 1.08, 1.19, 1.14 on P1, P2, S1 (run records, wilkcomp02, 2026-11-14, `planning/measurements/2026-11-14_crispr_two_repeat_producer.md`); peak RSS of one process 1.02 GB on P2 | `CRISPR_NEAR_CAS_COST`, `crispr_refusal` in `src/biobox/stage.py`; `run_near_cas` in `src/biobox/l1/crispr.py`; card E-15 |

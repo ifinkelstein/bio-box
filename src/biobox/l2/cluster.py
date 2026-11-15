@@ -50,11 +50,59 @@ held; the Python side holds a batch of rows and one cluster's members at a time.
 The MMseqs2 command lines, parameters and thread counts are those of the builder before card B-24,
 so cluster membership is unchanged. Before the card the Python side held every row in lists: 9.57 GB
 at 2.05 M proteins (measured, planning/measurements/2026-11-10_cluster_memory.md).
+
+Reuse of an earlier release's clustering (card B-49, DEC-45 (2); `reuse`, `reuse_source`, section at the end). A release
+R2 takes the clustering of an earlier release R1 of the same root, without any MMseqs2 call, when R1's clustering is
+finished and R1's plan record equals the plan record R2's own clustering would write but for the release's name:
+
+- "Finished", from files alone: R1 has a plan record (`cluster.plan`), a record for every step of its `sequence`, which
+  ends at the last call (what `finish` requires), and the run record of its step `cluster` (`runs/stage=<R1>/cluster.json`,
+  exit 0), whose outputs list R1's `cluster_member`, `cluster_member_aln`, `member_cluster` files and its clustering
+  ledger, each in the root at its recorded size. That list is the explicit list of the files copied (AGENTS §3.9). A
+  release clustered in one process (`run`) writes no plan record, so it is never a source: its inputs were not recorded.
+- "The same proteins", in what the plan records: every field of the plan record must be equal but `release`. Its inputs
+  (`_INPUT_KEYS`, `plan_inputs`, read without opening a file): `format`, `stages` (in order), `gene_call_version`,
+  `mmseqs2` (the version), `cut` (the cut policy, and so every cut record), and `files`, the stages' `protein_seq`
+  files by path and size. Its outputs, by content: `proteins` (their number), `release_cpu_min`, and the digests of
+  `db`, `db_h` and `prot.parquet`. R2's `prot.parquet` (the distinct protein uids in uid order, a uid being the BLAKE3
+  of its sequence, `ids.protein_uid`) is made for R2 from its files' uid column alone, the bytes the plan step writes
+  (`_write_fasta` without the FASTA), so a changed or added protein compares different; `db` and `db_h` (createdb of
+  those sequences in that order) are then the same database at the same MMseqs2 version, and are taken from R1's
+  record rather than built (the plan step's FASTA and createdb would need about 30 GB of scratch at `rM.2`'s 45.8 M
+  proteins, *estimate*). Equal paths and sizes with other uids mean a stage file was rewritten (AGENTS §3.10): refused.
+  Fields that may differ: `release`, and in every other record `plan_sha256` (the sha256 of the plan record, which
+  covers the release's name). `inputs_sha256` is the sha256 of a plan record without `release`: equal for both.
+  Measured 2026-11-15 on the pod (`scripts/stress/build_stage_pod/b49_compare_plans.py`): `rM.2` and `rM.1` differ
+  beyond the name in the plan's `cut` (`rM.2`'s holds `one_process_cpu_min_max`) and in the `cpu_min` estimates of
+  their 16 cut records (made by another cost model), so `rM.1` is not a source for a release planned today; `rM.2` is.
+- Also checked on R1's records, since they become R2's: R1's clustering ledger names the tools a clustering would name
+  now (`provenance.tool_versions("mmseqs2", "pyarrow")`: pyarrow wrote the tables' bytes); every call record's `argv`
+  is this code's (`calls()`, `_part_argv`, `index_argv`: the MMseqs2 parameters); every cut record's `cpu_min` is this
+  code's estimate of its call (`call_cpu_min`). What `finish` writes from the same databases is this code's as long as
+  `PLAN_FORMAT` is: a change to it must raise `PLAN_FORMAT`.
+- Several qualifying sources: the first by release name (code point order), named in the record and the ledger.
+- What R2 gets, under `out`: copies of R1's table files at the same names under `release=<R2>` (the tables' bytes
+  name no release: `rM.1`'s and `rM.2`'s were byte-identical, measured 2026-11-14), each streamed in blocks
+  (`_COPY_BLOCK`) to a temporary name beside its destination, its sha256 and size checked against R1's run record,
+  then all renamed into place (a mismatch removes every copy: nothing is written); never a link, and R1's files are
+  only read. R2's plan records: R1's, each with `release` and `plan_sha256` made R2's (equal to a clustering's on the
+  fixture, test). R2's `release_def` as `finish` writes it. R2's clustering ledger: R1's rows of the clustering
+  (reason `ok`: the counts per level and the tools), and one more row per level with the same counts and the reason
+  `reused:<R1>:<inputs_sha256>` (its n_rejected 0, so L-01 and L-03 hold; tool versions as the provenance check wants).
+  The record `cluster.reuse` (`REUSE_RECORD`): the source, both plans' `plan_sha256` and `inputs_sha256`, the records
+  rewritten, every file copied with its sha256, the candidates. Under `run-step` (build-stage) the run record of the step
+  `cluster` names R1 in its argv (`release cluster reuse --from R1`) and lists the reuse record among its outputs.
+  `release verify` checks the copies as R2's files like any other; the provenance check reads the ledger's tools.
+- Not reused: a release with any cluster plan record or cluster table of its own (a clustering stopped half way is
+  finished as before); a release over other stages, a superset of R1's included (partial reuse would need the
+  clusters of R1's proteins to be those R2's clustering gives them, which DEC-24 does not promise: MMseqs2's greedy
+  clustering of a superset can move members; it is a later question, with a measurement of how many move).
 """
 
 from __future__ import annotations
 
 import bisect
+import contextlib
 import hashlib
 import heapq
 import itertools
@@ -145,20 +193,22 @@ def _protein_files(root: Path, gene_call_version: str, stages: list[str]) -> lis
     return out
 
 
-def _stage_proteins(files: list[Path]) -> Iterator[tuple[bytes, str]]:
+def _stage_proteins(files: list[Path], seq: bool = True) -> Iterator[tuple[bytes, str | None]]:
     """(protein_uid, seq) of one stage's `protein_seq` files, in protein_uid order, `SCRATCH_ROWS` at a
     time. The files are sorted by protein_uid and bucketed by its prefix (`protein_seq`'s sort key), so in
     bucket and part order they are one sorted run; a uid that does not follow the one before is a
-    RuntimeError, so no unsorted input is ever written as if it were sorted."""
+    RuntimeError, so no unsorted input is ever written as if it were sorted. Without `seq` the sequences
+    are not read (each is None): the uids alone (card B-49)."""
     last = None
     for f in files:
-        for b in pq.ParquetFile(f).iter_batches(batch_size=SCRATCH_ROWS, columns=["protein_uid", "seq"]):
+        for b in pq.ParquetFile(f).iter_batches(batch_size=SCRATCH_ROWS,
+                                                columns=["protein_uid", "seq"] if seq else ["protein_uid"]):
             uids = b.column(0).to_pylist()
             if uids and last is not None and uids[0] <= last or any(x >= y for x, y in zip(uids, uids[1:])):
                 raise RuntimeError(f"{f}: protein_seq rows are not in strictly increasing protein_uid order")
             if uids:
                 last = uids[-1]
-            yield from zip(uids, b.column(1).to_pylist())
+            yield from (zip(uids, b.column(1).to_pylist()) if seq else ((u, None) for u in uids))
 
 
 def _sql_path(p: Path) -> str:
@@ -195,29 +245,34 @@ def _schema(**cols: pa.DataType) -> pa.Schema:
     return pa.schema([pa.field(n, t, nullable=False) for n, t in cols.items()])
 
 
-def _write_fasta(stage_files: list[list[Path]], faa: Path, uids: Path) -> int:
+def _write_fasta(stage_files: list[list[Path]], faa: Path | None, uids: Path) -> int:
     """The distinct proteins of the stages' files as FASTA records `>{uid hex}` sorted by protein_uid:
     each stage's files are one sorted run (`_stage_proteins`) and the runs are merged, so no sort holds
     the sequences. A protein in two stages is written once (its uid is the hash of its sequence). The
-    uids, as hex in the same order, go to the flat file `uids`. Returns their number."""
+    uids, as hex in the same order, go to the flat file `uids`. Returns their number. With `faa` None no
+    FASTA is written and no sequence read: the flat file of uids alone, the same bytes (card B-49)."""
     n, last = 0, None
     lines: list[str] = []
     out = _Flat(uids, _schema(uid=pa.string()))
+    fh = None if faa is None else open(faa, "w")
     try:
-        with open(faa, "w") as fh:
-            for u, s in heapq.merge(*(_stage_proteins(f) for f in stage_files), key=lambda r: r[0]):
-                if u == last:
-                    continue
-                last, h = u, u.hex()
-                out.add(h)
+        for u, s in heapq.merge(*(_stage_proteins(f, seq=fh is not None) for f in stage_files), key=lambda r: r[0]):
+            if u == last:
+                continue
+            last, h = u, u.hex()
+            out.add(h)
+            n += 1
+            if fh is not None:
                 lines.append(f">{h}\n{s}\n")
-                n += 1
                 if len(lines) == SCRATCH_ROWS:
                     fh.write("".join(lines))
                     lines.clear()
+        if fh is not None:
             fh.write("".join(lines))
     finally:
         out.close()
+        if fh is not None:
+            fh.close()
     return n
 
 
@@ -1185,6 +1240,18 @@ def _plan_cut(parts: int | None, part_cpu_min: float | None, one_process_cpu_min
     return doc
 
 
+def plan_inputs(root: Path, release: str, gene_call_version: str, stages: list[str], cut_: dict) -> dict:
+    """The plan record's inputs (`_INPUT_KEYS`) for `release` over `stages` with the cut `cut_` (`cut_of`): the
+    `protein_seq` files of the stages by path and size, the MMseqs2 version, the format. Reads no file's content
+    (card B-49 compares them before any work); FileNotFoundError for a stage without `protein_seq` files."""
+    root = Path(root)
+    files = _protein_files(root, gene_call_version, stages)
+    return {"format": PLAN_FORMAT, "release": release, "stages": list(stages), "gene_call_version": gene_call_version,
+            "mmseqs2": provenance.tool_versions("mmseqs2")["mmseqs2"],
+            "files": [[{"path": p.relative_to(root).as_posix(), "bytes": p.stat().st_size} for p in g] for g in files],
+            "cut": cut_}
+
+
 def plan(root: Path, release: str, gene_call_version: str, stages: list[str], tmp: Path, *,
          parts: int | None = None, part_cpu_min: float | None = None, one_process_cpu_min_max: float | None = None,
          rebuild_cpu_min: float | None = None, out: Path | None = None) -> dict:
@@ -1210,11 +1277,7 @@ def plan(root: Path, release: str, gene_call_version: str, stages: list[str], tm
     ledger.refuse_written(root, out_root, _table_dirs(release), f"clustering of release {release}")
     if _find(root, out, _rel(release, PLAN_STEP)) is not None:
         raise FileExistsError(f"{_rel(release, PLAN_STEP)}: the plan of release {release} is written once")
-    files = _protein_files(root, gene_call_version, stages)
-    inputs = {"format": PLAN_FORMAT, "release": release, "stages": stages, "gene_call_version": gene_call_version,
-              "mmseqs2": provenance.tool_versions("mmseqs2")["mmseqs2"],
-              "files": [[{"path": p.relative_to(root).as_posix(), "bytes": p.stat().st_size} for p in g] for g in files],
-              "cut": cut_}
+    inputs = plan_inputs(root, release, gene_call_version, stages, cut_)
     w = _work_dir(tmp, root, inputs)
     if w.exists():
         shutil.rmtree(w)  # an earlier attempt of this plan that left no record
@@ -1507,6 +1570,22 @@ def _run_call(ctx: _Ctx, c: Call, log: Path, name: str) -> tuple[list[str], dict
     return list(c.argv), _outputs(ctx.w, paths)
 
 
+def _part_argv(c: Call, k: int, cut_doc: dict, self_matches: bool = True) -> tuple[list[str], str, str]:
+    """(argv, its query sub-database, its output) of part `k` of call `c` cut by `cut_doc`: the call's argv over the
+    part's keys into `parts/<call>/out-<k>`, a prefilter part asking for the self hit (`self_matches`) and searching
+    its call's shared index when the cut built one."""
+    pos, rel = PER_QUERY[c.module], part_dir(c)
+    pin, pout = f"{rel}/in-{k:05d}", f"{rel}/out-{k:05d}"
+    argv = list(c.argv)
+    argv[1 + pos], argv[1 + c.out_index] = pin, pout
+    if "index" in cut_doc:
+        argv[2] = index_path(c)  # the target: the index itself, else prefilter builds the table again
+    if c.module == "prefilter" and self_matches:
+        i = argv.index("--add-self-matches")
+        argv[i + 1] = "1"
+    return argv, pin, pout
+
+
 def _run_part(ctx: _Ctx, c: Call, k: int, cut_doc: dict, log: Path, name: str,
               self_matches: bool) -> tuple[list[str], dict[str, str]]:
     """Part `k` of call `c`: its keys of the split input as a sub-database (linked for a sequence database, copied
@@ -1526,21 +1605,14 @@ def _run_part(ctx: _Ctx, c: Call, k: int, cut_doc: dict, log: Path, name: str,
                 n += 1
     if n != p["keys"]:
         raise ValueError(f"{name}: {n} keys of {src} in {p['first']}..{p['last']}, its cut lists {p['keys']}")
-    pin, pout = f"{rel}/in-{k:05d}", f"{rel}/out-{k:05d}"
+    argv, pin, pout = _part_argv(c, k, cut_doc, self_matches)
     _clear(ctx.w, pin)
     _clear(ctx.w, pout)
     _mm(ctx.w, log, ("createsubdb", f"{rel}/ids-{k:05d}", src, pin, "--subdb-mode",
                      "1" if c.module == "prefilter" else "0"), None)
-    argv = list(c.argv)
-    argv[1 + pos], argv[1 + c.out_index] = pin, pout
-    if "index" in cut_doc:
-        if not Path(ctx.w / f"{index_path(c)}.dbtype").is_file():
-            raise FileNotFoundError(f"{name}: the shared index {ctx.w / index_path(c)} is missing; make it again with "
-                                    f"{c.name}.cut (bio-box release cluster redo)")
-        argv[2] = index_path(c)  # the target: the index itself, else prefilter builds the table again
-    if c.module == "prefilter" and self_matches:
-        i = argv.index("--add-self-matches")
-        argv[i + 1] = "1"
+    if "index" in cut_doc and not Path(ctx.w / f"{index_path(c)}.dbtype").is_file():
+        raise FileNotFoundError(f"{name}: the shared index {ctx.w / index_path(c)} is missing; make it again with "
+                                f"{c.name}.cut (bio-box release cluster redo)")
     _mm(ctx.w, log, argv, ctx.threads)
     if c.module == "prefilter":
         check_prefilter_log(log.read_text(), name)
@@ -1759,3 +1831,279 @@ def run_split(root: Path, release: str, gene_call_version: str, stages: list[str
     res = finish(root, release, tmp, threads, out=out, max_file_bytes=max_file_bytes, memory_limit=memory_limit)
     shutil.rmtree(work_dir(tmp, root, release, out), ignore_errors=True)
     return res
+
+
+# --- reuse of an earlier release's clustering (card B-49, DEC-45 (2); the module docstring's "Reuse") -------------
+
+REUSE_RECORD = "cluster.reuse"  # R2's record of what it took (not a step: no run record of its own)
+REUSE_REASON = "reused"  # the clustering ledger's reason of the rows that name the source
+_COPY_BLOCK = 1 << 23  # bytes per read when copying a table file (8 MiB: memory does not grow with the file)
+_LEDGER_TOOLS = ("mmseqs2", "pyarrow")  # what `_write_tables` records
+
+
+def cut_of(parts: int | None = None, part_cpu_min: float | None = None, one_process_cpu_min_max: float | None = None,
+           rebuild_cpu_min: float | None = None) -> dict:
+    """The plan's `cut` for these options, as `plan` records it (`release cluster plan --parts | --part-cpu-min`)."""
+    return _plan_cut(parts, part_cpu_min, one_process_cpu_min_max, rebuild_cpu_min)
+
+
+def inputs_sha256(plan_doc: dict) -> str:
+    """sha256 over a plan record without `release`: what two releases over the same proteins have in common."""
+    return hashlib.sha256(_json_bytes({k: v for k, v in plan_doc.items() if k != "release"})).hexdigest()
+
+
+def _plan_releases(root: Path) -> list[str]:
+    """The releases of the root with cluster plan records, by name."""
+    base = Path(root) / PLAN_DIR
+    return sorted(p.name.removeprefix("release=") for p in base.iterdir()
+                  if p.is_dir() and p.name.startswith("release=")) if base.is_dir() else []
+
+
+def _published(root: Path, release: str) -> tuple[list[dict], dict] | str:
+    """(the table files, the ledger file) that the run record of `release`'s step `cluster` lists, each in the root at
+    its recorded size; or why there are none."""
+    path = Path(root) / "runs" / f"stage={release}" / f"{FINAL_STEP}.json"
+    if not path.is_file():
+        return f"no run record of its step {FINAL_STEP} (runs/stage={release}/{FINAL_STEP}.json)"
+    rec = json.loads(path.read_text())
+    if rec.get("exit_code") != 0 or rec.get("stage") != release or rec.get("step") != FINAL_STEP:
+        return f"runs/stage={release}/{FINAL_STEP}.json is not a finished {FINAL_STEP} step of release {release}"
+    dirs = [f"{d}/" for d in _table_dirs(release)[:3]]
+    tables = [o for o in rec["outputs"] if o["path"].startswith(tuple(dirs))]
+    led = [o for o in rec["outputs"] if o["path"] == ledger.release_path(Path(""), release, "cluster").as_posix()]
+    gaps = [d for d in dirs if not any(o["path"].startswith(d) for o in tables)]
+    if gaps or len(led) != 1:
+        return f"its run record lists no files of {gaps or ['its clustering ledger']}"
+    for o in tables + led:
+        p = Path(root) / o["path"]
+        if not p.is_file() or p.stat().st_size != o["bytes"]:
+            return f"{o['path']} is missing or not the {o['bytes']:,} bytes its run record lists"
+    return tables, led[0]
+
+
+def _ledger_rows(path: Path) -> list[dict]:
+    return pq.ParquetFile(path).read().to_pylist()
+
+
+def _source_problem(root: Path, release: str, source: str, want: dict) -> str | None:
+    """Why `source`'s clustering cannot be `release`'s, or None (module docstring, "Reuse"). `want`: the fields of the
+    plan record `release`'s clustering would write that are known (its inputs, `plan_inputs`; also `proteins`,
+    `release_cpu_min` and `outputs` once its uids are read); each must equal `source`'s plan record's."""
+    if source == release:
+        return "it is the release itself"
+    raw = _record_raw(root, source, PLAN_STEP)
+    if raw is None:
+        return ("it has no plan record (a clustering in one process records none, so its inputs cannot be compared; "
+                "or it was never clustered)")
+    plan1 = json.loads(raw)
+    differ = [k for k in sorted(want) if k != "release" and plan1.get(k) != want[k]]
+    if differ:
+        return f"its plan differs from this release's in {differ}"
+    names = sequence(root, source)
+    if names[-1] != calls()[-1].name:
+        return f"its clustering is not finished: {names[-1]} has no record"
+    sha1 = hashlib.sha256(raw).hexdigest()
+    cuts: dict[str, dict] = {}
+    for name in names:
+        r = _record_raw(root, source, name)
+        if r is None:
+            return f"its clustering is not finished: step {name} has no record"
+        doc = json.loads(r)
+        if r != _json_bytes(doc) or doc.get("release") != source or (name != PLAN_STEP and doc.get("plan_sha256") != sha1):
+            return f"its record of {name} is not a record of its plan"
+        if name == PLAN_STEP:
+            continue
+        c, kind, k = _parse(name)
+        if kind == "cut":
+            cuts[c.name] = doc
+            est = round(call_cpu_min(c.name, plan1["proteins"], sum(p["units"] for p in doc["parts"])), 6)
+            if doc.get("cpu_min") != est or ("index" in doc and doc["index"]["argv"] != list(index_argv(c))):
+                return (f"its record of {name} was made by another model of the call's cost or index (this code "
+                        f"estimates {est}): a clustering of this release would write other records")
+        elif kind == "part":
+            if doc.get("argv") != _part_argv(c, k, cuts[c.name])[0]:
+                return f"its record of {name} ran other MMseqs2 arguments than this code's"
+        elif "argv" in doc and doc["argv"] != list(c.argv):  # a call run whole (a join records its parts instead)
+            return f"its record of {name} ran other MMseqs2 arguments than this code's"
+    got = _published(root, source)
+    if isinstance(got, str):
+        return got
+    tools = provenance.tool_versions(*_LEDGER_TOOLS)
+    ok = [r for r in _ledger_rows(Path(root) / got[1]["path"]) if r["reason_code"] == "ok"]
+    if sorted(r["object_key"] for r in ok) != sorted(lvl.encode() for lvl in LEVELS):
+        return "its clustering ledger has no row of the clustering for each level"
+    if any(json.loads(r["tool_versions_json"] or "null") != tools for r in ok):
+        return (f"its clustering ledger names other tools ({ok[0]['tool_versions_json']}) than a clustering would "
+                f"now ({json.dumps(tools, sort_keys=True)}): its tables' bytes are not this build's")
+    return None
+
+
+def reuse_sources(root: Path, release: str, inputs: dict) -> list[str]:
+    """The earlier releases of `root` whose finished clustering `release` may take, compared on `inputs` alone (the plan
+    inputs, `plan_inputs`): in name order, the first being the one taken. The uids are compared by `reuse`."""
+    return [s for s in _plan_releases(root) if _source_problem(root, release, s, inputs) is None]
+
+
+def _own_files(root: Path, out: Path | None, release: str) -> str | None:
+    """A directory of `release`'s cluster tables, ledger or plan records that holds a file, in `root` or `out`; or None."""
+    for base in dict.fromkeys([Path(root).resolve()] + ([] if out is None else [Path(out).resolve()])):
+        for d in _table_dirs(release) + [plan_dir(release)]:
+            p = base / d
+            if p.is_dir() and any(f.is_file() for f in p.rglob("*")):
+                return str(p)
+    return None
+
+
+def _uids_digest(root: Path, inputs: dict, tmp: Path) -> tuple[int, str]:
+    """(distinct proteins, sha256 of `prot.parquet`) of the plan inputs' files, as the plan step writes that file
+    (`_write_fasta` without the FASTA: only the uid column is read), in a directory under `tmp` removed after."""
+    groups = []
+    for group in inputs["files"]:
+        paths = []
+        for f in group:
+            p = Path(root) / f["path"]
+            if p.stat().st_size != f["bytes"]:
+                raise ValueError(f"{p}: {p.stat().st_size} bytes, the plan inputs list {f['bytes']}")
+            paths.append(p)
+        groups.append(paths)
+    Path(tmp).mkdir(parents=True, exist_ok=True)
+    with tempfile.TemporaryDirectory(prefix="biobox-reuse-", dir=tmp) as d:
+        n = _write_fasta(groups, None, Path(d) / "prot.parquet")
+        return n, ids.sha256_file(Path(d) / "prot.parquet").hex()
+
+
+def _choose(root: Path, release: str, inputs: dict, tmp: Path, source: str | None) -> tuple[str, dict, list[str]]:
+    """(the source, the plan record `release`'s clustering would write, the candidates); a ValueError or a
+    FileNotFoundError when none qualifies."""
+    if source is not None:
+        why = _source_problem(root, release, source, inputs)
+        if why is not None:
+            raise ValueError(f"release {source}'s clustering cannot be release {release}'s: {why}")
+        cands = [source]
+    else:
+        cands = reuse_sources(root, release, inputs)
+        if not cands:
+            raise FileNotFoundError(f"release {release}: no release of {root} has a finished clustering whose plan "
+                                    "equals this release's (the same stages, protein_seq files, MMseqs2 and cut); "
+                                    "cluster it instead (build-stage --no-reuse, or bio-box release cluster plan)")
+    from biobox.stage import cluster_cpu_min  # the release's estimate in one process (card B-36), as `plan` records it
+
+    n, uids = _uids_digest(root, inputs, tmp)
+    for s in cands:
+        plan1 = read_record(root, s, PLAN_STEP)
+        want = {**inputs, "proteins": n, "release_cpu_min": round(cluster_cpu_min(n), 6),
+                "outputs": {"db": plan1["outputs"]["db"], "db_h": plan1["outputs"]["db_h"], "prot.parquet": uids}}
+        if _source_problem(root, release, s, want) is None:
+            return s, want, cands
+    raise ValueError(f"release {release}: its protein_seq files are those of release {', '.join(cands)} by path and "
+                     f"size, but its {n:,} distinct protein uids are not theirs (prot.parquet {uids}): a stage file was "
+                     "rewritten (AGENTS §3.10), which no build does; nothing is reused. Tell the PI")
+
+
+def reuse_source(root: Path, release: str, gene_call_version: str, stages: list[str], cut_: dict, *,
+                 tmp: Path) -> str | None:
+    """The release whose clustering `release` would take now (build-stage asks before its cluster step), or None: none
+    when `release` has a cluster plan record, table or ledger of its own (its clustering goes on as before), when no
+    earlier one qualifies, or when its uids are not the candidates' (`reuse` refuses that; build-stage clusters)."""
+    root = Path(root)
+    if _own_files(root, None, release) is not None or not [s for s in _plan_releases(root) if s != release]:
+        return None
+    inputs = plan_inputs(root, release, gene_call_version, catalog.check_stages(stages), cut_)
+    if not reuse_sources(root, release, inputs):
+        return None
+    try:
+        return _choose(root, release, inputs, Path(tmp), None)[0]
+    except (FileNotFoundError, ValueError):
+        return None
+
+
+def _copy_to(src: Path, dst: Path, sha256: str, size: int) -> Path:
+    """`src` copied to a temporary name beside `dst`, a block at a time, its sha256 and size checked; the temporary path
+    (renamed into place by the caller). A ValueError, the copy removed, when they are not the recorded ones."""
+    dst.parent.mkdir(parents=True, exist_ok=True)
+    tmp = dst.with_name(f".{dst.name}.copy-{os.getpid()}")
+    h, n = hashlib.sha256(), 0
+    try:
+        with open(src, "rb") as fi, open(tmp, "wb") as fo:
+            while block := fi.read(_COPY_BLOCK):
+                h.update(block)
+                fo.write(block)
+                n += len(block)
+        if n != size or h.hexdigest() != sha256:
+            raise ValueError(f"{src}: {n:,} bytes, sha256 {h.hexdigest()}, where its run record lists {size:,} bytes "
+                             f"and sha256 {sha256}: the source's file is not the one published; nothing is reused")
+    except BaseException:
+        tmp.unlink(missing_ok=True)
+        raise
+    return tmp
+
+
+def reuse(root: Path, release: str, gene_call_version: str, stages: list[str], tmp: Path, *, source: str | None = None,
+          parts: int | None = None, part_cpu_min: float | None = None, one_process_cpu_min_max: float | None = None,
+          rebuild_cpu_min: float | None = None, out: Path | None = None) -> dict:
+    """`release cluster reuse`: the clustering of `source` (default: the first that qualifies, `reuse_sources`) as
+    `release`'s, under `out` (default `root`), with no clustering call (module docstring, "Reuse"): copies of its
+    table files, its plan records rewritten for `release`, `release_def`, the clustering ledger and the record
+    `cluster.reuse`. The cut options are `plan`'s: they are part of the plan compared. Refuses before writing anything
+    when `release` has a cluster plan record, table or ledger, when no source qualifies, or when a source file's bytes
+    are not its run record's. `tmp`: scratch for the uids' file (about 35 bytes a protein, *estimate*)."""
+    root = Path(root)
+    out_root = root if out is None else Path(out)
+    if tmp is None:
+        raise ValueError("release cluster reuse needs a scratch directory (--tmp)")
+    ledger.check_scratch(tmp, root, out_root)
+    cut_ = _plan_cut(parts, part_cpu_min, one_process_cpu_min_max, rebuild_cpu_min)
+    stages = catalog.check_stages(stages)
+    catalog.verify_release_def(root, release, stages)
+    held = _own_files(root, out_root, release)
+    if held is not None:
+        raise FileExistsError(f"{held}: release {release} has clustering files of its own; a clustering begun is "
+                              "finished as it began (build-stage, bio-box release cluster step|finish), not reused over")
+    inputs = plan_inputs(root, release, gene_call_version, stages, cut_)
+    src, want, cands = _choose(root, release, inputs, Path(tmp), source)
+    raw1 = _record_raw(root, src, PLAN_STEP)
+    plan2 = {**json.loads(raw1), "release": release}
+    if set(plan2) != set(want):
+        raise ValueError(f"release {src}'s plan record has fields this code does not write: "
+                         f"{sorted(set(plan2) ^ set(want))}")
+    sha1, sha2 = hashlib.sha256(raw1).hexdigest(), hashlib.sha256(_json_bytes(plan2)).hexdigest()
+    tables, led = _published(root, src)
+    led_path = Path(root) / led["path"]
+    if ids.sha256_file(led_path).hex() != led["sha256"]:
+        raise ValueError(f"{led_path}: not the clustering ledger its run record lists; nothing is reused")
+    moves, copied = [], []  # every copy checked before any is put in place
+    try:
+        for o in tables:
+            rel = o["path"].replace(f"/release={src}/", f"/release={release}/", 1)
+            dst = out_root / rel
+            if dst.exists():
+                raise FileExistsError(f"{dst}: written once; refusing to overwrite")
+            moves.append((_copy_to(Path(root) / o["path"], dst, o["sha256"], o["bytes"]), dst))
+            copied.append({"from": o["path"], "path": rel, "bytes": o["bytes"], "sha256": o["sha256"]})
+    except BaseException:
+        for t, _ in moves:
+            t.unlink(missing_ok=True)
+        for o in tables:  # the partition directories made for the copies, when nothing else is in them
+            with contextlib.suppress(OSError):
+                (out_root / o["path"].replace(f"/release={src}/", f"/release={release}/", 1)).parent.rmdir()
+        raise
+    for t, dst in moves:
+        os.replace(t, dst)
+    catalog.define_release(root, release, stages, out=out_root)
+    names = sequence(root, src)
+    _write_record(root, out_root, release, PLAN_STEP, plan2)
+    for name in names[1:]:
+        _write_record(root, out_root, release, name,
+                      {**json.loads(_record_raw(root, src, name)), "release": release, "plan_sha256": sha2})
+    ok = [r for r in _ledger_rows(led_path) if r["reason_code"] == "ok"]
+    h = inputs_sha256(plan2)
+    more = [{**r, "reason_code": f"{REUSE_REASON}:{src}:{h}"} for r in ok]
+    ledger.write_release(out_root, release, "cluster",
+                         sorted(ok + more, key=lambda r: (r["object_key"], r["reason_code"])))
+    _write_record(root, out_root, release, REUSE_RECORD, {
+        "format": PLAN_FORMAT, "release": release, "step": REUSE_RECORD, "from": src, "candidates": cands,
+        "plan_sha256": sha2, "from_plan_sha256": sha1, "inputs_sha256": h,
+        "from_inputs_sha256": inputs_sha256(json.loads(raw1)), "records": names, "files": copied,
+        "ledger": {"from": led["path"], "sha256": led["sha256"]}})
+    return {"proteins": want["proteins"], "clusters": {r["object_key"].decode(): r["n_kept"] for r in ok},
+            "reused_from": src, "files": len(copied), "bytes": sum(o["bytes"] for o in copied)}

@@ -42,6 +42,8 @@
         [--one-process-cpu-min-max C]
     bio-box release cluster step|redo --root R --release R1 --name STEP --tmp D --threads N
     bio-box release cluster finish --root R --release R1 --tmp D --threads N
+    bio-box release cluster reuse --root R --release R2 [--stages S0,S1] [--from R1] --tmp D (--parts N | --part-cpu-min M)
+        [--one-process-cpu-min-max C]   (card B-49: an earlier release's clustering of the same proteins, copied)
     bio-box release verify --root R --release R2 [--previous R1]
     bio-box stage inputs --root R --stage S --genomes genomes.json [--out DIR]
     bio-box stage ingest --root R --stage S --objects objects.json [--shard-bases N] [--line-width N] [--tmp D]
@@ -72,7 +74,9 @@ one stage and its release, each as a `run-step`; a second call skips what is don
 
 `release cluster plan|step|finish|redo` (card B-41, `biobox.l2.cluster`) is a release's clustering in
 parts, each step its own process: `build-stage` runs them when clustering in one process is estimated
-over 80% of the CPU-minute budget. `redo` writes nothing into the root and is not a run-step.
+over 80% of the CPU-minute budget. `redo` writes nothing into the root and is not a run-step. `reuse`
+(card B-49) writes a release's clustering as copies of an earlier release's whose plan is the same but for
+the release's name; `build-stage` runs it as the cluster step when one qualifies, unless `--no-reuse`.
 
 A release names its stages (card B-25): `--stages` defines it once (its `release_def`); after that
 every release step reads the stages from `release_def`, and `--stages`, if given, must repeat them.
@@ -1698,7 +1702,7 @@ def _run_step(a) -> int:
 
 
 RELEASE_STEPS = ("define", "cluster", "tokens", "postings", "dim", "manifest", "catalog", "verify")
-CLUSTER_ACTIONS = ("plan", "step", "finish", "redo")  # `release cluster plan|step|finish|redo` (card B-41)
+CLUSTER_ACTIONS = ("plan", "step", "finish", "redo", "reuse")  # card B-41; reuse: card B-49
 STAGE_STEPS = ("inputs", "ingest", "genecall", "igr", "tapes", "domains", "ncrna", "crispr", "labels")
 DOMAIN_ACTIONS = ("plan", "shard", "merge")  # `stage domains plan|shard|merge` (card B-24)
 INGEST_ACTIONS = ("pass1", "plan", "batch", "merge")  # `stage ingest pass1|plan|batch|merge` (card B-30)
@@ -1738,6 +1742,10 @@ def _release_step(a, root: Path, stages: list[str], out: Path) -> dict:
             return cluster.plan(root, a.release, a.gene_call_version, stages, tmp, parts=a.parts,
                                 part_cpu_min=a.part_cpu_min, one_process_cpu_min_max=a.one_process_cpu_min_max,
                                 out=out)
+        if a.action == "reuse":  # an earlier release's clustering of the same proteins (card B-49)
+            return cluster.reuse(root, a.release, a.gene_call_version, stages, tmp, source=a.source, parts=a.parts,
+                                 part_cpu_min=a.part_cpu_min, one_process_cpu_min_max=a.one_process_cpu_min_max,
+                                 out=out)
         return cluster.run(root, a.release, a.gene_call_version, stages, threads=a.threads, tmp=tmp, out=out)
     if a.step == "tokens":
         from biobox.l3 import tokens
@@ -2076,7 +2084,7 @@ def _build_stage(a) -> int:
                     libraries=libs, tmp=Path(a.tmp) if a.tmp else None, threads=a.threads,
                     gene_call_version=a.gene_call_version, scan_jobs=a.scan_jobs, scan_cpus=a.scan_cpus,
                     cluster_parts=a.cluster_parts, ncrna_cm=Path(a.ncrna_cm) if a.ncrna_cm else None,
-                    ncrna_set=a.ncrna_set, crispr=a.crispr)
+                    ncrna_set=a.ncrna_set, crispr=a.crispr, reuse=not a.no_reuse)
     return stage.build_stage(profile.load(a.profile), b)
 
 
@@ -2304,8 +2312,12 @@ def _main(argv: list[str] | None = None) -> int:
     rl.add_argument("step", choices=RELEASE_STEPS)
     rl.add_argument("action", nargs="?", choices=CLUSTER_ACTIONS,
                     help="cluster in parts (card B-41): plan, then step (one call per --name, in the plan's "
-                         "sequence), then finish; redo makes a step whose scratch was lost again; without it, "
+                         "sequence), then finish; redo makes a step whose scratch was lost again; reuse (card B-49) "
+                         "takes an earlier release's finished clustering of the same proteins, whose plan equals "
+                         "this release's but for its name, as copies, with no clustering call; without it, "
                          "the whole clustering in one process")
+    rl.add_argument("--from", dest="source", help="cluster reuse: the earlier release whose clustering is taken "
+                                                  "(default: the first by name that qualifies)")
     rl.add_argument("--release", required=True)
     rl.add_argument("--name", help="cluster step|redo: the step (cluster.plan, cluster.<level>.<kk>.<module>, its "
                                    ".cut or .part-<p>, ...)")
@@ -2392,6 +2404,9 @@ def _main(argv: list[str] | None = None) -> int:
     bs.add_argument("--cluster-parts", type=int, help="cluster in parts (card B-41), every per-query call cut into "
                                                       "this many (default: in parts only when clustering in one "
                                                       "process is estimated over 80%% of the budget, cut by it)")
+    bs.add_argument("--no-reuse", action="store_true", help="cluster the release even when an earlier release of the "
+                                                             "root has a finished clustering of the same proteins (by "
+                                                             "default the cluster step takes it, card B-49)")
     bs.add_argument("--ncrna-cm", help="the Rfam library (Rfam.cm.gz): run the ncRNA producer in the features slot and "
                                        "build IGRs, tapes, tokens and postings of both producers (card E-07)")
     bs.add_argument("--ncrna-set", default="prok-2", help="the ncRNA model set: a frozen set's name (prok-2, the "

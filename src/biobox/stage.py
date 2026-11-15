@@ -150,6 +150,14 @@ parts are removed once it is published, the work directory once the tables are. 
 plan published first makes again every published step whose outputs are not in scratch, in order
 (`_redo_lost_cluster`, `bio-box release cluster redo`), each of which must reproduce its record.
 
+An earlier release's clustering (card B-49, DEC-45 (2); `biobox.l2.cluster` "Reuse"). Before the cluster step,
+when it has no run record and the release has no cluster plan record or table of its own, build-stage compares the
+plan this build's clustering would write (`cluster_cut`, the stages' `protein_seq` files by path and size, then their
+protein uids) with the plan of every earlier release of the root that finished its clustering in parts; when one is
+equal but for the release's name, the cluster step is `release cluster reuse --from <it>` (`reuse_step`, the first
+such release by name): no clustering call, the tables copied, its records rewritten for the release, under the step
+name `cluster`. Otherwise, and always with `--no-reuse`, the release is clustered as below.
+
 One process for a call that cannot be split (card B-45, DEC-29). A prefilter whose parts each rebuild the
 target's k-mer table (no shared index with `--diag-score 0`, card B-44) cannot be cut once that table alone
 fills the part budget. With the profile's `cluster_cpu_min_max`, which the plan step is given as
@@ -365,6 +373,7 @@ class Build:
     ncrna_cm: Path | None = None  # the Rfam library of the ncRNA producer in the `features` slot (card E-07); None: none
     ncrna_set: str = ncrna.DEFAULT_SET  # its model set: a frozen set's name or a set file
     crispr: bool = False  # the CRISPR array producer as a step after the features slot (card E-12)
+    reuse: bool = True  # card B-49: the cluster step takes an earlier release's clustering of the same proteins
 
 
 @dataclass(frozen=True)
@@ -893,7 +902,10 @@ def build_stage(prof: Profile, b: Build, *, run: Runner | None = None,
                 if why is not None:
                     _say(f"refused before {step.run_stage}.{step.name}: {why}")
                     return runstep.EXIT_REFUSED
-                if not _record(root, step).exists() and _cluster_split(prof, b, root):
+                source = None if _record(root, step).exists() else _reuse_source(prof, b, root, step)
+                if source is not None:  # card B-49: an earlier release's clustering of the same proteins
+                    code = one(reuse_step(prof, b, step, source))
+                elif not _record(root, step).exists() and _cluster_split(prof, b, root):
                     code = _cluster_in_parts(prof, b, root, one, _hook, jobs, cpus, shard_run, allow)
                 else:  # in one process, within the budget (card B-42: no exemption)
                     code = one(step)
@@ -1537,6 +1549,57 @@ def _cluster_split(prof: Profile, b: Build, root: Path, quiet: bool = False) -> 
     return True
 
 
+def _cut_args(prof: Profile, b: Build) -> tuple[str, ...]:
+    """The plan's cut as `release cluster plan|reuse` options: `--cluster-parts`, else `SHARD_MARGIN` of the budget
+    per part, and the profile's `cluster_cpu_min_max` as the one-process cap when it sets one (card B-45, DEC-29)."""
+    cut = (("--parts", str(b.cluster_parts)) if b.cluster_parts is not None
+           else ("--part-cpu-min", repr(SHARD_MARGIN * prof.cpu_min_per_process)))
+    if prof.cluster_cpu_min_max is not None:  # card B-45: a call no number of parts fits runs as one process under it
+        cut += ("--one-process-cpu-min-max", repr(float(prof.cluster_cpu_min_max)))
+    return cut
+
+
+def cluster_cut(prof: Profile, b: Build) -> dict:
+    """The `cut` the plan step of this build records (`_cut_args`, as `release cluster plan` parses them): part of the
+    plan an earlier release's must equal for its clustering to be taken (card B-49)."""
+    return l2cluster.cut_of(b.cluster_parts, None if b.cluster_parts is not None
+                            else float(repr(SHARD_MARGIN * prof.cpu_min_per_process)),
+                            None if prof.cluster_cpu_min_max is None else float(prof.cluster_cpu_min_max))
+
+
+def _reuse_source(prof: Profile, b: Build, root: Path, step: Step) -> str | None:
+    """The earlier release whose clustering the cluster step takes (card B-49, `biobox.l2.cluster` "Reuse"), or None,
+    when the cluster step has no run record. None with `--no-reuse`; when the release has a cluster plan record or
+    table of its own (a clustering begun is finished as before); when its stages are not all gene-called; when no
+    earlier release qualifies. An attempt of the reuse step that died while publishing (its intent file) is the step
+    again, from the same source. Reads the stages' protein uids when a release qualifies by its plan inputs."""
+    intent = _intent(root, step)
+    if intent.exists():
+        argv = json.loads(intent.read_text()).get("argv", [])
+        return argv[argv.index("--from") + 1] if "reuse" in argv and "--from" in argv else None
+    if not b.reuse:
+        return None
+    try:
+        src = l2cluster.reuse_source(root, b.release, b.gene_call_version, _release_stages(b, root), cluster_cut(prof, b),
+                                     tmp=scratch_of(prof, b))
+    except FileNotFoundError:  # a stage without protein_seq files: the clustering refuses it as before
+        return None
+    if src is not None:
+        _say(f"{b.release}.cluster: release {src} has a finished clustering whose plan equals this release's but for "
+             f"its name (the same stages, protein_seq files and protein uids, MMseqs2 and cut); the cluster step copies "
+             f"it, with no clustering call (card B-49). --no-reuse clusters the release instead")
+    return src
+
+
+def reuse_step(prof: Profile, b: Build, step: Step, source: str) -> Step:
+    """The cluster step as `release cluster reuse --from <source>` (card B-49): its name stays `cluster`, so its run
+    record is the clustering's and names the source in its argv; its scratch directory is the cluster step's."""
+    stages = () if b.stages is None else ("--stages", ",".join(b.stages))
+    return dataclasses.replace(step, argv=(
+        "release", "cluster", "reuse", "--root", str(Path(b.root).resolve()), "--gene-call-version", b.gene_call_version,
+        "--release", b.release, *stages, "--from", source, *_cut_args(prof, b), "--tmp", step.scratch))
+
+
 def cluster_steps(prof: Profile, b: Build) -> Callable[..., Step]:
     """A maker of the steps of clustering in parts: `make("plan")`, `make("step", name, threads)`,
     `make("finish")` and `make("redo", name)`, each `bio-box release cluster <action>` with the scratch directory
@@ -1545,10 +1608,7 @@ def cluster_steps(prof: Profile, b: Build) -> Callable[..., Step]:
     sets one (card B-45, DEC-29)."""
     root, scratch, n = str(Path(b.root).resolve()), str(scratch_of(prof, b)), threads_of(prof, b)
     stages = () if b.stages is None else ("--stages", ",".join(b.stages))
-    cut = (("--parts", str(b.cluster_parts)) if b.cluster_parts is not None
-           else ("--part-cpu-min", repr(SHARD_MARGIN * prof.cpu_min_per_process)))
-    if prof.cluster_cpu_min_max is not None:  # card B-45: a call no number of parts fits runs as one process under it
-        cut += ("--one-process-cpu-min-max", repr(float(prof.cluster_cpu_min_max)))
+    cut = _cut_args(prof, b)
 
     def cl(action: str, *extra: str) -> tuple[str, ...]:
         return ("release", "cluster", action, "--root", root, "--gene-call-version", b.gene_call_version,
