@@ -53,7 +53,8 @@ pack. The pack directory may be read-only for you: a search writes nothing into 
 
 The table in section 1 will age; `releases` lists what the root holds now, one line per release: its stages,
 genomes, contigs and distinct proteins, its domain libraries (Pfam or none), whether it has the lookup tables of
-the current code (`member_cluster`, `contig_label`, `domain_family_tokens`; `no` means slower lookups, section 8),
+the current code (`member_cluster`, `contig_label`, `domain_family_tokens`; `no` means slower lookups, section 8;
+`partial(not S1,...)` names the stages without the table),
 and the search pack it has in the profile's pack directory (card W-23):
 
 ```bash
@@ -428,7 +429,9 @@ runs as one command and checks its answer; both are rerun on every milestone rel
 - `rN.1` and `rN.2` were built before card B-27, so cluster and contig-name lookups read whole tables and print a
   `note: ... slow path` line; answers are the same, a few seconds slower. `rN.3` has the cluster lookup table but
   still prints the note for contig names: that table is written per stage at ingest, and its stages were ingested
-  before card B-27.
+  before card B-27. `rM.2` has it for stages P3 to P6 only: `releases` shows `contig_label` as
+  `partial(not S1,P1,P2)`, and the names of those three stages' contigs come from the slow path, with a `note:` line
+  naming the stages (card W-36; before it, `find --accession` found no contig of those stages).
 - Looking up `--positive`, `find --accession` or `seq --contig ACCESSION` reads every contig name of the release:
   0.03 to 0.05 s on `rN.3`, inside a command that takes 2.1 to 2.7 s, nearly all of it start-up (*measured*,
   `planning/measurements/2026-11-12_positive_lookup_rN3.md`, card W-15); `seq --contig` with a contig uid does not.

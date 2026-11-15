@@ -272,14 +272,18 @@ def test_w36_a_catalog_built_before_the_card_is_read_with_every_stage_labelled(w
 
 
 def _reads(root: Path, scans: list[dict]) -> dict[tuple[str, str], int]:
-    """Row groups read per (table, stage) of the profiled scans."""
+    """Row groups read per (table, stage) of the profiled scans (a scan over several files of one table and stage,
+    as DuckDB names them, comma-separated, is counted once under that table and stage)."""
     out: dict[tuple[str, str], int] = {}
     for s in scans:
-        for f in s["files"]:
+        names = [n for f in s["files"] for n in f.split(", ") if n]
+        keys = set()
+        for f in names:
             spec, parts = catalog.classify(Path(f).resolve().relative_to(Path(root).resolve()).as_posix())
-            key = (spec.name, parts.get("stage"))
+            keys.add((spec.name, parts.get("stage")))
+        assert len(keys) <= 1, keys  # every scan here reads one table of one stage
+        for key in keys:
             out[key] = out.get(key, 0) + s["row_groups_scanned"]
-            break  # a scan's row groups are counted once, under its first file's table and stage
     return out
 
 

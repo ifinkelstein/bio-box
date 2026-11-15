@@ -31,7 +31,9 @@ Lookups by a key that a table is not sorted by cannot prune (card B-27): `contig
 are lookup tables sorted by `contig_uid` and by (`level`, `member_uid`), written beside `contig_occurrence` and
 `cluster_member`. The catalog's `contig_label` view reads them (`label_view_sql`), and `open_catalog` raises
 the connection's join filter so that keys from a joined table prune to the row groups that hold them
-(`set_join_key_filter`).
+(`set_join_key_filter`). A release over stages ingested before and after card B-27 (`rM.2`) has label files for
+some stages only: the view reads `contig_occurrence` for the others (card W-36, `unlabelled_stages`), and
+`open_catalog` shadows the view of a catalog built before that card.
 
 `open_catalog` attaches the catalog file read-only to a private in-memory DuckDB instance (card B-34).
 Python functions are registered in an instance's catalog, and `duckdb.connect` on one file path hands
@@ -786,7 +788,25 @@ def _view_sql(spec: TableSpec, files: list[tuple[str, tuple[str, ...]]], n_colum
 _FIRST = "(l0_object_sha256, record_ordinal)"
 
 
-def label_view_sql(files: list[str], n_stages: int) -> str:
+def unlabelled_stages(manifest: dict) -> list[str]:
+    """Card W-36: the stages of the release, in its order, whose `contig_label` files the manifest does not list,
+    when it lists some (a release over stages ingested before and after card B-27, as `rM.2`); [] when every stage
+    has them or none has (card W-18's release built before B-27)."""
+    have = {f["partitions"].get("stage") for f in manifest["files"] if f["table"] == "contig_label"}
+    if not have:
+        return []
+    return [s for s in manifest.get("stages", []) if s not in have]
+
+
+def _label_fallback(manifest: dict) -> list[str]:
+    """The `contig_occurrence` files the manifest lists for its `unlabelled_stages`, as paths relative to its root,
+    sorted: what `label_view_sql` reads for those stages."""
+    missing = set(unlabelled_stages(manifest))
+    return sorted(f["path"] for f in manifest["files"]
+                  if f["table"] == "contig_occurrence" and f["partitions"].get("stage") in missing)
+
+
+def label_view_sql(files: list[str], n_stages: int, fallback: list[str] = ()) -> str:
     """The catalog's `contig_label` (card B-27; card W-08 made it a view over `contig_occurrence`): one row
     per contig of the release, the accession and header of its first source record by (l0_object_sha256,
     record_ordinal) over the release's stages, and its number of records (`n_occurrences`, as W-08 named it;
@@ -799,7 +819,13 @@ def label_view_sql(files: list[str], n_stages: int) -> str:
     still prunes, but DuckDB 2.0 pushes no join filter through an aggregate (16 of 16 row groups for one
     joined key, measured on wilkcomp02, 2026-11-10, planning/measurements/2026-11-10_label_and_membership_lookups.md),
     so there joined keys scan the label table; the exports filter the rows by key before they merge them
-    (`biobox.search.export`) and prune in both cases."""
+    (`biobox.search.export`) and prune in both cases.
+
+    `fallback` (card W-36): the `contig_occurrence` files of the release's stages that have no label file while
+    others have (`unlabelled_stages`, `_label_fallback`). Their records join the label rows, one row each with
+    `n_records` 1, before the merge, so their contigs have the labels card W-18's view gives a release with no label
+    file at all (their first record, their records counted); a literal key still prunes the label files, and those
+    stages' files are read whole, as W-18's are. Without `fallback` the view is the one before the card."""
     cols = ("contig_uid, accession, original_header, n_records, l0_object_sha256, record_ordinal, "
             "n_records::BIGINT AS n_occurrences")
     if not files:
@@ -812,6 +838,13 @@ def label_view_sql(files: list[str], n_stages: int) -> str:
                 f"arg_min(record_ordinal, {_FIRST}) AS record_ordinal, count(*)::BIGINT AS n_occurrences "
                 "FROM contig_occurrence GROUP BY contig_uid")
     rows = f"read_parquet([{', '.join(_sql_str(p) for p in files)}], hive_partitioning = false)"
+    if fallback:
+        lab = "contig_uid, accession, original_header, n_records, l0_object_sha256, record_ordinal"
+        occ = (f"SELECT contig_uid, accession, original_header, 1::UINTEGER AS n_records, l0_object_sha256, "
+               f"record_ordinal FROM read_parquet([{', '.join(_sql_str(p) for p in fallback)}], "
+               "hive_partitioning = false)")
+        rows = f"(SELECT {lab} FROM {rows} UNION ALL {occ})"
+        n_stages = 2  # several stages' rows: merged per contig below
     if n_stages <= 1:
         return f"CREATE VIEW contig_label AS SELECT {cols} FROM {rows}"
     return ("CREATE VIEW contig_label AS SELECT contig_uid, "
@@ -1294,7 +1327,8 @@ def generate_catalog(manifest: dict, out_path: Path | None = None, root: Path | 
             if name != "contig_label":  # the release's labels, merged over its stages (label_view_sql)
                 con.execute(_view_sql(TABLES[name], sorted(by_table[name]), widest.get(name)))
         label_stages = {f["partitions"].get("stage") for f in manifest["files"] if f["table"] == "contig_label"}
-        con.execute(label_view_sql([p for p, _ in sorted(by_table["contig_label"])], len(label_stages)))
+        fallback = [str(root / p) for p in _label_fallback(manifest)]  # card W-36: stages without label files
+        con.execute(label_view_sql([p for p, _ in sorted(by_table["contig_label"])], len(label_stages), fallback))
         con.execute(genome_member_sql())  # the release's membership over its stages' genome_input (card C-21b)
         con.execute("CREATE TABLE catalog_info (key VARCHAR, value VARCHAR)")
         con.executemany("INSERT INTO catalog_info VALUES (?, ?)", [
@@ -2237,6 +2271,29 @@ def catalog_release_files(con: duckdb.DuckDBPyConnection, root: Path) -> Release
     return ReleaseFiles(root, rel, stages, {"release_id": rel, "stages": stages, "files": files, "artifacts": []})
 
 
+def _shadow_partial_labels(con: duckdb.DuckDBPyConnection, built: Path) -> None:
+    """Card W-36: when the catalog's release has `contig_label` files for some of its stages and not for others
+    (`unlabelled_stages`, from `catalog_files` and the stages in `catalog_info`), shadow the stored `contig_label`
+    view on this connection with a temporary view of the same name over the label files and those stages'
+    `contig_occurrence` files (`label_view_sql` with `fallback`): the view `generate_catalog` stores since the card.
+    A catalog built before it held the label files only, so the other stages' contigs had no label. Nothing is
+    created for a release whose stages are all labelled or none is (card W-18), nor for a catalog without stages."""
+    info = dict(con.execute("SELECT key, value FROM catalog_info").fetchall())
+    if "stages" not in info:
+        return
+    rows = con.execute("""SELECT path, "table" FROM catalog_files WHERE "table" IN ('contig_label', 'contig_occurrence')
+                          ORDER BY path""").fetchall()
+    man = {"stages": json.loads(info["stages"]),
+           "files": [{"path": p, "table": t, "partitions": classify(p)[1]} for p, t in rows]}
+    if not unlabelled_stages(man):
+        return
+    labels = [f for f in man["files"] if f["table"] == "contig_label"]
+    sql = label_view_sql(sorted(str(built / f["path"]) for f in labels),
+                         len({f["partitions"].get("stage") for f in labels}),
+                         [str(built / p) for p in _label_fallback(man)])
+    con.execute("CREATE OR REPLACE TEMP VIEW" + sql.removeprefix("CREATE VIEW"))
+
+
 def seq_reader(con: duckdb.DuckDBPyConnection):
     """The SeqStore behind a connection's sequence functions, for its LY-06 counters."""
     return _READERS.get(id(con))
@@ -2319,6 +2376,8 @@ def open_catalog(path: Path, local_dir: Path | None = None, threads: int | None 
                                                     _domain_files(con, built), tmp=temp_directory))
     # a catalog built before card C-21b has no genome_member, genome_dim, genomes_of or genome_dim_now
     _add_genome_objects(con)
+    # a catalog of a partly labelled release built before card W-36 stores a contig_label view over the label files
+    _shadow_partial_labels(con, built)
     # a catalog built before card C-21c has no q1_genomes, and a q1_count whose tier filter reads contig_dim only
     for stmt in q1_macro_sql("CREATE OR REPLACE TEMP MACRO"):
         con.execute(stmt)

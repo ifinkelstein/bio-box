@@ -33,6 +33,7 @@ import json
 import os
 import re
 import shutil
+import sys
 import tempfile
 from datetime import datetime
 from pathlib import Path
@@ -344,11 +345,46 @@ _RELATIONS = {
     "tape": ("contig_tapes", ("tape_version",), ("contig_uid", "feature_uids"), ()),
 }
 # Where a release built before card B-27 (no `member_cluster`, no `contig_label`) is read instead: the table the
-# lookup is sorted from and its columns. Slower (it cannot prune by member or contig), never empty (card W-17).
+# lookup is sorted from and its columns. Slower (it cannot prune by member or contig), never empty (card W-17). A
+# release whose stages are only partly labelled (card W-36) reads the label files of the stages that have them and
+# `contig_occurrence` for the others (`_unlabelled`), as one relation.
 _PRE_B27 = {
     "clus": ("cluster_member", ("member_uid", "level", "cluster_uid", "rep_uid")),
     "lab": ("contig_occurrence", ("contig_uid", "accession", "original_header", "l0_object_sha256", "record_ordinal")),
 }
+
+
+def _unlabelled(root: Path, files, labels: list[tuple[Path, dict]]) -> tuple[list[str], list[tuple[Path, dict]]] | None:
+    """Card W-36: for a release some of whose stages have `contig_label` files (`labels`) and others none (ingested
+    before card B-27, as S1, P1 and P2 of `rM.2`), (those other stages in the release's order, their
+    `contig_occurrence` files), from which their labels are read as card W-18 reads a release with no label file at
+    all; None when every stage has label files or none has (`labels` empty: the W-18 path)."""
+    from biobox.search.nbr import _store_files
+
+    if not labels:
+        return None
+    have = {str(p.get("stage")) for _, p in labels}
+    missing = [s for s in files.stages if s not in have]
+    if not missing:
+        return None
+    occ = [(p, parts) for p, parts in _store_files(root, "contig_occurrence", {}, files)
+           if str(parts.get("stage")) in missing]
+    return missing, occ
+
+
+def _partial_label_note(release: str | None, stages: list[str]) -> None:
+    """One stderr line (card W-36, as `nbr.slow_path_note`, once per command inside `nbr.noted_once`): the stages
+    without label files are read from their `contig_occurrence`, which cannot prune a lookup by contig."""
+    from biobox.search import nbr
+
+    key = (release, "contig_label", ",".join(stages))
+    if nbr._NOTED is not None:
+        if key in nbr._NOTED:
+            return
+        nbr._NOTED.add(key)
+    print(f"note: release {release}: stages {','.join(stages)} have no contig_label files (ingested before card "
+          f"B-27); their contigs' labels are read from their contig_occurrence instead (the slow path for those "
+          f"stages: each of their row groups is scanned)", file=sys.stderr)
 
 
 def cell(col: str, v) -> str:
@@ -491,9 +527,20 @@ class open_store:
                         slow_path_note(release, _RELATIONS[name][0], spec_name)
                 if name == "dom":
                     libraries = {str(p["library"]) for _, p in files}
+                gaps = _unlabelled(root, manifest, files) if name == "lab" and spec_name == "contig_label" else None
                 if spec_name == "contig_occurrence":  # one row per source record: the label's n_records is 1
                     _view(self.con, f"{name}_raw", spec_name, files, cols, keep)
                     self.con.execute(f"CREATE TEMP VIEW {name} AS SELECT *, 1::UINTEGER AS n_records FROM {name}_raw")
+                elif gaps:  # card W-36: some stages have label files, others not
+                    stages, occ = gaps
+                    _partial_label_note(release, stages)
+                    _view(self.con, f"{name}_lab", spec_name, files, cols, keep)
+                    occ_cols = _PRE_B27[name][1]
+                    _view(self.con, f"{name}_occ", "contig_occurrence", occ, occ_cols, keep)
+                    names = ", ".join(f'"{c}"' for c in cols)
+                    self.con.execute(f"CREATE TEMP VIEW {name} AS SELECT {names} FROM {name}_lab UNION ALL "
+                                     f"SELECT {names} FROM (SELECT *, 1::UINTEGER AS n_records FROM {name}_occ)")
+                    files = files + occ
                 else:
                     _view(self.con, name, spec_name, files, cols, keep)
                 largest = max(largest, row_groups_of(p for p, _ in files))
