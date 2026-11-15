@@ -83,6 +83,60 @@ and per shard written. A build stopped by SIGTERM, SIGHUP or SIGINT removes its 
 directories, says so on stderr and exits 143, 129 or 130 (SystemExit, or KeyboardInterrupt for SIGINT): the
 next call starts again from nothing (a part is not resumed). A build killed by SIGKILL or the kernel's
 OOM killer cannot clean up; its two directories are left for removal by exact path.
+
+The estimate (card W-35; AGENTS §7.2). One process is about 86 CPU-minutes at 12.3 Gbp (measured, `rN.1`), so a
+50 Gbp release passes the 300 CPU-minute budget. Before any work, `pack build` counts the release's `protein_seq`
+rows (file metadata) and genome bases (the `contig_len` of its tapes, once per contig: `release_counts`), applies the
+rates below (`part_cpu_min`, `one_process_cpu_min`) and prints the estimate. Without `--parts` a build whose
+one-process estimate is over `stage.SHARD_MARGIN` of the profile's `cpu_min_per_process` is refused (exit 2) with the
+`--parts` that fits (`one_process_refusal`); with `--parts N` each part's estimate must fit (`parts_refusal`). The
+one-process build itself (`build`) is unchanged: the same code, the same bytes and pack ids.
+
+The build in parts (`build_in_parts`, `bio-box pack build --parts N --jobs J`). A driver process, then parts, each
+its own process (`python -m biobox.search.pack part`), then one last process (`... assemble`):
+
+- The driver checks the genetic codes, hashes the inputs (the manifest's `sources`, and so the fingerprint a
+  pack is matched by, as `build` does), is a no-op when a pack of the same fingerprint is there and verifies, cuts
+  the release (below) and writes the plan, `<work>/plan-of-<N>.json`. It launches the parts that have no output yet,
+  at most J at once, one thread each, within the allowance of the hour (`stage._launch`, as `build-stage` launches
+  scan shards), each under the memory cap it inherits (or a `MemoryMax` scope: `runstep.memory_cap`) at the
+  profile's `nice_monolithic`; `STOP` in the data root is checked before each launch (exit 75). Then it launches
+  the last process the same way, and removes the work directory once the pack is in place.
+- A part computes one target's records over one range of the release with the readers of the one-process build,
+  sorts them with the same `_Sorter` and writes them as one sorted run, `<work>/<name>/run.parquet`, with
+  `done.json` (rows, its CPU-minutes, wall time and peak RSS, its estimate). The parts are `unique` (every
+  `protein_seq` row: one part), and `igr-<k>-of-<N>` and `dark_orf-<k>-of-<N>` for k < N, each over the contigs whose
+  uid lies in its range [lo, hi). The cut (`_cut`): the release's contigs in uid order (its tapes), a new part
+  starting at the first contig whose genome bases before it reach k/N of the release's (the dark-ORF work is linear
+  in bases, measured below); a contig is never split, and a part with no contig writes an empty run. Each reader is
+  given the range: files sorted by contig uid skip row groups by their statistics and keep the rows in range,
+  `protein_occurrence` (sorted by protein) keeps the rows of the range's contigs.
+- The last process merges each target's runs in part order (`heapq.merge` on the target's sort key), writes the
+  shards and meta files with the writers of the one-process build (`_write_unique`, `_write_region_rows`), the
+  models (`_build_models`) and the manifest, verifies the pack (card W-19), writes the record and renames the pack
+  into `<pack dir>/release=<R>/<pack id>`.
+
+Where. `<work>` is `<work base>/release=<R>/<key>`, `key` a hash of the fingerprint, under the profile's tmp
+(`<tmp>/scratch/pack` unless `--work` names another base), never under the data root and never in the pack
+directory: the one thing a build in parts writes there is the last rename, so the work directory must be on the pack
+directory's file system (checked before any part). A part writes into `.<name>.tmp-<pid>-<hex>` and renames it to
+`<name>` once its run and `done.json` are written, and a reader takes only a part with its `done.json`: a part
+stopped by SIGTERM, SIGHUP or SIGINT removes its temporary directory (exit 143, 129, 130), one killed by SIGKILL
+leaves it, and the next driver, which holds the work directory's lock (`.lock`, one driver at a time), removes it
+before it launches anything. The last process builds the pack in `<work>/.building-<pid>-<hex>` the same way. A part
+whose output is there is not run again, so a build stopped between parts resumes at the parts without output.
+
+Why the bytes cannot depend on N, on J or on which process wrote a run. The one-process bytes are those of one
+stable sort of a target's rows in reading order: IGRs and dark ORFs are made contig by contig in contig uid order,
+and the shards are cut by `shard_text_bytes` of the sorted stream and the meta row groups by `META_ROW_GROUP_ROWS`
+rows of it, never by run or process. A part reads the rows of its contigs in that same order, and the ranges are
+consecutive in uid order, so the parts in part order concatenate to the one-process reading order; a stable sort
+of each part followed by a merge that takes equal keys in part order (`heapq.merge` is stable across its inputs) is
+the stable sort of the whole. Equal keys (region uid and sequence) have one contig, since the region uid hashes it,
+so they meet inside one part anyway. `unique` is one part reading the files in the one-process order, and keeps the
+last row of a protein as it does. A run holds the rows in the sorter's own schema, through which the one-process
+sorter's runs also pass; the float columns are cast to the meta schema's float32 in both paths. So the files, the
+manifest and the pack id (its hash) are the same, whatever N, J or the order the parts ran in.
 """
 
 from __future__ import annotations
