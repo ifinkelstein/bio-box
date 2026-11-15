@@ -56,7 +56,8 @@ with its wrap flanks). Every stage built so far is linear and of one mode (*meas
 | P5 | single | 2,289 | 0 | 9,967,897,315 | 9,144,001 | 155.692 | 16 |
 | P6 | single | 2,180 | 0 | 9,962,553,301 | 9,064,930 | 157.196 | 32 |
 
-H1's 514 genomes all of whose contigs S1 owns were called by the code of its build and their rows dropped (DEC-26);
+H1's 514 genomes all of whose contigs another stage stores (H1's `contig_index` holds 6,714 of its 7,228 contigs, card
+E-17) were called by the code of its build and their rows dropped (DEC-26);
 their bases are in its "bases read". Records: `runs/stage=<S>/genecall.json`, 2026-11-10 (S1, P1, P2), 2026-11-12 (P3
 to P6), 2026-11-15 (H1).
 

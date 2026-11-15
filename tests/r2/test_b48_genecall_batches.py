@@ -263,6 +263,9 @@ def test_b48_plan_action_prints_the_estimate_and_writes_nothing_in_the_root(worl
     assert res["batches"] == 3 and res["genomes"] == 14 and Path(res["plan"]).is_file()
     assert Path(res["plan"]).is_relative_to(tmp_path / "w")
     assert res["estimate_cpu_min"] > 0 and len(res["batch_estimates_cpu_min"]) == 3
+    p = cli("stage", "genecall", "plan", "--root", str(world["root"]), "--stage", "S1", "--runs-tmp",
+            str(world["root"] / "w"), "--batch-cpu-min", "240", check=False)
+    assert p.returncode == 2 and "under the data root" in p.stderr, p.stderr
     assert tree(world["root"]) == before
 
 

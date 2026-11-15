@@ -1999,6 +1999,9 @@ def _stage_step(a, root: Path, out: Path) -> dict:
         if missing:
             raise ValueError(f"stage genecall {a.action} needs {', '.join(missing)}")
         if a.action == "plan":
+            from biobox import ledger
+
+            ledger.check_scratch(a.runs_tmp, root)  # the plan's work directory is scratch, never under the root
             p = genecall.plan(root, a.stage, version=a.gene_call_version, seq_stages=_csv(a.seq_stages),
                               batch_cpu_min=a.batch_cpu_min, batches=a.batches, tmp=tmp)
             path = genecall.write_plan(p, genecall.work_dir(Path(a.runs_tmp), root, a.stage, p))

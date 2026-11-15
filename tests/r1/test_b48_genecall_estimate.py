@@ -20,7 +20,8 @@ from biobox.l1 import genecall
 pytestmark = pytest.mark.covers("B-48")
 
 # stage: (mode, bases the caller read, the run record's cpu_min). H1's 1,961,515,105 include the 514 genomes
-# (141,683,767 bases) all of whose contigs S1 owns: the code of 2026-11-15 called them, and dropped the rows (DEC-26).
+# (141,683,767 bases) all of whose contigs another stage stores: the code of 2026-11-15 called them, and dropped the
+# rows (DEC-26).
 RECORDS = {
     "S1": ("gv-meta", 1_664_109_938, 142.785628),
     "H1": ("gv-meta", 1_961_515_105, 146.09093),
