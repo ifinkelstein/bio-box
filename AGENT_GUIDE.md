@@ -50,7 +50,8 @@ Find the current state; do not trust the table above. `releases` (card W-23; `sr
 genomes, contigs, distinct proteins (from the manifest's file list and Parquet footers; genomes read one column of
 `contig_dim`), domain libraries (`pfam-38.2(not P3)` when a library covers some of its stages only), ncRNA
 producers, whether it has `member_cluster`, `contig_label` and the `domain_family_tokens` column (`no`: an older
-release, slow paths), and the pack it has in the profile's pack directory (`-` for none). `--json` gives one object
+release, slow paths; `partial(not S1,P1,P2)`: those stages have no `contig_label` files and their contig names come
+from the slow path, card W-36), and the pack it has in the profile's pack directory (`-` for none). `--json` gives one object
 per release.
 
 The host profile names the host's one pack directory: its `tmp` plus `/packs`, `/tmp/if2453/bio-box/packs` on
@@ -76,7 +77,9 @@ bash "$SCR/img.sh" python -m biobox.cli release verify --root /tmp/if2453/r10/ro
 ```
 
 The last line is `release rN.1: verified (stages S1,P1,P2, 52 files, ... manifest hash <hex>)` (or `N
-problems`); keep the hash. `warning: ... no member_cluster files (built before card B-27)` means slow paths.
+problems`); keep the hash. `warning: ... no member_cluster files (built before card B-27)` means slow paths, and so
+does `warning: release R: stages S1,P1,P2 have no contig_label files` (card W-36: `rM.2`; their accessions are found
+all the same).
 `not in manifest: l1/domains/library=pfam-38.2/...` lines on `rN.1` are card C-19 (its stages were scanned
 later), not damage: say so in the report. Any other problem: stop.
 

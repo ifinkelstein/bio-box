@@ -575,7 +575,10 @@ does not use there are not its concern (card C-19): a Pfam scan of a stage after
 built does not fail it. A second part beside a file the release lists still does. If the release
 has a library's domain files for some of its stages only, `verify` prints a `warning:` line naming
 the stages on each side; the exit code is unchanged. That release's family tokens cover only the
-first stages' genes; a release built after the other stages are scanned covers them all.
+first stages' genes; a release built after the other stages are scanned covers them all. A release whose
+manifest lists `contig_label` files for some of its stages only (stages ingested before card B-27) gets a
+`warning:` line naming the stages without them (card W-36); the exit code is unchanged, and readers take those
+stages' labels from their `contig_occurrence` (section 11).
 
 ```bash
 bio-box release verify --root "$ROOT" --release rC6.2
@@ -1103,6 +1106,7 @@ exemption; the fixture's clustering is far under 300 CPU-minutes). Appendix B li
 | The bulk area is not there | `results flush`, `list` and `get` exit 2 when the profile's `bulk` (`/stor/scratch/Wilke/if2453/all-the-data`) does not exist; `archive` still spools. Since card W-33 (DEC-42) `results` does not use the profile's `durable` (`/stor/work/Wilke/if2453/all-the-data`, which has never existed). The image sees `bulk` only with `--bind` | W-28, W-33 |
 | Spooled runs are on `/tmp` | until a flush reaches the 64 MiB floor, a run's archive is only in the spool on local disk, which a reboot may clear, as it clears the run itself | W-28 |
 | `search hmm --positive` reads all contig labels | the accession or header of the positive control is looked up in every row group of `contig_label`: no table is sorted by accession, and a header substring cannot prune. The contig's genes are then read from its tape by contig uid, which prunes. Not measured on a large release | W-07 |
+| Stages without label files | a release over stages ingested before card B-27 and after it (`rM.2`: S1, P1 and P2 have no `contig_label` files, P3 to P6 have them) reads the labels of the first from their `contig_occurrence`, which is sorted by source record, so a lookup by contig there scans every row group of those stages; the labelled stages still prune. `release verify` warns, naming the stages, and `bio-box releases` shows `partial(not S1,P1,P2)`. Before card W-36 the contigs of those stages had no accession, and `find --accession` refused them | W-18, W-36 |
 
 Found while writing this runbook, no card yet (reported to the PI):
 

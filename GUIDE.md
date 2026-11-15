@@ -1,7 +1,7 @@
 # Searching a release with your own HMM
 
 For a scientist who wants hits and gene neighbourhoods, not operations. State as of 2026-11-11 (keeping results:
-2026-11-12; the worked examples in `examples/`: 2026-11-13); releases,
+2026-11-12; the worked examples in `examples/`: 2026-11-13; the 50 Gbp release `rM.2`: 2026-11-15); releases,
 paths and costs will change. The operator's version of every command is `RUNBOOK.md` (sections 0, 7, 10, 11).
 Numbers carry a label: *measured* (with the file it comes from) or *derived* (with the formula).
 
@@ -23,7 +23,8 @@ host profile's pack directory `/tmp/if2453/bio-box/packs`, card W-22):
 |---|---|---|
 | `rN.1` | 27,258 phage genomes and 2,497 complete prokaryote genomes; 12,048,866 genes; 10,620,684 distinct proteins; NR50 2,966,200 and NR90 8,278,537 clusters; no Pfam (*measured*, `planning/tasks/STATUS.md`, "10 Gbp rebuild"; `planning/measurements/2026-11-10_trial_search_rN1.md`) | yes; until the operator copies it into the profile's pack directory, in `/tmp/if2453/w19/packs` (section 2) |
 | `rN.2` | the same genomes with Pfam 38.2 domains | none yet: ask the operator for one (RUNBOOK section 7, `pack build`; a release too large for one process under the CPU budget, such as the 50 Gbp `rM.2`, is built with `pack build --parts N`, card W-35, and gives the same pack) |
-| `rN.3` | the same genomes with Pfam 38.2, built by the current code (card C-17): the one to use | yes, in the profile's pack directory (`/tmp/if2453/bio-box/packs`), found with `--profile` alone |
+| `rN.3` | the same genomes with Pfam 38.2, built by the current code (card C-17): the one to use for the 10 Gbp set; the worked commands of this guide were run on it | yes, in the profile's pack directory (`/tmp/if2453/bio-box/packs`), found with `--profile` alone |
+| `rM.2` | the 50 Gbp set, since 2026-11-15 **the one to use**: the genomes of `rN.3` and 9,469 more complete prokaryote genomes (stages `P3` to `P6`; *derived*: 39,224 less 29,755), 39,224 genomes in all; 45,815,843 distinct proteins; NR50 8,192,065 and NR90 31,183,876 clusters; Pfam 38.2 on every stage (*measured*, `planning/tasks/STATUS.md` handoff of 2026-11-14). Both worked examples hold on it (*measured*, `planning/measurements/2026-11-14_release_examples_rM2.md`). A search costs about four times what it costs on `rN.3` (the RNA polymerase search 40.9 CPU-minutes, *measured*, the same note). Two limits: it holds no CRISPR arrays yet; and its stages `S1`, `P1` and `P2` have no label table, so a command that looks a contig up by accession prints one `note:` line and scans those stages (a few seconds; card W-36) | yes, in the profile's pack directory, found with `--profile` alone (pack `26e10f05401faeefb78769e83f7f6cb4`, 25.8 GB, built in parts, card W-35) |
 
 ## 2. Before you start
 
@@ -53,7 +54,8 @@ pack. The pack directory may be read-only for you: a search writes nothing into 
 
 The table in section 1 will age; `releases` lists what the root holds now, one line per release: its stages,
 genomes, contigs and distinct proteins, its domain libraries (Pfam or none), whether it has the lookup tables of
-the current code (`member_cluster`, `contig_label`, `domain_family_tokens`; `no` means slower lookups, section 8),
+the current code (`member_cluster`, `contig_label`, `domain_family_tokens`; `no` means slower lookups, section 8;
+`partial(not S1,...)` names the stages without the table),
 and the search pack it has in the profile's pack directory (card W-23):
 
 ```bash
@@ -428,7 +430,9 @@ runs as one command and checks its answer; both are rerun on every milestone rel
 - `rN.1` and `rN.2` were built before card B-27, so cluster and contig-name lookups read whole tables and print a
   `note: ... slow path` line; answers are the same, a few seconds slower. `rN.3` has the cluster lookup table but
   still prints the note for contig names: that table is written per stage at ingest, and its stages were ingested
-  before card B-27.
+  before card B-27. `rM.2` has it for stages P3 to P6 only: `releases` shows `contig_label` as
+  `partial(not S1,P1,P2)`, and the names of those three stages' contigs come from the slow path, with a `note:` line
+  naming the stages (card W-36; before it, `find --accession` found no contig of those stages).
 - Looking up `--positive`, `find --accession` or `seq --contig ACCESSION` reads every contig name of the release:
   0.03 to 0.05 s on `rN.3`, inside a command that takes 2.1 to 2.7 s, nearly all of it start-up (*measured*,
   `planning/measurements/2026-11-12_positive_lookup_rN3.md`, card W-15); `seq --contig` with a contig uid does not.

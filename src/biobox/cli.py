@@ -1247,7 +1247,8 @@ def release_summary(root: Path, release: str, packs: Path | None = None) -> dict
     `genome_input` (the catalog's `genome_member`; one column read: no footer holds a distinct count), else of its
     `contig_dim`, which names one genome per contig and so misses a genome whose every contig another genome also
     holds; None where the release has no `contig_dim`. `libraries` its domain libraries, `ncrna` its ncRNA
-    producers, `lookups` whether it has the tables and column current readers use (cards B-27, B-39), and with a pack
+    producers, `lookups` whether it has the tables and column current readers use (cards B-27, B-39; with
+    `unlabelled_stages` the stages without `contig_label` files when some stages have them, card W-36), and with a pack
     directory `pack`, the id of the release's pack there or None."""
     root = Path(root)
     rec: dict = {"release": release, "manifest": catalog.manifest_path(root, release).is_file()}
@@ -1274,6 +1275,9 @@ def release_summary(root: Path, release: str, packs: Path | None = None) -> dict
         partial = {lib: missing for lib, _, missing in catalog.partial_libraries(files.manifest)}
         if partial:
             rec["partial_libraries"] = partial
+    labelled = {str(parts.get("stage")) for _, parts in files.entries("contig_label")}
+    if labelled and set(files.stages) - labelled:  # card W-36: label files for some of the stages only
+        rec["unlabelled_stages"] = [s for s in files.stages if s not in labelled]
     if packs is not None:
         try:
             rec["pack"] = pack.find(packs, release).name
@@ -1580,6 +1584,8 @@ def _releases(a) -> int:
         flat = {**r, **r.get("lookups", {})}
         libs = [f"{x}(not {','.join(r['partial_libraries'][x])})" if x in r.get("partial_libraries", {}) else x
                 for x in r.get("libraries", [])]
+        if r.get("unlabelled_stages"):  # card W-36: as a partial library
+            flat["contig_label"] = f"partial(not {','.join(r['unlabelled_stages'])})"
         rows.append("\t".join(text(libs if c == "libraries" else flat.get(c)) for c in cols))
     _print(["\t".join(cols), *rows])
     return 0
@@ -1810,6 +1816,11 @@ def _verify(a) -> int:
             print(f"warning: release {a.release} has no {lookup} files (built before card B-27); readers fall back to "
                   f"{source}, which cannot prune. A release built with the current code has the table "
                   f"(card C-17 builds one over these stages)", file=sys.stderr)
+    gaps = catalog.unlabelled_stages(man)
+    if gaps:  # card W-36: a warning only
+        print(f"warning: release {a.release}: stages {','.join(gaps)} have no contig_label files (ingested before "
+              f"card B-27); readers take those stages' labels from their contig_occurrence, which cannot prune a "
+              f"lookup by contig there", file=sys.stderr)
     for lib, scanned, unscanned in catalog.partial_libraries(man):  # card C-19: a warning only
         print(f"warning: release {a.release} has domain files of library {lib} for stages {','.join(scanned)} but "
               f"not {','.join(unscanned)} (not scanned when the release was built); its {lib} family tokens cover the "
