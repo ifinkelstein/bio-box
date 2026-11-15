@@ -1,0 +1,461 @@
+{
+ "cost": {
+  "cpu_s": 110.9,
+  "peak_rss_mb": 1197.3,
+  "wall_s": 111.0
+ },
+ "families": 31,
+ "gap": 1000,
+ "gene_call_version": "pyrodigal-3.7.1-gv-0.3.2-p2",
+ "kept_s1_by_nearest_role": {
+  "cas3": 33,
+  "cas6f": 1
+ },
+ "kept_s1_groups": {
+  "a": 34
+ },
+ "kept_s1_icp1": 31,
+ "library": "pfam-38.2",
+ "p1_p2": {
+  "E13": {
+   "expected_exact": 31.3614,
+   "expected_per_gbp": 2.9551,
+   "monte_carlo": {
+    "draws_max": 54,
+    "draws_median": 31,
+    "draws_p2_5": 21,
+    "draws_p97_5": 42,
+    "mean": 31.3159,
+    "mean_ci95": [
+     31.2083,
+     31.4235
+    ],
+    "sd": 5.4911,
+    "se": 0.05491
+   },
+   "monte_carlo_per_gbp_ci95": [
+    2.9406,
+    2.9609
+   ]
+  },
+  "N2": {
+   "expected_exact": 24.3727,
+   "expected_per_gbp": 2.2965,
+   "monte_carlo": {
+    "draws_max": 44,
+    "draws_median": 24,
+    "draws_p2_5": 15,
+    "draws_p97_5": 34,
+    "mean": 24.3225,
+    "mean_ci95": [
+     24.2263,
+     24.4187
+    ],
+    "sd": 4.91,
+    "se": 0.0491
+   },
+   "monte_carlo_per_gbp_ci95": [
+    2.2827,
+    2.3009
+   ]
+  },
+  "N3": {
+   "expected_exact": 14.4381,
+   "expected_per_gbp": 1.3604,
+   "monte_carlo": {
+    "draws_max": 30,
+    "draws_median": 14,
+    "draws_p2_5": 8,
+    "draws_p97_5": 22,
+    "mean": 14.3644,
+    "mean_ci95": [
+     14.2911,
+     14.4377
+    ],
+    "sd": 3.7409,
+    "se": 0.03741
+   },
+   "monte_carlo_per_gbp_ci95": [
+    1.3466,
+    1.3604
+   ]
+  },
+  "e13_per_call": {
+   "both": 17997,
+   "e13_rows_not_inside_gene": 17997,
+   "f_equal_at_6_decimals": 17997,
+   "f_max_abs_diff": 0.0,
+   "mine": 17997,
+   "only_e13": 0,
+   "only_mine": 0,
+   "sum_f_e13_rounded": 31.3614,
+   "sum_f_mine": 31.3614
+  },
+  "gbp": 10.612806131000001,
+  "kept_producer": 78
+ },
+ "producers": {
+  "near": "minced-0.4.2-w8-nr2-r23x47-s26x50-cas1kb-caspfam1-pfam-38.2",
+  "nr2": "minced-0.4.2-w8-nr2-r23x47-s26x50",
+  "nr3": "minced-0.4.2-w8-nr3-r23x47-s26x50"
+ },
+ "stages": {
+  "P1": {
+   "arrays_nr3": 286,
+   "bases": 1016625803,
+   "calls_in_genomes_with_cas": 2203,
+   "calls_nr2": 3379,
+   "cas_genes": 822,
+   "circular_contigs": 0,
+   "contigs": 539,
+   "cpu_s": 12.6,
+   "default_arrays": {
+    "arrays": 286,
+    "within_10_genes_enrichment": 32.14,
+    "within_10_genes_expected": 6.379,
+    "within_10_genes_observed": 205,
+    "within_1_kb_enrichment": 73.54,
+    "within_1_kb_expected": 1.972,
+    "within_1_kb_expected_e13_function": 1.972,
+    "within_1_kb_observed": 145
+   },
+   "draws": 10000,
+   "e13_extra": 3085,
+   "e13_set": 1702,
+   "gbp": 1.016625803,
+   "genomes": 250,
+   "genomes_with_cas_gene": 139,
+   "kept_producer": 6,
+   "kept_rules_at_real_place": 6,
+   "nulls": {
+    "E13": {
+     "calls": 1702,
+     "expected_exact": 4.0542,
+     "expected_per_gbp": 3.9879,
+     "monte_carlo": {
+      "draws_max": 13,
+      "draws_median": 4,
+      "draws_p2_5": 1,
+      "draws_p97_5": 8,
+      "mean": 4.0617,
+      "mean_ci95": [
+       4.0223,
+       4.1011
+      ],
+      "sd": 2.0092,
+      "se": 0.02009
+     },
+     "monte_carlo_per_gbp_ci95": [
+      3.9565,
+      4.034
+     ],
+     "sd_exact": 2.0071
+    },
+    "N2": {
+     "calls": 3379,
+     "enrichment": 1.735,
+     "excess": 2.542,
+     "expected_exact": 3.4578,
+     "expected_per_gbp": 3.4013,
+     "monte_carlo": {
+      "draws_max": 13,
+      "draws_median": 3,
+      "draws_p2_5": 0,
+      "draws_p97_5": 7,
+      "mean": 3.4425,
+      "mean_ci95": [
+       3.4062,
+       3.4788
+      ],
+      "sd": 1.8497,
+      "se": 0.0185
+     },
+     "monte_carlo_per_gbp_ci95": [
+      3.3505,
+      3.4219
+     ],
+     "observed_kept": 6,
+     "observed_per_gbp": 5.9019,
+     "p_at_least_observed_exact": 0.13644309000008836,
+     "p_at_least_observed_mc": 0.1323,
+     "sd_exact": 1.8556
+    },
+    "N3": {
+     "calls": 3085,
+     "enrichment": 2.648,
+     "excess": 3.735,
+     "expected_exact": 2.2655,
+     "expected_per_gbp": 2.2284,
+     "monte_carlo": {
+      "draws_max": 9,
+      "draws_median": 2,
+      "draws_p2_5": 0,
+      "draws_p97_5": 6,
+      "mean": 2.25,
+      "mean_ci95": [
+       2.2207,
+       2.2793
+      ],
+      "sd": 1.4973,
+      "se": 0.01497
+     },
+     "monte_carlo_per_gbp_ci95": [
+      2.1844,
+      2.242
+     ],
+     "observed_kept": 6,
+     "observed_per_gbp": 5.9019,
+     "p_at_least_observed_exact": 0.02797926612144048,
+     "p_at_least_observed_mc": 0.0273,
+     "sd_exact": 1.5033
+    }
+   },
+   "only_mine": [],
+   "only_producer": [],
+   "oracle_kept_equal": true,
+   "rejected_rule_a": 294,
+   "rejected_rule_b": 3076,
+   "rejected_rule_c": 3,
+   "seed": 16,
+   "stage": "P1"
+  },
+  "P2": {
+   "arrays_nr3": 2291,
+   "bases": 9596180328,
+   "calls_in_genomes_with_cas": 19113,
+   "calls_nr2": 30682,
+   "cas_genes": 6262,
+   "circular_contigs": 0,
+   "contigs": 5018,
+   "cpu_s": 80.2,
+   "default_arrays": {
+    "arrays": 2291,
+    "within_10_genes_enrichment": 33.03,
+    "within_10_genes_expected": 46.96,
+    "within_10_genes_observed": 1551,
+    "within_1_kb_enrichment": 78.54,
+    "within_1_kb_expected": 14.54,
+    "within_1_kb_expected_e13_function": 14.54,
+    "within_1_kb_observed": 1142
+   },
+   "draws": 10000,
+   "e13_extra": 28328,
+   "e13_set": 16295,
+   "gbp": 9.596180328,
+   "genomes": 2247,
+   "genomes_with_cas_gene": 1227,
+   "kept_producer": 72,
+   "kept_rules_at_real_place": 72,
+   "nulls": {
+    "E13": {
+     "calls": 16295,
+     "expected_exact": 27.3072,
+     "expected_per_gbp": 2.8456,
+     "monte_carlo": {
+      "draws_max": 50,
+      "draws_median": 27,
+      "draws_p2_5": 18,
+      "draws_p97_5": 38,
+      "mean": 27.2542,
+      "mean_ci95": [
+       27.1538,
+       27.3546
+      ],
+      "sd": 5.12,
+      "se": 0.0512
+     },
+     "monte_carlo_per_gbp_ci95": [
+      2.8296,
+      2.8506
+     ],
+     "sd_exact": 5.2121
+    },
+    "N2": {
+     "calls": 30682,
+     "enrichment": 3.443,
+     "excess": 51.085,
+     "expected_exact": 20.9149,
+     "expected_per_gbp": 2.1795,
+     "monte_carlo": {
+      "draws_max": 39,
+      "draws_median": 21,
+      "draws_p2_5": 13,
+      "draws_p97_5": 30,
+      "mean": 20.88,
+      "mean_ci95": [
+       20.7909,
+       20.9691
+      ],
+      "sd": 4.5449,
+      "se": 0.04545
+     },
+     "monte_carlo_per_gbp_ci95": [
+      2.1666,
+      2.1852
+     ],
+     "observed_kept": 72,
+     "observed_per_gbp": 7.503,
+     "p_at_least_observed_exact": 1.6878699803830318e-18,
+     "p_at_least_observed_mc": 0.0,
+     "sd_exact": 4.5629
+    },
+    "N3": {
+     "calls": 28328,
+     "enrichment": 5.915,
+     "excess": 59.827,
+     "expected_exact": 12.1726,
+     "expected_per_gbp": 1.2685,
+     "monte_carlo": {
+      "draws_max": 28,
+      "draws_median": 12,
+      "draws_p2_5": 6,
+      "draws_p97_5": 19,
+      "mean": 12.1144,
+      "mean_ci95": [
+       12.0471,
+       12.1817
+      ],
+      "sd": 3.435,
+      "se": 0.03435
+     },
+     "monte_carlo_per_gbp_ci95": [
+      1.2554,
+      1.2694
+     ],
+     "observed_kept": 72,
+     "observed_per_gbp": 7.503,
+     "p_at_least_observed_exact": 1.0930202349712186e-31,
+     "p_at_least_observed_mc": 0.0,
+     "sd_exact": 3.4857
+    }
+   },
+   "only_mine": [],
+   "only_producer": [],
+   "oracle_kept_equal": true,
+   "rejected_rule_a": 2354,
+   "rejected_rule_b": 28243,
+   "rejected_rule_c": 13,
+   "seed": 16,
+   "stage": "P2"
+  },
+  "S1": {
+   "arrays_nr3": 213,
+   "bases": 1664109938,
+   "calls_in_genomes_with_cas": 128,
+   "calls_nr2": 3613,
+   "cas_genes": 544,
+   "circular_contigs": 0,
+   "contigs": 27258,
+   "cpu_s": 1.2,
+   "default_arrays": {
+    "arrays": 213,
+    "within_10_genes_enrichment": 5.49,
+    "within_10_genes_expected": 8.922,
+    "within_10_genes_observed": 49,
+    "within_1_kb_enrichment": 13.2,
+    "within_1_kb_expected": 3.711,
+    "within_1_kb_expected_e13_function": 3.711,
+    "within_1_kb_observed": 49
+   },
+   "draws": 10000,
+   "e13_extra": 3394,
+   "e13_set": 1348,
+   "gbp": 1.664109938,
+   "genomes": 27258,
+   "genomes_with_cas_gene": 355,
+   "kept_producer": 34,
+   "kept_rules_at_real_place": 34,
+   "nulls": {
+    "E13": {
+     "calls": 1348,
+     "expected_exact": 3.4736,
+     "expected_per_gbp": 2.0873,
+     "monte_carlo": {
+      "draws_max": 12,
+      "draws_median": 3,
+      "draws_p2_5": 1,
+      "draws_p97_5": 7,
+      "mean": 3.4943,
+      "mean_ci95": [
+       3.4591,
+       3.5295
+      ],
+      "sd": 1.7965,
+      "se": 0.01797
+     },
+     "monte_carlo_per_gbp_ci95": [
+      2.0786,
+      2.121
+     ],
+     "sd_exact": 1.7965
+    },
+    "N2": {
+     "calls": 3613,
+     "enrichment": 13.972,
+     "excess": 31.567,
+     "expected_exact": 2.4334,
+     "expected_per_gbp": 1.4623,
+     "monte_carlo": {
+      "draws_max": 10,
+      "draws_median": 2,
+      "draws_p2_5": 0,
+      "draws_p97_5": 6,
+      "mean": 2.4299,
+      "mean_ci95": [
+       2.3999,
+       2.4599
+      ],
+      "sd": 1.5324,
+      "se": 0.01532
+     },
+     "monte_carlo_per_gbp_ci95": [
+      1.4422,
+      1.4782
+     ],
+     "observed_kept": 34,
+     "observed_per_gbp": 20.4313,
+     "p_at_least_observed_exact": 4.8244847267253036e-30,
+     "p_at_least_observed_mc": 0.0,
+     "sd_exact": 1.5303
+    },
+    "N3": {
+     "calls": 3394,
+     "enrichment": 33.789,
+     "excess": 32.994,
+     "expected_exact": 1.0062,
+     "expected_per_gbp": 0.6047,
+     "monte_carlo": {
+      "draws_max": 7,
+      "draws_median": 1,
+      "draws_p2_5": 0,
+      "draws_p97_5": 3,
+      "mean": 0.9942,
+      "mean_ci95": [
+       0.9749,
+       1.0135
+      ],
+      "sd": 0.9834,
+      "se": 0.00983
+     },
+     "monte_carlo_per_gbp_ci95": [
+      0.5858,
+      0.609
+     ],
+     "observed_kept": 34,
+     "observed_per_gbp": 20.4313,
+     "p_at_least_observed_exact": 8.917081647823573e-45,
+     "p_at_least_observed_mc": 0.0,
+     "sd_exact": 0.9897
+    }
+   },
+   "only_mine": [],
+   "only_producer": [],
+   "oracle_kept_equal": true,
+   "rejected_rule_a": 219,
+   "rejected_rule_b": 3360,
+   "rejected_rule_c": 0,
+   "seed": 16,
+   "stage": "S1"
+  }
+ }
+}
