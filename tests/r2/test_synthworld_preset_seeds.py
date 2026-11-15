@@ -1,5 +1,5 @@
-"""Ring R2: the `micro` preset holds at several seeds (synthworld_spec §2.1 S1-S2, §5.1, §4.1 N2, §6.1; DEC-36, DEC-37;
-card F-02 sessions 10 and 11).
+"""Ring R2: the `micro` preset holds at several seeds (synthworld_spec §2.1 S1-S2, §5.1, §4.1 N2, §6.1; DEC-36, DEC-37,
+DEC-44; card F-02 sessions 10 to 12).
 
 Session 10 drafted this test (planning/measurements/2026-11-14_synthworld_seeds/draft_test_synthworld_preset_seeds.py)
 and it failed on the old preset: 3 of 3 failed (session 10: 648 s; session 11's rerun of the draft on the old

@@ -36,12 +36,13 @@ needs_zombi2 = pytest.mark.skipif(
     importlib.util.find_spec("zombi2") is None,
     reason="zombi2 0.54.0 is not importable here: CI installs it by `uv sync`; on the pod the image has it")
 
-#: the signal world of the micro default seed, every stage (measured 2026-11-13, sessions 1 to 8): unchanged
-SIGNAL = {"backbone": "545240f325b552247e0665459ccb1c0e", "sequences": "294beafcfe7efa64b582276549e353b9",
-          "replicons": "98b0a2fada22354766bdf4d12df6ade6", "mobile": "bbe7289e32176b4e9874c706be6ccf03",
-          "fusions": "818031fea3ed35abab093554605474ad", "assembly": "74ea9afac18fdab3fe8470728679f544",
-          "sources": "a333a1e97bb6c0ba75b0c870f3ad28d8", "emit": "0f1ae8e62576ee05dc1c2fa9fe78f378"}
-SIGNAL_WORLD = "765b20a0d7d0051d62c5036143d6ced5"
+#: the signal world of the micro default seed, every stage (measured 2026-11-13, sessions 1 to 8; re-pinned after the
+#: preset redesigns of sessions 11 and 12, planning/measurements/2026-11-14_synthworld_redesign.md §7, §15): unchanged
+SIGNAL = {"backbone": "f65094aa0fb1c9bed885bc6bc2f4e825", "sequences": "e9bf8833a898541f1bc9606c97d55463",
+          "replicons": "1930863ca47dcc67a5fde9deb1d12f84", "mobile": "1596365eedc377773ba85ef5aa7ec593",
+          "fusions": "d2f80ac770d8cd78346467aed2efc9c7", "assembly": "03b3e1b97dad03a8b2b7d78d755eebaf",
+          "sources": "5366fca6f2796b3956265d248b6529d9", "emit": "267f3a0200ddc3f7639e3c2fd6ffc134"}
+SIGNAL_WORLD = "684e539e11bd1ecbc5d3df6fe6405e7f"
 STAGES = ("backbone", "sequences", "replicons", "mobile", "fusions", "assembly", "sources", "emit")
 DEFAULT_SEED = 20261112
 #: the master seed of every world here; BIOBOX_SYNTHWORLD_NULL_SEED runs the whole module at another seed (card F-02
