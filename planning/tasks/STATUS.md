@@ -5,18 +5,19 @@ The running record of the cards in [`TASKS.md`](TASKS.md). Updated at every merg
 by an agent on its own branch `task/<ID>`, audited by the orchestrating session, and merged after its
 tests passed on the merged tree.
 
-## Handoff, 2026-11-15 11:08 CST (current; the dated sections under "History" are superseded where they differ)
+## Handoff, 2026-11-15 13:18 CST (current; the dated sections under "History" are superseded where they differ)
 
 Written so a new session can continue without the conversation that produced this file. Times are the pod's clock
 (CST); read it with `ssh ... date` before writing a time here.
 
 **Mode: the orchestrator works independently** (PI, 2026-11-13 about 21:40), on its own recommendations where a choice
-is cheap to reverse, at most two heavy (Opus) agents at once because of the account's usage limit, and it stops for
+is cheap to reverse, **at most four agents at once** (PI, 2026-11-15, DEC-46; from 2026-11-13 to then the
+orchestrator held it to two Opus agents because of the account's usage limit), and it stops for
 the PI at the S2C phase 2 build and at a failed release check. The usage limit has stopped agents five times
 (2026-11-13 15:45 and 20:55, 2026-11-14 01:40 twice counting the orchestrator, and the weekly limit at about 12:20): an agent stopped that way is resumed
 with `SendMessage` to the same agent once the limit resets; nothing is lost.
 
-**State on 2026-11-15 at 11:08 CST.**
+**State on 2026-11-15 at 13:18 CST.**
 
 *The 50 Gbp release `rM.2` is built and verified* (2026-11-14 17:32 CST), *has its pack* (20:54), *passed the
 release check* (2026-11-15 00:06) *and is announced as the release to use* (2026-11-15, `README.md`, `GUIDE.md`).
@@ -116,15 +117,16 @@ release check* (2026-11-15 00:06) *and is announced as the release to use* (2026
 - The fixture's manifest hash is `28ffa9808ecd4829e52f6892f94f7b85` since E-12, equal on Actions and the pod;
   `/tmp/if2453/ci-peer/right.json` holds it.
 
-*Agents.* At 09:43 on 2026-11-15: **stage H1 is half-built and stopped, waiting on the PI** (open item 7); running: B-48 (gene calling in batch steps; since 11:10). C-26 part 1 and E-17 are done and merged. C-34, E-16, C-33 part 1 and W-36 are done and merged. F-02 session 11 ended at 01:15 with four questions for the PI (open item 5); W-33, E-15, W-34, W-32 and W-35 were done and merged on 2026-11-14; see "Agents running" below. Merged on 2026-11-13 and 14: C-28, C-27 step 4, C-25 step 2, C-29, C-30, C-31, C-32,
+*Agents.* Four at 13:18 on 2026-11-15, after the PI's decisions of about 13:15 (DEC-43 to DEC-46): C-24 (the H1 build, resumed), B-48 (gene calling in batch steps; since 11:10), F-02 session 12 and B-49 (both starting). C-26 part 1 and E-17 are done and merged. C-34, E-16, C-33 part 1 and W-36 are done and merged. F-02 session 11 ended at 01:15 with four questions for the PI (open item 5); W-33, E-15, W-34, W-32 and W-35 were done and merged on 2026-11-14; see "Agents running" below. Merged on 2026-11-13 and 14: C-28, C-27 step 4, C-25 step 2, C-29, C-30, C-31, C-32,
 W-30, W-31, A-08, E-11, E-12, E-13, E-14, F-02 sessions 4 to 10 (10 is a measurement), the README, the CRISPR example.
 
-*What is blocked, and on what.* Three things wait on the PI: F-02's redesign (open item 5, since 18:45 on 2026-11-14); which release holds the CRISPR arrays (open item 6, since 22:19; the orchestrator's plan stands meanwhile); and **how the H1 build resumes (open item 7, since 08:54 on 2026-11-15: the pod is idle until then)**. Everything else was decided at 10:45 (DEC-34 to DEC-42).
-- **The statistics track** (F-01, F-03 and the rest of F-02): **waits on the PI** (open item 5). F-02 session 11
-  implemented DEC-36 and DEC-37 and stopped: six existing assertions fail in the new world and none may be loosened
-  without a decision. Its branch `task/F-02-11` is pushed, not merged, and red on Actions on exactly those six.
-  After the decision: re-pin, merge, then the sequence model so that detectability falls with divergence (session
-  12, DEC-39), then the N2 worlds, the ablation worlds and validation.
+*What is blocked, and on what.* **Nothing waits on the PI since 13:15 on 2026-11-15** (DEC-43 to DEC-46 answer open
+items 1, 2, 4, 5, 6 and 7 and the PLSDB defaults; item 3 was closed by measurement).
+- **The statistics track** (F-01, F-03 and the rest of F-02): F-02 session 12 (starting) finishes the redesign as
+  DEC-44 decides (the motif test accepts a tandem twin, decoy transfer raised, plasmid rates 0.1 and 0.3, N0's
+  correlation dropped), from session 11's branch and its candidate B, re-pins and merges; then the sequence model
+  so that detectability falls with divergence (session 13, DEC-39), then the N2 worlds, the ablation worlds and
+  validation.
 - **S2C phase 2** (56 Gbp, fetched and on `/stor`): the pod is free for it since the `rM.2` build ended (17:27).
   Card C-25 step 3 and cards B-47a to B-47e (DEC-34, DEC-35) are next in the build queue after H1 and PLSDB.
 - **Short CRISPR arrays** on Tn7-like elements: card E-15 is merged (DEC-40; 14 of the 20 Tn7-like TniQ loci of the example now have an array). The arrays of both producers are on the seven built stages since 2026-11-15 (card C-33 part 1: 13,477 default and 414 filtered arrays, *measured*); which release holds them is open item 6. The filter's chance rate on phages is measured (card E-16): the rule holds there as it is.
@@ -183,7 +185,7 @@ F-02 and the measurements in the table below; decisions DEC-29 to DEC-33 were ad
 above says where `main`, the images and Actions stand. The manifest hash of the fixture covers every registered
 schema's hash, so it moves with any schema change (last: card E-12).
 
-**Agents running** at 11:08 on 2026-11-15: B-48 (from 11:10); the C-24 agent is idle, waiting on open item 7; C-26 part 1 and E-17 are done and merged; C-34, E-16, C-33 part 1 and W-36 are done and merged; F-02 session 11 has ended.
+**Agents running** at 13:18 on 2026-11-15: four (C-24 resumed, B-48, and F-02 session 12 and B-49 starting; the limit is four, DEC-46); C-26 part 1 and E-17 are done and merged; C-34, E-16, C-33 part 1 and W-36 are done and merged; F-02 session 11 has ended.
 - F-02 session 11 (Opus; the redesign of the `micro` preset over seeds, DEC-36 and DEC-37): worktree
   `.claude/worktrees/agent-aa711fcf48ad79fd7`, branch `task/F-02-11` at `89cfb46`, pushed, **not merged** (red on
   Actions on six assertions, not the same six as before); pod scratch `/tmp/if2453/f0211/`, units `f0211-*`, at
@@ -199,12 +201,15 @@ schema's hash, so it moves with any schema change (last: card E-12).
 - E-16 (Opus; a measurement: the chance rate of the filtered CRISPR producer on phages, stage S1): done, 02:00
   to 04:50, merged (row E-16).
 - C-24 (Opus; stage H1, the huge phages, as amended: the stage only): started at 07:17 on 2026-11-15, branch
-  `task/C-24` at `5300a59`, pushed, not merged; pod scratch `/tmp/if2453/c24/`, units `c24-*` (none running).
-  **Stopped at 08:54, half-built**: inputs, ingest, gene calls, the default CRISPR producer, IGRs, tapes and 9 of
-  the 14 Pfam scan shards are published (47 files, 1,298,868,963 bytes, all under `stage=H1`; no earlier file
-  changed; the six published releases verify as before); shards 6 and 9 to 12, the scan's merge and the filtered
-  CRISPR producer are not run. Open item 7 says why and what the PI is asked. The agent is idle and keeps its
-  context: it is resumed with `SendMessage` once the PI has answered; `build-stage` skips every published step.
+  `task/C-24`, pushed, not merged; pod scratch `/tmp/if2453/c24/`, units `c24-*`. Stopped at 08:54 half-built (9
+  of 14 Pfam scan shards published) by its own rate guard on a remainder shard; **resumed at 13:20 after DEC-43**
+  (the guard judges only steps estimated at 24 CPU-minutes or more): it runs the five remaining shards (about
+  1,080 CPU-minutes, *derived*), the scan's merge and the filtered CRISPR producer, ends at the cluster gate, then
+  checks the root and reports. It is the one agent that writes into the data root (stage `H1`'s files only).
+- F-02 session 12 (Opus; the redesign finished as DEC-44 decides): starting at 13:25, branch `task/F-02-12` from
+  `task/F-02-11`; pod scratch `/tmp/if2453/f0212/`, units `f0212-*`, at most 8 threads.
+- B-49 (Opus; a release takes an earlier release's clustering when its proteins are the same, DEC-45 (2)):
+  starting at 13:25, branch `task/B-49`; pod scratch `/tmp/if2453/b49/`; read-only on the data root.
 - B-48 (Opus; gene calling in batch steps under the CPU budget, byte-identical to the one-process call): started
   at 11:10 on 2026-11-15, branch `task/B-48`; pod scratch `/tmp/if2453/b48/`, units `b48-*`; read-only on the
   data root.
@@ -219,9 +224,9 @@ Done and merged since: W-34 (Sonnet; the help text of `bio-box results`), at 15:
 defaults, DEC-41), 15:40 to 18:05; W-35 (Opus; the pack build in parts and the pack of `rM.2`), 18:05 to 22:00.
 Done and merged today after the restart: W-33 (14:05 to 14:55) and E-15 (its second agent, 14:00 to 15:25). The
 account's weekly usage limit stopped the two Opus agents at about 12:20 (the fifth such stop; the message gave a
-reset on 2026-11-19 at 13:00); the PI logged in again and both were resumed with `SendMessage` at 14:00. Queued
-for the next free heavy slot, in this order: C-26 part 2 (the build of `PL1`; after C-24 and B-48),
-F-02 (after the PI's four answers, open item 5).
+reset on 2026-11-19 at 13:00); the PI logged in again and both were resumed with `SendMessage` at 14:00. Queued,
+in this order: C-26 part 2 (the build of `PL1`; after C-24 and B-48), C-35 (the release `rM.3` over the nine
+stages, DEC-45; after C-26 part 2), F-02 session 13 (detectability against divergence, DEC-39; after session 12).
 
 **On the pod** (wilkcomp02; account thread cap 40 by day on weekdays, 56 at night and at weekends, a total over
 everything we run; the PI keeps that cap). State on 2026-11-14 at 17:50 CST:
@@ -653,7 +658,7 @@ probed by hand on the pod).
 
 ## Open items for the PI
 
-**Open since the afternoon of 2026-11-14** (items 1 to 4 block nothing: each has a default that stands until you say otherwise; **item 5 blocks the statistics track and item 6 the release with arrays**):
+**Decided by the PI on 2026-11-15 at about 13:15** ("1. a, 2 y, 3, yes one release, 4. yes, 5. allowed, 6., leave it, 7. keep run-wide, 8., keep both", then "at most 4 agents at once"): DEC-43 (item 7: the H1 build resumes with the guard narrowed), DEC-44 (item 5: the four tests of the synthetic world), DEC-45 (item 6: one release `rM.3` over nine stages, and a card that lets a release take an earlier clustering; item 1: `rM.1` left), DEC-46 (scratch of finished cards may be removed; item 2: the one-colour rule run-wide; the PLSDB defaults; item 4: at most four agents). Item 3 was closed by measurement (card E-16). **Nothing below is open**; the items are kept as the record of what was asked:
 1. `rM.1` (card B-43's first 50 Gbp release) is left clustered only. It now reads the same stages, the same Pfam
    library and, *measured*, the same cluster bytes as `rM.2`, so finishing it would write a second copy of `rM.2`.
    Default: leave it; its cluster files (10.6 GB) stay in the root and in the durable copy.
