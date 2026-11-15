@@ -444,6 +444,17 @@ def _one(args) -> tuple[dict, list[dict]]:
         ratio = math.exp(sum(math.log(b[x] / a[x]) for x in g) / len(g))
         row["n0_bg_ratio"] = round(ratio, 4)
         row["n0_bg_pearson"] = round(_pearson([a[x] for x in g], [b[x] for x in g]), 4)
+        # a candidate replacement for r (session 11, for the PI; the test is not changed): the two-sample
+        # Kolmogorov-Smirnov statistic of the background-size distributions and its asymptotic p-value
+        sa, sb = sorted(a[x] for x in g), sorted(b[x] for x in g)
+        vals = sorted(set(sa) | set(sb))
+        import bisect
+        d = max(abs(bisect.bisect_right(sa, v) / len(sa) - bisect.bisect_right(sb, v) / len(sb)) for v in vals)
+        ne = len(sa) * len(sb) / (len(sa) + len(sb))
+        lam = (ne ** 0.5 + 0.12 + 0.11 / ne ** 0.5) * d
+        p = 2 * sum((-1) ** (k - 1) * math.exp(-2 * k * k * lam * lam) for k in range(1, 101))
+        row["n0_bg_ks_d"] = round(d, 4)
+        row["n0_bg_ks_p"] = round(min(1.0, max(0.0, p)), 4)
         if not keep:
             shutil.rmtree(w0)
     for r in grid:
