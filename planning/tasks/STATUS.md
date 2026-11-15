@@ -5,7 +5,7 @@ The running record of the cards in [`TASKS.md`](TASKS.md). Updated at every merg
 by an agent on its own branch `task/<ID>`, audited by the orchestrating session, and merged after its
 tests passed on the merged tree.
 
-## Handoff, 2026-11-15 13:18 CST (current; the dated sections under "History" are superseded where they differ)
+## Handoff, 2026-11-15 14:07 CST (current; the dated sections under "History" are superseded where they differ)
 
 Written so a new session can continue without the conversation that produced this file. Times are the pod's clock
 (CST); read it with `ssh ... date` before writing a time here.
@@ -98,7 +98,8 @@ release check* (2026-11-15 00:06) *and is announced as the release to use* (2026
   of RUNBOOK §0**; (c) C-25 step 3 and B-47a to B-47e (S2C phase 2), then ncRNA (DEC-42). Each adds a further tar
   of its new files to the durable copy.
 - The pod's cap falls to 40 threads on Monday at 08:00 (weekday days): nothing of ours may then use more.
-- Free space on `/tmp`: 374 GB at 17:35 (the build's scratch is gone; the cleanup of 14:41 freed 60 GB).
+- Free space on `/tmp`: **594 GB at 14:07 on 2026-11-15**, after the cleanup of 13:27 to 13:45 (DEC-46; "On the
+  pod" below): it had fallen to 208 GB at 13:26, almost all of it old test scratch.
 
 *Code and images.*
 - `main` is at pull request 5 (merge commit `faec1f4`, 2026-11-13). The images built from it are the pod's default
@@ -117,7 +118,7 @@ release check* (2026-11-15 00:06) *and is announced as the release to use* (2026
 - The fixture's manifest hash is `28ffa9808ecd4829e52f6892f94f7b85` since E-12, equal on Actions and the pod;
   `/tmp/if2453/ci-peer/right.json` holds it.
 
-*Agents.* Four at 13:18 on 2026-11-15, after the PI's decisions of about 13:15 (DEC-43 to DEC-46): C-24 (the H1 build, resumed), B-48 (gene calling in batch steps; since 11:10), F-02 session 12 and B-49 (both starting). C-26 part 1 and E-17 are done and merged. C-34, E-16, C-33 part 1 and W-36 are done and merged. F-02 session 11 ended at 01:15 with four questions for the PI (open item 5); W-33, E-15, W-34, W-32 and W-35 were done and merged on 2026-11-14; see "Agents running" below. Merged on 2026-11-13 and 14: C-28, C-27 step 4, C-25 step 2, C-29, C-30, C-31, C-32,
+*Agents.* Four at 14:07 on 2026-11-15, after the PI's decisions of about 13:15 (DEC-43 to DEC-46): C-24 (the H1 build, resumed at 13:20 and running on the pod), B-48 (gene calling in batch steps; since 11:10), F-02 session 12 and B-49 (since 13:25). The account's 5-hour usage limit stopped B-48, B-49 and F-02 session 12 at about 13:35 (the sixth such stop); all three were resumed with `SendMessage` at 14:07, after its reset at 13:50. C-26 part 1 and E-17 are done and merged. C-34, E-16, C-33 part 1 and W-36 are done and merged. F-02 session 11 ended at 01:15 with four questions for the PI (open item 5); W-33, E-15, W-34, W-32 and W-35 were done and merged on 2026-11-14; see "Agents running" below. Merged on 2026-11-13 and 14: C-28, C-27 step 4, C-25 step 2, C-29, C-30, C-31, C-32,
 W-30, W-31, A-08, E-11, E-12, E-13, E-14, F-02 sessions 4 to 10 (10 is a measurement), the README, the CRISPR example.
 
 *What is blocked, and on what.* **Nothing waits on the PI since 13:15 on 2026-11-15** (DEC-43 to DEC-46 answer open
@@ -185,7 +186,7 @@ F-02 and the measurements in the table below; decisions DEC-29 to DEC-33 were ad
 above says where `main`, the images and Actions stand. The manifest hash of the fixture covers every registered
 schema's hash, so it moves with any schema change (last: card E-12).
 
-**Agents running** at 13:18 on 2026-11-15: four (C-24 resumed, B-48, and F-02 session 12 and B-49 starting; the limit is four, DEC-46); C-26 part 1 and E-17 are done and merged; C-34, E-16, C-33 part 1 and W-36 are done and merged; F-02 session 11 has ended.
+**Agents running** at 14:07 on 2026-11-15: four (C-24, B-48, F-02 session 12, B-49; the limit is four, DEC-46; three of them resumed at 14:07 after a usage-limit stop); C-26 part 1 and E-17 are done and merged; C-34, E-16, C-33 part 1 and W-36 are done and merged; F-02 session 11 has ended.
 - F-02 session 11 (Opus; the redesign of the `micro` preset over seeds, DEC-36 and DEC-37): worktree
   `.claude/worktrees/agent-aa711fcf48ad79fd7`, branch `task/F-02-11` at `89cfb46`, pushed, **not merged** (red on
   Actions on six assertions, not the same six as before); pod scratch `/tmp/if2453/f0211/`, units `f0211-*`, at
@@ -260,11 +261,20 @@ everything we run; the PI keeps that cap). State on 2026-11-14 at 17:50 CST:
   11,234,908,160 bytes, and `/tmp/if2453/c27/archive/s2c_phase2_genomes.tar`, 5,134,489,600 bytes; their listing
   and record files stay). In all 59,646,763,408 bytes (*derived*: the sum; *measured* by `df`: free space rose from
   240.1 to 299.8 GB while the build ran). Nothing under `/stor` was touched.
-- Scratch still to clear under DEC-42, not urgent: `/tmp/if2453/b46` (12 GB; after `rM.1`'s release steps are run in
-  the root, in case its clean scratch run is wanted beside them), `m08a`, `m08b`, `c21f`, `e09`, `w25`, `w27`, `w15`,
-  old pack copies under `w16` and `w19`, old `ci/<ID>` trees (4 GB in all), `f028` and `f0210` once F-02's sessions
-  no longer read them, and, once the `rM.2` build is done, the dependency directories `pilot_s1/pydeps`,
-  `pydeps_f02`, `pydeps_w27`. Not listed by the decision and so kept: `/tmp/if2453/b43` (20 GB).
+- **Scratch removed under DEC-46** (2026-11-15, 13:27 to 13:45; unit `cleanup-1115`, script and log in
+  `/tmp/if2453/cleanup/`: `cleanup_1115.sh`, `cleanup_1115.log`): 576 old test scratch directories under
+  `/tmp/if2453/ci-tmp` (pytest base directories of finished cards: 397.6 GB, *derived* from the log's free space
+  before and after), 176 old synced trees under `/tmp/if2453/ci` (3.8 GB), and the finished cards' own
+  directories `w35`, `w36`, `c33`, `c34`, `e16`, `e17`, `c26` and `b46` (21.4 GB). Free space went from 222.7 GB
+  to 645.4 GB (*measured*, `df`, the log's first and last lines): 422.7 GB. Kept: everything of the cards then
+  running (`B-48`, `B-49`, `F-02-12`, `C-24`), the trees `integration`, `rM2post`, `r50` and `r10`, the data root,
+  the packs, the inputs under `/tmp/if2453/s2`, session 11's scans under `/tmp/if2453/f0211`, and the scratch
+  views with arrays (`e12`, `e13`, `e15`). **Lesson for the handoff: `/tmp/if2453/ci-tmp` grows by several GB per
+  whole-suite run and nothing removes it; clear a card's `ci-tmp/<ID>*` directories when the card is merged.**
+- Scratch still there. On no decision's list, so kept: `/tmp/if2453/b43` (20 GB). Listed by DEC-42 and not yet
+  removed (not urgent with 594 GB free; each to be looked at first): `m08a`, `m08b`, `c21f`, `e09`, `w25`, `w27`,
+  `w15`, `f028`, `f0210`, old pack copies under `w16` and `w19`, and, now that the `rM.2` build is done, the
+  dependency directories `pilot_s1/pydeps`, `pydeps_f02`, `pydeps_w27`.
 
 **Next, in order.**
 1. Done at 17:55: the durable copy of the data root (hashes in the state block). `rM.1` is left clustered only.
