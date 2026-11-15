@@ -1,0 +1,165 @@
+{
+ "contig_dim": {
+  "distinct_contigs": 5742,
+  "membership_contigs": 5742,
+  "rows": 5742
+ },
+ "contig_dim_disagreeing_with_membership": 0,
+ "contig_dim_shared": {
+  "rows": 103,
+  "with_two_or_more_genomes": 103
+ },
+ "contig_index": {
+  "default_variants": 185,
+  "of_them_shared": 0
+ },
+ "counts_on_shared": {
+  "by_locus_distinct_features": 9136,
+  "features_joined_to_membership": 18272,
+  "genes_rows": 9136,
+  "genomes": 156,
+  "genomes_without_the_stage": 53
+ },
+ "genecall_ledger_skipped": {
+  "P1": 41,
+  "P2": 62
+ },
+ "genome_dim": {
+  "distinct": 2785,
+  "membership_genomes": 2785,
+  "rows": 2785
+ },
+ "owner_genes_on_shared": {
+  "P1": {
+   "contigs_with_genes": 41,
+   "genes": 4281
+  },
+  "P2": {
+   "contigs_with_genes": 62,
+   "genes": 4855
+  }
+ },
+ "problems": [],
+ "results_with_skips": [
+  {
+   "distinct_proteins": 3426,
+   "genes": 3953,
+   "modes": [
+    "meta"
+   ],
+   "producer": "genecall",
+   "skipped": 103,
+   "wrapping_genes": 64
+  },
+  {
+   "arrays": 0,
+   "bases": 3340530,
+   "batches": 1,
+   "contigs": 185,
+   "java": "25.0.2-internal",
+   "minced_args": "-searchWL 8 -minNR 3 -minRL 23 -maxRL 47 -minSL 26 -maxSL 50",
+   "producer": "minced-0.4.2-w8-nr3-r23x47-s26x50",
+   "rejected": 0,
+   "repeats": 0,
+   "skipped": 103,
+   "spacers": 0
+  },
+  {
+   "arrays": 42,
+   "bases": 3340530,
+   "batches": 1,
+   "cas_families": "cas-pfam-1",
+   "contigs": 185,
+   "domain_library": "pfam-38.2",
+   "gene_call_version": "pyrodigal-3.7.1-gv-0.3.2-p2",
+   "java": "25.0.2-internal",
+   "kept": 0,
+   "minced_args": "-searchWL 8 -minNR 2 -minRL 23 -maxRL 47 -minSL 26 -maxSL 50",
+   "overlap_producer": "minced-0.4.2-w8-nr3-r23x47-s26x50",
+   "producer": "minced-0.4.2-w8-nr2-r23x47-s26x50-cas1kb-caspfam1-pfam-38.2",
+   "rejected": 0,
+   "rejected_by_reason": {
+    "exceeds_circle": 0,
+    "far_from_cas": 42,
+    "inside_gene": 0,
+    "overlaps_default": 0
+   },
+   "repeats": 126,
+   "skipped": 103,
+   "spacers": 84
+  }
+ ],
+ "sample": {
+  "circular": 220,
+  "contigs": 288,
+  "genomes": 288,
+  "shared_by_stage": {
+   "P1": 41,
+   "P2": 62
+  },
+  "shared_contigs": 103,
+  "shared_records": 107
+ },
+ "second_genomes_in_genome_dim": {
+  "plasmid_with_one_contig": 103,
+  "rows": 103
+ },
+ "stage_files_with_contig_uid": {
+  "l0seq/contig_index/stage=PLR/part-0.parquet": {
+   "rows": 185,
+   "rows_on_shared": 0
+  },
+  "l0seq/contig_label/stage=PLR/part-0.parquet": {
+   "rows": 288,
+   "rows_on_shared": 103
+  },
+  "l0seq/contig_occurrence/stage=PLR/source=plsdb/part-0.parquet": {
+   "rows": 315,
+   "rows_on_shared": 107
+  },
+  "l0seq/genome_input/stage=PLR/part-0.parquet": {
+   "rows": 288,
+   "rows_on_shared": 103
+  },
+  "l0seq/igr/igr_version=t-ca596dd85040-igr1/stage=PLR/part-0.parquet": {
+   "rows": 3209,
+   "rows_on_shared": 0
+  },
+  "l1/crispr/producer=minced-0.4.2-w8-nr2-r23x47-s26x50-cas1kb-caspfam1-pfam-38.2/stage=PLR/part-0.parquet": {
+   "rows": 0,
+   "rows_on_shared": 0
+  },
+  "l1/crispr/producer=minced-0.4.2-w8-nr3-r23x47-s26x50/stage=PLR/part-0.parquet": {
+   "rows": 0,
+   "rows_on_shared": 0
+  },
+  "l1/feature/producer=minced-0.4.2-w8-nr2-r23x47-s26x50-cas1kb-caspfam1-pfam-38.2/stage=PLR/part-0.parquet": {
+   "rows": 0,
+   "rows_on_shared": 0
+  },
+  "l1/feature/producer=minced-0.4.2-w8-nr3-r23x47-s26x50/stage=PLR/part-0.parquet": {
+   "rows": 0,
+   "rows_on_shared": 0
+  },
+  "l1/feature/producer=pyrodigal-3.7.1-gv-0.3.2-p2/stage=PLR/part-0.parquet": {
+   "rows": 3953,
+   "rows_on_shared": 0
+  },
+  "l1/feature_protein/gene_call_version=pyrodigal-3.7.1-gv-0.3.2-p2/stage=PLR/part-0.parquet": {
+   "rows": 3953,
+   "rows_on_shared": 0
+  },
+  "l1/protein_occurrence/gene_call_version=pyrodigal-3.7.1-gv-0.3.2-p2/stage=PLR/part-0.parquet": {
+   "rows": 3953,
+   "rows_on_shared": 0
+  },
+  "l3/tapes/tape_version=t-ca596dd85040/stage=PLR/part-0.parquet": {
+   "rows": 185,
+   "rows_on_shared": 0
+  }
+ },
+ "stage_genome_input": {
+  "contigs": 288,
+  "rows": 288
+ }
+}

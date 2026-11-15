@@ -1,0 +1,230 @@
+{
+ "gene_call_mode": {
+  "plasmid 4000 bp": "meta",
+  "plasmid 400000 bp": "meta"
+ },
+ "genetic_codes": {
+  "11": 68693
+ },
+ "genomes": {
+  "all": {
+   "circular": 62797,
+   "n": 68693,
+   "quality": {
+    "complete": 64936,
+    "contig": 3757
+   }
+  },
+  "on_contigs_an_earlier_stage_owns": {
+   "circular_by_plsdb": 6249,
+   "n": 7046
+  },
+  "on_contigs_the_stage_stores": {
+   "circular": 56548,
+   "n": 61647,
+   "quality": {
+    "complete": 58259,
+    "contig": 3388
+   }
+  }
+ },
+ "kinds": {
+  "plasmid": 68693
+ },
+ "metadata_values_by_record": {
+  "NUCCORE_Completeness": {
+   "": 3853,
+   "complete": 68703
+  },
+  "NUCCORE_Genome": {
+   "plasmid": 72556
+  },
+  "NUCCORE_Source": {
+   "insd": 13085,
+   "refseq": 59471
+  },
+  "NUCCORE_Topology": {
+   "circular": 66511,
+   "linear": 6045
+  },
+  "STATUS": {
+   "": 72360,
+   "suppressed": 196
+  },
+  "VIRAL_category": {
+   "": 64442,
+   "likely_viral_1": 7413,
+   "likely_viral_1-2": 10,
+   "likely_viral_2": 235,
+   "mostly_mge": 122,
+   "mostly_non-viral": 303,
+   "undefined": 31
+  },
+  "VIRAL_putative": {
+   "": 64442,
+   "False": 456,
+   "True": 7658
+  }
+ },
+ "p_stage_plasmids": {
+  "bases": 1177635985,
+  "contigs": 7044,
+  "distinct_per_gene": 0.9502,
+  "distinct_proteins": 1067518,
+  "gene_call_version": "pyrodigal-3.7.1-gv-0.3.2-p2",
+  "genes": 1123460,
+  "genes_per_mbp": 953.996,
+  "residues": 316841937,
+  "residues_per_distinct": 296.8
+ },
+ "pgap": {
+  "bases_all_records": 7297669596,
+  "bases_first_records_new": 5924552875,
+  "bases_first_records_new_with_cds": 5286310036,
+  "cds_all_records": 6032044,
+  "cds_first_records_new": 5005221,
+  "distinct_proteins_first_records_new": 1383442,
+  "first_records_new": 61647,
+  "first_records_new_with_cds": 59767,
+  "proteins_first_records_new": 5005221,
+  "records": 72556,
+  "records_with_cds": 70109,
+  "residues_distinct_first_records_new": 409706637
+ },
+ "repeats": {
+  "group_sizes": {
+   "2": 1382,
+   "3": 308,
+   "4": 127,
+   "5": 59,
+   "6": 37,
+   "7": 20,
+   "8": 16,
+   "9": 10,
+   "10": 7,
+   "11": 3,
+   "12": 4,
+   "13": 5,
+   "14": 5,
+   "15": 4,
+   "16": 2,
+   "17": 2,
+   "18": 2,
+   "21": 1,
+   "23": 2,
+   "26": 1,
+   "28": 1,
+   "36": 1,
+   "42": 1,
+   "44": 1,
+   "47": 1,
+   "57": 1
+  },
+  "largest_group": 57,
+  "records_beyond_the_first": 3863,
+  "records_in_those": 5866,
+  "repeats_other_quality": 99,
+  "repeats_other_topology": 112,
+  "sequences_in_several_records": 2003
+ },
+ "root_bytes_by_stage": {
+  "H1": {
+   "bytes": 1298868963,
+   "stored_bases": 1819831338
+  },
+  "P1": {
+   "bytes": 791635662,
+   "stored_bases": 1016625803
+  },
+  "P2": {
+   "bytes": 7449704536,
+   "stored_bases": 9596180328
+  },
+  "P3": {
+   "bytes": 7762670119,
+   "stored_bases": 9949077522
+  },
+  "P4": {
+   "bytes": 7748309772,
+   "stored_bases": 9976456950
+  },
+  "P5": {
+   "bytes": 7756741659,
+   "stored_bases": 9967711632
+  },
+  "P6": {
+   "bytes": 7718445547,
+   "stored_bases": 9962536103
+  },
+  "S1": {
+   "bytes": 1193926705,
+   "stored_bases": 1664109938
+  }
+ },
+ "stages": {
+  "H1": {
+   "member_contigs": 0,
+   "member_not_owner_contigs": 0,
+   "member_records": 0,
+   "owns_bases": 0,
+   "owns_contigs": 0,
+   "owns_records": 0
+  },
+  "P1": {
+   "member_contigs": 118,
+   "member_not_owner_contigs": 0,
+   "member_records": 120,
+   "owns_bases": 18650102,
+   "owns_contigs": 118,
+   "owns_records": 120
+  },
+  "P2": {
+   "member_contigs": 1267,
+   "member_not_owner_contigs": 0,
+   "member_records": 1294,
+   "owns_bases": 227508917,
+   "owns_contigs": 1267,
+   "owns_records": 1294
+  },
+  "P3": {
+   "member_contigs": 1175,
+   "member_not_owner_contigs": 1,
+   "member_records": 1191,
+   "owns_bases": 160535406,
+   "owns_contigs": 1174,
+   "owns_records": 1189
+  },
+  "P4": {
+   "member_contigs": 1504,
+   "member_not_owner_contigs": 1,
+   "member_records": 1516,
+   "owns_bases": 261879972,
+   "owns_contigs": 1503,
+   "owns_records": 1513
+  },
+  "P5": {
+   "member_contigs": 1693,
+   "member_not_owner_contigs": 1,
+   "member_records": 1714,
+   "owns_bases": 303733594,
+   "owns_contigs": 1692,
+   "owns_records": 1713
+  },
+  "P6": {
+   "member_contigs": 1291,
+   "member_not_owner_contigs": 1,
+   "member_records": 1309,
+   "owns_bases": 205327994,
+   "owns_contigs": 1290,
+   "owns_records": 1308
+  },
+  "S1": {
+   "member_contigs": 2,
+   "member_not_owner_contigs": 0,
+   "member_records": 2,
+   "owns_bases": 202881,
+   "owns_contigs": 2,
+   "owns_records": 2
+  }
+ }
+}

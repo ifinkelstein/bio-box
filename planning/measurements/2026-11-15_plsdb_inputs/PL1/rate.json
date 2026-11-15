@@ -1,0 +1,31 @@
+{
+ "every": 30,
+ "new_first_records_seen": 61647,
+ "modes": [
+  "meta"
+ ],
+ "all": {
+  "genomes": 2054,
+  "bases": 186854199,
+  "genes": 200816,
+  "cpu_s": 1356.556,
+  "s_per_mbp": 7.26,
+  "genes_per_mbp": 1074.72
+ },
+ "circular": {
+  "genomes": 1874,
+  "bases": 169713014,
+  "genes": 183128,
+  "cpu_s": 1306.076,
+  "s_per_mbp": 7.6958,
+  "genes_per_mbp": 1079.045
+ },
+ "linear": {
+  "genomes": 180,
+  "bases": 17141185,
+  "genes": 17688,
+  "cpu_s": 50.48,
+  "s_per_mbp": 2.9449,
+  "genes_per_mbp": 1031.901
+ }
+}
