@@ -1,0 +1,142 @@
+{
+ "cost": {
+  "cpu_s": 6.9,
+  "peak_rss_mb": 256.8,
+  "wall_s": 7.0
+ },
+ "families": 31,
+ "gap": 1000,
+ "gene_call_version": "pyrodigal-3.7.1-gv-0.3.2-p2",
+ "library": "pfam-38.2",
+ "producers": {
+  "near": "minced-0.4.2-w8-nr2-r23x47-s26x50-cas1kb-caspfam1-pfam-38.2",
+  "nr2": "minced-0.4.2-w8-nr2-r23x47-s26x50",
+  "nr3": "minced-0.4.2-w8-nr3-r23x47-s26x50"
+ },
+ "stages": {
+  "H1": {
+   "arrays_nr3": 954,
+   "bases": 1819831338,
+   "calls_in_genomes_with_cas": 1070,
+   "calls_nr2": 11906,
+   "cas_genes": 766,
+   "circular_contigs": 0,
+   "contigs": 6714,
+   "contigs_left_out": 514,
+   "contigs_left_out_by_stage": {
+    "S1": 514
+   },
+   "contigs_listed": 7228,
+   "cpu_s": 3.8,
+   "default_arrays": {
+    "arrays": 954,
+    "within_10_genes_enrichment": 10.13,
+    "within_10_genes_expected": 19.154,
+    "within_10_genes_observed": 194,
+    "within_1_kb_enrichment": 20.65,
+    "within_1_kb_expected": 6.538,
+    "within_1_kb_expected_e13_function": 6.538,
+    "within_1_kb_observed": 135
+   },
+   "draws": 10000,
+   "e13_extra": 10888,
+   "e13_set": 1692,
+   "gbp": 1.819831338,
+   "genomes": 6714,
+   "genomes_with_cas_gene": 477,
+   "kept_producer": 30,
+   "kept_rules_at_real_place": 30,
+   "nulls": {
+    "E13": {
+     "calls": 1692,
+     "expected_exact": 4.0159,
+     "expected_per_gbp": 2.2067,
+     "monte_carlo": {
+      "draws_max": 14,
+      "draws_median": 4,
+      "draws_p2_5": 1,
+      "draws_p97_5": 8,
+      "mean": 3.9972,
+      "mean_ci95": [
+       3.9584,
+       4.036
+      ],
+      "sd": 1.9791,
+      "se": 0.01979
+     },
+     "monte_carlo_per_gbp_ci95": [
+      2.1751,
+      2.2178
+     ],
+     "sd_exact": 1.9821
+    },
+    "N2": {
+     "calls": 11906,
+     "enrichment": 4.662,
+     "excess": 23.566,
+     "expected_exact": 6.4343,
+     "expected_per_gbp": 3.5357,
+     "monte_carlo": {
+      "draws_max": 20,
+      "draws_median": 6,
+      "draws_p2_5": 2,
+      "draws_p97_5": 12,
+      "mean": 6.4332,
+      "mean_ci95": [
+       6.3838,
+       6.4826
+      ],
+      "sd": 2.5225,
+      "se": 0.02522
+     },
+     "monte_carlo_per_gbp_ci95": [
+      3.5079,
+      3.5622
+     ],
+     "observed_kept": 30,
+     "observed_per_gbp": 16.485,
+     "p_at_least_observed_exact": 8.889343799379898e-12,
+     "p_at_least_observed_mc": 0.0,
+     "sd_exact": 2.5236
+    },
+    "N3": {
+     "calls": 10888,
+     "enrichment": 8.36,
+     "excess": 26.412,
+     "expected_exact": 3.5883,
+     "expected_per_gbp": 1.9718,
+     "monte_carlo": {
+      "draws_max": 13,
+      "draws_median": 3,
+      "draws_p2_5": 0,
+      "draws_p97_5": 8,
+      "mean": 3.5727,
+      "mean_ci95": [
+       3.5358,
+       3.6096
+      ],
+      "sd": 1.8825,
+      "se": 0.01883
+     },
+     "monte_carlo_per_gbp_ci95": [
+      1.9429,
+      1.9835
+     ],
+     "observed_kept": 30,
+     "observed_per_gbp": 16.485,
+     "p_at_least_observed_exact": 2.4638308850264757e-18,
+     "p_at_least_observed_mc": 0.0,
+     "sd_exact": 1.8868
+    }
+   },
+   "only_mine": [],
+   "only_producer": [],
+   "oracle_kept_equal": true,
+   "rejected_rule_a": 1018,
+   "rejected_rule_b": 10857,
+   "rejected_rule_c": 1,
+   "seed": 16,
+   "stage": "H1"
+  }
+ }
+}
