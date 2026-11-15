@@ -40,6 +40,14 @@ after all three. With `--crispr` and no `pfam` library only the default producer
 when it starts. Its estimate is the default step's times `CRISPR_NEAR_CAS_COST` (constant below), refused (exit 2) above
 `SHARD_MARGIN` of the budget for the same reason.
 
+Label files of a stage ingested before card B-27 (card C-34). Ingest writes the stage's `contig_label` table since
+card B-27, so no step of this list writes it. A stage ingested before has none; `bio-box stage labels --stage S`
+(`biobox.l0seq.store.write_labels`) writes it later from the stage's own `contig_occurrence`, the same files a
+re-ingest would write, as one `run-step` step named `labels` (`run-step --stage S --step labels -- python -m
+biobox.cli stage labels --root R --stage S`), outside this list: it refuses a stage that has label files, and a
+release published before the files existed ignores them (`catalog.STAGE_ADDED_TABLES`). It holds no table in
+memory (one DuckDB sort under `DUCK_MEMORY_LIMIT`) and takes seconds per stage: no estimate is made for it.
+
 Contigs shared across stages (card C-20, DEC-26). Ingest stores a sequence once, in the first stage that sees
 it, and that stage owns the contig's genes, IGRs and tape. When gene calling starts, `build-stage` adds
 `--seq-stages` naming the stage and every other stage of the root (`with_seq_stages`), so a genome that holds
