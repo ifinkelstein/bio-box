@@ -1,0 +1,3 @@
+release rN.3: verified (stages S1,P1,P2, 60 files, 34 artifacts, manifest hash eee598acd16324d1dd73349cfd6d931f)
+built by: 6d3c4606bd13 (version 0.0.1, commit unknown, 6 steps); 194 steps unknown: built before card C-23
+warning: release rN.3 has no contig_label files (built before card B-27); readers fall back to contig_occurrence, which cannot prune. A release built with the current code has the table (card C-17 builds one over these stages)
