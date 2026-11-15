@@ -671,6 +671,33 @@ bash "$TREE/scripts/pod_run.sh" --profile "$PROFILE" --image "$IMAGE" --digest "
 bio-box pack verify --root "$ROOT" --release rC6.1 --profile "$PROFILE"
 ```
 
+**A large release: the pack in parts** (card W-35). Before any work `pack build` prints its estimate in
+one process (a line `release <R>: estimate ... CPU-minutes in one process for ... genome bases`), from
+the release's genome bases and `protein_seq` rows at the rates in `src/biobox/search/pack.py`. Above 80%
+of the profile's `cpu_min_per_process` (240 of 300) it is refused, exit 2, and the message names the
+`--parts` that fits: `rN.3` (12,276,916,069 genome bases) fits one process at an estimate of 93.0
+CPU-minutes, `rM.2` (52,132,698,276 bases) does not at 386.9 (the counts measured and the estimates
+derived by `pack build` on wilkcomp02, 2026-11-14; `planning/measurements/2026-11-14_pack_build_in_parts.md`). With `--parts N` the build runs as separate processes, each estimated and
+checked against the same 240 before any work: `unique` (all proteins), N ranges of contigs for each of
+`igr` and `dark_orf`, then one last process that merges their sorted runs into the pack. The pack is the
+one-process pack byte for byte (same pack id). At most `--jobs J` parts run at once, one thread each,
+and each launch waits while the thread allowance of the hour (section 10) is smaller; every part runs
+under the unit's memory cap at nice 19. Count J against the account's total cap.
+
+```bash
+bash "$TREE/scripts/pod_run.sh" --profile "$PROFILE" --image "$IMAGE" --digest "$DIGEST" --mem 48G --threads 16 --bind /tmp/if2453 --env PYTHONPATH="$PYTHONPATH_POD" w35-pack pack build --root "$ROOT" --release rM.2 --model pfam-38.2="$PFAM" --profile "$PROFILE" --parts 8 --jobs 16
+```
+
+The log has one line per part as it ends (`part <name> done: ... CPU-minutes (estimate ...), wall ...,
+peak RSS ...`). The parts' runs are in `$BBTMP/scratch/pack/release=<R>/<key>/` (`--work` names another
+base, outside the data root and on the pack directory's file system); the pack directory sees only the
+last process's rename. `STOP` in the data root stops launches between parts (exit 75). The same command
+again runs only the parts without output, then the last process, and removes the work directory once the
+pack is in place. A part stopped by a signal removes its own temporary directory; what a killed part
+(SIGKILL) left, a dot-named `.<part>.tmp-*` or `.building-*` there, the next call removes. To give up on
+a build in parts, remove `$BBTMP/scratch/pack/release=<R>/<key>/` by exact path when no `pack build` of
+that release runs.
+
 **Recipe.** A YAML file; its format is in the docstring of `src/biobox/search/recipe.py`. A recipe
 without a positive control is refused. Appendix B writes a fixture recipe.
 
@@ -1037,6 +1064,7 @@ a profile value is missing from this table.
 | Unit CPU quota | the night cap, 56: a ceiling fixed at launch; `build-stage` holds the limit of the hour | `scripts/pod_run.sh --threads`, profile `max_threads_night`; card C-12 |
 | Smallest data file | 64 MiB (67108864 bytes), except tables the registry marks `small_ok` | profile `small_file_floor_bytes`; AGENTS 7.3 says 64 MB |
 | Work directory | `/tmp/if2453/bio-box` | profile `tmp`; AGENTS 7.3 |
+| Search pack build | one process when its estimate is at most 80% of `cpu_min_per_process` (300), else refused (exit 2) unless `--parts N`: then `unique`, N ranges of contigs for each of `igr` and `dark_orf` and a last process, each estimated and refused above the same 240 before any work, at most `--jobs` at once (one thread each) within the allowance of the hour. Rates (CPU-minutes): 0.25 per million `protein_seq` rows (unique), 0.70 and 5.45 per Gbp (igr, dark_orf), the last process 0.25 per million rows + 0.70 per Gbp + 2.6 per library, fitted to the parts of `rN.3` (measured, wilkcomp02, 2026-11-14, `planning/measurements/2026-11-14_pack_build_in_parts.md`) | `one_process_refusal`, `parts_refusal`, `build_in_parts` in `src/biobox/search/pack.py`; `SHARD_MARGIN` in `src/biobox/stage.py`; card W-35 |
 | Search pack directory | `<tmp>/packs` (`/tmp/if2453/bio-box/packs`), the host's one, outside the data root; with `--profile`, else `--pack-dir`. Only a `pack build` that makes a pack writes into it: it may be read-only for all but its builder | profile `tmp`; `default_pack_base` in `src/biobox/search/runner.py`; cards W-03, W-22 |
 | Search runs and work directories | `<tmp>/search/<user>/runs` and `<tmp>/search/<user>/work`, one per user, outside the data root; with `--profile`, else `--runs` and `--work` | profile `tmp`; `default_runs_dir`, `default_work_base` in `src/biobox/search/runner.py`; card W-03 |
 | `search run` in a `pod_run.sh` unit | only with `--wait`; without it, refused (exit 2) | `BIOBOX_POD_UNIT` in `scripts/pod_run.sh` and `src/biobox/cli.py`; card W-13 |

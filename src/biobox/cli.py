@@ -304,16 +304,47 @@ def _verify_scratch(a) -> Path | None:
     return runner.default_work_base(tmp) if tmp is not None else None
 
 
+def _pack_profile(a):
+    """The host profile of a `pack` command (`--profile`, else $BIOBOX_PROFILE), or None without one."""
+    path = getattr(a, "profile", None) or os.environ.get("BIOBOX_PROFILE")
+    if not path:
+        return None
+    from biobox import profile
+
+    return profile.load(path)
+
+
 def _pack(a) -> int:
     """`pack build|verify` (card W-03): the release's pack in the pack directory, never under the root. Only a
-    build that makes a pack writes into the pack directory (card W-22)."""
+    build that makes a pack writes into the pack directory (card W-22). Before any work `pack build` prints its
+    estimate and refuses a build in one process over the budget; `--parts N` builds it in parts (card W-35)."""
     packs = _packs(a)
     scratch = _verify_scratch(a)
     if a.action == "build":
         models = dict(m.split("=", 1) for m in a.model)
+        paths = {k: Path(v) for k, v in models.items()}
         try:
-            man = pack.build(Path(a.root), a.release, a.gene_call_version, {k: Path(v) for k, v in models.items()},
-                             packs=packs, scratch=scratch)
+            pack.outside_root(Path(a.root).resolve(), packs, "the pack directory")
+            if a.parts is None and (a.jobs is not None or a.work is not None):
+                raise ValueError("--jobs and --work are options of a build in parts: give --parts N")
+            prof = _pack_profile(a)
+            if a.parts is not None and prof is None:
+                raise ValueError("--parts needs the host profile (--profile or $BIOBOX_PROFILE): its "
+                                 "cpu_min_per_process, memory cap, nice and tmp are those of every part")
+            budget = prof.cpu_min_per_process if prof is not None else pack.DEFAULT_CPU_MIN_PER_PROCESS
+            counts = pack.release_counts(Path(a.root), a.release, a.gene_call_version, libraries=len(paths))
+            pack._log(pack.estimate_line(a.release, counts, budget))
+            if a.parts is None:
+                why = pack.one_process_refusal(counts, budget)
+                if why is not None:
+                    raise ValueError(why)
+                man = pack.build(Path(a.root), a.release, a.gene_call_version, paths, packs=packs, scratch=scratch)
+            else:
+                code, man = pack.build_in_parts(Path(a.root), a.release, a.gene_call_version, paths, packs=packs,
+                                                prof=prof, parts=a.parts, jobs=a.jobs,
+                                                work=Path(a.work) if a.work else None, scratch=scratch)
+                if code != 0:
+                    return code
         except (ValueError, FileExistsError) as e:
             print(f"refused: {e}", file=sys.stderr)
             return 2
@@ -2063,6 +2094,16 @@ def _main(argv: list[str] | None = None) -> int:
                          "give none when the release has none (an hmm_file or sequences seed needs no model)")
     pk.add_argument("--pack-dir", help=PACK_DIR_HELP)
     pk.add_argument("--profile", help=PROFILE_DIRS_HELP)
+    pk.add_argument("--parts", type=int,
+                    help="build: in parts, each its own process under the CPU budget (card W-35): unique, then N ranges "
+                         "of contigs for each of igr and dark_orf, then one last process; the pack is the one-process "
+                         "build's, byte for byte. Needs the host profile. Without it, a build estimated over 80%% of "
+                         "the profile's cpu_min_per_process is refused (exit 2), naming the N that fits")
+    pk.add_argument("--jobs", type=int,
+                    help="build --parts: parts at once, one thread each (default: the thread allowance at the start; "
+                         "each launch also waits for the allowance of the hour)")
+    pk.add_argument("--work", help="build --parts: the base of the parts' work directory (default: <profile "
+                                   "tmp>/scratch/pack), outside the data root, on the pack directory's file system")
     s = sub.add_parser("search", parents=[common])
     s.add_argument("action", choices=["run", "status", "cancel", "hits"],
                    help="see also `bio-box search hmm --help`: an HMM file to hits and neighbour tables in one command")

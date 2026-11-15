@@ -22,7 +22,7 @@ host profile's pack directory `/tmp/if2453/bio-box/packs`, card W-22):
 | Release | Contents | Search pack |
 |---|---|---|
 | `rN.1` | 27,258 phage genomes and 2,497 complete prokaryote genomes; 12,048,866 genes; 10,620,684 distinct proteins; NR50 2,966,200 and NR90 8,278,537 clusters; no Pfam (*measured*, `planning/tasks/STATUS.md`, "10 Gbp rebuild"; `planning/measurements/2026-11-10_trial_search_rN1.md`) | yes; until the operator copies it into the profile's pack directory, in `/tmp/if2453/w19/packs` (section 2) |
-| `rN.2` | the same genomes with Pfam 38.2 domains | none yet: ask the operator for one (RUNBOOK section 7, `pack build`) |
+| `rN.2` | the same genomes with Pfam 38.2 domains | none yet: ask the operator for one (RUNBOOK section 7, `pack build`; a release too large for one process under the CPU budget, such as the 50 Gbp `rM.2`, is built with `pack build --parts N`, card W-35, and gives the same pack) |
 | `rN.3` | the same genomes with Pfam 38.2, built by the current code (card C-17): the one to use | yes, in the profile's pack directory (`/tmp/if2453/bio-box/packs`), found with `--profile` alone |
 
 ## 2. Before you start
