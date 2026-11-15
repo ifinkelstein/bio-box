@@ -4,6 +4,7 @@
                                             [--axes R+R:S/R:S | none] [--crown AGE] [--rule R+R] [--n0] [--keep]
     python f0210_seed_scan.py table OUT LABEL [LABEL ...]
     python f0210_seed_scan.py crowns OUT_TSV [--seeds ...]
+    python f0210_seed_scan.py effrates OUT_TSV WORLD [WORLD ...]
 
 scan: builds the backbone of the `micro` preset (the generator of this tree) at each seed into
 OUT/worlds/LABEL/<seed>, N seeds at once (one process each), measures it and writes one row per seed to OUT/LABEL.tsv
@@ -25,6 +26,10 @@ those three settings put back. The world directory is removed after it is measur
 table: prints the rows of the labels as a Markdown table.
 crowns: the species trees alone (ZOMBI2's draw at each seed, before any rescaling), one row per seed with the crown
 age from the first speciation and from the living lineages' most recent common ancestor (DEC-37 (3)).
+effrates: for backbones kept with ``--keep``, each extant genome's lineage multipliers (ZOMBI2's
+`lineage_multipliers.tsv`) averaged over time along its line of descent from the rate onset to the present (branch
+times from the Newick): one row of quantiles per world and the pooled quantiles, the effective rate being the base
+rate times that average (session 11).
 
 Every number is counted here from the backbone's tables (`genes.tsv`, `families.tsv`, `groups.tsv`, `replicons.tsv`,
 `truth_units.tsv`, `events.tsv`), ZOMBI2's `genome_events.tsv` (the entry-exclusion replay) and
@@ -312,6 +317,27 @@ def measure(world: Path, params: dict) -> tuple[dict, list[dict]]:
     # needs 100 of them)
     row["root_families_ge40_genomes"] = sum(1 for r in fams.values()
                                             if r["kind"] == "root" and int(r["n_genomes_present"]) >= 40)
+    # N1's matched comparator (tests/r2/test_synthworld_nulls.py, read here from the backbone's presence): planted
+    # families present somewhere for which no root or originated family is present in the same number of genomes +- 2
+    by_n = collections.Counter(len(present[f]) for f, r in fams.items()
+                               if r["kind"] in ("root", "originated") and present[f])
+    row["n1_planted_without_match"] = sum(
+        1 for f, r in fams.items() if r["kind"] == "planted" and present[f]
+        and not any(by_n.get(len(present[f]) + d) for d in range(-2, 3)))
+    # paralogous junction copies in the clonal burst: per burst genome, adjacent (left family, right family, strands)
+    # keys on the chromosome, and the keys that occur more than once in that genome
+    burst_gids = {g["genome_id"] for g in genomes if g["species_node"] in set(meta.get("burst_tips", []))}
+    keys = collections.Counter()
+    chrom_genes = collections.defaultdict(list)
+    for g in genes:
+        if g["genome_id"] in burst_gids and g["replicon"] == "0":
+            chrom_genes[g["genome_id"]].append((int(g["position"]), g["family"], g["strand"]))
+    for gid, gs in chrom_genes.items():
+        gs.sort()
+        for (_, fa, sa), (_, fb, sb) in zip(gs, gs[1:] + gs[:1]):
+            keys[(gid, fa, sa, fb, sb)] += 1
+    row["burst_junction_keys"] = len(keys)
+    row["burst_junction_keys_multicopy"] = sum(1 for v in keys.values() if v > 1)
     row["scored_units"] = len(scored)
     row["scored_units_intact"] = sum(u["intact"] == "true" for u in scored)
     # session 11 columns: the crown from the living MRCA, the realized transfer axis per level, entry exclusion
@@ -542,9 +568,100 @@ def crowns(argv: list[str]) -> int:
     return 0
 
 
+EFF_RATES = ("duplication", "transfer", "loss", "origination")
+
+
+def _newick_times(nwk: Path, t0: float) -> dict[str, tuple]:
+    """label -> (parent, start, end) from ZOMBI2's Newick, the root starting at t0 (parsed here)."""
+    import re
+
+    text = nwk.read_text(encoding="utf-8").strip()
+    nodes: dict[str, list] = {}
+    opened: list[list[str]] = []
+    closed = False
+    for tok in re.findall(r"\(|\)|,|;|[^(),;]+", text):
+        if tok == "(":
+            opened.append([])
+            closed = False
+        elif tok == ")":
+            closed = True
+        elif tok in (",", ";"):
+            closed = False
+        else:
+            label, _, length = tok.partition(":")
+            kids = opened.pop() if closed else []
+            nodes[label] = [None, float(length or 0.0), kids]
+            for k in kids:
+                nodes[k][0] = label
+            if opened:
+                opened[-1].append(label)
+            closed = False
+    root = next(k for k, v in nodes.items() if v[0] is None)
+    times: dict[str, tuple] = {}
+    todo = [(root, t0)]
+    while todo:
+        lab, start = todo.pop()
+        parent, length, kids = nodes[lab]
+        times[lab] = (parent, start, start + length)
+        todo.extend((k, start + length) for k in kids)
+    return times
+
+
+def _effective_multipliers(w: Path) -> dict[str, list[float]]:
+    """Per extant genome and lineage rate, ZOMBI2's multiplier averaged over time along the genome's line of descent
+    from the rate onset (backbone.json crown ``rate_onset``, else the first speciation) to the present."""
+    meta = json.loads((w / "backbone" / "backbone.json").read_text(encoding="utf-8"))
+    t0, t1 = meta["scramble_stem"]
+    t_on = float(meta.get("crown", {}).get("rate_onset", t1))
+    times = _newick_times(w / "zombi2" / "species_complete.nwk", float(t0))
+    mult = {r["lineage"]: r for r in _tsv(w / "zombi2" / "lineage_multipliers.tsv")}
+    out: dict[str, list[float]] = {r: [] for r in EFF_RATES}
+    for g in _tsv(w / "backbone" / "genomes.tsv"):
+        x = g["species_node"]
+        present = times[x][2]
+        acc = {r: 0.0 for r in EFF_RATES}
+        while x is not None:
+            _, start, end = times[x]
+            if end > t_on:
+                for r in EFF_RATES:
+                    acc[r] += float(mult[x][r]) * (end - max(start, t_on))
+            x = times[x][0]
+        for r in EFF_RATES:
+            out[r].append(acc[r] / (present - t_on))
+    return out
+
+
+def effrates(argv: list[str]) -> int:
+    """effrates OUT_TSV WORLD...: quantiles of the time-averaged lineage multipliers per kept world and pooled."""
+    import statistics
+
+    def q(v, f):
+        v = sorted(v)
+        return v[min(len(v) - 1, int(round(f * (len(v) - 1))))]
+
+    out, rows, pooled = Path(argv[0]), [], {r: [] for r in EFF_RATES}
+    for w in (Path(a) for a in argv[1:]):
+        avg = _effective_multipliers(w)
+        row = {"seed": w.name}
+        for r in EFF_RATES:
+            v = avg[r]
+            pooled[r] += v
+            row.update({f"{r}_q10": round(q(v, 0.1), 4), f"{r}_q25": round(q(v, 0.25), 4),
+                        f"{r}_median": round(statistics.median(v), 4), f"{r}_q75": round(q(v, 0.75), 4),
+                        f"{r}_mean": round(statistics.fmean(v), 4)})
+        rows.append(row)
+    _write_tsv(out, rows)
+    print(json.dumps({r: {"q10": round(q(v, 0.1), 4), "q25": round(q(v, 0.25), 4),
+                          "median": round(statistics.median(v), 4), "q75": round(q(v, 0.75), 4),
+                          "mean": round(statistics.fmean(v), 4), "n": len(v)} for r, v in pooled.items()}))
+    return 0
+
+
 def main(argv: list[str]) -> int:
     if len(argv) >= 2 and argv[0] == "crowns":
         return crowns(argv[1:])
+    if len(argv) >= 3 and argv[0] == "effrates":
+        return effrates(argv[1:])
     if len(argv) < 3 or argv[0] not in ("scan", "table"):
         raise SystemExit(USAGE)
     return scan(argv[1:]) if argv[0] == "scan" else table(argv[1:])

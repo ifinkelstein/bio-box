@@ -39,16 +39,19 @@ genomes:
   initial_families: {v: 1000, tag: derived, why: "spike §5: 1,000 root families gave 1,454 genes per genome (mean) with groups; §5.1 target mean about 1,500"}
   chromosomes: {v: 1, tag: asserted, why: "one circular ZOMBI2 chromosome; plasmids are groups excised from it (plasmids, below)"}
   topology: {v: circular, tag: asserted, why: "chromosome"}
-  # duplication, transfer, loss and origination are twice the spike's (session 2): at the spike's rates a
-  # lineage's genome size relaxes over about 20 time units against a crown of about 4, so lineage rate
-  # differences (lineage_rates) could not move sizes far; doubled, the micro default seed reaches the §5.1 range
-  duplication: {v: 0.04, tag: asserted, why: "spike §1 rate x 2 (session 2), per copy"}
-  transfer: {v: 0.1, tag: asserted, why: "spike §1 x 2 (session 2)"}
-  loss: {v: 0.24, tag: asserted, why: "spike §1 x 2 (session 2)"}
+  # Session 11: duplication, transfer and loss are session 2's (0.04, 0.1, 0.24, the spike's x 2) times one factor
+  # 0.2, the ratios kept. Session 2's two lineage axes had most lineages run far below those base rates: averaged over
+  # time along each extant genome's line, the shared duplication + transfer multiplier had median 0.36 over 22 seeds
+  # and 0.06 at the default seed, the loss multiplier 0.85 and 0.45 (measured, f0210_seed_scan.py effrates on
+  # y_oldworld). With one origination axis (DEC-37 (1)) the base rates are what every lineage sees, so they are refitted
+  # (scans y_f*: factor 0.2, 0.3, 0.4 over 22 seeds at crown 5.0).
+  duplication: {v: 0.008, tag: fitted, why: "0.04 x 0.2; session 11 scan y_f0.2_o0.065: root families in >= 40 of 46 genomes 203-464 at all 22 seeds (default 203; 7 at factor 1, 111-129 at 0.3), chromosome means 1,354-1,783"}
+  transfer: {v: 0.02, tag: fitted, why: "0.1 x 0.2; fitted with duplication (above)"}
+  loss: {v: 0.048, tag: fitted, why: "0.24 x 0.2; fitted with duplication (above): the default seed's old effective loss was 0.24 x 0.45 = 0.108 over a crown of 2.56, about 0.055 over 5.0 (derived)"}
   inversion: {v: 0.05, tag: asserted, why: "spike §1"}
   transposition: {v: 0.02, tag: asserted, why: "spike §1"}
   translocation: {v: 0.0, tag: asserted, why: "one chromosome"}
-  origination_per_root_family: {v: 0.155, tag: fitted, why: "session 11 scans (22 seeds, crown 5.0 from the MRCA, one origination axis): at 0.15 the mean of the seed means was 1,435 (sigma 0.25); 0.155 at sigma 0.2 centres them (1,149-1,795, mean of the 22 means 1,454, g_s0.2_o0.155); 0.1 gave 833 at the default seed (smoke)"}
+  origination_per_root_family: {v: 0.065, tag: fitted, why: "session 11 scan y_f0.2_o0.065 (22 seeds, crown 5.0, the rates above, one origination axis at sigma 0.2): chromosome means 1,354-1,783, inside 1,500 +- 30% at every seed; 0.08 gave 1,452-1,812. Started from derived: background about 1,216 genes = 1000 exp(-0.5 x 0.1F) + 5 O (1 - 0.25 x 0.1F) at F = 0.2"}
   duplication_extent: {v: 2, tag: asserted, why: "spike §1 geometric means"}
   loss_extent: {v: 2, tag: asserted, why: "spike §1"}
   transfer_extent: {v: 3, tag: asserted, why: "spike §1"}
@@ -119,7 +122,7 @@ hubs:
   # §2.1 S2 hub families: declared single families that transfer far more often than the genome, so each
   # copy lands in a new neighbourhood (§4.2 item 4; §5.3 hub transfer multiplier).
   count: {v: 5, tag: asserted, why: "§5.1: 5 hubs"}
-  transfer_multiplier: {v: 20.0, tag: asserted, why: "x genomes.transfer, per copy (2.0)"}
+  transfer_multiplier: {v: 100.0, tag: derived, why: "x genomes.transfer, per copy: 2.0 = 100 x 0.02, the hubs' absolute rate of sessions 2-10 (20 x 0.1) kept when the background transfer was refitted (session 11)"}
   loss: {v: 0.1, tag: asserted, why: "per copy; well below the transfer rate, so a hub rarely dies out early (a branching copy line dies with probability about loss / transfer) and fills max_family_size"}
 
 decoys:
