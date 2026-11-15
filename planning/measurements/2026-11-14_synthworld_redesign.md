@@ -16,8 +16,8 @@ scripts/stress/f0210_seed_scan.py crowns /tmp/if2453/f0211/scan/crowns.tsv`. See
 second seed 20261113 and the 20 N2 seeds `nulls.n2_seeds(20261112, 20)` (22 rows; "the 21 seeds" are the default and
 the N2 seeds).
 
-**Outcome: the redesign is in the generator and the preset; three existing assertions cannot hold under it and are
-reported, not loosened (§4).** DEC-36 and DEC-37 (1) and (2) hold at all 22 seeds; DEC-37 (3) holds as a stated share
+**Outcome: the redesign is in the generator and the preset; seven existing assertions fail under it and are
+reported, not loosened (§4, §8).** DEC-36 and DEC-37 (1) and (2) hold at all 22 seeds; DEC-37 (3) holds as a stated share
 (both plasmid types at 14 of 22 seeds). The stage digests of the default world changed once and are re-pinned (§5).
 
 ## 1. What the generator does now
@@ -48,9 +48,9 @@ reported, not loosened (§4).** DEC-36 and DEC-37 (1) and (2) hold at all 22 see
   or vehicle group.
 
 Tested from the emitted tables, never from the generator's summary: `test_dec36_no_module_family_is_transferred_into_a_lineage_that_holds_the_module`
-replays ZOMBI2's `genome_events.tsv` (all lineages, speciation rows included) and counts, at the default seed, 2,117
-module-family transfer rows, 0 into a lineage holding the module's first family (728 into a lineage holding some other
-member, which partial transfers at together < 1 allow); the same world without the rule has 10,643 rows and 10,216
+replays ZOMBI2's `genome_events.tsv` (all lineages, speciation rows included) and counts, at the default seed, 2,065
+module-family transfer rows, 0 into a lineage holding the module's first family (710 into a lineage holding some other
+member, which partial transfers at together < 1 allow); the same world without the rule has 10,664 rows and 10,241
 into a holder (*measured*, `pod_pytest.sh F-02-11 -s tests/r2/test_synthworld_backbone.py`). The per-seed test replays
 the rule at six seeds and the scan at all 22 (`module_transfers_into_first_holder` 0 of 644 to 2,123 at every seed).
 `test_species_tree_has_the_preset_crown_age_from_the_living_mrca` reads the crown from the Newick with a parser of its
@@ -115,7 +115,7 @@ What each fit decided:
 - **Origination axis** (DEC-37 (1)): the mean leaves the band at 1 to 2 seeds from sigma 0.25 (depending on the draw)
   and at 6, 9 and 11 seeds at 0.5, 0.7 and 1.0; at sigma 0.2 with origination 0.155 x root families every seed holds
   (1,149-1,795; mean of the 22 means 1,454, *derived*). Size still moves with the axis: at the default seed a
-  genome's originated genes rank with the origination multiplier its line carried since the MRCA at Spearman 0.80
+  genome's originated genes rank with the origination multiplier its line carried since the MRCA at Spearman 0.805
   (permutation p 0.0005; *measured*, the migrated test).
 - **Member transfer** (DEC-36): under exclusion a member is transferred only into a lineage without the module, so the
   realized count has a floor near 4 (background transfer runs that carry a member) and saturates near 20 (the holes that
@@ -153,6 +153,24 @@ What each fit decided:
    spike's rates (duplication 0.02, transfer 0.05, loss 0.12) the core is 36 at the default seed (36 to 237 over 22
    seeds, 11 seeds >= 100) and the means rise to 1,471-2,196 (`h_spike`): halving the turnover is the direction, but it
    needs its own 21-seed refit of origination, plasmids and member rates, and a decision on the floor of 100.
+
+4. **Sequence-level tests at the default seed, whose world is now twice as old** (DEC-37 (2); the sequence model is
+   not this session's): `test_orthologous_igrs_are_near_identical_in_close_relatives` measured burst identity 0.864
+   with burst_depth 0.02 (the burst rooted 0.1 before the present) and 0.895 with 0.01 (0.05, as before; the test asks
+   0.9; *measured*, the pod_pytest runs below); `test_every_planted_motif_is_recovered_at_its_truth_coordinates_by_an_independent_scan`
+   fails on one instance at 27% divergence from its emission whose best window lies elsewhere (motif clades are rooted
+   at 0.5 of the crown age, now 2.5 time units instead of 1.28 at the default seed; halving `rna_motifs` clade height
+   would keep them as young, a world-changing step not taken here).
+5. **N1's matched-random comparator** (`test_n1_label_pairs_are_no_more_adjacent_than_matched_random_family_pairs`):
+   it draws, for each planted family, root or originated families present in the same number of genomes +- 2; with
+   the small core of item 3 a planted family in nearly every genome has none (`ValueError: high <= 0`, *measured* at the
+   default seed). Same cause as item 3.
+
+Proposed next steps for the PI: (a) the background turnover at the fixed crown (the spike's rates halve session 2's
+and bring the core back toward the old world, `h_spike`), refitted with origination, plasmids and member rates over
+the 21 seeds; (b) whether §5.1's "0-2 plasmids per genome" or DEC-37 (3)'s survival at every seed gives way (§4 item 1);
+(c) replacing N0's r >= 0.9 with a test that does not assume size is set by lineage rates (item 2); (d) motif clade
+height and the burst identity bound (item 4).
 
 Every other range holds at every seed: chromosome mean (22 of 22), crown age 5.0 from the MRCA (22 of 22), entry
 exclusion (0 breaches at 22 of 22), planted + profile-only + decoy share 3.2-7.6% (<= 15.2%), copies per present member
@@ -419,7 +437,25 @@ Assertions migrated or changed (each with its reason; no other assertion was cha
 
 ## 8. Null worlds
 
-NULLS
+`tests/r2/test_synthworld_nulls.py` at the default seed and at 20261113 (`BIOBOX_SYNTHWORLD_NULL_SEED`), each in a
+detached unit at 2 CPUs in the image from the pod_pytest mirror (*measured*, wilkcomp02, 2026-11-14, `python -m pytest
+-q -s tests/r2/test_synthworld_nulls.py`): **default seed 2 failed, 12 passed in 1,388 s; 20261113 1 failed, 12
+passed, 1 skipped (the pinned-digest test) in 1,371 s.** No assertion was loosened; no threshold there depended on a
+count that changed (the planted-pair counts in docstrings are printed, not asserted).
+
+| test | default seed | 20261113 |
+|---|---|---|
+| N0 background size: ratio in [0.9, 1.1], r >= 0.9 | fails: ratio 1.022, r 0.810 | fails: ratio 1.101, r 0.772 |
+| N1 label pairs against matched random pairs | fails: no root or originated family within +-2 genomes of a planted family's prevalence (§4 item 5) | passes |
+| every other test (byte identity in two processes, N0 keeps the tree and per-genome draws, no planted signal, N0-strict, another seed, truth_null, naive statistic miscalibrated, N1 shares S1-S10, N1 relabel bounds, times) | pass | pass |
+
+N1 relabels **11 of 100** module members at the default seed (4 of 25 modules, 29 evaluated label pairs) and 17 of 100
+at 20261113 (7 modules, 41 pairs); session 9 relabeled 27 or 28. Fewer non-module families now match a module
+family's profile within 4 genomes and its transfers within 25% (entry exclusion keeps the members' transfer counts at 3
+to 48, *measured*, while the root families' profiles spread with the doubled time). The naive co-occurrence statistic
+stays miscalibrated on both N0 worlds (21.0x and 20.5x the calibrated share at p < 1e-3, default seed). Fixes in this
+file: N1's relabel check reads a module family present in no genome as an empty profile (4 of the 100 are absent at
+the default seed; the test had read `pres[a]` and stopped with KeyError 'F001035').
 
 ## 9. The test that failed first
 
@@ -429,3 +465,14 @@ BIOBOX_TREE=<scratch copy> BIOBOX_POD_CI=/tmp/if2453/f0211/ci sh scripts/pod_pyt
 tests/r2/test_synthworld_preset_seeds.py`; output in `failing_first_old_generator.txt`): chromosome means 1,872.7,
 700.9, 404.4, 987.5, 14,089.5 and 2,112.9 with planted shares up to 60.3%; plasmid types lost at four of six seeds;
 grid cells with no module whole in 9 genomes at two seeds.
+
+## 10. Test runs on the committed tree
+
+Every synthworld test outside the null module and `tests/r0` together: **4 failed, 500 passed, 6 skipped in 2,141 s**
+(*measured*, wilkcomp02, 2026-11-14, `env BIOBOX_TREE=<worktree> sh scripts/pod_pytest.sh F-02-11 -s tests/r0
+tests/r1/test_synthworld_*.py tests/r2/test_synthworld_{backbone,preset_seeds,sequences,sequences_pfam,intergenic,
+rna_rfam,mobile,fusions,assembly,emit}.py`). The four: `test_plasmids_are_whole_replicons_of_their_preset_size` (§4
+item 1), `test_hub_families_have_more_diverse_neighbours` (item 3), `test_orthologous_igrs_are_near_identical_in_close_relatives`
+and `test_every_planted_motif_is_recovered_at_its_truth_coordinates_by_an_independent_scan` (item 4). The per-seed test
+passes (both plasmid types at 4 of its 6 seeds; one unpowered cell at 4383110225690451409; pooled levels 5.6, 12.9,
+20.5), as do the new DEC-36 and crown tests and every re-pinned digest. The null module: §8.
