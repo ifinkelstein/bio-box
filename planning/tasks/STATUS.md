@@ -86,9 +86,13 @@ with `SendMessage` to the same agent once the limit resets; nothing is lost.
   skani 0.4.0, matplotlib, zombi2, MMseqs2 18.8cc5c, HMMER 3.4, Infernal 1.1.5, samtools 1.25. `pod_pytest.sh` and
   `detached_suite.sh` put only the tree's `src` on `PYTHONPATH`. The `rM.2` build alone keeps the old image; **the
   next build sets `IMAGE` and `DIGEST` in its driver to the `faec1f4` values of RUNBOOK §0**.
-- `plan/task-cards` is ahead of `main` by F-02 sessions 8 to 10, E-12, C-32, E-13, A-08 and E-14; none changes
-  `container/environment.yml` or `uv.lock`, so no new image is needed. Every push through `4b101ba` (the decisions DEC-38 to DEC-42) was green on
-  Actions (read 12:18); the pushes after it change documents only.
+- `plan/task-cards` is ahead of `main` by F-02 sessions 8 to 10, E-12, C-32, E-13, A-08, E-14 and, since the
+  afternoon of 2026-11-14, W-33, E-15, W-34 and W-32; none changes `container/environment.yml` or `uv.lock`, so no
+  new image is needed. Every push through `597ae8b` (the W-32 merge) was green on Actions. **The whole suite on the
+  merged tree at `597ae8b`** (pod, 8 detached shards, test image of `faec1f4`, 18:19 to 19:07; *measured*,
+  `/tmp/if2453/ci-tmp/suite1114-detached/log.*`): 2,235 passed, 23 skipped, none failed (*derived*: the sums of
+  274, 513, 239, 243, 228, 226, 316 and 196 passed and of 0, 4, 1, 3, 5, 9, 1 and 0 skipped), the cross-host test
+  among them with the peer hash of Actions.
 - The fixture's manifest hash is `28ffa9808ecd4829e52f6892f94f7b85` since E-12, equal on Actions and the pod;
   `/tmp/if2453/ci-peer/right.json` holds it.
 
