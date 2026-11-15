@@ -362,8 +362,10 @@ def test_n0_keeps_the_background_process_in_distribution(worlds, record_property
     background is compared in distribution, each with its stated test:
 
     - background genome size: per genome, the root and originated genes; geometric mean of the per-genome ratio
-      null / signal within [0.9, 1.1] (a third of §5.1's +-30% size band) and Pearson r >= 0.9 over the 46 genomes
-      (size is set by the per-lineage rates, which ZOMBI2 draws with the tree);
+      null / signal within [0.9, 1.1] (a third of §5.1's +-30% size band). Pearson r over the 46 genomes is printed,
+      not asserted (DEC-44 (4): its bound of 0.9 measured the two lineage-rate axes that DEC-37 (1) removed; with one
+      origination axis a genome's size is mostly a stochastic draw, so a new draw of the same lineage rates
+      correlates weakly, r 0.19-0.99 over 22 seeds, measured in session 11);
     - phyletic patterns: the genomes-present counts of the 1,000 root families, two-sample Kolmogorov-Smirnov
       D below the alpha = 0.01 critical value 1.628 sqrt(2 / 1000);
     - strands: the + share of genes in [0.4, 0.6] (backbone.SCRAMBLE_PLUS, as the signal world);
@@ -397,7 +399,7 @@ def test_n0_keeps_the_background_process_in_distribution(worlds, record_property
         sz = bg_sizes(w)
         ratio = float(np.exp(np.mean(np.log(sz / sig_sizes))))
         r = float(np.corrcoef(sz, sig_sizes)[0, 1])
-        assert 0.9 <= ratio <= 1.1 and r >= 0.9, (n, ratio, r)
+        assert 0.9 <= ratio <= 1.1, (n, ratio, r)
         root = [int(x["n_genomes_present"]) for x in _tsv(w / "backbone" / "families.tsv") if x["kind"] == "root"]
         d = ks(np.array(root), np.array(root_s))
         assert d < 1.628 * math.sqrt((len(root) + len(root_s)) / (len(root) * len(root_s))), (n, d)
@@ -412,6 +414,7 @@ def test_n0_keeps_the_background_process_in_distribution(worlds, record_property
         dgc = np.abs(gc(w) - sig_gc)
         assert dgc.max() <= 0.01, (n, dgc.max())
         record_property(f"{n}_bg_size_ratio", round(ratio, 4))
+        record_property(f"{n}_bg_size_pearson", round(r, 4))
         print(f"\n{n}: background genes per genome {sz.mean():.1f} vs signal {sig_sizes.mean():.1f} (geometric mean "
               f"ratio {ratio:.3f}, r {r:.3f}); root presence KS D {d:.4f}; + strand {plus:.3f}; tight share {share:.4f} "
               f"over {len(cl)} distinct pairs (p_tight {p_tight}); GC |diff| mean {dgc.mean():.5f} max {dgc.max():.5f}")

@@ -545,7 +545,11 @@ def test_every_planted_motif_is_recovered_at_its_truth_coordinates_by_an_indepen
     n_subst_from_emission positions, n_compensatory pairs differ at both bases, every pair is canonical;
     dist_to_start is its distance to its gene's start codon. Scanning both strands of the store's own
     intergenic region around it (`ncrna.regions`, IGR runs widened by 200) for the emission, by Hamming
-    distance, finds the instance at its coordinates as the best window."""
+    distance, finds the instance at its coordinates as the best window, or (DEC-44 (1)) best windows that are
+    all other planted instances of the same emission, each at that instance's coordinates and strand (a tandem
+    duplication of the carrying gene puts a second, less diverged copy of the same instance beside it; the
+    instances are read from rna.tsv with the loop below). A best window that is no planted instance of the
+    emission fails, as before."""
     _, out, _ = world
     em = {r["emission_id"]: r for r in _tsv(out / "replicons/emissions.tsv")}
     links = {r["link"]: r for r in _tsv(out / "replicons/links.tsv")}
@@ -558,7 +562,12 @@ def test_every_planted_motif_is_recovered_at_its_truth_coordinates_by_an_indepen
     for g in tables["genes"]:
         genes_by[(g["genome_id"], int(g["replicon"]))].append((int(g["start"]), int(g["end"])))
     regions = {k: l1_ncrna.regions(v, len(tables["seq_of"][k]), True) for k, v in genes_by.items()}
-    best, n_div = 0, 0
+    # DEC-44 (1): every planted instance's window (start on the replicon, strand), by replicon and emission
+    planted_at = collections.defaultdict(set)
+    for r in tables["rna"]:
+        k = (r["genome_id"], int(r["replicon"]))
+        planted_at[(k, r["emission_id"])].add((int(r["start"]) % len(tables["seq_of"][k]), int(r["strand"])))
+    best, n_div, n_twin = 0, 0, 0
     divs = []
     for r in tables["rna"]:
         key = (r["genome_id"], int(r["replicon"]))
@@ -594,13 +603,16 @@ def test_every_planted_motif_is_recovered_at_its_truth_coordinates_by_an_indepen
         # a window k of the reverse complement covers [len - k - L, len - k) of the span
         winners = [((a + int(k)) % N, 1) for k in np.nonzero(hf == low)[0]]
         winners += [((a + len(span) - int(k) - L) % N, -1) for k in np.nonzero(hr == low)[0]]
-        assert (s, strand) in winners or divs[-1] > 0.3, (r, low, winners[:3])
+        others = planted_at[(key, r["emission_id"])] - {(s % N, strand)}
+        twin = (s, strand) not in winners and bool(winners) and all(w in others for w in winners)
+        assert (s, strand) in winners or twin or divs[-1] > 0.3, (r, low, winners[:3])
         best += winners == [(s, strand)]
         n_div += divs[-1] > 0.3
+        n_twin += twin
     n = len(tables["rna"])
     print(f"\n{n} motif instances in {len(links)} links: the truth window is the unique best scan window for "
           f"{best}; divergence from the emission median {np.median(divs):.3f}, max {max(divs):.3f}, "
-          f"{n_div} above 0.3")
+          f"{n_div} above 0.3; best windows another planted instance of the same emission for {n_twin}")
     assert n >= 200 and best >= 0.95 * n
 
 

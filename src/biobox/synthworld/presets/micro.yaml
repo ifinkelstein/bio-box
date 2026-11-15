@@ -39,19 +39,20 @@ genomes:
   initial_families: {v: 1000, tag: derived, why: "spike §5: 1,000 root families gave 1,454 genes per genome (mean) with groups; §5.1 target mean about 1,500"}
   chromosomes: {v: 1, tag: asserted, why: "one circular ZOMBI2 chromosome; plasmids are groups excised from it (plasmids, below)"}
   topology: {v: circular, tag: asserted, why: "chromosome"}
-  # Session 11: duplication, transfer and loss are session 2's (0.04, 0.1, 0.24, the spike's x 2) times one factor
-  # 0.2, the ratios kept. Session 2's two lineage axes had most lineages run far below those base rates: averaged over
-  # time along each extant genome's line, the shared duplication + transfer multiplier had median 0.36 over 22 seeds
-  # and 0.06 at the default seed, the loss multiplier 0.85 and 0.45 (measured, f0210_seed_scan.py effrates on
-  # y_oldworld). With one origination axis (DEC-37 (1)) the base rates are what every lineage sees, so they are refitted
-  # (scans y_f*: factor 0.2, 0.3, 0.4 over 22 seeds at crown 5.0).
-  duplication: {v: 0.008, tag: fitted, why: "0.04 x 0.2; session 11 scan y_f0.2_o0.065: root families in >= 40 of 46 genomes 203-464 at all 22 seeds (default 203; 7 at factor 1, 111-129 at 0.3), chromosome means 1,354-1,783"}
-  transfer: {v: 0.02, tag: fitted, why: "0.1 x 0.2; fitted with duplication (above)"}
-  loss: {v: 0.048, tag: fitted, why: "0.24 x 0.2; fitted with duplication (above): the default seed's old effective loss was 0.24 x 0.45 = 0.108 over a crown of 2.56, about 0.055 over 5.0 (derived)"}
+  # Session 11 refitted duplication, transfer and loss for one lineage axis (DEC-37 (1)): session 2's two axes had most
+  # lineages run far below the base rates (the shared duplication + transfer multiplier, averaged over time along each
+  # extant genome's line, had median 0.36 over 22 seeds and 0.06 at the default seed; measured, f0210_seed_scan.py
+  # effrates on y_oldworld), so with one origination axis the base rates are what every lineage sees. DEC-44 (5): the
+  # values are session 11's candidate B (its scan d_t0.045_d0.012_l0.076), kept by session 12 because with DEC-44's
+  # plasmid and decoy rates its default world has 206 equal-length cross-phylum IGR pairs (>= 200,
+  # tests/r2/test_synthworld_intergenic.py); planning/measurements/2026-11-14_synthworld_redesign.md §15.
+  duplication: {v: 0.012, tag: fitted, why: "session 11 batch D (candidate B, 22 seeds) and session 12 scan e_t0.045_l0.076_dec8.0: with transfer and loss below, root families in >= 40 of 46 genomes 175-406 at all 22 seeds (>= 100 for the hub test), chromosome means 1,403-1,815"}
+  transfer: {v: 0.045, tag: fitted, why: "DEC-44 (5): moved until the default world has >= 200 equal-length cross-phylum IGR pairs (a vertically inherited junction's IGR changes length over the time since the phyla split, so the pairs come mostly from transfer). Session 12 full default worlds with the final plasmid and decoy rates: 206 at 0.045, 177 at 0.05, 221 at 0.055 (session 11, before them: 118, 169, 188, 195 at 0.02, 0.03, 0.035, 0.045); 0.045 is the smallest that holds"}
+  loss: {v: 0.076, tag: derived, why: "(-0.01 + 2 x duplication + 3 x transfer) / 2 = (-0.01 + 0.024 + 0.135) / 2 (session 11's rule for batch D: per-copy net 2 loss - 2 duplication - 3 transfer = -0.01 with the extents 2, 2, 3); with origination below the chromosome mean stays inside 1,500 +- 30% at every seed (scan e_t0.045_l0.076_dec8.0: 1,403-1,815)"}
   inversion: {v: 0.05, tag: asserted, why: "spike §1"}
   transposition: {v: 0.02, tag: asserted, why: "spike §1"}
   translocation: {v: 0.0, tag: asserted, why: "one chromosome"}
-  origination_per_root_family: {v: 0.065, tag: fitted, why: "session 11 scan y_f0.2_o0.065 (22 seeds, crown 5.0, the rates above, one origination axis at sigma 0.2): chromosome means 1,354-1,783, inside 1,500 +- 30% at every seed; 0.08 gave 1,452-1,812. Started from derived: background about 1,216 genes = 1000 exp(-0.5 x 0.1F) + 5 O (1 - 0.25 x 0.1F) at F = 0.2"}
+  origination_per_root_family: {v: 0.035, tag: fitted, why: "session 11 batch D with the rates above; session 12 scan e_t0.045_l0.076_dec8.0 (22 seeds, crown 5.0, one origination axis at sigma 0.2, the final plasmid and decoy rates): chromosome means 1,403-1,815, inside 1,500 +- 30% at every seed"}
   duplication_extent: {v: 2, tag: asserted, why: "spike §1 geometric means"}
   loss_extent: {v: 2, tag: asserted, why: "spike §1"}
   transfer_extent: {v: 3, tag: asserted, why: "spike §1"}
@@ -73,7 +74,7 @@ modules:
   count: {v: 25, tag: asserted, why: "§5.1: 25 modules, sizes 2-6, strength grid 3 x 3"}
   sizes: {v: [2, 3, 4, 5, 6], tag: asserted, why: "§5.1"}
   together: {v: [0.3, 0.7, 1.0], tag: asserted, why: "§5.3 together grid"}
-  member_transfer: {v: [0.01, 0.03, 0.4], tag: fitted, why: "DEC-36: the axis is realized transfer events per member family, refitted so the three levels are distinct. Under entry exclusion a member is transferred only into a lineage without the module, so the count saturates near the holes losses make and has a floor from background runs carrying a member. Session 11 scan z_mt_0.01,0.03,0.4 (22 seeds, the background rates above): pooled medians 2.3, 4.0, 10.3, increasing at 21 of 22 seeds (2.55, 4.1, 9.8 over the six seeds of the per-seed test); 0.01/0.06/0.4 gave 2.1, 6.7, 10.1 at these rates (top step 1.5x, 1.4x over the six seeds), at session 2's background 5.0, 10.0, 20.8"}
+  member_transfer: {v: [0.01, 0.03, 0.4], tag: fitted, why: "DEC-36: the axis is realized transfer events per member family, refitted so the three levels are distinct. Under entry exclusion a member is transferred only into a lineage without the module, so the count saturates near the holes losses make and has a floor from background runs carrying a member. Session 11 scan z_mt_0.01,0.03,0.4 (22 seeds, the background rates above): pooled medians 2.3, 4.0, 10.3, increasing at 21 of 22 seeds (2.55, 4.1, 9.8 over the six seeds of the per-seed test); 0.01/0.06/0.4 gave 2.1, 6.7, 10.1 at these rates (top step 1.5x, 1.4x over the six seeds), at session 2's background 5.0, 10.0, 20.8. Kept by session 12 (DEC-44 (5): refit only if the levels stop being distinct): at the session-12 background, plasmid and decoy rates (scan e_t0.045_l0.076_dec8.0, 22 seeds) pooled medians 4.0, 6.0, 12.4, increasing at 19 of 22 seeds; 4.1, 6.2, 16.0 over the per-seed test's six seeds (steps 1.52x, 2.58x)"}
   member_loss: {v: 0.03, tag: asserted, why: "spike §1 member loss, so modules survive and travel"}
   member_duplication: {v: 0.0, tag: asserted, why: "DEC-36 aim: module families stop accumulating copies; with entry exclusion only duplication adds copies to a holder, so the members start no duplication runs of their own (a background run that ends in a unit still copies it, fates group). Session 10 measured this setting (o_crown_noaxes_excl)"}
   entry_exclusion: {v: true, tag: asserted, why: "DEC-36: a lineage that holds the module (its first family) receives none of its families by transfer"}
@@ -107,8 +108,8 @@ plasmids:
   # on a uniformly chosen one, so its replicons converge in size. Members carry the per-plasmid rates
   # divided by the plasmid's size (rates are per copy and a group is hit once per member).
   sizes: {v: [120, 40], tag: asserted, why: "§5.1: 20-200 genes; two types give 0-2 per genome"}
-  transfer: {v: 0.8, tag: fitted, why: "per plasmid per unit time (conjugation). DEC-37 (3), session 11 scans c_fit2, e_pls, f_pls (22 seeds each, 8 rate pairs): a unit is also cured by background loss runs that end in it (about 0.24 per unit per unit time, derived: loss 0.24 x sum of P(extent >= k) over k >= 2), so 0.3 against 0.7 dies out; both types survive at 10 to 18 of 22 seeds at every pair tried from 0.5/0.2 to 1.5/0.8 (early loss in the first lineages); 0.8/0.4 gave both types with at most 2 plasmids per genome and some genome without at the most seeds (5 of 22), the other pairs 1 to 4. With the committed preset both types live at 14 of 22 seeds (scan final): not every seed, DEC-37 (3)'s stated share"}
-  loss: {v: 0.4, tag: fitted, why: "per plasmid per unit time (curing); fitted with transfer (above)"}
+  transfer: {v: 0.1, tag: asserted, why: "per plasmid per unit time (conjugation). DEC-44 (3), the PI's choice from session 11's scan z_pls_0.1-0.3 (22 seeds: some genome without a plasmid at 22 of 22, both types alive at 17): §5.1's per-genome range (0-2 plasmids, some genomes without) stands, and both types are asserted at the default seed only, reported per seed (DEC-37 (3) amended). Survival at every seed and that range exclude each other in this model (session 11 §4 item 1: a type is lost in the first lineages, and rates high enough to prevent it saturate every genome). Under the session-12 preset: see planning/measurements/2026-11-14_synthworld_redesign.md §15"}
+  loss: {v: 0.3, tag: asserted, why: "per plasmid per unit time (curing); DEC-44 (3), with transfer (above)"}
   present_weight: {v: 0.0, tag: asserted, why: "entry exclusion: a lineage carrying the plasmid does not receive it again (absent weighs 1)"}
 
 vehicles:
@@ -122,7 +123,7 @@ hubs:
   # §2.1 S2 hub families: declared single families that transfer far more often than the genome, so each
   # copy lands in a new neighbourhood (§4.2 item 4; §5.3 hub transfer multiplier).
   count: {v: 5, tag: asserted, why: "§5.1: 5 hubs"}
-  transfer_multiplier: {v: 100.0, tag: derived, why: "x genomes.transfer, per copy: 2.0 = 100 x 0.02, the hubs' absolute rate of sessions 2-10 (20 x 0.1) kept when the background transfer was refitted (session 11)"}
+  transfer_multiplier: {v: 44.444444, tag: derived, why: "x genomes.transfer, per copy: 2.0 / 0.045 (rounded to 6 decimals), so the hubs keep the absolute rate 2.0 of sessions 2-10 (20 x 0.1) when the background transfer is refitted (sessions 11, 12)"}
   loss: {v: 0.1, tag: asserted, why: "per copy; well below the transfer rate, so a hub rarely dies out early (a branching copy line dies with probability about loss / transfer) and fills max_family_size"}
 
 decoys:
@@ -131,7 +132,7 @@ decoys:
   # so its phyletic profile follows the module's without adjacency or co-transfer. Signal worlds only (§4.1).
   partner_modules: {v: [1, 9, 11, 19, 22], tag: fitted, why: "§5.1: 5 decoys. The patchiest modules on the default seed (first family in 14-36 of 46 genomes): with modules 0, 5, 10, 15, 20 (37-46 genomes) a partner's carriers were 0.92 of the contemporaneous lineages, so the rule hardly steered"}
   absent_weight: {v: 0.0, tag: asserted, why: "a lineage without the partner never receives the decoy (present weighs 1)"}
-  transfer: {v: 0.4, tag: asserted, why: "per copy"}
+  transfer: {v: 8.0, tag: fitted, why: "per copy. DEC-44 (2): raised until every decoy has at least 3 transfers (tests/r2/test_synthworld_backbone.py) at every one of the 22 seeds. A decoy fails when its crown copies die before they transfer, or when its partner module (the partners are low-transfer modules) is soon held by one lineage only, so the transfers must come early (session 12, decoys.py on kept worlds). Scans e_t0.045_l0.076_dec* (22 seeds, session 12, planning/measurements/2026-11-14_synthworld_redesign.md §15): seeds with every decoy at >= 3 transfers 9 at 0.4, 15 at 0.8 and 1.2, 21 at 4.0, 22 at 8.0 (fewest 14) and 16.0 (fewest 22)"}
   loss: {v: 0.4, tag: asserted, why: "per copy: the profile is shaped by transfers more than by the root"}
 
 sequences:

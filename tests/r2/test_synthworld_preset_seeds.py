@@ -17,9 +17,9 @@ Ranges, each with its source:
   1,000-4,000 spread is no longer asked per seed;
 - planted share (planted, profile-only and decoy genes over all genes) at most PLANTED_SHARE_MAX, derived from §5.1's
   counts (session 10's derivation, for the PI to confirm);
-- both plasmid types alive at no fewer than half the seeds (DEC-37 (3) allows a stated share; §5.1's at most two
-  plasmids per genome is not asserted here: at the rates that keep both types alive, background duplication runs
-  give some genomes a second copy of a type, measured);
+- both plasmid types alive at the default seed, and the carriers of each type reported per seed (DEC-44 (3), which
+  amends DEC-37 (3)'s survival at every seed; §5.1's per-genome range is asserted at the default seed by
+  tests/r2/test_synthworld_backbone.py);
 - the crown age, from the living lineages' most recent common ancestor to the present, equal to the preset's
   `species.crown_age` (DEC-37 (2), (3));
 - in all but at most one cell of the strength grid per seed a module whose members are all present in at least
@@ -62,9 +62,6 @@ MIN_GENOMES = 9
 #: at least this many times the level below's (asserted, session 11: the refitted rates give about 2x over the 21
 #: seeds, planning/measurements/2026-11-14_synthworld_redesign.md; 1.5 leaves room for six seeds' sampling)
 LEVEL_RATIO = 1.5
-#: DEC-37 (3) "or state the survival share": both plasmid types at no fewer than half the seeds (asserted; the
-#: refit reached 14 of 22, planning/measurements/2026-11-14_synthworld_redesign.md)
-PLASMID_BOTH_SHARE = 0.5
 JOBS = max(1, min(3, len(os.sched_getaffinity(0)) if hasattr(os, "sched_getaffinity") else 1))
 
 CHILD = r'''
@@ -276,17 +273,19 @@ def test_genome_size_and_planted_share_hold_at_every_seed(measured):
 
 
 @pytest.mark.covers("F-02", "B-SIM")
-def test_both_plasmid_types_live_at_the_share_the_refit_reaches(measured):
-    """DEC-37 (3): plasmid rates refitted so that both types survive, or the share reached stated. Session 11
-    reached both types at 14 of 22 seeds (planning/measurements/2026-11-14_synthworld_redesign.md, scan
-    final): a type is lost in the first few lineages at about a third of the seeds at every rate pair
-    tried, so "every seed" is not asserted; at least PLASMID_BOTH_SHARE of the seeds here keep both types."""
+def test_both_plasmid_types_live_at_the_default_seed_and_are_reported_per_seed(measured):
+    """DEC-44 (3), amending DEC-37 (3): both plasmid types at the default seed, and reported per seed. At the rates
+    that keep §5.1's per-genome range (0-2 plasmids, some genomes without one) a type is lost in the first few
+    lineages at some seeds at every rate pair tried (session 11; planning/measurements/2026-11-14_synthworld_redesign.md
+    §12 to §14), so no share over the seeds is asserted; the carriers of each type are printed per seed."""
     params, out = measured
     names = {f"pls{k}" for k in range(len(params["plasmids"]["sizes"]))}
     both = [s for s, r in out.items() if set(r["plasmid_genomes"]) == names]
-    print(f"\nboth plasmid types at {len(both)} of {len(out)} seeds; most plasmids in one genome "
+    print(f"\nboth plasmid types at {len(both)} of {len(out)} seeds; carriers per type "
+          f"{ {s: dict(sorted(r['plasmid_genomes'].items())) for s, r in out.items()} }; most plasmids in one genome "
           f"{ {s: r['max_plasmids'] for s, r in out.items()} }")
-    assert len(both) >= PLASMID_BOTH_SHARE * len(out), (both, {s: r["plasmid_genomes"] for s, r in out.items()})
+    default = int(params["default_seed"])
+    assert default in out and set(out[default]["plasmid_genomes"]) == names, (default, out[default]["plasmid_genomes"])
 
 
 @pytest.mark.covers("F-02", "B-SIM")
