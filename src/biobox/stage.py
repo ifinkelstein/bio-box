@@ -56,8 +56,16 @@ a contig stored by an earlier stage is still read and trained whole; gene callin
 records the skip. Before the release's clustering (after its CPU estimate, below), `dim.owner_problem` refuses
 (exit 2) a release that lists a stage without the stage that owns one of its contigs, naming that stage.
 
-The step list and every argument are a pure function of the command line and the profile (the gene-call
-step's `--seq-stages`, added when it starts, is the one exception). Paths
+Rows measured in another stage (card B-47b, DEC-35 (2)). When a scan step's record does not exist, `_sharded` asks
+`domains.sources` whether another stage on disk measured proteins with the same scan (its completed domain step with a
+shard plan, the same HMM file sha256, cutoff, Z and tool versions). If one did, the scan runs in shards whatever its
+size, since only a plan records what is copied: the plan step is given `--seq-stages` (the stage, then every other
+stage on disk, as gene calling is), leaves out the proteins measured there and cuts its shards from the residues left;
+the build then says the copied proteins and the scan's estimate from the residues it will scan; the merge copies the
+measured rows, and the stage's files are a full scan's, byte for byte. With no such stage the scan runs as before.
+
+The step list and every argument are a pure function of the command line and the profile (the `--seq-stages` of the
+gene-call step and of a scan's plan step, added when they start, are the exceptions). Paths
 are made absolute. The thread count is `--threads`, else the smaller of the profile's day and
 night caps, which `run-step` accepts at any hour; it is given to `run-step` (`BIOBOX_THREADS`), to
 gene calling (`--workers`), to the scans (`--cpus`) and to MMseqs2 (`--threads`). Scratch is
@@ -265,7 +273,7 @@ import pyarrow.compute as pc
 import pyarrow.parquet as pq
 import yaml
 
-from biobox import catalog, dim, runstep
+from biobox import catalog, dim, ids, runstep
 from biobox.l0seq import store
 from biobox.l1 import crispr, domains, genecall, ncrna
 from biobox.l1.genecall import GENE_CALL_VERSION
@@ -794,6 +802,14 @@ def _sharded(prof: Profile, b: Build, root: Path, step: Step) -> bool:
     lib = _library(b, step)
     if (root / domains.scan_dir(b.stage, lib.name, lib.version) / "plan.json").exists():
         return True
+    seq = [s for s in store.stages_on_disk(root) if s != b.stage]  # the plan step's --seq-stages (`with_seq_stages`)
+    srcs, _ = domains.sources(root, b.stage, lib.name, lib.version, ids.sha256_file(Path(lib.hmm)).hex(), lib.cutoff,
+                              seq)
+    if srcs:  # card B-47b: only a plan records what is copied, so the scan runs as plan, shards and merge
+        _say(f"{b.stage}.{step.name}: {', '.join(s['stage'] for s in srcs)} measured proteins with this scan (HMM file, "
+             f"cutoff, Z and tool versions); the scan runs as its plan step, which leaves out the proteins measured "
+             f"there and copies their rows (card B-47b), then its shards over the residues left, then the merge")
+        return True
     residues = stage_residues(root, b.stage, b.gene_call_version)
     est = scan_cpu_min(residues)
     if est <= SHARD_MARGIN * prof.cpu_min_per_process:
@@ -974,7 +990,9 @@ def build_stage(prof: Profile, b: Build, *, run: Runner | None = None,
 
 
 def with_seq_stages(step: Step, root: Path, stage: str) -> Step:
-    """The gene-call step reading the sequences of every stage in the root (card C-20, DEC-26): `--seq-stages`
+    """`step` given the root's stages (card C-20, DEC-26), as gene calling, ncRNA and CRISPR steps take them, and the
+    plan step of a domain scan, which copies the rows those stages measured (card B-47b; that plan step does not read
+    their sequences). For gene calling: the step reading the sequences of every stage in the root: `--seq-stages`
     is the stage itself, then the others whose `seq_locator` exists when the step starts (`store.stages_on_disk`,
     the stages the stage's ingest compared its sequences against). A contig of the stage's genomes that one of them
     stored first is read from there for training and skipped in the output; a stage that holds none of its contigs
@@ -1026,13 +1044,19 @@ def _scan_in_shards(prof: Profile, b: Build, root: Path, step: Step, one: Callab
     scratch run is missing or fails its record is scanned again (`_rescan_lost`). `run` stands in for the shards'
     run-step processes (tests only). The shards' scratch runs are removed once the merge is published."""
     lib = _library(b, step)
-    first = scan_steps(prof, b, step, None, cpus)[0]
+    first = with_seq_stages(scan_steps(prof, b, step, None, cpus)[0], root, b.stage)  # card B-47b: copies
     code = one(first)
     if code is not None:
         return code
     if hook is not None:
         hook(f"after:{first.name}")
-    shards = len(domains.read_plan(root, b.stage, lib.name, lib.version)["shards"])
+    p = domains.read_plan(root, b.stage, lib.name, lib.version)
+    shards = len(p["shards"])
+    if "copy" in p:  # card B-47b: the estimate from the residues actually scanned
+        c, res = p["copy"], sum(s["residues"] for s in p["shards"])
+        _say(f"{b.stage}.{step.name}: the plan copies the rows of {c['proteins']:,} proteins ({c['residues']:,} "
+             f"residues) measured in {', '.join(s['stage'] for s in c['sources']) or 'no stage'} and scans "
+             f"{res:,} residues in {shards} shards, estimated at {scan_cpu_min(res):,.1f} CPU-minutes")
     subs = scan_steps(prof, b, step, shards, cpus)
     if run is None:
         run = _process_runner(_profile_file(prof, scratch_of(prof, b)))
