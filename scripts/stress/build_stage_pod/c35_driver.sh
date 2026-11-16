@@ -21,10 +21,11 @@
 # catalog. Why --cluster-parts 24 and not the default cut (planning/measurements/2026-11-16_release_r26.11.1.md):
 # rM.2 was cut so; its calls cost 0.78 to 1.34 times the cut's estimates (card C-22's model at 45.8 M proteins), so a
 # default cut, whose parts are estimated at up to 240 CPU-minutes, would give parts of up to about 320 for the calls the
-# model underestimates; at 24 parts the largest part is projected at 169 CPU-minutes. J x CPUS = 2 x 20: the NR90
+# model underestimates; at 24 parts the largest part is projected at 169 CPU-minutes. J x CPUS = 2 x 18: the NR90
 # step's prefilter parts each hold the k-mer table of every target (56.4 GB peak RSS on rM.2, about 60 GB here,
 # derived), so 2 at once (about 121 GB) stay well under the unit's 200G where 3 (about 181 GB plus page cache) would not;
-# 40 threads fit the night cap with the other agents' 12; by day the allowance (40 less ours elsewhere) runs one part.
+# 36 threads fit the night cap while the account's other work uses up to 20 (17 was seen by day during the rehearsal);
+# by day the allowance (40 less ours elsewhere) runs one part, and T = 18 keeps a one-process step from being held.
 #
 # Modes, in the order the card runs them:
 #   rehearse  The fixture of RUNBOOK Appendix B in a scratch root C/rh/root (own profile, tmp and units c35-rh-*;
@@ -83,10 +84,10 @@ EARLIER_STAGES=S1,P1,P2,P3,P4,P5,P6
 RELEASES="rN.1a rN.1b rN.1 rN.2 rN.3 rM.2"
 NSTEPS=15
 PARTS=${PARTS:-24}
-T=${T:-24}
+T=${T:-18}
 J=${J:-2}
-CPUS=${CPUS:-20}
-Q=${Q:-44}
+CPUS=${CPUS:-18}
+Q=${Q:-40}
 CPU_MAX=${CPU_MAX:-280}
 TMP_MIN_GB=${TMP_MIN_GB:-150}
 SCRATCH_MAX_GB=${SCRATCH_MAX_GB:-250}
