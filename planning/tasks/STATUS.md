@@ -120,8 +120,13 @@ release check* (2026-11-15 00:06) *and is announced as the release to use* (2026
   have tacc credits"). Card C-37 holds what TACC's public guides say (Lonestar6: nodes of 128 cores and 256 GB, 1
   SU per node-hour, jobs of 48 hours at most, Apptainer on compute nodes, an MFA code at every login) and a trial
   capped at 20 SUs: a probe, the image and its fast tests, and stage H1's Pfam scan made again there and compared
-  byte for byte with the pod's. **It waits on the PI for its step (0)**: which system and project the credits are
-  on, and how an agent may log in, since every login needs the PI's MFA code. Not started.
+  byte for byte with the pod's. The PI then said the credits cover every TACC service ("use the most
+  appropriate") and "i dont know the access, but prefer ssh". So: the trial runs on Lonestar6 (128 cores for 1 SU
+  per node-hour, the most cores per SU of the systems whose guides were read), and an agent works there through
+  an SSH connection the PI opens and it reuses (the card's option (a)). **It waits on the PI's first login**: the
+  laptop has never connected to a TACC host (*measured*: no TACC entry in its `known_hosts`), so the PI needs
+  the TACC username, an MFA pairing in the TACC accounts portal, and membership of a Lonestar6 project; then one
+  login with password and token code that stays open. Not started.
 - Free space on `/tmp`: **754 GB at 08:53 on 2026-11-16**, after a cleanup at 08:52 at the PI's word ("make sure
   youve cleaned temp scratch for all files u dont need"; *measured*, `/tmp/if2453/cleanup/cleanup_1116.log`): 156
   GB freed. Removed, each looked at first: the directories of finished, merged cards (`b18` to `b43`, `m08a` to
