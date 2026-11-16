@@ -89,3 +89,74 @@ sequence, so the same contig from two sources is stored once; proteins collapse 
 Open points this survey did not settle: the overlap of VIRE with IMG/VR; SPIRE's download form and size per sample;
 which GlobDB members are also in SPIRE's own species set (GlobDB took 49,369 of SPIRE's 107,078); the terms of
 each JGI dataset; and current totals for MGnify assemblies and IMG/M contigs.
+
+## 4. How to stage the imports when annotating everything is out of reach
+
+Asked by the PI on 2026-11-16 ("we probably can't annotate them in any reasonable way but think thru and give me
+ideas"). What follows is reasoning from our own measured rates; the conclusions are suggestions, and card C-38
+turns them into a design to decide.
+
+### 4.1 What each depth costs
+
+Rates are *measured* on wilkcomp02 (their cards named); everything scaled from them is *derived*, and assumes a
+metagenomic contig costs what our genomes cost per base, which the pilot of card C-42 measures.
+
+| Depth | What it gives | Cost per Gbp | 16 Tbp (all of SPIRE's contigs) |
+|---|---|---|---|
+| 0. Stored | sequences by content hash, with source and habitat labels | ingest about 4.5 CPU-minutes (42.9 per 9.6 Gbp, the code's constant) | 1,200 CPU-hours |
+| 1. Called | genes, proteins, gene order (tapes), CRISPR arrays | gene calling in meta mode 60 to 91 CPU-minutes (2.95 to 4.42 s per Mbp × 1.23, card B-48); arrays 3 (182 s per Gbp, card C-24) | 16,000 to 24,000 CPU-hours |
+| 2. Clustered | protein families by sequence alone | not measured at this scale; our cascade does not scale (14,087 CPU-minutes for 45.8 M proteins, exponent 1.244, card B-36); a linear clustering (linclust) is the candidate | unknown; needs memory in the TB range |
+| 3. Annotated | Pfam domains on every distinct protein | about 1,550 CPU-minutes (H1: 2,817 for 1.82 Gbp, card C-24) | 413,000 CPU-hours |
+
+- Annotation costs about 20 times what calling genes costs. On the pod at 40 threads 413,000 CPU-hours is 1.2
+  years; at TACC it is about 3,200 node-hours if a Lonestar6 core does what a pod thread does (card C-37 measures
+  that). For Logan's 0.9 Pbp it is about 180,000 node-hours. So: depth 3 for everything is out on the pod, a
+  budget question at TACC for a SPIRE-sized set, and out anywhere for Logan.
+- **Storage binds before CPU.** Stage H1's files at depth 1 are 0.71 GB per Gbp, 0.37 without the nucleotide
+  sequences and IGRs (*derived* from the sizes in card C-24's file list). So 1 Tbp is about 710 GB, or 370 GB
+  without sequences; 16 Tbp is 11 TB, or 6 TB. The pod's local disk is 1.1 TB in all and the data root lives on
+  it (80 GB today); `/stor/scratch` is a shared 22 TB (*measured*, `df`, 2026-11-16).
+- One search costs little: an HMM over `rN.1`'s 10.6 M proteins took about 8 to 11 CPU-minutes (*derived* from
+  card W-21's 190 to 245 s at 2.6 CPUs). At that rate one model over SPIRE's 35 billion proteins is about 450 to
+  580 CPU-hours, four node-hours at TACC: not interactive, but a routine job.
+
+### 4.2 Ideas, in the order I would try them
+
+1. **Separate importing from annotating, as named depths.** A stage records its depth; a release and a search say
+   which depths they cover. Genome-like sets (viruses, plasmids, species representatives) go to depth 3 as now.
+   Unbinned contigs stop at depth 1.
+2. **Search first, annotate on the hit.** The discovery papers of §1 work this way: find the bait in everything,
+   pull each hit's neighbourhood, annotate only the neighbours. For us: `search hmm` runs over the depth-1
+   proteins; Pfam then runs on the proteins within N genes of a hit, and those rows are kept, so the annotated
+   part of the corpus grows where questions were asked. Cost follows the number of hits, not the size of the
+   corpus.
+3. **Cluster before annotating, and annotate representatives of families that matter.** With a linear clustering
+   the family of a protein is known without Pfam, so neighbour statistics can run on cluster tokens alone. Pfam
+   then goes only to representatives of clusters above a size, or near hits. This is card B-47's idea taken one
+   step further.
+4. **Filter at the door.** A contig with fewer than about five genes carries no context. Dropping contigs under
+   about 5 kb (the papers of §1 used 1.5 kb) with the dropped bases counted in the ledger could remove a large
+   share of an assembly; the pilot measures how much.
+5. **Keep proteins and coordinates; refer to the nucleotides.** For unbinned contigs, call genes and CRISPR arrays
+   as the sequence streams through, keep the proteins, the gene order and the arrays, and record where the
+   sequence can be fetched again (source, sample, contig, sha256) instead of storing it. Halves the storage. It
+   changes an invariant of the spec (the corpus holds its sequences), so it is the PI's decision.
+6. **Take a habitat until it stops paying.** Import samples habitat by habitat and track new NR50 families per
+   Gbp; stop a habitat when the rate falls under a set fraction of its first value. The stage plan already asks
+   this of every stage after S6.
+7. **Import on the hit, from Logan.** Do not import Logan. Search it where it lives (its own index for close
+   matches; a protein search over its contigs is a cloud-sized job to be costed), then pull only the contigs of
+   the runs that hit, as a small stage that records the query that brought it in.
+8. **Use the right machine for each depth.** Gene calling and scans are many independent pieces: TACC's ordinary
+   nodes. A clustering of billions of proteins needs one very large memory: Stampede3's 4 TB nodes.
+9. **Decide where a multi-TB corpus lives before importing one.** The pod's local disk cannot hold it. The
+   candidates are a larger footprint on `/stor/scratch` (ours to ask for, `planning/footprint_request.md`) or
+   TACC storage; either way the data root, or the depth-1 part of it, moves off `/tmp`.
+
+### 4.3 The order of the cards
+
+Sources that can still be annotated in full come first, because they are small and widen diversity most per base:
+viruses (C-39), plasmids (C-40), then GlobDB's species (C-41; about 400 Gbp, which is 57 node-hours of scan at
+TACC by the rates above, or about eight days of the pod at 40 threads). Then the unbinned contigs, as a measured
+pilot before any commitment (C-42, with the design C-38 and the run-accession crosswalk C-43). Logan is probed,
+not imported (C-44). What stays out, and why, is card C-45.

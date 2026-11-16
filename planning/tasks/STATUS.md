@@ -132,7 +132,14 @@ release check* (2026-11-15 00:06) *and is announced as the release to use* (2026
   bacterial from diverse niches"): surveyed in `planning/sources_metagenomic_survey.md` (published sizes, read on
   2026-11-16; nothing fetched, no card yet). Its recommendation: viruses as vOTU representatives, GlobDB's 162,653
   species that GTDB lacks, a habitat-stratified pilot of SPIRE's unbinned contigs, and Logan in place of raw reads.
-  It waits for the PI's reading.
+  The PI then asked for cards and for how to stage the imports given that they cannot all be annotated: the
+  survey's §4 (costs by depth from our measured rates; nine ideas, first among them importing at a stated depth
+  and annotating only around search hits) and **cards C-38 to C-45** (C-38 the design note; C-39 viruses; C-40
+  plasmids; C-41 GlobDB's 162,653 species GTDB lacks; C-42 a habitat-stratified pilot of SPIRE's contigs; C-43
+  the crosswalk of assemblies by run; C-44 a Logan probe; C-45 what stays out). **None is started: each waits on
+  the PI's approval of its source entry in `sources.yaml`** (AGENTS §8), and anything beyond a pilot waits on
+  where a corpus of several TB lives (the pod's local disk is 1.1 TB; 1 Tbp of called contigs is about 710 GB,
+  *derived*).
 - Free space on `/tmp`: **754 GB at 08:53 on 2026-11-16**, after a cleanup at 08:52 at the PI's word ("make sure
   youve cleaned temp scratch for all files u dont need"; *measured*, `/tmp/if2453/cleanup/cleanup_1116.log`): 156
   GB freed. Removed, each looked at first: the directories of finished, merged cards (`b18` to `b43`, `m08a` to
