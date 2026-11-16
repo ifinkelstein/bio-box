@@ -1,0 +1,4 @@
+{"accepted_outside_20pct": {"ingest": "DEC-47"}, "checked": 1, "counts": [], "outside_20pct": [], "rows": [{"accepted": "DEC-47", "basis": "ingest_cpu_min(FASTA bytes)", "cpu_min": 26.612, "estimate": 33.267, "judged": true, "peak_rss_mib": 6011.7, "ratio": 0.8, "step": "ingest", "wall_s": 1549.001}], "stage": "PL1"}
+exit 0 for /tmp/if2453/r10/root
+{"accepted_outside_20pct": {}, "checked": 1, "counts": [], "outside_20pct": ["ingest"], "rows": [{"basis": "ingest_cpu_min(FASTA bytes)", "cpu_min": 26.281, "estimate": 33.267, "judged": true, "peak_rss_mib": 6011.7, "ratio": 0.79, "step": "ingest", "wall_s": 1549.001}], "stage": "PL1"}
+exit 3 for /tmp/if2453/c26/dry/miss21
