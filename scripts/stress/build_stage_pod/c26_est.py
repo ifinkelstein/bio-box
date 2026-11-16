@@ -25,7 +25,8 @@ estimate in the published plan `l1/genecall_plan/stage=<S>/plan.json`) and the m
 CRISPR steps (`stage_bases` now). With --expect, also the counts part 1 estimated as ranges, once they exist: genes and
 distinct proteins (the gene-call record's outputs) and the residues of the scan plan; a count outside its range by more
 than 20% of the nearer end is judged like a step. Prints one JSON line; exit 3 when a judged step or count is outside
-20% (exit 4 when every such step is a gene-call batch), else 0.
+20% (exit 4 when every such step is a gene-call batch), else 0. One record is accepted by name and value (DEC-47:
+PL1's ingest, 26.612 against 33.267): it is listed under `accepted_outside_20pct` and in its row, not judged.
 """
 from __future__ import annotations
 
@@ -49,6 +50,11 @@ TOL = 0.20
 # DEC-43 (PI, 2026-11-15): a step estimated under this many CPU-minutes is reported but not judged (a step that small
 # costs its start-up and has no rate). Every step estimated at or above it is held to 20% (AGENTS §6).
 MIN_JUDGED_CPU_MIN = 24.0
+# DEC-47 (PI, 2026-11-16): the driver accepts this one record by name and value, stage PL1, step ingest, 26.612
+# CPU-minutes against the code's estimate of 33.267 (ratio 0.79995, 20.005% under; the launch c26-pl1-1 was stopped on
+# it), and reports it. Every other step, and any other ingest record, is still judged at 20%. Compared at the
+# precision the record and the estimate are reported here (3 decimals). Card B-52 corrects the ingest estimate.
+ACCEPTED = {("PL1", "ingest", 26.612, 33.267): "DEC-47"}
 # Part 1's estimates of what is known only after gene calling (planning/measurements/2026-11-15_plsdb_inputs.md §4,
 # all *derived* there): genes 5.61 M (PGAP density) to 6.37 M (meta mode on every 30th record); distinct proteins
 # 1.38 M (PGAP's distinct proteins, measured lower bound) to 1.76 M; residues 409.7 M to 521.2 M.
@@ -169,7 +175,7 @@ def before(a) -> int:
 
 def rates(a) -> int:
     root, st = Path(a.root), a.stage
-    rows, bad, counts = [], [], []
+    rows, bad, counts, accepted_rows = [], [], [], {}
 
     def add(step: str, est: float, why: str) -> None:
         r = rec(root, st, step)
@@ -177,10 +183,15 @@ def rates(a) -> int:
             return
         ratio = r["cpu_min"] / est if est > 0 else float("inf")
         judged = est >= MIN_JUDGED_CPU_MIN
-        rows.append({"step": step, "cpu_min": round(r["cpu_min"], 3), "estimate": round(est, 3),
-                     "ratio": round(ratio, 3), "basis": why, "judged": judged, "wall_s": r["wall_s"],
-                     "peak_rss_mib": round((r.get("peak_rss_bytes") or 0) / 2**20, 1)})
-        if judged and abs(ratio - 1) > TOL:
+        accepted = ACCEPTED.get((st, step, round(r["cpu_min"], 3), round(est, 3)))  # DEC-47: this one record only
+        row = {"step": step, "cpu_min": round(r["cpu_min"], 3), "estimate": round(est, 3),
+               "ratio": round(ratio, 3), "basis": why, "judged": judged, "wall_s": r["wall_s"],
+               "peak_rss_mib": round((r.get("peak_rss_bytes") or 0) / 2**20, 1)}
+        if judged and abs(ratio - 1) > TOL and accepted is not None:
+            row["accepted"] = accepted  # reported, not judged: outside 20%, accepted by name and value
+            accepted_rows[step] = accepted
+        rows.append(row)
+        if judged and abs(ratio - 1) > TOL and accepted is None:
             bad.append(step)
 
     def count(name: str, got: int) -> None:
@@ -217,7 +228,9 @@ def rates(a) -> int:
             count("distinct_proteins", sum(pq.read_metadata(f).num_rows for f in ps))
         if p is not None:
             count("residues", p["residues"])
-    print(json.dumps({"stage": st, "checked": len(rows), "outside_20pct": bad, "rows": rows, "counts": counts},
+    print(json.dumps({"stage": st, "checked": len(rows), "outside_20pct": bad,
+                      "accepted_outside_20pct": accepted_rows,
+                      "rows": rows, "counts": counts},
                      sort_keys=True))
     if bad and all(x.startswith("genecall.batch-") for x in bad):
         return 4  # only gene-call batches: the driver lets the other batches publish, then stops before the merge
