@@ -132,12 +132,14 @@ the inputs, the budget and the margin only, never on J or C, and the merged file
 scan in one process, byte for byte. The shards' scratch runs live under the scratch directory and
 are removed after the merge.
 
-Ingest in batches (card B-30). When ingest's estimate in one process exceeds `SHARD_MARGIN` of the
-budget (or a pass-1 record of the stage is already published), ingest runs as steps of its own
-(`ingest_steps`, `biobox.l0seq.store`): `ingest.pass1-<k>` for each pass-1 shard (the objects by name,
-cut at `pass1_bytes`: what fits the margin at `INGEST_CPU_MIN`), `ingest.plan`, `ingest.batch-<j>` for
-each batch of the plan (one shard each, DEC-21), then the merge under the step name `ingest`. Each is a
-one-thread `run-step`; the pass-1 and batch steps run up to J × C at once within the allowance, as scan
+Ingest in batches (card B-30). Ingest's estimate in one process (card B-52, `ingest_cpu_min`) is made when the
+build reaches the step, from the stage's bytes of FASTA less the bases of the contigs its `genome_input` lists that
+another stage on disk already holds (`held_bases`; ingest reads those and stores nothing of them), and is said in
+one line. When it exceeds `SHARD_MARGIN` of the budget (or a pass-1 record of the stage is already published),
+ingest runs as steps of its own (`ingest_steps`, `biobox.l0seq.store`): `ingest.pass1-<k>` for each pass-1 shard
+(the objects by name, cut at `pass1_bytes`: what fits the margin at `INGEST_CPU_MIN`, every byte counted as
+stored), `ingest.plan`, `ingest.batch-<j>` for each batch of the plan (one shard each, DEC-21), then the merge
+under the step name `ingest`. Each is a one-thread `run-step`; the pass-1 and batch steps run up to J × C at once within the allowance, as scan
 shards do. The files are those of ingest in one process, byte for byte; the pass-1 and plan records
 (`l0seq/ingest_plan/`) are a build's own, never in a manifest. Each of these steps has its own scratch
 directory (`--tmp`, cleaned as above); the pass-1 runs and the decision table they hand on live in
@@ -263,35 +265,51 @@ import queue
 import shutil
 import subprocess
 import sys
+import tempfile
 import threading
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
 
+import duckdb
 import pyarrow.compute as pc
 import pyarrow.parquet as pq
 import yaml
 
-from biobox import catalog, dim, ids, runstep
+from biobox import catalog, dim, ids, io, runstep
 from biobox.l0seq import store
 from biobox.l1 import crispr, domains, genecall, ncrna
 from biobox.l1.genecall import GENE_CALL_VERSION
 from biobox.l2 import cluster as l2cluster
 from biobox.profile import Profile
+from biobox.registry.schemas import table
 
-# Measured, wilkcomp02, 2026-11-10: one ingest process took 42.9 CPU-minutes for 9,596,180,328 bp of
-# FASTA (stage P2 of the import ladder, planning/measurements/2026-11-10_import_ladder/README.md,
-# "Step timings" and finding 4). The estimate applies the rate to bytes of decompressed FASTA, which
-# are at least the bp they hold (headers and newlines add to them). The estimate therefore errs high.
-INGEST_CPU_MIN = 42.9
-INGEST_BP = 9_596_180_328
+# Ingest (card B-52, DEC-47 (2)): INGEST_CPU_MIN per INGEST_BP bytes of decompressed FASTA that the stage does not
+# find already held, plus INGEST_FIXED_CPU_MIN (`ingest_cpu_min`). The bytes held are the bases of the contigs the
+# stage's `genome_input` lists that another stage's `contig_index` on disk holds as a default variant
+# (`held_bases`): ingest reads them, hashes them and stores nothing of them (DEC-26). Both are known before the step
+# starts. The cost follows what is stored more than what is read: after hashing, 0.84 CPU-minutes per Gbp read plus
+# 3.41 per Gbp stored hold all nine records within 6.2% (derived, same note), but what is stored is known only then.
+# Fitted on the ingest run records of the nine stages of the data root (*measured*, wilkcomp02, 2026-11-10 to 16,
+# runs/stage=<S>/ingest.json, read with what each stage read and the root held before it on 2026-11-16,
+# planning/measurements/2026-11-16_ingest_estimate.md): CPU-minutes less 0.07 per Gbyte not held, 3.52 (S1), 4.41
+# (P1), 3.94 to 4.35 (P2 to P6), 4.16 (H1), 4.25 (PL1). The rate is the least-squares fit of the relative error over
+# the nine, 4.110 (derived there): every record within 20% of its estimate, eight within 10% (from P1 7.2% over to
+# S1 14.2% under, whose FASTA repeats 6,818 of its 34,076 records, read but not stored, which only hashing finds).
+# Before card B-52 the rate was 42.9 CPU-minutes per 9,596,180,328 bytes of any FASTA read (the import ladder's P2,
+# measured 2026-11-10), which put PL1 20.005% under its estimate (DEC-47) and S1 21.1% under (derived).
+# A caller that knows nothing of the root (`_refusal`'s one object, a batch's bases read, a pass-1 shard) counts every
+# byte as stored: a pass-1 shard stores nothing (its estimate errs high) and a batch at most what it reads (its
+# estimate is at most the fit's error under its cost: 7.2%, so a batch estimated at the margin stays in the budget).
+INGEST_CPU_MIN = 4.11
+INGEST_BP = 1_000_000_000
 # Measured, wilkcomp02, 2026-11-10 (card C-10, planning/measurements/2026-11-10_build_stage_pod.md): the
 # fixed start-up cost of a step, 0.07 CPU-minutes for stage S1a's `inputs` step, which does almost no
 # work. Added to every ingest estimate (card C-13). Without it the estimate of S1a's ingest (63,357,113
 # bytes) was 0.28 CPU-minutes against 0.36 measured; with it 0.35 (derived), and P1's (1,029,384,352
-# bytes) 4.67 against 4.44 measured (derived). The rate above was measured with this cost included, so at
-# P2's size the estimate is 0.07 high (0.2%, derived).
+# bytes) 4.67 against 4.44 measured (derived; both at the rate before card B-52). Card B-52 fitted the rate above
+# to the records less this cost.
 INGEST_FIXED_CPU_MIN = 0.07
 # Measured, wilkcomp02, 2026-11-10: the Pfam scan of stage P1 in the first build with build-stage (card
 # C-10, same file: the stage's 918,765 proteins, 294,516,869 residues, in 19 shard processes) took
@@ -599,8 +617,47 @@ def object_sizes(objects: Path) -> list[tuple[Path, int, int]]:
     return _SIZES[key]
 
 
-def ingest_cpu_min(n_bytes: int) -> float:
-    return INGEST_FIXED_CPU_MIN + n_bytes * INGEST_CPU_MIN / INGEST_BP
+def ingest_cpu_min(n_bytes: int, held_bases: int = 0) -> float:
+    """CPU-minutes of an ingest process that reads `n_bytes` bytes of FASTA, `held_bases` of whose bases another
+    stage already holds (`held_bases`), at the fitted rate above the constants (card B-52). Without `held_bases`
+    every byte is counted as stored."""
+    return INGEST_FIXED_CPU_MIN + max(0, n_bytes - held_bases) * INGEST_CPU_MIN / INGEST_BP
+
+
+def _ingest_rate() -> str:
+    """How the messages that quote the ingest estimate name it."""
+    return (f"{INGEST_CPU_MIN:g} CPU-min per {INGEST_BP:,} bytes of FASTA not held by another stage, plus "
+            f"{INGEST_FIXED_CPU_MIN:g} CPU-min to start; fitted on the ingest records of nine stages, wilkcomp02, "
+            f"2026-11-16, card B-52")
+
+
+def held_bases(root: Path, stage: str, tmp: Path | None = None) -> int:
+    """Bases of the contigs `stage`'s `genome_input` lists that another stage's `contig_index` on disk holds as a
+    default variant (DEC-26): what the stage's ingest reads and does not store again (card B-52). Each contig is
+    counted once, however many genomes or records list it. The inputs step publishes `genome_input` before ingest
+    starts, and the `contig_index` files are those ingest's own anti-join reads (`store.index_files`), so this is
+    known before the step; 0 when the stage has no `genome_input` yet. One DuckDB query on one thread, spilling under
+    `tmp`."""
+    root = Path(root)
+    gi = io.part_files(root / table("genome_input").location / f"stage={stage}")
+    ci = [f for f in store.index_files(root) if f.parent.name != f"stage={stage}"]
+    if not gi or not ci:
+        return 0
+    if tmp is not None:
+        Path(tmp).mkdir(parents=True, exist_ok=True)
+    d = Path(tempfile.mkdtemp(prefix="biobox-ingest-held-", dir=tmp))
+    sql = (f"WITH gi AS (SELECT DISTINCT contig_uid FROM read_parquet({genecall._sql_files(gi)}, "
+           "hive_partitioning = false)), "
+           f"ci AS (SELECT contig_uid, max(contig_len) AS n FROM read_parquet({genecall._sql_files(ci)}, "
+           "hive_partitioning = false) WHERE is_default_variant GROUP BY contig_uid) "
+           "SELECT coalesce(sum(n), 0)::BIGINT FROM gi JOIN ci USING (contig_uid)")
+    con = duckdb.connect(config={"threads": 1, "memory_limit": genecall.DUCK_MEMORY_LIMIT, "temp_directory": str(d)})
+    try:
+        (held,), = con.execute(sql).fetchall()
+        return int(held)
+    finally:
+        con.close()
+        shutil.rmtree(d, ignore_errors=True)
 
 
 def _shard_bases(b: Build) -> tuple[str, ...]:
@@ -757,8 +814,7 @@ def _refusal(prof: Profile, b: Build, root: Path, plan: list[Step], allowance: i
         big = max(sizes, key=lambda t: (t[2], str(t[0])), default=None)
         if big is not None and ingest_cpu_min(big[2]) > prof.cpu_min_per_process:
             return (f"ingest of stage {b.stage} reads {n:,} bytes of FASTA, estimated at {ingest_cpu_min(n):,.1f} "
-                    f"CPU-minutes in one process ({INGEST_CPU_MIN} CPU-min per {INGEST_BP:,} bp plus "
-                    f"{INGEST_FIXED_CPU_MIN} CPU-min to start, measured on wilkcomp02, 2026-11-10). In batch "
+                    f"CPU-minutes in one process if it stores them all ({_ingest_rate()}). In batch "
                     f"processes (card B-30) each source object is read whole by one process, and {big[0].name} "
                     f"alone holds {big[2]:,} bytes, estimated at {ingest_cpu_min(big[2]):,.1f} CPU-minutes, over "
                     f"the profile's cpu_min_per_process of {prof.cpu_min_per_process} (AGENTS §7.2). Split that "
@@ -1632,25 +1688,32 @@ def _redo_lost_batches(prof: Profile, b: Build, root: Path, plan: dict, work: Pa
 
 def _batched(prof: Profile, b: Build, root: Path) -> bool:
     """Whether ingest runs as batch processes: an earlier call published a pass-1 record of the stage, or its
-    estimate in one process exceeds `SHARD_MARGIN` of the budget (as a scan is sharded)."""
+    estimate in one process exceeds `SHARD_MARGIN` of the budget (as a scan is sharded). The estimate (card B-52) is
+    the stage's bytes of FASTA less the bases another stage already holds (`held_bases`: the inputs step has published
+    the stage's `genome_input`), and is said in one line either way."""
     if (root / store.plan_dir(b.stage) / "pass1-00000.json").exists():
         return True
     sizes = object_sizes(b.objects)
     n = sum(f for _, _, f in sizes)
-    if ingest_cpu_min(n) <= SHARD_MARGIN * prof.cpu_min_per_process:
+    held = held_bases(root, b.stage, scratch_of(prof, b))
+    est = ingest_cpu_min(n, held)
+    said = (f"{b.stage}.ingest: {n:,} bytes of FASTA, {held:,} bases of them in contigs another stage holds, are "
+            f"estimated at {est:,.1f} CPU-minutes in one process ({_ingest_rate()})")
+    if est <= SHARD_MARGIN * prof.cpu_min_per_process:
+        _say(f"{said}, within {SHARD_MARGIN:.0%} of the profile's cpu_min_per_process of {prof.cpu_min_per_process}")
         return False
-    _say(f"{b.stage}.ingest: {n:,} bytes of FASTA are estimated at {ingest_cpu_min(n):,.1f} CPU-minutes in one process "
-         f"({INGEST_CPU_MIN} CPU-min per {INGEST_BP:,} bp, measured on wilkcomp02, 2026-11-10), over {SHARD_MARGIN:.0%} "
-         f"of the profile's cpu_min_per_process of {prof.cpu_min_per_process} (AGENTS §7.2); it runs as pass-1 shards "
-         f"of at most {pass1_bytes(prof, b, root):,} bytes of file, a plan, one step per batch and a merge")
+    _say(f"{said}, over {SHARD_MARGIN:.0%} of the profile's cpu_min_per_process of {prof.cpu_min_per_process} "
+         f"(AGENTS §7.2); it runs as pass-1 shards of at most {pass1_bytes(prof, b, root):,} bytes of file, a plan, "
+         f"one step per batch and a merge")
     return True
 
 
 def pass1_bytes(prof: Profile, b: Build, root: Path) -> int:
     """Bytes of source file per pass-1 shard: the published pass-1 records' (an earlier call cut them), else what
-    fits `SHARD_MARGIN` of the budget at the measured rate (`INGEST_CPU_MIN` per `INGEST_BP` bytes of FASTA, after
-    the `INGEST_FIXED_CPU_MIN` every process pays to start), in bytes on disk at the stage's ratio of FASTA bytes
-    to bytes on disk; at least one. A pure function of the inputs and the profile."""
+    fits `SHARD_MARGIN` of the budget at the fitted rate (`INGEST_CPU_MIN` per `INGEST_BP` bytes of FASTA, after
+    the `INGEST_FIXED_CPU_MIN` every process pays to start), every byte counted as stored (a pass-1 shard stores
+    nothing, so this errs high; card B-52), in bytes on disk at the stage's ratio of FASTA bytes to bytes on disk; at
+    least one. A pure function of the inputs and the profile."""
     if (root / store.plan_dir(b.stage) / "pass1-00000.json").exists():
         return store.read_pass1(root, b.stage, 0)["pass1_bytes"]
     sizes = object_sizes(b.objects)

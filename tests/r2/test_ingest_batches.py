@@ -33,7 +33,7 @@ import yaml
 from biobox import profile, runstep
 from biobox import stage as bs
 from biobox.l0seq import SourceObject, ingest, store
-from biobox.l0seq.inputs import write_genome_input
+from biobox.l0seq.inputs import GenomeInput, write_genome_input
 
 sys.path.insert(0, str(Path(__file__).parent))
 import test_builders_out as c08  # noqa: E402
@@ -438,3 +438,76 @@ def test_the_step_list_passes_the_batch_size_to_ingest(work, prof, tmp_path):
     assert ing.argv[ing.argv.index("--shard-bases") + 1] == str(BUILD_SHARD_BASES)
     plain = dataclasses.replace(b, shard_bases=None)
     assert "--shard-bases" not in next(s for s in bs.steps(prof, plain) if s.name == "ingest").argv
+
+
+# --- the estimate counts what a stage stores (card B-52, DEC-47 (2)) ----------------------------------------------
+
+LAMBDA_BP = next(o["length"] for o in CONTRACT["objects"] if o["accession"] == "NC_001416.1")  # the fixture's table
+
+
+def s2_genomes() -> list[GenomeInput]:
+    """Stage S2: lambda alone, T4 alone and a genome of both (DEC-27: one contig listed by two genomes)."""
+    lam, t4 = c08.genome_inputs("S0")[0], c08.genome_inputs("S1")[0]
+    return [lam, t4, GenomeInput(lam.contig_uids + t4.contig_uids, lam.genetic_code, kind=lam.kind)]
+
+
+@pytest.fixture
+def held_root(build_oracle, tmp_path) -> Path:
+    """S0 (lambda, M. genitalium) ingested; S2 has published its genome_input only, as before its ingest step."""
+    root = tmp_path / "held" / "root"
+    shutil.copytree(build_oracle, root)
+    write_genome_input(root, "S2", s2_genomes())
+    return root
+
+
+@pytest.mark.covers("B-52")
+def test_b52_bases_held_elsewhere_are_the_listed_contigs_another_stage_stores(held_root):
+    assert bs.held_bases(held_root, "S2") == LAMBDA_BP  # lambda once, though two genomes list it; T4 nowhere yet
+    assert bs.held_bases(held_root, "S0") == 0  # a stage's own contig_index is not another stage's
+    assert bs.held_bases(held_root, "S9") == 0  # no genome_input yet: nothing is known to be held
+
+
+@pytest.mark.covers("B-52")
+def test_b52_build_stage_takes_the_bases_held_elsewhere_off_the_ingest_estimate(held_root, work, prof, monkeypatch,
+                                                                                tmp_path, capsys):
+    """At a rate where S2's bytes of FASTA (lambda and T4) are over `SHARD_MARGIN` of the budget and the same bytes
+    less lambda's bases, which S0 holds, are under it: in the root that holds S0 the ingest of S2 runs in one process;
+    in a root without S0 it runs in batches."""
+    objs = objects_file(tmp_path / "S2", PATHS[:2])
+    b = dataclasses.replace(build_of(work, held_root), stage="S2", stages=("S0", "S2"), objects=objs)
+    n = sum(bs.fasta_bytes(p) for p in PATHS[:2])
+    margin = bs.SHARD_MARGIN * prof.cpu_min_per_process
+    monkeypatch.setattr(bs, "INGEST_CPU_MIN", (margin - bs.INGEST_FIXED_CPU_MIN) / (n - LAMBDA_BP / 2) * bs.INGEST_BP)
+    assert bs.ingest_cpu_min(n) > margin >= bs.ingest_cpu_min(n, held_bases=LAMBDA_BP)
+    capsys.readouterr()
+    assert bs._batched(prof, b, held_root) is False
+    err = capsys.readouterr().err
+    assert f"{n:,} bytes of FASTA" in err and f"{LAMBDA_BP:,} bases" in err  # the estimate is said before the step
+    bare = tmp_path / "bare" / "root"
+    write_genome_input(bare, "S2", s2_genomes())
+    assert bs._batched(prof, dataclasses.replace(b, root=bare), bare) is True
+
+
+@pytest.mark.covers("B-52")
+def test_b52_every_pass1_shard_and_batch_of_an_ingest_in_batches_fits_the_margin(work, prof, monkeypatch, tmp_path):
+    """At a rate where S0 in one process is over `SHARD_MARGIN` of the budget and each of its objects is under it, the
+    batch cut (`pass1_bytes`, the per-shard bytes; the plan's batches) estimates every pass-1 shard and every batch
+    within the margin: a pass-1 shard by its bytes of FASTA, a batch by its bases read, each counted as stored (a
+    pass-1 shard stores nothing; a batch stores at most what it reads)."""
+    lam, mgen = bs.fasta_bytes(PATHS[0]), bs.fasta_bytes(PATHS[2])
+    margin = bs.SHARD_MARGIN * prof.cpu_min_per_process
+    monkeypatch.setattr(bs, "INGEST_CPU_MIN", (margin - bs.INGEST_FIXED_CPU_MIN) / (mgen + lam / 2) * bs.INGEST_BP)
+    assert bs.ingest_cpu_min(lam + mgen) > margin > bs.ingest_cpu_min(mgen)
+    root = tmp_path / "root"
+    b = build_of(work, root)
+    build(prof, b, stop_after_ingest([]))
+    assert "ingest.plan" in ingest_records(root)  # it ran in batches
+    objects = store.pass1_order(c08.source_objects("S0"))
+    per_shard = store.read_pass1(root, "S0", 0)["pass1_bytes"]
+    assert per_shard == bs.pass1_bytes(prof, b, root)
+    for shard in store.pass1_shards(objects, per_shard):
+        assert bs.ingest_cpu_min(sum(bs.fasta_bytes(objects[i].path) for i in shard)) <= margin, shard
+    batches = store.read_ingest_plan(root, "S0")["batches"]
+    assert len(batches) == 2
+    for x in batches:
+        assert x["new_bases"] <= x["bases_read"] and bs.ingest_cpu_min(x["bases_read"]) <= margin, x
