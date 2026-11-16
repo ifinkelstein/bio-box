@@ -117,6 +117,25 @@ class RunIndex:
         return runs, norm, ("sample" if runs else "none")
 
 
+_RUN = re.compile(r"^[EDS]RR\d+$")
+_INSDC_SAMPLE = re.compile(r"^(SAM(EA|N|D)\d+|[EDS]RS\d+)$")
+
+
+def spire_link(sample_id: str, idx: RunIndex) -> tuple[set[str], set[str], str]:
+    """A SPIRE sample id that is itself a run accession is that run; otherwise a sample accession."""
+    if _RUN.match(sample_id):
+        return {sample_id}, set(), "run"
+    return idx.link([sample_id], [])
+
+
+def insdc_samples(ids) -> list[str]:
+    return sorted({s for s in ids if s and _INSDC_SAMPLE.match(s)})
+
+
+def wgs_included(assembly_type: str, include: set[str]) -> bool:
+    return (assembly_type or "").strip().lower() in include
+
+
 @dataclass(frozen=True)
 class Unit:
     resource: str
@@ -228,9 +247,13 @@ def _unver(acc: str) -> str:
     return acc.split(".", 1)[0] if acc else ""
 
 
-def read_runs(path) -> RunIndex:
-    return RunIndex((r["run_accession"], r["sample_accession"], r["secondary_sample_accession"],
-                     _int(r["base_count"])) for r in _tsv(path))
+def read_runs(paths) -> RunIndex:
+    def rows():
+        for path in paths:
+            for r in _tsv(path):
+                yield (r["run_accession"], r["sample_accession"], r["secondary_sample_accession"],
+                       _int(r["base_count"]))
+    return RunIndex(rows())
 
 
 def read_spire(study_dir) -> list[tuple[str, str, list[str]]]:
@@ -278,7 +301,7 @@ def build_units(a, idx: RunIndex, hmap):
         if sample in seen:
             continue
         seen.add(sample)
-        runs, samples, how = idx.link([sample], [])
+        runs, samples, how = spire_link(sample, idx)
         h1, h2 = spire_habitat(terms)
         units.append(Unit("spire", sample, frozenset(runs), frozenset(samples), how, None, h1, h2,
                           note=f"study={study}"))
@@ -316,11 +339,24 @@ def build_units(a, idx: RunIndex, hmap):
                           note=f"wgs_set={w['wgs_set'] if w else ''}"))
     # INSDC metagenome WGS sets that are not MGnify's own; the NCBI Assembly table marks its subset
     ncbi = {_unver(r["assembly_accession"]): r for r in _tsv(a.ncbi_summary)}
+    include = {t.strip().lower() for t in a.wgs_include_types.split(",")}
     in_wgs = set()
+    excluded = {}
     for r in wgs_rows:
         asm = _unver(r["assembly_accession"])
         in_wgs.add(asm)
         if r["wgs_set"] in mg_wgs or (asm and asm in mg_asm):
+            k = ("mgnify's own", r.get("assembly_type", ""))
+        elif not wgs_included(r.get("assembly_type", ""), include):
+            k = ("type not taken", r.get("assembly_type", ""))
+        else:
+            k = None
+        if k is not None:
+            e = excluded.setdefault(k, [0, 0, 0, 0])
+            e[0] += 1
+            e[1] += _int(r["base_count"]) or 0
+            e[2] += asm in ncbi
+            e[3] += bool(r["run_accession"])
             continue
         direct = [x for x in r["run_accession"].split(";") if x]
         runs, samples, how = idx.link([r["sample_accession"], r["secondary_sample_accession"]], direct)
@@ -335,7 +371,7 @@ def build_units(a, idx: RunIndex, hmap):
         units.append(Unit("wgs", asm, frozenset(runs), frozenset(samples), how, _int(r["genome_size"]),
                           mapped_label(r["organism_name"], hmap["organism_name"]), r["organism_name"],
                           note="ncbi_assembly=yes;not_in_ena_wgs_table"))
-    return units
+    return units, excluded
 
 
 def _write_tsv(path, header, rows):
@@ -351,7 +387,10 @@ def _build(a) -> int:
     os.makedirs(a.out_dir, exist_ok=True)
     idx = read_runs(a.read_run)
     hmap = read_habitat_map(a.habitat_map)
-    units = build_units(a, idx, hmap)
+    units, excluded = build_units(a, idx, hmap)
+    _write_tsv(os.path.join(a.out_dir, "wgs_sets_not_units.tsv"),
+               ["why", "assembly_type", "wgs_sets", "bases", "in_ncbi_assembly", "with_run_accession"],
+               [[w, t, *v] for (w, t), v in sorted(excluded.items())])
     dec = choose(units, ORDER)
     per_run = run_resources(units, ORDER)
 
@@ -453,6 +492,25 @@ def _build(a) -> int:
     return 0
 
 
+ENA_BY_SAMPLE = ("https://www.ebi.ac.uk/ena/portal/api/search?result=read_run&includeAccessionType=sample"
+                 "&includeAccessions={}&fields=run_accession,sample_accession,secondary_sample_accession,"
+                 "study_accession,base_count,library_source,library_strategy,tax_id,scientific_name&limit=0&format=tsv")
+
+
+def _lookup_urls(a) -> int:
+    """URLs of ENA's runs for the INSDC samples of unlinked units, in batches (the ena_portal_tables entry)."""
+    ids = []
+    for r in _tsv(a.units_tsv):
+        if r["linked_by"] == "none":
+            ids.extend(r["samples"].split(";"))
+    ids = insdc_samples(ids)
+    with open(a.out_tsv, "w") as out:
+        for i in range(0, len(ids), a.batch):
+            out.write(ENA_BY_SAMPLE.format(",".join(ids[i:i + a.batch])) + f"\tbatch_{i // a.batch:04d}.tsv\n")
+    print(f"{len(ids)} samples in {(len(ids) + a.batch - 1) // a.batch} batches")
+    return 0
+
+
 def _labels(a) -> int:
     """Distinct labels the other resources give, with unit counts, to write the habitat map from."""
     cnt = {}
@@ -486,11 +544,18 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("out_tsv")
     p.set_defaults(fn=_labels)
     p = sub.add_parser("build")
-    for opt in ("--spire-dir", "--read-run", "--wgs-set", "--ncbi-summary", "--mgnify-assemblies",
-                "--habitat-map", "--out-dir"):
+    for opt in ("--spire-dir", "--wgs-set", "--ncbi-summary", "--mgnify-assemblies", "--habitat-map", "--out-dir"):
         p.add_argument(opt, required=True)
+    p.add_argument("--read-run", required=True, nargs="+")
     p.add_argument("--mgnify-samples", default=None)
+    p.add_argument("--wgs-include-types", default="primary metagenome",
+                   help="comma-separated ENA assembly types taken as WGS units; an empty item takes a blank type")
     p.set_defaults(fn=_build)
+    p = sub.add_parser("lookup-urls")
+    p.add_argument("units_tsv")
+    p.add_argument("out_tsv")
+    p.add_argument("--batch", type=int, default=300)
+    p.set_defaults(fn=_lookup_urls)
     a = ap.parse_args(argv)
     return a.fn(a)
 

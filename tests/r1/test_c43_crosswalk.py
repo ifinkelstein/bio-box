@@ -119,6 +119,37 @@ def test_link_by_run_then_by_either_sample_accession():
     assert idx.bases("ERR9") is None
 
 
+def test_a_spire_sample_named_by_a_run_accession_is_that_run():
+    m = _mod()
+    idx = m.RunIndex(RUNS)
+    assert m.spire_link("SRR3", idx) == ({"SRR3"}, set(), "run")
+    assert m.spire_link("ERR1137728", idx) == ({"ERR1137728"}, set(), "run")
+    assert m.spire_link("SAMEA1", idx) == ({"ERR1", "ERR2"}, {"SAMEA1"}, "sample")
+    # a study's own sample name is not guessed at
+    assert m.spire_link("MH0002", idx) == (set(), {"MH0002"}, "none")
+    assert m.spire_link("SRR3x", idx) == (set(), {"SRR3x"}, "none")
+
+
+def test_insdc_samples_for_lookup():
+    m = _mod()
+    assert m.insdc_samples(["SAMEA104389540", "SAMN02954240", "SAMD00008643", "ERS1", "SRS927152", "DRS6",
+                            "MH0002", "G80150", "SAMX", ""]) == [
+        "DRS6", "ERS1", "SAMD00008643", "SAMEA104389540", "SAMN02954240", "SRS927152"]
+
+
+@pytest.mark.parametrize("atype, include, keep", [
+    ("primary metagenome", {"primary metagenome"}, True),
+    ("Primary Metagenome", {"primary metagenome"}, True),
+    ("binned metagenome", {"primary metagenome"}, False),
+    ("Metagenome-Assembled Genome (MAG)", {"primary metagenome"}, False),
+    ("", {"primary metagenome"}, False),
+    ("", {"primary metagenome", ""}, True),
+])
+def test_wgs_type_filter(atype, include, keep):
+    m = _mod()
+    assert m.wgs_included(atype, include) is keep
+
+
 def _u(m, resource, uid, runs=(), samples=(), bases=None, habitat="unlabelled"):
     return m.Unit(resource=resource, uid=uid, runs=frozenset(runs), samples=frozenset(samples),
                   linked_by="run" if runs else ("sample" if samples else "none"), asm_bases=bases, habitat=habitat)
@@ -207,10 +238,11 @@ def test_build_end_to_end_on_small_tables(tmp_path):
             "SRR3\tSAMN3\tSRS3\tP\tE\t70\tWGS\tI\t1\tx\t2020\n"
             "SRR5\tSAMN5\tSRS5\tP\tE\t10\tWGS\tI\t1\tx\t2020\n")
     wgs = _w(tmp_path / "wgs.tsv", "accession\twgs_set\tassembly_accession\tbase_count\trun_accession\tsample_accession\t"
-             "secondary_sample_accession\tstudy_accession\ttax_id\tscientific_name\tfirst_public\n"
-             "CAAA01000000\tCAAA01\tGCA_900000001\t900\t\tSAMN3\t\tP\t1\tsoil metagenome\t2020\n"      # MGnify's own
-             "BBBB01000000\tBBBB01\tGCA_000000002\t800\t\tSAMN5\t\tP\t1\tmarine metagenome\t2020\n"
-             "DDDD01000000\tDDDD01\tGCA_000000004\t700\tERR2\tSAMEA1\t\tP\t1\tmetagenome\t2020\n")
+             "secondary_sample_accession\tstudy_accession\ttax_id\tscientific_name\tfirst_public\tassembly_type\n"
+             "CAAA01000000\tCAAA01\tGCA_900000001\t900\t\tSAMN3\t\tP\t1\tsoil metagenome\t2020\tprimary metagenome\n"
+             "BBBB01000000\tBBBB01\tGCA_000000002\t800\t\tSAMN5\t\tP\t1\tmarine metagenome\t2020\tprimary metagenome\n"
+             "DDDD01000000\tDDDD01\tGCA_000000004\t700\tERR2\tSAMEA1\t\tP\t1\tmetagenome\t2020\tprimary metagenome\n"
+             "EEEE01000000\tEEEE01\tGCA_000000005\t3\tSRR5\tSAMN5\t\tP\t1\tmetagenome\t2020\tbinned metagenome\n")
     ncbi = _w(tmp_path / "asm.txt", "##  See README\n#assembly_accession\tbioproject\tbiosample\torganism_name\t"
               "genome_size\n"
               "GCA_000000002.1\tP\tSAMN5\tmarine metagenome\t800\n"
@@ -259,3 +291,7 @@ def test_build_end_to_end_on_small_tables(tmp_path):
     assert combos == {("spire+mgnify", "host-associated"): "1", ("spire+mgnify+wgs", "host-associated"): "1",
                       ("mgnify", "terrestrial"): "1", ("wgs", "aquatic"): "1"}
     assert [r["uid"] for r in rows("take_wgs.tsv")] == ["BBBB01", "GCA_000000009"]
+    # a bin is not an assembly of the run; MGnify's own WGS set is the MGnify unit
+    notu = {(r["why"], r["assembly_type"]): (r["wgs_sets"], r["bases"]) for r in rows("wgs_sets_not_units.tsv")}
+    assert notu == {("mgnify's own", "primary metagenome"): ("1", "900"),
+                    ("type not taken", "binned metagenome"): ("1", "3")}
