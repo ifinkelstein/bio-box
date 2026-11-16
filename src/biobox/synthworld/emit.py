@@ -44,6 +44,13 @@ overlap on the contig (``overlap_bp``), and ``left_gene_id`` is the gene at the 
 (``domain_arch`` ``acc:start-end``, ``elements`` ``kind:start-end:strand``, ``expected_calls``
 ``start-end:strand``, ``gene_ids``, ``partner_family_ids``).
 
+``truth_gene`` holds one row per ``feature_uid`` (DEC-48 (2), card F-02 session 13). Two contigs of one genome with
+the same sequence (a young exact tandem copy that S9's repeat breaks cut out twice) have one ``contig_uid``, as the
+store holds an identical contig once with two occurrences (DEC-27 does this across genomes), so genes at the same
+coordinates on them share a ``feature_uid``: their row names every gene, ``gene_id`` and ``copy_label`` listing
+them ``;``-separated in sorted order, and a column on which those genes differ lists their values ``|``-separated
+in the same order (`merge_feature_rows`). The assembly step neither joins nor drops such contigs.
+
 ``truth_module`` ends with two columns the spec's table does not list (card F-02 session 11, DEC-36): the realized
 strength of a planted, profile-only or vehicle group, the same on every member row: ``realized_transfers_per_member``,
 the backbone's transfer events (``backbone/events.tsv`` rows of a transfer kind, all lineages) on the group's
@@ -482,6 +489,48 @@ class _Out:
 
     def close(self) -> None:
         self.fh.close()
+
+
+def _gff(v: str) -> str:
+    """A GFF3 attribute value or ID with its reserved characters percent-escaped (a truth row naming several genes
+    has ``;`` in ``gene_id``); the values of a row naming one gene hold none of them, so their lines do not change."""
+    return v.replace("%", "%25").replace(";", "%3B").replace("=", "%3D").replace("&", "%26").replace(",", "%2C")
+
+
+#: truth_gene columns that name the gene; a row of several genes lists them ``;``-separated (DEC-48 (2))
+GENE_NAME_COLUMNS = ("gene_id", "copy_label")
+
+
+def merge_feature_rows(rows: list) -> list:
+    """One row per ``feature_uid`` (DEC-48 (2)): rows that share one (genes at the same coordinates on contigs with
+    one ``contig_uid``, such as two identical contigs of one genome) become one row at the place of the first, naming
+    every gene in ``gene_id`` and ``copy_label`` (``;``-separated, sorted); a column on which the genes differ lists
+    their values ``|``-separated in that order, a column on which they agree keeps its value. A feature_uid of one
+    row returns that row unchanged, so a world without shared feature_uids writes what it wrote before."""
+    by = collections.defaultdict(list)
+    for r in rows:
+        by[r.feature_uid].append(r)
+    out = []
+    for r in rows:
+        group = by.get(r.feature_uid)
+        if group is None:
+            continue
+        del by[r.feature_uid]
+        if len(group) == 1:
+            out.append(r)
+            continue
+        group = sorted(group, key=lambda x: x.gene_id)
+        merged = {}
+        for name in r._fields:
+            vals = [getattr(x, name) for x in group]
+            if name in GENE_NAME_COLUMNS:
+                merged[name] = ";".join(vals)
+            elif all(v == vals[0] for v in vals):
+                merged[name] = vals[0]
+            else:
+                merged[name] = "|".join(_cell(v) for v in vals)
+        out.append(type(r)(**merged))
+    return out
 
 
 def check_config(c: dict) -> None:
@@ -987,6 +1036,7 @@ def build(world, *, null: dict | None = None) -> EmitWorld:
     fam_copies = collections.Counter()
     fam_genomes = collections.defaultdict(set)
     gene_stream = assembly._Stream(world / "assembly" / "genes.tsv")
+    host_rows = []
     for gid, pieces in mobile._by_genome(world / "assembly" / "gene_contigs.tsv"):
         seen_uid_genes = set()
         g8 = {r["copy_label"]: r for r in gene_stream.rows(gid)}
@@ -1019,12 +1069,18 @@ def build(world, *, null: dict | None = None) -> EmitWorld:
             if pl.p5 or pl.p3:
                 n_partial[pl.occ.uid] += 1
         out_rows.sort(key=lambda x: (x.contig_uid, x.start, x.end, x.strand, x.gene_id))
-        for x in out_rows:
-            tg.row(x)
-            gff_rows(x.contig_uid, x.start, x.end, x.strand, "CDS" if x.feature_kind != "pseudogene" else "pseudogene",
-                     x.gene_id, f"gene_id={x.gene_id};family_id={x.family_id};feature_kind={x.feature_kind};"
-                                f"partial_5={_cell(x.partial_5)};partial_3={_cell(x.partial_3)}")
-            counts[f"genes_{x.occurrence}_{x.status}"] += 1
+        host_rows.extend(out_rows)
+    # DEC-48 (2): one row per feature_uid (two identical contigs of one genome share their contig_uid)
+    for x in merge_feature_rows(host_rows):
+        tg.row(x)
+        gff_rows(x.contig_uid, x.start, x.end, x.strand,
+                 "CDS" if x.feature_kind != "pseudogene" else "pseudogene", _gff(x.gene_id),
+                 f"gene_id={_gff(x.gene_id)};family_id={_gff(x.family_id)};feature_kind={_gff(x.feature_kind)};"
+                 f"partial_5={_gff(_cell(x.partial_5))};partial_3={_gff(_cell(x.partial_3))}")
+        counts[f"genes_{x.occurrence}_{x.status}"] += 1
+        if ";" in x.gene_id:
+            counts["genes_rows_naming_several_genes"] += 1
+    del host_rows
     ph_by_id = {ps["genome_id"]: ps for ps in phage_src}
     ph_rows = []
     for r in _tsv(world / "mobile" / "phage_genes.tsv"):

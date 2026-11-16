@@ -267,3 +267,44 @@ def test_placer_lifts_and_places_features_as_the_provenance_oracle_does(tmp_path
             n[status] += 1
     print(f"\nplacements {dict(n)}")
     assert n["whole"] > 100 and n["cut"] > 5 and n["touched"] > 20 and n["dropped"] > 5
+
+
+def _gene_row(fuid: str, gene: str, cuid: str, start: int, end: int, **kw) -> "emit.TruthGene":
+    base = dict(world_id="micro-1", release_tag="sw-0", feature_uid=fuid, gene_id=gene, contig_uid=cuid, start=start,
+                end=end, strand=1, stop_bp=None, partial_5=True, partial_3=False, origin_spanning=False,
+                feature_kind="CDS", family_id="F000364", copy_label=gene, protein_uid="p-" + gene,
+                domain_arch="PF00001:0-50;PF00002:60-120", module_id="", vehicle_id="", operon_id="op1",
+                genetic_code=11, hgt_on_lineage=None, genome_id="g036", source="host", callerr_id="", status="cut",
+                occurrence="assembly")
+    base.update(kw)
+    return emit.TruthGene(**base)
+
+
+@pytest.mark.covers("F-02", "DEC-48")
+def test_rows_sharing_a_feature_uid_become_one_row_naming_every_gene():
+    """DEC-48 (2): two identical contigs of one genome are one contig_uid, so genes at the same coordinates on them
+    share a feature_uid; the truth holds one row per feature_uid naming every gene (`gene_id` and `copy_label` list
+    them `;`-separated in sorted order), at the place of the first such row. A column on which the genes differ
+    lists their values `|`-separated in that order; a column on which they agree keeps its value. Expected rows are
+    written out here by hand."""
+    u, v = "aa" * 16, "bb" * 16
+    a = _gene_row("f1", "n105_g238750", u, 0, 708, hgt_on_lineage="n7")
+    b = _gene_row("f2", "n105_g238751", u, 708, 900, partial_5=False, partial_3=True)
+    c = _gene_row("f1", "n105_g238748", u, 0, 708, protein_uid="p-other", hgt_on_lineage="n7")
+    d = _gene_row("f3", "n9_g1", v, 10, 400, genome_id="g001", partial_5=False, status="whole", operon_id="")
+    e = _gene_row("f2", "n105_g238749", u, 708, 900, partial_5=False, partial_3=True, operon_id="op1")
+    f = _gene_row("f2", "n105_g238747", u, 708, 900, partial_5=False, partial_3=True, domain_arch="PF00001:0-50")
+    got = emit.merge_feature_rows([a, b, c, d, e, f])
+    assert [r.feature_uid for r in got] == ["f1", "f2", "f3"]
+    m1, m2, m3 = got
+    assert m1 == a._replace(gene_id="n105_g238748;n105_g238750", copy_label="n105_g238748;n105_g238750",
+                            protein_uid="p-other|p-n105_g238750")
+    assert m2 == b._replace(gene_id="n105_g238747;n105_g238749;n105_g238751",
+                            copy_label="n105_g238747;n105_g238749;n105_g238751",
+                            protein_uid="p-n105_g238747|p-n105_g238749|p-n105_g238751",
+                            domain_arch="PF00001:0-50|PF00001:0-50;PF00002:60-120|PF00001:0-50;PF00002:60-120")
+    assert m3 is d                                   # a feature_uid of one gene is the row as it was
+    # the input order does not change the merged rows (the genes are sorted), only which row comes first
+    assert sorted(emit.merge_feature_rows([f, e, d, c, b, a])) == sorted(got)
+    # no shared feature_uid: the rows come back unchanged, in their order
+    assert emit.merge_feature_rows([b, a, d]) == [b, a, d]
