@@ -28,6 +28,16 @@ with their hashes unchanged (the orchestrator's audit with the merged tree, 16:1
 yet**: `rM.3` (DEC-45) is named only in the build command and gets its `release_def` at its cluster step (card
 C-35), so `bio-box releases` does not list it. Next in the root: stage `PL1` (card C-26 part 2, after card B-50).
 
+**Release names and rolling releases (DEC-52, the PI's word of 2026-11-16 at about 10:33).** A new release is
+named `r<YY>.<MM>.<n>`, the n-th cut in that month. **The release over the nine stages, called `rM.3` in this
+file and in cards C-24 and C-26, will be `r26.11.1`** (nothing in the root carries the old name). Releases are
+rolling: one is cut whenever a stage has been completed since the last release and no release is being built,
+over every complete stage in the order built (card C-46 makes the driver; card W-37 adds `--release latest`).
+The built releases keep their names; `rS<k>.<n>` stays reserved for a signed release at a plan stage's gate.
+Wherever a line below says `rM.3`, read `r26.11.1`. **Open, the PI's**: how many earlier releases keep their
+large files and packs on the pod's local disk (at `rM.2`'s size one release is at least 17 GB of release files
+and a pack of 25 GB, *measured*).
+
 *The 50 Gbp release `rM.2` is built and verified* (2026-11-14 17:32 CST), *has its pack* (20:54), *passed the
 release check* (2026-11-15 00:06) *and is announced as the release to use* (2026-11-15, `README.md`, `GUIDE.md`).
 - `build-stage: stage P6 and release rM.2: all 13 steps done` at 17:27; `release verify` at 17:30: "release rM.2:

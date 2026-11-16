@@ -88,6 +88,12 @@ server's network storage, each file with a sha256 in [`sources.yaml`](sources.ya
 
 **Releases** (names are provisional: none is signed, so none is `rS<k>.<n>`, `STAGES.md`)
 
+Release names (DEC-52, 2026-11-16). The releases below were named by hand: `rN.*` is the 10 Gbp set and `rM.*` the
+50 Gbp set, the number counting builds of the same set. Every release from now on is named `r<YY>.<MM>.<n>`, the
+n-th release cut in that month (`r26.11.1` is the first, over nine stages), and releases are rolling: one is cut
+whenever a stage has been completed since the last one, over every complete stage. Older releases keep their
+names and stay usable. `rS<k>.<n>` is kept for a signed release at a gate of the stage plan.
+
 | Release | Stages | Contents | State |
 |---|---|---|---|
 | `rN.1` | `S1`, `P1`, `P2` | 12,048,866 genes, 10,620,684 distinct proteins, 2,966,200 NR50 and 8,278,537 NR90 clusters; no Pfam (*measured*, 2026-11-10, STATUS "10 Gbp rebuild") | verified; built before the lookup tables |
