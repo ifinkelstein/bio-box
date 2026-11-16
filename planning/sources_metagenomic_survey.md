@@ -47,14 +47,31 @@ data root holds 0.06 Tbp (*measured*, 2026-11-16).
 | 13 | **Logan v1** (2024 preprint) | every public SRA run of December 2023 assembled: unitigs and contigs | 27 million runs, 50 Pbp of reads; **0.90 Pbp of contigs** (385 TB by one talk, 0.3 PB by another); 4.59 Pbp of unitigs (2.18 PB) | everything sequenced | contains the reads behind #10 to #12; one assembly per run, so no duplicate assemblies | AWS open data; compute next to it |
 | 14 | Raw SRA short reads | the reads themselves | 50 Pbp (December 2023); MetaGraph indexes about 67 Pbp | everything | fully behind #13 | NCBI, AWS |
 
+## 2b. Plasmids and other mobile elements (added at the PI's word, "and plasmids too")
+
+| Source | What it is | Size (published) | Overlap | Access |
+|---|---|---|---|---|
+| PLSDB (2025 update) | complete plasmids of isolates, curated from NCBI | 72,360 entries; our stage `PL1` is its 2024_05_31_v2 release, 72,556 records (*measured*, card C-26) | this is what we hold | open |
+| Human gut plasmids (Yu, Fogarty and Eren, 2024) | plasmids predicted by PlasX in gut metagenomes | 68,350 non-redundant plasmids in 1,169 plasmid systems | not in PLSDB (metagenomic); not checked against IMG/PR | paper's deposit |
+| IMG/PR (2023) | plasmids found in genomes, metagenomes and metatranscriptomes, with ecosystem and host labels | 699,973 | its isolate part overlaps PLSDB; the metagenomic part is new | JGI policy |
+| PlasmidScope (2024) | a union of ten plasmid repositories, annotated | 852,600 plasmids; 25.2 million genes | contains PLSDB and IMG/PR among its ten; duplicates across repositories are not removed by sequence as far as its abstract says | open site |
+| ICEberg 3.0 (2023) | integrative and conjugative elements, curated | 2,065 ICEs, 607 IMEs, 275 CIMEs | these lie inside genomes we hold or will hold: an annotation, not new sequence | open |
+
+Plasmids that are fragments (most of those in metagenomes) arrive with the contigs of §2 (#10 to #13) and are
+found there by prediction, which the plan already has (geNomad), so the catalogues above matter most for complete
+or near-complete plasmids and for their habitat and host labels. Not checked today: mMGE, the phage-plasmid sets,
+and plasmidome studies of wastewater, soil and the ocean.
+
 ## 3. What I would do (a recommendation, not a decision)
 
 The redundancy rule that follows from the table: **genomes by species representative; contigs by one assembly per
 sequencing run; viruses by vOTU representative; and our own keys do the rest** (`contig_uid` is the hash of the
 sequence, so the same contig from two sources is stored once; proteins collapse at NR90).
 
-1. **Viruses from diverse niches first, as vOTU representatives** (#1, #2, #3's high-quality set, #4): small, and the
-   widest viral diversity per base. This widens stage S4 from IMG/VR alone. A few tens of Gbp (*estimate*).
+1. **Viruses and plasmids from diverse niches first** (#1, #2, #3's high-quality set as vOTU representatives; for
+   plasmids IMG/PR, then the gut plasmids of §2b, then whatever PlasmidScope holds that neither has, matched by
+   sequence hash): small, and the widest diversity of mobile elements per base. This widens stage S4 from IMG/VR
+   alone and makes IMG/PR a firm part of it instead of an option. A few tens of Gbp (*estimate*).
 2. **GlobDB's non-GTDB species** (#7): 162,653 representatives that GTDB does not have (*derived*: 306,260 less
    143,607), the uncultivated majority, with no species-level duplicate. Taken with S3 and S5 it makes the stage
    "every known prokaryote species". About 400 Gbp (*estimate*: 162,653 at 2.5 Mbp a MAG).
