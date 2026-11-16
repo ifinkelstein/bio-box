@@ -38,6 +38,7 @@
     bio-box release define --root R --release R1 --stages S0,S1 [--out DIR]
     bio-box release cluster|tokens|postings|dim|manifest|catalog --root R --release R1 [--stages S0,S1]
                 [--tmp D] [--threads N] [--producers P,Q] [--libraries L,M] [--tape-version T] [--out DIR]
+                [--without-clusters]   (tokens only: a release with no clustering; card B-51)
     bio-box release cluster plan --root R --release R1 [--stages S0,S1] --tmp D (--parts N | --part-cpu-min M)
         [--one-process-cpu-min-max C]
     bio-box release cluster step|redo --root R --release R1 --name STEP --tmp D --threads N
@@ -1756,7 +1757,8 @@ def _release_step(a, root: Path, stages: list[str], out: Path) -> dict:
         from biobox.l3 import tokens
 
         return tokens.run(root, a.release, stages, a.gene_call_version, libraries=_csv(a.libraries),
-                          producers=_csv(a.producers), tmp=tmp, out=out)
+                          producers=_csv(a.producers), tmp=tmp, out=out,
+                          without_clusters=a.without_clusters)
     if a.step == "postings":
         from biobox.l3 import postings
 
@@ -2362,6 +2364,9 @@ def _main(argv: list[str] | None = None) -> int:
     rl.add_argument("--threads", type=int, default=1, help="cluster: MMseqs2 threads")
     rl.add_argument("--producers", help="tokens, postings: the tape version's producers (default: the gene caller)")
     rl.add_argument("--libraries", help="tokens: domain libraries in precedence order (default: those with domains in the release's stages, by name)")
+    rl.add_argument("--without-clusters", action="store_true",
+                    help="tokens: build the tokens of a release that has no clustering (no nr50 or nr90 level); "
+                         "refused when the release has a cluster_member file (card B-51)")
     rl.add_argument("--tape-version", help="catalog: the tape version the pair macros serve (default: the one of "
                                            "the release's postings)")
     rl.add_argument("--out", help=OUT_HELP)

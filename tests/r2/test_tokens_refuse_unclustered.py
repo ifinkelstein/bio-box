@@ -8,6 +8,7 @@ the tapes' protein slots, not on the release's files alone).
 
 from __future__ import annotations
 
+import json
 import shutil
 import sys
 from pathlib import Path
@@ -18,6 +19,7 @@ from biobox import catalog, cli
 from biobox.l3 import tokens
 
 sys.path.insert(0, str(Path(__file__).parent))
+import test_micro_s0_l3 as micro  # noqa: E402
 import test_micro_s0_release_def as rd  # noqa: E402
 
 pytestmark = pytest.mark.r2
@@ -78,3 +80,33 @@ def test_b51_a_release_without_protein_slots_needs_no_clustering(staged, tmp_pat
     res = tokens.run(c, REL + "-empty", ["S0"], producers=["test-none"])
     assert res["tokens"] == {"family": 0, "nr50": 0, "nr90": 0}
     assert (c / f"l3/tape_tokens/tape_version={tv}/release={REL}-empty").is_dir()
+
+
+@pytest.mark.covers("D-01")
+def test_b51_without_clusters_builds_a_release_with_no_clustering(staged, tmp_path, capsys):
+    c = tmp_path / "c"
+    shutil.copytree(staged, c)
+    base = ["--root", str(c), "--release", REL]
+    assert cli.main(["release", "tokens", *base, "--stages", "S0", "--tmp", str(tmp_path), "--without-clusters"]) == 0
+    out = json.loads(capsys.readouterr().out)
+    assert out["result"]["tokens"]["nr50"] == 0 and out["result"]["tokens"]["nr90"] == 0
+    assert out["result"]["tokens"]["family"] > 0
+    res = tokens.run(c, REL + "-lib", ["S0"], without_clusters=True)
+    assert res["tokens"]["nr50"] == res["tokens"]["nr90"] == 0
+
+
+@pytest.mark.covers("D-01")
+def test_b51_without_clusters_refuses_a_release_that_has_a_clustering(staged, tmp_path, capsys):
+    c = tmp_path / "c"
+    shutil.copytree(staged, c)
+    micro._stand_in_clusters(c, REL)  # a cluster_member file; the S0 proteins only, which is all the release has
+    before = _files(c)
+    base = ["--root", str(c), "--release", REL]
+    assert cli.main(["release", "tokens", *base, "--stages", "S0", "--tmp", str(tmp_path),
+                     "--without-clusters"]) == 2
+    err = capsys.readouterr().err
+    assert REL in err and "without-clusters" in err
+    assert _files(c) == before
+    with pytest.raises(ValueError, match="cluster_member"):
+        tokens.run(c, REL, ["S0"], without_clusters=True)
+    assert _files(c) == before

@@ -374,7 +374,7 @@ def _dict_rows(con, fam_keys: str, names: dict[int, str], runs: list[tuple[str, 
 def run(root: Path, release: str, stages: list[str], gene_call_version: str = GENE_CALL_VERSION,
         libraries: list[str] | None = None, producers: list[str] | None = None,
         max_file_bytes: int = layout.MAX_FILE_BYTES, max_slots: int = MAX_SLOTS, tmp=None,
-        out: Path | None = None, memory_limit: str = DUCK_MEMORY_LIMIT) -> dict:
+        out: Path | None = None, memory_limit: str = DUCK_MEMORY_LIMIT, without_clusters: bool = False) -> dict:
     """Write the release's `token_dict` and the `tape_tokens` of the tape version of `producers`.
 
     `stages`: the release's stages (card B-25); only their tapes and domains are read, a listed stage
@@ -388,6 +388,10 @@ def run(root: Path, release: str, stages: list[str], gene_call_version: str = GE
     Inputs (tapes, domains, the release's clusters) are read from `root`; both tables and (when the
     root has none) the `release_def` are written under `out` (default `root`; card C-08). Refuses,
     before any work, when either table of this release already holds a file in `root` or `out`.
+
+    Card B-51: a release whose tapes hold a protein slot and that has no `cluster_member` file is refused
+    (FileNotFoundError), as its tokens would have no cluster level. `without_clusters=True` is the one way out for
+    a build that means it; with a `cluster_member` file present it is refused too (it cannot hide a clustering).
     """
     root = Path(root)
     out = root if out is None else Path(out)
@@ -404,7 +408,11 @@ def run(root: Path, release: str, stages: list[str], gene_call_version: str = GE
                           f"tokens of release {release}")
     tape_files = _tape_files(root, tv, stages)
     # card B-51: a release with protein slots and no clustering would get tokens without cluster levels, silently
-    if not io.part_files(root / f"l2/cluster_member/release={release}"):
+    clustered = bool(io.part_files(root / f"l2/cluster_member/release={release}"))
+    if without_clusters and clustered:
+        raise ValueError(f"release {release} has a cluster_member file under {root}: --without-clusters is only for a "
+                         f"release without a clustering")
+    if not clustered and not without_clusters:
         probe = duckdb.connect(config={"threads": 1})
         try:
             (n_protein_slots,), = probe.execute(

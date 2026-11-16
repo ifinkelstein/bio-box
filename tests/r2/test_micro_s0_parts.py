@@ -130,7 +130,7 @@ def build(root: Path, lib: Path | None, small: dict[str, int] | None) -> dict:
         shutil.rmtree(work, ignore_errors=True)
     out["igr"] = igr.run(root, "S0", **kw.get("igr", {}))
     out["tapes"] = tapes.run(root, "S0", **kw.get("tapes", {}))
-    out["tokens"] = tokens.run(root, REL, ["S0"])
+    out["tokens"] = tokens.run(root, REL, ["S0"], without_clusters=not MMSEQS)  # card B-51
     out["postings"] = postings.run(root, REL, ["S0"])
     out["dim"] = dim.run(root, REL, ["S0"], **kw.get("dim", {}))
     out["lib"] = lib

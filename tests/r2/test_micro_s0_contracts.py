@@ -69,7 +69,7 @@ def build(root: Path, order: int = 1, threads: int = 1) -> dict:
         cluster.run(root, "rS0.test", GENE_CALL_VERSION, ["S0"], threads=threads, tmp=tmp)
         shutil.rmtree(tmp, ignore_errors=True)
     tapes.run(root, "S0", {u for g in genomes for u in g.circular})
-    tokens.run(root, "rS0.test", ["S0"])
+    tokens.run(root, "rS0.test", ["S0"], without_clusters=not MMSEQS)  # card B-51
     postings.run(root, "rS0.test", ["S0"])
     return catalog.build_manifest(root, "rS0.test", ["S0"])
 

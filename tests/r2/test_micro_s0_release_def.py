@@ -20,7 +20,6 @@ from __future__ import annotations
 
 import json
 import shutil
-import sys
 from pathlib import Path
 
 import pyarrow.parquet as pq
@@ -36,9 +35,6 @@ from biobox.l1.genecall import GENE_CALL_VERSION as V
 from biobox.l1.genecall import run as call_genes
 from biobox.l3 import postings, tapes, tokens
 from biobox.registry.schemas import conformance_problems, table
-
-sys.path.insert(0, str(Path(__file__).parent))
-import test_micro_s0_l3 as micro  # noqa: E402
 
 pytestmark = pytest.mark.r2
 
@@ -99,9 +95,7 @@ def build_release(root: Path, release: str, stages: list[str], work: Path) -> di
         from biobox.l2 import cluster
 
         out["cluster"] = cluster.run(root, release, V, stages, tmp=work)
-    else:
-        micro._stand_in_clusters(root, release)  # card B-51: tokens refuse a release never clustered
-    out["tokens"] = tokens.run(root, release, stages)
+    out["tokens"] = tokens.run(root, release, stages, without_clusters=not MMSEQS)  # card B-51
     out["postings"] = postings.run(root, release, stages)
     out["dim"] = dim.run(root, release, stages, tmp=work)
     return out
@@ -263,10 +257,9 @@ def test_b25_cli_release_steps_define_once_and_read_the_definition_after(ladder,
     assert cli.main(["release", "define", *base, "--stages", "S0"]) == 0  # the same stages: no-op
     assert cli.main(["release", "dim", *base, "--stages", "S0,S1"]) == 2  # not the defined stages
     assert "release_def" in capsys.readouterr().err
-    if not MMSEQS:
-        micro._stand_in_clusters(c, rel)  # card B-51
     for step in (("cluster",) if MMSEQS else ()) + ("tokens", "postings", "dim", "manifest"):
-        assert cli.main(["release", step, *base, "--tmp", str(ladder["work"])]) == 0, step
+        extra = ["--without-clusters"] if step == "tokens" and not MMSEQS else []  # card B-51
+        assert cli.main(["release", step, *base, "--tmp", str(ladder["work"]), *extra]) == 0, step
     man = json.loads((c / f"manifests/release={rel}.json").read_text())
     assert man["release_id"] == rel and man["stages"] == ["S0"]
     assert not [f for f in man["files"] if f["partitions"].get("stage") == "S1"]
