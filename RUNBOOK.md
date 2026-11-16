@@ -247,6 +247,44 @@ floor((40 - 16) / 4) = 6, so `--scan-jobs 6 --scan-cpus 4`, 24 threads, 40 in al
 running, the same formula gives J = 10, which is the whole cap: leave a margin if anything may start
 during the hours the scan runs. A smaller J only makes the scan take longer; the output is the same.
 
+**Gene calling in batches (card B-48).** When the build reaches gene calling (no run record yet), it
+estimates the step from the stage's inputs and says so in one line, `<stage>.genecall: N genomes ...
+estimated at X CPU-minutes in one process`: every genome at the rate of the mode the code calls it in
+(viruses gv-meta; plasmids, and prokaryote genomes under 100 kb, meta; other prokaryotes single) and the
+topology of each contig, per base the caller reads (a circular contig is read with up to 50 kb of its other
+end on each side), times the step's overhead, plus a process's own 15 s (rates and sources in section 10).
+A genome all of whose contigs another stage (or another genome of the stage) owns is not called; its skip is
+in the ledger as before.
+
+- Within 80% of `cpu_min_per_process`: one process, the same command and run record as before.
+- Above it: the genomes, in `genome_uid` order, are cut into the fewest batches of equal estimated cost
+  that each fit 80% of the budget (a genome is never split), and the line lists each batch's estimate and
+  the merge's. Every piece is a `run-step` step of the stage with its run record (card B-50), as ingest's
+  batches are. First `genecall.plan` publishes the plan as `l1/genecall_plan/stage=<S>/plan.json`. Then
+  each batch is the step `genecall.batch-<j>`, its own `bio-box run-step` process with `--scan-cpus`
+  workers, up to `--scan-jobs` at once within the allowance, `STOP` checked before each launch. A batch
+  writes its rows into its plan's work directory,
+  `$BBTMP/scratch/genecall/<stage>.<root key>/<plan key>/batch-<j>/`, and publishes only a small record,
+  `l1/genecall_plan/stage=<S>/batch-<j>.json` (its genes, modes, skipped contigs, the digest of its
+  genomes and its estimate), with its run record `runs/stage=<S>/genecall.batch-<j>.json` (CPU-minutes,
+  wall time, peak memory, image and code). The records are a build's own and never in a manifest, as
+  `l0seq/ingest_plan/` is. Then the merge runs as the step `genecall`: its files, ledger and printed result
+  are those of the one-process call, byte for byte, so every later step reads it as before. The step's cost
+  is the sum of the `cpu_min` of `genecall.plan`, every `genecall.batch-<j>` and `genecall`. The work
+  directory is removed once the merge is published.
+- Refused (exit 2) before any batch: a genome estimated over 80% of the budget alone, or a merge over it.
+- Resume: a call after a kill or a `STOP` resumes the published plan and runs only the batches without a
+  run record, then the merge; a stage with every batch recorded and no `genecall.json` runs only the merge.
+  A batch killed by SIGKILL leaves a dot-named directory, which the next call removes. Lost scratch (a
+  reboot): each recorded batch whose rows are gone is made again outside `run-step`
+  (`genecall.batch-<j>.redo` in the log) and must reproduce its published record (counts and genome
+  digest), else the build stops before the merge with exit 2 naming the batch: tell the PI.
+- To see the plan without building (it writes the plan into the directory given, nothing into the root):
+
+```bash
+bio-box stage genecall plan --root "$ROOT" --stage S0 --seq-stages S0 --runs-tmp "$BBTMP/scratch" --batch-cpu-min 240
+```
+
 **Non-coding RNA (card E-07, DEC-28).** `--ncrna-cm <Rfam.cm.gz>` puts the ncRNA producer in the
 `features` slot, as a step named `ncrna-<producer>`. The producer scans the model set `--ncrna-set`
 (default `prok-2`, DEC-30, the frozen file `src/biobox/l1/rfam_sets/prok-2.tsv`: 770 Rfam 15.1 models,
@@ -435,6 +473,31 @@ NR50 step 0 (derived, DEC-29). Then:
   cut's `one_process` when it is one.
 - This ends when an MMseqs2 without the abort is pinned (card B-44).
 
+**A release over the same proteins takes the earlier clustering (card B-49, DEC-45 (2)).** Before the
+cluster step, `build-stage` looks for an earlier release of the root whose clustering in parts is finished
+(all its plan records, and the run record of its step `cluster`) and whose plan record equals the one this
+release's clustering would write, but for the release's name: the same stages in the same order, the same
+`protein_seq` files by path and size, the same distinct protein uids (read from the files' uid column; a uid
+is the hash of its sequence), the same MMseqs2, and the same cut (`--cluster-parts N`, or the default, and the
+profile's `cluster_cpu_min_max`). Its clustering ledger must name today's MMseqs2 and pyarrow. When one is
+found the log says `release <R1> has a finished clustering whose plan equals this release's` and the cluster
+step is `bio-box release cluster reuse --from <R1>`, under the step name `cluster`: no MMseqs2 call; R1's
+`cluster_member`, `cluster_member_aln` and `member_cluster` files are copied to the release's own
+`release=<R2>` directories (each checked by sha256 against R1's run record; never a link; R1's files are
+only read), R1's plan records are written again for R2, and `l2/cluster_plan/release=<R2>/cluster.reuse.json`
+and the clustering ledger (rows `reused:<R1>:<hash>`) name the source. Tokens, postings and the rest then run
+as for any release.
+- Several releases qualify: the first by name is taken. A release clustered in one process records no plan,
+  so it is never a source. A release over more stages than R1 (one stage added), or with one protein changed,
+  takes nothing and is clustered.
+- `--no-reuse` clusters the release anyway. A release whose own clustering has begun (a plan record or a
+  table of its own) is finished as it began.
+- By hand: `bio-box run-step --stage <R2> --step cluster -- python -m biobox.cli release cluster reuse
+  --root R --release R2 --stages S1,... [--from R1] --parts 24 --one-process-cpu-min-max 20000.0 --tmp D`
+  (the cut options must be R1's: `release cluster reuse` refuses, exit 2, naming the plan field that differs).
+- The copies need the source's table bytes again in the root, and twice that while `run-step` publishes them
+  from staging (about 10.6 GB and 21.2 GB for `rM.2`'s, derived from its run record's sizes).
+
 A shard that fails stops new launches. Shards already running go on to their own end and publish if
 no `STOP` file exists then, and `build-stage` exits with the failed shard's code. A `STOP` file is
 different: a shard whose command ends while `STOP` exists publishes nothing (section 3). The next call
@@ -556,6 +619,16 @@ names. Fields:
 | `cpu_budget_reason` | only in the record of a clustering call run as one process in parts: `exempt: DEC-29` (section 2). Before card B-42 a release's `cluster` record clustered in one process with `cluster_cpu_min_max` in the profile held `exempt: DEC-25` |
 | `image_digest`, `host` | the image sha256 that `pod_run.sh --digest` passed in, and the host |
 | `outputs` | each published file: `path`, `bytes`, `sha256` |
+
+A step that runs in pieces has a record per piece, each with its own `cpu_min`: ingest in batches
+(`ingest.pass1-<k>`, `ingest.plan`, `ingest.batch-<j>`, `ingest`), a scan in shards
+(`domains-<lib>-<ver>.plan`, `.shard-<k>`, the scan's own name), clustering in parts, and gene calling in
+batches (card B-50): `genecall.plan`, `genecall.batch-<j>` and the merge `genecall`. Gene calling's cost
+is the sum of those records' `cpu_min`. A batch's record lists one output,
+`l1/genecall_plan/stage=<S>/batch-<j>.json`, which holds its genes, wrapping genes, modes, skipped
+contigs, the digest of its genome uids, its estimate (`estimate_cpu_min`, from the plan) and the plan's
+sha256; its rows were in scratch and are not in the root. A batch made again after a reboot
+(`.redo` in the log) has no run record of its own: its published record stays the one of the first run.
 
 These commands run `$WORK/rb.py`, a script file saved from Appendix B. It is a Python file and not a
 `python -c` string, so a command survives one level of quoting, such as `ssh host 'bash -c "..."'`; a
@@ -1091,9 +1164,11 @@ a profile value is missing from this table.
 | Nice | 19 (one big process), 15 (many small ones) | profile `nice_monolithic`, `nice_fanout`; AGENTS 7.2 says 19 |
 | CPU-minutes per process | 300 | profile `cpu_min_per_process`; AGENTS 7.2 |
 | CPU-minutes of one clustering call run as one process | 20000, estimated before launch; refused above it. The one exemption from the 300 (DEC-29): a call that no number of parts fits (the NR90 step's prefilter from about 74 M proteins, NR50 step 0 from about 108 M, derived). Set by the PI on 2026-11-10 for the 50 Gbp build: about nine times the 2,195.91 measured for 10,620,684 proteins (wilkcomp02, 2026-11-10). Without the key such a call is refused. Clustering in one process has no exemption since card B-42 (DEC-25's ended): above 80% of the budget a release clusters in parts | profile `cluster_cpu_min_max`; DEC-29 (narrowing DEC-25); `cluster_refusal`, `one_process_refusal` in `src/biobox/stage.py`; cards B-36, B-45, B-42 |
+| A release's clustering taken from an earlier release | only when the earlier release's plan record equals this release's but for the name (stages, `protein_seq` files by path and size, protein uids, MMseqs2, cut) and its ledger names today's MMseqs2 and pyarrow; no MMseqs2 call, the step is copies in 8 MiB blocks (section 2). `--no-reuse` clusters instead | `reuse`, `reuse_source` in `src/biobox/l2/cluster.py`; `_reuse_source` in `src/biobox/stage.py`; DEC-45 (2); card B-49 |
 | ncRNA scan shard size | `prok-2` (the default): 111,734,541 genome bases, 80% of `cpu_min_per_process` (300) at 358.0 CPU-hours per 10 Gbp (derived: 304.0 × 299.7 / 254.5, the set's cost relative to `prok-1` from `planning/measurements/2026-11-12_rfam_sample.md`). `prok-1`: 131,578,947 at 304.0, the slower of the two shards of card E-07's pod check (derived in `planning/measurements/2026-11-11_ncrna_producer.md`; the design note's 247.4 gave 161,681,487). Shards at once: at most the unit's `MemoryMax` / (6.4 GiB per two `cmsearch` threads) | `NCRNA_CPU_H_PER_10GBP`, `NCRNA_SET_COST`, `NCRNA_JOB_GIB` in `src/biobox/stage.py`; cards E-07, E-08, E-09 |
 | CRISPR step | one process, `--scan-cpus` MinCED processes of a 512 MiB heap each; refused above 80% of `cpu_min_per_process` (300) at 182.0 CPU-seconds per Gbp: a stage of 79.1 Gbp (derived: 0.8 × 300 × 60 / 182.0). The rate: 185.0 CPU-s for stage P1's 1,016,625,803 bases (run record, wilkcomp02, 2026-11-13, `planning/measurements/2026-11-13_crispr_arrays.md`) | `CRISPR_CPU_S_PER_GBP`, `crispr_refusal` in `src/biobox/stage.py`; `JAVA_HEAP` in `src/biobox/l1/crispr.py`; card E-12 |
 | CRISPR step of two-repeat arrays beside Cas genes | one process, as the CRISPR step, plus one DuckDB connection of one thread capped at `DUCK_MEMORY_LIMIT` for the filter; its estimate is the CRISPR step's times 1.19, refused above 80% of `cpu_min_per_process` (300): a stage of 66.5 Gbp (derived: 0.8 × 300 × 60 / (182.0 × 1.19)). The factor: 31.790 against 26.723 CPU-minutes on stage P2, the larger of the three ratios 1.08, 1.19, 1.14 on P1, P2, S1 (run records, wilkcomp02, 2026-11-14, `planning/measurements/2026-11-14_crispr_two_repeat_producer.md`); peak RSS of one process 1.02 GB on P2 | `CRISPR_NEAR_CAS_COST`, `crispr_refusal` in `src/biobox/stage.py`; `run_near_cas` in `src/biobox/l1/crispr.py`; card E-15 |
+| Gene-call step | one process when its estimate is at most 80% of `cpu_min_per_process` (300), else batches of whole genomes in `genome_uid` order, each estimated at most 240 CPU-minutes, its own run-step `genecall.batch-<j>` (card B-50; after the run-step `genecall.plan`) with `--scan-cpus` workers, at most `--scan-jobs` at once within the allowance, then the merge as the run-step `genecall`; each piece has its run record, and the step's cost is their sum; the rows stay in scratch, the root gains per batch one record in `l1/genecall_plan/` and one run record (370 to 393 bytes and 1,401 bytes on the fixture, measured, wilkcomp02, 2026-11-15, `ls -l` of a test root, card B-50); refused when one genome alone or the merge is over 240. Rates, CPU-seconds per Mbp read by the caller (a circular contig with its wrap flanks), the calls alone, one thread: single 0.7941 (stage P6), gv-meta 4.2019 (S1), meta 2.9450 linear and 4.4205 circular (PLSDB records of stage PL1); each the larger of two samples of every 30th genome (measured, wilkcomp02, 2026-11-15, card B-48's note and card C-26's sample); circular single and gv-meta 1.5011 times linear (derived from meta mode's ratio; an estimate). The step is the calls times 1.23, the largest record-to-calls ratio of the eight built stages (derived from their run records), plus 15 s a process (estimate); the merge 15 s plus 5.5 µs a gene (derived from stage S1's merge, 0.432 CPU-minutes for 2,398,087 genes). Every built stage's record is within 0 to 16% under its estimate (S1 143.6 against 142.8, H1 169.2 against 146.1, P1 to P6 3% to 9%); S1 in 4 batches: 30.70 to 31.87 CPU-minutes a batch against 36.09 (measured, wilkcomp02, 2026-11-15). Stage PL1: 872.6 CPU-minutes in one process, 4 batches of 218.3 and a merge of 0.8 (derived, `b48_pl1_plan.py`) | `CALL_S_PER_MBP`, `STEP_OVERHEAD`, `PROCESS_S`, `PUBLISH_S_PER_GENE`, `cut_plan` in `src/biobox/l1/genecall.py`; `_genecall`, `genecall_refusal`, `_genecall_in_batches`, `_redo_lost_batches` in `src/biobox/stage.py`; `genecall_plan` in `src/biobox/registry/schemas.py`; cards B-48, B-50 |
 | Scan shard size | 30,150,753 residues: 80% of `cpu_min_per_process` (300) at 7.96 CPU-minutes per million residues (derived: 300 × 0.8 / 7.96 × 10^6; the rate of the Pfam scan of stage P1 in card C-10, measured on wilkcomp02, 2026-11-10: 2,343.74 CPU-minutes for 294.5 M residues). The 80% leaves room for a scan 25% slower per residue (derived: 1 / 0.8) | `SHARD_MARGIN` and `SCAN_CPU_MIN_PER_M` in `src/biobox/stage.py`; cards C-11, C-13 |
 | Scan shards at once | `--scan-jobs` J × `--scan-cpus` C at most the cap `run-step` allows when `build-stage` starts (40 by day, 56 at night when no other user computes); defaults C = 4, J = cap // C (10 by day, 14 at night). The cap is a total over everything of ours on the pod: `build-stage` subtracts what ours elsewhere use at each launch, not what starts later, so choose J = floor((cap - other threads) / C) (section 2). The allowance is read again before each step and before each shard launch; a launch that would pass it waits | `scan_slots` and `_launch` in `src/biobox/stage.py`; cards C-11, C-12, C-28 |
 | Unit CPU quota | the night cap, 56: a ceiling fixed at launch; `build-stage` holds the limit of the hour | `scripts/pod_run.sh --threads`, profile `max_threads_night`; card C-12 |
@@ -1187,6 +1262,11 @@ image of `faec1f4` (section 0), the tree of the C-33 branch (`TREE=/tmp/if2453/c
 rehearsal: a copy with its own `tmp`) and the real data root, through `scripts/stress/build_stage_pod/c33_driver.sh`
 in units named `c33-*`.
 
+The rows marked C-24 were run on 2026-11-15 between 07:29 and 14:37 (pod local time) by card C-24 with the image of
+`faec1f4` (section 0), the tree of the C-24 branch (`TREE=/tmp/if2453/ci/C-24`), the real profile with its own `tmp`
+(`/tmp/if2453/c24/tmp`; the rehearsal: Appendix B's profile at 4 threads) and the real data root, through
+`scripts/stress/build_stage_pod/c24_driver.sh` in units named `c24-*`.
+
 | Section | Command | Date run | Last line |
 |---|---|---|---|
 | 1 | `ls -d "$ROOT/STOP"` | 2026-11-10 | `ls: cannot access '/tmp/if2453/c06/root/STOP': No such file or directory` |
@@ -1264,6 +1344,10 @@ in units named `c33-*`.
 | 6 | C-34: `bio-box release verify --root "$ROOT" --release R` for `rN.1a`, `rN.1b`, `rN.1`, `rN.2`, `rN.3`, `rM.2` (the real root, bound read-only; before the first write and after the last) | 2026-11-15 | `release rM.2: verified (stages S1,P1,P2,P3,P4,P5,P6, 158 files, 154 artifacts, manifest hash 2239df7b92ec775058fb9c2ddae3609e)` both times, and the other five `verified` with their manifest hashes unchanged |
 | 2 | C-34: `c34_driver.sh run`: the step command of the rehearsal with `--root /tmp/if2453/r10/root` and a copy of the real profile whose `tmp` is `/tmp/if2453/c34/tmp-real`, on S1, P1, P2, one unit at a time (units `c34-s1`, `c34-p1`, `c34-p2`; `planning/measurements/2026-11-15_label_files_old_stages.md`) | 2026-11-15 | `pod_run: c34-p2 exited 0` (each unit `exited 0` after `published 2 files`) |
 | 2 | C-33: `c33_driver.sh run`: the step command of the rehearsal with `--root /tmp/if2453/r10/root` and the real profile, the default producer on S1, P1 to P6, then the filtered one, at most 5 units of 4 threads at once (units `c33-nr3-<s>-<n>`, `c33-near-<s>-<n>`; card C-33 part 1, `planning/measurements/2026-11-15_crispr_arrays_on_built_stages.md`) | 2026-11-15 | `pod_run: c33-near-p6-14 exited 0` (every one of the 14 units `exited 0` after `published 3 files`) |
+| 2 | C-24 rehearsal: `c24_driver.sh rehearse` (the fixture in `/tmp/if2453/c24/rh/root`: stage S0 and `rC24.1` built whole, then unit `c24-rh-s1`: `pod_run.sh ... build-stage --profile ... --root ... --stage S1 --release rC24.3 --stages S0,S1,PLX --genomes ... --objects ... --library pfam 38.2 <Pfam-A.hmm.gz> gathering --crispr --threads 4` and one scan job of 4 threads, a release over a stage with no files) | 2026-11-15 | `pod_run: c24-rh-s1 exited 2` (before it, `build-stage: refused before rC24.3.cluster: release rC24.3: stage PLX has no gene-call run record (runs/stage=PLX/genecall.json), so its clustering cannot be estimated before launch (AGENTS §7.2)`, after the 8 stage steps); `release define --stages S0,S1,PLX`: `refused: stages ['PLX'] have no contig_index under /tmp/if2453/c24/rh/root: not ingested` |
+| 6 | C-24: `bio-box release verify --root "$ROOT" --release R` for `rN.1a`, `rN.1b`, `rN.1`, `rN.2`, `rN.3`, `rM.2` (the real root, bound read-only; before the first write, after the stop and after the last write) | 2026-11-15 | `release rM.2: verified (stages S1,P1,P2,P3,P4,P5,P6, 158 files, 154 artifacts, manifest hash 2239df7b92ec775058fb9c2ddae3609e)` both times, and the other five `verified` with their manifest hashes unchanged |
+| 2 | C-24: `c24_driver.sh run`: unit `c24-h1-1`, `pod_run.sh --profile ... --threads 40 --bind /tmp/if2453 --bind <Pfam dir>:ro ... build-stage --profile ... --root /tmp/if2453/r10/root --stage H1 --release rM.3 --stages S1,P1,P2,P3,P4,P5,P6,H1,PL1 --genomes ... --objects ... --library pfam 38.2 <Pfam-A.hmm.gz> gathering --crispr --threads 36`, 9 scan jobs of 4 threads; the full command is in `planning/measurements/2026-11-15_stage_H1.md`) | 2026-11-15 | `pod_run: c24-h1-1 exited 143`: stopped by the driver's rate guard after 9 of the scan's 14 shards were published (the guard judged a shard of 1,347 residues; DEC-43 then limited it to steps estimated at 24 CPU-minutes or more) |
+| 2 | C-24: `c24_driver.sh run` again, unit `c24-h1-2`, the same `build-stage` command (a resume: every published step skipped) | 2026-11-15 | `pod_run: c24-h1-2 exited 2` (before it, `build-stage: refused before rM.3.cluster: release rM.3: stage PL1 has no gene-call run record (runs/stage=PL1/genecall.json), so its clustering cannot be estimated before launch (AGENTS §7.2)`, the expected end of a stage-only launch) |
 | 8 | C-32: the image check, section 8's command with the units named `C-32` (`detached_suite.sh --own C-32 2`, `BIOBOX_POD_IMAGE=/tmp/if2453/images/bio-box-test_faec1f4.sif`, the peer file) (pod) | 2026-11-13 | shard lines `842 passed, 7 skipped, 25 warnings in 5571.68s (1:32:51)` and `1188 passed, 16 skipped, 68 warnings in 3438.38s (0:57:18)` |
 | 8 | C-32: `BIOBOX_POD_CI=/tmp/if2453/c32/ci sh scripts/pod_pytest.sh C-32-red tests/r0/test_runbook.py -k c29` (laptop; before the change, in the old default image; another name so as not to share a base temp with the image check) | 2026-11-13 | `3 failed, 4 passed, 43 deselected in 3.99s` (the card's migrated tests failing first) |
 | 8 | C-32: `sh scripts/pod_pytest.sh C-32 tests/r0` (laptop; the new default image) | 2026-11-13 | `208 passed in 5.52s` (the branch point in the old image: `208 passed in 10.08s`) |

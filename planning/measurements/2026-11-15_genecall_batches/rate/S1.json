@@ -1,0 +1,23 @@
+{
+ "stage": "S1",
+ "every": 30,
+ "genomes_seen": 27258,
+ "all": {
+  "genomes": 908,
+  "bases": 55446997,
+  "called": 55446997,
+  "genes": 79300,
+  "cpu_s": 232.98,
+  "s_per_mbp_called": 4.2019,
+  "genes_per_mbp": 1430.195
+ },
+ "gv-meta/linear": {
+  "genomes": 908,
+  "bases": 55446997,
+  "called": 55446997,
+  "genes": 79300,
+  "cpu_s": 232.98,
+  "s_per_mbp_called": 4.2019,
+  "genes_per_mbp": 1430.195
+ }
+}

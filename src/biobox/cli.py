@@ -42,6 +42,8 @@
         [--one-process-cpu-min-max C]
     bio-box release cluster step|redo --root R --release R1 --name STEP --tmp D --threads N
     bio-box release cluster finish --root R --release R1 --tmp D --threads N
+    bio-box release cluster reuse --root R --release R2 [--stages S0,S1] [--from R1] --tmp D (--parts N | --part-cpu-min M)
+        [--one-process-cpu-min-max C]   (card B-49: an earlier release's clustering of the same proteins, copied)
     bio-box release verify --root R --release R2 [--previous R1]
     bio-box stage inputs --root R --stage S --genomes genomes.json [--out DIR]
     bio-box stage ingest --root R --stage S --objects objects.json [--shard-bases N] [--line-width N] [--tmp D]
@@ -50,8 +52,14 @@
     bio-box stage ingest batch --root R --stage S --objects F --batch J --tmp D
     bio-box stage ingest merge --root R --stage S --objects F --tmp D
     bio-box stage genecall|igr|tapes --root R --stage S [--tmp D] [--producers P,Q] [--workers N] [--out DIR]
+    bio-box stage genecall plan --root R --stage S --runs-tmp D --batch-cpu-min X [--batches N] [--seq-stages S0,S1]
+    bio-box stage genecall plan --root R --stage S --plan P [--tmp D] [--out DIR]      (card B-50: publish P as the record)
+    bio-box stage genecall batch --root R --stage S --plan P --batch J [--workers N] [--check-record] [--out DIR]
+                                                                                       (cards B-48, B-50)
+    bio-box stage genecall merge --root R --stage S --plan P [--tmp D] [--out DIR]
     bio-box stage domains --root R --stage S --library pfam --library-version 38.2 --hmm F --cutoff gathering
     bio-box stage domains plan --root R --stage S --library L --library-version V --hmm F --cutoff C --shard-residues N
+                [--seq-stages S,S0,S1]   (card B-47b: copy the rows those stages measured)
     bio-box stage domains shard --root R --stage S --library L --library-version V --hmm F --shard K --cpus N --tmp D
     bio-box stage domains merge --root R --stage S --library L --library-version V --tmp D
     bio-box stage ncrna --root R --stage S --cm Rfam.cm.gz [--ncrna-set prok-2] --cpus N [--tmp D] [--seq-stages S0,S1]
@@ -72,7 +80,9 @@ one stage and its release, each as a `run-step`; a second call skips what is don
 
 `release cluster plan|step|finish|redo` (card B-41, `biobox.l2.cluster`) is a release's clustering in
 parts, each step its own process: `build-stage` runs them when clustering in one process is estimated
-over 80% of the CPU-minute budget. `redo` writes nothing into the root and is not a run-step.
+over 80% of the CPU-minute budget. `redo` writes nothing into the root and is not a run-step. `reuse`
+(card B-49) writes a release's clustering as copies of an earlier release's whose plan is the same but for
+the release's name; `build-stage` runs it as the cluster step when one qualifies, unless `--no-reuse`.
 
 A release names its stages (card B-25): `--stages` defines it once (its `release_def`); after that
 every release step reads the stages from `release_def`, and `--stages`, if given, must repeat them.
@@ -1698,12 +1708,14 @@ def _run_step(a) -> int:
 
 
 RELEASE_STEPS = ("define", "cluster", "tokens", "postings", "dim", "manifest", "catalog", "verify")
-CLUSTER_ACTIONS = ("plan", "step", "finish", "redo")  # `release cluster plan|step|finish|redo` (card B-41)
+CLUSTER_ACTIONS = ("plan", "step", "finish", "redo", "reuse")  # card B-41; reuse: card B-49
 STAGE_STEPS = ("inputs", "ingest", "genecall", "igr", "tapes", "domains", "ncrna", "crispr", "labels")
 DOMAIN_ACTIONS = ("plan", "shard", "merge")  # `stage domains plan|shard|merge` (card B-24)
 INGEST_ACTIONS = ("pass1", "plan", "batch", "merge")  # `stage ingest pass1|plan|batch|merge` (card B-30)
 NCRNA_ACTIONS = ("plan", "shard", "merge")  # `stage ncrna plan|shard|merge` (card E-07)
-STEP_ACTIONS = {"domains": DOMAIN_ACTIONS, "ingest": INGEST_ACTIONS, "ncrna": NCRNA_ACTIONS}
+GENECALL_ACTIONS = ("plan", "batch", "merge")  # `stage genecall plan|batch|merge` (card B-48)
+STEP_ACTIONS = {"domains": DOMAIN_ACTIONS, "ingest": INGEST_ACTIONS, "ncrna": NCRNA_ACTIONS,
+                "genecall": GENECALL_ACTIONS}
 PACK_DIR_HELP = ("the pack directory, outside the data root (card W-03); default: <profile tmp>/packs, the host's one "
                  "pack directory (card W-22), with a host profile, else packs beside $BIOBOX_SEARCH_WORK or "
                  "/tmp/atd/search")
@@ -1738,6 +1750,10 @@ def _release_step(a, root: Path, stages: list[str], out: Path) -> dict:
             return cluster.plan(root, a.release, a.gene_call_version, stages, tmp, parts=a.parts,
                                 part_cpu_min=a.part_cpu_min, one_process_cpu_min_max=a.one_process_cpu_min_max,
                                 out=out)
+        if a.action == "reuse":  # an earlier release's clustering of the same proteins (card B-49)
+            return cluster.reuse(root, a.release, a.gene_call_version, stages, tmp, source=a.source, parts=a.parts,
+                                 part_cpu_min=a.part_cpu_min, one_process_cpu_min_max=a.one_process_cpu_min_max,
+                                 out=out)
         return cluster.run(root, a.release, a.gene_call_version, stages, threads=a.threads, tmp=tmp, out=out)
     if a.step == "tokens":
         from biobox.l3 import tokens
@@ -1982,10 +1998,47 @@ def _stage_step(a, root: Path, out: Path) -> dict:
             return store.ingest_batch(objs, root, a.stage, a.batch, tmp=tmp, out=out, **shared)
         return store.ingest_merge(objs, root, a.stage, tmp=tmp, out=out, **mfb, **shared)
     if a.step == "genecall":
-        from biobox.l1.genecall import run
+        from biobox.l1 import genecall
 
-        return run(root, a.stage, version=a.gene_call_version, prefix_width=a.prefix_width, tmp=tmp,
-                   workers=a.workers, seq_stages=_csv(a.seq_stages), out=out, **mfb)
+        if a.action is None:
+            return genecall.run(root, a.stage, version=a.gene_call_version, prefix_width=a.prefix_width, tmp=tmp,
+                                workers=a.workers, seq_stages=_csv(a.seq_stages), out=out, **mfb)
+        # in batches (card B-48): plan (writes the plan into --runs-tmp only), batch (writes only into the plan's work
+        # directory), merge (the step's files, under --out or $BIOBOX_STAGING). Card B-50: `plan --plan P` publishes
+        # the plan P as its record, and a batch writes its record, each under --out or $BIOBOX_STAGING only (a direct
+        # call with neither writes no record, as before)
+        records = Path(a.out) if a.out else (Path(os.environ["BIOBOX_STAGING"]) if os.environ.get("BIOBOX_STAGING")
+                                             else None)
+        need = {"plan": ("plan",) if a.plan else ("runs_tmp", "batch_cpu_min"), "batch": ("plan", "batch"),
+                "merge": ("plan",)}[a.action]
+        missing = [f"--{n.replace('_', '-')}" for n in need if getattr(a, n) is None]
+        if missing:
+            raise ValueError(f"stage genecall {a.action} needs {', '.join(missing)}")
+        if a.action == "plan" and a.plan:
+            if records is None:
+                raise ValueError("stage genecall plan --plan publishes the plan as its record: it needs --out or "
+                                 "$BIOBOX_STAGING (bio-box run-step)")
+            return genecall.publish_plan(root, a.stage, Path(a.plan), records, version=a.gene_call_version, tmp=tmp)
+        if a.action == "plan":
+            from biobox import ledger
+
+            ledger.check_scratch(a.runs_tmp, root)  # the plan's work directory is scratch, never under the root
+            p = genecall.plan(root, a.stage, version=a.gene_call_version, seq_stages=_csv(a.seq_stages),
+                              batch_cpu_min=a.batch_cpu_min, batches=a.batches, tmp=tmp)
+            path = genecall.write_plan(p, genecall.work_dir(Path(a.runs_tmp), root, a.stage, p))
+            return {"plan": str(path), "batches": len(p["batches"]), "genomes": p["genomes"],
+                    "genomes_not_called": p["genomes_not_called"], "bases": p["bases"],
+                    "estimate_cpu_min": p["estimate_cpu_min"], "largest_genome": p["largest_genome"],
+                    "batch_estimates_cpu_min": [x["estimate_cpu_min"] for x in p["batches"]],
+                    "merge_estimate_cpu_min": p["merge_estimate_cpu_min"], "batch_cpu_min": a.batch_cpu_min}
+        if a.action == "batch":
+            rec = genecall.run_batch(root, a.stage, Path(a.plan), a.batch, version=a.gene_call_version,
+                                     workers=a.workers, check_record=a.check_record)
+            if records is not None and not a.check_record:
+                genecall.publish_batch(root, a.stage, Path(a.plan), rec, records)
+            return rec
+        return genecall.merge(root, a.stage, Path(a.plan), version=a.gene_call_version, out=out, tmp=tmp,
+                              prefix_width=a.prefix_width, **mfb)
     if a.step == "igr":
         from biobox.l1 import igr
 
@@ -2033,6 +2086,10 @@ def _stage_step(a, root: Path, out: Path) -> dict:
         return store.write_labels(root, a.stage, out=out, tmp=tmp, threads=a.cpus, **mfb)
     from biobox.l1 import domains
 
+    if a.seq_stages is not None and a.action != "plan":  # card B-47b: the plan records what is copied
+        raise ValueError(f"stage domains{'' if a.action is None else ' ' + a.action}: --seq-stages is taken by "
+                         "`stage domains plan` only (the plan leaves out the proteins those stages measured and records "
+                         "them for the merge to copy, card B-47b)")
     need = {None: ("library", "library_version", "hmm", "cutoff"),  # the whole scan in this process
             "plan": ("library", "library_version", "hmm", "cutoff", "shard_residues"),  # card B-24
             "shard": ("library", "library_version", "hmm", "shard"),
@@ -2042,7 +2099,7 @@ def _stage_step(a, root: Path, out: Path) -> dict:
         raise ValueError(f"stage domains{'' if a.action is None else ' ' + a.action} needs {', '.join(missing)}")
     if a.action == "plan":
         return domains.plan(root, a.stage, a.gene_call_version, a.library, a.library_version, Path(a.hmm), a.cutoff,
-                            a.shard_residues, out=out)
+                            a.shard_residues, out=out, seq_stages=_csv(a.seq_stages))
     if a.action == "shard":
         return domains.scan_shard(root, a.stage, a.library, a.library_version, Path(a.hmm), a.shard, a.cpus,
                                   tmp=tmp, out=out)
@@ -2076,7 +2133,7 @@ def _build_stage(a) -> int:
                     libraries=libs, tmp=Path(a.tmp) if a.tmp else None, threads=a.threads,
                     gene_call_version=a.gene_call_version, scan_jobs=a.scan_jobs, scan_cpus=a.scan_cpus,
                     cluster_parts=a.cluster_parts, ncrna_cm=Path(a.ncrna_cm) if a.ncrna_cm else None,
-                    ncrna_set=a.ncrna_set, crispr=a.crispr)
+                    ncrna_set=a.ncrna_set, crispr=a.crispr, reuse=not a.no_reuse)
     return stage.build_stage(profile.load(a.profile), b)
 
 
@@ -2304,8 +2361,12 @@ def _main(argv: list[str] | None = None) -> int:
     rl.add_argument("step", choices=RELEASE_STEPS)
     rl.add_argument("action", nargs="?", choices=CLUSTER_ACTIONS,
                     help="cluster in parts (card B-41): plan, then step (one call per --name, in the plan's "
-                         "sequence), then finish; redo makes a step whose scratch was lost again; without it, "
+                         "sequence), then finish; redo makes a step whose scratch was lost again; reuse (card B-49) "
+                         "takes an earlier release's finished clustering of the same proteins, whose plan equals "
+                         "this release's but for its name, as copies, with no clustering call; without it, "
                          "the whole clustering in one process")
+    rl.add_argument("--from", dest="source", help="cluster reuse: the earlier release whose clustering is taken "
+                                                  "(default: the first by name that qualifies)")
     rl.add_argument("--release", required=True)
     rl.add_argument("--name", help="cluster step|redo: the step (cluster.plan, cluster.<level>.<kk>.<module>, its "
                                    ".cut or .part-<p>, ...)")
@@ -2332,7 +2393,8 @@ def _main(argv: list[str] | None = None) -> int:
                     help="domains (card B-24) or ncrna (card E-07) in shards: plan, then shard (one call per --shard "
                          "K), then merge; "
                          "ingest in batch processes (card B-30): pass1 (one call per --shard K), plan, batch (one "
-                         "call per --batch J), then merge; without it, the whole step in one process")
+                         "call per --batch J), then merge; genecall in batches (card B-48): plan, batch (one call "
+                         "per --batch J), then merge; without it, the whole step in one process")
     st.add_argument("--stage", required=True)
     st.add_argument("--out", help=OUT_HELP)
     st.add_argument("--tmp", help="scratch directory (system temp by default; under neither the root nor --out)")
@@ -2344,7 +2406,8 @@ def _main(argv: list[str] | None = None) -> int:
     st.add_argument("--prefix-width", type=int, choices=[0, 1, 2], help="genecall: protein_seq bucket width")
     st.add_argument("--workers", type=int, default=1, help="genecall: genomes called at once")
     st.add_argument("--seq-stages", help="genecall, ncrna, crispr: S0,S1: the stages whose sequences the genomes "
-                                         "name (default: the stage itself)")
+                                         "name (default: the stage itself); domains plan: the stages whose measured "
+                                         "rows of this library are copied instead of scanning again (card B-47b)")
     st.add_argument("--producers", help="igr, tapes: the tape version's producers (default: the gene caller)")
     st.add_argument("--max-slots", type=int, help="tapes: slots per row group")
     st.add_argument("--library", help="domains: library name (pfam); crispr --near-cas: pfam")
@@ -2367,9 +2430,19 @@ def _main(argv: list[str] | None = None) -> int:
     st.add_argument("--shard", type=int, help="domains or ncrna shard: the shard to scan; ingest pass1: the pass-1 "
                                              "shard (0-based)")
     st.add_argument("--pass1-bytes", type=int, help="ingest pass1: bytes of source file per pass-1 shard at most")
-    st.add_argument("--batch", type=int, help="ingest batch: the batch to write (0-based)")
+    st.add_argument("--batch", type=int, help="ingest batch: the batch to write (0-based); genecall batch: the batch "
+                                              "of --plan to call (0-based)")
     st.add_argument("--runs-tmp", help="ingest pass1|plan|batch|merge: the scratch directory the steps share for "
-                                       "the pass-1 runs and the decision table (default: --tmp)")
+                                       "the pass-1 runs and the decision table (default: --tmp); genecall plan: the "
+                                       "scratch directory under which the plan's work directory is made")
+    st.add_argument("--plan", help="genecall batch|merge (card B-48): the plan file (plan.json in its work directory); "
+                                   "genecall plan (card B-50): publish this plan file as the stage's plan record")
+    st.add_argument("--check-record", action="store_true",
+                    help="genecall batch (card B-50): the batch is made again after its scratch was lost; its output "
+                         "must reproduce its record published in the root, and no record is written")
+    st.add_argument("--batch-cpu-min", type=float, help="genecall plan: the CPU-minutes a batch may be estimated at "
+                                                        "(build-stage gives 80%% of cpu_min_per_process)")
+    st.add_argument("--batches", type=int, help="genecall plan: cut into this many batches (forced)")
     bs = sub.add_parser("build-stage", parents=[common], help="a stage and its release, step by step under "
                                                               "run-step (card C-04)")
     bs.add_argument("--profile", required=True, help="host profile YAML (profiles/wilkcomp02.yaml)")
@@ -2392,6 +2465,9 @@ def _main(argv: list[str] | None = None) -> int:
     bs.add_argument("--cluster-parts", type=int, help="cluster in parts (card B-41), every per-query call cut into "
                                                       "this many (default: in parts only when clustering in one "
                                                       "process is estimated over 80%% of the budget, cut by it)")
+    bs.add_argument("--no-reuse", action="store_true", help="cluster the release even when an earlier release of the "
+                                                             "root has a finished clustering of the same proteins (by "
+                                                             "default the cluster step takes it, card B-49)")
     bs.add_argument("--ncrna-cm", help="the Rfam library (Rfam.cm.gz): run the ncRNA producer in the features slot and "
                                        "build IGRs, tapes, tokens and postings of both producers (card E-07)")
     bs.add_argument("--ncrna-set", default="prok-2", help="the ncRNA model set: a frozen set's name (prok-2, the "

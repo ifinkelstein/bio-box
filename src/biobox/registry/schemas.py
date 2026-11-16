@@ -1029,6 +1029,24 @@ ARTIFACTS: dict[str, ArtifactSpec] = {
         in_manifest=False,
         small_ok=True,
     ),
+    # A stage's gene calling in batches (cards B-48, B-50, `biobox.l1.genecall`): the plan and one record per batch
+    # (its counts and the digest of its genomes; its rows stay in scratch), written once each by the steps
+    # `genecall.plan` and `genecall.batch-<j>` so that `bio-box run-step` can publish them with a run record. A
+    # build's own records, like `ingest_plan`: never in a release manifest, so a release is the same whether gene
+    # calling was batched or not.
+    "genecall_plan": ArtifactSpec(
+        name="genecall_plan",
+        layer="L1",
+        location="l1/genecall_plan",
+        partition_keys=("stage",),
+        pattern=r"(plan|batch-\d{5})\.json",
+        doc="a stage's gene calling in batches: the plan (plan.json: the genomes in genome_uid order cut into batches "
+            "of whole genomes by estimated cost, each with the digest of its genome uids) and each called batch's "
+            "record (batch-<j>.json: its genes, wrapping genes, modes, skipped contigs and genome digest, and the "
+            "plan's sha256), as sorted-key JSON",
+        in_manifest=False,
+        small_ok=True,
+    ),
     # A stage's domain scan in shards (card B-24, `biobox.l1.domains`): the plan and one record per shard
     # (its scratch run's sha256 and counts), written once each by the plan and shard steps so that
     # `bio-box run-step` can publish them. A build's own records, like `runs/`: never in a release manifest,

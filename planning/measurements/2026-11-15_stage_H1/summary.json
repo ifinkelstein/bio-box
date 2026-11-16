@@ -1,0 +1,300 @@
+{
+ "added": {
+  "bytes": 1331319908,
+  "files": 64
+ },
+ "contigs": {
+  "bases_owned": 1819831338,
+  "circular": 0,
+  "codes": [
+   11
+  ],
+  "contigs": 7228,
+  "genome_input_rows": 7228,
+  "genomes": 7228,
+  "kinds": [
+   "virus"
+  ],
+  "ledger_equals_stored_by": true,
+  "ledger_skipped": 514,
+  "owned": 6714,
+  "result_equals_stored_by": false,
+  "result_skipped": 0,
+  "stored_by_earlier": {
+   "S1": 514
+  }
+ },
+ "crispr": {
+  "default": {
+   "arrays": 954,
+   "arrays_per_gbp": 524.224,
+   "calls_in": 954,
+   "calls_kept": 954,
+   "contigs_searched": 6714,
+   "contigs_skipped_other_stage": 514,
+   "elements": 15304,
+   "producer": "minced-0.4.2-w8-nr3-r23x47-s26x50",
+   "rejected": {},
+   "view_byte_identical": true
+  },
+  "near_cas": {
+   "arrays": 30,
+   "arrays_per_gbp": 16.485,
+   "calls_in": 11906,
+   "calls_kept": 30,
+   "contigs_searched": 6714,
+   "contigs_skipped_other_stage": 514,
+   "elements": 284,
+   "producer": "minced-0.4.2-w8-nr2-r23x47-s26x50-cas1kb-caspfam1-pfam-38.2",
+   "rejected": {
+    "far_from_cas": 10857,
+    "inside_gene": 1,
+    "overlaps_default": 1018
+   }
+  }
+ },
+ "failed": [],
+ "files": {
+  "after": 3476,
+  "before": 3412,
+  "changed": [],
+  "gone": [],
+  "new": 64,
+  "new_under_stage": 64,
+  "release_def": [],
+  "release_step_files": [],
+  "s1_sha256_changed": [],
+  "unexpected": []
+ },
+ "genes": {
+  "distinct_proteins": 1608023,
+  "earlier_protein_seq_files": 12,
+  "genes": 2276451,
+  "genetic_code_per_gene": {
+   "11": 2223678,
+   "15": 49873,
+   "4": 2900
+  },
+  "in_earlier_stages": 5612,
+  "new_distinct_proteins": 1602411,
+  "new_residues": 390708638,
+  "residues": 391957113,
+  "result_line": {}
+ },
+ "genetic_code_flag": {
+  "all": {
+   "genes": 2462391,
+   "genomes": 7228,
+   "genomes_all_genes_not_code_11": 166,
+   "genomes_mean_under_half_median": 2,
+   "genomes_mean_under_half_median_of_means": 29,
+   "genomes_with_any_gene_not_code_11": 166,
+   "median_gene_bp": 489.0,
+   "median_of_genome_means_bp": 753.7442307692309,
+   "share_under_half_median": 0.000277
+  },
+  "genomes_without_genes": 0,
+  "owned": {
+   "genes": 2276451,
+   "genomes": 6714,
+   "genomes_all_genes_not_code_11": 154,
+   "genomes_mean_under_half_median": 2,
+   "genomes_mean_under_half_median_of_means": 28,
+   "genomes_with_any_gene_not_code_11": 154,
+   "median_gene_bp": 492.0,
+   "median_of_genome_means_bp": 753.4463483472691,
+   "share_under_half_median": 0.000298
+  }
+ },
+ "log": {
+  "exit": [
+   "pod_run: c24-h1-2 exited 2"
+  ],
+  "refusal": [
+   "2026-11-15T14:22:36-06:00 build-stage: refused before rM.3.cluster: release rM.3: stage PL1 has no gene-call run record (runs/stage=PL1/genecall.json), so its clustering cannot be estimated before launch (AGENTS \u00a77.2)"
+  ],
+  "usage": [
+   "pod_run: c24-h1-2 usage MemoryPeak=5922037760 CPUUsageNSec=65353649284000"
+  ]
+ },
+ "pfam": {
+  "domain_rows": 610803,
+  "models_with_hit": 5346,
+  "proteins_scanned": 1608023,
+  "proteins_with_domain": 387478,
+  "residues_scanned": 391957113,
+  "shard_residues": 30150753,
+  "shards": 14
+ },
+ "steps": {
+  "code_ids": [
+   "a76fd7d3f758eac28937f464c82508bdc00fe58aee53aa7ac71938380ee90c9d"
+  ],
+  "cpu_min_max": 220.75,
+  "cpu_min_total": 2982.09,
+  "images": [
+   "sha256:d67300aa1321b571fa8da79e74dfccdd87a8dca2e56518f324902efa6b9f098a"
+  ],
+  "names": [
+   "crispr-minced-0.4.2-w8-nr2-r23x47-s26x50-cas1kb-caspfam1-pfam-38.2",
+   "crispr-minced-0.4.2-w8-nr3-r23x47-s26x50",
+   "domains-pfam-38.2",
+   "domains-pfam-38.2.plan",
+   "genecall",
+   "igr",
+   "ingest",
+   "inputs",
+   "tapes"
+  ],
+  "over_budget": [],
+  "rates": {
+   "checked": 17,
+   "outside_20pct": [],
+   "rows": [
+    {
+     "basis": "ingest_cpu_min(FASTA bytes)",
+     "cpu_min": 7.645,
+     "estimate": 8.842,
+     "judged": false,
+     "ratio": 0.865,
+     "step": "ingest"
+    },
+    {
+     "basis": "30150733 residues x 7.96 / 1e6",
+     "cpu_min": 218.941,
+     "estimate": 240.0,
+     "judged": true,
+     "ratio": 0.912,
+     "step": "domains-pfam-38.2.shard-00000"
+    },
+    {
+     "basis": "30150556 residues x 7.96 / 1e6",
+     "cpu_min": 215.229,
+     "estimate": 239.998,
+     "judged": true,
+     "ratio": 0.897,
+     "step": "domains-pfam-38.2.shard-00001"
+    },
+    {
+     "basis": "30150336 residues x 7.96 / 1e6",
+     "cpu_min": 216.447,
+     "estimate": 239.997,
+     "judged": true,
+     "ratio": 0.902,
+     "step": "domains-pfam-38.2.shard-00002"
+    },
+    {
+     "basis": "30150728 residues x 7.96 / 1e6",
+     "cpu_min": 215.697,
+     "estimate": 240.0,
+     "judged": true,
+     "ratio": 0.899,
+     "step": "domains-pfam-38.2.shard-00003"
+    },
+    {
+     "basis": "30150733 residues x 7.96 / 1e6",
+     "cpu_min": 220.75,
+     "estimate": 240.0,
+     "judged": true,
+     "ratio": 0.92,
+     "step": "domains-pfam-38.2.shard-00004"
+    },
+    {
+     "basis": "30150355 residues x 7.96 / 1e6",
+     "cpu_min": 218.415,
+     "estimate": 239.997,
+     "judged": true,
+     "ratio": 0.91,
+     "step": "domains-pfam-38.2.shard-00005"
+    },
+    {
+     "basis": "30150396 residues x 7.96 / 1e6",
+     "cpu_min": 218.102,
+     "estimate": 239.997,
+     "judged": true,
+     "ratio": 0.909,
+     "step": "domains-pfam-38.2.shard-00006"
+    },
+    {
+     "basis": "30148650 residues x 7.96 / 1e6",
+     "cpu_min": 212.849,
+     "estimate": 239.983,
+     "judged": true,
+     "ratio": 0.887,
+     "step": "domains-pfam-38.2.shard-00007"
+    },
+    {
+     "basis": "30150740 residues x 7.96 / 1e6",
+     "cpu_min": 214.255,
+     "estimate": 240.0,
+     "judged": true,
+     "ratio": 0.893,
+     "step": "domains-pfam-38.2.shard-00008"
+    },
+    {
+     "basis": "30150716 residues x 7.96 / 1e6",
+     "cpu_min": 214.56,
+     "estimate": 240.0,
+     "judged": true,
+     "ratio": 0.894,
+     "step": "domains-pfam-38.2.shard-00009"
+    },
+    {
+     "basis": "30150636 residues x 7.96 / 1e6",
+     "cpu_min": 220.236,
+     "estimate": 239.999,
+     "judged": true,
+     "ratio": 0.918,
+     "step": "domains-pfam-38.2.shard-00010"
+    },
+    {
+     "basis": "30150454 residues x 7.96 / 1e6",
+     "cpu_min": 216.088,
+     "estimate": 239.998,
+     "judged": true,
+     "ratio": 0.9,
+     "step": "domains-pfam-38.2.shard-00011"
+    },
+    {
+     "basis": "30150733 residues x 7.96 / 1e6",
+     "cpu_min": 213.457,
+     "estimate": 240.0,
+     "judged": true,
+     "ratio": 0.889,
+     "step": "domains-pfam-38.2.shard-00012"
+    },
+    {
+     "basis": "1347 residues x 7.96 / 1e6",
+     "cpu_min": 1.533,
+     "estimate": 0.011,
+     "judged": false,
+     "ratio": 142.933,
+     "step": "domains-pfam-38.2.shard-00013"
+    },
+    {
+     "basis": "1819831338 bases x 182.0 / 1e9 / 60",
+     "cpu_min": 4.925,
+     "estimate": 5.52,
+     "judged": false,
+     "ratio": 0.892,
+     "step": "crispr-minced-0.4.2-w8-nr3-r23x47-s26x50"
+    },
+    {
+     "basis": "1819831338 bases x 182.0 / 1e9 / 60 x 1.19",
+     "cpu_min": 5.876,
+     "estimate": 6.569,
+     "judged": false,
+     "ratio": 0.895,
+     "step": "crispr-minced-0.4.2-w8-nr2-r23x47-s26x50-cas1kb-caspfam1-pfam-38.2"
+    }
+   ],
+   "stage": "H1"
+  },
+  "records": 23,
+  "shard_cpu_min": 2816.56,
+  "shard_cpu_min_max": 220.75,
+  "shard_ratio_max": 142.933,
+  "shard_ratio_min": 0.887,
+  "shards": 14
+ }
+}

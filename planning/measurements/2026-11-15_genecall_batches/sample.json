@@ -1,0 +1,22 @@
+{
+ "every": 30,
+ "records": 72556,
+ "contigs": 68693,
+ "new_first_records_seen": 61647,
+ "wrap_flank": 50000,
+ "all": {
+  "genomes": 2054,
+  "bases": 186854199,
+  "called": 312603589
+ },
+ "circular": {
+  "genomes": 1874,
+  "bases": 169713014,
+  "called": 295462404
+ },
+ "linear": {
+  "genomes": 180,
+  "bases": 17141185,
+  "called": 17141185
+ }
+}

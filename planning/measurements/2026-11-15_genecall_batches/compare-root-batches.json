@@ -1,0 +1,43 @@
+{
+ "a": "/tmp/if2453/r10/root",
+ "b": "/tmp/if2453/b48/s1/view",
+ "stage": "S1",
+ "files": 5,
+ "equal": 5,
+ "differ": [],
+ "only_a": [],
+ "only_b": [],
+ "record_outputs_equal": true,
+ "rows": [
+  {
+   "path": "l0seq/protein_seq/gene_call_version=pyrodigal-3.7.1-gv-0.3.2-p2/stage=S1/protein_prefix=all/part-0.parquet",
+   "a": "2e6172311575a8b37d0bdcca36c976fb5cbc4c3273cd7e1b44ad9dd4f3fc0685",
+   "b": "2e6172311575a8b37d0bdcca36c976fb5cbc4c3273cd7e1b44ad9dd4f3fc0685",
+   "equal": true
+  },
+  {
+   "path": "l1/feature/producer=pyrodigal-3.7.1-gv-0.3.2-p2/stage=S1/part-0.parquet",
+   "a": "d97de7210f0e1c9b2e0161bb2f87c17e0ae3f013c4ad30a8e99785aeef98a0f0",
+   "b": "d97de7210f0e1c9b2e0161bb2f87c17e0ae3f013c4ad30a8e99785aeef98a0f0",
+   "equal": true
+  },
+  {
+   "path": "l1/feature_protein/gene_call_version=pyrodigal-3.7.1-gv-0.3.2-p2/stage=S1/part-0.parquet",
+   "a": "0da65b4a2460924383ac8cbc22d1ea3b52646680137cc1bae63b2923033cb601",
+   "b": "0da65b4a2460924383ac8cbc22d1ea3b52646680137cc1bae63b2923033cb601",
+   "equal": true
+  },
+  {
+   "path": "l1/protein_occurrence/gene_call_version=pyrodigal-3.7.1-gv-0.3.2-p2/stage=S1/part-0.parquet",
+   "a": "78fc23427aeddd1cc6c1e0ce55c9302656e8d46ff539b593f7d5068e4660cebd",
+   "b": "78fc23427aeddd1cc6c1e0ce55c9302656e8d46ff539b593f7d5068e4660cebd",
+   "equal": true
+  },
+  {
+   "path": "ledger/stage=S1/step=genecall/part-0.parquet",
+   "a": "29423c6b21348a88860f820bb61a2c1d594e960386b5408348cc5210fa141e62",
+   "b": "29423c6b21348a88860f820bb61a2c1d594e960386b5408348cc5210fa141e62",
+   "equal": true
+  }
+ ]
+}
