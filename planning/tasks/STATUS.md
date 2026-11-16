@@ -5,7 +5,7 @@ The running record of the cards in [`TASKS.md`](TASKS.md). Updated at every merg
 by an agent on its own branch `task/<ID>`, audited by the orchestrating session, and merged after its
 tests passed on the merged tree.
 
-## Handoff, 2026-11-16 07:05 CST (current; the dated sections under "History" are superseded where they differ)
+## Handoff, 2026-11-16 07:02 CST (current; the dated sections under "History" are superseded where they differ)
 
 Written so a new session can continue without the conversation that produced this file. Times are the pod's clock
 (CST); read it with `ssh ... date` before writing a time here.
@@ -17,7 +17,7 @@ the PI at the S2C phase 2 build and at a failed release check. The usage limit h
 (2026-11-13 15:45 and 20:55, 2026-11-14 01:40 twice counting the orchestrator, and the weekly limit at about 12:20): an agent stopped that way is resumed
 with `SendMessage` to the same agent once the limit resets; nothing is lost.
 
-**State on 2026-11-16 at 07:05 CST.**
+**State on 2026-11-16 at 07:02 CST.**
 
 *Stage H1 (the huge phages) is built* (2026-11-15 14:22 CST, card C-24, row C-24; *measured*, wilkcomp02,
 `planning/measurements/2026-11-15_stage_H1.md`): 7,228 genomes, 6,714 contigs stored (the other 514 are S1's,
@@ -130,13 +130,14 @@ release check* (2026-11-15 00:06) *and is announced as the release to use* (2026
 - The fixture's manifest hash is `28ffa9808ecd4829e52f6892f94f7b85` since E-12, equal on Actions and the pod;
   `/tmp/if2453/ci-peer/right.json` holds it.
 
-*Agents.* Three at 07:05 on 2026-11-16: B-51 (the tokens refusal; since 19:07 on 2026-11-15; its branch is green on Actions and it is finishing its whole-suite run), C-36 (the inputs of the six S2C phase-2 stages `C1` to `C6`; since 20:25; inputs made and pushed, rehearsal and report left) and C-26 part 2 (stage `PL1`: **stopped by its guard at 21:32 on 2026-11-15, open item 11**; its agent writes up what ran and does not relaunch). The laptop slept from about 21:50 to 06:45 and the sessions of C-26 part 2 and C-36 died with it; both resumed with `SendMessage` at 06:57. B-49, B-50 and B-47b are done and merged (their rows). F-02 session 12 ended at about 18:40 with two questions for the PI (open items 9 and 10), not merged. C-24 (stage H1) is done and merged (row C-24); B-48 is done and merged. A logout of the account stopped the three in the afternoon; they were resumed with `SendMessage` at 16:11 at the PI's word ("resume"). The account's 5-hour usage limit stopped B-48, B-49 and F-02 session 12 at about 13:35 (the sixth such stop); all three were resumed with `SendMessage` at 14:07, after its reset at 13:50. C-26 part 1 and E-17 are done and merged. C-34, E-16, C-33 part 1 and W-36 are done and merged. F-02 session 11 ended at 01:15 with four questions for the PI (open item 5); W-33, E-15, W-34, W-32 and W-35 were done and merged on 2026-11-14; see "Agents running" below. Merged on 2026-11-13 and 14: C-28, C-27 step 4, C-25 step 2, C-29, C-30, C-31, C-32,
+*Agents.* Four at 07:02 on 2026-11-16 (F-02 session 13 from 07:02, applying DEC-48; the other three follow): B-51 (the tokens refusal; since 19:07 on 2026-11-15; its branch is green on Actions and it is finishing its whole-suite run), C-36 (the inputs of the six S2C phase-2 stages `C1` to `C6`; since 20:25; inputs made and pushed, rehearsal and report left) and C-26 part 2 (stage `PL1`: stopped by its guard at 21:32 on 2026-11-15; **resuming since 06:58 on 2026-11-16 under DEC-47**). The laptop slept from about 21:50 to 06:45 and the sessions of C-26 part 2 and C-36 died with it; both resumed with `SendMessage` at 06:51. B-49, B-50 and B-47b are done and merged (their rows). F-02 session 12 ended at about 18:40 with two questions for the PI (open items 9 and 10), not merged. C-24 (stage H1) is done and merged (row C-24); B-48 is done and merged. A logout of the account stopped the three in the afternoon; they were resumed with `SendMessage` at 16:11 at the PI's word ("resume"). The account's 5-hour usage limit stopped B-48, B-49 and F-02 session 12 at about 13:35 (the sixth such stop); all three were resumed with `SendMessage` at 14:07, after its reset at 13:50. C-26 part 1 and E-17 are done and merged. C-34, E-16, C-33 part 1 and W-36 are done and merged. F-02 session 11 ended at 01:15 with four questions for the PI (open item 5); W-33, E-15, W-34, W-32 and W-35 were done and merged on 2026-11-14; see "Agents running" below. Merged on 2026-11-13 and 14: C-28, C-27 step 4, C-25 step 2, C-29, C-30, C-31, C-32,
 W-30, W-31, A-08, E-11, E-12, E-13, E-14, F-02 sessions 4 to 10 (10 is a measurement), the README, the CRISPR example.
 
-*What is blocked, and on what.* **Three questions wait on the PI** ("Open items for the PI"): **item 11, since 21:33
-on 2026-11-15, holds the build of stage `PL1`** (its guard stopped it after ingest, which cost 20.0% less than its
-estimate; only `PL1`'s inputs and ingest are in the root; the six releases verify) and with it the release `rM.3`
-and S2C phase 2; items 9 and 10, since 18:40, hold the statistics track.
+*What is blocked, and on what.* **Nothing waits on the PI since about 06:56 on 2026-11-16**: the PI answered open
+items 9, 10 and 11 as recommended ("do what u recommend"; DEC-47, DEC-48). The build of stage `PL1` (stopped by
+its guard at 21:32 on 2026-11-15 after ingest, which cost 20.0% less than its estimate) resumes with that one
+ingest record accepted (DEC-47); card B-52 corrects the ingest estimate. The statistics track resumes with F-02
+session 13 (DEC-48).
 - **The statistics track** (F-01, F-03 and the rest of F-02): **stopped at the end of F-02 session 12**, which did
   what DEC-44 decides (preset refitted from candidate B, three tests migrated, every digest re-pinned; branch
   `task/F-02-12` at `d431b18`, pushed, **not merged**: two tests fail on the pod and on Actions alike). (1) The
@@ -204,7 +205,7 @@ F-02 and the measurements in the table below; decisions DEC-29 to DEC-33 were ad
 above says where `main`, the images and Actions stand. The manifest hash of the fixture covers every registered
 schema's hash, so it moves with any schema change (last: card E-12).
 
-**Agents running** at 07:05 on 2026-11-16: three (B-51, C-36, and C-26 part 2 writing up its stopped build; the limit is four, DEC-46); B-49, B-50, B-47b, C-24 and B-48 are done and merged; F-02 session 12 has ended, not merged; C-26 part 1 and E-17 are done and merged; C-34, E-16, C-33 part 1 and W-36 are done and merged; F-02 session 11 has ended.
+**Agents running** at 07:02 on 2026-11-16: four (B-51, C-36, C-26 part 2 resuming the `PL1` build, and F-02 session 13 from 07:02; the limit is four, DEC-46; card B-52 waits for a free place); B-49, B-50, B-47b, C-24 and B-48 are done and merged; F-02 session 12 has ended, not merged; C-26 part 1 and E-17 are done and merged; C-34, E-16, C-33 part 1 and W-36 are done and merged; F-02 session 11 has ended.
 - F-02 session 11 (Opus; the redesign of the `micro` preset over seeds, DEC-36 and DEC-37): worktree
   `.claude/worktrees/agent-aa711fcf48ad79fd7`, branch `task/F-02-11` at `89cfb46`, pushed, **not merged** (red on
   Actions on six assertions, not the same six as before); pod scratch `/tmp/if2453/f0211/`, units `f0211-*`, at
@@ -222,6 +223,7 @@ schema's hash, so it moves with any schema change (last: card E-12).
 - C-24 (Opus; stage H1, the huge phages, as amended: the stage only): done, 07:17 to about 14:45 on 2026-11-15
   (stopped at 08:54 by its own rate guard on a remainder shard, resumed at 13:20 after DEC-43), audited and merged
   (row C-24). Its pod scratch `/tmp/if2453/c24/` holds the logs, listings and the rehearsal root.
+- F-02 session 13 (Opus; applies DEC-48: decoy partners moved to modules that transfer more, the truth one row per `feature_uid`; re-pin and merge): starting at 07:02 on 2026-11-16, branch `task/F-02-13` from `task/F-02-12` at `d431b18`; pod scratch `/tmp/if2453/f0213/`, at most 4 threads while the `PL1` build runs, 8 after.
 - F-02 session 12 (Opus; the redesign finished as DEC-44 decides): ended at about 18:40 on 2026-11-15 (13:25 on,
   two stops), branch `task/F-02-12` at `d431b18` from `task/F-02-11`, pushed, not merged: it stopped on two failing
   tests it may not migrate (open items 9 and 10). Pod scratch `/tmp/if2453/f0212/` (41 MB) and
@@ -240,8 +242,10 @@ schema's hash, so it moves with any schema change (last: card E-12).
   72,556 records), and ingest cost 26.612 CPU-minutes against the estimate 33.267 (ratio 0.800, 20.005% under, a
   step estimated above DEC-43's 24), so the unit was stopped before gene calling (exit 143; 27.1 CPU-minutes in
   the unit, *derived* from `CPUUsageNSec`). After it (21:38 to 21:46) the six published releases verified with
-  their hashes. The agent's session then died with the laptop's sleep (about 21:50 to 06:45); resumed at 06:57 on
-  2026-11-16 to write up and push what ran, **not to relaunch**: open item 11.
+  their hashes. The agent's session then died with the laptop's sleep (about 21:50 to 06:45); resumed at 06:51 on
+  2026-11-16, first only to write up what ran; **at 06:58, after the PI's decision (DEC-47), told to accept the
+  one ingest record in its rate check, show the check on the pod, and resume the same command as `c26-pl1-2`**
+  (weekday: 40 threads in total by day; `build-stage` takes the hour's allowance less ours elsewhere).
 - B-51 (Sonnet; tier L: `release tokens` refuses a release that was never clustered): started at 19:07 on
   2026-11-15, branch `task/B-51`; tests on the pod only. It stopped twice, rightly, and the card was amended each
   time: the refusal has an explicit way out (`--without-clusters`) for the four test files that build tokens
@@ -711,7 +715,12 @@ probed by hand on the pod).
 
 ## Open items for the PI
 
-**Open since 21:33 on 2026-11-15** (the build of stage `PL1`, card C-26 part 2):
+**Decided by the PI on 2026-11-16 at about 06:56** ("do what u recommend", in answer to the orchestrator's summary
+of items 11, 9 and 10 with a recommendation for each): DEC-47 (item 11: option (a), and (b) as card B-52) and
+DEC-48 (item 9: option (c) with (a) as the fallback; item 10: option (a)). **Items 9 to 11 are no longer open**;
+they are kept as the record of what was asked.
+
+**Asked at 21:33 on 2026-11-15** (the build of stage `PL1`, card C-26 part 2):
 
 11. **How the `PL1` build resumes.** Its rate guard stopped it after ingest: 26.612 CPU-minutes against the code's
    estimate of 33.267 (*measured*, wilkcomp02, 2026-11-15, the step's run record), 20.005% under, and AGENTS §6
@@ -728,7 +737,7 @@ probed by hand on the pod).
    condition judges, which you decided yourself for H1 (DEC-43). The cap is 40 threads by day on weekdays, so a
    resume by day runs `PL1` at 36 with at most 4 for everything else of ours.
 
-**Open since 18:40 on 2026-11-15** (F-02 session 12; its note is `planning/measurements/2026-11-14_synthworld_redesign.md`
+**Asked at 18:40 on 2026-11-15** (F-02 session 12; its note is `planning/measurements/2026-11-14_synthworld_redesign.md`
 §15 on branch `task/F-02-12`). They hold the statistics track only; builds and the other cards go on.
 
 9. **Decoys against the N0 test** (DEC-44 (2) said: raise decoy transfer until every decoy has 3 transfers at every
