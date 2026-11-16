@@ -1,0 +1,35 @@
+habitat_detail	samples	runs	read_bases
+air	17	17	219161992234
+anthropogenic	611	451	3081049136481
+anthropogenic:agriculture	829	931	11032109971482
+anthropogenic:built environment	6491	2773	7974480240679
+anthropogenic:food	158	157	583170869966
+anthropogenic:mine	409	520	5475195414807
+anthropogenic:mock community	34	31	178616509882
+anthropogenic:negative control	33	33	7478790818
+anthropogenic:sludge	498	515	5047899707538
+anthropogenic:waste	8	8	254620145630
+anthropogenic:wastewater	591	821	4107230356004
+aquatic	46	46	78498881744
+aquatic:benthic	1652	2141	13267360637184
+aquatic:brackish water	515	565	8449022004359
+aquatic:briny water	55	64	809791040153
+aquatic:fresh water	2392	2641	21741710965928
+aquatic:ice	48	49	943277105016
+aquatic:lentic	718	714	3340878679675
+aquatic:littoral	30	32	360593111611
+aquatic:lotic	345	379	4034704859905
+aquatic:marine	5340	6069	73134978332736
+host-associated	34	68	29559683897
+host-associated:animal host	62392	88898	340988572270367
+host-associated:plant host	1483	1417	19989423060062
+terrestrial	247	245	8113064796970
+terrestrial:arid	272	331	1571326676708
+terrestrial:forest	1846	2268	22202148823216
+terrestrial:grassland	337	473	5714563110372
+terrestrial:permafrost	837	881	5558957538016
+terrestrial:soil	1874	2295	19221352521508
+terrestrial:subsurface	1748	1768	9570441307551
+terrestrial:tundra	1	2	248762912
+terrestrial:wetland	330	404	7335356315114
+unlabelled	3846	4055	9451295328931
