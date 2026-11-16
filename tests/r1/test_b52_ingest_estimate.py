@@ -57,7 +57,7 @@ def test_b52_eight_of_the_nine_records_are_within_10_percent_and_only_s1_is_not(
 
 def test_b52_without_bases_held_elsewhere_the_estimate_is_the_bytes_at_the_rate():
     """The form before card B-52 is kept for a caller that knows nothing of the root (`_refusal`'s one object, an
-    ingest batch's bases read): every byte counted as stored, which errs high."""
+    ingest batch's bases read): every byte counted as stored."""
     assert bs.ingest_cpu_min(0) == bs.INGEST_FIXED_CPU_MIN
     assert bs.ingest_cpu_min(10**9) == pytest.approx(bs.INGEST_FIXED_CPU_MIN + bs.INGEST_CPU_MIN * 10**9 / bs.INGEST_BP)
     assert bs.ingest_cpu_min(10**9, held_bases=4 * 10**8) == pytest.approx(bs.ingest_cpu_min(6 * 10**8))

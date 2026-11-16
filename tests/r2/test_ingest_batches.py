@@ -493,7 +493,7 @@ def test_b52_every_pass1_shard_and_batch_of_an_ingest_in_batches_fits_the_margin
     """At a rate where S0 in one process is over `SHARD_MARGIN` of the budget and each of its objects is under it, the
     batch cut (`pass1_bytes`, the per-shard bytes; the plan's batches) estimates every pass-1 shard and every batch
     within the margin: a pass-1 shard by its bytes of FASTA, a batch by its bases read, each counted as stored (a
-    pass-1 shard stores nothing and a batch stores at most what it reads, so these err high)."""
+    pass-1 shard stores nothing; a batch stores at most what it reads)."""
     lam, mgen = bs.fasta_bytes(PATHS[0]), bs.fasta_bytes(PATHS[2])
     margin = bs.SHARD_MARGIN * prof.cpu_min_per_process
     monkeypatch.setattr(bs, "INGEST_CPU_MIN", (margin - bs.INGEST_FIXED_CPU_MIN) / (mgen + lam / 2) * bs.INGEST_BP)
