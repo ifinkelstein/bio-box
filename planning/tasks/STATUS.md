@@ -127,6 +127,12 @@ release check* (2026-11-15 00:06) *and is announced as the release to use* (2026
   laptop has never connected to a TACC host (*measured*: no TACC entry in its `known_hosts`), so the PI needs
   the TACC username, an MFA pairing in the TACC accounts portal, and membership of a Lonestar6 project; then one
   login with password and token code that stays open. Not started.
+- **Metagenomic sources beyond the ladder** (the PI, 2026-11-16: "the best, most comprehensive collection of
+  metagenomic databases without too much redundancy ... incomplete contigs, short reads too, and viral and
+  bacterial from diverse niches"): surveyed in `planning/sources_metagenomic_survey.md` (published sizes, read on
+  2026-11-16; nothing fetched, no card yet). Its recommendation: viruses as vOTU representatives, GlobDB's 162,653
+  species that GTDB lacks, a habitat-stratified pilot of SPIRE's unbinned contigs, and Logan in place of raw reads.
+  It waits for the PI's reading.
 - Free space on `/tmp`: **754 GB at 08:53 on 2026-11-16**, after a cleanup at 08:52 at the PI's word ("make sure
   youve cleaned temp scratch for all files u dont need"; *measured*, `/tmp/if2453/cleanup/cleanup_1116.log`): 156
   GB freed. Removed, each looked at first: the directories of finished, merged cards (`b18` to `b43`, `m08a` to
