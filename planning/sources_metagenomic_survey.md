@@ -122,6 +122,8 @@ metagenomic contig costs what our genomes cost per base, which the pilot of card
 
 ### 4.2 Ideas, in the order I would try them
 
+Decided on 2026-11-16 (DEC-49; the PI: "keep 1-4 , i will think about 5-9, but i think i'd like to keep nucleotides too (5)"): ideas 1 to 4 are kept; on idea 5 the PI leans against, so nucleotides stay and storage is planned at the full figure of §4.1; ideas 6 to 9 are open.
+
 1. **Separate importing from annotating, as named depths.** A stage records its depth; a release and a search say
    which depths they cover. Genome-like sets (viruses, plasmids, species representatives) go to depth 3 as now.
    Unbinned contigs stop at depth 1.

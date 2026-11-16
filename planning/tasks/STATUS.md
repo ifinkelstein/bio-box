@@ -139,7 +139,11 @@ release check* (2026-11-15 00:06) *and is announced as the release to use* (2026
   the crosswalk of assemblies by run; C-44 a Logan probe; C-45 what stays out). **None is started: each waits on
   the PI's approval of its source entry in `sources.yaml`** (AGENTS §8), and anything beyond a pilot waits on
   where a corpus of several TB lives (the pod's local disk is 1.1 TB; 1 Tbp of called contigs is about 710 GB,
-  *derived*).
+  *derived*). **DEC-49** (the PI, about 09:58: "keep 1-4 , i will think about 5-9, but i think i'd like to keep
+  nucleotides too (5)"): import at a stated depth, search first and annotate around hits, cluster before
+  annotating, and filter short contigs at ingest are decided in principle; nucleotides stay; stopping by habitat,
+  Logan on the hit, the machine per depth and where the corpus lives are the PI's to think about. Card C-38 (the
+  design note for the four) may start when an agent place is free; the source cards still wait on approvals.
 - Free space on `/tmp`: **754 GB at 08:53 on 2026-11-16**, after a cleanup at 08:52 at the PI's word ("make sure
   youve cleaned temp scratch for all files u dont need"; *measured*, `/tmp/if2453/cleanup/cleanup_1116.log`): 156
   GB freed. Removed, each looked at first: the directories of finished, merged cards (`b18` to `b43`, `m08a` to
