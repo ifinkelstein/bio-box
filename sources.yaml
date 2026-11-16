@@ -124,3 +124,54 @@ sources:
       from the FASTA (hard-linked there as plsdb_2024_05_31_v2_sequences.fasta, sha256 checked) and the archive's
       nuccore.csv, with --root /tmp/if2453/r10/root; record planning/measurements/2026-11-15_plsdb_inputs.md
     approved: by the PI on 2026-11-11
+  - name: uhgv
+    what: Unified Human Gut Virome v1.0, the vOTU representative genomes and their tables; card C-39 (not yet a stage)
+    url: https://zenodo.org/records/17402089/files/{file}?download=1
+    record: https://doi.org/10.5281/zenodo.17402089 (Zenodo, version 1.0, published 2025-10-24)
+    files:
+      - {file: votus_full.fna.zst, size: 964.7 MB, md5: 9ad996fea08c6087a452194f0c2f9d33}
+      - {file: votus_metadata_extended.tsv.zst, size: 14.0 MB, md5: 6702355349e933fb605e62a8bbaa50a9}
+      - {file: source_biosample_metadata.tsv.zst, size: 152.1 kB, md5: 9934204a79cdac60ce9681a6233282b6}
+      - {file: host_range_breadth.tsv.zst, size: 490.6 kB, md5: 25960f854fa411956ef1353213133bfc}
+    checksum: the md5 values above, as the Zenodo record shows them (read 2026-11-16; not yet matched against a download)
+    records: 168,536 vOTU representatives (published); the full set of 873,995 genomes and the protein files are not taken
+    limits: one connection; stop after 5 refusals in a row (HTTP 403, 429, 503)
+    license: CC BY 4.0
+    fetched: nothing yet
+    note: the URL is Zenodo's usual file form, not read from the page; if the first request fails, stop and report the form the record gives
+    approved: by the PI on 2026-11-16 ("y to yaml")
+  - name: gsv_atlas
+    what: Global Soil Virus Atlas (Graham et al. 2024), one archive; card C-39 (not yet a stage)
+    url: https://g-83fdd0.1beed.03c0.data.globus.org/cartuids/35846_b8b9149f2f59ff950549b5c89b8b35e2.tar
+    url_readme: https://datahub.pnnl.gov/sites/default/files/2023-12/README_Global%20Soil%20Virus%20%28GSV%29%20Atlas.txt
+    record: https://doi.org/10.25584/2229733 (PNNL DataHub)
+    checksum: none published on the page; record the archive's size from the response header before the download and its sha256 after
+    records: 616,935 uncultivated viral genomes, of which 49,649 passed quality control (38,508 vOTUs); proteins; gene records; a table of 2,953 soil samples (published)
+    limits: one connection; stop after 5 refusals in a row
+    license: CC0
+    fetched: nothing yet
+    approved: by the PI on 2026-11-16 ("y to yaml")
+  - name: spire_tables
+    what: SPIRE v1 tables only, no sequence; card C-43 and the sample choice of card C-42
+    url: https://black.embl.de/~fullam/spire/metadata/{file}
+    url_habitats: https://black.embl.de/~fullam/spire/microntology/ena_drop.v_2_0.microntology.v_1_0.annotations.v_0_2.tsv.gz
+    files:
+      - {file: README, size: 5.7 kB, md5: 51152f40061eeab04fabbe18d37c22ac}
+      - {file: spire_v1_genome_metadata.tsv.gz, size: 92 MB, md5: a4ba393df92e9d1a35b8b996a69b39fd}
+      - {file: spire_v1_cluster_metadata.tsv.gz, size: 2.1 MB, md5: 3f572296ed0d5918b18916b6a9099618}
+      - {file: ena_drop.v_2_0.microntology.v_1_0.annotations.v_0_2.tsv.gz, size: 1.7 MB, md5: 62056caa199fa3aca9b019f400149527}
+    checksum: the md5 values above, as SPIRE's downloads page shows them (read 2026-11-16)
+    limits: one connection; stop after 5 refusals in a row
+    license: none stated on the downloads page. Tables only; no SPIRE sequence is approved by this entry
+    fetched: nothing yet
+    approved: by the PI on 2026-11-16 ("y to yaml")
+  - name: ncbi_metagenome_assembly_summary
+    what: NCBI's table of GenBank metagenome assemblies, no sequence; card C-43
+    url: https://ftp.ncbi.nlm.nih.gov/genomes/genbank/metagenomes/assembly_summary.txt
+    url_readme: https://ftp.ncbi.nlm.nih.gov/genomes/README_assembly_summary.txt
+    checksum: none published for this table; record its size and sha256 with the date
+    limits: one connection; at most 3 requests per second
+    license: INSDC (public)
+    fetched: nothing yet
+    note: the path is the one NCBI's FTP guide describes, not read from a listing; if the first request fails, stop and report
+    approved: by the PI on 2026-11-16 ("y to yaml")

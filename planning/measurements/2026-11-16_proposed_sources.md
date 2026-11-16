@@ -6,7 +6,7 @@ the pages below were read through web searches and page reads on 2026-11-16, and
 licence is the provider's own statement (*published*), to be checked against the files when they arrive. An entry
 goes into `sources.yaml` only with the PI's approval (AGENTS §8).
 
-## A. Ready to approve: exact files, open licences
+## A. Approved by the PI on 2026-11-16 ("y to yaml") and now in `sources.yaml`: exact files, open licences
 
 ```yaml
   - name: uhgv

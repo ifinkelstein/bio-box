@@ -147,8 +147,11 @@ release check* (2026-11-15 00:06) *and is announced as the release to use* (2026
   The PI then said "do your suggestion re c-39, c-40, c-43": their step (1), the proposed `sources.yaml` entries,
   is `planning/measurements/2026-11-16_proposed_sources.md`. Four entries have exact files and open licences
   (UHGV's vOTU representatives, the Global Soil Virus Atlas, SPIRE's tables, NCBI's table of metagenome
-  assemblies) and **wait for the PI's yes before anything is fetched**; the JGI sets (IMG/VR, IMG/PR, IMG/M)
-  need the PI's JGI login; the gut plasmids, PlasmidScope and MGnify's table need one page read each first.
+  assemblies); **the PI approved those four at about 10:08 ("y to yaml") and they are in `sources.yaml`**. Cards
+  C-39 (with UHGV and the soil atlas) and C-43 (with the two tables) start as agent places free; nothing is
+  fetched yet. Not approved, and not asked again yet: reading the other providers' public pages to complete their
+  entries (gut plasmids, PlasmidScope, MGnify's table, VIRE), and how the JGI sets (IMG/VR, IMG/PR, IMG/M) are
+  fetched, which needs the PI's JGI login.
 - Free space on `/tmp`: **754 GB at 08:53 on 2026-11-16**, after a cleanup at 08:52 at the PI's word ("make sure
   youve cleaned temp scratch for all files u dont need"; *measured*, `/tmp/if2453/cleanup/cleanup_1116.log`): 156
   GB freed. Removed, each looked at first: the directories of finished, merged cards (`b18` to `b43`, `m08a` to
