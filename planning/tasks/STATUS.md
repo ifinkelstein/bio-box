@@ -149,9 +149,12 @@ release check* (2026-11-15 00:06) *and is announced as the release to use* (2026
   (UHGV's vOTU representatives, the Global Soil Virus Atlas, SPIRE's tables, NCBI's table of metagenome
   assemblies); **the PI approved those four at about 10:08 ("y to yaml") and they are in `sources.yaml`**. Cards
   C-39 (with UHGV and the soil atlas) and C-43 (with the two tables) start as agent places free; nothing is
-  fetched yet. Not approved, and not asked again yet: reading the other providers' public pages to complete their
-  entries (gut plasmids, PlasmidScope, MGnify's table, VIRE), and how the JGI sets (IMG/VR, IMG/PR, IMG/M) are
-  fetched, which needs the PI's JGI login.
+  fetched yet. **DEC-50** (the PI, about 10:18): agents of cards C-39 to C-44 may read the providers' public
+  pages and fetch what they need, writing each `sources.yaml` entry before the fetch; so C-40 (plasmids) can start
+  too. **JGI is deferred by the PI, who asked to be reminded** ("i have login and permissinos, but defer as i
+  work on other things. remind me later to get these fro u"): IMG/VR and IMG/PR (cards C-39, C-40) and the IMG/M
+  and GOLD tables (card C-43) wait. **Reminder owed to the PI** when C-39 and C-40 have reported what they could
+  do without them, and in every status summary until the files are on the pod.
 - Free space on `/tmp`: **754 GB at 08:53 on 2026-11-16**, after a cleanup at 08:52 at the PI's word ("make sure
   youve cleaned temp scratch for all files u dont need"; *measured*, `/tmp/if2453/cleanup/cleanup_1116.log`): 156
   GB freed. Removed, each looked at first: the directories of finished, merged cards (`b18` to `b43`, `m08a` to
