@@ -1,0 +1,14 @@
+{
+ "contigs_tsv_sha256": "76a0f8224d65f420d0099eb1ea7e77bdfd03b9bb6a9c6b1f4747f3145c485438",
+ "distinct_contigs": 6675,
+ "genomes_in_lock": 3102,
+ "problems": [],
+ "stage_dir": "/tmp/if2453/c36/stages/C2",
+ "verified": {
+  "bp": 9371800221,
+  "fasta_bytes": 9489508963,
+  "genomes": 3102,
+  "gz_bytes": 2752990698,
+  "records": 6694
+ }
+}

@@ -1,0 +1,35 @@
+{
+  "stage": "C5",
+  "genomes": 2029,
+  "genome_input_rows": 5224,
+  "distinct_genome_uids": 2029,
+  "circular_rows": 0,
+  "kinds": [
+    "prokaryote"
+  ],
+  "codes": [
+    11
+  ],
+  "assembly_quality": [
+    "complete"
+  ],
+  "gene_call_mode": {
+    "prokaryote": null
+  },
+  "objects": {
+    "n": 2032,
+    "bytes": 2781209046,
+    "source_release": [
+      "datasets-v2-2026-11-13"
+    ],
+    "license": [
+      "INSDC public data"
+    ],
+    "retrieved_at": [
+      "2026-11-13T03:23:05+00:00",
+      "2026-11-13T17:42:51+00:00"
+    ]
+  },
+  "biobox": "/tmp/if2453/ci/C-36/src/biobox/cli.py",
+  "problems": []
+}
