@@ -137,6 +137,21 @@ def test_insdc_samples_for_lookup():
         "DRS6", "ERS1", "SAMD00008643", "SAMEA104389540", "SAMN02954240", "SRS927152"]
 
 
+def test_read_runs_drops_amplicon_runs_from_any_table(tmp_path):
+    m = _mod()
+    a = tmp_path / "a.tsv"
+    a.write_text("run_accession\tsample_accession\tsecondary_sample_accession\tbase_count\tlibrary_strategy\n"
+                 "ERR1\tSAMEA1\tERS1\t100\tWGS\n")
+    b = tmp_path / "b.tsv"
+    b.write_text("run_accession\tsample_accession\tsecondary_sample_accession\tbase_count\tlibrary_source\t"
+                 "library_strategy\n"
+                 "SRR7\tSAMN7\tSRS7\t9\tGENOMIC\tWGS\n"
+                 "SRR8\tSAMN7\tSRS7\t4\tMETAGENOMIC\tAMPLICON\n")
+    idx = m.read_runs([str(a), str(b)])
+    assert idx.link(["SAMN7"], []) == ({"SRR7"}, {"SAMN7"}, "sample")
+    assert idx.bases("SRR8") is None and idx.bases("ERR1") == 100
+
+
 def test_lookup_query_names_each_sample_by_its_field():
     m = _mod()
     assert m.lookup_query(["ERS1", "SAMEA1", "SRS9"]) == (

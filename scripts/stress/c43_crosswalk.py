@@ -254,6 +254,8 @@ def read_runs(paths) -> RunIndex:
     def rows():
         for path in paths:
             for r in _tsv(path):
+                if r.get("library_strategy", "").upper() == "AMPLICON":   # reads of one gene assemble no contigs
+                    continue
                 yield (r["run_accession"], r["sample_accession"], r["secondary_sample_accession"],
                        _int(r["base_count"]))
     return RunIndex(rows())
