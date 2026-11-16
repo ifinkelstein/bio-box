@@ -151,7 +151,7 @@ release check* (2026-11-15 00:06) *and is announced as the release to use* (2026
   C-39 (with UHGV and the soil atlas) and C-43 (with the two tables) start as agent places free; nothing is
   fetched yet. **DEC-50** (the PI, about 10:18): agents of cards C-39 to C-44 may read the providers' public
   pages and fetch what they need, writing each `sources.yaml` entry before the fetch; so C-40 (plasmids) can start
-  too. **JGI is deferred by the PI, who asked to be reminded** ("i have login and permissinos, but defer as i
+  too. **DEC-51** (the PI, about 10:26: "use all data, even restrictive license, bc we're academic/non-profit and have rights to tis"): a restrictive licence does not stop a fetch or a use; entries still record the terms. **JGI is deferred by the PI, who asked to be reminded** ("i have login and permissinos, but defer as i
   work on other things. remind me later to get these fro u"): IMG/VR and IMG/PR (cards C-39, C-40) and the IMG/M
   and GOLD tables (card C-43) wait. **Reminder owed to the PI** when C-39 and C-40 have reported what they could
   do without them, and in every status summary until the files are on the pod.
