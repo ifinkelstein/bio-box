@@ -250,3 +250,154 @@ def test_help_names_the_plasmid_mode():
     out = subprocess.run([sys.executable, str(SCRIPT), "--help"], capture_output=True, text=True, check=True).stdout
     for w in ("plasmid", "NUCCORE_Topology", "NUCCORE_Completeness", "PL1"):
         assert w in out
+
+
+# --- card C-40: the plasmid stage PL2 from several sources --------------------------------------------------------------
+# `make_inputs.py plasmid-sources SPEC_JSON OUT_DIR [--root ROOT]`: the sources in the spec's order, each a list of FASTA
+# files and its own table (TSV, '#' lines skipped), with the spec's maps from the table's topology and completeness
+# values to circular/linear and complete/fragment/unknown. A record whose row fails the spec's selection, or (when the
+# spec says so) has no row, is not taken; the taken records of each source are written to OUT_DIR/<name>.fasta, the
+# stage's source object. One genome per distinct sequence (the first record taken, over all sources): kind plasmid,
+# code 11, quality complete for complete and contig otherwise, circular only when the topology says so and the record
+# is not a fragment. Every taken record is in records.tsv with its source's own values and what was made of them, every
+# record not taken in skipped_records.tsv with the reason. The oracles are the tests' own loops.
+
+T1, T2, T3 = b"ACGTTGCAAGGCTTAACG", b"TTGACCGGTAAACCCGGGTT", b"GGCATTACGATCGATCGGAT"
+GUT_HEAD = "# a comment the table carries\n#\ncontig\tcontig_length\tcircular\tin_dereplicated_plasmids\n"
+# gut-like source: (id, sequence, circular, dereplicated); g3 is not taken (not dereplicated); g4 repeats g1's bytes
+GUT = [("g1", X, "True", "True"), ("g2", Y, "False", "True"), ("g3", Z, "False", "False"), ("g4", X, "False", "True")]
+SCOPE_HEAD = "Plasmid_ID\tData_Source\tTopology\tCompleteness\tSize (bp)\n"
+# PlasmidScope-like source: (id, sequence, topology, completeness); s2 says circular but incomplete (a fragment);
+# s3 repeats g2's bytes (an earlier source's record); s5 has no row; s6 is the earlier stage's contig W
+SCOPE = [("s1", T1, "circular", "complete"), ("s2", T2, "circular", "incomplete"), ("s3", Y, "linear", "incomplete"),
+         ("s4", T3, "linear", "complete"), ("s5", V, None, None), ("s6", W, "circular", "complete")]
+
+
+def _sources(tmp_path: Path, scope=SCOPE, scope_skip=True) -> Path:
+    gfa, sfa1, sfa2 = tmp_path / "gut.fa.gz", tmp_path / "scope_a.fasta", tmp_path / "scope_b.fasta"
+    with gzip.open(gfa, "wb") as fh:
+        fh.write(b"".join(b">" + i.encode() + b"\n" + s + b"\n" for i, s, *_ in GUT))
+    _fasta(sfa1, [(f"{i} some plasmid", s) for i, s, *_ in scope[:3]])
+    _fasta(sfa2, [(i, s) for i, s, *_ in scope[3:]])
+    (tmp_path / "gut.tsv").write_text(GUT_HEAD + "".join(f"{i}\t{len(s)}\t{c}\t{d}\n" for i, s, c, d in GUT))
+    (tmp_path / "scope.tsv").write_text(SCOPE_HEAD + "".join(f"{i}\tX\t{t}\t{c}\t{len(s)}\n" for i, s, t, c in scope
+                                                             if t is not None))
+    spec = {"sources": [
+        {"name": "gut", "source_name": "gut_plasmids", "source_release": "z1", "license": "CC BY 4.0",
+         "redistributable": True, "retrieved_at": "2026-11-16T20:42:37Z", "fasta": [str(gfa)],
+         "table": str(tmp_path / "gut.tsv"), "id_column": "contig",
+         "topology_column": "circular", "topology": {"True": "circular", "False": "linear"},
+         "completeness_column": "circular", "completeness": {"True": "complete", "False": "unknown"},
+         "select": {"column": "in_dereplicated_plasmids", "values": ["True"]}},
+        {"name": "scope_x", "source_name": "plasmidscope", "source_release": "X.2026-11-16", "license": "none stated",
+         "redistributable": False, "retrieved_at": "2026-11-16T21:00:00Z", "fasta": [str(sfa1), str(sfa2)],
+         "table": str(tmp_path / "scope.tsv"), "id_column": "Plasmid_ID",
+         "topology_column": "Topology", "topology": {"circular": "circular", "linear": "linear"},
+         "completeness_column": "Completeness", "completeness": {"complete": "complete", "incomplete": "fragment"},
+         **({"without_row": "skip"} if scope_skip else {})}]}
+    p = tmp_path / "spec.json"
+    p.write_text(json.dumps(spec))
+    return p
+
+
+def _taken():
+    """(source, id, sequence, circular, quality, fragment) of every record taken, in order, by the tests' own rules."""
+    out = [("gut", i, s, c == "True", "complete" if c == "True" else "contig", False) for i, s, c, d in GUT
+           if d == "True"]
+    for i, s, t, c in SCOPE:
+        if t is None:
+            continue
+        frag = c == "incomplete"
+        out.append(("scope_x", i, s, t == "circular" and not frag, "complete" if c == "complete" else "contig", frag))
+    return out
+
+
+@pytest.mark.covers("C-40")
+def test_plasmid_sources_take_the_selected_records_with_topology_and_quality_from_each_table(tmp_path):
+    spec = _sources(tmp_path)
+    rep = _run("plasmid-sources", spec, tmp_path / "out")
+    taken = _taken()
+    first: dict[bytes, int] = {}
+    for k, t in enumerate(taken):
+        first.setdefault(t[2], k)
+    exp = []
+    for s, k in sorted(first.items(), key=lambda t: t[1]):
+        u = ids.contig_uid(s).hex()
+        exp.append({"contig_uids": [u], "genetic_code": 11, "kind": "plasmid",
+                    "circular": [u] if taken[k][3] else [], "assembly_quality": taken[k][4]})
+    out = tmp_path / "out"
+    got = json.loads((out / "genomes.json").read_text())
+    assert got == exp
+    # the fragment that its table calls circular is not circular
+    assert ids.contig_uid(T2).hex() not in {u for g in got for u in g["circular"]}
+    # each source's object holds exactly its taken records, in order, with their headers
+    from biobox import fasta as fa
+    objs = json.loads((out / "objects.json").read_text())
+    assert [(o["path"], o["source_name"], o["source_release"], o["redistributable"]) for o in objs] == [
+        (str(out / "gut.fasta"), "gut_plasmids", "z1", True),
+        (str(out / "scope_x.fasta"), "plasmidscope", "X.2026-11-16", False)]
+    for name in ("gut", "scope_x"):
+        recs = [(r.accession, r.seq) for r in fa.iter_records(out / f"{name}.fasta")]
+        assert recs == [(i, s) for src, i, s, *_ in taken if src == name]
+    rows = _tsv(out / "records.tsv")
+    assert [(r["source"], r["accession"], r["contig_uid"], r["circular"], r["assembly_quality"], r["fragment"])
+            for r in rows] == [(src, i, ids.contig_uid(s).hex(), str(c).lower(), q, str(f).lower())
+                               for src, i, s, c, q, f in taken]
+    by_acc = {r["accession"]: r for r in rows}
+    assert by_acc["g4"]["first_accession"] == "g1" and by_acc["s3"]["first_accession"] == "g2"
+    assert by_acc["g1"]["first_accession"] == "" and by_acc["s2"]["topology_value"] == "circular"
+    assert by_acc["s2"]["completeness_value"] == "incomplete"
+    skipped = _tsv(out / "skipped_records.tsv")
+    assert [(r["source"], r["accession"], r["reason"]) for r in skipped] == [("gut", "g3", "not_selected"),
+                                                                           ("scope_x", "s5", "no_row")]
+    assert rep["records_taken"] == len(taken) and rep["genomes"] == len(first)
+    assert rep["sources"]["gut"]["taken"] == 3 and rep["sources"]["gut"]["skipped"] == {"not_selected": 1}
+    assert rep["sources"]["scope_x"]["skipped"] == {"no_row": 1}
+    assert rep["sources"]["scope_x"]["circular_but_fragment"] == 1
+    assert rep["sources"]["scope_x"]["repeats_of_an_earlier_source"] == 1
+    assert rep["sources"]["gut"]["repeats_within_source"] == 1
+    assert rep["sources"]["scope_x"]["topology"] == {"circular": 3, "linear": 2}
+    # the stage's inputs step takes them
+    gs = [GenomeInput(tuple(bytes.fromhex(u) for u in g["contig_uids"]), g["genetic_code"], kind=g["kind"],
+                      circular=tuple(bytes.fromhex(u) for u in g["circular"]),
+                      assembly_quality=g["assembly_quality"]) for g in got]
+    assert write_genome_input(tmp_path / "r", "PL9", gs) == {"genomes": len(first), "contigs": len(first)}
+
+
+@pytest.mark.covers("C-40")
+def test_plasmid_sources_name_the_stage_that_owns_a_contig(tmp_path):
+    root = _earlier_stage(tmp_path)
+    spec = _sources(tmp_path)
+    rep = _run("plasmid-sources", spec, tmp_path / "out", "--root", root)
+    rows = {r["accession"]: r for r in _tsv(tmp_path / "out" / "records.tsv")}
+    assert rows["s6"]["owner_stage"] == "S9" and rows["s1"]["owner_stage"] == ""
+    assert rep["owner_records"] == {"S9": 1} and rep["sources"]["scope_x"]["owner_records"] == {"S9": 1}
+    firsts = {t[2] for t in _taken()}
+    assert rep["new_contigs"] == len(firsts) - 1 and rep["new_bases"] == sum(len(s) for s in firsts) - len(W)
+    got = json.loads((tmp_path / "out" / "genomes.json").read_text())
+    assert [ids.contig_uid(W).hex()] in [g["contig_uids"] for g in got]  # listed (DEC-27), owned by S9 (DEC-26)
+
+
+@pytest.mark.covers("C-40")
+@pytest.mark.parametrize("bad", ["topology", "completeness", "no_row", "accession_twice"])
+def test_plasmid_sources_refuse_what_they_cannot_map(tmp_path, bad):
+    scope = list(SCOPE)
+    if bad == "topology":
+        scope[0] = ("s1", T1, "concatemer", "complete")
+    elif bad == "completeness":
+        scope[0] = ("s1", T1, "circular", "partial")
+    elif bad == "accession_twice":
+        scope[3] = ("s1", T3, "linear", "complete")
+    spec = _sources(tmp_path, scope=scope, scope_skip=bad != "no_row")
+    done = subprocess.run([sys.executable, str(SCRIPT), "plasmid-sources", str(spec), str(tmp_path / "out")],
+                          capture_output=True, text=True)
+    assert done.returncode == 2, done.stderr
+    assert ("s5" if bad == "no_row" else "s1") in done.stderr
+    assert not (tmp_path / "out").exists()
+
+
+@pytest.mark.covers("C-40")
+def test_help_names_the_plasmid_sources_mode():
+    out = subprocess.run([sys.executable, str(SCRIPT), "--help"], capture_output=True, text=True, check=True).stdout
+    for w in ("plasmid-sources", "fragment", "PL2", "skipped_records.tsv"):
+        assert w in out
