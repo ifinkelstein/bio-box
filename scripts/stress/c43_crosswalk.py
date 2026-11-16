@@ -149,6 +149,7 @@ class Unit:
     habitat: str
     habitat2: str = ""
     note: str = ""
+    gz_bytes: int | None = None   # size of the provider's compressed contig files, where a table states it
 
 
 def _ordered(units, order):
@@ -319,6 +320,16 @@ def build_units(a, idx: RunIndex, hmap):
             bs = (s.get("attributes") or {}).get("biosample")
             if bs:
                 biome.setdefault(bs, b[0] if b else None)
+    emg = {}
+    if a.mgnify_ena_analyses:
+        for r in _tsv(a.mgnify_ena_analyses):
+            if r["assembly_type"].strip().lower() != "primary metagenome":
+                continue
+            sizes = [_int(x) for x in r["submitted_bytes"].split(";") if x]
+            emg[r["analysis_accession"]] = {
+                "gz": sum(x for x in sizes if x is not None) if sizes else None,
+                "runs": [x for x in r["run_accession"].split(";") if x],
+                "samples": [x for x in r["sample_accession"].split(";") if x]}
     mg_asm, mg_wgs = set(), set()
     for d in _pages(a.mgnify_assemblies):
         at = d["attributes"]
@@ -335,10 +346,18 @@ def build_units(a, idx: RunIndex, hmap):
         samples_raw = _ids(d["relationships"].get("samples"))
         runs, samples, how = idx.link(samples_raw, _ids(d["relationships"].get("runs")))
         lineage = next((biome[s] for s in samples_raw if biome.get(s)), None)
+        e = emg.pop(d["id"], None)
         units.append(Unit("mgnify", d["id"], frozenset(runs), frozenset(samples), how,
                           _int(w["base_count"]) if w else None,
                           mapped_label(lineage, hmap["mgnify_lineage"]), lineage or "",
-                          note=f"insdc={_insdc_uid(w) if w else ''}"))
+                          note=f"insdc={_insdc_uid(w) if w else ''}", gz_bytes=e["gz"] if e else None))
+    # MGnify's primary assemblies that ENA holds and MGnify's API does not list
+    for erz, e in sorted(emg.items()):
+        runs, samples, how = idx.link(e["samples"], e["runs"])
+        lineage = next((biome[s] for s in e["samples"] if biome.get(s)), None)
+        units.append(Unit("mgnify", erz, frozenset(runs), frozenset(samples), how, None,
+                          mapped_label(lineage, hmap["mgnify_lineage"]), lineage or "",
+                          note="source=ena_analysis_only", gz_bytes=e["gz"]))
     # INSDC metagenome assemblies that are not MGnify's own; the NCBI Assembly table marks its subset
     ncbi = {_unver(r["assembly_accession"]): r for r in _tsv(a.ncbi_summary)}
     include = {t.strip().lower() for t in a.insdc_include_types.split(",")}
@@ -419,22 +438,25 @@ def _build(a) -> int:
         b, nb = rb(u)
         rows.append([u.resource, u.uid, dec[u.uid], u.linked_by, len(u.runs), ";".join(sorted(u.runs)),
                      ";".join(sorted(u.samples)), "" if u.asm_bases is None else u.asm_bases, b, nb,
-                     u.habitat, u.habitat2, u.note])
+                     u.habitat, u.habitat2, u.note, "" if u.gz_bytes is None else u.gz_bytes])
     _write_tsv(os.path.join(a.out_dir, "units.tsv"),
                ["resource", "uid", "decision", "linked_by", "n_runs", "runs", "samples", "asm_bases",
-                "read_bases", "runs_without_bases", "habitat", "habitat_detail", "note"], rows)
+                "read_bases", "runs_without_bases", "habitat", "habitat_detail", "note", "gz_bytes"], rows)
 
     # resources: units, how linked, runs, bases
     summ = {}
     for u in units:
         s = summ.setdefault(u.resource, {"units": 0, "run": 0, "sample": 0, "none": 0, "asm_bases": 0,
-                                         "units_with_asm_bases": 0, "runs": set()})
+                                         "units_with_asm_bases": 0, "runs": set(), "gz": 0, "with_gz": 0})
         s["units"] += 1
         s[u.linked_by] += 1
         s["runs"] |= u.runs
         if u.asm_bases is not None:
             s["asm_bases"] += u.asm_bases
             s["units_with_asm_bases"] += 1
+        if u.gz_bytes is not None:
+            s["gz"] += u.gz_bytes
+            s["with_gz"] += 1
     out = []
     for res in ORDER:
         s = summ.get(res)
@@ -443,10 +465,11 @@ def _build(a) -> int:
         known = [idx.bases(r) for r in s["runs"]]
         out.append([res, s["units"], s["run"], s["sample"], s["none"], len(s["runs"]),
                     sum(b for b in known if b is not None), sum(1 for b in known if b is None),
-                    s["units_with_asm_bases"], s["asm_bases"]])
+                    s["units_with_asm_bases"], s["asm_bases"], s["with_gz"], s["gz"]])
     _write_tsv(os.path.join(a.out_dir, "resources.tsv"),
                ["resource", "units", "linked_by_run", "linked_by_sample", "unlinked", "distinct_runs",
-                "read_bases", "runs_without_bases", "units_with_asm_bases", "asm_bases"], out)
+                "read_bases", "runs_without_bases", "units_with_asm_bases", "asm_bases", "units_with_gz_bytes",
+                "gz_bytes"], out)
 
     # runs by the combination of resources holding them, and habitat
     t = combo_table(per_run, idx)
@@ -462,7 +485,9 @@ def _build(a) -> int:
     agg = {}
     for u in units:
         k = (u.resource, u.habitat, dec[u.uid])
-        g = agg.setdefault(k, [0, 0, 0, 0, 0])
+        g = agg.setdefault(k, [0, 0, 0, 0, 0, 0])
+        if u.gz_bytes is not None:
+            g[5] += u.gz_bytes
         b, _ = rb(u)
         g[0] += 1
         g[1] += len(u.runs)
@@ -473,7 +498,7 @@ def _build(a) -> int:
     out = [[r, h, d, *v] for (r, h, d), v in sorted(agg.items(), key=lambda kv: (ORDER.index(kv[0][0]), kv[0][1:]))]
     _write_tsv(os.path.join(a.out_dir, "decisions_by_habitat.tsv"),
                ["resource", "habitat", "decision", "units", "runs", "read_bases", "units_with_asm_bases",
-                "asm_bases"], out)
+                "asm_bases", "gz_bytes"], out)
 
     # SPIRE level 2 (for card C-42)
     lvl2 = {}
@@ -563,6 +588,7 @@ def main(argv: list[str] | None = None) -> int:
         p.add_argument(opt, required=True)
     p.add_argument("--read-run", required=True, nargs="+")
     p.add_argument("--mgnify-samples", default=None)
+    p.add_argument("--mgnify-ena-analyses", default=None)
     p.add_argument("--insdc-include-types", default="primary metagenome",
                    help="comma-separated ENA assembly types taken as WGS units; an empty item takes a blank type")
     p.set_defaults(fn=_build)

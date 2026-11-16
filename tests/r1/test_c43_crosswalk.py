@@ -236,6 +236,7 @@ def test_build_end_to_end_on_small_tables(tmp_path):
             "ERR1\tSAMEA1\tERS1\tP\tE\t100\tWGS\tI\t1\tx\t2020\n"
             "ERR2\tSAMEA1\tERS1\tP\tE\t50\tWGS\tI\t1\tx\t2020\n"
             "SRR3\tSAMN3\tSRS3\tP\tE\t70\tWGS\tI\t1\tx\t2020\n"
+            "SRR4\tSAMN4\tSRS4\tP\tE\t30\tWGS\tI\t1\tx\t2020\n"
             "SRR5\tSAMN5\tSRS5\tP\tE\t10\tWGS\tI\t1\tx\t2020\n")
     # ENA's assembly table: MGnify's own assembly has no WGS set
     wgs = _w(tmp_path / "asm_ena.tsv", "assembly_accession\tassembly_type\tbase_count\trun_accession\tsample_accession\t"
@@ -262,13 +263,19 @@ def test_build_end_to_end_on_small_tables(tmp_path):
     _w(mgs / "page_000001.json", json.dumps({"links": {"next": None}, "data": [
         {"id": "SRS3", "attributes": {"biosample": "SAMN3"},
          "relationships": {"biome": {"data": {"id": "root:Environmental:Terrestrial:Soil"}}}}]}))
+    # ENA's analyses by MGnify: file sizes of its contig files; ERZ9 is MGnify's but not in its API listing
+    emg = _w(tmp_path / "emg.tsv", "analysis_accession\tassembly_type\tsubmitted_bytes\tgenerated_bytes\t"
+             "sample_accession\trun_accession\tstudy_accession\tfirst_public\n"
+             "ERZ3\tprimary metagenome\t40;2\t\tSAMN3\tSRR3\tP\t2020\n"
+             "ERZ9\tprimary metagenome\t11\t\tSAMN4\tSRR4\tP\t2020\n"
+             "ERZ8\tbinned metagenome\t5\t\tSAMN4\tSRR4\tP\t2020\n")
     hm = _w(tmp_path / "map.tsv", "kind\tkey\tlabel\nmgnify_lineage\troot:Environmental:Terrestrial\tterrestrial\n"
             "organism_name\tmarine metagenome\taquatic\norganism_name\tfeces metagenome\thost-associated\n")
     out = tmp_path / "out"
     assert m.main(["build", "--spire-dir", str(spire), "--read-run", rr, "--insdc-assemblies", wgs,
                    "--ncbi-summary", ncbi,
-                   "--mgnify-assemblies", str(mga), "--mgnify-samples", str(mgs), "--habitat-map", hm,
-                   "--out-dir", str(out)]) == 0
+                   "--mgnify-assemblies", str(mga), "--mgnify-samples", str(mgs), "--mgnify-ena-analyses", emg,
+                   "--habitat-map", hm, "--out-dir", str(out)]) == 0
 
     def rows(name):
         with open(out / name) as fh:
@@ -276,7 +283,11 @@ def test_build_end_to_end_on_small_tables(tmp_path):
 
     units = {r["uid"]: r for r in rows("units.tsv")}
     # the probe file is not a study; GCA_900000001 is MGnify's ERZ3 and not a unit of its own
-    assert set(units) == {"SAMEA1", "SAMD6", "ERZ3", "ERZ1", "GCA_000000002", "GCA_000000004", "GCA_000000009"}
+    assert set(units) == {"SAMEA1", "SAMD6", "ERZ3", "ERZ1", "ERZ9", "GCA_000000002", "GCA_000000004",
+                          "GCA_000000009"}
+    assert units["ERZ3"]["gz_bytes"] == "42" and units["ERZ1"]["gz_bytes"] == ""
+    assert units["ERZ9"]["runs"] == "SRR4" and units["ERZ9"]["gz_bytes"] == "11"
+    assert units["ERZ9"]["decision"] == "take" and units["ERZ9"]["note"] == "source=ena_analysis_only"
     assert units["SAMEA1"]["runs"] == "ERR1;ERR2" and units["SAMEA1"]["habitat"] == "host-associated"
     assert units["SAMD6"]["decision"] == "take_unlinked" and units["SAMD6"]["linked_by"] == "none"
     assert units["ERZ1"]["decision"] == "covered" and units["ERZ1"]["linked_by"] == "sample"
@@ -290,9 +301,10 @@ def test_build_end_to_end_on_small_tables(tmp_path):
     res = {r["resource"]: r for r in rows("resources.tsv")}
     assert (res["spire"]["units"], res["spire"]["unlinked"], res["spire"]["read_bases"]) == ("2", "1", "150")
     assert (res["insdc"]["units"], res["insdc"]["distinct_runs"], res["insdc"]["asm_bases"]) == ("3", "2", "2100")
+    assert (res["mgnify"]["units"], res["mgnify"]["units_with_gz_bytes"], res["mgnify"]["gz_bytes"]) == ("3", "2", "53")
     combos = {(r["resources"], r["habitat"]): r["runs"] for r in rows("runs_by_combination_and_habitat.tsv")}
     assert combos == {("spire+mgnify", "host-associated"): "1", ("spire+mgnify+insdc", "host-associated"): "1",
-                      ("mgnify", "terrestrial"): "1", ("insdc", "aquatic"): "1"}
+                      ("mgnify", "terrestrial"): "1", ("mgnify", "unlabelled"): "1", ("insdc", "aquatic"): "1"}
     assert [r["uid"] for r in rows("take_insdc.tsv")] == ["GCA_000000002", "GCA_000000009"]
     # a bin is not an assembly of the run; MGnify's own INSDC record is the MGnify unit
     notu = {(r["why"], r["assembly_type"]): (r["assemblies"], r["bases"]) for r in rows("insdc_not_units.tsv")}
