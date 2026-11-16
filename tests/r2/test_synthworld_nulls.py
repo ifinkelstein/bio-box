@@ -37,12 +37,12 @@ needs_zombi2 = pytest.mark.skipif(
     reason="zombi2 0.54.0 is not importable here: CI installs it by `uv sync`; on the pod the image has it")
 
 #: the signal world of the micro default seed, every stage (measured 2026-11-13, sessions 1 to 8; re-pinned after the
-#: preset redesigns of sessions 11 and 12, planning/measurements/2026-11-14_synthworld_redesign.md §7, §15): unchanged
-SIGNAL = {"backbone": "f65094aa0fb1c9bed885bc6bc2f4e825", "sequences": "e9bf8833a898541f1bc9606c97d55463",
-          "replicons": "1930863ca47dcc67a5fde9deb1d12f84", "mobile": "1596365eedc377773ba85ef5aa7ec593",
-          "fusions": "d2f80ac770d8cd78346467aed2efc9c7", "assembly": "03b3e1b97dad03a8b2b7d78d755eebaf",
-          "sources": "5366fca6f2796b3956265d248b6529d9", "emit": "267f3a0200ddc3f7639e3c2fd6ffc134"}
-SIGNAL_WORLD = "684e539e11bd1ecbc5d3df6fe6405e7f"
+#: preset redesigns of sessions 11 to 13, planning/measurements/2026-11-14_synthworld_redesign.md §7, §15, §16): unchanged
+SIGNAL = {"backbone": "1dcfb678a14cb4d02690c221bf92f92f", "sequences": "009e9e9a9c23166fc5ad33a2da0aee4d",
+          "replicons": "f0248dee87c7579be4bcb3864b9861b1", "mobile": "972a41e258653d9fa6fec03cd1fae0c0",
+          "fusions": "988ace1ee87b5ae9defb8c3069ce0cb6", "assembly": "275474d48ff21e1ae46bc3f0210fb778",
+          "sources": "8981820cd79a6755b3d829c55de754d3", "emit": "c1307f74a1de0ff2d4221760726b9831"}
+SIGNAL_WORLD = "77c32062c634c2f5dc799697195d003e"
 STAGES = ("backbone", "sequences", "replicons", "mobile", "fusions", "assembly", "sources", "emit")
 DEFAULT_SEED = 20261112
 #: the master seed of every world here; BIOBOX_SYNTHWORLD_NULL_SEED runs the whole module at another seed (card F-02
@@ -367,8 +367,10 @@ def test_n0_keeps_the_background_process_in_distribution(worlds, record_property
       not asserted (DEC-44 (4): its bound of 0.9 measured the two lineage-rate axes that DEC-37 (1) removed; with one
       origination axis a genome's size is mostly a stochastic draw, so a new draw of the same lineage rates
       correlates weakly, r 0.19-0.99 over 22 seeds, measured in session 11);
-    - phyletic patterns: the genomes-present counts of the 1,000 root families, two-sample Kolmogorov-Smirnov
-      D below the alpha = 0.01 critical value 1.628 sqrt(2 / 1000);
+    - phyletic patterns: the genomes-present counts of the 1,000 root families, two-sample Kolmogorov-Smirnov D
+      against the alpha = 0.01 critical value 1.628 sqrt(2 / 1000), printed and recorded here; DEC-48 (1)'s fallback
+      judges it over the 22 seeds (the number of failing seeds alpha allows) in tests/r2/test_synthworld_null_seeds.py,
+      no longer at this module's seed alone;
     - strands: the + share of genes in [0.4, 0.6] (backbone.SCRAMBLE_PLUS, as the signal world);
     - operons: the tight share of distinct background co-directional family pairs within 4 binomial standard errors
       of intergenic.junctions.p_tight (the hash rule is a fixed law);
@@ -403,7 +405,9 @@ def test_n0_keeps_the_background_process_in_distribution(worlds, record_property
         assert 0.9 <= ratio <= 1.1, (n, ratio, r)
         root = [int(x["n_genomes_present"]) for x in _tsv(w / "backbone" / "families.tsv") if x["kind"] == "root"]
         d = ks(np.array(root), np.array(root_s))
-        assert d < 1.628 * math.sqrt((len(root) + len(root_s)) / (len(root) * len(root_s))), (n, d)
+        d_crit = 1.628 * math.sqrt((len(root) + len(root_s)) / (len(root) * len(root_s)))
+        record_property(f"{n}_root_ks_d", round(d, 4))
+        record_property(f"{n}_root_ks_below_bound", d < d_crit)
         genes = _tsv(w / "backbone" / "genes.tsv")
         plus = sum(g["strand"] == "1" for g in genes) / len(genes)
         assert backbone.SCRAMBLE_PLUS[0] <= plus <= backbone.SCRAMBLE_PLUS[1]
@@ -417,7 +421,7 @@ def test_n0_keeps_the_background_process_in_distribution(worlds, record_property
         record_property(f"{n}_bg_size_ratio", round(ratio, 4))
         record_property(f"{n}_bg_size_pearson", round(r, 4))
         print(f"\n{n}: background genes per genome {sz.mean():.1f} vs signal {sig_sizes.mean():.1f} (geometric mean "
-              f"ratio {ratio:.3f}, r {r:.3f}); root presence KS D {d:.4f}; + strand {plus:.3f}; tight share {share:.4f} "
+              f"ratio {ratio:.3f}, r {r:.3f}); root presence KS D {d:.4f} (alpha 0.01 bound {d_crit:.4f}); + strand {plus:.3f}; tight share {share:.4f} "
               f"over {len(cl)} distinct pairs (p_tight {p_tight}); GC |diff| mean {dgc.mean():.5f} max {dgc.max():.5f}")
 
 

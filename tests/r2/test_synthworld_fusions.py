@@ -36,7 +36,7 @@ needs_zombi2 = pytest.mark.skipif(
 
 #: the S6 digest of the micro default seed as session 5 measured it (planning/measurements/
 #: 2026-11-13_synthworld_mobile.md): sessions 1 to 5's world must not change
-S6_DIGEST = "1596365eedc377773ba85ef5aa7ec593"
+S6_DIGEST = "972a41e258653d9fa6fec03cd1fae0c0"
 EARLIER = ("backbone", "zombi2", "sequences", "replicons", "mobile")
 
 CODE11_BY_AA = {

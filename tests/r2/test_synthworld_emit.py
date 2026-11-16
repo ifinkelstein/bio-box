@@ -36,15 +36,15 @@ needs_zombi2 = pytest.mark.skipif(
     reason="zombi2 0.54.0 is not importable here: CI installs it by `uv sync`; on the pod the image has it")
 
 #: the stage digests of sessions 1 to 7 for the micro default seed (measured 2026-11-13): emit must not change them
-DIGESTS = {"backbone": "f65094aa0fb1c9bed885bc6bc2f4e825", "sequences": "e9bf8833a898541f1bc9606c97d55463",
-           "replicons": "1930863ca47dcc67a5fde9deb1d12f84", "mobile": "1596365eedc377773ba85ef5aa7ec593",
-           "fusions": "d2f80ac770d8cd78346467aed2efc9c7", "assembly": "03b3e1b97dad03a8b2b7d78d755eebaf",
-           "sources": "5366fca6f2796b3956265d248b6529d9"}
+DIGESTS = {"backbone": "1dcfb678a14cb4d02690c221bf92f92f", "sequences": "009e9e9a9c23166fc5ad33a2da0aee4d",
+           "replicons": "f0248dee87c7579be4bcb3864b9861b1", "mobile": "972a41e258653d9fa6fec03cd1fae0c0",
+           "fusions": "988ace1ee87b5ae9defb8c3069ce0cb6", "assembly": "275474d48ff21e1ae46bc3f0210fb778",
+           "sources": "8981820cd79a6755b3d829c55de754d3"}
 EARLIER = ("backbone", "zombi2", "sequences", "replicons", "mobile", "fusions", "assembly", "sources")
 #: the S11 digest and the world digest of the micro default seed, measured at this session's first complete emit
 #: (wilkcomp02, 2026-11-13; the same in a separate world build in the runtime image)
-EMIT_DIGEST = "267f3a0200ddc3f7639e3c2fd6ffc134"
-WORLD_DIGEST = "684e539e11bd1ecbc5d3df6fe6405e7f"
+EMIT_DIGEST = "c1307f74a1de0ff2d4221760726b9831"
+WORLD_DIGEST = "77c32062c634c2f5dc799697195d003e"
 
 CODE11_BY_AA = {
     "F": "TTT TTC", "L": "TTA TTG CTT CTC CTA CTG", "I": "ATT ATC ATA", "M": "ATG", "V": "GTT GTC GTA GTG",
@@ -390,33 +390,47 @@ def test_every_truth_gene_reads_its_s8_gene_on_the_emitted_contig(t):
             assert translate(got, 11) is not None and uid(translate(got, 11)) == r["protein_uid"]
             n["phage"] += 1
             continue
-        g = g8[r["gene_id"]]
-        whole = _cut(t["frames"][f"{g['genome_id']}_r{g['replicon']}"], int(g["start"]), int(g["end"]),
-                     int(g["strand"]))
-        status = "cut" if r["partial_5"] == "true" or r["partial_3"] == "true" else "whole"
-        assert r["status"] == status
-        if status == "whole":
-            assert _matches(t, cu, s, e, st, whole), r["gene_id"]
-            if r["occurrence"] == "near_dup":     # its changes are synonymous (S10)
-                tab = CODE[code[g["genome_id"]]]
-                assert [tab[got[i:i + 3]] for i in range(0, len(got) - 2, 3)] == \
-                    [tab[whole[i:i + 3]] for i in range(0, len(whole) - 2, 3)]
+        # DEC-48 (2): a row names every gene at its feature_uid (two identical contigs of one genome are one
+        # contig_uid); each named gene is checked as a row of one gene was, against its own S8 gene
+        names = r["gene_id"].split(";")
+        assert r["copy_label"] == r["gene_id"] and names == sorted(set(names))
+        n["rows_naming_several_genes"] += len(names) > 1
+        for k, name in enumerate(names):
+            protein_uid = _of_gene(r, "protein_uid", k, len(names))
+            g = g8[name]
+            whole = _cut(t["frames"][f"{g['genome_id']}_r{g['replicon']}"], int(g["start"]), int(g["end"]),
+                         int(g["strand"]))
+            status = "cut" if r["partial_5"] == "true" or r["partial_3"] == "true" else "whole"
+            assert r["status"] == status
+            if status == "whole":
+                assert _matches(t, cu, s, e, st, whole), name
+                if r["occurrence"] == "near_dup":     # its changes are synonymous (S10)
+                    tab = CODE[code[g["genome_id"]]]
+                    assert [tab[got[i:i + 3]] for i in range(0, len(got) - 2, 3)] == \
+                        [tab[whole[i:i + 3]] for i in range(0, len(whole) - 2, 3)]
+                else:
+                    assert got == whole
+                if r["feature_kind"] in ("CDS", "smORF") and name not in frameshift:
+                    assert uid(translate(got, code[g["genome_id"]])) == protein_uid
             else:
-                assert got == whole
-            if r["feature_kind"] in ("CDS", "smORF") and r["gene_id"] not in frameshift:
-                assert uid(translate(got, code[g["genome_id"]])) == r["protein_uid"]
-        else:
-            assert len(got) < len(whole)
-            if r["occurrence"] != "near_dup":
-                assert got in whole
-            p5, p3 = r["partial_5"] == "true", r["partial_3"] == "true"
-            if r["occurrence"] != "near_dup" and not (p5 and p3):
-                assert whole.startswith(got) if p3 else whole.endswith(got)
-        n[f"{r['occurrence']}_{status}"] += 1
-    # every emitted piece of S9 is a row of the assembly occurrence
+                assert len(got) < len(whole)
+                if r["occurrence"] != "near_dup":
+                    assert got in whole
+                p5, p3 = r["partial_5"] == "true", r["partial_3"] == "true"
+                if r["occurrence"] != "near_dup" and not (p5 and p3):
+                    assert whole.startswith(got) if p3 else whole.endswith(got)
+            n[f"{r['occurrence']}_{status}"] += 1
+    # every emitted piece of S9 is a gene named by a row of the assembly occurrence
     em = sum(1 for p in t["pieces"] if p["emitted"] == "true")
     assert n["assembly_whole"] + n["assembly_cut"] == em
-    print(f"\ntruth_gene rows by occurrence and status {dict(n)}")
+    print(f"\ntruth_gene genes named by occurrence and status {dict(n)}")
+
+
+def _of_gene(r: dict, col: str, k: int, n: int) -> str:
+    """The value of column ``col`` for the k-th of the n genes a truth_gene row names (DEC-48 (2): a column on which
+    the genes differ lists their values ``|``-separated in gene_id order)."""
+    parts = r[col].split("|")
+    return parts[k] if n > 1 and len(parts) == n else r[col]
 
 
 def _tsv_callerr(t):
