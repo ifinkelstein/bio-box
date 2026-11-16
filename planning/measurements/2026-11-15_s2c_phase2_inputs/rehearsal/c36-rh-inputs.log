@@ -1,0 +1,5 @@
+2026-11-15T20:41:39-06:00 run-step: C5R.inputs: allowance 0 threads of 8 asked: cap 8 (Sun 20:41, night or weekend) less 18 for ours elsewhere; over 5.2 s, other users 0.02 CPUs (compute above 0.5), system accounts 1.23 (not counted), ours elsewhere 17.97, ours in this unit 0.04; load average 21.30 (not used); --threads 8 is above it: with the account's processes elsewhere the total passes the cap while they run
+{"result": {"contigs": 968, "genomes": 300, "rows": 971, "shared_contigs": 3}, "stage": "C5R", "step": "inputs"}
+2026-11-15T20:41:42-06:00 run-step: C5R.inputs published 1 files
+pod_run: c36-rh-inputs usage MemoryPeak=608829440 CPUUsageNSec=10344921000
+pod_run: c36-rh-inputs exited 0

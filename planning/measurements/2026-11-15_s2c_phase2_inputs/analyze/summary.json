@@ -1,0 +1,747 @@
+{
+ "budget_cpu_min": 300,
+ "estimates": {
+  "C1": {
+   "genecall": {
+    "bases_by_mode": {
+     "single": 9313428041
+    },
+    "bases_called": 9313428041,
+    "batch_cpu_min": [
+     151.864
+    ],
+    "batches": 1,
+    "genes_expected": 8544138.9,
+    "genomes": 1776,
+    "in_batches": false,
+    "largest_genome_cpu_min": 0.22,
+    "merge_cpu_min": 1.033,
+    "modes": {
+     "single": 1764
+    },
+    "not_called": 12,
+    "one_process_cpu_min": 151.864
+   },
+   "ingest": {
+    "cpu_min": 42.5,
+    "fasta_bytes": 9487676919,
+    "gz_bytes": 2665666784,
+    "in_batches": false
+   },
+   "pfam_full": {
+    "cpu_min": 12370.2,
+    "shard_residues": 30150753,
+    "shards": 52
+   },
+   "proteins": {
+    "distinct": 4462581,
+    "distinct_if_one_per_species_ratio": 7596594,
+    "genes": 8544139,
+    "genes_first_of_species": 2861432,
+    "gtdb_protein_count": 8493692,
+    "residues": 1554049244
+   }
+  },
+  "C2": {
+   "genecall": {
+    "bases_by_mode": {
+     "single": 9349738726
+    },
+    "bases_called": 9349738726,
+    "batch_cpu_min": [
+     152.455
+    ],
+    "batches": 1,
+    "genes_expected": 8577450.3,
+    "genomes": 3096,
+    "in_batches": false,
+    "largest_genome_cpu_min": 0.147,
+    "merge_cpu_min": 1.036,
+    "modes": {
+     "single": 3094
+    },
+    "not_called": 2,
+    "one_process_cpu_min": 152.455
+   },
+   "ingest": {
+    "cpu_min": 42.5,
+    "fasta_bytes": 9489508963,
+    "gz_bytes": 2752990698,
+    "in_batches": false
+   },
+   "pfam_full": {
+    "cpu_min": 10303.4,
+    "shard_residues": 30150753,
+    "shards": 43
+   },
+   "proteins": {
+    "distinct": 3716956,
+    "distinct_if_one_per_species_ratio": 7626211,
+    "genes": 8577450,
+    "genes_first_of_species": 1489045,
+    "gtdb_protein_count": 9156142,
+    "residues": 1294392668
+   }
+  },
+  "C3": {
+   "genecall": {
+    "bases_by_mode": {
+     "single": 9432772486
+    },
+    "bases_called": 9432772486,
+    "batch_cpu_min": [
+     153.807
+    ],
+    "batches": 1,
+    "genes_expected": 8653625.5,
+    "genomes": 2456,
+    "in_batches": false,
+    "largest_genome_cpu_min": 0.238,
+    "merge_cpu_min": 1.043,
+    "modes": {
+     "single": 2447
+    },
+    "not_called": 9,
+    "one_process_cpu_min": 153.807
+   },
+   "ingest": {
+    "cpu_min": 43.1,
+    "fasta_bytes": 9621864080,
+    "gz_bytes": 2766477471,
+    "in_batches": false
+   },
+   "pfam_full": {
+    "cpu_min": 12428.2,
+    "shard_residues": 30150753,
+    "shards": 52
+   },
+   "proteins": {
+    "distinct": 4483495,
+    "distinct_if_one_per_species_ratio": 7693938,
+    "genes": 8653626,
+    "genes_first_of_species": 2832332,
+    "gtdb_protein_count": 8744320,
+    "residues": 1561332250
+   }
+  },
+  "C4": {
+   "genecall": {
+    "bases_by_mode": {
+     "single": 9212611695
+    },
+    "bases_called": 9212611695,
+    "batch_cpu_min": [
+     150.223
+    ],
+    "batches": 1,
+    "genes_expected": 8451650.0,
+    "genomes": 1970,
+    "in_batches": false,
+    "largest_genome_cpu_min": 0.188,
+    "merge_cpu_min": 1.025,
+    "modes": {
+     "single": 1968
+    },
+    "not_called": 2,
+    "one_process_cpu_min": 150.223
+   },
+   "ingest": {
+    "cpu_min": 41.9,
+    "fasta_bytes": 9347446902,
+    "gz_bytes": 2671558355,
+    "in_batches": false
+   },
+   "pfam_full": {
+    "cpu_min": 10875.8,
+    "shard_residues": 30150753,
+    "shards": 46
+   },
+   "proteins": {
+    "distinct": 3923462,
+    "distinct_if_one_per_species_ratio": 7514362,
+    "genes": 8451650,
+    "genes_first_of_species": 1940499,
+    "gtdb_protein_count": 8485527,
+    "residues": 1366306459
+   }
+  },
+  "C5": {
+   "genecall": {
+    "bases_by_mode": {
+     "single": 9369040755
+    },
+    "bases_called": 9369040755,
+    "batch_cpu_min": [
+     152.769
+    ],
+    "batches": 1,
+    "genes_expected": 8595158.0,
+    "genomes": 2029,
+    "in_batches": false,
+    "largest_genome_cpu_min": 0.118,
+    "merge_cpu_min": 1.038,
+    "modes": {
+     "single": 2027
+    },
+    "not_called": 2,
+    "one_process_cpu_min": 152.769
+   },
+   "ingest": {
+    "cpu_min": 42.6,
+    "fasta_bytes": 9509853070,
+    "gz_bytes": 2781209046,
+    "in_batches": false
+   },
+   "pfam_full": {
+    "cpu_min": 9960.7,
+    "shard_residues": 30150753,
+    "shards": 42
+   },
+   "proteins": {
+    "distinct": 3593325,
+    "distinct_if_one_per_species_ratio": 7641955,
+    "genes": 8595158,
+    "genes_first_of_species": 1254034,
+    "gtdb_protein_count": 8774401,
+    "residues": 1251339444
+   }
+  },
+  "C6": {
+   "genecall": {
+    "bases_by_mode": {
+     "single": 9305791557
+    },
+    "bases_called": 9305791557,
+    "batch_cpu_min": [
+     151.739
+    ],
+    "batches": 1,
+    "genes_expected": 8537133.2,
+    "genomes": 2117,
+    "in_batches": false,
+    "largest_genome_cpu_min": 0.134,
+    "merge_cpu_min": 1.033,
+    "modes": {
+     "single": 2117
+    },
+    "not_called": 0,
+    "one_process_cpu_min": 151.739
+   },
+   "ingest": {
+    "cpu_min": 42.2,
+    "fasta_bytes": 9426417771,
+    "gz_bytes": 2705667897,
+    "in_batches": false
+   },
+   "pfam_full": {
+    "cpu_min": 11164.6,
+    "shard_residues": 30150753,
+    "shards": 47
+   },
+   "proteins": {
+    "distinct": 4027648,
+    "distinct_if_one_per_species_ratio": 7590365,
+    "genes": 8537133,
+    "genes_first_of_species": 2077085,
+    "gtdb_protein_count": 8468134,
+    "residues": 1402588235
+   }
+  }
+ },
+ "phase2": {
+  "C1": {
+   "adds_after_pl1_in_order": {
+    "bases": 9114195377,
+    "contigs": 1873
+   },
+   "distinct_bases": 9354298875,
+   "distinct_contigs": 2918,
+   "genomes_in_lock": 1783,
+   "genomes_listed": 1776,
+   "identical_genomes": [
+    [
+     "GCF_003852195.1",
+     "GCF_003852135.1"
+    ],
+    [
+     "GCF_003852215.1",
+     "GCF_003852135.1"
+    ],
+    [
+     "GCF_028743295.1",
+     "GCF_000010425.1"
+    ],
+    [
+     "GCF_028743435.1",
+     "GCF_000016525.1"
+    ],
+    [
+     "GCF_902381755.1",
+     "GCF_001025195.1"
+    ],
+    [
+     "GCF_902386735.1",
+     "GCF_000817995.1"
+    ],
+    [
+     "GCF_902386775.1",
+     "GCF_003390735.1"
+    ]
+   ],
+   "in_pl1_inputs": {
+    "bases": 199069722,
+    "contigs": 1033,
+    "of_which_stored_by_S1_P_H1": 1,
+    "pl1_would_store": 1032,
+    "pl1_would_store_bases": 198996437
+   },
+   "record_bases": 9370307157,
+   "records": 2929,
+   "repeated_within": {
+    "bases": 162942,
+    "contigs_in_several_genomes": 4,
+    "largest_genome_count": 2,
+    "memberships_beyond_the_first": 4,
+    "records_beyond_the_first": 11
+   },
+   "shared_with_any_other_phase2": 0,
+   "shared_with_other_phase2": {},
+   "stored_by_S1_P_H1": {
+    "bases": 41107061,
+    "by_stage": {
+     "P2": 3,
+     "P3": 6,
+     "P4": 1,
+     "P6": 3
+    },
+    "contigs": 13,
+    "records": 13
+   },
+   "stored_elsewhere_before_it": {
+    "bases": 240103498,
+    "by_owner": {
+     "P2": 3,
+     "P3": 6,
+     "P4": 1,
+     "P6": 3,
+     "PL1": 1032
+    },
+    "contigs": 1045
+   }
+  },
+  "C2": {
+   "adds_after_pl1_in_order": {
+    "bases": 9126873544,
+    "contigs": 3443
+   },
+   "distinct_bases": 9354111682,
+   "distinct_contigs": 6675,
+   "genomes_in_lock": 3102,
+   "genomes_listed": 3096,
+   "identical_genomes": [
+    [
+     "GCA_033112945.1",
+     "GCA_019710455.1"
+    ],
+    [
+     "GCF_002251025.2",
+     "GCF_002250965.2"
+    ],
+    [
+     "GCF_034646875.2",
+     "GCF_034646055.1"
+    ],
+    [
+     "GCF_902386655.1",
+     "GCF_002158885.1"
+    ],
+    [
+     "GCF_902829265.1",
+     "GCF_018802225.1"
+    ],
+    [
+     "GCF_902829275.1",
+     "GCF_018802245.1"
+    ]
+   ],
+   "in_pl1_inputs": {
+    "bases": 222738775,
+    "contigs": 3230,
+    "of_which_stored_by_S1_P_H1": 10,
+    "pl1_would_store": 3220,
+    "pl1_would_store_bases": 222615928
+   },
+   "record_bases": 9371800221,
+   "records": 6694,
+   "repeated_within": {
+    "bases": 123359,
+    "contigs_in_several_genomes": 11,
+    "largest_genome_count": 3,
+    "memberships_beyond_the_first": 12,
+    "records_beyond_the_first": 19
+   },
+   "shared_with_any_other_phase2": 0,
+   "shared_with_other_phase2": {},
+   "stored_by_S1_P_H1": {
+    "bases": 4622210,
+    "by_stage": {
+     "P4": 3,
+     "P5": 5,
+     "P6": 4
+    },
+    "contigs": 12,
+    "records": 13
+   },
+   "stored_elsewhere_before_it": {
+    "bases": 227238138,
+    "by_owner": {
+     "P4": 3,
+     "P5": 5,
+     "P6": 4,
+     "PL1": 3220
+    },
+    "contigs": 3232
+   }
+  },
+  "C3": {
+   "adds_after_pl1_in_order": {
+    "bases": 8808991551,
+    "contigs": 3318
+   },
+   "distinct_bases": 9444719398,
+   "distinct_contigs": 5579,
+   "genomes_in_lock": 2470,
+   "genomes_listed": 2456,
+   "identical_genomes": [
+    [
+     "GCA_032248815.1",
+     "GCA_032248795.1"
+    ],
+    [
+     "GCA_035925625.1",
+     "GCA_035920505.1"
+    ],
+    [
+     "GCA_963576415.1",
+     "GCA_963575495.1"
+    ],
+    [
+     "GCA_963662225.1",
+     "GCA_963575495.1"
+    ],
+    [
+     "GCF_000020605.1",
+     "GCA_902387715.1"
+    ],
+    [
+     "GCF_001291465.1",
+     "GCF_000612965.1"
+    ],
+    [
+     "GCF_900002515.1",
+     "GCF_900002505.1"
+    ],
+    [
+     "GCF_902381645.1",
+     "GCF_000162235.2"
+    ],
+    [
+     "GCF_902381705.1",
+     "GCF_000349975.1"
+    ],
+    [
+     "GCF_902385735.1",
+     "GCF_001643955.1"
+    ],
+    [
+     "GCF_902387545.1",
+     "GCA_001274835.1"
+    ],
+    [
+     "GCF_902387955.1",
+     "GCF_000225345.1"
+    ],
+    [
+     "GCF_902388025.1",
+     "GCF_001998765.1"
+    ],
+    [
+     "GCF_902388275.1",
+     "GCF_003293635.1"
+    ]
+   ],
+   "in_pl1_inputs": {
+    "bases": 610051759,
+    "contigs": 2248,
+    "of_which_stored_by_S1_P_H1": 12,
+    "pl1_would_store": 2236,
+    "pl1_would_store_bases": 608908951
+   },
+   "record_bases": 9502585395,
+   "records": 5689,
+   "repeated_within": {
+    "bases": 10515825,
+    "contigs_in_several_genomes": 47,
+    "largest_genome_count": 8,
+    "memberships_beyond_the_first": 92,
+    "records_beyond_the_first": 110
+   },
+   "shared_with_any_other_phase2": 0,
+   "shared_with_other_phase2": {},
+   "stored_by_S1_P_H1": {
+    "bases": 26818896,
+    "by_stage": {
+     "P1": 1,
+     "P2": 4,
+     "P3": 4,
+     "P4": 6,
+     "P5": 4,
+     "P6": 6
+    },
+    "contigs": 25,
+    "records": 34
+   },
+   "stored_elsewhere_before_it": {
+    "bases": 635727847,
+    "by_owner": {
+     "P1": 1,
+     "P2": 4,
+     "P3": 4,
+     "P4": 6,
+     "P5": 4,
+     "P6": 6,
+     "PL1": 2236
+    },
+    "contigs": 2261
+   }
+  },
+  "C4": {
+   "adds_after_pl1_in_order": {
+    "bases": 8806059807,
+    "contigs": 2639
+   },
+   "distinct_bases": 9217916766,
+   "distinct_contigs": 4571,
+   "genomes_in_lock": 1972,
+   "genomes_listed": 1970,
+   "identical_genomes": [
+    [
+     "GCF_041154485.1",
+     "GCF_041154475.1"
+    ],
+    [
+     "GCF_902386745.1",
+     "GCF_002215055.1"
+    ]
+   ],
+   "in_pl1_inputs": {
+    "bases": 403397602,
+    "contigs": 1930,
+    "of_which_stored_by_S1_P_H1": 12,
+    "pl1_would_store": 1918,
+    "pl1_would_store_bases": 401726399
+   },
+   "record_bases": 9231662797,
+   "records": 4605,
+   "repeated_within": {
+    "bases": 2982568,
+    "contigs_in_several_genomes": 23,
+    "largest_genome_count": 3,
+    "memberships_beyond_the_first": 31,
+    "records_beyond_the_first": 34
+   },
+   "shared_with_any_other_phase2": 1,
+   "shared_with_other_phase2": {
+    "C5": {
+     "bases": 820,
+     "contigs": 1
+    }
+   },
+   "stored_by_S1_P_H1": {
+    "bases": 10130560,
+    "by_stage": {
+     "P2": 5,
+     "P3": 5,
+     "P4": 4
+    },
+    "contigs": 14,
+    "records": 16
+   },
+   "stored_elsewhere_before_it": {
+    "bases": 411856959,
+    "by_owner": {
+     "P2": 5,
+     "P3": 5,
+     "P4": 4,
+     "PL1": 1918
+    },
+    "contigs": 1932
+   }
+  },
+  "C5": {
+   "adds_after_pl1_in_order": {
+    "bases": 9109234757,
+    "contigs": 2653
+   },
+   "distinct_bases": 9376507937,
+   "distinct_contigs": 5203,
+   "genomes_in_lock": 2032,
+   "genomes_listed": 2029,
+   "identical_genomes": [
+    [
+     "GCF_009650415.1",
+     "GCF_009649915.1"
+    ],
+    [
+     "GCF_016647575.1",
+     "GCF_015475555.1"
+    ],
+    [
+     "GCF_902387975.1",
+     "GCF_003019925.1"
+    ]
+   ],
+   "in_pl1_inputs": {
+    "bases": 258792564,
+    "contigs": 2547,
+    "of_which_stored_by_S1_P_H1": 4,
+    "pl1_would_store": 2543,
+    "pl1_would_store_bases": 258730641
+   },
+   "record_bases": 9392003904,
+   "records": 5228,
+   "repeated_within": {
+    "bases": 659867,
+    "contigs_in_several_genomes": 13,
+    "largest_genome_count": 4,
+    "memberships_beyond_the_first": 21,
+    "records_beyond_the_first": 25
+   },
+   "shared_with_any_other_phase2": 1,
+   "shared_with_other_phase2": {
+    "C4": {
+     "bases": 820,
+     "contigs": 1
+    }
+   },
+   "stored_by_S1_P_H1": {
+    "bases": 8542539,
+    "by_stage": {
+     "P1": 1,
+     "P2": 3,
+     "P4": 2,
+     "S1": 1
+    },
+    "contigs": 7,
+    "records": 7
+   },
+   "stored_elsewhere_before_it": {
+    "bases": 267273180,
+    "by_owner": {
+     "P1": 1,
+     "P2": 3,
+     "P4": 2,
+     "PL1": 2543,
+     "S1": 1
+    },
+    "contigs": 2550
+   }
+  },
+  "C6": {
+   "adds_after_pl1_in_order": {
+    "bases": 9166710932,
+    "contigs": 2544
+   },
+   "distinct_bases": 9304426824,
+   "distinct_contigs": 4845,
+   "genomes_in_lock": 2118,
+   "genomes_listed": 2117,
+   "identical_genomes": [
+    [
+     "GCF_030295685.1",
+     "GCF_027474385.1"
+    ]
+   ],
+   "in_pl1_inputs": {
+    "bases": 137715892,
+    "contigs": 2301,
+    "of_which_stored_by_S1_P_H1": 13,
+    "pl1_would_store": 2288,
+    "pl1_would_store_bases": 137290707
+   },
+   "record_bases": 9309631262,
+   "records": 4879,
+   "repeated_within": {
+    "bases": 1087756,
+    "contigs_in_several_genomes": 22,
+    "largest_genome_count": 5,
+    "memberships_beyond_the_first": 33,
+    "records_beyond_the_first": 34
+   },
+   "shared_with_any_other_phase2": 0,
+   "shared_with_other_phase2": {},
+   "stored_by_S1_P_H1": {
+    "bases": 425185,
+    "by_stage": {
+     "P2": 5,
+     "P4": 1,
+     "P6": 7
+    },
+    "contigs": 13,
+    "records": 13
+   },
+   "stored_elsewhere_before_it": {
+    "bases": 137715892,
+    "by_owner": {
+     "P2": 5,
+     "P4": 1,
+     "P6": 7,
+     "PL1": 2288
+    },
+    "contigs": 2301
+   }
+  }
+ },
+ "phase2_all": {
+  "adds_after_pl1": 16470,
+  "adds_after_pl1_bases": 54132065968,
+  "distinct_bases": 56051980662,
+  "distinct_contigs": 29790,
+  "in_pl1_inputs": 13288,
+  "in_several_phase2_stages": 1,
+  "stored_by_S1_P_H1": 84
+ },
+ "pl1": {
+  "contigs": 68693,
+  "owned_by_stored": 7046,
+  "owned_by_stored_by_stage": {
+   "P1": 118,
+   "P2": 1267,
+   "P3": 1174,
+   "P4": 1503,
+   "P5": 1692,
+   "P6": 1290,
+   "S1": 2
+  },
+  "owned_by_stored_equals_its_shared_records": true,
+  "would_store": 61647
+ },
+ "rehearsal_ratios": {
+  "distinct_per_gene_first": 0.8891,
+  "genes_per_mbp": 942.3,
+  "new_per_gene_later": 0.3376,
+  "residues_per_distinct": 348.24,
+  "share_distinct_in_a_stored_stage": 0.1641
+ },
+ "shard_margin": 0.8,
+ "stored": {
+  "H1": 6714,
+  "P1": 539,
+  "P2": 5018,
+  "P3": 9107,
+  "P4": 4005,
+  "P5": 4111,
+  "P6": 4227,
+  "S1": 27258
+ }
+}

@@ -1,0 +1,79 @@
+2026-11-15 20:23:22 CST c36 inputs: mode 'extract' (pid 3886327), tree /tmp/if2453/ci/C-36, image /stor/home/if2453/bio-box/images/bio-box_faec1f4.sif
+2026-11-15 20:23:22 CST disk: /tmp 651377684 KiB free
+2026-11-15 20:23:53 CST extract: sha256 of /stor/scratch/Wilke/if2453/all-the-data/provisional/s2c_phase2/s2c_phase2_genomes.tar: af3ae7c348328e78e7091e7790ba20e3103a1f0bef21eef1be18d36c2e36fcb9
+2026-11-15 20:24:30 CST extract: sha256 of /stor/scratch/Wilke/if2453/all-the-data/provisional/s2c_phase2/s2c_phase2_rest_genomes.tar: 94cc747e86c619f80404941508ca5b8b3cffcf5d7302426f32830bd3db7c19df
+2026-11-15 20:25:58 CST extract: /stor/scratch/Wilke/if2453/all-the-data/provisional/s2c_phase2/s2c_phase2_genomes.tar extracted; 4630 files so far
+2026-11-15 20:25:58 CST disk: /tmp 646307484 KiB free
+2026-11-15 20:29:50 CST extract: /stor/scratch/Wilke/if2453/all-the-data/provisional/s2c_phase2/s2c_phase2_rest_genomes.tar extracted; 13495 files so far
+2026-11-15 20:29:50 CST disk: /tmp 635125268 KiB free
+2026-11-15 20:29:50 CST extract: /tmp/if2453/s2/phase2: 16359091501 bytes, 13477 .fna.gz files
+2026-11-15 20:29:50 CST disk: /tmp 635125244 KiB free
+2026-11-15 20:29:50 CST c36 inputs: mode 'extract' done
+2026-11-15 20:30:02 CST c36 inputs: mode 'assign' (pid 3956509), tree /tmp/if2453/ci/C-36, image /stor/home/if2453/bio-box/images/bio-box_faec1f4.sif
+2026-11-15 20:30:02 CST assign: sha256 of /tmp/if2453/c27/out_ani/remainder.tsv: 48e6072846f6b40e396eea2639db61a2c02528be18e704feafaacc7462b93098
+2026-11-15 20:30:05 CST assign: exit 0: equal_to_proposal "equal_to_proposal": true 
+2026-11-15 20:30:05 CST c36 inputs: mode 'assign' done
+2026-11-15 20:30:27 CST c36 inputs: mode 'verify' (pid 3962133), tree /tmp/if2453/ci/C-36, image /stor/home/if2453/bio-box/images/bio-box_faec1f4.sif
+2026-11-15 20:35:39 CST verify: C5 exit 0: {"contigs_tsv_sha256":"348a5d3382b244510df26ce69977226eee5794381b356543607139d3add846af","distinct_contigs":5203,"genomes_in_lock":2032,"problems":[],"stage_dir":"/tmp/if2453/c36/stages/C5","verified":{"bp":9392003904,"fasta_bytes":9509853070,"genomes":2032,"gz_bytes":2781209046,"records":5228}} 
+2026-11-15 20:35:41 CST verify: C4 exit 0: {"contigs_tsv_sha256":"b55ef9083f7015d2b1b2e0bce7f5be2c051e97062d8272d5c9de2d038fda8dda","distinct_contigs":4571,"genomes_in_lock":1972,"problems":[],"stage_dir":"/tmp/if2453/c36/stages/C4","verified":{"bp":9231662797,"fasta_bytes":9347446902,"genomes":1972,"gz_bytes":2671558355,"records":4605}} 
+2026-11-15 20:35:47 CST verify: C1 exit 0: {"contigs_tsv_sha256":"07b6469a87b14f5668f5036c997ca6b896c1ffe87a5d8345f95c369a723b3c40","distinct_contigs":2918,"genomes_in_lock":1783,"problems":[],"stage_dir":"/tmp/if2453/c36/stages/C1","verified":{"bp":9370307157,"fasta_bytes":9487676919,"genomes":1783,"gz_bytes":2665666784,"records":2929}} 
+2026-11-15 20:35:48 CST verify: C6 exit 0: {"contigs_tsv_sha256":"13de7c164a9a586e938ada8459069a619cb47831a74c6151cc4da46aeaf00aa6","distinct_contigs":4845,"genomes_in_lock":2118,"problems":[],"stage_dir":"/tmp/if2453/c36/stages/C6","verified":{"bp":9309631262,"fasta_bytes":9426417771,"genomes":2118,"gz_bytes":2705667897,"records":4879}} 
+2026-11-15 20:35:57 CST verify: C2 exit 0: {"contigs_tsv_sha256":"76a0f8224d65f420d0099eb1ea7e77bdfd03b9bb6a9c6b1f4747f3145c485438","distinct_contigs":6675,"genomes_in_lock":3102,"problems":[],"stage_dir":"/tmp/if2453/c36/stages/C2","verified":{"bp":9371800221,"fasta_bytes":9489508963,"genomes":3102,"gz_bytes":2752990698,"records":6694}} 
+2026-11-15 20:35:58 CST verify: C3 exit 0: {"contigs_tsv_sha256":"d79bc9f3bbdd8c446d7ff22bd49bfd0850987c8a786aace2db400a85d7808aae","distinct_contigs":5579,"genomes_in_lock":2470,"problems":[],"stage_dir":"/tmp/if2453/c36/stages/C3","verified":{"bp":9502585395,"fasta_bytes":9621864080,"genomes":2470,"gz_bytes":2766477471,"records":5689}} 
+2026-11-15 20:35:58 CST c36 inputs: mode 'verify' done
+2026-11-15 20:36:14 CST c36 inputs: mode 'inputs' (pid 4063526), tree /tmp/if2453/ci/C-36, image /stor/home/if2453/bio-box/images/bio-box_faec1f4.sif
+2026-11-15 20:38:53 CST inputs: C2 make_inputs.py prok exit 0: {"genomes": 3096, "contigs": 6675, "memberships": 6687, "contigs_in_several_genomes": 11, "records_repeated_in_genome": 0, "genomes_repeated": 6, "objects": 3102, "codes": {"4": 353, "11": 2743}} 
+2026-11-15 20:38:57 CST inputs: C3 make_inputs.py prok exit 0: {"genomes": 2456, "contigs": 5579, "memberships": 5671, "contigs_in_several_genomes": 47, "records_repeated_in_genome": 0, "genomes_repeated": 14, "objects": 2470, "codes": {"11": 2456}} 
+2026-11-15 20:38:57 CST inputs: C1 make_inputs.py prok exit 0: {"genomes": 1776, "contigs": 2918, "memberships": 2922, "contigs_in_several_genomes": 4, "records_repeated_in_genome": 0, "genomes_repeated": 7, "objects": 1783, "codes": {"11": 1776}} 
+2026-11-15 20:38:58 CST inputs: C6 make_inputs.py prok exit 0: {"genomes": 2117, "contigs": 4845, "memberships": 4878, "contigs_in_several_genomes": 22, "records_repeated_in_genome": 0, "genomes_repeated": 1, "objects": 2118, "codes": {"11": 2117}} 
+2026-11-15 20:38:59 CST inputs: C4 make_inputs.py prok exit 0: {"genomes": 1970, "contigs": 4571, "memberships": 4602, "contigs_in_several_genomes": 23, "records_repeated_in_genome": 0, "genomes_repeated": 2, "objects": 1972, "codes": {"11": 1970}} 
+2026-11-15 20:38:59 CST inputs: C5 make_inputs.py prok exit 0: {"genomes": 2029, "contigs": 5203, "memberships": 5224, "contigs_in_several_genomes": 13, "records_repeated_in_genome": 0, "genomes_repeated": 3, "objects": 2032, "codes": {"11": 2029}} 
+2026-11-15 20:38:59 CST c36 inputs: mode 'inputs' done
+2026-11-15 20:39:22 CST c36 inputs: mode 'check' (pid 4119459), tree /tmp/if2453/ci/C-36, image /stor/home/if2453/bio-box/images/bio-box_faec1f4.sif
+2026-11-15 20:39:27 CST check: C1 exit 0: { "stage": "C1", "genomes": 1776, "genome_input_rows": 2922, "distinct_genome_uids": 1776, "circular_rows": 0, "kinds": [  "prokaryote" ], "codes": [  11 ], "assembly_quality": [  "complete" ], "gene_call_mode": {  "prokaryote": null }, "objects": [...]}
+2026-11-15 20:39:31 CST check: C2 exit 0: { "stage": "C2", "genomes": 3096, "genome_input_rows": 6687, "distinct_genome_uids": 3096, "circular_rows": 0, "kinds": [  "prokaryote" ], "codes": [  4,  11 ], "assembly_quality": [  "complete" ], "gene_call_mode": {  "prokaryote": null }, "objects": [...]}
+2026-11-15 20:39:36 CST check: C3 exit 0: { "stage": "C3", "genomes": 2456, "genome_input_rows": 5671, "distinct_genome_uids": 2456, "circular_rows": 0, "kinds": [  "prokaryote" ], "codes": [  11 ], "assembly_quality": [  "complete" ], "gene_call_mode": {  "prokaryote": null }, "objects": [...]}
+2026-11-15 20:39:40 CST check: C4 exit 0: { "stage": "C4", "genomes": 1970, "genome_input_rows": 4602, "distinct_genome_uids": 1970, "circular_rows": 0, "kinds": [  "prokaryote" ], "codes": [  11 ], "assembly_quality": [  "complete" ], "gene_call_mode": {  "prokaryote": null }, "objects": [...]}
+2026-11-15 20:39:44 CST check: C5 exit 0: { "stage": "C5", "genomes": 2029, "genome_input_rows": 5224, "distinct_genome_uids": 2029, "circular_rows": 0, "kinds": [  "prokaryote" ], "codes": [  11 ], "assembly_quality": [  "complete" ], "gene_call_mode": {  "prokaryote": null }, "objects": [...]}
+2026-11-15 20:39:48 CST check: C6 exit 0: { "stage": "C6", "genomes": 2117, "genome_input_rows": 4878, "distinct_genome_uids": 2117, "circular_rows": 0, "kinds": [  "prokaryote" ], "codes": [  11 ], "assembly_quality": [  "complete" ], "gene_call_mode": {  "prokaryote": null }, "objects": [...]}
+2026-11-15 20:39:48 CST check: SUMS: 32ec62f5a50646824a2b6fbd2f3d373902fe73bfef4d5973c688b8b5e89909b9  C1/genomes.json f8a56a5ce4375a6f9bb0e9f7ac9c73e371607941809d2dac1e999b201c4688de  C1/objects.json 7e3f4cfdd6aad5643a9bca7d74b28f12f208c46c6d447514c7ff0c42ef755194  C2/genomes.json deedad548ad8ea08f20fc00ce55aa13b137aec9eb3ae4c1725c6cb6454582248  C2/objects.json 4564b44ce1a65dbe943b1b3fe0865f7049ee234e9c88eb9dba1e30edf37b6db3  C3/genomes.json 74106398f7e94d459aa9a767053978bfca3639d9000ecfcde9de07269160b34e  C3/objects.json d8fb4df529fa81b55a6df805af038bba13cd2d8d7486104328fc7b2d0738c1e8  C4/genomes.json 46891a790939c115f5578f9219661d4f671269a4ffa5a2ddba0625b2368e2988  C4/objects.json 1c65060c80ef120d4550d702a76c4a9c5c3eff17ee25f2694d5a172873468573  C5/genomes.json 09d742d70a05528e0bd91b735605b63e0f67ad3758e9f1d02107be30bf5483ad  C5/objects.json 605ab8c841f2e92f4dfa31a7160da60eff8c7c0551f963a0ba061435a39789b3  C6/genomes.json cb04620345090ec5eae819baf3e72fce987af0f0942ebf0664333d22c1dbaeaa  C6/objects.json 
+2026-11-15 20:39:48 CST c36 inputs: mode 'check' done
+2026-11-15 20:40:10 CST c36 inputs: mode 'analyze' (pid 4140655), tree /tmp/if2453/ci/C-36, image /stor/home/if2453/bio-box/images/bio-box_faec1f4.sif
+2026-11-15 20:40:17 CST analyze: exit 0: {"budget_cpu_min": 300, "estimates": {"C1": {"genecall": {"bases_by_mode": {"single": 9313428041}, "bases_called": 9313428041, "batch_cpu_min": [151.864], "batches": 1, "genes_expected": 8544138.9, "genomes": 1776, "in_batches": false, "largest_genome_cpu_min": 0.22, "merge_cpu_min": 1.033, "modes": {"single": 1764}, "not_called": 12, "one_process_cpu_min": 151.864}, "ingest": {"cpu_min": 42.5, "f 
+2026-11-15 20:40:17 CST c36 inputs: mode 'analyze' done
+2026-11-15 20:40:47 CST c36 rehearsal: mode 'prep' (pid 4148601), stage C5 as C5R, tree /tmp/if2453/ci/C-36
+56 stage directories and store_params.json linked into /tmp/if2453/c36/rh/root (stages ['S1', 'P1', 'P2', 'P3', 'P4', 'P5', 'P6', 'H1'], gene_call_version=pyrodigal-3.7.1-gv-0.3.2-p2)
+2026-11-15 20:40:48 CST rh prep: sample: { "bp": 1445377659, "first": "GCF_041316025.1", "first_species": "s__Edwardsiella tarda", "genomes": 300, "last": "GCF_036865485.1", "last_species": "s__Erwinia sp036865545", "last_species_cut": 5, "lock_sha256": "45699ba4f2e2d4a9bf0a619f1c8f92ed0452257849684f567c6b3cfa1d7d265f", "selection_sha256": "99434aaeda83711e26af1a544fb4984387bb271d4bdb682c5a39f40dc5e417d4", "species": 36}
+2026-11-15 20:41:17 CST rh prep: sample inputs: {"genomes": 300, "contigs": 968, "memberships": 971, "contigs_in_several_genomes": 3, "records_repeated_in_genome": 0, "genomes_repeated": 0, "objects": 300, "codes": {"11": 300}}
+2026-11-15 20:41:17 CST rh prep: done
+2026-11-15 20:41:17 CST c36 rehearsal: mode 'prep' done
+2026-11-15 20:41:25 CST c36 rehearsal: mode 'run' (pid 4154934), stage C5 as C5R, tree /tmp/if2453/ci/C-36
+2026-11-15 20:41:25 CST rh run: launch c36-rh-inputs: run-step C5R.inputs: stage inputs --root /tmp/if2453/c36/rh/root --stage C5R --genomes /tmp/if2453/c36/rh/inputs/genomes.json
+pod_run: started c36-rh-inputs (MemoryMax=32G, MemorySwapMax=0, CPUQuota=800%, nice 19)
+pod_run: image /stor/home/if2453/bio-box/images/bio-box_faec1f4.sif sha256:d67300aa1321b571fa8da79e74dfccdd87a8dca2e56518f324902efa6b9f098a
+pod_run: log /tmp/if2453/c36/logs/c36-rh-inputs.log; watch: systemctl --user status c36-rh-inputs
+2026-11-15 20:41:46 CST rh run: c36-rh-inputs exit '0': 2026-11-15T20:41:42-06:00 run-step: C5R.inputs published 1 files pod_run: c36-rh-inputs usage MemoryPeak=608829440 CPUUsageNSec=10344921000 
+2026-11-15 20:41:46 CST rh run: launch c36-rh-ingest: run-step C5R.ingest: stage ingest --root /tmp/if2453/c36/rh/root --stage C5R --objects /tmp/if2453/c36/rh/inputs/objects.json --tmp /tmp/if2453/c36/rh/tmp/scratch/C5R.ingest
+pod_run: started c36-rh-ingest (MemoryMax=32G, MemorySwapMax=0, CPUQuota=800%, nice 19)
+pod_run: image /stor/home/if2453/bio-box/images/bio-box_faec1f4.sif sha256:d67300aa1321b571fa8da79e74dfccdd87a8dca2e56518f324902efa6b9f098a
+pod_run: log /tmp/if2453/c36/logs/c36-rh-ingest.log; watch: systemctl --user status c36-rh-ingest
+2026-11-15 20:48:33 CST rh run: c36-rh-ingest exit '0': 2026-11-15T20:48:28-06:00 run-step: C5R.ingest published 12 files pod_run: c36-rh-ingest usage MemoryPeak=2081357824 CPUUsageNSec=397645126000 
+2026-11-15 20:48:33 CST rh run: launch c36-rh-genecall: run-step C5R.genecall: stage genecall --root /tmp/if2453/c36/rh/root --stage C5R --tmp /tmp/if2453/c36/rh/tmp/scratch/C5R.genecall --workers 7 --seq-stages C5R,S1,P1,P2,P3,P4,P5,P6,H1
+pod_run: started c36-rh-genecall (MemoryMax=32G, MemorySwapMax=0, CPUQuota=800%, nice 19)
+pod_run: image /stor/home/if2453/bio-box/images/bio-box_faec1f4.sif sha256:d67300aa1321b571fa8da79e74dfccdd87a8dca2e56518f324902efa6b9f098a
+pod_run: log /tmp/if2453/c36/logs/c36-rh-genecall.log; watch: systemctl --user status c36-rh-genecall
+2026-11-15 20:52:04 CST rh run: c36-rh-genecall exit '0': 2026-11-15T20:51:59-06:00 run-step: C5R.genecall published 5 files pod_run: c36-rh-genecall usage MemoryPeak=2255695872 CPUUsageNSec=1206145643000 
+2026-11-15 20:52:04 CST rh run: done
+2026-11-15 20:52:04 CST c36 rehearsal: mode 'run' done
+2026-11-15 20:52:16 CST c36 rehearsal: mode 'check' (pid 187387), stage C5 as C5R, tree /tmp/if2453/ci/C-36
+2026-11-15 20:52:20 CST rh check: exit 1: _duckdb.InvalidInputException: Invalid Input Error: executemany requires a non-empty list of parameter sets to be provided
+2026-11-15 20:52:20 CST c36 rehearsal: mode 'check' done
+2026-11-15 20:53:02 CST c36 rehearsal: mode 'check' (pid 202966), stage C5 as C5R, tree /tmp/if2453/ci/C-36
+2026-11-15 20:53:10 CST rh check: exit 1: {"genecall_skipped": {"equal": false, "expected": 3, "got": 0, "owned_by_a_genome_of_the_stage": 0, "owned_by_stored": 0}, "problems": ["skipped contigs differ from the expected: [('567c66ddc3d0d197c351efe6cb9d84c4', ('C5R', 'ae351e9299dec435b68ef5c0c5ac53c6')), ('7d280f8f1ef0423514791cf94b6fc672', ('C5R', '56daa4a1f9a941102f43ece5f1a00f13')), ('b0b05495d49e7ecd7b6d909eb53cc62c', ('C5R', '76fb000e3b49cf2cb86835bd32ee0224'))]", "feature_protein rows 1361815 != the run's genes None"], "proteins": {"bases_with_rows": 1445257421, "distinct": 548153, "distinct_in_a_stored_stage": 89973, "distinct_o
+2026-11-15 20:53:10 CST c36 rehearsal: mode 'check' done
+2026-11-15 20:53:54 CST c36 rehearsal: mode 'check' (pid 218100), stage C5 as C5R, tree /tmp/if2453/ci/C-36
+2026-11-15 20:54:02 CST rh check: exit 0: {"genecall_skipped": {"equal": true, "expected": 3, "got": 3, "owned_by_a_genome_of_the_stage": 3, "owned_by_stored": 0}, "problems": [], "proteins": {"bases_with_rows": 1445257421, "distinct": 548153, "distinct_in_a_stored_stage": 89973, "distinct_on_first_genomes": 142497, "first_genomes": 36, "genes": 1361815, "genes_on_first_genomes": 160267, "residues": 190887760}, "ratios": {"distinct_per_gene_first": 0.8891, "genes_per_mbp": 942.3, "new_per_gene_later": 0.3376, "residues_per_distinct": 348.24, "share_distinct_in_a_stored_stage": 0.1641}, "runs": {"genecall": {"cpu_min": 19.980308, "exit
+2026-11-15 20:54:02 CST c36 rehearsal: mode 'check' done
+2026-11-15 20:54:13 CST c36 inputs: mode 'analyze' (pid 225835), tree /tmp/if2453/ci/C-36, image /stor/home/if2453/bio-box/images/bio-box_faec1f4.sif
+2026-11-15 20:54:19 CST analyze: exit 0: {"budget_cpu_min": 300, "estimates": {"C1": {"genecall": {"bases_by_mode": {"single": 9313428041}, "bases_called": 9313428041, "batch_cpu_min": [151.864], "batches": 1, "genes_expected": 8544138.9, "genomes": 1776, "in_batches": false, "largest_genome_cpu_min": 0.22, "merge_cpu_min": 1.033, "modes": {"single": 1764}, "not_called": 12, "one_process_cpu_min": 151.864}, "ingest": {"cpu_min": 42.5, "f 
+2026-11-15 20:54:19 CST c36 inputs: mode 'analyze' done

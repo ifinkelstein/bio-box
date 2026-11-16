@@ -1,0 +1,93 @@
+{
+ "genecall_skipped": {
+  "equal": true,
+  "expected": 3,
+  "got": 3,
+  "owned_by_a_genome_of_the_stage": 3,
+  "owned_by_stored": 0
+ },
+ "problems": [],
+ "proteins": {
+  "bases_with_rows": 1445257421,
+  "distinct": 548153,
+  "distinct_in_a_stored_stage": 89973,
+  "distinct_on_first_genomes": 142497,
+  "first_genomes": 36,
+  "genes": 1361815,
+  "genes_on_first_genomes": 160267,
+  "residues": 190887760
+ },
+ "ratios": {
+  "distinct_per_gene_first": 0.8891,
+  "genes_per_mbp": 942.3,
+  "new_per_gene_later": 0.3376,
+  "residues_per_distinct": 348.24,
+  "share_distinct_in_a_stored_stage": 0.1641
+ },
+ "runs": {
+  "genecall": {
+   "cpu_min": 19.980308,
+   "exit_code": 0,
+   "image_digest": "sha256:d67300aa1321b571fa8da79e74dfccdd87a8dca2e56518f324902efa6b9f098a",
+   "over_cpu_budget": false,
+   "peak_rss_bytes": 1372463104,
+   "result": {
+    "distinct_proteins": 548153,
+    "genes": 1361815,
+    "modes": [
+     "single"
+    ],
+    "wrapping_genes": 0
+   },
+   "threads": 8,
+   "wall_s": 190.503
+  },
+  "ingest": {
+   "cpu_min": 6.478937,
+   "exit_code": 0,
+   "image_digest": "sha256:d67300aa1321b571fa8da79e74dfccdd87a8dca2e56518f324902efa6b9f098a",
+   "over_cpu_budget": false,
+   "peak_rss_bytes": 1319190528,
+   "result": {
+    "index_rows": 968,
+    "new_sequences": 968,
+    "objects": 300,
+    "records": 971,
+    "shards": 2
+   },
+   "threads": 8,
+   "wall_s": 385.501
+  },
+  "inputs": {
+   "cpu_min": 0.066987,
+   "exit_code": 0,
+   "image_digest": "sha256:d67300aa1321b571fa8da79e74dfccdd87a8dca2e56518f324902efa6b9f098a",
+   "over_cpu_budget": false,
+   "peak_rss_bytes": 325775360,
+   "result": {
+    "contigs": 968,
+    "genomes": 300,
+    "rows": 971,
+    "shared_contigs": 3
+   },
+   "threads": 8,
+   "wall_s": 3.386
+  }
+ },
+ "sample": {
+  "bases": 1445257421,
+  "distinct_contigs": 968,
+  "expected_new_bases": 1445257421,
+  "expected_new_contigs": 968,
+  "genomes_in_lock": 300,
+  "genomes_listed": 300,
+  "in_pl1_inputs": 603,
+  "in_pl1_inputs_bases": 47196369,
+  "in_several_genomes_not_owned": 3,
+  "owned_by_stored": 0,
+  "owned_by_stored_bases": 0,
+  "owned_by_stored_by_stage": {},
+  "records": 971
+ },
+ "stage": "C5R"
+}

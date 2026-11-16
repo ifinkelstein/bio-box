@@ -1,0 +1,228 @@
+{
+ "bp": 56177990736,
+ "differing_lines": [],
+ "equal_to_proposal": true,
+ "fetched": {
+  "s2c_phase2": 4617,
+  "s2c_phase2_rest": 8860
+ },
+ "genomes": 13477,
+ "locks": {
+  "s2c_phase2/B01/lock.json": "0da31ec701d49a12f96c31fdbece8e43b5de30293618a630eed6be656ddc6c5f",
+  "s2c_phase2/B02/lock.json": "5bd9059fcca46e0bf95aef1f22dd0e71d070c1f969d1cff546add2ed2b619649",
+  "s2c_phase2/B03/lock.json": "42aea3185b182bcd9e28ef137f1cf09a34b292ea4adc383e30781a08ea585a90",
+  "s2c_phase2/B04/lock.json": "23c2ff048be89403f25d5172bc774359484db3f88c4b58b265b36d9f0b50161a",
+  "s2c_phase2/B05/lock.json": "f6af6ca68850e440927ddb1faccc69fe037bf1ab497a95fbfd6e69078b1b229d",
+  "s2c_phase2/B06/lock.json": "68083c8640f6167fd16e6e957d114e2dd4c8e5e35204c45d137a94150f75847a",
+  "s2c_phase2/B07/lock.json": "d5c8c117f249cff848f5743e61693c1f01017e76c8822b5310d017041865bab4",
+  "s2c_phase2/B08/lock.json": "08f42bd2109caf6875dac99d72db8aff4c09312b354399749146ef0f9c90e72b",
+  "s2c_phase2/B09/lock.json": "27e449a1c64ef90e6ee23ffb60b195086e3d63b4cfb930c6d35da61ced000a30",
+  "s2c_phase2/B10/lock.json": "a7a1a70387d456098c8523fbcfbbdd363fa4eb07f3d4273c40a2cdfd18bbb5f2",
+  "s2c_phase2/B11/lock.json": "d353db50c505d4ae16594331f163b30a534d3faa65a02f42c46d42704729072b",
+  "s2c_phase2/B12/lock.json": "a918f47fa1b06f75929dd6e760a1ab1372b03aac9690b76cd11212cb9527abaa",
+  "s2c_phase2_rest/B01/lock.json": "aa9f9c2b8a1c06f6004a7cc102472f092b2cd662c2c8d56c711581239a6ea08a",
+  "s2c_phase2_rest/B02/lock.json": "e53590b309718972fd6f0b2cff7952d04991346c946f036b6ed4a5f5d96d7d0c",
+  "s2c_phase2_rest/B03/lock.json": "045fb0e1017430bb49bc8cfe65e026449b64466f9046d2b7a3e9c0de8af935af",
+  "s2c_phase2_rest/B04/lock.json": "6ae75e028bf1aefd7998d29868b9e7dee8851eeb3a01c370b05cf17bde417e8d"
+ },
+ "n": 6,
+ "not_served": 8,
+ "proposal_sha256": "45a1fd004350e1b3e53262c8fc6e214114079a65ce15b8c035e9ce30abf9e756",
+ "remainder_rows": 13485,
+ "stage_table_sha256": "45a1fd004350e1b3e53262c8fc6e214114079a65ce15b8c035e9ce30abf9e756",
+ "stages": {
+  "C1": {
+   "bp": 9370307157,
+   "bp_not_first_of_species": 6232175498,
+   "fasta_bytes": 9487676919,
+   "from_archive": {
+    "s2c_phase2": 361,
+    "s2c_phase2_rest": 1422
+   },
+   "genomes": 1783,
+   "genomes_in_species_over_20": 361,
+   "genomes_in_species_with_10_or_more": 652,
+   "genomes_per_species": 3.079,
+   "gtdb_protein_count": 8493692,
+   "gtdb_protein_count_missing": 0,
+   "gz_bytes": 2665666784,
+   "largest_species": 19,
+   "lock_sha256": "b204a78e399186c72038ee4ad44e23690c553a9cfa52367d8c532c5fceea6f71",
+   "phyla": 11,
+   "records": 2929,
+   "retrieved_utc": [
+    "2026-11-13T03:23:08+00:00",
+    "2026-11-13T17:42:37+00:00"
+   ],
+   "selection_sha256": "183de0d2676b040c4d00c42dff51b37b11f07ea409ba742437b5182907c1206a",
+   "share_bp_not_first_of_species": 0.6651,
+   "species": 579,
+   "species_with_10_or_more": 41,
+   "translation_tables": {
+    "": 24,
+    "11": 1759
+   }
+  },
+  "C2": {
+   "bp": 9371800221,
+   "bp_not_first_of_species": 7744988556,
+   "fasta_bytes": 9489508963,
+   "from_archive": {
+    "s2c_phase2": 1273,
+    "s2c_phase2_rest": 1829
+   },
+   "genomes": 3102,
+   "genomes_in_species_over_20": 1273,
+   "genomes_in_species_with_10_or_more": 1959,
+   "genomes_per_species": 5.897,
+   "gtdb_protein_count": 9156142,
+   "gtdb_protein_count_missing": 0,
+   "gz_bytes": 2752990698,
+   "largest_species": 19,
+   "lock_sha256": "5d921408bce5380f93ad7e47a4e38cfa59f2c495d981ad991b2bbd18ff52af4c",
+   "phyla": 1,
+   "records": 6694,
+   "retrieved_utc": [
+    "2026-11-13T03:23:05+00:00",
+    "2026-11-13T17:42:51+00:00"
+   ],
+   "selection_sha256": "ffc927cd1d11fc248dfb136c2bc631ddf7a88bb8e875caa8c45ad483fe262782",
+   "share_bp_not_first_of_species": 0.8264,
+   "species": 526,
+   "species_with_10_or_more": 117,
+   "translation_tables": {
+    "": 36,
+    "11": 2712,
+    "4": 354
+   }
+  },
+  "C3": {
+   "bp": 9502585395,
+   "bp_not_first_of_species": 6392711394,
+   "fasta_bytes": 9621864080,
+   "from_archive": {
+    "s2c_phase2": 646,
+    "s2c_phase2_rest": 1824
+   },
+   "genomes": 2470,
+   "genomes_in_species_over_20": 646,
+   "genomes_in_species_with_10_or_more": 1022,
+   "genomes_per_species": 3.187,
+   "gtdb_protein_count": 8744320,
+   "gtdb_protein_count_missing": 0,
+   "gz_bytes": 2766477471,
+   "largest_species": 19,
+   "lock_sha256": "af2c352c5e3ee1a744bde517fbd6b9319541e22fb42f3c3197bf2f78e75d8cda",
+   "phyla": 28,
+   "records": 5689,
+   "retrieved_utc": [
+    "2026-11-13T03:23:05+00:00",
+    "2026-11-13T17:42:48+00:00"
+   ],
+   "selection_sha256": "1748449bc1bf96a05ed37e4cc7b99353ab30cba1ef7869c3932fd8cc15963518",
+   "share_bp_not_first_of_species": 0.6727,
+   "species": 775,
+   "species_with_10_or_more": 62,
+   "translation_tables": {
+    "": 117,
+    "11": 2353
+   }
+  },
+  "C4": {
+   "bp": 9231662797,
+   "bp_not_first_of_species": 7112265723,
+   "fasta_bytes": 9347446902,
+   "from_archive": {
+    "s2c_phase2": 627,
+    "s2c_phase2_rest": 1345
+   },
+   "genomes": 1972,
+   "genomes_in_species_over_20": 627,
+   "genomes_in_species_with_10_or_more": 1044,
+   "genomes_per_species": 4.306,
+   "gtdb_protein_count": 8485527,
+   "gtdb_protein_count_missing": 0,
+   "gz_bytes": 2671558355,
+   "largest_species": 19,
+   "lock_sha256": "1021c16f59ff1c0b82d93a0c9ed9c151890cdfa550ada1735bf133aa1bd2369e",
+   "phyla": 1,
+   "records": 4605,
+   "retrieved_utc": [
+    "2026-11-13T03:23:05+00:00",
+    "2026-11-13T17:42:48+00:00"
+   ],
+   "selection_sha256": "195bf70fd2e0acf77e55ffd3a066bdcb224e24ac319cfc744878fffa1eb9c86e",
+   "share_bp_not_first_of_species": 0.7704,
+   "species": 458,
+   "species_with_10_or_more": 63,
+   "translation_tables": {
+    "": 36,
+    "11": 1936
+   }
+  },
+  "C5": {
+   "bp": 9392003904,
+   "bp_not_first_of_species": 8021591230,
+   "fasta_bytes": 9509853070,
+   "from_archive": {
+    "s2c_phase2": 988,
+    "s2c_phase2_rest": 1044
+   },
+   "genomes": 2032,
+   "genomes_in_species_over_20": 988,
+   "genomes_in_species_with_10_or_more": 1466,
+   "genomes_per_species": 6.641,
+   "gtdb_protein_count": 8774401,
+   "gtdb_protein_count_missing": 0,
+   "gz_bytes": 2781209046,
+   "largest_species": 19,
+   "lock_sha256": "cec0723f3faf25379dbfce58a1f3bd1d20016b21697cfd2154f14f0f26dce551",
+   "phyla": 1,
+   "records": 5228,
+   "retrieved_utc": [
+    "2026-11-13T03:23:05+00:00",
+    "2026-11-13T17:42:51+00:00"
+   ],
+   "selection_sha256": "955c878e840d865ddd5c7671f3920850a8a38e4dc092a8e934f0d3762b7de01d",
+   "share_bp_not_first_of_species": 0.8541,
+   "species": 306,
+   "species_with_10_or_more": 87,
+   "translation_tables": {
+    "": 40,
+    "11": 1992
+   }
+  },
+  "C6": {
+   "bp": 9309631262,
+   "bp_not_first_of_species": 7044746776,
+   "fasta_bytes": 9426417771,
+   "from_archive": {
+    "s2c_phase2": 722,
+    "s2c_phase2_rest": 1396
+   },
+   "genomes": 2118,
+   "genomes_in_species_over_20": 722,
+   "genomes_in_species_with_10_or_more": 947,
+   "genomes_per_species": 3.915,
+   "gtdb_protein_count": 8468134,
+   "gtdb_protein_count_missing": 0,
+   "gz_bytes": 2705667897,
+   "largest_species": 19,
+   "lock_sha256": "64d14c1e4e8d8ef1b66c2b94d4add49b7b3328a094d88fb98eadb84a222a8a8e",
+   "phyla": 5,
+   "records": 4879,
+   "retrieved_utc": [
+    "2026-11-13T03:23:08+00:00",
+    "2026-11-13T17:42:48+00:00"
+   ],
+   "selection_sha256": "116a6f04e7e763e446c06072a435a975602ac4e765f9387be6cf2e26ab9541bf",
+   "share_bp_not_first_of_species": 0.7567,
+   "species": 541,
+   "species_with_10_or_more": 54,
+   "translation_tables": {
+    "": 60,
+    "11": 2058
+   }
+  }
+ }
+}

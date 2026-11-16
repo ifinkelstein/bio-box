@@ -1,0 +1,12 @@
+{
+ "bp": 1445377659,
+ "first": "GCF_041316025.1",
+ "first_species": "s__Edwardsiella tarda",
+ "genomes": 300,
+ "last": "GCF_036865485.1",
+ "last_species": "s__Erwinia sp036865545",
+ "last_species_cut": 5,
+ "lock_sha256": "45699ba4f2e2d4a9bf0a619f1c8f92ed0452257849684f567c6b3cfa1d7d265f",
+ "selection_sha256": "99434aaeda83711e26af1a544fb4984387bb271d4bdb682c5a39f40dc5e417d4",
+ "species": 36
+}

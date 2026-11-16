@@ -74,6 +74,12 @@ sources:
       then renamed with mv -n): the 8,860 genomes fetched by card C-25 step 2 (38,636,894,022 bp, .fna.gz as
       fetched), each batch's lock.json, and kept.tsv; with s2c_phase2_genomes.tar it holds the whole S2C phase-2
       remainder less the 8 not served (13,477 genomes, 56,177,990,736 bp)
+    stage_inputs_s2c_phase2: >-
+      stages C1 to C6 (card C-36, DEC-34): /tmp/if2453/s2/inputs/C1/ to C6/ on wilkcomp02, made 2026-11-15 by
+      make_inputs.py prok from both archives above (sha256 checked, extracted into /tmp/if2453/s2/phase2/, each
+      .fna.gz and its FASTA checked against its batch lock) with per-stage locks and selections written by
+      c36_stages.py assign (the stage_proposal.tsv rule, reproduced exactly) and --source-release
+      datasets-v2-2026-11-13; record planning/measurements/2026-11-15_s2c_phase2_inputs.md
     used_by: [scripts/stress/build_stage_pod/r50_fetch.py, scripts/stress/build_stage_pod/c27_fetch.py]
     approved: by the PI on 2026-11-11
   - name: ncbi_ftp_genome
