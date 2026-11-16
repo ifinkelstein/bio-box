@@ -91,8 +91,12 @@ class RunIndex:
         self.by_sample: dict[str, set[str]] = {}
         self.primary: dict[str, str] = {}
         self._bases: dict[str, int | None] = {}
-        for run, sample, secondary, bases in rows:
+        self._name: dict[str, str] = {}
+        for row in rows:
+            run, sample, secondary, bases = row[:4]
             self._bases[run] = bases
+            if len(row) > 4 and row[4]:
+                self._name[run] = row[4]
             if sample:
                 self.by_sample.setdefault(sample, set()).add(run)
                 if secondary:
@@ -108,6 +112,10 @@ class RunIndex:
 
     def has(self, run: str) -> bool:
         return run in self._bases
+
+    def organism(self, runs) -> str:
+        """The INSDC organism name (e.g. 'human gut metagenome') of the first of `runs` that has one."""
+        return next((self._name[r] for r in sorted(runs) if r in self._name), "")
 
     def link(self, samples, direct_runs) -> tuple[set[str], set[str], str]:
         norm = {self.norm(s) for s in samples if s}
@@ -257,7 +265,7 @@ def read_runs(paths) -> RunIndex:
                 if r.get("library_strategy", "").upper() == "AMPLICON":   # reads of one gene assemble no contigs
                     continue
                 yield (r["run_accession"], r["sample_accession"], r["secondary_sample_accession"],
-                       _int(r["base_count"]))
+                       _int(r["base_count"]), r.get("scientific_name", ""))
     return RunIndex(rows())
 
 
@@ -332,6 +340,16 @@ def build_units(a, idx: RunIndex, hmap):
                 "gz": sum(x for x in sizes if x is not None) if sizes else None,
                 "runs": [x for x in r["run_accession"].split(";") if x],
                 "samples": [x for x in r["sample_accession"].split(";") if x]}
+    def mg_label(lineage, runs):
+        """MGnify's biome of the sample; where MGnify gives none, the INSDC organism of a run, both mapped
+        through the stated table."""
+        if lineage:
+            return mapped_label(lineage, hmap["mgnify_lineage"]), lineage
+        org = idx.organism(runs)
+        if org:
+            return mapped_label(org, hmap["organism_name"]), "insdc:" + org
+        return UNLABELLED, ""
+
     mg_asm, mg_wgs = set(), set()
     for d in _pages(a.mgnify_assemblies):
         at = d["attributes"]
@@ -350,15 +368,13 @@ def build_units(a, idx: RunIndex, hmap):
         lineage = next((biome[s] for s in samples_raw if biome.get(s)), None)
         e = emg.pop(d["id"], None)
         units.append(Unit("mgnify", d["id"], frozenset(runs), frozenset(samples), how,
-                          _int(w["base_count"]) if w else None,
-                          mapped_label(lineage, hmap["mgnify_lineage"]), lineage or "",
+                          _int(w["base_count"]) if w else None, *mg_label(lineage, runs),
                           note=f"insdc={_insdc_uid(w) if w else ''}", gz_bytes=e["gz"] if e else None))
     # MGnify's primary assemblies that ENA holds and MGnify's API does not list
     for erz, e in sorted(emg.items()):
         runs, samples, how = idx.link(e["samples"], e["runs"])
-        lineage = next((biome[s] for s in e["samples"] if biome.get(s)), None)
-        units.append(Unit("mgnify", erz, frozenset(runs), frozenset(samples), how, None,
-                          mapped_label(lineage, hmap["mgnify_lineage"]), lineage or "",
+        lineage = next((biome[s] for s in list(e["samples"]) + sorted(samples) if biome.get(s)), None)
+        units.append(Unit("mgnify", erz, frozenset(runs), frozenset(samples), how, None, *mg_label(lineage, runs),
                           note="source=ena_analysis_only", gz_bytes=e["gz"]))
     # INSDC metagenome assemblies that are not MGnify's own; the NCBI Assembly table marks its subset
     ncbi = {_unver(r["assembly_accession"]): r for r in _tsv(a.ncbi_summary)}

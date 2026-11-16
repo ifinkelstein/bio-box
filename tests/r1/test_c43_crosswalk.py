@@ -261,7 +261,7 @@ def test_build_end_to_end_on_small_tables(tmp_path):
             "ERR1\tSAMEA1\tERS1\tP\tE\t100\tWGS\tI\t1\tx\t2020\n"
             "ERR2\tSAMEA1\tERS1\tP\tE\t50\tWGS\tI\t1\tx\t2020\n"
             "SRR3\tSAMN3\tSRS3\tP\tE\t70\tWGS\tI\t1\tx\t2020\n"
-            "SRR4\tSAMN4\tSRS4\tP\tE\t30\tWGS\tI\t1\tx\t2020\n"
+            "SRR4\tSAMN4\tSRS4\tP\tE\t30\tWGS\tI\t1\tmarine metagenome\t2020\n"
             "SRR5\tSAMN5\tSRS5\tP\tE\t10\tWGS\tI\t1\tx\t2020\n")
     # ENA's assembly table: MGnify's own assembly has no WGS set
     wgs = _w(tmp_path / "asm_ena.tsv", "assembly_accession\tassembly_type\tbase_count\trun_accession\tsample_accession\t"
@@ -313,6 +313,8 @@ def test_build_end_to_end_on_small_tables(tmp_path):
     assert units["ERZ3"]["gz_bytes"] == "42" and units["ERZ1"]["gz_bytes"] == ""
     assert units["ERZ9"]["runs"] == "SRR4" and units["ERZ9"]["gz_bytes"] == "11"
     assert units["ERZ9"]["decision"] == "take" and units["ERZ9"]["note"] == "source=ena_analysis_only"
+    # no MGnify biome for its sample: the INSDC organism of its run, through the same stated map
+    assert (units["ERZ9"]["habitat"], units["ERZ9"]["habitat_detail"]) == ("aquatic", "insdc:marine metagenome")
     assert units["SAMEA1"]["runs"] == "ERR1;ERR2" and units["SAMEA1"]["habitat"] == "host-associated"
     assert units["SAMD6"]["decision"] == "take_unlinked" and units["SAMD6"]["linked_by"] == "none"
     assert units["ERZ1"]["decision"] == "covered" and units["ERZ1"]["linked_by"] == "sample"
@@ -329,7 +331,7 @@ def test_build_end_to_end_on_small_tables(tmp_path):
     assert (res["mgnify"]["units"], res["mgnify"]["units_with_gz_bytes"], res["mgnify"]["gz_bytes"]) == ("3", "2", "53")
     combos = {(r["resources"], r["habitat"]): r["runs"] for r in rows("runs_by_combination_and_habitat.tsv")}
     assert combos == {("spire+mgnify", "host-associated"): "1", ("spire+mgnify+insdc", "host-associated"): "1",
-                      ("mgnify", "terrestrial"): "1", ("mgnify", "unlabelled"): "1", ("insdc", "aquatic"): "1"}
+                      ("mgnify", "terrestrial"): "1", ("mgnify", "aquatic"): "1", ("insdc", "aquatic"): "1"}
     assert [r["uid"] for r in rows("take_insdc.tsv")] == ["GCA_000000002", "GCA_000000009"]
     # a bin is not an assembly of the run; MGnify's own INSDC record is the MGnify unit
     notu = {(r["why"], r["assembly_type"]): (r["assemblies"], r["bases"]) for r in rows("insdc_not_units.tsv")}
