@@ -152,7 +152,22 @@ ingest, and checks every pass-1 shard and both batches within the margin.
 
 ## 6. Tests
 
-(Filled in after the runs on the pod.)
+All on the pod, test image `bio-box-test_faec1f4.sif` (`scripts/pod_pytest.sh`), after the `PL1` build's unit had
+ended (10:08 CST).
+
+- Test first: the new tests on the commit that adds them alone (`8232fee`, the present `stage.py`), 10:10 CST: `13
+  failed, 1 passed, 15 deselected`; every estimate test failed with `TypeError: ingest_cpu_min() got an unexpected
+  keyword argument 'held_bases'` and the two build-stage tests with no `held_bases`; the batch-cut test passed (its
+  form is unchanged). On the present function `PL1`'s ratio is 0.800 and S1's 0.789 (section 3).
+- `tests/r1/test_b52_ingest_estimate.py`: each of the nine records within 20% of its estimate; exactly S1 outside 10%;
+  the form without held bases. `tests/r2/test_ingest_batches.py`: `held_bases` on the fixture (lambda, which S0 holds,
+  counted once though two genomes of S2 list it: 48,502 bases, the fixture's table); build-stage runs S2's ingest in
+  one process in a root that holds S0 and in batches in one that does not, at a rate between the two estimates; every
+  pass-1 shard and both batches of S0's ingest in batches within the margin.
+- With the code: those files, `tests/r1/test_stage_estimates.py` (card C-13's three ingest points still within 20%)
+  and `tests/r0`: `256 passed in 219.39s`. The whole suite in 2 shards with `BIOBOX_PEER_MANIFEST`: `1057 passed, 12
+  skipped` and `1347 passed, 11 skipped`; the cross-host test passed against the peer's manifest hash
+  `28ffa9808ecd4829e52f6892f94f7b85`. No existing test was changed.
 
 ## Appendix A: `b52_ingest_table.py` (run as `python -I b52_ingest_table.py /tmp/if2453/r10/root S1 P1 P2 P3 P4 P5 P6 H1 PL1`)
 
