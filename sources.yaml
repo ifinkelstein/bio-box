@@ -213,6 +213,9 @@ sources:
       - result: wgs_set
         query: tax_tree(408169)   # NCBI taxon "metagenomes"; holds bins as well as primary assemblies, told apart by assembly_type
         fields: wgs_set,assembly_accession,base_count,run_accession,sample_accession,secondary_sample_accession,study_accession,tax_id,scientific_name,first_public,assembly_type
+      - result: assembly   # every INSDC assembly of a metagenome taxon, with or without a WGS set (MGnify's are mostly without)
+        query: tax_tree(408169)
+        fields: assembly_accession,assembly_type,base_count,run_accession,sample_accession,secondary_sample_accession,study_accession,wgs_set,center_name,tax_id,scientific_name,first_created
       - result: read_run   # the runs of named samples, whatever their library source or strategy
         url_form: https://www.ebi.ac.uk/ena/portal/api/search?result=read_run&includeAccessionType=sample&includeAccessions={comma-separated sample accessions, at most 300}&fields=run_accession,sample_accession,secondary_sample_accession,study_accession,base_count,library_source,library_strategy,tax_id,scientific_name&limit=0&format=tsv
         samples: the INSDC sample accessions (SAMEA, SAMN, SAMD, ERS, SRS, DRS) of units the first read_run table did not link
