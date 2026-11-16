@@ -90,21 +90,42 @@ What the one-process call does that could depend on the whole stage, and why bat
   written), `distinct_proteins` the merge's count, `skipped_contigs` the union sorted by contig uid.
 
 So the merge writes the one-process call's files, ledger and result, byte for byte, whatever the number of batches,
-the number at once, the threads of each and the order they finish in; nothing in the root records that the step was
-cut. A batch writes only into the plan's work directory in scratch, never into the root: its scratch rows, its
-skips and `done.json` (counts, its CPU-minutes, wall time and peak RSS, its estimate) into `.batch-<j>.tmp-<pid>-<hex>`,
-renamed to `batch-<j>` at the end. The merge takes only a batch directory whose `done.json` names the plan's digest of
-its genomes; a batch stopped by SIGTERM, SIGHUP or SIGINT removes its temporary directory, one killed by SIGKILL
-leaves it dot-named, and the next driver removes it before it launches anything. A batch with output is not run again.
-The batches are not `run-step` steps: `run-step` publishes only files a registered table or artifact claims, and a
-batch's rows are scratch, as card W-35's parts are (`biobox.search.pack`); each still runs under the memory cap and
-nice of a `run-step`, within the thread allowance of the hour, and `STOP` is checked before each launch
-(`stage._genecall_in_batches`).
+the number at once, the threads of each and the order they finish in. A batch's rows go only into the plan's work
+directory in scratch, never into the root: its scratch rows, its skips and `done.json` (counts, its CPU-minutes, wall
+time and peak RSS, its estimate) into `.batch-<j>.tmp-<pid>-<hex>`, renamed to `batch-<j>` at the end. The merge takes
+only a batch directory whose `done.json` names the plan's digest of its genomes; a batch stopped by SIGTERM, SIGHUP or
+SIGINT removes its temporary directory, one killed by SIGKILL leaves it dot-named, and the next driver removes it
+before it launches anything. A batch with output is not run again.
+
+Where a batch's rows live once its step is published (card B-50, decided on the card: its "Amended 2026-11-15"). In
+scratch, and nowhere else. Each piece of the step is a `run-step` step of the stage, recorded in `runs/stage=<S>/` like
+ingest's batches: `genecall.plan` (`stage genecall plan --plan P`: the plan build-stage made, checked against the
+stage's `genome_input`, published as it is) and `genecall.batch-<j>` (`stage genecall batch`: the batch called into
+scratch as above). What each stages, because `run-step` publishes only a file a registered table or artifact claims and
+refuses an empty staging, is one small JSON of the artifact `genecall_plan`, at
+`l1/genecall_plan/stage=<S>/plan.json` (the plan file's bytes) and `.../batch-<j>.json` (`batch_record`: the fields
+of its `done.json` that do not depend on the run, which are its counts, modes, skips, genome digest and estimate, and the
+plan's sha256; its CPU-minutes, wall time and peak memory are the run record's). The artifact is not in any manifest
+and is `small_ok`, as `ingest_plan` is. So the root gains per batch two small files, the record and its run record (370 to
+393 and 1,401 bytes on card B-48's fixture: *measured*, wilkcomp02, 2026-11-15, card B-50), and per stage the plan's
+two; no gene-call row is ever written there twice. The rows
+are intermediate: the merge reads them from scratch and supersedes them with the stage's tables. Copying them into the
+root, as ingest's batches publish their shards, would add every batch's rows beside the merged tables (about the
+gene-call bytes of the stage again) for files nothing reads after the merge.
+That satisfies AGENTS §3.9 and §3.10: every root file is written once under a temporary name and renamed into place by
+`run-step`; nothing published is ever rewritten (the records are written once, `_write_record`); the merge reads the
+batches named by the published plan, and checks each one's scratch output against its published record. Scratch lost
+after a batch was published (a reboot clears /tmp) is made again: `build-stage` runs that batch again outside
+`run-step` (`stage genecall batch --check-record`), which must reproduce the published record (its counts and genome
+digest: the rows' order in scratch depends on the workers, so not their sha256), else it stops before the merge.
+A direct call of `stage genecall plan|batch` with neither `--out` nor `$BIOBOX_STAGING` writes no record: only scratch,
+as card B-48's commands did.
 """
 
 from __future__ import annotations
 
 import contextlib
+import hashlib
 import json
 import os
 import pickle
@@ -135,9 +156,9 @@ from biobox import ids, io, layout, ledger, provenance
 from biobox.l0seq.inputs import GenomeInput, iter_genome_input, stage_genomes
 from biobox.l0seq.lookup import KeyLookup
 from biobox.l0seq.store import OWNED_BY, ContigOwners, SeqStore, missing_contig, skipped_entry
-from biobox.registry.schemas import table
+from biobox.registry.schemas import ARTIFACTS, table
 
-__all__ = ["GENE_CALL_VERSION", "GenomeInput", "call_genome", "merge", "plan", "run", "run_batch"]
+__all__ = ["GENE_CALL_VERSION", "GenomeInput", "call_genome", "merge", "plan", "publish_plan", "run", "run_batch"]
 
 PROTEIN_BYTES_PER_AA = 0.6  # zstd estimate (data_layer_and_tests.md §2A.4); sizes buckets only
 SINGLE_MODE_MIN_BP = 100_000  # Prodigal: below this, use anonymous/meta mode
@@ -1092,6 +1113,135 @@ def batch_done(work: Path, plan_: dict, j: int) -> dict | None:
     return rec
 
 
+# --- the published records of a step in batches (card B-50; module docstring) -------------------------------------
+
+RECORDS_DIR = ARTIFACTS["genecall_plan"].location  # l1/genecall_plan
+RECORD_CARD = "B-50"
+# the fields of a batch's done.json that do not depend on the run (its usage is the run record's), in its record
+RECORD_FIELDS = ("batch", "first", "genomes", "digest", "genes", "wrapping_genes", "modes", "skipped", "estimate_cpu_min")
+
+
+def records_dir(stage: str) -> str:
+    """The root-relative directory of a stage's `genecall_plan` records."""
+    return f"{RECORDS_DIR}/stage={stage}"
+
+
+def plan_record_rel(stage: str) -> str:
+    return f"{records_dir(stage)}/{PLAN_FILE}"
+
+
+def batch_record_rel(stage: str, j: int) -> str:
+    return f"{records_dir(stage)}/{batch_name(j)}.json"
+
+
+def published_plan(root: Path, stage: str) -> tuple[bytes, dict] | None:
+    """The stage's published plan record (its bytes and the plan), or None."""
+    p = Path(root) / plan_record_rel(stage)
+    if not p.is_file():
+        return None
+    raw = p.read_bytes()
+    return raw, read_plan(p)
+
+
+def published_batch(root: Path, stage: str, j: int) -> dict | None:
+    """The published record of batch `j` of the stage, or None."""
+    p = Path(root) / batch_record_rel(stage, j)
+    return json.loads(p.read_text()) if p.is_file() else None
+
+
+def batch_record(plan_: dict, plan_sha256: str, done: dict) -> dict:
+    """What batch `done` publishes (`genecall_plan`'s batch-<j>.json): the plan's stage and version, the sha256 of the
+    plan file's bytes, and `RECORD_FIELDS` of its done.json."""
+    return {"card": RECORD_CARD, "stage": plan_["stage"], "gene_call_version": plan_["gene_call_version"],
+            "plan_sha256": plan_sha256, **{k: done[k] for k in RECORD_FIELDS}}
+
+
+def record_bytes(doc: dict) -> bytes:
+    return json.dumps(doc, sort_keys=True, indent=1).encode() + b"\n"
+
+
+def record_problem(published: dict, mine: dict) -> str | None:
+    """How a batch's record made now differs from its published record (each differing field, both values), or None."""
+    diff = sorted(k for k in set(published) | set(mine) if published.get(k) != mine.get(k))
+    if not diff:
+        return None
+    return "; ".join(f"{k}: published {published.get(k)!r}, now {mine.get(k)!r}" for k in diff)
+
+
+def _sha256(data: bytes) -> str:
+    return hashlib.sha256(data).hexdigest()
+
+
+def _write_record(root: Path, out: Path, rel: str, data: bytes, what: str) -> Path:
+    """`data` as `out / rel`, under a temporary name renamed into place; refused (FileExistsError) when `root` or `out`
+    already holds `rel`: a record is written once."""
+    for base in dict.fromkeys([Path(root).resolve(), Path(out).resolve()]):
+        if (base / rel).exists():
+            raise FileExistsError(f"{base / rel}: {what} is written once; refusing to overwrite")
+    dst = Path(out) / rel
+    dst.parent.mkdir(parents=True, exist_ok=True)
+    t = dst.with_name(f".{dst.name}.tmp-{os.getpid()}")
+    t.write_bytes(data)
+    os.replace(t, dst)
+    return dst
+
+
+def _check_digests(root: Path, stage: str, p: dict, plan_path: Path, tmp) -> None:
+    """Every batch's digest of its genome uids is that of its genomes in the stage's `genome_input` (streamed once, in
+    the order the batches count them), and the plan counts every genome; else ValueError naming the first batch that
+    differs."""
+    bat = p["batches"]
+    ds = [blake3() for _ in bat]
+    j = n = 0
+    gen = iter_genome_input(root, stage, tmp=tmp)
+    try:
+        for g in gen:
+            while j < len(bat) and n >= bat[j]["first"] + bat[j]["genomes"]:
+                j += 1
+            if j < len(bat):
+                ds[j].update(_guid(g))
+            n += 1
+    finally:
+        gen.close()
+    if n != p["genomes"]:
+        raise ValueError(f"{plan_path}: a plan of {p['genomes']:,} genomes, but stage {stage}'s genome_input holds "
+                         f"{n:,}: the plan was made from other inputs")
+    bad = [k for k, (b, d) in enumerate(zip(bat, ds)) if d.hexdigest(length=16) != b["digest"]]
+    if bad:
+        raise ValueError(f"{plan_path}: batch {bad[0]}'s digest of its genomes is not that of genomes "
+                         f"{bat[bad[0]]['first']} to {bat[bad[0]]['first'] + bat[bad[0]]['genomes']} of stage {stage}'s "
+                         "genome_input: the plan was made from other inputs")
+
+
+def publish_plan(root: Path, stage: str, plan_path: Path, out: Path, *, version: str = GENE_CALL_VERSION,
+                 tmp=None) -> dict:
+    """The step `genecall.plan` (card B-50): the plan file at `plan_path` (build-stage's, in its work directory),
+    checked to be of the stage, the version and the stage's `genome_input` (`_check_digests`), written as it is, byte
+    for byte, to `out` as the record `l1/genecall_plan/stage=<S>/plan.json`. Refuses a record that `root` or `out`
+    already holds. Writes nothing else; DuckDB spills under `tmp`."""
+    root, plan_path = Path(root), Path(plan_path)
+    ledger.check_scratch(tmp, root, out)
+    raw = plan_path.read_bytes()
+    p = read_plan(plan_path)
+    if p["stage"] != stage or p["gene_call_version"] != version:
+        raise ValueError(f"{plan_path}: a plan of stage {p['stage']} and version {p['gene_call_version']}, not "
+                         f"{stage} and {version}")
+    _check_digests(root, stage, p, plan_path, tmp)
+    _write_record(root, out, plan_record_rel(stage), raw, f"the gene-call plan of stage {stage}")
+    return {"record": plan_record_rel(stage), "plan_sha256": _sha256(raw), "batches": len(p["batches"]),
+            "genomes": p["genomes"], "estimate_cpu_min": p["estimate_cpu_min"],
+            "batch_estimates_cpu_min": [x["estimate_cpu_min"] for x in p["batches"]],
+            "merge_estimate_cpu_min": p["merge_estimate_cpu_min"]}
+
+
+def publish_batch(root: Path, stage: str, plan_path: Path, done: dict, out: Path) -> Path:
+    """The record of the batch whose done.json is `done` (`batch_record`), written once to `out`."""
+    raw = Path(plan_path).read_bytes()
+    rec = batch_record(read_plan(plan_path), _sha256(raw), done)
+    return _write_record(root, out, batch_record_rel(stage, done["batch"]), record_bytes(rec),
+                         f"the record of gene-call batch {done['batch']} of stage {stage}")
+
+
 @contextlib.contextmanager
 def _stop_on_signals():
     """While a batch runs: SIGTERM and SIGHUP raise `Stopped` (SIGINT raises KeyboardInterrupt, as by default), so its
@@ -1136,12 +1286,33 @@ def _slice(genomes: Iterable[GenomeInput], first: int, count: int, digest) -> It
 
 
 def run_batch(root: Path, stage: str, plan_path: Path, j: int, *, version: str = GENE_CALL_VERSION, workers: int = 1,
-              batch_bases: int = BATCH_BASES) -> dict:
+              batch_bases: int = BATCH_BASES, check_record: bool = False) -> dict:
     """Batch `j` of the plan at `plan_path` (module docstring): its genomes called as `run` calls them (`_call_into`,
     `workers` at once), their rows, skips and record written into `<work>/.batch-<j>.tmp-<pid>-<hex>`, renamed to
     `<work>/batch-<j>` at the end. Writes nothing into the root. A batch whose output is there is not run again. Before
     any calling, the plan's digest of the batch's genomes is checked against the stage's `genome_input` (ValueError).
-    A signal (SIGTERM, SIGHUP) removes the temporary directory and exits 128 + signum."""
+    A signal (SIGTERM, SIGHUP) removes the temporary directory and exits 128 + signum. With `check_record` (card B-50:
+    a batch made again after its scratch was lost) its output must reproduce the batch's record published in the root
+    (`record_problem`), else it is removed and ValueError names the batch and the fields."""
+    rec = _run_batch(root, stage, plan_path, j, version=version, workers=workers, batch_bases=batch_bases)
+    if check_record:
+        published = published_batch(root, stage, j)
+        if published is None:
+            raise FileNotFoundError(f"{Path(root) / batch_record_rel(stage, j)}: batch {j} of stage {stage} has no "
+                                    "published record to check against")
+        why = record_problem(published, batch_record(read_plan(plan_path), _sha256(Path(plan_path).read_bytes()), rec))
+        if why is not None:
+            shutil.rmtree(Path(plan_path).parent / batch_name(j), ignore_errors=True)
+            raise ValueError(f"batch {j} of stage {stage}: made again into scratch, it does not reproduce its published "
+                             f"record {batch_record_rel(stage, j)} ({why}); its output is removed and the merge does not "
+                             "run. A record a batch does not reproduce is not the gene calling of these inputs: tell "
+                             "the PI")
+        _log(f"batch {j}: reproduces its published record {batch_record_rel(stage, j)}")
+    return rec
+
+
+def _run_batch(root: Path, stage: str, plan_path: Path, j: int, *, version: str, workers: int,
+               batch_bases: int) -> dict:
     t0 = time.monotonic()
     root, plan_path = Path(root), Path(plan_path)
     work = plan_path.parent
@@ -1206,12 +1377,36 @@ def run_batch(root: Path, stage: str, plan_path: Path, j: int, *, version: str =
     return rec
 
 
+def _check_published(root: Path, stage: str, plan_path: Path, p: dict, recs: list[dict]) -> None:
+    """When the root holds the stage's published plan (card B-50: build-stage published every piece), the plan file is
+    that record, byte for byte, and each batch's output in scratch is its published record (`record_problem`); else
+    ValueError, or FileNotFoundError for a batch without a record. A plan never published (a direct call, card B-48's
+    commands) is not checked."""
+    pub = published_plan(root, stage)
+    if pub is None:
+        return
+    raw = Path(plan_path).read_bytes()
+    if pub[0] != raw:
+        raise ValueError(f"{plan_path}: not the plan published in {Path(root) / plan_record_rel(stage)}; the batches of "
+                         "another plan are not merged")
+    for j, r in enumerate(recs):
+        published = published_batch(root, stage, j)
+        if published is None:
+            raise FileNotFoundError(f"{Path(root) / batch_record_rel(stage, j)}: batch {j} of stage {stage} has no "
+                                    "published record; run its step first")
+        why = record_problem(published, batch_record(p, _sha256(raw), r))
+        if why is not None:
+            raise ValueError(f"batch {j} of stage {stage}: its output in scratch is not its published record "
+                             f"{batch_record_rel(stage, j)} ({why})")
+
+
 def merge(root: Path, stage: str, plan_path: Path, *, version: str = GENE_CALL_VERSION, out: Path | None = None,
           tmp=None, prefix_width: int | None = None, max_file_bytes: int = layout.MAX_FILE_BYTES) -> dict:
     """The step `genecall` of a stage called in batches: `_publish` once over every batch's rows, so the files, the
     ledger and the result are those of `run` on the stage (module docstring). Refuses, before any work, a stage whose
     gene-call partitions hold a file (as `run`), a plan of another stage or version, and a plan any batch of which has
-    no output (FileNotFoundError naming them)."""
+    no output (FileNotFoundError naming them); and, when the root holds the stage's published plan (card B-50), a plan
+    file other than it or a batch whose output is not its published record (`_check_published`)."""
     t0 = time.monotonic()
     root = Path(root)
     out = root if out is None else Path(out)
@@ -1228,6 +1423,7 @@ def merge(root: Path, stage: str, plan_path: Path, *, version: str = GENE_CALL_V
     if missing:
         raise FileNotFoundError(f"{work}: no output of batch {', batch '.join(map(str, missing))} of "
                                 f"{len(p['batches'])}; run them first (bio-box stage genecall batch)")
+    _check_published(root, stage, plan_path, p, recs)
     skipped: dict[bytes, str] = {}
     for j in range(len(recs)):
         t = pq.read_table(work / batch_name(j) / SKIPPED_FILE)

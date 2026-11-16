@@ -53,7 +53,9 @@
     bio-box stage ingest merge --root R --stage S --objects F --tmp D
     bio-box stage genecall|igr|tapes --root R --stage S [--tmp D] [--producers P,Q] [--workers N] [--out DIR]
     bio-box stage genecall plan --root R --stage S --runs-tmp D --batch-cpu-min X [--batches N] [--seq-stages S0,S1]
-    bio-box stage genecall batch --root R --stage S --plan P --batch J [--workers N]   (card B-48)
+    bio-box stage genecall plan --root R --stage S --plan P [--tmp D] [--out DIR]      (card B-50: publish P as the record)
+    bio-box stage genecall batch --root R --stage S --plan P --batch J [--workers N] [--check-record] [--out DIR]
+                                                                                       (cards B-48, B-50)
     bio-box stage genecall merge --root R --stage S --plan P [--tmp D] [--out DIR]
     bio-box stage domains --root R --stage S --library pfam --library-version 38.2 --hmm F --cutoff gathering
     bio-box stage domains plan --root R --stage S --library L --library-version V --hmm F --cutoff C --shard-residues N
@@ -2001,11 +2003,21 @@ def _stage_step(a, root: Path, out: Path) -> dict:
             return genecall.run(root, a.stage, version=a.gene_call_version, prefix_width=a.prefix_width, tmp=tmp,
                                 workers=a.workers, seq_stages=_csv(a.seq_stages), out=out, **mfb)
         # in batches (card B-48): plan (writes the plan into --runs-tmp only), batch (writes only into the plan's work
-        # directory), merge (the step's files, under --out or $BIOBOX_STAGING)
-        need = {"plan": ("runs_tmp", "batch_cpu_min"), "batch": ("plan", "batch"), "merge": ("plan",)}[a.action]
+        # directory), merge (the step's files, under --out or $BIOBOX_STAGING). Card B-50: `plan --plan P` publishes
+        # the plan P as its record, and a batch writes its record, each under --out or $BIOBOX_STAGING only (a direct
+        # call with neither writes no record, as before)
+        records = Path(a.out) if a.out else (Path(os.environ["BIOBOX_STAGING"]) if os.environ.get("BIOBOX_STAGING")
+                                             else None)
+        need = {"plan": ("plan",) if a.plan else ("runs_tmp", "batch_cpu_min"), "batch": ("plan", "batch"),
+                "merge": ("plan",)}[a.action]
         missing = [f"--{n.replace('_', '-')}" for n in need if getattr(a, n) is None]
         if missing:
             raise ValueError(f"stage genecall {a.action} needs {', '.join(missing)}")
+        if a.action == "plan" and a.plan:
+            if records is None:
+                raise ValueError("stage genecall plan --plan publishes the plan as its record: it needs --out or "
+                                 "$BIOBOX_STAGING (bio-box run-step)")
+            return genecall.publish_plan(root, a.stage, Path(a.plan), records, version=a.gene_call_version, tmp=tmp)
         if a.action == "plan":
             from biobox import ledger
 
@@ -2019,8 +2031,11 @@ def _stage_step(a, root: Path, out: Path) -> dict:
                     "batch_estimates_cpu_min": [x["estimate_cpu_min"] for x in p["batches"]],
                     "merge_estimate_cpu_min": p["merge_estimate_cpu_min"], "batch_cpu_min": a.batch_cpu_min}
         if a.action == "batch":
-            return genecall.run_batch(root, a.stage, Path(a.plan), a.batch, version=a.gene_call_version,
-                                      workers=a.workers)
+            rec = genecall.run_batch(root, a.stage, Path(a.plan), a.batch, version=a.gene_call_version,
+                                     workers=a.workers, check_record=a.check_record)
+            if records is not None and not a.check_record:
+                genecall.publish_batch(root, a.stage, Path(a.plan), rec, records)
+            return rec
         return genecall.merge(root, a.stage, Path(a.plan), version=a.gene_call_version, out=out, tmp=tmp,
                               prefix_width=a.prefix_width, **mfb)
     if a.step == "igr":
@@ -2414,7 +2429,11 @@ def _main(argv: list[str] | None = None) -> int:
     st.add_argument("--runs-tmp", help="ingest pass1|plan|batch|merge: the scratch directory the steps share for "
                                        "the pass-1 runs and the decision table (default: --tmp); genecall plan: the "
                                        "scratch directory under which the plan's work directory is made")
-    st.add_argument("--plan", help="genecall batch|merge (card B-48): the plan file (plan.json in its work directory)")
+    st.add_argument("--plan", help="genecall batch|merge (card B-48): the plan file (plan.json in its work directory); "
+                                   "genecall plan (card B-50): publish this plan file as the stage's plan record")
+    st.add_argument("--check-record", action="store_true",
+                    help="genecall batch (card B-50): the batch is made again after its scratch was lost; its output "
+                         "must reproduce its record published in the root, and no record is written")
     st.add_argument("--batch-cpu-min", type=float, help="genecall plan: the CPU-minutes a batch may be estimated at "
                                                         "(build-stage gives 80%% of cpu_min_per_process)")
     st.add_argument("--batches", type=int, help="genecall plan: cut into this many batches (forced)")

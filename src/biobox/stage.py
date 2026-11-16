@@ -143,15 +143,22 @@ the measured rates there; a genome all of whose contigs another stage or genome 
 said in one line. Within `SHARD_MARGIN` of the budget the step runs in one process exactly as before (the same argv,
 the same record). Above it the genomes, in genome_uid order, are cut into the fewest batches of equal estimated cost
 that each fit the margin (never by J, C or the hour), the plan is written into its work directory under the scratch
-directory (`<scratch>/genecall/<stage>.<root key>/<plan key>/`), and each batch runs as its own process (`bio-box stage
-genecall batch`, `--scan-cpus` workers), not a run-step: it writes its rows only into that work directory (a
-temporary directory renamed into place), under the memory cap and nice of a run-step (`_batch_process`); up to
-`--scan-jobs` at once within the allowance, `STOP` before each launch, a failed batch stops the launches; a batch
-whose output is there is not run again, and what a killed one left is removed first. Then the merge (`... merge`)
-is the run-step named `genecall`: its files, ledger and printed result are those of the one-process call, byte for
-byte, so its record reads as the step's for every later step and for `release_proteins`. The work directory is removed
-once it is published; lost scratch only makes batches run again. Refused (exit 2) before any batch: a genome alone
-over the margin (a genome is never split: single mode trains on all its contigs) or a merge over it.
+directory (`<scratch>/genecall/<stage>.<root key>/<plan key>/`). Card B-50: every piece is then a run-step of the
+stage with its run record in `runs/stage=<S>/`, as ingest's batches are. First `genecall.plan` (`bio-box stage genecall
+plan --plan P`) publishes that plan file as the record `l1/genecall_plan/stage=<S>/plan.json` (after checking it against
+`genome_input`); a call that finds it published resumes it and never plans again. Then each batch is the step
+`genecall.batch-<j>`, its own `bio-box run-step` process (`_batch_process`, `--scan-cpus` workers): it writes its rows
+only into that work directory (a temporary directory renamed into place) and stages one small record,
+`l1/genecall_plan/stage=<S>/batch-<j>.json` (its counts and genome digest, `genecall.batch_record`), which run-step
+publishes; up to `--scan-jobs` at once within the allowance, `STOP` before each launch, a failed batch stops the
+launches; a batch with a run record is passed over, one whose output alone is in scratch publishes it without calling
+again, and what a killed one left is removed first. The rows stay in scratch; the records are a build's own, never in a
+manifest (`genecall_plan`, as `ingest_plan`). Before the merge, a recorded batch whose output is lost from scratch is
+made again outside run-step (`_redo_lost_batches`, `--check-record`) and must reproduce its published record. Then the
+merge (`... merge`) is the run-step named `genecall`: its files, ledger and printed result are those of the one-process
+call, byte for byte, so its record reads as the step's for every later step and for `release_proteins`. The work
+directory is removed once it is published. Refused (exit 2) before any batch: a genome alone over the margin (a genome
+is never split: single mode trains on all its contigs) or a merge over it.
 
 Clustering in parts (card B-41, `biobox.l2.cluster`). When the release's clustering in one process is
 estimated over `SHARD_MARGIN` of the budget (`cluster_cpu_min`), or `--cluster-parts N` forces it, or a
@@ -1271,7 +1278,8 @@ def _profile_file(prof: Profile, scratch: Path) -> Path:
     data = yaml.safe_dump(dataclasses.asdict(prof), sort_keys=True).encode()
     path = Path(scratch) / f"build-stage-profile-{hashlib.sha256(data).hexdigest()[:16]}.yaml"
     if not path.is_file() or path.read_bytes() != data:
-        tmp = path.with_name(f".{path.name}.tmp-{os.getpid()}")
+        # one temporary name per thread: gene-call batches launched at once each write it (card B-50)
+        tmp = path.with_name(f".{path.name}.tmp-{os.getpid()}-{threading.get_ident()}")
         tmp.write_bytes(data)
         os.replace(tmp, path)
     return path
@@ -1402,6 +1410,24 @@ def _genecall(prof: Profile, b: Build, root: Path, step: Step, one: Callable[[St
     budget = prof.cpu_min_per_process
     margin = SHARD_MARGIN * budget
     try:
+        published = genecall.published_plan(root, b.stage)
+    except ValueError as e:
+        _say(f"refused before {b.stage}.genecall: {e}")
+        return runstep.EXIT_REFUSED
+    if published is not None:  # card B-50: an earlier call published the plan; resume it, never plan again
+        plan = published[1]
+        if plan["gene_call_version"] != b.gene_call_version:
+            _say(f"refused before {b.stage}.genecall: its published plan ({genecall.plan_record_rel(b.stage)}) is of "
+                 f"gene-call version {plan['gene_call_version']}, not {b.gene_call_version}")
+            return runstep.EXIT_REFUSED
+        _say(f"{b.stage}.genecall: resuming the plan published in {genecall.plan_record_rel(b.stage)}: "
+             f"{len(plan['batches'])} batches, {plan['estimate_cpu_min']:,.1f} CPU-minutes in one process")
+        why = genecall_refusal(prof, plan)
+        if why is not None:
+            _say(f"refused before {b.stage}.genecall: {why}")
+            return runstep.EXIT_REFUSED
+        return _genecall_in_batches(prof, b, root, plan, one, hook, jobs, cpus, batch_run, allow)
+    try:
         plan = genecall.plan(root, b.stage, version=b.gene_call_version, seq_stages=seq, batch_cpu_min=margin,
                              tmp=scratch_of(prof, b))
     except (FileNotFoundError, KeyError, ValueError) as e:
@@ -1446,47 +1472,44 @@ def genecall_refusal(prof: Profile, plan: dict) -> str | None:
 
 
 def genecall_steps(prof: Profile, b: Build, plan_path: Path, n: int, cpus: int) -> list[Step]:
-    """The steps of gene calling in batches: `genecall.batch-<j>` for each of the plan's `n` batches (`bio-box stage
-    genecall batch`, `cpus` workers each; not run-steps, `_batch_process`), then the merge under the step name
-    `genecall` (`... merge`, a run-step with its own scratch directory), so its run record is the step's."""
+    """The steps of gene calling in batches, each a run-step of the stage (card B-50): `genecall.plan` (`bio-box stage
+    genecall plan --plan P`: publishes the plan file as its record, with its own scratch directory), `genecall.batch-<j>`
+    for each of the plan's `n` batches (`... batch`, `cpus` workers each, `_batch_process`), then the merge under the
+    step name `genecall` (`... merge`, its own scratch directory), so its run record is the step's."""
     root, tmp = str(Path(b.root).resolve()), str(scratch_of(prof, b))
 
     def gc(action: str, *extra: str) -> tuple[str, ...]:
         return ("stage", "genecall", action, "--root", root, "--gene-call-version", b.gene_call_version, "--stage",
                 b.stage, "--plan", str(plan_path), *extra)
 
-    mine = str(Path(tmp) / f"{b.stage}.genecall")
-    return [*(Step(b.stage, f"genecall.{genecall.batch_name(j)}", gc("batch", "--batch", str(j), "--workers", str(cpus)))
+    mine, planning = str(Path(tmp) / f"{b.stage}.genecall"), str(Path(tmp) / f"{b.stage}.genecall.plan")
+    return [Step(b.stage, "genecall.plan", gc("plan", "--tmp", planning), scratch=planning),
+            *(Step(b.stage, f"genecall.{genecall.batch_name(j)}", gc("batch", "--batch", str(j), "--workers", str(cpus)))
               for j in range(n)),
             Step(b.stage, "genecall", gc("merge", "--tmp", mine), scratch=mine)]
 
 
 def _batch_process(prof: Profile, root: Path, stage: str, step: str, cmd: Sequence[str], *, threads: int) -> int:
-    """Run a gene-call batch `cmd` (a Runner, `_launch`) as its own process in this process's group, under the memory
-    cap and nice a `run-step` would give it, with `threads` in the thread variables, as a shard rescan runs
-    (`_rescan_process`). It is not a run-step: it writes only into its plan's work directory in scratch. A signal gives
-    128 + its number."""
-    try:
-        cap = runstep.memory_cap(prof.mem_scope, require=prof.require_mem_cap)
-    except runstep.NoCap as e:
-        _say(f"not starting {stage}.{step}: {e}")
-        return runstep.EXIT_REFUSED
-    argv = runstep.build_argv(list(cmd), prof.nice_monolithic, prof.mem_scope,
-                              inherited=cap if cap["how"] == "inherited" else None)
-    env = dict(os.environ, BIOBOX_THREADS=str(threads), **{v: str(threads) for v in runstep.THREAD_VARS})
-    code = subprocess.run(argv, env=env, check=False).returncode
-    return code if code >= 0 else 128 - code
+    """Run a gene-call batch `cmd` (a Runner, `_launch`) as its own `bio-box run-step` process in this process's group
+    (card B-50, `_process_runner`, as ingest's batches run): run-step gives it its memory cap, nice and `threads`, and
+    publishes its record with a run record `runs/stage=<S>/<step>.json`. A signal gives 128 + its number."""
+    Path(prof.tmp).mkdir(parents=True, exist_ok=True)
+    return _process_runner(_profile_file(prof, Path(prof.tmp)))(prof, root, stage, step, cmd, threads=threads)
 
 
 def _genecall_in_batches(prof: Profile, b: Build, root: Path, plan: dict, one: Callable[[Step], int | None],
                          hook: Hook | None, jobs: int, cpus: int, batch_run: Runner | None,
                          allow: Callable[[int], int]) -> int | None:
-    """The plan's batches, each its own process, up to `jobs` at once with `cpus` workers each within the allowance of
-    the hour (`_launch`: `STOP` checked before each launch, a failed batch stops the launches), then the merge step
-    `genecall` (`one`). The plan is written to its work directory (`genecall.work_dir`, under the scratch directory;
-    another plan's of this stage and root is removed); a batch whose output is there is passed over; what a killed
-    batch left (a dot-named directory) is removed first, under the work directory's lock. The work directory is
-    removed once the merge is published. `batch_run` stands in for `_batch_process` (tests only)."""
+    """The plan step `genecall.plan` (`one`: it publishes the plan as its record), then the plan's batches, each its
+    own run-step process (card B-50, `_batch_process`), up to `jobs` at once with `cpus` workers each within the
+    allowance of the hour (`_launch`: `STOP` checked before each launch, a failed batch stops the launches), then the
+    merge step `genecall` (`one`). The plan is written to its work directory (`genecall.work_dir`, under the scratch
+    directory; another plan's of this stage and root is removed); a batch whose run record exists (and no intent file)
+    is passed over, one whose output alone is in scratch is published from it by its step without calling again; what
+    a killed batch left (a dot-named directory) is removed first, under the work directory's lock. Before the merge,
+    every recorded batch whose output is not in scratch, or is not its published record, is made again
+    (`_redo_lost_batches`). The work directory is removed once the merge is published. `batch_run` stands in for
+    `_batch_process` (tests only)."""
     scratch = scratch_of(prof, b)
     work = genecall.work_dir(scratch, root, b.stage, plan)
     if work.parent.is_dir():
@@ -1497,6 +1520,7 @@ def _genecall_in_batches(prof: Profile, b: Build, root: Path, plan: dict, one: C
     path = genecall.write_plan(plan, work)
     n = len(plan["batches"])
     steps = genecall_steps(prof, b, path, n, cpus)
+    planned, batches, merge = steps[0], steps[1:-1], steps[-1]
     lock = open(work / ".lock", "a")
     try:
         try:
@@ -1508,10 +1532,15 @@ def _genecall_in_batches(prof: Profile, b: Build, root: Path, plan: dict, one: C
             if p.name.startswith(".batch-") and p.is_dir():  # a batch killed by SIGKILL: never taken
                 shutil.rmtree(p)
                 _say(f"{b.stage}.genecall: removed {p}, left by a batch that was killed")
+        code = one(planned)
+        if code is not None:
+            return code
+        if hook is not None:
+            hook(f"after:{planned.name}")
         todo = []
-        for j, s in enumerate(steps[:-1]):
-            if genecall.batch_done(work, plan, j) is not None:
-                _say(f"{b.stage}.{s.name}: its output is in {work} from an earlier call; not run again")
+        for s in batches:
+            if _record(root, s).exists() and not _intent(root, s).exists():
+                _say(f"{b.stage}.{s.name}: its run record exists from an earlier call; not run again")
                 if hook is not None:
                     hook(f"after:{s.name}")
             else:
@@ -1519,17 +1548,20 @@ def _genecall_in_batches(prof: Profile, b: Build, root: Path, plan: dict, one: C
         _say(f"{b.stage}.genecall: {len(todo)} of {n} batches to run, at most {jobs} at once, {cpus} workers each; "
              f"work directory {work}")
         code = _launch(prof, root, todo, max(1, jobs), cpus, batch_run or _batch_process, hook, allow) if todo else None
-        for j in range(n):
+        for j, s in enumerate(batches):
             rec = genecall.batch_done(work, plan, j)
-            if rec is not None:
-                _say(f"{b.stage}.genecall.{genecall.batch_name(j)} done: {rec['genes']:,} genes, {rec['cpu_min']:,.2f} "
-                     f"CPU-minutes (estimate {rec['estimate_cpu_min']:,.2f}), wall {rec['wall_s']:,.1f} s, peak RSS "
+            if rec is not None and s in todo:
+                _say(f"{b.stage}.{s.name} done: {rec['genes']:,} genes, {rec['cpu_min']:,.2f} CPU-minutes (estimate "
+                     f"{rec['estimate_cpu_min']:,.2f}), wall {rec['wall_s']:,.1f} s, peak RSS "
                      f"{rec['peak_rss_kib'] / 1024:,.1f} MiB")
         if code is not None:
-            _say(f"{b.stage}.genecall: stopped before the merge (exit {code}); the batches with output stay in {work}, "
-                 "and the next call runs only the others")
+            _say(f"{b.stage}.genecall: stopped before the merge (exit {code}); the batches with a run record stay "
+                 "published, and the next call runs only the others")
             return code
-        code = one(steps[-1])  # the merge, the run-step `genecall`; its hook is the step's, after this returns
+        code = _redo_lost_batches(prof, b, root, plan, work, batches, jobs, cpus, hook, allow)
+        if code is not None:
+            return code
+        code = one(merge)  # the merge, the run-step `genecall`; its hook is the step's, after this returns
         if code is not None:
             return code
     finally:
@@ -1538,6 +1570,37 @@ def _genecall_in_batches(prof: Profile, b: Build, root: Path, plan: dict, one: C
     with contextlib.suppress(OSError):
         work.parent.rmdir()
     return None
+
+
+def _redo_lost_batches(prof: Profile, b: Build, root: Path, plan: dict, work: Path, batches: list[Step], jobs: int,
+                       cpus: int, hook: Hook | None, allow: Callable[[int], int]) -> int | None:
+    """Make again every batch whose record is published but whose output in scratch is missing (a reboot clears /tmp)
+    or is not its published record (card B-50): its step's command with `--check-record`, as its own process outside
+    run-step (`_rescan_process`, as a scan shard's rescan; up to `jobs` at once within the allowance, `STOP` before each
+    launch), `after:<step>.redo` to `hook` as each ends. The records stay as published: the batch must reproduce its
+    record's counts and genome digest, else it exits 2 naming the fields and nothing after it runs. Return None when
+    every batch's output is in place, else the failing code (75 for STOP)."""
+    sha = hashlib.sha256((work / genecall.PLAN_FILE).read_bytes()).hexdigest()
+    redo = []
+    for j, s in enumerate(batches):
+        published = genecall.published_batch(root, b.stage, j)
+        done = genecall.batch_done(work, plan, j)
+        why = ("is missing" if done is None else
+               genecall.record_problem(published, genecall.batch_record(plan, sha, done)) if published else None)
+        if why is None:
+            continue
+        _say(f"{b.stage}.{s.name}: its record is published, but its output in {work} {why}; making it again into "
+             "scratch (its published record stays; the batch must reproduce it)")
+        if done is not None:
+            shutil.rmtree(work / genecall.batch_name(j))
+        redo.append(dataclasses.replace(s, name=f"{s.name}.redo", argv=(*s.argv, "--check-record")))
+    if not redo:
+        return None
+    code = _launch(prof, root, redo, max(1, jobs), cpus, _rescan_process, hook, allow)
+    if code is not None and code != runstep.EXIT_STOP:
+        _say(f"{b.stage}.genecall: a batch could not be made again to its published record (above); the merge does not "
+             "run. A record a batch does not reproduce is not the gene calling of these inputs: tell the PI")
+    return code
 
 
 # --- ingest by batch processes (card B-30) -------------------------------------------------------------------
