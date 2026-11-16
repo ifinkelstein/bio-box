@@ -135,11 +135,28 @@ sources:
       - {file: host_range_breadth.tsv.zst, size: 490.6 kB, md5: 25960f854fa411956ef1353213133bfc}
       - {file: uhgv_metadata.tsv.zst, size: 39.0 MB, md5: f897bdf92b8b93cf3941f6d2c3d55efb}   # added under DEC-50 by card C-39
       - {file: votus_full.faa.zst, size: 1.0 GB, md5: 1eff9626a8c3990a98d2b4ea58ff0596}   # added under DEC-50 by card C-39: the provider's 7,426,124 proteins, for the estimate of distinct proteins only
-    checksum: the md5 values above, as the Zenodo record shows them (read 2026-11-16; not yet matched against a download)
-    records: 168,536 vOTU representatives (published); the full set of 873,995 genomes and its protein file are not taken
+    checksum: the md5 values above, as the Zenodo record shows them (read 2026-11-16); every fetched file matched its md5
+    records: >-
+      168,536 vOTU representatives (published; 168,536 FASTA records, 5,222,288,776 bp, measured by c39_inputs.py);
+      the full set of 873,995 genomes and its protein file are not taken
     limits: one connection; stop after 5 refusals in a row (HTTP 403, 429, 503)
     license: CC BY 4.0
-    fetched: nothing yet
+    fetched: >-
+      2026-11-16 19:49 to 20:32 UTC (the pod's clock) by c39_fetch.sh into /tmp/if2453/s3/dl/uhgv/ on wilkcomp02, one
+      try each, no refusal; every md5 equal to the provider's. bytes and our sha256:
+      votus_full.fna.zst 964,680,445 0b1b7a71aee8a56fb996c7a0060309dfccfa50a8b270818938d1c7ff457a879d (ended 19:53:06Z);
+      votus_metadata_extended.tsv.zst 14,048,300 945aa366c67fba8bb2625720eb8c3d393d88697a0a9b3935534878e3f050ef0c;
+      source_biosample_metadata.tsv.zst 152,063 3f63cea9761e70fb40ba50d3d0db690c3c6957eb33c460a1b49c9f50ecb832f6;
+      host_range_breadth.tsv.zst 490,562 b180fb81aa6d633c277afa8aa5451390ccfbba07250d39ea88466e93d41a4a86;
+      uhgv_metadata.tsv.zst 38,978,745 defa9fbe3b53610a9230ee6e5476107df4e14cd812160e604b2c757558e670a4;
+      votus_full.faa.zst 1,022,105,075 53b44df8a093d31a43642fb354841b396769ec1b3a16398e7ce77c40e51dc39e. The files use
+      zstd's long window (a decoder needs window_log_max 31)
+    stored: not yet on /stor (local scratch only, /tmp/if2453/s3/dl/uhgv/)
+    stage_inputs: >-
+      stage V1 (card C-39): /tmp/if2453/s2/inputs/V1/ on wilkcomp02, made 2026-11-16 by c39_inputs.py uhgv from
+      votus_full.fna.zst (decompressed byte for byte to uhgv_v1.0_votus_full.fna, 5,228,187,536 bytes, sha256
+      9c595d262d89100f25ebe40964ee31912b26d9b64c6b5f453daf73b931071356) and votus_metadata_extended.tsv.zst, with
+      --root /tmp/if2453/r10/root; record planning/measurements/2026-11-16_virus_votu_inputs.md
     note: >-
       The URL form was read from the record page on 2026-11-16 (card C-39): every file's download link is
       https://zenodo.org/records/17402089/files/<name>?download=1. uhgv_metadata.tsv.zst (the record's "Metadata for
@@ -161,10 +178,15 @@ sources:
       ANI over 85% aligned fraction (MIUViG)
     limits: one connection; stop after 5 refusals in a row
     license: CC0
-    fetched: nothing yet
+    fetched: >-
+      nothing. 2026-11-16 19:54 to 20:00 UTC from wilkcomp02 (card C-39, c39_fetch.sh gsv, `-A curl`): the HEAD of the
+      archive URL timed out in the TLS handshake (curl 28) and a second try was reset by the peer at the client hello
+      (curl 35; the host resolves to 192.101.102.34); url_readme answered HTTP 400 three times (an HTML body of 247
+      bytes). Five failures in a row, so the fetch stopped (the limits above); nothing was retried with other client
+      settings. The README's content above was read through a web page reader, not fetched to the pod
     note: >-
       url_readme corrected by card C-39 on 2026-11-16: the datahub.pnnl.gov form redirects (302) to the site's front
-      page; the same path on data.pnnl.gov serves the README
+      page; the same path on data.pnnl.gov serves the README to a page reader, but answers 400 to curl from the pod
     approved: by the PI on 2026-11-16 ("y to yaml")
   - name: vire_tables
     what: VIRE (EMBL, Fullam et al., NAR 2026, doi:10.1093/nar/gkaf1225) genome metadata of all samples, a table only, no sequence; card C-39 step 6 (what VIRE would add)
@@ -180,7 +202,11 @@ sources:
       the paper); the downloads page states no licence. Share-alike: redistribution of a derived table carries the
       same licence
     redistributable: true
-    fetched: nothing yet
+    fetched: >-
+      2026-11-16 20:00:18 to 20:01:32 UTC (the pod's clock) by c39_fetch.sh vire into /tmp/if2453/s3/dl/vire/ on
+      wilkcomp02, one try, no refusal: vire_all_samples_metadata.txt, 903,989,625 bytes, md5
+      ff358ff04b88c423c9f549d81f5f4c86, sha256 9fbf0a03c6a1f6d1ee7776089133bc17f74f466c3db7e22e31273b677e495456; a TSV
+      of 1,784,510 genome rows and 30 columns (measured, c39_vire.py)
     note: no VIRE sequence is approved by this entry (the archives under https://swifter.embl.de/~fullam/vire/archives/ are not taken)
     approved: under DEC-50 (card C-39, 2026-11-16)
   - name: spire_tables
