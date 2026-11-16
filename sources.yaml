@@ -134,8 +134,9 @@ sources:
       - {file: source_biosample_metadata.tsv.zst, size: 152.1 kB, md5: 9934204a79cdac60ce9681a6233282b6}
       - {file: host_range_breadth.tsv.zst, size: 490.6 kB, md5: 25960f854fa411956ef1353213133bfc}
       - {file: uhgv_metadata.tsv.zst, size: 39.0 MB, md5: f897bdf92b8b93cf3941f6d2c3d55efb}   # added under DEC-50 by card C-39
+      - {file: votus_full.faa.zst, size: 1.0 GB, md5: 1eff9626a8c3990a98d2b4ea58ff0596}   # added under DEC-50 by card C-39: the provider's 7,426,124 proteins, for the estimate of distinct proteins only
     checksum: the md5 values above, as the Zenodo record shows them (read 2026-11-16; not yet matched against a download)
-    records: 168,536 vOTU representatives (published); the full set of 873,995 genomes and the protein files are not taken
+    records: 168,536 vOTU representatives (published); the full set of 873,995 genomes and its protein file are not taken
     limits: one connection; stop after 5 refusals in a row (HTTP 403, 429, 503)
     license: CC BY 4.0
     fetched: nothing yet
