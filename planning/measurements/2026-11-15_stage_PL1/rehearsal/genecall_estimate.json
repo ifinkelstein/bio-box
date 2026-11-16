@@ -1,0 +1,34 @@
+{
+ "bases": 12854288,
+ "bases_called": 3340530,
+ "bases_stored": 3340530,
+ "batches": [
+  {
+   "bases": 1686247,
+   "batch": 0,
+   "estimate_cpu_min": 0.638,
+   "genomes": 126
+  },
+  {
+   "bases": 1654283,
+   "batch": 1,
+   "estimate_cpu_min": 0.628,
+   "genomes": 162
+  }
+ ],
+ "budget": 1,
+ "contigs_listed": 288,
+ "contigs_owned_by_earlier_stages": 103,
+ "contigs_stored": 185,
+ "estimate_cpu_min": 1.016,
+ "genes_expected": 3604.8,
+ "genomes": 288,
+ "genomes_not_called": 103,
+ "largest_genome": {
+  "estimate_cpu_min": 0.014,
+  "genome_uid": "2e9e40eeed6665cc4207b18a236b985e"
+ },
+ "merge_estimate_cpu_min": 0.25,
+ "refusal": null,
+ "stage": "PLR"
+}

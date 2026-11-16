@@ -1,0 +1,13 @@
+2026-11-15T21:06:24-06:00 build-stage: stage PL1, release rM.3: allowance 54 threads: cap 56 (Sun 21:06, night or weekend) less 2 for ours elsewhere; over 5.1 s, other users 0.02 CPUs (compute above 0.5), system accounts 0.57 (not counted), ours elsewhere 2.41, ours in this unit 0.03; load average 7.18 (not used)
+2026-11-15T21:06:35-06:00 run-step: PL1.inputs: allowance 36 threads of 36 asked: cap 56 (Sun 21:06, night or weekend) less 2 for ours elsewhere; over 5.2 s, other users 0.01 CPUs (compute above 0.5), system accounts 0.54 (not counted), ours elsewhere 2.00, ours in this unit 0.04; load average 7.54 (not used)
+{"result": {"contigs": 68693, "genomes": 68693}, "stage": "PL1", "step": "inputs"}
+2026-11-15T21:06:39-06:00 run-step: PL1.inputs published 1 files
+2026-11-15T21:06:44-06:00 build-stage: allowance 49 threads: cap 56 (Sun 21:06, night or weekend) less 7 for ours elsewhere; over 5.1 s, other users 0.00 CPUs (compute above 0.5), system accounts 0.75 (not counted), ours elsewhere 7.08, ours in this unit 0.03; load average 7.46 (not used) (was 54)
+2026-11-15T21:06:49-06:00 run-step: PL1.ingest: allowance 36 threads of 36 asked: cap 56 (Sun 21:06, night or weekend) less 3 for ours elsewhere; over 5.2 s, other users 0.01 CPUs (compute above 0.5), system accounts 0.56 (not counted), ours elsewhere 3.42, ours in this unit 0.04; load average 7.51 (not used)
+{"result": {"index_rows": 61647, "new_sequences": 61647, "objects": 1, "records": 72556, "shards": 1}, "stage": "PL1", "step": "ingest"}
+2026-11-15T21:32:49-06:00 run-step: PL1.ingest published 9 files
+2026-11-15T21:32:50-06:00 build-stage: PL1.genecall: 68,693 genomes (7,046 not called: every contig owned elsewhere, DEC-26, DEC-27), 5,924,552,875 of their 7,102,391,741 bases to call, estimated at 872.6 CPU-minutes in one process (rates by mode and topology measured on wilkcomp02, 2026-11-15, card B-48), over 80% of the profile's cpu_min_per_process of 300 (AGENTS §7.2); it runs in 4 batches of whole genomes in genome_uid order: batch 0 17,367 genomes, 218.3 CPU-minutes; batch 1 16,928 genomes, 218.4 CPU-minutes; batch 2 16,966 genomes, 218.3 CPU-minutes; batch 3 17,432 genomes, 218.3 CPU-minutes; then the merge, 0.8 CPU-minutes (estimates)
+Terminated
+pod_run: c26-pl1-1 received SIGTERM
+pod_run: c26-pl1-1 usage MemoryPeak=8580718592 CPUUsageNSec=1628009702000
+pod_run: c26-pl1-1 exited 143

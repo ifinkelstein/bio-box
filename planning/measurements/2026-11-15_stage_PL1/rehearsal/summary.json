@@ -1,0 +1,460 @@
+{
+ "added": {
+  "bytes": 2749118,
+  "files": 58
+ },
+ "contigs": {
+  "bases_stored": 3340530,
+  "circular": 220,
+  "codes": [
+   11
+  ],
+  "contig_label_rows": 288,
+  "contig_occurrence_contigs": 288,
+  "contig_occurrence_rows": 315,
+  "contig_occurrence_rows_on_contigs_of_earlier_stages": 107,
+  "contigs": 288,
+  "genome_input_rows": 288,
+  "genomes": 288,
+  "kinds": [
+   "plasmid"
+  ],
+  "ledger_equals_stored_by": true,
+  "ledger_skipped": 103,
+  "part1": {
+   "by_stage": {
+    "P1": 41,
+    "P2": 62
+   },
+   "contigs": 103,
+   "equal": true,
+   "only_now": 0,
+   "only_part1": 0,
+   "owner_differs": 0
+  },
+  "quality": {
+   "complete": 253,
+   "contig": 35
+  },
+  "stored": 185,
+  "stored_by_earlier": 103,
+  "stored_by_earlier_by_stage": {
+   "P1": 41,
+   "P2": 62
+  }
+ },
+ "copy_check": {
+  "columns_compared": [
+   "protein_uid",
+   "model_acc",
+   "model_name",
+   "model_len",
+   "seq_bitscore",
+   "seq_evalue_zref",
+   "dom_bitscore",
+   "dom_ievalue_zref",
+   "env_start",
+   "env_end",
+   "ali_start",
+   "ali_end",
+   "hmm_from",
+   "hmm_to",
+   "cutoff",
+   "z",
+   "dom_z"
+  ],
+  "copied_proteins": 234,
+  "equals_plan": true,
+  "rows": 286,
+  "sources": [
+   {
+    "plan_proteins": 33,
+    "plan_rows": 47,
+    "proteins": 33,
+    "rows_in_source": 47,
+    "rows_in_stage": 47,
+    "source_not_in_stage": 0,
+    "stage": "P1",
+    "stage_not_in_source": 0
+   },
+   {
+    "plan_proteins": 201,
+    "plan_rows": 239,
+    "proteins": 201,
+    "rows_in_source": 239,
+    "rows_in_stage": 239,
+    "source_not_in_stage": 0,
+    "stage": "P2",
+    "stage_not_in_source": 0
+   }
+  ]
+ },
+ "crispr": {
+  "default": {
+   "arrays": 0,
+   "arrays_per_gbp": 0.0,
+   "calls_in": 0,
+   "calls_kept": 0,
+   "contigs_searched": 185,
+   "contigs_skipped_other_stage": 103,
+   "elements": 0,
+   "producer": "minced-0.4.2-w8-nr3-r23x47-s26x50",
+   "recorded": true,
+   "rejected": {}
+  },
+  "near_cas": {
+   "arrays": 0,
+   "arrays_per_gbp": 0.0,
+   "calls_in": 42,
+   "calls_kept": 0,
+   "contigs_searched": 185,
+   "contigs_skipped_other_stage": 103,
+   "elements": 0,
+   "producer": "minced-0.4.2-w8-nr2-r23x47-s26x50-cas1kb-caspfam1-pfam-38.2",
+   "recorded": true,
+   "rejected": {
+    "far_from_cas": 42
+   }
+  }
+ },
+ "failed": [],
+ "files": {
+  "after": 80,
+  "before": 22,
+  "changed": [],
+  "earlier_hashed": 0,
+  "earlier_sha256_changed": [],
+  "gone": [],
+  "new": 58,
+  "new_genecall_plan_records": [
+   "l1/genecall_plan/stage=PLR/batch-00000.json",
+   "l1/genecall_plan/stage=PLR/batch-00001.json",
+   "l1/genecall_plan/stage=PLR/plan.json"
+  ],
+  "new_under_stage": 58,
+  "release_paths": [],
+  "unexpected": []
+ },
+ "genes": {
+  "batches": [
+   {
+    "batch": 0,
+    "cpu_min": 0.52779,
+    "estimate_cpu_min": 0.638,
+    "genes": 1985,
+    "genomes": 126,
+    "peak_rss_mib": 323.9,
+    "skipped_contigs": 41,
+    "wall_s": 10.495
+   },
+   {
+    "batch": 1,
+    "cpu_min": 0.498355,
+    "estimate_cpu_min": 0.628,
+    "genes": 1968,
+    "genomes": 162,
+    "peak_rss_mib": 325.1,
+    "skipped_contigs": 62,
+    "wall_s": 9.612
+   }
+  ],
+  "distinct_proteins": 3426,
+  "earlier_protein_seq_files": 3,
+  "genecall_plan_record": true,
+  "genes": 3953,
+  "in_earlier_stages": 234,
+  "new_distinct_proteins": 3192,
+  "new_residues": 721155,
+  "plan": {
+   "bases": 12854288,
+   "bases_called": 3340530,
+   "batch_cpu_min": 0.8,
+   "estimate_cpu_min": 1.016,
+   "genes_expected": 3604.8,
+   "genomes": 288,
+   "genomes_not_called": 103,
+   "merge_estimate_cpu_min": 0.25
+  },
+  "residues": 770055
+ },
+ "log": {
+  "exit": [
+   "pod_run: c26-rh-1 exited 75"
+  ],
+  "plan_lines": [
+   "2026-11-15T20:45:08-06:00 build-stage: PLR.genecall: 288 genomes (103 not called: every contig owned elsewhere, DEC-26, DEC-27), 3,340,530 of their 12,854,288 bases to call, estimated at 1.0 CPU-minutes in one process (rates by mode and topology measured on wilkcomp02, 2026-11-15, card B-48), over 80% of the profile's cpu_min_per_process of 1 (AGENTS \u00a77.2); it runs in 2 batches of whole genomes in genome_uid order: batch 0 126 genomes, 0.6 CPU-minutes; batch 1 162 genomes, 0.6 CPU-minutes; then the merge, 0.2 CPU-minutes (estimates)",
+   "2026-11-15T20:45:22-06:00 build-stage: PLR.genecall: 2 of 2 batches to run, at most 2 at once, 4 workers each; work directory /tmp/if2453/c26/rh/tmp/scratch/genecall/PLR.6e575bd1f1c6efd8/fc9b123efac0249159ddedc7e2a04b9c",
+   "2026-11-15T20:46:00-06:00 run-step: PLR.genecall: allowance 8 threads of 8 asked: cap 56 (Sun 20:45, night or weekend) less 2 for ours elsewhere; over 5.2 s, other users 0.01 CPUs (compute above 0.5), system accounts 1.18 (not counted), ours elsewhere 2.17, ours in this unit 0.03; load average 7.46 (not used)",
+   "2026-11-15T20:46:47-06:00 build-stage: PLR.domains-pfam-38.2: P1, P2 measured proteins with this scan (HMM file, cutoff, Z and tool versions); the scan runs as its plan step, which leaves out the proteins measured there and copies their rows (card B-47b), then its shards over the residues left, then the merge",
+   "2026-11-15T20:46:57-06:00 run-step: PLR.domains-pfam-38.2.plan: allowance 8 threads of 8 asked: cap 56 (Sun 20:46, night or weekend) less 2 for ours elsewhere; over 5.2 s, other users 0.05 CPUs (compute above 0.5), system accounts 1.28 (not counted), ours elsewhere 2.16, ours in this unit 0.03; load average 6.06 (not used)",
+   "2026-11-15T20:47:25-06:00 run-step: PLR.domains-pfam-38.2.plan published 1 files",
+   "2026-11-15T20:47:25-06:00 build-stage: PLR.domains-pfam-38.2: the plan copies the rows of 234 proteins (48,900 residues) measured in P1, P2 and scans 721,155 residues in 8 shards, estimated at 5.7 CPU-minutes",
+   "2026-11-15T20:47:38-06:00 run-step: PLR.domains-pfam-38.2.shard-00000: allowance 4 threads of 4 asked: cap 56 (Sun 20:47, night or weekend) less 2 for ours elsewhere; over 5.1 s, other users 0.00 CPUs (compute above 0.5), system accounts 1.15 (not counted), ours elsewhere 2.39, ours in this unit 0.83; load average 5.97 (not used)",
+   "2026-11-15T20:47:43-06:00 run-step: PLR.domains-pfam-38.2.shard-00001: allowance 4 threads of 4 asked: cap 56 (Sun 20:47, night or weekend) less 2 for ours elsewhere; over 5.1 s, other users 0.01 CPUs (compute above 0.5), system accounts 1.12 (not counted), ours elsewhere 2.17, ours in this unit 1.10; load average 6.05 (not used)",
+   "2026-11-15T20:48:50-06:00 run-step: warning: PLR.domains-pfam-38.2.shard-00000 used 3.1 CPU-minutes, over 1",
+   "2026-11-15T20:48:50-06:00 run-step: PLR.domains-pfam-38.2.shard-00000 published 1 files",
+   "2026-11-15T20:48:51-06:00 run-step: warning: PLR.domains-pfam-38.2.shard-00001 used 3.1 CPU-minutes, over 1",
+   "2026-11-15T20:48:51-06:00 run-step: PLR.domains-pfam-38.2.shard-00001 published 1 files",
+   "2026-11-15T20:49:03-06:00 run-step: PLR.domains-pfam-38.2.shard-00002: allowance 4 threads of 4 asked: cap 56 (Sun 20:48, night or weekend) less 8 for ours elsewhere; over 5.1 s, other users 0.02 CPUs (compute above 0.5), system accounts 1.24 (not counted), ours elsewhere 7.90, ours in this unit 0.84; load average 9.67 (not used)",
+   "2026-11-15T20:49:08-06:00 run-step: PLR.domains-pfam-38.2.shard-00003: allowance 4 threads of 4 asked: cap 56 (Sun 20:49, night or weekend) less 9 for ours elsewhere; over 5.1 s, other users 0.00 CPUs (compute above 0.5), system accounts 1.30 (not counted), ours elsewhere 8.79, ours in this unit 1.02; load average 10.18 (not used)",
+   "2026-11-15T20:50:14-06:00 run-step: warning: PLR.domains-pfam-38.2.shard-00002 used 3.1 CPU-minutes, over 1",
+   "2026-11-15T20:50:14-06:00 run-step: PLR.domains-pfam-38.2.shard-00002 published 1 files",
+   "2026-11-15T20:50:16-06:00 run-step: warning: PLR.domains-pfam-38.2.shard-00003 used 3.0 CPU-minutes, over 1",
+   "2026-11-15T20:50:17-06:00 run-step: PLR.domains-pfam-38.2.shard-00003 published 1 files",
+   "2026-11-15T20:50:27-06:00 run-step: PLR.domains-pfam-38.2.shard-00004: allowance 4 threads of 4 asked: cap 56 (Sun 20:50, night or weekend) less 7 for ours elsewhere; over 5.1 s, other users 0.00 CPUs (compute above 0.5), system accounts 1.09 (not counted), ours elsewhere 7.22, ours in this unit 0.76; load average 13.88 (not used)",
+   "2026-11-15T20:50:33-06:00 run-step: PLR.domains-pfam-38.2.shard-00005: allowance 4 threads of 4 asked: cap 56 (Sun 20:50, night or weekend) less 8 for ours elsewhere; over 5.2 s, other users 0.02 CPUs (compute above 0.5), system accounts 1.32 (not counted), ours elsewhere 7.82, ours in this unit 1.11; load average 13.73 (not used)",
+   "2026-11-15T20:51:40-06:00 run-step: warning: PLR.domains-pfam-38.2.shard-00004 used 3.1 CPU-minutes, over 1",
+   "2026-11-15T20:51:40-06:00 run-step: PLR.domains-pfam-38.2.shard-00004 published 1 files",
+   "2026-11-15T20:51:45-06:00 run-step: warning: PLR.domains-pfam-38.2.shard-00005 used 3.1 CPU-minutes, over 1",
+   "2026-11-15T20:51:45-06:00 run-step: PLR.domains-pfam-38.2.shard-00005 published 1 files",
+   "2026-11-15T20:51:53-06:00 run-step: PLR.domains-pfam-38.2.shard-00006: allowance 4 threads of 4 asked: cap 56 (Sun 20:51, night or weekend) less 2 for ours elsewhere; over 5.1 s, other users 0.04 CPUs (compute above 0.5), system accounts 1.21 (not counted), ours elsewhere 2.47, ours in this unit 0.74; load average 13.28 (not used)",
+   "2026-11-15T20:51:59-06:00 run-step: PLR.domains-pfam-38.2.shard-00007: allowance 4 threads of 4 asked: cap 56 (Sun 20:51, night or weekend) less 0 for ours elsewhere; over 5.2 s, other users 0.00 CPUs (compute above 0.5), system accounts 0.93 (not counted), ours elsewhere 0.29, ours in this unit 1.21; load average 12.93 (not used)",
+   "2026-11-15T20:53:02-06:00 run-step: warning: PLR.domains-pfam-38.2.shard-00006 used 3.0 CPU-minutes, over 1",
+   "2026-11-15T20:53:02-06:00 run-step: PLR.domains-pfam-38.2.shard-00006 published 1 files",
+   "2026-11-15T20:53:06-06:00 run-step: warning: PLR.domains-pfam-38.2.shard-00007 used 1.7 CPU-minutes, over 1",
+   "2026-11-15T20:53:06-06:00 run-step: PLR.domains-pfam-38.2.shard-00007 published 1 files",
+   "2026-11-15T20:53:17-06:00 run-step: PLR.domains-pfam-38.2: allowance 8 threads of 8 asked: cap 56 (Sun 20:53, night or weekend) less 1 for ours elsewhere; over 5.3 s, other users 0.02 CPUs (compute above 0.5), system accounts 1.18 (not counted), ours elsewhere 1.04, ours in this unit 0.05; load average 10.83 (not used)",
+   "2026-11-15T20:53:44-06:00 run-step: PLR.domains-pfam-38.2 published 2 files"
+  ],
+  "stop_or_refusal": [
+   "2026-11-15T20:54:04-06:00 run-step: /tmp/if2453/c26/rh/root/STOP exists; not starting rC26.3.cluster.plan"
+  ],
+  "usage": [
+   "pod_run: c26-rh-1 usage MemoryPeak=2807554048 CPUUsageNSec=1621027604000"
+  ]
+ },
+ "pfam": {
+  "copied_proteins": 234,
+  "copied_proteins_with_hit": 176,
+  "copied_residues": 48900,
+  "copied_rows": 286,
+  "domain_rows": 3264,
+  "models_with_hit": 992,
+  "passed_over": [],
+  "proteins": 3426,
+  "proteins_with_domain": 2009,
+  "residues": 770055,
+  "scanned_proteins": 3192,
+  "scanned_residues": 721155,
+  "shard_residues": 100502,
+  "shards": 8,
+  "sources": [
+   {
+    "proteins": 33,
+    "proteins_with_hit": 31,
+    "residues": 7344,
+    "rows": 47,
+    "stage": "P1"
+   },
+   {
+    "proteins": 201,
+    "proteins_with_hit": 145,
+    "residues": 41556,
+    "rows": 239,
+    "stage": "P2"
+   }
+  ]
+ },
+ "steps": {
+  "batches": {
+   "cpu_min": 1.03,
+   "cpu_min_max": 0.528,
+   "n": 2,
+   "peak_rss_mib_max": 325,
+   "ratio_max": 0.827,
+   "ratio_min": 0.794,
+   "wall_s_max": 10.5
+  },
+  "code_ids": [
+   "9a173395910c1d7b755edb5a4cc895f81d16cf23ffeffea5b7ac3c0fe4a68f4f"
+  ],
+  "cpu_min_max": 3.136,
+  "cpu_min_total": 25.96,
+  "images": [
+   "sha256:d67300aa1321b571fa8da79e74dfccdd87a8dca2e56518f324902efa6b9f098a"
+  ],
+  "largest": "domains-pfam-38.2.shard-00002",
+  "names": [
+   "crispr-minced-0.4.2-w8-nr2-r23x47-s26x50-cas1kb-caspfam1-pfam-38.2",
+   "crispr-minced-0.4.2-w8-nr3-r23x47-s26x50",
+   "domains-pfam-38.2",
+   "domains-pfam-38.2.plan",
+   "genecall.batch-00000",
+   "genecall.batch-00001",
+   "genecall",
+   "genecall.plan",
+   "igr",
+   "ingest",
+   "inputs",
+   "tapes"
+  ],
+  "over_budget": [
+   "domains-pfam-38.2.shard-00000",
+   "domains-pfam-38.2.shard-00001",
+   "domains-pfam-38.2.shard-00002",
+   "domains-pfam-38.2.shard-00003",
+   "domains-pfam-38.2.shard-00004",
+   "domains-pfam-38.2.shard-00005",
+   "domains-pfam-38.2.shard-00006",
+   "domains-pfam-38.2.shard-00007"
+  ],
+  "rates": {
+   "checked": 14,
+   "counts": [],
+   "outside_20pct": [],
+   "rows": [
+    {
+     "basis": "ingest_cpu_min(FASTA bytes)",
+     "cpu_min": 0.079,
+     "estimate": 0.13,
+     "judged": false,
+     "peak_rss_mib": 324.2,
+     "ratio": 0.605,
+     "step": "ingest",
+     "wall_s": 3.989
+    },
+    {
+     "basis": "plan: 126 genomes, 1686247 bases called",
+     "cpu_min": 0.528,
+     "estimate": 0.638,
+     "judged": false,
+     "peak_rss_mib": 323.9,
+     "ratio": 0.827,
+     "step": "genecall.batch-00000",
+     "wall_s": 10.495
+    },
+    {
+     "basis": "plan: 162 genomes, 1654283 bases called",
+     "cpu_min": 0.498,
+     "estimate": 0.628,
+     "judged": false,
+     "peak_rss_mib": 325.1,
+     "ratio": 0.794,
+     "step": "genecall.batch-00001",
+     "wall_s": 9.612
+    },
+    {
+     "basis": "plan: the merge of 3604.8 genes expected",
+     "cpu_min": 0.056,
+     "estimate": 0.25,
+     "judged": false,
+     "peak_rss_mib": 324.2,
+     "ratio": 0.223,
+     "step": "genecall",
+     "wall_s": 2.459
+    },
+    {
+     "basis": "100495 residues x 7.96 / 1e6",
+     "cpu_min": 3.098,
+     "estimate": 0.8,
+     "judged": false,
+     "peak_rss_mib": 325.1,
+     "ratio": 3.872,
+     "step": "domains-pfam-38.2.shard-00000",
+     "wall_s": 71.558
+    },
+    {
+     "basis": "100488 residues x 7.96 / 1e6",
+     "cpu_min": 3.058,
+     "estimate": 0.8,
+     "judged": false,
+     "peak_rss_mib": 324.9,
+     "ratio": 3.823,
+     "step": "domains-pfam-38.2.shard-00001",
+     "wall_s": 68.202
+    },
+    {
+     "basis": "100448 residues x 7.96 / 1e6",
+     "cpu_min": 3.136,
+     "estimate": 0.8,
+     "judged": false,
+     "peak_rss_mib": 323.7,
+     "ratio": 3.923,
+     "step": "domains-pfam-38.2.shard-00002",
+     "wall_s": 70.858
+    },
+    {
+     "basis": "100305 residues x 7.96 / 1e6",
+     "cpu_min": 2.993,
+     "estimate": 0.798,
+     "judged": false,
+     "peak_rss_mib": 324.2,
+     "ratio": 3.748,
+     "step": "domains-pfam-38.2.shard-00003",
+     "wall_s": 68.529
+    },
+    {
+     "basis": "100432 residues x 7.96 / 1e6",
+     "cpu_min": 3.119,
+     "estimate": 0.799,
+     "judged": false,
+     "peak_rss_mib": 324.2,
+     "ratio": 3.901,
+     "step": "domains-pfam-38.2.shard-00004",
+     "wall_s": 73.018
+    },
+    {
+     "basis": "100357 residues x 7.96 / 1e6",
+     "cpu_min": 3.128,
+     "estimate": 0.799,
+     "judged": false,
+     "peak_rss_mib": 324.2,
+     "ratio": 3.916,
+     "step": "domains-pfam-38.2.shard-00005",
+     "wall_s": 72.774
+    },
+    {
+     "basis": "100489 residues x 7.96 / 1e6",
+     "cpu_min": 3.047,
+     "estimate": 0.8,
+     "judged": false,
+     "peak_rss_mib": 325.1,
+     "ratio": 3.809,
+     "step": "domains-pfam-38.2.shard-00006",
+     "wall_s": 68.507
+    },
+    {
+     "basis": "18141 residues x 7.96 / 1e6",
+     "cpu_min": 1.723,
+     "estimate": 0.144,
+     "judged": false,
+     "peak_rss_mib": 325.1,
+     "ratio": 11.932,
+     "step": "domains-pfam-38.2.shard-00007",
+     "wall_s": 66.744
+    },
+    {
+     "basis": "3340530 bases x 182.0 / 1e9 / 60",
+     "cpu_min": 0.104,
+     "estimate": 0.01,
+     "judged": false,
+     "peak_rss_mib": 325.1,
+     "ratio": 10.218,
+     "step": "crispr-minced-0.4.2-w8-nr3-r23x47-s26x50",
+     "wall_s": 4.389
+    },
+    {
+     "basis": "3340530 bases x 182.0 / 1e9 / 60 x 1.19",
+     "cpu_min": 0.105,
+     "estimate": 0.012,
+     "judged": false,
+     "peak_rss_mib": 324.6,
+     "ratio": 8.687,
+     "step": "crispr-minced-0.4.2-w8-nr2-r23x47-s26x50-cas1kb-caspfam1-pfam-38.2",
+     "wall_s": 4.268
+    }
+   ],
+   "stage": "PLR"
+  },
+  "records": 20,
+  "shards": {
+   "cpu_min": 23.3,
+   "cpu_min_max": 3.136,
+   "n": 8,
+   "peak_rss_mib_max": 325,
+   "ratio_max": 11.932,
+   "ratio_min": 3.748,
+   "wall_s_max": 73.0
+  }
+ }
+}
