@@ -1169,7 +1169,11 @@ All *measured*, wilkcomp02, 2026-11-15, image `bio-box-test_faec1f4.sif`:
   0.946 at the default seed (from the scan; the test stops at the KS line before printing), 1.026 at 20261113, r 0.438
   and 0.575 (printed only).
 - **The whole suite** (`bash /tmp/if2453/ci/F-02-12/scripts/orchestrator/detached_suite.sh F-02-12 2 --deselect
-  tests/r2/test_synthworld_nulls.py`, the null module run above): SUITE_LINE.
+  tests/r2/test_synthworld_nulls.py`, the null module run above): shard 0 "1201 passed, 12 skipped, 18 warnings in
+  3979.98s", shard 1 "1 failed, 1101 passed, 12 skipped, 14 deselected, 48 warnings in 6791.63s" (the failure is
+  §15.6 (B)). GitHub Actions `ci` on `task/F-02-12` at the note's first commit (run 43771558605, Linux): "2 failed, 2110
+  passed, 226 skipped", the two of §15.6 with the same values as on the pod (D 0.0917; `feature_uid`
+  a2873401f69e506e1a0f1d0923da0992), so the default world is the same on both hosts.
 
 ### 15.6 What fails, and why (stop and report; no assertion changed)
 
