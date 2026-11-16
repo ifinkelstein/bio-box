@@ -1,0 +1,62 @@
+s
+world digests: signal eb990dea9f40446d1ca5bb7ee38f93c4; n0full 8c1cb1f99c2d33b8191c774d7359c53f; n0strict 9a1a5b00179b8ff67f9e4211d1dec582; n1 3bdfcf309655103f287eb3041d4b8642; n0full_s2 a4d91892214d7a057cfd694312560572; n0strict_s2 9825ea5d4cdff153d32f52f929a46926; n1_s2 a35479ea9a9747c710b45bee32b0aecd
+..
+n0full: identical species tree, taxonomy, lineage tables, phage set, prophage clades, codes, classes, call-error plan, sources, contamination and duplicate roles, labels; 190 shared background co-directional family pairs, all of one class in both worlds
+
+n0strict: identical species tree, taxonomy, lineage tables, phage set, prophage clades, codes, classes, call-error plan, sources, contamination and duplicate roles, labels; 126 shared background co-directional family pairs, all of one class in both worlds
+.
+n0full: background genes per genome 1191.3 vs signal 1239.5 (geometric mean ratio 0.962, r 0.701); root presence KS D 0.0273 (alpha 0.01 bound 0.0735); + strand 0.502; tight share 0.5487 over 7892 distinct pairs (p_tight 0.55); GC |diff| mean 0.00106 max 0.00227
+
+n0strict: background genes per genome 1212.2 vs signal 1239.5 (geometric mean ratio 0.979, r 0.507); root presence KS D 0.0394 (alpha 0.01 bound 0.0735); + strand 0.509; tight share 0.5494 over 8353 distinct pairs (p_tight 0.55); GC |diff| mean 0.00121 max 0.00300
+.F...
+n0full: naive co-occurrence over 1656 families, 1370340 pairs: lambda 0.116, share at p < 1e-3 0.0629 (62.9x the 0.001 a calibrated test gives)
+
+n0strict: naive co-occurrence over 1539 families, 1183491 pairs: lambda 0.130, share at p < 1e-3 0.0616 (61.6x the 0.001 a calibrated test gives)
+..
+n1: 53 of 100 module members relabeled (18 of 25 modules), 96 evaluated label pairs; unmatched module families' transfers [0, 0, 0, 1, 1, 1, 3, 3, 3, 3, 3, 3, 3, 3, 4, 4, 4, 4, 4, 4, 4, 5, 5, 5, 5, 5, 5, 5, 6, 6, 6, 6, 6, 6, 8, 8, 9, 9, 10, 10, 11, 11, 12, 12, 12, 12, 13]
+
+n1_s2: 53 of 100 module members relabeled (18 of 25 modules), 97 evaluated label pairs; unmatched module families' transfers [0, 0, 0, 1, 1, 1, 3, 3, 3, 3, 3, 3, 3, 3, 4, 4, 4, 4, 4, 4, 4, 5, 5, 5, 5, 5, 5, 6, 6, 6, 6, 6, 6, 8, 8, 9, 9, 9, 10, 10, 11, 11, 12, 12, 12, 12, 13]
+.
+n1: 96 evaluated label pairs adjacent in 0.021 genomes on average, matched random pairs 0.152, one-sided p 0.948; signal module pairs 10.75 against 0.123 (p 0.0005)
+
+n1_s2: 97 evaluated label pairs adjacent in 0.237 genomes on average, matched random pairs 0.158, one-sided p 0.230; signal module pairs 10.75 against 0.123 (p 0.0005)
+.
+signal 1161.69 s, VmHWM 351 MB; n0full 1123.79 s, VmHWM 297 MB; n0full_b 1121.42 s, VmHWM 297 MB; n0full_s2 1138.65 s, VmHWM 310 MB; n0strict 1076.4 s, VmHWM 282 MB; n0strict_b 1031.1 s, VmHWM 283 MB; n0strict_s2 1039.98 s, VmHWM 261 MB; n1 41.13 s, VmHWM 161 MB; n1_b 39.49 s, VmHWM 161 MB; n1_s2 42.49 s, VmHWM 161 MB; fixture wall 1208.5 s with 7 at once
+.
+=================================== FAILURES ===================================
+________________________ test_n0_has_no_planted_signal _________________________
+
+worlds = ({'signal': PosixPath('/tmp/if2453/ci-tmp/F-02-13-nulls-b/nulls0/signal'), 'n0full': PosixPath('/tmp/if2453/ci-tmp/F-0...53f'}, 'n0full_s2': {'seconds': 1138.65, 'vmhwm_kb': 317404, 'world_digest': 'a4d91892214d7a057cfd694312560572'}, ...})
+record_property = <function record_property.<locals>.append_property at 0x7293248d8040>
+
+    @needs_zombi2
+    @pytest.mark.covers("F-02", "B-NULL")
+    def test_n0_has_no_planted_signal(worlds, record_property):
+        """Truth: no planted or profile_only rows, no decoy family, no NOGD, no planted junction. Genomes: two brute-force
+        measures of every adjacent family pair on the emitted contigs, the genomes in which it is adjacent and its distinct
+        flank contexts. tau is the 99.9th percentile of the signal world's background pairs (not planted, not within one
+        vehicle, plasmid or Cas locus). Positive control: planted pairs exceed tau far more often than background pairs.
+        Then N0's pairs (the same exclusions) exceed tau no more often than the signal background, by a one-sided exact
+        conditional binomial test at alpha = 0.001 (two measures x two worlds); leaked modules (the signal's 111 planted
+        pairs, 34 to 61 above tau) would fail it."""
+        W, _ = worlds
+        s = W["signal"]
+        gs, cs = _adjacency(s)
+        planted = {k for k in gs if _within(k, [set(m) for m in _modules(s).values()])}
+        linked = _linked_sets(s)
+        bgk = [k for k in gs if k not in planted and not _within(k, linked)]
+        taus = {}
+        for name, M in (("genomes", gs), ("contexts", cs)):
+            tau = float(np.percentile([len(M[k]) for k in bgk], 99.9))
+            kb, kp = sum(len(M[k]) > tau for k in bgk), sum(len(M[k]) > tau for k in planted)
+>           assert _excess_test(kp, len(planted), kb, len(bgk)) < 1e-6, (name, kp, kb)
+E           AssertionError: ('contexts', 2, 17)
+E           assert 0.0024527374934510183 < 1e-06
+E            +  where 0.0024527374934510183 = _excess_test(2, 75, 17, 19299)
+E            +    where 75 = len({('F001000', 'F001001'), ('F001002', 'F001003'), ('F001003', 'F001004'), ('F001005', 'F001006'), ('F001006', 'F001007'), ('F001007', 'F001008'), ...})
+E            +    and   19299 = len([('F000465', 'F001332'), ('F000033', 'F000465'), ('F000033', 'F000787'), ('F000787', 'F000872'), ('F000872', 'F001435'), ('F000132', 'F001435'), ...])
+
+tests/r2/test_synthworld_nulls.py:448: AssertionError
+=========================== short test summary info ============================
+FAILED tests/r2/test_synthworld_nulls.py::test_n0_has_no_planted_signal - Ass...
+1 failed, 12 passed, 1 skipped in 1279.24s (0:21:19)

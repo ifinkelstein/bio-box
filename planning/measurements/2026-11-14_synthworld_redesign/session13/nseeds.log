@@ -1,0 +1,70 @@
+.
+n0full seed 20261112: root presence KS D 0.0807 (bound 0.0728)
+n0full seed 20261113: root presence KS D 0.0273 (bound 0.0735)
+n0full seed 1001685937451957930: root presence KS D 0.0558 (bound 0.0750)
+n0full seed 6329801112132740259: root presence KS D 0.0504 (bound 0.0733)
+n0full seed 6036017085589997374: root presence KS D 0.0212 (bound 0.0732)
+n0full seed 4383110225690451409: root presence KS D 0.0413 (bound 0.0751)
+n0full seed 10975598825187167680: root presence KS D 0.0395 (bound 0.0737)
+n0full seed 5467273169533009601: root presence KS D 0.0474 (bound 0.0739)
+n0full seed 4734920099712499969: root presence KS D 0.0715 (bound 0.0737)
+n0full seed 1570278518166000558: root presence KS D 0.0367 (bound 0.0735)
+n0full seed 3830344756309592292: root presence KS D 0.0254 (bound 0.0737)
+n0full seed 9254619518473077140: root presence KS D 0.0362 (bound 0.0732)
+n0full seed 4701969716356831982: root presence KS D 0.0326 (bound 0.0772)
+n0full seed 14843108908847119356: root presence KS D 0.0260 (bound 0.0738)
+n0full seed 1758546030705738202: root presence KS D 0.0697 (bound 0.0763)
+n0full seed 1995372076782357328: root presence KS D 0.0243 (bound 0.0752)
+n0full seed 13514522956726874792: root presence KS D 0.0604 (bound 0.0753)
+n0full seed 12621855678475765395: root presence KS D 0.0287 (bound 0.0746)
+n0full seed 7689157899245528466: root presence KS D 0.0444 (bound 0.0732)
+n0full seed 13748185708697958051: root presence KS D 0.0392 (bound 0.0748)
+n0full seed 15390672246448918260: root presence KS D 0.0315 (bound 0.0746)
+n0full seed 11714203776604047358: root presence KS D 0.0448 (bound 0.0732)
+n0full: KS fails at 1 of 22 seeds {20261112: 0.0807}; allowed 2
+
+n0strict seed 20261112: root presence KS D 0.0420 (bound 0.0728)
+n0strict seed 20261113: root presence KS D 0.0394 (bound 0.0735)
+n0strict seed 1001685937451957930: root presence KS D 0.0406 (bound 0.0754)
+n0strict seed 6329801112132740259: root presence KS D 0.0418 (bound 0.0733)
+n0strict seed 6036017085589997374: root presence KS D 0.0553 (bound 0.0732)
+n0strict seed 4383110225690451409: root presence KS D 0.0462 (bound 0.0748)
+n0strict seed 10975598825187167680: root presence KS D 0.0661 (bound 0.0736)
+n0strict seed 5467273169533009601: root presence KS D 0.0645 (bound 0.0740)
+n0strict seed 4734920099712499969: root presence KS D 0.0594 (bound 0.0736)
+n0strict seed 1570278518166000558: root presence KS D 0.0319 (bound 0.0738)
+n0strict seed 3830344756309592292: root presence KS D 0.0363 (bound 0.0735)
+n0strict seed 9254619518473077140: root presence KS D 0.0477 (bound 0.0734)
+n0strict seed 4701969716356831982: root presence KS D 0.0212 (bound 0.0772)
+n0strict seed 14843108908847119356: root presence KS D 0.0319 (bound 0.0739)
+n0strict seed 1758546030705738202: root presence KS D 0.0304 (bound 0.0763)
+n0strict seed 1995372076782357328: root presence KS D 0.0465 (bound 0.0750)
+n0strict seed 13514522956726874792: root presence KS D 0.0433 (bound 0.0746)
+n0strict seed 12621855678475765395: root presence KS D 0.0346 (bound 0.0744)
+n0strict seed 7689157899245528466: root presence KS D 0.0287 (bound 0.0731)
+n0strict seed 13748185708697958051: root presence KS D 0.0447 (bound 0.0747)
+n0strict seed 15390672246448918260: root presence KS D 0.0496 (bound 0.0748)
+n0strict seed 11714203776604047358: root presence KS D 0.0316 (bound 0.0731)
+n0strict: KS fails at 0 of 22 seeds {}; allowed 2
+.
+seed 20261112: crown age 5.0000; chromosome mean 1639.3; planted share 0.0823; plasmid genomes {'pls0': 5, 'pls1': 15}, at most 2 per genome; realized transfers per member by level (median) [6.33, 11.5, 18.33]; module transfers 1328, into a holder 0; module genomes by cell {(0.3, 0.01): [6, 13, 24], (0.3, 0.03): [18, 19, 38], (0.3, 0.4): [22, 26, 38], (0.7, 0.01): [17, 30, 45], (0.7, 0.03): [18, 25, 45], (0.7, 0.4): [46, 46], (1.0, 0.01): [28, 28, 35], (1.0, 0.03): [34, 37, 40], (1.0, 0.4): [46, 46]}
+
+seed 20261113: crown age 5.0000; chromosome mean 1571.4; planted share 0.0701; plasmid genomes {'pls0': 11, 'pls1': 11}, at most 2 per genome; realized transfers per member by level (median) [4.0, 5.0, 10.33]; module transfers 769, into a holder 0; module genomes by cell {(0.3, 0.01): [8, 11, 12], (0.3, 0.03): [2, 35, 44], (0.3, 0.4): [37, 40, 42], (0.7, 0.01): [22, 34, 42], (0.7, 0.03): [3, 17, 25], (0.7, 0.4): [20, 45], (1.0, 0.01): [0, 24, 43], (1.0, 0.03): [11, 34, 40], (1.0, 0.4): [45, 46]}
+
+seed 1001685937451957930: crown age 5.0000; chromosome mean 1551.6; planted share 0.0570; plasmid genomes {'pls0': 30, 'pls1': 15}, at most 2 per genome; realized transfers per member by level (median) [2.33, 3.0, 7.5]; module transfers 564, into a holder 0; module genomes by cell {(0.3, 0.01): [0, 26, 32], (0.3, 0.03): [1, 19, 34], (0.3, 0.4): [0, 5, 43], (0.7, 0.01): [29, 34, 44], (0.7, 0.03): [4, 8, 45], (0.7, 0.4): [26, 44], (1.0, 0.01): [0, 11, 22], (1.0, 0.03): [0, 38, 41], (1.0, 0.4): [0, 46]}
+
+seed 6329801112132740259: crown age 5.0000; chromosome mean 1739.8; planted share 0.0783; plasmid genomes {'pls1': 6}, at most 1 per genome; realized transfers per member by level (median) [6.67, 10.0, 12.33]; module transfers 1248, into a holder 0; module genomes by cell {(0.3, 0.01): [9, 28, 35], (0.3, 0.03): [13, 32, 35], (0.3, 0.4): [19, 41, 45], (0.7, 0.01): [36, 37, 37], (0.7, 0.03): [16, 18, 37], (0.7, 0.4): [43, 45], (1.0, 0.01): [12, 15, 25], (1.0, 0.03): [33, 36, 41], (1.0, 0.4): [46, 46]}
+
+seed 6036017085589997374: crown age 5.0000; chromosome mean 1476.0; planted share 0.0717; plasmid genomes {'pls1': 34}, at most 1 per genome; realized transfers per member by level (median) [2.0, 7.4, 13.67]; module transfers 863, into a holder 0; module genomes by cell {(0.3, 0.01): [1, 19, 29], (0.3, 0.03): [26, 34, 38], (0.3, 0.4): [17, 39, 43], (0.7, 0.01): [3, 22, 31], (0.7, 0.03): [12, 29, 33], (0.7, 0.4): [34, 44], (1.0, 0.01): [3, 32, 39], (1.0, 0.03): [3, 10, 46], (1.0, 0.4): [46, 46]}
+
+seed 4383110225690451409: crown age 5.0000; chromosome mean 1661.6; planted share 0.0728; plasmid genomes {'pls0': 1, 'pls1': 22}, at most 2 per genome; realized transfers per member by level (median) [2.0, 5.5, 16.0]; module transfers 970, into a holder 0; module genomes by cell {(0.3, 0.01): [4, 15, 41], (0.3, 0.03): [30, 38, 41], (0.3, 0.4): [18, 20, 38], (0.7, 0.01): [29, 34, 45], (0.7, 0.03): [27, 40, 45], (0.7, 0.4): [45, 46], (1.0, 0.01): [14, 16, 36], (1.0, 0.03): [0, 8, 24], (1.0, 0.4): [46, 46]}
+.
+both plasmid types at 4 of 6 seeds; carriers per type {20261112: {'pls0': 5, 'pls1': 15}, 20261113: {'pls0': 11, 'pls1': 11}, 1001685937451957930: {'pls0': 30, 'pls1': 15}, 6329801112132740259: {'pls1': 6}, 6036017085589997374: {'pls1': 34}, 4383110225690451409: {'pls0': 1, 'pls1': 22}}; most plasmids in one genome {20261112: 2, 20261113: 2, 1001685937451957930: 2, 6329801112132740259: 1, 6036017085589997374: 1, 4383110225690451409: 2}
+..
+cells without a powered module: {}
+.
+realized transfers per member, pooled medians by level: [3.833333333333333, 7.45, 13.208333333333332]
+.....
+placements {'touched': 1323, 'whole': 687, 'dropped': 190, 'cut': 133}
+..
+13 passed in 914.37s (0:15:14)

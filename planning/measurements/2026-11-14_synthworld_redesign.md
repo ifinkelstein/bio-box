@@ -1235,3 +1235,260 @@ decision for `emit.py`/DEC-27, not this card's; the test is not changed.
   CLI, `test_run` columns) and §7 (realism against the golden genomes, tool parity), as the card lists.
 - The spec's plasmid paragraph (§2.1) and §5.1's backbone paragraph still give session 2's rates; the preset and
   DEC-44 supersede them (not edited here).
+
+
+## 16. Session 13: DEC-48, decoys by the fallback, one truth row per feature, re-pinned
+
+Card F-02, session 13 (branch `task/F-02-13`: session 12's `task/F-02-12` at `d431b18` with `plan/task-cards` at
+`9b80f51` merged, a clean merge). DEC-48 is the specification. Host and commands for every *measured* number in this
+section: wilkcomp02, 2026-11-16 07:03-10:18 CST (Monday; the build `c26-pl1-2` at 36 threads ran throughout, so this
+session used at most 4 threads), image `bio-box-test_faec1f4.sif`, units `f0213-*` at nice 19 with a CPU quota
+(`session13/scripts/run.sh`), one thread per process. Scans: `python scripts/stress/f0210_seed_scan.py scan
+/tmp/if2453/f0213/<dir> <label> --jobs 4 --seeds default,20261113,n2 [--n0] --set decoys.partner_modules=<P> --set
+decoys.transfer=<D>` (`session13/scripts/fit1.sh`, `fit2.sh`, `fit3.sh`; overrides per label in
+`session13/<label>.json`); the scan now also replays the decoy test (`_decoy_replay`: transfers into a partner carrier
+per decoy, the partner's mean share of the other lineages, decoy copies). Row summaries: `session13/scripts/summ13.py`.
+Full default worlds (S1-S5 and the two sequence-level tests of `test_synthworld_intergenic.py`): session 12's
+`session12/scripts/igr.py`.
+
+**Outcome: DEC-48 (1)'s premise does not hold, so its fallback is taken; DEC-48 (2) is in.** No placement of the decoy
+partners lets a low decoy rate give every decoy 3 transfers at every seed: below about 4.0 a decoy can die before it
+transfers at all, wherever its partner sits, and at every rate that holds at all 22 seeds decoys are 23 to 48 genes
+per genome over the seeds (36 to 47 at the default seed), not near single copy. The preset takes the smallest rate that holds with every other acceptance: partners
+5, 12, 14, 22, 23 (the middle member transfer level) at decoy transfer 6.0 (46.9 decoy genes per genome at the default
+seed; session 12: 40.8 at 8.0 with partners 1, 9, 11, 19, 22). The KS test of N0's root presence is judged over the 22
+seeds (new `tests/r2/test_synthworld_null_seeds.py`: at most 2 failing seeds per null world at alpha 0.01; measured 1
+and 0). Every digest changed once and is re-pinned. **One existing assertion fails under this preset and the session
+stops (16.6)**: the null module's positive control on flank contexts at its second seed, 20261113.
+
+### 16.1 Decoy partners at higher transfer rates (DEC-48 (1)): what was tried, 22 seeds each
+
+Module i sits at member transfer level (i // 3) % 3, so the top level (0.4) is modules 6, 7, 8, 15, 16, 17, 24 and the
+middle (0.03) 3, 4, 5, 12, 13, 14, 21, 22, 23; session 12's partners 1, 9, 11, 19 are at the lowest and 22 at the
+middle. Labels: `p2` partners 6, 7, 15, 16, 24 (the top level without 8 and 17, whose members are in 44-46 of 46
+genomes at session 12's preset); `l1a` 4, 12, 13, 21, 22 and `l1b` 5, 12, 14, 22, 23 (the middle level, patchier and
+more widespread); `mix` 6, 24, 12, 21, 22; `s12` session 12's partners; `n_` marks a scan with `--n0`; `_dec<D>` the
+decoy transfer rate. Columns as `summ13.py` prints them. Decoys: seeds whose every decoy has >= 3 transfers into a
+partner carrier, the fewest at any seed, the fewest at the default seed. Partner share: the decoy test's mean share of
+the partner's carriers among the other contemporaneous lineages (the test bounds it by 0.9 at the default seed), the
+largest over the seeds and at the default seed. Six seeds: the per-seed test's pooled level medians and steps (it asks
+>= 1.5x) and its most unpowered cells at one seed (it allows 1). All *measured*.
+
+| scan | chromosome mean (in band) | planted share % | copies per present member | exclusion breaches | both plasmid types (default) | some genome without a plasmid | a genome > 2 plasmids | all cells powered | levels pooled (increasing) | core >= 40 genomes: default, range (>= 100) | N1 unmatched at default | decoys >= 3 transfers: seeds, fewest, default | off partner | partner share: max, default (<= 0.9) | decoy genes per genome: range, default | decoy copies per present genome: range, max | N0 ratio (in [0.9, 1.1]) | root KS full / strict below bound; default D full, strict (bound); 20261113 | per-seed test's six seeds: pooled levels (steps >= 1.5), most unpowered cells |
+|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|
+| p2_dec0.4 | 1348-1666 (22/22) | 4.6-6.2 | 0.95-1.16 | 0 | 18/22 (yes) | 21/22 | 2 | 22/22 | 3.1, 5.7, 11.3 (21/22) | 144, 144-400 (22) | 0 | 10/22, 0, 18 | 0 | 0.995, 0.9876 | 2.9-9.9, 4.5 | 1.57-4.20, 10 | - | - | 3.75, 6.25, 11.00 (1.67x, 1.76x), 0 |
+| p2_dec0.8 | 1399-1667 (22/22) | 5.3-8.1 | 0.85-1.22 | 0 | 18/22 (yes) | 22/22 | 3 | 21/22 | 3.5, 5.7, 12.0 (22/22) | 168, 167-369 (22) | 0 | 15/22, 0, 230 | 0 | 0.991, 0.9899 | 12.3-36.7, 33.6 | 4.51-8.32, 10 | - | - | 4.20, 6.00, 11.75 (1.43x, 1.96x), 1 |
+| p2_dec1.2 | 1405-1851 (22/22) | 5.3-8.0 | 0.81-1.16 | 0 | 16/22 (yes) | 21/22 | 4 | 20/22 | 4.0, 5.3, 11.0 (14/22) | 157, 157-384 (22) | 0 | 16/22, 0, 396 | 0 | 0.991, 0.9814 | 18.4-46.8, 45.7 | 5.51-9.38, 10 | - | - | 4.00, 6.42, 12.17 (1.60x, 1.90x), 2 |
+| p2_dec2.0 | 1504-1792 (22/22) | 5.9-8.4 | 0.90-1.16 | 0 | 14/22 (yes) | 21/22 | 2 | 20/22 | 4.0, 5.5, 12.4 (17/22) | 147, 147-394 (22) | 0 | 20/22, 0, 384 | 0 | 0.988, 0.9618 | 33.9-48.7, 48.1 | 8.16-9.75, 10 | - | - | 4.00, 6.63, 13.16 (1.66x, 1.98x), 0 |
+| l1a_dec2.0 | 1438-1746 (22/22) | 5.7-8.7 | 0.80-1.12 | 0 | 17/22 (yes) | 22/22 | 1 | 20/22 | 4.0, 5.5, 11.0 (19/22) | 149, 149-419 (22) | 0 | 20/22, 0, 323 | 0 | 0.884, 0.8562 | 20.6-44.9, 43.7 | 5.95-8.98, 10 | - | - | 3.67, 6.50, 13.00 (1.77x, 2.00x), 1 |
+| n_l1a_dec3.0 | 1383-1773 (22/22) | 4.4-8.2 | 0.86-1.08 | 0 | 14/22 (yes) | 22/22 | 0 | 22/22 | 4.0, 5.8, 12.2 (17/22) | 178, 178-382 (22) | 0 | 19/22, 0, 222 | 0 | 0.895, 0.8581 | 14.8-46.3, 42.9 | 4.41-9.25, 10 | 0.881-1.058 (21/22) | 19/22 / 20/22; 0.082, 0.038 (0.0728); 0.0545, 0.0313 (0.0734) | 4.67, 6.00, 12.33 (1.29x, 2.06x), 0 |
+| l1a_dec4.0 | 1477-1825 (22/22) | 5.6-8.0 | 0.81-1.10 | 0 | 14/22 (yes) | 21/22 | 0 | 22/22 | 4.0, 5.4, 11.0 (17/22) | 182, 162-407 (22) | 0 | 21/22, 1, 187 | 0 | 0.890, 0.6915 | 23.3-45.1, 33.8 | 6.13-9.21, 10 | - | - | 3.92, 6.62, 9.59 (1.69x, 1.45x), 0 |
+| n_l1a_dec5.0 | 1412-1847 (22/22) | 6.0-8.2 | 0.95-1.32 | 0 | 15/22 (yes) | 22/22 | 0 | 21/22 | 4.0, 7.0, 12.0 (18/22) | 146, 146-411 (22) | 0 | 21/22, 1, 300 | 0 | 0.893, 0.8266 | 24.2-45.7, 44.1 | 6.30-9.18, 10 | 0.907-1.127 (21/22) | 20/22 / 21/22; 0.0495, 0.0303 (0.0728); 0.0326, 0.0368 (0.0733) | 4.00, 8.00, 12.50 (2.00x, 1.56x), 0 |
+| l1a_dec6.0 | 1416-1757 (22/22) | 5.7-8.1 | 0.90-1.13 | 0 | 12/22 (yes) | 22/22 | 0 | 19/22 | 4.0, 6.0, 12.0 (20/22) | 180, 180-406 (22) | 0 | 22/22, 10, 250 | 0 | 0.872, 0.8356 | 24.2-44.4, 41.3 | 5.54-8.95, 10 | - | - | 4.00, 6.90, 10.00 (1.73x, 1.45x), 1 |
+| l1b_dec2.0 | 1402-1765 (22/22) | 5.9-8.2 | 0.90-1.09 | 0 | 15/22 (no) | 22/22 | 1 | 21/22 | 4.0, 5.0, 11.4 (11/22) | 171, 171-409 (22) | 0 | 21/22, 1, 276 | 0 | 0.895, 0.677 | 27.7-44.8, 38.0 | 6.18-8.97, 10 | - | - | 4.80, 6.35, 12.00 (1.32x, 1.89x), 1 |
+| n_l1b_dec3.0 | 1412-1767 (22/22) | 5.9-8.1 | 0.87-1.10 | 0 | 13/22 (yes) | 22/22 | 2 | 21/22 | 3.7, 5.4, 11.0 (18/22) | 164, 141-431 (22) | 0 | 19/22, 0, 274 | 0 | 0.937, 0.7803 | 24.3-44.2, 38.2 | 6.97-9.40, 10 | 0.889-1.123 (20/22) | 18/22 / 21/22; 0.0608, 0.038 (0.0728); 0.0286, 0.0185 (0.0734) | 4.00, 6.00, 11.00 (1.50x, 1.83x), 0 |
+| n_l1b_dec4.0 | 1390-1771 (22/22) | 5.6-8.9 | 0.83-1.16 | 0 | 17/22 (yes) | 22/22 | 4 | 21/22 | 4.0, 5.8, 11.4 (19/22) | 182, 166-419 (22) | 0 | 22/22, 14, 288 | 0 | 0.899, 0.7794 | 25.5-46.8, 42.5 | 5.43-9.36, 10 | 0.877-1.073 (21/22) | 19/22 / 22/22; 0.106, 0.0522 (0.0728); 0.0317, 0.022 (0.0735) | 4.42, 5.83, 12.00 (1.32x, 2.06x), 1 |
+| n_l1b_dec5.0 | 1444-1796 (22/22) | 6.0-8.5 | 0.86-1.10 | 0 | 15/22 (yes) | 22/22 | 2 | 19/22 | 3.9, 5.8, 12.0 (16/22) | 177, 177-376 (22) | 0 | 22/22, 5, 326 | 0 | 0.895, 0.8348 | 23.4-46.4, 44.5 | 6.22-9.37, 10 | 0.911-1.087 (22/22) | 21/22 / 20/22; 0.08, 0.0339 (0.0728); 0.0257, 0.0294 (0.0734) | 4.00, 6.58, 14.00 (1.64x, 2.13x), 0 |
+| **n_l1b_dec6.0 (committed)** | 1419-1863 (22/22) | 5.7-8.7 | 0.86-1.24 | 0 | 16/22 (yes) | 20/22 | 2 | 22/22 | 3.7, 6.5, 12.4 (18/22) | 185, 171-441 (22) | 0 | 22/22, 9, 334 | 0 | 0.939, 0.8604 | 29.4-48.4, 46.9 | 6.71-9.67, 10 | 0.899-1.041 (21/22) | 21/22 / 22/22; 0.0807, 0.042 (0.0728); 0.0273, 0.0394 (0.0735) | 3.83, 7.45, 13.21 (1.94x, 1.77x), 0 |
+| mix_dec4.0 | 1403-1715 (22/22) | 5.5-8.9 | 0.81-1.13 | 0 | 15/22 (yes) | 22/22 | 1 | 20/22 | 4.0, 6.0, 12.0 (18/22) | 187, 159-404 (22) | 0 | 21/22, 0, 324 | 0 | 0.942, 0.8773 | 26.4-49.0, 42.7 | 6.19-9.81, 10 | - | - | 4.25, 6.12, 14.00 (1.44x, 2.29x), 1 |
+| s12_dec6.0 | 1408-1844 (22/22) | 5.5-8.9 | 0.98-1.13 | 0 | 13/22 (yes) | 22/22 | 0 | 22/22 | 4.0, 6.4, 13.0 (19/22) | 172, 172-439 (22) | 0 | 22/22, 12, 125 | 0 | 0.950, 0.7666 | 12.0-43.6, 36.3 | 3.14-8.73, 10 | - | - | 5.00, 7.46, 13.09 (1.49x, 1.75x), 0 |
+
+`l1b_dec4.0` and `l1b_dec6.0` without `--n0` give the same rows as `n_l1b_dec4.0` and `n_l1b_dec6.0` (the scan is
+deterministic). Session 12's rows for its partners at 0.4 to 16.0 are in §15.1 (9, 15, 15, 21, 22, 20 and 22 of 22
+seeds). The seeds at which a decoy stays below 3 are listed by `summ13.py` per scan.
+
+What the table shows:
+
+- **Partners at the top level** (`p2`): the partner's carriers are 0.96-0.99 of the other lineages at the default
+  seed at every rate (the decoy test asks <= 0.9: these modules are in nearly every genome, so the recipient rule no
+  longer steers), and decoys still fail at 2 to 12 seeds up to rate 2.0. The failures are deaths, not a missing
+  partner: in kept worlds of `p2_dec1.2` at four failing seeds (`session13/diag.log`, session 12's `decoys.py`) each
+  failing decoy has 0 or 1 transfers and 2 to 9 losses while its partner is held by more than one lineage throughout
+  (one partner falls to one lineage at t 6.03 on that tree's clock, after the decoy's last copy is gone).
+- **Partners at the middle level**: share 0.68-0.86 at the default seed; every decoy reaches 3 transfers at all 22
+  seeds from 4.0 (`l1b`) or 6.0 (`l1a`), at 19 to 21 seeds at 2.0 and 3.0. At every rate that holds, decoys have 23-48
+  genes per genome (5-10 copies per genome where present; `max_family_size` is 10).
+- **Low rates** (0.4, 0.8): decoys near single copy (4.5 genes per genome at 0.4) but every decoy reaches 3 transfers
+  at only 10 and 15 of 22 seeds, as session 12 found with its partners (9 and 15). A decoy's crown copies are lost at
+  0.4 per copy plus the background's loss runs; it wins that race at all 22 seeds only when its transfer rate is many
+  times its loss (*estimate*: with two copies at the crown, each dying before its first transfer with odds about
+  L / (L + T), a failure probability per decoy near 1 / (5 x 22) needs L / (L + T) near 0.1, so T near 9 L, about 4).
+
+So DEC-48 (1)'s premise is contradicted by measurement, and its fallback applies: keep the smallest rate that holds "3
+transfers at every seed" and judge the KS test over the 22 seeds. The smallest holding rate is 4.0 (`l1b`), but there
+the per-seed test's lower level step is 1.32x over its six seeds (`test_the_transfer_axis_gives_distinct_realized_levels`
+asks 1.5x) and N0-full's KS fails at 3 of 22 seeds (the bound of 16.2 allows 2). At 5.0 (`l1b`) everything in the scan
+holds, but the full default world has 196 equal-length cross-phylum IGR pairs (DEC-44 asks >= 200;
+`session13/igr_dec5.0.log`). At 6.0 (`l1b`) everything holds: 202 pairs, burst identity 0.948, the planted-motif test
+passes (1,149 of 1,167 instances have the unique best window, 4 accepted as another planted instance of the emission;
+`session13/igr_dec6.0.log`). Committed: `decoys.partner_modules` [5, 12, 14, 22, 23], `decoys.transfer` 6.0 (the
+preset's `why` fields carry these numbers).
+
+### 16.2 The KS test over the 22 seeds (DEC-48 (1)'s fallback)
+
+`tests/r2/test_synthworld_null_seeds.py::test_n0_root_presence_ks_fails_at_no_more_seeds_than_its_level_allows`
+builds the signal, N0-full and N0-strict backbones at the default seed, 20261113 and the 20 N2 seeds (S1-S2, child
+processes) and counts, per null world, the seeds at which the two-sample KS statistic of the root families'
+genomes-present counts reaches the alpha = 0.01 critical value 1.628 sqrt((n + m) / (n m)) (the statistic is a loop in
+the test). Bound: at alpha = 0.01 a world of the same process fails with probability at most 0.01, so the count over
+22 independent seeds is at most Binomial(22, 0.01); the smallest k with P(X > k) <= 0.01 is 2 (*derived*: P(X >= 2) =
+1 - 0.99^22 - 22 x 0.01 x 0.99^21 = 0.0202, P(X >= 3) = 0.0013; `allowed_failures`, tested on its own). Measured on the
+committed preset: N0-full fails at 1 of 22 seeds (the default seed, D 0.0807 against 0.0728), N0-strict at 0
+(`session13/nseeds.log`; the scan `n_l1b_dec6.0` gives the same D at every seed). Over the scans of 16.1 with `--n0`
+the count is 1 to 4 for N0-full and 0 to 2 for N0-strict. Session 12's caveat stands: the 1,000 root families of one
+world share one tree, so the per-seed level is not exactly 0.01.
+
+Migrated, as the fallback asks (no other assertion changed):
+
+- `tests/r2/test_synthworld_nulls.py::test_n0_keeps_the_background_process_in_distribution`. Before: per null world at
+  the module's seed, `assert d < 1.628 * math.sqrt((n + m) / (n * m))`. After: D and whether it is below that bound
+  are recorded (`record_property`) and printed; the bound is asserted over the 22 seeds by the test above. Unchanged:
+  the size ratio in [0.9, 1.1], the + strand share, the tight share, GC, and every other test of the module.
+
+### 16.3 One truth row per feature_uid (DEC-48 (2))
+
+`emit.merge_feature_rows`: truth_gene rows that share a `feature_uid` become one row at the place of the first, naming
+every gene in `gene_id` and `copy_label` (`;`-separated, sorted); a column on which the genes differ lists their values
+`|`-separated in that order, a column on which they agree keeps its value; a feature_uid of one gene keeps its row
+unchanged. The GFF writes one line per row and accession, its reserved characters percent-escaped. The assembly step
+is not changed (identical contigs are neither joined nor dropped). In the committed default world genome g000 has two
+identical contigs (`contig_uid` a3afbcddf46f3888dd15d52ae5fadc51), and two rows name two genes each:
+`n31_g240753;n31_g240757` (F000036; the protein_uid differs, `18d649c4...|18a7122a...`) and `n31_g240754;n31_g240758`
+(F000402) (*measured*, `world-final/emit/truth/truth_gene.tsv`; `emit.json` count `genes_rows_naming_several_genes` 2).
+
+- **Test that failed first**: `tests/r1/test_synthworld_emit_units.py::test_rows_sharing_a_feature_uid_become_one_row_naming_every_gene`
+  (expected rows written out by hand) on the tree before `emit.py` changed: `AttributeError: module
+  'biobox.synthworld.emit' has no attribute 'merge_feature_rows'`, "1 failed, 4 deselected in 2.00s"
+  (`session13/first_r1.log`). Session 12's failure of the r2 test on its world is in §15.6 (B).
+- Migrated: `tests/r2/test_synthworld_emit.py::test_every_truth_gene_reads_its_s8_gene_on_the_emitted_contig`.
+  Before: per row, `g = g8[r["gene_id"]]` and the checks of that one gene (status, bases, synonymous changes on a near
+  duplicate, protein against `r["protein_uid"]`, cut pieces), `n[occurrence_status] += 1` per row, and "every emitted
+  S9 piece is a row" (`n["assembly_whole"] + n["assembly_cut"] == em`). After: per row, `copy_label == gene_id` and the
+  named genes sorted and distinct, then the same checks for each named gene against its own S8 gene and its own
+  protein_uid (the k-th of a `|` list when the genes differ), with `n[occurrence_status]` counted per named gene, so
+  "every emitted S9 piece is a gene named by a row". Unchanged: `feature_uid` recomputed, each feature_uid once,
+  origin spanning, `stop_bp`, the phage rows.
+
+### 16.4 Re-pinned digests and the default world before and after
+
+Every stage digest of the default world (seed 20261112) changed once, because the decoys are drawn in S1-S2 and
+every later stage reads the backbone (*measured*, `python scripts/stress/f0210_world_summary.py build
+/tmp/if2453/f0213/world-final 20261112` on the committed preset, then `summary`; `session13/default_world_summary_after13.json`).
+Pinned in `tests/r2/test_synthworld_emit.py` (DIGESTS, EMIT_DIGEST, WORLD_DIGEST), `test_synthworld_nulls.py` (SIGNAL,
+SIGNAL_WORLD), `test_synthworld_assembly.py` (DIGESTS, ASSEMBLY_DIGEST) and `test_synthworld_fusions.py` (S6_DIGEST):
+
+| stage | session 12 (`d431b18`) | session 13 |
+|---|---|---|
+| backbone | f65094aa0fb1c9bed885bc6bc2f4e825 | 1dcfb678a14cb4d02690c221bf92f92f |
+| sequences | e9bf8833a898541f1bc9606c97d55463 | 009e9e9a9c23166fc5ad33a2da0aee4d |
+| replicons | 1930863ca47dcc67a5fde9deb1d12f84 | f0248dee87c7579be4bcb3864b9861b1 |
+| mobile | 1596365eedc377773ba85ef5aa7ec593 | 972a41e258653d9fa6fec03cd1fae0c0 |
+| fusions | d2f80ac770d8cd78346467aed2efc9c7 | 988ace1ee87b5ae9defb8c3069ce0cb6 |
+| assembly | 03b3e1b97dad03a8b2b7d78d755eebaf | 275474d48ff21e1ae46bc3f0210fb778 |
+| sources | 5366fca6f2796b3956265d248b6529d9 | 8981820cd79a6755b3d829c55de754d3 |
+| emit | 267f3a0200ddc3f7639e3c2fd6ffc134 | c1307f74a1de0ff2d4221760726b9831 |
+| world | 684e539e11bd1ecbc5d3df6fe6405e7f | 77c32062c634c2f5dc799697195d003e |
+
+The default world (S1-S11 at 20261112; `summary`; session 12: `session12/default_world_summary_after12.json`; all
+*measured*; S1-S11 took 218.7 s in one process):
+
+| quantity | session 12 | session 13 |
+|---|---|---|
+| chromosome genes mean (min-max) | 1570.5 (1321-1801) | 1639.3 (1279-1834) |
+| genes per genome mean (min-max) | 1663.6 (1432-1921) | 1665.4 (1399-1874) |
+| genes per genome: background / planted / profile-only / decoy / hub / vehicle / plasmid | 1254.8 / 77.6 / 8.2 / 40.8 / 49.3 / 139.9 / 93.0 | 1308.8 / 80.6 / 9.5 / 46.9 / 49.3 / 144.0 / 26.1 |
+| originated families with extant copies | 1415 | 1559 |
+| genomes carrying pls0, pls1 | 35, 2 | 5, 15 |
+| truth_gene rows naming several genes | (2 rows with one feature_uid: the test failed) | 2 |
+
+### 16.5 The committed preset over the 22 seeds
+
+`session13/n_l1b_dec6.0.tsv`, `_grid.tsv` (*measured*, the scan above with partners 5, 12, 14, 22, 23 and decoy
+transfer 6.0, `--n0`; the committed YAML sets exactly these two values on session 12's preset; table by
+`session13/scripts/perseed.py`, formatting only). Ranges over the 22 seeds: chromosome mean 1,419-1,863 (22 of 22
+inside 1,050-1,950); planted + profile-only + decoy share 5.7-8.7% (bound 15.2%); copies per present member
+0.86-1.24; module transfers into a holder 0 at every seed; every decoy >= 3 transfers into a partner carrier at 22 of
+22 (fewest 9), none off the partner; the partner share 0.64-0.94 (above 0.9 at 5 seeds; the test asserts it at the
+default seed, 0.860); decoy genes per genome 29.4-48.4 (46.9 at the default seed), 6.7-9.7 copies per genome where
+present; both plasmid types at 16 of 22 (the default among them), a genome without a plasmid at 20, more than 2 in a
+genome at 2 (not the default); N0-full size ratio 0.899-1.041 (in [0.9, 1.1] at 21 of 22; 0.899 at
+13514522956726874792); root-presence KS above its bound at 1 of 22 (N0-full) and 0 (N0-strict); all nine cells powered
+at 22 of 22; level medians strictly increasing at 18 of 22; root families in >= 40 genomes 171-441.
+
+| seed | crown age (MRCA) / from first speciation | genes per genome mean (min-max) | chromosome mean (min-max) | planted / profile-only / decoy / vehicle / hub / plasmid / background share % | plasmid genomes pls0, pls1 (0/1/2 per genome) | modules all members in >= 9 genomes | copies per present member | realized transfers per member, level medians | N0 background size ratio, r | N0 root KS D full, strict (bound) | module transfers into a holder | decoy transfers into a partner carrier, per decoy | partner share | decoy genes per genome | decoy copies per present genome (max) |
+|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|
+| 20261112 | 5.0 / 5.0 | 1665.4 (1399-1874) | 1639.3 (1279-1834) | 4.8 / 0.6 / 2.8 / 8.6 / 3.0 / 1.6 / 78.6 | 5, 15 (28/16/2) | 24 | 1.099 | 6.33, 11.5, 18.33 | 0.9076, 0.5787 | 0.0807, 0.042 (0.0728) | 0 of 1328 | 398/437/422/428/334 | 0.8604 | 46.9 | 9.387 (10) |
+| 20261113 | 5.0 / 8.4349 | 1609.7 (1432-1854) | 1571.4 (1386-1735) | 4.1 / 0.8 / 2.1 / 10.5 / 3.1 / 2.4 / 77.0 | 11, 11 (29/12/5) | 21 | 1.007 | 4.0, 5.0, 10.33 | 0.9622, 0.7011 | 0.0273, 0.0394 (0.0735) | 0 of 769 | 284/89/149/247/337 | 0.7516 | 33.3 | 6.809 (10) |
+| 1001685937451957930 | 5.0 / 5.0 | 1642.9 (1335-1790) | 1551.6 (1335-1681) | 3.3 / 0.6 / 1.8 / 6.7 / 3.0 / 5.6 / 79.0 | 30, 15 (16/15/15) | 16 | 0.869 | 2.33, 3.0, 7.5 | 0.9762, 0.656 | 0.0558, 0.0406 (0.075) | 0 of 564 | 260/264/9/68/213 | 0.8312 | 30.1 | 7.657 (10) |
+| 6329801112132740259 | 5.0 / 5.1363 | 1745.0 (1358-1948) | 1739.8 (1358-1948) | 4.6 / 0.6 / 2.6 / 8.1 / 2.8 / 0.3 / 80.9 | 0, 6 (40/6/0) | 25 | 1.081 | 6.67, 10.0, 12.33 | 0.9979, 0.8886 | 0.0504, 0.0418 (0.0733) | 0 of 1248 | 352/433/414/388/419 | 0.8509 | 45.9 | 9.254 (10) |
+| 6036017085589997374 | 5.0 / 5.0 | 1505.6 (1275-1702) | 1476.0 (1275-1665) | 4.3 / 0.6 / 2.3 / 4.3 / 3.2 / 2.0 / 83.4 | 0, 34 (12/34/0) | 21 | 1.044 | 2.0, 7.4, 13.67 | 0.9671, 0.2216 | 0.0212, 0.0553 (0.0732) | 0 of 863 | 208/343/414/359/106 | 0.8315 | 34.2 | 7.87 (10) |
+| 4383110225690451409 | 5.0 / 5.0 | 1683.3 (1494-1851) | 1661.6 (1494-1851) | 4.8 / 0.6 / 2.0 / 10.0 / 2.9 / 1.3 / 78.5 | 1, 22 (24/21/1) | 22 | 1.073 | 2.0, 5.5, 16.0 | 1.028, 0.3915 | 0.0413, 0.0462 (0.0751) | 0 of 970 | 287/191/139/276/48 | 0.751 | 33.0 | 6.712 (10) |
+| 10975598825187167680 | 5.0 / 5.0 | 1593.2 (1387-1900) | 1551.4 (1376-1804) | 3.7 / 0.5 / 2.0 / 8.7 / 3.1 / 2.6 / 79.5 | 12, 12 (30/9/6) | 21 | 0.948 | 2.0, 3.5, 7.25 | 0.9441, 0.3525 | 0.0395, 0.0661 (0.0737) | 0 of 495 | 246/252/37/277/15 | 0.9236 | 31.5 | 8.0 (10) |
+| 5467273169533009601 | 5.0 / 5.0303 | 1422.0 (1168-1643) | 1419.4 (1168-1575) | 4.0 / 0.6 / 2.8 / 4.1 / 3.5 / 0.2 / 84.9 | 1, 0 (45/1/0) | 21 | 0.968 | 3.0, 3.0, 12.0 | 0.9882, 0.5951 | 0.0474, 0.0645 (0.0739) | 0 of 580 | 273/204/189/312/285 | 0.8105 | 39.5 | 8.382 (10) |
+| 4734920099712499969 | 5.0 / 5.0 | 1617.5 (1301-1877) | 1524.5 (1141-1717) | 4.7 / 1.0 / 2.9 / 5.5 / 3.0 / 5.8 / 77.1 | 25, 32 (9/17/20) | 19 | 1.07 | 3.0, 9.0, 9.83 | 1.0412, 0.8313 | 0.0715, 0.0594 (0.0737) | 0 of 885 | 291/238/295/302/303 | 0.8669 | 47.0 | 9.478 (10) |
+| 1570278518166000558 | 5.0 / 6.1797 | 1836.4 (1446-2111) | 1792.9 (1326-1991) | 4.1 / 0.5 / 2.2 / 9.7 / 2.7 / 2.4 / 78.5 | 14, 8 (26/18/2) | 23 | 1.09 | 5.5, 5.67, 13.0 | 1.0236, 0.5679 | 0.0367, 0.0319 (0.0735) | 0 of 988 | 284/315/271/185/369 | 0.8257 | 40.3 | 8.132 (10) |
+| 3830344756309592292 | 5.0 / 5.0 | 1655.7 (1398-1854) | 1610.5 (1398-1817) | 4.2 / 0.6 / 2.4 / 5.9 / 3.0 / 2.7 / 81.1 | 12, 16 (24/16/6) | 22 | 1.037 | 3.83, 7.0, 13.0 | 0.9927, 0.8198 | 0.0254, 0.0363 (0.0737) | 0 of 853 | 349/344/170/158/362 | 0.8335 | 40.0 | 8.359 (10) |
+| 9254619518473077140 | 5.0 / 7.6574 | 1744.1 (1458-1927) | 1667.6 (1419-1807) | 4.2 / 0.5 / 2.7 / 9.6 / 2.8 / 4.4 / 75.7 | 29, 1 (18/26/2) | 24 | 1.042 | 7.0, 11.6, 17.67 | 0.9568, 0.7617 | 0.0362, 0.0477 (0.0732) | 0 of 1150 | 413/285/371/394/388 | 0.8534 | 47.2 | 9.439 (10) |
+| 4701969716356831982 | 5.0 / 5.0874 | 1559.7 (1398-1701) | 1446.6 (1326-1550) | 4.7 / 0.5 / 3.0 / 2.1 / 3.2 / 7.2 / 79.3 | 32, 34 (0/26/20) | 22 | 0.99 | 3.0, 4.17, 9.83 | 0.9478, 0.1929 | 0.0326, 0.0212 (0.0772) | 0 of 595 | 211/228/244/280/210 | 0.9107 | 46.3 | 9.261 (10) |
+| 14843108908847119356 | 5.0 / 5.0 | 1866.0 (1681-2080) | 1781.6 (1542-1940) | 4.1 / 0.5 / 1.7 / 10.0 / 2.6 / 4.5 / 76.6 | 22, 31 (5/31/8) | 23 | 1.056 | 7.0, 9.67, 16.5 | 1.0016, 0.6265 | 0.026, 0.0319 (0.0738) | 0 of 1159 | 174/260/156/363/238 | 0.6435 | 31.1 | 6.918 (10) |
+| 1758546030705738202 | 5.0 / 5.0 | 1896.2 (1122-2099) | 1863.2 (1082-2071) | 4.8 / 0.4 / 2.5 / 8.3 / 2.6 / 1.7 / 79.6 | 0, 38 (8/38/0) | 22 | 1.238 | 1.2, 3.67, 8.0 | 0.9319, 0.9651 | 0.0697, 0.0304 (0.0763) | 0 of 651 | 163/179/212/202/168 | 0.9391 | 48.4 | 9.674 (10) |
+| 1995372076782357328 | 5.0 / 5.0 | 1696.3 (1443-1938) | 1585.8 (1403-1874) | 4.6 / 0.6 / 2.4 / 6.1 / 2.9 / 6.5 / 77.0 | 27, 46 (0/19/27) | 24 | 1.05 | 3.5, 8.6, 13.5 | 0.9787, 0.9208 | 0.0243, 0.0465 (0.0752) | 0 of 870 | 247/337/322/305/137 | 0.8566 | 40.1 | 8.344 (10) |
+| 13514522956726874792 | 5.0 / 9.4884 | 1715.5 (1437-1863) | 1605.9 (1401-1743) | 4.5 / 0.4 / 2.4 / 5.4 / 2.9 / 6.4 / 78.0 | 42, 0 (5/40/1) | 19 | 1.171 | 3.0, 9.0, 10.0 | 0.8989, -0.0135 | 0.0604, 0.0433 (0.0753) | 0 of 890 | 324/271/66/265/344 | 0.9051 | 41.8 | 8.467 (10) |
+| 12621855678475765395 | 5.0 / 7.4428 | 1689.4 (1503-1825) | 1623.3 (1463-1738) | 4.1 / 0.5 / 2.0 / 8.0 / 2.9 / 3.9 / 78.6 | 17, 25 (14/22/10) | 23 | 0.985 | 4.0, 4.0, 12.67 | 0.9728, -0.0094 | 0.0287, 0.0346 (0.0746) | 0 of 694 | 240/10/281/170/266 | 0.8352 | 33.2 | 8.293 (10) |
+| 7689157899245528466 | 5.0 / 5.0 | 1551.4 (1254-1785) | 1500.1 (1254-1703) | 4.8 / 0.4 / 1.9 / 6.6 / 3.2 / 3.3 / 80.0 | 13, 20 (19/21/6) | 21 | 1.117 | 7.0, 5.67, 17.0 | 0.954, 0.7659 | 0.0444, 0.0287 (0.0732) | 0 of 1106 | 256/131/382/146/471 | 0.7531 | 29.4 | 7.872 (10) |
+| 13748185708697958051 | 5.0 / 5.0 | 1492.2 (1280-1718) | 1468.8 (1240-1718) | 5.1 / 0.6 / 3.0 / 2.4 / 3.3 / 1.6 / 84.0 | 0, 27 (19/27/0) | 23 | 0.99 | 3.2, 8.17, 13.5 | 0.9789, 0.8445 | 0.0392, 0.0447 (0.0748) | 0 of 903 | 236/324/369/292/332 | 0.8394 | 44.2 | 8.835 (10) |
+| 15390672246448918260 | 5.0 / 6.4551 | 1686.4 (1463-1848) | 1569.9 (1394-1728) | 3.6 / 0.8 / 2.3 / 6.2 / 2.4 / 6.9 / 77.9 | 42, 8 (4/34/8) | 17 | 0.864 | 4.0, 4.0, 18.0 | 0.9885, 0.7352 | 0.0315, 0.0496 (0.0746) | 0 of 944 | 329/351/94/320/311 | 0.8339 | 38.6 | 8.343 (10) |
+| 11714203776604047358 | 5.0 / 5.0518 | 1583.6 (1244-1869) | 1501.9 (1204-1666) | 4.9 / 0.4 / 3.0 / 3.1 / 3.1 / 5.2 / 80.3 | 30, 4 (16/26/4) | 21 | 1.065 | 7.5, 8.83, 12.33 | 0.9317, 0.2167 | 0.0448, 0.0316 (0.0732) | 0 of 987 | 354/400/397/390/366 | 0.915 | 47.6 | 9.526 (10) |
+
+Realized strength grid: `session13/n_l1b_dec6.0_grid.tsv` (pooled level medians 3.7, 6.5, 12.4; over the per-seed
+test's six seeds 3.83, 7.45, 13.21).
+
+### 16.6 Test runs on the committed tree
+
+All *measured*, wilkcomp02, 2026-11-16, image `bio-box-test_faec1f4.sif`, units started by `session13/scripts/run.sh`
+running `session13/scripts/pytest.sh` (`python -m pytest -q -s` on the mirrored tree, CPU quota in parentheses):
+
+- `tests/r1/test_synthworld_emit_units.py`, `tests/r2/test_synthworld_preset_seeds.py`,
+  `tests/r2/test_synthworld_null_seeds.py` (3 CPUs): "13 passed in 914.37s" (`session13/nseeds.log`). The per-seed
+  test's pooled levels 3.83, 7.45, 13.21; no cell without a powered module; KS over the 22 seeds: N0-full fails at 1
+  (20261112, D 0.0807), N0-strict at 0, allowed 2.
+- The null module at the default seed (2 CPUs): "14 passed in 1319.81s" (`session13/nulls-dec6.0-20261112.log`):
+  size ratios 0.908 (N0-full) and 0.930 (N0-strict); KS D 0.0807 (above its bound 0.0728, recorded, judged over the
+  22 seeds) and 0.0420; positive control: planted pairs above tau 45 of 75 (genomes) and 20 of 75 (contexts) against
+  26 of 25,907 background pairs; N1 42 of 100 members relabeled.
+- **The null module at 20261113 (2 CPUs): "1 failed, 12 passed, 1 skipped in 1279.24s"**
+  (`session13/nulls-dec6.0-20261113.log`). The failure is `test_n0_has_no_planted_signal`, its positive control in the
+  signal world (not a null assertion): on the flank-context measure only 2 of the 75 planted pairs exceed tau, against
+  17 of 19,299 background pairs, one-sided p 0.0025 where the test asks < 1e-6 (`AssertionError: ('contexts', 2,
+  17)`). On the genome measure the control passes. Session 12's world at this seed had 7 of 75 planted pairs above tau
+  on contexts (passing, `session12/nulls-20261113.log`); the default seed has 20 of 75 now and 20 of 80 in session 12.
+  The decoys play no part in this statistic (planted pairs, flank contexts on emitted contigs); it is this seed's new
+  draw of the modules' flanks, the third draw-dependent property after the IGR count (5.0) and the level step (4.0).
+
+**Stop (AGENTS §9, the brief's two-attempt rule).** The fallback's committed rate (6.0) misses an existing assertion
+at the null module's second seed, as 5.0 missed DEC-44's IGR count at the default seed. Every decoy setting redraws
+the whole world, so each further rate is another draw of every per-seed property; no test was changed to get
+through. A third candidate scan (`session13/scripts/fit4.sh`: `l1b` at 7.0 and 8.0, `l1a` at 7.0, with `--n0`) was
+started after the failure (unit `f0213-fit4`; its tables land in `/tmp/if2453/f0213/scan4` on the pod, not read
+here); a fourth scan unit beside it was refused by the session's permission check, and the session stopped there.
+The preset on the branch is the 6.0 candidate with its digests re-pinned, so the branch fails
+exactly this one test, at 20261113, which the CI does not run (it runs the null module at the default seed).
+
+### 16.7 What remains of card F-02
+
+- The failure of 16.6, for the PI: the null module's positive control (`test_n0_has_no_planted_signal`, contexts at
+  20261113) under decoy rate 6.0. Options: (i) the next rate up (7.0 or 8.0 with these partners, or `l1a` at 7.0),
+  each again checked over the 22 seeds, the default world's IGR count and both null seeds; (ii) a positive control
+  that does not hang on one seed's draw of the module flanks (as DEC-48 judged the KS over the 22 seeds); (iii) running
+  the null module's second seed elsewhere than 20261113. Until then the branch is not mergeable on the pod's
+  two-seed acceptance.
+- Decoys are a multi-copy family (46.9 genes per genome at the default seed) at every rate that holds at all seeds; if
+  near-single-copy decoys matter for a statistic, that needs a rule the preset does not have (for example a decoy kept
+  out of lineages that already hold it, which ZOMBI2 0.54.0 cannot combine with the partner rule in one family), a PI
+  decision.
+- The decoy test's partner share (<= 0.9) is asserted at the default seed only; over the 22 seeds the committed preset
+  reaches 0.939 at one seed (`n_l1b_dec6.0`).
+- DEC-39's detectability against divergence in the sequence model; the §4.3 ablation worlds and the 20 N2 worlds;
+  §6.2 to §6.4 and §7, as the card lists.
+- The spec's plasmid paragraph (§2.1) and §5.1's backbone and decoy values still give session 2's rates; the preset,
+  DEC-44 and DEC-48 supersede them (not edited here).

@@ -1,0 +1,34 @@
+.
+world digests: signal 77c32062c634c2f5dc799697195d003e; n0full 9021132239b793e64ca88264f37df5dd; n0strict e9961652e246df6a57e0b0d8a0760aa3; n1 2bb29fd96819fb5eebca66af65db6341; n0full_s2 8c1cb1f99c2d33b8191c774d7359c53f; n0strict_s2 9a1a5b00179b8ff67f9e4211d1dec582; n1_s2 9ae176aa13f6f3ff4ece8035ff96c967
+..
+n0full: identical species tree, taxonomy, lineage tables, phage set, prophage clades, codes, classes, call-error plan, sources, contamination and duplicate roles, labels; 232 shared background co-directional family pairs, all of one class in both worlds
+
+n0strict: identical species tree, taxonomy, lineage tables, phage set, prophage clades, codes, classes, call-error plan, sources, contamination and duplicate roles, labels; 216 shared background co-directional family pairs, all of one class in both worlds
+.
+n0full: background genes per genome 1188.6 vs signal 1308.8 (geometric mean ratio 0.908, r 0.579); root presence KS D 0.0807 (alpha 0.01 bound 0.0728); + strand 0.515; tight share 0.5414 over 10306 distinct pairs (p_tight 0.55); GC |diff| mean 0.00162 max 0.00510
+
+n0strict: background genes per genome 1214.5 vs signal 1308.8 (geometric mean ratio 0.930, r 0.456); root presence KS D 0.0420 (alpha 0.01 bound 0.0728); + strand 0.517; tight share 0.5532 over 10791 distinct pairs (p_tight 0.55); GC |diff| mean 0.00195 max 0.00673
+.
+n0full genomes: tau 23.094; signal planted 45/75, signal background 26/25907, null 18/21570 above it (one-sided p 0.774)
+
+n0full contexts: tau 17.094; signal planted 20/75, signal background 26/25907, null 24/21570 above it (one-sided p 0.41)
+
+n0strict genomes: tau 23.094; signal planted 45/75, signal background 26/25907, null 14/21315 above it (one-sided p 0.927)
+
+n0strict contexts: tau 17.094; signal planted 20/75, signal background 26/25907, null 18/21315 above it (one-sided p 0.762)
+....
+n0full: naive co-occurrence over 2038 families, 2075703 pairs: lambda 0.114, share at p < 1e-3 0.0270 (27.0x the 0.001 a calibrated test gives)
+
+n0strict: naive co-occurrence over 2036 families, 2071630 pairs: lambda 0.139, share at p < 1e-3 0.0255 (25.5x the 0.001 a calibrated test gives)
+..
+n1: 42 of 100 module members relabeled (15 of 25 modules), 86 evaluated label pairs; unmatched module families' transfers [2, 2, 2, 2, 4, 4, 4, 4, 4, 4, 4, 4, 4, 5, 5, 5, 5, 6, 6, 6, 6, 7, 7, 7, 7, 7, 7, 7, 8, 8, 8, 8, 8, 8, 9, 9, 9, 9, 10, 10, 10, 12, 12, 12, 13, 13, 13, 13, 13, 13, 14, 15, 15, 15, 15, 15, 30, 38]
+
+n1_s2: 42 of 100 module members relabeled (15 of 25 modules), 86 evaluated label pairs; unmatched module families' transfers [2, 2, 2, 2, 4, 4, 4, 4, 4, 4, 4, 4, 4, 5, 5, 5, 5, 6, 6, 6, 6, 7, 7, 7, 7, 7, 7, 7, 8, 8, 8, 8, 8, 8, 9, 9, 9, 9, 10, 10, 10, 12, 12, 12, 13, 13, 13, 13, 13, 13, 14, 15, 15, 15, 15, 15, 30, 38]
+.
+n1: 86 evaluated label pairs adjacent in 0.174 genomes on average, matched random pairs 0.182, one-sided p 0.449; signal module pairs 11.72 against 0.165 (p 0.0005)
+
+n1_s2: 86 evaluated label pairs adjacent in 0.267 genomes on average, matched random pairs 0.181, one-sided p 0.210; signal module pairs 11.72 against 0.165 (p 0.0005)
+.
+signal 1190.7 s, VmHWM 360 MB; n0full 1136.81 s, VmHWM 313 MB; n0full_b 1121.21 s, VmHWM 313 MB; n0full_s2 1131.54 s, VmHWM 298 MB; n0strict 1103.37 s, VmHWM 289 MB; n0strict_b 1046.8 s, VmHWM 289 MB; n0strict_s2 1078.4 s, VmHWM 282 MB; n1 43.96 s, VmHWM 163 MB; n1_b 42.31 s, VmHWM 161 MB; n1_s2 42.89 s, VmHWM 158 MB; fixture wall 1239.8 s with 7 at once
+.
+14 passed in 1319.81s (0:21:59)

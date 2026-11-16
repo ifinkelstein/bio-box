@@ -1,0 +1,14 @@
+{"out": "/tmp/if2453/f0213/igr/final", "seed": 20261112, "sets": []}
+built S1-S5 in 154.2 s
+
+orthologous IGR identity: burst 0.945 over 1138, across phyla 0.650 over 196
+test_orthologous_igrs_are_near_identical_in_close_relatives: FAIL
+Traceback (most recent call last):
+  File "/tmp/if2453/f0213/tree-b/planning/measurements/2026-11-14_synthworld_redesign/session12/scripts/igr.py", line 46, in <module>
+    getattr(tsi, name)(world, tables)
+    ~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^
+AssertionError
+
+
+1115 motif instances in 20 links: the truth window is the unique best scan window for 1109; divergence from the emission median 0.040, max 0.455, 27 above 0.3; best windows another planted instance of the same emission for 0
+test_every_planted_motif_is_recovered_at_its_truth_coordinates_by_an_independent_scan: PASS

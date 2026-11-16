@@ -1,0 +1,24 @@
+{"label": "p2_dec1.2_keep", "seed": 13514522956726874792, "seconds": 31.8, "crown_age": 9.4884, "chrom_mean": 1580.0, "share_planted": 0.0541, "breaks": "chrom_min>1100;chrom_max<3600;plasmid_type_lost;modules_below_9_genomes:7;transfer_levels_not_distinct"}
+{"label": "p2_dec1.2_keep", "seed": 15390672246448918260, "seconds": 37.0, "crown_age": 6.4551, "chrom_mean": 1712.7, "share_planted": 0.0374, "breaks": "chrom_min>1100;chrom_max<3600;modules_below_9_genomes:3"}
+{"label": "p2_dec1.2_keep", "seed": 9254619518473077140, "seconds": 38.2, "crown_age": 7.6574, "chrom_mean": 1517.8, "share_planted": 0.0478, "breaks": "chrom_min>1100;chrom_max<3600;more_than_2_plasmids;modules_below_9_genomes:1"}
+{"label": "p2_dec1.2_keep", "seed": 7689157899245528466, "seconds": 49.3, "crown_age": 5.0, "chrom_mean": 1574.1, "share_planted": 0.0468, "breaks": "chrom_min>1100;chrom_max<3600;modules_below_9_genomes:2;transfer_levels_not_distinct"}
+13514522956726874792 dec0 transfers 0 losses 2 extinct at alive partner 1022 held by <= 1 lineage from never
+13514522956726874792 dec1 transfers 300 losses 237 extinct at alive partner 1025 held by <= 1 lineage from never
+13514522956726874792 dec2 transfers 0 losses 9 extinct at alive partner 1060 held by <= 1 lineage from 6.032
+13514522956726874792 dec3 transfers 309 losses 175 extinct at alive partner 1062 held by <= 1 lineage from never
+13514522956726874792 dec4 transfers 66 losses 41 extinct at alive partner 1094 held by <= 1 lineage from never
+15390672246448918260 dec0 transfers 348 losses 268 extinct at alive partner 1022 held by <= 1 lineage from never
+15390672246448918260 dec1 transfers 324 losses 271 extinct at alive partner 1025 held by <= 1 lineage from never
+15390672246448918260 dec2 transfers 1 losses 3 extinct at alive partner 1060 held by <= 1 lineage from never
+15390672246448918260 dec3 transfers 330 losses 286 extinct at alive partner 1062 held by <= 1 lineage from never
+15390672246448918260 dec4 transfers 0 losses 2 extinct at alive partner 1094 held by <= 1 lineage from never
+7689157899245528466 dec0 transfers 455 losses 409 extinct at alive partner 1022 held by <= 1 lineage from never
+7689157899245528466 dec1 transfers 427 losses 348 extinct at alive partner 1025 held by <= 1 lineage from never
+7689157899245528466 dec2 transfers 64 losses 41 extinct at alive partner 1060 held by <= 1 lineage from never
+7689157899245528466 dec3 transfers 475 losses 388 extinct at alive partner 1062 held by <= 1 lineage from never
+7689157899245528466 dec4 transfers 0 losses 3 extinct at 3.781 partner 1094 held by <= 1 lineage from never
+9254619518473077140 dec0 transfers 343 losses 162 extinct at alive partner 1022 held by <= 1 lineage from never
+9254619518473077140 dec1 transfers 411 losses 327 extinct at alive partner 1025 held by <= 1 lineage from never
+9254619518473077140 dec2 transfers 0 losses 3 extinct at alive partner 1060 held by <= 1 lineage from never
+9254619518473077140 dec3 transfers 371 losses 344 extinct at alive partner 1062 held by <= 1 lineage from never
+9254619518473077140 dec4 transfers 325 losses 147 extinct at alive partner 1094 held by <= 1 lineage from never

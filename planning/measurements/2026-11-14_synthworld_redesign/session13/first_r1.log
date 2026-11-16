@@ -1,0 +1,26 @@
+F                                                                        [100%]
+=================================== FAILURES ===================================
+_______ test_rows_sharing_a_feature_uid_become_one_row_naming_every_gene _______
+
+    @pytest.mark.covers("F-02", "DEC-48")
+    def test_rows_sharing_a_feature_uid_become_one_row_naming_every_gene():
+        """DEC-48 (2): two identical contigs of one genome are one contig_uid, so genes at the same coordinates on them
+        share a feature_uid; the truth holds one row per feature_uid naming every gene (`gene_id` and `copy_label` list
+        them `;`-separated in sorted order), at the place of the first such row. A column on which the genes differ
+        lists their values `|`-separated in that order; a column on which they agree keeps its value. Expected rows are
+        written out here by hand."""
+        u, v = "aa" * 16, "bb" * 16
+        a = _gene_row("f1", "n105_g238750", u, 0, 708, hgt_on_lineage="n7")
+        b = _gene_row("f2", "n105_g238751", u, 708, 900, partial_5=False, partial_3=True)
+        c = _gene_row("f1", "n105_g238748", u, 0, 708, protein_uid="p-other", hgt_on_lineage="n7")
+        d = _gene_row("f3", "n9_g1", v, 10, 400, genome_id="g001", partial_5=False, status="whole", operon_id="")
+        e = _gene_row("f2", "n105_g238749", u, 708, 900, partial_5=False, partial_3=True, operon_id="op1")
+        f = _gene_row("f2", "n105_g238747", u, 708, 900, partial_5=False, partial_3=True, domain_arch="PF00001:0-50")
+>       got = emit.merge_feature_rows([a, b, c, d, e, f])
+              ^^^^^^^^^^^^^^^^^^^^^^^
+E       AttributeError: module 'biobox.synthworld.emit' has no attribute 'merge_feature_rows'
+
+tests/r1/test_synthworld_emit_units.py:297: AttributeError
+=========================== short test summary info ============================
+FAILED tests/r1/test_synthworld_emit_units.py::test_rows_sharing_a_feature_uid_become_one_row_naming_every_gene
+1 failed, 4 deselected in 2.00s

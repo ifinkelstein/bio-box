@@ -14,6 +14,8 @@ preset leaf by its path (JSON value). ``--axes`` replaces `lineage_rates.axes` (
 transfer+loss:0.8``; ``none`` for no axis). ``--n0`` also builds the N0-full backbone at the seed and compares its
 background genome sizes with the signal's as `tests/r2/test_synthworld_nulls.py` does (geometric-mean ratio, Pearson r);
 since session 12 it also builds N0-strict and gives, for both, the null module's root-presence KS D and its bound.
+Since session 13 every row also has the decoy test's replay (`_decoy_replay`: transfers into a partner carrier per
+decoy, transfers elsewhere, the partner's mean share of the other lineages) and the decoys' copies per genome.
 
 ``--crown`` and ``--rule`` are session 10's measurement devices that patch ZOMBI2's calls in the worker process,
 never the generator's code: ``--crown`` rescales each drawn species tree to that crown age measured from the first
@@ -232,6 +234,37 @@ def _exclusion_replay(zdir: Path, first_of: dict[int, int], members_of: dict[int
     return n, into_first, into_any
 
 
+def _decoy_replay(world: Path, partner_of: dict[int, int]) -> dict:
+    """The replay of tests/r2/test_synthworld_backbone.py::test_decoy_transfers_land_only_where_the_partner_is on
+    ZOMBI2's `genome_events.tsv`: per decoy transfer row, whether the recipient lineage held a live copy of the
+    partner just before, and the partner carriers' share of the other lineages alive at that time (the donor
+    excluded). Returns {"landed": Counter((decoy, partner present)), "mean_share": float or ""} (session 13)."""
+    z = world / "zombi2"
+    with open(z / "genome_events.tsv", encoding="utf-8") as fh:
+        fh.readline()
+        t0 = float(fh.readline().split("\t")[0])
+    times = _newick_times(z / "species_complete.nwk", t0)
+    live = {p: set() for p in partner_of.values()}
+    landed: collections.Counter = collections.Counter()
+    shares = []
+    with open(z / "genome_events.tsv", newline="", encoding="utf-8") as fh:
+        for r in csv.DictReader(fh, delimiter="\t"):
+            fam = int(r["family"])
+            kids = [c for c in r["children"].split(";") if c]
+            if fam in partner_of and r["kind"].startswith("transfer"):
+                recipient = kids[1].split("_")[0]
+                carriers = {c.split("_")[0] for c in live[partner_of[fam]]}
+                landed[(fam, recipient in carriers)] += 1
+                t, donor = float(r["time"]), r["parents"].split("_")[0]
+                others = {lab for lab, (_, s, e) in times.items() if s <= t < e and lab != donor}
+                shares.append(len(others & carriers) / len(others))
+            if fam in live:
+                if r["parents"]:
+                    live[fam].discard(r["parents"])
+                live[fam].update(kids)
+    return {"landed": landed, "mean_share": round(sum(shares) / len(shares), 4) if shares else ""}
+
+
 def measure(world: Path, params: dict) -> tuple[dict, list[dict]]:
     b = world / "backbone"
     genomes = _tsv(b / "genomes.tsv")
@@ -340,6 +373,18 @@ def measure(world: Path, params: dict) -> tuple[dict, list[dict]]:
     # decoys (tests/r2/test_synthworld_backbone.py asks >= 3 transfers each): transfer rows per decoy family
     dec_tr = [tr_rows.get(f, 0) for f, r in fams.items() if r["kind"] == "decoy"]
     row["decoy_transfers_min"] = min(dec_tr) if dec_tr else ""
+    # session 13 (DEC-48 (1)): the decoy test's own replay (transfers into a partner carrier, the partner's share of
+    # the other contemporaneous lineages) and how many copies a decoy has where it is present
+    decs = sorted(f for f, r in fams.items() if r["kind"] == "decoy")
+    if decs:
+        rep = _decoy_replay(world, {f: int(fams[f]["partner"]) for f in decs})
+        row["decoy_transfers_per_decoy"] = "/".join(str(rep["landed"][(f, True)]) for f in decs)
+        row["decoy_transfers_off_partner"] = sum(v for (f, ok), v in rep["landed"].items() if not ok)
+        row["decoy_partner_share_mean"] = rep["mean_share"]
+        cps = [copies[(f, g)] for f in decs for g in present.get(f, ())]
+        row["decoy_copies_per_present_genome"] = round(sum(cps) / len(cps), 3) if cps else 0.0
+        row["decoy_copies_max"] = max(cps) if cps else 0
+        row["decoy_genomes_per_decoy"] = "/".join(str(len(present.get(f, ()))) for f in decs)
     row["burst_junction_keys"] = len(keys)
     row["burst_junction_keys_multicopy"] = sum(1 for v in keys.values() if v > 1)
     row["scored_units"] = len(scored)
