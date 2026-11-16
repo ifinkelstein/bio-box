@@ -220,7 +220,8 @@ sources:
         query: analysis_type="SEQUENCE_ASSEMBLY" AND center_name="EMG"
         fields: analysis_accession,assembly_type,submitted_bytes,generated_bytes,sample_accession,run_accession,study_accession,first_public
       - result: read_run   # the runs of named samples, whatever their library source or strategy
-        url_form: https://www.ebi.ac.uk/ena/portal/api/search?result=read_run&includeAccessionType=sample&includeAccessions={comma-separated sample accessions, at most 300}&fields=run_accession,sample_accession,secondary_sample_accession,study_accession,base_count,library_source,library_strategy,tax_id,scientific_name&limit=0&format=tsv
+        url_form: https://www.ebi.ac.uk/ena/portal/api/search?result=read_run&query={sample_accession="A" OR secondary_sample_accession="B" OR ..., at most 100 accessions, URL-encoded}&fields=run_accession,sample_accession,secondary_sample_accession,study_accession,base_count,library_source,library_strategy,tax_id,scientific_name&limit=0&format=tsv
+        note: the includeAccessionType/includeAccessions form first written here was answered HTTP 400 on 2026-11-16 (two requests); replaced by the query form above
         samples: the INSDC sample accessions (SAMEA, SAMN, SAMD, ERS, SRS, DRS) of units the first read_run table did not link
     checksum: none published; our sha256 with the date; the row count is checked against the count endpoint
     limits: one connection; one request at a time; stop after 5 refusals in a row; a table over 20 GB is not fetched (the count is read first)
