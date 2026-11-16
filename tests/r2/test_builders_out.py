@@ -199,8 +199,9 @@ def release_steps(release: str, stages: list[str], w: Work) -> list[Step]:
         steps.append(Step(release, "cluster", a("cluster", "--stages", csv, "--tmp", s),
                           lambda r, out=None: cluster.run(r, release, V, stages, tmp=w.scratch, **_kw(out))))
     return steps + [
-        Step(release, "tokens", a("tokens", "--stages", csv, "--tmp", s),
-             lambda r, out=None: tokens.run(r, release, stages, tmp=w.scratch, **_kw(out))),
+        Step(release, "tokens", a("tokens", "--stages", csv, "--tmp", s, *(() if MMSEQS else ("--without-clusters",))),
+             lambda r, out=None: tokens.run(r, release, stages, tmp=w.scratch, without_clusters=not MMSEQS,
+                                            **_kw(out))),  # card B-51: no clustering without MMseqs2
         Step(release, "postings", a("postings", "--stages", csv, "--tmp", s),
              lambda r, out=None: postings.run(r, release, stages, tmp=w.scratch, **_kw(out))),
         Step(release, "dim", a("dim", "--stages", csv, "--tmp", s),

@@ -95,7 +95,7 @@ def build_release(root: Path, release: str, stages: list[str], work: Path) -> di
         from biobox.l2 import cluster
 
         out["cluster"] = cluster.run(root, release, V, stages, tmp=work)
-    out["tokens"] = tokens.run(root, release, stages)
+    out["tokens"] = tokens.run(root, release, stages, without_clusters=not MMSEQS)  # card B-51
     out["postings"] = postings.run(root, release, stages)
     out["dim"] = dim.run(root, release, stages, tmp=work)
     return out
@@ -258,7 +258,8 @@ def test_b25_cli_release_steps_define_once_and_read_the_definition_after(ladder,
     assert cli.main(["release", "dim", *base, "--stages", "S0,S1"]) == 2  # not the defined stages
     assert "release_def" in capsys.readouterr().err
     for step in (("cluster",) if MMSEQS else ()) + ("tokens", "postings", "dim", "manifest"):
-        assert cli.main(["release", step, *base, "--tmp", str(ladder["work"])]) == 0, step
+        extra = ["--without-clusters"] if step == "tokens" and not MMSEQS else []  # card B-51
+        assert cli.main(["release", step, *base, "--tmp", str(ladder["work"]), *extra]) == 0, step
     man = json.loads((c / f"manifests/release={rel}.json").read_text())
     assert man["release_id"] == rel and man["stages"] == ["S0"]
     assert not [f for f in man["files"] if f["partitions"].get("stage") == "S1"]
