@@ -1241,7 +1241,7 @@ decision for `emit.py`/DEC-27, not this card's; the test is not changed.
 
 Card F-02, session 13 (branch `task/F-02-13`: session 12's `task/F-02-12` at `d431b18` with `plan/task-cards` at
 `9b80f51` merged, a clean merge). DEC-48 is the specification. Host and commands for every *measured* number in this
-section: wilkcomp02, 2026-11-16 07:03-10:18 CST (Monday; the build `c26-pl1-2` at 36 threads ran throughout, so this
+section: wilkcomp02, 2026-11-16 07:03-10:50 CST (Monday; the build `c26-pl1-2` at 36 threads ran throughout, so this
 session used at most 4 threads), image `bio-box-test_faec1f4.sif`, units `f0213-*` at nice 19 with a CPU quota
 (`session13/scripts/run.sh`), one thread per process. Scans: `python scripts/stress/f0210_seed_scan.py scan
 /tmp/if2453/f0213/<dir> <label> --jobs 4 --seeds default,20261113,n2 [--n0] --set decoys.partner_modules=<P> --set
@@ -1469,8 +1469,18 @@ running `session13/scripts/pytest.sh` (`python -m pytest -q -s` on the mirrored 
 at the null module's second seed, as 5.0 missed DEC-44's IGR count at the default seed. Every decoy setting redraws
 the whole world, so each further rate is another draw of every per-seed property; no test was changed to get
 through. A third candidate scan (`session13/scripts/fit4.sh`: `l1b` at 7.0 and 8.0, `l1a` at 7.0, with `--n0`) was
-started after the failure (unit `f0213-fit4`; its tables land in `/tmp/if2453/f0213/scan4` on the pod, not read
-here); a fourth scan unit beside it was refused by the session's permission check, and the session stopped there.
+started after the failure (unit `f0213-fit4`, finished by 10:50 CST; tables in `session13/n_l1b_dec7.0.tsv` and beside
+it); a fourth scan unit beside it was refused by the session's permission check, and the session stopped there, with
+no IGR world or null module run for these rates. What the scans give (*measured*, columns of 16.1):
+
+| scan | decoys >= 3 transfers: seeds, fewest, default | partner share: max, default | decoy genes per genome: range, default | N0 ratio (in band) | root KS full / strict below bound | six seeds: pooled levels (steps), most unpowered cells |
+|---|---|---|---|---|---|---|
+| n_l1b_dec7.0 | 22/22, 6, 195 | 0.922, 0.8075 | 29.3-47.4, 41.2 | 0.915-1.136 (21/22) | 20/22 / 22/22 | 4.00, 6.00, 11.34 (1.50x, 1.89x), 0 |
+| n_l1a_dec7.0 | 21/22, 2, 150 | 0.874, 0.7304 | 30.9-44.9, 37.3 | 0.910-1.060 (22/22) | 19/22 / 20/22 | 4.55, 6.46, 13.84 (1.42x, 2.14x), 0 |
+| n_l1b_dec8.0 | 22/22, 12, 252 | 0.918, 0.7701 | 26.3-48.0, 40.3 | 0.909-1.019 (22/22) | 21/22 / 20/22 | 4.67, 5.83, 13.91 (1.25x, 2.38x), 1 |
+
+Only `l1b` at 7.0 holds every scan check (its lower level step is 1.50x, exactly the per-seed test's bound); its
+default world's IGR count and the null module at both seeds are not measured.
 The preset on the branch is the 6.0 candidate with its digests re-pinned, so the branch fails
 exactly this one test, at 20261113, which the CI does not run (it runs the null module at the default seed).
 
