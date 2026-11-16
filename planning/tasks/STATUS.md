@@ -144,6 +144,11 @@ release check* (2026-11-15 00:06) *and is announced as the release to use* (2026
   annotating, and filter short contigs at ingest are decided in principle; nucleotides stay; stopping by habitat,
   Logan on the hit, the machine per depth and where the corpus lives are the PI's to think about. Card C-38 (the
   design note for the four) may start when an agent place is free; the source cards still wait on approvals.
+  The PI then said "do your suggestion re c-39, c-40, c-43": their step (1), the proposed `sources.yaml` entries,
+  is `planning/measurements/2026-11-16_proposed_sources.md`. Four entries have exact files and open licences
+  (UHGV's vOTU representatives, the Global Soil Virus Atlas, SPIRE's tables, NCBI's table of metagenome
+  assemblies) and **wait for the PI's yes before anything is fetched**; the JGI sets (IMG/VR, IMG/PR, IMG/M)
+  need the PI's JGI login; the gut plasmids, PlasmidScope and MGnify's table need one page read each first.
 - Free space on `/tmp`: **754 GB at 08:53 on 2026-11-16**, after a cleanup at 08:52 at the PI's word ("make sure
   youve cleaned temp scratch for all files u dont need"; *measured*, `/tmp/if2453/cleanup/cleanup_1116.log`): 156
   GB freed. Removed, each looked at first: the directories of finished, merged cards (`b18` to `b43`, `m08a` to
