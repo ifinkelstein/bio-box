@@ -403,6 +403,20 @@ def run(root: Path, release: str, stages: list[str], gene_call_version: str = GE
     ledger.refuse_written(root, out, [f"l3/token_dict/release={release}", f"l3/tape_tokens/tape_version={tv}/release={release}"],
                           f"tokens of release {release}")
     tape_files = _tape_files(root, tv, stages)
+    # card B-51: a release with protein slots and no clustering would get tokens without cluster levels, silently
+    if not io.part_files(root / f"l2/cluster_member/release={release}"):
+        probe = duckdb.connect(config={"threads": 1})
+        try:
+            (n_protein_slots,), = probe.execute(
+                "SELECT coalesce(sum(len(list_filter(protein_uids, lambda x: x IS NOT NULL))), 0) FROM "
+                + _scan(tape_files, "protein_uids", "NULL::BLOB[] AS protein_uids")).fetchall()
+        finally:
+            probe.close()
+        if n_protein_slots:
+            raise FileNotFoundError(
+                f"release {release} has no cluster_member file under {root}: it was never clustered, and its tokens "
+                f"would have no nr50 or nr90 level; cluster it first: bio-box release cluster --root {root} "
+                f"--release {release}")
     catalog.define_release(root, release, stages, out=out)
 
     # the stages' tapes, numbered by file and row: rows with equal contig_uid keep that order
