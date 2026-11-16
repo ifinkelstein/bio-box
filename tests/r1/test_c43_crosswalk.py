@@ -137,6 +137,16 @@ def test_insdc_samples_for_lookup():
         "DRS6", "ERS1", "SAMD00008643", "SAMEA104389540", "SAMN02954240", "SRS927152"]
 
 
+def test_lookup_query_names_each_sample_by_its_field():
+    m = _mod()
+    assert m.lookup_query(["ERS1", "SAMEA1", "SRS9"]) == (
+        'secondary_sample_accession="ERS1" OR sample_accession="SAMEA1" OR secondary_sample_accession="SRS9"')
+    url = m.lookup_url(["SAMN5"])
+    assert url.startswith("https://www.ebi.ac.uk/ena/portal/api/search?result=read_run&query=")
+    assert "query=sample_accession%3D%22SAMN5%22&fields=run_accession," in url
+    assert url.endswith("&limit=0&format=tsv")
+
+
 @pytest.mark.parametrize("atype, include, keep", [
     ("primary metagenome", {"primary metagenome"}, True),
     ("Primary Metagenome", {"primary metagenome"}, True),

@@ -532,9 +532,19 @@ def _build(a) -> int:
     return 0
 
 
-ENA_BY_SAMPLE = ("https://www.ebi.ac.uk/ena/portal/api/search?result=read_run&includeAccessionType=sample"
-                 "&includeAccessions={}&fields=run_accession,sample_accession,secondary_sample_accession,"
-                 "study_accession,base_count,library_source,library_strategy,tax_id,scientific_name&limit=0&format=tsv")
+ENA_BY_SAMPLE = ("https://www.ebi.ac.uk/ena/portal/api/search?result=read_run&query={}&fields=run_accession,"
+                 "sample_accession,secondary_sample_accession,study_accession,base_count,library_source,"
+                 "library_strategy,tax_id,scientific_name&limit=0&format=tsv")
+
+
+def lookup_query(ids) -> str:
+    """ENA query naming each sample by its field: BioSample accessions are primary, ERS/SRS/DRS secondary."""
+    return " OR ".join(f'{"sample_accession" if s.startswith("SAM") else "secondary_sample_accession"}="{s}"'
+                       for s in ids)
+
+
+def lookup_url(ids) -> str:
+    return ENA_BY_SAMPLE.format(urllib.parse.quote(lookup_query(ids), safe=""))
 
 
 def _lookup_urls(a) -> int:
@@ -546,7 +556,7 @@ def _lookup_urls(a) -> int:
     ids = insdc_samples(ids)
     with open(a.out_tsv, "w") as out:
         for i in range(0, len(ids), a.batch):
-            out.write(ENA_BY_SAMPLE.format(",".join(ids[i:i + a.batch])) + f"\tbatch_{i // a.batch:04d}.tsv\n")
+            out.write(lookup_url(ids[i:i + a.batch]) + f"\tbatch_{i // a.batch:04d}.tsv\n")
     print(f"{len(ids)} samples in {(len(ids) + a.batch - 1) // a.batch} batches")
     return 0
 
@@ -595,7 +605,7 @@ def main(argv: list[str] | None = None) -> int:
     p = sub.add_parser("lookup-urls")
     p.add_argument("units_tsv")
     p.add_argument("out_tsv")
-    p.add_argument("--batch", type=int, default=300)
+    p.add_argument("--batch", type=int, default=100)
     p.set_defaults(fn=_lookup_urls)
     a = ap.parse_args(argv)
     return a.fn(a)
