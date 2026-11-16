@@ -2,7 +2,7 @@
 and within themselves, by content digest; and each stage's estimates from the code's own functions. Read only.
 
     python c36_analyze.py --root ROOT --pl1 PL1_INPUTS --stages C36_STAGES --inputs INPUTS --out OUT
-                          [--rehearsal CHECK_JSON]
+                          [--rehearsal CHECK_JSON] [--pl1-stored]
 
 ROOT is the data root (read only; only the `contig_index` of the stored stages S1, P1 to P6, H1 is read, by name, so a
 stage being built beside this, PL1, is never read). PL1_INPUTS is the plasmid stage's inputs directory (card C-26 part
@@ -60,6 +60,8 @@ def main() -> None:
     for a in ("--root", "--pl1", "--stages", "--inputs", "--out"):
         ap.add_argument(a, required=True, type=Path)
     ap.add_argument("--rehearsal", type=Path)
+    ap.add_argument("--pl1-stored", action="store_true",
+                    help="also compare with the contig_index of PL1 in the root, once its ingest is published")
     a = ap.parse_args()
     a.out.mkdir(parents=True, exist_ok=True)
     out: dict = {"budget_cpu_min": BUDGET, "shard_margin": stage.SHARD_MARGIN}
@@ -231,6 +233,23 @@ def main() -> None:
                          "in_several_phase2_stages": sum(1 for c in allc if sum(c in contigs[k] for k in PHASE2) > 1),
                          "adds_after_pl1": sum(per[k]["adds_after_pl1_in_order"]["contigs"] for k in PHASE2),
                          "adds_after_pl1_bases": sum(per[k]["adds_after_pl1_in_order"]["bases"] for k in PHASE2)}
+
+    if a.pl1_stored:  # card C-36, 2026-11-16: PL1's ingest is published in the root; compare it with its inputs' count
+        pl1_files = io.part_files(a.root / store.INDEX_DIR / "stage=PL1")
+        if not (a.root / "runs" / "stage=PL1" / "ingest.json").is_file() or not pl1_files:
+            raise SystemExit("--pl1-stored: no ingest record or contig_index of PL1 in the root")
+        stored_pl1 = set()
+        for f in pl1_files:
+            t = pq.read_table(f, columns=["contig_uid", "is_default_variant"])
+            stored_pl1 |= {cu for cu, d in zip(t.column("contig_uid").to_pylist(),
+                                                t.column("is_default_variant").to_pylist()) if d}
+        expected = pl1 - pl1_owned
+        out["pl1_stored"] = {
+            "contigs": len(stored_pl1), "equals_inputs_less_stored_by_S1_P_H1": stored_pl1 == expected,
+            "only_in_root": len(stored_pl1 - expected), "only_expected": len(expected - stored_pl1),
+            "by_phase2_stage": {k: {"contigs": len(contigs[k] & stored_pl1),
+                                    "equals_count_from_inputs": (contigs[k] & stored_pl1) == (contigs[k] & expected)}
+                                for k in PHASE2}}
 
     if a.rehearsal is not None:
         rh = json.loads(a.rehearsal.read_text())["ratios"]

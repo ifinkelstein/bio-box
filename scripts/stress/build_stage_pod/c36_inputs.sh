@@ -21,7 +21,7 @@
 #   check    s2_check_inputs.py for each stage (the inputs step's parser and checks; writes nothing) into
 #            C/inputs/C<k>.check.json, and the sha256 of each stage's two files into C/inputs/SUMS.
 #   analyze  c36_analyze.py into C/analyze (read only on ROOT and PL1's inputs); with REHEARSAL=<check json>, also the
-#            protein and Pfam estimates.
+#            protein and Pfam estimates; with PL1_STORED=1, the comparison with the stored contig_index of PL1.
 set -u
 
 C=/tmp/if2453/c36
@@ -147,6 +147,7 @@ check() {
 analyze() {
   local rc extra=()
   [ -n "${REHEARSAL:-}" ] && extra=(--rehearsal "$REHEARSAL")
+  [ -n "${PL1_STORED:-}" ] && extra+=(--pl1-stored)
   py c36-analyze-py "$BIN/c36_analyze.py" --root "$ROOT" --pl1 "$PL1" --stages "$ST" --inputs "$IN" --out "$C/analyze" \
     "${extra[@]}" > "$C/analyze/out.json" 2> "$C/analyze/err.txt"
   rc=$?

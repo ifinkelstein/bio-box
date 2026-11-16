@@ -726,6 +726,38 @@
   "owned_by_stored_equals_its_shared_records": true,
   "would_store": 61647
  },
+ "pl1_stored": {
+  "by_phase2_stage": {
+   "C1": {
+    "contigs": 1032,
+    "equals_count_from_inputs": true
+   },
+   "C2": {
+    "contigs": 3220,
+    "equals_count_from_inputs": true
+   },
+   "C3": {
+    "contigs": 2236,
+    "equals_count_from_inputs": true
+   },
+   "C4": {
+    "contigs": 1918,
+    "equals_count_from_inputs": true
+   },
+   "C5": {
+    "contigs": 2543,
+    "equals_count_from_inputs": true
+   },
+   "C6": {
+    "contigs": 2288,
+    "equals_count_from_inputs": true
+   }
+  },
+  "contigs": 61647,
+  "equals_inputs_less_stored_by_S1_P_H1": true,
+  "only_expected": 0,
+  "only_in_root": 0
+ },
  "rehearsal_ratios": {
   "distinct_per_gene_first": 0.8891,
   "genes_per_mbp": 942.3,

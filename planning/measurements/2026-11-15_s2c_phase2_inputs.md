@@ -158,6 +158,14 @@ All *measured* (`analyze/summary.json`); the "all six" row is the script's own u
 - **Genomes not called at all** (every contig stored before them; `genecall.stage_items`' rule): C1 12, C2 2, C3 9,
   C4 2, C5 2, C6 0 (*derived*, section 4); they stay genomes of their stage in `genome_input`.
 
+**Against PL1 as stored** (added 2026-11-16, 06:52 CST): the table above takes PL1's contigs from its inputs because
+PL1 was not stored when it was made. PL1's build has since published its `inputs` and `ingest` steps in the root
+(run records `runs/stage=PL1/inputs.json`, `ingest.json`, 2026-11-15 21:06 and 21:32) and was then stopped. The same
+script with `--pl1-stored` (unit `c36-analyze3`) read that `contig_index`: **61,647 default variants, exactly PL1's
+input contigs less the 7,046 a stored stage owns** (0 only in the root, 0 only expected), and in each phase-2 stage
+the contigs PL1 stores are exactly the ones counted from the inputs: 1,032, 3,220, 2,236, 1,918, 2,543, 2,288
+(*measured*, `analyze/summary.json` `pl1_stored`). Every other number of the summary was unchanged by the rerun.
+
 ## 4. Estimates per stage (card (4))
 
 From the code's own functions (`c36_analyze.py`): ingest `stage.ingest_cpu_min(FASTA bytes)` (42.9 CPU-min per
@@ -263,13 +271,17 @@ contigs in PL1's inputs after C2 (2,547), so it exercises the skip of PL1's cont
 | `c36-rh-driver-prep` | 20:40:4x to 20:41:17 | the view, the sample, its inputs | 1 |
 | `c36-rh-driver-run`: `c36-rh-inputs`, `-ingest`, `-genecall` | 20:41:25 to 20:52:04 | the three run-steps | 8 |
 | `c36-rh-driver-check`, `-check2`, `-check3` | 20:52 to 20:54 | `c36_rh_check.py` (the first two stopped on defects of the script, fixed) | 2 |
+| `c36-analyze3` | 2026-11-16 06:52 | `c36_analyze.py --pl1-stored` (PL1's stored `contig_index`, read only) | 1 |
 
 - Every process in a `systemd-run --user` unit or scope with a memory cap, `nice 19` (`ionice` 7 for the input
   modes); Python in the runtime image `bio-box_faec1f4.sif` with the tree's `src` alone on the path and the data root
   bound read-only. Host tools: `sha256sum`, `tar` (extraction), `python3 -I` for `c26_view.py` (symlinks only), as card
   C-26 did. At most 8 threads of ours at once; the account's load was 10 to 17 (`uptime`, 20:30 and 20:40, the PL1
   agent's rehearsal beside ours), under the night cap of 56. No `STOP` file appeared in the data root.
-- Tests: `pod_pytest.sh C-36` (the test image of `faec1f4`).
+- Tests: `pod_pytest.sh C-36` (the test image of `faec1f4`); the whole suite at `4e89725` as two detached shards
+  (`detached_suite.sh C-36 2`, units `ci-C-36-0`, `-1`, 20:58 to about 23:02): 1,217 passed and 7 skipped, 1,173 passed
+  and 16 skipped (*measured*, `ci-tmp/C-36-detached/log.*`). The session was interrupted by the laptop sleeping at
+  about 21:50 and resumed at 06:51 on 2026-11-16; the pod's state was read first and no step was repeated.
 - Disk: `/tmp` free 651,377,684 KiB at 20:23, 635,125,244 after extraction, 630,460,860 at 20:54 (*measured*,
   `df -Pk`); never near the 400 GB floor.
 - **Left on the pod**: `/tmp/if2453/s2/phase2/` (16.4 GB, the extracted genomes: the inputs' objects, needed by the
