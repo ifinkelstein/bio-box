@@ -5,7 +5,7 @@ The running record of the cards in [`TASKS.md`](TASKS.md). Updated at every merg
 by an agent on its own branch `task/<ID>`, audited by the orchestrating session, and merged after its
 tests passed on the merged tree.
 
-## Handoff, 2026-11-16 08:32 CST (current; the dated sections under "History" are superseded where they differ)
+## Handoff, 2026-11-16 08:55 CST (current; the dated sections under "History" are superseded where they differ)
 
 Written so a new session can continue without the conversation that produced this file. Times are the pod's clock
 (CST); read it with `ssh ... date` before writing a time here.
@@ -109,9 +109,25 @@ release check* (2026-11-15 00:06) *and is announced as the release to use* (2026
   (PLSDB), each with the image of `faec1f4`: **the next build sets `IMAGE` and `DIGEST` in its driver to the values
   of RUNBOOK §0**; (c) C-25 step 3 and B-47a to B-47e (S2C phase 2), then ncRNA (DEC-42). Each adds a further tar
   of its new files to the durable copy.
-- The pod's cap falls to 40 threads on Monday at 08:00 (weekday days): nothing of ours may then use more.
-- Free space on `/tmp`: **570 GB at 20:07 on 2026-11-15**, after the cleanup of 13:27 to 13:45 (DEC-46; "On the
-  pod" below): it had fallen to 208 GB at 13:26, almost all of it old test scratch.
+- The pod's cap is 40 threads on weekdays from 08:00 to 20:00: nothing of ours may then use more.
+- **The PI wants to stay on wilkcomp02 as long as possible** (2026-11-16, in the PI's words: "i want to stay on
+  wilkecomp as logn as possible", after asking why stage S6 needs rented hardware). The orchestrator's reading: a
+  step projected not to fit the pod is first made to fit (parts, representatives, reuse) and measured; no rental,
+  the plan's trial rental after the plasmid stage included, is proposed unless a measurement shows a step cannot
+  fit. `STAGES.md` §4 and §5 are not edited (they are the PI's to change).
+- Free space on `/tmp`: **754 GB at 08:53 on 2026-11-16**, after a cleanup at 08:52 at the PI's word ("make sure
+  youve cleaned temp scratch for all files u dont need"; *measured*, `/tmp/if2453/cleanup/cleanup_1116.log`): 156
+  GB freed. Removed, each looked at first: the directories of finished, merged cards (`b18` to `b43`, `m08a` to
+  `m09c`, `w13` to `w33`, `e01` to `e15`, `c07-probe`, `c10`, `c20`, `c21f`, `c32`, `d08`, `f028`, `f0210`, `f02-3`,
+  `f02_wheel`, `pydeps_f02`, `pydeps_w27`, `trial`, `trial2`, `pilot_s1`), the superseded ladder build (`ladder`),
+  the second copy of the `rN.3` pack and the compatibility trees under `r50`, and the local copies of input
+  genomes that are archived on `/stor`: `r50/genomes` (P3 to P6) and `ladder/genomes` (P1, P2), whose file counts
+  equal the members of their tars in `provisional/r50_inputs/` (checked at 08:50), and `c25/genomes`,
+  `c27/genomes` (phase 2; card C-36 checked every genome against the archives). Kept: the data root, the packs,
+  the golden set, images, stage inputs (`s2`), `refdb_new`, the logs of `r50`, `c24`, `c26`, `c36`, `b47` to
+  `b52`, `backup`, `audit`, the F-02 scratch of sessions 11 to 13, `pilot_cami`, and directories that are not
+  this project's. Nothing under `/stor` was touched. On the laptop, 127 worktrees of merged cards were removed
+  (clean and unlocked only; branches kept); 35 locked ones and 2 unmerged ones stay.
 
 *Code and images.*
 - `main` is at pull request 5 (merge commit `faec1f4`, 2026-11-13). The images built from it are the pod's default
