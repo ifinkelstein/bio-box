@@ -216,6 +216,9 @@ sources:
       - result: assembly   # every INSDC assembly of a metagenome taxon, with or without a WGS set (MGnify's are mostly without)
         query: tax_tree(408169)
         fields: assembly_accession,assembly_type,base_count,run_accession,sample_accession,secondary_sample_accession,study_accession,wgs_set,center_name,tax_id,scientific_name,first_created
+      - result: analysis   # MGnify's own assemblies as ENA analyses (ERZ): the size of their contig files; ENA indexes them under no WGS set or assembly record
+        query: analysis_type="SEQUENCE_ASSEMBLY" AND center_name="EMG"
+        fields: analysis_accession,assembly_type,submitted_bytes,generated_bytes,sample_accession,run_accession,study_accession,first_public
       - result: read_run   # the runs of named samples, whatever their library source or strategy
         url_form: https://www.ebi.ac.uk/ena/portal/api/search?result=read_run&includeAccessionType=sample&includeAccessions={comma-separated sample accessions, at most 300}&fields=run_accession,sample_accession,secondary_sample_accession,study_accession,base_count,library_source,library_strategy,tax_id,scientific_name&limit=0&format=tsv
         samples: the INSDC sample accessions (SAMEA, SAMN, SAMD, ERS, SRS, DRS) of units the first read_run table did not link
