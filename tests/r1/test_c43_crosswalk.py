@@ -237,12 +237,13 @@ def test_build_end_to_end_on_small_tables(tmp_path):
             "ERR2\tSAMEA1\tERS1\tP\tE\t50\tWGS\tI\t1\tx\t2020\n"
             "SRR3\tSAMN3\tSRS3\tP\tE\t70\tWGS\tI\t1\tx\t2020\n"
             "SRR5\tSAMN5\tSRS5\tP\tE\t10\tWGS\tI\t1\tx\t2020\n")
-    wgs = _w(tmp_path / "wgs.tsv", "accession\twgs_set\tassembly_accession\tbase_count\trun_accession\tsample_accession\t"
-             "secondary_sample_accession\tstudy_accession\ttax_id\tscientific_name\tfirst_public\tassembly_type\n"
-             "CAAA01000000\tCAAA01\tGCA_900000001\t900\t\tSAMN3\t\tP\t1\tsoil metagenome\t2020\tprimary metagenome\n"
-             "BBBB01000000\tBBBB01\tGCA_000000002\t800\t\tSAMN5\t\tP\t1\tmarine metagenome\t2020\tprimary metagenome\n"
-             "DDDD01000000\tDDDD01\tGCA_000000004\t700\tERR2\tSAMEA1\t\tP\t1\tmetagenome\t2020\tprimary metagenome\n"
-             "EEEE01000000\tEEEE01\tGCA_000000005\t3\tSRR5\tSAMN5\t\tP\t1\tmetagenome\t2020\tbinned metagenome\n")
+    # ENA's assembly table: MGnify's own assembly has no WGS set
+    wgs = _w(tmp_path / "asm_ena.tsv", "assembly_accession\tassembly_type\tbase_count\trun_accession\tsample_accession\t"
+             "secondary_sample_accession\tstudy_accession\twgs_set\tcenter_name\ttax_id\tscientific_name\tfirst_created\n"
+             "GCA_900000001\tprimary metagenome\t900\t\tSAMN3\t\tP\t\tEMG\t1\tsoil metagenome\t2020\n"
+             "GCA_000000002\tprimary metagenome\t800\t\tSAMN5\t\tP\tBBBB01\tX\t1\tmarine metagenome\t2020\n"
+             "GCA_000000004\tprimary metagenome\t700\tERR2\tSAMEA1\t\tP\tDDDD01\tY\t1\tmetagenome\t2020\n"
+             "GCA_000000005\tbinned metagenome\t3\tSRR5\tSAMN5\t\tP\tEEEE01\tZ\t1\tmetagenome\t2020\n")
     ncbi = _w(tmp_path / "asm.txt", "##  See README\n#assembly_accession\tbioproject\tbiosample\torganism_name\t"
               "genome_size\n"
               "GCA_000000002.1\tP\tSAMN5\tmarine metagenome\t800\n"
@@ -264,7 +265,8 @@ def test_build_end_to_end_on_small_tables(tmp_path):
     hm = _w(tmp_path / "map.tsv", "kind\tkey\tlabel\nmgnify_lineage\troot:Environmental:Terrestrial\tterrestrial\n"
             "organism_name\tmarine metagenome\taquatic\norganism_name\tfeces metagenome\thost-associated\n")
     out = tmp_path / "out"
-    assert m.main(["build", "--spire-dir", str(spire), "--read-run", rr, "--wgs-set", wgs, "--ncbi-summary", ncbi,
+    assert m.main(["build", "--spire-dir", str(spire), "--read-run", rr, "--insdc-assemblies", wgs,
+                   "--ncbi-summary", ncbi,
                    "--mgnify-assemblies", str(mga), "--mgnify-samples", str(mgs), "--habitat-map", hm,
                    "--out-dir", str(out)]) == 0
 
@@ -273,25 +275,26 @@ def test_build_end_to_end_on_small_tables(tmp_path):
             return list(csv.DictReader(fh, delimiter="\t"))
 
     units = {r["uid"]: r for r in rows("units.tsv")}
-    # the probe file is not a study; CAAA01 is MGnify's ERZ3 and not a unit of its own
-    assert set(units) == {"SAMEA1", "SAMD6", "ERZ3", "ERZ1", "BBBB01", "DDDD01", "GCA_000000009"}
+    # the probe file is not a study; GCA_900000001 is MGnify's ERZ3 and not a unit of its own
+    assert set(units) == {"SAMEA1", "SAMD6", "ERZ3", "ERZ1", "GCA_000000002", "GCA_000000004", "GCA_000000009"}
     assert units["SAMEA1"]["runs"] == "ERR1;ERR2" and units["SAMEA1"]["habitat"] == "host-associated"
     assert units["SAMD6"]["decision"] == "take_unlinked" and units["SAMD6"]["linked_by"] == "none"
     assert units["ERZ1"]["decision"] == "covered" and units["ERZ1"]["linked_by"] == "sample"
     assert units["ERZ3"]["decision"] == "take" and units["ERZ3"]["asm_bases"] == "900"
     assert units["ERZ3"]["habitat"] == "terrestrial"
-    assert units["BBBB01"]["decision"] == "take" and units["BBBB01"]["habitat"] == "aquatic"
-    assert units["BBBB01"]["note"] == "ncbi_assembly=yes;gca=GCA_000000002"
-    assert units["DDDD01"]["decision"] == "covered" and units["DDDD01"]["habitat"] == "unlabelled"
+    g2, g4 = units["GCA_000000002"], units["GCA_000000004"]
+    assert g2["decision"] == "take" and g2["habitat"] == "aquatic"
+    assert g2["note"] == "ncbi_assembly=yes;wgs_set=BBBB01;center=X"
+    assert g4["decision"] == "covered" and g4["habitat"] == "unlabelled"
     assert units["GCA_000000009"]["decision"] == "take_unlinked" and units["GCA_000000009"]["asm_bases"] == "600"
     res = {r["resource"]: r for r in rows("resources.tsv")}
     assert (res["spire"]["units"], res["spire"]["unlinked"], res["spire"]["read_bases"]) == ("2", "1", "150")
-    assert (res["wgs"]["units"], res["wgs"]["distinct_runs"], res["wgs"]["asm_bases"]) == ("3", "2", "2100")
+    assert (res["insdc"]["units"], res["insdc"]["distinct_runs"], res["insdc"]["asm_bases"]) == ("3", "2", "2100")
     combos = {(r["resources"], r["habitat"]): r["runs"] for r in rows("runs_by_combination_and_habitat.tsv")}
-    assert combos == {("spire+mgnify", "host-associated"): "1", ("spire+mgnify+wgs", "host-associated"): "1",
-                      ("mgnify", "terrestrial"): "1", ("wgs", "aquatic"): "1"}
-    assert [r["uid"] for r in rows("take_wgs.tsv")] == ["BBBB01", "GCA_000000009"]
-    # a bin is not an assembly of the run; MGnify's own WGS set is the MGnify unit
-    notu = {(r["why"], r["assembly_type"]): (r["wgs_sets"], r["bases"]) for r in rows("wgs_sets_not_units.tsv")}
+    assert combos == {("spire+mgnify", "host-associated"): "1", ("spire+mgnify+insdc", "host-associated"): "1",
+                      ("mgnify", "terrestrial"): "1", ("insdc", "aquatic"): "1"}
+    assert [r["uid"] for r in rows("take_insdc.tsv")] == ["GCA_000000002", "GCA_000000009"]
+    # a bin is not an assembly of the run; MGnify's own INSDC record is the MGnify unit
+    notu = {(r["why"], r["assembly_type"]): (r["assemblies"], r["bases"]) for r in rows("insdc_not_units.tsv")}
     assert notu == {("mgnify's own", "primary metagenome"): ("1", "900"),
                     ("type not taken", "binned metagenome"): ("1", "3")}

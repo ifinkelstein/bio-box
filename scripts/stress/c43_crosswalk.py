@@ -1,13 +1,15 @@
 """Card C-43: a crosswalk of metagenome assemblies by sequencing run.
 
     python -I c43_crosswalk.py spire-urls STUDIES_HTML OUT_TSV
-    python -I c43_crosswalk.py labels --wgs-set T --ncbi-summary T [--mgnify-samples DIR] OUT_TSV
-    python -I c43_crosswalk.py build --spire-dir D --read-run T --wgs-set T --ncbi-summary T
-        --mgnify-assemblies DIR [--mgnify-samples DIR] --habitat-map T --out-dir D
+    python -I c43_crosswalk.py labels --insdc-assemblies T --ncbi-summary T [--mgnify-samples DIR] OUT_TSV
+    python -I c43_crosswalk.py build --spire-dir D --read-run T [T ...] --insdc-assemblies T --ncbi-summary T
+        --mgnify-assemblies DIR [--mgnify-samples DIR] --habitat-map T [--insdc-include-types L] --out-dir D
+    python -I c43_crosswalk.py lookup-urls UNITS_TSV OUT_TSV
 
 Resources, in the order of preference: `spire` (one unit per SPIRE sample), `mgnify` (one per MGnify
-assembly), `wgs` (one per INSDC metagenome WGS set that is not MGnify's own assembly, from ENA's
-wgs_set table, plus any NCBI Assembly row of genbank/metagenomes that ENA's table lacks). A unit is
+assembly), `insdc` (one per INSDC assembly of a metagenome taxon, of the assembly types taken, that is
+not MGnify's own, from ENA's assembly table with or without a WGS set, plus any NCBI Assembly row of
+genbank/metagenomes that ENA's table lacks). A unit is
 linked to runs by the runs its table names, else by its sample through the read-run table (primary
 or secondary sample accession), else it is unlinked. Every input path is an argument; fetched files
 are read as data only.
@@ -220,7 +222,7 @@ def _spire_urls(a) -> int:
 
 # ---------------------------------------------------------------------------------------------- readers
 
-ORDER = ("spire", "mgnify", "wgs")
+ORDER = ("spire", "mgnify", "insdc")
 
 
 def _tsv(path):
@@ -305,10 +307,10 @@ def build_units(a, idx: RunIndex, hmap):
         h1, h2 = spire_habitat(terms)
         units.append(Unit("spire", sample, frozenset(runs), frozenset(samples), how, None, h1, h2,
                           note=f"study={study}"))
-    # MGnify: assemblies with runs and samples inline; bases from the INSDC WGS set of the same assembly
-    wgs_rows = list(_tsv(a.wgs_set))
+    # MGnify: assemblies with runs and samples inline; bases from the INSDC record of the same assembly
+    wgs_rows = list(_tsv(a.insdc_assemblies))
     wgs_by_asm = {_unver(r["assembly_accession"]): r for r in wgs_rows if r["assembly_accession"]}
-    wgs_by_set = {r["wgs_set"]: r for r in wgs_rows}
+    wgs_by_set = {_wgs_key(r["wgs_set"]): r for r in wgs_rows if _wgs_key(r.get("wgs_set", ""))}
     biome = {}
     if a.mgnify_samples:
         for s in _pages(a.mgnify_samples):
@@ -324,10 +326,10 @@ def build_units(a, idx: RunIndex, hmap):
             continue
         legacy, wgsacc = at.get("legacy-accession") or "", at.get("wgs-accession") or ""
         w = wgs_by_asm.get(_unver(legacy)) if legacy.startswith("GC") else None
-        if w is None and wgsacc:
-            w = wgs_by_set.get(wgsacc[:6]) or wgs_by_set.get(wgsacc)
+        if w is None and _wgs_key(wgsacc):
+            w = wgs_by_set.get(_wgs_key(wgsacc))
         if w is not None:
-            mg_wgs.add(w["wgs_set"])
+            mg_wgs.add(_insdc_uid(w))
         if legacy.startswith("GC"):
             mg_asm.add(_unver(legacy))
         samples_raw = _ids(d["relationships"].get("samples"))
@@ -336,16 +338,16 @@ def build_units(a, idx: RunIndex, hmap):
         units.append(Unit("mgnify", d["id"], frozenset(runs), frozenset(samples), how,
                           _int(w["base_count"]) if w else None,
                           mapped_label(lineage, hmap["mgnify_lineage"]), lineage or "",
-                          note=f"wgs_set={w['wgs_set'] if w else ''}"))
-    # INSDC metagenome WGS sets that are not MGnify's own; the NCBI Assembly table marks its subset
+                          note=f"insdc={_insdc_uid(w) if w else ''}"))
+    # INSDC metagenome assemblies that are not MGnify's own; the NCBI Assembly table marks its subset
     ncbi = {_unver(r["assembly_accession"]): r for r in _tsv(a.ncbi_summary)}
-    include = {t.strip().lower() for t in a.wgs_include_types.split(",")}
+    include = {t.strip().lower() for t in a.insdc_include_types.split(",")}
     in_wgs = set()
     excluded = {}
     for r in wgs_rows:
         asm = _unver(r["assembly_accession"])
         in_wgs.add(asm)
-        if r["wgs_set"] in mg_wgs or (asm and asm in mg_asm):
+        if _insdc_uid(r) in mg_wgs or (asm and asm in mg_asm):
             k = ("mgnify's own", r.get("assembly_type", ""))
         elif not wgs_included(r.get("assembly_type", ""), include):
             k = ("type not taken", r.get("assembly_type", ""))
@@ -360,18 +362,31 @@ def build_units(a, idx: RunIndex, hmap):
             continue
         direct = [x for x in r["run_accession"].split(";") if x]
         runs, samples, how = idx.link([r["sample_accession"], r["secondary_sample_accession"]], direct)
-        units.append(Unit("wgs", r["wgs_set"], frozenset(runs), frozenset(samples), how, _int(r["base_count"]),
+        units.append(Unit("insdc", _insdc_uid(r), frozenset(runs), frozenset(samples), how, _int(r["base_count"]),
                           mapped_label(r["scientific_name"], hmap["organism_name"]), r["scientific_name"],
-                          note=f"ncbi_assembly={'yes' if asm in ncbi else 'no'};gca={asm}"))
-    # NCBI Assembly rows with no INSDC WGS set in ENA's table (kept, so nothing is dropped)
+                          note=f"ncbi_assembly={'yes' if asm in ncbi else 'no'};wgs_set={r.get('wgs_set', '')};"
+                               f"center={r.get('center_name', '')}"))
+    # NCBI Assembly rows that ENA's table lacks (kept, so nothing is dropped; their type is not stated)
     for asm, r in sorted(ncbi.items()):
         if asm in in_wgs or asm in mg_asm:
             continue
         runs, samples, how = idx.link([r["biosample"]], [])
-        units.append(Unit("wgs", asm, frozenset(runs), frozenset(samples), how, _int(r["genome_size"]),
+        units.append(Unit("insdc", asm, frozenset(runs), frozenset(samples), how, _int(r["genome_size"]),
                           mapped_label(r["organism_name"], hmap["organism_name"]), r["organism_name"],
-                          note="ncbi_assembly=yes;not_in_ena_wgs_table"))
+                          note="ncbi_assembly=yes;not_in_ena_table"))
     return units, excluded
+
+
+_WGS = re.compile(r"^([A-Z]{4,6}\d{2})")
+
+
+def _wgs_key(v: str) -> str:
+    m = _WGS.match(v or "")
+    return m.group(1) if m else ""
+
+
+def _insdc_uid(r) -> str:
+    return _unver(r.get("assembly_accession", "")) or _wgs_key(r.get("wgs_set", ""))
 
 
 def _write_tsv(path, header, rows):
@@ -388,8 +403,8 @@ def _build(a) -> int:
     idx = read_runs(a.read_run)
     hmap = read_habitat_map(a.habitat_map)
     units, excluded = build_units(a, idx, hmap)
-    _write_tsv(os.path.join(a.out_dir, "wgs_sets_not_units.tsv"),
-               ["why", "assembly_type", "wgs_sets", "bases", "in_ncbi_assembly", "with_run_accession"],
+    _write_tsv(os.path.join(a.out_dir, "insdc_not_units.tsv"),
+               ["why", "assembly_type", "assemblies", "bases", "in_ncbi_assembly", "with_run_accession"],
                [[w, t, *v] for (w, t), v in sorted(excluded.items())])
     dec = choose(units, ORDER)
     per_run = run_resources(units, ORDER)
@@ -514,7 +529,7 @@ def _lookup_urls(a) -> int:
 def _labels(a) -> int:
     """Distinct labels the other resources give, with unit counts, to write the habitat map from."""
     cnt = {}
-    for r in _tsv(a.wgs_set):
+    for r in _tsv(a.insdc_assemblies):
         k = ("organism_name", r["scientific_name"])
         cnt[k] = cnt.get(k, 0) + 1
     for r in _tsv(a.ncbi_summary):
@@ -538,17 +553,17 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("out_tsv")
     p.set_defaults(fn=_spire_urls)
     p = sub.add_parser("labels")
-    p.add_argument("--wgs-set", required=True)
+    p.add_argument("--insdc-assemblies", required=True)
     p.add_argument("--ncbi-summary", required=True)
     p.add_argument("--mgnify-samples", default=None)
     p.add_argument("out_tsv")
     p.set_defaults(fn=_labels)
     p = sub.add_parser("build")
-    for opt in ("--spire-dir", "--wgs-set", "--ncbi-summary", "--mgnify-assemblies", "--habitat-map", "--out-dir"):
+    for opt in ("--spire-dir", "--insdc-assemblies", "--ncbi-summary", "--mgnify-assemblies", "--habitat-map", "--out-dir"):
         p.add_argument(opt, required=True)
     p.add_argument("--read-run", required=True, nargs="+")
     p.add_argument("--mgnify-samples", default=None)
-    p.add_argument("--wgs-include-types", default="primary metagenome",
+    p.add_argument("--insdc-include-types", default="primary metagenome",
                    help="comma-separated ENA assembly types taken as WGS units; an empty item takes a blank type")
     p.set_defaults(fn=_build)
     p = sub.add_parser("lookup-urls")
