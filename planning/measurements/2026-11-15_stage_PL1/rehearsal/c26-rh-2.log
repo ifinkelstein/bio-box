@@ -1,0 +1,15 @@
+2026-11-15T20:54:32-06:00 build-stage: stage PLR, release rC26.3: allowance 54 threads: cap 56 (Sun 20:54, night or weekend) less 2 for ours elsewhere; over 5.2 s, other users 0.00 CPUs (compute above 0.5), system accounts 0.48 (not counted), ours elsewhere 1.53, ours in this unit 0.03; load average 7.93 (not used)
+2026-11-15T20:54:32-06:00 run-step: PLR.inputs skipped: run record and outputs present
+2026-11-15T20:54:32-06:00 run-step: PLR.ingest skipped: run record and outputs present
+2026-11-15T20:54:32-06:00 run-step: PLR.genecall skipped: run record and outputs present
+2026-11-15T20:54:32-06:00 run-step: PLR.crispr-minced-0.4.2-w8-nr3-r23x47-s26x50 skipped: run record and outputs present
+2026-11-15T20:54:32-06:00 run-step: PLR.igr skipped: run record and outputs present
+2026-11-15T20:54:32-06:00 run-step: PLR.tapes skipped: run record and outputs present
+2026-11-15T20:54:32-06:00 run-step: PLR.domains-pfam-38.2 skipped: run record and outputs present
+2026-11-15T20:54:32-06:00 run-step: PLR.crispr-minced-0.4.2-w8-nr2-r23x47-s26x50-cas1kb-caspfam1-pfam-38.2 skipped: run record and outputs present
+2026-11-15T20:54:33-06:00 build-stage: rC26.3.cluster: clustering 9,502,904 proteins is estimated at 1,912.1 CPU-minutes in one process, over 80% of the profile's cpu_min_per_process of 1 (AGENTS §7.2); it runs in parts (card B-41): a plan, one step per module call, each per-query call cut into parts of at most 0.8 CPU-minutes, then the tables
+2026-11-15T20:54:38-06:00 build-stage: allowance 55 threads: cap 56 (Sun 20:54, night or weekend) less 1 for ours elsewhere; over 5.2 s, other users 0.01 CPUs (compute above 0.5), system accounts 0.21 (not counted), ours elsewhere 0.89, ours in this unit 0.03; load average 7.45 (not used) (was 54)
+2026-11-15T20:54:38-06:00 run-step: /tmp/if2453/c26/rh/root/STOP exists; not starting rC26.3.cluster.plan
+2026-11-15T20:54:38-06:00 build-stage: rC26.3.cluster.plan exited 75; stopping here; the next call resumes at this step
+pod_run: c26-rh-2 usage MemoryPeak=440565760 CPUUsageNSec=7664947000
+pod_run: c26-rh-2 exited 75

@@ -1,0 +1,30 @@
+before: 22 files; after: 80; new 58 (58 under stage=PLR); gone 0; size or mtime changed 0; earlier-stage files hashed before 0, after 0, sha256 changed 0, new 0; paths of rC26.3: 0
+root_added.tsv: 58 files, 2,749,118 bytes
+step crispr-minced-0.4.2-w8-nr2-r23x47-s26x50-cas1kb-caspfam1-pfam-38.2: 0.105 CPU-min, 4.3 s, 325 MiB, 8 threads, estimate 0.012 (ratio 8.687, not judged: DEC-43)
+step crispr-minced-0.4.2-w8-nr3-r23x47-s26x50: 0.104 CPU-min, 4.4 s, 325 MiB, 8 threads, estimate 0.01 (ratio 10.218, not judged: DEC-43)
+step domains-pfam-38.2: 0.571 CPU-min, 26.8 s, 2090 MiB, 8 threads
+step domains-pfam-38.2.plan: 0.474 CPU-min, 27.5 s, 324 MiB, 8 threads
+step domains-pfam-38.2.shard-00000: 3.098 CPU-min, 71.6 s, 325 MiB, 4 threads, estimate 0.8 (ratio 3.872, not judged: DEC-43)
+step domains-pfam-38.2.shard-00001: 3.058 CPU-min, 68.2 s, 325 MiB, 4 threads, estimate 0.8 (ratio 3.823, not judged: DEC-43)
+step domains-pfam-38.2.shard-00002: 3.136 CPU-min, 70.9 s, 324 MiB, 4 threads, estimate 0.8 (ratio 3.923, not judged: DEC-43)
+step domains-pfam-38.2.shard-00003: 2.993 CPU-min, 68.5 s, 324 MiB, 4 threads, estimate 0.798 (ratio 3.748, not judged: DEC-43)
+step domains-pfam-38.2.shard-00004: 3.119 CPU-min, 73.0 s, 324 MiB, 4 threads, estimate 0.799 (ratio 3.901, not judged: DEC-43)
+step domains-pfam-38.2.shard-00005: 3.128 CPU-min, 72.8 s, 324 MiB, 4 threads, estimate 0.799 (ratio 3.916, not judged: DEC-43)
+step domains-pfam-38.2.shard-00006: 3.047 CPU-min, 68.5 s, 325 MiB, 4 threads, estimate 0.8 (ratio 3.809, not judged: DEC-43)
+step domains-pfam-38.2.shard-00007: 1.723 CPU-min, 66.7 s, 325 MiB, 4 threads, estimate 0.144 (ratio 11.932, not judged: DEC-43)
+step genecall.batch-00000: 0.528 CPU-min, 10.5 s, 324 MiB, 4 threads, estimate 0.638 (ratio 0.827, not judged: DEC-43)
+step genecall.batch-00001: 0.498 CPU-min, 9.6 s, 325 MiB, 4 threads, estimate 0.628 (ratio 0.794, not judged: DEC-43)
+step genecall: 0.056 CPU-min, 2.5 s, 324 MiB, 8 threads, estimate 0.25 (ratio 0.223, not judged: DEC-43)
+step genecall.plan: 0.06 CPU-min, 2.7 s, 324 MiB, 8 threads
+step igr: 0.061 CPU-min, 2.8 s, 324 MiB, 8 threads
+step ingest: 0.079 CPU-min, 4.0 s, 324 MiB, 8 threads, estimate 0.13 (ratio 0.605, not judged: DEC-43)
+step inputs: 0.06 CPU-min, 2.7 s, 323 MiB, 8 threads
+step tapes: 0.058 CPU-min, 2.6 s, 325 MiB, 8 threads
+batches {'n': 2, 'cpu_min': 1.03, 'cpu_min_max': 0.528, 'ratio_min': 0.794, 'ratio_max': 0.827, 'wall_s_max': 10.5, 'peak_rss_mib_max': 325}; shards {'n': 8, 'cpu_min': 23.3, 'cpu_min_max': 3.136, 'ratio_min': 3.748, 'ratio_max': 11.932, 'wall_s_max': 73.0, 'peak_rss_mib_max': 325}; total 25.96 CPU-min, largest domains-pfam-38.2.shard-00002 3.136
+log: 2026-11-15T20:54:04-06:00 run-step: /tmp/if2453/c26/rh/root/STOP exists; not starting rC26.3.cluster.plan; pod_run: c26-rh-1 exited 75
+contigs: {'genome_input_rows': 288, 'genomes': 288, 'contigs': 288, 'stored': 185, 'bases_stored': 3340530, 'stored_by_earlier': 103, 'stored_by_earlier_by_stage': {'P1': 41, 'P2': 62}, 'ledger_skipped': 103, 'ledger_equals_stored_by': True, 'part1': {'contigs': 103, 'equal': True, 'by_stage': {'P1': 41, 'P2': 62}, 'only_part1': 0, 'only_now': 0, 'owner_differs': 0}, 'contig_occurrence_rows': 315, 'contig_occurrence_contigs': 288, 'contig_occurrence_rows_on_contigs_of_earlier_stages': 107, 'contig_label_rows': 288, 'kinds': ['plasmid'], 'codes': [11], 'quality': {'contig': 35, 'complete': 253}, 'circular': 220}
+genes 3,953; distinct proteins 3,426 (770,055 residues); new against protein_seq of P1,P2: 3,192; batches [{'batch': 0, 'genomes': 126, 'genes': 1985, 'estimate_cpu_min': 0.638, 'cpu_min': 0.52779, 'wall_s': 10.495, 'peak_rss_mib': 323.9, 'skipped_contigs': 41}, {'batch': 1, 'genomes': 162, 'genes': 1968, 'estimate_cpu_min': 0.628, 'cpu_min': 0.498355, 'wall_s': 9.612, 'peak_rss_mib': 325.1, 'skipped_contigs': 62}]
+pfam: {'proteins': 3426, 'residues': 770055, 'shards': 8, 'shard_residues': 100502, 'scanned_proteins': 3192, 'scanned_residues': 721155, 'copied_proteins': 234, 'copied_residues': 48900, 'copied_rows': 286, 'copied_proteins_with_hit': 176, 'sources': [{'stage': 'P1', 'proteins': 33, 'residues': 7344, 'rows': 47, 'proteins_with_hit': 31}, {'stage': 'P2', 'proteins': 201, 'residues': 41556, 'rows': 239, 'proteins_with_hit': 145}], 'passed_over': [], 'domain_rows': 3264, 'proteins_with_domain': 2009, 'models_with_hit': 992}
+copy check (independent DuckDB query, every copied protein): {'sources': [{'stage': 'P1', 'proteins': 33, 'plan_proteins': 33, 'rows_in_stage': 47, 'rows_in_source': 47, 'plan_rows': 47, 'stage_not_in_source': 0, 'source_not_in_stage': 0}, {'stage': 'P2', 'proteins': 201, 'plan_proteins': 201, 'rows_in_stage': 239, 'rows_in_source': 239, 'plan_rows': 239, 'stage_not_in_source': 0, 'source_not_in_stage': 0}], 'copied_proteins': 234, 'equals_plan': True, 'rows': 286, 'columns_compared': ['protein_uid', 'model_acc', 'model_name', 'model_len', 'seq_bitscore', 'seq_evalue_zref', 'dom_bitscore', 'dom_ievalue_zref', 'env_start', 'env_end', 'ali_start', 'ali_end', 'hmm_from', 'hmm_to', 'cutoff', 'z', 'dom_z']}
+crispr: {'default': {'producer': 'minced-0.4.2-w8-nr3-r23x47-s26x50', 'recorded': True, 'arrays': 0, 'elements': 0, 'contigs_searched': 185, 'contigs_skipped_other_stage': 103, 'calls_in': 0, 'calls_kept': 0, 'rejected': {}, 'arrays_per_gbp': 0.0}, 'near_cas': {'producer': 'minced-0.4.2-w8-nr2-r23x47-s26x50-cas1kb-caspfam1-pfam-38.2', 'recorded': True, 'arrays': 0, 'elements': 0, 'contigs_searched': 185, 'contigs_skipped_other_stage': 103, 'calls_in': 42, 'calls_kept': 0, 'rejected': {'far_from_cas': 42}, 'arrays_per_gbp': 0.0}}
+RESULT: all checks pass

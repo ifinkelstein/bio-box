@@ -1,0 +1,145 @@
+2026-11-15 20:25:02.141 CST c26 driver: mode 'rehearse' (pid 3911218), tree /tmp/if2453/ci/C-26-2, image /stor/home/if2453/bio-box/images/bio-box_faec1f4.sif
+20 stage directories and store_params.json linked into /tmp/if2453/c26/rh/root (stages ['P1', 'P2'], gene_call_version=pyrodigal-3.7.1-gv-0.3.2-p2, library pfam-38.2)
+{'records': 315, 'picked': 315, 'by_why': {'new': 150, 'new-incomplete': 10, 'new-linear': 10, 'owned:P1': 40, 'owned:P2': 60, 'repeat': 38, 'repeat-owned:P1': 2, 'repeat-owned:P2': 5}}
+2026-11-15 20:30:27.203 CST rehearsal: the sample is part 1's, record for record
+2026-11-15 20:30:30.234 CST rehearsal: sample inputs: {"records": 315, "genomes": 288, "contigs": 288, "topology": {"circular": 246, "linear": 69, "empty": 0}, "quality": {"complete": 280, "contig": 35}, "genomes_circular": 220, "repeated_records": 27, "repeats_other_topology": 1, "repeats_other_quality": 0, "suppressed": 6, "record_bases": 13130680, "genome_bases": 12854288, "meta_rows_not_in_fasta": 72241, "memberships": 288, "contigs_in_several_genomes": 0, "records_repeated_in_genome": 0, "genomes_repeated": 27, "shared_records": 107, "owner_records": {"P1": 42, "P2": 65}, "owner_contigs": {"P1": 41, "P2": 62}, "new_contigs": 185, "new_bases"
+2026-11-15 20:30:34.798 CST rehearsal: gene-call plan of PLR at a budget of 1: 2 batches; {"bases":12854288,"bases_called":3340530,"bases_stored":3340530,"batches":[{"bases":1686247,"batch":0,"estimate_cpu_min":0.638,"genomes":126},{"bases":1654283,"batch":1,"estimate_cpu_min":0.628,"genomes":162}],"budget":1,"contigs_listed":288,"contigs_owned_by_earlier_stages":103,"contigs_stored":185,"estimate_cpu_min":1.016,"genes_expected":3604.8,"genomes":288,"genomes_not_called":103,"largest_genome":{"estimate_cpu_min":0.014,"genome_uid":"2e9e40eeed6665cc4207b18a236b985e"},"merge_estimate_cpu
+2026-11-15 20:30:34.813 CST launch c26-rh-1 (pod_run --threads 8 --mem 32G): build-stage --profile /tmp/if2453/c26/rh/profile.yaml --root /tmp/if2453/c26/rh/root --stage PLR --release rC26.3 --stages P1,P2,PLR --genomes /tmp/if2453/c26/rh/inputs/genomes.json --objects /tmp/if2453/c26/rh/inputs/objects.json --library pfam 38.2 /stor/scratch/Wilke/if2453/all-the-data/l0/refdb/pfam/38.2/Pfam-A.hmm.gz gathering --crispr --threads 8 --scan-jobs 2 --scan-cpus 4
+pod_run: started c26-rh-1 (MemoryMax=32G, MemorySwapMax=0, CPUQuota=800%, nice 19)
+pod_run: image /stor/home/if2453/bio-box/images/bio-box_faec1f4.sif sha256:d67300aa1321b571fa8da79e74dfccdd87a8dca2e56518f324902efa6b9f098a
+pod_run: log /tmp/if2453/c26/logs/c26-rh-1.log; watch: systemctl --user status c26-rh-1
+2026-11-15 20:32:46.013 CST c26 driver: mode 'rehearse' (pid 4009563), tree /tmp/if2453/ci/C-26-2, image /stor/home/if2453/bio-box/images/bio-box_faec1f4.sif
+2026-11-15 20:32:50.661 CST rehearsal: gene-call plan of PLR at a budget of 1: 2 batches; {"bases":12854288,"bases_called":3340530,"bases_stored":3340530,"batches":[{"bases":1686247,"batch":0,"estimate_cpu_min":0.638,"genomes":126},{"bases":1654283,"batch":1,"estimate_cpu_min":0.628,"genomes":162}],"budget":1,"contigs_listed":288,"contigs_owned_by_earlier_stages":103,"contigs_stored":185,"estimate_cpu_min":1.016,"genes_expected":3604.8,"genomes":288,"genomes_not_called":103,"largest_genome":{"estimate_cpu_min":0.014,"genome_uid":"2e9e40eeed6665cc4207b18a236b985e"},"merge_estimate_cpu
+2026-11-15 20:32:50.711 CST launch c26-rh-1 (pod_run --threads 8 --mem 32G): build-stage --profile /tmp/if2453/c26/rh/profile.yaml --root /tmp/if2453/c26/rh/root --stage PLR --release rC26.3 --stages P1,P2,PLR --genomes /tmp/if2453/c26/rh/inputs/genomes.json --objects /tmp/if2453/c26/rh/inputs/objects.json --library pfam 38.2 /stor/scratch/Wilke/if2453/all-the-data/l0/refdb/pfam/38.2/Pfam-A.hmm.gz gathering --crispr --threads 8 --scan-jobs 2 --scan-cpus 4
+pod_run: started c26-rh-1 (MemoryMax=32G, MemorySwapMax=0, CPUQuota=800%, nice 19)
+pod_run: image /stor/home/if2453/bio-box/images/bio-box_faec1f4.sif sha256:d67300aa1321b571fa8da79e74dfccdd87a8dca2e56518f324902efa6b9f098a
+pod_run: log /tmp/if2453/c26/logs/c26-rh-1.log; watch: systemctl --user status c26-rh-1
+2026-11-15 20:42:58.520 CST watcher: the last stage step's intent file, run record or skip line appeared; wrote /tmp/if2453/c26/rh/root/STOP (c26 driver STOP c26-rh-1 2026-11-15 20:42:58.516077169 CST pid 4009563)
+2026-11-15 20:43:01.615 CST c26-rh-1 ended, exit '75'; 2026-11-15T20:42:58-06:00 build-stage: /tmp/if2453/c26/rh/root/STOP exists; stopping before rC26.3.cluster.plan 
+2026-11-15 20:43:01.622 CST c26-rh-1 usage: pod_run: c26-rh-1 usage MemoryPeak=2821267456 CPUUsageNSec=1666266622000
+2026-11-15 20:43:01.648 CST PLR: 2 gene-call batch records; 8 scan shard records
+2026-11-15 20:43:01.669 CST paths naming rC26.3 in /tmp/if2453/c26/rh/root: 0; in /tmp/if2453/c26/tmp and /tmp/if2453/c26/rh/tmp: 0
+2026-11-15 20:43:01.681 CST removed /tmp/if2453/c26/rh/root/STOP, written by this driver (c26 driver STOP c26-rh-1 2026-11-15 20:42:58.516077169 CST pid 4009563)
+2026-11-15 20:43:01.736 CST rehearsal: the scan's plan copies: {"proteins": 234, "residues": 48900, "rows": 286, "proteins_with_hit": 176, "sources": ["P1", "P2"], "passed_over": []}
+2026-11-15 20:43:13.769 CST rehearsal: c26_check.py exit 1: RESULT: FAILED: unexpected new: 1
+2026-11-15 20:43:13.773 CST FAILED: rehearsal: c26_check.py failed (read /tmp/if2453/c26/rh/check/check.out)
+2026-11-15 20:44:23.000 CST c26 driver: mode 'rehearse' (pid 41829), tree /tmp/if2453/ci/C-26-2, image /stor/home/if2453/bio-box/images/bio-box_faec1f4.sif
+21 stage directories and store_params.json linked into /tmp/if2453/c26/rh/root (stages ['P1', 'P2'], gene_call_version=pyrodigal-3.7.1-gv-0.3.2-p2, library pfam-38.2)
+2026-11-15 20:44:26.961 CST rehearsal: gene-call plan of PLR at a budget of 1: 2 batches; {"bases":12854288,"bases_called":3340530,"bases_stored":3340530,"batches":[{"bases":1686247,"batch":0,"estimate_cpu_min":0.638,"genomes":126},{"bases":1654283,"batch":1,"estimate_cpu_min":0.628,"genomes":162}],"budget":1,"contigs_listed":288,"contigs_owned_by_earlier_stages":103,"contigs_stored":185,"estimate_cpu_min":1.016,"genes_expected":3604.8,"genomes":288,"genomes_not_called":103,"largest_genome":{"estimate_cpu_min":0.014,"genome_uid":"2e9e40eeed6665cc4207b18a236b985e"},"merge_estimate_cpu
+2026-11-15 20:44:26.973 CST launch c26-rh-1 (pod_run --threads 8 --mem 32G): build-stage --profile /tmp/if2453/c26/rh/profile.yaml --root /tmp/if2453/c26/rh/root --stage PLR --release rC26.3 --stages P1,P2,PLR --genomes /tmp/if2453/c26/rh/inputs/genomes.json --objects /tmp/if2453/c26/rh/inputs/objects.json --library pfam 38.2 /stor/scratch/Wilke/if2453/all-the-data/l0/refdb/pfam/38.2/Pfam-A.hmm.gz gathering --crispr --threads 8 --scan-jobs 2 --scan-cpus 4
+2026-11-15 20:44:29.837 CST c26 driver: mode 'estimate' (pid 42414), tree /tmp/if2453/ci/C-26-2, image /stor/home/if2453/bio-box/images/bio-box_faec1f4.sif
+2026-11-15 20:44:29.850 CST profile /tmp/if2453/c26/profile.yaml: 1 line differs from /tmp/if2453/ci/C-26-2/profiles/wilkcomp02.yaml
+pod_run: started c26-rh-1 (MemoryMax=32G, MemorySwapMax=0, CPUQuota=800%, nice 19)
+pod_run: image /stor/home/if2453/bio-box/images/bio-box_faec1f4.sif sha256:d67300aa1321b571fa8da79e74dfccdd87a8dca2e56518f324902efa6b9f098a
+pod_run: log /tmp/if2453/c26/logs/c26-rh-1.log; watch: systemctl --user status c26-rh-1
+2026-11-15 20:44:55.927 CST estimate: the inputs' sha256 against part 1's: exit 0: genomes.json: OK objects.json: OK repeated_records.tsv: OK shared_records.tsv: OK plsdb_2024_05_31_v2_sequences.fasta: OK 
+2026-11-15 20:45:57.672 CST estimate: exit 0: {"bases_stored":5924552875,"crispr_default_cpu_min":17.971,"crispr_formula":"basesx182.0/1e9/60(x1.19filtered)","crispr_near_cpu_min":21.386,"expected_after_gene_calling":{"distinct_proteins":[1383442,1760000],"genes":[5610000,6370000],"label":"derived,planning/measurements/2026-11-15_plsdb_inputs.mdsection4","residues":[409706637,521200000],"scan_cpu_min_before_copies":[3261.3,4148.8],"scan_shards_before_copies":[14,18]},"fasta_bytes":7425668755,"genecall":{"bases":7102391741,"bases_called":5924552875,"bases_stored":5924552875,"batches":[{"bases":1471826928,"batch":0,"estimate_cpu_min":218.345,"genomes":17367},{"bases":1493140979,"batch":1,"estimate_cpu_min":218.355,"genomes":16928},{"bases":1484779065,"batch":2,"estimate_cpu_min":218.347,"genomes":16966},{"bases":1474805903,"batch":3,"estimate_cpu_min":218.348,"genomes":17432}],"budget":300,"contigs_listed":68693,"contigs_owned_by_earlier_stages":7046,"contigs_stored":61647,"estimate_cpu_min":872.645,"genes_expected":6393185.0,"genomes":68693,"genomes_not_called":7046,"largest_genome":{"estimate_cpu_min":1.083,"genome_uid":"5ea2e633ae614f975ff4bdc30a47cc48"},"merge_estimate_cpu_min":0.836,"refusal":null,"stage":"PL1"},"ingest_cpu_min":33.267,"ingest_formula":"0.07+7425668755x42.9/9596180328","labels":"ingest,crispr,genecall:thecode'sestimatefunctions(estimate);expected:part1(derived)","margin_cpu_min":240.0,"shard_residues":30150753}
+4 batches, largest 218.355 margin 240.0 refusal None
+2026-11-15 20:45:57.726 CST c26 driver: mode 'estimate' done
+2026-11-15 20:53:59.495 CST watcher: the last stage step's intent file, run record or skip line appeared; wrote /tmp/if2453/c26/rh/root/STOP (c26 driver STOP c26-rh-1 2026-11-15 20:53:59.490339008 CST pid 41829)
+2026-11-15 20:54:08.121 CST c26-rh-1 ended, exit '75'; 2026-11-15T20:54:04-06:00 run-step: /tmp/if2453/c26/rh/root/STOP exists; not starting rC26.3.cluster.plan 
+2026-11-15 20:54:08.130 CST c26-rh-1 usage: pod_run: c26-rh-1 usage MemoryPeak=2807554048 CPUUsageNSec=1621027604000
+2026-11-15 20:54:08.152 CST PLR: 2 gene-call batch records; 8 scan shard records
+2026-11-15 20:54:08.174 CST paths naming rC26.3 in /tmp/if2453/c26/rh/root: 0; in /tmp/if2453/c26/tmp and /tmp/if2453/c26/rh/tmp: 0
+2026-11-15 20:54:08.189 CST removed /tmp/if2453/c26/rh/root/STOP, written by this driver (c26 driver STOP c26-rh-1 2026-11-15 20:53:59.490339008 CST pid 41829)
+2026-11-15 20:54:08.267 CST rehearsal: the scan's plan copies: {"proteins": 234, "residues": 48900, "rows": 286, "proteins_with_hit": 176, "sources": ["P1", "P2"], "passed_over": []}
+2026-11-15 20:54:19.396 CST rehearsal: c26_check.py exit 0: RESULT: all checks pass
+2026-11-15 20:54:19.415 CST launch c26-rh-2 (pod_run --threads 8 --mem 32G): build-stage --profile /tmp/if2453/c26/rh/profile.yaml --root /tmp/if2453/c26/rh/root --stage PLR --release rC26.3 --stages P1,P2,PLR --genomes /tmp/if2453/c26/rh/inputs/genomes.json --objects /tmp/if2453/c26/rh/inputs/objects.json --library pfam 38.2 /stor/scratch/Wilke/if2453/all-the-data/l0/refdb/pfam/38.2/Pfam-A.hmm.gz gathering --crispr --threads 8 --scan-jobs 2 --scan-cpus 4
+pod_run: started c26-rh-2 (MemoryMax=32G, MemorySwapMax=0, CPUQuota=800%, nice 19)
+pod_run: image /stor/home/if2453/bio-box/images/bio-box_faec1f4.sif sha256:d67300aa1321b571fa8da79e74dfccdd87a8dca2e56518f324902efa6b9f098a
+pod_run: log /tmp/if2453/c26/logs/c26-rh-2.log; watch: systemctl --user status c26-rh-2
+2026-11-15 20:54:33.253 CST watcher: the last stage step's intent file, run record or skip line appeared; wrote /tmp/if2453/c26/rh/root/STOP (c26 driver STOP c26-rh-2 2026-11-15 20:54:33.248426277 CST pid 41829)
+2026-11-15 20:54:39.360 CST c26-rh-2 ended, exit '75'; 2026-11-15T20:54:38-06:00 run-step: /tmp/if2453/c26/rh/root/STOP exists; not starting rC26.3.cluster.plan 
+2026-11-15 20:54:39.368 CST c26-rh-2 usage: pod_run: c26-rh-2 usage MemoryPeak=440565760 CPUUsageNSec=7664947000
+2026-11-15 20:54:39.391 CST PLR: 2 gene-call batch records; 8 scan shard records
+2026-11-15 20:54:39.412 CST paths naming rC26.3 in /tmp/if2453/c26/rh/root: 0; in /tmp/if2453/c26/tmp and /tmp/if2453/c26/rh/tmp: 0
+2026-11-15 20:54:39.424 CST removed /tmp/if2453/c26/rh/root/STOP, written by this driver (c26 driver STOP c26-rh-2 2026-11-15 20:54:33.248426277 CST pid 41829)
+2026-11-15 20:54:39.434 CST rehearsal: c26-rh-2: 8 steps skipped; published lines: 0
+2026-11-15 20:54:39.451 CST rehearsal: c26-rh-2 left the view's listing unchanged
+2026-11-15 20:54:39.458 CST rehearsal: OK
+2026-11-15 20:54:39.461 CST c26 driver: mode 'rehearse' done
+2026-11-15 20:55:50.328 CST c26 driver: mode 'before' (pid 260609), tree /tmp/if2453/ci/C-26-2, image /stor/home/if2453/bio-box/images/bio-box_faec1f4.sif
+2026-11-15 20:55:50.368 CST uptime:  20:55:50 up 17 days,  2:26, 11 users,  load average: 3.93, 8.37, 9.30
+2026-11-15 20:55:50.768 CST account CPU now (top, %CPU of if2453): 244.5
+top - 20:55:51 up 17 days,  2:26, 11 users,  load average: 3.93, 8.37, 9.30
+Tasks: 1220 total,   1 running, 1219 sleeping,   0 stopped,   0 zombie
+%Cpu(s):  0.1 us,  0.4 sy,  1.9 ni, 96.5 id,  1.1 wa,  0.0 hi,  0.0 si,  0.0 st 
+MiB Mem : 1031807.+total, 147705.8 free,  23225.4 used, 866434.6 buff/cache     
+MiB Swap: 1144639.+total, 1144589.+free,     49.5 used. 1008581.+avail Mem 
+    PID USER      PR  NI    VIRT    RES    SHR S  %CPU  %MEM     TIME+ COMMAND
+ 260590 if2453    39  19  313500 165120   3844 S 193.3   0.0   0:01.60 cmsearch
+ 260679 if2453    39  19   12464   6308   3612 R  20.0   0.0   0:00.07 top
+ 258736 if2453    39  19   27.7g 263728 100380 D  13.3   0.0   0:02.35 python
+2313133 root      20   0       0      0      0 I   6.7   0.0   0:04.52 kworker/21:0-mm_percpu_wq
+      1 root      20   0   24684  16124   9804 S   0.0   0.0  26:34.27 systemd
+      2 root      20   0       0      0      0 S   0.0   0.0   0:08.72 kthreadd
+      3 root      20   0       0      0      0 S   0.0   0.0   0:00.00 pool_workqueue_release
+      4 root       0 -20       0      0      0 I   0.0   0.0   0:00.00 kworker/R-rcu_g
+      5 root       0 -20       0      0      0 I   0.0   0.0   0:00.00 kworker/R-rcu_p
+      6 root       0 -20       0      0      0 I   0.0   0.0   0:00.00 kworker/R-slub_
+      7 root       0 -20       0      0      0 I   0.0   0.0   0:00.00 kworker/R-netns
+     10 root       0 -20       0      0      0 I   0.0   0.0   0:00.00 kworker/0:0H-events_highpri
+     12 root       0 -20       0      0      0 I   0.0   0.0   0:00.00 kworker/R-mm_pe
+     13 root      20   0       0      0      0 I   0.0   0.0   0:00.00 rcu_tasks_kthread
+     14 root      20   0       0      0      0 I   0.0   0.0   0:00.00 rcu_tasks_rude_kthread
+2026-11-15 20:55:51.086 CST df /tmp: /dev/sdc2       1.1T  442G  602G  43% /
+2026-11-15 20:55:51.109 CST active units: init.scope run-r1cedb7cbbede477ebae4a2d964d52dc2.scope run-r29f0e1ac130b46e9ade6b29353c6151f.scope c26-driver-before.service dbus.service w27-fl-nr50-b.service w27-fl-nr50.service
+2026-11-15 20:55:59.804 CST verify rN.1a (/tmp/if2453/r10/root): exit 0: release rN.1a: verified (stages S1, 23 files, 4 artifacts, manifest hash 39020b27de1fa163570c4255365aebdd)
+2026-11-15 20:56:11.704 CST verify rN.1b (/tmp/if2453/r10/root): exit 0: release rN.1b: verified (stages S1,P1, 37 files, 7 artifacts, manifest hash d3212c9f264e25208158534e61e24011)
+2026-11-15 20:56:52.840 CST verify rN.1 (/tmp/if2453/r10/root): exit 0: release rN.1: verified (stages S1,P1,P2, 52 files, 34 artifacts, manifest hash 84c2c057b09643bb4e9925938703095d)
+2026-11-15 20:57:37.760 CST verify rN.2 (/tmp/if2453/r10/root): exit 0: release rN.2: verified (stages S1,P1,P2, 59 files, 34 artifacts, manifest hash 2b4b0e43cecdb3a5dbccd1a2bb2b0393)
+2026-11-15 20:58:27.388 CST verify rN.3 (/tmp/if2453/r10/root): exit 0: release rN.3: verified (stages S1,P1,P2, 60 files, 34 artifacts, manifest hash eee598acd16324d1dd73349cfd6d931f)
+2026-11-15 21:01:38.149 CST verify rM.2 (/tmp/if2453/r10/root): exit 0: release rM.2: verified (stages S1,P1,P2,P3,P4,P5,P6, 158 files, 154 artifacts, manifest hash 2239df7b92ec775058fb9c2ddae3609e)
+2026-11-15 21:04:00.705 CST snapshot /tmp/if2453/c26/before: 3476 files, 1433 of S1,P1,P2,P3,P4,P5,P6,H1 hashed, 82329164019 bytes
+2026-11-15 21:04:00.713 CST c26 driver: mode 'before' done
+2026-11-15 21:06:02.988 CST c26 driver: mode 'run' (pid 502406), tree /tmp/if2453/ci/C-26-2, image /stor/home/if2453/bio-box/images/bio-box_faec1f4.sif
+2026-11-15 21:06:03.159 CST profile /tmp/if2453/c26/profile.yaml: 1 line differs from /tmp/if2453/ci/C-26-2/profiles/wilkcomp02.yaml
+2026-11-15T21:06:10-06:00 run-step: allowance 53 threads: cap 56 (Sun 21:06, night or weekend) less 3 for ours elsewhere; over 5.2 s, other users 0.00 CPUs (compute above 0.5), system accounts 0.87 (not counted), ours elsewhere 2.96, ours in this unit 0.03; load average 7.13 (not used)
+2026-11-15 21:06:10.918 CST uptime:  21:06:10 up 17 days,  2:36, 12 users,  load average: 7.13, 7.60, 8.21
+2026-11-15 21:06:11.288 CST account CPU now (top, %CPU of if2453): 322.1
+top - 21:06:11 up 17 days,  2:36, 12 users,  load average: 7.13, 7.60, 8.21
+Tasks: 1225 total,   5 running, 1220 sleeping,   0 stopped,   0 zombie
+%Cpu(s):  0.2 us,  1.9 sy,  3.4 ni, 94.5 id,  0.0 wa,  0.0 hi,  0.0 si,  0.0 st 
+MiB Mem : 1031807.+total, 144052.5 free,  24009.9 used, 869303.3 buff/cache     
+MiB Swap: 1144639.+total, 1144589.+free,     49.5 used. 1007797.+avail Mem 
+    PID USER      PR  NI    VIRT    RES    SHR S  %CPU  %MEM     TIME+ COMMAND
+ 506423 if2453    39  19  486424  80072  46088 R 200.0   0.0   0:00.94 python
+ 505392 if2453    39  19 1088000 887224   6708 R 100.0   0.1   0:04.14 mmseqs
+3381165 if2453    39  19   63.9g   1.4g 150924 R 100.0   0.1  26:07.74 python
+ 360182 root      20   0  742712 438468  13952 R  50.0   0.0   1:16.36 puppet
+ 506481 if2453    39  19   12464   6292   3596 R  43.8   0.0   0:00.11 top
+1193320 root      20   0   11.3g 470688 188984 S  37.5   0.0      7,54 ampdaemon
+      1 root      20   0   24684  16128   9804 S   0.0   0.0  26:37.12 systemd
+      2 root      20   0       0      0      0 S   0.0   0.0   0:08.73 kthreadd
+      3 root      20   0       0      0      0 S   0.0   0.0   0:00.00 pool_workqueue_release
+      4 root       0 -20       0      0      0 I   0.0   0.0   0:00.00 kworker/R-rcu_g
+      5 root       0 -20       0      0      0 I   0.0   0.0   0:00.00 kworker/R-rcu_p
+      6 root       0 -20       0      0      0 I   0.0   0.0   0:00.00 kworker/R-slub_
+      7 root       0 -20       0      0      0 I   0.0   0.0   0:00.00 kworker/R-netns
+     10 root       0 -20       0      0      0 I   0.0   0.0   0:00.00 kworker/0:0H-events_highpri
+     12 root       0 -20       0      0      0 I   0.0   0.0   0:00.00 kworker/R-mm_pe
+2026-11-15 21:06:11.643 CST df /tmp: /dev/sdc2       1.1T  444G  599G  43% /
+2026-11-15 21:06:11.666 CST active units: init.scope run-r1cedb7cbbede477ebae4a2d964d52dc2.scope run-r29f0e1ac130b46e9ade6b29353c6151f.scope c26-driver-run.service ci-C-36-0.service ci-C-36-1.service dbus.service w27-fl-nr50-b.service w27-fl-nr50.service
+2026-11-15 21:06:11.668 CST free 599 GB; allowance 53 for 36 threads
+2026-11-15 21:06:11.680 CST launch c26-pl1-1 (pod_run --threads 40 --mem 200G): build-stage --profile /tmp/if2453/c26/profile.yaml --root /tmp/if2453/r10/root --stage PL1 --release rM.3 --stages S1,P1,P2,P3,P4,P5,P6,H1,PL1 --genomes /tmp/if2453/s2/inputs/PL1/genomes.json --objects /tmp/if2453/s2/inputs/PL1/objects.json --library pfam 38.2 /stor/scratch/Wilke/if2453/all-the-data/l0/refdb/pfam/38.2/Pfam-A.hmm.gz gathering --crispr --threads 36 --scan-jobs 9 --scan-cpus 4
+pod_run: started c26-pl1-1 (MemoryMax=200G, MemorySwapMax=0, CPUQuota=4000%, nice 19)
+pod_run: image /stor/home/if2453/bio-box/images/bio-box_faec1f4.sif sha256:d67300aa1321b571fa8da79e74dfccdd87a8dca2e56518f324902efa6b9f098a
+pod_run: log /tmp/if2453/c26/logs/c26-pl1-1.log; watch: systemctl --user status c26-pl1-1
+2026-11-15 21:06:24.857 CST guard: {"time": "2026-11-15T21:06:24-0600", "tmp_free_gb": 642.6, "scratch_gb": 0.0, "scratch_peak_gb": 0.0, "records": {"n": 0, "max_cpu_min": null}, "live": [], "reasons": []}; unit log: 2026-11-15T21:06:24-06:00 build-stage: stage PL1, release rM.3: allowance 54 threads: cap 56 (Sun 21:06, night or weekend) less 2 for ours elsewhere; over 5.1 s, other users 0.02 CPUs (compute above 0.5), system accounts 0.57 (not counted),
+2026-11-15 21:06:28.815 CST rates (0 records of PL1): {"checked": 0, "counts": [], "outside_20pct": [], "rows": [], "stage": "PL1"}
+2026-11-15 21:06:53.393 CST rates (1 records of PL1): {"checked": 0, "counts": [], "outside_20pct": [], "rows": [], "stage": "PL1"}
+2026-11-15 21:16:35.825 CST guard: {"time": "2026-11-15T21:16:35-0600", "tmp_free_gb": 640.1, "scratch_gb": 0.01, "scratch_peak_gb": 0.01, "records": {"n": 1, "max_cpu_min": 0.13}, "live": [{"pid": 524528, "step": "stage ingest stage=PL1", "cpu_min": 10.11}], "reasons": []}; unit log: 2026-11-15T21:06:49-06:00 run-step: PL1.ingest: allowance 36 threads of 36 asked: cap 56 (Sun 21:06, night or weekend) less 3 for ours elsewhere; over 5.2 s, other users 0.01 CPUs (compute above 0.5), system accounts 0.56 (not counted), our
+2026-11-15 21:26:38.171 CST guard: {"time": "2026-11-15T21:26:38-0600", "tmp_free_gb": 635.5, "scratch_gb": 0.01, "scratch_peak_gb": 0.01, "records": {"n": 1, "max_cpu_min": 0.13}, "live": [{"pid": 524528, "step": "stage ingest stage=PL1", "cpu_min": 20.41}], "reasons": []}; unit log: 2026-11-15T21:06:49-06:00 run-step: PL1.ingest: allowance 36 threads of 36 asked: cap 56 (Sun 21:06, night or weekend) less 3 for ours elsewhere; over 5.2 s, other users 0.01 CPUs (compute above 0.5), system accounts 0.56 (not counted), our
+2026-11-15 21:32:54.743 CST rates (2 records of PL1): {"checked": 1, "counts": [], "outside_20pct": ["ingest"], "rows": [{"basis": "ingest_cpu_min(FASTA bytes)", "cpu_min": 26.612, "estimate": 33.267, "judged": true, "peak_rss_mib": 6011.7, "ratio": 0.8, "step": "ingest", "wall_s": 1549.001}], "stage": "PL1"}
+2026-11-15 21:32:54.750 CST stopping c26-pl1-1: a measurement more than 20% from its estimate (AGENTS §6, DEC-43): {"checked": 1, "counts": [], "outside_20pct": ["ingest"], "rows": [{"basis": "ingest_cpu_min(FASTA bytes)", "cpu_min": 26.612, "estimate": 33.267, "judged": true, "peak_rss_mib": 6011.7, "ratio": 0.8, "step": "ingest", "wall_s": 1549.001}], "stage": "PL1"}
+2026-11-15 21:32:54.933 CST FAILED: a measurement more than 20% from its estimate (AGENTS §6, DEC-43): {"checked": 1, "counts": [], "outside_20pct": ["ingest"], "rows": [{"basis": "ingest_cpu_min(FASTA bytes)", "cpu_min": 26.612, "estimate": 33.267, "judged": true, "peak_rss_mib": 6011.7, "ratio": 0.8, "step": "ingest", "wall_s": 1549.001}], "stage": "PL1"} (unit c26-pl1-1 stopped; the root is left as the steps left it; the same command resumes)
+2026-11-15 21:38:04.898 CST c26 driver: mode 'after' (pid 1287301), tree /tmp/if2453/ci/C-26-2, image /stor/home/if2453/bio-box/images/bio-box_faec1f4.sif
+2026-11-15 21:40:25.174 CST snapshot /tmp/if2453/c26/after: 3488 files, 1433 of S1,P1,P2,P3,P4,P5,P6,H1 hashed, 84183237878 bytes
+2026-11-15 21:40:34.414 CST verify rN.1a (/tmp/if2453/r10/root): exit 0: release rN.1a: verified (stages S1, 23 files, 4 artifacts, manifest hash 39020b27de1fa163570c4255365aebdd)
+2026-11-15 21:40:46.989 CST verify rN.1b (/tmp/if2453/r10/root): exit 0: release rN.1b: verified (stages S1,P1, 37 files, 7 artifacts, manifest hash d3212c9f264e25208158534e61e24011)
+2026-11-15 21:41:27.713 CST verify rN.1 (/tmp/if2453/r10/root): exit 0: release rN.1: verified (stages S1,P1,P2, 52 files, 34 artifacts, manifest hash 84c2c057b09643bb4e9925938703095d)
+2026-11-15 21:42:14.074 CST verify rN.2 (/tmp/if2453/r10/root): exit 0: release rN.2: verified (stages S1,P1,P2, 59 files, 34 artifacts, manifest hash 2b4b0e43cecdb3a5dbccd1a2bb2b0393)
+2026-11-15 21:43:02.567 CST verify rN.3 (/tmp/if2453/r10/root): exit 0: release rN.3: verified (stages S1,P1,P2, 60 files, 34 artifacts, manifest hash eee598acd16324d1dd73349cfd6d931f)
+2026-11-15 21:46:15.901 CST verify rM.2 (/tmp/if2453/r10/root): exit 0: release rM.2: verified (stages S1,P1,P2,P3,P4,P5,P6, 158 files, 154 artifacts, manifest hash 2239df7b92ec775058fb9c2ddae3609e)
+2026-11-15 21:46:20.192 CST after: bio-box releases exit 0: 8 lines
+2026-11-15 21:46:20.264 CST c26 driver: mode 'after' done

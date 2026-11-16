@@ -1,0 +1,81 @@
+{
+ "bases_stored": 5924552875,
+ "crispr_default_cpu_min": 17.971,
+ "crispr_formula": "bases x 182.0 / 1e9 / 60 (x 1.19 filtered)",
+ "crispr_near_cpu_min": 21.386,
+ "expected_after_gene_calling": {
+  "distinct_proteins": [
+   1383442,
+   1760000
+  ],
+  "genes": [
+   5610000,
+   6370000
+  ],
+  "label": "derived, planning/measurements/2026-11-15_plsdb_inputs.md section 4",
+  "residues": [
+   409706637,
+   521200000
+  ],
+  "scan_cpu_min_before_copies": [
+   3261.3,
+   4148.8
+  ],
+  "scan_shards_before_copies": [
+   14,
+   18
+  ]
+ },
+ "fasta_bytes": 7425668755,
+ "genecall": {
+  "bases": 7102391741,
+  "bases_called": 5924552875,
+  "bases_stored": 5924552875,
+  "batches": [
+   {
+    "bases": 1471826928,
+    "batch": 0,
+    "estimate_cpu_min": 218.345,
+    "genomes": 17367
+   },
+   {
+    "bases": 1493140979,
+    "batch": 1,
+    "estimate_cpu_min": 218.355,
+    "genomes": 16928
+   },
+   {
+    "bases": 1484779065,
+    "batch": 2,
+    "estimate_cpu_min": 218.347,
+    "genomes": 16966
+   },
+   {
+    "bases": 1474805903,
+    "batch": 3,
+    "estimate_cpu_min": 218.348,
+    "genomes": 17432
+   }
+  ],
+  "budget": 300,
+  "contigs_listed": 68693,
+  "contigs_owned_by_earlier_stages": 7046,
+  "contigs_stored": 61647,
+  "estimate_cpu_min": 872.645,
+  "genes_expected": 6393185.0,
+  "genomes": 68693,
+  "genomes_not_called": 7046,
+  "largest_genome": {
+   "estimate_cpu_min": 1.083,
+   "genome_uid": "5ea2e633ae614f975ff4bdc30a47cc48"
+  },
+  "merge_estimate_cpu_min": 0.836,
+  "refusal": null,
+  "stage": "PL1"
+ },
+ "ingest_cpu_min": 33.267,
+ "ingest_formula": "0.07 + 7425668755 x 42.9 / 9596180328",
+ "labels": "ingest, crispr, genecall: the code's estimate functions (estimate); expected: part 1 (derived)",
+ "margin_cpu_min": 240.0,
+ "shard_residues": 30150753
+}

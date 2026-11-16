@@ -1,0 +1,5 @@
+genomes.json: OK
+objects.json: OK
+repeated_records.tsv: OK
+shared_records.tsv: OK
+plsdb_2024_05_31_v2_sequences.fasta: OK

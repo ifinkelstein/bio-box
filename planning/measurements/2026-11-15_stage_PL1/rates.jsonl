@@ -1,0 +1,3 @@
+{"checked": 0, "counts": [], "outside_20pct": [], "rows": [], "stage": "PL1"}
+{"checked": 0, "counts": [], "outside_20pct": [], "rows": [], "stage": "PL1"}
+{"checked": 1, "counts": [], "outside_20pct": ["ingest"], "rows": [{"basis": "ingest_cpu_min(FASTA bytes)", "cpu_min": 26.612, "estimate": 33.267, "judged": true, "peak_rss_mib": 6011.7, "ratio": 0.8, "step": "ingest", "wall_s": 1549.001}], "stage": "PL1"}
