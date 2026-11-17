@@ -94,7 +94,8 @@ n-th release cut in that month (`r26.11.1` is the first, over nine stages), and 
 whenever a stage has been completed since the last one, over every complete stage. Older releases keep their
 names and stay usable. `rS<k>.<n>` is kept for a signed release at a gate of the stage plan. Every command that reads
 or searches a release takes `--release latest` for the newest one (card W-37): the greatest name by this scheme
-(names outside it sort before it, by name) that has a manifest and, for a search, a verified search pack; the
+(the older names sort before it, in the order they were built, `rM.2` last) that has a manifest and, for a search, a
+verified search pack; the
 command prints the name it took and records that name, and `bio-box releases` marks it in its column `latest`.
 
 | Release | Stages | Contents | State |

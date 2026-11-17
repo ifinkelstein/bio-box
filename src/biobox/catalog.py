@@ -483,11 +483,16 @@ def manifest_path(root: Path, release: str) -> Path:
 # the release with the greatest name by `release_order` that has a manifest and meets the caller's condition (for a
 # search: a verified pack, which this module cannot see; `bio-box` passes it in). Nothing is written to resolve it:
 # no pointer file (AGENTS §3.10; `swap_current`'s `current.json` is not read). A manifest records no order of
-# building (no timestamp, no sequence: `build_manifest`), so names outside the scheme sort among themselves by name.
+# building (no timestamp, no sequence: `build_manifest`), so the releases named before DEC-52 are ordered by a fixed
+# list (card W-37, amended 2026-11-17); a name of neither scheme sorts before them, by name.
 
 LATEST = "latest"
 # DEC-52: r<YY>.<MM>.<n>, the n-th release cut in that month, counted from 1
 ROLLING_NAME = re.compile(r"r(\d{2})\.(0?[1-9]|1[0-2])\.([1-9]\d*)")
+# DEC-52 (1): the releases named by hand before the scheme, in the order they were built (closed: every later release
+# takes a name of the scheme). Their order agrees with the STATUS records of the 10 Gbp rebuild (`rN.1a`, `rN.1b`,
+# `rN.1`, then Pfam in `rN.2` and the lookup tables in `rN.3`) and of the 50 Gbp set (`rM.1`, then `rM.2`)
+OLD_SCHEME = ("rN.1a", "rN.1b", "rN.1", "rN.2", "rN.3", "rM.1", "rM.2")
 
 
 class NoLatestRelease(ValueError):
@@ -495,14 +500,16 @@ class NoLatestRelease(ValueError):
 
 
 def release_order(name: str) -> tuple:
-    """The sort key of a release name by DEC-52: a name `r<YY>.<MM>.<n>` by (year, month, number) as numbers, so
-    `r26.11.10` comes after `r26.11.9`; every other name (`rN.*`, `rM.*`, `rS<k>.<n>`, a test's own) before all of
-    them, among themselves by name (no manifest records when it was built). The name breaks ties (`r27.01.1`,
-    `r27.1.1`)."""
+    """The sort key of a release name by DEC-52 (card W-37): first any name of neither scheme (`rS<k>.<n>`, a test's
+    own), by name; then the names of the old scheme in the order they were built (`OLD_SCHEME`: `rN.3` before `rM.1`
+    before `rM.2`); then a name `r<YY>.<MM>.<n>` by (year, month, number) as numbers, so `r26.11.10` comes after
+    `r26.11.9`. The name breaks ties (`r27.01.1`, `r27.1.1`)."""
     m = ROLLING_NAME.fullmatch(name)
-    if m is None:
-        return (0, 0, 0, 0, name)
-    return (1, int(m[1]), int(m[2]), int(m[3]), name)
+    if m is not None:
+        return (2, int(m[1]), int(m[2]), int(m[3]), name)
+    if name in OLD_SCHEME:
+        return (1, OLD_SCHEME.index(name), 0, 0, name)
+    return (0, 0, 0, 0, name)
 
 
 def manifest_releases(root: Path) -> list[str]:

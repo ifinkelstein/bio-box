@@ -143,8 +143,9 @@ statements on the release's catalog (`sql_connection`: read-only; see there for 
 and prints to stderr the row groups each statement read.
 
 `--release latest` (card W-37, DEC-52; `_resolve_latest`) names, at each call, the release with the greatest name
-(`catalog.release_order`: `r<YY>.<MM>.<n>` by year, month and number as numbers, after every other name, which sort
-among themselves by name) that has a manifest and, for `search run` and `search hmm`, a verified search pack in the
+(`catalog.release_order`: `r<YY>.<MM>.<n>` by year, month and number as numbers, after the old names `rN.1a` to
+`rM.2` in the order they were built, after any other name, by name) that has a manifest and, for `search run` and
+`search hmm`, a verified search pack in the
 pack directory. The name is printed on stderr and used in place of `latest` everywhere, run records included. No
 pointer file is read or written. A build command (`build-stage`, `release` but `verify`, `pack build`) refuses it, and
 so does a command with no release that qualifies (exit 2, with the reason). `releases` marks the release in its column
