@@ -136,7 +136,9 @@ def test_w37_a_reading_command_with_no_release_that_has_a_manifest_exits_2_with_
     extra = ["--pack-dir", str(tmp_path / "packs")] if argv[0] == "pack" else []
     code, out, err = _cli(capsys, *argv, "--root", str(root), "--release", "latest", *extra)
     assert code == 2, (argv, out, err)
-    assert "--release latest" in err and "manifest" in err, err
+    # the refusal of the resolution itself (before W-37 some of these commands refused with another message that
+    # happened to show `--release latest` in a suggested command: run 44104739971)
+    assert "refused: --release latest:" in err and "manifest" in err, err
     assert out == ""
     assert _tree(root) == before
 

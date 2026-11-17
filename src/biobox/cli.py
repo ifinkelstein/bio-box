@@ -142,6 +142,14 @@ slice by accession or contig uid, read by key (`export.protein_seqs`, `contig_sl
 statements on the release's catalog (`sql_connection`: read-only; see there for the protections it relies on)
 and prints to stderr the row groups each statement read.
 
+`--release latest` (card W-37, DEC-52; `_resolve_latest`) names, at each call, the release with the greatest name
+(`catalog.release_order`: `r<YY>.<MM>.<n>` by year, month and number as numbers, after every other name, which sort
+among themselves by name) that has a manifest and, for `search run` and `search hmm`, a verified search pack in the
+pack directory. The name is printed on stderr and used in place of `latest` everywhere, run records included. No
+pointer file is read or written. A build command (`build-stage`, `release` but `verify`, `pack build`) refuses it, and
+so does a command with no release that qualifies (exit 2, with the reason). `releases` marks the release in its column
+`latest`.
+
 Every command that writes an output file given by `--out` (and `search hmm`, for each file in its DIR) prints
 to stderr one line per file: `wrote PATH: N rows|sequences|records` (`N tables, M rows` for a directory of
 locus tables), card W-23.
@@ -1564,12 +1572,26 @@ RELEASES_COLUMNS = ("release", "manifest", "stages", "genomes", "contigs", "prot
                     "member_cluster", "contig_label", "domain_family_tokens")
 
 
+def _latest_or_none(root: Path, qualifies=None) -> str | None:
+    try:
+        return catalog.latest_release(root, qualifies)
+    except catalog.NoLatestRelease:
+        return None
+
+
 def _releases(a) -> int:
     """`bio-box releases` (card W-23): one line per release of the root (`release_summary`); `--json`, one object per
-    line. With a profile or `--pack-dir`, the pack each release has there."""
+    line. With a profile or `--pack-dir`, the pack each release has there. The last column, `latest` (card W-37),
+    marks the release `--release latest` names: `read` for a command that reads a release (the newest with a
+    manifest), `search` for `search run` and `search hmm` (the newest with a verified pack in the pack directory;
+    only with a profile or `--pack-dir`), `read,search` when it is the same release, `-` for the others."""
     root = Path(a.root)
     packs = _packs(a) if (a.pack_dir or a.profile or os.environ.get("BIOBOX_PROFILE")) else None
     recs = [release_summary(root, r, packs) for r in release_names(root)]
+    named = {"read": _latest_or_none(root),
+             "search": _latest_or_none(root, _pack_unverified(packs)) if packs is not None else None}
+    for r in recs:
+        r["latest"] = [use for use, name in named.items() if name == r["release"]]
     if not recs:
         print(f"note: no release under {root} (no manifests/release=*.json and no release_def/release=*)",
               file=sys.stderr)
@@ -1589,7 +1611,7 @@ def _releases(a) -> int:
             return ",".join(v) or "-"
         return str(v)
 
-    cols = RELEASES_COLUMNS + (("pack",) if packs is not None else ())
+    cols = RELEASES_COLUMNS + (("pack",) if packs is not None else ()) + ("latest",)
     rows = []
     for r in recs:
         flat = {**r, **r.get("lookups", {})}
@@ -2139,6 +2161,94 @@ def _build_stage(a) -> int:
     return stage.build_stage(profile.load(a.profile), b)
 
 
+# --- card W-37: --release latest ----------------------------------------------------------------------------------
+
+
+def _latest_use(a) -> str | None:
+    """What `--release latest` must name for this command (card W-37): `build` for a command that builds a release
+    (`build-stage`, `release` but `verify`, `pack build`: refused), `search` for one that searches (`search run`; `search
+    hmm` is told so by `_main`), `read` for every other that reads a release; None when the command was not given
+    `--release latest`, or does not read `--release` (`search status|cancel|hits`)."""
+    if getattr(a, "release", None) != catalog.LATEST:
+        return None
+    if (a.cmd == "build-stage" or (a.cmd == "release" and a.step != "verify")
+            or (a.cmd == "pack" and a.action == "build")):
+        return "build"
+    if a.cmd == "search":
+        return "search" if a.action == "run" else None
+    return "read"
+
+
+def _pack_unverified(packs: Path):
+    """For `catalog.latest_release`: why a release has no verified search pack in `packs`, or None when it has one,
+    by the check a search makes of its pack (`pack.search_check`: the manifest, the build's record `pack_verified.json`
+    and the files' sizes; no shard is read). A pack built before card W-19 has no record and does not qualify."""
+
+    def why_not(release: str) -> str | None:
+        try:
+            pdir = pack.find(packs, release)
+        except pack.NoPack:
+            return f"no search pack in {packs}"
+        except ValueError as e:  # several packs of the release
+            return str(e)
+        problems, recorded = pack.search_check(pdir, release)
+        if problems:
+            return f"its search pack {pdir.name} fails the search's check: {problems[0]}"
+        if not recorded:
+            return (f"its search pack {pdir.name} has no {pack.VERIFIED} (built before card W-19; `bio-box pack build` "
+                    "with the same inputs adds it)")
+        return None
+
+    return why_not
+
+
+def _is_release_flag(word: str) -> bool:
+    """Whether a word of a command line is `--release` as argparse reads it (an unambiguous prefix of it too)."""
+    return len(word) >= len("--rel") and "--release".startswith(word)
+
+
+def _named_release(argv: list[str], release: str) -> list[str]:
+    """The command line `argv` with the value `latest` of `--release` (`--release latest`, `--release=latest`) replaced
+    by the release it names, so that a run's record names the release (card W-37)."""
+    out = list(argv)
+    for i, word in enumerate(argv):
+        flag, eq, value = word.partition("=")
+        if eq and value == catalog.LATEST and _is_release_flag(flag):
+            out[i] = f"{flag}={release}"
+        elif word == catalog.LATEST and i > 0 and _is_release_flag(argv[i - 1]):
+            out[i] = release
+    return out
+
+
+def _resolve_latest(a, use: str | None) -> int | None:
+    """Card W-37 (DEC-52): `--release latest` replaced, before the command runs, by the release it names now:
+    `catalog.latest_release`, the greatest name by DEC-52's order that has a manifest and, for `use` `search`, a
+    verified search pack in the command's pack directory (`_pack_unverified`). The name goes into `a.release` and into
+    the command line kept for a run's record (`_named_release`), so every output and record names the release and none
+    says `latest`; it is printed on stderr. Nothing is written to resolve it. Returns 2 (refused, with the reason) for
+    a build command (`use` `build`) or when no release qualifies; else None."""
+    if use is None:
+        return None
+    if use == "build":
+        print(f"refused: --release {catalog.LATEST} names the newest release to read or search; a build command "
+              "(build-stage, release define and every release step but verify, pack build) takes the name of the "
+              "release it builds (DEC-52: r<YY>.<MM>.<n>)", file=sys.stderr)
+        return 2
+    root = Path(a.root)
+    try:
+        packs = _packs(a) if use == "search" else None
+        name = catalog.latest_release(root, None if packs is None else _pack_unverified(packs))
+    except (ValueError, OSError) as e:  # catalog.NoLatestRelease is a ValueError
+        print(f"refused: --release {catalog.LATEST}: {e}", file=sys.stderr)
+        return 2
+    a.release = name
+    a.user_command = _named_release(a.user_command, name)
+    print(f"--release {catalog.LATEST}: {name}, the newest release with a manifest"
+          + (f" and a verified search pack in {packs}" if packs is not None else "") + " (card W-37, DEC-52)",
+          file=sys.stderr)
+    return None
+
+
 def main(argv: list[str] | None = None) -> int:
     with nbr.noted_once():  # card W-20: a note about the release (the slow path) once per command, not per store opened
         return _main(argv)
@@ -2150,7 +2260,8 @@ def _main(argv: list[str] | None = None) -> int:
     if argv[:2] == ["search", "hmm"]:  # card W-07: its own options, and no recipe or run positional
         ns = _hmm_parser().parse_args(argv[2:])
         ns.user_command = user_command
-        return _search_hmm(ns)
+        code = _resolve_latest(ns, "search" if ns.release == catalog.LATEST else None)
+        return code if code is not None else _search_hmm(ns)
     command: list[str] = []
     if argv[:1] == ["run-step"] and "--" in argv:  # everything after the first `--` is the step command
         i = argv.index("--")
@@ -2224,7 +2335,8 @@ def _main(argv: list[str] | None = None) -> int:
     fd.add_argument("--tape-version", help="tapes to read for --accession (default: the gene-call producer's)")
     fd.add_argument("--threads", type=int, help=f"DuckDB threads (default {export.EXPORT_THREADS})")
     rs = sub.add_parser("releases", parents=[common], help="every release of the root: stages, counts, libraries, "
-                                                            "lookup tables and pack (card W-23)")
+                                                            "lookup tables and pack (card W-23), and which one "
+                                                            "--release latest names (card W-37)")
     rs.add_argument("--profile", help="host profile YAML (default: $BIOBOX_PROFILE); with one, the pack of each "
                                       "release in the profile's pack directory is named")
     rs.add_argument("--pack-dir", help="a pack directory to name each release's pack from, in place of the profile's")
@@ -2489,6 +2601,9 @@ def _main(argv: list[str] | None = None) -> int:
             p.error("run-step needs a command after --")
         a.command = command
     a.user_command = user_command
+    code = _resolve_latest(a, _latest_use(a))
+    if code is not None:
+        return code
     return {"pack": _pack, "search": _search, "nbr": _nbr, "find": _find, "export": _export, "run-step": _run_step,
             "release": _release, "stage": _stage, "build-stage": _build_stage, "releases": _releases,
             "seq": _seq, "sql": _sql, "results": _results}[a.cmd](a)

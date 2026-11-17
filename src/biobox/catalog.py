@@ -338,7 +338,12 @@ def define_release(root: Path, release: str, stages, out: Path | None = None) ->
 
     `out` (card C-08) is the output root of the step that calls this (default `root`). A definition in
     `root` is verified and never written again; else one already in `out` (written earlier in the same
-    step) is verified; else it is written under `out`, and run-step publishes it with the step."""
+    step) is verified; else it is written under `out`, and run-step publishes it with the step.
+
+    A release named `latest` is refused (ValueError, card W-37): `--release latest` names the newest release."""
+    if release == LATEST:
+        raise ValueError(f"a release cannot be named {LATEST}: `--release {LATEST}` names the newest release "
+                         "(card W-37); name it by DEC-52's rule, r<YY>.<MM>.<n>")
     stages = verify_release_def(root, release, stages)
     if out is not None and Path(out).resolve() != Path(root).resolve() and read_release_def(root, release) is None:
         stages = verify_release_def(out, release, stages)
@@ -470,6 +475,61 @@ def partial_libraries(manifest: dict) -> list[tuple[str, list[str], list[str]]]:
 def manifest_path(root: Path, release: str) -> Path:
     """Where a release's manifest is written: `manifests/release=<R>.json` under the data root."""
     return Path(root) / f"manifests/release={release}.json"
+
+
+# --- `--release latest` (card W-37, DEC-52) -------------------------------------
+#
+# `latest` is a value of `--release`, never a release's name (`define_release` refuses it). It names, at each call,
+# the release with the greatest name by `release_order` that has a manifest and meets the caller's condition (for a
+# search: a verified pack, which this module cannot see; `bio-box` passes it in). Nothing is written to resolve it:
+# no pointer file (AGENTS §3.10; `swap_current`'s `current.json` is not read). A manifest records no order of
+# building (no timestamp, no sequence: `build_manifest`), so names outside the scheme sort among themselves by name.
+
+LATEST = "latest"
+# DEC-52: r<YY>.<MM>.<n>, the n-th release cut in that month, counted from 1
+ROLLING_NAME = re.compile(r"r(\d{2})\.(0?[1-9]|1[0-2])\.([1-9]\d*)")
+
+
+class NoLatestRelease(ValueError):
+    """No release of the root qualifies for `--release latest`; the message says why each candidate did not."""
+
+
+def release_order(name: str) -> tuple:
+    """The sort key of a release name by DEC-52: a name `r<YY>.<MM>.<n>` by (year, month, number) as numbers, so
+    `r26.11.10` comes after `r26.11.9`; every other name (`rN.*`, `rM.*`, `rS<k>.<n>`, a test's own) before all of
+    them, among themselves by name (no manifest records when it was built). The name breaks ties (`r27.01.1`,
+    `r27.1.1`)."""
+    m = ROLLING_NAME.fullmatch(name)
+    if m is None:
+        return (0, 0, 0, 0, name)
+    return (1, int(m[1]), int(m[2]), int(m[3]), name)
+
+
+def manifest_releases(root: Path) -> list[str]:
+    """The releases of the root that have a manifest (`manifests/release=<R>.json`), in `release_order`."""
+    d = Path(root) / "manifests"
+    names = [p.name[len("release="):-len(".json")] for p in d.glob("release=*.json") if p.is_file()] \
+        if d.is_dir() else []
+    return sorted(names, key=release_order)
+
+
+def latest_release(root: Path, qualifies=None) -> str:
+    """What `--release latest` names (card W-37): the release of the root with the greatest name by `release_order`
+    that has a manifest and, when `qualifies` is given, for which `qualifies(name)` is None (else it returns why the
+    release does not qualify). Reads the manifests directory's listing; writes nothing. NoLatestRelease, with the
+    reason for each release passed over, when none qualifies."""
+    names = [n for n in manifest_releases(root) if n != LATEST]
+    if not names:
+        raise NoLatestRelease(f"no release under {root} has a manifest (manifests/release=<R>.json); a release is "
+                              "listed by `bio-box releases`, and its manifest written by `bio-box release manifest`")
+    why_not = []
+    for name in reversed(names):
+        why = qualifies(name) if qualifies is not None else None
+        if why is None:
+            return name
+        why_not.append(f"{name}: {why}")
+    raise NoLatestRelease(f"none of the {len(names)} releases with a manifest under {root} qualifies: "
+                          + "; ".join(why_not))
 
 
 class ReleaseFiles:

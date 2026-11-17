@@ -62,6 +62,11 @@ and the search pack it has in the profile's pack directory (card W-23):
 bio-box releases --root "$ROOT" --profile "$PROFILE"
 ```
 
+In place of a release's name, every command below also takes `--release latest` (card W-37): the newest release
+that has a manifest, and for `search hmm` and `search run` the newest that also has a verified search pack. The
+command prints on stderr which release that is and writes its real name into every output and run record; the
+last column of `releases`, `latest`, marks it (`read`, `search`, or both).
+
 ## 3. Choose a positive control
 
 A positive control is one protein of the release that your model must find; if the run misses it, the run ends
