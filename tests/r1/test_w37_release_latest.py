@@ -2,11 +2,11 @@
 (and, for a command that searches, a verified search pack). Ring R1: roots made here with manifest files written by
 hand, so no release is built.
 
-The order is DEC-52's, written out by hand below as the oracle: names of the scheme `r<YY>.<MM>.<n>` compare by year,
-month and number as numbers (`r26.11.10` after `r26.11.9`); every other name (`rN.*`, `rM.*`, `rS<k>.<n>`, a test's
-own) sorts before all of them, among themselves by name, since a manifest records no order of building. A build
-command refuses `latest`, and a release named `latest` cannot be defined. Resolving writes nothing (AGENTS §3.10: no
-pointer file)."""
+The order is DEC-52's, written out by hand below as the oracle (card amended 2026-11-17): any name of neither scheme
+(`rS<k>.<n>`, a test's own) first, by name; then the seven names of the old scheme in the order they were built
+(DEC-52: `rN.1a`, `rN.1b`, `rN.1`, `rN.2`, `rN.3`, `rM.1`, `rM.2`); then names of the scheme `r<YY>.<MM>.<n>` by
+year, month and number as numbers (`r26.11.10` after `r26.11.9`). A build command refuses `latest`, and a release named
+`latest` cannot be defined. Resolving writes nothing (AGENTS §3.10: no pointer file)."""
 
 from __future__ import annotations
 
@@ -21,9 +21,10 @@ from biobox import catalog, cli
 
 pytestmark = pytest.mark.covers("W-37")
 
-# DEC-52's order, by hand: the older names by name, then the new scheme by (year, month, number) as numbers
-OLD = ["rM.1", "rM.2", "rN.1", "rN.1a", "rN.2", "rN.3", "rS0.1", "rW37.a", "r26.11", "r26.11.1a"]
-OLD_BY_NAME = ["r26.11", "r26.11.1a", "rM.1", "rM.2", "rN.1", "rN.1a", "rN.2", "rN.3", "rS0.1", "rW37.a"]
+# DEC-52's order, by hand (card amended 2026-11-17): other names by name, the old scheme as built, then the new scheme
+# by (year, month, number) as numbers
+OTHER = ["r26.11", "r26.11.1a", "rN.4", "rS0.1", "rW37.a"]  # by name; `rN.4` is no release of the fixed list
+BUILT = ["rN.1a", "rN.1b", "rN.1", "rN.2", "rN.3", "rM.1", "rM.2"]  # DEC-52 (1) and STATUS: the order of building
 NEW = ["r26.11.1", "r26.11.2", "r26.11.9", "r26.11.10", "r26.12.1", "r27.01.1", "r27.1.2", "r27.10.3"]
 
 
@@ -56,12 +57,42 @@ def _cli(capsys, *argv) -> tuple[int, str, str]:
 
 
 def test_w37_release_order_is_dec52s_names_by_number_after_every_other_name():
-    names = OLD + NEW
+    names = OTHER + BUILT + NEW
     random.Random(37).shuffle(names)
-    assert sorted(names, key=catalog.release_order) == OLD_BY_NAME + NEW
-    # numbers, not text: r26.11.10 after r26.11.9, r26.12.1 after both, r27.1.2 after r27.01.1
-    for lo, hi in (("r26.11.9", "r26.11.10"), ("r26.11.10", "r26.12.1"), ("r27.01.1", "r27.1.2"), ("rN.3", "r26.11.1")):
+    assert sorted(names, key=catalog.release_order) == OTHER + BUILT + NEW
+    # numbers, not text: r26.11.10 after r26.11.9, r26.12.1 after both, r27.1.2 after r27.01.1; the old scheme as built
+    for lo, hi in (("r26.11.9", "r26.11.10"), ("r26.11.10", "r26.12.1"), ("r27.01.1", "r27.1.2"), ("rN.3", "rM.1"),
+                   ("rM.1", "rM.2"), ("rM.2", "r26.11.1"), ("rN.1a", "rN.1"), ("rS0.1", "rN.1a")):
         assert catalog.release_order(lo) < catalog.release_order(hi), (lo, hi)
+
+
+def _pack(packs: Path, release: str) -> None:
+    """A search pack of `release` with no shard, its directory named by its manifest's hash and with the build's record
+    that it verified, as `pack.build` writes them: enough for the check a search makes of its pack."""
+    from biobox.search import pack
+
+    data = json.dumps({"release_id": release, "shards": [], "meta": []}, sort_keys=True).encode()
+    pid = pack.pack_id_of(data)
+    d = pack.pack_dir(packs, release, pid)
+    d.mkdir(parents=True)
+    (d / pack.MANIFEST).write_bytes(data)
+    (d / pack.VERIFIED).write_bytes(pack._record_bytes(pid, release, data))
+
+
+def test_w37_latest_of_the_old_releases_is_the_last_built_rM2_not_rN3(tmp_path, capsys, monkeypatch):
+    """The pod's data root as of 2026-11-17: rN.3 and rM.2 both have a manifest and a verified pack, and the first
+    release of the new scheme has a release_def only. `latest` is rM.2, built after rN.3, for reading and searching."""
+    monkeypatch.delenv("BIOBOX_PROFILE", raising=False)
+    root = _root(tmp_path, BUILT, defined=["r26.11.1"])
+    packs = tmp_path / "packs"
+    for r in ("rN.3", "rM.2"):
+        _pack(packs, r)
+    assert catalog.latest_release(root) == "rM.2"
+    assert catalog.latest_release(root, lambda r: None if r in ("rN.3", "rM.2") else "no pack") == "rM.2"
+    code, out, err = _cli(capsys, "releases", "--root", str(root), "--pack-dir", str(packs), "--json")
+    assert code == 0, err
+    marks = {r["release"]: r["latest"] for r in map(json.loads, out.splitlines())}
+    assert marks == {**{r: [] for r in BUILT}, "rM.2": ["read", "search"], "r26.11.1": []}, marks
 
 
 def test_w37_latest_is_the_greatest_name_with_a_manifest_and_resolving_writes_nothing(tmp_path):
@@ -70,7 +101,8 @@ def test_w37_latest_is_the_greatest_name_with_a_manifest_and_resolving_writes_no
     assert catalog.latest_release(root) == "r26.11.10"  # r26.12.1 has a release_def only: not a candidate
     # a condition that only some releases meet: the greatest of those
     assert catalog.latest_release(root, lambda r: None if r in ("r26.11.9", "rM.2") else "no pack") == "r26.11.9"
-    assert catalog.latest_release(root, lambda r: None if r in ("rN.3", "rM.2") else "no pack") == "rN.3"
+    assert catalog.latest_release(root, lambda r: None if r in ("rN.3", "rM.2") else "no pack") == "rM.2"
+    assert catalog.latest_release(root, lambda r: None if r == "rN.3" else "no pack") == "rN.3"
     with pytest.raises(catalog.NoLatestRelease) as e:
         catalog.latest_release(root, lambda r: f"{r} has no pack")
     for name in ("rN.3", "rM.2", "r26.11.9", "r26.11.10"):
