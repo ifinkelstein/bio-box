@@ -1,0 +1,47 @@
+c39_fetch start 2026-11-16T19:49:18Z host wilkcomp02.ccbb.utexas.edu
+uhgv_votus_fna try 1 start 2026-11-16T19:49:18Z https://zenodo.org/records/17402089/files/votus_full.fna.zst?download=1
+uhgv_votus_fna try 1 rc=0 bytes=964680445 2026-11-16T19:53:06Z
+uhgv_votus_fna uhgv/votus_full.fna.zst 964680445 bytes md5 9ad996fea08c6087a452194f0c2f9d33 sha256 0b1b7a71aee8a56fb996c7a0060309dfccfa50a8b270818938d1c7ff457a879d 2026-11-16T19:53:11Z
+uhgv_votus_fna: md5 equals the provider's
+uhgv_votus_meta try 1 start 2026-11-16T19:53:11Z https://zenodo.org/records/17402089/files/votus_metadata_extended.tsv.zst?download=1
+uhgv_votus_meta try 1 rc=0 bytes=14048300 2026-11-16T19:53:28Z
+uhgv_votus_meta uhgv/votus_metadata_extended.tsv.zst 14048300 bytes md5 6702355349e933fb605e62a8bbaa50a9 sha256 945aa366c67fba8bb2625720eb8c3d393d88697a0a9b3935534878e3f050ef0c 2026-11-16T19:53:28Z
+uhgv_votus_meta: md5 equals the provider's
+uhgv_biosample try 1 start 2026-11-16T19:53:28Z https://zenodo.org/records/17402089/files/source_biosample_metadata.tsv.zst?download=1
+uhgv_biosample try 1 rc=0 bytes=152063 2026-11-16T19:53:29Z
+uhgv_biosample uhgv/source_biosample_metadata.tsv.zst 152063 bytes md5 9934204a79cdac60ce9681a6233282b6 sha256 3f63cea9761e70fb40ba50d3d0db690c3c6957eb33c460a1b49c9f50ecb832f6 2026-11-16T19:53:29Z
+uhgv_biosample: md5 equals the provider's
+uhgv_host_range try 1 start 2026-11-16T19:53:29Z https://zenodo.org/records/17402089/files/host_range_breadth.tsv.zst?download=1
+uhgv_host_range try 1 rc=0 bytes=490562 2026-11-16T19:53:30Z
+uhgv_host_range uhgv/host_range_breadth.tsv.zst 490562 bytes md5 25960f854fa411956ef1353213133bfc sha256 b180fb81aa6d633c277afa8aa5451390ccfbba07250d39ea88466e93d41a4a86 2026-11-16T19:53:30Z
+uhgv_host_range: md5 equals the provider's
+uhgv_genome_meta try 1 start 2026-11-16T19:53:30Z https://zenodo.org/records/17402089/files/uhgv_metadata.tsv.zst?download=1
+uhgv_genome_meta try 1 rc=0 bytes=38978745 2026-11-16T19:54:18Z
+uhgv_genome_meta uhgv/uhgv_metadata.tsv.zst 38978745 bytes md5 f897bdf92b8b93cf3941f6d2c3d55efb sha256 defa9fbe3b53610a9230ee6e5476107df4e14cd812160e604b2c757558e670a4 2026-11-16T19:54:18Z
+uhgv_genome_meta: md5 equals the provider's
+gsv HEAD 2026-11-16T19:54:18Z
+curl: (28) SSL connection timeout
+gsv HEAD rc=28 
+gsv_readme try 1 start 2026-11-16T19:55:18Z https://data.pnnl.gov/sites/default/files/2023-12/README_Global%20Soil%20Virus%20%28GSV%29%20Atlas.txt
+curl: (22) The requested URL returned error: 400
+gsv_readme try 1 rc=22 bytes=0 2026-11-16T19:55:18Z
+gsv_readme try 1 last HTTP status: 400
+gsv_readme try 2 start 2026-11-16T19:55:48Z https://data.pnnl.gov/sites/default/files/2023-12/README_Global%20Soil%20Virus%20%28GSV%29%20Atlas.txt
+curl: (22) The requested URL returned error: 400
+gsv_readme try 2 rc=22 bytes=0 2026-11-16T19:55:49Z
+gsv_readme try 2 last HTTP status: 400
+gsv_readme try 3 start 2026-11-16T19:56:49Z https://data.pnnl.gov/sites/default/files/2023-12/README_Global%20Soil%20Virus%20%28GSV%29%20Atlas.txt
+curl: (22) The requested URL returned error: 400
+gsv_readme try 3 rc=22 bytes=0 2026-11-16T19:56:49Z
+gsv_readme try 3 last HTTP status: 400
+c39_fetch start 2026-11-16T20:00:18Z host wilkcomp02.ccbb.utexas.edu, sources: vire
+vire_meta try 1 start 2026-11-16T20:00:18Z https://spire.embl.de/vire/api/download_metadata/?environment=all_samples&data_type=metadata&format=txt
+vire_meta try 1 rc=0 bytes=903989625 2026-11-16T20:01:32Z
+vire_meta vire/vire_all_samples_metadata.txt 903989625 bytes md5 ff358ff04b88c423c9f549d81f5f4c86 sha256 9fbf0a03c6a1f6d1ee7776089133bc17f74f466c3db7e22e31273b677e495456 2026-11-16T20:01:38Z
+c39_fetch done 2026-11-16T20:01:38Z
+c39_fetch start 2026-11-16T20:31:12Z host wilkcomp02.ccbb.utexas.edu, sources: uhgv_faa
+uhgv_votus_faa try 1 start 2026-11-16T20:31:12Z https://zenodo.org/records/17402089/files/votus_full.faa.zst?download=1
+uhgv_votus_faa try 1 rc=0 bytes=1022105075 2026-11-16T20:32:41Z
+uhgv_votus_faa uhgv/votus_full.faa.zst 1022105075 bytes md5 1eff9626a8c3990a98d2b4ea58ff0596 sha256 53b44df8a093d31a43642fb354841b396769ec1b3a16398e7ce77c40e51dc39e 2026-11-16T20:32:47Z
+uhgv_votus_faa: md5 equals the provider's
+c39_fetch done 2026-11-16T20:32:47Z

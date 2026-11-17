@@ -1,0 +1,94 @@
+2026-11-16 14:28:01 CST c39: mode 'inputs' (pid 3709845), tree /tmp/if2453/ci/C-39, image /stor/home/if2453/bio-box/images/bio-box_faec1f4.sif
+2026-11-16 14:28:01 CST inputs: start
+2026-11-16 14:28:07 CST inputs: exit 1:      data = self._decompressor.decompress(rawblock, size)
+compression.zstd.ZstdError: Unable to decompress Zstandard data: Frame requires too much memory for decoding
+2026-11-16 14:28:07 CST FAILED: inputs exit 1
+2026-11-16 14:28:57 CST c39: mode 'inputs' (pid 3711503), tree /tmp/if2453/ci/C-39, image /stor/home/if2453/bio-box/images/bio-box_faec1f4.sif
+2026-11-16 14:28:57 CST inputs: start
+2026-11-16 14:29:44 CST c39: mode 'vire' (pid 3713401), tree /tmp/if2453/ci/C-39, image /stor/home/if2453/bio-box/images/bio-box_faec1f4.sif
+2026-11-16 14:29:44 CST vire: start
+2026-11-16 14:30:15 CST inputs: exit 0: {"records": 168536, "genomes": 168536, "contigs": 168536, "record_bases": 5222288776, "genome_bases": 5222288776, "checkv_quality": {"Complete": 24404, "High-quality": 34257, "Low-quality": 66491, "Medium-quality": 43106, "Not-determined": 278}, "assembly_quality": {"vOTU": 144132, "complete": 24404}, "checkv_completeness_method": {"AAI-based": 133312, "DTR": 23995, "HMM-based": 9508, "ITR": 1280, "NULL": 278, "Provirus": 163}, "codes": {"4": 184, "11": 166548, "15": 1804}, "genome_codes": {"4": 184, "11": 166548, "15": 1804}, "dtr_records": 23995, "dtr_records_with_terminal_repeat": 1478, "ci 
+2026-11-16 14:30:15 CST c39: mode 'inputs' done
+2026-11-16 14:30:21 CST vire: exit 0: {"alignment_to_imgvr_by_habitat": {"other:False": 1014680, "other:True": 720967, "soil:False": 26120, "soil:True": 22743}, "alignment_to_imgvr_genomes": {"False": 990069, "None": 50731, "True": 743710}, "bases": 68027010177, "checkv_quality": {"Complete": 384035, "High-quality": 417105, "Medium-quality": 983370}, "genomad_genetic_code": {"11": 1752608, "15": 25999, "4": 5903}, "genomad_topology": {"DTR": 393553, "ITR": 28247, "No terminal repeats": 1362710}, "genomes": 1784510, "genus_clusters": 520463, "habitat_genomes": {"other": 1735647, "soil": 48863}, "habitat_species_clusters": {"other": 
+2026-11-16 14:30:21 CST c39: mode 'vire' done
+2026-11-16 14:33:19 CST c39: mode 'inputs' (pid 3723783), tree /tmp/if2453/ci/C-39, image /stor/home/if2453/bio-box/images/bio-box_faec1f4.sif
+2026-11-16 14:33:19 CST inputs: start
+2026-11-16 14:33:19 CST c39: mode 'vire' (pid 3723885), tree /tmp/if2453/ci/C-39, image /stor/home/if2453/bio-box/images/bio-box_faec1f4.sif
+2026-11-16 14:33:19 CST vire: start
+2026-11-16 14:33:57 CST vire: exit 0: {"alignment_to_imgvr_by_habitat": {"human_gut:False": 423820, "human_gut:True": 526579, "other:False": 591037, "other:True": 194395, "soil:False": 25943, "soil:True": 22736}, "alignment_to_imgvr_genomes": {"False": 990069, "None": 50731, "True": 743710}, "bases": 68027010177, "checkv_quality": {"Complete": 384035, "High-quality": 417105, "Medium-quality": 983370}, "genomad_genetic_code": {"11": 1752608, "15": 25999, "4": 5903}, "genomad_topology": {"DTR": 393553, "ITR": 28247, "No terminal repeats": 1362710}, "genomes": 1784510, "genus_clusters": 520463, "habitat_genomes": {"human_gut": 950399 
+2026-11-16 14:33:57 CST c39: mode 'vire' done
+2026-11-16 14:34:22 CST inputs: exit 0: {"records": 168536, "genomes": 168536, "contigs": 168536, "record_bases": 5222288776, "genome_bases": 5222288776, "checkv_quality": {"Complete": 24404, "High-quality": 34257, "Low-quality": 66491, "Medium-quality": 43106, "Not-determined": 278}, "assembly_quality": {"vOTU": 144132, "complete": 24404}, "checkv_completeness_method": {"AAI-based": 133312, "DTR": 23995, "HMM-based": 9508, "ITR": 1280, "NULL": 278, "Provirus": 163}, "codes": {"4": 184, "11": 166548, "15": 1804}, "genome_codes": {"4": 184, "11": 166548, "15": 1804}, "dtr_records": 23995, "dtr_records_with_terminal_repeat": 1478, "ci 
+2026-11-16 14:34:22 CST c39: mode 'inputs' done
+2026-11-16 14:34:32 CST c39: mode 'check' (pid 3758334), tree /tmp/if2453/ci/C-39, image /stor/home/if2453/bio-box/images/bio-box_faec1f4.sif
+2026-11-16 14:34:32 CST check: start
+2026-11-16 14:34:39 CST check: exit 0: {
+ "stage": "V1",
+ "genomes": 168536,
+ "genome_input_rows": 168536,
+ "distinct_genome_uids": 168536,
+ "circular_rows": 22517,
+ "kinds": [
+  "virus"
+ ],
+ "codes": [
+  4,
+  11,
+  15
+ ],
+ "assembly_quality": [
+  "complete",
+  "vOTU"
+ ],
+ "gene_call_mode": {
+  "virus": "gv-meta"
+ },
+ "objects": [
+  {
+   "path": "/tmp/if2453/s2/inputs/V1/uhgv_v1.0_votus_full.fna",
+   "source_name": "uhgv",
+   "source_release": "zenodo:10.5281/zenodo.17402089 v1.0",
+   "license": "CC BY 4.0",
+   "redistributable": true,
+   "retrieved_at": "2026-11-16T19:53:06+00:00",
+   "bytes": 5228187536
+  }
+ ],
+ "biobox": "/tmp/if2453/ci/C-39/src/biobox/cli.py",
+ "problems": []
+} 
+2026-11-16 14:34:57 CST check: SUMS: 752ac47ff81cca4432d88574a0183427fe76cb2d1b7148e90a0e4ce85c398240  genomes.json dc7bed72ef15ccb93f41da05a8d600f8b05cad9312993fe2723c2e5761864d6c  objects.json 31ef5a640048d4bae72e947c380fb00ac0268f057114250c613199155e87a7cf  records.tsv 4142a62fae1678e3272cf972ff05eaa52c5ddaa4ea49e196d68529365e109cf6  repeated_records.tsv 96216d41981855ecc6d1aad0094628d6421844180a5c4e96c757374bd9c8634d  shared_records.tsv 9c595d262d89100f25ebe40964ee31912b26d9b64c6b5f453daf73b931071356  uhgv_v1.0_votus_full.fna 
+2026-11-16 14:34:57 CST c39: mode 'check' done
+2026-11-16 14:35:13 CST c39: mode 'overlap' (pid 3796379), tree /tmp/if2453/ci/C-39, image /stor/home/if2453/bio-box/images/bio-box_faec1f4.sif
+2026-11-16 14:35:13 CST overlap: start
+2026-11-16 14:35:13 CST c39: mode 'ani' (pid 3796525), tree /tmp/if2453/ci/C-39, image /stor/home/if2453/bio-box/images/bio-box_faec1f4.sif
+2026-11-16 14:35:13 CST ani: start
+2026-11-16 14:35:24 CST c39: mode 'est' (pid 3804643), tree /tmp/if2453/ci/C-39, image /stor/home/if2453/bio-box/images/bio-box_faec1f4.sif
+2026-11-16 14:35:24 CST est: start
+2026-11-16 14:36:44 CST overlap: exit 0: {"new": {"bases": 5178493077, "contigs": 168358}, "repeats": {"contigs": 168536, "largest_group": 0, "pairs": [], "records": 168536, "records_beyond_the_first": 0, "sequences_in_several_records": 0}, "shared_total": {"bases": 43795699, "contigs": 178, "records": 178}, "stages": {"H1": {"member_contigs": 177, "member_not_owner_contigs": 0, "owned_by_checkv": {"Complete": 10, "High-quality": 131, "Medium-quality": 36}, "owned_by_study": {"CHVD": 2, "COPSAC": 1, "GPD": 7, "GVD": 4, "Hadza": 70, "IMGVR4": 8, "MGV": 85}, "owns_bases": 43733807, "owns_contigs": 177, "owns_records": 177}, "P1": {"mem 
+2026-11-16 14:36:44 CST c39: mode 'overlap' done
+2026-11-16 14:37:15 CST c39: mode 'overlap' (pid 3886125), tree /tmp/if2453/ci/C-39, image /stor/home/if2453/bio-box/images/bio-box_faec1f4.sif
+2026-11-16 14:37:15 CST overlap: start
+2026-11-16 14:38:54 CST ani: exit 0: {"a_v1_sample_vs_h1": {"by_length": {"10_to_30kb": {"meet": 22, "queries": 4265}, "30_to_100kb": {"meet": 6, "queries": 3370}, "ge_100kb": {"meet": 31, "queries": 205}, "lt_10kb": {"meet": 0, "queries": 586}}, "meet": 59, "queries": 8426}, "a_v1_sample_vs_s1": {"by_length": {"10_to_30kb": {"meet": 47, "queries": 4265}, "30_to_100kb": {"meet": 47, "queries": 3370}, "ge_100kb": {"meet": 3, "queries": 205}, "lt_10kb": {"meet": 10, "queries": 586}}, "meet": 107, "queries": 8426}, "a_v1_sample_vs_s1_or_h1": {"by_length": {"10_to_30kb": {"meet": 66, "queries": 4265}, "30_to_100kb": {"meet": 53, "que [00:01:46.788] (7354834aa6c0) INFO   10400 query sequences processed.
+[00:01:49.128] (7354834ae840) INFO   ANI calculation time: 67.1682
+2026-11-16 14:38:54 CST c39: mode 'ani' done
+2026-11-16 14:39:02 CST overlap: exit 0: {"new": {"bases": 5178493077, "contigs": 168358}, "repeats": {"contigs": 168536, "largest_group": 0, "pairs": [], "records": 168536, "records_beyond_the_first": 0, "sequences_in_several_records": 0}, "shared_total": {"bases": 43795699, "contigs": 178, "records": 178}, "stages": {"H1": {"member_contigs": 177, "member_not_owner_contigs": 0, "owned_by_checkv": {"Complete": 10, "High-quality": 131, "Medium-quality": 36}, "owned_by_study": {"CHVD": 2, "COPSAC": 1, "GPD": 7, "GVD": 4, "Hadza": 70, "IMGVR4": 8, "MGV": 85}, "owns_bases": 43733807, "owns_contigs": 177, "owns_records": 177}, "P1": {"mem 
+2026-11-16 14:39:02 CST c39: mode 'overlap' done
+2026-11-16 14:39:55 CST c39: mode 'ani' (pid 4005339), tree /tmp/if2453/ci/C-39, image /stor/home/if2453/bio-box/images/bio-box_faec1f4.sif
+2026-11-16 14:39:55 CST ani: start
+2026-11-16 14:40:54 CST ani: exit 0: {"a_v1_sample_vs_h1": {"both": {"by_checkv": {"Complete": {"meet": 17, "queries": 1203}, "High-quality": {"meet": 9, "queries": 1688}, "Low-quality": {"meet": 0, "queries": 3313}, "Medium-quality": {"meet": 2, "queries": 2200}, "Not-determined": {"meet": 0, "queries": 22}}, "by_length": {"10_to_30kb": {"meet": 0, "queries": 4265}, "30_to_100kb": {"meet": 0, "queries": 3370}, "ge_100kb": {"meet": 28, "queries": 205}, "lt_10kb": {"meet": 0, "queries": 586}}, "meet": 28}, "queries": 8426, "shorter": {"by_checkv": {"Complete": {"meet": 19, "queries": 1203}, "High-quality": {"meet": 10, "queries":  
+2026-11-16 14:40:54 CST c39: mode 'ani' done
+2026-11-16 14:41:37 CST c39: mode 'ani' (pid 4072867), tree /tmp/if2453/ci/C-39, image /stor/home/if2453/bio-box/images/bio-box_faec1f4.sif
+2026-11-16 14:41:37 CST ani: start
+2026-11-16 14:42:35 CST ani: exit 0: {"a_v1_sample_vs_h1": {"both": {"by_checkv": {"Complete": {"meet": 17, "queries": 1203}, "High-quality": {"meet": 9, "queries": 1688}, "Low-quality": {"meet": 0, "queries": 3313}, "Medium-quality": {"meet": 2, "queries": 2200}, "Not-determined": {"meet": 0, "queries": 22}}, "by_length": {"10_to_30kb": {"meet": 0, "queries": 4265}, "30_to_100kb": {"meet": 0, "queries": 3370}, "ge_100kb": {"meet": 28, "queries": 205}, "lt_10kb": {"meet": 0, "queries": 586}}, "meet": 28}, "near_identical": {"by_checkv": {"Complete": {"meet": 15, "queries": 1203}, "High-quality": {"meet": 9, "queries": 1688}, "Low 
+2026-11-16 14:42:35 CST c39: mode 'ani' done
+2026-11-16 14:43:14 CST c39: mode 'rerun' (pid 4146623), tree /tmp/if2453/ci/C-39, image /stor/home/if2453/bio-box/images/bio-box_faec1f4.sif
+2026-11-16 14:43:14 CST rerun: start
+2026-11-16 14:44:32 CST rerun: exit 0: {"records": 168536, "genomes": 168536, "contigs": 168536, "record_bases": 5222288776, "genome_bases": 5222288776, "checkv_quality": {"Complete": 24404, "High-quality": 34257, "Low-quality": 66491, "Medium-quality": 43106, "Not-determined": 278}, "assembly_quality": {"vOTU": 144132, "complete": 24404}, "checkv_completeness_method": {"AAI-based": 133312, "DTR": 23995, "HMM-based": 9508, "ITR": 1280, "NULL": 278, "Provirus": 163}, "codes": {"4": 184, "11": 166548, "15": 1804}, "genome_codes": {"4": 184, "11": 166548, "15": 1804}, "dtr_records": 23995, "dtr_records_with_terminal_repeat": 1478, "ci 
+2026-11-16 14:44:32 CST rerun: genomes.json equal
+2026-11-16 14:44:32 CST rerun: objects.json names its own path; compared after the path: equal
+2026-11-16 14:44:32 CST rerun: records.tsv equal
+2026-11-16 14:44:32 CST rerun: repeated_records.tsv equal
+2026-11-16 14:44:32 CST rerun: shared_records.tsv equal
+2026-11-16 14:44:38 CST rerun: uhgv_v1.0_votus_full.fna equal
+2026-11-16 14:44:40 CST c39: mode 'rerun' done
+2026-11-16 15:33:32 CST est: exit 0: {"code": {"call_s_per_mbp": {"gv-meta False": 4.2019, "gv-meta True": 6.307472090000001}, "called_bases_by_topology": {"False": 4233918303, "True": 2494857527}, "crispr_default_cpu_min": 15.71, "crispr_filtered_cpu_min": 18.69, "fasta_bytes": 5228187536, "genecall_batches_at_margin": 3, "genecall_cpu_min_one_process": 687.5, "genes_expected_code_rate": 7462726, "genome_bases": 5222288776, "ingest_cpu_min": 23.44, "scan_cpu_min_per_m_residues": 7.96, "shard_margin": 0.8, "shard_residues": 30150753, "step_overhead": 1.23, "stored_bases": 5178493077}, "provider_proteins": {"distinct": 5597468, "d 

@@ -1,0 +1,131 @@
+{
+ "alignment_to_imgvr_by_habitat": {
+  "human_gut:False": 423820,
+  "human_gut:True": 526579,
+  "other:False": 591037,
+  "other:True": 194395,
+  "soil:False": 25943,
+  "soil:True": 22736
+ },
+ "alignment_to_imgvr_genomes": {
+  "False": 990069,
+  "None": 50731,
+  "True": 743710
+ },
+ "bases": 68027010177,
+ "checkv_quality": {
+  "Complete": 384035,
+  "High-quality": 417105,
+  "Medium-quality": 983370
+ },
+ "genomad_genetic_code": {
+  "11": 1752608,
+  "15": 25999,
+  "4": 5903
+ },
+ "genomad_topology": {
+  "DTR": 393553,
+  "ITR": 28247,
+  "No terminal repeats": 1362710
+ },
+ "genomes": 1784510,
+ "genus_clusters": 520463,
+ "habitat_genomes": {
+  "human_gut": 950399,
+  "other": 785432,
+  "soil": 48679
+ },
+ "habitat_species_clusters": {
+  "human_gut": 255274,
+  "other": 408370,
+  "soil": 33492
+ },
+ "labels_top60": {
+  "age group:adolescent": 41605,
+  "age group:adult": 489212,
+  "age group:child": 142568,
+  "age group:elderly": 53082,
+  "age group:infant": 93921,
+  "anthropogenic": 56644,
+  "anthropogenic:agriculture": 11639,
+  "anthropogenic:built environment": 17642,
+  "anthropogenic:sludge": 10409,
+  "anthropogenic:wastewater": 20461,
+  "aquatic": 308797,
+  "aquatic:benthic": 18001,
+  "aquatic:brackish water": 34963,
+  "aquatic:brackish water:estuary": 27192,
+  "aquatic:fresh water": 121557,
+  "aquatic:fresh water:fluvial": 8920,
+  "aquatic:fresh water:lacustrine": 86203,
+  "aquatic:fresh water:stream": 12537,
+  "aquatic:groundwater": 17698,
+  "aquatic:lentic": 114243,
+  "aquatic:lotic": 11598,
+  "aquatic:marine": 139923,
+  "aquatic:paludal": 13710,
+  "aquatic:pelagic": 24123,
+  "aquatic:saline water": 13708,
+  "aquatic:sediment": 13212,
+  "birth term:preterm birth": 6860,
+  "contaminated": 8350,
+  "host lifestyle:hunter-gatherer": 32715,
+  "host lifestyle:industrialized": 822853,
+  "host lifestyle:non-industrialized": 92355,
+  "host lifestyle:traditional agriculturalist": 12547,
+  "host-associated": 1237687,
+  "host-associated:animal host": 1222365,
+  "host-associated:animal host:digestive tract": 1204522,
+  "host-associated:animal host:digestive tract:intestine": 1292628,
+  "host-associated:animal host:digestive tract:mouth": 177905,
+  "host-associated:animal host:digestive tract:mouth:saliva": 153442,
+  "host-associated:animal host:digestive tract:rumen": 61408,
+  "host-associated:animal host:insect host": 5824,
+  "host-associated:animal host:mammalian host": 1169550,
+  "host-associated:animal host:mammalian host:human host": 1002084,
+  "host-associated:animal host:skin": 9103,
+  "host-associated:plant host": 15160,
+  "host-associated:plant host:rhizosphere": 9901,
+  "place of residence:rural": 86039,
+  "place of residence:urban": 86008,
+  "salinity:high salinity": 62044,
+  "salinity:low salinity": 113208,
+  "salinity:medium salinity": 35885,
+  "salinity:very high salinity": 4962,
+  "temperature:low temperature": 8452,
+  "temperature:medium temperature": 9681,
+  "temperature:very low temperature": 10887,
+  "terrestrial": 115044,
+  "terrestrial:cropland": 6234,
+  "terrestrial:forest": 16469,
+  "terrestrial:soil": 48863,
+  "terrestrial:subsurface": 19342,
+  "terrestrial:wetland": 14373
+ },
+ "labels_with_human": {
+  "host-associated:animal host:mammalian host:human host": 1002084
+ },
+ "labels_with_soil": {
+  "terrestrial:soil": 48863
+ },
+ "longest_member_bases_by_habitat": {
+  "human_gut": 9726040147,
+  "other": 15329645756,
+  "soil": 1281412173
+ },
+ "longest_member_bases_no_member_aligned_by_habitat": {
+  "human_gut": 7604140216,
+  "other": 12344755831,
+  "soil": 644211343
+ },
+ "source": {
+  "metagenome": 1784510
+ },
+ "species_clusters": 697136,
+ "species_clusters_no_member_aligned_to_imgvr": {
+  "human_gut": 208244,
+  "other": 339286,
+  "soil": 20514
+ },
+ "species_clusters_of_one_genome": 491505
+}

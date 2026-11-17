@@ -1,0 +1,109 @@
+{
+ "code": {
+  "call_s_per_mbp": {
+   "gv-meta False": 4.2019,
+   "gv-meta True": 6.307472090000001
+  },
+  "called_bases_by_topology": {
+   "False": 4233918303,
+   "True": 2494857527
+  },
+  "crispr_default_cpu_min": 15.71,
+  "crispr_filtered_cpu_min": 18.69,
+  "fasta_bytes": 5228187536,
+  "genecall_batches_at_margin": 3,
+  "genecall_cpu_min_one_process": 687.5,
+  "genes_expected_code_rate": 7462726,
+  "genome_bases": 5222288776,
+  "ingest_cpu_min": 23.44,
+  "scan_cpu_min_per_m_residues": 7.96,
+  "shard_margin": 0.8,
+  "shard_residues": 30150753,
+  "step_overhead": 1.23,
+  "stored_bases": 5178493077
+ },
+ "provider_proteins": {
+  "distinct": 5597468,
+  "distinct_in_root": 174820,
+  "gene_call_version": "gene_call_version=pyrodigal-3.7.1-gv-0.3.2-p2",
+  "records": 7426124,
+  "residues_distinct": 1307249946
+ },
+ "root_bytes_by_stage": {
+  "H1": {
+   "bytes": 1331319908,
+   "gb_per_gbp": 0.7316,
+   "stored_bases": 1819831338
+  },
+  "P1": {
+   "bytes": 791635662,
+   "gb_per_gbp": 0.7787,
+   "stored_bases": 1016625803
+  },
+  "P2": {
+   "bytes": 7449704536,
+   "gb_per_gbp": 0.7763,
+   "stored_bases": 9596180328
+  },
+  "P3": {
+   "bytes": 7762670119,
+   "gb_per_gbp": 0.7802,
+   "stored_bases": 9949077522
+  },
+  "P4": {
+   "bytes": 7748309772,
+   "gb_per_gbp": 0.7767,
+   "stored_bases": 9976456950
+  },
+  "P5": {
+   "bytes": 7756741659,
+   "gb_per_gbp": 0.7782,
+   "stored_bases": 9967711632
+  },
+  "P6": {
+   "bytes": 7718445547,
+   "gb_per_gbp": 0.7747,
+   "stored_bases": 9962536103
+  },
+  "PL1": {
+   "bytes": 3545060223,
+   "gb_per_gbp": 0.5984,
+   "stored_bases": 5924552875
+  },
+  "S1": {
+   "bytes": 1193926705,
+   "gb_per_gbp": 0.7175,
+   "stored_bases": 1664109938
+  }
+ },
+ "sample": {
+  "all": {
+   "bases": 172030086,
+   "cpu_s": 898.54,
+   "distinct_in_root": 7761,
+   "distinct_proteins": 238910,
+   "genes": 245377,
+   "genes_per_mbp": 1426.36,
+   "genomes": 5611,
+   "residues": 50998357,
+   "s_per_mbp": 5.2232
+  },
+  "circular": {
+   "bases": 34564134,
+   "cpu_s": 386.87,
+   "genes": 48445,
+   "genes_per_mbp": 1401.6,
+   "genomes": 778,
+   "s_per_mbp": 11.1929
+  },
+  "every": 30,
+  "linear": {
+   "bases": 137465952,
+   "cpu_s": 511.67,
+   "genes": 196932,
+   "genes_per_mbp": 1432.59,
+   "genomes": 4833,
+   "s_per_mbp": 3.7222
+  }
+ }
+}

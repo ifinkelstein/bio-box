@@ -1,0 +1,35 @@
+{
+ "stage": "V1",
+ "genomes": 168536,
+ "genome_input_rows": 168536,
+ "distinct_genome_uids": 168536,
+ "circular_rows": 22517,
+ "kinds": [
+  "virus"
+ ],
+ "codes": [
+  4,
+  11,
+  15
+ ],
+ "assembly_quality": [
+  "complete",
+  "vOTU"
+ ],
+ "gene_call_mode": {
+  "virus": "gv-meta"
+ },
+ "objects": [
+  {
+   "path": "/tmp/if2453/s2/inputs/V1/uhgv_v1.0_votus_full.fna",
+   "source_name": "uhgv",
+   "source_release": "zenodo:10.5281/zenodo.17402089 v1.0",
+   "license": "CC BY 4.0",
+   "redistributable": true,
+   "retrieved_at": "2026-11-16T19:53:06+00:00",
+   "bytes": 5228187536
+  }
+ ],
+ "biobox": "/tmp/if2453/ci/C-39/src/biobox/cli.py",
+ "problems": []
+}
