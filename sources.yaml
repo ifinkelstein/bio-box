@@ -201,7 +201,16 @@ sources:
     limits: one connection; stop after 5 refusals in a row (HTTP 403, 429, 503)
     license: CC BY 4.0 (the Zenodo record)
     redistributable: true
-    fetched: nothing yet
+    fetched: >-
+      2026-11-16 20:42:03 to 20:44:17 UTC into /tmp/if2453/s3/plasmids/dl/gut/ on wilkcomp02 by c40_fetch.sh, one
+      connection, no refusal, each file at the first try: all five files, each equal in size and md5 to the record's;
+      our sha256 values (predicted_plasmids.fa.gz fe4dc52a4bce28ed6004d59fef4959a1d4664ac254a1aa3b5b0cb7fd4bc36c7d,
+      226,194 records; predicted_plasmids_summary.txt.gz 85d9a31ef21d1cc6e603c69a82e67761c1d659c54cb0e578f8f2efc10ea53987;
+      the others) in planning/measurements/2026-11-16_pl2_inputs/fetch_SUMS
+    stored: local only (/tmp on wilkcomp02); nothing under /stor
+    stage_inputs: >-
+      stage PL2 (card C-40): /tmp/if2453/s2/inputs/PL2/ on wilkcomp02, made by make_inputs.py plasmid-sources (the
+      68,350 non-redundant representatives); record planning/measurements/2026-11-16_pl2_inputs.md
     approved: under DEC-50 (entry written by card C-40 on 2026-11-16 before any fetch)
   - name: plasmidscope
     what: >-
@@ -247,6 +256,17 @@ sources:
       redistribution, and mMGE states no terms here: both are flagged not redistributable; the other eight
       repositories' records are INSDC or PLSDB records
     redistributable: false for IMG-PR and mMGE; true for the others
-    fetched: nothing yet
+    fetched: >-
+      2026-11-16 20:44:18 to 21:00:50 UTC into /tmp/if2453/s3/plasmids/dl/plasmidscope/ on wilkcomp02 by c40_fetch.sh,
+      one connection, no refusal, each file at the first try: all 21 files, each equal in size to the server's
+      Content-Length read before (no checksum is published); our md5 and sha256 values (IMG-PR.fasta.tar.gz
+      8dc8f98af00715a2749c9ae6ead3c6684ee0955c19ab5be9bb4b5a8b359eaa18; the others) in
+      planning/measurements/2026-11-16_pl2_inputs/fetch_SUMS. Each archive holds one FASTA file per plasmid; it is
+      read as a stream into one FASTA per repository (c40_concat.py), never unpacked
+    stored: local only (/tmp on wilkcomp02); nothing under /stor
+    stage_inputs: >-
+      stage PL2 (card C-40): /tmp/if2453/s2/inputs/PL2/ on wilkcomp02, made by make_inputs.py plasmid-sources from
+      nine of the ten repositories (PLSDB's file is not taken: stage PL1 holds PLSDB); record
+      planning/measurements/2026-11-16_pl2_inputs.md
     note: IMG/PR's own portal (JGI) is not tried (DEC-50 (2)); its records here come from PlasmidScope's open download
     approved: under DEC-50 (entry written by card C-40 on 2026-11-16 before any fetch)
