@@ -5,7 +5,7 @@ The running record of the cards in [`TASKS.md`](TASKS.md). Updated at every merg
 by an agent on its own branch `task/<ID>`, audited by the orchestrating session, and merged after its
 tests passed on the merged tree.
 
-## Handoff, 2026-11-17 08:23 CST (current; the dated sections under "History" are superseded where they differ)
+## Handoff, 2026-11-17 08:28 CST (current; the dated sections under "History" are superseded where they differ)
 
 Written so a new session can continue without the conversation that produced this file. Times are the pod's clock
 (CST); read it with `ssh ... date` before writing a time here.
@@ -208,6 +208,26 @@ release check* (2026-11-15 00:06) *and is announced as the release to use* (2026
 
 *Agents.* Four at 16:47 on 2026-11-16: C-39 (viruses from metagenomes; since 13:50), C-43 (the crosswalk of assemblies by run; since 13:57), C-40 (plasmids from metagenomes; since 14:36) and C-35 (the first rolling release, `r26.11.1`; from 16:50). Done and merged on 2026-11-16: C-36, B-51, B-52 and C-26 part 2 (stage `PL1`). F-02 session 13 ended at 13:55 with open item 12, not merged. The account's usage limit stopped every agent at about 11:00; all four were resumed with `SendMessage` at 13:41 at the PI's word ("resume"). As it stood at 08:32: C-26 part 2 (the `PL1` build, relaunched as `c26-pl1-2` after 07:00 with the ingest record accepted, DEC-47; gene calling in 4 batches, the default CRISPR producer, IGRs and tapes are published and the Pfam scan is planned, *measured* by the orchestrator's listing at 08:30), F-02 session 13 (since 07:02, applying DEC-48), B-51, and B-52 (the ingest estimate; from 08:32). C-36 is done and merged (row C-36). As it stood at 07:02: B-51 (the tokens refusal; since 19:07 on 2026-11-15; its branch is green on Actions and it is finishing its whole-suite run), C-36 (the inputs of the six S2C phase-2 stages `C1` to `C6`; since 20:25; inputs made and pushed, rehearsal and report left) and C-26 part 2 (stage `PL1`: stopped by its guard at 21:32 on 2026-11-15; **resuming since 06:58 on 2026-11-16 under DEC-47**). The laptop slept from about 21:50 to 06:45 and the sessions of C-26 part 2 and C-36 died with it; both resumed with `SendMessage` at 06:51. B-49, B-50 and B-47b are done and merged (their rows). F-02 session 12 ended at about 18:40 with two questions for the PI (open items 9 and 10), not merged. C-24 (stage H1) is done and merged (row C-24); B-48 is done and merged. A logout of the account stopped the three in the afternoon; they were resumed with `SendMessage` at 16:11 at the PI's word ("resume"). The account's 5-hour usage limit stopped B-48, B-49 and F-02 session 12 at about 13:35 (the sixth such stop); all three were resumed with `SendMessage` at 14:07, after its reset at 13:50. C-26 part 1 and E-17 are done and merged. C-34, E-16, C-33 part 1 and W-36 are done and merged. F-02 session 11 ended at 01:15 with four questions for the PI (open item 5); W-33, E-15, W-34, W-32 and W-35 were done and merged on 2026-11-14; see "Agents running" below. Merged on 2026-11-13 and 14: C-28, C-27 step 4, C-25 step 2, C-29, C-30, C-31, C-32,
 W-30, W-31, A-08, E-11, E-12, E-13, E-14, F-02 sessions 4 to 10 (10 is a measurement), the README, the CRISPR example.
+
+*What is next, written on 2026-11-17 at 08:28 during the pod's maintenance.*
+- **While the pod is down** (nothing of ours may run there): card C-38 (the design note for importing at a stated
+  depth, since 08:18) and card W-37 (`--release latest`, since 08:26, tested on GitHub Actions because the pod is
+  away; its one pod check waits). Cards B-53 (two estimates to refit) and C-47 (stage `C5` with a full scan and
+  the representatives measurement) were written in this commit. The branches of C-39 (`456a420`) and C-40
+  (`c935945`) are pushed, interim, not merged: their audits need the pod.
+- **When the PI says the pod is back**, in this order: remove the orchestrator's `STOP` from the data root; see
+  what survived on `/tmp` (the data root, the release's 70 GB clustering scratch, the packs, the inputs); if the
+  root is gone, restore it from the three durable copies on `/stor` before anything else; resume C-40 (about 30
+  minutes if `/tmp` survived) and audit and merge C-39 and C-40; resume the release `r26.11.1` as the PI decides
+  on open item 13; then card C-47 after the release, card C-46 (the release train driver) from card C-35's
+  driver, and card B-53.
+- **Waiting on the PI**: open item 13 (how the release resumes; whether a step under its estimate stops a build);
+  open item 12 (the F-02 positive control); the JGI downloads, a reminder owed (IMG/VR v4.1's high-confidence
+  FASTA and table for card C-39; IMG/PR's FASTA and tables for card C-40; GOLD's public export and IMG/M's list
+  of public metagenome assemblies for card C-43); the Global Soil Virus Atlas, whose host refused the pod five
+  times (the PI fetches it, or says to try from the laptop); the first login at TACC (card C-37, which needs
+  nothing from the pod for its first steps); whether card C-40 also takes the 15,135 circular gut contigs that
+  are not representatives; how many earlier releases keep their large files; staging ideas 6 to 9 (DEC-49).
 
 *What is blocked, and on what.* **Everything on the pod is paused since 08:22 on 2026-11-17 for server maintenance, at the PI's word ("pause now pod server maintenanec").** The orchestrator wrote a `STOP` file in the data root (its text says so; the orchestrator removes it when the PI says the pod is back), no unit of ours is running (*measured*, 08:22), and the agents were told to start nothing there: C-39 and C-40 hand back interim reports, C-38 (the design note, since 08:18) goes on without the pod, C-35 holds. If the pod reboots and `/tmp` is cleared, what is not in the durable copy on `/stor` is: the half-built release (286 files in the root and 70 GB of clustering scratch, about 8,000 CPU-minutes), the packs of `rM.2` and `rN.3`, the stage inputs and the source cards' downloads; the nine stages and the six releases are on `/stor`. No test was run on the pod for this commit. **The release `r26.11.1` is stopped since 23:35 on 2026-11-16 by its rate guard (a step 38% under its estimate) and waits on the PI: open item 13.** Its agent was told at 08:15 on 2026-11-17 not to relaunch. The four agents (C-35, C-39, C-40, C-43) were resumed at 08:15 at the PI's word ("resume"). **One more question waits on the PI since 13:55 on 2026-11-16 and holds the statistics
 track** (open item 12: F-02 session 13 applied DEC-48 by its fallback, and one positive control fails at the null
