@@ -794,6 +794,7 @@ Files: `sources.yaml`, `scripts/stress/c43_*`, one measurement note
 Why: the same public samples are assembled by several resources; importing two assemblies of one run doubles the corpus without adding a read (the survey's §2, #10 to #12).
 Do: from each resource's sample or assembly table: its runs (SRA, ENA or JGI identifiers), assembled bases, habitat label. Report the runs each resource alone has, by habitat and by bases, and the order of preference that follows (one pipeline, with habitat labels, first). No sequence is fetched.
 Accept: the note with the table of runs by resource and habitat, and the list of runs to take from each after SPIRE.
+Done 2026-11-17 (STATUS row C-43; `planning/measurements/2026-11-16_run_crosswalk.md`): SPIRE and MGnify share only 15.8% of their runs; after SPIRE, MGnify alone holds 56,898 runs (37,628 assemblies to take) and INSDC 2,935; NCBI's metagenome group is mostly bins. IMG/M and GOLD wait for the PI's JGI login; the note names the two tables.
 
 ### C-44 Logan: a probe, and one import on the hit
 **M** · Pod: no for the probe; where the trial runs is part of the question (AWS, where Logan lives, or TACC) · Depends: the PI's approval of the source entry and of any spend; card C-37 for TACC

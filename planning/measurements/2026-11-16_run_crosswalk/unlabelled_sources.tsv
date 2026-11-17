@@ -1,0 +1,75 @@
+resource	label_given	units
+mgnify	root:Mixed	6652
+mgnify	insdc:metagenome	1409
+mgnify	insdc:Homo sapiens	1354
+mgnify	insdc:human nasopharyngeal metagenome	1044
+mgnify		859
+insdc	metagenome	685
+mgnify	insdc:Gallus gallus	595
+insdc	viral metagenome	208
+mgnify	insdc:poultry litter metagenome	199
+mgnify	root	96
+mgnify	insdc:air metagenome	79
+mgnify	insdc:mouse metagenome	76
+mgnify	insdc:uncultured prokaryote	57
+mgnify	insdc:Mus musculus	32
+mgnify	insdc:uncultured crAssphage	23
+insdc	microbial mat metagenome	22
+insdc	metagenomes	20
+insdc	plastisphere metagenome	19
+insdc	plastic metagenome	17
+mgnify	insdc:sheep gut metagenome	13
+mgnify	insdc:Candidatus Argoarchaeum ethanivorans	13
+insdc	biofilm metagenome	11
+mgnify	insdc:root metagenome	10
+mgnify	insdc:viral metagenome	9
+mgnify	insdc:surface metagenome	9
+mgnify	insdc:microbial mat metagenome	8
+mgnify	insdc:Pseudomonas asiatica	8
+mgnify	insdc:milk metagenome	7
+mgnify	insdc:biofilter metagenome	7
+insdc	stromatolite metagenome	7
+mgnify	insdc:human urinary tract metagenome	5
+mgnify	insdc:Candidatus Electrothrix marina	5
+mgnify	insdc:sheep metagenome	4
+mgnify	insdc:urine metagenome	4
+mgnify	insdc:rat gut metagenome	4
+mgnify	insdc:rabbit gut metagenome	4
+mgnify	insdc:Azolla filiculoides	3
+mgnify	insdc:biofilm metagenome	2
+mgnify	insdc:Cancris carmenensis	2
+mgnify	insdc:Bolivina spissa	2
+mgnify	insdc:Bolivinella seminuda	2
+mgnify	insdc:Bolivina plicata	2
+mgnify	insdc:Cassidulina limbata	2
+mgnify	insdc:Globobulimina pacifica	2
+mgnify	insdc:Valvulineria inflata	2
+mgnify	insdc:Bolivina costata	2
+mgnify	insdc:Nonionella auris	2
+mgnify	insdc:Uvigerina striata	2
+insdc	fossil metagenome	2
+insdc	wood decay metagenome	2
+mgnify	insdc:Arthrobacter sp. YL	1
+mgnify	insdc:Arthrobacter sp. SWH	1
+mgnify	insdc:Arthrobacter sp. SK	1
+mgnify	insdc:Arthrobacter sp. ST	1
+mgnify	insdc:Arthrobacter sp. TP	1
+mgnify	insdc:Arthrobacter sp. STL	1
+mgnify	insdc:Candidatus Thiovulum stygium	1
+mgnify	insdc:Microcystis aeruginosa PMC 728.11	1
+mgnify	insdc:skin metagenome	1
+mgnify	insdc:Cinachyrella alloclada	1
+mgnify	insdc:Paracatenula sp. 'standrea' Elba	1
+mgnify	insdc:aerosol metagenome	1
+mgnify	insdc:Candidatus Electrothrix communis	1
+mgnify	insdc:Pseudomonas sp. T0H0CK6	1
+mgnify	insdc:Pseudomonas sp. T0H0CK8	1
+mgnify	insdc:Pseudomonas sp. T0H0CK7	1
+mgnify	insdc:Pseudomonas sp. T0H0CK4	1
+mgnify	insdc:Pseudomonas sp. T0H0CK2	1
+mgnify	insdc:Pseudomonas sp. T0H0CK5	1
+mgnify	insdc:Pseudomonas sp. T0H0CK3	1
+mgnify	insdc:Pseudomonas sp. T0H0CK1	1
+mgnify	insdc:fish gut metagenome	1
+insdc	hydrocarbon metagenome	1
+insdc	salt metagenome	1

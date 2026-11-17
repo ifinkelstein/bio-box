@@ -163,7 +163,14 @@ sources:
     checksum: the md5 values above, as SPIRE's downloads page shows them (read 2026-11-16)
     limits: one connection; stop after 5 refusals in a row
     license: none stated on the downloads page. Tables only; no SPIRE sequence is approved by this entry
-    fetched: nothing yet
+    fetched: >-
+      2026-11-16 19:45 to 19:48 UTC by card C-43 (c43_fetch.py) into /tmp/if2453/s3/tables/spire/ on wilkcomp02, each
+      md5 matched: README 5,745 bytes sha256 d1b49413ff7e11d2caf1260a3becac6169af684bed7cb3f3d3770cd670503ed2;
+      spire_v1_genome_metadata.tsv.gz 95,520,280 bytes sha256 f73582647c6385b0d187919b8d34ffd67a87ca2cefbb78fe05ab1b50b2d9458d;
+      spire_v1_cluster_metadata.tsv.gz 2,141,455 bytes sha256 c4b1aa91d9610f8425d7f65c0e6ae1ccdc16a37b0016eb7a23bc7c8f692e9c66;
+      ena_drop.v_2_0.microntology.v_1_0.annotations.v_0_2.tsv.gz 1,755,282 bytes sha256
+      ff7e15ad7dd04b609fb72b42c7020217914d7454a25d60182e9ab0394ad8db96 (305,628 samples: an ENA drop wider than SPIRE)
+    note_readme: the README describes the genome, cluster and microntology tables only; it does not say where a per-sample table or the assemblies are. The per-sample tables are the study pages' table downloads (entry spire_study_api)
     approved: by the PI on 2026-11-16 ("y to yaml")
   - name: ncbi_metagenome_assembly_summary
     what: NCBI's table of GenBank metagenome assemblies, no sequence; card C-43
@@ -172,6 +179,91 @@ sources:
     checksum: none published for this table; record its size and sha256 with the date
     limits: one connection; at most 3 requests per second
     license: INSDC (public)
-    fetched: nothing yet
-    note: the path is the one NCBI's FTP guide describes, not read from a listing; if the first request fails, stop and report
+    fetched: >-
+      2026-11-16 19:47:58 UTC by card C-43 into /tmp/if2453/s3/tables/ncbi_metagenomes/ on wilkcomp02:
+      assembly_summary.txt 11,634,004 bytes (Last-Modified 2026-11-15 00:49:40 GMT) sha256
+      e5a44edc23fefe83ffa1fe35cdf18eb2a7feb041d3285a27cb1d2f3959e96519, 27,219 assemblies;
+      README_assembly_summary.txt 16,353 bytes sha256 b3bf6b2750a742b14bd55d3de1cec2af0c39d54a661f7fc4cafee5b6ad3958de
+    note: the path is the one NCBI's FTP guide describes, not read from a listing; it answered at the first request
     approved: by the PI on 2026-11-16 ("y to yaml")
+  - name: spire_study_api
+    what: SPIRE v1 per-study sample tables (no sequence), the "Download Table Data" link of each study page; card C-43
+    url_studies: https://spire.embl.de/studies   # HTML page; the list `studiesData` in it names every study and its sample count
+    url: https://spire.embl.de/spire/api/study/{study}?format=tsv   # {study} from that list, URL-encoded
+    files: the studies page and one TSV per study; sizes not stated by the provider (recorded on fetch)
+    checksum: none published; our sha256 of every file in the fetch log
+    limits: one connection; at most 1 request per second; stop after 5 refusals in a row (HTTP 403, 429, 503)
+    license: none stated on the site (it links only a privacy policy); the paper, doi:10.1093/nar/gkad943, is open access
+    redistributable: unknown (no terms stated)
+    fetched: >-
+      2026-11-16 by card C-43 into /tmp/if2453/s3/tables/spire/ on wilkcomp02: studies.html 19:51:44 UTC, 52,457 bytes,
+      sha256 ba85291ec865837afdd3e4a840dbd7bf0d9c379b3c36431fd57bdda618e8fbd4 (715 studies, 96,067 samples listed;
+      SPIRE's paper states 99,146 samples of 739 studies); the 715 study tables 20:17:22 to 20:29:41 UTC (c43_pages.py,
+      1 request per second, no refusal), 23,487,447 bytes in study_tsv/, each file's sha256 in study_tsv/fetch_log.jsonl
+      (sha256 28c935afb9de3188f187ceb78c817d0d0a332a1dbf70fb8bbd9546daf89a72ad); one probe table fetched first,
+      study_tsv/probe_studies-20_PRJEB9584.tsv (4,467 bytes, sha256 6bb7e436ec2732979ba3bfc9a19af511b0fc98bf1226329527ca08c089572c02)
+    columns: sample_id, mags, lat, lon, microntology (no run accession, no assembled bases)
+    approved: under DEC-50 (card C-43, 2026-11-16)
+  - name: mgnify_api
+    what: MGnify API v1 listings of its assemblies, assembly analyses, studies and samples (JSON, no sequence); card C-43
+    url: https://www.ebi.ac.uk/metagenomics/api/v1/{endpoint}?format=json&page_size=250&page={n}
+    endpoints:
+      - assemblies   # ERZ accession, wgs-accession, runs and samples inline (51,739 published by the API's own count, 2026-11-16)
+      - analyses?experiment_type=assembly   # MGYA with study, sample, assembly inline (55,420 by the API's count)
+      - studies   # MGYS with biome lineages inline (5,203 by the API's count)
+      - samples?experiment_type=assembly   # sample with biome and study inline
+    paging: follow `links.next` as the API returns it until it is null; page_size is a request, the API may cap it
+    checksum: none published; our sha256 of every page in the fetch log
+    limits: one connection; at most 2 requests per second; stop after 5 refusals in a row (HTTP 403, 429, 500, 502, 503, 504)
+    license: >-
+      EMBL-EBI terms of use (https://www.ebi.ac.uk/about/terms-of-use/, read 2026-11-16): "EMBL-EBI itself places no
+      additional restrictions on the use or redistribution of the data"; attribution expected; the original data may
+      be subject to rights claimed by third parties
+    redistributable: true (as stated by EMBL-EBI; third-party rights aside)
+    fetched: >-
+      2026-11-16 by card C-43 (c43_pages.py next, 2 requests per second at most, no refusal) into
+      /tmp/if2453/s3/tables/mgnify/ on wilkcomp02: assemblies/ 207 pages of 250 (51,739 assemblies), 20:30:36 to
+      20:46:30 UTC, 58,582,748 bytes, log sha256 d4b63555f891010cd8b92f22c6f4c8c8bf82aed93466f3484f414760ddb578c4;
+      samples_assembly/ (samples?experiment_type=assembly) 164 pages, 20:46:58 to 21:04:10 UTC, 76,749,715 bytes, log
+      sha256 c143cf71bcead97f8e626e0cc0d58dbb9ae1073d2566ae184feac9296b2c0ef9. Each page's sha256 is in its
+      directory's fetch_log.jsonl. Not fetched: analyses and studies (the sample listing gave the biomes)
+    approved: under DEC-50 (card C-43, 2026-11-16)
+  - name: ena_portal_tables
+    what: ENA Portal API tables of metagenome read runs and metagenome WGS sets (TSV, no sequence); card C-43, to link samples to runs and to give bases
+    url_count: https://www.ebi.ac.uk/ena/portal/api/count?result={result}&query={query}
+    url: https://www.ebi.ac.uk/ena/portal/api/search?result={result}&query={query}&fields={fields}&limit=0&format=tsv
+    tables:
+      - result: read_run
+        query: library_source="METAGENOMIC" AND library_strategy!="AMPLICON"
+        fields: run_accession,sample_accession,secondary_sample_accession,study_accession,secondary_study_accession,base_count,library_strategy,instrument_platform,tax_id,scientific_name,first_public
+      - result: wgs_set
+        query: tax_tree(408169)   # NCBI taxon "metagenomes"; holds bins as well as primary assemblies, told apart by assembly_type
+        fields: wgs_set,assembly_accession,base_count,run_accession,sample_accession,secondary_sample_accession,study_accession,tax_id,scientific_name,first_public,assembly_type
+      - result: assembly   # every INSDC assembly of a metagenome taxon, with or without a WGS set (MGnify's are mostly without)
+        query: tax_tree(408169)
+        fields: assembly_accession,assembly_type,base_count,run_accession,sample_accession,secondary_sample_accession,study_accession,wgs_set,center_name,tax_id,scientific_name,first_created
+      - result: analysis   # MGnify's own assemblies as ENA analyses (ERZ): the size of their contig files; ENA indexes them under no WGS set or assembly record
+        query: analysis_type="SEQUENCE_ASSEMBLY" AND center_name="EMG"
+        fields: analysis_accession,assembly_type,submitted_bytes,generated_bytes,sample_accession,run_accession,study_accession,first_public
+      - result: read_run   # the runs of named samples, whatever their library source or strategy
+        url_form: https://www.ebi.ac.uk/ena/portal/api/search?result=read_run&query={sample_accession="A" OR secondary_sample_accession="B" OR ..., at most 100 accessions, URL-encoded}&fields=run_accession,sample_accession,secondary_sample_accession,study_accession,base_count,library_source,library_strategy,tax_id,scientific_name&limit=0&format=tsv
+        note: the includeAccessionType/includeAccessions form first written here was answered HTTP 400 on 2026-11-16 (two requests); replaced by the query form above
+        samples: the INSDC sample accessions (SAMEA, SAMN, SAMD, ERS, SRS, DRS) of units the first read_run table did not link
+    checksum: none published; our sha256 with the date; the row count is checked against the count endpoint
+    limits: one connection; one request at a time; stop after 5 refusals in a row; a table over 20 GB is not fetched (the count is read first)
+    license: EMBL-EBI terms of use, as for mgnify_api; the records are INSDC (public)
+    redistributable: true
+    fetched: >-
+      2026-11-16 by card C-43 (c43_fetch.py, one request each; c43_pages.py for the lookups) into
+      /tmp/if2453/s3/tables/ena/ on wilkcomp02, row counts as the count endpoint gave them:
+      read_run_metagenomic.tsv 20:00:39 UTC, 251,182,807 bytes, sha256 dbfe24d3cc9ed16c00e98e13ed00a2b2ce97baabc7f51337137b6662b897af13
+      (count 2,140,720); wgs_set_metagenomes.tsv 19:59:29 UTC, 13,672,855 bytes, sha256
+      f9998af9e06a11140e061b95311cd65d4a27328c92efe6990240d305a4075d72 (count 108,493; fetched before assembly_type was
+      added, superseded); wgs_set_metagenomes_typed.tsv 21:05:55 UTC, 17,157,239 bytes, sha256
+      04bcc7edfde45cfb21c2df6dda58eae44ebca7d8d63eda1772c77b7312b1d0c3; assembly_metagenomes.tsv 21:05:22 UTC,
+      9,841,319 bytes, sha256 9eb3daa2e179d3ad8b89bd2b280a45a18e254b250bc64b2ea68fb33deda0bbfb (count 50,963; not used:
+      it holds 2 of MGnify's assemblies and fewer primary assemblies than the WGS table); analysis_emg_assemblies.tsv
+      21:06:37 UTC, 16,716,661 bytes, sha256 689d7f575591ecca96d26ddcddbe4361565e4c5006e757e1c2e7cdc69986d06b (count
+      179,199); read_run_by_sample/ 75 batches 21:11:22 to 21:12:37 UTC, 293,139 bytes, log sha256
+      98306623825ef6917c27d05a850121eef45e84f295dcd7d5a3a816bf1602f08a; four count files (count_*.txt)
+    approved: under DEC-50 (card C-43, 2026-11-16)

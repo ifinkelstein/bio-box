@@ -1,0 +1,134 @@
+kind	key	label
+mgnify_lineage	root:Host-associated	host-associated
+mgnify_lineage	root:Engineered	anthropogenic
+mgnify_lineage	root:Environmental:Terrestrial	terrestrial
+mgnify_lineage	root:Environmental:Aquatic	aquatic
+mgnify_lineage	root:Environmental:Air	air
+organism_name	mouse gut metagenome	host-associated
+organism_name	human gut metagenome	host-associated
+organism_name	feces metagenome	host-associated
+organism_name	goat gut metagenome	host-associated
+organism_name	gut metagenome	host-associated
+organism_name	bovine gut metagenome	host-associated
+organism_name	chicken gut metagenome	host-associated
+organism_name	human sputum metagenome	host-associated
+organism_name	vaginal metagenome	host-associated
+organism_name	plant metagenome	host-associated
+organism_name	algae metagenome	host-associated
+organism_name	moss metagenome	host-associated
+organism_name	respiratory tract metagenome	host-associated
+organism_name	lichen metagenome	host-associated
+organism_name	sponge metagenome	host-associated
+organism_name	symbiont metagenome	host-associated
+organism_name	human feces metagenome	host-associated
+organism_name	invertebrate metagenome	host-associated
+organism_name	coral metagenome	host-associated
+organism_name	pig gut metagenome	host-associated
+organism_name	root nodule metagenome	host-associated
+organism_name	human oral metagenome	host-associated
+organism_name	human vaginal metagenome	host-associated
+organism_name	bird metagenome	host-associated
+organism_name	human eye metagenome	host-associated
+organism_name	mollusc metagenome	host-associated
+organism_name	fish metagenome	host-associated
+organism_name	termite gut metagenome	host-associated
+organism_name	protist metagenome	host-associated
+organism_name	cnidarian metagenome	host-associated
+organism_name	human metagenome	host-associated
+organism_name	human saliva metagenome	host-associated
+organism_name	leaf metagenome	host-associated
+organism_name	psyllid metagenome	host-associated
+organism_name	rhizosphere metagenome	host-associated
+organism_name	ant fungus garden metagenome	host-associated
+organism_name	phyllosphere metagenome	host-associated
+organism_name	sea squirt metagenome	host-associated
+organism_name	annelid metagenome	host-associated
+organism_name	human skin metagenome	host-associated
+organism_name	insect gut metagenome	host-associated
+organism_name	mosquito metagenome	host-associated
+organism_name	oral metagenome	host-associated
+organism_name	stomach metagenome	host-associated
+organism_name	ciliate metagenome	host-associated
+organism_name	human lung metagenome	host-associated
+organism_name	insect metagenome	host-associated
+organism_name	invertebrate gut metagenome	host-associated
+organism_name	mite metagenome	host-associated
+organism_name	wasp metagenome	host-associated
+organism_name	canine gut metagenome	host-associated
+organism_name	epibiont metagenome	host-associated
+organism_name	fungus metagenome	host-associated
+organism_name	oyster metagenome	host-associated
+organism_name	pancrustacean metagenome	host-associated
+organism_name	scorpion gut metagenome	host-associated
+organism_name	wallaby gut metagenome	host-associated
+organism_name	ear metagenome	host-associated
+organism_name	upper respiratory tract metagenome	host-associated
+organism_name	wastewater metagenome	anthropogenic
+organism_name	bioreactor metagenome	anthropogenic
+organism_name	food fermentation metagenome	anthropogenic
+organism_name	indoor metagenome	anthropogenic
+organism_name	activated sludge metagenome	anthropogenic
+organism_name	anaerobic digester metagenome	anthropogenic
+organism_name	compost metagenome	anthropogenic
+organism_name	food metagenome	anthropogenic
+organism_name	mine metagenome	anthropogenic
+organism_name	mine drainage metagenome	anthropogenic
+organism_name	landfill metagenome	anthropogenic
+organism_name	oil field metagenome	anthropogenic
+organism_name	drinking water metagenome	anthropogenic
+organism_name	mixed culture metagenome	anthropogenic
+organism_name	bioreactor sludge metagenome	anthropogenic
+organism_name	tailings metagenome	anthropogenic
+organism_name	sludge metagenome	anthropogenic
+organism_name	synthetic metagenome	anthropogenic
+organism_name	hospital metagenome	anthropogenic
+organism_name	oil sands metagenome	anthropogenic
+organism_name	industrial waste metagenome	anthropogenic
+organism_name	museum specimen metagenome	anthropogenic
+organism_name	parchment metagenome	anthropogenic
+organism_name	activated carbon metagenome	anthropogenic
+organism_name	concrete metagenome	anthropogenic
+organism_name	probiotic metagenome	anthropogenic
+organism_name	silage metagenome	anthropogenic
+organism_name	freshwater metagenome	aquatic
+organism_name	marine metagenome	aquatic
+organism_name	lake water metagenome	aquatic
+organism_name	sediment metagenome	aquatic
+organism_name	lagoon metagenome	aquatic
+organism_name	marine sediment metagenome	aquatic
+organism_name	hydrothermal vent metagenome	aquatic
+organism_name	hypersaline lake metagenome	aquatic
+organism_name	seawater metagenome	aquatic
+organism_name	saltern metagenome	aquatic
+organism_name	groundwater metagenome	aquatic
+organism_name	hot springs metagenome	aquatic
+organism_name	brine metagenome	aquatic
+organism_name	freshwater sediment metagenome	aquatic
+organism_name	bacterioplankton metagenome	aquatic
+organism_name	watershed metagenome	aquatic
+organism_name	aquatic viral metagenome	aquatic
+organism_name	lake metagenome	aquatic
+organism_name	aquatic metagenome	aquatic
+organism_name	aquifer metagenome	aquatic
+organism_name	soda lake metagenome	aquatic
+organism_name	cold seep metagenome	aquatic
+organism_name	alkali sediment metagenome	aquatic
+organism_name	whale fall metagenome	aquatic
+organism_name	saline spring metagenome	aquatic
+organism_name	cold spring metagenome	aquatic
+organism_name	estuary metagenome	aquatic
+organism_name	marine plankton metagenome	aquatic
+organism_name	pond metagenome	aquatic
+organism_name	glacier metagenome	aquatic
+organism_name	ice metagenome	aquatic
+organism_name	soil metagenome	terrestrial
+organism_name	cave metagenome	terrestrial
+organism_name	rock metagenome	terrestrial
+organism_name	subsurface metagenome	terrestrial
+organism_name	permafrost metagenome	terrestrial
+organism_name	biocrust metagenome	terrestrial
+organism_name	wetland metagenome	terrestrial
+organism_name	mangrove metagenome	terrestrial
+organism_name	terrestrial metagenome	terrestrial
+organism_name	hypolithon metagenome	terrestrial
+organism_name	rock porewater metagenome	terrestrial

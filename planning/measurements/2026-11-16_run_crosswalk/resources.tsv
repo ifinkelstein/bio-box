@@ -1,0 +1,4 @@
+resource	units	linked_by_run	linked_by_sample	unlinked	distinct_runs	read_bases	runs_without_bases	units_with_asm_bases	asm_bases	units_with_gz_bytes	gz_bytes
+spire	96067	580	85391	10096	122062	613868138949456	0	0	0	0	0
+mgnify	83313	80865	2242	206	85962	336307987451361	9976	261	19760176529	79102	2672559908917
+insdc	6463	1	3702	2760	4990	45659162222623	0	6459	1456900027625	0	0
