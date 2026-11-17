@@ -52,7 +52,11 @@ genomes, contigs, distinct proteins (from the manifest's file list and Parquet f
 producers, whether it has `member_cluster`, `contig_label` and the `domain_family_tokens` column (`no`: an older
 release, slow paths; `partial(not S1,P1,P2)`: those stages have no `contig_label` files and their contig names come
 from the slow path, card W-36), and the pack it has in the profile's pack directory (`-` for none). `--json` gives one object
-per release.
+per release. Its last column, `latest` (card W-37, DEC-52), marks the release that `--release latest` names: `read`
+for the commands that read a release (the greatest name, by `catalog.release_order`, that has a manifest), `search`
+for `search run` and `search hmm` (the greatest that also has a verified pack in the pack directory, shown only with a
+profile or `--pack-dir`), both when they are the same release, `-` for the others. A command given `--release latest`
+prints the name it took on stderr and records that name; build commands refuse it.
 
 The host profile names the host's one pack directory: its `tmp` plus `/packs`, `/tmp/if2453/bio-box/packs` on
 wilkcomp02 (card W-22; `_packs` in `src/biobox/cli.py`, `default_pack_base` in `src/biobox/search/runner.py`).

@@ -92,7 +92,11 @@ Release names (DEC-52, 2026-11-16). The releases below were named by hand: `rN.*
 50 Gbp set, the number counting builds of the same set. Every release from now on is named `r<YY>.<MM>.<n>`, the
 n-th release cut in that month (`r26.11.1` is the first, over nine stages), and releases are rolling: one is cut
 whenever a stage has been completed since the last one, over every complete stage. Older releases keep their
-names and stay usable. `rS<k>.<n>` is kept for a signed release at a gate of the stage plan.
+names and stay usable. `rS<k>.<n>` is kept for a signed release at a gate of the stage plan. Every command that reads
+or searches a release takes `--release latest` for the newest one (card W-37): the greatest name by this scheme
+(the older names sort before it, in the order they were built, `rM.2` last) that has a manifest and, for a search, a
+verified search pack; the
+command prints the name it took and records that name, and `bio-box releases` marks it in its column `latest`.
 
 | Release | Stages | Contents | State |
 |---|---|---|---|
