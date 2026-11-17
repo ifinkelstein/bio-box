@@ -5,7 +5,7 @@ The running record of the cards in [`TASKS.md`](TASKS.md). Updated at every merg
 by an agent on its own branch `task/<ID>`, audited by the orchestrating session, and merged after its
 tests passed on the merged tree.
 
-## Handoff, 2026-11-16 16:47 CST (current; the dated sections under "History" are superseded where they differ)
+## Handoff, 2026-11-17 08:16 CST (current; the dated sections under "History" are superseded where they differ)
 
 Written so a new session can continue without the conversation that produced this file. Times are the pod's clock
 (CST); read it with `ssh ... date` before writing a time here.
@@ -209,7 +209,7 @@ release check* (2026-11-15 00:06) *and is announced as the release to use* (2026
 *Agents.* Four at 16:47 on 2026-11-16: C-39 (viruses from metagenomes; since 13:50), C-43 (the crosswalk of assemblies by run; since 13:57), C-40 (plasmids from metagenomes; since 14:36) and C-35 (the first rolling release, `r26.11.1`; from 16:50). Done and merged on 2026-11-16: C-36, B-51, B-52 and C-26 part 2 (stage `PL1`). F-02 session 13 ended at 13:55 with open item 12, not merged. The account's usage limit stopped every agent at about 11:00; all four were resumed with `SendMessage` at 13:41 at the PI's word ("resume"). As it stood at 08:32: C-26 part 2 (the `PL1` build, relaunched as `c26-pl1-2` after 07:00 with the ingest record accepted, DEC-47; gene calling in 4 batches, the default CRISPR producer, IGRs and tapes are published and the Pfam scan is planned, *measured* by the orchestrator's listing at 08:30), F-02 session 13 (since 07:02, applying DEC-48), B-51, and B-52 (the ingest estimate; from 08:32). C-36 is done and merged (row C-36). As it stood at 07:02: B-51 (the tokens refusal; since 19:07 on 2026-11-15; its branch is green on Actions and it is finishing its whole-suite run), C-36 (the inputs of the six S2C phase-2 stages `C1` to `C6`; since 20:25; inputs made and pushed, rehearsal and report left) and C-26 part 2 (stage `PL1`: stopped by its guard at 21:32 on 2026-11-15; **resuming since 06:58 on 2026-11-16 under DEC-47**). The laptop slept from about 21:50 to 06:45 and the sessions of C-26 part 2 and C-36 died with it; both resumed with `SendMessage` at 06:51. B-49, B-50 and B-47b are done and merged (their rows). F-02 session 12 ended at about 18:40 with two questions for the PI (open items 9 and 10), not merged. C-24 (stage H1) is done and merged (row C-24); B-48 is done and merged. A logout of the account stopped the three in the afternoon; they were resumed with `SendMessage` at 16:11 at the PI's word ("resume"). The account's 5-hour usage limit stopped B-48, B-49 and F-02 session 12 at about 13:35 (the sixth such stop); all three were resumed with `SendMessage` at 14:07, after its reset at 13:50. C-26 part 1 and E-17 are done and merged. C-34, E-16, C-33 part 1 and W-36 are done and merged. F-02 session 11 ended at 01:15 with four questions for the PI (open item 5); W-33, E-15, W-34, W-32 and W-35 were done and merged on 2026-11-14; see "Agents running" below. Merged on 2026-11-13 and 14: C-28, C-27 step 4, C-25 step 2, C-29, C-30, C-31, C-32,
 W-30, W-31, A-08, E-11, E-12, E-13, E-14, F-02 sessions 4 to 10 (10 is a measurement), the README, the CRISPR example.
 
-*What is blocked, and on what.* **One question waits on the PI since 13:55 on 2026-11-16 and holds the statistics
+*What is blocked, and on what.* **The release `r26.11.1` is stopped since 23:35 on 2026-11-16 by its rate guard (a step 38% under its estimate) and waits on the PI: open item 13.** Its agent was told at 08:15 on 2026-11-17 not to relaunch. The four agents (C-35, C-39, C-40, C-43) were resumed at 08:15 at the PI's word ("resume"). **One more question waits on the PI since 13:55 on 2026-11-16 and holds the statistics
 track** (open item 12: F-02 session 13 applied DEC-48 by its fallback, and one positive control fails at the null
 module's second seed). Also the PI's, and not holding anything today: the JGI downloads (a reminder is owed, DEC-50
 (2)), the first login at TACC (card C-37), how many old releases keep their large files (DEC-52), and the staging
@@ -803,6 +803,25 @@ and of the search worker (only their command lines are unit-tested; the scope be
 probed by hand on the pod).
 
 ## Open items for the PI
+
+**Open since 23:35 on 2026-11-16** (the release `r26.11.1`, card C-35; *measured*, wilkcomp02,
+`/tmp/if2453/c35/driver.log`):
+
+13. **How the release build resumes, and whether a step that costs less than its estimate should stop a build at
+   all.** The launch `c35-rel-1` began at 17:44 on 2026-11-16. By 23:34 it had 143 run records: the plan, every
+   NR90 clustering step and the NR90 representatives, 8,023 CPU-minutes against 8,167 estimated for those steps
+   (the largest part at 1.02 of its estimate; scratch peak 68 GB). Then the first NR50 step,
+   `cluster.nr50.00.kmermatcher`, cost 19.3 CPU-minutes against an estimate of 31.4 (0.615; estimated above
+   DEC-43's 24, so judged), and the card's rate guard stopped the unit at 23:34:57. Nothing is wrong in the root;
+   the same command resumes at the next NR50 step, but the guard reads that record again and would stop at once.
+   This is the third stop of a build by a guard, and the second for a step that came in cheaper (DEC-47 was the
+   first). Options: (a) accept this one record by name and value, as DEC-47 did, and resume; (b) the same, and
+   change the rule for every build driver: **a judged step more than 20% over its estimate stops the build; a
+   step more than 20% under is reported in the note and gets a card to correct the estimate, and does not stop
+   it**; (c) leave the release until the PI has looked. **Recommendation: (b)**: a step under its estimate
+   threatens no budget (the 300 CPU-minute limit, memory, disk), and each such stop has cost a night. AGENTS §6
+   would then read as it does for documents and cards, with the build guards judging over-runs only. Not done
+   by the orchestrator: it changes what a stop condition judges (DEC-43, DEC-47 were the PI's).
 
 **Open since 13:55 on 2026-11-16** (F-02 session 13; its note is `planning/measurements/2026-11-14_synthworld_redesign.md`
 §16 on branch `task/F-02-13`, at `f340a0a`, pushed, not merged):
