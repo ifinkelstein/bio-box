@@ -456,8 +456,10 @@ sources:
     what: >-
       IMG/VR v4.1 high-confidence viral genomes and host/sequence metadata tables (folder IMG_VR_2022-12-19_7.1 in
       dataset Custom_MPI-IMG_VR on JGI Data Portal); card C-39
-    url: https://files-download.jgi.doe.gov/download_files/
+    url: https://files-download.jgi.doe.gov/filedownload/
     page: https://data.jgi.doe.gov/search?datasets=Custom_MPI-IMG_VR (read 2026-11-18 with the PI's JGI session)
+    top_hit: 5a68dc247ded5e2d714109d7
+    file_ids: [63a22c8a3b5d0133c73fb0a8, 63a22c8a3b5d0133c73fb0a6, 63a22c8a3b5d0133c73fb0a0, 63a22c8a3b5d0133c73fb0a4]
     files:
       - {file: IMGVR_all_nucleotides-high_confidence.fna.gz, folder: IMG_VR_2022-12-19_7.1, size: 23.1 GB}
       - {file: IMGVR_all_Sequence_information-high_confidence.tsv, folder: IMG_VR_2022-12-19_7.1, size: 1.8 GB}
@@ -465,23 +467,25 @@ sources:
       - {file: README-high_confidence.txt, folder: IMG_VR_2022-12-19_7.1, size: 4.5 KB}
     not_taken: IMGVR_all_proteins-high_confidence.faa.gz (15 GB; we call our own genes) and older folders (2017 to 2022-09)
     checksum: record exact byte sizes, md5 and sha256 on fetch
-    license: JGI Data Utilization Policy (dataset marked UNRST on portal; accepted by the PI in JGI Cart)
+    license: JGI Data Utilization Policy (dataset marked UNRST on portal; accepted by the PI in JGI Cart on 2026-11-18)
     redistributable: false (held local on wilkcomp02, STAGES.md S4 and DEC-50/DEC-51)
-    fetched: pending (staged in JGI Cart 2026-11-18; JDP banner notes download/restoration maintenance since 2026-11-09)
-    approved: by the PI on 2026-11-18 (logged into JGI in Chrome)
+    fetched: pending (PI accepted JGI Data Utilization Policy and generated Cart download command on 2026-11-18)
+    approved: by the PI on 2026-11-18 (logged into JGI and accepted policy in Chrome)
   - name: jgi_img_pr
     what: >-
       IMG/PR plasmid nucleotide sequences and full metadata table (folder IMG_VR_2023-08-08_1 in dataset
       Custom_MPI-IMG_PR on JGI Data Portal); card C-40
-    url: https://files-download.jgi.doe.gov/download_files/
+    url: https://files-download.jgi.doe.gov/filedownload/
     page: https://data.jgi.doe.gov/search?datasets=Custom_MPI-IMG_PR (read 2026-11-18 with the PI's JGI session)
+    top_hit: 64deb65b54c31f25498a483a
+    file_ids: [64deb65b54c31f25498a483a, 64deb65b54c31f25498a483d, 64deb65b54c31f25498a4836]
     files:
       - {file: IMGPR_nucl.fna.gz, folder: IMG_VR_2023-08-08_1, size: 5.1 GB}
       - {file: IMGPR_plasmid_data.tsv, folder: IMG_VR_2023-08-08_1, size: 164 MB}
       - {file: README.md, folder: IMG_VR_2023-08-08_1, size: 5 KB}
     not_taken: IMGPR_prot.faa.gz (2.8 GB; we call our own genes)
     checksum: record exact byte sizes, md5 and sha256 on fetch
-    license: JGI Data Utilization Policy (accepted by the PI in JGI Cart)
+    license: JGI Data Utilization Policy (accepted by the PI in JGI Cart on 2026-11-18)
     redistributable: false (held local on wilkcomp02, DEC-50/DEC-51)
-    fetched: pending (staged in JGI Cart 2026-11-18 alongside jgi_img_vr)
-    approved: by the PI on 2026-11-18 (logged into JGI in Chrome)
+    fetched: pending (PI accepted JGI Data Utilization Policy and generated Cart download command on 2026-11-18)
+    approved: by the PI on 2026-11-18 (logged into JGI and accepted policy in Chrome)
