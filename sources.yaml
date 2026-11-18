@@ -428,23 +428,23 @@ sources:
     url: https://gold.jgi.doe.gov/download?mode={mode}
     page: https://gold.jgi.doe.gov/downloads (read 2026-11-18 with the PI's JGI session)
     files:
-      - {mode: site_excel, what: Public Studies/Biosamples/SPs/APs/Organisms Excel (generated 2026-11-17)}
-      - {mode: sra_biome_img_excel, what: Public SRA-based Biome APs with IMG Annotations Excel (generated 2026-11-17)}
-      - {mode: cv_excel, what: GOLD CVs Excel (generated 2026-11-18)}
-      - {mode: ecosystempaths, what: GOLD 5-Level Ecosystem Classification Paths Excel (generated 2026-11-18)}
-    checksum: none published on the page; record our byte sizes and sha256 on fetch
+      - {mode: site_excel, file: goldData.xlsx, bytes: 240751018, sha256: 35617c9d39fe16c2d5e575315a5c0019d6bd013926d68cccc6b7418bb82e554c}
+      - {mode: sra_biome_img_excel, file: goldSraBiomeImg.xlsx, bytes: 657452, sha256: 9c0df91e55719a23b382dd734b4f2ff113fda8d4392f121236e99f403585c9a9}
+      - {mode: cv_excel, file: goldCVs.xlsx, bytes: 187532, sha256: 8adb5ed3044ca4aea6b5d47df4fc458d26fed6a93b2e3a4edb9ed8fb768d098b}
+      - {mode: ecosystempaths, file: GOLDs5levelEcosystemClassificationPaths.xlsx, bytes: 84357, sha256: 465a67df15ef7f58b4b94be5971b9361c053c77f185bff5d0a4abdaff05467de}
+    checksum: none published on the page; our sha256 values recorded above on 2026-11-18
     license: >-
       GOLD Data Usage Policy (https://gold.jgi.doe.gov/usagepolicy, read 2026-11-18): "GOLD metadata are freely
       available for research purposes, including data analysis, research presentations, conference posters, journal
       publications etc."; cite doi:10.1093/nar/gkae1000
     redistributable: true (metadata)
-    fetched: pending (PI logged in 2026-11-18)
+    fetched: 2026-11-18 22:28 UTC into /tmp/if2453/s3/tables/gold/ on wilkcomp02 (all 4 files, sha256 above)
     approved: by the PI on 2026-11-18 (logged into JGI in Chrome)
   - name: jgi_img_m_tables
     what: >-
       IMG/M (Chen et al. 2022, NAR, doi:10.1093/nar/gkac976) public Genome Browser metadata exports (Microbiomes,
-      Viruses, Archaea, Bacteria, and Metagenome Bins: IMG taxon OID, GOLD study/SP/AP IDs, 5-level ecosystem path,
-      environmental/physicochemical/host/geographical metadata, assembled bases, scaffold count, sequencing center,
+      Viruses, Archaea, Bacteria, Eukaryota, and Metagenome Bins: IMG taxon OID, GOLD study/SP/AP IDs, 5-level ecosystem
+      path, environmental/physicochemical/host/geographical metadata, assembled bases, scaffold count, sequencing center,
       SRA ID/run, JGI data utilization status), tables only, no sequence; card C-43 and environmental metadata joins
     url: https://img.jgi.doe.gov/cgi-bin/m/main.cgi?section=TaxonList&page=taxonListAlpha&domain={domain}
     url_jqdt: https://img.jgi.doe.gov/m/tmp/jqdt_{id}.json
@@ -452,27 +452,36 @@ sources:
     checksum: none published (dynamic export); record byte size, row count and sha256 on fetch
     license: JGI Data Utilization Policy; public microbiome metadata table
     redistributable: false (held local under JGI terms)
-    fetched: pending (PI logged in 2026-11-18)
+    fetched: 2026-11-18 into /tmp/if2453/s3/tables/img_m/ on wilkcomp02 (Microbiomes 79,524 rows 72 cols; Viruses 20,023 rows; Archaea 3,140 rows; Bacteria and Bins in progress)
     approved: by the PI on 2026-11-18 (logged into JGI in Chrome)
   - name: jgi_img_vr
     what: >-
-      IMG/VR v4.1 high-confidence viral genomes and host/sequence metadata tables (folder IMG_VR_2022-12-19_7.1 in
-      dataset Custom_MPI-IMG_VR on JGI Data Portal); card C-39
+      IMG/VR v4.1 high-confidence (folder IMG_VR_2022-12-19_7.1: 5,576,197 viral genomes, 2,917,521 vOTUs) and full
+      IMG/VR v4.0 high-confidence + putative viral genomes (folder IMG_VR_2022-12-19_7: 15,677,623 viral genomes,
+      9,169,185 vOTUs) and host/sequence metadata tables (dataset Custom_MPI-IMG_VR on JGI Data Portal); card C-39
     url: https://files-download.jgi.doe.gov/filedownload/
     page: https://data.jgi.doe.gov/search?datasets=Custom_MPI-IMG_VR (read 2026-11-18 with the PI's JGI session)
     top_hit: 5a68dc247ded5e2d714109d7
-    file_ids: [63a22c8a3b5d0133c73fb0a8, 63a22c8a3b5d0133c73fb0a6, 63a22c8a3b5d0133c73fb0a0, 63a22c8a3b5d0133c73fb0a4]
+    file_ids_hc: [63a22c8a3b5d0133c73fb0a8, 63a22c8a3b5d0133c73fb0a6, 63a22c8a3b5d0133c73fb0a0, 63a22c8a3b5d0133c73fb0a4]
+    file_ids_full: [63a22c0c3b5d0133c73fb093, 63a22c0c3b5d0133c73fb097, 63a22c0c3b5d0133c73fb099, 63a22c0c3b5d0133c73fb09b]
     files:
-      - {file: IMGVR_all_nucleotides-high_confidence.fna.gz, folder: IMG_VR_2022-12-19_7.1, size: 23.1 GB}
-      - {file: IMGVR_all_Sequence_information-high_confidence.tsv, folder: IMG_VR_2022-12-19_7.1, size: 1.8 GB}
-      - {file: IMGVR_all_Host_information-high_confidence.tsv, folder: IMG_VR_2022-12-19_7.1, size: 275.8 MB}
-      - {file: README-high_confidence.txt, folder: IMG_VR_2022-12-19_7.1, size: 4.5 KB}
-    not_taken: IMGVR_all_proteins-high_confidence.faa.gz (15 GB; we call our own genes) and older folders (2017 to 2022-09)
-    checksum: record exact byte sizes, md5 and sha256 on fetch
-    license: JGI Data Utilization Policy (dataset marked UNRST on portal; accepted by the PI in JGI Cart on 2026-11-18)
+      - {file: IMGVR_all_nucleotides-high_confidence.fna.gz, folder: IMG_VR_2022-12-19_7.1, bytes: 24792200438, md5: 83301c9c6dfefea3305a53ee2a41bac3}
+      - {file: IMGVR_all_Sequence_information-high_confidence.tsv, folder: IMG_VR_2022-12-19_7.1, bytes: 1888622625, md5: 3c516db128082fa29dc2c2f60520da1b}
+      - {file: IMGVR_all_Host_information-high_confidence.tsv, folder: IMG_VR_2022-12-19_7.1, bytes: 289219376, md5: 71b54d0f5c186d813f058bf0379dfd24}
+      - {file: README-high_confidence.txt, folder: IMG_VR_2022-12-19_7.1, bytes: 4590, md5: 7097befc3787e4f78858ba8f6ff7e4c0}
+      - {file: IMGVR_all_nucleotides.fna.gz, folder: IMG_VR_2022-12-19_7, bytes: 48319037952, md5: e37e6a541e10a75a88577763f75fc9cd}
+      - {file: IMGVR_all_Sequence_information.tsv, folder: IMG_VR_2022-12-19_7, bytes: 5047195079, md5: 658ce076cd26729892552ed5876ad17c}
+      - {file: IMGVR_all_Host_information.tsv, folder: IMG_VR_2022-12-19_7, bytes: 696356789, md5: 3486513594a81fd00e276e37803994e0}
+      - {file: README.txt, folder: IMG_VR_2022-12-19_7, bytes: 4235, md5: ba749fd171bbf5821dcddeeff3db343b}
+    not_taken: protein .faa.gz files (we call our own genes) and older folders (2017 to 2022-09)
+    checksum: JGI API md5sum values above; zip sha256 recorded on fetch
+    license: JGI Data Utilization Policy (dataset marked Unrestricted on portal; accepted by the PI in JGI Cart on 2026-11-18)
     redistributable: false (held local on wilkcomp02, STAGES.md S4 and DEC-50/DEC-51)
-    fetched: pending (PI accepted JGI Data Utilization Policy and generated Cart download command on 2026-11-18)
-    approved: by the PI on 2026-11-18 (logged into JGI and accepted policy in Chrome)
+    fetched: >-
+      v4.1 high-confidence fetched 2026-11-18 22:26 to 22:33 UTC as jgi_img_vr_v4.1_hc_20261118.zip (24,978,867,388
+      bytes, sha256 b887ac945abaf4f8e9422af9414edaf28c983ed444173f4aa595e05cf8b352d9); full v4.0 queued onto
+      /stor/work/Wilke/if2453/all-the-data/jgi_20261118/
+    approved: by the PI on 2026-11-18 ("try to get as many useful jgi databases as possible, and the associated environmental metadata")
   - name: jgi_img_pr
     what: >-
       IMG/PR plasmid nucleotide sequences and full metadata table (folder IMG_VR_2023-08-08_1 in dataset
@@ -482,12 +491,106 @@ sources:
     top_hit: 64deb65b54c31f25498a483a
     file_ids: [64deb65b54c31f25498a483a, 64deb65b54c31f25498a483d, 64deb65b54c31f25498a4836]
     files:
-      - {file: IMGPR_nucl.fna.gz, folder: IMG_VR_2023-08-08_1, size: 5.1 GB}
-      - {file: IMGPR_plasmid_data.tsv, folder: IMG_VR_2023-08-08_1, size: 164 MB}
-      - {file: README.md, folder: IMG_VR_2023-08-08_1, size: 5 KB}
-    not_taken: IMGPR_prot.faa.gz (2.8 GB; we call our own genes)
-    checksum: record exact byte sizes, md5 and sha256 on fetch
-    license: JGI Data Utilization Policy (accepted by the PI in JGI Cart on 2026-11-18)
+      - {file: IMGPR_nucl.fna.gz, folder: IMG_VR_2023-08-08_1, bytes: 5521587293, md5: c59683a4a5747c67f644cb23b67791a0}
+      - {file: IMGPR_plasmid_data.tsv, folder: IMG_VR_2023-08-08_1, bytes: 171955179, md5: bc1b2d94c1e7eea07cd3df0ad5c5d0d5}
+      - {file: README.md, folder: IMG_VR_2023-08-08_1, bytes: 5124, md5: 5f2fba1213b32205f0d2898761012314}
+    not_taken: IMGPR_prot.faa.gz (3.02 GB; we call our own genes)
+    checksum: JGI API md5sum values above; zip sha256 recorded below
+    license: JGI Data Utilization Policy (dataset marked Unrestricted on portal; accepted by the PI in JGI Cart on 2026-11-18)
     redistributable: false (held local on wilkcomp02, DEC-50/DEC-51)
-    fetched: pending (PI accepted JGI Data Utilization Policy and generated Cart download command on 2026-11-18)
+    fetched: >-
+      2026-11-18 22:24 to 22:26 UTC into /tmp/if2453/s3/dl/jgi/jgi_img_pr_20261118.zip (5,551,950,068 bytes, sha256
+      7a51cb6f1d73a070270fa75f0ae8571028c9428dd3ecba2a592e94f82fabd949)
     approved: by the PI on 2026-11-18 (logged into JGI and accepted policy in Chrome)
+  - name: jgi_img_umag
+    what: >-
+      IMG-UMAG unrestricted prokaryote and eukaryote metagenome-assembled genome binning tarballs and metadata
+      (dataset Custom_MPI-IMG-UMAG on JGI Data Portal)
+    url: https://files-download.jgi.doe.gov/filedownload/
+    page: https://data.jgi.doe.gov/search?datasets=Custom_MPI-IMG-UMAG (read 2026-11-18)
+    top_hit: 65dfc59353447aa3899b1f15
+    file_ids: [65dfc59353447aa3899b1f15, 65de606453447aa38999f012, 6812eec63dd039aa99477317]
+    files:
+      - {file: unrestricted_metagenomes_for_bin_tarballs.02062024.txt, bytes: 6691415, md5: 57d28e5bd73277b0f8c710a0d595b5e5}
+      - {file: IMG_eukaryote_binning_files.tar, bytes: 38595860480, md5: 1680d45eeb6551bd8927d13a1c51068c}
+      - {file: IMG_prokaryote_binning_files.tar, bytes: 409281218560, md5: 63b3a422039b93fbcc18932d4bed1c0e}
+    checksum: JGI API md5sum values above; archive sha256 recorded on fetch
+    license: JGI Data Utilization Policy (dataset marked Unrestricted on portal; accepted by the PI on 2026-11-18)
+    redistributable: false (held local on wilkcomp02 under /stor/work/Wilke/if2453/all-the-data/jgi_20261118/)
+    fetched: queued 2026-11-18
+    approved: by the PI on 2026-11-18 ("enumerate everything they have, and grab the biggest things")
+  - name: jgi_iuig
+    what: >-
+      IMG Isolate and Uncultivated Genomes aggregate tarball and metadata (dataset Custom_MPI-IUIG on JGI Data Portal)
+    url: https://files-download.jgi.doe.gov/filedownload/
+    page: https://data.jgi.doe.gov/search?datasets=Custom_MPI-IUIG (read 2026-11-18)
+    top_hit: 65692c5235be7090ad48c1d3
+    file_ids: [65692c5235be7090ad48c1d3, 6553c9671a840c133543f793]
+    files:
+      - {file: img_genomes_tarballs_metadata_111023.txt, bytes: 33252874, md5: a73ac6f322cc52a426aa8a72f14dd0e0}
+      - {file: aggregate_tarball.tar, bytes: 525205227520, md5: 263a157e38da0c807f73743a93244b5e}
+    checksum: JGI API md5sum values above; archive sha256 recorded on fetch
+    license: JGI Data Utilization Policy (dataset marked Unrestricted on portal; accepted by the PI on 2026-11-18)
+    redistributable: false (held local on wilkcomp02 under /stor/work/Wilke/if2453/all-the-data/jgi_20261118/)
+    fetched: queued 2026-11-18
+    approved: by the PI on 2026-11-18 ("enumerate everything they have, and grab the biggest things")
+  - name: jgi_inovirus
+    what: >-
+      Cryptic filamentous phages (Inoviridae) discovered across global microbial genomes and metagenomes (Roux et al.
+      2019, Nature Microbiology; dataset Custom_MPI-Inovirus on JGI Data Portal)
+    url: https://files-download.jgi.doe.gov/filedownload/
+    page: https://data.jgi.doe.gov/search?datasets=Custom_MPI-Inovirus (read 2026-11-18)
+    top_hit: 5cd9f07246d1e6746826aa57
+    file_ids: [5cd9f07246d1e6746826aa57, 5cd9f07246d1e6746826aa58, 5cd9f07346d1e6746826aa5a, 5cd9f07346d1e6746826aa59]
+    files:
+      - {file: Gb_files_inoviruses.zip, bytes: 40180907, md5: a075958a353ec9a36c01264513f329e1}
+      - {file: iPFs_inoviruses.zip, bytes: 44968913, md5: 97ec89b708fc8d0fa5776ea48ddd02a2}
+      - {file: Ref_PCs_inoviruses.zip, bytes: 1117752, md5: c394d9941f62a10d45d6851675a30f35}
+      - {file: MobM_C_primer_amplicon.fasta, bytes: 171, md5: 96312a2c95cd3f5c3156eb1248429597}
+    checksum: JGI API md5sum values above; archive sha256 recorded on fetch
+    license: JGI Data Utilization Policy (dataset marked Unrestricted on portal; accepted by the PI on 2026-11-18)
+    redistributable: false (held local on wilkcomp02)
+    fetched: queued 2026-11-18
+    approved: by the PI on 2026-11-18 ("enumerate everything they have, and grab the biggest things")
+  - name: jgi_gems_nersc
+    what: >-
+      Genomes from Earth's Microbiomes (GEM, Nayfach et al. 2021, Nature Biotechnology): 52,515 MAGs across 10,450
+      metagenomes, 45,599 species-level OTU representatives, 24,313 prophages, and environmental/geographic metadata on
+      NERSC's public portal (bypassing JDP's tape purge)
+    url: https://portal.nersc.gov/GEM/{path}
+    page: https://portal.nersc.gov/GEM/ (read 2026-11-18)
+    files:
+      - {path: README.md}
+      - {path: genomes/genome_metadata.tsv}
+      - {path: genomes/fna.tar}
+      - {path: otus/fna.tar}
+      - {path: otus/genome_to_checkm.tsv}
+      - {path: otus/genome_to_otu.tsv}
+      - {path: otus/otu_genome_counts.tsv}
+      - {path: otus/otu_representative_genomes.tsv}
+      - {path: otus/otu_taxonomy.tsv}
+      - {path: prophages/virsorter.fna}
+      - {path: prophages/virsorter.tsv}
+    checksum: record byte sizes and sha256 on fetch
+    license: >-
+      GEM README.md (read 2026-11-18): "The MAGs contained in the GEM data bundle are free to use. Underlying
+      metagenomes are protected by JGI data release and utilization policies"
+    redistributable: false (held local under JGI terms)
+    fetched: queued 2026-11-18
+    approved: by the PI on 2026-11-18 ("enumerate everything they have, and grab the biggest things")
+  - name: gvmags_v2
+    what: >-
+      Giant Virus Metagenome-Assembled Genomes V2 (GVMAGs V2, expanding Schulz et al. 2020 JGI GVMAGs, whose v1 files
+      are currently purged to tape on JDP): 18k giant virus genomes and orthogroups
+    url: https://zenodo.org/api/records/20126600/files/{file}/content
+    record: https://doi.org/10.5281/zenodo.20126600 (read 2026-11-18)
+    files:
+      - {file: fna_files.tar.gz, bytes: 720411360, md5: bb924ecfaff1b20238fe609e689fa9ea}
+      - {file: all_18kgenomes_fna.tar.gz, bytes: 1364027845, md5: 077f125d844c85ca6169c331d52640b9}
+      - {file: long_ortho_8000.tsv, bytes: 106354202, md5: 67fd68ae2366f8c4dfeb93b9bd22649e}
+    not_taken: faa_files.tar.gz (455 MB; we call our own genes)
+    checksum: Zenodo md5 values above; verify md5 and record sha256 on fetch
+    license: CC BY-SA 4.0
+    redistributable: true (ShareAlike)
+    fetched: queued 2026-11-18
+    approved: by the PI on 2026-11-18 ("enumerate everything they have, and grab the biggest things")
