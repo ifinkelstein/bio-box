@@ -420,3 +420,44 @@ sources:
       planning/measurements/2026-11-16_pl2_inputs.md
     note: IMG/PR's own portal (JGI) is not tried (DEC-50 (2)); its records here come from PlasmidScope's open download
     approved: under DEC-50 (entry written by card C-40 on 2026-11-16 before any fetch)
+  - name: globdb_r226
+    what: >-
+      GlobDB release 226 (Speth et al. 2025, Bioinformatics Advances, doi:10.1093/bioadv/vbaf280), species-dereplicated
+      bacterial and archaeal genomes from GTDB R226 and 13 MAG resources, its metadata tables, identifier dictionaries
+      and genome FASTA archive; card C-41 (not yet a stage)
+    url: https://fileshare.lisc.univie.ac.at/globdb/globdb_r226/{file}
+    page: >-
+      https://globdb.org/downloads and https://fileshare.lisc.univie.ac.at/globdb/globdb_r226/website_pages/
+      (globdb_r226_downloads, globdb_r226_methods, globdb_r226_citations; read 2026-11-18)
+    files:
+      - {file: README.txt, bytes: 10941}
+      - {file: globdb_r226_md5sums.txt, bytes: 526}
+      - {file: globdb_r226_tax_plus_stats.tsv.gz, bytes: 11811303}
+      - {file: globdb_r226_taxonomy.tsv.gz, bytes: 5832515}
+      - {file: globdb_r226_dictionaries.tar.gz, bytes: 3176715}
+      - {file: globdb_r226_genome_fasta.tar.gz, bytes: 251371669660}
+      - {file: environmental_metadata/high_level_env__pct.tsv, bytes: 20736725}
+      - {file: environmental_metadata/high_level_env__value.tsv, bytes: 12894501}
+    not_taken: >-
+      globdb_r226_anvio_dbs.tar.gz (607.5 GB), globdb_r226_aastk.db.gz (204.0 GB),
+      globdb_r226_protein_fasta.tar.gz (155,696,441,172 bytes; we call our own genes),
+      globdb_r226_protein_annotations.tar.gz (52.1 GB), globdb_r226_gff_cog.tar.gz (29.1 GB), pLM_embeddings/,
+      taxonomic_profiling/, and the third-party Prokka GenBank files at Eawag
+    checksum: >-
+      globdb_r226_md5sums.txt in the top-level directory (Content-Length byte sizes above read by HTTP HEAD on
+      2026-11-18 before any fetch); check every top-level file downloaded in full against globdb_r226_md5sums.txt and
+      record our sha256 (or stream bytes and extracted per-genome sha256 values if globdb_r226_genome_fasta.tar.gz is
+      streamed without storing the 251.4 GB archive on /tmp)
+    records: >-
+      306,260 species-representative prokaryote genomes across 14 resources (143,607 from GTDB R226 and 162,653 across
+      13 MAG catalogues: mOTU, RBG, SPIRE, GEM, MGnify, GOMC, SMAG, TPMC, MRGM/HRGM2, cFMD, SHGO, AMXMAG, GFS;
+      sequentially dereplicated at 96% ANI over 50% aligned fraction; published)
+    limits: one connection; stop after 5 refusals in a row (HTTP 403, 429, 503)
+    license: >-
+      CC BY-SA 4.0 ("the GlobDB propagates the licenses of the underlying data sources, and is licensed under
+      CC BY-SA 4.0", https://globdb.org/, read 2026-11-18). Share-alike: redistribution of a derived dataset carries
+      CC BY-SA 4.0 and the underlying sources' terms (GEM, Nayfach et al. 2021, derives from published JGI IMG/M
+      metagenomes under CC BY 4.0; SPIRE states no explicit licence on its downloads page)
+    redistributable: true
+    fetched: nothing yet
+    approved: under DEC-50 (entry written by card C-41 on 2026-11-18 before any fetch)
