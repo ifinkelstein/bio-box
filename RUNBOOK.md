@@ -119,7 +119,16 @@ The card calls this `bio-box doctor`. There is no such subcommand; the command i
 clustering, tokens, postings, `contig_dim`, manifest and catalog. Each step is a `run-step`. The
 two input files are JSON lists: `--genomes` (fields of `GenomeInput`, contig uids as hex) and
 `--objects` (fields of `SourceObject`). `--library` takes a name, a version, an HMM file and a
-cutoff, and repeats. Appendix B makes fixture inputs.
+cutoff, and repeats. `--depth` (`stored`, `called` or `annotated`; card C-38a, DEC-54) chooses how far
+the stage is built: `stored` runs `inputs` and `ingest` only (refused with `--library`, `--ncrna-cm`,
+`--crispr` or `--release`: a `stored` stage has no tapes and cannot enter a release); `called` adds
+gene calling, optional default `--crispr`, IGRs and tapes (refused with `--library` or `--ncrna-cm`);
+`annotated` adds the `--library` domain scans, optional `--ncrna-cm`, and the filtered CRISPR step when
+`--crispr` and Pfam are given (refused without `--library`). When `--depth` is omitted it defaults to
+`annotated` if a `--library` is given, else `called`. Omit `--release` to build the stage alone without
+running the release steps; a stage built `--depth called` and later resumed with `--depth annotated
+--library ...` produces the same files byte for byte as one built `annotated` at once. Appendix B makes
+fixture inputs.
 
 Launch it once, detached. Use a new unit name for every launch.
 
@@ -675,10 +684,12 @@ is a pass, 1 a failure (a missing manifest is one).
 
 Files that a later step adds to the release's stages for a library, producer or step the release
 does not use there are not its concern (card C-19): a Pfam scan of a stage after the release was
-built does not fail it. A second part beside a file the release lists still does. If the release
-has a library's domain files for some of its stages only, `verify` prints a `warning:` line naming
-the stages on each side; the exit code is unchanged. That release's family tokens cover only the
-first stages' genes; a release built after the other stages are scanned covers them all. A release whose
+built does not fail it. A second part beside a file the release lists still does. After `built by:`,
+`verify` prints one information line, `depths: ...` (`catalog.stage_depths`, card C-38a, DEC-54,
+replacing card C-19's partial-library warning), naming each stage's depth derived from the manifest's
+file list (`called`, or `annotated <libraries>`): a release may mix `called` and `annotated` stages
+(never `stored`, which `release` and `build-stage` refuse with exit 2), and its family tokens cover the
+annotated stages' genes. A release whose
 manifest lists `contig_label` files for some of its stages only (stages ingested before card B-27) gets a
 `warning:` line naming the stages without them (card W-36); the exit code is unchanged, and readers take those
 stages' labels from their `contig_occurrence` (section 11). Label files that `bio-box stage labels` gives such a
@@ -889,9 +900,9 @@ and takes no `--profile`. Every one of these given `--out` prints one stderr lin
 directory of locus tables; card W-23).
 
 **What a root holds, one sequence, and SQL** (card W-23). `releases` prints one line per release
-of the root (a manifest or only a `release_def`): stages, genomes, contigs, distinct proteins, domain
-libraries, ncRNA producers, whether it has the lookup tables of cards B-27 and B-39, and with
-`--profile` (or `--pack-dir`) its pack. `seq` prints proteins by uid (`--protein`, several, or
+of the root (a manifest or only a `release_def`): stages, depths (`catalog.stage_depths`, card C-38a),
+genomes, contigs, distinct proteins, domain libraries, ncRNA producers, whether it has the lookup tables
+of cards B-27 and B-39, and with `--profile` (or `--pack-dir`) its pack. `seq` prints proteins by uid (`--protein`, several, or
 `--proteins-file`) or one stretch of a contig (`--contig` by accession or contig uid, `--strand -1`)
 as FASTA, read by key, never by exporting the release. `sql` runs SELECT statements on the release's
 catalog through `open_catalog` on a read-only connection (external access off, only the release's and

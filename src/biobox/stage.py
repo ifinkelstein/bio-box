@@ -400,6 +400,7 @@ CRISPR_CPU_S_PER_GBP = 168.1
 # 9.1% under to P2 3.1% over; refused above 74.5 Gbp scanned, *derived*: 0.8 * 300 * 60 / (168.1 * 1.15) = 74.49).
 CRISPR_NEAR_CAS_COST = 1.15
 CUTOFFS = ("gathering", "trusted", "noise", "none")
+DEPTHS = ("stored", "called", "annotated")  # card C-38a (DEC-54): stage depth chosen at build
 _READ = 1 << 20  # bytes per read when decompressing an input to count it
 
 Hook = Callable[[str], None]
@@ -421,9 +422,9 @@ class Build:
     """The command line of one `build-stage` call."""
     root: Path
     stage: str
-    release: str
     genomes: Path
     objects: Path
+    release: str | None = None  # None: build the stage only, cut no release (card C-38a)
     stages: tuple[str, ...] | None = None  # None: the release's release_def names them
     libraries: tuple[Library, ...] = ()
     tmp: Path | None = None  # None: <profile tmp>/scratch
@@ -437,6 +438,7 @@ class Build:
     ncrna_set: str = ncrna.DEFAULT_SET  # its model set: a frozen set's name or a set file
     crispr: bool = False  # the CRISPR array producer as a step after the features slot (card E-12)
     reuse: bool = True  # card B-49: the cluster step takes an earlier release's clustering of the same proteins
+    depth: str | None = None  # stored, called or annotated (card C-38a, DEC-54); None: annotated with --library, else called
 
 
 @dataclass(frozen=True)
@@ -523,8 +525,45 @@ def crispr_cpu_min(bases: int, flank_bases: int = 0, *, near_cas: bool = False) 
     return (bases + flank_bases) * rate / 1e9 / 60
 
 
+def depth_of(b: Build) -> str:
+    """The stage depth of `b` (card C-38a, DEC-54): `--depth` when given, else `annotated` when a `--library` is
+    given, else `called` (preserving pre-C-38a behavior when `--depth` is omitted)."""
+    if b.depth is not None:
+        if b.depth not in DEPTHS:
+            raise ValueError(f"--depth {b.depth!r}: expected one of {', '.join(DEPTHS)}")
+        return b.depth
+    return "annotated" if b.libraries else "called"
+
+
+def _check_depth_options(b: Build) -> str:
+    """Validate `--depth` and its option combinations before any step runs (card C-38a); return the resolved depth."""
+    depth = depth_of(b)
+    if depth == "stored":
+        if b.libraries or b.ncrna_cm is not None or b.crispr:
+            raise ValueError(
+                "--depth stored stops after ingest: drop --library, --ncrna-cm and --crispr"
+            )
+        if b.release is not None or b.stages is not None or b.cluster_parts is not None:
+            raise ValueError(
+                "--depth stored stops after ingest (no tapes): a release cannot be built over a stored stage "
+                "(DEC-54); drop --release, --stages and --cluster-parts"
+            )
+    elif depth == "called":
+        if b.libraries or b.ncrna_cm is not None:
+            raise ValueError(
+                "--depth called builds a stage without domain or ncRNA scans: drop --library and --ncrna-cm, "
+                "or give --depth annotated"
+            )
+    elif not b.libraries:
+        raise ValueError("--depth annotated needs at least one --library")
+    if b.release is None and (b.stages is not None or b.cluster_parts is not None):
+        raise ValueError("--stages and --cluster-parts belong to a release: give --release")
+    return depth
+
+
 def steps(prof: Profile, b: Build) -> list[Step]:
-    """The fixed list of steps for `b` (module docstring)."""
+    """The fixed list of steps for `b` at its depth (module docstring; card C-38a, DEC-54)."""
+    depth = _check_depth_options(b)
     root, n, tmp = str(Path(b.root).resolve()), str(threads_of(prof, b)), str(scratch_of(prof, b))
     common = ("--root", root, "--gene-call-version", b.gene_call_version)
     stages = () if b.stages is None else ("--stages", ",".join(b.stages))
@@ -546,6 +585,13 @@ def steps(prof: Profile, b: Build) -> list[Step]:
         return Step(run_stage, name, argv(mine), scratch=mine, **kw)
 
     s, r = b.stage, b.release
+    stored_steps = [
+        Step(s, "inputs", st("inputs", "--genomes", str(Path(b.genomes).resolve()))),
+        own(s, "ingest", lambda t: st("ingest", "--objects", str(Path(b.objects).resolve()), "--tmp", t,
+                                      *_shard_bases(b)), check="ingest"),
+    ]
+    if depth == "stored":
+        return stored_steps
     if b.ncrna_cm is not None:
         features = own(s, name, lambda t: st("ncrna", "--cm", str(Path(b.ncrna_cm).resolve()), "--ncrna-set",
                                                       ncrna_set_arg(b), "--cpus", str(ncrna_cpus(prof, b)), "--tmp", t),
@@ -555,20 +601,23 @@ def steps(prof: Profile, b: Build) -> list[Step]:
     near = [own(s, crispr_near_name(lib), lambda t, lib=lib: st(
         "crispr", "--near-cas", "--library", lib.name, "--library-version", lib.version,
         "--cpus", str(crispr_cpus(prof, b)), "--tmp", t), check="crispr-cas")
-        for lib in (cas_libraries(b) if b.crispr else ())]  # card E-15: after the domain scans
-    return [
-        Step(s, "inputs", st("inputs", "--genomes", str(Path(b.genomes).resolve()))),
-        own(s, "ingest", lambda t: st("ingest", "--objects", str(Path(b.objects).resolve()), "--tmp", t,
-                                      *_shard_bases(b)), check="ingest"),
+        for lib in (cas_libraries(b) if (depth == "annotated" and b.crispr) else ())]  # card E-15: after Pfam scan
+    stage_plan = [
+        *stored_steps,
         own(s, "genecall", lambda t: st("genecall", "--tmp", t, "--workers", n)),
         features,
         *arrays,
         own(s, "igr", lambda t: st("igr", "--tmp", t, *prods)),
         own(s, "tapes", lambda t: st("tapes", "--tmp", t, *prods)),
-        *(Step(s, scan_name(lib), st("domains", "--library", lib.name, "--library-version", lib.version,
-                                     "--hmm", str(Path(lib.hmm).resolve()), "--cutoff", lib.cutoff, "--cpus", n),
-               check="scan") for lib in b.libraries),
+        *([Step(s, scan_name(lib), st("domains", "--library", lib.name, "--library-version", lib.version,
+                                      "--hmm", str(Path(lib.hmm).resolve()), "--cutoff", lib.cutoff, "--cpus", n),
+                check="scan") for lib in b.libraries] if depth == "annotated" else []),
         *near,
+    ]
+    if r is None:
+        return stage_plan
+    return [
+        *stage_plan,
         own(r, "cluster", lambda t: rl("cluster", *stages, "--tmp", t, "--threads", n), check="cluster"),
         own(r, "tokens", lambda t: rl("tokens", *stages, "--tmp", t, *prods)),
         own(r, "postings", lambda t: rl("postings", *stages, "--tmp", t, *prods)),
@@ -576,6 +625,73 @@ def steps(prof: Profile, b: Build) -> list[Step]:
         Step(r, "manifest", rl("manifest")),
         Step(r, "catalog", rl("catalog")),
     ]
+
+
+_DUMMY_PROFILE = Profile(
+    max_threads_day=1, max_threads_night=1, mem_scope="1G", tmp="/tmp", durable="/tmp", bulk="/tmp",
+    nice_monolithic=0, nice_fanout=0, day_start_hour=8, day_end_hour=20,
+    cpu_min_per_process=300, small_file_floor_bytes=1000,
+)
+
+
+def _as_libraries(libraries: Sequence[Library | tuple[str, str]]) -> tuple[Library, ...]:
+    out = []
+    for lib in libraries:
+        if isinstance(lib, Library):
+            out.append(lib)
+        else:
+            name, ver = lib
+            out.append(Library(name, ver, Path(f"{name}-{ver}.hmm"), "gathering"))
+    return tuple(out)
+
+
+def stage_steps(stage: str, *, depth: str = "called", prof: Profile | None = None, root: Path = Path("."),
+                libraries: Sequence[Library | tuple[str, str]] = (), crispr: bool = False,
+                ncrna_cm: Path | None = None, ncrna_set: str = ncrna.DEFAULT_SET,
+                gene_call_version: str = GENE_CALL_VERSION) -> list[Step]:
+    """The runnable stage steps of `stage` at `depth` (`stored`, `called` or `annotated`), taken directly from
+    `steps` (never a copy of it) for the release train's completeness check (cards C-38a, C-46)."""
+    b = Build(root=Path(root), stage=stage, release=None, genomes=Path("genomes.json"),
+              objects=Path("objects.json"), depth=depth, libraries=_as_libraries(libraries),
+              crispr=crispr, ncrna_cm=ncrna_cm, ncrna_set=ncrna_set, gene_call_version=gene_call_version)
+    return [s for s in steps(_DUMMY_PROFILE if prof is None else prof, b)
+            if s.run_stage == stage and s.argv is not None]
+
+
+def stage_incomplete(root: Path, stage: str, depth: str, *, prof: Profile | None = None,
+                     libraries: Sequence[Library | tuple[str, str]] = (), crispr: bool = False,
+                     ncrna_cm: Path | None = None, ncrna_set: str = ncrna.DEFAULT_SET,
+                     gene_call_version: str = GENE_CALL_VERSION) -> list[str]:
+    """Why `stage` under `root` is not complete at `depth` (cards C-38a, C-46), or `[]` when every stage step of
+    `depth` (`stage_steps`) has a successful run record, its recorded outputs exist at their recorded sizes, and
+    `runs/stage=<stage>/` holds no `.publishing.json` intent file."""
+    root = Path(root)
+    plan = stage_steps(stage, depth=depth, prof=prof, root=root, libraries=libraries, crispr=crispr,
+                       ncrna_cm=ncrna_cm, ncrna_set=ncrna_set, gene_call_version=gene_call_version)
+    problems: list[str] = []
+    runs_dir = root / "runs" / f"stage={stage}"
+    if runs_dir.is_dir():
+        for p in sorted(runs_dir.glob("*.publishing.json")):
+            problems.append(f"{p.name}: unfinished publish intent")
+    for s in plan:
+        rec_path = _record(root, s)
+        if not rec_path.is_file():
+            problems.append(f"{s.name}: no run record ({rec_path.relative_to(root)})")
+            continue
+        rec = json.loads(rec_path.read_text())
+        if rec.get("exit_code") != 0:
+            problems.append(f"{s.name}: exit_code {rec.get('exit_code')}")
+            continue
+        for o in rec.get("outputs", ()):
+            out_p = root / o["path"]
+            if not out_p.is_file() or out_p.stat().st_size != o["bytes"]:
+                problems.append(f"{s.name}: missing or size-mismatched output {o['path']}")
+    return problems
+
+
+def stage_complete(root: Path, stage: str, depth: str, **kw) -> bool:
+    """Whether `stage` under `root` is complete at `depth` (`stored`, `called` or `annotated`; cards C-38a, C-46)."""
+    return not stage_incomplete(root, stage, depth, **kw)
 
 
 def _say(msg: str) -> None:
@@ -769,7 +885,8 @@ def one_process_refusal(prof: Profile, release: str, call: str, cpu_min: float) 
 
 def _refusal(prof: Profile, b: Build, root: Path, plan: list[Step], allowance: int, now: datetime) -> str | None:
     """Why the build may not start (module docstring), or None. `allowance` is `scan_allowance` at `now`."""
-    for what, name in (("stage", b.stage), ("release", b.release)):
+    checks = [("stage", b.stage)] + ([("release", b.release)] if b.release is not None else [])
+    for what, name in checks:
         if not runstep._NAME.fullmatch(name):
             return f"bad {what} name {name!r}"
     names = [s.name for s in plan]
@@ -811,15 +928,17 @@ def _refusal(prof: Profile, b: Build, root: Path, plan: list[Step], allowance: i
                 f"allowed at any hour) or leave it out")
     if scratch_of(prof, b).is_relative_to(root):
         return f"{scratch_of(prof, b)}: the scratch directory may not lie under the data root"
-    try:
-        if b.stages is None:
-            stages = catalog.release_stages(root, b.release)
-        else:
-            stages = catalog.verify_release_def(root, b.release, list(b.stages))
-    except (FileNotFoundError, ValueError, TypeError) as e:
-        return str(e)
-    if b.stage not in stages:
-        return f"release {b.release} lists stages {stages}, not stage {b.stage}"
+    stages: list[str] = []
+    if b.release is not None:
+        try:
+            if b.stages is None:
+                stages = catalog.release_stages(root, b.release)
+            else:
+                stages = catalog.verify_release_def(root, b.release, list(b.stages))
+        except (FileNotFoundError, ValueError, TypeError) as e:
+            return str(e)
+        if b.stage not in stages:
+            return f"release {b.release} lists stages {stages}, not stage {b.stage}"
     ingest = next(s for s in plan if s.check == "ingest")
     if not _record(root, ingest).exists():
         sizes = object_sizes(b.objects)
@@ -832,8 +951,8 @@ def _refusal(prof: Profile, b: Build, root: Path, plan: list[Step], allowance: i
                     f"alone holds {big[2]:,} bytes, estimated at {ingest_cpu_min(big[2]):,.1f} CPU-minutes, over "
                     f"the profile's cpu_min_per_process of {prof.cpu_min_per_process} (AGENTS §7.2). Split that "
                     f"object into smaller files")
-    cluster = next(s for s in plan if s.check == "cluster")
-    if not _record(root, cluster).exists():
+    cluster = next((s for s in plan if s.check == "cluster"), None)
+    if cluster is not None and not _record(root, cluster).exists():
         n, _ = release_proteins(root, stages, b.gene_call_version)
         if n is not None:  # every stage is gene-called: the estimate is known now (else at the cluster step)
             return cluster_refusal(prof, b.release, n, _one_process(prof, b, root))
@@ -849,9 +968,14 @@ def _one_process(prof: Profile, b: Build, root: Path) -> list[tuple[str, float]]
 
 
 def _cluster_gate(prof: Profile, b: Build, root: Path) -> str | None:
-    """Before the cluster step's command (card B-36): why it may not start, or None. The release's stages are
-    `--stages`, else its `release_def` (`_refusal` has checked both)."""
+    """Before the cluster step's command (cards B-36, C-38a): why it may not start, or None. The release's stages are
+    `--stages`, else its `release_def` (`_refusal` has checked both). A stage without tapes (e.g. built at `--depth
+    stored`, DEC-54) is refused here before clustering starts, naming the stage and its depth."""
     stages = list(b.stages) if b.stages is not None else catalog.release_stages(root, b.release)
+    try:
+        catalog.require_release_tapes(root, b.release, stages, b.gene_call_version)
+    except (FileNotFoundError, ValueError) as e:
+        return str(e)
     n, missing = release_proteins(root, stages, b.gene_call_version)
     if n is None:
         return (f"release {b.release}: stage {missing} has no gene-call run record (runs/stage={missing}/genecall.json), "
@@ -956,7 +1080,9 @@ def build_stage(prof: Profile, b: Build, *, run: Runner | None = None,
     now, use = clock(), reading()
     allowance = scan_allowance(prof, now, use)
     said = runstep.allowance(prof, now, use, load1=load_avg())
-    _say(f"stage {b.stage}, release {b.release}: {said.line}")
+    head = (f"stage {b.stage}, release {b.release}" if b.release is not None
+            else f"stage {b.stage} (depth {depth_of(b)})")
+    _say(f"{head}: {said.line}")
     why = _refusal(prof, b, root, plan, allowance, now)
     if why is not None:
         _say(f"refused before any step: {why}")
@@ -1054,7 +1180,9 @@ def build_stage(prof: Profile, b: Build, *, run: Runner | None = None,
                 return code
         if _hook is not None:
             _hook(f"after:{step.name}")
-    _say(f"stage {b.stage} and release {b.release}: all {len(plan)} steps done")
+    done_head = (f"stage {b.stage} and release {b.release}" if b.release is not None
+                 else f"stage {b.stage} (depth {depth_of(b)})")
+    _say(f"{done_head}: all {len(plan)} steps done")
     return 0
 
 

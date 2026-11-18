@@ -472,6 +472,95 @@ def partial_libraries(manifest: dict) -> list[tuple[str, list[str], list[str]]]:
     return out
 
 
+def stage_depths(manifest: dict) -> dict[str, str]:
+    """Each stage's depth as derived from `manifest`'s file list, in `manifest['stages']` order (card C-38a,
+    DEC-54): a stage with `protein_seq` and `contig_tapes` is `called`, or `annotated <libraries[,ncrna:<producer>]>`
+    when it also has `l1_domains` or `l1_ncrna` files; a stage with stage files and no tapes is `stored`; a
+    stage with no files listed is `empty`. Nothing outside `manifest` is read."""
+    proteins: set[str] = set()
+    tapes: set[str] = set()
+    stored: set[str] = set()
+    libs: dict[str, set[str]] = {}
+    ncrnas: dict[str, set[str]] = {}
+    for f in manifest.get("files", []):
+        parts = f.get("partitions", {})
+        s = parts.get("stage")
+        if s is None:
+            continue
+        stored.add(s)
+        t = f.get("table")
+        if t == "protein_seq":
+            proteins.add(s)
+        elif t == "contig_tapes":
+            tapes.add(s)
+        elif t == "l1_domains":
+            libs.setdefault(s, set()).add(parts["library"])
+        elif t == "l1_ncrna":
+            ncrnas.setdefault(s, set()).add(parts["producer"])
+    for a in manifest.get("artifacts", []):
+        s = a.get("partitions", {}).get("stage")
+        if s is not None:
+            stored.add(s)
+    out: dict[str, str] = {}
+    for s in manifest.get("stages", []):
+        if s in tapes and s in proteins:
+            notes = sorted(libs.get(s, ())) + [f"ncrna:{p}" for p in sorted(ncrnas.get(s, ()))]
+            out[s] = f"annotated {','.join(notes)}" if notes else "called"
+        elif s in stored:
+            out[s] = "stored"
+        else:
+            out[s] = "empty"
+    return out
+
+
+def describe_depths(depths: dict[str, str]) -> str:
+    """One compact summary string of `stage_depths` for `release verify` (`depths: ...`) and `bio-box releases`
+    (`depths` column), grouping stages of equal depth in first-seen order (`S1,P1.. annotated pfam-38.2; SP1 called`);
+    `-` when no stage has files."""
+    groups: dict[str, list[str]] = {}
+    for s, d in depths.items():
+        if d != "empty":
+            groups.setdefault(d, []).append(s)
+    if not groups:
+        return "-"
+    return "; ".join(f"{','.join(ss)} {d}" for d, ss in groups.items())
+
+
+def stage_depth_on_disk(root: Path, stage: str, gene_call_version: str | None = None) -> str | None:
+    """What depth `stage` has reached on disk under `root` (card C-38a, DEC-54): `annotated`, `called`, `stored`,
+    `incomplete (no contig_tapes)` when gene-called without tapes, or None when `stage` has no `contig_index`."""
+    rf = ReleaseFiles(Path(root), "_", [stage])
+    if not rf.entries("contig_index"):
+        return None
+    want = {} if gene_call_version is None else {"gene_call_version": gene_call_version}
+    has_proteins = bool(rf.entries("protein_seq", **want))
+    has_tapes = bool(rf.entries("contig_tapes"))
+    if has_tapes and has_proteins:
+        return "annotated" if (rf.entries("l1_domains") or rf.entries("l1_ncrna")) else "called"
+    if not has_proteins and not has_tapes:
+        return "stored"
+    return "incomplete (no contig_tapes)"
+
+
+def require_release_tapes(root: Path, release: str, stages, gene_call_version: str | None = None) -> list[str]:
+    """Check `stages` (`check_stages`) before a release step runs: FileNotFoundError when any stage has no
+    `contig_index` (not ingested), ValueError naming the stage and its depth (`stored`, etc.) when any stage has
+    no `contig_tapes` (DEC-54: a release takes only `called` and `annotated` stages). Writes nothing."""
+    root = Path(root)
+    stages = check_stages(stages)
+    missing = [s for s in stages if not ReleaseFiles(root, "_", [s]).entries("contig_index")]
+    if missing:
+        raise FileNotFoundError(f"stages {missing} have no contig_index under {root}: not ingested")
+    for s in stages:
+        depth = stage_depth_on_disk(root, s, gene_call_version)
+        if depth not in ("called", "annotated"):
+            raise ValueError(
+                f"release {release}: stage {s} is at depth {depth} (no contig_tapes under {root}); "
+                "a release takes only stages at depth called or annotated (DEC-54)"
+            )
+    return stages
+
+
 def manifest_path(root: Path, release: str) -> Path:
     """Where a release's manifest is written: `manifests/release=<R>.json` under the data root."""
     return Path(root) / f"manifests/release={release}.json"
