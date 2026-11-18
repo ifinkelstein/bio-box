@@ -1279,8 +1279,17 @@ def release_summary(root: Path, release: str, packs: Path | None = None) -> dict
     dims = files.table("contig_dim", release=release)
     clus = files.table("member_cluster", release=release) or files.table("cluster_member", release=release)
     tok = files.table("tape_tokens", release=release)
+    sd = catalog.stage_depths(files.manifest if files.manifest is not None else {
+        "stages": list(files.stages),
+        "files": [{"table": t, "partitions": parts}
+                  for t in ("contig_index", "protein_seq", "contig_tapes", "l1_domains", "l1_ncrna")
+                  for _, parts in files.entries(t)],
+    })
+    depths_text = catalog.describe_depths(sd)
     rec.update({
         "stages": list(files.stages),
+        "depths": None if depths_text == "-" else depths_text,
+        "stage_depths": sd,
         "genomes": _release_genomes(files, release, dims),
         "contigs": sum(pq.read_metadata(p).num_rows for p in dims) if dims else None,
         "proteins": _level_rows(clus, "nr90") if clus else None,
@@ -1569,7 +1578,7 @@ def _sql(a) -> int:
     return 0
 
 
-RELEASES_COLUMNS = ("release", "manifest", "stages", "genomes", "contigs", "proteins", "libraries", "ncrna",
+RELEASES_COLUMNS = ("release", "manifest", "stages", "depths", "genomes", "contigs", "proteins", "libraries", "ncrna",
                     "member_cluster", "contig_label", "domain_family_tokens")
 
 
@@ -1825,10 +1834,10 @@ def _verify(a) -> int:
     """`release verify` (card C-13): the release's manifest against the root (`catalog.verify_manifest`: every listed
     file there with its size and sha256, and no unlisted file in the release's scope) and, with `--previous P`, P's
     manifest against the release's (`contracts.check_append_only`, R-09: every file of P outside P's own `release=`
-    partition is listed with the same sha256). Writes nothing. Prints each problem, then one line per check; exit 0
-    when there is no problem, else 1 (a missing manifest is a problem). Warnings, which leave the exit code as it is,
-    go to stderr: a lookup table the release lacks (card W-17), and a domain library the release has files of for
-    some of its stages only (card C-19, `catalog.partial_libraries`)."""
+    partition is listed with the same sha256). Writes nothing. Prints each problem, then one line per check, `built by:`
+    (card C-23), and `depths:` (`catalog.stage_depths`, card C-38a, DEC-54, replacing card C-19's partial-library
+    warning); exit 0 when there is no problem, else 1 (a missing manifest is a problem). Warnings, which leave the exit
+    code as it is, go to stderr: a lookup table the release lacks (cards W-17, W-36)."""
     from biobox import contracts
 
     root = Path(a.root)
@@ -1850,6 +1859,7 @@ def _verify(a) -> int:
           f"{','.join(man['stages'])}, {len(man['files'])} files, {len(man.get('artifacts', []))} artifacts, manifest "
           f"hash {catalog.manifest_hash(man)})")
     print(catalog.describe_built_by(catalog.built_by(root, a.release, man["stages"])))  # card C-23: information only
+    print(f"depths: {catalog.describe_depths(catalog.stage_depths(man))}")  # card C-38a, DEC-54: information only
     failed = bool(problems)
     have = {f["table"] for f in man["files"]}
     for lookup, source in (("member_cluster", "cluster_member"), ("contig_label", "contig_occurrence")):
@@ -1862,11 +1872,6 @@ def _verify(a) -> int:
         print(f"warning: release {a.release}: stages {','.join(gaps)} have no contig_label files (ingested before "
               f"card B-27); readers take those stages' labels from their contig_occurrence, which cannot prune a "
               f"lookup by contig there", file=sys.stderr)
-    for lib, scanned, unscanned in catalog.partial_libraries(man):  # card C-19: a warning only
-        print(f"warning: release {a.release} has domain files of library {lib} for stages {','.join(scanned)} but "
-              f"not {','.join(unscanned)} (not scanned when the release was built); its {lib} family tokens cover the "
-              f"genes of {','.join(scanned)} only. A release built after those stages are scanned covers them all",
-              file=sys.stderr)
     if a.previous:
         prev = load(a.previous)
         if prev is None:
@@ -1880,12 +1885,10 @@ def _verify(a) -> int:
 
 def _release(a) -> int:
     """One release-level step over the release's stages (card B-25). `define` writes `release_def`
-    once (each stage must have been ingested); a builder step given `--stages` defines the release if
-    it is not yet defined; without `--stages` the stages come from `release_def`. `manifest` and
-    `catalog` need the release defined; `catalog` needs its manifest. Inputs are read from `--root`,
+    once (each stage must have tapes, card C-38a, DEC-54); a builder step given `--stages` defines the
+    release if it is not yet defined; without `--stages` the stages come from `release_def`. `manifest`
+    and `catalog` need the release defined; `catalog` needs its manifest. Inputs are read from `--root`,
     outputs written under `_out` (card C-08). `verify` writes nothing (`_verify`)."""
-    from biobox import catalog, io
-
     if a.step == "verify":
         return _verify(a)
     root = Path(a.root)
@@ -1901,10 +1904,7 @@ def _release(a) -> int:
         if a.step == "define":
             if given is None:
                 raise ValueError("release define needs --stages")
-            stages = catalog.check_stages(given)
-            missing = [s for s in stages if not io.part_files(root / f"l0seq/contig_index/stage={s}")]
-            if missing:
-                raise FileNotFoundError(f"stages {missing} have no contig_index under {root}: not ingested")
+            stages = catalog.require_release_tapes(root, a.release, given, a.gene_call_version)
             res: dict = {}
             stages = catalog.define_release(root, a.release, stages, out=out)
         else:
@@ -1914,6 +1914,7 @@ def _release(a) -> int:
                     raise ValueError(f"release_def of {a.release} lists stages {stages}, not {given}")
             else:
                 stages = catalog.verify_release_def(root, a.release, given)  # the builder defines it
+            catalog.require_release_tapes(root, a.release, stages, a.gene_call_version)
             res = _release_step(a, root, stages, out)
     except (FileNotFoundError, FileExistsError, ValueError) as e:
         print(f"refused: {e}", file=sys.stderr)
@@ -2158,7 +2159,7 @@ def _build_stage(a) -> int:
                     libraries=libs, tmp=Path(a.tmp) if a.tmp else None, threads=a.threads,
                     gene_call_version=a.gene_call_version, scan_jobs=a.scan_jobs, scan_cpus=a.scan_cpus,
                     cluster_parts=a.cluster_parts, ncrna_cm=Path(a.ncrna_cm) if a.ncrna_cm else None,
-                    ncrna_set=a.ncrna_set, crispr=a.crispr, reuse=not a.no_reuse)
+                    ncrna_set=a.ncrna_set, crispr=a.crispr, reuse=not a.no_reuse, depth=a.depth)
     return stage.build_stage(profile.load(a.profile), b)
 
 
@@ -2565,7 +2566,12 @@ def _main(argv: list[str] | None = None) -> int:
                                                               "run-step (card C-04)")
     bs.add_argument("--profile", required=True, help="host profile YAML (profiles/wilkcomp02.yaml)")
     bs.add_argument("--stage", required=True)
-    bs.add_argument("--release", required=True)
+    bs.add_argument("--release", help="the release to cut after the stage steps; omit to build the stage only "
+                                      "(card C-38a)")
+    bs.add_argument("--depth", choices=("stored", "called", "annotated"),
+                    help="stage depth (card C-38a, DEC-54): stored (inputs and ingest only; no release), called "
+                         "(through gene calls, IGRs and tapes), or annotated (also domain and optional ncRNA scans); "
+                         "default: annotated when --library is given, else called")
     bs.add_argument("--stages", help="S0,S1: the release's stages in order; defines the release on first use, "
                                      "else they come from its release_def")
     bs.add_argument("--genomes", required=True, help="inputs: JSON list of genomes (as bio-box stage inputs)")

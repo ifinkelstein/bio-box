@@ -12,10 +12,11 @@ The store, built by `build-stage` (as `tests/r2/test_build_stage.py` runs it, wi
 3. stage S1 and release C over S0 and S1, with no library given: C's tokens hold the library's families of S0 only;
 4. the library scanned on S1 and release D over S0 and S1.
 
-Then: A and C verify with no problem, and so do B and D; C's verify warns, exit unchanged, that the library has domain
-files for S0 but not S1; every check a release owns still fails as before (a listed file changed or missing, a second
-part beside a listed one, a file no table claims), and a stray in the library's partition is reported by the release
-that lists that partition, not by the one that does not.
+Then: A and C verify with no problem, and so do B and D; verify prints one `depths:` line naming each stage's
+depth (`S0 annotated test-1; S1 called` for C, in place of C-19's warning: card C-38a, DEC-54); every check a release
+owns still fails as before (a listed file changed or missing, a second part beside a listed one, a file no table
+claims), and a stray in the library's partition is reported by the release that lists that partition, not by the one
+that does not.
 """
 
 from __future__ import annotations
@@ -102,18 +103,24 @@ def test_c19_a_release_built_before_a_library_was_scanned_on_its_stage_verifies(
         assert f"release {release}: verified" in out
 
 
-@pytest.mark.covers("LY-10")
+@pytest.mark.covers("LY-10", "C-38a")
 def test_c19_a_release_built_before_one_of_its_stages_was_scanned_warns_naming_the_stages(store, capsys):
-    code, _, err = run_verify(store, C, capsys)
-    assert code == 0
-    lines = [ln for ln in err.splitlines() if f"library {LIB}" in ln]
-    assert len(lines) == 1 and lines[0].startswith("warning: ")
-    assert "S0" in lines[0] and "S1" in lines[0], lines[0]
+    """Card C-38a (DEC-54): `release verify` prints one `depths:` line in place of C-19's warning."""
+    want = {
+        A: ({"S0": "called"}, "depths: S0 called"),
+        B: ({"S0": f"annotated {LIB}"}, f"depths: S0 annotated {LIB}"),
+        C: ({"S0": f"annotated {LIB}", "S1": "called"}, f"depths: S0 annotated {LIB}; S1 called"),
+        D: ({"S0": f"annotated {LIB}", "S1": f"annotated {LIB}"}, f"depths: S0,S1 annotated {LIB}"),
+    }
     assert catalog.partial_libraries(manifest(store, C)) == [(LIB, ["S0"], ["S1"])]
-    for release in (A, B, D):  # no library, or every stage scanned: no such warning
-        code, _, err = run_verify(store, release, capsys)
-        assert code == 0 and "library " not in err, (release, err)
+    for release in (A, B, D):
         assert catalog.partial_libraries(manifest(store, release)) == []
+    for release, (want_map, want_line) in want.items():
+        assert catalog.stage_depths(manifest(store, release)) == want_map
+        code, out, err = run_verify(store, release, capsys)
+        assert code == 0 and "library " not in err, (release, err)
+        lines = [ln for ln in out.splitlines() if ln.startswith("depths: ")]
+        assert lines == [want_line], (release, out)
 
 
 @pytest.mark.covers("LY-10")
