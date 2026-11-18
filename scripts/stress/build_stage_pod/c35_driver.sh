@@ -47,11 +47,12 @@
 #             T. One unit c35-rel-<n> (pod_run.sh --threads Q, the profile's 200G, nice 19). While it runs: every 10 s
 #             the unit and STOP; once a minute r50_watch.py (units c35-rel-*: a process or record over CPU_MAX
 #             CPU-minutes, /tmp under TMP_MIN_GB free, scratch over SCRATCH_MAX_GB) and at each new run record of the
-#             release c35_est.py rates (a step estimated at 24 CPU-minutes or more off by more than 20%; AGENTS §6,
-#             DEC-43): either stops the unit at once (systemctl --user stop: the running steps publish nothing) and the
-#             driver fails; the same command resumes. A STOP not written by this driver: nothing is written, the
-#             driver waits for the unit (build-stage stops at its next step boundary) and fails. Writes C/run/DONE when
-#             the unit ends with exit 0, "all 15 steps done", every stage step skipped.
+#             release c35_est.py rates (DEC-43, DEC-53: a step estimated at 24 CPU-minutes or more that exceeds its
+#             estimate by more than 20% stops the unit at once; steps more than 20% under are recorded in rates.jsonl
+#             and reported without stopping): either stops the unit at once (systemctl --user stop: the running steps
+#             publish nothing) and the driver fails; the same command resumes. A STOP not written by this driver:
+#             nothing is written, the driver waits for the unit (build-stage stops at its next step boundary) and fails.
+#             Writes C/run/DONE when the unit ends with exit 0, "all 15 steps done", every stage step skipped.
 #   after     The listing into C/after; `release verify` of r26.11.1 and of the six (their hashes against C/before);
 #             `bio-box releases`.
 #   pack      The search pack in parts (card W-35) into the profile's pack directory /tmp/if2453/bio-box/packs, unit
@@ -217,7 +218,7 @@ watch() {  # $1 root, $2 release, $3 unit, $4 state dir, $5 estimate JSON, $6 un
       rc=$?
       echo "$line" >> "$st/rates.jsonl"
       [ $((n % 20)) = 0 ] && log "rates ($n records of $rel): $(echo "$line" | cut -c1-500)"
-      [ "$rc" = 3 ] && stop_unit "$unit" "a measurement more than 20% from its estimate (AGENTS §6, DEC-43): $(echo "$line" | cut -c1-1200)"
+      [ "$rc" = 3 ] && stop_unit "$unit" "a judged step more than 20% over its estimate (AGENTS §6, DEC-43, DEC-53): $(echo "$line" | cut -c1-1200)"
       [ "$rc" != 0 ] && [ "$rc" != 3 ] && log "c35_est.py rates exited $rc: $(echo "$line" | cut -c1-300)"
     fi
     k=$((k + 1))
@@ -226,7 +227,7 @@ watch() {  # $1 root, $2 release, $3 unit, $4 state dir, $5 estimate JSON, $6 un
   line=$(python3 -I "$BIN/c35_est.py" rates --root "$root" --release "$rel" --est "$est" --out "$st/rates-end.json" 2>> "$LOG")
   rc=$?
   log "rates at the end (exit $rc): $(echo "$line" | cut -c1-900)"
-  [ "$rc" = 3 ] && fail "a measurement more than 20% from its estimate at the end of $unit (AGENTS §6): $(echo "$line" | cut -c1-1200)"
+  [ "$rc" = 3 ] && fail "a judged step more than 20% over its estimate at the end of $unit (AGENTS §6, DEC-43, DEC-53): $(echo "$line" | cut -c1-1200)"
   [ "$foreign" = 1 ] && return 3
   return 0
 }

@@ -1,6 +1,6 @@
 """Card C-35: the estimates of release r26.11.1's steps before its launch, and the check of each published run record
-against them (AGENTS §6: a measurement more than 20% from its estimate stops the card; DEC-43: only steps estimated at
-24 CPU-minutes or more are judged).
+against them (AGENTS §6; DEC-43: only steps estimated at 24 CPU-minutes or more are judged; DEC-53: a judged step more
+than 20% over its estimate stops the build, while a step more than 20% under is recorded and reported without stopping).
 
     python c35_est.py before --root ROOT --release R --stages S1,...,PL1 --earlier rM.2 --calib CALIB.json
                              --parts 24 --profile P [--jobs J --cpus C] [--tmp D]        (runtime image; reads only)
@@ -29,8 +29,9 @@ against them (AGENTS §6: a measurement more than 20% from its estimate stops th
 
 `rates`: every run record of the release that exists, against its estimate: a part `<call>.part-<p>` (or a call cut
 into one part) at its cut record's estimate (`l2/cluster_plan/release=R/<call>.cut.json`) times the call's calibration
-factor; any other step at `before`'s projection. Prints one JSON line (the judged rows outside 20%, the worst ratio, the
-sums); exit 3 when a step estimated at 24 CPU-minutes or more is outside 20% of its estimate, else 0.
+factor; any other step at `before`'s projection. Prints one JSON line (`over_20pct`, `under_20pct`, `outside_20pct`, the
+worst ratio, the sums); under DEC-53 exit 3 only when a step estimated at 24 CPU-minutes or more exceeds its estimate
+by more than 20% (`over_20pct`), else 0.
 """
 from __future__ import annotations
 
@@ -172,7 +173,7 @@ def rates(a) -> int:
     factors, steps = proj["factors"], proj["steps"]
     runs = root / "runs" / f"stage={rel}"
     plans = root / "l2" / "cluster_plan" / f"release={rel}"
-    rows, bad, unknown = [], [], []
+    rows, over_bad, under_bad, bad, unknown = [], [], [], [], []
     cuts: dict[str, dict] = {}
     for f in sorted(runs.glob("*.json")) if runs.is_dir() else []:
         if f.name.endswith(".publishing.json"):
@@ -209,7 +210,11 @@ def rates(a) -> int:
             ratio = r["cpu_min"] / e if e > 0 else float("inf")
             judged = e >= MIN_JUDGED_CPU_MIN
             row.update({"estimate": round(e, 3), "ratio": round(ratio, 3), "judged": judged, "basis": basis})
-            if judged and abs(ratio - 1) > TOL:
+            if judged and ratio > 1 + TOL:
+                over_bad.append(row)
+                bad.append(row)
+            elif judged and ratio < 1 - TOL:
+                under_bad.append(row)
                 bad.append(row)
         rows.append(row)
     judged = [x for x in rows if x.get("judged")]
@@ -217,12 +222,14 @@ def rates(a) -> int:
            "cpu_min": round(sum(x["cpu_min"] for x in rows), 2),
            "estimate_of_recorded": round(sum(x.get("estimate", 0) for x in rows), 2),
            "worst": max(judged, key=lambda x: abs(x["ratio"] - 1), default=None),
+           "worst_over": max(judged, key=lambda x: x["ratio"], default=None),
            "largest": max(rows, key=lambda x: x["cpu_min"], default=None),
-           "outside_20pct": bad, "no_estimate": unknown[-8:], "no_estimate_n": len(unknown)}
+           "over_20pct": over_bad, "under_20pct": under_bad, "outside_20pct": bad,
+           "no_estimate": unknown[-8:], "no_estimate_n": len(unknown)}
     if a.out:
         Path(a.out).write_text(json.dumps({**out, "rows": rows}, indent=1, sort_keys=True))
     print(json.dumps(out, sort_keys=True))
-    return 3 if bad else 0
+    return 3 if over_bad else 0
 
 
 def main() -> int:
