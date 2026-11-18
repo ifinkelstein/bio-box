@@ -442,11 +442,13 @@ sources:
     approved: by the PI on 2026-11-18 (logged into JGI in Chrome)
   - name: jgi_img_m_tables
     what: >-
-      IMG/M (Chen et al. 2022, NAR, doi:10.1093/nar/gkac976) public Microbiome Genome Browser table export (79,524
-      metagenomes and metatranscriptomes as of 2026-11-18: IMG taxon OID, GOLD study/SP/AP IDs, 5-level ecosystem path,
-      assembled bases, scaffold count, sequencing center, SRA ID/run, JGI data utilization status), table only, no
-      sequence; card C-43
-    url: https://img.jgi.doe.gov/cgi-bin/m/main.cgi?section=TaxonList&page=taxonListAlpha&domain=*Microbiome
+      IMG/M (Chen et al. 2022, NAR, doi:10.1093/nar/gkac976) public Genome Browser metadata exports (Microbiomes,
+      Viruses, Archaea, Bacteria, and Metagenome Bins: IMG taxon OID, GOLD study/SP/AP IDs, 5-level ecosystem path,
+      environmental/physicochemical/host/geographical metadata, assembled bases, scaffold count, sequencing center,
+      SRA ID/run, JGI data utilization status), tables only, no sequence; card C-43 and environmental metadata joins
+    url: https://img.jgi.doe.gov/cgi-bin/m/main.cgi?section=TaxonList&page=taxonListAlpha&domain={domain}
+    url_jqdt: https://img.jgi.doe.gov/m/tmp/jqdt_{id}.json
+    url_bins: https://img.jgi.doe.gov/cgi-bin/m/main.cgi?section=MetagenomeBins&page=bins&type=ecosystem
     checksum: none published (dynamic export); record byte size, row count and sha256 on fetch
     license: JGI Data Utilization Policy; public microbiome metadata table
     redistributable: false (held local under JGI terms)
