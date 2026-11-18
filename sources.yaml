@@ -420,3 +420,68 @@ sources:
       planning/measurements/2026-11-16_pl2_inputs.md
     note: IMG/PR's own portal (JGI) is not tried (DEC-50 (2)); its records here come from PlasmidScope's open download
     approved: under DEC-50 (entry written by card C-40 on 2026-11-16 before any fetch)
+  - name: jgi_gold_downloads
+    what: >-
+      Genomes OnLine Database (GOLD v.10, Mukherjee et al. 2024, NAR, doi:10.1093/nar/gkae1000) bulk metadata Excel
+      exports (Studies, Biosamples, Sequencing Projects, Analysis Projects, Organisms, SRA-based Biome APs, and 5-level
+      ecosystem classification paths), tables only, no sequence; cards C-43 and C-40
+    url: https://gold.jgi.doe.gov/download?mode={mode}
+    page: https://gold.jgi.doe.gov/downloads (read 2026-11-18 with the PI's JGI session)
+    files:
+      - {mode: site_excel, what: Public Studies/Biosamples/SPs/APs/Organisms Excel (generated 2026-11-17)}
+      - {mode: sra_biome_img_excel, what: Public SRA-based Biome APs with IMG Annotations Excel (generated 2026-11-17)}
+      - {mode: cv_excel, what: GOLD CVs Excel (generated 2026-11-18)}
+      - {mode: ecosystempaths, what: GOLD 5-Level Ecosystem Classification Paths Excel (generated 2026-11-18)}
+    checksum: none published on the page; record our byte sizes and sha256 on fetch
+    license: >-
+      GOLD Data Usage Policy (https://gold.jgi.doe.gov/usagepolicy, read 2026-11-18): "GOLD metadata are freely
+      available for research purposes, including data analysis, research presentations, conference posters, journal
+      publications etc."; cite doi:10.1093/nar/gkae1000
+    redistributable: true (metadata)
+    fetched: pending (PI logged in 2026-11-18)
+    approved: by the PI on 2026-11-18 (logged into JGI in Chrome)
+  - name: jgi_img_m_tables
+    what: >-
+      IMG/M (Chen et al. 2022, NAR, doi:10.1093/nar/gkac976) public Microbiome Genome Browser table export (79,524
+      metagenomes and metatranscriptomes as of 2026-11-18: IMG taxon OID, GOLD study/SP/AP IDs, 5-level ecosystem path,
+      assembled bases, scaffold count, sequencing center, SRA ID/run, JGI data utilization status), table only, no
+      sequence; card C-43
+    url: https://img.jgi.doe.gov/cgi-bin/m/main.cgi?section=TaxonList&page=taxonListAlpha&domain=*Microbiome
+    checksum: none published (dynamic export); record byte size, row count and sha256 on fetch
+    license: JGI Data Utilization Policy; public microbiome metadata table
+    redistributable: false (held local under JGI terms)
+    fetched: pending (PI logged in 2026-11-18)
+    approved: by the PI on 2026-11-18 (logged into JGI in Chrome)
+  - name: jgi_img_vr
+    what: >-
+      IMG/VR v4.1 high-confidence viral genomes and host/sequence metadata tables (folder IMG_VR_2022-12-19_7.1 in
+      dataset Custom_MPI-IMG_VR on JGI Data Portal); card C-39
+    url: https://files-download.jgi.doe.gov/download_files/
+    page: https://data.jgi.doe.gov/search?datasets=Custom_MPI-IMG_VR (read 2026-11-18 with the PI's JGI session)
+    files:
+      - {file: IMGVR_all_nucleotides-high_confidence.fna.gz, folder: IMG_VR_2022-12-19_7.1, size: 23.1 GB}
+      - {file: IMGVR_all_Sequence_information-high_confidence.tsv, folder: IMG_VR_2022-12-19_7.1, size: 1.8 GB}
+      - {file: IMGVR_all_Host_information-high_confidence.tsv, folder: IMG_VR_2022-12-19_7.1, size: 275.8 MB}
+      - {file: README-high_confidence.txt, folder: IMG_VR_2022-12-19_7.1, size: 4.5 KB}
+    not_taken: IMGVR_all_proteins-high_confidence.faa.gz (15 GB; we call our own genes) and older folders (2017 to 2022-09)
+    checksum: record exact byte sizes, md5 and sha256 on fetch
+    license: JGI Data Utilization Policy (dataset marked UNRST on portal; accepted by the PI in JGI Cart)
+    redistributable: false (held local on wilkcomp02, STAGES.md S4 and DEC-50/DEC-51)
+    fetched: pending (staged in JGI Cart 2026-11-18; JDP banner notes download/restoration maintenance since 2026-11-09)
+    approved: by the PI on 2026-11-18 (logged into JGI in Chrome)
+  - name: jgi_img_pr
+    what: >-
+      IMG/PR plasmid nucleotide sequences and full metadata table (folder IMG_VR_2023-08-08_1 in dataset
+      Custom_MPI-IMG_PR on JGI Data Portal); card C-40
+    url: https://files-download.jgi.doe.gov/download_files/
+    page: https://data.jgi.doe.gov/search?datasets=Custom_MPI-IMG_PR (read 2026-11-18 with the PI's JGI session)
+    files:
+      - {file: IMGPR_nucl.fna.gz, folder: IMG_VR_2023-08-08_1, size: 5.1 GB}
+      - {file: IMGPR_plasmid_data.tsv, folder: IMG_VR_2023-08-08_1, size: 164 MB}
+      - {file: README.md, folder: IMG_VR_2023-08-08_1, size: 5 KB}
+    not_taken: IMGPR_prot.faa.gz (2.8 GB; we call our own genes)
+    checksum: record exact byte sizes, md5 and sha256 on fetch
+    license: JGI Data Utilization Policy (accepted by the PI in JGI Cart)
+    redistributable: false (held local on wilkcomp02, DEC-50/DEC-51)
+    fetched: pending (staged in JGI Cart 2026-11-18 alongside jgi_img_vr)
+    approved: by the PI on 2026-11-18 (logged into JGI in Chrome)
