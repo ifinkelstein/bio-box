@@ -28,8 +28,9 @@ most `--threads`), given `--seq-stages` when it starts, as gene calling is (DEC-
 the IGR, tape, token and posting steps: the arrays are features and `l1_crispr` rows, not tape slots, and the tape
 version is the one without `--crispr` (the C-08 check does not know the producer's name yet; module docstring of
 `biobox.l1.crispr`). It reads only sequences. Its estimate, made when the build reaches it and its record does not
-exist, is the stage's genome bases (`stage_bases`) at `CRISPR_CPU_S_PER_GBP`; above `SHARD_MARGIN` of the budget the
-step is refused (exit 2), since it has no shards: at the rate measured on stage P1 that is a stage of about 79 Gbp
+exist, is the bases MinCED scans — the stage's stored genome bases (`stage_bases`) plus the circular wrap-flank bases
+around its circular contigs (`crispr_flank_bases`, card B-53) — at `CRISPR_CPU_S_PER_GBP`; above `SHARD_MARGIN` of the
+budget the step is refused (exit 2), since it has no shards: at the fitted rate that is about 85.7 Gbp scanned
 (constant below).
 
 Two-repeat arrays beside Cas genes (card E-15, DEC-40). With `--crispr` and a `--library` named `pfam`, a second
@@ -376,19 +377,28 @@ NCRNA_SET_COST = {"prok-1": 1.0, "prok-2": 299.7 / 254.5}
 # measurement 0-09c, full library; 4.8 GiB on whole genomes). A shard of C threads is counted at 6.4 GiB per two
 # threads (derived; an over-estimate, since card E-01 measured 12.3 GiB at --cpu 8 on whole genomes, not 25.6).
 NCRNA_JOB_GIB, NCRNA_JOB_THREADS = 6.4, 2
-# The CRISPR step (card E-12): 182.0 CPU-seconds per Gbp of genome (derived: 185.0 CPU-s / 1.0166 Gbp), from the run
-# record of the step on stage P1 (cpu_min 3.083 for 1,016,625,803 bases, 4 MinCED processes, wall 50.6 s; measured,
-# wilkcomp02, 2026-11-13, planning/measurements/2026-11-13_crispr_arrays.md). The step has no shards: it is refused
-# above SHARD_MARGIN of the budget, which is 79.1 Gbp in one stage (derived: 0.8 x 300 x 60 / 182.0), against 9.6
-# Gbp for the largest stage built so far (P2), so it runs in one process.
-CRISPR_CPU_S_PER_GBP = 182.0
-# The filtered CRISPR step (card E-15): its cost over the default step's on the same stage. MinCED at 2 repeats cost
-# 1.12 to 1.13 times MinCED at 3 (*measured*, wilkcomp02, 2026-11-14, card E-13's run records on P1, P2 and S1,
-# planning/measurements/2026-11-14_crispr_min_repeats.md); with the filter's reads and joins the step cost 1.08, 1.19
-# and 1.14 times the default step on P1, P2 and S1 (*measured*, wilkcomp02, 2026-11-14, run records `cpu_min`
-# 3.355 / 3.109, 31.790 / 26.723, 6.479 / 5.670, planning/measurements/2026-11-14_crispr_two_repeat_producer.md).
-# The largest ratio.
-CRISPR_NEAR_CAS_COST = 1.19
+# The CRISPR step (cards E-12, B-53): 168.1 CPU-seconds per Gbp of bases MinCED scans (`stage_bases` +
+# `crispr_flank_bases`: each circular contig of length n stored by the stage is written with `2 * min(CIRC_FLANK, n)`
+# wrap-flank bases in `crispr._Scan.contig`). Fitted on the default CRISPR run records of the nine stages of the data
+# root (*measured*, wilkcomp02, 2026-11-15 to 16, `runs/stage=<S>/crispr-minced-0.4.2-w8-nr3-r23x47-s26x50.json`, read
+# on 2026-11-17 in `planning/measurements/2026-11-17_crispr_genecall_estimates.md`): stages S1, P1 to P6 and H1 store no
+# circular contigs, while PL1 stores 61,647 contigs (5,924,552,875 bp), 56,548 of them circular (5,453,091,032 bp),
+# adding 6,205,263,778 wrap-flank bases (12,129,816,653 scanned bp). CPU-seconds per Gbp scanned: 183.4 (S1), 182.1
+# (P1), 165.6 (P2), 176.1 (P3), 165.9 (P4), 165.6 (P5), 168.3 (P6), 162.4 (H1), 153.0 (PL1, where `store.get`
+# decompresses the 5.92 Gbp once and `extended` copies the 6.21 Gbp flanks in memory; *derived*). Least-squares fit of
+# the relative error over the nine records: 168.14, rounded to 168.1 (*derived*, `b53_fit.py`): all nine within 10%
+# (PL1 9.0% under to S1 9.1% over). Before card B-53 the rate was 182.0 per stored Gbp (stage P1's scratch run,
+# *measured* 2026-11-13), which put PL1 72.2% over (30.938 against 17.971 CPU-minutes, *derived*). The step has no
+# shards: it is refused above SHARD_MARGIN of the 300 CPU-minute budget, 85.7 Gbp scanned (*derived*:
+# 0.8 * 300 * 60 / 168.1 = 85.66).
+CRISPR_CPU_S_PER_GBP = 168.1
+# The filtered CRISPR step (cards E-15, B-53): its cost over the default step's at `CRISPR_CPU_S_PER_GBP`. Least-squares
+# fit of the relative error over the nine built stages' filtered run records (*measured*, wilkcomp02, 2026-11-15 to 16,
+# `runs/stage=<S>/crispr-minced-0.4.2-w8-nr2-r23x47-s26x50-cas1kb-caspfam1-pfam-38.2.json`, same note): 1.152, rounded
+# to 1.15 (*derived*; stage ratios filtered / default: S1 1.08, P1 1.10, P2 1.20, P3 1.14, P4 1.18, P5 1.18, P6 1.17,
+# H1 1.19, PL1 1.15). All nine filtered records are within 10% of `crispr_cpu_min(bases, flank, near_cas=True)` (PL1
+# 9.1% under to P2 3.1% over; refused above 74.5 Gbp scanned, *derived*: 0.8 * 300 * 60 / (168.1 * 1.15) = 74.49).
+CRISPR_NEAR_CAS_COST = 1.15
 CUTOFFS = ("gathering", "trusted", "noise", "none")
 _READ = 1 << 20  # bytes per read when decompressing an input to count it
 
@@ -505,9 +515,12 @@ def crispr_cpus(prof: Profile, b: Build) -> int:
     return min(threads_of(prof, b), b.scan_cpus if b.scan_cpus is not None else DEFAULT_SCAN_CPUS)
 
 
-def crispr_cpu_min(bases: int) -> float:
-    """CPU-minutes of the CRISPR step over `bases` genome bases at `CRISPR_CPU_S_PER_GBP` (derived)."""
-    return bases * CRISPR_CPU_S_PER_GBP / 1e9 / 60
+def crispr_cpu_min(bases: int, flank_bases: int = 0, *, near_cas: bool = False) -> float:
+    """CPU-minutes of a CRISPR step over `bases` stored genome bases and `flank_bases` circular wrap-flank bases
+    (`crispr_flank_bases`, card B-53) at `CRISPR_CPU_S_PER_GBP`, times `CRISPR_NEAR_CAS_COST` when `near_cas` is True
+    (derived). Without `flank_bases` every base passed is counted at the scanned rate."""
+    rate = CRISPR_CPU_S_PER_GBP * (CRISPR_NEAR_CAS_COST if near_cas else 1.0)
+    return (bases + flank_bases) * rate / 1e9 / 60
 
 
 def steps(prof: Profile, b: Build) -> list[Step]:
@@ -1219,18 +1232,56 @@ def stage_bases(root: Path, stage: str) -> int:
     return total
 
 
+def crispr_flank_bases(root: Path, stage: str) -> int:
+    """Circular wrap-flank bases that `stage`'s CRISPR scan passes to MinCED (`2 * min(crispr.CIRC_FLANK, contig_len)`
+    per circular contig the stage stores, card B-53): streamed in `contig_uid` order across the explicit `contig_index`
+    files of `ingest.json` (default variants: contigs another stage stored are absent, DEC-26) and the distinct contigs
+    of the stage's `genome_input` (`inputs.json` when published, else `io.part_files`; a contig shared within the stage
+    is counted once, DEC-27)."""
+    root = Path(root)
+    rec = json.loads((root / "runs" / f"stage={stage}" / "ingest.json").read_text())
+    ci_prefix = f"{store.INDEX_DIR}/stage={stage}/"
+    ci_files = sorted((root / o["path"] for o in rec["outputs"] if o["path"].startswith(ci_prefix)), key=io.part_key)
+    in_rec = root / "runs" / f"stage={stage}" / "inputs.json"
+    if in_rec.is_file():
+        gi_prefix = f"{table('genome_input').location}/stage={stage}/"
+        gi_files = sorted((root / o["path"] for o in json.loads(in_rec.read_text())["outputs"]
+                           if o["path"].startswith(gi_prefix)), key=io.part_key)
+    else:
+        gi_files = ncrna._genome_input_files(root, stage)
+    if not ci_files or not gi_files:
+        return 0
+    ci_it = ((cu, n) for cu, n, default in ncrna._range_rows(ci_files, ["contig_uid", "contig_len", "is_default_variant"])
+             if default)
+    cur = next(ci_it, None)
+    total = 0
+    for cu, circular, _ in ncrna._distinct(ncrna._range_rows(gi_files, ["contig_uid", "is_circular", "genome_uid"])):
+        if not circular:
+            continue
+        while cur is not None and cur[0] < cu:
+            cur = next(ci_it, None)
+        if cur is not None and cur[0] == cu:
+            total += 2 * min(crispr.CIRC_FLANK, int(cur[1]))
+    return total
+
+
 def crispr_refusal(prof: Profile, b: Build, root: Path, step: Step) -> str | None:
-    """Why a CRISPR step may not start (cards E-12, E-15), or None: its estimate in one process (the stage's genome
-    bases at `CRISPR_CPU_S_PER_GBP`, times `CRISPR_NEAR_CAS_COST` for the filtered step) is above `SHARD_MARGIN` of the
-    budget, and the step has no shards."""
+    """Why a CRISPR step may not start (cards E-12, E-15, B-53), or None: its estimate in one process (the bases MinCED
+    scans — stored genome bases plus circular wrap-flank bases — at `CRISPR_CPU_S_PER_GBP`, times
+    `CRISPR_NEAR_CAS_COST` for the filtered step) is above `SHARD_MARGIN` of the budget, and the step has no shards."""
     bases = stage_bases(root, b.stage)
+    flank = crispr_flank_bases(root, b.stage)
+    scanned = bases + flank
     near = step.check == "crispr-cas"
-    est = crispr_cpu_min(bases) * (CRISPR_NEAR_CAS_COST if near else 1.0)
+    est = crispr_cpu_min(bases, flank, near_cas=near)
     if est <= SHARD_MARGIN * prof.cpu_min_per_process:
         return None
-    rate = (f"{CRISPR_CPU_S_PER_GBP} CPU-seconds per Gbp, measured in planning/measurements/2026-11-13_crispr_arrays.md"
-            + (f", times {CRISPR_NEAR_CAS_COST} for MinCED at 2 repeats and the filter (card E-15)" if near else ""))
-    return (f"the CRISPR step over {bases:,} genome bases is estimated at {est:,.1f} CPU-minutes in one process "
+    rate = (f"{CRISPR_CPU_S_PER_GBP} CPU-seconds per Gbp scanned, fitted in "
+            f"planning/measurements/2026-11-17_crispr_genecall_estimates.md (card B-53)"
+            + (f", times {CRISPR_NEAR_CAS_COST} for MinCED at 2 repeats and the filter (cards E-15, B-53)" if near else ""))
+    what = (f"{scanned:,} scanned bases ({bases:,} stored genome bases + {flank:,} circular wrap-flank bases)"
+            if flank else f"{bases:,} genome bases")
+    return (f"the CRISPR step over {what} is estimated at {est:,.1f} CPU-minutes in one process "
             f"({rate}), over {SHARD_MARGIN:.0%} of the profile's cpu_min_per_process of {prof.cpu_min_per_process} "
             "(AGENTS §7.2), and it has no shards: split the stage, or shard the step in a new card")
 

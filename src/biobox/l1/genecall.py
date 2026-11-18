@@ -189,18 +189,23 @@ EST_FEATURE_PROTEIN_ROW = 40  # estimate: feature_uid and protein_uid, 16 random
 # ordinal, genome and dimension columns; not re-measured
 EST_OCCURRENCE_ROW = 48
 
-# --- the estimate of the step (card B-48; planning/measurements/2026-11-15_genecall_batches.md) ---------------------
+# --- the estimate of the step (cards B-48, B-53; planning/measurements/2026-11-15_genecall_batches.md,
+# planning/measurements/2026-11-17_crispr_genecall_estimates.md) ------------------------------------------------------
 # The calls alone, CPU-seconds per Mbp of the bases the caller reads (`called_bases`: a circular contig with its wrap
-# flanks), by mode and topology (`mode_of`; True = circular). Each is *measured* on wilkcomp02, 2026-11-15, one thread,
-# with the step's own call path (`_call`) timed alone, on every 30th genome: single mode 0.7941 on stage P6 (72
-# genomes, 351.38 Mbp; P2's 0.7838 is the lower of the two), gv-meta 4.2019 on stage S1 (908 genomes, 55.45 Mbp; H1's
-# 3.7795 is the lower), meta 2.9449 on PLSDB's linear records and 4.4204 on its circular ones (180 and 1,874 records of
-# stage PL1, 17.14 and 295.46 Mbp called; card C-26's sample, `c26_rate.py`). Each is the larger measurement, and each is
-# rounded up. The circular rates of single and gv-meta mode are not measured (no stage built so far has a circular
-# contig in those modes): they are the linear rate times meta mode's circular-to-linear ratio, 1.5011 (*derived*:
-# 4.4205 / 2.9449; an *estimate* for those modes).
+# flanks), by mode and topology (`mode_of`; True = circular). Each measured rate is *measured* on wilkcomp02, one
+# thread, with the step's own call path (`_call`) timed alone, on every 30th genome or stored contig: single mode
+# 0.7941 on stage P6 (72 genomes, 351.38 Mbp, 2026-11-15; P2's 0.7838 is the lower of the two), gv-meta linear 4.2019
+# on stage S1 (908 genomes, 55.45 Mbp, 2026-11-15; H1's 3.7795 and V1's 3.7222 on 4,833 linear virus genomes, 137.47
+# Mbp, 2026-11-16, are lower), gv-meta circular 4.3762 on stage V1 (778 circular UHGV v1.0 virus genomes,
+# `/tmp/if2453/s2/inputs/V1/`, 34,564,134 contig bp, 88,404,110 bp read with 50 kb wrap flanks, 386.87 CPU-s = 4.37615
+# CPU-s per Mbp read, 11.1929 per contig Mbp; 2026-11-16, card C-39 `c39_est.py`, `V1/est.json`, paired with
+# `called_bases` in card B-53's note), meta 2.9450 on PLSDB's linear records and 4.4205 on its circular ones (180 and
+# 1,874 records of stage PL1, 17.14 and 295.46 Mbp called, 2026-11-15; card C-26's sample, `c26_rate.py`). Each is the
+# largest measurement, and each is rounded up. Only circular single mode is not measured (no built stage has a circular
+# contig in single mode): it is the linear rate times meta mode's circular-to-linear ratio, 1.5011 (*derived*:
+# 4.4205 / 2.9449; an *estimate* for circular single mode).
 CALL_S_PER_MBP = {("single", False): 0.7941, ("single", True): 0.7941 * 1.5011,
-                  ("gv-meta", False): 4.2019, ("gv-meta", True): 4.2019 * 1.5011,
+                  ("gv-meta", False): 4.2019, ("gv-meta", True): 4.3762,
                   ("meta", False): 2.9450, ("meta", True): 4.4205}
 # The whole step over its calls alone: the reading of the sequences, the rows, the scratch files, the sorting and
 # writing of every table, and the workers' contention, as one factor on the calls. *Derived*, the largest of the eight
