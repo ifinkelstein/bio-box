@@ -20,6 +20,7 @@ from __future__ import annotations
 
 import dataclasses
 import json
+import shutil
 from datetime import datetime
 from pathlib import Path
 
@@ -183,7 +184,9 @@ def dummy_inputs(tmp_path: Path) -> tuple[Path, Path, Path]:
 
 
 @pytest.mark.covers("C-38a", "D-01")
-def test_c38a_step_list_at_each_depth_and_default_depth(tmp_path):
+def test_c38a_step_list_at_each_depth_and_default_depth(tmp_path, monkeypatch):
+    if shutil.which("minced") is None:  # GitHub Actions R1 has no MinCED binary (card E-12)
+        monkeypatch.setattr(crispr, "minced_version", lambda: "0.4.2")
     prof = _profile(tmp_path)
     g, o, hmm = dummy_inputs(tmp_path)
     root = tmp_path / "root"
@@ -395,7 +398,9 @@ def _write_run_record(root: Path, stage: str, name: str, outputs: list[str] = ()
 
 
 @pytest.mark.covers("C-38a")
-def test_c38a_stage_complete_judges_by_build_stage_step_list_for_the_given_depth(tmp_path):
+def test_c38a_stage_complete_judges_by_build_stage_step_list_for_the_given_depth(tmp_path, monkeypatch):
+    if shutil.which("minced") is None:  # GitHub Actions R1 has no MinCED binary (card E-12)
+        monkeypatch.setattr(crispr, "minced_version", lambda: "0.4.2")
     prof = _profile(tmp_path)
     root = tmp_path / "root"
 
