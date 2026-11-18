@@ -1,0 +1,238 @@
+{
+ "new": {
+  "bases": 5178493077,
+  "contigs": 168358
+ },
+ "repeats": {
+  "contigs": 168536,
+  "largest_group": 0,
+  "pairs": [],
+  "records": 168536,
+  "records_beyond_the_first": 0,
+  "sequences_in_several_records": 0
+ },
+ "shared_total": {
+  "bases": 43795699,
+  "contigs": 178,
+  "records": 178
+ },
+ "stages": {
+  "H1": {
+   "member_contigs": 177,
+   "member_not_owner_contigs": 0,
+   "owned_by_checkv": {
+    "Complete": 10,
+    "High-quality": 131,
+    "Medium-quality": 36
+   },
+   "owned_by_study": {
+    "CHVD": 2,
+    "COPSAC": 1,
+    "GPD": 7,
+    "GVD": 4,
+    "Hadza": 70,
+    "IMGVR4": 8,
+    "MGV": 85
+   },
+   "owns_bases": 43733807,
+   "owns_contigs": 177,
+   "owns_records": 177
+  },
+  "P1": {
+   "member_contigs": 0,
+   "member_not_owner_contigs": 0,
+   "owned_by_checkv": {},
+   "owned_by_study": {},
+   "owns_bases": 0,
+   "owns_contigs": 0,
+   "owns_records": 0
+  },
+  "P2": {
+   "member_contigs": 0,
+   "member_not_owner_contigs": 0,
+   "owned_by_checkv": {},
+   "owned_by_study": {},
+   "owns_bases": 0,
+   "owns_contigs": 0,
+   "owns_records": 0
+  },
+  "P3": {
+   "member_contigs": 0,
+   "member_not_owner_contigs": 0,
+   "owned_by_checkv": {},
+   "owned_by_study": {},
+   "owns_bases": 0,
+   "owns_contigs": 0,
+   "owns_records": 0
+  },
+  "P4": {
+   "member_contigs": 0,
+   "member_not_owner_contigs": 0,
+   "owned_by_checkv": {},
+   "owned_by_study": {},
+   "owns_bases": 0,
+   "owns_contigs": 0,
+   "owns_records": 0
+  },
+  "P5": {
+   "member_contigs": 0,
+   "member_not_owner_contigs": 0,
+   "owned_by_checkv": {},
+   "owned_by_study": {},
+   "owns_bases": 0,
+   "owns_contigs": 0,
+   "owns_records": 0
+  },
+  "P6": {
+   "member_contigs": 0,
+   "member_not_owner_contigs": 0,
+   "owned_by_checkv": {},
+   "owned_by_study": {},
+   "owns_bases": 0,
+   "owns_contigs": 0,
+   "owns_records": 0
+  },
+  "PL1": {
+   "member_contigs": 0,
+   "member_not_owner_contigs": 0,
+   "owned_by_checkv": {},
+   "owned_by_study": {},
+   "owns_bases": 0,
+   "owns_contigs": 0,
+   "owns_records": 0
+  },
+  "S1": {
+   "member_contigs": 1,
+   "member_not_owner_contigs": 0,
+   "owned_by_checkv": {
+    "High-quality": 1
+   },
+   "owned_by_study": {
+    "IMGVR4": 1
+   },
+   "owns_bases": 61892,
+   "owns_contigs": 1,
+   "owns_records": 1
+  }
+ },
+ "uhgv_tables": {
+  "checkv_of_all_genomes": {
+   "Complete": 67991,
+   "High-quality": 144424,
+   "Low-quality": 439320,
+   "Medium-quality": 220693,
+   "Not-determined": 1566
+  },
+  "checkv_of_representatives": {
+   "Complete": 24404,
+   "High-quality": 34257,
+   "Low-quality": 66491,
+   "Medium-quality": 43106,
+   "Not-determined": 278
+  },
+  "fasta_records_not_representative": [],
+  "genome_length_of_representatives": {
+   "10_to_20kb": 59606,
+   "20_to_50kb": 75892,
+   "50_to_200kb": 20954,
+   "5_to_10kb": 7030,
+   "ge_200kb": 405,
+   "lt_5kb": 4649
+  },
+  "genomes": 873994,
+  "members_per_votu_max": 7588,
+  "members_per_votu_median": 1,
+  "representative_bases_by_study": {
+   "Benler": 21058269,
+   "CHVD": 329019797,
+   "COPSAC": 100220171,
+   "DEVoC": 29081975,
+   "GFD": 19053620,
+   "GPD": 1156946406,
+   "GVD": 145111212,
+   "Hadza": 684570284,
+   "HuVirDB": 81816062,
+   "IMGVR4": 387561224,
+   "MGV": 1830293604,
+   "mMGE": 437556152
+  },
+  "representatives": 168536,
+  "representatives_by_checkv_and_confidence": {
+   "Complete|Confident": {
+    "bases": 1080437045,
+    "n": 24157
+   },
+   "Complete|Uncertain": {
+    "bases": 13653244,
+    "n": 247
+   },
+   "High-quality|Confident": {
+    "bases": 1467750391,
+    "n": 33357
+   },
+   "High-quality|Uncertain": {
+    "bases": 39038515,
+    "n": 900
+   },
+   "Low-quality|Confident": {
+    "bases": 972738909,
+    "n": 51522
+   },
+   "Low-quality|Uncertain": {
+    "bases": 247471768,
+    "n": 14969
+   },
+   "Medium-quality|Confident": {
+    "bases": 1328578136,
+    "n": 40840
+   },
+   "Medium-quality|Uncertain": {
+    "bases": 68983595,
+    "n": 2266
+   },
+   "Not-determined|Confident": {
+    "bases": 363090,
+    "n": 51
+   },
+   "Not-determined|Uncertain": {
+    "bases": 3274083,
+    "n": 227
+   }
+  },
+  "representatives_in_fasta": 168536,
+  "study_of_all_genomes": {
+   "Benler": 3609,
+   "CHVD": 28283,
+   "COPSAC": 9024,
+   "DEVoC": 3115,
+   "GFD": 1607,
+   "GPD": 135827,
+   "GVD": 13181,
+   "Hadza": 38777,
+   "HuVirDB": 19730,
+   "IMGVR4": 103129,
+   "MGV": 460894,
+   "mMGE": 56818
+  },
+  "study_of_representatives": {
+   "Benler": 593,
+   "CHVD": 10653,
+   "COPSAC": 4478,
+   "DEVoC": 1591,
+   "GFD": 759,
+   "GPD": 38990,
+   "GVD": 5607,
+   "Hadza": 13610,
+   "HuVirDB": 4910,
+   "IMGVR4": 13730,
+   "MGV": 59384,
+   "mMGE": 14231
+  },
+  "viral_confidence_of_representatives": {
+   "Confident": 149927,
+   "Uncertain": 18609
+  },
+  "votus": 168536,
+  "votus_of_one_genome": 91867
+ }
+}
