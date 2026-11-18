@@ -1,0 +1,372 @@
+{
+ "derived": {
+  "crispr_default_cpu_min": 55.4,
+  "crispr_near_cas_cpu_min": 65.93,
+  "distinct_proteins_upper": 16781806,
+  "genecall_at_sample_rate_cpu_min": 1526.3,
+  "genes": 19273925,
+  "new_bases": 18265313936,
+  "pfam_cpu_min_upper": 36869.0,
+  "pfam_shards_upper": 154,
+  "residues_upper": 4631778490,
+  "shard_residues": 30150753
+ },
+ "genecall": {
+  "bases_called": 18265313936,
+  "batches": 5,
+  "called_bases_with_wrap_flanks": {
+   "circular": 1197833565,
+   "linear": 17643457839
+  },
+  "estimate_cpu_min": 1173.985,
+  "genes_expected": 19710100.3,
+  "genomes": 924909,
+  "genomes_not_called": 65873,
+  "largest_batch_cpu_min": 234.998,
+  "largest_genome": {
+   "estimate_cpu_min": 0.505,
+   "genome_uid": "4cef5d95a57f927b5465902728ea7c2c"
+  },
+  "merge_estimate_cpu_min": 2.057,
+  "rates": {
+   "call_s_per_mbp": {
+    "gv-meta/circular": 6.307472090000001,
+    "gv-meta/linear": 4.2019,
+    "meta/circular": 4.4205,
+    "meta/linear": 2.945,
+    "single/circular": 1.19202351,
+    "single/linear": 0.7941
+   },
+   "process_s": 15.0,
+   "publish_s_per_gene": 5.5e-06,
+   "step_overhead": 1.23
+  }
+ },
+ "ingest": {
+  "cpu_min_one_process": 155.44,
+  "fasta_bytes": 34755269886,
+  "form": "stage.ingest_cpu_min of FASTA bytes read (B-52 not in this base)",
+  "objects": [
+   {
+    "cpu_min": 1.85,
+    "fasta_bytes": 398976768,
+    "object": "gut_plasmids_yu2024.fasta"
+   },
+   {
+    "cpu_min": 76.81,
+    "fasta_bytes": 17165057211,
+    "object": "plasmidscope_IMG-PR.fasta"
+   },
+   {
+    "cpu_min": 4.58,
+    "fasta_bytes": 1009356378,
+    "object": "plasmidscope_mMGE.fasta"
+   },
+   {
+    "cpu_min": 31.66,
+    "fasta_bytes": 7066349885,
+    "object": "plasmidscope_RefSeq.fasta"
+   },
+   {
+    "cpu_min": 31.13,
+    "fasta_bytes": 6947272541,
+    "object": "plasmidscope_GenBank.fasta"
+   },
+   {
+    "cpu_min": 1.78,
+    "fasta_bytes": 381562508,
+    "object": "plasmidscope_ENA.fasta"
+   },
+   {
+    "cpu_min": 2.1,
+    "fasta_bytes": 453880210,
+    "object": "plasmidscope_DDBJ.fasta"
+   },
+   {
+    "cpu_min": 5.8,
+    "fasta_bytes": 1282206039,
+    "object": "plasmidscope_COMPASS.fasta"
+   },
+   {
+    "cpu_min": 0.07,
+    "fasta_bytes": 705268,
+    "object": "plasmidscope_TPA.fasta"
+   },
+   {
+    "cpu_min": 0.29,
+    "fasta_bytes": 49903078,
+    "object": "plasmidscope_Kraken2.fasta"
+   }
+  ]
+ },
+ "pl1_measured": {
+  "cpu_min_by_step": {
+   "crispr": 66.452,
+   "domains-pfam-38.2": 3625.734,
+   "genecall": 850.366,
+   "igr": 0.555,
+   "ingest": 26.612,
+   "inputs": 0.13,
+   "tapes": 0.711
+  },
+  "distinct_per_gene": 0.2982,
+  "distinct_proteins": 1900057,
+  "genecall_cpu_s_per_mbp_stored": 8.612,
+  "genes": 6371980,
+  "genes_per_mbp": 1075.52,
+  "pfam_cpu_min_per_m_residues": 6.614,
+  "residues": 548210820,
+  "residues_per_distinct": 288.52,
+  "stored_bases": 5924552875,
+  "stored_contigs": 61647
+ },
+ "profile_cpu_min_per_process": 300,
+ "sample": {
+  "by": {
+   "all": {
+    "bases": 372974328,
+    "cpu_s": 1520.367,
+    "genes": 393569,
+    "genes_per_mbp": 1055.22,
+    "genomes": 17180,
+    "s_per_mbp": 4.0763
+   },
+   "circular": {
+    "bases": 11481568,
+    "cpu_s": 89.768,
+    "genes": 12720,
+    "genes_per_mbp": 1107.86,
+    "genomes": 341,
+    "s_per_mbp": 7.8184
+   },
+   "gut_plasmids_yu2024": {
+    "bases": 7894429,
+    "cpu_s": 24.0,
+    "genes": 9956,
+    "genes_per_mbp": 1261.14,
+    "genomes": 1367,
+    "s_per_mbp": 3.0401
+   },
+   "gut_plasmids_yu2024|circular": {
+    "bases": 1047826,
+    "cpu_s": 7.349,
+    "genes": 1301,
+    "genes_per_mbp": 1241.62,
+    "genomes": 89,
+    "s_per_mbp": 7.014
+   },
+   "gut_plasmids_yu2024|linear": {
+    "bases": 6846603,
+    "cpu_s": 16.65,
+    "genes": 8655,
+    "genes_per_mbp": 1264.13,
+    "genomes": 1278,
+    "s_per_mbp": 2.4319
+   },
+   "linear": {
+    "bases": 361492760,
+    "cpu_s": 1430.599,
+    "genes": 380849,
+    "genes_per_mbp": 1053.55,
+    "genomes": 16839,
+    "s_per_mbp": 3.9575
+   },
+   "plasmidscope_COMPASS": {
+    "bases": 904295,
+    "cpu_s": 6.482,
+    "genes": 1008,
+    "genes_per_mbp": 1114.68,
+    "genomes": 6,
+    "s_per_mbp": 7.1677
+   },
+   "plasmidscope_COMPASS|circular": {
+    "bases": 691976,
+    "cpu_s": 5.376,
+    "genes": 793,
+    "genes_per_mbp": 1145.99,
+    "genomes": 5,
+    "s_per_mbp": 7.7697
+   },
+   "plasmidscope_COMPASS|linear": {
+    "bases": 212319,
+    "cpu_s": 1.105,
+    "genes": 215,
+    "genes_per_mbp": 1012.63,
+    "genomes": 1,
+    "s_per_mbp": 5.2058
+   },
+   "plasmidscope_DDBJ": {
+    "bases": 359472,
+    "cpu_s": 2.061,
+    "genes": 398,
+    "genes_per_mbp": 1107.18,
+    "genomes": 15,
+    "s_per_mbp": 5.7326
+   },
+   "plasmidscope_DDBJ|circular": {
+    "bases": 191090,
+    "cpu_s": 1.489,
+    "genes": 199,
+    "genes_per_mbp": 1041.39,
+    "genomes": 3,
+    "s_per_mbp": 7.7925
+   },
+   "plasmidscope_DDBJ|linear": {
+    "bases": 168382,
+    "cpu_s": 0.572,
+    "genes": 199,
+    "genes_per_mbp": 1181.84,
+    "genomes": 12,
+    "s_per_mbp": 3.3949
+   },
+   "plasmidscope_ENA": {
+    "bases": 508629,
+    "cpu_s": 3.535,
+    "genes": 563,
+    "genes_per_mbp": 1106.9,
+    "genomes": 38,
+    "s_per_mbp": 6.9504
+   },
+   "plasmidscope_ENA|circular": {
+    "bases": 174345,
+    "cpu_s": 2.016,
+    "genes": 203,
+    "genes_per_mbp": 1164.36,
+    "genomes": 15,
+    "s_per_mbp": 11.5641
+   },
+   "plasmidscope_ENA|linear": {
+    "bases": 334284,
+    "cpu_s": 1.519,
+    "genes": 360,
+    "genes_per_mbp": 1076.93,
+    "genomes": 23,
+    "s_per_mbp": 4.5442
+   },
+   "plasmidscope_GenBank": {
+    "bases": 2837249,
+    "cpu_s": 16.452,
+    "genes": 3289,
+    "genes_per_mbp": 1159.22,
+    "genomes": 243,
+    "s_per_mbp": 5.7984
+   },
+   "plasmidscope_GenBank|circular": {
+    "bases": 855677,
+    "cpu_s": 7.166,
+    "genes": 937,
+    "genes_per_mbp": 1095.04,
+    "genomes": 11,
+    "s_per_mbp": 8.3748
+   },
+   "plasmidscope_GenBank|linear": {
+    "bases": 1981572,
+    "cpu_s": 9.285,
+    "genes": 2352,
+    "genes_per_mbp": 1186.94,
+    "genomes": 232,
+    "s_per_mbp": 4.6859
+   },
+   "plasmidscope_IMG-PR": {
+    "bases": 313515954,
+    "cpu_s": 1253.441,
+    "genes": 328057,
+    "genes_per_mbp": 1046.38,
+    "genomes": 13115,
+    "s_per_mbp": 3.998
+   },
+   "plasmidscope_IMG-PR|linear": {
+    "bases": 313515954,
+    "cpu_s": 1253.441,
+    "genes": 328057,
+    "genes_per_mbp": 1046.38,
+    "genomes": 13115,
+    "s_per_mbp": 3.998
+   },
+   "plasmidscope_Kraken2": {
+    "bases": 50133,
+    "cpu_s": 0.277,
+    "genes": 47,
+    "genes_per_mbp": 937.51,
+    "genomes": 3,
+    "s_per_mbp": 5.5338
+   },
+   "plasmidscope_Kraken2|linear": {
+    "bases": 50133,
+    "cpu_s": 0.277,
+    "genes": 47,
+    "genes_per_mbp": 937.51,
+    "genomes": 3,
+    "s_per_mbp": 5.5338
+   },
+   "plasmidscope_RefSeq": {
+    "bases": 25158251,
+    "cpu_s": 145.196,
+    "genes": 25720,
+    "genes_per_mbp": 1022.33,
+    "genomes": 543,
+    "s_per_mbp": 5.7713
+   },
+   "plasmidscope_RefSeq|circular": {
+    "bases": 7311532,
+    "cpu_s": 56.508,
+    "genes": 7790,
+    "genes_per_mbp": 1065.44,
+    "genomes": 84,
+    "s_per_mbp": 7.7286
+   },
+   "plasmidscope_RefSeq|linear": {
+    "bases": 17846719,
+    "cpu_s": 88.688,
+    "genes": 17930,
+    "genes_per_mbp": 1004.67,
+    "genomes": 459,
+    "s_per_mbp": 4.9695
+   },
+   "plasmidscope_mMGE": {
+    "bases": 21745916,
+    "cpu_s": 68.923,
+    "genes": 24531,
+    "genes_per_mbp": 1128.07,
+    "genomes": 1850,
+    "s_per_mbp": 3.1695
+   },
+   "plasmidscope_mMGE|circular": {
+    "bases": 1209122,
+    "cpu_s": 9.863,
+    "genes": 1497,
+    "genes_per_mbp": 1238.09,
+    "genomes": 134,
+    "s_per_mbp": 8.1568
+   },
+   "plasmidscope_mMGE|linear": {
+    "bases": 20536794,
+    "cpu_s": 59.06,
+    "genes": 23034,
+    "genes_per_mbp": 1121.6,
+    "genomes": 1716,
+    "s_per_mbp": 2.8758
+   }
+  },
+  "distinct_by_source": {
+   "gut_plasmids_yu2024": 9884,
+   "plasmidscope_COMPASS": 996,
+   "plasmidscope_DDBJ": 367,
+   "plasmidscope_ENA": 411,
+   "plasmidscope_GenBank": 2612,
+   "plasmidscope_IMG-PR": 291472,
+   "plasmidscope_Kraken2": 47,
+   "plasmidscope_RefSeq": 21778,
+   "plasmidscope_mMGE": 22551
+  },
+  "distinct_in_earlier_stages": 82579,
+  "distinct_per_gene": 0.8707,
+  "distinct_proteins": 342677,
+  "every": 50,
+  "genes": 393569,
+  "genomes_to_call_seen": 859036,
+  "residues_distinct": 94579257,
+  "residues_per_distinct": 276.0
+ },
+ "shard_margin": 0.8
+}

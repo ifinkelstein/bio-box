@@ -1,0 +1,1609 @@
+{
+ "all": {
+  "distinct_contigs": 924909,
+  "owned_by_stage_contigs": {
+   "P1": 112,
+   "P2": 1226,
+   "P3": 969,
+   "P4": 1517,
+   "P5": 1691,
+   "P6": 1227,
+   "PL1": 59128,
+   "S1": 3
+  },
+  "owned_contigs": 65873,
+  "plsdb_has_contigs": 65814,
+  "records_taken": 1063115
+ },
+ "gut_table_derep_type_circular": {
+  "False|backbone|False": 10591,
+  "False|backbone|True": 11390,
+  "False|fragment|False": 125475,
+  "False|maximal|False": 6643,
+  "False|maximal|True": 3745,
+  "True|backbone|False": 159,
+  "True|backbone|True": 1010,
+  "True|maximal|False": 63674,
+  "True|maximal|True": 3507
+ },
+ "lengths_all_genomes": {
+  "bases": 25127535072,
+  "bins": {
+   "10000-50000": {
+    "bases": 6878532941,
+    "n": 313540
+   },
+   "100000-500000": {
+    "bases": 8608086660,
+    "n": 46106
+   },
+   "1500-5000": {
+    "bases": 786303616,
+    "n": 230705
+   },
+   "5000-10000": {
+    "bases": 1748792320,
+    "n": 247368
+   },
+   "50000-100000": {
+    "bases": 4234200190,
+    "n": 60469
+   },
+   "<1500": {
+    "bases": 22713896,
+    "n": 23628
+   },
+   ">=500000": {
+    "bases": 2848905449,
+    "n": 3093
+   }
+  },
+  "circular": 73833,
+  "complete": 213416,
+  "max": 11850240,
+  "mean": 27167.6,
+  "median": 8833,
+  "min": 200,
+  "n": 924909,
+  "p10": 2642,
+  "p25": 4738,
+  "p75": 22328,
+  "p90": 58644,
+  "share_circular": 0.0798,
+  "share_complete": 0.2307,
+  "share_complete_bases": 0.3715,
+  "under_1500": {
+   "bases": 22713896,
+   "n": 23628
+  },
+  "under_5000": {
+   "bases": 809017512,
+   "n": 254333
+  }
+ },
+ "lengths_new": {
+  "all": {
+   "bases": 18265313936,
+   "bins": {
+    "10000-50000": {
+     "bases": 6442715408,
+     "n": 298687
+    },
+    "100000-500000": {
+     "bases": 4933195563,
+     "n": 26846
+    },
+    "1500-5000": {
+     "bases": 756091522,
+     "n": 221712
+    },
+    "5000-10000": {
+     "bases": 1702881573,
+     "n": 240798
+    },
+    "50000-100000": {
+     "bases": 3183963091,
+     "n": 46272
+    },
+    "<1500": {
+     "bases": 22178033,
+     "n": 23156
+    },
+    ">=500000": {
+     "bases": 1224288746,
+     "n": 1565
+    }
+   },
+   "circular": 18508,
+   "complete": 150609,
+   "max": 8360641,
+   "mean": 21262.6,
+   "median": 8356,
+   "min": 200,
+   "n": 859036,
+   "p10": 2572,
+   "p25": 4648,
+   "p75": 19085,
+   "p90": 44767,
+   "share_circular": 0.0215,
+   "share_complete": 0.1753,
+   "share_complete_bases": 0.15,
+   "under_1500": {
+    "bases": 22178033,
+    "n": 23156
+   },
+   "under_5000": {
+    "bases": 778269555,
+    "n": 244868
+   }
+  },
+  "gut_plasmids_yu2024": {
+   "bases": 397395196,
+   "bins": {
+    "10000-50000": {
+     "bases": 142374943,
+     "n": 7776
+    },
+    "100000-500000": {
+     "bases": 13025978,
+     "n": 97
+    },
+    "1500-5000": {
+     "bases": 107610257,
+     "n": 38177
+    },
+    "5000-10000": {
+     "bases": 85143019,
+     "n": 12352
+    },
+    "50000-100000": {
+     "bases": 37090185,
+     "n": 559
+    },
+    "<1500": {
+     "bases": 12150814,
+     "n": 9389
+    },
+    ">=500000": {
+     "bases": 0,
+     "n": 0
+    }
+   },
+   "circular": 4517,
+   "complete": 4517,
+   "max": 232154,
+   "mean": 5814.1,
+   "median": 3132,
+   "min": 1000,
+   "n": 68350,
+   "p10": 1386,
+   "p25": 1886,
+   "p75": 5851,
+   "p90": 11623,
+   "share_circular": 0.0661,
+   "share_complete": 0.0661,
+   "share_complete_bases": 0.1139,
+   "under_1500": {
+    "bases": 12150814,
+    "n": 9389
+   },
+   "under_5000": {
+    "bases": 119761071,
+    "n": 47566
+   }
+  },
+  "plasmidscope_COMPASS": {
+   "bases": 40964674,
+   "bins": {
+    "10000-50000": {
+     "bases": 2408785,
+     "n": 80
+    },
+    "100000-500000": {
+     "bases": 17545208,
+     "n": 98
+    },
+    "1500-5000": {
+     "bases": 99155,
+     "n": 33
+    },
+    "5000-10000": {
+     "bases": 276479,
+     "n": 41
+    },
+    "50000-100000": {
+     "bases": 5225291,
+     "n": 71
+    },
+    "<1500": {
+     "bases": 1381,
+     "n": 1
+    },
+    ">=500000": {
+     "bases": 15408375,
+     "n": 12
+    }
+   },
+   "circular": 317,
+   "complete": 336,
+   "max": 2094523,
+   "mean": 121918.7,
+   "median": 55902,
+   "min": 1381,
+   "n": 336,
+   "p10": 4761,
+   "p25": 11851,
+   "p75": 129035,
+   "p90": 216610,
+   "share_circular": 0.9435,
+   "share_complete": 1.0,
+   "share_complete_bases": 1.0,
+   "under_1500": {
+    "bases": 1381,
+    "n": 1
+   },
+   "under_5000": {
+    "bases": 100536,
+    "n": 34
+   }
+  },
+  "plasmidscope_DDBJ": {
+   "bases": 17750816,
+   "bins": {
+    "10000-50000": {
+     "bases": 2867840,
+     "n": 135
+    },
+    "100000-500000": {
+     "bases": 7440655,
+     "n": 35
+    },
+    "1500-5000": {
+     "bases": 661312,
+     "n": 224
+    },
+    "5000-10000": {
+     "bases": 747580,
+     "n": 102
+    },
+    "50000-100000": {
+     "bases": 1644868,
+     "n": 23
+    },
+    "<1500": {
+     "bases": 158902,
+     "n": 232
+    },
+    ">=500000": {
+     "bases": 4229659,
+     "n": 5
+    }
+   },
+   "circular": 54,
+   "complete": 102,
+   "max": 1784048,
+   "mean": 23479.9,
+   "median": 3334,
+   "min": 201,
+   "n": 756,
+   "p10": 409,
+   "p25": 1101,
+   "p75": 10622,
+   "p90": 38211,
+   "share_circular": 0.0714,
+   "share_complete": 0.1349,
+   "share_complete_bases": 0.7699,
+   "under_1500": {
+    "bases": 158902,
+    "n": 232
+   },
+   "under_5000": {
+    "bases": 820214,
+    "n": 456
+   }
+  },
+  "plasmidscope_ENA": {
+   "bases": 42239976,
+   "bins": {
+    "10000-50000": {
+     "bases": 2794928,
+     "n": 147
+    },
+    "100000-500000": {
+     "bases": 15994116,
+     "n": 82
+    },
+    "1500-5000": {
+     "bases": 2299324,
+     "n": 802
+    },
+    "5000-10000": {
+     "bases": 1767108,
+     "n": 250
+    },
+    "50000-100000": {
+     "bases": 3192683,
+     "n": 48
+    },
+    "<1500": {
+     "bases": 448453,
+     "n": 550
+    },
+    ">=500000": {
+     "bases": 15743364,
+     "n": 21
+    }
+   },
+   "circular": 658,
+   "complete": 665,
+   "max": 1959334,
+   "mean": 22231.6,
+   "median": 2654,
+   "min": 201,
+   "n": 1900,
+   "p10": 588,
+   "p25": 1305,
+   "p75": 6043,
+   "p90": 23400,
+   "share_circular": 0.3463,
+   "share_complete": 0.35,
+   "share_complete_bases": 0.3655,
+   "under_1500": {
+    "bases": 448453,
+    "n": 550
+   },
+   "under_5000": {
+    "bases": 2747777,
+    "n": 1352
+   }
+  },
+  "plasmidscope_GenBank": {
+   "bases": 155944458,
+   "bins": {
+    "10000-50000": {
+     "bases": 28669852,
+     "n": 1248
+    },
+    "100000-500000": {
+     "bases": 57590349,
+     "n": 349
+    },
+    "1500-5000": {
+     "bases": 6925953,
+     "n": 2407
+    },
+    "5000-10000": {
+     "bases": 7935513,
+     "n": 1122
+    },
+    "50000-100000": {
+     "bases": 25265669,
+     "n": 357
+    },
+    "<1500": {
+     "bases": 4484762,
+     "n": 6651
+    },
+    ">=500000": {
+     "bases": 25072360,
+     "n": 19
+    }
+   },
+   "circular": 641,
+   "complete": 878,
+   "max": 8360641,
+   "mean": 12831.8,
+   "median": 1142,
+   "min": 200,
+   "n": 12153,
+   "p10": 446,
+   "p25": 573,
+   "p75": 5163,
+   "p90": 23483,
+   "share_circular": 0.0527,
+   "share_complete": 0.0722,
+   "share_complete_bases": 0.3678,
+   "under_1500": {
+    "bases": 4484762,
+    "n": 6651
+   },
+   "under_5000": {
+    "bases": 11410715,
+    "n": 9058
+   }
+  },
+  "plasmidscope_IMG-PR": {
+   "bases": 15430047147,
+   "bins": {
+    "10000-50000": {
+     "bases": 5828886709,
+     "n": 270167
+    },
+    "100000-500000": {
+     "bases": 4142674877,
+     "n": 22624
+    },
+    "1500-5000": {
+     "bases": 460524222,
+     "n": 114708
+    },
+    "5000-10000": {
+     "bases": 1467232202,
+     "n": 206778
+    },
+    "50000-100000": {
+     "bases": 2779425614,
+     "n": 40478
+    },
+    "<1500": {
+     "bases": 0,
+     "n": 0
+    },
+    ">=500000": {
+     "bases": 751303523,
+     "n": 1018
+    }
+   },
+   "circular": 0,
+   "complete": 131548,
+   "max": 2466951,
+   "mean": 23529.6,
+   "median": 10233,
+   "min": 1546,
+   "n": 655773,
+   "p10": 4323,
+   "p25": 5742,
+   "p75": 22511,
+   "p90": 49170,
+   "share_circular": 0.0,
+   "share_complete": 0.2006,
+   "share_complete_bases": 0.1349,
+   "under_1500": {
+    "bases": 0,
+    "n": 0
+   },
+   "under_5000": {
+    "bases": 460524222,
+    "n": 114708
+   }
+  },
+  "plasmidscope_Kraken2": {
+   "bases": 1324567,
+   "bins": {
+    "10000-50000": {
+     "bases": 249485,
+     "n": 10
+    },
+    "100000-500000": {
+     "bases": 304763,
+     "n": 2
+    },
+    "1500-5000": {
+     "bases": 128594,
+     "n": 48
+    },
+    "5000-10000": {
+     "bases": 27973,
+     "n": 4
+    },
+    "50000-100000": {
+     "bases": 542804,
+     "n": 7
+    },
+    "<1500": {
+     "bases": 70948,
+     "n": 69
+    },
+    ">=500000": {
+     "bases": 0,
+     "n": 0
+    }
+   },
+   "circular": 8,
+   "complete": 8,
+   "max": 187649,
+   "mean": 9461.2,
+   "median": 1513,
+   "min": 609,
+   "n": 140,
+   "p10": 755,
+   "p25": 1041,
+   "p75": 3126,
+   "p90": 28698,
+   "share_circular": 0.0571,
+   "share_complete": 0.0571,
+   "share_complete_bases": 0.3159,
+   "under_1500": {
+    "bases": 70948,
+    "n": 69
+   },
+   "under_5000": {
+    "bases": 199542,
+    "n": 117
+   }
+  },
+  "plasmidscope_RefSeq": {
+   "bases": 1190072864,
+   "bins": {
+    "10000-50000": {
+     "bases": 148249944,
+     "n": 5947
+    },
+    "100000-500000": {
+     "bases": 444570952,
+     "n": 2242
+    },
+    "1500-5000": {
+     "bases": 18701400,
+     "n": 6374
+    },
+    "5000-10000": {
+     "bases": 25810347,
+     "n": 3661
+    },
+    "50000-100000": {
+     "bases": 156986306,
+     "n": 2192
+    },
+    "<1500": {
+     "bases": 4862773,
+     "n": 6264
+    },
+    ">=500000": {
+     "bases": 390891142,
+     "n": 455
+    }
+   },
+   "circular": 5108,
+   "complete": 5347,
+   "max": 5255984,
+   "mean": 43857.5,
+   "median": 5907,
+   "min": 201,
+   "n": 27135,
+   "p10": 665,
+   "p25": 1664,
+   "p75": 30290,
+   "p90": 99499,
+   "share_circular": 0.1882,
+   "share_complete": 0.1971,
+   "share_complete_bases": 0.341,
+   "under_1500": {
+    "bases": 4862773,
+    "n": 6264
+   },
+   "under_5000": {
+    "bases": 23564173,
+    "n": 12638
+   }
+  },
+  "plasmidscope_TPA": {
+   "bases": 60096,
+   "bins": {
+    "10000-50000": {
+     "bases": 0,
+     "n": 0
+    },
+    "100000-500000": {
+     "bases": 0,
+     "n": 0
+    },
+    "1500-5000": {
+     "bases": 0,
+     "n": 0
+    },
+    "5000-10000": {
+     "bases": 0,
+     "n": 0
+    },
+    "50000-100000": {
+     "bases": 60096,
+     "n": 1
+    },
+    "<1500": {
+     "bases": 0,
+     "n": 0
+    },
+    ">=500000": {
+     "bases": 0,
+     "n": 0
+    }
+   },
+   "circular": 1,
+   "complete": 1,
+   "max": 60096,
+   "mean": 60096.0,
+   "median": 60096,
+   "min": 60096,
+   "n": 1,
+   "p10": 60096,
+   "p25": 60096,
+   "p75": 60096,
+   "p90": 60096,
+   "share_circular": 1.0,
+   "share_complete": 1.0,
+   "share_complete_bases": 1.0,
+   "under_1500": {
+    "bases": 0,
+    "n": 0
+   },
+   "under_5000": {
+    "bases": 0,
+    "n": 0
+   }
+  },
+  "plasmidscope_mMGE": {
+   "bases": 989514142,
+   "bins": {
+    "10000-50000": {
+     "bases": 286212922,
+     "n": 13177
+    },
+    "100000-500000": {
+     "bases": 234048665,
+     "n": 1317
+    },
+    "1500-5000": {
+     "bases": 159141305,
+     "n": 58939
+    },
+    "5000-10000": {
+     "bases": 113941352,
+     "n": 16488
+    },
+    "50000-100000": {
+     "bases": 174529575,
+     "n": 2536
+    },
+    "<1500": {
+     "bases": 0,
+     "n": 0
+    },
+    ">=500000": {
+     "bases": 21640323,
+     "n": 35
+    }
+   },
+   "circular": 7204,
+   "complete": 7207,
+   "max": 964473,
+   "mean": 10698.4,
+   "median": 3550,
+   "min": 1501,
+   "n": 92492,
+   "p10": 1718,
+   "p25": 2170,
+   "p75": 7300,
+   "p90": 21343,
+   "share_circular": 0.0779,
+   "share_complete": 0.0779,
+   "share_complete_bases": 0.0793,
+   "under_1500": {
+    "bases": 0,
+    "n": 0
+   },
+   "under_5000": {
+    "bases": 159141305,
+    "n": 58939
+   }
+  }
+ },
+ "non_acgtn": {
+  "characters": {
+   "B": 123,
+   "D": 562,
+   "H": 592,
+   "K": 7940,
+   "M": 7725,
+   "R": 7040,
+   "S": 2716,
+   "V": 113,
+   "W": 7566,
+   "Y": 7510
+  },
+  "records_by_source": {
+   "plasmidscope_DDBJ": 6,
+   "plasmidscope_ENA": 17,
+   "plasmidscope_GenBank": 234,
+   "plasmidscope_IMG-PR": 203,
+   "plasmidscope_RefSeq": 691
+  }
+ },
+ "pairs_shared_contigs": {
+  "plasmidscope_COMPASS|plasmidscope_Kraken2": 90,
+  "plasmidscope_COMPASS|plasmidscope_TPA": 1,
+  "plasmidscope_DDBJ|plasmidscope_COMPASS": 118,
+  "plasmidscope_DDBJ|plasmidscope_Kraken2": 13,
+  "plasmidscope_ENA|plasmidscope_COMPASS": 496,
+  "plasmidscope_ENA|plasmidscope_DDBJ": 9,
+  "plasmidscope_ENA|plasmidscope_Kraken2": 2,
+  "plasmidscope_GenBank|plasmidscope_COMPASS": 10517,
+  "plasmidscope_GenBank|plasmidscope_DDBJ": 108,
+  "plasmidscope_GenBank|plasmidscope_ENA": 55,
+  "plasmidscope_GenBank|plasmidscope_Kraken2": 525,
+  "plasmidscope_GenBank|plasmidscope_TPA": 2,
+  "plasmidscope_IMG-PR|plasmidscope_COMPASS": 3729,
+  "plasmidscope_IMG-PR|plasmidscope_DDBJ": 356,
+  "plasmidscope_IMG-PR|plasmidscope_ENA": 491,
+  "plasmidscope_IMG-PR|plasmidscope_GenBank": 6144,
+  "plasmidscope_IMG-PR|plasmidscope_Kraken2": 60,
+  "plasmidscope_IMG-PR|plasmidscope_RefSeq": 6864,
+  "plasmidscope_IMG-PR|plasmidscope_TPA": 1,
+  "plasmidscope_RefSeq|plasmidscope_COMPASS": 10712,
+  "plasmidscope_RefSeq|plasmidscope_DDBJ": 2750,
+  "plasmidscope_RefSeq|plasmidscope_ENA": 2250,
+  "plasmidscope_RefSeq|plasmidscope_GenBank": 61166,
+  "plasmidscope_RefSeq|plasmidscope_Kraken2": 722,
+  "plasmidscope_RefSeq|plasmidscope_TPA": 6
+ },
+ "pl1_genome_input_contigs": 68693,
+ "plasmidscope_plsdb_vs_pl1": {
+  "distinct_contigs": 50554,
+  "in_pl1": 50281,
+  "in_pl2_sources": {
+   "gut_plasmids_yu2024": 0,
+   "plasmidscope_COMPASS": 7594,
+   "plasmidscope_DDBJ": 2734,
+   "plasmidscope_ENA": 2458,
+   "plasmidscope_GenBank": 40708,
+   "plasmidscope_IMG-PR": 5122,
+   "plasmidscope_Kraken2": 357,
+   "plasmidscope_RefSeq": 40609,
+   "plasmidscope_TPA": 0,
+   "plasmidscope_mMGE": 0
+  },
+  "not_in_pl1": 273,
+  "pl1_not_in_it": 18412,
+  "records": 50554
+ },
+ "plasmidscope_tables": {
+  "ALL": {
+   "columns": [
+    "Plasmid_ID",
+    "Data_Source",
+    "Topology",
+    "Completeness",
+    "Size (bp)",
+    "GC",
+    "Host",
+    "MOB_type(s)",
+    "Predicted_Mobility",
+    "Primary_Cluster_ID",
+    "Secondary_Cluster_ID"
+   ],
+   "host": {
+    "empty": 616546,
+    "filled": 236054
+   },
+   "rows": 852600,
+   "rows_by_source": {
+    "COMPASS": 12084,
+    "DDBJ": 5037,
+    "ENA": 5787,
+    "GenBank": 83325,
+    "IMG-PR": 657371,
+    "Kraken2": 889,
+    "PLDSB": 50553,
+    "RefSeq": 80755,
+    "TPA": 7,
+    "mMGE": 92492
+   },
+   "rows_with_several_sources": 79129
+  },
+  "COMPASS": {
+   "columns": [
+    "Plasmid_ID",
+    "Data_Source",
+    "Topology",
+    "Completeness",
+    "Size (bp)",
+    "GC",
+    "Host",
+    "Predicted_Mobility",
+    "Primary_Cluster_ID",
+    "Secondary_Cluster_ID"
+   ],
+   "host": {
+    "empty": 3,
+    "filled": 12081
+   },
+   "rows": 12084
+  },
+  "DDBJ": {
+   "columns": [
+    "Plasmid_ID",
+    "Data_Source",
+    "Topology",
+    "Completeness",
+    "Size (bp)",
+    "GC",
+    "Host",
+    "Predicted_Mobility",
+    "Primary_Cluster_ID",
+    "Secondary_Cluster_ID"
+   ],
+   "host": {
+    "filled": 5320
+   },
+   "rows": 5320
+  },
+  "ENA": {
+   "columns": [
+    "Plasmid_ID",
+    "Data_Source",
+    "Topology",
+    "Completeness",
+    "Size (bp)",
+    "GC",
+    "Host",
+    "Predicted_Mobility",
+    "Primary_Cluster_ID",
+    "Secondary_Cluster_ID"
+   ],
+   "host": {
+    "empty": 3,
+    "filled": 6248
+   },
+   "rows": 6251
+  },
+  "GenBank": {
+   "columns": [
+    "Plasmid_ID",
+    "Data_Source",
+    "Topology",
+    "Completeness",
+    "Size (bp)",
+    "GC",
+    "Host",
+    "Predicted_Mobility",
+    "Primary_Cluster_ID",
+    "Secondary_Cluster_ID"
+   ],
+   "host": {
+    "filled": 91783
+   },
+   "rows": 91783
+  },
+  "IMG-PR": {
+   "columns": [
+    "Plasmid_ID",
+    "Data_Source",
+    "Topology",
+    "Completeness",
+    "Size (bp)",
+    "GC",
+    "Host",
+    "Predicted_Mobility",
+    "Primary_Cluster_ID",
+    "Secondary_Cluster_ID"
+   ],
+   "host": {
+    "empty": 559485,
+    "filled": 140488
+   },
+   "rows": 699973
+  },
+  "Kraken2": {
+   "columns": [
+    "Plasmid_ID",
+    "Data_Source",
+    "Topology",
+    "Completeness",
+    "Size (bp)",
+    "GC",
+    "Host",
+    "Predicted_Mobility",
+    "Primary_Cluster_ID",
+    "Secondary_Cluster_ID"
+   ],
+   "host": {
+    "filled": 898
+   },
+   "rows": 898
+  },
+  "PLSDB": {
+   "columns": [
+    "Plasmid_ID",
+    "Data_Source",
+    "Topology",
+    "Completeness",
+    "Size (bp)",
+    "GC",
+    "Host",
+    "Predicted_Mobility",
+    "Primary_Cluster_ID",
+    "Secondary_Cluster_ID"
+   ],
+   "host": {
+    "filled": 50553
+   },
+   "rows": 50553
+  },
+  "RefSeq": {
+   "columns": [
+    "Plasmid_ID",
+    "Data_Source",
+    "Topology",
+    "Completeness",
+    "Size (bp)",
+    "GC",
+    "Host",
+    "Predicted_Mobility",
+    "Primary_Cluster_ID",
+    "Secondary_Cluster_ID"
+   ],
+   "host": {
+    "filled": 85995
+   },
+   "rows": 85995
+  },
+  "TPA": {
+   "columns": [
+    "Plasmid_ID",
+    "Data_Source",
+    "Topology",
+    "Completeness",
+    "Size (bp)",
+    "GC",
+    "Host",
+    "Predicted_Mobility",
+    "Primary_Cluster_ID",
+    "Secondary_Cluster_ID"
+   ],
+   "host": {
+    "filled": 7
+   },
+   "rows": 7
+  },
+  "mMGE": {
+   "columns": [
+    "Plasmid_ID",
+    "Data_Source",
+    "Topology",
+    "Completeness",
+    "Size (bp)",
+    "GC",
+    "Host",
+    "Predicted_Mobility",
+    "Primary_Cluster_ID",
+    "Secondary_Cluster_ID"
+   ],
+   "host": {
+    "empty": 92492
+   },
+   "rows": 92492
+  }
+ },
+ "root_bytes_by_stage": {
+  "H1": {
+   "bytes": 1331319908,
+   "bytes_per_base": 0.7316,
+   "stored_bases": 1819831338
+  },
+  "P1": {
+   "bytes": 791635662,
+   "bytes_per_base": 0.7787,
+   "stored_bases": 1016625803
+  },
+  "P2": {
+   "bytes": 7449704536,
+   "bytes_per_base": 0.7763,
+   "stored_bases": 9596180328
+  },
+  "P3": {
+   "bytes": 7762670119,
+   "bytes_per_base": 0.7802,
+   "stored_bases": 9949077522
+  },
+  "P4": {
+   "bytes": 7748309772,
+   "bytes_per_base": 0.7767,
+   "stored_bases": 9976456950
+  },
+  "P5": {
+   "bytes": 7756741659,
+   "bytes_per_base": 0.7782,
+   "stored_bases": 9967711632
+  },
+  "P6": {
+   "bytes": 7718445547,
+   "bytes_per_base": 0.7747,
+   "stored_bases": 9962536103
+  },
+  "PL1": {
+   "bytes": 3545060223,
+   "bytes_per_base": 0.5984,
+   "stored_bases": 5924552875
+  },
+  "S1": {
+   "bytes": 1193926705,
+   "bytes_per_base": 0.7175,
+   "stored_bases": 1664109938
+  }
+ },
+ "skipped": {
+  "gut_plasmids_yu2024": {
+   "not_selected": 157844
+  },
+  "plasmidscope_COMPASS": {},
+  "plasmidscope_DDBJ": {
+   "no_row": 2489
+  },
+  "plasmidscope_ENA": {
+   "no_row": 16348
+  },
+  "plasmidscope_GenBank": {
+   "no_row": 16499
+  },
+  "plasmidscope_IMG-PR": {},
+  "plasmidscope_Kraken2": {
+   "no_row": 7
+  },
+  "plasmidscope_RefSeq": {
+   "no_row": 14
+  },
+  "plasmidscope_TPA": {
+   "no_row": 1
+  },
+  "plasmidscope_mMGE": {}
+ },
+ "sources": {
+  "gut_plasmids_yu2024": {
+   "adds": {
+    "bases": 397395196,
+    "contigs": 68350
+   },
+   "bases_taken": 397395196,
+   "completeness_values": {
+    "False": 63833,
+    "True": 4517
+   },
+   "distinct_contigs": 68350,
+   "fragments": 0,
+   "genomes": 68350,
+   "owned_by_stage": {},
+   "plsdb_has": {
+    "contigs": 0,
+    "records": 0
+   },
+   "records_taken": 68350,
+   "repeats_of_earlier_source_by_first_source": {},
+   "topology_values": {
+    "False": 63833,
+    "True": 4517
+   }
+  },
+  "plasmidscope_COMPASS": {
+   "adds": {
+    "bases": 40964674,
+    "contigs": 336
+   },
+   "bases_taken": 1260922758,
+   "completeness_values": {
+    "complete": 12084
+   },
+   "distinct_contigs": 12084,
+   "fragments": 0,
+   "genomes": 384,
+   "owned_by_stage": {
+    "P1": {
+     "bases": 7238193,
+     "contigs": 35,
+     "records": 35
+    },
+    "P2": {
+     "bases": 51170260,
+     "contigs": 277,
+     "records": 277
+    },
+    "P3": {
+     "bases": 81430774,
+     "contigs": 514,
+     "records": 514
+    },
+    "P4": {
+     "bases": 116756863,
+     "contigs": 669,
+     "records": 669
+    },
+    "P6": {
+     "bases": 145141,
+     "contigs": 6,
+     "records": 6
+    },
+    "PL1": {
+     "bases": 886927134,
+     "contigs": 9390,
+     "records": 9390
+    },
+    "S1": {
+     "bases": 90435,
+     "contigs": 1,
+     "records": 1
+    }
+   },
+   "plsdb_has": {
+    "contigs": 10891,
+    "records": 10891
+   },
+   "records_taken": 12084,
+   "repeats_of_earlier_source_by_first_source": {
+    "plasmidscope_DDBJ": 2,
+    "plasmidscope_ENA": 17,
+    "plasmidscope_GenBank": 508,
+    "plasmidscope_IMG-PR": 3729,
+    "plasmidscope_RefSeq": 7444
+   },
+   "topology_values": {
+    "circular": 11419,
+    "linear": 665
+   }
+  },
+  "plasmidscope_DDBJ": {
+   "adds": {
+    "bases": 17750816,
+    "contigs": 756
+   },
+   "bases_taken": 446998007,
+   "completeness_values": {
+    "-": 183,
+    "complete": 4482,
+    "incomplete": 640
+   },
+   "distinct_contigs": 5023,
+   "fragments": 640,
+   "genomes": 2204,
+   "owned_by_stage": {
+    "P1": {
+     "bases": 1539717,
+     "contigs": 8,
+     "records": 9
+    },
+    "P2": {
+     "bases": 13895120,
+     "contigs": 94,
+     "records": 96
+    },
+    "P3": {
+     "bases": 21236271,
+     "contigs": 144,
+     "records": 144
+    },
+    "P4": {
+     "bases": 13106555,
+     "contigs": 98,
+     "records": 101
+    },
+    "P5": {
+     "bases": 15930453,
+     "contigs": 95,
+     "records": 100
+    },
+    "P6": {
+     "bases": 8487909,
+     "contigs": 58,
+     "records": 58
+    },
+    "PL1": {
+     "bases": 338008037,
+     "contigs": 3677,
+     "records": 3828
+    }
+   },
+   "plsdb_has": {
+    "contigs": 4165,
+    "records": 4327
+   },
+   "records_taken": 5305,
+   "repeats_of_earlier_source_by_first_source": {
+    "plasmidscope_ENA": 2,
+    "plasmidscope_GenBank": 79,
+    "plasmidscope_IMG-PR": 382,
+    "plasmidscope_RefSeq": 2552
+   },
+   "topology_values": {
+    "circular": 4310,
+    "linear": 995
+   }
+  },
+  "plasmidscope_ENA": {
+   "adds": {
+    "bases": 42239976,
+    "contigs": 1900
+   },
+   "bases_taken": 375652221,
+   "completeness_values": {
+    "-": 784,
+    "complete": 4361,
+    "incomplete": 1094
+   },
+   "distinct_contigs": 5779,
+   "fragments": 1094,
+   "genomes": 3471,
+   "owned_by_stage": {
+    "P1": {
+     "bases": 202498,
+     "contigs": 2,
+     "records": 2
+    },
+    "P2": {
+     "bases": 6695217,
+     "contigs": 39,
+     "records": 40
+    },
+    "P3": {
+     "bases": 9840971,
+     "contigs": 50,
+     "records": 50
+    },
+    "P4": {
+     "bases": 1443748,
+     "contigs": 11,
+     "records": 11
+    },
+    "P6": {
+     "bases": 17875997,
+     "contigs": 120,
+     "records": 120
+    },
+    "PL1": {
+     "bases": 232908747,
+     "contigs": 3144,
+     "records": 3480
+    }
+   },
+   "plsdb_has": {
+    "contigs": 3361,
+    "records": 3698
+   },
+   "records_taken": 6239,
+   "repeats_of_earlier_source_by_first_source": {
+    "plasmidscope_GenBank": 22,
+    "plasmidscope_IMG-PR": 502,
+    "plasmidscope_RefSeq": 1977
+   },
+   "topology_values": {
+    "circular": 4345,
+    "linear": 1894
+   }
+  },
+  "plasmidscope_GenBank": {
+   "adds": {
+    "bases": 155944458,
+    "contigs": 12153
+   },
+   "bases_taken": 6840061592,
+   "completeness_values": {
+    "-": 21595,
+    "complete": 58320,
+    "incomplete": 11859
+   },
+   "distinct_contigs": 83626,
+   "fragments": 11859,
+   "genomes": 21808,
+   "owned_by_stage": {
+    "P1": {
+     "bases": 14407347,
+     "contigs": 86,
+     "records": 86
+    },
+    "P2": {
+     "bases": 177576971,
+     "contigs": 946,
+     "records": 968
+    },
+    "P3": {
+     "bases": 113064873,
+     "contigs": 754,
+     "records": 767
+    },
+    "P4": {
+     "bases": 227819303,
+     "contigs": 1293,
+     "records": 1297
+    },
+    "P5": {
+     "bases": 238742350,
+     "contigs": 1394,
+     "records": 1409
+    },
+    "P6": {
+     "bases": 146783336,
+     "contigs": 830,
+     "records": 843
+    },
+    "PL1": {
+     "bases": 4743409894,
+     "contigs": 48343,
+     "records": 51160
+    },
+    "S1": {
+     "bases": 202881,
+     "contigs": 2,
+     "records": 2
+    }
+   },
+   "plsdb_has": {
+    "contigs": 53610,
+    "records": 56494
+   },
+   "records_taken": 91774,
+   "repeats_of_earlier_source_by_first_source": {
+    "plasmidscope_IMG-PR": 6486,
+    "plasmidscope_RefSeq": 59223
+   },
+   "topology_values": {
+    "circular": 55849,
+    "linear": 35925
+   }
+  },
+  "plasmidscope_IMG-PR": {
+   "adds": {
+    "bases": 15430047147,
+    "contigs": 655773
+   },
+   "bases_taken": 16860605847,
+   "completeness_values": {
+    "complete": 154680,
+    "incomplete": 545291
+   },
+   "distinct_contigs": 661785,
+   "fragments": 545291,
+   "genomes": 661785,
+   "owned_by_stage": {
+    "P1": {
+     "bases": 3935588,
+     "contigs": 27,
+     "records": 28
+    },
+    "P2": {
+     "bases": 32796099,
+     "contigs": 182,
+     "records": 188
+    },
+    "P3": {
+     "bases": 60983761,
+     "contigs": 420,
+     "records": 426
+    },
+    "P4": {
+     "bases": 72232844,
+     "contigs": 424,
+     "records": 428
+    },
+    "P5": {
+     "bases": 8592104,
+     "contigs": 65,
+     "records": 65
+    },
+    "P6": {
+     "bases": 1167857,
+     "contigs": 14,
+     "records": 18
+    },
+    "PL1": {
+     "bases": 495231956,
+     "contigs": 4880,
+     "records": 5041
+    }
+   },
+   "plsdb_has": {
+    "contigs": 6002,
+    "records": 6184
+   },
+   "records_taken": 699971,
+   "repeats_of_earlier_source_by_first_source": {},
+   "topology_values": {
+    "concatemer": 5441,
+    "direct terminal repeat": 142805,
+    "inverted terminal repeat": 3212,
+    "linear": 548513
+   }
+  },
+  "plasmidscope_Kraken2": {
+   "adds": {
+    "bases": 1324567,
+    "contigs": 140
+   },
+   "bases_taken": 49062410,
+   "completeness_values": {
+    "-": 463,
+    "complete": 435
+   },
+   "distinct_contigs": 889,
+   "fragments": 0,
+   "genomes": 140,
+   "owned_by_stage": {
+    "P1": {
+     "bases": 865783,
+     "contigs": 1,
+     "records": 1
+    },
+    "P2": {
+     "bases": 1368976,
+     "contigs": 12,
+     "records": 12
+    },
+    "P3": {
+     "bases": 2387050,
+     "contigs": 26,
+     "records": 26
+    },
+    "P4": {
+     "bases": 1385264,
+     "contigs": 11,
+     "records": 11
+    },
+    "P5": {
+     "bases": 1319482,
+     "contigs": 14,
+     "records": 14
+    },
+    "P6": {
+     "bases": 643938,
+     "contigs": 4,
+     "records": 4
+    },
+    "PL1": {
+     "bases": 33965930,
+     "contigs": 318,
+     "records": 324
+    }
+   },
+   "plsdb_has": {
+    "contigs": 386,
+    "records": 392
+   },
+   "records_taken": 898,
+   "repeats_of_earlier_source_by_first_source": {
+    "plasmidscope_COMPASS": 1,
+    "plasmidscope_GenBank": 23,
+    "plasmidscope_IMG-PR": 63,
+    "plasmidscope_RefSeq": 671
+   },
+   "topology_values": {
+    "circular": 425,
+    "linear": 473
+   }
+  },
+  "plasmidscope_RefSeq": {
+   "adds": {
+    "bases": 1190072864,
+    "contigs": 27135
+   },
+   "bases_taken": 6948506952,
+   "completeness_values": {
+    "-": 26088,
+    "complete": 58977,
+    "incomplete": 930
+   },
+   "distinct_contigs": 81138,
+   "fragments": 930,
+   "genomes": 74274,
+   "owned_by_stage": {
+    "P1": {
+     "bases": 17936676,
+     "contigs": 102,
+     "records": 103
+    },
+    "P2": {
+     "bases": 199210366,
+     "contigs": 1120,
+     "records": 1146
+    },
+    "P3": {
+     "bases": 97830460,
+     "contigs": 597,
+     "records": 611
+    },
+    "P4": {
+     "bases": 258648190,
+     "contigs": 1488,
+     "records": 1498
+    },
+    "P5": {
+     "bases": 298384694,
+     "contigs": 1677,
+     "records": 1700
+    },
+    "P6": {
+     "bases": 173361711,
+     "contigs": 1085,
+     "records": 1101
+    },
+    "PL1": {
+     "bases": 4441142986,
+     "contigs": 46576,
+     "records": 49511
+    },
+    "S1": {
+     "bases": 202881,
+     "contigs": 2,
+     "records": 2
+    }
+   },
+   "plsdb_has": {
+    "contigs": 52623,
+    "records": 55648
+   },
+   "records_taken": 85995,
+   "repeats_of_earlier_source_by_first_source": {
+    "plasmidscope_IMG-PR": 7282
+   },
+   "topology_values": {
+    "circular": 56686,
+    "linear": 29309
+   }
+  },
+  "plasmidscope_TPA": {
+   "adds": {
+    "bases": 60096,
+    "contigs": 1
+   },
+   "bases_taken": 694703,
+   "completeness_values": {
+    "complete": 7
+   },
+   "distinct_contigs": 7,
+   "fragments": 0,
+   "genomes": 1,
+   "owned_by_stage": {
+    "PL1": {
+     "bases": 634607,
+     "contigs": 6,
+     "records": 6
+    }
+   },
+   "plsdb_has": {
+    "contigs": 6,
+    "records": 6
+   },
+   "records_taken": 7,
+   "repeats_of_earlier_source_by_first_source": {
+    "plasmidscope_IMG-PR": 1,
+    "plasmidscope_RefSeq": 5
+   },
+   "topology_values": {
+    "circular": 7
+   }
+  },
+  "plasmidscope_mMGE": {
+   "adds": {
+    "bases": 989514142,
+    "contigs": 92492
+   },
+   "bases_taken": 989514142,
+   "completeness_values": {
+    "-": 85057,
+    "complete": 7207,
+    "incomplete": 228
+   },
+   "distinct_contigs": 92492,
+   "fragments": 228,
+   "genomes": 92492,
+   "owned_by_stage": {},
+   "plsdb_has": {
+    "contigs": 0,
+    "records": 0
+   },
+   "records_taken": 92492,
+   "repeats_of_earlier_source_by_first_source": {},
+   "topology_values": {
+    "circular": 7204,
+    "linear": 85288
+   }
+  }
+ },
+ "terminal_repeats": {
+  "gut_plasmids_yu2024|circular": {
+   "20-99": 3497,
+   "none": 1020
+  },
+  "plasmidscope_IMG-PR|dtr": {
+   "100-999": 34078,
+   "20-99": 29918,
+   ">=1000": 183,
+   "none": 78626
+  }
+ }
+}
