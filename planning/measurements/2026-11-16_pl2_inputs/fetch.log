@@ -1,0 +1,80 @@
+c40_fetch start 2026-11-16T20:42:03Z host wilkcomp02.ccbb.utexas.edu
+gut_summary try 1 start 2026-11-16T20:42:03Z https://zenodo.org/api/records/5843600/files/predicted_plasmids_summary.txt.gz/content
+gut_summary try 1 rc=0 bytes=14952780 2026-11-16T20:42:21Z
+gut/predicted_plasmids_summary.txt.gz 14952780 bytes md5 e12cd9fee4ad63015a50f467bbd793c8 sha256 85d9a31ef21d1cc6e603c69a82e67761c1d659c54cb0e578f8f2efc10ea53987 provider_md5 e12cd9fee4ad63015a50f467bbd793c8 2026-11-16T20:42:21Z
+gut_clusters try 1 start 2026-11-16T20:42:23Z https://zenodo.org/api/records/5843600/files/predicted_plasmids_clusters.txt.gz/content
+gut_clusters try 1 rc=0 bytes=1873405 2026-11-16T20:42:26Z
+gut/predicted_plasmids_clusters.txt.gz 1873405 bytes md5 ce6b77fd22c83ee9f2a56cf6370e8542 sha256 3d69f2a0a679ac047605c87a90f56498dc064690865894376a51131938177bd2 provider_md5 ce6b77fd22c83ee9f2a56cf6370e8542 2026-11-16T20:42:26Z
+gut_systems try 1 start 2026-11-16T20:42:28Z https://zenodo.org/api/records/5843600/files/predicted_plasmids_systems.txt.gz/content
+gut_systems try 1 rc=0 bytes=293764 2026-11-16T20:42:29Z
+gut/predicted_plasmids_systems.txt.gz 293764 bytes md5 21bf763a32925bc6eeb0dfdead45a389 sha256 560749d2ca3c8da3343b72b1ddb73e7d9098887b6ed1cc86999cdb7afb1707f6 provider_md5 21bf763a32925bc6eeb0dfdead45a389 2026-11-16T20:42:29Z
+gut_selfrec try 1 start 2026-11-16T20:42:31Z https://zenodo.org/api/records/5843600/files/predicted_plasmids_assembly_self_recruitment.txt.gz/content
+gut_selfrec try 1 rc=0 bytes=2364939 2026-11-16T20:42:35Z
+gut/predicted_plasmids_assembly_self_recruitment.txt.gz 2364939 bytes md5 6e3dc23190e70c8c2030d9971f5fa379 sha256 4913f23e4ab08b3125796a3d1b07f3aa1047632134aadbfad55c38109ff4757c provider_md5 6e3dc23190e70c8c2030d9971f5fa379 2026-11-16T20:42:35Z
+gut_fasta try 1 start 2026-11-16T20:42:37Z https://zenodo.org/api/records/5843600/files/predicted_plasmids.fa.gz/content
+gut_fasta try 1 rc=0 bytes=252900436 2026-11-16T20:44:16Z
+gut/predicted_plasmids.fa.gz 252900436 bytes md5 3252f40283f594e1f703199a7f7e7dd8 sha256 fe4dc52a4bce28ed6004d59fef4959a1d4664ac254a1aa3b5b0cb7fd4bc36c7d provider_md5 3252f40283f594e1f703199a7f7e7dd8 2026-11-16T20:44:17Z
+ps_ALL_meta try 1 start 2026-11-16T20:44:20Z https://plasmidapi.deepomics.org/api/database/files/ALL/data/ALL.plasmid_list.download.tsv/
+ps_ALL_meta try 1 rc=0 bytes=105861535 2026-11-16T20:44:28Z
+plasmidscope/ALL.plasmid_list.download.tsv 105861535 bytes md5 f5abdddfbefcc726889200ff62089439 sha256 9576c78a25664a6c25196d5a8be9ffaee6f0121ecefe88f9d8f6e6850f69db6e provider_md5 - 2026-11-16T20:44:29Z
+ps_TPA_meta try 1 start 2026-11-16T20:44:31Z https://plasmidapi.deepomics.org/api/database/files/TPA/data/TPA.plasmid_list.download.tsv/
+ps_TPA_meta try 1 rc=0 bytes=906 2026-11-16T20:44:31Z
+plasmidscope/TPA.plasmid_list.download.tsv 906 bytes md5 1ad06dd6ec4e3e69ea9e382432571796 sha256 8c2f9da5c6cfacfcd608a5b1ab2774e3a3ee1102b1feb1de6199647612cd4e9d provider_md5 - 2026-11-16T20:44:31Z
+ps_TPA_fasta try 1 start 2026-11-16T20:44:33Z https://plasmidapi.deepomics.org/api/database/files/TPA/TPA.fasta.tar.gz/
+ps_TPA_fasta try 1 rc=0 bytes=215293 2026-11-16T20:44:35Z
+plasmidscope/TPA.fasta.tar.gz 215293 bytes md5 67e3104cb59733e42f49b20ad5ef780c sha256 a6ddc32d63649687f016d449f8542ed54ba797e04d40a9616fb202fba71b8c4c provider_md5 - 2026-11-16T20:44:35Z
+ps_Kraken2_meta try 1 start 2026-11-16T20:44:37Z https://plasmidapi.deepomics.org/api/database/files/Kraken2/data/Kraken2.plasmid_list.download.tsv/
+ps_Kraken2_meta try 1 rc=0 bytes=106106 2026-11-16T20:44:38Z
+plasmidscope/Kraken2.plasmid_list.download.tsv 106106 bytes md5 05e073e771dda634dd042a2abcd8253f sha256 381f429515c41caa04be28c3950dab891313f27d19f7ae461b0c5eabb70dd2c5 provider_md5 - 2026-11-16T20:44:38Z
+ps_Kraken2_fasta try 1 start 2026-11-16T20:44:40Z https://plasmidapi.deepomics.org/api/database/files/Kraken2/Kraken2.fasta.tar.gz/
+ps_Kraken2_fasta try 1 rc=0 bytes=15183583 2026-11-16T20:44:43Z
+plasmidscope/Kraken2.fasta.tar.gz 15183583 bytes md5 a86aa85af59ef61b44940045e618bb29 sha256 daea7e6e43bd41ab63a349eb56739dc92e49728be072886fc179b8d275181494 provider_md5 - 2026-11-16T20:44:43Z
+ps_DDBJ_meta try 1 start 2026-11-16T20:44:45Z https://plasmidapi.deepomics.org/api/database/files/DDBJ/data/DDBJ.plasmid_list.download.tsv/
+ps_DDBJ_meta try 1 rc=0 bytes=585010 2026-11-16T20:44:47Z
+plasmidscope/DDBJ.plasmid_list.download.tsv 585010 bytes md5 854dccfc0bf7d7ace04cd1807ad59e42 sha256 aa82b7320ce16e9cac6ede54a419d69a949e7907512239cfc34e4e7a3a947be0 provider_md5 - 2026-11-16T20:44:47Z
+ps_DDBJ_fasta try 1 start 2026-11-16T20:44:49Z https://plasmidapi.deepomics.org/api/database/files/DDBJ/DDBJ.fasta.tar.gz/
+ps_DDBJ_fasta try 1 rc=0 bytes=151612202 2026-11-16T20:45:00Z
+plasmidscope/DDBJ.fasta.tar.gz 151612202 bytes md5 1cd404cb63d83a27fe26e8d1deb43e13 sha256 1e782f6299b7e2c9489e43e0ba6c519498c1182bd61c73b7dec1798aa1730e9e provider_md5 - 2026-11-16T20:45:01Z
+ps_ENA_meta try 1 start 2026-11-16T20:45:03Z https://plasmidapi.deepomics.org/api/database/files/ENA/data/ENA.plasmid_list.download.tsv/
+ps_ENA_meta try 1 rc=0 bytes=675330 2026-11-16T20:45:05Z
+plasmidscope/ENA.plasmid_list.download.tsv 675330 bytes md5 b78b907b1b607dc5bd3b8d18477a3fd0 sha256 191f9410c2d5a0ffb33e2d37a73ddfe18cdd7cd84823f1de8b7830eef56c7b43 provider_md5 - 2026-11-16T20:45:05Z
+ps_ENA_fasta try 1 start 2026-11-16T20:45:07Z https://plasmidapi.deepomics.org/api/database/files/ENA/ENA.fasta.tar.gz/
+ps_ENA_fasta try 1 rc=0 bytes=181390959 2026-11-16T20:45:20Z
+plasmidscope/ENA.fasta.tar.gz 181390959 bytes md5 0d5b573dc180d45d41b34d62e3115a6d sha256 f3e4d276f7edd6bb485926902085cfd4a207e3cf26051987f95d6075058b73bf provider_md5 - 2026-11-16T20:45:22Z
+ps_COMPASS_meta try 1 start 2026-11-16T20:45:24Z https://plasmidapi.deepomics.org/api/database/files/COMPASS/data/COMPASS.plasmid_list.download.tsv/
+ps_COMPASS_meta try 1 rc=0 bytes=1435170 2026-11-16T20:45:26Z
+plasmidscope/COMPASS.plasmid_list.download.tsv 1435170 bytes md5 ef957f68e08f54bde6b18a44e7ab2c48 sha256 b895c53f23dd9d8d0508c7b3548d7af311087932c89b7bc3fa2761038b28d31a provider_md5 - 2026-11-16T20:45:26Z
+ps_COMPASS_fasta try 1 start 2026-11-16T20:45:28Z https://plasmidapi.deepomics.org/api/database/files/COMPASS/COMPASS.fasta.tar.gz/
+ps_COMPASS_fasta try 1 rc=0 bytes=388863677 2026-11-16T20:45:53Z
+plasmidscope/COMPASS.fasta.tar.gz 388863677 bytes md5 e66759d713e6c750930b4671b9bfde3d sha256 64f485e981a8d65237ca0f2660e5f2acfef91a5e106c8329c7764beea1791d2c provider_md5 - 2026-11-16T20:45:55Z
+ps_mMGE_meta try 1 start 2026-11-16T20:45:57Z https://plasmidapi.deepomics.org/api/database/files/mMGE/data/mMGE.plasmid_list.download.tsv/
+ps_mMGE_meta try 1 rc=0 bytes=9424875 2026-11-16T20:46:01Z
+plasmidscope/mMGE.plasmid_list.download.tsv 9424875 bytes md5 c6ff15ae1d5ba85e2fbe073e372f036d sha256 fc05333c7b70ac26be3d382ddea82cb27f3396105e2ab7fbc2c6f703f327d866 provider_md5 - 2026-11-16T20:46:01Z
+ps_mMGE_fasta try 1 start 2026-11-16T20:46:03Z https://plasmidapi.deepomics.org/api/database/files/mMGE/mMGE.fasta.tar.gz/
+ps_mMGE_fasta try 1 rc=0 bytes=313613870 2026-11-16T20:46:25Z
+plasmidscope/mMGE.fasta.tar.gz 313613870 bytes md5 cffa3e2b63d87bc66edc5e729cbfba72 sha256 384edae9810d4d3dd93ae338738c040297a814cb9dd7d0c311b23226d6b5c8ae provider_md5 - 2026-11-16T20:46:27Z
+ps_PLSDB_meta try 1 start 2026-11-16T20:46:29Z https://plasmidapi.deepomics.org/api/database/files/PLSDB/data/PLSDB.plasmid_list.download.tsv/
+ps_PLSDB_meta try 1 rc=0 bytes=5797812 2026-11-16T20:46:31Z
+plasmidscope/PLSDB.plasmid_list.download.tsv 5797812 bytes md5 66babed4259c4c63ce5eec4e07ff0ab2 sha256 70c2bfd5a0d064134918f2956298a7675e8abe048b813c04a940b22b2de7acda provider_md5 - 2026-11-16T20:46:31Z
+ps_PLSDB_fasta try 1 start 2026-11-16T20:46:33Z https://plasmidapi.deepomics.org/api/database/files/PLSDB/PLSDB.fasta.tar.gz/
+ps_PLSDB_fasta try 1 rc=0 bytes=1619480622 2026-11-16T20:48:21Z
+plasmidscope/PLSDB.fasta.tar.gz 1619480622 bytes md5 9a16752b261bc9f25915ed21449fcfc2 sha256 e3f50ea6deda4e8248f8762669e23eda4fdc41afa9b23bd0f4c7da83561b865f provider_md5 - 2026-11-16T20:48:31Z
+ps_RefSeq_meta try 1 start 2026-11-16T20:48:33Z https://plasmidapi.deepomics.org/api/database/files/RefSeq/data/RefSeq.plasmid_list.download.tsv/
+ps_RefSeq_meta try 1 rc=0 bytes=10012206 2026-11-16T20:48:36Z
+plasmidscope/RefSeq.plasmid_list.download.tsv 10012206 bytes md5 1d99b6fc57c9ce279f09f1f3db0b0341 sha256 1c9d6b213d303c0d867f05078a07a85f7dddc87c0c8adc293c722badb2386fa1 provider_md5 - 2026-11-16T20:48:36Z
+ps_RefSeq_fasta try 1 start 2026-11-16T20:48:39Z https://plasmidapi.deepomics.org/api/database/files/RefSeq/RefSeq.fasta.tar.gz/
+ps_RefSeq_fasta try 1 rc=0 bytes=2148947321 2026-11-16T20:50:55Z
+plasmidscope/RefSeq.fasta.tar.gz 2148947321 bytes md5 eaa6552ec2b7b71410f2ea1d91aba9a1 sha256 7b4827e4977c30e215fd0781dc2b5778b59fc764d221be9b21a2139b2d65c2a4 provider_md5 - 2026-11-16T20:51:08Z
+ps_GenBank_meta try 1 start 2026-11-16T20:51:10Z https://plasmidapi.deepomics.org/api/database/files/GenBank/data/GenBank.plasmid_list.download.tsv/
+ps_GenBank_meta try 1 rc=0 bytes=10578194 2026-11-16T20:51:13Z
+plasmidscope/GenBank.plasmid_list.download.tsv 10578194 bytes md5 7f1880799aace0719d78d3b74f10bfa2 sha256 725c7a30d19a1ccdea341df383e7329397a5ec8b81fb18c02a24574a553f3f9b provider_md5 - 2026-11-16T20:51:13Z
+ps_GenBank_fasta try 1 start 2026-11-16T20:51:15Z https://plasmidapi.deepomics.org/api/database/files/GenBank/GenBank.fasta.tar.gz/
+ps_GenBank_fasta try 1 rc=0 bytes=2328467541 2026-11-16T20:53:38Z
+plasmidscope/GenBank.fasta.tar.gz 2328467541 bytes md5 83c7476ab87e35e7782d525f8501881d sha256 07852046f842ff9450f07062e8ab47fc343bf0cfbccd558a1fb18abf52348399 provider_md5 - 2026-11-16T20:53:51Z
+ps_IMG-PR_meta try 1 start 2026-11-16T20:53:53Z https://plasmidapi.deepomics.org/api/database/files/IMG-PR/data/IMG-PR.plasmid_list.download.tsv/
+ps_IMG-PR_meta try 1 rc=0 bytes=81722123 2026-11-16T20:54:02Z
+plasmidscope/IMG-PR.plasmid_list.download.tsv 81722123 bytes md5 07bf0f35e8ca207f06efad27402ceaf8 sha256 a3c16b567a927b646da975ff28a16a400fa170ff815807b2080f3aea8b273200 provider_md5 - 2026-11-16T20:54:02Z
+ps_IMG-PR_fasta try 1 start 2026-11-16T20:54:04Z https://plasmidapi.deepomics.org/api/database/files/IMG-PR/IMG-PR.fasta.tar.gz/
+ps_IMG-PR_fasta try 1 rc=0 bytes=5235080408 2026-11-16T21:00:50Z
+plasmidscope/IMG-PR.fasta.tar.gz 5235080408 bytes md5 94c9b206ba3dd1b64199982d20335a02 sha256 8dc8f98af00715a2749c9ae6ead3c6684ee0955c19ab5be9bb4b5a8b359eaa18 provider_md5 - 2026-11-16T21:06:33Z
+c40_fetch done 2026-11-16T21:06:35Z

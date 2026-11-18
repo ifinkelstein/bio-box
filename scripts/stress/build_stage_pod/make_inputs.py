@@ -3,6 +3,7 @@
     python make_inputs.py phage SRC_FASTA_GZ N OUT_DIR [--drop-repeats]
     python make_inputs.py prok LOCK_JSON SELECTION_TSV OUT_DIR [--source-release datasets-v2-YYYY-MM-DD] [--drop-repeats]
     python make_inputs.py plasmid FASTA META_CSV OUT_DIR [--root ROOT] [--source-release R] [--retrieved-at T]
+    python make_inputs.py plasmid-sources SPEC_JSON OUT_DIR [--root ROOT]
 
 --source-release labels every prok object (default datasets-v2-2026-11-09, the ladder's fetch date).
 --drop-repeats keeps the rule these inputs were made with before DEC-27: a contig uid already listed by an earlier
@@ -22,6 +23,25 @@ is still ingested as an occurrence of the contig. With --root, the stages on dis
 contig_index files, read only): a record whose contig a stage stores as its default variant is still a genome of its
 own (that stage owns the contig's calls, DEC-26), and is written to OUT_DIR/shared_records.tsv with the owning stage.
 Writes genomes.json and objects.json and prints a JSON report.
+
+plasmid-sources (card C-40, stage PL2): several plasmid sources, each with its own table. SPEC_JSON is
+{"sources": [...]}, each source: name (the object's file stem), source_name, source_release, license, redistributable,
+retrieved_at, fasta (a list of FASTA files, plain or .gz, read in that order), table (a TSV with a header line; lines
+starting with '#' are skipped), id_column (the value equal to a record's header first token), topology_column and
+topology (a map from the column's values to circular or linear), completeness_column and completeness (a map to
+complete, fragment or unknown), optionally select ({"column", "values"}: a record whose row holds another value is not
+taken) and without_row ("refuse", the default, or "skip": a record with no row is not taken). A value missing from a
+map, a record without a row under "refuse", an accession twice in a source's FASTA files or twice in its table is
+refused (exit 2) before anything is written. The records taken are written, in order, to OUT_DIR/<name>.fasta, the
+source's one object in objects.json (header, sequence and line width kept, fasta.format_record). One genome per
+distinct sequence over all sources, the first record taken: kind plasmid, genetic code 11, assembly_quality complete
+for complete and contig for fragment or unknown, circular only when its topology is circular and it is not a fragment
+(a fragment its table calls circular is counted, never circular). No record is dropped for repeating another's bytes
+(DEC-27): it is an occurrence of the first record's genome. OUT_DIR/records.tsv lists every record taken (source,
+accession, contig_uid, length, the table's topology and completeness values, what was made of them, the first record
+of its sequence when it is not the first, and with --root the stage on disk that owns its contig, DEC-26);
+OUT_DIR/skipped_records.tsv every record not taken, with the reason (not_selected, no_row). Writes genomes.json and
+objects.json and prints a JSON report with the counts per source.
 
 phage: the first N records of the INPHARED FASTA, copied byte for byte (header and sequence lines as in the
 source) to OUT_DIR/phage_first<N>.fa; every record its own genome (kind virus, genetic code 11,
@@ -45,7 +65,7 @@ from pathlib import Path
 from biobox import fasta, ids
 
 USAGE = __doc__.split("\n\n")[1]
-HELP = "\n\n".join(__doc__.split("\n\n")[1:4])
+HELP = "\n\n".join(__doc__.split("\n\n")[1:5])
 
 # card C-26: PLSDB's metadata values and what the stage's inputs make of them
 PLSDB_TOPOLOGY = {"circular": True, "linear": False, "": False}
@@ -225,6 +245,181 @@ def plasmid(fa: Path, meta_csv: Path, out: Path, root: Path | None, release: str
     return rep
 
 
+SOURCE_KEYS = {"name", "source_name", "source_release", "license", "redistributable", "retrieved_at", "fasta", "table",
+               "id_column", "topology_column", "topology", "completeness_column", "completeness"}
+TOPOLOGIES = ("circular", "linear")
+COMPLETENESS = {"complete": "complete", "fragment": "contig", "unknown": "contig"}  # -> assembly_quality
+
+
+def _source_table(src: dict) -> dict[str, tuple[str, str, bool]]:
+    """accession -> (topology value, completeness value, selected) from a source's table (module docstring)."""
+    sel = src.get("select")
+    path = Path(src["table"])
+    rows: dict[str, tuple[str, str, bool]] = {}
+    with open(path, newline="") as fh:
+        lines = (ln for ln in fh if not ln.startswith("#"))
+        reader = csv.DictReader(lines, delimiter="\t", quoting=csv.QUOTE_NONE)
+        cols = [src["id_column"], src["topology_column"], src["completeness_column"]] + ([sel["column"]] if sel else [])
+        missing = [c for c in cols if c not in (reader.fieldnames or ())]
+        if missing:
+            raise Refused(f"{path}: no column {missing[0]!r}")
+        for r in reader:
+            acc = r[src["id_column"]]
+            if acc in rows:
+                raise Refused(f"{path}: accession {acc} has two rows")
+            rows[acc] = (r[src["topology_column"]], r[src["completeness_column"]],
+                         sel is None or r[sel["column"]] in sel["values"])
+    return rows
+
+
+def _check_spec(spec: dict) -> list[dict]:
+    srcs = spec.get("sources") if isinstance(spec, dict) else None
+    if not srcs:
+        raise Refused("the spec lists no sources")
+    names = set()
+    for s in srcs:
+        missing = sorted(SOURCE_KEYS - set(s))
+        if missing:
+            raise Refused(f"source {s.get('name')!r}: no {missing[0]}")
+        if s["name"] in names or "/" in s["name"]:
+            raise Refused(f"source name {s['name']!r} is repeated or not a file stem")
+        names.add(s["name"])
+        for v in s["topology"].values():
+            if v not in TOPOLOGIES:
+                raise Refused(f"source {s['name']}: topology maps to {v!r}, not one of {TOPOLOGIES}")
+        for v in s["completeness"].values():
+            if v not in COMPLETENESS:
+                raise Refused(f"source {s['name']}: completeness maps to {v!r}, not one of {sorted(COMPLETENESS)}")
+        if s.get("without_row", "refuse") not in ("refuse", "skip"):
+            raise Refused(f"source {s['name']}: without_row is {s['without_row']!r}")
+    return srcs
+
+
+def plasmid_sources(spec_path: Path, out: Path, root: Path | None) -> dict:
+    """The plasmid-sources mode (module docstring): reads and checks everything into a sibling scratch directory,
+    which becomes OUT_DIR only when nothing was refused."""
+    import shutil
+
+    srcs = _check_spec(json.loads(Path(spec_path).read_text()))
+    if out.exists():
+        raise Refused(f"{out} exists")
+    owners = stage_owners(root) if root is not None else None
+    tmp = out.with_name(f".{out.name}.tmp")
+    shutil.rmtree(tmp, ignore_errors=True)
+    tmp.mkdir(parents=True)
+    try:
+        rep = _plasmid_sources(srcs, out, tmp, owners)
+    except BaseException:
+        shutil.rmtree(tmp, ignore_errors=True)
+        raise
+    tmp.rename(out)
+    return rep
+
+
+def _plasmid_sources(srcs: list[dict], out: Path, tmp: Path, owners: dict[bytes, str] | None) -> dict:
+    listing = Listing()
+    genomes: list[dict] = []
+    first: dict[bytes, tuple] = {}  # contig uid -> (source, accession, length) of its first record taken
+    objects, per = [], {}
+    n_taken = 0
+    owner_records: dict[str, int] = {}
+    rec_w = open(tmp / "records.tsv", "w")
+    skip_w = open(tmp / "skipped_records.tsv", "w")
+    rec_w.write("\t".join(["ordinal", "source", "accession", "contig_uid", "length", "topology_value",
+                           "completeness_value", "circular", "assembly_quality", "fragment", "first_source",
+                           "first_accession", "owner_stage"]) + "\n")
+    skip_w.write("source\taccession\tcontig_uid\tlength\treason\n")
+    for src in srcs:
+        name = src["name"]
+        rows = _source_table(src)
+        st = {"fasta_records": 0, "taken": 0, "skipped": {}, "bases_taken": 0, "topology": {}, "completeness": {},
+              "genomes": 0, "genome_bases": 0, "genomes_circular": 0, "genomes_complete": 0,
+              "circular_but_fragment": 0, "repeats_within_source": 0, "repeats_of_an_earlier_source": 0,
+              "owner_records": {}}
+        seen: set[str] = set()
+        fa_out = tmp / f"{name}.fasta"
+        with open(fa_out, "wb") as w:
+            for f in src["fasta"]:
+                for r in fasta.iter_records(Path(f)):
+                    acc = r.accession
+                    if acc in seen:
+                        raise Refused(f"source {name}: accession {acc} is a second record ({f})")
+                    seen.add(acc)
+                    st["fasta_records"] += 1
+                    row = rows.get(acc)
+                    reason = None
+                    if row is None:
+                        if src.get("without_row", "refuse") == "refuse":
+                            raise Refused(f"source {name}: record {acc} of {f} has no row in {src['table']}")
+                        reason = "no_row"
+                    elif not row[2]:
+                        reason = "not_selected"
+                    cu = ids.contig_uid(r.seq)
+                    if reason:
+                        st["skipped"][reason] = st["skipped"].get(reason, 0) + 1
+                        skip_w.write(f"{name}\t{acc}\t{cu.hex()}\t{len(r.seq)}\t{reason}\n")
+                        continue
+                    tv, cv, _ = row
+                    if tv not in src["topology"]:
+                        raise Refused(f"source {name}: {acc}: {src['topology_column']} {tv!r} is not one of "
+                                      f"{sorted(src['topology'])}")
+                    if cv not in src["completeness"]:
+                        raise Refused(f"source {name}: {acc}: {src['completeness_column']} {cv!r} is not one of "
+                                      f"{sorted(src['completeness'])}")
+                    comp = src["completeness"][cv]
+                    frag = comp == "fragment"
+                    topo_circ = src["topology"][tv] == "circular"
+                    circ = topo_circ and not frag
+                    q = COMPLETENESS[comp]
+                    st["topology"][tv] = st["topology"].get(tv, 0) + 1
+                    st["completeness"][cv] = st["completeness"].get(cv, 0) + 1
+                    st["circular_but_fragment"] += topo_circ and frag
+                    st["taken"] += 1
+                    st["bases_taken"] += len(r.seq)
+                    w.write(b"\n".join(fasta.format_record(r.header, r.seq, r.line_width)) + b"\n")
+                    owner = owners.get(cu, "") if owners is not None else ""
+                    if owner:
+                        st["owner_records"][owner] = st["owner_records"].get(owner, 0) + 1
+                        owner_records[owner] = owner_records.get(owner, 0) + 1
+                    f0 = first.get(cu)
+                    if f0 is not None:
+                        st["repeats_within_source" if f0[0] == name else "repeats_of_an_earlier_source"] += 1
+                        listing.add([cu], 11, "plasmid", q)  # counts the genome as repeated; returns None
+                    else:
+                        g = listing.add([cu], 11, "plasmid", q)
+                        g["circular"] = [cu.hex()] if circ else []
+                        genomes.append(g)
+                        first[cu] = (name, acc, len(r.seq))
+                        st["genomes"] += 1
+                        st["genome_bases"] += len(r.seq)
+                        st["genomes_circular"] += circ
+                        st["genomes_complete"] += q == "complete"
+                    rec_w.write("\t".join(map(str, [
+                        n_taken, name, acc, cu.hex(), len(r.seq), tv, cv, str(circ).lower(), q, str(frag).lower(),
+                        "" if f0 is None else f0[0], "" if f0 is None else f0[1], owner])) + "\n")
+                    n_taken += 1
+        if not st["taken"]:
+            raise Refused(f"source {name}: no record taken")
+        st["selected_rows_without_record"] = sum(1 for a, v in rows.items() if v[2] and a not in seen)
+        per[name] = st
+        objects.append({"path": str(out / f"{name}.fasta"), "source_name": src["source_name"],
+                        "source_release": src["source_release"], "license": src["license"],
+                        "redistributable": bool(src["redistributable"]), "retrieved_at": src["retrieved_at"]})
+    rec_w.close()
+    skip_w.close()
+    (tmp / "objects.json").write_text(json.dumps(objects, indent=1))
+    (tmp / "genomes.json").write_text(json.dumps(genomes))
+    rep = {"records_taken": n_taken, "genomes": len(genomes), "contigs": len(first),
+           "genomes_circular": sum(1 for g in genomes if g["circular"]),
+           "genome_bases": sum(f[2] for f in first.values()), "objects": len(objects),
+           "codes": {"11": len(genomes)}, "sources": per, **listing.report()}
+    if owners is not None:
+        rep.update({"owner_records": dict(sorted(owner_records.items())),
+                    "new_contigs": sum(1 for cu in first if cu not in owners),
+                    "new_bases": sum(f[2] for cu, f in first.items() if cu not in owners)})
+    return rep
+
+
 def _option(argv: list[str], name: str) -> tuple[list[str], str | None]:
     """`argv` without `name VALUE`, and VALUE (None when absent); Refused when VALUE is missing."""
     if name not in argv:
@@ -246,6 +441,17 @@ def main(argv: list[str]) -> int:
     except Refused:
         print(USAGE, file=sys.stderr)
         return 2
+    if argv[:1] == ["plasmid-sources"]:
+        if len(argv) != 3 or release is not None or retrieved is not None:
+            print(USAGE, file=sys.stderr)
+            return 2
+        try:
+            rep = plasmid_sources(Path(argv[1]), Path(argv[2]), None if root is None else Path(root))
+        except Refused as e:
+            print(f"make_inputs.py plasmid-sources: refused: {e}", file=sys.stderr)
+            return 2
+        print(json.dumps(rep))
+        return 0
     if argv[:1] == ["plasmid"]:
         if len(argv) != 4 or "--drop-repeats" in argv:  # DEC-27: no record is dropped
             print(USAGE, file=sys.stderr)

@@ -325,3 +325,98 @@ sources:
       179,199); read_run_by_sample/ 75 batches 21:11:22 to 21:12:37 UTC, 293,139 bytes, log sha256
       98306623825ef6917c27d05a850121eef45e84f295dcd7d5a3a816bf1602f08a; four count files (count_*.txt)
     approved: under DEC-50 (card C-43, 2026-11-16)
+  - name: gut_plasmids_yu2024
+    what: >-
+      plasmids predicted by PlasX in 1,782 human gut metagenomes (Yu, Fogarty and Eren 2024, Nature Microbiology,
+      doi:10.1038/s41564-024-01610-3), their sequences and tables; card C-40, stage PL2 (not yet a stage)
+    url: https://zenodo.org/api/records/5843600/files/{file}/content
+    record: >-
+      https://doi.org/10.5281/zenodo.5843600 (Zenodo "PlasX model, Predicted plasmids, and Known plasmids", version
+      1.2, the latest of three, published 2021-11-27; concept doi:10.5281/zenodo.5732446). Named in the article's data
+      availability statement ("our analyses of known and predicted plasmids are available at 10.5281/zenodo.5843600");
+      the record doi:10.6082/cx5ay-1ev28 holds only the article and its supplement
+    files:
+      - {file: predicted_plasmids.fa.gz, bytes: 252900436, md5: 3252f40283f594e1f703199a7f7e7dd8}
+      - {file: predicted_plasmids_summary.txt.gz, bytes: 14952780, md5: e12cd9fee4ad63015a50f467bbd793c8}
+      - {file: predicted_plasmids_clusters.txt.gz, bytes: 1873405, md5: ce6b77fd22c83ee9f2a56cf6370e8542}
+      - {file: predicted_plasmids_systems.txt.gz, bytes: 293764, md5: 21bf763a32925bc6eeb0dfdead45a389}
+      - {file: predicted_plasmids_assembly_self_recruitment.txt.gz, bytes: 2364939, md5: 6e3dc23190e70c8c2030d9971f5fa379}
+    not_taken: >-
+      PlasX_mmseqs_profiles.tar.gz (1.7 GB, the model), the gene annotations, the pairwise alignments and the
+      read-recruitment tables (we call our own genes)
+    checksum: the md5 values above, as Zenodo's API gives them (read 2026-11-16)
+    records: >-
+      68,350 non-redundant predicted plasmids in 1,169 plasmid systems; 226,194 contigs scored over 0.5, of which
+      100,719 kept after fragment clusters were removed; 19,652 circular (published, the article)
+    limits: one connection; stop after 5 refusals in a row (HTTP 403, 429, 503)
+    license: CC BY 4.0 (the Zenodo record)
+    redistributable: true
+    fetched: >-
+      2026-11-16 20:42:03 to 20:44:17 UTC into /tmp/if2453/s3/plasmids/dl/gut/ on wilkcomp02 by c40_fetch.sh, one
+      connection, no refusal, each file at the first try: all five files, each equal in size and md5 to the record's;
+      our sha256 values (predicted_plasmids.fa.gz fe4dc52a4bce28ed6004d59fef4959a1d4664ac254a1aa3b5b0cb7fd4bc36c7d,
+      226,194 records; predicted_plasmids_summary.txt.gz 85d9a31ef21d1cc6e603c69a82e67761c1d659c54cb0e578f8f2efc10ea53987;
+      the others) in planning/measurements/2026-11-16_pl2_inputs/fetch_SUMS
+    stored: local only (/tmp on wilkcomp02); nothing under /stor
+    stage_inputs: >-
+      stage PL2 (card C-40): /tmp/if2453/s2/inputs/PL2/ on wilkcomp02, made by make_inputs.py plasmid-sources (the
+      68,350 non-redundant representatives); record planning/measurements/2026-11-16_pl2_inputs.md
+    approved: under DEC-50 (entry written by card C-40 on 2026-11-16 before any fetch)
+  - name: plasmidscope
+    what: >-
+      PlasmidScope (Li et al. 2024, NAR, doi:10.1093/nar/gkae930), plasmids of ten repositories, one FASTA archive and
+      one metadata table per repository, and the table of all; card C-40, stage PL2 (not yet a stage)
+    url: https://plasmidapi.deepomics.org/api/database/files/{src}/{src}.fasta.tar.gz/
+    url_meta: https://plasmidapi.deepomics.org/api/database/files/{src}/data/{src}.plasmid_list.download.tsv/
+    page: >-
+      https://plasmid.deepomics.org/download (a JavaScript page; the URL forms are read from its script
+      assets/index.f8f3d707.js on 2026-11-16). {src} is one of PLSDB, IMG-PR, COMPASS, GenBank, RefSeq, ENA, Kraken2,
+      DDBJ, TPA, mMGE, and ALL for the metadata only. The server answers the form without the trailing slash with a 301
+      to the form with it and refuses HEAD (405); sizes are the Content-Length of a GET cut after its headers
+    files:
+      - {file: PLSDB.fasta.tar.gz, bytes: 1619480622}
+      - {file: IMG-PR.fasta.tar.gz, bytes: 5235080408}
+      - {file: COMPASS.fasta.tar.gz, bytes: 388863677}
+      - {file: GenBank.fasta.tar.gz, bytes: 2328467541}
+      - {file: RefSeq.fasta.tar.gz, bytes: 2148947321}
+      - {file: ENA.fasta.tar.gz, bytes: 181390959}
+      - {file: Kraken2.fasta.tar.gz, bytes: 15183583}
+      - {file: DDBJ.fasta.tar.gz, bytes: 151612202}
+      - {file: TPA.fasta.tar.gz, bytes: 215293}
+      - {file: mMGE.fasta.tar.gz, bytes: 313613870}
+      - {file: ALL.plasmid_list.download.tsv, bytes: 105861535}
+      - {file: PLSDB.plasmid_list.download.tsv, bytes: 5797812}
+      - {file: IMG-PR.plasmid_list.download.tsv, bytes: 81722123}
+      - {file: COMPASS.plasmid_list.download.tsv, bytes: 1435170}
+      - {file: GenBank.plasmid_list.download.tsv, bytes: 10578194}
+      - {file: RefSeq.plasmid_list.download.tsv, bytes: 10012206}
+      - {file: ENA.plasmid_list.download.tsv, bytes: 675330}
+      - {file: Kraken2.plasmid_list.download.tsv, bytes: 106106}
+      - {file: DDBJ.plasmid_list.download.tsv, bytes: 585010}
+      - {file: TPA.plasmid_list.download.tsv, bytes: 906}
+      - {file: mMGE.plasmid_list.download.tsv, bytes: 9424875}
+    checksum: none published; sizes read from the server on 2026-11-16 (wilkcomp02); record our sha256 after the fetch
+    records: >-
+      852,600 plasmids: 110,021 from the eight single-organism repositories and 742,579 from IMG/PR and mMGE; identical
+      sequences removed within each repository; 208,350 complete (published, the article)
+    limits: one connection; stop after 5 refusals in a row (HTTP 403, 429, 503)
+    license: >-
+      none stated on the site. The article (CC BY 4.0) says "All data are freely available" and the database "can be
+      accessed without registration". The IMG-PR files are IMG/PR's records (JGI), whose data use policy limits
+      redistribution, and mMGE states no terms here: both are flagged not redistributable; the other eight
+      repositories' records are INSDC or PLSDB records
+    redistributable: false for IMG-PR and mMGE; true for the others
+    fetched: >-
+      2026-11-16 20:44:18 to 21:00:50 UTC into /tmp/if2453/s3/plasmids/dl/plasmidscope/ on wilkcomp02 by c40_fetch.sh,
+      one connection, no refusal, each file at the first try: all 21 files, each equal in size to the server's
+      Content-Length read before (no checksum is published); our md5 and sha256 values (IMG-PR.fasta.tar.gz
+      8dc8f98af00715a2749c9ae6ead3c6684ee0955c19ab5be9bb4b5a8b359eaa18; the others) in
+      planning/measurements/2026-11-16_pl2_inputs/fetch_SUMS. Each archive holds one FASTA file per plasmid; it is
+      read as a stream into one FASTA per repository (c40_concat.py), never unpacked
+    stored: local only (/tmp on wilkcomp02); nothing under /stor
+    stage_inputs: >-
+      stage PL2 (card C-40): /tmp/if2453/s2/inputs/PL2/ on wilkcomp02, made by make_inputs.py plasmid-sources from
+      nine of the ten repositories (PLSDB's file is not taken: stage PL1 holds PLSDB); record
+      planning/measurements/2026-11-16_pl2_inputs.md
+    note: IMG/PR's own portal (JGI) is not tried (DEC-50 (2)); its records here come from PlasmidScope's open download
+    approved: under DEC-50 (entry written by card C-40 on 2026-11-16 before any fetch)

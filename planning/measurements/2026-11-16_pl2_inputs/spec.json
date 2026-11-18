@@ -1,0 +1,287 @@
+{
+ "card": "C-40",
+ "stage": "PL2",
+ "sources": [
+  {
+   "name": "gut_plasmids_yu2024",
+   "source_name": "gut_plasmids_yu2024",
+   "source_release": "zenodo-5843600-v1.2",
+   "license": "CC BY 4.0 (Zenodo record 5843600)",
+   "redistributable": true,
+   "retrieved_at": "2026-11-18T03:00:00Z",
+   "fasta": [
+    "/tmp/if2453/s3/plasmids/dl/gut/predicted_plasmids.fa.gz"
+   ],
+   "table": "/tmp/if2453/s3/plasmids/fasta/gut/predicted_plasmids_summary.txt",
+   "id_column": "contig",
+   "topology_column": "circular",
+   "topology": {
+    "True": "circular",
+    "False": "linear"
+   },
+   "completeness_column": "circular",
+   "completeness": {
+    "True": "complete",
+    "False": "unknown"
+   },
+   "select": {
+    "column": "in_dereplicated_plasmids",
+    "values": [
+     "True"
+    ]
+   }
+  },
+  {
+   "name": "plasmidscope_IMG-PR",
+   "source_name": "plasmidscope",
+   "source_release": "IMG-PR.download-2026-11-18",
+   "license": "IMG/PR records (JGI data use policy) through PlasmidScope's open download; PlasmidScope states no licence; its article (CC BY 4.0) says all data are freely available without registration (doi:10.1093/nar/gkae930)",
+   "redistributable": false,
+   "retrieved_at": "2026-11-18T03:35:01Z",
+   "fasta": [
+    "/tmp/if2453/s3/plasmids/fasta/IMG-PR/IMG-PR.fasta"
+   ],
+   "table": "/tmp/if2453/s3/plasmids/dl/plasmidscope/IMG-PR.plasmid_list.download.tsv",
+   "id_column": "Plasmid_ID",
+   "topology_column": "Topology",
+   "topology": {
+    "circular": "circular",
+    "linear": "linear",
+    "inverted terminal repeat": "linear",
+    "concatemer": "linear",
+    "direct terminal repeat": "linear"
+   },
+   "completeness_column": "Completeness",
+   "completeness": {
+    "complete": "complete",
+    "incomplete": "fragment",
+    "-": "unknown"
+   },
+   "without_row": "skip"
+  },
+  {
+   "name": "plasmidscope_mMGE",
+   "source_name": "plasmidscope",
+   "source_release": "mMGE.download-2026-11-18",
+   "license": "mMGE records, no terms stated; PlasmidScope states no licence; its article (CC BY 4.0) says all data are freely available without registration (doi:10.1093/nar/gkae930)",
+   "redistributable": false,
+   "retrieved_at": "2026-11-18T03:03:07Z",
+   "fasta": [
+    "/tmp/if2453/s3/plasmids/fasta/mMGE/mMGE.fasta"
+   ],
+   "table": "/tmp/if2453/s3/plasmids/dl/plasmidscope/mMGE.plasmid_list.download.tsv",
+   "id_column": "Plasmid_ID",
+   "topology_column": "Topology",
+   "topology": {
+    "circular": "circular",
+    "linear": "linear",
+    "inverted terminal repeat": "linear",
+    "concatemer": "linear",
+    "direct terminal repeat": "linear"
+   },
+   "completeness_column": "Completeness",
+   "completeness": {
+    "complete": "complete",
+    "incomplete": "fragment",
+    "-": "unknown"
+   },
+   "without_row": "skip"
+  },
+  {
+   "name": "plasmidscope_RefSeq",
+   "source_name": "plasmidscope",
+   "source_release": "RefSeq.download-2026-11-18",
+   "license": "RefSeq records (INSDC or the repository's own); PlasmidScope states no licence; its article (CC BY 4.0) says all data are freely available without registration (doi:10.1093/nar/gkae930)",
+   "redistributable": true,
+   "retrieved_at": "2026-11-18T03:12:26Z",
+   "fasta": [
+    "/tmp/if2453/s3/plasmids/fasta/RefSeq/RefSeq.fasta"
+   ],
+   "table": "/tmp/if2453/s3/plasmids/dl/plasmidscope/RefSeq.plasmid_list.download.tsv",
+   "id_column": "Plasmid_ID",
+   "topology_column": "Topology",
+   "topology": {
+    "circular": "circular",
+    "linear": "linear",
+    "inverted terminal repeat": "linear",
+    "concatemer": "linear",
+    "direct terminal repeat": "linear"
+   },
+   "completeness_column": "Completeness",
+   "completeness": {
+    "complete": "complete",
+    "incomplete": "fragment",
+    "-": "unknown"
+   },
+   "without_row": "skip"
+  },
+  {
+   "name": "plasmidscope_GenBank",
+   "source_name": "plasmidscope",
+   "source_release": "GenBank.download-2026-11-18",
+   "license": "GenBank records (INSDC or the repository's own); PlasmidScope states no licence; its article (CC BY 4.0) says all data are freely available without registration (doi:10.1093/nar/gkae930)",
+   "redistributable": true,
+   "retrieved_at": "2026-11-18T03:18:38Z",
+   "fasta": [
+    "/tmp/if2453/s3/plasmids/fasta/GenBank/GenBank.fasta"
+   ],
+   "table": "/tmp/if2453/s3/plasmids/dl/plasmidscope/GenBank.plasmid_list.download.tsv",
+   "id_column": "Plasmid_ID",
+   "topology_column": "Topology",
+   "topology": {
+    "circular": "circular",
+    "linear": "linear",
+    "inverted terminal repeat": "linear",
+    "concatemer": "linear",
+    "direct terminal repeat": "linear"
+   },
+   "completeness_column": "Completeness",
+   "completeness": {
+    "complete": "complete",
+    "incomplete": "fragment",
+    "-": "unknown"
+   },
+   "without_row": "skip"
+  },
+  {
+   "name": "plasmidscope_ENA",
+   "source_name": "plasmidscope",
+   "source_release": "ENA.download-2026-11-18",
+   "license": "ENA records (INSDC or the repository's own); PlasmidScope states no licence; its article (CC BY 4.0) says all data are freely available without registration (doi:10.1093/nar/gkae930)",
+   "redistributable": true,
+   "retrieved_at": "2026-11-18T03:01:14Z",
+   "fasta": [
+    "/tmp/if2453/s3/plasmids/fasta/ENA/ENA.fasta"
+   ],
+   "table": "/tmp/if2453/s3/plasmids/dl/plasmidscope/ENA.plasmid_list.download.tsv",
+   "id_column": "Plasmid_ID",
+   "topology_column": "Topology",
+   "topology": {
+    "circular": "circular",
+    "linear": "linear",
+    "inverted terminal repeat": "linear",
+    "concatemer": "linear",
+    "direct terminal repeat": "linear"
+   },
+   "completeness_column": "Completeness",
+   "completeness": {
+    "complete": "complete",
+    "incomplete": "fragment",
+    "-": "unknown"
+   },
+   "without_row": "skip"
+  },
+  {
+   "name": "plasmidscope_DDBJ",
+   "source_name": "plasmidscope",
+   "source_release": "DDBJ.download-2026-11-18",
+   "license": "DDBJ records (INSDC or the repository's own); PlasmidScope states no licence; its article (CC BY 4.0) says all data are freely available without registration (doi:10.1093/nar/gkae930)",
+   "redistributable": true,
+   "retrieved_at": "2026-11-18T03:00:51Z",
+   "fasta": [
+    "/tmp/if2453/s3/plasmids/fasta/DDBJ/DDBJ.fasta"
+   ],
+   "table": "/tmp/if2453/s3/plasmids/dl/plasmidscope/DDBJ.plasmid_list.download.tsv",
+   "id_column": "Plasmid_ID",
+   "topology_column": "Topology",
+   "topology": {
+    "circular": "circular",
+    "linear": "linear",
+    "inverted terminal repeat": "linear",
+    "concatemer": "linear",
+    "direct terminal repeat": "linear"
+   },
+   "completeness_column": "Completeness",
+   "completeness": {
+    "complete": "complete",
+    "incomplete": "fragment",
+    "-": "unknown"
+   },
+   "without_row": "skip"
+  },
+  {
+   "name": "plasmidscope_COMPASS",
+   "source_name": "plasmidscope",
+   "source_release": "COMPASS.download-2026-11-18",
+   "license": "COMPASS records (INSDC or the repository's own); PlasmidScope states no licence; its article (CC BY 4.0) says all data are freely available without registration (doi:10.1093/nar/gkae930)",
+   "redistributable": true,
+   "retrieved_at": "2026-11-18T03:02:15Z",
+   "fasta": [
+    "/tmp/if2453/s3/plasmids/fasta/COMPASS/COMPASS.fasta"
+   ],
+   "table": "/tmp/if2453/s3/plasmids/dl/plasmidscope/COMPASS.plasmid_list.download.tsv",
+   "id_column": "Plasmid_ID",
+   "topology_column": "Topology",
+   "topology": {
+    "circular": "circular",
+    "linear": "linear",
+    "inverted terminal repeat": "linear",
+    "concatemer": "linear",
+    "direct terminal repeat": "linear"
+   },
+   "completeness_column": "Completeness",
+   "completeness": {
+    "complete": "complete",
+    "incomplete": "fragment",
+    "-": "unknown"
+   },
+   "without_row": "skip"
+  },
+  {
+   "name": "plasmidscope_TPA",
+   "source_name": "plasmidscope",
+   "source_release": "TPA.download-2026-11-18",
+   "license": "TPA records (INSDC or the repository's own); PlasmidScope states no licence; its article (CC BY 4.0) says all data are freely available without registration (doi:10.1093/nar/gkae930)",
+   "redistributable": true,
+   "retrieved_at": "2026-11-18T03:00:18Z",
+   "fasta": [
+    "/tmp/if2453/s3/plasmids/fasta/TPA/TPA.fasta"
+   ],
+   "table": "/tmp/if2453/s3/plasmids/dl/plasmidscope/TPA.plasmid_list.download.tsv",
+   "id_column": "Plasmid_ID",
+   "topology_column": "Topology",
+   "topology": {
+    "circular": "circular",
+    "linear": "linear",
+    "inverted terminal repeat": "linear",
+    "concatemer": "linear",
+    "direct terminal repeat": "linear"
+   },
+   "completeness_column": "Completeness",
+   "completeness": {
+    "complete": "complete",
+    "incomplete": "fragment",
+    "-": "unknown"
+   },
+   "without_row": "skip"
+  },
+  {
+   "name": "plasmidscope_Kraken2",
+   "source_name": "plasmidscope",
+   "source_release": "Kraken2.download-2026-11-18",
+   "license": "Kraken2 records (INSDC or the repository's own); PlasmidScope states no licence; its article (CC BY 4.0) says all data are freely available without registration (doi:10.1093/nar/gkae930)",
+   "redistributable": true,
+   "retrieved_at": "2026-11-18T03:00:26Z",
+   "fasta": [
+    "/tmp/if2453/s3/plasmids/fasta/Kraken2/Kraken2.fasta"
+   ],
+   "table": "/tmp/if2453/s3/plasmids/dl/plasmidscope/Kraken2.plasmid_list.download.tsv",
+   "id_column": "Plasmid_ID",
+   "topology_column": "Topology",
+   "topology": {
+    "circular": "circular",
+    "linear": "linear",
+    "inverted terminal repeat": "linear",
+    "concatemer": "linear",
+    "direct terminal repeat": "linear"
+   },
+   "completeness_column": "Completeness",
+   "completeness": {
+    "complete": "complete",
+    "incomplete": "fragment",
+    "-": "unknown"
+   },
+   "without_row": "skip"
+  }
+ ]
+}
