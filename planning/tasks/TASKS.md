@@ -758,8 +758,56 @@ Files: `planning/design/C-38_import_depths.md` (new), nothing else
 Why: unbinned metagenomic contigs cannot be annotated in full (the survey's §4.1: about 20 times the cost of calling genes; 1.2 years of the pod for SPIRE's 16 Tbp, *derived*), and they do not fit the pod's local disk (0.71 GB per Gbp at the depth of called genes, *derived* from H1). Today a stage is all or nothing.
 Do, as a design note in the form of `planning/design/B-47_inferred_domains.md`: (1) a stage's **depth** (stored; called: genes, proteins, tapes, CRISPR arrays; clustered; annotated) as a recorded property, and what a release, a search pack, `release verify` and the manifest do with stages of different depth; (2) **annotation on the hit**: a search over called proteins, then Pfam on the proteins within N genes of each hit, where those rows live (AGENTS §3.10: a stage never rewrites a file, so a new partition kind and its scope rule), how a reader tells a protein without domains from one never scanned; (3) families without Pfam: a linear clustering of all proteins and neighbour statistics on cluster tokens, with what is lost against the cascade we use; (4) the filter at ingest (a least length or gene count), with the dropped bases in the ledger; (5) nucleotides by reference for unbinned contigs (proteins, coordinates and arrays kept; the sequence refetchable by source, sample, contig and sha256): what breaks in the spec's invariants and in the tools that read sequence; (6) where a corpus of several TB lives (a larger footprint on `/stor/scratch`, TACC storage, or the depth-1 part held apart from the data root); (7) the stopping rule by habitat (new NR50 families per Gbp). Each with options, what was measured, a recommendation, and the questions only the PI can answer.
 Amended 2026-11-16 (DEC-49; the PI: "keep 1-4 , i will think about 5-9, but i think i'd like to keep nucleotides too (5)"): **the note designs items (1) to (4), which are decided in principle.** Item (5) is dropped as a proposal: nucleotides are kept, so the note plans storage at the full figure and only records what the reference form would have saved. Items (6) and (7), and the survey's ideas (7) and (8), are the PI's to think about: the note lays out the options and what each needs measured, and recommends nothing that depends on them. The note may be written now; it does not wait for cards C-37 or C-42, and says which of its numbers they will replace.
-Done 2026-11-17 (STATUS row C-38): the note is `planning/design/C-38_import_depths.md`; its fourteen questions are STATUS open item 14; its follow-on cards C-38a to C-38h are in its §10 and are copied here as they start.
+Done 2026-11-17 (STATUS row C-38): the note is `planning/design/C-38_import_depths.md`; its fourteen questions were confirmed as recommended by DEC-54; its follow-on cards C-38a to C-38h follow below.
 Accept: the note; its list of questions for the PI; the cards that follow from the recommendation, as text for this file.
+
+### C-38a Stage depth: chosen at build, derived for a release
+**M** · Depends: C-38 (DEC-54: Q1, Q2) · Design: `planning/design/C-38_import_depths.md` §2
+Files: `src/biobox/stage.py` (`--depth stored|called|annotated` on `Build` and the step list; refusals), `src/biobox/catalog.py` (`stage_depths(manifest)`; a release refuses a stage without tapes, naming its depth), `src/biobox/cli.py` (`build-stage --depth`; `release verify` prints a `depths:` line in place of card C-19's warning; `bio-box releases` column `depths`), `RUNBOOK.md` (build-stage usage), tests in `tests/r1` and `tests/r2`
+Do, test first: (1) the step list at each depth; `--depth called` with `--library` or `--ncrna-cm`, and `--depth stored` given a release step, refused (exit 2, nothing run). (2) A stage built called, then scanned with the library, has files byte-identical to the same stage built annotated at once; fixture manifest hash compared. (3) `stage_depths` on every test manifest and on a copy of `rM.2`'s file list (all seven annotated pfam-38.2); on a fixture release over one called and one annotated stage, family tokens equal a brute-force count over the annotated stage's domain files written separately in the test. (4) A release over a stage at depth stored is refused. (5) The function the release train (card C-46) uses to judge a stage complete takes the depth.
+Accept: the tests; `release verify` and `bio-box releases` on the pod, read-only, give the same depths for every published release.
+
+### C-38b Domain state: "none" is not "not scanned"
+**M** · Depends: C-38a · Design: `planning/design/C-38_import_depths.md` §3.4
+Files: `src/biobox/catalog.py` (view `domain_state(protein_uid, library)`: measured, inferred, none, not scanned; stage coverage from the manifest's annotated stages, round coverage once C-38f exists), `src/biobox/search/export.py`, `src/biobox/search/nbr.py` (`pfam_architecture` `-` for none, `?` for not scanned; a `domain_state` column in hits and locus tables; README text), `GUIDE.md` where it explains `pfam_architecture`, tests
+Do, test first: a fixture release with a called stage and an annotated stage, and a protein in both: each state checked against a brute-force reading of the files written separately in the test; the exports of a release whose stages are all annotated are byte-identical but for the new column (W-07's byte-identity test migrated for that column only); a lookup of one protein's state reads O(1) row groups (`profile_query`).
+Accept: the tests.
+
+### C-38c Linclust alone against our cascade, on `r26.11.1`'s proteins
+**M** · Pod: yes (read-only on the data root; scratch only; at most 16 threads, under the hour's cap) · Depends: C-35 (`r26.11.1` built) · Design: `planning/design/C-38_import_depths.md` §4.2, §4.3
+Files: `scripts/stress/c38c_*` (new), one measurement note with its directory
+Do: (1) In scratch, cluster `r26.11.1`'s distinct proteins with the linclust calls of `l2/cluster.workflow`'s redundancy phase alone, at NR90 and at NR50 over the NR90 representatives, with the release's parameters, in parts under the 300 CPU-minute budget (card B-41's cut). (2) Report against the release's clusters: clusters and singletons per level; for each cascade NR50 cluster, how many linclust clusters its members fall in; members the cascade joined and linclust did not, by identity band; CPU-minutes and peak RSS per call, against N19 and N20 of the design note; the memory per protein. (3) Run the two worked examples' neighbour summaries (`examples/`, the TniQ and RNA polymerase searches) at NR50 with each clustering and report what changes in their tables. (4) From (2), the CPU and memory at 350 million and at 1 billion proteins, labelled as extrapolations.
+Accept: the note; the 20% rule of AGENTS §6 applied to N19 and N20.
+
+### C-38d The least contig length at ingest
+**M** · Depends: C-38 (DEC-54: Q11, Q13; the value of L from C-42, Q12, not needed to build the mechanism) · Design: `planning/design/C-38_import_depths.md` §5
+Files: `src/biobox/l0seq/store.py` (ingest drops records under `--min-contig-len`, before the held check; refuses inputs that disagree), `src/biobox/stage.py` (`build-stage --min-contig-len` passed to ingest; the ingest estimate unchanged), `src/biobox/registry/schemas.py` (`ledger.n_bases_in`, `ledger.n_bases_rejected`, appended, nullable), the locks by `scripts/update_schema_lock.py`, `src/biobox/ledger.py` (the reason `below:<L>`; L-01 unchanged in records), `scripts/stress/build_stage_pod/make_inputs.py` (the same rule for the inputs it writes), `RUNBOOK.md`, tests
+Do, test first: §5.3's tests (1) to (5).
+Accept: the tests; the fixture manifest hash unchanged without the option.
+
+### C-38e Rounds: tables, scope and release listing
+**M** · Depends: C-38 (DEC-54: Q5, Q6), C-38b · Design: `planning/design/C-38_import_depths.md` §3.2, §3.8
+Files: `src/biobox/registry/schemas.py` (`round_domains`, `round_coverage`, partitioned (`round`, `library`) with alternative keys (`release`, `library`); `release_round`, partition `release`, `small_ok`; the ledger's key set (`round`, `step`); an artifact for a round's plan and shard records, `in_manifest` False), the locks by `scripts/update_schema_lock.py`, `src/biobox/catalog.py` (scope rule (e) in `_scope`, `_in_release`, `ReleaseFiles._layout`, `build_manifest`, `verify_manifest`; `define_release` writes `release_round` with every complete round), tests
+Do, test first: §3.8 tests (4) and (5) on hand-written round files; every published-release manifest copy in the tests verifies unchanged; a release built before any round ignores round files; a round file no release lists is not reported by any release's verify.
+Accept: the tests.
+
+### C-38f The round step: scan a list of proteins, copy what was measured
+**M** · Pod: yes (tests; one round on a scratch release) · Depends: C-38e, B-47b · Design: `planning/design/C-38_import_depths.md` §3.3, §3.6
+Files: `src/biobox/l1/domains.py` (a round's plan, shards and merge over a requested list; the round id; rounds as sources in `sources`), `src/biobox/cli.py` (`bio-box annotate round --release R --library NAME VERSION HMM CUTOFF --proteins FILE`; `search hmm --annotate`), `src/biobox/stage.py` only to launch the shards as scan shards are launched, `RUNBOOK.md`, tests
+Do, test first: §3.8 tests (1), (2) and (7); the request holds only proteins not scanned in the searched release; the plan copies rows measured by a stage or an earlier round on disk and scans the rest; ledger rows as §3.3; each process under the budget.
+Accept: the tests; on the pod, in a scratch view, one round over the neighbours of one search of the TniQ example, with its CPU-minutes against §3.8's estimate.
+
+### C-38g Readers of rounds: the release's merged copy, tokens kept clean
+**M** · Depends: C-38f · Design: `planning/design/C-38_import_depths.md` §3.2 (lookups), §3.5
+Files: `src/biobox/l1/domains.py` or a new module for the release step `rounds` (the merged, sorted copy under `release=`), `src/biobox/stage.py` (the step after `cluster`), `src/biobox/catalog.py` (`domain_state` and `domains_of` read the merged copy; a `source` column), `src/biobox/search/export.py`, `src/biobox/search/nbr.py`, `src/biobox/l3/tokens.py` and `src/biobox/l3/postings.py` (assert they do not read round rows), tests
+Do, test first: §3.8 tests (3), (5) and (6); `nbr summarize` shows round rows with `source round`.
+Accept: the tests; the fixture manifest hash of a release without rounds unchanged.
+
+### C-38h An annotated stage scans the proteins of contigs a called stage owns
+**M** · Depends: C-38 (DEC-54: Q8), C-38a, B-47b · Design: `planning/design/C-38_import_depths.md` §3.7
+Files: `src/biobox/l1/domains.py` (the plan adds those proteins, read from the owner's `feature_protein`; copies measured ones), `src/biobox/stage.py` (passes the stages on disk, as `--seq-stages`), tests
+Do, test first: a called stage storing a contig that a later annotated stage's genome holds: the annotated stage's domain file holds rows for that contig's proteins, equal to an `hmmsearch` run of them; built in either order the release's family tokens are the same.
+Accept: the tests.
 
 ### C-39 Viruses from metagenomes, as vOTU representatives: inputs and overlap
 **M** · Pod: yes (reads; writes only under `/tmp/if2453/s3/`) · Depends: the PI's approval of the source entries (step 1) · widens stage S4 of `STAGES.md`

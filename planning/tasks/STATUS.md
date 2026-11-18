@@ -215,9 +215,9 @@ W-30, W-31, A-08, E-11, E-12, E-13, E-14, F-02 sessions 4 to 10 (10 is a measure
 - **Card C-39 (stage `V1` virus inputs and overlap) is audited and merged** at 21:16 CST (row C-39): UHGV v1.0 and VIRE re-fetched and `/tmp/if2453/s2/inputs/V1/` remade on the restored root (`c39-pipeline`), reproducing every recorded sha256, overlap count and VIRE count byte for byte; Actions green on `456a420`.
 - **Running on the pod now** (26 of 56 night threads): `ci-integration-0..5` (6 shards of the merged `5b875f2` suite; shards 1 and 2 already passed: 457 + 549 passed, cross-host included), `pack-and-w37` (rebuilding `rN.3` in 4 parts and `rM.2` in 8 parts into `/tmp/if2453/bio-box/packs`, then running W-37's two read-only checks), `c40-pipeline` (re-fetching and finishing C-40's `PL2` inputs, `analyze` and `est`), and card B-53 starting next.
 - **What was lost on `/tmp` at the reboot**: `r26.11.1`'s 286 partial release files and 70 GB clustering scratch (about 8,000 CPU-minutes; resuming `r26.11.1` once open item 13 is answered runs the clustering cleanly from the restored nine-stage root), the packs of `rN.3` and `rM.2` (rebuilding now), and the extracted phase-2 inputs `/tmp/if2453/s2/inputs/C1`..`C6` (archived on `/stor`, restored before card C-47).
-- **Waiting on the PI**: open item 13 (how `r26.11.1` resumes; whether steps >20% under estimate stop a build); open item 14 (the 14 import-depths design questions of card C-38; questions 1, 2, 11 and 13 unblock cards C-38a, C-38b and C-38d); open item 12 (the F-02 positive control); the JGI downloads, a reminder owed (IMG/VR v4.1's high-confidence FASTA and table for card C-39; IMG/PR's FASTA and tables for card C-40; GOLD's public export and IMG/M's list of public metagenome assemblies for card C-43); the Global Soil Virus Atlas, whose host refused the pod five times (the PI fetches it, or says to try from the laptop); the first login at TACC (card C-37); whether card C-40 also takes the 15,135 circular gut contigs that are not representatives; how many earlier releases keep their large files; staging ideas 6 to 9 (DEC-49).
+- **Waiting on the PI**: open item 12 (the F-02 positive control); the JGI downloads, a reminder owed (IMG/VR v4.1's high-confidence FASTA and table for card C-39; IMG/PR's FASTA and tables for card C-40; GOLD's public export and IMG/M's list of public metagenome assemblies for card C-43); the Global Soil Virus Atlas, whose host refused the pod five times (the PI fetches it, or says to try from the laptop); the first login at TACC (card C-37); whether card C-40 also takes the 15,135 circular gut contigs that are not representatives; how many earlier releases keep their large files; staging ideas 6 to 9 (DEC-49). **Open items 13 and 14 were decided by the PI at 21:22 CST ("13, y ; 14 confirm"; DEC-53, DEC-54)**: `r26.11.1` (card C-35) is unblocked and launches under DEC-53 (build guards stop only on >20% over-runs); cards C-38a to C-38h are copied into `TASKS.md` and unblocked (`C-38a` starts as soon as `B-53` frees `stage.py` and `RUNBOOK.md`).
 
-*What is blocked, and on what.* **The release `r26.11.1` waits on the PI: open item 13** (its earlier launch stopped at 23:35 on 2026-11-16 on `cluster.nr50.00.kmermatcher`, 38% under estimate, and the maintenance reboot cleared its `/tmp` scratch, so its relaunch clusters from the restored nine-stage root under the rule the PI chooses). **One more question waits on the PI since 13:55 on 2026-11-16 and holds the statistics
+*What is blocked, and on what.* **One question waits on the PI since 13:55 on 2026-11-16 and holds the statistics
 track** (open item 12: F-02 session 13 applied DEC-48 by its fallback, and one positive control fails at the null
 module's second seed). Also the PI's, and not holding anything today: the JGI downloads (a reminder is owed, DEC-50
 (2)), the first login at TACC (card C-37), how many old releases keep their large files (DEC-52), and the staging
@@ -816,7 +816,34 @@ probed by hand on the pod).
 
 ## Open items for the PI
 
-**Open since 09:14 on 2026-11-17** (the design note of card C-38, `planning/design/C-38_import_depths.md` §9; each
+**Open since 13:55 on 2026-11-16** (F-02 session 13; its note is `planning/measurements/2026-11-14_synthworld_redesign.md`
+§16 on branch `task/F-02-13`, at `f340a0a`, pushed, not merged):
+
+12. **The positive control at the null module's second seed.** Session 13 found DEC-48 (1)'s premise false
+   (*measured*, wilkcomp02, 2026-11-16, 22-seed scans): with partners at the top level the partner is in nearly
+   every genome (share 0.96 to 0.99 against the decoy test's 0.9), and at low rates decoys die before 3 transfers
+   wherever the partners sit; a rate of 4.0 or more is needed, and at every rate that holds at all 22 seeds decoys
+   are 23 to 48 genes per genome. It took the fallback: middle-level partners at rate 6.0 (46.9 decoy genes per
+   genome at the default seed) and the KS test judged over 22 seeds (at most 2 failing; measured 1 and 0).
+   DEC-48 (2) is done (one truth row per `feature_uid`). What fails now: `test_n0_has_no_planted_signal` at seed
+   20261113, in its positive control on the signal world: 2 of 75 planted pairs exceed tau on flank contexts, p
+   0.0025 where the test asks below 1e-6 (session 12's world had 7 of 75 there). Options: (a) one more draw
+   (another partner set at rate 7.0), checked again over 22 seeds; (b) judge the positive control over the 22
+   seeds, as the KS test now is; (c) run the module's second seed at another seed. **Recommendation: (b)**: (a)
+   and (c) search for a draw that passes, and this is the third check found to hang on one seed's draw (after
+   the IGR pair count and the level step). Also for the PI: decoys near single copy cannot be had while every
+   decoy must have 3 transfers at every seed; either they stay a family of 30 to 50 genes, or that rule is
+   relaxed. A permission check of the session refused the agent's second scan unit on the pod; it stopped, and
+   nothing was worked around.
+
+**Decided by the PI on 2026-11-17 at about 21:22** (`"13, y ; 14 confirm"`, in answer to the orchestrator's summary of
+open items 13 and 14): DEC-53 (item 13: option (b), build-driver rate guards stop only on judged steps >20% over
+estimate; steps >20% under estimate are logged/reported and get a refit card without stopping the build; unblocks
+release `r26.11.1`, card C-35) and DEC-54 (item 14: all fourteen recommended answers of card C-38's import-depths
+design confirmed; cards C-38a to C-38h copied into `TASKS.md` and unblocked). **Items 13 and 14 are no longer open**;
+they are kept as the record of what was asked.
+
+**Asked at 09:14 on 2026-11-17** (the design note of card C-38, `planning/design/C-38_import_depths.md` §9; each
 is answerable in a word; the orchestrator's recommended answer follows each):
 
 14. **The fourteen questions of the import-depths design.**
@@ -843,7 +870,7 @@ is answerable in a word; the orchestrator's recommended answer follows each):
    Cards C-38a (depth), C-38b (domain state) and C-38d (the filter's mechanism) can start once (1), (2), (11) and
    (13) are answered.
 
-**Open since 23:35 on 2026-11-16** (the release `r26.11.1`, card C-35; *measured*, wilkcomp02,
+**Asked at 23:35 on 2026-11-16** (the release `r26.11.1`, card C-35; *measured*, wilkcomp02,
 `/tmp/if2453/c35/driver.log`):
 
 13. **How the release build resumes, and whether a step that costs less than its estimate should stop a build at
@@ -861,26 +888,6 @@ is answerable in a word; the orchestrator's recommended answer follows each):
    threatens no budget (the 300 CPU-minute limit, memory, disk), and each such stop has cost a night. AGENTS §6
    would then read as it does for documents and cards, with the build guards judging over-runs only. Not done
    by the orchestrator: it changes what a stop condition judges (DEC-43, DEC-47 were the PI's).
-
-**Open since 13:55 on 2026-11-16** (F-02 session 13; its note is `planning/measurements/2026-11-14_synthworld_redesign.md`
-§16 on branch `task/F-02-13`, at `f340a0a`, pushed, not merged):
-
-12. **The positive control at the null module's second seed.** Session 13 found DEC-48 (1)'s premise false
-   (*measured*, wilkcomp02, 2026-11-16, 22-seed scans): with partners at the top level the partner is in nearly
-   every genome (share 0.96 to 0.99 against the decoy test's 0.9), and at low rates decoys die before 3 transfers
-   wherever the partners sit; a rate of 4.0 or more is needed, and at every rate that holds at all 22 seeds decoys
-   are 23 to 48 genes per genome. It took the fallback: middle-level partners at rate 6.0 (46.9 decoy genes per
-   genome at the default seed) and the KS test judged over 22 seeds (at most 2 failing; measured 1 and 0).
-   DEC-48 (2) is done (one truth row per `feature_uid`). What fails now: `test_n0_has_no_planted_signal` at seed
-   20261113, in its positive control on the signal world: 2 of 75 planted pairs exceed tau on flank contexts, p
-   0.0025 where the test asks below 1e-6 (session 12's world had 7 of 75 there). Options: (a) one more draw
-   (another partner set at rate 7.0), checked again over 22 seeds; (b) judge the positive control over the 22
-   seeds, as the KS test now is; (c) run the module's second seed at another seed. **Recommendation: (b)**: (a)
-   and (c) search for a draw that passes, and this is the third check found to hang on one seed's draw (after
-   the IGR pair count and the level step). Also for the PI: decoys near single copy cannot be had while every
-   decoy must have 3 transfers at every seed; either they stay a family of 30 to 50 genes, or that rule is
-   relaxed. A permission check of the session refused the agent's second scan unit on the pod; it stopped, and
-   nothing was worked around.
 
 **Decided by the PI on 2026-11-16 at about 06:56** ("do what u recommend", in answer to the orchestrator's summary
 of items 11, 9 and 10 with a recommendation for each): DEC-47 (item 11: option (a), and (b) as card B-52) and
