@@ -1,7 +1,8 @@
 """The `--genomes` and `--objects` files of `bio-box build-stage` for card C-10, from the import ladder's inputs.
 
     python make_inputs.py phage SRC_FASTA_GZ N OUT_DIR [--drop-repeats]
-    python make_inputs.py prok LOCK_JSON SELECTION_TSV OUT_DIR [--source-release datasets-v2-YYYY-MM-DD] [--drop-repeats]
+    python make_inputs.py prok LOCK_JSON SELECTION_TSV OUT_DIR [--source-release datasets-v2-YYYY-MM-DD]
+        [--source-name S] [--license L] [--quality-column COL] [--root ROOT] [--drop-repeats]
     python make_inputs.py plasmid FASTA META_CSV OUT_DIR [--root ROOT] [--source-release R] [--retrieved-at T]
     python make_inputs.py plasmid-sources SPEC_JSON OUT_DIR [--root ROOT]
 
@@ -47,13 +48,17 @@ phage: the first N records of the INPHARED FASTA, copied byte for byte (header a
 source) to OUT_DIR/phage_first<N>.fa; every record its own genome (kind virus, genetic code 11,
 linear: FASTA carries no topology), as the ladder's stage S1 was described (step.py, do_genome_input).
 prok: one genome per accession of the ladder's lock.json (sorted), its contigs in record order, kind
-prokaryote, assembly_quality complete, linear, genetic code from the selection's translation_table (11
-when absent), as the ladder's stage P1 was described. The source objects are the ladder's files, read
-in place. Contig uids are ids.contig_uid of each record's sequence. Every record is listed in its genome (DEC-27,
-card C-21a): a contig in several genomes is listed in each. A contig repeated inside one genome is listed once in
-it, and a genome whose contigs are those of an earlier genome is that genome (genome_uid hashes the contig set) and
-is listed once; both are counted in the report, with the contigs listed in more than one genome. Writes
-OUT_DIR/genomes.json and OUT_DIR/objects.json and prints a JSON report.
+prokaryote, linear, genetic code from the selection's translation_table (11 when absent), assembly_quality complete by
+default or taken from SELECTION_TSV's `--quality-column COL` (one of complete, chromosome, scaffold, contig, mag_hq,
+mag_mq; card C-41), as the ladder's stage P1 and MAG stages G1..G41 are described. The source objects are the lock's
+files, read in place (default source_name ncbi_genomes and license "INSDC public data", overridden by `--source-name`
+and `--license`). Contig uids are ids.contig_uid of each record's sequence. Every record is listed in its genome
+(DEC-27, card C-21a): a contig in several genomes is listed in each. A contig repeated inside one genome is listed once
+in it, and a genome whose contigs are those of an earlier genome is that genome (genome_uid hashes the contig set) and
+is listed once; both are counted in the report, with the contigs listed in more than one genome. With `--root ROOT`,
+contigs stored as default variants by stages on disk in ROOT are reported in OUT_DIR/shared_records.tsv (DEC-26) while
+kept in their genomes. Any unmapped quality, missing column, duplicate selection row or missing lock row is refused
+(exit 2) before anything is written. Writes OUT_DIR/genomes.json and OUT_DIR/objects.json and prints a JSON report.
 """
 
 import csv
@@ -65,7 +70,9 @@ from pathlib import Path
 from biobox import fasta, ids
 
 USAGE = __doc__.split("\n\n")[1]
-HELP = "\n\n".join(__doc__.split("\n\n")[1:5])
+HELP = "\n\n".join(__doc__.split("\n\n")[1:])
+
+PROK_QUALITIES = ("complete", "chromosome", "scaffold", "contig", "mag_hq", "mag_mq")
 
 # card C-26: PLSDB's metadata values and what the stage's inputs make of them
 PLSDB_TOPOLOGY = {"circular": True, "linear": False, "": False}
@@ -430,6 +437,25 @@ def _option(argv: list[str], name: str) -> tuple[list[str], str | None]:
     return argv[:k] + argv[k + 2 :], argv[k + 1]
 
 
+def _prok_selection(path: Path, qual_col: str | None) -> dict[str, dict]:
+    need = ["accession", "translation_table"] + ([qual_col] if qual_col is not None else [])
+    with open(path, newline="") as fh:
+        reader = csv.DictReader(fh, delimiter="\t")
+        fields = set(reader.fieldnames or ())
+        missing = [c for c in need if c not in fields]
+        if missing:
+            raise Refused(f"{path}: no column {missing[0]!r}")
+        meta: dict[str, dict] = {}
+        for r in reader:
+            acc = r["accession"]
+            if acc in meta:
+                raise Refused(f"{path}: accession {acc} has two rows")
+            if qual_col is not None and r[qual_col] not in PROK_QUALITIES:
+                raise Refused(f"{acc}: {qual_col} {r[qual_col]!r} is not one of {PROK_QUALITIES}")
+            meta[acc] = r
+    return meta
+
+
 def main(argv: list[str]) -> int:
     if any(a in ("-h", "--help") for a in argv):
         print(HELP)
@@ -438,11 +464,14 @@ def main(argv: list[str]) -> int:
         argv, release = _option(argv, "--source-release")
         argv, root = _option(argv, "--root")
         argv, retrieved = _option(argv, "--retrieved-at")
+        argv, src_name = _option(argv, "--source-name")
+        argv, lic = _option(argv, "--license")
+        argv, qual_col = _option(argv, "--quality-column")
     except Refused:
         print(USAGE, file=sys.stderr)
         return 2
     if argv[:1] == ["plasmid-sources"]:
-        if len(argv) != 3 or release is not None or retrieved is not None:
+        if len(argv) != 3 or any(x is not None for x in (release, retrieved, src_name, lic, qual_col)):
             print(USAGE, file=sys.stderr)
             return 2
         try:
@@ -453,7 +482,7 @@ def main(argv: list[str]) -> int:
         print(json.dumps(rep))
         return 0
     if argv[:1] == ["plasmid"]:
-        if len(argv) != 4 or "--drop-repeats" in argv:  # DEC-27: no record is dropped
+        if len(argv) != 4 or "--drop-repeats" in argv or any(x is not None for x in (src_name, lic, qual_col)):
             print(USAGE, file=sys.stderr)
             return 2
         try:
@@ -465,7 +494,7 @@ def main(argv: list[str]) -> int:
         print(json.dumps(rep))
         return 0
     release = release or "datasets-v2-2026-11-09"
-    if root is not None or retrieved is not None:
+    if retrieved is not None:
         print(USAGE, file=sys.stderr)
         return 2
     drop = "--drop-repeats" in argv
@@ -473,22 +502,25 @@ def main(argv: list[str]) -> int:
     if len(argv) != 4 or argv[0] not in ("phage", "prok"):
         print(USAGE, file=sys.stderr)
         return 2
+    if (argv[0] == "phage" or drop) and any(x is not None for x in (root, src_name, lic, qual_col)):
+        print(USAGE, file=sys.stderr)
+        return 2
     out = Path(argv[3])
-    out.mkdir(parents=True, exist_ok=True)
     seen: set = set()
     listing = Listing()
     genomes, dropped, rep = [], 0, {}
 
-    def add(uids: list[bytes], code: int, kind: str) -> None:
+    def add(uids: list[bytes], code: int, kind: str, quality: str = "complete") -> None:
         nonlocal dropped
         if drop:
-            g, d = genome(uids, seen, code, kind, "complete")
+            g, d = genome(uids, seen, code, kind, quality)
             dropped += d
         else:
-            g = listing.add(uids, code, kind, "complete")
+            g = listing.add(uids, code, kind, quality)
         genomes.extend([g] if g else [])
 
     if argv[0] == "phage":
+        out.mkdir(parents=True, exist_ok=True)
         n = int(argv[2])
         fa = out / f"phage_first{n}.fa"
         rep["records_copied"] = first_records(Path(argv[1]), n, fa)
@@ -496,27 +528,66 @@ def main(argv: list[str]) -> int:
             add([ids.contig_uid(r.seq)], 11, "virus")
         objects = [{"path": str(fa), "source_name": "inphared", "source_release": "14Apr2025",
                     "license": "AGPL-3.0 (repo); data from INSDC"}]
+        shared = []
+        owners = None
+        contig_len: dict[bytes, int] = {}
     else:
-        lock = json.loads(Path(argv[1]).read_text())["genomes"]
-        with open(argv[2]) as fh:
-            head = fh.readline().rstrip("\n").split("\t")
-            meta = {r["accession"]: r for r in (dict(zip(head, ln.rstrip("\n").split("\t"))) for ln in fh)}
-        objects = []
-        for acc in sorted(lock):
-            v = lock[acc]
-            tt = meta[acc]["translation_table"]
-            code = int(tt) if tt not in ("", "None") else 11
-            add([ids.contig_uid(r.seq) for r in fasta.iter_records(Path(v["file"]))], code, "prokaryote")
-            objects.append({"path": v["file"], "source_name": "ncbi_genomes",
-                            "source_release": release, "license": "INSDC public data",
-                            "redistributable": True, "retrieved_at": v["retrieved_utc"]})
+        try:
+            lock = json.loads(Path(argv[1]).read_text())["genomes"]
+            meta = _prok_selection(Path(argv[2]), qual_col)
+            for acc in sorted(lock):
+                if acc not in meta:
+                    raise Refused(f"lock accession {acc} has no row in {argv[2]}")
+            owners = stage_owners(Path(root)) if root is not None else None
+            objects, shared = [], []
+            contig_len = {}
+            for acc in sorted(lock):
+                v = lock[acc]
+                row = meta[acc]
+                tt = row["translation_table"]
+                code = int(tt) if tt not in ("", "None") else 11
+                q = row[qual_col] if qual_col is not None else "complete"
+                uids: list[bytes] = []
+                for ord_k, r in enumerate(fasta.iter_records(Path(v["file"]))):
+                    cu = ids.contig_uid(r.seq)
+                    uids.append(cu)
+                    contig_len.setdefault(cu, len(r.seq))
+                    if owners is not None and cu in owners:
+                        shared.append((acc, ord_k, r.accession, cu.hex(), len(r.seq), owners[cu]))
+                if not uids:
+                    raise Refused(f"{acc}: {v['file']} has no FASTA records")
+                add(uids, code, "prokaryote", q)
+                objects.append({"path": v["file"], "source_name": src_name or "ncbi_genomes",
+                                "source_release": release, "license": lic or "INSDC public data",
+                                "redistributable": True, "retrieved_at": v["retrieved_utc"]})
+        except Refused as e:
+            print(f"make_inputs.py prok: refused: {e}", file=sys.stderr)
+            return 2
+        out.mkdir(parents=True, exist_ok=True)
     (out / "genomes.json").write_text(json.dumps(genomes))
     (out / "objects.json").write_text(json.dumps(objects, indent=1))
-    contigs = len({u for g in genomes for u in g["contig_uids"]})
+    if owners is not None:
+        _write_tsv(out / "shared_records.tsv",
+                   ["accession", "record_ordinal", "record_accession", "contig_uid", "length", "owner_stage"], shared)
+    distinct_uids = {bytes.fromhex(u) for g in genomes for u in g["contig_uids"]}
+    contigs = len(distinct_uids)
     rep.update({"genomes": len(genomes), "contigs": contigs,
                 **({"contigs_not_listed_again": dropped} if drop else listing.report()), "objects": len(objects),
                 "codes": {str(c): sum(1 for g in genomes if g["genetic_code"] == c)
                           for c in sorted({g["genetic_code"] for g in genomes})}})
+    if qual_col is not None:
+        rep["quality"] = {q: sum(1 for g in genomes if g["assembly_quality"] == q)
+                          for q in sorted({g["assembly_quality"] for g in genomes})}
+    if owners is not None:
+        by_stage = lambda rows: {s: sum(1 for r in rows if r[5] == s) for s in sorted({r[5] for r in rows})}  # noqa: E731
+        rep.update({
+            "genome_bases": sum(contig_len[cu] for cu in distinct_uids),
+            "shared_records": len(shared),
+            "owner_records": by_stage(shared),
+            "owner_contigs": by_stage(list({r[3]: r for r in shared}.values())),
+            "new_contigs": sum(1 for cu in distinct_uids if cu not in owners),
+            "new_bases": sum(contig_len[cu] for cu in distinct_uids if cu not in owners),
+        })
     print(json.dumps(rep))
     return 0
 

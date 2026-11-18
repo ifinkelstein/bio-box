@@ -1,0 +1,25 @@
+{
+ "stage": "G1",
+ "genomes_extracted": 7139,
+ "total_gz_bytes": 2903786890,
+ "total_fasta_bytes": 10087932724,
+ "total_records": 1227287,
+ "total_bp": 10051402938,
+ "genomes_with_N_bases": 3714,
+ "records_with_N_bases": 105385,
+ "assembly_quality_counts": {
+  "contig": 167,
+  "mag_hq": 1558,
+  "mag_mq": 5414
+ },
+ "archive_complete": true,
+ "archive_stream_bytes": 251371669660,
+ "archive_stream_md5": "a34a10d72cd688ed518eb6c0e2c30d26",
+ "archive_stream_sha256": "c57db3d185ad60c2a7d79cf517bc37450705b499846feda1f6be6b57dc7b247b",
+ "archive_md5_matches_provider": true,
+ "archive_files_seen": 306260,
+ "archive_chunks_seen": 31,
+ "wall_seconds": 13568.87,
+ "cpu_minutes": 79.121,
+ "tmp_free_bytes_after": 696924721152
+}
