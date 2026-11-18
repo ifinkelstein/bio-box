@@ -432,10 +432,10 @@ sources:
     files:
       - {file: README.txt, bytes: 10941}
       - {file: globdb_r226_md5sums.txt, bytes: 526}
-      - {file: globdb_r226_tax_plus_stats.tsv.gz, bytes: 11811303}
-      - {file: globdb_r226_taxonomy.tsv.gz, bytes: 5832515}
-      - {file: globdb_r226_dictionaries.tar.gz, bytes: 3176715}
-      - {file: globdb_r226_genome_fasta.tar.gz, bytes: 251371669660}
+      - {file: globdb_r226_tax_plus_stats.tsv.gz, bytes: 11811303, md5: 3f587611cc014f33ebdc0b3cdeaf5e58}
+      - {file: globdb_r226_taxonomy.tsv.gz, bytes: 5832515, md5: 232b47dc34f46d1c916888f1c4524514}
+      - {file: globdb_r226_dictionaries.tar.gz, bytes: 3176715, md5: 96d5183fee37de9f122d9468acdeb8bc}
+      - {file: globdb_r226_genome_fasta.tar.gz, bytes: 251371669660, md5: a34a10d72cd688ed518eb6c0e2c30d26}
       - {file: environmental_metadata/high_level_env__pct.tsv, bytes: 20736725}
       - {file: environmental_metadata/high_level_env__value.tsv, bytes: 12894501}
     not_taken: >-
@@ -444,14 +444,13 @@ sources:
       globdb_r226_protein_annotations.tar.gz (52.1 GB), globdb_r226_gff_cog.tar.gz (29.1 GB), pLM_embeddings/,
       taxonomic_profiling/, and the third-party Prokka GenBank files at Eawag
     checksum: >-
-      globdb_r226_md5sums.txt in the top-level directory (Content-Length byte sizes above read by HTTP HEAD on
-      2026-11-18 before any fetch); check every top-level file downloaded in full against globdb_r226_md5sums.txt and
-      record our sha256 (or stream bytes and extracted per-genome sha256 values if globdb_r226_genome_fasta.tar.gz is
-      streamed without storing the 251.4 GB archive on /tmp)
+      globdb_r226_md5sums.txt in the top-level directory (md5 values above for the four top-level archives/tables); our
+      sha256 values recorded at fetch
     records: >-
       306,260 species-representative prokaryote genomes across 14 resources (143,607 from GTDB R226 and 162,653 across
-      13 MAG catalogues: mOTU, RBG, SPIRE, GEM, MGnify, GOMC, SMAG, TPMC, MRGM/HRGM2, cFMD, SHGO, AMXMAG, GFS;
-      sequentially dereplicated at 96% ANI over 50% aligned fraction; published)
+      13 MAG catalogues: mOTU 63,092, SPIRE 49,369, RBG 23,406, TPMC 8,644, SMAG 6,216, GEM 3,762, GOMC 2,858, MGnify
+      1,732, GFS 1,377, SHGO 1,021, AMXMAG 506, cFMD 336, MRGM/HRGM2 334; sequentially dereplicated at 96% ANI over 50%
+      aligned fraction; published and verified in globdb_r226_tax_plus_stats.tsv.gz)
     limits: one connection; stop after 5 refusals in a row (HTTP 403, 429, 503)
     license: >-
       CC BY-SA 4.0 ("the GlobDB propagates the licenses of the underlying data sources, and is licensed under
@@ -459,5 +458,24 @@ sources:
       CC BY-SA 4.0 and the underlying sources' terms (GEM, Nayfach et al. 2021, derives from published JGI IMG/M
       metagenomes under CC BY 4.0; SPIRE states no explicit licence on its downloads page)
     redistributable: true
-    fetched: nothing yet
+    fetched: >-
+      2026-11-18 on wilkcomp02, one connection, no refusal: (1) all seven metadata/checksum files (54,463,226 bytes)
+      into /tmp/if2453/s3/globdb/dl/ at 15:15:31 to 15:15:47 UTC by c41_fetch.sh, every size equal to Content-Length
+      and every top-level file equal in md5 to globdb_r226_md5sums.txt (globdb_r226_tax_plus_stats.tsv.gz sha256
+      3efae383ec08539b56544e128b8447c40a4db1001e791e76da24f53c4ce6cb2c; globdb_r226_taxonomy.tsv.gz sha256
+      b6bccdfc2e8784300f9b2462c85b7a5798c0ab88dfa1d20f502617f154a8dae2; globdb_r226_dictionaries.tar.gz sha256
+      9850e0195b66559cdf387d77fe4c7c260c2751a486a28223c1cd5cdde8cb9383; full list in
+      planning/measurements/2026-11-18_globdb_inputs/fetch_tables_SUMS); (2) globdb_r226_genome_fasta.tar.gz streamed
+      in full at 16:57:57 to 20:44:06 UTC by c41_stream_stage.py without storing the 251.4 GB archive on /tmp:
+      251,371,669,660 bytes, md5 a34a10d72cd688ed518eb6c0e2c30d26 (equal to globdb_r226_md5sums.txt), sha256
+      c57db3d185ad60c2a7d79cf517bc37450705b499846feda1f6be6b57dc7b247b, 306,260 member files across 31 chunks, extracting
+      the 7,139 .fa.gz files of proposed stage G1 (2,903,786,890 bytes on disk, 10,087,932,724 FASTA bytes, 1,227,287
+      records, 10,051,402,938 bp) into /tmp/if2453/s3/globdb/genomes/G1/
+    stored: local only (/tmp on wilkcomp02); nothing under /stor
+    stage_inputs: >-
+      proposed stage G1 (card C-41, first of G1..G41): /tmp/if2453/s2/inputs/G1/ on wilkcomp02, made by make_inputs.py
+      prok (7,139 genomes, 1,227,222 distinct contigs, 10,048,202,556 bp; genomes.json sha256
+      cf0740cbd3bf3896a17b3c38fff8bdc3bc7fa34e15d477318dac884335f25fdd, objects.json sha256
+      90f2f3d43c9313988abd665b9f471907e6fbf2a1b7cd4c86c3014cadbaee6fe6); record
+      planning/measurements/2026-11-18_globdb_inputs.md
     approved: under DEC-50 (entry written by card C-41 on 2026-11-18 before any fetch)

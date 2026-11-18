@@ -1,0 +1,809 @@
+{
+ "profile_cpu_min_per_process": 300,
+ "shard_margin": 0.8,
+ "overlap": {
+  "stored_stages_on_disk": [
+   "H1",
+   "P1",
+   "P2",
+   "P3",
+   "P4",
+   "P5",
+   "P6",
+   "PL1",
+   "S1"
+  ],
+  "shared_occurrences_with_stored_stages": 8,
+  "shared_distinct_contigs_with_stored_stages": 8,
+  "shared_bases_with_stored_stages": 5699697,
+  "shared_contigs_by_owner_stage": {
+   "H1": 1,
+   "P2": 1,
+   "P4": 6
+  },
+  "shared_bases_by_owner_stage": {
+   "H1": 358784,
+   "P2": 2165038,
+   "P4": 3175875
+  },
+  "shared_contig_labels_sample": [
+   {
+    "g1_accession": "MOTU40_033702",
+    "g1_record": "MOTU40_033702_000000000001",
+    "g1_resource": "mOTU",
+    "g1_taxonomy": "d__Archaea;p__Methanobacteriota_B;c__Thermococci;o__Thermococcales;f__Thermococcaceae;g__Thermococcus;s__Thermococcus MOTU40_033702",
+    "contig_uid": "7c4636123bd681260e017d78a7c5d739",
+    "length": 2165038,
+    "owner_stage": "P2",
+    "owner_accession": "NZ_CP041932.1",
+    "owner_header": "NZ_CP041932.1 Thermococcus aciditolerans strain SY113 chromosome, complete genome"
+   },
+   {
+    "g1_accession": "MOTU40_034106",
+    "g1_record": "MOTU40_034106_000000000001",
+    "g1_resource": "mOTU",
+    "g1_taxonomy": "d__Archaea;p__Halobacteriota;c__Halobacteria;o__Halobacteriales;f__Halobacteriaceae;g__Halarchaeum;s__Halarchaeum MOTU40_034106",
+    "contig_uid": "ca02815e60a6bd4a5aaafc50ad7fbb7b",
+    "length": 1981916,
+    "owner_stage": "P4",
+    "owner_accession": "NZ_CP054707.1",
+    "owner_header": "NZ_CP054707.1 Halarchaeum sp. CBA1220 chromosome, complete genome"
+   },
+   {
+    "g1_accession": "MOTU40_034106",
+    "g1_record": "MOTU40_034106_000000000002",
+    "g1_resource": "mOTU",
+    "g1_taxonomy": "d__Archaea;p__Halobacteriota;c__Halobacteria;o__Halobacteriales;f__Halobacteriaceae;g__Halarchaeum;s__Halarchaeum MOTU40_034106",
+    "contig_uid": "31522e834327a73835fb8439438b2e58",
+    "length": 602938,
+    "owner_stage": "P4",
+    "owner_accession": "NZ_CP054708.1",
+    "owner_header": "NZ_CP054708.1 Halarchaeum sp. CBA1220 plasmid pCBA1220-01, complete sequence"
+   },
+   {
+    "g1_accession": "MOTU40_034106",
+    "g1_record": "MOTU40_034106_000000000003",
+    "g1_resource": "mOTU",
+    "g1_taxonomy": "d__Archaea;p__Halobacteriota;c__Halobacteria;o__Halobacteriales;f__Halobacteriaceae;g__Halarchaeum;s__Halarchaeum MOTU40_034106",
+    "contig_uid": "b5245c663c7d70682a86386ede4b5753",
+    "length": 419060,
+    "owner_stage": "P4",
+    "owner_accession": "NZ_CP054709.1",
+    "owner_header": "NZ_CP054709.1 Halarchaeum sp. CBA1220 plasmid pCBA1220-02, complete sequence"
+   },
+   {
+    "g1_accession": "MOTU40_034106",
+    "g1_record": "MOTU40_034106_000000000004",
+    "g1_resource": "mOTU",
+    "g1_taxonomy": "d__Archaea;p__Halobacteriota;c__Halobacteria;o__Halobacteriales;f__Halobacteriaceae;g__Halarchaeum;s__Halarchaeum MOTU40_034106",
+    "contig_uid": "1578a96839ccd374d45937f4621841b6",
+    "length": 132808,
+    "owner_stage": "P4",
+    "owner_accession": "NZ_CP054710.1",
+    "owner_header": "NZ_CP054710.1 Halarchaeum sp. CBA1220 plasmid pCBA1220-03, complete sequence"
+   },
+   {
+    "g1_accession": "MOTU40_034106",
+    "g1_record": "MOTU40_034106_000000000005",
+    "g1_resource": "mOTU",
+    "g1_taxonomy": "d__Archaea;p__Halobacteriota;c__Halobacteria;o__Halobacteriales;f__Halobacteriaceae;g__Halarchaeum;s__Halarchaeum MOTU40_034106",
+    "contig_uid": "15c0ec5e2ba7977969a667f7b06a3da5",
+    "length": 24593,
+    "owner_stage": "P4",
+    "owner_accession": "NZ_CP054711.1",
+    "owner_header": "NZ_CP054711.1 Halarchaeum sp. CBA1220 plasmid pCBA1220-04, complete sequence"
+   },
+   {
+    "g1_accession": "MOTU40_034106",
+    "g1_record": "MOTU40_034106_000000000006",
+    "g1_resource": "mOTU",
+    "g1_taxonomy": "d__Archaea;p__Halobacteriota;c__Halobacteria;o__Halobacteriales;f__Halobacteriaceae;g__Halarchaeum;s__Halarchaeum MOTU40_034106",
+    "contig_uid": "88c310492e1f6f8d0de2f341c6119480",
+    "length": 14560,
+    "owner_stage": "P4",
+    "owner_accession": "NZ_CP054712.1",
+    "owner_header": "NZ_CP054712.1 Halarchaeum sp. CBA1220 plasmid pCBA1220-05, complete sequence"
+   },
+   {
+    "g1_accession": "SMAGOTU_00531",
+    "g1_record": "SMAGOTU_00531__000000001466",
+    "g1_resource": "SMAG",
+    "g1_taxonomy": "d__Archaea;p__Halobacteriota;c__Methanosarcinia;o__Methanosarcinales;f__Methanosarcinaceae;g__Methanosarcina;s__Methanosarcina SMAGOTU_00531",
+    "contig_uid": "63d9df08eb2859ff52447511da3795a2",
+    "length": 358784,
+    "owner_stage": "H1",
+    "owner_accession": "huge_phage_2772",
+    "owner_header": "huge_phage_2772"
+   }
+  ],
+  "intra_stage_shared_contigs": 65,
+  "intra_stage_shared_bases": 3200382,
+  "intra_stage_shared_examples": [
+   {
+    "contig_uid": "ee54f512411b224744846d744983cb97",
+    "length": 2285274,
+    "genomes": [
+     "GEMOTU_10750",
+     "GEMOTU_39339"
+    ],
+    "resources": [
+     "GEM",
+     "GEM"
+    ]
+   },
+   {
+    "contig_uid": "4a3331e1b459d7d1fbc9c9060b9eab7e",
+    "length": 254249,
+    "genomes": [
+     "GEMOTU_10750",
+     "GEMOTU_39339"
+    ],
+    "resources": [
+     "GEM",
+     "GEM"
+    ]
+   },
+   {
+    "contig_uid": "fab3118638a35c5440a06e9026187cac",
+    "length": 136357,
+    "genomes": [
+     "SPIREOTU_01281252",
+     "SPIREOTU_01281444"
+    ],
+    "resources": [
+     "SPIRE",
+     "SPIRE"
+    ]
+   },
+   {
+    "contig_uid": "9c5e32bd6879db847b870e78eb7aa7c6",
+    "length": 110024,
+    "genomes": [
+     "GEMOTU_10750",
+     "GEMOTU_39339"
+    ],
+    "resources": [
+     "GEM",
+     "GEM"
+    ]
+   },
+   {
+    "contig_uid": "89752f05370c395017027f87fc82636b",
+    "length": 91919,
+    "genomes": [
+     "SPIREOTU_01281252",
+     "SPIREOTU_01281444"
+    ],
+    "resources": [
+     "SPIRE",
+     "SPIRE"
+    ]
+   },
+   {
+    "contig_uid": "f8d2a1205e850426b39efd1f3c7068cf",
+    "length": 40360,
+    "genomes": [
+     "SPIREOTU_01281252",
+     "SPIREOTU_01281444"
+    ],
+    "resources": [
+     "SPIRE",
+     "SPIRE"
+    ]
+   },
+   {
+    "contig_uid": "905d99a5356ee7c8cb63026c77282fac",
+    "length": 37085,
+    "genomes": [
+     "SPIREOTU_01281252",
+     "SPIREOTU_01281444"
+    ],
+    "resources": [
+     "SPIRE",
+     "SPIRE"
+    ]
+   },
+   {
+    "contig_uid": "5c84d36182428b17102d8040255fd8db",
+    "length": 7649,
+    "genomes": [
+     "BCRBG_38847",
+     "BCRBG_42044"
+    ],
+    "resources": [
+     "RBG",
+     "RBG"
+    ]
+   },
+   {
+    "contig_uid": "1d5fda3c3362ba413a42c20051723fe9",
+    "length": 7635,
+    "genomes": [
+     "BCRBG_41762",
+     "BCRBG_42598"
+    ],
+    "resources": [
+     "RBG",
+     "RBG"
+    ]
+   },
+   {
+    "contig_uid": "d1058a65a6dcbacac26a33029c8b3fa0",
+    "length": 7594,
+    "genomes": [
+     "BCRBG_41762",
+     "BCRBG_42598"
+    ],
+    "resources": [
+     "RBG",
+     "RBG"
+    ]
+   },
+   {
+    "contig_uid": "13cb3188cf311e3aae26b0ff938db82b",
+    "length": 7191,
+    "genomes": [
+     "BCRBG_41818",
+     "BCRBG_42489"
+    ],
+    "resources": [
+     "RBG",
+     "RBG"
+    ]
+   },
+   {
+    "contig_uid": "29525399a320209abd78d63b2c64e991",
+    "length": 7185,
+    "genomes": [
+     "SPIREOTU_00865543",
+     "SPIREOTU_00872840"
+    ],
+    "resources": [
+     "SPIRE",
+     "SPIRE"
+    ]
+   },
+   {
+    "contig_uid": "6450a6afa3545c7a5ecdb7f88233dc6d",
+    "length": 6965,
+    "genomes": [
+     "BCRBG_63634",
+     "BCRBG_63684"
+    ],
+    "resources": [
+     "RBG",
+     "RBG"
+    ]
+   },
+   {
+    "contig_uid": "a391db3d57fe14b43df1b506dd8e73bb",
+    "length": 6913,
+    "genomes": [
+     "BCRBG_38847",
+     "BCRBG_42044"
+    ],
+    "resources": [
+     "RBG",
+     "RBG"
+    ]
+   },
+   {
+    "contig_uid": "ec02a20bf4f348a08615114b2de237c6",
+    "length": 6367,
+    "genomes": [
+     "BCRBG_63717",
+     "SPIREOTU_00094590"
+    ],
+    "resources": [
+     "RBG",
+     "SPIRE"
+    ]
+   },
+   {
+    "contig_uid": "5b292e133ece80a7e9f0d262d1c791be",
+    "length": 6313,
+    "genomes": [
+     "BCRBG_39435",
+     "BCRBG_42057"
+    ],
+    "resources": [
+     "RBG",
+     "RBG"
+    ]
+   },
+   {
+    "contig_uid": "d3f73cd1d1f42bca993e808f4cd4ad69",
+    "length": 5974,
+    "genomes": [
+     "SMAGOTU_14796",
+     "SPIREOTU_01823628"
+    ],
+    "resources": [
+     "SMAG",
+     "SPIRE"
+    ]
+   },
+   {
+    "contig_uid": "ba07cdcb5d1ab10a396b7f5e5d3e1510",
+    "length": 5867,
+    "genomes": [
+     "BCRBG_41762",
+     "BCRBG_42598"
+    ],
+    "resources": [
+     "RBG",
+     "RBG"
+    ]
+   },
+   {
+    "contig_uid": "4ca7d44afbecbf70594c6e7069853027",
+    "length": 5381,
+    "genomes": [
+     "MOTU40_035706",
+     "MOTU40_113587"
+    ],
+    "resources": [
+     "mOTU",
+     "mOTU"
+    ]
+   },
+   {
+    "contig_uid": "61b0bb443d76fb98d82846f3c956ed52",
+    "length": 5321,
+    "genomes": [
+     "BCRBG_24285",
+     "BCRBG_32661"
+    ],
+    "resources": [
+     "RBG",
+     "RBG"
+    ]
+   },
+   {
+    "contig_uid": "edf576329fb83495df049a2900036ff6",
+    "length": 5313,
+    "genomes": [
+     "BCRBG_37711",
+     "BCRBG_41300"
+    ],
+    "resources": [
+     "RBG",
+     "RBG"
+    ]
+   },
+   {
+    "contig_uid": "22f4a9e015f62debf9a484528fe08f96",
+    "length": 5246,
+    "genomes": [
+     "BCRBG_24247",
+     "BCRBG_32661"
+    ],
+    "resources": [
+     "RBG",
+     "RBG"
+    ]
+   },
+   {
+    "contig_uid": "5e88d6150b35805e37003ecbc9fc3efc",
+    "length": 5231,
+    "genomes": [
+     "SMAGOTU_16172",
+     "SPIREOTU_02001057"
+    ],
+    "resources": [
+     "SMAG",
+     "SPIRE"
+    ]
+   },
+   {
+    "contig_uid": "8ab20464964a98afe5f252eae99f467c",
+    "length": 5086,
+    "genomes": [
+     "SPIREOTU_01841971",
+     "SPIREOTU_01842610"
+    ],
+    "resources": [
+     "SPIRE",
+     "SPIRE"
+    ]
+   },
+   {
+    "contig_uid": "41d2c30f3f5ce71b33a5e968c3e18b76",
+    "length": 4638,
+    "genomes": [
+     "BCRBG_63717",
+     "SPIREOTU_00094590"
+    ],
+    "resources": [
+     "RBG",
+     "SPIRE"
+    ]
+   }
+  ],
+  "shared_with_PL2_inputs": 13,
+  "shared_with_V1_inputs": 0,
+  "new_contigs": 1227214,
+  "new_bases": 10042502859,
+  "total_distinct_contigs": 1227222,
+  "total_distinct_bases": 10048202556
+ },
+ "ingest": {
+  "objects": 7139,
+  "total_gz_bytes": 2903786890,
+  "total_fasta_bytes": 10087932724,
+  "held_bases": 5699697,
+  "cpu_min_one_process_b52": 41.508,
+  "cpu_min_one_process_unadjusted": 41.531,
+  "max_object_accession": "SPIREOTU_00706189",
+  "max_object_fasta_bytes": 14339884,
+  "max_object_cpu_min": 0.1289,
+  "shard_margin_cpu_min": 240.0,
+  "runs_in_one_process": true
+ },
+ "genecall": {
+  "modes": {
+   "single": 7139
+  },
+  "genomes": 7139,
+  "genomes_not_called": 2,
+  "bases": 10051402938,
+  "bases_called": 10046062025,
+  "estimate_cpu_min": 163.79,
+  "batches": 1,
+  "largest_batch_cpu_min": 163.79,
+  "largest_genome": {
+   "genome_uid": "17f11de43c301cacdf5a63749f6cc07c",
+   "estimate_cpu_min": 0.232
+  },
+  "genes_expected": 9216257.3,
+  "merge_estimate_cpu_min": 1.095,
+  "rates": {
+   "call_s_per_mbp": {
+    "gv-meta/linear": 4.2019,
+    "gv-meta/circular": 6.307472090000001,
+    "meta/linear": 2.945,
+    "meta/circular": 4.4205,
+    "single/linear": 0.7941,
+    "single/circular": 1.19202351
+   },
+   "step_overhead": 1.23,
+   "process_s": 15.0,
+   "publish_s_per_gene": 5.5e-06
+  }
+ },
+ "sample": {
+  "every": 20,
+  "callable_genomes_in_stage": 7137,
+  "by": {
+   "all": {
+    "genomes": 357,
+    "contigs": 58146,
+    "bases": 490133448,
+    "genes": 546762,
+    "partial_genes": 85033,
+    "cpu_s": 338.992,
+    "s_per_mbp": 0.6916,
+    "genes_per_mbp": 1115.54,
+    "partial_gene_share": 0.1555
+   },
+   "under_2mbp": {
+    "genomes": 300,
+    "contigs": 43333,
+    "bases": 335725917,
+    "genes": 383435,
+    "partial_genes": 64152,
+    "cpu_s": 223.377,
+    "s_per_mbp": 0.6654,
+    "genes_per_mbp": 1142.11,
+    "partial_gene_share": 0.1673
+   },
+   "res:AMXMAG": {
+    "genomes": 1,
+    "contigs": 13,
+    "bases": 949042,
+    "genes": 1090,
+    "partial_genes": 17,
+    "cpu_s": 0.802,
+    "s_per_mbp": 0.8447,
+    "genes_per_mbp": 1148.53,
+    "partial_gene_share": 0.0156
+   },
+   "res:RBG": {
+    "genomes": 104,
+    "contigs": 18320,
+    "bases": 131226271,
+    "genes": 152648,
+    "partial_genes": 25817,
+    "cpu_s": 88.478,
+    "s_per_mbp": 0.6742,
+    "genes_per_mbp": 1163.24,
+    "partial_gene_share": 0.1691
+   },
+   "ge_2mbp": {
+    "genomes": 57,
+    "contigs": 14813,
+    "bases": 154407531,
+    "genes": 163327,
+    "partial_genes": 20881,
+    "cpu_s": 115.615,
+    "s_per_mbp": 0.7488,
+    "genes_per_mbp": 1057.77,
+    "partial_gene_share": 0.1278
+   },
+   "res:GEM": {
+    "genomes": 14,
+    "contigs": 2493,
+    "bases": 26325471,
+    "genes": 28369,
+    "partial_genes": 3439,
+    "cpu_s": 22.078,
+    "s_per_mbp": 0.8386,
+    "genes_per_mbp": 1077.63,
+    "partial_gene_share": 0.1212
+   },
+   "res:GFS": {
+    "genomes": 1,
+    "contigs": 859,
+    "bases": 1954154,
+    "genes": 2777,
+    "partial_genes": 1120,
+    "cpu_s": 1.485,
+    "s_per_mbp": 0.7602,
+    "genes_per_mbp": 1421.08,
+    "partial_gene_share": 0.4033
+   },
+   "res:GOMC": {
+    "genomes": 11,
+    "contigs": 2676,
+    "bases": 15497572,
+    "genes": 17496,
+    "partial_genes": 4020,
+    "cpu_s": 12.081,
+    "s_per_mbp": 0.7795,
+    "genes_per_mbp": 1128.95,
+    "partial_gene_share": 0.2298
+   },
+   "res:MGnify": {
+    "genomes": 6,
+    "contigs": 1504,
+    "bases": 7628429,
+    "genes": 7877,
+    "partial_genes": 2396,
+    "cpu_s": 5.116,
+    "s_per_mbp": 0.6707,
+    "genes_per_mbp": 1032.58,
+    "partial_gene_share": 0.3042
+   },
+   "res:mOTU": {
+    "genomes": 83,
+    "contigs": 13163,
+    "bases": 125525981,
+    "genes": 133725,
+    "partial_genes": 18766,
+    "cpu_s": 81.299,
+    "s_per_mbp": 0.6477,
+    "genes_per_mbp": 1065.32,
+    "partial_gene_share": 0.1403
+   },
+   "res:SMAG": {
+    "genomes": 7,
+    "contigs": 2804,
+    "bases": 12043728,
+    "genes": 14632,
+    "partial_genes": 4266,
+    "cpu_s": 9.608,
+    "s_per_mbp": 0.7977,
+    "genes_per_mbp": 1214.91,
+    "partial_gene_share": 0.2916
+   },
+   "res:SPIRE": {
+    "genomes": 127,
+    "contigs": 15666,
+    "bases": 165740350,
+    "genes": 184397,
+    "partial_genes": 24344,
+    "cpu_s": 116.05,
+    "s_per_mbp": 0.7002,
+    "genes_per_mbp": 1112.57,
+    "partial_gene_share": 0.132
+   },
+   "res:TPMC": {
+    "genomes": 3,
+    "contigs": 648,
+    "bases": 3242450,
+    "genes": 3751,
+    "partial_genes": 848,
+    "cpu_s": 1.995,
+    "s_per_mbp": 0.6153,
+    "genes_per_mbp": 1156.84,
+    "partial_gene_share": 0.2261
+   }
+  },
+  "genes_written": 546762,
+  "distinct_proteins": 546169,
+  "residues_distinct": 146132278,
+  "distinct_per_gene": 0.9989,
+  "residues_per_distinct": 267.56,
+  "known_in_stored_stages": {
+   "total_known": 366,
+   "by_stage": {
+    "P1": 32,
+    "P2": 52,
+    "P3": 164,
+    "P4": 128,
+    "P5": 80,
+    "P6": 46
+   }
+  },
+  "known_protein_share": 0.0007,
+  "nr90_linclust": {
+   "input_distinct_proteins": 546169,
+   "input_residues": 146132278,
+   "nr90_clusters": 531355,
+   "non_rep_members": 14814,
+   "members_length_diff_gt_20pct": 4,
+   "rep_protein_fraction": 0.9729,
+   "rep_residues": 142313228,
+   "rep_residue_fraction": 0.9739,
+   "linclust_cpu_s": 154.698
+  },
+  "crispr_sample": {
+   "genomes": 72,
+   "contigs": 12006,
+   "bases": 96001784,
+   "batches_50mbp": 2,
+   "arrays_found": 12,
+   "arrays_per_gbp": 125.0,
+   "cpu_s": 13.736,
+   "cpu_s_per_gbp": 143.08,
+   "code_constant_cpu_s_per_gbp": 182.0
+  }
+ },
+ "p2_measured": {
+  "cpu_min_by_step": {
+   "crispr": 58.284,
+   "domains-pfam-38.2": 20629.957,
+   "genecall": 143.288,
+   "igr": 0.701,
+   "ingest": 38.335,
+   "inputs": 0.063,
+   "labels": 0.048,
+   "tapes": 0.928
+  },
+  "genes": 8722859,
+  "distinct_proteins": 8580713,
+  "residues": 2776784358,
+  "stored_contigs": 5018,
+  "stored_bases": 9596180328,
+  "genes_per_mbp": 908.99,
+  "distinct_per_gene": 0.9837,
+  "residues_per_distinct": 323.61,
+  "disk_bytes_by_dir": {
+   "l0": 102126,
+   "l0seq": 5215105562,
+   "l1": 1815518256,
+   "l3": 418193572,
+   "ledger": 652098,
+   "runs": 132922
+  },
+  "disk_bytes_total": 7449704536,
+  "disk_gb_per_gbp": 0.7763
+ },
+ "derived_stage_G1": {
+  "new_bases": 10042502859,
+  "genes_est": 11202814,
+  "distinct_proteins_upper": 11190491,
+  "residues_upper": 2994127650,
+  "residues_after_b47b_copy": 2992031761,
+  "shard_residues": 30150753,
+  "ingest_cpu_min": 41.508,
+  "genecall_plan_cpu_min": 163.79,
+  "genecall_at_sample_rate_cpu_min": 142.38,
+  "igr_and_tapes_cpu_min": 1.7,
+  "crispr_default_code_cpu_min": 30.46,
+  "crispr_near_cas_code_cpu_min": 36.25,
+  "crispr_default_at_sample_rate_cpu_min": 23.95,
+  "crispr_near_cas_at_sample_rate_cpu_min": 28.5,
+  "represent_nr90_cpu_min": 1058.87,
+  "pfam_full_cpu_min": 23833.3,
+  "pfam_full_shards": 100,
+  "pfam_after_b47b_cpu_min": 23816.6,
+  "pfam_after_b47b_shards": 100,
+  "pfam_nr90_at_sample_bound_cpu_min": 23195.0,
+  "pfam_nr90_at_sample_bound_shards": 97,
+  "pfam_nr90_at_rn3_rate_cpu_min": 19791.6,
+  "pfam_nr90_at_rn3_rate_shards": 83,
+  "root_gb_annotated_est": 8.07,
+  "root_gb_called_est": 7.27,
+  "extra_contig_metadata_gb": 0.274
+ },
+ "full_set_410gbp": {
+  "genomes": 162653,
+  "bp": 410331702192,
+  "gbp": 410.332,
+  "contigs": 48999006,
+  "stages": 41,
+  "est_fasta_bytes": 411954136391,
+  "step_cpu_hours": {
+   "ingest_b52": 28.27,
+   "genecall_code_rate": 111.5,
+   "genecall_sample_rate": 97.13,
+   "igr_and_tapes": 1.16,
+   "crispr_default_code_rate": 20.74,
+   "crispr_default_sample_rate": 16.31,
+   "crispr_near_cas_code_rate": 24.69,
+   "crispr_near_cas_sample_rate": 19.41,
+   "pfam_model_from_P2_composition": {
+    "total_stage_distinct_proteins": 366907719,
+    "total_stage_residues": 118735006987,
+    "represent_41_stages_cpu_h": 547.9,
+    "pfam_full_unadjusted_cpu_h": 15752.2,
+    "pfam_after_b47b_copy_cpu_h": 15741.2,
+    "pfam_nr90_rn3_rate_cpu_h": 13080.9,
+    "pfam_nr90_sample_bound_cpu_h": 15330.3
+   },
+   "pfam_model_from_G1_archaea_sample": {
+    "total_stage_distinct_proteins": 457237911,
+    "total_stage_residues": 122338575599,
+    "represent_41_stages_cpu_h": 720.5,
+    "pfam_full_unadjusted_cpu_h": 16230.3,
+    "pfam_after_b47b_copy_cpu_h": 16218.9,
+    "pfam_nr90_rn3_rate_cpu_h": 13477.9,
+    "pfam_nr90_sample_bound_cpu_h": 15795.6
+   }
+  },
+  "totals": {
+   "depth_called_cpu_h_range": [
+    142.9,
+    161.7
+   ],
+   "depth_called_pod_days_40_56": [
+    0.12,
+    0.13
+   ],
+   "depth_called_pod_days_flat40": [
+    0.15,
+    0.17
+   ],
+   "depth_called_lonestar6_node_h_SUs": [
+    1.12,
+    1.26
+   ],
+   "depth3_nr90_cpu_h_range": [
+    13791.1,
+    16702.5
+   ],
+   "depth3_nr90_pod_days_40_56": [
+    11.43,
+    13.84
+   ],
+   "depth3_nr90_pod_days_flat40": [
+    14.37,
+    17.4
+   ],
+   "depth3_nr90_lonestar6_node_h_SUs": [
+    107.7,
+    130.5
+   ],
+   "depth3_full_pfam_cpu_h_range": [
+    15903.5,
+    16416.7
+   ],
+   "depth3_full_pfam_pod_days_40_56": [
+    13.18,
+    13.6
+   ],
+   "depth3_full_pfam_lonestar6_node_h_SUs": [
+    124.2,
+    128.3
+   ]
+  },
+  "storage_gb": {
+   "base_410gbp_at_p2_rate": 318.5,
+   "extra_49M_contig_metadata": 10.9,
+   "depth_called_root_gb": 297.1,
+   "depth3_full_pfam_root_gb": 329.5,
+   "depth3_nr90_root_gb": 354.1
+  }
+ }
+}

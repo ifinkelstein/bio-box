@@ -401,3 +401,108 @@ def test_help_names_the_plasmid_sources_mode():
     out = subprocess.run([sys.executable, str(SCRIPT), "--help"], capture_output=True, text=True, check=True).stdout
     for w in ("plasmid-sources", "fragment", "PL2", "skipped_records.tsv"):
         assert w in out
+
+
+# --- card C-41: GlobDB MAG species representatives in prok mode ---------------------------------------------------------
+# `make_inputs.py prok LOCK_JSON SELECTION_TSV OUT_DIR` with `--quality-column`, `--source-name`, `--license` and
+# `--root`: per-genome assembly_quality (`mag_hq`, `mag_mq`, `contig`, ...) from SELECTION_TSV, source metadata on every
+# object, and contigs owned by an earlier stage reported in `shared_records.tsv` while kept in their genomes (DEC-26,
+# DEC-27). Without those flags, `prok` behaves byte for byte as before.
+
+
+def _mag_files(tmp_path: Path, qual_col: str = "assembly_quality", rows_override=None) -> tuple[Path, Path]:
+    mags = [
+        ("MAG1", [("MAG1_1", X), ("MAG1_2", W)], "11", "mag_hq"),
+        ("MAG2", [("MAG2_1", Y), ("MAG2_2", Z)], "", "mag_mq"),
+        ("MAG3", [("MAG3_1", X), ("MAG3_2", W)], "11", "contig"),  # repeats MAG1's contig set
+    ]
+    lock = {"genomes": {}}
+    for acc, recs, *_ in mags:
+        p = tmp_path / f"{acc}.fa.gz"
+        with gzip.open(p, "wb") as fh:
+            fh.write(b"".join(b">" + h.encode() + b"\n" + s + b"\n" for h, s in recs))
+        lock["genomes"][acc] = {"file": str(p), "retrieved_utc": "2026-11-18T15:00:00Z"}
+    lock_p = tmp_path / "lock.json"
+    sel_p = tmp_path / "sel.tsv"
+    lock_p.write_text(json.dumps(lock))
+    if rows_override is not None:
+        sel_p.write_text(rows_override)
+    else:
+        sel_p.write_text(
+            f"accession\ttranslation_table\t{qual_col}\n"
+            + "".join(f"{acc}\t{tt}\t{q}\n" for acc, _, tt, q in mags)
+        )
+    return lock_p, sel_p
+
+
+@pytest.mark.covers("C-41")
+def test_prok_takes_quality_source_and_reports_shared_contigs_against_root(tmp_path):
+    root = _earlier_stage(tmp_path)
+    lock, sel = _mag_files(tmp_path)
+    out = tmp_path / "out"
+    rep = _run(
+        "prok", lock, sel, out,
+        "--source-name", "globdb",
+        "--source-release", "r226",
+        "--license", "CC BY-SA 4.0",
+        "--quality-column", "assembly_quality",
+        "--root", root,
+    )
+    got = json.loads((out / "genomes.json").read_text())
+    assert got == [
+        {"contig_uids": [U["X"].hex(), ids.contig_uid(W).hex()], "genetic_code": 11, "kind": "prokaryote",
+         "circular": [], "assembly_quality": "mag_hq"},
+        {"contig_uids": [U["Y"].hex(), U["Z"].hex()], "genetic_code": 11, "kind": "prokaryote",
+         "circular": [], "assembly_quality": "mag_mq"},
+    ]
+    objs = json.loads((out / "objects.json").read_text())
+    assert len(objs) == 3
+    assert {(o["source_name"], o["source_release"], o["license"], o["redistributable"]) for o in objs} == {
+        ("globdb", "r226", "CC BY-SA 4.0", True)
+    }
+    shared = _tsv(out / "shared_records.tsv")
+    assert [(r["accession"], r["record_accession"], r["contig_uid"], r["owner_stage"]) for r in shared] == [
+        ("MAG1", "MAG1_2", ids.contig_uid(W).hex(), "S9"),
+        ("MAG3", "MAG3_2", ids.contig_uid(W).hex(), "S9"),
+    ]
+    assert rep["genomes"] == 2 and rep["genomes_repeated"] == 1
+    assert rep["quality"] == {"mag_hq": 1, "mag_mq": 1}
+    assert rep["shared_records"] == 2 and rep["owner_records"] == {"S9": 2} and rep["owner_contigs"] == {"S9": 1}
+    assert rep["new_contigs"] == 3 and rep["new_bases"] == len(X) + len(Y) + len(Z)
+    assert rep["genome_bases"] == len(X) + len(W) + len(Y) + len(Z)
+    gs = [GenomeInput(tuple(bytes.fromhex(u) for u in g["contig_uids"]), g["genetic_code"], kind=g["kind"],
+                      assembly_quality=g["assembly_quality"]) for g in got]
+    assert write_genome_input(tmp_path / "r", "G1", gs) == {"genomes": 2, "contigs": 4}
+
+
+@pytest.mark.covers("C-41")
+@pytest.mark.parametrize("bad", ["bad_quality", "no_column", "missing_row", "duplicate_row"])
+def test_prok_refuses_bad_quality_or_missing_selection_row(tmp_path, bad):
+    override = None
+    if bad == "bad_quality":
+        override = "accession\ttranslation_table\tassembly_quality\nMAG1\t11\tvOTU\nMAG2\t11\tmag_mq\nMAG3\t11\tcontig\n"
+    elif bad == "no_column":
+        override = "accession\ttranslation_table\nMAG1\t11\nMAG2\t11\nMAG3\t11\n"
+    elif bad == "missing_row":
+        override = "accession\ttranslation_table\tassembly_quality\nMAG1\t11\tmag_hq\nMAG3\t11\tcontig\n"
+    elif bad == "duplicate_row":
+        override = (
+            "accession\ttranslation_table\tassembly_quality\n"
+            "MAG1\t11\tmag_hq\nMAG1\t11\tmag_hq\nMAG2\t11\tmag_mq\nMAG3\t11\tcontig\n"
+        )
+    lock, sel = _mag_files(tmp_path, rows_override=override)
+    out = tmp_path / "out"
+    done = subprocess.run(
+        [sys.executable, str(SCRIPT), "prok", str(lock), str(sel), str(out), "--quality-column", "assembly_quality"],
+        capture_output=True, text=True,
+    )
+    assert done.returncode == 2
+    assert "refused" in done.stderr
+    assert not out.exists()
+
+
+@pytest.mark.covers("C-41")
+def test_help_names_prok_quality_column_and_mag_tiers():
+    out = subprocess.run([sys.executable, str(SCRIPT), "--help"], capture_output=True, text=True, check=True).stdout
+    for w in ("--quality-column", "mag_hq", "mag_mq"):
+        assert w in out

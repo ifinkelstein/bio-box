@@ -1,0 +1,57 @@
+{
+ "stage": "G1",
+ "genomes": 7139,
+ "genome_input_rows": 1227287,
+ "distinct_genome_uids": 7139,
+ "circular_rows": 0,
+ "kinds": [
+  "prokaryote"
+ ],
+ "codes": [
+  11
+ ],
+ "assembly_quality": [
+  "contig",
+  "mag_hq",
+  "mag_mq"
+ ],
+ "gene_call_mode": {
+  "prokaryote": null
+ },
+ "biobox": "/tmp/if2453/ci/C-41/src/biobox/cli.py",
+ "problems": [],
+ "objects_summary": {
+  "count": 7139,
+  "total_bytes": 2903786890,
+  "source_names": [
+   "globdb"
+  ],
+  "source_releases": [
+   "r226"
+  ],
+  "licenses": [
+   "CC BY-SA 4.0 (GlobDB; underlying MAG catalogues)"
+  ],
+  "redistributable": [
+   true
+  ],
+  "first": {
+   "path": "/tmp/if2453/s3/globdb/genomes/G1/files/AMXMAG_0701.fa.gz",
+   "source_name": "globdb",
+   "source_release": "r226",
+   "license": "CC BY-SA 4.0 (GlobDB; underlying MAG catalogues)",
+   "redistributable": true,
+   "retrieved_at": "2026-11-18T17:28:44+00:00",
+   "bytes": 274433
+  },
+  "last": {
+   "path": "/tmp/if2453/s3/globdb/genomes/G1/files/TPMCOTU_10691.fa.gz",
+   "source_name": "globdb",
+   "source_release": "r226",
+   "license": "CC BY-SA 4.0 (GlobDB; underlying MAG catalogues)",
+   "redistributable": true,
+   "retrieved_at": "2026-11-18T20:00:43+00:00",
+   "bytes": 389540
+  }
+ }
+}
