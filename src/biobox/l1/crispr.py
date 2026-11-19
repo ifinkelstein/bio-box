@@ -218,7 +218,7 @@ _CONTIG_SCRATCH = pa.schema([("contig_uid", pa.binary(16)), ("n_in", pa.int64())
                              ("reason", pa.string())])
 # the length and topology of each contig searched, for the filter of `run_near_cas` (rows buffered, then written)
 _TOPO_SCRATCH = pa.schema([("contig_uid", pa.binary(16)), ("contig_len", pa.int64()), ("is_circular", pa.bool_())])
-_TOPO_ROWS = 4096
+_TOPO_ROWS = io.ROW_GROUP_ROWS
 _VERSION_RE = re.compile(r"^minced (\S+)", re.M)
 _JAVA_RE = re.compile(r'version "([^"]+)"')
 
@@ -497,6 +497,84 @@ def _search(java: str, jar: Path, batch: _Batch, scratch: Path, min_repeats: int
             f.unlink(missing_ok=True)
 
 
+class _ScratchWriter:
+    """Buffered Parquet writer for one `_Scan` scratch table (card B-55; AGENTS §4.1, §4.6).
+
+    Holds at most `row_group_rows` (`io.ROW_GROUP_ROWS`) rows in memory (either as Python column lists from single-row
+    appends or as Arrow `RecordBatch` slices from batch appends) and flushes each full chunk with
+    `write_batch(..., row_group_size=row_group_rows)`, so every scratch file has at most
+    `max(1, ceil(num_rows / row_group_rows))` row groups.
+    """
+
+    def __init__(self, path: Path, schema: pa.Schema, row_group_rows: int = io.ROW_GROUP_ROWS):
+        self.path = path
+        self.schema = schema
+        self.limit = row_group_rows
+        self.writer = pq.ParquetWriter(path, schema, compression="zstd", write_statistics=False)
+        self._pending: list[pa.RecordBatch] = []
+        self._n_pend = 0
+        self._cols: list[list] = [[] for _ in schema]
+        self._n_rows = 0
+
+    def _drain_rows(self) -> None:
+        if not self._n_rows:
+            return
+        batch = pa.RecordBatch.from_arrays(
+            [pa.array(col, type=field.type) for col, field in zip(self._cols, self.schema)],
+            schema=self.schema)
+        self._cols = [[] for _ in self.schema]
+        self._n_rows = 0
+        self._pending.append(batch)
+        self._n_pend += batch.num_rows
+
+    def _write_pending(self) -> None:
+        if not self._n_pend:
+            return
+        if len(self._pending) == 1:
+            batch = self._pending[0]
+        else:
+            tbl = pa.Table.from_batches(self._pending, schema=self.schema)
+            batch = pa.RecordBatch.from_arrays([c.combine_chunks() for c in tbl.columns], schema=self.schema)
+        self.writer.write_batch(batch, row_group_size=self.limit)
+        self._pending.clear()
+        self._n_pend = 0
+
+    def append_row(self, *values) -> None:
+        for col, v in zip(self._cols, values):
+            col.append(v)
+        self._n_rows += 1
+        if self._n_pend + self._n_rows >= self.limit:
+            self._drain_rows()
+            self._write_pending()
+
+    def append_batch(self, batch: pa.RecordBatch) -> None:
+        n = batch.num_rows
+        if not n:
+            return
+        if self._n_rows:
+            self._drain_rows()
+        off = 0
+        while off < n:
+            take = min(self.limit - self._n_pend, n - off)
+            self._pending.append(batch.slice(off, take))
+            self._n_pend += take
+            off += take
+            if self._n_pend >= self.limit:
+                self._write_pending()
+
+    def flush(self) -> None:
+        if self._n_rows:
+            self._drain_rows()
+        self._write_pending()
+
+    def close(self) -> None:
+        self._pending.clear()
+        self._n_pend = 0
+        self._cols = [[] for _ in self.schema]
+        self._n_rows = 0
+        self.writer.close()
+
+
 class _Scan:
     """The scan of a run of contigs into unsorted scratch Parquet files: arrays, elements and, per contig, arrays in
     and rejected (a row of zeros for each contig searched, the counts per batch, the reason for a contig another stage
@@ -509,9 +587,8 @@ class _Scan:
         kinds = (("arrays", _ARRAY_SCRATCH), ("elements", _ELEMENT_SCRATCH), ("contigs", _CONTIG_SCRATCH),
                  *((("topology", _TOPO_SCRATCH),) if topology else ()))
         self.paths = {k: scratch / f"{k}.parquet" for k, _ in kinds}
-        self.writers = {k: pq.ParquetWriter(self.paths[k], s, compression="zstd", write_statistics=False)
+        self.writers = {k: _ScratchWriter(self.paths[k], s, _TOPO_ROWS if k == "topology" else io.ROW_GROUP_ROWS)
                         for k, s in kinds}
-        self.topo: list[tuple[bytes, int, bool]] | None = [] if topology else None
         self.batch: _Batch | None = None
         self.pool = ThreadPoolExecutor(max_workers=cpus)
         self.running: set[Future] = set()
@@ -521,9 +598,9 @@ class _Scan:
 
     def _collect(self, fut: Future) -> None:
         arrays, elements_, contigs = fut.result()
-        self.writers["arrays"].write_batch(arrays)
-        self.writers["elements"].write_batch(elements_)
-        self.writers["contigs"].write_batch(contigs)
+        self.writers["arrays"].append_batch(arrays)
+        self.writers["elements"].append_batch(elements_)
+        self.writers["contigs"].append_batch(contigs)
         self.stats["batches"] += 1
         self.stats["arrays"] += arrays.num_rows
         kinds = elements_.column("element").to_pylist()
@@ -547,29 +624,15 @@ class _Scan:
         self.running.add(self.pool.submit(_search, self.java, self.jar, b, self.scratch, self.min_repeats))
 
     def skip(self, cu: bytes, owner: str) -> None:
-        self.writers["contigs"].write_batch(pa.RecordBatch.from_arrays(
-            [pa.array([cu], pa.binary(16)), pa.array([0], pa.int64()), pa.array([0], pa.int64()),
-             pa.array([f"{SKIP_REASON}{owner}"], pa.string())], schema=_CONTIG_SCRATCH))
-
-    def _write_topology(self) -> None:
-        if self.topo:
-            cols = list(zip(*self.topo))
-            self.writers["topology"].write_batch(pa.RecordBatch.from_arrays(
-                [pa.array(cols[0], pa.binary(16)), pa.array(cols[1], pa.int64()), pa.array(cols[2], pa.bool_())],
-                schema=_TOPO_SCRATCH))
-            self.topo = []
+        self.writers["contigs"].append_row(cu, 0, 0, f"{SKIP_REASON}{owner}")
 
     def contig(self, cu: bytes, seq: bytes, circular: bool) -> None:
         n = len(seq)
         self.stats["contigs"] += 1
         self.stats["bases"] += n
-        self.writers["contigs"].write_batch(pa.RecordBatch.from_arrays(
-            [pa.array([cu], pa.binary(16)), pa.array([0], pa.int64()), pa.array([0], pa.int64()),
-             pa.array([None], pa.string())], schema=_CONTIG_SCRATCH))
-        if self.topo is not None:
-            self.topo.append((cu, n, bool(circular)))
-            if len(self.topo) >= _TOPO_ROWS:
-                self._write_topology()
+        self.writers["contigs"].append_row(cu, 0, 0, None)
+        if "topology" in self.writers:
+            self.writers["topology"].append_row(cu, n, bool(circular))
         if n == 0:
             return
         f = min(CIRC_FLANK, n) if circular else 0
@@ -586,8 +649,8 @@ class _Scan:
             if ok:
                 self._flush()
                 self._drain(0)
-                if self.topo is not None:
-                    self._write_topology()
+                for w in self.writers.values():
+                    w.flush()
         finally:
             for fut in self.running:
                 fut.cancel()
