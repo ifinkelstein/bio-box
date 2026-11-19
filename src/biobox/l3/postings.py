@@ -62,7 +62,15 @@ import pyarrow.parquet as pq
 
 from biobox import catalog, io, layout, ledger
 from biobox.l1.genecall import DUCK_MEMORY_LIMIT, GENE_CALL_VERSION
-from biobox.l3.tokens import LEVELS, _domain_files, _scan, _sql_str, _tape_files, tape_version_of
+from biobox.l3.tokens import (
+    LEVELS,
+    _assert_stage_domain_files,
+    _domain_files,
+    _scan,
+    _sql_str,
+    _tape_files,
+    tape_version_of,
+)
 from biobox.registry.schemas import table
 
 EST_POSTING_ROW = 36  # zstd bytes per posting row, measured 35.74 (rL.2, pod wilkcomp02, 2026-11-10, scripts/stress/postings_bytes.py; the earlier estimate was 20), rounded up to an int; cuts parts, picks width
@@ -346,7 +354,7 @@ def _family_run(con, root: Path, release: str, stages: list[str], dict_files: li
     libs = [lib for (lib,) in con.execute(f"SELECT DISTINCT source FROM {dicts} WHERE level = 'family' "
                                           "ORDER BY source").fetchall()]
     parts = [f"SELECT {_sql_str(lib)} AS lib, protein_uid, model_acc, env_start FROM read_parquet("
-             f"[{', '.join(_sql_str(f) for f in files)}], hive_partitioning = false)"
+             f"[{', '.join(_sql_str(f) for f in _assert_stage_domain_files(files))}], hive_partitioning = false)"
              for lib in libs if (files := _domain_files(root, lib, stages))]
     if not parts:
         return 0

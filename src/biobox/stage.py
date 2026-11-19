@@ -1199,10 +1199,25 @@ def build_stage(prof: Profile, b: Build, *, run: Runner | None = None,
                 return code
         if _hook is not None:
             _hook(f"after:{step.name}")
+        if step.check == "cluster" and catalog.release_rounds(root, b.release):  # card C-38g: merge release rounds
+            code = one(rounds_step(prof, b))
+            if code is not None:
+                return code
+            if _hook is not None:
+                _hook("after:rounds")
     done_head = (f"stage {b.stage} and release {b.release}" if b.release is not None
                  else f"stage {b.stage} (depth {depth_of(b)})")
     _say(f"{done_head}: all {len(plan)} steps done")
     return 0
+
+
+def rounds_step(prof: Profile, b: Build) -> Step:
+    """The release step `rounds` (card C-38g, DEC-54): merge the release's listed rounds (`release_round`)
+    into sorted `release=` lookup files (`round_domains`, `round_coverage`) after `cluster` and before `tokens`."""
+    root = str(Path(b.root).resolve())
+    mine = str(scratch_of(prof, b) / f"{b.release}.rounds")
+    return Step(b.release, "rounds", ("merge-release", "--root", root, "--release", b.release, "--tmp", mine),
+                module="biobox.l1.rounds", scratch=mine)
 
 
 def with_seq_stages(step: Step, root: Path, stage: str) -> Step:

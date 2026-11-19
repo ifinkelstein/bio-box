@@ -812,7 +812,7 @@ Do, test first: §3.8 tests (1), (2) and (7); the request holds only proteins no
 Accept: the tests; on the pod, in a scratch view, one round over the neighbours of one search of the TniQ example, with its CPU-minutes against §3.8's estimate.
 Done 2026-11-19 (STATUS row C-38f): `domains.round_id`, `prepare_round`, `plan_round`, `scan_round_shard`, `rescan_round_shard`, `merge_round` and `_round_source` (`domains.sources`), `stage.run_round`, `bio-box annotate round` and `bio-box search hmm --annotate` merged with `RUNBOOK.md` and `tests/r1/test_c38f_rounds.py` + `tests/r2/test_c38f_round_memory.py` (`222.0 MiB` peak RSS on 100× synthetic store, *measured*); pod scratch TniQ ±10-gene round (`r-59dbafe2223f9970`: `11,029` proteins, `3,704,126` residues) matched `rN.3`'s `l1_domains` `15,673 / 15,673` rows (`0` mismatches) in `24.86` CPU-min shard / `25.00` CPU-min total vs `28.13` *derived* (`0.884×` / `0.889×`, *measured*).
 
-### C-38g Readers of rounds: the release's merged copy, tokens kept clean
+### ~~C-38g Readers of rounds: the release's merged copy, tokens kept clean~~ — done (`STATUS.md` row C-38g)
 **M** · Depends: C-38f · Design: `planning/design/C-38_import_depths.md` §3.2 (lookups), §3.5
 Files: `src/biobox/l1/domains.py` or a new module for the release step `rounds` (the merged, sorted copy under `release=`), `src/biobox/stage.py` (the step after `cluster`), `src/biobox/catalog.py` (`domain_state` and `domains_of` read the merged copy; a `source` column), `src/biobox/search/export.py`, `src/biobox/search/nbr.py`, `src/biobox/l3/tokens.py` and `src/biobox/l3/postings.py` (assert they do not read round rows), tests
 Do, test first: §3.8 tests (3), (5) and (6); `nbr summarize` shows round rows with `source round`.

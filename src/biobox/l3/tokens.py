@@ -153,10 +153,25 @@ def iter_tapes(root: Path, tape_version: str, stages: list[str], columns: list[s
         yield r if keep is None else {k: v for k, v in r.items() if k in keep}
 
 
+def _assert_stage_domain_files(files: list[Path]) -> list[Path]:
+    """Card C-38g (DEC-54 Q5): family tokens and postings read only stage `l1_domains` files and never
+    `round_domains` or `round_coverage`."""
+    round_locs = (table("round_domains").location, table("round_coverage").location)
+    for f in files:
+        posix = Path(f).as_posix()
+        if any(loc in posix for loc in round_locs) or "/round=" in posix:
+            raise ValueError(
+                f"{f}: family tokens and postings must not read round_domains or round_coverage (DEC-54 Q5)"
+            )
+    return files
+
+
 def _domain_files(root: Path, library: str, stages: list[str]) -> list[Path]:
     """The domain files of `library` for `stages`, in the order of `stages`. A library need not be
-    scanned on every stage (a stage without its files adds none)."""
-    return [f for s in stages for f in io.part_files(Path(root) / f"l1/domains/library={library}/stage={s}")]
+    scanned on every stage (a stage without its files adds none). Never reads round files (DEC-54 Q5)."""
+    return _assert_stage_domain_files(
+        [f for s in stages for f in io.part_files(Path(root) / f"l1/domains/library={library}/stage={s}")]
+    )
 
 
 def libraries_in(root: Path, stages: list[str]) -> list[str]:

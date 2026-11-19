@@ -1239,22 +1239,33 @@ def _add_genome_objects(con: duckdb.DuckDBPyConnection) -> None:
 
 
 def domain_state_view_sql(annotated: dict[str, list[str]], *, has_inferred: bool = False,
+                          round_libs: tuple[str, ...] | list[str] = (),
+                          release_id: str | None = None,
                           create: str = "CREATE VIEW") -> str:
-    """The catalog's `domain_state` view `(protein_uid, library, domain_state)` (card C-38b,
+    """The catalog's `domain_state` view `(protein_uid, library, domain_state)` (cards C-38b, C-38g,
     `planning/design/C-38_import_depths.md` §3.4):
       - `measured`: `protein_uid` has a measured row in `l1_domains` for `library` (`inferred_from` null, or no
-        `inferred_from` column yet);
+        `inferred_from` column yet), or a row in the release's merged `round_domains` / `round_coverage` (`n_rows > 0`);
       - `inferred`: `protein_uid` has rows in `l1_domains` for `library`, all with `inferred_from` non-null;
-      - `none`: no row in `l1_domains` for `library`, and `protein_uid` is in `protein_seq` of at least one stage
-        the release lists as annotated for `library` (`annotated`, from the manifest's `l1_domains` files);
+      - `none`: no domain row for `library`, and `protein_uid` is in `protein_seq` of at least one stage
+        the release lists as annotated for `library`, or in the release's merged `round_coverage` (`n_rows = 0`);
       - `not scanned`: none of the above.
-    Empty and typed when the release lists no domain library."""
-    if not annotated:
+    Empty and typed when the release lists no domain library (neither stage nor round)."""
+    all_libs = sorted(set(annotated) | set(round_libs))
+    if not all_libs:
         return (f'{create} domain_state AS SELECT CAST(NULL AS BLOB) AS "protein_uid", '
                 'CAST(NULL AS VARCHAR) AS "library", CAST(NULL AS VARCHAR) AS "domain_state" WHERE false')
     dom_rank = "CASE WHEN inferred_from IS NULL THEN 3 ELSE 2 END" if has_inferred else "3"
     branches = [f"SELECT protein_uid, library, {dom_rank} AS rank FROM l1_domains"]
-    for lib, stages in sorted(annotated.items()):
+    if round_libs:
+        rel_filt = f" WHERE release = {_sql_str(release_id)}" if release_id is not None else ""
+        branches.append(f"SELECT protein_uid, library, 3 AS rank FROM round_domains{rel_filt}")
+        branches.append(
+            f"SELECT protein_uid, library, CASE WHEN n_rows > 0 THEN 3 ELSE 1 END AS rank "
+            f"FROM round_coverage{rel_filt}"
+        )
+    for lib in all_libs:
+        stages = annotated.get(lib, [])
         cov = (f"CASE WHEN p.stage IN ({', '.join(_sql_str(s) for s in stages)}) THEN 1 ELSE 0 END"
                if stages else "0")
         branches.append(f"SELECT p.protein_uid, {_sql_str(lib)} AS library, {cov} AS rank FROM protein_seq p")
@@ -1262,6 +1273,26 @@ def domain_state_view_sql(annotated: dict[str, list[str]], *, has_inferred: bool
             "CASE max(rank) WHEN 3 THEN 'measured' WHEN 2 THEN 'inferred' "
             "WHEN 1 THEN 'none' ELSE 'not scanned' END AS domain_state "
             f"FROM ({' UNION ALL '.join(branches)}) GROUP BY protein_uid, library")
+
+
+def domains_of_macro_sql(create: str = "CREATE MACRO") -> str:
+    """Table macro `domains_of(_puid)` returning stage rows (`source = 'stage'`) plus merged release round
+    rows (`source = 'round'`, `stage = NULL`) for libraries not already measured by a stage (§3.3, C-38g)."""
+    stage_cols = ", ".join(f'"{f.name}"' for f in TABLES["l1_domains"].schema)
+    rd_names = set(TABLES["round_domains"].schema.names)
+    round_cols = ", ".join(
+        f'"{f.name}"' if f.name in rd_names else f'CAST(NULL AS {duck_type(f.type)}) AS "{f.name}"'
+        for f in TABLES["l1_domains"].schema
+    )
+    return (
+        f"{create} domains_of(_puid) AS TABLE "
+        f"SELECT {stage_cols}, \"library\", \"stage\", 'stage' AS \"source\" FROM l1_domains WHERE protein_uid = _puid "
+        "UNION ALL "
+        f"SELECT {round_cols}, \"library\", CAST(NULL AS VARCHAR) AS \"stage\", 'round' AS \"source\" FROM round_domains "
+        "WHERE release IS NOT NULL AND release = catalog_release() AND protein_uid = _puid "
+        "AND NOT EXISTS (SELECT 1 FROM l1_domains d WHERE d.protein_uid = _puid AND d.library = round_domains.library) "
+        "ORDER BY env_start, model_acc"
+    )
 
 
 def domain_state_macro_sql(create: str = "CREATE MACRO") -> str:
@@ -1582,10 +1613,10 @@ def macro_sql() -> list[str]:
         "WHERE protein_prefix IN ('all', left(lower(hex((_puid)[1:1])), 1), lower(hex((_puid)[1:1]))) "
         "AND protein_uid = _puid)",
         "CREATE MACRO slots_of(_puid) AS TABLE SELECT * FROM protein_occurrence WHERE protein_uid = _puid",
-        "CREATE MACRO domains_of(_puid) AS TABLE SELECT * FROM l1_domains WHERE protein_uid = _puid ORDER BY env_start, model_acc",
         domain_state_macro_sql(),
         # --- L3 (Q1-Q4); release-scoped tables are read for this catalog's release only ---
         "CREATE MACRO catalog_release() AS (SELECT value FROM catalog_info WHERE key = 'release_id')",
+        domains_of_macro_sql(),
         "CREATE MACRO token_of(_level, _key) AS "
         "(SELECT token_id FROM token_dict WHERE release = catalog_release() AND level = _level AND key = _key)",
         # dimension rows of this catalog's release only (card B-12)
@@ -1712,8 +1743,23 @@ def generate_catalog(manifest: dict, out_path: Path | None = None, root: Path | 
         fallback = [str(root / p) for p in _label_fallback(manifest)]  # card W-36: stages without label files
         con.execute(label_view_sql([p for p, _ in sorted(by_table["contig_label"])], len(label_stages), fallback))
         con.execute(genome_member_sql())  # the release's membership over its stages' genome_input (card C-21b)
-        con.execute(domain_state_view_sql(annotated_stages_by_library(manifest),
-                                          has_inferred="inferred_from" in TABLES["l1_domains"].schema.names))
+        rel_id = manifest["release_id"]
+        rel_round_libs = sorted({
+            f["partitions"]["library"]
+            for f in manifest["files"]
+            if f["table"] in ("round_domains", "round_coverage") and f["partitions"].get("release") == rel_id
+        })
+        any_round_libs = sorted({
+            f["partitions"]["library"]
+            for f in manifest["files"]
+            if f["table"] in ("round_domains", "round_coverage") and "library" in f["partitions"]
+        })
+        con.execute(domain_state_view_sql(
+            annotated_stages_by_library(manifest),
+            has_inferred="inferred_from" in TABLES["l1_domains"].schema.names,
+            round_libs=any_round_libs,
+            release_id=rel_id if rel_round_libs else None,
+        ))
         con.execute("CREATE TABLE catalog_info (key VARCHAR, value VARCHAR)")
         con.executemany("INSERT INTO catalog_info VALUES (?, ?)", [
             ("release_id", manifest["release_id"]),
@@ -2338,6 +2384,27 @@ def _domain_files(con: duckdb.DuckDBPyConnection, root: Path) -> list[tuple[Path
     return [(Path(root) / p, classify(p)[1].get("library", "")) for (p,) in rows]
 
 
+def _round_table_files(con: duckdb.DuckDBPyConnection, root: Path, table_name: str) -> list[tuple[Path, str]]:
+    """The catalog's `round_domains` or `round_coverage` files under `root`, preferring the release's merged
+    `release=` copy per library (O(1) row-group lookup, card C-38g) and falling back to `round=` files only
+    for a library without a merged `release=` file."""
+    rows = con.execute("SELECT path FROM catalog_files WHERE \"table\" = ? ORDER BY path", [table_name]).fetchall()
+    by_lib_rel: dict[str, list[Path]] = {}
+    by_lib_rnd: dict[str, list[Path]] = {}
+    for (p,) in rows:
+        parts = classify(p)[1]
+        lib = parts.get("library", "")
+        if "release" in parts:
+            by_lib_rel.setdefault(lib, []).append(Path(root) / p)
+        else:
+            by_lib_rnd.setdefault(lib, []).append(Path(root) / p)
+    out: list[tuple[Path, str]] = []
+    for lib in sorted(set(by_lib_rel) | set(by_lib_rnd)):
+        for p in by_lib_rel.get(lib) or by_lib_rnd.get(lib, ()):
+            out.append((p, lib))
+    return out
+
+
 def _annotated_protein_files(con: duckdb.DuckDBPyConnection, root: Path) -> dict[str, list[Path]]:
     """For each domain library in `catalog_files`, the `protein_seq` files of the stages annotated with that library
     (`annotated_stages_by_library`), under `root`."""
@@ -2664,7 +2731,9 @@ class DomainStateLookup(_Touches):
     _STATE_NAMES = {3: "measured", 2: "inferred", 1: "none", 0: "not scanned"}
 
     def __init__(self, domain_files: list[tuple[Path, str]], annotated_protein_files: dict[str, list[Path]],
-                 cache_row_groups: int = 16):
+                 cache_row_groups: int = 16,
+                 round_domain_files: list[tuple[Path, str]] = (),
+                 round_coverage_files: list[tuple[Path, str]] = ()):
         self.cache_row_groups = cache_row_groups
         self.row_groups_read = 0
         self._cache: OrderedDict = OrderedDict()
@@ -2673,7 +2742,7 @@ class DomainStateLookup(_Touches):
 
         file_index: dict[Path, int] = {}
         self.files: list[Path] = []
-        for p, _ in domain_files:
+        for p, _ in (*domain_files, *round_domain_files, *round_coverage_files):
             path = Path(p)
             if path not in file_index:
                 file_index[path] = len(self.files)
@@ -2691,15 +2760,20 @@ class DomainStateLookup(_Touches):
             for md in self._metadata
         ]
         self._where: list[tuple[int, int, tuple[str, ...]]] = []  # rg_id -> (fi, g, columns)
-        file_rgs: dict[tuple[int, bool], tuple[list, list, list[int]]] = {}
+        file_rgs: dict[tuple[int, str], tuple[list, list, list[int]]] = {}
 
-        def index_file(fi: int, is_dom: bool) -> tuple[list, list, list[int]]:
-            hit = file_rgs.get((fi, is_dom))
+        def index_file(fi: int, kind: str) -> tuple[list, list, list[int]]:
+            hit = file_rgs.get((fi, kind))
             if hit is not None:
                 return hit
             md = self._metadata[fi]
             leaf = {md.schema.column(i).path: i for i in range(md.num_columns)}["protein_uid"]
-            cols = (("protein_uid", "inferred_from") if (is_dom and self._has_inferred[fi]) else ("protein_uid",))
+            if kind == "dom":
+                cols = ("protein_uid", "inferred_from") if self._has_inferred[fi] else ("protein_uid",)
+            elif kind == "rcov":
+                cols = ("protein_uid", "n_rows")
+            else:
+                cols = ("protein_uid",)
             kmins, kmaxs, rg_ids = [], [], []
             for g in range(md.num_row_groups):
                 rg = md.row_group(g)
@@ -2714,14 +2788,24 @@ class DomainStateLookup(_Touches):
                 kmaxs.append(st.max)
                 rg_ids.append(rg_id)
             res = (kmins, kmaxs, rg_ids)
-            file_rgs[(fi, is_dom)] = res
+            file_rgs[(fi, kind)] = res
             return res
 
         self._dom_by_lib: dict[str, list[tuple[list, list, list[int]]]] = {}
         for p, lib in domain_files:
-            r = index_file(file_index[Path(p)], True)
+            r = index_file(file_index[Path(p)], "dom")
             if r[2]:
                 self._dom_by_lib.setdefault(lib, []).append(r)
+        self._rdom_by_lib: dict[str, list[tuple[list, list, list[int]]]] = {}
+        for p, lib in round_domain_files:
+            r = index_file(file_index[Path(p)], "rdom")
+            if r[2]:
+                self._rdom_by_lib.setdefault(lib, []).append(r)
+        self._rcov_by_lib: dict[str, list[tuple[list, list, list[int]]]] = {}
+        for p, lib in round_coverage_files:
+            r = index_file(file_index[Path(p)], "rcov")
+            if r[2]:
+                self._rcov_by_lib.setdefault(lib, []).append(r)
         self._prot_by_lib: dict[str, list[tuple[list, list, list[int]]]] = {}
         for lib in sorted(annotated_protein_files):
             seen_fi: set[int] = set()
@@ -2730,7 +2814,7 @@ class DomainStateLookup(_Touches):
                 if fi in seen_fi:
                     continue
                 seen_fi.add(fi)
-                r = index_file(fi, False)
+                r = index_file(fi, "prot")
                 if r[2]:
                     self._prot_by_lib.setdefault(lib, []).append(r)
         self.row_groups_total = len(self._where)
@@ -2792,6 +2876,43 @@ class DomainStateLookup(_Touches):
                     r = best.get(pu, 0)
                     if r > rank[(pu, lib)]:
                         rank[(pu, lib)] = r
+            # Card C-38g: check merged release round_coverage (gives both measured [n_rows>0] and none [n_rows==0]
+            # in O(1) = 1 row group); fall back to round_domains only if round_coverage is absent for that library
+            rcov_need: dict[int, list[tuple[bytes, str]]] = {}
+            rdom_need: dict[int, list[tuple[bytes, str]]] = {}
+            for puid, lib in unique:
+                if rank[(puid, lib)] < 3:
+                    if lib in self._rcov_by_lib:
+                        for rg_id in self._candidates(self._rcov_by_lib[lib], puid):
+                            rcov_need.setdefault(rg_id, []).append((puid, lib))
+                    elif lib in self._rdom_by_lib:
+                        for rg_id in self._candidates(self._rdom_by_lib[lib], puid):
+                            rdom_need.setdefault(rg_id, []).append((puid, lib))
+            for rg_id in sorted(rcov_need):
+                t = self._decoded(rg_id)
+                want_uids = sorted({pu for pu, _ in rcov_need[rg_id]})
+                hit = t.filter(pc.is_in(t.column("protein_uid"), value_set=pa.array(want_uids, pa.binary(16))))
+                if hit.num_rows == 0:
+                    continue
+                best_r: dict[bytes, int] = {}
+                for pu, nr in zip(hit.column("protein_uid").to_pylist(), hit.column("n_rows").to_pylist()):
+                    r = 3 if nr > 0 else 1
+                    if r > best_r.get(pu, 0):
+                        best_r[pu] = r
+                for pu, lib in rcov_need[rg_id]:
+                    r = best_r.get(pu, 0)
+                    if r > rank[(pu, lib)]:
+                        rank[(pu, lib)] = r
+            for rg_id in sorted(rdom_need):
+                t = self._decoded(rg_id)
+                want_uids = sorted({pu for pu, _ in rdom_need[rg_id]})
+                hit = t.filter(pc.is_in(t.column("protein_uid"), value_set=pa.array(want_uids, pa.binary(16))))
+                if hit.num_rows == 0:
+                    continue
+                found = set(hit.column("protein_uid").to_pylist())
+                for pu, lib in rdom_need[rg_id]:
+                    if pu in found and rank[(pu, lib)] < 3:
+                        rank[(pu, lib)] = 3
             prot_need: dict[int, list[tuple[bytes, str]]] = {}
             for puid, lib in unique:
                 if rank[(puid, lib)] == 0:
@@ -2956,8 +3077,15 @@ def open_catalog(path: Path, local_dir: Path | None = None, threads: int | None 
         con.execute(stmt)
     keys = _Lazy(TokenKeyLookup, _token_dict_files(con, built))
     _register_token_udf(con, keys)
-    dom_state = _Lazy(lambda args: DomainStateLookup(*args),
-                      (_domain_files(con, built), _annotated_protein_files(con, built)))
+    dom_state = _Lazy(
+        lambda args: DomainStateLookup(args[0], args[1], round_domain_files=args[2], round_coverage_files=args[3]),
+        (
+            _domain_files(con, built),
+            _annotated_protein_files(con, built),
+            _round_table_files(con, built, "round_domains"),
+            _round_table_files(con, built, "round_coverage"),
+        ),
+    )
     _register_domain_state_udf(con, dom_state)
     _LOOKUPS[id(con)] = [("bb_partner_counts", tapes), ("bb_token_of", keys), ("bb_domain_state", dom_state)]
     attach_search(con, runs, pack)
