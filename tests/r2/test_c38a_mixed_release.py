@@ -5,9 +5,10 @@ Covers:
       resuming `build-stage --depth annotated --library ... --release <R> --stages S0` and by running
       `stage domains` + `release` steps — produces files byte-identical to building `annotated` at once
       (`test_builders_out.direct`), and the cross-host micro-S0 fixture (`scripts/stress/build_fixture.py`)
-      keeps its manifest hash (`003ab250cfc3de20b2381ebdf7beba5c`, moved once in C-38d from
-      `28ffa9808ecd4829e52f6892f94f7b85` for the two appended nullable `ledger` columns) with
-      `stage_depths == {"S0": "called"}`.
+      keeps its manifest hash (`5fa9e49761393e3468ebc3c1d7d7224a`, moved once in C-38e from
+      `003ab250cfc3de20b2381ebdf7beba5c` for the three added round `TableSpec`s in `manifest["tables"]`,
+      which had moved from `28ffa9808ecd4829e52f6892f94f7b85` in C-38d for the two appended nullable
+      `ledger` columns) with `stage_depths == {"S0": "called"}`.
   (3) `catalog.stage_depths(manifest)` on test manifests; on a mixed release over `S0` (`annotated test-1`)
       and `S1` (`called`, T4 unscanned even though the HMM file holds T4 models), `release verify` prints
       `depths: S0 annotated test-1; S1 called` on stdout (with no C-19 warning on stderr), `bio-box releases`
@@ -50,7 +51,7 @@ pytestmark = [
 ]
 
 REPO = Path(__file__).resolve().parents[2]
-FIXTURE_HASH = "003ab250cfc3de20b2381ebdf7beba5c"  # moved once in C-38d from 28ffa9808ecd4829e52f6892f94f7b85 (ledger LY-09)
+FIXTURE_HASH = "5fa9e49761393e3468ebc3c1d7d7224a"  # moved once in C-38e from 003ab250cfc3de20b2381ebdf7beba5c (3 round TableSpecs)
 
 
 def runner(prof, root, stage, step, cmd, **kw) -> int:

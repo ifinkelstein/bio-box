@@ -329,12 +329,83 @@ def verify_release_def(root: Path, release: str, stages) -> list[str]:
     return stages
 
 
-def define_release(root: Path, release: str, stages, out: Path | None = None) -> list[str]:
+def release_round_path(root: Path, release: str) -> Path:
+    return Path(root) / TABLES["release_round"].location / f"release={release}" / "part-0.parquet"
+
+
+def check_rounds(rounds) -> list[str]:
+    """`rounds` as a list in the order given: round ids, none empty and none twice (may be empty)."""
+    if isinstance(rounds, (str, bytes)) or not isinstance(rounds, (list, tuple)):
+        raise TypeError(f"rounds must be a list of round ids, got {rounds!r}")
+    out = list(rounds)
+    if not all(isinstance(r, str) and r and "/" not in r and "=" not in r for r in out):
+        raise ValueError(f"rounds {out}: each must be a non-empty id without '/' or '='")
+    if len(set(out)) != len(out):
+        raise ValueError(f"rounds {out}: a round is listed twice")
+    return out
+
+
+def read_release_round(root: Path, release: str) -> list[str] | None:
+    """The rounds of `release` in its order, or None when it has no `release_round` file."""
+    path = release_round_path(root, release)
+    if not path.exists():
+        return None
+    t = pq.read_table(path, columns=["position", "round"], partitioning=None)
+    pos = t.column("position").to_pylist()
+    if pos != list(range(len(pos))):
+        raise ValueError(f"{path}: release_round positions {pos} are not 0..{len(pos) - 1}")
+    return t.column("round").to_pylist()
+
+
+def release_rounds(root: Path, release: str) -> list[str]:
+    """The rounds `release_round` names for `release`, or [] when the release has no `release_round` file."""
+    rounds = read_release_round(root, release)
+    return [] if rounds is None else rounds
+
+
+def verify_release_round(root: Path, release: str, rounds) -> list[str]:
+    """`rounds` checked (`check_rounds`) and equal to `release`'s `release_round` (or [] when absent).
+    Writes nothing."""
+    rounds = check_rounds(rounds)
+    have = release_rounds(root, release)
+    if have != rounds:
+        raise ValueError(f"{release_round_path(root, release)}: release_round of {release} lists rounds {have}, "
+                         f"not {rounds}")
+    return rounds
+
+
+def complete_rounds(root: Path) -> list[str]:
+    """Sorted ids of every annotation round on disk under `root` that has both `round_domains` and
+    `round_coverage` Parquet files for the same non-empty set of libraries (card C-38e, DEC-54)."""
+    root = Path(root)
+
+    def libs_by_round(table_name: str) -> dict[str, set[str]]:
+        base = root / TABLES[table_name].location
+        out: dict[str, set[str]] = {}
+        if not base.is_dir():
+            return out
+        for p in base.glob("round=*/library=*/*.parquet"):
+            if not p.is_file():
+                continue
+            r = p.parent.parent.name.removeprefix("round=")
+            lib = p.parent.name.removeprefix("library=")
+            if r and lib:
+                out.setdefault(r, set()).add(lib)
+        return out
+
+    dom = libs_by_round("round_domains")
+    cov = libs_by_round("round_coverage")
+    return sorted(r for r, libs in dom.items() if libs and cov.get(r) == libs)
+
+
+def define_release(root: Path, release: str, stages, out: Path | None = None, rounds=None) -> list[str]:
     """Make sure `release` is defined over `stages`: write its `release_def` if it has none, verify it
     lists the same stages in the same order if it has one (ValueError otherwise). Returns the stages.
 
-    Written once, as a tape version's `tape_version_def` is: defining a release again with the same
-    stages is a no-op, so every release-level builder calls this after checking its inputs.
+    When defining `release` for the first time, also writes `release_round` beside `release_def` listing
+    every complete round on disk (`complete_rounds(root)`, or `rounds` when given) if at least one round
+    is listed (card C-38e, DEC-54). Written once: defining an already-defined release again with the same
+    stages is a no-op and never rewrites or adds `release_round`.
 
     `out` (card C-08) is the output root of the step that calls this (default `root`). A definition in
     `root` is verified and never written again; else one already in `out` (written earlier in the same
@@ -344,17 +415,31 @@ def define_release(root: Path, release: str, stages, out: Path | None = None) ->
     if release == LATEST:
         raise ValueError(f"a release cannot be named {LATEST}: `--release {LATEST}` names the newest release "
                          "(card W-37); name it by DEC-52's rule, r<YY>.<MM>.<n>")
-    stages = verify_release_def(root, release, stages)
-    if out is not None and Path(out).resolve() != Path(root).resolve() and read_release_def(root, release) is None:
+    src_root = Path(root)
+    stages = verify_release_def(src_root, release, stages)
+    if read_release_def(src_root, release) is not None:
+        if rounds is not None:
+            verify_release_round(src_root, release, rounds)
+        return stages
+    target = src_root
+    if out is not None and Path(out).resolve() != src_root.resolve():
         stages = verify_release_def(out, release, stages)
-        root = out  # the definition, if absent from the root, is the output root's to hold
+        target = Path(out)
     if not stages:
         raise ValueError(f"release {release}: a release needs at least one stage")
-    path = release_def_path(root, release)
+    path = release_def_path(target, release)
     if not path.exists():
+        want_rounds = complete_rounds(src_root) if rounds is None else check_rounds(rounds)
         spec = TABLES["release_def"]
         io.write_table(pa.table({"position": pa.array(range(len(stages)), pa.uint16()),
                                  "stage": pa.array(stages, pa.string())}, schema=spec.schema), spec, path)
+        if want_rounds:
+            rspec = TABLES["release_round"]
+            io.write_table(pa.table({"position": pa.array(range(len(want_rounds)), pa.uint16()),
+                                     "round": pa.array(want_rounds, pa.string())}, schema=rspec.schema),
+                           rspec, release_round_path(target, release))
+    elif rounds is not None:
+        verify_release_round(target, release, rounds)
     return stages
 
 
@@ -365,7 +450,10 @@ def define_release(root: Path, release: str, stages, out: Path | None = None) ->
 #   (c) a version alone, neither stage nor release (`tape_version_def`): to the releases whose (a) and (b)
 #       files use that version, through a `tape_version` partition or the tape version an `igr_version`
 #       names (`<tape_version>-igr1`, card B-20), so that C-08 finds every definition it needs;
-#   (d) no partition (`store_params`, `id_history`, `test_run`): to every release.
+#   (d) no partition (`store_params`, `id_history`, `test_run`): to every release;
+#   (e) `round=<id>` (`round_domains`, `round_coverage`, `ledger/round=<id>/`, card C-38e, DEC-54): to every
+#       release whose `release_round` lists `<id>`; a release built before any round (no `release_round` file)
+#       lists no round and ignores every `round=` file; a round no release lists is ignored by every release.
 # Verification draws (a) narrower (card C-19): later steps may add files to a stage (a domain library scanned
 # after a release was built, with its ledger), which AGENTS §3.10 allows, and they are not an earlier release's.
 # A stage file with partitions besides `stage` and the registry's bucket keys (`TableSpec.bucket_keys`), such
@@ -394,18 +482,21 @@ STAGE_ADDED_TABLES = frozenset({"contig_label"})
 
 def _scope(name: str, parts: dict[str, str]) -> tuple[str, str] | None:
     """Where a file of table or artifact `name` with partitions `parts` falls in a release's scope:
-    ("stage", S), ("release", R), (version key, value) for (c), or None for an unpartitioned file (d).
-    A partitioned file in none of these raises LayoutError: no rule says which release it belongs to."""
+    ("stage", S), ("release", R), ("round", id) for (e), (version key, value) for (c), or None for an
+    unpartitioned file (d). A partitioned file in none of these raises LayoutError: no rule says which
+    release it belongs to."""
     if "stage" in parts:
         return "stage", parts["stage"]
     if "release" in parts:
         return "release", parts["release"]
+    if "round" in parts:
+        return "round", parts["round"]
     if not parts:
         return None
     key = VERSION_ONLY.get(name)
     if key is None or set(parts) != {key}:
-        raise LayoutError(f"{name} partitions {parts}: neither a stage, a release nor a version alone "
-                          f"({', '.join(VERSION_ONLY)}): no release scope claims it (card B-33)")
+        raise LayoutError(f"{name} partitions {parts}: neither a stage, a release, a round nor a version alone "
+                          f"({', '.join(VERSION_ONLY)}): no release scope claims it (card B-33, C-38e)")
     return key, parts[key]
 
 
@@ -424,9 +515,23 @@ def _used_tape_versions(partitions) -> set[str]:
     return out
 
 
-def _in_release(stages: set[str], release_id: str, tape_versions: set[str] = frozenset()):
+def _manifest_rounds(manifest: dict, root: Path) -> set[str]:
+    """The round ids listed by `manifest` (card C-38e, DEC-54): every `round` partition among its files, plus
+    any round named in its listed `release_round` file when present on disk. Empty for pre-round manifests."""
+    rounds = {f["partitions"]["round"] for f in manifest["files"] if "round" in f["partitions"]}
+    for f in manifest["files"]:
+        if f["table"] == "release_round":
+            p = Path(root) / f["path"]
+            if p.is_file():
+                rounds.update(pq.read_table(p, columns=["round"], partitioning=None).column("round").to_pylist())
+    return rounds
+
+
+def _in_release(stages: set[str], release_id: str, tape_versions: set[str] = frozenset(),
+                rounds: set[str] = frozenset()):
     """Whether a file of table or artifact `name` with partitions `parts` is in the release's scope (above):
-    a listed stage, the release's own `release=` partition, a tape version of `tape_versions`, or none."""
+    a listed stage, the release's own `release=` partition, a listed round, a tape version of `tape_versions`,
+    or none."""
 
     def keep(name: str, parts: dict[str, str]) -> bool:
         scope = _scope(name, parts)
@@ -437,6 +542,8 @@ def _in_release(stages: set[str], release_id: str, tape_versions: set[str] = fro
             return value in stages
         if kind == "release":
             return value == release_id
+        if kind == "round":
+            return value in rounds
         return value in tape_versions
     return keep
 
@@ -669,12 +776,19 @@ class ReleaseFiles:
         files.artifact("seq_shards")                      # the shard files, without their indexes
     """
 
-    def __init__(self, root: Path, release: str, stages, manifest: dict | None = None):
+    def __init__(self, root: Path, release: str, stages, manifest: dict | None = None, rounds=None):
         self.root = Path(root)
         self.release = release
         self.stages = check_stages(stages)
         self.manifest = manifest
         self._rank = {s: i for i, s in enumerate(self.stages)}
+        if rounds is not None:
+            self.rounds = check_rounds(rounds)
+        elif manifest is not None:
+            self.rounds = sorted(_manifest_rounds(manifest, self.root))
+        else:
+            self.rounds = release_rounds(self.root, release)
+        self._round_rank = {r: i for i, r in enumerate(self.rounds)}
 
     @classmethod
     def of(cls, root: Path, release: str, manifest: dict | None = None) -> "ReleaseFiles":
@@ -695,7 +809,7 @@ class ReleaseFiles:
         return "manifest" if self.manifest is not None else "release_def"
 
     def _order(self, path: Path, parts: dict) -> tuple:
-        return (self._rank.get(parts.get("stage"), -1), io.part_key(path))
+        return (self._rank.get(parts.get("stage"), -1), self._round_rank.get(parts.get("round"), -1), io.part_key(path))
 
     def entries(self, name: str, **want) -> list[tuple[Path, dict]]:
         """(path, partitions) of table `name`'s files of the release whose partitions include `want`."""
@@ -712,7 +826,7 @@ class ReleaseFiles:
         return [p for p, _ in self.entries(name, **want)]
 
     def _layout(self, name: str, want: dict[str, str]) -> list[tuple[Path, dict]]:
-        """A table's files from the registry layout: one listing per key set and per listed stage."""
+        """A table's files from the registry layout: one listing per key set, per listed stage and per listed round."""
         spec = TABLES[name]
         base = self.root / spec.location
         if spec.location.endswith(".parquet"):
@@ -722,11 +836,15 @@ class ReleaseFiles:
         # limitation: a version-only table (tape_version_def) is listed by `want`, not by the versions the release uses
         for keys in key_sets(spec):
             for stage in (self.stages if "stage" in keys else [None]):
-                dirs = "/".join(f"{k}={stage if k == 'stage' else fixed.get(k, want.get(k, '*'))}" for k in keys)
-                for p in io.part_files(base, f"{dirs}/*.parquet" if dirs else "*.parquet"):
-                    hit = classify(p.relative_to(self.root).as_posix())
-                    if hit is not None and hit[0].name == name:
-                        out.append((p, hit[1]))
+                for rnd in (self.rounds if "round" in keys else [None]):
+                    dirs = "/".join(
+                        f"{k}={stage if k == 'stage' else rnd if k == 'round' else fixed.get(k, want.get(k, '*'))}"
+                        for k in keys
+                    )
+                    for p in io.part_files(base, f"{dirs}/*.parquet" if dirs else "*.parquet"):
+                        hit = classify(p.relative_to(self.root).as_posix())
+                        if hit is not None and hit[0].name == name:
+                            out.append((p, hit[1]))
         return out
 
     def artifact(self, name: str) -> list[Path]:
@@ -761,6 +879,7 @@ def build_manifest(root: Path, release_id: str, stages) -> dict:
     and bad paths anywhere under `root`, and schema drift in the release's files."""
     root = Path(root).resolve()
     stages = verify_release_def(root, release_id, stages)
+    rounds = release_rounds(root, release_id)
     hits = []
     for path in sorted(root.rglob("*.parquet")):
         rel = path.relative_to(root).as_posix()
@@ -770,11 +889,11 @@ def build_manifest(root: Path, release_id: str, stages) -> dict:
         if hit is None:
             raise LayoutError(f"{rel}: no registered table claims this path (LY-10)")
         hits.append((path, rel, *hit))
-    # (a), (b) and (d) first (no tape version given: no (c) file is kept): the tape versions their files
+    # (a), (b), (d) and (e) first (no tape version given: no (c) file is kept): the tape versions their files
     # use decide which definitions (c) are the release's
-    direct = _in_release(set(stages), release_id)
+    direct = _in_release(set(stages), release_id, rounds=set(rounds))
     used = _used_tape_versions(parts for _, _, spec, parts in hits if direct(spec.name, parts))
-    in_release = _in_release(set(stages), release_id, used)
+    in_release = _in_release(set(stages), release_id, used, rounds=set(rounds))
     picked = [h for h in hits if in_release(h[2].name, h[3])]
     present = {parts.get("stage") for _, _, _, parts in picked} | {
         s for spec in ARTIFACTS.values() if spec.partition_keys[:1] == ("stage",)
@@ -782,6 +901,10 @@ def build_manifest(root: Path, release_id: str, stages) -> dict:
     missing = [s for s in stages if s not in present]
     if missing:
         raise FileNotFoundError(f"release {release_id}: listed stages {missing} have no files under {root}")
+    present_rounds = {parts.get("round") for _, _, _, parts in picked if "round" in parts}
+    missing_rounds = [r for r in rounds if r not in present_rounds]
+    if missing_rounds:
+        raise FileNotFoundError(f"release {release_id}: listed rounds {missing_rounds} have no files under {root}")
     files = []
     for path, rel, spec, parts in picked:
         pf = pq.ParquetFile(path)
@@ -883,7 +1006,8 @@ def verify_manifest(manifest: dict, root: Path | None = None) -> list[str]:
     written after the release, card B-28)."""
     root = Path(root or manifest["root"])
     used = _used_tape_versions(f["partitions"] for f in manifest["files"])
-    in_release = _in_release(set(manifest["stages"]), manifest["release_id"], used)
+    rounds = _manifest_rounds(manifest, root)
+    in_release = _in_release(set(manifest["stages"]), manifest["release_id"], used, rounds=rounds)
     problems = []
     listed = set()
     owned = {None}  # with the (table, stage, partitions) of every listed stage file that has more than a stage
@@ -952,24 +1076,31 @@ def _sql_str(s: str) -> str:
     return "'" + s.replace("'", "''") + "'"
 
 
-def _view_sql(spec: TableSpec, files: list[tuple[str, tuple[str, ...]]], n_columns: int | None = None) -> str:
+def _view_sql(spec: TableSpec, files: list[tuple[str, tuple[str, ...]]],
+              n_columns: int | dict[tuple[str, ...], int] | None = None) -> str:
     """The view over `files`, (path, the partition keys of its path). One `read_parquet` per key set: a
-    table with several (the ledger, card B-28) is their UNION ALL, each key a set lacks a typed NULL."""
+    table with several (the ledger, card B-28; round tables, card C-38e) is their UNION ALL, each key a
+    set lacks a typed NULL. `n_columns` may be an int or a mapping from partition key set tuple to the
+    widest file column count in that branch so an 8-column pre-C-38d `stage=` ledger unions cleanly with
+    10-column `release=` / `round=` ledgers (card C-38e, LY-09)."""
     keys_all = all_keys(spec)
     if not files:
         cols = [f'CAST(NULL AS {duck_type(f.type)}) AS "{f.name}"' for f in spec.schema]
         cols += [f'CAST(NULL AS VARCHAR) AS "{k}"' for k in keys_all]
         return f"CREATE VIEW {spec.name} AS SELECT {', '.join(cols)} WHERE false"
-    # union_by_name reads files written before a nullable column was added (LY-09); a column no
-    # file has yet is a typed NULL
-    n = len(spec.schema) if n_columns is None else n_columns
-    data = [f'"{f.name}"' if i < n else f'CAST(NULL AS {duck_type(f.type)}) AS "{f.name}"'
-            for i, f in enumerate(spec.schema)]
     groups: dict[tuple[str, ...], list[str]] = {}
     for path, keys in files:
         groups.setdefault(tuple(keys), []).append(path)
     selects = []
     for keys in sorted(groups, key=lambda ks: key_sets(spec).index(ks) if ks in key_sets(spec) else len(key_sets(spec))):
+        # union_by_name reads files written before a nullable column was added (LY-09); a column no
+        # file in this branch has yet is a typed NULL
+        if isinstance(n_columns, dict):
+            n = n_columns.get(keys, len(spec.schema))
+        else:
+            n = len(spec.schema) if n_columns is None else n_columns
+        data = [f'"{f.name}"' if i < n else f'CAST(NULL AS {duck_type(f.type)}) AS "{f.name}"'
+                for i, f in enumerate(spec.schema)]
         listing = "[" + ", ".join(_sql_str(p) for p in groups[keys]) + "]"
         if keys:
             types = "{" + ", ".join(f"{_sql_str(k)}: 'VARCHAR'" for k in keys) + "}"
@@ -1568,9 +1699,12 @@ def generate_catalog(manifest: dict, out_path: Path | None = None, root: Path | 
         by_table[f["table"]].append((str(root / f["path"]), tuple(f["partitions"])))
     con = duckdb.connect(str(tmp))
     try:
-        widest = {}
+        widest: dict[str, dict[tuple[str, ...], int]] = {}
         for f in manifest["files"]:
-            widest[f["table"]] = max(widest.get(f["table"], 0), f.get("n_columns", len(TABLES[f["table"]].schema)))
+            t = f["table"]
+            ks = tuple(f["partitions"])
+            by_ks = widest.setdefault(t, {})
+            by_ks[ks] = max(by_ks.get(ks, 0), f.get("n_columns", len(TABLES[t].schema)))
         for name in sorted(TABLES):
             if name != "contig_label":  # the release's labels, merged over its stages (label_view_sql)
                 con.execute(_view_sql(TABLES[name], sorted(by_table[name]), widest.get(name)))

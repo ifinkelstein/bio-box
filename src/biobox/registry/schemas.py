@@ -270,6 +270,60 @@ _SPECS = [
             "on the protein (env/ali) and on the model (hmm). E-values at the fixed Z_prot = domZ = 1e8"
         ),
     ),
+    TableSpec(
+        name="round_domains",
+        location="l1/round_domains",
+        layer="L1",
+        schema=pa.schema([
+            _f("protein_uid", UID),
+            _f("model_acc", pa.string()),
+            _f("model_name", pa.string()),
+            _f("model_len", pa.uint32()),
+            _f("seq_bitscore", pa.float32()),
+            _f("seq_evalue_zref", pa.float64()),
+            _f("dom_bitscore", pa.float32()),
+            _f("dom_ievalue_zref", pa.float64()),
+            _f("env_start", pa.uint32()),
+            _f("env_end", pa.uint32()),
+            _f("ali_start", pa.uint32()),
+            _f("ali_end", pa.uint32()),
+            _f("hmm_from", pa.uint32()),
+            _f("hmm_to", pa.uint32()),
+            _f("cutoff", pa.string()),
+            _f("z", pa.float64()),
+            _f("dom_z", pa.float64()),
+        ]),
+        primary_key=("protein_uid", "model_acc", "env_start", "round", "library"),
+        sort_key=("protein_uid", "env_start", "model_acc"),
+        partition_keys=("round", "library"),
+        # merged, sorted release copy for O(1) row-group lookup by protein_uid (card C-38e, DEC-54, AGENTS §4.4)
+        alt_partition_keys=(("release", "library"),),
+        enums={"cutoff": ("gathering", "trusted", "noise", "none")},
+        doc=(
+            "card C-38e (DEC-54; planning/design/C-38_import_depths.md §3.2): domain rows from an annotation "
+            "round over a requested set of proteins, same columns as l1_domains. Per-round files live under "
+            "(round, library); a release's merged, protein_uid-sorted copy lives under (release, library)"
+        ),
+    ),
+    TableSpec(
+        name="round_coverage",
+        location="l1/round_coverage",
+        layer="L1",
+        schema=pa.schema([
+            _f("protein_uid", UID),
+            _f("n_rows", pa.uint32()),
+        ]),
+        primary_key=("protein_uid", "round", "library"),
+        sort_key=("protein_uid",),
+        partition_keys=("round", "library"),
+        # merged, sorted release copy for O(1) row-group lookup by protein_uid (card C-38e, DEC-54, AGENTS §4.4)
+        alt_partition_keys=(("release", "library"),),
+        doc=(
+            "card C-38e (DEC-54; planning/design/C-38_import_depths.md §3.2): one row per protein covered by "
+            "an annotation round, n_rows 0 for a protein scanned with no domain hit. Per-round files live under "
+            "(round, library); a release's merged, protein_uid-sorted copy lives under (release, library)"
+        ),
+    ),
     # card E-01 (biobox.l1.ncrna): one row per cmsearch hit at or above its model's GA; the hit's locus is a
     # `feature` row of kind ncrna under the same producer
     TableSpec(
@@ -660,8 +714,9 @@ _SPECS = [
         primary_key=("object_key", "reason_code", "stage", "step"),
         sort_key=("object_key", "reason_code"),
         partition_keys=("stage", "step"),
-        # a release's own steps (clustering) are not a stage's: ledger/release=<R>/step=<name>/ (card B-28)
-        alt_partition_keys=(("release", "step"),),
+        # a release's own steps (clustering) are under (release, step) (card B-28); an annotation round's
+        # domain scan is under (round, step) (card C-38e, DEC-54)
+        alt_partition_keys=(("release", "step"), ("round", "step")),
         enums={"object_kind": ("l0_object", "contig", "library", "level")},
         small_ok=True,
         doc=(
@@ -894,6 +949,24 @@ _SPECS = [
         ),
     ),
     TableSpec(
+        name="release_round",
+        location="release_round",
+        layer="release",
+        schema=pa.schema([
+            _f("position", pa.uint16()),
+            _f("round", pa.string()),
+        ]),
+        primary_key=("release", "round"),
+        sort_key=("position",),
+        partition_keys=("release",),
+        small_ok=True,
+        doc=(
+            "card C-38e (DEC-54; planning/design/C-38_import_depths.md §3.2): the annotation rounds a release "
+            "takes, one row per round, `position` its rank (from 0). Written once beside release_def by "
+            "biobox.catalog.define_release when complete rounds exist on disk"
+        ),
+    ),
+    TableSpec(
         name="token_postings",
         location="l3/token_postings",
         layer="L3",
@@ -1061,6 +1134,21 @@ ARTIFACTS: dict[str, ArtifactSpec] = {
         pattern=r"(plan|shard-\d{5})\.json",
         doc="a stage's shard plan for one domain library (plan.json: proteins by protein_uid cut by cumulative "
             "residues) and each scanned shard's record (shard-<k>.json), as sorted-key JSON",
+        in_manifest=False,
+        small_ok=True,
+    ),
+    # An annotation round's plan and shard records (card C-38e, DEC-54, `planning/design/C-38_import_depths.md`
+    # §3.3): the split between scanned and copied proteins lives here, never in the manifest, so a round's
+    # output tables are a function of its request alone (AGENTS §4.3).
+    "round_scan": ArtifactSpec(
+        name="round_scan",
+        layer="L1",
+        location="l1/round_scan",
+        partition_keys=("round", "library"),
+        pattern=r"(plan|shard-\d{5})\.json",
+        doc="an annotation round's shard plan for one domain library (plan.json: requested proteins by "
+            "protein_uid, split between scanned and copied, cut by cumulative residues) and each scanned "
+            "shard's record (shard-<k>.json), as sorted-key JSON (card C-38e, DEC-54)",
         in_manifest=False,
         small_ok=True,
     ),
