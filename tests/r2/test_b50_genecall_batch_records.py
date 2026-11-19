@@ -41,7 +41,11 @@ import test_b48_genecall_batches as b48  # noqa: E402
 
 pytestmark = [pytest.mark.r2, pytest.mark.covers("B-50", "B-48", "D-01")]
 
-PARENT_DIGEST = "530c05e069f2aa51dd3d188c85fdb1164eadfdb50919b01f253dfdeaef6b523b"
+# Moved once in card C-38d from 530c05e069f2aa51dd3d188c85fdb1164eadfdb50919b01f253dfdeaef6b523b when the two
+# appended nullable columns (`n_bases_in`, `n_bases_rejected`, LY-09) entered the 3 `ledger/` Parquet files; all 23
+# non-ledger files in `b50_batched_tree.tree(root)` kept their exact pre-C-38d sha256 (*measured*, wilkcomp02,
+# 2026-11-18).
+PARENT_DIGEST = "c139304e7e18f8d2c7416103ea0f8cc1ba93aedb7ab12338d4ebc2761bbf451c"
 RUNS = "runs/stage=S1"
 RECORDS = "l1/genecall_plan/stage=S1"
 BATCHES = [f"genecall.batch-{j:05d}" for j in range(3)]

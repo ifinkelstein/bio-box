@@ -439,6 +439,7 @@ class Build:
     crispr: bool = False  # the CRISPR array producer as a step after the features slot (card E-12)
     reuse: bool = True  # card B-49: the cluster step takes an earlier release's clustering of the same proteins
     depth: str | None = None  # stored, called or annotated (card C-38a, DEC-54); None: annotated with --library, else called
+    min_contig_len: int | None = None  # card C-38d (DEC-54): least contig length at ingest; None: keep all records
 
 
 @dataclass(frozen=True)
@@ -536,7 +537,8 @@ def depth_of(b: Build) -> str:
 
 
 def _check_depth_options(b: Build) -> str:
-    """Validate `--depth` and its option combinations before any step runs (card C-38a); return the resolved depth."""
+    """Validate `--depth`, `--min-contig-len`, and option combinations before any step runs (cards C-38a, C-38d)."""
+    store._check_min_contig_len(b.min_contig_len)
     depth = depth_of(b)
     if depth == "stored":
         if b.libraries or b.ncrna_cm is not None or b.crispr:
@@ -588,7 +590,7 @@ def steps(prof: Profile, b: Build) -> list[Step]:
     stored_steps = [
         Step(s, "inputs", st("inputs", "--genomes", str(Path(b.genomes).resolve()))),
         own(s, "ingest", lambda t: st("ingest", "--objects", str(Path(b.objects).resolve()), "--tmp", t,
-                                      *_shard_bases(b)), check="ingest"),
+                                      *_shard_bases(b), *_min_contig_len(b)), check="ingest"),
     ]
     if depth == "stored":
         return stored_steps
@@ -791,6 +793,10 @@ def held_bases(root: Path, stage: str, tmp: Path | None = None) -> int:
 
 def _shard_bases(b: Build) -> tuple[str, ...]:
     return () if b.shard_bases is None else ("--shard-bases", str(b.shard_bases))
+
+
+def _min_contig_len(b: Build) -> tuple[str, ...]:
+    return () if b.min_contig_len is None else ("--min-contig-len", str(b.min_contig_len))
 
 
 def stage_residues(root: Path, stage: str, gene_call_version: str) -> int:
@@ -1917,8 +1923,8 @@ def ingest_steps(prof: Profile, b: Build, n_pass1: int, per_shard: int, n_batche
                                     "--runs-tmp", tmp, *extra), scratch=mine)
 
     first = [*(ig(f"ingest.pass1-{k:05d}", "pass1", "--shard", str(k), "--pass1-bytes", str(per_shard),
-                  *_shard_bases(b)) for k in range(n_pass1)),
-             ig("ingest.plan", "plan", *_shard_bases(b))]
+                  *_shard_bases(b), *_min_contig_len(b)) for k in range(n_pass1)),
+             ig("ingest.plan", "plan", *_shard_bases(b), *_min_contig_len(b))]
     if n_batches is None:
         return first
     return [*first, *(ig(f"ingest.batch-{j:04d}", "batch", "--batch", str(j)) for j in range(n_batches)),

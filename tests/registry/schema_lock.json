@@ -947,6 +947,16 @@
    "tool_versions_json",
    "string",
    true
+  ],
+  [
+   "n_bases_in",
+   "uint64",
+   true
+  ],
+  [
+   "n_bases_rejected",
+   "uint64",
+   true
   ]
  ],
  "member_cluster": [

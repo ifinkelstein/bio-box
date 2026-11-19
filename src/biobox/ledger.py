@@ -56,12 +56,27 @@ BATCH_ROWS = 65_536  # ledger rows handed to the writer at a time
 _DUCK_MEMORY_LIMIT = "1GB"  # the checks' DuckDB cap; larger aggregates spill to a private temporary directory
 
 
+BELOW_LEN_PREFIX = "below:"
+
+
+def below_len_reason(min_contig_len: int) -> str:
+    """Reason code `below:<L>` for records dropped by `ingest --min-contig-len L` (card C-38d, DEC-54)."""
+    if isinstance(min_contig_len, bool) or not isinstance(min_contig_len, int):
+        raise TypeError(f"min_contig_len {min_contig_len!r}: must be a positive integer")
+    if min_contig_len < 1:
+        raise ValueError(f"min_contig_len {min_contig_len!r}: must be >= 1")
+    return f"{BELOW_LEN_PREFIX}{min_contig_len}"
+
+
 def row(object_key: bytes, kind: str, n_in: int, n_kept: int, n_merged: int = 0, n_rejected: int = 0,
-        reason: str = "ok", tools: dict[str, str] | None = None) -> dict:
-    """`tools`: versions of the tools that made this step's output (C-08, `provenance.tool_versions`)."""
+        reason: str = "ok", tools: dict[str, str] | None = None, *,
+        n_bases_in: int | None = None, n_bases_rejected: int | None = None) -> dict:
+    """`tools`: versions of the tools that made this step's output (C-08, `provenance.tool_versions`).
+    `n_bases_in`, `n_bases_rejected`: appended nullable base counts for filtered ingest (card C-38d)."""
     return {"object_key": object_key, "object_kind": kind, "n_in": n_in, "n_kept": n_kept,
             "n_merged": n_merged, "n_rejected": n_rejected, "reason_code": reason,
-            "tool_versions_json": json.dumps(tools, sort_keys=True) if tools is not None else None}
+            "tool_versions_json": json.dumps(tools, sort_keys=True) if tools is not None else None,
+            "n_bases_in": n_bases_in, "n_bases_rejected": n_bases_rejected}
 
 
 RELEASE_STEPS = frozenset({"cluster"})  # steps of a release, not of a stage (card B-28)
@@ -182,7 +197,7 @@ def _duck() -> Iterator[duckdb.DuckDBPyConnection]:
 
 def _src(files: list[Path]) -> str:
     """The ledger rows of `files` (each with `si`, its position in the list) as a subquery."""
-    return "(" + " UNION ALL ".join(
+    return "(" + " UNION ALL BY NAME ".join(
         f"SELECT {i} AS si, * FROM read_parquet('{str(f).replace(chr(39), chr(39) * 2)}', hive_partitioning = false)"
         for i, f in enumerate(files)) + ")"
 

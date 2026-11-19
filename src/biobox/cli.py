@@ -47,9 +47,9 @@
         [--one-process-cpu-min-max C]   (card B-49: an earlier release's clustering of the same proteins, copied)
     bio-box release verify --root R --release R2 [--previous R1]
     bio-box stage inputs --root R --stage S --genomes genomes.json [--out DIR]
-    bio-box stage ingest --root R --stage S --objects objects.json [--shard-bases N] [--line-width N] [--tmp D]
-    bio-box stage ingest pass1 --root R --stage S --objects F --shard K --pass1-bytes N [--shard-bases N] --tmp D
-    bio-box stage ingest plan --root R --stage S --objects F [--shard-bases N] [--line-width N] --tmp D
+    bio-box stage ingest --root R --stage S --objects objects.json [--shard-bases N] [--line-width N] [--min-contig-len L] [--tmp D]
+    bio-box stage ingest pass1 --root R --stage S --objects F --shard K --pass1-bytes N [--shard-bases N] [--min-contig-len L] --tmp D
+    bio-box stage ingest plan --root R --stage S --objects F [--shard-bases N] [--line-width N] [--min-contig-len L] --tmp D
     bio-box stage ingest batch --root R --stage S --objects F --batch J --tmp D
     bio-box stage ingest merge --root R --stage S --objects F --tmp D
     bio-box stage genecall|igr|tapes --root R --stage S [--tmp D] [--producers P,Q] [--workers N] [--out DIR]
@@ -72,7 +72,7 @@
     bio-box stage crispr --near-cas --library pfam --library-version V --root R --stage S --cpus N [--tmp D]
                 [--seq-stages S0,S1] [--gene-call-version G] [--out DIR]   (card E-15: two-repeat arrays beside Cas genes)
     bio-box build-stage --profile P --root R --stage S --release R1 [--stages S0,S1] --genomes genomes.json
-                --objects objects.json [--library NAME VERSION HMM CUTOFF ...] [--tmp D] [--threads N]
+                --objects objects.json [--min-contig-len L] [--library NAME VERSION HMM CUTOFF ...] [--tmp D] [--threads N]
                 [--scan-jobs J] [--scan-cpus C] [--cluster-parts N] [--ncrna-cm Rfam.cm.gz [--ncrna-set prok-2]]
                 [--crispr]
 
@@ -2005,7 +2005,8 @@ def _stage_step(a, root: Path, out: Path) -> dict:
 
         if not a.objects:
             raise ValueError("stage ingest needs --objects")
-        kw = {k: v for k, v in (("shard_bases", a.shard_bases), ("line_width", a.line_width)) if v is not None}
+        kw = {k: v for k, v in (("shard_bases", a.shard_bases), ("line_width", a.line_width),
+                                ("min_contig_len", a.min_contig_len)) if v is not None}
         if a.action is None:
             return ingest(_source_objects(a.objects), root, a.stage, tmp=tmp, out=out, **kw, **mfb)
         from biobox.l0seq import store  # in batch processes (card B-30)
@@ -2159,7 +2160,8 @@ def _build_stage(a) -> int:
                     libraries=libs, tmp=Path(a.tmp) if a.tmp else None, threads=a.threads,
                     gene_call_version=a.gene_call_version, scan_jobs=a.scan_jobs, scan_cpus=a.scan_cpus,
                     cluster_parts=a.cluster_parts, ncrna_cm=Path(a.ncrna_cm) if a.ncrna_cm else None,
-                    ncrna_set=a.ncrna_set, crispr=a.crispr, reuse=not a.no_reuse, depth=a.depth)
+                    ncrna_set=a.ncrna_set, crispr=a.crispr, reuse=not a.no_reuse, depth=a.depth,
+                    min_contig_len=a.min_contig_len)
     return stage.build_stage(profile.load(a.profile), b)
 
 
@@ -2522,6 +2524,9 @@ def _main(argv: list[str] | None = None) -> int:
     st.add_argument("--objects", help="ingest: JSON list of source objects (SourceObject fields)")
     st.add_argument("--shard-bases", type=int, help="ingest: new bases per sequence shard")
     st.add_argument("--line-width", type=int, help="ingest: FASTA line width of the shards")
+    st.add_argument("--min-contig-len", type=int,
+                    help="ingest: drop FASTA records shorter than this many bases before the held-contig check "
+                         "(card C-38d)")
     st.add_argument("--prefix-width", type=int, choices=[0, 1, 2], help="genecall: protein_seq bucket width")
     st.add_argument("--workers", type=int, default=1, help="genecall: genomes called at once")
     st.add_argument("--seq-stages", help="genecall, ncrna, crispr: S0,S1: the stages whose sequences the genomes "
@@ -2576,6 +2581,9 @@ def _main(argv: list[str] | None = None) -> int:
                                      "else they come from its release_def")
     bs.add_argument("--genomes", required=True, help="inputs: JSON list of genomes (as bio-box stage inputs)")
     bs.add_argument("--objects", required=True, help="ingest: JSON list of source objects (as bio-box stage ingest)")
+    bs.add_argument("--min-contig-len", type=int,
+                    help="ingest: drop FASTA records shorter than this many bases before the held-contig check "
+                         "(card C-38d)")
     bs.add_argument("--library", nargs=4, action="append", default=[], metavar=("NAME", "VERSION", "HMM", "CUTOFF"),
                     help="a domain library to scan (repeatable; one step each, in the order given)")
     bs.add_argument("--tmp", help="scratch directory of the steps (default: <profile tmp>/scratch)")

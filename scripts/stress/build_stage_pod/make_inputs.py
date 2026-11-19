@@ -1,10 +1,11 @@
 """The `--genomes` and `--objects` files of `bio-box build-stage` for card C-10, from the import ladder's inputs.
 
-    python make_inputs.py phage SRC_FASTA_GZ N OUT_DIR [--drop-repeats]
+    python make_inputs.py phage SRC_FASTA_GZ N OUT_DIR [--drop-repeats] [--min-contig-len L]
     python make_inputs.py prok LOCK_JSON SELECTION_TSV OUT_DIR [--source-release datasets-v2-YYYY-MM-DD]
-        [--source-name S] [--license L] [--quality-column COL] [--root ROOT] [--drop-repeats]
+        [--source-name S] [--license L] [--quality-column COL] [--root ROOT] [--drop-repeats] [--min-contig-len L]
     python make_inputs.py plasmid FASTA META_CSV OUT_DIR [--root ROOT] [--source-release R] [--retrieved-at T]
-    python make_inputs.py plasmid-sources SPEC_JSON OUT_DIR [--root ROOT]
+        [--min-contig-len L]
+    python make_inputs.py plasmid-sources SPEC_JSON OUT_DIR [--root ROOT] [--min-contig-len L]
 
 --source-release labels every prok object (default datasets-v2-2026-11-09, the ladder's fetch date).
 --drop-repeats keeps the rule these inputs were made with before DEC-27: a contig uid already listed by an earlier
@@ -183,7 +184,8 @@ def _write_tsv(path: Path, head: list[str], rows: list[tuple]) -> None:
     path.write_text("".join("\t".join(map(str, r)) + "\n" for r in [tuple(head), *rows]))
 
 
-def plasmid(fa: Path, meta_csv: Path, out: Path, root: Path | None, release: str, retrieved: str) -> dict:
+def plasmid(fa: Path, meta_csv: Path, out: Path, root: Path | None, release: str, retrieved: str,
+            *, min_len: int | None = None) -> dict:
     """The plasmid mode (module docstring): reads everything, refuses before writing, then writes the files."""
     meta = plasmid_meta(meta_csv)
     owners = stage_owners(root) if root is not None else None
@@ -194,7 +196,7 @@ def plasmid(fa: Path, meta_csv: Path, out: Path, root: Path | None, release: str
     topo = {"circular": 0, "linear": 0, "empty": 0}
     qual = {q: 0 for q in PLSDB_QUALITY.values()}
     repeated, shared = [], []
-    suppressed = record_bases = 0
+    suppressed = record_bases = records_below = bases_below = 0
     for k, r in enumerate(fasta.iter_records(fa)):
         acc = r.header.split()[0] if r.header.split() else ""
         m = meta.get(acc)
@@ -207,6 +209,10 @@ def plasmid(fa: Path, meta_csv: Path, out: Path, root: Path | None, release: str
             raise Refused(f"{acc}: NUCCORE_Topology {m['topology']!r} is not one of {sorted(PLSDB_TOPOLOGY)}")
         if m["completeness"] not in PLSDB_QUALITY:
             raise Refused(f"{acc}: NUCCORE_Completeness {m['completeness']!r} is not one of {sorted(PLSDB_QUALITY)}")
+        if min_len is not None and len(r.seq) < min_len:
+            records_below += 1
+            bases_below += len(r.seq)
+            continue
         circ, q = PLSDB_TOPOLOGY[m["topology"]], PLSDB_QUALITY[m["completeness"]]
         topo[m["topology"] or "empty"] += 1
         qual[q] += 1
@@ -249,6 +255,9 @@ def plasmid(fa: Path, meta_csv: Path, out: Path, root: Path | None, release: str
     (out / "objects.json").write_text(json.dumps(objects, indent=1))
     (out / "genomes.json").write_text(json.dumps(genomes))
     rep.update({"objects": len(objects), "codes": {"11": len(genomes)} if genomes else {}})
+    if min_len is not None:
+        rep.update({"min_contig_len": min_len, "records_below_min_len": records_below,
+                    "bases_below_min_len": bases_below})
     return rep
 
 
@@ -302,7 +311,7 @@ def _check_spec(spec: dict) -> list[dict]:
     return srcs
 
 
-def plasmid_sources(spec_path: Path, out: Path, root: Path | None) -> dict:
+def plasmid_sources(spec_path: Path, out: Path, root: Path | None, *, min_len: int | None = None) -> dict:
     """The plasmid-sources mode (module docstring): reads and checks everything into a sibling scratch directory,
     which becomes OUT_DIR only when nothing was refused."""
     import shutil
@@ -315,7 +324,7 @@ def plasmid_sources(spec_path: Path, out: Path, root: Path | None) -> dict:
     shutil.rmtree(tmp, ignore_errors=True)
     tmp.mkdir(parents=True)
     try:
-        rep = _plasmid_sources(srcs, out, tmp, owners)
+        rep = _plasmid_sources(srcs, out, tmp, owners, min_len=min_len)
     except BaseException:
         shutil.rmtree(tmp, ignore_errors=True)
         raise
@@ -323,7 +332,8 @@ def plasmid_sources(spec_path: Path, out: Path, root: Path | None) -> dict:
     return rep
 
 
-def _plasmid_sources(srcs: list[dict], out: Path, tmp: Path, owners: dict[bytes, str] | None) -> dict:
+def _plasmid_sources(srcs: list[dict], out: Path, tmp: Path, owners: dict[bytes, str] | None,
+                     *, min_len: int | None = None) -> dict:
     listing = Listing()
     genomes: list[dict] = []
     first: dict[bytes, tuple] = {}  # contig uid -> (source, accession, length) of its first record taken
@@ -373,6 +383,11 @@ def _plasmid_sources(srcs: list[dict], out: Path, tmp: Path, owners: dict[bytes,
                     if cv not in src["completeness"]:
                         raise Refused(f"source {name}: {acc}: {src['completeness_column']} {cv!r} is not one of "
                                       f"{sorted(src['completeness'])}")
+                    if min_len is not None and len(r.seq) < min_len:
+                        reason = f"below:{min_len}"
+                        st["skipped"][reason] = st["skipped"].get(reason, 0) + 1
+                        skip_w.write(f"{name}\t{acc}\t{cu.hex()}\t{len(r.seq)}\t{reason}\n")
+                        continue
                     comp = src["completeness"][cv]
                     frag = comp == "fragment"
                     topo_circ = src["topology"][tv] == "circular"
@@ -424,6 +439,8 @@ def _plasmid_sources(srcs: list[dict], out: Path, tmp: Path, owners: dict[bytes,
         rep.update({"owner_records": dict(sorted(owner_records.items())),
                     "new_contigs": sum(1 for cu in first if cu not in owners),
                     "new_bases": sum(f[2] for cu, f in first.items() if cu not in owners)})
+    if min_len is not None:
+        rep["min_contig_len"] = min_len
     return rep
 
 
@@ -456,6 +473,18 @@ def _prok_selection(path: Path, qual_col: str | None) -> dict[str, dict]:
     return meta
 
 
+def _parse_min_len(raw: str | None) -> int | None:
+    if raw is None:
+        return None
+    try:
+        v = int(raw)
+    except ValueError:
+        raise Refused(f"--min-contig-len {raw!r}: must be an integer >= 1") from None
+    if v < 1:
+        raise Refused(f"--min-contig-len {v}: must be >= 1")
+    return v
+
+
 def main(argv: list[str]) -> int:
     if any(a in ("-h", "--help") for a in argv):
         print(HELP)
@@ -467,15 +496,17 @@ def main(argv: list[str]) -> int:
         argv, src_name = _option(argv, "--source-name")
         argv, lic = _option(argv, "--license")
         argv, qual_col = _option(argv, "--quality-column")
-    except Refused:
-        print(USAGE, file=sys.stderr)
+        argv, min_len_s = _option(argv, "--min-contig-len")
+        min_len = _parse_min_len(min_len_s)
+    except Refused as e:
+        print(f"make_inputs.py: refused: {e}\n{USAGE}", file=sys.stderr)
         return 2
     if argv[:1] == ["plasmid-sources"]:
         if len(argv) != 3 or any(x is not None for x in (release, retrieved, src_name, lic, qual_col)):
             print(USAGE, file=sys.stderr)
             return 2
         try:
-            rep = plasmid_sources(Path(argv[1]), Path(argv[2]), None if root is None else Path(root))
+            rep = plasmid_sources(Path(argv[1]), Path(argv[2]), None if root is None else Path(root), min_len=min_len)
         except Refused as e:
             print(f"make_inputs.py plasmid-sources: refused: {e}", file=sys.stderr)
             return 2
@@ -487,7 +518,7 @@ def main(argv: list[str]) -> int:
             return 2
         try:
             rep = plasmid(Path(argv[1]), Path(argv[2]), Path(argv[3]), None if root is None else Path(root),
-                          release or PLSDB_RELEASE, retrieved or PLSDB_RETRIEVED)
+                          release or PLSDB_RELEASE, retrieved or PLSDB_RETRIEVED, min_len=min_len)
         except Refused as e:
             print(f"make_inputs.py plasmid: refused: {e}", file=sys.stderr)
             return 2
@@ -509,6 +540,7 @@ def main(argv: list[str]) -> int:
     seen: set = set()
     listing = Listing()
     genomes, dropped, rep = [], 0, {}
+    records_below = bases_below = genomes_below = 0
 
     def add(uids: list[bytes], code: int, kind: str, quality: str = "complete") -> None:
         nonlocal dropped
@@ -525,6 +557,10 @@ def main(argv: list[str]) -> int:
         fa = out / f"phage_first{n}.fa"
         rep["records_copied"] = first_records(Path(argv[1]), n, fa)
         for r in fasta.iter_records(fa):
+            if min_len is not None and len(r.seq) < min_len:
+                records_below += 1
+                bases_below += len(r.seq)
+                continue
             add([ids.contig_uid(r.seq)], 11, "virus")
         objects = [{"path": str(fa), "source_name": "inphared", "source_release": "14Apr2025",
                     "license": "AGPL-3.0 (repo); data from INSDC"}]
@@ -548,15 +584,24 @@ def main(argv: list[str]) -> int:
                 code = int(tt) if tt not in ("", "None") else 11
                 q = row[qual_col] if qual_col is not None else "complete"
                 uids: list[bytes] = []
+                saw_any = False
                 for ord_k, r in enumerate(fasta.iter_records(Path(v["file"]))):
+                    saw_any = True
+                    if min_len is not None and len(r.seq) < min_len:
+                        records_below += 1
+                        bases_below += len(r.seq)
+                        continue
                     cu = ids.contig_uid(r.seq)
                     uids.append(cu)
                     contig_len.setdefault(cu, len(r.seq))
                     if owners is not None and cu in owners:
                         shared.append((acc, ord_k, r.accession, cu.hex(), len(r.seq), owners[cu]))
-                if not uids:
+                if not saw_any:
                     raise Refused(f"{acc}: {v['file']} has no FASTA records")
-                add(uids, code, "prokaryote", q)
+                if uids:
+                    add(uids, code, "prokaryote", q)
+                else:
+                    genomes_below += 1
                 objects.append({"path": v["file"], "source_name": src_name or "ncbi_genomes",
                                 "source_release": release, "license": lic or "INSDC public data",
                                 "redistributable": True, "retrieved_at": v["retrieved_utc"]})
@@ -575,6 +620,10 @@ def main(argv: list[str]) -> int:
                 **({"contigs_not_listed_again": dropped} if drop else listing.report()), "objects": len(objects),
                 "codes": {str(c): sum(1 for g in genomes if g["genetic_code"] == c)
                           for c in sorted({g["genetic_code"] for g in genomes})}})
+    if min_len is not None:
+        rep.update({"min_contig_len": min_len, "records_below_min_len": records_below,
+                    "bases_below_min_len": bases_below,
+                    **({"genomes_below_min_len": genomes_below} if argv[0] == "prok" else {})})
     if qual_col is not None:
         rep["quality"] = {q: sum(1 for g in genomes if g["assembly_quality"] == q)
                           for q in sorted({g["assembly_quality"] for g in genomes})}

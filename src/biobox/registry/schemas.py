@@ -654,6 +654,8 @@ _SPECS = [
             _f("n_rejected", pa.uint64()),
             _f("reason_code", pa.string()),
             _f("tool_versions_json", pa.string(), nullable=True),  # C-08; appended 2026-10-30 (LY-09)
+            _f("n_bases_in", pa.uint64(), nullable=True),  # C-38d; appended 2026-11-18 (LY-09)
+            _f("n_bases_rejected", pa.uint64(), nullable=True),  # C-38d; appended 2026-11-18 (LY-09)
         ]),
         primary_key=("object_key", "reason_code", "stage", "step"),
         sort_key=("object_key", "reason_code"),
