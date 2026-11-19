@@ -76,17 +76,20 @@ from __future__ import annotations
 
 import argparse
 import bisect
+import contextlib
 import gzip
 import hashlib
 import io
 import json
 import os
+import shutil
 import sys
 import tarfile
 import tempfile
 from collections.abc import Iterator
 from pathlib import Path
 
+import duckdb
 import pyarrow as pa
 import pyarrow.compute as pc
 import pyarrow.parquet as pq
@@ -108,6 +111,7 @@ _READ_ROWS = 16_384  # protein_seq rows per read while planning or reading a sha
 COMPARED = ("hmm_sha256", "cutoff", "z", "dom_z", "tools")
 Z_UNRECORDED = 1e8  # the Z of a plan that records none: Z_PROT and DOM_Z have been 1e8 since 74b3e05 (`git log -G`)
 FLUSH_PIECES = 1024  # the merge of a copying plan combines its row slices at least this often (`_merge_copies`)
+DUCK_MEMORY_LIMIT = "256MB"  # single-thread DuckDB cap when streaming shared-contig proteins (card C-38h, AGENTS §4.1)
 
 
 def iter_hmms(path: Path):
@@ -250,6 +254,13 @@ def scan_dir(stage: str, library: str, library_version: str) -> str:
     return f"{ARTIFACTS['domain_scan'].location}/library={library}-{library_version}/stage={stage}"
 
 
+def plan_stages(root: Path, library: str, library_version: str) -> list[str]:
+    """Stages on disk that have a `domain_scan` directory for `library`-`library_version` (card C-38h: includes
+    stages that own 0 contigs of their own and therefore have no `seq_locator` directory)."""
+    base = Path(root) / ARTIFACTS["domain_scan"].location / f"library={library}-{library_version}"
+    return sorted(p.name.removeprefix("stage=") for p in base.glob("stage=*") if p.is_dir()) if base.is_dir() else []
+
+
 def _plan_rel(stage: str, library: str, library_version: str) -> str:
     return f"{scan_dir(stage, library, library_version)}/plan.json"
 
@@ -355,14 +366,15 @@ def plan(root: Path, stage: str, gene_call_version: str, library: str, library_v
         if (base / rel).exists():
             raise FileExistsError(f"{base / rel}: the shard plan is written once; refusing to overwrite")
     files = _protein_files(root, gene_call_version, stage)
-    if not files:
+    named = list(dict.fromkeys(s for s in (seq_stages or ()) if s != stage))
+    owned = _owned_plan(root, stage, gene_call_version, named) if named else None
+    if not files and owned is None and not (named and _genome_input_files(root, stage)):
         raise FileNotFoundError(f"stage {stage}: no protein_seq files for gene_call_version={gene_call_version}")
     hmm_sha256 = ids.sha256_file(Path(hmm_path)).hex()
     head = {"format": PLAN_FORMAT, "stage": stage, "gene_call_version": gene_call_version, "library": library,
             "library_version": library_version, "cutoff": cutoff, "hmm_sha256": hmm_sha256,
             "shard_residues": shard_residues,
             "files": [{"path": f.relative_to(root).as_posix(), "bytes": f.stat().st_size} for f in files]}
-    named = list(dict.fromkeys(s for s in (seq_stages or ()) if s != stage))
     if not named:
         shards = list(_cut(_uid_lengths(files), shard_residues))
         doc = {**head, "proteins": sum(s["proteins"] for s in shards), "residues": sum(s["residues"] for s in shards),
@@ -374,7 +386,7 @@ def plan(root: Path, stage: str, gene_call_version: str, library: str, library_v
     counts = [{"proteins": 0, "residues": 0, "rows": 0, "proteins_with_hit": 0} for _ in srcs]
 
     def scanned() -> Iterator[tuple[bytes, int]]:
-        for u, n, k, rows in _walk(root, files, srcs, ["protein_uid"]):
+        for u, n, k, rows in _walk(root, files, srcs, ["protein_uid"], owned=owned):
             total["proteins"] += 1
             total["residues"] += n
             if k < 0:
@@ -394,12 +406,136 @@ def plan(root: Path, stage: str, gene_call_version: str, library: str, library_v
             **{k: sum(c[k] for c in counts) for k in ("proteins", "residues", "rows", "proteins_with_hit")}}
     doc = {**head, "proteins": total["proteins"], "residues": total["residues"], "shards": shards,
            "z": Z_PROT, "dom_z": DOM_Z, "tools": _tools(), "copy": copy}
+    if owned is not None:
+        doc["owned"] = owned
     _write_once(root, out, rel, _json_bytes(doc), "the shard plan")
     scanned_p, scanned_r = sum(s["proteins"] for s in shards), sum(s["residues"] for s in shards)
     return {"shards": len(shards), "proteins": doc["proteins"], "residues": doc["residues"],
             "scanned_proteins": scanned_p, "scanned_residues": scanned_r, "copied_proteins": copy["proteins"],
             "copied_residues": copy["residues"], "copied_rows": copy["rows"],
             "sources": [s["stage"] for s in srcs], "passed_over": [p["stage"] for p in passed]}
+
+
+# --- shared contigs owned by earlier stages (card C-38h, DEC-26, DEC-54 Q8) ------------------------------------------
+
+
+def _sql_files(files: list[Path]) -> str:
+    return "[" + ", ".join("'" + str(f).replace("'", "''") + "'" for f in files) + "]"
+
+
+@contextlib.contextmanager
+def _duck() -> Iterator[duckdb.DuckDBPyConnection]:
+    scratch = Path(tempfile.mkdtemp(prefix="biobox-domains-"))
+    con = duckdb.connect(config={"threads": 1, "memory_limit": DUCK_MEMORY_LIMIT,
+                                 "temp_directory": str(scratch / "duckdb")})
+    try:
+        yield con
+    finally:
+        con.close()
+        shutil.rmtree(scratch, ignore_errors=True)
+
+
+def _feature_protein_files(root: Path, gene_call_version: str, stage: str) -> list[Path]:
+    return bio.part_files(Path(root) / table("feature_protein").location
+                          / f"gene_call_version={gene_call_version}" / f"stage={stage}")
+
+
+def _genome_input_files(root: Path, stage: str) -> list[Path]:
+    return bio.part_files(Path(root) / table("genome_input").location / f"stage={stage}")
+
+
+def _file_entries(root: Path, files: list[Path]) -> list[dict]:
+    return [{"path": f.relative_to(root).as_posix(), "bytes": f.stat().st_size} for f in files]
+
+
+def _owned_plan(root: Path, stage: str, gene_call_version: str, named: list[str]) -> dict | None:
+    """Other stages in `named` whose `feature_protein` holds proteins on contigs of `stage`'s `genome_input`
+    (card C-38h, DEC-26, DEC-54 Q8): None when `stage` has no `genome_input` or no stage in `named` contributes
+    any protein, else `{"genome_input": [...], "stages": [{"stage": s, "feature_protein": [...],
+    "protein_files": [...]}, ...]}` sorted by stage name."""
+    gi = _genome_input_files(root, stage)
+    if not gi or not named:
+        return None
+    cands = []
+    for s in sorted(dict.fromkeys(x for x in named if x != stage)):
+        fp = _feature_protein_files(root, gene_call_version, s)
+        ps = _protein_files(root, gene_call_version, s)
+        if fp and ps:
+            cands.append((s, fp, ps))
+    if not cands:
+        return None
+    unions = " UNION ALL ".join(
+        f"SELECT {i} AS si, contig_uid, protein_uid FROM read_parquet({_sql_files(fp)}, hive_partitioning = false)"
+        for i, (_, fp, _) in enumerate(cands)
+    )
+    sql = (f"WITH gi AS (SELECT DISTINCT contig_uid FROM read_parquet({_sql_files(gi)}, hive_partitioning = false)) "
+           f"SELECT DISTINCT fp.si FROM ({unions}) fp SEMI JOIN gi USING (contig_uid) ORDER BY fp.si")
+    with _duck() as con:
+        hit_idxs = [int(i) for (i,) in con.execute(sql).fetchall()]
+    if not hit_idxs:
+        return None
+    return {
+        "genome_input": _file_entries(root, gi),
+        "stages": [
+            {"stage": cands[i][0],
+             "feature_protein": _file_entries(root, cands[i][1]),
+             "protein_files": _file_entries(root, cands[i][2])}
+            for i in hit_idxs
+        ],
+    }
+
+
+def shared_owner_stages(root: Path, stage: str, gene_call_version: str, seq_stages: list[str] | None) -> list[str]:
+    """Stages in `seq_stages` (other than `stage`) that own contigs of `stage`'s `genome_input` with called
+    proteins (card C-38h): used by `stage._sharded` so a stage sharing contigs with a called stage always runs
+    through `domains.plan --seq-stages`."""
+    owned = _owned_plan(Path(root), stage, gene_call_version, list(seq_stages or ()))
+    return [] if owned is None else [s["stage"] for s in owned["stages"]]
+
+
+def _check_owned(root: Path, owned: dict, what: str) -> tuple[list[Path], list[tuple[list[Path], list[Path]]]]:
+    """Verify byte sizes of every file listed in an `owned` block; return `(gi_paths, [(fp_paths, ps_paths), ...])`."""
+    gi = _checked(root, owned["genome_input"], f"{what} (genome_input)")
+    owners = []
+    for o in owned["stages"]:
+        fp = _checked(root, o["feature_protein"], f"{what} (feature_protein of {o['stage']})")
+        ps = _checked(root, o["protein_files"], f"{what} (protein_seq of {o['stage']})")
+        owners.append((fp, ps))
+    return gi, owners
+
+
+def _stage_uid_lengths(root: Path, files: list[Path], owned: dict | None) -> Iterator[tuple[bytes, int]]:
+    """Distinct `(protein_uid, length)` of `files` union the shared-contig proteins of `owned`, in strictly
+    increasing `protein_uid` order. Without `owned`, streams `_uid_lengths(files)` directly."""
+    if owned is None:
+        yield from _uid_lengths(files)
+        return
+    gi, owners = _check_owned(root, owned, "the shard plan")
+    parts = []
+    if files:
+        parts.append(f"SELECT protein_uid, length FROM read_parquet({_sql_files(files)}, hive_partitioning = false)")
+    for fp, ps in owners:
+        parts.append(
+            f"SELECT ps.protein_uid, ps.length "
+            f"FROM read_parquet({_sql_files(ps)}, hive_partitioning = false) ps "
+            f"SEMI JOIN ("
+            f"  SELECT DISTINCT fp.protein_uid "
+            f"  FROM read_parquet({_sql_files(fp)}, hive_partitioning = false) fp "
+            f"  SEMI JOIN gi USING (contig_uid)"
+            f") u USING (protein_uid)"
+        )
+    sql = (f"WITH gi AS (SELECT DISTINCT contig_uid FROM read_parquet({_sql_files(gi)}, hive_partitioning = false)) "
+           f"SELECT protein_uid, min(length)::BIGINT AS length "
+           f"FROM ({' UNION ALL '.join(parts)}) "
+           f"GROUP BY protein_uid ORDER BY protein_uid")
+    with _duck() as con:
+        reader = con.sql(sql).to_arrow_reader(_READ_ROWS)
+        try:
+            for b in reader:
+                for u, n in zip(b.column(0).to_pylist(), b.column(1).to_pylist()):
+                    yield bytes(u), int(n)
+        finally:
+            reader.close()
 
 
 # --- copies of measured rows (card B-47b) ----------------------------------------------------------------------------
@@ -456,6 +592,8 @@ def _source(root: Path, s: str, library: str, library_version: str, want: dict) 
     try:
         _checked(root, [{k: o[k] for k in ("path", "bytes")} for o in files], f"its run record {rec_rel}")
         _checked(root, p["files"], f"its plan {plan_rel}")
+        if "owned" in p:
+            _check_owned(root, p["owned"], f"its plan {plan_rel}")
         led_paths = _checked(root, led, f"its run record {rec_rel}")
     except ValueError as e:
         return None, str(e)
@@ -464,10 +602,13 @@ def _source(root: Path, s: str, library: str, library_version: str, want: dict) 
     mine = json.dumps(want["tools"], sort_keys=True)
     if tools != {mine}:
         return None, f"its ledger records tool versions {sorted(map(str, tools))}, this scan's are {mine}"
-    return {"stage": s, "plan": {"path": plan_rel, "sha256": hashlib.sha256(raw_plan).hexdigest()},
-            "record": {"path": rec_rel, "sha256": hashlib.sha256(raw_rec).hexdigest()},
-            "protein_files": p["files"],
-            "files": [{"path": o["path"], "bytes": o["bytes"], "sha256": o["sha256"]} for o in files]}, None
+    out = {"stage": s, "plan": {"path": plan_rel, "sha256": hashlib.sha256(raw_plan).hexdigest()},
+           "record": {"path": rec_rel, "sha256": hashlib.sha256(raw_rec).hexdigest()},
+           "protein_files": p["files"],
+           "files": [{"path": o["path"], "bytes": o["bytes"], "sha256": o["sha256"]} for o in files]}
+    if "owned" in p:
+        out["owned"] = p["owned"]
+    return out, None
 
 
 def sources(root: Path, stage: str, library: str, library_version: str, hmm_sha256: str, cutoff: str,
@@ -489,8 +630,39 @@ def sources(root: Path, stage: str, library: str, library_version: str, hmm_sha2
 
 def _measured_uids(root: Path, src: dict, lo: bytes | None = None, hi: bytes | None = None) -> Iterator[bytes]:
     """The proteins source `src` measured, in strictly increasing uid order (within [lo, hi] when given, reading only
-    the row groups that meet it): every protein of the protein_seq files its plan lists. Card B-47c: once a plan marks
-    the proteins its stage inferred, they are measured nowhere, and this is where they must be left out."""
+    the row groups that meet it): every protein of the protein_seq files its plan lists, plus any shared-contig
+    proteins recorded in its `owned` block (card C-38h). Card B-47c: once a plan marks the proteins its stage
+    inferred, they are measured nowhere, and this is where they must be left out."""
+    if "owned" in src:
+        own_files = _checked(root, src["protein_files"], f"the plan of {src['stage']}")
+        gi, owners = _check_owned(root, src["owned"], f"the plan of {src['stage']}")
+        filt = "" if lo is None else " WHERE protein_uid >= $lo AND protein_uid <= $hi"
+        ps_filt = "" if lo is None else " WHERE ps.protein_uid >= $lo AND ps.protein_uid <= $hi"
+        parts = []
+        if own_files:
+            parts.append(f"SELECT protein_uid FROM read_parquet({_sql_files(own_files)}, hive_partitioning = false){filt}")
+        for fp, ps in owners:
+            parts.append(
+                f"SELECT ps.protein_uid "
+                f"FROM read_parquet({_sql_files(ps)}, hive_partitioning = false) ps "
+                f"SEMI JOIN ("
+                f"  SELECT DISTINCT fp.protein_uid "
+                f"  FROM read_parquet({_sql_files(fp)}, hive_partitioning = false) fp "
+                f"  SEMI JOIN gi USING (contig_uid)"
+                f") u USING (protein_uid){ps_filt}"
+            )
+        sql = (f"WITH gi AS (SELECT DISTINCT contig_uid FROM read_parquet({_sql_files(gi)}, hive_partitioning = false)) "
+               f"SELECT DISTINCT protein_uid FROM ({' UNION ALL '.join(parts)}) ORDER BY protein_uid")
+        params = None if lo is None else {"lo": lo, "hi": hi}
+        with _duck() as con:
+            reader = con.sql(sql, params=params).to_arrow_reader(_READ_ROWS)
+            try:
+                for b in reader:
+                    for u in b.column(0).to_pylist():
+                        yield bytes(u)
+            finally:
+                reader.close()
+        return
     last = None
     for path in _checked(root, src["protein_files"], f"the plan of {src['stage']}"):
         pf = pq.ParquetFile(path)
@@ -612,20 +784,21 @@ class _Rows:
         return out
 
 
-def _walk(root: Path, files: list[Path], srcs: list[dict], columns: list[str] | None
-          ) -> Iterator[tuple[bytes, int, int, list[pa.Table]]]:
-    """(uid, length, k, rows) for every protein of the stage's protein_seq `files`, in uid order: k the index of its
-    source in `srcs` (the first that measured it) or -1, and for k >= 0 that source's measured rows of the protein
-    (`columns` of its domain files; empty when it had no hit)."""
+def _walk(root: Path, files: list[Path], srcs: list[dict], columns: list[str] | None,
+          owned: dict | None = None) -> Iterator[tuple[bytes, int, int, list[pa.Table]]]:
+    """(uid, length, k, rows) for every protein of the stage's protein_seq `files` (and shared-contig proteins of
+    `owned` when given, card C-38h), in uid order: k the index of its source in `srcs` (the first that measured it)
+    or -1, and for k >= 0 that source's measured rows of the protein (`columns` of its domain files; empty when it
+    had no hit)."""
     cursors = [_Rows([Path(root) / f["path"] for f in s["files"]], columns, measured_only=True) for s in srcs]
     measured = [_measured_uids(root, s) for s in srcs]
-    for u, n, k in _assign(_uid_lengths(files), measured):
+    for u, n, k in _assign(_stage_uid_lengths(root, files, owned), measured):
         yield u, n, k, (cursors[k].take(u) if k >= 0 else [])
 
 
 def _shard_proteins(root: Path, p: dict, s: dict) -> dict[bytes, str]:
-    """The proteins of shard `s` (uids `first` to `last`) from the plan's files, reading only the row
-    groups whose protein_uid range meets the shard's."""
+    """The proteins of shard `s` (uids `first` to `last`) from the plan's files (and `owned` shared-contig files,
+    card C-38h), reading only the row groups whose protein_uid range meets the shard's."""
     lo, hi = bytes.fromhex(s["first"]), bytes.fromhex(s["last"])
     out: dict[bytes, str] = {}
     for f in p["files"]:
@@ -642,6 +815,30 @@ def _shard_proteins(root: Path, p: dict, s: dict) -> dict[bytes, str]:
             for u, seq in zip(t.column(0).to_pylist(), t.column(1).to_pylist()):
                 if lo <= u <= hi:
                     out[u] = seq
+    owned = p.get("owned")
+    if owned:
+        gi, owners = _check_owned(root, owned, "the shard plan")
+        parts = [
+            f"SELECT ps.protein_uid, ps.seq "
+            f"FROM read_parquet({_sql_files(ps)}, hive_partitioning = false) ps "
+            f"SEMI JOIN ("
+            f"  SELECT DISTINCT fp.protein_uid "
+            f"  FROM read_parquet({_sql_files(fp)}, hive_partitioning = false) fp "
+            f"  SEMI JOIN gi USING (contig_uid)"
+            f") u USING (protein_uid) "
+            f"WHERE ps.protein_uid >= $lo AND ps.protein_uid <= $hi"
+            for fp, ps in owners
+        ]
+        sql = (f"WITH gi AS (SELECT DISTINCT contig_uid FROM read_parquet({_sql_files(gi)}, hive_partitioning = false)) "
+               f"SELECT protein_uid, min(seq) AS seq FROM ({' UNION ALL '.join(parts)}) GROUP BY protein_uid")
+        with _duck() as con:
+            reader = con.sql(sql, params={"lo": lo, "hi": hi}).to_arrow_reader(_READ_ROWS)
+            try:
+                for b in reader:
+                    for u, seq in zip(b.column(0).to_pylist(), b.column(1).to_pylist()):
+                        out[bytes(u)] = seq
+            finally:
+                reader.close()
     copy = p.get("copy")
     if copy and copy["sources"] and out:  # card B-47b: the proteins of the range a source measured are copied
         mine = sorted(out)
@@ -839,10 +1036,14 @@ def _merge_copies(root: Path, out_root: Path, stage: str, lib_dir: str, step: st
         raise ValueError(f"{step} of stage {stage}: this process has tool versions {_tools()}, the plan was made and "
                          f"its sources compared for {p['tools']}")
     files = _checked(root, p["files"], "the shard plan")
+    if "owned" in p:
+        _check_owned(root, p["owned"], "the shard plan")
     srcs = copy["sources"]
     for s in srcs:
         _checked(root, s["files"], f"the shard plan (domain files of {s['stage']})")
         _checked(root, s["protein_files"], f"the shard plan (proteins of {s['stage']})")
+        if "owned" in s:
+            _check_owned(root, s["owned"], f"the shard plan (owned proteins of {s['stage']})")
     counts = [{"proteins": 0, "residues": 0, "rows": 0, "proteins_with_hit": 0} for _ in srcs]
     models: set[str] = set()
     scanned = _Rows(runs, None)
@@ -865,7 +1066,7 @@ def _merge_copies(root: Path, out_root: Path, stage: str, lib_dir: str, step: st
         # wilkcomp02, 2026-11-15, tests/r2/test_b47b_copy_memory.py before this rule)
         pend: list[pa.Table] = []
         held = 0
-        for u, n, k, rows in _walk(root, files, srcs, None):
+        for u, n, k, rows in _walk(root, files, srcs, None, owned=p.get("owned")):
             if k < 0:
                 continue
             c = counts[k]

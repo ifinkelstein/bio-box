@@ -820,6 +820,7 @@ Accept: the tests; the fixture manifest hash of a release without rounds unchang
 Files: `src/biobox/l1/domains.py` (the plan adds those proteins, read from the owner's `feature_protein`; copies measured ones), `src/biobox/stage.py` (passes the stages on disk, as `--seq-stages`), tests
 Do, test first: a called stage storing a contig that a later annotated stage's genome holds: the annotated stage's domain file holds rows for that contig's proteins, equal to an `hmmsearch` run of them; built in either order the release's family tokens are the same.
 Accept: the tests.
+Done 2026-11-18 (STATUS row C-38h): `domains.plan`, `_shard_proteins`, `_measured_uids` and `_merge_copies` stream shared-contig proteins owned by earlier stages in `seq_stages` via single-thread DuckDB (`DUCK_MEMORY_LIMIT = "256MB"`), `domains.plan_stages` keeps 0-own-contig stages discoverable as copy sources, and `stage._sharded` routes shared-contig stages through `domains.plan --seq-stages`.
 
 ### C-39 Viruses from metagenomes, as vOTU representatives: inputs and overlap
 **M** · Pod: yes (reads; writes only under `/tmp/if2453/s3/`) · Depends: the PI's approval of the source entries (step 1) · widens stage S4 of `STAGES.md`

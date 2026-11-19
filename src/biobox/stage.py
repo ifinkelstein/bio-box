@@ -995,19 +995,32 @@ def shard_residues(prof: Profile) -> int:
     return max(1, int(prof.cpu_min_per_process * SHARD_MARGIN * 1e6 / SCAN_CPU_MIN_PER_M))
 
 
+def _domain_seq_stages(root: Path, stage: str, lib: Library) -> list[str]:
+    """Other stages on disk that may own contigs of `stage` (`store.stages_on_disk`) or hold a domain plan for `lib`
+    (`domains.plan_stages`, including stages owning 0 contigs of their own; card C-38h), sorted by stage name."""
+    other = set(store.stages_on_disk(root)) | set(domains.plan_stages(root, lib.name, lib.version))
+    return sorted(s for s in other if s != stage)
+
+
 def _sharded(prof: Profile, b: Build, root: Path, step: Step) -> bool:
     """Whether the scan `step` runs in shards: its estimate in one process exceeds `SHARD_MARGIN` of the
     budget, or an earlier call planned it in shards (its plan is published)."""
     lib = _library(b, step)
     if (root / domains.scan_dir(b.stage, lib.name, lib.version) / "plan.json").exists():
         return True
-    seq = [s for s in store.stages_on_disk(root) if s != b.stage]  # the plan step's --seq-stages (`with_seq_stages`)
+    seq = _domain_seq_stages(root, b.stage, lib)  # the plan step's --seq-stages (`_scan_in_shards`)
     srcs, _ = domains.sources(root, b.stage, lib.name, lib.version, ids.sha256_file(Path(lib.hmm)).hex(), lib.cutoff,
                               seq)
     if srcs:  # card B-47b: only a plan records what is copied, so the scan runs as plan, shards and merge
         _say(f"{b.stage}.{step.name}: {', '.join(s['stage'] for s in srcs)} measured proteins with this scan (HMM file, "
              f"cutoff, Z and tool versions); the scan runs as its plan step, which leaves out the proteins measured "
              f"there and copies their rows (card B-47b), then its shards over the residues left, then the merge")
+        return True
+    owners = domains.shared_owner_stages(root, b.stage, b.gene_call_version, seq)  # card C-38h (DEC-54 Q8)
+    if owners:
+        _say(f"{b.stage}.{step.name}: {', '.join(owners)} own contigs of {b.stage}'s genome_input (DEC-26); "
+             f"the scan runs as its plan step (given --seq-stages) to include their proteins (card C-38h), "
+             f"then its shards over the residues left, then the merge")
         return True
     residues = stage_residues(root, b.stage, b.gene_call_version)
     est = scan_cpu_min(residues)
@@ -1247,7 +1260,9 @@ def _scan_in_shards(prof: Profile, b: Build, root: Path, step: Step, one: Callab
     scratch run is missing or fails its record is scanned again (`_rescan_lost`). `run` stands in for the shards'
     run-step processes (tests only). The shards' scratch runs are removed once the merge is published."""
     lib = _library(b, step)
-    first = with_seq_stages(scan_steps(prof, b, step, None, cpus)[0], root, b.stage)  # card B-47b: copies
+    plan_step = scan_steps(prof, b, step, None, cpus)[0]
+    seq = [b.stage, *_domain_seq_stages(root, b.stage, lib)]
+    first = dataclasses.replace(plan_step, argv=(*plan_step.argv, "--seq-stages", ",".join(seq)))  # B-47b, C-38h
     code = one(first)
     if code is not None:
         return code
