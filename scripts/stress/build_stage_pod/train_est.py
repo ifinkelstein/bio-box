@@ -1,0 +1,350 @@
+"""Card C-46: release-train estimates before launch and rate guard (DEC-43, DEC-53, AGENTS §6).
+
+    python train_est.py before --root ROOT --release R --stages S0,S1 --profile P
+                               [--earlier PREV] [--parts K] [--jobs J] [--cpus C] [--tmp D]
+    python3 -I train_est.py rates --root ROOT --release R --est BEFORE.json [--out OUT.json]
+
+`before` runs in the runtime image (read-only on the root):
+- Counts `protein_seq` rows and `feature_protein` genes per stage from each stage's `genecall.json` outputs.
+- Computes `stage.cluster_cpu_min(rows)` (*estimate*), the split/cut policy (`l2.cut_of`), and checks `B-49` reuse.
+- When `--earlier` names an earlier release with run records (and optional `l2/cluster_plan/release=<PREV>/*.cut.json`),
+  calibrates call-by-call factors from that earlier release and scales them to this release (*derived*).
+  When no earlier calibrated release exists, uses cut estimates at factor 1.0 (*estimate*).
+
+`rates` runs on the host with the standard library only:
+- Judges every published step of `release` estimated at `>= 24` CPU-minutes (DEC-43).
+- `ratio > 1.20` (`over_20pct`): exit 3 (stop unit at once; DEC-53).
+- `ratio < 0.80` (`under_20pct`): recorded and reported, exit 0 (does not stop; DEC-53).
+"""
+
+from __future__ import annotations
+
+import argparse
+import json
+import sys
+from pathlib import Path
+
+TOL = 0.20
+MIN_JUDGED_CPU_MIN = 24.0  # DEC-43
+GENE_SCALED_STEPS = ("tokens", "postings", "dim", "manifest", "catalog")
+
+
+def _load_json(p: Path) -> dict | None:
+    try:
+        return json.loads(p.read_text())
+    except (OSError, ValueError):
+        return None
+
+
+def _gene_call_outputs(root: Path, stage: str, table: str, gcv: str) -> list[Path]:
+    rec = _load_json(root / "runs" / f"stage={stage}" / "genecall.json")
+    if not rec:
+        return []
+    prefix = f"{table}/gene_call_version={gcv}/stage={stage}/"
+    return [root / o["path"] for o in rec.get("outputs", ())
+            if o["path"].startswith(prefix) and o["path"].endswith(".parquet")]
+
+
+def calibrate_earlier(root: Path, release: str) -> dict:
+    """Summarize an earlier release's clustering calls and other release steps from its run records."""
+    runs = root / "runs" / f"stage={release}"
+    plans = root / "l2" / "cluster_plan" / f"release={release}"
+    seen: set[str] = set()
+    calls = []
+    part_rows: dict[str, list[dict]] = {}
+    if plans.is_dir():
+        for cutf in sorted(plans.glob("*.cut.json")):
+            call = cutf.name[:-len(".cut.json")]
+            cut = _load_json(cutf) or {}
+            parts = cut.get("parts") or []
+            rows = []
+            for p, part in enumerate(parts):
+                name = f"{call}.part-{p:05d}" if len(parts) > 1 else call
+                r = _load_json(runs / f"{name}.json")
+                seen.add(name)
+                row = {"part": p, "estimate": round(part["cpu_min"], 3), "units": part.get("units")}
+                if r is not None:
+                    row["cpu_min"] = round(r["cpu_min"], 3)
+                    row["peak_rss_gb"] = round((r.get("peak_rss_bytes") or 0) / 1e9, 2)
+                rows.append(row)
+            meas = [x["cpu_min"] for x in rows if "cpu_min" in x]
+            est = sum(x["estimate"] for x in rows)
+            part_rows[call] = rows
+            calls.append({
+                "call": call,
+                "parts": len(parts),
+                "overhead_estimate": cut.get("overhead_cpu_min"),
+                "estimate_sum": round(est, 2),
+                "measured_sum": round(sum(meas), 2),
+                "max_part_cpu_min": max(meas) if meas else None,
+                "max_peak_rss_gb": max((x["peak_rss_gb"] for x in rows if "peak_rss_gb" in x), default=None),
+            })
+    others = []
+    if runs.is_dir():
+        for f in sorted(runs.glob("*.json")):
+            name = f.name[:-len(".json")]
+            if name.endswith(".publishing") or name in seen:
+                continue
+            r = _load_json(f)
+            if r is not None and "cpu_min" in r:
+                others.append({"step": name, "cpu_min": round(r["cpu_min"], 3)})
+    return {"release": release, "calls": calls, "others": others, "part_rows": part_rows}
+
+
+def before(a) -> int:
+    import duckdb
+    import pyarrow.parquet as pq
+
+    from biobox import catalog, profile as bprofile, stage as bs
+    from biobox.l1.genecall import GENE_CALL_VERSION as GCV
+    from biobox.l2 import cluster as l2
+
+    root = Path(a.root)
+    stages = [s for s in a.stages.split(",") if s]
+    prof = bprofile.load(a.profile)
+
+    per_stage: dict[str, dict] = {}
+    files_of: dict[str, list[Path]] = {}
+    for s in stages:
+        ps = _gene_call_outputs(root, s, "l0seq/protein_seq", GCV)
+        fp = _gene_call_outputs(root, s, "l1/feature_protein", GCV)
+        files_of[s] = ps
+        per_stage[s] = {
+            "protein_seq_rows": sum(pq.read_metadata(p).num_rows for p in ps if p.is_file()),
+            "genes": sum(pq.read_metadata(p).num_rows for p in fp if p.is_file()),
+        }
+
+    rows, missing = bs.release_proteins(root, stages, GCV)
+    if missing is not None or rows is None:
+        raise SystemExit(f"release_proteins: missing gene-call record for stage {missing}")
+
+    t_one = bs.cluster_cpu_min(rows)
+    split = a.parts is not None or t_one > bs.SHARD_MARGIN * prof.cpu_min_per_process
+    cut = l2.cut_of(
+        a.parts,
+        None if a.parts is not None else float(repr(bs.SHARD_MARGIN * prof.cpu_min_per_process)),
+        None if prof.cluster_cpu_min_max is None else float(prof.cluster_cpu_min_max),
+    )
+
+    reuse_source = None
+    reuse_reasons: dict[str, str] = {}
+    plan_rels = l2._plan_releases(root)
+    if plan_rels:
+        inputs = l2.plan_inputs(root, a.release, GCV, stages, cut)
+        for src in plan_rels:
+            why = l2._source_problem(root, a.release, src, inputs)
+            reuse_reasons[src] = "qualifies" if why is None else why
+            if why is None and reuse_source is None:
+                reuse_source = src
+
+    genes_all = sum(per_stage[s]["genes"] for s in stages)
+    earlier = a.earlier
+    estages: list[str] = []
+    if earlier:
+        estages = catalog.read_release_def(root, earlier) or []
+
+    factors: dict[str, float | None] = {}
+    steps: dict[str, float] = {}
+    calls_out: list[dict] = []
+    part_max = 0.0
+    total_proj = 0.0
+    n_all: int | None = None
+    n_old: int | None = None
+
+    if earlier and estages and all(s in per_stage for s in estages):
+        calib = calibrate_earlier(root, earlier)
+        if any(files_of[s] for s in stages):
+            Path(a.tmp).mkdir(parents=True, exist_ok=True)
+            con = duckdb.connect(config={
+                "threads": a.duck_threads, "memory_limit": "4GB",
+                "temp_directory": str(a.tmp), "preserve_insertion_order": False,
+            })
+
+            def distinct(ss: list[str]) -> int:
+                lit = "[" + ", ".join("'" + str(p).replace("'", "''") + "'" for s in ss for p in files_of[s]) + "]"
+                return con.execute(
+                    f"SELECT count(DISTINCT protein_uid) FROM read_parquet({lit}, hive_partitioning = false)"
+                ).fetchone()[0]
+
+            n_all = distinct(stages)
+            n_old = distinct(estages)
+            con.close()
+
+        r = (n_all / n_old) if (n_all and n_old) else (rows / max(1, sum(per_stage[s]["protein_seq_rows"] for s in estages)))
+        genes_old = max(1, sum(per_stage[s]["genes"] for s in estages))
+        rg = genes_all / genes_old
+
+        for c in calib["calls"]:
+            name = c["call"]
+            rows_ = calib["part_rows"][name]
+            u_old = sum(x["units"] or 0 for x in rows_)
+            o_old = c["overhead_estimate"] or 0.0
+            k = len(rows_) if a.parts is None else a.parts
+            if n_all and n_old:
+                m_old = l2.call_cpu_min(name, n_old, u_old) + len(rows_) * o_old
+                m_new = l2.call_cpu_min(name, n_all, round(u_old * r)) + k * o_old * r
+                g = m_new / m_old if m_old else r
+            else:
+                g = r
+            proj = c["measured_sum"] * g
+            largest = (c["max_part_cpu_min"] or 0) * g * len(rows_) / max(1, k)
+            factors[name] = round(c["measured_sum"] / c["estimate_sum"], 6) if c["estimate_sum"] else 1.0
+            part_max = max(part_max, largest)
+            total_proj += proj
+            calls_out.append({
+                "call": name, "parts": k, "measured_earlier": c["measured_sum"],
+                "growth": round(g, 4), "projected": round(proj, 1),
+                "largest_part_projected": round(largest, 1),
+                "calibration_factor": factors[name],
+                "peak_rss_gb_projected": round((c["max_peak_rss_gb"] or 0) * r, 1),
+            })
+        for o in calib["others"]:
+            scale = rg if o["step"] in GENE_SCALED_STEPS else r
+            steps[o["step"]] = round(o["cpu_min"] * scale, 3)
+
+    others_total = sum(v for k_, v in steps.items() if k_.startswith("cluster"))
+    doc = {
+        "release": a.release,
+        "stages": stages,
+        "earlier": earlier,
+        "earlier_stages": estages,
+        "measured": {
+            "per_stage": per_stage,
+            "protein_seq_rows": rows,
+            "distinct_proteins": n_all,
+            "distinct_proteins_earlier": n_old,
+            "genes": genes_all,
+            "label": "measured: Parquet footers and DuckDB count(DISTINCT) over genecall outputs",
+        },
+        "code": {
+            "cluster_cpu_min_one_process": round(t_one, 2),
+            "margin_cpu_min": round(bs.SHARD_MARGIN * prof.cpu_min_per_process, 2),
+            "clusters_in_parts": split,
+            "cut": cut,
+            "reuse_source": reuse_source,
+            "reuse_reasons": reuse_reasons,
+            "label": "estimate: biobox.stage and biobox.l2.cluster",
+        },
+        "projection": {
+            "cluster_cpu_min": 0.0 if reuse_source else round(total_proj + others_total if calls_out else t_one, 1),
+            "largest_part_cpu_min": 0.0 if reuse_source else round(part_max, 1),
+            "every_part_under_240": True if reuse_source else (part_max < 240),
+            "calls": calls_out,
+            "steps": steps,
+            "factors": factors,
+            "label": (
+                f"derived: B-49 clustering reuse from {reuse_source}" if reuse_source
+                else ("derived: scaled from earlier release" if calls_out else "estimate: uncalibrated cut estimates")
+            ),
+        },
+    }
+    print(json.dumps(doc, indent=1, sort_keys=True))
+    return 0
+
+
+def check_rates(root: Path, release: str, est_path: Path, *, out_path: Path | None = None) -> dict:
+    """Judge published run records of `release` under DEC-43 (>= 24 CPU-min) and DEC-53 (>20% over stops)."""
+    est = json.loads(Path(est_path).read_text())
+    proj = est.get("projection", {})
+    factors = proj.get("factors", {})
+    steps = proj.get("steps", {})
+    runs = Path(root) / "runs" / f"stage={release}"
+    plans = Path(root) / "l2" / "cluster_plan" / f"release={release}"
+
+    rows, over_bad, under_bad, bad, unknown = [], [], [], [], []
+    cuts: dict[str, dict] = {}
+    for f in sorted(runs.glob("*.json")) if runs.is_dir() else []:
+        if f.name.endswith(".publishing.json"):
+            continue
+        name = f.name[:-len(".json")]
+        r = _load_json(f)
+        if r is None or "cpu_min" not in r:
+            continue
+        e, basis = None, None
+        call, _, part = name.partition(".part-")
+        if part:
+            if call not in cuts:
+                cp = plans / f"{call}.cut.json"
+                cuts[call] = _load_json(cp) or {}
+            parts = cuts[call].get("parts", [])
+            if parts and int(part) < len(parts):
+                fac = factors.get(call) or 1.0
+                e = parts[int(part)]["cpu_min"] * fac
+                basis = f"cut estimate {parts[int(part)]['cpu_min']:.3f} x factor {fac}"
+        elif (plans / f"{name}.cut.json").is_file() and name not in cuts:
+            cut = _load_json(plans / f"{name}.cut.json") or {}
+            if len(cut.get("parts", [])) == 1:
+                fac = factors.get(name) or 1.0
+                e = cut["parts"][0]["cpu_min"] * fac
+                basis = f"one part: cut estimate x factor {fac}"
+        if e is None and name in steps:
+            e, basis = steps[name], "earlier record x ratio"
+
+        row = {
+            "step": name,
+            "cpu_min": round(r["cpu_min"], 3),
+            "wall_s": r.get("wall_s"),
+            "peak_rss_gb": round((r.get("peak_rss_bytes") or 0) / 1e9, 2),
+        }
+        if e is None:
+            unknown.append(name)
+        else:
+            ratio = r["cpu_min"] / e if e > 0 else float("inf")
+            judged = e >= MIN_JUDGED_CPU_MIN
+            row.update({"estimate": round(e, 3), "ratio": round(ratio, 3), "judged": judged, "basis": basis})
+            if judged and ratio > 1 + TOL:
+                over_bad.append(row)
+                bad.append(row)
+            elif judged and ratio < 1 - TOL:
+                under_bad.append(row)
+                bad.append(row)
+        rows.append(row)
+
+    judged = [x for x in rows if x.get("judged")]
+    out = {
+        "release": release,
+        "records": len(rows),
+        "judged": len(judged),
+        "cpu_min": round(sum(x["cpu_min"] for x in rows), 2),
+        "estimate_of_recorded": round(sum(x.get("estimate", 0) for x in rows), 2),
+        "worst_over": max(judged, key=lambda x: x["ratio"], default=None),
+        "largest": max(rows, key=lambda x: x["cpu_min"], default=None),
+        "over_20pct": over_bad,
+        "under_20pct": under_bad,
+        "outside_20pct": bad,
+        "no_estimate": unknown[-8:],
+        "no_estimate_n": len(unknown),
+        "exit_code": 3 if over_bad else 0,
+    }
+    if out_path is not None:
+        Path(out_path).write_text(json.dumps({**out, "rows": rows}, indent=1, sort_keys=True))
+    return out
+
+
+def rates(a) -> int:
+    out = check_rates(Path(a.root), a.release, Path(a.est), out_path=Path(a.out) if a.out else None)
+    print(json.dumps({k: v for k, v in out.items() if k != "exit_code"}, sort_keys=True))
+    return out["exit_code"]
+
+
+def main(argv: list[str] | None = None) -> int:
+    ap = argparse.ArgumentParser(description="Card C-46: release-train estimates and rate guard")
+    ap.add_argument("mode", choices=("before", "rates"))
+    ap.add_argument("--root", required=True)
+    ap.add_argument("--release", required=True)
+    ap.add_argument("--stages", default="")
+    ap.add_argument("--earlier", default=None)
+    ap.add_argument("--parts", type=int, default=None)
+    ap.add_argument("--profile")
+    ap.add_argument("--jobs", type=int, default=None)
+    ap.add_argument("--cpus", type=int, default=None)
+    ap.add_argument("--tmp", default="/tmp/if2453/train/tmp/est")
+    ap.add_argument("--duck-threads", type=int, default=2)
+    ap.add_argument("--est")
+    ap.add_argument("--out")
+    a = ap.parse_args(argv)
+    return {"before": before, "rates": rates}[a.mode](a)
+
+
+if __name__ == "__main__":
+    sys.exit(main())

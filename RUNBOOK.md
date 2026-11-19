@@ -753,6 +753,66 @@ into `planning/measurements/`, and copy each `$OUT/<example>/recorded_new.tsv` t
 `examples/<example>/recorded/<release>.tsv` in the same commit. A recorded value that `differs` on a new release is
 expected; on a rerun of the same release it means the code or the release changed.
 
+## Cutting the next release
+
+Releases are rolling (DEC-52, card C-46): a new release is cut whenever at least one stage has been
+completed since the last release and no release or stage build is active. One driver,
+`scripts/stress/build_stage_pod/release_train.sh` (with helpers `train_plan.py`, `train_est.py`,
+`train_check.py`, and `r50_watch.py`), runs the whole release train from the pod host without a
+per-release script.
+
+The two selection rules:
+
+1. **Name (DEC-52):** `r<YY>.<MM>.<n>` from the pod's date and every release already defined under
+   `$ROOT/release_def/`, with `n` counted from 1 within the month (`r26.11.1`, `r26.11.2`,
+   `r26.12.1`). An explicit `--release` that already exists in `release_def` or `manifests` (or
+   `latest`) is refused with exit 2.
+2. **Stages (DEC-52, DEC-54):** the latest defined release's stage list (`catalog.release_order`),
+   in its exact recorded `release_def` order, followed by every other stage under `$ROOT/runs/stage=*`
+   that is complete at its built depth (`called` or `annotated`), ordered by the timestamp of its
+   `inputs.json` record. Completeness is checked by `biobox.stage.stage_incomplete` against
+   `build-stage`'s own step list (never a copy of it). Any `stored`-only stage (DEC-54) or
+   incomplete stage (missing step record, non-zero exit, size-mismatched output, or unfinished
+   `.publishing.json` intent file) is named with its reason and left out, never waited for.
+
+Always run `--dry-run` first. It binds the root read-only, writes nothing, and prints the next
+release name, the ordered stage list, any excluded stages, the clustering estimate (or the earlier
+release whose clustering card B-49 will reuse), and the thread plan by the hour:
+
+```bash
+ROOT=/tmp/if2453/r10/root TREE="$TREE" \
+  bash "$TREE/scripts/stress/build_stage_pod/release_train.sh" --dry-run
+```
+
+If zero new stages are complete since the latest release, `release_train.sh run` exits cleanly
+without cutting a duplicate release. Pass `--same-stages` (and `--parts` matching the earlier
+release's cut, e.g. `--parts 24`) to cut a release over the same stages after adding a feature
+producer or library (DEC-52 (3)); clustering is then reused automatically via card B-49:
+
+```bash
+ROOT=/tmp/if2453/r10/root TREE="$TREE" \
+  bash "$TREE/scripts/stress/build_stage_pod/release_train.sh" --dry-run --same-stages --parts 24
+```
+
+To cut the release on the pod, launch `release_train.sh run` in a small host-side driver unit. It
+checks `$ROOT/STOP`, active build units, and `/tmp` free space; verifies every earlier release and
+snapshots the root listing; estimates the release; runs the release steps through `build-stage` and
+`run-step` inside the pinned runtime image by digest with the 280 CPU-minute process guard, free-space
+and scratch guards, and the DEC-43 / DEC-53 rate guard (steps estimated at 24 CPU-minutes or more:
+more than 20% over stops the unit at once, more than 20% under is recorded without stopping); runs
+`release verify` on the new release and every earlier release (checking unchanged manifest hashes);
+builds and verifies the search pack in parts (card W-35); runs `scripts/release_examples.sh`; and
+writes `$WORK/root_added.tsv` (size and sha256 of every file added to the root, for the `/stor/work`
+durable tar backup) and `$WORK/announcement.md`. It never deletes or moves anything of an earlier
+release.
+
+```bash
+systemd-run --user --unit=c46-driver-run --collect -p MemoryMax=4G -p MemorySwapMax=0 \
+  -p StandardOutput=append:/tmp/if2453/c46/train/driver.out \
+  -p StandardError=append:/tmp/if2453/c46/train/driver.out \
+  nice -n 19 bash "$TREE/scripts/stress/build_stage_pod/release_train.sh" run --parts 24
+```
+
 ## 7. Search
 
 The search path writes nothing under the data root (card W-03): a user who can read a release may
@@ -1381,6 +1441,8 @@ named `c26-*`.
 | 6 | C-35: `c35_driver.sh after`: `bio-box release verify --root "$ROOT" --release R` for `r26.11.1` and the six earlier releases `rN.1a`, `rN.1b`, `rN.1`, `rN.2`, `rN.3`, `rM.2` (root bound read-only), and `bio-box releases` | 2026-11-18 | `release r26.11.1: verified (stages S1,P1,P2,P3,P4,P5,P6,H1,PL1, 252 files, 160 artifacts, manifest hash 202b4cadaffeed5f5a0fa0cae7dedb06)`, all six earlier releases `verified` with unchanged manifest hashes; `bio-box releases` shows `r26.11.1` with `114629` genomes, `122626` contigs, `49102041` proteins, `contig_label yes` |
 | 7 | C-35: `c35_driver.sh pack`: unit `c35-pack`, `pack build --root "$ROOT" --release r26.11.1 --model pfam-38.2="$PFAM" --profile "$PROFILE" --parts 10 --jobs 12`, then `bio-box pack verify --root "$ROOT" --release r26.11.1 --profile "$PROFILE"` | 2026-11-19 | `pod_run: c35-pack exited 0`: `pack f8ab9bd5c5a6c8858e60bf639323c457 written: 25 files, 29,293,903,636 bytes in shards and meta` (`MemoryPeak=51539607552`, `CPUUsageNSec=29931514854000`), `pack r26.11.1: verified` |
 | 6 | C-35: `c35_driver.sh examples`: `THREADS=8 scripts/release_examples.sh r26.11.1` (root bound read-only), and `c35_driver.sh check` (`c35_check.py --dec27`) | 2026-11-19 | `release_examples.sh: r26.11.1: 2 examples, every invariant holds` (`39 ok`, `67 new`, both `[requires l1_crispr]` invariants `ok`); `c35_check.py`: `checks: all pass` (`930` new files, `20,907,311,935` bytes, `0` gone/changed/stray); durable backup `/stor/work/Wilke/if2453/all-the-data/root_backups/added_r26_11_1.tar` (`20,908,011,520` bytes, `930` members, sha256 `34db81c4…`, verified) |
+| 6 | C-46 rehearsal: `WORK=/tmp/if2453/c46 bash scripts/stress/build_stage_pod/release_train.sh rehearse` (fixture in `/tmp/if2453/c46/rh/root`, real root bound read-only, `<= 4` threads: builds `S0`, `S1`, `r26.11.1`, complete `S2`, and `stored`-only `S3`; runs `--dry-run`, `run` cutting `r26.11.2` over `S0,S1,S2`, pack in 2 parts, `release_examples.sh`, `train_check.py`, then `--dry-run` and `--dry-run --same-stages`) | 2026-11-19 | `rehearsal: OK (r26.11.2 cut over S0,S1,S2; S3 excluded; r26.11.1 unchanged; pack verified; B-49 reuse verified)`: `release r26.11.2: verified (stages S0,S1,S2, 56 files, 10 artifacts, manifest hash e1124ff5e1bef40e4f4a5dffb0b8e3d9)`, `r26.11.1` hash `1d98a189639af04f395aa53450723623` unchanged, `pack r26.11.2: verified` (`96fd14a3daaae665b8713449e35ac439`), `root_added.tsv` (`200` files, `1,578,982` bytes, `0` gone/changed/stray), `announcement.md` written |
+| 6 | C-46 real-root dry-run: `ROOT=/tmp/if2453/r10/root bash scripts/stress/build_stage_pod/release_train.sh --dry-run --date 2026-11-19` (and with `--same-stages --parts 24`; root bound read-only) | 2026-11-19 | `Next release: r26.11.2`, `Latest defined release: r26.11.1`, `Stages (9): S1,P1,P2,P3,P4,P5,P6,H1,PL1`, `New stages (0): (none)`, `Action: noop`; with `--same-stages --parts 24`: `Action: cut`, `Clustering: REUSE from r26.11.1 (card B-49; no MMseqs2 run; protein_seq rows: 49902840)` |
 | 8 | C-32: the image check, section 8's command with the units named `C-32` (`detached_suite.sh --own C-32 2`, `BIOBOX_POD_IMAGE=/tmp/if2453/images/bio-box-test_faec1f4.sif`, the peer file) (pod) | 2026-11-13 | shard lines `842 passed, 7 skipped, 25 warnings in 5571.68s (1:32:51)` and `1188 passed, 16 skipped, 68 warnings in 3438.38s (0:57:18)` |
 | 8 | C-32: `BIOBOX_POD_CI=/tmp/if2453/c32/ci sh scripts/pod_pytest.sh C-32-red tests/r0/test_runbook.py -k c29` (laptop; before the change, in the old default image; another name so as not to share a base temp with the image check) | 2026-11-13 | `3 failed, 4 passed, 43 deselected in 3.99s` (the card's migrated tests failing first) |
 | 8 | C-32: `sh scripts/pod_pytest.sh C-32 tests/r0` (laptop; the new default image) | 2026-11-13 | `208 passed in 5.52s` (the branch point in the old image: `208 passed in 10.08s`) |
