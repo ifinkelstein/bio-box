@@ -108,8 +108,9 @@ def test_enums_refer_to_string_or_int_columns(name):
 def test_small_ok_tables_match_ly04_list():
     # TEST_ARCHITECTURE LY-04 names these metadata tables; anything else small_ok must be a waived kind.
     # tape_version_def: declared small_ok in planning/tasks/TASKS.md §2 (card B-03); release_def: one row per
-    # stage of a release, written once like tape_version_def (card B-25)
-    named = {"l0_manifest", "seq_locator", "id_history", "ledger", "tape_version_def", "release_def"}
+    # stage of a release, written once like tape_version_def (card B-25); release_round: one row per round of
+    # a release, written once beside release_def (card C-38e, DEC-54)
+    named = {"l0_manifest", "seq_locator", "id_history", "ledger", "tape_version_def", "release_def", "release_round"}
     waived_kinds = {"search", "tests"}
     for name, spec in TABLES.items():
         if spec.small_ok:
