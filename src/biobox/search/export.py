@@ -207,7 +207,10 @@ hits.tsv columns
   length              the protein's length in amino acids.
   seq_bitscore        the protein's best sequence score in the run; seq_evalue_zref its E-value.
   pfam_architecture   names of the domain library's hits on the protein, in order along it, a run of one name
-                      written once, joined with +; - for none (also for a release with no domain library).
+                      written once, joined with +; - when scanned with no hit (domain_state is none), ? when not
+                      scanned (including a release with no domain library).
+  domain_state        how the protein's domain state is known in the release: measured, inferred, none (in an
+                      annotated stage, no hit) or not scanned.
   protein_uid         the protein. nr90, nr50: its clusters; nr50_rep: the representative protein of its nr50 cluster.
   genome_uid          the genome of the contig, from the release's contig_dim: when the contig lies in several
                       genomes (an identical plasmid in two isolates, say), the least of their uids.
@@ -234,7 +237,7 @@ in hits.tsv), the third the column names.
   offset_rel          the same relative to the anchor's strand: positive is downstream of the anchor along the
                       anchor's strand, so on a -1 anchor the signs are the opposite of offset.
   ordinal, feature_uid, start, end, strand, protein_uid   the slot's gene.
-  length_aa, pfam_architecture, nr90, nr50   as in hits.tsv, empty for a slot that is not a protein.
+  length_aa, pfam_architecture, domain_state, nr90, nr50   as in hits.tsv, empty for a slot that is not a protein.
   hit_seq_bitscore    the slot protein's score in the run, empty when it is not a hit.
   delta_bp            the gap in bases to the anchor; empty at the anchor.
   crosses_origin      true when the slot lies across the origin of a circular contig.
@@ -244,7 +247,9 @@ separated. The offsets are relative to the anchor's strand (as offset_rel above)
   level, key          the level, and what is counted: at the pfam level key is the family (library:model_acc); at
                       the cluster levels key is the cluster uid (written once: there is no separate cluster_uid
                       column; the --json records of `bio-box nbr summarize` carry it again as cluster_uid).
-  unannotated         true for the row of neighbours that have no family or cluster at that level.
+  unannotated         true for the rows of neighbours that have no family or cluster at that level (at pfam, key is
+                      empty for scanned neighbours with no hit or non-protein slots, and ? with model_name "not
+                      scanned" when the window holds proteins not scanned in the release).
   library, model_acc, model_name   the family (pfam level). At the cluster levels model_name is the domain name most
                       members of the cluster carry, empty when none has one, and so empty on a release without a
                       domain library; the cluster is then named only by its uid and its representative.
@@ -312,12 +317,13 @@ def lock_problems(locked: dict, current: dict | None = None) -> list[str]:
 # --- tables a person opens (card W-05) -------------------------------------------------------------------
 
 HITS_TSV_COLUMNS = ["accession", "header", "contig_len", "start", "end", "strand", "length", "seq_bitscore",
-                    "seq_evalue_zref", "pfam_architecture", "protein_uid", "nr90", "nr50", "nr50_rep", "genome_uid",
-                    "tier", "contig_uid", "feature_uid", "ordinal", "tape_version", "dist_to_contig_end_bp",
-                    "n_records", "stage", "kind",  # card W-23 appended stage and kind
+                    "seq_evalue_zref", "pfam_architecture", "domain_state", "protein_uid", "nr90", "nr50", "nr50_rep",
+                    "genome_uid", "tier", "contig_uid", "feature_uid", "ordinal", "tape_version",
+                    "dist_to_contig_end_bp", "n_records", "stage", "kind",  # card W-23 appended stage and kind
                     "n_genomes", "genome_uids"]  # card C-21c: every genome that holds the contig
 LOCUS_TSV_COLUMNS = ["offset", "offset_rel", "ordinal", "feature_uid", "start", "end", "strand", "protein_uid",
-                     "length_aa", "pfam_architecture", "nr90", "nr50", "hit_seq_bitscore", "delta_bp", "crosses_origin"]
+                     "length_aa", "pfam_architecture", "domain_state", "nr90", "nr50", "hit_seq_bitscore", "delta_bp",
+                     "crosses_origin"]
 _BITS = {"seq_bitscore", "hit_seq_bitscore"}
 _EVALUE = {"seq_evalue_zref"}
 _STRAND = {"strand"}  # card W-20: `+1` or `-1` in every table a person opens (AGENTS §3.1), as `bio-box find` writes it
@@ -333,7 +339,7 @@ _RELATIONS = {
             ("protein_uid", "contig_uid", "feature_uid", "start", "end", "strand", "dist_to_contig_end_bp"), ("stage",)),
     # card W-23: the kind of the genome a contig belongs to in a stage (virus, prokaryote, plasmid), sorted by contig
     "gin": ("genome_input", (), ("contig_uid", "genome_uid", "kind"), ("stage",)),  # card C-21c: and its genomes
-    "prot": ("protein_seq", ("gene_call_version",), ("protein_uid", "length", "seq"), ()),
+    "prot": ("protein_seq", ("gene_call_version",), ("protein_uid", "length", "seq"), ("stage",)),
     "dom": ("l1_domains", (), ("protein_uid", "model_acc", "model_name", "env_start"), ("library",)),
     # by member and by contig: the lookup tables of card B-27, sorted by those keys (cluster_member and
     # contig_occurrence are sorted otherwise, so a lookup by member or contig read every row group of them)
@@ -443,12 +449,13 @@ def release_files(root: Path, release: str | None, manifest=None):
 
 
 class _Store:
-    def __init__(self, con, libraries: list[str]):
+    def __init__(self, con, libraries: list[str], annotated_stages: dict[str, tuple[str, ...]] | None = None):
         self.con, self.libraries = con, libraries
+        self.annotated_stages = annotated_stages or {}
 
     def library(self, wanted: str | None) -> str | None:
         """The domain library of the architecture column: `wanted`, else the only one, else the only one whose
-        name starts with `pfam`; None when there is none (every architecture is then `-`)."""
+        name starts with `pfam`; None when there is none (every architecture is then `?`, `not scanned`)."""
         libs = self.libraries
         if wanted is not None:
             if wanted not in libs:
@@ -460,6 +467,33 @@ class _Store:
         if len(pfam) == 1:
             return pfam[0]
         raise ValueError(f"several domain libraries ({', '.join(libs)}): name one with --library")
+
+    def stages_of(self, library: str | None) -> tuple[str, ...]:
+        """The release's stages that hold an `l1_domains` file for `library` (card C-38b)."""
+        return () if library is None else self.annotated_stages.get(library, ())
+
+
+def _dom_view(con, files: list[tuple[Path, dict]]) -> None:
+    """Temp view `dom` with `(protein_uid, model_acc, model_name, env_start, inferred_from, library)` over explicit
+    `l1_domains` files, filling `inferred_from` as NULL for files written before card B-47c (LY-09)."""
+    import pyarrow.parquet as pq
+
+    if not files:
+        con.execute('CREATE TEMP VIEW dom AS SELECT CAST(NULL AS BLOB) AS "protein_uid", '
+                    'CAST(NULL AS VARCHAR) AS "model_acc", CAST(NULL AS VARCHAR) AS "model_name", '
+                    'CAST(NULL AS UINTEGER) AS "env_start", CAST(NULL AS BLOB) AS "inferred_from", '
+                    'CAST(NULL AS VARCHAR) AS "library" WHERE false')
+        return
+    parts_sql = []
+    for path, parts in sorted(files, key=lambda x: (str(x[1].get("library", "")), str(x[0]))):
+        has_inf = "inferred_from" in pq.read_schema(path).names
+        inf_col = '"inferred_from"' if has_inf else 'CAST(NULL AS BLOB) AS "inferred_from"'
+        parts_sql.append(
+            f'SELECT "protein_uid", "model_acc", "model_name", "env_start", {inf_col}, '
+            f'{_q(str(parts.get("library", "")))} AS "library" '
+            f'FROM read_parquet([{_q(str(path))}], hive_partitioning = false)'
+        )
+    con.execute(f"CREATE TEMP VIEW dom AS {' UNION ALL '.join(parts_sql)}")
 
 
 def _view(con, name: str, spec_name: str, files: list[tuple[Path, dict]], cols: tuple[str, ...],
@@ -513,6 +547,7 @@ class open_store:
                                           "temp_directory": str(self.scratch / "duckdb")})
         values = {"gene_call_version": gcv, "release": release, "tape_version": tv}
         libraries: set[str] = set()
+        annotated: dict[str, set[str]] = {}
         try:
             largest = 0
             for name in relations:
@@ -527,8 +562,13 @@ class open_store:
                         slow_path_note(release, _RELATIONS[name][0], spec_name)
                 if name == "dom":
                     libraries = {str(p["library"]) for _, p in files}
+                    for _, p in files:
+                        if "stage" in p:
+                            annotated.setdefault(str(p["library"]), set()).add(str(p["stage"]))
                 gaps = _unlabelled(root, manifest, files) if name == "lab" and spec_name == "contig_label" else None
-                if spec_name == "contig_occurrence":  # one row per source record: the label's n_records is 1
+                if name == "dom":
+                    _dom_view(self.con, files)
+                elif spec_name == "contig_occurrence":  # one row per source record: the label's n_records is 1
                     _view(self.con, f"{name}_raw", spec_name, files, cols, keep)
                     self.con.execute(f"CREATE TEMP VIEW {name} AS SELECT *, 1::UINTEGER AS n_records FROM {name}_raw")
                 elif gaps:  # card W-36: some stages have label files, others not
@@ -548,7 +588,7 @@ class open_store:
         except BaseException:
             self.__exit__(None, None, None)
             raise
-        return _Store(self.con, sorted(libraries))
+        return _Store(self.con, sorted(libraries), {lib: tuple(sorted(ss)) for lib, ss in sorted(annotated.items())})
 
     def __exit__(self, *exc) -> None:
         self.con.close()
@@ -565,10 +605,11 @@ def _stream(con, sql: str) -> Iterator[dict]:
         reader.close()
 
 
-def _annotate_proteins(con, library: str | None) -> None:
-    """Temp tables `_plen`, `_cl` (NR90 and NR50 cluster uids, the NR50 representative) and `_arch` (domain
-    names of `library` by env_start, then model accession, a run of one name written once, joined by `+`) for
-    the protein uids of temp table `_p`. Each base relation is filtered by key before any join."""
+def _annotate_proteins(con, library: str | None, annotated_stages: tuple[str, ...] = ()) -> None:
+    """Temp tables `_plen`, `_cl` (NR90 and NR50 cluster uids, the NR50 representative), `_arch` (domain
+    names of `library` by env_start, then model accession, a run of one name written once, joined by `+`) and
+    `_dstate` (card C-38b: `measured`, `inferred`, `none` or `not scanned`) for the protein uids of temp table
+    `_p`. Each base relation is filtered by key before any join."""
     con.execute("CREATE OR REPLACE TEMP TABLE _plen AS SELECT protein_uid, max(length) AS length FROM prot "
                 "WHERE protein_uid IN (SELECT protein_uid FROM _p) GROUP BY protein_uid")
     con.execute("""CREATE OR REPLACE TEMP TABLE _cl AS
@@ -585,6 +626,29 @@ def _annotate_proteins(con, library: str | None) -> None:
                                                                ORDER BY env_start, model_acc) AS prev FROM d)
                     SELECT protein_uid, string_agg(model_name, '+' ORDER BY env_start, model_acc) AS arch
                     FROM l WHERE prev IS DISTINCT FROM model_name GROUP BY protein_uid""")
+    if library is None:
+        con.execute("CREATE OR REPLACE TEMP TABLE _dstate AS "
+                    "SELECT DISTINCT protein_uid, 'not scanned' AS domain_state FROM _p")
+    else:
+        cov = (f"CASE WHEN stage IN ({', '.join(_q(s) for s in annotated_stages)}) THEN 1 ELSE 0 END"
+               if annotated_stages else "0")
+        con.execute(f"""CREATE OR REPLACE TEMP TABLE _dstate AS
+                        SELECT p.protein_uid,
+                               CASE coalesce(max(r.rank), 0)
+                                 WHEN 3 THEN 'measured'
+                                 WHEN 2 THEN 'inferred'
+                                 WHEN 1 THEN 'none'
+                                 ELSE 'not scanned'
+                               END AS domain_state
+                        FROM (SELECT DISTINCT protein_uid FROM _p) p
+                        LEFT JOIN (
+                            SELECT protein_uid, CASE WHEN inferred_from IS NULL THEN 3 ELSE 2 END AS rank
+                            FROM dom WHERE library = {lib} AND protein_uid IN (SELECT protein_uid FROM _p)
+                            UNION ALL
+                            SELECT protein_uid, {cov} AS rank
+                            FROM prot WHERE protein_uid IN (SELECT protein_uid FROM _p)
+                        ) r ON r.protein_uid = p.protein_uid
+                        GROUP BY p.protein_uid""")
 
 
 def _annotate_genomes(con) -> None:
@@ -648,7 +712,8 @@ _GENE_ORDER = 'l.accession NULLS LAST, o.contig_uid, o.start, o."end", o.strand'
 
 
 def _hit_genes(con, hits: list[dict], tape_version: str, library: str | None,
-               prefer: dict[bytes, tuple[str | None, str | None]] | None = None) -> None:
+               prefer: dict[bytes, tuple[str | None, str | None]] | None = None,
+               annotated_stages: tuple[str, ...] = ()) -> None:
     """Temp table `_genes`: one row per protein_occurrence of a hit protein with the columns of HITS_TSV_COLUMNS,
     plus `gene_rank` (1 for the protein's first gene in the table's order) and `n_genes`.
 
@@ -672,7 +737,7 @@ def _hit_genes(con, hits: list[dict], tape_version: str, library: str | None,
                    GROUP BY protein_uid, contig_uid, feature_uid, start, "end", strand, dist_to_contig_end_bp""")
     con.execute("CREATE OR REPLACE TEMP TABLE _c AS SELECT DISTINCT contig_uid FROM _occ")
     _annotate_contigs(con, with_ordinals=True, genomes=True)
-    _annotate_proteins(con, library)
+    _annotate_proteins(con, library, annotated_stages)
     # card W-23: the genome kind of each contig in each stage (genome_input; empty where a stage has none)
     con.execute("CREATE OR REPLACE TEMP TABLE _kind AS SELECT contig_uid, stage, min(kind) AS kind FROM gin "
                 "WHERE contig_uid IN (SELECT contig_uid FROM _c) GROUP BY contig_uid, stage")
@@ -684,7 +749,10 @@ def _hit_genes(con, hits: list[dict], tape_version: str, library: str | None,
                          f"feature {lost[0][0].hex()} of contig {lost[0][1].hex()}")
     con.execute(f"""CREATE OR REPLACE TEMP TABLE _genes AS
                     SELECT l.accession, l.header, c.contig_len, o.start, o."end", o.strand, p.length,
-                           h.seq_bitscore, h.seq_evalue_zref, coalesce(a.arch, '-') AS pfam_architecture,
+                           h.seq_bitscore, h.seq_evalue_zref,
+                           coalesce(a.arch, CASE WHEN coalesce(ds.domain_state, 'not scanned') = 'not scanned'
+                                                 THEN '?' ELSE '-' END) AS pfam_architecture,
+                           coalesce(ds.domain_state, 'not scanned') AS domain_state,
                            o.protein_uid, cl.nr90, cl.nr50, cl.nr50_rep, d.genome_uid, d.tier, o.contig_uid,
                            o.feature_uid, r.ordinal, {_q(tape_version)} AS tape_version, o.dist_to_contig_end_bp,
                            l.n_records, o.stage, k.kind, gs.n_genomes, gs.genome_uids,
@@ -702,6 +770,7 @@ def _hit_genes(con, hits: list[dict], tape_version: str, library: str | None,
                     LEFT JOIN _plen p ON p.protein_uid = o.protein_uid
                     LEFT JOIN _cl cl ON cl.protein_uid = o.protein_uid
                     LEFT JOIN _arch a ON a.protein_uid = o.protein_uid
+                    LEFT JOIN _dstate ds ON ds.protein_uid = o.protein_uid
                     LEFT JOIN _pref pf ON pf.protein_uid = o.protein_uid
                     LEFT JOIN _kind k ON k.contig_uid = o.contig_uid AND k.stage = o.stage
                     LEFT JOIN _gens gs ON gs.contig_uid = o.contig_uid""")
@@ -726,7 +795,8 @@ def hits_tsv(root: Path, hits: list[dict], *, release: str | None, tape_version:
     contig in several genomes lists them in genome_uids and is not repeated."""
     with open_store(root, release=release, gene_call_version=gene_call_version, tape_version=tape_version,
                     manifest=manifest, threads=threads, tmp=tmp) as st:
-        _hit_genes(st.con, hits, tape_version, st.library(library))
+        lib = st.library(library)
+        _hit_genes(st.con, hits, tape_version, lib, annotated_stages=st.stages_of(lib))
         # card W-20: `tier` is a column only when the release's contig_dim has one for some gene (the tiering step
         # does not exist yet, so contig_dim.tier is NULL in every release built so far: an always-empty column)
         cols = HITS_TSV_COLUMNS if st.con.execute("SELECT count(tier) FROM _genes").fetchall()[0][0] else \
@@ -748,7 +818,8 @@ def hits_faa(root: Path, hits: list[dict], *, release: str | None, tape_version:
     with open_store(root, release=release, gene_call_version=gene_call_version, tape_version=tape_version,
                     manifest=manifest, threads=threads, tmp=tmp) as st:
         con = st.con
-        _hit_genes(con, hits, tape_version, st.library(library), prefer)
+        lib = st.library(library)
+        _hit_genes(con, hits, tape_version, lib, prefer, st.stages_of(lib))
         con.execute("CREATE OR REPLACE TEMP TABLE _seq AS SELECT protein_uid, min(seq) AS seq FROM prot "
                     "WHERE protein_uid IN (SELECT protein_uid FROM _p) GROUP BY protein_uid")
         sql = """SELECT h.protein_uid, p.length, h.seq_bitscore, h.seq_evalue_zref, coalesce(g.n_genes, 0) AS n_genes,
@@ -838,16 +909,21 @@ def locus_tables(root: Path, rows: list[dict], *, release: str | None, gene_call
         con.execute("CREATE TEMP TABLE _p AS SELECT DISTINCT protein_uid FROM _nb WHERE protein_uid IS NOT NULL")
         con.execute("CREATE TEMP TABLE _c AS SELECT DISTINCT contig_uid FROM _nb")
         _annotate_contigs(con, with_ordinals=False, genomes=True)
-        _annotate_proteins(con, library)
+        _annotate_proteins(con, library, st.stages_of(library))
         sql = """SELECT n.contig_uid, n.anchor_feature_uid, n.anchor_ordinal, n.anchor_protein_uid, n.tape_version,
                         n.policy_hash, n.flags, l.accession, l.header, n."offset", n.offset_rel, n.ordinal,
                         n.feature_uid, n.start, n."end", n.strand, n.protein_uid, p.length AS length_aa,
-                        CASE WHEN n.protein_uid IS NULL THEN NULL ELSE coalesce(a.arch, '-') END AS pfam_architecture,
+                        CASE WHEN n.protein_uid IS NULL THEN NULL
+                             ELSE coalesce(a.arch, CASE WHEN coalesce(ds.domain_state, 'not scanned') = 'not scanned'
+                                                        THEN '?' ELSE '-' END) END AS pfam_architecture,
+                        CASE WHEN n.protein_uid IS NULL THEN NULL
+                             ELSE coalesce(ds.domain_state, 'not scanned') END AS domain_state,
                         cl.nr90, cl.nr50, b.seq_bitscore AS hit_seq_bitscore, n.delta_bp,
                         (n.flags::INTEGER & 2) = 2 AS crosses_origin, gs.n_genomes, gs.genome_uids
                  FROM _nb n LEFT JOIN _lab l ON l.contig_uid = n.contig_uid
                  LEFT JOIN _gens gs ON gs.contig_uid = n.contig_uid
                  LEFT JOIN _plen p ON p.protein_uid = n.protein_uid LEFT JOIN _arch a ON a.protein_uid = n.protein_uid
+                 LEFT JOIN _dstate ds ON ds.protein_uid = n.protein_uid
                  LEFT JOIN _cl cl ON cl.protein_uid = n.protein_uid LEFT JOIN _hb b ON b.protein_uid = n.protein_uid
                  ORDER BY l.accession NULLS LAST, n.contig_uid, n.anchor_ordinal, n."offset" """
         cur, name, lines = None, "", []

@@ -472,6 +472,28 @@ def partial_libraries(manifest: dict) -> list[tuple[str, list[str], list[str]]]:
     return out
 
 
+def annotated_stages_by_library(manifest: dict) -> dict[str, list[str]]:
+    """For each domain library the manifest lists `l1_domains` files of, the release's stages that hold a file of
+    that library, in the release's stage order (card C-38b, `planning/design/C-38_import_depths.md` §3.4).
+    Decided from the manifest's file list, never from row counts: an annotated stage whose scan produced zero
+    domain rows still has its file and covers every protein of its `protein_seq` as `none`."""
+    have: dict[str, set[str]] = {}
+    for f in manifest.get("files", []):
+        if f.get("table") == "l1_domains":
+            parts = f.get("partitions", {})
+            if "library" in parts and "stage" in parts:
+                have.setdefault(parts["library"], set()).add(parts["stage"])
+    stages = list(manifest.get("stages", []))
+    out: dict[str, list[str]] = {}
+    for lib in sorted(have):
+        ordered = [s for s in stages if s in have[lib]]
+        for s in sorted(have[lib]):
+            if s not in ordered:
+                ordered.append(s)
+        out[lib] = ordered
+    return out
+
+
 def stage_depths(manifest: dict) -> dict[str, str]:
     """Each stage's depth as derived from `manifest`'s file list, in `manifest['stages']` order (card C-38a,
     DEC-54): a stage with `protein_seq` and `contig_tapes` is `called`, or `annotated <libraries[,ncrna:<producer>]>`
@@ -1085,6 +1107,57 @@ def _add_genome_objects(con: duckdb.DuckDBPyConnection) -> None:
             con.execute(stmt)
 
 
+def domain_state_view_sql(annotated: dict[str, list[str]], *, has_inferred: bool = False,
+                          create: str = "CREATE VIEW") -> str:
+    """The catalog's `domain_state` view `(protein_uid, library, domain_state)` (card C-38b,
+    `planning/design/C-38_import_depths.md` §3.4):
+      - `measured`: `protein_uid` has a measured row in `l1_domains` for `library` (`inferred_from` null, or no
+        `inferred_from` column yet);
+      - `inferred`: `protein_uid` has rows in `l1_domains` for `library`, all with `inferred_from` non-null;
+      - `none`: no row in `l1_domains` for `library`, and `protein_uid` is in `protein_seq` of at least one stage
+        the release lists as annotated for `library` (`annotated`, from the manifest's `l1_domains` files);
+      - `not scanned`: none of the above.
+    Empty and typed when the release lists no domain library."""
+    if not annotated:
+        return (f'{create} domain_state AS SELECT CAST(NULL AS BLOB) AS "protein_uid", '
+                'CAST(NULL AS VARCHAR) AS "library", CAST(NULL AS VARCHAR) AS "domain_state" WHERE false')
+    dom_rank = "CASE WHEN inferred_from IS NULL THEN 3 ELSE 2 END" if has_inferred else "3"
+    branches = [f"SELECT protein_uid, library, {dom_rank} AS rank FROM l1_domains"]
+    for lib, stages in sorted(annotated.items()):
+        cov = (f"CASE WHEN p.stage IN ({', '.join(_sql_str(s) for s in stages)}) THEN 1 ELSE 0 END"
+               if stages else "0")
+        branches.append(f"SELECT p.protein_uid, {_sql_str(lib)} AS library, {cov} AS rank FROM protein_seq p")
+    return (f"{create} domain_state AS SELECT protein_uid, library, "
+            "CASE max(rank) WHEN 3 THEN 'measured' WHEN 2 THEN 'inferred' "
+            "WHEN 1 THEN 'none' ELSE 'not scanned' END AS domain_state "
+            f"FROM ({' UNION ALL '.join(branches)}) GROUP BY protein_uid, library")
+
+
+def domain_state_macro_sql(create: str = "CREATE MACRO") -> str:
+    """Scalar macro `domain_state(_puid, _lib)` stored in the catalog for plain DuckDB connections;
+    `open_catalog` shadows it with `bb_domain_state_udf` (`DomainStateLookup`) so joined keys prune too."""
+    return (f"{create} domain_state(_puid, _lib) AS "
+            "CASE WHEN _puid IS NULL OR _lib IS NULL THEN NULL "
+            "ELSE coalesce((SELECT d.domain_state FROM domain_state d "
+            "WHERE d.protein_uid = _puid AND d.library = _lib), 'not scanned') END")
+
+
+def _add_domain_state_view(con: duckdb.DuckDBPyConnection) -> None:
+    """Card C-38b for a catalog built before it: create `domain_state` as a temporary view on this connection when
+    the catalog does not hold it."""
+    db = con.execute("SELECT current_database()").fetchone()[0]
+    views = {r[0] for r in con.execute("SELECT view_name FROM duckdb_views() WHERE database_name = ?", [db]).fetchall()}
+    if "domain_state" in views:
+        return
+    info = dict(con.execute("SELECT key, value FROM catalog_info").fetchall())
+    stages = json.loads(info["stages"]) if "stages" in info else []
+    rows = con.execute("SELECT path, \"table\" FROM catalog_files WHERE \"table\" = 'l1_domains' ORDER BY path").fetchall()
+    man = {"stages": stages, "files": [{"path": p, "table": t, "partitions": classify(p)[1]} for p, t in rows]}
+    dom_cols = {r[0] for r in con.execute("DESCRIBE l1_domains").fetchall()}
+    con.execute(domain_state_view_sql(annotated_stages_by_library(man), has_inferred="inferred_from" in dom_cols,
+                                      create="CREATE TEMP VIEW"))
+
+
 # DuckDB 2.0 turns the keys of a hash join's build side into a filter on the probe side's scan. Up to
 # `dynamic_or_filter_threshold` keys (default 50) the filter is the list of keys, and a scan of a table sorted
 # by the key reads only the row groups whose min/max statistics hold one of them; above it only the keys' min
@@ -1379,6 +1452,7 @@ def macro_sql() -> list[str]:
         "AND protein_uid = _puid)",
         "CREATE MACRO slots_of(_puid) AS TABLE SELECT * FROM protein_occurrence WHERE protein_uid = _puid",
         "CREATE MACRO domains_of(_puid) AS TABLE SELECT * FROM l1_domains WHERE protein_uid = _puid ORDER BY env_start, model_acc",
+        domain_state_macro_sql(),
         # --- L3 (Q1-Q4); release-scoped tables are read for this catalog's release only ---
         "CREATE MACRO catalog_release() AS (SELECT value FROM catalog_info WHERE key = 'release_id')",
         "CREATE MACRO token_of(_level, _key) AS "
@@ -1504,6 +1578,8 @@ def generate_catalog(manifest: dict, out_path: Path | None = None, root: Path | 
         fallback = [str(root / p) for p in _label_fallback(manifest)]  # card W-36: stages without label files
         con.execute(label_view_sql([p for p, _ in sorted(by_table["contig_label"])], len(label_stages), fallback))
         con.execute(genome_member_sql())  # the release's membership over its stages' genome_input (card C-21b)
+        con.execute(domain_state_view_sql(annotated_stages_by_library(manifest),
+                                          has_inferred="inferred_from" in TABLES["l1_domains"].schema.names))
         con.execute("CREATE TABLE catalog_info (key VARCHAR, value VARCHAR)")
         con.executemany("INSERT INTO catalog_info VALUES (?, ?)", [
             ("release_id", manifest["release_id"]),
@@ -2128,6 +2204,20 @@ def _domain_files(con: duckdb.DuckDBPyConnection, root: Path) -> list[tuple[Path
     return [(Path(root) / p, classify(p)[1].get("library", "")) for (p,) in rows]
 
 
+def _annotated_protein_files(con: duckdb.DuckDBPyConnection, root: Path) -> dict[str, list[Path]]:
+    """For each domain library in `catalog_files`, the `protein_seq` files of the stages annotated with that library
+    (`annotated_stages_by_library`), under `root`."""
+    rows = con.execute("""SELECT path, "table" FROM catalog_files
+                          WHERE "table" IN ('l1_domains', 'protein_seq') ORDER BY path""").fetchall()
+    man = {"files": [{"path": p, "table": t, "partitions": classify(p)[1]} for p, t in rows]}
+    by_stage: dict[str, list[Path]] = {}
+    for f in man["files"]:
+        if f["table"] == "protein_seq" and "stage" in f["partitions"]:
+            by_stage.setdefault(f["partitions"]["stage"], []).append(Path(root) / f["path"])
+    return {lib: [p for s in stages for p in by_stage.get(s, ())]
+            for lib, stages in annotated_stages_by_library(man).items()}
+
+
 FAMILY_LEVEL = 1  # `token_id >> 61` of a family token (biobox.l3.tokens.LEVELS; tokens imports this module)
 
 
@@ -2427,6 +2517,179 @@ def _register_token_udf(con: duckdb.DuckDBPyConnection, tokens: _Lazy) -> None:
     con.execute("CREATE OR REPLACE TEMP MACRO token_of(_level, _key) AS bb_token_of_udf(_level, _key)")
 
 
+class DomainStateLookup(_Touches):
+    """Point lookup of `(protein_uid, library) -> domain_state` (`measured`, `inferred`, `none`, `not scanned`)
+    over the release's `l1_domains` and annotated stages' `protein_seq` footer statistics (card C-38b, AGENTS §4.4).
+
+    `l1_domains` and `protein_seq` are both sorted by `protein_uid` with min/max statistics per row group. For a
+    `(protein_uid, library)` pair, candidate row groups in `library`'s `l1_domains` files are bisected first; only
+    proteins with no row in `l1_domains` for `library` then bisect the `protein_seq` files of the stages annotated
+    for `library` (reading `protein_uid` alone, never `seq`), so called stages' `protein_seq` files are never opened.
+    """
+
+    _STATE_NAMES = {3: "measured", 2: "inferred", 1: "none", 0: "not scanned"}
+
+    def __init__(self, domain_files: list[tuple[Path, str]], annotated_protein_files: dict[str, list[Path]],
+                 cache_row_groups: int = 16):
+        self.cache_row_groups = cache_row_groups
+        self.row_groups_read = 0
+        self._cache: OrderedDict = OrderedDict()
+        self._lock = threading.Lock()
+        self._touches_init()
+
+        file_index: dict[Path, int] = {}
+        self.files: list[Path] = []
+        for p, _ in domain_files:
+            path = Path(p)
+            if path not in file_index:
+                file_index[path] = len(self.files)
+                self.files.append(path)
+        for lib in sorted(annotated_protein_files):
+            for p in annotated_protein_files[lib]:
+                path = Path(p)
+                if path not in file_index:
+                    file_index[path] = len(self.files)
+                    self.files.append(path)
+        self.files_hit = [0] * len(self.files)
+        self._metadata = [pq.read_metadata(p) for p in self.files]
+        self._has_inferred = [
+            "inferred_from" in {md.schema.column(i).path for i in range(md.num_columns)}
+            for md in self._metadata
+        ]
+        self._where: list[tuple[int, int, tuple[str, ...]]] = []  # rg_id -> (fi, g, columns)
+        file_rgs: dict[tuple[int, bool], tuple[list, list, list[int]]] = {}
+
+        def index_file(fi: int, is_dom: bool) -> tuple[list, list, list[int]]:
+            hit = file_rgs.get((fi, is_dom))
+            if hit is not None:
+                return hit
+            md = self._metadata[fi]
+            leaf = {md.schema.column(i).path: i for i in range(md.num_columns)}["protein_uid"]
+            cols = (("protein_uid", "inferred_from") if (is_dom and self._has_inferred[fi]) else ("protein_uid",))
+            kmins, kmaxs, rg_ids = [], [], []
+            for g in range(md.num_row_groups):
+                rg = md.row_group(g)
+                if rg.num_rows == 0:
+                    continue
+                st = rg.column(leaf).statistics
+                if st is None or not st.has_min_max:
+                    raise ValueError(f"{self.files[fi]}: row group {g} has no min/max statistics on protein_uid (LY-03)")
+                rg_id = len(self._where)
+                self._where.append((fi, g, cols))
+                kmins.append(st.min)
+                kmaxs.append(st.max)
+                rg_ids.append(rg_id)
+            res = (kmins, kmaxs, rg_ids)
+            file_rgs[(fi, is_dom)] = res
+            return res
+
+        self._dom_by_lib: dict[str, list[tuple[list, list, list[int]]]] = {}
+        for p, lib in domain_files:
+            r = index_file(file_index[Path(p)], True)
+            if r[2]:
+                self._dom_by_lib.setdefault(lib, []).append(r)
+        self._prot_by_lib: dict[str, list[tuple[list, list, list[int]]]] = {}
+        for lib in sorted(annotated_protein_files):
+            seen_fi: set[int] = set()
+            for p in annotated_protein_files[lib]:
+                fi = file_index[Path(p)]
+                if fi in seen_fi:
+                    continue
+                seen_fi.add(fi)
+                r = index_file(fi, False)
+                if r[2]:
+                    self._prot_by_lib.setdefault(lib, []).append(r)
+        self.row_groups_total = len(self._where)
+
+    @staticmethod
+    def _candidates(entries: list[tuple[list, list, list[int]]], puid: bytes) -> list[int]:
+        out: list[int] = []
+        for kmins, kmaxs, rg_ids in entries:
+            idx = bisect.bisect_left(kmaxs, puid)
+            while idx < len(kmins) and kmins[idx] <= puid:
+                out.append(rg_ids[idx])
+                idx += 1
+        return out
+
+    def _decoded(self, rg_id: int) -> pa.Table:
+        fi, g, cols = self._where[rg_id]
+        hit = self._cache.pop(rg_id, None)
+        if hit is not None:
+            self._cache[rg_id] = hit
+            self._touch(rg_id, fi, False)
+            return hit
+        t = pq.ParquetFile(self.files[fi], metadata=self._metadata[fi]).read_row_group(g, columns=list(cols))
+        self.row_groups_read += 1
+        self.files_hit[fi] += 1
+        self._touch(rg_id, fi, True)
+        if self.cache_row_groups > 0:
+            self._cache[rg_id] = t
+            if len(self._cache) > self.cache_row_groups:
+                self._cache.popitem(last=False)
+        return t
+
+    def states(self, pairs) -> dict[tuple[bytes, str], str]:
+        """`{(protein_uid, library): state}` for each distinct pair in `pairs`; each candidate row group is read at
+        most once per call."""
+        unique = list(dict.fromkeys(pairs))
+        rank: dict[tuple[bytes, str], int] = {pair: 0 for pair in unique}
+        dom_need: dict[int, list[tuple[bytes, str]]] = {}
+        for puid, lib in unique:
+            for rg_id in self._candidates(self._dom_by_lib.get(lib, ()), puid):
+                dom_need.setdefault(rg_id, []).append((puid, lib))
+        with self._lock:
+            for rg_id in sorted(dom_need):
+                t = self._decoded(rg_id)
+                want_uids = sorted({pu for pu, _ in dom_need[rg_id]})
+                hit = t.filter(pc.is_in(t.column("protein_uid"), value_set=pa.array(want_uids, pa.binary(16))))
+                if hit.num_rows == 0:
+                    continue
+                pu_col = hit.column("protein_uid").to_pylist()
+                if "inferred_from" in hit.column_names:
+                    inf_col = hit.column("inferred_from").to_pylist()
+                    best: dict[bytes, int] = {}
+                    for pu, inf in zip(pu_col, inf_col):
+                        r = 3 if inf is None else 2
+                        if r > best.get(pu, 0):
+                            best[pu] = r
+                else:
+                    best = {pu: 3 for pu in set(pu_col)}
+                for pu, lib in dom_need[rg_id]:
+                    r = best.get(pu, 0)
+                    if r > rank[(pu, lib)]:
+                        rank[(pu, lib)] = r
+            prot_need: dict[int, list[tuple[bytes, str]]] = {}
+            for puid, lib in unique:
+                if rank[(puid, lib)] == 0:
+                    for rg_id in self._candidates(self._prot_by_lib.get(lib, ()), puid):
+                        prot_need.setdefault(rg_id, []).append((puid, lib))
+            for rg_id in sorted(prot_need):
+                t = self._decoded(rg_id)
+                want_uids = sorted({pu for pu, _ in prot_need[rg_id]})
+                hit = t.filter(pc.is_in(t.column("protein_uid"), value_set=pa.array(want_uids, pa.binary(16))))
+                if hit.num_rows == 0:
+                    continue
+                found = set(hit.column("protein_uid").to_pylist())
+                for pu, lib in prot_need[rg_id]:
+                    if pu in found and rank[(pu, lib)] < 1:
+                        rank[(pu, lib)] = 1
+        return {pair: self._STATE_NAMES[r] for pair, r in rank.items()}
+
+
+def _register_domain_state_udf(con: duckdb.DuckDBPyConnection, dom_state: _Lazy) -> None:
+    """`domain_state(protein_uid, library)` as a point lookup over `DomainStateLookup` (card C-38b)."""
+
+    def bb_domain_state(puids: pa.Array, libs: pa.Array) -> pa.Array:
+        rows = list(zip(puids.to_pylist(), libs.to_pylist()))
+        valid = [(pu, lib) for pu, lib in rows if pu is not None and lib is not None]
+        got = dom_state.get().states(valid) if valid else {}
+        return pa.array([None if (pu is None or lib is None) else got[(pu, lib)] for pu, lib in rows], pa.string())
+
+    con.create_function("bb_domain_state_udf", bb_domain_state, ["BLOB", "VARCHAR"], "VARCHAR",
+                        type="arrow", null_handling="special", side_effects=False)
+    con.execute("CREATE OR REPLACE TEMP MACRO domain_state(_puid, _lib) AS bb_domain_state_udf(_puid, _lib)")
+
+
 SEQ_TABLES = ("seq_locator", "contig_index", "contig_occurrence")  # what SeqStore reads
 
 
@@ -2550,6 +2813,8 @@ def open_catalog(path: Path, local_dir: Path | None = None, threads: int | None 
                                                     _domain_files(con, built), tmp=temp_directory))
     # a catalog built before card C-21b has no genome_member, genome_dim, genomes_of or genome_dim_now
     _add_genome_objects(con)
+    # a catalog built before card C-38b has no domain_state view
+    _add_domain_state_view(con)
     # a catalog of a partly labelled release built before card W-36 stores a contig_label view over the label files
     _shadow_partial_labels(con, built)
     # a catalog built before card C-21c has no q1_genomes, and a q1_count whose tier filter reads contig_dim only
@@ -2557,7 +2822,10 @@ def open_catalog(path: Path, local_dir: Path | None = None, threads: int | None 
         con.execute(stmt)
     keys = _Lazy(TokenKeyLookup, _token_dict_files(con, built))
     _register_token_udf(con, keys)
-    _LOOKUPS[id(con)] = [("bb_partner_counts", tapes), ("bb_token_of", keys)]
+    dom_state = _Lazy(lambda args: DomainStateLookup(*args),
+                      (_domain_files(con, built), _annotated_protein_files(con, built)))
+    _register_domain_state_udf(con, dom_state)
+    _LOOKUPS[id(con)] = [("bb_partner_counts", tapes), ("bb_token_of", keys), ("bb_domain_state", dom_state)]
     attach_search(con, runs, pack)
     return con
 
