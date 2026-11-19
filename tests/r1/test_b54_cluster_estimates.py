@@ -186,13 +186,14 @@ def test_b54_call_cpu_min_without_targets_falls_back_to_release_proteins():
     assert cluster.call_cpu_min(name, 2 * cluster.CALL_N0, 10**9) == pytest.approx(rate * (2.0 ** growth))
 
 
-def test_b54_legacy_pre_b54_cut_records_remain_reusable_under_b49(tmp_path):
+def test_b54_legacy_pre_b54_cut_records_remain_reusable_under_b49(tmp_path, monkeypatch):
     """Published releases clustered before card B-54 (`rM.2`, `r26.11.1`) wrote `.cut.json` with the legacy
     `proteins`-only `cpu_min`. `_source_problem` must still accept them while rejecting an arbitrary wrong `cpu_min`."""
     root = tmp_path / "root"
     src, rel = "rM.2", "r26.11.2"
     proteins = 45_815_843
-    tools = provenance.tool_versions("mmseqs2", "pyarrow")
+    tools = {"mmseqs2": "18.8cc5c", "pyarrow": "23.0.1"}
+    monkeypatch.setattr(provenance, "tool_versions", lambda *names: {k: tools[k] for k in names})
     plan_doc = {
         "format": cluster.PLAN_FORMAT, "release": src, "stages": ["S1"], "gene_call_version": "gv",
         "mmseqs2": tools["mmseqs2"], "files": [], "cut": {"parts": 1}, "proteins": proteins,
