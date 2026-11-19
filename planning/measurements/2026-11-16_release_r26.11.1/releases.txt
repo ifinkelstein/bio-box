@@ -1,0 +1,9 @@
+release	manifest	stages	genomes	contigs	proteins	libraries	ncrna	member_cluster	contig_label	domain_family_tokens	pack
+r26.11.1	yes	S1,P1,P2,P3,P4,P5,P6,H1,PL1	114629	122626	49102041	pfam-38.2	-	yes	yes	yes	-
+rM.1	no	S1,P1,P2,P3,P4,P5,P6	-	-	45815843	pfam-38.2	-	yes	yes	no	-
+rM.2	yes	S1,P1,P2,P3,P4,P5,P6	39224	54265	45815843	pfam-38.2	-	yes	partial(not S1,P1,P2)	yes	26e10f05401faeefb78769e83f7f6cb4
+rN.1	yes	S1,P1,P2	29755	32815	10620684	-	-	no	no	no	-
+rN.1a	yes	S1	27258	27258	1134550	-	-	no	no	no	-
+rN.1b	yes	S1,P1	27508	27797	2053075	-	-	no	no	no	-
+rN.2	yes	S1,P1,P2	29755	32815	10620684	pfam-38.2	-	no	no	no	-
+rN.3	yes	S1,P1,P2	29755	32815	10620684	pfam-38.2	-	yes	no	yes	a334c89ccf048904f297de3b2597af22

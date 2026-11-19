@@ -1,8 +1,11 @@
 # bio-box (all-the-data)
 
-**Status, 2026-11-15:** the 50 Gbp release `rM.2` (seven stages, Pfam on every one) is built, verified, has its
-search pack and passed both worked examples: it is the release to search. The 10 Gbp release `rN.3` stays
-available. No release has been signed yet. The running record is
+**Status, 2026-11-19:** the 59.88 Gbp rolling release `r26.11.1` (nine stages `S1`, `P1` to `P6`, `H1` and `PL1`,
+Pfam 38.2, both CRISPR array producers and `contig_label` on every stage; *measured*,
+[`2026-11-16_release_r26.11.1.md`](planning/measurements/2026-11-16_release_r26.11.1.md)) is built, verified, backed
+up onto durable storage, has its search pack and passed both worked examples (all 39 invariants, including the CRISPR
+array checks): **it is the release to search** (`--release latest` resolves to `r26.11.1`). `rM.2` (50 Gbp) and `rN.3`
+(10 Gbp) stay available. No release has been signed yet. The running record is
 [`planning/tasks/STATUS.md`](planning/tasks/STATUS.md); where this file and that one differ, that one is newer.
 
 Numbers here carry the labels [`AGENTS.md`](AGENTS.md) §6 requires: *measured* (on the pod unless stated, with the
@@ -69,22 +72,24 @@ are counts, not significance: no enrichment statistic exists yet, and identical 
 ## What is in it
 
 The data are not in this repository. Built stages and releases live in one data root on the local disk of a shared
-university server (the pod, `wilkcomp02` in [`AGENTS.md`](AGENTS.md) §7); that root has not yet been copied to the
-server's durable storage, and a reboot can clear local disk (STATUS handoff). Fetched inputs are archived on the
-server's network storage, each file with a sha256 in [`sources.yaml`](sources.yaml); reference libraries are pinned in
-[`refdb.yaml`](refdb.yaml). The repository holds code, plans, decisions, measurement records and tests.
+university server (the pod, `wilkcomp02` in [`AGENTS.md`](AGENTS.md) §7), with verified `.tar` backups of the stages
+and releases through `r26.11.1` on the server's durable storage (`/stor/work/Wilke/if2453/all-the-data/root_backups/`,
+STATUS handoff). Fetched inputs are archived on the server's network storage, each file with a sha256 in
+[`sources.yaml`](sources.yaml); reference libraries are pinned in [`refdb.yaml`](refdb.yaml). The repository holds
+code, plans, decisions, measurement records and tests.
 
 **Stages** (stage numbering and plan: [`STAGES.md`](STAGES.md), "Status and mapping")
 
 | Stage | Source | Size | Annotations | State |
 |---|---|---|---|---|
 | S0 golden set | 15 reference genomes ([`golden.yaml`](golden.yaml)) | | test harness only | used by every test ring; release `rS0.1` not cut (card E-06) |
-| `S1` | INPHARED phages, 14Apr2025 | 34,076 records, 27,258 distinct sequences (*measured*, `sources.yaml`) | genes, Pfam 38.2, clusters | built |
-| `P1`, `P2` | GTDB R226, best complete genome per species: 250 and 2,247 genomes | 10.6 Gbp with `S1` (*measured*, `STAGES.md`) | genes, Pfam 38.2, clusters | built |
-| `P3` to `P6` | the same selection, the other 9,469 genomes | 39.9 Gbp (*measured*, `STAGES.md`); the selection is 11,973 genomes, 11,966 fetched, 50.5 Gbp (*measured*, [`2026-11-11_r50_inputs.md`](planning/measurements/2026-11-11_r50_inputs.md)) | genes, clusters; Pfam: `P3` and `P4` done, `P5` and `P6` running | building |
-| `H1` (planned) | Huge Phage Genome Collection | 7,230 genomes, 1,961,987,211 bp, 516 already in `S1` (*measured*, `sources.yaml`) | none | fetched; card C-24 |
-| plasmids (planned) | PLSDB 2024_05_31_v2 | 72,556 records, 7,297,669,596 bp, 7,139 already contigs of `P1` to `P6` (*measured*, `sources.yaml`) | none | fetched; card C-26 |
-| S2C phase 2 (planned) | GTDB R226, up to 20 complete genomes per species, chosen for strain diversity with skani in the 243 species that have more | 13,485 genomes selected, 56.2 Gbp; 13,477 fetched, 56.18 Gbp (*measured* and *derived*, [`2026-11-13_s2c_skani_selection.md`](planning/measurements/2026-11-13_s2c_skani_selection.md), [`2026-11-13_s2c_phase2_fetch.md`](planning/measurements/2026-11-13_s2c_phase2_fetch.md)) | none | fetched and archived; stage split and build to come; card C-25 |
+| `S1` | INPHARED phages, 14Apr2025 | 34,076 records, 27,258 distinct sequences (*measured*, `sources.yaml`) | genes, Pfam 38.2, both CRISPR producers, labels, clusters | built |
+| `P1`, `P2` | GTDB R226, best complete genome per species: 250 and 2,247 genomes | 10.6 Gbp with `S1` (*measured*, `STAGES.md`) | genes, Pfam 38.2, both CRISPR producers, labels, clusters | built |
+| `P3` to `P6` | the same selection, the other 9,469 genomes | 39.9 Gbp (*measured*, `STAGES.md`); the selection is 11,973 genomes, 11,966 fetched, 50.5 Gbp (*measured*, [`2026-11-11_r50_inputs.md`](planning/measurements/2026-11-11_r50_inputs.md)) | genes, Pfam 38.2, both CRISPR producers, labels, clusters | built |
+| `H1` | Huge Phage Genome Collection | 7,228 genomes, 6,714 contigs and 1,819,831,338 bp stored (514 shared with `S1`; *measured*, [`2026-11-15_stage_H1.md`](planning/measurements/2026-11-15_stage_H1.md)) | genes, Pfam 38.2, both CRISPR producers, labels, clusters | built (card C-24) |
+| `PL1` | PLSDB 2024_05_31_v2 | 68,693 genomes, 61,647 contigs and 5,924,552,875 bp stored (7,046 shared with `S1` and `P1` to `P6`; *measured*, [`2026-11-15_stage_PL1.md`](planning/measurements/2026-11-15_stage_PL1.md)) | genes, Pfam 38.2, both CRISPR producers, labels, clusters | built (card C-26) |
+| `C1` to `C6` (S2C phase 2) | GTDB R226, up to 20 complete genomes per species, chosen for strain diversity with skani in the 243 species that have more | 13,477 genomes fetched, 56,177,990,736 bp, adding 16,470 contigs and 54.13 Gbp across six ~9.2 to 9.5 Gbp stages (*measured* and *derived*, [`2026-11-15_s2c_phase2_inputs.md`](planning/measurements/2026-11-15_s2c_phase2_inputs.md)) | none | inputs ready (card C-36); stage `C5` next (card C-47) |
+| `V1`, `PL2`, `G1`..`G41` | UHGV v1.0 viruses (`V1`), Yu2024 + PlasmidScope + IMG/PR plasmids (`PL2`), GlobDB r226 non-GTDB species reps (`G1`..`G41`) | `V1` 5.22 Gbp (`168,536` genomes), `PL2` 25.13 Gbp (`924,909` genomes, `18.27 Gbp` new), `G1` 10.05 Gbp of 410.33 Gbp across `162,653` species (*measured*, cards C-39, C-40, C-41) | none | `V1`, `PL2`, `G1` inputs staged on disk; builds queued |
 
 **Releases** (names are provisional: none is signed, so none is `rS<k>.<n>`, `STAGES.md`)
 
@@ -105,7 +110,8 @@ command prints the name it took and records that name, and `bio-box releases` ma
 | `rN.3` | the same | the same with Pfam 38.2 and the lookup tables, built by current code; clusters equal to `rN.2` row for row (*measured*, `2026-11-11_build_r50.md` §A3) | verified; has a search pack; both worked examples hold (2026-11-13); the release to use for the 10 Gbp set |
 | `rN.1a`, `rN.1b` | intermediate releases of the same rebuild | | verified |
 | `rM.1` | `S1`, `P1` to `P6` | the same stages and proteins as `rM.2`; its cluster files are byte-identical to `rM.2`'s (*measured*, 2026-11-14, STATUS handoff) | clustered only, left so on purpose (it would be a second copy of `rM.2`; STATUS open items 1 and 6) |
-| `rM.2` | `S1`, `P1` to `P6` | 54,265 contigs, 39,224 genomes, 45,815,843 distinct proteins, 31,183,876 NR90 and 8,192,065 NR50 clusters, Pfam 38.2 on every stage (*measured*, 2026-11-14, STATUS handoff; the cluster counts are `rM.1`'s, whose cluster files are the same bytes) | verified (2026-11-14); search pack `26e10f05…` (25.8 GB); both worked examples hold, 37 invariants (*measured*, 2026-11-15, [`2026-11-14_release_examples_rM2.md`](planning/measurements/2026-11-14_release_examples_rM2.md)): **the one to use**. Known limits: no CRISPR arrays in it yet (STATUS open item 6); its stages `S1`, `P1`, `P2` have no label table, so a lookup by accession scans those stages (card W-36; seconds) |
+| `rM.2` | `S1`, `P1` to `P6` | 54,265 contigs, 39,224 genomes, 45,815,843 distinct proteins, 31,183,876 NR90 and 8,192,065 NR50 clusters, Pfam 38.2 on every stage (*measured*, 2026-11-14, STATUS handoff; the cluster counts are `rM.1`'s, whose cluster files are the same bytes) | verified (2026-11-14); search pack `26e10f05…` (25.8 GB); both worked examples hold, 37 invariants (*measured*, 2026-11-15, [`2026-11-14_release_examples_rM2.md`](planning/measurements/2026-11-14_release_examples_rM2.md)); superseded as `--release latest` by `r26.11.1`, still available |
+| `r26.11.1` | `S1`, `P1` to `P6`, `H1`, `PL1` | 59.88 Gbp stored across 122,626 contigs (7,046 shared across genomes) and 114,629 genomes; 57,086,886 genes, 49,102,041 distinct proteins, 33,117,773 NR90 and 9,291,312 NR50 clusters, Pfam 38.2, both CRISPR producers (16,067 default 3-repeat and 493 filtered 2-repeat near-Cas arrays) and `contig_label` on every stage (*measured*, 2026-11-18/19, [`2026-11-16_release_r26.11.1.md`](planning/measurements/2026-11-16_release_r26.11.1.md)) | verified (manifest hash `202b4cad…`); search pack `f8ab9bd5…` (29.29 GB); both worked examples hold, all 39 invariants including the CRISPR array checks (*measured*, 2026-11-19): **the one to use** (`--release latest`) |
 
 Non-coding RNA: the producer and its frozen model set exist (DEC-28, DEC-30), but no built stage has been scanned, so no
 release has ncRNA features.
@@ -184,50 +190,47 @@ The specification and plan behind these are [`00-spec.md`](00-spec.md), [`PLAN.m
 | 2026-11-14 | Pfam 38.2 scanned on every stage of the 50 Gbp set (the last scan, `P6`, published 04:52 CST) | STATUS handoff |
 | 2026-11-14 | A second CRISPR producer for the short arrays beside Cas genes (DEC-40, card E-15): MinCED at two repeats, kept only within 1 kb of a Cas gene, outside genes and away from the default arrays; 78 calls on 10.6 Gbp, and 14 of the 20 Tn7-like TniQ loci of the worked example now show an array (*measured*) | [`2026-11-14_crispr_two_repeat_producer.md`](planning/measurements/2026-11-14_crispr_two_repeat_producer.md) |
 | 2026-11-14 | Search results are kept under the `bulk` area (DEC-42, card W-33); the first bundle, the RNA polymerase run of `rN.3` with its neighbourhood tables (164.6 MB, *measured*), is on durable storage | STATUS row W-33 |
+| 2026-11-14 to 15 | 50 Gbp release `rM.2` (`S1`, `P1` to `P6`: 39,224 genomes, 45,815,843 proteins, *measured*), its sharded search pack (25.8 GB, card W-35), and both worked examples passing all 37 invariants (card W-36); CRISPR arrays and `contig_label` files added for all seven stages (cards C-33 part 1, C-34) | [`2026-11-14_pack_build_in_parts.md`](planning/measurements/2026-11-14_pack_build_in_parts.md), [`2026-11-14_release_examples_rM2.md`](planning/measurements/2026-11-14_release_examples_rM2.md), [`2026-11-15_label_files_old_stages.md`](planning/measurements/2026-11-15_label_files_old_stages.md) |
+| 2026-11-15 to 16 | Stage `H1` (huge phages: 6,714 contigs, 1.82 Gbp stored, *measured*, card C-24) and stage `PL1` (PLSDB plasmids: 61,647 contigs, 5.92 Gbp stored, *measured*, card C-26) built with batched gene calling (cards B-48, B-50) and cross-stage Pfam domain copying (card B-47b); clustering reuse when proteins match (card B-49); S2C phase-2 inputs `C1` to `C6` prepared (card C-36) | [`2026-11-15_stage_H1.md`](planning/measurements/2026-11-15_stage_H1.md), [`2026-11-15_stage_PL1.md`](planning/measurements/2026-11-15_stage_PL1.md), [`2026-11-15_s2c_phase2_inputs.md`](planning/measurements/2026-11-15_s2c_phase2_inputs.md) |
+| 2026-11-16 to 18 | Import depths (`stored`, `called`, `annotated`), `--min-contig-len` at ingest, shared-contig domain coverage, `domain_state` (`measured`, `inferred`, `none`, `not scanned`), and `--release latest` (DEC-52, DEC-54; cards C-38, W-37, C-38a, C-38b, C-38d, C-38h); inputs and overlap measured for `V1` (`UHGV`), `PL2` (`Yu2024` + `PlasmidScope` + `IMG/PR`), `GlobDB` `G1`..`G41` and the `SPIRE`/`MGnify`/`INSDC` run crosswalk (cards C-39 to C-41, C-43) | [`planning/design/C-38_import_depths.md`](planning/design/C-38_import_depths.md), [`2026-11-16_run_crosswalk.md`](planning/measurements/2026-11-16_run_crosswalk.md), [`2026-11-16_virus_votu_inputs.md`](planning/measurements/2026-11-16_virus_votu_inputs.md), [`2026-11-16_pl2_inputs.md`](planning/measurements/2026-11-16_pl2_inputs.md), [`2026-11-18_globdb_inputs.md`](planning/measurements/2026-11-18_globdb_inputs.md) |
+| 2026-11-18 to 19 | First rolling release `r26.11.1` over `S1`, `P1` to `P6`, `H1` and `PL1` (59.88 Gbp, 114,629 genomes, 49,102,041 distinct proteins, 33,117,773 NR90 and 9,291,312 NR50 clusters, 16,067 + 493 CRISPR arrays, *measured*): verified, backed up onto `/stor/work`, search-packed (29.29 GB) and passed all 39 worked-example invariants (card C-35) | [`2026-11-16_release_r26.11.1.md`](planning/measurements/2026-11-16_release_r26.11.1.md) |
 
-**Now** (2026-11-15; STATUS handoff)
+**Now** (2026-11-19; STATUS handoff)
 
-- `rM.2`, the 50 Gbp release with Pfam on every stage, is the release to use since 2026-11-15. It was built and
-  verified on 2026-11-14 (seven stages, 39,224 genomes, 45,815,843 proteins, *measured*); its search pack was
-  built in 8 parts, since one process would pass the server's limit per process (25.8 GB; card W-35); the release
-  check (AGENTS §5.7; `scripts/release_examples.sh`) first stopped it, because lookups by accession failed for the
-  three stages built before the label table existed, and passed after the readers were fixed (card W-36): both
-  worked examples hold on it, 37 invariants. On it the TniQ loci beside a Cas7f grow from 20 to 60 and the RNA
-  polymerase search finds 2,036 proteins (*measured*, the release check's note). The data root (81 GB) has a copy
-  on durable storage since 2026-11-14, and its two independent clustering runs of the same 45.8 M proteins gave
-  byte-identical cluster tables (*measured*; STATUS handoff).
-- Tests, builds and searches on the server run in the images built from `main` at pull request 5 (cards C-29, C-32);
-  the `rM.2` build alone keeps the older image, so its run records name one image.
-- S2C phase 2 is fetched (13,477 of 13,485 genomes, 2026-11-13); it is built as six stages of 9.2 to 9.5 Gbp after
-  the 50 Gbp release (DEC-34, DEC-35; card C-25 step 3 and cards B-47a to B-47e).
-- CRISPR arrays are called with MinCED and stored as features (card E-12), `bio-box nbr` shows the arrays beside a
-  locus (card E-14), and a second, filtered producer keeps the short arrays beside Cas genes that Tn7-like elements
-  carry (card E-15). Both producers have run on the seven built stages (13,477 and 414 arrays, *measured*,
-  2026-11-15, card C-33 part 1); no release lists the arrays yet (STATUS open item 6). On phages the filter keeps
-  14 times what chance gives, all of it one real locus in ICP1-like phages (*measured*, card E-16).
-- The synthetic world has its null worlds (card F-02, session 9) but holds the specification's ranges at its default
-  seed only (session 10). Its redesign over seeds (DEC-36, DEC-37; session 11) now holds genome size, the planted
-  share and the strength grid at 22 of 22 seeds (*measured*), but six assertions about plasmids, the core genome
-  and sequence identity fail in the older world it makes; that is an open item for the PI (STATUS, open item 5),
-  and its branch is not merged. The statistics wait for it and for the sequence model's change (DEC-39).
+- `r26.11.1`, the 59.88 Gbp nine-stage rolling release (`S1`, `P1` to `P6`, `H1` and `PL1`), is the release to use
+  since 2026-11-19 (`--release latest` resolves to it). It holds 114,629 genomes, 122,626 contigs (7,046 shared
+  across genomes), 49,102,041 distinct proteins (3,286,198 not in `rM.2`), 33,117,773 NR90 and 9,291,312 NR50
+  clusters, Pfam 38.2, `contig_label`, and both CRISPR array producers (16,067 default 3-repeat and 493 filtered
+  2-repeat near-Cas arrays, *measured*, [`2026-11-16_release_r26.11.1.md`](planning/measurements/2026-11-16_release_r26.11.1.md)).
+  Every unchanged cluster of `rM.2` kept its exact `cluster_uid` (30,867,052 of 30,867,052 at NR90 and 7,703,127 of
+  7,703,127 at NR50, *measured*). Its search pack (`f8ab9bd5c5a6c8858e60bf639323c457`, 29.29 GB) is verified, both
+  worked examples pass all 39 invariants (42 of 67 TniQ+Cas7f loci carry a CRISPR array, including 26 from the
+  filtered two-repeat producer; 2,037 RNA polymerase hit proteins across 2,667 genes, *measured*), and the root and
+  its additions through `r26.11.1` are backed up onto `/stor/work/Wilke/if2453/all-the-data/root_backups/`.
+- External sequence fetching is paused once the in-flight JGI/NERSC/Zenodo archive batch finishes (`STATUS.md`
+  handoff, 2026-11-19): work focuses on ingesting the genomes, plasmids, viruses and metagenomes already staged on
+  disk into the DuckDB/Parquet corpus through `build-stage` and the rolling release train (card C-46).
+- Tests, builds and searches on the server run in the images built from `main` at pull request 5 (cards C-29, C-32).
+- The synthetic world's seed-stability and null-module positive-control adjustments wait on open item 12 for the PI
+  (STATUS handoff), holding the statistics track (`F-01` to `F-03`).
 
 **Next, in order**
 
-1. `rM.2`, the 50 Gbp release with Pfam on every stage; verify it, copy the data root to durable storage, and finish
-   `rM.1`'s release steps (STATUS handoff).
-2. Huge phages (stage `H1`, card C-24), then PLSDB plasmids (card C-26).
-3. S2C phase 2, up to 20 genomes per species: the selection, the fetch of the genomes kept (card C-25), and Pfam by
-   cluster representatives with the rest inferred and labelled (DEC-32; design B-47). Whether gene calls become a
-   function of the contig alone is decided before this stage is built (card C-21f).
+1. The rolling release-train driver (`release_train.sh`, card C-46), intermediate cascade part-cut calibration
+   (card B-54), and on-hit annotation rounds (`domain_rounds`, cards C-38e to C-38g).
+2. S2C phase 2 (`C1` to `C6`, 13,477 complete prokaryote genomes, 56.18 Gbp): build stage `C5` with a full Pfam scan
+   to measure representative-based domain inference (DEC-32, DEC-35; card C-47), then build the remaining stages
+   (cards B-47a to B-47e).
+3. Ingest the staged viral, plasmid and metagenomic collections already on disk: `V1` (`UHGV`), `PL2` (`Yu2024` +
+   `PlasmidScope` + `IMG/PR`), deduplicated JGI viral/plasmid/MAG additions (`C-48a` to `C-48d`), `GlobDB` `G1`, and
+   the fetched `SPIRE` habitat-pilot assemblies (`C-42`).
 4. ncRNA annotation of the built stages with `prok-2`; a dedicated tRNA caller is a later card (E-10).
 5. The statistics phase: the `pair_stats` design, the synthetic-world sessions that remain, then calibration on null
    worlds (cards F-01 to F-03). No enrichment statistic exists today.
 6. The first signed release, `rS0.1` (card E-06), after which locked schema columns can only be appended to (AGENTS
    §3.8).
-7. Work beyond the shared server: scan shards on a larger system (card C-18, deferred), contamination screening with
-   FCS-GX on a host with 512 GB of memory or more (DEC-02, deferred), and the rented hosts the plan names for its later
-   stages (`STAGES.md` §4, §5; not started). Clustering a release far beyond the 50 Gbp set also needs an MMseqs2
-   without the index abort (card B-44, deferred).
+7. CPU-heavy scans and larger-scale clustering on TACC Lonestar6 once allocation and SSH access are active (cards
+   C-37a, C-37, C-38c).
 
 Several of these wait on decisions; they are listed under "Open items for the PI" in
 [`planning/tasks/STATUS.md`](planning/tasks/STATUS.md).

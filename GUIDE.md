@@ -1,7 +1,8 @@
 # Searching a release with your own HMM
 
 For a scientist who wants hits and gene neighbourhoods, not operations. State as of 2026-11-11 (keeping results:
-2026-11-12; the worked examples in `examples/`: 2026-11-13; the 50 Gbp release `rM.2`: 2026-11-15); releases,
+2026-11-12; the worked examples in `examples/`: 2026-11-13; the 50 Gbp release `rM.2`: 2026-11-15; the 59.88 Gbp
+rolling release `r26.11.1`: 2026-11-19); releases,
 paths and costs will change. The operator's version of every command is `RUNBOOK.md` (sections 0, 7, 10, 11).
 Numbers carry a label: *measured* (with the file it comes from) or *derived* (with the formula).
 
@@ -24,7 +25,8 @@ host profile's pack directory `/tmp/if2453/bio-box/packs`, card W-22):
 | `rN.1` | 27,258 phage genomes and 2,497 complete prokaryote genomes; 12,048,866 genes; 10,620,684 distinct proteins; NR50 2,966,200 and NR90 8,278,537 clusters; no Pfam (*measured*, `planning/tasks/STATUS.md`, "10 Gbp rebuild"; `planning/measurements/2026-11-10_trial_search_rN1.md`) | yes; until the operator copies it into the profile's pack directory, in `/tmp/if2453/w19/packs` (section 2) |
 | `rN.2` | the same genomes with Pfam 38.2 domains | none yet: ask the operator for one (RUNBOOK section 7, `pack build`; a release too large for one process under the CPU budget, such as the 50 Gbp `rM.2`, is built with `pack build --parts N`, card W-35, and gives the same pack) |
 | `rN.3` | the same genomes with Pfam 38.2, built by the current code (card C-17): the one to use for the 10 Gbp set; the worked commands of this guide were run on it | yes, in the profile's pack directory (`/tmp/if2453/bio-box/packs`), found with `--profile` alone |
-| `rM.2` | the 50 Gbp set, since 2026-11-15 **the one to use**: the genomes of `rN.3` and 9,469 more complete prokaryote genomes (stages `P3` to `P6`; *derived*: 39,224 less 29,755), 39,224 genomes in all; 45,815,843 distinct proteins; NR50 8,192,065 and NR90 31,183,876 clusters; Pfam 38.2 on every stage (*measured*, `planning/tasks/STATUS.md` handoff of 2026-11-14). Both worked examples hold on it (*measured*, `planning/measurements/2026-11-14_release_examples_rM2.md`). A search costs about four times what it costs on `rN.3` (the RNA polymerase search 40.9 CPU-minutes, *measured*, the same note). Two limits: it holds no CRISPR arrays yet; and its stages `S1`, `P1` and `P2` have no label table, so a command that looks a contig up by accession prints one `note:` line and scans those stages (a few seconds; card W-36) | yes, in the profile's pack directory, found with `--profile` alone (pack `26e10f05401faeefb78769e83f7f6cb4`, 25.8 GB, built in parts, card W-35) |
+| `rM.2` | the 50 Gbp set (superseded as `--release latest` by `r26.11.1` on 2026-11-19, still available): the genomes of `rN.3` and 9,469 more complete prokaryote genomes (stages `P3` to `P6`; *derived*: 39,224 less 29,755), 39,224 genomes in all; 45,815,843 distinct proteins; NR50 8,192,065 and NR90 31,183,876 clusters; Pfam 38.2 on every stage (*measured*, `planning/tasks/STATUS.md` handoff of 2026-11-14). Both worked examples hold on it (*measured*, `planning/measurements/2026-11-14_release_examples_rM2.md`). A search costs about four times what it costs on `rN.3` (the RNA polymerase search 40.9 CPU-minutes, *measured*, the same note). Two limits: it holds no CRISPR arrays; and its stages `S1`, `P1` and `P2` have no label table in its manifest, so a command that looks a contig up by accession prints one `note:` line and scans those stages (a few seconds; card W-36) | yes, in the profile's pack directory, found with `--profile` alone (pack `26e10f05401faeefb78769e83f7f6cb4`, 25.8 GB, built in parts, card W-35) |
+| `r26.11.1` | the 59.88 Gbp nine-stage rolling release (`S1`, `P1` to `P6`, `H1` huge phages, `PL1` PLSDB plasmids), since 2026-11-19 **the one to use** (and what `--release latest` resolves to): 114,629 genomes, 122,626 contigs (7,046 shared across genomes), 57,086,886 genes, 49,102,041 distinct proteins, NR50 9,291,312 and NR90 33,117,773 clusters, Pfam 38.2, both CRISPR array producers (16,067 default 3-repeat and 493 filtered 2-repeat near-Cas arrays) and `contig_label` on every stage (*measured*, `planning/measurements/2026-11-16_release_r26.11.1.md`). Both worked examples hold on it, all 39 invariants including the CRISPR array checks; the RNA polymerase example took 53.5 CPU-minutes (*derived*, the same note) | yes, in the profile's pack directory, found with `--profile` alone (pack `f8ab9bd5c5a6c8858e60bf639323c457`, 29.29 GB, built in 10 parts, *measured*, `planning/measurements/2026-11-16_release_r26.11.1.md`) |
 
 ## 2. Before you start
 
@@ -293,21 +295,22 @@ ls "$WORK"/rnap/loci/locus_NC_001604_*
 column -t -s $'\t' "$WORK/rnap/loci/locus_NC_001604_39f9ef263e234b012d2671634468546e.tsv"
 ```
 
-Arrays beside a locus need a release that holds them. Until one does, a scratch view of `rN.3` with card E-12's
-arrays (stages P1, P2, S1; built by card E-14 under `/tmp/if2453/e14/view`, its own manifest and catalog, the data
-root untouched) shows them. The complete type I-F system of the CRISPR example's control genome (its Cas7f,
+Arrays beside a locus need a release that holds them. Release `r26.11.1` is the first release to list both CRISPR
+producers on every stage (default three-repeat MinCED and card E-15's filtered two-repeat producer beside Cas genes).
+The complete type I-F system of the CRISPR example's control genome (its Cas7f,
 `NZ_AP026781.1:687857-688841`), 10 genes on each side:
 
 ```bash
-bio-box nbr 07ba31e0f0e5ffcc30388139b5ec30e4 --root /tmp/if2453/e14/view --release rN.3 --profile "$PROFILE" --window 10g --format tsv --out "$WORK/e14_cas7f"
+bio-box nbr 07ba31e0f0e5ffcc30388139b5ec30e4 --root "$ROOT" --release r26.11.1 --profile "$PROFILE" --window 10g --format tsv --out "$WORK/r26_cas7f"
 ```
 
 Its table (`locus_NZ_AP026781.1_099ffda89602165c6368d6a601339856.tsv`) ends with the window `676009` to `697441` and
 the two arrays of the system, one on each side: 27 repeats at 679543-681134 (`side_rel -1`, 6,723 bases before the
 Cas7f) and 21 repeats at 689534-690762 (`side_rel 1`, 693 bases after it), both with the repeat
-`CTTCACTGCCGAGTAGGCAGCTTAGAAA` (*measured*, wilkcomp02, 2026-11-14, `planning/measurements/2026-11-14_arrays_in_neighbourhoods.md`).
-The same command for the TniQ of the Tn7-like element (`28e32e6533f7f55e5bca64f44c89b426`) shows none: its
-one-spacer array has two repeats, below MinCED's minimum of three (card E-13).
+`CTTCACTGCCGAGTAGGCAGCTTAGAAA` (*measured*, wilkcomp02, 2026-11-19). The same command for the TniQ of the Tn7-like
+element (`28e32e6533f7f55e5bca64f44c89b426`) now shows its one-spacer, two-repeat array at 422557-422647 (`side_rel 1`,
+3,693 bases from TniQ, repeat `TTATTATCAGCTACCTATTCGGCAGTTCAC`), called by the filtered producer
+`minced-0.4.2-w8-nr2-r23x47-s26x50-cas1kb-caspfam1-pfam-38.2` (*measured*, wilkcomp02, 2026-11-19).
 
 ### Which loci share a context: `nbr flanks`
 
@@ -426,19 +429,18 @@ runs as one command and checks its answer; both are rerun on every milestone rel
 
 ## 8. Limits and rough edges today
 
-- The data is on the pod's local disk (`/tmp`), not yet copied to permanent storage; a reboot may clear it. No card
-  yet (`STATUS.md`, "Plan for larger imports", step 1). Your own results can be kept (section 5, *Keeping your
-  results*) under the pod's bulk area.
-- Only `rN.1` has a search pack. Until the operator copies it into the profile's pack directory
-  (`/tmp/if2453/bio-box/packs`, card W-22), it is in a work directory (`/tmp/if2453/w19/packs`) and every
-  `releases`, `search` and `nbr` command needs `--pack-dir /tmp/if2453/w19/packs` (section 2); `rN.2` needs one
-  built (RUNBOOK section 7).
-- `rN.1` and `rN.2` were built before card B-27, so cluster and contig-name lookups read whole tables and print a
-  `note: ... slow path` line; answers are the same, a few seconds slower. `rN.3` has the cluster lookup table but
-  still prints the note for contig names: that table is written per stage at ingest, and its stages were ingested
-  before card B-27. `rM.2` has it for stages P3 to P6 only: `releases` shows `contig_label` as
-  `partial(not S1,P1,P2)`, and the names of those three stages' contigs come from the slow path, with a `note:` line
-  naming the stages (card W-36; before it, `find --accession` found no contig of those stages).
+- The active data root lives on the pod's local disk (`/tmp/if2453/r10/root`), with verified `.tar` backups of the
+  stages and releases through `r26.11.1` on durable storage (`/stor/work/Wilke/if2453/all-the-data/root_backups/`,
+  `STATUS.md` handoff). Your own search results can be kept (section 5, *Keeping your results*) under the pod's bulk
+  area.
+- `r26.11.1` (`--release latest`), `rM.2` and `rN.3` have verified search packs in the profile's pack directory
+  (`/tmp/if2453/bio-box/packs`, card W-22), found with `--profile` alone; `rN.1` and `rN.2` do not (`RUNBOOK.md`
+  section 7).
+- `r26.11.1` has `member_cluster`, `contig_label`, `domain_family_tokens` and both CRISPR array producers on all nine
+  stages (`S1`, `P1` to `P6`, `H1`, `PL1`), so lookups prune and print no slow-path note. Older releases lack some
+  lookup tables: `rN.1` and `rN.2` were built before card B-27, so cluster and contig-name lookups read whole tables
+  and print a `note: ... slow path` line; `rN.3` has the cluster lookup table but prints the note for contig names;
+  `rM.2` has `contig_label` for stages `P3` to `P6` only (`partial(not S1,P1,P2)`, card W-36).
 - Looking up `--positive`, `find --accession` or `seq --contig ACCESSION` reads every contig name of the release:
   0.03 to 0.05 s on `rN.3`, inside a command that takes 2.1 to 2.7 s, nearly all of it start-up (*measured*,
   `planning/measurements/2026-11-12_positive_lookup_rN3.md`, card W-15); `seq --contig` with a contig uid does not.

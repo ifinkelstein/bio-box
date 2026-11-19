@@ -1,0 +1,371 @@
+{
+ "code": {
+  "cluster_cpu_min_one_process": 15058.3,
+  "cluster_cpu_min_one_process_earlier_rows": 13752.6,
+  "clusters_in_parts": true,
+  "cut": {
+   "one_process_cpu_min_max": 20000.0,
+   "parts": 24
+  },
+  "label": "estimate: the code's functions",
+  "margin_cpu_min": 240.0,
+  "reuse": {
+   "rM.1": "its plan differs from this release's in ['cut', 'files', 'stages']",
+   "rM.2": "its plan differs from this release's in ['files', 'stages']",
+   "rN.3": "its plan differs from this release's in ['cut', 'files', 'stages']"
+  }
+ },
+ "earlier": "rM.2",
+ "earlier_stages": [
+  "S1",
+  "P1",
+  "P2",
+  "P3",
+  "P4",
+  "P5",
+  "P6"
+ ],
+ "measured": {
+  "distinct_new_not_in_earlier": 3286198,
+  "distinct_proteins": 49102041,
+  "distinct_proteins_earlier": 45815843,
+  "genes": 57086886,
+  "genes_earlier": 48438455,
+  "label": "measured: Parquet footers and DuckDB count(DISTINCT) over the gene-call records' files",
+  "new_by_stage_not_in_earlier": {
+   "H1": 1602411,
+   "PL1": 1684179
+  },
+  "per_stage": {
+   "H1": {
+    "genes": 2276451,
+    "protein_seq_rows": 1608023
+   },
+   "P1": {
+    "genes": 927920,
+    "protein_seq_rows": 918765
+   },
+   "P2": {
+    "genes": 8722859,
+    "protein_seq_rows": 8580713
+   },
+   "P3": {
+    "genes": 9101793,
+    "protein_seq_rows": 8965818
+   },
+   "P4": {
+    "genes": 9078865,
+    "protein_seq_rows": 8928132
+   },
+   "P5": {
+    "genes": 9144001,
+    "protein_seq_rows": 8970130
+   },
+   "P6": {
+    "genes": 9064930,
+    "protein_seq_rows": 8896652
+   },
+   "PL1": {
+    "genes": 6371980,
+    "protein_seq_rows": 1900057
+   },
+   "S1": {
+    "genes": 2398087,
+    "protein_seq_rows": 1134550
+   }
+  },
+  "protein_seq_rows": 49902840,
+  "protein_seq_rows_earlier": 46394760
+ },
+ "projection": {
+  "calls": [
+   {
+    "calibration_factor": 3.02811,
+    "call": "cluster.nr50.01.rescorediagonal",
+    "growth": 1.0717,
+    "largest_part_projected": 2.1,
+    "measured_earlier": 43.09,
+    "parts": 24,
+    "peak_rss_gb_projected": 11.8,
+    "projected": 46.2
+   },
+   {
+    "calibration_factor": 1.987871,
+    "call": "cluster.nr50.06.rescorediagonal",
+    "growth": 1.0717,
+    "largest_part_projected": 0.7,
+    "measured_earlier": 14.75,
+    "parts": 24,
+    "peak_rss_gb_projected": 11.3,
+    "projected": 15.8
+   },
+   {
+    "calibration_factor": 0.904149,
+    "call": "cluster.nr50.07.align",
+    "growth": 1.0822,
+    "largest_part_projected": 13.4,
+    "measured_earlier": 279.4,
+    "parts": 24,
+    "peak_rss_gb_projected": 12.6,
+    "projected": 302.4
+   },
+   {
+    "calibration_factor": 1.041803,
+    "call": "cluster.nr50.11.prefilter",
+    "growth": 1.0746,
+    "largest_part_projected": 61.1,
+    "measured_earlier": 1307.65,
+    "parts": 24,
+    "peak_rss_gb_projected": 30.9,
+    "projected": 1405.2
+   },
+   {
+    "calibration_factor": 1.269203,
+    "call": "cluster.nr50.12.align",
+    "growth": 1.0717,
+    "largest_part_projected": 58.8,
+    "measured_earlier": 1259.1,
+    "parts": 24,
+    "peak_rss_gb_projected": 14.2,
+    "projected": 1349.4
+   },
+   {
+    "calibration_factor": 1.339886,
+    "call": "cluster.nr50.15.prefilter",
+    "growth": 1.0981,
+    "largest_part_projected": 20.0,
+    "measured_earlier": 421.93,
+    "parts": 24,
+    "peak_rss_gb_projected": 16.3,
+    "projected": 463.3
+   },
+   {
+    "calibration_factor": 0.900629,
+    "call": "cluster.nr50.16.align",
+    "growth": 1.0807,
+    "largest_part_projected": 34.0,
+    "measured_earlier": 707.66,
+    "parts": 24,
+    "peak_rss_gb_projected": 15.0,
+    "projected": 764.7
+   },
+   {
+    "calibration_factor": 1.323698,
+    "call": "cluster.nr50.19.prefilter",
+    "growth": 1.1004,
+    "largest_part_projected": 45.8,
+    "measured_earlier": 957.96,
+    "parts": 24,
+    "peak_rss_gb_projected": 20.8,
+    "projected": 1054.2
+   },
+   {
+    "calibration_factor": 0.779238,
+    "call": "cluster.nr50.20.align",
+    "growth": 1.0874,
+    "largest_part_projected": 32.2,
+    "measured_earlier": 685.87,
+    "parts": 24,
+    "peak_rss_gb_projected": 14.8,
+    "projected": 745.8
+   },
+   {
+    "calibration_factor": 0.92058,
+    "call": "cluster.nr50.members",
+    "growth": 1.0784,
+    "largest_part_projected": 16.1,
+    "measured_earlier": 332.32,
+    "parts": 24,
+    "peak_rss_gb_projected": 18.2,
+    "projected": 358.4
+   },
+   {
+    "calibration_factor": 2.830265,
+    "call": "cluster.nr90.01.rescorediagonal",
+    "growth": 1.0717,
+    "largest_part_projected": 2.4,
+    "measured_earlier": 49.19,
+    "parts": 24,
+    "peak_rss_gb_projected": 17.3,
+    "projected": 52.7
+   },
+   {
+    "calibration_factor": 1.663012,
+    "call": "cluster.nr90.06.rescorediagonal",
+    "growth": 1.0717,
+    "largest_part_projected": 1.1,
+    "measured_earlier": 22.75,
+    "parts": 24,
+    "peak_rss_gb_projected": 16.9,
+    "projected": 24.4
+   },
+   {
+    "calibration_factor": 0.931168,
+    "call": "cluster.nr90.07.align",
+    "growth": 1.0859,
+    "largest_part_projected": 16.7,
+    "measured_earlier": 340.23,
+    "parts": 24,
+    "peak_rss_gb_projected": 17.2,
+    "projected": 369.5
+   },
+   {
+    "calibration_factor": 1.063611,
+    "call": "cluster.nr90.11.prefilter",
+    "growth": 1.0818,
+    "largest_part_projected": 169.2,
+    "measured_earlier": 3598.11,
+    "parts": 24,
+    "peak_rss_gb_projected": 60.4,
+    "projected": 3892.5
+   },
+   {
+    "calibration_factor": 1.107293,
+    "call": "cluster.nr90.12.align",
+    "growth": 1.0717,
+    "largest_part_projected": 159.7,
+    "measured_earlier": 3500.65,
+    "parts": 24,
+    "peak_rss_gb_projected": 19.9,
+    "projected": 3751.7
+   },
+   {
+    "calibration_factor": 1.118942,
+    "call": "cluster.nr90.members",
+    "growth": 1.0717,
+    "largest_part_projected": 10.0,
+    "measured_earlier": 148.45,
+    "parts": 24,
+    "peak_rss_gb_projected": 17.4,
+    "projected": 159.1
+   }
+  ],
+  "cluster_cpu_min": 15202.9,
+  "cluster_cpu_min_by_one_process_ratio": 15424.2,
+  "cluster_other_steps_cpu_min": 447.6,
+  "cluster_parts_cpu_min": 14755.3,
+  "earlier_cluster_cpu_min": 14086.8,
+  "every_part_under_240": true,
+  "factors": {
+   "cluster.nr50.01.rescorediagonal": 3.02811,
+   "cluster.nr50.06.rescorediagonal": 1.987871,
+   "cluster.nr50.07.align": 0.904149,
+   "cluster.nr50.11.prefilter": 1.041803,
+   "cluster.nr50.12.align": 1.269203,
+   "cluster.nr50.15.prefilter": 1.339886,
+   "cluster.nr50.16.align": 0.900629,
+   "cluster.nr50.19.prefilter": 1.323698,
+   "cluster.nr50.20.align": 0.779238,
+   "cluster.nr50.members": 0.92058,
+   "cluster.nr90.01.rescorediagonal": 2.830265,
+   "cluster.nr90.06.rescorediagonal": 1.663012,
+   "cluster.nr90.07.align": 0.931168,
+   "cluster.nr90.11.prefilter": 1.063611,
+   "cluster.nr90.12.align": 1.107293,
+   "cluster.nr90.members": 1.118942
+  },
+  "gene_ratio": 1.178545,
+  "label": "derived: the earlier release's run records times the model's growth (clustering calls), the protein ratio (other clustering steps) or the gene ratio (tokens, postings, dim, manifest, catalog)",
+  "largest_part_cpu_min": 169.2,
+  "memory": {
+   "cpus": 18,
+   "jobs": 2,
+   "largest_parts_gb": [
+    [
+     60.4,
+     "cluster.nr90.11.prefilter"
+    ],
+    [
+     30.9,
+     "cluster.nr50.11.prefilter"
+    ],
+    [
+     20.8,
+     "cluster.nr50.19.prefilter"
+    ]
+   ],
+   "worst_parts_at_once_gb": 120.8
+  },
+  "protein_ratio": 1.071726,
+  "scratch_peak_gb": 159.5,
+  "steps": {
+   "catalog": 0.232,
+   "cluster": 86.209,
+   "cluster.merge": 18.57,
+   "cluster.nr50.00.kmermatcher": 31.407,
+   "cluster.nr50.01.rescorediagonal": 3.501,
+   "cluster.nr50.01.rescorediagonal.cut": 2.222,
+   "cluster.nr50.02.clust": 5.483,
+   "cluster.nr50.03.createsubdb": 2.632,
+   "cluster.nr50.04.createsubdb": 1.534,
+   "cluster.nr50.05.filterdb": 10.23,
+   "cluster.nr50.06.rescorediagonal": 2.116,
+   "cluster.nr50.06.rescorediagonal.cut": 0.861,
+   "cluster.nr50.07.align": 2.188,
+   "cluster.nr50.07.align.cut": 0.762,
+   "cluster.nr50.08.clust": 2.933,
+   "cluster.nr50.09.mergeclusters": 10.349,
+   "cluster.nr50.10.createsubdb": 2.242,
+   "cluster.nr50.11.prefilter": 2.067,
+   "cluster.nr50.11.prefilter.cut": 0.772,
+   "cluster.nr50.12.align": 1.914,
+   "cluster.nr50.12.align.cut": 0.682,
+   "cluster.nr50.13.clust": 2.451,
+   "cluster.nr50.14.createsubdb": 1.969,
+   "cluster.nr50.15.prefilter": 1.468,
+   "cluster.nr50.15.prefilter.cut": 34.517,
+   "cluster.nr50.16.align": 1.092,
+   "cluster.nr50.16.align.cut": 0.516,
+   "cluster.nr50.17.clust": 1.35,
+   "cluster.nr50.18.createsubdb": 1.939,
+   "cluster.nr50.19.prefilter": 1.451,
+   "cluster.nr50.19.prefilter.cut": 42.3,
+   "cluster.nr50.20.align": 0.974,
+   "cluster.nr50.20.align.cut": 0.48,
+   "cluster.nr50.21.clust": 1.046,
+   "cluster.nr50.22.mergeclusters": 10.199,
+   "cluster.nr50.members": 1.654,
+   "cluster.nr50.members.cut": 0.446,
+   "cluster.nr90.00.kmermatcher": 30.846,
+   "cluster.nr90.01.rescorediagonal": 4.604,
+   "cluster.nr90.01.rescorediagonal.cut": 3.137,
+   "cluster.nr90.02.clust": 7.132,
+   "cluster.nr90.03.createsubdb": 3.535,
+   "cluster.nr90.04.createsubdb": 2.261,
+   "cluster.nr90.05.filterdb": 12.518,
+   "cluster.nr90.06.rescorediagonal": 3.722,
+   "cluster.nr90.06.rescorediagonal.cut": 1.391,
+   "cluster.nr90.07.align": 3.575,
+   "cluster.nr90.07.align.cut": 1.41,
+   "cluster.nr90.08.clust": 4.265,
+   "cluster.nr90.09.mergeclusters": 15.001,
+   "cluster.nr90.10.createsubdb": 3.418,
+   "cluster.nr90.11.prefilter": 4.592,
+   "cluster.nr90.11.prefilter.cut": 1.833,
+   "cluster.nr90.12.align": 3.185,
+   "cluster.nr90.12.align.cut": 1.401,
+   "cluster.nr90.13.clust": 4.571,
+   "cluster.nr90.14.mergeclusters": 21.724,
+   "cluster.nr90.members": 3.69,
+   "cluster.nr90.members.cut": 1.296,
+   "cluster.plan": 12.231,
+   "cluster.rep90": 3.768,
+   "dim": 0.172,
+   "manifest": 5.818,
+   "postings": 27.135,
+   "tokens": 26.124
+  }
+ },
+ "release": "r26.11.1",
+ "stages": [
+  "S1",
+  "P1",
+  "P2",
+  "P3",
+  "P4",
+  "P5",
+  "P6",
+  "H1",
+  "PL1"
+ ]
+}
