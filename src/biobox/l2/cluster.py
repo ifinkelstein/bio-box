@@ -614,9 +614,38 @@ _INDEX_BLOCK = 1 << 22  # bytes per block when reading an MMseqs2 index
 # of 5 apart in n; nothing at 46.6 M or 95 M has been measured (no run record of the 50 Gbp build's clustering,
 # `runs/stage=rM.1/cluster.*`, existed on 2026-11-11 when this was fitted).
 #
-# Per call: (r, g), r in CPU-minutes per 10^9 units at N0.
+# Per call: (r, g), r in CPU-minutes per 10^9 units at CALL_T0[call], g = exponent on targets / CALL_T0[call].
+# Refitted in card B-54 (DEC-55; planning/measurements/2026-11-19_cluster_survivor_estimates.md) across rC.1b
+# (2,053,075 proteins), rN.3 (10,620,684), rM.1 (45,815,843), rM.2 (45,815,843) and r26.11.1 (49,102,041) so
+# intermediate cascade steps (`input_step_redundancy`, `input_step1`, `input_step2`) scale by their surviving
+# target/query sequence count (`CALL_T0`) rather than release-total `proteins` (`CALL_N0`). The four tiny
+# `rescorediagonal` calls (< 3 CPU-min per part, never judged under DEC-43) keep their rN.3 calibration.
 CALL_N0 = 10_620_684
+CALL_T0 = {
+    "cluster.nr90.01.rescorediagonal": 10_620_684, "cluster.nr90.06.rescorediagonal": 8_546_571,
+    "cluster.nr90.07.align": 8_546_571, "cluster.nr90.11.prefilter": 8_363_309,
+    "cluster.nr90.12.align": 8_363_309,
+    "cluster.nr50.01.rescorediagonal": 8_278_537, "cluster.nr50.06.rescorediagonal": 5_196_591,
+    "cluster.nr50.07.align": 5_196_591, "cluster.nr50.11.prefilter": 4_210_724,
+    "cluster.nr50.12.align": 4_210_724, "cluster.nr50.15.prefilter": 3_141_911,
+    "cluster.nr50.16.align": 3_141_911, "cluster.nr50.19.prefilter": 2_999_008,
+    "cluster.nr50.20.align": 2_999_008,
+    "cluster.nr90.members": 8_278_537, "cluster.nr50.members": 2_966_200,
+}
 CALL_FIT = {
+    "cluster.nr90.01.rescorediagonal": (5.47, 0.0), "cluster.nr90.06.rescorediagonal": (8.02, 0.0),
+    "cluster.nr90.07.align": (206.35, 0.14), "cluster.nr90.11.prefilter": (30.24, 0.83),
+    "cluster.nr90.12.align": (384.94, 0.03),
+    "cluster.nr50.01.rescorediagonal": (2.94, 0.0), "cluster.nr50.06.rescorediagonal": (4.20, 0.0),
+    "cluster.nr50.07.align": (354.32, 0.07), "cluster.nr50.11.prefilter": (16.83, 0.63),
+    "cluster.nr50.12.align": (361.73, 0.07), "cluster.nr50.15.prefilter": (75.14, 0.63),
+    "cluster.nr50.16.align": (237.95, 0.06), "cluster.nr50.19.prefilter": (194.50, 0.73),
+    "cluster.nr50.20.align": (225.85, 0.13),
+    "cluster.nr90.members": (324.95, 0.02), "cluster.nr50.members": (764.81, 0.03),
+}
+# Pre-B-54 (card C-22) release-protein-scaled table, retained only so B-49 reuse (`_source_problem`) keeps
+# accepting published `.cut.json` records written before card B-54 (`rM.2`, `r26.11.1`).
+_LEGACY_CALL_FIT = {
     "cluster.nr90.01.rescorediagonal": (5.47, 0.0), "cluster.nr90.06.rescorediagonal": (8.02, 0.0),
     "cluster.nr90.07.align": (204.09, 0.19), "cluster.nr90.11.prefilter": (26.20, 0.65),
     "cluster.nr90.12.align": (366.92, 0.0),
@@ -627,6 +656,13 @@ CALL_FIT = {
     "cluster.nr50.20.align": (247.90, 0.21),
     "cluster.nr90.members": (306.82, 0.0), "cluster.nr50.members": (773.02, 0.09),
 }
+# `kmermatcher` (card B-54, DEC-53; *derived* from all 8 measured records of rN.3, rM.1, rM.2 and r26.11.1 on
+# wilkcomp02, planning/measurements/2026-11-19_cluster_survivor_estimates.md): 5.58 to 6.35 CPU-min per 10M input
+# sequences at 16 to 32 threads (`KMERMATCHER_CPU_MIN_PER_10M = 6.00`), rising linearly above 32 threads from
+# OpenMP/NUMA contention (rM.2 nr50 at 48 threads: 29.305 vs rM.1 at 32 threads: 19.362 on the same 31.18M inputs).
+KMERMATCHER_CPU_MIN_PER_10M = 6.00
+KMERMATCHER_THREAD_KNEE = 32
+KMERMATCHER_OVERHEAD_PER_THREAD_ABOVE_32 = 0.035
 # Each prefilter part builds the k-mer index of the whole target again: 12.44 CPU-seconds per extra part at 59,000
 # to 78,316 targets (*derived* in the B-37 design §3 from the 4-part run: (282.2 - 132.9) / 12, measured, same
 # host and day), taken per target at the smaller count (the larger rate, *derived*: 12.44 / 59,000).
@@ -1353,12 +1389,29 @@ def _outputs(w: Path, paths: Iterable[str]) -> dict[str, str]:
     return got
 
 
-def call_cpu_min(name: str, proteins: int, units: int) -> float:
+def call_cpu_min(name: str, proteins: int, units: int, *, targets: int | None = None) -> float:
     """The estimate of per-query call `name`'s own work, CPU-minutes, over `units` (residues of the queries for a
-    prefilter, entry bytes for the others) in a release of `proteins` proteins: the model above `CALL_FIT`, without
-    the per-part overhead (`part_overhead_cpu_min`)."""
+    prefilter, entry bytes for the others) at `targets` surviving sequences in the call's target/input database
+    (falling back to `proteins / CALL_N0` when `targets` is None, e.g. for pre-cut projections): the model above
+    `CALL_FIT`, without the per-part overhead (`part_overhead_cpu_min`)."""
     rate, growth = CALL_FIT[name]
+    scale = (proteins / CALL_N0) if targets is None else (targets / CALL_T0[name])
+    return rate * 1e-9 * units * scale ** growth
+
+
+def _legacy_call_cpu_min(name: str, proteins: int, units: int) -> float:
+    """Pre-B-54 (card C-22) release-protein-scaled estimate, used only by `_source_problem` to keep published
+    releases (`rM.2`, `r26.11.1`) reusable under card B-49."""
+    rate, growth = _LEGACY_CALL_FIT[name]
     return rate * 1e-9 * units * (proteins / CALL_N0) ** growth
+
+
+def kmermatcher_cpu_min(sequences: int, threads: int = 18) -> float:
+    """The estimate of `cluster.nr*.00.kmermatcher` in CPU-minutes over `sequences` input sequences at `threads`
+    MMseqs2 threads (card B-54, DEC-53): flat per-sequence rate up to `KMERMATCHER_THREAD_KNEE` (32) threads,
+    rising linearly above 32 threads."""
+    factor = 1.0 + KMERMATCHER_OVERHEAD_PER_THREAD_ABOVE_32 * max(0, threads - KMERMATCHER_THREAD_KNEE)
+    return KMERMATCHER_CPU_MIN_PER_10M * (sequences / 1e7) * factor
 
 
 def _cut_doc(ctx: _Ctx, c: Call) -> dict:
@@ -1369,7 +1422,10 @@ def _cut_doc(ctx: _Ctx, c: Call) -> dict:
         for k, _, n in index_rows(ctx.w / src):
             yield k, (max(0, n - 2) if seq else n)  # a sequence entry is its residues, a newline and a NUL
 
-    est = call_cpu_min(c.name, ctx.plan["proteins"], sum(u for _, u in rows()))
+    n_keys, total_units = 0, 0
+    for _, u in rows():
+        n_keys += 1
+        total_units += u
     plan_cut = ctx.plan["cut"]
     kw = {k: plan_cut[k] for k in ("parts", "part_cpu_min") if k in plan_cut}  # how `cut` cuts
     shared = seq and c.shares_index and ctx.shared_index
@@ -1378,6 +1434,7 @@ def _cut_doc(ctx: _Ctx, c: Call) -> dict:
         with open(ctx.w / f"{c.positional[1]}.index", "rb") as fh:
             targets = sum(1 for line in fh if line.strip())
         overhead = part_overhead_cpu_min(c, targets, True) if shared else _rebuild_cpu_min(plan_cut, c, targets)
+    est = call_cpu_min(c.name, ctx.plan["proteins"], total_units, targets=targets if seq else n_keys)
     budget = plan_cut.get("part_cpu_min")
     units = "residues" if seq else "entry_bytes"
     if seq and not shared and budget is not None and overhead >= budget:
@@ -1916,8 +1973,13 @@ def _source_problem(root: Path, release: str, source: str, want: dict) -> str | 
         c, kind, k = _parse(name)
         if kind == "cut":
             cuts[c.name] = doc
-            est = round(call_cpu_min(c.name, plan1["proteins"], sum(p["units"] for p in doc["parts"])), 6)
-            if doc.get("cpu_min") != est or ("index" in doc and doc["index"]["argv"] != list(index_argv(c))):
+            total_units = sum(p["units"] for p in doc["parts"])
+            n_targets = sum(p["keys"] for p in doc["parts"])
+            est = round(call_cpu_min(c.name, plan1["proteins"], total_units, targets=n_targets), 6)
+            legacy_est = round(_legacy_call_cpu_min(c.name, plan1["proteins"], total_units), 6)
+            if doc.get("cpu_min") not in (est, legacy_est) or (
+                "index" in doc and doc["index"]["argv"] != list(index_argv(c))
+            ):
                 return (f"its record of {name} was made by another model of the call's cost or index (this code "
                         f"estimates {est}): a clustering of this release would write other records")
         elif kind == "part":
