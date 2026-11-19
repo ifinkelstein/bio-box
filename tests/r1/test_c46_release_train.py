@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import shutil
 import subprocess
 import sys
 from datetime import date
@@ -20,6 +21,12 @@ pytestmark = pytest.mark.covers("C-46")  # ring R1 by its directory (tests/conft
 
 REPO = Path(__file__).resolve().parents[2]
 POD_DIR = REPO / "scripts" / "stress" / "build_stage_pod"
+
+
+@pytest.fixture(autouse=True)
+def _mock_minced_if_absent(monkeypatch):
+    if shutil.which("minced") is None:  # GitHub Actions R1 has no MinCED binary (card E-12)
+        monkeypatch.setattr(crispr, "minced_version", lambda: "0.4.2")
 
 
 def _import_pod_module(name: str):
