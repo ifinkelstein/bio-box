@@ -57,7 +57,8 @@ def estimates(release: str) -> list[tuple[dict, float, float]]:
     out = []
     for name, parts in groups.items():
         total = sum(int(p["units"]) for p in parts)
-        work = cluster.call_cpu_min(name, int(parts[0]["proteins"]), total)
+        n_targets = sum(int(p["queries"]) for p in parts)
+        work = cluster.call_cpu_min(name, int(parts[0]["proteins"]), total, targets=n_targets)
         for p in parts:
             oh = cluster.part_overhead_cpu_min(by[name], int(p["targets"]), shared=False) if p["targets"] else 0.0
             out.append((p, work * int(p["units"]) / total + oh, float(p["cpu_min"])))
@@ -133,7 +134,7 @@ def cut_doc(tmp_path, name: str, units: int, targets: int, plan_cut: dict, prote
 def test_c22_a_cut_estimates_from_its_own_input_not_the_release_total(tmp_path):
     name, units = "cluster.nr90.12.align", 1_000_000_000
     got = cut_doc(tmp_path, name, units, 0, {"part_cpu_min": PART_BUDGET})
-    assert got["cpu_min"] == pytest.approx(cluster.call_cpu_min(name, 10_620_684, units), abs=1e-5)
+    assert got["cpu_min"] == pytest.approx(cluster.call_cpu_min(name, 10_620_684, units, targets=4), abs=1e-5)
     # half the input at the same release size: half the work, and the parts follow it
     half = cut_doc(tmp_path, name, units // 2, 0, {"part_cpu_min": PART_BUDGET})
     assert half["cpu_min"] == pytest.approx(got["cpu_min"] / 2, rel=1e-6)
@@ -155,7 +156,8 @@ def test_c22_a_one_part_prefilter_that_shares_an_index_is_estimated_with_its_own
     assert one["overhead_cpu_min"] == pytest.approx(rebuild, abs=1e-5)
     assert one["parts"][0]["cpu_min"] == pytest.approx(one["cpu_min"] + rebuild, abs=1e-4)
     # just over: the work alone fits 240, the work and the rebuild do not
-    units = int((PART_BUDGET - rebuild / 2) / 163.11e-9)
+    rate = cluster.call_cpu_min(name, 10_620_684, 1_000_000_000, targets=targets) / 1e9
+    units = int((PART_BUDGET - rebuild / 2) / rate)
     two = cut_doc(tmp_path, name, units, targets, {"part_cpu_min": PART_BUDGET})
     assert two["cpu_min"] < PART_BUDGET < two["cpu_min"] + rebuild
     assert len(two["parts"]) == 2 and two["overhead_cpu_min"] == pytest.approx(load, abs=1e-5)

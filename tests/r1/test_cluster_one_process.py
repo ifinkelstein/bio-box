@@ -57,7 +57,7 @@ def test_b45_a_call_whose_rebuilt_table_fills_the_part_budget_is_one_part_under_
     for name in FAST:
         got = cut_doc(tmp_path, name, units, keys,
                       {"part_cpu_min": PART, "rebuild_cpu_min": 300.0, "one_process_cpu_min_max": 20000.0})
-        work = cluster.call_cpu_min(name, 10_620_684, units)
+        work = cluster.call_cpu_min(name, 10_620_684, units, targets=keys)
         assert got["cpu_min"] == pytest.approx(work, abs=1e-5)
         assert got["overhead_cpu_min"] == pytest.approx(300.0)
         assert len(got["parts"]) == 1 and got["parts"][0]["keys"] == keys
@@ -71,7 +71,7 @@ def test_b45_a_call_whose_rebuilt_table_fills_the_part_budget_is_one_part_under_
 
 def test_b45_above_the_cap_the_one_process_call_is_refused(tmp_path):
     units = 400_000_000
-    work = cluster.call_cpu_min(FAST[0], 10_620_684, units)
+    work = cluster.call_cpu_min(FAST[0], 10_620_684, units, targets=1_000)
     with pytest.raises(ValueError, match=r"DEC-29.*over the one-process cap of 300"):
         cut_doc(tmp_path, FAST[0], units, 1_000,
                 {"part_cpu_min": PART, "rebuild_cpu_min": 300.0, "one_process_cpu_min_max": 300.0})
