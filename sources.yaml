@@ -658,3 +658,32 @@ sources:
     redistributable: true (ShareAlike)
     fetched: queued 2026-11-18
     approved: by the PI on 2026-11-18 ("enumerate everything they have, and grab the biggest things")
+  - name: spire_pilot_assemblies
+    what: >-
+      SPIRE v1 per-sample metagenome assembly FASTAs (~1,000 samples stratified across all 34 level-2 habitats in
+      proportion to sqrt(N_h), seed 20261118) plus SPIRE's public v1 sample metadata API table and per-MAG probe FASTAs;
+      card C-42 (pilot in pod scratch only, not a production stage)
+    url: https://spire.embl.de/download_assembly/{sample_id}
+    url_samples_api: https://spire.embl.de/api/v1/samples?format=tsv&limit=10000&offset={offset}
+    url_mag_probe: https://spire.embl.de/download_file/{mag_id}
+    redirect_hosts: [https://black.embl.de/~fullam/spire/, https://swifter.embl.de/~fullam/spire/]
+    page: >-
+      https://spire.embl.de/spire/v1/study/Howe_2014_soil, https://spire.embl.de/api/ and https://spire.embl.de/faqs
+      (read 2026-11-18)
+    files: >-
+      api_samples/page_*.tsv (10 pages of <= 10,000 rows from url_samples_api: sample, study, assembly_bp,
+      assembly_n50, binned_fraction, bases, reads, n_mags, n_hq_mags, n_mq_mags); ~1,000 per-sample assembly FASTAs
+      from url; MAG FASTAs from url_mag_probe for 1 probe sample + TniQ-hit samples only
+    checksum: none published per sample on the site; wire and disk byte sizes, md5 and sha256 recorded in fetch logs on fetch
+    limits: >-
+      one connection; at most 2 requests per second (SPIRE API documents 120 requests/min); User-Agent curl (no name,
+      email or project detail); stop after 5 refusals in a row (HTTP 403, 429, 500, 502, 503, 504); total pilot scratch
+      strictly < 180 GB under /tmp/if2453/s3/spire/
+    license: >-
+      CC BY-SA 4.0 (https://spire.embl.de/faqs, read 2026-11-18: "This work is licensed under a Creative Commons
+      Attribution-ShareAlike 4.0 International License (http://creativecommons.org/licenses/by-sa/4.0/)."; paper
+      doi:10.1093/nar/gkad943). Share-alike: redistribution of a derived collection carries CC BY-SA 4.0
+    redistributable: true
+    fetched: pending (card C-42, 2026-11-18; scratch only under /tmp/if2453/s3/spire/ on wilkcomp02)
+    stored: not on /stor (scratch only under /tmp/if2453/s3/spire/ on wilkcomp02)
+    approved: under DEC-50 (card C-42, 2026-11-18)
