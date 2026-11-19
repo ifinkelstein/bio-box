@@ -122,6 +122,13 @@ def verify_sources_yaml(
         if entry is None:
             issues.append(f"sources.yaml missing entry: {name}")
             continue
+        files = entry.get("files")
+        if isinstance(files, list):
+            for fitem in files:
+                if isinstance(fitem, dict) and "sha256" in fitem:
+                    if not validate_sha256(fitem.get("sha256")):
+                        label = fitem.get("file") or fitem.get("path") or "<unnamed>"
+                        issues.append(f"{name}: files[{label}] invalid sha256={fitem.get('sha256')!r}")
         stored = entry.get("stored")
         if not isinstance(stored, list) or not stored:
             issues.append(f"{name}: missing non-empty 'stored' list")

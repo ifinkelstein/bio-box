@@ -245,3 +245,15 @@ def test_verify_sources_yaml_locks_archives(tmp_path: Path):
     errs = v.verify_sources_yaml(sources_bad, required_names=["jgi_img_pr"], min_bytes=100)
     assert any("size mismatch" in e for e in errs)
 
+    sources_bad_file_sha = {
+        "sources": [
+            {
+                "name": "jgi_img_m_tables",
+                "files": [{"file": "euk.tsv.gz", "sha256": "deadbeef"}],
+                "stored": [{"path": str(zpath), "bytes": size, "sha256": digest}],
+            }
+        ]
+    }
+    errs2 = v.verify_sources_yaml(sources_bad_file_sha, required_names=["jgi_img_m_tables"], min_bytes=100)
+    assert any("files[euk.tsv.gz] invalid sha256" in e for e in errs2)
+

@@ -517,7 +517,7 @@ sources:
       - {file: img_m_bacteria_finished_70col.tsv.gz, rows: 23079, cols: 70, bytes: 2678649, sha256: 241a6f9a04280a09828ff6412bc0301c5f2d27112d6859bff891bfefa1fe7084}
       - {file: img_m_viruses_70col.tsv.gz, rows: 20023, cols: 70, bytes: 1169055, sha256: 0e127e63d4cbcb241716dea09a0e7e2c80c00474da037d133ed9303ed4c1c015}
       - {file: img_m_archaea_70col.tsv.gz, rows: 3140, cols: 70, bytes: 257042, sha256: 741043f7a5b42e243c74a938eb2fdb4fa3b7260733b80a77c91adc392ae2ff03}
-      - {file: img_m_eukaryota_70col.tsv.gz, rows: 591, cols: 70, bytes: 66013, sha256: 276e3ed3b2cde4bf998864a2547f35c77074cf31c4133102fbb0a6b9e}
+      - {file: img_m_eukaryota_70col.tsv.gz, rows: 591, cols: 70, bytes: 66013, sha256: 276e3ed3b2cde4bf998864a2547f35c741185377074cf31c4133102fbb0a6b9e}
     checksum: none published (dynamic export); deterministic .tsv.gz and bundled .tar sha256 verified under C-48a
     license: JGI Data Utilization Policy; public microbiome metadata table
     redistributable: false (held local under JGI terms)

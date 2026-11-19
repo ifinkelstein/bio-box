@@ -41,7 +41,7 @@ All 5 on-disk `img_m_*_raw.json` exports were converted to deterministic UTF-8 `
 | `img_m_bacteria_finished_70col.tsv.gz` | `23,079` | `23,079` | `70` | `2,678,649` | `241a6f9a04280a09828ff6412bc0301c5f2d27112d6859bff891bfefa1fe7084` |
 | `img_m_viruses_70col.tsv.gz` | `20,023` | `20,023` | `70` | `1,169,055` | `0e127e63d4cbcb241716dea09a0e7e2c80c00474da037d133ed9303ed4c1c015` |
 | `img_m_archaea_70col.tsv.gz` | `3,140` | `3,140` | `70` | `257,042` | `741043f7a5b42e243c74a938eb2fdb4fa3b7260733b80a77c91adc392ae2ff03` |
-| `img_m_eukaryota_70col.tsv.gz` | `591` | `591` | `70` | `66,013` | `276e3ed3b2cde4bf998864a2547f35c77074cf31c4133102fbb0a6b9e` |
+| `img_m_eukaryota_70col.tsv.gz` | `591` | `591` | `70` | `66,013` | `276e3ed3b2cde4bf998864a2547f35c741185377074cf31c4133102fbb0a6b9e` |
 
 ### 2.2 Cross-Check of On-Disk Metadata Row Counts
 
