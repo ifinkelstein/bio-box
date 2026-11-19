@@ -1221,12 +1221,14 @@ def test_w18_nbr_takes_anchors_from_a_file_one_uid_per_line(world, capsys, tmp_p
 # --- W-05: exports a person can open, against brute-force joins over the Parquet files ----------------------
 
 W05_HIT_COLUMNS = ["accession", "header", "contig_len", "start", "end", "strand", "length", "seq_bitscore",
-                   "seq_evalue_zref", "pfam_architecture", "protein_uid", "nr90", "nr50", "nr50_rep", "genome_uid",
-                   "tier", "contig_uid", "feature_uid", "ordinal", "tape_version", "dist_to_contig_end_bp", "n_records",
+                   "seq_evalue_zref", "pfam_architecture", "domain_state", "protein_uid", "nr90", "nr50", "nr50_rep",
+                   "genome_uid", "tier", "contig_uid", "feature_uid", "ordinal", "tape_version",
+                   "dist_to_contig_end_bp", "n_records",
                    "stage", "kind",  # card W-23: the gene's stage and its genome's kind, appended
                    "n_genomes", "genome_uids"]  # card C-21c: every genome that holds the contig, appended
 W05_LOCUS_COLUMNS = ["offset", "offset_rel", "ordinal", "feature_uid", "start", "end", "strand", "protein_uid",
-                     "length_aa", "pfam_architecture", "nr90", "nr50", "hit_seq_bitscore", "delta_bp", "crosses_origin"]
+                     "length_aa", "pfam_architecture", "domain_state", "nr90", "nr50", "hit_seq_bitscore", "delta_bp",
+                     "crosses_origin"]
 W05_BITS, W05_EVALUE = {"seq_bitscore", "hit_seq_bitscore"}, {"seq_evalue_zref"}
 
 
@@ -1291,6 +1293,10 @@ def _w05_store(root: Path) -> dict:
         first = min(rs, key=lambda r: (r["l0_object_sha256"], r["record_ordinal"]))
         label[cu] = (first["accession"], first["original_header"], len(rs))
     assert sorted(p.name for p in (root / "l1/domains").glob("library=*")) == ["library=test-1"]
+    ann_stages = {f.parent.name.removeprefix("stage=") for f in sorted((root / "l1/domains").rglob("*.parquet"))}
+    scanned = {r["protein_uid"] for s in ann_stages
+               for f in sorted((root / f"l0seq/protein_seq/gene_call_version={V}/stage={s}").rglob("*.parquet"))
+               for r in pq.read_table(f, columns=["protein_uid"], partitioning=None).to_pylist()}
     doms: dict[bytes, set] = {}
     for r in _pq(root, "l1/domains"):
         doms.setdefault(r["protein_uid"], set()).add((r["env_start"], r["model_acc"], r["model_name"]))
@@ -1301,7 +1307,7 @@ def _w05_store(root: Path) -> dict:
             if not names or names[-1] != name:
                 names.append(name)
         arch[pu] = "+".join(names)
-    return {"label": label, "arch": arch,
+    return {"label": label, "arch": arch, "scanned": scanned,
             "clen": {r["contig_uid"]: r["contig_len"] for r in _pq(root, "l0seq/contig_index") if r["is_default_variant"]},
             "prot": {r["protein_uid"]: r for r in _pq(root, f"l0seq/protein_seq/gene_call_version={V}")},
             "clus": {(r["member_uid"], r["level"]): r for r in _pq(root, f"l2/cluster_member/release={REL}")},
@@ -1345,9 +1351,12 @@ def _w05_oracle_genes(root: Path, hits: list[dict], dims: dict) -> list[dict]:
             continue
         acc, hdr, n = s["label"].get(cu, (None, None, None))
         c90, c50, d = s["clus"].get((pu, "nr90")), s["clus"].get((pu, "nr50")), dims.get(cu)
+        dstate = "measured" if pu in s["arch"] else ("none" if pu in s["scanned"] else "not scanned")
         row = {"accession": acc, "header": hdr, "contig_len": s["clen"][cu], "start": o["start"], "end": o["end"],
                "strand": o["strand"], "length": s["prot"][pu]["length"], "seq_bitscore": score[pu][0],
-               "seq_evalue_zref": score[pu][1], "pfam_architecture": s["arch"].get(pu) or "-", "protein_uid": pu,
+               "seq_evalue_zref": score[pu][1],
+               "pfam_architecture": s["arch"].get(pu) or ("-" if dstate == "none" else "?"),
+               "domain_state": dstate, "protein_uid": pu,
                "nr90": c90 and c90["cluster_uid"], "nr50": c50 and c50["cluster_uid"], "nr50_rep": c50 and c50["rep_uid"],
                "genome_uid": d and d["genome_uid"], "tier": d and d["tier"], "contig_uid": cu,
                "feature_uid": o["feature_uid"], "ordinal": s["tapes"][cu]["feature_uids"].index(o["feature_uid"]),
@@ -1476,10 +1485,12 @@ def _w05_oracle_loci(root: Path, hits: list[dict], window: str) -> list[tuple[st
             for j, d, rel, gap, fl in sorted(got, key=lambda x: x[1]):
                 pu = t["protein_uids"][j]
                 c90, c50 = s["clus"].get((pu, "nr90")), s["clus"].get((pu, "nr50"))
+                dstate = ("measured" if pu in s["arch"] else ("none" if pu in s["scanned"] else "not scanned")) if pu else None
                 rows.append({"offset": d, "offset_rel": rel, "ordinal": j, "feature_uid": t["feature_uids"][j],
                              "start": slots[j][0], "end": slots[j][1], "strand": slots[j][2], "protein_uid": pu,
                              "length_aa": s["prot"][pu]["length"] if pu else None,
-                             "pfam_architecture": (s["arch"].get(pu) or "-") if pu else None,
+                             "pfam_architecture": (s["arch"].get(pu) or ("-" if dstate == "none" else "?")) if pu else None,
+                             "domain_state": dstate,
                              "nr90": c90 and c90["cluster_uid"], "nr50": c50 and c50["cluster_uid"],
                              "hit_seq_bitscore": score[pu][0] if pu in score else None,
                              "delta_bp": gap if d != 0 else None, "crosses_origin": bool(fl & 2)})
@@ -1536,7 +1547,8 @@ def test_w05_nbr_tsv_writes_one_table_per_locus_equal_to_the_coordinate_oracle(w
         assert len({lines[1].split("\t")[0] for _, lines in want}) == 3  # loci on every contig
         assert any("censored=true" in lines[1] for _, lines in want)
         assert any(line.endswith("\ttrue") for _, lines in want for line in lines[3:])  # crosses the origin
-        assert any(line.split("\t")[12] for _, lines in want for line in lines[3:] if not line.startswith("0\t"))
+        bcol = W05_LOCUS_COLUMNS.index("hit_seq_bitscore")
+        assert any(line.split("\t")[bcol] for _, lines in want for line in lines[3:] if not line.startswith("0\t"))
 
 
 @pytest.mark.covers("W-05")
@@ -3323,7 +3335,9 @@ def test_w07_search_hmm_on_a_release_without_a_domain_library_summarizes_at_the_
     assert '# levels\t["nr50","nr90"]' in summary.splitlines()
     tsv = [line.split("\t") for line in (out / "hits.tsv").read_text().splitlines()]
     col = tsv[0].index("pfam_architecture")
-    assert len(tsv) > 1 and {row[col] for row in tsv[1:]} == {"-"}
+    scol = tsv[0].index("domain_state")
+    assert len(tsv) > 1 and {row[col] for row in tsv[1:]} == {"?"}
+    assert {row[scol] for row in tsv[1:]} == {"not scanned"}
     sep = tmp_path / "sep"
     _w07_separate(root, _packs_of(root), runs, rid, "5g", "nr50,nr90", sep, capsys)  # --neighbors defaults to 5
     mine = _w07_files(out)

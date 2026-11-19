@@ -300,6 +300,8 @@ _SUMMARY_SCHEMAS = {
     # every genome that holds a contig (card C-21c): the `genome_input` rows of the release's stages, as the catalog's
     # `genome_member`; a contig in several genomes has a row for each
     "genome_member": pa.schema([("contig_uid", pa.binary(16)), ("genome_uid", pa.binary(16))]),
+    # card C-38b: distinct proteins of the release's annotated stages, so `pfam` separates `none` from `not scanned`
+    "scanned_proteins": pa.schema([("protein_uid", pa.binary(16))]),
 }
 
 
@@ -363,7 +365,7 @@ _STATS = """WITH s AS (SELECT key, count(DISTINCT (contig_uid, anchor_feature_ui
             FROM s JOIN g USING (key) JOIN o USING (key) ORDER BY s.n_loci DESC, s.key"""
 
 
-def _aggregate(con, by: tuple[str, ...], top_n: int | None) -> dict:
+def _aggregate(con, by: tuple[str, ...], top_n: int | None, *, track_unscanned: bool = False) -> dict:
     """The summary over the relations `nbr_rows`, `domains`, `clusters`, `members`, `protein_len`, `genome_of` and
     `genome_member` of `con` (columns as in `_SUMMARY_SCHEMAS`; `nbr_rows` as the `neighborhoods` table). Every count
     is SQL.
@@ -408,12 +410,29 @@ def _aggregate(con, by: tuple[str, ...], top_n: int | None) -> dict:
 
     empty_attrs = {"library": None, "model_acc": None, "model_name": None, "cluster_uid": None, "rep_uid": None,
                    "rep_length": None}
+    not_scanned_attrs = {**empty_attrs, "model_name": "not scanned"}
     for level in by:
         keyed, attrs_sql = _level_sql(level)
         con.execute(f"CREATE OR REPLACE TEMP TABLE _k AS {keyed}")
-        con.execute("CREATE OR REPLACE TEMP TABLE _u AS SELECT n.*, '' AS key FROM _nb n "
-                    "WHERE NOT EXISTS (SELECT 1 FROM _k k WHERE k.contig_uid = n.contig_uid "
-                    "AND k.anchor_feature_uid = n.anchor_feature_uid AND k.feature_uid = n.feature_uid)")
+        ns = []
+        if level == "pfam" and track_unscanned:
+            con.execute("""CREATE OR REPLACE TEMP TABLE _sp AS
+                           SELECT DISTINCT protein_uid FROM scanned_proteins
+                           WHERE protein_uid IN (SELECT protein_uid FROM _nb WHERE protein_uid IS NOT NULL)""")
+            con.execute("""CREATE OR REPLACE TEMP TABLE _u AS SELECT n.*, '' AS key FROM _nb n
+                           WHERE NOT EXISTS (SELECT 1 FROM _k k WHERE k.contig_uid = n.contig_uid
+                             AND k.anchor_feature_uid = n.anchor_feature_uid AND k.feature_uid = n.feature_uid)
+                             AND (n.protein_uid IS NULL OR n.protein_uid IN (SELECT protein_uid FROM _sp))""")
+            con.execute("""CREATE OR REPLACE TEMP TABLE _ns AS SELECT n.*, '?' AS key FROM _nb n
+                           WHERE n.protein_uid IS NOT NULL
+                             AND NOT EXISTS (SELECT 1 FROM _k k WHERE k.contig_uid = n.contig_uid
+                               AND k.anchor_feature_uid = n.anchor_feature_uid AND k.feature_uid = n.feature_uid)
+                             AND n.protein_uid NOT IN (SELECT protein_uid FROM _sp)""")
+            ns = con.execute(_STATS.format(k="_ns", genomes=genomes, join=join)).fetchall()
+        else:
+            con.execute("CREATE OR REPLACE TEMP TABLE _u AS SELECT n.*, '' AS key FROM _nb n "
+                        "WHERE NOT EXISTS (SELECT 1 FROM _k k WHERE k.contig_uid = n.contig_uid "
+                        "AND k.anchor_feature_uid = n.anchor_feature_uid AND k.feature_uid = n.feature_uid)")
         stats = con.execute(_STATS.format(k="_k", genomes=genomes, join=join)).fetchall()
         n_keys[level] = len(stats)
         shown = stats[:top_n] if top_n else stats
@@ -424,6 +443,8 @@ def _aggregate(con, by: tuple[str, ...], top_n: int | None) -> dict:
         rows += [record(level, r, attrs[r[0]], False) for r in shown]
         un = con.execute(_STATS.format(k="_u", genomes=genomes, join=join)).fetchall() or [("", 0, 0, 0, 0, [], None)]
         rows.append(record(level, un[0], empty_attrs, True))
+        if ns:
+            rows.append(record(level, ns[0], not_scanned_attrs, True))
     return {"header": {"levels": list(by), "top_n": top_n or None, "n_anchor_proteins": n_prot,
                        "n_anchor_loci": n_loci, "n_contigs": n_contigs, "n_anchor_genomes": n_genomes,
                        "genome_basis": basis, "n_censored_loci": n_cens, "n_neighbors": n_nb, "n_keys": n_keys},
@@ -437,11 +458,13 @@ def _connect(threads: int | None = None):
 
 
 def summarize_rows(rows: list[dict] | pa.Table, by=("pfam", "nr50"), *, domains=None, clusters=None,
-                   protein_len=None, genome_of=None, genome_member=None, top_n: int | None = SUMMARY_TOP) -> dict:
+                   protein_len=None, genome_of=None, genome_member=None, scanned_proteins=None,
+                   top_n: int | None = SUMMARY_TOP) -> dict:
     """The neighbor summary of neighborhood rows (as `fetch` gives them) over the given annotations, each a
     list of dicts or an Arrow table with the columns of `_SUMMARY_SCHEMAS` (None: empty); `clusters` serves the
     lookups by member as well. `genome_of` is a contig's `contig_dim` genome, `genome_member` every genome that
-    holds it (card C-21c; `_aggregate`)."""
+    holds it (card C-21c; `_aggregate`); `scanned_proteins` (card C-38b, optional iterable of protein uids) names
+    the proteins scanned with the domain library so `pfam` separates `none` from `not scanned` (`?`)."""
     by = _check_levels(by)
     con = _connect()
     try:
@@ -451,8 +474,10 @@ def summarize_rows(rows: list[dict] | pa.Table, by=("pfam", "nr50"), *, domains=
                            ("genome_of", genome_of), ("genome_member", genome_member)):
             t = data if isinstance(data, pa.Table) else pa.Table.from_pylist(data or [], schema=_SUMMARY_SCHEMAS[name])
             con.register(name, t)
+        sp_rows = [{"protein_uid": u} for u in sorted(set(scanned_proteins))] if scanned_proteins is not None else []
+        con.register("scanned_proteins", pa.Table.from_pylist(sp_rows, schema=_SUMMARY_SCHEMAS["scanned_proteins"]))
         con.execute("CREATE VIEW members AS SELECT member_uid, level, cluster_uid, rep_uid FROM clusters")
-        return _aggregate(con, by, top_n)
+        return _aggregate(con, by, top_n, track_unscanned=scanned_proteins is not None)
     finally:
         con.close()
 
@@ -560,16 +585,24 @@ def summarize(root: Path, anchors: set[bytes], policy: Policy, by=("pfam", "nr50
                  # card C-21c: the release's membership, the catalog's `genome_member` (its stages' genome_input)
                  ("genome_member", "genome_input", {}, "contig_uid, genome_uid", ())]
         largest = 0
+        dom_stages: set[str] = set()
+        prot_files: list[tuple[Path, dict]] = []
         for name, spec_name, want, select, parts in views:
             found = _store_files(root, spec_name, want, files)
+            if name == "domains":
+                dom_stages = {str(p["stage"]) for _, p in found if "stage" in p}
+            elif name == "protein_len":
+                prot_files = found
             if name == "members" and not found:  # a release built before card B-27 (card W-17)
                 found = _store_files(root, "cluster_member", want, files)
                 if found:
                     slow_path_note(release, "member_cluster", "cluster_member")
             _store_view(con, name, found, select, parts)
             largest = max(largest, catalog.row_groups_of(p for p, _ in found))
+        scanned = [(p, parts) for p, parts in prot_files if str(parts.get("stage")) in dom_stages]
+        _store_view(con, "scanned_proteins", scanned, "protein_uid", ())
         catalog.set_join_key_filter(con, largest)  # keys from _nb prune to the row groups that hold them (card B-27)
-        out = _aggregate(con, by, top_n)
+        out = _aggregate(con, by, top_n, track_unscanned=True)
     finally:
         con.close()
     out["header"] = {"release": release, "tape_version": counts["tape_version"], "policy": asdict(policy),

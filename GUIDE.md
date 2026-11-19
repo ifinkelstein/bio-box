@@ -182,7 +182,8 @@ so use `feature_uid` to name a gene.
 | `start`, `end`, `strand`, `contig_len`, `length` | the gene; the contig's length in bases; the protein's in amino acids |
 | `seq_bitscore` | full-sequence score in bits, one decimal |
 | `seq_evalue_zref` | E-value at a fixed reference database size of 10^8 sequences, so it compares across releases; at this release's 10,620,684 proteins the E-value would be about 0.106 times it (*derived*: 10,620,684 / 10^8) |
-| `pfam_architecture` | Pfam domains along the protein, joined by `+`, a repeated domain written once; `-` for none, and `-` everywhere on a release without Pfam (`rN.1`) |
+| `pfam_architecture` | Pfam domains along the protein, joined by `+`, a repeated domain written once; `-` when scanned with no hit (`none`), and `?` when `not scanned` (a stage at depth `called`, or a release without Pfam such as `rN.1`) |
+| `domain_state` | how the protein's Pfam state is known in this release: `measured`, `inferred`, `none` (in an annotated stage, no hit) or `not scanned` |
 | `protein_uid` | the protein; identical sequences share it |
 | `nr90`, `nr50`, `nr50_rep` | the protein's clusters at 90% and 50% identity (ids of this release only, not comparable across releases), and the NR50 representative's protein uid (its sequence: section 7) |
 | `dist_to_contig_end_bp` | 0: the gene caller marked the gene partial at a contig end (it runs off it); otherwise the distance to the nearer end; the contig length for a circular contig |
