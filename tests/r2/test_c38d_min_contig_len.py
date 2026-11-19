@@ -617,3 +617,66 @@ def test_c38d_5_100x_synthetic_store_ingest_with_min_contig_len_in_bounded_memor
     }
     assert got_ledger == expected_by_sha
     assert ledger.check_balance(root, "S0", ["ingest"]) == []
+
+
+# --- write_labels regression: duplicate SourceObject bytes under --min-contig-len ----------------------------
+
+
+@pytest.mark.covers("C-38d", "C-34", "L-01")
+def test_c38d_write_labels_on_filtered_stage_with_duplicate_source_object_bytes(tmp_path):
+    """When two SourceObjects share identical file bytes (`object_key`) under distinct `source_name`s on a
+    `--min-contig-len`-filtered stage, `ingest` writes sorted `(object_key, reason_code)` ledger rows and
+    `store.write_labels` reconciles the stage's `contig_occurrence` record count without collapsing the two
+    objects and reproduces ingest's own `contig_label` file byte-for-byte."""
+    rng = random.Random(20261120)
+    min_len = 1_500
+    s_short = _rand_seq(rng, 700)    # < L, dropped in each object
+    s_long1 = _rand_seq(rng, 1_800)  # >= L, kept
+    s_long2 = _rand_seq(rng, 2_100)  # >= L, kept
+    s_other = _rand_seq(rng, 1_600)  # >= L, in a distinct object
+
+    fa_dup = _write_fasta(tmp_path / "src/shared_bytes.fna", [
+        ("dup_short", s_short),
+        ("dup_long1", s_long1),
+        ("dup_long2", s_long2),
+    ])
+    fa_other = _write_fasta(tmp_path / "src/other.fna", [
+        ("other_short", s_short),
+        ("other_long", s_other),
+    ])
+    objs = [
+        SourceObject(fa_dup, "src_alpha", "1", "CC0", True),
+        SourceObject(fa_dup, "src_beta", "1", "CC0", True),
+        SourceObject(fa_other, "src_gamma", "1", "CC0", True),
+    ]
+
+    # Oracle root: ingested normally with contig_label written by ingest
+    oracle_root = tmp_path / "oracle"
+    ingest(objs, oracle_root, "S0", min_contig_len=min_len)
+    want_labels = io.part_files(oracle_root / "l0seq/contig_label/stage=S0")
+    assert want_labels
+
+    # Unlabelled root: ingested with contig_label suppressed, as before card B-27
+    step_root = tmp_path / "unlabelled"
+    mp = pytest.MonkeyPatch()
+    real_write_parts = io.write_parts
+    mp.setattr(
+        io,
+        "write_parts",
+        lambda batches, spec, *x, **kw: [] if spec.name == "contig_label" else real_write_parts(batches, spec, *x, **kw),
+    )
+    try:
+        ingest(objs, step_root, "S0", min_contig_len=min_len)
+    finally:
+        mp.undo()
+    assert io.part_files(step_root / "l0seq/contig_label/stage=S0") == []
+
+    scratch_dir = tmp_path / "scratch"
+    scratch_dir.mkdir()
+    res = store.write_labels(step_root, "S0", tmp=scratch_dir)
+    # 2 kept records in src_alpha + 2 in src_beta + 1 in src_gamma = 5 occurrence rows across 3 distinct >= L contigs
+    assert res["records"] == 5 and res["contigs"] == 3
+    got_labels = io.part_files(step_root / "l0seq/contig_label/stage=S0")
+    assert [p.read_bytes() for p in got_labels] == [p.read_bytes() for p in want_labels]
+    assert ledger.check_balance(step_root, "S0", ["labels"]) == []
+

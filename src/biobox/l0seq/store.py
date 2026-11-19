@@ -49,6 +49,7 @@ from __future__ import annotations
 
 import argparse
 import hashlib
+import itertools
 import json
 import os
 import shutil
@@ -834,25 +835,33 @@ def _write_tables(
 
     # ledger: per object, records in; kept = sequences first stored from it; merged = the rest (or, with
     # --min-contig-len L, rejected = records < L under reason `below:<L>`, with n_bases_in and n_bases_rejected
-    # populated; card C-38d). Objects are in sha256 order and `below:<L>` < `ok`, the ledger's sort key.
+    # populated; card C-38d). Objects are in sha256 order and `below:<L>` < `ok`; when two SourceObjects share
+    # identical file bytes (`sha`), emit all `below:<L>` rows of that `sha` before its `ok` rows so
+    # `(object_key, reason_code)` stays strictly sorted.
     tools = provenance.tool_versions("pyarrow")
 
     def _ledger_rows():
-        for i, (sha, _) in enumerate(ordered):
+        for sha, idxs_iter in itertools.groupby(range(len(ordered)), key=lambda i: ordered[i][0]):
+            idxs = list(idxs_iter)
             if min_contig_len is None:
-                yield ledger.row(sha, "l0_object", n_in[i], kept[i], n_in[i] - kept[i], tools=tools)
+                for i in idxs:
+                    yield ledger.row(sha, "l0_object", n_in[i], kept[i], n_in[i] - kept[i], tools=tools)
             else:
                 assert n_rejected is not None and bases_in is not None and bases_rejected is not None
-                merged_i = n_in[i] - n_rejected[i] - kept[i]
-                yield ledger.row(
-                    sha, "l0_object", n_in[i], kept[i], merged_i, n_rejected=n_rejected[i],
-                    reason=ledger.below_len_reason(min_contig_len), tools=tools,
-                    n_bases_in=bases_in[i], n_bases_rejected=bases_rejected[i],
-                )
-                yield ledger.row(
-                    sha, "l0_object", n_in[i], kept[i], merged_i, n_rejected=0,
-                    reason="ok", tools=tools, n_bases_in=bases_in[i], n_bases_rejected=0,
-                )
+                reason_below = ledger.below_len_reason(min_contig_len)
+                for i in idxs:
+                    merged_i = n_in[i] - n_rejected[i] - kept[i]
+                    yield ledger.row(
+                        sha, "l0_object", n_in[i], kept[i], merged_i, n_rejected=n_rejected[i],
+                        reason=reason_below, tools=tools,
+                        n_bases_in=bases_in[i], n_bases_rejected=bases_rejected[i],
+                    )
+                for i in idxs:
+                    merged_i = n_in[i] - n_rejected[i] - kept[i]
+                    yield ledger.row(
+                        sha, "l0_object", n_in[i], kept[i], merged_i, n_rejected=0,
+                        reason="ok", tools=tools, n_bases_in=bases_in[i], n_bases_rejected=0,
+                    )
 
     ledger.write(out, stage, "ingest", _ledger_rows())
     hook("ledger")
@@ -1523,9 +1532,9 @@ def write_labels(root: Path, stage: str, *, out: Path | None = None, tmp: Path |
                         f"FROM read_parquet({_sql_files(files)}, hive_partitioning = false)")
             (n_records, n_contigs), = con.execute("SELECT count(*), count(DISTINCT contig_uid) FROM seen").fetchall()
             (n_in,), = con.execute(
-                "SELECT coalesce(sum(k), 0) FROM ("
-                "SELECT min(n_in)::HUGEINT - coalesce(sum(n_rejected), 0)::HUGEINT AS k "
-                f"FROM read_parquet({_sql_path(ingested)}, hive_partitioning = false) GROUP BY object_key)"
+                "SELECT coalesce(sum(CASE WHEN reason_code = 'ok' "
+                "THEN n_in::HUGEINT - n_rejected::HUGEINT ELSE -n_rejected::HUGEINT END), 0) "
+                f"FROM read_parquet({_sql_path(ingested)}, hive_partitioning = false)"
             ).fetchall()
             if n_records != n_in:
                 raise ValueError(f"stage {stage}: its contig_occurrence holds {n_records} records, its ingest ledger "
