@@ -260,6 +260,31 @@ floor((40 - 16) / 4) = 6, so `--scan-jobs 6 --scan-cpus 4`, 24 threads, 40 in al
 running, the same formula gives J = 10, which is the whole cap: leave a margin if anything may start
 during the hours the scan runs. A smaller J only makes the scan take longer; the output is the same.
 
+**Annotation rounds (card C-38f, DEC-54).** `bio-box annotate round` scans a list of proteins (for example the
+neighbours of a search hit on a release containing `called` stages) with one domain library, filtering out any
+protein whose `domain_state` in `--release` is already settled (`measured`, `inferred`, or `none`) and copying
+rows already measured on disk by any stage or earlier round with equal HMM sha256, cutoff, Z and tool versions
+(`domains.COMPARED`, card B-47b). The round id is content-derived (`r-<16 hex>` over library name/version, HMM
+sha256, cutoff, Z and sorted filtered protein uids), so asking for the same round twice is a no-op and overlapping
+rounds built in either order produce byte-identical `round_domains` and `round_coverage` files. With `--profile`
+(or `$BIOBOX_PROFILE`), plan, shards and merge each run as a `run-step` under `runs/stage=<round_id>/`, each shard
+within 80% of `cpu_min_per_process` (AGENTS §7.2):
+
+```bash
+bio-box annotate round --root "$ROOT" --release rN.1 \
+  --library pfam 38.2 /stor/scratch/Wilke/if2453/all-the-data/l0/refdb/pfam/38.2/Pfam-A.hmm.gz gathering \
+  --proteins "$WORK/tniq_window_proteins.txt" --profile "$PROFILE" --scan-jobs 1 --scan-cpus 1
+```
+
+`bio-box search hmm --annotate NAME VERSION HMM CUTOFF` collects the `not scanned` window proteins after the search
+closes, writes them to `<out>/round_proteins.txt`, and runs the round when `--root` is writable or prints the exact
+`bio-box annotate round` command without modifying `--root` when it is read-only (W-03). Measured on `wilkcomp02`
+(2026-11-19, 1 CPU thread, scratch view over `rN.1` `called` for the TniQ ±10-gene window of 11,029 proteins /
+3,704,126 residues, round `r-59dbafe2223f9970`): 24.86 CPU-min for the scan shard (25.00 CPU-min total including
+plan 0.10 and merge 0.04; peak RSS 548.9 MiB), 15,673 domain rows (matching `rN.3`'s measured `l1_domains`
+exactly), 3,096 zero-hit proteins, against 28.13 CPU-min *derived* from §3.8's formula (`7.18` per million residues
++ `1.533` per process; ratio 0.884).
+
 **Gene calling in batches (card B-48).** When the build reaches gene calling (no run record yet), it
 estimates the step from the stage's inputs and says so in one line, `<stage>.genecall: N genomes ...
 estimated at X CPU-minutes in one process`: every genome at the rate of the mode the code calls it in
