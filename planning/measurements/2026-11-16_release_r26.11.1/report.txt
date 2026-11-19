@@ -1,0 +1,45 @@
+1. listing: 3556 files before, 4486 after; 930 new, 0 gone, 0 changed in size or mtime; 0 new files not naming r26.11.1
+2. root_added.tsv: 930 files, 20,907,311,935 bytes
+   catalog/release=r26.11.1.duckdb: 1 files, 1,060,864 bytes
+   dim/contig_dim: 1 files, 4,658,690 bytes
+   dim/genome_dim: 1 files, 2,499,692 bytes
+   l2/cluster_member: 4 files, 3,204,087,439 bytes
+   l2/cluster_member_aln: 3 files, 3,288,898,663 bytes
+   l2/cluster_plan: 443 files, 683,134 bytes
+   l2/member_cluster: 4 files, 4,871,937,357 bytes
+   l3/tape_tokens: 2 files, 861,262,182 bytes
+   l3/token_dict: 3 files, 801,626,983 bytes
+   l3/token_postings: 16 files, 7,869,800,079 bytes
+   ledger/release=r26.11.1: 1 files, 2,091 bytes
+   manifests/release=r26.11.1.json: 1 files, 154,014 bytes
+   release_def/release=r26.11.1: 1 files, 734 bytes
+   runs/stage=r26.11.1: 449 files, 640,013 bytes
+3. manifest: stages ['S1', 'P1', 'P2', 'P3', 'P4', 'P5', 'P6', 'H1', 'PL1'], 252 table files, 160 artifacts
+   contig_label rows per stage: {'S1': 27258, 'P1': 539, 'P2': 5018, 'P3': 9108, 'P4': 4006, 'P5': 4112, 'P6': 4228, 'H1': 7228, 'PL1': 68693}
+   arrays S1: minced-0.4.2-w8-nr2-r23x47-s26x50-cas1kb-caspfam1-pfam-38.2: 34 arrays, 178 l1_crispr rows; minced-0.4.2-w8-nr3-r23x47-s26x50: 213 arrays, 2517 l1_crispr rows
+   arrays P1: minced-0.4.2-w8-nr2-r23x47-s26x50-cas1kb-caspfam1-pfam-38.2: 6 arrays, 24 l1_crispr rows; minced-0.4.2-w8-nr3-r23x47-s26x50: 286 arrays, 18288 l1_crispr rows
+   arrays P2: minced-0.4.2-w8-nr2-r23x47-s26x50-cas1kb-caspfam1-pfam-38.2: 72 arrays, 624 l1_crispr rows; minced-0.4.2-w8-nr3-r23x47-s26x50: 2291 arrays, 124343 l1_crispr rows
+   arrays P3: minced-0.4.2-w8-nr2-r23x47-s26x50-cas1kb-caspfam1-pfam-38.2: 118 arrays, 742 l1_crispr rows; minced-0.4.2-w8-nr3-r23x47-s26x50: 3921 arrays, 237893 l1_crispr rows
+   arrays P4: minced-0.4.2-w8-nr2-r23x47-s26x50-cas1kb-caspfam1-pfam-38.2: 69 arrays, 457 l1_crispr rows; minced-0.4.2-w8-nr3-r23x47-s26x50: 2520 arrays, 126202 l1_crispr rows
+   arrays P5: minced-0.4.2-w8-nr2-r23x47-s26x50-cas1kb-caspfam1-pfam-38.2: 56 arrays, 336 l1_crispr rows; minced-0.4.2-w8-nr3-r23x47-s26x50: 2205 arrays, 118009 l1_crispr rows
+   arrays P6: minced-0.4.2-w8-nr2-r23x47-s26x50-cas1kb-caspfam1-pfam-38.2: 59 arrays, 433 l1_crispr rows; minced-0.4.2-w8-nr3-r23x47-s26x50: 2041 arrays, 109137 l1_crispr rows
+   arrays H1: minced-0.4.2-w8-nr2-r23x47-s26x50-cas1kb-caspfam1-pfam-38.2: 30 arrays, 284 l1_crispr rows; minced-0.4.2-w8-nr3-r23x47-s26x50: 954 arrays, 15304 l1_crispr rows
+   arrays PL1: minced-0.4.2-w8-nr2-r23x47-s26x50-cas1kb-caspfam1-pfam-38.2: 49 arrays, 355 l1_crispr rows; minced-0.4.2-w8-nr3-r23x47-s26x50: 1636 arrays, 49752 l1_crispr rows
+   arrays in all: {'minced-0.4.2-w8-nr2-r23x47-s26x50-cas1kb-caspfam1-pfam-38.2': 493, 'minced-0.4.2-w8-nr3-r23x47-s26x50': 16067}
+4. clusters: {"rM.2": {"nr50": {"members": 45815843, "clusters": 8192065}, "nr90": {"members": 45815843, "clusters": 31183876}}, "r26.11.1": {"nr50": {"members": 49102041, "clusters": 9291312}, "nr90": {"members": 49102041, "clusters": 33117773}}}
+   nr50: 1,090,489 clusters of the release hold no protein of rM.2 (1,789,743 members)
+5. nr50: {"earlier_clusters": 8192065, "earlier_members": 45815843, "lost_members": 0, "same_members": 7703127, "same_members_proteins": 24257359, "same_members_same_uid": 7703127, "grew_with_new_only": 209156, "merged_with_earlier": 120469, "split": 159313, "uid_kept": 7703127, "uid_kept_other_members": 0}
+   nr90: 1,932,678 clusters of the release hold no protein of rM.2 (2,400,956 members)
+5. nr90: {"earlier_clusters": 31183876, "earlier_members": 45815843, "lost_members": 0, "same_members": 30867052, "same_members_proteins": 44423988, "same_members_same_uid": 30867052, "grew_with_new_only": 263455, "merged_with_earlier": 30071, "split": 23298, "uid_kept": 30867052, "uid_kept_other_members": 0}
+   S1: {"proteins": 1134550, "not_in_earlier": 0, "new_at_nr50": 0, "new_nr50_clusters_with_a_member": 0, "new_at_nr90": 0, "new_nr90_clusters_with_a_member": 0}
+   P1: {"proteins": 918765, "not_in_earlier": 0, "new_at_nr50": 0, "new_nr50_clusters_with_a_member": 0, "new_at_nr90": 0, "new_nr90_clusters_with_a_member": 0}
+   P2: {"proteins": 8580713, "not_in_earlier": 0, "new_at_nr50": 0, "new_nr50_clusters_with_a_member": 0, "new_at_nr90": 0, "new_nr90_clusters_with_a_member": 0}
+   P3: {"proteins": 8965818, "not_in_earlier": 0, "new_at_nr50": 0, "new_nr50_clusters_with_a_member": 0, "new_at_nr90": 0, "new_nr90_clusters_with_a_member": 0}
+   P4: {"proteins": 8928132, "not_in_earlier": 0, "new_at_nr50": 0, "new_nr50_clusters_with_a_member": 0, "new_at_nr90": 0, "new_nr90_clusters_with_a_member": 0}
+   P5: {"proteins": 8970130, "not_in_earlier": 0, "new_at_nr50": 0, "new_nr50_clusters_with_a_member": 0, "new_at_nr90": 0, "new_nr90_clusters_with_a_member": 0}
+   P6: {"proteins": 8896652, "not_in_earlier": 0, "new_at_nr50": 0, "new_nr50_clusters_with_a_member": 0, "new_at_nr90": 0, "new_nr90_clusters_with_a_member": 0}
+   H1: {"proteins": 1608023, "not_in_earlier": 1602411, "new_at_nr50": 1458241, "new_nr50_clusters_with_a_member": 890552, "new_at_nr90": 1587338, "new_nr90_clusters_with_a_member": 1382128}
+   PL1: {"proteins": 1900057, "not_in_earlier": 1684179, "new_at_nr50": 331798, "new_nr50_clusters_with_a_member": 200698, "new_at_nr90": 814006, "new_nr90_clusters_with_a_member": 551094}
+6. DEC-27: genomes 114,629 (genome_input, independent), 114,629 (catalog genome_member), 114,629 (genome_dim rows); contigs held by 2 or more genomes 7,046, of them spanning PL1 and an earlier stage 7,046
+   q1 on shared contig 000b81e3c71d263d0cf80fa98bbd4d70, NR50 tokens 4611686018436501773 and 4611686018433078843 on slots 1 and 2: q1_count 3737, independent loci 3737 on 3454 contigs; q1_genomes 3488, independent genomes 3488
+checks: all pass

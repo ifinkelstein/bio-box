@@ -1,6 +1,8 @@
 """Card C-35: the estimates of release r26.11.1's steps before its launch, and the check of each published run record
 against them (AGENTS §6; DEC-43: only steps estimated at 24 CPU-minutes or more are judged; DEC-53: a judged step more
-than 20% over its estimate stops the build, while a step more than 20% under is recorded and reported without stopping).
+than 20% over its estimate stops the build, while a step more than 20% under is recorded and reported without stopping;
+DEC-55: NR50 input_step2 calls cluster.nr50.19.prefilter* and cluster.nr50.20.align* accepted up to 1.60x on r26.11.1
+and recorded in accepted_dec55 while card B-54 refits cut_of by surviving target DB size).
 
     python c35_est.py before --root ROOT --release R --stages S1,...,PL1 --earlier rM.2 --calib CALIB.json
                              --parts 24 --profile P [--jobs J --cpus C] [--tmp D]        (runtime image; reads only)
@@ -43,6 +45,9 @@ from pathlib import Path
 TOL = 0.20
 # DEC-43 (PI, 2026-11-15): a step estimated under this many CPU-minutes is reported but not judged.
 MIN_JUDGED_CPU_MIN = 24.0
+# DEC-55 (PI, 2026-11-18): input_step2 survivor growth from H1+PL1 divergent proteins; cap at 1.60x (~72 CPU-min << 280).
+DEC55_PREFIXES = ("cluster.nr50.19.prefilter", "cluster.nr50.20.align")
+DEC55_MAX_RATIO = 1.60
 SPLIT_STEPS = ("tokens", "postings", "dim", "manifest", "catalog")  # scaled by genes; the rest by proteins
 
 
@@ -173,7 +178,7 @@ def rates(a) -> int:
     factors, steps = proj["factors"], proj["steps"]
     runs = root / "runs" / f"stage={rel}"
     plans = root / "l2" / "cluster_plan" / f"release={rel}"
-    rows, over_bad, under_bad, bad, unknown = [], [], [], [], []
+    rows, over_bad, under_bad, bad, accepted_dec55, unknown = [], [], [], [], [], []
     cuts: dict[str, dict] = {}
     for f in sorted(runs.glob("*.json")) if runs.is_dir() else []:
         if f.name.endswith(".publishing.json"):
@@ -211,7 +216,10 @@ def rates(a) -> int:
             judged = e >= MIN_JUDGED_CPU_MIN
             row.update({"estimate": round(e, 3), "ratio": round(ratio, 3), "judged": judged, "basis": basis})
             if judged and ratio > 1 + TOL:
-                over_bad.append(row)
+                if name.startswith(DEC55_PREFIXES) and ratio <= DEC55_MAX_RATIO:
+                    accepted_dec55.append(row)
+                else:
+                    over_bad.append(row)
                 bad.append(row)
             elif judged and ratio < 1 - TOL:
                 under_bad.append(row)
@@ -224,6 +232,7 @@ def rates(a) -> int:
            "worst": max(judged, key=lambda x: abs(x["ratio"] - 1), default=None),
            "worst_over": max(judged, key=lambda x: x["ratio"], default=None),
            "largest": max(rows, key=lambda x: x["cpu_min"], default=None),
+           "accepted_dec55": accepted_dec55,
            "over_20pct": over_bad, "under_20pct": under_bad, "outside_20pct": bad,
            "no_estimate": unknown[-8:], "no_estimate_n": len(unknown)}
     if a.out:

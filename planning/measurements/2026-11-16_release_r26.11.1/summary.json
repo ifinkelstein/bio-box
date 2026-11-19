@@ -1,0 +1,335 @@
+{
+ "added": {
+  "bytes": 20907311935,
+  "files": 930
+ },
+ "added_by_dir": {
+  "catalog/release=r26.11.1.duckdb": [
+   1,
+   1060864
+  ],
+  "dim/contig_dim": [
+   1,
+   4658690
+  ],
+  "dim/genome_dim": [
+   1,
+   2499692
+  ],
+  "l2/cluster_member": [
+   4,
+   3204087439
+  ],
+  "l2/cluster_member_aln": [
+   3,
+   3288898663
+  ],
+  "l2/cluster_plan": [
+   443,
+   683134
+  ],
+  "l2/member_cluster": [
+   4,
+   4871937357
+  ],
+  "l3/tape_tokens": [
+   2,
+   861262182
+  ],
+  "l3/token_dict": [
+   3,
+   801626983
+  ],
+  "l3/token_postings": [
+   16,
+   7869800079
+  ],
+  "ledger/release=r26.11.1": [
+   1,
+   2091
+  ],
+  "manifests/release=r26.11.1.json": [
+   1,
+   154014
+  ],
+  "release_def/release=r26.11.1": [
+   1,
+   734
+  ],
+  "runs/stage=r26.11.1": [
+   449,
+   640013
+  ]
+ },
+ "arrays": {
+  "H1": {
+   "minced-0.4.2-w8-nr2-r23x47-s26x50-cas1kb-caspfam1-pfam-38.2": {
+    "arrays": 30,
+    "l1_crispr_rows": 284
+   },
+   "minced-0.4.2-w8-nr3-r23x47-s26x50": {
+    "arrays": 954,
+    "l1_crispr_rows": 15304
+   }
+  },
+  "P1": {
+   "minced-0.4.2-w8-nr2-r23x47-s26x50-cas1kb-caspfam1-pfam-38.2": {
+    "arrays": 6,
+    "l1_crispr_rows": 24
+   },
+   "minced-0.4.2-w8-nr3-r23x47-s26x50": {
+    "arrays": 286,
+    "l1_crispr_rows": 18288
+   }
+  },
+  "P2": {
+   "minced-0.4.2-w8-nr2-r23x47-s26x50-cas1kb-caspfam1-pfam-38.2": {
+    "arrays": 72,
+    "l1_crispr_rows": 624
+   },
+   "minced-0.4.2-w8-nr3-r23x47-s26x50": {
+    "arrays": 2291,
+    "l1_crispr_rows": 124343
+   }
+  },
+  "P3": {
+   "minced-0.4.2-w8-nr2-r23x47-s26x50-cas1kb-caspfam1-pfam-38.2": {
+    "arrays": 118,
+    "l1_crispr_rows": 742
+   },
+   "minced-0.4.2-w8-nr3-r23x47-s26x50": {
+    "arrays": 3921,
+    "l1_crispr_rows": 237893
+   }
+  },
+  "P4": {
+   "minced-0.4.2-w8-nr2-r23x47-s26x50-cas1kb-caspfam1-pfam-38.2": {
+    "arrays": 69,
+    "l1_crispr_rows": 457
+   },
+   "minced-0.4.2-w8-nr3-r23x47-s26x50": {
+    "arrays": 2520,
+    "l1_crispr_rows": 126202
+   }
+  },
+  "P5": {
+   "minced-0.4.2-w8-nr2-r23x47-s26x50-cas1kb-caspfam1-pfam-38.2": {
+    "arrays": 56,
+    "l1_crispr_rows": 336
+   },
+   "minced-0.4.2-w8-nr3-r23x47-s26x50": {
+    "arrays": 2205,
+    "l1_crispr_rows": 118009
+   }
+  },
+  "P6": {
+   "minced-0.4.2-w8-nr2-r23x47-s26x50-cas1kb-caspfam1-pfam-38.2": {
+    "arrays": 59,
+    "l1_crispr_rows": 433
+   },
+   "minced-0.4.2-w8-nr3-r23x47-s26x50": {
+    "arrays": 2041,
+    "l1_crispr_rows": 109137
+   }
+  },
+  "PL1": {
+   "minced-0.4.2-w8-nr2-r23x47-s26x50-cas1kb-caspfam1-pfam-38.2": {
+    "arrays": 49,
+    "l1_crispr_rows": 355
+   },
+   "minced-0.4.2-w8-nr3-r23x47-s26x50": {
+    "arrays": 1636,
+    "l1_crispr_rows": 49752
+   }
+  },
+  "S1": {
+   "minced-0.4.2-w8-nr2-r23x47-s26x50-cas1kb-caspfam1-pfam-38.2": {
+    "arrays": 34,
+    "l1_crispr_rows": 178
+   },
+   "minced-0.4.2-w8-nr3-r23x47-s26x50": {
+    "arrays": 213,
+    "l1_crispr_rows": 2517
+   }
+  }
+ },
+ "arrays_total": {
+  "minced-0.4.2-w8-nr2-r23x47-s26x50-cas1kb-caspfam1-pfam-38.2": 493,
+  "minced-0.4.2-w8-nr3-r23x47-s26x50": 16067
+ },
+ "clusters": {
+  "r26.11.1": {
+   "nr50": {
+    "clusters": 9291312,
+    "members": 49102041
+   },
+   "nr90": {
+    "clusters": 33117773,
+    "members": 49102041
+   }
+  },
+  "rM.2": {
+   "nr50": {
+    "clusters": 8192065,
+    "members": 45815843
+   },
+   "nr90": {
+    "clusters": 31183876,
+    "members": 45815843
+   }
+  }
+ },
+ "contig_label_rows": {
+  "H1": 7228,
+  "P1": 539,
+  "P2": 5018,
+  "P3": 9108,
+  "P4": 4006,
+  "P5": 4112,
+  "P6": 4228,
+  "PL1": 68693,
+  "S1": 27258
+ },
+ "dec27": {
+  "contigs": 3454,
+  "contigs_multi_genome": 7046,
+  "contigs_pl1_and_earlier": 7046,
+  "genome_dim_rows": 114629,
+  "genomes_genome_member": 114629,
+  "genomes_independent": 114629,
+  "genomes_independent_q1": 3488,
+  "loci_independent": 3737,
+  "q1_contig": "000b81e3c71d263d0cf80fa98bbd4d70",
+  "q1_count": 3737,
+  "q1_genomes": 3488,
+  "q1_tokens": [
+   4611686018436501773,
+   4611686018433078843
+  ]
+ },
+ "earlier": "rM.2",
+ "estimate": 15202.9,
+ "failed": [],
+ "manifest": {
+  "artifacts": 160,
+  "files": 252,
+  "stages": [
+   "S1",
+   "P1",
+   "P2",
+   "P3",
+   "P4",
+   "P5",
+   "P6",
+   "H1",
+   "PL1"
+  ]
+ },
+ "per_stage": {
+  "H1": {
+   "new_at_nr50": 1458241,
+   "new_at_nr90": 1587338,
+   "new_nr50_clusters_with_a_member": 890552,
+   "new_nr90_clusters_with_a_member": 1382128,
+   "not_in_earlier": 1602411,
+   "proteins": 1608023
+  },
+  "P1": {
+   "new_at_nr50": 0,
+   "new_at_nr90": 0,
+   "new_nr50_clusters_with_a_member": 0,
+   "new_nr90_clusters_with_a_member": 0,
+   "not_in_earlier": 0,
+   "proteins": 918765
+  },
+  "P2": {
+   "new_at_nr50": 0,
+   "new_at_nr90": 0,
+   "new_nr50_clusters_with_a_member": 0,
+   "new_nr90_clusters_with_a_member": 0,
+   "not_in_earlier": 0,
+   "proteins": 8580713
+  },
+  "P3": {
+   "new_at_nr50": 0,
+   "new_at_nr90": 0,
+   "new_nr50_clusters_with_a_member": 0,
+   "new_nr90_clusters_with_a_member": 0,
+   "not_in_earlier": 0,
+   "proteins": 8965818
+  },
+  "P4": {
+   "new_at_nr50": 0,
+   "new_at_nr90": 0,
+   "new_nr50_clusters_with_a_member": 0,
+   "new_nr90_clusters_with_a_member": 0,
+   "not_in_earlier": 0,
+   "proteins": 8928132
+  },
+  "P5": {
+   "new_at_nr50": 0,
+   "new_at_nr90": 0,
+   "new_nr50_clusters_with_a_member": 0,
+   "new_nr90_clusters_with_a_member": 0,
+   "not_in_earlier": 0,
+   "proteins": 8970130
+  },
+  "P6": {
+   "new_at_nr50": 0,
+   "new_at_nr90": 0,
+   "new_nr50_clusters_with_a_member": 0,
+   "new_nr90_clusters_with_a_member": 0,
+   "not_in_earlier": 0,
+   "proteins": 8896652
+  },
+  "PL1": {
+   "new_at_nr50": 331798,
+   "new_at_nr90": 814006,
+   "new_nr50_clusters_with_a_member": 200698,
+   "new_nr90_clusters_with_a_member": 551094,
+   "not_in_earlier": 1684179,
+   "proteins": 1900057
+  },
+  "S1": {
+   "new_at_nr50": 0,
+   "new_at_nr90": 0,
+   "new_nr50_clusters_with_a_member": 0,
+   "new_nr90_clusters_with_a_member": 0,
+   "not_in_earlier": 0,
+   "proteins": 1134550
+  }
+ },
+ "release": "r26.11.1",
+ "uid_stability": {
+  "nr50": {
+   "earlier_clusters": 8192065,
+   "earlier_members": 45815843,
+   "grew_with_new_only": 209156,
+   "lost_members": 0,
+   "merged_with_earlier": 120469,
+   "new_cluster_members": 1789743,
+   "new_clusters": 1090489,
+   "same_members": 7703127,
+   "same_members_proteins": 24257359,
+   "same_members_same_uid": 7703127,
+   "split": 159313,
+   "uid_kept": 7703127,
+   "uid_kept_other_members": 0
+  },
+  "nr90": {
+   "earlier_clusters": 31183876,
+   "earlier_members": 45815843,
+   "grew_with_new_only": 263455,
+   "lost_members": 0,
+   "merged_with_earlier": 30071,
+   "new_cluster_members": 2400956,
+   "new_clusters": 1932678,
+   "same_members": 30867052,
+   "same_members_proteins": 44423988,
+   "same_members_same_uid": 30867052,
+   "split": 23298,
+   "uid_kept": 30867052,
+   "uid_kept_other_members": 0
+  }
+ }
+}

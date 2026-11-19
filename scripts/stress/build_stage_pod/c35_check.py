@@ -266,11 +266,15 @@ def main() -> int:
             failed.append("q1 pick")
         else:
             cu, ta, tb = pick
-            # independent: every contig with token a at slot i and b at a slot within 1 of i (circular contigs wrap)
+            # independent: every contig with token a at slot i and b at a slot within 1 of i (circular contigs wrap;
+            # earliest stage in release order owns the contig and its is_circular flag, DEC-35 (8))
+            gi_circ = " UNION ALL ".join(
+                f"SELECT {i} AS pos, contig_uid, is_circular FROM read_parquet({lst(gi[s])}, hive_partitioning = false)"
+                for i, s in enumerate(stages) if gi[s])
             cand = con.execute(f"""
                 SELECT t.contig_uid, t.nr50_tokens, ci.is_circular FROM read_parquet({lst(tt)}, hive_partitioning = false) t
-                LEFT JOIN (SELECT contig_uid, bool_or(is_circular) AS is_circular FROM read_parquet({lst([p for ps in gi.values() for p in ps])},
-                           hive_partitioning = false) GROUP BY contig_uid) ci ON ci.contig_uid = t.contig_uid
+                LEFT JOIN (SELECT contig_uid, arg_min(is_circular, pos) AS is_circular FROM ({gi_circ}) GROUP BY contig_uid) ci
+                  ON ci.contig_uid = t.contig_uid
                 WHERE list_contains(t.nr50_tokens, {ta}::UBIGINT) AND list_contains(t.nr50_tokens, {tb}::UBIGINT)""").fetchall()
             loci, contigs = set(), set()
             for c, toks, circ in cand:

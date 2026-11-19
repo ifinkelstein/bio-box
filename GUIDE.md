@@ -287,21 +287,22 @@ ls "$WORK"/rnap/loci/locus_NC_001604_*
 column -t -s $'\t' "$WORK/rnap/loci/locus_NC_001604_39f9ef263e234b012d2671634468546e.tsv"
 ```
 
-Arrays beside a locus need a release that holds them. Until one does, a scratch view of `rN.3` with card E-12's
-arrays (stages P1, P2, S1; built by card E-14 under `/tmp/if2453/e14/view`, its own manifest and catalog, the data
-root untouched) shows them. The complete type I-F system of the CRISPR example's control genome (its Cas7f,
+Arrays beside a locus need a release that holds them. Release `r26.11.1` is the first release to list both CRISPR
+producers on every stage (default three-repeat MinCED and card E-15's filtered two-repeat producer beside Cas genes).
+The complete type I-F system of the CRISPR example's control genome (its Cas7f,
 `NZ_AP026781.1:687857-688841`), 10 genes on each side:
 
 ```bash
-bio-box nbr 07ba31e0f0e5ffcc30388139b5ec30e4 --root /tmp/if2453/e14/view --release rN.3 --profile "$PROFILE" --window 10g --format tsv --out "$WORK/e14_cas7f"
+bio-box nbr 07ba31e0f0e5ffcc30388139b5ec30e4 --root "$ROOT" --release r26.11.1 --profile "$PROFILE" --window 10g --format tsv --out "$WORK/r26_cas7f"
 ```
 
 Its table (`locus_NZ_AP026781.1_099ffda89602165c6368d6a601339856.tsv`) ends with the window `676009` to `697441` and
 the two arrays of the system, one on each side: 27 repeats at 679543-681134 (`side_rel -1`, 6,723 bases before the
 Cas7f) and 21 repeats at 689534-690762 (`side_rel 1`, 693 bases after it), both with the repeat
-`CTTCACTGCCGAGTAGGCAGCTTAGAAA` (*measured*, wilkcomp02, 2026-11-14, `planning/measurements/2026-11-14_arrays_in_neighbourhoods.md`).
-The same command for the TniQ of the Tn7-like element (`28e32e6533f7f55e5bca64f44c89b426`) shows none: its
-one-spacer array has two repeats, below MinCED's minimum of three (card E-13).
+`CTTCACTGCCGAGTAGGCAGCTTAGAAA` (*measured*, wilkcomp02, 2026-11-19). The same command for the TniQ of the Tn7-like
+element (`28e32e6533f7f55e5bca64f44c89b426`) now shows its one-spacer, two-repeat array at 422557-422647 (`side_rel 1`,
+3,693 bases from TniQ, repeat `TTATTATCAGCTACCTATTCGGCAGTTCAC`), called by the filtered producer
+`minced-0.4.2-w8-nr2-r23x47-s26x50-cas1kb-caspfam1-pfam-38.2` (*measured*, wilkcomp02, 2026-11-19).
 
 ### Which loci share a context: `nbr flanks`
 
