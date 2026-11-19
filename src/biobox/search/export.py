@@ -159,12 +159,15 @@ def nbr_summary_tsv(summary: dict) -> Iterator[str]:
     for k, v in record("nbr_summary_header", summary["header"]).items():
         yield f"# {k}\t{json.dumps(v, separators=(',', ':'))}"
     for level in summary["header"]["levels"]:
-        cols = SUMMARY_TSV_COLUMNS["pfam" if level == "pfam" else "nr"] + SUMMARY_TSV_STATS
+        level_rows = [r for r in summary["rows"] if r["level"] == level]
+        base_cols = list(SUMMARY_TSV_COLUMNS["pfam" if level == "pfam" else "nr"])
+        if level == "pfam" and any("source" in r for r in level_rows):
+            base_cols.append("source")
+        cols = base_cols + SUMMARY_TSV_STATS
         yield ""
         yield "\t".join(cols)
-        for r in summary["rows"]:
-            if r["level"] == level:
-                yield "\t".join(_tsv_cell(c, r.get(c)) for c in cols)
+        for r in level_rows:
+            yield "\t".join(_tsv_cell(c, r.get(c)) for c in cols)
     if summary.get("arrays") is not None:  # card E-14: only on a release that holds CRISPR arrays
         from biobox.search import arrays
 
@@ -473,16 +476,17 @@ class _Store:
         return () if library is None else self.annotated_stages.get(library, ())
 
 
-def _dom_view(con, files: list[tuple[Path, dict]]) -> None:
-    """Temp view `dom` with `(protein_uid, model_acc, model_name, env_start, inferred_from, library)` over explicit
-    `l1_domains` files, filling `inferred_from` as NULL for files written before card B-47c (LY-09)."""
+def _dom_view(con, files: list[tuple[Path, dict]], rdom_files: list[tuple[Path, dict]] = ()) -> None:
+    """Temp view `dom` with `(protein_uid, model_acc, model_name, env_start, inferred_from, library, source)`
+    over explicit `l1_domains` (`source = 'stage'`) and merged `round_domains` (`source = 'round'`), filling
+    `inferred_from` as NULL for pre-B-47c and round files (LY-09, card C-38g)."""
     import pyarrow.parquet as pq
 
-    if not files:
+    if not files and not rdom_files:
         con.execute('CREATE TEMP VIEW dom AS SELECT CAST(NULL AS BLOB) AS "protein_uid", '
                     'CAST(NULL AS VARCHAR) AS "model_acc", CAST(NULL AS VARCHAR) AS "model_name", '
                     'CAST(NULL AS UINTEGER) AS "env_start", CAST(NULL AS BLOB) AS "inferred_from", '
-                    'CAST(NULL AS VARCHAR) AS "library" WHERE false')
+                    'CAST(NULL AS VARCHAR) AS "library", CAST(NULL AS VARCHAR) AS "source" WHERE false')
         return
     parts_sql = []
     for path, parts in sorted(files, key=lambda x: (str(x[1].get("library", "")), str(x[0]))):
@@ -490,7 +494,13 @@ def _dom_view(con, files: list[tuple[Path, dict]]) -> None:
         inf_col = '"inferred_from"' if has_inf else 'CAST(NULL AS BLOB) AS "inferred_from"'
         parts_sql.append(
             f'SELECT "protein_uid", "model_acc", "model_name", "env_start", {inf_col}, '
-            f'{_q(str(parts.get("library", "")))} AS "library" '
+            f'{_q(str(parts.get("library", "")))} AS "library", \'stage\' AS "source" '
+            f'FROM read_parquet([{_q(str(path))}], hive_partitioning = false)'
+        )
+    for path, parts in sorted(rdom_files, key=lambda x: (str(x[1].get("library", "")), str(x[0]))):
+        parts_sql.append(
+            f'SELECT "protein_uid", "model_acc", "model_name", "env_start", CAST(NULL AS BLOB) AS "inferred_from", '
+            f'{_q(str(parts.get("library", "")))} AS "library", \'round\' AS "source" '
             f'FROM read_parquet([{_q(str(path))}], hive_partitioning = false)'
         )
     con.execute(f"CREATE TEMP VIEW dom AS {' UNION ALL '.join(parts_sql)}")
@@ -538,7 +548,7 @@ class open_store:
         import duckdb
 
         from biobox.catalog import row_groups_of, set_join_key_filter
-        from biobox.search.nbr import _store_files, slow_path_note
+        from biobox.search.nbr import _merged_round_files, _store_files, slow_path_note
 
         root, release, gcv, tv, manifest, threads, tmp, relations = self.args
         manifest = release_files(root, release, manifest)  # refuses an undefined release before anything is opened
@@ -561,13 +571,17 @@ class open_store:
                     if files:
                         slow_path_note(release, _RELATIONS[name][0], spec_name)
                 if name == "dom":
-                    libraries = {str(p["library"]) for _, p in files}
+                    rdom_files = _merged_round_files(root, "round_domains", release, manifest) if release is not None else []
+                    rcov_files = _merged_round_files(root, "round_coverage", release, manifest) if release is not None else []
+                    libraries = {str(p["library"]) for _, p in (*files, *rdom_files, *rcov_files) if "library" in p}
                     for _, p in files:
                         if "stage" in p:
                             annotated.setdefault(str(p["library"]), set()).add(str(p["stage"]))
                 gaps = _unlabelled(root, manifest, files) if name == "lab" and spec_name == "contig_label" else None
                 if name == "dom":
-                    _dom_view(self.con, files)
+                    _dom_view(self.con, files, rdom_files)
+                    _view(self.con, "rcov", "round_coverage", rcov_files, ("protein_uid", "n_rows"), ("library",))
+                    files = files + rdom_files + rcov_files
                 elif spec_name == "contig_occurrence":  # one row per source record: the label's n_records is 1
                     _view(self.con, f"{name}_raw", spec_name, files, cols, keep)
                     self.con.execute(f"CREATE TEMP VIEW {name} AS SELECT *, 1::UINTEGER AS n_records FROM {name}_raw")
@@ -620,8 +634,12 @@ def _annotate_proteins(con, library: str | None, annotated_stages: tuple[str, ..
                    GROUP BY member_uid""")
     lib = "NULL" if library is None else _q(library)
     con.execute(f"""CREATE OR REPLACE TEMP TABLE _arch AS
-                    WITH d AS (SELECT DISTINCT protein_uid, env_start, model_acc, model_name FROM dom
-                               WHERE library = {lib} AND protein_uid IN (SELECT protein_uid FROM _p)),
+                    WITH st AS (SELECT DISTINCT protein_uid FROM dom
+                                WHERE library = {lib} AND source = 'stage'
+                                  AND protein_uid IN (SELECT protein_uid FROM _p)),
+                         d AS (SELECT DISTINCT protein_uid, env_start, model_acc, model_name FROM dom
+                               WHERE library = {lib} AND protein_uid IN (SELECT protein_uid FROM _p)
+                                 AND (source = 'stage' OR protein_uid NOT IN (SELECT protein_uid FROM st))),
                          l AS (SELECT *, lag(model_name) OVER (PARTITION BY protein_uid
                                                                ORDER BY env_start, model_acc) AS prev FROM d)
                     SELECT protein_uid, string_agg(model_name, '+' ORDER BY env_start, model_acc) AS arch
@@ -644,6 +662,9 @@ def _annotate_proteins(con, library: str | None, annotated_stages: tuple[str, ..
                         LEFT JOIN (
                             SELECT protein_uid, CASE WHEN inferred_from IS NULL THEN 3 ELSE 2 END AS rank
                             FROM dom WHERE library = {lib} AND protein_uid IN (SELECT protein_uid FROM _p)
+                            UNION ALL
+                            SELECT protein_uid, CASE WHEN n_rows > 0 THEN 3 ELSE 1 END AS rank
+                            FROM rcov WHERE library = {lib} AND protein_uid IN (SELECT protein_uid FROM _p)
                             UNION ALL
                             SELECT protein_uid, {cov} AS rank
                             FROM prot WHERE protein_uid IN (SELECT protein_uid FROM _p)

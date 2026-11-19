@@ -302,6 +302,9 @@ _SUMMARY_SCHEMAS = {
     "genome_member": pa.schema([("contig_uid", pa.binary(16)), ("genome_uid", pa.binary(16))]),
     # card C-38b: distinct proteins of the release's annotated stages, so `pfam` separates `none` from `not scanned`
     "scanned_proteins": pa.schema([("protein_uid", pa.binary(16))]),
+    # card C-38g: merged release round_domains (source='round'), preferred after stage l1_domains
+    "round_domains": pa.schema([("protein_uid", pa.binary(16)), ("library", pa.string()), ("model_acc", pa.string()),
+                                ("model_name", pa.string())]),
 }
 
 
@@ -313,10 +316,32 @@ def _check_levels(by) -> tuple[str, ...]:
     return tuple(dict.fromkeys(by))
 
 
-def _level_sql(level: str) -> tuple[str, str]:
-    """(keyed, attrs) for one level. `keyed`: one row per (neighbor row, key) with the neighbor's columns;
-    `attrs`: one row per key with the key's descriptive columns."""
+def _level_sql(level: str, *, has_rounds: bool = False) -> tuple[str, str]:
+    """(keyed, attrs) for one level. `keyed`: one row per (neighbor row, key) with the neighbor's columns
+    (and `source` = 'stage'|'round' at `pfam` when `has_rounds` is True); `attrs`: one row per key with the
+    key's descriptive columns."""
     if level == "pfam":
+        if has_rounds:
+            keyed = """WITH stage_d AS (SELECT DISTINCT protein_uid, library, model_acc FROM domains
+                                        WHERE protein_uid IN (SELECT protein_uid FROM _nb)),
+                            round_d AS (SELECT DISTINCT r.protein_uid, r.library, r.model_acc FROM round_domains r
+                                        WHERE r.protein_uid IN (SELECT protein_uid FROM _nb)
+                                          AND NOT EXISTS (SELECT 1 FROM stage_d s
+                                                          WHERE s.protein_uid = r.protein_uid AND s.library = r.library)),
+                            all_d AS (SELECT protein_uid, library, model_acc, 'stage' AS source FROM stage_d
+                                      UNION ALL
+                                      SELECT protein_uid, library, model_acc, 'round' AS source FROM round_d)
+                       SELECT n.*, d.library || ':' || d.model_acc AS key, d.source
+                       FROM _nb n JOIN all_d d USING (protein_uid)"""
+            attrs = """SELECT library || ':' || model_acc AS key, library, model_acc, min(model_name) AS model_name,
+                              NULL::VARCHAR AS cluster_uid, NULL::VARCHAR AS rep_uid, NULL::BIGINT AS rep_length
+                       FROM (SELECT protein_uid, library, model_acc, model_name FROM domains
+                             WHERE protein_uid IN (SELECT protein_uid FROM _nb)
+                             UNION ALL
+                             SELECT protein_uid, library, model_acc, model_name FROM round_domains
+                             WHERE protein_uid IN (SELECT protein_uid FROM _nb))
+                       GROUP BY library, model_acc"""
+            return keyed, attrs
         keyed = """SELECT n.*, d.library || ':' || d.model_acc AS key
                    FROM _nb n JOIN (SELECT DISTINCT protein_uid, library, model_acc FROM domains
                                     WHERE protein_uid IN (SELECT protein_uid FROM _nb)) d USING (protein_uid)"""
@@ -329,12 +354,14 @@ def _level_sql(level: str) -> tuple[str, str]:
     cl = f"""(SELECT DISTINCT member_uid, cluster_uid, rep_uid FROM members
               WHERE level = '{level}' AND member_uid IN (SELECT protein_uid FROM _nb))"""
     keyed = f"""SELECT n.*, lower(hex(c.cluster_uid)) AS key FROM _nb n JOIN {cl} c ON c.member_uid = n.protein_uid"""
+    dom_src = ("(SELECT protein_uid, model_name FROM domains UNION ALL SELECT protein_uid, model_name FROM round_domains)"
+               if has_rounds else "domains")
     # the representative: one per cluster in a real clustering; the least rep_uid if a mapping gives several
     attrs = f"""WITH reps AS (SELECT cluster_uid, min(rep_uid) AS rep_uid FROM clusters
                               WHERE level = '{level}' AND cluster_uid IN (SELECT cluster_uid FROM {cl})
                               GROUP BY cluster_uid),
                      names AS (SELECT m.cluster_uid, d.model_name, count(DISTINCT m.member_uid) AS n
-                               FROM clusters m JOIN domains d ON d.protein_uid = m.member_uid
+                               FROM clusters m JOIN {dom_src} d ON d.protein_uid = m.member_uid
                                WHERE m.level = '{level}' AND m.cluster_uid IN (SELECT cluster_uid FROM reps)
                                  AND d.protein_uid IN (SELECT member_uid FROM clusters WHERE level = '{level}'
                                                        AND cluster_uid IN (SELECT cluster_uid FROM reps))
@@ -364,8 +391,24 @@ _STATS = """WITH s AS (SELECT key, count(DISTINCT (contig_uid, anchor_feature_ui
             SELECT s.key, s.n_loci, s.n_neighbors, g.n_genomes, s.n_same, o.offsets, o.modal_offset
             FROM s JOIN g USING (key) JOIN o USING (key) ORDER BY s.n_loci DESC, s.key"""
 
+_STATS_WITH_SOURCE = """WITH s AS (SELECT key, source, count(DISTINCT (contig_uid, anchor_feature_uid)) AS n_loci,
+                                          count(*) AS n_neighbors, count(*) FILTER (WHERE same_strand) AS n_same
+                                   FROM {k} GROUP BY key, source),
+                             g AS (SELECT c.key, c.source, {genomes} AS n_genomes
+                                   FROM (SELECT DISTINCT key, source, contig_uid FROM {k}) c {join}
+                                   GROUP BY c.key, c.source),
+                             h AS (SELECT key, source, offset_rel, count(*) AS n FROM {k}
+                                   GROUP BY key, source, offset_rel),
+                             o AS (SELECT key, source, list(struct_pack(o := offset_rel, n := n) ORDER BY offset_rel) AS offsets,
+                                          first(offset_rel ORDER BY n DESC, abs(offset_rel), offset_rel DESC) AS modal_offset
+                                   FROM h GROUP BY key, source)
+                        SELECT s.key, s.source, s.n_loci, s.n_neighbors, g.n_genomes, s.n_same, o.offsets, o.modal_offset
+                        FROM s JOIN g USING (key, source) JOIN o USING (key, source)
+                        ORDER BY s.n_loci DESC, s.key, s.source"""
 
-def _aggregate(con, by: tuple[str, ...], top_n: int | None, *, track_unscanned: bool = False) -> dict:
+
+def _aggregate(con, by: tuple[str, ...], top_n: int | None, *, track_unscanned: bool = False,
+               has_rounds: bool = False) -> dict:
     """The summary over the relations `nbr_rows`, `domains`, `clusters`, `members`, `protein_len`, `genome_of` and
     `genome_member` of `con` (columns as in `_SUMMARY_SCHEMAS`; `nbr_rows` as the `neighborhoods` table). Every count
     is SQL.
@@ -412,7 +455,8 @@ def _aggregate(con, by: tuple[str, ...], top_n: int | None, *, track_unscanned: 
                    "rep_length": None}
     not_scanned_attrs = {**empty_attrs, "model_name": "not scanned"}
     for level in by:
-        keyed, attrs_sql = _level_sql(level)
+        with_src = has_rounds and level == "pfam"
+        keyed, attrs_sql = _level_sql(level, has_rounds=has_rounds)
         con.execute(f"CREATE OR REPLACE TEMP TABLE _k AS {keyed}")
         ns = []
         if level == "pfam" and track_unscanned:
@@ -433,18 +477,28 @@ def _aggregate(con, by: tuple[str, ...], top_n: int | None, *, track_unscanned: 
             con.execute("CREATE OR REPLACE TEMP TABLE _u AS SELECT n.*, '' AS key FROM _nb n "
                         "WHERE NOT EXISTS (SELECT 1 FROM _k k WHERE k.contig_uid = n.contig_uid "
                         "AND k.anchor_feature_uid = n.anchor_feature_uid AND k.feature_uid = n.feature_uid)")
-        stats = con.execute(_STATS.format(k="_k", genomes=genomes, join=join)).fetchall()
+        if with_src:
+            stats = con.execute(_STATS_WITH_SOURCE.format(k="_k", genomes=genomes, join=join)).fetchall()
+        else:
+            stats = con.execute(_STATS.format(k="_k", genomes=genomes, join=join)).fetchall()
         n_keys[level] = len(stats)
         shown = stats[:top_n] if top_n else stats
         cols = ["key", "library", "model_acc", "model_name", "cluster_uid", "rep_uid", "rep_length"]
         attrs = {r[0]: dict(zip(cols[1:], r[1:]))
                  for r in con.execute(f"SELECT {', '.join(cols)} FROM ({attrs_sql}) a "
                                       "WHERE key IN (SELECT unnest(?::VARCHAR[]))", [[r[0] for r in shown]]).fetchall()}
-        rows += [record(level, r, attrs[r[0]], False) for r in shown]
-        un = con.execute(_STATS.format(k="_u", genomes=genomes, join=join)).fetchall() or [("", 0, 0, 0, 0, [], None)]
-        rows.append(record(level, un[0], empty_attrs, True))
-        if ns:
-            rows.append(record(level, ns[0], not_scanned_attrs, True))
+        if with_src:
+            rows += [record(level, (r[0], *r[2:]), {**attrs[r[0]], "source": r[1]}, False) for r in shown]
+            un = con.execute(_STATS.format(k="_u", genomes=genomes, join=join)).fetchall() or [("", 0, 0, 0, 0, [], None)]
+            rows.append(record(level, un[0], {**empty_attrs, "source": None}, True))
+            if ns:
+                rows.append(record(level, ns[0], {**not_scanned_attrs, "source": None}, True))
+        else:
+            rows += [record(level, r, attrs[r[0]], False) for r in shown]
+            un = con.execute(_STATS.format(k="_u", genomes=genomes, join=join)).fetchall() or [("", 0, 0, 0, 0, [], None)]
+            rows.append(record(level, un[0], empty_attrs, True))
+            if ns:
+                rows.append(record(level, ns[0], not_scanned_attrs, True))
     return {"header": {"levels": list(by), "top_n": top_n or None, "n_anchor_proteins": n_prot,
                        "n_anchor_loci": n_loci, "n_contigs": n_contigs, "n_anchor_genomes": n_genomes,
                        "genome_basis": basis, "n_censored_loci": n_cens, "n_neighbors": n_nb, "n_keys": n_keys},
@@ -459,25 +513,36 @@ def _connect(threads: int | None = None):
 
 def summarize_rows(rows: list[dict] | pa.Table, by=("pfam", "nr50"), *, domains=None, clusters=None,
                    protein_len=None, genome_of=None, genome_member=None, scanned_proteins=None,
+                   round_domains=None, round_coverage=None,
                    top_n: int | None = SUMMARY_TOP) -> dict:
     """The neighbor summary of neighborhood rows (as `fetch` gives them) over the given annotations, each a
     list of dicts or an Arrow table with the columns of `_SUMMARY_SCHEMAS` (None: empty); `clusters` serves the
     lookups by member as well. `genome_of` is a contig's `contig_dim` genome, `genome_member` every genome that
     holds it (card C-21c; `_aggregate`); `scanned_proteins` (card C-38b, optional iterable of protein uids) names
-    the proteins scanned with the domain library so `pfam` separates `none` from `not scanned` (`?`)."""
+    the proteins scanned with the domain library so `pfam` separates `none` from `not scanned` (`?`);
+    `round_domains` and `round_coverage` (card C-38g) supply round-measured hits (`source='round'`) and
+    round-covered proteins."""
     by = _check_levels(by)
     con = _connect()
     try:
         con.register("nbr_rows", rows if isinstance(rows, pa.Table)
                      else pa.Table.from_pylist(rows, schema=table("neighborhoods").schema))
-        for name, data in (("domains", domains), ("clusters", clusters), ("protein_len", protein_len),
-                           ("genome_of", genome_of), ("genome_member", genome_member)):
+        for name, data in (("domains", domains), ("round_domains", round_domains), ("clusters", clusters),
+                           ("protein_len", protein_len), ("genome_of", genome_of), ("genome_member", genome_member)):
             t = data if isinstance(data, pa.Table) else pa.Table.from_pylist(data or [], schema=_SUMMARY_SCHEMAS[name])
             con.register(name, t)
-        sp_rows = [{"protein_uid": u} for u in sorted(set(scanned_proteins))] if scanned_proteins is not None else []
+        sp_uids: set[bytes] = set()
+        if scanned_proteins is not None:
+            sp_uids.update(scanned_proteins)
+        if round_coverage is not None:
+            sp_uids.update(round_coverage)
+        sp_rows = [{"protein_uid": u} for u in sorted(sp_uids)]
         con.register("scanned_proteins", pa.Table.from_pylist(sp_rows, schema=_SUMMARY_SCHEMAS["scanned_proteins"]))
         con.execute("CREATE VIEW members AS SELECT member_uid, level, cluster_uid, rep_uid FROM clusters")
-        return _aggregate(con, by, top_n, track_unscanned=scanned_proteins is not None)
+        has_rounds = round_domains is not None or round_coverage is not None
+        return _aggregate(con, by, top_n,
+                          track_unscanned=(scanned_proteins is not None or round_coverage is not None),
+                          has_rounds=has_rounds)
     finally:
         con.close()
 
@@ -514,6 +579,16 @@ def slow_path_note(release: str | None, lookup: str, source: str) -> None:
         _NOTED.add((release, lookup, source))
     print(f"note: release {release} has no {lookup} files (built before card B-27); reading {source} instead "
           f"(the slow path: every row group is scanned)", file=sys.stderr)
+
+
+def _merged_round_files(root: Path, name: str, release: str | None, manifest) -> list[tuple[Path, dict]]:
+    """The release's merged `release=` files for `round_domains` or `round_coverage` (O(1) row-group lookup,
+    card C-38g), falling back to per-round files only when no merged `release=` file exists."""
+    if release is not None:
+        merged = _store_files(root, name, {"release": release}, manifest)
+        if merged:
+            return merged
+    return _store_files(root, name, {}, manifest)
 
 
 def _store_files(root: Path, name: str, want: dict[str, str], manifest) -> list[tuple[Path, dict]]:
@@ -599,10 +674,16 @@ def summarize(root: Path, anchors: set[bytes], policy: Policy, by=("pfam", "nr50
                     slow_path_note(release, "member_cluster", "cluster_member")
             _store_view(con, name, found, select, parts)
             largest = max(largest, catalog.row_groups_of(p for p, _ in found))
-        scanned = [(p, parts) for p, parts in prot_files if str(parts.get("stage")) in dom_stages]
+        rdom_files = _merged_round_files(root, "round_domains", release, files)
+        rcov_files = _merged_round_files(root, "round_coverage", release, files)
+        has_rounds = bool(rdom_files or rcov_files)
+        _store_view(con, "round_domains", rdom_files, "protein_uid, model_acc, model_name", ("library",))
+        largest = max(largest, catalog.row_groups_of(p for p, _ in rdom_files),
+                      catalog.row_groups_of(p for p, _ in rcov_files))
+        scanned = [(p, parts) for p, parts in prot_files if str(parts.get("stage")) in dom_stages] + rcov_files
         _store_view(con, "scanned_proteins", scanned, "protein_uid", ())
         catalog.set_join_key_filter(con, largest)  # keys from _nb prune to the row groups that hold them (card B-27)
-        out = _aggregate(con, by, top_n, track_unscanned=True)
+        out = _aggregate(con, by, top_n, track_unscanned=True, has_rounds=has_rounds)
     finally:
         con.close()
     out["header"] = {"release": release, "tape_version": counts["tape_version"], "policy": asdict(policy),
