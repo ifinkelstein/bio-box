@@ -227,6 +227,98 @@ _SEEN = pa.schema([
 ])
 
 
+_DROPPED = pa.schema([
+    ("contig_uid", pa.binary(16)),
+    ("contig_len", pa.int64()),
+])
+
+
+def _check_min_contig_len(min_contig_len: int | None) -> int | None:
+    """Validate `--min-contig-len` (card C-38d, DEC-54): None or a positive integer."""
+    if min_contig_len is None:
+        return None
+    if isinstance(min_contig_len, bool) or not isinstance(min_contig_len, int) or min_contig_len < 1:
+        raise ValueError(f"--min-contig-len {min_contig_len!r}: must be an integer >= 1")
+    return min_contig_len
+
+
+def _genome_input_files(root: Path, out: Path | None, stage: str) -> list[Path]:
+    """The stage's `genome_input` files in `out` or `root` when already written (`stage inputs` runs before ingest)."""
+    rel = f"{table('genome_input').location}/stage={stage}"
+    bases = ([Path(out).resolve()] if out is not None else []) + [Path(root).resolve()]
+    for base in dict.fromkeys(bases):
+        files = io.part_files(base / rel)
+        if files:
+            return files
+    return []
+
+
+def _check_genome_input(
+    con,
+    gi_files: list[Path],
+    stage: str,
+    min_contig_len: int,
+    *,
+    dropped_path: Path | None = None,
+    full_stage: bool = True,
+) -> None:
+    """Refuse `genome_input` that disagrees with `--min-contig-len` (card C-38d, design note §5.1):
+    a contig of `genome_input` shorter than `min_contig_len` (in this stage's dropped records or held by an
+    earlier stage), a contig of `genome_input` absent from the `>= min_contig_len` contigs, or a contig
+    `>= min_contig_len` of this stage's source objects missing from `genome_input`. One streamed DuckDB check."""
+    con.execute(f"CREATE OR REPLACE TEMP VIEW gi_cu AS SELECT DISTINCT contig_uid "
+                f"FROM read_parquet({_sql_files(gi_files)}, hive_partitioning = false)")
+    missing = con.execute(
+        "SELECT s.contig_uid, min(s.contig_len) FROM seen s "
+        "ANTI JOIN gi_cu g ON g.contig_uid = s.contig_uid "
+        "GROUP BY s.contig_uid ORDER BY s.contig_uid LIMIT 1"
+    ).fetchall()
+    if missing:
+        cu, clen = missing[0]
+        raise ValueError(
+            f"stage {stage}: contig {bytes(cu).hex()} ({int(clen)} bp >= --min-contig-len {min_contig_len}) "
+            "is in the source objects and missing from genome_input"
+        )
+    if dropped_path is not None:
+        short_in_gi = con.execute(
+            f"SELECT d.contig_uid, min(d.contig_len) FROM read_parquet({_sql_path(dropped_path)}) d "
+            "SEMI JOIN gi_cu g ON g.contig_uid = d.contig_uid "
+            "GROUP BY d.contig_uid ORDER BY d.contig_uid LIMIT 1"
+        ).fetchall()
+        if short_in_gi:
+            cu, clen = short_in_gi[0]
+            raise ValueError(
+                f"stage {stage}: genome_input lists contig {bytes(cu).hex()} "
+                f"({int(clen)} bp < --min-contig-len {min_contig_len})"
+            )
+    short_held = con.execute(
+        f"SELECT o.contig_uid, min(o.contig_len) FROM old_idx o "
+        f"SEMI JOIN gi_cu g ON g.contig_uid = o.contig_uid "
+        f"WHERE o.is_default_variant AND o.contig_len < {int(min_contig_len)} "
+        "GROUP BY o.contig_uid ORDER BY o.contig_uid LIMIT 1"
+    ).fetchall()
+    if short_held:
+        cu, clen = short_held[0]
+        raise ValueError(
+            f"stage {stage}: genome_input lists contig {bytes(cu).hex()} "
+            f"({int(clen)} bp < --min-contig-len {min_contig_len}, held by an earlier stage)"
+        )
+    if full_stage:
+        unknown = con.execute(
+            f"SELECT g.contig_uid FROM gi_cu g ANTI JOIN ("
+            "SELECT DISTINCT contig_uid FROM seen "
+            "UNION ALL "
+            f"SELECT DISTINCT contig_uid FROM old_idx WHERE is_default_variant AND contig_len >= {int(min_contig_len)}"
+            ") have ON have.contig_uid = g.contig_uid ORDER BY g.contig_uid LIMIT 1"
+        ).fetchall()
+        if unknown:
+            (cu,) = unknown[0]
+            raise ValueError(
+                f"stage {stage}: genome_input lists contig {bytes(cu).hex()}, which is not among the contigs "
+                f">= --min-contig-len {min_contig_len}"
+            )
+
+
 class _Scratch:
     """An unsorted Parquet file written in row groups of `SCRATCH_FLUSH_ROWS` rows."""
 
@@ -367,13 +459,18 @@ def ingest(
     max_file_bytes: int = layout.MAX_FILE_BYTES,
     out: Path | None = None,
     _hook: Callable[[str], None] | None = None,
+    min_contig_len: int | None = None,
 ) -> dict:
     """Ingest FASTA source objects for one stage. Returns counts for the ledger.
 
     Batch ingest (card B-15; AGENTS §4.1, §4.3). The objects are taken in ascending sha256, so no
     output depends on the order of `objects`. Pass 1 streams every record once into a private
-    scratch table (sequences are hashed and dropped). One DuckDB connection then decides which
-    digests are new (an anti-join against the earlier stages' `seq_locator` files), the first
+    scratch table (sequences are hashed and dropped). When `min_contig_len` is given (card C-38d,
+    DEC-54), records shorter than `min_contig_len` bases are dropped before the held-contig check,
+    counted under `below:<min_contig_len>` with `n_bases_in` and `n_bases_rejected` in the ingest
+    ledger, and any `genome_input` on disk that disagrees is refused before anything is written.
+    One DuckDB connection then decides which digests are new (an anti-join against the earlier
+    stages' `seq_locator` files), the first
     occurrence of each by (object sha256, record ordinal), and the stage's `contig_index` rows.
     Pass 2 re-reads the objects batch by batch (`_batches`) and writes one shard per batch, its new
     sequences sorted by `raw_digest`; only one batch's sequences are held at a time. Pass 2 refuses a
@@ -402,6 +499,7 @@ def ingest(
     "pass1", "shard:<j>" after each shard, "contig_occurrence", "contig_label", "contig_index",
     "seq_locator", "ledger", "l0_manifest"; an exception it raises is not caught.
     """
+    min_contig_len = _check_min_contig_len(min_contig_len)
     root = Path(root)
     out = root if out is None else Path(out)
     hook = _hook or _no_hook
@@ -415,30 +513,50 @@ def ingest(
 
     ordered = _object_order(objects)
     old_loc, old_idx = locator_files(root), index_files(root)  # the earlier stages', read before writing
+    gi_files = _genome_input_files(root, out, stage) if min_contig_len is not None else []
     scratch = Path(tempfile.mkdtemp(prefix="biobox-ingest-", dir=tmp))
     try:
         # pass 1: every record once; occurrence and decision columns to scratch, sequences dropped
         seen_path = scratch / "seen.parquet"
         seen = _Scratch(seen_path, _SEEN)
+        dropped_path = scratch / "dropped.parquet" if gi_files else None
+        dropped = _Scratch(dropped_path, _DROPPED) if dropped_path is not None else None
         n_in = [0] * len(ordered)
+        bases_in = [0] * len(ordered)
+        n_rejected = [0] * len(ordered)
+        bases_rejected = [0] * len(ordered)
         stats = [_stat(obj.path) for _, obj in ordered]
         try:
             for i, (sha, obj) in enumerate(ordered):
                 src_uid = ids.source_uid(obj.source_name, obj.source_release)
                 for k, rec in enumerate(fasta.iter_records(Path(obj.path))):
-                    seen.add((obj.source_name, src_uid, obj.source_release, sha, k, rec.accession, rec.header,
-                              ids.raw_digest(rec.seq), ids.contig_uid(rec.seq), rec.line_width, len(rec.seq),
-                              obj.precedence, i))
+                    rlen = len(rec.seq)
                     n_in[i] = k + 1
+                    bases_in[i] += rlen
+                    if min_contig_len is not None and rlen < min_contig_len:
+                        n_rejected[i] += 1
+                        bases_rejected[i] += rlen
+                        if dropped is not None:
+                            dropped.add((ids.contig_uid(rec.seq), rlen))
+                        continue
+                    seen.add((obj.source_name, src_uid, obj.source_release, sha, k, rec.accession, rec.header,
+                              ids.raw_digest(rec.seq), ids.contig_uid(rec.seq), rec.line_width, rlen,
+                              obj.precedence, i))
                 rec = None
         finally:
             seen.close()
+            if dropped is not None:
+                dropped.close()
         hook("pass1")
         con = duckdb.connect(config={"threads": 1, "memory_limit": DUCK_MEMORY_LIMIT,
                                      "temp_directory": str(scratch / "duckdb"), "preserve_insertion_order": True})
         try:
-            report = _decide_and_write(con, root, out, stage, ordered, n_in, stats, seen_path, old_loc, old_idx,
-                                       scratch, shard_bases, line_width, max_file_bytes, hook)
+            report = _decide_and_write(
+                con, root, out, stage, ordered, n_in, stats, seen_path, old_loc, old_idx,
+                scratch, shard_bases, line_width, max_file_bytes, hook,
+                min_contig_len=min_contig_len, n_rejected=n_rejected, bases_in=bases_in,
+                bases_rejected=bases_rejected, gi_files=gi_files, dropped_path=dropped_path,
+            )
         finally:
             con.close()
     finally:
@@ -523,12 +641,34 @@ def _write_l0_manifest(out: Path, stage: str, ordered: list[tuple[bytes, SourceO
     io.write_parts(tbl, spec, out / MANIFEST_DIR / f"stage={stage}", EST_MANIFEST_ROW, max_file_bytes)
 
 
-def _decide_and_write(con, root: Path, out: Path, stage: str, ordered: list[tuple[bytes, SourceObject]],
-                      n_in: list[int], stats: list[tuple[int, int]], seen_path: Path, old_loc: list[Path],
-                      old_idx: list[Path], scratch: Path, shard_bases: int, line_width: int, max_file_bytes: int,
-                      hook: Callable[[str], None]) -> dict:
+def _decide_and_write(
+    con,
+    root: Path,
+    out: Path,
+    stage: str,
+    ordered: list[tuple[bytes, SourceObject]],
+    n_in: list[int],
+    stats: list[tuple[int, int]],
+    seen_path: Path,
+    old_loc: list[Path],
+    old_idx: list[Path],
+    scratch: Path,
+    shard_bases: int,
+    line_width: int,
+    max_file_bytes: int,
+    hook: Callable[[str], None],
+    *,
+    min_contig_len: int | None = None,
+    n_rejected: list[int] | None = None,
+    bases_in: list[int] | None = None,
+    bases_rejected: list[int] | None = None,
+    gi_files: list[Path] = (),
+    dropped_path: Path | None = None,
+) -> dict:
     con.execute(f"CREATE VIEW seen AS SELECT * FROM read_parquet({_sql_path(seen_path)})")
     _old_views(con, old_loc, old_idx)
+    if min_contig_len is not None and gi_files:
+        _check_genome_input(con, list(gi_files), stage, min_contig_len, dropped_path=dropped_path, full_stage=True)
     kept, batches, _ = _decide(con, scratch / "new_seq.parquet", len(ordered), shard_bases)
     shard_of = _shard_paths(stage, len(batches))
 
@@ -546,7 +686,10 @@ def _decide_and_write(con, root: Path, out: Path, stage: str, ordered: list[tupl
             hook(f"shard:{j}")
     finally:
         wanted.close()
-    return _write_tables(con, out, stage, ordered, n_in, kept, batches, max_file_bytes, hook)
+    return _write_tables(
+        con, out, stage, ordered, n_in, kept, batches, max_file_bytes, hook,
+        min_contig_len=min_contig_len, n_rejected=n_rejected, bases_in=bases_in, bases_rejected=bases_rejected,
+    )
 
 
 def _old_views(con, old_loc: list[Path], old_idx: list[Path]) -> None:
@@ -555,9 +698,10 @@ def _old_views(con, old_loc: list[Path], old_idx: list[Path]) -> None:
         f"SELECT raw_digest FROM read_parquet({_sql_files(old_loc)}, union_by_name = true)" if old_loc
         else "SELECT NULL::BLOB AS raw_digest WHERE false"))
     con.execute("CREATE VIEW old_idx AS " + (
-        f"SELECT contig_uid, raw_digest, is_default_variant FROM read_parquet({_sql_files(old_idx)}, "
+        f"SELECT contig_uid, raw_digest, contig_len, is_default_variant FROM read_parquet({_sql_files(old_idx)}, "
         "union_by_name = true)" if old_idx
-        else "SELECT NULL::BLOB AS contig_uid, NULL::BLOB AS raw_digest, NULL::BOOLEAN AS is_default_variant WHERE false"))
+        else "SELECT NULL::BLOB AS contig_uid, NULL::BLOB AS raw_digest, NULL::BIGINT AS contig_len, "
+             "NULL::BOOLEAN AS is_default_variant WHERE false"))
 
 
 def _shard_paths(stage: str, n: int) -> list[str]:
@@ -613,8 +757,22 @@ def _write_shard(path: Path, members: list[tuple[int, Path]], wanted, nxt, check
     return nxt
 
 
-def _write_tables(con, out: Path, stage: str, ordered: list[tuple[bytes, SourceObject]], n_in: list[int],
-                  kept: list[int], batches: list[list[int]], max_file_bytes: int, hook: Callable[[str], None]) -> dict:
+def _write_tables(
+    con,
+    out: Path,
+    stage: str,
+    ordered: list[tuple[bytes, SourceObject]],
+    n_in: list[int],
+    kept: list[int],
+    batches: list[list[int]],
+    max_file_bytes: int,
+    hook: Callable[[str], None],
+    *,
+    min_contig_len: int | None = None,
+    n_rejected: list[int] | None = None,
+    bases_in: list[int] | None = None,
+    bases_rejected: list[int] | None = None,
+) -> dict:
     """The stage's tables but `l0_manifest`, over the views `seen`, `old_idx` and `new_seq`, from one connection:
     `contig_occurrence`, `contig_label`, `contig_index`, `seq_locator` (each sequence's shard is its batch's) and
     the ledger, in that order, `hook` called after each. Returns ingest's counts."""
@@ -674,14 +832,36 @@ def _write_tables(con, out: Path, stage: str, ordered: list[tuple[bytes, SourceO
 
     hook("seq_locator")
 
-    # ledger: per object, records in; kept = sequences first stored from it; merged = the rest. The
-    # objects are in sha256 order, the ledger's sort key; rows stream to the writer
+    # ledger: per object, records in; kept = sequences first stored from it; merged = the rest (or, with
+    # --min-contig-len L, rejected = records < L under reason `below:<L>`, with n_bases_in and n_bases_rejected
+    # populated; card C-38d). Objects are in sha256 order and `below:<L>` < `ok`, the ledger's sort key.
     tools = provenance.tool_versions("pyarrow")
-    ledger.write(out, stage, "ingest", (ledger.row(sha, "l0_object", n_in[i], kept[i], n_in[i] - kept[i], tools=tools)
-                                        for i, (sha, _) in enumerate(ordered)))
+
+    def _ledger_rows():
+        for i, (sha, _) in enumerate(ordered):
+            if min_contig_len is None:
+                yield ledger.row(sha, "l0_object", n_in[i], kept[i], n_in[i] - kept[i], tools=tools)
+            else:
+                assert n_rejected is not None and bases_in is not None and bases_rejected is not None
+                merged_i = n_in[i] - n_rejected[i] - kept[i]
+                yield ledger.row(
+                    sha, "l0_object", n_in[i], kept[i], merged_i, n_rejected=n_rejected[i],
+                    reason=ledger.below_len_reason(min_contig_len), tools=tools,
+                    n_bases_in=bases_in[i], n_bases_rejected=bases_rejected[i],
+                )
+                yield ledger.row(
+                    sha, "l0_object", n_in[i], kept[i], merged_i, n_rejected=0,
+                    reason="ok", tools=tools, n_bases_in=bases_in[i], n_bases_rejected=0,
+                )
+
+    ledger.write(out, stage, "ingest", _ledger_rows())
     hook("ledger")
-    return {"objects": len(ordered), "records": sum(n_in), "new_sequences": n_new, "index_rows": n_idx,
-            "shards": len(batches)}
+    res = {"objects": len(ordered), "records": sum(n_in), "new_sequences": n_new, "index_rows": n_idx,
+           "shards": len(batches)}
+    if min_contig_len is not None and n_rejected is not None and bases_rejected is not None:
+        res["rejected_records"] = sum(n_rejected)
+        res["rejected_bases"] = sum(bases_rejected)
+    return res
 
 
 # --- ingest by batch processes (card B-30) -----------------------------------------------------------------
@@ -829,11 +1009,19 @@ def _duck(scratch: Path):
                                   "temp_directory": str(Path(scratch) / "duckdb"), "preserve_insertion_order": True})
 
 
-def _pass1_run(order: list[SourceObject], members: list[int], path: Path) -> list[dict]:
+def _pass1_run(
+    order: list[SourceObject],
+    members: list[int],
+    path: Path,
+    *,
+    min_contig_len: int | None = None,
+    dropped_path: Path | None = None,
+) -> list[dict]:
     """Pass 1 over the objects `members` (indices into `order`): their records into the scratch run `path`, as
     `ingest` writes them, `obj_idx` being the pass-1 index. Returns each object's name, size, sha256, records and
-    bases."""
+    bases (and `rejected_records` / `rejected_bases` when `min_contig_len` is given, card C-38d)."""
     seen = _Scratch(path, _SEEN)
+    dropped = _Scratch(dropped_path, _DROPPED) if dropped_path is not None else None
     docs = []
     try:
         for ci in members:
@@ -841,31 +1029,46 @@ def _pass1_run(order: list[SourceObject], members: list[int], path: Path) -> lis
             src = Path(obj.path)
             size, sha = src.stat().st_size, ids.sha256_file(src)
             src_uid = ids.source_uid(obj.source_name, obj.source_release)
-            n = bases = 0
+            n = bases = n_rej = bases_rej = 0
             for k, rec in enumerate(fasta.iter_records(src)):
+                rlen = len(rec.seq)
+                n, bases = k + 1, bases + rlen
+                if min_contig_len is not None and rlen < min_contig_len:
+                    n_rej += 1
+                    bases_rej += rlen
+                    if dropped is not None:
+                        dropped.add((ids.contig_uid(rec.seq), rlen))
+                    continue
                 seen.add((obj.source_name, src_uid, obj.source_release, sha, k, rec.accession, rec.header,
-                          ids.raw_digest(rec.seq), ids.contig_uid(rec.seq), rec.line_width, len(rec.seq),
+                          ids.raw_digest(rec.seq), ids.contig_uid(rec.seq), rec.line_width, rlen,
                           obj.precedence, ci))
-                n, bases = k + 1, bases + len(rec.seq)
             rec = None
-            docs.append({"index": ci, "name": src.name, "bytes": size, "sha256": sha.hex(), "records": n,
-                         "bases": bases})
+            doc = {"index": ci, "name": src.name, "bytes": size, "sha256": sha.hex(), "records": n, "bases": bases}
+            if min_contig_len is not None:
+                doc["rejected_records"] = n_rej
+                doc["rejected_bases"] = bases_rej
+            docs.append(doc)
     finally:
         seen.close()
+        if dropped is not None:
+            dropped.close()
     return docs
 
 
 def ingest_pass1(objects: list[SourceObject], root: Path, stage: str, k: int, pass1_bytes: int,
                  shard_bases: int = SHARD_BASES, line_width: int = LINE_WIDTH, tmp: Path | None = None,
-                 out: Path | None = None, runs_tmp: Path | None = None) -> dict:
+                 out: Path | None = None, runs_tmp: Path | None = None,
+                 min_contig_len: int | None = None) -> dict:
     """Pass 1 of shard `k` of `pass1_shards(objects, pass1_bytes)`: its run into scratch (`ingest_runs_dir` under
     `runs_tmp`, the scratch the batch steps share; default `tmp`, this step's own) and its record under `out`
     (default `root`). Refuses, before it reads a source, a stage whose ingest files exist, a shard whose record or
     a plan exists (in `root` or `out`), and store parameters other than the store's."""
+    min_contig_len = _check_min_contig_len(min_contig_len)
     root = Path(root)
     out = root if out is None else Path(out)
     ledger.check_scratch(tmp, root, out)
     ledger.check_scratch(runs_tmp, root, out)
+    duck_tmp = tmp
     tmp = _runs_base(tmp, runs_tmp)
     _refuse_stage_written(root, out, stage, stage_dirs(stage))
     shards = pass1_shards(objects, pass1_bytes)
@@ -877,18 +1080,40 @@ def ingest_pass1(objects: list[SourceObject], root: Path, stage: str, k: int, pa
             raise FileExistsError(f"{r}: {what} of stage {stage} is written already; refusing to run it again")
     params = _params(shard_bases, line_width)
     _check_params(root, out, params)
+    gi_files = _genome_input_files(root, out, stage) if min_contig_len is not None else []
     path = ingest_runs_dir(tmp, root, stage) / f"pass1-{k:05d}.parquet"
     path.parent.mkdir(parents=True, exist_ok=True)
     part = path.with_name(f".{path.name}.tmp-{os.getpid()}")
+    dropped_part = path.with_name(f".{path.name}.dropped-{os.getpid()}") if gi_files else None
     try:
-        docs = _pass1_run(pass1_order(objects), shards[k], part)
+        docs = _pass1_run(pass1_order(objects), shards[k], part, min_contig_len=min_contig_len,
+                          dropped_path=dropped_part)
+        if min_contig_len is not None and gi_files:
+            scratch = Path(tempfile.mkdtemp(prefix="biobox-ingest-pass1-check-", dir=duck_tmp))
+            try:
+                con = _duck(scratch)
+                try:
+                    con.execute(f"CREATE VIEW seen AS SELECT * FROM read_parquet({_sql_path(part)})")
+                    _old_views(con, locator_files(root), index_files(root))
+                    _check_genome_input(con, gi_files, stage, min_contig_len,
+                                        dropped_path=dropped_part, full_stage=(len(shards) == 1))
+                finally:
+                    con.close()
+            finally:
+                shutil.rmtree(scratch, ignore_errors=True)
     except BaseException:
         part.unlink(missing_ok=True)
+        if dropped_part is not None:
+            dropped_part.unlink(missing_ok=True)
         raise
+    if dropped_part is not None:
+        dropped_part.unlink(missing_ok=True)
     os.replace(part, path)  # a run left by an attempt that died before its record is replaced
     rec = {"format": PLAN_FORMAT, "stage": stage, "shard": k, "shards": len(shards), "pass1_bytes": pass1_bytes,
            "store_params": params, "objects": docs, "records": sum(d["records"] for d in docs),
            "run_sha256": ids.sha256_file(path).hex(), "run_bytes": path.stat().st_size}
+    if min_contig_len is not None:
+        rec["min_contig_len"] = min_contig_len
     _write_once(root, out, rel, _json_bytes(rec), f"the record of pass-1 shard {k}")
     return {"shard": k, "shards": len(shards), "objects": len(docs), "records": rec["records"]}
 
@@ -939,34 +1164,51 @@ def _sha_order(order: list[SourceObject], recs: list[tuple[bytes, dict]]) -> lis
                                                             ci))]
 
 
-def _make_plan(order: list[SourceObject], recs: list[tuple[bytes, dict]], runs: list[Path], root: Path, stage: str,
-               params: dict, dest: Path, tmp: Path | None) -> dict:
+def _make_plan(
+    order: list[SourceObject],
+    recs: list[tuple[bytes, dict]],
+    runs: list[Path],
+    root: Path,
+    stage: str,
+    params: dict,
+    dest: Path,
+    tmp: Path | None,
+    *,
+    min_contig_len: int | None = None,
+    out: Path | None = None,
+) -> dict:
     """`ingest`'s decisions over the pass-1 runs: the decision table written to `dest`, the plan returned."""
     docs = _sha_order(order, recs)
     obj_of = [0] * len(order)
     for rank, d in enumerate(docs):
         obj_of[d["index"]] = rank
     earlier = _earlier(root)
+    gi_files = _genome_input_files(root, out, stage) if min_contig_len is not None else []
     scratch = Path(tempfile.mkdtemp(prefix="biobox-ingest-plan-", dir=tmp))
     try:
         con = _duck(scratch)
         try:
             _seen_view(con, runs, obj_of)
             _old_views(con, locator_files(root), index_files(root))
+            if min_contig_len is not None and gi_files:
+                _check_genome_input(con, gi_files, stage, min_contig_len, full_stage=True)
             kept, batches, new_bases = _decide(con, dest, len(docs), params["shard_bases"])
         finally:
             con.close()
     finally:
         shutil.rmtree(scratch, ignore_errors=True)
     shard_of = _shard_paths(stage, len(batches))
-    return {"format": PLAN_FORMAT, "stage": stage, "store_params": params, "pass1_bytes": recs[0][1]["pass1_bytes"],
-            "pass1_sha256": [hashlib.sha256(raw).hexdigest() for raw, _ in recs], "earlier": earlier,
-            "objects": [{**d, "kept": kept[i], "kept_bases": new_bases[i]} for i, d in enumerate(docs)],
-            "batches": [{"shard": shard_of[j], "objects": b, "new_sequences": sum(kept[i] for i in b),
-                         "new_bases": sum(new_bases[i] for i in b), "bases_read": sum(docs[i]["bases"] for i in b)}
-                        for j, b in enumerate(batches)],
-            "records": sum(d["records"] for d in docs), "new_sequences": sum(kept),
-            "new_seq_sha256": ids.sha256_file(dest).hex(), "new_seq_bytes": dest.stat().st_size}
+    plan_doc = {"format": PLAN_FORMAT, "stage": stage, "store_params": params, "pass1_bytes": recs[0][1]["pass1_bytes"],
+                "pass1_sha256": [hashlib.sha256(raw).hexdigest() for raw, _ in recs], "earlier": earlier,
+                "objects": [{**d, "kept": kept[i], "kept_bases": new_bases[i]} for i, d in enumerate(docs)],
+                "batches": [{"shard": shard_of[j], "objects": b, "new_sequences": sum(kept[i] for i in b),
+                             "new_bases": sum(new_bases[i] for i in b), "bases_read": sum(docs[i]["bases"] for i in b)}
+                            for j, b in enumerate(batches)],
+                "records": sum(d["records"] for d in docs), "new_sequences": sum(kept),
+                "new_seq_sha256": ids.sha256_file(dest).hex(), "new_seq_bytes": dest.stat().st_size}
+    if min_contig_len is not None:
+        plan_doc["min_contig_len"] = min_contig_len
+    return plan_doc
 
 
 def _runs(recs: list[tuple[bytes, dict]], tmp: Path | None, root: Path, stage: str) -> list[Path]:
@@ -977,11 +1219,12 @@ def _runs(recs: list[tuple[bytes, dict]], tmp: Path | None, root: Path, stage: s
 
 def ingest_plan(objects: list[SourceObject], root: Path, stage: str, shard_bases: int = SHARD_BASES,
                 line_width: int = LINE_WIDTH, tmp: Path | None = None, out: Path | None = None,
-                runs_tmp: Path | None = None) -> dict:
+                runs_tmp: Path | None = None, min_contig_len: int | None = None) -> dict:
     """The stage's decisions from its pass-1 runs: the decision table into scratch (both under `runs_tmp`, default
     `tmp`; DuckDB spills into `tmp`), the plan under `out` (default `root`). Needs every pass-1 record and a run
     with its sha256. Refuses a stage whose ingest files or plan exist, and store parameters other than the store's
     or the pass-1 records'."""
+    min_contig_len = _check_min_contig_len(min_contig_len)
     root = Path(root)
     out = root if out is None else Path(out)
     ledger.check_scratch(tmp, root, out)
@@ -996,11 +1239,16 @@ def ingest_plan(objects: list[SourceObject], root: Path, stage: str, shard_bases
     order, recs = _pass1_records(objects, root, out, stage)
     if any(r["store_params"] != params for _, r in recs):
         raise ValueError(f"stage {stage}: the pass-1 records were made with other store parameters than {params}")
+    if any(r.get("min_contig_len") != min_contig_len for _, r in recs):
+        raise ValueError(
+            f"stage {stage}: the pass-1 records were made with another --min-contig-len than {min_contig_len!r}"
+        )
     runs = _runs(recs, shared, root, stage)
     dest = ingest_runs_dir(shared, root, stage) / NEW_SEQ
     part = dest.with_name(f".{dest.name}.tmp-{os.getpid()}")
     try:
-        doc = _make_plan(order, recs, runs, root, stage, params, part, tmp)
+        doc = _make_plan(order, recs, runs, root, stage, params, part, tmp,
+                         min_contig_len=min_contig_len, out=out)
     except BaseException:
         part.unlink(missing_ok=True)
         raise
@@ -1107,15 +1355,25 @@ def ingest_merge(objects: list[SourceObject], root: Path, stage: str, tmp: Path 
     obj_of = [0] * len(order)
     for rank, d in enumerate(docs):
         obj_of[d["index"]] = rank
+    min_contig_len = _check_min_contig_len(plan.get("min_contig_len"))
+    gi_files = _genome_input_files(root, out, stage) if min_contig_len is not None else []
     scratch = Path(tempfile.mkdtemp(prefix="biobox-ingest-merge-", dir=tmp))
     try:
         con = _duck(scratch)
         try:
             _seen_view(con, runs, obj_of)
             _old_views(con, locator_files(root), index_files(root))
+            if min_contig_len is not None and gi_files:
+                _check_genome_input(con, gi_files, stage, min_contig_len, full_stage=True)
             con.execute(f"CREATE VIEW new_seq AS SELECT * FROM read_parquet({_sql_path(new)})")
-            report = _write_tables(con, out, stage, ordered, [d["records"] for d in docs], [d["kept"] for d in docs],
-                                   [b["objects"] for b in plan["batches"]], max_file_bytes, hook)
+            report = _write_tables(
+                con, out, stage, ordered, [d["records"] for d in docs], [d["kept"] for d in docs],
+                [b["objects"] for b in plan["batches"]], max_file_bytes, hook,
+                min_contig_len=min_contig_len,
+                n_rejected=None if min_contig_len is None else [d["rejected_records"] for d in docs],
+                bases_in=None if min_contig_len is None else [d["bases"] for d in docs],
+                bases_rejected=None if min_contig_len is None else [d["rejected_bases"] for d in docs],
+            )
         finally:
             con.close()
     finally:
@@ -1168,7 +1426,7 @@ def rescan_pass1(objects: list[SourceObject], root: Path, stage: str, k: int, tm
     path.parent.mkdir(parents=True, exist_ok=True)
     new = path.with_name(f".rescan-{os.getpid()}-{path.name}")
     try:
-        docs = _pass1_run(order, shards[k], new)
+        docs = _pass1_run(order, shards[k], new, min_contig_len=_check_min_contig_len(rec.get("min_contig_len")))
     except BaseException:
         new.unlink(missing_ok=True)
         raise
@@ -1197,7 +1455,8 @@ def rescan_plan(objects: list[SourceObject], root: Path, stage: str, tmp: Path |
     dest = ingest_runs_dir(tmp, root, stage) / NEW_SEQ
     new = dest.with_name(f".rescan-{os.getpid()}-{dest.name}")
     try:
-        doc = _make_plan(order, recs, runs, root, stage, plan["store_params"], new, tmp)
+        doc = _make_plan(order, recs, runs, root, stage, plan["store_params"], new, tmp,
+                         min_contig_len=_check_min_contig_len(plan.get("min_contig_len")))
     except BaseException:
         new.unlink(missing_ok=True)
         raise
@@ -1263,8 +1522,11 @@ def write_labels(root: Path, stage: str, *, out: Path | None = None, tmp: Path |
             con.execute(f"CREATE VIEW seen AS SELECT {', '.join(_LABEL_COLUMNS)}, 0::UINTEGER AS obj_idx "
                         f"FROM read_parquet({_sql_files(files)}, hive_partitioning = false)")
             (n_records, n_contigs), = con.execute("SELECT count(*), count(DISTINCT contig_uid) FROM seen").fetchall()
-            (n_in,), = con.execute(f"SELECT coalesce(sum(n_in), 0) FROM read_parquet({_sql_path(ingested)}, "
-                                   "hive_partitioning = false)").fetchall()
+            (n_in,), = con.execute(
+                "SELECT coalesce(sum(k), 0) FROM ("
+                "SELECT min(n_in)::HUGEINT - coalesce(sum(n_rejected), 0)::HUGEINT AS k "
+                f"FROM read_parquet({_sql_path(ingested)}, hive_partitioning = false) GROUP BY object_key)"
+            ).fetchall()
             if n_records != n_in:
                 raise ValueError(f"stage {stage}: its contig_occurrence holds {n_records} records, its ingest ledger "
                                  f"counts {n_in}; the stage is not as ingest left it")

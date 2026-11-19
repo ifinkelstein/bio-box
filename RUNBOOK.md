@@ -127,7 +127,11 @@ gene calling, optional default `--crispr`, IGRs and tapes (refused with `--libra
 `--crispr` and Pfam are given (refused without `--library`). When `--depth` is omitted it defaults to
 `annotated` if a `--library` is given, else `called`. Omit `--release` to build the stage alone without
 running the release steps; a stage built `--depth called` and later resumed with `--depth annotated
---library ...` produces the same files byte for byte as one built `annotated` at once. Appendix B makes
+--library ...` produces the same files byte for byte as one built `annotated` at once. `--min-contig-len L`
+(also on `bio-box stage ingest` and `make_inputs.py`; card C-38d, DEC-54) drops FASTA records shorter than `L`
+bases at ingest before the held-contig check, refuses a `genome_input` that disagrees with `L` before anything
+is written, and records the dropped records and bases under `below:<L>` with `n_bases_in` and `n_bases_rejected`
+in the ingest ledger (omitted by default, leaving both base columns null). Appendix B makes
 fixture inputs.
 
 Launch it once, detached. Use a new unit name for every launch.
