@@ -35,8 +35,11 @@ import pyarrow.parquet as pq
 
 from biobox import catalog, layout, ledger
 from biobox import io as bio
-from biobox.l1.domains import EST_COV_ROW_BYTES, EST_ROW_BYTES, FLUSH_PIECES
+from biobox.l1.domains import EST_COV_ROW_BYTES, EST_ROW_BYTES
 from biobox.registry.schemas import table
+
+_STREAM_BATCH = 4_096  # rows per Arrow batch read/flushed during k-way merge (bounds memory per round)
+_FLUSH_PIECES = 128
 
 
 def release_round_domains_dir(release: str, library: str) -> str:
@@ -73,25 +76,24 @@ def _round_libraries(root: Path, rid: str) -> dict[str, tuple[list[Path], list[P
     return {lib: (dom_libs[lib], cov_libs[lib]) for lib in sorted(dom_libs)}
 
 
-def _iter_domains_by_protein(files: list[Path], schema: pa.Schema) -> Iterator[tuple[bytes, pa.Table]]:
-    """Stream `(protein_uid, table_slice)` in strictly increasing `protein_uid` order, one row group at a time."""
+def _iter_domains_by_protein(files: list[Path], schema: pa.Schema) -> Iterator[tuple[bytes, list[pa.RecordBatch]]]:
+    """Stream `(protein_uid, record_batch_slices)` in strictly increasing `protein_uid` order, one small batch at a time."""
     held_uid: bytes | None = None
-    held_parts: list[pa.Table] = []
+    held_parts: list[pa.RecordBatch] = []
     last_emitted: bytes | None = None
 
     for path in files:
         pf = pq.ParquetFile(path)
-        for g in range(pf.metadata.num_row_groups):
-            t = pf.read_row_group(g, columns=schema.names)
-            if t.num_rows == 0:
+        for batch in pf.iter_batches(batch_size=_STREAM_BATCH, columns=schema.names, use_threads=False):
+            if batch.num_rows == 0:
                 continue
-            uids = t.column("protein_uid").to_pylist()
+            uids = batch.column("protein_uid").to_pylist()
             n = len(uids)
             start = 0
             for i in range(1, n):
                 if uids[i] != uids[start]:
                     u = uids[start]
-                    sl = t.slice(start, i - start)
+                    sl = batch.slice(start, i - start)
                     if held_uid == u:
                         held_parts.append(sl)
                     else:
@@ -99,13 +101,12 @@ def _iter_domains_by_protein(files: list[Path], schema: pa.Schema) -> Iterator[t
                             if last_emitted is not None and held_uid <= last_emitted:
                                 raise ValueError(f"{path}: round_domains not sorted by protein_uid")
                             last_emitted = held_uid
-                            yield held_uid, (held_parts[0] if len(held_parts) == 1 else pa.concat_tables(held_parts))
+                            yield held_uid, held_parts
                         held_uid = u
                         held_parts = [sl]
                     start = i
-            # Last run in this row group may continue into the next row group
             u = uids[start]
-            sl = t.slice(start, n - start)
+            sl = batch.slice(start, n - start)
             if held_uid == u:
                 held_parts.append(sl)
             else:
@@ -113,26 +114,25 @@ def _iter_domains_by_protein(files: list[Path], schema: pa.Schema) -> Iterator[t
                     if last_emitted is not None and held_uid <= last_emitted:
                         raise ValueError(f"{path}: round_domains not sorted by protein_uid")
                     last_emitted = held_uid
-                    yield held_uid, (held_parts[0] if len(held_parts) == 1 else pa.concat_tables(held_parts))
+                    yield held_uid, held_parts
                 held_uid = u
                 held_parts = [sl]
 
     if held_uid is not None:
         if last_emitted is not None and held_uid <= last_emitted:
             raise ValueError("round_domains not sorted by protein_uid")
-        yield held_uid, (held_parts[0] if len(held_parts) == 1 else pa.concat_tables(held_parts))
+        yield held_uid, held_parts
 
 
 def _iter_coverage(files: list[Path]) -> Iterator[tuple[bytes, int]]:
-    """Stream `(protein_uid, n_rows)` in strictly increasing `protein_uid` order, one row group at a time."""
+    """Stream `(protein_uid, n_rows)` in strictly increasing `protein_uid` order, one small batch at a time."""
     last: bytes | None = None
     for path in files:
         pf = pq.ParquetFile(path)
-        for g in range(pf.metadata.num_row_groups):
-            t = pf.read_row_group(g, columns=["protein_uid", "n_rows"])
-            if t.num_rows == 0:
+        for batch in pf.iter_batches(batch_size=_STREAM_BATCH, columns=["protein_uid", "n_rows"], use_threads=False):
+            if batch.num_rows == 0:
                 continue
-            for u, nr in zip(t.column("protein_uid").to_pylist(), t.column("n_rows").to_pylist()):
+            for u, nr in zip(batch.column("protein_uid").to_pylist(), batch.column("n_rows").to_pylist()):
                 if last is not None and u <= last:
                     raise ValueError(f"{path}: round_coverage not strictly increasing by protein_uid")
                 last = u
@@ -147,34 +147,36 @@ def _merge_domains_stream(
 ) -> Iterator[pa.Table]:
     """Streaming k-way merge of per-round `round_domains` by `protein_uid`; lowest round index wins on overlap."""
     iters = [_iter_domains_by_protein(files, spec.schema) for files in round_dom_files]
-    heap: list[tuple[bytes, int, pa.Table]] = []
+    heap: list[tuple[bytes, int, list[pa.RecordBatch]]] = []
     for idx, it in enumerate(iters):
         first = next(it, None)
         if first is not None:
             heapq.heappush(heap, (first[0], idx, first[1]))
 
-    pend: list[pa.Table] = []
+    pend: list[pa.RecordBatch] = []
     held = 0
     last_uid: bytes | None = None
+    flush_rows = min(row_group_rows, _STREAM_BATCH)
 
     while heap:
-        u, idx, tbl = heapq.heappop(heap)
+        u, idx, batches = heapq.heappop(heap)
         nxt = next(iters[idx], None)
         if nxt is not None:
             heapq.heappush(heap, (nxt[0], idx, nxt[1]))
         if u == last_uid:
             continue
         last_uid = u
-        pend.append(tbl)
-        held += tbl.num_rows
-        stats["domains"] += tbl.num_rows
+        pend.extend(batches)
+        n_u = sum(b.num_rows for b in batches)
+        held += n_u
+        stats["domains"] += n_u
         stats["proteins_with_hit"] += 1
-        if held >= row_group_rows or len(pend) >= FLUSH_PIECES:
-            yield pa.concat_tables(pend).combine_chunks() if len(pend) > 1 else pend[0]
+        if held >= flush_rows or len(pend) >= _FLUSH_PIECES:
+            yield pa.Table.from_batches(pend, schema=spec.schema).combine_chunks()
             pend, held = [], 0
 
     if pend:
-        yield pa.concat_tables(pend).combine_chunks() if len(pend) > 1 else pend[0]
+        yield pa.Table.from_batches(pend, schema=spec.schema).combine_chunks()
 
 
 def _merge_coverage_stream(
@@ -194,6 +196,7 @@ def _merge_coverage_stream(
     u_buf: list[bytes] = []
     n_buf: list[int] = []
     last_uid: bytes | None = None
+    flush_rows = min(row_group_rows, _STREAM_BATCH)
 
     while heap:
         u, idx, nr = heapq.heappop(heap)
@@ -206,7 +209,7 @@ def _merge_coverage_stream(
         u_buf.append(u)
         n_buf.append(nr)
         stats["proteins"] += 1
-        if len(u_buf) >= row_group_rows:
+        if len(u_buf) >= flush_rows:
             yield pa.RecordBatch.from_arrays(
                 [pa.array(u_buf, pa.binary(16)), pa.array(n_buf, pa.uint32())],
                 schema=spec.schema,
@@ -271,6 +274,7 @@ def merge_release(
             max_file_bytes,
             row_group_rows=row_group_rows,
         )
+        pa.default_memory_pool().release_unused()
         cov_parts = bio.write_parts(
             _merge_coverage_stream(cov_lists, cov_spec, row_group_rows, st),
             cov_spec,
@@ -279,6 +283,7 @@ def merge_release(
             max_file_bytes,
             row_group_rows=row_group_rows,
         )
+        pa.default_memory_pool().release_unused()
         st["domain_files"] = len(dom_parts)
         st["coverage_files"] = len(cov_parts)
         lib_stats[lib] = st
