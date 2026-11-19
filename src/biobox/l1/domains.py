@@ -375,7 +375,8 @@ def plan(root: Path, stage: str, gene_call_version: str, library: str, library_v
             "library_version": library_version, "cutoff": cutoff, "hmm_sha256": hmm_sha256,
             "shard_residues": shard_residues,
             "files": [{"path": f.relative_to(root).as_posix(), "bytes": f.stat().st_size} for f in files]}
-    if not named:
+    has_rounds = seq_stages is not None and bool(round_scan_ids(root, library, library_version))
+    if not named and not has_rounds:
         shards = list(_cut(_uid_lengths(files), shard_residues))
         doc = {**head, "proteins": sum(s["proteins"] for s in shards), "residues": sum(s["residues"] for s in shards),
                "shards": shards}
@@ -413,7 +414,7 @@ def plan(root: Path, stage: str, gene_call_version: str, library: str, library_v
     return {"shards": len(shards), "proteins": doc["proteins"], "residues": doc["residues"],
             "scanned_proteins": scanned_p, "scanned_residues": scanned_r, "copied_proteins": copy["proteins"],
             "copied_residues": copy["residues"], "copied_rows": copy["rows"],
-            "sources": [s["stage"] for s in srcs], "passed_over": [p["stage"] for p in passed]}
+            "sources": [_src_id(s) for s in srcs], "passed_over": [_src_id(p) for p in passed]}
 
 
 # --- shared contigs owned by earlier stages (card C-38h, DEC-26, DEC-54 Q8) ------------------------------------------
@@ -611,12 +612,81 @@ def _source(root: Path, s: str, library: str, library_version: str, want: dict) 
     return out, None
 
 
+def _src_id(src: dict) -> str:
+    """Identifier of a copy source dict (stage name or round id)."""
+    return src["round"] if "round" in src else src["stage"]
+
+
+def _round_source(root: Path, rid: str, library: str, library_version: str, want: dict) -> tuple[dict | None, str | None]:
+    """(round `rid` as a source of copies, None), or (None, why it is not one): card C-38f, §3.6."""
+    lib = f"{library}-{library_version}"
+    step = f"domains-{lib}"
+    if (Path(root) / f"runs/stage={rid}/{step}.publishing.json").exists():
+        return None, f"round {rid} {step} is being published (runs/stage={rid}/{step}.publishing.json)"
+    plan_rel = _round_plan_rel(rid, library, library_version)
+    if not (Path(root) / plan_rel).is_file():
+        return None, f"no round plan {plan_rel}"
+    raw_plan = (Path(root) / plan_rel).read_bytes()
+    p = json.loads(raw_plan)
+    if (p.get("round"), p.get("library"), p.get("library_version")) != (rid, library, library_version):
+        return None, f"its plan {plan_rel} is of another round or library"
+    have = {"hmm_sha256": p.get("hmm_sha256"), "cutoff": p.get("cutoff"), "z": p.get("z", Z_UNRECORDED),
+            "dom_z": p.get("dom_z", Z_UNRECORDED)}
+    for k in ("hmm_sha256", "cutoff", "z", "dom_z"):
+        if have[k] != want[k]:
+            return None, f"its plan records {k} {have[k]!r}, this scan's is {want[k]!r}"
+    dom_dir = round_domains_dir(rid, library, library_version)
+    cov_dir = round_coverage_dir(rid, library, library_version)
+    led_dir = round_ledger_dir(rid, library, library_version)
+    rec_rel = _record_rel(rid, step)
+    rec_path = Path(root) / rec_rel
+    rec_info = None
+    if rec_path.is_file():
+        raw_rec = rec_path.read_bytes()
+        rec = json.loads(raw_rec)
+        outs = rec.get("outputs", [])
+        dom_entries = [o for o in outs if o["path"].startswith(dom_dir + "/")]
+        cov_entries = [o for o in outs if o["path"].startswith(cov_dir + "/")]
+        led_entries = [o for o in outs if o["path"].startswith(led_dir + "/")]
+        if not dom_entries or not cov_entries or not led_entries:
+            return None, f"its run record {rec_rel} lacks round_domains, round_coverage or ledger of {step}"
+        try:
+            _checked(root, [{k: o[k] for k in ("path", "bytes")} for o in dom_entries], f"its run record {rec_rel}")
+            _checked(root, [{k: o[k] for k in ("path", "bytes")} for o in cov_entries], f"its run record {rec_rel}")
+            led_paths = _checked(root, led_entries, f"its run record {rec_rel}")
+        except ValueError as e:
+            return None, str(e)
+        dom_files = [{"path": o["path"], "bytes": o["bytes"], "sha256": o["sha256"]} for o in dom_entries]
+        cov_files = [{"path": o["path"], "bytes": o["bytes"]} for o in cov_entries]
+        rec_info = {"path": rec_rel, "sha256": hashlib.sha256(raw_rec).hexdigest()}
+    else:
+        dom_paths = bio.part_files(Path(root) / dom_dir)
+        cov_paths = bio.part_files(Path(root) / cov_dir)
+        led_paths = bio.part_files(Path(root) / led_dir)
+        if not dom_paths or not cov_paths or not led_paths:
+            return None, f"round {rid} is incomplete (missing round_domains, round_coverage or ledger)"
+        dom_files = [{"path": f.relative_to(root).as_posix(), "bytes": f.stat().st_size,
+                      "sha256": ids.sha256_file(f).hex()} for f in dom_paths]
+        cov_files = [{"path": f.relative_to(root).as_posix(), "bytes": f.stat().st_size} for f in cov_paths]
+    tools = {r for f in led_paths for r in pq.read_table(f, columns=["tool_versions_json"], partitioning=None)
+             .column(0).to_pylist()}
+    mine = json.dumps(want["tools"], sort_keys=True)
+    if tools != {mine}:
+        return None, f"its ledger records tool versions {sorted(map(str, tools))}, this scan's are {mine}"
+    out = {"kind": "round", "round": rid, "plan": {"path": plan_rel, "sha256": hashlib.sha256(raw_plan).hexdigest()},
+           "coverage_files": cov_files, "files": dom_files}
+    if rec_info is not None:
+        out["record"] = rec_info
+    return out, None
+
+
 def sources(root: Path, stage: str, library: str, library_version: str, hmm_sha256: str, cutoff: str,
-            seq_stages: list[str] | None) -> tuple[list[dict], list[dict]]:
-    """(the sources of copies among `seq_stages`, in their order, each named once and never `stage` itself; the
-    stages passed over, each with why), for a scan of `library`-`library_version` with the HMM file of sha256
-    `hmm_sha256` and `cutoff` in this process (module docstring). Reads only small records: run records, plans and
-    the sources' ledgers."""
+            seq_stages: list[str] | None, *, include_rounds: bool = True,
+            exclude_round: str | None = None) -> tuple[list[dict], list[dict]]:
+    """(the sources of copies among `seq_stages` and completed rounds on disk, in order, each named once and never
+    `stage` or `exclude_round` itself; the sources passed over, each with why), for a scan of `library`-`library_version`
+    with the HMM file of sha256 `hmm_sha256` and `cutoff` in this process (cards B-47b, C-38f §3.6). Reads only small
+    records: run records, plans and the sources' ledgers."""
     want = {"hmm_sha256": hmm_sha256, "cutoff": cutoff, "z": Z_PROT, "dom_z": DOM_Z, "tools": _tools()}
     srcs, passed = [], []
     for s in dict.fromkeys(x for x in (seq_stages or ()) if x != stage):
@@ -625,17 +695,44 @@ def sources(root: Path, stage: str, library: str, library_version: str, hmm_sha2
             passed.append({"stage": s, "why": why})
         else:
             srcs.append(src)
+    if include_rounds:
+        for rid in round_scan_ids(Path(root), library, library_version):
+            if rid == exclude_round:
+                continue
+            src, why = _round_source(Path(root), rid, library, library_version, want)
+            if src is None:
+                passed.append({"round": rid, "why": why})
+            else:
+                srcs.append(src)
     return srcs, passed
 
 
 def _measured_uids(root: Path, src: dict, lo: bytes | None = None, hi: bytes | None = None) -> Iterator[bytes]:
     """The proteins source `src` measured, in strictly increasing uid order (within [lo, hi] when given, reading only
-    the row groups that meet it): every protein of the protein_seq files its plan lists, plus any shared-contig
-    proteins recorded in its `owned` block (card C-38h). Card B-47c: once a plan marks the proteins its stage
-    inferred, they are measured nowhere, and this is where they must be left out."""
+    the row groups that meet it): for a stage, every protein of the protein_seq files its plan lists plus any
+    shared-contig proteins in its `owned` block (card C-38h); for a round, every protein of its `round_coverage` files
+    (card C-38f §3.6). Card B-47c: inferred proteins are measured nowhere and must be left out here."""
+    if "coverage_files" in src:
+        last = None
+        for path in _checked(root, src["coverage_files"], f"the plan of {_src_id(src)}"):
+            pf = pq.ParquetFile(path)
+            col = pf.schema_arrow.get_field_index("protein_uid")
+            for g in range(pf.metadata.num_row_groups):
+                if lo is not None:
+                    st = pf.metadata.row_group(g).column(col).statistics
+                    if st is not None and st.has_min_max and (bytes(st.max) < lo or bytes(st.min) > hi):
+                        continue
+                for u in pf.read_row_group(g, columns=["protein_uid"]).column(0).to_pylist():
+                    if lo is not None and not lo <= u <= hi:
+                        continue
+                    if last is not None and u <= last:
+                        raise RuntimeError(f"{path}: round_coverage rows are not in strictly increasing protein_uid order")
+                    last = u
+                    yield u
+        return
     if "owned" in src:
-        own_files = _checked(root, src["protein_files"], f"the plan of {src['stage']}")
-        gi, owners = _check_owned(root, src["owned"], f"the plan of {src['stage']}")
+        own_files = _checked(root, src["protein_files"], f"the plan of {_src_id(src)}")
+        gi, owners = _check_owned(root, src["owned"], f"the plan of {_src_id(src)}")
         filt = "" if lo is None else " WHERE protein_uid >= $lo AND protein_uid <= $hi"
         ps_filt = "" if lo is None else " WHERE ps.protein_uid >= $lo AND ps.protein_uid <= $hi"
         parts = []
@@ -1040,10 +1137,13 @@ def _merge_copies(root: Path, out_root: Path, stage: str, lib_dir: str, step: st
         _check_owned(root, p["owned"], "the shard plan")
     srcs = copy["sources"]
     for s in srcs:
-        _checked(root, s["files"], f"the shard plan (domain files of {s['stage']})")
-        _checked(root, s["protein_files"], f"the shard plan (proteins of {s['stage']})")
+        _checked(root, s["files"], f"the shard plan (domain files of {_src_id(s)})")
+        if "coverage_files" in s:
+            _checked(root, s["coverage_files"], f"the shard plan (round_coverage of {_src_id(s)})")
+        else:
+            _checked(root, s["protein_files"], f"the shard plan (proteins of {_src_id(s)})")
         if "owned" in s:
-            _check_owned(root, s["owned"], f"the shard plan (owned proteins of {s['stage']})")
+            _check_owned(root, s["owned"], f"the shard plan (owned proteins of {_src_id(s)})")
     counts = [{"proteins": 0, "residues": 0, "rows": 0, "proteins_with_hit": 0} for _ in srcs]
     models: set[str] = set()
     scanned = _Rows(runs, None)
@@ -1078,14 +1178,14 @@ def _merge_copies(root: Path, out_root: Path, stage: str, lib_dir: str, step: st
             c["proteins_with_hit"] += 1
             before = scanned.until(u)
             if scanned.head() == u:
-                raise ValueError(f"protein {u.hex()} is copied from {srcs[k]['stage']} and was also scanned")
+                raise ValueError(f"protein {u.hex()} is copied from {_src_id(srcs[k])} and was also scanned")
             pend += before + rows
             held += sum(t.num_rows for t in before) + sum(t.num_rows for t in rows)
             if held >= bio.ROW_GROUP_ROWS or len(pend) >= FLUSH_PIECES:
                 yield flush(pend)
                 pend, held = [], 0
         pend += scanned.rest()
-        bad = [(s["stage"], {k: s[k] for k in c}, c) for s, c in zip(srcs, counts) if {k: s[k] for k in c} != c]
+        bad = [(_src_id(s), {k: s[k] for k in c}, c) for s, c in zip(srcs, counts) if {k: s[k] for k in c} != c]
         if bad:
             raise ValueError(f"{step} of stage {stage}: copied counts differ from the plan's: {bad}")
         if pend:
@@ -1096,27 +1196,851 @@ def _merge_copies(root: Path, out_root: Path, stage: str, lib_dir: str, step: st
     return {"proteins": p["proteins"], "domains": sum(r["domains"] for r in recs) + copy["rows"],
             "proteins_with_hit": hit, "models_with_hit": len(models), "shards": len(recs),
             "copied_proteins": copy["proteins"], "copied_rows": copy["rows"],
-            "sources": [s["stage"] for s in srcs]}
+            "sources": [_src_id(s) for s in srcs]}
+
+
+# --- annotation rounds (card C-38f, DEC-54, planning/design/C-38_import_depths.md §3.2, §3.3, §3.6) ---------
+
+EST_COV_ROW_BYTES = 24  # estimate: zstd bytes per round_coverage row (protein_uid + uint32 n_rows); cuts parts only
+_REQ_SCHEMA = pa.schema([pa.field("protein_uid", pa.binary(16), nullable=False),
+                         pa.field("length", pa.uint32(), nullable=False)])
+
+
+def round_id(library: str, library_version: str, hmm_sha256: str, cutoff: str, protein_uids,
+             *, z: float = Z_PROT, dom_z: float = DOM_Z) -> str:
+    """Content-derived round id `r-<16 hex>` (card C-38f, §3.2): sha256 over library name and version, HMM
+    sha256, cutoff, Z, domZ, and the sorted distinct requested protein uids. Accepts a sequence/set (sorted
+    and deduplicated here) or a streaming iterator of strictly increasing 16-byte `protein_uid`s."""
+    h = hashlib.sha256()
+    head = json.dumps({"library": library, "library_version": library_version, "hmm_sha256": hmm_sha256,
+                       "cutoff": cutoff, "z": z, "dom_z": dom_z}, sort_keys=True).encode()
+    h.update(head)
+    h.update(b"\n")
+    if isinstance(protein_uids, (list, tuple, set, frozenset)):
+        stream = sorted(set(protein_uids))
+    else:
+        stream = protein_uids
+    last: bytes | None = None
+    for u in stream:
+        b = bytes(u)
+        if len(b) != 16:
+            raise ValueError(f"round_id: protein_uid must be 16 bytes, got {len(b)}")
+        if last is not None and b <= last:
+            raise ValueError("round_id: streaming protein_uids must be strictly increasing")
+        last = b
+        h.update(b)
+    return f"r-{h.hexdigest()[:16]}"
+
+
+def round_scan_dir(rid: str, library: str, library_version: str) -> str:
+    """Root-relative directory of the `round_scan` artifact for one round and library."""
+    return f"{ARTIFACTS['round_scan'].location}/round={rid}/library={library}-{library_version}"
+
+
+def round_domains_dir(rid: str, library: str, library_version: str) -> str:
+    return f"{table('round_domains').location}/round={rid}/library={library}-{library_version}"
+
+
+def round_coverage_dir(rid: str, library: str, library_version: str) -> str:
+    return f"{table('round_coverage').location}/round={rid}/library={library}-{library_version}"
+
+
+def round_ledger_dir(rid: str, library: str, library_version: str) -> str:
+    return f"ledger/round={rid}/step=domains-{library}-{library_version}"
+
+
+def _round_plan_rel(rid: str, library: str, library_version: str) -> str:
+    return f"{round_scan_dir(rid, library, library_version)}/plan.json"
+
+
+def _round_shard_rel(rid: str, library: str, library_version: str, k: int) -> str:
+    return f"{round_scan_dir(rid, library, library_version)}/shard-{k:05d}.json"
+
+
+def round_scan_ids(root: Path, library: str, library_version: str) -> list[str]:
+    """Sorted round ids on disk under `root` that have a `round_scan` plan for `library`-`library_version`."""
+    base = Path(root) / ARTIFACTS["round_scan"].location
+    if not base.is_dir():
+        return []
+    lib = f"{library}-{library_version}"
+    out = []
+    for p in base.glob(f"round=*/library={lib}/plan.json"):
+        if p.is_file():
+            rid = p.parent.parent.name.removeprefix("round=")
+            if rid:
+                out.append(rid)
+    return sorted(out)
+
+
+def round_complete(root: Path, rid: str, library: str, library_version: str) -> bool:
+    """Whether round `rid` for `library`-`library_version` has complete outputs (`round_domains`, `round_coverage`,
+    and its ledger) under `root` and is not mid-publish."""
+    root = Path(root)
+    step = f"domains-{library}-{library_version}"
+    if (root / f"runs/stage={rid}/{step}.publishing.json").exists():
+        return False
+    return bool(
+        bio.part_files(root / round_domains_dir(rid, library, library_version))
+        and bio.part_files(root / round_coverage_dir(rid, library, library_version))
+        and bio.part_files(root / round_ledger_dir(rid, library, library_version))
+    )
+
+
+def _round_plan_bytes(root: Path, rid: str, library: str, library_version: str, out: Path | None = None) -> bytes:
+    p = _find(root, out, _round_plan_rel(rid, library, library_version))
+    if p is None:
+        raise FileNotFoundError(
+            f"{Path(root) / _round_plan_rel(rid, library, library_version)}: no round plan for "
+            f"round {rid} domains-{library}-{library_version}; write it with domains.plan_round"
+        )
+    return p.read_bytes()
+
+
+def read_round_plan(root: Path, rid: str, library: str, library_version: str, out: Path | None = None) -> dict:
+    """The round's shard plan for one library (from `root`, else `out`)."""
+    return json.loads(_round_plan_bytes(root, rid, library, library_version, out))
+
+
+def _round_scratch_dir(tmp: Path | None, raw_plan: bytes) -> Path:
+    digest = hashlib.sha256(raw_plan).hexdigest()[:16]
+    return Path(tmp if tmp is not None else tempfile.gettempdir()) / SCAN_DIR / digest
+
+
+def round_run_path(tmp: Path | None, root: Path, rid: str, library: str, library_version: str, k: int,
+                   out: Path | None = None) -> Path:
+    """Where `scan_round_shard` writes shard k's sorted run under scratch."""
+    raw = _round_plan_bytes(root, rid, library, library_version, out)
+    return _round_scratch_dir(tmp, raw) / f"shard-{k:05d}.parquet"
+
+
+def round_requested_path(tmp: Path | None, root: Path, rid: str, library: str, library_version: str,
+                         out: Path | None = None) -> Path:
+    """Where `plan_round` writes the sorted `(protein_uid, length)` requested table in scratch."""
+    raw = _round_plan_bytes(root, rid, library, library_version, out)
+    return _round_scratch_dir(tmp, raw) / "requested.parquet"
+
+
+def _write_input_uids_parquet(proteins_source: Path | list[bytes] | set[bytes], dst: Path) -> int:
+    """Stream protein uids from a text file (one 32-hex uid per line, blank/# skipped), a `.parquet` file
+    (column `protein_uid`), or an iterable of 16-byte uids into a temporary Parquet file at `dst`. Returns
+    the raw count written (before deduplication). Bounded memory (AGENTS §4.1)."""
+    schema = pa.schema([pa.field("protein_uid", pa.binary(16), nullable=False)])
+    total = 0
+    with pq.ParquetWriter(dst, schema, compression="zstd") as writer:
+        if isinstance(proteins_source, (str, Path)):
+            p = Path(proteins_source)
+            if p.suffix == ".parquet":
+                pf = pq.ParquetFile(p)
+                for b in pf.iter_batches(batch_size=_READ_ROWS, columns=["protein_uid"]):
+                    if b.num_rows:
+                        writer.write_batch(pa.RecordBatch.from_arrays([b.column(0).cast(pa.binary(16))], schema=schema))
+                        total += b.num_rows
+            else:
+                buf: list[bytes] = []
+                with open(p, encoding="utf-8") as fh:
+                    for lineno, line in enumerate(fh, 1):
+                        s = line.strip()
+                        if not s or s.startswith("#"):
+                            continue
+                        if len(s) != 32:
+                            raise ValueError(f"{p}:{lineno}: {s!r} is not a protein uid (32 hex digits)")
+                        try:
+                            buf.append(bytes.fromhex(s))
+                        except ValueError as e:
+                            raise ValueError(f"{p}:{lineno}: {s!r} is not a protein uid (32 hex digits)") from e
+                        if len(buf) >= _READ_ROWS:
+                            writer.write_batch(pa.RecordBatch.from_arrays([pa.array(buf, pa.binary(16))], schema=schema))
+                            total += len(buf)
+                            buf = []
+                if buf:
+                    writer.write_batch(pa.RecordBatch.from_arrays([pa.array(buf, pa.binary(16))], schema=schema))
+                    total += len(buf)
+        else:
+            buf = []
+            for u in proteins_source:
+                b = bytes(u)
+                if len(b) != 16:
+                    raise ValueError(f"protein_uid must be 16 bytes, got {len(b)}")
+                buf.append(b)
+                if len(buf) >= _READ_ROWS:
+                    writer.write_batch(pa.RecordBatch.from_arrays([pa.array(buf, pa.binary(16))], schema=schema))
+                    total += len(buf)
+                    buf = []
+            if buf:
+                writer.write_batch(pa.RecordBatch.from_arrays([pa.array(buf, pa.binary(16))], schema=schema))
+                total += len(buf)
+    return total
+
+
+def _filter_unscanned_to_parquet(
+    root: Path,
+    release: str,
+    gene_call_version: str,
+    library: str,
+    library_version: str,
+    proteins_source: Path | list[bytes] | set[bytes],
+    out_parquet: Path,
+) -> tuple[int, int, list[Path]]:
+    """Filter `proteins_source` to proteins whose `domain_state` in `release` for `library`-`library_version`
+    is `not scanned` (card C-38f §3.3, §3.6), writing sorted `(protein_uid, length)` to `out_parquet` in
+    bounded memory via single-thread DuckDB (`DUCK_MEMORY_LIMIT`).
+
+    Returns `(n_input_distinct, n_unscanned, all_protein_seq_files)`. Raises ValueError if any input protein
+    is not present in `release`'s `protein_seq`."""
+    from biobox import catalog
+
+    files = catalog.ReleaseFiles.of(root, release)
+    all_ps = files.table("protein_seq", gene_call_version=gene_call_version)
+    if not all_ps:
+        raise FileNotFoundError(f"release {release}: no protein_seq files for gene_call_version={gene_call_version}")
+    lib = f"{library}-{library_version}"
+    dom_files = files.table("l1_domains", library=lib)
+    ann_stages = {parts["stage"] for _, parts in files.entries("l1_domains", library=lib) if "stage" in parts}
+    ann_ps = [p for p, parts in files.entries("protein_seq", gene_call_version=gene_call_version)
+              if parts.get("stage") in ann_stages]
+    rcov_files = files.table("round_coverage", library=lib)
+
+    in_pq = out_parquet.with_name(f".in-{os.getpid()}.parquet")
+    try:
+        raw_count = _write_input_uids_parquet(proteins_source, in_pq)
+        if raw_count == 0:
+            pq.write_table(pa.Table.from_pylist([], schema=_REQ_SCHEMA), out_parquet, compression="zstd")
+            return 0, 0, all_ps
+        with _duck() as con:
+            in_sql = _sql_files([in_pq])
+            ps_sql = _sql_files(all_ps)
+            (n_in_distinct,), = con.execute(
+                f"SELECT count(DISTINCT protein_uid)::BIGINT FROM read_parquet({in_sql}, hive_partitioning = false)"
+            ).fetchall()
+            (n_missing,), = con.execute(
+                f"SELECT count(*)::BIGINT FROM ("
+                f"  SELECT DISTINCT protein_uid FROM read_parquet({in_sql}, hive_partitioning = false)"
+                f") r ANTI JOIN ("
+                f"  SELECT protein_uid FROM read_parquet({ps_sql}, hive_partitioning = false)"
+                f") ps USING (protein_uid)"
+            ).fetchall()
+            if n_missing:
+                raise ValueError(
+                    f"release {release}: {n_missing} requested protein(s) are not in the release's protein_seq"
+                )
+            settled_parts = []
+            if dom_files:
+                settled_parts.append(
+                    f"SELECT protein_uid FROM read_parquet({_sql_files(dom_files)}, hive_partitioning = false)"
+                )
+            if ann_ps:
+                settled_parts.append(
+                    f"SELECT protein_uid FROM read_parquet({_sql_files(ann_ps)}, hive_partitioning = false)"
+                )
+            if rcov_files:
+                settled_parts.append(
+                    f"SELECT protein_uid FROM read_parquet({_sql_files(rcov_files)}, hive_partitioning = false)"
+                )
+            if settled_parts:
+                settled_cte = f"settled AS ({' UNION ALL '.join(settled_parts)}), "
+                req_sql = (
+                    f"req AS ("
+                    f"  SELECT DISTINCT r.protein_uid FROM read_parquet({in_sql}, hive_partitioning = false) r "
+                    f"  ANTI JOIN settled USING (protein_uid)"
+                    f")"
+                )
+            else:
+                settled_cte = ""
+                req_sql = f"req AS (SELECT DISTINCT protein_uid FROM read_parquet({in_sql}, hive_partitioning = false))"
+            sql = (
+                f"WITH {settled_cte}{req_sql} "
+                f"SELECT ps.protein_uid, min(ps.length)::UINTEGER AS length "
+                f"FROM read_parquet({ps_sql}, hive_partitioning = false) ps "
+                f"SEMI JOIN req USING (protein_uid) "
+                f"GROUP BY ps.protein_uid ORDER BY ps.protein_uid"
+            )
+            n_unscanned = 0
+            reader = con.sql(sql).to_arrow_reader(_READ_ROWS)
+            try:
+                with pq.ParquetWriter(out_parquet, _REQ_SCHEMA, compression="zstd") as writer:
+                    for b in reader:
+                        if b.num_rows:
+                            tb = pa.RecordBatch.from_arrays(
+                                [b.column(0).cast(pa.binary(16)), b.column(1).cast(pa.uint32())],
+                                schema=_REQ_SCHEMA,
+                            )
+                            writer.write_batch(tb)
+                            n_unscanned += tb.num_rows
+            finally:
+                reader.close()
+        return int(n_in_distinct), int(n_unscanned), all_ps
+    finally:
+        in_pq.unlink(missing_ok=True)
+
+
+def filter_unscanned(
+    root: Path,
+    release: str,
+    gene_call_version: str,
+    library: str,
+    library_version: str,
+    proteins_source: Path | list[bytes] | set[bytes],
+    *,
+    tmp: Path | None = None,
+) -> tuple[list[bytes], int]:
+    """Return `(sorted unscanned protein_uids, n_input_distinct)` for `proteins_source` in `release`."""
+    d = Path(tempfile.mkdtemp(prefix="biobox-round-filter-", dir=tmp))
+    try:
+        req_pq = d / "filtered.parquet"
+        n_in, _, _ = _filter_unscanned_to_parquet(
+            Path(root), release, gene_call_version, library, library_version, proteins_source, req_pq
+        )
+        uids = pq.read_table(req_pq, columns=["protein_uid"]).column(0).to_pylist()
+        return [bytes(u) for u in uids], n_in
+    finally:
+        shutil.rmtree(d, ignore_errors=True)
+
+
+def _req_uid_lengths(req_pq: Path) -> Iterator[tuple[bytes, int]]:
+    """Stream `(protein_uid, length)` from a sorted `requested.parquet` file."""
+    last = None
+    for b in pq.ParquetFile(req_pq).iter_batches(batch_size=_READ_ROWS, columns=["protein_uid", "length"]):
+        for u, n in zip(b.column(0).to_pylist(), b.column(1).to_pylist()):
+            if last is not None and u <= last:
+                raise RuntimeError(f"{req_pq}: requested rows are not in strictly increasing protein_uid order")
+            last = u
+            yield u, int(n)
+
+
+def prepare_round(
+    root: Path,
+    release: str,
+    gene_call_version: str,
+    library: str,
+    library_version: str,
+    hmm_path: Path,
+    cutoff: str,
+    proteins_file: Path,
+    *,
+    tmp: Path | None = None,
+) -> dict:
+    """Compute a round's content-derived `round_id`, filtered protein/residue counts, and whether it is already
+    complete on disk, without writing anything under `root`."""
+    root = Path(root)
+    hmm_sha256 = ids.sha256_file(Path(hmm_path)).hex()
+    d = Path(tempfile.mkdtemp(prefix="biobox-round-prep-", dir=tmp))
+    try:
+        req_pq = d / "requested.parquet"
+        n_in, n_unscanned, _ = _filter_unscanned_to_parquet(
+            root, release, gene_call_version, library, library_version, Path(proteins_file), req_pq
+        )
+        if n_unscanned == 0:
+            return {"round_id": None, "input_proteins": n_in, "proteins": 0, "residues": 0,
+                    "settled_in_release": n_in, "already_complete": False}
+        total_res = 0
+
+        def uids() -> Iterator[bytes]:
+            nonlocal total_res
+            for u, n in _req_uid_lengths(req_pq):
+                total_res += n
+                yield u
+
+        rid = round_id(library, library_version, hmm_sha256, cutoff, uids())
+        return {
+            "round_id": rid,
+            "input_proteins": n_in,
+            "proteins": n_unscanned,
+            "residues": total_res,
+            "settled_in_release": n_in - n_unscanned,
+            "already_complete": round_complete(root, rid, library, library_version),
+        }
+    finally:
+        shutil.rmtree(d, ignore_errors=True)
+
+
+def _walk_requested(root: Path, req_pq: Path, srcs: list[dict], columns: list[str] | None) -> Iterator[
+    tuple[bytes, int, int, list[pa.Table]]
+]:
+    """Stream `(uid, length, k, rows)` for every protein of `req_pq` against `srcs` in uid order."""
+    cursors = [_Rows([Path(root) / f["path"] for f in s["files"]], columns, measured_only=True) for s in srcs]
+    measured = [_measured_uids(root, s) for s in srcs]
+    for u, n, k in _assign(_req_uid_lengths(req_pq), measured):
+        yield u, n, k, (cursors[k].take(u) if k >= 0 else [])
+
+
+def plan_round(
+    root: Path,
+    release: str,
+    gene_call_version: str,
+    library: str,
+    library_version: str,
+    hmm_path: Path,
+    cutoff: str,
+    proteins_file: Path,
+    shard_residues: int,
+    *,
+    out: Path | None = None,
+    seq_stages: list[str] | None = None,
+    tmp: Path | None = None,
+) -> dict:
+    """Plan an annotation round (card C-38f §3.3, §3.6): filter `proteins_file` down to proteins whose
+    `domain_state` in `release` for `library`-`library_version` is `not scanned`, compute the content-derived
+    `round_id`, leave out proteins already measured on disk by any stage (including stages built after `release`)
+    or earlier round with equal `COMPARED` parameters, cut the remaining proteins into shards of at most
+    `shard_residues` residues, write `requested.parquet` in scratch (`tmp`), and publish `plan.json` under
+    `out` (default `root`)."""
+    from biobox.l0seq import store
+
+    root = Path(root)
+    out_root = root if out is None else Path(out)
+    ledger.check_scratch(tmp, root, out_root)
+    if not isinstance(shard_residues, int) or shard_residues < 1:
+        raise ValueError(f"shard_residues {shard_residues!r}: must be a positive integer")
+    if cutoff not in ("gathering", "trusted", "noise", "none"):
+        raise ValueError(f"cutoff {cutoff!r}: expected gathering, trusted, noise or none")
+    hmm_sha256 = ids.sha256_file(Path(hmm_path)).hex()
+    tmp_base = Path(tmp) if tmp is not None else Path(tempfile.gettempdir())
+    tmp_base.mkdir(parents=True, exist_ok=True)
+    work = Path(tempfile.mkdtemp(prefix="biobox-round-plan-", dir=tmp_base))
+    try:
+        req_tmp = work / "requested.parquet"
+        n_in, n_unscanned, all_ps = _filter_unscanned_to_parquet(
+            root, release, gene_call_version, library, library_version, Path(proteins_file), req_tmp
+        )
+        if n_unscanned == 0:
+            return {"round_id": None, "input_proteins": n_in, "proteins": 0, "residues": 0,
+                    "settled_in_release": n_in, "shards": 0, "scanned_proteins": 0, "scanned_residues": 0,
+                    "copied_proteins": 0, "copied_residues": 0, "copied_rows": 0, "sources": [], "passed_over": []}
+        rid = round_id(library, library_version, hmm_sha256, cutoff, (u for u, _ in _req_uid_lengths(req_tmp)))
+        lib = f"{library}-{library_version}"
+        dom_dir = round_domains_dir(rid, library, library_version)
+        cov_dir = round_coverage_dir(rid, library, library_version)
+        led_dir = round_ledger_dir(rid, library, library_version)
+        ledger.refuse_written(root, out_root, [dom_dir, cov_dir, led_dir], f"round {rid} domains-{lib}")
+        rel = _round_plan_rel(rid, library, library_version)
+        for base in dict.fromkeys([root.resolve(), out_root.resolve()]):
+            if (base / rel).exists():
+                raise FileExistsError(f"{base / rel}: the round plan is written once; refusing to overwrite")
+
+        cand_stages = (
+            list(dict.fromkeys(seq_stages))
+            if seq_stages is not None
+            else sorted(set(store.stages_on_disk(root)) | set(plan_stages(root, library, library_version)))
+        )
+        srcs, passed = sources(root, "", library, library_version, hmm_sha256, cutoff, cand_stages,
+                               include_rounds=True, exclude_round=rid)
+        total = {"proteins": 0, "residues": 0}
+        counts = [{"proteins": 0, "residues": 0, "rows": 0, "proteins_with_hit": 0} for _ in srcs]
+
+        def scanned() -> Iterator[tuple[bytes, int]]:
+            for u, n, k, rows in _walk_requested(root, req_tmp, srcs, ["protein_uid"]):
+                total["proteins"] += 1
+                total["residues"] += n
+                if k < 0:
+                    yield u, n
+                    continue
+                c = counts[k]
+                c["proteins"] += 1
+                c["residues"] += n
+                got = sum(t.num_rows for t in rows)
+                c["rows"] += got
+                c["proteins_with_hit"] += got > 0
+
+        shards = list(_cut(scanned(), shard_residues))
+        src_docs = [{**s, **c} for s, c in zip(srcs, counts)]
+        copy = {
+            "seq_stages": cand_stages,
+            "compared": list(COMPARED),
+            "sources": src_docs,
+            "passed_over": passed,
+            **{k: sum(c[k] for c in counts) for k in ("proteins", "residues", "rows", "proteins_with_hit")},
+        }
+        doc = {
+            "format": PLAN_FORMAT,
+            "round": rid,
+            "release": release,
+            "gene_call_version": gene_call_version,
+            "library": library,
+            "library_version": library_version,
+            "cutoff": cutoff,
+            "hmm_sha256": hmm_sha256,
+            "shard_residues": shard_residues,
+            "protein_files": _file_entries(root, all_ps),
+            "requested_sha256": ids.sha256_file(req_tmp).hex(),
+            "requested_bytes": req_tmp.stat().st_size,
+            "input_proteins": n_in,
+            "settled_in_release": n_in - n_unscanned,
+            "proteins": total["proteins"],
+            "residues": total["residues"],
+            "shards": shards,
+            "z": Z_PROT,
+            "dom_z": DOM_Z,
+            "tools": _tools(),
+            "copy": copy,
+        }
+        raw = _json_bytes(doc)
+        sdir = _round_scratch_dir(tmp_base, raw)
+        sdir.mkdir(parents=True, exist_ok=True)
+        os.replace(req_tmp, sdir / "requested.parquet")
+        _write_once(root, out_root, rel, raw, "the round plan")
+        scanned_p, scanned_r = sum(s["proteins"] for s in shards), sum(s["residues"] for s in shards)
+        return {
+            "round_id": rid,
+            "shards": len(shards),
+            "input_proteins": n_in,
+            "settled_in_release": n_in - n_unscanned,
+            "proteins": doc["proteins"],
+            "residues": doc["residues"],
+            "scanned_proteins": scanned_p,
+            "scanned_residues": scanned_r,
+            "copied_proteins": copy["proteins"],
+            "copied_residues": copy["residues"],
+            "copied_rows": copy["rows"],
+            "sources": [_src_id(s) for s in srcs],
+            "passed_over": [_src_id(p) for p in passed],
+        }
+    finally:
+        shutil.rmtree(work, ignore_errors=True)
+
+
+def _round_shard_proteins(root: Path, p: dict, s: dict, req_path: Path) -> dict[bytes, str]:
+    """The proteins to scan in round shard `s` (uids `first`..`last` from `req_path`, excluding copied uids),
+    reading sequences from `p['protein_files']` only in row groups meeting `[lo, hi]`."""
+    lo, hi = bytes.fromhex(s["first"]), bytes.fromhex(s["last"])
+    need: set[bytes] = set()
+    pf = pq.ParquetFile(req_path)
+    col = pf.schema_arrow.get_field_index("protein_uid")
+    for g in range(pf.metadata.num_row_groups):
+        st = pf.metadata.row_group(g).column(col).statistics
+        if st is not None and st.has_min_max and (bytes(st.max) < lo or bytes(st.min) > hi):
+            continue
+        for u in pf.read_row_group(g, columns=["protein_uid"]).column(0).to_pylist():
+            if lo <= u <= hi:
+                need.add(u)
+    copy = p.get("copy")
+    if copy and copy["sources"] and need:
+        mine = sorted(need)
+        measured = [_measured_uids(root, src, lo, hi) for src in copy["sources"]]
+        for u, _, k in _assign(((u, 0) for u in mine), measured):
+            if k >= 0:
+                need.discard(u)
+    if not need:
+        return {}
+    out: dict[bytes, str] = {}
+    for path in _checked(root, p["protein_files"], "the round plan"):
+        psf = pq.ParquetFile(path)
+        pcol = psf.schema_arrow.get_field_index("protein_uid")
+        for g in range(psf.metadata.num_row_groups):
+            st = psf.metadata.row_group(g).column(pcol).statistics
+            if st is not None and st.has_min_max and (bytes(st.max) < lo or bytes(st.min) > hi):
+                continue
+            t = psf.read_row_group(g, columns=["protein_uid", "seq"])
+            for u, seq in zip(t.column(0).to_pylist(), t.column(1).to_pylist()):
+                if u in need:
+                    out[u] = seq
+    return out
+
+
+def _round_shard_inputs(root: Path, rid: str, library: str, library_version: str, hmm_path: Path, k: int,
+                        tmp: Path | None = None, out: Path | None = None) -> tuple[bytes, dict, dict, dict[bytes, str]]:
+    raw = _round_plan_bytes(root, rid, library, library_version, out)
+    p = json.loads(raw)
+    if not 0 <= k < len(p["shards"]):
+        raise ValueError(f"shard {k}: the plan of round {rid} domains-{library}-{library_version} has "
+                         f"{len(p['shards'])} shards")
+    have = ids.sha256_file(Path(hmm_path)).hex()
+    if have != p["hmm_sha256"]:
+        raise ValueError(f"{hmm_path}: sha256 {have} is not the round plan's HMM file ({p['hmm_sha256']})")
+    req_path = _round_scratch_dir(tmp, raw) / "requested.parquet"
+    if not req_path.is_file():
+        raise FileNotFoundError(f"{req_path}: requested protein list for round {rid} is missing from scratch")
+    if ids.sha256_file(req_path).hex() != p["requested_sha256"]:
+        raise ValueError(f"{req_path}: sha256 differs from the round plan's requested_sha256")
+    s = p["shards"][k]
+    proteins = _round_shard_proteins(root, p, s, req_path)
+    if len(proteins) != s["proteins"] or sum(len(x) for x in proteins.values()) != s["residues"]:
+        raise ValueError(f"shard {k}: {len(proteins)} proteins read, the round plan lists {s['proteins']} "
+                         f"({s['residues']} residues)")
+    return raw, p, s, proteins
+
+
+def scan_round_shard(root: Path, rid: str, library: str, library_version: str, hmm_path: Path, k: int, cpus: int,
+                     *, tmp: Path | None = None, out: Path | None = None) -> dict:
+    """Scan shard `k` of round `rid` with `cpus` threads; write its sorted run under scratch and its record
+    under `out` (default `root`)."""
+    root = Path(root)
+    out_root = root if out is None else Path(out)
+    ledger.check_scratch(tmp, root, out_root)
+    if not isinstance(cpus, int) or cpus < 1:
+        raise ValueError(f"cpus {cpus!r}: give the thread count explicitly (at least 1)")
+    lib = f"{library}-{library_version}"
+    ledger.refuse_written(
+        root, out_root,
+        [round_domains_dir(rid, library, library_version),
+         round_coverage_dir(rid, library, library_version),
+         round_ledger_dir(rid, library, library_version)],
+        f"round {rid} domains-{lib}",
+    )
+    rel = _round_shard_rel(rid, library, library_version, k)
+    for base in dict.fromkeys([root.resolve(), out_root.resolve()]):
+        if (base / rel).exists():
+            raise FileExistsError(f"{base / rel}: round shard {k} is scanned once; refusing to overwrite")
+    raw, p, s, proteins = _round_shard_inputs(root, rid, library, library_version, hmm_path, k, tmp=tmp, out=out)
+    rows = scan(proteins, hmm_path, p["cutoff"], cpus=cpus)
+    path = _round_scratch_dir(tmp, raw) / f"shard-{k:05d}.parquet"
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.unlink(missing_ok=True)
+    spec = table("round_domains")
+    bio.write_table(_batches(rows, spec), spec, path)
+    rec = {
+        "format": PLAN_FORMAT, "round": rid, "plan_sha256": hashlib.sha256(raw).hexdigest(), "shard": k,
+        "first": s["first"], "last": s["last"], "proteins": s["proteins"], "residues": s["residues"],
+        "domains": len(rows), "proteins_with_hit": len({r["protein_uid"] for r in rows}),
+        "run_sha256": ids.sha256_file(path).hex(), "run_bytes": path.stat().st_size,
+    }
+    _write_once(root, out_root, rel, _json_bytes(rec), f"the record of round shard {k}")
+    return {"round_id": rid, "shard": k, "proteins": s["proteins"], "residues": s["residues"],
+            "domains": len(rows), "proteins_with_hit": rec["proteins_with_hit"]}
+
+
+def round_shard_record(root: Path, rid: str, library: str, library_version: str, k: int) -> dict | None:
+    p = _find(root, None, _round_shard_rel(rid, library, library_version, k))
+    return None if p is None else json.loads(p.read_bytes())
+
+
+def round_run_problem(root: Path, rid: str, library: str, library_version: str, k: int, tmp: Path | None) -> str | None:
+    rec = round_shard_record(root, rid, library, library_version, k)
+    if rec is None:
+        raise FileNotFoundError(f"shard {k} of round {rid} domains-{library}-{library_version}: no record")
+    path = round_run_path(tmp, root, rid, library, library_version, k)
+    if not path.is_file():
+        return "is missing"
+    if "run_sha256" not in rec:
+        return "cannot be checked: its record holds no run sha256"
+    if ids.sha256_file(path).hex() != rec["run_sha256"]:
+        return "differs from the sha256 its record holds"
+    return None
+
+
+def rescan_round_shard(root: Path, rid: str, library: str, library_version: str, hmm_path: Path, k: int, cpus: int,
+                       *, tmp: Path | None = None) -> dict:
+    """Rescan a round shard whose scratch run was lost; must reproduce its published record's sha256."""
+    root = Path(root)
+    ledger.check_scratch(tmp, root)
+    if not isinstance(cpus, int) or cpus < 1:
+        raise ValueError(f"cpus {cpus!r}: give the thread count explicitly (at least 1)")
+    lib = f"{library}-{library_version}"
+    ledger.refuse_written(
+        root, root,
+        [round_domains_dir(rid, library, library_version),
+         round_coverage_dir(rid, library, library_version),
+         round_ledger_dir(rid, library, library_version)],
+        f"round {rid} domains-{lib}",
+    )
+    rec = round_shard_record(root, rid, library, library_version, k)
+    if rec is None:
+        raise FileNotFoundError(f"shard {k} of round {rid} domains-{lib}: no published record")
+    raw, p, s, proteins = _round_shard_inputs(root, rid, library, library_version, hmm_path, k, tmp=tmp)
+    if rec["plan_sha256"] != hashlib.sha256(raw).hexdigest() or rec["shard"] != k:
+        raise ValueError(f"shard {k} of round {rid} domains-{lib}: its record is of another plan or shard")
+    rows = scan(proteins, hmm_path, p["cutoff"], cpus=cpus)
+    path = _round_scratch_dir(tmp, raw) / f"shard-{k:05d}.parquet"
+    path.parent.mkdir(parents=True, exist_ok=True)
+    new = path.with_name(f".rescan-{os.getpid()}-{path.name}")
+    spec = table("round_domains")
+    bio.write_table(_batches(rows, spec), spec, new)
+    have, hits = ids.sha256_file(new).hex(), len({r["protein_uid"] for r in rows})
+    if have != rec["run_sha256"]:
+        new.unlink()
+        raise ValueError(f"shard {k} of round {rid} domains-{lib}: rescan sha256 {have} differs from record "
+                         f"{rec['run_sha256']}")
+    os.replace(new, path)
+    return {"round_id": rid, "shard": k, "domains": len(rows), "proteins_with_hit": hits,
+            "run_sha256": have, "verified": "sha256"}
+
+
+def merge_round(root: Path, rid: str, library: str, library_version: str, *, tmp: Path | None = None,
+                max_file_bytes: int = layout.MAX_FILE_BYTES, out: Path | None = None) -> dict:
+    """Merge a round's scanned shards and copied source rows into `round_domains`, `round_coverage`, and
+    `ledger/round=<rid>/step=domains-<lib>/` under `out` (default `root`). Bounded memory (AGENTS §4.1)."""
+    root = Path(root)
+    out_root = root if out is None else Path(out)
+    ledger.check_scratch(tmp, root, out_root)
+    lib = f"{library}-{library_version}"
+    step = f"domains-{lib}"
+    dom_dir = round_domains_dir(rid, library, library_version)
+    cov_dir = round_coverage_dir(rid, library, library_version)
+    led_dir = round_ledger_dir(rid, library, library_version)
+    ledger.refuse_written(root, out_root, [dom_dir, cov_dir, led_dir], f"round {rid} {step}")
+
+    raw = _round_plan_bytes(root, rid, library, library_version, out)
+    p, digest = json.loads(raw), hashlib.sha256(raw).hexdigest()
+    if _tools() != p["tools"]:
+        raise ValueError(f"round {rid} {step}: this process has tool versions {_tools()}, the plan was made "
+                         f"for {p['tools']}")
+    req_path = _round_scratch_dir(tmp, raw) / "requested.parquet"
+    if not req_path.is_file():
+        raise FileNotFoundError(f"{req_path}: requested protein list for round {rid} is missing from scratch")
+    if ids.sha256_file(req_path).hex() != p["requested_sha256"]:
+        raise ValueError(f"{req_path}: sha256 differs from the round plan's requested_sha256")
+
+    missing = [k for k in range(len(p["shards"])) if _find(root, out, _round_shard_rel(rid, library, library_version, k)) is None]
+    if missing:
+        raise FileNotFoundError(f"round {rid} {step}: no record of shard {', '.join(map(str, missing))} "
+                                f"of {len(p['shards'])}")
+    recs, runs = [], []
+    for k in range(len(p["shards"])):
+        rec = json.loads(_find(root, out, _round_shard_rel(rid, library, library_version, k)).read_bytes())
+        if rec["plan_sha256"] != digest or rec["shard"] != k:
+            raise ValueError(f"round shard {k}: its record is of another plan or shard")
+        path = _round_scratch_dir(tmp, raw) / f"shard-{k:05d}.parquet"
+        if not path.is_file():
+            raise FileNotFoundError(f"{path}: the run of round shard {k} is not in scratch")
+        if ids.sha256_file(path).hex() != rec["run_sha256"]:
+            raise ValueError(f"{path}: sha256 differs from the record of round shard {k}")
+        recs.append(rec)
+        runs.append(path)
+
+    copy = p["copy"]
+    srcs = copy["sources"]
+    for s in srcs:
+        _checked(root, s["files"], f"the round plan (domain files of {_src_id(s)})")
+        if "coverage_files" in s:
+            _checked(root, s["coverage_files"], f"the round plan (round_coverage of {_src_id(s)})")
+        else:
+            _checked(root, s["protein_files"], f"the round plan (proteins of {_src_id(s)})")
+        if "owned" in s:
+            _check_owned(root, s["owned"], f"the round plan (owned proteins of {_src_id(s)})")
+
+    counts = [{"proteins": 0, "residues": 0, "rows": 0, "proteins_with_hit": 0} for _ in srcs]
+    models: set[str] = set()
+    scanned = _Rows(runs, None)
+    want = {"cutoff": p["cutoff"], "z": Z_PROT, "dom_z": DOM_Z}
+    dom_spec = table("round_domains")
+
+    def flush(pend: list[pa.Table]) -> pa.Table:
+        t = pa.concat_tables(pend).combine_chunks()
+        for col, v in want.items():
+            if not pc.all(pc.equal(t.column(col), v)).as_py():
+                raise ValueError(f"round {rid} {step}: a row to write has another {col} than {v!r}")
+        models.update(pc.unique(t.column("model_acc")).to_pylist())
+        return t
+
+    def dom_batches() -> Iterator[pa.Table]:
+        pend: list[pa.Table] = []
+        held = 0
+        for u, n, k, rows in _walk_requested(root, req_path, srcs, None):
+            if k < 0:
+                continue
+            c = counts[k]
+            c["proteins"] += 1
+            c["residues"] += n
+            if not rows:
+                continue
+            c["rows"] += sum(t.num_rows for t in rows)
+            c["proteins_with_hit"] += 1
+            before = scanned.until(u)
+            if scanned.head() == u:
+                raise ValueError(f"protein {u.hex()} is copied from {_src_id(srcs[k])} and was also scanned")
+            pend += before + rows
+            held += sum(t.num_rows for t in before) + sum(t.num_rows for t in rows)
+            if held >= bio.ROW_GROUP_ROWS or len(pend) >= FLUSH_PIECES:
+                yield flush(pend)
+                pend, held = [], 0
+        pend += scanned.rest()
+        bad = [(_src_id(s), {k: s[k] for k in c}, c) for s, c in zip(srcs, counts) if {k: s[k] for k in c} != c]
+        if bad:
+            raise ValueError(f"round {rid} {step}: copied counts differ from the plan's: {bad}")
+        if pend:
+            yield flush(pend)
+
+    bio.write_parts(dom_batches(), dom_spec, out_root / dom_dir, EST_ROW_BYTES, max_file_bytes)
+
+    # Stream round_coverage from req_path merged with the just-written round_domains parts (O(1) memory)
+    written_doms = bio.part_files(out_root / dom_dir)
+    cov_spec = table("round_coverage")
+
+    def cov_batches() -> Iterator[pa.RecordBatch]:
+        dom_cur = _Rows(written_doms, ["protein_uid"])
+        u_buf: list[bytes] = []
+        n_buf: list[int] = []
+        for u, _ in _req_uid_lengths(req_path):
+            rows_u = dom_cur.take(u)
+            u_buf.append(u)
+            n_buf.append(sum(t.num_rows for t in rows_u))
+            if len(u_buf) >= bio.ROW_GROUP_ROWS:
+                yield pa.RecordBatch.from_arrays(
+                    [pa.array(u_buf, pa.binary(16)), pa.array(n_buf, pa.uint32())],
+                    schema=cov_spec.schema,
+                )
+                u_buf, n_buf = [], []
+        if u_buf:
+            yield pa.RecordBatch.from_arrays(
+                [pa.array(u_buf, pa.binary(16)), pa.array(n_buf, pa.uint32())],
+                schema=cov_spec.schema,
+            )
+
+    bio.write_parts(cov_batches(), cov_spec, out_root / cov_dir, EST_COV_ROW_BYTES, max_file_bytes)
+
+    # Write round ledger: ledger/round=<rid>/step=domains-<lib>/part-0.parquet (§3.3)
+    n_in = p["proteins"]
+    copied = copy["proteins"]
+    scanned_n = n_in - copied
+    scanned_hit = sum(r["proteins_with_hit"] for r in recs)
+    total_hit = scanned_hit + copy["proteins_with_hit"]
+    lib_bytes = lib.encode()
+    tools = _tools()
+    led_rows = [
+        ledger.row(lib_bytes, "library", n_in, scanned_hit, tools=tools),
+        ledger.row(lib_bytes, "library", n_in, scanned_hit, n_rejected=scanned_n - scanned_hit,
+                   reason="no_hit", tools=tools),
+    ]
+    if copied:
+        led_rows.append(ledger.row(lib_bytes, "library", n_in, scanned_hit, n_rejected=copied,
+                                   reason="settled_elsewhere", tools=tools))
+    led_rows.sort(key=lambda r: (r["object_key"], r["reason_code"]))
+    led_spec = table("ledger")
+    bio.write_table(pa.RecordBatch.from_pylist(led_rows, schema=led_spec.schema),
+                    led_spec, out_root / led_dir / "part-0.parquet")
+
+    return {
+        "round_id": rid,
+        "proteins": n_in,
+        "domains": sum(r["domains"] for r in recs) + copy["rows"],
+        "proteins_with_hit": total_hit,
+        "scanned_proteins": scanned_n,
+        "scanned_proteins_with_hit": scanned_hit,
+        "copied_proteins": copied,
+        "copied_rows": copy["rows"],
+        "models_with_hit": len(models),
+        "shards": len(recs),
+        "sources": [_src_id(s) for s in srcs],
+    }
 
 
 def main(argv: list[str] | None = None) -> int:
-    """`python -m biobox.l1.domains rescan --root R --stage S --library L --library-version V --hmm F --shard K
-    --cpus N --tmp D`: `rescan_shard` in its own process, as build-stage runs it (card C-12). It writes nothing
-    into the root, so it is not a run-step. Prints one JSON line; exit 2 with the reason on a refusal."""
+    """`python -m biobox.l1.domains rescan --root R (--stage S | --round RID) --library L --library-version V
+    --hmm F --shard K --cpus N --tmp D`: `rescan_shard` (or `rescan_round_shard`) in its own process, as
+    build-stage / run_round runs it (cards C-12, C-38f). It writes nothing into the root, so it is not a
+    run-step. Prints one JSON line; exit 2 with the reason on a refusal."""
     ap = argparse.ArgumentParser(prog="python -m biobox.l1.domains")
     ap.add_argument("action", choices=["rescan"])
-    for name in ("--root", "--stage", "--library", "--library-version", "--hmm", "--tmp"):
+    for name in ("--root", "--library", "--library-version", "--hmm", "--tmp"):
         ap.add_argument(name, required=True)
+    who = ap.add_mutually_exclusive_group(required=True)
+    who.add_argument("--stage")
+    who.add_argument("--round", dest="round_id")
     ap.add_argument("--shard", type=int, required=True)
     ap.add_argument("--cpus", type=int, required=True)
     a = ap.parse_args(argv)
     try:
-        res = rescan_shard(Path(a.root), a.stage, a.library, a.library_version, Path(a.hmm), a.shard, a.cpus,
-                           tmp=Path(a.tmp))
+        if a.round_id is not None:
+            res = rescan_round_shard(Path(a.root), a.round_id, a.library, a.library_version, Path(a.hmm),
+                                     a.shard, a.cpus, tmp=Path(a.tmp))
+            tag = {"round": a.round_id}
+        else:
+            res = rescan_shard(Path(a.root), a.stage, a.library, a.library_version, Path(a.hmm),
+                               a.shard, a.cpus, tmp=Path(a.tmp))
+            tag = {"stage": a.stage}
     except (ValueError, FileNotFoundError, FileExistsError) as e:
         print(f"domains rescan: {e}", file=sys.stderr)
         return 2
-    print(json.dumps({"action": a.action, "result": res, "stage": a.stage}, sort_keys=True))
+    print(json.dumps({"action": a.action, "result": res, **tag}, sort_keys=True))
     return 0
 
 

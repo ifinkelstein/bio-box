@@ -1047,6 +1047,20 @@ def _count(path: Path, prefix: str = "") -> int:
         return sum(1 for line in fh if line.startswith(prefix))
 
 
+def _root_writable(root: Path) -> bool:
+    """Whether this process can write into the data root `root` without modifying it (card C-38f §3.3, W-03)."""
+    p = Path(root)
+    if not p.is_dir() or not os.access(p, os.W_OK):
+        return False
+    if hasattr(os, "statvfs") and hasattr(os, "ST_RDONLY"):
+        try:
+            if os.statvfs(p).f_flag & os.ST_RDONLY:
+                return False
+        except OSError:
+            return False
+    return True
+
+
 def _search_hmm(a) -> int:
     """`bio-box search hmm` (card W-07; module docstring): check everything that can be checked, run, then write DIR
     by calling the separate commands. 2: refused before the run; 1: the run ended other than `ok` (DIR then holds
@@ -1061,12 +1075,17 @@ def _search_hmm(a) -> int:
 
     if not a.positive:
         return refuse("search hmm needs a positive control, a protein the search must find: --positive "
-                      "ACCESSION:START-END (one gene: its accession, start and end as `bio-box search hits --format "
-                      "tsv` prints them, 0-based, end exclusive), ACCESSION:START..END (the same gene in GenBank's "
-                      "1-based form) or --positive 'TEXT' (a substring of the contig's header). A search without "
-                      "one is refused (S-04)")
+                      "ACCESSION:START-END (one gene, as `search hits --format tsv` prints them: 0-based, end "
+                      "exclusive), ACCESSION:START..END (the same gene in GenBank's 1-based form) or --positive "
+                      "'TEXT' (a substring of the contig's header). A search without one is refused (S-04)")
     if a.neighbors < 1:
         return refuse(f"--neighbors {a.neighbors}: give at least 1 gene on each side")
+    if a.annotate is not None:
+        ann_name, ann_ver, ann_hmm, ann_cutoff = a.annotate
+        if ann_cutoff not in ("gathering", "trusted", "noise", "none"):
+            return refuse(f"--annotate: cutoff {ann_cutoff!r} is not one of gathering, trusted, noise, none")
+        if not Path(ann_hmm).is_file():
+            return refuse(f"--annotate: HMM file {ann_hmm} does not exist")
     out = Path(a.out)
     try:
         pack.outside_root(root, out, "the output directory")
@@ -1146,6 +1165,43 @@ def _search_hmm(a) -> int:
     if not libraries:
         print(f"note\trelease {a.release} has no domain library: the neighbour summary is at the cluster levels "
               f"{levels} only, and pfam_architecture is -")
+    if a.annotate is not None:
+        from biobox.l1 import domains
+
+        ann_name, ann_ver, ann_hmm, ann_cutoff = a.annotate
+        hit_uids = {h["target_uid"] for h in runner.read_hits(runner.run_dir(runs, rid))
+                    if h["target_kind"] == "protein"}
+        nbr_rows, _ = nbr.fetch(root, hit_uids, nbr.Policy.parse(window), a.gene_call_version,
+                                tape_version=tv, files=files)
+        win_uids = {r["protein_uid"] for r in nbr_rows if r.get("protein_uid") is not None}
+        unscanned, _ = domains.filter_unscanned(root, a.release, a.gene_call_version, ann_name, ann_ver, win_uids)
+        pfile = out / "round_proteins.txt"
+        pfile.write_text("\n".join(u.hex() for u in unscanned) + ("\n" if unscanned else ""), encoding="utf-8")
+        if not unscanned:
+            print("annotate\t0 unscanned window proteins")
+            return 0
+        prof_arg = a.profile or os.environ.get("BIOBOX_PROFILE")
+        cmd_parts = [
+            "bio-box", "annotate", "round",
+            "--root", str(root), "--release", a.release,
+            "--library", ann_name, ann_ver, str(Path(ann_hmm).resolve()), ann_cutoff,
+            "--proteins", str(pfile.resolve()),
+        ]
+        if a.gene_call_version != GENE_CALL_VERSION:
+            cmd_parts += ["--gene-call-version", a.gene_call_version]
+        if prof_arg:
+            cmd_parts += ["--profile", str(prof_arg)]
+        if not _root_writable(root):
+            import shlex
+
+            cmd_str = " ".join(shlex.quote(x) for x in cmd_parts)
+            print(f"annotate: data root {root} is read-only; run as the build account:\n  {cmd_str}", file=sys.stderr)
+            print(f"annotate_command\t{cmd_str}")
+            return 0
+        ann_argv = cmd_parts[1:] + (["--cpus", str(limits.cpus)] if not prof_arg else ["--scan-cpus", str(limits.cpus)])
+        code = main(ann_argv)
+        if code != 0:
+            return code
     return 0
 
 
@@ -1178,6 +1234,9 @@ def _hmm_parser() -> argparse.ArgumentParser:
     h.add_argument("--wall-s", type=float, default=6 * 3600.0)
     h.add_argument("--library", help="domain library of pfam_architecture (default: the only one, else the pfam one)")
     h.add_argument("--threads", type=int, help=f"DuckDB threads of the exports (default {export.EXPORT_THREADS})")
+    h.add_argument("--annotate", nargs=4, metavar=("NAME", "VERSION", "HMM", "CUTOFF"),
+                   help="card C-38f: annotate unscanned window proteins in an annotation round when the data root is "
+                        "writable, or print the exact `bio-box annotate round` command when the root is read-only")
     return h
 
 
@@ -2150,6 +2209,85 @@ def _stage(a) -> int:
     return 0
 
 
+def _annotate(a) -> int:
+    """`bio-box annotate round [plan|shard|merge]` (card C-38f, DEC-54)."""
+    from biobox import profile, stage
+    from biobox.l1 import domains
+
+    root = Path(a.root)
+    name, ver, hmm_s, cutoff = a.library
+    hmm = Path(hmm_s)
+    tmp = Path(a.tmp) if a.tmp else None
+    out = _out(a, root)
+    mfb = {} if a.max_file_bytes is None else {"max_file_bytes": a.max_file_bytes}
+
+    try:
+        if a.action == "plan":
+            if not a.release or not a.proteins or a.shard_residues is None:
+                raise ValueError("annotate round plan needs --release, --proteins and --shard-residues")
+            res = domains.plan_round(
+                root, a.release, a.gene_call_version, name, ver, hmm, cutoff,
+                Path(a.proteins), a.shard_residues, out=out, seq_stages=_csv(a.seq_stages), tmp=tmp,
+            )
+            print(json.dumps({"action": "plan", "result": res}, sort_keys=True, default=str))
+            return 0
+        if a.action == "shard":
+            if not a.round_id or a.shard is None:
+                raise ValueError("annotate round shard needs --round and --shard")
+            res = domains.scan_round_shard(root, a.round_id, name, ver, hmm, a.shard, a.cpus, tmp=tmp, out=out)
+            print(json.dumps({"action": "shard", "round": a.round_id, "result": res}, sort_keys=True, default=str))
+            return 0
+        if a.action == "merge":
+            if not a.round_id:
+                raise ValueError("annotate round merge needs --round")
+            res = domains.merge_round(root, a.round_id, name, ver, tmp=tmp, out=out, **mfb)
+            print(json.dumps({"action": "merge", "round": a.round_id, "result": res}, sort_keys=True, default=str))
+            return 0
+
+        # Full round orchestration
+        if not a.release or not a.proteins:
+            raise ValueError("annotate round needs --release and --proteins")
+        prof_path = a.profile or os.environ.get("BIOBOX_PROFILE")
+        if prof_path:
+            prof = profile.load(prof_path)
+            lib = stage.Library(name, ver, hmm, cutoff)
+            code, info = stage.run_round(
+                prof, root, a.release, lib, Path(a.proteins),
+                gene_call_version=a.gene_call_version, tmp=tmp,
+                scan_jobs=a.scan_jobs, scan_cpus=a.scan_cpus,
+                shard_residues_limit=a.shard_residues,
+            )
+            if code == 0:
+                print(json.dumps({"action": "round", "result": info}, sort_keys=True, default=str))
+            return code
+
+        # Direct in-process execution when no profile is given (local/testing)
+        prep = domains.prepare_round(root, a.release, a.gene_call_version, name, ver, hmm, cutoff,
+                                     Path(a.proteins), tmp=tmp)
+        if prep["round_id"] is None or prep["already_complete"]:
+            print(json.dumps({"action": "round", "result": prep}, sort_keys=True, default=str))
+            return 0
+        scratch = Path(tempfile.mkdtemp(prefix="biobox-round-", dir=tmp))
+        try:
+            limit = a.shard_residues if a.shard_residues is not None else 30_000_000
+            p = domains.plan_round(
+                root, a.release, a.gene_call_version, name, ver, hmm, cutoff,
+                Path(a.proteins), limit, out=root, seq_stages=_csv(a.seq_stages), tmp=scratch,
+            )
+            rid = p["round_id"]
+            cpus = a.scan_cpus if a.scan_cpus is not None else a.cpus
+            for k in range(p["shards"]):
+                domains.scan_round_shard(root, rid, name, ver, hmm, k, cpus, tmp=scratch, out=root)
+            m = domains.merge_round(root, rid, name, ver, tmp=scratch, out=root, **mfb)
+            print(json.dumps({"action": "round", "result": {**p, **m}}, sort_keys=True, default=str))
+            return 0
+        finally:
+            shutil.rmtree(scratch, ignore_errors=True)
+    except (FileNotFoundError, FileExistsError, ValueError) as e:
+        print(f"refused: {e}", file=sys.stderr)
+        return 2
+
+
 def _build_stage(a) -> int:
     """A stage and its release as a fixed list of run-step steps (card C-04, `biobox.stage`)."""
     from biobox import profile, stage
@@ -2567,6 +2705,26 @@ def _main(argv: list[str] | None = None) -> int:
     st.add_argument("--batch-cpu-min", type=float, help="genecall plan: the CPU-minutes a batch may be estimated at "
                                                         "(build-stage gives 80%% of cpu_min_per_process)")
     st.add_argument("--batches", type=int, help="genecall plan: cut into this many batches (forced)")
+    an = sub.add_parser("annotate", parents=[common], help="annotation rounds over a list of proteins (card C-38f)")
+    an.add_argument("what", choices=["round"])
+    an.add_argument("action", nargs="?", choices=["plan", "shard", "merge"],
+                    help="substep for run-step (plan, shard, merge); omit to run the full round")
+    an.add_argument("--release", help="the searched release whose domain_state filters the request")
+    an.add_argument("--round", dest="round_id", help="shard, merge: the round id (r-<16 hex>)")
+    an.add_argument("--library", nargs=4, required=True, metavar=("NAME", "VERSION", "HMM", "CUTOFF"),
+                    help="domain library: name version hmm_path cutoff")
+    an.add_argument("--proteins", help="file of protein uids (32 hex digits per line, or .parquet)")
+    an.add_argument("--profile", help="host profile YAML (default: $BIOBOX_PROFILE): runs plan, shards and merge "
+                                      "as run-step steps under the profile's caps")
+    an.add_argument("--tmp", help="scratch directory (never under the data root)")
+    an.add_argument("--out", help=OUT_HELP)
+    an.add_argument("--shard-residues", type=int, help="residues per scan shard at most")
+    an.add_argument("--shard", type=int, help="shard: 0-based shard index")
+    an.add_argument("--cpus", type=int, default=1, help="shard or direct mode: hmmsearch threads (default 1)")
+    an.add_argument("--scan-jobs", type=int, help="shards at once when running with --profile")
+    an.add_argument("--scan-cpus", type=int, help="threads per shard when running with --profile")
+    an.add_argument("--seq-stages", help="plan: comma-separated candidate stages for B-47b copy sources")
+    an.add_argument("--max-file-bytes", type=int, help="merge: cut parts at this many estimated bytes")
     bs = sub.add_parser("build-stage", parents=[common], help="a stage and its release, step by step under "
                                                               "run-step (card C-04)")
     bs.add_argument("--profile", required=True, help="host profile YAML (profiles/wilkcomp02.yaml)")
@@ -2621,7 +2779,7 @@ def _main(argv: list[str] | None = None) -> int:
         return code
     return {"pack": _pack, "search": _search, "nbr": _nbr, "find": _find, "export": _export, "run-step": _run_step,
             "release": _release, "stage": _stage, "build-stage": _build_stage, "releases": _releases,
-            "seq": _seq, "sql": _sql, "results": _results}[a.cmd](a)
+            "seq": _seq, "sql": _sql, "results": _results, "annotate": _annotate}[a.cmd](a)
 
 
 if __name__ == "__main__":

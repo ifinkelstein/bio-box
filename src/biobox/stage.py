@@ -1011,8 +1011,8 @@ def _sharded(prof: Profile, b: Build, root: Path, step: Step) -> bool:
     seq = _domain_seq_stages(root, b.stage, lib)  # the plan step's --seq-stages (`_scan_in_shards`)
     srcs, _ = domains.sources(root, b.stage, lib.name, lib.version, ids.sha256_file(Path(lib.hmm)).hex(), lib.cutoff,
                               seq)
-    if srcs:  # card B-47b: only a plan records what is copied, so the scan runs as plan, shards and merge
-        _say(f"{b.stage}.{step.name}: {', '.join(s['stage'] for s in srcs)} measured proteins with this scan (HMM file, "
+    if srcs:  # card B-47b / C-38f: only a plan records what is copied, so the scan runs as plan, shards and merge
+        _say(f"{b.stage}.{step.name}: {', '.join(domains._src_id(s) for s in srcs)} measured proteins with this scan (HMM file, "
              f"cutoff, Z and tool versions); the scan runs as its plan step, which leaves out the proteins measured "
              f"there and copies their rows (card B-47b), then its shards over the residues left, then the merge")
         return True
@@ -1270,10 +1270,10 @@ def _scan_in_shards(prof: Profile, b: Build, root: Path, step: Step, one: Callab
         hook(f"after:{first.name}")
     p = domains.read_plan(root, b.stage, lib.name, lib.version)
     shards = len(p["shards"])
-    if "copy" in p:  # card B-47b: the estimate from the residues actually scanned
+    if "copy" in p:  # card B-47b / C-38f: the estimate from the residues actually scanned
         c, res = p["copy"], sum(s["residues"] for s in p["shards"])
         _say(f"{b.stage}.{step.name}: the plan copies the rows of {c['proteins']:,} proteins ({c['residues']:,} "
-             f"residues) measured in {', '.join(s['stage'] for s in c['sources']) or 'no stage'} and scans "
+             f"residues) measured in {', '.join(domains._src_id(s) for s in c['sources']) or 'no stage'} and scans "
              f"{res:,} residues in {shards} shards, estimated at {scan_cpu_min(res):,.1f} CPU-minutes")
     subs = scan_steps(prof, b, step, shards, cpus)
     if run is None:
@@ -1290,6 +1290,154 @@ def _scan_in_shards(prof: Profile, b: Build, root: Path, step: Step, one: Callab
     run_dir = domains.run_path(scratch_of(prof, b), root, b.stage, lib.name, lib.version, 0).parent
     shutil.rmtree(run_dir, ignore_errors=True)
     return None
+
+
+def run_round(
+    prof: Profile,
+    root: Path,
+    release: str,
+    lib: Library,
+    proteins_file: Path,
+    *,
+    gene_call_version: str = GENE_CALL_VERSION,
+    tmp: Path | None = None,
+    scan_jobs: int | None = None,
+    scan_cpus: int | None = None,
+    shard_residues_limit: int | None = None,
+    run: Runner | None = None,
+    clock: Callable[[], datetime] = datetime.now,
+    load: Callable[[], float] | None = None,
+    cpu: Callable[[], runstep.CpuUse] | None = None,
+    _hook: Hook | None = None,
+) -> tuple[int, dict]:
+    """Run an annotation round as `run-step` steps (plan, shards launched via `_run_shards`, merge; card C-38f).
+    Each shard stays within `SHARD_MARGIN` of `prof.cpu_min_per_process` (AGENTS §7.2). Returns `(exit_code, info)`."""
+    root = Path(root).resolve()
+    scratch = (Path(tmp) if tmp is not None else Path(prof.tmp) / "scratch").resolve()
+    if scratch.is_relative_to(root):
+        _say(f"refused: {scratch}: the scratch directory may not lie under the data root")
+        return runstep.EXIT_REFUSED, {}
+    if (root / "STOP").exists():
+        _say(f"{root / 'STOP'} exists; not starting annotation round")
+        return runstep.EXIT_STOP, {}
+    if lib.cutoff not in CUTOFFS:
+        _say(f"refused: library {lib.name}: cutoff {lib.cutoff!r} is not one of {', '.join(CUTOFFS)}")
+        return runstep.EXIT_REFUSED, {}
+
+    scratch.mkdir(parents=True, exist_ok=True)
+    try:
+        prep = domains.prepare_round(root, release, gene_call_version, lib.name, lib.version, Path(lib.hmm),
+                                     lib.cutoff, Path(proteins_file), tmp=scratch)
+    except (FileNotFoundError, ValueError) as e:
+        _say(f"refused: {e}")
+        return runstep.EXIT_REFUSED, {}
+    if prep["round_id"] is None or prep["already_complete"]:
+        return 0, prep
+
+    rid = prep["round_id"]
+    step_name = scan_name(lib)
+    reading = runstep.read_cpu if cpu is None else cpu
+    load_avg = runstep._load1 if load is None else load
+    shard_run = run
+    step_runner = runstep.run_step if run is None else run
+    now, use = clock(), reading()
+    allowance = scan_allowance(prof, now, use)
+    said = runstep.allowance(prof, now, use, load1=load_avg())
+    cpus = scan_cpus if scan_cpus is not None else min(DEFAULT_SCAN_CPUS, allowance)
+    jobs = scan_jobs if scan_jobs is not None else (allowance // cpus if cpus > 0 else 0)
+    if jobs < 1 or cpus < 1 or jobs * cpus > allowance:
+        _say(f"refused: --scan-jobs {jobs} x --scan-cpus {cpus} does not fit allowance {allowance}")
+        return runstep.EXIT_REFUSED, prep
+    limit = shard_residues(prof) if shard_residues_limit is None else shard_residues_limit
+    if limit < 1:
+        _say(f"refused: --shard-residues {limit}: must be at least 1")
+        return runstep.EXIT_REFUSED, prep
+
+    last = [(said.threads, said.cap)]
+
+    def allow(threads: int) -> int:
+        a = runstep.allowance(prof, clock(), reading(), threads=threads, load1=load_avg())
+        if (a.threads, a.cap) != last[0]:
+            _say(f"{a.line} (was {last[0][0]})")
+            last[0] = (a.threads, a.cap)
+        return a.threads
+
+    def one(step: Step) -> int | None:
+        if (root / "STOP").exists():
+            _say(f"{root / 'STOP'} exists; stopping before {step.run_stage}.{step.name}")
+            return runstep.EXIT_STOP
+        if not _record(root, step).exists() or _intent(root, step).exists():
+            code = _hold_step(root, step, 1, allow, _hook)
+            if code is not None:
+                return code
+        cmd: Sequence[str] = [sys.executable, "-m", step.module, *step.argv]
+        code = step_runner(prof, root, step.run_stage, step.name, cmd, threads=1)
+        if code != 0:
+            _say(f"{step.run_stage}.{step.name} exited {code}; stopping here")
+            return code
+        return None
+
+    hmm = str(Path(lib.hmm).resolve())
+    pfile = str(Path(proteins_file).resolve())
+    plan_step = Step(
+        rid, f"{step_name}.plan",
+        ("annotate", "round", "plan", "--root", str(root), "--release", release,
+         "--gene-call-version", gene_call_version, "--library", lib.name, lib.version, hmm, lib.cutoff,
+         "--proteins", pfile, "--shard-residues", str(limit), "--tmp", str(scratch)),
+    )
+    code = one(plan_step)
+    if code is not None:
+        return code, prep
+    if _hook is not None:
+        _hook(f"after:{plan_step.name}")
+
+    p = domains.read_round_plan(root, rid, lib.name, lib.version)
+    n_shards = len(p["shards"])
+    c, res = p["copy"], sum(s["residues"] for s in p["shards"])
+    _say(f"{rid}.{step_name}: copies {c['proteins']:,} proteins ({c['residues']:,} residues) from "
+         f"{', '.join(domains._src_id(s) for s in c['sources']) or 'no source'} and scans "
+         f"{res:,} residues in {n_shards} shards, estimated at {scan_cpu_min(res):,.1f} CPU-minutes")
+
+    shard_steps = [
+        Step(rid, f"{step_name}.shard-{k:05d}",
+             ("annotate", "round", "shard", "--root", str(root), "--round", rid,
+              "--library", lib.name, lib.version, hmm, lib.cutoff,
+              "--shard", str(k), "--cpus", str(cpus), "--tmp", str(scratch)))
+        for k in range(n_shards)
+    ]
+    merge_step = Step(
+        rid, step_name,
+        ("annotate", "round", "merge", "--root", str(root), "--round", rid,
+         "--library", lib.name, lib.version, hmm, lib.cutoff, "--tmp", str(scratch)),
+    )
+    if shard_run is None:
+        shard_run = _process_runner(_profile_file(prof, scratch))
+    if shard_steps:
+        code = _run_shards(prof, root, merge_step, shard_steps, jobs, cpus, shard_run, _hook, allow)
+        if code is not None:
+            return code, prep
+        todo = []
+        for k, s in enumerate(shard_steps):
+            why = domains.round_run_problem(root, rid, lib.name, lib.version, k, scratch)
+            if why is None:
+                continue
+            todo.append(Step(rid, f"{s.name}.rescan",
+                             ("rescan", "--root", str(root), "--round", rid, "--library", lib.name,
+                              "--library-version", lib.version, "--hmm", hmm, "--shard", str(k),
+                              "--cpus", str(cpus), "--tmp", str(scratch)), module="biobox.l1.domains"))
+        if todo:
+            code = _launch(prof, root, todo, jobs, cpus, _rescan_process, _hook, allow)
+            if code is not None:
+                return code, prep
+
+    code = one(merge_step)
+    if code is not None:
+        return code, prep
+    if _hook is not None:
+        _hook(f"after:{merge_step.name}")
+    sdir = domains.round_requested_path(scratch, root, rid, lib.name, lib.version).parent
+    shutil.rmtree(sdir, ignore_errors=True)
+    return 0, {**prep, "shards": n_shards, "copied_proteins": c["proteins"], "scanned_residues": res}
 
 
 def _rescan_lost(prof: Profile, b: Build, root: Path, scan: Step, shards: list[Step], jobs: int, cpus: int,
