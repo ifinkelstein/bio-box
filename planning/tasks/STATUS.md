@@ -123,6 +123,16 @@ because the root must stay under 7.86 M contigs until open item 16 is decided, a
 about 2.9 M; **a second tranche therefore waits on item 16 as well as on item 19.** Agents at 10:50: C-48c part 1
 (`V1`, building; gene calling done at 10:36), C-48c part 2 (`V2` and `GV1` inputs), C-48e part 1, D-07.
 
+**6g. The memory-peak flake (cards A-10, A-10a, A-10b; open item 20), 2026-11-20.** Diagnosed (card A-10's
+amendment), evidence capture merged (A-10a), a workflow that repeats only the four C-16 tests merged (A-10b).
+`gh workflow run` cannot dispatch it while its file is not on `main` (HTTP 404), so the workflow also runs on a push
+to a branch named `peak-evidence/<anything>`; **the first run of 60 iterations was started at about 12:25 by
+pushing `plan/task-cards`' head to `origin/peak-evidence/run-1`** (that push also starts `ci` and `cross-host` once).
+When it ends: read the job summary (`gh run view <id>`; the artifact `peak-evidence-logs`), record in
+`planning/measurements/2026-11-20_peak_helper_evidence.md` section 4 how many iterations were sampled and, for a
+sampled one, its `peak_evidence` against the table in that note's section 3; then delete the branch
+`peak-evidence/run-1` on origin. If none of 60 is sampled, the evidence waits for an ordinary `ci` job (one in 31).
+
 **7. Waiting on the PI**: item 19 (where the corpus lives; `tower` being looked at, card C-49), items 15 (decided: DEC-56), 16 (B-56's design), 17 (`domain_state`'s place in
 the exports), 18 (the pilot's storage rates), and the older ones in the section below (item 12, the TACC requests,
 the eukaryote kind, how many old releases keep their large files).
