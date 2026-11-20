@@ -738,6 +738,19 @@ sources:
       - path: /stor/work/Wilke/if2453/all-the-data/jgi_20261118/gvmags_v2_20261118.tar
         bytes: 2190807040
         sha256: 45a3c34ca91e43e3651cd1d2f960bd913b3a5fc3e926efec32f298a29ee0d383
+    staged:
+      - stage: GV1
+        object: /tmp/if2453/s2/inputs/GV1/gvmags_v2_all_18kgenomes.fna
+        bytes: 4639876745
+        sha256: 568f3a312fd78d03544792bfb3a89bde708591865065d72c62fc6c0dbdc0028b
+        derived_from: >-
+          gvmags_v2_20261118.tar, member gvmags_v2/all_18kgenomes_fna.tar.gz (md5 077f125d844c85ca6169c331d52640b9),
+          every .fna member's records in archive order
+        rule: >-
+          scripts/stress/build_stage_pod/c48c_virus_inputs.py gv1: every genome (18,726 members; 18,499 genomes after
+          227 that repeat an earlier genome's contig set); kind virus, gv-meta; quality contig; built after V2
+          (card C-48c part 3, planning/measurements/2026-11-20_virus_gv1_inputs.md)
+        left_for_later: none (fna_files.tar.gz, 8,508 genomes, holds no contig GV1 lacks)
     approved: by the PI on 2026-11-18 ("enumerate everything they have, and grab the biggest things")
   - name: spire_pilot_assemblies
     what: >-

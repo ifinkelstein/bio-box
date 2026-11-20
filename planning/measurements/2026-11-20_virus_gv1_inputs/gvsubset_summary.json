@@ -1,0 +1,25 @@
+{
+ "contigs_gv1_lacks": 0,
+ "dropped_bases_median": 7123,
+ "dropped_contigs_per_genome": {
+  "1": 311,
+  "2": 64,
+  "3": 29,
+  "4": 12,
+  "5": 11,
+  "6": 6,
+  "7": 2,
+  "8": 3,
+  "9": 2,
+  "10": 1,
+  "15": 1
+ },
+ "genomes": 8508,
+ "genomes_with_gv1_contigs_dropped": 442,
+ "gv1_bases_dropped": 5323061,
+ "gv1_contigs_dropped": 746,
+ "relation": {
+  "same_contigs": 8066,
+  "subset_of_gv1_genome": 442
+ }
+}

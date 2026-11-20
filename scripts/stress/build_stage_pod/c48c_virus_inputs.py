@@ -3,6 +3,19 @@ representatives plus the Inovirus genomes, streamed from the archives on /stor (
 
     python c48c_virus_inputs.py v2 HC_ZIP META_ZIP OUT_DIR [--root ROOT] [--root-stages S1,P1,...]
         [--owner-inputs NAME=DIR ...]
+    python c48c_virus_inputs.py gv1 GVMAGS_TAR OUT_DIR [--root ROOT] [--root-stages S1,P1,...] [--owner-inputs NAME=DIR ...]
+
+gv1 (card C-48c part 3; stage GV1): every genome of GVMAGs V2, the `.fna` members of all_18kgenomes_fna.tar.gz inside
+GVMAGS_TAR (gvmags_v2_20261118.tar), streamed one member at a time; the member's md5 is checked against sources.yaml. A
+genome is one `.fna` (its records its contigs, in order; kind virus, gv-meta; code 11 recorded; assembly_quality
+`contig`, the schema's value for an assembly of unknown completeness, since the archive has no quality table; every
+contig linear, the archive records no topology). A member that is not `.fna` is not read as a genome and is written
+to skipped_members.tsv. A genome whose contig set an earlier genome has is that genome (DEC-27, repeated_records.tsv);
+a contig in several genomes of different sets stays in each (DEC-27; the genome with the least genome_uid writes its
+calls); a record whose contig an owner holds is written to shared_records.tsv (owners as for v2, V2's inputs among
+them). Writes gvmags_v2_all_18kgenomes.fna (every record, header and line width as in the archive, archive order),
+genomes.json, objects.json (CC BY-SA 4.0, redistributable), records.tsv, repeated_records.tsv, shared_records.tsv,
+skipped_members.tsv.
 
 HC_ZIP is jgi_img_vr_v4.1_hc_20261118.zip, META_ZIP jgi_inovirus_umag_iuig_meta_20261118.zip. Nothing is unpacked:
 the table and the FASTA are read as streams of their zip members (AGENTS §4.1: one record at a time; what is held is
@@ -501,6 +514,122 @@ def _add(listing, genomes, repeated, first_of, uids, circular, name, ordinal) ->
     first_of[guid] = name
 
 
+# --- stage GV1 (card C-48c part 3) ------------------------------------------------------------------------------------
+
+GV_MEMBER = "gvmags_v2/all_18kgenomes_fna.tar.gz"
+GV_MD5 = "077f125d844c85ca6169c331d52640b9"  # sources.yaml, gvmags_v2 (Zenodo's md5)
+GV_FASTA = "gvmags_v2_all_18kgenomes.fna"
+GV_QUALITY = "contig"  # unknown completeness: the archive has no quality table (part 3's decision 3; card C-40's value)
+GV_SOURCE = {"source_name": "gvmags_v2",
+             "source_release": "zenodo:10.5281/zenodo.20126600 GVMAGs V2, all_18kgenomes_fna.tar.gz (every genome)",
+             "license": "CC BY-SA 4.0", "redistributable": True}
+
+
+def stage_gv1(gv_tar: Path, out: Path, *, root: Path | None, root_stages: Iterable[str],
+              owner_inputs: dict[str, Path], expected_md5: str | None = GV_MD5, retrieved: str) -> dict:
+    """GV1's inputs (`gv1` mode, module docstring): every `.fna` member of GV_MEMBER one genome, under OUT.tmp, renamed
+    to OUT when complete; an existing OUT is refused."""
+    out = Path(out)
+    if out.exists():
+        raise Refused(f"{out} exists")
+    work = out.with_name(f"{out.name}.tmp")
+    shutil.rmtree(work, ignore_errors=True)
+    work.mkdir(parents=True)
+    try:
+        rep = _stage_gv1(Path(gv_tar), out, work, root, list(root_stages), owner_inputs, expected_md5, retrieved)
+    except BaseException:
+        shutil.rmtree(work, ignore_errors=True)
+        raise
+    work.rename(out)
+    names = ["genomes.json", "objects.json", "records.tsv", "repeated_records.tsv", "shared_records.tsv",
+             "skipped_members.tsv", GV_FASTA]
+    rep["sha256"] = {n: ids.sha256_file(out / n).hex() for n in names}
+    rep["bytes"] = {n: (out / n).stat().st_size for n in names}
+    return rep
+
+
+def _stage_gv1(gv_tar, out, work, root, root_stages, owner_inputs, expected_md5, retrieved) -> dict:
+    import tarfile
+
+    genomes_in: list[tuple[str, str, list[tuple[bytes, int, str]]]] = []  # (genome, member, [(uid, len, header)])
+    skipped: list[tuple] = []
+    rep: dict = {"md5": {}}
+    with tarfile.open(gv_tar, mode="r:") as outer:
+        raw = outer.extractfile(GV_MEMBER)
+        if raw is None:
+            raise Refused(f"{GV_MEMBER}: not a file in {gv_tar}")
+        h = HashReader(raw)
+        with tarfile.open(fileobj=io.BufferedReader(h, 1 << 22), mode="r|gz") as tf, \
+                open(work / GV_FASTA, "wb") as w:
+            for m in tf:
+                if not m.isfile():
+                    continue
+                if not m.name.endswith(".fna"):
+                    skipped.append((m.name, m.size, "not_fasta"))  # read as data, never run
+                    continue
+                g = m.name.rsplit("/", 1)[-1][:-4]
+                recs = []
+                for r in iter_fasta_stream(io.BytesIO(tf.extractfile(m).read())):  # one genome (a few MB) at a time
+                    w.write(b"\n".join(fasta.format_record(r.header, r.seq, r.line_width)) + b"\n")
+                    recs.append((ids.contig_uid(r.seq), len(r.seq), r.accession))
+                if not recs:
+                    raise Refused(f"{m.name}: no FASTA record")
+                genomes_in.append((g, m.name, recs))
+        _md5_check(rep["md5"], "gv_member", h.drain(), {"gv_member": expected_md5} if expected_md5 else None)
+    names = [g for g, _, _ in genomes_in]
+    if len(set(names)) != len(names):
+        raise Refused("a genome name is in two members")
+    owners = owners_of([u for _, _, rs in genomes_in for u, _, _ in rs], root, root_stages, owner_inputs)
+
+    listing = make_inputs.Listing()
+    genomes, repeated, shared, rows = [], [], [], []
+    first_of: dict[bytes, str] = {}
+    held_whole = 0
+    ordinal = 0
+    for g, member, recs in genomes_in:
+        uids = [u for u, _, _ in recs]
+        for k, (u, n, acc) in enumerate(recs):
+            rows.append((ordinal, g, k, acc, u.hex(), n, member))
+            if u in owners:
+                shared.append((ordinal, g, k, u.hex(), owners[u]))
+            ordinal += 1
+        guid = ids.genome_uid(list(dict.fromkeys(uids)))
+        gi = listing.add(uids, 11, "virus", GV_QUALITY)
+        if gi is None:
+            repeated.append((ordinal - len(recs), g, guid.hex(), first_of[guid]))
+            continue
+        genomes.append(gi)  # every contig linear: the archive records no topology (part 3's decision 4)
+        first_of[guid] = g
+        held_whole += all(u in owners for u in uids)
+
+    make_inputs._write_tsv(work / "records.tsv", ["ordinal", "genome", "record", "accession", "contig_uid", "length",
+                                                  "member"], rows)
+    make_inputs._write_tsv(work / "repeated_records.tsv", ["ordinal", "genome", "genome_uid", "first_genome"],
+                           repeated)
+    make_inputs._write_tsv(work / "shared_records.tsv", ["ordinal", "genome", "record", "contig_uid", "owner_stage"],
+                           shared)
+    make_inputs._write_tsv(work / "skipped_members.tsv", ["member", "bytes", "reason"], skipped)
+    objects = [{"path": str(out / GV_FASTA), **GV_SOURCE, "retrieved_at": retrieved}]
+    (work / "objects.json").write_text(json.dumps(objects, indent=1))
+    (work / "genomes.json").write_text(json.dumps(genomes))
+    contig_len: dict[bytes, int] = {}
+    for r in rows:
+        contig_len.setdefault(bytes.fromhex(r[4]), r[5])
+    by = lambda rs: dict(sorted(Counter(r[4] for r in rs).items()))  # noqa: E731
+    rep.update({
+        "fna_members": len(genomes_in), "skipped_members": len(skipped), "records": len(rows),
+        "record_bases": sum(r[5] for r in rows), "genomes": len(genomes), "repeated_genomes": len(repeated),
+        "contigs": len(contig_len), "contig_bases": sum(contig_len.values()),
+        "contigs_per_genome_median": sorted(len(g["contig_uids"]) for g in genomes)[len(genomes) // 2] if genomes else 0,
+        "genomes_all_contigs_held_earlier": held_whole,
+        "shared_records": len(shared), "owner_records": by(shared),
+        "owner_contigs": by(list({r[3]: r for r in shared}.values())),
+        "new_contigs": sum(1 for u in contig_len if u not in owners),
+        "new_bases": sum(n for u, n in contig_len.items() if u not in owners),
+        **listing.report(), "objects": len(objects)})
+    return rep
+
+
 def main(argv: list[str]) -> int:
     try:
         argv, root = make_inputs._option(argv, "--root")
@@ -515,13 +644,18 @@ def main(argv: list[str]) -> int:
     except Refused as e:
         print(f"c48c_virus_inputs.py: refused: {e}\n{__doc__.split(chr(10) * 2)[1]}", file=sys.stderr)
         return 2
-    if len(argv) != 4 or argv[0] != "v2" or (stages and not root):
+    ok = (len(argv) == 4 and argv[:1] == ["v2"]) or (len(argv) == 3 and argv[:1] == ["gv1"])
+    if not ok or (stages and not root):
         print(__doc__.split("\n\n")[1], file=sys.stderr)
         return 2
+    common = {"root": None if root is None else Path(root), "root_stages": stages.split(",") if stages else (),
+              "owner_inputs": owner_inputs}
     try:
-        rep = stage_v2(Path(argv[1]), Path(argv[2]), Path(argv[3]), root=None if root is None else Path(root),
-                       root_stages=stages.split(",") if stages else (), owner_inputs=owner_inputs,
-                       retrieved_imgvr="2026-11-18T23:15:37Z", retrieved_inovirus="2026-11-18T23:16:08Z")
+        if argv[0] == "gv1":  # retrieved: the end of the Zenodo fetch, sources.yaml gvmags_v2
+            rep = stage_gv1(Path(argv[1]), Path(argv[2]), retrieved="2026-11-19T10:42:14Z", **common)
+        else:
+            rep = stage_v2(Path(argv[1]), Path(argv[2]), Path(argv[3]), retrieved_imgvr="2026-11-18T23:15:37Z",
+                           retrieved_inovirus="2026-11-18T23:16:08Z", **common)
     except Refused as e:
         print(f"c48c_virus_inputs.py: refused: {e}", file=sys.stderr)
         return 2

@@ -1158,6 +1158,13 @@ Evidence (*measured*, wilkcomp02, 2026-11-19, card C-47): all 9 stages `B-52` fi
 Do, test first: add a measured gzip-input decompression term to `ingest_cpu_min` for `.gz` `SourceObject`s while leaving plain-FASTA estimates byte-for-byte identical on all 9 uncompressed stages (`S1..PL1`), bringing all 10 stages (`S1..PL1, C5`) within `15%`.
 Accept: tests fail first on `C5` (`> 20%`) and pass within `15%` across all 10 built/ingested stages.
 
+### B-59 A gene-calling rate for giant-virus genomes
+**L** · Depends: B-48 · found 2026-11-20 by card C-48c part 3 (`planning/measurements/2026-11-20_virus_gv1_inputs.md`)
+Files: `src/biobox/l1/genecall.py` (the per-kind cost model only), `tests/r1/test_b48_genecall_estimate.py` or a new `tests/r1/test_b59_giant_virus_rate.py`, `RUNBOOK.md` rates
+Evidence (*measured*, wilkcomp02, 2026-11-20, card C-48c part 3): on 695 sampled GVMAGs V2 genomes (174.3 Mbp) gv-meta gene calling took 2.7239 s per Mbp, 35.2% under the code's gv-meta rate of 4.2019 s per Mbp, which was fitted on phage-sized genomes; the code's estimate of stage `GV1`'s gene-calling step (354 CPU-min) is then 48% over what the sample predicts (236 at 2.80 s per Mbp with the step overhead). A driver's rate guard judges a step against the code's estimate (DEC-43, DEC-53: more than 20% under is recorded, not stopped, so `GV1` would not stop on it), and batch plans built on a rate 48% high cut more batches than needed.
+Do, test first: the gene-call cost of a `virus` genome depends on its size class as well as its kind: a measured rate for giant-virus-sized genomes (state the length threshold from the data: the sample's genomes against `V1`'s and `S1`'s), leaving every estimate of the built stages (`S1`, `H1`, `V1` when built) within 20% of its run record and bringing `GV1`'s sample within 15%. No built stage's plan or published file changes (the plan hash of a stage already built is not recomputed).
+Accept: the test fails first on the `GV1` sample (over 20%) and passes; the estimates of the built virus stages against their run records stay within 20%.
+
 ### C-47 Build stage `C5` with a full Pfam scan, and measure Pfam by representatives on it (the second half of card C-25 step 3)
 **M** · Pod: yes · Depends: C-36 (merged: `C5`'s inputs), C-35 (one build at a time in the root: after release `r26.11.1`), B-48, B-50, B-47b, B-52 (merged) · DEC-32, DEC-34, DEC-35 · the build that cards B-47a to B-47e wait for
 Files: `scripts/stress/build_stage_pod/c47_*` (driver, estimates, checks, in the form of card C-26 part 2's), `scripts/stress/` (the measurement script, from card 0-09b's), `RUNBOOK.md` (Appendix A rows), measurement notes
