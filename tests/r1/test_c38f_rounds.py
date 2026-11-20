@@ -75,7 +75,7 @@ def _hmmsearch_oracle(hmm_path: Path, proteins: dict[bytes, str], tmp: Path) -> 
     """Independent oracle: run the system `hmmsearch` binary directly with `-Z 1e8 --domZ 1e8 --cut_ga`."""
     exe = shutil.which("hmmsearch")
     if exe is None:
-        pytest.skip("hmmsearch binary not on PATH")
+        pytest.skip("hmmsearch not on PATH")
     faa = tmp / "oracle_in.faa"
     domtbl = tmp / "oracle.domtbl"
     with open(faa, "w", encoding="utf-8") as fh:
@@ -269,11 +269,11 @@ def test_c38f_oracle_mixed_release_matches_hmmsearch_binary(mixed_base, tmp_path
     assert dom_files
     dom_rows = [r for f in dom_files for r in pq.read_table(f).to_pylist()]
     got_pairs = {(r["protein_uid"], r["model_acc"], r["env_start"], r["env_end"]) for r in dom_rows}
-    if shutil.which("hmmsearch") is not None:
+    assert len(got_pairs) > 0
+    have_oracle = shutil.which("hmmsearch") is not None
+    if have_oracle:
         oracle_pairs = _hmmsearch_oracle(hmm, unscanned, tmp_path)
         assert got_pairs == oracle_pairs and len(got_pairs) > 0
-    else:
-        assert len(got_pairs) > 0
 
     # Check round_coverage: 1 row per unscanned protein, n_rows == 0 for non-hits, > 0 for hits
     cov_files = io.part_files(root / f"l1/round_coverage/round={rid}/library={LIB_FULL}")
@@ -310,6 +310,20 @@ def test_c38f_oracle_mixed_release_matches_hmmsearch_binary(mixed_base, tmp_path
     catalog.write_manifest(m2)
     assert catalog.verify_manifest(m2, root) == []
     assert provenance.check_provenance(m2) == []
+
+    # Every check above ran, but the name of this test promises the binary oracle: without it the test is a skip,
+    # not a pass (AGENTS §5.2).
+    if not have_oracle:
+        pytest.skip("hmmsearch not on PATH")
+
+
+def test_c38f_oracle_helper_skips_when_hmmsearch_is_absent(monkeypatch, tmp_path):
+    """Item (1) of card D-07: with `hmmsearch` hidden from `shutil.which`, the oracle helper skips with the stated
+    reason in place of returning an empty set."""
+    real_which = shutil.which
+    monkeypatch.setattr(shutil, "which", lambda name, *a, **k: None if name == "hmmsearch" else real_which(name, *a, **k))
+    with pytest.raises(pytest.skip.Exception, match="hmmsearch not on PATH"):
+        _hmmsearch_oracle(tmp_path / "none.hmm", {}, tmp_path)
 
 
 def test_c38f_idempotence_overlap_order_and_copy_parity(mixed_base, tmp_path):

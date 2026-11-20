@@ -152,6 +152,51 @@ def test_published_byte_identity_run_and_near_cas_with_shared_and_circular_conti
     assert len(_digests(nc_a)) == 3  # feature, l1_crispr, ledger
 
 
+# sha256 of the three files the CRISPR step publishes on the `micro_s0` fixture (default producer, 2 MinCED
+# processes, stage `S0`; fixture built through ingest, gene calls, IGRs and tapes as `test_crispr_producer.py`'s
+# `fixture_stage` does), taken from the code BEFORE card B-55: commit 044586d97c194e96b1a73678d170d6db685df807
+# (`git rev-parse 5647ce7^1`, the integration tree just before B-55 was merged), measured 2026-11-20 on wilkcomp02
+# in the test image, by a throwaway pytest file built on this module's `_build_micro_s0_crispr` steps and run with
+# `scripts/pod_pytest.sh D-07-old <file> -s` on a worktree of that commit; two builds of that tree gave the same
+# three values. They record the old writer, not the function under test.
+OLD_WRITER_PRODUCER = "minced-0.4.2-w8-nr3-r23x47-s26x50"
+OLD_WRITER_SHA256 = {
+    f"l1/feature/producer={OLD_WRITER_PRODUCER}/stage=S0/part-0.parquet":
+        "9e5abc0fe516e24a1b496c5293a4f72d8c1dc82b64ce1799e3275fc97c183cd1",
+    f"l1/crispr/producer={OLD_WRITER_PRODUCER}/stage=S0/part-0.parquet":
+        "9e6dce0e270751638e53bed7748f49986fe26572bd7357a6a64af51dfb5dc706",
+    f"ledger/stage=S0/step=crispr-{OLD_WRITER_PRODUCER}/part-0.parquet":
+        "857cd28ffda2ee2c783c79880f790a293e1984d39a371c3b4a27308db8c26fa3",
+}
+
+
+def _build_micro_s0_crispr(base: Path) -> dict[str, str]:
+    import test_builders_out as c08
+    from biobox.l1 import igr
+    from biobox.l1.genecall import run as call_genes
+    from biobox.l3 import tapes
+
+    root, scratch = base / "root", base / "scratch"
+    scratch.mkdir(parents=True)
+    contract = c08.CONTRACT
+    ingest([SourceObject(c08.FIX / o["file"], contract["source_name"], contract["source_release"],
+                         contract["license"], True) for o in contract["objects"]], root, "S0")
+    genomes = c08.genome_inputs("S0") + c08.genome_inputs("S1")
+    write_genome_input(root, "S0", genomes)
+    call_genes(root, "S0", genomes, tmp=scratch)
+    igr.run(root, "S0", tmp=scratch)
+    tapes.run(root, "S0", tmp=scratch)
+    before = set(_digests(root))
+    crispr.run(root, "S0", 2, tmp=scratch)
+    return {k: v for k, v in _digests(root).items() if k not in before}
+
+
+def test_micro_s0_published_crispr_files_equal_the_pre_b55_writers_sha256(tmp_path):
+    """Item (3) of card D-07: the `feature`, `l1_crispr` and `ledger` files of the fixture's CRISPR step are
+    byte-identical to those the code before card B-55 published (pinned above)."""
+    assert _build_micro_s0_crispr(tmp_path) == OLD_WRITER_SHA256
+
+
 CHILD = r"""
 import json, math, sys
 from pathlib import Path
