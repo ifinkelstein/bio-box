@@ -150,6 +150,11 @@ on it cancelled. Next evidence: any ordinary `ci` job that shows the case (searc
   (*derived*: `CPUUsageNSec` 647,901,928,220,000 / 6e10) against about 11,150 estimated. **Not yet done**: its
   `after`, `check` and `backup` (the agent was stopped before them; resumed to do them). **`c47-queue` is still
   waiting** for `/tmp/if2453/c48c/after/DONE`, so `C5` has not started; it starts the moment `V1`'s `after` ends.
+- **On `tower` at 17:00** (`/mnt/user/research-bulk/bio-box/`): `root_backups/` with the seven tars and
+  `SHA256SUMS` (the mirror's `DONE` at 16:56:54), and `deferred_lists/` with `V2`'s two remainder lists and `PL2`'s
+  skipped records and their `SHA256SUMS` (the first real run of `scripts/orchestrator/relay_to_tower.sh`, 23
+  seconds, about 9 MB/s to verified). `planning/measurements/2026-11-20_tower_relay.md` has every row. Next to go
+  there: each new `added_<stage>.tar` as it is made, and, if the PI says yes to S-2, the staged inputs.
 - **The first mirror to `tower` has all seven tars in place, each with its recorded sha256** (16:25:45;
   `relay_backups.log`): 106,785,105,920 bytes in 5 h 45 min from the first byte, 5.16 MB/s end to end (*derived*),
   about half of it spent reading back on `tower`. Its last step, writing `SHA256SUMS` there, re-reads all seven and

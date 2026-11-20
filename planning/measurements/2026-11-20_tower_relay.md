@@ -57,17 +57,29 @@ C-49 and the audit note `2026-11-20_audit_of_1117_1120.md` §2).
 |---|---|---|---|---|---|---|
 | `root_rM2_20261114/l0seq.tar` | 28,241,715,200 | 10:40:59 | 13:21:26 | 6,543 | 4.32 MB/s | *measured*, log; rate *derived* |
 | `root_rM2_20261114/l2.tar` | 27,176,785,920 | 10:40:59 | 13:35:11 | 6,843 | 3.97 MB/s | *measured*, log; rate *derived* |
-| `root_rM2_20261114/l3.tar` | 15,692,646,400 | 13:21:26 | not yet at 15:15 | | | *measured*, log |
-| `added_r26_11_1.tar` | 20,908,011,520 | 13:35:12 | not yet at 15:15 | | | *measured*, log |
-| `root_rM2_20261114/l1_and_records.tar` | 9,860,751,360 | queued | | | | sizes: STATUS (2026-11-14 durable copy) |
-| `root_added_20261116/added_pl1.tar` | 3,545,118,720 | queued | | | | size *derived*: the seven tars' total less the other six |
-| `root_added_20261115/added_h1_crispr_labels.tar` | 1,360,076,800 | queued | | | | STATUS (2026-11-15) |
+| `root_rM2_20261114/l3.tar` | 15,692,646,400 | 13:21:26 | 15:15:19 | 3,768 | 4.16 MB/s | *measured*, log; rate *derived* |
+| `added_r26_11_1.tar` | 20,908,011,520 | 13:35:12 | 15:59:56 | 4,738 | 4.41 MB/s | *measured*, log; rate *derived* |
+| `root_rM2_20261114/l1_and_records.tar` | 9,860,751,360 | 15:15:19 | 16:08:42 | 1,649 | 5.98 MB/s | *measured*, log; rate *derived* |
+| `root_added_20261116/added_pl1.tar` | 3,545,118,720 | 15:59:56 | 16:19:33 | 641 | 5.53 MB/s | *measured*, log; rate *derived* |
+| `root_added_20261115/added_h1_crispr_labels.tar` | 1,360,076,800 | 16:19:33 | 16:25:45 | 209 | 6.51 MB/s | *measured*, log; rate *derived* |
 
-**The mirror was still running when this note was written** (the log read at 15:15 CST, 2026-11-20; its last line
-`13:35:12 added_r26_11_1.tar: try 1: copy started`): two of the seven tars, 55,418,501,120 bytes, were verified in
-place on `tower`; the other five, 51,366,604,800 bytes (*derived*), were being copied or queued. The orchestrator
-expected it to end at about 16:00. It ends with `SHA256SUMS` written on `tower` and a `DONE` line in the log; the
-remaining rows of the table, and the rate of the run as a whole, are to be added from the log then.
+**The mirror ended at 16:56:54 with `DONE: all 7 in place; SHA256SUMS written on tower`** (*measured*, the log; added
+by the orchestrator when it ended). Every tar's sha256, read back on `tower` before it was put in place, equals the
+recorded value, and the seven were read a second time there for `SHA256SUMS` (16:25 to 16:56) with the same seven
+values. `du -sb` on `tower` gives 106,785,106,597 bytes for the directory (the seven tars and the 677-byte
+`SHA256SUMS`). From the first byte to the last tar verified in place: 5 h 44 min 46 s for 106,785,105,920 bytes,
+**5.16 MB/s end to end** (*derived*); to `DONE`, 6 h 16 min.
+
+**The repository script's first real use** (the orchestrator, 16:57:31 to 16:57:54, `relay_to_tower.sh` with
+`BIOBOX_POD_JUMP` set, one stream, default hashing on arrival): three deferred-data lists that were on the pod's
+`/tmp` only, from `/tmp/if2453/s2/inputs` to `tower:/mnt/user/research-bulk/bio-box/deferred_lists`:
+`V2/V2_left_for_later_v4.0_putative.tsv.gz` (106,448,343 bytes in 12 s, 8.87 MB/s),
+`V2/V2_left_for_later_hc.tsv.gz` (58,947,247 bytes in 6 s, 9.82 MB/s) and `PL2/skipped_records.tsv` (17,445,698
+bytes in 3 s), each with its sha256 equal to the one taken on the pod, then `SHA256SUMS` written (3 lines)
+(*measured*, the script's log; the directory listed on `tower` afterwards). A dry run first printed the same three
+files and 182,841,288 bytes. So the script works against the real hosts, and on files of 60 to 100 MB it reaches
+verified-in-place at about 9 MB/s, where the first mirror's read-back halved it. Its rate on a file of tens of GB is
+still to be measured at the next backup tar.
 
 ## 4. What the first mirror showed, and the change in the repository script
 
