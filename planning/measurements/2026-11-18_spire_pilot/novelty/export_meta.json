@@ -1,0 +1,31 @@
+{
+  "ref_release": "r26.11.1",
+  "ref_stages": [
+    "S1",
+    "P1",
+    "P2",
+    "P3",
+    "P4",
+    "P5",
+    "P6",
+    "H1",
+    "PL1"
+  ],
+  "pilot_stages": [
+    "SPA1",
+    "SPN1",
+    "SPQ1",
+    "SPQ2",
+    "SPH1",
+    "SPH2",
+    "SPT1",
+    "SPT2",
+    "SPU1"
+  ],
+  "ref_distinct_proteins": 49102041,
+  "pilot_distinct_proteins": 115030133,
+  "exact_shared_proteins": 1071774,
+  "combined_distinct_proteins": 163060400,
+  "combined_faa_bytes": 50843441343,
+  "direct_createdb": true
+}

@@ -714,3 +714,42 @@ sources:
         bytes: 2190807040
         sha256: 45a3c34ca91e43e3651cd1d2f960bd913b3a5fc3e926efec32f298a29ee0d383
     approved: by the PI on 2026-11-18 ("enumerate everything they have, and grab the biggest things")
+  - name: spire_pilot_assemblies
+    what: >-
+      SPIRE v1 per-sample metagenome assembly FASTAs (~1,000 samples stratified across all 32 level-2 habitats in
+      proportion to sqrt(N_h), seed 20261118) plus SPIRE's public v1 sample metadata API table and per-MAG probe FASTAs;
+      card C-42 (pilot in pod scratch only, not a production stage)
+    url: https://spire.embl.de/download_assembly/{sample_id}
+    url_samples_api: https://spire.embl.de/api/v1/samples?format=tsv&limit=10000&offset={offset}
+    url_mag_probe: https://spire.embl.de/download_file/{mag_id}
+    redirect_hosts: [https://black.embl.de/~fullam/spire/, https://swifter.embl.de/~fullam/spire/]
+    page: >-
+      https://spire.embl.de/spire/v1/study/Howe_2014_soil, https://spire.embl.de/api/ and https://spire.embl.de/faqs
+      (read 2026-11-18)
+    files: >-
+      api_samples/page_*.tsv (10 pages of <= 10,000 rows from url_samples_api: sample, study, assembly_bp,
+      assembly_n50, binned_fraction, bases, reads, n_mags, n_hq_mags, n_mq_mags); ~1,000 per-sample assembly FASTAs
+      from url; MAG FASTAs from url_mag_probe for 1 probe sample + TniQ-hit samples only
+    checksum: none published per sample on the site; wire and disk byte sizes, md5 and sha256 recorded in fetch logs on fetch
+    limits: >-
+      one connection; at most 2 requests per second (SPIRE API documents 120 requests/min); User-Agent curl (no name,
+      email or project detail); stop after 5 refusals in a row (HTTP 403, 429, 500, 502, 503, 504); total pilot scratch
+      strictly < 200 GB under /tmp/if2453/s3/spire/
+    license: >-
+      CC BY-SA 4.0 (https://spire.embl.de/faqs, read 2026-11-18: "This work is licensed under a Creative Commons
+      Attribution-ShareAlike 4.0 International License (http://creativecommons.org/licenses/by-sa/4.0/)."; paper
+      doi:10.1093/nar/gkad943). Share-alike: redistribution of a derived collection carries CC BY-SA 4.0
+    redistributable: true
+    fetched: >-
+      2026-11-19 to 2026-11-20 UTC by card C-42 (c42_fetch.py, 1 connection, >= 0.5 s interval, User-Agent curl, 0 HTTP
+      refusals) into /tmp/if2453/s3/spire/ on wilkcomp02: (1) tables/ (730 files including 10 api_samples/page_*.tsv
+      pages = 27,407,083 bytes, total 151,021,997 bytes) 2026-11-19 01:07:42 to 01:21:16 UTC, fetch_tables_log.jsonl
+      sha256 155ecae3d4506ec9ef3e1dd97920913dc3f5a745b49b30317158da6202da8526; (2) dl/assemblies/ (1,000 pilot samples:
+      990 HTTP 200 .fa.gz files = 105,461,158,824 bytes, 10 HTTP 404 where SPIRE hosts no assembly, unlinked after
+      depth-1 ingest) 2026-11-19 01:35:56 to 03:35:50 UTC, fetch_assemblies.jsonl sha256
+      b63a1b40f0b64873eab5e3fcd1a8bc8f175d2ad391d1eef4963805afb9fc5fc6; (3) MAG overlap probes (4 MAGs of SAMN06343983
+      plus 7,029 HTTP 200 MAG .fa.gz files = 5,339,657,208 wire bytes of 7,157 listed across 339 TniQ-hit samples,
+      unlinked immediately after contig_uid hashing) 2026-11-20 02:24:48 to 05:25:38 UTC, fetch_sample_mags.jsonl sha256
+      b77860809d73f92701c2be6f0d50b7160cf4d62219d38d14e03d95ef3a6106f6; record planning/measurements/2026-11-18_spire_pilot.md
+    stored: not on /stor (scratch only under /tmp/if2453/s3/spire/ on wilkcomp02; bulky intermediates removed after pilot)
+    approved: under DEC-50 (card C-42, 2026-11-18)
