@@ -11,6 +11,8 @@
 #             of P1,P2,PL1 with pfam-38.2 linked; checks exit 0, B-47b copy, c47_check.py, and idempotent relaunch.
 #   estimate  Verify C5 inputs sha256 and compute pre-launch CPU estimates (`c47_est.py before`).
 #   before    Verify all 7 published releases (`rN.1a..r26.11.1`) and snapshot root listing + earlier sha256.
+#   rebefore  After V1 (card C-48c part 1) was built between C5's two launches: keep `before` as before.20261119,
+#             take it again, and drop C5's already-published files from its listing (see rebefore() below).
 #   run       Launch `build-stage --stage C5 --depth annotated ... --threads 6 --scan-cpus 4` (omitting --scan-jobs
 #             so live runstep.allowance scales automatically), with r50_watch.py (280 CPU-min) + c47_est.py rates
 #             (DEC-43 + DEC-53: stop ONLY on judged ratio > 1.20).
@@ -291,6 +293,46 @@ before() {
   touch "$d/DONE"
 }
 
+# rebefore: take `before` again after stage V1 (card C-48c part 1) was built into the root between C5's two launches
+# (c47-c5-1 on 2026-11-19 published C5's inputs and ingest and was stopped by the rate guard; DEC-56 resumes it on
+# 2026-11-20, after V1). c47_check.py counts every file new between `before` and `after` that has no `stage=C5` path
+# component as unexpected, and the first `before` (2026-11-19) was taken ahead of V1. `before` must mean "the root
+# without C5": then root_added.tsv and the backup tar hold all of C5, its inputs and ingest files included, and none of
+# V1. So: only when no build unit is active and V1's own `after` snapshot is complete (its check and backup no longer
+# read the root's listing), keep the old listing as before.20261119, verify the seven published releases, snapshot as
+# `before` does, then drop from listing.tsv exactly the lines of C5's own already-published files (a `stage=C5` path
+# component), keeping the unfiltered listing as listing.with_c5.tsv. earlier.sha256 is unchanged in meaning: it hashes
+# the stages of EARLIER only (V1 is not an earlier stage of C5: C5's inputs were recorded first), before and after.
+rebefore() {
+  local d=$C/before old=$C/before.20261119 r ok=1 act n_all n_c5 n_left
+  [ -e "$d/REBEFORE" ] && [ -e "$d/DONE" ] && { log "rebefore: REBEFORE and DONE present"; return; }
+  [ -e "$ROOT/STOP" ] && fail "$ROOT/STOP exists"
+  act=$(build_units)
+  [ -z "$act" ] || fail "rebefore: a build unit is active: $act"
+  [ -e /tmp/if2453/c48c/after/DONE ] || fail "rebefore: no /tmp/if2453/c48c/after/DONE (V1's after snapshot)"
+  if [ ! -e "$old" ]; then
+    [ -e "$d/DONE" ] || fail "rebefore: $d/DONE missing: no first listing to keep aside"
+    mv "$d" "$old" || fail "rebefore: mv $d $old"
+    log "rebefore: the listing of 2026-11-19 kept as $old"
+  else
+    rm -rf "$d"  # what an unfinished earlier rebefore left; the first listing is in $old
+  fi
+  mkdir -p "$d"
+  snap_top
+  for r in $RELEASES; do verify "$ROOT" "$r" "$d" || ok=0; done
+  [ "$ok" = 1 ] || fail "rebefore: a published release failed verify"
+  snapshot "$d"
+  mv "$d/listing.tsv" "$d/listing.with_c5.tsv" || fail "rebefore: mv listing"
+  awk -F '\t' -v s="/stage=$STAGE/" 'index("/" $1 "/", s) == 0' "$d/listing.with_c5.tsv" > "$d/listing.tsv" \
+    || fail "rebefore: filter listing"
+  n_all=$(wc -l < "$d/listing.with_c5.tsv")
+  n_left=$(wc -l < "$d/listing.tsv")
+  n_c5=$(awk -F '\t' -v s="/stage=$STAGE/" 'index("/" $1 "/", s) > 0' "$d/listing.with_c5.tsv" | wc -l)
+  [ $((n_left + n_c5)) = "$n_all" ] || fail "rebefore: $n_left kept + $n_c5 of $STAGE != $n_all listed"
+  log "rebefore: listing.with_c5.tsv $n_all files; removed $n_c5 of stage=$STAGE (already published by c47-c5-1); listing.tsv $n_left files"
+  touch "$d/REBEFORE" "$d/DONE"
+}
+
 next_unit() {
   local n
   n=$(($( [ -e "$C/units" ] && wc -l < "$C/units" || echo 0) + 1))
@@ -419,10 +461,11 @@ case "$MODE" in
   rehearse) rehearse ;;
   estimate) estimate ;;
   before) before ;;
+  rebefore) rebefore ;;
   run) run ;;
   after) after ;;
   check) check ;;
   backup) backup ;;
-  *) echo "usage: c47_driver.sh restore|rehearse|estimate|before|run|after|check|backup" >&2; exit 2 ;;
+  *) echo "usage: c47_driver.sh restore|rehearse|estimate|before|rebefore|run|after|check|backup" >&2; exit 2 ;;
 esac
 log "c47 driver: mode '$MODE' done"
