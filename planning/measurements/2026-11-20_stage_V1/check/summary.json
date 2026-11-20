@@ -1,0 +1,1019 @@
+{
+ "added": {
+  "bytes": 4231059281,
+  "files": 130
+ },
+ "contigs": {
+  "bases_stored": 5178493077,
+  "circular": 22517,
+  "codes": [
+   4,
+   11,
+   15
+  ],
+  "contig_label_rows": 168536,
+  "contig_occurrence_contigs": 168536,
+  "contig_occurrence_rows": 168536,
+  "contig_occurrence_rows_on_contigs_of_earlier_stages": 178,
+  "contigs": 168536,
+  "genome_input_rows": 168536,
+  "genomes": 168536,
+  "kinds": [
+   "virus"
+  ],
+  "ledger_equals_stored_by": true,
+  "ledger_skipped_earlier": 178,
+  "ledger_skipped_within": 0,
+  "quality": {
+   "complete": 24404,
+   "vOTU": 144132
+  },
+  "stored": 168358,
+  "stored_by_earlier": 178,
+  "stored_by_earlier_by_stage": {
+   "H1": 177,
+   "S1": 1
+  }
+ },
+ "copy_check": {
+  "columns_compared": [
+   "protein_uid",
+   "model_acc",
+   "model_name",
+   "model_len",
+   "seq_bitscore",
+   "seq_evalue_zref",
+   "dom_bitscore",
+   "dom_ievalue_zref",
+   "env_start",
+   "env_end",
+   "ali_start",
+   "ali_end",
+   "hmm_from",
+   "hmm_to",
+   "cutoff",
+   "z",
+   "dom_z"
+  ],
+  "copied_proteins": 174655,
+  "equals_plan": true,
+  "rows": 80172,
+  "sources": [
+   {
+    "plan_proteins": 107362,
+    "plan_rows": 38197,
+    "proteins": 107362,
+    "rows_in_source": 38197,
+    "rows_in_stage": 38197,
+    "source_not_in_stage": 0,
+    "stage": "H1",
+    "stage_not_in_source": 0
+   },
+   {
+    "plan_proteins": 356,
+    "plan_rows": 290,
+    "proteins": 356,
+    "rows_in_source": 290,
+    "rows_in_stage": 290,
+    "source_not_in_stage": 0,
+    "stage": "P1",
+    "stage_not_in_source": 0
+   },
+   {
+    "plan_proteins": 6592,
+    "plan_rows": 4700,
+    "proteins": 6592,
+    "rows_in_source": 4700,
+    "rows_in_stage": 4700,
+    "source_not_in_stage": 0,
+    "stage": "P2",
+    "stage_not_in_source": 0
+   },
+   {
+    "plan_proteins": 7097,
+    "plan_rows": 4791,
+    "proteins": 7097,
+    "rows_in_source": 4791,
+    "rows_in_stage": 4791,
+    "source_not_in_stage": 0,
+    "stage": "P3",
+    "stage_not_in_source": 0
+   },
+   {
+    "plan_proteins": 3667,
+    "plan_rows": 2442,
+    "proteins": 3667,
+    "rows_in_source": 2442,
+    "rows_in_stage": 2442,
+    "source_not_in_stage": 0,
+    "stage": "P4",
+    "stage_not_in_source": 0
+   },
+   {
+    "plan_proteins": 7672,
+    "plan_rows": 5000,
+    "proteins": 7672,
+    "rows_in_source": 5000,
+    "rows_in_stage": 5000,
+    "source_not_in_stage": 0,
+    "stage": "P5",
+    "stage_not_in_source": 0
+   },
+   {
+    "plan_proteins": 3694,
+    "plan_rows": 2383,
+    "proteins": 3694,
+    "rows_in_source": 2383,
+    "rows_in_stage": 2383,
+    "source_not_in_stage": 0,
+    "stage": "P6",
+    "stage_not_in_source": 0
+   },
+   {
+    "plan_proteins": 9388,
+    "plan_rows": 6558,
+    "proteins": 9388,
+    "rows_in_source": 6558,
+    "rows_in_stage": 6558,
+    "source_not_in_stage": 0,
+    "stage": "PL1",
+    "stage_not_in_source": 0
+   },
+   {
+    "plan_proteins": 28827,
+    "plan_rows": 15811,
+    "proteins": 28827,
+    "rows_in_source": 15811,
+    "rows_in_stage": 15811,
+    "source_not_in_stage": 0,
+    "stage": "S1",
+    "stage_not_in_source": 0
+   }
+  ]
+ },
+ "crispr": {
+  "default": {
+   "arrays": 725,
+   "arrays_per_gbp": 140.002,
+   "calls_in": 725,
+   "calls_kept": 725,
+   "contigs_searched": 168358,
+   "contigs_skipped_other_stage": 178,
+   "elements": 15439,
+   "producer": "minced-0.4.2-w8-nr3-r23x47-s26x50",
+   "recorded": true,
+   "rejected": {}
+  },
+  "near_cas": {
+   "arrays": 9,
+   "arrays_per_gbp": 1.738,
+   "calls_in": 18096,
+   "calls_kept": 9,
+   "contigs_searched": 168358,
+   "contigs_skipped_other_stage": 178,
+   "elements": 35,
+   "producer": "minced-0.4.2-w8-nr2-r23x47-s26x50-cas1kb-caspfam1-pfam-38.2",
+   "recorded": true,
+   "rejected": {
+    "far_from_cas": 17347,
+    "inside_gene": 2,
+    "overlaps_default": 738
+   }
+  }
+ },
+ "expected": {
+  "observed": {
+   "added_bytes": 4231059281,
+   "bases_stored": 5178493077,
+   "circular": 22517,
+   "contigs": 168536,
+   "distinct_proteins": 5542734,
+   "genes": 7364696,
+   "genome_input_rows": 168536,
+   "genomes": 168536,
+   "ledger_skipped_earlier": 178,
+   "new_distinct_proteins": 5408864,
+   "residues": 1295410057,
+   "stored": 168358,
+   "stored_by_earlier": 178
+  },
+  "problems": [],
+  "ranges": {
+   "added_bytes": [
+    2960000000,
+    5040000000
+   ],
+   "bases_stored": [
+    5178493077,
+    5178493077
+   ],
+   "circular": [
+    22517,
+    22517
+   ],
+   "contigs": [
+    168536,
+    168536
+   ],
+   "distinct_proteins": [
+    4477974,
+    6716962
+   ],
+   "genes": [
+    5912000,
+    8868000
+   ],
+   "genome_input_rows": [
+    168536,
+    168536
+   ],
+   "genomes": [
+    168536,
+    168536
+   ],
+   "ledger_skipped_earlier": [
+    178,
+    178
+   ],
+   "new_distinct_proteins": [
+    4338118,
+    6507178
+   ],
+   "residues": [
+    1045799957,
+    1568699935
+   ],
+   "stored": [
+    168358,
+    168358
+   ],
+   "stored_by_earlier": [
+    178,
+    178
+   ]
+  }
+ },
+ "failed": [],
+ "files": {
+  "after": 4652,
+  "before": 4522,
+  "changed": [],
+  "earlier_hashed": 1549,
+  "earlier_sha256_changed": [],
+  "gone": [],
+  "new": 130,
+  "new_under_stage": 130,
+  "unexpected": []
+ },
+ "genes": {
+  "distinct_proteins": 5542734,
+  "earlier_protein_seq_files": 14,
+  "genes": 7364696,
+  "in_earlier_stages": 133870,
+  "new_distinct_proteins": 5408864,
+  "new_residues": 1266713007,
+  "residues": 1295410057
+ },
+ "pfam": {
+  "copied_proteins": 174655,
+  "copied_proteins_with_hit": 54846,
+  "copied_residues": 40052855,
+  "copied_rows": 80172,
+  "domain_rows": 2801576,
+  "models_with_hit": 7888,
+  "passed_over": [
+   {
+    "stage": "C5",
+    "why": "no run record runs/stage=C5/domains-pfam-38.2.json: its domains-pfam-38.2 step is not complete (or did not run under run-step), so what it measured is not recorded"
+   }
+  ],
+  "proteins": 5583519,
+  "proteins_with_domain": 1968620,
+  "residues": 1306765862,
+  "scanned_proteins": 5408864,
+  "scanned_residues": 1266713007,
+  "shard_residues": 30150753,
+  "shards": 43,
+  "shared_contig_proteins_added": 40785,
+  "sources": [
+   {
+    "proteins": 107362,
+    "proteins_with_hit": 24121,
+    "residues": 28222459,
+    "rows": 38197,
+    "stage": "H1"
+   },
+   {
+    "proteins": 356,
+    "proteins_with_hit": 212,
+    "residues": 59464,
+    "rows": 290,
+    "stage": "P1"
+   },
+   {
+    "proteins": 6592,
+    "proteins_with_hit": 3269,
+    "residues": 1197458,
+    "rows": 4700,
+    "stage": "P2"
+   },
+   {
+    "proteins": 7097,
+    "proteins_with_hit": 3244,
+    "residues": 1345470,
+    "rows": 4791,
+    "stage": "P3"
+   },
+   {
+    "proteins": 3667,
+    "proteins_with_hit": 1796,
+    "residues": 660589,
+    "rows": 2442,
+    "stage": "P4"
+   },
+   {
+    "proteins": 7672,
+    "proteins_with_hit": 3419,
+    "residues": 1424618,
+    "rows": 5000,
+    "stage": "P5"
+   },
+   {
+    "proteins": 3694,
+    "proteins_with_hit": 1689,
+    "residues": 654728,
+    "rows": 2383,
+    "stage": "P6"
+   },
+   {
+    "proteins": 9388,
+    "proteins_with_hit": 4767,
+    "residues": 1764750,
+    "rows": 6558,
+    "stage": "PL1"
+   },
+   {
+    "proteins": 28827,
+    "proteins_with_hit": 12329,
+    "residues": 4723319,
+    "rows": 15811,
+    "stage": "S1"
+   }
+  ],
+  "stage_protein_seq": 5542734
+ },
+ "steps": {
+  "batches": {
+   "cpu_min": 602.09,
+   "cpu_min_max": 202.588,
+   "n": 3,
+   "peak_rss_mib_max": 674,
+   "ratio_max": 1.038,
+   "ratio_min": 1.016,
+   "wall_s_max": 3024.2
+  },
+  "code_ids": [
+   "0b69365eb712b23533bedafae3c88f7acae44245262f7fd2ce69f24bc513b2f9"
+  ],
+  "cpu_min_max": 246.911,
+  "cpu_min_total": 10790.39,
+  "images": [
+   "sha256:d67300aa1321b571fa8da79e74dfccdd87a8dca2e56518f324902efa6b9f098a"
+  ],
+  "largest": "domains-pfam-38.2.shard-00015",
+  "names": [
+   "crispr-minced-0.4.2-w8-nr2-r23x47-s26x50-cas1kb-caspfam1-pfam-38.2",
+   "crispr-minced-0.4.2-w8-nr3-r23x47-s26x50",
+   "domains-pfam-38.2",
+   "domains-pfam-38.2.plan",
+   "genecall.batch-00000",
+   "genecall.batch-00001",
+   "genecall.batch-00002",
+   "genecall",
+   "genecall.plan",
+   "igr",
+   "ingest",
+   "inputs",
+   "tapes"
+  ],
+  "over_budget": [],
+  "rates": {
+   "checked": 50,
+   "over_20pct": [],
+   "rows": [
+    {
+     "basis": "before.json ingest_cpu_min(fasta_bytes, held_bases)",
+     "cpu_min": 21.816,
+     "estimate": 21.378,
+     "judged": false,
+     "over_20pct": false,
+     "peak_rss_mib": 5504.6,
+     "ratio": 1.02,
+     "step": "ingest",
+     "under_20pct": false,
+     "wall_s": 1286.742
+    },
+    {
+     "basis": "plan: 56008 genomes, 1722956383 bases called",
+     "cpu_min": 201.122,
+     "estimate": 195.16,
+     "judged": true,
+     "over_20pct": false,
+     "peak_rss_mib": 662.4,
+     "ratio": 1.031,
+     "step": "genecall.batch-00000",
+     "under_20pct": false,
+     "wall_s": 3004.158
+    },
+    {
+     "basis": "plan: 56320 genomes, 1727835241 bases called",
+     "cpu_min": 202.588,
+     "estimate": 195.151,
+     "judged": true,
+     "over_20pct": false,
+     "peak_rss_mib": 674.3,
+     "ratio": 1.038,
+     "step": "genecall.batch-00001",
+     "under_20pct": false,
+     "wall_s": 3024.204
+    },
+    {
+     "basis": "plan: 56208 genomes, 1727701453 bases called",
+     "cpu_min": 198.375,
+     "estimate": 195.172,
+     "judged": true,
+     "over_20pct": false,
+     "peak_rss_mib": 639.2,
+     "ratio": 1.016,
+     "step": "genecall.batch-00002",
+     "under_20pct": false,
+     "wall_s": 2964.507
+    },
+    {
+     "basis": "plan: merge of 7462726.4 genes expected",
+     "cpu_min": 1.764,
+     "estimate": 0.934,
+     "judged": false,
+     "over_20pct": false,
+     "peak_rss_mib": 2415.8,
+     "ratio": 1.889,
+     "step": "genecall",
+     "under_20pct": false,
+     "wall_s": 95.919
+    },
+    {
+     "basis": "30150041 residues x 7.96 / 1e6",
+     "cpu_min": 244.671,
+     "estimate": 239.994,
+     "judged": true,
+     "over_20pct": false,
+     "peak_rss_mib": 774.5,
+     "ratio": 1.019,
+     "step": "domains-pfam-38.2.shard-00000",
+     "under_20pct": false,
+     "wall_s": 3638.465
+    },
+    {
+     "basis": "30150751 residues x 7.96 / 1e6",
+     "cpu_min": 245.338,
+     "estimate": 240.0,
+     "judged": true,
+     "over_20pct": false,
+     "peak_rss_mib": 834.2,
+     "ratio": 1.022,
+     "step": "domains-pfam-38.2.shard-00001",
+     "under_20pct": false,
+     "wall_s": 3650.206
+    },
+    {
+     "basis": "30150704 residues x 7.96 / 1e6",
+     "cpu_min": 237.688,
+     "estimate": 240.0,
+     "judged": true,
+     "over_20pct": false,
+     "peak_rss_mib": 834.0,
+     "ratio": 0.99,
+     "step": "domains-pfam-38.2.shard-00002",
+     "under_20pct": false,
+     "wall_s": 3535.167
+    },
+    {
+     "basis": "30149303 residues x 7.96 / 1e6",
+     "cpu_min": 242.402,
+     "estimate": 239.988,
+     "judged": true,
+     "over_20pct": false,
+     "peak_rss_mib": 850.0,
+     "ratio": 1.01,
+     "step": "domains-pfam-38.2.shard-00003",
+     "under_20pct": false,
+     "wall_s": 3605.545
+    },
+    {
+     "basis": "30150666 residues x 7.96 / 1e6",
+     "cpu_min": 236.257,
+     "estimate": 239.999,
+     "judged": true,
+     "over_20pct": false,
+     "peak_rss_mib": 895.3,
+     "ratio": 0.984,
+     "step": "domains-pfam-38.2.shard-00004",
+     "under_20pct": false,
+     "wall_s": 3513.293
+    },
+    {
+     "basis": "30150721 residues x 7.96 / 1e6",
+     "cpu_min": 235.942,
+     "estimate": 240.0,
+     "judged": true,
+     "over_20pct": false,
+     "peak_rss_mib": 808.9,
+     "ratio": 0.983,
+     "step": "domains-pfam-38.2.shard-00005",
+     "under_20pct": false,
+     "wall_s": 3507.887
+    },
+    {
+     "basis": "30150377 residues x 7.96 / 1e6",
+     "cpu_min": 242.035,
+     "estimate": 239.997,
+     "judged": true,
+     "over_20pct": false,
+     "peak_rss_mib": 816.6,
+     "ratio": 1.008,
+     "step": "domains-pfam-38.2.shard-00006",
+     "under_20pct": false,
+     "wall_s": 3601.066
+    },
+    {
+     "basis": "30150559 residues x 7.96 / 1e6",
+     "cpu_min": 241.388,
+     "estimate": 239.998,
+     "judged": true,
+     "over_20pct": false,
+     "peak_rss_mib": 839.8,
+     "ratio": 1.006,
+     "step": "domains-pfam-38.2.shard-00007",
+     "under_20pct": false,
+     "wall_s": 3590.448
+    },
+    {
+     "basis": "30150633 residues x 7.96 / 1e6",
+     "cpu_min": 236.619,
+     "estimate": 239.999,
+     "judged": true,
+     "over_20pct": false,
+     "peak_rss_mib": 812.9,
+     "ratio": 0.986,
+     "step": "domains-pfam-38.2.shard-00008",
+     "under_20pct": false,
+     "wall_s": 3519.689
+    },
+    {
+     "basis": "30150701 residues x 7.96 / 1e6",
+     "cpu_min": 243.964,
+     "estimate": 240.0,
+     "judged": true,
+     "over_20pct": false,
+     "peak_rss_mib": 843.3,
+     "ratio": 1.017,
+     "step": "domains-pfam-38.2.shard-00009",
+     "under_20pct": false,
+     "wall_s": 3641.414
+    },
+    {
+     "basis": "30150706 residues x 7.96 / 1e6",
+     "cpu_min": 242.964,
+     "estimate": 240.0,
+     "judged": true,
+     "over_20pct": false,
+     "peak_rss_mib": 805.6,
+     "ratio": 1.012,
+     "step": "domains-pfam-38.2.shard-00010",
+     "under_20pct": false,
+     "wall_s": 3625.92
+    },
+    {
+     "basis": "30150745 residues x 7.96 / 1e6",
+     "cpu_min": 242.19,
+     "estimate": 240.0,
+     "judged": true,
+     "over_20pct": false,
+     "peak_rss_mib": 835.7,
+     "ratio": 1.009,
+     "step": "domains-pfam-38.2.shard-00011",
+     "under_20pct": false,
+     "wall_s": 3615.302
+    },
+    {
+     "basis": "30150607 residues x 7.96 / 1e6",
+     "cpu_min": 242.726,
+     "estimate": 239.999,
+     "judged": true,
+     "over_20pct": false,
+     "peak_rss_mib": 859.0,
+     "ratio": 1.011,
+     "step": "domains-pfam-38.2.shard-00012",
+     "under_20pct": false,
+     "wall_s": 3623.038
+    },
+    {
+     "basis": "30150745 residues x 7.96 / 1e6",
+     "cpu_min": 243.03,
+     "estimate": 240.0,
+     "judged": true,
+     "over_20pct": false,
+     "peak_rss_mib": 882.5,
+     "ratio": 1.013,
+     "step": "domains-pfam-38.2.shard-00013",
+     "under_20pct": false,
+     "wall_s": 3627.678
+    },
+    {
+     "basis": "30150634 residues x 7.96 / 1e6",
+     "cpu_min": 243.278,
+     "estimate": 239.999,
+     "judged": true,
+     "over_20pct": false,
+     "peak_rss_mib": 810.8,
+     "ratio": 1.014,
+     "step": "domains-pfam-38.2.shard-00014",
+     "under_20pct": false,
+     "wall_s": 3631.152
+    },
+    {
+     "basis": "30150656 residues x 7.96 / 1e6",
+     "cpu_min": 246.911,
+     "estimate": 239.999,
+     "judged": true,
+     "over_20pct": false,
+     "peak_rss_mib": 821.0,
+     "ratio": 1.029,
+     "step": "domains-pfam-38.2.shard-00015",
+     "under_20pct": false,
+     "wall_s": 3685.966
+    },
+    {
+     "basis": "30150722 residues x 7.96 / 1e6",
+     "cpu_min": 240.115,
+     "estimate": 240.0,
+     "judged": true,
+     "over_20pct": false,
+     "peak_rss_mib": 825.7,
+     "ratio": 1.0,
+     "step": "domains-pfam-38.2.shard-00016",
+     "under_20pct": false,
+     "wall_s": 3582.938
+    },
+    {
+     "basis": "30150569 residues x 7.96 / 1e6",
+     "cpu_min": 241.364,
+     "estimate": 239.999,
+     "judged": true,
+     "over_20pct": false,
+     "peak_rss_mib": 792.5,
+     "ratio": 1.006,
+     "step": "domains-pfam-38.2.shard-00017",
+     "under_20pct": false,
+     "wall_s": 3601.909
+    },
+    {
+     "basis": "30150740 residues x 7.96 / 1e6",
+     "cpu_min": 238.456,
+     "estimate": 240.0,
+     "judged": true,
+     "over_20pct": false,
+     "peak_rss_mib": 827.8,
+     "ratio": 0.994,
+     "step": "domains-pfam-38.2.shard-00018",
+     "under_20pct": false,
+     "wall_s": 3547.654
+    },
+    {
+     "basis": "30150520 residues x 7.96 / 1e6",
+     "cpu_min": 239.092,
+     "estimate": 239.998,
+     "judged": true,
+     "over_20pct": false,
+     "peak_rss_mib": 879.2,
+     "ratio": 0.996,
+     "step": "domains-pfam-38.2.shard-00019",
+     "under_20pct": false,
+     "wall_s": 3557.487
+    },
+    {
+     "basis": "30150705 residues x 7.96 / 1e6",
+     "cpu_min": 239.908,
+     "estimate": 240.0,
+     "judged": true,
+     "over_20pct": false,
+     "peak_rss_mib": 828.0,
+     "ratio": 1.0,
+     "step": "domains-pfam-38.2.shard-00020",
+     "under_20pct": false,
+     "wall_s": 3567.168
+    },
+    {
+     "basis": "30150401 residues x 7.96 / 1e6",
+     "cpu_min": 239.314,
+     "estimate": 239.997,
+     "judged": true,
+     "over_20pct": false,
+     "peak_rss_mib": 857.1,
+     "ratio": 0.997,
+     "step": "domains-pfam-38.2.shard-00021",
+     "under_20pct": false,
+     "wall_s": 3562.114
+    },
+    {
+     "basis": "30150557 residues x 7.96 / 1e6",
+     "cpu_min": 246.783,
+     "estimate": 239.998,
+     "judged": true,
+     "over_20pct": false,
+     "peak_rss_mib": 787.3,
+     "ratio": 1.028,
+     "step": "domains-pfam-38.2.shard-00022",
+     "under_20pct": false,
+     "wall_s": 3673.281
+    },
+    {
+     "basis": "30150626 residues x 7.96 / 1e6",
+     "cpu_min": 238.046,
+     "estimate": 239.999,
+     "judged": true,
+     "over_20pct": false,
+     "peak_rss_mib": 816.1,
+     "ratio": 0.992,
+     "step": "domains-pfam-38.2.shard-00023",
+     "under_20pct": false,
+     "wall_s": 3542.226
+    },
+    {
+     "basis": "30150742 residues x 7.96 / 1e6",
+     "cpu_min": 239.081,
+     "estimate": 240.0,
+     "judged": true,
+     "over_20pct": false,
+     "peak_rss_mib": 819.5,
+     "ratio": 0.996,
+     "step": "domains-pfam-38.2.shard-00024",
+     "under_20pct": false,
+     "wall_s": 3557.001
+    },
+    {
+     "basis": "30150696 residues x 7.96 / 1e6",
+     "cpu_min": 239.575,
+     "estimate": 240.0,
+     "judged": true,
+     "over_20pct": false,
+     "peak_rss_mib": 894.3,
+     "ratio": 0.998,
+     "step": "domains-pfam-38.2.shard-00025",
+     "under_20pct": false,
+     "wall_s": 3564.508
+    },
+    {
+     "basis": "30150649 residues x 7.96 / 1e6",
+     "cpu_min": 246.118,
+     "estimate": 239.999,
+     "judged": true,
+     "over_20pct": false,
+     "peak_rss_mib": 868.8,
+     "ratio": 1.025,
+     "step": "domains-pfam-38.2.shard-00026",
+     "under_20pct": false,
+     "wall_s": 3663.818
+    },
+    {
+     "basis": "30150551 residues x 7.96 / 1e6",
+     "cpu_min": 236.984,
+     "estimate": 239.998,
+     "judged": true,
+     "over_20pct": false,
+     "peak_rss_mib": 835.1,
+     "ratio": 0.987,
+     "step": "domains-pfam-38.2.shard-00027",
+     "under_20pct": false,
+     "wall_s": 3525.903
+    },
+    {
+     "basis": "30150723 residues x 7.96 / 1e6",
+     "cpu_min": 243.914,
+     "estimate": 240.0,
+     "judged": true,
+     "over_20pct": false,
+     "peak_rss_mib": 879.7,
+     "ratio": 1.016,
+     "step": "domains-pfam-38.2.shard-00028",
+     "under_20pct": false,
+     "wall_s": 3628.575
+    },
+    {
+     "basis": "30150721 residues x 7.96 / 1e6",
+     "cpu_min": 239.234,
+     "estimate": 240.0,
+     "judged": true,
+     "over_20pct": false,
+     "peak_rss_mib": 803.8,
+     "ratio": 0.997,
+     "step": "domains-pfam-38.2.shard-00029",
+     "under_20pct": false,
+     "wall_s": 3557.72
+    },
+    {
+     "basis": "30150610 residues x 7.96 / 1e6",
+     "cpu_min": 237.454,
+     "estimate": 239.999,
+     "judged": true,
+     "over_20pct": false,
+     "peak_rss_mib": 785.0,
+     "ratio": 0.989,
+     "step": "domains-pfam-38.2.shard-00030",
+     "under_20pct": false,
+     "wall_s": 3531.83
+    },
+    {
+     "basis": "30150633 residues x 7.96 / 1e6",
+     "cpu_min": 235.683,
+     "estimate": 239.999,
+     "judged": true,
+     "over_20pct": false,
+     "peak_rss_mib": 861.7,
+     "ratio": 0.982,
+     "step": "domains-pfam-38.2.shard-00031",
+     "under_20pct": false,
+     "wall_s": 3505.064
+    },
+    {
+     "basis": "30150654 residues x 7.96 / 1e6",
+     "cpu_min": 241.216,
+     "estimate": 239.999,
+     "judged": true,
+     "over_20pct": false,
+     "peak_rss_mib": 800.9,
+     "ratio": 1.005,
+     "step": "domains-pfam-38.2.shard-00032",
+     "under_20pct": false,
+     "wall_s": 3588.955
+    },
+    {
+     "basis": "30150631 residues x 7.96 / 1e6",
+     "cpu_min": 236.862,
+     "estimate": 239.999,
+     "judged": true,
+     "over_20pct": false,
+     "peak_rss_mib": 869.2,
+     "ratio": 0.987,
+     "step": "domains-pfam-38.2.shard-00033",
+     "under_20pct": false,
+     "wall_s": 3523.838
+    },
+    {
+     "basis": "30150493 residues x 7.96 / 1e6",
+     "cpu_min": 236.604,
+     "estimate": 239.998,
+     "judged": true,
+     "over_20pct": false,
+     "peak_rss_mib": 871.3,
+     "ratio": 0.986,
+     "step": "domains-pfam-38.2.shard-00034",
+     "under_20pct": false,
+     "wall_s": 3519.366
+    },
+    {
+     "basis": "30150746 residues x 7.96 / 1e6",
+     "cpu_min": 243.278,
+     "estimate": 240.0,
+     "judged": true,
+     "over_20pct": false,
+     "peak_rss_mib": 869.2,
+     "ratio": 1.014,
+     "step": "domains-pfam-38.2.shard-00035",
+     "under_20pct": false,
+     "wall_s": 3618.887
+    },
+    {
+     "basis": "30150214 residues x 7.96 / 1e6",
+     "cpu_min": 239.251,
+     "estimate": 239.996,
+     "judged": true,
+     "over_20pct": false,
+     "peak_rss_mib": 848.0,
+     "ratio": 0.997,
+     "step": "domains-pfam-38.2.shard-00036",
+     "under_20pct": false,
+     "wall_s": 3569.057
+    },
+    {
+     "basis": "30150636 residues x 7.96 / 1e6",
+     "cpu_min": 237.81,
+     "estimate": 239.999,
+     "judged": true,
+     "over_20pct": false,
+     "peak_rss_mib": 840.4,
+     "ratio": 0.991,
+     "step": "domains-pfam-38.2.shard-00037",
+     "under_20pct": false,
+     "wall_s": 3545.223
+    },
+    {
+     "basis": "30150484 residues x 7.96 / 1e6",
+     "cpu_min": 240.817,
+     "estimate": 239.998,
+     "judged": true,
+     "over_20pct": false,
+     "peak_rss_mib": 840.9,
+     "ratio": 1.003,
+     "step": "domains-pfam-38.2.shard-00038",
+     "under_20pct": false,
+     "wall_s": 3591.305
+    },
+    {
+     "basis": "30150549 residues x 7.96 / 1e6",
+     "cpu_min": 239.728,
+     "estimate": 239.998,
+     "judged": true,
+     "over_20pct": false,
+     "peak_rss_mib": 822.6,
+     "ratio": 0.999,
+     "step": "domains-pfam-38.2.shard-00039",
+     "under_20pct": false,
+     "wall_s": 3575.586
+    },
+    {
+     "basis": "30150455 residues x 7.96 / 1e6",
+     "cpu_min": 243.745,
+     "estimate": 239.998,
+     "judged": true,
+     "over_20pct": false,
+     "peak_rss_mib": 820.4,
+     "ratio": 1.016,
+     "step": "domains-pfam-38.2.shard-00040",
+     "under_20pct": false,
+     "wall_s": 3635.715
+    },
+    {
+     "basis": "30150316 residues x 7.96 / 1e6",
+     "cpu_min": 240.958,
+     "estimate": 239.997,
+     "judged": true,
+     "over_20pct": false,
+     "peak_rss_mib": 786.6,
+     "ratio": 1.004,
+     "step": "domains-pfam-38.2.shard-00041",
+     "under_20pct": false,
+     "wall_s": 3593.16
+    },
+    {
+     "basis": "389115 residues x 7.96 / 1e6",
+     "cpu_min": 4.511,
+     "estimate": 3.097,
+     "judged": false,
+     "over_20pct": false,
+     "peak_rss_mib": 390.5,
+     "ratio": 1.456,
+     "step": "domains-pfam-38.2.shard-00042",
+     "under_20pct": false,
+     "wall_s": 70.013
+    },
+    {
+     "basis": "(5178493077+1818968830) bases x 168.1 / 1e9 / 60",
+     "cpu_min": 20.56,
+     "estimate": 19.605,
+     "judged": false,
+     "over_20pct": false,
+     "peak_rss_mib": 557.0,
+     "ratio": 1.049,
+     "step": "crispr-minced-0.4.2-w8-nr3-r23x47-s26x50",
+     "under_20pct": false,
+     "wall_s": 313.6
+    },
+    {
+     "basis": "(5178493077+1818968830) bases x 168.1 x 1.15 / 1e9 / 60",
+     "cpu_min": 21.893,
+     "estimate": 22.545,
+     "judged": false,
+     "over_20pct": false,
+     "peak_rss_mib": 966.8,
+     "ratio": 0.971,
+     "step": "crispr-minced-0.4.2-w8-nr2-r23x47-s26x50-cas1kb-caspfam1-pfam-38.2",
+     "under_20pct": false,
+     "wall_s": 365.428
+    }
+   ],
+   "stage": "V1",
+   "under_20pct": []
+  },
+  "records": 56,
+  "shards": {
+   "cpu_min": 10113.3,
+   "cpu_min_max": 246.911,
+   "n": 43,
+   "peak_rss_mib_max": 895,
+   "ratio_max": 1.456,
+   "ratio_min": 0.982,
+   "wall_s_max": 3686.0
+  }
+ }
+}

@@ -1,0 +1,66 @@
+before: 4522 files; after: 4652; new 130 (130 under stage=V1); gone 0; size or mtime changed 0; earlier hashed before 1549, after 1549, sha256 changed 0, new 0
+root_added.tsv: 130 files, 4,231,059,281 bytes
+step crispr-minced-0.4.2-w8-nr2-r23x47-s26x50-cas1kb-caspfam1-pfam-38.2: 21.893 CPU-min, 365.4 s, 967 MiB, 6 threads, estimate 22.545 (ratio 0.971, not judged: DEC-43)
+step crispr-minced-0.4.2-w8-nr3-r23x47-s26x50: 20.56 CPU-min, 313.6 s, 557 MiB, 6 threads, estimate 19.605 (ratio 1.049, not judged: DEC-43)
+step domains-pfam-38.2: 4.076 CPU-min, 197.6 s, 1178 MiB, 6 threads
+step domains-pfam-38.2.plan: 2.976 CPU-min, 170.6 s, 745 MiB, 6 threads
+step domains-pfam-38.2.shard-00000: 244.671 CPU-min, 3638.5 s, 774 MiB, 4 threads, estimate 239.994 (ratio 1.019)
+step domains-pfam-38.2.shard-00001: 245.338 CPU-min, 3650.2 s, 834 MiB, 4 threads, estimate 240.0 (ratio 1.022)
+step domains-pfam-38.2.shard-00002: 237.688 CPU-min, 3535.2 s, 834 MiB, 4 threads, estimate 240.0 (ratio 0.99)
+step domains-pfam-38.2.shard-00003: 242.402 CPU-min, 3605.5 s, 850 MiB, 4 threads, estimate 239.988 (ratio 1.01)
+step domains-pfam-38.2.shard-00004: 236.257 CPU-min, 3513.3 s, 895 MiB, 4 threads, estimate 239.999 (ratio 0.984)
+step domains-pfam-38.2.shard-00005: 235.942 CPU-min, 3507.9 s, 809 MiB, 4 threads, estimate 240.0 (ratio 0.983)
+step domains-pfam-38.2.shard-00006: 242.035 CPU-min, 3601.1 s, 817 MiB, 4 threads, estimate 239.997 (ratio 1.008)
+step domains-pfam-38.2.shard-00007: 241.388 CPU-min, 3590.4 s, 840 MiB, 4 threads, estimate 239.998 (ratio 1.006)
+step domains-pfam-38.2.shard-00008: 236.619 CPU-min, 3519.7 s, 813 MiB, 4 threads, estimate 239.999 (ratio 0.986)
+step domains-pfam-38.2.shard-00009: 243.964 CPU-min, 3641.4 s, 843 MiB, 4 threads, estimate 240.0 (ratio 1.017)
+step domains-pfam-38.2.shard-00010: 242.964 CPU-min, 3625.9 s, 806 MiB, 4 threads, estimate 240.0 (ratio 1.012)
+step domains-pfam-38.2.shard-00011: 242.19 CPU-min, 3615.3 s, 836 MiB, 4 threads, estimate 240.0 (ratio 1.009)
+step domains-pfam-38.2.shard-00012: 242.726 CPU-min, 3623.0 s, 859 MiB, 4 threads, estimate 239.999 (ratio 1.011)
+step domains-pfam-38.2.shard-00013: 243.03 CPU-min, 3627.7 s, 882 MiB, 4 threads, estimate 240.0 (ratio 1.013)
+step domains-pfam-38.2.shard-00014: 243.278 CPU-min, 3631.2 s, 811 MiB, 4 threads, estimate 239.999 (ratio 1.014)
+step domains-pfam-38.2.shard-00015: 246.911 CPU-min, 3686.0 s, 821 MiB, 4 threads, estimate 239.999 (ratio 1.029)
+step domains-pfam-38.2.shard-00016: 240.115 CPU-min, 3582.9 s, 826 MiB, 4 threads, estimate 240.0 (ratio 1.0)
+step domains-pfam-38.2.shard-00017: 241.364 CPU-min, 3601.9 s, 793 MiB, 4 threads, estimate 239.999 (ratio 1.006)
+step domains-pfam-38.2.shard-00018: 238.456 CPU-min, 3547.7 s, 828 MiB, 4 threads, estimate 240.0 (ratio 0.994)
+step domains-pfam-38.2.shard-00019: 239.092 CPU-min, 3557.5 s, 879 MiB, 4 threads, estimate 239.998 (ratio 0.996)
+step domains-pfam-38.2.shard-00020: 239.908 CPU-min, 3567.2 s, 828 MiB, 4 threads, estimate 240.0 (ratio 1.0)
+step domains-pfam-38.2.shard-00021: 239.314 CPU-min, 3562.1 s, 857 MiB, 4 threads, estimate 239.997 (ratio 0.997)
+step domains-pfam-38.2.shard-00022: 246.783 CPU-min, 3673.3 s, 787 MiB, 4 threads, estimate 239.998 (ratio 1.028)
+step domains-pfam-38.2.shard-00023: 238.046 CPU-min, 3542.2 s, 816 MiB, 4 threads, estimate 239.999 (ratio 0.992)
+step domains-pfam-38.2.shard-00024: 239.081 CPU-min, 3557.0 s, 819 MiB, 4 threads, estimate 240.0 (ratio 0.996)
+step domains-pfam-38.2.shard-00025: 239.575 CPU-min, 3564.5 s, 894 MiB, 4 threads, estimate 240.0 (ratio 0.998)
+step domains-pfam-38.2.shard-00026: 246.118 CPU-min, 3663.8 s, 869 MiB, 4 threads, estimate 239.999 (ratio 1.025)
+step domains-pfam-38.2.shard-00027: 236.984 CPU-min, 3525.9 s, 835 MiB, 4 threads, estimate 239.998 (ratio 0.987)
+step domains-pfam-38.2.shard-00028: 243.914 CPU-min, 3628.6 s, 880 MiB, 4 threads, estimate 240.0 (ratio 1.016)
+step domains-pfam-38.2.shard-00029: 239.234 CPU-min, 3557.7 s, 804 MiB, 4 threads, estimate 240.0 (ratio 0.997)
+step domains-pfam-38.2.shard-00030: 237.454 CPU-min, 3531.8 s, 785 MiB, 4 threads, estimate 239.999 (ratio 0.989)
+step domains-pfam-38.2.shard-00031: 235.683 CPU-min, 3505.1 s, 862 MiB, 4 threads, estimate 239.999 (ratio 0.982)
+step domains-pfam-38.2.shard-00032: 241.216 CPU-min, 3589.0 s, 801 MiB, 4 threads, estimate 239.999 (ratio 1.005)
+step domains-pfam-38.2.shard-00033: 236.862 CPU-min, 3523.8 s, 869 MiB, 4 threads, estimate 239.999 (ratio 0.987)
+step domains-pfam-38.2.shard-00034: 236.604 CPU-min, 3519.4 s, 871 MiB, 4 threads, estimate 239.998 (ratio 0.986)
+step domains-pfam-38.2.shard-00035: 243.278 CPU-min, 3618.9 s, 869 MiB, 4 threads, estimate 240.0 (ratio 1.014)
+step domains-pfam-38.2.shard-00036: 239.251 CPU-min, 3569.1 s, 848 MiB, 4 threads, estimate 239.996 (ratio 0.997)
+step domains-pfam-38.2.shard-00037: 237.81 CPU-min, 3545.2 s, 840 MiB, 4 threads, estimate 239.999 (ratio 0.991)
+step domains-pfam-38.2.shard-00038: 240.817 CPU-min, 3591.3 s, 841 MiB, 4 threads, estimate 239.998 (ratio 1.003)
+step domains-pfam-38.2.shard-00039: 239.728 CPU-min, 3575.6 s, 823 MiB, 4 threads, estimate 239.998 (ratio 0.999)
+step domains-pfam-38.2.shard-00040: 243.745 CPU-min, 3635.7 s, 820 MiB, 4 threads, estimate 239.998 (ratio 1.016)
+step domains-pfam-38.2.shard-00041: 240.958 CPU-min, 3593.2 s, 787 MiB, 4 threads, estimate 239.997 (ratio 1.004)
+step domains-pfam-38.2.shard-00042: 4.511 CPU-min, 70.0 s, 391 MiB, 4 threads, estimate 3.097 (ratio 1.456, not judged: DEC-43)
+step genecall.batch-00000: 201.122 CPU-min, 3004.2 s, 662 MiB, 4 threads, estimate 195.16 (ratio 1.031)
+step genecall.batch-00001: 202.588 CPU-min, 3024.2 s, 674 MiB, 4 threads, estimate 195.151 (ratio 1.038)
+step genecall.batch-00002: 198.375 CPU-min, 2964.5 s, 639 MiB, 4 threads, estimate 195.172 (ratio 1.016)
+step genecall: 1.764 CPU-min, 95.9 s, 2416 MiB, 6 threads, estimate 0.934 (ratio 1.889, not judged: DEC-43)
+step genecall.plan: 0.082 CPU-min, 4.2 s, 326 MiB, 6 threads
+step igr: 0.661 CPU-min, 37.0 s, 1998 MiB, 6 threads
+step ingest: 21.816 CPU-min, 1286.7 s, 5505 MiB, 6 threads, estimate 21.378 (ratio 1.02, not judged: DEC-43)
+step inputs: 0.095 CPU-min, 5.1 s, 408 MiB, 6 threads
+step tapes: 1.078 CPU-min, 61.0 s, 2179 MiB, 6 threads
+batches {'n': 3, 'cpu_min': 602.09, 'cpu_min_max': 202.588, 'ratio_min': 1.016, 'ratio_max': 1.038, 'wall_s_max': 3024.2, 'peak_rss_mib_max': 674}; shards {'n': 43, 'cpu_min': 10113.3, 'cpu_min_max': 246.911, 'ratio_min': 0.982, 'ratio_max': 1.456, 'wall_s_max': 3686.0, 'peak_rss_mib_max': 895}; total 10790.39 CPU-min, largest domains-pfam-38.2.shard-00015 246.911
+contigs: {'genome_input_rows': 168536, 'genomes': 168536, 'contigs': 168536, 'stored': 168358, 'bases_stored': 5178493077, 'stored_by_earlier': 178, 'stored_by_earlier_by_stage': {'H1': 177, 'S1': 1}, 'ledger_skipped_earlier': 178, 'ledger_skipped_within': 0, 'ledger_equals_stored_by': True, 'contig_occurrence_rows': 168536, 'contig_occurrence_contigs': 168536, 'contig_occurrence_rows_on_contigs_of_earlier_stages': 178, 'contig_label_rows': 168536, 'kinds': ['virus'], 'codes': [4, 11, 15], 'quality': {'vOTU': 144132, 'complete': 24404}, 'circular': 22517}
+genes 7,364,696; distinct proteins 5,542,734 (1,295,410,057 residues); new against S1,P1,P2,P3,P4,P5,P6,H1,PL1,C5: 5,408,864 (1,266,713,007 residues)
+pfam: {'proteins': 5583519, 'stage_protein_seq': 5542734, 'shared_contig_proteins_added': 40785, 'residues': 1306765862, 'shards': 43, 'shard_residues': 30150753, 'scanned_proteins': 5408864, 'scanned_residues': 1266713007, 'copied_proteins': 174655, 'copied_residues': 40052855, 'copied_rows': 80172, 'copied_proteins_with_hit': 54846, 'sources': [{'stage': 'H1', 'proteins': 107362, 'residues': 28222459, 'rows': 38197, 'proteins_with_hit': 24121}, {'stage': 'P1', 'proteins': 356, 'residues': 59464, 'rows': 290, 'proteins_with_hit': 212}, {'stage': 'P2', 'proteins': 6592, 'residues': 1197458, 'rows': 4700, 'proteins_with_hit': 3269}, {'stage': 'P3', 'proteins': 7097, 'residues': 1345470, 'rows': 4791, 'proteins_with_hit': 3244}, {'stage': 'P4', 'proteins': 3667, 'residues': 660589, 'rows': 2442, 'proteins_with_hit': 1796}, {'stage': 'P5', 'proteins': 7672, 'residues': 1424618, 'rows': 5000, 'proteins_with_hit': 3419}, {'stage': 'P6', 'proteins': 3694, 'residues': 654728, 'rows': 2383, 'proteins_with_hit': 1689}, {'stage': 'PL1', 'proteins': 9388, 'residues': 1764750, 'rows': 6558, 'proteins_with_hit': 4767}, {'stage': 'S1', 'proteins': 28827, 'residues': 4723319, 'rows': 15811, 'proteins_with_hit': 12329}], 'passed_over': [{'stage': 'C5', 'why': 'no run record runs/stage=C5/domains-pfam-38.2.json: its domains-pfam-38.2 step is not complete (or did not run under run-step), so what it measured is not recorded'}], 'domain_rows': 2801576, 'proteins_with_domain': 1968620, 'models_with_hit': 7888}
+copy check: {'sources': [{'stage': 'H1', 'proteins': 107362, 'plan_proteins': 107362, 'rows_in_stage': 38197, 'rows_in_source': 38197, 'plan_rows': 38197, 'stage_not_in_source': 0, 'source_not_in_stage': 0}, {'stage': 'P1', 'proteins': 356, 'plan_proteins': 356, 'rows_in_stage': 290, 'rows_in_source': 290, 'plan_rows': 290, 'stage_not_in_source': 0, 'source_not_in_stage': 0}, {'stage': 'P2', 'proteins': 6592, 'plan_proteins': 6592, 'rows_in_stage': 4700, 'rows_in_source': 4700, 'plan_rows': 4700, 'stage_not_in_source': 0, 'source_not_in_stage': 0}, {'stage': 'P3', 'proteins': 7097, 'plan_proteins': 7097, 'rows_in_stage': 4791, 'rows_in_source': 4791, 'plan_rows': 4791, 'stage_not_in_source': 0, 'source_not_in_stage': 0}, {'stage': 'P4', 'proteins': 3667, 'plan_proteins': 3667, 'rows_in_stage': 2442, 'rows_in_source': 2442, 'plan_rows': 2442, 'stage_not_in_source': 0, 'source_not_in_stage': 0}, {'stage': 'P5', 'proteins': 7672, 'plan_proteins': 7672, 'rows_in_stage': 5000, 'rows_in_source': 5000, 'plan_rows': 5000, 'stage_not_in_source': 0, 'source_not_in_stage': 0}, {'stage': 'P6', 'proteins': 3694, 'plan_proteins': 3694, 'rows_in_stage': 2383, 'rows_in_source': 2383, 'plan_rows': 2383, 'stage_not_in_source': 0, 'source_not_in_stage': 0}, {'stage': 'PL1', 'proteins': 9388, 'plan_proteins': 9388, 'rows_in_stage': 6558, 'rows_in_source': 6558, 'plan_rows': 6558, 'stage_not_in_source': 0, 'source_not_in_stage': 0}, {'stage': 'S1', 'proteins': 28827, 'plan_proteins': 28827, 'rows_in_stage': 15811, 'rows_in_source': 15811, 'plan_rows': 15811, 'stage_not_in_source': 0, 'source_not_in_stage': 0}], 'copied_proteins': 174655, 'equals_plan': True, 'rows': 80172, 'columns_compared': ['protein_uid', 'model_acc', 'model_name', 'model_len', 'seq_bitscore', 'seq_evalue_zref', 'dom_bitscore', 'dom_ievalue_zref', 'env_start', 'env_end', 'ali_start', 'ali_end', 'hmm_from', 'hmm_to', 'cutoff', 'z', 'dom_z']}
+crispr: {'default': {'producer': 'minced-0.4.2-w8-nr3-r23x47-s26x50', 'recorded': True, 'arrays': 725, 'elements': 15439, 'contigs_searched': 168358, 'contigs_skipped_other_stage': 178, 'calls_in': 725, 'calls_kept': 725, 'rejected': {}, 'arrays_per_gbp': 140.002}, 'near_cas': {'producer': 'minced-0.4.2-w8-nr2-r23x47-s26x50-cas1kb-caspfam1-pfam-38.2', 'recorded': True, 'arrays': 9, 'elements': 35, 'contigs_searched': 168358, 'contigs_skipped_other_stage': 178, 'calls_in': 18096, 'calls_kept': 9, 'rejected': {'far_from_cas': 17347, 'overlaps_default': 738, 'inside_gene': 2}, 'arrays_per_gbp': 1.738}}
+expected: {'observed': {'genomes': 168536, 'genome_input_rows': 168536, 'contigs': 168536, 'stored': 168358, 'stored_by_earlier': 178, 'ledger_skipped_earlier': 178, 'bases_stored': 5178493077, 'circular': 22517, 'genes': 7364696, 'distinct_proteins': 5542734, 'new_distinct_proteins': 5408864, 'residues': 1295410057, 'added_bytes': 4231059281}, 'ranges': {'genomes': (168536, 168536), 'genome_input_rows': (168536, 168536), 'contigs': (168536, 168536), 'stored': (168358, 168358), 'stored_by_earlier': (178, 178), 'ledger_skipped_earlier': (178, 178), 'bases_stored': (5178493077, 5178493077), 'circular': (22517, 22517), 'genes': (5912000, 8868000), 'distinct_proteins': (4477974, 6716962), 'new_distinct_proteins': (4338118, 6507178), 'residues': (1045799957, 1568699935), 'added_bytes': (2960000000, 5040000000)}, 'problems': []}
+RESULT: all checks pass
