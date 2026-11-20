@@ -96,6 +96,33 @@ only) into the PL2 note's directory.
 are the whole of it for unbinned assemblies (shorter contigs are outside the corpus, not deferred); RNA viruses are
 in scope (design card C-50, tier H); protein-only catalogues wait. New cards: C-49 (`tower`), C-50 (RNA viruses).
 
+**6e. `tower` is set up as the second durable copy (the PI at about 10:40 on 2026-11-20: "yes, set this up on
+tower. you can start mirroring now. laoptop will be on for ~7 hr; no tower pull key").** Also the PI: data whose
+terms say "not redistributed" may sit there, and "pulling via laptop is fine".
+- **Where**: `tower:/mnt/user/research-bulk/bio-box/` with `root_backups/` (same layout as
+  `/stor/work/Wilke/if2453/all-the-data/root_backups/`), `sources/` and `tranches/` (both empty). The share has its
+  cache off, so writes go to the array (18 TB free, *measured*, 2026-11-20).
+- **How**: from the laptop, one stream per file through the laptop with nothing landing on its disk (26 GiB free):
+  `scp -3 -F <config>` with a config that names `pod` (through `wilkcomp03`) and `tower` (`root@tower`, the laptop's
+  own key). Each file goes to `.name.partial`, its sha256 is read back on `tower` and compared with the recorded
+  value, then `mv -n`. Measured once at 9.70 MB/s for one stream (card C-49). **No key on `tower` that reaches the
+  pod: the PI declined it for now.**
+- **Running**: the seven tars of the root (106,785,105,920 bytes), two streams, since 10:41, on the laptop
+  (`caffeinate -i bash relay_backups.sh`, a background task of the orchestrating session; its script, ssh config
+  and log `relay_backups.log` are in the session's scratch directory, which a reboot of the laptop loses: **card
+  C-49 puts the script in the repository**). It ends with `SHA256SUMS` written on `tower` and a `DONE` line in the
+  log. If the session or the laptop stops first, run it again: files in place are skipped, a `.partial` is removed
+  and copied again from the start.
+- **To do at every later backup** (`added_<stage>.tar`, `added_<release>.tar`): mirror it the same way and add it
+  to `SHA256SUMS` there. Nothing under `/stor` is removed because a copy is on `tower`: that is the PI's to do.
+
+**6f. Also on the morning of 2026-11-20.** Card B-57 merged (row B-57; 136 cards). Card C-48e part 1 started (the
+first SPIRE tranche: aquatic and terrestrial samples, at most 3.0 M contigs of 5 kb and more and 40 Gbp, inputs
+only; Opus, `task/C-48e-1`, pod directory `/tmp/if2453/c48e1`, at most 4 threads). The cap of 3.0 M contigs is there
+because the root must stay under 7.86 M contigs until open item 16 is decided, and the queued stages take it to
+about 2.9 M; **a second tranche therefore waits on item 16 as well as on item 19.** Agents at 10:50: C-48c part 1
+(`V1`, building; gene calling done at 10:36), C-48c part 2 (`V2` and `GV1` inputs), C-48e part 1, D-07.
+
 **7. Waiting on the PI**: item 19 (where the corpus lives; `tower` being looked at, card C-49), items 15 (decided: DEC-56), 16 (B-56's design), 17 (`domain_state`'s place in
 the exports), 18 (the pilot's storage rates), and the older ones in the section below (item 12, the TACC requests,
 the eukaryote kind, how many old releases keep their large files).
