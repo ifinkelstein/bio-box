@@ -1022,6 +1022,16 @@ probed by hand on the pod).
    Card C-49 measures the routes and proposes tiers; **nothing is copied there before its report and the PI's word
    on the route** (a key for `tower` to pull from the pod is the PI's to make). Item 19 stays open until then.
 
+20. **How a killed worker's memory peak is recorded** (card A-10, diagnosed 2026-11-20; a design choice, tier H).
+   One Actions job in 31 recorded a sampled peak 37% under the cap for an OOM-killed search, because the helper
+   that reads the final `memory.peak` was itself killed with the worker. It cannot be fixed by ordering inside the
+   helper. It touches no published run record (those are written only on exit 0; 0 of 1,908 in the root are
+   sampled, *measured*); it touches records of failed steps and of searches that ended `oom`, `timeout` or killed,
+   and it makes `ci` red about once in 31 jobs. Choices (the card has them): (a) a keeper process or a helper
+   outside the scope; (b) systemd's own accounting; (c) a sampler that charges nothing to the scope.
+   Recommendation: decide after card A-10a's evidence says who kills the helper; until then a red `ci` on that one
+   test alone is run again once and noted in the push's record, and `plan/task-cards` is not merged into `main`.
+
 **Open since 13:55 on 2026-11-16** (F-02 session 13; its note is `planning/measurements/2026-11-14_synthworld_redesign.md`
 §16 on branch `task/F-02-13`, at `f340a0a`, pushed, not merged):
 
