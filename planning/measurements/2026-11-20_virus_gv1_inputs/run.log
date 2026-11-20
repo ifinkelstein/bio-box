@@ -1,0 +1,63 @@
+2026-11-20 14:23:06 CST c48c2: mode 'gv1-inputs' (pid 1109785), tree /tmp/if2453/c48c3/tree, image /stor/home/if2453/bio-box/images/bio-box_faec1f4.sif
+2026-11-20 14:23:06 CST gv1-inputs: start
+2026-11-20 14:26:13 CST gv1-inputs: exit 0: {"md5": {"gv_member": {"got": "077f125d844c85ca6169c331d52640b9", "expected": "077f125d844c85ca6169c331d52640b9", "equal": true}}, "fna_members": 18726, "skipped_members": 1, "records": 288536, "record_bases": 4576307473, "genomes": 18499, "repeated_genomes": 227, "contigs": 281804, "contig_bases": 4316061173, "contigs_per_genome_median": 11, "genomes_all_contigs_held_earlier": 1116, "shared_recor 
+2026-11-20 14:26:13 CST gv1-inputs: done
+2026-11-20 14:29:28 CST c48c2: mode 'gv1-rerun' (pid 1126661), tree /tmp/if2453/c48c3/tree, image /stor/home/if2453/bio-box/images/bio-box_faec1f4.sif
+2026-11-20 14:29:28 CST gv1-rerun: start
+2026-11-20 14:29:29 CST c48c2: mode 'gv1-check' (pid 1126831), tree /tmp/if2453/c48c3/tree, image /stor/home/if2453/bio-box/images/bio-box_faec1f4.sif
+2026-11-20 14:29:29 CST gv1-check: start
+2026-11-20 14:29:30 CST c48c2: mode 'gv1-overlap' (pid 1126969), tree /tmp/if2453/c48c3/tree, image /stor/home/if2453/bio-box/images/bio-box_faec1f4.sif
+2026-11-20 14:29:30 CST gv1-overlap: start
+2026-11-20 14:29:30 CST c48c2: mode 'gv1-subset' (pid 1127097), tree /tmp/if2453/c48c3/tree, image /stor/home/if2453/bio-box/images/bio-box_faec1f4.sif
+2026-11-20 14:29:30 CST gv1-subset: start
+2026-11-20 14:29:36 CST gv1-check: exit 0: {
+ "stage": "GV1",
+ "genomes": 18499,
+ "genome_input_rows": 287159,
+ "distinct_genome_uids": 18499,
+ "circular_rows": 0,
+ "kinds": [
+  "virus"
+ ],
+ "codes": [
+  11
+ ],
+ "assembly_quality": [
+  "contig"
+ ],
+ "gene_call_mode": {
+  "virus": "gv-meta"
+ },
+ "objects": [
+  {
+   "path": "/tmp/if2453/s2/inputs/GV1/gvmags_v2_all_18kgenomes.fna",
+   "source_name": "gvmags_v2",
+   "source_release": "zenodo:10.5281/zenodo.20126600 GVMAGs V2, all_18kgenomes_fna.tar.gz (every genome)",
+   "license": "CC BY-SA 4.0",
+   "redistributable": true,
+   "retrieved_at": "2026-11-19T10:42:14+00:00",
+   "bytes": 4639876745
+  }
+ ],
+ "biobox": "/tmp/if2453/c48c3/tree/src/biobox/cli.py",
+ "problems": []
+} 
+2026-11-20 14:29:41 CST gv1-overlap: exit 0: {"GV1_all_18k": {"adds": {"bases": 3890643054, "contigs": 264134}, "bases": 4316061173, "contigs": 281804, "genomes": 18726, "genomes_all_contigs_held_earlier": 1174, "genomes_some_contigs_held_earlier": 682, "held_earlier": {"bases": 425418119, "contigs": 17670}, "stages": {"C5": {"member_contigs": 0, "owns_bases": 0, "owns_contigs": 0}, "H1": {"member_contigs": 6, "owns_bases": 2242617, "owns_co 
+2026-11-20 14:29:41 CST gv1-overlap: done
+2026-11-20 14:29:53 CST gv1-check: SUMS: a86ce75b88da4c31e7016b0c90e6b6967a1d525604d8c5247d94bfeeec595ced  genomes.json 2eaadb35ecc8eec0d12fcbcb69cccdb2ae48758506f53383426caa3e066b18fb  objects.json a87ceb6981f9cce20994eba471a01088a31ba5cff1b8f497c7d677ccdf321380  records.tsv 16f2902dcd2d3cc197abe7adb20c783a86808739b464a49de3dd1ec6c5eb32e7  repeated_records.tsv 4fb544d58a1307071c51a6fc595e78273382fc8c36b269b842d7557db72cdb88  shared_records.tsv 2679a24e938245a54dedd841d7bbf4369bcb4e3cd22a8f19620a393e7cabfad3  skipped_members.tsv 568f3a312fd78d03544792bfb3a89bde708591865065d72c62fc6c0dbdc0028b  gvmags_v2_all_18kgenomes.fna 
+2026-11-20 14:29:53 CST gv1-check: done
+2026-11-20 14:29:58 CST gv1-subset: exit 0: {"contigs_gv1_lacks": 0, "dropped_bases_median": 7123, "dropped_contigs_per_genome": {"1": 311, "2": 64, "3": 29, "4": 12, "5": 11, "6": 6, "7": 2, "8": 3, "9": 2, "10": 1, "15": 1}, "genomes": 8508, "genomes_with_gv1_contigs_dropped": 442, "gv1_bases_dropped": 5323061, "gv1_contigs_dropped": 746, "relation": {"same_contigs": 8066, "subset_of_gv1_genome": 442}} 
+2026-11-20 14:29:58 CST gv1-subset: done
+2026-11-20 14:32:37 CST c48c2: mode 'gv1-est' (pid 1132347), tree /tmp/if2453/c48c3/tree, image /stor/home/if2453/bio-box/images/bio-box_faec1f4.sif
+2026-11-20 14:32:37 CST gv1-est: start
+2026-11-20 14:32:41 CST gv1-rerun: exit 0: {"md5": {"gv_member": {"got": "077f125d844c85ca6169c331d52640b9", "expected": "077f125d844c85ca6169c331d52640b9", "equal": true}}, "fna_members": 18726, "skipped_members": 1, "records": 288536, "record_bases": 4576307473, "genomes": 18499, "repeated_genomes": 227, "contigs": 281804, "contig_bases": 4316061173, "contigs_per_genome_median": 11, "genomes_all_contigs_held_earlier": 1116, "shared_recor 
+2026-11-20 14:32:41 CST gv1-rerun: genomes.json equal
+2026-11-20 14:32:41 CST gv1-rerun: objects.json names its own path; compared after it: equal
+2026-11-20 14:32:41 CST gv1-rerun: records.tsv equal
+2026-11-20 14:32:41 CST gv1-rerun: repeated_records.tsv equal
+2026-11-20 14:32:41 CST gv1-rerun: shared_records.tsv equal
+2026-11-20 14:32:41 CST gv1-rerun: skipped_members.tsv equal
+2026-11-20 14:32:46 CST gv1-rerun: gvmags_v2_all_18kgenomes.fna equal
+2026-11-20 14:32:47 CST gv1-rerun: done
+2026-11-20 14:42:10 CST gv1-est: exit 0: {"code": {"annotated_cpu_min": 9471.4, "called_bases": {"gv-meta linear": 4108278835}, "called_cpu_min": 382.4, "called_saves_cpu_min": 9089.0, "crispr_default_cpu_min": 10.9, "crispr_flank_bases": 0, "crispr_near_cas_cpu_min": 12.54, "fasta_bytes": 4639876745, "genecall_batches": 2, "genecall_cpu_min": 354.1, "genes_code_rate": 5606806, "held_bases": 425418119, "ingest_cpu_min": 19.14, "ingest_cp 
+2026-11-20 14:42:10 CST gv1-est: done

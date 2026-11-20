@@ -285,3 +285,93 @@ def test_stage_v2_refuses_an_existing_output(tmp_path):
     out.mkdir()
     with pytest.raises(vi.Refused, match="exists"):
         run_v2(hc, meta, v1, md5, out)
+
+
+# --- card C-48c part 3: stage GV1, every genome of GVMAGs V2's all_18kgenomes_fna.tar.gz ------------------------------
+
+GV_MEMBER = "gvmags_v2/all_18kgenomes_fna.tar.gz"
+
+
+def _tar_bytes(members: dict[str, bytes], mode: str) -> bytes:
+    import tarfile
+
+    buf = io.BytesIO()
+    with tarfile.open(fileobj=buf, mode=mode, format=tarfile.GNU_FORMAT) as tf:
+        for name, data in members.items():
+            ti = tarfile.TarInfo(name)
+            ti.size, ti.mtime = len(data), 0
+            tf.addfile(ti, io.BytesIO(data))
+    return buf.getvalue()
+
+
+def fna(genome: str, seqs: list[str]) -> bytes:
+    return "".join(f">{genome}|c{j}\n" + "\n".join(s[i:i + 60] for i in range(0, len(s), 60)) + "\n"
+                   for j, s in enumerate(seqs)).encode()
+
+
+def build_gv(tmp: Path):
+    """A GVMAGs-like tar: genome A of three contigs (one of them held by V2's inputs), B both of whose contigs V2 holds,
+    C with A's bytes under another name, D sharing one contig with A, and a non-FASTA member."""
+    a = [seq_of(21, 3000), seq_of(22, 2000), seq_of(23, 1500)]
+    b = [seq_of(24, 2500), seq_of(25, 1800)]
+    d = [seq_of(22, 2000), seq_of(26, 900)]  # A's second contig, and one of its own
+    inner = _tar_bytes({"confirmed/B.fna": fna("B", b), "confirmed/A.fna": fna("A", a),
+                        "confirmed/chunk_maker.sh~": b"#!/bin/bash\necho not data\n",
+                        "confirmed/C.fna": fna("C", a), "confirmed/D.fna": fna("D", d)}, "w:gz")
+    tar = tmp / "gvmags.tar"
+    tar.write_bytes(_tar_bytes({GV_MEMBER: inner, "gvmags_v2/long_ortho_8000.tsv": b"ortho\tgenome\tgeneid\n"}, "w"))
+    v2 = tmp / "V2"
+    v2.mkdir()
+    (v2 / "records.tsv").write_text("ordinal\tsource\tgenome\tcontig_uid\tlength\n" + "".join(
+        f"{k}\timgvr\tU{k}\t{cuid(s)}\t{len(s)}\n" for k, s in enumerate([a[2], *b])))
+    want = {"genomes": [[cuid(s) for s in b], [cuid(s) for s in a], [cuid(s) for s in d]],  # archive order, C repeats A
+            "shared": sorted([cuid(a[2])] * 2 + [cuid(s) for s in b]), "repeated": ["C"],
+            "several": [cuid(a[1])], "md5": hashlib.md5(inner).hexdigest(),
+            "bases": sum(map(len, a + b + d)) - len(a[1])}
+    return tar, v2, want
+
+
+def run_gv1(tar, v2, out, md5):
+    return vi.stage_gv1(tar, out, root=None, root_stages=(), owner_inputs={"V2": v2}, expected_md5=md5,
+                        retrieved="2026-11-19T10:42:14Z")
+
+
+def test_stage_gv1_lists_every_genome_and_repeats_byte_for_byte(tmp_path):
+    tar, v2, want = build_gv(tmp_path)
+    out = tmp_path / "GV1"
+    rep = run_gv1(tar, v2, out, want["md5"])
+    genomes = json.loads((out / "genomes.json").read_text())
+    assert [g["contig_uids"] for g in genomes] == want["genomes"]
+    assert {(g["kind"], g["genetic_code"], g["assembly_quality"]) for g in genomes} == {("virus", 11, "contig")}
+    assert all(g["circular"] == [] for g in genomes)
+    shared = [ln.split("\t") for ln in (out / "shared_records.tsv").read_text().splitlines()[1:]]
+    assert sorted(r[3] for r in shared) == want["shared"]  # A's held contig in A and in C, and both of B's
+    assert {r[4] for r in shared} == {"V2"}
+    repeated = [ln.split("\t") for ln in (out / "repeated_records.tsv").read_text().splitlines()[1:]]
+    assert [r[1] for r in repeated] == want["repeated"] and repeated[0][3] == "A"
+    skipped = [ln.split("\t") for ln in (out / "skipped_members.tsv").read_text().splitlines()[1:]]
+    assert [(r[0], r[2]) for r in skipped] == [("confirmed/chunk_maker.sh~", "not_fasta")]
+    assert rep["genomes_all_contigs_held_earlier"] == 1  # B (C repeats A, and A has contigs of its own)
+    assert rep["contigs_in_several_genomes"] == 1 and rep["fna_members"] == 4
+    assert rep["fna_members"] == rep["genomes"] + rep["repeated_genomes"]
+    assert rep["new_bases"] == want["bases"] - sum(len(seq_of(k, n)) for k, n in ((23, 1500), (24, 2500), (25, 1800)))
+    objects = json.loads((out / "objects.json").read_text())
+    assert [(o["source_name"], o["redistributable"]) for o in objects] == [("gvmags_v2", True)]
+    heads = [ln[1:] for ln in Path(objects[0]["path"]).read_text().splitlines() if ln.startswith(">")]
+    assert heads == ["B|c0", "B|c1", "A|c0", "A|c1", "A|c2", "C|c0", "C|c1", "C|c2", "D|c0", "D|c1"]
+    again = tmp_path / "again" / "GV1"
+    again.parent.mkdir()
+    run_gv1(tar, v2, again, want["md5"])
+    for f in sorted(p.name for p in out.iterdir()):
+        a, b = (out / f).read_bytes(), (again / f).read_bytes()
+        if f == "objects.json":
+            b = b.replace(str(again).encode(), str(out).encode())
+        assert a == b, f
+
+
+def test_stage_gv1_refuses_a_member_whose_md5_differs(tmp_path):
+    tar, v2, want = build_gv(tmp_path)
+    out = tmp_path / "GV1"
+    with pytest.raises(vi.Refused, match="md5"):
+        run_gv1(tar, v2, out, "0" * 32)
+    assert not out.exists() and not (tmp_path / "GV1.tmp").exists()

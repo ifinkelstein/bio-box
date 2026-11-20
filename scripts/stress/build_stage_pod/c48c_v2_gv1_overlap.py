@@ -2,7 +2,9 @@
 and with each other (read only).
 
     python c48c_v2_gv1_overlap.py --root ROOT --stages S1,P1,...,C5 --v1 V1_INPUTS --v2 V2_INPUTS \
-        --gvmags GVMAGS_TAR --gv-genomes GVMAGS_GENOMES_TSV --out OUT
+        --gvmags GVMAGS_TAR --gv-genomes GVMAGS_GENOMES_TSV --out OUT [--gv1-inputs GV1_INPUTS]
+
+With --gv1-inputs (card C-48c part 3), GV1's staged records.tsv gives its contigs and the archive is not read.
 
 V2_INPUTS holds what `c48c_virus_inputs.py v2` wrote (records.tsv). GV1 has no inputs (its selection waits on a
 decision, see the note), so its candidate contigs are read here from the archive: every FASTA record of every genome
@@ -70,11 +72,16 @@ def main() -> None:
     ap.add_argument("--gvmags", required=True, type=Path)
     ap.add_argument("--gv-genomes", required=True, type=Path)
     ap.add_argument("--out", required=True, type=Path)
+    ap.add_argument("--gv1-inputs", type=Path, help="GV1's staged inputs (card C-48c part 3): their records.tsv "
+                    "stands for GV1's contigs in place of the archive")
     a = ap.parse_args()
     a.out.mkdir(parents=True, exist_ok=True)
-    gv_tsv = a.out / "gv1_candidate_contigs.tsv"
-    if not gv_tsv.is_file():
-        gv1_contigs(a.gvmags, a.out)
+    if a.gv1_inputs is not None:
+        gv_tsv = a.gv1_inputs / "records.tsv"
+    else:
+        gv_tsv = a.out / "gv1_candidate_contigs.tsv"
+        if not gv_tsv.is_file():
+            gv1_contigs(a.gvmags, a.out)
     with open(a.gv_genomes, newline="") as fh:
         fna_files = {r["genome"] for r in csv.DictReader(fh, delimiter="\t") if r["set"] == "fna_files"}
 

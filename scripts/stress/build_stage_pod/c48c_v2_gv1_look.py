@@ -7,6 +7,7 @@
     python c48c_v2_gv1_look.py gvmags GVMAGS_TAR OUT          per genome of both FASTA sets: records, bases, ...
     python c48c_v2_gv1_look.py inovirus META_ZIP OUT          per GenBank record of the Inovirus set
     python c48c_v2_gv1_look.py imgvr HC_ZIP OUT               the HC tables copied out (md5 checked) and summarised
+    python c48c_v2_gv1_look.py gvsubset GVMAGS_TAR GV1_INPUTS OUT  fna_files.tar.gz against GV1's staged genomes
 
 ARCHIVE is a .zip or a .tar; MEMBER a path inside it, optionally `OUTER::INNER` for a member of an inner .zip or
 .tar(.gz). A member ending in .gz is decompressed on the fly. Nothing is unpacked but the two IMG/VR tables (`imgvr`
@@ -166,6 +167,48 @@ def gvmags(tar: Path, out: Path) -> dict:
     return rep
 
 
+def gvsubset(tar: Path, gv1: Path, out: Path) -> dict:
+    """What fna_files.tar.gz is relative to GV1's staged genomes (card C-48c part 3): per genome of fna_files, its
+    contig uids against the same-named GV1 genome's (GV1/records.tsv): the same set, a subset (its contigs all in the
+    GV1 genome, fewer of them), or other sequences (a contig the GV1 genome lacks; then whether GV1 has it anywhere)."""
+    per: dict[str, set[str]] = {}
+    lens: dict[str, int] = {}
+    with open(gv1 / "records.tsv", newline="") as fh:
+        for r in csv.DictReader(fh, delimiter="\t"):
+            per.setdefault(r["genome"], set()).add(r["contig_uid"])
+            lens[r["contig_uid"]] = int(r["length"])
+    rows, kinds = [], Counter()
+    with open_member(tar, GV_SETS[1]) as fh, tarfile.open(fileobj=fh, mode="r|gz") as tf:
+        for m in tf:
+            if not m.isfile() or not m.name.endswith(".fna"):
+                continue
+            g = m.name.split("/")[-1][:-4]
+            mine = [ids.contig_uid(r.seq).hex() for r in vi.iter_fasta_stream(io.BytesIO(tf.extractfile(m).read()))]
+            s, gv = set(mine), per.get(g)
+            if gv is None:
+                kind = "not_in_gv1"
+            elif s == gv:
+                kind = "same_contigs"
+            elif s < gv:
+                kind = "subset_of_gv1_genome"
+            else:
+                kind = "other_sequences"
+            kinds[kind] += 1
+            missing = sorted(gv - s) if gv else []
+            rows.append((g, kind, len(s), len(gv or ()), len(missing), sum(lens[u] for u in missing),
+                         sum(1 for u in s if u not in lens)))
+    rows.sort()
+    write_tsv(out / "fna_files_vs_gv1.tsv", ["genome", "relation", "contigs", "gv1_contigs", "gv1_contigs_not_in_it",
+                                             "gv1_bases_not_in_it", "contigs_gv1_lacks"], rows)
+    dropped = [r for r in rows if r[4]]
+    return {"genomes": len(rows), "relation": dict(sorted(kinds.items())),
+            "contigs_gv1_lacks": sum(r[6] for r in rows),
+            "genomes_with_gv1_contigs_dropped": len(dropped),
+            "gv1_contigs_dropped": sum(r[4] for r in dropped), "gv1_bases_dropped": sum(r[5] for r in dropped),
+            "dropped_contigs_per_genome": dict(sorted(Counter(r[4] for r in dropped).items())),
+            "dropped_bases_median": sorted(r[5] for r in dropped)[len(dropped) // 2] if dropped else 0}
+
+
 def inovirus(meta_zip: Path, out: Path) -> dict:
     rows = []
     with zipfile.ZipFile(meta_zip) as z0:
@@ -259,11 +302,18 @@ def imgvr(zip_path: Path, out: Path) -> dict:
 
 
 def main(argv: list[str]) -> int:
-    modes = ("head", "headers", "members", "dirs", "gvmags", "inovirus", "imgvr")
+    modes = ("head", "headers", "members", "dirs", "gvmags", "inovirus", "imgvr", "gvsubset")
     if len(argv) < 3 or argv[0] not in modes:
         print(__doc__.split("\n\n")[1], file=sys.stderr)
         return 2
     mode = argv[0]
+    if mode == "gvsubset" and len(argv) == 4:
+        out = Path(argv[3])
+        out.mkdir(parents=True, exist_ok=True)
+        rep = gvsubset(Path(argv[1]), Path(argv[2]), out)
+        (out / "gvsubset_summary.json").write_text(json.dumps(rep, indent=1, sort_keys=True))
+        print(json.dumps(rep, sort_keys=True))
+        return 0
     if mode in ("gvmags", "inovirus", "imgvr"):
         out = Path(argv[2])
         out.mkdir(parents=True, exist_ok=True)

@@ -18,7 +18,9 @@ EVERY-th genome that has a contig of its own is called here, one thread, with th
 distinct proteins: a sample repeats fewer proteins than the whole); how many of the sample's proteins the root's
 protein_seq already holds is counted too.
 
-v2: from V2_INPUTS (genomes.json, records.tsv, shared_records.tsv, objects.json).
+v2: from V2_INPUTS (genomes.json, records.tsv, shared_records.tsv, objects.json). `stage` is the same for any staged
+inputs of that form (GV1's, card C-48c part 3); the sample also gives the gene-calling step at the rate it measured,
+beside the code's (`genecall_cpu_min_sample_rate`, `genecall_cpu_min_code_rate`).
 gv1: GV1 has no inputs (its selection waits on a decision): both candidate sets (all 18,726 genomes of
 all_18kgenomes_fna.tar.gz; the 8,508 that fna_files.tar.gz names) from the overlap step's candidate contigs, every
 contig linear (the archive records no topology), HELD_TSV the contig uids an earlier stage holds (one per line, hex).
@@ -158,9 +160,9 @@ def est_v2(root: Path, inp: Path, out: Path, every: int) -> dict:
     genomes = json.loads((inp / "genomes.json").read_text())
     length = {r["contig_uid"]: int(r["length"]) for r in recs}
     called = Counter()
-    sample_want: dict[str, dict] = {}
+    sample_want: dict[str, list[int]] = {}  # contig -> the sampled genomes (indices) that list it
     k = 0
-    for g in genomes:
+    for j, g in enumerate(genomes):
         if all(u in held for u in g["contig_uids"]):
             continue  # every contig another stage owns: not called (genecall item 5)
         circ = set(g["circular"])
@@ -169,29 +171,38 @@ def est_v2(root: Path, inp: Path, out: Path, every: int) -> dict:
         k += 1
         if k % every == 0:
             for u in g["contig_uids"]:
-                sample_want[u] = g
+                sample_want.setdefault(u, []).append(j)
     stored = {u: n for u, n in length.items() if u not in held}
     flank = sum(2 * min(crispr.CIRC_FLANK, length[u]) for g in genomes for u in g["circular"] if u not in held)
     objects = json.loads((inp / "objects.json").read_text())
     fasta_bytes = sum(Path(o["path"]).stat().st_size for o in objects)
     # the sample: contigs read back from the inputs' FASTA objects
     s = Sample()
-    seqs: dict[str, dict[bytes, str]] = {}
+    seqs: dict[int, dict[bytes, str]] = {}
+    done: set[int] = set()
     for o in objects:
         for r in fasta.iter_records(Path(o["path"])):
             cu = ids.contig_uid(r.seq)
-            if cu.hex() not in sample_want:
-                continue
-            g = sample_want[cu.hex()]
-            key = g["contig_uids"][0]
-            seqs.setdefault(key, {})[cu] = r.seq.upper().decode("ascii")
-            if len(seqs[key]) == len(g["contig_uids"]):
-                uids = tuple(bytes.fromhex(u) for u in g["contig_uids"])
-                gi = GenomeInput(uids, g["genetic_code"], kind="virus",
-                                 circular=tuple(bytes.fromhex(u) for u in g["circular"]),
-                                 assembly_quality=g["assembly_quality"])
-                s.call(gi, seqs.pop(key))
+            for j in sample_want.get(cu.hex(), ()):
+                if j in done:
+                    continue
+                g = genomes[j]
+                seqs.setdefault(j, {})[cu] = r.seq.upper().decode("ascii")
+                if len(seqs[j]) == len(g["contig_uids"]):
+                    uids = tuple(bytes.fromhex(u) for u in g["contig_uids"])
+                    gi = GenomeInput(uids, g["genetic_code"], kind=g["kind"],
+                                     circular=tuple(bytes.fromhex(u) for u in g["circular"]),
+                                     assembly_quality=g["assembly_quality"])
+                    s.call(gi, seqs.pop(j))
+                    done.add(j)
     sam = s.report(root, out)
+    sam["sampled_genomes_not_completed"] = len({j for js in sample_want.values() for j in js} - done)
+    gc_code = genecall.one_process_cpu_min(dict(called))
+    # the same step at the rate this sample measured (calls alone, then the code's own overhead and process cost)
+    gc_sample = (genecall.PROCESS_S + genecall.STEP_OVERHEAD * sam["s_per_mbp"] * sum(called.values()) / 1e6) / 60
+    sam["genecall_cpu_min_code_rate"] = round(gc_code, 1)
+    sam["genecall_cpu_min_sample_rate"] = round(gc_sample, 1)
+    sam["sample_rate_over_code_rate"] = round(gc_sample / gc_code, 3) if gc_code else None
     genes, distinct, residues = scaled(sam, sum(stored.values()))
     held_bases = sum(n for u, n in length.items() if u in held)
     return {"sample": {"every": every, **sam},
@@ -319,7 +330,7 @@ def est_imgvr_full(zip_path: Path, v2: Path | None, out: Path) -> dict:
 
 def main() -> None:
     ap = argparse.ArgumentParser()
-    ap.add_argument("mode", choices=["v2", "gv1", "imgvr-full"])
+    ap.add_argument("mode", choices=["v2", "stage", "gv1", "imgvr-full"])  # stage: v2's estimate of any staged inputs
     ap.add_argument("--root", type=Path)
     ap.add_argument("--inputs", type=Path)
     ap.add_argument("--gvmags", type=Path)
@@ -332,7 +343,7 @@ def main() -> None:
     ap.add_argument("--every", type=int, default=40)
     a = ap.parse_args()
     a.out.mkdir(parents=True, exist_ok=True)
-    if a.mode == "v2":
+    if a.mode in ("v2", "stage"):
         res = est_v2(a.root, a.inputs, a.out, a.every)
     elif a.mode == "gv1":
         res = est_gv1(a.root, a.gvmags, a.contigs, a.genomes, a.held, a.out, a.every)
