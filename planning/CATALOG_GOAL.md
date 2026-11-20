@@ -23,8 +23,12 @@ So:
   stops a habitat early records what it did not take, with identifiers sufficient to fetch and ingest the remainder
   later (accessions, sample ids, the archive member, the filter's parameters), in its measurement note and in §4
   below.
-- What "useful" excludes is the PI's to say (card C-45: RNA viruses, protein-only catalogues, raw reads). Until the
-  PI says, those are listed in §4 as deferred, not as out.
+- **What "complete" covers (DEC-60, the PI, 2026-11-20).** For unbinned metagenome assemblies: every contig of
+  5,000 bp or more; contigs under 5 kb are outside the corpus and are not deferred data. RNA viruses are in scope
+  (by a design card, C-50). Protein-only catalogues are deferred ("can wait"). Raw reads are not taken (Logan's
+  assemblies stand in for them, §4.3).
+- **Where it lives** is the main constraint (STATUS open item 19). The pod's local disk holds the working root; the
+  PI's NAS `tower` is offered as a place for tranches as the corpus grows (DEC-60 (3), card C-49).
 
 ## 2. The order of work, and why
 
@@ -92,7 +96,7 @@ card needs. Rows are added, and a row is struck through with its stage's name wh
 
 | Filter | Decision | What it leaves out | How to pick it up |
 |---|---|---|---|
-| Least contig length 5,000 bp on unbinned metagenome stages | DEC-57 | contigs under 5 kb: 83.9% of assembled bases and 98.9% of contigs in the pilot (*derived*: 1 − 55.050 / 341.501 Gbp; 1 − 4.81 M / 453.49 M) | each tranche's note lists its samples and the filter; the raw assemblies are removed after staging, so the remainder is fetched again by sample id and ingested with a lower `--min-contig-len` as a further stage. **Open, the PI's**: whether "in full" includes contigs under 5 kb, under 1.5 kb, or neither (DEC-54 (11) says a dropped contig is outside the corpus; DEC-59 makes that "outside for now") |
+| Least contig length 5,000 bp on unbinned metagenome stages | DEC-57, DEC-60 (1) | contigs under 5 kb: 83.9% of assembled bases and 98.9% of contigs in the pilot (*derived*: 1 − 55.050 / 341.501 Gbp; 1 − 4.81 M / 453.49 M) | **Not deferred: outside the corpus** (DEC-60 (1): "in full means contigs 5 kb and longer"). Listed here so that the share is on record; each tranche's note still says how many contigs and bases the filter dropped |
 | A habitat stopped when its yield falls | card C-48e's stopping rule | the habitat's remaining samples | the tranche note lists the samples not taken; card C-43's crosswalk has every sample |
 | Depth `called` in place of `annotated` | DEC-54 | Pfam domains outside the windows that rounds annotate | `bio-box annotate round`, or a later stage step: no data is lost |
 | Depth `stored` for eukaryote bins | card C-48d | genes: no intron-aware caller is in the image | a later card adds a caller; the sequences are held |
@@ -110,4 +114,5 @@ card needs. Rows are added, and a row is struck through with its stage's name wh
 | Logan (assemblies of all of SRA) | not sized here | taken on the hit only (card C-44) | a decision that "complete" includes it in bulk |
 | Global Soil Virus Atlas | not fetched | the provider's host refused the pod five times *(STATUS)* | another route to the files |
 | JGI sets on tape (`SMC_2025` 750 MB table and 6.11 TB of GFFs; `IMG_NR` 58.14 GB) *(card C-48e)* | | JGI's tape restore was down on 2026-11-18 | a check that it is back |
-| RNA viruses (LucaProt, Serratus, RVMT); protein-only catalogues *(card C-45)* | not sized here | everything built assumes DNA genomes with neighbourhoods | the PI's word on whether "useful" includes them |
+| RNA viruses (LucaProt's 161,979 species, Serratus' RdRps, RVMT) *(card C-45)* | not sized here | **in scope (DEC-60 (2))**; everything built assumes DNA genomes | card C-50: a gene caller and token model for RNA genomes, the sources' sizes and terms |
+| Protein-only catalogues (MGnify's proteins, the global gene catalogues) *(card C-45)* | not sized here | deferred: "can wait" (DEC-60 (2)); proteins without neighbours serve homology, not context | a search-only pack beside the corpus, when the PI calls for it |

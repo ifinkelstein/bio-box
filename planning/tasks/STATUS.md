@@ -92,7 +92,11 @@ there in the same commit as its note**; put that sentence in each such agent's b
 is built: copy `/tmp/if2453/s2/inputs/PL2/skipped_records.tsv` (the records the stage's rules skipped, on `/tmp`
 only) into the PL2 note's directory.
 
-**7. Waiting on the PI**: item 19 (where the corpus lives), items 15 (decided: DEC-56), 16 (B-56's design), 17 (`domain_state`'s place in
+**6d. What "complete" covers (DEC-60, the PI at about 10:55 on 2026-11-20).** Metagenome contigs of 5 kb and more
+are the whole of it for unbinned assemblies (shorter contigs are outside the corpus, not deferred); RNA viruses are
+in scope (design card C-50, tier H); protein-only catalogues wait. New cards: C-49 (`tower`), C-50 (RNA viruses).
+
+**7. Waiting on the PI**: item 19 (where the corpus lives; `tower` being looked at, card C-49), items 15 (decided: DEC-56), 16 (B-56's design), 17 (`domain_state`'s place in
 the exports), 18 (the pilot's storage rates), and the older ones in the section below (item 12, the TACC requests,
 the eukaryote kind, how many old releases keep their large files).
 
@@ -982,6 +986,12 @@ probed by hand on the pod).
    a stated footprint; (c) TACC (card C-37, waiting on the PI's two TxRAS requests, card C-37a). Recommendation:
    (a) now, (c) for the body of SPIRE, and tell the pod owner what is on `/stor/work` today. Until this is answered
    no fetch is started whose result cannot be removed again without deleting under `/stor`.
+   **The PI at about 10:55 on 2026-11-20 (DEC-60 (3))**: agrees this is the main constraint, and offers a fourth
+   place, (d) the PI's NAS `tower` ("as we grow, maybe tranches can move there?"): 32 TB array with 18 TB free, 8
+   cores, 31 GB of memory (*measured* from the laptop, 2026-11-20), on the PI's home network, which the pod cannot
+   reach. It can hold tranches and source archives; it cannot build, cluster or serve searches at the pod's rate.
+   Card C-49 measures the routes and proposes tiers; **nothing is copied there before its report and the PI's word
+   on the route** (a key for `tower` to pull from the pod is the PI's to make). Item 19 stays open until then.
 
 **Open since 13:55 on 2026-11-16** (F-02 session 13; its note is `planning/measurements/2026-11-14_synthworld_redesign.md`
 §16 on branch `task/F-02-13`, at `f340a0a`, pushed, not merged):
