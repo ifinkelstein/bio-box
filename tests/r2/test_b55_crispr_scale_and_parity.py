@@ -197,6 +197,89 @@ def test_micro_s0_published_crispr_files_equal_the_pre_b55_writers_sha256(tmp_pa
     assert _build_micro_s0_crispr(tmp_path) == OLD_WRITER_SHA256
 
 
+# BEGIN D-08 BUILD
+def _build_shared_circular_batch(base: Path) -> tuple[dict[str, str], dict[str, str]]:
+    """The multi-contig batch of the byte-identity test above (stage `S0` owns `near`, `across_origin` sits in two
+    genomes of stage `Q`, one array crosses the origin), published once by `crispr.run` (2 MinCED processes) and once
+    by `crispr.run_near_cas` (2 processes) into their own `out` directories. Returns the sha256 of every file each
+    producer published, keyed by path relative to its `out`."""
+    layout = e15.cases()
+    root = base / "root"
+    contigs = {k: v[0] for k, v in layout.items()}
+    ingest(e15.write_objects(base / "obj_s0", {"near": contigs["near"]}), root, "S0")
+    write_genome_input(root, "S0", e15.genomes_of({"near": contigs["near"]}))
+    ingest(e15.write_objects(base / "obj_q", contigs), root, "Q")
+    genomes = e15.genomes_of(contigs)
+    across_cu = ids.contig_uid(contigs["across_origin"].seq)
+    plain_cu = ids.contig_uid(contigs["gap_1000_down"].seq)
+    genomes.append(GenomeInput((across_cu, plain_cu), 11, kind="plasmid", circular=(across_cu,)))
+    write_genome_input(root, "Q", genomes)
+    fp, dom = e15.gene_rows({k: (v[0], v[1]) for k, v in layout.items()})
+    e15.write_rows(root, "feature_protein", f"l1/feature_protein/gene_call_version={e15.V}/stage=Q", fp)
+    e15.write_rows(root, "l1_domains", f"{e15.LIB_DIR}/stage=Q", dom)
+    scratch = base / "scratch"
+    scratch.mkdir()
+    out_run, out_nc = base / "out_run", base / "out_nc"
+    crispr.run(root, "Q", 2, tmp=scratch, out=out_run, seq_stages=["S0"])
+    crispr.run(root, "Q", 1, tmp=scratch, seq_stages=["S0"])  # into root: `run_near_cas` reads it
+    crispr.run_near_cas(root, "Q", 2, library_version=e15.LIB_VERSION, tmp=scratch, out=out_nc, seq_stages=["S0"])
+    return _digests(out_run), _digests(out_nc)
+# END D-08 BUILD
+
+
+# Card D-08. sha256 of the three files each producer publishes on `_build_shared_circular_batch`, taken from the code
+# BEFORE card B-55: commit 044586d97c194e96b1a73678d170d6db685df807 (`git rev-parse 5647ce7^1`), measured 2026-11-20
+# on wilkcomp02 in the test image, by a throwaway pytest file holding a verbatim copy of the function between the
+# `D-08 BUILD` markers, run with `scripts/pod_pytest.sh D-08-old <file> -s -rA` (BIOBOX_POD_JUMP and BIOBOX_TREE
+# set) on a detached worktree of that commit. Two runs of that tree gave identical values for all six files. The
+# builds hold 5 `l1_crispr` and 1 `feature` row (`run`) and 15 and 5 (`run_near_cas`). They record the old writer,
+# not the function under test.
+PRE_B55_COMMIT = "044586d97c194e96b1a73678d170d6db685df807"
+_RUN_PRODUCER = "minced-0.4.2-w8-nr3-r23x47-s26x50"
+_NC_PRODUCER = "minced-0.4.2-w8-nr2-r23x47-s26x50-cas1kb-caspfam1-pfam-38.2"
+PRE_B55_RUN_SHA256 = {
+    f"l1/crispr/producer={_RUN_PRODUCER}/stage=Q/part-0.parquet":
+        "86b09c20378f6162302b662caa7eff4fb6be877aa18ab717eb436f92fbfaa229",
+    f"l1/feature/producer={_RUN_PRODUCER}/stage=Q/part-0.parquet":
+        "f90bc9bb6b1ac828ef308ba6954cb51bfb2c5cb5c5724529bacb7afb9868191a",
+    f"ledger/stage=Q/step=crispr-{_RUN_PRODUCER}/part-0.parquet":
+        "14d1d2365362d43caaf1525e440b61cad2f5edbcd88374795e22abdb7d7bf26e",
+}
+PRE_B55_NEAR_CAS_SHA256 = {
+    f"l1/crispr/producer={_NC_PRODUCER}/stage=Q/part-0.parquet":
+        "34650e5161652eb0cdb0b4acedfc3a6ff8f57ac2a71f46168b9ddf9179696821",
+    f"l1/feature/producer={_NC_PRODUCER}/stage=Q/part-0.parquet":
+        "46bc64016d9a319127a6e71b3f081d587d0aa638943494bef17998550da18168",
+    f"ledger/stage=Q/step=crispr-{_NC_PRODUCER}/part-0.parquet":
+        "c7a209598c2435996cc1d80b7db97dbf90d0d49ef24cb32777d73b7f60d63ca3",
+}
+
+
+def _rows_of(out: Path, table: str) -> int:
+    return sum(pq.ParquetFile(p).metadata.num_rows for p in sorted(Path(out).rglob("*.parquet"))
+               if p.relative_to(out).parts[:2] == ("l1", table))
+
+
+def test_shared_circular_batch_published_files_equal_the_pre_b55_writers_sha256(tmp_path):
+    """Card D-08: the same comparison as the `micro_s0` one above on an input that HAS arrays (the batch of the
+    byte-identity test: a shared contig, a circular-origin array, a contig owned by an earlier stage), for both
+    producers. The rows are asserted present first, so the comparison cannot pass on empty files."""
+    run_h, nc_h = _build_shared_circular_batch(tmp_path)
+    for tag, h in (("run", run_h), ("near_cas", nc_h)):
+        assert len(h) == 3, (tag, sorted(h))
+    for tag, h, pinned in (("run", run_h, PRE_B55_RUN_SHA256), ("near_cas", nc_h, PRE_B55_NEAR_CAS_SHA256)):
+        assert pinned, f"{tag}: nothing pinned"
+        feats = [k for k in h if k.startswith("l1/feature/")]
+        crisps = [k for k in h if k.startswith("l1/crispr/")]
+        assert len(feats) == 1 and len(crisps) == 1, (tag, sorted(h))
+    for tag, h in (("run", run_h), ("near_cas", nc_h)):
+        out = tmp_path / ("out_run" if tag == "run" else "out_nc")
+        assert _rows_of(out, "crispr") > 0, f"{tag}: no l1_crispr rows"
+        assert _rows_of(out, "feature") > 0, f"{tag}: no CRISPR feature rows"
+    assert run_h == PRE_B55_RUN_SHA256
+    assert nc_h == PRE_B55_NEAR_CAS_SHA256
+
+
 CHILD = r"""
 import json, math, sys
 from pathlib import Path
