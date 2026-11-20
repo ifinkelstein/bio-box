@@ -838,6 +838,42 @@ systemd-run --user --unit=c46-driver-run --collect -p MemoryMax=4G -p MemorySwap
   nice -n 19 bash "$TREE/scripts/stress/build_stage_pod/release_train.sh" run --parts 24
 ```
 
+## Mirror to tower
+
+The durable tars, and later source archives, get a second copy on the PI's NAS `tower` (card C-49; the design and
+what may live there: `planning/design/C-49_tiers.md`). The pod cannot reach `tower`, so this runs **on the laptop**, at
+home, and streams each file pod to laptop to `tower` with nothing landing on the laptop.
+`scripts/orchestrator/relay_to_tower.sh` takes the source directory on the pod, the destination on `tower`, and a list
+of `<path><TAB><sha256>` lines or a `SHA256SUMS` file. A file already in place on `tower` is skipped and never
+overwritten; each copy goes to `.<name>.partial`, `tower` hashes the stream as it arrives, and the file is moved into
+place only when that hash equals the list's and its size the pod's. It ends by writing or extending `SHA256SUMS` on
+`tower` and exits 1 if any file failed. Nothing on the pod is written. Hosts and the key come from `BIOBOX_POD`,
+`BIOBOX_POD_JUMP` (off campus, as section 8), `BIOBOX_TOWER` (default `root@tower`) and `BIOBOX_TOWER_IDENTITY`
+(default the laptop's `~/.ssh/id_ed25519`); `--help` lists the rest.
+
+Each backup tar is mirrored the day it is written, with the line of its sha256 (the release train's or the stage
+driver's record). Look first, then run it under `caffeinate` so the laptop does not sleep:
+
+```bash
+export BIOBOX_POD_JUMP=if2453@wilkcomp03.ccbb.utexas.edu
+printf '%s\t%s\n' added_r26_11_1.tar 34db81c42aee3f832620375cebaf79ded57b2bdc20a9103faec9b2b97b7a04a4 > "$HOME/relay_r26_11_1.tsv"
+bash scripts/orchestrator/relay_to_tower.sh --dry-run /stor/work/Wilke/if2453/all-the-data/root_backups /mnt/user/research-bulk/bio-box/root_backups "$HOME/relay_r26_11_1.tsv"
+caffeinate -i bash scripts/orchestrator/relay_to_tower.sh /stor/work/Wilke/if2453/all-the-data/root_backups /mnt/user/research-bulk/bio-box/root_backups "$HOME/relay_r26_11_1.tsv"
+```
+
+To check, read the log's last lines (`~/.local/state/bio-box/relay_to_tower.log` unless `--log` names another): `DONE:`
+or `ENDED WITH FAILURES:`, and one `OK:` line per file with its bytes, seconds and MB/s. To check a file already on
+`tower` again, run the same command with `--reverify`: it reads each file back on `tower` (about 10 MB/s per file,
+measured while two copies ran, card C-49) and adds the ones that match to `SHA256SUMS`. After a stop or a failure run
+the same command again: files in place are skipped, a `.partial` is removed and its file copied again from the start.
+
+How long: one stream measured 9.70 MB/s (821,764,096 bytes in 84.75 s; laptop, 2026-11-20, card C-49), so about 2.9
+hours per 100 GB (*derived*). Two streams shared the link at about 8.3 MB/s together (*derived* from the first
+mirror's log), so `--streams` stays at 1. The first mirror, the root's seven tars (106,785,105,920 bytes), ran with
+the script's predecessor (`scp -3`, then a read-back on `tower`; its log: `planning/measurements/2026-11-20_tower_relay.md`);
+the script itself, hashing on arrival, has not yet been run on the real hosts (its tests run in section 8's image with
+stub `ssh`: `tests/r1/test_relay_to_tower.py`), so record its first rate in that note.
+
 ## 7. Search
 
 The search path writes nothing under the data root (card W-03): a user who can read a release may
@@ -1487,6 +1523,9 @@ named `c26-*`.
 | 9 | W-13: `ls "$BBTMP/packs" "$BBTMP/search/$USER/runs" "$BBTMP/search/$USER/work"` | 2026-11-10 | `/tmp/if2453/w13/tmp/search/if2453/work:` (empty: every run had removed its work directory; `runs` held `pending` and the three runs of section 7, `packs` held `release=rC6.1`) |
 | 9 | W-13: `rm -r "$BBTMP/search/$USER/work/3d96a70ba10c7f5cd895de3d838153ae"` | 2026-11-10 | `(no output)`, exit 0. An empty directory made for this test |
 | 9 | `find "$BBTMP/logs" -name '*.log' -mtime +30` | 2026-11-10 | `(no output)` |
+| Mirror to tower | C-49: the orchestrator's first mirror, on the laptop: `caffeinate -i bash relay_backups.sh` (the predecessor of `scripts/orchestrator/relay_to_tower.sh`: `scp -3`, two streams, then `sha256sum` read back on `tower` and `mv -n`; script, ssh config and log in the orchestrating session's scratch directory), the seven tars of `/stor/work/Wilke/if2453/all-the-data/root_backups` to `tower:/mnt/user/research-bulk/bio-box/root_backups` | 2026-11-20, from 10:40:59 | still running when read at 15:15: the log's last line `2026-11-20 13:35:12 added_r26_11_1.tar: try 1: copy started`; before it `l0seq.tar: OK: 28241715200 bytes in 6543 s` (13:21:26) and `l2.tar: OK: 27176785920 bytes in 6843 s` (13:35:11) (`planning/measurements/2026-11-20_tower_relay.md`) |
+| 8 | C-49: `env BIOBOX_POD_JUMP=if2453@wilkcomp03.ccbb.utexas.edu BIOBOX_TREE=<worktree> sh scripts/pod_pytest.sh C-49 tests/r1/test_relay_to_tower.py` (laptop), before the script existed | 2026-11-20 | 33 failed (`bash: /tmp/if2453/ci/C-49/scripts/orchestrator/relay_to_tower.sh: No such file or directory`) |
+| 8 | C-49: the same with `tests/r1/test_pod_pytest_jump.py tests/r0` added (laptop), with the script | 2026-11-20 | `287 passed in 25.32s` |
 
 ## Appendix B. Rehearse on the fixture
 
