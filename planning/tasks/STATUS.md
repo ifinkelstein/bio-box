@@ -63,7 +63,19 @@ short calls or `watch_until.sh`.
 orchestrator reads every diff and reruns the affected tests on the merged tree before a merge. Merged today: A-09.
 Stopped today without a change: B-56 (its card says why).
 
-**7. Waiting on the PI**: items 15 (accept `C5`'s ingest record), 16 (B-56's design), 17 (`domain_state`'s place in
+**6a. Actions on 2026-11-20.** Green on `352424f` and on the A-09 merge `becdc52` (`ci` and `cross-host`). **Red
+once on `b17935e`, a commit of documents only**: `tests/r2/test_micro_s0_search.py::test_c16_an_oom_killed_search_records_a_peak_within_20_percent_of_its_cap`
+recorded a sampled peak of 596.7 MiB against a cap of 953.7 MiB (1 failed, 2,501 passed, 252 skipped; *measured*,
+Actions run 44761392180). It depends on timing, not on the commit; card A-10 holds the reading and the fix. The job
+was started again at about 10:15; **do not merge `plan/task-cards` into `main` while this test is intermittent**.
+Also started this morning: card C-48c part 2 (the inputs of virus stages `V2` and `GV1` from the archives on
+`/stor/work`; Opus, `task/C-48c-2`, at most 4 threads, nothing written to the root). Card C-47's agent handed back
+with the queue unit `c47-queue` waiting on the pod (launched 09:36; it runs `rebefore`, `run`, `after`, `check`,
+`backup` once `V1`'s `after` snapshot is done); its remaining steps (the NR90 evaluation, the notes, the merge of
+integration) are in its report and start when the queue ends. **`r26.11.2` is cut only after `C5`'s `check` and
+`backup`**, not in the gap after `V1`: the release train's lock does not know `C5`'s units.
+
+**7. Waiting on the PI**: items 15 (decided: DEC-56), 16 (B-56's design), 17 (`domain_state`'s place in
 the exports), 18 (the pilot's storage rates), and the older ones in the section below (item 12, the TACC requests,
 the eukaryote kind, how many old releases keep their large files).
 
