@@ -1,0 +1,23 @@
+{
+  "seed": 20261118,
+  "target": 1000,
+  "stratum_key": "habitat2",
+  "rule": "Hamilton largest-remainder proportional to sqrt(N_h) over SPIRE level-2 habitats, 1 <= k_h <= N_h, per-stratum PRNG random.Random(f'{seed}:{habitat2}') over sorted sample_ids",
+  "study_tsv_samples": 96067,
+  "eligible_nonempty_samples": 96067,
+  "zero_assembly_bp_samples": 0,
+  "api_samples_rows": 96067,
+  "merged_union_samples": 96067,
+  "api_only_samples": 0,
+  "study_samples_with_api_assembly_bp": 89888,
+  "total_known_assembly_bp": 22771377138225,
+  "total_estimated_assembly_bp": 23348471791109,
+  "total_mag_count": 1147979,
+  "total_mag_bp": 2603289669758,
+  "pilot_selected": 1000,
+  "pilot_strata": 32,
+  "pilot_studies": 320,
+  "pilot_known_assembly_bp": 334986730926,
+  "pilot_estimated_assembly_bp": 343819596802,
+  "pilot_mag_bp": 22179877700
+}

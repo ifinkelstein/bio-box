@@ -1,0 +1,79 @@
+{
+  "total_clusters": 56757541,
+  "ref_clusters": 15474784,
+  "shared_clusters": 4097867,
+  "novel_clusters": 41282757,
+  "novel_nonsingleton_clusters": 9466693,
+  "pilot_samples_in_root": 967,
+  "pilot_bp_in_root": 114418621383,
+  "overall_novel_per_gbp": 360804.53,
+  "overall_novel_nonsingleton_per_gbp": 82737.35,
+  "by_habitat1": [
+    {
+      "habitat": "air",
+      "samples": 4,
+      "total_bp": 60475330,
+      "novel_clusters": 5492,
+      "novel_nonsingleton_clusters": 2307,
+      "novel_per_gbp": 90813.89,
+      "novel_nonsingleton_per_gbp": 38147.79,
+      "first_half_mean_novel_per_gbp": 143544.83,
+      "second_half_mean_novel_per_gbp": 49836.6
+    },
+    {
+      "habitat": "anthropogenic",
+      "samples": 192,
+      "total_bp": 17748889885,
+      "novel_clusters": 7543985,
+      "novel_nonsingleton_clusters": 2413905,
+      "novel_per_gbp": 425039.82,
+      "novel_nonsingleton_per_gbp": 136003.15,
+      "first_half_mean_novel_per_gbp": 469951.04,
+      "second_half_mean_novel_per_gbp": 379326.18
+    },
+    {
+      "habitat": "aquatic",
+      "samples": 241,
+      "total_bp": 31556553260,
+      "novel_clusters": 14683998,
+      "novel_nonsingleton_clusters": 4043875,
+      "novel_per_gbp": 465323.25,
+      "novel_nonsingleton_per_gbp": 128146.92,
+      "first_half_mean_novel_per_gbp": 519388.62,
+      "second_half_mean_novel_per_gbp": 413207.85
+    },
+    {
+      "habitat": "host-associated",
+      "samples": 277,
+      "total_bp": 28900863619,
+      "novel_clusters": 7797371,
+      "novel_nonsingleton_clusters": 1885730,
+      "novel_per_gbp": 269797.16,
+      "novel_nonsingleton_per_gbp": 65248.22,
+      "first_half_mean_novel_per_gbp": 297281.1,
+      "second_half_mean_novel_per_gbp": 237266.42
+    },
+    {
+      "habitat": "terrestrial",
+      "samples": 198,
+      "total_bp": 34723511174,
+      "novel_clusters": 14147716,
+      "novel_nonsingleton_clusters": 4480037,
+      "novel_per_gbp": 407439.1,
+      "novel_nonsingleton_per_gbp": 129020.28,
+      "first_half_mean_novel_per_gbp": 465287.72,
+      "second_half_mean_novel_per_gbp": 349344.76
+    },
+    {
+      "habitat": "unlabelled",
+      "samples": 55,
+      "total_bp": 1428328115,
+      "novel_clusters": 705468,
+      "novel_nonsingleton_clusters": 215331,
+      "novel_per_gbp": 493911.72,
+      "novel_nonsingleton_per_gbp": 150757.38,
+      "first_half_mean_novel_per_gbp": 379665.31,
+      "second_half_mean_novel_per_gbp": 520284.94
+    }
+  ]
+}

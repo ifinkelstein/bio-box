@@ -1,0 +1,44 @@
+{
+  "sample_id": "SAMN06343983",
+  "sample_assembly_contigs": 37571,
+  "sample_assembly_bp": 40534684,
+  "mags_checked": 4,
+  "total_mag_metadata_bp": 15902704,
+  "total_mag_fasta_bp": 15902704,
+  "all_mag_contigs_in_assembly": true,
+  "contig_overlap_between_mags": 0,
+  "mags": [
+    {
+      "mag_id": "spire_mag_01961981",
+      "metadata_bp": 4240258,
+      "fasta_bp": 4240258,
+      "contigs": 180,
+      "min_contig_len": 2575,
+      "contigs_in_sample_assembly": 180
+    },
+    {
+      "mag_id": "spire_mag_01961982",
+      "metadata_bp": 6266299,
+      "fasta_bp": 6266299,
+      "contigs": 45,
+      "min_contig_len": 3637,
+      "contigs_in_sample_assembly": 45
+    },
+    {
+      "mag_id": "spire_mag_01961985",
+      "metadata_bp": 524508,
+      "fasta_bp": 524508,
+      "contigs": 88,
+      "min_contig_len": 2549,
+      "contigs_in_sample_assembly": 88
+    },
+    {
+      "mag_id": "spire_mag_01961987",
+      "metadata_bp": 4871639,
+      "fasta_bp": 4871639,
+      "contigs": 81,
+      "min_contig_len": 2732,
+      "contigs_in_sample_assembly": 81
+    }
+  ]
+}

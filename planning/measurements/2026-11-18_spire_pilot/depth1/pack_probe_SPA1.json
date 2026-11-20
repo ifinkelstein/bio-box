@@ -1,0 +1,24 @@
+{
+  "stage": "SPA1",
+  "stored_bp": 57338749,
+  "pack_id": "30fdb105ef20ed6868415f6c1abe0004",
+  "pack_total_bytes": 57909582,
+  "pack_gb_per_gbp": 1.01,
+  "entries_bytes": {
+    "dark_orf": 46368150,
+    "igr": 5040621,
+    "models": 0,
+    "pack_manifest.json": 2815,
+    "pack_verified.json": 325,
+    "unique": 6497671
+  },
+  "entries_gb_per_gbp": {
+    "dark_orf": 0.8087,
+    "igr": 0.0879,
+    "models": 0.0,
+    "pack_manifest.json": 0.0,
+    "pack_verified.json": 0.0,
+    "unique": 0.1133
+  },
+  "manifest_targets": {}
+}

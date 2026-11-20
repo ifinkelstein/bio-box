@@ -1,0 +1,98 @@
+{
+  "hmm": {
+    "name": "TniQ",
+    "accession": "PF06527.17",
+    "length": 142,
+    "ga_seq": 27.0,
+    "ga_dom": 27.0
+  },
+  "pilot_distinct_proteins_searched": 115030133,
+  "pilot_total_residues": 29781781464,
+  "tniq_hit_distinct_proteins": 3172,
+  "tniq_hit_loci": 3408,
+  "tniq_hit_loci_in_spire_mags": 351,
+  "tniq_hit_loci_unbinned": 3057,
+  "tniq_hit_contigs": 3161,
+  "window_distinct_proteins_scanned_with_pfam": 21189,
+  "window_residues_scanned_with_pfam": 6660561,
+  "window_proteins_with_pfam_domain": 14373,
+  "round_domain_rows": 25890,
+  "protein_reduction_factor": 5428.8,
+  "residue_reduction_factor": 4471.4,
+  "timing": {
+    "hmm_extract_wall_s": 48.39,
+    "hmm_extract_cpu_min": 0.806,
+    "tniq_search_wall_s": 1282.64,
+    "tniq_search_cpu_min": 32.113,
+    "tniq_search_cpu_min_per_10m_proteins": 2.792,
+    "window_extract_wall_s": 42.07,
+    "window_extract_cpu_min": 5.023,
+    "pfam_round_wall_s": 67.74,
+    "pfam_round_cpu_min": 51.42,
+    "total_search_plus_round_cpu_min": 88.556,
+    "estimated_full_pfam_cpu_min_at_7_18": 213833.2,
+    "cpu_speedup_vs_full_pfam": 2414.7
+  },
+  "locus_classes": {
+    "Cas_with_Cas1_Cas2_or_Cas3": 1,
+    "I-B_CAST": 2,
+    "I-F3_CAST": 6,
+    "Tn7_non_Cas": 2276,
+    "TniQ_only_or_truncated": 1094,
+    "V-K_CAST": 4,
+    "minimal_Cas_other": 25
+  },
+  "by_habitat": {
+    "air": {
+      "Tn7_non_Cas": 12
+    },
+    "anthropogenic": {
+      "Tn7_non_Cas": 821,
+      "TniQ_only_or_truncated": 297,
+      "V-K_CAST": 2,
+      "minimal_Cas_other": 1
+    },
+    "aquatic": {
+      "Cas_with_Cas1_Cas2_or_Cas3": 1,
+      "I-F3_CAST": 5,
+      "Tn7_non_Cas": 368,
+      "TniQ_only_or_truncated": 212,
+      "minimal_Cas_other": 13
+    },
+    "host-associated": {
+      "I-F3_CAST": 1,
+      "Tn7_non_Cas": 355,
+      "TniQ_only_or_truncated": 124,
+      "V-K_CAST": 1,
+      "minimal_Cas_other": 2
+    },
+    "terrestrial": {
+      "I-B_CAST": 2,
+      "Tn7_non_Cas": 699,
+      "TniQ_only_or_truncated": 452,
+      "V-K_CAST": 1,
+      "minimal_Cas_other": 9
+    },
+    "unlabelled": {
+      "Tn7_non_Cas": 21,
+      "TniQ_only_or_truncated": 9
+    }
+  },
+  "intact_21_slot_window_by_contig_length": {
+    "1.5_to_5kb": {
+      "loci": 1664,
+      "intact_both_sides": 0,
+      "truncated_share": 1.0
+    },
+    "5_to_10kb": {
+      "loci": 740,
+      "intact_both_sides": 0,
+      "truncated_share": 1.0
+    },
+    "ge_10kb": {
+      "loci": 1004,
+      "intact_both_sides": 217,
+      "truncated_share": 0.7839
+    }
+  }
+}
