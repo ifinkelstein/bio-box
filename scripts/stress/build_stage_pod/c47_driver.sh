@@ -454,6 +454,94 @@ backup() {
   rm -f "$local_tar"
 }
 
+# Part (2), the measurement (Pfam by NR90 representatives, DEC-32, DEC-35), in scratch and read-only on the root, only
+# after `check` passed and `backup` wrote its record. C5's distinct proteins are clustered at NR90 by the release
+# clustering's own code and parameters (biobox.l2.cluster in parts: `release cluster plan|step|finish`), reading the root
+# (bound read-only) and writing every output under $EV/out, a scratch output root (card C-08's --out), under a release
+# name that exists only there ($EREL). Nothing is defined or written in the data root. Each step is its own unit with
+# the 280 CPU-minute process guard; NR50 is made too because `finish` writes both levels (it is not read).
+EV=$C/eval
+EREL=${EREL:-c47eval5}
+EV_T=${EV_T:-16}
+
+ev_next() {  # the next clustering step without a record, `finish` when every step has one, `done` when the tables exist
+  [ -d "$EV/out/l2/cluster_member/release=$EREL" ] && { echo done; return; }
+  bb py -c "from pathlib import Path; from biobox.l2 import cluster as c; r, o, R = Path('$ROOT'), Path('$EV/out'), '$EREL'; t = [n for n in c.sequence(r, R, o) if c.read_record(r, R, n, o) is None]; print(t[0] if t else 'finish')"
+}
+
+ev_unit() {  # launch one clustering step as its own unit, wait, stop it at CPU_MAX CPU-minutes; exit 0 when it exited 0
+  local n unit cpu rc
+  n=$(($( [ -e "$EV/units" ] && wc -l < "$EV/units" || echo 0) + 1))
+  unit=$(printf 'c47-ev-%03d' "$n")
+  systemctl --user is-active --quiet "$unit" && fail "eval: $unit is already active"
+  echo "$unit $*" >> "$EV/units"
+  log "eval: launch $unit (pod_run --threads $EV_T --mem 64G): $*"
+  bash "$TREE/scripts/pod_run.sh" --profile "$PROFILE" --image "$IMAGE" --digest "$DIGEST" --mem 64G --threads "$EV_T" \
+    --bind /tmp/if2453 --bind "$ROOT:$ROOT:ro" --env "PYTHONPATH=$PYPATH" --log "$EV/logs/$unit.log" "$unit" \
+    "$@" >> "$LOG" 2>&1
+  sleep 5
+  while systemctl --user is-active --quiet "$unit"; do
+    cpu=$(systemctl --user show "$unit" -p CPUUsageNSec --value)
+    case "$cpu" in
+      ''|*[!0-9]*) ;;
+      *) [ "$((cpu / 60000000000))" -ge "$CPU_MAX" ] && stop_unit "$unit" "eval: $unit reached $CPU_MAX CPU-minutes" ;;
+    esac
+    [ -e "$ROOT/STOP" ] && stop_unit "$unit" "eval: $ROOT/STOP appeared"
+    sleep 20
+  done
+  rc=$(sed -n "s/^pod_run: $unit exited \([0-9]*\)$/\1/p" "$EV/logs/$unit.log" | tail -n 1)
+  log "eval: $unit exit '$rc'; $(grep -E 'pod_run: .* usage' "$EV/logs/$unit.log" | tail -n 1); $(grep -E '^\{' "$EV/logs/$unit.log" | tail -n 1 | cut -c1-600)"
+  [ "$rc" = 0 ] || fail "eval: $unit exited '$rc' (read $EV/logs/$unit.log)"
+}
+
+evalplan() {
+  [ -s "$C/backup.tsv" ] || fail "evalplan: no $C/backup.tsv: check and backup first"
+  [ -e "$ROOT/STOP" ] && fail "$ROOT/STOP exists"
+  mkdir -p "$EV/out" "$EV/tmp" "$EV/logs"
+  profile
+  [ "$(ev_next)" = cluster.plan ] || { log "evalplan: the plan is recorded"; return; }
+  ev_unit release cluster plan --root "$ROOT" --release "$EREL" --stages "$STAGE" --tmp "$EV/tmp" --out "$EV/out" \
+    --part-cpu-min 240 --one-process-cpu-min-max 20000
+}
+
+evalcluster() {
+  local name k=0
+  [ -s "$C/backup.tsv" ] || fail "evalcluster: no $C/backup.tsv"
+  profile
+  while :; do
+    [ -e "$ROOT/STOP" ] && fail "$ROOT/STOP exists"
+    name=$(ev_next) || fail "eval: could not read the clustering's next step"
+    case "$name" in
+      done) log "evalcluster: the tables of $EREL are written under $EV/out"; break ;;
+      cluster.plan) fail "evalcluster: no plan; run evalplan first" ;;
+      finish) ev_unit release cluster finish --root "$ROOT" --release "$EREL" --tmp "$EV/tmp" --out "$EV/out" \
+                --threads "$EV_T" ;;
+      *) ev_unit release cluster step --root "$ROOT" --release "$EREL" --name "$name" --tmp "$EV/tmp" \
+           --out "$EV/out" --threads "$EV_T" ;;
+    esac
+    k=$((k + 1))
+    [ "$k" -lt 500 ] || fail "evalcluster: over 500 steps"
+  done
+  touch "$EV/cluster.DONE"
+}
+
+evaluate() {
+  local cm aln rc
+  [ -e "$EV/cluster.DONE" ] || fail "evaluate: no $EV/cluster.DONE"
+  find "$EV/out/l2/cluster_member/release=$EREL" -name '*.parquet' | LC_ALL=C sort > "$EV/cm.files"
+  find "$EV/out/l2/cluster_member_aln/release=$EREL" -name '*.parquet' | LC_ALL=C sort > "$EV/aln.files"
+  [ -s "$EV/cm.files" ] && [ -s "$EV/aln.files" ] || fail "evaluate: no cluster tables under $EV/out"
+  mkdir -p "$EV/eval_tmp"
+  # shellcheck disable=SC2046
+  bb py "$BIN/c47_nr90_pfam_eval.py" eval --root "$ROOT" --stage "$STAGE" --earlier "$EARLIER" \
+    --stage-cm $(cat "$EV/cm.files") --stage-aln $(cat "$EV/aln.files") \
+    --selection "$C/stages/$STAGE/selection.tsv" --objects "$IN/objects.json" \
+    --out "$EV/eval.json" --tmp "$EV/eval_tmp" --threads 2 --memory 10GB > "$EV/eval.out" 2>&1
+  rc=$?
+  log "evaluate: exit $rc: $(head -n 1 "$EV/eval.out")"
+  [ "$rc" = 0 ] || fail "evaluate: c47_nr90_pfam_eval.py failed (read $EV/eval.out)"
+}
+
 MODE=${1:-}
 log "c47 driver: mode '$MODE' (pid $$), tree $TREE, image $IMAGE"
 case "$MODE" in
@@ -466,6 +554,9 @@ case "$MODE" in
   after) after ;;
   check) check ;;
   backup) backup ;;
-  *) echo "usage: c47_driver.sh restore|rehearse|estimate|before|rebefore|run|after|check|backup" >&2; exit 2 ;;
+  evalplan) evalplan ;;
+  evalcluster) evalcluster ;;
+  evaluate) evaluate ;;
+  *) echo "usage: c47_driver.sh restore|rehearse|estimate|before|rebefore|run|after|check|backup|evalplan|evalcluster|evaluate" >&2; exit 2 ;;
 esac
 log "c47 driver: mode '$MODE' done"
