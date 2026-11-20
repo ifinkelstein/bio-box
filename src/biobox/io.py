@@ -8,7 +8,8 @@ the sort-key columns. The file is written under `.<name>.tmp-<pid>` beside its f
 renamed into place only after the writer closed cleanly. At most one row group is buffered.
 
 `write_parts` streams sorted batches into `part-<k>.parquet` files of one directory, cut at
-`layout.MAX_FILE_BYTES` of estimated size (card B-19); `part_files` lists such files in part order.
+`layout.MAX_FILE_BYTES` of estimated size (card B-19), and a last part under the small-file floor is
+merged into the part before it (card B-57); `part_files` lists such files in part order.
 
 `duck_batches` streams a DuckDB query result as batches cast to a spec (DuckDB has no fixed-size
 binary type and returns UIDs and digests as BLOB).
@@ -32,6 +33,7 @@ from biobox import layout
 from biobox.registry.schemas import TableSpec
 
 ROW_GROUP_ROWS = 122_880  # AGENTS §4.6
+SMALL_FILE_FLOOR_BYTES = 64 * 2**20  # LY-04 (`contracts.NFS_MIN_BYTES`, the profile's `small_file_floor_bytes`)
 _CAST_ERRORS = (pa.ArrowInvalid, pa.ArrowNotImplementedError, pa.ArrowTypeError)
 _PART_RE = re.compile(r"part-(\d+)\.parquet")
 
@@ -268,7 +270,8 @@ class _PartSource:
 
 def write_parts(batches: Iterable[pa.RecordBatch | pa.Table] | pa.Table, spec: TableSpec, base_dir,
                 est_row_bytes: float | Callable[[pa.RecordBatch], np.ndarray],
-                max_file_bytes: int = layout.MAX_FILE_BYTES, **write_table_options) -> list[Path]:
+                max_file_bytes: int = layout.MAX_FILE_BYTES,
+                small_file_floor: int = SMALL_FILE_FLOOR_BYTES, **write_table_options) -> list[Path]:
     """Write sorted batches as `base_dir/part-<k>.parquet`, k = 0, 1, ..., through `write_table`.
 
     A new part starts when the next row would push the part's estimated size past `max_file_bytes`
@@ -276,6 +279,11 @@ def write_parts(batches: Iterable[pa.RecordBatch | pa.Table] | pa.Table, spec: T
     input. `est_row_bytes` is one estimate for every row, or a function of a batch (as the caller
     passed it) giving each row's estimate. The parts depend only on the rows and the estimates, never
     on how the input was batched. Refuses a directory that already holds parts (append-only).
+    With two or more parts and a last part whose file is under `small_file_floor` bytes (LY-04), that
+    part is merged into the one before it, streamed through `write_table` with the same options, so
+    the merged part keeps the sort order, the row-group caps and the statistics; it may then exceed
+    `max_file_bytes`. A floor of 0, or one not below `max_file_bytes` (a cut so small that every tail
+    would merge), turns this off; single-part tables and tails at or above the floor are not touched.
     `write_table_options` go to every `write_table` call. Returns the written paths, in part order.
     """
     base_dir = Path(base_dir)
@@ -289,7 +297,25 @@ def write_parts(batches: Iterable[pa.RecordBatch | pa.Table] | pa.Table, spec: T
         path = base_dir / f"part-{len(paths)}.parquet"
         write_table(src.part(max_file_bytes), spec, path, **write_table_options)
         paths.append(path)
+    if len(paths) >= 2 and 0 < small_file_floor < max_file_bytes and paths[-1].stat().st_size < small_file_floor:
+        _merge_tail(paths, spec, write_table_options)
     return paths
+
+
+def _merge_tail(paths: list[Path], spec: TableSpec, write_table_options: dict) -> None:
+    """Rewrite the last two parts as one at the second-to-last path (one row group buffered at a time)."""
+    keep, tail = paths[-2], paths[-1]
+    merged = keep.with_name(f".merge-{keep.name}")
+    merged.unlink(missing_ok=True)
+
+    def batches() -> Iterator[pa.RecordBatch]:
+        for f in (keep, tail):
+            yield from pq.ParquetFile(f).iter_batches(batch_size=ROW_GROUP_ROWS)
+
+    write_table(batches(), spec, merged, **write_table_options)
+    os.replace(merged, keep)
+    tail.unlink()
+    paths.pop()
 
 
 def duck_batches(con, sql: str, spec: TableSpec, params=None, batch_rows: int = ROW_GROUP_ROWS

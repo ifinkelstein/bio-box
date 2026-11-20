@@ -1132,6 +1132,7 @@ Files: `src/biobox/io.py`, `src/biobox/l3/tapes.py` (if part cutting lives there
 Evidence (*measured*, wilkcomp02, 2026-11-19, card C-42 `SPQ2`): on `3,588,517` short contigs (`14,440,846` slots), `contig_tapes` cut at `max_file_bytes` into `part-0.parquet` (`635.2 MB`) and `part-1.parquet` (`45.7 MB < 64 MiB`), which trips `LY-04` (`small_file_floor_bytes = 64 MiB`) on `/stor` whenever a multi-part table barely spills past `max_file_bytes`.
 Do, test first: when `write_parts` (or `tapes` part cutting) produces `>= 2` parts and the final part is `< small_file_floor_bytes` (`64 MiB`), coalesce the trailing batches into `part-(k-1).parquet` (keeping `sort_key` order, row-group caps of AGENTS §4.6, and min/max statistics intact); single-part tables and multi-part tables whose tail is `>= 64 MiB` stay byte-identical.
 Accept: test reproducing a 2-part write with a `< 64 MiB` tail fails `LY-04` before and produces one valid `>= 64 MiB` part after; `micro_s0` byte-identical.
+Done 2026-11-20 (STATUS row B-57): `io.write_parts` merges a last part under `small_file_floor` (default 64 MiB) into the part before it; the fixture's manifest hash is unchanged (the cross-host test passes on the merged tree); whole suite 2,707 passed, 23 skipped in two shards (*measured*, wilkcomp02, 2026-11-20).
 
 ### B-58 Account for `.gz` FASTA decompression in `stage.ingest_cpu_min`
 **L** · Depends: B-52, C-47 · uncovered 2026-11-19 by card C-47 (`C5.ingest`: `45.803` vs `38.057` CPU-min, `1.204×`)
