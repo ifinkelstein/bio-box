@@ -11,6 +11,11 @@ Covers:
    sample that fails three tries listed, not replaced; HTTP 429 stops the whole fetch; a rerun skips what is
    complete and verified and fetches again a file whose bytes no longer match the log; the disk guard stops
    before any request.
+3. `c48e_inputs.py`: the stage's inputs as the pilot's depth-1 stages had them (one prokaryote `contig` genome per
+   distinct contig, here only those of at least `--min-contig-len`, the assemblies staged whole by hard link) checked
+   against sets computed in the test from the sequences; byte-identical files whatever the selection's order; a
+   file whose sha256 is not the log's refused; and a round trip through `write_genome_input` and `ingest` with
+   `min_contig_len`, whose ledger counts the dropped records and bases the test computes.
 """
 
 from __future__ import annotations
@@ -302,3 +307,145 @@ def test_c48e_fetch_stops_on_rate_limit_and_on_the_disk_guard(tmp_path, server):
     with pytest.raises(m.Stop) as e:
         _fetch(m, server, tmp_path, ["OK1"])
     assert e.value.code == 75
+
+
+# --- 3. c48e_inputs.py -----------------------------------------------------------------------------
+
+
+def _seq(n: int, seed: int) -> bytes:
+    rng = random.Random(seed)
+    return bytes(rng.choice(b"ACGT") for _ in range(n))
+
+
+def _inputs_fixture(tmp_path: Path):
+    from biobox import ids
+
+    x, y = _seq(6000, 1), _seq(5000, 2)  # at or over the length
+    short = [_seq(1200, 3), _seq(4999, 4), _seq(800, 5)]
+    files = {
+        "SAM_A": b">a1 len=6000\n" + x + b"\n>a2\n" + short[0] + b"\n>a3\n" + y[:2500] + b"\n" + y[2500:] + b"\n",
+        "SAM_B": b">b1\n" + x.lower() + b"\n>b2\n" + short[1] + b"\n",
+        "SAM_C": b">c1\n" + short[2] + b"\n",
+    }
+    dl = tmp_path / "dl"
+    dl.mkdir()
+    log = []
+    for sid, data in files.items():
+        f = dl / f"{sid}.fa.gz"
+        f.write_bytes(gzip.compress(data, mtime=0))
+        log.append({"sample_id": sid, "status": "ok", "disk_bytes": f.stat().st_size,
+                    "disk_sha256": hashlib.sha256(f.read_bytes()).hexdigest(), "fetched_utc": "2026-11-20T17:00:00Z"})
+    log.append({"sample_id": "SAM_D", "status": "not_found", "fetched_utc": "2026-11-20T17:00:05Z"})
+    (dl / "fetch_log.jsonl").write_text("".join(json.dumps(r) + "\n" for r in log))
+    sel = [{"order_rank": i + 1, "sample_id": s, "study": f"St{i}", "habitat": "aquatic", "habitat2": "aquatic:marine"}
+           for i, s in enumerate(["SAM_C", "SAM_A", "SAM_D", "SAM_B"])]
+    truth = {
+        "genomes": sorted({ids.contig_uid(x).hex(), ids.contig_uid(y).hex()}),
+        "records": 6,
+        "bp": 6000 + 1200 + 5000 + 6000 + 4999 + 800,
+        "below_records": 3,
+        "below_bp": 1200 + 4999 + 800,
+    }
+    return dl, sel, truth
+
+
+def _write_sel(path: Path, rows: list[dict]) -> Path:
+    cols = list(rows[0].keys())
+    path.write_text("\t".join(cols) + "\n" + "".join("\t".join(str(r[c]) for c in cols) + "\n" for r in rows))
+    return path
+
+
+def test_c48e_inputs_one_genome_per_long_contig_whole_assemblies_and_byte_identical(tmp_path):
+    m = _load("c48e_inputs")
+    dl, sel, truth = _inputs_fixture(tmp_path)
+    final = tmp_path / "final" / "SPT"
+    outs = []
+    for i, rows in enumerate((sel, list(reversed(sel)))):
+        s = _write_sel(tmp_path / f"sel{i}.tsv", rows)
+        out = tmp_path / f"run{i}" / "SPT"
+        rep = m.build(s, dl / "fetch_log.jsonl", dl, "SPT", final, out, min_contig_len=5000,
+                      uids_out=tmp_path / f"run{i}" / "uids.parquet", tmp=tmp_path / "tmp")
+        outs.append(out)
+    a, b = outs
+    for name in ("genomes.json", "objects.json", "samples.tsv", "input_report.json", "assemblies.sha256"):
+        assert (a / name).read_bytes() == (b / name).read_bytes(), name
+    assert (tmp_path / "run0" / "uids.parquet").read_bytes() == (tmp_path / "run1" / "uids.parquet").read_bytes()
+
+    genomes = json.loads((a / "genomes.json").read_text())
+    assert [g["contig_uids"][0] for g in genomes] == truth["genomes"]
+    assert all(g == {"contig_uids": g["contig_uids"], "genetic_code": 11, "kind": "prokaryote", "circular": [],
+                     "assembly_quality": "contig"} for g in genomes)
+    objs = json.loads((a / "objects.json").read_text())
+    assert [o["path"] for o in objs] == [str(final / "assemblies" / f"{s}.fa.gz") for s in ("SAM_A", "SAM_B", "SAM_C")]
+    assert {o["source_name"] for o in objs} == {"spire"} and all(o["redistributable"] for o in objs)
+    for s in ("SAM_A", "SAM_B", "SAM_C"):
+        assert (a / "assemblies" / f"{s}.fa.gz").stat().st_ino == (dl / f"{s}.fa.gz").stat().st_ino
+    assert rep["records"] == truth["records"] and rep["bp"] == truth["bp"]
+    assert (rep["records_below"], rep["bp_below"]) == (truth["below_records"], truth["below_bp"])
+    assert rep["records_at_least"] == 3 and rep["distinct_contigs"] == 2 and rep["contigs_in_2plus_samples"] == 1
+    assert rep["samples_staged"] == 3 and rep["not_staged"] == [{"sample_id": "SAM_D", "status": "not_found"}]
+    assert not (tmp_path / "run0" / ".SPT.tmp").exists()
+    with pytest.raises(m.Refused):
+        m.build(_write_sel(tmp_path / "sel0.tsv", sel), dl / "fetch_log.jsonl", dl, "SPT", final, a,
+                min_contig_len=5000, uids_out=tmp_path / "u.parquet", tmp=tmp_path / "tmp")
+
+
+def test_c48e_inputs_refuse_a_file_that_differs_from_the_log(tmp_path):
+    m = _load("c48e_inputs")
+    dl, sel, _ = _inputs_fixture(tmp_path)
+    (dl / "SAM_B.fa.gz").write_bytes(gzip.compress(b">b1\nACGT\n", mtime=0))
+    with pytest.raises(m.Refused, match="SAM_B"):
+        m.build(_write_sel(tmp_path / "sel.tsv", sel), dl / "fetch_log.jsonl", dl, "SPT", tmp_path / "f" / "SPT",
+                tmp_path / "o" / "SPT", min_contig_len=5000, uids_out=tmp_path / "u.parquet", tmp=tmp_path / "tmp")
+    assert not (tmp_path / "o" / "SPT").exists()
+
+
+def test_c48e_inputs_roundtrip_through_write_genome_input_and_ingest_with_min_contig_len(tmp_path):
+    from datetime import datetime
+
+    import pyarrow.parquet as pq
+
+    from biobox.l0seq import SourceObject, ingest
+    from biobox.l0seq.inputs import GenomeInput, write_genome_input
+
+    m = _load("c48e_inputs")
+    dl, sel, truth = _inputs_fixture(tmp_path)
+    final = tmp_path / "in" / "SPT"
+    m.build(_write_sel(tmp_path / "sel.tsv", sel), dl / "fetch_log.jsonl", dl, "SPT", final, final,
+            min_contig_len=5000, uids_out=tmp_path / "u.parquet", tmp=tmp_path / "tmp")
+    root = tmp_path / "root"
+    gis = [GenomeInput(contig_uids=tuple(bytes.fromhex(u) for u in g["contig_uids"]), genetic_code=g["genetic_code"],
+                       kind=g["kind"], circular=(), assembly_quality=g["assembly_quality"])
+           for g in json.loads((final / "genomes.json").read_text())]
+    assert write_genome_input(root, "SPT", gis) == {"genomes": 2, "contigs": 2}
+    objs = [SourceObject(path=Path(o["path"]), source_name=o["source_name"], source_release=o["source_release"],
+                         license=o["license"], redistributable=o["redistributable"],
+                         retrieved_at=datetime.fromisoformat(o["retrieved_at"]))
+            for o in json.loads((final / "objects.json").read_text())]
+    res = ingest(objs, root, "SPT", min_contig_len=5000)
+    assert res["records"] == truth["records"]
+    assert (res["rejected_records"], res["rejected_bases"]) == (truth["below_records"], truth["below_bp"])
+    ci = pq.read_table(root / "l0seq" / "contig_index" / "stage=SPT")
+    kept = sorted(bytes(u).hex() for u, d in zip(ci["contig_uid"].to_pylist(), ci["is_default_variant"].to_pylist()) if d)
+    assert kept == truth["genomes"]
+
+
+# --- 4. c48e_est.py --------------------------------------------------------------------------------------------------
+
+
+def test_c48e_est_drops_samples_from_the_end_of_the_order_until_both_caps_hold():
+    m = _load("c48e_est")
+    sel = [{"order_rank": str(i), "sample_id": f"S{i}", "habitat": "aquatic", "habitat2": "aquatic:marine",
+            "est_source": "nearest_n50", "assembly_bp": "1000", "est_n_ge_5000": "10", "est_bp_ge_5000": "100"}
+           for i in (3, 1, 2, 4)]
+    meas = {"S1": (12, 90), "S2": (9, 140), "S3": (11, 100)}  # S4 not staged
+    samples = [{"sample_id": s, "bp": "1000", "records_at_least": str(n), "bp_at_least": str(b)}
+               for s, (n, b) in meas.items()]
+    got = m.measured_vs_estimate(sel, samples, max_n=25, max_bp=1000)
+    assert got["drop_from_end"] == ["S3"]  # 32 contigs > 25: drop the last staged in order; 21 <= 25
+    assert (got["kept_sum_n_ge_5000"], got["kept_sum_bp_ge_5000"]) == (21, 230)
+    got = m.measured_vs_estimate(sel, samples, max_n=100, max_bp=200)
+    assert got["drop_from_end"] == ["S3", "S2"]  # bases: 330 > 200, 230 > 200, 90 <= 200
+    allrow = [g for g in got["groups"] if g["level"] == "all"][0]
+    assert (allrow["samples"], allrow["est_n_ge_5000"], allrow["meas_n_ge_5000"]) == (3, 30, 32)
+    assert allrow["ratio_n_meas_over_est"] == round(32 / 30, 4)
