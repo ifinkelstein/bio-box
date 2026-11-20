@@ -26,7 +26,8 @@ Labels (AGENTS §6): *measured* (wilkcomp02, 2026-11-20, the command or file nam
 - **Measured against the estimate** at >= 5 kb: contigs 0.948, bases 1.012 (both within 20%); both caps hold
   (2,829,368 <= 3,000,000 contigs; 35.885 <= 40 Gbp). No sample was dropped.
 - **Overlap** by `contig_uid` of the 2,829,368 long contigs: 0 with every stage in the root; 12,052 contigs
-  (196.6 Mbp) with the staged inputs `G1`, 2 with `PL2`, 7 with `V2`, 0 with `V1`, `PL1`, `C1` to `C6`.
+  (196.6 Mbp) with the staged inputs `G1`, 2 with `PL2`, 7 with `V2`, 3 with `GV1`, 0 with `V1`, `PL1`, `C1` to
+  `C6`.
 - **Cost of the build** at `--depth called --min-contig-len 5000` (*derived*): 3,196 CPU-minutes by the code's
   estimates (ingest 1,056, gene calling 2,022 in 9 batches plus 3.75 for the merge, CRISPR 100.5, IGR 5.2, tapes
   7.6, inputs 0.8), 3,813 at the pilot's measured rates; about 26.4 GB added to the root. Search pack 33.2 GB with
@@ -195,9 +196,11 @@ Of the 2,829,368 distinct contigs of 5 kb or more (*measured*):
 | staged inputs `G1` (GlobDB r226 non-GTDB archaea) | 12,052 | 196,592,432 |
 | staged inputs `PL2` | 2 | 33,456 |
 | staged inputs `V2` | 7 | 198,779 |
+| staged inputs `GV1` (giant viruses; read again at about 22:00 UTC, `out/overlap_staged_inputs.json`) | 3 | 29,685 |
 | staged inputs `V1`, `PL1`, `C1` to `C6` | 0 | 0 |
 
-(`GV1` had no inputs directory when this was read.) The 12,052 contigs shared with `G1` are contigs of SPIRE MAGs
+`GV1` had no inputs directory at 19:46; the second read (`out/overlap_staged_inputs.json`) gave `G1`, `PL2`, `V1`
+and `V2` again with the same counts and added `GV1`. The 12,052 contigs shared with `G1` are contigs of SPIRE MAGs
 that GlobDB took as species representatives: a MAG's contigs are exact contigs of its sample's assembly (the pilot's
 `mag_probe`). Whichever stage is built first owns them (DEC-26); see open questions.
 
@@ -224,6 +227,15 @@ vs. constant): the gene-call estimate holds within 20%.
 55.29 Gbp; at the pilot's `.gz` rate (5.163 per Gbp) it would take 285.5 CPU-min: under the 300 CPU-minute budget
 of a process, but above the 240 the cut aims at. Card B-58 (the gzip term in `ingest_cpu_min`) is open; see open
 questions.
+
+**Ingest with the gzip term** (*derived*). The objects are gzip (75,267,693,104 bytes on disk, 256,948,810,775 bytes
+of FASTA). The code's estimate counts FASTA bytes only: 0.07 + 256.949 x 4.11 = 1,056.1 CPU-min. Card C-47
+measured stage `C5`'s ingest of `.fna.gz` 20.35% over that estimate, about 0.84 CPU-min per GB of FASTA
+decompressed: 1,056.1 + 0.84 x 256.949 = 1,271.9 CPU-min (1,271.1 with C-47's factor 1.2035; the pilot's `SP0` rate
+gives 1,254.9). Per pass-1 shard: the largest holds about 58.45 GB of FASTA (*derived*: 55.29 Gbp x 256.949 /
+243.048), 240.3 CPU-min by the code, **about 289.4 with the gzip term**. A build driver should judge the ingest
+against the gzip-inclusive figures (1,272 CPU-min in all, about 289 for the largest pass-1 process), because they
+match what `C5` and the pilot's `SP0` measured on gzip inputs; the code's 1,056 and 240 are about 20% low.
 
 **GB added to the root** (*derived*): a least-squares fit of the pilot's measured stage bytes (nine `>= 1.5 kb`
 stages and `SP0`) on stored bases and contigs gives 0.684 B per base + 653 B per contig for depth `called`
@@ -294,7 +306,14 @@ Change to the existing §4.1 row "SPIRE pilot": 12 of the pilot's samples were f
 §4.3 (sources not yet fetched), row "SPIRE v1 unbinned contigs": "first tranche fetched and staged (`SPX1`, 304
 samples, card C-48e part 1); 17,968 aquatic and terrestrial samples and all other habitats left (§4.1)".
 
-## 10. Discrepancies and open questions
+## 10. Tests
+
+`tests/r1/test_c48e_tranche.py` (12 tests: selection, fetch against a local server, inputs with an ingest round
+trip, the drop rule). The whole suite on the pod in two shards as units `c48e1-suite-0` and `c48e1-suite-1` (the
+test image, the branch's tree; logs `/tmp/if2453/c48e1/suite-0.log`, `suite-1.log`): 1,363 passed, 16 skipped and
+1,385 passed, 8 skipped; 2,748 passed, 24 skipped in all, none failed (*measured*, 2026-11-20).
+
+## 11. Discrepancies and open questions
 
 1. **DEC-57 and `CATALOG_GOAL.md` §4.2 say 4.81 M contigs of 5 kb or more in the pilot; the pilot's own per-sample
    table gives 4,292,779** (*measured*: the sum of `n_ge_5000` over `contigs/sample_contig_stats.tsv`, 990 samples;
@@ -303,6 +322,6 @@ samples, card C-48e part 1); 17,968 aquatic and terrestrial samples and all othe
 2. **`G1` and `SPX1` share 12,052 contigs.** Built first, `G1` owns them and calls them as parts of MAGs (single mode
    for a genome of 100 kb or more); built first, `SPX1` owns them, one-contig meta-mode calls. The orchestrator's
    order decides.
-3. **Ingest's pass-1 shards on `.gz` inputs**: the largest of the 5 is 285.5 CPU-min at the pilot's measured `.gz`
-   rate, under 300 but over the 240 the cut aims at (card B-58 open). A lower `cpu_min_per_process` in the build's
-   profile for the ingest, or card B-58 first, keeps the margin.
+3. **Ingest's pass-1 shards on `.gz` inputs**: the largest of the 5 is about 289 CPU-min with card C-47's gzip term
+   (285.5 at the pilot's `SP0` rate), under 300 but over the 240 the cut aims at (card B-58 open). A lower
+   `cpu_min_per_process` in the build's profile for the ingest, or card B-58 first, keeps the margin.
