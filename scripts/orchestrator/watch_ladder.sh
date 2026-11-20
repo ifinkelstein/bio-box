@@ -1,11 +1,17 @@
 #!/bin/sh
 # Exit with one report when any ladder unit on the pod changes state, or when all logs go quiet.
 # Usage: watch_ladder.sh [stall_minutes]
+# BIOBOX_POD_JUMP (one user@host, optional) is passed as -J to every ssh call (card A-09).
 HOST=if2453@wilkcomp02.ccbb.utexas.edu
+JUMP=${BIOBOX_POD_JUMP:-}
+case "$JUMP" in
+  *[!A-Za-z0-9._@:-]*) echo "watch_ladder: BIOBOX_POD_JUMP must be one user@host" >&2; exit 2 ;;
+esac
+JOPT=${JUMP:+-J $JUMP}
 STALL=${1:-60}
 UNITS="ladder-B ladder-Bp ladder-C"
 snap() {
-  ssh -o BatchMode=yes -o ConnectTimeout=20 "$HOST" "for u in $UNITS; do printf '%s=%s/%s ' \$u \$(systemctl --user show -p ActiveState --value \$u) \$(systemctl --user show -p Result --value \$u); done; echo; find /tmp/if2453/ladder/logs -type f -mmin -$STALL | wc -l"
+  ssh -o BatchMode=yes $JOPT -o ConnectTimeout=20 "$HOST" "for u in $UNITS; do printf '%s=%s/%s ' \$u \$(systemctl --user show -p ActiveState --value \$u) \$(systemctl --user show -p Result --value \$u); done; echo; find /tmp/if2453/ladder/logs -type f -mmin -$STALL | wc -l"
 }
 prev=""
 fails=0
@@ -22,7 +28,7 @@ while true; do
   fresh=$(printf '%s\n' "$out" | sed -n 2p | tr -d ' ')
   if [ -n "$prev" ] && [ "$states" != "$prev" ]; then
     echo "STATE CHANGE: was [$prev] now [$states]"
-    ssh -o BatchMode=yes "$HOST" "ls -lt /tmp/if2453/ladder/logs | head -8; for f in \$(ls -t /tmp/if2453/ladder/logs/* | head -3); do echo \"--- \$f\"; tail -n 6 \$f; done"
+    ssh -o BatchMode=yes $JOPT "$HOST" "ls -lt /tmp/if2453/ladder/logs | head -8; for f in \$(ls -t /tmp/if2453/ladder/logs/* | head -3); do echo \"--- \$f\"; tail -n 6 \$f; done"
     exit 0
   fi
   case "$states" in

@@ -1116,6 +1116,12 @@ The shard count must fit the account's thread cap (AGENTS section 7.2, a total o
 runs), so 8 shards do not fit by day beside a build. An exit code 5 with `no tests
 ran` only means the selection matched nothing.
 
+Off campus the pod refuses SSH on port 22 (since the maintenance of 2026-11-17) and is reached through
+`wilkcomp03`. Set `BIOBOX_POD_JUMP=if2453@wilkcomp03.ccbb.utexas.edu` (one `user@host`) and
+`scripts/pod_pytest.sh`, `scripts/orchestrator/watch_until.sh` and `watch_ladder.sh` pass it as `-J` to every
+`ssh` call and inside `rsync -e` (card A-09); on campus, leave it unset and nothing changes. A value with a
+character other than letters, digits and `. _ @ : -` is refused with exit 2.
+
 The image is the test image built from `main` at `faec1f4` (card C-32),
 `$HOME/bio-box/images/bio-box-test_faec1f4.sif` (sha256 of the file
 `70263973ed38dd782bc2d4e59dd3bc934f8f2769facd3c20c361b694cfc2ddf4`, pulled from

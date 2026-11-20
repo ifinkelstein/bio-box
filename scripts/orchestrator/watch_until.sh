@@ -3,16 +3,22 @@
 # A long-held ssh session drops when the laptop sleeps or the network blips (exit 255); short calls survive that.
 # Usage: watch_until.sh '<remote test: exit 0 when done>' '<remote report>' [interval_s]
 # Exit 0 when the test passed; 2 when the pod was unreachable for 6 intervals in a row.
+# BIOBOX_POD_JUMP (one user@host, optional) is passed as -J to every ssh call (card A-09).
 HOST=if2453@wilkcomp02.ccbb.utexas.edu
+JUMP=${BIOBOX_POD_JUMP:-}
+case "$JUMP" in
+  *[!A-Za-z0-9._@:-]*) echo "watch_until: BIOBOX_POD_JUMP must be one user@host" >&2; exit 2 ;;
+esac
+JOPT=${JUMP:+-J $JUMP}
 TEST=$1
 REPORT=$2
 INTERVAL=${3:-300}
 fails=0
 while true; do
-  ssh -o BatchMode=yes -o ConnectTimeout=20 "$HOST" "$TEST"
+  ssh -o BatchMode=yes $JOPT -o ConnectTimeout=20 "$HOST" "$TEST"
   rc=$?
   if [ "$rc" -eq 0 ]; then
-    ssh -o BatchMode=yes -o ConnectTimeout=20 "$HOST" "$REPORT"
+    ssh -o BatchMode=yes $JOPT -o ConnectTimeout=20 "$HOST" "$REPORT"
     exit 0
   fi
   if [ "$rc" -eq 255 ]; then

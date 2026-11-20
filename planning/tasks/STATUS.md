@@ -617,10 +617,11 @@ Last full suite on the integration branch before the C-11 merge: 1,053 passed, 1
 pinned image; 3 min 40 s wall for the slowest shard, against 13.5 min in one process). The skips
 need samtools, bgzip, Prodigal or the golden set. Tests no longer run on the laptop (AGENTS.md §5.5).
 
-## Merged (134 cards, and measurements; F-02 has ten sessions in)
+## Merged (135 cards, and measurements; F-02 has ten sessions in)
 
 | Card | Merge | What it did | Audit notes |
 |---|---|---|---|
+| A-09 | this merge | The pod scripts reach wilkcomp02 through a jump host: optional `BIOBOX_POD_JUMP` (one `user@host`) is passed as `-J` to every `ssh` call and inside `rsync -e` of `scripts/pod_pytest.sh`, `scripts/orchestrator/watch_until.sh` and `watch_ladder.sh`; unset or empty, the command lines are unchanged; a value with a character outside letters, digits and `. _ @ : -` exits 2 before any call. `tests/r1/test_pod_pytest_jump.py` (stub `ssh` and `rsync` on `PATH`, no network), RUNBOOK section 8 | Sonnet agent on `task/A-09` (`457005b`), audited by the orchestrator (diff read in full). Seen failing first (27 failed, 3 passed: no `-J` on any call, unsafe values not refused). Merged tree, through the new path from off campus (`env BIOBOX_POD_JUMP=if2453@wilkcomp03.ccbb.utexas.edu BIOBOX_TREE=<integration> sh scripts/pod_pytest.sh A-09m tests/r1/test_pod_pytest_jump.py tests/r0 tests/r1/test_pod_run.py`): 262 passed (*measured*, wilkcomp02, 2026-11-20). Not covered: a value that starts with `-` passes the character check (it is the caller's own environment variable). **From off campus every session and agent now sets `BIOBOX_POD_JUMP`.** |
 | A-01 | `14acede` | Search-runner liveness by a file lock instead of pid checks | Audit made the probe a shared lock and stopped `cancel` signalling a reused pid. First Linux CI run since: green |
 | C-01 | `3bdacfa` | Host profile for wilkcomp02 | The 08:00 to 20:00 day window was my assumption, now labelled so; weekends use the night cap |
 | C-02 | `85d4da8` | `bio-box run-step`: scope, nice, thread caps, staging, publish, run record | Audit found two gaps, fixed in C-03 |

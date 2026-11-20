@@ -20,7 +20,15 @@
 #   after the tree's src/ on PYTHONPATH, for an image that lacks a package; none by default.
 # BIOBOX_PEER_MANIFEST (a path on the pod, under /tmp/if2453) is passed into the image when set: the
 #   cross-host test (card D-04) compares the fixture's manifest hash with the one another host recorded.
+# BIOBOX_POD_JUMP (one user@host, optional): a jump host, passed as -J to every ssh call and inside rsync -e. Set it
+#   off campus, where the pod refuses port 22 and is reached through wilkcomp03 (card A-09). A value with a character
+#   outside letters, digits and . _ @ : - is refused with exit 2 before any call.
 set -eu
+JUMP=${BIOBOX_POD_JUMP:-}
+case "$JUMP" in
+  *[!A-Za-z0-9._@:-]*) echo "pod_pytest: BIOBOX_POD_JUMP must be one user@host" >&2; exit 2 ;;
+esac
+JOPT=${JUMP:+-J $JUMP}
 NAME=$1
 shift
 GOLDEN_ENV=""
@@ -44,15 +52,15 @@ ARGS=""
 for a in "$@"; do
   ARGS="$ARGS '$(printf %s "$a" | sed "s/'/'\\\\''/g")'"
 done
-ssh -o BatchMode=yes "$HOST" "mkdir -p '$DST' /tmp/if2453/ci-tmp"
-rsync -a --delete -e "ssh -o BatchMode=yes" \
+ssh -o BatchMode=yes $JOPT "$HOST" "mkdir -p '$DST' /tmp/if2453/ci-tmp"
+rsync -a --delete -e "ssh -o BatchMode=yes${JOPT:+ $JOPT}" \
   --exclude .git --exclude .venv --exclude .hypothesis --exclude .pytest_cache --exclude mutants \
   --exclude .claude --exclude __pycache__ "$TOP/" "$HOST:$DST/"
 
 # /sys/fs/cgroup is bound read-only so that run-step and the search runner inside the image see
 # the scope's memory cap (card C-07: inside the image the directory is otherwise empty).
 run() {  # run <basetemp suffix> <pytest args string>
-  ssh -o BatchMode=yes "$HOST" "systemd-run --user --scope --quiet -p MemoryMax=32G -p MemorySwapMax=0 nice -n 19 \
+  ssh -o BatchMode=yes $JOPT "$HOST" "systemd-run --user --scope --quiet -p MemoryMax=32G -p MemorySwapMax=0 nice -n 19 \
     singularity exec --cleanenv --env PYTHONPATH=$DST/src${PYDEPS:+:$PYDEPS} $GOLDEN_ENV $PEER_ENV \
     --env OMP_NUM_THREADS=2 --bind /tmp/if2453 --bind /sys/fs/cgroup:/sys/fs/cgroup:ro --pwd '$DST' '$IMAGE' \
     python -m pytest -q -p no:cacheprovider --basetemp=/tmp/if2453/ci-tmp/$NAME-$1 $2"
