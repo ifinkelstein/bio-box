@@ -1134,6 +1134,10 @@ pod: sync the tree with the first command above, then, on the pod,
 `bash "$TREE/scripts/orchestrator/detached_suite.sh" <name> 2` (the script's header says how to
 poll it).
 
+The `peak-evidence` workflow (card A-10b) repeats the four C-16 memory-peak tests on Actions to see how often an OOM-killed search or step records a sampled peak (cards A-10, A-10a).
+Dispatch it by hand: `gh workflow run peak-evidence.yml --ref <branch> -f repeats=60` (1 to 200).
+It prints every iteration's `C16PeakEvidence` lines and totals, uploads the log, and fails the job if any iteration failed.
+
 The image check. Before a new image is used, run its own suite on the pod: the source and tests
 built into the image (`/opt/bio-box`), no `PYTHONPATH`, as the `image` workflow runs it on Actions
 (`.github/workflows/image.yml`). Run on the pod, one suite at a time, after checking the thread cap

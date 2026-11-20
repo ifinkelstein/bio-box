@@ -1,0 +1,156 @@
+name: peak-evidence
+
+# Card A-10b. Repeats the C-16 memory-peak tests alone, to see how often an OOM-killed search or step records a
+# sampled peak (card A-10, A-10a). Dispatched by hand only. A measurement, not a retry: every iteration is run once,
+# the loop does not stop at a failure, every result is reported, and the job fails if any iteration failed.
+on:
+  workflow_dispatch:
+    inputs:
+      repeats:
+        description: "Iterations of the four C-16 tests (an integer from 1 to 200)"
+        required: false
+        default: "60"
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  peak-evidence:
+    runs-on: ubuntu-24.04
+    # Sized for the largest request: 200 iterations of about a minute each (card A-10b: the four tests take about a
+    # minute, an estimate) is 200 minutes, plus about 10 for checkout and `uv sync`, plus 25% margin: 270.
+    timeout-minutes: 270
+    env:
+      REPEATS: ${{ inputs.repeats }}
+    steps:
+      - name: Validate repeats
+        shell: bash
+        run: |
+          # REPEATS is untrusted text: it reaches the shell only through the environment, and is checked here.
+          case "$REPEATS" in
+            ''|*[!0-9]*)
+              echo "::error::repeats must be an integer from 1 to 200; got '$REPEATS'"
+              exit 1
+              ;;
+          esac
+          if [ "${#REPEATS}" -gt 3 ]; then
+            echo "::error::repeats must be an integer from 1 to 200; got '$REPEATS'"
+            exit 1
+          fi
+          n=$((10#$REPEATS))
+          if [ "$n" -lt 1 ] || [ "$n" -gt 200 ]; then
+            echo "::error::repeats must be an integer from 1 to 200; got '$REPEATS'"
+            exit 1
+          fi
+          echo "REPEATS_N=$n" >> "$GITHUB_ENV"
+
+      - uses: actions/checkout@v7
+      - uses: astral-sh/setup-uv@v10.3.3
+      - run: uv sync --python 3.14
+
+      - name: Repeat the C-16 tests
+        shell: bash
+        run: |
+          # No `set -e`: an iteration that fails must not stop the loop. Nothing is retried.
+          mkdir -p peak-evidence-logs/iterations
+          : > peak-evidence-logs/results.tsv
+          : > peak-evidence-logs/peak-evidence.log
+          i=1
+          while [ "$i" -le "$REPEATS_N" ]; do
+            f="peak-evidence-logs/iterations/iter-$i.log"
+            status=0
+            uv run pytest -q tests/r2/test_micro_s0_search.py tests/r2/test_runstep.py -k c16 -rA -W always > "$f" 2>&1 || status=$?
+            printf '%s\t%s\n' "$i" "$status" >> peak-evidence-logs/results.tsv
+            {
+              echo "===== iteration $i of $REPEATS_N: exit status $status ====="
+              cat "$f"
+            } >> peak-evidence-logs/peak-evidence.log
+            echo "iteration $i of $REPEATS_N: exit status $status"
+            i=$((i + 1))
+          done
+          exit 0
+
+      - name: Summary
+        if: always()
+        shell: bash
+        run: |
+          out=peak-evidence-logs/summary.md
+          failed=0
+          sampled_iters=0
+          sampled_search=0
+          sampled_step=0
+          total=0
+          {
+            echo "## peak-evidence: ${REPEATS_N:-?} requested iterations"
+            echo
+          } > "$out"
+          if [ -f peak-evidence-logs/results.tsv ]; then
+            while IFS="$(printf '\t')" read -r i status; do
+              total=$((total + 1))
+              f="peak-evidence-logs/iterations/iter-$i.log"
+              if [ "$status" -ne 0 ]; then
+                failed=$((failed + 1))
+              fi
+              s1=0
+              s2=0
+              if grep -Eq 'C16PeakEvidence: c16_oom_search_peak: .*\(scope_memory_peak_sampled\)' "$f"; then
+                s1=1
+              fi
+              if grep -Eq 'C16PeakEvidence: c16_oom_step_peak: .*\(scope_memory_peak_sampled\)' "$f"; then
+                s2=1
+              fi
+              sampled_search=$((sampled_search + s1))
+              sampled_step=$((sampled_step + s2))
+              if [ "$s1" -eq 1 ] || [ "$s2" -eq 1 ]; then
+                sampled_iters=$((sampled_iters + 1))
+              fi
+              {
+                echo "### Iteration $i: exit status $status (OOM search sampled: $s1, OOM step sampled: $s2)"
+                echo
+                echo '```'
+                grep -E 'C16PeakEvidence.*peak_evidence' "$f" || echo "(no C16PeakEvidence line)"
+                echo '```'
+                echo
+              } >> "$out"
+            done < peak-evidence-logs/results.tsv
+          fi
+          {
+            echo "### Totals"
+            echo
+            echo "- iterations run: $total"
+            echo "- iterations that failed: $failed"
+            echo "- iterations in which an OOM test recorded a sampled source (scope_memory_peak_sampled): $sampled_iters"
+            echo "  - OOM-killed search: $sampled_search"
+            echo "  - OOM-killed step: $sampled_step"
+          } >> "$out"
+          cat "$out"
+          cat "$out" >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload the log
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: peak-evidence-logs
+          path: peak-evidence-logs/
+          if-no-files-found: warn
+
+      - name: Fail if any iteration failed
+        if: always()
+        shell: bash
+        run: |
+          if [ ! -s peak-evidence-logs/results.tsv ]; then
+            echo "::error::no iteration was recorded"
+            exit 1
+          fi
+          bad=$(awk -F '\t' '$2 != 0 { n++ } END { print n + 0 }' peak-evidence-logs/results.tsv)
+          total=$(awk 'END { print NR }' peak-evidence-logs/results.tsv)
+          if [ "$total" -ne "$REPEATS_N" ]; then
+            echo "::error::only $total of $REPEATS_N iterations were recorded"
+            exit 1
+          fi
+          if [ "$bad" -ne 0 ]; then
+            echo "::error::$bad of $total iterations failed"
+            exit 1
+          fi
+          echo "all $total iterations passed"
