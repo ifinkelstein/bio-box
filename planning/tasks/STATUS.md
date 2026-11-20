@@ -132,6 +132,14 @@ When it ends: read the job summary (`gh run view <id>`; the artifact `peak-evide
 `planning/measurements/2026-11-20_peak_helper_evidence.md` section 4 how many iterations were sampled and, for a
 sampled one, its `peak_evidence` against the table in that note's section 3; then delete the branch
 `peak-evidence/run-1` on origin. If none of 60 is sampled, the evidence waits for an ordinary `ci` job (one in 31).
+**Done at about 12:45** (run 44790766798, 28 minutes; the note's section 5): 60 iterations, none failed, **none
+sampled** (14% likely by chance at 1 in 31, so the suite's load may or may not matter). `systemd-oomd` is inactive
+on the runner (120 of 120 evidence records): one of the three candidates is out. The step's scope has
+`OOMPolicy=stop`. **For a search the evidence is thin**: its scope is already gone when the runner reads (60 of 60),
+so a sampled search case will keep only the unit's `Result`, oomd's state and the worker's stderr; the counters need
+a process still in the scope, which is open item 20's option (a). The branch is deleted and the duplicate `ci` run
+on it cancelled. Next evidence: any ordinary `ci` job that shows the case (search each red `ci` log for
+`c16_oom_search_peak` and `peak_evidence`).
 
 **7. Waiting on the PI**: item 19 (where the corpus lives; `tower` being looked at, card C-49), items 15 (decided: DEC-56), 16 (B-56's design), 17 (`domain_state`'s place in
 the exports), 18 (the pilot's storage rates), and the older ones in the section below (item 12, the TACC requests,

@@ -126,3 +126,33 @@ prints `peak_evidence null` whenever the final read was taken, which is about 30
 - The two OOM-killer tests skip on the pod (no `systemd-run` inside the image) and run only on Actions. Card A-10a's
   acceptance is the branch run there until the sampled case is seen (about one job in 31) or 60 jobs; this
   section is to be completed with what it showed.
+
+## 5. The first run on Actions: 60 iterations of the four tests alone (the orchestrator, 2026-11-20)
+
+Workflow `peak-evidence` (card A-10b), run 44790766798 on `ubuntu-24.04` (runner image 20261116.376.1), commit
+`plan/task-cards`' head pushed to `peak-evidence/run-1`, 18:13 to 18:41 UTC: 60 iterations run, 0 failed (*measured*,
+the job's summary and `gh run view --log`).
+
+- **The sampled case did not occur**: 0 of 60 iterations recorded `scope_memory_peak_sampled` for the OOM-killed
+  search, and 0 of 60 for the OOM-killed step; every one printed `recorded 953.7 MiB (scope_memory_peak)` and
+  `peak_evidence null`. At the rate seen under the whole suite (1 job in 31) the chance of none in 60 is 14%
+  (*derived*: (30/31)^60), so this neither shows nor excludes that the case needs the suite's load. The evidence for
+  it now waits for an ordinary `ci` job, whose log prints the same lines.
+- **`systemd-oomd` is not the killer on this runner image**: `"systemd_oomd": "inactive"` in all 120 evidence
+  records of the run (*measured*: the two tests that kill their own helper, 60 iterations each). One of card A-10's
+  three candidates is out, as long as the image keeps it inactive.
+- **The step's scope sets `OOMPolicy=stop`** (*measured*, the 60 records of the killed step: unit `active`,
+  `LoadState` `loaded`, `Result` `success`, `memory.events` all zero, `memory.max` 1073741824, `MemoryPeak` equal to
+  the cgroup's `memory.peak`). So a kernel OOM kill in the scope makes systemd stop the unit; whether that stop
+  reaches the helper before its final write is what a sampled OOM case would show.
+- **A limit of the evidence for searches, found here**: in all 60 records of the search killed at its wall time the
+  scope was already gone when the evidence was read (`"cgroup_present": false`, `memory_events` null, unit
+  `LoadState` `not-found`, `Result` `success`, `stderr_tail` empty), where the step's scope was still there in all
+  60 (`"cgroup_present": true`). The search runner reads after its worker's scope has emptied and been collected. A
+  sampled OOM case of a **search**, the one that failed on 2026-11-20, would therefore keep only `systemd_oomd`, the
+  worker's `stderr_tail`, and the unit's `Result` if a failed unit outlives its cgroup (not observed yet: the unit of
+  a scope that ended without failure is gone). Reading the counters for a search needs them taken while the scope
+  still has a process in it, which is card A-10's design question (a keeper process, option (a)), not a change of
+  order.
+- The workflow's own parts that could not be run before the merge worked: the input's default on a push, the loop,
+  the per-iteration evidence lines, the totals, the upload and the final check ("all 60 iterations passed").
