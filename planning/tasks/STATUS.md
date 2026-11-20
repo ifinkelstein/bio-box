@@ -75,7 +75,15 @@ with the queue unit `c47-queue` waiting on the pod (launched 09:36; it runs `reb
 integration) are in its report and start when the queue ends. **`r26.11.2` is cut only after `C5`'s `check` and
 `backup`**, not in the gap after `V1`: the release train's lock does not know `C5`'s units.
 
-**7. Waiting on the PI**: items 15 (decided: DEC-56), 16 (B-56's design), 17 (`domain_state`'s place in
+**6b. Two decisions of the PI at about 10:20 on 2026-11-20.** DEC-57: unbinned metagenome stages take contigs of
+5,000 bp and more ("5 kb minimum length"). DEC-58: the source freeze of 2026-11-19 is lifted ("unblock downloads").
+Wherever a line below says a fetch is "held under the source freeze", it is no longer held by the freeze; it is
+held, if at all, by open item 19 (where a corpus of several TB lives) and by the order of work. First fetch planned:
+one SPIRE tranche of aquatic and terrestrial samples at 5 kb (card C-48e, part 1), raw assemblies passing through
+`/tmp` and removed after staging, started when an agent place is free. Not started without the PI's word on item
+19: GlobDB's 251 GB genome archive onto `/stor`, and anything else that would stay under `/stor`.
+
+**7. Waiting on the PI**: item 19 (where the corpus lives), items 15 (decided: DEC-56), 16 (B-56's design), 17 (`domain_state`'s place in
 the exports), 18 (the pilot's storage rates), and the older ones in the section below (item 12, the TACC requests,
 the eukaryote kind, how many old releases keep their large files).
 
@@ -952,6 +960,19 @@ probed by hand on the pod).
    was built into the root by that card, so nothing needs undoing: the question is whether the survey's storage
    rates (`planning/sources_metagenomic_survey.md` §4.1) are to be replaced by the pilot's before any SPIRE tranche
    is sized. Recommendation: yes, and say so in DEC form.
+
+19. **Where the corpus lives once it passes the pod's local disk** (opened 2026-11-20, after DEC-57 and DEC-58).
+   The data root is on `/tmp` (1.1 TB in all, 613 GB free, shared, cleared at the reboot of 2026-11-17; *measured*,
+   `df`, 2026-11-20 10:22), with its durable copy as tars on `/stor/work` (68 TB, 19 TB free, the group's, backed
+   up). We hold **1.2 TB on `/stor/work`** (*measured*, `du`), almost all of it the JGI archives, where the footprint
+   draft (`planning/footprint_request.md`) says "< 50 GB" there and 1.5 to 2 TB on `/stor/scratch`; whether that draft
+   was ever sent or agreed is not recorded. SPIRE's contigs of 5 kb and more are about 3.76 Tbp (*derived*, card
+   C-42), about 3 TB at depth `called` (*derived*: 0.85 GB per Gbp, *measured* at 1.5 kb, the pilot), which no
+   placement on `/tmp` holds. Choices: (a) tranches on the pod until `/tmp` is at its floor (two or three of 50 to
+   100 Gbp), then stop; (b) the root, or its older releases and stages, on `/stor` with the pod owner's agreement to
+   a stated footprint; (c) TACC (card C-37, waiting on the PI's two TxRAS requests, card C-37a). Recommendation:
+   (a) now, (c) for the body of SPIRE, and tell the pod owner what is on `/stor/work` today. Until this is answered
+   no fetch is started whose result cannot be removed again without deleting under `/stor`.
 
 **Open since 13:55 on 2026-11-16** (F-02 session 13; its note is `planning/measurements/2026-11-14_synthworld_redesign.md`
 §16 on branch `task/F-02-13`, at `f340a0a`, pushed, not merged):
