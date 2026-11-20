@@ -23,7 +23,12 @@ values; the whole suite on the merged tree `352424f` gave 2,704 passed, 23 skipp
 One total was 8 bytes high (the JGI archives are 1,137,921,831,184 bytes, not …192). The commit audit found no rule
 broken in a way that touches built data; what it found is card D-07 and open items 15 to 18.
 
-**2. Stage `C5` is still parked, and only the PI can restart it** (open item 15). Its `inputs` and `ingest` are
+**2. Stage `C5` resumes, by the PI's word of 2026-11-20 at about 09:28 ("yes, accept c5 ingest and resume",
+DEC-56), queued behind `V1`**: `V1`'s build was launched in the root at 09:27, one minute before, and one build runs
+in the root at a time; `C5`'s driver starts when `V1`'s `after` snapshot is done, and its `before` listing is taken
+again then (without `C5`'s own published files) so that its check does not count `V1`'s files as its own. Card C-47
+is with an Opus agent (worktree `.claude/worktrees/task-C-47`). As it stood before the PI's answer: stage `C5` is
+still parked, and only the PI can restart it (open item 15). Its `inputs` and `ingest` are
 published (36 files in the root, not yet in the durable copy); the driver stopped on the rate guard. Nothing of
 `/tmp/if2453/c47` or `stage=C5` was touched today. The six files of card C-47 (driver, estimates, check, restore,
 the NR90 evaluation and its test) are still untracked in the worktree `.claude/worktrees/task-C-47`: **they exist
@@ -905,7 +910,9 @@ probed by hand on the pod).
 
 **Open since 2026-11-20** (the orchestrator's audit of the 2026-11-17 to 20 campaign; "Handoff, 2026-11-20" at the top):
 
-15. **Stage `C5`'s ingest cost 20.35% more than its estimate: accept that one record, or not?** The launch `c47-c5-1`
+15. **Decided by the PI on 2026-11-20 at about 09:28 CST: "yes, accept c5 ingest and resume" (DEC-56).** Card C-47's
+   agent adds the one accepted record to `c47_est.py` and queues the build behind stage `V1` (one build at a time in
+   the root). The question as it stood: **Stage `C5`'s ingest cost 20.35% more than its estimate: accept that one record, or not?** The launch `c47-c5-1`
    stopped on it (45.803 CPU-minutes against 38.057, ratio 1.204; *measured*, wilkcomp02, 2026-11-19,
    `/tmp/if2453/c47/driver.log`). The cause is known (the inputs are `.fna.gz`; the estimate was fitted on plain
    FASTA; card B-58 adds the term). Accepting it means one line in `c47_est.py` in the form of DEC-47's
