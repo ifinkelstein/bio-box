@@ -83,6 +83,15 @@ one SPIRE tranche of aquatic and terrestrial samples at 5 kb (card C-48e, part 1
 `/tmp` and removed after staging, started when an agent place is free. Not started without the PI's word on item
 19: GlobDB's 251 GB genome archive onto `/stor`, and anything else that would stay under `/stor`.
 
+**6c. The goal, written down (DEC-59, the PI at about 10:40 on 2026-11-20).** "the ultimate goal is a COMPLETE
+catalog across all useful seuqeced data", and less diverse sources are picked up "in full later". Diversity first is
+the order of work, not the scope. **`planning/CATALOG_GOAL.md` is the register**: the goal, the order and why, what
+is in, and for every selection (representatives, dereplication, the 5 kb filter, a habitat stopped early, a source
+not yet fetched) what was left out and how to go back for it. **Every card that selects or filters adds its row
+there in the same commit as its note**; put that sentence in each such agent's brief. One thing to do before `PL2`
+is built: copy `/tmp/if2453/s2/inputs/PL2/skipped_records.tsv` (the records the stage's rules skipped, on `/tmp`
+only) into the PL2 note's directory.
+
 **7. Waiting on the PI**: item 19 (where the corpus lives), items 15 (decided: DEC-56), 16 (B-56's design), 17 (`domain_state`'s place in
 the exports), 18 (the pilot's storage rates), and the older ones in the section below (item 12, the TACC requests,
 the eukaryote kind, how many old releases keep their large files).

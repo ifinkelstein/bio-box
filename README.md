@@ -18,6 +18,11 @@ gene calls, proteins, Pfam domains, non-coding RNA, protein clusters and gene or
 questions by genomic context: search the whole collection for a protein family with your own profile HMM, then see
 what sits next to every hit, which neighbours recur, and which loci share a context.
 
+**The goal is a complete catalog of all useful sequenced data** (the PI, 2026-11-20, DEC-59). Sources are taken in
+order of the new protein families they add per Gbp, because storage and CPU are short; that is the order of work,
+not the scope, and whatever a stage leaves out (non-representative genomes, short contigs, a habitat stopped early)
+is recorded for a later pass in [`planning/CATALOG_GOAL.md`](planning/CATALOG_GOAL.md).
+
 It is for scientists who want hits and gene neighbourhoods ([`GUIDE.md`](GUIDE.md)) and for LLM agents that answer
 their questions with it ([`AGENT_GUIDE.md`](AGENT_GUIDE.md)). It is not a web service: it is a command-line tool that
 runs on a shared university server, where no network service is started ([`AGENTS.md`](AGENTS.md) §7.5). It is not a

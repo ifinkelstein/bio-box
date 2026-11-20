@@ -873,6 +873,7 @@ Accept: the note; the cost table; the trial's count of new loci. Logan is not im
 
 ### C-45 Decisions on what stays out
 **H** (the PI's) · Depends: none
+**Amended 2026-11-20 (DEC-59): nothing here "stays out" for good.** The goal is a complete catalog, and what is not taken now is deferred and listed in `planning/CATALOG_GOAL.md` §4. Question (2) below is read as "in, later"; (1) and (3) wait on whether the PI counts them as useful sequenced data; (4) stands.
 1. **RNA viruses** (LucaProt's 161,979 species, Serratus' RdRps, RVMT): everything built assumes DNA; taking them means a gene caller and a token model for RNA genomes. In, later, or out?
 2. **Strain-level sets** (AllTheBacteria's 2.44 million isolates; the full MAG sets behind GlobDB's species, such as the mOTUs database's 2.83 million MAGs): they multiply copies of species we hold. The stage plan's S6 already takes every GTDB genome; take these too, only for chosen species, or not at all?
 3. **Protein-only catalogues** (MGnify's proteins, the global gene catalogues): proteins without their neighbours, so they serve homology and not context. A search-only pack beside the corpus, or out?
