@@ -141,7 +141,26 @@ a process still in the scope, which is open item 20's option (a). The branch is 
 on it cancelled. Next evidence: any ordinary `ci` job that shows the case (search each red `ci` log for
 `c16_oom_search_peak` and `peak_evidence`).
 
-**7. Waiting on the PI**: item 19 (where the corpus lives; `tower` being looked at, card C-49), items 15 (decided: DEC-56), 16 (B-56's design), 17 (`domain_state`'s place in
+**6h. State at 16:55 CST on 2026-11-20.**
+- **The account's 5-hour usage limit stopped every agent and the orchestrator at about 15:50**; it reset at 16:50.
+  Pod jobs ran on (they are detached units). The two agents that were mid-card were resumed with `SendMessage` at
+  16:52: C-48c part 1 (`V1`) and C-48e part 1 (the SPIRE tranche).
+- **Stage `V1`'s build ended at 16:04:46 with exit 0** (*measured*, `/tmp/if2453/c48c/driver.log`): every step has
+  its run record, all 43 Pfam shards, no step over 20% above its estimate, `MemoryPeak` 13.7 GB, 10,798 CPU-minutes
+  (*derived*: `CPUUsageNSec` 647,901,928,220,000 / 6e10) against about 11,150 estimated. **Not yet done**: its
+  `after`, `check` and `backup` (the agent was stopped before them; resumed to do them). **`c47-queue` is still
+  waiting** for `/tmp/if2453/c48c/after/DONE`, so `C5` has not started; it starts the moment `V1`'s `after` ends.
+- **The first mirror to `tower` has all seven tars in place, each with its recorded sha256** (16:25:45;
+  `relay_backups.log`): 106,785,105,920 bytes in 5 h 45 min from the first byte, 5.16 MB/s end to end (*derived*),
+  about half of it spent reading back on `tower`. Its last step, writing `SHA256SUMS` there, re-reads all seven and
+  may not finish before the laptop goes off; if `SHA256SUMS` is absent, write it with `relay_to_tower.sh`'s list
+  (the values are in the audit note).
+- Merged since the last note: D-08, C-48c parts 2 and 3 (the inputs of `V2` and `GV1`), C-49 (141 cards). Withdrawn:
+  B-59. Drafted for the PI: `planning/design/storage_decisions_draft.md` (eight storage decisions, none taken).
+- SPIRE tranche 1: `/tmp/if2453/s2/inputs/SPX1` staged (71 GB), fetch area cleared; the agent's report is owed.
+
+**7. Waiting on the PI**: the storage decision set (`planning/design/storage_decisions_draft.md`, S-1 to S-8);
+item 19 (where the corpus lives; `tower` being looked at, card C-49), items 15 (decided: DEC-56), 16 (B-56's design), 17 (`domain_state`'s place in
 the exports), 18 (the pilot's storage rates), and the older ones in the section below (item 12, the TACC requests,
 the eukaryote kind, how many old releases keep their large files).
 
