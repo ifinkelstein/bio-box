@@ -1135,7 +1135,7 @@ pod: sync the tree with the first command above, then, on the pod,
 poll it).
 
 The `peak-evidence` workflow (card A-10b) repeats the four C-16 memory-peak tests on Actions to see how often an OOM-killed search or step records a sampled peak (cards A-10, A-10a).
-Dispatch it by hand: `gh workflow run peak-evidence.yml --ref <branch> -f repeats=60` (1 to 200).
+Dispatch it by hand: `gh workflow run peak-evidence.yml --ref <branch> -f repeats=60` (1 to 200). GitHub allows that only once the file is on the default branch; until then a push to a branch named `peak-evidence/<anything>` runs it with 60 iterations (`git push origin HEAD:refs/heads/peak-evidence/run-1`; the `ci` and `cross-host` workflows run on that push too).
 It prints every iteration's `C16PeakEvidence` lines and totals, uploads the log, and fails the job if any iteration failed.
 
 The image check. Before a new image is used, run its own suite on the pod: the source and tests

@@ -3,7 +3,14 @@ name: peak-evidence
 # Card A-10b. Repeats the C-16 memory-peak tests alone, to see how often an OOM-killed search or step records a
 # sampled peak (card A-10, A-10a). Dispatched by hand only. A measurement, not a retry: every iteration is run once,
 # the loop does not stop at a failure, every result is reported, and the job fails if any iteration failed.
+# GitHub dispatches a workflow by hand only when its file is on the default branch (`gh workflow run` answered
+# "HTTP 404: workflow peak-evidence.yml not found on the default branch" on 2026-11-20, while `main` is behind
+# `plan/task-cards`). Until it is there, the second trigger runs it with the default 60 iterations on a push to a
+# branch named `peak-evidence/<anything>`: `git push origin HEAD:refs/heads/peak-evidence/run-1`. No other push runs it.
 on:
+  push:
+    branches:
+      - "peak-evidence/**"
   workflow_dispatch:
     inputs:
       repeats:
@@ -22,7 +29,8 @@ jobs:
     # minute, an estimate) is 200 minutes, plus about 10 for checkout and `uv sync`, plus 25% margin: 270.
     timeout-minutes: 270
     env:
-      REPEATS: ${{ inputs.repeats }}
+      # a push has no inputs: the default then
+      REPEATS: ${{ inputs.repeats || '60' }}
     steps:
       - name: Validate repeats
         shell: bash
