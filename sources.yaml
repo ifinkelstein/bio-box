@@ -753,3 +753,32 @@ sources:
       b77860809d73f92701c2be6f0d50b7160cf4d62219d38d14e03d95ef3a6106f6; record planning/measurements/2026-11-18_spire_pilot.md
     stored: not on /stor (scratch only under /tmp/if2453/s3/spire/ on wilkcomp02; bulky intermediates removed after pilot)
     approved: under DEC-50 (card C-42, 2026-11-18)
+  - name: spire_tranche_1
+    what: >-
+      SPIRE v1 per-sample metagenome assembly FASTAs (MEGAHIT contigs >= 200 bp, gzipped) of the first tranche of
+      unbinned metagenome contigs: 304 aquatic and terrestrial samples chosen by c48e_select.py (seed 20261120; level-2
+      strata interleaved in proportion to sqrt(N_h), studies in turn, the longest prefix within 3.0 M contigs and
+      40 Gbp at >= 5 kb, estimated before the fetch); to be staged whole as stage SPX1 and built at --depth called
+      --min-contig-len 5000 (DEC-57, DEC-60); card C-48e part 1
+    url: https://spire.embl.de/download_assembly/{sample_id}   # the URL of entry spire_pilot_assemblies
+    redirect_hosts: [https://black.embl.de/~fullam/spire/, https://swifter.embl.de/~fullam/spire/]
+    page: >-
+      https://spire.embl.de/faqs and https://spire.embl.de/api/ as read for entry spire_pilot_assemblies (2026-11-18);
+      no other page is fetched by this entry
+    files: >-
+      one {sample_id}.fa.gz per sample of the selection
+      (planning/measurements/2026-11-20_spire_tranche_1/selection.tsv); sizes not published (recorded on fetch)
+    checksum: none published per sample; wire and disk bytes, md5 and sha256 of every file in the fetch log
+    limits: >-
+      one connection; at least 1.0 s between request starts (under the 2 requests per second of the pilot's entry; the
+      SPIRE API documents 120 requests per minute); User-Agent curl (no name, email address or project detail); a
+      sample is tried at most 3 times (timeouts, broken streams, HTTP 500/502/503/504); HTTP 403 or 429 stops the whole
+      fetch for a report; HTTP 404 is recorded and not retried; fetched files at most 150 GB under
+      /tmp/if2453/c48e1/dl/ and /tmp kept at 400 GB free or more
+    license: >-
+      CC BY-SA 4.0 (https://spire.embl.de/faqs, read 2026-11-18 for entry spire_pilot_assemblies; paper
+      doi:10.1093/nar/gkad943). Share-alike: redistribution of a derived collection carries CC BY-SA 4.0
+    redistributable: true
+    fetched: pending (written before the first request, DEC-50; completed after the fetch)
+    stored: not on /stor (fetched into /tmp/if2453/c48e1/dl/ on wilkcomp02; the staged inputs in /tmp/if2453/s2/inputs/SPX1/)
+    approved: under DEC-50 and DEC-58 (card C-48e part 1, 2026-11-20; the tranche's habitats and caps set by the orchestrator)
