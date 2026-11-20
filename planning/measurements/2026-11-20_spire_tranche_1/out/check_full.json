@@ -1,0 +1,2759 @@
+{
+ "stage": "SPX1",
+ "genomes": 2829368,
+ "genome_input_rows": 2829368,
+ "distinct_genome_uids": 2829368,
+ "circular_rows": 0,
+ "kinds": [
+  "prokaryote"
+ ],
+ "codes": [
+  11
+ ],
+ "assembly_quality": [
+  "contig"
+ ],
+ "gene_call_mode": {
+  "prokaryote": null
+ },
+ "objects": [
+  {
+   "path": "/tmp/if2453/s2/inputs/SPX1/assemblies/5O_Y1.4.fa.gz",
+   "source_name": "spire",
+   "source_release": "v1",
+   "license": "CC BY-SA 4.0",
+   "redistributable": true,
+   "retrieved_at": "2026-11-20T17:47:14+00:00",
+   "bytes": 34798716
+  },
+  {
+   "path": "/tmp/if2453/s2/inputs/SPX1/assemblies/5O_Y4.3.fa.gz",
+   "source_name": "spire",
+   "source_release": "v1",
+   "license": "CC BY-SA 4.0",
+   "redistributable": true,
+   "retrieved_at": "2026-11-20T18:23:57+00:00",
+   "bytes": 41616412
+  },
+  {
+   "path": "/tmp/if2453/s2/inputs/SPX1/assemblies/5O_Y5.4.fa.gz",
+   "source_name": "spire",
+   "source_release": "v1",
+   "license": "CC BY-SA 4.0",
+   "redistributable": true,
+   "retrieved_at": "2026-11-20T17:06:24+00:00",
+   "bytes": 26026979
+  },
+  {
+   "path": "/tmp/if2453/s2/inputs/SPX1/assemblies/5O_Y6.3.fa.gz",
+   "source_name": "spire",
+   "source_release": "v1",
+   "license": "CC BY-SA 4.0",
+   "redistributable": true,
+   "retrieved_at": "2026-11-20T17:30:28+00:00",
+   "bytes": 20157437
+  },
+  {
+   "path": "/tmp/if2453/s2/inputs/SPX1/assemblies/Broman_2017_marine_sediment_8_P1611_209.fa.gz",
+   "source_name": "spire",
+   "source_release": "v1",
+   "license": "CC BY-SA 4.0",
+   "redistributable": true,
+   "retrieved_at": "2026-11-20T17:49:09+00:00",
+   "bytes": 12390813
+  },
+  {
+   "path": "/tmp/if2453/s2/inputs/SPX1/assemblies/SAMD00324608.fa.gz",
+   "source_name": "spire",
+   "source_release": "v1",
+   "license": "CC BY-SA 4.0",
+   "redistributable": true,
+   "retrieved_at": "2026-11-20T17:59:36+00:00",
+   "bytes": 263845540
+  },
+  {
+   "path": "/tmp/if2453/s2/inputs/SPX1/assemblies/SAMEA104408604.fa.gz",
+   "source_name": "spire",
+   "source_release": "v1",
+   "license": "CC BY-SA 4.0",
+   "redistributable": true,
+   "retrieved_at": "2026-11-20T17:45:05+00:00",
+   "bytes": 205104868
+  },
+  {
+   "path": "/tmp/if2453/s2/inputs/SPX1/assemblies/SAMEA104452403.fa.gz",
+   "source_name": "spire",
+   "source_release": "v1",
+   "license": "CC BY-SA 4.0",
+   "redistributable": true,
+   "retrieved_at": "2026-11-20T18:02:27+00:00",
+   "bytes": 2856799
+  },
+  {
+   "path": "/tmp/if2453/s2/inputs/SPX1/assemblies/SAMEA2563726.fa.gz",
+   "source_name": "spire",
+   "source_release": "v1",
+   "license": "CC BY-SA 4.0",
+   "redistributable": true,
+   "retrieved_at": "2026-11-20T18:34:12+00:00",
+   "bytes": 4121943
+  },
+  {
+   "path": "/tmp/if2453/s2/inputs/SPX1/assemblies/SAMEA2611379.fa.gz",
+   "source_name": "spire",
+   "source_release": "v1",
+   "license": "CC BY-SA 4.0",
+   "redistributable": true,
+   "retrieved_at": "2026-11-20T18:27:46+00:00",
+   "bytes": 448488234
+  },
+  {
+   "path": "/tmp/if2453/s2/inputs/SPX1/assemblies/SAMEA2621401.fa.gz",
+   "source_name": "spire",
+   "source_release": "v1",
+   "license": "CC BY-SA 4.0",
+   "redistributable": true,
+   "retrieved_at": "2026-11-20T17:06:13+00:00",
+   "bytes": 246969297
+  },
+  {
+   "path": "/tmp/if2453/s2/inputs/SPX1/assemblies/SAMEA2622402.fa.gz",
+   "source_name": "spire",
+   "source_release": "v1",
+   "license": "CC BY-SA 4.0",
+   "redistributable": true,
+   "retrieved_at": "2026-11-20T18:46:51+00:00",
+   "bytes": 430146828
+  },
+  {
+   "path": "/tmp/if2453/s2/inputs/SPX1/assemblies/SAMEA3113577.fa.gz",
+   "source_name": "spire",
+   "source_release": "v1",
+   "license": "CC BY-SA 4.0",
+   "redistributable": true,
+   "retrieved_at": "2026-11-20T18:33:20+00:00",
+   "bytes": 767187552
+  },
+  {
+   "path": "/tmp/if2453/s2/inputs/SPX1/assemblies/SAMEA3235151.fa.gz",
+   "source_name": "spire",
+   "source_release": "v1",
+   "license": "CC BY-SA 4.0",
+   "redistributable": true,
+   "retrieved_at": "2026-11-20T17:57:28+00:00",
+   "bytes": 29139028
+  },
+  {
+   "path": "/tmp/if2453/s2/inputs/SPX1/assemblies/SAMEA3492599.fa.gz",
+   "source_name": "spire",
+   "source_release": "v1",
+   "license": "CC BY-SA 4.0",
+   "redistributable": true,
+   "retrieved_at": "2026-11-20T18:11:59+00:00",
+   "bytes": 26408
+  },
+  {
+   "path": "/tmp/if2453/s2/inputs/SPX1/assemblies/SAMEA3539302.fa.gz",
+   "source_name": "spire",
+   "source_release": "v1",
+   "license": "CC BY-SA 4.0",
+   "redistributable": true,
+   "retrieved_at": "2026-11-20T18:27:08+00:00",
+   "bytes": 526445799
+  },
+  {
+   "path": "/tmp/if2453/s2/inputs/SPX1/assemblies/SAMEA3539316.fa.gz",
+   "source_name": "spire",
+   "source_release": "v1",
+   "license": "CC BY-SA 4.0",
+   "redistributable": true,
+   "retrieved_at": "2026-11-20T18:41:58+00:00",
+   "bytes": 510397807
+  },
+  {
+   "path": "/tmp/if2453/s2/inputs/SPX1/assemblies/SAMEA3642067.fa.gz",
+   "source_name": "spire",
+   "source_release": "v1",
+   "license": "CC BY-SA 4.0",
+   "redistributable": true,
+   "retrieved_at": "2026-11-20T18:14:49+00:00",
+   "bytes": 1246840
+  },
+  {
+   "path": "/tmp/if2453/s2/inputs/SPX1/assemblies/SAMEA3642072.fa.gz",
+   "source_name": "spire",
+   "source_release": "v1",
+   "license": "CC BY-SA 4.0",
+   "redistributable": true,
+   "retrieved_at": "2026-11-20T18:20:14+00:00",
+   "bytes": 15581806
+  },
+  {
+   "path": "/tmp/if2453/s2/inputs/SPX1/assemblies/SAMEA3712803.fa.gz",
+   "source_name": "spire",
+   "source_release": "v1",
+   "license": "CC BY-SA 4.0",
+   "redistributable": true,
+   "retrieved_at": "2026-11-20T18:06:48+00:00",
+   "bytes": 1053
+  },
+  {
+   "path": "/tmp/if2453/s2/inputs/SPX1/assemblies/SAMEA3914843.fa.gz",
+   "source_name": "spire",
+   "source_release": "v1",
+   "license": "CC BY-SA 4.0",
+   "redistributable": true,
+   "retrieved_at": "2026-11-20T17:14:06+00:00",
+   "bytes": 22650552
+  },
+  {
+   "path": "/tmp/if2453/s2/inputs/SPX1/assemblies/SAMEA3914849.fa.gz",
+   "source_name": "spire",
+   "source_release": "v1",
+   "license": "CC BY-SA 4.0",
+   "redistributable": true,
+   "retrieved_at": "2026-11-20T18:34:00+00:00",
+   "bytes": 82968
+  },
+  {
+   "path": "/tmp/if2453/s2/inputs/SPX1/assemblies/SAMEA4070998.fa.gz",
+   "source_name": "spire",
+   "source_release": "v1",
+   "license": "CC BY-SA 4.0",
+   "redistributable": true,
+   "retrieved_at": "2026-11-20T17:14:03+00:00",
+   "bytes": 4441400
+  },
+  {
+   "path": "/tmp/if2453/s2/inputs/SPX1/assemblies/SAMEA4397101.fa.gz",
+   "source_name": "spire",
+   "source_release": "v1",
+   "license": "CC BY-SA 4.0",
+   "redistributable": true,
+   "retrieved_at": "2026-11-20T17:58:52+00:00",
+   "bytes": 148310183
+  },
+  {
+   "path": "/tmp/if2453/s2/inputs/SPX1/assemblies/SAMEA4397571.fa.gz",
+   "source_name": "spire",
+   "source_release": "v1",
+   "license": "CC BY-SA 4.0",
+   "redistributable": true,
+   "retrieved_at": "2026-11-20T17:54:21+00:00",
+   "bytes": 259577928
+  },
+  {
+   "path": "/tmp/if2453/s2/inputs/SPX1/assemblies/SAMEA4537330.fa.gz",
+   "source_name": "spire",
+   "source_release": "v1",
+   "license": "CC BY-SA 4.0",
+   "redistributable": true,
+   "retrieved_at": "2026-11-20T18:06:44+00:00",
+   "bytes": 2213316
+  },
+  {
+   "path": "/tmp/if2453/s2/inputs/SPX1/assemblies/SAMEA4544646.fa.gz",
+   "source_name": "spire",
+   "source_release": "v1",
+   "license": "CC BY-SA 4.0",
+   "redistributable": true,
+   "retrieved_at": "2026-11-20T18:20:40+00:00",
+   "bytes": 181
+  },
+  {
+   "path": "/tmp/if2453/s2/inputs/SPX1/assemblies/SAMEA4559805.fa.gz",
+   "source_name": "spire",
+   "source_release": "v1",
+   "license": "CC BY-SA 4.0",
+   "redistributable": true,
+   "retrieved_at": "2026-11-20T18:38:48+00:00",
+   "bytes": 355585
+  },
+  {
+   "path": "/tmp/if2453/s2/inputs/SPX1/assemblies/SAMEA4692738.fa.gz",
+   "source_name": "spire",
+   "source_release": "v1",
+   "license": "CC BY-SA 4.0",
+   "redistributable": true,
+   "retrieved_at": "2026-11-20T17:41:54+00:00",
+   "bytes": 384020281
+  },
+  {
+   "path": "/tmp/if2453/s2/inputs/SPX1/assemblies/SAMEA4698972.fa.gz",
+   "source_name": "spire",
+   "source_release": "v1",
+   "license": "CC BY-SA 4.0",
+   "redistributable": true,
+   "retrieved_at": "2026-11-20T18:04:45+00:00",
+   "bytes": 5241964
+  },
+  {
+   "path": "/tmp/if2453/s2/inputs/SPX1/assemblies/SAMEA4699805.fa.gz",
+   "source_name": "spire",
+   "source_release": "v1",
+   "license": "CC BY-SA 4.0",
+   "redistributable": true,
+   "retrieved_at": "2026-11-20T17:23:52+00:00",
+   "bytes": 88655842
+  },
+  {
+   "path": "/tmp/if2453/s2/inputs/SPX1/assemblies/SAMEA5243706.fa.gz",
+   "source_name": "spire",
+   "source_release": "v1",
+   "license": "CC BY-SA 4.0",
+   "redistributable": true,
+   "retrieved_at": "2026-11-20T17:14:48+00:00",
+   "bytes": 125884062
+  },
+  {
+   "path": "/tmp/if2453/s2/inputs/SPX1/assemblies/SAMEA5243715.fa.gz",
+   "source_name": "spire",
+   "source_release": "v1",
+   "license": "CC BY-SA 4.0",
+   "redistributable": true,
+   "retrieved_at": "2026-11-20T18:34:29+00:00",
+   "bytes": 135972099
+  },
+  {
+   "path": "/tmp/if2453/s2/inputs/SPX1/assemblies/SAMEA5534346.fa.gz",
+   "source_name": "spire",
+   "source_release": "v1",
+   "license": "CC BY-SA 4.0",
+   "redistributable": true,
+   "retrieved_at": "2026-11-20T18:33:31+00:00",
+   "bytes": 104990236
+  },
+  {
+   "path": "/tmp/if2453/s2/inputs/SPX1/assemblies/SAMEA56094418.fa.gz",
+   "source_name": "spire",
+   "source_release": "v1",
+   "license": "CC BY-SA 4.0",
+   "redistributable": true,
+   "retrieved_at": "2026-11-20T17:52:26+00:00",
+   "bytes": 30413021
+  },
+  {
+   "path": "/tmp/if2453/s2/inputs/SPX1/assemblies/SAMEA5745240.fa.gz",
+   "source_name": "spire",
+   "source_release": "v1",
+   "license": "CC BY-SA 4.0",
+   "redistributable": true,
+   "retrieved_at": "2026-11-20T18:15:18+00:00",
+   "bytes": 361716765
+  },
+  {
+   "path": "/tmp/if2453/s2/inputs/SPX1/assemblies/SAMEA5816914.fa.gz",
+   "source_name": "spire",
+   "source_release": "v1",
+   "license": "CC BY-SA 4.0",
+   "redistributable": true,
+   "retrieved_at": "2026-11-20T17:41:20+00:00",
+   "bytes": 20626184
+  },
+  {
+   "path": "/tmp/if2453/s2/inputs/SPX1/assemblies/SAMEA6380159.fa.gz",
+   "source_name": "spire",
+   "source_release": "v1",
+   "license": "CC BY-SA 4.0",
+   "redistributable": true,
+   "retrieved_at": "2026-11-20T18:40:35+00:00",
+   "bytes": 966376966
+  },
+  {
+   "path": "/tmp/if2453/s2/inputs/SPX1/assemblies/SAMEA6872754.fa.gz",
+   "source_name": "spire",
+   "source_release": "v1",
+   "license": "CC BY-SA 4.0",
+   "redistributable": true,
+   "retrieved_at": "2026-11-20T17:15:34+00:00",
+   "bytes": 144230944
+  },
+  {
+   "path": "/tmp/if2453/s2/inputs/SPX1/assemblies/SAMEA7723403.fa.gz",
+   "source_name": "spire",
+   "source_release": "v1",
+   "license": "CC BY-SA 4.0",
+   "redistributable": true,
+   "retrieved_at": "2026-11-20T18:01:01+00:00",
+   "bytes": 64595359
+  },
+  {
+   "path": "/tmp/if2453/s2/inputs/SPX1/assemblies/SAMEA7723539.fa.gz",
+   "source_name": "spire",
+   "source_release": "v1",
+   "license": "CC BY-SA 4.0",
+   "redistributable": true,
+   "retrieved_at": "2026-11-20T18:12:34+00:00",
+   "bytes": 75898482
+  },
+  {
+   "path": "/tmp/if2453/s2/inputs/SPX1/assemblies/SAMEA7723955.fa.gz",
+   "source_name": "spire",
+   "source_release": "v1",
+   "license": "CC BY-SA 4.0",
+   "redistributable": true,
+   "retrieved_at": "2026-11-20T18:27:48+00:00",
+   "bytes": 4696741
+  },
+  {
+   "path": "/tmp/if2453/s2/inputs/SPX1/assemblies/SAMEA7723958.fa.gz",
+   "source_name": "spire",
+   "source_release": "v1",
+   "license": "CC BY-SA 4.0",
+   "redistributable": true,
+   "retrieved_at": "2026-11-20T18:50:54+00:00",
+   "bytes": 45947440
+  },
+  {
+   "path": "/tmp/if2453/s2/inputs/SPX1/assemblies/SAMEA7724211.fa.gz",
+   "source_name": "spire",
+   "source_release": "v1",
+   "license": "CC BY-SA 4.0",
+   "redistributable": true,
+   "retrieved_at": "2026-11-20T18:15:21+00:00",
+   "bytes": 19274118
+  },
+  {
+   "path": "/tmp/if2453/s2/inputs/SPX1/assemblies/SAMEA7724234.fa.gz",
+   "source_name": "spire",
+   "source_release": "v1",
+   "license": "CC BY-SA 4.0",
+   "redistributable": true,
+   "retrieved_at": "2026-11-20T18:14:47+00:00",
+   "bytes": 77191
+  },
+  {
+   "path": "/tmp/if2453/s2/inputs/SPX1/assemblies/SAMEA7724279.fa.gz",
+   "source_name": "spire",
+   "source_release": "v1",
+   "license": "CC BY-SA 4.0",
+   "redistributable": true,
+   "retrieved_at": "2026-11-20T18:03:09+00:00",
+   "bytes": 55868896
+  },
+  {
+   "path": "/tmp/if2453/s2/inputs/SPX1/assemblies/SAMEA7724349.fa.gz",
+   "source_name": "spire",
+   "source_release": "v1",
+   "license": "CC BY-SA 4.0",
+   "redistributable": true,
+   "retrieved_at": "2026-11-20T17:48:23+00:00",
+   "bytes": 47229439
+  },
+  {
+   "path": "/tmp/if2453/s2/inputs/SPX1/assemblies/SAMEA8585583.fa.gz",
+   "source_name": "spire",
+   "source_release": "v1",
+   "license": "CC BY-SA 4.0",
+   "redistributable": true,
+   "retrieved_at": "2026-11-20T18:17:26+00:00",
+   "bytes": 3220818
+  },
+  {
+   "path": "/tmp/if2453/s2/inputs/SPX1/assemblies/SAMEA8660012.fa.gz",
+   "source_name": "spire",
+   "source_release": "v1",
+   "license": "CC BY-SA 4.0",
+   "redistributable": true,
+   "retrieved_at": "2026-11-20T18:25:51+00:00",
+   "bytes": 750428859
+  },
+  {
+   "path": "/tmp/if2453/s2/inputs/SPX1/assemblies/SAMEA9531605.fa.gz",
+   "source_name": "spire",
+   "source_release": "v1",
+   "license": "CC BY-SA 4.0",
+   "redistributable": true,
+   "retrieved_at": "2026-11-20T17:14:55+00:00",
+   "bytes": 127974
+  },
+  {
+   "path": "/tmp/if2453/s2/inputs/SPX1/assemblies/SAMEA9531613.fa.gz",
+   "source_name": "spire",
+   "source_release": "v1",
+   "license": "CC BY-SA 4.0",
+   "redistributable": true,
+   "retrieved_at": "2026-11-20T18:17:54+00:00",
+   "bytes": 641968
+  },
+  {
+   "path": "/tmp/if2453/s2/inputs/SPX1/assemblies/SAMEA9531725.fa.gz",
+   "source_name": "spire",
+   "source_release": "v1",
+   "license": "CC BY-SA 4.0",
+   "redistributable": true,
+   "retrieved_at": "2026-11-20T17:09:34+00:00",
+   "bytes": 223
+  },
+  {
+   "path": "/tmp/if2453/s2/inputs/SPX1/assemblies/SAMEA9970730.fa.gz",
+   "source_name": "spire",
+   "source_release": "v1",
+   "license": "CC BY-SA 4.0",
+   "redistributable": true,
+   "retrieved_at": "2026-11-20T17:32:42+00:00",
+   "bytes": 324606867
+  },
+  {
+   "path": "/tmp/if2453/s2/inputs/SPX1/assemblies/SAMEA9970737.fa.gz",
+   "source_name": "spire",
+   "source_release": "v1",
+   "license": "CC BY-SA 4.0",
+   "redistributable": true,
+   "retrieved_at": "2026-11-20T18:30:58+00:00",
+   "bytes": 923982746
+  },
+  {
+   "path": "/tmp/if2453/s2/inputs/SPX1/assemblies/SAMN02333935.fa.gz",
+   "source_name": "spire",
+   "source_release": "v1",
+   "license": "CC BY-SA 4.0",
+   "redistributable": true,
+   "retrieved_at": "2026-11-20T17:43:40+00:00",
+   "bytes": 8436523
+  },
+  {
+   "path": "/tmp/if2453/s2/inputs/SPX1/assemblies/SAMN02354103.fa.gz",
+   "source_name": "spire",
+   "source_release": "v1",
+   "license": "CC BY-SA 4.0",
+   "redistributable": true,
+   "retrieved_at": "2026-11-20T18:00:55+00:00",
+   "bytes": 13858783
+  },
+  {
+   "path": "/tmp/if2453/s2/inputs/SPX1/assemblies/SAMN02389585.fa.gz",
+   "source_name": "spire",
+   "source_release": "v1",
+   "license": "CC BY-SA 4.0",
+   "redistributable": true,
+   "retrieved_at": "2026-11-20T17:01:14+00:00",
+   "bytes": 1264696
+  },
+  {
+   "path": "/tmp/if2453/s2/inputs/SPX1/assemblies/SAMN02389645.fa.gz",
+   "source_name": "spire",
+   "source_release": "v1",
+   "license": "CC BY-SA 4.0",
+   "redistributable": true,
+   "retrieved_at": "2026-11-20T17:14:09+00:00",
+   "bytes": 18997854
+  },
+  {
+   "path": "/tmp/if2453/s2/inputs/SPX1/assemblies/SAMN02809797.fa.gz",
+   "source_name": "spire",
+   "source_release": "v1",
+   "license": "CC BY-SA 4.0",
+   "redistributable": true,
+   "retrieved_at": "2026-11-20T18:43:05+00:00",
+   "bytes": 329345491
+  },
+  {
+   "path": "/tmp/if2453/s2/inputs/SPX1/assemblies/SAMN03075721.fa.gz",
+   "source_name": "spire",
+   "source_release": "v1",
+   "license": "CC BY-SA 4.0",
+   "redistributable": true,
+   "retrieved_at": "2026-11-20T18:00:38+00:00",
+   "bytes": 152308230
+  },
+  {
+   "path": "/tmp/if2453/s2/inputs/SPX1/assemblies/SAMN03203005.fa.gz",
+   "source_name": "spire",
+   "source_release": "v1",
+   "license": "CC BY-SA 4.0",
+   "redistributable": true,
+   "retrieved_at": "2026-11-20T18:47:31+00:00",
+   "bytes": 461228641
+  },
+  {
+   "path": "/tmp/if2453/s2/inputs/SPX1/assemblies/SAMN03351415.fa.gz",
+   "source_name": "spire",
+   "source_release": "v1",
+   "license": "CC BY-SA 4.0",
+   "redistributable": true,
+   "retrieved_at": "2026-11-20T17:59:38+00:00",
+   "bytes": 2467748
+  },
+  {
+   "path": "/tmp/if2453/s2/inputs/SPX1/assemblies/SAMN03436243.fa.gz",
+   "source_name": "spire",
+   "source_release": "v1",
+   "license": "CC BY-SA 4.0",
+   "redistributable": true,
+   "retrieved_at": "2026-11-20T17:26:30+00:00",
+   "bytes": 35952618
+  },
+  {
+   "path": "/tmp/if2453/s2/inputs/SPX1/assemblies/SAMN04013413.fa.gz",
+   "source_name": "spire",
+   "source_release": "v1",
+   "license": "CC BY-SA 4.0",
+   "redistributable": true,
+   "retrieved_at": "2026-11-20T18:43:37+00:00",
+   "bytes": 56701524
+  },
+  {
+   "path": "/tmp/if2453/s2/inputs/SPX1/assemblies/SAMN04125660.fa.gz",
+   "source_name": "spire",
+   "source_release": "v1",
+   "license": "CC BY-SA 4.0",
+   "redistributable": true,
+   "retrieved_at": "2026-11-20T17:46:44+00:00",
+   "bytes": 63399008
+  },
+  {
+   "path": "/tmp/if2453/s2/inputs/SPX1/assemblies/SAMN04507001.fa.gz",
+   "source_name": "spire",
+   "source_release": "v1",
+   "license": "CC BY-SA 4.0",
+   "redistributable": true,
+   "retrieved_at": "2026-11-20T18:17:56+00:00",
+   "bytes": 7513868
+  },
+  {
+   "path": "/tmp/if2453/s2/inputs/SPX1/assemblies/SAMN04510815.fa.gz",
+   "source_name": "spire",
+   "source_release": "v1",
+   "license": "CC BY-SA 4.0",
+   "redistributable": true,
+   "retrieved_at": "2026-11-20T17:07:13+00:00",
+   "bytes": 80951113
+  },
+  {
+   "path": "/tmp/if2453/s2/inputs/SPX1/assemblies/SAMN04510819.fa.gz",
+   "source_name": "spire",
+   "source_release": "v1",
+   "license": "CC BY-SA 4.0",
+   "redistributable": true,
+   "retrieved_at": "2026-11-20T18:00:52+00:00",
+   "bytes": 39612168
+  },
+  {
+   "path": "/tmp/if2453/s2/inputs/SPX1/assemblies/SAMN04510824.fa.gz",
+   "source_name": "spire",
+   "source_release": "v1",
+   "license": "CC BY-SA 4.0",
+   "redistributable": true,
+   "retrieved_at": "2026-11-20T18:31:22+00:00",
+   "bytes": 67556211
+  },
+  {
+   "path": "/tmp/if2453/s2/inputs/SPX1/assemblies/SAMN04574157.fa.gz",
+   "source_name": "spire",
+   "source_release": "v1",
+   "license": "CC BY-SA 4.0",
+   "redistributable": true,
+   "retrieved_at": "2026-11-20T17:02:15+00:00",
+   "bytes": 451811913
+  },
+  {
+   "path": "/tmp/if2453/s2/inputs/SPX1/assemblies/SAMN04578259.fa.gz",
+   "source_name": "spire",
+   "source_release": "v1",
+   "license": "CC BY-SA 4.0",
+   "redistributable": true,
+   "retrieved_at": "2026-11-20T18:45:32+00:00",
+   "bytes": 426225011
+  },
+  {
+   "path": "/tmp/if2453/s2/inputs/SPX1/assemblies/SAMN04999992.fa.gz",
+   "source_name": "spire",
+   "source_release": "v1",
+   "license": "CC BY-SA 4.0",
+   "redistributable": true,
+   "retrieved_at": "2026-11-20T17:49:05+00:00",
+   "bytes": 52627036
+  },
+  {
+   "path": "/tmp/if2453/s2/inputs/SPX1/assemblies/SAMN05150076.fa.gz",
+   "source_name": "spire",
+   "source_release": "v1",
+   "license": "CC BY-SA 4.0",
+   "redistributable": true,
+   "retrieved_at": "2026-11-20T18:17:14+00:00",
+   "bytes": 67382095
+  },
+  {
+   "path": "/tmp/if2453/s2/inputs/SPX1/assemblies/SAMN05192608.fa.gz",
+   "source_name": "spire",
+   "source_release": "v1",
+   "license": "CC BY-SA 4.0",
+   "redistributable": true,
+   "retrieved_at": "2026-11-20T17:50:15+00:00",
+   "bytes": 226786723
+  },
+  {
+   "path": "/tmp/if2453/s2/inputs/SPX1/assemblies/SAMN05224434.fa.gz",
+   "source_name": "spire",
+   "source_release": "v1",
+   "license": "CC BY-SA 4.0",
+   "redistributable": true,
+   "retrieved_at": "2026-11-20T18:31:55+00:00",
+   "bytes": 238720194
+  },
+  {
+   "path": "/tmp/if2453/s2/inputs/SPX1/assemblies/SAMN05416669.fa.gz",
+   "source_name": "spire",
+   "source_release": "v1",
+   "license": "CC BY-SA 4.0",
+   "redistributable": true,
+   "retrieved_at": "2026-11-20T18:18:25+00:00",
+   "bytes": 98801434
+  },
+  {
+   "path": "/tmp/if2453/s2/inputs/SPX1/assemblies/SAMN05416753.fa.gz",
+   "source_name": "spire",
+   "source_release": "v1",
+   "license": "CC BY-SA 4.0",
+   "redistributable": true,
+   "retrieved_at": "2026-11-20T17:16:05+00:00",
+   "bytes": 814602
+  },
+  {
+   "path": "/tmp/if2453/s2/inputs/SPX1/assemblies/SAMN05421588.fa.gz",
+   "source_name": "spire",
+   "source_release": "v1",
+   "license": "CC BY-SA 4.0",
+   "redistributable": true,
+   "retrieved_at": "2026-11-20T17:57:21+00:00",
+   "bytes": 915024507
+  },
+  {
+   "path": "/tmp/if2453/s2/inputs/SPX1/assemblies/SAMN05421987.fa.gz",
+   "source_name": "spire",
+   "source_release": "v1",
+   "license": "CC BY-SA 4.0",
+   "redistributable": true,
+   "retrieved_at": "2026-11-20T17:32:11+00:00",
+   "bytes": 732141940
+  },
+  {
+   "path": "/tmp/if2453/s2/inputs/SPX1/assemblies/SAMN05421999.fa.gz",
+   "source_name": "spire",
+   "source_release": "v1",
+   "license": "CC BY-SA 4.0",
+   "redistributable": true,
+   "retrieved_at": "2026-11-20T18:03:03+00:00",
+   "bytes": 90958366
+  },
+  {
+   "path": "/tmp/if2453/s2/inputs/SPX1/assemblies/SAMN05422103.fa.gz",
+   "source_name": "spire",
+   "source_release": "v1",
+   "license": "CC BY-SA 4.0",
+   "redistributable": true,
+   "retrieved_at": "2026-11-20T18:20:57+00:00",
+   "bytes": 14045433
+  },
+  {
+   "path": "/tmp/if2453/s2/inputs/SPX1/assemblies/SAMN05422146.fa.gz",
+   "source_name": "spire",
+   "source_release": "v1",
+   "license": "CC BY-SA 4.0",
+   "redistributable": true,
+   "retrieved_at": "2026-11-20T17:25:53+00:00",
+   "bytes": 284420415
+  },
+  {
+   "path": "/tmp/if2453/s2/inputs/SPX1/assemblies/SAMN05422147.fa.gz",
+   "source_name": "spire",
+   "source_release": "v1",
+   "license": "CC BY-SA 4.0",
+   "redistributable": true,
+   "retrieved_at": "2026-11-20T18:02:39+00:00",
+   "bytes": 14891683
+  },
+  {
+   "path": "/tmp/if2453/s2/inputs/SPX1/assemblies/SAMN05442347.fa.gz",
+   "source_name": "spire",
+   "source_release": "v1",
+   "license": "CC BY-SA 4.0",
+   "redistributable": true,
+   "retrieved_at": "2026-11-20T17:26:25+00:00",
+   "bytes": 863508
+  },
+  {
+   "path": "/tmp/if2453/s2/inputs/SPX1/assemblies/SAMN05442497.fa.gz",
+   "source_name": "spire",
+   "source_release": "v1",
+   "license": "CC BY-SA 4.0",
+   "redistributable": true,
+   "retrieved_at": "2026-11-20T17:23:31+00:00",
+   "bytes": 568966
+  },
+  {
+   "path": "/tmp/if2453/s2/inputs/SPX1/assemblies/SAMN05518122.fa.gz",
+   "source_name": "spire",
+   "source_release": "v1",
+   "license": "CC BY-SA 4.0",
+   "redistributable": true,
+   "retrieved_at": "2026-11-20T18:35:29+00:00",
+   "bytes": 33560371
+  },
+  {
+   "path": "/tmp/if2453/s2/inputs/SPX1/assemblies/SAMN05518200.fa.gz",
+   "source_name": "spire",
+   "source_release": "v1",
+   "license": "CC BY-SA 4.0",
+   "redistributable": true,
+   "retrieved_at": "2026-11-20T17:01:50+00:00",
+   "bytes": 38739966
+  },
+  {
+   "path": "/tmp/if2453/s2/inputs/SPX1/assemblies/SAMN05518214.fa.gz",
+   "source_name": "spire",
+   "source_release": "v1",
+   "license": "CC BY-SA 4.0",
+   "redistributable": true,
+   "retrieved_at": "2026-11-20T17:46:49+00:00",
+   "bytes": 39990464
+  },
+  {
+   "path": "/tmp/if2453/s2/inputs/SPX1/assemblies/SAMN05518229.fa.gz",
+   "source_name": "spire",
+   "source_release": "v1",
+   "license": "CC BY-SA 4.0",
+   "redistributable": true,
+   "retrieved_at": "2026-11-20T17:07:04+00:00",
+   "bytes": 151487334
+  },
+  {
+   "path": "/tmp/if2453/s2/inputs/SPX1/assemblies/SAMN05518236.fa.gz",
+   "source_name": "spire",
+   "source_release": "v1",
+   "license": "CC BY-SA 4.0",
+   "redistributable": true,
+   "retrieved_at": "2026-11-20T17:30:25+00:00",
+   "bytes": 46139284
+  },
+  {
+   "path": "/tmp/if2453/s2/inputs/SPX1/assemblies/SAMN05518341.fa.gz",
+   "source_name": "spire",
+   "source_release": "v1",
+   "license": "CC BY-SA 4.0",
+   "redistributable": true,
+   "retrieved_at": "2026-11-20T18:49:58+00:00",
+   "bytes": 161846366
+  },
+  {
+   "path": "/tmp/if2453/s2/inputs/SPX1/assemblies/SAMN05518358.fa.gz",
+   "source_name": "spire",
+   "source_release": "v1",
+   "license": "CC BY-SA 4.0",
+   "redistributable": true,
+   "retrieved_at": "2026-11-20T17:51:13+00:00",
+   "bytes": 60134706
+  },
+  {
+   "path": "/tmp/if2453/s2/inputs/SPX1/assemblies/SAMN05518488.fa.gz",
+   "source_name": "spire",
+   "source_release": "v1",
+   "license": "CC BY-SA 4.0",
+   "redistributable": true,
+   "retrieved_at": "2026-11-20T18:02:55+00:00",
+   "bytes": 104787561
+  },
+  {
+   "path": "/tmp/if2453/s2/inputs/SPX1/assemblies/SAMN05518494.fa.gz",
+   "source_name": "spire",
+   "source_release": "v1",
+   "license": "CC BY-SA 4.0",
+   "redistributable": true,
+   "retrieved_at": "2026-11-20T18:17:47+00:00",
+   "bytes": 26061894
+  },
+  {
+   "path": "/tmp/if2453/s2/inputs/SPX1/assemblies/SAMN05518566.fa.gz",
+   "source_name": "spire",
+   "source_release": "v1",
+   "license": "CC BY-SA 4.0",
+   "redistributable": true,
+   "retrieved_at": "2026-11-20T17:58:30+00:00",
+   "bytes": 101216707
+  },
+  {
+   "path": "/tmp/if2453/s2/inputs/SPX1/assemblies/SAMN05518640.fa.gz",
+   "source_name": "spire",
+   "source_release": "v1",
+   "license": "CC BY-SA 4.0",
+   "redistributable": true,
+   "retrieved_at": "2026-11-20T17:09:34+00:00",
+   "bytes": 116059137
+  },
+  {
+   "path": "/tmp/if2453/s2/inputs/SPX1/assemblies/SAMN05730153.fa.gz",
+   "source_name": "spire",
+   "source_release": "v1",
+   "license": "CC BY-SA 4.0",
+   "redistributable": true,
+   "retrieved_at": "2026-11-20T17:57:56+00:00",
+   "bytes": 299854294
+  },
+  {
+   "path": "/tmp/if2453/s2/inputs/SPX1/assemblies/SAMN05791319.fa.gz",
+   "source_name": "spire",
+   "source_release": "v1",
+   "license": "CC BY-SA 4.0",
+   "redistributable": true,
+   "retrieved_at": "2026-11-20T18:39:13+00:00",
+   "bytes": 168300849
+  },
+  {
+   "path": "/tmp/if2453/s2/inputs/SPX1/assemblies/SAMN05817823.fa.gz",
+   "source_name": "spire",
+   "source_release": "v1",
+   "license": "CC BY-SA 4.0",
+   "redistributable": true,
+   "retrieved_at": "2026-11-20T18:31:57+00:00",
+   "bytes": 20022699
+  },
+  {
+   "path": "/tmp/if2453/s2/inputs/SPX1/assemblies/SAMN05817824.fa.gz",
+   "source_name": "spire",
+   "source_release": "v1",
+   "license": "CC BY-SA 4.0",
+   "redistributable": true,
+   "retrieved_at": "2026-11-20T17:11:28+00:00",
+   "bytes": 23459622
+  },
+  {
+   "path": "/tmp/if2453/s2/inputs/SPX1/assemblies/SAMN05944587.fa.gz",
+   "source_name": "spire",
+   "source_release": "v1",
+   "license": "CC BY-SA 4.0",
+   "redistributable": true,
+   "retrieved_at": "2026-11-20T18:04:00+00:00",
+   "bytes": 22203157
+  },
+  {
+   "path": "/tmp/if2453/s2/inputs/SPX1/assemblies/SAMN05944801.fa.gz",
+   "source_name": "spire",
+   "source_release": "v1",
+   "license": "CC BY-SA 4.0",
+   "redistributable": true,
+   "retrieved_at": "2026-11-20T17:26:10+00:00",
+   "bytes": 165394934
+  },
+  {
+   "path": "/tmp/if2453/s2/inputs/SPX1/assemblies/SAMN05956157.fa.gz",
+   "source_name": "spire",
+   "source_release": "v1",
+   "license": "CC BY-SA 4.0",
+   "redistributable": true,
+   "retrieved_at": "2026-11-20T17:13:19+00:00",
+   "bytes": 290856931
+  },
+  {
+   "path": "/tmp/if2453/s2/inputs/SPX1/assemblies/SAMN06183633.fa.gz",
+   "source_name": "spire",
+   "source_release": "v1",
+   "license": "CC BY-SA 4.0",
+   "redistributable": true,
+   "retrieved_at": "2026-11-20T18:34:10+00:00",
+   "bytes": 107666432
+  },
+  {
+   "path": "/tmp/if2453/s2/inputs/SPX1/assemblies/SAMN06199812.fa.gz",
+   "source_name": "spire",
+   "source_release": "v1",
+   "license": "CC BY-SA 4.0",
+   "redistributable": true,
+   "retrieved_at": "2026-11-20T17:48:02+00:00",
+   "bytes": 99858289
+  },
+  {
+   "path": "/tmp/if2453/s2/inputs/SPX1/assemblies/SAMN06199818.fa.gz",
+   "source_name": "spire",
+   "source_release": "v1",
+   "license": "CC BY-SA 4.0",
+   "redistributable": true,
+   "retrieved_at": "2026-11-20T18:31:16+00:00",
+   "bytes": 101264909
+  },
+  {
+   "path": "/tmp/if2453/s2/inputs/SPX1/assemblies/SAMN06251861.fa.gz",
+   "source_name": "spire",
+   "source_release": "v1",
+   "license": "CC BY-SA 4.0",
+   "redistributable": true,
+   "retrieved_at": "2026-11-20T18:17:52+00:00",
+   "bytes": 23033652
+  },
+  {
+   "path": "/tmp/if2453/s2/inputs/SPX1/assemblies/SAMN06264426.fa.gz",
+   "source_name": "spire",
+   "source_release": "v1",
+   "license": "CC BY-SA 4.0",
+   "redistributable": true,
+   "retrieved_at": "2026-11-20T17:01:46+00:00",
+   "bytes": 158147342
+  },
+  {
+   "path": "/tmp/if2453/s2/inputs/SPX1/assemblies/SAMN06264688.fa.gz",
+   "source_name": "spire",
+   "source_release": "v1",
+   "license": "CC BY-SA 4.0",
+   "redistributable": true,
+   "retrieved_at": "2026-11-20T17:43:02+00:00",
+   "bytes": 138199213
+  },
+  {
+   "path": "/tmp/if2453/s2/inputs/SPX1/assemblies/SAMN06265005.fa.gz",
+   "source_name": "spire",
+   "source_release": "v1",
+   "license": "CC BY-SA 4.0",
+   "redistributable": true,
+   "retrieved_at": "2026-11-20T18:50:49+00:00",
+   "bytes": 563375165
+  },
+  {
+   "path": "/tmp/if2453/s2/inputs/SPX1/assemblies/SAMN06265055.fa.gz",
+   "source_name": "spire",
+   "source_release": "v1",
+   "license": "CC BY-SA 4.0",
+   "redistributable": true,
+   "retrieved_at": "2026-11-20T17:48:18+00:00",
+   "bytes": 151685739
+  },
+  {
+   "path": "/tmp/if2453/s2/inputs/SPX1/assemblies/SAMN06265151.fa.gz",
+   "source_name": "spire",
+   "source_release": "v1",
+   "license": "CC BY-SA 4.0",
+   "redistributable": true,
+   "retrieved_at": "2026-11-20T17:32:56+00:00",
+   "bytes": 191408129
+  },
+  {
+   "path": "/tmp/if2453/s2/inputs/SPX1/assemblies/SAMN06265752.fa.gz",
+   "source_name": "spire",
+   "source_release": "v1",
+   "license": "CC BY-SA 4.0",
+   "redistributable": true,
+   "retrieved_at": "2026-11-20T18:06:42+00:00",
+   "bytes": 885147611
+  },
+  {
+   "path": "/tmp/if2453/s2/inputs/SPX1/assemblies/SAMN06265931.fa.gz",
+   "source_name": "spire",
+   "source_release": "v1",
+   "license": "CC BY-SA 4.0",
+   "redistributable": true,
+   "retrieved_at": "2026-11-20T18:38:22+00:00",
+   "bytes": 1281594017
+  },
+  {
+   "path": "/tmp/if2453/s2/inputs/SPX1/assemblies/SAMN06266052.fa.gz",
+   "source_name": "spire",
+   "source_release": "v1",
+   "license": "CC BY-SA 4.0",
+   "redistributable": true,
+   "retrieved_at": "2026-11-20T18:38:47+00:00",
+   "bytes": 231767548
+  },
+  {
+   "path": "/tmp/if2453/s2/inputs/SPX1/assemblies/SAMN06266252.fa.gz",
+   "source_name": "spire",
+   "source_release": "v1",
+   "license": "CC BY-SA 4.0",
+   "redistributable": true,
+   "retrieved_at": "2026-11-20T17:23:30+00:00",
+   "bytes": 106107028
+  },
+  {
+   "path": "/tmp/if2453/s2/inputs/SPX1/assemblies/SAMN06266275.fa.gz",
+   "source_name": "spire",
+   "source_release": "v1",
+   "license": "CC BY-SA 4.0",
+   "redistributable": true,
+   "retrieved_at": "2026-11-20T17:15:53+00:00",
+   "bytes": 193483611
+  },
+  {
+   "path": "/tmp/if2453/s2/inputs/SPX1/assemblies/SAMN06266485.fa.gz",
+   "source_name": "spire",
+   "source_release": "v1",
+   "license": "CC BY-SA 4.0",
+   "redistributable": true,
+   "retrieved_at": "2026-11-20T17:52:21+00:00",
+   "bytes": 657338271
+  },
+  {
+   "path": "/tmp/if2453/s2/inputs/SPX1/assemblies/SAMN06267294.fa.gz",
+   "source_name": "spire",
+   "source_release": "v1",
+   "license": "CC BY-SA 4.0",
+   "redistributable": true,
+   "retrieved_at": "2026-11-20T18:09:21+00:00",
+   "bytes": 406554837
+  },
+  {
+   "path": "/tmp/if2453/s2/inputs/SPX1/assemblies/SAMN06267412.fa.gz",
+   "source_name": "spire",
+   "source_release": "v1",
+   "license": "CC BY-SA 4.0",
+   "redistributable": true,
+   "retrieved_at": "2026-11-20T18:09:51+00:00",
+   "bytes": 352120356
+  },
+  {
+   "path": "/tmp/if2453/s2/inputs/SPX1/assemblies/SAMN06267466.fa.gz",
+   "source_name": "spire",
+   "source_release": "v1",
+   "license": "CC BY-SA 4.0",
+   "redistributable": true,
+   "retrieved_at": "2026-11-20T18:31:33+00:00",
+   "bytes": 112701112
+  },
+  {
+   "path": "/tmp/if2453/s2/inputs/SPX1/assemblies/SAMN06267781.fa.gz",
+   "source_name": "spire",
+   "source_release": "v1",
+   "license": "CC BY-SA 4.0",
+   "redistributable": true,
+   "retrieved_at": "2026-11-20T17:12:52+00:00",
+   "bytes": 29480478
+  },
+  {
+   "path": "/tmp/if2453/s2/inputs/SPX1/assemblies/SAMN06267849.fa.gz",
+   "source_name": "spire",
+   "source_release": "v1",
+   "license": "CC BY-SA 4.0",
+   "redistributable": true,
+   "retrieved_at": "2026-11-20T18:12:28+00:00",
+   "bytes": 338907968
+  },
+  {
+   "path": "/tmp/if2453/s2/inputs/SPX1/assemblies/SAMN06267866.fa.gz",
+   "source_name": "spire",
+   "source_release": "v1",
+   "license": "CC BY-SA 4.0",
+   "redistributable": true,
+   "retrieved_at": "2026-11-20T18:34:52+00:00",
+   "bytes": 212121573
+  },
+  {
+   "path": "/tmp/if2453/s2/inputs/SPX1/assemblies/SAMN06268366.fa.gz",
+   "source_name": "spire",
+   "source_release": "v1",
+   "license": "CC BY-SA 4.0",
+   "redistributable": true,
+   "retrieved_at": "2026-11-20T18:14:46+00:00",
+   "bytes": 1667424
+  },
+  {
+   "path": "/tmp/if2453/s2/inputs/SPX1/assemblies/SAMN06268378.fa.gz",
+   "source_name": "spire",
+   "source_release": "v1",
+   "license": "CC BY-SA 4.0",
+   "redistributable": true,
+   "retrieved_at": "2026-11-20T18:18:14+00:00",
+   "bytes": 218533715
+  },
+  {
+   "path": "/tmp/if2453/s2/inputs/SPX1/assemblies/SAMN06268415.fa.gz",
+   "source_name": "spire",
+   "source_release": "v1",
+   "license": "CC BY-SA 4.0",
+   "redistributable": true,
+   "retrieved_at": "2026-11-20T17:42:05+00:00",
+   "bytes": 109684085
+  },
+  {
+   "path": "/tmp/if2453/s2/inputs/SPX1/assemblies/SAMN06268421.fa.gz",
+   "source_name": "spire",
+   "source_release": "v1",
+   "license": "CC BY-SA 4.0",
+   "redistributable": true,
+   "retrieved_at": "2026-11-20T17:15:15+00:00",
+   "bytes": 5673782
+  },
+  {
+   "path": "/tmp/if2453/s2/inputs/SPX1/assemblies/SAMN06268448.fa.gz",
+   "source_name": "spire",
+   "source_release": "v1",
+   "license": "CC BY-SA 4.0",
+   "redistributable": true,
+   "retrieved_at": "2026-11-20T17:03:47+00:00",
+   "bytes": 2262960
+  },
+  {
+   "path": "/tmp/if2453/s2/inputs/SPX1/assemblies/SAMN06268809.fa.gz",
+   "source_name": "spire",
+   "source_release": "v1",
+   "license": "CC BY-SA 4.0",
+   "redistributable": true,
+   "retrieved_at": "2026-11-20T18:41:10+00:00",
+   "bytes": 63408853
+  },
+  {
+   "path": "/tmp/if2453/s2/inputs/SPX1/assemblies/SAMN06268912.fa.gz",
+   "source_name": "spire",
+   "source_release": "v1",
+   "license": "CC BY-SA 4.0",
+   "redistributable": true,
+   "retrieved_at": "2026-11-20T17:06:53+00:00",
+   "bytes": 193270749
+  },
+  {
+   "path": "/tmp/if2453/s2/inputs/SPX1/assemblies/SAMN06268930.fa.gz",
+   "source_name": "spire",
+   "source_release": "v1",
+   "license": "CC BY-SA 4.0",
+   "redistributable": true,
+   "retrieved_at": "2026-11-20T18:13:44+00:00",
+   "bytes": 650547630
+  },
+  {
+   "path": "/tmp/if2453/s2/inputs/SPX1/assemblies/SAMN06268953.fa.gz",
+   "source_name": "spire",
+   "source_release": "v1",
+   "license": "CC BY-SA 4.0",
+   "redistributable": true,
+   "retrieved_at": "2026-11-20T18:12:43+00:00",
+   "bytes": 84604871
+  },
+  {
+   "path": "/tmp/if2453/s2/inputs/SPX1/assemblies/SAMN06268990.fa.gz",
+   "source_name": "spire",
+   "source_release": "v1",
+   "license": "CC BY-SA 4.0",
+   "redistributable": true,
+   "retrieved_at": "2026-11-20T17:51:21+00:00",
+   "bytes": 70615599
+  },
+  {
+   "path": "/tmp/if2453/s2/inputs/SPX1/assemblies/SAMN06318075.fa.gz",
+   "source_name": "spire",
+   "source_release": "v1",
+   "license": "CC BY-SA 4.0",
+   "redistributable": true,
+   "retrieved_at": "2026-11-20T17:31:07+00:00",
+   "bytes": 84971380
+  },
+  {
+   "path": "/tmp/if2453/s2/inputs/SPX1/assemblies/SAMN06318076.fa.gz",
+   "source_name": "spire",
+   "source_release": "v1",
+   "license": "CC BY-SA 4.0",
+   "redistributable": true,
+   "retrieved_at": "2026-11-20T18:50:03+00:00",
+   "bytes": 55384062
+  },
+  {
+   "path": "/tmp/if2453/s2/inputs/SPX1/assemblies/SAMN06343731.fa.gz",
+   "source_name": "spire",
+   "source_release": "v1",
+   "license": "CC BY-SA 4.0",
+   "redistributable": true,
+   "retrieved_at": "2026-11-20T17:49:54+00:00",
+   "bytes": 118492607
+  },
+  {
+   "path": "/tmp/if2453/s2/inputs/SPX1/assemblies/SAMN06343825.fa.gz",
+   "source_name": "spire",
+   "source_release": "v1",
+   "license": "CC BY-SA 4.0",
+   "redistributable": true,
+   "retrieved_at": "2026-11-20T18:01:44+00:00",
+   "bytes": 490142915
+  },
+  {
+   "path": "/tmp/if2453/s2/inputs/SPX1/assemblies/SAMN06343853.fa.gz",
+   "source_name": "spire",
+   "source_release": "v1",
+   "license": "CC BY-SA 4.0",
+   "redistributable": true,
+   "retrieved_at": "2026-11-20T17:51:06+00:00",
+   "bytes": 593261133
+  },
+  {
+   "path": "/tmp/if2453/s2/inputs/SPX1/assemblies/SAMN06343875.fa.gz",
+   "source_name": "spire",
+   "source_release": "v1",
+   "license": "CC BY-SA 4.0",
+   "redistributable": true,
+   "retrieved_at": "2026-11-20T18:09:57+00:00",
+   "bytes": 26887004
+  },
+  {
+   "path": "/tmp/if2453/s2/inputs/SPX1/assemblies/SAMN06343930.fa.gz",
+   "source_name": "spire",
+   "source_release": "v1",
+   "license": "CC BY-SA 4.0",
+   "redistributable": true,
+   "retrieved_at": "2026-11-20T17:25:23+00:00",
+   "bytes": 78300346
+  },
+  {
+   "path": "/tmp/if2453/s2/inputs/SPX1/assemblies/SAMN06343965.fa.gz",
+   "source_name": "spire",
+   "source_release": "v1",
+   "license": "CC BY-SA 4.0",
+   "redistributable": true,
+   "retrieved_at": "2026-11-20T18:49:30+00:00",
+   "bytes": 1178877876
+  },
+  {
+   "path": "/tmp/if2453/s2/inputs/SPX1/assemblies/SAMN06343966.fa.gz",
+   "source_name": "spire",
+   "source_release": "v1",
+   "license": "CC BY-SA 4.0",
+   "redistributable": true,
+   "retrieved_at": "2026-11-20T17:40:14+00:00",
+   "bytes": 1398919371
+  },
+  {
+   "path": "/tmp/if2453/s2/inputs/SPX1/assemblies/SAMN06344032.fa.gz",
+   "source_name": "spire",
+   "source_release": "v1",
+   "license": "CC BY-SA 4.0",
+   "redistributable": true,
+   "retrieved_at": "2026-11-20T17:48:50+00:00",
+   "bytes": 685911
+  },
+  {
+   "path": "/tmp/if2453/s2/inputs/SPX1/assemblies/SAMN06344033.fa.gz",
+   "source_name": "spire",
+   "source_release": "v1",
+   "license": "CC BY-SA 4.0",
+   "redistributable": true,
+   "retrieved_at": "2026-11-20T18:41:18+00:00",
+   "bytes": 73065996
+  },
+  {
+   "path": "/tmp/if2453/s2/inputs/SPX1/assemblies/SAMN06344120.fa.gz",
+   "source_name": "spire",
+   "source_release": "v1",
+   "license": "CC BY-SA 4.0",
+   "redistributable": true,
+   "retrieved_at": "2026-11-20T18:23:47+00:00",
+   "bytes": 216395145
+  },
+  {
+   "path": "/tmp/if2453/s2/inputs/SPX1/assemblies/SAMN07124965.fa.gz",
+   "source_name": "spire",
+   "source_release": "v1",
+   "license": "CC BY-SA 4.0",
+   "redistributable": true,
+   "retrieved_at": "2026-11-20T17:56:03+00:00",
+   "bytes": 191961052
+  },
+  {
+   "path": "/tmp/if2453/s2/inputs/SPX1/assemblies/SAMN07125085.fa.gz",
+   "source_name": "spire",
+   "source_release": "v1",
+   "license": "CC BY-SA 4.0",
+   "redistributable": true,
+   "retrieved_at": "2026-11-20T18:46:09+00:00",
+   "bytes": 13847007
+  },
+  {
+   "path": "/tmp/if2453/s2/inputs/SPX1/assemblies/SAMN07136542.fa.gz",
+   "source_name": "spire",
+   "source_release": "v1",
+   "license": "CC BY-SA 4.0",
+   "redistributable": true,
+   "retrieved_at": "2026-11-20T17:57:24+00:00",
+   "bytes": 28046579
+  },
+  {
+   "path": "/tmp/if2453/s2/inputs/SPX1/assemblies/SAMN07137041.fa.gz",
+   "source_name": "spire",
+   "source_release": "v1",
+   "license": "CC BY-SA 4.0",
+   "redistributable": true,
+   "retrieved_at": "2026-11-20T18:01:54+00:00",
+   "bytes": 83469895
+  },
+  {
+   "path": "/tmp/if2453/s2/inputs/SPX1/assemblies/SAMN07278954.fa.gz",
+   "source_name": "spire",
+   "source_release": "v1",
+   "license": "CC BY-SA 4.0",
+   "redistributable": true,
+   "retrieved_at": "2026-11-20T18:06:47+00:00",
+   "bytes": 6060276
+  },
+  {
+   "path": "/tmp/if2453/s2/inputs/SPX1/assemblies/SAMN07373102.fa.gz",
+   "source_name": "spire",
+   "source_release": "v1",
+   "license": "CC BY-SA 4.0",
+   "redistributable": true,
+   "retrieved_at": "2026-11-20T18:02:24+00:00",
+   "bytes": 314209574
+  },
+  {
+   "path": "/tmp/if2453/s2/inputs/SPX1/assemblies/SAMN07461117.fa.gz",
+   "source_name": "spire",
+   "source_release": "v1",
+   "license": "CC BY-SA 4.0",
+   "redistributable": true,
+   "retrieved_at": "2026-11-20T18:04:50+00:00",
+   "bytes": 218
+  },
+  {
+   "path": "/tmp/if2453/s2/inputs/SPX1/assemblies/SAMN07488510.fa.gz",
+   "source_name": "spire",
+   "source_release": "v1",
+   "license": "CC BY-SA 4.0",
+   "redistributable": true,
+   "retrieved_at": "2026-11-20T18:18:28+00:00",
+   "bytes": 33720282
+  },
+  {
+   "path": "/tmp/if2453/s2/inputs/SPX1/assemblies/SAMN07581531.fa.gz",
+   "source_name": "spire",
+   "source_release": "v1",
+   "license": "CC BY-SA 4.0",
+   "redistributable": true,
+   "retrieved_at": "2026-11-20T17:01:13+00:00",
+   "bytes": 19271758
+  },
+  {
+   "path": "/tmp/if2453/s2/inputs/SPX1/assemblies/SAMN07630042.fa.gz",
+   "source_name": "spire",
+   "source_release": "v1",
+   "license": "CC BY-SA 4.0",
+   "redistributable": true,
+   "retrieved_at": "2026-11-20T18:03:04+00:00",
+   "bytes": 929137
+  },
+  {
+   "path": "/tmp/if2453/s2/inputs/SPX1/assemblies/SAMN07630166.fa.gz",
+   "source_name": "spire",
+   "source_release": "v1",
+   "license": "CC BY-SA 4.0",
+   "redistributable": true,
+   "retrieved_at": "2026-11-20T18:14:43+00:00",
+   "bytes": 160156
+  },
+  {
+   "path": "/tmp/if2453/s2/inputs/SPX1/assemblies/SAMN07630192.fa.gz",
+   "source_name": "spire",
+   "source_release": "v1",
+   "license": "CC BY-SA 4.0",
+   "redistributable": true,
+   "retrieved_at": "2026-11-20T18:20:15+00:00",
+   "bytes": 122912
+  },
+  {
+   "path": "/tmp/if2453/s2/inputs/SPX1/assemblies/SAMN07630195.fa.gz",
+   "source_name": "spire",
+   "source_release": "v1",
+   "license": "CC BY-SA 4.0",
+   "redistributable": true,
+   "retrieved_at": "2026-11-20T17:14:01+00:00",
+   "bytes": 215486
+  },
+  {
+   "path": "/tmp/if2453/s2/inputs/SPX1/assemblies/SAMN07630221.fa.gz",
+   "source_name": "spire",
+   "source_release": "v1",
+   "license": "CC BY-SA 4.0",
+   "redistributable": true,
+   "retrieved_at": "2026-11-20T18:32:14+00:00",
+   "bytes": 505097
+  },
+  {
+   "path": "/tmp/if2453/s2/inputs/SPX1/assemblies/SAMN07630495.fa.gz",
+   "source_name": "spire",
+   "source_release": "v1",
+   "license": "CC BY-SA 4.0",
+   "redistributable": true,
+   "retrieved_at": "2026-11-20T18:39:14+00:00",
+   "bytes": 87460
+  },
+  {
+   "path": "/tmp/if2453/s2/inputs/SPX1/assemblies/SAMN07630775.fa.gz",
+   "source_name": "spire",
+   "source_release": "v1",
+   "license": "CC BY-SA 4.0",
+   "redistributable": true,
+   "retrieved_at": "2026-11-20T17:36:58+00:00",
+   "bytes": 414454494
+  },
+  {
+   "path": "/tmp/if2453/s2/inputs/SPX1/assemblies/SAMN07631160.fa.gz",
+   "source_name": "spire",
+   "source_release": "v1",
+   "license": "CC BY-SA 4.0",
+   "redistributable": true,
+   "retrieved_at": "2026-11-20T17:58:41+00:00",
+   "bytes": 84915313
+  },
+  {
+   "path": "/tmp/if2453/s2/inputs/SPX1/assemblies/SAMN07631161.fa.gz",
+   "source_name": "spire",
+   "source_release": "v1",
+   "license": "CC BY-SA 4.0",
+   "redistributable": true,
+   "retrieved_at": "2026-11-20T18:43:20+00:00",
+   "bytes": 166904202
+  },
+  {
+   "path": "/tmp/if2453/s2/inputs/SPX1/assemblies/SAMN07631162.fa.gz",
+   "source_name": "spire",
+   "source_release": "v1",
+   "license": "CC BY-SA 4.0",
+   "redistributable": true,
+   "retrieved_at": "2026-11-20T18:17:44+00:00",
+   "bytes": 200568294
+  },
+  {
+   "path": "/tmp/if2453/s2/inputs/SPX1/assemblies/SAMN07631555.fa.gz",
+   "source_name": "spire",
+   "source_release": "v1",
+   "license": "CC BY-SA 4.0",
+   "redistributable": true,
+   "retrieved_at": "2026-11-20T18:42:20+00:00",
+   "bytes": 240517915
+  },
+  {
+   "path": "/tmp/if2453/s2/inputs/SPX1/assemblies/SAMN07631844.fa.gz",
+   "source_name": "spire",
+   "source_release": "v1",
+   "license": "CC BY-SA 4.0",
+   "redistributable": true,
+   "retrieved_at": "2026-11-20T17:48:24+00:00",
+   "bytes": 302352
+  },
+  {
+   "path": "/tmp/if2453/s2/inputs/SPX1/assemblies/SAMN07631859.fa.gz",
+   "source_name": "spire",
+   "source_release": "v1",
+   "license": "CC BY-SA 4.0",
+   "redistributable": true,
+   "retrieved_at": "2026-11-20T18:09:53+00:00",
+   "bytes": 408192
+  },
+  {
+   "path": "/tmp/if2453/s2/inputs/SPX1/assemblies/SAMN07631861.fa.gz",
+   "source_name": "spire",
+   "source_release": "v1",
+   "license": "CC BY-SA 4.0",
+   "redistributable": true,
+   "retrieved_at": "2026-11-20T17:13:36+00:00",
+   "bytes": 220274
+  },
+  {
+   "path": "/tmp/if2453/s2/inputs/SPX1/assemblies/SAMN07631894.fa.gz",
+   "source_name": "spire",
+   "source_release": "v1",
+   "license": "CC BY-SA 4.0",
+   "redistributable": true,
+   "retrieved_at": "2026-11-20T17:23:20+00:00",
+   "bytes": 109675
+  },
+  {
+   "path": "/tmp/if2453/s2/inputs/SPX1/assemblies/SAMN07632083.fa.gz",
+   "source_name": "spire",
+   "source_release": "v1",
+   "license": "CC BY-SA 4.0",
+   "redistributable": true,
+   "retrieved_at": "2026-11-20T17:37:30+00:00",
+   "bytes": 28935955
+  },
+  {
+   "path": "/tmp/if2453/s2/inputs/SPX1/assemblies/SAMN07632127.fa.gz",
+   "source_name": "spire",
+   "source_release": "v1",
+   "license": "CC BY-SA 4.0",
+   "redistributable": true,
+   "retrieved_at": "2026-11-20T18:26:25+00:00",
+   "bytes": 53126270
+  },
+  {
+   "path": "/tmp/if2453/s2/inputs/SPX1/assemblies/SAMN07632353.fa.gz",
+   "source_name": "spire",
+   "source_release": "v1",
+   "license": "CC BY-SA 4.0",
+   "redistributable": true,
+   "retrieved_at": "2026-11-20T17:06:33+00:00",
+   "bytes": 90204732
+  },
+  {
+   "path": "/tmp/if2453/s2/inputs/SPX1/assemblies/SAMN07632362.fa.gz",
+   "source_name": "spire",
+   "source_release": "v1",
+   "license": "CC BY-SA 4.0",
+   "redistributable": true,
+   "retrieved_at": "2026-11-20T17:59:17+00:00",
+   "bytes": 311787939
+  },
+  {
+   "path": "/tmp/if2453/s2/inputs/SPX1/assemblies/SAMN07632521.fa.gz",
+   "source_name": "spire",
+   "source_release": "v1",
+   "license": "CC BY-SA 4.0",
+   "redistributable": true,
+   "retrieved_at": "2026-11-20T17:59:42+00:00",
+   "bytes": 30555787
+  },
+  {
+   "path": "/tmp/if2453/s2/inputs/SPX1/assemblies/SAMN07687595.fa.gz",
+   "source_name": "spire",
+   "source_release": "v1",
+   "license": "CC BY-SA 4.0",
+   "redistributable": true,
+   "retrieved_at": "2026-11-20T18:02:44+00:00",
+   "bytes": 42637223
+  },
+  {
+   "path": "/tmp/if2453/s2/inputs/SPX1/assemblies/SAMN07960423.fa.gz",
+   "source_name": "spire",
+   "source_release": "v1",
+   "license": "CC BY-SA 4.0",
+   "redistributable": true,
+   "retrieved_at": "2026-11-20T18:00:53+00:00",
+   "bytes": 55028
+  },
+  {
+   "path": "/tmp/if2453/s2/inputs/SPX1/assemblies/SAMN08156239.fa.gz",
+   "source_name": "spire",
+   "source_release": "v1",
+   "license": "CC BY-SA 4.0",
+   "redistributable": true,
+   "retrieved_at": "2026-11-20T17:37:26+00:00",
+   "bytes": 326629705
+  },
+  {
+   "path": "/tmp/if2453/s2/inputs/SPX1/assemblies/SAMN08239923.fa.gz",
+   "source_name": "spire",
+   "source_release": "v1",
+   "license": "CC BY-SA 4.0",
+   "redistributable": true,
+   "retrieved_at": "2026-11-20T18:17:24+00:00",
+   "bytes": 132141782
+  },
+  {
+   "path": "/tmp/if2453/s2/inputs/SPX1/assemblies/SAMN08323206.fa.gz",
+   "source_name": "spire",
+   "source_release": "v1",
+   "license": "CC BY-SA 4.0",
+   "redistributable": true,
+   "retrieved_at": "2026-11-20T18:02:36+00:00",
+   "bytes": 90995990
+  },
+  {
+   "path": "/tmp/if2453/s2/inputs/SPX1/assemblies/SAMN08331090.fa.gz",
+   "source_name": "spire",
+   "source_release": "v1",
+   "license": "CC BY-SA 4.0",
+   "redistributable": true,
+   "retrieved_at": "2026-11-20T17:54:58+00:00",
+   "bytes": 620974316
+  },
+  {
+   "path": "/tmp/if2453/s2/inputs/SPX1/assemblies/SAMN08331092.fa.gz",
+   "source_name": "spire",
+   "source_release": "v1",
+   "license": "CC BY-SA 4.0",
+   "redistributable": true,
+   "retrieved_at": "2026-11-20T18:35:24+00:00",
+   "bytes": 449242859
+  },
+  {
+   "path": "/tmp/if2453/s2/inputs/SPX1/assemblies/SAMN08331103.fa.gz",
+   "source_name": "spire",
+   "source_release": "v1",
+   "license": "CC BY-SA 4.0",
+   "redistributable": true,
+   "retrieved_at": "2026-11-20T17:36:17+00:00",
+   "bytes": 2505239741
+  },
+  {
+   "path": "/tmp/if2453/s2/inputs/SPX1/assemblies/SAMN08397692.fa.gz",
+   "source_name": "spire",
+   "source_release": "v1",
+   "license": "CC BY-SA 4.0",
+   "redistributable": true,
+   "retrieved_at": "2026-11-20T17:57:32+00:00",
+   "bytes": 28354965
+  },
+  {
+   "path": "/tmp/if2453/s2/inputs/SPX1/assemblies/SAMN08408022.fa.gz",
+   "source_name": "spire",
+   "source_release": "v1",
+   "license": "CC BY-SA 4.0",
+   "redistributable": true,
+   "retrieved_at": "2026-11-20T17:01:09+00:00",
+   "bytes": 144738610
+  },
+  {
+   "path": "/tmp/if2453/s2/inputs/SPX1/assemblies/SAMN08408024.fa.gz",
+   "source_name": "spire",
+   "source_release": "v1",
+   "license": "CC BY-SA 4.0",
+   "redistributable": true,
+   "retrieved_at": "2026-11-20T18:43:31+00:00",
+   "bytes": 106269595
+  },
+  {
+   "path": "/tmp/if2453/s2/inputs/SPX1/assemblies/SAMN08769324.fa.gz",
+   "source_name": "spire",
+   "source_release": "v1",
+   "license": "CC BY-SA 4.0",
+   "redistributable": true,
+   "retrieved_at": "2026-11-20T18:10:47+00:00",
+   "bytes": 590936767
+  },
+  {
+   "path": "/tmp/if2453/s2/inputs/SPX1/assemblies/SAMN08776828.fa.gz",
+   "source_name": "spire",
+   "source_release": "v1",
+   "license": "CC BY-SA 4.0",
+   "redistributable": true,
+   "retrieved_at": "2026-11-20T18:41:01+00:00",
+   "bytes": 277425337
+  },
+  {
+   "path": "/tmp/if2453/s2/inputs/SPX1/assemblies/SAMN08776829.fa.gz",
+   "source_name": "spire",
+   "source_release": "v1",
+   "license": "CC BY-SA 4.0",
+   "redistributable": true,
+   "retrieved_at": "2026-11-20T18:36:43+00:00",
+   "bytes": 735313589
+  },
+  {
+   "path": "/tmp/if2453/s2/inputs/SPX1/assemblies/SAMN08777104.fa.gz",
+   "source_name": "spire",
+   "source_release": "v1",
+   "license": "CC BY-SA 4.0",
+   "redistributable": true,
+   "retrieved_at": "2026-11-20T17:23:42+00:00",
+   "bytes": 90039939
+  },
+  {
+   "path": "/tmp/if2453/s2/inputs/SPX1/assemblies/SAMN08777122.fa.gz",
+   "source_name": "spire",
+   "source_release": "v1",
+   "license": "CC BY-SA 4.0",
+   "redistributable": true,
+   "retrieved_at": "2026-11-20T18:04:43+00:00",
+   "bytes": 376400
+  },
+  {
+   "path": "/tmp/if2453/s2/inputs/SPX1/assemblies/SAMN08777217.fa.gz",
+   "source_name": "spire",
+   "source_release": "v1",
+   "license": "CC BY-SA 4.0",
+   "redistributable": true,
+   "retrieved_at": "2026-11-20T17:55:47+00:00",
+   "bytes": 571829745
+  },
+  {
+   "path": "/tmp/if2453/s2/inputs/SPX1/assemblies/SAMN08777252.fa.gz",
+   "source_name": "spire",
+   "source_release": "v1",
+   "license": "CC BY-SA 4.0",
+   "redistributable": true,
+   "retrieved_at": "2026-11-20T17:15:21+00:00",
+   "bytes": 45987570
+  },
+  {
+   "path": "/tmp/if2453/s2/inputs/SPX1/assemblies/SAMN08777528.fa.gz",
+   "source_name": "spire",
+   "source_release": "v1",
+   "license": "CC BY-SA 4.0",
+   "redistributable": true,
+   "retrieved_at": "2026-11-20T17:14:54+00:00",
+   "bytes": 49942306
+  },
+  {
+   "path": "/tmp/if2453/s2/inputs/SPX1/assemblies/SAMN08777585.fa.gz",
+   "source_name": "spire",
+   "source_release": "v1",
+   "license": "CC BY-SA 4.0",
+   "redistributable": true,
+   "retrieved_at": "2026-11-20T17:42:49+00:00",
+   "bytes": 341390448
+  },
+  {
+   "path": "/tmp/if2453/s2/inputs/SPX1/assemblies/SAMN08777604.fa.gz",
+   "source_name": "spire",
+   "source_release": "v1",
+   "license": "CC BY-SA 4.0",
+   "redistributable": true,
+   "retrieved_at": "2026-11-20T17:12:48+00:00",
+   "bytes": 449658193
+  },
+  {
+   "path": "/tmp/if2453/s2/inputs/SPX1/assemblies/SAMN08778068.fa.gz",
+   "source_name": "spire",
+   "source_release": "v1",
+   "license": "CC BY-SA 4.0",
+   "redistributable": true,
+   "retrieved_at": "2026-11-20T18:17:08+00:00",
+   "bytes": 270968
+  },
+  {
+   "path": "/tmp/if2453/s2/inputs/SPX1/assemblies/SAMN08778118.fa.gz",
+   "source_name": "spire",
+   "source_release": "v1",
+   "license": "CC BY-SA 4.0",
+   "redistributable": true,
+   "retrieved_at": "2026-11-20T18:23:26+00:00",
+   "bytes": 24038
+  },
+  {
+   "path": "/tmp/if2453/s2/inputs/SPX1/assemblies/SAMN08778865.fa.gz",
+   "source_name": "spire",
+   "source_release": "v1",
+   "license": "CC BY-SA 4.0",
+   "redistributable": true,
+   "retrieved_at": "2026-11-20T17:09:21+00:00",
+   "bytes": 1390762852
+  },
+  {
+   "path": "/tmp/if2453/s2/inputs/SPX1/assemblies/SAMN08779115.fa.gz",
+   "source_name": "spire",
+   "source_release": "v1",
+   "license": "CC BY-SA 4.0",
+   "redistributable": true,
+   "retrieved_at": "2026-11-20T17:16:25+00:00",
+   "bytes": 233548388
+  },
+  {
+   "path": "/tmp/if2453/s2/inputs/SPX1/assemblies/SAMN08779567.fa.gz",
+   "source_name": "spire",
+   "source_release": "v1",
+   "license": "CC BY-SA 4.0",
+   "redistributable": true,
+   "retrieved_at": "2026-11-20T17:44:45+00:00",
+   "bytes": 692925078
+  },
+  {
+   "path": "/tmp/if2453/s2/inputs/SPX1/assemblies/SAMN08779656.fa.gz",
+   "source_name": "spire",
+   "source_release": "v1",
+   "license": "CC BY-SA 4.0",
+   "redistributable": true,
+   "retrieved_at": "2026-11-20T17:23:18+00:00",
+   "bytes": 4938946579
+  },
+  {
+   "path": "/tmp/if2453/s2/inputs/SPX1/assemblies/SAMN08902879.fa.gz",
+   "source_name": "spire",
+   "source_release": "v1",
+   "license": "CC BY-SA 4.0",
+   "redistributable": true,
+   "retrieved_at": "2026-11-20T17:04:17+00:00",
+   "bytes": 501119146
+  },
+  {
+   "path": "/tmp/if2453/s2/inputs/SPX1/assemblies/SAMN08953237.fa.gz",
+   "source_name": "spire",
+   "source_release": "v1",
+   "license": "CC BY-SA 4.0",
+   "redistributable": true,
+   "retrieved_at": "2026-11-20T17:14:00+00:00",
+   "bytes": 293958610
+  },
+  {
+   "path": "/tmp/if2453/s2/inputs/SPX1/assemblies/SAMN08987116.fa.gz",
+   "source_name": "spire",
+   "source_release": "v1",
+   "license": "CC BY-SA 4.0",
+   "redistributable": true,
+   "retrieved_at": "2026-11-20T18:04:42+00:00",
+   "bytes": 512550568
+  },
+  {
+   "path": "/tmp/if2453/s2/inputs/SPX1/assemblies/SAMN09091816.fa.gz",
+   "source_name": "spire",
+   "source_release": "v1",
+   "license": "CC BY-SA 4.0",
+   "redistributable": true,
+   "retrieved_at": "2026-11-20T17:49:55+00:00",
+   "bytes": 281199
+  },
+  {
+   "path": "/tmp/if2453/s2/inputs/SPX1/assemblies/SAMN09091831.fa.gz",
+   "source_name": "spire",
+   "source_release": "v1",
+   "license": "CC BY-SA 4.0",
+   "redistributable": true,
+   "retrieved_at": "2026-11-20T18:40:36+00:00",
+   "bytes": 132520
+  },
+  {
+   "path": "/tmp/if2453/s2/inputs/SPX1/assemblies/SAMN09091989.fa.gz",
+   "source_name": "spire",
+   "source_release": "v1",
+   "license": "CC BY-SA 4.0",
+   "redistributable": true,
+   "retrieved_at": "2026-11-20T17:26:11+00:00",
+   "bytes": 339034
+  },
+  {
+   "path": "/tmp/if2453/s2/inputs/SPX1/assemblies/SAMN09091998.fa.gz",
+   "source_name": "spire",
+   "source_release": "v1",
+   "license": "CC BY-SA 4.0",
+   "redistributable": true,
+   "retrieved_at": "2026-11-20T18:15:56+00:00",
+   "bytes": 410967386
+  },
+  {
+   "path": "/tmp/if2453/s2/inputs/SPX1/assemblies/SAMN09092122.fa.gz",
+   "source_name": "spire",
+   "source_release": "v1",
+   "license": "CC BY-SA 4.0",
+   "redistributable": true,
+   "retrieved_at": "2026-11-20T18:02:37+00:00",
+   "bytes": 349514
+  },
+  {
+   "path": "/tmp/if2453/s2/inputs/SPX1/assemblies/SAMN09092367.fa.gz",
+   "source_name": "spire",
+   "source_release": "v1",
+   "license": "CC BY-SA 4.0",
+   "redistributable": true,
+   "retrieved_at": "2026-11-20T18:47:50+00:00",
+   "bytes": 333772
+  },
+  {
+   "path": "/tmp/if2453/s2/inputs/SPX1/assemblies/SAMN09092569.fa.gz",
+   "source_name": "spire",
+   "source_release": "v1",
+   "license": "CC BY-SA 4.0",
+   "redistributable": true,
+   "retrieved_at": "2026-11-20T18:21:20+00:00",
+   "bytes": 725776
+  },
+  {
+   "path": "/tmp/if2453/s2/inputs/SPX1/assemblies/SAMN09094699.fa.gz",
+   "source_name": "spire",
+   "source_release": "v1",
+   "license": "CC BY-SA 4.0",
+   "redistributable": true,
+   "retrieved_at": "2026-11-20T17:11:47+00:00",
+   "bytes": 159761739
+  },
+  {
+   "path": "/tmp/if2453/s2/inputs/SPX1/assemblies/SAMN09199660.fa.gz",
+   "source_name": "spire",
+   "source_release": "v1",
+   "license": "CC BY-SA 4.0",
+   "redistributable": true,
+   "retrieved_at": "2026-11-20T17:26:24+00:00",
+   "bytes": 149006697
+  },
+  {
+   "path": "/tmp/if2453/s2/inputs/SPX1/assemblies/SAMN09200423.fa.gz",
+   "source_name": "spire",
+   "source_release": "v1",
+   "license": "CC BY-SA 4.0",
+   "redistributable": true,
+   "retrieved_at": "2026-11-20T18:33:59+00:00",
+   "bytes": 235544562
+  },
+  {
+   "path": "/tmp/if2453/s2/inputs/SPX1/assemblies/SAMN09200617.fa.gz",
+   "source_name": "spire",
+   "source_release": "v1",
+   "license": "CC BY-SA 4.0",
+   "redistributable": true,
+   "retrieved_at": "2026-11-20T18:17:49+00:00",
+   "bytes": 4242100
+  },
+  {
+   "path": "/tmp/if2453/s2/inputs/SPX1/assemblies/SAMN09201129.fa.gz",
+   "source_name": "spire",
+   "source_release": "v1",
+   "license": "CC BY-SA 4.0",
+   "redistributable": true,
+   "retrieved_at": "2026-11-20T17:30:36+00:00",
+   "bytes": 69254503
+  },
+  {
+   "path": "/tmp/if2453/s2/inputs/SPX1/assemblies/SAMN09201217.fa.gz",
+   "source_name": "spire",
+   "source_release": "v1",
+   "license": "CC BY-SA 4.0",
+   "redistributable": true,
+   "retrieved_at": "2026-11-20T18:45:34+00:00",
+   "bytes": 452199
+  },
+  {
+   "path": "/tmp/if2453/s2/inputs/SPX1/assemblies/SAMN09201489.fa.gz",
+   "source_name": "spire",
+   "source_release": "v1",
+   "license": "CC BY-SA 4.0",
+   "redistributable": true,
+   "retrieved_at": "2026-11-20T17:36:59+00:00",
+   "bytes": 43608
+  },
+  {
+   "path": "/tmp/if2453/s2/inputs/SPX1/assemblies/SAMN09201569.fa.gz",
+   "source_name": "spire",
+   "source_release": "v1",
+   "license": "CC BY-SA 4.0",
+   "redistributable": true,
+   "retrieved_at": "2026-11-20T17:15:13+00:00",
+   "bytes": 195946075
+  },
+  {
+   "path": "/tmp/if2453/s2/inputs/SPX1/assemblies/SAMN09201609.fa.gz",
+   "source_name": "spire",
+   "source_release": "v1",
+   "license": "CC BY-SA 4.0",
+   "redistributable": true,
+   "retrieved_at": "2026-11-20T18:18:35+00:00",
+   "bytes": 68034186
+  },
+  {
+   "path": "/tmp/if2453/s2/inputs/SPX1/assemblies/SAMN09201889.fa.gz",
+   "source_name": "spire",
+   "source_release": "v1",
+   "license": "CC BY-SA 4.0",
+   "redistributable": true,
+   "retrieved_at": "2026-11-20T18:43:44+00:00",
+   "bytes": 83532079
+  },
+  {
+   "path": "/tmp/if2453/s2/inputs/SPX1/assemblies/SAMN09201968.fa.gz",
+   "source_name": "spire",
+   "source_release": "v1",
+   "license": "CC BY-SA 4.0",
+   "redistributable": true,
+   "retrieved_at": "2026-11-20T18:45:33+00:00",
+   "bytes": 310408
+  },
+  {
+   "path": "/tmp/if2453/s2/inputs/SPX1/assemblies/SAMN09202440.fa.gz",
+   "source_name": "spire",
+   "source_release": "v1",
+   "license": "CC BY-SA 4.0",
+   "redistributable": true,
+   "retrieved_at": "2026-11-20T17:01:20+00:00",
+   "bytes": 79745165
+  },
+  {
+   "path": "/tmp/if2453/s2/inputs/SPX1/assemblies/SAMN09537587.fa.gz",
+   "source_name": "spire",
+   "source_release": "v1",
+   "license": "CC BY-SA 4.0",
+   "redistributable": true,
+   "retrieved_at": "2026-11-20T18:29:37+00:00",
+   "bytes": 10644492
+  },
+  {
+   "path": "/tmp/if2453/s2/inputs/SPX1/assemblies/SAMN09666220.fa.gz",
+   "source_name": "spire",
+   "source_release": "v1",
+   "license": "CC BY-SA 4.0",
+   "redistributable": true,
+   "retrieved_at": "2026-11-20T17:58:20+00:00",
+   "bytes": 337432571
+  },
+  {
+   "path": "/tmp/if2453/s2/inputs/SPX1/assemblies/SAMN09761136.fa.gz",
+   "source_name": "spire",
+   "source_release": "v1",
+   "license": "CC BY-SA 4.0",
+   "redistributable": true,
+   "retrieved_at": "2026-11-20T18:18:38+00:00",
+   "bytes": 26948541
+  },
+  {
+   "path": "/tmp/if2453/s2/inputs/SPX1/assemblies/SAMN09925814.fa.gz",
+   "source_name": "spire",
+   "source_release": "v1",
+   "license": "CC BY-SA 4.0",
+   "redistributable": true,
+   "retrieved_at": "2026-11-20T18:35:40+00:00",
+   "bytes": 105023245
+  },
+  {
+   "path": "/tmp/if2453/s2/inputs/SPX1/assemblies/SAMN09925828.fa.gz",
+   "source_name": "spire",
+   "source_release": "v1",
+   "license": "CC BY-SA 4.0",
+   "redistributable": true,
+   "retrieved_at": "2026-11-20T18:31:05+00:00",
+   "bytes": 55697367
+  },
+  {
+   "path": "/tmp/if2453/s2/inputs/SPX1/assemblies/SAMN10350564.fa.gz",
+   "source_name": "spire",
+   "source_release": "v1",
+   "license": "CC BY-SA 4.0",
+   "redistributable": true,
+   "retrieved_at": "2026-11-20T18:43:56+00:00",
+   "bytes": 104774525
+  },
+  {
+   "path": "/tmp/if2453/s2/inputs/SPX1/assemblies/SAMN10350577.fa.gz",
+   "source_name": "spire",
+   "source_release": "v1",
+   "license": "CC BY-SA 4.0",
+   "redistributable": true,
+   "retrieved_at": "2026-11-20T18:26:18+00:00",
+   "bytes": 295269359
+  },
+  {
+   "path": "/tmp/if2453/s2/inputs/SPX1/assemblies/SAMN10350766.fa.gz",
+   "source_name": "spire",
+   "source_release": "v1",
+   "license": "CC BY-SA 4.0",
+   "redistributable": true,
+   "retrieved_at": "2026-11-20T17:41:17+00:00",
+   "bytes": 743225845
+  },
+  {
+   "path": "/tmp/if2453/s2/inputs/SPX1/assemblies/SAMN10350974.fa.gz",
+   "source_name": "spire",
+   "source_release": "v1",
+   "license": "CC BY-SA 4.0",
+   "redistributable": true,
+   "retrieved_at": "2026-11-20T17:38:02+00:00",
+   "bytes": 346564924
+  },
+  {
+   "path": "/tmp/if2453/s2/inputs/SPX1/assemblies/SAMN10351098.fa.gz",
+   "source_name": "spire",
+   "source_release": "v1",
+   "license": "CC BY-SA 4.0",
+   "redistributable": true,
+   "retrieved_at": "2026-11-20T18:12:45+00:00",
+   "bytes": 9310773
+  },
+  {
+   "path": "/tmp/if2453/s2/inputs/SPX1/assemblies/SAMN10351194.fa.gz",
+   "source_name": "spire",
+   "source_release": "v1",
+   "license": "CC BY-SA 4.0",
+   "redistributable": true,
+   "retrieved_at": "2026-11-20T18:11:02+00:00",
+   "bytes": 85786044
+  },
+  {
+   "path": "/tmp/if2453/s2/inputs/SPX1/assemblies/SAMN10613645.fa.gz",
+   "source_name": "spire",
+   "source_release": "v1",
+   "license": "CC BY-SA 4.0",
+   "redistributable": true,
+   "retrieved_at": "2026-11-20T17:49:39+00:00",
+   "bytes": 316937401
+  },
+  {
+   "path": "/tmp/if2453/s2/inputs/SPX1/assemblies/SAMN10711881.fa.gz",
+   "source_name": "spire",
+   "source_release": "v1",
+   "license": "CC BY-SA 4.0",
+   "redistributable": true,
+   "retrieved_at": "2026-11-20T17:48:48+00:00",
+   "bytes": 256018811
+  },
+  {
+   "path": "/tmp/if2453/s2/inputs/SPX1/assemblies/SAMN10711883.fa.gz",
+   "source_name": "spire",
+   "source_release": "v1",
+   "license": "CC BY-SA 4.0",
+   "redistributable": true,
+   "retrieved_at": "2026-11-20T18:46:06+00:00",
+   "bytes": 387957676
+  },
+  {
+   "path": "/tmp/if2453/s2/inputs/SPX1/assemblies/SAMN10821752.fa.gz",
+   "source_name": "spire",
+   "source_release": "v1",
+   "license": "CC BY-SA 4.0",
+   "redistributable": true,
+   "retrieved_at": "2026-11-20T17:42:14+00:00",
+   "bytes": 78637608
+  },
+  {
+   "path": "/tmp/if2453/s2/inputs/SPX1/assemblies/SAMN10821777.fa.gz",
+   "source_name": "spire",
+   "source_release": "v1",
+   "license": "CC BY-SA 4.0",
+   "redistributable": true,
+   "retrieved_at": "2026-11-20T18:34:19+00:00",
+   "bytes": 63497682
+  },
+  {
+   "path": "/tmp/if2453/s2/inputs/SPX1/assemblies/SAMN10863908.fa.gz",
+   "source_name": "spire",
+   "source_release": "v1",
+   "license": "CC BY-SA 4.0",
+   "redistributable": true,
+   "retrieved_at": "2026-11-20T18:23:25+00:00",
+   "bytes": 563788173
+  },
+  {
+   "path": "/tmp/if2453/s2/inputs/SPX1/assemblies/SAMN10864074.fa.gz",
+   "source_name": "spire",
+   "source_release": "v1",
+   "license": "CC BY-SA 4.0",
+   "redistributable": true,
+   "retrieved_at": "2026-11-20T18:11:58+00:00",
+   "bytes": 602548367
+  },
+  {
+   "path": "/tmp/if2453/s2/inputs/SPX1/assemblies/SAMN10864078.fa.gz",
+   "source_name": "spire",
+   "source_release": "v1",
+   "license": "CC BY-SA 4.0",
+   "redistributable": true,
+   "retrieved_at": "2026-11-20T18:08:54+00:00",
+   "bytes": 41933025
+  },
+  {
+   "path": "/tmp/if2453/s2/inputs/SPX1/assemblies/SAMN10864154.fa.gz",
+   "source_name": "spire",
+   "source_release": "v1",
+   "license": "CC BY-SA 4.0",
+   "redistributable": true,
+   "retrieved_at": "2026-11-20T18:08:50+00:00",
+   "bytes": 1055925736
+  },
+  {
+   "path": "/tmp/if2453/s2/inputs/SPX1/assemblies/SAMN10864273.fa.gz",
+   "source_name": "spire",
+   "source_release": "v1",
+   "license": "CC BY-SA 4.0",
+   "redistributable": true,
+   "retrieved_at": "2026-11-20T17:14:34+00:00",
+   "bytes": 281866744
+  },
+  {
+   "path": "/tmp/if2453/s2/inputs/SPX1/assemblies/SAMN10864344.fa.gz",
+   "source_name": "spire",
+   "source_release": "v1",
+   "license": "CC BY-SA 4.0",
+   "redistributable": true,
+   "retrieved_at": "2026-11-20T17:06:20+00:00",
+   "bytes": 74180413
+  },
+  {
+   "path": "/tmp/if2453/s2/inputs/SPX1/assemblies/SAMN10864407.fa.gz",
+   "source_name": "spire",
+   "source_release": "v1",
+   "license": "CC BY-SA 4.0",
+   "redistributable": true,
+   "retrieved_at": "2026-11-20T18:14:42+00:00",
+   "bytes": 688640665
+  },
+  {
+   "path": "/tmp/if2453/s2/inputs/SPX1/assemblies/SAMN10922024.fa.gz",
+   "source_name": "spire",
+   "source_release": "v1",
+   "license": "CC BY-SA 4.0",
+   "redistributable": true,
+   "retrieved_at": "2026-11-20T17:30:57+00:00",
+   "bytes": 137818135
+  },
+  {
+   "path": "/tmp/if2453/s2/inputs/SPX1/assemblies/SAMN11044439.fa.gz",
+   "source_name": "spire",
+   "source_release": "v1",
+   "license": "CC BY-SA 4.0",
+   "redistributable": true,
+   "retrieved_at": "2026-11-20T18:04:50+00:00",
+   "bytes": 42301417
+  },
+  {
+   "path": "/tmp/if2453/s2/inputs/SPX1/assemblies/SAMN11287999.fa.gz",
+   "source_name": "spire",
+   "source_release": "v1",
+   "license": "CC BY-SA 4.0",
+   "redistributable": true,
+   "retrieved_at": "2026-11-20T17:26:47+00:00",
+   "bytes": 182292567
+  },
+  {
+   "path": "/tmp/if2453/s2/inputs/SPX1/assemblies/SAMN11321108.fa.gz",
+   "source_name": "spire",
+   "source_release": "v1",
+   "license": "CC BY-SA 4.0",
+   "redistributable": true,
+   "retrieved_at": "2026-11-20T17:01:30+00:00",
+   "bytes": 165204801
+  },
+  {
+   "path": "/tmp/if2453/s2/inputs/SPX1/assemblies/SAMN11321109.fa.gz",
+   "source_name": "spire",
+   "source_release": "v1",
+   "license": "CC BY-SA 4.0",
+   "redistributable": true,
+   "retrieved_at": "2026-11-20T18:21:19+00:00",
+   "bytes": 257440283
+  },
+  {
+   "path": "/tmp/if2453/s2/inputs/SPX1/assemblies/SAMN11321827.fa.gz",
+   "source_name": "spire",
+   "source_release": "v1",
+   "license": "CC BY-SA 4.0",
+   "redistributable": true,
+   "retrieved_at": "2026-11-20T18:33:37+00:00",
+   "bytes": 51793780
+  },
+  {
+   "path": "/tmp/if2453/s2/inputs/SPX1/assemblies/SAMN11356863.fa.gz",
+   "source_name": "spire",
+   "source_release": "v1",
+   "license": "CC BY-SA 4.0",
+   "redistributable": true,
+   "retrieved_at": "2026-11-20T17:47:50+00:00",
+   "bytes": 410818297
+  },
+  {
+   "path": "/tmp/if2453/s2/inputs/SPX1/assemblies/SAMN11529770.fa.gz",
+   "source_name": "spire",
+   "source_release": "v1",
+   "license": "CC BY-SA 4.0",
+   "redistributable": true,
+   "retrieved_at": "2026-11-20T17:05:17+00:00",
+   "bytes": 699573165
+  },
+  {
+   "path": "/tmp/if2453/s2/inputs/SPX1/assemblies/SAMN11529887.fa.gz",
+   "source_name": "spire",
+   "source_release": "v1",
+   "license": "CC BY-SA 4.0",
+   "redistributable": true,
+   "retrieved_at": "2026-11-20T17:30:19+00:00",
+   "bytes": 2439382469
+  },
+  {
+   "path": "/tmp/if2453/s2/inputs/SPX1/assemblies/SAMN11532161.fa.gz",
+   "source_name": "spire",
+   "source_release": "v1",
+   "license": "CC BY-SA 4.0",
+   "redistributable": true,
+   "retrieved_at": "2026-11-20T18:20:11+00:00",
+   "bytes": 1120889001
+  },
+  {
+   "path": "/tmp/if2453/s2/inputs/SPX1/assemblies/SAMN11532174.fa.gz",
+   "source_name": "spire",
+   "source_release": "v1",
+   "license": "CC BY-SA 4.0",
+   "redistributable": true,
+   "retrieved_at": "2026-11-20T18:00:47+00:00",
+   "bytes": 63719665
+  },
+  {
+   "path": "/tmp/if2453/s2/inputs/SPX1/assemblies/SAMN11532192.fa.gz",
+   "source_name": "spire",
+   "source_release": "v1",
+   "license": "CC BY-SA 4.0",
+   "redistributable": true,
+   "retrieved_at": "2026-11-20T18:17:07+00:00",
+   "bytes": 615855400
+  },
+  {
+   "path": "/tmp/if2453/s2/inputs/SPX1/assemblies/SAMN11532361.fa.gz",
+   "source_name": "spire",
+   "source_release": "v1",
+   "license": "CC BY-SA 4.0",
+   "redistributable": true,
+   "retrieved_at": "2026-11-20T18:49:43+00:00",
+   "bytes": 141426742
+  },
+  {
+   "path": "/tmp/if2453/s2/inputs/SPX1/assemblies/SAMN11532407.fa.gz",
+   "source_name": "spire",
+   "source_release": "v1",
+   "license": "CC BY-SA 4.0",
+   "redistributable": true,
+   "retrieved_at": "2026-11-20T18:00:27+00:00",
+   "bytes": 523140780
+  },
+  {
+   "path": "/tmp/if2453/s2/inputs/SPX1/assemblies/SAMN11532453.fa.gz",
+   "source_name": "spire",
+   "source_release": "v1",
+   "license": "CC BY-SA 4.0",
+   "redistributable": true,
+   "retrieved_at": "2026-11-20T18:05:22+00:00",
+   "bytes": 364681119
+  },
+  {
+   "path": "/tmp/if2453/s2/inputs/SPX1/assemblies/SAMN11532596.fa.gz",
+   "source_name": "spire",
+   "source_release": "v1",
+   "license": "CC BY-SA 4.0",
+   "redistributable": true,
+   "retrieved_at": "2026-11-20T18:42:38+00:00",
+   "bytes": 175628224
+  },
+  {
+   "path": "/tmp/if2453/s2/inputs/SPX1/assemblies/SAMN11532787.fa.gz",
+   "source_name": "spire",
+   "source_release": "v1",
+   "license": "CC BY-SA 4.0",
+   "redistributable": true,
+   "retrieved_at": "2026-11-20T17:46:33+00:00",
+   "bytes": 995151903
+  },
+  {
+   "path": "/tmp/if2453/s2/inputs/SPX1/assemblies/SAMN11533252.fa.gz",
+   "source_name": "spire",
+   "source_release": "v1",
+   "license": "CC BY-SA 4.0",
+   "redistributable": true,
+   "retrieved_at": "2026-11-20T17:46:37+00:00",
+   "bytes": 18871746
+  },
+  {
+   "path": "/tmp/if2453/s2/inputs/SPX1/assemblies/SAMN11533327.fa.gz",
+   "source_name": "spire",
+   "source_release": "v1",
+   "license": "CC BY-SA 4.0",
+   "redistributable": true,
+   "retrieved_at": "2026-11-20T18:14:44+00:00",
+   "bytes": 84884
+  },
+  {
+   "path": "/tmp/if2453/s2/inputs/SPX1/assemblies/SAMN11533385.fa.gz",
+   "source_name": "spire",
+   "source_release": "v1",
+   "license": "CC BY-SA 4.0",
+   "redistributable": true,
+   "retrieved_at": "2026-11-20T18:46:10+00:00",
+   "bytes": 7710335
+  },
+  {
+   "path": "/tmp/if2453/s2/inputs/SPX1/assemblies/SAMN11974108.fa.gz",
+   "source_name": "spire",
+   "source_release": "v1",
+   "license": "CC BY-SA 4.0",
+   "redistributable": true,
+   "retrieved_at": "2026-11-20T18:00:40+00:00",
+   "bytes": 1469733
+  },
+  {
+   "path": "/tmp/if2453/s2/inputs/SPX1/assemblies/SAMN12282984.fa.gz",
+   "source_name": "spire",
+   "source_release": "v1",
+   "license": "CC BY-SA 4.0",
+   "redistributable": true,
+   "retrieved_at": "2026-11-20T18:47:48+00:00",
+   "bytes": 197397542
+  },
+  {
+   "path": "/tmp/if2453/s2/inputs/SPX1/assemblies/SAMN12794753.fa.gz",
+   "source_name": "spire",
+   "source_release": "v1",
+   "license": "CC BY-SA 4.0",
+   "redistributable": true,
+   "retrieved_at": "2026-11-20T17:43:38+00:00",
+   "bytes": 437625644
+  },
+  {
+   "path": "/tmp/if2453/s2/inputs/SPX1/assemblies/SAMN12794941.fa.gz",
+   "source_name": "spire",
+   "source_release": "v1",
+   "license": "CC BY-SA 4.0",
+   "redistributable": true,
+   "retrieved_at": "2026-11-20T18:32:12+00:00",
+   "bytes": 149531382
+  },
+  {
+   "path": "/tmp/if2453/s2/inputs/SPX1/assemblies/SAMN12795566.fa.gz",
+   "source_name": "spire",
+   "source_release": "v1",
+   "license": "CC BY-SA 4.0",
+   "redistributable": true,
+   "retrieved_at": "2026-11-20T17:01:35+00:00",
+   "bytes": 54595750
+  },
+  {
+   "path": "/tmp/if2453/s2/inputs/SPX1/assemblies/SAMN12795848.fa.gz",
+   "source_name": "spire",
+   "source_release": "v1",
+   "license": "CC BY-SA 4.0",
+   "redistributable": true,
+   "retrieved_at": "2026-11-20T17:13:35+00:00",
+   "bytes": 124081420
+  },
+  {
+   "path": "/tmp/if2453/s2/inputs/SPX1/assemblies/SAMN12796105.fa.gz",
+   "source_name": "spire",
+   "source_release": "v1",
+   "license": "CC BY-SA 4.0",
+   "redistributable": true,
+   "retrieved_at": "2026-11-20T17:05:35+00:00",
+   "bytes": 184612021
+  },
+  {
+   "path": "/tmp/if2453/s2/inputs/SPX1/assemblies/SAMN12796108.fa.gz",
+   "source_name": "spire",
+   "source_release": "v1",
+   "license": "CC BY-SA 4.0",
+   "redistributable": true,
+   "retrieved_at": "2026-11-20T18:24:48+00:00",
+   "bytes": 381670533
+  },
+  {
+   "path": "/tmp/if2453/s2/inputs/SPX1/assemblies/SAMN12796283.fa.gz",
+   "source_name": "spire",
+   "source_release": "v1",
+   "license": "CC BY-SA 4.0",
+   "redistributable": true,
+   "retrieved_at": "2026-11-20T17:48:59+00:00",
+   "bytes": 68067225
+  },
+  {
+   "path": "/tmp/if2453/s2/inputs/SPX1/assemblies/SAMN12813267.fa.gz",
+   "source_name": "spire",
+   "source_release": "v1",
+   "license": "CC BY-SA 4.0",
+   "redistributable": true,
+   "retrieved_at": "2026-11-20T18:30:59+00:00",
+   "bytes": 6275
+  },
+  {
+   "path": "/tmp/if2453/s2/inputs/SPX1/assemblies/SAMN12814715.fa.gz",
+   "source_name": "spire",
+   "source_release": "v1",
+   "license": "CC BY-SA 4.0",
+   "redistributable": true,
+   "retrieved_at": "2026-11-20T18:06:42+00:00",
+   "bytes": 6526
+  },
+  {
+   "path": "/tmp/if2453/s2/inputs/SPX1/assemblies/SAMN14775416.fa.gz",
+   "source_name": "spire",
+   "source_release": "v1",
+   "license": "CC BY-SA 4.0",
+   "redistributable": true,
+   "retrieved_at": "2026-11-20T18:07:21+00:00",
+   "bytes": 384343015
+  },
+  {
+   "path": "/tmp/if2453/s2/inputs/SPX1/assemblies/SAMN15506148.fa.gz",
+   "source_name": "spire",
+   "source_release": "v1",
+   "license": "CC BY-SA 4.0",
+   "redistributable": true,
+   "retrieved_at": "2026-11-20T17:05:38+00:00",
+   "bytes": 11032946
+  },
+  {
+   "path": "/tmp/if2453/s2/inputs/SPX1/assemblies/SAMN15782792.fa.gz",
+   "source_name": "spire",
+   "source_release": "v1",
+   "license": "CC BY-SA 4.0",
+   "redistributable": true,
+   "retrieved_at": "2026-11-20T18:41:04+00:00",
+   "bytes": 24016777
+  },
+  {
+   "path": "/tmp/if2453/s2/inputs/SPX1/assemblies/SAMN15851667.fa.gz",
+   "source_name": "spire",
+   "source_release": "v1",
+   "license": "CC BY-SA 4.0",
+   "redistributable": true,
+   "retrieved_at": "2026-11-20T17:30:44+00:00",
+   "bytes": 62076852
+  },
+  {
+   "path": "/tmp/if2453/s2/inputs/SPX1/assemblies/SAMN15946930.fa.gz",
+   "source_name": "spire",
+   "source_release": "v1",
+   "license": "CC BY-SA 4.0",
+   "redistributable": true,
+   "retrieved_at": "2026-11-20T18:05:24+00:00",
+   "bytes": 11031452
+  },
+  {
+   "path": "/tmp/if2453/s2/inputs/SPX1/assemblies/SAMN15946958.fa.gz",
+   "source_name": "spire",
+   "source_release": "v1",
+   "license": "CC BY-SA 4.0",
+   "redistributable": true,
+   "retrieved_at": "2026-11-20T18:43:47+00:00",
+   "bytes": 17640199
+  },
+  {
+   "path": "/tmp/if2453/s2/inputs/SPX1/assemblies/SAMN18647619.fa.gz",
+   "source_name": "spire",
+   "source_release": "v1",
+   "license": "CC BY-SA 4.0",
+   "redistributable": true,
+   "retrieved_at": "2026-11-20T17:11:24+00:00",
+   "bytes": 1165365960
+  },
+  {
+   "path": "/tmp/if2453/s2/inputs/SPX1/assemblies/SAMN18647640.fa.gz",
+   "source_name": "spire",
+   "source_release": "v1",
+   "license": "CC BY-SA 4.0",
+   "redistributable": true,
+   "retrieved_at": "2026-11-20T18:29:34+00:00",
+   "bytes": 1304340074
+  },
+  {
+   "path": "/tmp/if2453/s2/inputs/SPX1/assemblies/SAMN18882803.fa.gz",
+   "source_name": "spire",
+   "source_release": "v1",
+   "license": "CC BY-SA 4.0",
+   "redistributable": true,
+   "retrieved_at": "2026-11-20T17:54:06+00:00",
+   "bytes": 1215849787
+  },
+  {
+   "path": "/tmp/if2453/s2/inputs/SPX1/assemblies/SAMN18945478.fa.gz",
+   "source_name": "spire",
+   "source_release": "v1",
+   "license": "CC BY-SA 4.0",
+   "redistributable": true,
+   "retrieved_at": "2026-11-20T17:25:14+00:00",
+   "bytes": 910050540
+  },
+  {
+   "path": "/tmp/if2453/s2/inputs/SPX1/assemblies/SAMN18945479.fa.gz",
+   "source_name": "spire",
+   "source_release": "v1",
+   "license": "CC BY-SA 4.0",
+   "redistributable": true,
+   "retrieved_at": "2026-11-20T18:22:34+00:00",
+   "bytes": 932609919
+  },
+  {
+   "path": "/tmp/if2453/s2/inputs/SPX1/assemblies/SAMN19118303.fa.gz",
+   "source_name": "spire",
+   "source_release": "v1",
+   "license": "CC BY-SA 4.0",
+   "redistributable": true,
+   "retrieved_at": "2026-11-20T17:12:10+00:00",
+   "bytes": 136813961
+  },
+  {
+   "path": "/tmp/if2453/s2/inputs/SPX1/assemblies/SAMN19228577.fa.gz",
+   "source_name": "spire",
+   "source_release": "v1",
+   "license": "CC BY-SA 4.0",
+   "redistributable": true,
+   "retrieved_at": "2026-11-20T18:20:54+00:00",
+   "bytes": 136061236
+  },
+  {
+   "path": "/tmp/if2453/s2/inputs/SPX1/assemblies/SAMN19324123.fa.gz",
+   "source_name": "spire",
+   "source_release": "v1",
+   "license": "CC BY-SA 4.0",
+   "redistributable": true,
+   "retrieved_at": "2026-11-20T17:46:57+00:00",
+   "bytes": 73161358
+  },
+  {
+   "path": "/tmp/if2453/s2/inputs/SPX1/assemblies/SAMN19433750.fa.gz",
+   "source_name": "spire",
+   "source_release": "v1",
+   "license": "CC BY-SA 4.0",
+   "redistributable": true,
+   "retrieved_at": "2026-11-20T18:24:17+00:00",
+   "bytes": 219203299
+  },
+  {
+   "path": "/tmp/if2453/s2/inputs/SPX1/assemblies/SAMN19433754.fa.gz",
+   "source_name": "spire",
+   "source_release": "v1",
+   "license": "CC BY-SA 4.0",
+   "redistributable": true,
+   "retrieved_at": "2026-11-20T17:16:03+00:00",
+   "bytes": 99013510
+  },
+  {
+   "path": "/tmp/if2453/s2/inputs/SPX1/assemblies/SAMN21157301.fa.gz",
+   "source_name": "spire",
+   "source_release": "v1",
+   "license": "CC BY-SA 4.0",
+   "redistributable": true,
+   "retrieved_at": "2026-11-20T18:03:56+00:00",
+   "bytes": 621413441
+  },
+  {
+   "path": "/tmp/if2453/s2/inputs/SPX1/assemblies/SAMN21465663.fa.gz",
+   "source_name": "spire",
+   "source_release": "v1",
+   "license": "CC BY-SA 4.0",
+   "redistributable": true,
+   "retrieved_at": "2026-11-20T17:03:46+00:00",
+   "bytes": 1877410720
+  },
+  {
+   "path": "/tmp/if2453/s2/inputs/SPX1/assemblies/SAMN21465669.fa.gz",
+   "source_name": "spire",
+   "source_release": "v1",
+   "license": "CC BY-SA 4.0",
+   "redistributable": true,
+   "retrieved_at": "2026-11-20T18:44:54+00:00",
+   "bytes": 977273815
+  },
+  {
+   "path": "/tmp/if2453/s2/inputs/SPX1/assemblies/SAMN25283036.fa.gz",
+   "source_name": "spire",
+   "source_release": "v1",
+   "license": "CC BY-SA 4.0",
+   "redistributable": true,
+   "retrieved_at": "2026-11-20T17:47:10+00:00",
+   "bytes": 129119364
+  },
+  {
+   "path": "/tmp/if2453/s2/inputs/SPX1/assemblies/SAMN26502311.fa.gz",
+   "source_name": "spire",
+   "source_release": "v1",
+   "license": "CC BY-SA 4.0",
+   "redistributable": true,
+   "retrieved_at": "2026-11-20T17:05:53+00:00",
+   "bytes": 172453985
+  },
+  {
+   "path": "/tmp/if2453/s2/inputs/SPX1/assemblies/SAMN26502322.fa.gz",
+   "source_name": "spire",
+   "source_release": "v1",
+   "license": "CC BY-SA 4.0",
+   "redistributable": true,
+   "retrieved_at": "2026-11-20T18:16:14+00:00",
+   "bytes": 254912469
+  },
+  {
+   "path": "/tmp/if2453/s2/inputs/SPX1/assemblies/SRR6907238.fa.gz",
+   "source_name": "spire",
+   "source_release": "v1",
+   "license": "CC BY-SA 4.0",
+   "redistributable": true,
+   "retrieved_at": "2026-11-20T18:10:52+00:00",
+   "bytes": 36626736
+  },
+  {
+   "path": "/tmp/if2453/s2/inputs/SPX1/assemblies/UW024-9Ar.fa.gz",
+   "source_name": "spire",
+   "source_release": "v1",
+   "license": "CC BY-SA 4.0",
+   "redistributable": true,
+   "retrieved_at": "2026-11-20T18:20:39+00:00",
+   "bytes": 306964323
+  },
+  {
+   "path": "/tmp/if2453/s2/inputs/SPX1/assemblies/ZG01.fa.gz",
+   "source_name": "spire",
+   "source_release": "v1",
+   "license": "CC BY-SA 4.0",
+   "redistributable": true,
+   "retrieved_at": "2026-11-20T17:26:54+00:00",
+   "bytes": 58075701
+  },
+  {
+   "path": "/tmp/if2453/s2/inputs/SPX1/assemblies/mgp82531_18B.fa.gz",
+   "source_name": "spire",
+   "source_release": "v1",
+   "license": "CC BY-SA 4.0",
+   "redistributable": true,
+   "retrieved_at": "2026-11-20T18:23:53+00:00",
+   "bytes": 54146745
+  }
+ ],
+ "biobox": "/tmp/if2453/c48e1/tree/src/biobox/cli.py",
+ "problems": []
+}

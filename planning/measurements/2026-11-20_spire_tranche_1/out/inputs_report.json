@@ -1,0 +1,221 @@
+{
+ "stage": "SPX1",
+ "min_contig_len": 5000,
+ "samples_selected": 304,
+ "samples_staged": 304,
+ "not_staged": [],
+ "objects": 304,
+ "gz_bytes": 75267693104,
+ "fasta_bytes": 256948810775,
+ "records": 325805489,
+ "bp": 243047507220,
+ "records_below": 322975207,
+ "bp_below": 207142385298,
+ "records_at_least": 2830282,
+ "bp_at_least": 35905121922,
+ "records_ge_10000": 969912,
+ "bp_ge_10000": 23307275832,
+ "records_ge_100000": 19787,
+ "bp_ge_100000": 3333861862,
+ "distinct_contigs": 2829368,
+ "distinct_bp": 35885221307,
+ "genomes": 2829368,
+ "contigs_in_2plus_samples": 907,
+ "repeated_records_between_samples": 914,
+ "within_sample_duplicate_records": 0,
+ "distinct_contigs_ge_100000": 19758,
+ "distinct_bp_ge_100000": 3328153640,
+ "by_habitat": {
+  "aquatic": {
+   "samples": 162,
+   "records": 110852381,
+   "bp": 88160391669,
+   "records_below": 109578752,
+   "bp_below": 71615693367,
+   "records_at_least": 1273629,
+   "bp_at_least": 16544698302
+  },
+  "terrestrial": {
+   "samples": 142,
+   "records": 214953108,
+   "bp": 154887115551,
+   "records_below": 213396455,
+   "bp_below": 135526691931,
+   "records_at_least": 1556653,
+   "bp_at_least": 19360423620
+  }
+ },
+ "by_habitat2": {
+  "aquatic": {
+   "samples": 4,
+   "records": 1423,
+   "bp": 4875309,
+   "records_below": 1176,
+   "bp_below": 1156587,
+   "records_at_least": 247,
+   "bp_at_least": 3718722
+  },
+  "aquatic:benthic": {
+   "samples": 26,
+   "records": 18519262,
+   "bp": 14576927847,
+   "records_below": 18307089,
+   "bp_below": 11834312648,
+   "records_at_least": 212173,
+   "bp_at_least": 2742615199
+  },
+  "aquatic:brackish water": {
+   "samples": 14,
+   "records": 22457978,
+   "bp": 16448402461,
+   "records_below": 22247230,
+   "bp_below": 14135372295,
+   "records_at_least": 210748,
+   "bp_at_least": 2313030166
+  },
+  "aquatic:briny water": {
+   "samples": 5,
+   "records": 1725301,
+   "bp": 1861222478,
+   "records_below": 1686254,
+   "bp_below": 1336677786,
+   "records_at_least": 39047,
+   "bp_at_least": 524544692
+  },
+  "aquatic:fresh water": {
+   "samples": 31,
+   "records": 20217306,
+   "bp": 17448908669,
+   "records_below": 19930295,
+   "bp_below": 13412127403,
+   "records_at_least": 287011,
+   "bp_at_least": 4036781266
+  },
+  "aquatic:ice": {
+   "samples": 4,
+   "records": 1399043,
+   "bp": 1196164224,
+   "records_below": 1377286,
+   "bp_below": 924946928,
+   "records_at_least": 21757,
+   "bp_at_least": 271217296
+  },
+  "aquatic:lentic": {
+   "samples": 17,
+   "records": 4246178,
+   "bp": 3301001227,
+   "records_below": 4198709,
+   "bp_below": 2781664411,
+   "records_at_least": 47469,
+   "bp_at_least": 519336816
+  },
+  "aquatic:littoral": {
+   "samples": 3,
+   "records": 1226100,
+   "bp": 1180256104,
+   "records_below": 1203213,
+   "bp_below": 852441236,
+   "records_at_least": 22887,
+   "bp_at_least": 327814868
+  },
+  "aquatic:lotic": {
+   "samples": 12,
+   "records": 2027697,
+   "bp": 2761321706,
+   "records_below": 1953212,
+   "bp_below": 1545330714,
+   "records_at_least": 74485,
+   "bp_at_least": 1215990992
+  },
+  "aquatic:marine": {
+   "samples": 46,
+   "records": 39032093,
+   "bp": 29381311644,
+   "records_below": 38674288,
+   "bp_below": 24791663359,
+   "records_at_least": 357805,
+   "bp_at_least": 4589648285
+  },
+  "terrestrial": {
+   "samples": 10,
+   "records": 15258766,
+   "bp": 15099407822,
+   "records_below": 14949939,
+   "bp_below": 10870597114,
+   "records_at_least": 308827,
+   "bp_at_least": 4228810708
+  },
+  "terrestrial:arid": {
+   "samples": 10,
+   "records": 3725760,
+   "bp": 2589260752,
+   "records_below": 3699405,
+   "bp_below": 2236161695,
+   "records_at_least": 26355,
+   "bp_at_least": 353099057
+  },
+  "terrestrial:forest": {
+   "samples": 27,
+   "records": 73601317,
+   "bp": 48572936385,
+   "records_below": 73310803,
+   "bp_below": 45650351489,
+   "records_at_least": 290514,
+   "bp_at_least": 2922584896
+  },
+  "terrestrial:grassland": {
+   "samples": 12,
+   "records": 21096421,
+   "bp": 14015238243,
+   "records_below": 20996043,
+   "bp_below": 13065109242,
+   "records_at_least": 100378,
+   "bp_at_least": 950129001
+  },
+  "terrestrial:permafrost": {
+   "samples": 18,
+   "records": 27949107,
+   "bp": 20554393083,
+   "records_below": 27703743,
+   "bp_below": 17436913206,
+   "records_at_least": 245364,
+   "bp_at_least": 3117479877
+  },
+  "terrestrial:soil": {
+   "samples": 27,
+   "records": 26785349,
+   "bp": 19404585891,
+   "records_below": 26571547,
+   "bp_below": 16748033111,
+   "records_at_least": 213802,
+   "bp_at_least": 2656552780
+  },
+  "terrestrial:subsurface": {
+   "samples": 26,
+   "records": 23049257,
+   "bp": 18469487669,
+   "records_below": 22803750,
+   "bp_below": 14880746858,
+   "records_at_least": 245507,
+   "bp_at_least": 3588740811
+  },
+  "terrestrial:tundra": {
+   "samples": 1,
+   "records": 26292,
+   "bp": 15022348,
+   "records_below": 26272,
+   "bp_below": 14871997,
+   "records_at_least": 20,
+   "bp_at_least": 150351
+  },
+  "terrestrial:wetland": {
+   "samples": 11,
+   "records": 23460839,
+   "bp": 16166783358,
+   "records_below": 23334953,
+   "bp_below": 14623907219,
+   "records_at_least": 125886,
+   "bp_at_least": 1542876139
+  }
+ }
+}
