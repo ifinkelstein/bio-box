@@ -1,6 +1,6 @@
 # IMG/VR and Inovirus as stage V2; giant-virus MAGs (GV1) measured but not staged (card C-48c, part 2)
 
-Date: 2026-11-20, wilkcomp02, 09:54 to 12:00 CST (the pod's clock). Every number carries a label: *measured* (host,
+Date: 2026-11-20, wilkcomp02, 09:54 to 11:43 CST, and the test suite to about 14:12 (the pod's clock). Every number carries a label: *measured* (host,
 date, command or file), *derived* (formula and inputs), *estimate*, or *published* (the provider's figure, with where it
 is stated). Host and date of every *measured* number below are wilkcomp02, 2026-11-20, unless said. **No build**:
 nothing was written in the data root `/tmp/if2453/r10/root` (bound read-only into every command that read it) and
@@ -405,7 +405,7 @@ Under `gvmags_v2`: `staged: none (card C-48c part 2: no quality tiers in the arc
 | `c48c2-check`, `-rerun`, `-overlap`, `-left-v2` | 10:45:21 to 11:10:00 | dry check, determinism, overlap, HC list | 1 each |
 | `c48c2-ani` | 10:48:33 to 11:17:24 | skani | 3 |
 | `c48c2-est-gv1`, `-left-rerun`, `-est-v2` | 11:10:38 to 11:39:12 | estimates, list determinism | 1 each |
-| `pod_pytest.sh C-48c-2 --shards 2` | from 11:40 | the whole suite | 2 shards |
+| `pod_pytest.sh C-48c-2 --shards 2` | 11:40 to about 14:12 | the whole suite: 1,324 passed, 12 skipped; 1,418 passed, 12 skipped | 2 shards |
 
 Every unit: `systemd-run --user`, `nice 19`, `ionice` 7, a memory cap (8 to 32 GB), runtime image
 `bio-box_faec1f4.sif`, `PYTHONPATH` the tree's `src` alone, the data root, the archives and V1's inputs bound read-only;
