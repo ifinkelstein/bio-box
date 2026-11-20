@@ -1036,6 +1036,11 @@ probed by hand on the pod).
    a stated footprint; (c) TACC (card C-37, waiting on the PI's two TxRAS requests, card C-37a). Recommendation:
    (a) now, (c) for the body of SPIRE, and tell the pod owner what is on `/stor/work` today. Until this is answered
    no fetch is started whose result cannot be removed again without deleting under `/stor`.
+   **What bio-box holds on `/stor`, measured 2026-11-20 (`du`, wilkcomp02)**: 1.2 TB under `/stor/work/Wilke/if2453`
+   (the JGI archives, 1.14 TB, and the root's tars, 107 GB) and **164 GB under
+   `/stor/scratch/Wilke/if2453/all-the-data`** (163 GB of it `provisional/`: stage inputs and older roots; 1.1 GB the
+   reference libraries). The account's other 6.5 TB on `/stor/scratch` are the PI's other projects, not this one.
+   Against the footprint draft: scratch is far under its 1.5 to 2 TB; `/stor/work` is 24 times over its "< 50 GB".
    **The PI at about 10:55 on 2026-11-20 (DEC-60 (3))**: agrees this is the main constraint, and offers a fourth
    place, (d) the PI's NAS `tower` ("as we grow, maybe tranches can move there?"): 32 TB array with 18 TB free, 8
    cores, 31 GB of memory (*measured* from the laptop, 2026-11-20), on the PI's home network, which the pod cannot
