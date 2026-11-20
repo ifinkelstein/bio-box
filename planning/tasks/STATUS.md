@@ -5,7 +5,64 @@ The running record of the cards in [`TASKS.md`](TASKS.md). Updated at every merg
 by an agent on its own branch `task/<ID>`, audited by the orchestrating session, and merged after its
 tests passed on the merged tree.
 
-## Handoff, 2026-11-20 01:13 CST (current; the dated sections under "History" are superseded where they differ)
+## Handoff, 2026-11-20 09:30 CST (current; everything below it is superseded where it differs)
+
+Written by the orchestrator that took over on the morning of 2026-11-20 (Claude; the campaign of 2026-11-17 to 20
+was Antigravity's). Times are the pod's clock.
+
+**The PI's words for this session** (2026-11-20, about 08:10): "confirm agy claims; did it do what it claims? then
+act as an orchestator to continue to run ingests, update docs, etc. to get things fixed ... run appropriate level
+agents as needed, but audit their work. want to continue to ingest data wea lready have and publish releases on
+rolling basis", and "make sure to run nohup since i need to step away" (every pod job is a detached unit; the
+account has `Linger=yes`, *measured*, `loginctl`, so units outlive every connection).
+
+**1. The audit: the campaign's record holds.** `planning/measurements/2026-11-20_audit_of_1117_1120.md` has each
+check. In short (*measured*, wilkcomp02, 2026-11-20): all seven releases and the three packs verify with the
+recorded hashes; the seven backup tars and the eleven source archives on `/stor/work` have the recorded sha256
+values; the whole suite on the merged tree `352424f` gave 2,704 passed, 23 skipped, none failed; Actions was green.
+One total was 8 bytes high (the JGI archives are 1,137,921,831,184 bytes, not …192). The commit audit found no rule
+broken in a way that touches built data; what it found is card D-07 and open items 15 to 18.
+
+**2. Stage `C5` is still parked, and only the PI can restart it** (open item 15). Its `inputs` and `ingest` are
+published (36 files in the root, not yet in the durable copy); the driver stopped on the rate guard. Nothing of
+`/tmp/if2453/c47` or `stage=C5` was touched today. The six files of card C-47 (driver, estimates, check, restore,
+the NR90 evaluation and its test) are still untracked in the worktree `.claude/worktrees/task-C-47`: **they exist
+only on the laptop and in `/tmp/if2453/c47/bin` and `/tmp/if2453/ci/C-47` on the pod**; the next session of card C-47
+commits them first.
+
+**3. What runs now.**
+- **Stage `V1`** (UHGV, 168,358 new contigs, 5.18 Gbp; card C-48c part 1; Opus agent, worktree
+  `.claude/worktrees/task-C-48c-1`, branch `task/C-48c-1`, pod directory `/tmp/if2453/c48c`, units `c48c-*`): built
+  into the root as a stage only, at depth `annotated` with Pfam 38.2 and both CRISPR producers, taken ahead of `C5`
+  because `C5` waits on the PI. Its rehearsal passed at 08:52. The agent checks first that `V1` shares no contig
+  with `C5`'s index, and stops if it does. It does not cut a release.
+- Card B-57 (trailing Parquet parts under 64 MiB; Sonnet, `task/B-57`) and card D-07 (three weak tests; Sonnet,
+  `task/D-07`).
+- Unit `audit1120-ex`: the worked examples on `r26.11.1` again, read-only.
+
+**4. Next, in order.** (a) Audit `V1` when its agent reports (its `check`, the before and after `release verify`
+logs, `root_added.tsv`, the backup tar's sha256 read back on `/stor/work`), merge, then **cut `r26.11.2` with
+`release_train.sh run`** over the nine stages and `V1` (card C-46's first live use; `C5` is left out by the train's
+own rule unless the PI has answered item 15 by then), its pack, the worked examples, its backup tar, the
+announcement. (b) With the PI's answer on `C5`: card C-47 to its end, then B-58, B-47a to B-47e, stages `C1` to
+`C4` and `C6`. (c) Card C-48c parts 2 and on: `PL2` (needs open item 16 settled first: it takes the root past 7.86 M
+contigs), `V2`, `GV1`. (d) `G1` and card C-48d's stages. The 990 SPIRE pilot assemblies are **not** on disk any
+more (the pilot unlinked them); they are not in this queue.
+
+**5. How to reach the pod from off campus** (card A-09, merged today): `env BIOBOX_POD_JUMP=if2453@wilkcomp03.ccbb.utexas.edu
+BIOBOX_TREE=<worktree> sh scripts/pod_pytest.sh <name> <paths>`; by hand, `ssh -J if2453@wilkcomp03.ccbb.utexas.edu
+if2453@wilkcomp02.ccbb.utexas.edu`. A held `ssh` drops within the hour (exit 255, seen three times today): wait with
+short calls or `watch_until.sh`.
+
+**6. Agents and models this session**: Sonnet for tier L cards, Opus for the rest, at most four at once; the
+orchestrator reads every diff and reruns the affected tests on the merged tree before a merge. Merged today: A-09.
+Stopped today without a change: B-56 (its card says why).
+
+**7. Waiting on the PI**: items 15 (accept `C5`'s ingest record), 16 (B-56's design), 17 (`domain_state`'s place in
+the exports), 18 (the pilot's storage rates), and the older ones in the section below (item 12, the TACC requests,
+the eukaryote kind, how many old releases keep their large files).
+
+## Handoff, 2026-11-20 01:13 CST (superseded where it differs from the section above)
 
 Written so a new session can continue without the conversation that produced this file. Times are the pod's clock
 (CST); read it with `ssh ... date` before writing a time here.
