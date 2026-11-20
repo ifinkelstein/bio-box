@@ -61,6 +61,9 @@ Order of work:
      with the command (a stopped scope, SIGKILL of the process group): its last sample, taken
      every `SAMPLE_S` seconds while the command ran, of the scope's `memory.peak` or of the
      largest `VmHWM` (the kernel's per-process high-water mark) in the step's process tree.
+     Card A-10a: with a sampled source the attempt's record (step 6) also holds the field
+     `peak_evidence` (function `peak_evidence`): the scope's memory.events, the scope unit's Result and OOMPolicy, whether
+     systemd-oomd is active, read once the step is reaped, so that what killed the helper can be told.
    - `unmeasured` (and null) if the helper wrote nothing.
    The command dies when the helper dies (PR_SET_PDEATHSIG, on Linux).
    The record's `argv` is the command under its limits, without the helper. SIGTERM and SIGINT
@@ -713,7 +716,8 @@ SAMPLE_S = 0.2
 # Every SAMPLE_S seconds a thread reads the scope's `memory.peak` (with CGROUP_FILE; the kernel's high-water mark of
 # the cgroup) or else the largest `VmHWM` (the kernel's high-water mark of one process's resident memory) over the
 # command's process tree, found through /proc/<pid>/task/<tid>/children, and rewrites OUT with `"final": false`
-# when the value has grown. Without /proc (macOS) nothing is sampled. The command is started by fork and exec, not
+# when the value has grown. Without /proc (macOS) nothing is sampled. Card A-10a: every write also names the cgroup the
+# helper found (`"cgroup"`, None outside a scope), so that the evidence of a killed helper can read that scope. The command is started by fork and exec, not
 # posix_spawn, so that on Linux it gets PR_SET_PDEATHSIG (SIGKILL) first: it dies when the helper dies. The search
 # runner kills the helper when it dies itself (`search.runner._die_with_runner`), so a worker never outlives its
 # runner, even one still importing, before its own parent watch (`search.worker._watch_parent`) is armed.
@@ -725,11 +729,13 @@ GROUP = (signal.SIGTERM, signal.SIGINT, signal.SIGHUP)
 for s in GROUP:
     signal.signal(s, lambda signum, frame: None)
 peak_path = None
+cgroup = None  # card A-10a: the scope's cgroup path, kept in OUT for the evidence of a killed helper
 if cgroup_file:
     try:
         with open(cgroup_file) as f:
             rel = next(ln[3:].strip() for ln in f if ln.startswith("0::"))
         peak_path = os.path.join(cgroup_root, rel.lstrip("/"), "memory.peak")
+        cgroup = rel
     except (OSError, StopIteration):
         peak_path = None
 
@@ -807,7 +813,7 @@ def sample():
         v = read_int(peak_path) if peak_path else (tree_hwm(pid) if os.path.isdir("/proc/self") else None)
         if v is not None and (seen[key] is None or v > seen[key]):
             seen[key] = v
-            save({**seen, "final": False})
+            save({**seen, "final": False, "cgroup": cgroup})
 
 
 sampler = threading.Thread(target=sample, daemon=True)
@@ -817,7 +823,7 @@ stop.set()
 sampler.join()
 peak = read_int(peak_path) if peak_path else None
 maxrss = ru.ru_maxrss if sys.platform == "darwin" else ru.ru_maxrss * 1024
-save({"maxrss_bytes": maxrss, "memory_peak_bytes": peak, "final": True})
+save({"maxrss_bytes": maxrss, "memory_peak_bytes": peak, "final": True, "cgroup": cgroup})
 if os.WIFSIGNALED(status):
     sig = os.WTERMSIG(status)
     try:
@@ -851,19 +857,100 @@ def step_peak(out: Path) -> tuple[int | None, str]:
     helper killed before its command ended left only its last sample, taken at most `SAMPLE_S` seconds before:
     `scope_memory_peak_sampled` (the scope's memory.peak) or `child_hwm_sampled` (the largest VmHWM in the step's
     process tree). Else (None, `unmeasured`)."""
+    return _peak_file(out)[:2]
+
+
+def _peak_file(out: Path) -> tuple[int | None, str, str | None]:
+    """`step_peak`, and the cgroup path the helper ran in (card A-10a; None outside a scope or in a file without it)."""
     try:
         got = json.loads(out.read_text())
     except (OSError, ValueError):
-        return None, "unmeasured"
+        return None, "unmeasured", None
     finally:
         out.unlink(missing_ok=True)
         out.with_name(out.name + ".tmp").unlink(missing_ok=True)  # a sample a killed helper was writing
+    cgroup = got.get("cgroup") or None
     tail ="" if got.get("final", True) else "_sampled"
     if got.get("memory_peak_bytes") is not None:
-        return int(got["memory_peak_bytes"]), "scope_memory_peak" + tail
+        return int(got["memory_peak_bytes"]), "scope_memory_peak" + tail, cgroup
     if got.get("maxrss_bytes") is not None:
-        return int(got["maxrss_bytes"]), ("child_maxrss" if not tail else "child_hwm_sampled")
-    return None, "unmeasured"
+        return int(got["maxrss_bytes"]), ("child_maxrss" if not tail else "child_hwm_sampled"), cgroup
+    return None, "unmeasured", cgroup
+
+
+# Card A-10a: how much of a worker's standard error the evidence of a killed helper keeps (its end, in characters).
+EVIDENCE_STDERR_CHARS = 4096
+_UNIT_PROPS = ("LoadState", "ActiveState", "Result", "OOMPolicy", "MemoryPeak")
+
+
+def _small_run(argv: list[str]) -> str | None:
+    """The stdout of a short query (`systemctl`), stripped; None when it cannot run. Its exit status is not used:
+    `systemctl is-active` exits 3 for an inactive unit and says so on stdout."""
+    try:
+        return subprocess.run(argv, capture_output=True, text=True, timeout=10).stdout.strip()
+    except (OSError, subprocess.SubprocessError):
+        return None
+
+
+def peak_evidence(cgroup: str | None, *, cgroup_root: str | Path | None = None,
+                  which: Callable[[str], str | None] = shutil.which, stderr: Path | None = None) -> dict:
+    """What can still be read about a run whose measuring helper was killed (card A-10a), to tell what killed it.
+    Read once its last process has been reaped, so no counter of its scope changes any more, and the cgroup files
+    first, before anything slower, because systemd removes the scope's cgroup soon after it empties:
+
+    - `cgroup` (the helper's, from its file) and `cgroup_present` (whether it still existed when read; None
+      without a cgroup);
+    - `memory_events` (the scope's memory.events as {key: count}: `oom` counts the scope's own charges that failed
+      at memory.max, `oom_kill` the processes of the scope any OOM killer killed, `oom_group_kill` the kills of
+      the whole group), `memory_peak` and `memory_max` (as the kernel wrote them); None when not readable;
+    - `unit` (the scope unit, the cgroup's last component) and `unit_show` (`systemctl --user show` of its
+      LoadState, ActiveState, Result, OOMPolicy and MemoryPeak; a failed unit outlives its cgroup until
+      reset-failed); None without a scope unit or without systemctl;
+    - `systemd_oomd`: `systemctl is-active systemd-oomd` on the host (None without systemctl);
+    - `stderr_tail`, with `stderr`: its last EVIDENCE_STDERR_CHARS characters (a helper's traceback lands there).
+    It holds what was read, as read: nothing in it is interpreted here."""
+    ev: dict = {"cgroup": cgroup, "cgroup_present": None, "memory_events": None, "memory_peak": None,
+                "memory_max": None, "unit": None, "unit_show": None, "systemd_oomd": None}
+    if cgroup:
+        d = Path(CGROUP_ROOT if cgroup_root is None else cgroup_root) / cgroup.lstrip("/")
+        try:
+            events = (d / "memory.events").read_text()
+            ev["memory_events"] = {k: int(v) for k, _, v in (ln.partition(" ") for ln in events.splitlines()) if k}
+        except (OSError, ValueError):
+            pass
+        for key, name, conv in (("memory_peak", "memory.peak", int), ("memory_max", "memory.max", str)):
+            try:
+                ev[key] = conv((d / name).read_text().strip())
+            except (OSError, ValueError):
+                pass
+        ev["cgroup_present"] = d.is_dir()
+        unit = cgroup.rstrip("/").rsplit("/", 1)[-1]
+        ev["unit"] = unit if unit.endswith(".scope") else None
+    exe = which("systemctl")
+    if exe and ev["unit"]:
+        out = _small_run([exe, "--user", "show", *(a for p in _UNIT_PROPS for a in ("-p", p)), ev["unit"]])
+        if out is not None:
+            ev["unit_show"] = dict(ln.partition("=")[::2] for ln in out.splitlines() if "=" in ln)
+    if exe:
+        ev["systemd_oomd"] = _small_run([exe, "is-active", "systemd-oomd"]) or None
+    if stderr is not None:
+        try:
+            ev["stderr_tail"] = Path(stderr).read_text(errors="replace")[-EVIDENCE_STDERR_CHARS:]
+        except OSError:
+            ev["stderr_tail"] = None
+    return ev
+
+
+def peak_and_evidence(out: Path, *, cgroup_root: str | Path | None = None,
+                      which: Callable[[str], str | None] = shutil.which,
+                      stderr: Path | None = None) -> tuple[int | None, str, dict | None]:
+    """`step_peak` of the helper's file `out`, and, only when the source is a sampled one (the helper was killed
+    before its final read: card A-10), `peak_evidence` of the run; else None, and nothing more is read or run. Call it
+    once the run's last process has been reaped."""
+    rss, source, cgroup = _peak_file(out)
+    if not source.endswith("_sampled"):
+        return rss, source, None
+    return rss, source, peak_evidence(cgroup, cgroup_root=cgroup_root, which=which, stderr=stderr)
 
 
 def failed_path(tmp: str | Path, stage: str, step: str) -> Path:
@@ -1009,7 +1096,8 @@ def run_step(prof: Profile, root: str | Path, stage: str, step: str, cmd: Sequen
     code, wall, cpu_min, _, sig = _execute(
         build_argv(measured(cmd, peak_file, opened, proc_root=proc_root, cgroup_root=cgroup_root), nice_value,
                    prof.mem_scope, inherited=inherited, system=system, which=which), env)
-    rss, rss_source = step_peak(peak_file)
+    # card A-10a: a sampled peak (the helper was killed) keeps the evidence of what killed it, in the attempt's record
+    rss, rss_source, evidence = peak_and_evidence(peak_file, cgroup_root=cgroup_root, which=which)
     over = cpu_min > prof.cpu_min_per_process
     meta = {
         "stage": stage, "step": step, "argv": argv, "threads": n_threads, "nice": nice_value,
@@ -1022,7 +1110,9 @@ def run_step(prof: Profile, root: str | Path, stage: str, step: str, cmd: Sequen
         meta["cpu_budget_reason"] = budget_reason
 
     if sig is not None or code != 0:  # card C-16: the attempt's record, its peak memory with it
-        _atomic_write(failed, _record_bytes({**meta, "forwarded_signal": signal.Signals(sig).name if sig else None}))
+        kept = {"peak_evidence": evidence} if evidence is not None else {}
+        _atomic_write(failed, _record_bytes({**meta, **kept,
+                                             "forwarded_signal": signal.Signals(sig).name if sig else None}))
         peak = f"peak memory {rss / 2**20:.1f} MiB ({rss_source})" if rss is not None else "peak memory unmeasured"
     if sig is not None:
         _err(f"{signal.Signals(sig).name} received; forwarded to {stage}.{step}, which exited {code}; {peak}; "

@@ -2537,7 +2537,9 @@ def test_c16_a_search_killed_at_its_wall_time_records_its_peak(world, tmp_path, 
     _evidence(record_property, "c16_wall_timeout_search_peak",
               f"worker VmHWM {hwm / 2**20:.1f} MiB, RssAnon {anon / 2**20:.1f} MiB; recorded "
               f"{row['peak_rss_bytes'] and round(row['peak_rss_bytes'] / 2**20, 1)} MiB "
-              f"({lim.get('peak_rss_source')}, mem_cap {lim['mem_cap']['how']})")
+              f"({lim.get('peak_rss_source')}, mem_cap {lim['mem_cap']['how']}); "
+              # card A-10a: the helper is killed here by the runner itself, so this is the evidence of a known killer
+              f"peak_evidence {json.dumps(lim.get('peak_evidence'), sort_keys=True)}")
     assert row["status"] == "timeout", row["error"]
     assert row["peak_rss_bytes"] is not None, "a search killed at its wall time has no peak"
     if lim["mem_cap"]["how"] == "opened":
@@ -2567,7 +2569,9 @@ def test_c16_an_oom_killed_search_records_a_peak_within_20_percent_of_its_cap(wo
     cap = _C16_OOM.mem_gb * runner.GB
     _evidence(record_property, "c16_oom_search_peak",
               f"recorded {row['peak_rss_bytes'] and round(row['peak_rss_bytes'] / 2**20, 1)} MiB "
-              f"({lim.get('peak_rss_source')}); cap {cap / 2**20:.1f} MiB; status {row['status']}")
+              f"({lim.get('peak_rss_source')}); cap {cap / 2**20:.1f} MiB; status {row['status']}; "
+              # card A-10a: what was read about a killed helper, kept only when the peak is a sampled one
+              f"peak_evidence {json.dumps(lim.get('peak_evidence'), sort_keys=True)}")
     assert row["status"] == "oom", row["error"]
     assert lim["peak_rss_source"] in ("scope_memory_peak", "scope_memory_peak_sampled"), lim
     assert 0.8 * cap <= row["peak_rss_bytes"] <= 1.2 * cap, row["peak_rss_bytes"]

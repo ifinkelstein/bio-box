@@ -42,7 +42,10 @@ A run is a recorded job:
      hits; the others write `run.parquet` alone, never an empty or partial hits file (S-05).
      `peak_rss_bytes` is the worker's own (card W-14: run-step's measuring helper), also for a
      worker killed with its helper at the wall timeout: the helper's last sample (card C-16).
-     Where it came from (`runstep.step_peak`) is `peak_rss_source` in `limits_json`.
+     Where it came from (`runstep.step_peak`) is `peak_rss_source` in `limits_json`. When that source is a
+     sampled one (the helper was killed), `limits_json` also holds `peak_evidence` (card A-10a,
+     `runstep.peak_evidence`): the scope's memory.events, the scope unit's Result and OOMPolicy, whether
+     systemd-oomd is active, and the end of the worker's stderr, read once the helper is reaped.
      The command line the user typed (card W-29) is `command` in `limits_json`, as the CLI gave it
      (`["bio-box", *arguments]`); a submitted run's detached runner is given it in `BIOBOX_USER_COMMAND`.
      The record's `argv` is the worker's command, as before. The line may hold absolute paths: it is a record of
@@ -640,6 +643,7 @@ def run(root: Path, recipe_src: Path | str, release: str, *, limits: Limits = Li
     out.mkdir(parents=True)
     sums: list[bytes] = []
     rc, ru, result = None, None, {}
+    rss, rss_source, evidence = None, "unmeasured", None
     try:
         if cancelled:
             raise _RunFailure("stopped", "cancelled")  # a cancel during the checks: no worker is started
@@ -675,6 +679,10 @@ def run(root: Path, recipe_src: Path | str, release: str, *, limits: Limits = Li
             proc = subprocess.Popen(launch, stdout=subprocess.DEVNULL, stderr=err,
                                     preexec_fn=_preexec(limits, kind, system, cap_bytes, renice), env=env)
             rc, ru, timed_out = _wait(proc, limits.wall_s, cancelled)
+        # the helper's file: final, or its last sample when the helper was killed (card C-16); with a sample, what can
+        # still be read about the kill (card A-10a), before `scope_oom_killed` may reset the failed scope unit
+        rss, rss_source, evidence = runstep.peak_and_evidence(peak_file, cgroup_root=CGROUP_ROOT, which=shutil.which,
+                                                              stderr=work / "stderr.txt")
         # only a capped cgroup is evidence (the scope's own, or the unit's the cap was inherited
         # from); outside one, the cgroup is the runner's session's
         cgroup_oom = (scope_oom_killed(work, baseline=baseline)
@@ -688,9 +696,6 @@ def run(root: Path, recipe_src: Path | str, release: str, *, limits: Limits = Li
             signal.signal(signal.SIGTERM, prev)
     wall = time.monotonic() - t0
     cpu_min = (ru.ru_utime + ru.ru_stime) / 60 if ru is not None else None
-    rss, rss_source = None, "unmeasured"
-    if ru is not None:  # the helper's file: final, or its last sample when the wall timeout killed it (card C-16)
-        rss, rss_source = runstep.step_peak(work / "peak.json")
     row = {
         "run_id": run_id, "recipe_hash": rh, "recipe_yaml": text, "argv": list(argv or []),
         "tool_versions_json": json.dumps(provenance.tool_versions("bio-box", "pyhmmer", "pyarrow"), sort_keys=True),
@@ -706,11 +711,8 @@ def run(root: Path, recipe_src: Path | str, release: str, *, limits: Limits = Li
         "stop_reason": result.get("stop_reason"),
         "controls_json": json.dumps(result["controls"], sort_keys=True, default=str) if result.get("controls") else None,
         "warnings_json": json.dumps(result.get("warnings", [])) if result else None,
-        # card C-16: where `peak_rss_bytes` came from (`runstep.step_peak`), here, as search_run has no column for it
-        # card W-29: and the user's command line (`command`), which `argv` above is not once the worker is started
-        "limits_json": json.dumps({**asdict(limits), "mem_cap": cap, "peak_rss_source": rss_source,
-                                   "command": list(command if command is not None else user_argv or [])},
-                                  sort_keys=True),
+        "limits_json": _limits_json(limits, cap, rss_source, list(command if command is not None else user_argv or []),
+                                    evidence),
         "error": error,
         "seed_json": json.dumps(res["seed"], sort_keys=True),
     }
@@ -723,6 +725,16 @@ def run(root: Path, recipe_src: Path | str, release: str, *, limits: Limits = Li
         if lock_fd is not None:  # held until the run is closed: until then `status` says `running`
             os.close(lock_fd)
     return row
+
+
+def _limits_json(limits: Limits, cap: dict, rss_source: str, command: list[str], evidence: dict | None) -> str:
+    """The run row's `limits_json`: the limits, the memory cap, where `peak_rss_bytes` came from (card C-16,
+    `runstep.step_peak`; search_run has no column for it) and the user's command line (card W-29), which `argv` is
+    not once the worker is started. Card A-10a: `peak_evidence` (`runstep.peak_evidence`) only when the peak is a
+    sampled one; otherwise the text is what it was before that card."""
+    kept = {"peak_evidence": evidence} if evidence is not None else {}
+    return json.dumps({**asdict(limits), "mem_cap": cap, "peak_rss_source": rss_source, "command": command, **kept},
+                      sort_keys=True)
 
 
 def _main_thread() -> bool:
