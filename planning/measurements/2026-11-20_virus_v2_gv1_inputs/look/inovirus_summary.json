@@ -1,0 +1,67 @@
+{
+ "bases": 49235851,
+ "distinct_bases": 49185282,
+ "distinct_contigs": 5958,
+ "families": {
+  "Amplinoviridae": 357,
+  "Densinoviridae": 295,
+  "Paulinoviridae": 226,
+  "Photinoviridae": 32,
+  "Protoinoviridae": 3614,
+  "Tandem": 398,
+  "Vespertilinoviridae": 1042
+ },
+ "files": 5964,
+ "first_rows": [
+  [
+   "Amplinoviridae/Amplinoviridae_Sf_1/Sp_1022092_contig_2041_6_1022092_contig_2041.gb",
+   0,
+   "Amplinoviridae",
+   "Amplinoviridae_Sf_1",
+   "Sp_1022092_contig_2041_6_1022092_contig_2041",
+   "Sp_1022092_contig_2041_6_1022092_contig_2041",
+   "linear",
+   7603,
+   7603,
+   "5afc542a579a2835afaf623a157cbb27",
+   "Filamentous phage genome (fragment) identified in 1022092_contig_2041 / 1022092. Boundaries identified as NA. Detected in the following biome types: Aquatic_Groundwater"
+  ],
+  [
+   "Amplinoviridae/Amplinoviridae_Sf_1/Sp_1024027_contig_6252_4_1024027_contig_6252.gb",
+   0,
+   "Amplinoviridae",
+   "Amplinoviridae_Sf_1",
+   "Sp_1024027_contig_6252_4_1024027_contig_6252",
+   "Sp_1024027_contig_6252_4_1024027_contig_6252",
+   "linear",
+   7953,
+   7953,
+   "99df75e7565ba33f5ae23301d3a4f0e4",
+   "Filamentous phage genome (fragment) identified in 1024027_contig_6252 / 1024027. Boundaries identified as Full_Contig. Detected in the following biome types: Terrestrial_Soil (others)"
+  ],
+  [
+   "Amplinoviridae/Amplinoviridae_Sf_1/Sp_1024036_contig_1164_6_1024036_contig_1164.gb",
+   0,
+   "Amplinoviridae",
+   "Amplinoviridae_Sf_1",
+   "Sp_1024036_contig_1164_6_1024036_contig_1164",
+   "Sp_1024036_contig_1164_6_1024036_contig_1164",
+   "linear",
+   7746,
+   7746,
+   "79f03b8147c62d1f005f8f54e20dcd2e",
+   "Filamentous phage genome (fragment) identified in 1024036_contig_1164 / 1024036. Boundaries identified as NA. Detected in the following biome types: Terrestrial_Soil (others)"
+  ]
+ ],
+ "length_disagrees_with_locus": 0,
+ "length_max": 29995,
+ "length_min": 726,
+ "records": 5964,
+ "records_per_file": {
+  "1": 5964
+ },
+ "topology": {
+  "circular": 845,
+  "linear": 5119
+ }
+}

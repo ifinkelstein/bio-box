@@ -1,0 +1,41 @@
+{
+ "stage": "V2",
+ "genomes": 230098,
+ "genome_input_rows": 261626,
+ "distinct_genome_uids": 230098,
+ "circular_rows": 584,
+ "kinds": [
+  "virus"
+ ],
+ "codes": [
+  11
+ ],
+ "assembly_quality": [
+  "vOTU"
+ ],
+ "gene_call_mode": {
+  "virus": "gv-meta"
+ },
+ "objects": [
+  {
+   "path": "/tmp/if2453/s2/inputs/V2/imgvr_v4.1_hc_hq_votu_reps.fna",
+   "source_name": "jgi_img_vr",
+   "source_release": "IMG_VR_2022-12-19_7.1 (IMG/VR v4.1) high-confidence; high-quality vOTU representatives chosen by c48c_virus_inputs.py",
+   "license": "JGI Data Utilization Policy (dataset marked Unrestricted on the JGI Data Portal; accepted by the PI 2026-11-18); held local, not redistributed (DEC-50, DEC-51)",
+   "redistributable": false,
+   "retrieved_at": "2026-11-18T23:15:37+00:00",
+   "bytes": 9464839653
+  },
+  {
+   "path": "/tmp/if2453/s2/inputs/V2/inovirus_roux2019.fna",
+   "source_name": "jgi_inovirus",
+   "source_release": "Custom_MPI-Inovirus Gb_files_inoviruses.zip (Roux et al. 2019, doi:10.1038/s41564-019-0510-x)",
+   "license": "JGI Data Utilization Policy (dataset marked Unrestricted on the JGI Data Portal; accepted by the PI 2026-11-18); held local, not redistributed (DEC-50, DEC-51)",
+   "redistributable": false,
+   "retrieved_at": "2026-11-18T23:16:08+00:00",
+   "bytes": 50500520
+  }
+ ],
+ "biobox": "/tmp/if2453/c48c2/tree/src/biobox/cli.py",
+ "problems": []
+}

@@ -1,0 +1,91 @@
+{
+ "all_18k": {
+  "called_bases": 4175229105,
+  "code": {
+   "annotated_cpu_min": 9640.4,
+   "called_bases": {
+    "gv-meta linear": 4175229105
+   },
+   "called_cpu_min": 389.2,
+   "called_saves_cpu_min": 9251.2,
+   "crispr_default_cpu_min": 10.9,
+   "crispr_flank_bases": 0,
+   "crispr_near_cas_cpu_min": 12.54,
+   "fasta_bytes": 4639876749,
+   "genecall_batches": 2,
+   "genecall_cpu_min": 359.9,
+   "genes_code_rate": 5606806,
+   "held_bases": 174456495,
+   "ingest_cpu_min": 19.14,
+   "ingest_cpu_min_with_held": 18.42,
+   "merge_cpu_min": 0.62,
+   "pfam_cpu_min": 9238.6,
+   "pfam_residues": 1160628234,
+   "pfam_shards": 39,
+   "scan_shard_residues": 30150753,
+   "stored_bases": 3890643054
+  },
+  "derived": {
+   "distinct_proteins": 4005300,
+   "genes": 4067356,
+   "residues": 1160628234
+  },
+  "genomes": 18726,
+  "held_bases": 174456495,
+  "storage_gb_at_0.7316": 2.85,
+  "stored_bases": 3890643054,
+  "stored_contigs": 264134
+ },
+ "fna_files_8508": {
+  "called_bases": 2216041830,
+  "code": {
+   "annotated_cpu_min": 5180.6,
+   "called_bases": {
+    "gv-meta linear": 2216041830
+   },
+   "called_cpu_min": 206.8,
+   "called_saves_cpu_min": 4973.8,
+   "crispr_default_cpu_min": 5.86,
+   "crispr_flank_bases": 0,
+   "crispr_near_cas_cpu_min": 6.74,
+   "fasta_bytes": 2479011971,
+   "genecall_batches": 1,
+   "genecall_cpu_min": 191.1,
+   "genes_code_rate": 3014423,
+   "held_bases": 105353084,
+   "ingest_cpu_min": 10.26,
+   "ingest_cpu_min_with_held": 9.83,
+   "merge_cpu_min": 0.45,
+   "pfam_cpu_min": 4967.0,
+   "pfam_residues": 623996020,
+   "pfam_shards": 21,
+   "scan_shard_residues": 30150753,
+   "stored_bases": 2091751441
+  },
+  "derived": {
+   "distinct_proteins": 2153395,
+   "genes": 2186759,
+   "residues": 623996020
+  },
+  "genomes": 8508,
+  "held_bases": 105353084,
+  "storage_gb_at_0.7316": 1.53,
+  "stored_bases": 2091751441,
+  "stored_contigs": 153020
+ },
+ "sample": {
+  "bases": 90017161,
+  "cpu_s": 234.5,
+  "distinct_in_root": 482,
+  "distinct_per_mbp": 1029.47,
+  "distinct_proteins": 92670,
+  "every": 50,
+  "genes": 94106,
+  "genes_per_mbp": 1045.42,
+  "genomes": 374,
+  "of": "all_18k genomes in name order",
+  "residues": 26853260,
+  "residues_per_mbp": 298312.7,
+  "s_per_mbp": 2.6053
+ }
+}

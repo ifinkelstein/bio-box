@@ -1,0 +1,31 @@
+{
+ "path": "/tmp/if2453/c48c2/work/left/V2_left_for_later_v4.0_putative.tsv.gz",
+ "rows": 10101426,
+ "bytes": 106448343,
+ "sha256": "d607ba78f5ed09342f6095e4b471b9f7703374f4757a4b070f4f3861f0c80751",
+ "by_reason_and_quality": [
+  {
+   "reason": "putative",
+   "quality": "Genome fragment",
+   "rows": 8280573,
+   "bases": 66015149311,
+   "records": 8280573
+  },
+  {
+   "reason": "putative",
+   "quality": "High-quality",
+   "rows": 51203,
+   "bases": 901445511,
+   "records": 51203
+  },
+  {
+   "reason": "putative",
+   "quality": "Unsure",
+   "rows": 1769650,
+   "bases": 10931848757,
+   "records": 1769650
+  }
+ ],
+ "putative_votus": 6251664,
+ "putative_only_votus": 5689030
+}
