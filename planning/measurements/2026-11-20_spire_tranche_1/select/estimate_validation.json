@@ -1,0 +1,76 @@
+{
+ "habitats": [
+  "aquatic",
+  "terrestrial"
+ ],
+ "by_k": [
+  {
+   "k": 5,
+   "samples": 452,
+   "studies": 129,
+   "ratio_n_all": 1.006,
+   "ratio_bp_all": 1.0215,
+   "ratio_n_p05_p95_of_300": [
+    0.9771,
+    1.0371
+   ],
+   "ratio_bp_p05_p95_of_300": [
+    0.9809,
+    1.0621
+   ],
+   "draws": 2000,
+   "seed": 20261120
+  },
+  {
+   "k": 15,
+   "samples": 452,
+   "studies": 129,
+   "ratio_n_all": 0.9963,
+   "ratio_bp_all": 0.997,
+   "ratio_n_p05_p95_of_300": [
+    0.9682,
+    1.0262
+   ],
+   "ratio_bp_p05_p95_of_300": [
+    0.9582,
+    1.0337
+   ],
+   "draws": 2000,
+   "seed": 20261120
+  },
+  {
+   "k": 25,
+   "samples": 452,
+   "studies": 129,
+   "ratio_n_all": 0.9928,
+   "ratio_bp_all": 0.9923,
+   "ratio_n_p05_p95_of_300": [
+    0.9646,
+    1.0228
+   ],
+   "ratio_bp_p05_p95_of_300": [
+    0.9531,
+    1.0299
+   ],
+   "draws": 2000,
+   "seed": 20261120
+  },
+  {
+   "k": 40,
+   "samples": 452,
+   "studies": 129,
+   "ratio_n_all": 0.9852,
+   "ratio_bp_all": 0.9781,
+   "ratio_n_p05_p95_of_300": [
+    0.9582,
+    1.0136
+   ],
+   "ratio_bp_p05_p95_of_300": [
+    0.9395,
+    1.0149
+   ],
+   "draws": 2000,
+   "seed": 20261120
+  }
+ ]
+}

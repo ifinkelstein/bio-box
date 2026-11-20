@@ -4,6 +4,7 @@
         --pilot-stats /tmp/if2453/s3/spire/contigs/sample_contig_stats.tsv \
         --habitats aquatic,terrestrial --max-contigs 3000000 --max-bp 40000000000 \
         [--exclude TAKEN.tsv ...] [--seed 20261120] [--k 15] --out-dir DIR
+    python c48e_select.py validate --tables-dir T --pilot-stats S [--ks 5 15 25 40] --out OUT.json
 
 The order (card C-48e; the pilot's allocation, card C-42, made sequential so that any prefix is a tranche):
 1. Universe: SPIRE v1 study samples (`c42_select.merge_sample_tables`) whose level-1 habitat is one of `habitats`.
@@ -337,9 +338,67 @@ def cmd_run(a: argparse.Namespace) -> int:
     return 0
 
 
+def validate(train: list[dict], studies: dict[str, str], k: int, draws: int = 2000, size: int = 300,
+             seed: int = DEFAULT_SEED) -> dict:
+    """Leave-one-study-out check of `estimate_5k` on the pilot's samples: each sample estimated from the pilot samples
+    of other studies; the ratio of estimated to measured totals over all, and its 5th and 95th percentiles over
+    `draws` resamples (with replacement) of `size` samples."""
+    est = []
+    for t in train:
+        others = [u for u in train if studies[u["sample_id"]] != studies[t["sample_id"]]]
+        row = {"sample_id": t["sample_id"], "assembly_bp": t["total_bp"], "assembly_n50": t["assembly_n50"]}
+        e = estimate_5k([row], others, k)[0]
+        est.append((e["est_n_ge_5000"], int(t["n_ge_5000"]), e["est_bp_ge_5000"], int(t["bp_ge_5000"])))
+    import random
+
+    rng = random.Random(seed)
+    rn, rb = [], []
+    for _ in range(draws):
+        idx = [rng.randrange(len(est)) for _ in range(size)]
+        rn.append(sum(est[i][0] for i in idx) / sum(est[i][1] for i in idx))
+        rb.append(sum(est[i][2] for i in idx) / sum(est[i][3] for i in idx))
+    rn.sort()
+    rb.sort()
+    q = lambda v, p: round(v[int(p * (len(v) - 1))], 4)  # noqa: E731
+    return {"k": k, "samples": len(est), "studies": len({studies[t["sample_id"]] for t in train}),
+            "ratio_n_all": round(sum(e[0] for e in est) / sum(e[1] for e in est), 4),
+            "ratio_bp_all": round(sum(e[2] for e in est) / sum(e[3] for e in est), 4),
+            f"ratio_n_p05_p95_of_{size}": [q(rn, 0.05), q(rn, 0.95)],
+            f"ratio_bp_p05_p95_of_{size}": [q(rb, 0.05), q(rb, 0.95)], "draws": draws, "seed": seed}
+
+
+def cmd_validate(a: argparse.Namespace) -> int:
+    c42 = _sibling("c42_select")
+    tdir = Path(a.tables_dir)
+    habitats = tuple(sorted(h.strip() for h in a.habitats.split(",") if h.strip()))
+    merged = c42.merge_sample_tables(c42._load_study_tsvs(tdir / "study_tsv", tdir / "studies.html"),
+                                     c42._load_api_samples(tdir / "api_samples"),
+                                     c42._load_mag_bp(tdir / "spire_v1_genome_metadata.tsv.gz"))
+    by_id = {r["sample_id"]: r for r in merged if r["in_study_tsv"]}
+    train = []
+    with open(a.pilot_stats, newline="") as fh:
+        for s in sorted(csv.DictReader(fh, delimiter="\t"), key=lambda r: r["sample_id"]):
+            r = by_id.get(s["sample_id"])
+            if r is None or r["habitat"] not in habitats or int(s["total_bp"]) <= 0:
+                continue
+            train.append({"sample_id": s["sample_id"], "assembly_n50": r["assembly_n50"], "total_bp": int(s["total_bp"]),
+                          "bp_ge_5000": int(s["bp_ge_5000"]), "n_ge_5000": int(s["n_ge_5000"])})
+    studies = {t["sample_id"]: by_id[t["sample_id"]]["study"] for t in train}
+    res = {"habitats": list(habitats), "by_k": [validate(train, studies, k) for k in a.ks]}
+    Path(a.out).write_text(json.dumps(res, indent=1) + "\n")
+    print(json.dumps(res))
+    return 0
+
+
 def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser()
     sub = ap.add_subparsers(dest="cmd", required=True)
+    v = sub.add_parser("validate")
+    v.add_argument("--tables-dir", required=True)
+    v.add_argument("--pilot-stats", required=True)
+    v.add_argument("--habitats", default="aquatic,terrestrial")
+    v.add_argument("--ks", type=int, nargs="+", default=[5, 15, 25, 40])
+    v.add_argument("--out", required=True)
     p = sub.add_parser("run")
     p.add_argument("--tables-dir", required=True)
     p.add_argument("--pilot-stats", required=True)
@@ -351,7 +410,7 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--k", type=int, default=DEFAULT_K)
     p.add_argument("--out-dir", required=True)
     a = ap.parse_args(argv)
-    return cmd_run(a)
+    return cmd_validate(a) if a.cmd == "validate" else cmd_run(a)
 
 
 if __name__ == "__main__":

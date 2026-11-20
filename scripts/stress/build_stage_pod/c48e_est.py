@@ -156,7 +156,9 @@ def overlap(con, root: Path, uids: Path, other_inputs: Path, own_stage: str) -> 
         held_q.append(q)
         (c, b), = con.execute(f"SELECT count(*), coalesce(sum(contig_len), 0) FROM ours "
                               f"SEMI JOIN ({q}) h USING (contig_uid)").fetchall()
-        out["root_stages"][st] = {"contigs": int(c), "bp": int(b), "index_files": len(files)}
+        (n_st,), = con.execute(f"SELECT count(*) FROM ({q})").fetchall()
+        out["root_stages"][st] = {"contigs": int(c), "bp": int(b), "index_files": len(files),
+                                  "stage_default_contigs": int(n_st)}
     if held_q:
         con.execute("CREATE OR REPLACE TABLE held AS SELECT DISTINCT contig_uid FROM (" + " UNION ALL ".join(held_q) + ")"
                     " SEMI JOIN ours USING (contig_uid)")

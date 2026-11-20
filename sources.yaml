@@ -779,6 +779,16 @@ sources:
       CC BY-SA 4.0 (https://spire.embl.de/faqs, read 2026-11-18 for entry spire_pilot_assemblies; paper
       doi:10.1093/nar/gkad943). Share-alike: redistribution of a derived collection carries CC BY-SA 4.0
     redistributable: true
-    fetched: pending (written before the first request, DEC-50; completed after the fetch)
-    stored: not on /stor (fetched into /tmp/if2453/c48e1/dl/ on wilkcomp02; the staged inputs in /tmp/if2453/s2/inputs/SPX1/)
+    fetched: >-
+      2026-11-20 17:00:58 to 18:50:54 UTC (the pod's clock) by c48e_fetch.py (unit c48e1-fetch, 1 connection, 1.0 s
+      between request starts, User-Agent curl) into /tmp/if2453/c48e1/dl/ on wilkcomp02: 304 of 304 requested samples
+      answered HTTP 200 at the first try (0 HTTP 404, 0 retries, 0 refusals); every answer was gzip and was served
+      from spire.embl.de itself (no redirect host seen); 75,267,693,104 bytes on the wire and on disk,
+      256,948,810,775 bytes of FASTA decompressed; largest file 4,938,946,579 bytes; 6,580 s of transfer (11.4 MB/s,
+      derived); fetch_log.jsonl (304 lines: each file's bytes, md5 and sha256 on the wire and on disk, decompressed
+      bytes, times) sha256 e4b75b45d05ce335dfe4138b3b34563c90cfe12424da55850ba6cfe48aec4cf3; record
+      planning/measurements/2026-11-20_spire_tranche_1.md
+    stored: >-
+      not on /stor. The 304 files are hard-linked into the staged inputs /tmp/if2453/s2/inputs/SPX1/assemblies/ on
+      wilkcomp02 (objects.json names them there); their names under /tmp/if2453/c48e1/dl/ are removed after staging
     approved: under DEC-50 and DEC-58 (card C-48e part 1, 2026-11-20; the tranche's habitats and caps set by the orchestrator)
