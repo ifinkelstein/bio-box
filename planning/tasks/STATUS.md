@@ -937,7 +937,9 @@ probed by hand on the pod).
    gene caller resolves keys on two unrelated sort orders, so ordering genomes one way leaves three lookups random.
    Choices: (a) a sorted merge join for the stage (changes the batch order the gene-call plan is defined on, and
    touches `inputs.py` and `store.py`); (b) a per-batch sorted prefetch, about 2× and not O(1); (c) leave it and
-   size memory for it. Needed before the first stage that takes the root past 7.86 M contigs (`PL2`).
+   size memory for it. **Corrected 2026-11-20: it does not hold `PL2`.** The root reaches about 2.4 M contigs with
+   `V1`, `C1` to `C6`, `PL2` and `G1` together (*derived*, card B-56); the decision is needed before the IMG-UMAG
+   prokaryote stages (`J2` on) or GlobDB's `G2` on, which are also held for other reasons.
 17. **Where `domain_state` sits in the export tables.** Card C-38b put the new column between `pfam_architecture`
    and `protein_uid` in `hits.tsv` and the locus tables (`a9fc722`); cards W-23 and C-21c appended theirs at the end.
    Anyone reading these files by column position breaks. Before `rS0.1` it can still move to the end (a migration of
