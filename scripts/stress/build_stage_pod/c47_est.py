@@ -6,6 +6,8 @@ Implements:
 - DEC-43 (`MIN_JUDGED_CPU_MIN = 24.0`): steps estimated < 24 CPU-min are reported, not judged
 - DEC-53: a judged step stops the build ONLY when `ratio > 1.20` (`over_20pct`); a judged step with
   `ratio < 0.80` (`under_20pct`) is recorded and reported without stopping the build.
+- DEC-56: one record is accepted by name and value (C5's ingest, 45.803 against 38.057): it is listed under
+  `accepted_over_20pct` and in its row, not in `over_20pct`.
 
     python c47_est.py before --root ROOT --profile P --inputs IN --stage C5 [--out-plan F]
     python c47_est.py rates  --root ROOT --objects OBJECTS.JSON --stage C5 [--before BEFORE.JSON]
@@ -29,6 +31,12 @@ from biobox.l1.genecall import GENE_CALL_VERSION as GCV
 LIB, VER = "pfam", "38.2"
 TOL = 0.20
 MIN_JUDGED_CPU_MIN = 24.0  # DEC-43
+# DEC-56 (PI, 2026-11-20, "yes, accept c5 ingest and resume"): the driver accepts this one record by name and value,
+# stage C5, step ingest, 45.803 CPU-minutes against the code's estimate of 38.057 (ratio 1.204, 20.35% over; launch
+# c47-c5-1 was stopped on it on 2026-11-19), and reports it under `accepted_over_20pct` and in its row. Every other
+# step, and any other ingest record, is still judged as DEC-43 and DEC-53 say. Compared at the precision the record
+# and the estimate are reported here (3 decimals), as c26_est.py does for DEC-47. Card B-58 adds the gzip term.
+ACCEPTED = {("C5", "ingest", 45.803, 38.057): "DEC-56"}
 
 
 def rec(root: Path, stage: str, step: str) -> dict | None:
@@ -189,7 +197,7 @@ def before(a) -> int:
 
 def rates(a) -> int:
     root, st = Path(a.root), a.stage
-    rows, over_list, under_list = [], [], []
+    rows, over_list, under_list, accepted_rows = [], [], [], {}
     before_doc = json.loads(Path(a.before).read_text()) if a.before and Path(a.before).exists() else None
 
     def add(step: str, est: float, why: str) -> None:
@@ -204,6 +212,11 @@ def rates(a) -> int:
             wall_s=r["wall_s"],
             peak_rss_mib=round((r.get("peak_rss_bytes") or 0) / 2**20, 1),
         )
+        accepted = ACCEPTED.get((st, step, round(r["cpu_min"], 3), round(est, 3)))  # DEC-56: this one record only
+        if over and accepted is not None:
+            row["accepted"] = accepted  # reported, not judged: over 20%, accepted by name and value
+            row["over_20pct"] = over = False
+            accepted_rows[step] = accepted
         rows.append(row)
         if over:
             over_list.append(step)
@@ -251,6 +264,7 @@ def rates(a) -> int:
         "checked": len(rows),
         "over_20pct": over_list,
         "under_20pct": under_list,
+        "accepted_over_20pct": accepted_rows,
         "rows": rows,
     }, sort_keys=True))
     if over_list and all(x.startswith("genecall.batch-") for x in over_list):
