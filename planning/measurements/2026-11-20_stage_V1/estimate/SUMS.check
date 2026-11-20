@@ -1,0 +1,6 @@
+genomes.json: OK
+objects.json: OK
+records.tsv: OK
+repeated_records.tsv: OK
+shared_records.tsv: OK
+uhgv_v1.0_votus_full.fna: OK

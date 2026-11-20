@@ -1,0 +1,10 @@
+Next release: r26.11.2 (date 2026-11-20)
+Latest defined release: r26.11.1
+Stages (10): S1,P1,P2,P3,P4,P5,P6,H1,PL1,V1
+New stages (1): V1
+Action: cut
+Excluded stages (1; left out, never waited for):
+  - C5 (stored): stored only (depth=stored; DEC-54 requires depth >= called)
+Clustering: 17166.98 CPU-min one-process (*estimate*) from 55,445,574 protein_seq rows; mode=in parts; cut={"one_process_cpu_min_max": 20000.0, "part_cpu_min": 240.0}
+Thread plan by the hour: day (08:00-20:00 weekdays) <= 40; night/weekend (20:00-08:00 weekdays & weekends (when other users < 0.5 cores)) <= 56; mem_scope=200G, cpu_min_per_process=300
+Now (2026-11-20 17:08 CST): cap=40, allowance=39 (ours=1.09 cores, others=0.03 cores)
