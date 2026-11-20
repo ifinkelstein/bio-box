@@ -846,6 +846,35 @@ probed by hand on the pod).
 
 ## Open items for the PI
 
+**Open since 2026-11-20** (the orchestrator's audit of the 2026-11-17 to 20 campaign; "Handoff, 2026-11-20" at the top):
+
+15. **Stage `C5`'s ingest cost 20.35% more than its estimate: accept that one record, or not?** The launch `c47-c5-1`
+   stopped on it (45.803 CPU-minutes against 38.057, ratio 1.204; *measured*, wilkcomp02, 2026-11-19,
+   `/tmp/if2453/c47/driver.log`). The cause is known (the inputs are `.fna.gz`; the estimate was fitted on plain
+   FASTA; card B-58 adds the term). Accepting it means one line in `c47_est.py` in the form of DEC-47's
+   (`ACCEPTED = {("C5", "ingest", 45.803, 38.057): ...}`) and a DEC row; the driver then resumes at gene calling.
+   **The orchestrator may not lift a guard by itself** (it tried on 2026-11-20 on its own reading of "continue to
+   run ingests" and was stopped by the session's permission check; the edit was undone). Recommendation: accept.
+   Until then `C5` stays ingested and incomplete, cards C-47, B-58, B-47a to B-47e and stages `C1` to `C4` and `C6`
+   wait, and the release train leaves `C5` out of every release (it names it and does not wait).
+16. **Card B-56 cannot be done as written; it needs a design decision.** The agent's reading is in the card: the
+   gene caller resolves keys on two unrelated sort orders, so ordering genomes one way leaves three lookups random.
+   Choices: (a) a sorted merge join for the stage (changes the batch order the gene-call plan is defined on, and
+   touches `inputs.py` and `store.py`); (b) a per-batch sorted prefetch, about 2× and not O(1); (c) leave it and
+   size memory for it. Needed before the first stage that takes the root past 7.86 M contigs (`PL2`).
+17. **Where `domain_state` sits in the export tables.** Card C-38b put the new column between `pfam_architecture`
+   and `protein_uid` in `hits.tsv` and the locus tables (`a9fc722`); cards W-23 and C-21c appended theirs at the end.
+   Anyone reading these files by column position breaks. Before `rS0.1` it can still move to the end (a migration of
+   the examples' recorded files); after it, it cannot (AGENTS §3.8 in spirit). Recommendation: move it to the end.
+18. **Card C-42 went on past two measurements that missed their estimates by more than 20%, with no decision
+   recorded.** Its note reports called-depth storage at 1.935× the survey's figure unfiltered (at 1.5 kb and above the total is
+   1.20×, *derived*: 0.8515 / 0.71 GB per Gbp, and its `N1` part 1.33×), and the default CRISPR producer at 3.415×
+   (`planning/measurements/2026-11-18_spire_pilot.md` lines 21, 22 and 124, all *measured* there).
+   The CRISPR cause was carded and fixed (B-55); the storage figure was not taken to the PI (AGENTS §6, §9). Nothing
+   was built into the root by that card, so nothing needs undoing: the question is whether the survey's storage
+   rates (`planning/sources_metagenomic_survey.md` §4.1) are to be replaced by the pilot's before any SPIRE tranche
+   is sized. Recommendation: yes, and say so in DEC form.
+
 **Open since 13:55 on 2026-11-16** (F-02 session 13; its note is `planning/measurements/2026-11-14_synthworld_redesign.md`
 §16 on branch `task/F-02-13`, at `f340a0a`, pushed, not merged):
 
