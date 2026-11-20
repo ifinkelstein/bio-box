@@ -253,9 +253,11 @@ def _phylum_map_sql(
 ) -> None:
     """Create table `prot_phylum(protein_uid BLOB, phylum VARCHAR)` mapping each C5 protein to its phylum.
 
-    Uses `selection.tsv` (accession -> phylum), `objects.json` + `l0seq/contig_occurrence` + `l1/feature_protein`.
-    If a protein appears in multiple phyla, assigns the deterministic lexicographically first phylum
-    (and records multi-phylum count separately).
+    Uses `selection.tsv` (accession -> phylum) and the stage's ingest files: `l0/l0_manifest` (`object_path`, the
+    object's file name `<accession>.fna.gz`, and `object_sha256`), `l0seq/contig_occurrence` (`l0_object_sha256`,
+    `contig_uid`) and the gene calls' `l1/feature_protein` (`contig_uid`, `protein_uid`). `objects.json` is not
+    needed for the mapping (the manifest names each object). If a protein appears in multiple phyla, assigns the
+    deterministic lexicographically first phylum (and records multi-phylum count separately).
     """
     acc_to_phylum: dict[str, str] = {}
     with open(selection_tsv, newline="") as fh:
@@ -267,32 +269,30 @@ def _phylum_map_sql(
                 ph = parts[1] if len(parts) > 1 else ""
             acc_to_phylum[acc] = ph or "unknown"
 
-    obj_to_phylum: list[tuple[str, str]] = []
-    for o in json.loads(objects_json.read_text()):
-        p = Path(o["path"])
-        stem = p.name
+    def accession(name: str) -> str:
+        stem = Path(name).name
         for suf in (".fna.gz", ".fna", ".fa.gz", ".fa"):
             if stem.endswith(suf):
-                stem = stem[: -len(suf)]
-                break
-        ph = acc_to_phylum.get(stem, "unknown")
-        obj_to_phylum.append((str(p), ph))
+                return stem[: -len(suf)]
+        return stem
 
-    con.execute("CREATE TEMP TABLE obj_phylum (source_path VARCHAR, phylum VARCHAR)")
-    con.executemany("INSERT INTO obj_phylum VALUES (?, ?)", obj_to_phylum)
-    l0_man = _record_files(root, stage, "ingest", f"l0seq/l0_manifest/stage={stage}/")
+    l0_man = _record_files(root, stage, "ingest", f"l0/l0_manifest/stage={stage}/")
     occ = _record_files(root, stage, "ingest", f"l0seq/contig_occurrence/stage={stage}/")
     fp = _record_files(root, stage, "genecall", f"l1/feature_protein/gene_call_version={gcv}/stage={stage}/")
+    obj_to_phylum = [
+        (bytes(sha), acc_to_phylum.get(accession(path), "unknown"))
+        for path, sha in con.execute(
+            f"SELECT object_path, object_sha256 FROM read_parquet({_sql_list(l0_man)}, hive_partitioning = false)"
+        ).fetchall()
+    ]
+    con.execute("CREATE TEMP TABLE obj_phylum (l0_object_sha256 BLOB, phylum VARCHAR)")
+    con.executemany("INSERT INTO obj_phylum VALUES (?, ?)", obj_to_phylum)
     con.execute(f"""
         CREATE TABLE prot_phylum AS
-        WITH man AS (
-            SELECT object_uid, source_path FROM read_parquet({_sql_list(l0_man)}, hive_partitioning = false)
-        ),
-        contig_ph AS (
+        WITH contig_ph AS (
             SELECT DISTINCT o.contig_uid, coalesce(op.phylum, 'unknown') AS phylum
             FROM read_parquet({_sql_list(occ)}, hive_partitioning = false) o
-            LEFT JOIN man m USING (object_uid)
-            LEFT JOIN obj_phylum op USING (source_path)
+            LEFT JOIN obj_phylum op USING (l0_object_sha256)
         ),
         fp AS (
             SELECT DISTINCT contig_uid, protein_uid FROM read_parquet({_sql_list(fp)}, hive_partitioning = false)

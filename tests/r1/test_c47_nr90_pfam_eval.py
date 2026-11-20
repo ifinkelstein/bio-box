@@ -152,6 +152,105 @@ def test_c47_pair_evaluation_phylum_b47b_and_stop_gate():
     assert res["by_phylum"]["p__B"]["pairs_missed"] == 1
 
 
+def _uid(name: str) -> bytes:
+    return name.encode().ljust(16, b"\0")
+
+
+def test_c47_eval_main_on_a_root_with_the_registry_columns(tmp_path):
+    """`main` end to end on a small root whose tables carry the registry's column names (l0_manifest's object_path and
+    object_sha256, contig_occurrence's l0_object_sha256, feature_protein, protein_seq, l1_domains, cluster_member,
+    cluster_member_aln), each read by its run record's file list. The scenario is the one of the in-memory test above;
+    its counts were worked out by hand there."""
+    import json
+
+    import pyarrow as pa
+    import pyarrow.parquet as pq
+
+    m = _load("c47_nr90_pfam_eval", EVAL_SCRIPT)
+    from biobox.l1.genecall import GENE_CALL_VERSION as GCV
+
+    root = tmp_path / "root"
+    U = pa.binary(16)
+
+    def put(rel: str, table: pa.Table) -> str:
+        p = root / rel
+        p.parent.mkdir(parents=True, exist_ok=True)
+        pq.write_table(table, p)
+        return rel
+
+    def record(stage: str, step: str, rels: list[str]) -> None:
+        p = root / "runs" / f"stage={stage}" / f"{step}.json"
+        p.parent.mkdir(parents=True, exist_ok=True)
+        p.write_text(json.dumps({"outputs": [{"path": r} for r in rels]}))
+
+    lens = {"p1": 100, "p2": 98, "p3": 70, "p4": 200, "p5": 195, "p6": 200}
+    names = sorted(lens)
+    ps = put(f"l0seq/protein_seq/gene_call_version={GCV}/stage=C5/protein_prefix=00/part-0.parquet", pa.table({
+        "protein_uid": pa.array([_uid(n) for n in names], U), "protein_digest": pa.array([b"\0" * 32] * 6, pa.binary(32)),
+        "length": pa.array([lens[n] for n in names], pa.uint32()), "seq": ["M" * lens[n] for n in names]}))
+    contig = {"p1": "cA", "p2": "cA", "p3": "cA", "p4": "cB", "p5": "cB", "p6": "cB"}
+    fp = put(f"l1/feature_protein/gene_call_version={GCV}/stage=C5/part-0.parquet", pa.table({
+        "contig_uid": pa.array([_uid(contig[n]) for n in names], U), "feature_uid": pa.array([_uid("f" + n) for n in names], U),
+        "start": pa.array([10 * k for k in range(6)], pa.uint64()), "end": pa.array([10 * k + 9 for k in range(6)], pa.uint64()),
+        "strand": pa.array([1] * 6, pa.int8()), "protein_uid": pa.array([_uid(n) for n in names], U),
+        "genetic_code": pa.array([11] * 6, pa.uint8()), "edit_type": ["none"] * 6}))
+    record("C5", "genecall", [ps, fp])
+    sha = {"GCA_A": b"\x01" * 32, "GCA_B": b"\x02" * 32}
+    man = put("l0/l0_manifest/stage=C5/part-0.parquet", pa.table({
+        "object_path": ["GCA_A.fna.gz", "GCA_B.fna.gz"], "object_sha256": pa.array([sha["GCA_A"], sha["GCA_B"]], pa.binary(32))}))
+    occ = put("l0seq/contig_occurrence/stage=C5/source=ncbi_genomes/part-0.parquet", pa.table({
+        "l0_object_sha256": pa.array([sha["GCA_A"], sha["GCA_B"]], pa.binary(32)),
+        "record_ordinal": pa.array([0, 0], pa.uint64()), "contig_uid": pa.array([_uid("cA"), _uid("cB")], U)}))
+    record("C5", "ingest", [man, occ])
+    doms = [("p1", "PF00001", 10, 50), ("p1", "PF00002", 60, 90), ("p2", "PF00001", 10, 50), ("p3", "PF00001", 10, 50),
+            ("p3", "PF00003", 55, 68), ("p4", "PF00010", 50, 150), ("p5", "PF00010", 50, 150), ("p5", "PF00011", 155, 190),
+            ("p6", "PF00010", 50, 150), ("p6", "PF00012", 155, 195)]
+    dom = put("l1/domains/library=pfam-38.2/stage=C5/part-0.parquet", pa.table({
+        "protein_uid": pa.array([_uid(d[0]) for d in doms], U), "model_acc": [d[1] for d in doms],
+        "env_start": pa.array([d[2] for d in doms], pa.uint32()), "env_end": pa.array([d[3] for d in doms], pa.uint32())}))
+    record("C5", "domains-pfam-38.2", [dom])
+    src = put(f"l0seq/protein_seq/gene_call_version={GCV}/stage=P1/protein_prefix=00/part-0.parquet",
+              pa.table({"protein_uid": pa.array([_uid("p1")], U)}))
+    plan = root / "l1/domain_scan/library=pfam-38.2/stage=C5/plan.json"
+    plan.parent.mkdir(parents=True, exist_ok=True)
+    plan.write_text(json.dumps({"copy": {"sources": [{"stage": "P1", "protein_files": [{"path": src}]}]}}))
+    rep = {"p1": "p1", "p2": "p1", "p3": "p1", "p4": "p4", "p5": "p4", "p6": "p4"}
+    cm = tmp_path / "cm.parquet"
+    pq.write_table(pa.table({"member_uid": pa.array([_uid(n) for n in names], U), "level": ["nr90"] * 6,
+                             "cluster_uid": pa.array([_uid("c" + rep[n]) for n in names], U),
+                             "rep_uid": pa.array([_uid(rep[n]) for n in names], U), "cluster_params_hash": ["h"] * 6}), cm)
+    # q* member, t* representative; the CIGAR's query is the representative (I: representative only, D: member only)
+    aln_rows = [("p1", 0, 100, 0, 100, b"100M"), ("p2", 0, 98, 0, 100, b"50M2I48M"), ("p3", 0, 70, 0, 70, b"70M"),
+                ("p4", 0, 200, 0, 200, b"200M"), ("p5", 0, 100, 0, 100, b"100M"), ("p6", 60, 200, 60, 200, b"140M")]
+    aln = tmp_path / "aln.parquet"
+    pq.write_table(pa.table({
+        "member_uid": pa.array([_uid(r[0]) for r in aln_rows], U), "level": ["nr90"] * 6,
+        "rep_uid": pa.array([_uid(rep[r[0]]) for r in aln_rows], U),
+        **{k: pa.array([r[i] for r in aln_rows], pa.uint32()) for i, k in enumerate(("qstart", "qend", "tstart", "tend"), 1)},
+        "pident": pa.array([1.0] * 6, pa.float32()), "alnlen": pa.array([100] * 6, pa.uint32()),
+        "cigar": pa.array([r[5] for r in aln_rows], pa.binary())}), aln)
+    sel = tmp_path / "selection.tsv"
+    sel.write_text("accession\tphylum\nGCA_A\tp__A\nGCA_B\tp__B\n")
+    objs = tmp_path / "objects.json"
+    objs.write_text(json.dumps([{"path": "/x/GCA_A.fna.gz"}, {"path": "/x/GCA_B.fna.gz"}]))
+    out = tmp_path / "out.json"
+    assert m.main(["eval", "--root", str(root), "--stage", "C5", "--stage-cm", str(cm), "--stage-aln", str(aln),
+                   "--selection", str(sel), "--objects", str(objs), "--out", str(out), "--tmp", str(tmp_path / "t")]) == 0
+    doc = json.loads(out.read_text())
+    ov = doc["stage_local"]["overall"]
+    assert (ov["true_pairs"], ov["pairs_right"], ov["pairs_false"], ov["pairs_missed"]) == (10, 9, 1, 1)
+    assert (ov["scanned_residues"], ov["total_residues"], ov["scanned_residues_after_b47b"]) == (565, 863, 465)
+    assert (ov["reps"], ov["length_scanned"], ov["unmapped_scanned"], ov["inferred_members"]) == (2, 1, 1, 2)
+    assert doc["dec35_6_stop_triggered"] is True
+    ph = doc["stage_local"]["by_phylum"]
+    assert set(ph) == {"p__A", "p__B"}
+    assert (ph["p__A"]["pairs_false"], ph["p__A"]["pairs_missed"]) == (1, 0)
+    assert (ph["p__B"]["pairs_false"], ph["p__B"]["pairs_missed"]) == (0, 1)
+    # p2's PF00001 maps onto itself; p6's PF00010 [50, 150) maps from the alignment's first column (60), 10 from its own
+    co = doc["stage_local"]["coordinates"]
+    assert co["n_pairs"] == 2 and co["both_within_10"] == 1.0 and co["both_within_5"] == 0.5
+
+
 def test_c47_est_dec53_rate_guard():
     est = _load("c47_est", EST_SCRIPT)
     # DEC-43: < 24 CPU-min is never judged even if ratio is 2.0
