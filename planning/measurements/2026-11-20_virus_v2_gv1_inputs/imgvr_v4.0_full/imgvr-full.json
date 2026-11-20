@@ -1,0 +1,102 @@
+{
+ "bases": 160201461252,
+ "by_confidence": {
+  "High-confidence": [
+   5576197,
+   82353017673
+  ],
+  "Putative": [
+   10101426,
+   77848443579
+  ]
+ },
+ "by_miuvig": {
+  "Genome fragment": [
+   13274898,
+   128171695570
+  ],
+  "High-quality": [
+   537894,
+   20464899490
+  ],
+  "Reference": [
+   13971,
+   438996210
+  ],
+  "Unsure": [
+   1850860,
+   11125869982
+  ]
+ },
+ "rest": {
+  "min_contig_len_1": {
+   "bases": 80912498728,
+   "called_cpu_min": 7534.8,
+   "crispr_cpu_min": 226.7,
+   "fasta_bytes_estimate": 82261040373,
+   "genecall_batches": 30,
+   "genecall_cpu_min": 6970.0,
+   "genes_code_rate": 116603002,
+   "ingest_cpu_min": 338.2,
+   "storage_gb_at_0.71": 57.4,
+   "votus": 8382031,
+   "votus_with_a_high_confidence_member": 2693001
+  },
+  "min_contig_len_1000": {
+   "bases": 80912206437,
+   "called_cpu_min": 7534.8,
+   "crispr_cpu_min": 226.7,
+   "fasta_bytes_estimate": 82260743211,
+   "genecall_batches": 30,
+   "genecall_cpu_min": 6969.9,
+   "genes_code_rate": 116602581,
+   "ingest_cpu_min": 338.2,
+   "storage_gb_at_0.71": 57.4,
+   "votus": 8381674,
+   "votus_with_a_high_confidence_member": 2692653
+  },
+  "min_contig_len_10000": {
+   "bases": 44953333947,
+   "called_cpu_min": 4186.3,
+   "crispr_cpu_min": 125.9,
+   "fasta_bytes_estimate": 45702556179,
+   "genecall_batches": 17,
+   "genecall_cpu_min": 3872.5,
+   "genes_code_rate": 64782250,
+   "ingest_cpu_min": 187.9,
+   "storage_gb_at_0.71": 31.9,
+   "votus": 2149481,
+   "votus_with_a_high_confidence_member": 1070527
+  },
+  "min_contig_len_20000": {
+   "bases": 25150612013,
+   "called_cpu_min": 2342.3,
+   "crispr_cpu_min": 70.5,
+   "fasta_bytes_estimate": 25569788880,
+   "genecall_batches": 10,
+   "genecall_cpu_min": 2166.7,
+   "genes_code_rate": 36244547,
+   "ingest_cpu_min": 105.2,
+   "storage_gb_at_0.71": 17.9,
+   "votus": 694776,
+   "votus_with_a_high_confidence_member": 455421
+  },
+  "min_contig_len_5000": {
+   "bases": 70677311183,
+   "called_cpu_min": 6581.7,
+   "crispr_cpu_min": 198.0,
+   "fasta_bytes_estimate": 71855266369,
+   "genecall_batches": 26,
+   "genecall_cpu_min": 6088.3,
+   "genes_code_rate": 101853073,
+   "ingest_cpu_min": 295.4,
+   "storage_gb_at_0.71": 50.2,
+   "votus": 5913093,
+   "votus_with_a_high_confidence_member": 2095214
+  }
+ },
+ "rows": 15677623,
+ "votus": 8606551,
+ "votus_by_v2_rule": 224520,
+ "votus_with_hq_member_any_confidence": 249027
+}

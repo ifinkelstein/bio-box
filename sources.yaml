@@ -560,6 +560,23 @@ sources:
       - path: /stor/work/Wilke/if2453/all-the-data/jgi_20261118/jgi_img_vr_v4_full_20261118.zip
         bytes: 48814883689
         sha256: a4075d9c28ef31a4796321725e753d87641404cd9ed28f6a57ded37de45bd8a8
+    staged:
+      - stage: V2
+        object: /tmp/if2453/s2/inputs/V2/imgvr_v4.1_hc_hq_votu_reps.fna
+        bytes: 9464839653
+        sha256: 69bf5d0984a4c430b25299607d3bacab1b0eea373a4204524515d650032d7e0d
+        derived_from: >-
+          jgi_img_vr_v4.1_hc_20261118.zip, members IMGVR_all_Sequence_information-high_confidence.tsv and
+          IMGVR_all_nucleotides-high_confidence.fna.gz (md5 values in files above)
+        rule: >-
+          scripts/stress/build_stage_pod/c48c_virus_inputs.py v2: one representative per vOTU that has a High-quality
+          member (224,520 vOTUs), by highest completeness capped at 100, then lowest contamination, then longest, then
+          UViG id (card C-48c part 2, planning/measurements/2026-11-20_virus_v2_gv1_inputs.md)
+        left_for_later: >-
+          /tmp/if2453/s2/inputs/V2/V2_left_for_later_hc.tsv.gz (5,351,677 rows, sha256
+          ace2ec9845b0cea6e6f4c9f81c9baaf7b7b348f90440e0dda89d69de86ad5b62) and
+          /tmp/if2453/s2/inputs/V2/V2_left_for_later_v4.0_putative.tsv.gz (10,101,426 rows, sha256
+          d607ba78f5ed09342f6095e4b471b9f7703374f4757a4b070f4f3861f0c80751); DEC-59, planning/CATALOG_GOAL.md
     approved: by the PI on 2026-11-18 ("try to get as many useful jgi databases as possible, and the associated environmental metadata")
   - name: jgi_img_pr
     what: >-
@@ -658,6 +675,14 @@ sources:
       - path: /stor/work/Wilke/if2453/all-the-data/jgi_20261118/jgi_inovirus_umag_iuig_meta_20261118.zip
         bytes: 88697809
         sha256: f8b546e2a50ed9074f3e14bf75852d7b95dd59cdf0ee9b39a259a723e286e393
+    staged:
+      - stage: V2
+        object: /tmp/if2453/s2/inputs/V2/inovirus_roux2019.fna
+        bytes: 50500520
+        sha256: 209f5a171bab5b2d608ea236e64c959206729a3cb22e2a9c39fd487dc5d22539
+        derived_from: >-
+          jgi_inovirus_umag_iuig_meta_20261118.zip, member Gb_files_inoviruses.zip (md5 in files above), every GenBank
+          record as FASTA (5,964 records; card C-48c part 2)
     approved: by the PI on 2026-11-18 ("enumerate everything they have, and grab the biggest things")
   - name: jgi_gems_nersc
     what: >-
