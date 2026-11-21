@@ -329,8 +329,16 @@ def test_rate_guard_dec43_and_dec53(tmp_path):
     assert res_under["under_20pct"][0]["step"] == "postings"
     assert res_under["exit_code"] == 0
 
-    # Judged step >20% OVER estimate -> exit 3 (DEC-43, DEC-53)
+    # Judged step over 1.20 and at or under 1.50 of its estimate (55 / 40 = 1.375) -> recorded, exit 0 (DEC-64;
+    # before DEC-64 this record stopped the train, and this test asserted exit 3 for it)
     _write_record(tmp_path, rel, "cluster.plan", cpu_min=55.0)
+    res_band = te.check_rates(tmp_path, rel, est_path)
+    assert res_band["over_20pct"] == []
+    assert [x["step"] for x in res_band["recorded_over_20pct"]] == ["cluster.plan"]
+    assert res_band["exit_code"] == 0
+
+    # Judged step more than 1.50 times its estimate (61 / 40 = 1.525) -> exit 3 (DEC-43, DEC-64)
+    _write_record(tmp_path, rel, "cluster.plan", cpu_min=61.0)
     res_over = te.check_rates(tmp_path, rel, est_path)
     assert len(res_over["over_20pct"]) == 1
     assert res_over["over_20pct"][0]["step"] == "cluster.plan"

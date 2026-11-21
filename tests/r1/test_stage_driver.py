@@ -523,7 +523,7 @@ def test_a_step_estimated_under_24_cpu_minutes_is_never_judged():
 
 def test_a_judged_step_more_than_20_percent_over_stops():
     est = _module("stage_est")
-    doc = est.judge_items([_item("ingest", 30.25, 25.0)], {})
+    doc = est.judge_items([_item("ingest", 37.6, 25.0)], {})  # 1.504: over DEC-64's 1.50 (card A-16; was 30.25, 1.21)
     assert doc["over_20pct"] == ["ingest"] and est.rates_exit(doc) == 3
 
 
@@ -535,7 +535,7 @@ def test_a_judged_step_more_than_20_percent_under_is_recorded_and_does_not_stop(
 
 def test_a_group_still_running_is_judged_over_on_its_partial_sum_and_never_under():
     est = _module("stage_est")
-    over = est.judge_items([_item("genecall:note", 300.0, 236.0, complete=False)], {})
+    over = est.judge_items([_item("genecall:note", 360.0, 236.0, complete=False)], {})  # 1.525 (A-16; was 300, 1.271)
     under = est.judge_items([_item("genecall:note", 10.0, 236.0, complete=False)], {})
     assert over["over_20pct"] == ["genecall:note"]
     assert under["under_20pct"] == [] and under["over_20pct"] == []
@@ -543,10 +543,11 @@ def test_a_group_still_running_is_judged_over_on_its_partial_sum_and_never_under
 
 def test_an_accepted_record_is_reported_and_not_stopped_only_at_its_exact_values():
     est = _module("stage_est")
-    acc = {("ingest", 45.803, 38.057): "DEC-56"}
-    doc = est.judge_items([_item("ingest", 45.803, 38.057)], acc)
+    # card A-16: a line decides only over DEC-64's 1.50, so the record is moved there (was DEC-56's 45.803, 1.204)
+    acc = {("ingest", 60.000, 38.057): "DEC-56"}
+    doc = est.judge_items([_item("ingest", 60.000, 38.057)], acc)
     assert doc["over_20pct"] == [] and doc["accepted_over_20pct"] == {"ingest": "DEC-56"}
-    other = est.judge_items([_item("ingest", 45.9, 38.057)], acc)
+    other = est.judge_items([_item("ingest", 60.1, 38.057)], acc)
     assert other["over_20pct"] == ["ingest"], "an accepted record covers its one record, at its values"
 
 
@@ -1673,7 +1674,7 @@ def test_3_rates_on_a_published_plan_with_shards_a_judge_line_and_an_accepted_re
     def records(S):
         S["records"]["ZQ"][batch] = []
         S["cpu"].update({batch: 40.0, "domains-pfam-38.2.shard-00000": 0.5})
-        S["gcplan"]["batches"][0]["estimate_cpu_min"] = 30.0
+        S["gcplan"]["batches"][0]["estimate_cpu_min"] = 26.0  # 40 / 26 = 1.538 (card A-16; was 30.0, 1.333)
 
     r = build_root(tmp_path, records)
     judge = "JUDGE=genecall 25 planning/measurements/2026-11-20_stage_V1.md\n"
@@ -1681,12 +1682,12 @@ def test_3_rates_on_a_published_plan_with_shards_a_judge_line_and_an_accepted_re
     doc = est.rates_doc(est.read_conf(r["conf"], "ZQ"), r["root"], bprofile.load(r["profile"]), tmp_path / "none",
                         str(r["before_json"]), tmp_path / "t")
     by = {x["step"]: x for x in doc["rows"]}
-    assert by[batch]["over_20pct"], "40 against the plan's 30"
+    assert by[batch]["over_20pct"], "40 against the plan's 26"
     assert by["genecall.note"]["cpu_min"] == pytest.approx(40.1) and by["genecall.note"]["over_20pct"]
     assert by["domains-pfam-38.2.shard-00000"]["judged"] is False, "an estimate under 24 is never judged (DEC-43)"
     assert est.rates_exit(doc) == 3
     r["conf"].write_text(r["conf"].read_text() + "ACCEPTED=genecall.note 40.100 25.000 DEC-56\n"
-                         f"ACCEPTED={batch} 40.000 30.000 DEC-56\n")
+                         f"ACCEPTED={batch} 40.000 26.000 DEC-56\n")
     doc = est.rates_doc(est.read_conf(r["conf"], "ZQ"), r["root"], bprofile.load(r["profile"]), tmp_path / "none",
                         str(r["before_json"]), tmp_path / "t")
     assert doc["over_20pct"] == [] and set(doc["accepted_over_20pct"]) == {"genecall.note", batch}

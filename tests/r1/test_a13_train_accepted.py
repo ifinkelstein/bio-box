@@ -1,9 +1,11 @@
 """Ring R1: card A-13, the release train's table of records accepted by a decision row (DEC-43, DEC-53).
 
-`train_est.py rates` stops the train (exit 3) on a judged step more than 20% over its estimate. Its table `ACCEPTED`
-carries records the PI accepted, each by a decision row, as `c35_est.py` carried DEC-55 and `c47_est.py` DEC-56.
-The table is empty in card A-13's commit. These tests inject entries with `monkeypatch` and drive `rates` on a small
-root of run records constructed here (no data root, no MinCED, MMseqs2 or hmmsearch).
+`train_est.py rates` stops the train (exit 3) on a judged step more than 1.50 times its estimate (DEC-64; more than
+20% over until card A-16). Its table `ACCEPTED` carries records the PI accepted, each by a decision row, as
+`c35_est.py` carried DEC-55 and `c47_est.py` DEC-56. The table is empty in card A-13's commit. These tests inject
+entries with `monkeypatch` and drive `rates` on a small root of run records constructed here (no data root, no MinCED,
+MMseqs2 or hmmsearch). Card A-16 moved the root's stopping part and the entries' bounds above 1.50, where an entry
+still decides; the band from 1.20 to 1.50 is tested in tests/r1/test_a16_rate_guard_bands.py.
 """
 from __future__ import annotations
 
@@ -48,7 +50,7 @@ def _root(tmp_path: Path, rel: str = REL, *, postings: float = 50.0) -> tuple[Pa
     plan.parent.mkdir(parents=True)
     plan.write_text(json.dumps({"parts": [{"cpu_min": 200.0}] * 3}))
     _record(root, rel, P0, 100.0)    # ratio 1.000
-    _record(root, rel, P1, 121.5)    # ratio 1.215: over 20%, judged
+    _record(root, rel, P1, 155.0)    # ratio 1.550: over 1.50, judged (card A-16: was 121.5, 1.215)
     _record(root, rel, P2, 70.0)     # ratio 0.700: under 20%, judged
     _record(root, rel, "postings", postings)
     _record(root, rel, "tokens", 30.0)   # estimate 10: never judged (DEC-43)
@@ -65,17 +67,18 @@ def _row(step: str, cpu: float, est: float, ratio: float, basis: str = BASIS, ju
 
 def _expected_empty_table(rel: str = REL) -> dict:
     """What `rates` printed before card A-13 on the root of `_root`, worked out by hand from the guard's rules."""
-    p1 = _row(P1, 121.5, 100.0, 1.215)
+    p1 = _row(P1, 155.0, 100.0, 1.55)
     p2 = _row(P2, 70.0, 100.0, 0.7)
     return {
         "release": rel,
         "records": 6,
         "judged": 4,                        # three parts and postings; tokens is under 24 CPU-minutes
-        "cpu_min": 372.5,                   # 1 + 100 + 121.5 + 70 + 50 + 30
+        "cpu_min": 406.0,                   # 1 + 100 + 155 + 70 + 50 + 30
         "estimate_of_recorded": 360.0,      # 0 + 100 + 100 + 100 + 50 + 10
         "worst_over": p1,
         "largest": p1,
         "over_20pct": [p1],
+        "recorded_over_20pct": [],          # card A-16 (DEC-64): nothing over 1.20 and at or under 1.50
         "under_20pct": [p2],
         "outside_20pct": [p1, p2],
         "no_estimate": ["catalog"],
@@ -115,7 +118,7 @@ def test_script_as_the_train_runs_it_is_unchanged_for_a_release_no_entry_names(t
 # --- An entry accepts at or under its bound, and nothing else --------------------------------------------------
 
 
-@pytest.mark.parametrize("bound", [1.215, 1.30, 1.60])
+@pytest.mark.parametrize("bound", [1.55, 1.58, 1.60])
 def test_accepted_at_and_under_the_bound(tmp_path, monkeypatch, capsys, bound):
     te = _te()
     monkeypatch.setattr(te, "ACCEPTED", (te.Accept(REL, f"{CALL}.part-*", bound, "DEC-55"),))
@@ -125,7 +128,7 @@ def test_accepted_at_and_under_the_bound(tmp_path, monkeypatch, capsys, bound):
     assert err == ""
     assert doc["over_20pct"] == []
     (acc,) = doc["accepted_over_20pct"]
-    assert acc["step"] == P1 and acc["ratio"] == 1.215 and acc["accepted"] == "DEC-55"
+    assert acc["step"] == P1 and acc["ratio"] == 1.55 and acc["accepted"] == "DEC-55"
     # Still outside 20% and still in the measurement note's inputs; the under-estimate is untouched.
     assert [r["step"] for r in doc["outside_20pct"]] == [P1, P2]
     assert [r["step"] for r in doc["under_20pct"]] == [P2]
@@ -136,14 +139,14 @@ def test_accepted_at_and_under_the_bound(tmp_path, monkeypatch, capsys, bound):
 
 def test_stopped_above_the_bound_and_says_the_entry_was_exceeded(tmp_path, monkeypatch, capsys):
     te = _te()
-    monkeypatch.setattr(te, "ACCEPTED", (te.Accept(REL, f"{CALL}.part-*", 1.21, "DEC-55"),))
+    monkeypatch.setattr(te, "ACCEPTED", (te.Accept(REL, f"{CALL}.part-*", 1.54, "DEC-55"),))
     root, est = _root(tmp_path)
     rc, doc, _ = _rates(te, root, est, capsys)
     assert rc == 3
     assert doc["accepted_over_20pct"] == []
     (over,) = doc["over_20pct"]
     assert over["step"] == P1
-    assert over["accepted_bound_exceeded"] == {"decision": "DEC-55", "step": f"{CALL}.part-*", "max_ratio": 1.21}
+    assert over["accepted_bound_exceeded"] == {"decision": "DEC-55", "step": f"{CALL}.part-*", "max_ratio": 1.54}
     assert doc["worst_over"]["step"] == P1
 
 
@@ -159,8 +162,8 @@ def test_stopped_for_another_release(tmp_path, monkeypatch, capsys):
 
 def test_stopped_for_another_step_at_the_same_ratio(tmp_path, monkeypatch, capsys):
     te = _te()
-    monkeypatch.setattr(te, "ACCEPTED", (te.Accept(REL, f"{CALL}.part-*", 1.30, "DEC-55"),))
-    root, est = _root(tmp_path, postings=60.75)  # 60.75 / 50 = 1.215, as part-00001
+    monkeypatch.setattr(te, "ACCEPTED", (te.Accept(REL, f"{CALL}.part-*", 1.58, "DEC-55"),))
+    root, est = _root(tmp_path, postings=77.5)  # 77.5 / 50 = 1.55, as part-00001
     rc, doc, _ = _rates(te, root, est, capsys)
     assert rc == 3
     assert [r["step"] for r in doc["over_20pct"]] == ["postings"]
@@ -181,7 +184,7 @@ def test_step_name_is_matched_whole_and_case_sensitively(tmp_path, monkeypatch, 
 
 def test_step_under_0_80_is_unaffected(tmp_path, monkeypatch, capsys):
     te = _te()
-    monkeypatch.setattr(te, "ACCEPTED", (te.Accept(REL, f"{CALL}.part-0000[12]", 1.30, "DEC-55"),))
+    monkeypatch.setattr(te, "ACCEPTED", (te.Accept(REL, f"{CALL}.part-0000[12]", 1.58, "DEC-55"),))
     root, est = _root(tmp_path)
     rc, doc, _ = _rates(te, root, est, capsys)
     assert rc == 0
@@ -192,8 +195,8 @@ def test_step_under_0_80_is_unaffected(tmp_path, monkeypatch, capsys):
 
 def test_unjudged_step_is_unaffected(tmp_path, monkeypatch, capsys):
     te = _te()
-    monkeypatch.setattr(te, "ACCEPTED", (te.Accept(REL, "tokens", 1.30, "DEC-55"),
-                                         te.Accept(REL, f"{CALL}.part-*", 1.30, "DEC-55")))
+    monkeypatch.setattr(te, "ACCEPTED", (te.Accept(REL, "tokens", 1.58, "DEC-55"),
+                                         te.Accept(REL, f"{CALL}.part-*", 1.58, "DEC-55")))
     root, est = _root(tmp_path)
     rc, doc, _ = _rates(te, root, est, capsys)
     assert rc == 0
@@ -202,15 +205,15 @@ def test_unjudged_step_is_unaffected(tmp_path, monkeypatch, capsys):
 
 def test_two_matching_entries_the_tighter_bound_decides(tmp_path, monkeypatch, capsys):
     te = _te()
-    wide = te.Accept(REL, f"{CALL}.part-*", 1.30, "DEC-55")
-    tight = te.Accept(REL, f"{CALL}.part-00001", 1.21, "DEC-56")
+    wide = te.Accept(REL, f"{CALL}.part-*", 1.58, "DEC-55")
+    tight = te.Accept(REL, f"{CALL}.part-00001", 1.54, "DEC-56")
     for k, table in enumerate(((wide, tight), (tight, wide))):  # order in the table does not matter
         monkeypatch.setattr(te, "ACCEPTED", table)
         root, est = _root(tmp_path / f"t{k}")
         rc, doc, _ = _rates(te, root, est, capsys)
         assert rc == 3
         assert doc["over_20pct"][0]["accepted_bound_exceeded"]["decision"] == "DEC-56"
-    tight_ok = te.Accept(REL, f"{CALL}.part-0000?", 1.25, "DEC-56")
+    tight_ok = te.Accept(REL, f"{CALL}.part-0000?", 1.56, "DEC-56")
     monkeypatch.setattr(te, "ACCEPTED", (wide, tight_ok))
     root, est = _root(tmp_path / "ok")
     rc, doc, _ = _rates(te, root, est, capsys)
@@ -229,17 +232,18 @@ MALFORMED = {
     "bound not a number": (REL, f"{CALL}.part-*", "1.3", "DEC-55"),
     "bound a bool": (REL, f"{CALL}.part-*", True, "DEC-55"),
     "bound nan": (REL, f"{CALL}.part-*", float("nan"), "DEC-55"),
-    "empty pattern": (REL, "", 1.30, "DEC-55"),
-    "star alone": (REL, "*", 1.30, "DEC-55"),
-    "wildcards alone": (REL, "*?*", 1.30, "DEC-55"),
-    "decision without number": (REL, f"{CALL}.part-*", 1.30, "DEC-"),
-    "decision lower case": (REL, f"{CALL}.part-*", 1.30, "dec-55"),
-    "decision with suffix": (REL, f"{CALL}.part-*", 1.30, "DEC-55a"),
-    "decision bare number": (REL, f"{CALL}.part-*", 1.30, "55"),
-    "decision leading zero": (REL, f"{CALL}.part-*", 1.30, "DEC-055"),
-    "empty release": ("", f"{CALL}.part-*", 1.30, "DEC-55"),
-    "release pattern": ("r26.11.*", f"{CALL}.part-*", 1.30, "DEC-55"),
-    "three fields": (REL, f"{CALL}.part-*", 1.30),
+    # card A-16: the entries below are refused for their own fault, so their bound is a valid one over 1.50 (was 1.30)
+    "empty pattern": (REL, "", 1.55, "DEC-55"),
+    "star alone": (REL, "*", 1.55, "DEC-55"),
+    "wildcards alone": (REL, "*?*", 1.55, "DEC-55"),
+    "decision without number": (REL, f"{CALL}.part-*", 1.55, "DEC-"),
+    "decision lower case": (REL, f"{CALL}.part-*", 1.55, "dec-55"),
+    "decision with suffix": (REL, f"{CALL}.part-*", 1.55, "DEC-55a"),
+    "decision bare number": (REL, f"{CALL}.part-*", 1.55, "55"),
+    "decision leading zero": (REL, f"{CALL}.part-*", 1.55, "DEC-055"),
+    "empty release": ("", f"{CALL}.part-*", 1.55, "DEC-55"),
+    "release pattern": ("r26.11.*", f"{CALL}.part-*", 1.55, "DEC-55"),
+    "three fields": (REL, f"{CALL}.part-*", 1.55),
 }
 
 
@@ -260,8 +264,8 @@ def test_malformed_entry_stops_with_a_message(tmp_path, monkeypatch, capsys, why
 
 def test_the_same_release_and_pattern_twice_is_refused(tmp_path, monkeypatch, capsys):
     te = _te()
-    monkeypatch.setattr(te, "ACCEPTED", (te.Accept(REL, f"{CALL}.part-*", 1.30, "DEC-55"),
-                                         te.Accept(REL, f"{CALL}.part-*", 1.25, "DEC-56")))
+    monkeypatch.setattr(te, "ACCEPTED", (te.Accept(REL, f"{CALL}.part-*", 1.58, "DEC-55"),
+                                         te.Accept(REL, f"{CALL}.part-*", 1.55, "DEC-56")))
     root, est = _root(tmp_path)
     rc, doc, err = _rates(te, root, est, capsys)
     assert rc == 3

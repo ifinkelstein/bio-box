@@ -24,9 +24,11 @@ the root that owns a contig of this stage has no gene-call record (a stage parke
 was built: a release without it would miss calls); exit 7 when build-stage would refuse the stage (a source object
 or a genome over the budget, card B-30, card B-48). The conf's JUDGE figures are printed beside the code's.
 
-`rates`: DEC-43 (`MIN_JUDGED_CPU_MIN = 24`: a step estimated under it is reported, never judged) and DEC-53 (a
-judged step more than 20% over its estimate stops the build; more than 20% under is recorded and does not stop)
-over the stage's run records, every estimate made by the code from the root at the time, as build-stage makes it:
+`rates`: DEC-43 (`MIN_JUDGED_CPU_MIN = 24`: a step estimated under it is reported, never judged), DEC-53 (more than
+20% under is recorded and does not stop) and DEC-64 (card A-16: a judged step whose reported three-decimal ratio is
+over 1.50, `STOP_ABOVE`, stops the build, as one over 1.20 did before; over 1.20, `RECORD_ABOVE`, and at or under
+1.50 it is listed under `recorded_over_20pct` and does not stop; `over_20pct` lists only what stops) over the
+stage's run records, every estimate made by the code from the root at the time, as build-stage makes it:
 ingest as one group (every `ingest.*` record and `ingest`), each gene-call batch against the published plan and the
 merge, gene calling in one process against `genecall.plan`, each scan shard against its residues, each CRISPR
 producer. A conf's `JUDGE=<step> <figure>` judges that step's group against the note's figure as well (card C-48c
@@ -34,7 +36,8 @@ part 3: `GV1`'s gene calling against 236 CPU-minutes), as the group `<step>.note
 a group still running is judged over on its partial sum, never under. `before` stops (exit 8) when a conf's
 `EXPECT=held_by <stage> <n> <note>` differs from the contigs that stage holds. A conf's `ACCEPTED=<step> <cpu> <estimate> <DEC-n>` reports that one record, at exactly those values, under
 `accepted_over_20pct` instead of stopping (as `c47_est.py` did for DEC-56): only a decision row lifts a guard, and
-only the PI or an H card adds one. Exit 3 to stop.
+only the PI or an H card adds one. Since DEC-64 a line decides only above 1.50: a record it names at or under 1.50 is
+reported under `accepted_over_20pct` and `recorded_over_20pct` and goes on with or without the line. Exit 3 to stop.
 
 `complete`: `stage.stage_incomplete` (the release train's own check): every step of the stage's depth, libraries
 and CRISPR choice has a run record with exit 0 and its outputs at their sizes, and no `.publishing.json` is left.
@@ -58,6 +61,8 @@ from pathlib import Path
 
 TOL = 0.20
 MIN_JUDGED_CPU_MIN = 24.0  # DEC-43
+RECORD_ABOVE = 1.20  # DEC-64 (amending DEC-53): a judged step over this ratio is outside 20% and recorded
+STOP_ABOVE = 1.50  # DEC-64: a judged step whose reported (three-decimal) ratio is over this stops the build
 DEPTHS = ("called", "annotated")  # `stored` builds no gene calls: not a stage this driver builds or checks
 LIBRARIES = {("pfam", "38.2")}  # the libraries whose HMM file the driver knows (stage_driver.sh PFAM)
 CUTOFFS = ("gathering", "trusted", "noise", "none")  # stage.CUTOFFS
@@ -232,36 +237,45 @@ def conf_cmd(a) -> int:
 
 
 def judge_items(items: list[dict], accepted: dict) -> dict:
-    """Each item ({name, cpu_min, estimate, basis, complete, records}) under DEC-43 and DEC-53: judged when its estimate
-    is at least `MIN_JUDGED_CPU_MIN`; over when judged and above 1 + TOL of it (on a partial sum too: a sum only
-    grows); under when judged, complete and below 1 - TOL (recorded, never a stop). An over item whose (name, CPU,
-    estimate), at 3 decimals, is in `accepted` is reported under `accepted_over_20pct` with its decision row."""
-    rows, over, under, acc = [], [], [], {}
+    """Each item ({name, cpu_min, estimate, basis, complete, records}) under DEC-43, DEC-53 and DEC-64: judged when its
+    estimate is at least `MIN_JUDGED_CPU_MIN`; outside 20% over when judged and above `RECORD_ABOVE` of it (on a
+    partial sum too: a sum only grows); of these, over (`over_20pct`: the build stops) when the reported three-decimal
+    ratio is above `STOP_ABOVE`, else recorded (`recorded_over_20pct`: the build goes on); under when judged, complete
+    and below 1 - TOL (recorded, never a stop). An item outside 20% over whose (name, CPU, estimate), at 3 decimals, is
+    in `accepted` is reported under `accepted_over_20pct` with its decision row and does not stop."""
+    rows, over, recorded, under, acc = [], [], [], [], {}
     for it in items:
         cpu, est = float(it["cpu_min"]), float(it["estimate"])
         ratio = cpu / est if est > 0 else math.inf
         judged = est >= MIN_JUDGED_CPU_MIN
-        is_over = judged and ratio > 1.0 + TOL
+        outside_over = judged and ratio > RECORD_ABOVE
+        shown = round(ratio, 3) if math.isfinite(ratio) else None
+        is_over = outside_over and (shown is None or shown > STOP_ABOVE)  # DEC-64, on the reported ratio
+        is_recorded = outside_over and not is_over
         is_under = judged and it.get("complete", True) and ratio < 1.0 - TOL
         row = {"step": it["name"], "cpu_min": round(cpu, 3), "estimate": round(est, 3),
-               "ratio": round(ratio, 3) if math.isfinite(ratio) else None, "basis": it.get("basis", ""),
+               "ratio": shown, "basis": it.get("basis", ""),
                "judged": judged, "complete": it.get("complete", True), "records": it.get("records", 1),
-               "over_20pct": is_over, "under_20pct": is_under}
+               "over_20pct": is_over, "recorded_over_20pct": is_recorded, "under_20pct": is_under}
         dec = accepted.get((it["name"], round(cpu, 3), round(est, 3)))
-        if is_over and dec is not None and it.get("complete", True):
+        if outside_over and dec is not None and it.get("complete", True):
             row["accepted"] = dec
             row["over_20pct"] = is_over = False
             acc[it["name"]] = dec
         rows.append(row)
         if is_over:
             over.append(it["name"])
+        if is_recorded:
+            recorded.append(it["name"])
         if is_under:
             under.append(it["name"])
-    return {"checked": len(rows), "over_20pct": over, "under_20pct": under, "accepted_over_20pct": acc, "rows": rows}
+    return {"checked": len(rows), "over_20pct": over, "recorded_over_20pct": recorded, "under_20pct": under,
+            "accepted_over_20pct": acc, "rows": rows}
 
 
 def rates_exit(doc: dict) -> int:
-    """The driver stops its unit on 3: a judged step more than 20% over its estimate (DEC-53)."""
+    """The driver stops its unit on 3: a judged step more than 1.50 times its estimate (DEC-64; DEC-53's line was
+    1.20)."""
     return 3 if doc["over_20pct"] else 0
 
 
@@ -380,7 +394,8 @@ def rates_doc(conf: Conf, root: Path, prof, objects: Path, before_path: str | No
             # a record of judged size that no estimate names: the check fails on it (card A-12 (7))
             "not_judged_of_judged_size": [n for n in not_judged
                                           if float(recs[n].get("cpu_min") or 0) >= MIN_JUDGED_CPU_MIN],
-            "guard_policy": "DEC-43 (estimate >= 24 CPU-min judged) + DEC-53 (stop above 1.20; record below 0.80)"}
+            "guard_policy": "DEC-43 (estimate >= 24 CPU-min judged) + DEC-53 (record below 0.80) + "
+                            "DEC-64 (record above 1.20; stop above 1.50)"}
 
 
 def complete(a) -> int:
@@ -581,7 +596,8 @@ def before(a) -> int:
         "parked_owners": parked, "refusals": [x for x in (ingest_refusal, gc_refusal) if x],
         "expect": {s: {"note": src, "expected": n, "held": owned_by.get(s, 0)}
                    for s, (n, src) in sorted(conf.expect.items())},
-        "guard_policy": "DEC-43 (estimate >= 24 CPU-min judged) + DEC-53 (stop above 1.20; record below 0.80)",
+        "guard_policy": "DEC-43 (estimate >= 24 CPU-min judged) + DEC-53 (record below 0.80) + "
+                        "DEC-64 (record above 1.20; stop above 1.50)",
     }
     if conf.crispr:
         doc["crispr_default_cpu_min"] = round(bs.crispr_cpu_min(b_stored, flank, near_cas=False), 3)
