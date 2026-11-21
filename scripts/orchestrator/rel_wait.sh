@@ -3,12 +3,15 @@
 # queued build (unit c47-queue: rebefore, run, after, check, backup) has ended with every mode passed, so that the
 # night is used without the laptop.
 #
-#   rel_wait.sh [DRIVER_DIR [SUITE]]
-#     DRIVER_DIR  the stage driver's directory (default /tmp/if2453/c47, stage C5); its queue unit is
+#   rel_wait.sh DRIVER_DIR SUITE        (both required; exit 2 without them)
+#     DRIVER_DIR  the stage driver's directory (for card A-12's driver /tmp/if2453/stages/<stage>); its queue unit is
 #                 <basename>-queue (override: QUEUE_UNIT)
-#     SUITE       the frozen tree's name (default rel1120): the tree /tmp/if2453/ci/SUITE, the shards' logs in
-#                 /tmp/if2453/ci-tmp/SUITE-detached, the units ci-SUITE-*
-#   REL_ROOT, REL_W, REL_TREE, REL_SUITE_DIR override the data root, the waiter's directory, the tree and the logs.
+#     SUITE       the frozen tree's name: the tree /tmp/if2453/ci/SUITE, the shards' logs in
+#                 /tmp/if2453/ci-tmp/SUITE-detached, the units ci-SUITE-*. Its scripts/stress/build_stage_pod/stages/
+#                 must hold the stage driver's confs (else exit 9, nothing started), unless REL_STAGES_DIR names a
+#                 directory that does
+#   REL_ROOT, REL_W, REL_TREE, REL_SUITE_DIR override the data root, the waiter's directory, the tree and the logs;
+#   REL_STAGES_DIR names the stage driver's stages/ (default: the frozen tree's) when the live driver tree differs.
 #
 # It starts nothing unless ALL of these hold:
 #   - no STOP file in the data root;
@@ -16,7 +19,9 @@
 #     check/DONE and backup/DONE in DRIVER_DIR, and DRIVER_DIR/backup.tsv. The queue's log line is never the
 #     evidence (card A-11: on 2026-11-20 a driver exited 0 after its check failed, the queue wrote "all passed", and
 #     this waiter started a release on that line); the line is only printed when the markers are not all there;
-#   - no build unit of ours is active (c47-*, c48c-*, c46-train-*);
+#   - no build unit of ours is active (c47-*, c48c-*, c46-train-*, <basename of DRIVER_DIR>-*, and <stage>-<n> of every
+#     stages/<STAGE>.conf of the tree: card A-12's stage driver), looked for after the queue, again just before the
+#     dry run and again just before the run;
 #   - the whole test suite of the frozen tree (units ci-SUITE-0..7) has ended and every shard's last line says
 #     "passed" and not "failed" or "error".
 # Then: release_train.sh --dry-run (logged), then release_train.sh run. The train has its own guards (STOP, free
@@ -24,8 +29,12 @@
 # pack verify, the worked examples). It never deletes or moves anything of an earlier release. Nothing is announced:
 # the orchestrator audits first.
 set -u
-DRIVER_DIR=${1:-/tmp/if2453/c47}
-SUITE_NAME=${2:-rel1120}
+if [ $# -lt 2 ]; then
+  echo "usage: rel_wait.sh DRIVER_DIR SUITE (both required: the stage driver's directory and the frozen tree's name)" >&2
+  exit 2
+fi
+DRIVER_DIR=$1
+SUITE_NAME=$2
 W=${REL_W:-/tmp/if2453/c46/wait}
 ROOT=${REL_ROOT:-/tmp/if2453/r10/root}
 TREE=${REL_TREE:-/tmp/if2453/ci/$SUITE_NAME}
@@ -34,6 +43,11 @@ Q4=$DRIVER_DIR/queue.out
 QUEUE_UNIT=${QUEUE_UNIT:-$(basename "$DRIVER_DIR")-queue}
 MARKERS="before/DONE run/DONE after/DONE check/DONE backup/DONE backup.tsv"
 say() { echo "$(date '+%F %T %Z') rel_wait: $*"; }
+STAGES_DIR=${REL_STAGES_DIR:-$TREE/scripts/stress/build_stage_pod/stages}  # the live driver tree's, when it differs
+if ! compgen -G "$STAGES_DIR/*.conf" > /dev/null; then
+  say "STOPPED: no stage confs in $STAGES_DIR: this waiter could not see a stage driver's build units (card A-12); give a frozen tree that has them, or REL_STAGES_DIR=<the live tree's stages/>; nothing started"
+  exit 9
+fi
 
 say "start (pid $$); waiting for $QUEUE_UNIT to end with every marker of $DRIVER_DIR"
 t0=$(date +%s)
@@ -61,9 +75,24 @@ while :; do
   sleep 60
 done
 
-act=$(systemctl --user list-units --type=service --state=active,activating,deactivating --no-legend --plain \
-  'c47-*' 'c48c-*' 'c46-train-*' | awk '{print $1}' | paste -sd' ' -)
-if [ -n "$act" ]; then say "STOPPED: a build unit is active ($act); nothing started"; exit 6; fi
+# the build units of ours: the older names, the stage directory's own (<basename>-*), and every stage of the tree's
+# stage driver (stages/<STAGE>.conf: units <stage in lower case>-<n>, card A-12); looked for again just before the
+# dry run and just before the run, since the suite's wait can last hours
+build_units() {
+  local pats=('c47-*' 'c48c-*' 'c46-train-*' "$(basename "$DRIVER_DIR")-*") f s
+  for f in "$STAGES_DIR"/*.conf; do
+    [ -e "$f" ] || continue
+    s=$(basename "$f" .conf)
+    [[ "$s" =~ ^[A-Z][A-Za-z0-9]{0,15}$ ]] && pats+=("${s,,}-[0-9]*")
+  done
+  systemctl --user list-units --type=service --state=active,activating,deactivating --no-legend --plain "${pats[@]}" \
+    | awk '{print $1}' | paste -sd' ' -
+}
+no_build_units() {
+  act=$(build_units)
+  if [ -n "$act" ]; then say "STOPPED: a build unit is active ($act); nothing started"; exit 6; fi
+}
+no_build_units
 
 # the suite of the frozen tree must have ended, every shard passed
 n=0
@@ -82,6 +111,7 @@ for s in 0 1 2 3 4 5 6 7; do
   esac
 done
 if [ -e "$ROOT/STOP" ]; then say "STOPPED: $ROOT/STOP exists; nothing started"; exit 3; fi
+no_build_units
 
 say "dry run:"
 ROOT=$ROOT TREE=$TREE bash "$TREE/scripts/stress/build_stage_pod/release_train.sh" --dry-run > "$W/dry_run.txt" 2>&1
@@ -89,6 +119,8 @@ rc=$?
 cat "$W/dry_run.txt"
 if [ "$rc" != 0 ]; then say "STOPPED: the dry run exited $rc; nothing started"; exit 8; fi
 if ! grep -q '^Action: cut' "$W/dry_run.txt"; then say "STOPPED: the dry run does not say 'Action: cut'; nothing started"; exit 8; fi
+if [ -e "$ROOT/STOP" ]; then say "STOPPED: $ROOT/STOP exists; nothing started"; exit 3; fi
+no_build_units
 
 say "release_train.sh run: start (Q=56: the unit's CPU quota; build-stage's own allowance holds the cap of the hour)"
 Q=56 ROOT=$ROOT TREE=$TREE bash "$TREE/scripts/stress/build_stage_pod/release_train.sh" run > "$W/train.out" 2>&1

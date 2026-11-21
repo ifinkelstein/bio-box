@@ -778,6 +778,96 @@ into `planning/measurements/`, and copy each `$OUT/<example>/recorded_new.tsv` t
 `examples/<example>/recorded/<release>.tsv` in the same commit. A recorded value that `differs` on a new release is
 expected; on a rerun of the same release it means the code or the release changed.
 
+## Building a stage
+
+One driver builds every stage into the data root as a stage only (no release; card A-12):
+`scripts/stress/build_stage_pod/stage_driver.sh STAGE MODE`, with `stage_est.py` (the conf, the estimates, the rate
+guard, the completeness check, the rehearsal's fixture), `stage_check.py` (the check after the build) and
+`stage_queue.sh STAGE` (every mode in order, unattended). It replaces the copy per stage (`c47_driver.sh`,
+`c48c_v1_driver.sh` and the seven before them); those stay for the stages they built.
+
+What differs between stages is in `scripts/stress/build_stage_pod/stages/<STAGE>.conf`, one `KEY=VALUE` per line,
+`#` comments: `STAGE`; `NOTE` (the measurement note each value comes from, one or more); `INPUTS` (the staged inputs
+directory); `SUM=<sha256> <file>` for `genomes.json`, `objects.json` and the FASTA objects, as the note recorded them;
+`DEPTH` (`called` or `annotated`); `LIBRARY=pfam 38.2 <cutoff>` (annotated only; the driver knows Pfam 38.2's HMM file
+and no other); `CRISPR=yes|no`; optionally `MIN_CONTIG_LEN`, `AFTER` (the stages this one waits for),
+`JUDGE=<ingest|genecall> <CPU-minutes> <note>` (a figure the note says that step's records are judged against, beside
+the code's own estimate, as the group `<step>.note`), `EXPECT=held_by <STAGE> <n> <note>` (the contigs of this stage
+that an earlier stage holds, as the note counted them: `estimate` stops when the root says otherwise) and
+`ACCEPTED=<step> <CPU-minutes> <estimate> <DEC-n>` (a record a decision row accepts, by name and value, a
+`<step>.note` group included: only the PI or an H card adds one; a new stage has none). Nothing else is accepted, and
+no value may hold a space where none belongs or a shell character; every note a line names must be a file of the tree
+and every `DEC-n` a row of `planning/DECISIONS.md`. A stage whose note leaves a value open has no conf, and the driver
+refuses it. Confs written by card A-12 (2026-11-21): `V2.conf` (S1, H1 and PL1 hold 64, 1,677 and 68 of its contigs,
+its note §4) and `GV1.conf` (after `V2`; `V2` and `H1` hold 17,664 and 6 of its contigs, its note §3; its gene
+calling also judged against 236 CPU-minutes, the note's figure). None yet for `PL2` (depth, least contig length and the split by
+redistributability are the note's open questions 1, 4 and 5), `G1` (depth and CRISPR: the note costs both depths and
+chooses neither) and `SPX1` (the figure its ingest is judged against: the note's 1,272 CPU-minutes rests on card
+C-47's gzip term of 0.84 CPU-minutes per GB, where card B-58's amendment measured 0.09 to 0.27, and the cost of a base
+read and dropped under the least length is still to be measured there).
+
+The modes, in the order `stage_queue.sh` runs them. Each exits with its own status, writes `<stage dir>/<mode>/DONE`
+(holding the sha256 of the conf it was made for) only when it passed, after withdrawing its own marker and those of
+the modes after it, and refuses without the markers of the modes before it or with a marker made for another conf. A
+refusal writes `<mode>/REFUSED`, a failure `<mode>/FAILED`, a STOP file `<mode>/STOPPED` (exit 3). In the data root
+(compared after `realpath`) the conf is the tree's own `stages/<STAGE>.conf`, `MEM` is at most 200G, and `TMP_MIN_GB`,
+`START_MIN_GB` and `SCRATCH_MAX_GB` cannot be loosened.
+
+| Mode | What it runs | What it refuses or stops on |
+|---|---|---|
+| `estimate` | `sha256sum -c` of the conf's sums in `INPUTS`; `stage_est.py before`: the code's estimates from the inputs (ingest, gene calling and its batches, both CRISPR producers), bounded in memory but for `genomes.json`, read whole as the inputs step reads it | inputs that differ from the conf; a contig owned by a stage with no gene calls (a parked stage), or by two; a source object or genome build-stage would refuse; an `EXPECT` line that differs |
+| `rehearse` | the fixture of Appendix B in scratch under the stage's directory: stage `E` and a release `rRH.1` over it in a scratch root (`E` with `cpu_min_per_process: 1`, so that its scan has the shard plan a source of copies needs, card B-47b), then a stage of the conf's depth, length, library and CRISPR choice through this driver's own `estimate` to `backup` (the backup into scratch), then a relaunch that must publish nothing; an earlier rehearsal's logs are moved to `rh-logs.<n>/` | any of those failing; returns at once when `rehearse/DONE` is there for this conf; a new rehearsal withdraws the markers of `run` and after |
+| `before` | `release verify` of every release the root has a manifest for (`manifests/release=<R>.json`, read from the root at the time); the root's listing without the stage's own files; the sha256 of every other stage's files | an active build unit in the root; no published release; a verify that fails |
+| `run` | `build-stage --profile <dir>/profile.yaml --root <root> --stage S --depth D [--min-contig-len N] --genomes ... --objects ... [--library pfam 38.2 <hmm> <cutoff>] [--crispr] --threads 6 --scan-cpus 4` through `pod_run.sh` in the image by digest, unit `<stage>-<n>`, after the inputs' sums again; the unit's `CPUQuota` is the profile's cap of the hour (`runstep.launch_cap`, by the profile's day window and weekday rule) less 2 for the driver's helpers, set again with `systemctl --user set-property --runtime` when the hour's cap changes; every 60 s `r50_watch.py` (a process at 280 CPU-minutes, `/tmp` under 200 GB, scratch over 100 GB), and at each new run record `stage_est.py rates` (DEC-43, DEC-53); the unit counts as ended only on its exit line or a real inactive answer of systemd (a failed `systemctl` call is not an answer), and a trap stops it if the driver itself exits; at the end the unit's exit 0 and the stage complete at its depth (`stage.stage_incomplete`) | `run/FAILED` of an earlier launch; a missing or other conf's marker (`estimate`, `rehearse`, `before`), inputs that changed, a stage of `AFTER` without `backup/DONE`, an active build unit, `/tmp` under 205 GB, a thread count above the profile's; a guard (any exit but 0) stops the unit, waits to see it gone, and writes `run/FAILED`; a STOP that appears ends the build at a step boundary and the records published are judged before `run/STOPPED` |
+| `after` | the listing and sha256 again; the same releases verified with the same manifest hashes; `bio-box releases` | a release added or gone since `before`, a hash that changed, a verify or listing that fails |
+| `check` | `stage_check.py` on the two snapshots, each run's report kept in `check/<n>/`; writes `root_added.tsv` (every added file with size and sha256) | any assertion of the check (it says which; with a library, a missing scan plan; with CRISPR, a producer whose record lists no ledger, or no feature file without a ledger that found no array; a record of 24 CPU-minutes or more that no estimate names); a list that differs from the one a backup was made from |
+| `backup` | one tar of exactly the added files to `$BACKUP_DIR/added_<stage>.tar`: a dot-temporary name, `dd conv=fsync`, read back, sha256 equal, `mv -n`, a line in `backup.tsv` | a tar that exists (never overwritten); a file under 64 MiB onto `/stor`; a copy that fails or reads back different (the temporary file is left for a person) |
+
+The real backup directory is the default of `BACKUP_DIR`, `/stor/work/Wilke/if2453/all-the-data/root_backups`; the
+rehearsal sets its own under its scratch directory. A guard's stop is never lifted by the driver: `run` refuses while
+`run/FAILED` is there; a person reads it, and if a decision row accepts the record, adds its `ACCEPTED` line to the
+conf and moves `run/FAILED` aside (`run/FAILED.<unit>`). Any edit of a conf, a comment included, changes its sha256
+and so withdraws every marker made for it: after that procedure the stage needs `estimate`, `rehearse` and `before`
+again before `run` resumes (the queue runs them). A step that has no estimate in the code and reaches 24 CPU-minutes
+fails the check (`not_judged_of_judged_size`): a stage much larger than `V1` needs `JUDGE` lines, from its note, for
+`igr`, `tapes`, the scan's merge and the plan records. Two figures for such a stage, from card A-12 (2026-11-21): no
+built stage has run its ingest in batches (every stage directory of `$ROOT/runs` holds one `ingest.json` and no
+`ingest.pass1-*` or `ingest.batch-*`, *measured*, `find /tmp/if2453/r10/root/runs -maxdepth 2 -name 'ingest*.json'`,
+wilkcomp02), so `SPX1`'s will be the first ingest judged as one group of pieces; and `estimate`'s reading of `SPX1`'s
+`genomes.json` (2,829,368 genomes, 404,599,625 bytes, loaded whole as the inputs step loads it) peaked at 1,944.9 MiB
+in 26.3 s (*measured*, wilkcomp02, 2026-11-21, `stage_est.write_genomes` in a 16G scope at 2 CPUs, unit `a12-mem`). The thread counts come from the profile: `--threads` and
+`--scan-cpus` at most its smaller cap, the unit's quota the cap of the hour less the helpers' 2 (build-stage also holds
+the cap of the hour inside, section 2); `T`, `CPUS` and `Q` may lower them. `systemctl --user set-property --runtime
+<unit> CPUQuota=300%` lowered a running transient service of `pod_run.sh` from 400% (`CPUQuotaPerSecUSec` 4s to 3s,
+the cgroup's `cpu.max` `300000 100000`; *measured*, wilkcomp02, 2026-11-21, unit `zx1-rh-e`).
+
+Run a mode by hand in a small unit of its own, or the whole stage with the queue (it waits for the stages of `AFTER`
+and for every build unit of ours in the root to end, stops at once on the stage's `run/FAILED`, then runs the seven
+modes and stops at the first that fails or leaves no marker). Its log is `queue.out`, the driver's `driver.log`, both in `/tmp/if2453/stages/<stage>/`:
+
+```bash
+mkdir -p /tmp/if2453/stages/v2
+systemd-run --user --unit=v2-drv-estimate --collect -p MemoryMax=4G -p MemorySwapMax=0 \
+  nice -n 19 bash "$TREE/scripts/stress/build_stage_pod/stage_driver.sh" V2 estimate
+systemd-run --user --unit=v2-queue --collect -p MemoryMax=4G -p MemorySwapMax=0 -p TimeoutStopSec=300 \
+  -p StandardOutput=append:/tmp/if2453/stages/v2/queue.out -p StandardError=append:/tmp/if2453/stages/v2/queue.out \
+  nice -n 19 bash "$TREE/scripts/stress/build_stage_pod/stage_queue.sh" V2
+```
+
+`TimeoutStopSec=300`: a stop of the queue (or of a driver's own unit) sends TERM, and the driver's trap then stops its
+build unit and waits up to about 120 s to see it gone; systemd's default of 90 s would SIGKILL the driver first. A
+SIGKILL of the driver or of the queue leaves the build unit running with no guard (no 280 CPU-minute stop, no rate
+guard). See whether one runs with `systemctl --user list-units '<stage>-[0-9]*'` (for `V2`: `'v2-[0-9]*'`); if one
+does and its driver does not, write a `STOP` file in the data root (build-stage ends at the next step boundary and
+publishes nothing of the step it was in), then, if it must end at once, `systemctl --user stop <unit>`. If the user
+bus stops answering, the driver gives up after 15 minutes without one readable answer about its unit and writes
+`run/FAILED` saying the unit's state is unknown and that it may still be running: look as above.
+
+To cut a release by itself when the stage has passed, `scripts/orchestrator/rel_wait.sh /tmp/if2453/stages/v2 <suite>`
+waits for the unit `v2-queue` to end and for every marker of the stage's directory, and holds while a unit `v2-*` or
+the build unit of any stage of `stages/*.conf` is active, looking again just before the dry run and just before the
+run; `release_train.sh`'s own lock knows those units too.
+
 ## Cutting the next release
 
 Releases are rolling (DEC-52, card C-46): a new release is cut whenever at least one stage has been
@@ -1426,6 +1516,15 @@ the real profile with its own `tmp` (`/tmp/if2453/c48c/tmp`; the rehearsal: a sc
 `cpu_min_per_process: 300`) and the real data root, through `scripts/stress/build_stage_pod/c48c_v1_driver.sh` in units
 named `c48c-*` (`planning/measurements/2026-11-20_stage_V1.md`).
 
+The rows marked A-12 were run on 2026-11-21 (pod local time) by card A-12 with the image of `faec1f4` (section 0), a copy
+of the `task/A-12` tree (`TREE=/tmp/if2453/a12/tree`), the real profile (each rehearsal: a copy with its own `tmp`,
+`durable` and `bulk` under the stage's scratch directory and `small_file_floor_bytes: 1000`), `STAGES_HOME=/tmp/if2453/a12/stages`,
+through `scripts/stress/build_stage_pod/stage_driver.sh` in units named `v2-rh-*` and `zx1-rh-*`. Nothing was written in
+the data root; each rehearsal's backup went to its own scratch directory. `ZX1` is a conf made for the rehearsal only
+(`SPX1`'s shape: depth `called`, `MIN_CONTIG_LEN=5000`, no library, `CRISPR=yes`), not a stage; on the final tree it
+was given through `STAGE_CONF` (only `rehearse` may take a conf that is not the tree's own) and each rehearsal unit
+ran at a quota of 3 (`RH_Q=3`) beside the release train.
+
 | Section | Command | Date run | Last line |
 |---|---|---|---|
 | 1 | `ls -d "$ROOT/STOP"` | 2026-11-10 | `ls: cannot access '/tmp/if2453/c06/root/STOP': No such file or directory` |
@@ -1545,6 +1644,12 @@ named `c48c-*` (`planning/measurements/2026-11-20_stage_V1.md`).
 | Mirror to tower | C-49: the orchestrator's first mirror, on the laptop: `caffeinate -i bash relay_backups.sh` (the predecessor of `scripts/orchestrator/relay_to_tower.sh`: `scp -3`, two streams, then `sha256sum` read back on `tower` and `mv -n`; script, ssh config and log in the orchestrating session's scratch directory), the seven tars of `/stor/work/Wilke/if2453/all-the-data/root_backups` to `tower:/mnt/user/research-bulk/bio-box/root_backups` | 2026-11-20, from 10:40:59 | still running when read at 15:15: the log's last line `2026-11-20 13:35:12 added_r26_11_1.tar: try 1: copy started`; before it `l0seq.tar: OK: 28241715200 bytes in 6543 s` (13:21:26) and `l2.tar: OK: 27176785920 bytes in 6843 s` (13:35:11) (`planning/measurements/2026-11-20_tower_relay.md`) |
 | 8 | C-49: `env BIOBOX_POD_JUMP=if2453@wilkcomp03.ccbb.utexas.edu BIOBOX_TREE=<worktree> sh scripts/pod_pytest.sh C-49 tests/r1/test_relay_to_tower.py` (laptop), before the script existed | 2026-11-20 | 33 failed (`bash: /tmp/if2453/ci/C-49/scripts/orchestrator/relay_to_tower.sh: No such file or directory`) |
 | 8 | C-49: the same with `tests/r1/test_pod_pytest_jump.py tests/r0` added (laptop), with the script | 2026-11-20 | `287 passed in 25.32s` |
+| Building a stage | A-12: `stage_driver.sh V2 rehearse` and `stage_driver.sh ZX1 rehearse` (units `v2-rh-drv`, `zx1-rh-drv`; tree `d772cb7` with stage E at `cpu_min_per_process: 1`; each: units `<stage>-rh-e`, `<stage>-rh-1`, `<stage>-rh-again`) | 2026-11-21 | `[V2 rehearse] stage driver: mode rehearse done` (04:33:57) and `[ZX1 rehearse] stage driver: mode rehearse done` (04:28:07); before each, `rehearse: mode <m> passed` for estimate, before, run, after, check and backup, and `the relaunch published nothing and left the scratch root unchanged` |
+| Building a stage | A-12: the same on tree `529b6b0` (units `v2-rh-drv`, `zx1-rh-drv2`) | 2026-11-21 | `rehearse: mode run of the rehearsal's stage exited 1`: the rate guard stopped `v2-rh-1` and `zx1-rh-1` when `stage_est.py rates` exited 1 (`FileNotFoundError` under its `--tmp`, which nothing made once `held_bases` came from `before.json`); fixed in `1e0a55e`, with the test `test_rates_of_a_stage_called_in_one_process_with_a_scratch_directory_not_yet_made`. One `rates` call before it: `rates call: exit 0 in 4.7 s` (ZX1R, 2 records) |
+| Building a stage | A-12, the final rehearsal: the same on tree `1e0a55e` (units `v2-rh-drv3`, `zx1-rh-drv3`; `RH_Q=3`, `CPUQuota=300%` each; `ZX1`'s conf given through `STAGE_CONF`) | 2026-11-21 | `[ZX1 rehearse] stage driver: mode rehearse done` (05:43:19.656) and `[V2 rehearse] stage driver: mode rehearse done` (05:50:38.825), each after estimate, before, run, after, check, backup and a relaunch that published nothing; one `rates` call on the fixture took 5.1 to 5.9 s (`rates call: exit 0 in 5.9 s`, 5.1, 5.6, 5.2 s in ZX1R's `run`; *measured*, wilkcomp02, 2026-11-21, the driver logs) |
+| Building a stage | A-12: `systemctl --user set-property --runtime zx1-rh-e CPUQuota=300%` on a running service started by `pod_run.sh` (quota 400%) | 2026-11-21 | `(no output)`, exit 0; then `CPUQuotaPerSecUSec=3s` (was `4s`) and the cgroup's `cpu.max` `300000 100000` |
+| Building a stage | A-12: `stage_est.write_genomes` on `/tmp/if2453/s2/inputs/SPX1/genomes.json` (unit `a12-mem`, `MemoryMax=16G`, `CPUQuota=200%`, read-only) | 2026-11-21 | `{"genomes": 2829368, "parts": 15, "file_bytes": 404599625, "wall_s": 26.3, "cpu_s": 24.9, "peak_rss_mib": 1944.9}` |
+| Building a stage | A-12: `find /tmp/if2453/r10/root/runs -maxdepth 2 -name 'ingest*.json'` | 2026-11-21 | `stage=V1/ingest.json` (eleven lines, one `ingest.json` per stage, no `ingest.pass1-*` or `ingest.batch-*`: no built stage ingested in batches) |
 
 ## Appendix B. Rehearse on the fixture
 

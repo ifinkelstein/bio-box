@@ -121,9 +121,20 @@ make_profile() {
   sed "s#^tmp:.*#tmp: $WORK/tmp#" "$REALPROF" > "$PROF_COPY"
 }
 
+stage_confs_present() {  # card A-12: a tree without stages/*.conf would leave the stage driver's units out of the lock
+  compgen -G "$BIN/stages/*.conf" > /dev/null
+}
+
 build_units() {
-  systemctl --user list-units --type=service --state=active --no-legend --plain \
-    'r50-*' 'c24-h1-*' 'c25-*' 'c26-pl1-*' 'c33-*' 'c34-*' 'c35-rel-*' 'c35-pack*' 'b47-*' "${UNIT_PREFIX}-rel-*" \
+  # the older names, and the build units <stage>-<n> of every stage of card A-12's stage driver (stages/<STAGE>.conf)
+  local pats=('r50-*' 'c24-h1-*' 'c25-*' 'c26-pl1-*' 'c33-*' 'c34-*' 'c35-rel-*' 'c35-pack*' 'b47-*' 'c47-c5-*'
+              'c48c-*' "${UNIT_PREFIX}-rel-*") f s
+  for f in "$BIN"/stages/*.conf; do
+    [ -e "$f" ] || continue
+    s=$(basename "$f" .conf)
+    [[ "$s" =~ ^[A-Z][A-Za-z0-9]{0,15}$ ]] && pats+=("${s,,}-[0-9]*")
+  done
+  systemctl --user list-units --type=service --state=active,activating,deactivating --no-legend --plain "${pats[@]}" \
     | awk '{print $1}' | paste -sd' ' -
 }
 
@@ -209,6 +220,7 @@ do_run() {
   log "release_train run: root=$ROOT work=$WORK profile=$REALPROF"
 
   [ -e "$ROOT/STOP" ] && fail "$ROOT/STOP exists: $(head -c 300 "$ROOT/STOP")"
+  stage_confs_present || fail "this tree has no stage confs ($BIN/stages/*.conf): its lock could not see a stage driver's build units (card A-12); run the train from a tree that has them"
   local act free
   act=$(build_units)
   [ -z "$act" ] || fail "active build unit(s): $act"
