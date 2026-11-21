@@ -189,6 +189,18 @@ on it cancelled. Next evidence: any ordinary `ci` job that shows the case (searc
   integration; its agent handed back at 09:51 with the steps listed), then card B-58, then the queue of builds:
   `C1` to `C4` and `C6`, `V2`, `GV1`, `PL2`, `G1`, `SPX1` (after `G1` and B-58).
 
+**6j. State at 19:40 CST on 2026-11-20** (the laptop stayed on past 17:40).
+- **`C5`** (unit `c47-c5-2`, since 17:18:58): gene calling, the default CRISPR producer, IGRs and tapes are
+  recorded; the Pfam scan has 39 shards, 10 recorded at 19:12; no step over 20% above its estimate (the ingest
+  record shows `accepted: DEC-56`); 532 GB free on `/tmp`. Expected to end late this evening.
+- **The whole suite of the frozen merged tree passed** (units `ci-rel1120-0..7`, 17:14 to about 18:05; *measured*,
+  `/tmp/if2453/ci-tmp/rel1120-detached/log.*`): **2,807 passed, 23 skipped, none failed** (*derived*: the sums of
+  411, 463, 476, 178, 294, 434, 249, 302 passed and 3, 4, 0, 3, 2, 9, 2, 0 skipped). So that condition of
+  `relwait-1120` holds; it waits now only for `c47-queue`.
+- Actions: `ci` green on every push through the `V1` merge (`6243b4d`).
+- On `tower` since 19:38: `deferred_lists/V1/uhgv_metadata.tsv.zst` (the table that lists UHGV's 705,458
+  non-representative genomes; sha256 `defa9fbe…70a4`). `added_v1.tar` is being relayed to `root_backups/`.
+
 **7. Waiting on the PI**: the storage decision set (`planning/design/storage_decisions_draft.md`, S-1 to S-8);
 item 19 (where the corpus lives; `tower` being looked at, card C-49), items 15 (decided: DEC-56), 16 (B-56's design), 17 (`domain_state`'s place in
 the exports), 18 (the pilot's storage rates), and the older ones in the section below (item 12, the TACC requests,
