@@ -1249,9 +1249,25 @@ probed by hand on the pod).
    cut, a stricter envelope cut), at a measured cost in residues scanned; (c) release-level representatives
    (DEC-35 (7); measured once `r26.11.2` has its clusters); (d) scan the `C` stages in full, about 46,000
    CPU-minutes more (*derived*: `C5`'s 8,899.7 CPU-minutes for 9.11 Gbp, times 46.79 / 9.11; about 14 hours at 56
-   threads). The agent is measuring (b)'s alternatives and the causes of the misses, read-only, for the note
-   `planning/measurements/2026-11-20_c5_pfam_by_representatives.md`; the orchestrator's recommendation follows
-   that table.
+   threads).
+   **The breakdown (00:24; the note `planning/measurements/2026-11-20_c5_pfam_by_representatives.md`, on
+   `task/C-47` until its merge; *measured*, `breakdown.json`, whose rule-as-built reproduces `eval.json`'s totals):**
+   every missed pair is a model the representative has no row for, every wrong pair one the member's own scan
+   lacks; none comes from the coordinate mapping (94.3% of mapped envelopes within 5 residues once instances are
+   matched by position). **64.4% of missed and 67.2% of wrong pairs sit within 2 bits of the model's gathering
+   threshold, against 3.0% of right inferred pairs**: mostly two near-identical proteins falling either side of the
+   cutoff. The rates fall with identity to the representative (about 2% under 0.95, 0.45% at 0.99 and above). Rules
+   measured (wrong, missed, residues scanned, after B-47b's copy): as decided 0.957%, 1.072%, 24.75%, 20.61%;
+   length cut 15% with f 1.0: 0.866%, 0.998%, 28.20%, 23.50% (the cheapest with both at or under 1%, by a hair);
+   an identity cut at 95%: 0.409%, 0.451%, 53.73%, 44.44%; at 97%: 0.254%, 0.272%, 65.07%, 54.12%; at 99%: 0.067%,
+   0.068%, 84.44%, 71.33%.
+   **The orchestrator's recommendation, for the PI to take or not**: (d) for the stages on hand. Scan `C1` to `C4`
+   and `C6` in full, with B-47b's copy as now: about 14 hours of the pod, no new code, every row measured, and
+   46.79 Gbp unblocked without waiting for four cards. Keep inference for sources too large to scan (all of GTDB),
+   and decide its rule then, with (c)'s number in hand and a rule that knows the threshold (scan a member when its
+   representative's hit is within a few bits of the cutoff), which the present data cannot measure. If inference
+   is wanted now, the 95% identity cut is the rule with a margin; 15% with f 1.0 meets the limit on `C5` by 0.002
+   points and should not be trusted on the next stage.
 
 **Open since 13:55 on 2026-11-16** (F-02 session 13; its note is `planning/measurements/2026-11-14_synthworld_redesign.md`
 §16 on branch `task/F-02-13`, at `f340a0a`, pushed, not merged):
