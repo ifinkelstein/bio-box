@@ -25,10 +25,12 @@ fixed 2 GB (`DUCK_MEMORY_LIMIT`), and its family run is one statement over every
 passed on `r26.11.1` (peak 2.72 GB) and does not fit this release. **The root is whole**: 119 or so run records
 of the release, no manifest for it, the seven earlier releases untouched (the train verified them at 11:53).
 **What it needs**: card B-62 (written, not started: the PI's word was to start no agent), then
-`release_train.sh run` from a mirror that carries the fix, which resumes at `postings` (card A-15). **A probe is
-running, read-only** (the orchestrator's, no agent): unit `b62-probe8`, the same step and code at an 8 GB limit,
-writing into `/tmp/if2453/b62/out8`, log `/tmp/if2453/b62/probe8.log` (its last line is one JSON document: `status`,
-`wall_s`, `cpu_s`, `maxrss_kb`); it says whether a larger limit alone lets the step through. `/tmp`: 512 GiB free.
+`release_train.sh run` from a mirror that carries the fix, which resumes at `postings` (card A-15). **The orchestrator's read-only probe (no agent; unit `b62-probe8`, 15:22 to 15:33; `/tmp/if2453/b62/probe8.log`)
+found a second fault behind the first**: with an 8 GB limit the family run passes (taking all 8 GB: peak RSS 8.41
+GB), and the step then fails after 649 s with `Too many open files` on `runs/canon-000544.parquet`: it hands at
+least 545 run files to one `read_parquet`, and a user unit's soft limit is 1,024 open files (*measured*). **So a
+larger memory limit alone does not finish the release**; card B-62 has both faults and what a fix must show.
+`/tmp`: 512 GiB free; the probe left nothing but its log and script.
 
 **H1. What was running until 15:16** (kept for the paths and the method). Release `r26.11.2` (stages `S1`, `P1` to `P6`, `H1`,
 `PL1`, `C5`, `V1`), resumed at 11:41 after a guard stop at 06:39 (DEC-61): driver unit `c46-driver-run2`
