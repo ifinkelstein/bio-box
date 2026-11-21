@@ -589,10 +589,30 @@ evaluate() {
   touch "$EV/eval.DONE"
 }
 
+# breakdown: after DEC-35 (6) stopped the evaluation on missed pairs (2026-11-21), where the missed and wrong pairs come
+# from and what alternative rules would cost, for the PI (c47_nr90_pfam_eval.py breakdown). Read-only on the root;
+# exit 3 from the script means its rule-as-built does not reproduce eval.json's totals: a stop.
+breakdown() {
+  local rc
+  passed
+  [ -e "$EV/eval.DONE" ] || fail "breakdown: no $EV/eval.DONE"
+  [ -s "$EV/cm.files" ] && [ -s "$EV/aln.files" ] || fail "breakdown: no cluster file lists in $EV"
+  mkdir -p "$EV/breakdown_tmp"
+  # shellcheck disable=SC2046
+  bb py "$BIN/c47_nr90_pfam_eval.py" breakdown --root "$ROOT" --stage "$STAGE" --earlier "$EARLIER" \
+    --stage-cm $(cat "$EV/cm.files") --stage-aln $(cat "$EV/aln.files") \
+    --selection "$C/stages/$STAGE/selection.tsv" --objects "$IN/objects.json" --hmm "$PFAM" \
+    --out "$EV/breakdown.json" --tmp "$EV/breakdown_tmp" --threads 2 --memory 10GB > "$EV/breakdown.out" 2>&1
+  rc=$?
+  log "breakdown: exit $rc: $(tail -n 1 "$EV/breakdown.out")"
+  [ "$rc" = 0 ] || fail "breakdown: c47_nr90_pfam_eval.py exited $rc (read $EV/breakdown.out)"
+  touch "$EV/breakdown.DONE"
+}
+
 MODE=${1:-}
 case "$MODE" in
-  restore|rehearse|estimate|before|rebefore|run|after|check|backup|evalplan|evalcluster|evaluate) ;;
-  *) echo "usage: c47_driver.sh restore|rehearse|estimate|before|rebefore|run|after|check|backup|evalplan|evalcluster|evaluate" >&2; exit 2 ;;
+  restore|rehearse|estimate|before|rebefore|run|after|check|backup|evalplan|evalcluster|evaluate|breakdown) ;;
+  *) echo "usage: c47_driver.sh restore|rehearse|estimate|before|rebefore|run|after|check|backup|evalplan|evalcluster|evaluate|breakdown" >&2; exit 2 ;;
 esac
 log "c47 driver: mode '$MODE' (pid $$), tree $TREE, image $IMAGE"
 # The mode's own status is the driver's exit status (on 2026-11-20 `check` returned 1 and the driver exited 0, the

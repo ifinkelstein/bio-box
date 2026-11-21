@@ -25,6 +25,7 @@ from __future__ import annotations
 
 import argparse
 import csv
+import gzip
 import json
 import re
 import sys
@@ -331,7 +332,7 @@ def _eval_duckdb(
     con.execute(f"""
         CREATE OR REPLACE TABLE aln_{tag} AS
         SELECT member_uid AS m, rep_uid AS r, qstart::BIGINT AS qs, qend::BIGINT AS qe,
-               tstart::BIGINT AS ts, tend::BIGINT AS te, cigar
+               tstart::BIGINT AS ts, tend::BIGINT AS te, cigar, pident::DOUBLE AS pid
         FROM read_parquet({_sql_list(aln_files)}, hive_partitioning = false)
         WHERE level = 'nr90' AND member_uid <> rep_uid
     """)
@@ -342,7 +343,7 @@ def _eval_duckdb(
                coalesce(pp.phylum, 'unknown') AS phylum,
                (p.uid = c.r) AS is_rep,
                (p.uid <> c.r AND abs(p.len - pr.len) > 0.2 * pr.len) AS len_mis,
-               a.ts, a.te, (a.m IS NOT NULL) AS has_aln
+               a.ts, a.te, (a.m IS NOT NULL) AS has_aln, a.pid
         FROM c5_prot p
         JOIN cm_{tag} c ON c.m = p.uid
         JOIN all_prot_len pr ON pr.uid = c.r
@@ -502,9 +503,257 @@ def _eval_duckdb(
     }
 
 
+# --- the breakdown (card C-47, after DEC-35 (6) stopped C5 on missed pairs, 2026-11-21) --------------------------------
+# Measurements of where the missed and wrong pairs come from and of alternative rules, for the PI. Nothing here is a rule
+# of the build: B-47a to B-47e are held.
+
+MARGIN_EDGES = (0, 1, 2, 5, 10, 25)
+SWEEP_LENGTH = (0.2, 0.15, 0.1, 0.05)
+SWEEP_IDENTITY = (None, 0.95, 0.97, 0.99)
+SWEEP_F = (0.8, 0.9, 1.0)
+CHEAPEST_LEVELS = (0.01, 0.005)
+
+
+def parse_ga(lines) -> dict[str, tuple[float, float]]:
+    """Each model's gathering thresholds (sequence, domain) from a Pfam HMM file's `ACC` and `GA` lines, keyed by the
+    accession without its version (`PF00001.26` -> `PF00001`)."""
+    out: dict[str, tuple[float, float]] = {}
+    acc = None
+    for line in lines:
+        if line.startswith("ACC "):
+            acc = line.split()[1].split(".")[0]
+        elif line.startswith("GA ") and acc is not None:
+            f = line.split()
+            out[acc] = (float(f[1]), float(f[2].rstrip(";")))
+        elif line.startswith("//"):
+            acc = None
+    return out
+
+
+def margin_bin(x: float | None) -> str:
+    """The bin of a bit score's margin over its gathering threshold."""
+    if x is None:
+        return "no_score"
+    if x < 0:
+        return "<0"
+    for lo, hi in zip(MARGIN_EDGES, MARGIN_EDGES[1:]):
+        if x < hi:
+            return f"[{lo},{hi})"
+    return f"[{MARGIN_EDGES[-1]},inf)"
+
+
+def _margin_sql(x: str) -> str:
+    """margin_bin as a SQL expression over `x` (the same edges)."""
+    arms = " ".join(f"WHEN {x} < {hi} THEN '[{lo},{hi})'" for lo, hi in zip(MARGIN_EDGES, MARGIN_EDGES[1:]))
+    return f"CASE WHEN {x} IS NULL THEN 'no_score' WHEN {x} < 0 THEN '<0' {arms} ELSE '[{MARGIN_EDGES[-1]},inf)' END"
+
+
+def match_instance(mapped: tuple[int, int], member_envs) -> tuple[int, int] | None:
+    """The member's own envelope of the same model that overlaps the mapped envelope most (the first by start on a
+    tie), or None when none overlaps: a model can occur more than once in a protein, and only an overlapping instance
+    is the one the inference describes."""
+    best, best_ov = None, 0
+    for s, e in sorted(member_envs):
+        ov = min(e, mapped[1]) - max(s, mapped[0])
+        if ov > best_ov:
+            best, best_ov = (s, e), ov
+    return best
+
+
+def _scanned_sql(length_cut: float, identity_min: float | None, f_cut: float) -> str:
+    """A member is scanned under the rule (DEC-35 with these parameters): it is a representative, its length differs by
+    more than `length_cut` of its representative's, it has no alignment, a representative domain lies less than `f_cut`
+    inside the alignment, or (when given) its identity to the representative is under `identity_min`."""
+    ident = "" if identity_min is None else f" OR coalesce(pid, 0) < {identity_min}"
+    return f"(is_rep OR abs(lm - lr) > {length_cut} * lr OR NOT has_aln OR min_f < {f_cut}{ident})"
+
+
+def _rule_row(con, length_cut: float, identity_min: float | None, f_cut: float) -> dict:
+    sc = _scanned_sql(length_cut, identity_min, f_cut)
+    (n, res, sp, sr, spb, srb, true_p, right, false_p, missed) = (int(v or 0) for v in con.execute(f"""
+        SELECT count(*), sum(lm),
+               count(*) FILTER (WHERE sc), coalesce(sum(lm) FILTER (WHERE sc), 0),
+               count(*) FILTER (WHERE sc AND NOT copied), coalesce(sum(lm) FILTER (WHERE sc AND NOT copied), 0),
+               sum(true_n), sum(CASE WHEN sc THEN true_n ELSE ni END),
+               sum(CASE WHEN sc THEN 0 ELSE rep_n - ni END), sum(CASE WHEN sc THEN 0 ELSE true_n - ni END)
+        FROM (SELECT *, {sc} AS sc FROM bd_feat)
+    """).fetchone())
+    reported = right + false_p
+    return {
+        "length_cut": length_cut, "identity_min": identity_min, "f_cut": f_cut,
+        "scanned_proteins": sp, "scanned_residues": sr,
+        "scanned_protein_fraction": round(sp / n, 6) if n else 0.0,
+        "scanned_residue_fraction": round(sr / res, 6) if res else 0.0,
+        "scanned_proteins_after_b47b": spb, "scanned_residues_after_b47b": srb,
+        "scanned_residue_fraction_after_b47b": round(srb / res, 6) if res else 0.0,
+        "true_pairs": true_p, "reported_pairs": reported, "pairs_right": right, "pairs_false": false_p,
+        "pairs_missed": missed,
+        "wrong_rate": (false_p / reported) if reported else 0.0,
+        "missed_rate": (missed / true_p) if true_p else 0.0,
+    }
+
+
+def _bins(con, sql: str) -> dict[str, int]:
+    return {b: int(n) for b, n in con.execute(sql).fetchall()}
+
+
+def _breakdown(con, tag: str, dom_files: list[Path], ga: dict[str, tuple[float, float]], overall: dict) -> dict:
+    """The breakdown of the evaluation's tables for `tag` (after `_eval_duckdb`): causes, margins over GA, identity and
+    length bins, models, the sweep of rules and the coordinate block with instances matched by position."""
+    con.execute("CREATE OR REPLACE TEMP TABLE ga (acc_base VARCHAR, ga_seq DOUBLE, ga_dom DOUBLE)")
+    con.executemany("INSERT INTO ga VALUES (?, ?, ?)", [(k, s, d) for k, (s, d) in sorted(ga.items())])
+    con.execute(f"""
+        CREATE OR REPLACE TABLE dom_score AS
+        SELECT protein_uid AS p, model_acc AS acc, max(seq_bitscore)::DOUBLE AS s, max(dom_bitscore)::DOUBLE AS d
+        FROM read_parquet({_sql_list(dom_files)}, hive_partitioning = false) GROUP BY 1, 2
+    """)
+    con.execute(f"""
+        CREATE OR REPLACE TABLE bd_inter AS
+        SELECT x.m, count(*) AS ni FROM mem_{tag} x
+        JOIN dom_pair dm ON dm.p = x.m JOIN dom_pair dr ON dr.p = x.r AND dr.acc = dm.acc
+        WHERE NOT x.is_rep GROUP BY x.m
+    """)
+    con.execute(f"CREATE OR REPLACE TABLE bd_minf AS SELECT m, min(f) AS min_f FROM cov_{tag} GROUP BY m")
+    con.execute(f"""
+        CREATE OR REPLACE TABLE bd_feat AS
+        SELECT x.m, x.r, x.lm, x.lr, x.copied, x.is_rep, x.has_aln, x.pid, coalesce(f.min_f, 1.0) AS min_f,
+               coalesce(dm.n, 0) AS true_n, coalesce(dr.n, 0) AS rep_n, coalesce(i.ni, 0) AS ni
+        FROM mem_{tag} x
+        LEFT JOIN bd_minf f ON f.m = x.m
+        LEFT JOIN dom_n dm ON dm.p = x.m
+        LEFT JOIN dom_n dr ON dr.p = x.r
+        LEFT JOIN bd_inter i ON i.m = x.m
+    """)
+
+    # the rule as built (DEC-35: 20%, f 0.8, no identity cut); it must reproduce the evaluation's totals
+    base = _rule_row(con, 0.2, None, 0.8)
+    keys = ("scanned_proteins", "scanned_residues", "scanned_residues_after_b47b", "true_pairs", "pairs_right",
+            "pairs_false", "pairs_missed")
+    consistent = all(base[k] == overall[k] for k in keys)
+    base["total_residues"] = int(overall["total_residues"])
+    con.execute(f"CREATE OR REPLACE TABLE bd_inf AS SELECT * FROM bd_feat WHERE NOT {_scanned_sql(0.2, None, 0.8)}")
+    con.execute("""
+        CREATE OR REPLACE TABLE bd_missed AS
+        SELECT x.m, x.r, x.rep_n, dm.acc FROM bd_inf x JOIN dom_pair dm ON dm.p = x.m
+        WHERE NOT EXISTS (SELECT 1 FROM dom_pair dr WHERE dr.p = x.r AND dr.acc = dm.acc)
+    """)
+    con.execute("""
+        CREATE OR REPLACE TABLE bd_wrong AS
+        SELECT x.m, x.r, dr.acc FROM bd_inf x JOIN dom_pair dr ON dr.p = x.r
+        WHERE NOT EXISTS (SELECT 1 FROM dom_pair dm WHERE dm.p = x.m AND dm.acc = dr.acc)
+    """)
+    n_missed = con.execute("SELECT count(*) FROM bd_missed").fetchone()[0]
+    n_wrong = con.execute("SELECT count(*) FROM bd_wrong").fetchone()[0]
+    consistent = consistent and n_missed == base["pairs_missed"] and n_wrong == base["pairs_false"]
+    not_mapped = con.execute(f"""
+        SELECT count(*) FROM cov_{tag} c SEMI JOIN bd_inf x ON x.m = c.m WHERE c.f < 0.8
+    """).fetchone()[0]
+    missed_by_cause = {
+        "rep_has_no_row_for_the_model": int(n_missed),
+        "rep_row_not_mapped": int(not_mapped),  # 0 by construction: such a member is scanned (DEC-35 (4))
+        "of_which_rep_has_no_domain_at_all": int(con.execute(
+            "SELECT count(*) FROM bd_missed WHERE rep_n = 0").fetchone()[0]),
+    }
+    wrong_by_cause = {"member_scan_lacks_the_model": int(n_wrong)}
+
+    def margins(pairs_sql: str) -> dict:
+        q = (f"FROM ({pairs_sql}) t LEFT JOIN dom_score s ON s.p = t.p AND s.acc = t.acc "
+             f"LEFT JOIN ga g ON g.acc_base = split_part(t.acc, '.', 1)")
+        return {"seq": _bins(con, f"SELECT {_margin_sql('s.s - g.ga_seq')} AS b, count(*) {q} GROUP BY b ORDER BY b"),
+                "dom": _bins(con, f"SELECT {_margin_sql('s.d - g.ga_dom')} AS b, count(*) {q} GROUP BY b ORDER BY b")}
+
+    margin_doc = {
+        "missed": margins("SELECT m AS p, acc FROM bd_missed"),  # the member has the hit
+        "wrong": margins("SELECT r AS p, acc FROM bd_wrong"),  # the representative has the hit
+        "right_inferred": margins(  # for comparison: the inferred pairs that are right, the member's own hit
+            "SELECT x.m AS p, dm.acc FROM bd_inf x JOIN dom_pair dm ON dm.p = x.m "
+            "JOIN dom_pair dr ON dr.p = x.r AND dr.acc = dm.acc"),
+    }
+
+    def by(expr: str) -> dict:
+        rows = con.execute(f"""
+            SELECT {expr} AS b, count(*), sum(true_n), sum(rep_n), sum(rep_n - ni), sum(true_n - ni)
+            FROM bd_inf GROUP BY b ORDER BY b
+        """).fetchall()
+        return {b: {"members": int(n), "true_pairs": int(t), "reported_pairs": int(rp), "pairs_false": int(f),
+                    "pairs_missed": int(mi)} for b, n, t, rp, f, mi in rows}
+
+    by_identity = by("CASE WHEN pid IS NULL THEN 'none' WHEN pid < 0.90 THEN '<0.90' WHEN pid < 0.95 THEN '[0.90,0.95)' "
+                     "WHEN pid < 0.97 THEN '[0.95,0.97)' WHEN pid < 0.99 THEN '[0.97,0.99)' "
+                     "WHEN pid < 1.0 THEN '[0.99,1)' ELSE '1.0' END")
+    by_length = by("CASE WHEN abs(lm - lr) = 0 THEN '0' WHEN abs(lm - lr) <= 0.05 * lr THEN '(0,0.05]' "
+                   "WHEN abs(lm - lr) <= 0.10 * lr THEN '(0.05,0.10]' WHEN abs(lm - lr) <= 0.15 * lr THEN '(0.10,0.15]' "
+                   "WHEN abs(lm - lr) <= 0.20 * lr THEN '(0.15,0.20]' ELSE '>0.20' END")
+
+    def top(table: str, total: int) -> list[dict]:
+        rows = con.execute(f"""
+            SELECT split_part(acc, '.', 1) AS model, count(*) AS n FROM {table} GROUP BY model ORDER BY n DESC, model
+            LIMIT 20
+        """).fetchall()
+        return [{"model": mo, "pairs": int(n), "share": round(n / total, 6) if total else 0.0} for mo, n in rows]
+
+    sweep = [_rule_row(con, lc, im, fc) for lc in SWEEP_LENGTH for im in SWEEP_IDENTITY for fc in SWEEP_F]
+
+    def cheapest(level: float) -> dict | None:
+        ok = [r for r in sweep if r["wrong_rate"] <= level and r["missed_rate"] <= level]
+        key = lambda r: (r["scanned_residues"], -r["length_cut"],  # noqa: E731
+                         -1.0 if r["identity_min"] is None else r["identity_min"], r["f_cut"])
+        return min(ok, key=key) if ok else None
+
+    # the coordinate block with instances matched by position (the evaluation's block joined every member row of the
+    # same model, so a model occurring twice paired mismatched instances)
+    rep_rows = int(con.execute("SELECT count(*) FROM bd_inf x JOIN dom_rows dr ON dr.p = x.r").fetchone()[0])
+    sample = con.execute(f"""
+        SELECT a.qs, a.qe, a.ts, a.te, a.cigar, dr.env_start, dr.env_end,
+               list(struct_pack(s := dm.env_start, e := dm.env_end)) FILTER (WHERE dm.p IS NOT NULL) AS mine
+        FROM bd_inf x
+        JOIN aln_{tag} a ON a.m = x.m AND a.r = x.r
+        JOIN dom_rows dr ON dr.p = x.r
+        LEFT JOIN dom_rows dm ON dm.p = x.m AND dm.acc = dr.acc
+        GROUP BY x.m, a.qs, a.qe, a.ts, a.te, a.cigar, dr.acc, dr.env_start, dr.env_end
+        ORDER BY x.m, dr.acc, dr.env_start
+        LIMIT 200000
+    """).fetchall()
+    ds, de, no_inst, unmappable = [], [], 0, 0
+    for qs, qe, ts, te, cig, r_es, r_ee, mine in sample:
+        mapped = map_envelope(bytes(cig), int(qs), int(qe), int(ts), int(te), int(r_es), int(r_ee))
+        if mapped is None:
+            unmappable += 1
+            continue
+        hit = match_instance(mapped, [(int(x["s"]), int(x["e"])) for x in (mine or [])])
+        if hit is None:
+            no_inst += 1
+            continue
+        ds.append(abs(mapped[0] - hit[0]))
+        de.append(abs(mapped[1] - hit[1]))
+    coords: dict = {"rep_rows": rep_rows, "sampled": len(sample), "matched": len(ds), "no_member_instance": no_inst,
+                    "unmappable": unmappable}
+    if ds:
+        a1, a2 = np.asarray(ds, dtype=float), np.asarray(de, dtype=float)
+        both = np.maximum(a1, a2)
+        coords.update({"ds_median": float(np.quantile(a1, 0.5)), "ds_p95": float(np.quantile(a1, 0.95)),
+                       "de_median": float(np.quantile(a2, 0.5)), "de_p95": float(np.quantile(a2, 0.95)),
+                       "both_within_5": float((both <= 5).mean()), "both_within_10": float((both <= 10).mean())})
+
+    return {
+        "base": base,
+        "consistent_with_eval": bool(consistent),
+        "missed_by_cause": missed_by_cause,
+        "wrong_by_cause": wrong_by_cause,
+        "margins": margin_doc,
+        "by_identity": by_identity,
+        "by_length": by_length,
+        "by_model": {"missed": top("bd_missed", int(n_missed)), "wrong": top("bd_wrong", int(n_wrong))},
+        "sweep": sweep,
+        "cheapest": {str(lv): cheapest(lv) for lv in CHEAPEST_LEVELS},
+        "coordinates": coords,
+    }
+
+
 def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser()
-    ap.add_argument("mode", choices=("eval",))
+    ap.add_argument("mode", choices=("eval", "breakdown"))
+    ap.add_argument("--hmm", type=Path, default=None, help="breakdown: Pfam-A.hmm[.gz], for each model's GA")
     ap.add_argument("--root", required=True, type=Path)
     ap.add_argument("--stage", default="C5")
     ap.add_argument("--earlier", default="S1,P1,P2,P3,P4,P5,P6,H1,PL1")
@@ -585,6 +834,25 @@ def main(argv: list[str] | None = None) -> int:
     con.execute("CREATE TABLE dom_n AS SELECT p, count(*) AS n FROM dom_pair GROUP BY p")
 
     _phylum_map_sql(con, root, st, a.selection, a.objects, GCV)
+
+    if a.mode == "breakdown":
+        if a.hmm is None:
+            raise SystemExit("breakdown needs --hmm (the Pfam-A.hmm[.gz] whose GA lines the scan used)")
+        stage_res = _eval_duckdb(con, list(a.stage_cm), list(a.stage_aln), "stage", with_coords=False)
+        opener = gzip.open if str(a.hmm).endswith(".gz") else open
+        with opener(a.hmm, "rt") as fh:
+            ga = parse_ga(fh)
+        doc = {"stage": st, "library": LIB, "hmm": str(a.hmm), "ga_models": len(ga),
+               **_breakdown(con, "stage", all_dom, ga, stage_res["overall"])}
+        doc["elapsed_s"] = round(time.monotonic() - t0, 1)
+        con.close()
+        db_path.unlink(missing_ok=True)
+        a.out.parent.mkdir(parents=True, exist_ok=True)
+        tmp_out = a.out.with_name(f".{a.out.name}.tmp")
+        tmp_out.write_text(json.dumps(doc, indent=1, sort_keys=True) + "\n")
+        tmp_out.replace(a.out)
+        print(f"CONSISTENT_WITH_EVAL: {doc['consistent_with_eval']}", flush=True)
+        return 0 if doc["consistent_with_eval"] else 3
 
     stage_res = _eval_duckdb(con, list(a.stage_cm), list(a.stage_aln), "stage", with_coords=True)
     doc: dict = {
