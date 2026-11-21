@@ -1521,7 +1521,9 @@ of the `task/A-12` tree (`TREE=/tmp/if2453/a12/tree`), the real profile (each re
 `durable` and `bulk` under the stage's scratch directory and `small_file_floor_bytes: 1000`), `STAGES_HOME=/tmp/if2453/a12/stages`,
 through `scripts/stress/build_stage_pod/stage_driver.sh` in units named `v2-rh-*` and `zx1-rh-*`. Nothing was written in
 the data root; each rehearsal's backup went to its own scratch directory. `ZX1` is a conf made for the rehearsal only
-(`SPX1`'s shape: depth `called`, `MIN_CONTIG_LEN=5000`, no library, `CRISPR=yes`), not a stage.
+(`SPX1`'s shape: depth `called`, `MIN_CONTIG_LEN=5000`, no library, `CRISPR=yes`), not a stage; on the final tree it
+was given through `STAGE_CONF` (only `rehearse` may take a conf that is not the tree's own) and each rehearsal unit
+ran at a quota of 3 (`RH_Q=3`) beside the release train.
 
 | Section | Command | Date run | Last line |
 |---|---|---|---|
@@ -1642,6 +1644,11 @@ the data root; each rehearsal's backup went to its own scratch directory. `ZX1` 
 | Mirror to tower | C-49: the orchestrator's first mirror, on the laptop: `caffeinate -i bash relay_backups.sh` (the predecessor of `scripts/orchestrator/relay_to_tower.sh`: `scp -3`, two streams, then `sha256sum` read back on `tower` and `mv -n`; script, ssh config and log in the orchestrating session's scratch directory), the seven tars of `/stor/work/Wilke/if2453/all-the-data/root_backups` to `tower:/mnt/user/research-bulk/bio-box/root_backups` | 2026-11-20, from 10:40:59 | still running when read at 15:15: the log's last line `2026-11-20 13:35:12 added_r26_11_1.tar: try 1: copy started`; before it `l0seq.tar: OK: 28241715200 bytes in 6543 s` (13:21:26) and `l2.tar: OK: 27176785920 bytes in 6843 s` (13:35:11) (`planning/measurements/2026-11-20_tower_relay.md`) |
 | 8 | C-49: `env BIOBOX_POD_JUMP=if2453@wilkcomp03.ccbb.utexas.edu BIOBOX_TREE=<worktree> sh scripts/pod_pytest.sh C-49 tests/r1/test_relay_to_tower.py` (laptop), before the script existed | 2026-11-20 | 33 failed (`bash: /tmp/if2453/ci/C-49/scripts/orchestrator/relay_to_tower.sh: No such file or directory`) |
 | 8 | C-49: the same with `tests/r1/test_pod_pytest_jump.py tests/r0` added (laptop), with the script | 2026-11-20 | `287 passed in 25.32s` |
+| Building a stage | A-12: `stage_driver.sh V2 rehearse` and `stage_driver.sh ZX1 rehearse` (units `v2-rh-drv`, `zx1-rh-drv`; tree `d772cb7` with stage E at `cpu_min_per_process: 1`; each: units `<stage>-rh-e`, `<stage>-rh-1`, `<stage>-rh-again`) | 2026-11-21 | `[V2 rehearse] stage driver: mode rehearse done` (04:33:57) and `[ZX1 rehearse] stage driver: mode rehearse done` (04:28:07); before each, `rehearse: mode <m> passed` for estimate, before, run, after, check and backup, and `the relaunch published nothing and left the scratch root unchanged` |
+| Building a stage | A-12: the same on tree `529b6b0` (units `v2-rh-drv`, `zx1-rh-drv2`) | 2026-11-21 | `rehearse: mode run of the rehearsal's stage exited 1`: the rate guard stopped `v2-rh-1` and `zx1-rh-1` when `stage_est.py rates` exited 1 (`FileNotFoundError` under its `--tmp`, which nothing made once `held_bases` came from `before.json`); fixed in `1e0a55e`, with the test `test_rates_of_a_stage_called_in_one_process_with_a_scratch_directory_not_yet_made`. One `rates` call before it: `rates call: exit 0 in 4.7 s` (ZX1R, 2 records) |
+| Building a stage | A-12: `systemctl --user set-property --runtime zx1-rh-e CPUQuota=300%` on a running service started by `pod_run.sh` (quota 400%) | 2026-11-21 | `(no output)`, exit 0; then `CPUQuotaPerSecUSec=3s` (was `4s`) and the cgroup's `cpu.max` `300000 100000` |
+| Building a stage | A-12: `stage_est.write_genomes` on `/tmp/if2453/s2/inputs/SPX1/genomes.json` (unit `a12-mem`, `MemoryMax=16G`, `CPUQuota=200%`, read-only) | 2026-11-21 | `{"genomes": 2829368, "parts": 15, "file_bytes": 404599625, "wall_s": 26.3, "cpu_s": 24.9, "peak_rss_mib": 1944.9}` |
+| Building a stage | A-12: `find /tmp/if2453/r10/root/runs -maxdepth 2 -name 'ingest*.json'` | 2026-11-21 | `stage=V1/ingest.json` (eleven lines, one `ingest.json` per stage, no `ingest.pass1-*` or `ingest.batch-*`: no built stage ingested in batches) |
 
 ## Appendix B. Rehearse on the fixture
 
