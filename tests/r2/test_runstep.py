@@ -716,7 +716,9 @@ def test_c16_a_killed_step_records_its_peak_and_where_it_came_from(prof, root, k
     att = json.loads(failed_path(prof, "hold").read_text())
     _evidence(record_property, f"c16_killed_step_peak_{kill}",
               f"recorded {att['peak_rss_bytes'] and round(att['peak_rss_bytes'] / MIB, 1)} MiB "
-              f"({att['peak_rss_source']}, mem_cap {att['mem_cap']['how']}); the step wrote {HOLD_MIB} MiB")
+              f"({att['peak_rss_source']}, mem_cap {att['mem_cap']['how']}); the step wrote {HOLD_MIB} MiB; "
+              # card A-10a: with `group` the test kills the helper itself, so this is the evidence of a known killer
+              f"peak_evidence {json.dumps(att.get('peak_evidence'), sort_keys=True)}")
     scope = att["mem_cap"]["how"] == "opened"
     expected = {("step", True): "scope_memory_peak", ("step", False): "child_maxrss",
                 ("group", True): "scope_memory_peak_sampled", ("group", False): "child_hwm_sampled"}[kill, scope]
@@ -776,7 +778,9 @@ def test_c16_an_oom_killed_step_records_a_peak_within_20_percent_of_its_cap(prof
     cap = runstep.size_bytes(OOM_CAP)
     _evidence(record_property, "c16_oom_step_peak",
               f"recorded {att['peak_rss_bytes'] and round(att['peak_rss_bytes'] / MIB, 1)} MiB "
-              f"({att['peak_rss_source']}); cap {cap / MIB:.1f} MiB")
+              f"({att['peak_rss_source']}); cap {cap / MIB:.1f} MiB; "
+              # card A-10a: what was read about a killed helper, kept only when the peak is a sampled one
+              f"peak_evidence {json.dumps(att.get('peak_evidence'), sort_keys=True)}")
     assert att["peak_rss_source"] in ("scope_memory_peak", "scope_memory_peak_sampled"), att
     assert 0.8 * cap <= att["peak_rss_bytes"] <= 1.2 * cap, att["peak_rss_bytes"] / MIB
 

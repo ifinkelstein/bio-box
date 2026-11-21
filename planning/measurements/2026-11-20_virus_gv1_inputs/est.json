@@ -1,0 +1,53 @@
+{
+ "code": {
+  "annotated_cpu_min": 9471.4,
+  "called_bases": {
+   "gv-meta linear": 4108278835
+  },
+  "called_cpu_min": 382.4,
+  "called_saves_cpu_min": 9089.0,
+  "crispr_default_cpu_min": 10.9,
+  "crispr_flank_bases": 0,
+  "crispr_near_cas_cpu_min": 12.54,
+  "fasta_bytes": 4639876745,
+  "genecall_batches": 2,
+  "genecall_cpu_min": 354.1,
+  "genes_code_rate": 5606806,
+  "held_bases": 425418119,
+  "ingest_cpu_min": 19.14,
+  "ingest_cpu_min_with_held": 17.39,
+  "merge_cpu_min": 0.63,
+  "pfam_cpu_min": 9076.4,
+  "pfam_residues": 1140254492,
+  "pfam_shards": 38,
+  "scan_shard_residues": 30150753,
+  "stored_bases": 3890643054
+ },
+ "derived": {
+  "distinct_proteins": 3968261,
+  "genes": 4126766,
+  "residues": 1140254493
+ },
+ "sample": {
+  "bases": 174342637,
+  "cpu_s": 474.9,
+  "distinct_in_root": 322,
+  "distinct_per_mbp": 1019.95,
+  "distinct_proteins": 177820,
+  "every": 25,
+  "genecall_cpu_min_code_rate": 354.1,
+  "genecall_cpu_min_sample_rate": 229.7,
+  "genes": 184923,
+  "genes_per_mbp": 1060.69,
+  "genomes": 695,
+  "residues": 51095667,
+  "residues_per_mbp": 293076.1,
+  "s_per_mbp": 2.7239,
+  "sample_rate_over_code_rate": 0.649,
+  "sampled_genomes_not_completed": 0
+ },
+ "storage_gb": {
+  "at_h1_0.7316": 2.85,
+  "at_s1_0.7175": 2.79
+ }
+}

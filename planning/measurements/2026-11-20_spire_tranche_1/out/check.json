@@ -1,0 +1,55 @@
+{
+ "stage": "SPX1",
+ "genomes": 2829368,
+ "genome_input_rows": 2829368,
+ "distinct_genome_uids": 2829368,
+ "circular_rows": 0,
+ "kinds": [
+  "prokaryote"
+ ],
+ "codes": [
+  11
+ ],
+ "assembly_quality": [
+  "contig"
+ ],
+ "gene_call_mode": {
+  "prokaryote": null
+ },
+ "biobox": "/tmp/if2453/c48e1/tree/src/biobox/cli.py",
+ "problems": [],
+ "objects_summary": {
+  "count": 304,
+  "total_bytes": 75267693104,
+  "source_names": [
+   "spire"
+  ],
+  "source_releases": [
+   "v1"
+  ],
+  "licenses": [
+   "CC BY-SA 4.0"
+  ],
+  "redistributable": [
+   true
+  ],
+  "first": {
+   "path": "/tmp/if2453/s2/inputs/SPX1/assemblies/5O_Y1.4.fa.gz",
+   "source_name": "spire",
+   "source_release": "v1",
+   "license": "CC BY-SA 4.0",
+   "redistributable": true,
+   "retrieved_at": "2026-11-20T17:47:14+00:00",
+   "bytes": 34798716
+  },
+  "last": {
+   "path": "/tmp/if2453/s2/inputs/SPX1/assemblies/mgp82531_18B.fa.gz",
+   "source_name": "spire",
+   "source_release": "v1",
+   "license": "CC BY-SA 4.0",
+   "redistributable": true,
+   "retrieved_at": "2026-11-20T18:23:53+00:00",
+   "bytes": 54146745
+  }
+ }
+}

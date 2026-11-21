@@ -1,0 +1,41 @@
+{
+  "card": "C-48e part 1",
+  "habitats": [
+    "aquatic",
+    "terrestrial"
+  ],
+  "seed": 20261120,
+  "k_nearest_n50": 15,
+  "caps": {
+    "max_contigs_ge_5000": 3000000,
+    "max_bp_ge_5000": 40000000000
+  },
+  "rule": "1. Universe: SPIRE v1 study samples (`c42_select.merge_sample_tables`) whose level-1 habitat is one of `habitats`.\n   A sample without a published assembly size (`assembly_bp` absent or 0) is not ordered: it is listed apart\n   (all seven such aquatic or terrestrial samples the pilot requested answered HTTP 404).\n2. Within a level-2 stratum, studies are taken in turn: studies in the order of sha256(\"<seed>:study:<study>\"),\n   each study's samples in the order of sha256(\"<seed>:sample:<sample_id>\"), then round by round one sample from\n   each study that has one left. No order depends on the order rows are read in.\n3. Strata are interleaved by Webster's divisor method on weights sqrt(N_h), N_h every sample of the stratum (as\n   the pilot counted them): the next sample comes from the stratum with the largest sqrt(N_h) / (2 k_h + 1) among\n   strata with samples left, k_h the samples it has given so far (ties: larger N_h, then the stratum's name). A\n   divisor method never takes a sample back as the tranche grows, so every prefix is proportional to sqrt(N_h) in\n   the divisor sense, and a second tranche continues the same sequence.\n4. Each sample's contigs and bases at >= 5 kb: the pilot's measured values when the pilot fetched it, else the\n   ratio of sums over the k pilot samples of the same habitats nearest in ln(N50) (ties by sample id), times the\n   sample's published assembly size (*estimate*).\n5. The tranche is the longest prefix of the order, skipping samples an earlier tranche took (`--exclude`), whose\n   estimated contigs and bases at >= 5 kb both stay within the caps; the rest of the order is the remainder, in\n   the order a next tranche would take it.",
+  "spire_study_samples": 96067,
+  "habitat_samples": 18633,
+  "ordered_samples": 18272,
+  "no_assembly_size_samples": 361,
+  "excluded_by_earlier_tranches": 0,
+  "train_pilot_samples": 452,
+  "taken": 304,
+  "taken_strata": 19,
+  "taken_studies": 189,
+  "taken_measured_in_pilot": 12,
+  "taken_assembly_bp": 243047507220,
+  "taken_est_n_ge_5000": 2985971,
+  "taken_est_bp_ge_5000": 35467228896,
+  "next_sample": {
+    "order_rank": 305,
+    "sample_id": "SAMN07631787",
+    "habitat2": "terrestrial:wetland",
+    "est_n_ge_5000": 22961,
+    "est_bp_ge_5000": 266516426
+  },
+  "left_ordered": 17968,
+  "left_assembly_bp": 8498642140659,
+  "left_est_n_ge_5000": 83343010,
+  "left_est_bp_ge_5000": 958597244691,
+  "habitats_all_est_n_ge_5000": 86328981,
+  "habitats_all_est_bp_ge_5000": 994064473587,
+  "habitats_all_assembly_bp": 8741689647879
+}

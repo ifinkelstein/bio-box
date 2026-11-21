@@ -104,7 +104,7 @@ def test_c19_a_release_built_before_a_library_was_scanned_on_its_stage_verifies(
 
 
 @pytest.mark.covers("LY-10", "C-38a")
-def test_c19_a_release_built_before_one_of_its_stages_was_scanned_warns_naming_the_stages(store, capsys):
+def test_c19_a_release_built_before_one_of_its_stages_was_scanned_prints_the_depths_line_naming_the_stages(store, capsys):
     """Card C-38a (DEC-54): `release verify` prints one `depths:` line in place of C-19's warning."""
     want = {
         A: ({"S0": "called"}, "depths: S0 called"),

@@ -1,0 +1,170 @@
+{
+ "differing_in_both": {
+  "bases_18k": 166649393,
+  "bases_fna_files": 161326332,
+  "examples": [
+   [
+    "ERX552254-13",
+    44,
+    960936,
+    43,
+    946119,
+    "ERX552254-13|contig_231",
+    "ERX552254-13|contig_231"
+   ],
+   [
+    "Edaf",
+    66,
+    1255552,
+    65,
+    1251952,
+    "Edaf|Edaf_1",
+    "Edaf|Edaf_1"
+   ],
+   [
+    "IMGK3300045391_BIN397",
+    141,
+    1397849,
+    139,
+    1382221,
+    "IMGK3300045391_BIN397|Ga0438458_00001538",
+    "IMGK3300045391_BIN397|Ga0438458_00001538"
+   ],
+   [
+    "IMGM3300000116_BIN520",
+    46,
+    416380,
+    45,
+    409689,
+    "IMGM3300000116_BIN520|DelMOSpr2010_c10005935",
+    "IMGM3300000116_BIN520|DelMOSpr2010_c10007138"
+   ],
+   [
+    "IMGM3300000575_BIN331",
+    18,
+    248184,
+    17,
+    242388,
+    "IMGM3300000575_BIN331|SL_4KL_010_BRINEDRAFT_10003322",
+    "IMGM3300000575_BIN331|SL_4KL_010_BRINEDRAFT_10003322"
+   ],
+   [
+    "IMGM3300001351_BIN518",
+    26,
+    643988,
+    25,
+    636865,
+    "IMGM3300001351_BIN518|JGI20153J14318_10000055",
+    "IMGM3300001351_BIN518|JGI20153J14318_10000055"
+   ],
+   [
+    "IMGM3300002933_BIN68",
+    38,
+    376808,
+    37,
+    369478,
+    "IMGM3300002933_BIN68|G310J44882_10000276",
+    "IMGM3300002933_BIN68|G310J44882_10000276"
+   ],
+   [
+    "IMGM3300004096_BIN121",
+    24,
+    163366,
+    23,
+    149825,
+    "IMGM3300004096_BIN121|Ga0066177_10000175",
+    "IMGM3300004096_BIN121|Ga0066177_10000243"
+   ]
+  ],
+  "fewer_records_in_fna_files": 442,
+  "more_records_in_fna_files": 0,
+  "n": 442,
+  "same_bases": 0,
+  "same_records_in_fna_files": 0
+ },
+ "fna_files_not_in_18k": [],
+ "fna_files_not_in_18k_n": 0,
+ "genome_uid_repeats_18k": {
+  "examples": [
+   [
+    "GCA_000892975-1_ViralProj72715",
+    "Poad",
+    "Yoka"
+   ],
+   [
+    "GCA_001029045-1_ViralProj287042",
+    "Poak",
+    "Racv"
+   ],
+   [
+    "IMGM3300034018_BIN164",
+    "IMGM3300042455_BIN588",
+    "IMGM3300042558_BIN1279"
+   ],
+   [
+    "IMGM3300042555_BIN540",
+    "IMGM3300044643_BIN444",
+    "IMGM3300044732_BIN731"
+   ],
+   [
+    "Ac20",
+    "GCA_000869685-1_ViralProj18527"
+   ]
+  ],
+  "genomes": 227
+ },
+ "header_examples_18k": [
+  "AbALV|LC506465__1",
+  "IMGM3300002231_BIN841|KVRMV2_100002521",
+  "IMGM3300009420_BIN393|Ga0114994_10001125",
+  "IMGM3300018080_BIN92|Ga0180433_10002249",
+  "IMGM3300021962_BIN627|Ga0222713_10000133",
+  "IMGM3300025403_BIN50|Ga0208745_1000058",
+  "IMGM3300027798_BIN365|Ga0209353_10000002",
+  "IMGM3300032301_BIN139|Ga0335314_1006566",
+  "IMGM3300040815_BIN587|Ga0436652_0000738",
+  "IMGM3300043470_BIN757|Ga0453122_0000129",
+  "IMGM3300050184_BIN2029|Ga0502760_0000144",
+  "TARA_SOC_NCLDV_00003|TARA_SOC_NCLDV_00003_000000000001",
+  "medusavirus|AP018495__1"
+ ],
+ "names_in_both": 8508,
+ "ortho_genomes": 8501,
+ "ortho_genomes_in_18k": 8501,
+ "ortho_genomes_in_fna_files": 8501,
+ "ortho_rows": 1534752,
+ "other_members": [
+  {
+   "bytes": 1001,
+   "head": "#!/bin/bash\n\n# Source directory containing .fna files\nSOURCE_DIR=\"/clusterfs/jgi/scratch/science/mgs/woyke_microbial/ymvasquez/GVMAGs/01fna_genomes/confirmed\"\n\n# Destination directory for chunks\nDEST_DIR=\"\"\n\n# Chunk size\nCHUNK_SIZE=20\n\n# Create destination directory\nmkdir -p \"$DEST_DIR\"\n\n# Count the number of .fna files\nfile_count=$(find \"$SOURCE_DIR\" -maxdepth 1 -type f -name \"*.fna\" | wc -l)\necho \"Total .fna files found: $file_count\"\n\n# Create chunks\ncurrent_chunk=1\ncurrent_file=1\ncurrent_chunk_dir=\"$DEST_DIR/chunk_$current_chunk\"\nmkdir -p \"$current_chunk_dir\"\n\nfor file in \"$SOURCE_DIR\"/*.fna; do\n    if [ $current_file -eq 1 ]; then\n        current_chunk_dir=\"$DEST_DIR/chunk_$current_chunk\"\n        mkdir -p \"$current_chunk_dir\"\n    fi\n\n    cp \"$file\" \"$current_chunk_dir\"\n\n    if [ $current_file -eq $CHUNK_SIZE ]; then\n        current_file=1\n        current_chunk=$((current_chunk + 1))\n    else\n        current_file=$((current_file + 1))\n    fi\ndone\n\necho \"Chunks created successfully.\"\n",
+   "member": "confirmed/chunk_maker.sh~",
+   "set": "gvmags_v2/all_18kgenomes_fna.tar.gz"
+  }
+ ],
+ "same_bytes_in_both": 8066,
+ "same_genome_uid_in_both": 8066,
+ "sets": {
+  "all_18kgenomes_fna": {
+   "bases": 4576307473,
+   "bases_per_genome_median": 200420,
+   "distinct_genome_uids": 18499,
+   "genomes": 18726,
+   "genomes_lt_100kb": 3698,
+   "n_bases": 1123521,
+   "records": 288536,
+   "records_per_genome_median": 11,
+   "single_record_genomes": 648
+  },
+  "fna_files": {
+   "bases": 2444841138,
+   "bases_per_genome_median": 251515,
+   "distinct_genome_uids": 8484,
+   "genomes": 8508,
+   "genomes_lt_100kb": 1132,
+   "n_bases": 818416,
+   "records": 165849,
+   "records_per_genome_median": 14,
+   "single_record_genomes": 265
+  }
+ }
+}

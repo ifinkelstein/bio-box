@@ -1,0 +1,352 @@
+{
+ "stage": "SPX1",
+ "min_contig_len": 5000,
+ "caps": {
+  "max_contigs": 3000000,
+  "max_bp": 40000000000
+ },
+ "measured": {
+  "samples_staged": 304,
+  "records": 325805489,
+  "bp": 243047507220,
+  "records_below": 322975207,
+  "bp_below": 207142385298,
+  "records_at_least": 2830282,
+  "bp_at_least": 35905121922,
+  "distinct_contigs": 2829368,
+  "distinct_bp": 35885221307,
+  "contigs_in_2plus_samples": 907,
+  "distinct_contigs_ge_100000": 19758,
+  "distinct_bp_ge_100000": 3328153640,
+  "gz_bytes": 75267693104,
+  "fasta_bytes": 256948810775
+ },
+ "measured_vs_estimate_all": {
+  "level": "all",
+  "group": "all",
+  "samples": 304,
+  "assembly_bp": 243047507220,
+  "meas_bp": 243047507220,
+  "est_n_ge_5000": 2985971,
+  "meas_n_ge_5000": 2830282,
+  "est_bp_ge_5000": 35467228896,
+  "meas_bp_ge_5000": 35905121922,
+  "ratio_n_meas_over_est": 0.9479,
+  "ratio_bp_meas_over_est": 1.0123,
+  "ratio_assembly_bp": 1.0
+ },
+ "caps_hold_on_distinct": true,
+ "drop_from_end": [],
+ "overlap": {
+  "root_stages": {
+   "C5": {
+    "contigs": 0,
+    "bp": 0,
+    "index_files": 1,
+    "stage_default_contigs": 2653
+   },
+   "H1": {
+    "contigs": 0,
+    "bp": 0,
+    "index_files": 1,
+    "stage_default_contigs": 6714
+   },
+   "P1": {
+    "contigs": 0,
+    "bp": 0,
+    "index_files": 1,
+    "stage_default_contigs": 539
+   },
+   "P2": {
+    "contigs": 0,
+    "bp": 0,
+    "index_files": 1,
+    "stage_default_contigs": 5018
+   },
+   "P3": {
+    "contigs": 0,
+    "bp": 0,
+    "index_files": 1,
+    "stage_default_contigs": 9107
+   },
+   "P4": {
+    "contigs": 0,
+    "bp": 0,
+    "index_files": 1,
+    "stage_default_contigs": 4005
+   },
+   "P5": {
+    "contigs": 0,
+    "bp": 0,
+    "index_files": 1,
+    "stage_default_contigs": 4111
+   },
+   "P6": {
+    "contigs": 0,
+    "bp": 0,
+    "index_files": 1,
+    "stage_default_contigs": 4227
+   },
+   "PL1": {
+    "contigs": 0,
+    "bp": 0,
+    "index_files": 1,
+    "stage_default_contigs": 61647
+   },
+   "S1": {
+    "contigs": 0,
+    "bp": 0,
+    "index_files": 1,
+    "stage_default_contigs": 27258
+   },
+   "V1": {
+    "contigs": 0,
+    "bp": 0,
+    "index_files": 1,
+    "stage_default_contigs": 168358
+   }
+  },
+  "inputs": {
+   "C1": {
+    "contigs": 0,
+    "bp": 0
+   },
+   "C2": {
+    "contigs": 0,
+    "bp": 0
+   },
+   "C3": {
+    "contigs": 0,
+    "bp": 0
+   },
+   "C4": {
+    "contigs": 0,
+    "bp": 0
+   },
+   "C5": {
+    "contigs": 0,
+    "bp": 0
+   },
+   "C6": {
+    "contigs": 0,
+    "bp": 0
+   },
+   "G1": {
+    "contigs": 12052,
+    "bp": 196592432
+   },
+   "PL1": {
+    "contigs": 0,
+    "bp": 0
+   },
+   "PL2": {
+    "contigs": 2,
+    "bp": 33456
+   },
+   "V1": {
+    "contigs": 0,
+    "bp": 0
+   },
+   "V2": {
+    "contigs": 7,
+    "bp": 198779
+   }
+  },
+  "root_any": {
+   "contigs": 0,
+   "bp": 0
+  },
+  "ours": {
+   "contigs": 2829368,
+   "bp": 35885221307
+  },
+  "read_utc_seconds": 7.9
+ },
+ "costs": {
+  "inputs_cpu_min_pilot_rate": 0.77,
+  "ingest": {
+   "fasta_bytes": 256948810775,
+   "gz_bytes": 75267693104,
+   "fasta_per_gz": 3.4138,
+   "held_bp": 0,
+   "code_cpu_min_one_process": 1056.1,
+   "code_with_c47_gzip_factor_1_2035": 1271.1,
+   "pilot_sp0_unfiltered_gz_rate_cpu_min_per_gbp": 5.163,
+   "pilot_sp0_rate_cpu_min": 1254.9,
+   "pass1_bytes_on_disk_per_shard": 17100339219,
+   "pass1_shards": 5,
+   "largest_pass1_shard_bp": 55285415558,
+   "largest_pass1_shard_cpu_min_at_pilot_sp0_rate": 285.5,
+   "budget_cpu_min_per_process": 300
+  },
+  "genecall_code_plan": {
+   "card": "B-48",
+   "genomes": 2829368,
+   "genomes_not_called": 0,
+   "bases": 35885221307,
+   "bases_called": 35885221307,
+   "genes_expected": 38185579.9,
+   "estimate_cpu_min": 2020.004,
+   "largest_genome": {
+    "genome_uid": "239353f3db3afd7185d38d141ce31842",
+    "estimate_cpu_min": 0.029
+   },
+   "batch_cpu_min": 240.0,
+   "merge_estimate_cpu_min": 3.75,
+   "rates": {
+    "call_s_per_mbp": {
+     "gv-meta/linear": 4.2019,
+     "gv-meta/circular": 4.3762,
+     "meta/linear": 2.945,
+     "meta/circular": 4.4205,
+     "single/linear": 0.7941,
+     "single/circular": 1.19202351
+    },
+    "step_overhead": 1.23,
+    "process_s": 15.0,
+    "publish_s_per_gene": 5.5e-06
+   },
+   "batches_n": 9,
+   "largest_batch_cpu_min": 224.668,
+   "batches_cpu_min_sum": 2022.004,
+   "modes": {
+    "meta": {
+     "genomes": 2809610,
+     "bases": 32557067667
+    },
+    "single": {
+     "genomes": 19758,
+     "bases": 3328153640
+    }
+   }
+  },
+  "genecall_pilot_rate_cpu_min": 2176.9,
+  "crispr_code_cpu_min": 100.5,
+  "crispr_pilot_before_b55_cpu_min": 367.7,
+  "igr_pilot_rate_cpu_min": 5.2,
+  "tapes_pilot_rate_cpu_min": 7.6,
+  "new_bp": 35885221307,
+  "new_contigs": 2829368,
+  "pilot_rates": {
+   "stages": [
+    "SPA1",
+    "SPN1",
+    "SPQ1",
+    "SPQ2",
+    "SPH1",
+    "SPH2",
+    "SPT1",
+    "SPT2",
+    "SPU1"
+   ],
+   "stored_gbp": 114.373984718,
+   "ingest_cpu_min_per_gbp": 4.838827413699332,
+   "genecall_cpu_min_per_gbp": 60.661618261413,
+   "igr_cpu_min_per_gbp": 0.1435553726704776,
+   "tapes_cpu_min_per_gbp": 0.2128018889960871,
+   "inputs_cpu_min_per_m_genomes": 0.27273421517739,
+   "crispr_cpu_min_per_gbp_before_b55": 10.245268233941573,
+   "gb_per_gbp_called_total": 0.8515256283334905,
+   "genes_per_gbp": 1104236.5649093604
+  },
+  "pilot_unfiltered_rates": {
+   "stages": [
+    "SP0"
+   ],
+   "stored_gbp": 3.226018786,
+   "ingest_cpu_min_per_gbp": 5.163330130713008,
+   "genecall_cpu_min_per_gbp": 68.86475706964467,
+   "igr_cpu_min_per_gbp": 0.4060732707710897,
+   "tapes_cpu_min_per_gbp": 0.5424642930148145,
+   "inputs_cpu_min_per_m_genomes": 0.2678985760923545,
+   "crispr_cpu_min_per_gbp_before_b55": null,
+   "gb_per_gbp_called_total": 1.3739102711474416,
+   "genes_per_gbp": 1812110.030285484
+  },
+  "total_cpu_min_code": 3195.9,
+  "total_cpu_min_pilot_rates": 3813.1,
+  "root_gb_fit": {
+   "bytes_depth1_total": 26.4,
+   "bytes_depth0_stored": 12.4,
+   "bytes_without_nt_and_igr": 13.49
+  },
+  "root_gb_fit_coefficients": {
+   "bytes_depth1_total": {
+    "bytes_per_base": 0.6840389343970785,
+    "bytes_per_contig": 653.2605457814789,
+    "max_abs_rel_err": 0.12605162319215044
+   },
+   "bytes_depth0_stored": {
+    "bytes_per_base": 0.31678685663487055,
+    "bytes_per_contig": 364.3959054498944,
+    "max_abs_rel_err": 0.025664174400629052
+   },
+   "bytes_without_nt_and_igr": {
+    "bytes_per_base": 0.33861408236053153,
+    "bytes_per_contig": 473.2251955989375,
+    "max_abs_rel_err": 0.24562596063852174
+   }
+  },
+  "root_gb_at_pilot_1500_rate": 30.56
+ },
+ "sample": {
+  "contigs": 11093.0,
+  "bp": 141555873.0,
+  "genes": 141589.0,
+  "fragments": 16718.0,
+  "igrs": 73774.0,
+  "igr_nt": 13974541.0,
+  "dark_orfs": 1203463.0,
+  "dark_aa": 78746995.0,
+  "dark_at_end": 1080194.0,
+  "distinct_proteins": 141562,
+  "distinct_aa": 41857836,
+  "call_cpu_s": 443.536,
+  "dark_cpu_s": 31.499,
+  "call_s_per_mbp": 3.1333,
+  "sample_fraction": "contig_uid first byte < 1 (1/256)",
+  "wall_s": 2962.3
+ },
+ "sample_per_gbp": {
+  "genes": 1000234.0,
+  "distinct_proteins": 1000043.3,
+  "distinct_aa": 295698335.3,
+  "igrs": 521165.2,
+  "dark_orfs": 8501681.9,
+  "dark_aa": 556296205.4
+ },
+ "sample_fragment_share": 0.1181,
+ "pack": {
+  "unique_gb": 6.9,
+  "igr_gb": 2.76,
+  "dark_orf_gb": 23.49,
+  "with_dark_orf_gb": 33.15,
+  "without_dark_orf_gb": 9.66,
+  "pilot_rate_with_dark_gb": 36.24
+ },
+ "pack_bytes_rates_spa1": {
+  "unique_bytes": 6497671,
+  "unique_aa": 9996937,
+  "dark_bytes": 46368150,
+  "dark_aa": 39399560,
+  "igr_bytes": 5040621,
+  "igrs": 34205,
+  "source": "card C-42 depth1/pack_probe_SPA1.json; residues and IGR count from its note \u00a74.3"
+ },
+ "remainder": {
+  "rows": 18329,
+  "by_status": {
+   "no_assembly_size": 361,
+   "not_taken": 17968
+  },
+  "not_taken_assembly_bp": 8498642140659,
+  "not_taken_est_n_ge_5000": 83343010,
+  "not_taken_est_bp_ge_5000": 958597244691,
+  "staged_below_length": {
+   "records": 322975207,
+   "bp": 207142385298,
+   "share_records": 0.9913,
+   "share_bp": 0.8523
+  }
+ }
+}

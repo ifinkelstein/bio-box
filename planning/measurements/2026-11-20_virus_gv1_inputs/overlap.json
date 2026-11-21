@@ -1,0 +1,388 @@
+{
+ "GV1_all_18k": {
+  "adds": {
+   "bases": 3890643054,
+   "contigs": 264134
+  },
+  "bases": 4316061173,
+  "contigs": 281804,
+  "genomes": 18726,
+  "genomes_all_contigs_held_earlier": 1174,
+  "genomes_some_contigs_held_earlier": 682,
+  "held_earlier": {
+   "bases": 425418119,
+   "contigs": 17670
+  },
+  "stages": {
+   "C5": {
+    "member_contigs": 0,
+    "owns_bases": 0,
+    "owns_contigs": 0
+   },
+   "H1": {
+    "member_contigs": 6,
+    "owns_bases": 2242617,
+    "owns_contigs": 6
+   },
+   "P1": {
+    "member_contigs": 0,
+    "owns_bases": 0,
+    "owns_contigs": 0
+   },
+   "P2": {
+    "member_contigs": 0,
+    "owns_bases": 0,
+    "owns_contigs": 0
+   },
+   "P3": {
+    "member_contigs": 0,
+    "owns_bases": 0,
+    "owns_contigs": 0
+   },
+   "P4": {
+    "member_contigs": 0,
+    "owns_bases": 0,
+    "owns_contigs": 0
+   },
+   "P5": {
+    "member_contigs": 0,
+    "owns_bases": 0,
+    "owns_contigs": 0
+   },
+   "P6": {
+    "member_contigs": 0,
+    "owns_bases": 0,
+    "owns_contigs": 0
+   },
+   "PL1": {
+    "member_contigs": 0,
+    "owns_bases": 0,
+    "owns_contigs": 0
+   },
+   "S1": {
+    "member_contigs": 0,
+    "owns_bases": 0,
+    "owns_contigs": 0
+   }
+  },
+  "v1_inputs": {
+   "bases": 0,
+   "contigs": 0
+  }
+ },
+ "GV1_fna_files_8508": {
+  "adds": {
+   "bases": 2091751441,
+   "contigs": 153020
+  },
+  "bases": 2417230659,
+  "contigs": 165961,
+  "genomes": 8508,
+  "genomes_all_contigs_held_earlier": 629,
+  "genomes_some_contigs_held_earlier": 382,
+  "held_earlier": {
+   "bases": 325479218,
+   "contigs": 12941
+  },
+  "stages": {
+   "C5": {
+    "member_contigs": 0,
+    "owns_bases": 0,
+    "owns_contigs": 0
+   },
+   "H1": {
+    "member_contigs": 2,
+    "owns_bases": 929132,
+    "owns_contigs": 2
+   },
+   "P1": {
+    "member_contigs": 0,
+    "owns_bases": 0,
+    "owns_contigs": 0
+   },
+   "P2": {
+    "member_contigs": 0,
+    "owns_bases": 0,
+    "owns_contigs": 0
+   },
+   "P3": {
+    "member_contigs": 0,
+    "owns_bases": 0,
+    "owns_contigs": 0
+   },
+   "P4": {
+    "member_contigs": 0,
+    "owns_bases": 0,
+    "owns_contigs": 0
+   },
+   "P5": {
+    "member_contigs": 0,
+    "owns_bases": 0,
+    "owns_contigs": 0
+   },
+   "P6": {
+    "member_contigs": 0,
+    "owns_bases": 0,
+    "owns_contigs": 0
+   },
+   "PL1": {
+    "member_contigs": 0,
+    "owns_bases": 0,
+    "owns_contigs": 0
+   },
+   "S1": {
+    "member_contigs": 0,
+    "owns_bases": 0,
+    "owns_contigs": 0
+   }
+  },
+  "v1_inputs": {
+   "bases": 0,
+   "contigs": 0
+  }
+ },
+ "GV1_repeats": {
+  "contigs_in_several_genomes": 6626
+ },
+ "V2": {
+  "adds": {
+   "bases": 8364370889,
+   "contigs": 248864
+  },
+  "bases": 9338542974,
+  "by_source": {
+   "imgvr": {
+    "adds": {
+     "bases": 8317869614,
+     "contigs": 243307
+    },
+    "bases": 9291720900,
+    "contigs": 256026,
+    "genomes": 224520,
+    "genomes_all_contigs_held_earlier": 12722,
+    "genomes_some_contigs_held_earlier": 0,
+    "held_earlier": {
+     "bases": 973851286,
+     "contigs": 12719
+    },
+    "stages": {
+     "C5": {
+      "member_contigs": 2,
+      "owns_bases": 0,
+      "owns_contigs": 0
+     },
+     "H1": {
+      "member_contigs": 1677,
+      "owns_bases": 469852171,
+      "owns_contigs": 1677
+     },
+     "P1": {
+      "member_contigs": 0,
+      "owns_bases": 0,
+      "owns_contigs": 0
+     },
+     "P2": {
+      "member_contigs": 3,
+      "owns_bases": 147760,
+      "owns_contigs": 3
+     },
+     "P3": {
+      "member_contigs": 5,
+      "owns_bases": 368047,
+      "owns_contigs": 5
+     },
+     "P4": {
+      "member_contigs": 10,
+      "owns_bases": 819477,
+      "owns_contigs": 10
+     },
+     "P5": {
+      "member_contigs": 2,
+      "owns_bases": 239842,
+      "owns_contigs": 2
+     },
+     "P6": {
+      "member_contigs": 0,
+      "owns_bases": 0,
+      "owns_contigs": 0
+     },
+     "PL1": {
+      "member_contigs": 88,
+      "owns_bases": 4929038,
+      "owns_contigs": 68
+     },
+     "S1": {
+      "member_contigs": 21,
+      "owns_bases": 929174,
+      "owns_contigs": 21
+     }
+    },
+    "v1_inputs": {
+     "bases": 512003810,
+     "contigs": 10996
+    }
+   },
+   "inovirus": {
+    "adds": {
+     "bases": 48864483,
+     "contigs": 5915
+    },
+    "bases": 49185282,
+    "contigs": 5958,
+    "genomes": 5964,
+    "genomes_all_contigs_held_earlier": 43,
+    "genomes_some_contigs_held_earlier": 0,
+    "held_earlier": {
+     "bases": 320799,
+     "contigs": 43
+    },
+    "stages": {
+     "C5": {
+      "member_contigs": 0,
+      "owns_bases": 0,
+      "owns_contigs": 0
+     },
+     "H1": {
+      "member_contigs": 0,
+      "owns_bases": 0,
+      "owns_contigs": 0
+     },
+     "P1": {
+      "member_contigs": 0,
+      "owns_bases": 0,
+      "owns_contigs": 0
+     },
+     "P2": {
+      "member_contigs": 0,
+      "owns_bases": 0,
+      "owns_contigs": 0
+     },
+     "P3": {
+      "member_contigs": 0,
+      "owns_bases": 0,
+      "owns_contigs": 0
+     },
+     "P4": {
+      "member_contigs": 0,
+      "owns_bases": 0,
+      "owns_contigs": 0
+     },
+     "P5": {
+      "member_contigs": 0,
+      "owns_bases": 0,
+      "owns_contigs": 0
+     },
+     "P6": {
+      "member_contigs": 0,
+      "owns_bases": 0,
+      "owns_contigs": 0
+     },
+     "PL1": {
+      "member_contigs": 0,
+      "owns_bases": 0,
+      "owns_contigs": 0
+     },
+     "S1": {
+      "member_contigs": 43,
+      "owns_bases": 320799,
+      "owns_contigs": 43
+     }
+    },
+    "v1_inputs": {
+     "bases": 0,
+     "contigs": 0
+    }
+   }
+  },
+  "contigs": 261626,
+  "genomes": 230484,
+  "genomes_all_contigs_held_earlier": 12765,
+  "genomes_some_contigs_held_earlier": 0,
+  "held_earlier": {
+   "bases": 974172085,
+   "contigs": 12762
+  },
+  "inovirus_in_imgvr_reps": 358,
+  "stages": {
+   "C5": {
+    "member_contigs": 2,
+    "owns_bases": 0,
+    "owns_contigs": 0
+   },
+   "H1": {
+    "member_contigs": 1677,
+    "owns_bases": 469852171,
+    "owns_contigs": 1677
+   },
+   "P1": {
+    "member_contigs": 0,
+    "owns_bases": 0,
+    "owns_contigs": 0
+   },
+   "P2": {
+    "member_contigs": 3,
+    "owns_bases": 147760,
+    "owns_contigs": 3
+   },
+   "P3": {
+    "member_contigs": 5,
+    "owns_bases": 368047,
+    "owns_contigs": 5
+   },
+   "P4": {
+    "member_contigs": 10,
+    "owns_bases": 819477,
+    "owns_contigs": 10
+   },
+   "P5": {
+    "member_contigs": 2,
+    "owns_bases": 239842,
+    "owns_contigs": 2
+   },
+   "P6": {
+    "member_contigs": 0,
+    "owns_bases": 0,
+    "owns_contigs": 0
+   },
+   "PL1": {
+    "member_contigs": 88,
+    "owns_bases": 4929038,
+    "owns_contigs": 68
+   },
+   "S1": {
+    "member_contigs": 64,
+    "owns_bases": 1249973,
+    "owns_contigs": 64
+   }
+  },
+  "v1_inputs": {
+   "bases": 512003810,
+   "contigs": 10996
+  }
+ },
+ "V2_and_GV1_all_18k": {
+  "bases": 423175502,
+  "contigs": 17664,
+  "v2_by_topology": {
+   "Direct terminal repeat": 20,
+   "GVMAG": 17567,
+   "Inverted terminal repeat": 26,
+   "Linear": 51
+  },
+  "v2_gvmag_contigs": 32950,
+  "v2_gvmag_contigs_in_gv1": 17567,
+  "v2_gvmag_genomes": 1422
+ },
+ "stages": [
+  "S1",
+  "P1",
+  "P2",
+  "P3",
+  "P4",
+  "P5",
+  "P6",
+  "H1",
+  "PL1",
+  "C5"
+ ]
+}

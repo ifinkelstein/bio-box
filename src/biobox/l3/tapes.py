@@ -165,8 +165,10 @@ def ensure_def(root: Path, producers: list[str], out: Path | None = None) -> str
 def run(root: Path, stage: str, circular: set[bytes] | frozenset | None = None,
         gene_call_version: str = GENE_CALL_VERSION, producers: list[str] | None = None,
         max_file_bytes: int = layout.MAX_FILE_BYTES, max_slots: int = MAX_SLOTS, tmp=None,
-        out: Path | None = None) -> dict:
+        out: Path | None = None, small_file_floor: int = io.SMALL_FILE_FLOOR_BYTES) -> dict:
     """Write the stage's tapes for the tape version of `producers` (default `[gene_call_version]`).
+
+    A last part under `small_file_floor` bytes is merged into the part before it (`io.write_parts`, LY-04).
 
     `circular`: the circular contig_uids; None reads the stage's `genome_input` table. Proteins come
     from `feature_protein` of `gene_call_version` (CDS slots only). `tmp` holds DuckDB's private
@@ -276,7 +278,7 @@ def run(root: Path, stage: str, circular: set[bytes] | frozenset | None = None,
 
     base = out / f"l3/tapes/tape_version={tv}/stage={stage}"
     try:
-        paths = io.write_parts(batches(), spec, base, est, max_file_bytes, max_slots=max_slots,
+        paths = io.write_parts(batches(), spec, base, est, max_file_bytes, small_file_floor, max_slots=max_slots,
                                slots_column="n_slots", statistics=["n_slots", "contig_len"])
     finally:
         con.close()

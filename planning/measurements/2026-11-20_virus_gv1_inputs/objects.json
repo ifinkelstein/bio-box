@@ -1,0 +1,10 @@
+[
+ {
+  "path": "/tmp/if2453/s2/inputs/GV1/gvmags_v2_all_18kgenomes.fna",
+  "source_name": "gvmags_v2",
+  "source_release": "zenodo:10.5281/zenodo.20126600 GVMAGs V2, all_18kgenomes_fna.tar.gz (every genome)",
+  "license": "CC BY-SA 4.0",
+  "redistributable": true,
+  "retrieved_at": "2026-11-19T10:42:14Z"
+ }
+]

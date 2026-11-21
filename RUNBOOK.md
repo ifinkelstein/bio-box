@@ -838,6 +838,42 @@ systemd-run --user --unit=c46-driver-run --collect -p MemoryMax=4G -p MemorySwap
   nice -n 19 bash "$TREE/scripts/stress/build_stage_pod/release_train.sh" run --parts 24
 ```
 
+## Mirror to tower
+
+The durable tars, and later source archives, get a second copy on the PI's NAS `tower` (card C-49; the design and
+what may live there: `planning/design/C-49_tiers.md`). The pod cannot reach `tower`, so this runs **on the laptop**, at
+home, and streams each file pod to laptop to `tower` with nothing landing on the laptop.
+`scripts/orchestrator/relay_to_tower.sh` takes the source directory on the pod, the destination on `tower`, and a list
+of `<path><TAB><sha256>` lines or a `SHA256SUMS` file. A file already in place on `tower` is skipped and never
+overwritten; each copy goes to `.<name>.partial`, `tower` hashes the stream as it arrives, and the file is moved into
+place only when that hash equals the list's and its size the pod's. It ends by writing or extending `SHA256SUMS` on
+`tower` and exits 1 if any file failed. Nothing on the pod is written. Hosts and the key come from `BIOBOX_POD`,
+`BIOBOX_POD_JUMP` (off campus, as section 8), `BIOBOX_TOWER` (default `root@tower`) and `BIOBOX_TOWER_IDENTITY`
+(default the laptop's `~/.ssh/id_ed25519`); `--help` lists the rest.
+
+Each backup tar is mirrored the day it is written, with the line of its sha256 (the release train's or the stage
+driver's record). Look first, then run it under `caffeinate` so the laptop does not sleep:
+
+```bash
+export BIOBOX_POD_JUMP=if2453@wilkcomp03.ccbb.utexas.edu
+printf '%s\t%s\n' added_r26_11_1.tar 34db81c42aee3f832620375cebaf79ded57b2bdc20a9103faec9b2b97b7a04a4 > "$HOME/relay_r26_11_1.tsv"
+bash scripts/orchestrator/relay_to_tower.sh --dry-run /stor/work/Wilke/if2453/all-the-data/root_backups /mnt/user/research-bulk/bio-box/root_backups "$HOME/relay_r26_11_1.tsv"
+caffeinate -i bash scripts/orchestrator/relay_to_tower.sh /stor/work/Wilke/if2453/all-the-data/root_backups /mnt/user/research-bulk/bio-box/root_backups "$HOME/relay_r26_11_1.tsv"
+```
+
+To check, read the log's last lines (`~/.local/state/bio-box/relay_to_tower.log` unless `--log` names another): `DONE:`
+or `ENDED WITH FAILURES:`, and one `OK:` line per file with its bytes, seconds and MB/s. To check a file already on
+`tower` again, run the same command with `--reverify`: it reads each file back on `tower` (about 10 MB/s per file,
+measured while two copies ran, card C-49) and adds the ones that match to `SHA256SUMS`. After a stop or a failure run
+the same command again: files in place are skipped, a `.partial` is removed and its file copied again from the start.
+
+How long: one stream measured 9.70 MB/s (821,764,096 bytes in 84.75 s; laptop, 2026-11-20, card C-49), so about 2.9
+hours per 100 GB (*derived*). Two streams shared the link at about 8.3 MB/s together (*derived* from the first
+mirror's log), so `--streams` stays at 1. The first mirror, the root's seven tars (106,785,105,920 bytes), ran with
+the script's predecessor (`scp -3`, then a read-back on `tower`; its log: `planning/measurements/2026-11-20_tower_relay.md`);
+the script itself, hashing on arrival, has not yet been run on the real hosts (its tests run in section 8's image with
+stub `ssh`: `tests/r1/test_relay_to_tower.py`), so record its first rate in that note.
+
 ## 7. Search
 
 The search path writes nothing under the data root (card W-03): a user who can read a release may
@@ -1116,6 +1152,12 @@ The shard count must fit the account's thread cap (AGENTS section 7.2, a total o
 runs), so 8 shards do not fit by day beside a build. An exit code 5 with `no tests
 ran` only means the selection matched nothing.
 
+Off campus the pod refuses SSH on port 22 (since the maintenance of 2026-11-17) and is reached through
+`wilkcomp03`. Set `BIOBOX_POD_JUMP=if2453@wilkcomp03.ccbb.utexas.edu` (one `user@host`) and
+`scripts/pod_pytest.sh`, `scripts/orchestrator/watch_until.sh` and `watch_ladder.sh` pass it as `-J` to every
+`ssh` call and inside `rsync -e` (card A-09); on campus, leave it unset and nothing changes. A value with a
+character other than letters, digits and `. _ @ : -` is refused with exit 2.
+
 The image is the test image built from `main` at `faec1f4` (card C-32),
 `$HOME/bio-box/images/bio-box-test_faec1f4.sif` (sha256 of the file
 `70263973ed38dd782bc2d4e59dd3bc934f8f2769facd3c20c361b694cfc2ddf4`, pulled from
@@ -1127,6 +1169,10 @@ for the image above. A suite that must survive a dropped connection runs as deta
 pod: sync the tree with the first command above, then, on the pod,
 `bash "$TREE/scripts/orchestrator/detached_suite.sh" <name> 2` (the script's header says how to
 poll it).
+
+The `peak-evidence` workflow (card A-10b) repeats the four C-16 memory-peak tests on Actions to see how often an OOM-killed search or step records a sampled peak (cards A-10, A-10a).
+Dispatch it by hand: `gh workflow run peak-evidence.yml --ref <branch> -f repeats=60` (1 to 200). GitHub allows that only once the file is on the default branch; until then a push to a branch named `peak-evidence/<anything>` runs it with 60 iterations (`git push origin HEAD:refs/heads/peak-evidence/run-1`; the `ci` and `cross-host` workflows run on that push too).
+It prints every iteration's `C16PeakEvidence` lines and totals, uploads the log, and fails the job if any iteration failed.
 
 The image check. Before a new image is used, run its own suite on the pod: the source and tests
 built into the image (`/opt/bio-box`), no `PYTHONPATH`, as the `image` workflow runs it on Actions
@@ -1374,6 +1420,12 @@ The rows marked C-26 were run between 2026-11-15 20:24 and 2026-11-16 10:33 (pod
 gene calling runs in batches) and the real data root, through `scripts/stress/build_stage_pod/c26_driver.sh` in units
 named `c26-*`.
 
+The rows marked C-48c were run on 2026-11-20 between 08:35 and 17:08 (pod local time) by card C-48c part 1 (stage `V1`)
+with the image of `faec1f4` (section 0), a copy of the `task/C-48c-1` tree at `6c36633` (`TREE=/tmp/if2453/c48c/tree`),
+the real profile with its own `tmp` (`/tmp/if2453/c48c/tmp`; the rehearsal: a scratch profile with the real caps and
+`cpu_min_per_process: 300`) and the real data root, through `scripts/stress/build_stage_pod/c48c_v1_driver.sh` in units
+named `c48c-*` (`planning/measurements/2026-11-20_stage_V1.md`).
+
 | Section | Command | Date run | Last line |
 |---|---|---|---|
 | 1 | `ls -d "$ROOT/STOP"` | 2026-11-10 | `ls: cannot access '/tmp/if2453/c06/root/STOP': No such file or directory` |
@@ -1468,6 +1520,11 @@ named `c26-*`.
 | 6 | C-35: `c35_driver.sh examples`: `THREADS=8 scripts/release_examples.sh r26.11.1` (root bound read-only), and `c35_driver.sh check` (`c35_check.py --dec27`) | 2026-11-19 | `release_examples.sh: r26.11.1: 2 examples, every invariant holds` (`39 ok`, `67 new`, both `[requires l1_crispr]` invariants `ok`); `c35_check.py`: `checks: all pass` (`930` new files, `20,907,311,935` bytes, `0` gone/changed/stray); durable backup `/stor/work/Wilke/if2453/all-the-data/root_backups/added_r26_11_1.tar` (`20,908,011,520` bytes, `930` members, sha256 `34db81c4…`, verified) |
 | 6 | C-46 rehearsal: `WORK=/tmp/if2453/c46 bash scripts/stress/build_stage_pod/release_train.sh rehearse` (fixture in `/tmp/if2453/c46/rh/root`, real root bound read-only, `<= 4` threads: builds `S0`, `S1`, `r26.11.1`, complete `S2`, and `stored`-only `S3`; runs `--dry-run`, `run` cutting `r26.11.2` over `S0,S1,S2`, pack in 2 parts, `release_examples.sh`, `train_check.py`, then `--dry-run` and `--dry-run --same-stages`) | 2026-11-19 | `rehearsal: OK (r26.11.2 cut over S0,S1,S2; S3 excluded; r26.11.1 unchanged; pack verified; B-49 reuse verified)`: `release r26.11.2: verified (stages S0,S1,S2, 56 files, 10 artifacts, manifest hash e1124ff5e1bef40e4f4a5dffb0b8e3d9)`, `r26.11.1` hash `1d98a189639af04f395aa53450723623` unchanged, `pack r26.11.2: verified` (`96fd14a3daaae665b8713449e35ac439`), `root_added.tsv` (`200` files, `1,578,982` bytes, `0` gone/changed/stray), `announcement.md` written |
 | 6 | C-46 real-root dry-run: `ROOT=/tmp/if2453/r10/root bash scripts/stress/build_stage_pod/release_train.sh --dry-run --date 2026-11-19` (and with `--same-stages --parts 24`; root bound read-only) | 2026-11-19 | `Next release: r26.11.2`, `Latest defined release: r26.11.1`, `Stages (9): S1,P1,P2,P3,P4,P5,P6,H1,PL1`, `New stages (0): (none)`, `Action: noop`; with `--same-stages --parts 24`: `Action: cut`, `Clustering: REUSE from r26.11.1 (card B-49; no MMseqs2 run; protein_seq rows: 49902840)` |
+| 2 | C-48c rehearsal: `c48c_v1_driver.sh rehearse` (a view `/tmp/if2453/c48c/rh/root` of the data root with S1, P1 to P6, H1, PL1, their Pfam 38.2 scans and the tape version definitions linked, and C5's `l0seq` tables and runs; 184 V1 genomes as stage V1R; unit `c48c-rh-1`: `pod_run.sh ... --threads 4 --mem 32G ... build-stage --profile ... --root ... --stage V1R --depth annotated --genomes ... --objects ... --library pfam 38.2 <Pfam-A.hmm.gz> gathering --crispr --threads 4 --scan-cpus 4`; then the same launch again, `c48c-rh-2`) | 2026-11-20 | `rehearsal: OK` (before it, `build-stage: stage V1R (depth annotated): all 9 steps done`, `pod_run: c48c-rh-1 exited 0`, the scan plan copying 1,176 proteins' rows from earlier stages, `c48c_v1_check.py` `RESULT: all checks pass`; `c48c-rh-2`: every step skipped, the view's listing unchanged) |
+| 6 | C-48c: `bio-box release verify --root "$ROOT" --release R` for `rN.1a`, `rN.1b`, `rN.1`, `rN.2`, `rN.3`, `rM.2`, `r26.11.1` (the real root, bound read-only; before the launch and after the build) | 2026-11-20 | `release r26.11.1: verified (stages S1,P1,P2,P3,P4,P5,P6,H1,PL1, 252 files, 160 artifacts, manifest hash 202b4cadaffeed5f5a0fa0cae7dedb06)` before and after, and the other six `verified` with the manifest hashes of rows C-26 and C-35 |
+| 2 | C-48c: `c48c_v1_driver.sh run`: unit `c48c-v1-1`, `pod_run.sh --profile ... --threads 40 --mem 200G --bind /tmp/if2453 --bind <Pfam dir>:ro ... build-stage --profile ... --root /tmp/if2453/r10/root --stage V1 --depth annotated --genomes /tmp/if2453/s2/inputs/V1/genomes.json --objects /tmp/if2453/s2/inputs/V1/objects.json --library pfam 38.2 <Pfam-A.hmm.gz> gathering --crispr --threads 6 --scan-cpus 4` (no `--release`; the number of shards at once left to the hour's allowance; gene calling in 3 batch steps, the Pfam scan copying 174,655 proteins' rows and scanning the rest in 43 shards) | 2026-11-20 | `pod_run: c48c-v1-1 exited 0` (before it, `build-stage: stage V1 (depth annotated): all 9 steps done`; `MemoryPeak=13721849856`, `CPUUsageNSec=647901928220000`; 56 run records, 10,790.39 CPU-minutes, no guard stop) |
+| 6 | C-48c: `c48c_v1_driver.sh check` (`c48c_v1_check.py`, the `before` and `after` snapshots) and `c48c_v1_driver.sh backup` | 2026-11-20 | `RESULT: all checks pass` (130 files added, 4,231,059,281 bytes, all under `stage=V1`); `backup: /stor/work/Wilke/if2453/all-the-data/root_backups/added_v1.tar written (130 files, 4231157760 bytes, sha256 0a285dc372435f201e17323d4cba13604d99aca163978b185488e7919148a4ec)` |
+| 6 | C-48c real-root dry-run: `ROOT=/tmp/if2453/r10/root WORK=/tmp/if2453/c48c/train bash scripts/stress/build_stage_pod/release_train.sh --dry-run` (root bound read-only) | 2026-11-20 | `Next release: r26.11.2`, `Stages (10): S1,P1,P2,P3,P4,P5,P6,H1,PL1,V1`, `New stages (1): V1`, `Action: cut`, C5 excluded (`stored`), clustering 17,166.98 CPU-minutes in one process (*estimate*) from 55,445,574 `protein_seq` rows, in parts |
 | 8 | C-32: the image check, section 8's command with the units named `C-32` (`detached_suite.sh --own C-32 2`, `BIOBOX_POD_IMAGE=/tmp/if2453/images/bio-box-test_faec1f4.sif`, the peer file) (pod) | 2026-11-13 | shard lines `842 passed, 7 skipped, 25 warnings in 5571.68s (1:32:51)` and `1188 passed, 16 skipped, 68 warnings in 3438.38s (0:57:18)` |
 | 8 | C-32: `BIOBOX_POD_CI=/tmp/if2453/c32/ci sh scripts/pod_pytest.sh C-32-red tests/r0/test_runbook.py -k c29` (laptop; before the change, in the old default image; another name so as not to share a base temp with the image check) | 2026-11-13 | `3 failed, 4 passed, 43 deselected in 3.99s` (the card's migrated tests failing first) |
 | 8 | C-32: `sh scripts/pod_pytest.sh C-32 tests/r0` (laptop; the new default image) | 2026-11-13 | `208 passed in 5.52s` (the branch point in the old image: `208 passed in 10.08s`) |
@@ -1477,6 +1534,9 @@ named `c26-*`.
 | 9 | W-13: `ls "$BBTMP/packs" "$BBTMP/search/$USER/runs" "$BBTMP/search/$USER/work"` | 2026-11-10 | `/tmp/if2453/w13/tmp/search/if2453/work:` (empty: every run had removed its work directory; `runs` held `pending` and the three runs of section 7, `packs` held `release=rC6.1`) |
 | 9 | W-13: `rm -r "$BBTMP/search/$USER/work/3d96a70ba10c7f5cd895de3d838153ae"` | 2026-11-10 | `(no output)`, exit 0. An empty directory made for this test |
 | 9 | `find "$BBTMP/logs" -name '*.log' -mtime +30` | 2026-11-10 | `(no output)` |
+| Mirror to tower | C-49: the orchestrator's first mirror, on the laptop: `caffeinate -i bash relay_backups.sh` (the predecessor of `scripts/orchestrator/relay_to_tower.sh`: `scp -3`, two streams, then `sha256sum` read back on `tower` and `mv -n`; script, ssh config and log in the orchestrating session's scratch directory), the seven tars of `/stor/work/Wilke/if2453/all-the-data/root_backups` to `tower:/mnt/user/research-bulk/bio-box/root_backups` | 2026-11-20, from 10:40:59 | still running when read at 15:15: the log's last line `2026-11-20 13:35:12 added_r26_11_1.tar: try 1: copy started`; before it `l0seq.tar: OK: 28241715200 bytes in 6543 s` (13:21:26) and `l2.tar: OK: 27176785920 bytes in 6843 s` (13:35:11) (`planning/measurements/2026-11-20_tower_relay.md`) |
+| 8 | C-49: `env BIOBOX_POD_JUMP=if2453@wilkcomp03.ccbb.utexas.edu BIOBOX_TREE=<worktree> sh scripts/pod_pytest.sh C-49 tests/r1/test_relay_to_tower.py` (laptop), before the script existed | 2026-11-20 | 33 failed (`bash: /tmp/if2453/ci/C-49/scripts/orchestrator/relay_to_tower.sh: No such file or directory`) |
+| 8 | C-49: the same with `tests/r1/test_pod_pytest_jump.py tests/r0` added (laptop), with the script | 2026-11-20 | `287 passed in 25.32s` |
 
 ## Appendix B. Rehearse on the fixture
 

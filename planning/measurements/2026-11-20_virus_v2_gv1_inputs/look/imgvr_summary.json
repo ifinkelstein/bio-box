@@ -1,0 +1,254 @@
+{
+ "bases": 82353017673,
+ "by_confidence": {
+  "High-confidence": [
+   5576197,
+   82353017673
+  ]
+ },
+ "by_ecosystem_l1": {
+  "": 129719,
+  "Engineered": 269549,
+  "Environmental": 4297497,
+  "Host-associated": 879432
+ },
+ "by_host_method": {
+  "CRISPR spacer match": [
+   308482,
+   10235528780
+  ],
+  "Isolate taxonomy": [
+   235856,
+   5849775965
+  ],
+  "None": [
+   4811771,
+   62340027591
+  ],
+  "k-mer match": [
+   220088,
+   3927685337
+  ]
+ },
+ "by_miuvig": {
+  "Genome fragment": [
+   4994325,
+   62156546259
+  ],
+  "High-quality": [
+   486691,
+   19563453979
+  ],
+  "Reference": [
+   13971,
+   438996210
+  ],
+  "Unsure": [
+   81210,
+   194021225
+  ]
+ },
+ "by_origin": {
+  "GVMAGs (10.1038/s41586-020-1957-x)": 2055,
+  "Inoviruses (10.1038/s41564-019-0510-x)": 9228,
+  "RVMT (10.1101/2022.02.15.480533)": 348762,
+  "RefSeq r213 (10.1093/nar/gkv1189)": 13971,
+  "geNomad v1.1.0 (10.5281/zenodo.7015982)": 5202181
+ },
+ "by_tax_method": {
+  "GVMAG (doi:10.1038/s41586-020-1957-x)": [
+   2054,
+   743410123
+  ],
+  "NR (doi:10.5281/zenodo.6574914)": [
+   31860,
+   419154004
+  ],
+  "None": [
+   19098,
+   108597688
+  ],
+  "RVMT (doi:10.1101/2022.02.15.480533)": [
+   348755,
+   939620320
+  ],
+  "RefSeq": [
+   13592,
+   424422226
+  ],
+  "geNomad": [
+   5122590,
+   78972881004
+  ],
+  "vOTU consensus": [
+   31960,
+   502118635
+  ],
+  "vOTU with RefSeq genome": [
+   6288,
+   242813673
+  ]
+ },
+ "by_topology": {
+  "Concatemer": [
+   6,
+   41608
+  ],
+  "Direct terminal repeat": [
+   131222,
+   5664591286
+  ],
+  "GVMAG": [
+   2055,
+   743632626
+  ],
+  "Inverted terminal repeat": [
+   8171,
+   206786957
+  ],
+  "Linear": [
+   5137565,
+   66994671630
+  ],
+  "Provirus": [
+   297178,
+   8743293566
+  ]
+ },
+ "completeness_unparseable": 81641,
+ "completeness_values_unparseable": [
+  [
+   "NA",
+   81641
+  ]
+ ],
+ "coords_whole": 5279019,
+ "gvmag_rows": [
+  [
+   "IMGVR_UViG_GVMAG-M-2140918012-1_000001",
+   "contig00378",
+   "whole",
+   "267319",
+   "High-quality",
+   "100.39"
+  ],
+  [
+   "IMGVR_UViG_GVMAG-M-2140918012-2_000001",
+   "contig00412",
+   "whole",
+   "320558",
+   "High-quality",
+   "92.49"
+  ],
+  [
+   "IMGVR_UViG_GVMAG-S-3300000101-140_000001",
+   "DelMOSum2010_c10010241",
+   "whole",
+   "155307",
+   "Genome fragment",
+   "76.68"
+  ],
+  [
+   "IMGVR_UViG_GVMAG-S-3300000115-46_000001",
+   "DelMOSum2011_c10008695",
+   "whole",
+   "667126",
+   "High-quality",
+   "144.84"
+  ],
+  [
+   "IMGVR_UViG_GVMAG-M-3300000115-18_000001",
+   "DelMOSum2011_c10009262",
+   "whole",
+   "271551",
+   "Genome fragment",
+   "84.08"
+  ]
+ ],
+ "host_columns": [
+  "UVIG",
+  "Prediction method",
+  "Host taxonomy prediction"
+ ],
+ "host_rows": 5576197,
+ "hq_members": {
+  "at_100_complete": 306588,
+  "bases": 19563453979,
+  "completeness_max": 161.77,
+  "completeness_min": 90.0,
+  "contamination_max": 71.59,
+  "length_max": 1765722,
+  "length_min": 1691,
+  "n": 486691
+ },
+ "hq_members_by_topology": {
+  "Direct terminal repeat": 114137,
+  "GVMAG": 1440,
+  "Inverted terminal repeat": 3149,
+  "Linear": 276800,
+  "Provirus": 91165
+ },
+ "hq_members_per_votu": {
+  "1": 152504,
+  "2": 37572,
+  "3": 13216,
+  "4": 6708,
+  "5": 3493,
+  "6": 2432,
+  "7": 1572,
+  "8": 1253,
+  "9": 911,
+  "10": 680,
+  "11": 508,
+  "12": 434,
+  "13": 375,
+  "14": 300,
+  "15": 246,
+  "16": 230,
+  "17": 199,
+  "18": 178,
+  "19": 137,
+  "20": 122,
+  "21": 96,
+  "22": 96,
+  "23": 93,
+  "24": 73,
+  "25": 72,
+  "26": 70,
+  "27": 53,
+  "28": 35,
+  "29": 49,
+  "30": 35
+ },
+ "md5": {
+  "IMGVR_all_Host_information-high_confidence.tsv": {
+   "equal": true,
+   "got": "71b54d0f5c186d813f058bf0379dfd24",
+   "sources_yaml": "71b54d0f5c186d813f058bf0379dfd24"
+  },
+  "IMGVR_all_Sequence_information-high_confidence.tsv": {
+   "equal": true,
+   "got": "3c516db128082fa29dc2c2f60520da1b",
+   "sources_yaml": "3c516db128082fa29dc2c2f60520da1b"
+  }
+ },
+ "members_per_hq_votu": {
+  "1": 101767,
+  "2": 48964,
+  "3": 25987,
+  "4": 14490,
+  "5": 8425,
+  "6": 5717,
+  "7": 3829,
+  "8": 2730,
+  "9": 2008,
+  "10": 10603
+ },
+ "rows": 5576197,
+ "uvig_repeats": 0,
+ "uvigs": 5576197,
+ "votus": 2917521,
+ "votus_with_hq_member": 224520,
+ "votus_with_hq_or_reference_member": 236394,
+ "votus_with_reference_member": 12410
+}

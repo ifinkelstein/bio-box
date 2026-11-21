@@ -1,0 +1,15 @@
+{
+ "path": "/tmp/if2453/c48c2/work/left/GV1_left_for_later.tsv.gz",
+ "rows": 18726,
+ "bytes": 237910,
+ "sha256": "adb42e8d3dc5e05ea6c0f33d2d25f4e968cb59db30ac9ec379126237c12a7f4c",
+ "by_reason_and_quality": [
+  {
+   "reason": "gv1_selection_undecided",
+   "quality": "",
+   "rows": 18726,
+   "bases": 4576307473,
+   "records": 288536
+  }
+ ]
+}

@@ -1,0 +1,60 @@
+{
+ "path": "/tmp/if2453/s2/inputs/V2/V2_left_for_later_hc.tsv.gz",
+ "rows": 5351677,
+ "bytes": 58947247,
+ "sha256": "ace2ec9845b0cea6e6f4c9f81c9baaf7b7b348f90440e0dda89d69de86ad5b62",
+ "by_reason_and_quality": [
+  {
+   "reason": "not_representative",
+   "quality": "Genome fragment",
+   "rows": 268574,
+   "bases": 4994208132,
+   "records": 268574
+  },
+  {
+   "reason": "not_representative",
+   "quality": "High-quality",
+   "rows": 262171,
+   "bases": 10269399888,
+   "records": 262171
+  },
+  {
+   "reason": "not_representative",
+   "quality": "Reference",
+   "rows": 886,
+   "bases": 59017545,
+   "records": 886
+  },
+  {
+   "reason": "not_representative",
+   "quality": "Unsure",
+   "rows": 7053,
+   "bases": 12573259,
+   "records": 7053
+  },
+  {
+   "reason": "votu_without_hq_member",
+   "quality": "Genome fragment",
+   "rows": 4725751,
+   "bases": 57162338127,
+   "records": 4725751
+  },
+  {
+   "reason": "votu_without_hq_member",
+   "quality": "Reference",
+   "rows": 13085,
+   "bases": 379978665,
+   "records": 13085
+  },
+  {
+   "reason": "votu_without_hq_member",
+   "quality": "Unsure",
+   "rows": 74157,
+   "bases": 181447966,
+   "records": 74157
+  }
+ ],
+ "taken_uvigs": 224520,
+ "hc_rows": 5576197,
+ "votus_left_whole": 2693001
+}

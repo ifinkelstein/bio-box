@@ -1,0 +1,143 @@
+{
+ "bases_stored": 5178493077,
+ "c39_compare": [
+  {
+   "c39": 15.71,
+   "name": "crispr_default",
+   "off_20pct": true,
+   "ours": 19.604555776111667,
+   "ratio": 1.2479,
+   "unexplained": false,
+   "why": "card B-53 (merged 2026-11-18): 168.1 CPU-s per Gbp of stored bases plus the circular contigs' wrap flanks, where C-39 took the earlier rate over stored bases alone"
+  },
+  {
+   "c39": 18.69,
+   "name": "crispr_near",
+   "off_20pct": true,
+   "ours": 22.545239142528416,
+   "ratio": 1.2063,
+   "unexplained": false,
+   "why": "as crispr_default, times CRISPR_NEAR_CAS_COST 1.15"
+  },
+  {
+   "c39": 687.5,
+   "name": "genecall",
+   "off_20pct": false,
+   "ours": 584.983,
+   "ratio": 0.8509,
+   "unexplained": false,
+   "why": "card B-53 (merged 2026-11-18): the circular gv-meta rate is 4.3762 CPU-s per Mbp read, fitted on V1's own sample of 778 circular genomes, where C-39 took the estimated 6.3075; and the 178 genomes whose contig S1 or H1 owns are not called (card B-48 (5)), where C-39 called every genome"
+  },
+  {
+   "c39": 3,
+   "name": "genecall_batches",
+   "off_20pct": false,
+   "ours": 3,
+   "ratio": 1.0,
+   "unexplained": false,
+   "why": "follows the gene-call estimate (card B-48's cut at 80% of 300 CPU-minutes)"
+  },
+  {
+   "c39": 23.44,
+   "name": "ingest",
+   "off_20pct": false,
+   "ours": 21.377850450070003,
+   "ratio": 0.912,
+   "unexplained": false,
+   "why": "card B-52 (merged 2026-11-16): 0.07 + 4.11 CPU-min per 1e9 FASTA bytes not held by another stage; C-39 took the earlier rate over every byte"
+  },
+  {
+   "c39": 10406.0,
+   "name": "scan",
+   "off_20pct": false,
+   "ours": 10405.70957016,
+   "ratio": 1.0,
+   "unexplained": false,
+   "why": null
+  },
+  {
+   "c39": 44,
+   "name": "scan_shards",
+   "off_20pct": false,
+   "ours": 44,
+   "ratio": 1.0,
+   "unexplained": false,
+   "why": null
+  }
+ ],
+ "crispr_default_cpu_min": 19.605,
+ "crispr_formula": "(5178493077 + 1818968830) x 168.1 / 1e9 / 60 (x 1.15 near-cas)",
+ "crispr_near_cpu_min": 22.545,
+ "fasta_bytes": 5228187536,
+ "flank_bases": 1818968830,
+ "genecall": {
+  "bases": 5222288776,
+  "bases_called": 5178493077,
+  "bases_stored": 5178493077,
+  "batches": [
+   {
+    "bases": 1722956383,
+    "batch": 0,
+    "estimate_cpu_min": 195.16,
+    "genomes": 56008
+   },
+   {
+    "bases": 1727835241,
+    "batch": 1,
+    "estimate_cpu_min": 195.151,
+    "genomes": 56320
+   },
+   {
+    "bases": 1727701453,
+    "batch": 2,
+    "estimate_cpu_min": 195.172,
+    "genomes": 56208
+   }
+  ],
+  "budget": 300,
+  "circular_stored": 22515,
+  "contigs_listed": 168536,
+  "contigs_owned_by_earlier_stages": 178,
+  "contigs_stored": 168358,
+  "estimate_cpu_min": 584.983,
+  "flank_bases": 1818968830,
+  "genes_expected": 7462726.4,
+  "genomes": 168536,
+  "genomes_not_called": 178,
+  "held_bases": 43795699,
+  "largest_genome": {
+   "estimate_cpu_min": 0.059,
+   "genome_uid": "381f2d22f4a8388531a5dd9500b4ff59"
+  },
+  "merge_estimate_cpu_min": 0.934,
+  "owned_by_stage": {
+   "H1": 177,
+   "S1": 1
+  },
+  "refusal": null,
+  "stage": "V1"
+ },
+ "guard_policy": "DEC-43 (>= 24 CPU-min judged) + DEC-53 (stop only on ratio > 1.20; record ratio < 0.80)",
+ "held_bases": 43795699,
+ "ingest_cpu_min": 21.378,
+ "ingest_formula": "0.07 + max(0, 5228187536 - 43795699) x 4.11 / 1000000000",
+ "margin_cpu_min": 240.0,
+ "owners_gate": {
+  "forbidden": [
+   "C5"
+  ],
+  "owned_by_stage": {
+   "H1": 177,
+   "S1": 1
+  },
+  "problem": null
+ },
+ "scan_from_c39_residues": {
+  "cpu_min": 10405.7,
+  "label": "derived from C-39's measured residues of the provider's proteins",
+  "rate": "7.96 CPU-min per 1e6 residues",
+  "residues": 1307249946,
+  "shard_residues": 30150753,
+  "shards": 44
+ }
+}
