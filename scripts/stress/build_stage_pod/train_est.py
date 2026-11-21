@@ -1,4 +1,4 @@
-"""Card C-46: release-train estimates before launch and rate guard (DEC-43, DEC-53, AGENTS §6).
+"""Card C-46: release-train estimates before launch and rate guard (DEC-43, DEC-53, DEC-64, AGENTS §6).
 
     python train_est.py before --root ROOT --release R --stages S0,S1 --profile P
                                [--earlier PREV] [--parts K] [--jobs J] [--cpus C] [--tmp D]
@@ -13,15 +13,20 @@
 
 `rates` runs on the host with the standard library only:
 - Judges every published step of `release` estimated at `>= 24` CPU-minutes (DEC-43).
-- `ratio > 1.20` (`over_20pct`): exit 3 (stop unit at once; DEC-53).
+- `ratio > 1.20` (`RECORD_ABOVE`): outside 20%, listed in `outside_20pct` (DEC-53).
+- Card A-16 (DEC-64): a judged step whose reported three-decimal ratio is over 1.50 (`STOP_ABOVE`) is listed in
+  `over_20pct` and exits 3 (stop unit at once), as a step over 1.20 did before; one over 1.20 and at or under 1.50 is
+  listed under `recorded_over_20pct` (its row: step, ratio, estimate, basis), stays in `outside_20pct`, and exits 0.
 - `ratio < 0.80` (`under_20pct`): recorded and reported, exit 0 (does not stop; DEC-53).
 - Card A-13: a judged step over 1.20 that an entry of `ACCEPTED` matches (its release exactly, its step by
   `fnmatchcase`, its reported three-decimal ratio at or under the entry's bound) is listed under `accepted_over_20pct`
-  with the entry's decision row, stays in `outside_20pct`, and does not stop the train; `over_20pct` and `worst_over`
-  hold only what is not accepted. Where two entries match a step, the tighter bound decides. A step over the bound of
-  the entry that matches it stops as before, its row naming the entry under `accepted_bound_exceeded`. The key
-  `accepted_over_20pct` appears only for a release an entry names, so with no such entry the output is unchanged.
-  A malformed table is refused with exit 3, the one status on which `release_train.sh` stops the unit.
+  with the entry's decision row and stays in `outside_20pct`; `over_20pct` and `worst_over` hold only what is not
+  accepted. Since DEC-64 an entry decides only above 1.50: a step it matches at or under 1.50 is in
+  `recorded_over_20pct` too, and goes on with or without the entry. Where two entries match a step, the tighter bound
+  decides. A step over 1.50 and over the bound of the entry that matches it stops, its row naming the entry under
+  `accepted_bound_exceeded`. The key `accepted_over_20pct` appears only for a release an entry names.
+  A malformed table is refused with exit 3, the one status on which `release_train.sh` stopped the unit before card
+  A-14 (it now stops on any status but 0).
 """
 
 from __future__ import annotations
@@ -37,6 +42,8 @@ from typing import NamedTuple
 
 TOL = 0.20
 MIN_JUDGED_CPU_MIN = 24.0  # DEC-43
+RECORD_ABOVE = 1.20  # DEC-64 (amending DEC-53): a judged step over this ratio is outside 20% and recorded
+STOP_ABOVE = 1.50  # DEC-64: a judged step whose reported (three-decimal) ratio is over this stops the train
 GENE_SCALED_STEPS = ("tokens", "postings", "dim", "manifest", "catalog")
 
 
@@ -51,7 +58,8 @@ class Accept(NamedTuple):
 
 # Card A-13: records accepted over 20% by a decision row of planning/DECISIONS.md. An entry is added only in the
 # commit that adds its row, and only here: no flag, no variable of the shell and no file adds one. Empty: every
-# judged step more than 20% over its estimate stops the train (DEC-43, DEC-53).
+# judged step more than 1.50 times its estimate stops the train (DEC-43, DEC-64). Since DEC-64 a new entry's bound
+# must be over STOP_ABOVE: at or under it, the rule already lets the step go on.
 ACCEPTED: tuple[Accept, ...] = (
     # DEC-61 (PI, 2026-11-21: "accept up to 1.5"): the parts of the last NR50 alignment of r26.11.2; part-00001 ran at
     # 1.215 of an estimate whose factor card B-54 fitted on r26.11.1 alone.
@@ -62,6 +70,14 @@ ACCEPTED: tuple[Accept, ...] = (
 # 56 CPU-minutes against 45, far under the 280 CPU-minute process cap). A step further off than that needs its
 # estimate refitted, not an entry in this table.
 ACCEPT_CEILING = 1.60
+
+# Card A-16: the entries of ACCEPTED made before DEC-64, each exactly as its decision row gave it, kept as the record
+# of that decision. Only these may carry a bound over RECORD_ABOVE and at or under STOP_ABOVE; every other entry's
+# bound must be over STOP_ABOVE. DEC-61's bound is STOP_ABOVE itself, so it accepts no step that the rule does not
+# already let go on (a step it matches at or under 1.50 is in the band; one over 1.50 is over its bound and stops).
+KEPT_BEFORE_DEC64: tuple[Accept, ...] = (
+    Accept("r26.11.2", "cluster.nr50.20.align.part-*", 1.50, "DEC-61"),
+)
 _DECISION = re.compile(r"DEC-[1-9][0-9]*")
 
 
@@ -84,9 +100,13 @@ def accepted_table_problems(table) -> list[str]:
             problems.append(f"entry {k}: step pattern {pat!r} must name steps, not be empty or wildcards alone")
         if isinstance(bound, bool) or not isinstance(bound, (int, float)) or not math.isfinite(bound):
             problems.append(f"entry {k}: greatest ratio {bound!r} is not a finite number")
-        elif not (1 + TOL < bound <= ACCEPT_CEILING):
-            problems.append(f"entry {k}: greatest ratio {bound!r} must be over {1 + TOL:.2f} (else nothing is "
-                            f"accepted) and at most {ACCEPT_CEILING:.2f} (DEC-55)")
+        elif not (RECORD_ABOVE < bound <= ACCEPT_CEILING):
+            problems.append(f"entry {k}: greatest ratio {bound!r} must be over {STOP_ABOVE:.2f} (DEC-64: at or under "
+                            f"it the rule already lets a step go on) and at most {ACCEPT_CEILING:.2f} (DEC-55)")
+        elif bound <= STOP_ABOVE and not any(e == kept for kept in KEPT_BEFORE_DEC64):
+            problems.append(f"entry {k}: greatest ratio {bound!r} must be over {STOP_ABOVE:.2f} (DEC-64: at or under "
+                            f"it the rule already lets a step go on; only an entry made before DEC-64, as its row "
+                            f"gave it, keeps a lower bound)")
         if not isinstance(dec, str) or not _DECISION.fullmatch(dec):
             problems.append(f"entry {k}: decision {dec!r} must be a row's name, DEC-<number>")
         if isinstance(rel, str) and isinstance(pat, str):
@@ -322,8 +342,9 @@ def before(a) -> int:
 
 
 def check_rates(root: Path, release: str, est_path: Path, *, out_path: Path | None = None) -> dict:
-    """Judge published run records of `release` under DEC-43 (>= 24 CPU-min) and DEC-53 (>20% over stops),
-    less the records `ACCEPTED` names (card A-13)."""
+    """Judge published run records of `release` under DEC-43 (>= 24 CPU-min), DEC-53 (outside 20%: over 1.20 or
+    under 0.80) and DEC-64 (over 1.50 stops; over 1.20 and at or under 1.50 is recorded), less the records `ACCEPTED`
+    names (card A-13)."""
     _check_accepted()
     named = any(e[0] == release for e in ACCEPTED)
     est = json.loads(Path(est_path).read_text())
@@ -333,7 +354,7 @@ def check_rates(root: Path, release: str, est_path: Path, *, out_path: Path | No
     runs = Path(root) / "runs" / f"stage={release}"
     plans = Path(root) / "l2" / "cluster_plan" / f"release={release}"
 
-    rows, over_bad, under_bad, bad, unknown, accepted = [], [], [], [], [], []
+    rows, over_bad, under_bad, bad, unknown, accepted, recorded = [], [], [], [], [], [], []
     cuts: dict[str, dict] = {}
     for f in sorted(runs.glob("*.json")) if runs.is_dir() else []:
         if f.name.endswith(".publishing.json"):
@@ -374,12 +395,14 @@ def check_rates(root: Path, release: str, est_path: Path, *, out_path: Path | No
             ratio = r["cpu_min"] / e if e > 0 else float("inf")
             judged = e >= MIN_JUDGED_CPU_MIN
             row.update({"estimate": round(e, 3), "ratio": round(ratio, 3), "judged": judged, "basis": basis})
-            if judged and ratio > 1 + TOL:
+            if judged and ratio > RECORD_ABOVE:
                 match = _matching(release, name) if named else []
                 if match and row["ratio"] <= match[0].max_ratio:  # the reported ratio, as the decision row reads it
                     row["accepted"] = match[0].decision
                     accepted.append(row)
-                else:
+                if row["ratio"] <= STOP_ABOVE:  # DEC-64, on the reported ratio: recorded, the train goes on
+                    recorded.append(row)
+                elif "accepted" not in row:
                     if match:
                         row["accepted_bound_exceeded"] = {"decision": match[0].decision, "step": match[0].step,
                                                           "max_ratio": match[0].max_ratio}
@@ -400,6 +423,7 @@ def check_rates(root: Path, release: str, est_path: Path, *, out_path: Path | No
         "worst_over": max((x for x in judged if "accepted" not in x), key=lambda x: x["ratio"], default=None),
         "largest": max(rows, key=lambda x: x["cpu_min"], default=None),
         "over_20pct": over_bad,
+        "recorded_over_20pct": recorded,
         "under_20pct": under_bad,
         "outside_20pct": bad,
         "no_estimate": unknown[-8:],
