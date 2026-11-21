@@ -395,8 +395,8 @@ stops under 150 GB; agents stop at 200 GB). Check (a) and (b) at every check-in 
 each summary how much is free. Until the PI decides, nothing is deleted to make room except what DEC-42 and DEC-46
 already allow (the scratch of finished, merged cards).
 
-**7. Waiting on the PI**: one question from item 22 (does "two releases" also mean a second, shareable form of
-each rolling release, without the restricted stages?). **Decided on 2026-11-21: item 22 (DEC-63: the second
+**7. Waiting on the PI**: nothing that blocks a build. **Decided on 2026-11-21: the rate guards' standing rule
+(DEC-64: a judged step between 1.20 and 1.50 is recorded, above 1.50 stops); item 22 (DEC-63: the second
 plasmid set as two stages, source circular flags, no least length, full Pfam); item 23 (DEC-61: accept the NR50 alignment parts of `r26.11.2` up to
 1.50 and resume) and item 21 (DEC-62: scan `C1` to `C4` and `C6` in full).** Still open: the storage decision set (`planning/design/storage_decisions_draft.md`, S-1 to S-8);
 item 19 (where the corpus lives; `tower` being looked at, card C-49), items 15 (decided: DEC-56), 16 (B-56's design), 17 (`domain_state`'s place in
@@ -1408,9 +1408,9 @@ probed by hand on the pod).
    and defer injesting others, 3. use circular if that is the source flag. 4. no cut, 5. full scan". Two stages
    (`PL2` redistributable, `PL3` restricted), the authors' gut representatives with the rest deferred in the
    register, circular where the source flags it, no least length, Pfam in full. Card C-52 stages the two sets
-   again by these rules and writes their confs. **One point asked back**: whether "two releases" also means that
-   each rolling release is cut in a second, shareable form without the restricted stages (`V2`, `GV1`, `PL3`); the
-   row records only the two stages. What was asked, kept for the record:
+   again by these rules and writes their confs. **One point asked back and answered** (the PI at about 10:10 on
+   2026-11-21: "two releases=two stages"): DEC-63 (1)'s reading stands as written; no second, shareable form of
+   each rolling release is asked for. What was asked, kept for the record:
    **Stage `PL2` cannot be given a build configuration until five questions of its note are answered** (opened
    2026-11-21 by card A-12; the questions are `planning/measurements/2026-11-16_pl2_inputs.md` §6, 1 to 5, asked on
    2026-11-16 and not answered since). With the orchestrator's recommendation for each: (1) **one stage or two**:
