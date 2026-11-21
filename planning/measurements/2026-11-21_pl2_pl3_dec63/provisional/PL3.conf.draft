@@ -1,0 +1,23 @@
+# DRAFT of card C-52, not committed: stage PL3 over the PROVISIONAL staging in scratch (the note's §7), only to run
+# the driver's estimate read-only on the data root. INPUTS and SUM lines change with the final staging; the lines for
+# PL2 and V2 (not built yet) are left out here so that estimate can run now.
+STAGE=PL3
+NOTE=planning/measurements/2026-11-21_pl2_pl3_dec63.md
+INPUTS=/tmp/if2453/c52/provisional/PL3
+SUM=c671a7a9c4113f81a450327761d2c5ff296500b60fa1f20c5da43a2f047645a4 genomes.json
+SUM=5a4fb14a825875e0fffc1abbf4a3853ea119882fee0c719fc057e94a406e1035 objects.json
+SUM=c79aa303a2cbbb9633b3ea886dc9aa5f7e302d3ef9be1bb768143d64394ca4da plasmidscope_IMG-PR.fasta
+SUM=7f3bbeb6ba39bff864266057bd39ae9c3e73e65a20e9c9623ffb7de1156b56fb plasmidscope_mMGE.fasta
+DEPTH=annotated
+LIBRARY=pfam 38.2 gathering
+CRISPR=yes
+AFTER=PL2
+EXPECT=held_by C5 5 planning/measurements/2026-11-21_pl2_pl3_dec63.md
+EXPECT=held_by P1 27 planning/measurements/2026-11-21_pl2_pl3_dec63.md
+EXPECT=held_by P2 178 planning/measurements/2026-11-21_pl2_pl3_dec63.md
+EXPECT=held_by P3 417 planning/measurements/2026-11-21_pl2_pl3_dec63.md
+EXPECT=held_by P4 419 planning/measurements/2026-11-21_pl2_pl3_dec63.md
+EXPECT=held_by P5 62 planning/measurements/2026-11-21_pl2_pl3_dec63.md
+EXPECT=held_by P6 13 planning/measurements/2026-11-21_pl2_pl3_dec63.md
+EXPECT=held_by PL1 4850 planning/measurements/2026-11-21_pl2_pl3_dec63.md
+EXPECT=held_by V1 4 planning/measurements/2026-11-21_pl2_pl3_dec63.md

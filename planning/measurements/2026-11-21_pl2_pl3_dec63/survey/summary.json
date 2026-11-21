@@ -1,0 +1,1535 @@
+{
+ "long_bound": 1000,
+ "near_identity": 0.9,
+ "pl1": {
+  "classes": {
+   "exact": 523,
+   "long": 217,
+   "low_complexity": 3,
+   "none": 61586,
+   "partial": 467,
+   "unresolved": 1
+  },
+  "examples": {
+   "exact": [
+    "NZ_CP129359.1",
+    "NZ_CP120124.1",
+    "NZ_CP129356.1",
+    "NZ_CP138759.1",
+    "NZ_CP096366.1"
+   ],
+   "long": [
+    "NZ_CP137628.1",
+    "NZ_CP138473.1",
+    "NZ_CP137065.1",
+    "CP137443.1",
+    "NZ_CP137419.1"
+   ],
+   "low_complexity": [
+    "NZ_CP134999.1",
+    "NZ_CP134996.1",
+    "NZ_CP135002.1"
+   ],
+   "none": [
+    "NZ_CP139252.1",
+    "NZ_CP139269.1",
+    "NZ_CP139268.1",
+    "NZ_CP139267.1",
+    "NZ_CP139215.1"
+   ],
+   "partial": [
+    "NZ_CP120066.1",
+    "NZ_CP138418.1",
+    "NZ_CP129605.2",
+    "CP137942.1",
+    "CP137936.1"
+   ],
+   "unresolved": [
+    "NZ_CP094457.1"
+   ]
+  },
+  "flagged": 62797,
+  "flagged_and_fragment": 0,
+  "fragment_classes": {},
+  "records": 72556,
+  "repeat_bins": {
+   "100-999": 284,
+   "1000-4999": 92,
+   "20-99": 310,
+   ">=5000": 130
+  },
+  "repeat_lengths_top": [
+   [
+    127,
+    66
+   ],
+   [
+    22,
+    26
+   ],
+   [
+    55,
+    24
+   ],
+   [
+    77,
+    21
+   ],
+   [
+    24,
+    14
+   ],
+   [
+    36,
+    10
+   ],
+   [
+    20,
+    9
+   ],
+   [
+    23,
+    8
+   ],
+   [
+    26,
+    8
+   ],
+   [
+    30,
+    8
+   ],
+   [
+    25,
+    7
+   ],
+   [
+    34,
+    7
+   ],
+   [
+    100,
+    7
+   ],
+   [
+    111,
+    7
+   ],
+   [
+    4167,
+    7
+   ],
+   [
+    47,
+    6
+   ],
+   [
+    126,
+    6
+   ],
+   [
+    144,
+    6
+   ],
+   [
+    21,
+    5
+   ],
+   [
+    28,
+    5
+   ],
+   [
+    32,
+    5
+   ],
+   [
+    41,
+    5
+   ],
+   [
+    42,
+    5
+   ],
+   [
+    44,
+    5
+   ],
+   [
+    50,
+    5
+   ]
+  ],
+  "repeat_share_of_record": {
+   "<0.01": 379,
+   "<0.05": 197,
+   "<0.1": 48,
+   "<0.25": 29,
+   ">=0.25": 163
+  },
+  "stored_classes": {
+   "exact": 523,
+   "long": 217,
+   "low_complexity": 3,
+   "none": 61586,
+   "partial": 467,
+   "unresolved": 1
+  }
+ },
+ "seed": 20,
+ "sources": {
+  "gut_plasmids_yu2024": {
+   "classes": {
+    "exact": 3444,
+    "low_complexity": 2,
+    "none": 893,
+    "partial": 178
+   },
+   "examples": {
+    "exact": [
+     "MAD0056_000000000121",
+     "ISR0778_000000000247",
+     "MAD0046_000000000264",
+     "DEN0012_000000000047",
+     "CHI0098_000000000143"
+    ],
+    "low_complexity": [
+     "AUS0020_000000000698",
+     "ISR0221_000000003082"
+    ],
+    "none": [
+     "ISR0062_000000000346",
+     "ENG0031_000000000467",
+     "ISR0135_000000000381",
+     "ISR0056_000000000213",
+     "ENG0099_000000000188"
+    ],
+    "partial": [
+     "ISR0057_000000000146",
+     "ISR0028_000000000663",
+     "ISR0228_000000000343",
+     "ISR0161_000000001245",
+     "ENG0201_000000001463"
+    ]
+   },
+   "flagged": 4517,
+   "flagged_and_fragment": 0,
+   "fragment_classes": {},
+   "records": 68350,
+   "repeat_bins": {
+    "20-99": 3497
+   },
+   "repeat_lengths_top": [
+    [
+     79,
+     1243
+    ],
+    [
+     59,
+     570
+    ],
+    [
+     99,
+     539
+    ],
+    [
+     39,
+     442
+    ],
+    [
+     80,
+     86
+    ],
+    [
+     77,
+     42
+    ],
+    [
+     81,
+     38
+    ],
+    [
+     78,
+     34
+    ],
+    [
+     73,
+     24
+    ],
+    [
+     76,
+     23
+    ],
+    [
+     75,
+     20
+    ],
+    [
+     68,
+     18
+    ],
+    [
+     57,
+     17
+    ],
+    [
+     74,
+     16
+    ],
+    [
+     60,
+     15
+    ],
+    [
+     63,
+     14
+    ],
+    [
+     71,
+     14
+    ],
+    [
+     55,
+     13
+    ],
+    [
+     61,
+     13
+    ],
+    [
+     58,
+     12
+    ],
+    [
+     64,
+     12
+    ],
+    [
+     37,
+     11
+    ],
+    [
+     65,
+     11
+    ],
+    [
+     66,
+     11
+    ],
+    [
+     69,
+     11
+    ]
+   ],
+   "repeat_share_of_record": {
+    "<0.01": 1078,
+    "<0.05": 2361,
+    "<0.1": 58
+   },
+   "stored_classes": {
+    "exact": 3444,
+    "low_complexity": 2,
+    "none": 893,
+    "partial": 178
+   }
+  },
+  "plasmidscope_COMPASS": {
+   "classes": {
+    "exact": 163,
+    "long": 21,
+    "none": 11123,
+    "partial": 112
+   },
+   "examples": {
+    "exact": [
+     "COMPASS_U36912.1",
+     "COMPASS_U36911.1",
+     "COMPASS_NZ_HG917973.1",
+     "COMPASS_NZ_HG813248.1",
+     "COMPASS_NZ_CP028095.1"
+    ],
+    "long": [
+     "COMPASS_NZ_CP025421.1",
+     "COMPASS_NZ_CP022569.1",
+     "COMPASS_NZ_CP022410.1",
+     "COMPASS_NZ_CP021458.1",
+     "COMPASS_NZ_CP019921.1"
+    ],
+    "none": [
+     "COMPASS_X96982.1",
+     "COMPASS_U94409.1",
+     "COMPASS_U88088.2",
+     "COMPASS_U85507.1",
+     "COMPASS_U83488.1"
+    ],
+    "partial": [
+     "COMPASS_NZ_CP028096.1",
+     "COMPASS_NZ_CP027549.1",
+     "COMPASS_NZ_CP026329.1",
+     "COMPASS_NZ_CP025467.1",
+     "COMPASS_NZ_CP025424.1"
+    ]
+   },
+   "flagged": 11419,
+   "flagged_and_fragment": 0,
+   "fragment_classes": {},
+   "records": 12084,
+   "repeat_bins": {
+    "100-999": 86,
+    "1000-4999": 12,
+    "20-99": 93,
+    ">=5000": 9
+   },
+   "repeat_lengths_top": [
+    [
+     127,
+     23
+    ],
+    [
+     77,
+     10
+    ],
+    [
+     22,
+     8
+    ],
+    [
+     20,
+     7
+    ],
+    [
+     204,
+     5
+    ],
+    [
+     149,
+     4
+    ],
+    [
+     21,
+     3
+    ],
+    [
+     30,
+     3
+    ],
+    [
+     36,
+     3
+    ],
+    [
+     38,
+     3
+    ],
+    [
+     50,
+     3
+    ],
+    [
+     55,
+     3
+    ],
+    [
+     97,
+     3
+    ],
+    [
+     27,
+     2
+    ],
+    [
+     34,
+     2
+    ],
+    [
+     35,
+     2
+    ],
+    [
+     42,
+     2
+    ],
+    [
+     52,
+     2
+    ],
+    [
+     74,
+     2
+    ],
+    [
+     82,
+     2
+    ],
+    [
+     86,
+     2
+    ],
+    [
+     89,
+     2
+    ],
+    [
+     123,
+     2
+    ],
+    [
+     187,
+     2
+    ],
+    [
+     207,
+     2
+    ]
+   ],
+   "repeat_share_of_record": {
+    "<0.01": 124,
+    "<0.05": 44,
+    "<0.1": 17,
+    "<0.25": 6,
+    ">=0.25": 9
+   },
+   "stored_classes": {
+    "exact": 7,
+    "long": 1,
+    "none": 306,
+    "partial": 3
+   }
+  },
+  "plasmidscope_DDBJ": {
+   "classes": {
+    "exact": 11,
+    "long": 2,
+    "none": 4282,
+    "partial": 15
+   },
+   "examples": {
+    "exact": [
+     "DDBJ_LC532227.1",
+     "DDBJ_AP012174.1",
+     "DDBJ_LC556213.1",
+     "DDBJ_AP022272.1",
+     "DDBJ_AP012550.1"
+    ],
+    "long": [
+     "DDBJ_AP027277.1",
+     "DDBJ_AP026717.1"
+    ],
+    "none": [
+     "DDBJ_AP023282.1",
+     "DDBJ_AP022653.1",
+     "DDBJ_AP018454.1",
+     "DDBJ_AP018199.1",
+     "DDBJ_AP021921.1"
+    ],
+    "partial": [
+     "DDBJ_AP027985.1",
+     "DDBJ_AP022237.1",
+     "DDBJ_AP026077.1",
+     "DDBJ_AP022463.1",
+     "DDBJ_AP024632.1"
+    ]
+   },
+   "flagged": 4310,
+   "flagged_and_fragment": 1,
+   "fragment_classes": {
+    "none": 1
+   },
+   "records": 5305,
+   "repeat_bins": {
+    "100-999": 2,
+    "20-99": 9,
+    ">=5000": 2
+   },
+   "repeat_lengths_top": [
+    [
+     36,
+     2
+    ],
+    [
+     26,
+     1
+    ],
+    [
+     30,
+     1
+    ],
+    [
+     32,
+     1
+    ],
+    [
+     40,
+     1
+    ],
+    [
+     60,
+     1
+    ],
+    [
+     77,
+     1
+    ],
+    [
+     78,
+     1
+    ],
+    [
+     144,
+     1
+    ],
+    [
+     650,
+     1
+    ],
+    [
+     5127,
+     1
+    ],
+    [
+     9416,
+     1
+    ]
+   ],
+   "repeat_share_of_record": {
+    "<0.01": 9,
+    "<0.05": 1,
+    "<0.1": 1,
+    ">=0.25": 2
+   },
+   "stored_classes": {
+    "exact": 1,
+    "none": 53
+   }
+  },
+  "plasmidscope_ENA": {
+   "classes": {
+    "exact": 34,
+    "none": 4299,
+    "partial": 12
+   },
+   "examples": {
+    "exact": [
+     "EMBL_LT635650.1",
+     "EMBL_LN555524.1",
+     "EMBL_LT635656.1",
+     "EMBL_LT635653.1",
+     "EMBL_OV767079.1"
+    ],
+    "none": [
+     "EMBL_HG796376.1",
+     "EMBL_OW968269.1",
+     "EMBL_OW849391.1",
+     "EMBL_OW970507.1",
+     "EMBL_OW967846.1"
+    ],
+    "partial": [
+     "EMBL_CR377818.1",
+     "EMBL_LR990734.1",
+     "EMBL_LS974446.1",
+     "EMBL_LT985277.1",
+     "EMBL_OW959907.1"
+    ]
+   },
+   "flagged": 4345,
+   "flagged_and_fragment": 4,
+   "fragment_classes": {
+    "none": 4
+   },
+   "records": 6239,
+   "repeat_bins": {
+    "100-999": 8,
+    "20-99": 27
+   },
+   "repeat_lengths_top": [
+    [
+     55,
+     15
+    ],
+    [
+     77,
+     2
+    ],
+    [
+     20,
+     1
+    ],
+    [
+     22,
+     1
+    ],
+    [
+     23,
+     1
+    ],
+    [
+     39,
+     1
+    ],
+    [
+     43,
+     1
+    ],
+    [
+     44,
+     1
+    ],
+    [
+     62,
+     1
+    ],
+    [
+     86,
+     1
+    ],
+    [
+     90,
+     1
+    ],
+    [
+     98,
+     1
+    ],
+    [
+     141,
+     1
+    ],
+    [
+     160,
+     1
+    ],
+    [
+     186,
+     1
+    ],
+    [
+     187,
+     1
+    ],
+    [
+     237,
+     1
+    ],
+    [
+     265,
+     1
+    ],
+    [
+     464,
+     1
+    ],
+    [
+     471,
+     1
+    ]
+   ],
+   "repeat_share_of_record": {
+    "<0.01": 18,
+    "<0.05": 17
+   },
+   "stored_classes": {
+    "exact": 3,
+    "none": 654,
+    "partial": 1
+   }
+  },
+  "plasmidscope_GenBank": {
+   "classes": {
+    "exact": 636,
+    "long": 201,
+    "low_complexity": 7,
+    "none": 54554,
+    "partial": 433,
+    "unresolved": 18
+   },
+   "examples": {
+    "exact": [
+     "GenBank_AYFZ01000083.1",
+     "GenBank_CP018030.1",
+     "GenBank_CP042007.1",
+     "GenBank_CP024415.1",
+     "GenBank_CP059002.1"
+    ],
+    "long": [
+     "GenBank_CP077373.1",
+     "GenBank_CP033626.1",
+     "GenBank_CP109950.1",
+     "GenBank_CP149739.1",
+     "GenBank_CP139413.1"
+    ],
+    "low_complexity": [
+     "GenBank_CP022933.1",
+     "GenBank_CP022937.1",
+     "GenBank_CP017608.1",
+     "GenBank_CP017615.1",
+     "GenBank_CP022935.1"
+    ],
+    "none": [
+     "GenBank_CP028544.1",
+     "GenBank_MW295852.1",
+     "GenBank_RZFX01000257.1",
+     "GenBank_CP141068.1",
+     "GenBank_CP047718.1"
+    ],
+    "partial": [
+     "GenBank_KY000074.1",
+     "GenBank_CP065598.1",
+     "GenBank_CP043308.1",
+     "GenBank_CP030160.1",
+     "GenBank_CP141214.1"
+    ],
+    "unresolved": [
+     "GenBank_CP035786.1",
+     "GenBank_CP062968.1",
+     "GenBank_CP062969.1",
+     "GenBank_CP062935.1",
+     "GenBank_CP035788.1"
+    ]
+   },
+   "flagged": 55849,
+   "flagged_and_fragment": 129,
+   "fragment_classes": {
+    "exact": 4,
+    "long": 2,
+    "none": 119,
+    "partial": 4
+   },
+   "records": 91774,
+   "repeat_bins": {
+    "100-999": 340,
+    "1000-4999": 93,
+    "20-99": 365,
+    ">=5000": 112
+   },
+   "repeat_lengths_top": [
+    [
+     127,
+     117
+    ],
+    [
+     77,
+     56
+    ],
+    [
+     22,
+     26
+    ],
+    [
+     24,
+     14
+    ],
+    [
+     20,
+     13
+    ],
+    [
+     50,
+     12
+    ],
+    [
+     55,
+     12
+    ],
+    [
+     25,
+     10
+    ],
+    [
+     99,
+     10
+    ],
+    [
+     100,
+     10
+    ],
+    [
+     30,
+     9
+    ],
+    [
+     34,
+     9
+    ],
+    [
+     111,
+     8
+    ],
+    [
+     23,
+     7
+    ],
+    [
+     36,
+     7
+    ],
+    [
+     47,
+     7
+    ],
+    [
+     71,
+     7
+    ],
+    [
+     4167,
+     7
+    ],
+    [
+     21,
+     6
+    ],
+    [
+     26,
+     6
+    ],
+    [
+     28,
+     5
+    ],
+    [
+     39,
+     5
+    ],
+    [
+     41,
+     5
+    ],
+    [
+     44,
+     5
+    ],
+    [
+     52,
+     5
+    ]
+   ],
+   "repeat_share_of_record": {
+    "<0.01": 450,
+    "<0.05": 238,
+    "<0.1": 53,
+    "<0.25": 27,
+    ">=0.25": 142
+   },
+   "stored_classes": {
+    "exact": 3,
+    "long": 3,
+    "none": 651,
+    "partial": 4,
+    "unresolved": 5
+   }
+  },
+  "plasmidscope_IMG-PR": {
+   "classes": {
+    "exact": 62752,
+    "long": 202,
+    "low_complexity": 16,
+    "none": 77668,
+    "partial": 2167
+   },
+   "examples": {
+    "exact": [
+     "IMGPR_plasmid_3300029548_000025",
+     "IMGPR_plasmid_3300048856_000286",
+     "IMGPR_plasmid_3300029157_000011",
+     "IMGPR_plasmid_3300047557_000015",
+     "IMGPR_plasmid_3300002230_000011"
+    ],
+    "long": [
+     "IMGPR_plasmid_2558860657_000006",
+     "IMGPR_plasmid_2890671501_000005",
+     "IMGPR_plasmid_2617271008_000002",
+     "IMGPR_plasmid_2617271179_000003",
+     "IMGPR_plasmid_640612203_000001"
+    ],
+    "low_complexity": [
+     "IMGPR_plasmid_2563367180_000001",
+     "IMGPR_plasmid_2563367180_000002",
+     "IMGPR_plasmid_2703718778_000001",
+     "IMGPR_plasmid_2663763165_000001",
+     "IMGPR_plasmid_2579778786_000007"
+    ],
+    "none": [
+     "IMGPR_plasmid_3300053491_029428",
+     "IMGPR_plasmid_3300053491_053603",
+     "IMGPR_plasmid_3300053491_022366",
+     "IMGPR_plasmid_3300053491_076726",
+     "IMGPR_plasmid_3300053491_073003"
+    ],
+    "partial": [
+     "IMGPR_plasmid_3300008283_000008",
+     "IMGPR_plasmid_2563367016_000002",
+     "IMGPR_plasmid_3300053491_057649",
+     "IMGPR_plasmid_3300053491_059179",
+     "IMGPR_plasmid_3300053491_039914"
+    ]
+   },
+   "flagged": 142805,
+   "flagged_and_fragment": 0,
+   "fragment_classes": {},
+   "records": 699971,
+   "repeat_bins": {
+    "100-999": 34078,
+    "1000-4999": 183,
+    "20-99": 29918,
+    ">=5000": 21
+   },
+   "repeat_lengths_top": [
+    [
+     127,
+     17461
+    ],
+    [
+     99,
+     5286
+    ],
+    [
+     123,
+     5056
+    ],
+    [
+     77,
+     2549
+    ],
+    [
+     95,
+     1998
+    ],
+    [
+     55,
+     1212
+    ],
+    [
+     141,
+     975
+    ],
+    [
+     79,
+     855
+    ],
+    [
+     91,
+     672
+    ],
+    [
+     22,
+     658
+    ],
+    [
+     98,
+     587
+    ],
+    [
+     78,
+     574
+    ],
+    [
+     144,
+     539
+    ],
+    [
+     121,
+     525
+    ],
+    [
+     103,
+     490
+    ],
+    [
+     80,
+     462
+    ],
+    [
+     90,
+     462
+    ],
+    [
+     25,
+     434
+    ],
+    [
+     94,
+     422
+    ],
+    [
+     97,
+     384
+    ],
+    [
+     120,
+     384
+    ],
+    [
+     119,
+     375
+    ],
+    [
+     89,
+     370
+    ],
+    [
+     107,
+     356
+    ],
+    [
+     84,
+     353
+    ]
+   ],
+   "repeat_share_of_record": {
+    "<0.01": 18594,
+    "<0.05": 41557,
+    "<0.1": 3320,
+    "<0.25": 700,
+    ">=0.25": 29
+   },
+   "stored_classes": {
+    "exact": 59840,
+    "long": 177,
+    "low_complexity": 16,
+    "none": 63640,
+    "partial": 1995
+   }
+  },
+  "plasmidscope_Kraken2": {
+   "classes": {
+    "exact": 8,
+    "long": 1,
+    "none": 413,
+    "partial": 3
+   },
+   "examples": {
+    "exact": [
+     "Kraken2_NZ_JAQOOH010000056.1",
+     "Kraken2_NZ_CP072245.1",
+     "Kraken2_NZ_CP046830.1",
+     "Kraken2_NZ_CP018777.1",
+     "Kraken2_NZ_CP006964.1"
+    ],
+    "long": [
+     "Kraken2_NZ_AP026717.1"
+    ],
+    "none": [
+     "Kraken2_NZ_U40997.1",
+     "Kraken2_NZ_U35036.1",
+     "Kraken2_NZ_M10917.1",
+     "Kraken2_NZ_JAQLSH010000480.1",
+     "Kraken2_NZ_JAQLSH010000479.1"
+    ],
+    "partial": [
+     "Kraken2_NZ_CP083895.1",
+     "Kraken2_NZ_CP079227.1",
+     "Kraken2_NZ_CP059277.1"
+    ]
+   },
+   "flagged": 425,
+   "flagged_and_fragment": 0,
+   "fragment_classes": {},
+   "records": 898,
+   "repeat_bins": {
+    "100-999": 5,
+    "20-99": 4,
+    ">=5000": 1
+   },
+   "repeat_lengths_top": [
+    [
+     127,
+     4
+    ],
+    [
+     25,
+     1
+    ],
+    [
+     54,
+     1
+    ],
+    [
+     74,
+     1
+    ],
+    [
+     77,
+     1
+    ],
+    [
+     172,
+     1
+    ],
+    [
+     5127,
+     1
+    ]
+   ],
+   "repeat_share_of_record": {
+    "<0.01": 6,
+    "<0.05": 3,
+    ">=0.25": 1
+   },
+   "stored_classes": {
+    "none": 8
+   }
+  },
+  "plasmidscope_RefSeq": {
+   "classes": {
+    "exact": 860,
+    "long": 168,
+    "low_complexity": 7,
+    "none": 55231,
+    "partial": 407,
+    "unresolved": 13
+   },
+   "examples": {
+    "exact": [
+     "RefSeq_NZ_JAHMGQ010000038.1",
+     "RefSeq_NZ_CP038654.1",
+     "RefSeq_NZ_CP024440.1",
+     "RefSeq_NZ_JACKZP010000310.1",
+     "RefSeq_NZ_CP004408.1"
+    ],
+    "long": [
+     "RefSeq_NZ_CP091188.1",
+     "RefSeq_NZ_CP025784.1",
+     "RefSeq_NZ_CP012654.1",
+     "RefSeq_NZ_CP119154.1",
+     "RefSeq_NZ_CP121519.1"
+    ],
+    "low_complexity": [
+     "RefSeq_NZ_CP017614.1",
+     "RefSeq_NZ_CP022933.1",
+     "RefSeq_NZ_CP022937.1",
+     "RefSeq_NZ_CP017608.1",
+     "RefSeq_NZ_CP017612.1"
+    ],
+    "none": [
+     "RefSeq_NZ_CP073379.1",
+     "RefSeq_NZ_CP068578.1",
+     "RefSeq_NZ_CP055152.1",
+     "RefSeq_NZ_CP029575.1",
+     "RefSeq_NZ_AP024408.1"
+    ],
+    "partial": [
+     "RefSeq_NZ_CP043308.1",
+     "RefSeq_NZ_MN635737.1",
+     "RefSeq_NZ_CP127313.1",
+     "RefSeq_NZ_JANUHY010000006.1",
+     "RefSeq_NZ_CP133378.1"
+    ],
+    "unresolved": [
+     "RefSeq_NZ_CP062969.1",
+     "RefSeq_NZ_CP062932.1",
+     "RefSeq_NZ_CP098412.1",
+     "RefSeq_NZ_CP062928.1",
+     "RefSeq_NZ_CP062931.1"
+    ]
+   },
+   "flagged": 56686,
+   "flagged_and_fragment": 0,
+   "fragment_classes": {},
+   "records": 85995,
+   "repeat_bins": {
+    "100-999": 422,
+    "1000-4999": 83,
+    "20-99": 512,
+    ">=5000": 90
+   },
+   "repeat_lengths_top": [
+    [
+     127,
+     180
+    ],
+    [
+     77,
+     111
+    ],
+    [
+     55,
+     43
+    ],
+    [
+     20,
+     37
+    ],
+    [
+     22,
+     29
+    ],
+    [
+     39,
+     18
+    ],
+    [
+     50,
+     11
+    ],
+    [
+     36,
+     10
+    ],
+    [
+     99,
+     10
+    ],
+    [
+     100,
+     10
+    ],
+    [
+     25,
+     9
+    ],
+    [
+     34,
+     9
+    ],
+    [
+     23,
+     8
+    ],
+    [
+     26,
+     8
+    ],
+    [
+     28,
+     8
+    ],
+    [
+     30,
+     8
+    ],
+    [
+     111,
+     8
+    ],
+    [
+     126,
+     8
+    ],
+    [
+     24,
+     7
+    ],
+    [
+     35,
+     7
+    ],
+    [
+     47,
+     7
+    ],
+    [
+     4167,
+     7
+    ],
+    [
+     71,
+     6
+    ],
+    [
+     74,
+     6
+    ],
+    [
+     96,
+     6
+    ]
+   ],
+   "repeat_share_of_record": {
+    "<0.01": 541,
+    "<0.05": 363,
+    "<0.1": 66,
+    "<0.25": 30,
+    ">=0.25": 107
+   },
+   "stored_classes": {
+    "exact": 299,
+    "long": 15,
+    "low_complexity": 3,
+    "none": 4716,
+    "partial": 62,
+    "unresolved": 13
+   }
+  },
+  "plasmidscope_TPA": {
+   "classes": {
+    "none": 7
+   },
+   "examples": {
+    "none": [
+     "TPA_BK010830.1",
+     "TPA_BK010831.1",
+     "TPA_BK010451.1",
+     "TPA_BR000038.1",
+     "TPA_BK008853.1"
+    ]
+   },
+   "flagged": 7,
+   "flagged_and_fragment": 0,
+   "fragment_classes": {},
+   "records": 7,
+   "repeat_bins": {},
+   "repeat_lengths_top": [],
+   "repeat_share_of_record": {},
+   "stored_classes": {
+    "none": 1
+   }
+  },
+  "plasmidscope_mMGE": {
+   "classes": {
+    "exact": 7059,
+    "low_complexity": 2,
+    "none": 117,
+    "partial": 26
+   },
+   "examples": {
+    "exact": [
+     "mMGEs_k99_9944_r1256~194996",
+     "mMGEs_k99_98702_r14~2459140",
+     "mMGEs_k99_98374_r1256~4449367",
+     "mMGEs_k99_9812_r8-12~1712587",
+     "mMGEs_k99_97553_r1256~1956499"
+    ],
+    "low_complexity": [
+     "mMGEs_k141_26140_r13~6275452",
+     "mMGEs_SRR3131985_141_492_r347~3770177"
+    ],
+    "none": [
+     "mMGEs_k99_62371_r14~2943003",
+     "mMGEs_k99_51413_r8-12~2558133",
+     "mMGEs_k99_13559_r8-12~3168289",
+     "mMGEs_k99_129699_r1256~1075279",
+     "mMGEs_k99_113082_r8-12~690035"
+    ],
+    "partial": [
+     "mMGEs_k141_7313_r13~5869072",
+     "mMGEs_k141_69669_r13~4252970",
+     "mMGEs_k141_418_r13~5908504",
+     "mMGEs_k141_4065_r14~2104918",
+     "mMGEs_k141_39971_r8-12~133695"
+    ]
+   },
+   "flagged": 7204,
+   "flagged_and_fragment": 0,
+   "fragment_classes": {},
+   "records": 92492,
+   "repeat_bins": {
+    "100-999": 6073,
+    "20-99": 1010
+   },
+   "repeat_lengths_top": [
+    [
+     141,
+     4338
+    ],
+    [
+     119,
+     1450
+    ],
+    [
+     99,
+     448
+    ],
+    [
+     79,
+     44
+    ],
+    [
+     20,
+     29
+    ],
+    [
+     74,
+     16
+    ],
+    [
+     97,
+     16
+    ],
+    [
+     80,
+     15
+    ],
+    [
+     118,
+     15
+    ],
+    [
+     140,
+     14
+    ],
+    [
+     21,
+     13
+    ],
+    [
+     51,
+     12
+    ],
+    [
+     117,
+     11
+    ],
+    [
+     24,
+     10
+    ],
+    [
+     27,
+     10
+    ],
+    [
+     28,
+     10
+    ],
+    [
+     55,
+     10
+    ],
+    [
+     112,
+     10
+    ],
+    [
+     126,
+     10
+    ],
+    [
+     139,
+     10
+    ],
+    [
+     45,
+     9
+    ],
+    [
+     53,
+     9
+    ],
+    [
+     54,
+     9
+    ],
+    [
+     59,
+     9
+    ],
+    [
+     78,
+     9
+    ]
+   ],
+   "repeat_share_of_record": {
+    "<0.01": 1150,
+    "<0.05": 5119,
+    "<0.1": 814
+   },
+   "stored_classes": {
+    "exact": 7059,
+    "low_complexity": 2,
+    "none": 117,
+    "partial": 26
+   }
+  }
+ },
+ "window": 10000
+}

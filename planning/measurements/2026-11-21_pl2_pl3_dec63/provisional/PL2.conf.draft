@@ -1,0 +1,29 @@
+# DRAFT of card C-52, not committed: stage PL2 over the PROVISIONAL staging in scratch (the note's §7), only to run
+# the driver's estimate read-only on the data root. INPUTS and SUM lines change with the final staging.
+STAGE=PL2
+NOTE=planning/measurements/2026-11-21_pl2_pl3_dec63.md
+INPUTS=/tmp/if2453/c52/provisional/PL2
+SUM=9d60a7dc0055e7d94673e8005b2a3e5503836d234b5101585c534add9e432225 genomes.json
+SUM=95f0afaba718c3879afff9cb9a4d9686c1691267f44bd1bd8dcaabff92b6ada4 objects.json
+SUM=3546688f7908fed091e54a23da1f645883d7ab6f6ed53afb8e80dad5fa46b599 gut_plasmids_yu2024.fasta
+SUM=160f9d34cf731745ae68cf3d20d769c87126934ddd9802fa8650c25ad151bd7f plasmidscope_COMPASS.fasta
+SUM=22d66d940386b618b18f0c01544470fbeab17dc4c3979f4911b6ea366c15a173 plasmidscope_DDBJ.fasta
+SUM=093dfc012eca4dd31b9f6b476e487799929c116560c4f2d697faf4cb14dec574 plasmidscope_ENA.fasta
+SUM=95be0c5b1e3ff07b76e537c2a7773e8f3856dab20292402ba9e48737ba44483b plasmidscope_GenBank.fasta
+SUM=504a5188fa4f4cc53e8c8710d1ff5af615ec568a16ea5215655bd8ff7ef2fb08 plasmidscope_Kraken2.fasta
+SUM=d406295228baf1784aa79b6eb087a398c77ee9d4d8acb202b7685b6f7ba707f2 plasmidscope_RefSeq.fasta
+SUM=25515d8b423491bf4629e2484e23831bd34d9a904b12a90b8396b87866c7ef3d plasmidscope_TPA.fasta
+DEPTH=annotated
+LIBRARY=pfam 38.2 gathering
+CRISPR=yes
+AFTER=V2,GV1
+EXPECT=held_by C5 21 planning/measurements/2026-11-21_pl2_pl3_dec63.md
+EXPECT=held_by P1 112 planning/measurements/2026-11-21_pl2_pl3_dec63.md
+EXPECT=held_by P2 1217 planning/measurements/2026-11-21_pl2_pl3_dec63.md
+EXPECT=held_by P3 951 planning/measurements/2026-11-21_pl2_pl3_dec63.md
+EXPECT=held_by P4 1505 planning/measurements/2026-11-21_pl2_pl3_dec63.md
+EXPECT=held_by P5 1675 planning/measurements/2026-11-21_pl2_pl3_dec63.md
+EXPECT=held_by P6 1218 planning/measurements/2026-11-21_pl2_pl3_dec63.md
+EXPECT=held_by PL1 58669 planning/measurements/2026-11-21_pl2_pl3_dec63.md
+EXPECT=held_by S1 2 planning/measurements/2026-11-21_pl2_pl3_dec63.md
+EXPECT=held_by V1 6 planning/measurements/2026-11-21_pl2_pl3_dec63.md
