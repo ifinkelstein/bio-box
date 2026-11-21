@@ -395,7 +395,8 @@ stops under 150 GB; agents stop at 200 GB). Check (a) and (b) at every check-in 
 each summary how much is free. Until the PI decides, nothing is deleted to make room except what DEC-42 and DEC-46
 already allow (the scratch of finished, merged cards).
 
-**7. Waiting on the PI**: nothing that blocks a build. **Decided on 2026-11-21: the rate guards' standing rule
+**7. Waiting on the PI**: item 24 (how circular records with a terminal repeat are staged: one rule recommended,
+and whether `V2` is staged again by it; it holds `PL2`, `PL3` and, if yes, `V2`). **Decided on 2026-11-21: the rate guards' standing rule
 (DEC-64: a judged step between 1.20 and 1.50 is recorded, above 1.50 stops); item 22 (DEC-63: the second
 plasmid set as two stages, source circular flags, no least length, full Pfam); item 23 (DEC-61: accept the NR50 alignment parts of `r26.11.2` up to
 1.50 and resume) and item 21 (DEC-62: scan `C1` to `C4` and `C6` in full).** Still open: the storage decision set (`planning/design/storage_decisions_draft.md`, S-1 to S-8);
@@ -1378,6 +1379,36 @@ probed by hand on the pod).
    representative's hit is within a few bits of the cutoff), which the present data cannot measure. If inference
    is wanted now, the 95% identity cut is the rule with a margin; 15% with f 1.0 meets the limit on `C5` by 0.002
    points and should not be trusted on the next stage.
+24. **How a circular record with a terminal repeat is staged: card C-52 stopped before staging, with eight
+   classes for the PI** (opened 2026-11-21 at about 10:40; `planning/measurements/2026-11-21_pl2_pl3_dec63.md` on
+   `task/C-52`, §4 to §6; nothing staged, nothing built; card C-40's staging untouched). DEC-63 (3) says a record
+   its source marks circular is staged circular. What the agent found (*measured*, wilkcomp02, 2026-11-21): every
+   one of the ten sets states topology; only `IMG-PR` changes (142,805 records marked "direct terminal repeat",
+   linear until now). **The code needs a circular record to hold the circle once**: with both copies of a repeat
+   in the record, gene calling reads the repeat twice at the origin (a gene across it gains k bases, a gene inside
+   it is called twice) and CRISPR, IGRs and tapes likewise. **No stage has ever trimmed**: `V1` kept 1,478 such
+   records linear, `V2`'s staging keeps 59,502 linear, and `PL1` (built) holds 1,211 circular genomes with the
+   repeat still in them (523 exact). The repeats in the metagenomic sets are the assemblers' k-mer overlaps (127,
+   99, 77, 55 for SPAdes; 141, 119, 99, 79 for MEGAHIT), so cutting the last k bases restores the circle exactly:
+   that is mechanical for 73,255 records (gut 3,444, `IMG-PR` 62,752, `mMGE` 7,059).
+   **The classes, with the orchestrator's recommendation**, in one rule: *trim and stage circular only an exact
+   repeat of 20 to 1,000 bp in a metagenome-assembled set (gut, `IMG-PR`, `mMGE`); leave every record of a public
+   database (RefSeq, GenBank, ENA, DDBJ, COMPASS, TPA, Kraken2) exactly as deposited, circular as flagged; stage
+   anything else of a metagenomic set linear and untouched.* By class: (A) the two ends agree only in part, 3,353
+   records: metagenomic 2,371 linear, public 982 as deposited; (B) an exact repeat over 1,000 bp, 595 (168 of them
+   a record that is the same sequence twice): `IMG-PR`'s 202 linear, public 393 as deposited; (C) a low-complexity
+   repeat, 34, and (D) unresolved, 31: the same rule; (E) flagged circular and also incomplete, 134: linear, as
+   card C-40 had them; (F) the public sets' 1,712 exact repeats: as deposited, because `PL1` holds PLSDB's the
+   same way, trimming would store 438 molecules twice (untrimmed in `PL1`, trimmed in `PL2`), and a public
+   accession's bytes stay what anyone else would hash; (G) `mMGE`'s 7,059: trim, the same artefact as the other
+   two metagenomic sets. **(H) `V2`**: its inputs are staged and not built; by the same rule its 59,502 DTR
+   representatives with a retained repeat would be trimmed and circular instead of linear. Recommended: stage `V2`
+   again by this rule before it is built (a stage cannot be changed afterwards; the release has to finish first in
+   any case). `V1` and `PL1` are built and stay as they are.
+   **Also found**: `PL3`'s gene-calling batches are cut at about 211 CPU-minutes by the code, and card C-40's
+   sample ran `IMG-PR`'s short contigs about 36% slower than the code's rate: each batch would reach 274 to 287
+   CPU-minutes, at the 280 CPU-minute process cap. A card for smaller batches or a refitted rate comes before
+   `PL3` is built.
 23. **Decided by the PI on 2026-11-21 at about 08:55 CST: "accept up to 1.5" (DEC-61).** The parts of
    `cluster.nr50.20.align` on `r26.11.2` are accepted up to 1.50 of their estimates; the entry is in
    `train_est.py` with the row, and `rates` on the stopped release now exits 0 with the record under
