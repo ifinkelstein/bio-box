@@ -265,6 +265,13 @@ signal that should not have been given. Read this before trusting "all passed" (
   wrong or 1% missed pairs**; the note `2026-11-20_c5_pfam_by_representatives.md`; the whole suite on the branch;
   then the orchestrator's audit and merge. Cards that wait on that merge: B-58, B-60 (new: the near-Cas CRISPR
   estimate ran at 0.758 on `C5`), A-11, B-47a to B-47e.
+- **Card C-47 at 00:10 on 2026-11-21**: the evaluation clustering ended at 00:07:06 with exit 0 (`driver.log`:
+  `evalcluster: the tables of c47eval5 are written under /tmp/if2453/c47/eval/out`; 870,646 NR90 and 237,759 NR50
+  clusters of 3,972,512 proteins, *measured*, the finish record of unit `c47-ev-060`; `eval/cluster.DONE` present).
+  The agent is resumed to run `evaluate`, write the note and run the suite; the 1% stop stands. The release train
+  is at `r26.11.2.cluster.nr90.11.prefilter.part-00005` (00:04:55), no `FAILED` under `/tmp/if2453/c46`, no `STOP`
+  file; `/tmp` has 475 GB free (*measured*, `df -h /tmp`, wilkcomp02, 00:09). The orchestrator's watcher waits for
+  units `relwait-1120` and `c46-train-rel-1` to end, and then reads the logs: the end of a unit is not success.
 - **Lesson for every driver**: a queue must test a marker the step itself writes on success (`check/DONE`), never a
   script's exit status alone; and the orchestrator reads the last line of every `check.out` before a release is
   cut. `scripts/orchestrator/rel_wait.sh` trusted a log line; it is not to be reused without that change.
