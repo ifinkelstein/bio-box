@@ -344,6 +344,12 @@ signal that should not have been given. Read this before trusting "all passed" (
   stored against the rate's 4.11, so `G1`'s ingest would likely run at 1.2 to 1.25 of the present estimate
   (41.51 CPU-minutes) and stop at its first step, as `C5`'s did. So the queue after the release is `V2`, then
   `GV1` (plain FASTA; `V1` of the same kind ran at 1.021), then `G1` and `SPX1` once B-61 is merged.
+- **The whole suite of the integration head passed on the pod** (`a089a5c`, mirrored as `int1121`; units
+  `ci-int1121-0..7`, 06:58 to 07:47; *measured*, wilkcomp02, 2026-11-21,
+  `/tmp/if2453/ci-tmp/int1121-detached/log.*`): **3,192 passed, 23 skipped, none failed** (*derived*: the sums of
+  253, 525, 543, 319, 473, 271, 370, 438 passed and 2, 0, 3, 4, 0, 3, 2, 9 skipped). It covers the merges of
+  C-47, C-51, A-11, B-58, B-60, A-12 and A-13. Actions is green on the A-12 push (`1c6ac14`), so the A-13 merge
+  is pushed.
 - **Lesson for every driver**: a queue must test a marker the step itself writes on success (`check/DONE`), never a
   script's exit status alone; and the orchestrator reads the last line of every `check.out` before a release is
   cut. `scripts/orchestrator/rel_wait.sh` trusted a log line; it is not to be reused without that change.
