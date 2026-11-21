@@ -202,6 +202,48 @@ on it cancelled. Next evidence: any ordinary `ci` job that shows the case (searc
   non-representative genomes; sha256 `defa9fbe…70a4`). **`added_v1.tar` is on `tower` and verified** (19:42:05;
   4,231,157,760 bytes in 211 s, 20.05 MB/s; `root_backups/SHA256SUMS` there has 8 lines).
 
+**6m. `C5` is built; its check reported a failure that is the check's own error; the release was started on a
+signal that should not have been given. Read this before trusting "all passed" (23:00 CST, 2026-11-20).**
+- **What ran**: `c47-c5-2` ended 21:49:10 with exit 0 (48 run records, 8,899.7 CPU-min, largest process 232.8;
+  the 42 judged steps at 0.758 to 1.204 of their estimates: the 1.204 is the ingest record DEC-56 accepts, the 0.758
+  the near-Cas CRISPR step, recorded and not stopped, DEC-53; unit `MemoryPeak` 15.1 GB). `after` (22:01): all seven
+  releases verified, manifest hashes as before. `backup` (22:05): `added_c5.tar`, 5,821,644,800 bytes, sha256
+  `421a3bbde54b8b46c613a1007a969403851d6b3922b3c4844b8324a5ddfe12ae`, on `/stor/work`. Stage `C5`: 2,029 genomes
+  called, 2,653 contigs stored (9,109,234,757 bp), 8,476,374 genes, 3,972,512 distinct proteins (3,285,916 in no
+  earlier stage), 1,761 default and 87 filtered CRISPR arrays; 138 files, 5,821,546,544 bytes (*measured*,
+  `/tmp/if2453/c47/check/summary.json`, run records, driver log).
+- **The failure**: `c47_check.py` ended `RESULT: FAILED: genecall ledger earlier skips (2553) != stored_by (2550)`
+  and exited 1 (`driver.log`, 22:02:41). It was the only failed assertion.
+- **Why the queue went on anyway (a bug in `c47_driver.sh`)**: its `check` function returns the check's status, but
+  the script's last command is a log line, so `c47_driver.sh check` exits 0. `c47_queue.sh` saw exit 0, ran
+  `backup`, and wrote "done: ... all passed"; `relwait-1120` took that line at its word and started the release
+  train at 22:06. The orchestrator read `c47_driver.sh` in the morning and missed this. Every other mode fails
+  through `fail`, which exits 1; only `check` is affected. (`c48c_v1_driver.sh` was written in the same form: its
+  check printed `RESULT: all checks pass`, read by the orchestrator in the file itself, so `V1` is not in doubt, but
+  the same bug is to be looked for there.)
+- **What the failure is (read by the orchestrator itself, read-only, `/tmp/if2453/audit1120/c5_skips.py`;
+  *measured*, wilkcomp02, 22:53)**: the gene-call ledger has 5,206 rows: 2,653 `ok`; 2,550 `owned_by:<stage>` for
+  `PL1` 2,543, `P2` 3, `P4` 2, `P1` 1, `S1` 1, which is exactly the check's own count of contigs stored by earlier
+  stages, stage by stage; and **3 rows `owned_by:C5/<genome_uid>`**: contigs that two genomes of `C5` both list,
+  called once under the genome of least `genome_uid` (DEC-27). The check drops within-stage rows only when the
+  reason is exactly `owned_by:C5`; the code writes `owned_by:C5/<genome_uid>`, so it counted those 3 as skips for an
+  earlier stage. The three contigs (`567c66dd…`, `a10259a7…`, `a43f9ae9…`; 41,190, 2,711 and 43,273 bp) are stored by
+  `C5` and by no other stage, and each has genes in `C5`'s `feature_protein`; all 2,653 stored contigs have genes;
+  no contig is stored by `C5` and another stage; no skipped contig is unheld. **So the stage is as it should be and
+  the check is wrong.** The fixture and the 20-genome rehearsal have no contig shared within the stage, which is why
+  the rehearsal passed.
+- **Decision, the orchestrator's, for the PI to overrule**: the release train is left running (`r26.11.2` over
+  `S1,P1..P6,H1,PL1,C5,V1`; at `cluster.nr90.06` at 22:54). Nothing in it depends on the check script; nothing is
+  announced until: card C-47's agent has fixed the check (test first: a within-stage row) and the driver's exit
+  status, the corrected `check` has passed on the real root (read-only), and the orchestrator has audited the
+  release. To stop the release instead: a `STOP` file in the data root (`touch /tmp/if2453/r10/root/STOP`).
+- **Lesson for every driver**: a queue must test a marker the step itself writes on success (`check/DONE`), never a
+  script's exit status alone; and the orchestrator reads the last line of every `check.out` before a release is
+  cut. `scripts/orchestrator/rel_wait.sh` trusted a log line; it is not to be reused without that change.
+- `/tmp` at 22:55: 494 GB free with the clustering's scratch growing (the last release's peaked at 158.7 GB);
+  storage reminder 6k's threshold (350 GB) may be crossed for some hours tonight by scratch that is removed when
+  the release ends.
+
 **6l. Thread cap until Monday morning** (the PI at about 19:58 on 2026-11-20: "56 cpus max for now to mon
 morning"). From now to Monday 2026-11-23 08:00 CST nothing of ours, summed over every unit and agent, uses more than
 56 threads on the pod. That is what the profile already gives at night and at weekends when no one else computes
