@@ -520,6 +520,10 @@ rehearse() {  # the fixture, in scratch: E and a release over it, then the stage
   sed -e "s#^tmp:.*#tmp: $rh/tmp#" -e "s#^durable:.*#durable: $rh/durable#" -e "s#^bulk:.*#bulk: $rh/bulk#" \
     -e "s#^small_file_floor_bytes:.*#small_file_floor_bytes: 1000#" "$REALPROF" > "$rh/profile.yaml" \
     || fail "could not write $rh/profile.yaml"
+  # stage E is built with a budget of 1 CPU-minute, so that its steps run in pieces and its scan in shards with a plan:
+  # only a scan with a shard plan is a source of copies (domains._source, card B-47b), as card C-26's rehearsal did
+  sed -e "s#^cpu_min_per_process:.*#cpu_min_per_process: 1#" "$rh/profile.yaml" > "$rh/profile-e.yaml" \
+    || fail "could not write $rh/profile-e.yaml"
   [ -n "$MINLEN" ] && ml=(--min-contig-len "$MINLEN")
   bb py "$BIN/stage_est.py" fixture --tree "$TREE" --out "$rh/inputs" --stage "$rs" --earlier E "${ml[@]}" \
     > "$rh/fixture.json" 2>> "$LOG" || fail "rehearse: the fixture's inputs (stage_est.py fixture)"
@@ -528,7 +532,7 @@ rehearse() {  # the fixture, in scratch: E and a release over it, then the stage
   eargs=(--stage E --release rRH.1 --stages E --depth "$DEPTH" --genomes "$rh/inputs/E/genomes.json"
          --objects "$rh/inputs/E/objects.json" "${LIBARGS[@]}")
   [ "$CRISPR" = yes ] && eargs+=(--crispr)
-  rh_launch "$LC-rh-e" build-stage --profile "$rh/profile.yaml" --root "$rh/root" "${eargs[@]}" \
+  rh_launch "$LC-rh-e" build-stage --profile "$rh/profile-e.yaml" --root "$rh/root" "${eargs[@]}" \
     --threads "$RH_T" --scan-jobs 1 --scan-cpus "$RH_T" --cluster-parts 2
   [ -s "$rh/root/manifests/release=rRH.1.json" ] || fail "rehearse: the scratch root has no release rRH.1"
   {
