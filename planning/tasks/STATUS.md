@@ -314,6 +314,15 @@ signal that should not have been given. Read this before trusting "all passed" (
   (`PL2`: depth, least contig length, the split by redistributability; `G1`: depth and CRISPR; `SPX1`: the figure
   its ingest is judged against, which waits on card B-58). The build of `V2` waits for this card's merge and for
   the audit of `r26.11.2`.
+- **State at 04:55 on 2026-11-21.** Actions green on the test fix (`07c3538`), so the merges of C-47, C-51 and
+  A-11 pass there. Card A-12: second review done (the first round's defects closed, each with a test; six
+  points left, sent back as a third round; the card's amendment has them). Release `r26.11.2`: NR50, step 15
+  (prefilter) cut at 04:49. **Thread cap made hard by the orchestrator at 04:54**: the units' quotas summed to 66
+  (the release 56, two rehearsal units of card A-12 at 4 each, card B-58's arm at 2) although the account's use
+  measured 37 cores (*measured*, `top`, two 5 s samples, wilkcomp02, 04:53; others 1.6); with
+  `systemctl --user set-property --runtime` the release unit is at 4800% and the two rehearsal units at 300%,
+  so the sum is 56. Throttling changes wall time, not the CPU-minutes the guards judge. `/tmp`: 400 GB free at
+  04:53 (the release's scratch is 124 GB and still growing; the last release's peaked at 158.7 GB).
 - **Lesson for every driver**: a queue must test a marker the step itself writes on success (`check/DONE`), never a
   script's exit status alone; and the orchestrator reads the last line of every `check.out` before a release is
   cut. `scripts/orchestrator/rel_wait.sh` trusted a log line; it is not to be reused without that change.
