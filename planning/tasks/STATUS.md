@@ -5,7 +5,123 @@ The running record of the cards in [`TASKS.md`](TASKS.md). Updated at every merg
 by an agent on its own branch `task/<ID>`, audited by the orchestrating session, and merged after its
 tests passed on the merged tree.
 
-## Handoff, 2026-11-20 09:30 CST (current; everything below it is superseded where it differs)
+## Handoff, 2026-11-21 13:45 CST (current; everything below it is superseded where it differs)
+
+Written by the orchestrator of 2026-11-20 and 21 (Claude) at the PI's word of about 13:35 on 2026-11-21: "start to
+drain these agents, update handoff docs as they drain. no new agenst. will handoff toanother". Times are the pod's
+clock. **No agent is running. No new agent was started after that word.** The detail behind every line here is in
+the section below (its "6m" bullets, in time order), the merged table and the open items.
+
+**H1. Running on the pod now, and nothing else of ours.** Release `r26.11.2` (stages `S1`, `P1` to `P6`, `H1`,
+`PL1`, `C5`, `V1`), resumed at 11:41 after a guard stop at 06:39 (DEC-61): driver unit `c46-driver-run2`
+(`release_train.sh run`), build unit `c46-train-rel-2` (quota 52 threads), from the frozen mirror
+`/tmp/if2453/ci/rel1121` (**never sync to that name**), `$WORK` `/tmp/if2453/c46/train`. Clustering is done (the
+member tables of both levels were published by 13:30); tokens, postings, dimension tables, manifest, then
+`release verify` of all eight releases, the pack, the worked examples and the check follow. Read it with one short
+call: `ssh -o BatchMode=yes -J if2453@wilkcomp03.ccbb.utexas.edu if2453@wilkcomp02.ccbb.utexas.edu "systemctl
+--user is-active c46-driver-run2 c46-train-rel-2; tail -n 5 /tmp/if2453/c46/train/driver.log; grep published
+/tmp/if2453/c46/train/logs/c46-train-rel-2.log | tail -n 2; cat /tmp/if2453/c46/train/DONE; df -h /tmp"`.
+Success is the file `/tmp/if2453/c46/train/DONE` holding `r26.11.2` (card A-11), never the unit's end alone. To
+stop it: `touch /tmp/if2453/r10/root/STOP`. The rate guard records a judged step between 1.20 and 1.50 of its
+estimate and stops above 1.50 (DEC-64); a process at 280 CPU-minutes, free space under 150 GB and scratch over 250
+GB stop it as before. If it stops: read `run/c46-train-rel-2/rates.jsonl`, put the record to the PI, and resume
+only with `release_train.sh run` from the same tree and `$WORK` (card A-15; `--dry-run` first must say `Action:
+resume r26.11.2`).
+
+**H2. When the release ends with `DONE`** (the orchestrator's work; nothing is announced before it): (a) read
+`driver.log`, `check/check.out`, `root_added.tsv`, `announcement.md`, `pack/verify.log`, `examples.log`; (b) the
+orchestrator's own check, read-only: `release verify` of all eight releases and `pack verify` of `r26.11.2`
+(the scratchpad's `audit_r26112.sh` did this for the earlier ones; the commands are in
+`planning/measurements/2026-11-20_audit_of_1117_1120.md`); (c) the durable copy: one tar of exactly the files in
+`root_added.tsv`, written on `/stor/work/Wilke/if2453/all-the-data/root_backups/` under a dot-temporary name with
+`dd bs=16M conv=fsync`, read back, sha256 equal, `mv -n` (as `stage_driver.sh backup` does; the release train does
+not make it); (d) mirror it to `tower` with `scripts/orchestrator/relay_to_tower.sh` (RUNBOOK "Mirror to tower";
+the laptop relays, nothing lands on it); (e) a measurement note `planning/measurements/2026-11-21_release_r26.11.2.md`
+(every step against its estimate from `rates-end.json`: the steps recorded over 1.20 and under 0.80 name what a
+refit card has to fit; the stop and DEC-61; the resume) and the STATUS row, which closes card C-46's "first real
+use"; (f) only then `README.md` and `GUIDE.md` name `r26.11.2` as the release to use; (g) card C-47's owed
+comparison (DEC-35 (7), the command in `2026-11-20_c5_pfam_by_representatives.md` §5; `/tmp/if2453/c47/eval/` and
+the tree `/tmp/if2453/ci/C-47` are kept on the pod for it); (h) clear the release's scratch only if the train left
+any (`/tmp/if2453/c46/train/tmp`), after (c).
+
+**H3. Decided by the PI on 2026-11-21** (rows in `planning/DECISIONS.md`): DEC-61 ("accept up to 1.5": the NR50
+alignment parts of `r26.11.2`); DEC-62 ("21: full scan": stages `C1` to `C4` and `C6` get Pfam in full; inference
+by representatives stays stopped, cards B-47a and B-47c to B-47e held); DEC-63 (the second plasmid set as two
+stages, `PL2` redistributable and `PL3` restricted, the authors' gut representatives, circular where the source
+flags it, no least length, Pfam in full; "two releases=two stages"); DEC-64 ("yes, make the 1.2-1.5 a standing
+rule"). **Waiting on the PI: open item 24** (how a circular record that still holds its terminal repeat twice is
+staged, with one rule recommended, and whether `V2` is staged again by that rule before it is built). Older and not
+blocking: the storage decision set (`planning/design/storage_decisions_draft.md`, S-1 to S-8), items 16 to 20, item
+12, the TACC requests.
+
+**H4. Branches with work not merged.** (1) `task/A-17` at `9694bc7` (worktree `.claude/worktrees/task-A-17`): the
+stage driver's estimator uses card B-61's ingest terms; confs `G1.conf` and `SPX1.conf`. The agent stopped before
+committing; the orchestrator read its diff, ran its tests on its tree (790 passed: the card's file,
+`test_stage_driver.py`, `test_a16_rate_guard_bands.py`, `test_b61_ingest_terms.py`, `test_driver_exit_status.py`,
+`tests/r0`; the card's file with the pod's tools hidden: 9 passed) and committed it. `V2`'s and `GV1`'s `before`
+documents are unchanged by it (*measured* by the agent, sha256 equal). The driver's `estimate` for `G1` passed (exit
+0, 140 s: its three `EXPECT` lines matched); for `SPX1` it was running at 13:40 (unit `a17-est`, results in
+`/tmp/if2453/a17/`: `logs/est.log`, `stages/spx1/estimate/before.json`; expected: ingest near 245.9 CPU-minutes in
+2 first-pass shards, and exit 8, because its `EXPECT=held_by G1 12052` cannot hold until `G1` is built). **To
+finish the card**: read that result against card B-61's 245.9 (more than 20% off: stop), merge `task/A-17` into
+`integration` as every card is merged (STATUS row, tests on the merged tree), push, watch Actions, clear
+`/tmp/if2453/a17`, `/tmp/if2453/ci/A-17*` and `/tmp/if2453/ci-tmp/A-17*`. (2) `task/C-52` at `af5026d`: card C-52
+stopped before staging, with eight classes for the PI (open item 24); its note
+`planning/measurements/2026-11-21_pl2_pl3_dec63.md`, its script `c52_pl23.py` and its tests are on the branch; the
+staging is one command once the PI answers (the note's §7), then the two confs and the merge. Its provisional
+staging was removed from `/tmp`; the deferred list of 15,135 gut plasmids is on `tower` (`deferred_lists/PL2/`).
+Nothing else is unmerged that matters (`build/r10`, `task/C-31` and the `F-02` branches are old and recorded
+below).
+
+**H5. The queue of builds, one at a time in the data root, each with card A-12's driver** (RUNBOOK "Building a
+stage": `stage_queue.sh` runs `estimate`, `rehearse`, `before`, `run`, `after`, `check`, `backup` on their
+markers; the tree it runs from must be a mirror of the integration head made for it and then left alone; the
+queue unit is launched with `-p TimeoutStopSec=300`): after `r26.11.2` is audited: **`V2`** (unless the PI's
+answer to item 24 says to stage it again first), then **`GV1`** (`AFTER=V2`), then a rolling release with
+`release_train.sh` (the stage units are in its lock); then `G1` and, after it, `SPX1` (`--depth called
+--min-contig-len 5000`), both once card A-17 is merged; `C1` to `C4` and `C6` (DEC-62; their confs are not written:
+inputs at `/tmp/if2453/s2/inputs/C1` and so on, values from `planning/measurements/2026-11-15_s2c_phase2_inputs.md`;
+gzip inputs, so after card A-17); `PL2` then `PL3` after card C-52. Each stage's `added_<stage>.tar` goes to
+`tower` when it is made. A release is cut when at least one stage has been completed since the last and nothing is
+building (DEC-52).
+
+**H6. Cards to write, found today and not yet written** (the next orchestrator's, with the evidence where it is):
+(a) refit the release clustering's factors on two releases (`r26.11.1`, `r26.11.2`): `nr50.20.align` ran at 1.19
+to 1.27, `nr50.19.prefilter` at 0.63, `nr50.15.prefilter` at 0.73 to 0.77, `nr50.12.align` at 0.76 to 0.79 (open
+item 23's text; DEC-61); (b) `PL3`'s gene-calling batches would reach 274 to 287 CPU-minutes on `IMG-PR`'s short
+contigs, at the 280 CPU-minute cap: smaller batches or a refitted rate before `PL3` is built (card C-52's note §11
+and §14); (c) confs for `C1` to `C4` and `C6`; (d) the three messages that still say ">20% over"
+(`stage_check.py`, `release_train.sh`, `stage_driver.sh`); (e) the waits in `release_train.sh`'s rehearsal and in
+`examples/_shared/launch.sh` still end on a failed `systemctl` answer. Open and written: A-10 (the peak of a killed
+worker: about one Actions job in 31 fails on it; rerun once and note it), B-56, C-50, B-47 (held).
+
+**H7. How this session worked, for whoever takes over.** One card per agent in its own worktree
+`.claude/worktrees/task-<ID>` on `task/<ID>` cut from `integration`; Sonnet for tier L, Opus for the rest; at most
+four at once; the orchestrator audits the diff, merges `--no-ff --no-commit` in `.claude/worktrees/integration`,
+runs the affected tests on the merged tree (`env BIOBOX_POD_JUMP=if2453@wilkcomp03.ccbb.utexas.edu
+BIOBOX_TREE=<worktree> sh scripts/pod_pytest.sh <name> <paths>`), commits with the STATUS row, pushes `git push
+origin HEAD:plan/task-cards`, and reads the Actions result before the next push that adds tests (`gh run list
+--repo ifinkelstein/bio-box --branch plan/task-cards`; it takes about 43 minutes). Tests must pass where MinCED,
+MMseqs2 and hmmsearch are absent (in the test image with `PATH=/usr/bin:/bin`). No compute on the laptop. Held ssh
+connections drop: short calls, or `scripts/orchestrator/watch_until.sh`. The pod's thread cap is a total for the
+account: **56 until Monday 2026-11-23 08:00 CST, then 40 by day on weekdays**; when agents' scratch work runs
+beside a build, lower the build unit's quota with `systemctl --user set-property --runtime <unit> CPUQuota=...` so
+the sum holds. Storage: tell the PI when `/tmp` has under 350 GB free, when a launch would take it under 300 GB, or
+when a space guard stops something; 413 GB were free at 13:37 with the release's scratch at about 115 GB. Clear a
+card's `ci/<ID>*` and `ci-tmp/<ID>*` on the pod at its merge. A guard stop is lifted only by the PI's word on that
+record; before relaunching anything stopped, read the driver's resume path. The 2-hour check-in was a job of this
+session and ends with it. `main` is behind `plan/task-cards` and is not merged into while the test of card A-10
+fails now and then.
+
+**H8. Merged on 2026-11-21** (rows in the table below; 152 cards): C-47, C-51, A-11, B-58, B-60, A-12, A-13,
+A-14, A-16, A-15, B-61. The whole suite of the integration head passed on the pod at 07:47 (3,192 passed, 23
+skipped, on `a089a5c`: before cards A-14, A-15, A-16 and B-61, each of which passed its own and the neighbouring
+tests on the merged tree, B-61 its own whole suite on its branch); Actions is green through the A-15 push
+(`2aff864`), and the B-61 push (`7a9b104`) was running at 13:40. **A whole-suite run of the present head on the
+pod is owed** before the next frozen mirror is made for a stage build (`detached_suite.sh <name> 2` beside the
+release, or 8 shards when the pod is free).
+
+## Handoff, 2026-11-20 09:30 CST (superseded where it differs from the section above)
 
 Written by the orchestrator that took over on the morning of 2026-11-20 (Claude; the campaign of 2026-11-17 to 20
 was Antigravity's). Times are the pod's clock.
