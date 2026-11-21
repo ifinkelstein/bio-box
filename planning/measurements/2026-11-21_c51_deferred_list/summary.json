@@ -1,0 +1,55 @@
+{
+ "by_stage": {
+  "C1": 1018,
+  "C2": 5979,
+  "C3": 1712,
+  "C4": 2116,
+  "C5": 10318,
+  "C6": 2723
+ },
+ "cap": 20,
+ "complete_genomes": 49324,
+ "complete_genomes_in_species_over_cap": 28726,
+ "gtdb_files_sha256": {
+  "ar53_metadata_r226.tsv.gz": "f12310f223e6dd27dc942379de1cfbeec5ebd2b917786cf2ce28695555eab6e5",
+  "bac120_metadata_r226.tsv.gz": "45f1614aff80c19752860880b47b3cdeb66def8ff66dc106909b28bb2bd9bcbf"
+ },
+ "inputs_sha256": {
+  "phase1": "e68d2576067d4d83f77a50384865de5470e6dff1a42716a06148cdf26c0efeaf",
+  "stages": "d15649b2b5157a00c68204f971e3119af1b2621b00a0d1b9ac11cb02025cb49d"
+ },
+ "left_out": 23866,
+ "not_served_candidates_by_stage": {
+  "C2": 2,
+  "C5": 7,
+  "C6": 17
+ },
+ "not_served_candidates_listed": 26,
+ "not_served_in_left_out": 26,
+ "not_served_picks_by_stage": {
+  "C2": 1,
+  "C3": 2,
+  "C5": 1,
+  "C6": 1,
+  "none": 3
+ },
+ "not_served_picks_listed": 8,
+ "outputs_sha256": {
+  "left_out.tsv": "d0f10fd5e7a0fdc6aa2b3513aa4caea8230ee459dc53d19f152ef4f2de4e55a1",
+  "species_check.tsv": "d76227782aa1a5f8a83764e4aa86e2ca63fa7561385b0c4f025fe8af4d4e370b"
+ },
+ "phase1_genomes": 11973,
+ "picks": 13477,
+ "picks_not_complete_in_metadata": [],
+ "species_differ": 0,
+ "species_over_cap": 243,
+ "species_over_cap_by_stage": {
+  "C1": 19,
+  "C2": 67,
+  "C3": 34,
+  "C4": 33,
+  "C5": 52,
+  "C6": 38
+ },
+ "species_with_complete_genome": 11973
+}
