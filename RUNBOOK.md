@@ -800,11 +800,11 @@ no value may hold a space where none belongs or a shell character; every note a 
 and every `DEC-n` a row of `planning/DECISIONS.md`. A stage whose note leaves a value open has no conf, and the driver
 refuses it. Confs written by card A-12 (2026-11-21): `V2.conf` (S1, H1 and PL1 hold 64, 1,677 and 68 of its contigs,
 its note §4) and `GV1.conf` (after `V2`; `V2` and `H1` hold 17,664 and 6 of its contigs, its note §3; its gene
-calling also judged against 236 CPU-minutes, the note's figure). None yet for `PL2` (depth, least contig length and the split by
-redistributability are the note's open questions 1, 4 and 5), `G1` (depth and CRISPR: the note costs both depths and
-chooses neither) and `SPX1` (the figure its ingest is judged against: the note's 1,272 CPU-minutes rests on card
-C-47's gzip term of 0.84 CPU-minutes per GB, where card B-58's amendment measured 0.09 to 0.27, and the cost of a base
-read and dropped under the least length is still to be measured there).
+calling also judged against 236 CPU-minutes, the note's figure). Confs written by card A-17 (2026-11-21): `G1.conf`
+(annotated, Pfam 38.2 in full, CRISPR, by the orchestrator's decision in STATUS open item 22; `P2`, `P4` and `H1` hold
+1, 6 and 1 of its contigs, `2026-11-18_globdb_inputs.md` §4.2) and `SPX1.conf` (called, `MIN_CONTIG_LEN=5000`, no
+library, CRISPR, after `G1`, which then holds 12,052 of its contigs, `2026-11-20_spire_tranche_1.md` §5; no `JUDGE`
+line). None yet for `PL2` (card C-52).
 
 The modes, in the order `stage_queue.sh` runs them. Each exits with its own status, writes `<stage dir>/<mode>/DONE`
 (holding the sha256 of the conf it was made for) only when it passed, after withdrawing its own marker and those of
@@ -815,7 +815,7 @@ refusal writes `<mode>/REFUSED`, a failure `<mode>/FAILED`, a STOP file `<mode>/
 
 | Mode | What it runs | What it refuses or stops on |
 |---|---|---|
-| `estimate` | `sha256sum -c` of the conf's sums in `INPUTS`; `stage_est.py before`: the code's estimates from the inputs (ingest, gene calling and its batches, both CRISPR producers), bounded in memory but for `genomes.json`, read whole as the inputs step reads it | inputs that differ from the conf; a contig owned by a stage with no gene calls (a parked stage), or by two; a source object or genome build-stage would refuse; an `EXPECT` line that differs |
+| `estimate` | `sha256sum -c` of the conf's sums in `INPUTS`; `stage_est.py before`: the code's estimates from the inputs (ingest as `build-stage` plans it, card A-17: `stage.ingest_cpu_min` with card B-61's terms, the bytes out of `.gz` objects and those in records under the least length, counted in the one read `stage.object_sizes` makes of the objects, written to `before.json` as `gz_bytes` and `below_bytes` when not 0; whether ingest runs in batches and, if so, its first-pass cut; gene calling and its batches, both CRISPR producers), bounded in memory but for `genomes.json`, read whole as the inputs step reads it. `rates` judges the ingest group against that figure, read from `before.json` | inputs that differ from the conf; a contig owned by a stage with no gene calls (a parked stage), or by two; a source object or genome build-stage would refuse; an `EXPECT` line that differs |
 | `rehearse` | the fixture of Appendix B in scratch under the stage's directory: stage `E` and a release `rRH.1` over it in a scratch root (`E` with `cpu_min_per_process: 1`, so that its scan has the shard plan a source of copies needs, card B-47b), then a stage of the conf's depth, length, library and CRISPR choice through this driver's own `estimate` to `backup` (the backup into scratch), then a relaunch that must publish nothing; an earlier rehearsal's logs are moved to `rh-logs.<n>/` | any of those failing; returns at once when `rehearse/DONE` is there for this conf; a new rehearsal withdraws the markers of `run` and after |
 | `before` | `release verify` of every release the root has a manifest for (`manifests/release=<R>.json`, read from the root at the time); the root's listing without the stage's own files; the sha256 of every other stage's files | an active build unit in the root; no published release; a verify that fails |
 | `run` | `build-stage --profile <dir>/profile.yaml --root <root> --stage S --depth D [--min-contig-len N] --genomes ... --objects ... [--library pfam 38.2 <hmm> <cutoff>] [--crispr] --threads 6 --scan-cpus 4` through `pod_run.sh` in the image by digest, unit `<stage>-<n>`, after the inputs' sums again; the unit's `CPUQuota` is the profile's cap of the hour (`runstep.launch_cap`, by the profile's day window and weekday rule) less 2 for the driver's helpers, set again with `systemctl --user set-property --runtime` when the hour's cap changes; every 60 s `r50_watch.py` (a process at 280 CPU-minutes, `/tmp` under 200 GB, scratch over 100 GB), and at each new run record `stage_est.py rates` (DEC-43, DEC-53, DEC-64: a judged step over 1.50 of its estimate, or of a `JUDGE` figure, stops the unit; over 1.20 and at or under 1.50 it is listed under `recorded_over_20pct` and the build goes on); the unit counts as ended only on its exit line or a real inactive answer of systemd (a failed `systemctl` call is not an answer), and a trap stops it if the driver itself exits; at the end the unit's exit 0 and the stage complete at its depth (`stage.stage_incomplete`) | `run/FAILED` of an earlier launch; a missing or other conf's marker (`estimate`, `rehearse`, `before`), inputs that changed, a stage of `AFTER` without `backup/DONE`, an active build unit, `/tmp` under 205 GB, a thread count above the profile's; a guard (any exit but 0) stops the unit, waits to see it gone, and writes `run/FAILED`; a STOP that appears ends the build at a step boundary and the records published are judged before `run/STOPPED` |
@@ -829,11 +829,16 @@ rehearsal sets its own under its scratch directory. A guard's stop is never lift
 conf and moves `run/FAILED` aside (`run/FAILED.<unit>`). Any edit of a conf, a comment included, changes its sha256
 and so withdraws every marker made for it: after that procedure the stage needs `estimate`, `rehearse` and `before`
 again before `run` resumes (the queue runs them). A step that has no estimate in the code and reaches 24 CPU-minutes
-fails the check (`not_judged_of_judged_size`): a stage much larger than `V1` needs `JUDGE` lines, from its note, for
-`igr`, `tapes`, the scan's merge and the plan records. Two figures for such a stage, from card A-12 (2026-11-21): no
+fails the check (`not_judged_of_judged_size`). A `JUDGE` line names `ingest` or `genecall` only, and a figure under 24
+is never judged (DEC-43) while it takes its step out of that list, so a note's figure of a few CPU-minutes for `igr`
+or `tapes` gets no line (card A-17: `SPX1`'s note gives 5.2 and 7.6). Two figures for such a stage, from card A-12 (2026-11-21): no
 built stage has run its ingest in batches (every stage directory of `$ROOT/runs` holds one `ingest.json` and no
 `ingest.pass1-*` or `ingest.batch-*`, *measured*, `find /tmp/if2453/r10/root/runs -maxdepth 2 -name 'ingest*.json'`,
-wilkcomp02), so `SPX1`'s will be the first ingest judged as one group of pieces; and `estimate`'s reading of `SPX1`'s
+wilkcomp02), so `SPX1`'s will be the first ingest judged as one group of pieces, against the one-process estimate
+(card A-17, from the code: the pieces are the one-process ingest's two passes cut across processes, `store.ingest_pass1`
+the first pass, `ingest_batch` the second, `ingest_plan` and `ingest_merge` its decisions and tables, plus one more
+sha256 of each object in its batch and a process start of about 0.07 CPU-minutes per piece, so the group is expected
+within a few per cent of a one-process ingest, not at a multiple of it); and `estimate`'s reading of `SPX1`'s
 `genomes.json` (2,829,368 genomes, 404,599,625 bytes, loaded whole as the inputs step loads it) peaked at 1,944.9 MiB
 in 26.3 s (*measured*, wilkcomp02, 2026-11-21, `stage_est.write_genomes` in a 16G scope at 2 CPUs, unit `a12-mem`). The thread counts come from the profile: `--threads` and
 `--scan-cpus` at most its smaller cap, the unit's quota the cap of the hour less the helpers' 2 (build-stage also holds

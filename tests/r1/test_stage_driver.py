@@ -444,7 +444,7 @@ def _repo_confs():
 
 
 def test_the_repository_has_a_conf_for_each_stage_whose_note_gives_every_value():
-    assert {p.stem for p in _repo_confs()} == {"V2", "GV1"}
+    assert {p.stem for p in _repo_confs()} == {"V2", "GV1", "G1", "SPX1"}  # G1, SPX1: card A-17
 
 
 @pytest.mark.parametrize("path", _repo_confs(), ids=lambda p: p.stem)

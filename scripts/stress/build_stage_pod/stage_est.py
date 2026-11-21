@@ -16,9 +16,13 @@ against a strict character set, so the driver assigns them without evaluating an
 
 `before` (reads the root and the inputs; writes only --out-plan and its scratch under --tmp): the code's own
 estimates before launch, from the inputs, bounded in memory (the records' lengths go through Parquet files and one
-DuckDB connection): ingest (card B-52's `stage.ingest_cpu_min` over the FASTA bytes and the bases another stage
-holds), gene calling (card B-48's `genecall.cut_plan` over the genomes as `genecall.stage_items` reads them from the
-root after ingest: same rows, same `genecall._item`), the CRISPR producers (card B-53's `stage.crispr_cpu_min`, flanks
+DuckDB connection): ingest as `build-stage` plans it (card A-17: `stage._batched`'s one-process estimate,
+`stage.ingest_cpu_min` over the FASTA bytes, the bases another stage holds and card B-61's two terms, the bytes of
+FASTA out of `.gz` objects and those in records under the least length, both counted in the one read
+`stage.object_sizes(objects, min_contig_len)` makes of the objects; whether it runs in batches, by the same comparison
+with `SHARD_MARGIN` of the budget, and then its first-pass cut by `stage._pass1_bytes`), gene calling (card B-48's
+`genecall.cut_plan` over the genomes as `genecall.stage_items` reads them from the root after ingest: same rows, same
+`genecall._item`), the CRISPR producers (card B-53's `stage.crispr_cpu_min`, flanks
 `2 x min(crispr.CIRC_FLANK, n)` per circular contig stored, as `stage.crispr_flank_bases`). Exit 5 when a stage of
 the root that owns a contig of this stage has no gene-call record (a stage parked half built, as `C5` was when `V1`
 was built: a release without it would miss calls); exit 7 when build-stage would refuse the stage (a source object
@@ -29,7 +33,9 @@ or a genome over the budget, card B-30, card B-48). The conf's JUDGE figures are
 over 1.50, `STOP_ABOVE`, stops the build, as one over 1.20 did before; over 1.20, `RECORD_ABOVE`, and at or under
 1.50 it is listed under `recorded_over_20pct` and does not stop; `over_20pct` lists only what stops) over the
 stage's run records, every estimate made by the code from the root at the time, as build-stage makes it:
-ingest as one group (every `ingest.*` record and `ingest`), each gene-call batch against the published plan and the
+ingest as one group (every `ingest.*` record and `ingest`: in batches, the pass-1 shards, the plan, the batches and
+the merge) against the one-process estimate `before` recorded in `estimate/before.json` (its terms read from there,
+never from a second read of the objects), each gene-call batch against the published plan and the
 merge, gene calling in one process against `genecall.plan`, each scan shard against its residues, each CRISPR
 producer. A conf's `JUDGE=<step> <figure>` judges that step's group against the note's figure as well (card C-48c
 part 3: `GV1`'s gene calling against 236 CPU-minutes), as the group `<step>.note`, which an ACCEPTED line can name;
@@ -284,6 +290,23 @@ def group_names(records: dict, step: str) -> list[str]:
     return sorted(n for n in records if n == step or n.startswith(step + "."))
 
 
+def ingest_estimate(n_bytes: int, held: int, gz: int = 0, below: int = 0) -> tuple[float, str, str]:
+    """(CPU-minutes, the call, the formula) of build-stage's one-process ingest estimate (`stage._batched`, card
+    B-61): `stage.ingest_cpu_min` over `n_bytes` bytes of FASTA of which `held` are bases another stage holds, `gz` come
+    out of `.gz` objects and `below` are in records under the least contig length. A term that is 0 is not named, so
+    that a stage of plain FASTA without a least length is said as before card A-17, to the byte."""
+    from biobox import stage as bs
+
+    est = bs.ingest_cpu_min(n_bytes, held, gz_bytes=gz, below_bytes=below)
+    call = (f"stage.ingest_cpu_min({n_bytes}, held={held}" + (f", gz_bytes={gz}" if gz else "")
+            + (f", below_bytes={below}" if below else "") + ")")
+    rate = f" / {bs.INGEST_BP}"
+    formula = (f"{bs.INGEST_FIXED_CPU_MIN} + max(0, {n_bytes} - {held}" + (f" - {below}" if below else "")
+               + f") x {bs.INGEST_CPU_MIN}{rate}" + (f" + {below} x {bs.INGEST_BELOW_CPU_MIN}{rate}" if below else "")
+               + (f" + {gz} x {bs.INGEST_GZ_CPU_MIN}{rate}" if gz else ""))
+    return est, call, formula
+
+
 # reading the root, in the image --------------------------------------------------------------------------------
 
 
@@ -318,7 +341,8 @@ def rates(a) -> int:
 
 def rates_doc(conf: Conf, root: Path, prof, objects: Path, before_path: str | None, tmp: Path) -> dict:
     """The rate guard's document over the stage's run records (module docstring). What does not change during a run
-    (the FASTA bytes, the bases other stages hold) is read from the estimate's `before.json` when it is given."""
+    (the FASTA bytes, the bases other stages hold, card B-61's gzip and least-length bytes) is read from the
+    estimate's `before.json` when it is given."""
     from biobox import stage as bs
     from biobox.l0seq import store
     from biobox.l1 import crispr, genecall
@@ -348,15 +372,24 @@ def rates_doc(conf: Conf, root: Path, prof, objects: Path, before_path: str | No
             covered.update(names)
 
     if group_names(recs, "ingest"):
-        # the FASTA bytes `estimate` measured with the code's own `stage.object_sizes` (it decompresses every object:
-        # minutes for a stage of gzip inputs, so not again at every record); measured here only without it
+        # build-stage's one-process estimate (`stage._batched`, card A-17) from what `estimate` measured with the code's
+        # own `stage.object_sizes(objects, min_contig_len)`: the FASTA bytes and card B-61's gzip and least-length
+        # bytes (one read decompresses every object: 28 CPU-minutes on SPX1, so not again at every record). `before`
+        # writes gz_bytes and below_bytes only when they are not 0, so a key it lacks is 0 (a stage of plain FASTA
+        # without a least length, said as before). Measured here only without before.json.
         n_bytes, held = before_doc.get("fasta_bytes"), before_doc.get("held_bases")
-        if not isinstance(n_bytes, int):
-            n_bytes = sum(f for _, _, f in bs.object_sizes(objects))
+        if isinstance(n_bytes, int):
+            gz, below = int(before_doc.get("gz_bytes", 0)), int(before_doc.get("below_bytes", 0))
+        else:
+            sizes = bs.object_sizes(objects, conf.min_contig_len)
+            n_bytes, gz = sum(f for _, _, f in sizes), bs.gz_bytes(sizes)
+            below = bs.below_bytes(objects, conf.min_contig_len)
         if not isinstance(held, int):
             held = bs.held_bases(root, st, tmp)
-        group("ingest", "ingest", bs.ingest_cpu_min(n_bytes, held),
-              f"stage.ingest_cpu_min({n_bytes}, held={held}) over every ingest record")
+        est, call, _ = ingest_estimate(n_bytes, held, gz, below)
+        pieces = (" (ingest in batches: pass 1, plan, batches and merge against the one-process estimate)"
+                  if before_doc.get("ingest_in_batches") else "")
+        group("ingest", "ingest", est, f"{call} over every ingest record{pieces}")
     gp_path = root / genecall.plan_record_rel(st)
     if gp_path.exists():
         gp = json.loads(gp_path.read_text())
@@ -481,8 +514,11 @@ def before(a) -> int:
     Path(a.tmp).mkdir(parents=True, exist_ok=True)
     work = Path(tempfile.mkdtemp(prefix="stage-est-", dir=a.tmp))
     try:
-        sizes = bs.object_sizes(inp / "objects.json")
+        # one read of the objects, as build-stage's own (`_refusal`, `_batched`): the bytes of FASTA and, with a least
+        # length, the bytes in records under it (card B-61), which `below_bytes` takes from that read
+        sizes = bs.object_sizes(inp / "objects.json", conf.min_contig_len)
         fasta_bytes, disk_bytes = sum(f for _, _, f in sizes), sum(d for _, d, _ in sizes)
+        gz, below = bs.gz_bytes(sizes), bs.below_bytes(inp / "objects.json", conf.min_contig_len)
         big = max(sizes, key=lambda t: (t[2], str(t[0])), default=None)
         gparts, n_genomes = write_genomes(inp / "genomes.json", work)
         # the records' lengths, streamed: a record under the least length is counted and dropped (ingest's rule)
@@ -573,6 +609,8 @@ def before(a) -> int:
         ingest_refusal = (f"{big[0].name} holds {big[2]:,} bytes of FASTA, estimated at {bs.ingest_cpu_min(big[2]):,.1f} "
                           f"CPU-minutes in one ingest process, over cpu_min_per_process {budget}")
     parked = sorted(s for s in owned_by if not (root / "runs" / f"stage={s}" / "genecall.json").exists())
+    ingest_est, _, ingest_formula = ingest_estimate(fasta_bytes, held_bases, gz, below)
+    in_batches = ingest_est > bs.SHARD_MARGIN * budget  # `stage._batched`: one process when at most the margin
     doc = {
         "stage": st, "depth": conf.depth, "min_contig_len": conf.min_contig_len,
         "library": None if conf.library is None else " ".join(conf.library), "crispr": conf.crispr,
@@ -581,10 +619,7 @@ def before(a) -> int:
         "held_contigs": held_n, "held_bases": held_bases, "owned_by_stage": owned_by,
         "contigs_held_by_two_stages": twice, "contigs_stored": n_stored, "bases_stored": b_stored,
         "circular_stored": n_circ, "flank_bases": flank,
-        "ingest_cpu_min": round(bs.ingest_cpu_min(fasta_bytes, held_bases), 3),
-        "ingest_formula": f"{bs.INGEST_FIXED_CPU_MIN} + max(0, {fasta_bytes} - {held_bases}) x {bs.INGEST_CPU_MIN} / "
-                          f"{bs.INGEST_BP}",
-        "ingest_in_batches": bs.ingest_cpu_min(fasta_bytes, held_bases) > bs.SHARD_MARGIN * budget,
+        "ingest_cpu_min": round(ingest_est, 3), "ingest_formula": ingest_formula, "ingest_in_batches": in_batches,
         "genecall": {k: plan[k] for k in ("genomes", "genomes_not_called", "bases", "bases_called", "estimate_cpu_min",
                                           "merge_estimate_cpu_min", "genes_expected", "largest_genome")}
                     | {"batches": [{k: b[k] for k in ("batch", "genomes", "bases", "estimate_cpu_min")}
@@ -599,6 +634,20 @@ def before(a) -> int:
         "guard_policy": "DEC-43 (estimate >= 24 CPU-min judged) + DEC-53 (record below 0.80) + "
                         "DEC-64 (record above 1.20; stop above 1.50)",
     }
+    # card B-61's terms, written only when not 0, so that a stage of plain FASTA without a least length keeps its
+    # document to the byte; `rates` reads a missing one as 0
+    if gz:
+        doc["gz_bytes"] = gz
+    if below:
+        doc["below_bytes"] = below
+    if in_batches:  # the first-pass cut build-stage makes (`stage.pass1_bytes` before a pass-1 record exists)
+        from biobox.cli import _source_objects
+        from biobox.l0seq import store as l0store
+
+        per = bs._pass1_bytes(prof, disk_bytes, fasta_bytes, gz, below)
+        doc["ingest_pass1_bytes"] = per
+        doc["ingest_pass1_shards"] = len(l0store.pass1_shards(
+            _source_objects(str((inp / "objects.json").resolve())), per))
     if conf.crispr:
         doc["crispr_default_cpu_min"] = round(bs.crispr_cpu_min(b_stored, flank, near_cas=False), 3)
         if conf.library is not None and conf.library[0] == crispr.CAS_LIBRARY:
@@ -699,7 +748,8 @@ def main() -> int:
             p.add_argument("--out-plan")
         if name == "rates":
             p.add_argument("--objects", required=True)
-            p.add_argument("--before", help="estimate/before.json: its fasta_bytes and held_bases")
+            p.add_argument("--before", help="estimate/before.json: its fasta_bytes, held_bases, gz_bytes, below_bytes "
+                                            "and ingest_in_batches")
     p = sub.add_parser("fixture")
     p.add_argument("--tree", required=True)
     p.add_argument("--out", required=True)
