@@ -358,6 +358,15 @@ signal that should not have been given. Read this before trusting "all passed" (
   carries the decision row's entry: the release's own code is unchanged, and the train then has cards A-11, A-12,
   A-13 and A-14 (a crashed guard stops it; its lock sees stage units). That head's whole suite is the one that
   passed at 07:47 plus card A-14's script change, whose tests passed on the merged tree.
+- **Four decisions of the PI on the morning of 2026-11-21** (rows DEC-61 to DEC-64): the NR50 alignment parts
+  of `r26.11.2` accepted up to 1.50 and the release to resume ("accept up to 1.5"); `C1` to `C4` and `C6`
+  scanned in full ("21: full scan"); the second plasmid set as two stages with the sources' circular flags, no
+  least length and a full scan ("1. two releases, 2. keep representative and defer injesting others, 3. use
+  circular if that is the source flag. 4. no cut, 5. full scan"); and **a standing rule for the rate guards: a
+  judged step between 1.20 and 1.50 of its estimate is recorded and the build goes on, above 1.50 it stops**
+  ("yes, make the 1.2-1.5 a standing rule"; DEC-64, card A-16). Agents out at 10:00: A-15 (the train's resume;
+  the release is resumed at its merge), A-16, B-61, C-52 (four, the most allowed). **The release is still
+  stopped**: it resumes when card A-15 is merged, with card A-16 if that is ready by then.
 - **Lesson for every driver**: a queue must test a marker the step itself writes on success (`check/DONE`), never a
   script's exit status alone; and the orchestrator reads the last line of every `check.out` before a release is
   cut. `scripts/orchestrator/rel_wait.sh` trusted a log line; it is not to be reused without that change.
