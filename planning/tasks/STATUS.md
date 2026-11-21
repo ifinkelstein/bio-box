@@ -237,6 +237,25 @@ signal that should not have been given. Read this before trusting "all passed" (
   announced until: card C-47's agent has fixed the check (test first: a within-stage row) and the driver's exit
   status, the corrected `check` has passed on the real root (read-only), and the orchestrator has audited the
   release. To stop the release instead: a `STOP` file in the data root (`touch /tmp/if2453/r10/root/STOP`).
+- **The corrected check passed** (23:03:28, unit `c47-check2`, `/tmp/if2453/c47/check2/check.out`, last line
+  `RESULT: all checks pass`, read by the orchestrator at 23:04): `ledger_skipped_earlier` 2,550, equal to
+  `stored_by` stage by stage; `ledger_skipped_within` 3; a new assertion, every stored contig has genes or a ledger
+  reason: 2,653 of 2,653 with genes. It compared the 17:18 `before` with the 21:51 `after` snapshot, so the
+  release's new files do not enter. `root_added.tsv` of both checks and the driver's copy have one sha256
+  (`901be1bd…4ec7`; 138 files, 5,821,546,544 bytes), and the tar on `/stor/work` lists the same 138 members. The
+  first `check/` is kept as the record of the false failure. The fix (commit `25ac362` on `task/C-47`; copies in
+  `/tmp/if2453/c47/bin`): the check compares the owner's stage, not the reason string; the driver exits with its
+  mode's status; `check` and `backup` write `DONE` only on success; the queue requires each mode's marker. **So the
+  condition the release was started on does hold, after the fact.**
+- **A point of stage order, judged harmless by the agent and the orchestrator**: `C5`'s scan plan copied the Pfam
+  rows of 16,645 proteins from `V1` (card B-47b), because `V1` was published before `C5`'s scan although `C5`'s
+  inputs were recorded first, and a release lists `C5` before `V1`. The copied rows are measured rows of the same
+  proteins under the same library, checked row for row against `V1`'s, and they are written into `C5`'s own files:
+  a release that had `C5` without `V1` would still read them. Noted for whoever next touches DEC-35 (8).
+- **`c48c_v1_driver.sh`** does not have the check bug (its `check` goes through `fail`), but has the same final
+  log line after its `case`, so a mode that returned a failure without `fail` would be lost, and it ignores the
+  status of the hashing in `snapshot` and of `bio-box releases`. To be fixed in the same way before it is reused
+  (card A-11).
 - **Lesson for every driver**: a queue must test a marker the step itself writes on success (`check/DONE`), never a
   script's exit status alone; and the orchestrator reads the last line of every `check.out` before a release is
   cut. `scripts/orchestrator/rel_wait.sh` trusted a log line; it is not to be reused without that change.

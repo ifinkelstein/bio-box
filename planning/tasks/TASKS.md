@@ -1013,6 +1013,13 @@ Do, test first: an optional environment variable `BIOBOX_POD_JUMP` (one `user@ho
 Accept: the test fails first and passes; from off campus, `env BIOBOX_POD_JUMP=if2453@wilkcomp03.ccbb.utexas.edu sh scripts/pod_pytest.sh A-09 tests/r1/test_pod_pytest_jump.py` passes on the pod.
 Done 2026-11-20 (STATUS row A-09): the three scripts take `BIOBOX_POD_JUMP`; 262 passed on the merged tree through the new path (*measured*, wilkcomp02, 2026-11-20).
 
+### A-11 Stage and release drivers lose a failed mode's exit status
+**L** · Depends: C-47 (its fix is the model) · found 2026-11-20: card C-47's `check` failed and its queue went on
+Files: `scripts/stress/build_stage_pod/c48c_v1_driver.sh`, `scripts/stress/build_stage_pod/release_train.sh`, `scripts/orchestrator/rel_wait.sh`, any other driver under `scripts/stress/build_stage_pod/` with the same form (list them in the report), `tests/r1/test_driver_exit_status.py` (new)
+Why: `c47_driver.sh check` exited 0 after its check script had exited 1, because the script ends `case "$MODE" in ... esac` followed by a `log` line, whose status became the script's; the queue behind it ran `backup` and wrote "all passed", and a waiter started a release on that line (STATUS "6m"). Card C-47 fixed its own driver and queue. `c48c_v1_driver.sh` has the same final line (its `check` happens to go through `fail`), and it ignores the status of the hashing in `snapshot` and of `bio-box releases`. `rel_wait.sh` trusts a log line of another script.
+Do, test first: for each driver, a test with stub commands on `PATH` (as `tests/r1/test_relay_to_tower.py` does) in which each mode's inner command fails in turn: the driver must exit non-zero and must not write that mode's success marker. Then: every mode's status is the script's exit status; each mode writes `<mode>/DONE` only on success and refuses to run without the markers of the modes before it; anything that waits on another script tests the marker, never a log line or an exit status alone. No change to what any mode does on success.
+Accept: the tests fail first on each driver that has the fault and pass after; `tests/r0` green; the drivers' success paths byte-identical in what they launch (show it with the rehearsal's dry outputs or a `--dry-run`).
+
 ### A-10 The OOM-killed search's recorded peak can miss its bound on GitHub Actions
 **M** · Depends: none · found 2026-11-20 on a commit that changed only documents (`b17935e`, Actions run 44761392180)
 Files: `src/biobox/search/runner.py` (the peak it records for a worker the kernel killed), `src/biobox/runstep.py` only if the sampling helper is shared, `tests/r2/test_micro_s0_search.py` (the test below; no bound is widened), a note in `planning/measurements/`
