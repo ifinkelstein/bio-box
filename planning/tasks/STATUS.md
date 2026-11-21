@@ -386,11 +386,9 @@ stops under 150 GB; agents stop at 200 GB). Check (a) and (b) at every check-in 
 each summary how much is free. Until the PI decides, nothing is deleted to make room except what DEC-42 and DEC-46
 already allow (the scratch of finished, merged cards).
 
-**7. Waiting on the PI**: **item 23 (new, 2026-11-21 06:39: release `r26.11.2` stopped on the rate guard at the
-last NR50 alignment step, one part at 1.215 of its estimate; it resumes only on the PI's word)**; item 22 (stage
-`PL2`'s five settings); **item 21 (2026-11-21 00:13: Pfam by representatives missed 1.07% of true pairs on
-`C5`, over DEC-35 (6)'s 1%; stages `C1` to `C4` and `C6` are held; the queue goes on with `V2`, `GV1`, `PL2`,
-`G1`)**; the storage decision set (`planning/design/storage_decisions_draft.md`, S-1 to S-8);
+**7. Waiting on the PI**: item 22 (stage `PL2`'s five settings; explained to the PI at 09:00 on 2026-11-21,
+answer awaited). **Decided on 2026-11-21: item 23 (DEC-61: accept the NR50 alignment parts of `r26.11.2` up to
+1.50 and resume) and item 21 (DEC-62: scan `C1` to `C4` and `C6` in full).** Still open: the storage decision set (`planning/design/storage_decisions_draft.md`, S-1 to S-8);
 item 19 (where the corpus lives; `tower` being looked at, card C-49), items 15 (decided: DEC-56), 16 (B-56's design), 17 (`domain_state`'s place in
 the exports), 18 (the pilot's storage rates), and the older ones in the section below (item 12, the TACC requests,
 the eukaryote kind, how many old releases keep their large files).
@@ -1330,7 +1328,12 @@ probed by hand on the pod).
    outside the scope; (b) systemd's own accounting; (c) a sampler that charges nothing to the scope.
    Recommendation: decide after card A-10a's evidence says who kills the helper; until then a red `ci` on that one
    test alone is run again once and noted in the push's record, and `plan/task-cards` is not merged into `main`.
-21. **Pfam by representatives stopped at DEC-35 (6) on stage `C5`: 1.07% of true pairs missed** (card C-47 part
+21. **Decided by the PI on 2026-11-21 at about 08:57 CST: "21: full scan" (DEC-62).** Stages `C1` to `C4` and
+   `C6` are built `annotated` with Pfam scanned in full, as `C5` was; DEC-32's rule is set aside for these five
+   stages only, and cards B-47a and B-47c to B-47e stay held until inference is decided for sources too large to
+   scan. Their confs for card A-12's driver are to be written (their inputs are gzip: card B-61 first, as for
+   `G1`). What was asked, kept for the record:
+   **Pfam by representatives stopped at DEC-35 (6) on stage `C5`: 1.07% of true pairs missed** (card C-47 part
    (2), 2026-11-21 00:13 CST; the PI's decision, and nothing is adopted until it is made). *Measured*, wilkcomp02,
    `c47_driver.sh evaluate`, `/tmp/if2453/c47/eval/eval.json`, read by the orchestrator: of `C5`'s 3,972,512
    distinct proteins in 870,646 stage-local NR90 clusters, the rule of DEC-32 and DEC-35 scans 31.72% of proteins
@@ -1364,7 +1367,14 @@ probed by hand on the pod).
    representative's hit is within a few bits of the cutoff), which the present data cannot measure. If inference
    is wanted now, the 95% identity cut is the rule with a margin; 15% with f 1.0 meets the limit on `C5` by 0.002
    points and should not be trusted on the next stage.
-23. **Release `r26.11.2` stopped on the rate guard at 06:39 on 2026-11-21 and waits for the PI's word** (DEC-43,
+23. **Decided by the PI on 2026-11-21 at about 08:55 CST: "accept up to 1.5" (DEC-61).** The parts of
+   `cluster.nr50.20.align` on `r26.11.2` are accepted up to 1.50 of their estimates; the entry is in
+   `train_est.py` with the row, and `rates` on the stopped release now exits 0 with the record under
+   `accepted_over_20pct` (*measured*, wilkcomp02, 2026-11-21, by hand, read-only). **The release is not yet
+   resumed**: a rerun of the train as it stands would replace the first launch's `before` listing and estimate and
+   reuse the unit's name, whose old exit line the new watch would read (card A-15, with an agent; the resume
+   follows its merge). What was asked, kept for the record:
+   **Release `r26.11.2` stopped on the rate guard at 06:39 on 2026-11-21 and waits for the PI's word** (DEC-43,
    DEC-53; nothing accepted, nothing relaunched). *Measured*, wilkcomp02,
    `/tmp/if2453/c46/train/run/c46-train-rel-1/rates.jsonl` and the run records under
    `runs/stage=r26.11.2`: `cluster.nr50.20.align.part-00001` cost 190.462 CPU-minutes against 156.713 estimated,

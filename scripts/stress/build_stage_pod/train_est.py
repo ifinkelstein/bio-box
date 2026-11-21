@@ -52,7 +52,11 @@ class Accept(NamedTuple):
 # Card A-13: records accepted over 20% by a decision row of planning/DECISIONS.md. An entry is added only in the
 # commit that adds its row, and only here: no flag, no variable of the shell and no file adds one. Empty: every
 # judged step more than 20% over its estimate stops the train (DEC-43, DEC-53).
-ACCEPTED: tuple[Accept, ...] = ()
+ACCEPTED: tuple[Accept, ...] = (
+    # DEC-61 (PI, 2026-11-21: "accept up to 1.5"): the parts of the last NR50 alignment of r26.11.2; part-00001 ran at
+    # 1.215 of an estimate whose factor card B-54 fitted on r26.11.1 alone.
+    Accept("r26.11.2", "cluster.nr50.20.align.part-*", 1.50, "DEC-61"),
+)
 
 # The greatest bound an entry may carry: DEC-55's 1.60, the largest ratio the PI has accepted (NR50 parts of about
 # 56 CPU-minutes against 45, far under the 280 CPU-minute process cap). A step further off than that needs its
