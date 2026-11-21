@@ -16,10 +16,10 @@
 # C5's one ingest record. A guard stop stays a stop.
 set -u
 
-C=/tmp/if2453/c47
-ROOT=/tmp/if2453/r10/root
-V=/tmp/if2453/c48c
-BIN=$C/bin
+C=${C47_DIR:-/tmp/if2453/c47}  # the overrides exist for tests/r1/test_c47_driver.py; the defaults are the pod's
+ROOT=${C47_ROOT:-/tmp/if2453/r10/root}
+V=${C47_V1_DIR:-/tmp/if2453/c48c}
+BIN=${C47_BIN:-$C/bin}
 POLL=${POLL:-60}
 MAX_WAIT_H=${MAX_WAIT_H:-48}
 # pod_run's CPUQuota for the build unit, as the first launch c47-c5-1 had it; build-stage's own allowance holds the
@@ -69,6 +69,18 @@ if [ -e "$C/run/FAILED" ] && [ ! -e "$C/run/DONE" ]; then
   say "kept the first launch's stop record as $C/run/FAILED.c47-c5-1"
 fi
 
+# Each mode must exit 0 AND leave its marker: on 2026-11-20 `check` failed while the driver exited 0, and the queue,
+# which then judged by the exit status alone, ran `backup` and reported "all passed".
+marker() {
+  case "$1" in
+    rebefore) echo "$C/before/REBEFORE" ;;
+    run) echo "$C/run/DONE" ;;
+    after) echo "$C/after/DONE" ;;
+    check) echo "$C/check/DONE" ;;
+    backup) echo "$C/backup/DONE" ;;
+  esac
+}
+
 for m in rebefore run after check backup; do
   say "driver mode $m: start"
   bash "$BIN/c47_driver.sh" "$m"
@@ -77,6 +89,10 @@ for m in rebefore run after check backup; do
   if [ "$rc" != 0 ]; then
     say "STOPPED at mode $m (exit $rc); read $C/driver.log"
     exit "$rc"
+  fi
+  if [ ! -e "$(marker "$m")" ]; then
+    say "STOPPED at mode $m: it exited 0 but left no $(marker "$m"); read $C/driver.log"
+    exit 6
   fi
 done
 say "done: rebefore, run, after, check and backup all passed"

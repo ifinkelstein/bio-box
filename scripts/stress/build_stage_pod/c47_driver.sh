@@ -22,8 +22,9 @@
 #             dd bs=16M conv=fsync + readback sha256sum + mv -n.
 set -u
 
-C=/tmp/if2453/c47
-ROOT=/tmp/if2453/r10/root
+C=${C47_DIR:-/tmp/if2453/c47}  # the overrides below exist for tests/r1/test_c47_driver.py; the defaults are the pod's
+ROOT=${C47_ROOT:-/tmp/if2453/r10/root}
+V1DIR=${C47_V1_DIR:-/tmp/if2453/c48c}
 TREE=${TREE:-/tmp/if2453/ci/C-47}
 REALPROF=$TREE/profiles/wilkcomp02.yaml
 PROFILE=$C/profile.yaml
@@ -39,7 +40,7 @@ TAR2=$STOR_S2C/s2c_phase2_rest_genomes.tar
 TAR2_SHA=94cc747e86c619f80404941508ca5b8b3cffcf5d7302426f32830bd3db7c19df
 GTDB_TAR=/stor/scratch/Wilke/if2453/all-the-data/provisional/s1_inputs/gtdb_r226_metadata.tar
 X=/tmp/if2453/s2/phase2
-IN_ALL=/tmp/if2453/s2/inputs
+IN_ALL=${C47_INPUTS:-/tmp/if2453/s2/inputs}
 IN=$IN_ALL/C5
 STAGE=C5
 EARLIER=S1,P1,P2,P3,P4,P5,P6,H1,PL1
@@ -60,7 +61,7 @@ BIN=$(cd "$(dirname "$0")" && pwd)
 LOGS=$C/logs
 LOG=$C/driver.log
 SCRATCH=$C/tmp/scratch
-BACKUP_DIR=/stor/work/Wilke/if2453/all-the-data/root_backups
+BACKUP_DIR=${C47_BACKUP_DIR:-/stor/work/Wilke/if2453/all-the-data/root_backups}
 BACKUP_TAR=$BACKUP_DIR/added_c5.tar
 NR3=minced-0.4.2-w8-nr3-r23x47-s26x50
 NEAR=minced-0.4.2-w8-nr2-r23x47-s26x50-cas1kb-caspfam1-pfam-38.2
@@ -70,7 +71,14 @@ C5_OBJECTS_SHA=09d742d70a05528e0bd91b735605b63e0f67ad3758e9f1d02107be30bf5483ad
 mkdir -p "$LOGS" "$C/tmp"
 
 log() { echo "$(date '+%F %T.%3N %Z') $*" >> "$LOG"; }
-fail() { log "FAILED: $*"; mkdir -p "$C/$MODE"; echo "$*" > "$C/$MODE/FAILED"; exit 1; }
+fail() {  # a mode's failure: logged, a FAILED file in the mode's directory (check: CHECK_DIR), exit 1
+  local d="$C/$MODE"
+  [ "$MODE" = check ] && d=$CHECK_DIR
+  log "FAILED: $*"
+  mkdir -p "$d"
+  echo "$*" > "$d/FAILED"
+  exit 1
+}
 
 profile() {
   sed "s#^tmp:.*#tmp: $C/tmp#" "$REALPROF" > "$PROFILE"
@@ -119,7 +127,8 @@ snapshot() {
   find "$ROOT" ! -type d -regextype posix-extended -regex ".*/stage=(${EARLIER//,/|})/.*" -printf '%P\n' \
     | LC_ALL=C sort > "$d/earlier.files"
   (cd "$ROOT" && systemd-run --user --scope --quiet -p MemoryMax=2G -p MemorySwapMax=0 nice -n 19 ionice -c 3 \
-    xargs -d '\n' sha256sum < "$d/earlier.files") > "$d/earlier.sha256"
+    xargs -r -d '\n' sha256sum < "$d/earlier.files") > "$d/earlier.sha256" || fail "snapshot $d: sha256sum failed"
+  [ "$(wc -l < "$d/earlier.sha256")" = "$(wc -l < "$d/earlier.files")" ] || fail "snapshot $d: not every file hashed"
   log "snapshot $d: $(wc -l < "$d/listing.tsv") files, $(wc -l < "$d/earlier.sha256") of $EARLIER hashed, $(awk -F '\t' '{s += $2} END {printf "%.0f", s}' "$d/listing.tsv") bytes"
 }
 
@@ -277,6 +286,7 @@ estimate() {
   rc=$?
   log "estimate: exit $rc: $(tr -d '\n ' < "$d/before.json" | cut -c1-1200)"
   [ "$rc" = 0 ] || fail "estimate: c47_est.py before failed"
+  touch "$d/DONE"
 }
 
 before() {
@@ -309,7 +319,7 @@ rebefore() {
   [ -e "$ROOT/STOP" ] && fail "$ROOT/STOP exists"
   act=$(build_units)
   [ -z "$act" ] || fail "rebefore: a build unit is active: $act"
-  [ -e /tmp/if2453/c48c/after/DONE ] || fail "rebefore: no /tmp/if2453/c48c/after/DONE (V1's after snapshot)"
+  [ -e "$V1DIR/after/DONE" ] || fail "rebefore: no $V1DIR/after/DONE (V1's after snapshot)"
   if [ ! -e "$old" ]; then
     [ -e "$d/DONE" ] || fail "rebefore: $d/DONE missing: no first listing to keep aside"
     mv "$d" "$old" || fail "rebefore: mv $d $old"
@@ -412,31 +422,52 @@ run() {
 }
 
 after() {
-  local d=$C/after r ok=1
+  local d=$C/after r ok=1 rc
   mkdir -p "$d"
   snapshot "$d"
   for r in $RELEASES; do verify "$ROOT" "$r" "$d" || ok=0; done
   bb cli releases --root "$ROOT" > "$d/releases.txt" 2>&1
-  log "after: bio-box releases exit $?; verify_ok=$ok"
+  rc=$?
+  log "after: bio-box releases exit $rc; verify_ok=$ok"
   [ "$ok" = 1 ] || fail "after: a published release failed verify"
+  [ "$rc" = 0 ] || fail "after: bio-box releases exited $rc"
   touch "$d/DONE"
 }
 
+# check: c47_check.py on the before and after snapshots, into CHECK_DIR (default $C/check; a later check gets its own
+# directory, so an earlier one stays as its record). It reads the snapshots, never a fresh listing of the root. The
+# first check's root_added.tsv becomes $C/root_added.tsv, which `backup` tars; a later check must list the same files
+# byte for byte. DONE only when the check passed.
+CHECK_DIR=${CHECK_DIR:-$C/check}
+
 check() {
   local unit rc
-  mkdir -p "$C/check"
+  [ -e "$C/after/DONE" ] || fail "check: no $C/after/DONE"
+  [ -e "$CHECK_DIR/DONE" ] && { log "check: $CHECK_DIR/DONE present"; return 0; }
+  mkdir -p "$CHECK_DIR"
+  rm -f "$CHECK_DIR/FAILED"
   unit=$(tail -n 1 "$C/units")
   bb py "$BIN/c47_check.py" --root "$ROOT" --before "$C/before" --after "$C/after" --log "$LOGS/$unit.log" \
-    --objects "$IN/objects.json" --out "$C/check" --tmp "$C/tmp/check" --stage "$STAGE" \
-    --earlier "$EARLIER" --before-est "$C/estimate/before.json" > "$C/check/check.out" 2>&1
+    --objects "$IN/objects.json" --out "$CHECK_DIR" --tmp "$C/tmp/check" --stage "$STAGE" \
+    --earlier "$EARLIER" --before-est "$C/estimate/before.json" > "$CHECK_DIR/check.out" 2>&1
   rc=$?
-  cp "$C/check/root_added.tsv" "$C/root_added.tsv"
-  log "check: exit $rc: $(tail -n 1 "$C/check/check.out" | cut -c1-600)"
-  return $rc
+  log "check ($CHECK_DIR): exit $rc: $(tail -n 1 "$CHECK_DIR/check.out" | cut -c1-600)"
+  [ "$rc" = 0 ] || fail "check: c47_check.py exited $rc (read $CHECK_DIR/check.out)"
+  [ -s "$CHECK_DIR/root_added.tsv" ] || fail "check: no $CHECK_DIR/root_added.tsv"
+  if [ -e "$C/root_added.tsv" ]; then
+    cmp -s "$C/root_added.tsv" "$CHECK_DIR/root_added.tsv" \
+      || fail "check: $CHECK_DIR/root_added.tsv differs from $C/root_added.tsv (the list the backup was made from)"
+    log "check: $CHECK_DIR/root_added.tsv is byte-identical to $C/root_added.tsv"
+  else
+    cp "$CHECK_DIR/root_added.tsv" "$C/root_added.tsv" || fail "check: cp root_added.tsv"
+  fi
+  touch "$CHECK_DIR/DONE"
 }
 
 backup() {
   local local_tar="$C/added_c5.tar" tmp_tar="$BACKUP_DIR/.added_c5.tar.tmp" sz sha1 sha2
+  [ -e "$CHECK_DIR/DONE" ] || fail "backup: no $CHECK_DIR/DONE (a passed check)"
+  [ -e "$C/backup/DONE" ] && { log "backup: DONE present"; return 0; }
   [ -s "$C/root_added.tsv" ] || fail "backup: missing $C/root_added.tsv"
   [ ! -e "$BACKUP_TAR" ] || fail "backup: $BACKUP_TAR already exists"
   awk -F'\t' 'NR > 1 {print $1}' "$C/root_added.tsv" > "$C/added_paths.txt"
@@ -452,6 +483,8 @@ backup() {
   printf "%s\t%s\t%s\n" "$BACKUP_TAR" "$sz" "$sha2" > "$C/backup.tsv"
   log "backup: $BACKUP_TAR written ($sz bytes, sha256 $sha2)"
   rm -f "$local_tar"
+  mkdir -p "$C/backup"
+  touch "$C/backup/DONE"
 }
 
 # Part (2), the measurement (Pfam by NR90 representatives, DEC-32, DEC-35), in scratch and read-only on the root, only
@@ -494,19 +527,31 @@ ev_unit() {  # launch one clustering step as its own unit, wait, stop it at CPU_
   [ "$rc" = 0 ] || fail "eval: $unit exited '$rc' (read $EV/logs/$unit.log)"
 }
 
+passed() {  # part (2) starts only after a passed check (CHECK_DIR/DONE) and the backup's record
+  [ -e "$CHECK_DIR/DONE" ] || fail "$MODE: no $CHECK_DIR/DONE (a passed check)"
+  [ -s "$C/backup.tsv" ] || fail "$MODE: no $C/backup.tsv (the backup's record)"
+}
+
 evalplan() {
-  [ -s "$C/backup.tsv" ] || fail "evalplan: no $C/backup.tsv: check and backup first"
+  local next
+  passed
   [ -e "$ROOT/STOP" ] && fail "$ROOT/STOP exists"
   mkdir -p "$EV/out" "$EV/tmp" "$EV/logs"
   profile
-  [ "$(ev_next)" = cluster.plan ] || { log "evalplan: the plan is recorded"; return; }
-  ev_unit release cluster plan --root "$ROOT" --release "$EREL" --stages "$STAGE" --tmp "$EV/tmp" --out "$EV/out" \
-    --part-cpu-min 240 --one-process-cpu-min-max 20000
+  next=$(ev_next) || fail "evalplan: could not read the clustering's next step"
+  if [ "$next" = cluster.plan ]; then
+    ev_unit release cluster plan --root "$ROOT" --release "$EREL" --stages "$STAGE" --tmp "$EV/tmp" --out "$EV/out" \
+      --part-cpu-min 240 --one-process-cpu-min-max 20000
+  else
+    log "evalplan: the plan is recorded"
+  fi
+  touch "$EV/plan.DONE"
 }
 
 evalcluster() {
   local name k=0
-  [ -s "$C/backup.tsv" ] || fail "evalcluster: no $C/backup.tsv"
+  passed
+  [ -e "$EV/plan.DONE" ] || fail "evalcluster: no $EV/plan.DONE"
   profile
   while :; do
     [ -e "$ROOT/STOP" ] && fail "$ROOT/STOP exists"
@@ -527,6 +572,7 @@ evalcluster() {
 
 evaluate() {
   local cm aln rc
+  passed
   [ -e "$EV/cluster.DONE" ] || fail "evaluate: no $EV/cluster.DONE"
   find "$EV/out/l2/cluster_member/release=$EREL" -name '*.parquet' | LC_ALL=C sort > "$EV/cm.files"
   find "$EV/out/l2/cluster_member_aln/release=$EREL" -name '*.parquet' | LC_ALL=C sort > "$EV/aln.files"
@@ -540,23 +586,22 @@ evaluate() {
   rc=$?
   log "evaluate: exit $rc: $(head -n 1 "$EV/eval.out")"
   [ "$rc" = 0 ] || fail "evaluate: c47_nr90_pfam_eval.py failed (read $EV/eval.out)"
+  touch "$EV/eval.DONE"
 }
 
 MODE=${1:-}
-log "c47 driver: mode '$MODE' (pid $$), tree $TREE, image $IMAGE"
 case "$MODE" in
-  restore) restore ;;
-  rehearse) rehearse ;;
-  estimate) estimate ;;
-  before) before ;;
-  rebefore) rebefore ;;
-  run) run ;;
-  after) after ;;
-  check) check ;;
-  backup) backup ;;
-  evalplan) evalplan ;;
-  evalcluster) evalcluster ;;
-  evaluate) evaluate ;;
+  restore|rehearse|estimate|before|rebefore|run|after|check|backup|evalplan|evalcluster|evaluate) ;;
   *) echo "usage: c47_driver.sh restore|rehearse|estimate|before|rebefore|run|after|check|backup|evalplan|evalcluster|evaluate" >&2; exit 2 ;;
 esac
-log "c47 driver: mode '$MODE' done"
+log "c47 driver: mode '$MODE' (pid $$), tree $TREE, image $IMAGE"
+# The mode's own status is the driver's exit status (on 2026-11-20 `check` returned 1 and the driver exited 0, the
+# status of a trailing log line, and the queue ran `backup` on it). A mode that fails through `fail` exits 1 itself.
+"$MODE"
+rc=$?
+if [ "$rc" = 0 ]; then
+  log "c47 driver: mode '$MODE' done"
+else
+  log "c47 driver: mode '$MODE' FAILED with status $rc"
+fi
+exit "$rc"

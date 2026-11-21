@@ -86,6 +86,45 @@ def rows_of(ps) -> int:
     return sum(pq.read_metadata(p).num_rows for p in ps)
 
 
+OWNED_BY = "owned_by:"  # biobox.l0seq.store.OWNED_BY: a skip's ledger reason is this + ContigOwners.owner
+OWNER_SEP = "/"  # biobox.l0seq.store.OWNER_SEP: `<stage>/<genome_uid hex>`, a contig another genome of the stage owns
+
+
+def skip_kind(reason: str, stage: str) -> str | None:
+    """How the gene-call ledger's `reason` counts for `stage`: 'earlier' for a contig an earlier stage stores
+    (`owned_by:<other stage>`, DEC-26), 'within' for a contig called once in this stage under another of its genomes
+    (`owned_by:<stage>` or `owned_by:<stage>/<genome_uid>`, DEC-27) or a duplicate record, None for any other reason
+    (`ok`). The owner is compared as a whole stage name: `owned_by:C50` is not stage C5's."""
+    if reason.startswith("duplicate_contig"):
+        return "within"
+    if not reason.startswith(OWNED_BY):
+        return None
+    owner_stage = reason[len(OWNED_BY):].partition(OWNER_SEP)[0]
+    return "within" if owner_stage == stage else "earlier"
+
+
+def classify_ledger(keys, reasons, stage: str) -> tuple[dict[str, str], int]:
+    """The ledger's earlier-stage skips ({contig hex: reason}) and the number of within-stage skips."""
+    earlier: dict[str, str] = {}
+    within = 0
+    for k, why in zip(keys, reasons):
+        kind = skip_kind(why, stage)
+        if kind == "earlier":
+            earlier[hexs(k)] = why
+        elif kind == "within":
+            within += 1
+    return earlier, within
+
+
+def uncovered_contigs(stored: set[str], with_genes: set[str], ledger: dict[str, str]) -> tuple[list[str], dict]:
+    """Of the stage's stored contigs (hex), those with no `feature_protein` row and no ledger row (sorted), and the
+    ledger reasons of those with no gene row but a ledger row ({reason: count})."""
+    no_genes = stored - with_genes
+    uncovered = sorted(c for c in no_genes if c not in ledger)
+    reasons = dict(sorted(Counter(ledger[c] for c in no_genes if c in ledger).items()))
+    return uncovered, reasons
+
+
 def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--root", required=True, type=Path)
@@ -251,14 +290,8 @@ def main() -> int:
                 stored_by[cu] = s
     bases_owned = int(pc.sum(pc.filter(ci.column("contig_len"), ci.column("is_default_variant"))).as_py() or 0)
     led = read(files(root, st, "genecall", f"ledger/stage={st}/step=genecall/"), ["object_key", "reason_code"])
-    skipped_earlier = {
-        hexs(k): why for k, why in zip(led.column("object_key").to_pylist(), led.column("reason_code").to_pylist())
-        if why.startswith("owned_by:") and why != f"owned_by:{st}"
-    }
-    skipped_within = sum(
-        1 for why in led.column("reason_code").to_pylist()
-        if why == f"owned_by:{st}" or why.startswith("duplicate_contig")
-    )
+    led_keys, led_reasons = led.column("object_key").to_pylist(), led.column("reason_code").to_pylist()
+    skipped_earlier, skipped_within = classify_ledger(led_keys, led_reasons, st)
     want = {cu.hex(): f"owned_by:{s}" for cu, s in stored_by.items()}
     if skipped_earlier != want:
         failed.append(f"genecall ledger earlier skips ({len(skipped_earlier)}) != stored_by ({len(want)})")
@@ -295,6 +328,25 @@ def main() -> int:
     fp_paths = files(root, st, "genecall", f"l1/feature_protein/gene_call_version={GCV}/stage={st}/")
     ps_paths = files(root, st, "genecall", f"l0seq/protein_seq/gene_call_version={GCV}/stage={st}/")
     n_genes, n_prot = rows_of(fp_paths), rows_of(ps_paths)
+    # every contig the stage stores has gene rows, or the gene-call ledger lists it with a reason
+    with_genes = {hexs(c) for c in pc.unique(read(fp_paths, ["contig_uid"]).column("contig_uid")).to_pylist()}
+    led_by_contig: dict[str, str] = {}
+    for k, why in zip(led_keys, led_reasons):
+        led_by_contig.setdefault(hexs(k), why)
+    stored_hex = {hexs(c) for c in owned}
+    uncovered, no_gene_reasons = uncovered_contigs(stored_hex, with_genes, led_by_contig)
+    summary["coverage"] = {
+        "stored_contigs": len(stored_hex),
+        "stored_with_genes": len(stored_hex & with_genes),
+        "stored_without_genes_listed": no_gene_reasons,
+        "stored_without_genes_or_ledger_row": len(uncovered),
+        "contigs_with_genes_not_stored_here": len(with_genes - stored_hex),
+    }
+    if uncovered:
+        failed.append(f"{len(uncovered)} stored contigs have no gene row and no ledger row: {uncovered[:5]}")
+    if with_genes - stored_hex:
+        failed.append(f"{len(with_genes - stored_hex)} contigs have gene rows in {st} but are not stored by it")
+    say(f"coverage: {summary['coverage']}")
     earlier_ps = [
         p for s in earlier for p in files(root, s, "genecall", f"l0seq/protein_seq/gene_call_version={GCV}/stage={s}/")
     ]
