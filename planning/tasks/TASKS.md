@@ -1043,6 +1043,7 @@ Files: `scripts/stress/build_stage_pod/release_train.sh` (the watch loop's readi
 Why: `release_train.sh` stops its unit when `train_est.py rates` exits 3 and goes on at any other status, so a crash of the guard (exit 1: a missing estimate file, a traceback) leaves the release building unguarded. Card A-12's stage driver stops on any non-zero exit of a guard; the train should do the same. Card A-12's second review also asked for it in `c47`-style loops.
 Do, test first with the stubs of `test_driver_exit_status.py`: `rates` exiting 1 in the loop stops the unit and fails the run with the guard's output in the reason; the same for the process guard; exit 0 goes on; exit 3 as now. The watch itself gets card A-12's rule: a failed `systemctl` answer does not end it, and the unit's own exit line or a real inactive answer does. No change to what a passing run launches (the stub command lines' hash before and after).
 Accept: the tests fail first and pass; `tests/r0` green.
+Done 2026-11-21 (STATUS row A-14): 18 tests, 12 of them failing on the old script; a passing run launches the same commands.
 
 ### A-12 One stage driver for every stage
 **M** · Pod: yes (the rehearsal on the fixture, in scratch; nothing in the data root) · Depends: A-11 · found 2026-11-21 by card A-11: the same faults were in nine drivers copied from one another, and five more stages are queued (`V2`, `GV1`, `PL2`, `G1`, `SPX1`)

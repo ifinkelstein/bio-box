@@ -169,44 +169,130 @@ do_dry_run() {
   return $?
 }
 
-stop_unit() {
-  local unit=$1 reason=$2
+# The watch follows card A-12's stage driver (stage_driver.sh unit_ended, watch_answer, stop_unit, bgcall, on_exit).
+RUNNING_UNIT=""
+RUNNING_LOGS=""
+BGPID=""
+
+unit_ended() {  # UNIT LOGS: 0 on the unit's own exit line or a real answer of systemd that it is inactive or failed;
+  # 1 on a real answer that it runs; 2 on no answer (the user bus or systemctl failed): it counts as running
+  local s
+  [ -n "$(sed -n "s/^pod_run: $1 exited \([0-9]*\)$/\1/p" "$2/$1.log" 2> /dev/null | tail -n 1)" ] && return 0
+  if ! s=$(systemctl --user show -p ActiveState --value "$1" 2> /dev/null) || [ -z "$s" ]; then
+    log "no answer from systemd about $1; it counts as running"
+    return 2
+  fi
+  case "$s" in inactive|failed) return 0 ;; *) return 1 ;; esac
+}
+
+# How long the train goes on without one readable answer about its unit before it gives up (the user bus may be gone):
+# it then says the unit's state is unknown and that it may still be running, and exits non-zero. Never claims it
+# stopped. Same bound as stage_driver.sh.
+WATCH_LIMIT_S=${WATCH_LIMIT_S:-900}
+STOP_LIMIT_S=${STOP_LIMIT_S:-1800}  # how long stop_unit asks before it says the unit would not stop
+NOANSWER_SINCE=""
+
+watch_answer() {  # RC of unit_ended: 0 ended, 1 running; on 2 (no answer) give up once WATCH_LIMIT_S passed without one
+  case "$1" in
+    0) return 0 ;;
+    1) NOANSWER_SINCE="" ; return 1 ;;
+  esac
+  [ -n "$NOANSWER_SINCE" ] || NOANSWER_SINCE=$(date +%s)
+  if [ $(( $(date +%s) - NOANSWER_SINCE )) -ge "$WATCH_LIMIT_S" ]; then
+    RUNNING_UNIT=""
+    fail "no readable answer from systemd about unit $2 for ${WATCH_LIMIT_S} s: its state is unknown and it may still be running (systemctl --user list-units '${UNIT_PREFIX}-rel-*'; a STOP file in the root ends it at a step boundary)"
+  fi
+  return 1
+}
+
+stop_unit() {  # UNIT WHY: stop it and see it gone before saying so; fail loudly at its bound, never claiming it
+  local unit=$1 reason=$2 k=0 t0 rc
+  t0=$(date +%s)
   log "stopping $unit: $reason"
-  systemctl --user stop "$unit"
-  while systemctl --user is-active --quiet "$unit"; do sleep 2; done
+  while :; do
+    unit_ended "$unit" "$LOGS"
+    rc=$?
+    [ "$rc" = 0 ] && break
+    watch_answer "$rc" "$unit"
+    if [ $(( $(date +%s) - t0 )) -ge "$STOP_LIMIT_S" ]; then
+      RUNNING_UNIT=""
+      fail "$reason; then unit $unit was asked to stop for ${STOP_LIMIT_S} s and is still not seen gone: it may still be running"
+    fi
+    if [ $((k % 15)) = 0 ]; then
+      systemctl --user stop "$unit" || log "systemctl --user stop $unit failed; asking again"
+    fi
+    k=$((k + 1))
+    sleep 2
+  done
+  RUNNING_UNIT=""
   fail "$reason (unit $unit stopped; root left at last published step; rerun to resume)"
 }
 
+bgcall() {  # OUT CMD...: CMD in the background, its output into OUT, waited for here, so that a TERM to the train runs
+  # its trap at once (bash runs a trap only after a foreground command returns)
+  local out=$1
+  shift
+  "$@" > "$out" 2>> "$LOG" &
+  BGPID=$!
+  wait "$BGPID"
+}
+
+on_exit() {  # the train is leaving while its unit runs (a signal, a crash): stop the unit, as far as it can
+  local rc=$? k=0
+  [ -n "$BGPID" ] && kill "$BGPID" 2> /dev/null
+  if [ -n "$RUNNING_UNIT" ]; then
+    log "the driver exits (status $rc) while $RUNNING_UNIT runs: stopping it"
+    while ! unit_ended "$RUNNING_UNIT" "$RUNNING_LOGS" && [ "$k" -lt 60 ]; do
+      [ $((k % 15)) = 0 ] && { systemctl --user stop "$RUNNING_UNIT" || log "systemctl --user stop failed"; }
+      k=$((k + 1))
+      sleep 2
+    done
+    unit_ended "$RUNNING_UNIT" "$RUNNING_LOGS" || log "$RUNNING_UNIT may still run: stop it by hand"
+  fi
+}
+trap on_exit EXIT
+trap 'exit 143' TERM
+trap 'exit 130' INT
+trap 'exit 129' HUP
+
 watch_unit() {
   local root=$1 rel=$2 unit=$3 st=$4 est=$5 prefix=$6 scr=$7 k=0 n nrec=-1 line rc foreign=0
-  while systemctl --user is-active --quiet "$unit"; do
+  mkdir -p "$st"
+  while :; do
+    unit_ended "$unit" "$LOGS"
+    rc=$?
+    [ "$rc" = 0 ] && break
+    watch_answer "$rc" "$unit"
     if [ "$foreign" = 0 ] && [ -e "$root/STOP" ]; then
       foreign=1
       log "STOP appeared in $root: $(head -c 300 "$root/STOP"); waiting for $unit to end at step boundary"
     fi
     if [ $((k % 6)) = 0 ]; then
-      line=$(python3 -I "$BIN/r50_watch.py" --root "$root" --scratch "$scr" --since "$st/since" --state "$st" \
+      bgcall "$st/guard.out" python3 -I "$BIN/r50_watch.py" --root "$root" --scratch "$scr" --since "$st/since" --state "$st" \
         --unit-prefix "$prefix" --tmp-min-gb "$TMP_MIN_GB" --scratch-max-gb "$SCRATCH_MAX_GB" --cpu-max "$CPU_MAX" \
-        --stages "$rel")
+        --stages "$rel"
       rc=$?
+      line=$(cat "$st/guard.out" 2> /dev/null)
       echo "$line" >> "$st/guard.jsonl"
-      [ "$rc" = 3 ] && stop_unit "$unit" "guard: $line"
+      [ "$rc" = 0 ] || stop_unit "$unit" "guard (r50_watch.py exit $rc; 3: a stop of the process guard): $(echo "$line" | cut -c1-1000)"
     fi
     n=$(find "$root/runs/stage=$rel" -maxdepth 1 -name '*.json' ! -name '*.publishing.json' 2> /dev/null | wc -l)
     if [ "$n" != "$nrec" ]; then
       nrec=$n
-      line=$(python3 -I "$BIN/train_est.py" rates --root "$root" --release "$rel" --est "$est" 2>> "$LOG")
+      bgcall "$st/rates.out" python3 -I "$BIN/train_est.py" rates --root "$root" --release "$rel" --est "$est"
       rc=$?
+      line=$(cat "$st/rates.out" 2> /dev/null)
       echo "$line" >> "$st/rates.jsonl"
-      [ "$rc" = 3 ] && stop_unit "$unit" "rate guard >20% over estimate (DEC-43, DEC-53): $(echo "$line" | cut -c1-1000)"
+      [ "$rc" = 0 ] || stop_unit "$unit" "rate guard (train_est.py rates exit $rc; 3: a judged step >20% over its estimate, DEC-43, DEC-53; other: the guard itself failed): $(echo "$line" | cut -c1-1000)"
     fi
     k=$((k + 1))
     sleep 5
   done
+  RUNNING_UNIT=""
   line=$(python3 -I "$BIN/train_est.py" rates --root "$root" --release "$rel" --est "$est" --out "$st/rates-end.json" 2>> "$LOG")
   rc=$?
   log "rates at end of $unit (exit $rc): $(echo "$line" | cut -c1-900)"
-  [ "$rc" = 3 ] && fail "rate guard >20% over estimate at end of $unit (DEC-43, DEC-53): $(echo "$line" | cut -c1-1000)"
+  [ "$rc" = 0 ] || fail "rate guard at end of $unit (train_est.py rates exit $rc; 3: a judged step >20% over its estimate, DEC-43, DEC-53): $(echo "$line" | cut -c1-1000)"
   [ "$foreign" = 1 ] && return 3
   return 0
 }
@@ -301,6 +387,8 @@ PY
   [ -d "$REAL_ROOT" ] && [ "$ROOT" != "$REAL_ROOT" ] && ro_binds+=(--bind "$REAL_ROOT:$REAL_ROOT:ro")
   [ -d "$PFAMDIR" ] && ro_binds+=(--bind "$PFAMDIR:$PFAMDIR:ro")
   log "launch $unit: build-stage --profile $PROF_COPY --root $ROOT ${bs_args[*]}"
+  RUNNING_UNIT=$unit  # the trap stops it if the train itself is stopped while it runs (card A-14)
+  RUNNING_LOGS=$LOGS
   bash "$TREE/scripts/pod_run.sh" --profile "$PROF_COPY" --image "$IMAGE" --digest "$DIGEST" --mem "$MEM" \
     --threads "$Q" --bind /tmp/if2453 "${ro_binds[@]}" --env "PYTHONPATH=$PYPATH" \
     --log "$LOGS/$unit.log" "$unit" build-stage --profile "$PROF_COPY" --root "$ROOT" "${bs_args[@]}" >> "$LOG" 2>&1

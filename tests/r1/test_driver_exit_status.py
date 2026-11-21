@@ -783,3 +783,226 @@ def test_rel_wait_takes_the_driver_directory_and_the_suite_as_arguments(tmp_path
                          timeout=120)
     _ok(got)
     assert "release_train run" in w.calls()
+
+
+# --------------------------------------------------------------------------------------------------------------
+# card A-14: release_train.sh's watch of its unit. The stubs above never leave a unit running (is-active answers 3), so
+# the watch loop is not entered; here the unit runs until the systemctl stub says otherwise.
+
+UNIT = "c46-train-rel-1"
+# FAKE_STATES: one answer a line (active, inactive, or fail = a failed systemctl call); when it is empty the unit is
+# active while FAKE_FOREVER is set and no `stop` came, else inactive. `stop` ends it. The exit line of pod_run.sh's
+# wrapper is written when the unit first answers inactive, as in the stage driver's tests.
+WATCH_SYSTEMCTL = """#!/bin/sh
+echo "systemctl $*" >> "$FAKE_LOG"
+d=$(dirname "$FAKE_LOG")
+last=""
+for a in "$@"; do last=$a; done
+finish() { f="$d/pod.$1"; [ -f "$f" ] || return 0; read -r log rc < "$f"; echo "pod_run: $1 exited $rc" >> "$log"; rm -f "$f"; }
+state() {
+  if [ -n "${FAKE_STATES:-}" ] && [ -s "$FAKE_STATES" ]; then
+    head -n 1 "$FAKE_STATES"; sed -i 1d "$FAKE_STATES"
+  elif [ -n "${FAKE_FOREVER:-}" ] && [ ! -e "$d/stopped" ]; then
+    echo active
+  else
+    echo inactive
+  fi
+}
+case "$*" in
+  *is-active*)
+    case "$last" in *rel-1) ;; *) exit 3 ;; esac
+    s=$(state)
+    case "$s" in active) exit 0 ;; fail) exit 1 ;; esac
+    finish "$last"; exit 3 ;;
+  *"show -p ActiveState"*)
+    case "$last" in *rel-1) ;; *) echo inactive; exit 0 ;; esac
+    s=$(state)
+    [ "$s" = fail ] && exit 1
+    [ "$s" = inactive ] && finish "$last"
+    echo "$s"; exit 0 ;;
+  *" stop "*) touch "$d/stopped"; [ -n "${FAKE_STATES:-}" ] && : > "$FAKE_STATES"; exit 0 ;;
+esac
+exit 0
+"""
+WATCH_POD_RUN = """#!/bin/sh
+log=""; unit=""
+while [ $# -gt 0 ]; do
+  case "$1" in
+    --log) log=$2; shift 2 ;;
+    --*) shift 2 ;;
+    *) unit=$1; shift; break ;;
+  esac
+done
+echo "pod_run $unit $*" >> "$FAKE_LOG"
+rel=""; prev=""
+for a in "$@"; do [ "$prev" = "--release" ] && rel=$a; prev=$a; done
+mkdir -p "$(dirname "$log")"
+case "$unit" in
+  *rel-1)
+    echo "pod_run: $unit started" >> "$log"
+    echo "$log 0" > "$(dirname "$FAKE_LOG")/pod.$unit"
+    [ -n "$rel" ] && echo "build-stage: stage S and release $rel: all 9 steps done" >> "$log" ;;
+  *)
+    echo "pod_run: $unit exited 0" >> "$log" ;;
+esac
+exit 0
+"""
+# the guards: `rates` (FAKE_RATES_RC in the loop, FAKE_END_RATES_RC at the unit's end, where it has --out) and
+# r50_watch.py (FAKE_GUARD_RC); each prints a line naming its status; everything else is the earlier python3 stub
+WATCH_PYTHON3 = """#!/bin/sh
+case "${2:-}" in -c|-) exec "$REAL_PYTHON" "$@" ;; esac
+case "$*" in
+  *train_est.py*rates*--out*)
+    echo "python3 $*" >> "$FAKE_LOG"; echo "end-rates-said-${FAKE_END_RATES_RC:-0}"; exit "${FAKE_END_RATES_RC:-0}" ;;
+  *train_est.py*rates*)
+    echo "python3 $*" >> "$FAKE_LOG"; echo "rates-said-${FAKE_RATES_RC:-0}"; exit "${FAKE_RATES_RC:-0}" ;;
+  *r50_watch.py*)
+    echo "python3 $*" >> "$FAKE_LOG"; echo "guard-said-${FAKE_GUARD_RC:-0}"; exit "${FAKE_GUARD_RC:-0}" ;;
+esac
+exec "$(dirname "$0")/python3.orig" "$@"
+"""
+
+
+def _watched(tmp_path: Path):
+    w, drv, work = _train(tmp_path)
+    (w.fake / "python3").rename(w.fake / "python3.orig")
+    for name, text in (("systemctl", WATCH_SYSTEMCTL), ("python3", WATCH_PYTHON3)):
+        (w.fake / name).write_text(text)
+        (w.fake / name).chmod(0o755)
+    (w.tree / "scripts" / "pod_run.sh").write_text(WATCH_POD_RUN)
+
+    def run(script, *args, **extra):  # a watch that never ends is a failure of the test, not a wait of 300 s
+        try:
+            return subprocess.run(["bash", str(script), *args], env=w.env(**extra), capture_output=True, text=True,
+                                  timeout=60)
+        except subprocess.TimeoutExpired:
+            pytest.fail("the train's watch did not end within 60 s")
+
+    w.run = run
+    return w, drv, work
+
+
+def _states(path: Path, *rows: str) -> str:
+    path.write_text("".join(r + "\n" for r in rows))
+    return str(path)
+
+
+def _driver_log(work: Path) -> str:
+    return (work / "driver.log").read_text()
+
+
+def test_a14_a_passing_watched_run_launches_what_it_launched_and_writes_its_marker(tmp_path):
+    w, drv, work = _watched(tmp_path)
+    states = _states(tmp_path / "states", "active", "active", "active", "inactive")
+    got = _go(w, drv, FAKE_STATES=states)
+    assert got.returncode == 0, got.stdout + got.stderr
+    assert (work / "DONE").read_text().split()[0] == "r26.11.2"
+    # the launches of the watched run, without the questions asked of systemctl: the card compares this line before
+    # and after its change
+    launches = "".join(ln + "\n" for ln in w.calls().splitlines() if not ln.startswith("systemctl "))
+    print("A14CALLS train-run-watched", hashlib.sha256(launches.encode()).hexdigest())
+    assert "rates-said-0" in (work / "run" / UNIT / "rates.jsonl").read_text()
+
+
+def test_a14_a_passing_run_without_a_watch_launches_what_it_launched(tmp_path):
+    w, drv, work = _train(tmp_path)  # the stock stubs: the unit is never seen running
+    got = _go(w, drv)
+    assert got.returncode == 0, got.stdout + got.stderr
+    launches = "".join(ln + "\n" for ln in w.calls().splitlines() if not ln.startswith("systemctl "))
+    print("A14CALLS train-run", hashlib.sha256(launches.encode()).hexdigest())
+
+
+@pytest.mark.parametrize("rc", ["1", "3", "2", "137"])
+def test_a14_a_rate_guard_that_does_not_exit_0_stops_the_unit_and_fails_the_run(tmp_path, rc):
+    w, drv, work = _watched(tmp_path)
+    got = _go(w, drv, FAKE_FOREVER="1", FAKE_RATES_RC=rc)
+    assert got.returncode != 0
+    assert not (work / "DONE").exists()
+    assert f"systemctl --user stop {UNIT}" in w.calls()
+    assert f"rates-said-{rc}" in got.stderr, "the guard's own output is in the reason"
+    assert f"unit {UNIT} stopped" in got.stderr
+
+
+def test_a14_a_rate_guard_over_20_percent_keeps_its_reason(tmp_path):
+    w, drv, work = _watched(tmp_path)
+    got = _go(w, drv, FAKE_FOREVER="1", FAKE_RATES_RC="3")
+    assert "rate guard" in got.stderr and ">20%" in got.stderr
+
+
+@pytest.mark.parametrize("rc", ["1", "3", "2", "137"])
+def test_a14_a_process_guard_that_does_not_exit_0_stops_the_unit_and_fails_the_run(tmp_path, rc):
+    w, drv, work = _watched(tmp_path)
+    got = _go(w, drv, FAKE_FOREVER="1", FAKE_GUARD_RC=rc)
+    assert got.returncode != 0
+    assert not (work / "DONE").exists()
+    assert f"systemctl --user stop {UNIT}" in w.calls()
+    assert f"guard-said-{rc}" in got.stderr, "the guard's own output is in the reason"
+    assert "r50_watch.py" in got.stderr
+
+
+@pytest.mark.parametrize("rc", ["1", "3"])
+def test_a14_a_rate_guard_failing_at_the_end_of_the_unit_fails_the_run(tmp_path, rc):
+    w, drv, work = _watched(tmp_path)
+    states = _states(tmp_path / "states", "active", "inactive")
+    got = _go(w, drv, FAKE_STATES=states, FAKE_END_RATES_RC=rc)
+    assert got.returncode != 0
+    assert not (work / "DONE").exists()
+    assert f"end-rates-said-{rc}" in got.stderr
+
+
+def test_a14_a_failed_systemctl_answer_does_not_end_the_watch(tmp_path):
+    w, drv, work = _watched(tmp_path)
+    states = _states(tmp_path / "states", "fail", "active", "fail", "active", "inactive")
+    got = _go(w, drv, FAKE_STATES=states)
+    assert got.returncode == 0, got.stdout + got.stderr
+    assert (work / "DONE").exists()
+    assert w.calls().count(f"show -p ActiveState --value {UNIT}") == 5
+    assert f"no answer from systemd about {UNIT}" in _driver_log(work)
+
+
+def test_a14_the_units_own_exit_line_ends_the_watch_whatever_systemctl_says(tmp_path):
+    w, drv, work = _watched(tmp_path)
+    (w.tree / "scripts" / "pod_run.sh").write_text(WATCH_POD_RUN.replace(
+        'echo "$log 0" > "$(dirname "$FAKE_LOG")/pod.$unit"', 'echo "pod_run: $unit exited 0" >> "$log"'))
+    got = _go(w, drv, FAKE_STATES=_states(tmp_path / "states", *["fail"] * 20))
+    assert got.returncode == 0, got.stdout + got.stderr
+    assert (work / "DONE").exists()
+
+
+def test_a14_no_answer_for_the_watch_limit_fails_saying_the_state_is_unknown(tmp_path):
+    w, drv, work = _watched(tmp_path)
+    got = _go(w, drv, FAKE_STATES=_states(tmp_path / "states", *["fail"] * 50), WATCH_LIMIT_S="0")
+    assert got.returncode != 0
+    assert not (work / "DONE").exists()
+    assert "its state is unknown and it may still be running" in got.stderr
+    assert "no readable answer from systemd" in got.stderr
+
+
+def test_a14_stop_unit_does_not_claim_a_unit_stopped_that_it_cannot_see(tmp_path):
+    w, drv, work = _watched(tmp_path)
+    # the rate guard fires, then every answer fails: the unit is never seen gone
+    got = _go(w, drv, FAKE_FOREVER="1", FAKE_RATES_RC="3", WATCH_LIMIT_S="0",
+              FAKE_STATES=_states(tmp_path / "states", "active", *["fail"] * 50))
+    assert got.returncode != 0
+    assert "may still be running" in got.stderr
+    assert f"unit {UNIT} stopped" not in got.stderr
+
+
+def test_a14_the_driver_stopped_while_its_unit_runs_stops_the_unit(tmp_path):
+    import signal
+    import time
+
+    w, drv, work = _watched(tmp_path)
+    (w.fake / "sleep").write_text("#!/bin/sh\nexec /bin/sleep 0.1\n")
+    p = subprocess.Popen(["bash", str(drv), "run", "--no-live-cpu"],
+                         env=w.env(ROOT=str(w.root), TMP_MIN_GB="0", FAKE_FOREVER="1"),
+                         stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+    t0 = time.monotonic()
+    while f"show -p ActiveState --value {UNIT}" not in w.calls() and time.monotonic() - t0 < 60:
+        time.sleep(0.2)
+    p.send_signal(signal.SIGTERM)
+    p.communicate(timeout=120)
+    assert p.returncode != 0
+    assert f"systemctl --user stop {UNIT}" in w.calls(), "the trap stops the unit the driver leaves"
+    assert f"the driver exits (status 143) while {UNIT} runs" in _driver_log(work)
+    assert not (work / "DONE").exists()
