@@ -28,8 +28,11 @@
 #             the guards: r50_watch.py (a process at 280 CPU-minutes, /tmp under its floor, scratch over its ceiling)
 #             and `stage_est.py rates` (DEC-43, DEC-53; any exit but 0 stops the unit, and a stop writes run/FAILED,
 #             which only a person moves aside). The unit counts as ended only on its own exit line or a real
-#             inactive answer of systemd; a trap stops it if the driver exits while it runs. At the end, the unit's
-#             exit 0 and the stage complete at its depth (`stage.stage_incomplete`).
+#             inactive answer of systemd; after WATCH_LIMIT_S (900) without one readable answer the driver fails,
+#             saying the unit's state is unknown and that it may still be running. A trap stops the unit if the
+#             driver exits while it runs; the helpers run in the background so that a TERM reaches the trap at once
+#             (a SIGKILL of the driver leaves the unit running unguarded: RUNBOOK "Building a stage"). At the end,
+#             the unit's exit 0 and the stage complete at its depth (`stage.stage_incomplete`).
 #   after     The listing and sha256 again, the same releases verified with the same manifest hashes, `bio-box
 #             releases`.
 #   check     `stage_check.py` on the two snapshots, its report in check/<n>/: root_added.tsv (every added file with
@@ -153,8 +156,14 @@ environment() {  # what the data root never allows
   local v n u
   [ "$DATAROOT" = 1 ] || return 0
   [ "$REHEARSAL" = 1 ] && refuse "a rehearsal never works in the data root $REAL_ROOT"
-  [ "$(realpath -m "$CONF")" = "$(realpath -m "$OWN_CONF")" ] \
-    || refuse "in the data root the conf is the tree's own $OWN_CONF, not $CONF"
+  # rehearse only looks for STOP in the data root and builds in its own scratch root: it may take another conf; no
+  # mode that reads or writes the data root (estimate, before, run, after, check, backup) ever does
+  if [ "$MODE" != rehearse ]; then
+    [ "$(realpath -m "$CONF")" = "$(realpath -m "$OWN_CONF")" ] \
+      || refuse "in the data root the conf is the tree's own $OWN_CONF, not $CONF"
+    [ "$(realpath -m "$REALPROF")" = "$(realpath -m "$TREE/profiles/wilkcomp02.yaml")" ] \
+      || refuse "in the data root the profile is the tree's own $TREE/profiles/wilkcomp02.yaml, not $REALPROF"
+  fi
   [[ "$TMP_MIN_GB" =~ ^[0-9]+$ ]] && [ "$TMP_MIN_GB" -ge 200 ] || refuse "TMP_MIN_GB=$TMP_MIN_GB is under 200 GB"
   [[ "$START_MIN_GB" =~ ^[0-9]+$ ]] && [ "$START_MIN_GB" -ge 205 ] || refuse "START_MIN_GB=$START_MIN_GB is under 205 GB"
   [[ "$SCRATCH_MAX_GB" =~ ^[0-9]+$ ]] && [ "$SCRATCH_MAX_GB" -le 100 ] \
@@ -247,12 +256,14 @@ bb() {  # a short command in the image, in a capped scope (2 CPUs: HELPER_THREAD
     "${binds[@]}" --bind /sys/fs/cgroup:/sys/fs/cgroup:ro "$IMAGE" "$@"
 }
 
-quota_now() {  # the unit's quota now: the profile's cap of this hour less the helpers' 2, at most Q when given
+quota_now() {  # QUOTA_NOW: the profile's cap of this hour less the helpers' 2, at most Q when given (a background call)
   local q
-  q=$(bb py "$BIN/stage_est.py" cap --profile "$REALPROF" --quota 2>> "$LOG") || return 1
+  QUOTA_NOW=""
+  bgcall "$C/tmp/quota.out" bb py "$BIN/stage_est.py" cap --profile "$REALPROF" --quota || return 1
+  q=$(head -n 1 "$C/tmp/quota.out")
   [[ "$q" =~ ^[1-9][0-9]*$ ]] || return 1
   [ -n "$Q" ] && [ "$Q" -lt "$q" ] && q=$Q
-  echo "$q"
+  QUOTA_NOW=$q
 }
 
 lock_patterns() {  # the units that write into this root: every build of ours in the data root, else this stage's own
@@ -285,20 +296,50 @@ free_gb() { df -B1G --output=avail /tmp | tail -n 1 | tr -d ' '; }
 exit_of() { sed -n "s/^pod_run: $1 exited \([0-9]*\)$/\1/p" "$2/$1.log" 2> /dev/null | tail -n 1; }
 hash_of() { sed -n 's/.*manifest hash \([0-9a-f]*\).*/\1/p' "$1" 2> /dev/null | tail -n 1; }
 
-unit_ended() {  # UNIT LOGS: 0 only on the unit's own exit line or a real answer of systemd that it is inactive or failed
+unit_ended() {  # UNIT LOGS: 0 on the unit's own exit line or a real answer of systemd that it is inactive or failed;
+  # 1 on a real answer that it runs; 2 on no answer (the user bus or systemctl failed): it counts as running
   local s
   [ -n "$(exit_of "$1" "$2")" ] && return 0
   if ! s=$(systemctl --user show -p ActiveState --value "$1" 2> /dev/null) || [ -z "$s" ]; then
     log "no answer from systemd about $1; it counts as running"
-    return 1
+    return 2
   fi
   case "$s" in inactive|failed) return 0 ;; *) return 1 ;; esac
 }
 
-stop_unit() {  # UNIT LOGS WHY: stop it and see it gone before saying so; then fail
-  local k=0
+# How long the driver goes on without one readable answer about its unit before it gives up (the user bus may be
+# gone): it then says the unit's state is unknown and that it may still be running, and exits non-zero. Never claims
+# it stopped. 15 minutes: longer than a busy bus's stalls, short enough that a queue does not hang for hours.
+WATCH_LIMIT_S=${WATCH_LIMIT_S:-900}
+STOP_LIMIT_S=${STOP_LIMIT_S:-1800}  # how long stop_unit asks before it says the unit would not stop
+NOANSWER_SINCE=""
+
+watch_answer() {  # RC of unit_ended: 0 ended, 1 running; on 2 (no answer) give up once WATCH_LIMIT_S passed without one
+  case "$1" in
+    0) return 0 ;;
+    1) NOANSWER_SINCE="" ; return 1 ;;
+  esac
+  [ -n "$NOANSWER_SINCE" ] || NOANSWER_SINCE=$(date +%s)
+  if [ $(( $(date +%s) - NOANSWER_SINCE )) -ge "$WATCH_LIMIT_S" ]; then
+    RUNNING_UNIT=""
+    fail "no readable answer from systemd about unit $2 for ${WATCH_LIMIT_S} s: its state is unknown and it may still be running (systemctl --user list-units '$STEM-[0-9]*'; a STOP file in the root ends it at a step boundary)"
+  fi
+  return 1
+}
+
+stop_unit() {  # UNIT LOGS WHY: stop it and see it gone before saying so; fail loudly at its bound, never claiming it
+  local k=0 t0 rc
+  t0=$(date +%s)
   log "stopping $1: $3"
-  while ! unit_ended "$1" "$2"; do
+  while :; do
+    unit_ended "$1" "$2"
+    rc=$?
+    [ "$rc" = 0 ] && break
+    watch_answer "$rc" "$1"
+    if [ $(( $(date +%s) - t0 )) -ge "$STOP_LIMIT_S" ]; then
+      RUNNING_UNIT=""
+      fail "$3; then unit $1 was asked to stop for ${STOP_LIMIT_S} s and is still not seen gone: it may still be running"
+    fi
     if [ $((k % 15)) = 0 ]; then
       systemctl --user stop "$1" || log "systemctl --user stop $1 failed; asking again"
     fi
@@ -309,8 +350,19 @@ stop_unit() {  # UNIT LOGS WHY: stop it and see it gone before saying so; then f
   fail "$3 (unit $1 stopped)"
 }
 
+bgcall() {  # OUT CMD...: CMD in the background, its output into OUT, waited for here, so that a TERM to the driver runs
+  # its trap at once (bash runs a trap only after a foreground command returns, and systemd kills the driver 90 s after
+  # a stop by default)
+  local out=$1
+  shift
+  "$@" > "$out" 2>> "$LOG" &
+  BGPID=$!
+  wait "$BGPID"
+}
+
 on_exit() {  # the driver is leaving while its unit runs (a signal, a crash): stop the unit, as far as it can
   local rc=$? k=0
+  [ -n "${BGPID:-}" ] && kill "$BGPID" 2> /dev/null
   if [ -n "$RUNNING_UNIT" ]; then
     log "the driver exits (status $rc) while $RUNNING_UNIT runs: stopping it"
     while ! unit_ended "$RUNNING_UNIT" "$RUNNING_LOGS" && [ "$k" -lt 60 ]; do
@@ -413,21 +465,21 @@ next_unit() {
 
 stage_records() { find "$ROOT/runs/stage=$STAGE" -maxdepth 1 -name '*.json' ! -name '*.publishing.json' 2> /dev/null | wc -l; }
 
-rates_now() {  # the rate guard once, its time in seconds logged
-  local t0 out rc
+rates_now() {  # RATES_LINE, RATES_RC: the rate guard once (a background call), its time in seconds logged
+  local t0
   t0=$(date +%s.%N)
-  out=$(bb py "$BIN/stage_est.py" rates --conf "$CONF" --stage "$STAGE" --root "$ROOT" --profile "$PROF" \
-    --objects "$IN/objects.json" --before "$C/estimate/before.json" --tmp "$C/tmp/rates" 2>> "$LOG")
-  rc=$?
-  log "rates call: exit $rc in $(awk -v a="$t0" -v b="$(date +%s.%N)" 'BEGIN {printf "%.1f", b - a}') s"
-  echo "$out"
-  return $rc
+  bgcall "$C/tmp/rates.out" bb py "$BIN/stage_est.py" rates --conf "$CONF" --stage "$STAGE" --root "$ROOT" \
+    --profile "$PROF" --objects "$IN/objects.json" --before "$C/estimate/before.json" --tmp "$C/tmp/rates"
+  RATES_RC=$?
+  RATES_LINE=$(cat "$C/tmp/rates.out" 2> /dev/null)
+  log "rates call: exit $RATES_RC in $(awk -v a="$t0" -v b="$(date +%s.%N)" 'BEGIN {printf "%.1f", b - a}') s"
+  echo "$RATES_LINE" >> "$C/run/rates.jsonl"
 }
 
 stopped_root() { [ -e "$ROOT/STOP" ] || [ -e "$REAL_ROOT/STOP" ]; }
 
 run() {
-  local unit free act rc line nrec=-1 n k=0 foreign=0 a sj=() binds=(--bind /tmp/if2453) quota q
+  local unit free act rc line nrec=-1 n k=0 foreign=0 a sj=() binds=(--bind /tmp/if2453) quota hour h
   withdraw run
   read_conf
   [ -e "$C/run/FAILED" ] && refuse "$C/run/FAILED exists ($(head -c 300 "$C/run/FAILED")): a stop stays a stop; a person reads it and moves it aside (run/FAILED.<unit>) before a new launch"
@@ -448,7 +500,9 @@ run() {
   [ -z "$act" ] || refuse "a build unit is active in the root: $act"
   free=$(free_gb)
   [[ "$free" =~ ^[0-9]+$ ]] && [ "$free" -ge "$START_MIN_GB" ] || refuse "/tmp has '$free' GB free, under $START_MIN_GB"
-  quota=$(quota_now) || refuse "could not read the profile's cap of this hour (stage_est.py cap)"
+  quota_now || refuse "could not read the profile's cap of this hour (stage_est.py cap)"
+  quota=$QUOTA_NOW
+  hour=$(date +%H)
   snap_top
   unit=$(next_unit)
   echo "$unit" >> "$C/units"
@@ -463,26 +517,35 @@ run() {
     build-stage --profile "$PROF" --root "$ROOT" "${BUILD_ARGS[@]}" --threads "$T" "${sj[@]}" --scan-cpus "$CPUS" \
     >> "$LOG" 2>&1 || { RUNNING_UNIT=""; fail "pod_run.sh refused $unit"; }
   sleep 10
-  while ! unit_ended "$unit" "$LOGS"; do
+  while :; do
+    unit_ended "$unit" "$LOGS"
+    rc=$?
+    [ "$rc" = 0 ] && break
+    watch_answer "$rc" "$unit"
     if [ "$foreign" = 0 ] && stopped_root; then
       foreign=1
       log "STOP appeared while $unit runs; build-stage ends at the next step boundary"
     fi
     if [ $((k % 6)) = 0 ]; then
-      line=$(python3 -I "$BIN/r50_watch.py" --root "$ROOT" --scratch "$SCRATCH" --since "$C/run/since" \
-        --state "$C/run" --unit-prefix "$STEM-" --tmp-min-gb "$TMP_MIN_GB" --scratch-max-gb "$SCRATCH_MAX_GB" \
-        --cpu-max "$CPU_MAX" --stages "$STAGE")
+      bgcall "$C/tmp/guard.out" python3 -I "$BIN/r50_watch.py" --root "$ROOT" --scratch "$SCRATCH" \
+        --since "$C/run/since" --state "$C/run" --unit-prefix "$STEM-" --tmp-min-gb "$TMP_MIN_GB" \
+        --scratch-max-gb "$SCRATCH_MAX_GB" --cpu-max "$CPU_MAX" --stages "$STAGE"
       rc=$?
+      line=$(cat "$C/tmp/guard.out" 2> /dev/null)
       echo "$line" >> "$C/run/guard.jsonl"
       [ "$rc" = 0 ] || stop_unit "$unit" "$LOGS" "guard (r50_watch.py exit $rc): $(echo "$line" | cut -c1-600)"
       [ $((k % 60)) = 0 ] && log "guard: $(echo "$line" | cut -c1-400); log: $(grep -E 'run-step|build-stage' "$LOGS/$unit.log" | tail -n 1 | cut -c1-240)"
-      if q=$(quota_now); then
-        if [ "$q" != "$quota" ]; then
-          if systemctl --user set-property --runtime "$unit" "CPUQuota=$((q * 100))%"; then
-            log "the cap of the hour changed: $unit's CPUQuota from $((quota * 100))% to $((q * 100))%"
-            quota=$q
+    fi
+    h=$(date +%H)
+    if [ $((k % 6)) = 0 ] || [ "$h" != "$hour" ]; then  # the cap changes on the hour: looked at within one poll
+      hour=$h
+      if quota_now; then
+        if [ "$QUOTA_NOW" != "$quota" ]; then
+          if systemctl --user set-property --runtime "$unit" "CPUQuota=$((QUOTA_NOW * 100))%"; then
+            log "the cap of the hour changed: $unit's CPUQuota from $((quota * 100))% to $((QUOTA_NOW * 100))%"
+            quota=$QUOTA_NOW
           else
-            log "systemctl set-property $unit CPUQuota=$((q * 100))% failed; trying again at the next poll"
+            log "systemctl set-property $unit CPUQuota=$((QUOTA_NOW * 100))% failed; trying again at the next poll"
           fi
         fi
       else
@@ -492,11 +555,9 @@ run() {
     n=$(stage_records)
     if [ "$n" != "$nrec" ]; then
       nrec=$n
-      line=$(rates_now)
-      rc=$?
-      echo "$line" >> "$C/run/rates.jsonl"
-      log "rates ($n records of $STAGE): exit $rc: $(echo "$line" | cut -c1-500)"
-      [ "$rc" = 0 ] || stop_unit "$unit" "$LOGS" "rate guard (stage_est.py rates exit $rc; 3: a judged step more than 20% over its estimate, DEC-53): $(echo "$line" | cut -c1-900)"
+      rates_now
+      log "rates ($n records of $STAGE): exit $RATES_RC: $(echo "$RATES_LINE" | cut -c1-500)"
+      [ "$RATES_RC" = 0 ] || stop_unit "$unit" "$LOGS" "rate guard (stage_est.py rates exit $RATES_RC; 3: a judged step more than 20% over its estimate, DEC-53): $(echo "$RATES_LINE" | cut -c1-900)"
     fi
     k=$((k + 1))
     sleep 10
@@ -504,11 +565,9 @@ run() {
   RUNNING_UNIT=""
   rc=$(exit_of "$unit" "$LOGS")
   log "$unit ended, exit '$rc'; usage: $(grep -E 'pod_run: .* usage' "$LOGS/$unit.log" | tail -n 1)"
-  line=$(rates_now)
-  n=$?
-  echo "$line" >> "$C/run/rates.jsonl"
-  log "rates at the end: exit $n: $(echo "$line" | cut -c1-600)"
-  [ "$n" = 0 ] || fail "rate guard at the end (stage_est.py rates exit $n): $(echo "$line" | cut -c1-900)"
+  rates_now
+  log "rates at the end: exit $RATES_RC: $(echo "$RATES_LINE" | cut -c1-600)"
+  [ "$RATES_RC" = 0 ] || fail "rate guard at the end (stage_est.py rates exit $RATES_RC): $(echo "$RATES_LINE" | cut -c1-900)"
   if [ "$foreign" = 1 ] || stopped_root; then
     log "STOPPED: a STOP file ended $unit at a step boundary (exit '$rc'), its published records judged; remove STOP and run again to resume"
     echo "STOP during $unit" > "$C/run/STOPPED"
@@ -637,7 +696,8 @@ rehearse() {  # the fixture, in scratch: E and a release over it, then the stage
   rm -f "$C/rehearse/FAILED" "$C/rehearse/REFUSED" "$C/rehearse/STOPPED"
   caps
   [[ "$rs" =~ ^[A-Z][A-Za-z0-9]{0,15}$ ]] || refuse "the rehearsal's stage name $rs is too long"
-  cap=$(quota_now) || refuse "could not read the profile's cap of this hour (stage_est.py cap)"
+  quota_now || refuse "could not read the profile's cap of this hour (stage_est.py cap)"
+  cap=$QUOTA_NOW
   rq=$(( RH_Q < cap ? RH_Q : cap ))
   # the earlier rehearsal's logs are kept, moved aside; its scratch (roots, inputs) is removed
   if [ -e "$rh" ] || compgen -G "$LOGS/$LC-rh-*.log" > /dev/null; then
@@ -716,7 +776,11 @@ rh_launch() {  # one build in the rehearsal's scratch root; a STOP in the data r
     --threads "$rq" "${pbind[@]}" --env "PYTHONPATH=$PYPATH" --log "$LOGS/$unit.log" "$unit" "$@" >> "$LOG" 2>&1 \
     || { RUNNING_UNIT=""; fail "rehearse: pod_run.sh refused $unit"; }
   sleep 5
-  while ! unit_ended "$unit" "$LOGS"; do
+  while :; do
+    unit_ended "$unit" "$LOGS"
+    rc=$?
+    [ "$rc" = 0 ] && break
+    watch_answer "$rc" "$unit"
     [ -e "$REAL_ROOT/STOP" ] && stop_unit "$unit" "$LOGS" "rehearse: $REAL_ROOT/STOP appeared"
     sleep 5
   done

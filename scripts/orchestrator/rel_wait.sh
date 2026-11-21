@@ -8,7 +8,8 @@
 #                 <basename>-queue (override: QUEUE_UNIT)
 #     SUITE       the frozen tree's name (default rel1120): the tree /tmp/if2453/ci/SUITE, the shards' logs in
 #                 /tmp/if2453/ci-tmp/SUITE-detached, the units ci-SUITE-*
-#   REL_ROOT, REL_W, REL_TREE, REL_SUITE_DIR override the data root, the waiter's directory, the tree and the logs.
+#   REL_ROOT, REL_W, REL_TREE, REL_SUITE_DIR override the data root, the waiter's directory, the tree and the logs;
+#   REL_STAGES_DIR names the stage driver's stages/ (default: the frozen tree's) when the live driver tree differs.
 #
 # It starts nothing unless ALL of these hold:
 #   - no STOP file in the data root;
@@ -66,9 +67,10 @@ done
 # the build units of ours: the older names, the stage directory's own (<basename>-*), and every stage of the tree's
 # stage driver (stages/<STAGE>.conf: units <stage in lower case>-<n>, card A-12); looked for again just before the
 # dry run and just before the run, since the suite's wait can last hours
+STAGES_DIR=${REL_STAGES_DIR:-$TREE/scripts/stress/build_stage_pod/stages}  # the live driver tree's, when it differs
 build_units() {
   local pats=('c47-*' 'c48c-*' 'c46-train-*' "$(basename "$DRIVER_DIR")-*") f s
-  for f in "$TREE"/scripts/stress/build_stage_pod/stages/*.conf; do
+  for f in "$STAGES_DIR"/*.conf; do
     [ -e "$f" ] || continue
     s=$(basename "$f" .conf)
     [[ "$s" =~ ^[A-Z][A-Za-z0-9]{0,15}$ ]] && pats+=("${s,,}-[0-9]*")

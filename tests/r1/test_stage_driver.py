@@ -65,6 +65,12 @@ DF = """#!/bin/sh
 case "$*" in *--output=avail*) echo "Avail"; echo "${FAKE_DF_GB:-500}"; exit 0 ;; esac
 echo "Filesystem Size Used Avail Use% Mounted on"; echo "/dev/fake 1T 1G ${FAKE_DF_GB:-500}G 1% /"
 """
+DATE = """#!/bin/sh
+if [ "${1:-}" = "+%H" ] && [ -n "${FAKE_HOURS:-}" ] && [ -s "$FAKE_HOURS" ]; then
+  head -n 1 "$FAKE_HOURS"; sed -i 1d "$FAKE_HOURS"; exit 0
+fi
+exec /bin/date "$@"
+"""
 SHA256SUM = """#!/bin/sh
 if [ -n "${FAKE_SHA_EMPTY:-}" ]; then case "$*" in *.tar*) exit 0 ;; esac; fi
 exec /usr/bin/sha256sum "$@"
@@ -131,7 +137,9 @@ case "$*" in
   *"stage_est.py before"*)
     want=--out-plan; o=$(arg "$@"); [ -n "$o" ] && echo '{}' > "$o"
     echo '{"estimate": "fake"}'; exit "${FAKE_EST_RC:-0}" ;;
-  *"stage_est.py rates"*) echo '{"over_20pct": []}'; exit "${FAKE_RATES_RC:-0}" ;;
+  *"stage_est.py rates"*)
+    [ -n "${FAKE_RATES_SLEEP:-}" ] && /bin/sleep "$FAKE_RATES_SLEEP"
+    echo '{"over_20pct": []}'; exit "${FAKE_RATES_RC:-0}" ;;
   *"stage_est.py cap"*)
     if [ -n "${FAKE_QUOTAS:-}" ] && [ -s "$FAKE_QUOTAS" ]; then head -n 1 "$FAKE_QUOTAS"; sed -i 1d "$FAKE_QUOTAS"
     else echo "${FAKE_QUOTA:-54}"; fi
@@ -247,7 +255,7 @@ class World:
             d.mkdir(parents=True, exist_ok=True)
         for name, text in (("systemd-run", SYSTEMD_RUN), ("nice", NICE), ("ionice", IONICE), ("sleep", SLEEP),
                            ("top", NOOP), ("uptime", NOOP), ("systemctl", SYSTEMCTL), ("singularity", SINGULARITY),
-                           ("python3", PYTHON3), ("df", DF), ("sha256sum", SHA256SUM)):
+                           ("python3", PYTHON3), ("df", DF), ("sha256sum", SHA256SUM), ("date", DATE)):
             (self.fake / name).write_text(text)
             (self.fake / name).chmod(0o755)
         (self.tree / "scripts" / "pod_run.sh").write_text(POD_RUN)
@@ -1429,7 +1437,7 @@ def _dom(p: bytes, acc: str, score: float) -> dict:
             "dom_z": 1000}
 
 
-def build_root(tmp: Path, mut=None, **conf_kw) -> dict:
+def build_root(tmp: Path, mut=None, post=None, **conf_kw) -> dict:
     """A stage ZQ as build-stage leaves it, by hand: contigs A and B stored (B listed by two genomes: one row within
     the stage, DEC-27), H held by stage OA (DEC-26); genes on A and B; a Pfam plan whose copy from OA is the row of the
     protein on H (cards B-47b, C-38h); both CRISPR producers; a published gene-call plan; the two snapshots."""
@@ -1539,8 +1547,11 @@ def build_root(tmp: Path, mut=None, **conf_kw) -> dict:
     prof.write_text(PROFILE.replace("tmp: /x", f"tmp: {tmp}"))
     bj = tmp / "before.json"
     bj.write_text(json.dumps({"fasta_bytes": 10_000, "held_bases": 3000}))
-    return {"root": root, "conf": conf, "before": before, "after": after, "profile": prof, "before_json": bj,
-            "out": tmp / "out", "S": S}
+    r = {"root": root, "conf": conf, "before": before, "after": after, "profile": prof, "before_json": bj,
+         "out": tmp / "out", "S": S}
+    if post is not None:  # a change to the snapshots or the root after they were made
+        post(r)
+    return r
 
 
 @pytest.fixture
@@ -1884,3 +1895,224 @@ def test_9_the_queue_reads_run_failed_before_it_runs_estimate_again(tmp_path):
     (tmp_path / "stages" / "zz1" / "run" / "FAILED").write_text("guard: over 280 CPU-minutes")
     got = _queue(tmp_path)
     assert got.returncode == 3 and _modes(tmp_path) == []
+
+
+# ==============================================================================================================
+# Card A-12, third round (2026-11-21): points A to F of the second review
+
+# A. the release side refuses a tree whose lock could not see the stage driver's units
+
+def test_A_the_release_train_refuses_a_tree_without_stage_confs(tmp_path):
+    w = World(tmp_path)
+    (w.bin / "stages" / "ZZ1.conf").unlink()
+    train = w.script("release_train.sh")
+    got = subprocess.run(["bash", str(train), "run", "--no-live-cpu"], capture_output=True, text=True, timeout=120,
+                         env=w.env(ROOT=str(w.root)))
+    assert got.returncode != 0
+    assert "no stage confs" in got.stderr
+    assert "train_plan.py" not in w.calls()
+
+
+def test_A_rel_wait_takes_the_live_driver_trees_stages_through_a_variable(tmp_path):
+    pod = tmp_path / "if2453"
+    d = pod / "stages" / "v2"
+    for m in ("before", "run", "after", "check", "backup"):
+        (d / m).mkdir(parents=True)
+        (d / m / "DONE").touch()
+    (d / "backup.tsv").write_text("x\t1\tab\n")
+    (pod / "c46" / "wait").mkdir(parents=True)
+    (pod / "r10" / "root").mkdir(parents=True)
+    (pod / "ci" / "old1").mkdir(parents=True)  # a frozen tree from before card A-12: no stages/
+    live = tmp_path / "live" / "stages"
+    live.mkdir(parents=True)
+    (live / "GV1.conf").write_text("STAGE=GV1\n")
+    fake = tmp_path / "fakebin"
+    fake.mkdir()
+    for name, text in (("systemctl", SYSTEMCTL), ("sleep", NOOP)):
+        (fake / name).write_text(text)
+        (fake / name).chmod(0o755)
+    sh = tmp_path / "rel_wait.sh"
+    sh.write_text((ORCH / "rel_wait.sh").read_text().replace("/tmp/if2453", str(pod)))
+    log = tmp_path / "fake.log"
+    log.write_text("")
+    env = {**os.environ, "PATH": f"{fake}:{os.environ['PATH']}", "FAKE_LOG": str(log), "FAKE_UNITS": "gv1-1",
+           "REL_STAGES_DIR": str(live)}
+    got = subprocess.run(["bash", str(sh), str(d), "old1"], env=env, capture_output=True, text=True, timeout=120)
+    assert got.returncode == 6 and "gv1-1" in got.stdout
+
+
+# B. the watch has a time limit without an answer, and so has stop_unit; neither claims the unit stopped
+
+def test_B_no_answer_for_the_watch_limit_fails_saying_the_state_is_unknown(tmp_path):
+    w = World(tmp_path)
+    _run_ready(w)
+    states = _lines(tmp_path / "states", *(["fail"] * 10))
+    got = w.drive("run", FAKE_STATES=states, WATCH_LIMIT_S="0")
+    assert got.returncode != 0 and not w.done("run")
+    failed = (w.c / "run" / "FAILED").read_text()
+    assert "state is unknown" in failed and "may still be running" in failed
+    assert "stopped" not in failed.replace("may still be running", "")
+
+
+def test_B_stop_unit_gives_up_loudly_at_its_bound_and_never_claims_the_unit_stopped(tmp_path):
+    w = World(tmp_path)
+    _run_ready(w)
+    active = tmp_path / "active"
+    active.write_text("1000")
+    got = w.drive("run", FAKE_ACTIVE_FILE=str(active), FAKE_GUARD_RC="3", STOP_LIMIT_S="0")
+    assert got.returncode != 0
+    failed = (w.c / "run" / "FAILED").read_text()
+    assert "still not seen gone" in failed and "(unit zz1-1 stopped)" not in failed
+
+
+def test_B_stop_unit_without_an_answer_ends_at_the_watch_limit(tmp_path):
+    w = World(tmp_path)
+    _run_ready(w)
+    states = _lines(tmp_path / "states", "active", *(["fail"] * 20))
+    got = w.drive("run", FAKE_STATES=states, FAKE_GUARD_RC="3", WATCH_LIMIT_S="0")
+    assert got.returncode != 0
+    assert "state is unknown" in (w.c / "run" / "FAILED").read_text()
+
+
+# C. a TERM to the driver during a long helper call runs the trap at once
+
+def test_C_a_stop_during_a_long_helper_call_stops_the_unit_at_once(tmp_path):
+    import signal
+    import time
+
+    w = World(tmp_path)
+    _run_ready(w)
+    active = tmp_path / "active"
+    active.write_text("300")
+    drv = w.script("stage_driver.sh")
+    p = subprocess.Popen(["bash", str(drv), w.stage, "run"], stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True,
+                         env=w.env(FAKE_ACTIVE_FILE=str(active), FAKE_RATES_SLEEP="60", FAKE_SLEEP="0.05"))
+    t0 = time.monotonic()
+    while "stage_est.py rates" not in w.calls() and time.monotonic() - t0 < 60:
+        time.sleep(0.2)
+    t1 = time.monotonic()
+    p.send_signal(signal.SIGTERM)
+    p.communicate(timeout=120)
+    assert time.monotonic() - t1 < 30, "the trap waited for the helper (a 60 s call)"
+    assert "systemctl --user stop zz1-1" in w.calls()
+
+
+# D. a conf that is not the tree's own never reaches a mode that reads or writes the data root; rehearse may take one
+
+@pytest.mark.parametrize("mode", ["estimate", "before", "run", "after", "check", "backup"])
+def test_D_a_conf_not_the_trees_own_never_reaches_a_data_root_mode(tmp_path, mode):
+    w = World(tmp_path)
+    w.mark("estimate", "rehearse", "before", "run", "after", "check")
+    other = tmp_path / "confs" / "ZZ1.conf"
+    other.parent.mkdir()
+    other.write_text((w.bin / "stages" / "ZZ1.conf").read_text())
+    got = w.drive(mode, STAGE_CONF=str(other), TAR_FLOOR_BYTES="0")
+    assert got.returncode != 0
+    assert "the conf is the tree's own" in _driver_log(w)
+    assert "singularity" not in w.calls() and "pod_run" not in w.calls() and "sha256sum" not in _driver_log(w)
+
+
+def test_D_rehearse_may_take_a_conf_that_is_not_the_trees_own(tmp_path):
+    w = World(tmp_path)
+    other = tmp_path / "confs" / "ZZ1.conf"
+    other.parent.mkdir()
+    other.write_text((w.bin / "stages" / "ZZ1.conf").read_text())
+    (w.bin / "stages" / "ZZ1.conf").unlink()
+    _ok(w.drive("rehearse", STAGE_CONF=str(other)), w, "rehearse-other-conf")
+    assert (w.c / "rh" / "drv" / "backup" / "DONE").exists()
+
+
+# E. the profile in the data root is the tree's own
+
+def test_E_a_profile_not_the_trees_own_is_refused_in_the_data_root(tmp_path):
+    w = World(tmp_path)
+    other = tmp_path / "bigger.yaml"
+    other.write_text(PROFILE.replace("max_threads_day: 40", "max_threads_day: 112"))
+    got = w.drive("estimate", PROFILE=str(other))
+    assert got.returncode != 0 and "the profile is the tree's own" in _driver_log(w)
+    assert "stage_est.py before" not in w.calls()
+
+
+# F. the check's other assertions, each failing on its own message
+
+def _listing_line(r: dict, rel: str) -> str:
+    p = r["root"] / rel
+    return f"{rel}\t{p.stat().st_size}\t{p.stat().st_mtime}\n"
+
+
+def _gone(r):
+    with open(r["before"] / "listing.tsv", "a") as fh:
+        fh.write("l0seq/contig_index/stage=OA/part-9.parquet\t5\t1.0\n")
+
+
+def _changed(r):
+    rel = "l0seq/contig_index/stage=OA/part-0.parquet"
+    t = (r["before"] / "listing.tsv").read_text().replace(_listing_line(r, rel), f"{rel}\t1\t1.0\n")
+    (r["before"] / "listing.tsv").write_text(t)
+
+
+def _sha_changed(r):
+    rel = "l0seq/contig_index/stage=OA/part-0.parquet"
+    (r["before"] / "earlier.sha256").write_text(f"{'a' * 64}  {rel}\n")
+    (r["after"] / "earlier.sha256").write_text(f"{'b' * 64}  {rel}\n")
+
+
+def _unexpected_new(r):
+    p = r["root"] / "l0seq" / "stray.parquet"
+    p.write_bytes(b"x")
+    with open(r["after"] / "listing.tsv", "a") as fh:
+        fh.write(_listing_line(r, "l0seq/stray.parquet"))
+
+
+def _held_by_two(S):
+    S["T"]["obci"] = ["l0seq/contig_index/stage=OB/part-0.parquet",
+                      [{"contig_uid": S["u"]["H"], "contig_len": 3000, "is_default_variant": True}]]
+    S["records"]["OB"] = {"ingest": ["obci"]}
+
+
+def _stored_and_held(S):
+    S["T"]["oaci"][1].append({"contig_uid": S["u"]["A"], "contig_len": 2000, "is_default_variant": True})
+
+
+def _neither(S):
+    S["T"]["gi"][1].append({"contig_uid": _u(5), "genome_uid": _u(15), "kind": "virus", "genetic_code": 11,
+                            "is_circular": False, "assembly_quality": "complete"})
+
+
+def _no_gene_rows(S):
+    S["records"]["ZQ"]["genecall"] = ["gcled", "ps"]
+
+
+def _plan_count(S):
+    S["plan"]["proteins"] = 4
+
+
+@pytest.mark.parametrize("mut,post,expect", [
+    (None, _gone, "gone: 1"),
+    (None, _changed, "changed: 1"),
+    (None, _sha_changed, "other stage's sha256 changed: 1"),
+    (None, _unexpected_new, "unexpected new: 1"),
+    (_held_by_two, None, "contigs held by two other stages (DEC-26): 1"),
+    (_stored_and_held, None, "contigs both stored by the stage and held by another: 1"),
+    (_neither, None, "genome_input contigs neither stored nor held: 1"),
+    (_no_gene_rows, None, "no gene rows"),
+    (_plan_count, None, "scan plan holds 4 proteins, expected 3"),
+], ids=["file-gone", "file-changed", "sha-changed", "unexpected-new", "held-by-two", "stored-and-held", "neither",
+        "no-gene-rows", "plan-count"])
+def test_F_each_further_assertion_of_the_check_fails_on_its_defect(tmp_path, monkeypatch, no_minced, mut, post, expect):
+    rc, s = run_check(build_root(tmp_path, mut, post), monkeypatch)
+    assert rc == 1
+    assert any(f.startswith(expect) or expect in f for f in s["failed"]), s["failed"]
+
+
+# smaller: the quota is looked at as soon as the wall-clock hour changes
+
+def test_the_quota_is_looked_at_within_one_poll_of_the_hour_changing(tmp_path):
+    w = World(tmp_path)
+    _run_ready(w)
+    active = tmp_path / "active"
+    active.write_text("3")  # three polls: far from the sixth
+    quotas = _lines(tmp_path / "quotas", "54", "54", "38")
+    hours = _lines(tmp_path / "hours", "07", "07", "08")
+    _ok(w.drive("run", FAKE_ACTIVE_FILE=str(active), FAKE_QUOTAS=quotas, FAKE_HOURS=hours))
+    assert "systemctl --user set-property --runtime zz1-1 CPUQuota=3800%" in w.calls()

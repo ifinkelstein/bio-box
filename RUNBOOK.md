@@ -826,7 +826,16 @@ refusal writes `<mode>/REFUSED`, a failure `<mode>/FAILED`, a STOP file `<mode>/
 The real backup directory is the default of `BACKUP_DIR`, `/stor/work/Wilke/if2453/all-the-data/root_backups`; the
 rehearsal sets its own under its scratch directory. A guard's stop is never lifted by the driver: `run` refuses while
 `run/FAILED` is there; a person reads it, and if a decision row accepts the record, adds its `ACCEPTED` line to the
-conf and moves `run/FAILED` aside (`run/FAILED.<unit>`). The thread counts come from the profile: `--threads` and
+conf and moves `run/FAILED` aside (`run/FAILED.<unit>`). Any edit of a conf, a comment included, changes its sha256
+and so withdraws every marker made for it: after that procedure the stage needs `estimate`, `rehearse` and `before`
+again before `run` resumes (the queue runs them). A step that has no estimate in the code and reaches 24 CPU-minutes
+fails the check (`not_judged_of_judged_size`): a stage much larger than `V1` needs `JUDGE` lines, from its note, for
+`igr`, `tapes`, the scan's merge and the plan records. Two figures for such a stage, from card A-12 (2026-11-21): no
+built stage has run its ingest in batches (every stage directory of `$ROOT/runs` holds one `ingest.json` and no
+`ingest.pass1-*` or `ingest.batch-*`, *measured*, `find /tmp/if2453/r10/root/runs -maxdepth 2 -name 'ingest*.json'`,
+wilkcomp02), so `SPX1`'s will be the first ingest judged as one group of pieces; and `estimate`'s reading of `SPX1`'s
+`genomes.json` (2,829,368 genomes, 404,599,625 bytes, loaded whole as the inputs step loads it) peaked at 1,944.9 MiB
+in 26.3 s (*measured*, wilkcomp02, 2026-11-21, `stage_est.write_genomes` in a 16G scope at 2 CPUs, unit `a12-mem`). The thread counts come from the profile: `--threads` and
 `--scan-cpus` at most its smaller cap, the unit's quota the cap of the hour less the helpers' 2 (build-stage also holds
 the cap of the hour inside, section 2); `T`, `CPUS` and `Q` may lower them. `systemctl --user set-property --runtime
 <unit> CPUQuota=300%` lowered a running transient service of `pod_run.sh` from 400% (`CPUQuotaPerSecUSec` 4s to 3s,
@@ -840,10 +849,19 @@ modes and stops at the first that fails or leaves no marker). Its log is `queue.
 mkdir -p /tmp/if2453/stages/v2
 systemd-run --user --unit=v2-drv-estimate --collect -p MemoryMax=4G -p MemorySwapMax=0 \
   nice -n 19 bash "$TREE/scripts/stress/build_stage_pod/stage_driver.sh" V2 estimate
-systemd-run --user --unit=v2-queue --collect -p MemoryMax=4G -p MemorySwapMax=0 \
+systemd-run --user --unit=v2-queue --collect -p MemoryMax=4G -p MemorySwapMax=0 -p TimeoutStopSec=300 \
   -p StandardOutput=append:/tmp/if2453/stages/v2/queue.out -p StandardError=append:/tmp/if2453/stages/v2/queue.out \
   nice -n 19 bash "$TREE/scripts/stress/build_stage_pod/stage_queue.sh" V2
 ```
+
+`TimeoutStopSec=300`: a stop of the queue (or of a driver's own unit) sends TERM, and the driver's trap then stops its
+build unit and waits up to about 120 s to see it gone; systemd's default of 90 s would SIGKILL the driver first. A
+SIGKILL of the driver or of the queue leaves the build unit running with no guard (no 280 CPU-minute stop, no rate
+guard). See whether one runs with `systemctl --user list-units '<stage>-[0-9]*'` (for `V2`: `'v2-[0-9]*'`); if one
+does and its driver does not, write a `STOP` file in the data root (build-stage ends at the next step boundary and
+publishes nothing of the step it was in), then, if it must end at once, `systemctl --user stop <unit>`. If the user
+bus stops answering, the driver gives up after 15 minutes without one readable answer about its unit and writes
+`run/FAILED` saying the unit's state is unknown and that it may still be running: look as above.
 
 To cut a release by itself when the stage has passed, `scripts/orchestrator/rel_wait.sh /tmp/if2453/stages/v2 <suite>`
 waits for the unit `v2-queue` to end and for every marker of the stage's directory, and holds while a unit `v2-*` or
