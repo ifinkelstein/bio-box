@@ -357,7 +357,9 @@ stops under 150 GB; agents stop at 200 GB). Check (a) and (b) at every check-in 
 each summary how much is free. Until the PI decides, nothing is deleted to make room except what DEC-42 and DEC-46
 already allow (the scratch of finished, merged cards).
 
-**7. Waiting on the PI**: **item 21 (new, 2026-11-21 00:13: Pfam by representatives missed 1.07% of true pairs on
+**7. Waiting on the PI**: **item 23 (new, 2026-11-21 06:39: release `r26.11.2` stopped on the rate guard at the
+last NR50 alignment step, one part at 1.215 of its estimate; it resumes only on the PI's word)**; item 22 (stage
+`PL2`'s five settings); **item 21 (2026-11-21 00:13: Pfam by representatives missed 1.07% of true pairs on
 `C5`, over DEC-35 (6)'s 1%; stages `C1` to `C4` and `C6` are held; the queue goes on with `V2`, `GV1`, `PL2`,
 `G1`)**; the storage decision set (`planning/design/storage_decisions_draft.md`, S-1 to S-8);
 item 19 (where the corpus lives; `tower` being looked at, card C-49), items 15 (decided: DEC-56), 16 (B-56's design), 17 (`domain_state`'s place in
@@ -1330,6 +1332,26 @@ probed by hand on the pod).
    representative's hit is within a few bits of the cutoff), which the present data cannot measure. If inference
    is wanted now, the 95% identity cut is the rule with a margin; 15% with f 1.0 meets the limit on `C5` by 0.002
    points and should not be trusted on the next stage.
+23. **Release `r26.11.2` stopped on the rate guard at 06:39 on 2026-11-21 and waits for the PI's word** (DEC-43,
+   DEC-53; nothing accepted, nothing relaunched). *Measured*, wilkcomp02,
+   `/tmp/if2453/c46/train/run/c46-train-rel-1/rates.jsonl` and the run records under
+   `runs/stage=r26.11.2`: `cluster.nr50.20.align.part-00001` cost 190.462 CPU-minutes against 156.713 estimated,
+   ratio 1.215 (18 threads, 656 s, 14.6 GB). Its sibling `part-00000`: 185.898, ratio 1.186 (*derived*), not
+   stopped. The step has 4 parts; 2 are published, `part-00002` was stopped as it began (nothing published; its
+   staging is left), `part-00003` has not run. Unit `c46-train-rel-1` exited 143 after 12,083.6 CPU-minutes
+   (*derived*: `CPUUsageNSec` 725,016,503,441,000 / 6e10) and 104 run records; 60 judged steps, 12,075.65
+   CPU-minutes against 14,102.46 estimated (0.856 overall); the release's scratch peaked at 148.3 GB. `rel_wait`
+   exited 1. The root is at the last published step and a rerun of the train resumes there.
+   **Reading**: the estimate is the part's cut target, 213.642 CPU-minutes, times a factor 0.733531 that card
+   B-54 fitted on `r26.11.1` alone; the part finished under its cut target, far under the 280 CPU-minute cap. The
+   factors miss in both directions on this release: `nr50.19.prefilter` (factor 1.680518) ran at 0.63 on all six
+   parts, `nr50.15.prefilter` at 0.73 to 0.77, `nr50.12.align` at 0.76 to 0.79. DEC-55 accepted the same two steps
+   on `r26.11.1` up to 1.60 and applies to that release only.
+   **Asked of the PI**: accept `cluster.nr50.20.align.part-*` of `r26.11.2` up to a stated bound and resume? The
+   orchestrator recommends yes with a bound of 1.35 (the two parts left will likely land near 1.19 to 1.22, and
+   accepting the one record alone would stop again a hair over the line), and a card to refit the release
+   clustering's factors on two releases. Until the word is given nothing builds in the data root: the release is
+   mid-way, and a stage built now would enter the train's list of added files.
 22. **Stage `PL2` cannot be given a build configuration until five questions of its note are answered** (opened
    2026-11-21 by card A-12; the questions are `planning/measurements/2026-11-16_pl2_inputs.md` §6, 1 to 5, asked on
    2026-11-16 and not answered since). With the orchestrator's recommendation for each: (1) **one stage or two**:
