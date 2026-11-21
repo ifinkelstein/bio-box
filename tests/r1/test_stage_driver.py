@@ -1249,6 +1249,9 @@ def test_rel_wait_holds_a_release_while_a_unit_of_the_stage_it_waits_for_is_acti
     (d / "backup.tsv").write_text("x\t1\tab\n")
     (pod / "c46" / "wait").mkdir(parents=True)
     (pod / "r10" / "root").mkdir(parents=True)
+    confs = pod / "ci" / "s9" / "scripts" / "stress" / "build_stage_pod" / "stages"
+    confs.mkdir(parents=True)
+    (confs / "V2.conf").write_text("STAGE=V2\n")
     fake = tmp_path / "fakebin"
     fake.mkdir()
     for name, text in (("systemctl", SYSTEMCTL), ("sleep", NOOP)):
@@ -1529,9 +1532,10 @@ def build_root(tmp: Path, mut=None, post=None, **conf_kw) -> dict:
         p.write_text(json.dumps(S["plan"]))
     from biobox.l1 import genecall as gc
 
-    gp = root / gc.plan_record_rel("ZQ")
-    gp.parent.mkdir(parents=True, exist_ok=True)
-    gp.write_text(json.dumps(S["gcplan"]))
+    if S["gcplan"] is not None:
+        gp = root / gc.plan_record_rel("ZQ")
+        gp.parent.mkdir(parents=True, exist_ok=True)
+        gp.write_text(json.dumps(S["gcplan"]))
     before, after = tmp / "before", tmp / "after"
     before.mkdir(parents=True)
     after.mkdir(parents=True)
@@ -1697,6 +1701,26 @@ def test_9_rates_takes_what_does_not_change_from_the_estimate(tmp_path, no_mince
                         tmp_path / "no-objects.json", str(r["before_json"]), tmp_path / "t")
     ing = next(x for x in doc["rows"] if x["step"] == "ingest")
     assert "stage.ingest_cpu_min(10000, held=3000)" in ing["basis"], "no FASTA read, no held bases counted again"
+
+
+def test_rates_of_a_stage_called_in_one_process_with_a_scratch_directory_not_yet_made(tmp_path, no_minced):
+    """Found by the rehearsal of 529b6b0 (2026-11-21, ZX1R): with fasta_bytes and held_bases read from before.json,
+    nothing made --tmp, and genecall.plan's mkdtemp under it failed; rates exited 1 and the guard stopped the build."""
+    from biobox import profile as bprofile
+
+    est = _module("stage_est")
+
+    def one_process(S):
+        S["gcplan"] = None  # gene calling in one process: rates asks genecall.plan for the estimate
+
+    def stages_on_disk(r):
+        for s in ("ZQ", "OA"):
+            (r["root"] / "l0seq" / "seq_locator" / f"stage={s}").mkdir(parents=True)
+
+    r = build_root(tmp_path, one_process, stages_on_disk)
+    doc = est.rates_doc(est.read_conf(r["conf"], "ZQ"), r["root"], bprofile.load(r["profile"]), tmp_path / "none",
+                        str(r["before_json"]), tmp_path / "not" / "made" / "yet")
+    assert "genecall" in {x["step"] for x in doc["rows"]}
 
 
 def test_3_complete_names_a_missing_step(tmp_path, monkeypatch, no_minced):

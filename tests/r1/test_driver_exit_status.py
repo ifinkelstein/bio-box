@@ -161,6 +161,8 @@ class World:
         src = (BSP / name).read_text()
         text = src.replace("/tmp/if2453", str(self.pod)).replace(POD_BACKUPS, str(self.stor))
         dst = self.bin / name
+        if dst.is_symlink():  # a link an earlier copy made: writing through it would rewrite the tree's own script
+            dst.unlink()
         dst.write_text(text)
         for other in BSP.iterdir():  # scripts the driver names beside itself ($BIN/x.py) stay reachable
             link = self.bin / other.name
@@ -705,11 +707,33 @@ def _wait(w: World, **extra) -> subprocess.CompletedProcess:
     return subprocess.run(["bash", str(sh)], env=w.env(**extra), capture_output=True, text=True, timeout=120)
 
 
+def _stage_confs(w: World, suite: str) -> None:
+    """The suite's tree has the stage driver's confs (card A-12): rel_wait.sh refuses a tree without them."""
+    d = w.pod / "ci" / suite / "scripts" / "stress" / "build_stage_pod" / "stages"
+    d.mkdir(parents=True, exist_ok=True)
+    (d / "GV1.conf").write_text("STAGE=GV1\n")
+
+
 def test_rel_wait_starts_the_release_when_every_marker_is_there(tmp_path):
     w, d = _wait_world(tmp_path)
-    got = _wait(w)
+    _stage_confs(w, "rel1120")
+    sh = w.bin / "rel_wait.sh"
+    sh.write_text(REL_WAIT.read_text().replace("/tmp/if2453", str(w.pod)))
+    got = subprocess.run(["bash", str(sh), str(d), "rel1120"], env=w.env(), capture_output=True, text=True,
+                         timeout=120)
     _ok(got, w, "rel-wait")
     assert "release_train run" in w.calls()
+
+
+def test_rel_wait_refuses_a_bare_call_and_a_tree_without_stage_confs(tmp_path):
+    w, d = _wait_world(tmp_path)
+    bare = _wait(w)
+    assert bare.returncode == 2, "the suite is a required argument"
+    sh = w.bin / "rel_wait.sh"
+    no_confs = subprocess.run(["bash", str(sh), str(d), "rel1120"], env=w.env(), capture_output=True, text=True,
+                              timeout=120)
+    assert no_confs.returncode != 0 and "stage confs" in no_confs.stdout
+    assert "release_train" not in w.calls()
 
 
 @pytest.mark.parametrize("missing", MODES + ("backup.tsv",))
@@ -741,6 +765,7 @@ def test_rel_wait_takes_the_driver_directory_and_the_suite_as_arguments(tmp_path
     d.rename(other)
     (w.pod / "ci-tmp" / "rel1120-detached").rename(w.pod / "ci-tmp" / "other9-detached")
     (w.pod / "ci" / "rel1120").rename(w.pod / "ci" / "other9")
+    _stage_confs(w, "other9")
     sh = w.bin / "rel_wait.sh"
     sh.write_text(REL_WAIT.read_text().replace("/tmp/if2453", str(w.pod)))
     got = subprocess.run(["bash", str(sh), str(other), "other9"], env=w.env(), capture_output=True, text=True,

@@ -3,11 +3,13 @@
 # queued build (unit c47-queue: rebefore, run, after, check, backup) has ended with every mode passed, so that the
 # night is used without the laptop.
 #
-#   rel_wait.sh [DRIVER_DIR [SUITE]]
-#     DRIVER_DIR  the stage driver's directory (default /tmp/if2453/c47, stage C5); its queue unit is
+#   rel_wait.sh DRIVER_DIR SUITE        (both required; exit 2 without them)
+#     DRIVER_DIR  the stage driver's directory (for card A-12's driver /tmp/if2453/stages/<stage>); its queue unit is
 #                 <basename>-queue (override: QUEUE_UNIT)
-#     SUITE       the frozen tree's name (default rel1120): the tree /tmp/if2453/ci/SUITE, the shards' logs in
-#                 /tmp/if2453/ci-tmp/SUITE-detached, the units ci-SUITE-*
+#     SUITE       the frozen tree's name: the tree /tmp/if2453/ci/SUITE, the shards' logs in
+#                 /tmp/if2453/ci-tmp/SUITE-detached, the units ci-SUITE-*. Its scripts/stress/build_stage_pod/stages/
+#                 must hold the stage driver's confs (else exit 9, nothing started), unless REL_STAGES_DIR names a
+#                 directory that does
 #   REL_ROOT, REL_W, REL_TREE, REL_SUITE_DIR override the data root, the waiter's directory, the tree and the logs;
 #   REL_STAGES_DIR names the stage driver's stages/ (default: the frozen tree's) when the live driver tree differs.
 #
@@ -27,8 +29,12 @@
 # pack verify, the worked examples). It never deletes or moves anything of an earlier release. Nothing is announced:
 # the orchestrator audits first.
 set -u
-DRIVER_DIR=${1:-/tmp/if2453/c47}
-SUITE_NAME=${2:-rel1120}
+if [ $# -lt 2 ]; then
+  echo "usage: rel_wait.sh DRIVER_DIR SUITE (both required: the stage driver's directory and the frozen tree's name)" >&2
+  exit 2
+fi
+DRIVER_DIR=$1
+SUITE_NAME=$2
 W=${REL_W:-/tmp/if2453/c46/wait}
 ROOT=${REL_ROOT:-/tmp/if2453/r10/root}
 TREE=${REL_TREE:-/tmp/if2453/ci/$SUITE_NAME}
@@ -37,6 +43,11 @@ Q4=$DRIVER_DIR/queue.out
 QUEUE_UNIT=${QUEUE_UNIT:-$(basename "$DRIVER_DIR")-queue}
 MARKERS="before/DONE run/DONE after/DONE check/DONE backup/DONE backup.tsv"
 say() { echo "$(date '+%F %T %Z') rel_wait: $*"; }
+STAGES_DIR=${REL_STAGES_DIR:-$TREE/scripts/stress/build_stage_pod/stages}  # the live driver tree's, when it differs
+if ! compgen -G "$STAGES_DIR/*.conf" > /dev/null; then
+  say "STOPPED: no stage confs in $STAGES_DIR: this waiter could not see a stage driver's build units (card A-12); give a frozen tree that has them, or REL_STAGES_DIR=<the live tree's stages/>; nothing started"
+  exit 9
+fi
 
 say "start (pid $$); waiting for $QUEUE_UNIT to end with every marker of $DRIVER_DIR"
 t0=$(date +%s)
@@ -67,7 +78,6 @@ done
 # the build units of ours: the older names, the stage directory's own (<basename>-*), and every stage of the tree's
 # stage driver (stages/<STAGE>.conf: units <stage in lower case>-<n>, card A-12); looked for again just before the
 # dry run and just before the run, since the suite's wait can last hours
-STAGES_DIR=${REL_STAGES_DIR:-$TREE/scripts/stress/build_stage_pod/stages}  # the live driver tree's, when it differs
 build_units() {
   local pats=('c47-*' 'c48c-*' 'c46-train-*' "$(basename "$DRIVER_DIR")-*") f s
   for f in "$STAGES_DIR"/*.conf; do

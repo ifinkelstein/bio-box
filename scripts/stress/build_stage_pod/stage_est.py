@@ -311,6 +311,8 @@ def rates_doc(conf: Conf, root: Path, prof, objects: Path, before_path: str | No
     from biobox.l1.genecall import GENE_CALL_VERSION as GCV
 
     st = conf.stage
+    tmp = Path(tmp)
+    tmp.mkdir(parents=True, exist_ok=True)  # genecall.plan and held_bases make their scratch under it (mkdtemp)
     recs = _records(root, st)
     before_doc = json.loads(Path(before_path).read_text()) if before_path and Path(before_path).is_file() else {}
     items, covered = [], set()
