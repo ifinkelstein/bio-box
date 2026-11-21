@@ -838,6 +838,24 @@ systemd-run --user --unit=c46-driver-run --collect -p MemoryMax=4G -p MemorySwap
   nice -n 19 bash "$TREE/scripts/stress/build_stage_pod/release_train.sh" run --parts 24
 ```
 
+**After a guard stop.** When the rate guard stops the unit (`FAILED: rate guard >20% over estimate` in
+`$WORK/driver.log`; each check's line is in `$WORK/run/<unit>/rates.jsonl`), the root is left at its last published
+step and nothing is resumed until the PI decides. Report the records in `over_20pct` (step, CPU-minutes, estimate,
+ratio) as an open item in `planning/tasks/STATUS.md`. A guard stop is lifted only by the PI's word, written as a
+decision row in `planning/DECISIONS.md`; a general "continue" is not that word. If the PI accepts the records, the
+orchestrator's one commit adds the row and an entry to `ACCEPTED` in `train_est.py` (card A-13):
+`Accept("<release>", "<step pattern>", <greatest ratio>, "DEC-<n>")`, where the release is named exactly, the step
+pattern is matched with `fnmatchcase` on the step's whole name (for example `cluster.nr50.20.align.part-*`), and the
+greatest ratio is over 1.20 and at most 1.60 (DEC-55's, the largest the PI has accepted). The record is then
+reported under `accepted_over_20pct` with the row's name, stays in `outside_20pct` for the measurement note, and does
+not stop the train; any record above the bound still stops it, its row naming the entry under
+`accepted_bound_exceeded`. Where two entries match one step, the tighter bound decides. A malformed table (a bound
+outside that range, an empty or wildcard-only pattern, a decision not written `DEC-<n>`, a release and pattern named
+twice) makes `rates` exit 3, so the train stops rather than run unguarded. No flag, shell variable or file adds an
+entry; `tests/r1/test_a13_train_accepted.py` checks that every entry's row exists. Run
+`train_est.py rates` by hand, read-only, as `release_train.sh` runs it, to see that the stopped release now exits 0,
+then resume with the same `release_train.sh run` from a tree that carries the commit: the published steps are skipped.
+
 ## Mirror to tower
 
 The durable tars, and later source archives, get a second copy on the PI's NAS `tower` (card C-49; the design and
