@@ -5,7 +5,33 @@ The running record of the cards in [`TASKS.md`](TASKS.md). Updated at every merg
 by an agent on its own branch `task/<ID>`, audited by the orchestrating session, and merged after its
 tests passed on the merged tree.
 
-## Handoff, 2026-11-21 13:45 CST (current; everything below it is superseded where it differs)
+## Orchestrator active, 2026-11-21 17:38 CST (current; supersedes earlier handoff lines where they differ)
+
+Resumed by Carbon orchestrator with Neon (`gemini-4-neon-medium`) worker swarm at the PI's instruction ("review md docs,
+the status md and other parts of this project. review last claud session here. then resume where that left off. run neon
+agents and worker swarm as needed. 56 cpus max. work independently").
+
+- **Pod state at 17:28 CST** (*measured*, `wilkcomp02`): 0 active build or test units; `/tmp` **512 GiB free**; no
+  `STOP` file in `/tmp/if2453/r10/root`; GitHub Actions green (`ci` 43m34s and `cross-host` 19s) on `3779c96`
+  (`origin/plan/task-cards`). Total thread cap: **56 CPUs** until Monday 2026-11-23 08:00 CST.
+- **Cards added from handoff H6**: `A-18` (`C1` to `C4` and `C6` stage driver `.conf` files under DEC-62), `A-19`
+  (DEC-64 rate-guard messages and resilient unit waits), `B-63` (meta-mode gene-calling cost and batch sizing before
+  `PL3`), and `B-64` (two-release clustering factor refit on `r26.11.1` and `r26.11.2`).
+- **Wave 1 Neon workers launching now** (3 workers, disjoint file sets, <= 16 CPUs total on pod, data root read-only):
+  1. **`B-62`** (`task/B-62`, `.claude/worktrees/task-B-62`): protein-range family postings + bounded open run files in
+     `src/biobox/l3/postings.py`, byte-identity against `micro-S0` and `r26.11.1`, bounded run on `r26.11.2`'s inputs.
+  2. **`A-18`** (`task/A-18`, `.claude/worktrees/task-A-18`): `C1.conf`..`C4.conf`, `C6.conf` (DEC-62), root overlap
+     reconciliation against `V1` and `C5`, and `stage_driver.sh <STAGE> estimate` on all five stages.
+  3. **`B-63`** (`task/B-63`, `.claude/worktrees/task-B-63`): plasmid meta-mode gene-calling arms and batch sizing so
+     `PL3` stays safely under the 280 CPU-minute process cap.
+- **Next as soon as `B-62` is audited and merged**: mirror frozen tree, resume release `r26.11.2` from `postings`
+  (`release_train.sh run`, `Action: resume r26.11.2`), run `A-19`, complete `H2` post-release audit + `/stor/work` tar +
+  `tower` relay + `C-47` `DEC-35 (7)` comparison + `B-64`, then start the stage build queue (`G1` -> `SPX1`, `C1..C4, C6`;
+  `V2`/`GV1`/`PL2`/`PL3` gated on open item 24 where applicable).
+- **Still waiting on the PI**: open item 24 (terminal repeats on circular records for `PL2`/`PL3` and whether `V2` is
+  re-staged before building).
+
+## Handoff, 2026-11-21 13:45 CST (superseded where it differs from the section above)
 
 Written by the orchestrator of 2026-11-20 and 21 (Claude) at the PI's word of about 13:35 on 2026-11-21: "start to
 drain these agents, update handoff docs as they drain. no new agenst. will handoff toanother". Times are the pod's
