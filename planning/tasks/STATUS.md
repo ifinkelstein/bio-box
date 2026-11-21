@@ -339,6 +339,11 @@ signal that should not have been given. Read this before trusting "all passed" (
   `ACCEPTED` entry in one commit; a copy of the frozen tree `rel1120` with only the new `train_est.py` in it (the
   release's own code must not change mid-release); `train_est.py rates` by hand must then exit 0; then
   `release_train.sh run` from that copy, which resumes at `cluster.nr50.20.align.part-00002`. `/tmp`: 420 GB free.
+  **Stage `G1` also waits for card B-61** (the orchestrator's reading, 07:05): its inputs are 7,139 gzip MAG
+  files with about 1.23 million contigs, and card B-58's arm of many small contigs cost 4.94 CPU-min per Gbp
+  stored against the rate's 4.11, so `G1`'s ingest would likely run at 1.2 to 1.25 of the present estimate
+  (41.51 CPU-minutes) and stop at its first step, as `C5`'s did. So the queue after the release is `V2`, then
+  `GV1` (plain FASTA; `V1` of the same kind ran at 1.021), then `G1` and `SPX1` once B-61 is merged.
 - **Lesson for every driver**: a queue must test a marker the step itself writes on success (`check/DONE`), never a
   script's exit status alone; and the orchestrator reads the last line of every `check.out` before a release is
   cut. `scripts/orchestrator/rel_wait.sh` trusted a log line; it is not to be reused without that change.
