@@ -1013,6 +1013,13 @@ Do, test first: an optional environment variable `BIOBOX_POD_JUMP` (one `user@ho
 Accept: the test fails first and passes; from off campus, `env BIOBOX_POD_JUMP=if2453@wilkcomp03.ccbb.utexas.edu sh scripts/pod_pytest.sh A-09 tests/r1/test_pod_pytest_jump.py` passes on the pod.
 Done 2026-11-20 (STATUS row A-09): the three scripts take `BIOBOX_POD_JUMP`; 262 passed on the merged tree through the new path (*measured*, wilkcomp02, 2026-11-20).
 
+### B-60 Refit the near-Cas CRISPR estimate on prokaryote stages
+**L** · Depends: B-53, C-47 · DEC-53 (a judged step more than 20% under its estimate is recorded and gets a refit card) · found 2026-11-20 by stage `C5`
+Files: `src/biobox/stage.py` (the CRISPR cost constants only), `tests/r1/test_b53_step_estimates.py` (or a new test beside it), `RUNBOOK.md` rates
+Evidence (*measured*, wilkcomp02, 2026-11-20, stage `C5`'s run records, `planning/measurements/2026-11-20_stage_C5.md`): the near-Cas CRISPR producer cost 0.758 of its estimate and the default producer 0.837, on 2,653 contigs and 9.11 Gbp of complete prokaryote genomes. Card B-53 fitted `CRISPR_CPU_S_PER_GBP` and `CRISPR_NEAR_CAS_COST` with plasmid and circular-virus stages in view, where many short contigs carry a per-contig cost.
+Do, test first: bring both producers' estimates within 15% of their run records on every built stage (`S1`, `P1` to `P6`, `H1`, `PL1`, `V1`, `C5`: the records are in the root's `runs/`, read-only), by whatever term the data supports (a per-contig term beside the per-base one is the first thing to try); no built stage's published file or plan changes. State each stage's ratio before and after.
+Accept: the test fails first on `C5`'s near-Cas record (over 20% off) and passes; every built stage within 15% for both producers, or the stages that cannot be brought in are named with the reason.
+
 ### A-11 Stage and release drivers lose a failed mode's exit status
 **L** · Depends: C-47 (its fix is the model) · found 2026-11-20: card C-47's `check` failed and its queue went on
 Files: `scripts/stress/build_stage_pod/c48c_v1_driver.sh`, `scripts/stress/build_stage_pod/release_train.sh`, `scripts/orchestrator/rel_wait.sh`, any other driver under `scripts/stress/build_stage_pod/` with the same form (list them in the report), `tests/r1/test_driver_exit_status.py` (new)

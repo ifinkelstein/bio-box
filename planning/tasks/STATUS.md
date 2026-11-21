@@ -256,6 +256,15 @@ signal that should not have been given. Read this before trusting "all passed" (
   log line after its `case`, so a mode that returned a failure without `fail` would be lost, and it ignores the
   status of the hashing in `snapshot` and of `bio-box releases`. To be fixed in the same way before it is reused
   (card A-11).
+- **Card C-47 at 23:30**: its agent handed back with the fixes committed (`task/C-47` at `0d4bbb7`, integration
+  merged into it, not pushed, not merged here), the stage note written
+  (`planning/measurements/2026-11-20_stage_C5.md` on that branch) and **part (2) mid-run on the pod**: unit
+  `c47-evalcluster` is clustering `C5`'s 3,972,512 proteins at NR90 in scratch (`/tmp/if2453/c47/eval/`, release name
+  `c47eval5` there only; 8 threads; 645.9 CPU-min by the code's estimate). Left to do, in order: wait for it;
+  launch `evaluate` as the agent's report gives it (`CHECK_DIR=/tmp/if2453/c47/check2`); **stop for the PI above 1%
+  wrong or 1% missed pairs**; the note `2026-11-20_c5_pfam_by_representatives.md`; the whole suite on the branch;
+  then the orchestrator's audit and merge. Cards that wait on that merge: B-58, B-60 (new: the near-Cas CRISPR
+  estimate ran at 0.758 on `C5`), A-11, B-47a to B-47e.
 - **Lesson for every driver**: a queue must test a marker the step itself writes on success (`check/DONE`), never a
   script's exit status alone; and the orchestrator reads the last line of every `check.out` before a release is
   cut. `scripts/orchestrator/rel_wait.sh` trusted a log line; it is not to be reused without that change.
