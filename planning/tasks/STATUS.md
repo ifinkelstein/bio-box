@@ -292,7 +292,7 @@ signal that should not have been given. Read this before trusting "all passed" (
   Release `r26.11.2`: NR90 alignment, part 15 at 02:40. `/tmp`: 456 GB free at 02:45; card C-47's test
   scratch was cleared at the merge (`ci/C-47` kept: the driver's tree, needed for DEC-35 (7)).
 - **Actions was red on the three merges of the night (C-47 `0f17237`, C-51 `eba541d`, A-11 `5f6789f`), one
-  cause, fixed at 03:45.** `ci` job `r0-r1`: `9 failed, 2611 passed, 255 skipped`, all nine in
+  cause, fixed and pushed at 03:34 (`07c3538`).** `ci` job `r0-r1`: `9 failed, 2611 passed, 255 skipped`, all nine in
   `tests/r1/test_c47_est_accept.py`: `FileNotFoundError: minced not on PATH` (*measured*, Actions run 44885607174).
   `c47_est.py rates` names the CRISPR steps by their producer, which asks the MinCED binary for its version; the
   pod's image has it and the Actions runner does not (card E-12), so the branch's whole suite on the pod was green
