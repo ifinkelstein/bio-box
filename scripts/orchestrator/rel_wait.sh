@@ -16,8 +16,9 @@
 #     check/DONE and backup/DONE in DRIVER_DIR, and DRIVER_DIR/backup.tsv. The queue's log line is never the
 #     evidence (card A-11: on 2026-11-20 a driver exited 0 after its check failed, the queue wrote "all passed", and
 #     this waiter started a release on that line); the line is only printed when the markers are not all there;
-#   - no build unit of ours is active (c47-*, c48c-*, c46-train-*, and <basename of DRIVER_DIR>-*: the stage driver's
-#     units of card A-12 are named for the stage in lower case, and its directory is /tmp/if2453/stages/<stage>);
+#   - no build unit of ours is active (c47-*, c48c-*, c46-train-*, <basename of DRIVER_DIR>-*, and <stage>-<n> of every
+#     stages/<STAGE>.conf of the tree: card A-12's stage driver), looked for after the queue, again just before the
+#     dry run and again just before the run;
 #   - the whole test suite of the frozen tree (units ci-SUITE-0..7) has ended and every shard's last line says
 #     "passed" and not "failed" or "error".
 # Then: release_train.sh --dry-run (logged), then release_train.sh run. The train has its own guards (STOP, free
@@ -62,9 +63,24 @@ while :; do
   sleep 60
 done
 
-act=$(systemctl --user list-units --type=service --state=active,activating,deactivating --no-legend --plain \
-  'c47-*' 'c48c-*' 'c46-train-*' "$(basename "$DRIVER_DIR")-*" | awk '{print $1}' | paste -sd' ' -)
-if [ -n "$act" ]; then say "STOPPED: a build unit is active ($act); nothing started"; exit 6; fi
+# the build units of ours: the older names, the stage directory's own (<basename>-*), and every stage of the tree's
+# stage driver (stages/<STAGE>.conf: units <stage in lower case>-<n>, card A-12); looked for again just before the
+# dry run and just before the run, since the suite's wait can last hours
+build_units() {
+  local pats=('c47-*' 'c48c-*' 'c46-train-*' "$(basename "$DRIVER_DIR")-*") f s
+  for f in "$TREE"/scripts/stress/build_stage_pod/stages/*.conf; do
+    [ -e "$f" ] || continue
+    s=$(basename "$f" .conf)
+    [[ "$s" =~ ^[A-Z][A-Za-z0-9]{0,15}$ ]] && pats+=("${s,,}-[0-9]*")
+  done
+  systemctl --user list-units --type=service --state=active,activating,deactivating --no-legend --plain "${pats[@]}" \
+    | awk '{print $1}' | paste -sd' ' -
+}
+no_build_units() {
+  act=$(build_units)
+  if [ -n "$act" ]; then say "STOPPED: a build unit is active ($act); nothing started"; exit 6; fi
+}
+no_build_units
 
 # the suite of the frozen tree must have ended, every shard passed
 n=0
@@ -83,6 +99,7 @@ for s in 0 1 2 3 4 5 6 7; do
   esac
 done
 if [ -e "$ROOT/STOP" ]; then say "STOPPED: $ROOT/STOP exists; nothing started"; exit 3; fi
+no_build_units
 
 say "dry run:"
 ROOT=$ROOT TREE=$TREE bash "$TREE/scripts/stress/build_stage_pod/release_train.sh" --dry-run > "$W/dry_run.txt" 2>&1
@@ -90,6 +107,8 @@ rc=$?
 cat "$W/dry_run.txt"
 if [ "$rc" != 0 ]; then say "STOPPED: the dry run exited $rc; nothing started"; exit 8; fi
 if ! grep -q '^Action: cut' "$W/dry_run.txt"; then say "STOPPED: the dry run does not say 'Action: cut'; nothing started"; exit 8; fi
+if [ -e "$ROOT/STOP" ]; then say "STOPPED: $ROOT/STOP exists; nothing started"; exit 3; fi
+no_build_units
 
 say "release_train.sh run: start (Q=56: the unit's CPU quota; build-stage's own allowance holds the cap of the hour)"
 Q=56 ROOT=$ROOT TREE=$TREE bash "$TREE/scripts/stress/build_stage_pod/release_train.sh" run > "$W/train.out" 2>&1

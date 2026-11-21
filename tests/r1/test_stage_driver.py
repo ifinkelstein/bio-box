@@ -60,24 +60,61 @@ exec "$@"
 NICE = '#!/bin/sh\n[ "$1" = -n ] && shift 2\nexec "$@"\n'
 IONICE = '#!/bin/sh\n[ "$1" = -c ] && shift 2\nexec "$@"\n'
 NOOP = "#!/bin/sh\nexit 0\n"
+SLEEP = '#!/bin/sh\n[ -n "${FAKE_SLEEP:-}" ] && exec /bin/sleep "$FAKE_SLEEP"\nexit 0\n'
+DF = """#!/bin/sh
+case "$*" in *--output=avail*) echo "Avail"; echo "${FAKE_DF_GB:-500}"; exit 0 ;; esac
+echo "Filesystem Size Used Avail Use% Mounted on"; echo "/dev/fake 1T 1G ${FAKE_DF_GB:-500}G 1% /"
+"""
+SHA256SUM = """#!/bin/sh
+if [ -n "${FAKE_SHA_EMPTY:-}" ]; then case "$*" in *.tar*) exit 0 ;; esac; fi
+exec /usr/bin/sha256sum "$@"
+"""
+# A unit's state: FAKE_STATES (one answer a line: active, inactive or fail, which is a failed systemctl call), else
+# FAKE_ACTIVE_FILE (active while its count is above 0), else inactive. A unit that turns inactive gets the exit line
+# pod_run.sh's wrapper writes ("pod_run: <unit> exited <rc>"), which the pod_run stub left pending.
 SYSTEMCTL = """#!/bin/sh
 echo "systemctl $*" >> "$FAKE_LOG"
+d=$(dirname "$FAKE_LOG")
+finish() { f="$d/pod.$1"; [ -f "$f" ] || return 0; read -r log rc < "$f"; echo "pod_run: $1 exited $rc" >> "$log"; rm -f "$f"; }
+state() {
+  if [ -n "${FAKE_STOP_ON_ACTIVE:-}" ]; then touch "$FAKE_STOP_ON_ACTIVE"; fi
+  if [ -n "${FAKE_STATES:-}" ] && [ -s "$FAKE_STATES" ]; then
+    s=$(head -n 1 "$FAKE_STATES"); sed -i 1d "$FAKE_STATES"
+  elif [ -n "${FAKE_ACTIVE_FILE:-}" ] && [ -s "$FAKE_ACTIVE_FILE" ] && [ "$(cat "$FAKE_ACTIVE_FILE")" -gt 0 ]; then
+    echo $(( $(cat "$FAKE_ACTIVE_FILE") - 1 )) > "$FAKE_ACTIVE_FILE"; s=active
+  else
+    s=inactive
+  fi
+  echo "$s"
+}
+last=""
+for a in "$@"; do last=$a; done
 case "$*" in
   *is-active*)
-    if [ -n "${FAKE_STOP_ON_ACTIVE:-}" ]; then touch "$FAKE_STOP_ON_ACTIVE"; fi
-    if [ -n "${FAKE_ACTIVE_FILE:-}" ] && [ -s "$FAKE_ACTIVE_FILE" ]; then
-      n=$(cat "$FAKE_ACTIVE_FILE")
-      if [ "$n" -gt 0 ]; then echo $((n - 1)) > "$FAKE_ACTIVE_FILE"; exit 0; fi
-    fi
-    exit 3 ;;
+    s=$(state)
+    case "$s" in active) exit 0 ;; fail) exit 1 ;; esac
+    finish "$last"; exit 3 ;;
+  *"show -p ActiveState"*)
+    s=$(state)
+    [ "$s" = fail ] && exit 1
+    [ "$s" = inactive ] && finish "$last"
+    echo "$s"; exit 0 ;;
   *list-units*)
-    for u in ${FAKE_UNITS:-}; do
+    units="${FAKE_UNITS:-}"
+    [ -n "${FAKE_UNITS_FILE:-}" ] && [ -f "$FAKE_UNITS_FILE" ] && units="$units $(cat "$FAKE_UNITS_FILE")"
+    for u in $units; do
       for a in "$@"; do
         case "$a" in --*|list-units) continue ;; esac
         case "$u" in $a) echo "$u loaded active running x"; break ;; esac
       done
     done
     exit 0 ;;
+  *" stop "*)
+    if [ -n "${FAKE_STOP_FAIL:-}" ] && [ -s "$FAKE_STOP_FAIL" ] && [ "$(cat "$FAKE_STOP_FAIL")" -gt 0 ]; then
+      echo $(( $(cat "$FAKE_STOP_FAIL") - 1 )) > "$FAKE_STOP_FAIL"; exit 1
+    fi
+    exit 0 ;;
+  *set-property*) exit "${FAKE_SETPROP_RC:-0}" ;;
 esac
 exit 0
 """
@@ -95,6 +132,10 @@ case "$*" in
     want=--out-plan; o=$(arg "$@"); [ -n "$o" ] && echo '{}' > "$o"
     echo '{"estimate": "fake"}'; exit "${FAKE_EST_RC:-0}" ;;
   *"stage_est.py rates"*) echo '{"over_20pct": []}'; exit "${FAKE_RATES_RC:-0}" ;;
+  *"stage_est.py cap"*)
+    if [ -n "${FAKE_QUOTAS:-}" ] && [ -s "$FAKE_QUOTAS" ]; then head -n 1 "$FAKE_QUOTAS"; sed -i 1d "$FAKE_QUOTAS"
+    else echo "${FAKE_QUOTA:-54}"; fi
+    exit 0 ;;
   *"stage_est.py complete"*) exit "${FAKE_COMPLETE_RC:-0}" ;;
   *"stage_est.py fixture"*)
     want=--out; o=$(arg "$@"); mkdir -p "$o/E" "$o/R"
@@ -149,7 +190,9 @@ if [ "$rc" = 0 ] && [ -n "$root" ] && [ -n "$st" ]; then
   if [ -n "$rel" ]; then mkdir -p "$root/manifests"; echo "{}" > "$root/manifests/release=$rel.json"; fi
 fi
 mkdir -p "$(dirname "$log")"
-echo "pod_run: $unit exited $rc" >> "$log"
+echo "pod_run: $unit started" >> "$log"
+# the exit line comes when the unit ends: the systemctl stub writes it when it first answers that the unit is inactive
+echo "$log $rc" > "$(dirname "$FAKE_LOG")/pod.$unit"
 exit 0
 """
 PROFILE = """max_threads_day: 40
@@ -202,13 +245,17 @@ class World:
         self.c = self.pod / "stages" / stage.lower()
         for d in (self.fake, self.bin / "stages", self.tree / "scripts", self.tree / "profiles", self.root, self.stor):
             d.mkdir(parents=True, exist_ok=True)
-        for name, text in (("systemd-run", SYSTEMD_RUN), ("nice", NICE), ("ionice", IONICE), ("sleep", NOOP),
+        for name, text in (("systemd-run", SYSTEMD_RUN), ("nice", NICE), ("ionice", IONICE), ("sleep", SLEEP),
                            ("top", NOOP), ("uptime", NOOP), ("systemctl", SYSTEMCTL), ("singularity", SINGULARITY),
-                           ("python3", PYTHON3)):
+                           ("python3", PYTHON3), ("df", DF), ("sha256sum", SHA256SUM)):
             (self.fake / name).write_text(text)
             (self.fake / name).chmod(0o755)
         (self.tree / "scripts" / "pod_run.sh").write_text(POD_RUN)
         (self.tree / "profiles" / "wilkcomp02.yaml").write_text(PROFILE)
+        # the notes and decision rows a conf names are checked against the tree (card A-12 (8))
+        (self.tree / "planning" / "measurements").mkdir(parents=True)
+        (self.tree / "planning" / "measurements" / "2026-11-20_stage_V1.md").write_text("a note\n")
+        (self.tree / "planning" / "DECISIONS.md").write_text("| DEC-56 | 2026-11-20 | accept C5's ingest |\n")
         # the root: three published releases (manifests), one release_def without a manifest, three other stages
         (self.root / "manifests").mkdir()
         for r in ("rA", "rB", "r26.11.1"):
@@ -251,8 +298,7 @@ class World:
 
     def env(self, **extra: str) -> dict:
         return {**os.environ, "PATH": f"{self.fake}:{os.environ['PATH']}", "FAKE_LOG": str(self.log),
-                "REAL_PYTHON": sys.executable, "TREE": str(self.tree), "BACKUP_DIR": str(self.stor),
-                "START_MIN_GB": "0", "TMP_MIN_GB": "0", **extra}
+                "REAL_PYTHON": sys.executable, "TREE": str(self.tree), "BACKUP_DIR": str(self.stor), **extra}
 
     def drive(self, mode: str, *more: str, stage: str | None = None, **extra: str) -> subprocess.CompletedProcess:
         drv = self.script("stage_driver.sh")
@@ -260,10 +306,15 @@ class World:
                               env=self.env(**extra),
                               capture_output=True, text=True, timeout=300)
 
-    def mark(self, *modes: str) -> None:
+    def conf_sha(self, stage: str | None = None) -> str:
+        return hashlib.sha256((self.bin / "stages" / f"{stage or self.stage}.conf").read_bytes()).hexdigest()
+
+    def mark(self, *modes: str, c: Path | None = None) -> None:
+        """Markers as the driver writes them: the conf's sha256 (card A-12 (4))."""
         for m in modes:
-            (self.c / m).mkdir(parents=True, exist_ok=True)
-            (self.c / m / "DONE").touch()
+            d = (c or self.c) / m
+            d.mkdir(parents=True, exist_ok=True)
+            (d / "DONE").write_text(self.conf_sha() + "\n")
 
     def done(self, mode: str) -> bool:
         return (self.c / mode / "DONE").exists()
@@ -391,22 +442,62 @@ def test_the_repository_has_a_conf_for_each_stage_whose_note_gives_every_value()
 @pytest.mark.parametrize("path", _repo_confs(), ids=lambda p: p.stem)
 def test_each_repository_conf_is_valid_and_its_sums_and_figures_are_its_notes(path):
     est = _module("stage_est")
-    c = est.read_conf(path, path.stem)
+    c = est.read_conf(path, path.stem, tree=REPO)  # every note it names is a file of the tree
     text = _notes_text(c)
     for h, name in c.sums:
         assert h in text, f"{path.name}: sum of {name} is not in its note"
     for step, (fig, src) in c.judge.items():
-        assert (REPO / src).is_file()
         assert f"{fig:g}" in (REPO / src).read_text(), f"{path.name}: {step} {fig} is not in {src}"
+    for st, (n, src) in c.expect.items():
+        note = (REPO / src).read_text()
+        assert f"{n:,}" in note or f" {n} " in note or f"| {n} |" in note, f"{path.name}: held_by {st} {n} not in {src}"
     assert not c.accepted, "a new stage carries no accepted record"
     assert c.inputs == Path(f"/tmp/if2453/s2/inputs/{c.stage}")
 
 
-def test_gv1_comes_after_v2_and_judges_its_gene_calling_against_the_notes_figure():
+def test_gv1_comes_after_v2_judges_its_gene_calling_against_the_notes_figure_and_expects_v2s_contigs():
     est = _module("stage_est")
-    c = est.read_conf(STAGES / "GV1.conf", "GV1")
+    c = est.read_conf(STAGES / "GV1.conf", "GV1", tree=REPO)
     assert c.after == ("V2",)
     assert c.judge["genecall"][0] == 236.0
+    assert c.expect["V2"][0] == 17664
+
+
+@pytest.mark.parametrize("extra,why", [
+    ("ACCEPTED=ingest 45.803 38.057 DEC-999\n", "a decision row the tree's DECISIONS.md does not have"),
+    ("NOTE=planning/measurements/no_such_note.md\n", "a note that is not a file of the tree"),
+    ("JUDGE=genecall 10 planning/measurements/no_such_note.md\n", "a JUDGE figure's note that is not a file"),
+    ("EXPECT=held_by V2 5 planning/measurements/no_such_note.md\n", "an EXPECT note that is not a file"),
+])
+def test_a_conf_naming_what_the_tree_does_not_hold_is_refused(tmp_path, extra, why):
+    est = _module("stage_est")
+    tree = tmp_path / "tree"
+    (tree / "planning" / "measurements").mkdir(parents=True)
+    (tree / "planning" / "measurements" / "2026-11-20_stage_V1.md").write_text("x")
+    (tree / "planning" / "DECISIONS.md").write_text("| DEC-56 | ... |\n")
+    p = _conf_file(tmp_path, conf_text("ZZ1", Path("/tmp/x"), GOOD) + extra)
+    with pytest.raises(est.ConfError):
+        est.read_conf(p, "ZZ1", tree=tree)
+    good = _conf_file(tmp_path, conf_text("ZZ1", Path("/tmp/x"), GOOD) + "ACCEPTED=ingest 45.803 38.057 DEC-56\n")
+    assert est.read_conf(good, "ZZ1", tree=tree).accepted
+
+
+def test_a_record_stopped_against_a_judge_figure_can_be_accepted_by_its_group_name(tmp_path):
+    est = _module("stage_est")
+    text = conf_text("ZZ1", Path("/tmp/x"), GOOD, extra="JUDGE=genecall 25 planning/measurements/2026-11-20_stage_V1.md\n"
+                     "ACCEPTED=genecall.note 40.100 25.000 DEC-56\n")
+    c = est.read_conf(_conf_file(tmp_path, text), "ZZ1")
+    doc = est.judge_items([_item("genecall.note", 40.1, 25.0)], c.accepted)
+    assert doc["over_20pct"] == [] and doc["accepted_over_20pct"] == {"genecall.note": "DEC-56"}
+
+
+@pytest.mark.parametrize("bad", ["EXPECT=held_by ZZ1 5 planning/measurements/a.md\n",
+                                 "EXPECT=held_by V2 many planning/measurements/a.md\n",
+                                 "EXPECT=owned V2 5 planning/measurements/a.md\n"])
+def test_a_bad_expect_line_is_refused(tmp_path, bad):
+    est = _module("stage_est")
+    with pytest.raises(est.ConfError):
+        est.read_conf(_conf_file(tmp_path, conf_text("ZZ1", Path("/tmp/x"), GOOD) + bad), "ZZ1")
 
 
 # --------------------------------------------------------------------------------------------------------------
@@ -688,7 +779,7 @@ def test_run_launches_build_stage_with_the_confs_values_and_writes_its_marker(tm
             f"--objects <T>/if2453/s2/inputs/ZZ1/objects.json --library pfam 38.2 {PFAM} gathering --crispr "
             "--threads 6 --scan-cpus 4")
     assert _build_line(w) == want
-    assert "pod_run-opt --threads 56" in w.calls(), "the unit's quota is the profile's night cap"
+    assert "pod_run-opt --threads 54" in w.calls(), "the unit's quota: the cap of the hour less the helpers' 2"
     assert "pod_run-opt --mem 200G" in w.calls()
     assert "stage_est.py complete" in w.calls()
     # the rate guard reads the FASTA bytes the estimate measured, never decompressing every object again
@@ -884,7 +975,7 @@ def test_check_writes_its_marker_and_the_list_of_files_added(tmp_path):
     assert w.done("check")
     added = (w.c / "root_added.tsv").read_text()
     assert f"l0seq/x/stage={w.stage}/part-0.parquet\t3\t" in added
-    assert added == (w.c / "check" / "root_added.tsv").read_text()
+    assert added == (w.c / "check" / "1" / "root_added.tsv").read_text()
 
 
 def test_check_passes_the_conf_to_the_check_script(tmp_path):
@@ -1167,20 +1258,18 @@ def test_rel_wait_holds_a_release_while_a_unit_of_the_stage_it_waits_for_is_acti
 # --------------------------------------------------------------------------------------------------------------
 # the acceptance comparison: c47_driver.sh and stage_driver.sh launch the same build-stage command for C5
 
-C5_GENOMES_SHA = "1c65060c80ef120d4550d702a76c4a9c5c3eff17ee25f2694d5a172873468573"
-C5_OBJECTS_SHA = "09d742d70a05528e0bd91b735605b63e0f67ad3758e9f1d02107be30bf5483ad"
-
-
 def test_c47_and_the_stage_driver_launch_the_same_build_stage_command_for_c5(tmp_path):
     w = World(tmp_path, stage="C5")
     c = w.pod / "c47"
     inputs = w.pod / "s2" / "inputs"
-    w.write_conf("C5", conf_text("C5", inputs / "C5", {"genomes.json": C5_GENOMES_SHA, "objects.json": C5_OBJECTS_SHA},
-                                 extra="ACCEPTED=ingest 45.803 38.057 DEC-56\n"))
+    # C5's values (c47_driver.sh: depth annotated, Pfam 38.2, CRISPR, DEC-56's accepted record); the sums are those of
+    # this test's input files, since `run` checks them again (card A-12 (4)) and they enter no command line
+    sums = {n: hashlib.sha256((inputs / "C5" / n).read_bytes()).hexdigest() for n in ("genomes.json", "objects.json")}
+    w.write_conf("C5", conf_text("C5", inputs / "C5", sums, extra="ACCEPTED=ingest 45.803 38.057 DEC-56\n"))
     # c47_driver.sh run, with its own overrides and its markers
-    for m in ("before/DONE", "rh/OK"):
-        (c / m).parent.mkdir(parents=True, exist_ok=True)
-        (c / m).touch()
+    w.mark("before", c=c)
+    (c / "rh").mkdir(parents=True, exist_ok=True)
+    (c / "rh" / "OK").touch()
     (c / "estimate").mkdir(parents=True, exist_ok=True)
     (c / "estimate" / "before.json").write_text("{}")
     runs = w.root / "runs" / "stage=C5"
@@ -1197,9 +1286,7 @@ def test_c47_and_the_stage_driver_launch_the_same_build_stage_command_for_c5(tmp
     old_line = next(ln for ln in w.calls().splitlines() if ln.startswith("pod_run "))
     w.log.write_text("")
     # stage_driver.sh run, in the same directory, so the profile path is the same
-    for m in ("estimate", "rehearse"):
-        (c / m).mkdir(parents=True, exist_ok=True)
-        (c / m / "DONE").touch()
+    w.mark("estimate", "rehearse", c=c)
     new = w.drive("run", STAGE_DIR=str(c), STAGE_ROOT=str(w.root))
     assert new.returncode == 0, new.stdout + new.stderr + (c / "driver.log").read_text()
     new_line = next(ln for ln in w.calls().splitlines() if ln.startswith("pod_run "))
@@ -1210,5 +1297,590 @@ def test_c47_and_the_stage_driver_launch_the_same_build_stage_command_for_c5(tmp
     assert old_unit.startswith("c47-c5-") and new_unit.startswith("c5-")
     assert new_cmd == old_cmd
     for name in ("stage_driver.sh", "c47_driver.sh"):  # the copies never write through to the tree's scripts
-        assert "REAL_ROOT=/tmp/if2453/r10/root" in (BSP / name).read_text() or name == "c47_driver.sh"
+        assert "/tmp/if2453/r10/root" in (BSP / name).read_text()
         assert str(w.pod) not in (BSP / name).read_text()
+
+
+# ==============================================================================================================
+# Card A-12's amendment after the independent review (2026-11-21): one block per point
+
+# (1) `run` leaves its loop only on the unit's exit line or a real inactive answer; a trap stops the unit
+
+def _lines(path: Path, *rows: str) -> str:
+    path.write_text("".join(r + "\n" for r in rows))
+    return str(path)
+
+
+def test_1_a_failed_systemctl_answer_does_not_end_the_watch(tmp_path):
+    w = World(tmp_path)
+    _run_ready(w)
+    states = _lines(tmp_path / "states", "fail", "active", "fail", "active", "inactive")
+    _ok(w.drive("run", FAKE_STATES=states), w, "run-a-failed-answer")
+    assert w.done("run")
+    assert w.calls().count("show -p ActiveState --value zz1-1") == 5
+    assert "no answer from systemd about zz1-1" in _driver_log(w)
+
+
+def test_1_a_stop_that_fails_is_asked_again_and_the_driver_waits_for_the_unit_to_go(tmp_path):
+    w = World(tmp_path)
+    _run_ready(w)
+    active = tmp_path / "active"
+    active.write_text("20")
+    stopfail = tmp_path / "stopfail"
+    stopfail.write_text("1")
+    got = w.drive("run", FAKE_ACTIVE_FILE=str(active), FAKE_STOP_FAIL=str(stopfail), FAKE_GUARD_RC="3")
+    assert got.returncode != 0 and (w.c / "run" / "FAILED").exists()
+    assert w.calls().count("systemctl --user stop zz1-1") == 2, "the failed stop is asked again"
+    assert active.read_text().strip() == "0", "the driver said 'stopped' only once the unit was gone"
+
+
+def test_1_the_driver_killed_while_its_unit_runs_stops_the_unit(tmp_path):
+    import signal
+    import time
+
+    w = World(tmp_path)
+    _run_ready(w)
+    active = tmp_path / "active"
+    active.write_text("300")
+    drv = w.script("stage_driver.sh")
+    p = subprocess.Popen(["bash", str(drv), w.stage, "run"], env=w.env(FAKE_ACTIVE_FILE=str(active), FAKE_SLEEP="0.1"),
+                         stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+    t0 = time.monotonic()
+    while "show -p ActiveState --value zz1-1" not in w.calls() and time.monotonic() - t0 < 60:
+        time.sleep(0.2)
+    p.send_signal(signal.SIGTERM)
+    p.communicate(timeout=120)
+    assert p.returncode != 0
+    assert "systemctl --user stop zz1-1" in w.calls(), "the trap stops the unit the driver leaves"
+    assert "the driver exits (status 143) while zz1-1 runs" in _driver_log(w)
+
+
+# (2) the release train and the release waiter know the stage driver's units
+
+def test_2_the_release_train_does_not_start_while_a_stage_unit_builds(tmp_path):
+    w = World(tmp_path)
+    train = w.script("release_train.sh")
+    got = subprocess.run(["bash", str(train), "run", "--no-live-cpu"], capture_output=True, text=True, timeout=120,
+                         env=w.env(ROOT=str(w.root), FAKE_UNITS="zz1-3"))
+    assert got.returncode != 0
+    assert "active build unit(s): zz1-3" in got.stderr
+    other = subprocess.run(["bash", str(train), "run", "--no-live-cpu"], capture_output=True, text=True, timeout=120,
+                           env=w.env(ROOT=str(w.root), FAKE_UNITS="zz1-queue"))
+    assert "active build unit(s)" not in other.stderr
+
+
+def test_2_rel_wait_looks_again_just_before_the_run(tmp_path):
+    pod = tmp_path / "if2453"
+    d = pod / "stages" / "v2"
+    for m in ("before", "run", "after", "check", "backup"):
+        (d / m).mkdir(parents=True)
+        (d / m / "DONE").touch()
+    (d / "backup.tsv").write_text("x\t1\tab\n")
+    (pod / "c46" / "wait").mkdir(parents=True)
+    (pod / "r10" / "root").mkdir(parents=True)
+    tree = pod / "ci" / "s9"
+    (tree / "scripts" / "stress" / "build_stage_pod" / "stages").mkdir(parents=True)
+    (tree / "scripts" / "stress" / "build_stage_pod" / "stages" / "GV1.conf").write_text("STAGE=GV1\n")
+    units = tmp_path / "units"
+    units.write_text("")
+    (tree / "scripts" / "stress" / "build_stage_pod" / "release_train.sh").write_text(
+        '#!/bin/bash\necho "release_train $*" >> "$FAKE_LOG"\n'
+        f'[ "$1" = --dry-run ] && {{ echo gv1-2 > {units}; echo "Action: cut"; }}\nexit 0\n')
+    suite = pod / "ci-tmp" / "s9-detached"
+    suite.mkdir(parents=True)
+    for k in range(8):
+        (suite / f"log.{k}").write_text("10 passed in 1s\n")
+    fake = tmp_path / "fakebin"
+    fake.mkdir()
+    for name, text in (("systemctl", SYSTEMCTL), ("sleep", NOOP)):
+        (fake / name).write_text(text)
+        (fake / name).chmod(0o755)
+    sh = tmp_path / "rel_wait.sh"
+    sh.write_text((ORCH / "rel_wait.sh").read_text().replace("/tmp/if2453", str(pod)))
+    log = tmp_path / "fake.log"
+    log.write_text("")
+    env = {**os.environ, "PATH": f"{fake}:{os.environ['PATH']}", "FAKE_LOG": str(log), "FAKE_UNITS_FILE": str(units)}
+    got = subprocess.run(["bash", str(sh), str(d), "s9"], env=env, capture_output=True, text=True, timeout=120)
+    assert got.returncode == 6, got.stdout
+    assert "gv1-2" in got.stdout
+    assert "release_train run" not in log.read_text(), "a unit of stage GV1 began after the dry run: no run"
+
+
+# (3), (6), (7) the check, the rate guard and the completeness check on a constructed root (no tool needed)
+
+def _u(i: int) -> bytes:
+    return bytes([i]) * 16
+
+
+def _write(root: Path, rel: str, rows: list[dict]) -> int:
+    import pyarrow as pa
+    import pyarrow.parquet as pq
+
+    p = root / rel
+    p.parent.mkdir(parents=True, exist_ok=True)
+    pq.write_table(pa.Table.from_pylist(rows), p)
+    return p.stat().st_size
+
+
+def _dom(p: bytes, acc: str, score: float) -> dict:
+    return {"protein_uid": p, "model_acc": acc, "model_name": acc, "model_len": 100, "seq_bitscore": score,
+            "seq_evalue_zref": 1e-10, "dom_bitscore": score, "dom_ievalue_zref": 1e-10, "env_start": 1, "env_end": 50,
+            "ali_start": 1, "ali_end": 50, "hmm_from": 1, "hmm_to": 50, "cutoff": "gathering", "z": 1000,
+            "dom_z": 1000}
+
+
+def build_root(tmp: Path, mut=None, **conf_kw) -> dict:
+    """A stage ZQ as build-stage leaves it, by hand: contigs A and B stored (B listed by two genomes: one row within
+    the stage, DEC-27), H held by stage OA (DEC-26); genes on A and B; a Pfam plan whose copy from OA is the row of the
+    protein on H (cards B-47b, C-38h); both CRISPR producers; a published gene-call plan; the two snapshots."""
+    from biobox.l1 import crispr, genecall
+
+    gcv = genecall.GENE_CALL_VERSION
+    p1, p2 = crispr.producer(), crispr.near_cas_producer("38.2")
+    A, B, H = _u(1), _u(2), _u(3)
+    g1, g2, g3 = _u(11), _u(12), _u(13)
+    pr1, pr2, pr3 = _u(21), _u(22), _u(23)
+
+    def gi(c, g):
+        return {"contig_uid": c, "genome_uid": g, "kind": "virus", "genetic_code": 11, "is_circular": False,
+                "assembly_quality": "complete"}
+
+    def ci(c, n, dv=True):
+        return {"contig_uid": c, "contig_len": n, "is_default_variant": dv}
+
+    def led(c, why):
+        return {"object_key": c, "reason_code": why}
+
+    def cl(n_in, kept, why="ok"):
+        return {"n_in": n_in, "n_kept": kept, "n_rejected": 0, "reason_code": why}
+
+    S = {
+        "T": {
+            "gi": ["l0seq/genome_input/stage=ZQ/part-0.parquet", [gi(A, g1), gi(B, g1), gi(B, g2), gi(H, g3)]],
+            "ci": ["l0seq/contig_index/stage=ZQ/part-0.parquet", [ci(A, 2000), ci(B, 1500)]],
+            "ingled": ["ledger/stage=ZQ/step=ingest/part-0.parquet",
+                       [{"reason_code": "ok", "n_bases_rejected": 0}, {"reason_code": "below:1000", "n_bases_rejected": 500}]],
+            "occ": ["l0seq/contig_occurrence/stage=ZQ/part-0.parquet", [{"contig_uid": c} for c in (A, B, H)]],
+            "label": ["l0seq/contig_label/stage=ZQ/part-0.parquet", [{"contig_uid": A}]],
+            "gcled": ["ledger/stage=ZQ/step=genecall/part-0.parquet",
+                      [led(A, "ok"), led(B, "ok"), led(B, f"owned_by:ZQ/{g1.hex()}"), led(H, "owned_by:OA")]],
+            "fp": [f"l1/feature_protein/gene_call_version={gcv}/stage=ZQ/part-0.parquet",
+                   [{"contig_uid": A, "protein_uid": pr1}, {"contig_uid": B, "protein_uid": pr2}]],
+            "ps": [f"l0seq/protein_seq/gene_call_version={gcv}/stage=ZQ/part-0.parquet",
+                   [{"protein_uid": pr1, "length": 100}, {"protein_uid": pr2, "length": 200}]],
+            "dom": ["l1/domains/library=pfam-38.2/stage=ZQ/part-0.parquet", [_dom(pr1, "PF1", 30.0), _dom(pr3, "PF3", 40.0)]],
+            "feat1": [f"l1/feature/producer={p1}/stage=ZQ/part-0.parquet", [{"feature_uid": _u(31)}]],
+            "elem1": [f"l1/crispr/producer={p1}/stage=ZQ/part-0.parquet", [{"feature_uid": _u(31)}]],
+            "cled1": [f"ledger/stage=ZQ/step=crispr-{p1}/part-0.parquet", [cl(1, 1), cl(0, 0), cl(0, 0, "owned_by:OA")]],
+            "feat2": [f"l1/feature/producer={p2}/stage=ZQ/part-0.parquet", [{"feature_uid": _u(32)}]],
+            "elem2": [f"l1/crispr/producer={p2}/stage=ZQ/part-0.parquet", [{"feature_uid": _u(32)}]],
+            "cled2": [f"ledger/stage=ZQ/step=crispr-{p2}/part-0.parquet", [cl(1, 1), cl(0, 0), cl(0, 0, "owned_by:OA")]],
+            "oaci": ["l0seq/contig_index/stage=OA/part-0.parquet", [ci(H, 3000)]],
+            "oafp": [f"l1/feature_protein/gene_call_version={gcv}/stage=OA/part-0.parquet",
+                     [{"contig_uid": H, "protein_uid": pr3}]],
+            "oaps": [f"l0seq/protein_seq/gene_call_version={gcv}/stage=OA/part-0.parquet",
+                     [{"protein_uid": pr3, "length": 300}]],
+            "oadom": ["l1/domains/library=pfam-38.2/stage=OA/part-0.parquet", [_dom(pr3, "PF3", 40.0)]],
+        },
+        "records": {
+            "ZQ": {"inputs": ["gi"], "ingest": ["ci", "ingled", "occ", "label"], "genecall": ["gcled", "fp", "ps"],
+                   f"crispr-{p1}": ["feat1", "elem1", "cled1"], "igr": [], "tapes": [], "domains-pfam-38.2": ["dom"],
+                   "domains-pfam-38.2.plan": [], "domains-pfam-38.2.shard-00000": [],
+                   f"crispr-{p2}": ["feat2", "elem2", "cled2"]},
+            "OA": {"ingest": ["oaci"], "genecall": ["oafp", "oaps"], "domains-pfam-38.2": ["oadom"]},
+        },
+        "cpu": {},
+        "plan": None,  # filled below once the paths are known
+        "gcplan": {"batches": [{"batch": 0, "genomes": 3, "bases": 3500, "estimate_cpu_min": 0.3}],
+                   "merge_estimate_cpu_min": 0.25, "genes_expected": 3},
+        "conf": {"depth": "annotated", "library": "pfam 38.2 gathering", "crispr": "yes", "minlen": 1000, **conf_kw},
+        "extra_conf": "", "p1": p1, "p2": p2, "u": {"A": A, "B": B, "H": H, "pr3": pr3, "pr1": pr1},
+    }
+    T = S["T"]
+    S["plan"] = {"stage": "ZQ", "proteins": 3, "residues": 600, "shards": [{"proteins": 2, "residues": 300}],
+                 "copy": {"proteins": 1, "residues": 300, "rows": 1, "proteins_with_hit": 1,
+                          "sources": [{"stage": "OA", "protein_files": [{"path": T["oaps"][0]}],
+                                       "files": [{"path": T["oadom"][0]}], "proteins": 1, "rows": 1}]},
+                 "owned": {"stages": [{"stage": "OA", "feature_protein": [{"path": T["oafp"][0]}]}]}}
+    if mut is not None:
+        mut(S)
+    root = tmp / "root"
+    sizes = {k: _write(root, rel, rows) for k, (rel, rows) in T.items()}
+    for st, recs in S["records"].items():
+        d = root / "runs" / f"stage={st}"
+        d.mkdir(parents=True, exist_ok=True)
+        for step, keys in recs.items():
+            rec = {"stage": st, "step": step, "exit_code": 0, "cpu_min": S["cpu"].get(step, 0.1), "wall_s": 1.0,
+                   "peak_rss_bytes": 1 << 20, "threads": 1, "started_at": "2026-11-21T00:00:00", "over_cpu_budget": False,
+                   "image_digest": "sha256:x", "code_id": "x",
+                   "outputs": [{"path": T[k][0], "bytes": sizes[k]} for k in keys]}
+            (d / f"{step}.json").write_text(json.dumps(rec))
+    if S["plan"] is not None:
+        p = root / "l1/domain_scan/library=pfam-38.2/stage=ZQ/plan.json"
+        p.parent.mkdir(parents=True, exist_ok=True)
+        p.write_text(json.dumps(S["plan"]))
+    from biobox.l1 import genecall as gc
+
+    gp = root / gc.plan_record_rel("ZQ")
+    gp.parent.mkdir(parents=True, exist_ok=True)
+    gp.write_text(json.dumps(S["gcplan"]))
+    before, after = tmp / "before", tmp / "after"
+    before.mkdir(parents=True)
+    after.mkdir(parents=True)
+    lines = sorted(f"{p.relative_to(root)}\t{p.stat().st_size}\t{p.stat().st_mtime}" for p in root.rglob("*")
+                   if p.is_file())
+    (after / "listing.tsv").write_text("".join(ln + "\n" for ln in lines))
+    (before / "listing.tsv").write_text("".join(ln + "\n" for ln in lines if "/stage=ZQ/" not in "/" + ln.split("\t")[0]))
+    cf = S["conf"]
+    conf = tmp / "ZQ.conf"
+    conf.write_text(conf_text("ZQ", tmp / "inputs", GOOD, depth=cf["depth"], library=cf["library"], crispr=cf["crispr"],
+                              minlen=cf["minlen"]) + S["extra_conf"])
+    prof = tmp / "profile.yaml"
+    prof.write_text(PROFILE.replace("tmp: /x", f"tmp: {tmp}"))
+    bj = tmp / "before.json"
+    bj.write_text(json.dumps({"fasta_bytes": 10_000, "held_bases": 3000}))
+    return {"root": root, "conf": conf, "before": before, "after": after, "profile": prof, "before_json": bj,
+            "out": tmp / "out", "S": S}
+
+
+@pytest.fixture
+def no_minced(monkeypatch):
+    """The producer names without the MinCED binary (as tests/r1/test_c47_est_accept.py does): a fixed version."""
+    from biobox.l1 import crispr
+
+    monkeypatch.setattr(crispr, "minced_version", lambda: "0.4.2")
+
+
+def run_check(r: dict, monkeypatch, *extra: str) -> tuple[int, dict]:
+    chk = _module("stage_check")
+    argv = ["stage_check.py", "--conf", str(r["conf"]), "--stage", "ZQ", "--root", str(r["root"]), "--before",
+            str(r["before"]), "--after", str(r["after"]), "--objects", str(r["root"] / "no-objects.json"), "--out",
+            str(r["out"]), "--tmp", str(r["out"].parent / "chk-tmp"), "--profile", str(r["profile"]), "--before-est",
+            str(r["before_json"]), *extra]
+    monkeypatch.setattr(sys, "argv", argv)
+    rc = chk.main()
+    return rc, json.loads((r["out"] / "summary.json").read_text())
+
+
+def test_3_the_check_passes_on_a_stage_built_as_it_should_be(tmp_path, monkeypatch, no_minced):
+    rc, s = run_check(build_root(tmp_path), monkeypatch)
+    assert rc == 0, s["failed"]
+    assert s["contigs"]["ledger_skipped_other"] == 1 and s["contigs"]["ledger_skipped_within"] == 1
+    assert s["pfam"]["copy_check"]["copied_proteins"] == 1
+
+
+def _drop_ledger_row_of_h(S):
+    S["T"]["gcled"][1] = [x for x in S["T"]["gcled"][1] if x["object_key"] != S["u"]["H"]]
+
+
+def _earlier_reason_with_a_suffix(S):
+    S["T"]["gcled"][1] = [dict(x, reason_code="owned_by:OA/abc") if x["reason_code"] == "owned_by:OA" else x
+                          for x in S["T"]["gcled"][1]]
+
+
+def _uncovered_contig(S):
+    D, g4 = _u(4), _u(14)
+    S["T"]["ci"][1].append({"contig_uid": D, "contig_len": 1200, "is_default_variant": True})
+    S["T"]["gi"][1].append({"contig_uid": D, "genome_uid": g4, "kind": "virus", "genetic_code": 11,
+                            "is_circular": False, "assembly_quality": "complete"})
+
+
+def _genes_on_a_contig_not_stored(S):
+    S["T"]["fp"][1].append({"contig_uid": S["u"]["H"], "protein_uid": _u(24)})
+
+
+def _copied_row_differs(S):
+    S["T"]["dom"][1][1] = _dom(S["u"]["pr3"], "PF3", 41.0)
+
+
+def _crispr_count_differs(S):
+    S["T"]["cled1"][1][0] = {"n_in": 2, "n_kept": 2, "n_rejected": 0, "reason_code": "ok"}
+
+
+def _no_scan_plan(S):
+    S["plan"] = None
+
+
+def _crispr_record_without_files(S):
+    S["records"]["ZQ"][f"crispr-{S['p1']}"] = []
+
+
+def _judged_size_step_unnamed(S):
+    S["cpu"]["tapes"] = 30.0
+
+
+@pytest.mark.parametrize("mut,conf_kw,expect", [
+    (_drop_ledger_row_of_h, {}, "ledger skips for another stage that differ"),
+    (_earlier_reason_with_a_suffix, {}, "ledger skips for another stage that differ"),
+    (_uncovered_contig, {}, "stored contigs have no gene row and no ledger row"),
+    (_genes_on_a_contig_not_stored, {}, "contigs have gene rows in ZQ but are not stored by it"),
+    (_copied_row_differs, {}, "copied rows from OA differ"),
+    (_crispr_count_differs, {}, "default: ledger keeps 2, feature files hold 1"),
+    (None, {"depth": "called", "library": None}, "domain records without a library"),
+    (None, {"minlen": 1600}, "stored contigs under the least length 1600"),
+    (_no_scan_plan, {}, "no scan plan"),
+    (_crispr_record_without_files, {}, "lists no ledger file"),
+    (_judged_size_step_unnamed, {}, "records of judged size"),
+], ids=["ledger-count", "ledger-reason-suffix", "uncovered", "genes-not-stored", "copy-differs", "crispr-count",
+        "step-of-another-depth", "under-least-length", "no-scan-plan", "crispr-no-files", "judged-size-unnamed"])
+def test_3_each_assertion_of_the_check_fails_on_its_defect(tmp_path, monkeypatch, no_minced, mut, conf_kw, expect):
+    rc, s = run_check(build_root(tmp_path, mut, **conf_kw), monkeypatch)
+    assert rc == 1
+    assert any(expect in f for f in s["failed"]), s["failed"]
+
+
+def test_7_a_crispr_producer_that_found_no_array_passes_when_its_ledger_says_so(tmp_path, monkeypatch, no_minced):
+    def none_found(S):
+        S["records"]["ZQ"][f"crispr-{S['p1']}"] = ["cled1"]
+        S["T"]["cled1"][1][0] = {"n_in": 0, "n_kept": 0, "n_rejected": 0, "reason_code": "ok"}
+
+    rc, s = run_check(build_root(tmp_path, none_found), monkeypatch)
+    assert rc == 0, s["failed"]
+
+
+def test_3_the_check_wants_a_copy_in_the_rehearsal(tmp_path, monkeypatch, no_minced):
+    def no_copy(S):
+        S["plan"]["copy"] = {"proteins": 0, "rows": 0, "sources": []}
+        S["T"]["dom"][1] = S["T"]["dom"][1][:1]
+
+    rc, s = run_check(build_root(tmp_path, no_copy), monkeypatch, "--expect-copy")
+    assert rc == 1 and any("copied no protein" in f for f in s["failed"])
+
+
+def test_3_rates_on_a_published_plan_with_shards_a_judge_line_and_an_accepted_record(tmp_path, no_minced):
+    from biobox import profile as bprofile
+
+    from biobox.l1 import genecall
+
+    est = _module("stage_est")
+    batch = f"genecall.{genecall.batch_name(0)}"
+
+    def records(S):
+        S["records"]["ZQ"][batch] = []
+        S["cpu"].update({batch: 40.0, "domains-pfam-38.2.shard-00000": 0.5})
+        S["gcplan"]["batches"][0]["estimate_cpu_min"] = 30.0
+
+    r = build_root(tmp_path, records)
+    judge = "JUDGE=genecall 25 planning/measurements/2026-11-20_stage_V1.md\n"
+    r["conf"].write_text(r["conf"].read_text() + judge)
+    doc = est.rates_doc(est.read_conf(r["conf"], "ZQ"), r["root"], bprofile.load(r["profile"]), tmp_path / "none",
+                        str(r["before_json"]), tmp_path / "t")
+    by = {x["step"]: x for x in doc["rows"]}
+    assert by[batch]["over_20pct"], "40 against the plan's 30"
+    assert by["genecall.note"]["cpu_min"] == pytest.approx(40.1) and by["genecall.note"]["over_20pct"]
+    assert by["domains-pfam-38.2.shard-00000"]["judged"] is False, "an estimate under 24 is never judged (DEC-43)"
+    assert est.rates_exit(doc) == 3
+    r["conf"].write_text(r["conf"].read_text() + "ACCEPTED=genecall.note 40.100 25.000 DEC-56\n"
+                         f"ACCEPTED={batch} 40.000 30.000 DEC-56\n")
+    doc = est.rates_doc(est.read_conf(r["conf"], "ZQ"), r["root"], bprofile.load(r["profile"]), tmp_path / "none",
+                        str(r["before_json"]), tmp_path / "t")
+    assert doc["over_20pct"] == [] and set(doc["accepted_over_20pct"]) == {"genecall.note", batch}
+
+
+def test_9_rates_takes_what_does_not_change_from_the_estimate(tmp_path, no_minced):
+    from biobox import profile as bprofile
+
+    est = _module("stage_est")
+    r = build_root(tmp_path)
+    doc = est.rates_doc(est.read_conf(r["conf"], "ZQ"), r["root"], bprofile.load(r["profile"]),
+                        tmp_path / "no-objects.json", str(r["before_json"]), tmp_path / "t")
+    ing = next(x for x in doc["rows"] if x["step"] == "ingest")
+    assert "stage.ingest_cpu_min(10000, held=3000)" in ing["basis"], "no FASTA read, no held bases counted again"
+
+
+def test_3_complete_names_a_missing_step(tmp_path, monkeypatch, no_minced):
+    est = _module("stage_est")
+    r = build_root(tmp_path)
+    (r["root"] / "runs" / "stage=ZQ" / "tapes.json").unlink()
+    monkeypatch.setattr(sys, "argv", ["stage_est.py", "complete", "--conf", str(r["conf"]), "--stage", "ZQ", "--root",
+                                      str(r["root"])])
+    assert est.main() == 1
+    r2 = build_root(tmp_path / "b")
+    monkeypatch.setattr(sys, "argv", ["stage_est.py", "complete", "--conf", str(r2["conf"]), "--stage", "ZQ", "--root",
+                                      str(r2["root"])])
+    assert est.main() == 0
+
+
+def test_6_the_check_reads_reasons_no_looser_than_c47_check():
+    import duckdb
+
+    chk = _module("stage_check")
+    con = duckdb.connect()
+    con.execute("CREATE TABLE led (reason_code VARCHAR)")
+    con.execute("INSERT INTO led VALUES ('duplicateXcontig'), ('owned_byXOA'), ('duplicate_contig:a')")
+    got = [r[0] for r in con.execute(f"SELECT {chk.skip_kind_sql('reason_code', 'C5')} FROM led").fetchall()]
+    assert got == [None, None, "within"], "LIKE's `_` would match any character"
+
+
+def test_6_estimate_stops_when_an_expect_line_differs(tmp_path):
+    w = World(tmp_path)
+    got = w.drive("estimate", FAKE_EST_RC="8")
+    assert got.returncode != 0 and not w.done("estimate")
+    assert "differ from the note's" in _driver_log(w)
+
+
+def test_6_the_real_estimate_compares_an_expect_line_with_the_root(tmp_path):
+    est = _module("stage_est")
+    inp = tmp_path / "inputs"
+    inp.mkdir()
+    (inp / "x.fna").write_text(">a\n" + "ACGT" * 2000 + "\n")
+    from biobox import ids
+
+    cu = ids.contig_uid(b"ACGT" * 2000)
+    (inp / "genomes.json").write_text(json.dumps([{"contig_uids": [cu.hex()], "genetic_code": 11, "kind": "virus",
+                                                  "circular": [], "assembly_quality": "contig"}]))
+    (inp / "objects.json").write_text(json.dumps([{"path": str(inp / "x.fna"), "source_name": "t",
+                                                   "source_release": "1", "license": "t", "redistributable": True}]))
+    conf = _conf_file(tmp_path, conf_text("ZZ1", inp, GOOD, depth="called", library=None,
+                                          extra="EXPECT=held_by OA 1 planning/measurements/2026-11-20_stage_V1.md\n"))
+    root = tmp_path / "root"
+    (root / "l0seq" / "contig_index").mkdir(parents=True)
+    prof = tmp_path / "profile.yaml"
+    prof.write_text(PROFILE.replace("tmp: /x", f"tmp: {tmp_path}"))
+    got = subprocess.run([sys.executable, str(BSP / "stage_est.py"), "before", "--conf", str(conf), "--stage", "ZZ1",
+                          "--root", str(root), "--profile", str(prof), "--inputs", str(inp), "--tmp",
+                          str(tmp_path / "t")], capture_output=True, text=True, timeout=300,
+                         env={**os.environ, "PYTHONPATH": str(REPO / "src")})
+    assert got.returncode == 8, got.stderr
+    assert json.loads(got.stdout)["expect"]["OA"] == {"note": "planning/measurements/2026-11-20_stage_V1.md",
+                                                      "expected": 1, "held": 0}
+    assert est.read_conf(conf, "ZZ1").expect == {"OA": (1, "planning/measurements/2026-11-20_stage_V1.md")}
+
+
+def test_6_each_check_keeps_its_report_in_a_numbered_directory(tmp_path):
+    w = World(tmp_path)
+    _check_ready(w)
+    _ok(w.drive("check"))
+    _ok(w.drive("check"))
+    assert (w.c / "check" / "1" / "check.out").exists() and (w.c / "check" / "2" / "check.out").exists()
+
+
+# (4) markers are tied to the conf they were made for; run checks the inputs' sums again
+
+def test_4_a_marker_made_for_another_conf_is_refused(tmp_path):
+    w = World(tmp_path)
+    _run_ready(w)
+    w.write_conf(w.stage, (w.bin / "stages" / f"{w.stage}.conf").read_text() + "# changed\n")
+    got = w.drive("run")
+    assert got.returncode != 0 and "pod_run" not in w.calls()
+    assert "made for another conf" in _driver_log(w)
+
+
+def test_4_run_checks_the_inputs_sums_again(tmp_path):
+    w = World(tmp_path)
+    _run_ready(w)
+    (w.inputs / "x.fna").write_text(">a\nACGA\n")
+    got = w.drive("run")
+    assert got.returncode != 0 and "pod_run" not in w.calls()
+
+
+def test_4_a_rehearsal_marker_of_another_conf_is_redone_and_withdraws_what_rests_on_it(tmp_path):
+    w = World(tmp_path)
+    (w.c / "rehearse").mkdir(parents=True)
+    (w.c / "rehearse" / "DONE").write_text("0" * 64 + "\n")
+    w.mark("run", "after")
+    _ok(w.drive("rehearse"))
+    assert "rehearse: mode estimate passed" in _driver_log(w)
+    assert not w.done("run") and not w.done("after")
+    assert (w.c / "rehearse" / "DONE").read_text().strip() == w.conf_sha()
+
+
+# (5) the unit's quota: the profile's cap of the hour less the helpers', changed when the hour's cap changes
+
+def test_5_the_cap_of_the_hour_comes_from_the_profile_by_the_code_of_run_step():
+    from datetime import datetime
+
+    est = _module("stage_est")
+    prof = REPO / "profiles" / "wilkcomp02.yaml"
+    assert est.cap_at(prof, datetime(2026, 11, 21, 3, 0)) == 56, "Saturday night"
+    assert est.cap_at(prof, datetime(2026, 11, 23, 7, 59)) == 56, "Monday before 08:00"
+    assert est.cap_at(prof, datetime(2026, 11, 23, 10, 0)) == 40, "Monday by day"
+    assert est.cap_at(prof, datetime(2026, 11, 23, 20, 0)) == 56, "Monday evening"
+
+
+def test_5_the_unit_quota_follows_the_hours_cap(tmp_path):
+    w = World(tmp_path)
+    _run_ready(w)
+    active = tmp_path / "active"
+    active.write_text("10")
+    quotas = _lines(tmp_path / "quotas", "54", "54", "38")
+    _ok(w.drive("run", FAKE_ACTIVE_FILE=str(active), FAKE_QUOTAS=quotas), w, "run-quota")
+    assert "pod_run-opt --threads 54" in w.calls()
+    assert "systemctl --user set-property --runtime zz1-1 CPUQuota=3800%" in w.calls()
+
+
+def test_5_q_only_lowers_the_quota(tmp_path):
+    w = World(tmp_path)
+    _run_ready(w)
+    _ok(w.drive("run", Q="10"))
+    assert "pod_run-opt --threads 10" in w.calls()
+
+
+# (8) the environment: the data root is compared after realpath, and keeps its conf, memory and floors
+
+def test_8_a_trailing_slash_does_not_make_the_data_root_a_scratch_root(tmp_path):
+    w = World(tmp_path)
+    w.mark("estimate", "before")
+    got = w.drive("run", STAGE_REHEARSAL="1", STAGE_ROOT=str(w.root) + "/")
+    assert got.returncode != 0 and "pod_run" not in w.calls()
+
+
+@pytest.mark.parametrize("env", [{"MEM": "300G"}, {"TMP_MIN_GB": "10"}, {"START_MIN_GB": "100"},
+                                 {"SCRATCH_MAX_GB": "500"}])
+def test_8_the_data_root_never_loosens_its_limits(tmp_path, env):
+    w = World(tmp_path)
+    _run_ready(w)
+    got = w.drive("run", **env)
+    assert got.returncode != 0 and "pod_run" not in w.calls()
+
+
+def test_8_in_the_data_root_the_conf_is_the_trees_own(tmp_path):
+    w = World(tmp_path)
+    other = tmp_path / "ZZ1.conf"
+    other.write_text((w.bin / "stages" / "ZZ1.conf").read_text())
+    got = w.drive("estimate", STAGE_CONF=str(other))
+    assert got.returncode != 0 and "stage_est.py before" not in w.calls()
+
+
+def test_8_an_accepted_record_without_its_decision_row_is_refused_by_the_driver(tmp_path):
+    w = World(tmp_path)
+    w.write_conf(w.stage, (w.bin / "stages" / "ZZ1.conf").read_text() + "ACCEPTED=ingest 1.000 1.000 DEC-999\n")
+    got = w.drive("estimate")
+    assert got.returncode != 0 and "stage_est.py before" not in w.calls()
+
+
+# (9) smaller
+
+def test_9_backup_wants_two_hashes_of_64_hex_digits(tmp_path):
+    w = World(tmp_path)
+    _backup_ready(w)
+    got = w.drive("backup", TAR_FLOOR_BYTES="0", FAKE_SHA_EMPTY="1")
+    assert got.returncode != 0 and not w.done("backup")
+
+
+def test_9_a_stop_during_run_still_judges_the_records_published(tmp_path):
+    w = World(tmp_path)
+    _run_ready(w)
+    active = tmp_path / "active"
+    active.write_text("2")
+    got = w.drive("run", FAKE_ACTIVE_FILE=str(active), FAKE_STOP_ON_ACTIVE=str(w.root / "STOP"),
+                  FAKE_RATES_RC="3")
+    assert got.returncode == 1 and (w.c / "run" / "FAILED").exists(), "a record over 20% fails, STOP or not"
+
+
+def test_9_each_rehearsal_starts_with_its_own_logs(tmp_path):
+    w = World(tmp_path)
+    _ok(w.drive("rehearse"))
+    (w.c / "rehearse" / "DONE").unlink()
+    _ok(w.drive("rehearse"))
+    old = w.c / "rh-logs.1"
+    assert (old / "inner-driver.log").exists() and (old / "zz1-rh-e.log").exists()
+    assert (w.c / "rh" / "drv" / "driver.log").read_text().count("mode estimate done") == 1, "the new log only"
+    assert (old / "inner-driver.log").read_text().count("mode estimate done") == 1
+
+
+def test_9_the_queue_reads_run_failed_before_it_runs_estimate_again(tmp_path):
+    (tmp_path / "stages" / "zz1" / "run").mkdir(parents=True)
+    (tmp_path / "stages" / "zz1" / "run" / "FAILED").write_text("guard: over 280 CPU-minutes")
+    got = _queue(tmp_path)
+    assert got.returncode == 3 and _modes(tmp_path) == []

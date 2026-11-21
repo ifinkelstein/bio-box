@@ -10,7 +10,8 @@
 #    file (exit 3); wait for each stage the conf names in AFTER until its driver's backup/DONE is there, and stop
 #    (exit 3) when that stage's queue is not running and one of its modes left FAILED, REFUSED or STOPPED; wait while a
 #    build unit of ours is active in the root (`stage_driver.sh STAGE info`, the driver's own lock).
-# 2. Then `stage_driver.sh STAGE <mode>` for estimate, rehearse, before, run, after, check and backup, stopping at the
+# 2. Then, unless the stage's run/FAILED is there (a stop of an earlier launch: exit 3 before anything runs),
+#    `stage_driver.sh STAGE <mode>` for estimate, rehearse, before, run, after, check and backup, stopping at the
 #    first mode that exits non-zero (with its status) or that exits 0 without writing <mode>/DONE (exit 6): on
 #    2026-11-20 a mode failed while its driver exited 0, and a queue that judged by the exit status alone went on
 #    (STATUS "6m"). A waiter (scripts/orchestrator/rel_wait.sh) reads the markers, never this script's last line.
@@ -73,6 +74,11 @@ while :; do
   sleep "$POLL"
 done
 
+# an earlier launch's stop is read first: estimate and before are not run again over a stop that stays a stop
+if [ -e "$C/run/FAILED" ]; then
+  say "STOPPED: $C/run/FAILED exists ($(head -c 300 "$C/run/FAILED")); a person reads it and moves it aside; starting nothing"
+  exit 3
+fi
 for m in $MODES; do
   say "mode $m: start"
   bash "$BIN/stage_driver.sh" "$STAGE" "$m"

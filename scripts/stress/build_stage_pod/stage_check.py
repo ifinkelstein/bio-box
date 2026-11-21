@@ -35,7 +35,6 @@ import argparse
 import hashlib
 import importlib.util
 import json
-import subprocess
 import sys
 from pathlib import Path
 
@@ -67,11 +66,15 @@ def skip_kind_sql(col: str, stage: str) -> str:
     (`owned_by:<other stage>`, DEC-26), 'within' for a contig called once under another genome of the stage
     (`owned_by:<stage>` or `owned_by:<stage>/<genome_uid>`, DEC-27) or a duplicate record, NULL otherwise (`ok`).
     The owner is compared as a whole stage name: `owned_by:C50` is not stage C5's (card C-47)."""
-    n = len(OWNED_BY) + 1
-    owner = f"split_part(substr({col}, {n}), {q(OWNER_SEP)}, 1)"
-    return (f"(CASE WHEN {col} LIKE 'duplicate_contig%' THEN 'within' "
-            f"WHEN {col} LIKE {q(OWNED_BY + '%')} THEN (CASE WHEN {owner} = {q(stage)} THEN 'within' ELSE 'earlier' "
-            "END) ELSE NULL END)")
+    # starts_with, not LIKE: `_` in a LIKE pattern matches any character, which would read looser than c47_check.py
+    return (f"(CASE WHEN starts_with({col}, 'duplicate_contig') THEN 'within' "
+            f"WHEN starts_with({col}, {q(OWNED_BY)}) THEN (CASE WHEN {owner_sql(col)} = {q(stage)} THEN 'within' "
+            "ELSE 'earlier' END) ELSE NULL END)")
+
+
+def owner_sql(col: str) -> str:
+    """SQL for the owner's stage of an `owned_by:` reason: the text after the prefix, up to `/` (c47_check.skip_kind)."""
+    return f"split_part(substr({col}, {len(OWNED_BY) + 1}), {q(OWNER_SEP)}, 1)"
 
 
 def sha256(p: Path) -> str:
@@ -202,19 +205,14 @@ def main() -> int:
                      "started_at": r.get("started_at"), "over_cpu_budget": r.get("over_cpu_budget"),
                      "image_digest": r.get("image_digest"), "code_id": r.get("code_id"),
                      "code_commit": r.get("code_commit"), "outputs": len(r.get("outputs", []))})
-    cmd = [sys.executable, str(Path(__file__).with_name("stage_est.py")), "rates", "--conf", a.conf, "--stage", st,
-           "--root", str(root), "--profile", a.profile, "--objects", a.objects, "--tmp", str(tmp / "rates")]
-    if a.before_est:
-        cmd += ["--before", a.before_est]
-    ran = subprocess.run(cmd, capture_output=True, text=True)
-    try:
-        rates = json.loads(ran.stdout)
-    except ValueError:
-        rates = {"error": ran.stderr[-2000:]}
-    if ran.returncode not in (0, 3) or "error" in rates:
-        failed.append(f"stage_est.py rates exited {ran.returncode}: {ran.stderr[-400:]}")
+    from biobox import profile as bprofile
+
+    rates = est.rates_doc(conf, root, bprofile.load(a.profile), Path(a.objects), a.before_est, tmp / "rates")
     if rates.get("over_20pct"):
         failed.append(f"rates over +20% (DEC-53): {rates['over_20pct']}")
+    if rates.get("not_judged_of_judged_size"):
+        failed.append(f"records of judged size (24 CPU-minutes or more) that no estimate names: "
+                      f"{rates['not_judged_of_judged_size']}")
     by = {x["step"]: x for x in rates.get("rows", [])}
     for r in rows:
         if r["step"] in by:
@@ -261,9 +259,12 @@ def main() -> int:
     others = sorted(d.name.removeprefix("stage=") for d in base.glob("stage=*") if d.is_dir() and d.name != f"stage={st}")
     con.execute(f"CREATE TEMP TABLE gi AS SELECT contig_uid, genome_uid, kind, genetic_code, is_circular, "
                 f"assembly_quality FROM {src(gi_files, [('contig_uid', 'BLOB'), ('genome_uid', 'BLOB'), ('kind', 'VARCHAR'), ('genetic_code', 'INTEGER'), ('is_circular', 'BOOLEAN'), ('assembly_quality', 'VARCHAR')])}")
-    con.execute(f"CREATE TEMP TABLE ci AS SELECT contig_uid, contig_len FROM "
-                f"{src(ci_files, [('contig_uid', 'BLOB'), ('contig_len', 'BIGINT'), ('is_default_variant', 'BOOLEAN')])} "
-                "WHERE is_default_variant")
+    # every row of the stage's index, as c47_check.py's `owned` (the bases are its default variants' only); another
+    # stage's rows count only as default variants, as its `stored_by`
+    con.execute(f"CREATE TEMP TABLE ci_rows AS SELECT contig_uid, contig_len, is_default_variant FROM "
+                f"{src(ci_files, [('contig_uid', 'BLOB'), ('contig_len', 'BIGINT'), ('is_default_variant', 'BOOLEAN')])}")
+    con.execute("CREATE TEMP TABLE ci AS SELECT contig_uid, max(contig_len) AS contig_len FROM ci_rows "
+                "GROUP BY contig_uid")
     parts = []
     for s in others:
         fs = files(root, s, "ingest", f"{INDEX_DIR}/stage={s}/")
@@ -282,7 +283,7 @@ def main() -> int:
         "genomes": one("SELECT count(DISTINCT genome_uid) FROM gi"),
         "contigs": one("SELECT count(DISTINCT contig_uid) FROM gi"),
         "stored": one("SELECT count(*) FROM ci"),
-        "bases_stored": int(one("SELECT coalesce(sum(contig_len), 0) FROM ci")),
+        "bases_stored": int(one("SELECT coalesce(sum(contig_len), 0) FROM ci_rows WHERE is_default_variant")),
         "held_by_other_stages": one("SELECT count(*) FROM held"),
         "held_by_stage": dict(con.execute("SELECT st, count(*) FROM held GROUP BY st ORDER BY st").fetchall()),
         "ledger_skipped_other": one("SELECT count(*) FROM led WHERE kind = 'earlier'"),
@@ -301,9 +302,9 @@ def main() -> int:
         "stored contigs not in genome_input":
             "SELECT count(*) FROM ci ANTI JOIN (SELECT DISTINCT contig_uid FROM gi) g USING (contig_uid)",
         "ledger skips for another stage that differ from the stage holding the contig":
-            "SELECT count(*) FROM (SELECT contig_uid, split_part(substr(reason_code, "
-            f"{len(OWNED_BY) + 1}), {q(OWNER_SEP)}, 1) AS st FROM led WHERE kind = 'earlier') l "
-            "FULL OUTER JOIN held h USING (contig_uid) WHERE l.st IS DISTINCT FROM h.st",
+            # the whole reason string, `owned_by:<the holding stage>`, as c47_check.py compares it with `want`
+            "SELECT count(*) FROM (SELECT contig_uid, reason_code FROM led WHERE kind = 'earlier') l "
+            f"FULL OUTER JOIN held h USING (contig_uid) WHERE l.reason_code IS DISTINCT FROM ({q(OWNED_BY)} || h.st)",
     }
     if conf.min_contig_len is not None:
         checks[f"stored contigs under the least length {conf.min_contig_len}"] = \
@@ -399,6 +400,8 @@ def main() -> int:
               "models_with_hit": one(f"SELECT count(DISTINCT model_acc) FROM {src(dom, dcols)} x")}
         if not dom:
             failed.append(f"no domain files in the record domains-{lib}")
+        if not plan:
+            failed.append(f"no scan plan {plan_p.relative_to(root)} although the conf names library {lib}")
         if plan.get("proteins") is not None and plan["proteins"] != int(mine_prot):
             failed.append(f"scan plan holds {plan['proteins']} proteins, expected {int(mine_prot)}")
         if a.expect_copy and not (copy.get("proteins") or 0) > 0:
@@ -455,9 +458,9 @@ def main() -> int:
         searched, calls_in, kept, skipped = con.execute(
             "SELECT count(*) FILTER (WHERE reason_code = 'ok'), coalesce(sum(n_in) FILTER (WHERE reason_code = 'ok'), 0), "
             "coalesce(sum(n_kept) FILTER (WHERE reason_code = 'ok'), 0), "
-            f"count(*) FILTER (WHERE reason_code LIKE {q(OWNED_BY + '%')}) FROM {src(ledp, lcols)} x").fetchall()[0]
+            f"count(*) FILTER (WHERE starts_with(reason_code, {q(OWNED_BY)})) FROM {src(ledp, lcols)} x").fetchall()[0]
         rejected = dict(con.execute(f"SELECT reason_code, sum(n_rejected) FROM {src(ledp, lcols)} x WHERE reason_code "
-                                    f"<> 'ok' AND reason_code NOT LIKE {q(OWNED_BY + '%')} GROUP BY 1 ORDER BY 1"
+                                    f"<> 'ok' AND NOT starts_with(reason_code, {q(OWNED_BY)}) GROUP BY 1 ORDER BY 1"
                                     ).fetchall())
         x = {"producer": prod, "recorded": record(root, st, step) is not None, "arrays": rows_of(feats),
              "elements": rows_of(files(root, st, step, f"l1/crispr/producer={prod}/stage={st}/")),
@@ -467,6 +470,12 @@ def main() -> int:
             failed.append(f"{kind}: ledger keeps {x['calls_kept']}, feature files hold {x['arrays']}")
         if not x["recorded"]:
             failed.append(f"{kind}: no run record {step}")
+        elif not ledp:
+            failed.append(f"{kind}: the record {step} lists no ledger file (ledger/stage={st}/step={step}/), so nothing "
+                          "says whether arrays were found")
+        elif not feats and not (x["contigs_searched"] > 0 and x["calls_kept"] == 0):
+            failed.append(f"{kind}: the record {step} lists no feature file and its ledger does not record a search "
+                          "that found no array")
         x["arrays_per_gbp"] = round(x["arrays"] / (c["bases_stored"] / 1e9), 3) if c["bases_stored"] else None
         cr[kind] = x
     summary["crispr"] = cr or None

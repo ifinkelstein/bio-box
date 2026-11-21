@@ -122,8 +122,15 @@ make_profile() {
 }
 
 build_units() {
-  systemctl --user list-units --type=service --state=active --no-legend --plain \
-    'r50-*' 'c24-h1-*' 'c25-*' 'c26-pl1-*' 'c33-*' 'c34-*' 'c35-rel-*' 'c35-pack*' 'b47-*' "${UNIT_PREFIX}-rel-*" \
+  # the older names, and the build units <stage>-<n> of every stage of card A-12's stage driver (stages/<STAGE>.conf)
+  local pats=('r50-*' 'c24-h1-*' 'c25-*' 'c26-pl1-*' 'c33-*' 'c34-*' 'c35-rel-*' 'c35-pack*' 'b47-*' 'c47-c5-*'
+              'c48c-*' "${UNIT_PREFIX}-rel-*") f s
+  for f in "$BIN"/stages/*.conf; do
+    [ -e "$f" ] || continue
+    s=$(basename "$f" .conf)
+    [[ "$s" =~ ^[A-Z][A-Za-z0-9]{0,15}$ ]] && pats+=("${s,,}-[0-9]*")
+  done
+  systemctl --user list-units --type=service --state=active,activating,deactivating --no-legend --plain "${pats[@]}" \
     | awk '{print $1}' | paste -sd' ' -
 }
 

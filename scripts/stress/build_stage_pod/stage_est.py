@@ -3,7 +3,8 @@
 One helper for every stage (`stage_driver.sh STAGE MODE`), made from card C-47's `c47_est.py` and card C-48c's
 `c48c_v1_est.py`; what differs between stages is in `stages/<STAGE>.conf`, never in this file.
 
-    python3 -I stage_est.py conf FILE --stage S [--sums OUT]            (host, standard library only)
+    python3 -I stage_est.py conf FILE --stage S [--sums OUT] [--tree TREE]   (host, standard library only)
+    python stage_est.py cap      --profile P [--at ISO] [--quota]   (the cap of the hour; --quota: less the helpers')
     python stage_est.py before   --conf F --stage S --root R --profile P --inputs DIR --tmp DIR [--out-plan F]
     python stage_est.py rates    --conf F --stage S --root R --profile P --objects F --tmp DIR
     python stage_est.py complete --conf F --stage S --root R
@@ -29,8 +30,9 @@ over the stage's run records, every estimate made by the code from the root at t
 ingest as one group (every `ingest.*` record and `ingest`), each gene-call batch against the published plan and the
 merge, gene calling in one process against `genecall.plan`, each scan shard against its residues, each CRISPR
 producer. A conf's `JUDGE=<step> <figure>` judges that step's group against the note's figure as well (card C-48c
-part 3: `GV1`'s gene calling against 236 CPU-minutes); a group still running is judged over on its partial sum, never
-under. A conf's `ACCEPTED=<step> <cpu> <estimate> <DEC-n>` reports that one record, at exactly those values, under
+part 3: `GV1`'s gene calling against 236 CPU-minutes), as the group `<step>.note`, which an ACCEPTED line can name;
+a group still running is judged over on its partial sum, never under. `before` stops (exit 8) when a conf's
+`EXPECT=held_by <stage> <n> <note>` differs from the contigs that stage holds. A conf's `ACCEPTED=<step> <cpu> <estimate> <DEC-n>` reports that one record, at exactly those values, under
 `accepted_over_20pct` instead of stopping (as `c47_est.py` did for DEC-56): only a decision row lifts a guard, and
 only the PI or an H card adds one. Exit 3 to stop.
 
@@ -61,7 +63,8 @@ LIBRARIES = {("pfam", "38.2")}  # the libraries whose HMM file the driver knows 
 CUTOFFS = ("gathering", "trusted", "noise", "none")  # stage.CUTOFFS
 JUDGE_STEPS = ("ingest", "genecall")  # the steps the guard judges as one group of records
 SCALARS = ("STAGE", "INPUTS", "DEPTH", "MIN_CONTIG_LEN", "LIBRARY", "CRISPR", "AFTER")
-LISTS = ("SUM", "JUDGE", "ACCEPTED", "NOTE")
+LISTS = ("SUM", "JUDGE", "ACCEPTED", "NOTE", "EXPECT")
+HELPER_THREADS = 2  # the driver's own helpers in the image: `bb`'s scope has CPUQuota=200%
 
 STAGE_RE = re.compile(r"[A-Z][A-Za-z0-9]{0,15}")
 PATH_RE = re.compile(r"/[A-Za-z0-9_.+/-]+")
@@ -70,6 +73,7 @@ SUM_RE = re.compile(r"([0-9a-f]{64}) ([A-Za-z0-9_.+-]+)")
 STEP_RE = r"[A-Za-z0-9][A-Za-z0-9_.-]*"
 JUDGE_RE = re.compile(rf"({STEP_RE}) ([0-9]+(?:\.[0-9]+)?) (\S+)")
 ACCEPTED_RE = re.compile(rf"({STEP_RE}) ([0-9]+\.[0-9]{{3}}) ([0-9]+\.[0-9]{{3}}) (DEC-[0-9]+)")
+EXPECT_RE = re.compile(r"held_by ([A-Z][A-Za-z0-9]{0,15}) ([0-9]+) (planning/measurements/[A-Za-z0-9_.+/-]+\.md)")
 
 
 class ConfError(ValueError):
@@ -89,12 +93,15 @@ class Conf:
     judge: dict = field(default_factory=dict)  # step: (figure, source)
     accepted: dict = field(default_factory=dict)  # (step, cpu_min, estimate): decision row
     notes: tuple[str, ...] = ()
+    expect: dict = field(default_factory=dict)  # stage: (contigs of this stage it holds, note)
 
 
-def read_conf(path: str | Path, stage: str | None = None) -> Conf:
+def read_conf(path: str | Path, stage: str | None = None, tree: str | Path | None = None) -> Conf:
     """The conf at `path`, checked line by line: `KEY=VALUE`, `#` comments and blank lines; the scalar keys once, the
-    list keys (SUM, JUDGE, ACCEPTED, NOTE) any number of times; every value against a strict pattern (no space where
-    none belongs, no shell metacharacter, no `..`). ConfError says what is wrong."""
+    list keys (SUM, JUDGE, ACCEPTED, NOTE, EXPECT) any number of times; every value against a strict pattern (no space
+    where none belongs, no shell metacharacter, no `..`). With `tree`, every note a NOTE, JUDGE or EXPECT line names must
+    be a file of the tree and every ACCEPTED line's decision row a row `| DEC-n |` of its planning/DECISIONS.md.
+    ConfError says what is wrong."""
     path = Path(path)
     vals: dict[str, str] = {}
     lists: dict[str, list[str]] = {k: [] for k in LISTS}
@@ -181,14 +188,31 @@ def read_conf(path: str | Path, stage: str | None = None) -> Conf:
         notes.append(v)
     if not notes:
         raise ConfError(f"{path}: no NOTE: every value comes from a stage's note")
+    expect = {}
+    for v in lists["EXPECT"]:
+        m = EXPECT_RE.fullmatch(v)
+        if m is None or m[1] == st or m[1] in expect or ".." in m[3].split("/"):
+            raise ConfError(f"{path}: EXPECT {v!r}: expected 'held_by <another stage> <contigs it holds> "
+                            "<planning/measurements/the note>.md', once per stage")
+        expect[m[1]] = (int(m[2]), m[3])
+    if tree is not None:
+        tree = Path(tree)
+        for n in [*notes, *(s for _, s in judge.values()), *(s for _, s in expect.values())]:
+            if not (tree / n).is_file():
+                raise ConfError(f"{path}: {n} is not a file of the tree {tree}")
+        dec = tree / "planning" / "DECISIONS.md"
+        rows = dec.read_text() if dec.is_file() else ""
+        for d in sorted(set(accepted.values())):
+            if f"| {d} |" not in rows:
+                raise ConfError(f"{path}: ACCEPTED names {d}, which has no row in {dec}")
     return Conf(stage=st, inputs=Path(inputs), sums=tuple(sums), depth=depth, crispr=crispr == "yes",
                 min_contig_len=int(minlen) if minlen else None, library=lib, after=after, judge=judge,
-                accepted=accepted, notes=tuple(notes))
+                accepted=accepted, notes=tuple(notes), expect=expect)
 
 
 def conf_cmd(a) -> int:
     try:
-        c = read_conf(a.file, a.stage)
+        c = read_conf(a.file, a.stage, a.tree)
     except (ConfError, OSError) as e:
         print(f"refused: {e}", file=sys.stderr)
         return 2
@@ -271,15 +295,24 @@ def _duck(tmp: Path, mem: str = "4GB"):
 
 def rates(a) -> int:
     from biobox import profile as bprofile
+
+    doc = rates_doc(read_conf(a.conf, a.stage), Path(a.root), bprofile.load(a.profile), Path(a.objects), a.before,
+                    Path(a.tmp))
+    print(json.dumps(doc, sort_keys=True))
+    return rates_exit(doc)
+
+
+def rates_doc(conf: Conf, root: Path, prof, objects: Path, before_path: str | None, tmp: Path) -> dict:
+    """The rate guard's document over the stage's run records (module docstring). What does not change during a run
+    (the FASTA bytes, the bases other stages hold) is read from the estimate's `before.json` when it is given."""
     from biobox import stage as bs
     from biobox.l0seq import store
     from biobox.l1 import crispr, genecall
     from biobox.l1.genecall import GENE_CALL_VERSION as GCV
 
-    conf = read_conf(a.conf, a.stage)
-    root, st, tmp = Path(a.root), conf.stage, Path(a.tmp)
-    prof = bprofile.load(a.profile)
+    st = conf.stage
     recs = _records(root, st)
+    before_doc = json.loads(Path(before_path).read_text()) if before_path and Path(before_path).is_file() else {}
     items, covered = [], set()
 
     def cpu_of(names):
@@ -301,11 +334,11 @@ def rates(a) -> int:
     if group_names(recs, "ingest"):
         # the FASTA bytes `estimate` measured with the code's own `stage.object_sizes` (it decompresses every object:
         # minutes for a stage of gzip inputs, so not again at every record); measured here only without it
-        doc = json.loads(Path(a.before).read_text()) if a.before and Path(a.before).is_file() else {}
-        n_bytes = doc.get("fasta_bytes")
+        n_bytes, held = before_doc.get("fasta_bytes"), before_doc.get("held_bases")
         if not isinstance(n_bytes, int):
-            n_bytes = sum(f for _, _, f in bs.object_sizes(Path(a.objects)))
-        held = bs.held_bases(root, st, tmp)
+            n_bytes = sum(f for _, _, f in bs.object_sizes(objects))
+        if not isinstance(held, int):
+            held = bs.held_bases(root, st, tmp)
         group("ingest", "ingest", bs.ingest_cpu_min(n_bytes, held),
               f"stage.ingest_cpu_min({n_bytes}, held={held}) over every ingest record")
     gp_path = root / genecall.plan_record_rel(st)
@@ -321,7 +354,7 @@ def rates(a) -> int:
                           prof.cpu_min_per_process, tmp=tmp)
         single("genecall", p["estimate_cpu_min"], "genecall.plan in one process (card B-48)")
     for step, (fig, src) in sorted(conf.judge.items()):
-        group(f"{step}:note", step, fig, f"the note's figure ({src}) over every {step} record")
+        group(f"{step}.note", step, fig, f"the note's figure ({src}) over every {step} record")
     if conf.library is not None:
         lib, ver = conf.library[0], conf.library[1]
         name = f"domains-{lib}-{ver}"
@@ -340,11 +373,12 @@ def rates(a) -> int:
         if conf.library is not None and conf.depth == "annotated" and conf.library[0] == crispr.CAS_LIBRARY:
             single(f"crispr-{crispr.near_cas_producer(conf.library[1])}", bs.crispr_cpu_min(b, fb, near_cas=True),
                    f"({b}+{fb}) bases x {bs.CRISPR_CPU_S_PER_GBP} x {bs.CRISPR_NEAR_CAS_COST} / 1e9 / 60")
-    doc = {"stage": st, **judge_items(items, conf.accepted),
-           "not_judged": sorted(n for n in recs if n not in covered),
-           "guard_policy": "DEC-43 (estimate >= 24 CPU-min judged) + DEC-53 (stop above 1.20; record below 0.80)"}
-    print(json.dumps(doc, sort_keys=True))
-    return rates_exit(doc)
+    not_judged = sorted(n for n in recs if n not in covered)
+    return {"stage": st, **judge_items(items, conf.accepted), "not_judged": not_judged,
+            # a record of judged size that no estimate names: the check fails on it (card A-12 (7))
+            "not_judged_of_judged_size": [n for n in not_judged
+                                          if float(recs[n].get("cpu_min") or 0) >= MIN_JUDGED_CPU_MIN],
+            "guard_policy": "DEC-43 (estimate >= 24 CPU-min judged) + DEC-53 (stop above 1.20; record below 0.80)"}
 
 
 def complete(a) -> int:
@@ -370,6 +404,50 @@ def _write_rows(rows: list[tuple], schema, path: Path) -> None:
     pq.write_table(pa.table({n: list(c) for n, c in zip(schema.names, cols)}, schema=schema), path)
 
 
+def write_genomes(path: Path, work: Path) -> tuple[list[Path], int]:
+    """The genomes of `path`, read whole as the inputs step reads them (`cli._genomes` loads the file at once), one
+    row per membership written into Parquet parts under `work`: (the parts, the genomes)."""
+    import pyarrow as pa
+
+    from biobox import ids
+
+    gschema = pa.schema([("genome_uid", pa.binary(16)), ("contig_uid", pa.binary(16)), ("circular", pa.bool_()),
+                         ("kind", pa.string())])
+    parts, rows, n = [], [], 0
+    for g in json.loads(Path(path).read_text()):
+        cus = [bytes.fromhex(u) for u in g["contig_uids"]]
+        circ = {bytes.fromhex(u) for u in g.get("circular", ())}
+        guid = ids.genome_uid(cus)
+        n += 1
+        rows += [(guid, cu, cu in circ, g["kind"]) for cu in cus]
+        if len(rows) >= _FLUSH:
+            parts.append(work / f"g-{len(parts):05d}.parquet")
+            _write_rows(rows, gschema, parts[-1])
+            rows = []
+    parts.append(work / f"g-{len(parts):05d}.parquet")
+    _write_rows(rows, gschema, parts[-1])
+    return parts, n
+
+
+def cap_at(profile_path: str | Path, now) -> int:
+    """The thread cap of the profile at local time `now`, by the code that `run-step` and `build-stage` use for the
+    hour (`runstep.launch_cap`: `Profile.threads_at`, the day window and the weekday rule; no CPU reading, so the
+    profile's own cap of that hour)."""
+    from biobox import profile as bprofile
+    from biobox import runstep
+
+    return runstep.launch_cap(bprofile.load(profile_path), now, runstep.CpuUse())[0]
+
+
+def cap(a) -> int:
+    from datetime import datetime
+
+    now = datetime.fromisoformat(a.at) if a.at else datetime.now()
+    c = cap_at(a.profile, now)
+    print(max(1, c - HELPER_THREADS) if a.quota else c)
+    return 0
+
+
 def before(a) -> int:
     import pyarrow as pa
 
@@ -389,22 +467,7 @@ def before(a) -> int:
         sizes = bs.object_sizes(inp / "objects.json")
         fasta_bytes, disk_bytes = sum(f for _, _, f in sizes), sum(d for _, d, _ in sizes)
         big = max(sizes, key=lambda t: (t[2], str(t[0])), default=None)
-        # the genomes, read as the inputs step reads them (cli._genomes), one row per membership into Parquet
-        gschema = pa.schema([("genome_uid", pa.binary(16)), ("contig_uid", pa.binary(16)), ("circular", pa.bool_()),
-                             ("kind", pa.string())])
-        gparts, rows, n_genomes = [], [], 0
-        for g in json.loads((inp / "genomes.json").read_text()):
-            cus = [bytes.fromhex(u) for u in g["contig_uids"]]
-            circ = {bytes.fromhex(u) for u in g.get("circular", ())}
-            guid = ids.genome_uid(cus)
-            n_genomes += 1
-            rows += [(guid, cu, cu in circ, g["kind"]) for cu in cus]
-            if len(rows) >= _FLUSH:
-                gparts.append(work / f"g-{len(gparts):05d}.parquet")
-                _write_rows(rows, gschema, gparts[-1])
-                rows = []
-        gparts.append(work / f"g-{len(gparts):05d}.parquet")
-        _write_rows(rows, gschema, gparts[-1])
+        gparts, n_genomes = write_genomes(inp / "genomes.json", work)
         # the records' lengths, streamed: a record under the least length is counted and dropped (ingest's rule)
         lschema = pa.schema([("contig_uid", pa.binary(16)), ("n", pa.int64())])
         lparts, rows = [], []
@@ -514,6 +577,8 @@ def before(a) -> int:
         "accepted": [{"step": k[0], "cpu_min": k[1], "estimate": k[2], "decision": v}
                      for k, v in sorted(conf.accepted.items())],
         "parked_owners": parked, "refusals": [x for x in (ingest_refusal, gc_refusal) if x],
+        "expect": {s: {"note": src, "expected": n, "held": owned_by.get(s, 0)}
+                   for s, (n, src) in sorted(conf.expect.items())},
         "guard_policy": "DEC-43 (estimate >= 24 CPU-min judged) + DEC-53 (stop above 1.20; record below 0.80)",
     }
     if conf.crispr:
@@ -531,6 +596,12 @@ def before(a) -> int:
     if doc["refusals"]:
         print("refused: build-stage would refuse the stage: " + "; ".join(doc["refusals"]), file=sys.stderr)
         return 7
+    off = {s: e for s, e in doc["expect"].items() if e["held"] != e["expected"]}
+    if off:
+        print("refused: contigs of the stage held by an earlier stage differ from the note's: " + "; ".join(
+            f"{s} holds {e['held']}, the note {e['note']} says {e['expected']}" for s, e in off.items()),
+            file=sys.stderr)
+        return 8
     return 0
 
 
@@ -592,6 +663,11 @@ def main() -> int:
     p.add_argument("file")
     p.add_argument("--stage", required=True)
     p.add_argument("--sums")
+    p.add_argument("--tree", default=None, help="check the notes and decision rows the conf names against this tree")
+    p = sub.add_parser("cap")
+    p.add_argument("--profile", required=True)
+    p.add_argument("--at", default=None, help="local time, ISO 8601 (tests); default now")
+    p.add_argument("--quota", action="store_true", help=f"the unit's quota: the cap less {HELPER_THREADS} for helpers")
     for name in ("before", "rates", "complete"):
         p = sub.add_parser(name)
         p.add_argument("--conf", required=True)
@@ -605,7 +681,7 @@ def main() -> int:
             p.add_argument("--out-plan")
         if name == "rates":
             p.add_argument("--objects", required=True)
-            p.add_argument("--before", help="estimate/before.json: its fasta_bytes")
+            p.add_argument("--before", help="estimate/before.json: its fasta_bytes and held_bases")
     p = sub.add_parser("fixture")
     p.add_argument("--tree", required=True)
     p.add_argument("--out", required=True)
@@ -613,7 +689,8 @@ def main() -> int:
     p.add_argument("--earlier", required=True)
     p.add_argument("--min-contig-len", type=int, default=None)
     a = ap.parse_args()
-    return {"conf": conf_cmd, "before": before, "rates": rates, "complete": complete, "fixture": fixture}[a.mode](a)
+    return {"conf": conf_cmd, "cap": cap, "before": before, "rates": rates, "complete": complete,
+            "fixture": fixture}[a.mode](a)
 
 
 if __name__ == "__main__":
