@@ -54,6 +54,9 @@ def _rates(est, monkeypatch, tmp_path: Path, *, ingest: float, ingest_est: float
     # The CRISPR estimates read the stage's stored bases; no CRISPR record exists here, so they are never judged.
     monkeypatch.setattr(est.bs, "stage_bases", lambda root, st: 0)
     monkeypatch.setattr(est.bs, "crispr_flank_bases", lambda root, st: 0)
+    # `rates` names the CRISPR steps by their producer, which asks the MinCED binary for its version. The guard's
+    # logic does not depend on it, and GitHub Actions R1 has no MinCED (card E-12): a fixed version stands in.
+    monkeypatch.setattr(est.crispr, "minced_version", lambda: "0.0.0")
     a = argparse.Namespace(root=str(root), stage=ST, before=str(before), objects=None)
     return est, a
 
