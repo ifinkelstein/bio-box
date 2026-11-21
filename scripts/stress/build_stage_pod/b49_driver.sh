@@ -58,7 +58,7 @@ case "$MODE" in
     img python -m biobox.cli release verify --root "$C/view" --release "$REL"
     ;;
   check)
-    img python -I "$C/bin/b49_check.py" "$C/view" "$REL" rM.2
+    img python -I "$C/bin/b49_check.py" "$C/view" "$REL" rM.2 || exit $?  # not `du`'s status (card A-11)
     du -sb "$C"
     ;;
   clean)

@@ -429,8 +429,9 @@ before() {
 }
 
 after() {
-  local d=$C/after r ok=1 h0 h1
+  local d=$C/after r ok=1 h0 h1 rc
   mkdir -p "$d"
+  rm -f "$d/DONE"  # withdrawn until this `after` has passed
   [ -e "$ROOT/STOP" ] && log "after: $ROOT/STOP exists: $(head -c 300 "$ROOT/STOP")"
   listing "$ROOT" "$d/listing.tsv"
   log "after: $(wc -l < "$d/listing.tsv") files, $(awk -F '\t' '{s += $2} END {printf "%.0f", s}' "$d/listing.tsv") bytes"
@@ -442,8 +443,10 @@ after() {
     [ -n "$h1" ] && [ "$h0" = "$h1" ] || { log "after: $r's manifest hash '$h1' is not '$h0'"; ok=0; }
   done
   bb cli releases --root "$ROOT" --profile "$REALPROF" > "$d/releases.txt" 2>&1
-  log "after: bio-box releases exit $?: $(grep -F "$REL" "$d/releases.txt" | head -n 3 | tr '\n' ' ' | cut -c1-600)"
+  rc=$?
+  log "after: bio-box releases exit $rc: $(grep -F "$REL" "$d/releases.txt" | head -n 3 | tr '\n' ' ' | cut -c1-600)"
   [ "$ok" = 1 ] || fail "a release does not verify, or an earlier release's hash changed (read $d/verify-*.log)"
+  [ "$rc" = 0 ] || fail "after: bio-box releases exited $rc"
   touch "$d/DONE"
 }
 
@@ -537,16 +540,20 @@ examples() {
 
 check() {
   local rc
+  [ -e "$C/after/DONE" ] || fail "check: no $C/after/DONE"
   mkdir -p "$C/check"
+  rm -f "$C/check/DONE"  # withdrawn until this check has passed
   python3 -I "$BIN/c35_est.py" rates --root "$ROOT" --release "$REL" --est "$C/estimate/before.json" \
-    --out "$C/check/rates.json" > /dev/null
+    --out "$C/check/rates.json" > /dev/null || fail "check: c35_est.py rates failed"
   bb py "$BIN/c35_check.py" --root "$ROOT" --before "$C/before/listing.tsv" --after "$C/after/listing.tsv" \
     --release "$REL" --stages "$ALL" --earlier "$EARLIER" --earlier-stages "$EARLIER_STAGES" \
     --est "$C/estimate/before.json" --out "$C/check" --tmp "$C/tmp/check" --dec27 > "$C/check/check.out" 2>&1
   rc=$?
-  cp "$C/check/root_added.tsv" "$C/root_added.tsv"
   log "check: exit $rc: $(tail -n 1 "$C/check/check.out" | cut -c1-600)"
-  return $rc
+  [ "$rc" = 0 ] || fail "check: c35_check.py exited $rc (read $C/check/check.out)"
+  [ -s "$C/check/root_added.tsv" ] || fail "check: no $C/check/root_added.tsv"
+  cp "$C/check/root_added.tsv" "$C/root_added.tsv" || fail "check: cp root_added.tsv"
+  touch "$C/check/DONE"
 }
 
 MODE=${1:-}
@@ -562,4 +569,12 @@ case "$MODE" in
   check) check ;;
   *) echo "usage: c35_driver.sh rehearse|estimate|before|run|after|pack|examples|check" >&2; exit 2 ;;
 esac
-log "c35 driver: mode '$MODE' done"
+# The mode's own status is the driver's exit status (card A-11; on 2026-11-20 c47_driver.sh `check` returned 1 and the
+# driver exited 0, the status of the log line that followed). A mode that fails through `fail` exits 1 itself.
+rc=$?
+if [ "$rc" = 0 ]; then
+  log "c35 driver: mode '$MODE' done"
+else
+  log "c35 driver: mode '$MODE' FAILED with status $rc"
+fi
+exit "$rc"

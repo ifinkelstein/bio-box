@@ -150,6 +150,7 @@ compare() {  # compare A B NAME: b48_compare.py over S1's gene-call files of roo
     "$2/runs/stage=S1/genecall.json" > "$B/s1/compare-$3.out" 2> "$B/s1/compare-$3.err"
   rc=$?
   log "compare $3: exit $rc: $(cut -c1-1500 "$B/s1/compare-$3.out") $(tail -n 2 "$B/s1/compare-$3.err")"
+  [ "$rc" = 0 ] || fail "b48_compare.py exit $rc"
 }
 
 MODE=${1:-}
@@ -170,4 +171,12 @@ case "$MODE" in
   compare) compare "$2" "$3" "$4" ;;
   *) echo "usage: b48_driver.sh stats|pl1|rate STAGE|pl1plan|batches|one|compare A B NAME" >&2; exit 2 ;;
 esac
-log "b48: mode '$MODE' done"
+# The mode's own status is the driver's exit status (card A-11; on 2026-11-20 c47_driver.sh `check` returned 1 and the
+# driver exited 0, the status of the log line that followed).
+rc=$?
+if [ "$rc" = 0 ]; then
+  log "b48: mode '$MODE' done"
+else
+  log "b48: mode '$MODE' FAILED with status $rc"
+fi
+exit "$rc"
