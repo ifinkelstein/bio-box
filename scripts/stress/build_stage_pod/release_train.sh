@@ -6,6 +6,14 @@
 # timestamp order. Incomplete and `stored`-only stages are named and left out, never waited for.
 # Never deletes or moves anything of an earlier release.
 #
+# Card A-15: `run` in a $WORK whose release it launched and left unfinished (its plan.json names a release with run
+# records in the root and no manifest, and the plan names it again with the same stages) resumes it: it keeps the first
+# launch's before/listing.tsv, before/verify-*.log and estimate/before.json, verifies the earlier releases again into
+# $WORK/resume-<n>/ (each manifest hash must equal the first launch's), launches the same build-stage command (checked
+# against the first launch's line in driver.log, with the same profile copy) as unit <prefix>-rel-<n>, a name not used
+# before in this $WORK, and judges the rate guard against the first launch's estimate. Another release or other
+# stages while such a release is unfinished are refused. `--dry-run` says `Action: resume ...` in that state.
+#
 # Usage (on the pod host):
 #   bash scripts/stress/build_stage_pod/release_train.sh --dry-run [--root R] [--profile P] [--date YYYY-MM-DD] \
 #        [--release R] [--parts K] [--same-stages]
@@ -163,10 +171,220 @@ plan_args() {
   [ "$NO_LIVE_CPU" = 1 ] && PLAN_ARGS+=(--no-live-cpu)
 }
 
+# Card A-15: a rerun of `run` resumes the release that this $WORK launched and left unfinished. `train_plan.py` plans a
+# release with no `release_def` and no manifest again under the same name and stages, and `build-stage` skips the
+# steps already published; what a resume must not do is take the root's listing, the earlier releases' hashes and the
+# estimate again on a root that holds half the release, or launch a unit under a name whose log already ends with an
+# exit line (pod_run.sh appends to the log: card A-14's watch would read the old unit's exit line as the new one's).
+RS_ACTION="" RS_REL="" RS_RECORDS="" RS_UNIT="" RS_HOW="" RS_REASON="" RS_PROBLEMS="" RS_VERIFY_N=0 RS_CMD=""
+BS_ARGS=()
+
+resume_state() {  # NEWPLAN_JSON: first launch, resume or refusal, from this $WORK, the root and the new plan (RS_*).
+  # Reads only. The unit number is one more than any `<prefix>-rel-<n>` recorded under $WORK/run/ or $WORK/logs/.
+  local out k v
+  out=$(python3 -I - "$WORK" "$ROOT" "$UNIT_PREFIX" "$1" <<'PY'
+import json
+import re
+import sys
+from pathlib import Path
+
+work, root, prefix = Path(sys.argv[1]), Path(sys.argv[2]), sys.argv[3]
+new = json.loads(sys.argv[4])
+
+
+def say(**kv):
+    for k, v in kv.items():
+        print(f"{k}\t{' '.join(str(v).split())}")
+
+
+def run_dir(rel):
+    return root / "runs" / f"stage={rel}"
+
+
+def records(rel):  # run records published
+    d = run_dir(rel)
+    return [p for p in d.glob("*.json") if not p.name.endswith(".publishing.json")] if d.is_dir() else []
+
+
+def started(rel):  # a run record or a run-step intent: the root holds something of the release
+    d = run_dir(rel)
+    return d.is_dir() and any(d.glob("*.json"))
+
+
+def finished(rel):
+    return (root / "manifests" / f"release={rel}.json").exists()
+
+
+def defined(rel):
+    return (root / "release_def" / f"release={rel}").is_dir()
+
+
+def plan_of(p):
+    return f"release {p['release']} (stages {','.join(p['stages']) or 'none'})"
+
+
+def earlier(p):
+    return p.get("earlier_manifest_releases") or []
+
+
+name = re.compile(re.escape(prefix) + r"-rel-([1-9][0-9]*)")
+seen = [0]
+for d, suffix in ((work / "run", ""), (work / "logs", ".log")):
+    for p in (d.iterdir() if d.is_dir() else ()):
+        if suffix and not p.name.endswith(suffix):
+            continue
+        m = name.fullmatch(p.name[:len(p.name) - len(suffix)])
+        if m:
+            seen.append(int(m[1]))
+unit = max(seen) + 1
+
+try:
+    old = json.loads((work / "plan.json").read_text())
+    old = old if isinstance(old.get("release"), str) and isinstance(old.get("stages"), list) else None
+except (OSError, ValueError, AttributeError):
+    old = None
+
+if old is not None and started(old["release"]) and not finished(old["release"]):
+    rel, k = old["release"], len(records(old["release"]))
+    if new["release"] == rel and new["stages"] == old["stages"] and earlier(new) == earlier(old):
+        how = "the same plan"
+    elif (defined(rel) and new.get("latest_release") == rel and new["stages"] == old["stages"]
+          and not new.get("new_stages") and earlier(new) == earlier(old)):
+        how = "the same stages; its release_def was written since the first launch"
+    else:
+        say(action="refuse", unit=unit, reason=(
+            f"this $WORK ({work}) launched {plan_of(old)}, and the root holds {k} run records of it and no manifest: "
+            f"it is unfinished; the plan now names {plan_of(new)}. Resume {rel} from a tree and root that plan it "
+            f"again, or set it aside by the PI's decision"))
+        sys.exit(0)
+    say(action="resume", release=rel, records=k, unit=unit, how=how)
+else:
+    foreign = sorted(d.name.removeprefix("stage=") for d in (root / "runs").glob("stage=*")
+                     if d.is_dir() and not (d / "inputs.json").exists() and any(d.glob("*.json"))
+                     and not finished(d.name.removeprefix("stage=")) and not defined(d.name.removeprefix("stage=")))
+    if foreign:
+        say(action="refuse", unit=unit, reason=(
+            f"the root holds run records of {', '.join(foreign)} (no release_def, no manifest: unfinished), which this "
+            f"$WORK ({work}) did not launch (its plan.json names {old['release'] if old else 'no release'}); the plan "
+            f"names {plan_of(new)}. Resume it with the $WORK that launched it"))
+        sys.exit(0)
+    say(action="first", release=new["release"], records=len(records(new["release"])), unit=unit)
+PY
+) || return 1
+  RS_ACTION="" RS_REL="" RS_RECORDS="" RS_UNIT="" RS_HOW="" RS_REASON=""
+  while IFS=$'\t' read -r k v; do
+    case "$k" in
+      action) RS_ACTION=$v ;; release) RS_REL=$v ;; records) RS_RECORDS=$v ;; unit) RS_UNIT=$v ;;
+      how) RS_HOW=$v ;; reason) RS_REASON=$v ;;
+    esac
+  done <<< "$out"
+  [ -n "$RS_ACTION" ] && [ -n "$RS_UNIT" ]
+}
+
+make_bs_args() {  # PLAN_JSON: build-stage's arguments for the plan's release into BS_ARGS (the first launch's, on a resume)
+  local line
+  BS_ARGS=()
+  while IFS= read -r line; do
+    BS_ARGS+=("$line")
+  done < <(python3 -I - "$1" <<'PY'
+import json, sys
+d = json.load(open(sys.argv[1]))
+ls = d["last_stage"]
+args = [
+    "--stage", ls["stage"],
+    "--release", d["release"],
+    "--stages", ",".join(d["stages"]),
+    "--depth", ls["depth"],
+    "--genomes", ls["genomes"],
+    "--objects", ls["objects"],
+]
+if ls["depth"] == "annotated":
+    for lib in ls.get("library_specs", []):
+        args += ["--library", lib["name"], lib["version"], lib["hmm"], lib.get("cutoff") or "gathering"]
+    if ls.get("ncrna_cm"):
+        args += ["--ncrna-cm", ls["ncrna_cm"], "--ncrna-set", ls.get("ncrna_set") or "prok-2"]
+if ls.get("crispr"):
+    args.append("--crispr")
+for a in args:
+    print(a)
+PY
+)
+  BS_ARGS+=(--threads "$T" --scan-jobs "$J" --scan-cpus "$CPUS")
+  [ -n "$PARTS" ] && BS_ARGS+=(--cluster-parts "$PARTS")
+  return 0
+}
+
+first_launch_cmd() {  # REL: the build-stage command of the last launch of REL that $WORK/driver.log records
+  [ -f "$LOG" ] || return 0
+  grep -F -- " --release $1 " "$LOG" | sed -n "s/^.* launch ${UNIT_PREFIX}-rel-[0-9]*: \(build-stage .*\)$/\1/p" \
+    | tail -n 1
+}
+
+resume_checks() {  # REL: what a resume keeps from the first launch, and that it launches the same command; the
+  # problems into RS_PROBLEMS (empty when it may go on). Reads only; BS_ARGS made from $WORK/plan.json first.
+  local rel=$1 r n=0 first now
+  RS_PROBLEMS=""
+  [ -s "$WORK/before/listing.tsv" ] || RS_PROBLEMS+="; the first launch's $WORK/before/listing.tsv is missing or empty"
+  [ -s "$WORK/estimate/before.json" ] || RS_PROBLEMS+="; the first launch's $WORK/estimate/before.json is missing or empty"
+  for r in $(python3 -I -c 'import json,sys; print(" ".join(json.load(open(sys.argv[1])).get("earlier_manifest_releases") or []))' "$WORK/plan.json"); do
+    n=$((n + 1))
+    [ -n "$(hash_of "$WORK/before/verify-$r.log" 2> /dev/null)" ] \
+      || RS_PROBLEMS+="; the first launch's $WORK/before/verify-$r.log is missing or holds no manifest hash"
+  done
+  if [ ! -s "$PROF_COPY" ]; then
+    RS_PROBLEMS+="; the first launch's profile copy $PROF_COPY is missing"
+  elif ! sed "s#^tmp:.*#tmp: $WORK/tmp#" "$REALPROF" | cmp -s - "$PROF_COPY"; then
+    RS_PROBLEMS+="; the profile copy made from $REALPROF would differ from the first launch's $PROF_COPY (its cut and scratch must not change)"
+  fi
+  first=$(first_launch_cmd "$rel")
+  now="build-stage --profile $PROF_COPY --root $ROOT ${BS_ARGS[*]}"
+  if [ -z "$first" ]; then
+    RS_PROBLEMS+="; $LOG records no launch of $rel to compare the command with"
+  elif [ "$first" != "$now" ]; then
+    RS_PROBLEMS+="; the command would differ from the first launch's: now '$now', first '$first'"
+  fi
+  RS_PROBLEMS=${RS_PROBLEMS#; }
+  RS_VERIFY_N=$n
+  RS_CMD=$now
+  [ -z "$RS_PROBLEMS" ]
+}
+
+action_line() {  # LINE: the plan's text (stdin) with its `Action:` line replaced by LINE
+  local l
+  while IFS= read -r l; do
+    case "$l" in "Action: "*) printf '%s\n' "$1" ;; *) printf '%s\n' "$l" ;; esac
+  done
+}
+
 do_dry_run() {
   plan_args
-  bb_ro py "$BIN/train_plan.py" "${PLAN_ARGS[@]}"
-  return $?
+  local newplan txt rc
+  newplan=$(bb_ro py "$BIN/train_plan.py" "${PLAN_ARGS[@]}" --json) || return $?
+  txt=$(bb_ro py "$BIN/train_plan.py" "${PLAN_ARGS[@]}")
+  rc=$?
+  if ! resume_state "$newplan"; then
+    printf '%s\n' "$txt"
+    echo "release_train: could not tell a resume from a first launch (the resume helper failed)" >&2
+    return 1
+  fi
+  case "$RS_ACTION" in
+    first) printf '%s\n' "$txt"; return $rc ;;
+    refuse) action_line "Action: refused: $RS_REASON" <<< "$txt"; return 1 ;;
+  esac
+  action_line "Action: resume $RS_REL ($RS_RECORDS run records published; unit $RS_UNIT)" <<< "$txt"
+  make_bs_args "$WORK/plan.json"
+  resume_checks "$RS_REL"
+  local ok=$?
+  echo "Resume of $RS_REL ($RS_HOW), launched by this \$WORK ($WORK): unit ${UNIT_PREFIX}-rel-$RS_UNIT, its own log $LOGS/${UNIT_PREFIX}-rel-$RS_UNIT.log and state $WORK/run/${UNIT_PREFIX}-rel-$RS_UNIT"
+  echo "  kept from the first launch: before/listing.tsv ($(wc -l 2> /dev/null < "$WORK/before/listing.tsv" || echo 0) files), $RS_VERIFY_N verify logs, estimate/before.json (the rate guard's estimate)"
+  echo "  the $RS_VERIFY_N earlier releases are verified again into $WORK/resume-$RS_UNIT; each manifest hash must equal the first launch's"
+  echo "  command: $RS_CMD"
+  if [ "$ok" = 0 ]; then
+    echo "  the same as the first launch's in $LOG"
+  else
+    echo "  refused: $RS_PROBLEMS"
+  fi
+  [ "$rc" = 0 ] && [ "$ok" = 0 ]
 }
 
 # The watch follows card A-12's stage driver (stage_driver.sh unit_ended, watch_answer, stop_unit, bgcall, on_exit).
@@ -302,7 +520,8 @@ do_run() {
   # $WORK/DONE is the success marker of a run (card A-11): written last, only when every step passed. A waiter tests
   # it, never a log line or an exit status alone; a run withdraws the marker of an earlier one before it starts.
   rm -f "$WORK/DONE"
-  make_profile
+  # the profile copy is written once the run is known to be a first launch; a resume keeps the first launch's (A-15)
+  mkdir -p "$WORK/tmp" "$LOGS"
   log "release_train run: root=$ROOT work=$WORK profile=$REALPROF"
 
   [ -e "$ROOT/STOP" ] && fail "$ROOT/STOP exists: $(head -c 300 "$ROOT/STOP")"
@@ -313,12 +532,34 @@ do_run() {
   free=$(free_gb)
   [ "$free" -ge "$START_MIN_GB" ] || fail "/tmp has ${free} GB free, under ${START_MIN_GB} GB"
 
-  # 1. Plan (rules 1 & 2)
+  # 1. Plan (rules 1 & 2). Card A-15: the new plan is written beside the first launch's until the run is known to be a
+  # first launch (it then replaces it) or a resume of the release this $WORK launched (it goes to $WORK/resume-<n>/,
+  # and everything that follows reads the first launch's plan.json).
   plan_args
-  local plan_json=$WORK/plan.json
-  bb_ro py "$BIN/train_plan.py" "${PLAN_ARGS[@]}" --json > "$plan_json" || exit $?
-  bb_ro py "$BIN/train_plan.py" "${PLAN_ARGS[@]}" > "$WORK/plan.txt" || { cat "$WORK/plan.txt"; fail "train_plan.py failed"; }
-  cat "$WORK/plan.txt"
+  local plan_json=$WORK/plan.json next_json=$WORK/plan.next.json next_txt=$WORK/plan.next.txt resume=0 rdir=""
+  bb_ro py "$BIN/train_plan.py" "${PLAN_ARGS[@]}" --json > "$next_json" || exit $?
+  bb_ro py "$BIN/train_plan.py" "${PLAN_ARGS[@]}" > "$next_txt" || { cat "$next_txt"; fail "train_plan.py failed"; }
+  resume_state "$(cat "$next_json")" || fail "could not tell a resume from a first launch (the resume helper failed)"
+  case "$RS_ACTION" in
+    first)
+      mv -f "$next_json" "$plan_json" || fail "mv $next_json"
+      mv -f "$next_txt" "$WORK/plan.txt" || fail "mv $next_txt"
+      make_profile
+      cat "$WORK/plan.txt"
+      ;;
+    resume)
+      resume=1
+      rdir=$WORK/resume-$RS_UNIT
+      mkdir -p "$rdir"
+      mv -f "$next_json" "$rdir/plan.json" || fail "mv $next_json"
+      mv -f "$next_txt" "$rdir/plan.txt" || fail "mv $next_txt"
+      action_line "Action: resume $RS_REL ($RS_RECORDS run records published; unit $RS_UNIT)" < "$rdir/plan.txt"
+      log "resume $RS_REL ($RS_HOW): $RS_RECORDS run records published; unit ${UNIT_PREFIX}-rel-$RS_UNIT"
+      make_bs_args "$plan_json"
+      resume_checks "$RS_REL" || fail "resume of $RS_REL refused, nothing launched: $RS_PROBLEMS"
+      ;;
+    *) fail "refused, nothing changed: $RS_REASON" ;;
+  esac
 
   local rel stages latest nothing_new earlier_rels last_stage last_depth last_genomes last_objects last_crispr
   rel=$(python3 -I -c 'import json,sys; print(json.load(open(sys.argv[1]))["release"])' "$plan_json")
@@ -334,53 +575,44 @@ do_run() {
   fi
   [ -n "$stages" ] || fail "no complete stages found in $ROOT"
 
-  # 2. Before: verify every earlier manifest release & snapshot listing
-  local r ok=1
-  for r in $earlier_rels; do
-    verify_rel "$ROOT" "$r" "$WORK/before" || ok=0
-  done
-  [ "$ok" = 1 ] || fail "an earlier release did not verify before launch (see $WORK/before/verify-*.log)"
-  listing "$ROOT" "$WORK/before/listing.tsv"
-  log "before: $(wc -l < "$WORK/before/listing.tsv") files in $ROOT"
+  # 2. Before: verify every earlier manifest release & snapshot listing. A resume keeps the first launch's listing and
+  # verify logs (taken before anything of the release was written) and verifies again into its own directory: each
+  # manifest hash must equal the first launch's.
+  local r ok=1 h0 h1
+  if [ "$resume" = 1 ]; then
+    for r in $earlier_rels; do
+      verify_rel "$ROOT" "$r" "$rdir" || ok=0
+      h0=$(hash_of "$WORK/before/verify-$r.log")
+      h1=$(hash_of "$rdir/verify-$r.log")
+      [ -n "$h1" ] && [ "$h0" = "$h1" ] || { log "resume: $r hash '$h1' != the first launch's '$h0'"; ok=0; }
+    done
+    [ "$ok" = 1 ] || fail "an earlier release did not verify before the resume, or its manifest hash is not the first launch's (see $rdir/verify-*.log and $WORK/before/verify-*.log)"
+    log "resume: keeps the first launch's before/listing.tsv ($(wc -l < "$WORK/before/listing.tsv") files), its verify logs and estimate/before.json"
+  else
+    for r in $earlier_rels; do
+      verify_rel "$ROOT" "$r" "$WORK/before" || ok=0
+    done
+    [ "$ok" = 1 ] || fail "an earlier release did not verify before launch (see $WORK/before/verify-*.log)"
+    listing "$ROOT" "$WORK/before/listing.tsv"
+    log "before: $(wc -l < "$WORK/before/listing.tsv") files in $ROOT"
+  fi
 
-  # 3. Estimate before launch
-  local est_args=(before --root "$ROOT" --release "$rel" --stages "$stages" --profile "$PROF_COPY" --tmp "$WORK/tmp/est")
-  [ -n "$latest" ] && est_args+=(--earlier "$latest")
-  [ -n "$PARTS" ] && est_args+=(--parts "$PARTS")
-  bb_ro py "$BIN/train_est.py" "${est_args[@]}" > "$WORK/estimate/before.json" 2> "$WORK/estimate/before.err" \
-    || fail "train_est.py before failed (see $WORK/estimate/before.err)"
+  # 3. Estimate before launch (a resume is judged against the first launch's)
+  if [ "$resume" != 1 ]; then
+    local est_args=(before --root "$ROOT" --release "$rel" --stages "$stages" --profile "$PROF_COPY" --tmp "$WORK/tmp/est")
+    [ -n "$latest" ] && est_args+=(--earlier "$latest")
+    [ -n "$PARTS" ] && est_args+=(--parts "$PARTS")
+    bb_ro py "$BIN/train_est.py" "${est_args[@]}" > "$WORK/estimate/before.json" 2> "$WORK/estimate/before.err" \
+      || fail "train_est.py before failed (see $WORK/estimate/before.err)"
+  fi
 
-  # 4. Build release steps via build-stage (stage steps for last_stage all skip)
-  local bs_args=()
-  while IFS= read -r line; do
-    bs_args+=("$line")
-  done < <(python3 -I - "$plan_json" <<'PY'
-import json, sys
-d = json.load(open(sys.argv[1]))
-ls = d["last_stage"]
-args = [
-    "--stage", ls["stage"],
-    "--release", d["release"],
-    "--stages", ",".join(d["stages"]),
-    "--depth", ls["depth"],
-    "--genomes", ls["genomes"],
-    "--objects", ls["objects"],
-]
-if ls["depth"] == "annotated":
-    for lib in ls.get("library_specs", []):
-        args += ["--library", lib["name"], lib["version"], lib["hmm"], lib.get("cutoff") or "gathering"]
-    if ls.get("ncrna_cm"):
-        args += ["--ncrna-cm", ls["ncrna_cm"], "--ncrna-set", ls.get("ncrna_set") or "prok-2"]
-if ls.get("crispr"):
-    args.append("--crispr")
-for a in args:
-    print(a)
-PY
-)
-  bs_args+=(--threads "$T" --scan-jobs "$J" --scan-cpus "$CPUS")
-  [ -n "$PARTS" ] && bs_args+=(--cluster-parts "$PARTS")
+  # 4. Build release steps via build-stage (stage steps for last_stage all skip; on a resume the release's published
+  # steps skip too). The unit's name is new to this $WORK (A-15): its log holds no other unit's exit line.
+  [ "$resume" = 1 ] || make_bs_args "$plan_json"
+  local bs_args=("${BS_ARGS[@]}")
 
-  local unit="${UNIT_PREFIX}-rel-1"
+  local unit="${UNIT_PREFIX}-rel-$RS_UNIT"
+  [ -e "$LOGS/$unit.log" ] && fail "$LOGS/$unit.log exists: another unit's exit line could be read as $unit's"
   mkdir -p "$WORK/run/$unit"
   touch "$WORK/run/$unit/since"
   local ro_binds=()
@@ -421,13 +653,21 @@ PY
 
   # 6. Search pack in parts (W-35) + pack verify
   local punit="${UNIT_PREFIX}-pack" pack_model=()
+  [ "$RS_UNIT" = 1 ] || punit="${UNIT_PREFIX}-pack-$RS_UNIT"
+  [ -e "$LOGS/$punit.log" ] && fail "$LOGS/$punit.log exists: another unit's exit line could be read as $punit's"
   [ -f "$PFAM" ] && pack_model=(--model "pfam-38.2=$PFAM")
   bash "$TREE/scripts/pod_run.sh" --profile "$PROF_COPY" --image "$IMAGE" --digest "$DIGEST" --mem "$PACK_MEM" \
     --threads "$PACK_JOBS" --bind /tmp/if2453 --bind "$ROOT:$ROOT:ro" "${ro_binds[@]}" --env "PYTHONPATH=$PYPATH" \
     --log "$LOGS/$punit.log" "$punit" pack build --root "$ROOT" --release "$rel" "${pack_model[@]}" \
     --profile "$PROF_COPY" --parts "$PACK_PARTS" --jobs "$PACK_JOBS" >> "$LOG" 2>&1
   sleep 2
-  while systemctl --user is-active --quiet "$punit"; do sleep 5; done
+  while :; do  # the watch's rule (A-14): its own exit line or a real inactive answer ends the wait, a failed answer not
+    unit_ended "$punit" "$LOGS"
+    rc=$?
+    [ "$rc" = 0 ] && break
+    watch_answer "$rc" "$punit"
+    sleep 5
+  done
   rc=$(exit_of "$punit")
   [ "$rc" = 0 ] || fail "pack build exited '$rc' (see $LOGS/$punit.log)"
   bb_ro cli pack verify --root "$ROOT" --release "$rel" --profile "$PROF_COPY" > "$WORK/pack/verify.log" 2>&1 \
