@@ -1,0 +1,29 @@
+2026-11-20 09:36:15 CST c47_queue: start (pid 2228487); waiting for /tmp/if2453/c48c/after/DONE and no active c48c-* or c46-* service; poll 60s, at most 48h
+2026-11-20 09:36:15 CST c47_queue: waiting: after/DONE no; c48c active: 'c48c-drv-run.service c48c-v1-1.service'; c46 active: ''
+2026-11-20 10:06:16 CST c47_queue: waiting: after/DONE no; c48c active: 'c48c-drv-run.service c48c-v1-1.service'; c46 active: ''
+2026-11-20 10:36:17 CST c47_queue: waiting: after/DONE no; c48c active: 'c48c-drv-run.service c48c-v1-1.service'; c46 active: ''
+2026-11-20 11:06:18 CST c47_queue: waiting: after/DONE no; c48c active: 'c48c-drv-run.service c48c-v1-1.service'; c46 active: ''
+2026-11-20 11:36:19 CST c47_queue: waiting: after/DONE no; c48c active: 'c48c-drv-run.service c48c-v1-1.service'; c46 active: ''
+2026-11-20 12:06:20 CST c47_queue: waiting: after/DONE no; c48c active: 'c48c-drv-run.service c48c-v1-1.service'; c46 active: ''
+2026-11-20 12:36:21 CST c47_queue: waiting: after/DONE no; c48c active: 'c48c-drv-run.service c48c-v1-1.service'; c46 active: ''
+2026-11-20 13:06:22 CST c47_queue: waiting: after/DONE no; c48c active: 'c48c-drv-run.service c48c-v1-1.service'; c46 active: ''
+2026-11-20 13:36:23 CST c47_queue: waiting: after/DONE no; c48c active: 'c48c-drv-run.service c48c-v1-1.service'; c46 active: ''
+2026-11-20 14:06:24 CST c47_queue: waiting: after/DONE no; c48c active: 'c48c-drv-run.service c48c-v1-1.service'; c46 active: ''
+2026-11-20 14:36:25 CST c47_queue: waiting: after/DONE no; c48c active: 'c48c-drv-run.service c48c-v1-1.service'; c46 active: ''
+2026-11-20 15:06:26 CST c47_queue: waiting: after/DONE no; c48c active: 'c48c-drv-run.service c48c-v1-1.service'; c46 active: ''
+2026-11-20 15:36:27 CST c47_queue: waiting: after/DONE no; c48c active: 'c48c-drv-run.service c48c-v1-1.service'; c46 active: ''
+2026-11-20 16:06:28 CST c47_queue: waiting: after/DONE no; c48c active: ''; c46 active: ''
+2026-11-20 16:36:29 CST c47_queue: waiting: after/DONE no; c48c active: ''; c46 active: ''
+2026-11-20 17:06:30 CST c47_queue: V1's after snapshot is done and no c48c-* or c46-* service is active
+2026-11-20 17:06:30 CST c47_queue: kept the first launch's stop record as /tmp/if2453/c47/run/FAILED.c47-c5-1
+2026-11-20 17:06:30 CST c47_queue: driver mode rebefore: start
+2026-11-20 17:18:58 CST c47_queue: driver mode rebefore: exit 0
+2026-11-20 17:18:58 CST c47_queue: driver mode run: start
+2026-11-20 21:49:10 CST c47_queue: driver mode run: exit 0
+2026-11-20 21:49:10 CST c47_queue: driver mode after: start
+2026-11-20 22:01:20 CST c47_queue: driver mode after: exit 0
+2026-11-20 22:01:20 CST c47_queue: driver mode check: start
+2026-11-20 22:02:41 CST c47_queue: driver mode check: exit 0
+2026-11-20 22:02:41 CST c47_queue: driver mode backup: start
+2026-11-20 22:05:18 CST c47_queue: driver mode backup: exit 0
+2026-11-20 22:05:18 CST c47_queue: done: rebefore, run, after, check and backup all passed

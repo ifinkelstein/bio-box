@@ -1,0 +1,44 @@
+{
+ "bases_stored": 9109234757,
+ "crispr_default_cpu_min": 25.521,
+ "crispr_formula": "(9109234757 + 0) x 168.1 / 1e9 / 60 (x 1.15 near-cas)",
+ "crispr_near_cpu_min": 29.349,
+ "fasta_bytes": 9509853070,
+ "flank_bases": 0,
+ "genecall": {
+  "bases": 9377515985,
+  "bases_called": 9369040755,
+  "bases_stored": 9109234757,
+  "batches": [
+   {
+    "bases": 9369040755,
+    "batch": 0,
+    "estimate_cpu_min": 152.769,
+    "genomes": 2029
+   }
+  ],
+  "budget": 300,
+  "contigs_listed": 5203,
+  "contigs_owned_by_earlier_stages": 2550,
+  "contigs_stored": 2653,
+  "estimate_cpu_min": 152.769,
+  "flank_bases": 0,
+  "genes_expected": 8595158.0,
+  "genomes": 2029,
+  "genomes_not_called": 2,
+  "held_bases": 267273180,
+  "largest_genome": {
+   "estimate_cpu_min": 0.118,
+   "genome_uid": "df159bfa247f3950575345a15e60ab7d"
+  },
+  "merge_estimate_cpu_min": 1.038,
+  "refusal": null,
+  "stage": "C5"
+ },
+ "guard_policy": "DEC-43 (>= 24 CPU-min judged) + DEC-53 (stop only on ratio > 1.20; record ratio < 0.80)",
+ "held_bases": 267273180,
+ "ingest_cpu_min": 38.057,
+ "ingest_formula": "0.07 + max(0, 9509853070 - 267273180) x 4.11 / 1000000000",
+ "margin_cpu_min": 240.0,
+ "shard_residues": 30150753
+}

@@ -1,0 +1,878 @@
+{
+ "added": {
+  "bytes": 5821546544,
+  "files": 138
+ },
+ "contigs": {
+  "bases_stored": 9109234757,
+  "circular": 0,
+  "codes": [
+   11
+  ],
+  "contig_label_rows": 5203,
+  "contig_occurrence_contigs": 5203,
+  "contig_occurrence_rows": 5228,
+  "contig_occurrence_rows_on_contigs_of_earlier_stages": 2567,
+  "contigs": 5203,
+  "genome_input_rows": 5224,
+  "genomes": 2029,
+  "kinds": [
+   "prokaryote"
+  ],
+  "ledger_equals_stored_by": false,
+  "ledger_skipped_earlier": 2553,
+  "ledger_skipped_within": 0,
+  "quality": {
+   "complete": 5224
+  },
+  "stored": 2653,
+  "stored_by_earlier": 2550,
+  "stored_by_earlier_by_stage": {
+   "P1": 1,
+   "P2": 3,
+   "P4": 2,
+   "PL1": 2543,
+   "S1": 1
+  }
+ },
+ "copy_check": {
+  "columns_compared": [
+   "protein_uid",
+   "model_acc",
+   "model_name",
+   "model_len",
+   "seq_bitscore",
+   "seq_evalue_zref",
+   "dom_bitscore",
+   "dom_ievalue_zref",
+   "env_start",
+   "env_end",
+   "ali_start",
+   "ali_end",
+   "hmm_from",
+   "hmm_to",
+   "cutoff",
+   "z",
+   "dom_z"
+  ],
+  "copied_proteins": 835545,
+  "equals_plan": true,
+  "rows": 1373364,
+  "sources": [
+   {
+    "plan_proteins": 0,
+    "plan_rows": 0,
+    "proteins": 0,
+    "rows_in_source": 0,
+    "rows_in_stage": 0,
+    "source_not_in_stage": 0,
+    "stage": "H1",
+    "stage_not_in_source": 0
+   },
+   {
+    "plan_proteins": 23152,
+    "plan_rows": 39859,
+    "proteins": 23152,
+    "rows_in_source": 39859,
+    "rows_in_stage": 39859,
+    "source_not_in_stage": 0,
+    "stage": "P1",
+    "stage_not_in_source": 0
+   },
+   {
+    "plan_proteins": 159312,
+    "plan_rows": 278606,
+    "proteins": 159312,
+    "rows_in_source": 278606,
+    "rows_in_stage": 278606,
+    "source_not_in_stage": 0,
+    "stage": "P2",
+    "stage_not_in_source": 0
+   },
+   {
+    "plan_proteins": 94770,
+    "plan_rows": 166462,
+    "proteins": 94770,
+    "rows_in_source": 166462,
+    "rows_in_stage": 166462,
+    "source_not_in_stage": 0,
+    "stage": "P3",
+    "stage_not_in_source": 0
+   },
+   {
+    "plan_proteins": 150104,
+    "plan_rows": 267106,
+    "proteins": 150104,
+    "rows_in_source": 267106,
+    "rows_in_stage": 267106,
+    "source_not_in_stage": 0,
+    "stage": "P4",
+    "stage_not_in_source": 0
+   },
+   {
+    "plan_proteins": 142694,
+    "plan_rows": 253825,
+    "proteins": 142694,
+    "rows_in_source": 253825,
+    "rows_in_stage": 253825,
+    "source_not_in_stage": 0,
+    "stage": "P5",
+    "stage_not_in_source": 0
+   },
+   {
+    "plan_proteins": 100155,
+    "plan_rows": 179050,
+    "proteins": 100155,
+    "rows_in_source": 179050,
+    "rows_in_stage": 179050,
+    "source_not_in_stage": 0,
+    "stage": "P6",
+    "stage_not_in_source": 0
+   },
+   {
+    "plan_proteins": 145668,
+    "plan_rows": 172335,
+    "proteins": 145668,
+    "rows_in_source": 172335,
+    "rows_in_stage": 172335,
+    "source_not_in_stage": 0,
+    "stage": "PL1",
+    "stage_not_in_source": 0
+   },
+   {
+    "plan_proteins": 3045,
+    "plan_rows": 2666,
+    "proteins": 3045,
+    "rows_in_source": 2666,
+    "rows_in_stage": 2666,
+    "source_not_in_stage": 0,
+    "stage": "S1",
+    "stage_not_in_source": 0
+   },
+   {
+    "plan_proteins": 16645,
+    "plan_rows": 13455,
+    "proteins": 16645,
+    "rows_in_source": 13455,
+    "rows_in_stage": 13455,
+    "source_not_in_stage": 0,
+    "stage": "V1",
+    "stage_not_in_source": 0
+   }
+  ]
+ },
+ "crispr": {
+  "default": {
+   "arrays": 1761,
+   "arrays_per_gbp": 193.32,
+   "calls_in": 1761,
+   "calls_kept": 1761,
+   "contigs_searched": 2653,
+   "contigs_skipped_other_stage": 2553,
+   "elements": 62983,
+   "producer": "minced-0.4.2-w8-nr3-r23x47-s26x50",
+   "recorded": true,
+   "rejected": {}
+  },
+  "near_cas": {
+   "arrays": 87,
+   "arrays_per_gbp": 9.551,
+   "calls_in": 12284,
+   "calls_kept": 87,
+   "contigs_searched": 2653,
+   "contigs_skipped_other_stage": 2553,
+   "elements": 425,
+   "producer": "minced-0.4.2-w8-nr2-r23x47-s26x50-cas1kb-caspfam1-pfam-38.2",
+   "recorded": true,
+   "rejected": {
+    "far_from_cas": 10415,
+    "overlaps_default": 1782
+   }
+  }
+ },
+ "failed": [
+  "genecall ledger earlier skips (2553) != stored_by (2550)"
+ ],
+ "files": {
+  "after": 4754,
+  "before": 4616,
+  "changed": [],
+  "earlier_hashed": 1513,
+  "earlier_sha256_changed": [],
+  "gone": [],
+  "new": 138,
+  "new_under_stage": 138,
+  "unexpected": []
+ },
+ "genes": {
+  "distinct_proteins": 3972512,
+  "earlier_protein_seq_files": 14,
+  "genes": 8476374,
+  "in_earlier_stages": 686596,
+  "new_distinct_proteins": 3285916,
+  "new_residues": 1149786228,
+  "residues": 1350839880
+ },
+ "pfam": {
+  "copied_proteins": 835545,
+  "copied_proteins_with_hit": 718150,
+  "copied_residues": 240723122,
+  "copied_rows": 1373364,
+  "domain_rows": 7342265,
+  "models_with_hit": 8969,
+  "passed_over": [],
+  "proteins": 4104816,
+  "proteins_with_domain": 3533081,
+  "residues": 1387315559,
+  "scanned_proteins": 3269271,
+  "scanned_residues": 1146592437,
+  "shard_residues": 30150753,
+  "shards": 39,
+  "shared_contig_proteins_added": 132304,
+  "sources": [
+   {
+    "proteins": 0,
+    "proteins_with_hit": 0,
+    "residues": 0,
+    "rows": 0,
+    "stage": "H1"
+   },
+   {
+    "proteins": 23152,
+    "proteins_with_hit": 20638,
+    "residues": 6748198,
+    "rows": 39859,
+    "stage": "P1"
+   },
+   {
+    "proteins": 159312,
+    "proteins_with_hit": 144294,
+    "residues": 45905374,
+    "rows": 278606,
+    "stage": "P2"
+   },
+   {
+    "proteins": 94770,
+    "proteins_with_hit": 86381,
+    "residues": 27428879,
+    "rows": 166462,
+    "stage": "P3"
+   },
+   {
+    "proteins": 150104,
+    "proteins_with_hit": 136763,
+    "residues": 44310283,
+    "rows": 267106,
+    "stage": "P4"
+   },
+   {
+    "proteins": 142694,
+    "proteins_with_hit": 129363,
+    "residues": 42768078,
+    "rows": 253825,
+    "stage": "P5"
+   },
+   {
+    "proteins": 100155,
+    "proteins_with_hit": 91983,
+    "residues": 29643717,
+    "rows": 179050,
+    "stage": "P6"
+   },
+   {
+    "proteins": 145668,
+    "proteins_with_hit": 96587,
+    "residues": 40154438,
+    "rows": 172335,
+    "stage": "PL1"
+   },
+   {
+    "proteins": 3045,
+    "proteins_with_hit": 2016,
+    "residues": 570364,
+    "rows": 2666,
+    "stage": "S1"
+   },
+   {
+    "proteins": 16645,
+    "proteins_with_hit": 10125,
+    "residues": 3193791,
+    "rows": 13455,
+    "stage": "V1"
+   }
+  ],
+  "stage_protein_seq": 3972512
+ },
+ "steps": {
+  "batches": {
+   "cpu_min": 0,
+   "cpu_min_max": null,
+   "n": 0,
+   "peak_rss_mib_max": null,
+   "ratio_max": null,
+   "ratio_min": null,
+   "wall_s_max": null
+  },
+  "code_ids": [
+   "144d88c3269c5cc8b0a839b1f56125d0c9f99f8fb75deb056d6edf37dc651fb2"
+  ],
+  "cpu_min_max": 232.843,
+  "cpu_min_total": 8899.74,
+  "images": [
+   "sha256:d67300aa1321b571fa8da79e74dfccdd87a8dca2e56518f324902efa6b9f098a"
+  ],
+  "largest": "domains-pfam-38.2.shard-00004",
+  "names": [
+   "crispr-minced-0.4.2-w8-nr2-r23x47-s26x50-cas1kb-caspfam1-pfam-38.2",
+   "crispr-minced-0.4.2-w8-nr3-r23x47-s26x50",
+   "domains-pfam-38.2",
+   "domains-pfam-38.2.plan",
+   "genecall",
+   "igr",
+   "ingest",
+   "inputs",
+   "tapes"
+  ],
+  "over_budget": [],
+  "rates": {
+   "accepted_over_20pct": {
+    "ingest": "DEC-56"
+   },
+   "checked": 43,
+   "over_20pct": [],
+   "rows": [
+    {
+     "accepted": "DEC-56",
+     "basis": "before.json ingest_cpu_min(fasta_bytes, held_bases)",
+     "cpu_min": 45.803,
+     "estimate": 38.057,
+     "judged": true,
+     "over_20pct": false,
+     "peak_rss_mib": 1359.7,
+     "ratio": 1.204,
+     "step": "ingest",
+     "under_20pct": false,
+     "wall_s": 2629.043
+    },
+    {
+     "basis": "before.json one-process genecall estimate_cpu_min",
+     "cpu_min": 128.831,
+     "estimate": 152.769,
+     "judged": true,
+     "over_20pct": false,
+     "peak_rss_mib": 2820.7,
+     "ratio": 0.843,
+     "step": "genecall",
+     "under_20pct": false,
+     "wall_s": 1390.065
+    },
+    {
+     "basis": "30150114 residues x 7.96 / 1e6",
+     "cpu_min": 228.661,
+     "estimate": 239.995,
+     "judged": true,
+     "over_20pct": false,
+     "peak_rss_mib": 1112.0,
+     "ratio": 0.953,
+     "step": "domains-pfam-38.2.shard-00000",
+     "under_20pct": false,
+     "wall_s": 3403.572
+    },
+    {
+     "basis": "30150461 residues x 7.96 / 1e6",
+     "cpu_min": 227.325,
+     "estimate": 239.998,
+     "judged": true,
+     "over_20pct": false,
+     "peak_rss_mib": 1055.5,
+     "ratio": 0.947,
+     "step": "domains-pfam-38.2.shard-00001",
+     "under_20pct": false,
+     "wall_s": 3383.124
+    },
+    {
+     "basis": "30150354 residues x 7.96 / 1e6",
+     "cpu_min": 229.528,
+     "estimate": 239.997,
+     "judged": true,
+     "over_20pct": false,
+     "peak_rss_mib": 1012.8,
+     "ratio": 0.956,
+     "step": "domains-pfam-38.2.shard-00002",
+     "under_20pct": false,
+     "wall_s": 3417.916
+    },
+    {
+     "basis": "30150704 residues x 7.96 / 1e6",
+     "cpu_min": 227.701,
+     "estimate": 240.0,
+     "judged": true,
+     "over_20pct": false,
+     "peak_rss_mib": 1068.9,
+     "ratio": 0.949,
+     "step": "domains-pfam-38.2.shard-00003",
+     "under_20pct": false,
+     "wall_s": 3390.225
+    },
+    {
+     "basis": "30150502 residues x 7.96 / 1e6",
+     "cpu_min": 232.843,
+     "estimate": 239.998,
+     "judged": true,
+     "over_20pct": false,
+     "peak_rss_mib": 1072.6,
+     "ratio": 0.97,
+     "step": "domains-pfam-38.2.shard-00004",
+     "under_20pct": false,
+     "wall_s": 3467.439
+    },
+    {
+     "basis": "30150292 residues x 7.96 / 1e6",
+     "cpu_min": 232.621,
+     "estimate": 239.996,
+     "judged": true,
+     "over_20pct": false,
+     "peak_rss_mib": 1056.2,
+     "ratio": 0.969,
+     "step": "domains-pfam-38.2.shard-00005",
+     "under_20pct": false,
+     "wall_s": 3464.694
+    },
+    {
+     "basis": "30150505 residues x 7.96 / 1e6",
+     "cpu_min": 229.335,
+     "estimate": 239.998,
+     "judged": true,
+     "over_20pct": false,
+     "peak_rss_mib": 1009.1,
+     "ratio": 0.956,
+     "step": "domains-pfam-38.2.shard-00006",
+     "under_20pct": false,
+     "wall_s": 3413.705
+    },
+    {
+     "basis": "30150690 residues x 7.96 / 1e6",
+     "cpu_min": 229.745,
+     "estimate": 239.999,
+     "judged": true,
+     "over_20pct": false,
+     "peak_rss_mib": 1066.9,
+     "ratio": 0.957,
+     "step": "domains-pfam-38.2.shard-00007",
+     "under_20pct": false,
+     "wall_s": 3420.747
+    },
+    {
+     "basis": "30150658 residues x 7.96 / 1e6",
+     "cpu_min": 230.246,
+     "estimate": 239.999,
+     "judged": true,
+     "over_20pct": false,
+     "peak_rss_mib": 1120.2,
+     "ratio": 0.959,
+     "step": "domains-pfam-38.2.shard-00008",
+     "under_20pct": false,
+     "wall_s": 3427.938
+    },
+    {
+     "basis": "30150748 residues x 7.96 / 1e6",
+     "cpu_min": 230.269,
+     "estimate": 240.0,
+     "judged": true,
+     "over_20pct": false,
+     "peak_rss_mib": 984.2,
+     "ratio": 0.959,
+     "step": "domains-pfam-38.2.shard-00009",
+     "under_20pct": false,
+     "wall_s": 3428.615
+    },
+    {
+     "basis": "30150608 residues x 7.96 / 1e6",
+     "cpu_min": 226.297,
+     "estimate": 239.999,
+     "judged": true,
+     "over_20pct": false,
+     "peak_rss_mib": 988.5,
+     "ratio": 0.943,
+     "step": "domains-pfam-38.2.shard-00010",
+     "under_20pct": false,
+     "wall_s": 3367.049
+    },
+    {
+     "basis": "30150713 residues x 7.96 / 1e6",
+     "cpu_min": 223.551,
+     "estimate": 240.0,
+     "judged": true,
+     "over_20pct": false,
+     "peak_rss_mib": 968.4,
+     "ratio": 0.931,
+     "step": "domains-pfam-38.2.shard-00011",
+     "under_20pct": false,
+     "wall_s": 3326.583
+    },
+    {
+     "basis": "30150522 residues x 7.96 / 1e6",
+     "cpu_min": 225.998,
+     "estimate": 239.998,
+     "judged": true,
+     "over_20pct": false,
+     "peak_rss_mib": 1009.1,
+     "ratio": 0.942,
+     "step": "domains-pfam-38.2.shard-00012",
+     "under_20pct": false,
+     "wall_s": 3362.116
+    },
+    {
+     "basis": "30150700 residues x 7.96 / 1e6",
+     "cpu_min": 225.599,
+     "estimate": 240.0,
+     "judged": true,
+     "over_20pct": false,
+     "peak_rss_mib": 1097.9,
+     "ratio": 0.94,
+     "step": "domains-pfam-38.2.shard-00013",
+     "under_20pct": false,
+     "wall_s": 3356.168
+    },
+    {
+     "basis": "30150584 residues x 7.96 / 1e6",
+     "cpu_min": 228.047,
+     "estimate": 239.999,
+     "judged": true,
+     "over_20pct": false,
+     "peak_rss_mib": 1008.6,
+     "ratio": 0.95,
+     "step": "domains-pfam-38.2.shard-00014",
+     "under_20pct": false,
+     "wall_s": 3392.496
+    },
+    {
+     "basis": "30150616 residues x 7.96 / 1e6",
+     "cpu_min": 229.727,
+     "estimate": 239.999,
+     "judged": true,
+     "over_20pct": false,
+     "peak_rss_mib": 1029.5,
+     "ratio": 0.957,
+     "step": "domains-pfam-38.2.shard-00015",
+     "under_20pct": false,
+     "wall_s": 3418.47
+    },
+    {
+     "basis": "30150228 residues x 7.96 / 1e6",
+     "cpu_min": 225.126,
+     "estimate": 239.996,
+     "judged": true,
+     "over_20pct": false,
+     "peak_rss_mib": 1091.3,
+     "ratio": 0.938,
+     "step": "domains-pfam-38.2.shard-00016",
+     "under_20pct": false,
+     "wall_s": 3348.797
+    },
+    {
+     "basis": "30150580 residues x 7.96 / 1e6",
+     "cpu_min": 229.166,
+     "estimate": 239.999,
+     "judged": true,
+     "over_20pct": false,
+     "peak_rss_mib": 991.6,
+     "ratio": 0.955,
+     "step": "domains-pfam-38.2.shard-00017",
+     "under_20pct": false,
+     "wall_s": 3410.262
+    },
+    {
+     "basis": "30150636 residues x 7.96 / 1e6",
+     "cpu_min": 229.236,
+     "estimate": 239.999,
+     "judged": true,
+     "over_20pct": false,
+     "peak_rss_mib": 1017.7,
+     "ratio": 0.955,
+     "step": "domains-pfam-38.2.shard-00018",
+     "under_20pct": false,
+     "wall_s": 3411.14
+    },
+    {
+     "basis": "30150664 residues x 7.96 / 1e6",
+     "cpu_min": 228.005,
+     "estimate": 239.999,
+     "judged": true,
+     "over_20pct": false,
+     "peak_rss_mib": 1034.2,
+     "ratio": 0.95,
+     "step": "domains-pfam-38.2.shard-00019",
+     "under_20pct": false,
+     "wall_s": 3391.491
+    },
+    {
+     "basis": "30149993 residues x 7.96 / 1e6",
+     "cpu_min": 224.293,
+     "estimate": 239.994,
+     "judged": true,
+     "over_20pct": false,
+     "peak_rss_mib": 1032.0,
+     "ratio": 0.935,
+     "step": "domains-pfam-38.2.shard-00020",
+     "under_20pct": false,
+     "wall_s": 3336.079
+    },
+    {
+     "basis": "30150049 residues x 7.96 / 1e6",
+     "cpu_min": 227.027,
+     "estimate": 239.994,
+     "judged": true,
+     "over_20pct": false,
+     "peak_rss_mib": 1048.9,
+     "ratio": 0.946,
+     "step": "domains-pfam-38.2.shard-00021",
+     "under_20pct": false,
+     "wall_s": 3378.191
+    },
+    {
+     "basis": "30150626 residues x 7.96 / 1e6",
+     "cpu_min": 230.457,
+     "estimate": 239.999,
+     "judged": true,
+     "over_20pct": false,
+     "peak_rss_mib": 1002.2,
+     "ratio": 0.96,
+     "step": "domains-pfam-38.2.shard-00022",
+     "under_20pct": false,
+     "wall_s": 3429.717
+    },
+    {
+     "basis": "30150357 residues x 7.96 / 1e6",
+     "cpu_min": 225.843,
+     "estimate": 239.997,
+     "judged": true,
+     "over_20pct": false,
+     "peak_rss_mib": 1079.1,
+     "ratio": 0.941,
+     "step": "domains-pfam-38.2.shard-00023",
+     "under_20pct": false,
+     "wall_s": 3360.379
+    },
+    {
+     "basis": "30150638 residues x 7.96 / 1e6",
+     "cpu_min": 228.497,
+     "estimate": 239.999,
+     "judged": true,
+     "over_20pct": false,
+     "peak_rss_mib": 1044.3,
+     "ratio": 0.952,
+     "step": "domains-pfam-38.2.shard-00024",
+     "under_20pct": false,
+     "wall_s": 3398.872
+    },
+    {
+     "basis": "30150720 residues x 7.96 / 1e6",
+     "cpu_min": 227.812,
+     "estimate": 240.0,
+     "judged": true,
+     "over_20pct": false,
+     "peak_rss_mib": 1001.2,
+     "ratio": 0.949,
+     "step": "domains-pfam-38.2.shard-00025",
+     "under_20pct": false,
+     "wall_s": 3389.372
+    },
+    {
+     "basis": "30149960 residues x 7.96 / 1e6",
+     "cpu_min": 229.269,
+     "estimate": 239.994,
+     "judged": true,
+     "over_20pct": false,
+     "peak_rss_mib": 975.7,
+     "ratio": 0.955,
+     "step": "domains-pfam-38.2.shard-00026",
+     "under_20pct": false,
+     "wall_s": 3410.799
+    },
+    {
+     "basis": "30149751 residues x 7.96 / 1e6",
+     "cpu_min": 228.954,
+     "estimate": 239.992,
+     "judged": true,
+     "over_20pct": false,
+     "peak_rss_mib": 1103.1,
+     "ratio": 0.954,
+     "step": "domains-pfam-38.2.shard-00027",
+     "under_20pct": false,
+     "wall_s": 3406.844
+    },
+    {
+     "basis": "30150450 residues x 7.96 / 1e6",
+     "cpu_min": 229.276,
+     "estimate": 239.998,
+     "judged": true,
+     "over_20pct": false,
+     "peak_rss_mib": 1071.2,
+     "ratio": 0.955,
+     "step": "domains-pfam-38.2.shard-00028",
+     "under_20pct": false,
+     "wall_s": 3411.868
+    },
+    {
+     "basis": "30150483 residues x 7.96 / 1e6",
+     "cpu_min": 224.497,
+     "estimate": 239.998,
+     "judged": true,
+     "over_20pct": false,
+     "peak_rss_mib": 988.2,
+     "ratio": 0.935,
+     "step": "domains-pfam-38.2.shard-00029",
+     "under_20pct": false,
+     "wall_s": 3339.876
+    },
+    {
+     "basis": "30150630 residues x 7.96 / 1e6",
+     "cpu_min": 227.087,
+     "estimate": 239.999,
+     "judged": true,
+     "over_20pct": false,
+     "peak_rss_mib": 1019.9,
+     "ratio": 0.946,
+     "step": "domains-pfam-38.2.shard-00030",
+     "under_20pct": false,
+     "wall_s": 3378.85
+    },
+    {
+     "basis": "30150742 residues x 7.96 / 1e6",
+     "cpu_min": 227.578,
+     "estimate": 240.0,
+     "judged": true,
+     "over_20pct": false,
+     "peak_rss_mib": 1104.9,
+     "ratio": 0.948,
+     "step": "domains-pfam-38.2.shard-00031",
+     "under_20pct": false,
+     "wall_s": 3385.633
+    },
+    {
+     "basis": "30150476 residues x 7.96 / 1e6",
+     "cpu_min": 226.627,
+     "estimate": 239.998,
+     "judged": true,
+     "over_20pct": false,
+     "peak_rss_mib": 1020.6,
+     "ratio": 0.944,
+     "step": "domains-pfam-38.2.shard-00032",
+     "under_20pct": false,
+     "wall_s": 3371.657
+    },
+    {
+     "basis": "30150470 residues x 7.96 / 1e6",
+     "cpu_min": 228.084,
+     "estimate": 239.998,
+     "judged": true,
+     "over_20pct": false,
+     "peak_rss_mib": 1069.4,
+     "ratio": 0.95,
+     "step": "domains-pfam-38.2.shard-00033",
+     "under_20pct": false,
+     "wall_s": 3393.39
+    },
+    {
+     "basis": "30150737 residues x 7.96 / 1e6",
+     "cpu_min": 228.013,
+     "estimate": 240.0,
+     "judged": true,
+     "over_20pct": false,
+     "peak_rss_mib": 1007.3,
+     "ratio": 0.95,
+     "step": "domains-pfam-38.2.shard-00034",
+     "under_20pct": false,
+     "wall_s": 3393.066
+    },
+    {
+     "basis": "30150475 residues x 7.96 / 1e6",
+     "cpu_min": 227.821,
+     "estimate": 239.998,
+     "judged": true,
+     "over_20pct": false,
+     "peak_rss_mib": 991.8,
+     "ratio": 0.949,
+     "step": "domains-pfam-38.2.shard-00035",
+     "under_20pct": false,
+     "wall_s": 3389.245
+    },
+    {
+     "basis": "30150344 residues x 7.96 / 1e6",
+     "cpu_min": 227.93,
+     "estimate": 239.997,
+     "judged": true,
+     "over_20pct": false,
+     "peak_rss_mib": 1078.7,
+     "ratio": 0.95,
+     "step": "domains-pfam-38.2.shard-00036",
+     "under_20pct": false,
+     "wall_s": 3391.409
+    },
+    {
+     "basis": "30150739 residues x 7.96 / 1e6",
+     "cpu_min": 224.819,
+     "estimate": 240.0,
+     "judged": true,
+     "over_20pct": false,
+     "peak_rss_mib": 1023.5,
+     "ratio": 0.937,
+     "step": "domains-pfam-38.2.shard-00037",
+     "under_20pct": false,
+     "wall_s": 3343.017
+    },
+    {
+     "basis": "873918 residues x 7.96 / 1e6",
+     "cpu_min": 8.123,
+     "estimate": 6.956,
+     "judged": false,
+     "over_20pct": false,
+     "peak_rss_mib": 526.5,
+     "ratio": 1.168,
+     "step": "domains-pfam-38.2.shard-00038",
+     "under_20pct": false,
+     "wall_s": 108.149
+    },
+    {
+     "basis": "(9109234757+0) bases x 168.1 / 1e9 / 60",
+     "cpu_min": 21.361,
+     "estimate": 25.521,
+     "judged": true,
+     "over_20pct": false,
+     "peak_rss_mib": 509.2,
+     "ratio": 0.837,
+     "step": "crispr-minced-0.4.2-w8-nr3-r23x47-s26x50",
+     "under_20pct": false,
+     "wall_s": 222.922
+    },
+    {
+     "basis": "(9109234757+0) bases x 168.1 x 1.15 / 1e9 / 60",
+     "cpu_min": 22.257,
+     "estimate": 29.349,
+     "judged": true,
+     "over_20pct": false,
+     "peak_rss_mib": 1205.7,
+     "ratio": 0.758,
+     "step": "crispr-minced-0.4.2-w8-nr2-r23x47-s26x50-cas1kb-caspfam1-pfam-38.2",
+     "under_20pct": true,
+     "wall_s": 221.184
+    }
+   ],
+   "stage": "C5",
+   "under_20pct": [
+    "crispr-minced-0.4.2-w8-nr2-r23x47-s26x50-cas1kb-caspfam1-pfam-38.2"
+   ]
+  },
+  "records": 48,
+  "shards": {
+   "cpu_min": 8671.03,
+   "cpu_min_max": 232.843,
+   "n": 39,
+   "peak_rss_mib_max": 1120,
+   "ratio_max": 1.168,
+   "ratio_min": 0.931,
+   "wall_s_max": 3467.4
+  }
+ }
+}
