@@ -240,6 +240,8 @@ signal that should not have been given. Read this before trusting "all passed" (
 - **Lesson for every driver**: a queue must test a marker the step itself writes on success (`check/DONE`), never a
   script's exit status alone; and the orchestrator reads the last line of every `check.out` before a release is
   cut. `scripts/orchestrator/rel_wait.sh` trusted a log line; it is not to be reused without that change.
+- **`added_c5.tar` is on `tower` and verified** (23:00:35; 5,821,644,800 bytes in 304 s, 19.15 MB/s;
+  `root_backups/SHA256SUMS` there has 9 lines). `tower` now holds every durable tar that `/stor/work` holds.
 - `/tmp` at 22:55: 494 GB free with the clustering's scratch growing (the last release's peaked at 158.7 GB);
   storage reminder 6k's threshold (350 GB) may be crossed for some hours tonight by scratch that is removed when
   the release ends.
