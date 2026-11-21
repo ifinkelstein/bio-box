@@ -12,7 +12,25 @@ drain these agents, update handoff docs as they drain. no new agenst. will hando
 clock. **No agent is running. No new agent was started after that word.** The detail behind every line here is in
 the section below (its "6m" bullets, in time order), the merged table and the open items.
 
-**H1. Running on the pod now, and nothing else of ours.** Release `r26.11.2` (stages `S1`, `P1` to `P6`, `H1`,
+**H0. READ FIRST: release `r26.11.2` failed at 15:16 on 2026-11-21, at its `postings` step, on an error of the
+code, not on a guard. Nothing of ours is building on the pod.** *Measured*, wilkcomp02,
+`/tmp/if2453/c46/train/logs/c46-train-rel-2.log` (lines 109 to 146), `driver.log`, and
+`tmp/staging/r26.11.2.postings.failed.json`: `r26.11.2.cluster published 15 files` at 14:43 and `r26.11.2.tokens
+published 5 files` at 15:12; then `release postings` ended after 229 s with `_duckdb.OutOfMemoryException: Out of
+Memory Error: failed to pin block of size 256.0 KiB (1.8 GiB/1.8 GiB used)` in `postings._family_run`
+(`src/biobox/l3/postings.py` line 374); `build-stage` stopped there (`the next call resumes at this step`), the
+unit exited 1, the train wrote `FAILED: c46-train-rel-2 exited '1'` and no `DONE`. The rate guard at the end:
+nothing over 1.50; three alignment parts recorded (1.215, 1.265, 1.252). The step runs one DuckDB connection at a
+fixed 2 GB (`DUCK_MEMORY_LIMIT`), and its family run is one statement over every domain row of every stage; it
+passed on `r26.11.1` (peak 2.72 GB) and does not fit this release. **The root is whole**: 119 or so run records
+of the release, no manifest for it, the seven earlier releases untouched (the train verified them at 11:53).
+**What it needs**: card B-62 (written, not started: the PI's word was to start no agent), then
+`release_train.sh run` from a mirror that carries the fix, which resumes at `postings` (card A-15). **A probe is
+running, read-only** (the orchestrator's, no agent): unit `b62-probe8`, the same step and code at an 8 GB limit,
+writing into `/tmp/if2453/b62/out8`, log `/tmp/if2453/b62/probe8.log` (its last line is one JSON document: `status`,
+`wall_s`, `cpu_s`, `maxrss_kb`); it says whether a larger limit alone lets the step through. `/tmp`: 512 GiB free.
+
+**H1. What was running until 15:16** (kept for the paths and the method). Release `r26.11.2` (stages `S1`, `P1` to `P6`, `H1`,
 `PL1`, `C5`, `V1`), resumed at 11:41 after a guard stop at 06:39 (DEC-61): driver unit `c46-driver-run2`
 (`release_train.sh run`), build unit `c46-train-rel-2` (quota 52 threads), from the frozen mirror
 `/tmp/if2453/ci/rel1121` (**never sync to that name**), `$WORK` `/tmp/if2453/c46/train`. Clustering is done (the
