@@ -329,6 +329,16 @@ signal that should not have been given. Read this before trusting "all passed" (
   CPU-minutes). Card B-60 starts now (Sonnet, `task/B-60`); B-61 after it (both edit `src/biobox/stage.py`).
   Card A-12: the rehearsal of its final scripts (`1e0a55e`) passed for the shape of `SPX1` at 05:43
   (`[ZX1 rehearse] stage driver: mode rehearse done`); the shape of `V2` is still running.
+- **State at 07:00 on 2026-11-21.** **Release `r26.11.2` stopped on its rate guard at 06:39 (open item 23); it
+  waits for the PI's word and nothing builds in the data root.** Merged since 05:46: B-60 (a note; 146), A-12 (the
+  stage driver; 147), A-13 (the train's accepted-record table, empty; 148; committed, its push held until Actions
+  reports on the A-12 push). New cards: B-61 (with an Opus agent, `task/B-61`; `SPX1` waits for it), A-14. The
+  whole suite of the integration head (`a089a5c`, mirrored as `/tmp/if2453/ci/int1121`) runs in 8 detached shards
+  since 07:00 (`ci-int1121-0..7`, logs `/tmp/if2453/ci-tmp/int1121-detached/`): it is the tree the next stage
+  build and the next release train will run from. **On the PI's yes to item 23**: the decision row and the
+  `ACCEPTED` entry in one commit; a copy of the frozen tree `rel1120` with only the new `train_est.py` in it (the
+  release's own code must not change mid-release); `train_est.py rates` by hand must then exit 0; then
+  `release_train.sh run` from that copy, which resumes at `cluster.nr50.20.align.part-00002`. `/tmp`: 420 GB free.
 - **Lesson for every driver**: a queue must test a marker the step itself writes on success (`check/DONE`), never a
   script's exit status alone; and the orchestrator reads the last line of every `check.out` before a release is
   cut. `scripts/orchestrator/rel_wait.sh` trusted a log line; it is not to be reused without that change.
