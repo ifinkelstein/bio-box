@@ -367,6 +367,17 @@ signal that should not have been given. Read this before trusting "all passed" (
   ("yes, make the 1.2-1.5 a standing rule"; DEC-64, card A-16). Agents out at 10:00: A-15 (the train's resume;
   the release is resumed at its merge), A-16, B-61, C-52 (four, the most allowed). **The release is still
   stopped**: it resumes when card A-15 is merged, with card A-16 if that is ready by then.
+- **Release `r26.11.2` resumed at 11:41 on 2026-11-21** (DEC-61; card A-15's resume; unit `c46-driver-run2` runs
+  `release_train.sh run` from the mirror `/tmp/if2453/ci/rel1121` of the integration head with card A-15 merged:
+  **that mirror is frozen, nobody syncs to that name**; `Q=52`). It kept the first launch's listing (4,754 files),
+  verify logs and estimate, verified the seven earlier releases again with equal manifest hashes, and launched
+  `c46-train-rel-2` at 11:53 with the first launch's `build-stage` command. `build-stage` spent 53 minutes
+  finding the 104 published steps present (`skipped: run record and outputs present`), then started
+  `cluster.nr50.20.align.part-00002` and `part-00003` at 12:46, 18 threads each. The rate guard at the first
+  check: nothing over 1.50; `part-00001` (1.215) recorded (DEC-64) and accepted (DEC-61). Scratch 114.5 GB;
+  `/tmp` 402 GB free at 12:53 (*measured*, wilkcomp02, the unit's log and `guard.jsonl`). Actions green on the
+  A-15 push (`2aff864`). Agents out: B-61 (its whole suite is running in two shards). Card C-52 waits for the PI
+  on item 24.
 - **Lesson for every driver**: a queue must test a marker the step itself writes on success (`check/DONE`), never a
   script's exit status alone; and the orchestrator reads the last line of every `check.out` before a release is
   cut. `scripts/orchestrator/rel_wait.sh` trusted a log line; it is not to be reused without that change.
