@@ -16,8 +16,14 @@ the section below (its "6m" bullets, in time order), the merged table and the op
 `PL1`, `C5`, `V1`), resumed at 11:41 after a guard stop at 06:39 (DEC-61): driver unit `c46-driver-run2`
 (`release_train.sh run`), build unit `c46-train-rel-2` (quota 52 threads), from the frozen mirror
 `/tmp/if2453/ci/rel1121` (**never sync to that name**), `$WORK` `/tmp/if2453/c46/train`. Clustering is done (the
-member tables of both levels were published by 13:30); tokens, postings, dimension tables, manifest, then
-`release verify` of all eight releases, the pack, the worked examples and the check follow. Read it with one short
+member tables of both levels were published by 13:30); **at 14:40 it was in `release cluster finish`** (one
+process, 91.6 CPU-minutes after 69 minutes, against 88.3 estimated and 75.1 on `r26.11.1`: expected to end near
+1.1 to 1.2 of its estimate, which DEC-64 records and does not stop; above 132 CPU-minutes it would stop); tokens,
+postings, dimension tables, manifest, then `release verify` of all eight releases, the pack, the worked examples
+and the check follow. **Space at 14:40** (*measured*, `df -h /tmp` and the guard's `guard.jsonl`): 353 GiB free
+(378.6 GB as the guard counts), the release's scratch at 178 GB and at its peak so far (`r26.11.1`'s peaked at
+158.7 GB; the guard stops at 250 GB of scratch or under 150 GB free). That is at the line of the PI's storage
+reminder (350 by `df -h`) and was said to the PI; the scratch is the release's and goes when it ends. Read it with one short
 call: `ssh -o BatchMode=yes -J if2453@wilkcomp03.ccbb.utexas.edu if2453@wilkcomp02.ccbb.utexas.edu "systemctl
 --user is-active c46-driver-run2 c46-train-rel-2; tail -n 5 /tmp/if2453/c46/train/driver.log; grep published
 /tmp/if2453/c46/train/logs/c46-train-rel-2.log | tail -n 2; cat /tmp/if2453/c46/train/DONE; df -h /tmp"`.
