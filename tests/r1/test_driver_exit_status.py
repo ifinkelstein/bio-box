@@ -1006,3 +1006,298 @@ def test_a14_the_driver_stopped_while_its_unit_runs_stops_the_unit(tmp_path):
     assert f"systemctl --user stop {UNIT}" in w.calls(), "the trap stops the unit the driver leaves"
     assert f"the driver exits (status 143) while {UNIT} runs" in _driver_log(work)
     assert not (work / "DONE").exists()
+
+
+# --------------------------------------------------------------------------------------------------------------
+# card A-15: a rerun of `release_train.sh run` resumes the release its first launch left unfinished (r26.11.2 stopped on
+# the rate guard on 2026-11-21 and DEC-61 let it resume). A plain rerun (1) listed the root again into before/, so the
+# files the first launch published were no longer "added"; (2) verified the earlier releases again into the first
+# launch's verify logs; (3) made estimate/before.json again on a root holding half the release; (4) launched
+# `<prefix>-rel-1` again, whose log already ends `pod_run: <unit> exited 143`, which card A-14's watch reads first.
+
+A15 = pytest.mark.covers("A-15")
+REL1, REL2 = "c46-train-rel-1", "c46-train-rel-2"
+FIRST_VERIFY = "release r26.11.1: verified (stages S1, 1 files, 1 artifacts, manifest hash abc123)\n"
+FIRST_ESTIMATE = '{"first launch": true}\n'
+PLAN_NEXT = PLAN.replace('"release": "r26.11.2"', '"release": "r26.11.3"').replace(
+    '"latest_release": "r26.11.1"', '"latest_release": "r26.11.2"').replace(
+    '"earlier_manifest_releases": ["r26.11.1"]', '"earlier_manifest_releases": ["r26.11.1", "r26.11.2"]')
+
+# the watch's stubs of card A-14 for any unit whose name matches FAKE_DEFER (a shell pattern): that unit runs until
+# FAKE_STATES says otherwise and its exit line is written when it first answers inactive; every other unit has ended
+A15_SYSTEMCTL = WATCH_SYSTEMCTL.replace('in *rel-1) ;;', 'in $FAKE_DEFER) ;;')
+A15_POD_RUN = """#!/bin/sh
+log=""; unit=""
+while [ $# -gt 0 ]; do
+  case "$1" in
+    --log) log=$2; shift 2 ;;
+    --*) shift 2 ;;
+    *) unit=$1; shift; break ;;
+  esac
+done
+echo "pod_run $unit $*" >> "$FAKE_LOG"
+rel=""; prev=""
+for a in "$@"; do [ "$prev" = "--release" ] && rel=$a; prev=$a; done
+mkdir -p "$(dirname "$log")"
+echo "pod_run: $unit started" >> "$log"
+[ -n "$rel" ] && echo "build-stage: stage S and release $rel: all 9 steps done" >> "$log"
+case "$unit" in
+  $FAKE_DEFER) echo "$log 0" > "$(dirname "$FAKE_LOG")/pod.$unit" ;;
+  *) echo "pod_run: $unit exited 0" >> "$log" ;;
+esac
+exit 0
+"""
+
+
+def _a15_watch(w: World, defer: str, **extra: str) -> dict:
+    """Install the watch's stubs on `w` (after its first launch) and return the environment that names the unit."""
+    assert A15_SYSTEMCTL.count("$FAKE_DEFER") == 2
+    if not (w.fake / "python3.orig").exists():
+        (w.fake / "python3").rename(w.fake / "python3.orig")
+    for name, text in (("systemctl", A15_SYSTEMCTL), ("python3", WATCH_PYTHON3)):
+        (w.fake / name).write_text(text)
+        (w.fake / name).chmod(0o755)
+    (w.tree / "scripts" / "pod_run.sh").write_text(A15_POD_RUN)
+    return {"FAKE_DEFER": defer, **extra}
+
+
+def _published(w: World, rel: str = "r26.11.2", n: int = 2) -> None:
+    d = w.root / "runs" / f"stage={rel}"
+    d.mkdir(parents=True, exist_ok=True)
+    for k in range(n):
+        (d / f"cluster.step{k}.json").write_text('{"cpu_min": 1.0}\n')
+
+
+def _stopped(tmp_path: Path, published: int = 2):
+    """A first launch of r26.11.2 stopped mid-way, in the layout `run` writes: its unit ended 143 after it published
+    `published` run records, and the root has no manifest of it. The first launch's verify log and estimate are made
+    distinct from what the stubs print, so that a second copy of either can be told from the first. Returns the first
+    launch's calls beside the world; the fake log then starts empty for the rerun."""
+    w, drv, work = _train(tmp_path)
+    got = _go(w, drv, FAKE_POD_FAIL="rel-1")
+    assert got.returncode != 0 and f"{REL1} exited '1'" in got.stderr, got.stdout + got.stderr
+    log = work / "logs" / f"{REL1}.log"
+    log.write_text(log.read_text().replace(f"pod_run: {REL1} exited 1",
+                                           f"pod_run: {REL1} received SIGTERM\npod_run: {REL1} exited 143"))
+    (work / "before" / "verify-r26.11.1.log").write_text(FIRST_VERIFY)
+    (work / "estimate" / "before.json").write_text(FIRST_ESTIMATE)
+    if published:
+        _published(w, n=published)
+    first = w.calls()
+    w.log.write_text("")
+    return w, drv, work, first
+
+
+def _launch_args(calls: str, unit: str) -> list[str]:
+    return [ln.split(" ", 2)[2] for ln in calls.splitlines() if ln.startswith(f"pod_run {unit} ")]
+
+
+def _files(top: Path) -> dict:
+    return {p: (p.read_bytes(), p.stat().st_mtime_ns) for p in sorted(top.rglob("*")) if p.is_file()}
+
+
+@A15
+def test_a15_fault1_a_resume_keeps_the_first_launchs_listing(tmp_path):
+    w, drv, work, _ = _stopped(tmp_path)
+    listing = work / "before" / "listing.tsv"
+    snap = (listing.read_bytes(), listing.stat().st_mtime_ns)
+    got = _go(w, drv)
+    assert got.returncode == 0, got.stdout + got.stderr
+    assert (listing.read_bytes(), listing.stat().st_mtime_ns) == snap, \
+        "the root was listed again: the files the first launch published would not be 'added'"
+    assert "stage=r26.11.2" not in listing.read_text()
+
+
+@A15
+def test_a15_fault2_a_resume_verifies_into_its_own_directory_and_keeps_the_first_launchs_hashes(tmp_path):
+    w, drv, work, _ = _stopped(tmp_path)
+    first = work / "before" / "verify-r26.11.1.log"
+    got = _go(w, drv)
+    assert got.returncode == 0, got.stdout + got.stderr
+    assert first.read_text() == FIRST_VERIFY, "the first launch's verify log was replaced"
+    assert "manifest hash abc123" in (work / "resume-2" / "verify-r26.11.1.log").read_text()
+    assert " release verify " in w.calls() and "--release r26.11.1" in w.calls(), "the earlier release is verified now"
+
+
+@A15
+def test_a15_fault2_a_manifest_hash_unlike_the_first_launchs_fails_the_resume(tmp_path):
+    w, drv, work, _ = _stopped(tmp_path)
+    (work / "before" / "verify-r26.11.1.log").write_text(FIRST_VERIFY.replace("abc123", "def456"))
+    got = _go(w, drv)
+    assert got.returncode != 0
+    assert "not the first launch's" in got.stderr
+    assert "pod_run " not in w.calls(), "nothing is launched"
+    assert not (work / "DONE").exists()
+
+
+@A15
+def test_a15_fault3_a_resume_is_judged_against_the_first_launchs_estimate(tmp_path):
+    w, drv, work, _ = _stopped(tmp_path)
+    got = _go(w, drv)
+    assert got.returncode == 0, got.stdout + got.stderr
+    assert (work / "estimate" / "before.json").read_text() == FIRST_ESTIMATE
+    assert "train_est.py before" not in w.calls(), "the estimate was made again on a root holding half the release"
+    rates = [ln for ln in w.calls().splitlines() if "train_est.py rates" in ln]
+    assert rates and all("--est <T>/if2453/c46/train/estimate/before.json" in ln for ln in rates)
+
+
+@A15
+def test_a15_fault4_a_resume_launches_a_unit_of_a_new_name_with_the_first_launchs_command(tmp_path):
+    w, drv, work, first = _stopped(tmp_path)
+    got = _go(w, drv)
+    assert got.returncode == 0, got.stdout + got.stderr
+    assert not _launch_args(w.calls(), REL1), f"{REL1} was launched again: its log ends with the old unit's exit line"
+    assert _launch_args(w.calls(), REL2) == _launch_args(first, REL1), "the build-stage command is the first launch's"
+    assert "Action: resume r26.11.2 (2 run records published; unit 2)" in got.stdout
+    assert (work / "run" / REL2 / "since").exists()
+    assert (work / "logs" / f"{REL1}.log").read_text().rstrip().endswith(f"pod_run: {REL1} exited 143")
+    assert (work / "DONE").read_text().split()[0] == "r26.11.2"
+
+
+@A15
+def test_a15_fault4_the_resumed_unit_is_watched_not_taken_for_ended_by_the_old_exit_line(tmp_path):
+    w, drv, work, _ = _stopped(tmp_path)
+    env = _a15_watch(w, "*rel-[0-9]*", FAKE_STATES=_states(tmp_path / "states", "active", "active", "inactive"))
+    got = _go(w, drv, **env)
+    assert got.returncode == 0, got.stdout + got.stderr
+    assert w.calls().count(f"show -p ActiveState --value {REL2}") == 3, "the watch asked about the new unit until it ended"
+    assert "rates-said-0" in (work / "run" / REL2 / "rates.jsonl").read_text()
+    guard = [ln for ln in w.calls().splitlines() if "r50_watch.py" in ln]
+    assert guard and all(f"--since <T>/if2453/c46/train/run/{REL2}/since --state <T>/if2453/c46/train/run/{REL2} "
+                         in ln for ln in guard), "the process guard reads the resumed unit's own state"
+    assert (work / "DONE").exists()
+
+
+@A15
+def test_a15_units_are_numbered_past_every_recorded_one(tmp_path):
+    w, drv, work, _ = _stopped(tmp_path)
+    (work / "run" / "c46-train-rel-3").mkdir()
+    got = _go(w, drv)
+    assert got.returncode == 0, got.stdout + got.stderr
+    assert _launch_args(w.calls(), "c46-train-rel-4") and not _launch_args(w.calls(), "c46-train-rel-3")
+    assert "pod_run c46-train-pack-4 " in w.calls()
+
+
+@A15
+@pytest.mark.parametrize("plan,named", [
+    (PLAN.replace('"release": "r26.11.2"', '"release": "r26.12.1"'), "release r26.12.1 (stages S1,P1)"),
+    (PLAN.replace('"stages": ["S1", "P1"]', '"stages": ["S1", "P1", "P2"]'), "release r26.11.2 (stages S1,P1,P2)"),
+])
+def test_a15_another_release_or_other_stages_while_the_release_is_unfinished_are_refused(tmp_path, plan, named):
+    w, drv, work, _ = _stopped(tmp_path)
+    (w.tmp / "plan.json").write_text(plan)
+    before = _files(work / "before") | _files(work / "estimate") | {work / "plan.json": (work / "plan.json").read_bytes()}
+    got = _go(w, drv)
+    assert got.returncode != 0
+    assert "launched release r26.11.2 (stages S1,P1)" in got.stderr and named in got.stderr, got.stderr
+    assert "pod_run " not in w.calls() and " release verify " not in w.calls()
+    assert _files(work / "before") | _files(work / "estimate") | {work / "plan.json": (work / "plan.json").read_bytes()} \
+        == before
+
+
+@A15
+def test_a15_an_unfinished_release_this_work_did_not_launch_is_refused(tmp_path):
+    w, drv, work = _train(tmp_path)
+    _published(w)
+    got = _go(w, drv)
+    assert got.returncode != 0
+    assert "run records of r26.11.2" in got.stderr and "did not launch" in got.stderr, got.stderr
+    assert "pod_run " not in w.calls()
+    assert not (work / "before" / "listing.tsv").exists()
+
+
+@A15
+@pytest.mark.parametrize("what,said", [
+    ("listing", "before/listing.tsv is missing"),
+    ("estimate", "estimate/before.json is missing"),
+    ("verify", "before/verify-r26.11.1.log is missing"),
+    ("profile", "would differ from the first launch's"),
+])
+def test_a15_a_resume_without_what_it_keeps_is_refused(tmp_path, what, said):
+    w, drv, work, _ = _stopped(tmp_path)
+    if what == "listing":
+        (work / "before" / "listing.tsv").unlink()
+    elif what == "estimate":
+        (work / "estimate" / "before.json").unlink()
+    elif what == "verify":
+        (work / "before" / "verify-r26.11.1.log").unlink()
+    else:
+        (w.tree / "profiles" / "wilkcomp02.yaml").write_text("tmp: /x\nmax_threads_day: 20\n")
+    got = _go(w, drv)
+    assert got.returncode != 0
+    assert said in got.stderr, got.stderr
+    assert "pod_run " not in w.calls()
+    assert not (work / "before" / "listing.tsv").exists() or what != "listing", "the listing is not taken again"
+
+
+@A15
+def test_a15_a_resume_with_another_command_is_refused(tmp_path):
+    w, drv, work, _ = _stopped(tmp_path)
+    got = _go(w, drv, T="12")
+    assert got.returncode != 0
+    assert "the command would differ from the first launch's" in got.stderr and "--threads 12" in got.stderr
+    assert "pod_run " not in w.calls()
+
+
+@A15
+def test_a15_a_resume_after_its_release_def_was_written_resumes_the_same_release(tmp_path):
+    w, drv, work, first = _stopped(tmp_path)
+    (w.root / "release_def" / "release=r26.11.2").mkdir(parents=True)
+    # what train_plan.py says once the cluster step has defined r26.11.2: the next name, r26.11.2 as the latest defined
+    # release with the same stages, nothing new, and the same manifests (r26.11.2 has none yet)
+    (w.tmp / "plan.json").write_text(PLAN.replace('"release": "r26.11.2"', '"release": "r26.11.3"').replace(
+        '"latest_release": "r26.11.1"', '"new_stages": [], "latest_release": "r26.11.2"').replace(
+        '"nothing_new": false', '"nothing_new": true'))
+    got = _go(w, drv)
+    assert got.returncode == 0, got.stdout + got.stderr
+    assert _launch_args(w.calls(), REL2) == _launch_args(first, REL1)
+    assert (work / "DONE").read_text().split()[0] == "r26.11.2"
+
+
+@A15
+def test_a15_the_dry_run_says_resume_and_writes_nothing(tmp_path):
+    w, drv, work, _ = _stopped(tmp_path)
+    snap = _files(w.pod)
+    got = w.run(drv, "--dry-run", "--no-live-cpu", ROOT=str(w.root))
+    assert got.returncode == 0, got.stdout + got.stderr
+    assert "Action: resume r26.11.2 (2 run records published; unit 2)" in got.stdout
+    assert "Action: cut" not in got.stdout
+    assert "the same as the first launch's" in got.stdout
+    assert _files(w.pod) == snap
+
+
+@A15
+def test_a15_a_first_launch_that_published_nothing_is_launched_again_under_a_new_name(tmp_path):
+    w, drv, work, _ = _stopped(tmp_path, published=0)
+    got = _go(w, drv)
+    assert got.returncode == 0, got.stdout + got.stderr
+    assert "Action: resume" not in got.stdout
+    assert "train_est.py before" in w.calls(), "nothing of the release is in the root: it is a first launch"
+    assert _launch_args(w.calls(), REL2) and not _launch_args(w.calls(), REL1)
+
+
+@A15
+def test_a15_a_work_reused_after_a_finished_release_watches_a_unit_of_a_new_name(tmp_path):
+    w, drv, work = _train(tmp_path)
+    _ok(_go(w, drv))  # r26.11.2 cut; its unit's log ends `exited 0`
+    _published(w)
+    (w.root / "manifests").mkdir()
+    (w.root / "manifests" / "release=r26.11.2.json").write_text("{}")
+    (w.tmp / "plan.json").write_text(PLAN_NEXT)
+    w.log.write_text("")
+    env = _a15_watch(w, "*rel-[0-9]*", FAKE_STATES=_states(tmp_path / "states", "active", "active", "inactive"))
+    got = _go(w, drv, **env)
+    assert got.returncode == 0, got.stdout + got.stderr
+    assert w.calls().count(f"show -p ActiveState --value {REL2}") == 3, "the old unit's exit line ended the watch"
+    assert (work / "DONE").read_text().split()[0] == "r26.11.3"
+
+
+@A15
+def test_a15_the_pack_wait_takes_a_failed_answer_for_running(tmp_path):
+    w, drv, work = _train(tmp_path)
+    env = _a15_watch(w, "*-pack*", FAKE_STATES=_states(tmp_path / "states", "fail", "active", "fail", "inactive"))
+    got = _go(w, drv, **env)
+    assert got.returncode == 0, got.stdout + got.stderr
+    assert w.calls().count("show -p ActiveState --value c46-train-pack") == 4
+    assert "no answer from systemd about c46-train-pack" in _driver_log(work)
+    assert (work / "DONE").exists()

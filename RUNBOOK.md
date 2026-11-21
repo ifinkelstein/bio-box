@@ -950,6 +950,26 @@ entry; `tests/r1/test_a13_train_accepted.py` checks that every entry's row exist
 `train_est.py rates` by hand, read-only, as `release_train.sh` runs it, to see that the stopped release now exits 0,
 then resume with the same `release_train.sh run` from a tree that carries the commit: the published steps are skipped.
 
+Resuming (card A-15). Rerun `release_train.sh run` with the same `WORK`, `ROOT`, profile and options (`--parts`, `T`,
+`J`, `CPUS`) as the first launch, after `--dry-run` with the same ones says
+`Action: resume <release> (<k> run records published; unit <n>)` and "the same as the first launch's". The train
+treats a run as a resume when `$WORK/plan.json` names a release that has run records (or a run-step intent) under
+`runs/stage=<release>/` and no manifest, and the plan names it again with the same stages and earlier releases (or,
+once the cluster step has written its `release_def`, names the next release with that one as the latest and nothing
+new). A resume keeps the first launch's `before/listing.tsv`, `before/verify-*.log` and `estimate/before.json` (they
+were taken before anything of the release was written: `root_added.tsv` is computed from that listing, and the rate
+guard judges against that estimate), verifies every earlier release again into `$WORK/resume-<n>/` and fails unless
+each manifest hash equals the first launch's, and launches the first launch's `build-stage` command, checked against
+its `launch` line in `$WORK/driver.log`, with the same profile copy. It refuses, launching nothing, when any of those
+files is missing, when the command or the profile copy would differ, and when the plan names another release or other
+stages while this `$WORK`'s release is unfinished (both are named); a fresh `$WORK` is refused while the root holds
+run records of a release with no `release_def` and no manifest. The unit is `<prefix>-rel-<n>` and the pack
+`<prefix>-pack-<n>`, numbered past every unit recorded under `$WORK/run/` and `$WORK/logs/`: `pod_run.sh` appends to a
+unit's log, so a reused name would show the watch the old unit's exit line. The resumed unit's guard state is its own
+`$WORK/run/<unit>/` (its `since`, `scratch_peak`, `rates.jsonl`, `guard.jsonl`); the scratch it measures is the same
+`$WORK/tmp/scratch`, which a resume needs: the clustering's finished steps are read from there. A first launch that
+published nothing is launched again as a first launch, under a new unit name.
+
 ## Mirror to tower
 
 The durable tars, and later source archives, get a second copy on the PI's NAS `tower` (card C-49; the design and
