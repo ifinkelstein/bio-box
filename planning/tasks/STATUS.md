@@ -205,7 +205,8 @@ on it cancelled. Next evidence: any ordinary `ci` job that shows the case (searc
 **6l. Thread cap until Monday morning** (the PI at about 19:58 on 2026-11-20: "56 cpus max for now to mon
 morning"). From now to Monday 2026-11-23 08:00 CST nothing of ours, summed over every unit and agent, uses more than
 56 threads on the pod. That is what the profile already gives at night and at weekends when no one else computes
-(`build-stage` reads the hour: it took `C5` from 40 to 56 at 20:00), and the units in flight are inside it: `C5`'s
+(`build-stage` reads the hour at each launch of a step: `C5`'s shards were launched under the day cap of 40 until
+19:51, *measured*, its log, and take 56 from 20:00), and the units in flight are inside it: `C5`'s
 unit has a quota of 56, and the release train is started by `relwait-1120` with `Q=56`. To keep: start no second
 compute job beside a build or a release that would take the sum past 56 (test runs of a few threads included in the
 sum); from Monday 08:00 the weekday cap of 40 by day applies again.
