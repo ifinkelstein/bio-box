@@ -303,8 +303,27 @@ from biobox.registry.schemas import table
 # A caller that knows nothing of the root (`_refusal`'s one object, a batch's bases read, a pass-1 shard) counts every
 # byte as stored: a pass-1 shard stores nothing (its estimate errs high) and a batch at most what it reads (its
 # estimate is at most the fit's error under its cost: 7.2%, so a batch estimated at the margin stays in the budget).
+# Card B-61: a pass-1 shard is priced at the stage's average cost per byte with the two terms below, still as though
+# every byte not under the least length were stored.
 INGEST_CPU_MIN = 4.11
 INGEST_BP = 1_000_000_000
+# Card B-61 (planning/measurements/2026-11-21_ingest_terms.md): two more terms, each 0 for a stage of plain FASTA
+# without a least contig length, so the estimate of every stage built so far but C5 is the same to the byte.
+# Both were fitted together, the stored rate and the start-up cost held at card B-52's, by least squares of the
+# relative error over 14 arms (12 degrees of freedom left): card B-58's C5 arms (gz, plain, few, view, held A and B,
+# scale) and `spx5000`, card B-61's five SPX1 groups with --min-contig-len 5000 and its sample of G1 (each a
+# `build-stage --depth stored` in a scratch root, the mean of three or more interleaved runs, wilkcomp02, 2026-11-21,
+# scripts/stress/b58_ingest_arms.py). Every arm of the fit is within 5.9% of its estimate when left out of the fit
+# (*derived*, same note).
+# INGEST_BELOW_CPU_MIN: per INGEST_BP bytes of FASTA in records under `--min-contig-len` (card C-38d), which ingest
+# reads twice (both passes), hashes once and drops, and which are not counted as stored. Fitted 0.131; 0.113 to
+# 0.138 with one arm left out; the top, rounded up, since an estimate too low stops a build.
+INGEST_BELOW_CPU_MIN = 0.14
+# INGEST_GZ_CPU_MIN: more per INGEST_BP bytes of FASTA read out of `.gz` objects (zlib, in both reading passes of
+# `store.ingest`). Fitted 0.258; 0.252 to 0.259 with one arm left out; C5's own gz-against-plain arms give 0.261
+# unpaired and 0.164 paired by run (*derived*); at 0.164 the arm in which every contig is held (held B, which reads
+# and decompresses everything and stores nothing) is 1.33 times its estimate, at 0.26 1.00. Not fitted on C5.
+INGEST_GZ_CPU_MIN = 0.26
 # Measured, wilkcomp02, 2026-11-10 (card C-10, planning/measurements/2026-11-10_build_stage_pod.md): the
 # fixed start-up cost of a step, 0.07 CPU-minutes for stage S1a's `inputs` step, which does almost no
 # work. Added to every ingest estimate (card C-13). Without it the estimate of S1a's ingest (63,357,113
@@ -717,6 +736,57 @@ def fasta_bytes(path: Path) -> int:
     return total
 
 
+def fasta_counts(path: Path, min_contig_len: int) -> tuple[int, int]:
+    """(bytes of FASTA in `path`, bytes of FASTA in its records of fewer than `min_contig_len` bases), decompressed
+    when its name ends in `.gz`, in one streaming read of `_READ` bytes at a time (card B-61): what `fasta_bytes`
+    reads anyway, plus the records' lengths. A record is a `>` at the start of a line up to the next one; its bytes
+    are its header line and its sequence lines, newlines included; its bases are the bytes of its sequence lines
+    other than LF and CR. `fasta.iter_records` also drops lines that are only spaces or tabs: here they count as
+    bases, so a record can only be counted as longer than ingest finds it (kept, not dropped), and the estimate errs
+    high. Bytes before the first header belong to no record. Nothing but counters is held."""
+    path = Path(path)
+    total = below = 0
+    rec = -1  # bytes of the record being read; -1 before the first header
+    nonbase = 0  # of those, its header line and the LF and CR of its sequence lines
+    in_header = False
+    line_start = True  # the byte before the chunk ends a line (the file starts at a line start)
+    with (gzip.open(path, "rb") if str(path).endswith(".gz") else open(path, "rb")) as fh:
+        while chunk := fh.read(_READ):
+            n = len(chunk)
+            total += n
+            cr = b"\r" in chunk
+            starts = [0] if line_start and chunk[0] == 62 else []  # 62: '>'
+            p = chunk.find(b"\n>")
+            while p >= 0:
+                starts.append(p + 1)
+                p = chunk.find(b"\n>", p + 1)
+            starts.append(n)
+            a = 0
+            for s in starts:
+                if s > a and rec >= 0:  # bytes [a, s) belong to the record being read
+                    rec += s - a
+                    if in_header:
+                        h = chunk.find(b"\n", a, s)
+                        if h < 0:
+                            nonbase += s - a
+                            a = s
+                        else:
+                            nonbase += h + 1 - a
+                            in_header = False
+                            a = h + 1
+                    if a < s:
+                        nonbase += chunk.count(b"\n", a, s) + (chunk.count(b"\r", a, s) if cr else 0)
+                if s < n:  # a record starts at s
+                    if rec >= 0 and rec - nonbase < min_contig_len:
+                        below += rec
+                    rec, nonbase, in_header = 0, 0, True
+                a = s
+            line_start = chunk[-1] == 10  # 10: LF
+    if rec >= 0 and rec - nonbase < min_contig_len:
+        below += rec
+    return total, below
+
+
 def input_bytes(objects: Path) -> int:
     """Bytes of FASTA that the source objects of `--objects` hold. A relative path is taken from the
     directory of the file, as `bio-box stage ingest` takes it."""
@@ -729,37 +799,75 @@ def input_bytes(objects: Path) -> int:
 
 
 _SIZES: dict[tuple, list[tuple[Path, int, int]]] = {}  # object_sizes, by the objects' paths, sizes and mtimes
+_BELOW: dict[tuple, list[int]] = {}  # below_bytes, by the same key and the least contig length
 
 
-def object_sizes(objects: Path) -> list[tuple[Path, int, int]]:
-    """(path, bytes on disk, bytes of FASTA) of each source object of `--objects`, in the file's order (paths as
-    `input_bytes` takes them). Decompressing is the cost, so a result is kept for the call's objects while none
-    of them changes size or mtime (the refusal and the batch decision read it in one call)."""
+def _object_key(objects: Path) -> tuple[list[Path], tuple]:
     objects = Path(objects)
     paths = []
     for o in json.loads(objects.read_text()):
         p = Path(o["path"])
         paths.append(p if p.is_absolute() else objects.parent / p)
-    key = tuple((str(p), p.stat().st_size, p.stat().st_mtime_ns) for p in paths)
+    return paths, tuple((str(p), p.stat().st_size, p.stat().st_mtime_ns) for p in paths)
+
+
+def object_sizes(objects: Path, min_contig_len: int | None = None) -> list[tuple[Path, int, int]]:
+    """(path, bytes on disk, bytes of FASTA) of each source object of `--objects`, in the file's order (paths as
+    `input_bytes` takes them). Decompressing is the cost, so a result is kept for the call's objects while none
+    of them changes size or mtime (the refusal and the batch decision read it in one call). With `min_contig_len`
+    (card B-61) the same read also counts each object's bytes in records under it (`fasta_counts`), kept for
+    `below_bytes`, so a stage built with a least length is read once, not twice."""
+    paths, key = _object_key(objects)
+    if len(_SIZES) > 8 or len(_BELOW) > 8:
+        _SIZES.clear()
+        _BELOW.clear()
+    if min_contig_len is not None and (key, min_contig_len) not in _BELOW:
+        counts = [fasta_counts(p, min_contig_len) for p in paths]
+        _SIZES[key] = [(p, p.stat().st_size, f) for p, (f, _) in zip(paths, counts)]
+        _BELOW[(key, min_contig_len)] = [b for _, b in counts]
     if key not in _SIZES:
-        if len(_SIZES) > 8:
-            _SIZES.clear()
         _SIZES[key] = [(p, p.stat().st_size, fasta_bytes(p)) for p in paths]
     return _SIZES[key]
 
 
-def ingest_cpu_min(n_bytes: int, held_bases: int = 0) -> float:
-    """CPU-minutes of an ingest process that reads `n_bytes` bytes of FASTA, `held_bases` of whose bases another
-    stage already holds (`held_bases`), at the fitted rate above the constants (card B-52). Without `held_bases`
-    every byte is counted as stored."""
-    return INGEST_FIXED_CPU_MIN + max(0, n_bytes - held_bases) * INGEST_CPU_MIN / INGEST_BP
+def below_bytes(objects: Path, min_contig_len: int | None) -> int:
+    """Bytes of FASTA in the records of the source objects of `--objects` shorter than `min_contig_len` bases: what
+    ingest reads and drops (card C-38d, DEC-54) and stores nothing of (card B-61). 0 without a least length. Known
+    before ingest: counted in the read `object_sizes` makes of every object (a pass that already runs for `.gz`
+    objects; for plain ones, a read of each file, since their size needs none)."""
+    if min_contig_len is None:
+        return 0
+    _, key = _object_key(objects)
+    object_sizes(objects, min_contig_len)
+    return sum(_BELOW[(key, min_contig_len)])
+
+
+def gz_bytes(sizes: list[tuple[Path, int, int]]) -> int:
+    """Bytes of FASTA in the `.gz` objects of `object_sizes`' list (decompressed as `fasta` opens them)."""
+    return sum(f for p, _, f in sizes if str(p).endswith(".gz"))
+
+
+def ingest_cpu_min(n_bytes: int, held_bases: int = 0, *, gz_bytes: int = 0, below_bytes: int = 0) -> float:
+    """CPU-minutes of an ingest process that reads `n_bytes` bytes of FASTA, at the rates above the constants:
+    `held_bases` of its bases another stage already holds (card B-52; the stored rate was fitted with them at 0),
+    `below_bytes` of its bytes are records under the least contig length, read and dropped (card B-61), and
+    `gz_bytes` of its bytes come out of `.gz` objects (card B-61). The rest is stored. Without the keywords the
+    estimate is card B-52's, byte for byte; without `held_bases` too, every byte is counted as stored."""
+    stored = max(0, n_bytes - held_bases - below_bytes)
+    est = INGEST_FIXED_CPU_MIN + stored * INGEST_CPU_MIN / INGEST_BP
+    if below_bytes:
+        est += below_bytes * INGEST_BELOW_CPU_MIN / INGEST_BP
+    if gz_bytes:
+        est += gz_bytes * INGEST_GZ_CPU_MIN / INGEST_BP
+    return est
 
 
 def _ingest_rate() -> str:
     """How the messages that quote the ingest estimate name it."""
-    return (f"{INGEST_CPU_MIN:g} CPU-min per {INGEST_BP:,} bytes of FASTA not held by another stage, plus "
+    return (f"{INGEST_CPU_MIN:g} CPU-min per {INGEST_BP:,} bytes of FASTA stored (not held by another stage), plus "
             f"{INGEST_FIXED_CPU_MIN:g} CPU-min to start; fitted on the ingest records of nine stages, wilkcomp02, "
-            f"2026-11-16, card B-52")
+            f"2026-11-16, card B-52; {INGEST_BELOW_CPU_MIN:g} per {INGEST_BP:,} bytes in records under the least "
+            f"contig length and {INGEST_GZ_CPU_MIN:g} more per {INGEST_BP:,} bytes out of .gz objects, card B-61")
 
 
 def held_bases(root: Path, stage: str, tmp: Path | None = None) -> int:
@@ -947,7 +1055,7 @@ def _refusal(prof: Profile, b: Build, root: Path, plan: list[Step], allowance: i
             return f"release {b.release} lists stages {stages}, not stage {b.stage}"
     ingest = next(s for s in plan if s.check == "ingest")
     if not _record(root, ingest).exists():
-        sizes = object_sizes(b.objects)
+        sizes = object_sizes(b.objects, b.min_contig_len)  # with a least length, also what `_batched` counts
         n = sum(f for _, _, f in sizes)
         big = max(sizes, key=lambda t: (t[2], str(t[0])), default=None)
         if big is not None and ingest_cpu_min(big[2]) > prof.cpu_min_per_process:
@@ -2053,15 +2161,21 @@ def _batched(prof: Profile, b: Build, root: Path) -> bool:
     """Whether ingest runs as batch processes: an earlier call published a pass-1 record of the stage, or its
     estimate in one process exceeds `SHARD_MARGIN` of the budget (as a scan is sharded). The estimate (card B-52) is
     the stage's bytes of FASTA less the bases another stage already holds (`held_bases`: the inputs step has published
-    the stage's `genome_input`), and is said in one line either way."""
+    the stage's `genome_input`), and is said in one line either way. Card B-61: the bytes out of `.gz` objects
+    (`gz_bytes`) and, with `--min-contig-len`, the bytes in records under it (`below_bytes`, counted in the read
+    `object_sizes` makes) at their own rates; both are known before the step."""
     if (root / store.plan_dir(b.stage) / "pass1-00000.json").exists():
         return True
-    sizes = object_sizes(b.objects)
-    n = sum(f for _, _, f in sizes)
+    sizes = object_sizes(b.objects, b.min_contig_len)
+    n, gz = sum(f for _, _, f in sizes), gz_bytes(sizes)
+    below = below_bytes(b.objects, b.min_contig_len)
     held = held_bases(root, b.stage, scratch_of(prof, b))
-    est = ingest_cpu_min(n, held)
-    said = (f"{b.stage}.ingest: {n:,} bytes of FASTA, {held:,} bases of them in contigs another stage holds, are "
-            f"estimated at {est:,.1f} CPU-minutes in one process ({_ingest_rate()})")
+    est = ingest_cpu_min(n, held, gz_bytes=gz, below_bytes=below)
+    more = "".join([f", {gz:,} of them out of .gz objects" if gz else "",
+                    f", {below:,} of them in records under --min-contig-len {b.min_contig_len}"
+                    if b.min_contig_len is not None else ""])
+    said = (f"{b.stage}.ingest: {n:,} bytes of FASTA, {held:,} bases of them in contigs another stage holds{more}, "
+            f"are estimated at {est:,.1f} CPU-minutes in one process ({_ingest_rate()})")
     if est <= SHARD_MARGIN * prof.cpu_min_per_process:
         _say(f"{said}, within {SHARD_MARGIN:.0%} of the profile's cpu_min_per_process of {prof.cpu_min_per_process}")
         return False
@@ -2076,14 +2190,26 @@ def pass1_bytes(prof: Profile, b: Build, root: Path) -> int:
     fits `SHARD_MARGIN` of the budget at the fitted rate (`INGEST_CPU_MIN` per `INGEST_BP` bytes of FASTA, after
     the `INGEST_FIXED_CPU_MIN` every process pays to start), every byte counted as stored (a pass-1 shard stores
     nothing, so this errs high; card B-52), in bytes on disk at the stage's ratio of FASTA bytes to bytes on disk; at
-    least one. A pure function of the inputs and the profile."""
+    least one. A pure function of the inputs and the profile. Card B-61: a byte is priced as `ingest_cpu_min` prices
+    the stage's bytes on average, the bytes out of `.gz` objects and those in records under `--min-contig-len` at
+    their own rates (still as though the rest were stored); a stage of plain FASTA without a least length is cut as
+    before, byte for byte."""
     if (root / store.plan_dir(b.stage) / "pass1-00000.json").exists():
         return store.read_pass1(root, b.stage, 0)["pass1_bytes"]
-    sizes = object_sizes(b.objects)
-    on_disk, fasta = sum(d for _, d, _ in sizes), sum(f for _, _, f in sizes)
+    sizes = object_sizes(b.objects, b.min_contig_len)
+    return _pass1_bytes(prof, sum(d for _, d, _ in sizes), sum(f for _, _, f in sizes), gz_bytes(sizes),
+                        below_bytes(b.objects, b.min_contig_len))
+
+
+def _pass1_bytes(prof: Profile, on_disk: int, fasta: int, gz: int = 0, below: int = 0) -> int:
+    """`pass1_bytes` from the stage's bytes on disk and of FASTA, of FASTA out of `.gz` objects and in records under
+    the least length."""
     ratio = max(1.0, fasta / on_disk) if on_disk else 1.0
     per_shard = SHARD_MARGIN * prof.cpu_min_per_process - INGEST_FIXED_CPU_MIN
-    return max(1, int(per_shard * INGEST_BP / INGEST_CPU_MIN / ratio))
+    if not gz and not below:
+        return max(1, int(per_shard * INGEST_BP / INGEST_CPU_MIN / ratio))
+    per_byte = (ingest_cpu_min(fasta, gz_bytes=gz, below_bytes=below) - INGEST_FIXED_CPU_MIN) / fasta  # CPU-min
+    return max(1, int(per_shard / per_byte / ratio))
 
 
 def ingest_steps(prof: Profile, b: Build, n_pass1: int, per_shard: int, n_batches: int | None) -> list[Step]:
