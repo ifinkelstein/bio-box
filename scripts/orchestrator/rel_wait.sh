@@ -16,7 +16,8 @@
 #     check/DONE and backup/DONE in DRIVER_DIR, and DRIVER_DIR/backup.tsv. The queue's log line is never the
 #     evidence (card A-11: on 2026-11-20 a driver exited 0 after its check failed, the queue wrote "all passed", and
 #     this waiter started a release on that line); the line is only printed when the markers are not all there;
-#   - no build unit of ours is active (c47-*, c48c-*, c46-train-*);
+#   - no build unit of ours is active (c47-*, c48c-*, c46-train-*, and <basename of DRIVER_DIR>-*: the stage driver's
+#     units of card A-12 are named for the stage in lower case, and its directory is /tmp/if2453/stages/<stage>);
 #   - the whole test suite of the frozen tree (units ci-SUITE-0..7) has ended and every shard's last line says
 #     "passed" and not "failed" or "error".
 # Then: release_train.sh --dry-run (logged), then release_train.sh run. The train has its own guards (STOP, free
@@ -62,7 +63,7 @@ while :; do
 done
 
 act=$(systemctl --user list-units --type=service --state=active,activating,deactivating --no-legend --plain \
-  'c47-*' 'c48c-*' 'c46-train-*' | awk '{print $1}' | paste -sd' ' -)
+  'c47-*' 'c48c-*' 'c46-train-*' "$(basename "$DRIVER_DIR")-*" | awk '{print $1}' | paste -sd' ' -)
 if [ -n "$act" ]; then say "STOPPED: a build unit is active ($act); nothing started"; exit 6; fi
 
 # the suite of the frozen tree must have ended, every shard passed
