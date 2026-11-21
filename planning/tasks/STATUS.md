@@ -199,7 +199,8 @@ on it cancelled. Next evidence: any ordinary `ci` job that shows the case (searc
   `relwait-1120` holds; it waits now only for `c47-queue`.
 - Actions: `ci` green on every push through the `V1` merge (`6243b4d`).
 - On `tower` since 19:38: `deferred_lists/V1/uhgv_metadata.tsv.zst` (the table that lists UHGV's 705,458
-  non-representative genomes; sha256 `defa9fbe…70a4`). `added_v1.tar` is being relayed to `root_backups/`.
+  non-representative genomes; sha256 `defa9fbe…70a4`). **`added_v1.tar` is on `tower` and verified** (19:42:05;
+  4,231,157,760 bytes in 211 s, 20.05 MB/s; `root_backups/SHA256SUMS` there has 8 lines).
 
 **7. Waiting on the PI**: the storage decision set (`planning/design/storage_decisions_draft.md`, S-1 to S-8);
 item 19 (where the corpus lives; `tower` being looked at, card C-49), items 15 (decided: DEC-56), 16 (B-56's design), 17 (`domain_state`'s place in

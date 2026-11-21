@@ -81,6 +81,14 @@ files and 182,841,288 bytes. So the script works against the real hosts, and on 
 verified-in-place at about 9 MB/s, where the first mirror's read-back halved it. Its rate on a file of tens of GB is
 still to be measured at the next backup tar.
 
+**The script on a multi-GB file, the same evening** (*measured*, the script's log, 19:38:33 to 19:42:06): `added_v1.tar`
+(stage `V1`'s durable tar, 4,231,157,760 bytes) from `/stor/work/.../root_backups` to `tower`'s `root_backups` in
+211 s, **20.05 MB/s to verified in place**, sha256 `0a285dc3…a4ec` equal to the record; `SHA256SUMS` there extended
+to 8 lines. Also `uhgv_metadata.tsv.zst` (38,978,745 bytes, 2 s) to `deferred_lists/V1/`. That is twice the 9.70 MB/s
+of the morning's single-stream test and four times the first mirror's end-to-end 5.16 MB/s. One file at one hour of
+the evening: whether the morning's rate was the link at that hour, or the two streams and read-backs sharing it, is
+not separated. For planning keep 9.70 MB/s; a tar of 20 to 30 GB at the next release will say more.
+
 ## 4. What the first mirror showed, and the change in the repository script
 
 With `scp -3` the bytes cross the link once and are then read again from the array to be hashed: at about 9 MB/s
