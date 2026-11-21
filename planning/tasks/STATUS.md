@@ -302,6 +302,18 @@ signal that should not have been given. Read this before trusting "all passed" (
   orchestrator**: the first push of a card that adds tests is followed to its Actions result before the next merge
   is pushed, and every brief says that a test must pass where MinCED, MMseqs2 and `hmmsearch` are absent (skip as
   `test_c38a_depths.py` does, or do not need the tool).
+- **Card A-12 is not merged: reviewed at 04:15 on 2026-11-21 and sent back.** First hand-back at `d772cb7`
+  (`stage_driver.sh`, `stage_queue.sh`, `stage_est.py`, `stage_check.py`, `stages/V2.conf` and `GV1.conf`; 122 stub
+  tests, passing also with the pod's tools hidden; the rehearsal of the final tree not yet seen to pass). An
+  independent Opus reviewer read the code and ran nothing: no path by which a mode exits 0 or writes its marker
+  after a failure; ten points to fix, written into the card. The gravest: `run`'s loop ends on any failed
+  `systemctl is-active` call and leaves the build running unguarded; a release can start while the next stage
+  builds (`rel_wait.sh` looks once, hours before; `release_train.sh`'s lock knows no stage unit); `stage_check.py`
+  and the real `rates` are run by no test; the unit's quota is the night cap at any hour; a root given with a
+  trailing slash passes as a scratch root. **No conf for `PL2`, `G1`, `SPX1`**: their notes leave values open
+  (`PL2`: depth, least contig length, the split by redistributability; `G1`: depth and CRISPR; `SPX1`: the figure
+  its ingest is judged against, which waits on card B-58). The build of `V2` waits for this card's merge and for
+  the audit of `r26.11.2`.
 - **Lesson for every driver**: a queue must test a marker the step itself writes on success (`check/DONE`), never a
   script's exit status alone; and the orchestrator reads the last line of every `check.out` before a release is
   cut. `scripts/orchestrator/rel_wait.sh` trusted a log line; it is not to be reused without that change.
