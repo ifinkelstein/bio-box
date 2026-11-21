@@ -23,7 +23,11 @@ postings, dimension tables, manifest, then `release verify` of all eight release
 and the check follow. **Space at 14:40** (*measured*, `df -h /tmp` and the guard's `guard.jsonl`): 353 GiB free
 (378.6 GB as the guard counts), the release's scratch at 178 GB and at its peak so far (`r26.11.1`'s peaked at
 158.7 GB; the guard stops at 250 GB of scratch or under 150 GB free). That is at the line of the PI's storage
-reminder (350 by `df -h`) and was said to the PI; the scratch is the release's and goes when it ends. Read it with one short
+reminder (350 by `df -h`) and was said to the PI; the scratch is the release's and goes when it ends.
+**At 14:53**: `r26.11.2.cluster published 15 files` at 14:43 (the cluster tables are in the root; no step over
+1.50; three alignment parts recorded at 1.215, 1.265 and 1.252, DEC-64), the clustering's scratch is gone (9 GB
+left; its peak was 181.6 GB) and **505 GiB are free**; the unit is in `release tokens`. Left: postings, dimension
+tables, manifest, catalog, then the train's verify of every release, the pack, the examples and the check. Read it with one short
 call: `ssh -o BatchMode=yes -J if2453@wilkcomp03.ccbb.utexas.edu if2453@wilkcomp02.ccbb.utexas.edu "systemctl
 --user is-active c46-driver-run2 c46-train-rel-2; tail -n 5 /tmp/if2453/c46/train/driver.log; grep published
 /tmp/if2453/c46/train/logs/c46-train-rel-2.log | tail -n 2; cat /tmp/if2453/c46/train/DONE; df -h /tmp"`.
