@@ -202,6 +202,16 @@ on it cancelled. Next evidence: any ordinary `ci` job that shows the case (searc
   non-representative genomes; sha256 `defa9fbe…70a4`). **`added_v1.tar` is on `tower` and verified** (19:42:05;
   4,231,157,760 bytes in 211 s, 20.05 MB/s; `root_backups/SHA256SUMS` there has 8 lines).
 
+**6k. Reminder owed to the PI on storage** (the PI at about 19:50 on 2026-11-20: "remind me re storaage when we get
+to a more acute level on pod"). The storage decision set (`planning/design/storage_decisions_draft.md`, S-1 to S-8)
+is not pressed until then. **Remind the PI, with the numbers of the hour, at the first of these** (the
+orchestrator's thresholds, for the PI to change): (a) `/tmp` on the pod has under 350 GB free (`df -h /tmp`; it had
+532 GB at 19:12 on 2026-11-20); (b) the next build or release, by its own estimate, would take it under 300 GB;
+(c) a build, a release or an agent stops on a free-space guard (the release train will not start under 250 GB and
+stops under 150 GB; agents stop at 200 GB). Check (a) and (b) at every check-in and before every launch, and say in
+each summary how much is free. Until the PI decides, nothing is deleted to make room except what DEC-42 and DEC-46
+already allow (the scratch of finished, merged cards).
+
 **7. Waiting on the PI**: the storage decision set (`planning/design/storage_decisions_draft.md`, S-1 to S-8);
 item 19 (where the corpus lives; `tower` being looked at, card C-49), items 15 (decided: DEC-56), 16 (B-56's design), 17 (`domain_state`'s place in
 the exports), 18 (the pilot's storage rates), and the older ones in the section below (item 12, the TACC requests,
