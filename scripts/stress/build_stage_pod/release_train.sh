@@ -202,6 +202,9 @@ watch_unit() {
 
 do_run() {
   mkdir -p "$WORK" "$LOGS" "$WORK/before" "$WORK/estimate" "$WORK/run" "$WORK/after" "$WORK/pack" "$WORK/check"
+  # $WORK/DONE is the success marker of a run (card A-11): written last, only when every step passed. A waiter tests
+  # it, never a log line or an exit status alone; a run withdraws the marker of an earlier one before it starts.
+  rm -f "$WORK/DONE"
   make_profile
   log "release_train run: root=$ROOT work=$WORK profile=$REALPROF"
 
@@ -216,7 +219,8 @@ do_run() {
   plan_args
   local plan_json=$WORK/plan.json
   bb_ro py "$BIN/train_plan.py" "${PLAN_ARGS[@]}" --json > "$plan_json" || exit $?
-  bb_ro py "$BIN/train_plan.py" "${PLAN_ARGS[@]}" | tee "$WORK/plan.txt"
+  bb_ro py "$BIN/train_plan.py" "${PLAN_ARGS[@]}" > "$WORK/plan.txt" || { cat "$WORK/plan.txt"; fail "train_plan.py failed"; }
+  cat "$WORK/plan.txt"
 
   local rel stages latest nothing_new earlier_rels last_stage last_depth last_genomes last_objects last_crispr
   rel=$(python3 -I -c 'import json,sys; print(json.load(open(sys.argv[1]))["release"])' "$plan_json")
@@ -312,7 +316,8 @@ PY
     [ -n "$h1" ] && [ "$h0" = "$h1" ] || { log "after: $r hash '$h1' != '$h0'"; ok=0; }
   done
   [ "$ok" = 1 ] || fail "post-build release verify failed or earlier hash changed"
-  bb_ro cli releases --root "$ROOT" --profile "$PROF_COPY" > "$WORK/after/releases.txt" 2>&1
+  bb_ro cli releases --root "$ROOT" --profile "$PROF_COPY" > "$WORK/after/releases.txt" 2>&1 \
+    || fail "bio-box releases failed (see $WORK/after/releases.txt)"
 
   # 6. Search pack in parts (W-35) + pack verify
   local punit="${UNIT_PREFIX}-pack" pack_model=()
@@ -348,11 +353,14 @@ PY
   [ -n "$new_hash" ] && chk_args+=(--manifest-hash "$new_hash")
   [ -n "$pack_id" ] && chk_args+=(--pack-id "$pack_id")
   [ -s "$WORK/examples/summary.tsv" ] && chk_args+=(--examples-summary "$WORK/examples/summary.tsv")
-  python3 -I "$BIN/train_check.py" "${chk_args[@]}" | tee "$WORK/check/check.out" \
-    || fail "train_check.py failed (see $WORK/check/check.out)"
-  cp "$WORK/check/root_added.tsv" "$WORK/root_added.tsv"
-  cp "$WORK/check/announcement.md" "$WORK/announcement.md"
+  python3 -I "$BIN/train_check.py" "${chk_args[@]}" > "$WORK/check/check.out"
+  rc=$?
+  cat "$WORK/check/check.out"
+  [ "$rc" = 0 ] || fail "train_check.py failed (see $WORK/check/check.out)"
+  cp "$WORK/check/root_added.tsv" "$WORK/root_added.tsv" || fail "cp root_added.tsv"
+  cp "$WORK/check/announcement.md" "$WORK/announcement.md" || fail "cp announcement.md"
   log "release_train run complete: $rel (manifest $new_hash, pack $pack_id)"
+  echo "$rel" > "$WORK/DONE"
 }
 
 do_rehearse() {

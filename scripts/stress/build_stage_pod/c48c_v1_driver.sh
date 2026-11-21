@@ -127,13 +127,15 @@ snapshot() {
   find "$ROOT" ! -type d -regextype posix-extended -regex ".*/stage=(${HASHED//,/|})/.*" -printf '%P\n' \
     | LC_ALL=C sort > "$d/earlier.files"
   (cd "$ROOT" && systemd-run --user --scope --quiet -p MemoryMax=2G -p MemorySwapMax=0 nice -n 19 ionice -c 3 \
-    xargs -d '\n' sha256sum < "$d/earlier.files") > "$d/earlier.sha256"
+    xargs -d '\n' sha256sum < "$d/earlier.files") > "$d/earlier.sha256" || fail "snapshot $d: sha256sum failed"
+  [ "$(wc -l < "$d/earlier.sha256")" = "$(wc -l < "$d/earlier.files")" ] || fail "snapshot $d: not every file hashed"
   log "snapshot $d: $(wc -l < "$d/listing.tsv") files, $(wc -l < "$d/earlier.sha256") of $HASHED hashed, $(awk -F '\t' '{s += $2} END {printf "%.0f", s}' "$d/listing.tsv") bytes"
 }
 
 estimate() {
   local d=$C/estimate rc
   mkdir -p "$d"
+  rm -f "$d/DONE"  # a marker of an earlier estimate is withdrawn: `run` starts only on the marker of this one
   [ -e "$ROOT/STOP" ] && fail "$ROOT/STOP exists"
   profile
   printf '%s\n' "$V1_SUMS" > "$d/SUMS.expected"
@@ -340,6 +342,7 @@ run() {
   echo "$line" >> "$C/run/rates.jsonl"
   log "rates at end: $(echo "$line" | cut -c1-600)"
   [ "$rc" = 3 ] && fail "DEC-53: a judged step more than 20% over its estimate at the end: $(echo "$line" | cut -c1-900)"
+  [ "$rc" = 0 ] || fail "c48c_v1_est.py rates exited $rc at the end"
   rc=$(exit_of "$unit")
   log "$unit ended, exit '$rc'; usage: $(grep -E 'pod_run: .* usage' "$LOGS/$unit.log" | tail -n 1)"
   [ "$rc" = 0 ] || fail "$unit exited '$rc', expected 0"
@@ -350,14 +353,17 @@ run() {
 }
 
 after() {
-  local d=$C/after r ok=1
+  local d=$C/after r ok=1 rc
   [ -e "$C/run/DONE" ] || fail "after: no $C/run/DONE"
   mkdir -p "$d"
+  rm -f "$d/DONE"  # withdrawn until this `after` has passed
   snapshot "$d"
   for r in $RELEASES; do verify "$ROOT" "$r" "$d" || ok=0; done
   bb cli releases --root "$ROOT" > "$d/releases.txt" 2>&1
-  log "after: bio-box releases exit $?; verify_ok=$ok"
+  rc=$?
+  log "after: bio-box releases exit $rc; verify_ok=$ok"
   [ "$ok" = 1 ] || fail "after: a published release failed verify"
+  [ "$rc" = 0 ] || fail "after: bio-box releases exited $rc"
   touch "$d/DONE"
 }
 
@@ -365,20 +371,22 @@ check() {
   local unit rc
   [ -e "$C/after/DONE" ] || fail "check: no $C/after/DONE"
   mkdir -p "$C/check"
+  rm -f "$C/check/DONE"  # withdrawn until this check has passed: `backup` starts only on the marker of a passed one
   unit=$(tail -n 1 "$C/units")
   bb py "$BIN/c48c_v1_check.py" --root "$ROOT" --before "$C/before" --after "$C/after" --log "$LOGS/$unit.log" \
     --objects "$IN/objects.json" --out "$C/check" --tmp "$C/tmp/check" --stage "$STAGE" \
     --earlier "$HASHED" --before-est "$C/estimate/before.json" > "$C/check/check.out" 2>&1
   rc=$?
-  cp "$C/check/root_added.tsv" "$C/root_added.tsv"
   log "check: exit $rc: $(tail -n 1 "$C/check/check.out" | cut -c1-600)"
   [ "$rc" = 0 ] || fail "check: c48c_v1_check.py exit $rc (read $C/check/check.out)"
+  [ -s "$C/check/root_added.tsv" ] || fail "check: no $C/check/root_added.tsv"
+  cp "$C/check/root_added.tsv" "$C/root_added.tsv" || fail "check: cp root_added.tsv"
   touch "$C/check/DONE"
 }
 
 backup() {
   local local_tar="$C/added_v1.tar" tmp_tar="$BACKUP_DIR/.added_v1.tar.tmp" sz sha1 sha2 n
-  [ -e "$C/check/DONE" ] || fail "backup: no $C/check/DONE"
+  [ -e "$C/check/DONE" ] || fail "backup: no $C/check/DONE (a passed check)"
   [ -s "$C/root_added.tsv" ] || fail "backup: missing $C/root_added.tsv"
   [ ! -e "$BACKUP_TAR" ] || fail "backup: $BACKUP_TAR already exists"
   [ ! -e "$tmp_tar" ] || fail "backup: $tmp_tar already exists"
@@ -399,6 +407,8 @@ backup() {
   printf "%s\t%s\t%s\t%s\n" "$BACKUP_TAR" "$sz" "$sha2" "$n" > "$C/backup.tsv"
   log "backup: $BACKUP_TAR written ($n files, $sz bytes, sha256 $sha2)"
   rm -f "$local_tar"
+  mkdir -p "$C/backup"
+  touch "$C/backup/DONE"
 }
 
 MODE=${1:-}
@@ -413,4 +423,12 @@ case "$MODE" in
   backup) backup ;;
   *) echo "usage: c48c_v1_driver.sh estimate|rehearse|before|run|after|check|backup" >&2; exit 2 ;;
 esac
-log "c48c v1 driver: mode '$MODE' done"
+# The mode's own status is the driver's exit status (card A-11; on 2026-11-20 c47_driver.sh `check` returned 1 and the
+# driver exited 0, the status of the log line that followed). A mode that fails through `fail` exits 1 itself.
+rc=$?
+if [ "$rc" = 0 ]; then
+  log "c48c v1 driver: mode '$MODE' done"
+else
+  log "c48c v1 driver: mode '$MODE' FAILED with status $rc"
+fi
+exit "$rc"

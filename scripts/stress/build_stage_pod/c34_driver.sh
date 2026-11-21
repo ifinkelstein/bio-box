@@ -80,7 +80,8 @@ snapshot() {  # $1 directory
   find "$ROOT" ! -type d \( -path '*/stage=S1/*' -o -path '*/stage=P1/*' -o -path '*/stage=P2/*' \) -printf '%P\n' \
     | LC_ALL=C sort > "$d/stages.files"
   (cd "$ROOT" && systemd-run --user --scope --quiet -p MemoryMax=2G -p MemorySwapMax=0 nice -n 19 \
-    xargs -d '\n' sha256sum < "$d/stages.files") > "$d/stages.sha256"
+    xargs -d '\n' sha256sum < "$d/stages.files") > "$d/stages.sha256" || fail "snapshot $d: sha256sum failed"
+  [ "$(wc -l < "$d/stages.sha256")" = "$(wc -l < "$d/stages.files")" ] || fail "snapshot $d: not every file hashed"
   log "snapshot $d: $(wc -l < "$d/listing.tsv") files, $(wc -l < "$d/stages.sha256") of S1, P1, P2 hashed, $(awk -F '\t' '{s += $2} END {printf "%.0f", s}' "$d/listing.tsv") bytes"
 }
 
@@ -248,24 +249,32 @@ run() {
 }
 
 after() {
-  local d=$C/after
+  local d=$C/after ok=1 rc
   mkdir -p "$d"
+  rm -f "$d/DONE"  # withdrawn until this `after` has passed
   snapshot "$d"
-  verify_all "$TREE" "$ROOT" "$d" new || log "after: a release does NOT verify"
+  verify_all "$TREE" "$ROOT" "$d" new || { log "after: a release does NOT verify"; ok=0; }
   bb "$TREE" cli releases --root "$ROOT" > "$d/releases.tsv" 2> "$d/releases.err"
-  log "after: releases: $(wc -l < "$d/releases.tsv") lines"
+  rc=$?
+  log "after: releases (exit $rc): $(wc -l < "$d/releases.tsv") lines"
   reads "$d"
+  [ "$ok" = 1 ] || fail "after: a release does not verify (read $d/new-*.log)"
+  [ "$rc" = 0 ] || fail "after: bio-box releases exited $rc (read $d/releases.err)"
   touch "$d/DONE"
 }
 
 check() {
+  [ -e "$C/after/DONE" ] || fail "check: no $C/after/DONE"
   mkdir -p "$C/check"
+  rm -f "$C/check/DONE"  # withdrawn until this check has passed
   bb "$TREE" py "$BIN/c34_check.py" --root "$ROOT" --before "$C/before" --after "$C/after" --rehearsal "$C/rehearsal" \
     --out "$C/check" --stage S1 --stage P1 --stage P2 > "$C/check/check.out" 2>&1
   local rc=$?
-  cp "$C/check/root_added.tsv" "$C/root_added.tsv"
   log "check: exit $rc: $(tail -n 1 "$C/check/check.out")"
-  return $rc
+  [ "$rc" = 0 ] || fail "check: c34_check.py exited $rc (read $C/check/check.out)"
+  [ -s "$C/check/root_added.tsv" ] || fail "check: no $C/check/root_added.tsv"
+  cp "$C/check/root_added.tsv" "$C/root_added.tsv" || fail "check: cp root_added.tsv"
+  touch "$C/check/DONE"
 }
 
 seven() {
@@ -292,4 +301,12 @@ case "$MODE" in
   seven) seven "${2:-now}" ;;
   *) echo "usage: c34_driver.sh rehearse|oracle|before|run|after|check|seven [tag]" >&2; exit 2 ;;
 esac
-log "c34 driver: mode '$MODE' done"
+# The mode's own status is the driver's exit status (card A-11; on 2026-11-20 c47_driver.sh `check` returned 1 and the
+# driver exited 0, the status of the log line that followed). A mode that fails through `fail` exits 1 itself.
+rc=$?
+if [ "$rc" = 0 ]; then
+  log "c34 driver: mode '$MODE' done"
+else
+  log "c34 driver: mode '$MODE' FAILED with status $rc"
+fi
+exit "$rc"
