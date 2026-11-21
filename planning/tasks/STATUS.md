@@ -202,6 +202,14 @@ on it cancelled. Next evidence: any ordinary `ci` job that shows the case (searc
   non-representative genomes; sha256 `defa9fbe…70a4`). **`added_v1.tar` is on `tower` and verified** (19:42:05;
   4,231,157,760 bytes in 211 s, 20.05 MB/s; `root_backups/SHA256SUMS` there has 8 lines).
 
+**6l. Thread cap until Monday morning** (the PI at about 19:58 on 2026-11-20: "56 cpus max for now to mon
+morning"). From now to Monday 2026-11-23 08:00 CST nothing of ours, summed over every unit and agent, uses more than
+56 threads on the pod. That is what the profile already gives at night and at weekends when no one else computes
+(`build-stage` reads the hour: it took `C5` from 40 to 56 at 20:00), and the units in flight are inside it: `C5`'s
+unit has a quota of 56, and the release train is started by `relwait-1120` with `Q=56`. To keep: start no second
+compute job beside a build or a release that would take the sum past 56 (test runs of a few threads included in the
+sum); from Monday 08:00 the weekday cap of 40 by day applies again.
+
 **6k. Reminder owed to the PI on storage** (the PI at about 19:50 on 2026-11-20: "remind me re storaage when we get
 to a more acute level on pod"). The storage decision set (`planning/design/storage_decisions_draft.md`, S-1 to S-8)
 is not pressed until then. **Remind the PI, with the numbers of the hour, at the first of these** (the
