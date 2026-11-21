@@ -314,6 +314,15 @@ signal that should not have been given. Read this before trusting "all passed" (
   (`PL2`: depth, least contig length, the split by redistributability; `G1`: depth and CRISPR; `SPX1`: the figure
   its ingest is judged against, which waits on card B-58). The build of `V2` waits for this card's merge and for
   the audit of `r26.11.2`.
+- **State at 04:55 on 2026-11-21.** Actions green on the test fix (`07c3538`), so the merges of C-47, C-51 and
+  A-11 pass there. Card A-12: second review done (the first round's defects closed, each with a test; six
+  points left, sent back as a third round; the card's amendment has them). Release `r26.11.2`: NR50, step 15
+  (prefilter) cut at 04:49. **Thread cap made hard by the orchestrator at 04:54**: the units' quotas summed to 66
+  (the release 56, two rehearsal units of card A-12 at 4 each, card B-58's arm at 2) although the account's use
+  measured 37 cores (*measured*, `top`, two 5 s samples, wilkcomp02, 04:53; others 1.6); with
+  `systemctl --user set-property --runtime` the release unit is at 4800% and the two rehearsal units at 300%,
+  so the sum is 56. Throttling changes wall time, not the CPU-minutes the guards judge. `/tmp`: 400 GB free at
+  04:53 (the release's scratch is 124 GB and still growing; the last release's peaked at 158.7 GB).
 - **Lesson for every driver**: a queue must test a marker the step itself writes on success (`check/DONE`), never a
   script's exit status alone; and the orchestrator reads the last line of every `check.out` before a release is
   cut. `scripts/orchestrator/rel_wait.sh` trusted a log line; it is not to be reused without that change.
@@ -1313,6 +1322,25 @@ probed by hand on the pod).
    representative's hit is within a few bits of the cutoff), which the present data cannot measure. If inference
    is wanted now, the 95% identity cut is the rule with a margin; 15% with f 1.0 meets the limit on `C5` by 0.002
    points and should not be trusted on the next stage.
+22. **Stage `PL2` cannot be given a build configuration until five questions of its note are answered** (opened
+   2026-11-21 by card A-12; the questions are `planning/measurements/2026-11-16_pl2_inputs.md` §6, 1 to 5, asked on
+   2026-11-16 and not answered since). With the orchestrator's recommendation for each: (1) **one stage or two**:
+   split, as `V1` and `V2` are: `PL2` the redistributable sets (110,771 new contigs, 1.85 Gbp) and `PL3` the
+   JGI-restricted `IMG-PR` and `mMGE` (748,265 new contigs, 16.42 Gbp), so that a release that may be shared is a
+   list of stages (DEC-51); a stage cannot be split after it is built (AGENTS §3.10). The inputs are staged as one
+   and would be staged again as two (lists only; no fetch). (2) **gut plasmids**: keep the authors' 68,350
+   representatives and record the 15,135 circular non-representatives in the register (DEC-59). (3) **`IMG-PR` DTR
+   records**: keep them linear. (4) **least length**: none; these are called plasmids, not unbinned contigs, and
+   DEC-60's 5 kb edge was set for the latter; 1,500 bp would drop 2.70% of contigs. (5) **Pfam**: scan in full
+   with card B-47b's copy (23,250 to 27,990 CPU-minutes, *derived* in the note), since inference stopped at
+   DEC-35 (6) (item 21) and plasmid proteins are diverse. Until answered, `PL2` stays staged and the queue passes
+   it: `V2`, `GV1`, `G1`, then `SPX1`.
+   **Stage `G1`, decided by the orchestrator for the PI to overrule**: its note costs depth `annotated` and depth
+   `called` and chooses neither. `G1` is one genome per species (7,139 genomes of GlobDB species that GTDB lacks,
+   10.05 Gbp), the kind of stage DEC-32 keeps fully scanned, and every stage built so far is `annotated` with both
+   CRISPR producers: `G1` is built `annotated`, Pfam 38.2 in full, `--crispr` (23,833 CPU-minutes for the scan,
+   *derived*, the note's §4: about 7 hours at 56 threads). The depth of `G2` to `G41` (410 Gbp) is not decided by
+   this and is the PI's (the note's §5 and question 3; open item 19).
 
 **Open since 13:55 on 2026-11-16** (F-02 session 13; its note is `planning/measurements/2026-11-14_synthworld_redesign.md`
 §16 on branch `task/F-02-13`, at `f340a0a`, pushed, not merged):
