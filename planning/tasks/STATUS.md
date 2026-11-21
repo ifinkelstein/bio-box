@@ -277,6 +277,16 @@ signal that should not have been given. Read this before trusting "all passed" (
   orchestrator's recommendation). Stages `C1` to `C4` and `C6` are held; the queue of builds is now `V2`, `GV1`,
   `PL2`, `G1`, then `SPX1` (after card B-58). Cards B-58, B-60 and A-11 can start. New card C-51: the list of what
   phase 2's selection left out has to be made again (card C-27's copies on `/tmp` are gone).
+- **State at 03:15 on 2026-11-21.** Agents out (Sonnet, tier L): card A-11 (`task/A-11`), card C-51
+  (`task/C-51`), card B-58 (`task/B-58`). **Card B-58's premise was wrong and the card is amended** (its text has
+  the numbers): reading gzip FASTA costs 0.09 to 0.27 CPU-min per GB, not 0.84, so about 5.6 of the 7.75
+  CPU-minutes that `C5`'s ingest ran over its estimate (the record DEC-56 accepted) are not explained by gzip. The
+  agent now measures in a scratch root what they are (gzip, a cost per object, contigs an earlier stage holds,
+  load) and writes a term only for a cause the arms show. **`SPX1` no longer waits on B-58 for a gzip term**; its
+  ingest estimate has another fault the same arms measure: the code charges every byte at the stored rate, and
+  85.23% of `SPX1`'s bases are read and dropped. Card B-60 waits for B-58 (both edit `src/biobox/stage.py`).
+  Release `r26.11.2`: NR90 alignment, part 13 at 02:26. `/tmp`: 459 GB free at 02:55 after card C-47's test
+  scratch was cleared (`ci/C-47` kept: the driver's tree, needed for DEC-35 (7)).
 - **Lesson for every driver**: a queue must test a marker the step itself writes on success (`check/DONE`), never a
   script's exit status alone; and the orchestrator reads the last line of every `check.out` before a release is
   cut. `scripts/orchestrator/rel_wait.sh` trusted a log line; it is not to be reused without that change.
