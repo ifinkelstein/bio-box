@@ -138,9 +138,8 @@ fails now and then.
 **H8. Merged on 2026-11-21** (rows in the table below; 153 cards): C-47, C-51, A-11, B-58, B-60, A-12, A-13,
 A-14, A-16, A-15, B-61, A-17. The whole suite of the integration head passed on the pod at 07:47 (3,192 passed, 23
 skipped, on `a089a5c`: before cards A-14, A-15, A-16 and B-61, each of which passed its own and the neighbouring
-tests on the merged tree, B-61 its own whole suite on its branch); Actions is green through the B-61 merge
-and the handoff push (`7a9b104`, `1015e3a`); the A-17 merge was pushed at 14:40 and its Actions result is to be
-read. **A whole-suite run of the present head on the
+tests on the merged tree, B-61 its own whole suite on its branch); Actions is green on every push through
+`7d7d7ad` (16:53: `ci` and `cross-host`; that head has every merge of the day, card A-17's included). **A whole-suite run of the present head on the
 pod is owed** before the next frozen mirror is made for a stage build (`detached_suite.sh <name> 2` beside the
 release, or 8 shards when the pod is free).
 
