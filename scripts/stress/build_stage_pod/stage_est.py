@@ -416,12 +416,14 @@ def rates_doc(conf: Conf, root: Path, prof, objects: Path, before_path: str | No
             r = bs.stage_residues(root, st, GCV)
             single(name, bs.scan_cpu_min(r), f"{r} residues in one process x {bs.SCAN_CPU_MIN_PER_M} / 1e6")
     if "ingest" in recs and conf.crispr:
-        b, fb = bs.stage_bases(root, st), bs.crispr_flank_bases(root, st)
-        single(f"crispr-{crispr.producer()}", bs.crispr_cpu_min(b, fb, near_cas=False),
-               f"({b}+{fb}) bases x {bs.CRISPR_CPU_S_PER_GBP} / 1e9 / 60")
+        b, fb, nc = bs.stage_bases(root, st), bs.crispr_flank_bases(root, st), bs.stage_contigs(root, st)
+        cterm = f" + {nc} contigs x {bs.CRISPR_CPU_S_PER_K_CONTIGS} / 1000 / 60" if nc else ""
+        single(f"crispr-{crispr.producer()}", bs.crispr_cpu_min(b, fb, contigs=nc, near_cas=False),
+               f"({b}+{fb}) bases x {bs.CRISPR_CPU_S_PER_GBP} / 1e9 / 60{cterm}")
         if conf.library is not None and conf.depth == "annotated" and conf.library[0] == crispr.CAS_LIBRARY:
-            single(f"crispr-{crispr.near_cas_producer(conf.library[1])}", bs.crispr_cpu_min(b, fb, near_cas=True),
-                   f"({b}+{fb}) bases x {bs.CRISPR_CPU_S_PER_GBP} x {bs.CRISPR_NEAR_CAS_COST} / 1e9 / 60")
+            single(f"crispr-{crispr.near_cas_producer(conf.library[1])}",
+                   bs.crispr_cpu_min(b, fb, contigs=nc, near_cas=True),
+                   f"({b}+{fb}) bases x {bs.CRISPR_CPU_S_PER_GBP} x {bs.CRISPR_NEAR_CAS_COST} / 1e9 / 60{cterm}")
     not_judged = sorted(n for n in recs if n not in covered)
     return {"stage": st, **judge_items(items, conf.accepted), "not_judged": not_judged,
             # a record of judged size that no estimate names: the check fails on it (card A-12 (7))
@@ -649,9 +651,9 @@ def before(a) -> int:
         doc["ingest_pass1_shards"] = len(l0store.pass1_shards(
             _source_objects(str((inp / "objects.json").resolve())), per))
     if conf.crispr:
-        doc["crispr_default_cpu_min"] = round(bs.crispr_cpu_min(b_stored, flank, near_cas=False), 3)
+        doc["crispr_default_cpu_min"] = round(bs.crispr_cpu_min(b_stored, flank, contigs=n_stored, near_cas=False), 3)
         if conf.library is not None and conf.library[0] == crispr.CAS_LIBRARY:
-            doc["crispr_near_cpu_min"] = round(bs.crispr_cpu_min(b_stored, flank, near_cas=True), 3)
+            doc["crispr_near_cpu_min"] = round(bs.crispr_cpu_min(b_stored, flank, contigs=n_stored, near_cas=True), 3)
     print(json.dumps(doc, indent=1, sort_keys=True, default=str))
     if parked:
         print(f"refused: contigs of {st} are owned by {', '.join(parked)}, which has no gene-call record (a stage "
