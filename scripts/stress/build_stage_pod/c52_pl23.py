@@ -89,6 +89,8 @@ LOW_TOP = 0.8
 
 GUT = "gut_plasmids_yu2024"
 SCOPE = "plasmidscope_"
+METAGENOMIC_SETS = frozenset({GUT, SCOPE + "IMG-PR", SCOPE + "mMGE"})
+PUBLIC_SETS = frozenset({SCOPE + s for s in ("RefSeq", "GenBank", "ENA", "DDBJ", "COMPASS", "TPA", "Kraken2")})
 SCOPE_VALUES = ("circular", "linear", "direct terminal repeat", "inverted terminal repeat", "concatemer")
 CLASSES = ("exact", "none", "partial", "low_complexity", "long", "unresolved")
 REPEAT_BINS = ((20, 100), (100, 1000), (1000, 5000), (5000, None))
@@ -434,10 +436,14 @@ def _bad_line(by: dict, key: str, n: int, ex: list[str]) -> str:
     return f"{key}: {n} (e.g. {', '.join(ex)})"
 
 
-def plan_from_survey(survey_dir: Path, long_bound: int, fragments: str | None, ambiguous: str | None) -> Counter:
+def plan_from_survey(survey_dir: Path, long_bound: int, fragments: str | None, ambiguous: str | None,
+                     rule: str | None = None) -> Counter:
     """Per source, the trims the survey found among the records that will be staged circular. Refused before anything
     is written when a class a trim cannot settle is among those records and no rule for them (`ambiguous`) was given,
-    or when a record its source flags circular is also incomplete and no rule for it (`fragments`) was given."""
+    or when a record its source flags circular is also incomplete and no rule for it (`fragments`) was given.
+    Under `rule='dec65'` (DEC-65): trim only exact 20..long_bound bp repeats in METAGENOMIC_SETS; PUBLIC_SETS are
+    never trimmed and stay byte-identical as deposited; incomplete fragments and non-exact metagenomic repeats are
+    staged linear and untrimmed."""
     doc = json.loads((survey_dir / "summary.json").read_text())
     if doc.get("long_bound") != long_bound:
         raise Refused(f"the survey was made with --long-bound {doc.get('long_bound')}, not {long_bound}")
@@ -446,6 +452,14 @@ def plan_from_survey(survey_dir: Path, long_bound: int, fragments: str | None, a
     frag: dict[str, list] = {}
     for r in _tsv_rows(survey_dir / "survey.tsv"):
         src, cls = r["source"], r["class"]
+        if rule == "dec65":
+            if src not in METAGENOMIC_SETS and src not in PUBLIC_SETS:
+                raise Refused(f"source {src!r}: not in DEC-65 metagenomic or public sets")
+            if src in PUBLIC_SETS or r["fragment"] == "true":
+                continue
+            if cls == "exact":
+                trims[src] += 1
+            continue
         if r["fragment"] == "true":
             v = frag.setdefault(src, [0, []])
             v[0] += 1
@@ -474,19 +488,29 @@ def plan_from_survey(survey_dir: Path, long_bound: int, fragments: str | None, a
     return trims
 
 
-def _owners_sql(root: Path) -> str:
+def _owners_sql(root: Path, root_stages: list[str] | None = None) -> str:
     """Each contig a stage of the root stores as its default variant, with that stage (DEC-26), as stage_est.py's
-    `before` reads them (the stage's contig_index)."""
+    `before` reads them (the stage's contig_index). When `root_stages` is given, read only those explicit stages."""
     from biobox import io
 
     base = root / "l0seq" / "contig_index"
     parts = []
-    for d in sorted(base.glob("stage=*")) if base.is_dir() else []:
-        files = io.part_files(d)
-        if files:
-            st = d.name.removeprefix("stage=").replace("'", "''")
+    if root_stages is not None:
+        for st_name in root_stages:
+            d = base / f"stage={st_name}"
+            files = io.part_files(d) if d.is_dir() else []
+            if not files:
+                raise Refused(f"root stage {st_name!r} has no contig_index part files under {root}")
+            st = st_name.replace("'", "''")
             parts.append(f"SELECT contig_uid, '{st}' AS st FROM read_parquet({_lit(files)}, hive_partitioning = false) "
                          "WHERE is_default_variant")
+    else:
+        for d in sorted(base.glob("stage=*")) if base.is_dir() else []:
+            files = io.part_files(d)
+            if files:
+                st = d.name.removeprefix("stage=").replace("'", "''")
+                parts.append(f"SELECT contig_uid, '{st}' AS st FROM read_parquet({_lit(files)}, hive_partitioning = false) "
+                             "WHERE is_default_variant")
     return " UNION ALL ".join(parts) if parts else "SELECT NULL::BLOB AS contig_uid, NULL::VARCHAR AS st LIMIT 0"
 
 
@@ -502,7 +526,8 @@ def _duck(work: Path):
 
 
 def stage(inputs: Path, survey_dir: Path, root: Path, outs: dict[str, Path], finals: dict[str, Path], work: Path,
-          long_bound: int, fragments: str | None, ambiguous: str | None = None) -> dict:
+          long_bound: int, fragments: str | None, ambiguous: str | None = None,
+          rule: str | None = None, root_stages: list[str] | None = None) -> dict:
     """The stage mode (module docstring): checks everything it can before writing, writes each stage into a sibling
     scratch directory, and renames both into place only when nothing was refused."""
     import shutil
@@ -514,7 +539,7 @@ def stage(inputs: Path, survey_dir: Path, root: Path, outs: dict[str, Path], fin
             raise Refused(f"no object of {inputs} goes to {s}")
         if outs[s].exists():
             raise Refused(f"{outs[s]} exists")
-    trims = plan_from_survey(survey_dir, long_bound, fragments, ambiguous)
+    trims = plan_from_survey(survey_dir, long_bound, fragments, ambiguous, rule=rule)
     tmps = {s: outs[s].with_name(f".{outs[s].name}.tmp") for s in STAGES}
     for t in tmps.values():
         shutil.rmtree(t, ignore_errors=True)
@@ -522,7 +547,7 @@ def stage(inputs: Path, survey_dir: Path, root: Path, outs: dict[str, Path], fin
     work.mkdir(parents=True, exist_ok=True)
     try:
         rep = _stage(inputs, survey_dir, root, objs, which, trims, tmps, finals, work, long_bound, fragments,
-                     ambiguous)
+                     ambiguous, rule, root_stages)
     except BaseException:
         for t in tmps.values():
             shutil.rmtree(t, ignore_errors=True)
@@ -532,7 +557,8 @@ def stage(inputs: Path, survey_dir: Path, root: Path, outs: dict[str, Path], fin
     return rep
 
 
-def _stage(inputs, survey_dir, root, objs, which, trims, tmps, finals, work, long_bound, fragments, ambiguous) -> dict:
+def _stage(inputs, survey_dir, root, objs, which, trims, tmps, finals, work, long_bound, fragments, ambiguous,
+           rule=None, root_stages=None) -> dict:
     import os
 
     import pyarrow as pa
@@ -551,9 +577,7 @@ def _stage(inputs, survey_dir, root, objs, which, trims, tmps, finals, work, lon
             writers[s].write_table(pa.table({n: list(c) for n, c in zip(schema.names, zip(*buf[s]))}, schema=schema))
             buf[s] = []
 
-    trim_w = {s: open(tmps[s] / "trims.tsv", "w") for s in STAGES}
-    for w in trim_w.values():
-        w.write("\t".join(TRIM_HEAD) + "\n")
+    trim_rows: dict[str, list[tuple]] = {s: [] for s in STAGES}
     srows = _tsv_rows(survey_dir / "survey.tsv")
     pending = next(srows, None)
     per: dict[str, dict] = {}
@@ -583,21 +607,37 @@ def _stage(inputs, survey_dir, root, objs, which, trims, tmps, finals, work, lon
                 if sv is None or sv["ordinal"] != row["ordinal"] or sv["accession"] != r.accession:
                     raise Refused(f"the survey does not line up with the records at {stem} {r.accession}")
                 pending = next(srows, None)
-            circ = flagged and (not frag or fragments == "circular")
             seq, k = r.seq, 0
-            if circ:
-                e = ends(seq)
-                cls = classify(e, long_bound)
-                if cls != sv["class"]:
-                    raise Refused(f"{stem} {r.accession}: the survey says {sv['class']}, the record is {cls}")
-                if cls == "exact":
-                    k = e.exact
-                    seq = trim(seq, k)
-                elif cls != "none":
-                    if ambiguous is None:
-                        raise Refused(f"{stem} {r.accession}: class {cls} and no --ambiguous rule")
-                    per[stem]["ambiguous"][cls] += 1
-                    circ = ambiguous == "circular" or (ambiguous == "asis" and row["circular"] == "true")
+            if rule == "dec65":
+                if stem not in METAGENOMIC_SETS and stem not in PUBLIC_SETS:
+                    raise Refused(f"source {stem!r}: not in DEC-65 metagenomic or public sets")
+                circ = flagged and not frag
+                if circ and stem in METAGENOMIC_SETS:
+                    e = ends(seq)
+                    cls = classify(e, long_bound)
+                    if cls != sv["class"]:
+                        raise Refused(f"{stem} {r.accession}: the survey says {sv['class']}, the record is {cls}")
+                    if cls == "exact":
+                        k = e.exact
+                        seq = trim(seq, k)
+                    elif cls != "none":
+                        per[stem]["ambiguous"][cls] += 1
+                        circ = False
+            else:
+                circ = flagged and (not frag or fragments == "circular")
+                if circ:
+                    e = ends(seq)
+                    cls = classify(e, long_bound)
+                    if cls != sv["class"]:
+                        raise Refused(f"{stem} {r.accession}: the survey says {sv['class']}, the record is {cls}")
+                    if cls == "exact":
+                        k = e.exact
+                        seq = trim(seq, k)
+                    elif cls != "none":
+                        if ambiguous is None:
+                            raise Refused(f"{stem} {r.accession}: class {cls} and no --ambiguous rule")
+                        per[stem]["ambiguous"][cls] += 1
+                        circ = ambiguous == "circular" or (ambiguous == "asis" and row["circular"] == "true")
             if fa_w is not None:
                 fa_w.write(b"\n".join(fasta.format_record(r.header, seq, r.line_width)) + b"\n")
             elif k:
@@ -605,8 +645,7 @@ def _stage(inputs, survey_dir, root, objs, which, trims, tmps, finals, work, lon
             src_uid = bytes.fromhex(row["contig_uid"])
             uid = ids.contig_uid(seq) if k else src_uid
             if k:
-                trim_w[s].write("\t".join(map(str, [stem, r.accession, src_uid.hex(), uid.hex(), len(r.seq), k, k,
-                                                    len(seq)])) + "\n")
+                trim_rows[s].append((stem, r.accession, src_uid.hex(), uid.hex(), len(r.seq), k, k, len(seq)))
             buf[s].append((ords[s], stem, r.accession, uid, len(seq), row["topology_value"],
                            row["completeness_value"], circ, row["assembly_quality"], frag, src_uid, len(r.seq), k))
             ords[s] += 1
@@ -624,18 +663,25 @@ def _stage(inputs, survey_dir, root, objs, which, trims, tmps, finals, work, lon
     finally:
         if fa_w is not None:
             fa_w.close()
-        for w in trim_w.values():
-            w.close()
         for s in STAGES:
             flush(s)
             writers[s].close()
+    for s in STAGES:
+        trim_rows[s].sort(key=lambda t: (t[0], t[1]))
+        with open(tmps[s] / "trims.tsv", "w") as w:
+            w.write("\t".join(TRIM_HEAD) + "\n")
+            for tr in trim_rows[s]:
+                w.write("\t".join(map(str, tr)) + "\n")
     for stem, n in trims.items():
         if per.get(stem, {}).get("trims") != n:
             raise Refused(f"{stem}: the survey has {n} trims, the staging made {per.get(stem, {}).get('trims')}")
-    rep = {"sources": per, "fragments": fragments, "ambiguous": ambiguous, "long_bound": long_bound, "stages": {}}
+    for t in per.values():
+        t["ambiguous"] = dict(sorted(t["ambiguous"].items()))
+    rep = {"sources": per, "rule": rule, "fragments": fragments, "ambiguous": ambiguous, "long_bound": long_bound,
+           "stages": {}}
     con = _duck(work)
     con.execute(f"CREATE TABLE own AS SELECT contig_uid AS uid, min(st) AS st, count(DISTINCT st) AS m "
-                f"FROM ({_owners_sql(root)}) GROUP BY contig_uid")
+                f"FROM ({_owners_sql(root, root_stages)}) GROUP BY contig_uid")
     for s in STAGES:
         rep["stages"][s] = _write_stage(con, s, work / f"rows-{s}.parquet", tmps[s], finals[s], objs, which)
     con.close()
@@ -645,7 +691,7 @@ def _stage(inputs, survey_dir, root, objs, which, trims, tmps, finals, work, lon
                 if i == 0 or which.get(ln.split("\t", 1)[0]) == s:
                     w.write(ln)
         (tmps[s] / "stage_report.json").write_text(json.dumps(
-            {"stage": s, "fragments": fragments, "ambiguous": ambiguous, "long_bound": long_bound,
+            {"stage": s, "rule": rule, "fragments": fragments, "ambiguous": ambiguous, "long_bound": long_bound,
              "sources": {k: v for k, v in per.items() if v["stage"] == s}, **rep["stages"][s]}, indent=1,
             sort_keys=True))
     return rep
@@ -712,13 +758,14 @@ def _genome_uids_sql(genomes_json: Path) -> str:
             "format = 'array', columns = {'contig_uids': 'VARCHAR[]'}))")
 
 
-def overlap(stagings: dict[str, Path], root: Path, others: dict[str, Path], work: Path) -> dict:
+def overlap(stagings: dict[str, Path], root: Path, others: dict[str, Path], work: Path,
+            root_stages: list[str] | None = None) -> dict:
     """What each new staging's contigs (its genomes.json: the sequences as staged) share with the stages of the root
     (default variants, as `before` counts them: one stage per contig, the least name), with the staged inputs of
     stages not built yet (their genomes.json), and with each other; beside the same counts for the records' source
     sequences (records.tsv `source_contig_uid`: the bytes before any trim)."""
     con = _duck(work)
-    con.execute(f"CREATE TABLE own AS SELECT contig_uid AS uid, min(st) AS st FROM ({_owners_sql(root)}) "
+    con.execute(f"CREATE TABLE own AS SELECT contig_uid AS uid, min(st) AS st FROM ({_owners_sql(root, root_stages)}) "
                 "GROUP BY contig_uid")
     gi = sorted((root / "l0seq" / "genome_input" / "stage=PL1").glob("part-*.parquet"))
     con.execute("CREATE TABLE pl1 AS " + (f"SELECT DISTINCT contig_uid AS uid FROM read_parquet({_lit(gi)}, "
@@ -730,8 +777,10 @@ def overlap(stagings: dict[str, Path], root: Path, others: dict[str, Path], work
     for s, d in stagings.items():
         p = str(d / "records.tsv").replace("'", "''")
         con.execute(f"CREATE TABLE \"n_{s}\" AS {_genome_uids_sql(d / 'genomes.json')}")
+        con.execute(f"CREATE TABLE \"len_{s}\" AS SELECT from_hex(contig_uid) AS uid, min(length::BIGINT) AS n "
+                    f"FROM read_csv('{p}', delim = '\t', header = true, quote = '', all_varchar = true) GROUP BY uid")
         con.execute(f"CREATE TABLE \"s_{s}\" AS SELECT DISTINCT from_hex(source_contig_uid) AS uid FROM read_csv('{p}', "
-                    "delim = '\t', header = true, all_varchar = true)")
+                    "delim = '\t', header = true, quote = '', all_varchar = true)")
         out = {}
         for kind, t in (("as_staged", f'"n_{s}"'), ("source_bytes", f'"s_{s}"')):
             k = {"contigs": con.execute(f"SELECT count(*) FROM {t}").fetchone()[0],
@@ -753,14 +802,33 @@ def overlap(stagings: dict[str, Path], root: Path, others: dict[str, Path], work
         whens = [f"WHEN uid IN (SELECT uid FROM \"o_{x}\") THEN '{x}'" for x in others]
         whens += [f"WHEN uid IN (SELECT uid FROM \"n_{t}\") THEN '{t}'" for t in names[:i]]
         case = "CASE WHEN own.st IS NOT NULL THEN own.st " + " ".join(whens) + " END"
+        q = (f'SELECT {case} AS h, l.n FROM "n_{s}" LEFT JOIN own USING (uid) '
+             f'LEFT JOIN "len_{s}" l USING (uid)')
         doc["stages"][s]["held_in_build_order"] = dict(con.execute(
-            f'SELECT h, count(*) FROM (SELECT {case} AS h FROM "n_{s}" LEFT JOIN own USING (uid)) '
-            "WHERE h IS NOT NULL GROUP BY h ORDER BY h").fetchall())
+            f"SELECT h, count(*) FROM ({q}) WHERE h IS NOT NULL GROUP BY h ORDER BY h").fetchall())
+        doc["stages"][s]["held_in_build_order_bases"] = dict(con.execute(
+            f"SELECT h, coalesce(sum(n), 0)::BIGINT FROM ({q}) WHERE h IS NOT NULL GROUP BY h ORDER BY h").fetchall())
+        tot_c, tot_b, new_c, new_b = con.execute(
+            f"SELECT count(*), coalesce(sum(n), 0)::BIGINT, count(*) FILTER (WHERE h IS NULL), "
+            f"coalesce(sum(n) FILTER (WHERE h IS NULL), 0)::BIGINT FROM ({q})").fetchone()
+        doc["stages"][s]["total_contigs"] = tot_c
+        doc["stages"][s]["total_bases"] = int(tot_b)
+        doc["stages"][s]["new_contigs"] = new_c
+        doc["stages"][s]["new_bases"] = int(new_b)
     con.close()
     return doc
 
 
 # --------------------------------------------------------------------------------------------------------------
+
+
+def _parse_stages(val: str | None) -> list[str] | None:
+    if val is None:
+        return None
+    out = [s.strip() for s in val.split(",") if s.strip()]
+    if not out:
+        raise Refused("--root-stages must name at least one stage")
+    return out
 
 
 def main(argv: list[str]) -> int:
@@ -786,9 +854,12 @@ def main(argv: list[str]) -> int:
     p.add_argument("--long-bound", type=int, default=LONG_BOUND)
     p.add_argument("--fragments", choices=("linear", "circular"), default=None)
     p.add_argument("--ambiguous", choices=("linear", "circular", "asis"), default=None)
+    p.add_argument("--rule", choices=("dec65",), default=None)
+    p.add_argument("--root-stages", default=None)
     p = sub.add_parser("overlap")
     p.add_argument("--staging", action="append", required=True, help="STAGE=DIR")
     p.add_argument("--root", required=True, type=Path)
+    p.add_argument("--root-stages", default=None)
     p.add_argument("--other", action="append", default=[], help="STAGE=DIR, a staged inputs directory not built yet")
     p.add_argument("--work", required=True, type=Path)
     p.add_argument("--out", required=True, type=Path)
@@ -803,10 +874,11 @@ def main(argv: list[str]) -> int:
             outs = {s: getattr(a, f"out_{s.lower()}") for s in STAGES}
             finals = {s: getattr(a, f"final_{s.lower()}") or outs[s] for s in STAGES}
             print(json.dumps(stage(a.inputs, a.survey, a.root, outs, finals, a.work, a.long_bound, a.fragments,
-                                   a.ambiguous), sort_keys=True))
+                                   a.ambiguous, rule=a.rule, root_stages=_parse_stages(a.root_stages)), sort_keys=True))
         elif a.mode == "overlap":
             pairs = lambda xs: {k: Path(v) for k, _, v in (x.partition("=") for x in xs)}  # noqa: E731
-            doc = overlap(pairs(a.staging), a.root, pairs(a.other), a.work)
+            doc = overlap(pairs(a.staging), a.root, pairs(a.other), a.work,
+                          root_stages=_parse_stages(a.root_stages))
             a.out.write_text(json.dumps(doc, indent=1, sort_keys=True))
             print(json.dumps(doc, sort_keys=True))
     except Refused as e:

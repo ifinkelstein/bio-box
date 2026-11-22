@@ -550,3 +550,130 @@ def test_the_deferred_list_refuses_a_contig_with_no_record_in_the_fasta(tmp_path
     got = _run("deferred", "--gut-table", table, "--skipped", skipped, "--out", tmp_path / "d.tsv", check=False)
     assert got.returncode == 2 and "Q_1" in got.stderr
     assert not (tmp_path / "d.tsv").exists()
+
+
+# --------------------------------------------------------------------------------------------------------------
+# DEC-65: metagenomic exact-only trim vs public-database byte-identical preservation, and explicit --root-stages
+
+
+def test_dec65_trims_exact_metagenomic_only_and_keeps_public_sets_byte_identical_hardlinked(tmp_path):
+    r_part = bytearray(R)
+    r_part[40] = ord("A") if r_part[40] != ord("A") else ord("C")
+    big = _seq(1500, 31)
+    low = b"AT" * 15
+    staging = _staging(tmp_path, [
+        ("gut_plasmids_yu2024", True, [
+            ("g_exact", R + CG + R, "True", "True"),
+            ("g_none", CG[::-1], "True", "True"),
+            ("g_partial", R + CG[:1200] + bytes(r_part), "True", "True"),
+            ("g_long", big + CG[:900] + big, "True", "True"),
+            ("g_low", low + CG[:800] + low, "True", "True"),
+            ("g_lin", R + CG[:700] + R, "False", "False"),
+        ]),
+        ("plasmidscope_IMG-PR", False, [
+            ("i_z_exact", R + CI + R, "direct terminal repeat", "complete"),
+            ("i_a_exact", R + CI[:1400] + R, "direct terminal repeat", "complete"),
+            ("i_none", CI[::-1], "direct terminal repeat", "complete"),
+            ("i_partial", R + CI[:1100] + bytes(r_part), "direct terminal repeat", "complete"),
+            ("i_long", big + CI[:750] + big, "direct terminal repeat", "complete"),
+            ("i_low", low + CI[:700] + low, "direct terminal repeat", "complete"),
+            ("i_lin", CI[:1500], "linear", "incomplete"),
+        ]),
+        ("plasmidscope_mMGE", False, [
+            ("m_exact", R + CM + R, "circular", "complete"),
+            ("m_partial", R + CM[:1000] + bytes(r_part), "circular", "complete"),
+            ("m_lin", CM[:900], "linear", "incomplete"),
+        ]),
+        ("plasmidscope_RefSeq", True, [
+            ("r_exact", R + CR + R, "circular", "complete"),
+            ("r_partial", R + CR[:1300] + bytes(r_part), "circular", "complete"),
+            ("r_long", big + CR[:850] + big, "circular", "complete"),
+            ("r_incomp", R + CR[:1100] + R, "circular", "incomplete"),
+            ("r_lin", CR[:1000], "linear", "-"),
+        ]),
+        ("plasmidscope_GenBank", True, [
+            ("gb_exact", R + CR[:1600] + R, "circular", "complete"),
+            ("gb_incomp", R + CR[:1500] + R, "circular", "incomplete"),
+        ]),
+    ])
+    before = _hashes(staging)
+    _stage(tmp_path, staging, _root(tmp_path, {}), "--rule", "dec65")
+    pl2, pl3 = tmp_path / "out" / "PL2.new", tmp_path / "out" / "PL3"
+
+    # Public-database sets are NEVER trimmed and are hard-linked byte-identical as deposited
+    for pub in ("plasmidscope_RefSeq.fasta", "plasmidscope_GenBank.fasta"):
+        assert (pl2 / pub).stat().st_ino == (staging / pub).stat().st_ino
+        assert (pl2 / pub).read_bytes() == (staging / pub).read_bytes()
+    # Metagenomic sets with exact trims are rewritten
+    assert (pl2 / "gut_plasmids_yu2024.fasta").stat().st_ino != (staging / "gut_plasmids_yu2024.fasta").stat().st_ino
+    assert (pl3 / "plasmidscope_IMG-PR.fasta").stat().st_ino != (staging / "plasmidscope_IMG-PR.fasta").stat().st_ino
+    assert (pl3 / "plasmidscope_mMGE.fasta").stat().st_ino != (staging / "plasmidscope_mMGE.fasta").stat().st_ino
+
+    # PL2 genomes: gut exact trimmed+circular, gut none circular, gut partial/long/low/lin linear untrimmed;
+    # RefSeq/GenBank NEVER trimmed, circular iff flagged and complete (incomplete -> linear)
+    g2 = json.loads((pl2 / "genomes.json").read_text())
+    assert g2 == [
+        _genome(R + CG, True, "complete"),
+        _genome(CG[::-1], True, "complete"),
+        _genome(R + CG[:1200] + bytes(r_part), False, "complete"),
+        _genome(big + CG[:900] + big, False, "complete"),
+        _genome(low + CG[:800] + low, False, "complete"),
+        _genome(R + CG[:700] + R, False, "contig"),
+        _genome(R + CR + R, True, "complete"),
+        _genome(R + CR[:1300] + bytes(r_part), True, "complete"),
+        _genome(big + CR[:850] + big, True, "complete"),
+        _genome(R + CR[:1100] + R, False, "contig"),
+        _genome(CR[:1000], False, "contig"),
+        _genome(R + CR[:1600] + R, True, "complete"),
+        _genome(R + CR[:1500] + R, False, "contig"),
+    ]
+
+    # PL3 genomes: IMG-PR & mMGE exact trimmed+circular, none circular, partial/long/low/lin linear untrimmed
+    g3 = json.loads((pl3 / "genomes.json").read_text())
+    assert g3 == [
+        _genome(R + CI, True, "complete"),
+        _genome(R + CI[:1400], True, "complete"),
+        _genome(CI[::-1], True, "complete"),
+        _genome(R + CI[:1100] + bytes(r_part), False, "complete"),
+        _genome(big + CI[:750] + big, False, "complete"),
+        _genome(low + CI[:700] + low, False, "complete"),
+        _genome(CI[:1500], False, "contig"),
+        _genome(R + CM, True, "complete"),
+        _genome(R + CM[:1000] + bytes(r_part), False, "complete"),
+        _genome(CM[:900], False, "contig"),
+    ]
+
+    # trims.tsv sorted deterministically by (source, accession), metagenomic exact trims only
+    t2 = _tsv(pl2 / "trims.tsv")
+    t3 = _tsv(pl3 / "trims.tsv")
+    assert [(r["source"], r["accession"]) for r in t2] == [("gut_plasmids_yu2024", "g_exact")]
+    assert [(r["source"], r["accession"]) for r in t3] == [
+        ("plasmidscope_IMG-PR", "i_a_exact"),
+        ("plasmidscope_IMG-PR", "i_z_exact"),
+        ("plasmidscope_mMGE", "m_exact"),
+    ]
+    assert _hashes(staging) == before
+
+
+def test_root_stages_filter_ignores_in_flight_root_stage(tmp_path):
+    staging = _w2(tmp_path)
+    # In-flight G1 in root holds CM (stale/in-flight), while PL1 holds CR.
+    # Passing --root-stages PL1 must ignore root's stage=G1 and take G1 from --other instead.
+    root = _root(tmp_path, {"PL1": [ids.contig_uid(CR)], "G1": [ids.contig_uid(CM)]})
+    _stage(tmp_path, staging, root, "--rule", "dec65", "--root-stages", "PL1")
+    r3 = {r["accession"]: r for r in _tsv(tmp_path / "out" / "PL3" / "records.tsv")}
+    assert r3["m1"]["owner_stage"] == ""
+
+    g1_in = tmp_path / "G1in"
+    g1_in.mkdir()
+    (g1_in / "genomes.json").write_text(json.dumps([_genome(CG[::-1], False, "contig")]))
+    out = tmp_path / "overlap.json"
+    _run("overlap", "--staging", f"PL2={tmp_path / 'out' / 'PL2.new'}", "--staging", f"PL3={tmp_path / 'out' / 'PL3'}",
+         "--root", root, "--root-stages", "PL1", "--other", f"G1={g1_in}", "--work", tmp_path / "w2", "--out", out)
+    doc = json.loads(out.read_text())
+    assert doc["root_stages"] == ["PL1"]
+    assert doc["stages"]["PL2"]["held_in_build_order"] == {"G1": 1, "PL1": 1}
+    assert doc["stages"]["PL2"]["held_in_build_order_bases"] == {"G1": len(CG), "PL1": len(CR)}
+    assert doc["stages"]["PL2"]["new_contigs"] == 3
+    assert doc["stages"]["PL3"]["held_in_build_order"] == {}
+    assert doc["stages"]["PL3"]["new_contigs"] == 3

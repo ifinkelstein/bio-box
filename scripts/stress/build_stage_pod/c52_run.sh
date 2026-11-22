@@ -59,22 +59,23 @@ deferred() {
   (cd "$W/deferred" && sha256sum "$f" && wc -lc "$f") > "$W/deferred/SUMS"
 }
 
-OUT2=${OUT2:-$W/provisional/PL2}
-OUT3=${OUT3:-$W/provisional/PL3}
-FINAL2=${FINAL2:-$OUT2}
-FINAL3=${FINAL3:-$OUT3}
-STAGE_ARGS=${STAGE_ARGS:-}
+OUT2=${OUT2:-$W/dec65/PL2}
+OUT3=${OUT3:-$W/dec65/PL3}
+FINAL2=${FINAL2:-/tmp/if2453/s2/inputs/PL2}
+FINAL3=${FINAL3:-/tmp/if2453/s2/inputs/PL3}
+STAGE_ARGS=${STAGE_ARGS:---rule dec65}
+ROOT_STAGES=${ROOT_STAGES:-S1,P1,P2,P3,P4,P5,P6,H1,PL1,C5,V1}
 
 py_rw() {  # as py, but C-40's staging only through the /tmp/if2453 bind, so that its objects can be hard-linked
   singularity exec --cleanenv --env PYTHONPATH="$TREE/src" --env OMP_NUM_THREADS=2 --env PYTHONUNBUFFERED=1 \
-    --bind /tmp/if2453 --bind "$ROOT:$ROOT:ro" --bind "$PLD:$PLD:ro" "$IMAGE" python "$@"
+    --bind /tmp/if2453 --bind "$ROOT:$ROOT:ro" --bind "$PLD:$PLD:ro" --bind /stor:/stor:ro "$IMAGE" python "$@"
 }
 
 stage() {
   local rc d
   # shellcheck disable=SC2086  # STAGE_ARGS is a list of options
-  py_rw "$BSP/c52_pl23.py" stage --inputs "$OLD" --survey "$W/survey" --root "$ROOT" --out-pl2 "$OUT2" \
-    --out-pl3 "$OUT3" --final-pl2 "$FINAL2" --final-pl3 "$FINAL3" --work "$W/work/stage" $STAGE_ARGS \
+  py_rw "$BSP/c52_pl23.py" stage --inputs "$OLD" --survey "$W/survey" --root "$ROOT" --root-stages "$ROOT_STAGES" \
+    --out-pl2 "$OUT2" --out-pl3 "$OUT3" --final-pl2 "$FINAL2" --final-pl3 "$FINAL3" --work "$W/work/stage" $STAGE_ARGS \
     > "$W/logs/stage.out" 2> "$W/logs/stage.err"
   rc=$?
   log "stage: exit $rc: $(cut -c1-600 "$W/logs/stage.out") $(tail -n 2 "$W/logs/stage.err")"
@@ -102,8 +103,10 @@ check() {
 overlap() {
   local rc
   py "$BSP/c52_pl23.py" overlap --staging "PL2=$OUT2" --staging "PL3=$OUT3" --root "$ROOT" \
-    --other V2=/tmp/if2453/s2/inputs/V2 --other GV1=/tmp/if2453/s2/inputs/GV1 --other G1=/tmp/if2453/s2/inputs/G1 \
-    --other SPX1=/tmp/if2453/s2/inputs/SPX1 --work "$W/work/overlap" --out "$W/overlap.json" \
+    --root-stages "$ROOT_STAGES" \
+    --other G1=/tmp/if2453/s2/inputs/G1 --other SPX1=/tmp/if2453/s2/inputs/SPX1 \
+    --other V2=/tmp/if2453/s2/inputs/V2 --other GV1=/tmp/if2453/s2/inputs/GV1 \
+    --work "$W/work/overlap" --out "$W/overlap.json" \
     > "$W/logs/overlap.out" 2> "$W/logs/overlap.err"
   rc=$?
   log "overlap: exit $rc: $(tail -n 2 "$W/logs/overlap.err")"
