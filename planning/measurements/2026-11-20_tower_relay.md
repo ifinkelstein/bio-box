@@ -89,6 +89,14 @@ of the morning's single-stream test and four times the first mirror's end-to-end
 the evening: whether the morning's rate was the link at that hour, or the two streams and read-backs sharing it, is
 not separated. For planning keep 9.70 MB/s; a tar of 20 to 30 GB at the next release will say more.
 
+**Release `r26.11.2`'s 25.2 GB tar (2026-11-22, 06:09:59 to 06:31:30 CST)** (*measured*, `relay_r26_11_2.log`):
+`added_r26_11_2.tar` (25,200,107,520 bytes, 278 members) streamed from `/stor/work/Wilke/if2453/all-the-data/root_backups`
+to `tower:/mnt/user/research-bulk/bio-box/root_backups` in **1,287 s**, **19.58 MB/s to verified in place** (*derived*:
+25,200,107,520 / 1,287 / 1e6), sha256 `d44999e2384042ff2c665a86d579483d95d163f3c045aea0c7127b133e3bfa21` equal to the
+`/stor/work` record, `SHA256SUMS` extended to 10 lines (`added_c5.tar` was line 9). That confirms `added_v1.tar`'s
+20.05 MB/s within 2.3% across a 6× larger archive: `ssh pod cat | ssh tower 'tee .partial | sha256sum'` sustains ~19.6 to
+20.1 MB/s end to end when idle, while 9.70 MB/s remains a conservative daytime planning floor.
+
 ## 4. What the first mirror showed, and the change in the repository script
 
 With `scp -3` the bytes cross the link once and are then read again from the array to be hashed: at about 9 MB/s
