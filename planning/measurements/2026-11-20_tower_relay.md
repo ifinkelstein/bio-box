@@ -97,6 +97,27 @@ to `tower:/mnt/user/research-bulk/bio-box/root_backups` in **1,287 s**, **19.58 
 20.05 MB/s within 2.3% across a 6× larger archive: `ssh pod cat | ssh tower 'tee .partial | sha256sum'` sustains ~19.6 to
 20.1 MB/s end to end when idle, while 9.70 MB/s remains a conservative daytime planning floor.
 
+**Stage `SPX1`'s 75.67 GB staged inputs (2026-11-22, 06:32:54 to 07:34:27 CST, DEC-66 `S-2`)** (*measured*, `relay_spx1.log`):
+all 309 staged files of `/tmp/if2453/s2/inputs/SPX1` (`genomes.json`, `objects.json`, `samples.tsv`, `input_report.json`,
+`assemblies.sha256`, and 304 `.fa.gz` assemblies; 75,672,465,511 bytes in all) streamed to
+`tower:/mnt/user/research-bulk/bio-box/sources/SPX1` in **3,693 s** (61.55 min), **20.49 MB/s end to end** (*derived*:
+75,672,465,511 / 3,693 / 1e6), every file verified equal to its pod sha256 on arrival and `SHA256SUMS` written (309 lines,
+`0 failed`).
+
+**Stage `GV1`'s 4.69 GB staged inputs (2026-11-22, 07:39:12 to 07:42:24 CST, DEC-66 `S-2`)** (*measured*, `relay_gv1.log`):
+all 7 staged files of `/tmp/if2453/s2/inputs/GV1` (`gvmags_v2_all_18kgenomes.fna` at 4,639,876,745 B in 182 s = 25.49 MB/s,
+plus `records.tsv`, `genomes.json`, `shared_records.tsv`, `repeated_records.tsv`, `objects.json`, `skipped_members.tsv`;
+4,693,449,816 bytes in all) streamed to `tower:/mnt/user/research-bulk/bio-box/sources/GV1` in **192 s**, **24.45 MB/s end to
+end** (*derived*: 4,693,449,816 / 192 / 1e6), `SHA256SUMS` written (7 lines, `0 failed`).
+
+**Stage `G1`'s 2.96 GB staged inputs (2026-11-22, 07:46:10 to 07:48:04 CST, DEC-66 `S-2`)** (*measured*, `relay_g1.log`):
+`g1_globdb_files.tar` (deterministic tar of `/tmp/if2453/s3/globdb/genomes/G1/files/`'s 7,139 `.fa.gz` archives:
+2,909,265,920 B, sha256 `5b4a2a91fcec430d1999b93f817aad84972f5b2c6ea69d99202671baf8bd2406`, 105 s = 27.71 MB/s) plus
+`genomes.json`, `objects.json`, `shared_records.tsv`, `lock.json`, `selection.tsv`, and `stream_summary.json` (2,961,546,429 B
+in all) streamed to `tower:/mnt/user/research-bulk/bio-box/sources/G1` in **114 s**, **25.98 MB/s end to end** (*derived*:
+2,961,546,429 / 114 / 1e6), `SHA256SUMS` written (7 lines, `0 failed`). Also mirrored `C1`..`C6`'s 12 staged `genomes.json` and
+`objects.json` lists (6,173,661 B in 12 s, `SHA256SUMS` 12 lines; `relay_c_inputs.log`).
+
 ## 4. What the first mirror showed, and the change in the repository script
 
 With `scp -3` the bytes cross the link once and are then read again from the array to be hashed: at about 9 MB/s
