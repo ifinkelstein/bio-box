@@ -1948,6 +1948,8 @@ def _source_problem(root: Path, release: str, source: str, want: dict) -> str | 
     `release_cpu_min` and `outputs` once its uids are read); each must equal `source`'s plan record's."""
     if source == release:
         return "it is the release itself"
+    if catalog.is_archived(root, source):
+        return "release is archived"
     raw = _record_raw(root, source, PLAN_STEP)
     if raw is None:
         return ("it has no plan record (a clustering in one process records none, so its inputs cannot be compared; "

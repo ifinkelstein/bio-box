@@ -436,14 +436,17 @@ def release_manifest(root: Path, release: str | None) -> dict | None:
 def release_files(root: Path, release: str | None, manifest=None):
     """The release's files for a reader (card W-12): a `catalog.ReleaseFiles` as given, else
     `ReleaseFiles.of(root, release, manifest)` (the manifest, else the `release_def` stages). ValueError, naming
-    the release and `bio-box release define`, when the release has no manifest and no `release_def`."""
+    the release and `bio-box release define`, when the release has no manifest and no `release_def`, or naming
+    `archived/release=<R>.json` when the release is archived (card C-54)."""
     from biobox import catalog
 
     if isinstance(manifest, catalog.ReleaseFiles):
+        catalog.require_not_archived(manifest.root, manifest.release)
         return manifest
     if release is None:
         raise ValueError("no release: a hit or locus export reads one release's files; name it (bio-box release define "
                          "writes its stages)")
+    catalog.require_not_archived(Path(root), release)
     try:
         return catalog.ReleaseFiles.of(Path(root), release, manifest)
     except FileNotFoundError:

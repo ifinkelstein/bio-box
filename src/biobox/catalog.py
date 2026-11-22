@@ -707,10 +707,332 @@ def manifest_path(root: Path, release: str) -> Path:
 LATEST = "latest"
 # DEC-52: r<YY>.<MM>.<n>, the n-th release cut in that month, counted from 1
 ROLLING_NAME = re.compile(r"r(\d{2})\.(0?[1-9]|1[0-2])\.([1-9]\d*)")
+# DEC-52 (1), DEC-66 (S-4): signed milestone releases rS<k>.<n> are never retired
+SIGNED_RELEASE_NAME = re.compile(r"rS\d+\.\d+")
+# DEC-66 (S-4), card C-54: the eight large release-partitioned data tables eligible for retirement
+# (release_def, release_round, ledger, manifests, catalogs, runs, and all stage= files always stay on disk)
+RETIRED_TABLES = frozenset({
+    "cluster_member",
+    "cluster_member_aln",
+    "member_cluster",
+    "token_dict",
+    "tape_tokens",
+    "token_postings",
+    "contig_dim",
+    "genome_dim",
+})
+_HEX64 = re.compile(r"^[0-9a-fA-F]{64}$")
 # DEC-52 (1): the releases named by hand before the scheme, in the order they were built (closed: every later release
 # takes a name of the scheme). Their order agrees with the STATUS records of the 10 Gbp rebuild (`rN.1a`, `rN.1b`,
 # `rN.1`, then Pfam in `rN.2` and the lookup tables in `rN.3`) and of the 50 Gbp set (`rM.1`, then `rM.2`)
 OLD_SCHEME = ("rN.1a", "rN.1b", "rN.1", "rN.2", "rN.3", "rM.1", "rM.2")
+
+
+def archived_path(root: Path, release: str) -> Path:
+    """Where a retired release's archive record is written: `archived/release=<R>.json` (DEC-66 S-4, card C-54)."""
+    return Path(root) / ARTIFACTS["release_archived"].location / f"release={release}.json"
+
+
+def is_archived(root: Path, release: str) -> bool:
+    """Whether `release` has an archive record under `root`."""
+    return archived_path(root, release).is_file()
+
+
+def read_archived(root: Path, release: str) -> dict | None:
+    """Read `archived/release=<R>.json` when present, else None."""
+    p = archived_path(root, release)
+    if not p.is_file():
+        return None
+    return json.loads(p.read_text())
+
+
+def archived_error(root: Path, release: str) -> str:
+    """Clear refusal message naming `archived/release=<R>.json` and the `tar -C` restore command."""
+    root = Path(root)
+    rel_path = f"archived/release={release}.json"
+    tars: list[str] = []
+    try:
+        rec = read_archived(root, release)
+        if isinstance(rec, dict) and isinstance(rec.get("tars"), list):
+            tars = [str(t["path"]) for t in rec["tars"] if isinstance(t, dict) and t.get("path")]
+    except (OSError, ValueError):
+        pass
+    if tars:
+        restore = " && ".join(f"tar -C {root} -xf {t}" for t in tars) + f" && rm {root / rel_path}"
+    else:
+        restore = f"tar -C {root} -xf <backup.tar> && rm {root / rel_path}"
+    return (
+        f"release {release} is archived ({rel_path}); restore its release= files from the backup tar and remove "
+        f"the archive record before reading: {restore}"
+    )
+
+
+def require_not_archived(root: Path, release: str) -> None:
+    """Raise ValueError when `release` is archived under `root`."""
+    if is_archived(root, release):
+        raise ValueError(archived_error(root, release))
+
+
+def _is_retirable_entry(entry: dict, release: str) -> bool:
+    """Whether a manifest file entry is an eligible release=<R> data-table file (never stage=, release_def, ledger)."""
+    parts = entry.get("partitions", {})
+    return (
+        entry.get("table") in RETIRED_TABLES
+        and parts.get("release") == release
+        and "stage" not in parts
+        and f"/release={release}/" in entry.get("path", "")
+    )
+
+
+def _validate_archived_record(rec: object, manifest: dict, root: Path) -> tuple[list[str], set[str]]:
+    """Validate `archived/release=<R>.json` against `manifest` and `root`.
+
+    Returns `(problems, valid_retired_paths)`. Only paths that pass every check are placed in
+    `valid_retired_paths` and exempted from on-disk existence/hash checks in `verify_manifest`.
+    """
+    rel = manifest["release_id"]
+    rel_doc = f"archived/release={rel}.json"
+    if not isinstance(rec, dict):
+        return [f"archived record invalid: {rel_doc} is not a JSON object"], set()
+    problems: list[str] = []
+    if rec.get("schema_version") != 1:
+        problems.append(f"archived record invalid: {rel_doc} schema_version must be 1")
+    if rec.get("release") != rel:
+        problems.append(f"archived record invalid: {rel_doc} release {rec.get('release')!r} != {rel!r}")
+    want_hash = manifest_hash(manifest)
+    if rec.get("manifest_hash") != want_hash:
+        problems.append(f"archived record manifest_hash differs: {rec.get('manifest_hash')!r} != {want_hash!r}")
+    tars = rec.get("tars")
+    if not isinstance(tars, list) or not tars:
+        problems.append(f"archived record invalid: {rel_doc} has no tars")
+    else:
+        for t in tars:
+            if not isinstance(t, dict) or not t.get("path") or not _HEX64.fullmatch(str(t.get("sha256", ""))):
+                problems.append(f"archived record invalid: {rel_doc} has malformed tar entry")
+                break
+    removed = rec.get("removed_files")
+    if not isinstance(removed, list) or not removed:
+        problems.append(f"archived record invalid: {rel_doc} has no removed_files")
+        return problems, set()
+    man_by_path = {f["path"]: f for f in manifest["files"]}
+    valid_paths: set[str] = set()
+    seen: set[str] = set()
+    for item in removed:
+        if not isinstance(item, dict) or not isinstance(item.get("path"), str):
+            problems.append(f"archived record invalid: {rel_doc} has malformed removed_files entry")
+            continue
+        p = item["path"]
+        if p in seen:
+            problems.append(f"archived record duplicate path: {p}")
+            continue
+        seen.add(p)
+        mf = man_by_path.get(p)
+        if mf is None:
+            problems.append(f"archived record lists unlisted file: {p}")
+            continue
+        if not _is_retirable_entry(mf, rel):
+            problems.append(f"archived record lists non-retirable file: {p}")
+            continue
+        if item.get("size_bytes") != mf["bytes"] or item.get("sha256") != mf["sha256"]:
+            problems.append(f"archived record mismatch: {p}")
+            continue
+        if (root / p).exists():
+            problems.append(f"archived file still present on disk: {p}")
+            continue
+        valid_paths.add(p)
+    plan_files = rec.get("removed_plan_files", [])
+    if not isinstance(plan_files, list):
+        problems.append(f"archived record invalid: {rel_doc} removed_plan_files must be a list")
+    else:
+        plan_prefix = f"{ARTIFACTS['cluster_plan'].location}/release={rel}/"
+        for item in plan_files:
+            if not isinstance(item, dict) or not isinstance(item.get("path"), str):
+                problems.append(f"archived record invalid: {rel_doc} has malformed removed_plan_files entry")
+                continue
+            p = item["path"]
+            if not p.startswith(plan_prefix):
+                problems.append(f"archived record lists non-plan file: {p}")
+                continue
+            if (root / p).exists():
+                problems.append(f"archived plan file still present on disk: {p}")
+    return problems, valid_paths
+
+
+def _rmdir_empty_release_dirs(root: Path, rel_path: str, release: str) -> None:
+    """Remove empty directories from `rel_path`'s parent up to and including `release=<R>` only."""
+    cur = (root / rel_path).parent
+    rel_dir_name = f"release={release}"
+    root_resolved = root.resolve()
+    while cur.resolve() != root_resolved:
+        name = cur.name
+        try:
+            cur.rmdir()
+        except OSError:
+            break
+        if name == rel_dir_name:
+            break
+        cur = cur.parent
+
+
+def retire_release(
+    root: Path,
+    release: str,
+    *,
+    tars,
+    copies=(),
+    keep_latest: int = 2,
+    profile_path: Path | None = None,
+) -> dict:
+    """Retire an old release's large `release=` data files and cluster plans (DEC-66 S-4, card C-54).
+
+    Writes `archived/release=<R>.json` atomically, unlinks only eligible `RETIRED_TABLES` files under
+    `release=<R>` and `l2/cluster_plan/release=<R>/*.json`, removes empty `release=<R>` leaf dirs and
+    (when `profile_path` is given) `<profile.tmp>/packs/release=<R>/`. Never touches any `stage=` file,
+    `release_def`, `release_round`, `ledger`, `manifests`, `catalog`, or `runs`.
+    """
+    root = Path(root)
+    if keep_latest < 1:
+        raise ValueError(f"--keep-latest must be >= 1, got {keep_latest}")
+    if release == LATEST:
+        raise ValueError("release retire requires an explicit release name, not 'latest'")
+    if SIGNED_RELEASE_NAME.fullmatch(release):
+        raise ValueError(f"release {release} is a signed milestone release (rS<k>.<n>) and cannot be retired (DEC-66)")
+    mpath = manifest_path(root, release)
+    if not mpath.is_file():
+        raise FileNotFoundError(f"release {release}: no manifest at {mpath}")
+    if not tars:
+        raise ValueError("release retire requires at least one --tar <PATH>=<SHA256>")
+    tar_entries: list[dict] = []
+    for raw_path, raw_sha in tars:
+        p = Path(raw_path)
+        sha = str(raw_sha).strip().lower()
+        if not str(raw_path).strip() or not _HEX64.fullmatch(sha):
+            raise ValueError(f"malformed --tar entry {raw_path!r}={raw_sha!r}: expected <PATH>=<64-hex-sha256>")
+        if not p.is_file():
+            raise FileNotFoundError(f"--tar file does not exist on disk: {p}")
+        actual = ids.sha256_file(p).hex()
+        if actual != sha:
+            raise ValueError(f"--tar sha256 mismatch for {p}: expected {sha}, got {actual}")
+        tar_entries.append({"path": str(p), "sha256": sha})
+    tar_entries.sort(key=lambda x: (x["path"], x["sha256"]))
+    man = read_manifest(mpath)
+
+    # Idempotency / crash-recovery path when archived/release=<R>.json already exists
+    apath = archived_path(root, release)
+    if apath.is_file():
+        try:
+            existing = json.loads(apath.read_text())
+        except ValueError as e:
+            raise ValueError(f"{apath}: invalid JSON: {e}") from None
+        if existing.get("tars") != tar_entries:
+            raise ValueError(
+                f"release {release} is already archived ({apath}) with different tars: "
+                f"recorded {existing.get('tars')}, requested {tar_entries}"
+            )
+        # Clean up any straggler files if a prior retire was interrupted after writing the archive record
+        for item in existing.get("removed_files", []) + existing.get("removed_plan_files", []):
+            if isinstance(item, dict) and isinstance(item.get("path"), str):
+                p = root / item["path"]
+                if p.exists():
+                    p.unlink(missing_ok=True)
+                _rmdir_empty_release_dirs(root, item["path"], release)
+        pack_removed = False
+        if profile_path is not None:
+            from biobox import profile
+
+            pack_dir = Path(profile.load(profile_path).tmp) / "packs" / f"release={release}"
+            if pack_dir.is_dir():
+                shutil.rmtree(pack_dir)
+                pack_removed = True
+        problems = verify_manifest(man, root)
+        if problems:
+            raise ValueError(f"archived release {release} failed verification ({len(problems)} problems): {problems[0]}")
+        return {
+            "already_archived": True,
+            "archived_path": apath.relative_to(root).as_posix(),
+            "manifest_hash": manifest_hash(man),
+            "removed_files": len(existing.get("removed_files", ())),
+            "removed_plan_files": len(existing.get("removed_plan_files", ())),
+            "pack_removed": pack_removed,
+        }
+
+    # Check newest-N protection against non-archived releases
+    live_rolling = [n for n in manifest_releases(root) if ROLLING_NAME.fullmatch(n) and not is_archived(root, n)]
+    if release in live_rolling[-keep_latest:]:
+        raise ValueError(
+            f"release {release} is among the {keep_latest} newest non-archived rolling releases "
+            f"({', '.join(live_rolling[-keep_latest:])}) and cannot be retired (DEC-66)"
+        )
+    if len(live_rolling) < keep_latest:
+        live_non_signed = [
+            n for n in manifest_releases(root) if not SIGNED_RELEASE_NAME.fullmatch(n) and not is_archived(root, n)
+        ]
+        if release in live_non_signed[-keep_latest:]:
+            raise ValueError(
+                f"release {release} is among the {keep_latest} newest non-archived releases "
+                f"({', '.join(live_non_signed[-keep_latest:])}) and cannot be retired (DEC-66)"
+            )
+
+    # Full verification before touching anything
+    problems = verify_manifest(man, root)
+    if problems:
+        raise ValueError(f"release {release} failed verification before retire ({len(problems)} problems): {problems[0]}")
+
+    removed_files = sorted(
+        [
+            {"path": f["path"], "size_bytes": f["bytes"], "sha256": f["sha256"]}
+            for f in man["files"]
+            if _is_retirable_entry(f, release)
+        ],
+        key=lambda x: x["path"],
+    )
+    if not removed_files:
+        raise ValueError(f"release {release} has no retirable release= table files in its manifest")
+
+    plan_dir = root / ARTIFACTS["cluster_plan"].location / f"release={release}"
+    removed_plan_files: list[dict] = []
+    if plan_dir.is_dir():
+        for p in sorted(plan_dir.glob("*.json")):
+            if p.is_file():
+                removed_plan_files.append({
+                    "path": p.relative_to(root).as_posix(),
+                    "size_bytes": p.stat().st_size,
+                    "sha256": ids.sha256_file(p).hex(),
+                })
+
+    record = {
+        "copies": [str(c) for c in copies],
+        "manifest_hash": manifest_hash(man),
+        "release": release,
+        "removed_files": removed_files,
+        "removed_plan_files": removed_plan_files,
+        "schema_version": 1,
+        "tars": tar_entries,
+    }
+    _atomic_write(apath, json.dumps(record, indent=2, sort_keys=True).encode() + b"\n")
+
+    for entry in removed_files + removed_plan_files:
+        (root / entry["path"]).unlink(missing_ok=True)
+        _rmdir_empty_release_dirs(root, entry["path"], release)
+
+    pack_removed = False
+    if profile_path is not None:
+        from biobox import profile
+
+        pack_dir = Path(profile.load(profile_path).tmp) / "packs" / f"release={release}"
+        if pack_dir.is_dir():
+            shutil.rmtree(pack_dir)
+            pack_removed = True
+
+    return {
+        "already_archived": False,
+        "archived_path": apath.relative_to(root).as_posix(),
+        "manifest_hash": record["manifest_hash"],
+        "removed_files": len(removed_files),
+        "removed_bytes": sum(e["size_bytes"] for e in removed_files) + sum(e["size_bytes"] for e in removed_plan_files),
+        "removed_plan_files": len(removed_plan_files),
+        "pack_removed": pack_removed,
+    }
 
 
 class NoLatestRelease(ValueError):
@@ -740,15 +1062,18 @@ def manifest_releases(root: Path) -> list[str]:
 
 def latest_release(root: Path, qualifies=None) -> str:
     """What `--release latest` names (card W-37): the release of the root with the greatest name by `release_order`
-    that has a manifest and, when `qualifies` is given, for which `qualifies(name)` is None (else it returns why the
-    release does not qualify). Reads the manifests directory's listing; writes nothing. NoLatestRelease, with the
-    reason for each release passed over, when none qualifies."""
+    that has a manifest, is not archived (card C-54), and, when `qualifies` is given, for which `qualifies(name)` is
+    None (else it returns why the release does not qualify). Reads the manifests directory's listing; writes nothing.
+    NoLatestRelease, with the reason for each release passed over, when none qualifies."""
     names = [n for n in manifest_releases(root) if n != LATEST]
     if not names:
         raise NoLatestRelease(f"no release under {root} has a manifest (manifests/release=<R>.json); a release is "
                               "listed by `bio-box releases`, and its manifest written by `bio-box release manifest`")
     why_not = []
     for name in reversed(names):
+        if is_archived(root, name):
+            why_not.append(f"{name}: release is archived")
+            continue
         why = qualifies(name) if qualifies is not None else None
         if why is None:
             return name
@@ -1009,11 +1334,23 @@ def verify_manifest(manifest: dict, root: Path | None = None) -> list[str]:
     rounds = _manifest_rounds(manifest, root)
     in_release = _in_release(set(manifest["stages"]), manifest["release_id"], used, rounds=rounds)
     problems = []
+    valid_retired: set[str] = set()
+    apath = archived_path(root, manifest["release_id"])
+    if apath.is_file():
+        try:
+            arch_rec = json.loads(apath.read_text())
+        except (OSError, ValueError):
+            problems.append(f"archived record invalid: archived/release={manifest['release_id']}.json")
+        else:
+            arch_probs, valid_retired = _validate_archived_record(arch_rec, manifest, root)
+            problems.extend(arch_probs)
     listed = set()
     owned = {None}  # with the (table, stage, partitions) of every listed stage file that has more than a stage
     for f in manifest["files"] + manifest.get("artifacts", []):
         listed.add(f["path"])
         owned.add(_owner_key(f.get("table") or f["artifact"], f["partitions"]))
+        if f["path"] in valid_retired:
+            continue
         p = root / f["path"]
         if not p.exists():
             problems.append(f"missing: {f['path']}")
@@ -3032,11 +3369,18 @@ def open_catalog(path: Path, local_dir: Path | None = None, threads: int | None 
     try:
         con.execute(f"ATTACH {_sql_str(str(path))} AS {name} (READ_ONLY)")
         con.execute(f"USE {name}")
+        built = Path(con.execute("SELECT value FROM catalog_info WHERE key = 'root'").fetchall()[0][0])
+        rel = con.execute("SELECT value FROM catalog_info WHERE key = 'release_id'").fetchall()[0][0]
+        check_root = Path(root) if root is not None else built
+        if is_archived(check_root, rel):
+            raise ValueError(archived_error(check_root, rel))
+        if built != check_root and is_archived(built, rel):
+            raise ValueError(archived_error(built, rel))
     except BaseException:
         con.close()
         raise
     if root is None:
-        root = Path(con.execute("SELECT value FROM catalog_info WHERE key = 'root'").fetchall()[0][0])
+        root = built
     # keys from a joined table prune to the row groups that hold them (card B-27; set_join_key_filter)
     (largest,), = con.execute('SELECT coalesce(max(n), 0)::BIGINT FROM (SELECT sum(row_groups) AS n FROM catalog_files '
                               'GROUP BY "table")').fetchall()

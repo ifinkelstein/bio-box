@@ -1413,7 +1413,28 @@ Never delete:
   (`*.publishing.json`) and no run record (section 4);
 - the pending record or work directory of a search whose `bio-box search status` says `running`,
   and a pack while any search runs;
-- any file of a data root: a root is append-only. If a root is wrong, tell the PI.
+- any file of a data root by hand: a root is append-only (except retiring an older release's large `release=` files through `bio-box release retire`, DEC-66 `S-4`, below). If a root is wrong, tell the PI.
+
+### Retiring an old release
+
+Under DEC-66 (`S-4`, card C-54), the newest two rolling releases (`r<YY>.<MM>.<n>`) and any signed milestone release (`rS<k>.<n>`) keep their large `release=` files on `/tmp`. An older release whose durable backup `.tar` is verified on both `/stor/work` and `tower` may be retired with `bio-box release retire`:
+
+- It verifies the release in full (`verify_manifest`), checks the local `--tar <PATH>=<SHA256>` on disk, writes `archived/release=<R>.json` atomically, and unlinks only the eight large `release=<R>` data tables (`cluster_member`, `cluster_member_aln`, `member_cluster`, `token_dict`, `tape_tokens`, `token_postings`, `contig_dim`, `genome_dim`) plus `l2/cluster_plan/release=<R>/*.json` (and `<profile.tmp>/packs/release=<R>/` when `--profile` is given).
+- Every stage's files and the release's `manifests/release=<R>.json`, `catalog/release=<R>.duckdb`, `release_def/release=<R>/`, `ledger/release=<R>/`, and `runs/stage=<R>/` stay on disk.
+- `bio-box release verify --root "$ROOT" --release <R>` still exits 0 with the unchanged manifest hash (`verified (archived: <k> release files, stages ..., manifest hash <h>)`), `bio-box releases` shows `archived` in the `manifest` column, `--release latest` and clustering reuse (card B-49) skip it, and readers (`sql`, `find`, `seq`, `export`, `search`, `nbr`) exit 2 with the restore command.
+
+```bash
+bio-box release retire --root "$ROOT" --release rM.2 --tar "$TAR_PATH=$TAR_SHA" --copy "tower:/mnt/user/research-bulk/bio-box/root_backups/$TAR_NAME=$TAR_SHA" --profile "$PROFILE"
+bio-box release verify --root "$ROOT" --release rM.2
+```
+
+To restore a retired release, extract its files from the recorded tar(s) and remove its archive record, then verify again:
+
+```bash
+tar -C "$ROOT" -xf "$TAR_PATH"
+rm "$ROOT/archived/release=rM.2.json"
+bio-box release verify --root "$ROOT" --release rM.2
+```
 
 Before you remove anything, check that none of the units you launched is still running, and look
 for intent files.

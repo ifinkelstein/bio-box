@@ -1097,6 +1097,7 @@ def _search_hmm(a) -> int:
         limits = _limits(a)
         packs, runs = _packs(a), _runs(a)
         work = Path(a.work) if a.work else runner.default_work_base(_profile_tmp(a))
+        catalog.require_not_archived(root, a.release)
         tv = pack.manifest_tape_version(pack.read_manifest(pack.find(packs, a.release, root=root))[0])
         files, libraries = _release_files_or_refusal(a, root)
         export._Store(None, libraries).library(a.library)  # several libraries need --library, as `search hits` says
@@ -1249,8 +1250,12 @@ def _export(a) -> int:
               f"never a glob. Write it with: bio-box release manifest --root {root} --release {a.release}",
               file=sys.stderr)
         return 2
-    _emit(export.protein_fasta(root, release=a.release, gene_call_version=a.gene_call_version, manifest=manifest,
-                               threads=a.threads), a.out, "sequences")
+    try:
+        _emit(export.protein_fasta(root, release=a.release, gene_call_version=a.gene_call_version, manifest=manifest,
+                                   threads=a.threads), a.out, "sequences")
+    except (FileNotFoundError, ValueError) as e:
+        print(f"refused: {e}", file=sys.stderr)
+        return 2
     return 0
 
 
@@ -1330,14 +1335,16 @@ def release_summary(root: Path, release: str, packs: Path | None = None) -> dict
     `unlabelled_stages` the stages without `contig_label` files when some stages have them, card W-36), and with a pack
     directory `pack`, the id of the release's pack there or None."""
     root = Path(root)
-    rec: dict = {"release": release, "manifest": catalog.manifest_path(root, release).is_file()}
+    archived = catalog.is_archived(root, release)
+    rec: dict = {"release": release, "manifest": catalog.manifest_path(root, release).is_file(), "archived": archived}
     try:
         files = catalog.ReleaseFiles.of(root, release)
     except (FileNotFoundError, ValueError, OSError) as e:
         return {**rec, "stages": None, "error": str(e)}
-    dims = files.table("contig_dim", release=release)
-    clus = files.table("member_cluster", release=release) or files.table("cluster_member", release=release)
-    tok = files.table("tape_tokens", release=release)
+    dims = [p for p in files.table("contig_dim", release=release) if p.is_file()]
+    clus = [p for p in (files.table("member_cluster", release=release) or files.table("cluster_member", release=release))
+            if p.is_file()]
+    tok = [p for p in files.table("tape_tokens", release=release) if p.is_file()]
     sd = catalog.stage_depths(files.manifest if files.manifest is not None else {
         "stages": list(files.stages),
         "files": [{"table": t, "partitions": parts}
@@ -1349,15 +1356,16 @@ def release_summary(root: Path, release: str, packs: Path | None = None) -> dict
         "stages": list(files.stages),
         "depths": None if depths_text == "-" else depths_text,
         "stage_depths": sd,
-        "genomes": _release_genomes(files, release, dims),
-        "contigs": sum(pq.read_metadata(p).num_rows for p in dims) if dims else None,
+        "genomes": None if archived else _release_genomes(files, release, dims),
+        "contigs": None if archived else (sum(pq.read_metadata(p).num_rows for p in dims) if dims else None),
         "proteins": _level_rows(clus, "nr90") if clus else None,
         "libraries": sorted({str(parts["library"]) for _, parts in files.entries("l1_domains")}),
         "ncrna": sorted({str(parts["producer"]) for _, parts in files.entries("l1_ncrna")}),
         "lookups": {"member_cluster": bool(files.table("member_cluster", release=release)),
                     "contig_label": bool(files.table("contig_label")),
-                    "domain_family_tokens": bool(tok) and all(catalog.TAPE_DOMAIN_FAMILIES in pq.read_schema(p).names
-                                                              for p in tok)},
+                    "domain_family_tokens": (None if (archived and not tok) else
+                                             bool(tok) and all(catalog.TAPE_DOMAIN_FAMILIES in pq.read_schema(p).names
+                                                               for p in tok))},
     })
     if files.manifest is not None:  # card C-19: a library scanned on some of the release's stages only
         partial = {lib: missing for lib, _, missing in catalog.partial_libraries(files.manifest)}
@@ -1367,12 +1375,15 @@ def release_summary(root: Path, release: str, packs: Path | None = None) -> dict
     if labelled and set(files.stages) - labelled:  # card W-36: label files for some of the stages only
         rec["unlabelled_stages"] = [s for s in files.stages if s not in labelled]
     if packs is not None:
-        try:
-            rec["pack"] = pack.find(packs, release).name
-        except pack.NoPack:
+        if archived:
             rec["pack"] = None
-        except ValueError:
-            rec["pack"] = "several"
+        else:
+            try:
+                rec["pack"] = pack.find(packs, release).name
+            except pack.NoPack:
+                rec["pack"] = None
+            except ValueError:
+                rec["pack"] = "several"
     return rec
 
 
@@ -1684,6 +1695,8 @@ def _releases(a) -> int:
     rows = []
     for r in recs:
         flat = {**r, **r.get("lookups", {})}
+        if r.get("archived"):
+            flat["manifest"] = "archived"
         libs = [f"{x}(not {','.join(r['partial_libraries'][x])})" if x in r.get("partial_libraries", {}) else x
                 for x in r.get("libraries", [])]
         if r.get("unlabelled_stages"):  # card W-36: as a partial library
@@ -1799,7 +1812,7 @@ def _run_step(a) -> int:
                             nice=a.nice, threads=a.threads)
 
 
-RELEASE_STEPS = ("define", "cluster", "tokens", "postings", "dim", "manifest", "catalog", "verify")
+RELEASE_STEPS = ("define", "cluster", "tokens", "postings", "dim", "manifest", "catalog", "verify", "retire")
 CLUSTER_ACTIONS = ("plan", "step", "finish", "redo", "reuse")  # card B-41; reuse: card B-49
 STAGE_STEPS = ("inputs", "ingest", "genecall", "igr", "tapes", "domains", "ncrna", "crispr", "labels")
 DOMAIN_ACTIONS = ("plan", "shard", "merge")  # `stage domains plan|shard|merge` (card B-24)
@@ -1914,9 +1927,20 @@ def _verify(a) -> int:
         return 1
     problems = catalog.verify_manifest(man, root)
     _print(problems)
-    print(f"release {a.release}: {'verified' if not problems else f'{len(problems)} problems'} (stages "
-          f"{','.join(man['stages'])}, {len(man['files'])} files, {len(man.get('artifacts', []))} artifacts, manifest "
-          f"hash {catalog.manifest_hash(man)})")
+    arch = None
+    if not problems and catalog.is_archived(root, a.release):
+        try:
+            arch = catalog.read_archived(root, a.release)
+        except (OSError, ValueError):
+            arch = None
+    if arch is not None:
+        k = len(arch.get("removed_files", ()))
+        print(f"release {a.release}: verified (archived: {k} release files, stages "
+              f"{','.join(man['stages'])}, manifest hash {catalog.manifest_hash(man)})")
+    else:
+        print(f"release {a.release}: {'verified' if not problems else f'{len(problems)} problems'} (stages "
+              f"{','.join(man['stages'])}, {len(man['files'])} files, {len(man.get('artifacts', []))} artifacts, manifest "
+              f"hash {catalog.manifest_hash(man)})")
     print(catalog.describe_built_by(catalog.built_by(root, a.release, man["stages"])))  # card C-23: information only
     print(f"depths: {catalog.describe_depths(catalog.stage_depths(man))}")  # card C-38a, DEC-54: information only
     failed = bool(problems)
@@ -1942,14 +1966,45 @@ def _verify(a) -> int:
     return 1 if failed else 0
 
 
+def _retire(a) -> int:
+    """`release retire` (DEC-66 S-4, card C-54): retire an old release's large `release=` files."""
+    if a.action is not None:
+        print(f"refused: release retire has no action {a.action}", file=sys.stderr)
+        return 2
+    tars: list[tuple[str, str]] = []
+    for raw in a.tar:
+        if "=" not in raw:
+            print(f"refused: malformed --tar {raw!r}: expected <PATH>=<64-hex-sha256>", file=sys.stderr)
+            return 2
+        p, sha = raw.rsplit("=", 1)
+        tars.append((p, sha))
+    try:
+        res = catalog.retire_release(
+            Path(a.root),
+            a.release,
+            tars=tars,
+            copies=a.copy,
+            keep_latest=a.keep_latest,
+            profile_path=Path(a.profile) if a.profile else None,
+        )
+    except (FileNotFoundError, ValueError, OSError) as e:
+        print(f"refused: {e}", file=sys.stderr)
+        return 2
+    print(json.dumps({"release": a.release, "step": "retire", "result": res}, sort_keys=True, default=str))
+    return 0
+
+
 def _release(a) -> int:
     """One release-level step over the release's stages (card B-25). `define` writes `release_def`
     once (each stage must have tapes, card C-38a, DEC-54); a builder step given `--stages` defines the
     release if it is not yet defined; without `--stages` the stages come from `release_def`. `manifest`
     and `catalog` need the release defined; `catalog` needs its manifest. Inputs are read from `--root`,
-    outputs written under `_out` (card C-08). `verify` writes nothing (`_verify`)."""
+    outputs written under `_out` (card C-08). `verify` writes nothing (`_verify`). `retire` archives an
+    old release's large `release=` files (`_retire`, DEC-66 S-4)."""
     if a.step == "verify":
         return _verify(a)
+    if a.step == "retire":
+        return _retire(a)
     root = Path(a.root)
     if a.action is not None and a.step != "cluster":
         print(f"refused: release {a.step} has no action {a.action} (only cluster: {', '.join(CLUSTER_ACTIONS)})",
@@ -2646,6 +2701,15 @@ def _main(argv: list[str] | None = None) -> int:
     rl.add_argument("--out", help=OUT_HELP)
     rl.add_argument("--previous", help="verify: an earlier release; every file of its manifest outside its own "
                                        "release= partition must be in this release's with the same sha256 (R-09)")
+    rl.add_argument("--keep-latest", type=int, default=2,
+                    help="retire: newest non-archived rolling releases to keep live on disk (default 2, >= 1; DEC-66)")
+    rl.add_argument("--tar", action="append", default=[], metavar="PATH=SHA256",
+                    help="retire: local durable backup tar holding the release's files and its expected 64-hex sha256 "
+                         "(verified on disk before retiring; repeatable)")
+    rl.add_argument("--copy", action="append", default=[], metavar="PLACE",
+                    help="retire: remote backup copy metadata (e.g. tower:/path/file.tar=<sha256>) recorded in "
+                         "archived/release=<R>.json (repeatable)")
+    rl.add_argument("--profile", help="retire: host profile YAML; removes <profile.tmp>/packs/release=<R> if present")
     st = sub.add_parser("stage", parents=[common], help="per-stage builder steps (card C-08)")
     st.add_argument("step", choices=STAGE_STEPS)
     st.add_argument("action", nargs="?", choices=tuple(dict.fromkeys(DOMAIN_ACTIONS + INGEST_ACTIONS + NCRNA_ACTIONS)),
