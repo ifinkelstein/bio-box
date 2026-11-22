@@ -804,7 +804,9 @@ calling also judged against 236 CPU-minutes, the note's figure). Confs written b
 (annotated, Pfam 38.2 in full, CRISPR, by the orchestrator's decision in STATUS open item 22; `P2`, `P4` and `H1` hold
 1, 6 and 1 of its contigs, `2026-11-18_globdb_inputs.md` §4.2) and `SPX1.conf` (called, `MIN_CONTIG_LEN=5000`, no
 library, CRISPR, after `G1`, which then holds 12,052 of its contigs, `2026-11-20_spire_tranche_1.md` §5; no `JUDGE`
-line). None yet for `PL2` (card C-52).
+line). Confs written by card A-18 (2026-11-21, DEC-62): `C1.conf`, `C2.conf`, `C3.conf`, `C4.conf` and `C6.conf`
+(annotated, Pfam 38.2 in full, CRISPR, no `AFTER` and no `JUDGE` line; `P1` to `P6` and `PL1` hold 1,045, 3,232,
+2,261, 1,932 and 2,301 of their contigs respectively, `2026-11-21_a18_c_stage_confs.md` §1). None yet for `PL2` (card C-52).
 
 The modes, in the order `stage_queue.sh` runs them. Each exits with its own status, writes `<stage dir>/<mode>/DONE`
 (holding the sha256 of the conf it was made for) only when it passed, after withdrawing its own marker and those of
