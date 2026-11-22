@@ -44,6 +44,7 @@ TOL = 0.20
 MIN_JUDGED_CPU_MIN = 24.0  # DEC-43
 RECORD_ABOVE = 1.20  # DEC-64 (amending DEC-53): a judged step over this ratio is outside 20% and recorded
 STOP_ABOVE = 1.50  # DEC-64: a judged step whose reported (three-decimal) ratio is over this stops the train
+CALIBRATION_DEADBAND = 0.15  # Card B-64: within ±15% of current B-54 model, keep factor=1.0 instead of amplifying noise
 GENE_SCALED_STEPS = ("tokens", "postings", "dim", "manifest", "catalog")
 
 
@@ -144,10 +145,23 @@ def _gene_call_outputs(root: Path, stage: str, table: str, gcv: str) -> list[Pat
             if o["path"].startswith(prefix) and o["path"].endswith(".parquet")]
 
 
+def _argv_threads(argv: list | None) -> int | None:
+    if not argv:
+        return None
+    for i, tok in enumerate(argv):
+        if tok == "--threads" and i + 1 < len(argv):
+            try:
+                return int(argv[i + 1])
+            except ValueError:
+                return None
+    return None
+
+
 def calibrate_earlier(root: Path, release: str) -> dict:
     """Summarize an earlier release's clustering calls and other release steps from its run records."""
     runs = root / "runs" / f"stage={release}"
     plans = root / "l2" / "cluster_plan" / f"release={release}"
+    plan = _load_json(plans / "cluster.plan.json") or {}
     seen: set[str] = set()
     calls = []
     part_rows: dict[str, list[dict]] = {}
@@ -161,7 +175,8 @@ def calibrate_earlier(root: Path, release: str) -> dict:
                 name = f"{call}.part-{p:05d}" if len(parts) > 1 else call
                 r = _load_json(runs / f"{name}.json")
                 seen.add(name)
-                row = {"part": p, "estimate": round(part["cpu_min"], 3), "units": part.get("units")}
+                row = {"part": p, "estimate": round(part["cpu_min"], 3), "units": part.get("units"),
+                       "keys": part.get("keys")}
                 if r is not None:
                     row["cpu_min"] = round(r["cpu_min"], 3)
                     row["peak_rss_gb"] = round((r.get("peak_rss_bytes") or 0) / 1e9, 2)
@@ -173,6 +188,8 @@ def calibrate_earlier(root: Path, release: str) -> dict:
                 "call": call,
                 "parts": len(parts),
                 "overhead_estimate": cut.get("overhead_cpu_min"),
+                "keys_sum": sum(x["keys"] or 0 for x in rows),
+                "units_sum": sum(x["units"] or 0 for x in rows),
                 "estimate_sum": round(est, 2),
                 "measured_sum": round(sum(meas), 2),
                 "max_part_cpu_min": max(meas) if meas else None,
@@ -186,8 +203,10 @@ def calibrate_earlier(root: Path, release: str) -> dict:
                 continue
             r = _load_json(f)
             if r is not None and "cpu_min" in r:
-                others.append({"step": name, "cpu_min": round(r["cpu_min"], 3)})
-    return {"release": release, "calls": calls, "others": others, "part_rows": part_rows}
+                others.append({"step": name, "cpu_min": round(r["cpu_min"], 3),
+                               "threads": _argv_threads(r.get("argv"))})
+    return {"release": release, "proteins": plan.get("proteins"), "calls": calls, "others": others,
+            "part_rows": part_rows}
 
 
 def before(a) -> int:
@@ -273,21 +292,49 @@ def before(a) -> int:
         genes_old = max(1, sum(per_stage[s]["genes"] for s in estages))
         rg = genes_all / genes_old
 
+        budget = cut.get("part_cpu_min") if a.parts is None else None
         for c in calib["calls"]:
             name = c["call"]
             rows_ = calib["part_rows"][name]
+            k_old = len(rows_)
             u_old = sum(x["units"] or 0 for x in rows_)
+            t_old = sum(x["keys"] or 0 for x in rows_)
             o_old = c["overhead_estimate"] or 0.0
-            k = len(rows_) if a.parts is None else a.parts
-            if n_all and n_old:
-                m_old = l2.call_cpu_min(name, n_old, u_old) + len(rows_) * o_old
-                m_new = l2.call_cpu_min(name, n_all, round(u_old * r)) + k * o_old * r
+            p_old = n_old or calib.get("proteins")
+            # Card B-64: recompute the earlier release's expected cost under the current B-54 model so a
+            # pre-B-54 earlier release (`rM.2`, `r26.11.1`) is calibrated on the same basis as post-B-54 cuts.
+            if p_old and name in l2.CALL_FIT and u_old > 0:
+                m_old = l2.call_cpu_min(name, p_old, u_old, targets=t_old or None) + k_old * o_old
+            else:
+                m_old = c["estimate_sum"]
+            if n_all and n_old and name in l2.CALL_FIT and u_old > 0:
+                work_new = l2.call_cpu_min(name, n_all, round(u_old * r), targets=round(t_old * r) if t_old else None)
+                oh_new = o_old * r
+                if a.parts is not None:
+                    k = a.parts
+                elif budget is not None and budget > oh_new:
+                    k = max(1, math.ceil(work_new / (budget - oh_new)))
+                elif budget is not None:
+                    k = 1
+                else:
+                    k = k_old
+                m_new = work_new + k * oh_new
                 g = m_new / m_old if m_old else r
             else:
+                k = k_old if a.parts is None else a.parts
                 g = r
             proj = c["measured_sum"] * g
-            largest = (c["max_part_cpu_min"] or 0) * g * len(rows_) / max(1, k)
-            factors[name] = round(c["measured_sum"] / c["estimate_sum"], 6) if c["estimate_sum"] else 1.0
+            skew = (c["max_part_cpu_min"] / (c["measured_sum"] / k_old)) if (
+                c["max_part_cpu_min"] and c["measured_sum"] and k_old
+            ) else 1.0
+            largest = (proj / max(1, k)) * skew
+            raw_factor = (c["measured_sum"] / m_old) if m_old else 1.0
+            # Do not calibrate tiny unjudged calls (< 24 CPU-min, e.g. 24-part rescorediagonal startup) or chase
+            # single-release noise within ±15% of the B-54 model.
+            if m_old < MIN_JUDGED_CPU_MIN or abs(raw_factor - 1.0) <= CALIBRATION_DEADBAND:
+                factors[name] = 1.0
+            else:
+                factors[name] = round(raw_factor, 6)
             part_max = max(part_max, largest)
             total_proj += proj
             calls_out.append({
@@ -295,10 +342,19 @@ def before(a) -> int:
                 "growth": round(g, 4), "projected": round(proj, 1),
                 "largest_part_projected": round(largest, 1),
                 "calibration_factor": factors[name],
+                "raw_calibration_factor": round(raw_factor, 6),
                 "peak_rss_gb_projected": round((c["max_peak_rss_gb"] or 0) * r, 1),
             })
         for o in calib["others"]:
-            scale = rg if o["step"] in GENE_SCALED_STEPS else r
+            if o["step"] in GENE_SCALED_STEPS:
+                scale = rg
+            elif o["step"].endswith(".kmermatcher") and o.get("threads") and a.cpus:
+                scale = r * (
+                    l2.kmermatcher_cpu_min(10_000_000, threads=a.cpus)
+                    / l2.kmermatcher_cpu_min(10_000_000, threads=o["threads"])
+                )
+            else:
+                scale = r
             steps[o["step"]] = round(o["cpu_min"] * scale, 3)
 
     others_total = sum(v for k_, v in steps.items() if k_.startswith("cluster"))
