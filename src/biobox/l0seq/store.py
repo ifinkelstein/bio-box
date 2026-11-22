@@ -1644,16 +1644,16 @@ class SeqStore:
         self._shards: dict[str, BgzfFasta] = {}
 
     def _where(self, rd: bytes) -> tuple[str, int]:
-        rows = self.locator.get(rd)
-        if not rows:
+        row = self.locator.find_first(rd)
+        if row is None:
             raise KeyError(f"raw_digest {rd.hex()} is in none of the stages {self.stages} this store reads")
-        return rows[0]["shard"], rows[0]["contig_len"]
+        return row["shard"], row["contig_len"]
 
     def default_digest(self, contig_uid: bytes) -> bytes:
         """raw_digest of the contig's default variant."""
-        for r in self.index.get(contig_uid):
-            if r["is_default_variant"]:
-                return r["raw_digest"]
+        row = self.index.find_first(contig_uid, lambda r: r["is_default_variant"])
+        if row is not None:
+            return row["raw_digest"]
         raise KeyError(f"contig_uid {contig_uid.hex()} is in none of the stages {self.stages} this store reads")
 
     def _shard(self, rel: str) -> BgzfFasta:
@@ -1699,13 +1699,18 @@ class SeqStore:
     ) -> bytes:
         """Slice the default variant. On a circular contig `end` may exceed the length (origin wrap)."""
         rd = self.default_digest(contig_uid)
-        n = self.length_of(rd)
+        rel, n = self._where(rd)
         if circular and end is not None and end > n:
             if not 0 <= start < n < end <= start + n:
                 raise ValueError(f"wrapping slice {start}:{end} invalid for length {n}")
-            seq = self.raw(rd, start, n) + self.raw(rd, 0, end - n)
+            shard = self._shard(rel)
+            name = rd.hex()
+            seq = shard.fetch(name, start, n) + shard.fetch(name, 0, end - n)
         else:
-            seq = self.raw(rd, start, end)
+            stop = n if end is None else end
+            if not 0 <= start <= stop <= n:
+                raise ValueError(f"slice {start}:{stop} outside 0:{n}")
+            seq = self._shard(rel).fetch(rd.hex(), start, stop)
         if strand == -1:
             return revcomp(seq)
         if strand != 1:

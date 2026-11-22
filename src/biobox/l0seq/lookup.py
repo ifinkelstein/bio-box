@@ -113,3 +113,19 @@ class KeyLookup:
                     if a < b:
                         out += t.slice(a, b - a).to_pylist()
         return out
+
+    def find_first(self, key, predicate=None) -> dict | None:
+        """First row whose `key_column` equals `key` (and satisfies `predicate`, when given), in file order,
+        returning immediately without decoding later files' row groups (card B-66)."""
+        with self._lock:
+            for fi, f in enumerate(self._files):
+                first = bisect.bisect_left(f.maxs, key)  # first row group whose max >= key
+                last = bisect.bisect_right(f.mins, key)  # row groups before `last` have min <= key
+                for j in range(first, last):
+                    t, keys = self._decoded(fi, f.row_groups[j])
+                    a, b = bisect.bisect_left(keys, key), bisect.bisect_right(keys, key)
+                    if a < b:
+                        for row in t.slice(a, b - a).to_pylist():
+                            if predicate is None or predicate(row):
+                                return row
+        return None

@@ -418,6 +418,16 @@ CRISPR_CPU_S_PER_GBP = 168.1
 # H1 1.19, PL1 1.15). All nine filtered records are within 10% of `crispr_cpu_min(bases, flank, near_cas=True)` (PL1
 # 9.1% under to P2 3.1% over; refused above 74.5 Gbp scanned, *derived*: 0.8 * 300 * 60 / (168.1 * 1.15) = 74.49).
 CRISPR_NEAR_CAS_COST = 1.15
+# Per-stored-contig CRISPR cost (card B-66, `planning/measurements/2026-11-22_b66_seqstore_and_crispr_contigs.md`):
+# 0.50 CPU-seconds per 1,000 stored contigs (8.333 CPU-min per million contigs) added after O(1)-stage `SeqStore.get`
+# (which cut 12-stage `SeqStore.get` from 1.488 to 0.563 ms/contig, *measured*, wilkcomp02, 2026-11-22). Fitted on
+# post-fix end-to-end `crispr.run` and `crispr.run_near_cas` (`cpus=4`, `b66_crispr_contig_arms.py`, wilkcomp02,
+# 2026-11-22): G1 1-in-20 (61,361 contigs, 510.04 Mbp, 12 stages: 121.072 s default -> 0.576 s/k-contigs residual;
+# 128.034 s near-Cas -> 0.480 s/k-contigs residual) and SPX1 1-in-40 (49,153 contigs, 730.72 Mbp, 13 stages: 138.896 s
+# -> 0.327 s/k-contigs residual). Not multiplied by `CRISPR_NEAR_CAS_COST` because per-contig sequence/FASTA I/O is
+# identical in both producers (confirmed by G1 near-Cas -1.0% vs -4.4% and V1 near-Cas -8.6% vs -9.4%). Keeps all 10
+# non-C5 complete stages (`S1..V1`, 20 records) within 10.3%, G1 within 4.0%, and SPX1 within 5.8%.
+CRISPR_CPU_S_PER_K_CONTIGS = 0.50
 CUTOFFS = ("gathering", "trusted", "noise", "none")
 DEPTHS = ("stored", "called", "annotated")  # card C-38a (DEC-54): stage depth chosen at build
 _READ = 1 << 20  # bytes per read when decompressing an input to count it
@@ -537,12 +547,16 @@ def crispr_cpus(prof: Profile, b: Build) -> int:
     return min(threads_of(prof, b), b.scan_cpus if b.scan_cpus is not None else DEFAULT_SCAN_CPUS)
 
 
-def crispr_cpu_min(bases: int, flank_bases: int = 0, *, near_cas: bool = False) -> float:
+def crispr_cpu_min(bases: int, flank_bases: int = 0, *, contigs: int = 0, near_cas: bool = False) -> float:
     """CPU-minutes of a CRISPR step over `bases` stored genome bases and `flank_bases` circular wrap-flank bases
-    (`crispr_flank_bases`, card B-53) at `CRISPR_CPU_S_PER_GBP`, times `CRISPR_NEAR_CAS_COST` when `near_cas` is True
-    (derived). Without `flank_bases` every base passed is counted at the scanned rate."""
+    (`crispr_flank_bases`, card B-53) at `CRISPR_CPU_S_PER_GBP` (times `CRISPR_NEAR_CAS_COST` when `near_cas` is True),
+    plus `contigs` stored contigs at `CRISPR_CPU_S_PER_K_CONTIGS` (card B-66; per-contig I/O is identical in both
+    producers, so not multiplied by `CRISPR_NEAR_CAS_COST`). With `contigs=0` this is bit-identical to card B-53."""
     rate = CRISPR_CPU_S_PER_GBP * (CRISPR_NEAR_CAS_COST if near_cas else 1.0)
-    return (bases + flank_bases) * rate / 1e9 / 60
+    est = (bases + flank_bases) * rate / 1e9 / 60
+    if contigs:
+        est += contigs * CRISPR_CPU_S_PER_K_CONTIGS / 1000 / 60
+    return est
 
 
 def depth_of(b: Build) -> str:
@@ -1652,6 +1666,23 @@ def stage_bases(root: Path, stage: str) -> int:
     return total
 
 
+def stage_contigs(root: Path, stage: str) -> int:
+    """Default-variant contigs stored by `stage` (card B-66): counted from `is_default_variant` in the stage's
+    `contig_index` files listed in its ingest run record (an explicit list, AGENTS §3.9; contigs another stage
+    stored are absent, DEC-26), one row group at a time."""
+    rec = json.loads((Path(root) / "runs" / f"stage={stage}" / "ingest.json").read_text())
+    prefix = f"{store.INDEX_DIR}/stage={stage}/"
+    total = 0
+    for o in rec["outputs"]:
+        if not o["path"].startswith(prefix):
+            continue
+        pf = pq.ParquetFile(Path(root) / o["path"])
+        for i in range(pf.num_row_groups):
+            t = pf.read_row_group(i, columns=["is_default_variant"])
+            total += pc.sum(t.column("is_default_variant")).as_py() or 0
+    return int(total)
+
+
 def crispr_flank_bases(root: Path, stage: str) -> int:
     """Circular wrap-flank bases that `stage`'s CRISPR scan passes to MinCED (`2 * min(crispr.CIRC_FLANK, contig_len)`
     per circular contig the stage stores, card B-53): streamed in `contig_uid` order across the explicit `contig_index`
@@ -1686,21 +1717,26 @@ def crispr_flank_bases(root: Path, stage: str) -> int:
 
 
 def crispr_refusal(prof: Profile, b: Build, root: Path, step: Step) -> str | None:
-    """Why a CRISPR step may not start (cards E-12, E-15, B-53), or None: its estimate in one process (the bases MinCED
-    scans — stored genome bases plus circular wrap-flank bases — at `CRISPR_CPU_S_PER_GBP`, times
-    `CRISPR_NEAR_CAS_COST` for the filtered step) is above `SHARD_MARGIN` of the budget, and the step has no shards."""
+    """Why a CRISPR step may not start (cards E-12, E-15, B-53, B-66), or None: its estimate in one process (the bases
+    MinCED scans — stored genome bases plus circular wrap-flank bases — at `CRISPR_CPU_S_PER_GBP`, times
+    `CRISPR_NEAR_CAS_COST` for the filtered step, plus stored contigs at `CRISPR_CPU_S_PER_K_CONTIGS`) is above
+    `SHARD_MARGIN` of the budget, and the step has no shards."""
     bases = stage_bases(root, b.stage)
     flank = crispr_flank_bases(root, b.stage)
+    contigs = stage_contigs(root, b.stage)
     scanned = bases + flank
     near = step.check == "crispr-cas"
-    est = crispr_cpu_min(bases, flank, near_cas=near)
+    est = crispr_cpu_min(bases, flank, contigs=contigs, near_cas=near)
     if est <= SHARD_MARGIN * prof.cpu_min_per_process:
         return None
     rate = (f"{CRISPR_CPU_S_PER_GBP} CPU-seconds per Gbp scanned, fitted in "
             f"planning/measurements/2026-11-17_crispr_genecall_estimates.md (card B-53)"
-            + (f", times {CRISPR_NEAR_CAS_COST} for MinCED at 2 repeats and the filter (cards E-15, B-53)" if near else ""))
+            + (f", times {CRISPR_NEAR_CAS_COST} for MinCED at 2 repeats and the filter (cards E-15, B-53)" if near else "")
+            + f", plus {CRISPR_CPU_S_PER_K_CONTIGS} CPU-seconds per 1,000 stored contigs (card B-66)")
     what = (f"{scanned:,} scanned bases ({bases:,} stored genome bases + {flank:,} circular wrap-flank bases)"
             if flank else f"{bases:,} genome bases")
+    if contigs:
+        what = f"{what} across {contigs:,} stored contigs"
     return (f"the CRISPR step over {what} is estimated at {est:,.1f} CPU-minutes in one process "
             f"({rate}), over {SHARD_MARGIN:.0%} of the profile's cpu_min_per_process of {prof.cpu_min_per_process} "
             "(AGENTS §7.2), and it has no shards: split the stage, or shard the step in a new card")
