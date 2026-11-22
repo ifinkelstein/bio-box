@@ -45,7 +45,7 @@ TESTIMAGE=${TESTIMAGE:-/stor/home/if2453/bio-box/images/bio-box-test_faec1f4.sif
 PYPATH=$TREE/src
 PFAMDIR=${PFAMDIR:-/stor/scratch/Wilke/if2453/all-the-data/l0/refdb/pfam/38.2}
 PFAM=${PFAM:-$PFAMDIR/Pfam-A.hmm.gz}
-REAL_ROOT=/tmp/if2453/r10/root
+REAL_ROOT=${REAL_ROOT:-/tmp/if2453/r10/root}
 
 T=${T:-18}
 J=${J:-2}
@@ -129,6 +129,45 @@ make_profile() {
   sed "s#^tmp:.*#tmp: $WORK/tmp#" "$REALPROF" > "$PROF_COPY"
 }
 
+real_profile_tmp() {  # card A-20: parse `tmp:` from $REALPROF (stripped), or empty if absent
+  python3 -I - "$REALPROF" <<'PY' 2> /dev/null
+import sys
+from pathlib import Path
+try:
+    for line in Path(sys.argv[1]).read_text().splitlines():
+        s = line.split("#", 1)[0].strip()
+        if s.startswith("tmp:"):
+            v = s.split(":", 1)[1].strip().strip("'\"")
+            if v:
+                print(v)
+            break
+except OSError:
+    pass
+PY
+}
+
+find_verified_pack() {  # PACKS_DIR REL: print 32-hex pack_id if a verified pack dir exists on disk, else empty
+  python3 -I - "$1" "$2" <<'PY' 2> /dev/null
+import json, re, sys
+from pathlib import Path
+base = Path(sys.argv[1]) / f"release={sys.argv[2]}"
+if not base.is_dir():
+    sys.exit(0)
+hex32 = re.compile(r"^[0-9a-f]{32}$")
+for d in sorted(base.iterdir()):
+    if d.is_dir() and hex32.fullmatch(d.name) and (d / "pack_verified.json").is_file():
+        pid = d.name
+        mf = d / "pack_manifest.json"
+        if mf.is_file():
+            try:
+                pid = json.loads(mf.read_text()).get("pack_id") or pid
+            except (OSError, ValueError, AttributeError):
+                pass
+        print(pid)
+        break
+PY
+}
+
 stage_confs_present() {  # card A-12: a tree without stages/*.conf would leave the stage driver's units out of the lock
   compgen -G "$BIN/stages/*.conf" > /dev/null
 }
@@ -179,10 +218,10 @@ plan_args() {
 RS_ACTION="" RS_REL="" RS_RECORDS="" RS_UNIT="" RS_HOW="" RS_REASON="" RS_PROBLEMS="" RS_VERIFY_N=0 RS_CMD=""
 BS_ARGS=()
 
-resume_state() {  # NEWPLAN_JSON: first launch, resume or refusal, from this $WORK, the root and the new plan (RS_*).
+resume_state() {  # NEWPLAN_JSON [PREV_DONE]: first launch, resume or refusal, from this $WORK, the root and the new plan (RS_*).
   # Reads only. The unit number is one more than any `<prefix>-rel-<n>` recorded under $WORK/run/ or $WORK/logs/.
-  local out k v
-  out=$(python3 -I - "$WORK" "$ROOT" "$UNIT_PREFIX" "$1" <<'PY'
+  local out k v prev_done=${2:-}
+  out=$(python3 -I - "$WORK" "$ROOT" "$UNIT_PREFIX" "$1" "$prev_done" <<'PY'
 import json
 import re
 import sys
@@ -190,6 +229,7 @@ from pathlib import Path
 
 work, root, prefix = Path(sys.argv[1]), Path(sys.argv[2]), sys.argv[3]
 new = json.loads(sys.argv[4])
+prev_done = sys.argv[5]
 
 
 def say(**kv):
@@ -258,6 +298,18 @@ if old is not None and started(old["release"]) and not finished(old["release"]):
             f"again, or set it aside by the PI's decision"))
         sys.exit(0)
     say(action="resume", release=rel, records=k, unit=unit, how=how)
+elif old is not None and finished(old["release"]) and prev_done != old["release"]:
+    rel, k = old["release"], len(records(old["release"]))
+    if (new.get("latest_release") == rel and new["stages"] == old["stages"]
+            and not new.get("new_stages") and earlier(new) == earlier(old) + [rel]):
+        say(action="resume", release=rel, records=k, unit=unit,
+            how="manifest published; finishing post-build steps")
+    else:
+        say(action="refuse", unit=unit, reason=(
+            f"this $WORK ({work}) launched {plan_of(old)} and its manifest is published, but $WORK/DONE does not "
+            f"record {rel} ({prev_done or 'absent'}); the plan now names {plan_of(new)}. "
+            f"finish {rel} before cutting over new stages in this $WORK"))
+    sys.exit(0)
 else:
     foreign = sorted(d.name.removeprefix("stage=") for d in (root / "runs").glob("stage=*")
                      if d.is_dir() and not (d / "inputs.json").exists() and any(d.glob("*.json"))
@@ -358,11 +410,12 @@ action_line() {  # LINE: the plan's text (stdin) with its `Action:` line replace
 
 do_dry_run() {
   plan_args
-  local newplan txt rc
+  local newplan txt rc prev_done=""
+  [ -f "$WORK/DONE" ] && prev_done=$(awk 'NR==1{print $1}' "$WORK/DONE" 2> /dev/null)
   newplan=$(bb_ro py "$BIN/train_plan.py" "${PLAN_ARGS[@]}" --json) || return $?
   txt=$(bb_ro py "$BIN/train_plan.py" "${PLAN_ARGS[@]}")
   rc=$?
-  if ! resume_state "$newplan"; then
+  if ! resume_state "$newplan" "$prev_done"; then
     printf '%s\n' "$txt"
     echo "release_train: could not tell a resume from a first launch (the resume helper failed)" >&2
     return 1
@@ -518,7 +571,10 @@ watch_unit() {
 do_run() {
   mkdir -p "$WORK" "$LOGS" "$WORK/before" "$WORK/estimate" "$WORK/run" "$WORK/after" "$WORK/pack" "$WORK/check"
   # $WORK/DONE is the success marker of a run (card A-11): written last, only when every step passed. A waiter tests
-  # it, never a log line or an exit status alone; a run withdraws the marker of an earlier one before it starts.
+  # it, never a log line or an exit status alone; a run withdraws the marker of an earlier one before it starts
+  # (card A-20: record prev_done first so resume_state knows whether old["release"] finished DONE).
+  local prev_done=""
+  [ -f "$WORK/DONE" ] && prev_done=$(awk 'NR==1{print $1}' "$WORK/DONE" 2> /dev/null)
   rm -f "$WORK/DONE"
   # the profile copy is written once the run is known to be a first launch; a resume keeps the first launch's (A-15)
   mkdir -p "$WORK/tmp" "$LOGS"
@@ -539,7 +595,7 @@ do_run() {
   local plan_json=$WORK/plan.json next_json=$WORK/plan.next.json next_txt=$WORK/plan.next.txt resume=0 rdir=""
   bb_ro py "$BIN/train_plan.py" "${PLAN_ARGS[@]}" --json > "$next_json" || exit $?
   bb_ro py "$BIN/train_plan.py" "${PLAN_ARGS[@]}" > "$next_txt" || { cat "$next_txt"; fail "train_plan.py failed"; }
-  resume_state "$(cat "$next_json")" || fail "could not tell a resume from a first launch (the resume helper failed)"
+  resume_state "$(cat "$next_json")" "$prev_done" || fail "could not tell a resume from a first launch (the resume helper failed)"
   case "$RS_ACTION" in
     first)
       mv -f "$next_json" "$plan_json" || fail "mv $next_json"
@@ -569,6 +625,7 @@ do_run() {
   earlier_rels=$(python3 -I -c 'import json,sys; print(" ".join(json.load(open(sys.argv[1]))["earlier_manifest_releases"]))' "$plan_json")
 
   if [ "$nothing_new" = 1 ] && [ "$SAME_STAGES" != 1 ]; then
+    [ -n "$prev_done" ] && [ "$prev_done" = "$latest" ] && echo "$prev_done" > "$WORK/DONE"
     echo "release_train: 0 new complete stages since ${latest:-none}; nothing to cut (pass --same-stages to cut anyway)"
     log "noop: 0 new complete stages since ${latest:-none}"
     return 0
@@ -651,33 +708,87 @@ do_run() {
   bb_ro cli releases --root "$ROOT" --profile "$PROF_COPY" > "$WORK/after/releases.txt" 2>&1 \
     || fail "bio-box releases failed (see $WORK/after/releases.txt)"
 
-  # 6. Search pack in parts (W-35) + pack verify
-  local punit="${UNIT_PREFIX}-pack" pack_model=()
-  [ "$RS_UNIT" = 1 ] || punit="${UNIT_PREFIX}-pack-$RS_UNIT"
-  [ -e "$LOGS/$punit.log" ] && fail "$LOGS/$punit.log exists: another unit's exit line could be read as $punit's"
-  [ -f "$PFAM" ] && pack_model=(--model "pfam-38.2=$PFAM")
-  bash "$TREE/scripts/pod_run.sh" --profile "$PROF_COPY" --image "$IMAGE" --digest "$DIGEST" --mem "$PACK_MEM" \
-    --threads "$PACK_JOBS" --bind /tmp/if2453 --bind "$ROOT:$ROOT:ro" "${ro_binds[@]}" --env "PYTHONPATH=$PYPATH" \
-    --log "$LOGS/$punit.log" "$punit" pack build --root "$ROOT" --release "$rel" "${pack_model[@]}" \
-    --profile "$PROF_COPY" --parts "$PACK_PARTS" --jobs "$PACK_JOBS" >> "$LOG" 2>&1
-  sleep 2
-  while :; do  # the watch's rule (A-14): its own exit line or a real inactive answer ends the wait, a failed answer not
-    unit_ended "$punit" "$LOGS"
-    rc=$?
-    [ "$rc" = 0 ] && break
-    watch_answer "$rc" "$punit"
-    sleep 5
-  done
-  rc=$(exit_of "$punit")
-  [ "$rc" = 0 ] || fail "pack build exited '$rc' (see $LOGS/$punit.log)"
-  bb_ro cli pack verify --root "$ROOT" --release "$rel" --profile "$PROF_COPY" > "$WORK/pack/verify.log" 2>&1 \
-    || fail "pack verify failed (see $WORK/pack/verify.log)"
-  local pack_id
-  pack_id=$(sed -n 's/.*pack \([0-9a-f]\{32\}\).*/\1/p' "$LOGS/$punit.log" | tail -n 1)
+  # 6. Search pack in parts (W-35) + pack verify (card A-20: reuse already-verified pack on resume; promote to host
+  # profile pack directory when ROOT == REAL_ROOT)
+  local real_tmp="" real_packs=""
+  if [ "$ROOT" = "$REAL_ROOT" ]; then
+    real_tmp=$(real_profile_tmp)
+    [ -n "$real_tmp" ] && real_packs="$real_tmp/packs"
+  fi
+  local pack_id="" pack_reused=0 pack_in_real=0 ex_prof="$PROF_COPY"
+  if [ "$resume" = 1 ]; then
+    local cand=""
+    cand=$(find_verified_pack "$WORK/tmp/packs" "$rel")
+    if [ -n "$cand" ] && bb_ro cli pack verify --root "$ROOT" --release "$rel" --profile "$PROF_COPY" > "$WORK/pack/verify.log" 2>&1; then
+      pack_id=$cand
+      pack_reused=1
+      log "pack: reusing verified pack $pack_id in $WORK/tmp/packs/release=$rel/$pack_id (skipped pack build)"
+    elif [ -n "$real_packs" ] && [ "$real_packs" != "$WORK/tmp/packs" ]; then
+      cand=$(find_verified_pack "$real_packs" "$rel")
+      if [ -n "$cand" ] && bb_ro cli pack verify --root "$ROOT" --release "$rel" --profile "$REALPROF" > "$WORK/pack/verify-realprof.log" 2>&1; then
+        pack_id=$cand
+        pack_reused=1
+        pack_in_real=1
+        ex_prof="$REALPROF"
+        log "pack: reusing verified pack $pack_id in $real_packs/release=$rel/$pack_id (skipped pack build)"
+      fi
+    fi
+  fi
+  if [ "$pack_reused" = 0 ]; then
+    local punit="${UNIT_PREFIX}-pack" pack_model=()
+    [ "$RS_UNIT" = 1 ] || punit="${UNIT_PREFIX}-pack-$RS_UNIT"
+    [ -e "$LOGS/$punit.log" ] && fail "$LOGS/$punit.log exists: another unit's exit line could be read as $punit's"
+    [ -f "$PFAM" ] && pack_model=(--model "pfam-38.2=$PFAM")
+    bash "$TREE/scripts/pod_run.sh" --profile "$PROF_COPY" --image "$IMAGE" --digest "$DIGEST" --mem "$PACK_MEM" \
+      --threads "$PACK_JOBS" --bind /tmp/if2453 --bind "$ROOT:$ROOT:ro" "${ro_binds[@]}" --env "PYTHONPATH=$PYPATH" \
+      --log "$LOGS/$punit.log" "$punit" pack build --root "$ROOT" --release "$rel" "${pack_model[@]}" \
+      --profile "$PROF_COPY" --parts "$PACK_PARTS" --jobs "$PACK_JOBS" >> "$LOG" 2>&1
+    sleep 2
+    while :; do  # the watch's rule (A-14): its own exit line or a real inactive answer ends the wait, a failed answer not
+      unit_ended "$punit" "$LOGS"
+      rc=$?
+      [ "$rc" = 0 ] && break
+      watch_answer "$rc" "$punit"
+      sleep 5
+    done
+    rc=$(exit_of "$punit")
+    [ "$rc" = 0 ] || fail "pack build exited '$rc' (see $LOGS/$punit.log)"
+    bb_ro cli pack verify --root "$ROOT" --release "$rel" --profile "$PROF_COPY" > "$WORK/pack/verify.log" 2>&1 \
+      || fail "pack verify failed (see $WORK/pack/verify.log)"
+    pack_id=$(sed -n 's/.*pack \([0-9a-f]\{32\}\).*/\1/p' "$LOGS/$punit.log" | tail -n 1)
+    [ -n "$pack_id" ] || pack_id=$(find_verified_pack "$WORK/tmp/packs" "$rel")
+  fi
+  if [ "$ROOT" = "$REAL_ROOT" ] && [ -n "$real_packs" ] && [ "$real_packs" != "$WORK/tmp/packs" ] && [ -n "$pack_id" ]; then
+    local src_pack="$WORK/tmp/packs/release=$rel/$pack_id"
+    local dst_rel="$real_packs/release=$rel"
+    local dst_pack="$dst_rel/$pack_id"
+    if [ ! -d "$dst_pack" ] && [ -d "$src_pack" ]; then
+      mkdir -p "$dst_rel" || fail "mkdir $dst_rel"
+      local tmp_pack="$dst_rel/.$pack_id.tmp.$$"
+      rm -rf "$tmp_pack"
+      if ! cp -al "$src_pack" "$tmp_pack" 2> /dev/null; then
+        rm -rf "$tmp_pack"
+        cp -a "$src_pack" "$tmp_pack" || { rm -rf "$tmp_pack"; fail "copy pack $pack_id into $dst_rel"; }
+      fi
+      if [ ! -e "$dst_pack" ]; then
+        mv -n "$tmp_pack" "$dst_pack" || { rm -rf "$tmp_pack"; fail "mv pack $pack_id into $dst_pack"; }
+      fi
+      [ -e "$tmp_pack" ] && rm -rf "$tmp_pack"
+      log "pack: published $pack_id into $dst_pack"
+    fi
+    if [ -d "$dst_pack" ]; then
+      if [ "$pack_in_real" != 1 ]; then
+        bb_ro cli pack verify --root "$ROOT" --release "$rel" --profile "$REALPROF" > "$WORK/pack/verify-realprof.log" 2>&1 \
+          || fail "pack verify with $REALPROF failed (see $WORK/pack/verify-realprof.log)"
+      fi
+      bb_ro cli releases --root "$ROOT" --profile "$REALPROF" > "$WORK/after/releases.txt" 2>&1 \
+        || fail "bio-box releases with $REALPROF failed (see $WORK/after/releases.txt)"
+    fi
+  fi
 
   # 7. Worked examples release check
   rm -rf "$WORK/examples"
-  TREE=$TREE PROFILE=$PROF_COPY IMAGE=$IMAGE DIGEST=$DIGEST ROOT=$ROOT OUT=$WORK/examples \
+  TREE=$TREE PROFILE=$ex_prof IMAGE=$IMAGE DIGEST=$DIGEST ROOT=$ROOT OUT=$WORK/examples \
     UNIT="${UNIT_PREFIX}-ex" THREADS=$EX_THREADS PFAM=$PFAM \
     bash "$TREE/scripts/release_examples.sh" "$rel" > "$WORK/examples.log" 2>&1
   rc=$?
