@@ -11,7 +11,7 @@ What it asserts (each a line of `failed`, exit 1 when any):
    whole.
 2. `root_added.tsv`: every new file with its size and sha256 (read in 1 MiB blocks), for the durable copy.
 3. The stage's run records: no intent file, none over its CPU budget, the rate guard (`stage_est.py rates`, the
-   conf's accepted records included) with no step more than 20% over its estimate, and every step of the stage's
+   conf's accepted records included) with no step more than 50% over its estimate (DEC-64), and every step of the stage's
    depth recorded (`stage.stage_incomplete`, the release train's own check).
 4. Contigs and genes, in DuckDB with a memory cap and spilling (a stage of millions of contigs is never held in
    Python): the contigs `genome_input` lists are exactly those the stage stores and those another stage holds
@@ -209,7 +209,7 @@ def main() -> int:
 
     rates = est.rates_doc(conf, root, bprofile.load(a.profile), Path(a.objects), a.before_est, tmp / "rates")
     if rates.get("over_20pct"):
-        failed.append(f"rates over +20% (DEC-53): {rates['over_20pct']}")
+        failed.append(f"rates over +50% (DEC-64): {rates['over_20pct']}")
     if rates.get("not_judged_of_judged_size"):
         failed.append(f"records of judged size (24 CPU-minutes or more) that no estimate names: "
                       f"{rates['not_judged_of_judged_size']}")

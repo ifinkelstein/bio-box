@@ -51,13 +51,22 @@ while :; do
   for a in $after; do
     ad=$STAGES_HOME/${a,,}
     [ -e "$ad/backup/DONE" ] && continue
-    if ! systemctl --user is-active --quiet "${a,,}-queue"; then
-      bad=$(find "$ad" -mindepth 2 -maxdepth 2 \( -name FAILED -o -name REFUSED -o -name STOPPED \) 2> /dev/null \
-        | LC_ALL=C sort | head -n 1)
-      if [ -n "$bad" ]; then
-        say "STOPPED: stage $a, which $STAGE comes after, did not pass ($bad: $(head -c 300 "$bad")); starting nothing"
-        exit 3
-      fi
+    qstate=$(systemctl --user show -p ActiveState --value "${a,,}-queue" 2> /dev/null)
+    qrc=$?
+    if [ "$qrc" != 0 ] || [ -z "$qstate" ]; then
+      say "no answer from systemd about ${a,,}-queue; it counts as running"
+    else
+      case "$qstate" in
+        inactive|failed)
+          [ -e "$ad/backup/DONE" ] && continue
+          bad=$(find "$ad" -mindepth 2 -maxdepth 2 \( -name FAILED -o -name REFUSED -o -name STOPPED \) 2> /dev/null \
+            | LC_ALL=C sort | head -n 1)
+          if [ -n "$bad" ]; then
+            say "STOPPED: stage $a, which $STAGE comes after, did not pass ($bad: $(head -c 300 "$bad")); starting nothing"
+            exit 3
+          fi
+          ;;
+      esac
     fi
     waiting="$waiting $a"
   done

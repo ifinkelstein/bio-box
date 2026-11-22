@@ -50,7 +50,10 @@ exec "$@"
 NOOP = "#!/bin/sh\nexit 0\n"
 INACTIVE = """#!/bin/sh
 echo "systemctl $*" >> "$FAKE_LOG"
-case "$*" in *is-active*) exit 3 ;; esac
+case "$*" in
+  *is-active*) exit 3 ;;
+  *show*-p*ActiveState*) echo inactive; exit 0 ;;
+esac
 exit 0
 """
 SINGULARITY = """#!/bin/sh
@@ -926,7 +929,7 @@ def test_a14_a_rate_guard_that_does_not_exit_0_stops_the_unit_and_fails_the_run(
 def test_a14_a_rate_guard_over_20_percent_keeps_its_reason(tmp_path):
     w, drv, work = _watched(tmp_path)
     got = _go(w, drv, FAKE_FOREVER="1", FAKE_RATES_RC="3")
-    assert "rate guard" in got.stderr and ">20%" in got.stderr
+    assert "rate guard" in got.stderr and ">50%" in got.stderr and "DEC-64" in got.stderr
 
 
 @pytest.mark.parametrize("rc", ["1", "3", "2", "137"])
