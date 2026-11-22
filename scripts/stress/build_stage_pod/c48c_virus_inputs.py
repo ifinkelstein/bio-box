@@ -70,6 +70,7 @@ import sys
 import zipfile
 from collections import Counter
 from collections.abc import Iterable, Iterator
+from dataclasses import dataclass
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))  # make_inputs and c39_inputs beside this script
@@ -92,7 +93,7 @@ JGI_TERMS = ("JGI Data Utilization Policy (dataset marked Unrestricted on the JG
              "2026-11-18); held local, not redistributed (DEC-50, DEC-51)")
 IMGVR_SOURCE = {"source_name": "jgi_img_vr",
                 "source_release": "IMG_VR_2022-12-19_7.1 (IMG/VR v4.1) high-confidence; high-quality vOTU "
-                                  "representatives chosen by c48c_virus_inputs.py",
+                                  "representatives chosen by c48c_virus_inputs.py (DEC-65)",
                 "license": JGI_TERMS, "redistributable": False}
 INOVIRUS_SOURCE = {"source_name": "jgi_inovirus",
                    "source_release": "Custom_MPI-Inovirus Gb_files_inoviruses.zip (Roux et al. 2019, "
@@ -271,6 +272,146 @@ def imgvr_representatives(rows: Iterable[dict]) -> tuple[dict[str, dict], dict]:
                   "miuvig": {k.split(":", 1)[1]: n for k, n in sorted(stats.items())}}
 
 
+SEED = 20
+WINDOW = 10_000
+MAX_HITS = 1_000
+NEAR_IDENTITY = 0.9
+LONG_BOUND = 1_000
+LOW_PERIOD = 6
+LOW_TOP = 0.8
+TRIM_HEAD = ["source", "genome", "accession", "source_contig_uid", "contig_uid", "source_length", "repeat_length",
+             "bases_removed", "length"]
+
+
+@dataclass(frozen=True)
+class Ends:
+    n: int
+    exact: int = 0
+    near: int = 0
+    far: int = 0
+    near_len: int = 0
+    near_mm: int = 0
+    near_run: int = 0
+    period: int = 0
+    top: float = 0.0
+    n_bases: int = 0
+    capped: bool = False
+
+
+def _same(s: bytes, a: int, b: int, length: int) -> bool:
+    i, step = 0, 64
+    while i < length:
+        j = min(length, i + step)
+        if s[a + i:a + j] != s[b + i:b + j]:
+            return False
+        i, step = j, step * 8
+    return True
+
+
+def _mismatches(x: bytes, y: bytes) -> int:
+    return sum(1 for p, q in zip(x, y) if p != q)
+
+
+def _run(x: bytes, y: bytes) -> int:
+    k = 0
+    for p, q in zip(x, y):
+        if p != q:
+            break
+        k += 1
+    return k
+
+
+def _is_near(span: int, mm: int, run: int) -> bool:
+    return 1 - mm / span >= NEAR_IDENTITY or 2 * run >= span
+
+
+def _period(r: bytes) -> int:
+    for p in range(1, LOW_PERIOD + 1):
+        if len(r) > p and r[p:] == r[:-p]:
+            return p
+    return 0
+
+
+def ends(seq: bytes, *, window: int = WINDOW) -> Ends:
+    """DEC-65 terminal-repeat analysis of a sequence (matching c52_pl23.ends)."""
+    s = seq.upper()
+    n = len(s)
+    if n < 2 * SEED:
+        return Ends(n)
+    head, tail = s[:SEED], s[n - SEED:]
+    lo = n - n // 2
+    exact, tries, capped = 0, 0, False
+    p = s.find(head, lo)
+    while p != -1:
+        tries += 1
+        if tries > MAX_HITS:
+            capped = True
+            break
+        if _same(s, p, 0, n - p):
+            exact = n - p
+            break
+        p = s.find(head, p + 1)
+    found = []
+    p = s.find(head, max(lo, n - window))
+    k = 0
+    while p != -1 and not capped:
+        k += 1
+        if k > MAX_HITS:
+            capped = True
+            break
+        span = n - p
+        if span > exact and not _same(s, p, 0, span):
+            found.append((span, _mismatches(s[p:], s[:span]), _run(s[p:], s[:span])))
+        p = s.find(head, p + 1)
+    top_q = min(window, n // 2) - SEED
+    q = s.find(tail, 0, top_q + SEED) if top_q >= 0 else -1
+    k = 0
+    while q != -1 and not capped:
+        k += 1
+        if k > MAX_HITS:
+            capped = True
+            break
+        span = q + SEED
+        if span > exact and not _same(s, 0, n - span, span):
+            found.append((span, _mismatches(s[:span], s[n - span:]), _run(s[:span][::-1], s[n - span:][::-1])))
+        q = s.find(tail, q + 1, top_q + SEED)
+    near = [f for f in found if _is_near(*f)]
+    near_len, near_mm, near_run = max(near, key=lambda t: (t[0], -t[1])) if near else (0, 0, 0)
+    period, top, n_bases = 0, 0.0, 0
+    if exact:
+        r = s[:exact]
+        period = _period(r)
+        top = max(r.count(b) for b in (b"A", b"C", b"G", b"T")) / exact
+        n_bases = r.count(b"N")
+    return Ends(n, exact, len(near), len(found) - len(near), near_len, near_mm, near_run, period, round(top, 4),
+                n_bases, capped)
+
+
+def low_complexity(e: Ends) -> bool:
+    return e.exact > 0 and (e.n_bases > 0 or e.period > 0 or e.top >= LOW_TOP)
+
+
+def classify(e: Ends, long_bound: int = LONG_BOUND) -> str:
+    if e.capped:
+        return "unresolved"
+    if e.near:
+        return "partial"
+    if e.exact:
+        if low_complexity(e):
+            return "low_complexity"
+        if e.exact > long_bound:
+            return "long"
+        return "exact"
+    return "none"
+
+
+def trim(seq: bytes, k: int) -> bytes:
+    """The sequence without the second copy of its terminal repeat of k bases (its last k)."""
+    if not 0 < k <= len(seq) // 2:
+        raise Refused(f"a trim of {k} bases from a record of {len(seq)}")
+    return seq[:len(seq) - k]
+
+
 def has_terminal_repeat(seq: bytes, k: int = 20, window: int = 2000) -> bool:
     """Card C-39's test (`c39_inputs.has_terminal_repeat`): the first `k` bases found again in the last `window`."""
     s = seq.upper()
@@ -278,8 +419,13 @@ def has_terminal_repeat(seq: bytes, k: int = 20, window: int = 2000) -> bool:
 
 
 def is_circular(topology: str, seq: bytes) -> bool:
-    """Listed circular: a direct terminal repeat (IMG/VR) or a circular GenBank record whose repeat was trimmed."""
-    return topology in ("Direct terminal repeat", "circular") and not has_terminal_repeat(seq)
+    """DEC-65 circularity: GenBank `circular` is always circular (never trimmed); IMG/VR `Direct terminal repeat`
+    is circular for `exact` (trimmed) and `none` (untrimmed)."""
+    if topology == "circular":
+        return True
+    if topology == "Direct terminal repeat":
+        return classify(ends(seq)) in ("exact", "none")
+    return False
 
 
 # --- owners (DEC-26) ------------------------------------------------------------------------------------------------
@@ -313,6 +459,15 @@ def owners_of(uids: list[bytes], root: Path | None, root_stages: Iterable[str],
                                  "(SELECT contig_uid FROM v) ORDER BY 1").fetchall():
             out.setdefault(bytes(cu), s)
     for name, d in owner_inputs.items():
+        gj = Path(d) / "genomes.json"
+        if gj.is_file():
+            p = str(gj).replace("'", "''")
+            for (cu,) in con.execute(
+                    f"SELECT DISTINCT from_hex(u) FROM (SELECT unnest(contig_uids) AS u FROM read_json('{p}', "
+                    "format='array', columns={'contig_uids': 'VARCHAR[]'})) WHERE from_hex(u) IN "
+                    "(SELECT contig_uid FROM v) ORDER BY 1").fetchall():
+                out.setdefault(bytes(cu), name)
+            continue
         rec = Path(d) / "records.tsv"
         for (cu,) in con.execute(f"SELECT DISTINCT unhex(contig_uid) FROM read_csv({_sql_list([rec])}, delim='\t', "
                                  "header=true, quote='', all_varchar=true) WHERE unhex(contig_uid) IN "
@@ -345,8 +500,11 @@ def _imgvr(hc_zip: Path, work: Path, expected_md5: dict | None, rep: dict):
             _md5_check(rep["md5"], "seq_tsv", h.drain(), expected_md5)
         rep.update(stats)
         chosen = {r["UVIG"]: r for r in reps.values()}
-        parts: dict[str, list[tuple[bytes, int, int]]] = {}  # uvig -> (contig uid, length, record ordinal)
-        circ: dict[str, bool] = {}  # judged on a genome's first record; a second record (a bin) makes it linear
+        # uvig -> [(cu, staged_len, source_len, record_ordinal, dtr_class, src_cu, trimmed_k)]
+        parts: dict[str, list[tuple[bytes, int, int, int, str, bytes, int]]] = {}
+        circ: dict[str, bool] = {}  # DEC-65: single-contig DTR exact (trimmed) or none -> circular; else linear
+        trims: list[tuple] = []
+        dtr_classes: Counter = Counter()
         n_recs = n_fasta = 0
         with z.open(FNA) as raw, open(work / IMGVR_FASTA, "wb") as w:
             h = HashReader(raw)
@@ -356,25 +514,44 @@ def _imgvr(hc_zip: Path, work: Path, expected_md5: dict | None, rep: dict):
                 if r is None:
                     continue
                 uvig = _uvig(header)
-                w.write(b"\n".join(fasta.format_record(r.header, r.seq, r.line_width)) + b"\n")
-                cu = ids.contig_uid(r.seq)
-                if uvig in parts:
-                    circ[uvig] = False
+                src_len = len(r.seq)
+                src_cu = ids.contig_uid(r.seq)
+                is_single = (uvig not in parts) and (src_len == int(chosen[uvig]["Length"]))
+                seq, trimmed_k, dtr_cls = r.seq, 0, ""
+                if is_single and chosen[uvig]["Topology"] == "Direct terminal repeat":
+                    e = ends(r.seq)
+                    dtr_cls = classify(e)
+                    dtr_classes[dtr_cls] += 1
+                    if dtr_cls == "exact":
+                        trimmed_k = e.exact
+                        seq = trim(r.seq, trimmed_k)
+                        circ[uvig] = True
+                    elif dtr_cls == "none":
+                        circ[uvig] = True
+                    else:
+                        circ[uvig] = False
                 else:
-                    circ[uvig] = is_circular(chosen[uvig]["Topology"], r.seq)
-                parts.setdefault(uvig, []).append((cu, len(r.seq), n_recs))
+                    circ[uvig] = False
+                w.write(b"\n".join(fasta.format_record(r.header, seq, r.line_width)) + b"\n")
+                cu = ids.contig_uid(seq) if trimmed_k else src_cu
+                if trimmed_k:
+                    trims.append(("imgvr", uvig, r.accession, src_cu.hex(), cu.hex(), src_len, trimmed_k, trimmed_k,
+                                  len(seq)))
+                parts.setdefault(uvig, []).append((cu, len(seq), src_len, n_recs, dtr_cls, src_cu, trimmed_k))
                 n_recs += 1
             gz.close()
             _md5_check(rep["md5"], "fna", h.drain(), expected_md5)
         rep["imgvr_fasta_records"] = n_fasta
+        rep["imgvr_dtr_classes"] = dict(sorted(dtr_classes.items()))
     missing = sorted(set(chosen) - set(parts))
     if missing:
         raise Refused(f"{len(missing)} representatives have no FASTA record; first {missing[0]}")
-    bad = [u for u, p in parts.items() if sum(n for _, n, _ in p) != int(chosen[u]["Length"])]
+    bad = [u for u, p in parts.items() if sum(sn for _, _, sn, _, _, _, _ in p) != int(chosen[u]["Length"])]
     if bad:
         raise Refused(f"{len(bad)} representatives' records do not sum to the table's Length; first {bad[0]} "
-                      f"({sum(n for _, n, _ in parts[bad[0]])} against {chosen[bad[0]]['Length']})")
-    return chosen, parts, circ
+                      f"({sum(sn for _, _, sn, _, _, _, _ in parts[bad[0]])} against {chosen[bad[0]]['Length']})")
+    trims.sort(key=lambda t: (t[0], t[1], t[2]))
+    return chosen, parts, circ, trims
 
 
 def _uvig(header: str) -> str:
@@ -403,27 +580,28 @@ def _inovirus(meta_zip: Path, work: Path, expected_md5: dict | None, rep: dict) 
                     w.write(b"\n".join(fasta.format_record(header, r["seq"], LINE)) + b"\n")
                     out.append({"locus": r["locus"], "group": group, "topology": r["topology"],
                                 "seq_len": len(r["seq"]), "cu": ids.contig_uid(r["seq"]),
-                                "circular": is_circular(r["topology"], r["seq"])})
+                                "circular": r["topology"] == "circular"})
     return out
 
 
 def stage_v2(hc_zip: Path, meta_zip: Path, out: Path, *, root: Path | None, root_stages: Iterable[str],
              owner_inputs: dict[str, Path], expected_md5: dict[str, str] | None = MD5,
-             retrieved_imgvr: str, retrieved_inovirus: str) -> dict:
+             retrieved_imgvr: str, retrieved_inovirus: str, final_dir: Path | None = None) -> dict:
     out = Path(out)
     if out.exists():
         raise Refused(f"{out} exists")
     work = out.with_name(f"{out.name}.tmp")
     shutil.rmtree(work, ignore_errors=True)
     work.mkdir(parents=True)
+    obj_dir = Path(final_dir) if final_dir is not None else out
     try:
-        rep = _stage_v2(hc_zip, meta_zip, out, work, root, list(root_stages), owner_inputs, expected_md5,
+        rep = _stage_v2(hc_zip, meta_zip, obj_dir, work, root, list(root_stages), owner_inputs, expected_md5,
                         retrieved_imgvr, retrieved_inovirus)
     except BaseException:
         shutil.rmtree(work, ignore_errors=True)
         raise
     work.rename(out)
-    names = ["genomes.json", "objects.json", "records.tsv", "repeated_records.tsv", "shared_records.tsv",
+    names = ["genomes.json", "objects.json", "records.tsv", "repeated_records.tsv", "shared_records.tsv", "trims.tsv",
              IMGVR_FASTA, INOVIRUS_FASTA]
     rep["sha256"] = {n: ids.sha256_file(out / n).hex() for n in names}
     rep["bytes"] = {n: (out / n).stat().st_size for n in names}
@@ -433,31 +611,33 @@ def stage_v2(hc_zip: Path, meta_zip: Path, out: Path, *, root: Path | None, root
 def _stage_v2(hc_zip, meta_zip, out, work, root, root_stages, owner_inputs, expected_md5, retrieved_imgvr,
               retrieved_inovirus) -> dict:
     rep: dict = {"md5": {}}
-    chosen, parts, circ = _imgvr(Path(hc_zip), work, expected_md5, rep)
+    chosen, parts, circ, trims = _imgvr(Path(hc_zip), work, expected_md5, rep)
     ino = _inovirus(Path(meta_zip), work, expected_md5, rep)
-    owners = owners_of([cu for p in parts.values() for cu, _, _ in p] + [x["cu"] for x in ino], root, root_stages,
-                       owner_inputs)
+    owners = owners_of([cu for p in parts.values() for cu, _, _, _, _, _, _ in p] + [x["cu"] for x in ino],
+                       root, root_stages, owner_inputs)
 
     listing = make_inputs.Listing()
     genomes, repeated, shared, rows = [], [], [], []
     first_of: dict[bytes, str] = {}  # genome uid -> the genome that listed it
     ordinal = 0
-    order = sorted(parts, key=lambda u: parts[u][0][2])  # FASTA order of each genome's first record
+    order = sorted(parts, key=lambda u: parts[u][0][3])  # FASTA order of each genome's first record
     for uvig in order:
         row = chosen[uvig]
-        uids = [cu for cu, _, _ in parts[uvig]]
-        for cu, n, _ in parts[uvig]:
+        uids = [cu for cu, _, _, _, _, _, _ in parts[uvig]]
+        for cu, n, src_n, _, dtr_cls, src_cu, trimmed_k in parts[uvig]:
             rows.append((ordinal, "imgvr", uvig, row["vOTU"], cu.hex(), n, row["MIUViG quality"],
                          row["Estimated completeness"], row["Estimated contamination"], row["Topology"], 11,
                          str(circ[uvig]).lower(), row["Ecosystem classification"], row["Host prediction method"],
-                         row["Host taxonomy prediction"], row["Sequence origin (doi)"]))
+                         row["Host taxonomy prediction"], row["Sequence origin (doi)"],
+                         dtr_cls, src_cu.hex(), src_n, trimmed_k))
             if cu in owners:
                 shared.append((ordinal, uvig, cu.hex(), owners[cu]))
             ordinal += 1
         _add(listing, genomes, repeated, first_of, uids, circ[uvig], uvig, ordinal - len(uids))
     for x in ino:
         rows.append((ordinal, "inovirus", x["locus"], x["group"], x["cu"].hex(), x["seq_len"], "", "", "",
-                     x["topology"], 11, str(x["circular"]).lower(), "", "", "", "Inoviruses (10.1038/s41564-019-0510-x)"))
+                     x["topology"], 11, str(x["circular"]).lower(), "", "", "",
+                     "Inoviruses (10.1038/s41564-019-0510-x)", "", x["cu"].hex(), x["seq_len"], 0))
         if x["cu"] in owners:
             shared.append((ordinal, x["locus"], x["cu"].hex(), owners[x["cu"]]))
         _add(listing, genomes, repeated, first_of, [x["cu"]], x["circular"], x["locus"], ordinal)
@@ -466,10 +646,11 @@ def _stage_v2(hc_zip, meta_zip, out, work, root, root_stages, owner_inputs, expe
     make_inputs._write_tsv(work / "records.tsv", [
         "ordinal", "source", "genome", "votu", "contig_uid", "length", "miuvig_quality", "completeness",
         "contamination", "topology", "genetic_code", "circular", "ecosystem", "host_method", "host_taxonomy",
-        "origin"], rows)
+        "origin", "dtr_class", "source_contig_uid", "source_length", "trimmed_bases"], rows)
     make_inputs._write_tsv(work / "repeated_records.tsv", ["ordinal", "genome", "genome_uid", "first_genome"],
                            repeated)
     make_inputs._write_tsv(work / "shared_records.tsv", ["ordinal", "genome", "contig_uid", "owner_stage"], shared)
+    make_inputs._write_tsv(work / "trims.tsv", TRIM_HEAD, trims)
     objects = [{"path": str(out / IMGVR_FASTA), **IMGVR_SOURCE, "retrieved_at": retrieved_imgvr},
                {"path": str(out / INOVIRUS_FASTA), **INOVIRUS_SOURCE, "retrieved_at": retrieved_inovirus}]
     (work / "objects.json").write_text(json.dumps(objects, indent=1))
@@ -482,7 +663,10 @@ def _stage_v2(hc_zip, meta_zip, out, work, root, root_stages, owner_inputs, expe
     rep.update({
         "imgvr_records": sum(len(p) for p in parts.values()), "imgvr_genomes": len(parts),
         "imgvr_multi_record_genomes": sum(1 for p in parts.values() if len(p) > 1),
-        "imgvr_bases": sum(n for p in parts.values() for _, n, _ in p),
+        "imgvr_source_bases": sum(sn for p in parts.values() for _, _, sn, _, _, _, _ in p),
+        "imgvr_bases": sum(n for p in parts.values() for _, n, _, _, _, _, _ in p),
+        "imgvr_trims": len(trims),
+        "imgvr_trimmed_bases": sum(t[7] for t in trims),
         "imgvr_topology": dict(Counter(chosen[u]["Topology"] for u in parts).most_common()),
         "imgvr_dtr_genomes": sum(1 for u in parts if chosen[u]["Topology"] == "Direct terminal repeat"),
         "imgvr_circular_genomes": sum(1 for u in parts if circ[u]),
@@ -634,6 +818,7 @@ def main(argv: list[str]) -> int:
     try:
         argv, root = make_inputs._option(argv, "--root")
         argv, stages = make_inputs._option(argv, "--root-stages")
+        argv, final_dir = make_inputs._option(argv, "--final-dir")
         owner_inputs = {}
         while "--owner-inputs" in argv:
             argv, spec = make_inputs._option(argv, "--owner-inputs")
@@ -655,7 +840,8 @@ def main(argv: list[str]) -> int:
             rep = stage_gv1(Path(argv[1]), Path(argv[2]), retrieved="2026-11-19T10:42:14Z", **common)
         else:
             rep = stage_v2(Path(argv[1]), Path(argv[2]), Path(argv[3]), retrieved_imgvr="2026-11-18T23:15:37Z",
-                           retrieved_inovirus="2026-11-18T23:16:08Z", **common)
+                           retrieved_inovirus="2026-11-18T23:16:08Z",
+                           final_dir=None if final_dir is None else Path(final_dir), **common)
     except Refused as e:
         print(f"c48c_virus_inputs.py: refused: {e}", file=sys.stderr)
         return 2

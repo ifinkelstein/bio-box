@@ -69,7 +69,7 @@ The order that follows (the orchestrator's, 2026-11-20, for the PI to change):
 | UHGV v1.0 vOTU representatives (168,536 genomes; 168,358 contigs stored, 5.18 Gbp, 7,364,696 genes) | built 2026-11-20; in no release yet | `V1` |
 | GTDB R226 complete genomes, second selection (13,477 genomes, 56.18 Gbp) | `C5` built 2026-11-20 (2,029 genomes, 9.11 Gbp stored, fully scanned; in release `r26.11.2`); `C1` to `C4` and `C6` (46.79 Gbp) held since 2026-11-21 for the PI's decision on how their Pfam is made (STATUS open item 21) | `C1` to `C6` |
 | Plasmids from metagenomes (Yu 2024, PlasmidScope, IMG/PR; 859,036 new contigs) | inputs staged | `PL2` |
-| IMG/VR v4.1 high-confidence vOTU representatives (224,520) and Inovirus (5,964 records): 230,098 genomes, 261,626 contigs, 9.34 Gbp, of which 248,864 contigs and 8.36 Gbp are new (*measured*, card C-48c part 2) | inputs staged | `V2` |
+| IMG/VR v4.1 high-confidence vOTU representatives (224,520) and Inovirus (5,964 records): 230,050 genomes, 261,578 contigs, 9.33 Gbp (58,627 circular; 58,193 IMG/VR DTRs trimmed by 6.50 Mbp), of which 243,466 contigs and 8.20 Gbp are new after `G1` and `SPX1` (*measured*, card C-53, DEC-65) | inputs staged | `V2` |
 | GVMAGs V2: 18,499 genomes, 281,804 contigs, 4.32 Gbp, of which 264,134 contigs and 3.89 Gbp are new after `V2` (*measured*, card C-48c part 3) | inputs staged | `GV1` |
 | GlobDB r226 non-GTDB archaea (7,139 genomes) | inputs staged | `G1` |
 | SPIRE v1 unbinned contigs, tranche 1: 304 aquatic and terrestrial samples, 2,829,368 contigs of 5 kb and more, 35.885 Gbp (*measured*, card C-48e part 1); to be built at depth `called` after `G1`, which owns the 12,052 contigs they share | inputs staged | `SPX1` |

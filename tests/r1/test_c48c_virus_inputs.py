@@ -117,10 +117,13 @@ def test_imgvr_representative_rule_refuses_rows_it_cannot_judge(bad):
 
 def test_circular_only_for_a_terminal_repeat_already_trimmed():
     unit = seq_of(11, 1200)  # random bases: the first 20 are not found again near the end
-    with_repeat = unit + unit[:25]  # the first 20 bases found again at the end
+    with_repeat = unit + unit[:25]  # DEC-65: exact 20..1000 bp DTR is trimmed and staged circular
+    with_long_repeat = unit + unit[:1001]  # DEC-65: > 1000 bp DTR stays linear and untrimmed
     assert vi.is_circular("Direct terminal repeat", unit.encode()) is True
-    assert vi.is_circular("Direct terminal repeat", with_repeat.encode()) is False
+    assert vi.is_circular("Direct terminal repeat", with_repeat.encode()) is True
+    assert vi.is_circular("Direct terminal repeat", with_long_repeat.encode()) is False
     assert vi.is_circular("circular", unit.encode()) is True  # GenBank's word for the Inovirus records
+    assert vi.is_circular("circular", with_repeat.encode()) is True  # DEC-65: Inovirus never trimmed, always circular
     for topo in ("Linear", "Provirus", "Inverted terminal repeat", "GVMAG", "linear", ""):
         assert vi.is_circular(topo, unit.encode()) is False
 
@@ -214,10 +217,10 @@ def build_world(tmp: Path):
     (v1 / "records.tsv").write_text("ordinal\tgenome\tcontig_uid\tlength\n" + f"0\tuhgv-x\t{cuid(seq_of(5, 5000))}\t5000\n")
     md5 = {"seq_tsv": hashlib.md5(tsv.encode()).hexdigest(), "fna": hashlib.md5(fna_gz).hexdigest()}
     want = {
-        "genomes": [[cuid(seqs["IMGVR_UViG_1_000001"])], [cuid(seqs["IMGVR_UViG_2_000001"])],
+        "genomes": [[cuid(seqs["IMGVR_UViG_1_000001"])], [cuid(seq_of(3, 4000))],  # DEC-65: 30 bp exact DTR trimmed
                     [cuid(seqs["IMGVR_UViG_4_000001"])], [cuid(p) for p in gv_parts],
                     [cuid(seq_of(9, 7000))], [cuid(seq_of(8, 6000))]],
-        "circular": [cuid(seqs["IMGVR_UViG_1_000001"]), cuid(seq_of(8, 6000))],
+        "circular": [cuid(seqs["IMGVR_UViG_1_000001"]), cuid(seq_of(3, 4000)), cuid(seq_of(8, 6000))],
         "shared": [cuid(seqs["IMGVR_UViG_4_000001"])],
         "repeated": ["Sp_c"],
         "fasta_records": ["IMGVR_UViG_1_000001|1|2|1-3000", "IMGVR_UViG_2_000001|1|2|1-4030",

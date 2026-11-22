@@ -468,7 +468,8 @@ def test_gv1_comes_after_v2_judges_its_gene_calling_against_the_notes_figure_and
     c = est.read_conf(STAGES / "GV1.conf", "GV1", tree=REPO)
     assert c.after == ("V2",)
     assert c.judge["genecall"][0] == 236.0
-    assert c.expect["V2"][0] == 17664
+    assert c.expect["V2"][0] == 17649
+    assert c.expect["SPX1"][0] == 3
 
 
 @pytest.mark.parametrize("extra,why", [

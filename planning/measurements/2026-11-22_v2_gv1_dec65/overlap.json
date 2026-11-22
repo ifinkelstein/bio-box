@@ -1,0 +1,242 @@
+{
+ "GV1": {
+  "adds_bases": 3892682253,
+  "adds_contigs": 264146,
+  "bases": 4316061173,
+  "build_order_held_bases": 423378920,
+  "build_order_held_by": {
+   "H1": 6,
+   "SPX1": 3,
+   "V2": 17649
+  },
+  "build_order_held_by_bases": {
+   "H1": 2242617,
+   "SPX1": 29685,
+   "V2": 421106618
+  },
+  "build_order_held_contigs": 17658,
+  "contigs": 281804,
+  "root_11_held_bases": 2242617,
+  "root_11_held_by": {
+   "H1": 6
+  },
+  "root_11_held_by_bases": {
+   "H1": 2242617
+  },
+  "root_11_held_contigs": 6
+ },
+ "V2": {
+  "adds_bases": 8199089073,
+  "adds_contigs": 243466,
+  "bases": 9331696850,
+  "build_order_held_bases": 1132607777,
+  "build_order_held_by": {
+   "G1": 8,
+   "H1": 1136,
+   "P2": 3,
+   "P3": 5,
+   "P4": 10,
+   "P5": 2,
+   "PL1": 68,
+   "S1": 70,
+   "SPX1": 7,
+   "V1": 16803
+  },
+  "build_order_held_by_bases": {
+   "G1": 297036,
+   "H1": 317660480,
+   "P2": 147760,
+   "P3": 368047,
+   "P4": 819477,
+   "P5": 239842,
+   "PL1": 4929038,
+   "S1": 1431011,
+   "SPX1": 198779,
+   "V1": 806516307
+  },
+  "build_order_held_contigs": 18112,
+  "contigs": 261578,
+  "root_11_held_bases": 1132111962,
+  "root_11_held_by": {
+   "H1": 1136,
+   "P2": 3,
+   "P3": 5,
+   "P4": 10,
+   "P5": 2,
+   "PL1": 68,
+   "S1": 70,
+   "V1": 16803
+  },
+  "root_11_held_by_bases": {
+   "H1": 317660480,
+   "P2": 147760,
+   "P3": 368047,
+   "P4": 819477,
+   "P5": 239842,
+   "PL1": 4929038,
+   "S1": 1431011,
+   "V1": 806516307
+  },
+  "root_11_held_contigs": 18097
+ },
+ "V2_imgvr": {
+  "adds_bases": 8152931748,
+  "adds_contigs": 237957,
+  "bases": 9285218726,
+  "build_order_held_bases": 1132286978,
+  "build_order_held_by": {
+   "G1": 8,
+   "H1": 1136,
+   "P2": 3,
+   "P3": 5,
+   "P4": 10,
+   "P5": 2,
+   "PL1": 68,
+   "S1": 27,
+   "SPX1": 7,
+   "V1": 16803
+  },
+  "build_order_held_by_bases": {
+   "G1": 297036,
+   "H1": 317660480,
+   "P2": 147760,
+   "P3": 368047,
+   "P4": 819477,
+   "P5": 239842,
+   "PL1": 4929038,
+   "S1": 1110212,
+   "SPX1": 198779,
+   "V1": 806516307
+  },
+  "build_order_held_contigs": 18069,
+  "contigs": 256026,
+  "root_11_held_bases": 1131791163,
+  "root_11_held_by": {
+   "H1": 1136,
+   "P2": 3,
+   "P3": 5,
+   "P4": 10,
+   "P5": 2,
+   "PL1": 68,
+   "S1": 27,
+   "V1": 16803
+  },
+  "root_11_held_by_bases": {
+   "H1": 317660480,
+   "P2": 147760,
+   "P3": 368047,
+   "P4": 819477,
+   "P5": 239842,
+   "PL1": 4929038,
+   "S1": 1110212,
+   "V1": 806516307
+  },
+  "root_11_held_contigs": 18054
+ },
+ "V2_inovirus": {
+  "adds_bases": 48864483,
+  "adds_contigs": 5915,
+  "bases": 49185282,
+  "build_order_held_bases": 320799,
+  "build_order_held_by": {
+   "S1": 43
+  },
+  "build_order_held_by_bases": {
+   "S1": 320799
+  },
+  "build_order_held_contigs": 43,
+  "contigs": 5958,
+  "root_11_held_bases": 320799,
+  "root_11_held_by": {
+   "S1": 43
+  },
+  "root_11_held_by_bases": {
+   "S1": 320799
+  },
+  "root_11_held_contigs": 43
+ },
+ "V2_source_bytes": {
+  "adds_bases": 8363831325,
+  "adds_contigs": 248848,
+  "bases": 9338542974,
+  "build_order_held_bases": 974711649,
+  "build_order_held_by": {
+   "G1": 9,
+   "H1": 1677,
+   "P2": 3,
+   "P3": 5,
+   "P4": 10,
+   "P5": 2,
+   "PL1": 68,
+   "S1": 64,
+   "SPX1": 7,
+   "V1": 10933
+  },
+  "build_order_held_by_bases": {
+   "G1": 340785,
+   "H1": 469852171,
+   "P2": 147760,
+   "P3": 368047,
+   "P4": 819477,
+   "P5": 239842,
+   "PL1": 4929038,
+   "S1": 1249973,
+   "SPX1": 198779,
+   "V1": 496565777
+  },
+  "build_order_held_contigs": 12778,
+  "contigs": 261626,
+  "root_11_held_bases": 974172085,
+  "root_11_held_by": {
+   "H1": 1677,
+   "P2": 3,
+   "P3": 5,
+   "P4": 10,
+   "P5": 2,
+   "PL1": 68,
+   "S1": 64,
+   "V1": 10933
+  },
+  "root_11_held_by_bases": {
+   "H1": 469852171,
+   "P2": 147760,
+   "P3": 368047,
+   "P4": 819477,
+   "P5": 239842,
+   "PL1": 4929038,
+   "S1": 1249973,
+   "V1": 496565777
+  },
+  "root_11_held_contigs": 12762
+ },
+ "build_order": [
+  "S1",
+  "P1",
+  "P2",
+  "P3",
+  "P4",
+  "P5",
+  "P6",
+  "H1",
+  "PL1",
+  "C5",
+  "V1",
+  "G1",
+  "SPX1",
+  "V2",
+  "GV1"
+ ],
+ "root_stages": [
+  "S1",
+  "P1",
+  "P2",
+  "P3",
+  "P4",
+  "P5",
+  "P6",
+  "H1",
+  "PL1",
+  "C5",
+  "V1"
+ ]
+}
