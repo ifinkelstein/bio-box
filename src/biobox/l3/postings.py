@@ -69,11 +69,16 @@ from biobox.l3.tokens import (
     _scan,
     _sql_str,
     _tape_files,
+    n_ranges,
     tape_version_of,
 )
 from biobox.registry.schemas import table
 
 EST_POSTING_ROW = 36  # zstd bytes per posting row, measured 35.74 (rL.2, pod wilkcomp02, 2026-11-10, scripts/stress/postings_bytes.py; the earlier estimate was 20), rounded up to an int; cuts parts, picks width
+_ROUTE_OPEN_FILES = 64  # max Parquet writers open at once when routing `_family_run` ranges (stays well under RLIMIT_NOFILE=1024; card B-62)
+_ROUTE_HELD_ROWS = 262_144  # rows buffered across open writers during routing; bounds Python memory
+_RUN_MAX_ROWS = 50_000_000  # rows per coalesced run/canon Parquet file in `_explode_runs` (~400 row groups; card B-62)
+_MAX_READ_FILES = 64  # max Parquet files handed to one DuckDB `read_parquet([...])` call (card B-62)
 _LISTS = ("feature_uids", "start_bps", "end_bps", "strands")
 _TOKENS = tuple(f"{lvl}_tokens" for lvl in LEVELS)
 _FAMILY, _CLUSTERS = "family_tokens", tuple(c for c in _TOKENS if c != "family_tokens")
@@ -160,47 +165,100 @@ class _TapeCursor:
 
 def _explode_runs(tape_files: list[Path], tok_files: list[Path], spec, out: Path
                   ) -> tuple[list[Path], int, list[Path]]:
-    """The cluster postings, unsorted, as flat Parquet runs under `out`, one per tape-token row group, and the
-    canonical families of the slots (contig, ordinal, token) as runs beside them; returns the posting runs,
-    their row count and the canonical runs (cards B-29, B-21).
+    """The cluster postings, unsorted, as flat multi-row-group Parquet runs under `out`, and the
+    canonical families of the slots (contig, ordinal, token) as coalesced runs beside them; returns
+    the posting runs, their row count and the canonical runs (cards B-29, B-21, B-62).
 
     The tape tokens (sorted by `contig_uid` across their parts) are read one row group at a time; each
     tape file is a cursor in `contig_uid` order, so the tape rows of a token row group are the rows up to
     its last contig in every tape file, and each file is read once. A token row group holds at most
     131,072 slots (AGENTS §4.6), so only that and one row group per tape file are held at a time.
+    Exploded batches are coalesced into multi-row-group Parquet files of at most `_RUN_MAX_ROWS` rows
+    so the file count stays small and O(1) descriptors are held open (card B-62).
     Called after `_check`; tapes and tokens that still do not pair up are a RuntimeError.
     """
     out.mkdir(parents=True)
     cursors = [_TapeCursor(f) for f in tape_files]
     runs, n, canons = [], 0, []
-    for f in tok_files:
-        pf = pq.ParquetFile(f)
-        for i in range(pf.metadata.num_row_groups):
-            k = pf.read_row_group(i, columns=list(_TOK_COLS)).select(list(_TOK_COLS)).cast(_TOK_SCHEMA)
-            if not k.num_rows:
-                continue
-            ku = k.column("contig_uid").to_pylist()
-            pieces = [p for c in cursors for p in c.through(ku[-1])]
-            t = pa.concat_tables(pieces) if pieces else _TAPE_SCHEMA.empty_table()
-            tu = t.column("contig_uid").to_pylist()
-            order = sorted(range(len(tu)), key=tu.__getitem__)
-            if order != list(range(len(tu))):
-                t, tu = t.take(pa.array(order, pa.int64())), [tu[j] for j in order]
-            if tu != ku:
-                at = next((a for a, b in zip(tu, ku) if a != b), max(tu, ku, key=len)[min(len(tu), len(ku))])
-                raise RuntimeError(f"contig {at.hex()}: tapes and tape tokens do not pair up in {f.name}, row group {i}")
-            posts, canon = _explode(t, k, spec)
-            n += posts.num_rows
-            if posts.num_rows:
-                runs.append(out / f"run-{len(runs):06d}.parquet")
-                pq.write_table(posts, runs[-1], compression="zstd", compression_level=1)
-            if canon.num_rows:
-                canons.append(out / f"canon-{len(canons):06d}.parquet")
-                pq.write_table(canon, canons[-1], compression="zstd", compression_level=1)
-    left = next((u for c in cursors if (u := c.first()) is not None), None)
-    if left is not None:
-        raise RuntimeError(f"contig {left.hex()}: a tape without tape tokens")
+    run_w = canon_w = None
+    run_rows = canon_rows = 0
+    try:
+        for f in tok_files:
+            pf = pq.ParquetFile(f)
+            for i in range(pf.metadata.num_row_groups):
+                k = pf.read_row_group(i, columns=list(_TOK_COLS)).select(list(_TOK_COLS)).cast(_TOK_SCHEMA)
+                if not k.num_rows:
+                    continue
+                ku = k.column("contig_uid").to_pylist()
+                pieces = [p for c in cursors for p in c.through(ku[-1])]
+                t = pa.concat_tables(pieces) if pieces else _TAPE_SCHEMA.empty_table()
+                tu = t.column("contig_uid").to_pylist()
+                order = sorted(range(len(tu)), key=tu.__getitem__)
+                if order != list(range(len(tu))):
+                    t, tu = t.take(pa.array(order, pa.int64())), [tu[j] for j in order]
+                if tu != ku:
+                    at = next((a for a, b in zip(tu, ku) if a != b), max(tu, ku, key=len)[min(len(tu), len(ku))])
+                    raise RuntimeError(f"contig {at.hex()}: tapes and tape tokens do not pair up in {f.name}, row group {i}")
+                posts, canon = _explode(t, k, spec)
+                n += posts.num_rows
+                if posts.num_rows:
+                    if run_w is None or run_rows >= _RUN_MAX_ROWS:
+                        if run_w is not None:
+                            run_w.close()
+                        p = out / f"run-{len(runs):06d}.parquet"
+                        runs.append(p)
+                        run_w = pq.ParquetWriter(p, spec.schema, compression="zstd", compression_level=1)
+                        run_rows = 0
+                    run_w.write_table(posts, row_group_size=io.ROW_GROUP_ROWS)
+                    run_rows += posts.num_rows
+                if canon.num_rows:
+                    if canon_w is None or canon_rows >= _RUN_MAX_ROWS:
+                        if canon_w is not None:
+                            canon_w.close()
+                        p = out / f"canon-{len(canons):06d}.parquet"
+                        canons.append(p)
+                        canon_w = pq.ParquetWriter(p, _CANON_SCHEMA, compression="zstd", compression_level=1)
+                        canon_rows = 0
+                    canon_w.write_table(canon, row_group_size=io.ROW_GROUP_ROWS)
+                    canon_rows += canon.num_rows
+        left = next((u for c in cursors if (u := c.first()) is not None), None)
+        if left is not None:
+            raise RuntimeError(f"contig {left.hex()}: a tape without tape tokens")
+    finally:
+        if run_w is not None:
+            run_w.close()
+        if canon_w is not None:
+            canon_w.close()
     return runs, n, canons
+
+
+def _coalesce_parquet(files: list[Path], schema: pa.Schema, out_dir: Path, prefix: str,
+                      max_files: int = _MAX_READ_FILES) -> list[Path]:
+    """Ensure `files` has at most `max_files` Parquet files by streaming groups into multi-row-group files
+    (at most 2 descriptors open at once), removing consumed inputs (card B-62)."""
+    if len(files) <= max_files:
+        return files
+    out_dir.mkdir(parents=True, exist_ok=True)
+    group_size = (len(files) + max_files - 1) // max_files
+    merged: list[Path] = []
+    for idx, lo in enumerate(range(0, len(files), group_size)):
+        chunk = files[lo:lo + group_size]
+        if len(chunk) == 1:
+            merged.append(chunk[0])
+            continue
+        dst = out_dir / f"{prefix}-{idx:06d}.parquet"
+        w = pq.ParquetWriter(dst, schema, compression="zstd", compression_level=1)
+        try:
+            for src in chunk:
+                pf = pq.ParquetFile(src)
+                for rg in range(pf.metadata.num_row_groups):
+                    w.write_table(pf.read_row_group(rg))
+                del pf
+                src.unlink()
+        finally:
+            w.close()
+        merged.append(dst)
+    return merged
 
 
 def _explode(t: pa.Table, k: pa.Table, spec) -> tuple[pa.Table, pa.Table]:
@@ -294,7 +352,7 @@ def run(root: Path, release: str, stages: list[str], gene_call_version: str = GE
         con.execute(f"CREATE VIEW toks AS SELECT * FROM {tok_src}")
         _check(con)
         fam_run = scratch / "family.parquet"
-        n_fam = _family_run(con, root, release, stages, dict_files, spec, fam_run)
+        n_fam = _family_run(con, root, release, stages, dict_files, spec, fam_run, memory_limit, scratch)
         # rows per level: one family row per included domain on a slot; the non-null cluster tokens (every token
         # row has a tape of the same length, by _check)
         counts = con.execute("SELECT " + ", ".join(
@@ -306,7 +364,11 @@ def run(root: Path, release: str, stages: list[str], gene_call_version: str = GE
         runs, exploded, canons = _explode_runs(tape_files, tok_files, spec, scratch / "runs")
         if exploded != n_rows - n_fam:
             raise RuntimeError(f"token_postings: exploded {exploded} rows, the tape tokens hold {n_rows - n_fam}")
+        canons = _coalesce_parquet(canons, _CANON_SCHEMA, scratch / "merged", "canon",
+                                   max_files=max(1, _MAX_READ_FILES - (1 if n_fam else 0)))
         _check_canonical(con, canons, fam_run if n_fam else None)
+        runs = _coalesce_parquet(runs, spec.schema, scratch / "merged", "run",
+                                 max_files=max(1, _MAX_READ_FILES - (1 if n_fam else 0)))
         runs += [fam_run] if n_fam else []
         per_part = max(1, max_file_bytes // EST_POSTING_ROW)  # layout.cut on rows of equal estimated size
         # the flat runs, sorted by (bucket, sort key) in one statement: DuckDB's sort spills
@@ -338,39 +400,51 @@ def run(root: Path, release: str, stages: list[str], gene_call_version: str = GE
     return {"rows": n_rows, "rows_by_level": by_level, "buckets": n_buckets, "files": n_files, "tape_version": tv}
 
 
-def _family_run(con, root: Path, release: str, stages: list[str], dict_files: list[Path], spec, path: Path) -> int:
-    """Write the family postings, unsorted, to the flat run `path` and return their count (card B-21).
+def _route(con, sql: str, paths: list[Path], open_files: int = _ROUTE_OPEN_FILES) -> None:
+    """Stream `sql` into `paths` by its `_r` column (without `_r`), opening at most `open_files`
+    Parquet writers at once and holding at most `_ROUTE_HELD_ROWS` rows in Python (card B-62)."""
+    for lo in range(0, len(paths), open_files):
+        group = paths[lo:lo + open_files]
+        reader = con.sql(sql).to_arrow_reader(io.ROW_GROUP_ROWS)
+        schema = pa.schema([f for f in reader.schema if f.name != "_r"])
+        writers, held, n_held = [], [[] for _ in group], [0] * len(group)
+        per = max(1024, _ROUTE_HELD_ROWS // len(group))
 
-    The family sources are the libraries `token_dict` names at the family level (none without a
-    dictionary); their domain files of `stages` are read. Each protein's distinct included domains
-    (library, model, envelope start; a domain found in two stages is one) are ranked by envelope start,
-    then token id (library precedence, then accession in code point order: `biobox.l3.tokens` ranks keys
-    so), from 0: that is `seg_idx`. The slots come from the tapes' lists unnested side by side, so no
-    list is repeated per slot. A domain on a slot whose model has no family token raises ValueError.
-    """
-    if not dict_files:
-        return 0
-    dicts = _scan(dict_files, "token_id, level, source, key", "")
-    libs = [lib for (lib,) in con.execute(f"SELECT DISTINCT source FROM {dicts} WHERE level = 'family' "
-                                          "ORDER BY source").fetchall()]
-    parts = [f"SELECT {_sql_str(lib)} AS lib, protein_uid, model_acc, env_start FROM read_parquet("
-             f"[{', '.join(_sql_str(f) for f in _assert_stage_domain_files(files))}], hive_partitioning = false)"
-             for lib in libs if (files := _domain_files(root, lib, stages))]
-    if not parts:
-        return 0
-    sql = (
-        f"WITH d AS (SELECT DISTINCT protein_uid, env_start, lib, model_acc FROM ({' UNION ALL '.join(parts)})), "
-        f"f AS (SELECT token_id, source, key FROM {dicts} WHERE level = 'family'), "
-        "g AS (SELECT d.protein_uid, d.lib, d.model_acc, f.token_id, row_number() OVER (PARTITION BY d.protein_uid "
-        "      ORDER BY d.env_start, f.token_id, d.lib, d.model_acc) - 1 AS seg_idx "
-        "      FROM d LEFT JOIN f ON f.source = d.lib AND f.key = d.model_acc), "
-        "s AS (SELECT contig_uid, n_slots, is_circular, contig_len, unnest(protein_uids) AS pu, "
-        "      unnest(range(len(protein_uids))) AS ordinal, unnest(feature_uids) AS feature_uid, "
-        "      unnest(start_bps) AS start, unnest(end_bps) AS \"end\", unnest(strands) AS strand FROM tapes) "
-        "SELECT g.token_id, s.contig_uid, s.ordinal, g.seg_idx, s.feature_uid, s.start, s.\"end\", s.strand, "
-        "s.n_slots, s.is_circular, s.contig_len, g.lib AS _lib, g.model_acc AS _acc FROM s JOIN g ON g.protein_uid = s.pu")
+        def flush(i: int) -> None:
+            if held[i]:
+                writers[i].write_table(pa.Table.from_batches(held[i], schema=schema))
+                held[i].clear()
+                n_held[i] = 0
+
+        try:
+            writers += [pq.ParquetWriter(p, schema, compression="zstd", compression_level=1) for p in group]
+            for b in reader:
+                if not b.num_rows:
+                    continue
+                r = b.column("_r").to_numpy(zero_copy_only=False).astype(np.int64) - lo
+                order = np.argsort(r, kind="stable")
+                cut = np.searchsorted(r[order], np.arange(len(group) + 1))
+                if cut[0] == cut[-1]:
+                    continue
+                body = b.drop_columns(["_r"]).take(pa.array(order[cut[0]:cut[-1]]))
+                for i in np.flatnonzero(np.diff(cut)):
+                    held[i].append(body.slice(cut[i] - cut[0], cut[i + 1] - cut[i]))
+                    n_held[i] += int(cut[i + 1] - cut[i])
+                    if n_held[i] >= per:
+                        flush(i)
+            for i in range(len(group)):
+                flush(i)
+        finally:
+            reader.close()
+            for w in writers:
+                w.close()
+
+
+def _stream_family_sql(con, sql: str, release: str, spec, path: Path,
+                       writer: pq.ParquetWriter | None) -> tuple[int, pq.ParquetWriter | None]:
+    """Stream one family-postings SQL statement into `writer`, refusing any domain without a family token."""
     names = spec.schema.names
-    n, writer = 0, None
+    n = 0
     reader = con.sql(sql).to_arrow_reader(io.ROW_GROUP_ROWS)
     try:
         for b in reader:
@@ -389,6 +463,93 @@ def _family_run(con, root: Path, release: str, stages: list[str], dict_files: li
             n += batch.num_rows
     finally:
         reader.close()
+    return n, writer
+
+
+def _family_run(con, root: Path, release: str, stages: list[str], dict_files: list[Path], spec, path: Path,
+                memory_limit: str = DUCK_MEMORY_LIMIT, scratch: Path | None = None) -> int:
+    """Write the family postings, unsorted, to the flat run `path` and return their count (cards B-21, B-62).
+
+    The family sources are the libraries `token_dict` names at the family level (none without a
+    dictionary); their domain files of `stages` are read. Each protein's distinct included domains
+    (library, model, envelope start; a domain found in two stages is one) are ranked by envelope start,
+    then token id (library precedence, then accession in code point order: `biobox.l3.tokens` ranks keys
+    so), from 0: that is `seg_idx`. The slots come from the tapes' lists unnested side by side, so no
+    list is repeated per slot. A domain on a slot whose model has no family token raises ValueError.
+
+    Bounded memory (card B-62): when `max(n_dom, n_slots)` exceeds what fits in one DuckDB hash join
+    at `memory_limit` (`tokens.n_ranges`), domain rows and unnested protein slots are routed into `k`
+    independent protein ranges by `hash(protein_uid) % k` and joined one range at a time.
+    """
+    if not dict_files:
+        return 0
+    dicts = _scan(dict_files, "token_id, level, source, key", "")
+    libs = [lib for (lib,) in con.execute(f"SELECT DISTINCT source FROM {dicts} WHERE level = 'family' "
+                                          "ORDER BY source").fetchall()]
+    lib_files = [(lib, _assert_stage_domain_files(files)) for lib in libs if (files := _domain_files(root, lib, stages))]
+    if not lib_files:
+        return 0
+    n_dom = sum(pq.ParquetFile(f).metadata.num_rows for _, files in lib_files for f in files)
+    if not n_dom:
+        return 0
+    (n_slots,), = con.execute("SELECT coalesce(sum(n_slots), 0) FROM tapes").fetchall()
+    if not n_slots:
+        return 0
+    parts = [f"SELECT {_sql_str(lib)} AS lib, protein_uid, model_acc, env_start FROM read_parquet("
+             f"[{', '.join(_sql_str(f) for f in files)}], hive_partitioning = false)"
+             for lib, files in lib_files]
+    k = n_ranges(max(n_dom, n_slots), memory_limit)
+    n, writer = 0, None
+    try:
+        if k == 1:
+            sql = (
+                f"WITH d AS (SELECT DISTINCT protein_uid, env_start, lib, model_acc FROM ({' UNION ALL '.join(parts)})), "
+                f"f AS (SELECT token_id, source, key FROM {dicts} WHERE level = 'family'), "
+                "g AS (SELECT d.protein_uid, d.lib, d.model_acc, f.token_id, row_number() OVER (PARTITION BY d.protein_uid "
+                "      ORDER BY d.env_start, f.token_id, d.lib, d.model_acc) - 1 AS seg_idx "
+                "      FROM d LEFT JOIN f ON f.source = d.lib AND f.key = d.model_acc), "
+                "s AS (SELECT contig_uid, n_slots, is_circular, contig_len, unnest(protein_uids) AS pu, "
+                "      unnest(range(len(protein_uids))) AS ordinal, unnest(feature_uids) AS feature_uid, "
+                "      unnest(start_bps) AS start, unnest(end_bps) AS \"end\", unnest(strands) AS strand FROM tapes) "
+                "SELECT g.token_id, s.contig_uid, s.ordinal, g.seg_idx, s.feature_uid, s.start, s.\"end\", s.strand, "
+                "s.n_slots, s.is_circular, s.contig_len, g.lib AS _lib, g.model_acc AS _acc "
+                "FROM s JOIN g ON g.protein_uid = s.pu")
+            n, writer = _stream_family_sql(con, sql, release, spec, path, writer)
+        else:
+            fam_dir = (path.parent if scratch is None else scratch) / "fam"
+            fam_dir.mkdir(parents=True, exist_ok=True)
+            dom_paths = [fam_dir / f"dom-{r:05d}.parquet" for r in range(k)]
+            slot_paths = [fam_dir / f"slot-{r:05d}.parquet" for r in range(k)]
+            _route(con, f"SELECT hash(protein_uid) % {k} AS _r, lib, protein_uid, model_acc, env_start "
+                        f"FROM ({' UNION ALL '.join(parts)})", dom_paths)
+            _route(con, f"SELECT hash(pu) % {k} AS _r, contig_uid, n_slots, is_circular, contig_len, pu, "
+                        "ordinal, feature_uid, start, \"end\", strand FROM ("
+                        "  SELECT contig_uid, n_slots, is_circular, contig_len, unnest(protein_uids) AS pu, "
+                        "         unnest(range(len(protein_uids))) AS ordinal, unnest(feature_uids) AS feature_uid, "
+                        "         unnest(start_bps) AS start, unnest(end_bps) AS \"end\", unnest(strands) AS strand "
+                        "  FROM tapes) WHERE pu IS NOT NULL", slot_paths)
+            for r in range(k):
+                dp, sp = dom_paths[r], slot_paths[r]
+                try:
+                    if pq.ParquetFile(dp).metadata.num_rows and pq.ParquetFile(sp).metadata.num_rows:
+                        sql = (
+                            f"WITH d AS (SELECT DISTINCT protein_uid, env_start, lib, model_acc "
+                            f"FROM read_parquet({_sql_str(dp)}, hive_partitioning = false)), "
+                            f"f AS (SELECT token_id, source, key FROM {dicts} WHERE level = 'family'), "
+                            "g AS (SELECT d.protein_uid, d.lib, d.model_acc, f.token_id, "
+                            "      row_number() OVER (PARTITION BY d.protein_uid "
+                            "      ORDER BY d.env_start, f.token_id, d.lib, d.model_acc) - 1 AS seg_idx "
+                            "      FROM d LEFT JOIN f ON f.source = d.lib AND f.key = d.model_acc) "
+                            "SELECT g.token_id, s.contig_uid, s.ordinal, g.seg_idx, s.feature_uid, s.start, s.\"end\", "
+                            "s.strand, s.n_slots, s.is_circular, s.contig_len, g.lib AS _lib, g.model_acc AS _acc "
+                            f"FROM read_parquet({_sql_str(sp)}, hive_partitioning = false) s "
+                            "JOIN g ON g.protein_uid = s.pu")
+                        added, writer = _stream_family_sql(con, sql, release, spec, path, writer)
+                        n += added
+                finally:
+                    dp.unlink(missing_ok=True)
+                    sp.unlink(missing_ok=True)
+    finally:
         if writer is not None:
             writer.close()
     return n
