@@ -1,0 +1,42 @@
+{
+ "stage": "PL3",
+ "genomes": 753619,
+ "genome_input_rows": 753619,
+ "distinct_genome_uids": 753619,
+ "circular_rows": 130066,
+ "kinds": [
+  "plasmid"
+ ],
+ "codes": [
+  11
+ ],
+ "assembly_quality": [
+  "complete",
+  "contig"
+ ],
+ "gene_call_mode": {
+  "plasmid": null
+ },
+ "objects": [
+  {
+   "path": "/tmp/if2453/s2/inputs/PL3/plasmidscope_IMG-PR.fasta",
+   "source_name": "plasmidscope",
+   "source_release": "IMG-PR.download-2026-11-18",
+   "license": "IMG/PR records (JGI data use policy) through PlasmidScope's open download; PlasmidScope states no licence; its article (CC BY 4.0) says all data are freely available without registration (doi:10.1093/nar/gkae930)",
+   "redistributable": false,
+   "retrieved_at": "2026-11-18T03:35:01+00:00",
+   "bytes": 17157795650
+  },
+  {
+   "path": "/tmp/if2453/s2/inputs/PL3/plasmidscope_mMGE.fasta",
+   "source_name": "plasmidscope",
+   "source_release": "mMGE.download-2026-11-18",
+   "license": "mMGE records, no terms stated; PlasmidScope states no licence; its article (CC BY 4.0) says all data are freely available without registration (doi:10.1093/nar/gkae930)",
+   "redistributable": false,
+   "retrieved_at": "2026-11-18T03:03:07+00:00",
+   "bytes": 1008445970
+  }
+ ],
+ "biobox": "/tmp/if2453/c52/tree/src/biobox/cli.py",
+ "problems": []
+}

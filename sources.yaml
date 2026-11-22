@@ -359,8 +359,16 @@ sources:
       the others) in planning/measurements/2026-11-16_pl2_inputs/fetch_SUMS
     stored: local only (/tmp on wilkcomp02); nothing under /stor
     stage_inputs: >-
-      stage PL2 (card C-40): /tmp/if2453/s2/inputs/PL2/ on wilkcomp02, made by make_inputs.py plasmid-sources (the
-      68,350 non-redundant representatives); record planning/measurements/2026-11-16_pl2_inputs.md
+      stage PL2 (card C-52, DEC-63, DEC-65): /tmp/if2453/s2/inputs/PL2/ on wilkcomp02, made 2026-11-22 by
+      c52_pl23.py stage --rule dec65 from card C-40's staging (68,350 non-redundant representatives; 3,444 exact
+      20..1,000 bp terminal repeats trimmed by 245,410 bp in trims.tsv, 4,337 circular, 180 partial/low_complexity
+      staged linear untrimmed; gut_plasmids_yu2024.fasta 398,731,358 bytes, sha256
+      3546688f7908fed091e54a23da1f645883d7ab6f6ed53afb8e80dad5fa46b599; genomes.json sha256
+      1419bbde19b0045d11e083edd32d16dfe8a1b8e8f828a8bbcf2f494c94376ee5; objects.json sha256
+      c9bb61cec97033a30e458a8710aa35152f710374ed5e4bd01bae1f59702ccf90; 15,135 circular non-representatives in
+      gut_plasmids_yu2024_circular_non_representatives.tsv, sha256
+      78c50105180bfcf5df07ec2e58495bde574a013ab6124484f5d88a6669ec064d); record
+      planning/measurements/2026-11-21_pl2_pl3_dec63.md
     approved: under DEC-50 (entry written by card C-40 on 2026-11-16 before any fetch)
   - name: plasmidscope
     what: >-
@@ -415,9 +423,23 @@ sources:
       read as a stream into one FASTA per repository (c40_concat.py), never unpacked
     stored: local only (/tmp on wilkcomp02); nothing under /stor
     stage_inputs: >-
-      stage PL2 (card C-40): /tmp/if2453/s2/inputs/PL2/ on wilkcomp02, made by make_inputs.py plasmid-sources from
-      nine of the ten repositories (PLSDB's file is not taken: stage PL1 holds PLSDB); record
-      planning/measurements/2026-11-16_pl2_inputs.md
+      stages PL2 and PL3 (card C-52, DEC-63, DEC-65): split by redistributable on wilkcomp02, 2026-11-22, by
+      c52_pl23.py stage --rule dec65 from card C-40's staging (PLSDB not taken: stage PL1 holds PLSDB). PL2
+      (/tmp/if2453/s2/inputs/PL2/, redistributable: true; 178,450 genomes, 72,446 circular; genomes.json sha256
+      1419bbde19b0045d11e083edd32d16dfe8a1b8e8f828a8bbcf2f494c94376ee5, objects.json sha256
+      c9bb61cec97033a30e458a8710aa35152f710374ed5e4bd01bae1f59702ccf90) holds gut_plasmids_yu2024 plus the seven
+      public-database sets (RefSeq, GenBank, ENA, DDBJ, COMPASS, TPA, Kraken2) hard-linked byte-identical as
+      deposited (0 trims; incomplete fragments linear). PL3 (/tmp/if2453/s2/inputs/PL3/, redistributable: false;
+      753,619 genomes, 130,066 circular; genomes.json sha256
+      3889fc16f06b5d7a16c6a66f20c0a57a0e341cee57d3d6e9ae0482eabf9c16b3, objects.json sha256
+      156f32335fce0ac5eab0cbdc2b6e4223ec03f12c88fef5a9d66cc02bffe8343c) holds plasmidscope_IMG-PR.fasta
+      (17,157,795,650 bytes, sha256 c79aa303a2cbbb9633b3ea886dc9aa5f7e302d3ef9be1bb768143d64394ca4da; 62,752 exact
+      20..1,000 bp DTRs trimmed by 7,143,016 bp, 2,385 partial/long/low_complexity linear untrimmed) and
+      plasmidscope_mMGE.fasta (1,008,445,970 bytes, sha256
+      7f3bbeb6ba39bff864266057bd39ae9c3e73e65a20e9c9623ffb7de1156b56fb; 7,059 exact 20..1,000 bp repeats trimmed
+      by 895,448 bp, 28 partial/low_complexity linear untrimmed; trims.tsv sha256
+      2ad11a33b171d4d989180f5005062dcbe906d811216cd0154c26fe82c3ef58bd). Record
+      planning/measurements/2026-11-21_pl2_pl3_dec63.md
     note: IMG/PR's own portal (JGI) is not tried (DEC-50 (2)); its records here come from PlasmidScope's open download
     approved: under DEC-50 (entry written by card C-40 on 2026-11-16 before any fetch)
   - name: globdb_r226

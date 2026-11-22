@@ -1,0 +1,96 @@
+{
+ "stage": "PL2",
+ "genomes": 178450,
+ "genome_input_rows": 178450,
+ "distinct_genome_uids": 178450,
+ "circular_rows": 72446,
+ "kinds": [
+  "plasmid"
+ ],
+ "codes": [
+  11
+ ],
+ "assembly_quality": [
+  "complete",
+  "contig"
+ ],
+ "gene_call_mode": {
+  "plasmid": null
+ },
+ "objects": [
+  {
+   "path": "/tmp/if2453/s2/inputs/PL2/gut_plasmids_yu2024.fasta",
+   "source_name": "gut_plasmids_yu2024",
+   "source_release": "zenodo-5843600-v1.2",
+   "license": "CC BY 4.0 (Zenodo record 5843600)",
+   "redistributable": true,
+   "retrieved_at": "2026-11-18T03:00:00+00:00",
+   "bytes": 398731358
+  },
+  {
+   "path": "/tmp/if2453/s2/inputs/PL2/plasmidscope_RefSeq.fasta",
+   "source_name": "plasmidscope",
+   "source_release": "RefSeq.download-2026-11-18",
+   "license": "RefSeq records (INSDC or the repository's own); PlasmidScope states no licence; its article (CC BY 4.0) says all data are freely available without registration (doi:10.1093/nar/gkae930)",
+   "redistributable": true,
+   "retrieved_at": "2026-11-18T03:12:26+00:00",
+   "bytes": 7066349885
+  },
+  {
+   "path": "/tmp/if2453/s2/inputs/PL2/plasmidscope_GenBank.fasta",
+   "source_name": "plasmidscope",
+   "source_release": "GenBank.download-2026-11-18",
+   "license": "GenBank records (INSDC or the repository's own); PlasmidScope states no licence; its article (CC BY 4.0) says all data are freely available without registration (doi:10.1093/nar/gkae930)",
+   "redistributable": true,
+   "retrieved_at": "2026-11-18T03:18:38+00:00",
+   "bytes": 6947272541
+  },
+  {
+   "path": "/tmp/if2453/s2/inputs/PL2/plasmidscope_ENA.fasta",
+   "source_name": "plasmidscope",
+   "source_release": "ENA.download-2026-11-18",
+   "license": "ENA records (INSDC or the repository's own); PlasmidScope states no licence; its article (CC BY 4.0) says all data are freely available without registration (doi:10.1093/nar/gkae930)",
+   "redistributable": true,
+   "retrieved_at": "2026-11-18T03:01:14+00:00",
+   "bytes": 381562508
+  },
+  {
+   "path": "/tmp/if2453/s2/inputs/PL2/plasmidscope_DDBJ.fasta",
+   "source_name": "plasmidscope",
+   "source_release": "DDBJ.download-2026-11-18",
+   "license": "DDBJ records (INSDC or the repository's own); PlasmidScope states no licence; its article (CC BY 4.0) says all data are freely available without registration (doi:10.1093/nar/gkae930)",
+   "redistributable": true,
+   "retrieved_at": "2026-11-18T03:00:51+00:00",
+   "bytes": 453880210
+  },
+  {
+   "path": "/tmp/if2453/s2/inputs/PL2/plasmidscope_COMPASS.fasta",
+   "source_name": "plasmidscope",
+   "source_release": "COMPASS.download-2026-11-18",
+   "license": "COMPASS records (INSDC or the repository's own); PlasmidScope states no licence; its article (CC BY 4.0) says all data are freely available without registration (doi:10.1093/nar/gkae930)",
+   "redistributable": true,
+   "retrieved_at": "2026-11-18T03:02:15+00:00",
+   "bytes": 1282206039
+  },
+  {
+   "path": "/tmp/if2453/s2/inputs/PL2/plasmidscope_TPA.fasta",
+   "source_name": "plasmidscope",
+   "source_release": "TPA.download-2026-11-18",
+   "license": "TPA records (INSDC or the repository's own); PlasmidScope states no licence; its article (CC BY 4.0) says all data are freely available without registration (doi:10.1093/nar/gkae930)",
+   "redistributable": true,
+   "retrieved_at": "2026-11-18T03:00:18+00:00",
+   "bytes": 705268
+  },
+  {
+   "path": "/tmp/if2453/s2/inputs/PL2/plasmidscope_Kraken2.fasta",
+   "source_name": "plasmidscope",
+   "source_release": "Kraken2.download-2026-11-18",
+   "license": "Kraken2 records (INSDC or the repository's own); PlasmidScope states no licence; its article (CC BY 4.0) says all data are freely available without registration (doi:10.1093/nar/gkae930)",
+   "redistributable": true,
+   "retrieved_at": "2026-11-18T03:00:26+00:00",
+   "bytes": 49903078
+  }
+ ],
+ "biobox": "/tmp/if2453/c52/tree/src/biobox/cli.py",
+ "problems": []
+}

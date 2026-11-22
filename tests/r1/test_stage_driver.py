@@ -444,7 +444,19 @@ def _repo_confs():
 
 
 def test_the_repository_has_a_conf_for_each_stage_whose_note_gives_every_value():
-    assert {p.stem for p in _repo_confs()} == {"V2", "GV1", "G1", "SPX1", "C1", "C2", "C3", "C4", "C6"}  # A-17, A-18
+    assert {p.stem for p in _repo_confs()} == {
+        "V2", "GV1", "G1", "SPX1", "C1", "C2", "C3", "C4", "C6", "PL2", "PL3",
+    }  # A-17, A-18, C-52
+
+
+def test_pl2_and_pl3_confs_follow_dec63_and_dec65():
+    est = _module("stage_est")
+    c2 = est.read_conf(STAGES / "PL2.conf", "PL2", tree=REPO)
+    assert c2.depth == "annotated" and c2.library == ("pfam", "38.2", "gathering") and c2.crispr
+    assert c2.min_contig_len is None and c2.after == ("G1", "SPX1", "V2", "GV1")
+    c3 = est.read_conf(STAGES / "PL3.conf", "PL3", tree=REPO)
+    assert c3.depth == "annotated" and c3.library == ("pfam", "38.2", "gathering") and c3.crispr
+    assert c3.min_contig_len is None and c3.after == ("PL2",)
 
 
 @pytest.mark.parametrize("path", _repo_confs(), ids=lambda p: p.stem)

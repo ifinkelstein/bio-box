@@ -1,0 +1,227 @@
+{
+ "ambiguous": "asis",
+ "by_source": {
+  "gut_plasmids_yu2024": {
+   "bases": 397149786,
+   "genome_bases": 397149786,
+   "genomes": 68350,
+   "genomes_circular": 4517,
+   "genomes_complete": 4517,
+   "new_bases": 397000725,
+   "new_contigs": 68344,
+   "records": 68350,
+   "records_owned_by_earlier_stage": 6
+  },
+  "plasmidscope_COMPASS": {
+   "bases": 1260891672,
+   "genome_bases": 66265889,
+   "genomes": 580,
+   "genomes_circular": 518,
+   "genomes_complete": 580,
+   "new_bases": 57802826,
+   "new_contigs": 520,
+   "records": 12084,
+   "records_owned_by_earlier_stage": 10768
+  },
+  "plasmidscope_DDBJ": {
+   "bases": 446996798,
+   "genome_bases": 187911796,
+   "genomes": 2257,
+   "genomes_circular": 1521,
+   "genomes_complete": 1603,
+   "new_bases": 19812393,
+   "new_contigs": 769,
+   "records": 5305,
+   "records_owned_by_earlier_stage": 4326
+  },
+  "plasmidscope_ENA": {
+   "bases": 375648626,
+   "genome_bases": 164842075,
+   "genomes": 3522,
+   "genomes_circular": 2159,
+   "genomes_complete": 2166,
+   "new_bases": 43086634,
+   "new_contigs": 1927,
+   "records": 6239,
+   "records_owned_by_earlier_stage": 3678
+  },
+  "plasmidscope_GenBank": {
+   "bases": 6839968351,
+   "genome_bases": 1242020914,
+   "genomes": 22465,
+   "genomes_circular": 10277,
+   "genomes_complete": 10718,
+   "new_bases": 170219946,
+   "new_contigs": 12475,
+   "records": 91774,
+   "records_owned_by_earlier_stage": 56079
+  },
+  "plasmidscope_Kraken2": {
+   "bases": 49061554,
+   "genome_bases": 1324567,
+   "genomes": 140,
+   "genomes_circular": 8,
+   "genomes_complete": 8,
+   "new_bases": 1324567,
+   "new_contigs": 140,
+   "records": 898,
+   "records_owned_by_earlier_stage": 389
+  },
+  "plasmidscope_RefSeq": {
+   "bases": 6948392694,
+   "genome_bases": 6777601634,
+   "genomes": 81141,
+   "genomes_circular": 53622,
+   "genomes_complete": 55856,
+   "new_bases": 1314963379,
+   "new_contigs": 28904,
+   "records": 85995,
+   "records_owned_by_earlier_stage": 55223
+  },
+  "plasmidscope_TPA": {
+   "bases": 694703,
+   "genome_bases": 60096,
+   "genomes": 1,
+   "genomes_circular": 1,
+   "genomes_complete": 1,
+   "new_bases": 60096,
+   "new_contigs": 1,
+   "records": 7,
+   "records_owned_by_earlier_stage": 6
+  }
+ },
+ "contigs": 178456,
+ "contigs_held_by_two_stages": 0,
+ "fragments": "linear",
+ "genomes": 178456,
+ "long_bound": 1000,
+ "new_bases": 2004270566,
+ "new_contigs": 113080,
+ "owned_by_stage": {
+  "C5": 21,
+  "P1": 112,
+  "P2": 1217,
+  "P3": 951,
+  "P4": 1505,
+  "P5": 1675,
+  "P6": 1218,
+  "PL1": 58669,
+  "S1": 2,
+  "V1": 6
+ },
+ "sources": {
+  "gut_plasmids_yu2024": {
+   "ambiguous": {
+    "low_complexity": 2,
+    "partial": 178
+   },
+   "bases": 397149786,
+   "circular_records": 4517,
+   "object": "rewritten",
+   "records": 68350,
+   "source_bases": 397395196,
+   "stage": "PL2",
+   "trimmed_bases": 245410,
+   "trims": 3444
+  },
+  "plasmidscope_COMPASS": {
+   "ambiguous": {
+    "long": 21,
+    "partial": 112
+   },
+   "bases": 1260891672,
+   "circular_records": 11419,
+   "object": "rewritten",
+   "records": 12084,
+   "source_bases": 1260922758,
+   "stage": "PL2",
+   "trimmed_bases": 31086,
+   "trims": 163
+  },
+  "plasmidscope_DDBJ": {
+   "ambiguous": {
+    "long": 2,
+    "partial": 15
+   },
+   "bases": 446996798,
+   "circular_records": 4309,
+   "object": "rewritten",
+   "records": 5305,
+   "source_bases": 446998007,
+   "stage": "PL2",
+   "trimmed_bases": 1209,
+   "trims": 11
+  },
+  "plasmidscope_ENA": {
+   "ambiguous": {
+    "partial": 12
+   },
+   "bases": 375648626,
+   "circular_records": 4341,
+   "object": "rewritten",
+   "records": 6239,
+   "source_bases": 375652221,
+   "stage": "PL2",
+   "trimmed_bases": 3595,
+   "trims": 34
+  },
+  "plasmidscope_GenBank": {
+   "ambiguous": {
+    "long": 199,
+    "low_complexity": 7,
+    "partial": 429,
+    "unresolved": 18
+   },
+   "bases": 6839968351,
+   "circular_records": 55720,
+   "object": "rewritten",
+   "records": 91774,
+   "source_bases": 6840061592,
+   "stage": "PL2",
+   "trimmed_bases": 93241,
+   "trims": 632
+  },
+  "plasmidscope_Kraken2": {
+   "ambiguous": {
+    "long": 1,
+    "partial": 3
+   },
+   "bases": 49061554,
+   "circular_records": 425,
+   "object": "rewritten",
+   "records": 898,
+   "source_bases": 49062410,
+   "stage": "PL2",
+   "trimmed_bases": 856,
+   "trims": 8
+  },
+  "plasmidscope_RefSeq": {
+   "ambiguous": {
+    "long": 168,
+    "low_complexity": 7,
+    "partial": 407,
+    "unresolved": 13
+   },
+   "bases": 6948392694,
+   "circular_records": 56686,
+   "object": "rewritten",
+   "records": 85995,
+   "source_bases": 6948506952,
+   "stage": "PL2",
+   "trimmed_bases": 114258,
+   "trims": 860
+  },
+  "plasmidscope_TPA": {
+   "ambiguous": {},
+   "bases": 694703,
+   "circular_records": 7,
+   "object": "hard link",
+   "records": 7,
+   "source_bases": 694703,
+   "stage": "PL2",
+   "trimmed_bases": 0,
+   "trims": 0
+  }
+ },
+ "stage": "PL2"
+}

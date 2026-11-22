@@ -1,0 +1,141 @@
+{
+ "accepted": [],
+ "bases_stored": 16409762458,
+ "circular_stored": 130072,
+ "contigs_held_by_two_stages": 0,
+ "contigs_listed": 753619,
+ "contigs_stored": 747644,
+ "crispr": true,
+ "crispr_default_cpu_min": 53.884,
+ "crispr_near_cpu_min": 61.966,
+ "depth": "annotated",
+ "disk_bytes": 18166241620,
+ "expect": {
+  "C5": {
+   "expected": 5,
+   "held": 5,
+   "note": "planning/measurements/2026-11-21_pl2_pl3_dec63.md"
+  },
+  "P1": {
+   "expected": 27,
+   "held": 27,
+   "note": "planning/measurements/2026-11-21_pl2_pl3_dec63.md"
+  },
+  "P2": {
+   "expected": 178,
+   "held": 178,
+   "note": "planning/measurements/2026-11-21_pl2_pl3_dec63.md"
+  },
+  "P3": {
+   "expected": 417,
+   "held": 417,
+   "note": "planning/measurements/2026-11-21_pl2_pl3_dec63.md"
+  },
+  "P4": {
+   "expected": 419,
+   "held": 419,
+   "note": "planning/measurements/2026-11-21_pl2_pl3_dec63.md"
+  },
+  "P5": {
+   "expected": 62,
+   "held": 62,
+   "note": "planning/measurements/2026-11-21_pl2_pl3_dec63.md"
+  },
+  "P6": {
+   "expected": 13,
+   "held": 13,
+   "note": "planning/measurements/2026-11-21_pl2_pl3_dec63.md"
+  },
+  "PL1": {
+   "expected": 4850,
+   "held": 4850,
+   "note": "planning/measurements/2026-11-21_pl2_pl3_dec63.md"
+  },
+  "V1": {
+   "expected": 4,
+   "held": 4,
+   "note": "planning/measurements/2026-11-21_pl2_pl3_dec63.md"
+  }
+ },
+ "fasta_bytes": 18166241620,
+ "flank_bases": 2822966752,
+ "genecall": {
+  "bases": 17080928115,
+  "bases_called": 16409762458,
+  "batches": [
+   {
+    "bases": 2733067099,
+    "batch": 0,
+    "estimate_cpu_min": 210.723,
+    "genomes": 126864
+   },
+   {
+    "bases": 2741025280,
+    "batch": 1,
+    "estimate_cpu_min": 210.725,
+    "genomes": 125037
+   },
+   {
+    "bases": 2728066401,
+    "batch": 2,
+    "estimate_cpu_min": 210.724,
+    "genomes": 125238
+   },
+   {
+    "bases": 2735552130,
+    "batch": 3,
+    "estimate_cpu_min": 210.734,
+    "genomes": 125124
+   },
+   {
+    "bases": 2735712372,
+    "batch": 4,
+    "estimate_cpu_min": 210.716,
+    "genomes": 125943
+   },
+   {
+    "bases": 2736339176,
+    "batch": 5,
+    "estimate_cpu_min": 210.722,
+    "genomes": 125413
+   }
+  ],
+  "estimate_cpu_min": 1263.093,
+  "genes_expected": 17707774.7,
+  "genomes": 753619,
+  "genomes_not_called": 5975,
+  "largest_genome": {
+   "estimate_cpu_min": 0.152,
+   "genome_uid": "c90432ca6ffad8f65de0bd5b394ace29"
+  },
+  "merge_estimate_cpu_min": 1.873
+ },
+ "genomes": 753619,
+ "guard_policy": "DEC-43 (estimate >= 24 CPU-min judged) + DEC-53 (stop above 1.20; record below 0.80)",
+ "held_bases": 671165657,
+ "held_contigs": 5975,
+ "ingest_cpu_min": 71.975,
+ "ingest_formula": "0.07 + max(0, 18166241620 - 671165657) x 4.11 / 1000000000",
+ "ingest_in_batches": false,
+ "judge": {},
+ "library": "pfam 38.2 gathering",
+ "margin_cpu_min": 240.0,
+ "min_contig_len": null,
+ "owned_by_stage": {
+  "C5": 5,
+  "P1": 27,
+  "P2": 178,
+  "P3": 417,
+  "P4": 419,
+  "P5": 62,
+  "P6": 13,
+  "PL1": 4850,
+  "V1": 4
+ },
+ "parked_owners": [],
+ "records": 792463,
+ "refusals": [],
+ "short_bases": 0,
+ "short_records": 0,
+ "stage": "PL3"
+}
