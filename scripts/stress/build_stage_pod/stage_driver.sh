@@ -557,7 +557,7 @@ run() {
       nrec=$n
       rates_now
       log "rates ($n records of $STAGE): exit $RATES_RC: $(echo "$RATES_LINE" | cut -c1-500)"
-      [ "$RATES_RC" = 0 ] || stop_unit "$unit" "$LOGS" "rate guard (stage_est.py rates exit $RATES_RC; 3: a judged step more than 20% over its estimate, DEC-53): $(echo "$RATES_LINE" | cut -c1-900)"
+      [ "$RATES_RC" = 0 ] || stop_unit "$unit" "$LOGS" "rate guard (stage_est.py rates exit $RATES_RC; 3: a judged step more than 50% over its estimate, DEC-64): $(echo "$RATES_LINE" | cut -c1-900)"
     fi
     k=$((k + 1))
     sleep 10

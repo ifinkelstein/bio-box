@@ -501,7 +501,7 @@ watch_unit() {
       rc=$?
       line=$(cat "$st/rates.out" 2> /dev/null)
       echo "$line" >> "$st/rates.jsonl"
-      [ "$rc" = 0 ] || stop_unit "$unit" "rate guard (train_est.py rates exit $rc; 3: a judged step >20% over its estimate, DEC-43, DEC-53; other: the guard itself failed): $(echo "$line" | cut -c1-1000)"
+      [ "$rc" = 0 ] || stop_unit "$unit" "rate guard (train_est.py rates exit $rc; 3: a judged step >50% over its estimate, DEC-43, DEC-64; other: the guard itself failed): $(echo "$line" | cut -c1-1000)"
     fi
     k=$((k + 1))
     sleep 5
@@ -510,7 +510,7 @@ watch_unit() {
   line=$(python3 -I "$BIN/train_est.py" rates --root "$root" --release "$rel" --est "$est" --out "$st/rates-end.json" 2>> "$LOG")
   rc=$?
   log "rates at end of $unit (exit $rc): $(echo "$line" | cut -c1-900)"
-  [ "$rc" = 0 ] || fail "rate guard at end of $unit (train_est.py rates exit $rc; 3: a judged step >20% over its estimate, DEC-43, DEC-53): $(echo "$line" | cut -c1-1000)"
+  [ "$rc" = 0 ] || fail "rate guard at end of $unit (train_est.py rates exit $rc; 3: a judged step >50% over its estimate, DEC-43, DEC-64): $(echo "$line" | cut -c1-1000)"
   [ "$foreign" = 1 ] && return 3
   return 0
 }
@@ -750,14 +750,24 @@ PY
   mkdir -p "$r_root" "$r_logs"
 
   rh_launch() {
-    local u=$1
+    local u=$1 rc
     shift
+    RUNNING_UNIT=$u
+    RUNNING_LOGS=$r_logs
     bash "$TREE/scripts/pod_run.sh" --profile "$rh/profile.yaml" --image "$IMAGE" --digest "$DIGEST" --mem 8G \
       --threads 4 --bind /tmp/if2453 --bind "$REAL_ROOT:$REAL_ROOT:ro" --bind "$PFAMDIR:$PFAMDIR:ro" \
-      --env "PYTHONPATH=$PYPATH" --log "$r_logs/$u.log" "$u" "$@" >> "$LOG" 2>&1
+      --env "PYTHONPATH=$PYPATH" --log "$r_logs/$u.log" "$u" "$@" >> "$LOG" 2>&1 \
+      || { RUNNING_UNIT=""; fail "rehearse: pod_run.sh refused $u"; }
     sleep 2
-    while systemctl --user is-active --quiet "$u"; do sleep 2; done
-    local rc
+    NOANSWER_SINCE=""
+    while :; do  # the watch's rule (A-14, A-19): its own exit line or a real inactive answer ends the wait
+      unit_ended "$u" "$r_logs"
+      rc=$?
+      [ "$rc" = 0 ] && break
+      watch_answer "$rc" "$u"
+      sleep 2
+    done
+    RUNNING_UNIT=""
     rc=$(sed -n "s/^pod_run: $u exited \([0-9]*\)$/\1/p" "$r_logs/$u.log" | tail -n 1)
     [ "$rc" = 0 ] || fail "rehearse: unit $u exited '$rc' (see $r_logs/$u.log)"
   }

@@ -880,7 +880,7 @@ def test_run_whose_rates_helper_crashed_at_the_end_fails(tmp_path):
 
 @pytest.mark.parametrize("env,why", [({"FAKE_GUARD_RC": "3"}, "the 280 CPU-minute or free-space guard"),
                                      ({"FAKE_GUARD_RC": "1"}, "the guard itself crashed: a blind guard is a stop"),
-                                     ({"FAKE_RATES_RC": "3"}, "DEC-53: a judged step more than 20% over")])
+                                     ({"FAKE_RATES_RC": "3"}, "DEC-64: a judged step more than 50% over")])
 def test_run_stops_its_unit_on_a_guard(tmp_path, env, why):
     w = World(tmp_path)
     _run_ready(w)

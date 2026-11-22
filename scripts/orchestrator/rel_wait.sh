@@ -49,25 +49,41 @@ if ! compgen -G "$STAGES_DIR/*.conf" > /dev/null; then
   exit 9
 fi
 
+WATCH_LIMIT_S=${WATCH_LIMIT_S:-900}
+NOANSWER_SINCE=""
 say "start (pid $$); waiting for $QUEUE_UNIT to end with every marker of $DRIVER_DIR"
 t0=$(date +%s)
 k=0
 while :; do
   if [ -e "$ROOT/STOP" ]; then say "STOPPED: $ROOT/STOP exists; nothing started"; exit 3; fi
-  if ! systemctl --user is-active --quiet "$QUEUE_UNIT"; then
-    missing=""
-    for m in $MARKERS; do
-      case "$m" in
-        *.tsv) [ -s "$DRIVER_DIR/$m" ] || missing="$missing $m" ;;
-        *) [ -e "$DRIVER_DIR/$m" ] || missing="$missing $m" ;;
-      esac
-    done
-    if [ -z "$missing" ]; then
-      say "$QUEUE_UNIT ended and every marker is there ($MARKERS)"
-      break
+  state=$(systemctl --user show -p ActiveState --value "$QUEUE_UNIT" 2> /dev/null)
+  rc=$?
+  if [ "$rc" != 0 ] || [ -z "$state" ]; then
+    say "no answer from systemd about $QUEUE_UNIT; it counts as running"
+    [ -n "$NOANSWER_SINCE" ] || NOANSWER_SINCE=$(date +%s)
+    if [ $(( $(date +%s) - NOANSWER_SINCE )) -ge "$WATCH_LIMIT_S" ]; then
+      say "STOPPED: no readable answer from systemd about $QUEUE_UNIT for ${WATCH_LIMIT_S} s: its state is unknown and it may still be running; nothing started"
+      exit 5
     fi
-    say "STOPPED: $QUEUE_UNIT ended without the marker(s)$missing in $DRIVER_DIR; nothing started. Its last line: $(tail -n 1 "$Q4" 2> /dev/null | cut -c1-300)"
-    exit 4
+  else
+    NOANSWER_SINCE=""
+    case "$state" in
+      inactive|failed)
+        missing=""
+        for m in $MARKERS; do
+          case "$m" in
+            *.tsv) [ -s "$DRIVER_DIR/$m" ] || missing="$missing $m" ;;
+            *) [ -e "$DRIVER_DIR/$m" ] || missing="$missing $m" ;;
+          esac
+        done
+        if [ -z "$missing" ]; then
+          say "$QUEUE_UNIT ended and every marker is there ($MARKERS)"
+          break
+        fi
+        say "STOPPED: $QUEUE_UNIT ended without the marker(s)$missing in $DRIVER_DIR; nothing started. Its last line: $(tail -n 1 "$Q4" 2> /dev/null | cut -c1-300)"
+        exit 4
+        ;;
+    esac
   fi
   if [ $(( $(date +%s) - t0 )) -gt 172800 ]; then say "STOPPED: waited over 48 h; nothing started"; exit 5; fi
   [ $((k % 30)) = 0 ] && say "waiting: $QUEUE_UNIT active; last: $(tail -n 1 "$Q4" 2> /dev/null | cut -c1-160)"
@@ -79,24 +95,38 @@ done
 # stage driver (stages/<STAGE>.conf: units <stage in lower case>-<n>, card A-12); looked for again just before the
 # dry run and just before the run, since the suite's wait can last hours
 build_units() {
-  local pats=('c47-*' 'c48c-*' 'c46-train-*' "$(basename "$DRIVER_DIR")-*") f s
+  local pats=('c47-*' 'c48c-*' 'c46-train-*' "$(basename "$DRIVER_DIR")-*") f s out
   for f in "$STAGES_DIR"/*.conf; do
     [ -e "$f" ] || continue
     s=$(basename "$f" .conf)
     [[ "$s" =~ ^[A-Z][A-Za-z0-9]{0,15}$ ]] && pats+=("${s,,}-[0-9]*")
   done
-  systemctl --user list-units --type=service --state=active,activating,deactivating --no-legend --plain "${pats[@]}" \
-    | awk '{print $1}' | paste -sd' ' -
+  out=$(systemctl --user list-units --type=service --state=active,activating,deactivating --no-legend --plain "${pats[@]}" 2> /dev/null) || return 1
+  printf '%s\n' "$out" | awk '{print $1}' | paste -sd' ' -
 }
 no_build_units() {
-  act=$(build_units)
+  act=$(build_units) || { say "STOPPED: could not list active build units (systemctl list-units failed); nothing started"; exit 6; }
   if [ -n "$act" ]; then say "STOPPED: a build unit is active ($act); nothing started"; exit 6; fi
 }
 no_build_units
 
 # the suite of the frozen tree must have ended, every shard passed
 n=0
-while systemctl --user list-units --type=service --state=active,activating --no-legend --plain "ci-$SUITE_NAME-*" | grep -q .; do
+NOANSWER_SINCE=""
+while :; do
+  suite_out=$(systemctl --user list-units --type=service --state=active,activating --no-legend --plain "ci-$SUITE_NAME-*" 2> /dev/null)
+  rc=$?
+  if [ "$rc" != 0 ]; then
+    say "no answer from systemd about suite ci-$SUITE_NAME-*; it counts as running"
+    [ -n "$NOANSWER_SINCE" ] || NOANSWER_SINCE=$(date +%s)
+    if [ $(( $(date +%s) - NOANSWER_SINCE )) -ge "$WATCH_LIMIT_S" ]; then
+      say "STOPPED: no readable answer from systemd about suite ci-$SUITE_NAME-* for ${WATCH_LIMIT_S} s: its state is unknown and it may still be running; nothing started"
+      exit 7
+    fi
+  else
+    NOANSWER_SINCE=""
+    [ -z "$suite_out" ] && break
+  fi
   n=$((n + 1))
   if [ "$n" -gt 360 ]; then say "STOPPED: the suite was still running 6 h after C5 ended; nothing started"; exit 7; fi
   [ $((n % 15)) = 1 ] && say "waiting for the suite (ci-$SUITE_NAME-*) to end"
