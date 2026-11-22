@@ -124,6 +124,21 @@ all 8 DEC-65 staged files of `/tmp/if2453/s2/inputs/V2` (`imgvr_v4.1_hc_hq_votu_
 `repeated_records.tsv`, `objects.json`; 9,634,042,117 B in all) streamed to `tower:/mnt/user/research-bulk/bio-box/sources/V2`
 in **462 s**, **20.85 MB/s end to end** (*derived*: 9,634,042,117 / 462 / 1e6), `SHA256SUMS` written (8 lines, `0 failed`).
 
+**Stage `PL2`'s 16.68 GB DEC-65 staged inputs (2026-11-22, 09:29:53 to 10:03:58 CST, DEC-66 `S-2`)** (*measured*, `relay_pl2.log`):
+all 15 staged files of `/tmp/if2453/s2/inputs/PL2` (`gut_plasmids_yu2024.fasta`, the 7 public `plasmidscope_*.fasta` sets,
+`genomes.json`, `objects.json`, `records.tsv`, `trims.tsv`, `skipped_records.tsv`, `stage_report.json`, and
+`gut_plasmids_yu2024_circular_non_representatives.tsv`; 16,675,968,181 B in all) streamed to
+`tower:/mnt/user/research-bulk/bio-box/sources/PL2` in **2,045 s**, **8.15 MB/s end to end** (*derived*:
+16,675,968,181 / 2,045 / 1e6), `SHA256SUMS` written (15 lines, `0 failed`).
+
+**Stage `PL3`'s 18.43 GB DEC-65 staged inputs (2026-11-22, 10:05:08 to 10:17:52 CST, DEC-66 `S-2`)** (*measured*, `relay_pl3.log`):
+all 8 staged files of `/tmp/if2453/s2/inputs/PL3` (`plasmidscope_IMG-PR.fasta` at 17,157,795,650 B in 705 s = 24.34 MB/s,
+`plasmidscope_mMGE.fasta` at 1,008,445,970 B in 39 s = 25.86 MB/s, `records.tsv`, `genomes.json`, `trims.tsv`,
+`stage_report.json`, `objects.json`, `skipped_records.tsv`; 18,429,944,704 B in all) streamed to
+`tower:/mnt/user/research-bulk/bio-box/sources/PL3` in **764 s**, **24.12 MB/s end to end** (*derived*:
+18,429,944,704 / 764 / 1e6), `SHA256SUMS` written (8 lines, `0 failed`). Every queued stage's `/tmp` inputs (`G1`, `SPX1`,
+`V2`, `GV1`, `PL2`, `PL3`, and `C1..C6` lists: 128,073,589,808 B across 366 files) are now verified on `tower`.
+
 ## 4. What the first mirror showed, and the change in the repository script
 
 With `scp -3` the bytes cross the link once and are then read again from the array to be hashed: at about 9 MB/s
