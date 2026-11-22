@@ -1,0 +1,351 @@
+{
+ "code": {
+  "cluster_cpu_min_one_process": 18710.63,
+  "clusters_in_parts": true,
+  "cut": {
+   "one_process_cpu_min_max": 20000.0,
+   "part_cpu_min": 240.0
+  },
+  "label": "estimate: biobox.stage and biobox.l2.cluster",
+  "margin_cpu_min": 240.0,
+  "reuse_reasons": {
+   "r26.11.1": "its plan differs from this release's in ['cut', 'files', 'stages']",
+   "rM.1": "its plan differs from this release's in ['cut', 'files', 'stages']",
+   "rM.2": "its plan differs from this release's in ['cut', 'files', 'stages']",
+   "rN.3": "its plan differs from this release's in ['cut', 'files', 'stages']"
+  },
+  "reuse_source": null
+ },
+ "earlier": "r26.11.1",
+ "earlier_stages": [
+  "S1",
+  "P1",
+  "P2",
+  "P3",
+  "P4",
+  "P5",
+  "P6",
+  "H1",
+  "PL1"
+ ],
+ "measured": {
+  "distinct_proteins": 57780176,
+  "distinct_proteins_earlier": 49102041,
+  "genes": 72927956,
+  "label": "measured: Parquet footers and DuckDB count(DISTINCT) over genecall outputs",
+  "per_stage": {
+   "C5": {
+    "genes": 8476374,
+    "protein_seq_rows": 3972512
+   },
+   "H1": {
+    "genes": 2276451,
+    "protein_seq_rows": 1608023
+   },
+   "P1": {
+    "genes": 927920,
+    "protein_seq_rows": 918765
+   },
+   "P2": {
+    "genes": 8722859,
+    "protein_seq_rows": 8580713
+   },
+   "P3": {
+    "genes": 9101793,
+    "protein_seq_rows": 8965818
+   },
+   "P4": {
+    "genes": 9078865,
+    "protein_seq_rows": 8928132
+   },
+   "P5": {
+    "genes": 9144001,
+    "protein_seq_rows": 8970130
+   },
+   "P6": {
+    "genes": 9064930,
+    "protein_seq_rows": 8896652
+   },
+   "PL1": {
+    "genes": 6371980,
+    "protein_seq_rows": 1900057
+   },
+   "S1": {
+    "genes": 2398087,
+    "protein_seq_rows": 1134550
+   },
+   "V1": {
+    "genes": 7364696,
+    "protein_seq_rows": 5542734
+   }
+  },
+  "protein_seq_rows": 59418086
+ },
+ "projection": {
+  "calls": [
+   {
+    "calibration_factor": 2.934307,
+    "call": "cluster.nr50.01.rescorediagonal",
+    "growth": 1.1767,
+    "largest_part_projected": 2.4,
+    "measured_earlier": 44.22,
+    "parts": 24,
+    "peak_rss_gb_projected": 13.6,
+    "projected": 52.0
+   },
+   {
+    "calibration_factor": 1.998767,
+    "call": "cluster.nr50.06.rescorediagonal",
+    "growth": 1.1767,
+    "largest_part_projected": 0.8,
+    "measured_earlier": 16.21,
+    "parts": 24,
+    "peak_rss_gb_projected": 13.0,
+    "projected": 19.1
+   },
+   {
+    "calibration_factor": 0.855149,
+    "call": "cluster.nr50.07.align",
+    "growth": 1.1902,
+    "largest_part_projected": 15.5,
+    "measured_earlier": 289.75,
+    "parts": 24,
+    "peak_rss_gb_projected": 14.5,
+    "projected": 344.9
+   },
+   {
+    "calibration_factor": 1.035001,
+    "call": "cluster.nr50.11.prefilter",
+    "growth": 1.1937,
+    "largest_part_projected": 73.7,
+    "measured_earlier": 1433.59,
+    "parts": 24,
+    "peak_rss_gb_projected": 35.7,
+    "projected": 1711.3
+   },
+   {
+    "calibration_factor": 1.228786,
+    "call": "cluster.nr50.12.align",
+    "growth": 1.1902,
+    "largest_part_projected": 68.8,
+    "measured_earlier": 1337.46,
+    "parts": 24,
+    "peak_rss_gb_projected": 16.2,
+    "projected": 1591.9
+   },
+   {
+    "calibration_factor": 1.31607,
+    "call": "cluster.nr50.15.prefilter",
+    "growth": 1.2996,
+    "largest_part_projected": 27.1,
+    "measured_earlier": 466.31,
+    "parts": 24,
+    "peak_rss_gb_projected": 19.7,
+    "projected": 606.0
+   },
+   {
+    "calibration_factor": 0.842652,
+    "call": "cluster.nr50.16.align",
+    "growth": 1.1883,
+    "largest_part_projected": 39.6,
+    "measured_earlier": 755.21,
+    "parts": 24,
+    "peak_rss_gb_projected": 17.1,
+    "projected": 897.4
+   },
+   {
+    "calibration_factor": 1.680518,
+    "call": "cluster.nr50.19.prefilter",
+    "growth": 1.3236,
+    "largest_part_projected": 79.6,
+    "measured_earlier": 1373.84,
+    "parts": 24,
+    "peak_rss_gb_projected": 25.0,
+    "projected": 1818.4
+   },
+   {
+    "calibration_factor": 0.733531,
+    "call": "cluster.nr50.20.align",
+    "growth": 1.2019,
+    "largest_part_projected": 39.2,
+    "measured_earlier": 743.5,
+    "parts": 24,
+    "peak_rss_gb_projected": 17.0,
+    "projected": 893.6
+   },
+   {
+    "calibration_factor": 0.913028,
+    "call": "cluster.nr50.members",
+    "growth": 1.1825,
+    "largest_part_projected": 18.8,
+    "measured_earlier": 356.51,
+    "parts": 24,
+    "peak_rss_gb_projected": 21.3,
+    "projected": 421.6
+   },
+   {
+    "calibration_factor": 2.777171,
+    "call": "cluster.nr90.01.rescorediagonal",
+    "growth": 1.1767,
+    "largest_part_projected": 2.7,
+    "measured_earlier": 50.85,
+    "parts": 24,
+    "peak_rss_gb_projected": 20.2,
+    "projected": 59.8
+   },
+   {
+    "calibration_factor": 1.609309,
+    "call": "cluster.nr90.06.rescorediagonal",
+    "growth": 1.1767,
+    "largest_part_projected": 1.2,
+    "measured_earlier": 22.82,
+    "parts": 24,
+    "peak_rss_gb_projected": 19.7,
+    "projected": 26.9
+   },
+   {
+    "calibration_factor": 0.882783,
+    "call": "cluster.nr90.07.align",
+    "growth": 1.2039,
+    "largest_part_projected": 18.2,
+    "measured_earlier": 340.41,
+    "parts": 24,
+    "peak_rss_gb_projected": 20.1,
+    "projected": 409.8
+   },
+   {
+    "calibration_factor": 1.060651,
+    "call": "cluster.nr90.11.prefilter",
+    "growth": 1.2256,
+    "largest_part_projected": 203.2,
+    "measured_earlier": 3832.62,
+    "parts": 24,
+    "peak_rss_gb_projected": 69.0,
+    "projected": 4697.1
+   },
+   {
+    "calibration_factor": 1.092083,
+    "call": "cluster.nr90.12.align",
+    "growth": 1.1825,
+    "largest_part_projected": 185.2,
+    "measured_earlier": 3656.61,
+    "parts": 24,
+    "peak_rss_gb_projected": 23.0,
+    "projected": 4323.9
+   },
+   {
+    "calibration_factor": 1.141562,
+    "call": "cluster.nr90.members",
+    "growth": 1.1806,
+    "largest_part_projected": 12.0,
+    "measured_earlier": 162.49,
+    "parts": 24,
+    "peak_rss_gb_projected": 20.3,
+    "projected": 191.8
+   }
+  ],
+  "cluster_cpu_min": 18504.6,
+  "every_part_under_240": true,
+  "factors": {
+   "cluster.nr50.01.rescorediagonal": 2.934307,
+   "cluster.nr50.06.rescorediagonal": 1.998767,
+   "cluster.nr50.07.align": 0.855149,
+   "cluster.nr50.11.prefilter": 1.035001,
+   "cluster.nr50.12.align": 1.228786,
+   "cluster.nr50.15.prefilter": 1.31607,
+   "cluster.nr50.16.align": 0.842652,
+   "cluster.nr50.19.prefilter": 1.680518,
+   "cluster.nr50.20.align": 0.733531,
+   "cluster.nr50.members": 0.913028,
+   "cluster.nr90.01.rescorediagonal": 2.777171,
+   "cluster.nr90.06.rescorediagonal": 1.609309,
+   "cluster.nr90.07.align": 0.882783,
+   "cluster.nr90.11.prefilter": 1.060651,
+   "cluster.nr90.12.align": 1.092083,
+   "cluster.nr90.members": 1.141562
+  },
+  "label": "derived: scaled from earlier release",
+  "largest_part_cpu_min": 203.2,
+  "steps": {
+   "catalog": 0.184,
+   "cluster": 88.346,
+   "cluster.merge": 8.541,
+   "cluster.nr50.00.kmermatcher": 22.467,
+   "cluster.nr50.01.rescorediagonal": 3.675,
+   "cluster.nr50.01.rescorediagonal.cut": 2.372,
+   "cluster.nr50.02.clust": 4.703,
+   "cluster.nr50.03.createsubdb": 2.827,
+   "cluster.nr50.04.createsubdb": 1.527,
+   "cluster.nr50.05.filterdb": 11.26,
+   "cluster.nr50.06.rescorediagonal": 2.315,
+   "cluster.nr50.06.rescorediagonal.cut": 0.899,
+   "cluster.nr50.07.align": 2.406,
+   "cluster.nr50.07.align.cut": 0.824,
+   "cluster.nr50.08.clust": 2.322,
+   "cluster.nr50.09.mergeclusters": 7.752,
+   "cluster.nr50.10.createsubdb": 2.509,
+   "cluster.nr50.11.prefilter": 2.417,
+   "cluster.nr50.11.prefilter.cut": 0.833,
+   "cluster.nr50.12.align": 2.165,
+   "cluster.nr50.12.align.cut": 0.728,
+   "cluster.nr50.13.clust": 2.243,
+   "cluster.nr50.14.createsubdb": 2.2,
+   "cluster.nr50.15.prefilter": 1.79,
+   "cluster.nr50.15.prefilter.cut": 40.547,
+   "cluster.nr50.16.align": 1.183,
+   "cluster.nr50.16.align.cut": 0.527,
+   "cluster.nr50.17.clust": 1.163,
+   "cluster.nr50.18.createsubdb": 2.152,
+   "cluster.nr50.19.prefilter": 1.662,
+   "cluster.nr50.19.prefilter.cut": 49.614,
+   "cluster.nr50.20.align": 1.07,
+   "cluster.nr50.20.align.cut": 0.506,
+   "cluster.nr50.21.clust": 0.905,
+   "cluster.nr50.22.mergeclusters": 7.308,
+   "cluster.nr50.members": 1.809,
+   "cluster.nr50.members.cut": 0.461,
+   "cluster.nr90.00.kmermatcher": 35.914,
+   "cluster.nr90.01.rescorediagonal": 5.196,
+   "cluster.nr90.01.rescorediagonal.cut": 3.442,
+   "cluster.nr90.02.clust": 6.419,
+   "cluster.nr90.03.createsubdb": 3.87,
+   "cluster.nr90.04.createsubdb": 2.455,
+   "cluster.nr90.05.filterdb": 13.028,
+   "cluster.nr90.06.rescorediagonal": 4.019,
+   "cluster.nr90.06.rescorediagonal.cut": 1.551,
+   "cluster.nr90.07.align": 3.936,
+   "cluster.nr90.07.align.cut": 1.504,
+   "cluster.nr90.08.clust": 4.357,
+   "cluster.nr90.09.mergeclusters": 12.236,
+   "cluster.nr90.10.createsubdb": 3.721,
+   "cluster.nr90.11.prefilter": 5.101,
+   "cluster.nr90.11.prefilter.cut": 1.823,
+   "cluster.nr90.12.align": 3.517,
+   "cluster.nr90.12.align.cut": 1.545,
+   "cluster.nr90.13.clust": 3.654,
+   "cluster.nr90.14.mergeclusters": 13.464,
+   "cluster.nr90.members": 4.086,
+   "cluster.nr90.members.cut": 1.37,
+   "cluster.plan": 12.848,
+   "cluster.rep90": 4.087,
+   "dim": 0.124,
+   "manifest": 5.578,
+   "postings": 35.173,
+   "tokens": 31.755
+  }
+ },
+ "release": "r26.11.2",
+ "stages": [
+  "S1",
+  "P1",
+  "P2",
+  "P3",
+  "P4",
+  "P5",
+  "P6",
+  "H1",
+  "PL1",
+  "C5",
+  "V1"
+ ]
+}

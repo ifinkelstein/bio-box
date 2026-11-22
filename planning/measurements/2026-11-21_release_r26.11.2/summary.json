@@ -1,0 +1,375 @@
+{
+ "added": {
+  "bytes": 25199892792,
+  "files": 278
+ },
+ "added_by_dir": {
+  "catalog/release=r26.11.2.duckdb": [
+   1,
+   1060864
+  ],
+  "dim/contig_dim": [
+   1,
+   11255486
+  ],
+  "dim/genome_dim": [
+   1,
+   6099550
+  ],
+  "l2/cluster_member": [
+   4,
+   3624692188
+  ],
+  "l2/cluster_member_aln": [
+   4,
+   3775984692
+  ],
+  "l2/cluster_plan": [
+   116,
+   149232
+  ],
+  "l2/member_cluster": [
+   5,
+   5735790560
+  ],
+  "l3/tape_tokens": [
+   2,
+   1090152503
+  ],
+  "l3/token_dict": [
+   3,
+   861163573
+  ],
+  "l3/token_postings": [
+   16,
+   10093179143
+  ],
+  "ledger/release=r26.11.2": [
+   1,
+   2551
+  ],
+  "manifests/release=r26.11.2.json": [
+   1,
+   182710
+  ],
+  "release_def/release=r26.11.2": [
+   1,
+   754
+  ],
+  "runs/stage=r26.11.2": [
+   122,
+   178986
+  ]
+ },
+ "arrays": {
+  "C5": {
+   "minced-0.4.2-w8-nr2-r23x47-s26x50-cas1kb-caspfam1-pfam-38.2": {
+    "arrays": 87,
+    "l1_crispr_rows": 425
+   },
+   "minced-0.4.2-w8-nr3-r23x47-s26x50": {
+    "arrays": 1761,
+    "l1_crispr_rows": 62983
+   }
+  },
+  "H1": {
+   "minced-0.4.2-w8-nr2-r23x47-s26x50-cas1kb-caspfam1-pfam-38.2": {
+    "arrays": 30,
+    "l1_crispr_rows": 284
+   },
+   "minced-0.4.2-w8-nr3-r23x47-s26x50": {
+    "arrays": 954,
+    "l1_crispr_rows": 15304
+   }
+  },
+  "P1": {
+   "minced-0.4.2-w8-nr2-r23x47-s26x50-cas1kb-caspfam1-pfam-38.2": {
+    "arrays": 6,
+    "l1_crispr_rows": 24
+   },
+   "minced-0.4.2-w8-nr3-r23x47-s26x50": {
+    "arrays": 286,
+    "l1_crispr_rows": 18288
+   }
+  },
+  "P2": {
+   "minced-0.4.2-w8-nr2-r23x47-s26x50-cas1kb-caspfam1-pfam-38.2": {
+    "arrays": 72,
+    "l1_crispr_rows": 624
+   },
+   "minced-0.4.2-w8-nr3-r23x47-s26x50": {
+    "arrays": 2291,
+    "l1_crispr_rows": 124343
+   }
+  },
+  "P3": {
+   "minced-0.4.2-w8-nr2-r23x47-s26x50-cas1kb-caspfam1-pfam-38.2": {
+    "arrays": 118,
+    "l1_crispr_rows": 742
+   },
+   "minced-0.4.2-w8-nr3-r23x47-s26x50": {
+    "arrays": 3921,
+    "l1_crispr_rows": 237893
+   }
+  },
+  "P4": {
+   "minced-0.4.2-w8-nr2-r23x47-s26x50-cas1kb-caspfam1-pfam-38.2": {
+    "arrays": 69,
+    "l1_crispr_rows": 457
+   },
+   "minced-0.4.2-w8-nr3-r23x47-s26x50": {
+    "arrays": 2520,
+    "l1_crispr_rows": 126202
+   }
+  },
+  "P5": {
+   "minced-0.4.2-w8-nr2-r23x47-s26x50-cas1kb-caspfam1-pfam-38.2": {
+    "arrays": 56,
+    "l1_crispr_rows": 336
+   },
+   "minced-0.4.2-w8-nr3-r23x47-s26x50": {
+    "arrays": 2205,
+    "l1_crispr_rows": 118009
+   }
+  },
+  "P6": {
+   "minced-0.4.2-w8-nr2-r23x47-s26x50-cas1kb-caspfam1-pfam-38.2": {
+    "arrays": 59,
+    "l1_crispr_rows": 433
+   },
+   "minced-0.4.2-w8-nr3-r23x47-s26x50": {
+    "arrays": 2041,
+    "l1_crispr_rows": 109137
+   }
+  },
+  "PL1": {
+   "minced-0.4.2-w8-nr2-r23x47-s26x50-cas1kb-caspfam1-pfam-38.2": {
+    "arrays": 49,
+    "l1_crispr_rows": 355
+   },
+   "minced-0.4.2-w8-nr3-r23x47-s26x50": {
+    "arrays": 1636,
+    "l1_crispr_rows": 49752
+   }
+  },
+  "S1": {
+   "minced-0.4.2-w8-nr2-r23x47-s26x50-cas1kb-caspfam1-pfam-38.2": {
+    "arrays": 34,
+    "l1_crispr_rows": 178
+   },
+   "minced-0.4.2-w8-nr3-r23x47-s26x50": {
+    "arrays": 213,
+    "l1_crispr_rows": 2517
+   }
+  },
+  "V1": {
+   "minced-0.4.2-w8-nr2-r23x47-s26x50-cas1kb-caspfam1-pfam-38.2": {
+    "arrays": 9,
+    "l1_crispr_rows": 35
+   },
+   "minced-0.4.2-w8-nr3-r23x47-s26x50": {
+    "arrays": 725,
+    "l1_crispr_rows": 15439
+   }
+  }
+ },
+ "arrays_total": {
+  "minced-0.4.2-w8-nr2-r23x47-s26x50-cas1kb-caspfam1-pfam-38.2": 589,
+  "minced-0.4.2-w8-nr3-r23x47-s26x50": 18553
+ },
+ "clusters": {
+  "r26.11.1": {
+   "nr50": {
+    "clusters": 9291312,
+    "members": 49102041
+   },
+   "nr90": {
+    "clusters": 33117773,
+    "members": 49102041
+   }
+  },
+  "r26.11.2": {
+   "nr50": {
+    "clusters": 10091519,
+    "members": 57780176
+   },
+   "nr90": {
+    "clusters": 35475280,
+    "members": 57780176
+   }
+  }
+ },
+ "contig_label_rows": {
+  "C5": 5203,
+  "H1": 7228,
+  "P1": 539,
+  "P2": 5018,
+  "P3": 9108,
+  "P4": 4006,
+  "P5": 4112,
+  "P6": 4228,
+  "PL1": 68693,
+  "S1": 27258,
+  "V1": 168536
+ },
+ "dec27": {
+  "contigs": 3508,
+  "contigs_multi_genome": 9593,
+  "contigs_pl1_and_earlier": 9589,
+  "genome_dim_rows": 285014,
+  "genomes_genome_member": 285014,
+  "genomes_independent": 285014,
+  "genomes_independent_q1": 3725,
+  "loci_independent": 3791,
+  "q1_contig": "000b81e3c71d263d0cf80fa98bbd4d70",
+  "q1_count": 3791,
+  "q1_genomes": 3725,
+  "q1_tokens": [
+   4611686018436500162,
+   4611686018433243649
+  ]
+ },
+ "earlier": "r26.11.1",
+ "estimate": 18504.6,
+ "failed": [],
+ "manifest": {
+  "artifacts": 190,
+  "files": 300,
+  "stages": [
+   "S1",
+   "P1",
+   "P2",
+   "P3",
+   "P4",
+   "P5",
+   "P6",
+   "H1",
+   "PL1",
+   "C5",
+   "V1"
+  ]
+ },
+ "per_stage": {
+  "C5": {
+   "new_at_nr50": 141886,
+   "new_at_nr90": 478637,
+   "new_nr50_clusters_with_a_member": 95310,
+   "new_nr90_clusters_with_a_member": 333353,
+   "not_in_earlier": 3285916,
+   "proteins": 3972512
+  },
+  "H1": {
+   "new_at_nr50": 0,
+   "new_at_nr90": 0,
+   "new_nr50_clusters_with_a_member": 0,
+   "new_nr90_clusters_with_a_member": 0,
+   "not_in_earlier": 0,
+   "proteins": 1608023
+  },
+  "P1": {
+   "new_at_nr50": 0,
+   "new_at_nr90": 0,
+   "new_nr50_clusters_with_a_member": 0,
+   "new_nr90_clusters_with_a_member": 0,
+   "not_in_earlier": 0,
+   "proteins": 918765
+  },
+  "P2": {
+   "new_at_nr50": 0,
+   "new_at_nr90": 0,
+   "new_nr50_clusters_with_a_member": 0,
+   "new_nr90_clusters_with_a_member": 0,
+   "not_in_earlier": 0,
+   "proteins": 8580713
+  },
+  "P3": {
+   "new_at_nr50": 0,
+   "new_at_nr90": 0,
+   "new_nr50_clusters_with_a_member": 0,
+   "new_nr90_clusters_with_a_member": 0,
+   "not_in_earlier": 0,
+   "proteins": 8965818
+  },
+  "P4": {
+   "new_at_nr50": 0,
+   "new_at_nr90": 0,
+   "new_nr50_clusters_with_a_member": 0,
+   "new_nr90_clusters_with_a_member": 0,
+   "not_in_earlier": 0,
+   "proteins": 8928132
+  },
+  "P5": {
+   "new_at_nr50": 0,
+   "new_at_nr90": 0,
+   "new_nr50_clusters_with_a_member": 0,
+   "new_nr90_clusters_with_a_member": 0,
+   "not_in_earlier": 0,
+   "proteins": 8970130
+  },
+  "P6": {
+   "new_at_nr50": 0,
+   "new_at_nr90": 0,
+   "new_nr50_clusters_with_a_member": 0,
+   "new_nr90_clusters_with_a_member": 0,
+   "not_in_earlier": 0,
+   "proteins": 8896652
+  },
+  "PL1": {
+   "new_at_nr50": 0,
+   "new_at_nr90": 0,
+   "new_nr50_clusters_with_a_member": 0,
+   "new_nr90_clusters_with_a_member": 0,
+   "not_in_earlier": 0,
+   "proteins": 1900057
+  },
+  "S1": {
+   "new_at_nr50": 0,
+   "new_at_nr90": 0,
+   "new_nr50_clusters_with_a_member": 0,
+   "new_nr90_clusters_with_a_member": 0,
+   "not_in_earlier": 0,
+   "proteins": 1134550
+  },
+  "V1": {
+   "new_at_nr50": 3280804,
+   "new_at_nr90": 4816788,
+   "new_nr50_clusters_with_a_member": 699286,
+   "new_nr90_clusters_with_a_member": 2034781,
+   "not_in_earlier": 5408864,
+   "proteins": 5542734
+  }
+ },
+ "release": "r26.11.2",
+ "uid_stability": {
+  "nr50": {
+   "earlier_clusters": 9291312,
+   "earlier_members": 49102041,
+   "grew_with_new_only": 222161,
+   "lost_members": 0,
+   "merged_with_earlier": 126858,
+   "new_cluster_members": 3421437,
+   "new_clusters": 790877,
+   "same_members": 8777492,
+   "same_members_proteins": 29578687,
+   "same_members_same_uid": 8777492,
+   "split": 164801,
+   "uid_kept": 8777492,
+   "uid_kept_other_members": 0
+  },
+  "nr90": {
+   "earlier_clusters": 33117773,
+   "earlier_members": 49102041,
+   "grew_with_new_only": 502113,
+   "lost_members": 0,
+   "merged_with_earlier": 52494,
+   "new_cluster_members": 5289728,
+   "new_clusters": 2355431,
+   "same_members": 32521095,
+   "same_members_proteins": 46744818,
+   "same_members_same_uid": 32521095,
+   "split": 42071,
+   "uid_kept": 32521095,
+   "uid_kept_other_members": 0
+  }
+ }
+}
