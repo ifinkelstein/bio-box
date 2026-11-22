@@ -29,6 +29,7 @@ the results stream out in batches.
 
 from __future__ import annotations
 
+import bisect
 import json
 import os
 import re
@@ -554,6 +555,7 @@ class open_store:
         manifest = release_files(root, release, manifest)  # refuses an undefined release before anything is opened
         self.scratch = Path(tempfile.mkdtemp(prefix="biobox-export-", dir=tmp))
         self.con = duckdb.connect(config={"threads": threads or EXPORT_THREADS, "memory_limit": EXPORT_MEMORY_LIMIT,
+                                          "preserve_insertion_order": False,
                                           "temp_directory": str(self.scratch / "duckdb")})
         values = {"gene_call_version": gcv, "release": release, "tape_version": tv}
         libraries: set[str] = set()
@@ -828,6 +830,22 @@ def hits_tsv(root: Path, hits: list[dict], *, release: str | None, tape_version:
             yield _tsv_line(cols, r)
 
 
+def _format_hits_faa_chunk(chunk: list[dict], seqs: dict[bytes, tuple[int, str]]) -> Iterator[str]:
+    for r in chunk:
+        got = seqs.get(r["protein_uid"])
+        if got is None:
+            raise ValueError(f"hit protein {r['protein_uid'].hex()} has no protein_seq row")
+        desc = (f"length={cell('length', r['length'])} seq_bitscore={cell('seq_bitscore', r['seq_bitscore'])} "
+                f"seq_evalue_zref={cell('seq_evalue_zref', r['seq_evalue_zref'])} n_genes={r['n_genes']}")
+        if r["contig_uid"] is not None:
+            desc += (f" example={r['accession'] or r['contig_uid'].hex()}:{r['start']}-{r['end']}"
+                     f" strand={cell('strand', r['strand'])}")
+            if r["header"]:
+                desc += " " + cell("header", r["header"])
+        yield f">{r['protein_uid'].hex()} {desc}"
+        yield got[1]
+
+
 def hits_faa(root: Path, hits: list[dict], *, release: str | None, tape_version: str, gene_call_version: str,
              manifest: dict | None = None, library: str | None = None, threads: int | None = None,
              tmp=None, prefer: dict[bytes, tuple[str | None, str | None]] | None = None) -> Iterator[str]:
@@ -836,30 +854,29 @@ def hits_faa(root: Path, hits: list[dict], *, release: str | None, tape_version:
     genes and one gene as `example=ACCESSION:start-end strand=+1 header` (start-end 0-based, half-open): the first
     gene of `hits_tsv`, or, for a protein in `prefer` (`_hit_genes`: the contig a positive control names), the
     first gene on that contig."""
+    files = release_files(root, release, manifest)
     with open_store(root, release=release, gene_call_version=gene_call_version, tape_version=tape_version,
-                    manifest=manifest, threads=threads, tmp=tmp) as st:
+                    manifest=files, threads=threads, tmp=tmp) as st:
         con = st.con
         lib = st.library(library)
         _hit_genes(con, hits, tape_version, lib, prefer, st.stages_of(lib))
-        con.execute("CREATE OR REPLACE TEMP TABLE _seq AS SELECT protein_uid, min(seq) AS seq FROM prot "
-                    "WHERE protein_uid IN (SELECT protein_uid FROM _p) GROUP BY protein_uid")
         sql = """SELECT h.protein_uid, p.length, h.seq_bitscore, h.seq_evalue_zref, coalesce(g.n_genes, 0) AS n_genes,
-                        g.accession, g.contig_uid, g.start, g."end", g.strand, g.header, s.seq
+                        g.accession, g.contig_uid, g.start, g."end", g.strand, g.header
                  FROM _h h LEFT JOIN _genes g ON g.protein_uid = h.protein_uid AND g.gene_rank = 1
-                 LEFT JOIN _plen p ON p.protein_uid = h.protein_uid LEFT JOIN _seq s ON s.protein_uid = h.protein_uid
+                 LEFT JOIN _plen p ON p.protein_uid = h.protein_uid
                  ORDER BY h.protein_uid"""
+        chunk: list[dict] = []
         for r in _stream(con, sql):
-            if r["seq"] is None:
-                raise ValueError(f"hit protein {r['protein_uid'].hex()} has no protein_seq row")
-            desc = (f"length={cell('length', r['length'])} seq_bitscore={cell('seq_bitscore', r['seq_bitscore'])} "
-                    f"seq_evalue_zref={cell('seq_evalue_zref', r['seq_evalue_zref'])} n_genes={r['n_genes']}")
-            if r["contig_uid"] is not None:
-                desc += (f" example={r['accession'] or r['contig_uid'].hex()}:{r['start']}-{r['end']}"
-                         f" strand={cell('strand', r['strand'])}")
-                if r["header"]:
-                    desc += " " + cell("header", r["header"])
-            yield f">{r['protein_uid'].hex()} {desc}"
-            yield r["seq"]
+            chunk.append(r)
+            if len(chunk) >= _BATCH_ROWS:
+                seqs, _ = protein_seqs(root, [x["protein_uid"] for x in chunk], release=release,
+                                       gene_call_version=gene_call_version, manifest=files, threads=threads, tmp=tmp)
+                yield from _format_hits_faa_chunk(chunk, seqs)
+                chunk.clear()
+        if chunk:
+            seqs, _ = protein_seqs(root, [x["protein_uid"] for x in chunk], release=release,
+                                   gene_call_version=gene_call_version, manifest=files, threads=threads, tmp=tmp)
+            yield from _format_hits_faa_chunk(chunk, seqs)
 
 
 def _locus_head(r: dict) -> tuple[str, list[str]]:
@@ -983,19 +1000,97 @@ def _protein_fasta(root, release, gene_call_version, manifest, threads, tmp) -> 
 def protein_seqs(root: Path, uids, *, release: str, gene_call_version: str, manifest=None, threads: int | None = None,
                  tmp=None) -> tuple[dict[bytes, tuple[int, str]], list[dict]]:
     """({protein_uid: (length, sequence)} for those of `uids` the release's `protein_seq` holds, and what the lookup
-    read: `catalog.profile_query`'s scans), for `bio-box seq --protein` (card W-23). By key: the uids go into a temp
-    table and `protein_seq` is filtered by `IN (SELECT ...)`, which reads the row groups that hold them (card B-27,
-    AGENTS §4.4), not the release; files from `release_files`."""
-    from biobox.catalog import profile_query
+    read), for `bio-box seq --protein` (card W-23) and `hits_faa` (card B-65).
 
-    with open_store(root, release=release, gene_call_version=gene_call_version, manifest=manifest, threads=threads,
-                    tmp=tmp, relations=("prot",)) as st:
-        st.con.register("_p_in", pa.table({"protein_uid": pa.array(sorted(set(uids)), pa.binary(16))}))
-        st.con.execute("CREATE TEMP TABLE _p AS SELECT protein_uid FROM _p_in")
-        st.con.unregister("_p_in")
-        got = profile_query(st.con, "SELECT protein_uid, max(length) AS length, min(seq) AS seq FROM prot "
-                                    "WHERE protein_uid IN (SELECT protein_uid FROM _p) GROUP BY protein_uid")
-    return {u: (int(n), s) for u, n, s in got["result"]}, got["scans"]
+    Reads Parquet footers first, enforces `LY-02`/`LY-03` sort and min/max statistics on `protein_uid`, bisects the
+    sorted unique keys against each row group's `[min, max]`, and decodes at most one file and one matching row group
+    at a time so memory stays bounded regardless of release stage count or key count (AGENTS §4.1, §4.3, §4.4)."""
+    import pyarrow.compute as pc
+    import pyarrow.parquet as pq
+
+    from biobox.search.nbr import _store_files
+
+    files = release_files(root, release, manifest)
+    wanted = sorted(set(uids))
+    pfiles = sorted(_store_files(Path(root), "protein_seq", {"gene_call_version": gene_call_version}, files),
+                    key=lambda x: str(x[0]))
+    if not pfiles:
+        return {}, []
+
+    out: dict[bytes, tuple[int, str]] = {}
+    files_read = 0
+    rgs_scanned = 0
+    rgs_total = 0
+    rows_scanned = 0
+
+    for path, _ in pfiles:
+        md = pq.read_metadata(path)
+        leaf = [i for i in range(md.num_columns) if md.schema.column(i).path == "protein_uid"]
+        if not leaf:
+            raise ValueError(f"{path}: no column 'protein_uid'")
+        col_idx = leaf[0]
+        rgs_total += md.num_row_groups
+        prev_max = None
+        matching: list[tuple[int, int, int]] = []
+        for g in range(md.num_row_groups):
+            rg = md.row_group(g)
+            if rg.num_rows == 0:
+                continue
+            st = rg.column(col_idx).statistics
+            if st is None or not st.has_min_max:
+                raise ValueError(f"{path}: row group {g} has no min/max statistics on protein_uid; "
+                                 "a key lookup cannot prune it (LY-03)")
+            lo, hi = st.min, st.max
+            if lo > hi or (prev_max is not None and lo < prev_max):
+                raise ValueError(f"{path}: row group {g} is not sorted by protein_uid (LY-02)")
+            prev_max = hi
+            if wanted:
+                a = bisect.bisect_left(wanted, lo)
+                b = bisect.bisect_right(wanted, hi)
+                if a < b:
+                    matching.append((g, a, b))
+        if not matching:
+            continue
+        files_read += 1
+        pf = pq.ParquetFile(path, metadata=md, pre_buffer=False)
+        try:
+            for g, a, b in matching:
+                rgs_scanned += 1
+                rows_scanned += md.row_group(g).num_rows
+                sub = pa.array(wanted[a:b], type=pa.binary(16))
+                u_tbl = pf.read_row_group(g, columns=["protein_uid"], use_threads=False)
+                has_hit = pc.any(pc.is_in(u_tbl.column("protein_uid"), value_set=sub)).as_py()
+                del u_tbl
+                if not has_hit:
+                    del sub
+                    continue
+                for batch in pf.iter_batches(batch_size=_BATCH_ROWS, row_groups=[g],
+                                             columns=["protein_uid", "length", "seq"], use_threads=False):
+                    mask = pc.is_in(batch.column("protein_uid"), value_set=sub)
+                    hit_batch = batch.filter(mask)
+                    del mask
+                    if hit_batch.num_rows == 0:
+                        del hit_batch
+                        continue
+                    u_col = hit_batch.column("protein_uid").to_pylist()
+                    n_col = hit_batch.column("length").to_pylist()
+                    s_col = hit_batch.column("seq").to_pylist()
+                    del hit_batch
+                    for u, n, s in zip(u_col, n_col, s_col):
+                        n_int, s_str = int(n), str(s)
+                        prev = out.get(u)
+                        if prev is None:
+                            out[u] = (n_int, s_str)
+                        else:
+                            out[u] = (max(prev[0], n_int), min(prev[1], s_str))
+                del sub
+        finally:
+            del pf
+            pa.default_memory_pool().release_unused()
+
+    scans = [{"files": [str(p) for p, _ in pfiles], "files_read": files_read, "row_groups_scanned": rgs_scanned,
+              "row_groups_total": rgs_total, "rows_scanned": rows_scanned}]
+    return out, scans
 
 
 def contig_dims(root: Path, release: str | None, contigs: set[bytes], manifest: dict | None = None) -> dict[bytes, dict]:

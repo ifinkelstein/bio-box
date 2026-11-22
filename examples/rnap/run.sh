@@ -82,7 +82,7 @@ bb sql-coord sql --root "$ROOT" --release "$RELEASE" --threads "$THREADS" "$EX/s
 
 # 6. The oracle: hmmsearch (HMMER, in the image) on every hit and every Pfam-annotated RNA_pol protein.
 bb sql-uids sql $Q "$EX/sql/oracle_uids.sql" --out "$OUT/oracle_uids.txt"
-bb seq-oracle seq --root "$ROOT" --release "$RELEASE" --proteins-file "$OUT/oracle_uids.txt" --out "$OUT/oracle.faa"
+bb seq-oracle seq --root "$ROOT" --release "$RELEASE" --threads "$THREADS" --proteins-file "$OUT/oracle_uids.txt" --out "$OUT/oracle.faa"
 tool "$OUT/logs/hmmsearch.time" hmmsearch --cpu "$THREADS" -Z 1e8 --domZ 1e8 -T 0 --noali \
   --tblout "$OUT/oracle.tbl" -o "$OUT/logs/hmmsearch.out" "$OUT/hmm/RNA_pol.hmm" "$OUT/oracle.faa"
 tool "$OUT/logs/oracle.time" python -I "$SHARED/oracle.py" --hmm "$OUT/hmm/RNA_pol.hmm" --tblout "$OUT/oracle.tbl" \
