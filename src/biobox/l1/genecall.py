@@ -207,6 +207,14 @@ EST_OCCURRENCE_ROW = 48
 CALL_S_PER_MBP = {("single", False): 0.7941, ("single", True): 0.7941 * 1.5011,
                   ("gv-meta", False): 4.2019, ("gv-meta", True): 4.3762,
                   ("meta", False): 2.9450, ("meta", True): 4.4205}
+# Long linear contigs in meta mode (card B-63; planning/measurements/2026-11-21_b63_meta_genecall.md):
+# Prodigal meta-mode CPU-s/Mbp increases 2.4x-3.9x with contig length across IMG-PR, mMGE, gut, and RefSeq
+# (*measured*, wilkcomp02, 2026-11-21: 1.38-2.01 s/Mbp at 1-5 kb vs 1.89-3.20 at 10-30 kb and 3.27-5.76 at >=50 kb;
+# card C-40's IMG-PR linear sample ran at 3.9980 s/Mbp). Expressed as a multiplier on `CALL_S_PER_MBP[("meta", False)]`
+# (2.9450 * 1.50 = 4.4175 s/Mbp, matching circular meta's 4.4205 s/Mbp, which wraps contigs with 50 kb flanks) so
+# `CALL_S_PER_MBP` stays unchanged for built stages and scales proportionally when monkeypatched in tests.
+META_LINEAR_LONG_BP = 10_000
+META_LINEAR_LONG_FACTOR = 1.50
 # The whole step over its calls alone: the reading of the sequences, the rows, the scratch files, the sorting and
 # writing of every table, and the workers' contention, as one factor on the calls. *Derived*, the largest of the eight
 # built stages' run records (wilkcomp02, 2026-11-10 to 15; card B-48's note): each record's cpu_min over its calls at
@@ -502,20 +510,21 @@ def _drop(genes: pa.RecordBatch, cands: pa.RecordBatch, modes: list[str], n_wrap
 
 def _batches(genomes: Iterable[GenomeInput], bases_of, batch_bases: int, thread_min_bases: int
              ) -> Iterator[tuple[bool, list[GenomeInput]]]:
-    """`(long, batch)` in input order. A genome of at least `thread_min_bases` bases is a batch alone
-    (`long`); shorter consecutive genomes are grouped, cut before the genome that would take a batch
-    past `batch_bases` bases (a genome larger than that is a batch alone)."""
+    """`(long, batch)` for calling. A genome of at least `thread_min_bases` bases is yielded alone
+    (`long`) without flushing the pending short-genome batch (card B-63: avoids fragmenting short
+    batches when short and long genomes are interleaved in `genome_uid` order); shorter genomes are
+    accumulated and cut before the genome that would take a batch past `batch_bases` bases (a short
+    genome larger than that is a batch alone)."""
     batch: list[GenomeInput] = []
     held = 0
     for g in genomes:
         n = bases_of(g)
-        if n >= thread_min_bases or (batch and held + n > batch_bases):
-            if batch:
-                yield False, batch
-            batch, held = [], 0
         if n >= thread_min_bases:
             yield True, [g]
             continue
+        if batch and held + n > batch_bases:
+            yield False, batch
+            batch, held = [], 0
         batch.append(g)
         held += n
     if batch:
@@ -882,8 +891,15 @@ def called_bases(n: int, circular: bool) -> int:
 
 def calls_cpu_s(mode: str, contigs: Iterable[tuple[int, bool]]) -> float:
     """CPU-seconds of the calls alone of a genome in `mode` with these (length, circular) contigs, at
-    `CALL_S_PER_MBP`: what card C-26's sample and this card's samples measured."""
-    return sum(CALL_S_PER_MBP[(mode, c)] * called_bases(n, c) for n, c in contigs) / 1e6
+    `CALL_S_PER_MBP` (with `META_LINEAR_LONG_FACTOR` on linear meta contigs >= `META_LINEAR_LONG_BP`,
+    card B-63)."""
+    total = 0.0
+    for n, c in contigs:
+        rate = CALL_S_PER_MBP[(mode, c)]
+        if mode == "meta" and not c and n >= META_LINEAR_LONG_BP:
+            rate *= META_LINEAR_LONG_FACTOR
+        total += rate * called_bases(n, c)
+    return total / 1e6
 
 
 def genome_cost_us(kind: str, contigs: Iterable[tuple[int, bool]]) -> int:
@@ -1034,6 +1050,8 @@ def cut_plan(items: Callable[[], Iterable[tuple[bytes, int, int, float, bool]]],
             "batch_cpu_min": batch_cpu_min, "batches": out, "merge_estimate_cpu_min": round(merge_cpu_min(genes), 3),
             "rates": {"call_s_per_mbp": {f"{m}/{'circular' if c else 'linear'}": r
                                          for (m, c), r in sorted(CALL_S_PER_MBP.items())},
+                      "meta_linear_long_bp": META_LINEAR_LONG_BP,
+                      "meta_linear_long_factor": META_LINEAR_LONG_FACTOR,
                       "step_overhead": STEP_OVERHEAD, "process_s": PROCESS_S,
                       "publish_s_per_gene": PUBLISH_S_PER_GENE}}
 
