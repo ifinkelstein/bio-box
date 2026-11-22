@@ -253,7 +253,8 @@ def test_the_confs_of_g1_and_spx1_hold_the_values_of_their_notes():
     g1 = est.read_conf(BSP / "stages" / "G1.conf", "G1", tree=REPO)
     assert (g1.depth, g1.library, g1.crispr, g1.min_contig_len) == ("annotated", ("pfam", "38.2", "gathering"), True,
                                                                     None)
-    assert g1.after == () and g1.judge == {} and not g1.accepted
+    assert g1.after == () and g1.judge == {}
+    assert g1.accepted == {("crispr-minced-0.4.2-w8-nr3-r23x47-s26x50", 66.117, 38.363): "DEC-68"}
     assert {s: n for s, (n, _) in g1.expect.items()} == {"P2": 1, "P4": 6, "H1": 1}
     spx = est.read_conf(BSP / "stages" / "SPX1.conf", "SPX1", tree=REPO)
     assert (spx.depth, spx.library, spx.crispr, spx.min_contig_len) == ("called", None, True, 5000)

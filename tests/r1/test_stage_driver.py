@@ -471,7 +471,8 @@ def test_each_repository_conf_is_valid_and_its_sums_and_figures_are_its_notes(pa
     for st, (n, src) in c.expect.items():
         note = (REPO / src).read_text()
         assert f"{n:,}" in note or f" {n} " in note or f"| {n} |" in note, f"{path.name}: held_by {st} {n} not in {src}"
-    assert not c.accepted, "a new stage carries no accepted record"
+    want_acc = {("crispr-minced-0.4.2-w8-nr3-r23x47-s26x50", 66.117, 38.363): "DEC-68"} if c.stage == "G1" else {}
+    assert c.accepted == want_acc, "only a record accepted by a DEC row is carried"
     assert c.inputs == Path(f"/tmp/if2453/s2/inputs/{c.stage}")
 
 
