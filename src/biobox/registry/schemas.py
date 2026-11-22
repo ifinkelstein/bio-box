@@ -1210,6 +1210,17 @@ ARTIFACTS: dict[str, ArtifactSpec] = {
         in_manifest=False,
         small_ok=True,
     ),
+    "release_archived": ArtifactSpec(
+        name="release_archived",
+        layer="release",
+        location="archived",
+        partition_keys=(),
+        pattern=r"release=[^/=]+\.json",
+        doc="record of a retired release whose large release= files were removed from the root after durable "
+            "backup (DEC-66 S-4, card C-54); append-only in the root, never listed in a release manifest",
+        in_manifest=False,
+        small_ok=True,
+    ),
 }
 
 

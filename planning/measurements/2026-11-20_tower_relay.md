@@ -118,6 +118,12 @@ in all) streamed to `tower:/mnt/user/research-bulk/bio-box/sources/G1` in **114 
 2,961,546,429 / 114 / 1e6), `SHA256SUMS` written (7 lines, `0 failed`). Also mirrored `C1`..`C6`'s 12 staged `genomes.json` and
 `objects.json` lists (6,173,661 B in 12 s, `SHA256SUMS` 12 lines; `relay_c_inputs.log`).
 
+**Stage `V2`'s 9.63 GB DEC-65 re-staged inputs (2026-11-22, 08:22:48 to 08:30:30 CST, DEC-66 `S-2`)** (*measured*, `relay_v2.log`):
+all 8 DEC-65 staged files of `/tmp/if2453/s2/inputs/V2` (`imgvr_v4.1_hc_hq_votu_reps.fna` at 9,458,228,347 B in 442 s =
+21.40 MB/s, `inovirus_roux2019.fna` 50,500,520 B, `records.tsv`, `genomes.json`, `trims.tsv`, `shared_records.tsv`,
+`repeated_records.tsv`, `objects.json`; 9,634,042,117 B in all) streamed to `tower:/mnt/user/research-bulk/bio-box/sources/V2`
+in **462 s**, **20.85 MB/s end to end** (*derived*: 9,634,042,117 / 462 / 1e6), `SHA256SUMS` written (8 lines, `0 failed`).
+
 ## 4. What the first mirror showed, and the change in the repository script
 
 With `scp -3` the bytes cross the link once and are then read again from the array to be hashed: at about 9 MB/s

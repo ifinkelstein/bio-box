@@ -181,9 +181,13 @@ def prepare(root: Path, r: dict, release: str, packs: Path) -> dict:
     """The first part of `resolve`: what the run id needs, read quickly. The recipe is executable, the release has
     one pack in `packs` (its manifest and pack id), and a file seed is read and hashed (its sha256 replaces its
     path in the recipe hash). No shard is read. Refusals raise RecipeError."""
+    from biobox import catalog
+
     gaps = rcp.executable(r)
     if gaps:
         raise RecipeError("not executable in this build: " + "; ".join(gaps))
+    if catalog.is_archived(root, release):
+        raise RecipeError(catalog.archived_error(root, release))
     try:
         pdir = pack.find(packs, release, root=root)
     except (FileNotFoundError, ValueError) as e:
