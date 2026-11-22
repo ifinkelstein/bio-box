@@ -202,25 +202,26 @@ What the table says, without choosing:
 - **Release-level representatives (DEC-35 (7))** are the third option the decision rows name; their comparison is owed
   (§5).
 
-## 5. Owed: DEC-35 (7), the comparison with release-level representatives
+## 5. DEC-35 (7): comparison with release-level representatives (`r26.11.2`, measured 2026-11-21)
 
-Not run (the card's instruction of 2026-11-21: it waits for the clusters of a release that includes C5). It needs the
-NR90 `cluster_member` and `cluster_member_aln` files of the first release whose stages include C5: release `r26.11.2`
-if the release train took C5 (it was complete when the train started at 22:06 on 2026-11-20), else the next one. The
-command, read-only on the root, in the image (`bb py` of `c47_driver.sh`), with the release's own file lists from its
-manifest (never a glob) and `--earlier` the release's other stages in its order:
+Run once `r26.11.2` (`S1,P1,P2,P3,P4,P5,P6,H1,PL1,C5,V1`) published and verified its manifest (`46454d51b321845b9c7bffe15efaa165`), read-only on `/tmp/if2453/r10/root`, inside `bio-box_faec1f4.sif` (unit `c47-eval-rel`, 21:46 to 21:55 CST on 2026-11-21, 2 threads, `MemoryMax=16G`, `nice -n 19`, 502.5 s; output [`2026-11-20_c5_pfam_by_representatives/eval_release.json`](2026-11-20_c5_pfam_by_representatives/eval_release.json)), with `--release-cm` and `--release-aln` taken from `r26.11.2`'s manifest file list (never a glob):
 
 ```
 python c47_nr90_pfam_eval.py eval --root /tmp/if2453/r10/root --stage C5 \
   --earlier S1,P1,P2,P3,P4,P5,P6,H1,PL1,V1 \
   --stage-cm $(cat /tmp/if2453/c47/eval/cm.files) --stage-aln $(cat /tmp/if2453/c47/eval/aln.files) \
-  --release-cm <the release's l2/cluster_member files> --release-aln <its l2/cluster_member_aln files> \
+  --release-cm $(cat /tmp/if2453/c47/eval/rel_cm.files) --release-aln $(cat /tmp/if2453/c47/eval/rel_aln.files) \
   --selection /tmp/if2453/c47/stages/C5/selection.tsv --objects /tmp/if2453/s2/inputs/C5/objects.json \
-  --out /tmp/if2453/c47/eval/eval_release.json --tmp /tmp/if2453/c47/eval/eval_release_tmp --threads 2 --memory 10GB
+  --out /tmp/if2453/c47/eval/eval_release.json --tmp /tmp/if2453/c47/eval/eval_release_tmp --threads 2 --memory 12GB
 ```
 
-It writes `dec35_7_comparison`: the residues scanned under stage-local against release-level representatives, and
-whether the gap exceeds DEC-35 (7)'s 10 points.
+| Clustering scope | Reps (*measured*) | Inferred members (*measured*) | Scanned proteins (after B-47b) (*measured*) | Scanned residues % (after B-47b) (*measured*) | Wrong pairs / reported (*measured*, % *derived*) | Missed pairs / true (*measured*, % *derived*) | DEC-35 (6) stop? |
+|---|---:|---:|---:|---:|---:|---:|---|
+| Stage-local NR90 (`C5` alone) | 870,646 | 2,712,267 | 1,260,245 (1,036,895) / 31.72% | **24.7464%** (**20.6129%**) | 64,417 / 6,734,503 (0.9565%) | 72,286 / 6,742,372 (**1.0721%**) | **yes** (missed > 1%) |
+| Release-level NR90 (`r26.11.2`) | 714,266 | 2,843,695 | 1,128,817 (935,767) / 28.42% | **21.5519%** (**18.0404%**) | 69,431 / 6,731,947 (**1.0314%**) | 79,856 / 6,742,372 (**1.1844%**) | **yes** (both > 1%) |
+
+- **`DEC-35 (7)` residue gap**: stage-local scans **`3.1945` percentage points** more residues than release-level (`24.7464%` vs `21.5519%`; **`2.5725` percentage points** after card B-47b's copy, `20.6129%` vs `18.0404%`, *measured* in `dec35_7_comparison`), **well below `DEC-35 (7)`'s 10-percentage-point revisit threshold** (`revisit_triggered_gt_10pp: false`).
+- **Error rates under release-level NR90**: because `156,380` stage-local `C5` representatives become non-representative members of earlier-stage NR90 clusters in `r26.11.2` (`2,843,695` vs `2,712,267` inferred members), release-level representatives infer 3.19 percentage points more residues and **err more on both sides**: **`1.1844%` missed** (`79,856 / 6,742,372`) and **`1.0314%` wrong** (`69,431 / 6,731,947`), both exceeding the 1% `DEC-35 (6)` limit. Thus release-level representatives neither save >10 percentage points of scan work nor clear the 1% error gate (confirming DEC-62's choice of full scans for `C1` to `C4` and `C6`).
 
 ## 6. Pod use
 
@@ -230,6 +231,7 @@ whether the gap exceeds DEC-35 (7)'s 10 points.
 | `c47-evalcluster`, `c47-ev-002` to `c47-ev-060` | 11-20 23:06 to 11-21 00:07 | the clustering steps and `finish`, one unit each (none near the 280 CPU-minute stop; largest 99.10) | 8 |
 | `c47-evaluate` | 11-21 00:12 to 00:14 | `c47_nr90_pfam_eval.py eval` (101.8 s) | 2 |
 | `c47-breakdown` | 11-21 00:21 to 00:24 | `c47_nr90_pfam_eval.py breakdown` (191.7 s) | 2 |
+| `c47-eval-rel` | 11-21 21:46 to 21:55 | `c47_nr90_pfam_eval.py eval` with `r26.11.2` release-level NR90 (`DEC-35 (7)`, 502.5 s) | 2 |
 
 All beside the release train `c46-train-rel-1`, inside the account's cap of 56 threads. Nothing under the data root or
 `/tmp/if2453/c46` was touched; nothing was written under `/stor`. Left on the pod: `/tmp/if2453/c47/eval/` (the

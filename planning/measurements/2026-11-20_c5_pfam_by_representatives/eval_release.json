@@ -1,0 +1,177 @@
+{
+ "dec35_6_stop_triggered": true,
+ "dec35_7_comparison": {
+  "gap_after_b47b_pp": 2.5725,
+  "gap_percentage_points": 3.1945,
+  "release_level_after_b47b_pct": 18.0404,
+  "release_level_scanned_residue_pct": 21.5519,
+  "revisit_triggered_gt_10pp": false,
+  "stage_local_after_b47b_pct": 20.6129,
+  "stage_local_scanned_residue_pct": 24.7464
+ },
+ "elapsed_s": 502.5,
+ "library": "pfam-38.2",
+ "release_level": {
+  "by_phylum": {
+   "p__Pseudomonadota": {
+    "copied_proteins": 703241,
+    "copied_residues": 204247443,
+    "inferred_members": 2843695,
+    "length_scanned": 390321,
+    "missed_rate": 0.011844,
+    "pairs_false": 69431,
+    "pairs_missed": 79856,
+    "pairs_right": 6662516,
+    "proteins": 3972512,
+    "reported_pairs": 6731947,
+    "reps": 714266,
+    "scanned_protein_fraction": 0.284157,
+    "scanned_proteins": 1128817,
+    "scanned_proteins_after_b47b": 935767,
+    "scanned_residue_fraction": 0.215519,
+    "scanned_residue_fraction_after_b47b": 0.180404,
+    "scanned_residues": 291132108,
+    "scanned_residues_after_b47b": 243696299,
+    "stop_triggered": true,
+    "total_residues": 1350839880,
+    "true_pairs": 6742372,
+    "unmapped_scanned": 24230,
+    "wrong_rate": 0.010314
+   }
+  },
+  "coordinates": null,
+  "f_bins": {
+   "(0,0.5)": {
+    "rows": 5720,
+    "true_pair": 1420
+   },
+   "0": {
+    "rows": 8004,
+    "true_pair": 1187
+   },
+   "1.0": {
+    "rows": 5577076,
+    "true_pair": 5508815
+   },
+   "[0.5,0.8)": {
+    "rows": 14745,
+    "true_pair": 11902
+   },
+   "[0.8,1)": {
+    "rows": 141043,
+    "true_pair": 137340
+   }
+  },
+  "overall": {
+   "copied_proteins": 703241,
+   "copied_residues": 204247443,
+   "inferred_members": 2843695,
+   "length_scanned": 390321,
+   "missed_rate": 0.011844,
+   "pairs_false": 69431,
+   "pairs_missed": 79856,
+   "pairs_right": 6662516,
+   "proteins": 3972512,
+   "reported_pairs": 6731947,
+   "reps": 714266,
+   "scanned_protein_fraction": 0.284157,
+   "scanned_proteins": 1128817,
+   "scanned_proteins_after_b47b": 935767,
+   "scanned_residue_fraction": 0.215519,
+   "scanned_residue_fraction_after_b47b": 0.180404,
+   "scanned_residues": 291132108,
+   "scanned_residues_after_b47b": 243696299,
+   "stop_triggered": true,
+   "total_residues": 1350839880,
+   "true_pairs": 6742372,
+   "unmapped_scanned": 24230,
+   "wrong_rate": 0.010314
+  }
+ },
+ "stage": "C5",
+ "stage_local": {
+  "by_phylum": {
+   "p__Pseudomonadota": {
+    "copied_proteins": 703241,
+    "copied_residues": 204247443,
+    "inferred_members": 2712267,
+    "length_scanned": 367127,
+    "missed_rate": 0.010721,
+    "pairs_false": 64417,
+    "pairs_missed": 72286,
+    "pairs_right": 6670086,
+    "proteins": 3972512,
+    "reported_pairs": 6734503,
+    "reps": 870646,
+    "scanned_protein_fraction": 0.317241,
+    "scanned_proteins": 1260245,
+    "scanned_proteins_after_b47b": 1036895,
+    "scanned_residue_fraction": 0.247464,
+    "scanned_residue_fraction_after_b47b": 0.206129,
+    "scanned_residues": 334284889,
+    "scanned_residues_after_b47b": 278447246,
+    "stop_triggered": true,
+    "total_residues": 1350839880,
+    "true_pairs": 6742372,
+    "unmapped_scanned": 22472,
+    "wrong_rate": 0.009565
+   }
+  },
+  "coordinates": {
+   "both_within_10": 0.710221343714882,
+   "both_within_5": 0.6940118799165195,
+   "de_median": 0.0,
+   "de_p95": 1373.0,
+   "ds_median": 0.0,
+   "ds_p95": 1373.0,
+   "n_pairs": 199328
+  },
+  "f_bins": {
+   "(0,0.5)": {
+    "rows": 5165,
+    "true_pair": 1394
+   },
+   "0": {
+    "rows": 7193,
+    "true_pair": 938
+   },
+   "1.0": {
+    "rows": 5365490,
+    "true_pair": 5301944
+   },
+   "[0.5,0.8)": {
+    "rows": 14076,
+    "true_pair": 11341
+   },
+   "[0.8,1)": {
+    "rows": 129623,
+    "true_pair": 126358
+   }
+  },
+  "overall": {
+   "copied_proteins": 703241,
+   "copied_residues": 204247443,
+   "inferred_members": 2712267,
+   "length_scanned": 367127,
+   "missed_rate": 0.010721,
+   "pairs_false": 64417,
+   "pairs_missed": 72286,
+   "pairs_right": 6670086,
+   "proteins": 3972512,
+   "reported_pairs": 6734503,
+   "reps": 870646,
+   "scanned_protein_fraction": 0.317241,
+   "scanned_proteins": 1260245,
+   "scanned_proteins_after_b47b": 1036895,
+   "scanned_residue_fraction": 0.247464,
+   "scanned_residue_fraction_after_b47b": 0.206129,
+   "scanned_residues": 334284889,
+   "scanned_residues_after_b47b": 278447246,
+   "stop_triggered": true,
+   "total_residues": 1350839880,
+   "true_pairs": 6742372,
+   "unmapped_scanned": 22472,
+   "wrong_rate": 0.009565
+  }
+ }
+}
