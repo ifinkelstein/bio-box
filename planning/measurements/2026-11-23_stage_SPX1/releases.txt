@@ -1,0 +1,10 @@
+release	manifest	stages	depths	genomes	contigs	proteins	libraries	ncrna	member_cluster	contig_label	domain_family_tokens	latest
+r26.11.1	yes	S1,P1,P2,P3,P4,P5,P6,H1,PL1	S1,P1,P2,P3,P4,P5,P6,H1,PL1 annotated pfam-38.2	114629	122626	49102041	pfam-38.2	-	yes	yes	yes	-
+r26.11.2	yes	S1,P1,P2,P3,P4,P5,P6,H1,PL1,C5,V1	S1,P1,P2,P3,P4,P5,P6,H1,PL1,C5,V1 annotated pfam-38.2	285014	293637	57780176	pfam-38.2	-	yes	yes	yes	read
+rM.1	no	S1,P1,P2,P3,P4,P5,P6	S1,P1,P2,P3,P4,P5,P6 annotated pfam-38.2	-	-	45815843	pfam-38.2	-	yes	yes	no	-
+rM.2	archived	S1,P1,P2,P3,P4,P5,P6	S1,P1,P2,P3,P4,P5,P6 annotated pfam-38.2	-	-	-	pfam-38.2	-	yes	partial(not S1,P1,P2)	-	-
+rN.1	archived	S1,P1,P2	S1,P1,P2 called	-	-	-	-	-	no	no	-	-
+rN.1a	archived	S1	S1 called	-	-	-	-	-	no	no	-	-
+rN.1b	archived	S1,P1	S1,P1 called	-	-	-	-	-	no	no	-	-
+rN.2	archived	S1,P1,P2	S1,P1,P2 annotated pfam-38.2	-	-	-	pfam-38.2	-	no	no	-	-
+rN.3	archived	S1,P1,P2	S1,P1,P2 annotated pfam-38.2	-	-	-	pfam-38.2	-	yes	no	-	-

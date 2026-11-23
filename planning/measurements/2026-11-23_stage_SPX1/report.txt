@@ -1,0 +1,69 @@
+before: 4727 files; after: 4960; new 233 (233 under stage=SPX1); gone 0; size or mtime changed 0; other stages' files hashed before 3602, after 3602, sha256 changed 0, new 0
+root_added.tsv: 233 files, 26,909,411,041 bytes
+step crispr-minced-0.4.2-w8-nr3-r23x47-s26x50: 114.755 CPU-min, 2202.1 s, 1881 MiB, 6 threads, estimate 123.465 (ratio 0.929)
+step genecall.batch-00000: 212.744 CPU-min, 3186.2 s, 2329 MiB, 4 threads, estimate 237.302 (ratio 0.897)
+step genecall.batch-00001: 213.149 CPU-min, 3191.6 s, 2353 MiB, 4 threads, estimate 237.301 (ratio 0.898)
+step genecall.batch-00002: 214.242 CPU-min, 3219.6 s, 2296 MiB, 4 threads, estimate 237.302 (ratio 0.903)
+step genecall.batch-00003: 213.149 CPU-min, 3201.4 s, 2302 MiB, 4 threads, estimate 237.302 (ratio 0.898)
+step genecall.batch-00004: 213.257 CPU-min, 3198.6 s, 2320 MiB, 4 threads, estimate 237.303 (ratio 0.899)
+step genecall.batch-00005: 215.462 CPU-min, 3242.9 s, 2318 MiB, 4 threads, estimate 237.301 (ratio 0.908)
+step genecall.batch-00006: 212.449 CPU-min, 3203.7 s, 2280 MiB, 4 threads, estimate 237.303 (ratio 0.895)
+step genecall.batch-00007: 212.536 CPU-min, 3207.2 s, 2296 MiB, 4 threads, estimate 237.302 (ratio 0.896)
+step genecall.batch-00008: 215.11 CPU-min, 3244.4 s, 2291 MiB, 4 threads, estimate 237.302 (ratio 0.906)
+step genecall.batch-00009: 212.105 CPU-min, 3209.0 s, 2267 MiB, 4 threads, estimate 237.301 (ratio 0.894)
+step genecall.batch-00010: 213.39 CPU-min, 3224.6 s, 2298 MiB, 4 threads, estimate 237.303 (ratio 0.899)
+step genecall: 13.35 CPU-min, 767.3 s, 2529 MiB, 6 threads, estimate 3.731 (ratio 3.578, not judged: DEC-43)
+step genecall.plan: 0.525 CPU-min, 29.0 s, 666 MiB, 6 threads
+step igr: 3.202 CPU-min, 180.6 s, 2427 MiB, 6 threads
+step ingest.batch-0000: 5.822 CPU-min, 336.6 s, 1335 MiB, 1 threads
+step ingest.batch-0001: 5.43 CPU-min, 314.2 s, 1261 MiB, 1 threads
+step ingest.batch-0002: 3.783 CPU-min, 217.8 s, 1015 MiB, 1 threads
+step ingest.batch-0003: 6.887 CPU-min, 399.7 s, 1388 MiB, 1 threads
+step ingest.batch-0004: 4.813 CPU-min, 278.3 s, 1180 MiB, 1 threads
+step ingest.batch-0005: 6.635 CPU-min, 384.2 s, 1382 MiB, 1 threads
+step ingest.batch-0006: 2.89 CPU-min, 166.2 s, 822 MiB, 1 threads
+step ingest.batch-0007: 3.417 CPU-min, 196.4 s, 882 MiB, 1 threads
+step ingest.batch-0008: 6.466 CPU-min, 374.2 s, 1334 MiB, 1 threads
+step ingest.batch-0009: 4.042 CPU-min, 232.2 s, 1048 MiB, 1 threads
+step ingest.batch-0010: 5.095 CPU-min, 295.5 s, 1152 MiB, 1 threads
+step ingest.batch-0011: 4.301 CPU-min, 248.2 s, 1059 MiB, 1 threads
+step ingest.batch-0012: 6.544 CPU-min, 379.9 s, 1346 MiB, 1 threads
+step ingest.batch-0013: 5.473 CPU-min, 316.9 s, 1264 MiB, 1 threads
+step ingest.batch-0014: 5.856 CPU-min, 340.6 s, 1294 MiB, 1 threads
+step ingest.batch-0015: 3.461 CPU-min, 199.2 s, 891 MiB, 1 threads
+step ingest.batch-0016: 5.825 CPU-min, 338.8 s, 1342 MiB, 1 threads
+step ingest.batch-0017: 7.888 CPU-min, 458.1 s, 1363 MiB, 1 threads
+step ingest.batch-0018: 5.038 CPU-min, 291.6 s, 1189 MiB, 1 threads
+step ingest.batch-0019: 5.38 CPU-min, 313.0 s, 1155 MiB, 1 threads
+step ingest.batch-0020: 6.233 CPU-min, 362.2 s, 891 MiB, 1 threads
+step ingest.batch-0021: 5.318 CPU-min, 309.4 s, 1301 MiB, 1 threads
+step ingest.batch-0022: 5.32 CPU-min, 310.1 s, 1095 MiB, 1 threads
+step ingest.batch-0023: 6.814 CPU-min, 397.1 s, 1361 MiB, 1 threads
+step ingest.batch-0024: 5.235 CPU-min, 305.4 s, 1198 MiB, 1 threads
+step ingest.batch-0025: 5.686 CPU-min, 331.0 s, 1271 MiB, 1 threads
+step ingest.batch-0026: 5.728 CPU-min, 334.1 s, 1344 MiB, 1 threads
+step ingest.batch-0027: 4.367 CPU-min, 252.5 s, 1051 MiB, 1 threads
+step ingest.batch-0028: 1.839 CPU-min, 106.6 s, 592 MiB, 1 threads
+step ingest.batch-0029: 4.731 CPU-min, 273.6 s, 1157 MiB, 1 threads
+step ingest.batch-0030: 6.197 CPU-min, 362.7 s, 1233 MiB, 1 threads
+step ingest.batch-0031: 5.535 CPU-min, 323.6 s, 1300 MiB, 1 threads
+step ingest.batch-0032: 6.078 CPU-min, 353.6 s, 1247 MiB, 1 threads
+step ingest.batch-0033: 2.786 CPU-min, 160.8 s, 766 MiB, 1 threads
+step ingest.batch-0034: 4.698 CPU-min, 273.6 s, 1074 MiB, 1 threads
+step ingest.batch-0035: 5.123 CPU-min, 299.1 s, 997 MiB, 1 threads
+step ingest.batch-0036: 2.431 CPU-min, 140.4 s, 657 MiB, 1 threads
+step ingest.batch-0037: 11.047 CPU-min, 638.0 s, 2647 MiB, 1 threads
+step ingest.batch-0038: 3.107 CPU-min, 179.4 s, 800 MiB, 1 threads
+step ingest.batch-0039: 5.484 CPU-min, 319.5 s, 1340 MiB, 1 threads
+step ingest: 0.876 CPU-min, 46.7 s, 1222 MiB, 6 threads, estimate 245.081 (ratio 1.121)
+step ingest.pass1-00000: 62.996 CPU-min, 3768.8 s, 773 MiB, 1 threads
+step ingest.pass1-00001: 1.811 CPU-min, 107.8 s, 782 MiB, 1 threads
+step ingest.plan: 0.254 CPU-min, 13.3 s, 763 MiB, 6 threads
+step inputs: 0.73 CPU-min, 43.0 s, 2663 MiB, 6 threads
+step tapes: 5.647 CPU-min, 329.1 s, 2425 MiB, 6 threads
+contigs: {'genome_input_rows': 2829368, 'genomes': 2829368, 'contigs': 2829368, 'stored': 2817316, 'bases_stored': 35688628875, 'held_by_other_stages': 12052, 'held_by_stage': {'G1': 12052}, 'ledger_skipped_other': 12052, 'ledger_skipped_within': 0, 'kinds': ['prokaryote'], 'codes': [11], 'quality': {'contig': 2829368}, 'circular_rows': 0, 'contigs held by two other stages (DEC-26)': 0, 'contigs both stored by the stage and held by another': 0, 'genome_input contigs neither stored nor held': 0, 'stored contigs not in genome_input': 0, 'ledger skips for another stage that differ from the stage holding the contig': 0, 'stored contigs under the least length 5000': 0, 'ingest_ledger': {'below': {'rows': 304, 'bases_rejected': 207142385298}, 'ok': {'rows': 304, 'bases_rejected': 0}}, 'contig_occurrence_rows': 2830282, 'contig_label_rows': 2829368}
+coverage: {'stored_with_genes': 2817032, 'stored_without_genes_listed': {'ok': 284}, 'stored_without_genes_or_ledger_row': 0, 'contigs_with_genes_not_stored_here': 0}
+genes 35,759,143; distinct proteins 34,039,158 (10,122,650,707 residues); new against C5,G1,H1,P1,P2,P3,P4,P5,P6,PL1,S1,V1: 33,512,765 (9,993,845,278 residues)
+pfam: no library in the conf; no domain record
+crispr: {'default': {'producer': 'minced-0.4.2-w8-nr3-r23x47-s26x50', 'recorded': True, 'arrays': 5333, 'elements': 124125, 'contigs_searched': 2817316, 'contigs_skipped_other_stage': 12052, 'calls_in': 5333, 'calls_kept': 5333, 'rejected': {}, 'arrays_per_gbp': 149.431}}
+RESULT: all checks pass

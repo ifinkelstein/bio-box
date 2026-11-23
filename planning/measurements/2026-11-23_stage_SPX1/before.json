@@ -1,0 +1,126 @@
+{
+ "accepted": [],
+ "bases_stored": 35688628875,
+ "below_bytes": 220918826783,
+ "circular_stored": 0,
+ "contigs_held_by_two_stages": 0,
+ "contigs_listed": 2829368,
+ "contigs_stored": 2817316,
+ "crispr": true,
+ "crispr_default_cpu_min": 123.465,
+ "depth": "called",
+ "disk_bytes": 75267693104,
+ "expect": {
+  "G1": {
+   "expected": 12052,
+   "held": 12052,
+   "note": "planning/measurements/2026-11-20_spire_tranche_1.md"
+  }
+ },
+ "fasta_bytes": 256948810775,
+ "flank_bases": 0,
+ "genecall": {
+  "bases": 35885221307,
+  "bases_called": 35688628875,
+  "batches": [
+   {
+    "bases": 3250358003,
+    "batch": 0,
+    "estimate_cpu_min": 237.302,
+    "genomes": 257207
+   },
+   {
+    "bases": 3238869170,
+    "batch": 1,
+    "estimate_cpu_min": 237.301,
+    "genomes": 257791
+   },
+   {
+    "bases": 3258802658,
+    "batch": 2,
+    "estimate_cpu_min": 237.302,
+    "genomes": 256960
+   },
+   {
+    "bases": 3239673892,
+    "batch": 3,
+    "estimate_cpu_min": 237.302,
+    "genomes": 256573
+   },
+   {
+    "bases": 3246429329,
+    "batch": 4,
+    "estimate_cpu_min": 237.303,
+    "genomes": 256073
+   },
+   {
+    "bases": 3234734418,
+    "batch": 5,
+    "estimate_cpu_min": 237.301,
+    "genomes": 257084
+   },
+   {
+    "bases": 3241125666,
+    "batch": 6,
+    "estimate_cpu_min": 237.303,
+    "genomes": 257181
+   },
+   {
+    "bases": 3242087709,
+    "batch": 7,
+    "estimate_cpu_min": 237.302,
+    "genomes": 257827
+   },
+   {
+    "bases": 3250223052,
+    "batch": 8,
+    "estimate_cpu_min": 237.302,
+    "genomes": 258079
+   },
+   {
+    "bases": 3245827185,
+    "batch": 9,
+    "estimate_cpu_min": 237.301,
+    "genomes": 256768
+   },
+   {
+    "bases": 3240497793,
+    "batch": 10,
+    "estimate_cpu_min": 237.303,
+    "genomes": 257825
+   }
+  ],
+  "estimate_cpu_min": 2607.822,
+  "genes_expected": 37977121.8,
+  "genomes": 2829368,
+  "genomes_not_called": 12052,
+  "largest_genome": {
+   "estimate_cpu_min": 0.029,
+   "genome_uid": "239353f3db3afd7185d38d141ce31842"
+  },
+  "merge_estimate_cpu_min": 3.731
+ },
+ "genomes": 2829368,
+ "guard_policy": "DEC-43 (estimate >= 24 CPU-min judged) + DEC-53 (record below 0.80) + DEC-64 (record above 1.20; stop above 1.50)",
+ "gz_bytes": 256948810775,
+ "held_bases": 196592432,
+ "held_contigs": 12052,
+ "ingest_cpu_min": 245.081,
+ "ingest_formula": "0.07 + max(0, 256948810775 - 196592432 - 220918826783) x 4.11 / 1000000000 + 220918826783 x 0.14 / 1000000000 + 256948810775 x 0.26 / 1000000000",
+ "ingest_in_batches": true,
+ "ingest_pass1_bytes": 73464662516,
+ "ingest_pass1_shards": 2,
+ "judge": {},
+ "library": null,
+ "margin_cpu_min": 240.0,
+ "min_contig_len": 5000,
+ "owned_by_stage": {
+  "G1": 12052
+ },
+ "parked_owners": [],
+ "records": 325805489,
+ "refusals": [],
+ "short_bases": 207142385298,
+ "short_records": 322975207,
+ "stage": "SPX1"
+}

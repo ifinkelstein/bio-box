@@ -145,6 +145,12 @@ all 8 staged files of `/tmp/if2453/s2/inputs/PL3` (`plasmidscope_IMG-PR.fasta` a
 8,919,490,560 / 439 / 1e6), sha256 `0f10ee77896d57258af0391902675ba0fcfe626b2de59ab5f673508d4b8cca05` equal to the
 `/stor/work` record (`backup.tsv`), `SHA256SUMS` extended to 11 lines (`0 failed`).
 
+**Stage `SPX1`'s 26.91 GB root backup tar (2026-11-23, 06:55:35 to 07:13:41 CST, DEC-66 `S-1`)** (*measured*, `relay_added_spx1.log`):
+`added_spx1.tar` (26,909,614,080 bytes, 233 members) streamed from `/stor/work/Wilke/if2453/all-the-data/root_backups` to
+`tower:/mnt/user/research-bulk/bio-box/root_backups` in **1,083 s** (18.05 min), **24.85 MB/s to verified in place**
+(*derived*: 26,909,614,080 / 1,083 / 1e6), sha256 `d5f791c71094f5b7ad8f577a869eed3ac522f6907f20fb077682e0d02f6cc31a` equal
+to the `/stor/work` record (`backup.tsv`), `SHA256SUMS` extended to 12 lines (`0 failed`).
+
 ## 4. What the first mirror showed, and the change in the repository script
 
 With `scp -3` the bytes cross the link once and are then read again from the array to be hashed: at about 9 MB/s

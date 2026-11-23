@@ -1,0 +1,372 @@
+{
+ "added": {
+  "bytes": 26909411041,
+  "files": 233
+ },
+ "contigs": {
+  "bases_stored": 35688628875,
+  "circular_rows": 0,
+  "codes": [
+   11
+  ],
+  "contig_label_rows": 2829368,
+  "contig_occurrence_rows": 2830282,
+  "contigs": 2829368,
+  "contigs both stored by the stage and held by another": 0,
+  "contigs held by two other stages (DEC-26)": 0,
+  "genome_input contigs neither stored nor held": 0,
+  "genome_input_rows": 2829368,
+  "genomes": 2829368,
+  "held_by_other_stages": 12052,
+  "held_by_stage": {
+   "G1": 12052
+  },
+  "ingest_ledger": {
+   "below": {
+    "bases_rejected": 207142385298,
+    "rows": 304
+   },
+   "ok": {
+    "bases_rejected": 0,
+    "rows": 304
+   }
+  },
+  "kinds": [
+   "prokaryote"
+  ],
+  "ledger skips for another stage that differ from the stage holding the contig": 0,
+  "ledger_skipped_other": 12052,
+  "ledger_skipped_within": 0,
+  "quality": {
+   "contig": 2829368
+  },
+  "stored": 2817316,
+  "stored contigs not in genome_input": 0,
+  "stored contigs under the least length 5000": 0
+ },
+ "coverage": {
+  "contigs_with_genes_not_stored_here": 0,
+  "stored_with_genes": 2817032,
+  "stored_without_genes_listed": {
+   "ok": 284
+  },
+  "stored_without_genes_or_ledger_row": 0
+ },
+ "crispr": {
+  "default": {
+   "arrays": 5333,
+   "arrays_per_gbp": 149.431,
+   "calls_in": 5333,
+   "calls_kept": 5333,
+   "contigs_searched": 2817316,
+   "contigs_skipped_other_stage": 12052,
+   "elements": 124125,
+   "producer": "minced-0.4.2-w8-nr3-r23x47-s26x50",
+   "recorded": true,
+   "rejected": {}
+  }
+ },
+ "depth": "called",
+ "failed": [],
+ "files": {
+  "after": 4960,
+  "before": 4727,
+  "changed": [],
+  "gone": [],
+  "new": 233,
+  "new_under_stage": 233,
+  "other_hashed": 3602,
+  "other_sha256_changed": [],
+  "unexpected": []
+ },
+ "genes": {
+  "distinct_proteins": 34039158,
+  "genes": 35759143,
+  "in_other_stages": 526393,
+  "new_distinct_proteins": 33512765,
+  "new_residues": 9993845278,
+  "other_protein_seq_files": 19,
+  "residues": 10122650707
+ },
+ "library": null,
+ "min_contig_len": 5000,
+ "pfam": null,
+ "stage": "SPX1",
+ "steps": {
+  "code_ids": [
+   "e0173fc45d5f1a1aea8b081aa018c3835f7f4803c4efe315aa753bbc308e928d"
+  ],
+  "cpu_min_max": 215.462,
+  "cpu_min_total": 2760.54,
+  "images": [
+   "sha256:d67300aa1321b571fa8da79e74dfccdd87a8dca2e56518f324902efa6b9f098a"
+  ],
+  "incomplete": [],
+  "largest": "genecall.batch-00005",
+  "names": [
+   "crispr-minced-0.4.2-w8-nr3-r23x47-s26x50",
+   "genecall.batch-00000",
+   "genecall.batch-00001",
+   "genecall.batch-00002",
+   "genecall.batch-00003",
+   "genecall.batch-00004",
+   "genecall.batch-00005",
+   "genecall.batch-00006",
+   "genecall.batch-00007",
+   "genecall.batch-00008",
+   "genecall.batch-00009",
+   "genecall.batch-00010",
+   "genecall",
+   "genecall.plan",
+   "igr",
+   "ingest.batch-0000",
+   "ingest.batch-0001",
+   "ingest.batch-0002",
+   "ingest.batch-0003",
+   "ingest.batch-0004",
+   "ingest.batch-0005",
+   "ingest.batch-0006",
+   "ingest.batch-0007",
+   "ingest.batch-0008",
+   "ingest.batch-0009",
+   "ingest.batch-0010",
+   "ingest.batch-0011",
+   "ingest.batch-0012",
+   "ingest.batch-0013",
+   "ingest.batch-0014",
+   "ingest.batch-0015",
+   "ingest.batch-0016",
+   "ingest.batch-0017",
+   "ingest.batch-0018",
+   "ingest.batch-0019",
+   "ingest.batch-0020",
+   "ingest.batch-0021",
+   "ingest.batch-0022",
+   "ingest.batch-0023",
+   "ingest.batch-0024",
+   "ingest.batch-0025",
+   "ingest.batch-0026",
+   "ingest.batch-0027",
+   "ingest.batch-0028",
+   "ingest.batch-0029",
+   "ingest.batch-0030",
+   "ingest.batch-0031",
+   "ingest.batch-0032",
+   "ingest.batch-0033",
+   "ingest.batch-0034",
+   "ingest.batch-0035",
+   "ingest.batch-0036",
+   "ingest.batch-0037",
+   "ingest.batch-0038",
+   "ingest.batch-0039",
+   "ingest",
+   "ingest.pass1-00000",
+   "ingest.pass1-00001",
+   "ingest.plan",
+   "inputs",
+   "tapes"
+  ],
+  "over_budget": [],
+  "rates": {
+   "accepted_over_20pct": {},
+   "checked": 14,
+   "guard_policy": "DEC-43 (estimate >= 24 CPU-min judged) + DEC-53 (record below 0.80) + DEC-64 (record above 1.20; stop above 1.50)",
+   "not_judged": [
+    "genecall.plan",
+    "igr",
+    "inputs",
+    "tapes"
+   ],
+   "not_judged_of_judged_size": [],
+   "over_20pct": [],
+   "recorded_over_20pct": [],
+   "rows": [
+    {
+     "basis": "stage.ingest_cpu_min(256948810775, held=196592432, gz_bytes=256948810775, below_bytes=220918826783) over every ingest record (ingest in batches: pass 1, plan, batches and merge against the one-process estimate)",
+     "complete": true,
+     "cpu_min": 274.741,
+     "estimate": 245.081,
+     "judged": true,
+     "over_20pct": false,
+     "ratio": 1.121,
+     "recorded_over_20pct": false,
+     "records": 44,
+     "step": "ingest",
+     "under_20pct": false
+    },
+    {
+     "basis": "plan: 257207 genomes, 3250358003 bases called",
+     "complete": true,
+     "cpu_min": 212.744,
+     "estimate": 237.302,
+     "judged": true,
+     "over_20pct": false,
+     "ratio": 0.897,
+     "recorded_over_20pct": false,
+     "records": 1,
+     "step": "genecall.batch-00000",
+     "under_20pct": false
+    },
+    {
+     "basis": "plan: 257791 genomes, 3238869170 bases called",
+     "complete": true,
+     "cpu_min": 213.149,
+     "estimate": 237.301,
+     "judged": true,
+     "over_20pct": false,
+     "ratio": 0.898,
+     "recorded_over_20pct": false,
+     "records": 1,
+     "step": "genecall.batch-00001",
+     "under_20pct": false
+    },
+    {
+     "basis": "plan: 256960 genomes, 3258802658 bases called",
+     "complete": true,
+     "cpu_min": 214.242,
+     "estimate": 237.302,
+     "judged": true,
+     "over_20pct": false,
+     "ratio": 0.903,
+     "recorded_over_20pct": false,
+     "records": 1,
+     "step": "genecall.batch-00002",
+     "under_20pct": false
+    },
+    {
+     "basis": "plan: 256573 genomes, 3239673892 bases called",
+     "complete": true,
+     "cpu_min": 213.149,
+     "estimate": 237.302,
+     "judged": true,
+     "over_20pct": false,
+     "ratio": 0.898,
+     "recorded_over_20pct": false,
+     "records": 1,
+     "step": "genecall.batch-00003",
+     "under_20pct": false
+    },
+    {
+     "basis": "plan: 256073 genomes, 3246429329 bases called",
+     "complete": true,
+     "cpu_min": 213.257,
+     "estimate": 237.303,
+     "judged": true,
+     "over_20pct": false,
+     "ratio": 0.899,
+     "recorded_over_20pct": false,
+     "records": 1,
+     "step": "genecall.batch-00004",
+     "under_20pct": false
+    },
+    {
+     "basis": "plan: 257084 genomes, 3234734418 bases called",
+     "complete": true,
+     "cpu_min": 215.462,
+     "estimate": 237.301,
+     "judged": true,
+     "over_20pct": false,
+     "ratio": 0.908,
+     "recorded_over_20pct": false,
+     "records": 1,
+     "step": "genecall.batch-00005",
+     "under_20pct": false
+    },
+    {
+     "basis": "plan: 257181 genomes, 3241125666 bases called",
+     "complete": true,
+     "cpu_min": 212.449,
+     "estimate": 237.303,
+     "judged": true,
+     "over_20pct": false,
+     "ratio": 0.895,
+     "recorded_over_20pct": false,
+     "records": 1,
+     "step": "genecall.batch-00006",
+     "under_20pct": false
+    },
+    {
+     "basis": "plan: 257827 genomes, 3242087709 bases called",
+     "complete": true,
+     "cpu_min": 212.536,
+     "estimate": 237.302,
+     "judged": true,
+     "over_20pct": false,
+     "ratio": 0.896,
+     "recorded_over_20pct": false,
+     "records": 1,
+     "step": "genecall.batch-00007",
+     "under_20pct": false
+    },
+    {
+     "basis": "plan: 258079 genomes, 3250223052 bases called",
+     "complete": true,
+     "cpu_min": 215.11,
+     "estimate": 237.302,
+     "judged": true,
+     "over_20pct": false,
+     "ratio": 0.906,
+     "recorded_over_20pct": false,
+     "records": 1,
+     "step": "genecall.batch-00008",
+     "under_20pct": false
+    },
+    {
+     "basis": "plan: 256768 genomes, 3245827185 bases called",
+     "complete": true,
+     "cpu_min": 212.105,
+     "estimate": 237.301,
+     "judged": true,
+     "over_20pct": false,
+     "ratio": 0.894,
+     "recorded_over_20pct": false,
+     "records": 1,
+     "step": "genecall.batch-00009",
+     "under_20pct": false
+    },
+    {
+     "basis": "plan: 257825 genomes, 3240497793 bases called",
+     "complete": true,
+     "cpu_min": 213.39,
+     "estimate": 237.303,
+     "judged": true,
+     "over_20pct": false,
+     "ratio": 0.899,
+     "recorded_over_20pct": false,
+     "records": 1,
+     "step": "genecall.batch-00010",
+     "under_20pct": false
+    },
+    {
+     "basis": "plan: merge of 37977121.8 genes expected",
+     "complete": true,
+     "cpu_min": 13.35,
+     "estimate": 3.731,
+     "judged": false,
+     "over_20pct": false,
+     "ratio": 3.578,
+     "recorded_over_20pct": false,
+     "records": 1,
+     "step": "genecall",
+     "under_20pct": false
+    },
+    {
+     "basis": "(35688628875+0) bases x 168.1 / 1e9 / 60 + 2817316 contigs x 0.5 / 1000 / 60",
+     "complete": true,
+     "cpu_min": 114.755,
+     "estimate": 123.465,
+     "judged": true,
+     "over_20pct": false,
+     "ratio": 0.929,
+     "recorded_over_20pct": false,
+     "records": 1,
+     "step": "crispr-minced-0.4.2-w8-nr3-r23x47-s26x50",
+     "under_20pct": false
+    }
+   ],
+   "stage": "SPX1",
+   "under_20pct": []
+  },
+  "records": 61
+ }
+}
