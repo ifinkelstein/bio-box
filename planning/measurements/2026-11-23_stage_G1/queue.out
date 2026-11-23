@@ -1,0 +1,28 @@
+2026-11-22 06:26:50 CST stage_queue G1: start (pid 651934); driver /tmp/if2453/ci/rel1122b/scripts/stress/build_stage_pod/stage_driver.sh; poll 60s, at most 48h of waiting
+2026-11-22 06:26:50 CST stage_queue G1: ready: every stage it comes after is backed up (none) and no build unit is active
+2026-11-22 06:26:51 CST stage_queue G1: mode estimate: start
+2026-11-22 06:28:56 CST stage_queue G1: mode estimate: exit 0
+2026-11-22 06:28:56 CST stage_queue G1: mode rehearse: start
+2026-11-22 07:01:52 CST stage_queue G1: mode rehearse: exit 0
+2026-11-22 07:01:52 CST stage_queue G1: mode before: start
+2026-11-22 07:18:35 CST stage_queue G1: mode before: exit 0
+2026-11-22 07:18:35 CST stage_queue G1: mode run: start
+stage_driver G1 run: FAILED: rate guard (stage_est.py rates exit 3; 3: a judged step more than 50% over its estimate, DEC-64): {"accepted_over_20pct": {}, "checked": 3, "guard_policy": "DEC-43 (estimate >= 24 CPU-min judged) + DEC-53 (record below 0.80) + DEC-64 (record above 1.20; stop above 1.50)", "not_judged": ["inputs"], "not_judged_of_judged_size": [], "over_20pct": ["crispr-minced-0.4.2-w8-nr3-r23x47-s26x50"], "recorded_over_20pct": ["genecall"], "rows": [{"basis": "stage.ingest_cpu_min(10087932724, held=5699697, gz_bytes=10087932724) over every ingest record", "complete": true, "cpu_min": 44.155, "estimate": 44.131, "judged": true, "over_20pct": false, "ratio": 1.001, "recorded_over_20pct": false, "records": 1, "step": "ingest", "under_20pct": false}, {"basis": "genecall.plan in one process (card B-48)", "complete": true, "cpu_min": 212.639, "estimate": 163.79, "judged": true, "over_20pct": false, "ratio": 1.298, "recorded_over_20pct": true, "records": 1, "step": "genecall", "under_20pct": false}, {"basi (unit g1-1 stopped)
+2026-11-22 09:45:14 CST stage_queue G1: mode run: exit 1
+2026-11-22 09:45:14 CST stage_queue G1: STOPPED at mode run (exit 1); read /tmp/if2453/stages/g1/driver.log and /tmp/if2453/stages/g1/run/
+2026-11-22 14:15:40 CST stage_queue G1: start (pid 2366773); driver /tmp/if2453/ci/rel1122c/scripts/stress/build_stage_pod/stage_driver.sh; poll 60s, at most 48h of waiting
+2026-11-22 14:15:41 CST stage_queue G1: ready: every stage it comes after is backed up (none) and no build unit is active
+2026-11-22 14:15:41 CST stage_queue G1: mode estimate: start
+2026-11-22 14:17:47 CST stage_queue G1: mode estimate: exit 0
+2026-11-22 14:17:47 CST stage_queue G1: mode rehearse: start
+2026-11-22 14:50:43 CST stage_queue G1: mode rehearse: exit 0
+2026-11-22 14:50:43 CST stage_queue G1: mode before: start
+2026-11-22 15:05:47 CST stage_queue G1: mode before: exit 0
+2026-11-22 15:05:47 CST stage_queue G1: mode run: start
+2026-11-22 23:32:37 CST stage_queue G1: mode run: exit 0
+2026-11-22 23:32:37 CST stage_queue G1: mode after: start
+2026-11-22 23:47:45 CST stage_queue G1: mode after: exit 0
+2026-11-22 23:47:45 CST stage_queue G1: mode check: start
+stage_driver G1 check: FAILED: stage_check.py exited 1 (read /tmp/if2453/stages/g1/check/1/check.out)
+2026-11-22 23:49:40 CST stage_queue G1: mode check: exit 1
+2026-11-22 23:49:40 CST stage_queue G1: STOPPED at mode check (exit 1); read /tmp/if2453/stages/g1/driver.log and /tmp/if2453/stages/g1/check/
