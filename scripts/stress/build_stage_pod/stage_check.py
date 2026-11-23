@@ -393,7 +393,8 @@ def main() -> int:
               "shards": len(shards), "scanned_proteins": sum(s["proteins"] for s in shards),
               "scanned_residues": sum(s["residues"] for s in shards), "copied_proteins": copy.get("proteins"),
               "copied_rows": copy.get("rows"),
-              "sources": [{k: s.get(k) for k in ("stage", "proteins", "residues", "rows", "proteins_with_hit")}
+              "sources": [{"stage": s.get("stage") or s.get("round"),
+                           **{k: s.get(k) for k in ("proteins", "residues", "rows", "proteins_with_hit")}}
                           for s in copy.get("sources", [])],
               "domain_rows": rows_of(dom),
               "proteins_with_domain": one(f"SELECT count(DISTINCT protein_uid) FROM {src(dom, dcols)} x"),
@@ -410,20 +411,40 @@ def main() -> int:
         if copy.get("sources") and dom:  # without domain files the failure is already listed
             con.execute("CREATE TEMP TABLE claimed (protein_uid BLOB, src INTEGER)")
             for k, s in enumerate(copy["sources"]):
+                if "coverage_files" in s:
+                    measured = src([root / x["path"] for x in s["coverage_files"]], [("protein_uid", "BLOB")])
+                else:
+                    own_ps = [root / x["path"] for x in s.get("protein_files", [])]
+                    parts = [f"SELECT protein_uid FROM {rp(own_ps)}"] if own_ps else []
+                    owned = s.get("owned") or {}
+                    gi_o = [root / x["path"] for x in owned.get("genome_input", [])]
+                    if gi_o:
+                        for o in owned.get("stages", []):
+                            ofp = [root / x["path"] for x in o.get("feature_protein", [])]
+                            ops = [root / x["path"] for x in o.get("protein_files", [])]
+                            if ofp and ops:
+                                parts.append(
+                                    f"SELECT ps.protein_uid FROM {rp(ops)} ps SEMI JOIN "
+                                    f"(SELECT DISTINCT fp.protein_uid FROM {rp(ofp)} fp SEMI JOIN "
+                                    f"(SELECT DISTINCT contig_uid FROM {rp(gi_o)}) USING (contig_uid)) "
+                                    "USING (protein_uid)"
+                                )
+                    measured = f"({' UNION '.join(parts)})" if parts else f"({empty([('protein_uid', 'BLOB')])})"
                 con.execute(f"INSERT INTO claimed SELECT m.protein_uid, {k} FROM mine m SEMI JOIN "
-                            f"(SELECT protein_uid FROM {rp([root / x['path'] for x in s['protein_files']])}) "
-                            "USING (protein_uid) WHERE m.protein_uid NOT IN (SELECT protein_uid FROM claimed)")
+                            f"{measured} USING (protein_uid) "
+                            "WHERE m.protein_uid NOT IN (SELECT protein_uid FROM claimed)")
             cc["copied_proteins"] = one("SELECT count(*) FROM claimed")
             if cc["copied_proteins"] != copy.get("proteins"):
                 failed.append(f"copied proteins: {cc['copied_proteins']} independent, {copy.get('proteins')} plan")
             cols = ", ".join(COLS)
             for k, s in enumerate(copy["sources"]):
+                sname = s.get("stage") or s.get("round")
                 src_dom = [root / x["path"] for x in s["files"]]
                 m_rows = (f"SELECT {cols} FROM {rp(dom)} d SEMI JOIN (SELECT protein_uid FROM claimed WHERE src = {k}) "
                           "USING (protein_uid)")
                 s_rows = (f"SELECT {cols} FROM {rp(src_dom)} d SEMI JOIN (SELECT protein_uid FROM claimed WHERE "
                           f"src = {k}) USING (protein_uid)")
-                row = {"stage": s["stage"], "proteins": one(f"SELECT count(*) FROM claimed WHERE src = {k}"),
+                row = {"stage": sname, "proteins": one(f"SELECT count(*) FROM claimed WHERE src = {k}"),
                        "plan_proteins": s.get("proteins"), "rows_in_stage": one(f"SELECT count(*) FROM ({m_rows})"),
                        "rows_in_source": one(f"SELECT count(*) FROM ({s_rows})"), "plan_rows": s.get("rows"),
                        "stage_not_in_source": one(f"SELECT count(*) FROM (({m_rows}) EXCEPT ALL ({s_rows}))"),
@@ -432,7 +453,7 @@ def main() -> int:
                 if (row["stage_not_in_source"] or row["source_not_in_stage"] or row["rows_in_stage"] !=
                         row["rows_in_source"] or row["proteins"] != s.get("proteins")
                         or row["rows_in_stage"] != s.get("rows")):
-                    failed.append(f"copied rows from {s['stage']} differ: {row}")
+                    failed.append(f"copied rows from {sname} differ: {row}")
             cc["columns_compared"] = list(COLS)
         pf["copy_check"] = cc
         summary["pfam"] = pf
