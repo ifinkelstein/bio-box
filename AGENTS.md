@@ -9,8 +9,8 @@ If a rule and a task card disagree, the rule wins and you stop and report the co
 ## 1. How to work
 
 1. Do exactly one task card per session. Read the whole card, then every file it lists, before editing.
-2. Authority, highest first: `planning/DECISIONS.md`, the invariants in `00-spec.md` §3, this file, the task card, other plan documents. Plan documents contain superseded text; never act on a plan document against a decision row.
-3. Work on a branch named `task/<ID>` (for example `task/B-03`). Never commit to `main`. Never push to the `pod` remote. Never force-push.
+2. Authority, highest first: `planning/DECISIONS.md`, the invariants in `docs/archive/00-spec.md` §3, this file, the task card, other plan documents. Plan documents contain superseded text; never act on a plan document against a decision row.
+3. Work on a branch named `task/<ID>` (for example `task/B-03`). Never commit to `main`. Never push to the `pod` remote. Never force-push. Keep the primary repository checkout on `plan/task-cards`; create isolated card worktrees outside the repository (for example `/tmp/biobox-wt/<ID>`), never under `.claude/worktrees/`, and remove them at merge.
 4. Edit only the files the card lists under **Files**. If the task cannot be finished without touching another file, stop and report which file and why.
 5. Cards are tagged by tier. **L**: do it alone. **M**: do it, then request review before merge. **H**: not for you; a design or PI decision. If your card depends on an unfinished **H** card, stop.
 6. Do not start a card whose **Depends** list has an unmerged card.
@@ -22,7 +22,7 @@ If a rule and a task card disagree, the rule wins and you stop and report the co
 - `planning/DECISIONS.md`: append-only, and only an **H** card or the PI adds rows.
 - `tests/registry/schema_lock.json`, `tests/registry/json_schema_lock.json`: never by hand; only by running `scripts/update_schema_lock.py` in a card that says so.
 - `golden.yaml`, `golden.lock.yaml`, `refdb.yaml` checksums, `uv.lock`, `container/environment.yml`.
-- `00-spec.md`, `PLAN.md`, `STAGES.md`, `DEPLOYMENT-AND-MALLEABILITY.md`.
+- `docs/archive/00-spec.md`, `docs/archive/PLAN.md`, `docs/archive/STAGES.md`, `docs/archive/DEPLOYMENT-AND-MALLEABILITY.md`.
 - Any existing test, except to migrate it as the card describes. Never delete, skip, xfail or loosen a test to make it pass. Never add a retry.
 - No new dependency unless the card names the package; then add it with `uv add` and nothing else.
 

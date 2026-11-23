@@ -62,7 +62,7 @@ only_mutate = [
 pytest_add_cli_args_test_selection = ["tests/r1", "tests/r2"]
 pytest_add_cli_args = ["-p", "no:cacheprovider"]
 # R0 is not selected; the R1/R2 tests that read plan documents, profiles or scripts need them in the copy
-also_copy = ["scripts", "container", "planning", "profiles", "golden.yaml", "golden.lock.yaml", "refdb.yaml", "PLAN.md", "STAGES.md", "00-spec.md", "README.md"]
+also_copy = ["scripts", "container", "planning", "docs", "profiles", "golden.yaml", "golden.lock.yaml", "refdb.yaml", "README.md"]
 # statements that start on a matching line (raise, log, warn, print) are not mutated: they only build messages
 do_not_mutate_patterns = [
     '^\s*raise\s',

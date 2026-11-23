@@ -17,8 +17,8 @@ pytestmark = pytest.mark.r0
 ROOT = Path(__file__).resolve().parents[2]
 REG = ROOT / "tests" / "registry"
 PLAN_DOCS = [
-    ROOT / "PLAN.md",
-    ROOT / "STAGES.md",
+    ROOT / "docs" / "archive" / "PLAN.md",
+    ROOT / "docs" / "archive" / "STAGES.md",
     ROOT / "planning" / "data_layer_and_tests.md",
     ROOT / "planning" / "search" / "SEARCH_PLAN.md",
     ROOT / "planning" / "tests" / "TEST_ARCHITECTURE.md",

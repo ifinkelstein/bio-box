@@ -3,19 +3,19 @@
 Status: partly built. The plan below is dated 2026-10-28 (S2C, the search tiers and the test-harness gates added 2026-10-29). What has been built, how it maps to the stages below, and where the plan has been superseded is in the next section, added 2026-11-11 at the PI's request. Where that section and a stage card disagree, that section and `planning/DECISIONS.md` win.
 
 This file is authoritative for stage numbering. Detail lives in:
-- [`planning/sources_and_sizing.md`](planning/sources_and_sizing.md): sources, versions, licenses, unit-rate formulas, envelope checks.
-- [`planning/data_layer_and_tests.md`](planning/data_layer_and_tests.md): layers, IDs, sequence store, test IDs (C-, L-, R-, Q-, A-, D-, G-, K-), orchestration.
+- [`planning/sources_and_sizing.md`](../../planning/sources_and_sizing.md): sources, versions, licenses, unit-rate formulas, envelope checks.
+- [`planning/data_layer_and_tests.md`](../../planning/data_layer_and_tests.md): layers, IDs, sequence store, test IDs (C-, L-, R-, Q-, A-, D-, G-, K-), orchestration.
 - [`PLAN.md`](PLAN.md): pipeline and schema.
 - [`DEPLOYMENT-AND-MALLEABILITY.md`](DEPLOYMENT-AND-MALLEABILITY.md): hosts, images, contract.
-- [`planning/search/SEARCH_PLAN.md`](planning/search/SEARCH_PLAN.md): ad hoc search design (SD-01..SD-21), search pack, tiers ST0–ST5, S-tests (S-01..S-13, plus S-02d).
-- [`planning/tests/TEST_ARCHITECTURE.md`](planning/tests/TEST_ARCHITECTURE.md): operation registry (O-*), failures F-01..F-15, MR-01..MR-19, workflow manifests, micro-corpus, synthetic and null worlds, LY-01..LY-10, rings R0–R5, `test_run`.
+- [`planning/search/SEARCH_PLAN.md`](../../planning/search/SEARCH_PLAN.md): ad hoc search design (SD-01..SD-21), search pack, tiers ST0–ST5, S-tests (S-01..S-13, plus S-02d).
+- [`planning/tests/TEST_ARCHITECTURE.md`](../../planning/tests/TEST_ARCHITECTURE.md): operation registry (O-*), failures F-01..F-15, MR-01..MR-19, workflow manifests, micro-corpus, synthetic and null worlds, LY-01..LY-10, rings R0–R5, `test_run`.
 - [`audits/SYNTHESIS_2.md`](audits/SYNTHESIS_2.md): decision record D-01..D-28.
 
 ---
 
 ## Status and mapping, 2026-11-11
 
-Day-to-day state is in [`planning/tasks/STATUS.md`](planning/tasks/STATUS.md); this section says how what exists maps to the ladder. Numbers are *measured* on wilkcomp02 unless labelled; sources are the measurement files named.
+Day-to-day state is in [`planning/tasks/STATUS.md`](../../planning/tasks/STATUS.md); this section says how what exists maps to the ladder. Numbers are *measured* on wilkcomp02 unless labelled; sources are the measurement files named.
 
 ### What exists
 
@@ -48,7 +48,7 @@ Releases: `rN.1`, `rN.2`, `rN.3` over `S1`, `P1`, `P2` (10.6 M proteins; `rN.3` 
 
 ### What the PI has decided since this plan was written
 
-DEC-18 to DEC-28 in [`planning/DECISIONS.md`](planning/DECISIONS.md). Open decisions: 0-04 (slim postings), 0-05 (size budgets), 0-07 (cluster lineage), 0-09 (how to cut annotation cost), 0-10 (where a user's results live), B-44 (an MMseqs2 without the index abort, needed above about 74 to 87 M proteins).
+DEC-18 to DEC-28 in [`planning/DECISIONS.md`](../../planning/DECISIONS.md). Open decisions: 0-04 (slim postings), 0-05 (size budgets), 0-07 (cluster lineage), 0-09 (how to cut annotation cost), 0-10 (where a user's results live), B-44 (an MMseqs2 without the index abort, needed above about 74 to 87 M proteins).
 
 ---
 
@@ -102,7 +102,7 @@ The request was: "define how to scale this up one piece at a time, starting with
 
 1. **One stage = one data increment + one capability + one science question + one release.** A stage ends by cutting `release_id = rS<k>.<n>`. Nothing is half-merged.
 2. **Chunks inside a stage are shards.** A shard is 500–2,000 genomes (or 1–4 GB of sequence). Every shard is idempotent, content-addressed and resumable, and pausing between shards is always safe (STOP file).
-3. **The layers have different update rules** ([data layer §1](planning/data_layer_and_tests.md)):
+3. **The layers have different update rules** ([data layer §1](../../planning/data_layer_and_tests.md)):
    - Append-only: L0 sources, L0-seq sequence store, L1 per-genome annotations, L3 coordinates.
    - Incremental with a crosswalk: L2 clusters.
    - Recomputed every release: L4 statistics.
@@ -117,14 +117,14 @@ The request was: "define how to scale this up one piece at a time, starting with
    - No small files on NFS; staging happens on local `/tmp`.
    - Durable small outputs go to `/stor/work`; bulk outputs go to `/stor/scratch`.
 8. **No public service on wilkcomp02.** `bio-box serve` binds to localhost and is reached over an SSH tunnel.
-9. **Search capability scales by data quality, closed high-quality nucleotide data first.** Search tiers ST0–ST5 ([SEARCH_PLAN §6](planning/search/SEARCH_PLAN.md)) switch on with the stages: closed golden genomes, then complete phages and plasmids, then complete prokaryotic chromosomes (S2C), and only then drafts, MAGs and metagenomic viruses. A tier is certified when its replays pass on its own data and its cost table is measured on the pod. Capabilities that matter only for fragmented assemblies (edge censoring, gene-call rescue for absence claims) become mandatory when fragmented data arrives (ST3).
-10. **Tests attach to operations; workflows inherit coverage.** Every workflow is a manifest over registered operations (O-*), each with a contract, an oracle and metamorphic relations. A new workflow needs only a manifest and a recipe; a new operation needs a registry entry first. Truth is ranked: constructed truth (synthetic and null worlds), then independent implementations, then published results, then golden snapshots, which catch change, not error. Every gate is a SQL query over `test_run` ([TEST_ARCHITECTURE §1, §5, §8](planning/tests/TEST_ARCHITECTURE.md)).
+9. **Search capability scales by data quality, closed high-quality nucleotide data first.** Search tiers ST0–ST5 ([SEARCH_PLAN §6](../../planning/search/SEARCH_PLAN.md)) switch on with the stages: closed golden genomes, then complete phages and plasmids, then complete prokaryotic chromosomes (S2C), and only then drafts, MAGs and metagenomic viruses. A tier is certified when its replays pass on its own data and its cost table is measured on the pod. Capabilities that matter only for fragmented assemblies (edge censoring, gene-call rescue for absence claims) become mandatory when fragmented data arrives (ST3).
+10. **Tests attach to operations; workflows inherit coverage.** Every workflow is a manifest over registered operations (O-*), each with a contract, an oracle and metamorphic relations. A new workflow needs only a manifest and a recipe; a new operation needs a registry entry first. Truth is ranked: constructed truth (synthetic and null worlds), then independent implementations, then published results, then golden snapshots, which catch change, not error. Every gate is a SQL query over `test_run` ([TEST_ARCHITECTURE §1, §5, §8](../../planning/tests/TEST_ARCHITECTURE.md)).
 
 ---
 
 ## 2. Stage ladder at a glance
 
-Estimates come from [`sources_and_sizing.md`](planning/sources_and_sizing.md) §4. All rates are unmeasured until S0, and wilkcomp02 delivers about 800 core-h/day.
+Estimates come from [`sources_and_sizing.md`](../../planning/sources_and_sizing.md) §4. All rates are unmeasured until S0, and wilkcomp02 delivers about 800 core-h/day.
 
 | Stage | Adds | n | Gbp (est., except S0, S2C, S3, S5, S6: *measured*) | Core-h (est.) | Seq store / other disk | License | Runs on | Search tier |
 |---|---|---|---|---|---|---|---|---|
@@ -138,7 +138,7 @@ Estimates come from [`sources_and_sizing.md`](planning/sources_and_sizing.md) §
 | S6 | All GTDB R226 genomes (remaining after S2C) + RefSeq complete flag | 732,475 total | 2,588 | 60k–1.6M | +1.34 TB / +2–4 TB | INSDC | split: per-genome work on wilkcomp02, global work on Hetzner | ST4 (certified) |
 | S7+ | AllTheBacteria, SPIRE, GlobDB extras, then Logan | millions | Tbp–Pbp | — | — | mixed | Hetzner; Logan on AWS next to its bucket | ST5 |
 
-The genome counts and Gbp for S2C, S3, S5 and S6 are *measured* (GTDB R226 metadata, 2026-11-09, `scripts/stress/gtdb_counts.py`; [`2026-11-09_design_stress_test.md`](planning/measurements/2026-11-09_design_stress_test.md) §3), and the S0 count and Gbp are *measured* on the golden set (2026-11-09). S2C core-h is *derived* in [`sources_and_sizing.md`](planning/sources_and_sizing.md) §4 from the S5 rate and 106.4 Gbp, and its sequence store from the 0.528 GB/Gbp store model. The S2C "other disk" range, the S3 core-h and disk, the S5 core-h and disk, and the S6 core-h and disk were computed from the superseded Gbp estimates; recompute. S5 and S6 keep their totals; their per-stage deltas shrink by what S2C (and, for S5, S3) already loaded. Search tiers are from [SEARCH_PLAN §6](planning/search/SEARCH_PLAN.md); "deferred" means the stage loads data whose search acceptance belongs to a later tier gate.
+The genome counts and Gbp for S2C, S3, S5 and S6 are *measured* (GTDB R226 metadata, 2026-11-09, `scripts/stress/gtdb_counts.py`; [`2026-11-09_design_stress_test.md`](../../planning/measurements/2026-11-09_design_stress_test.md) §3), and the S0 count and Gbp are *measured* on the golden set (2026-11-09). S2C core-h is *derived* in [`sources_and_sizing.md`](../../planning/sources_and_sizing.md) §4 from the S5 rate and 106.4 Gbp, and its sequence store from the 0.528 GB/Gbp store model. The S2C "other disk" range, the S3 core-h and disk, the S5 core-h and disk, and the S6 core-h and disk were computed from the superseded Gbp estimates; recompute. S5 and S6 keep their totals; their per-stage deltas shrink by what S2C (and, for S5, S3) already loaded. Search tiers are from [SEARCH_PLAN §6](../../planning/search/SEARCH_PLAN.md); "deferred" means the stage loads data whose search acceptance belongs to a later tier gate.
 
 The portability track (§5) runs alongside: P0 at S0, P1 after S2, P2 at S5/S6, P3 at S7.
 
@@ -151,12 +151,12 @@ Each card lists six things:
 - **Capability:** the new pipeline or schema capability.
 - **Science check:** the one question this stage answers, judged against outside truth.
 - **Chunks:** resumable work units, in order.
-- **Gate:** blocking tests ([data layer §4](planning/data_layer_and_tests.md)), measurements written to the sizing model, and the go/no-go call.
-- **Search gate:** the search tier, its replays and the S-tests that apply ([SEARCH_PLAN §6–7](planning/search/SEARCH_PLAN.md)). Replay recall (S-01) is scored only on published hits whose genomes are loaded at that stage.
+- **Gate:** blocking tests ([data layer §4](../../planning/data_layer_and_tests.md)), measurements written to the sizing model, and the go/no-go call.
+- **Search gate:** the search tier, its replays and the S-tests that apply ([SEARCH_PLAN §6–7](../../planning/search/SEARCH_PLAN.md)). Replay recall (S-01) is scored only on published hits whose genomes are loaded at that stage.
 
 ### S−1: Preflight (no corpus data, no pod compute; CI-scale fixtures only)
 
-- **Why:** a pre-mortem ([`planning/preflight_gaps.md`](planning/preflight_gaps.md)) found 22 gaps (29 after the search and test rounds) and 10 cross-document contradictions that would stall S0–S3. Examples: no signed-off first questions, no repo or CI, FCS-GX needing ~470 GB of RAM against the 200 GB cgroup, no pod footprint request, L0 kept only on unbacked scratch, reference DBs not pinned, no kill criteria.
+- **Why:** a pre-mortem ([`planning/preflight_gaps.md`](../../planning/preflight_gaps.md)) found 22 gaps (29 after the search and test rounds) and 10 cross-document contradictions that would stall S0–S3. Examples: no signed-off first questions, no repo or CI, FCS-GX needing ~470 GB of RAM against the 200 GB cgroup, no pod footprint request, L0 kept only on unbacked scratch, reference DBs not pinned, no kill criteria.
 - **Work:**
   1. Sign off the first-10 questions, each with an existing-tool baseline.
   2. Assign roles, time boxes and kill criteria K1–K7.
@@ -168,11 +168,11 @@ Each card lists six things:
   8. Fill and freeze `golden.yaml`, `refdb.yaml` and `sources.yaml`.
   9. Write `planning/costs.md`.
   10. Count complete genomes from the GTDB R226 metadata (`bac120_metadata_r226.tsv`, `ar53_metadata_r226.tsv`, field `ncbi_assembly_level = Complete Genome`), split into species reps and members, and apply the ≤20-per-species selection. This pins the S2C count, Gbp and cost, and the S5/S6 remainders.
-  11. Fetch the replay supplements not yet in `lit/supp/` ([SEARCH_PLAN §9.5](planning/search/SEARCH_PLAN.md)): Doron 2018 S1–S3, Gao 2020 S1–S3, Altae-Tran Data S1–S4, Millman Table S1, Brewer 2021 files 1–2, CRISPR-Cas 2025 Zenodo PSSMs, Domainator Zenodo.
+  11. Fetch the replay supplements not yet in `lit/supp/` ([SEARCH_PLAN §9.5](../../planning/search/SEARCH_PLAN.md)): Doron 2018 S1–S3, Gao 2020 S1–S3, Altae-Tran Data S1–S4, Millman Table S1, Brewer 2021 files 1–2, CRISPR-Cas 2025 Zenodo PSSMs, Domainator Zenodo.
   12. Confirm the Z constants as an ADR (SD-04): `Z_prot = 1e8`, `domZ = 1e8`, `Z_nt = 1e5` Mb, fixed for the release line.
   13. Fix the `bio-box:3.1` tool list (SD-13, SD-17): `3.0` plus HH-suite3, BLAST+, DIAMOND, CMfinder, R-scape, PADLOC, CRISPRCasTyper, CRISPRCasFinder, reseek and Domainator; ProstT5 and the ESM-2 3B 3Di encoder in the CUDA image only. Write the three Domainator case studies and five synteny hypotheses as recipes on paper (S-12).
-  14. Record the synteny corpus repair as a dependency ([SEARCH_PLAN §9.4](planning/search/SEARCH_PLAN.md)): about 46 `lit/` files hold a different paper than their name. Replays use supplements and are not blocked; hypotheses drawn from mislabeled texts are re-extracted before they drive experiments.
-  15. Specify the test harness before the layout ([`planning/tests/TEST_ARCHITECTURE.md`](planning/tests/TEST_ARCHITECTURE.md)): the schema registry, the operation registry with every O-* entry's contract, oracle and MRs, the workflow manifests for the S-12 recipes, the synthetic-world generator spec (written: `planning/tests/synthworld_spec.md`, ZOMBI2 backbone plus custom code; S−1 fit spike in its §1.4), the `test_run` schema, and the CI host for ring R2. Layout choices still open (K-13, row-group sizes, sort keys) are decided at S0 by LY-06 row-group counts on the micro-corpus.
+  14. Record the synteny corpus repair as a dependency ([SEARCH_PLAN §9.4](../../planning/search/SEARCH_PLAN.md)): about 46 `lit/` files hold a different paper than their name. Replays use supplements and are not blocked; hypotheses drawn from mislabeled texts are re-extracted before they drive experiments.
+  15. Specify the test harness before the layout ([`planning/tests/TEST_ARCHITECTURE.md`](../../planning/tests/TEST_ARCHITECTURE.md)): the schema registry, the operation registry with every O-* entry's contract, oracle and MRs, the workflow manifests for the S-12 recipes, the synthetic-world generator spec (written: `planning/tests/synthworld_spec.md`, ZOMBI2 backbone plus custom code; S−1 fit spike in its §1.4), the `test_run` schema, and the CI host for ring R2. Layout choices still open (K-13, row-group sizes, sort keys) are decided at S0 by LY-06 row-group counts on the micro-corpus.
 - **Gate:** the checklist in `preflight_gaps.md` §7 is all green (its test-harness group is item 15), plus items 10–13 and 15 done and item 14 owned. Time box: 3–4 weeks (*estimate*; the earlier 2–3 weeks predates item 15).
 
 ### S0: Golden genomes, harness, and the decisions that cannot be revisited cheaply
@@ -211,7 +211,7 @@ Each card lists six things:
   9. Cut release `rS0.1`.
 - **Gate:**
   - Blocking tests: C-01..C-08, C-10..C-12, L-01..L-03, R-01..R-07 and R-09 (sequence-store round trip: per-record digest, 10k random slices vs `samtools faidx`, minus strand, chunk edges, extract round trip), Q1–Q8 oracle equivalence, D-01..D-04 determinism (thread count, kill-resume, input order), G-01, G-02, G-04, and K-01..K-13 (DuckDB version pin, memory_limit under the cgroup, temp_directory on local disk, thread cap, partition and row-group pruning via EXPLAIN ANALYZE, LIST cost, 1–16 read-only clients, fail-fast on a second writer, NFS vs local).
-  - Harness ([TEST_ARCHITECTURE](planning/tests/TEST_ARCHITECTURE.md)): micro-corpus and synthetic worlds (with null worlds) built with truth tables; rings R0–R3 green; LY-01..LY-10 run, and LY-06 decides K-13, row-group sizes and sort keys; first mutation-score measurement (target ≥ 80%, *target*); first null-world calibration of O-STATS (MR-18: uniform p-values, FDR at nominal).
+  - Harness ([TEST_ARCHITECTURE](../../planning/tests/TEST_ARCHITECTURE.md)): micro-corpus and synthetic worlds (with null worlds) built with truth tables; rings R0–R3 green; LY-01..LY-10 run, and LY-06 decides K-13, row-group sizes and sort keys; first mutation-score measurement (target ≥ 80%, *target*); first null-world calibration of O-STATS (MR-18: uniform p-values, FDR at nominal).
   - Measurements: `R_pyro`, `r_pfam`, `s_cm`, the geNomad rate, MMseqs2 `l` with RSS and tmp bytes, bytes per bp in the sequence store, and DuckDB scan rates.
   - Go/no-go: a `test_run` query returns every blocking test above (and the search gate below) passing on `rS0.1` and the pinned image digest, and the sizing model is refit. If a measured rate pushes S5 beyond 150 days, re-plan before S1.
 - **Search gate (ST0):**
@@ -283,7 +283,7 @@ Each card lists six things:
 
 **Status 2026-11-11:** built in two phases (see "Status and mapping" at the top). Phase 1, one best complete genome per species (11,973 genomes, 50.5 Gbp), is stages `P1` to `P6`. Phase 2, the rest of the set defined here, was confirmed by the PI on 2026-11-11 and is card C-25. "`clusterupdate`" below is superseded by DEC-24.
 
-Inserted and approved 2026-10-29 ([SEARCH_PLAN SD-16, §6.1](planning/search/SEARCH_PLAN.md)): ≤20 complete genomes per GTDB species, chosen by CheckM2 quality then ANI diversity. Releases are `rS2C.<n>`; no other stage is renumbered. Optional follow-on **S2C-b** (the remaining complete genomes, uncapped; est. 7,500–54,000 core-h for all complete genomes together) is appended after the S2C gate only if the signed-off first-10 questions include strain-level work (defense hotspots, pangenome turnover); it costs an L2/L4 recompute and exercises accretion at scale.
+Inserted and approved 2026-10-29 ([SEARCH_PLAN SD-16, §6.1](../../planning/search/SEARCH_PLAN.md)): ≤20 complete genomes per GTDB species, chosen by CheckM2 quality then ANI diversity. Releases are `rS2C.<n>`; no other stage is renumbered. Optional follow-on **S2C-b** (the remaining complete genomes, uncapped; est. 7,500–54,000 core-h for all complete genomes together) is appended after the S2C gate only if the signed-off first-10 questions include strain-level work (defense hotspots, pangenome turnover); it costs an L2/L4 recompute and exercises accretion at scale.
 
 - **Adds:**
   - GTDB R226 genomes, representatives and members, whose `ncbi_assembly_level` is `Complete Genome`, at most 20 per species, chosen by CheckM2 completeness and contamination, then by ANI diversity (skani).
@@ -310,7 +310,7 @@ Inserted and approved 2026-10-29 ([SEARCH_PLAN SD-16, §6.1](planning/search/SEA
 - **Search gate (ST2):**
   - Replays: Makarova 2011 defense islands (full); Shmakov 2019 Sets 1–3; Shmakov 2018 CRISPR islands; Wu 2026 Druantia/Zorya (RefSeq loci); Bell 2026 YprA; Jimmy 2020 toxSAS; Atkinson 2011 RSH; the Mutte all-models score matrix.
   - S-tests: S-01 and S-03..S-09 blocking (S-03 on S2 → S2C); S-02 cross-tool concordance reported, including HH-suite on remote cases; S-10 once for ST2. The ST2 cost table is measured on the pod (S-06).
-- **Estimates:** 25,458 genomes and 106.4 Gbp (*measured*, GTDB R226 metadata, 2026-11-09; earlier estimate 15–30k assemblies and 60–120 Gbp); 4,600–18,300 core-h (*derived*: 106.4 Gbp × 43–172 core-h/Gbp, the S5 rate = 20,000 and 80,000 core-h ÷ 465.5 Gbp; SEARCH_PLAN §6.1 quotes 7,500–20,000, which overlaps this range with its upper end above it); sequence store 56 GB (*derived*: 0.528 GB/Gbp × 106.4 Gbp); other disk ~80–240 GB (S5 ratio; computed from the superseded estimate; recompute); search pack ~50–105 GB ([sizing §4](planning/sources_and_sizing.md); computed from the superseded estimate; recompute). Up to ~23 days at 800 core-h/day at the high end (*derived*: 18,300 ÷ 800).
+- **Estimates:** 25,458 genomes and 106.4 Gbp (*measured*, GTDB R226 metadata, 2026-11-09; earlier estimate 15–30k assemblies and 60–120 Gbp); 4,600–18,300 core-h (*derived*: 106.4 Gbp × 43–172 core-h/Gbp, the S5 rate = 20,000 and 80,000 core-h ÷ 465.5 Gbp; SEARCH_PLAN §6.1 quotes 7,500–20,000, which overlaps this range with its upper end above it); sequence store 56 GB (*derived*: 0.528 GB/Gbp × 106.4 Gbp); other disk ~80–240 GB (S5 ratio; computed from the superseded estimate; recompute); search pack ~50–105 GB ([sizing §4](../../planning/sources_and_sizing.md); computed from the superseded estimate; recompute). Up to ~23 days at 800 core-h/day at the high end (*derived*: 18,300 ÷ 800).
 - **Runs on:** wilkcomp02. MMseqs2 linclust over 97.7×10⁶ proteins (*measured*, GTDB R226 metadata, 2026-11-09) needs ~33 GB (*derived*: 97.7×10⁶ × 336 B/seq), inside the 200 GB cgroup.
 - **License:** INSDC (open) for genomes; GTDB CC BY-SA (verify) for taxonomy.
 
@@ -335,7 +335,7 @@ Inserted and approved 2026-10-29 ([SEARCH_PLAN SD-16, §6.1](planning/search/SEA
   - Blocking: everything S2C runs, with oracle and accretion checks on a stratified sample.
   - Recorded: a 4-point scaling fit (S1, S2, S2C, S3), which drives the S5 go/no-go.
   - Harness: gate = R4 on `rS3.1`, as a `test_run` query (no R5: ST3 certifies at S5); new workflows arrive with manifests.
-- **Search gate (ST3, deferred):** search acceptance for these small-genome reps is part of ST3, certified at the S5 gate ([SEARCH_PLAN §6](planning/search/SEARCH_PLAN.md)); they load here for genetic-code work. At S3 only the regression checks run: S-03 (S2C → S3), S-04, S-05, and the ST0–ST2 replays must not lose recall. Library scans move from exact-unique proteins to NR90 reps with projection (SD-05), so S-08 runs on the S3 members.
+- **Search gate (ST3, deferred):** search acceptance for these small-genome reps is part of ST3, certified at the S5 gate ([SEARCH_PLAN §6](../../planning/search/SEARCH_PLAN.md)); they load here for genetic-code work. At S3 only the regression checks run: S-03 (S2C → S3), S-04, S-05, and the ST0–ST2 replays must not lose recall. Library scans move from exact-unique proteins to NR90 reps with projection (SD-05), so S-08 runs on the S3 members.
 
 ### S4: Uncultivated viruses and plasmids (IMG/VR v4 HQ, optionally IMG/PR)
 
@@ -355,7 +355,7 @@ Inserted and approved 2026-10-29 ([SEARCH_PLAN SD-16, §6.1](planning/search/SEA
 - **Gate:**
   - Blocking: everything S3 runs, plus the drift test and the license-flag test (no non-redistributable UID in any exportable pack, search pack included).
   - Harness: gate = R4 on `rS4.1`, as a `test_run` query (no R5: ST4 certifies at S6); new workflows arrive with manifests.
-- **Search gate (ST4, deferred):** S4 enters the ladder before S5 for data reasons; its search acceptance waits for ST4 at the S6 gate ([SEARCH_PLAN §6](planning/search/SEARCH_PLAN.md)). At S4 only the regression checks run: S-03 (S3 → S4), S-04, S-05, and no loss of ST0–ST2 replay recall.
+- **Search gate (ST4, deferred):** S4 enters the ladder before S5 for data reasons; its search acceptance waits for ST4 at the S6 gate ([SEARCH_PLAN §6](../../planning/search/SEARCH_PLAN.md)). At S4 only the regression checks run: S-03 (S3 → S4), S-04, S-05, and no loss of ST0–ST2 replay recall.
 
 ### S5: All GTDB R226 species representatives (the last stage that fits wilkcomp02 in full)
 
@@ -462,7 +462,7 @@ Inserted and approved 2026-10-29 ([SEARCH_PLAN SD-16, §6.1](planning/search/SEA
 
 | Edition | Stages | Notes |
 |---|---|---|
-| `lite` | S0–S5 (including S2C) | IMG/VR rows (S4) are present as statistics only; their sequences ship as fetch recipes. Ships the S5 search pack ([SEARCH_PLAN §3.2](planning/search/SEARCH_PLAN.md)): NR50, IGR, dark ORF, spacers; S4 sequences are not in it |
+| `lite` | S0–S5 (including S2C) | IMG/VR rows (S4) are present as statistics only; their sequences ship as fetch recipes. Ships the S5 search pack ([SEARCH_PLAN §3.2](../../planning/search/SEARCH_PLAN.md)): NR50, IGR, dark ORF, spacers; S4 sequences are not in it |
 | `core` | S0–S6 | Adds multi-strain pangenome planes. The S6 search pack lives on the Hetzner search host |
 | `planetary` | S0–S7+ | Built and served on Hetzner |
 
@@ -492,7 +492,7 @@ Every edition carries the sequence store for its stages. Sources that cannot be 
 |---|---|
 | Sequence-store primary format (Parquet chunks vs bgzip+faidx) | decided 2026-10-30: bgzip shards (K-13, DEC-17) |
 | Row-group sizes and sort keys | S0 (LY-06) |
-| ~~Zombi fit~~ **Decided 2026-10-29:** ZOMBI2 plus custom `synthworld` ([synthworld_spec.md](planning/tests/synthworld_spec.md) §1); fit spike GO with conditions ([synthworld_spike.md](planning/tests/synthworld_spike.md), DEC-15) | done |
+| ~~Zombi fit~~ **Decided 2026-10-29:** ZOMBI2 plus custom `synthworld` ([synthworld_spec.md](../../planning/tests/synthworld_spec.md) §1); fit spike GO with conditions ([synthworld_spike.md](../../planning/tests/synthworld_spike.md), DEC-15) | done |
 | ~~CI host for ring R2~~ **Decided 2026-10-29 (DEC-06):** GitHub Actions on private `ifinkelstein/bio-box` | done |
 | Mutation-score target (≥ 80%, *target*) confirmed after the first measurement (TEST_ARCHITECTURE §11 item 3) | S0 |
 | Which lab member runs the flexibility check, and on which workflow (TEST_ARCHITECTURE §11 item 4) | S0 (named; TEST_ARCHITECTURE gives no owner) |

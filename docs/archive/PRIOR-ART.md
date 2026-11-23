@@ -76,7 +76,7 @@ No 2023–2026 corpus-scale discovery paper read for the search plan runs an ite
 | C. Subtract the expected partner | 205,039 MTase neighbourhoods → 124,853 orphans → 2,628 contigs by 3Di search | Domainator case 3 | Neighbourhood predicates over stored library hits; 3Di of NR50 from tier ST3, encoder chosen by the SD-21 bake-off |
 | H. Subtract annotated domains, cluster the residue | 1,844 proteins → 1,524 uncovered fragments ≥50 aa → 94 clusters | Domainator case 1 | `segments.faa` (domain envelopes plus uncovered segments ≥50 aa) in the search pack |
 
-`bio-box` adopts the same order (SD-03 in [`planning/search/SEARCH_PLAN.md`](planning/search/SEARCH_PLAN.md)): iterative rounds on NR50 representatives, a final round on NR90 projected to members, and exhaustive search of all proteins only as a recall check. Candidate-linear work (HHpred, DALI, AF3/ColabFold) stays external.
+`bio-box` adopts the same order (SD-03 in [`planning/search/SEARCH_PLAN.md`](../../planning/search/SEARCH_PLAN.md)): iterative rounds on NR50 representatives, a final round on NR90 projected to members, and exhaustive search of all proteins only as a recall check. Candidate-linear work (HHpred, DALI, AF3/ColabFold) stays external.
 
 ## What `bio-box` does not attempt
 

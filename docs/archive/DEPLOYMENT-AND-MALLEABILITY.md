@@ -1,7 +1,7 @@
 # `all-the-data`: Packaging (`bio-box`), Data-Pack Malleability, and Deployment (v3.0)
 
 > **Status:** v3.0, revised after the round-2 audits ([`audits/SYNTHESIS_2.md`](audits/SYNTHESIS_2.md), decisions D-02, D-03, D-17, D-19..D-26). Supersedes v2.0 of this file.
-> **Related:** [`STAGES.md`](STAGES.md) (staged accretion plan), [`planning/data_layer_and_tests.md`](planning/data_layer_and_tests.md) (layers, layout, test suite), [`planning/sources_and_sizing.md`](planning/sources_and_sizing.md) (sources and sizing per stage), [`planning/search/SEARCH_PLAN.md`](planning/search/SEARCH_PLAN.md) (ad hoc search; authoritative for SD-01..SD-21, planned), [`planning/tests/TEST_ARCHITECTURE.md`](planning/tests/TEST_ARCHITECTURE.md) (test organization, rings, `test_run`; planned).
+> **Related:** [`STAGES.md`](STAGES.md) (staged accretion plan), [`planning/data_layer_and_tests.md`](../../planning/data_layer_and_tests.md) (layers, layout, test suite), [`planning/sources_and_sizing.md`](../../planning/sources_and_sizing.md) (sources and sizing per stage), [`planning/search/SEARCH_PLAN.md`](../../planning/search/SEARCH_PLAN.md) (ad hoc search; authoritative for SD-01..SD-21, planned), [`planning/tests/TEST_ARCHITECTURE.md`](../../planning/tests/TEST_ARCHITECTURE.md) (test organization, rings, `test_run`; planned).
 > **Naming:** the product, container and CLI are `bio-box` (formerly `koonin-box`).
 > **Numbers:** every size and time in this file is either *measured (stage, date)*, *derived (formula shown)*, or *estimate, pilot-pending (±40%)*. None of the v2.0 figures have been measured yet.
 
@@ -11,7 +11,7 @@
 2. Data packs that are built in stages, verified by manifest, and attachable without a rebuild.
 3. A precise contract for what changes when data is added, and what becomes stale.
 
-The v2.0 targets of "< 4 ms queries", "< 3 s cold start" and "52-minute planetary bootstrap" are withdrawn. Latency targets are now per query class, measured on the deployment host (see [`planning/data_layer_and_tests.md`](planning/data_layer_and_tests.md)).
+The v2.0 targets of "< 4 ms queries", "< 3 s cold start" and "52-minute planetary bootstrap" are withdrawn. Latency targets are now per query class, measured on the deployment host (see [`planning/data_layer_and_tests.md`](../../planning/data_layer_and_tests.md)).
 
 ---
 
@@ -60,7 +60,7 @@ bio-box run --profile wilkcomp02 --stage S1 --release rS1.1
 
 ### 0.4 What wilkcomp02 is for, and where it stops
 
-wilkcomp02 builds and serves the early stages of [`STAGES.md`](STAGES.md): golden genomes, phages, plasmids, complete prokaryotic genomes (S2C), small genomes and GTDB species representatives. It also measures the per-unit rates that feed `planning/sizing.yaml`. The stage at which its envelope stops being sufficient (local `/tmp`, 30 TB scratch, the 200 GB scope, the watchdog, shared NFS) is identified in [`planning/sources_and_sizing.md`](planning/sources_and_sizing.md). Stages past that point move to rented hardware (§4).
+wilkcomp02 builds and serves the early stages of [`STAGES.md`](STAGES.md): golden genomes, phages, plasmids, complete prokaryotic genomes (S2C), small genomes and GTDB species representatives. It also measures the per-unit rates that feed `planning/sizing.yaml`. The stage at which its envelope stops being sufficient (local `/tmp`, 30 TB scratch, the 200 GB scope, the watchdog, shared NFS) is identified in [`planning/sources_and_sizing.md`](../../planning/sources_and_sizing.md). Stages past that point move to rented hardware (§4).
 
 ---
 
@@ -85,9 +85,9 @@ Model weights (ProstT5, any future gLM) belong to the data pack, versioned with 
 | `ghcr.io/<org>/bio-box:3.0-cpu` (+ `bio-box_cpu_v3.0.sif`) | pyrodigal / pyrodigal-gv, Codetta, pyhmmer / HMMER 3.4, Infernal 1.1.5, MMseqs2 (≥ 18, static AVX2 build), Foldseek (CPU), geNomad, CheckV, IntegronFinder 2, MacSyFinder (DefenseFinder, CONJScan, TXSScan models in the data pack), ISEScan, CheckM2, GUNC, skani, MinCED, tRNAscan-SE 2, Aragorn, TransTermHP, cath-resolve-hits, FAMSA, VeryFastTree, DuckDB, Python environment, `bio-box` CLI and API | wilkcomp02 (Apptainer), Hetzner AX-class (Docker or Apptainer) |
 | `ghcr.io/<org>/bio-box:3.0-cuda` | The CPU image plus CUDA runtime, PyTorch/ONNX runtime for ProstT5 encoder inference, Foldseek GPU build | GPU build stages only (GEX130, wilkcomp03 by arrangement) |
 | `ghcr.io/<org>/bio-box:3.1-cpu` / `3.1-cuda` (planned, SEARCH_PLAN SD-13) | `3.0` plus the search tools: HH-suite3, BLAST+ (RPS-BLAST for CDD), DIAMOND, CMfinder, R-scape, PADLOC, CRISPRCasTyper, CRISPRCasFinder, and Domainator (MIT; conda package plus its Rust parser extension) as the candidate workbench: `.dsnv` network viewer, `plot_contigs`, structure annotation, profile comparison, `domainator_server` GUI (SD-17). reseek for the SD-21 aligner test. ProstT5 and the ESM-2 3B 3Di encoder stay in the CUDA image only (SD-21 bake-off). | Same hosts as `3.0` |
-| `ghcr.io/<org>/bio-box-test:3.1-cpu` (planned, [`planning/tests/TEST_ARCHITECTURE.md`](planning/tests/TEST_ARCHITECTURE.md)) | A layer on `bio-box:3.1-cpu` with test tooling only: pytest, Hypothesis, pandera, coverage.py, mutmut, asv, `zombi2==0.54.0` (MIT) and the `synthworld` generator (`planning/tests/synthworld_spec.md`). Zombi 1, Pyvolve and ALF are not used. HMMER `hmmemit` and Infernal `cmemit` come from the base image and are not added again. | CI host (R0–R2), wilkcomp02 (R3), stage host (R4–R5); §2.3 |
+| `ghcr.io/<org>/bio-box-test:3.1-cpu` (planned, [`planning/tests/TEST_ARCHITECTURE.md`](../../planning/tests/TEST_ARCHITECTURE.md)) | A layer on `bio-box:3.1-cpu` with test tooling only: pytest, Hypothesis, pandera, coverage.py, mutmut, asv, `zombi2==0.54.0` (MIT) and the `synthworld` generator (`planning/tests/synthworld_spec.md`). Zombi 1, Pyvolve and ALF are not used. HMMER `hmmemit` and Infernal `cmemit` come from the base image and are not added again. | CI host (R0–R2), wilkcomp02 (R3), stage host (R4–R5); §2.3 |
 
-- Nothing is installed ad hoc on either host ([`planning/data_layer_and_tests.md`](planning/data_layer_and_tests.md) §6). A tool missing from the image needs an image release before anyone can use it.
+- Nothing is installed ad hoc on either host ([`planning/data_layer_and_tests.md`](../../planning/data_layer_and_tests.md) §6). A tool missing from the image needs an image release before anyone can use it.
 
 - Both images are built from one lockfile (pixi or uv lock plus pinned binary digests), so tool versions are identical across hosts. The image digest is recorded in every release manifest.
 - **Test tooling is never in the runtime image.** It lives in `bio-box-test`, built from the same lockfile (a `test` feature) on top of the runtime image's digest, so tests exercise the exact binaries a release uses. Releases and runs record the runtime digest; `test_run` rows record the runtime digest the tests ran against (§2.3).
@@ -171,7 +171,7 @@ v2.0 claimed full malleability. That claim was wrong. Appends, family remaps and
 | `contig_uid` | Digest of the normalized nucleotide sequence (BLAKE3, truncated to 128 bits) | Stable forever |
 | `protein_uid` | Digest of the amino-acid sequence | Stable forever |
 | `source_record_uid` | Digest of `(source, accession, version)` | Stable forever |
-| `cluster_uid` (NR90, NR50, subfamily) | `blake3(sorted member UIDs at creation, cluster_params_hash)`, 128 bits ([`planning/data_layer_and_tests.md`](planning/data_layer_and_tests.md) §2). The representative's UID is stored as an attribute, not used as the key | Stable until a split or merge; changes recorded in `id_history` |
+| `cluster_uid` (NR90, NR50, subfamily) | `blake3(sorted member UIDs at creation, cluster_params_hash)`, 128 bits ([`planning/data_layer_and_tests.md`](../../planning/data_layer_and_tests.md) §2). The representative's UID is stored as an attribute, not used as the key | Stable until a split or merge; changes recorded in `id_history` |
 | `token_uid` | Namespaced `(level, library, accession, library_version)` | Stable; library upgrades produce new UIDs with crosswalk rows |
 | `dense_contig_id`, `dense_slot_id` | Release-local integers for compact storage and joins | Valid only inside one `release_id`. Never exposed as a sidecar key. |
 
@@ -219,7 +219,7 @@ v2.0 claimed full malleability. That claim was wrong. Appends, family remaps and
 - DuckDB allows one read-write process or many read-only processes per database file. The v2.0 design, where `serve`, `append` and `register-sidecar` all opened `catalog.duckdb` read-write, was not possible.
 - v3.0: the source of truth is `manifest.json` (partitions, schemas, checksums, `release_id`, sidecar registrations). A single writer process (the orchestrator, or `bio-box` admin commands holding a lock file) updates the manifest. It then generates a fresh `catalog.duckdb` containing only views and macros over the Parquet partitions, and swaps it in with an atomic `rename`.
 - `serve` and interactive users open the catalog read-only. A swap takes effect on their next connection.
-- Whether DuckLake replaces this generated catalog is evaluated in [`planning/data_layer_and_tests.md`](planning/data_layer_and_tests.md).
+- Whether DuckLake replaces this generated catalog is evaluated in [`planning/data_layer_and_tests.md`](../../planning/data_layer_and_tests.md).
 
 ### 3.9 Directory layout
 
@@ -250,7 +250,7 @@ v2.0 claimed full malleability. That claim was wrong. Appends, family remaps and
 
 This tree is the edition (packaging) view. The physical layout on the pod and on Hetzner is `planning/data_layer_and_tests.md` §3.1 (`l0/`, `l1/annot_version=…`, `l2/release=…`, `l3/`, `l4/release=…`, `search_pack/`, `search/`), which is canonical; `releases/<release_id>/` is the per-release manifest view over those directories, not a second copy.
 
-Tool-interop FASTA (bgzip + `.fai` + `.gzi`) is not part of the store. `bio-box seq extract` generates it on demand into `/tmp` or a project directory. Layout follows [`planning/data_layer_and_tests.md`](planning/data_layer_and_tests.md) §2A.1.
+Tool-interop FASTA (bgzip + `.fai` + `.gzi`) is not part of the store. `bio-box seq extract` generates it on demand into `/tmp` or a project directory. Layout follows [`planning/data_layer_and_tests.md`](../../planning/data_layer_and_tests.md) §2A.1.
 
 ### 3.10 Sequence store: raw sequences stay available to every project
 

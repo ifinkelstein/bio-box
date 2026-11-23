@@ -48,11 +48,11 @@ Round-2 corrections that every later section respects:
 The build accretes stage by stage, smallest data first. The order (authoritative in [`STAGES.md`](STAGES.md)) is: S−1 preflight; S0 golden genomes; S1 complete phages; S2 plasmids; S2C complete prokaryotic genomes (GTDB R226 `Complete Genome` assemblies, ≤20 per species; SEARCH_PLAN §6.1); S3 small-genome bacteria and archaea; S4 IMG/VR HQ vOTUs (local-only); S5 all GTDB species representatives; S6 all GTDB genomes plus the RefSeq complete flag; S7+ Tier 3 and Logan off-box. Each stage adds data partitions without rewriting earlier ones. Each stage must pass its gate before the next begins.
 
 - Stage ladder, gates and per-stage deliverables: [`STAGES.md`](STAGES.md)
-- Sources, counts, licenses and per-stage compute: [`planning/sources_and_sizing.md`](planning/sources_and_sizing.md)
-- Data-layer layout, identifiers and the per-layer test suite: [`planning/data_layer_and_tests.md`](planning/data_layer_and_tests.md)
+- Sources, counts, licenses and per-stage compute: [`planning/sources_and_sizing.md`](../../planning/sources_and_sizing.md)
+- Data-layer layout, identifiers and the per-layer test suite: [`planning/data_layer_and_tests.md`](../../planning/data_layer_and_tests.md)
 
 ### 0.4 Acceptance gates common to every stage
-Tests are organized per [`planning/tests/TEST_ARCHITECTURE.md`](planning/tests/TEST_ARCHITECTURE.md) (authoritative): registered operations (O-*) with a contract, an oracle and metamorphic relations (MR-01..MR-19); workflows as manifests over those operations; test rings R0–R5. Every test run writes rows to the `test_run` table (test, ring, operation, workflow, params hash, outcome, metrics, code commit, image digest, `release_id`, seed). **A gate is a SQL query over `test_run`:** all blocking tests for the stage pass on the stage's `release_id` and image digest. A regression is a diff between runs. Blocking tests use fixed seeds and are never retried into passing. Items 1–8 keep their numbering; TEST_ARCHITECTURE §9 maps their test families onto operations and rings.
+Tests are organized per [`planning/tests/TEST_ARCHITECTURE.md`](../../planning/tests/TEST_ARCHITECTURE.md) (authoritative): registered operations (O-*) with a contract, an oracle and metamorphic relations (MR-01..MR-19); workflows as manifests over those operations; test rings R0–R5. Every test run writes rows to the `test_run` table (test, ring, operation, workflow, params hash, outcome, metrics, code commit, image digest, `release_id`, seed). **A gate is a SQL query over `test_run`:** all blocking tests for the stage pass on the stage's `release_id` and image digest. A regression is a diff between runs. Blocking tests use fixed seeds and are never retried into passing. Items 1–8 keep their numbering; TEST_ARCHITECTURE §9 maps their test families onto operations and rings.
 
 1. **Ledger balances.** For every object, `n_in = kept + merged + Σ rejected_by_reason`, reconciled against the source manifest (DQ-08).
 2. **Determinism.** The same inputs in shuffled order give identical BLAKE3 hashes for every L0, L1 and L3 table (AR-07, DB-04).
@@ -389,7 +389,7 @@ A round-trip property test covers every field at its maximum (§5 B-0).
 
 ## 4. Data layer and query architecture
 
-The minimum architecture is **Parquet + DuckDB + a thin API** (D-17, AR-06). Custom index structures are built only when a measured SLO from §1.2 fails at a stage gate, and their designs are kept in §4.6. Layering, file geometry and tests are specified in [`planning/data_layer_and_tests.md`](planning/data_layer_and_tests.md):
+The minimum architecture is **Parquet + DuckDB + a thin API** (D-17, AR-06). Custom index structures are built only when a measured SLO from §1.2 fails at a stage gate, and their designs are kept in §4.6. Layering, file geometry and tests are specified in [`planning/data_layer_and_tests.md`](../../planning/data_layer_and_tests.md):
 
 | Layer | Contents | Update rule |
 |---|---|---|
@@ -559,7 +559,7 @@ These designs are kept so that an SLO failure has a ready answer. None is built 
 3. **Vector index.** Belongs to the gLM project (§4.5).
 
 ### 4.7 Ad hoc search (SD-01..SD-21)
-Authoritative design: [`planning/search/SEARCH_PLAN.md`](planning/search/SEARCH_PLAN.md). This section is a summary; where they differ, SEARCH_PLAN wins. Nothing here is implemented.
+Authoritative design: [`planning/search/SEARCH_PLAN.md`](../../planning/search/SEARCH_PLAN.md). This section is a summary; where they differ, SEARCH_PLAN wins. Nothing here is implemented.
 
 **Evidence the design rests on** (SEARCH_PLAN §1). 348/365 synteny hypotheses need a neighbourhood step; fixed-library annotation answers about a third; searching outside gene calls is routine; no 2023–2026 corpus-scale paper runs an iterative profile search over the whole corpus (they reduce first, then search 10^3–10^6 objects); at 1e9 proteins most tools are bound by memory or I/O.
 

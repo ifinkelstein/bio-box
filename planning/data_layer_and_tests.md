@@ -617,7 +617,7 @@ Classes and targets follow `PLAN.md` §1.2, which is authoritative where this fi
 
 ### 4.9 Stage gates (summary)
 
-Stage numbers follow [`STAGES.md`](../STAGES.md) (S0 golden, S1 phages, S2 plasmids, S2C complete genomes, S3 small genomes, S4 IMG/VR, S5 GTDB species reps, S6 all GTDB genomes, S7+ off-box). The table was relabeled from the earlier draft numbering on 2026-10-29 using the `STAGES.md` §7 mapping: the pilot decisions (DuckLake, K-07, K-12) sit at the S2 gate, the L5 decision at the S5 gate, the drift test at the S4 gate, and the Hetzner port checks at portability steps P1/P2.
+Stage numbers follow [`STAGES.md`](../docs/archive/STAGES.md) (S0 golden, S1 phages, S2 plasmids, S2C complete genomes, S3 small genomes, S4 IMG/VR, S5 GTDB species reps, S6 all GTDB genomes, S7+ off-box). The table was relabeled from the earlier draft numbering on 2026-10-29 using the `STAGES.md` §7 mapping: the pilot decisions (DuckLake, K-07, K-12) sit at the S2 gate, the L5 decision at the S5 gate, the drift test at the S4 gate, and the Hetzner port checks at portability steps P1/P2.
 
 Each row is evaluated as the §4.12 gate query: the stage passes when every blocking test listed for it has `test_run` rows on the stage's release and image, all with outcome `pass`. Ring requirements (§4.12): S0 needs R0–R3 green; every later stage needs R0–R3 and R4 on its own data; R5 runs at the tier-certifying stages listed in §4.10.
 

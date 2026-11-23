@@ -1,12 +1,17 @@
 # bio-box (all-the-data)
 
-**Status, 2026-11-22:** the 74.16 Gbp rolling release `r26.11.2` (eleven stages `S1`, `P1` to `P6`, `H1`, `PL1`, `C5`
+**Documentation map:** **[`DOCS.md`](DOCS.md)** indexes every user guide, operator runbook, catalog register, design note, measurement report, and archived spec in one place.
+
+**Status, 2026-11-23:** the 74.16 Gbp rolling release `r26.11.2` (eleven stages `S1`, `P1` to `P6`, `H1`, `PL1`, `C5`
 and `V1`, Pfam 38.2, both CRISPR array producers and `contig_label` on every stage; *measured*,
-[`2026-11-21_release_r26.11.2.md`](planning/measurements/2026-11-21_release_r26.11.2.md)) is built, verified, backed
-up onto durable storage, has its search pack and passed both worked examples (all 39 invariants, including the CRISPR
-array checks): **it is the release to search** (`--release latest` resolves to `r26.11.2`). `r26.11.1` (59.88 Gbp),
-`rM.2` (50 Gbp) and `rN.3` (10 Gbp) stay available. No release has been signed yet. The running record is
-[`planning/tasks/STATUS.md`](planning/tasks/STATUS.md); where this file and that one differ, that one is newer.
+[`2026-11-21_release_r26.11.2.md`](planning/measurements/2026-11-21_release_r26.11.2.md)) is **the live release to
+search** (`--release latest` resolves to `r26.11.2`), and `r26.11.1` (59.88 Gbp) stays live beside it (`DEC-66` `S-4`;
+pre-rolling releases `rN.1a`..`rM.2` are durably archived on `/stor/work` and `tower` via `bio-box release retire`,
+card C-54). Stages **`G1`** (10.04 Gbp GlobDB archaea, `annotated`, [`2026-11-23_stage_G1.md`](planning/measurements/2026-11-23_stage_G1.md))
+and **`SPX1`** (35.69 Gbp SPIRE unbinned metagenomes `>= 5 kb`, `called`, [`2026-11-23_stage_SPX1.md`](planning/measurements/2026-11-23_stage_SPX1.md))
+are built, verified, and backed up, and rolling release **`r26.11.3`** (13 stages, 119.89 Gbp, 119,876,311 genes,
+102,337,875 distinct proteins, *measured*) is currently building (`DEC-67`). No release has been signed yet. The running
+record is [`planning/tasks/STATUS.md`](planning/tasks/STATUS.md); where this file and that one differ, that one is newer.
 
 Numbers here carry the labels [`AGENTS.md`](AGENTS.md) §6 requires: *measured* (on the pod unless stated, with the
 date and the record cited beside it), *derived* (with its formula) or *estimate*.
@@ -83,7 +88,7 @@ mirrored to the PI's NAS `tower`, STATUS handoff). Fetched inputs are archived o
 [`sources.yaml`](sources.yaml); reference libraries are pinned in [`refdb.yaml`](refdb.yaml). The repository holds
 code, plans, decisions, measurement records and tests.
 
-**Stages** (stage numbering and plan: [`STAGES.md`](STAGES.md), "Status and mapping")
+**Stages** (stage numbering and plan: [`STAGES.md`](docs/archive/STAGES.md), "Status and mapping")
 
 | Stage | Source | Size | Annotations | State |
 |---|---|---|---|---|
@@ -95,7 +100,9 @@ code, plans, decisions, measurement records and tests.
 | `PL1` | PLSDB 2024_05_31_v2 | 68,693 genomes, 61,647 contigs and 5,924,552,875 bp stored (7,046 shared with `S1` and `P1` to `P6`; *measured*, [`2026-11-15_stage_PL1.md`](planning/measurements/2026-11-15_stage_PL1.md)) | genes, Pfam 38.2, both CRISPR producers, labels, clusters | built (card C-26) |
 | `C5`, `C1` to `C4`, `C6` (S2C phase 2) | GTDB R226, up to 20 complete genomes per species, chosen for strain diversity with skani in the 243 species that have more | 13,477 genomes fetched, 56,177,990,736 bp (*measured*, [`2026-11-15_s2c_phase2_inputs.md`](planning/measurements/2026-11-15_s2c_phase2_inputs.md)); `C5` stores 2,653 contigs and 9,109,234,757 bp across 2,029 genomes (2,550 shared with earlier stages; *measured*, [`2026-11-20_stage_C5.md`](planning/measurements/2026-11-20_stage_C5.md)) | `C5`: genes, Pfam 38.2, both CRISPR producers, labels, clusters | `C5` built (card C-47); `C1` to `C4` and `C6` inputs ready and queued for full Pfam scan (DEC-62, card A-18) |
 | `V1` | UHGV v1.0 gut viral vOTU representatives | 168,536 genomes, 168,358 contigs and 5,178,493,077 bp stored (178 shared with `H1` and `S1`; *measured*, [`2026-11-20_stage_V1.md`](planning/measurements/2026-11-20_stage_V1.md)) | genes, Pfam 38.2, both CRISPR producers, labels, clusters | built (card C-48c part 1) |
-| `G1`..`G41`, `SPX1`, `V2`, `GV1`, `PL2`, `PL3` | GlobDB r226 non-GTDB species reps (`G1`..`G41`), SPIRE tranche 1 (`SPX1`), IMG/VR v4.1 HC + Inovirus (`V2`), GVMAGs V2 (`GV1`), Yu2024 + PlasmidScope + IMG/PR + mMGE plasmids (`PL2`, `PL3`) | `G1` 10.05 Gbp (`7,139` archaeal reps), `SPX1` 35.89 Gbp >= 5 kb (`304` samples, `189` studies), `V2` 7.51 Gbp, `GV1` 0.72 Gbp, `PL2`+`PL3` 18.27 Gbp new (*measured*, cards C-40, C-41, C-48c, C-48e, C-52) | none yet | `G1` and `SPX1` staged and queued (`A-17`); `V2`, `GV1`, `PL2`, `PL3` staged or awaiting open item 24 |
+| `G1` | GlobDB r226 non-GTDB archaeal species representatives (`G2`..`G41` deferred in [`planning/CATALOG_GOAL.md`](planning/CATALOG_GOAL.md)) | 7,139 genomes, 1,227,214 contigs and 10,042,502,859 bp (10.04 Gbp) stored, 11,189,212 genes, 11,053,665 distinct proteins (*measured*, [`2026-11-23_stage_G1.md`](planning/measurements/2026-11-23_stage_G1.md)) | genes, Pfam 38.2 (15,056,794 rows), both CRISPR producers (1,773 + 127 arrays), labels | built & backed up (cutting in `r26.11.3`) |
+| `SPX1` | SPIRE v1 unbinned aquatic & terrestrial metagenome contigs `>= 5,000` bp (tranche 1: 304 samples across 189 studies) | 2,829,368 genomes, 2,817,316 contigs and 35,688,628,875 bp (35.69 Gbp) stored (12,052 held by `G1`), 35,759,143 genes, 34,039,158 distinct proteins (33,512,765 new; *measured*, [`2026-11-23_stage_SPX1.md`](planning/measurements/2026-11-23_stage_SPX1.md)) | genes (`meta`), default CRISPR producer (5,333 arrays), labels (`--depth called`, DEC-54) | built & backed up (cutting in `r26.11.3`) |
+| `V2`, `GV1`, `PL2`, `PL3` | IMG/VR v4.1 HC + Inovirus (`V2`), GVMAGs V2 (`GV1`), Yu2024 + 7 public PlasmidScope sets (`PL2`), IMG-PR + mMGE (`PL3`) | `V2` 8.20 Gbp new, `GV1` 3.89 Gbp new, `PL2` 1.98 Gbp new, `PL3` 16.28 Gbp new (*measured*, cards C-52, C-53, DEC-65) | `V2` `called`; `GV1`, `PL2` `annotated` (Pfam 38.2); `PL3` `called` | staged under DEC-65 & mirrored to `tower`; queued for `r26.11.4` (DEC-67) |
 
 **Releases** (names are provisional: none is signed, so none is `rS<k>.<n>`, `STAGES.md`)
 
@@ -162,8 +169,8 @@ Every table is declared once in `src/biobox/registry/schemas.py` (AGENTS §3.7).
 | Every lookup prunes | a lookup by key reads O(1) row groups, also for keys from a joined table | AGENTS §4.4 |
 | No rewrites | a stage never rewrites an earlier stage's files; index tables are partitioned by stage; files are renamed into place | AGENTS §3.9, §3.10; DEC-21 |
 
-The specification and plan behind these are [`00-spec.md`](00-spec.md), [`PLAN.md`](PLAN.md) and
-[`DEPLOYMENT-AND-MALLEABILITY.md`](DEPLOYMENT-AND-MALLEABILITY.md); they hold superseded text, and
+The specification and plan behind these are [`00-spec.md`](docs/archive/00-spec.md), [`PLAN.md`](docs/archive/PLAN.md) and
+[`DEPLOYMENT-AND-MALLEABILITY.md`](docs/archive/DEPLOYMENT-AND-MALLEABILITY.md); they hold superseded text, and
 [`planning/DECISIONS.md`](planning/DECISIONS.md) outranks them.
 
 ## Milestones
@@ -172,7 +179,7 @@ The specification and plan behind these are [`00-spec.md`](00-spec.md), [`PLAN.m
 
 | Date | Milestone | Record |
 |---|---|---|
-| 2026-10-28 | Specification, plan and stage ladder written after two rounds of independent audits; preflight gaps listed | [`audits/SYNTHESIS_2.md`](audits/SYNTHESIS_2.md), [`planning/preflight_gaps.md`](planning/preflight_gaps.md), `STAGES.md` |
+| 2026-10-28 | Specification, plan and stage ladder written after two rounds of independent audits; preflight gaps listed | [`audits/SYNTHESIS_2.md`](docs/archive/audits/SYNTHESIS_2.md), [`planning/preflight_gaps.md`](planning/preflight_gaps.md), `STAGES.md` |
 | 2026-10-29 | Preflight decisions DEC-01 to DEC-16 (S2C scope, Z constants, gene-calling policy, repository and CI, server footprint); repository started | `planning/DECISIONS.md` |
 | 2026-10-30 | First S0 gate report on the golden set; sequence-store format chosen by bake-off (DEC-17) | [`2026-10-30_s0_gate.md`](planning/measurements/2026-10-30_s0_gate.md), [`2026-10-30_k13_bakeoff.md`](planning/measurements/2026-10-30_k13_bakeoff.md) |
 | 2026-11-09 | Design stress test; data model moved to coordinate keys and postings (DEC-18 to DEC-23); task cards and agent rules written; first card merged (A-01) | [`2026-11-09_design_stress_test.md`](planning/measurements/2026-11-09_design_stress_test.md), `planning/tasks/TASKS.md`, `AGENTS.md`, STATUS merged table |
@@ -259,24 +266,19 @@ takes `plan/task-cards` by pull request, and each push to `main` builds the cont
 
 | Path | What |
 |---|---|
-| `README.md` | this file |
-| `AGENTS.md`, `CLAUDE.md` | rules for agents that change the code (`CLAUDE.md` points to `AGENTS.md`) |
-| `GUIDE.md`, `AGENT_GUIDE.md` | how a scientist, and an agent, search a release |
-| `RUNBOOK.md` | operator commands: build, pause, resume, verify, search, clean up, limits |
-| `STAGES.md` | the stage ladder and how what exists maps to it |
-| `00-spec.md`, `PLAN.md`, `DEPLOYMENT-AND-MALLEABILITY.md` | specification, pipeline and schema plan, hosts and images (partly superseded) |
-| `PRIOR-ART.md` | prior art |
-| `sources.yaml`, `refdb.yaml` | approved data sources with what was fetched; pinned reference libraries |
-| `golden.yaml`, `golden.lock.yaml` | the golden genome set and its lock |
+| [`README.md`](README.md), [`DOCS.md`](DOCS.md) | overview (this file) and the repository-wide documentation map |
+| [`GUIDE.md`](GUIDE.md), [`AGENT_GUIDE.md`](AGENT_GUIDE.md) | how a scientist, and an agent, search and query a release |
+| [`RUNBOOK.md`](RUNBOOK.md) | operator commands on `wilkcomp02`: build, pause, resume, verify, retire, search, clean up, limits |
+| [`AGENTS.md`](AGENTS.md), `CLAUDE.md` | rules for agents that change the code (`CLAUDE.md` points to `AGENTS.md`) |
+| [`planning/`](planning/README.md) | [`DECISIONS.md`](planning/DECISIONS.md), [`CATALOG_GOAL.md`](planning/CATALOG_GOAL.md), [`tasks/`](planning/tasks/STATUS.md), [`design/`](planning/README.md#3-focused-design-notes-planningdesign), [`measurements/`](planning/measurements/README.md), [`search/`](planning/search/SEARCH_PLAN.md), [`tests/`](planning/tests/TEST_ARCHITECTURE.md) |
+| [`docs/archive/`](docs/archive/README.md) | initial Oct–Nov 2026 specs (`00-spec.md`, `PLAN.md`, `STAGES.md`, `DEPLOYMENT-AND-MALLEABILITY.md`), `PRIOR-ART.md`, and `audits/` |
+| [`examples/`](examples/README.md) | worked scientific searches (`rnap`, `crispr_cas_neighbourhoods`) run as release checks |
+| [`presentations/`](presentations/README.md) | group-meeting HTML and PowerPoint decks |
+| [`sources.yaml`](sources.yaml), [`refdb.yaml`](refdb.yaml) | approved data sources with checksums; pinned reference libraries |
+| `golden.yaml`, `golden.lock.yaml` | the 15-genome golden test set and its lock |
 | `pyproject.toml`, `uv.lock` | Python package and locked dependencies |
-| `container/` | `Dockerfile` (runtime and test images) and `environment.yml` (native tools) |
-| `profiles/` | host profile of the shared server: thread, memory and file-size limits |
-| `src/biobox/` | the package: layers `l0seq`, `l1`, `l2`, `l3`, `search`, `synthworld`, the registry, catalog, CLI |
-| `tests/` | rings `r0` (static), `r1` (unit), `r2` (fixture builds), `r3` (golden set); `registry`, `oracles`, `fixtures` |
-| `scripts/` | test and run launchers for the server, schema-lock update, stress and build drivers, orchestration helpers |
-| `planning/` | decisions, task cards and status, measurements, design notes, search and test plans, sizing |
-| `audits/` | the audit rounds behind the plan |
-| `presentations/` | the group-meeting deck |
+| `container/`, `profiles/` | `Dockerfile` + `environment.yml`; `wilkcomp02` host profile |
+| `src/biobox/`, `tests/`, `scripts/` | package (`l0seq`, `l1`, `l2`, `l3`, `search`, `synthworld`, registry, catalog, CLI), test rings `r0`–`r3`, and pod/build drivers |
 | `.github/workflows/` | `ci`, `cross-host`, `image`, `mutation` |
 
 ## Requirements and tests
