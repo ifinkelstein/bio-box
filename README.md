@@ -98,7 +98,7 @@ code, plans, decisions, measurement records and tests.
 | `P3` to `P6` | the same selection, the other 9,469 genomes | 39.9 Gbp (*measured*, `STAGES.md`); the selection is 11,973 genomes, 11,966 fetched, 50.5 Gbp (*measured*, [`2026-11-11_r50_inputs.md`](planning/measurements/2026-11-11_r50_inputs.md)) | genes, Pfam 38.2, both CRISPR producers, labels, clusters | built |
 | `H1` | Huge Phage Genome Collection | 7,228 genomes, 6,714 contigs and 1,819,831,338 bp stored (514 shared with `S1`; *measured*, [`2026-11-15_stage_H1.md`](planning/measurements/2026-11-15_stage_H1.md)) | genes, Pfam 38.2, both CRISPR producers, labels, clusters | built (card C-24) |
 | `PL1` | PLSDB 2024_05_31_v2 | 68,693 genomes, 61,647 contigs and 5,924,552,875 bp stored (7,046 shared with `S1` and `P1` to `P6`; *measured*, [`2026-11-15_stage_PL1.md`](planning/measurements/2026-11-15_stage_PL1.md)) | genes, Pfam 38.2, both CRISPR producers, labels, clusters | built (card C-26) |
-| `C5`, `C1` to `C4`, `C6` (S2C phase 2) | GTDB R226, up to 20 complete genomes per species, chosen for strain diversity with skani in the 243 species that have more | 13,477 genomes fetched, 56,177,990,736 bp (*measured*, [`2026-11-15_s2c_phase2_inputs.md`](planning/measurements/2026-11-15_s2c_phase2_inputs.md)); `C5` stores 2,653 contigs and 9,109,234,757 bp across 2,029 genomes (2,550 shared with earlier stages; *measured*, [`2026-11-20_stage_C5.md`](planning/measurements/2026-11-20_stage_C5.md)) | `C5`: genes, Pfam 38.2, both CRISPR producers, labels, clusters | `C5` built (card C-47); `C1` to `C4` and `C6` inputs ready and queued for full Pfam scan (DEC-62, card A-18) |
+| `C5`, `C1` to `C4`, `C6` (S2C phase 2) | GTDB R226, up to 20 complete genomes per species, chosen for strain diversity with skani in the 243 species that have more | 13,477 genomes fetched, 56,177,990,736 bp (*measured*, [`2026-11-15_s2c_phase2_inputs.md`](planning/measurements/2026-11-15_s2c_phase2_inputs.md)); `C5` stores 2,653 contigs and 9,109,234,757 bp across 2,029 genomes (2,550 shared with earlier stages; *measured*, [`2026-11-20_stage_C5.md`](planning/measurements/2026-11-20_stage_C5.md)) | `C5`: genes, Pfam 38.2, both CRISPR producers, labels, clusters | `C5` built (card C-47); `C1` to `C4` and `C6` inputs archived on `/stor` and `tower`, deferred after `r26.11.4` in favour of long-read metagenomes and high-diversity environmental waves (DEC-70) |
 | `V1` | UHGV v1.0 gut viral vOTU representatives | 168,536 genomes, 168,358 contigs and 5,178,493,077 bp stored (178 shared with `H1` and `S1`; *measured*, [`2026-11-20_stage_V1.md`](planning/measurements/2026-11-20_stage_V1.md)) | genes, Pfam 38.2, both CRISPR producers, labels, clusters | built (card C-48c part 1) |
 | `G1` | GlobDB r226 non-GTDB archaeal species representatives (`G2`..`G41` deferred in [`planning/CATALOG_GOAL.md`](planning/CATALOG_GOAL.md)) | 7,139 genomes, 1,227,214 contigs and 10,042,502,859 bp (10.04 Gbp) stored, 11,189,212 genes, 11,053,665 distinct proteins (*measured*, [`2026-11-23_stage_G1.md`](planning/measurements/2026-11-23_stage_G1.md)) | genes, Pfam 38.2 (15,056,794 rows), both CRISPR producers (1,773 + 127 arrays), labels | built & backed up (cutting in `r26.11.3`) |
 | `SPX1` | SPIRE v1 unbinned aquatic & terrestrial metagenome contigs `>= 5,000` bp (tranche 1: 304 samples across 189 studies) | 2,829,368 genomes, 2,817,316 contigs and 35,688,628,875 bp (35.69 Gbp) stored (12,052 held by `G1`), 35,759,143 genes, 34,039,158 distinct proteins (33,512,765 new; *measured*, [`2026-11-23_stage_SPX1.md`](planning/measurements/2026-11-23_stage_SPX1.md)) | genes (`meta`), default CRISPR producer (5,333 arrays), labels (`--depth called`, DEC-54) | built & backed up (cutting in `r26.11.3`) |
@@ -232,14 +232,17 @@ The specification and plan behind these are [`00-spec.md`](docs/archive/00-spec.
 
 **Next, in order**
 
-1. Ingest the unblocked stages already staged on disk through `stage_queue.sh` and cut rolling releases with
-   `release_train.sh` (cards A-12, A-17, A-18, C-46): `GlobDB` `G1` (7,139 archaeal species reps, 10.05 Gbp,
-   `annotated`), `SPIRE` tranche 1 `SPX1` (35.89 Gbp >= 5 kb, `called`), and S2C phase 2 `C1` to `C4` and `C6`
-   (46.79 Gbp, `annotated`, DEC-62).
-2. Once open item 24 is decided by the PI, stage and build `V2` (`IMG/VR` v4.1 HC + `Inovirus`), `GV1` (`GVMAGs V2`),
-   `PL2` (redistributable plasmids) and `PL3` (`IMG/PR` + `mMGE`, DEC-63, card C-52).
-3. On-hit annotation rounds (`domain_rounds`, cards C-38e to C-38g) on `--depth called` metagenomic stages.
-4. ncRNA annotation of the built stages with `prok-2`; a dedicated tRNA caller is a later card (E-10).
+1. Finish rolling release **`r26.11.3`** over the 13 built stages (`S1..V1`, `G1`, `SPX1`: `119.89 Gbp`, `119.88M` genes,
+   `102.34M` distinct proteins, *measured*), then build Batch 2 (`V2` `IMG/VR` v4.1 HC + `Inovirus`, `GV1` `GVMAGs V2`,
+   `PL2` redistributable plasmids, and `PL3` `IMG-PR` + `mMGE` -> **`r26.11.4`**, DEC-65, DEC-67).
+2. Jump directly after `r26.11.4` to **public long-read (`PACBIO_SMRT` / `OXFORD_NANOPORE`) metagenome assemblies**
+   (`LR1`.., card C-56) and high-diversity viral, satellite, integrative-MGE, single-cell `GORG` SAG, organellar, and
+   `SPIRE` `>= 5 kb` metagenome waves (cards C-55, C-57, C-58, C-59, `SPX2`..), deferring strain-rich `C1` to `C4` and
+   `C6` to the later strain-completion pass (`DEC-69`, `DEC-70`, [`planning/CATALOG_GOAL.md`](planning/CATALOG_GOAL.md)).
+3. Fast multi-tool query indexes alongside the search pack (MMseqs2/Foldseek/pLM representative search) and on-hit
+   annotation rounds (`domain_rounds`, cards C-38e to C-38g) on `--depth called` metagenomic stages.
+4. ncRNA annotation of the built stages with `prok-2`, plus RNA viruses/Obelisks/viroid-like cccRNAs (card C-50) and
+   microbial eukaryotes (card C-60).
 5. The statistics phase: the `pair_stats` design, the synthetic-world sessions that remain, then calibration on null
    worlds (cards F-01 to F-03). No enrichment statistic exists today.
 6. The first signed release, `rS0.1` (card E-06), after which locked schema columns can only be appended to (AGENTS

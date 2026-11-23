@@ -56,32 +56,33 @@ tranche stops paying; at that point the habitat is **deferred, not finished** (�
 
 The order that follows (the orchestrator's, 2026-11-20, for the PI to change):
 
-1. Everything already on disk (§3), with the `DEC-67` rolling release batches (`r26.11.3`, `r26.11.4`, `r26.11.5`).
-2. High-density viral, satellite, integrative-MGE, and organellar collections (`DEC-69`: `VIRE` vOTU representatives,
+1. High-diversity stages already on disk (§3): `G1 + SPX1 -> r26.11.3` (building now) and `V2 + GV1 + PL2 + PL3 -> r26.11.4`
+   (`DEC-67`, `DEC-70`; strain-rich `C1`..`C4` and `C6` are deferred to item 6 below under `DEC-70`).
+2. **Public long-read (`PACBIO_SMRT` and `OXFORD_NANOPORE`) metagenome assemblies (`LR1`..)** across ENA, NCBI, and
+   unrestricted IMG/M (`DEC-69`, `DEC-70`, card C-56) — jumped to immediately after `r26.11.4` so intact multi-operon
+   defense islands, CRISPR arrays, IS/transposon borders, integrons, and closed MGEs enter first.
+3. High-density viral, satellite, integrative-MGE, and organellar collections (`DEC-69`: `VIRE` vOTU representatives,
    `< 5 kb` circular ssDNA/CRESS viruses, archaeal extremophile viruses, phage satellites, `ICEberg`/`TnCentral`/`ISfinder`/`Integrall`,
-   and RefSeq organelles — compact in Gbp and disproportionately rich in defense systems, mobile nucleases, and introns;
-   cards C-55, C-57, C-59), plus full IMG/VR v4.0 viral vOTU representatives at depth `called`.
-3. Public long-read (`PACBIO_SMRT` and `OXFORD_NANOPORE`) metagenome assemblies across ENA, NCBI, and unrestricted
-   IMG/M (`DEC-69`, card C-56) ahead of bulk short-read WGS tranches, followed by unbinned short-read metagenome
-   contigs of 5 kb and more (DEC-57) by habitat (aquatic and terrestrial first: SPIRE, then IMG/M, MGnify, and INSDC).
+   and RefSeq organelles — cards C-55, C-57, C-59), full IMG/VR v4.0 viral vOTU representatives at depth `called`, and
+   unbinned short-read metagenome contigs `>= 5 kb` (DEC-57) by habitat (`SPX2`.., then IMG/M, MGnify, and INSDC).
 4. Species representatives and niche cellular clades: GTDB R226 (`S3`, `S5`), GlobDB (`G2`..`G41`), uncultivated marine
    and subsurface Single-Amplified Genomes (`GORG-Tropics`, `GORG-Dark`), CheckM-excluded endosymbionts and post-`R226`
    RefSeq/GenBank prokaryotes, and niche-habitat/holobiont MAG compendia outside GlobDB (`DEC-69`, card C-58).
 5. RNA viruses, Obelisks, and viroid-like circular RNAs once card C-50 settles RNA genome calling/tokens, and microbial
    eukaryotes (`IMG-UMAG` `E1`/`E2`, `Tara` `SMAGs`, `EukProt`, `PhycoCosm`, `MycoCosm`) once card C-60 settles
    intron-aware eukaryotic calling.
-6. Then the less diverse remainder of every source, in full (§4).
+6. Then the strain-rich and less diverse remainder of every source, in full (`C1`..`C4` and `C6`, plus §4).
 
 ## 3. What is in, and what is on disk and queued
 
-| Source | State on 2026-11-20 | Stage |
+| Source | State on 2026-11-23 | Stage |
 |---|---|---|
 | INPHARED phages (14Apr2025) | built | `S1` |
 | GTDB R226, best complete genome per species (11,966 fetched) | built | `P1` to `P6` |
 | Huge Phage Genome Collection | built | `H1` |
 | PLSDB 2024_05_31_v2 | built | `PL1` |
-| UHGV v1.0 vOTU representatives (168,536 genomes; 168,358 contigs stored, 5.18 Gbp, 7,364,696 genes) | built 2026-11-20; in no release yet | `V1` |
-| GTDB R226 complete genomes, second selection (13,477 genomes, 56.18 Gbp) | `C5` built 2026-11-20 (2,029 genomes, 9.11 Gbp stored, fully scanned; in release `r26.11.2`); `C1` to `C4` and `C6` (46.79 Gbp) held since 2026-11-21 for the PI's decision on how their Pfam is made (STATUS open item 21) | `C1` to `C6` |
+| UHGV v1.0 vOTU representatives (168,536 genomes; 168,358 contigs stored, 5.18 Gbp, 7,364,696 genes) | built 2026-11-20; in release `r26.11.2` | `V1` |
+| GTDB R226 complete genomes, second selection (13,477 genomes, 56.18 Gbp) | `C5` built 2026-11-20 (2,029 genomes, 9.11 Gbp stored, fully scanned; in release `r26.11.2`); `C1` to `C4` and `C6` (46.79 Gbp, full Pfam under `DEC-62`, archived on `/stor` and mirrored on `tower`) **deferred after `r26.11.4` under `DEC-70`** in favour of long-read metagenomes (`LR1`..) and high-diversity environmental/MGE waves (`~400k+` vs `~27k` new NR50/Gbp) | `C1` to `C6` |
 | Redistributable plasmids: Yu 2024 gut representatives (68,350) and seven public-database PlasmidScope sets (RefSeq, GenBank, ENA, DDBJ, COMPASS, TPA, Kraken2): 178,450 genomes/contigs, 8.84 Gbp (72,446 circular; 3,444 gut exact repeats trimmed by 245,410 bp; 7 public sets byte-identical as deposited), of which 112,562 contigs and 1.975 Gbp are new after `G1`, `SPX1`, `V2`, and `GV1` (*measured*, card C-52, DEC-63, DEC-65) | inputs staged | `PL2` |
 | Non-redistributable metagenomic plasmids: PlasmidScope `IMG-PR` (699,971 records) and `mMGE` (92,492 records): 753,619 genomes/contigs, 17.08 Gbp (130,066 circular; 69,811 exact 20..1,000 bp repeats trimmed by 8,038,464 bp; 2,413 partial/long/low_complexity staged linear untrimmed), of which 745,871 contigs and 16.283 Gbp are new after `PL2` (*measured*, card C-52, DEC-63, DEC-65) | inputs staged | `PL3` |
 | IMG/VR v4.1 high-confidence vOTU representatives (224,520) and Inovirus (5,964 records): 230,050 genomes, 261,578 contigs, 9.33 Gbp (58,627 circular; 58,193 IMG/VR DTRs trimmed by 6.50 Mbp), of which 243,466 contigs and 8.20 Gbp are new after `G1` and `SPX1` (*measured*, card C-53, DEC-65) | inputs staged | `V2` |
