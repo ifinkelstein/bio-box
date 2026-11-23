@@ -23,10 +23,15 @@ So:
   stops a habitat early records what it did not take, with identifiers sufficient to fetch and ingest the remainder
   later (accessions, sample ids, the archive member, the filter's parameters), in its measurement note and in §4
   below.
-- **What "complete" covers (DEC-60, the PI, 2026-11-20).** For unbinned metagenome assemblies: every contig of
-  5,000 bp or more; contigs under 5 kb are outside the corpus and are not deferred data. RNA viruses are in scope
-  (by a design card, C-50). Protein-only catalogues are deferred ("can wait"). Raw reads are not taken (Logan's
-  assemblies stand in for them, §4.3).
+- **What "complete" covers (DEC-60, 2026-11-20; expanded by DEC-69, 2026-11-23).** For unbinned metagenome
+  assemblies: every contig of 5,000 bp or more; unbinned metagenome contigs under 5 kb are outside the corpus and are
+  not deferred data. Dedicated and niche collections — including `< 5 kb` circular DNA viruses (*Cressdnaviricota*,
+  *Microviridae*), archaeal extremophile viruses, phage satellites (`PICIs`, `cf-PICIs`, `PLEs`, `P4`-like), curated
+  integrative MGEs/transposons/IS elements/integrons, single-cell SAGs, genome-reduced endosymbionts, post-`R226`
+  prokaryotes, niche-habitat/holobiont MAG compendia, organellar genomes (plastids, mitochondria, nucleomorphs),
+  microbial eukaryotes (by design card C-60), and RNA viruses plus Obelisks and viroid-like circular RNAs (by design
+  card C-50) — are in scope without the unbinned 5 kb floor. Protein-only catalogues are deferred ("can wait"). Raw
+  reads are not taken (Logan's assemblies stand in for them, §4.3).
 - **Where it lives** is the main constraint (STATUS open item 19). The pod's local disk holds the working root; the
   PI's NAS `tower` is offered as a place for tranches as the corpus grows (DEC-60 (3), card C-49).
 
@@ -51,12 +56,21 @@ tranche stops paying; at that point the habitat is **deferred, not finished** (�
 
 The order that follows (the orchestrator's, 2026-11-20, for the PI to change):
 
-1. Everything already on disk (§3), with rolling releases.
-2. Viral vOTU representatives in full (IMG/VR v4.0, on disk) at depth `called`.
-3. Unbinned metagenome contigs of 5 kb and more (DEC-57), by habitat, aquatic and terrestrial first: SPIRE, then
-   IMG/M's unrestricted metagenomes that SPIRE lacks, then MGnify's and INSDC's assemblies outside both.
-4. Species representatives of cellular genomes: GTDB R226's and GlobDB's.
-5. Then the less diverse remainder of every source, in full (§4).
+1. Everything already on disk (§3), with the `DEC-67` rolling release batches (`r26.11.3`, `r26.11.4`, `r26.11.5`).
+2. High-density viral, satellite, integrative-MGE, and organellar collections (`DEC-69`: `VIRE` vOTU representatives,
+   `< 5 kb` circular ssDNA/CRESS viruses, archaeal extremophile viruses, phage satellites, `ICEberg`/`TnCentral`/`ISfinder`/`Integrall`,
+   and RefSeq organelles — compact in Gbp and disproportionately rich in defense systems, mobile nucleases, and introns;
+   cards C-55, C-57, C-59), plus full IMG/VR v4.0 viral vOTU representatives at depth `called`.
+3. Public long-read (`PACBIO_SMRT` and `OXFORD_NANOPORE`) metagenome assemblies across ENA, NCBI, and unrestricted
+   IMG/M (`DEC-69`, card C-56) ahead of bulk short-read WGS tranches, followed by unbinned short-read metagenome
+   contigs of 5 kb and more (DEC-57) by habitat (aquatic and terrestrial first: SPIRE, then IMG/M, MGnify, and INSDC).
+4. Species representatives and niche cellular clades: GTDB R226 (`S3`, `S5`), GlobDB (`G2`..`G41`), uncultivated marine
+   and subsurface Single-Amplified Genomes (`GORG-Tropics`, `GORG-Dark`), CheckM-excluded endosymbionts and post-`R226`
+   RefSeq/GenBank prokaryotes, and niche-habitat/holobiont MAG compendia outside GlobDB (`DEC-69`, card C-58).
+5. RNA viruses, Obelisks, and viroid-like circular RNAs once card C-50 settles RNA genome calling/tokens, and microbial
+   eukaryotes (`IMG-UMAG` `E1`/`E2`, `Tara` `SMAGs`, `EukProt`, `PhycoCosm`, `MycoCosm`) once card C-60 settles
+   intron-aware eukaryotic calling.
+6. Then the less diverse remainder of every source, in full (§4).
 
 ## 3. What is in, and what is on disk and queued
 
@@ -130,5 +144,14 @@ card needs. Rows are added, and a row is struck through with its stage's name wh
 | Logan (assemblies of all of SRA) | not sized here | taken on the hit only (card C-44) | a decision that "complete" includes it in bulk |
 | Global Soil Virus Atlas | not fetched | the provider's host refused the pod five times *(STATUS)* | another route to the files |
 | JGI sets on tape (`SMC_2025` 750 MB table and 6.11 TB of GFFs; `IMG_NR` 58.14 GB) *(card C-48e)* | | JGI's tape restore was down on 2026-11-18 | a check that it is back |
-| RNA viruses (LucaProt's 161,979 species, Serratus' RdRps, RVMT) *(card C-45)* | not sized here | **in scope (DEC-60 (2))**; everything built assumes DNA genomes | card C-50: a gene caller and token model for RNA genomes, the sources' sizes and terms |
+| RNA viruses, Obelisks, and viroid-like circular RNAs (`LucaProt` 161,979 RdRp species, `Serratus` RdRps, `RVMT`, RefSeq RNA viruses; Zheludev et al. 2024 global metatranscriptomic Obelisks, ~30,000 Obelisks/Oblins *published*; Lee/Neri et al. 2023 viroid-like cccRNAs/ribozymes, ~11,000+ elements *published*) *(cards C-45, C-50)* | not sized here | **in scope (DEC-60 (2), DEC-69)**; everything built assumes DNA genomes | card C-50: a gene caller and token model for RNA/cccRNA genomes, the sources' sizes and terms |
+| EMBL `VIRE` viral genomes (`vire_tables` metadata on disk: 1,784,510 medium/high-quality viral genomes and 706,281 vOTU species representatives at 95% ANI across 101,623 metagenomes, *published*, Fullam et al. *NAR* 2026) | metadata table `vire_all_samples_metadata.txt` (903,989,625 B, *measured*) on disk (`sources.yaml` `vire_tables`); sequence archives ~15–35 GB compressed (*estimate*) | sequence archives not yet approved in `sources.yaml`; captures 2023–2025 environmental viromes after IMG/VR v4's Dec 2022 freeze and `< 5 kb` viral contigs dropped by `SPX*` (DEC-69) | card C-55: `sources.yaml` sequence entry under DEC-50, `contig_uid` / ANI overlap against `S1`, `H1`, `V1`, `V2`, `GV1`, and stage inputs (`V3`) |
+| Small (`< 5 kb`) circular DNA viruses, archaeal extremophile viruses, and phage satellites (Tisza et al. and GenBank/RefSeq `< 5 kb` *Cressdnaviricota* / CRESS-DNA and *Microviridae* catalogs, ~25k–100k genomes *estimate*; hyperthermophilic/halophilic archaeal virus collections; curated `PICIs`, `cf-PICIs`, `PLEs`, and `P4`-like satellites from `SatelliteFinder` / literature) | ~1–3 Gbp (*estimate*) | plugs the `< 5 kb` unbinned-metagenome blind spot and captures satellite anti-phage defense/anti-defense hotspots and archaeal anti-CRISPRs (DEC-69) | card C-55: `sources.yaml` entries under DEC-50, DEC-65 topology/DTR handling, and stage inputs (`V3` / `SAT1`) |
+| Public long-read (`PACBIO_SMRT` and `OXFORD_NANOPORE`) metagenome assemblies (ENA `analysis` / `wgs_set` / `read_run`, NCBI GenBank metagenomes, unrestricted JGI `IMG/M`, and published HiFi/ONT soil, gut, rumen, sludge, and marine compendia) | thousands of assemblies (*estimate*; exact count to be measured from on-disk `ena_portal_tables` and `jgi_img_m_tables`) | prioritized ahead of short-read WGS remainder tranches so intact multi-operon defense islands, full CRISPR arrays, IS/transposon borders, integron cassette arrays, and closed circular MGEs enter unfragmented (DEC-69) | card C-56: cross-link `instrument_platform` across `ena_portal_tables`, `ncbi_metagenome_assembly_summary`, and `jgi_img_m_tables`, add `sources.yaml` fetch entries, and stage habitat-ordered `LR1`.. tranches |
+| Curated integrative MGEs, transposons, IS elements, integrons, and prophages (`ICEberg 3.0` ICEs/IMEs/CIMEs, `TnCentral`, `ISfinder` incl. Tn7-like CASTs and IS200/IS605 `IscB`/`TnpB`, `Integrall`, and non-redundant `PhageScope` prophage/phage delta) | < 2 Gbp (*estimate*) | chromosomal MGEs otherwise sit unlabeled inside host contigs; compact and high-signal for mobile nucleases, cargo genes, and recombinases (DEC-69) | card C-57: `sources.yaml` entries under DEC-50, `contig_uid` dedup against `S1`..`PL3`, stage `MGE1`, and element-type/boundary sidecar tables |
+| Uncultivated Single-Amplified Genomes (`GORG-Tropics` 12,715 marine SAGs *published*, Pachiadaki et al. 2019; `GORG-Dark` deep-ocean SAGs; JGI/ENA subsurface and extremophile SAGs outside `IUIG`) | ~15–30 Gbp (*estimate*) | short-read MAG binning misses high-microdiversity streamlined marine (`SAR11`, *Prochlorococcus*) and deep-sea dark-matter clades; single-cell boundaries guarantee non-chimeric gene co-occurrence (DEC-69) | card C-58: `sources.yaml` entries under DEC-50, overlap against `GTDB R226`, `GlobDB r226`, and `IUIG`, and stage `SAG1` |
+| Post-`R226` and CheckM-excluded NCBI RefSeq/GenBank prokaryotes & genome-reduced endosymbionts (`assembly_summary_refseq.txt` and `assembly_summary_genbank.txt` archaeal/bacterial assemblies absent from `GTDB R226`) | to be sized from NCBI assembly summaries (*estimate*: tens of thousands of post-freeze and QC-excluded assemblies; endosymbionts `< 200 kb` tiny in Gbp) | `GTDB R226` excludes extreme genome-reduced insect/protist/marine endosymbionts that fail marker-completeness filters (many with alternative genetic codes) and assemblies deposited after the R226 freeze (DEC-69) | card C-58: fetch NCBI prokaryotic `assembly_summary` tables, separate endosymbiont/alt-code clades (`Codetta` check) from routine strain additions, and stage `SYM1` + post-R226 species delta |
+| Niche-habitat and holobiont MAG/isolate compendia outside `GlobDB r226` (hydrothermal vents & cold seeps, serpentinizing/deep-subsurface aquifers, hypersaline/soda lakes, acid mine drainage, polar/glacier/permafrost cryosphere beyond `GFS`, marine sponge/coral/lichen/termite-gut/rumen/insect holobionts, fermented foods beyond `cFMD`, and ancient paleomicrobiome MAGs) | ~20–100 Gbp across compendia (*estimate*) | targeted extremophile, symbiotic, and ancient biomes harbor disproportionate restriction/defense, DNA-repair, and thermostable/halophilic enzyme novelty per Gbp (DEC-69) | card C-58: survey Zenodo/ENA/Figshare compendia not already absorbed by `GlobDB r226`'s 13 MAG catalogues, deduplicate at 96% ANI / `contig_uid`, and stage `NX1`.. |
+| NCBI RefSeq Organelles (complete `plastid`, `mitochondrion`, `nucleomorph`, `chromatophore`, and kinetoplast maxicircle releases) | ~20,000–30,000 genomes, < 5 Gbp (*estimate*) | prokaryotic/organellar gene structure works without spliceosomal calling (plastids and bacterial-like protist mitochondria) and concentrates group I/II introns, reverse transcriptases, and LAGLIDADG/GIY-YIG/HNH homing endonucleases (DEC-69) | card C-59: `sources.yaml` RefSeq `organelle` / `plastid` / `mitochondrion` entries, genetic-code audit (`pyrodigal` translation tables), and stage `O1` |
+| Microbial eukaryotes and giant-virus hosts (`Tara` Oceans eukaryotic `SMAGs`, Delmont et al. 2022; `EukProt v3`; JGI `PhycoCosm` microalgae/protists and `MycoCosm` fungi; RefSeq unicellular protists alongside `IMG-UMAG` eukaryote bins `E1`/`E2`) | 50–300 Gbp (*estimate*) | protist/algal/fungal hosts of `GV1` giant viruses and eukaryotic ancestors/homologs of prokaryotic immune effectors (cGAS/STING, viperins, gasdermins, Argonautes, TIR/NLRs) (DEC-69) | card C-60 (design): `"eukaryote"` genome kind, intron-aware gene calling and spliced CDS coordinates on tapes, then staged builds with `E1`/`E2` |
 | Protein-only catalogues (MGnify's proteins, the global gene catalogues) *(card C-45)* | not sized here | deferred: "can wait" (DEC-60 (2)); proteins without neighbours serve homology, not context | a search-only pack beside the corpus, when the PI calls for it |
