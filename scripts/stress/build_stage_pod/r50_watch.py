@@ -23,6 +23,7 @@ Reads /proc and the root; writes only DIR/scratch_peak.
 """
 import argparse
 import json
+import math
 import os
 import shutil
 import sys
@@ -31,6 +32,42 @@ from pathlib import Path
 
 TICK = os.sysconf("SC_CLK_TCK")
 MODULES = ("biobox.l1.domains", "biobox.l0seq.store")
+DEC29_EXEMPT = "exempt: DEC-29"
+
+
+def dec29_cap(root: Path, release: str, call: str, default_cap: float) -> float:
+    """Return DEC-29's one-process cap for a single clustering call from its cut record, else default_cap."""
+    if (
+        not release
+        or not call.startswith("cluster.")
+        or ".part-" in call
+        or call.endswith(".cut")
+        or "/" in call
+        or "/" in release
+        or "\\" in call
+        or "\\" in release
+        or ".." in release
+        or ".." in call
+    ):
+        return default_cap
+    cut_path = root / "l2" / "cluster_plan" / f"release={release}" / f"{call}.cut.json"
+    try:
+        cut = json.loads(cut_path.read_text())
+    except (OSError, ValueError):
+        return default_cap
+    if not isinstance(cut, dict):
+        return default_cap
+    parts = cut.get("parts")
+    op = cut.get("one_process")
+    if not isinstance(parts, list) or len(parts) != 1 or not isinstance(op, dict):
+        return default_cap
+    if op.get("decision") != "DEC-29":
+        return default_cap
+    mx = op.get("cpu_min_max")
+    if isinstance(mx, bool) or not isinstance(mx, (int, float)):
+        return default_cap
+    mx_f = float(mx)
+    return mx_f if math.isfinite(mx_f) and mx_f > default_cap else default_cap
 
 
 def tree_bytes(d: Path) -> int:
@@ -168,6 +205,8 @@ def main() -> int:
             continue
         cm = r.get("cpu_min")
         cap = ccap if f.name.startswith("cluster") else a.cpu_max
+        if f.parent.name.startswith("stage=") and f.stem.startswith("cluster.") and r.get("cpu_budget_reason") == DEC29_EXEMPT:
+            cap = dec29_cap(Path(a.root), f.parent.name[len("stage="):], f.stem, ccap)
         if cm is not None and cm > cap:
             reasons.append(f"run record {f.parent.name}/{f.name}: {cm:.1f} CPU-minutes, over {cap:g}")
         recs.append(cm or 0)
@@ -175,9 +214,15 @@ def main() -> int:
     lv = live(a.unit_prefix)
     out["live"] = lv[:4]
     for r in lv:
-        cap = ccap if r["step"].startswith("release cluster") else a.cpu_max
+        step = r["step"]
+        cap = ccap if step.startswith("release cluster") else a.cpu_max
+        if step.startswith(("release cluster step ", "release cluster redo ")):
+            kv = dict(tok.split("=", 1) for tok in step.split()[3:] if "=" in tok)
+            rel, call = kv.get("release", ""), kv.get("name", "")
+            if rel and call:
+                cap = dec29_cap(Path(a.root), rel, call, ccap)
         if r["cpu_min"] > cap:
-            reasons.append(f"step {r['step']} (pid {r['pid']}) has used {r['cpu_min']:.1f} CPU-minutes, over {cap:g}")
+            reasons.append(f"step {step} (pid {r['pid']}) has used {r['cpu_min']:.1f} CPU-minutes, over {cap:g}")
     out["reasons"] = reasons
     print(json.dumps(out), flush=True)
     return 3 if reasons else 0
