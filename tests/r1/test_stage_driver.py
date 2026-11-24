@@ -1837,15 +1837,16 @@ def test_4_a_rehearsal_marker_of_another_conf_is_redone_and_withdraws_what_rests
 
 # (5) the unit's quota: the profile's cap of the hour less the helpers', changed when the hour's cap changes
 
+@pytest.mark.covers("A-12", "A-23")
 def test_5_the_cap_of_the_hour_comes_from_the_profile_by_the_code_of_run_step():
     from datetime import datetime
 
     est = _module("stage_est")
     prof = REPO / "profiles" / "wilkcomp02.yaml"
-    assert est.cap_at(prof, datetime(2026, 11, 21, 3, 0)) == 56, "Saturday night"
-    assert est.cap_at(prof, datetime(2026, 11, 23, 7, 59)) == 56, "Monday before 08:00"
+    assert est.cap_at(prof, datetime(2026, 11, 21, 3, 0)) == 80, "Saturday night"
+    assert est.cap_at(prof, datetime(2026, 11, 23, 7, 59)) == 80, "Monday before 08:00"
     assert est.cap_at(prof, datetime(2026, 11, 23, 10, 0)) == 40, "Monday by day"
-    assert est.cap_at(prof, datetime(2026, 11, 23, 20, 0)) == 56, "Monday evening"
+    assert est.cap_at(prof, datetime(2026, 11, 23, 20, 0)) == 80, "Monday evening"
 
 
 def test_5_the_unit_quota_follows_the_hours_cap(tmp_path):
@@ -1875,13 +1876,22 @@ def test_8_a_trailing_slash_does_not_make_the_data_root_a_scratch_root(tmp_path)
     assert got.returncode != 0 and "pod_run" not in w.calls()
 
 
-@pytest.mark.parametrize("env", [{"MEM": "300G"}, {"TMP_MIN_GB": "10"}, {"START_MIN_GB": "100"},
+@pytest.mark.covers("A-12", "A-23")
+@pytest.mark.parametrize("env", [{"MEM": "800G"}, {"TMP_MIN_GB": "10"}, {"START_MIN_GB": "100"},
                                  {"SCRATCH_MAX_GB": "500"}])
 def test_8_the_data_root_never_loosens_its_limits(tmp_path, env):
     w = World(tmp_path)
     _run_ready(w)
     got = w.drive("run", **env)
     assert got.returncode != 0 and "pod_run" not in w.calls()
+
+
+@pytest.mark.covers("A-23")
+def test_8_the_data_root_accepts_mem_750g(tmp_path):
+    w = World(tmp_path)
+    _run_ready(w)
+    _ok(w.drive("run", MEM="750G"))
+    assert "pod_run-opt --mem 750G" in w.calls()
 
 
 def test_8_in_the_data_root_the_conf_is_the_trees_own(tmp_path):

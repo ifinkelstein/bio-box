@@ -37,7 +37,7 @@ host profile's pack directory `/tmp/if2453/bio-box/packs`, card W-22):
 - `$TREE` must contain card W-21 (merged into `plan/task-cards` on 2026-11-11); `main` and `~/bio-box` on the pod
   are older. Ask the operator which tree is current.
 - The pod is shared: a search goes through `scripts/pod_run.sh` with at most a few threads (4 below). The 40
-  threads by day and 56 at night are a total over everything we run (RUNBOOK section 10).
+  threads by day and 80 at night are a total over everything we run (RUNBOOK section 10).
 
 Then your own directories; keep every file you pass under `/tmp/if2453`, which is bound into the image.
 
