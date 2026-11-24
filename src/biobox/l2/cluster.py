@@ -497,12 +497,22 @@ def _write_tables(mm: MMseqs, w: Path, f: Path, out: Path, release: str, n_prot:
                     "ORDER BY cluster_uid, member_uid"), mem_spec)
 
         def alignments() -> Iterator[pa.RecordBatch]:
-            # convertalis: query = representative, target = member; coordinates 1-based inclusive
+            # convertalis: query = representative, target = member; coordinates 1-based inclusive.
+            # When Smith-Waterman finds no positive-scoring local alignment, MMseqs2 emits 0M with
+            # raw -1 starts (convertalis qstart=0, qend=1, tstart=0, tend=0, alnlen=0, cigar='0M' and
+            # uninitialized fident); normalize to canonical empty 0-based half-open values (card B-70).
+            empty = "alnlen <= 0 OR cigar = '0M' OR qstart <= 0 OR tstart <= 0"
             for lvl in order:
                 yield from io.duck_batches(con, (
                     f"SELECT unhex(target) AS member_uid, '{lvl}' AS level, unhex(query) AS rep_uid, "
-                    "tstart - 1 AS qstart, tend AS qend, qstart - 1 AS tstart, qend AS tend, fident AS pident, "
-                    f"alnlen, encode(cigar) AS cigar FROM read_parquet({_sql_path(f / f'pick_{lvl}.parquet')}) "
+                    f"CASE WHEN {empty} THEN 0 ELSE tstart - 1 END AS qstart, "
+                    f"CASE WHEN {empty} THEN 0 ELSE tend END AS qend, "
+                    f"CASE WHEN {empty} THEN 0 ELSE qstart - 1 END AS tstart, "
+                    f"CASE WHEN {empty} THEN 0 ELSE qend END AS tend, "
+                    f"CASE WHEN {empty} THEN CAST(0.0 AS DOUBLE) ELSE fident END AS pident, "
+                    f"CASE WHEN {empty} THEN 0 ELSE alnlen END AS alnlen, "
+                    f"encode(CASE WHEN {empty} THEN '' ELSE cigar END) AS cigar "
+                    f"FROM read_parquet({_sql_path(f / f'pick_{lvl}.parquet')}) "
                     "ORDER BY rep_uid, member_uid"), aln_spec)
 
         io.write_parts(members(), mem_spec, out / f"l2/cluster_member/release={release}", EST_MEMBER_ROW,

@@ -315,6 +315,43 @@ def test_injected_faults_are_caught(built):
     assert contracts.check_lineage(_fault_con(con, contig_occurrence=co.slice(1)))
 
 
+@pytest.mark.covers("C-05")
+def test_c05_cluster_member_aln_empty_alignment_and_faults(built):
+    """Card B-70: `check_coordinates` accepts canonical empty alignments (`alnlen=0`, zero coords,
+    `pident=0`, empty `cigar`) and rejects non-canonical `alnlen=0` rows as well as out-of-bounds or
+    empty-cigar `alnlen > 0` rows."""
+    _, _, con = built
+    aln = con.sql("SELECT * FROM cluster_member_aln").to_arrow_table()
+    prots = con.execute("SELECT protein_uid, length FROM protein_seq LIMIT 2").fetchall()
+    (rep_u, rep_len), (mem_u, mem_len) = prots[0], prots[-1]
+    base = {"member_uid": mem_u, "level": "nr50", "rep_uid": rep_u}
+    if "release" in aln.schema.names:
+        base["release"] = "rS0.test"
+
+    canonical_empty = {
+        **base, "qstart": 0, "qend": 0, "tstart": 0, "tend": 0, "pident": 0.0, "alnlen": 0, "cigar": b"",
+    }
+    ok_rows = aln.to_pylist() + [canonical_empty]
+    assert contracts.check_coordinates(
+        _fault_con(con, cluster_member_aln=pa.Table.from_pylist(ok_rows, schema=aln.schema))
+    ) == []
+
+    faults = [
+        {**canonical_empty, "cigar": b"0M"},
+        {**canonical_empty, "qend": 1},
+        {**canonical_empty, "tstart": 1},
+        {**canonical_empty, "pident": 0.5},
+        {**base, "qstart": 0, "qend": 1, "tstart": 0, "tend": 1, "pident": 1.0, "alnlen": 1, "cigar": b""},
+        {**base, "qstart": 0, "qend": mem_len + 1, "tstart": 0, "tend": 1, "pident": 1.0, "alnlen": 1, "cigar": b"1M"},
+        {**base, "qstart": 0, "qend": 1, "tstart": 0, "tend": rep_len + 1, "pident": 1.0, "alnlen": 1, "cigar": b"1M"},
+    ]
+    for bad_row in faults:
+        bad_tbl = pa.Table.from_pylist(aln.to_pylist() + [bad_row], schema=aln.schema)
+        assert contracts.check_coordinates(_fault_con(con, cluster_member_aln=bad_tbl)) == [
+            "cluster_member_aln: 1 rows outside sequence bounds"
+        ], bad_row
+
+
 @pytest.mark.covers("C-08")
 def test_c08_provenance_matches_the_container_lock(built):
     _, man, _ = built
