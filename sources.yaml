@@ -744,6 +744,18 @@ sources:
       - path: /stor/work/Wilke/if2453/all-the-data/jgi_20261118/jgi_gems_52515_fna_20261118.tar
         bytes: 39502684160
         sha256: 8230a5bc7a756e9fb88d58cfd98921236634f77025afb1b4ecc0aa708476eb0c
+    staged:
+      - stage: MGE2
+        object: /tmp/if2453/s2/inputs/MGE2/gems_virsorter_prophages.fna
+        bytes: 687775242
+        sha256: b34bfafedc35fbb3bf90a3e7af70d80bbb9df1a98dbcc38c0f663d27ddf71b18
+        derived_from: jgi_gems_meta_prophages_otus_20261118.tar, members gems/prophages/virsorter.fna and gems/prophages/virsorter.tsv
+        rule: >-
+          scripts/stress/build_stage_pod/c57_integrative_mges.py stage (card C-57, DEC-69, DEC-51): 24,312 valid
+          prophages (1 empty 0-bp record skipped), 22,927 distinct genomes/contigs (646.63 Mbp; kind virus, gv-meta;
+          580 held by V1/V2; 22,347 new; genomes.json sha256 2fb20121b6b239adb34b4c52188cfa410e79d159af31f63aafe7cabaa02d9290;
+          mge_metadata.tsv sha256 6dae6a56f92d9226b1d7445609a8a3c251879fe5d5abf5b8d83cbd61d981cae4);
+          planning/measurements/2026-11-23_mge1_inputs.md
     approved: by the PI on 2026-11-18 ("enumerate everything they have, and grab the biggest things")
   - name: gvmags_v2
     what: >-
@@ -928,3 +940,116 @@ sources:
           sha256 d7389a9d1df966f4e73a34a514225855f25031d6b29e63a26702783edbad7f5c; includes 98,920 ordered MV2 spillover
           UViGs / 3.909 Gbp); DEC-59, planning/CATALOG_GOAL.md
     approved: under DEC-51 and DEC-71 (card C-62, 2026-11-23; on-pod archive, no network fetch)
+  - name: iceberg3
+    what: >-
+      ICEberg 3.0 (Wang et al. 2024, Nucleic Acids Res. 52:D732-D737, doi:10.1093/nar/gkad983): curated bacterial
+      integrative and conjugative elements (ICEs, AICEs), integrative and mobilizable elements (IMEs), cis-mobilizable
+      elements (CIMEs), and oral metagenomic ICEs (mICEs); card C-57 (DEC-69), stage MGE1
+    url: https://tool2-mml.sjtu.edu.cn/ICEberg3/data/download/{file}
+    page: https://tool2-mml.sjtu.edu.cn/ICEberg3/Download.html (read 2026-11-23)
+    files:
+      - {file: ICE_seq_all.fas, bytes: 100390617}
+      - {file: AICE_seq_all.fas, bytes: 1448742}
+      - {file: IME_seq_all.fas, bytes: 9197969}
+      - {file: CIME_seq_all.fas, bytes: 498457}
+      - {file: Oral_ICE_seq.fas, bytes: 25798366}
+    not_taken: >-
+      *_aa_*.fas protein files (we call our own genes); cargo/*.fa single-gene subsets; T4SS-type_ICE_seq_all.fas,
+      Meta_ICE_seq.fas, Gastrointestinal_ICE_seq.fas, Nasal_ICE_seq.fas, Skin_ICE_seq.fas, and Urogenital_ICE_seq.fas
+      (all returned HTTP 404 on 2026-11-23)
+    checksum: none published on the download page; Content-Length values read via HEAD on 2026-11-23; our sha256 recorded at fetch
+    limits: one connection; at most 2 requests per second; User-Agent curl; stop after 5 refusals in a row
+    license: open access academic database (Wang et al. 2024, NAR, CC BY 4.0); sequences are INSDC-derived
+    redistributable: true
+    fetched: >-
+      2026-11-23 by card C-57 (c57-fetch, 0 refusals) into /tmp/if2453/c57/dl/iceberg3/:
+      ICE_seq_all.fas 100390617 B sha256 1d2890f9c06c42cb94567f1c46c3f4f17b8c034fd42c7fb9a11f312dfab9e736;
+      AICE_seq_all.fas 1448742 B sha256 c20e893863e4f80d5f261db520aa6436403e3203550dcff7da28d3b110e483d3;
+      IME_seq_all.fas 9197969 B sha256 c559e4226986ae8df3786164bd98f038fc1c9a4cf4b54e656e3128b3f0a4b4a0;
+      CIME_seq_all.fas 498457 B sha256 bed208beb82f49ac9bc537ec57184db40a0fd3d5b336b1faff10e0a3f8abd548;
+      Oral_ICE_seq.fas 25798366 B sha256 e4bd6b30138e932ba5b6dda89fe529db443147e46f1a9504bd4b12d1da407fb2
+    stage_inputs: >-
+      stage MGE1 (card C-57, DEC-69, DEC-65): /tmp/if2453/s2/inputs/MGE1/ (genomes.json sha256
+      2c6f05262f4d92f7e5aebf7b3ca3a69cab3b524b5e3d0a1a1f19b7001e81af7e, objects.json sha256
+      51b99f5939bee346b169f642207174dbfe63f85d0820be16188423bdc872b47c, mge_metadata.tsv sha256
+      534ce579aa9cf0e992a7757ef27453c0548c63442c4d8adf74fb7c2423602d1e); planning/measurements/2026-11-23_mge1_inputs.md
+    approved: under DEC-50 (entry written by card C-57 on 2026-11-23 before any fetch)
+  - name: isfinder_sequences
+    what: >-
+      Curated bacterial and archaeal insertion sequence (IS) nucleotide sequences and metadata table compiled from
+      ISfinder (Siguier et al. 2006, NAR 34:D32-D36), including IS200/IS605 (IscB/TnpB) and IS110 families; card C-57
+      (DEC-69), stage MGE1
+    url: https://raw.githubusercontent.com/thanhleviet/ISfinder-sequences/bedbeb5c16618eca3e16ef74adf865d6b88cafb5/{file}
+    page: https://github.com/thanhleviet/ISfinder-sequences (commit bedbeb5c16618eca3e16ef74adf865d6b88cafb5, 2020-10-06; read 2026-11-23)
+    files:
+      - {file: IS.fna, bytes: 8697930}
+      - {file: IS.csv, bytes: 893572}
+    not_taken: IS.faa (we call our own genes)
+    checksum: pinned by Git commit SHA bedbeb5c16618eca3e16ef74adf865d6b88cafb5; our sha256 recorded at fetch
+    limits: one connection; at most 2 requests per second; User-Agent curl; stop after 5 refusals in a row
+    license: open community compilation from ISfinder (cite Siguier et al. 2006, doi:10.1093/nar/gkj014)
+    redistributable: true
+    fetched: >-
+      2026-11-23 by card C-57 (c57-fetch, 0 refusals) into /tmp/if2453/c57/dl/isfinder_sequences/:
+      IS.fna 8697930 B sha256 47607f9e398d200f1954b18b9d91d6f5a612331ee137cb10d63897688f9d5507;
+      IS.csv 893572 B sha256 1d7d4fa2d33488f2a21a6ca1ad908d4960267582b56addcfa5e098a5414cd5e2
+    stage_inputs: stage MGE1 (/tmp/if2453/s2/inputs/MGE1/isfinder_IS.fna, sha256 2ac65bccf018d49efd35cbb4cd023fda59318fb29c54f040dd9b920e897d2268)
+    approved: under DEC-50 (entry written by card C-57 on 2026-11-23 before any fetch)
+  - name: mgedb_mobileelementfinder
+    what: >-
+      MobileElementFinder MGEdb v1.1.1 (Johansson et al. 2021, J. Antimicrob. Chemother. 76:101-109,
+      doi:10.1093/jac/dkaa390): curated insertion sequences, unit transposons, composite transposons, MITEs, ICEs, IMEs,
+      and CIMEs with structured metadata; card C-57 (DEC-69), stage MGE1
+    url: https://files.pythonhosted.org/packages/82/83/179d6498de2c27d7d94a59bf516d7810b706fba64156dca48bee2f58080e/MGEdb-1.1.1.tar.gz
+    page: https://pypi.org/project/MGEdb/1.1.1/ (read 2026-11-23)
+    files:
+      - {file: MGEdb-1.1.1.tar.gz, bytes: 19968065, sha256: eaa88c3fd3d62daf191aab94870c418df8fa9c9b463f54e82ffeeb766f347b3e}
+    checksum: PyPI sha256 above (read 2026-11-23)
+    limits: one connection; at most 2 requests per second; User-Agent curl; stop after 5 refusals in a row
+    license: GPLv3 (PyPI metadata)
+    redistributable: true
+    fetched: 2026-11-23 by card C-57 (c57-fetch, sha256 matched) into /tmp/if2453/c57/dl/mgedb/MGEdb-1.1.1.tar.gz
+    stage_inputs: stage MGE1 (/tmp/if2453/s2/inputs/MGE1/mgedb_1.1.1.fna, sha256 244852bac6876a4572583149899104d0b0bc6307b19e4b186c2e67f3253cc9ec)
+    approved: under DEC-50 (entry written by card C-57 on 2026-11-23 before any fetch)
+  - name: plasann_tncentral
+    what: >-
+      PlasAnn v1.1.6 reference database bundle (Zenodo 10.5281/zenodo.17886383), carrying cleaned TnCentral
+      transposon sequences (including Tn3, Tn7/CAST, Tn402, and composite transposons; tncentral.ncc.unesp.br answered
+      HTTP 403 and tncentral.proteininformationresource.org had an expired TLS certificate on 2026-11-23); card C-57
+      (DEC-69), stage MGE1
+    url: https://zenodo.org/api/records/17886383/files/plasann_databases.zip/content
+    record: https://doi.org/10.5281/zenodo.17886383 (read 2026-11-23)
+    files:
+      - {file: plasann_databases.zip, bytes: 53968998, md5: f66afed5ce145d052ce9983388f8817e}
+    checksum: Zenodo md5 above (read 2026-11-23); our sha256 recorded at fetch
+    limits: one connection; at most 2 requests per second; User-Agent curl; stop after 5 refusals in a row
+    license: CC BY 4.0 (Zenodo record)
+    redistributable: true
+    fetched: >-
+      2026-11-23 by card C-57 (c57-fetch, Zenodo md5 matched) into /tmp/if2453/c57/dl/plasann/plasann_databases.zip
+      (53968998 B, sha256 8637a7707929364d132243e3a6293dccc877fc8f1d425d7141cdf2c773da3148)
+    stage_inputs: >-
+      stage MGE1 (/tmp/if2453/s2/inputs/MGE1/plasann_tncentral.fna sha256
+      060a2339ffaa94a96798d61be55e9f258f638d9bf88c33fd969ce9ac38a91ea2; plasann_transposon.fna sha256
+      4e950f945d1f771ad64b8a68352c5d347f308bcb9f1652f1212363b36058af8d)
+    approved: under DEC-50 (entry written by card C-57 on 2026-11-23 before any fetch)
+  - name: parnanen_mgedb
+    what: >-
+      MobileGeneticElementDatabase (Parnanen et al. 2018, Nature Communications, doi:10.1038/s41467-018-06393-w):
+      curated integron (intI/cassettes), transposon, and insertion sequence nucleotide FASTA and taxonomy table
+      (integrall.bio.ua.pt reset connections on 2026-11-23); card C-57 (DEC-69), stage MGE1
+    url: https://raw.githubusercontent.com/KatariinaParnanen/MobileGeneticElementDatabase/718f4570cbd891dcf6cec5e349b633a39a28a010/{file}
+    page: https://github.com/KatariinaParnanen/MobileGeneticElementDatabase (commit 718f4570cbd891dcf6cec5e349b633a39a28a010, 2021-08-16; read 2026-11-23)
+    files:
+      - {file: MGEs_FINAL_99perc_trim.fasta.tar.gz, bytes: 679678}
+      - {file: MGE_tax_table_trim.txt, bytes: 124470}
+    checksum: pinned by Git commit SHA 718f4570cbd891dcf6cec5e349b633a39a28a010; our sha256 recorded at fetch
+    limits: one connection; at most 2 requests per second; User-Agent curl; stop after 5 refusals in a row
+    license: open access academic compilation (Parnanen et al. 2018, Nature Communications, CC BY 4.0)
+    redistributable: true
+    fetched: >-
+      2026-11-23 by card C-57 (c57-fetch, 0 refusals) into /tmp/if2453/c57/dl/parnanen/:
+      MGEs_FINAL_99perc_trim.fasta.tar.gz 679678 B sha256 a83396968d4b99c0e60ecf339fa0fa05081d3c1e51816808cd4b3f9a2764124e;
+      MGE_tax_table_trim.txt 124470 B sha256 e9695d11cb64b9f692ea1f692a377cf314d4e832438bc4497ae0c1c6ef1d6aee
+    stage_inputs: stage MGE1 (/tmp/if2453/s2/inputs/MGE1/parnanen_mges.fna, sha256 eadcee51f64cbdb80f6f572126156bc634af356588b5784a6e0c9bea1b07ca37)
+    approved: under DEC-50 (entry written by card C-57 on 2026-11-23 before any fetch)
