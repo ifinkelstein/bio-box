@@ -469,6 +469,7 @@ class Build:
     reuse: bool = True  # card B-49: the cluster step takes an earlier release's clustering of the same proteins
     depth: str | None = None  # stored, called or annotated (card C-38a, DEC-54); None: annotated with --library, else called
     min_contig_len: int | None = None  # card C-38d (DEC-54): least contig length at ingest; None: keep all records
+    genecall_mode: str = genecall.DEFAULT_GENECALL_MODE  # card B-67 (DEC-71): default (policy p2) or gv-meta
 
 
 @dataclass(frozen=True)
@@ -570,14 +571,18 @@ def depth_of(b: Build) -> str:
 
 
 def _check_depth_options(b: Build) -> str:
-    """Validate `--depth`, `--min-contig-len`, and option combinations before any step runs (cards C-38a, C-38d)."""
+    """Validate `--depth`, `--min-contig-len`, `--genecall-mode`, and option combinations before any step runs
+    (cards C-38a, C-38d, B-67)."""
     store._check_min_contig_len(b.min_contig_len)
+    genecall._check_genecall_mode(b.genecall_mode)
     depth = depth_of(b)
     if depth == "stored":
         if b.libraries or b.ncrna_cm is not None or b.crispr:
             raise ValueError(
                 "--depth stored stops after ingest: drop --library, --ncrna-cm and --crispr"
             )
+        if b.genecall_mode != genecall.DEFAULT_GENECALL_MODE:
+            raise ValueError("--depth stored stops after ingest: drop --genecall-mode")
         if b.release is not None or b.stages is not None or b.cluster_parts is not None:
             raise ValueError(
                 "--depth stored stops after ingest (no tapes): a release cannot be built over a stored stage "
@@ -637,9 +642,10 @@ def steps(prof: Profile, b: Build) -> list[Step]:
         "crispr", "--near-cas", "--library", lib.name, "--library-version", lib.version,
         "--cpus", str(crispr_cpus(prof, b)), "--tmp", t), check="crispr-cas")
         for lib in (cas_libraries(b) if (depth == "annotated" and b.crispr) else ())]  # card E-15: after Pfam scan
+    gc_mode = () if b.genecall_mode == genecall.DEFAULT_GENECALL_MODE else ("--genecall-mode", b.genecall_mode)
     stage_plan = [
         *stored_steps,
-        own(s, "genecall", lambda t: st("genecall", "--tmp", t, "--workers", n)),
+        own(s, "genecall", lambda t: st("genecall", "--tmp", t, "--workers", n, *gc_mode)),
         features,
         *arrays,
         own(s, "igr", lambda t: st("igr", "--tmp", t, *prods)),
@@ -2007,6 +2013,10 @@ def _genecall(prof: Profile, b: Build, root: Path, step: Step, one: Callable[[St
             _say(f"refused before {b.stage}.genecall: its published plan ({genecall.plan_record_rel(b.stage)}) is of "
                  f"gene-call version {plan['gene_call_version']}, not {b.gene_call_version}")
             return runstep.EXIT_REFUSED
+        if genecall.plan_genecall_mode(plan) != b.genecall_mode:
+            _say(f"refused before {b.stage}.genecall: its published plan ({genecall.plan_record_rel(b.stage)}) is of "
+                 f"genecall_mode {genecall.plan_genecall_mode(plan)}, not {b.genecall_mode}")
+            return runstep.EXIT_REFUSED
         _say(f"{b.stage}.genecall: resuming the plan published in {genecall.plan_record_rel(b.stage)}: "
              f"{len(plan['batches'])} batches, {plan['estimate_cpu_min']:,.1f} CPU-minutes in one process")
         why = genecall_refusal(prof, plan)
@@ -2016,7 +2026,7 @@ def _genecall(prof: Profile, b: Build, root: Path, step: Step, one: Callable[[St
         return _genecall_in_batches(prof, b, root, plan, one, hook, jobs, cpus, batch_run, allow)
     try:
         plan = genecall.plan(root, b.stage, version=b.gene_call_version, seq_stages=seq, batch_cpu_min=margin,
-                             tmp=scratch_of(prof, b))
+                             tmp=scratch_of(prof, b), genecall_mode=b.genecall_mode)
     except (FileNotFoundError, KeyError, ValueError) as e:
         _say(f"refused before {b.stage}.genecall: its estimate cannot be made: {e}")
         return runstep.EXIT_REFUSED

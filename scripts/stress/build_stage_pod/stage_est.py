@@ -70,10 +70,11 @@ MIN_JUDGED_CPU_MIN = 24.0  # DEC-43
 RECORD_ABOVE = 1.20  # DEC-64 (amending DEC-53): a judged step over this ratio is outside 20% and recorded
 STOP_ABOVE = 1.50  # DEC-64: a judged step whose reported (three-decimal) ratio is over this stops the build
 DEPTHS = ("called", "annotated")  # `stored` builds no gene calls: not a stage this driver builds or checks
+GENECALL_MODES = ("default", "gv-meta")  # card B-67 (DEC-71): default = policy p2; gv-meta = pyrodigal-gv meta
 LIBRARIES = {("pfam", "38.2")}  # the libraries whose HMM file the driver knows (stage_driver.sh PFAM)
 CUTOFFS = ("gathering", "trusted", "noise", "none")  # stage.CUTOFFS
 JUDGE_STEPS = ("ingest", "genecall")  # the steps the guard judges as one group of records
-SCALARS = ("STAGE", "INPUTS", "DEPTH", "MIN_CONTIG_LEN", "LIBRARY", "CRISPR", "AFTER")
+SCALARS = ("STAGE", "INPUTS", "DEPTH", "MIN_CONTIG_LEN", "GENECALL_MODE", "LIBRARY", "CRISPR", "AFTER")
 LISTS = ("SUM", "JUDGE", "ACCEPTED", "NOTE", "EXPECT")
 HELPER_THREADS = 2  # the driver's own helpers in the image: `bb`'s scope has CPUQuota=200%
 
@@ -99,6 +100,7 @@ class Conf:
     depth: str
     crispr: bool
     min_contig_len: int | None = None
+    genecall_mode: str = "default"
     library: tuple[str, str, str] | None = None  # (name, version, cutoff)
     after: tuple[str, ...] = ()
     judge: dict = field(default_factory=dict)  # step: (figure, source)
@@ -162,6 +164,9 @@ def read_conf(path: str | Path, stage: str | None = None, tree: str | Path | Non
     minlen = vals.get("MIN_CONTIG_LEN", "")
     if minlen and not re.fullmatch(r"[1-9][0-9]{0,8}", minlen):
         raise ConfError(f"{path}: MIN_CONTIG_LEN {minlen!r}: expected a positive integer")
+    gcmode = vals.get("GENECALL_MODE", "default")
+    if gcmode not in GENECALL_MODES:
+        raise ConfError(f"{path}: GENECALL_MODE {gcmode!r}: expected one of {', '.join(GENECALL_MODES)}")
     lib = None
     if vals.get("LIBRARY"):
         parts = vals["LIBRARY"].split(" ")
@@ -217,8 +222,8 @@ def read_conf(path: str | Path, stage: str | None = None, tree: str | Path | Non
             if f"| {d} |" not in rows:
                 raise ConfError(f"{path}: ACCEPTED names {d}, which has no row in {dec}")
     return Conf(stage=st, inputs=Path(inputs), sums=tuple(sums), depth=depth, crispr=crispr == "yes",
-                min_contig_len=int(minlen) if minlen else None, library=lib, after=after, judge=judge,
-                accepted=accepted, notes=tuple(notes), expect=expect)
+                min_contig_len=int(minlen) if minlen else None, genecall_mode=gcmode, library=lib, after=after,
+                judge=judge, accepted=accepted, notes=tuple(notes), expect=expect)
 
 
 def conf_cmd(a) -> int:
@@ -231,9 +236,10 @@ def conf_cmd(a) -> int:
         Path(a.sums).write_text("".join(f"{h}  {n}\n" for h, n in c.sums))
     lib = c.library or ("", "", "")
     out = {"STAGE": c.stage, "INPUTS": str(c.inputs), "DEPTH": c.depth,
-           "MIN_CONTIG_LEN": "" if c.min_contig_len is None else str(c.min_contig_len), "LIBNAME": lib[0],
-           "LIBVER": lib[1], "LIBCUT": lib[2], "CRISPR": "yes" if c.crispr else "no", "AFTER": " ".join(c.after),
-           "NOTES": " ".join(c.notes)}
+           "MIN_CONTIG_LEN": "" if c.min_contig_len is None else str(c.min_contig_len),
+           "GENECALL_MODE": "" if c.genecall_mode == "default" else c.genecall_mode,
+           "LIBNAME": lib[0], "LIBVER": lib[1], "LIBCUT": lib[2], "CRISPR": "yes" if c.crispr else "no",
+           "AFTER": " ".join(c.after), "NOTES": " ".join(c.notes)}
     for k, v in out.items():
         print(f"{k}={v}")
     return 0
@@ -400,7 +406,7 @@ def rates_doc(conf: Conf, root: Path, prof, objects: Path, before_path: str | No
     elif "genecall" in recs:
         seq = [st, *(s for s in store.stages_on_disk(root) if s != st)]
         p = genecall.plan(root, st, version=GCV, seq_stages=seq, batch_cpu_min=bs.SHARD_MARGIN *
-                          prof.cpu_min_per_process, tmp=tmp)
+                          prof.cpu_min_per_process, tmp=tmp, genecall_mode=conf.genecall_mode)
         single("genecall", p["estimate_cpu_min"], "genecall.plan in one process (card B-48)")
     for step, (fig, src) in sorted(conf.judge.items()):
         group(f"{step}.note", step, fig, f"the note's figure ({src}) over every {step} record")
@@ -592,17 +598,19 @@ def before(a) -> int:
                 for r in zip(*(batch.column(i).to_pylist() for i in range(6))):
                     if r[0] != guid:
                         if grp:
-                            yield genecall._item(root, seq, guid, grp)
+                            yield genecall._item(root, seq, guid, grp, genecall_mode=conf.genecall_mode)
                         guid, grp = r[0], []
                     grp.append(r)
             if grp:
-                yield genecall._item(root, seq, guid, grp)
+                yield genecall._item(root, seq, guid, grp, genecall_mode=conf.genecall_mode)
 
         plan = genecall.cut_plan(items, bs.SHARD_MARGIN * budget)
         con.close()
     finally:
         shutil.rmtree(work, ignore_errors=True)
     plan.update({"stage": st, "gene_call_version": genecall.GENE_CALL_VERSION, "seq_stages": seq})
+    if conf.genecall_mode != "default":
+        plan["genecall_mode"] = conf.genecall_mode
     if a.out_plan:
         Path(a.out_plan).write_text(json.dumps(plan, indent=1, sort_keys=True, default=str))
     gc_refusal = bs.genecall_refusal(prof, plan)
@@ -636,12 +644,14 @@ def before(a) -> int:
         "guard_policy": "DEC-43 (estimate >= 24 CPU-min judged) + DEC-53 (record below 0.80) + "
                         "DEC-64 (record above 1.20; stop above 1.50)",
     }
-    # card B-61's terms, written only when not 0, so that a stage of plain FASTA without a least length keeps its
-    # document to the byte; `rates` reads a missing one as 0
+    # card B-61's terms and card B-67's genecall_mode, written only when non-default, so that a stage of plain FASTA
+    # without a least length or custom genecall_mode keeps its document to the byte; `rates` reads a missing one as 0
     if gz:
         doc["gz_bytes"] = gz
     if below:
         doc["below_bytes"] = below
+    if conf.genecall_mode != "default":
+        doc["genecall_mode"] = conf.genecall_mode
     if in_batches:  # the first-pass cut build-stage makes (`stage.pass1_bytes` before a pass-1 record exists)
         from biobox.cli import _source_objects
         from biobox.l0seq import store as l0store
