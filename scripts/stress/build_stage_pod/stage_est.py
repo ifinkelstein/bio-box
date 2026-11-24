@@ -70,7 +70,7 @@ MIN_JUDGED_CPU_MIN = 24.0  # DEC-43
 RECORD_ABOVE = 1.20  # DEC-64 (amending DEC-53): a judged step over this ratio is outside 20% and recorded
 STOP_ABOVE = 1.50  # DEC-64: a judged step whose reported (three-decimal) ratio is over this stops the build
 DEPTHS = ("called", "annotated")  # `stored` builds no gene calls: not a stage this driver builds or checks
-GENECALL_MODES = ("default", "gv-meta")  # card B-67 (DEC-71): default = policy p2; gv-meta = pyrodigal-gv meta
+GENECALL_MODES = ("default", "gv-meta", "gv-meta-c25")  # card B-67/B-69 (DEC-71): p2, gv-meta, gv-meta + code-25 CPR rescue
 LIBRARIES = {("pfam", "38.2")}  # the libraries whose HMM file the driver knows (stage_driver.sh PFAM)
 CUTOFFS = ("gathering", "trusted", "noise", "none")  # stage.CUTOFFS
 JUDGE_STEPS = ("ingest", "genecall")  # the steps the guard judges as one group of records

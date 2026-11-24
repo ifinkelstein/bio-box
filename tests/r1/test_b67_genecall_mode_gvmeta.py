@@ -179,7 +179,7 @@ def _tree_hashes(base: Path) -> dict[str, str]:
 def test_b67_mode_of_and_pricing_default_vs_gvmeta():
     """`default` preserves policy p2; `gv-meta` forces `gv-meta` and prices with `gv-meta` rates
     (no `META_LINEAR_LONG_FACTOR`)."""
-    assert genecall.GENECALL_MODES == ("default", "gv-meta")
+    assert genecall.GENECALL_MODES == ("default", "gv-meta", "gv-meta-c25")
     for kind, bases, want in (
         ("prokaryote", 50_000, "meta"),
         ("prokaryote", 120_000, "single"),

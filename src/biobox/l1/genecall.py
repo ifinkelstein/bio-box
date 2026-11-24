@@ -127,6 +127,7 @@ from __future__ import annotations
 import contextlib
 import hashlib
 import json
+import math
 import os
 import pickle
 import queue
@@ -166,8 +167,17 @@ SINGLE_MODE_MIN_BP = 100_000  # Prodigal: below this, use anonymous/meta mode
 WRAP_FLANK = 50_000
 GENE_CALL_VERSION = f"pyrodigal-{pyrodigal.__version__}-gv-{pyrodigal_gv.__version__}-p2"
 KINDS = ("prokaryote", "virus", "plasmid")
-GENECALL_MODES = ("default", "gv-meta")  # card B-67 (DEC-71): default = policy p2; gv-meta = pyrodigal-gv meta for all
+GENECALL_MODES = ("default", "gv-meta", "gv-meta-c25")  # card B-67/B-69 (DEC-71): p2, gv-meta, gv-meta + code-25 CPR rescue
 DEFAULT_GENECALL_MODE = "default"
+# Code-25 (UGA -> Gly, CPR) rescue under `--genecall-mode gv-meta-c25` (card B-69, DEC-71):
+# When ViralGeneFinder(meta=True) calls a contig predominantly as code 4 (UGA -> Trp),
+# distinguish true code 25 (W = TGG only, TGA = Gly) from true code 4 (W = TGG + TGA)
+# via the binomial log-likelihood ratio of Trp frequency against the universal prokaryotic/viral
+# Trp prior (~1.15%; GC-invariant, unlike Gly/GGN).
+CODE25_TRP_PRIOR = 0.0115
+CODE25_MIN_CODONS = 100
+CODE25_MIN_TGA = 3
+CODE25_MIN_LLR = 6.0
 SCRATCH_FLUSH_ROWS = 65_536  # rows a scratch writer buffers before it writes a row group
 # bases of consecutive genomes in one worker task (card B-32): chosen, not tuned. Derived: about 2.4 s
 # of meta-mode calling per task (one thread called 61.95 Mbp of short contigs in 146 s, measured on
@@ -261,20 +271,34 @@ def plan_genecall_mode(plan_: dict) -> str:
 
 
 def mode_of(kind: str, bases: int, genecall_mode: str = DEFAULT_GENECALL_MODE) -> str:
-    """The mode a genome of `kind` and `bases` bases is called in (policy p2, module docstring; card B-67:
-    `genecall_mode='gv-meta'` calls every genome with `pyrodigal-gv` meta mode)."""
+    """The mode a genome of `kind` and `bases` bases is called in (policy p2, module docstring; card B-67/B-69:
+    `genecall_mode='gv-meta'` and `'gv-meta-c25'` call every genome with `pyrodigal-gv` meta mode)."""
     if kind not in KINDS:
         raise ValueError(f"unknown genome kind {kind!r}")
     _check_genecall_mode(genecall_mode)
-    if genecall_mode == "gv-meta" or kind == "virus":
+    if genecall_mode in ("gv-meta", "gv-meta-c25") or kind == "virus":
         return "gv-meta"
     if kind == "plasmid" or bases < SINGLE_MODE_MIN_BP:
         return "meta"
     return "single"
 
 
+def _code25_llr(n_cod: int, n_tga: int, n_tgg: int) -> float:
+    """Binomial log-likelihood ratio of code 25 (W = TGG) vs code 4 (W = TGG + TGA)
+    under `CODE25_TRP_PRIOR`."""
+    p = CODE25_TRP_PRIOR
+    log_p, log_q = math.log(p), math.log(1.0 - p)
+
+    def _ll(k: int) -> float:
+        return -math.lgamma(k + 1) - math.lgamma(n_cod - k + 1) + k * log_p + (n_cod - k) * log_q
+
+    return _ll(n_tgg) - _ll(n_tgg + n_tga)
+
+
 def _finder(genome: GenomeInput, seqs: dict[bytes, str], genecall_mode: str = DEFAULT_GENECALL_MODE):
     mode = mode_of(genome.kind, sum(len(s) for s in seqs.values()), genecall_mode=genecall_mode)
+    if genecall_mode == "gv-meta-c25":
+        return pyrodigal_gv.ViralGeneFinder(meta=True), "gv-meta-c25"
     if mode == "gv-meta":
         return pyrodigal_gv.ViralGeneFinder(meta=True), "gv-meta"
     if mode == "meta":
@@ -284,23 +308,72 @@ def _finder(genome: GenomeInput, seqs: dict[bytes, str], genecall_mode: str = DE
     return finder, "single"
 
 
-def _genes(finder, seq: str, circular: bool):
+def _genes(finder, seq: str, circular: bool, rescue_code25: bool = False):
     """Yield (start, end, strand, aa, code, partial) with 0-based half-open coordinates."""
     n = len(seq)
+    if not rescue_code25:
+        if not circular:
+            for g in finder.find_genes(seq):
+                yield g.begin - 1, g.end, g.strand, g.translate(include_stop=False), g.translation_table, bool(
+                    g.partial_begin or g.partial_end
+                )
+            return
+        flank = min(n, WRAP_FLANK)
+        ext = seq[n - flank :] + seq + seq[:flank]
+        for g in finder.find_genes(ext):
+            start = g.begin - 1 - flank
+            if not 0 <= start < n or g.partial_begin or g.partial_end:
+                continue
+            end = g.end - flank
+            yield start, end, g.strand, g.translate(include_stop=False), g.translation_table, False
+        return
+
+    kept = []
     if not circular:
         for g in finder.find_genes(seq):
-            yield g.begin - 1, g.end, g.strand, g.translate(include_stop=False), g.translation_table, bool(
-                g.partial_begin or g.partial_end
-            )
+            kept.append((g.begin - 1, g.end, g.strand, bool(g.partial_begin or g.partial_end), g))
+    else:
+        flank = min(n, WRAP_FLANK)
+        ext = seq[n - flank :] + seq + seq[:flank]
+        for g in finder.find_genes(ext):
+            start = g.begin - 1 - flank
+            if not 0 <= start < n or g.partial_begin or g.partial_end:
+                continue
+            kept.append((start, g.end - flank, g.strand, False, g))
+
+    total_bp = sum(end - start for start, end, _, _, _ in kept)
+    code4_bp = sum(end - start for start, end, _, _, g in kept if g.translation_table == 4)
+    if code4_bp == 0 or code4_bp * 2 < total_bp:
+        for start, end, strand, partial, g in kept:
+            yield start, end, strand, g.translate(include_stop=False), g.translation_table, partial
         return
-    flank = min(n, WRAP_FLANK)
-    ext = seq[n - flank :] + seq + seq[:flank]
-    for g in finder.find_genes(ext):
-        start = g.begin - 1 - flank
-        if not 0 <= start < n or g.partial_begin or g.partial_end:
-            continue
-        end = g.end - flank
-        yield start, end, g.strand, g.translate(include_stop=False), g.translation_table, False
+
+    n_cod = n_tgg = n_tga = 0
+    translated: list[tuple[str, str | None]] = []
+    for _, _, _, _, g in kept:
+        aa4 = g.translate(include_stop=False)
+        if g.translation_table == 4:
+            aa25 = g.translate(translation_table=25, include_stop=False)
+            body = 0 if g.partial_begin else 1
+            n_cod += max(0, len(aa4) - body)
+            w4 = aa4.count("W", body)
+            w25 = aa25.count("W", body)
+            n_tgg += w25
+            n_tga += max(0, w4 - w25)
+            translated.append((aa4, aa25))
+        else:
+            translated.append((aa4, None))
+
+    use_c25 = (
+        n_cod >= CODE25_MIN_CODONS
+        and n_tga >= CODE25_MIN_TGA
+        and _code25_llr(n_cod, n_tga, n_tgg) >= CODE25_MIN_LLR
+    )
+    for (start, end, strand, partial, g), (aa4, aa25) in zip(kept, translated):
+        if use_c25 and aa25 is not None:
+            yield start, end, strand, aa25, 25, partial
+        else:
+            yield start, end, strand, aa4, g.translation_table, partial
 
 
 def _sequences(store: SeqStore, genome: GenomeInput) -> dict[bytes, str]:
@@ -309,11 +382,12 @@ def _sequences(store: SeqStore, genome: GenomeInput) -> dict[bytes, str]:
 
 def _call(genome: GenomeInput, seqs: dict[bytes, str], genecall_mode: str = DEFAULT_GENECALL_MODE) -> list[dict]:
     finder, mode = _finder(genome, seqs, genecall_mode=genecall_mode)
+    rescue_code25 = genecall_mode == "gv-meta-c25"
     calls: list[dict] = []
     for cu in sorted(seqs):
         seq = seqs[cu]
         circular = cu in genome.circular
-        genes = sorted(_genes(finder, seq, circular), key=lambda t: (t[0], t[1], t[2]))
+        genes = sorted(_genes(finder, seq, circular, rescue_code25=rescue_code25), key=lambda t: (t[0], t[1], t[2]))
         for start, end, strand, aa, code, partial in genes:
             if circular:
                 dist = len(seq)
