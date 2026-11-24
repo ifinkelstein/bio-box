@@ -1502,3 +1502,94 @@ sources:
       organellar genomes, tables 1/3/4/16/22, 337,977,208 bp, 2,411 net new, mirrored on
       tower:/mnt/user/research-bulk/bio-box/sources/O2/); planning/measurements/2026-11-24_lpl1_o2_inputs.md
     approved: under DEC-50 (entry written by card C-59a on 2026-11-24 before any fetch)
+  - name: beaulaurier_aloha_afvgs
+    what: >-
+      Beaulaurier et al. 2020 (Genome Research, doi:10.1101/gr.251686.119) Station ALOHA Oxford Nanopore single-molecule
+      Assembly-Free Viral Genomes (AFVGs) and concatemers (AFPPs) under NCBI BioProject PRJNA529454 (1,880 nuccore
+      records), fetched via NCBI E-utilities esearch + esummary + efetch; card C-67 (DEC-69), stage LRV1
+    url: https://eutils.ncbi.nlm.nih.gov/entrez/eutils/efetch.fcgi?db=nuccore&rettype=fasta&retmode=text&id={ids}
+    page: https://www.ncbi.nlm.nih.gov/bioproject/PRJNA529454 (esearch count 1,880 verified on 2026-11-24)
+    query: PRJNA529454[BioProject]
+    checksum: none published; exact record count, byte size, and our sha256 recorded at fetch
+    limits: one connection; at most 2 requests per second; User-Agent curl; stop after 5 refusals in a row
+    license: INSDC / NCBI GenBank (public domain)
+    redistributable: true
+    fetched: >-
+      2026-11-24 on wilkcomp02 by c67_peony_lr_viromes.py fetch-lrv1 into /tmp/if2453/c67/dl/beaulaurier/ (0 refusals,
+      1,880 DNA records): beaulaurier_aloha_afvgs.fna 78,705,870 B raw sha256
+      fa6dea42cf3bb19b18b814d77098d217b78c428ead7676c70c0fe729d5d7b7b2
+    stage_inputs: >-
+      stage LRV1 (/tmp/if2453/s2/inputs/LRV1/beaulaurier_aloha_afvgs.fna 78,534,001 B sha256
+      6201f7ea1a11cf71180eb2f58fc9a5b7c34f71cf83208ab36dc36ea20cf56dc9 after DEC-65 exact DTR trimming; genomes.json
+      sha256 27f04682c1d9fc0537614da5e8a2fe1529bfafbcd92511f6876fe8f182841e6f; objects.json sha256
+      eb8f4ca596d1bfc9e99335f4f61d2638efbdbd3b57bb0b207f0d525560b5d871; mirrored on
+      tower:/mnt/user/research-bulk/bio-box/sources/LRV1/); planning/measurements/2026-11-24_lrv1_v4_inputs.md
+    approved: under DEC-50 (entry written by card C-67 on 2026-11-24 before any fetch)
+  - name: kavagutti_freshwater_hifi_phages
+    what: >-
+      Kavagutti et al. 2023 freshwater spring bloom PacBio HiFi ecogenomics support data (PRJEB52406; Figshare article
+      20431332, doi:10.6084/m9.figshare.20431332.v1), specifically phages-fna.tar.gz (679 complete phage genomes) inside
+      Support-data.gz; card C-67 (DEC-69), stage LRV1
+    url: https://ndownloader.figshare.com/files/36556458
+    record: https://doi.org/10.6084/m9.figshare.20431332.v1 (Figshare article 20431332, published 2022-08-04, read 2026-11-24)
+    files:
+      - {file: Support-data.gz, id: 36556458, bytes: 1675816300, md5: cfbc18185b27bf2d6c2a9c9d1765def7, sha256: 3cd7e07da707d65cb454df78632227e34c07f420a1ee006751248f92e4884bb5}
+    not_taken: bac-MAGs-fnas.tar.gz, bacterial-trees-data.tar.gz, euk-MAGs-fna.tar.gz, mitochondrias-fna.tar.gz, NCLDV-data.tar.gz (only phages-fna.tar.gz taken for LRV1)
+    checksum: md5 cfbc18185b27bf2d6c2a9c9d1765def7 published by Figshare API v2 (matched at fetch); sha256 recorded above
+    limits: one connection; at most 2 requests per second; User-Agent curl; stop after 5 refusals in a row
+    license: CC BY 4.0 (https://creativecommons.org/licenses/by/4.0/, Figshare API v2)
+    redistributable: true
+    fetched: >-
+      2026-11-24 on wilkcomp02 by c67_peony_lr_viromes.py fetch-lrv1 into /tmp/if2453/c67/dl/kavagutti/ (0 refusals,
+      MD5 matched Figshare): extracted 679 complete phage genomes from phages-fna.tar.gz into
+      kavagutti_freshwater_hifi_phages.fna (28,661,350 B raw sha256
+      555fc9b299b500765ecd90ccf44db78782204fbe4af20b417d14599eba6a8750)
+    stage_inputs: >-
+      stage LRV1 (/tmp/if2453/s2/inputs/LRV1/kavagutti_freshwater_hifi_phages.fna 28,661,322 B sha256
+      e02b993234d740cb535ae99c9410870e6c2a5b3c03996e5af80a72ee305e13be after DEC-65 exact DTR trimming; 655 distinct
+      genomes after 24 within-stage repeats; mirrored on tower:/mnt/user/research-bulk/bio-box/sources/LRV1/);
+      planning/measurements/2026-11-24_lrv1_v4_inputs.md
+    approved: under DEC-50 (entry written by card C-67 on 2026-11-24 before any fetch)
+  - name: virion2_wec_marine_virome
+    what: >-
+      VirION2 long-read marine virome assemblies (Zablocki et al. 2021, PeerJ 9:e11088, doi:10.7717/peerj.11088,
+      PMC8018248; Western English Channel seawater assemblies in the PeerJ Supplemental Files); card C-67 (DEC-69),
+      stage LRV1
+    url: https://www.ebi.ac.uk/europepmc/webservices/rest/PMC8018248/supplementaryFiles
+    record: https://doi.org/10.7717/peerj.11088 (Europe PMC PMC8018248; checked 2026-11-24)
+    files:
+      - {file: PMC8018248_SupplementaryFiles.zip}
+    checksum: none published
+    limits: one connection; at most 2 requests per second; User-Agent curl; stop after 5 refusals in a row
+    license: CC BY 4.0 (PeerJ open access, https://creativecommons.org/licenses/by/4.0/)
+    redistributable: true
+    fetched: >-
+      blocked on anonymous pod fetch (2026-11-24): ENA PRJEB41030 holds raw reads only (0 assemblies/wgs_sets);
+      PMC8018248 XML lists only supp-1..supp-10 (images, .docx, .xlsx; 0 FASTAs, and Europe PMC /supplementaryFiles
+      returned HTTP 500 on GET); peerj.com/articles/11088/ is gated by a Cloudflare challenge (HTTP 403
+      cf-mitigated: challenge). Deferred for manual download if needed in LRV2
+    approved: under DEC-50 (entry written by card C-67 on 2026-11-24 before any fetch)
+  - name: peony_pigeon3_dryad
+    what: >-
+      PEONY 1.3 and PIGEON 3.0 global reference databases of DNA viral (vOTU) sequences from viromes and metagenomes
+      (Goemann, Stern, Perry, Gogul, Hillary, and Emerson 2026, doi:10.1128/mra.00751-26, Dryad
+      doi:10.5061/dryad.prr4xgz35, version 7 / id 473018, published 2026-11-06); card C-67 (DEC-69), stage V4
+    url: https://datadryad.org/api/v2/files/{file_id}/download
+    record: https://datadryad.org/dataset/doi:10.5061/dryad.prr4xgz35 (Dryad API v2 version 473018, read 2026-11-24)
+    files:
+      - {file: PEONY_PIGEON3_metadata_Nov2026.csv, file_id: 5041229, bytes: 69471, sha256: fb474db3a2feb9a0f83fcd760aef2e7bcc3396fc9eab8809e46abb0d687eaf05}
+      - {file: PEONY1.3_Nov26.fa.gz, file_id: 5044872, bytes: 8046644960, sha256: 0107a228f09fafff66ddedcdaa13f23e42d50058e917515115915a9c269b2928}
+      - {file: PIGEON3.0.fa.gz, file_id: 5041224, bytes: 9125855360, sha256: f12f09a59bf259384c595ae463450d1a886f11bcaf348f45285b3dc17d9cf5b5}
+      - {file: README.md, file_id: 5041227, bytes: 6292, sha256: 6e6178f64aa016a0eccf721977bd1ce2f8e4ef0310165249b66aafde648ab53c}
+    checksum: sha-256 digests above published by Dryad API v2 (version 473018, read 2026-11-24)
+    records: >-
+      1,351,223 vOTUs in PIGEON 3.0 and 1,088,256 virome-only vOTUs in PEONY 1.3 (>= 10 kb, 95% ANI / 85% coverage;
+      published, Dryad abstract)
+    limits: one connection; at most 2 requests per second; requires ORCID-authenticated Dryad API v2 Bearer Token
+    license: CC0-1.0 (https://spdx.org/licenses/CC0-1.0.html, Dryad API v2)
+    redistributable: true
+    fetched: >-
+      blocked on anonymous pod fetch (2026-11-24): Dryad API v2 /download returns HTTP 401 ("Unauthorized, must have
+      current bearer token") and /downloads/file_stream/ returns HTTP 403 (AWS WAF). Requires PI Dryad API Bearer Token
+      or manual download to /stor/scratch/Wilke/if2453/bio-box-staging/V4/dl/
+    approved: under DEC-50 (entry written by card C-67 on 2026-11-24 before any fetch)
