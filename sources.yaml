@@ -1313,3 +1313,58 @@ sources:
       0b9ba14de5479e9bd83adfaf25d469161f683ee6d4f2af3f62af97af4d31aff9 (11 records, 928,969 bp)
     stage_inputs: stage ECE1 (/tmp/if2453/s2/inputs/ECE1/pfeifer_complete_assemblies.fna.gz, sha256 36b5f112bef5be0bd4b51698dc6929c706ac2963c424f6f576189ecac30005a6)
     approved: under DEC-50 (entry written by card C-65 on 2026-11-24 before any fetch)
+  - name: ncbi_refseq_plastid_r238
+    what: >-
+      NCBI RefSeq Plastid release 238 (2026-11-12) complete GenBank flatfiles (plastid.1..3.genomic.gbff.gz) for
+      organellar genomes (chloroplasts, apicoplasts, cyanelles, chromatophores) with exact LOCUS circularity,
+      per-CDS transl_table, intron, and homing-endonuclease/RT annotations; card C-59 (DEC-69), stage O1
+    url: https://ftp.ncbi.nlm.nih.gov/refseq/release/plastid/{file}
+    page: https://ftp.ncbi.nlm.nih.gov/refseq/release/plastid/ (read 2026-11-24; RELEASE_NUMBER 238)
+    files:
+      - {file: plastid.1.genomic.gbff.gz, bytes: 658905588, md5: 6087d566829a80292951c0bbc7e9ee32, sha256: 7ff7b6e6ce358d4443fa2e3222014704fd80b7ad4c3001ca44db3b24d5adf586}
+      - {file: plastid.2.genomic.gbff.gz, bytes: 662721084, md5: 2609346fc4e4e4b1b4ac3bdb3985c0d8, sha256: 2f09a4c39ea71865abf85f4899f23653023fb4d929687bef299736cf09918e0f}
+      - {file: plastid.3.genomic.gbff.gz, bytes: 193833895, md5: eba5517505edf6a23b4c7fc137618f46, sha256: 46d74a06a17f49c1d538145c6bfde3790069171606578f59287a333d8db2cd20}
+    checksum: >-
+      MD5 values from https://ftp.ncbi.nlm.nih.gov/refseq/release/release-catalog/release238.files.installed and
+      Content-Length checked via HEAD on 2026-11-24; every MD5 matched at fetch
+    limits: one connection; at most 2 requests per second; User-Agent curl; stop after 5 refusals in a row
+    license: INSDC / NCBI RefSeq (public domain)
+    redistributable: true
+    fetched: >-
+      2026-11-24 by card C-59 into /stor/scratch/Wilke/if2453/bio-box-staging/O1/raw/ (0 refusals, every MD5 equal to
+      release238.files.installed): 15,231 records (15,226 table-11, 5 table-4); 15,218 valid table-11 DNA records
+      staged byte-identical into O1
+    stage_inputs: >-
+      stage O1 (card C-59, DEC-69, DEC-65): /tmp/if2453/s2/inputs/O1/ (15,225 table-11 records -> 15,150 distinct
+      genomes/contigs, 2,314,608,899 bp, 15,071 circular, kind=plasmid, 1 held by PL2 -> 15,149 net new contigs /
+      2.315 Gbp; ncbi_refseq_plastid_r238_t11.fna.gz 813,338,579 B sha256
+      2296566e813a687469dc9de741830c9b657a00ba62b0446a5e4574f7250836fb; genomes.json sha256
+      3330a0794ea410f652876be57c58922443732c8a663895e04e929acb3c27ce90; objects.json sha256
+      de4cf4829204f9aa495c7f3c109e1935c7d20a61d12f318cc8ec31dce1ff70e1; mirrored on
+      tower:/mnt/user/research-bulk/bio-box/sources/O1/); planning/measurements/2026-11-24_o1_refseq_organelles.md
+    approved: under DEC-50 (entry written by card C-59 on 2026-11-24 before any fetch)
+  - name: ncbi_refseq_mitochondrion_r238
+    what: >-
+      NCBI RefSeq Mitochondrion release 238 (2026-11-13) complete GenBank flatfile (mitochondrion.1.genomic.gbff.gz)
+      for organellar mitochondrial genomes with exact LOCUS circularity, per-CDS transl_table, intron, and
+      homing-endonuclease/RT annotations; card C-59 (DEC-69), stage O1 (transl_table=11 subset) and C-59a register
+    url: https://ftp.ncbi.nlm.nih.gov/refseq/release/mitochondrion/{file}
+    page: https://ftp.ncbi.nlm.nih.gov/refseq/release/mitochondrion/ (read 2026-11-24; RELEASE_NUMBER 238)
+    files:
+      - {file: mitochondrion.1.genomic.gbff.gz, bytes: 403081513, md5: 11660db0524ea3a09468b969bb7cf31f, sha256: 746e340bc7dd1c2a16600b91f017b68a4c1665a15dd56e2ac46b66a421dd4cf8}
+    checksum: >-
+      MD5 value from https://ftp.ncbi.nlm.nih.gov/refseq/release/release-catalog/release238.files.installed and
+      Content-Length checked via HEAD on 2026-11-24; MD5 matched at fetch
+    limits: one connection; at most 2 requests per second; User-Agent curl; stop after 5 refusals in a row
+    license: INSDC / NCBI RefSeq (public domain)
+    redistributable: true
+    fetched: >-
+      2026-11-24 by card C-59 into /stor/scratch/Wilke/if2453/bio-box-staging/O1/raw/ (0 refusals, MD5 equal to
+      release238.files.installed): 18,220 records (7 table-11 staged into O1; 18,213 non-table-11 / empty records plus
+      13 non-table-11/empty plastid records = 18,226 rows recorded in O1_left_for_c59a.tsv.gz, sha256
+      fe7a7bf41cef2247b9fc349aae4e7672faa561ce6b7272b7711f1d3dae97f100, for card C-59a)
+    stage_inputs: >-
+      stage O1 (/tmp/if2453/s2/inputs/O1/ncbi_refseq_mitochondrion_r238_t11.fna.gz 179,347 B sha256
+      2ccaf7a0386157dbba4df0337e5849adfe4378885975c9bd7090ced2551fd623; mirrored on
+      tower:/mnt/user/research-bulk/bio-box/sources/O1/); planning/measurements/2026-11-24_o1_refseq_organelles.md
+    approved: under DEC-50 (entry written by card C-59 on 2026-11-24 before any fetch)

@@ -445,8 +445,8 @@ def _repo_confs():
 
 def test_the_repository_has_a_conf_for_each_stage_whose_note_gives_every_value():
     assert {p.stem for p in _repo_confs()} == {
-        "V2", "GV1", "G1", "SPX1", "C1", "C2", "C3", "C4", "C6", "PL2", "PL3", "CG1", "MGE1", "SAT1", "ECE1",
-    }  # A-17, A-18, C-52, C-61, C-57, C-55, C-65
+        "V2", "GV1", "G1", "SPX1", "C1", "C2", "C3", "C4", "C6", "PL2", "PL3", "CG1", "MGE1", "SAT1", "ECE1", "O1",
+    }  # A-17, A-18, C-52, C-61, C-57, C-55, C-65, C-59
 
 
 def test_pl2_and_pl3_confs_follow_dec63_and_dec65():
