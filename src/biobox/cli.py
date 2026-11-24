@@ -1241,6 +1241,181 @@ def _hmm_parser() -> argparse.ArgumentParser:
     return h
 
 
+def _panel_parser() -> argparse.ArgumentParser:
+    """`bio-box search panel` (card W-39): one-pass multi-HMM panel search and co-occurring system caller."""
+    p = argparse.ArgumentParser(
+        prog="bio-box search panel",
+        description="one-pass multi-HMM panel search, per-ORF hit table, and co-occurring system caller (card W-39)",
+    )
+    p.add_argument("--root", required=True)
+    p.add_argument("--gene-call-version", default=GENE_CALL_VERSION)
+    p.add_argument("--release", required=True)
+    p.add_argument("--hmm", action="append", default=[], metavar="[NAMESPACE:]FILE",
+                   help="repeatable target HMMER3 file (.hmm, .hmm.gz, .tgz)")
+    p.add_argument("--library", action="append", default=[], dest="panel_libraries",
+                   metavar="[NAMESPACE@]LIB[:ACC1,ACC2,...]",
+                   help="repeatable target HMM library (pack models or refdb)")
+    p.add_argument("--decoy-hmm", action="append", default=[], metavar="[NAMESPACE:]FILE",
+                   help="repeatable outgroup/composition decoy HMM file (is_decoy=True)")
+    p.add_argument("--decoy-library", action="append", default=[], metavar="[NAMESPACE@]LIB[:ACC1,ACC2,...]",
+                   help="repeatable outgroup decoy HMM library (is_decoy=True)")
+    p.add_argument("--cutoff", choices=("gathering", "trusted", "noise"),
+                   help="per-model HMMER cutoff header (GA/TC/NC)")
+    p.add_argument("--fallback-bits", type=float,
+                   help="fallback sequence bitscore when --cutoff header is absent")
+    p.add_argument("--bits", type=float, help="uniform sequence bitscore cutoff")
+    p.add_argument("--dom-bits", type=float, help="uniform domain bitscore cutoff (default 0)")
+    p.add_argument("--cutoffs-tsv", help="per-model TSV: model_key, seq_bits[, dom_bits[, i_evalue_max[, hmm_cov_min[, min_dom_frac]]]]")
+    p.add_argument("--stages", help="comma-separated stage subset of --release to search and expand")
+    p.add_argument("--positive", action="append", default=[], metavar="[MODEL_KEY=]SPEC",
+                   help="required (repeatable): positive control protein (ACC:START-END, protein_uid hex, or header text)")
+    p.add_argument("--negative-control", action="append", default=[], metavar="[MODEL_KEY=]SPEC",
+                   help="optional (repeatable): known non-target paralog scored in controls.tsv for calibration")
+    p.add_argument("--negative", choices=("shuffled_seed", "none"), default="shuffled_seed",
+                   help="deterministic per-model shuffled-consensus negative controls (default shuffled_seed)")
+    p.add_argument("--max-gap-genes", type=int, default=5, help="max intervening genes in a cluster (default 5)")
+    p.add_argument("--max-gap-bp", type=int, default=10000, help="max bp gap between adjacent hit ORFs (default 10000)")
+    p.add_argument("--min-models", type=int, help="min distinct models per cluster (default 2 if >=2 targets else 1)")
+    p.add_argument("--distinct-orfs", action="store_true",
+                   help="require >= --min-models distinct hit ORFs (a 2-domain fusion counts as 1 ORF)")
+    p.add_argument("--require", help="comma-separated model_keys required in every called locus")
+    p.add_argument("--forbid", help="comma-separated model_keys/domain names forbidden in cluster/window")
+    p.add_argument("--all-overlaps", action="store_true",
+                   help="use all non-decoy hits instead of only best_on_overlap=True when calling loci")
+    p.add_argument("--include-decoys", action="store_true", help="include is_decoy rows in orf_hits")
+    p.add_argument("--neighbors", type=int, default=5, help="flanking genes per side in loci/*.tsv (default 5)")
+    p.add_argument("--carry-from", help="previous panel output DIR for byte-identical incremental carry-forward")
+    p.add_argument("--out", required=True, help="new or empty output directory outside the data root")
+    p.add_argument("--profile", help="host profile YAML (default: $BIOBOX_PROFILE)")
+    p.add_argument("--pack-dir", help=PACK_DIR_HELP)
+    p.add_argument("--runs", help=RUNS_HELP)
+    p.add_argument("--work", help="parent of the run's work directory")
+    p.add_argument("--refdb", action="append", default=[], help="additional refdb root directory for --library")
+    p.add_argument("--cpus", type=int, help=f"pyhmmer threads per sub-step (default {DEFAULT_CPUS})")
+    p.add_argument("--jobs", type=int, default=1, help="concurrent sub-steps (default 1)")
+    p.add_argument("--mem-gb", type=float, help="memory cap in GB")
+    p.add_argument("--cpu-min", type=float, default=200.0, help="max estimated CPU-min per sub-step (default 200)")
+    p.add_argument("--wall-s", type=float, default=6 * 3600.0)
+    p.add_argument("--domain-library", help="release domain library for pfam_architecture")
+    p.add_argument("--threads", type=int, help=f"DuckDB threads for expansion/exports (default {export.EXPORT_THREADS})")
+    p.add_argument("--annotate", nargs=4, metavar=("NAME", "VERSION", "HMM", "CUTOFF"),
+                   help="card C-38f: annotate unscanned locus window proteins (or print command if root is read-only)")
+    return p
+
+
+def _resolve_control_spec(spec: str, root: Path, files, tv: str, gcv: str, threads: int | None) -> tuple[str | None, bytes, str]:
+    """Parse `[MODEL_KEY=]SPEC` where SPEC is 32-hex protein_uid or `ACC:START-END` / header substring."""
+    mk: str | None = None
+    body = spec
+    if "=" in spec:
+        left, right = spec.split("=", 1)
+        if left and right:
+            mk, body = left, right
+    if re.fullmatch(r"[0-9a-f]{32}", body):
+        return mk, bytes.fromhex(body), spec
+    uid, lines = _positive_uid(root, files, body, tv, gcv, threads)
+    if uid is None:
+        raise ValueError("; ".join(lines))
+    return mk, (bytes.fromhex(uid) if isinstance(uid, str) else uid), spec
+
+
+def _search_panel(a) -> int:
+    """`bio-box search panel` (card W-39)."""
+    from biobox.search import panel
+
+    root = Path(a.root)
+
+    def refuse(msg, more=()) -> int:
+        print(f"refused: {msg}", file=sys.stderr)
+        for line in more:
+            print(line, file=sys.stderr)
+        return 2
+
+    if not a.positive:
+        return refuse("search panel requires at least one --positive [MODEL_KEY=]SPEC (S-04)")
+    if a.neighbors < 1:
+        return refuse(f"--neighbors {a.neighbors}: give at least 1 gene on each side")
+    if a.annotate is not None:
+        ann_name, ann_ver, ann_hmm, ann_cutoff = a.annotate
+        if ann_cutoff not in ("gathering", "trusted", "noise", "none"):
+            return refuse(f"--annotate: cutoff {ann_cutoff!r} is not one of gathering, trusted, noise, none")
+        if not Path(ann_hmm).is_file():
+            return refuse(f"--annotate: HMM file {ann_hmm} does not exist")
+    try:
+        limits = _limits(a)
+        packs, runs = _packs(a), _runs(a)
+        work = Path(a.work) if a.work else runner.default_work_base(_profile_tmp(a))
+        catalog.require_not_archived(root, a.release)
+        pdir = pack.find(packs, a.release, root=root)
+        tv = pack.manifest_tape_version(pack.read_manifest(pdir)[0])
+        files, _ = _release_files_or_refusal(a, root)
+        positives = [_resolve_control_spec(s, root, files, tv, a.gene_call_version, a.threads) for s in a.positive]
+        neg_ctls = [_resolve_control_spec(s, root, files, tv, a.gene_call_version, a.threads) for s in a.negative_control]
+        stages = [x.strip() for x in a.stages.split(",") if x.strip()] if a.stages else None
+        req = [x.strip() for x in a.require.split(",") if x.strip()] if a.require else []
+        forb = [x.strip() for x in a.forbid.split(",") if x.strip()] if a.forbid else []
+        refdb_dirs = [Path(x) for x in a.refdb]
+        prof = _pack_profile(a) if (a.profile or os.environ.get("BIOBOX_PROFILE")) else None
+        if prof is not None and getattr(prof, "bulk", None):
+            refdb_dirs.append(Path(prof.bulk) / "l0" / "refdb")
+        row, rdir = panel.run_panel(
+            root, a.release,
+            hmm_specs=list(a.hmm), library_specs=list(a.panel_libraries),
+            decoy_hmm_specs=list(a.decoy_hmm), decoy_library_specs=list(a.decoy_library),
+            out_dir=Path(a.out), packs_dir=packs, runs_dir=runs, work_base=work,
+            positives=positives, neg_controls=neg_ctls, negative_mode=a.negative,
+            cutoff=a.cutoff, fallback_bits=a.fallback_bits, bits=a.bits, dom_bits=a.dom_bits,
+            cutoffs_tsv=Path(a.cutoffs_tsv) if a.cutoffs_tsv else None,
+            stages=stages, max_gap_genes=a.max_gap_genes, max_gap_bp=a.max_gap_bp,
+            min_models=a.min_models, distinct_orfs=a.distinct_orfs, require=req, forbid=forb,
+            all_overlaps=a.all_overlaps, include_decoys=a.include_decoys, neighbors=a.neighbors,
+            carry_from=Path(a.carry_from) if a.carry_from else None,
+            cpus=a.cpus or limits.cpus, jobs=max(1, int(a.jobs)),
+            max_substep_cpu_min=min(200.0, float(a.cpu_min)),
+            gene_call_version=a.gene_call_version, library=a.domain_library,
+            threads=a.threads, user_command=a.user_command, refdb_dirs=refdb_dirs,
+        )
+    except (panel.PanelError, ValueError, OSError) as e:
+        return refuse(e)
+
+    rid, status = row["run_id"].hex(), row["status"]
+    print(f"{rid}\t{status}")
+    if status != "ok":
+        print(f"search panel: run {rid} ended {status}: {row.get('error')}", file=sys.stderr)
+        return 1
+
+    out = Path(a.out)
+    if a.annotate is not None:
+        ann_name, ann_ver, ann_hmm, ann_cutoff = a.annotate
+        pfile = out / "unannotated_proteins.txt"
+        unscanned = [x for x in pfile.read_text(encoding="utf-8").splitlines() if x.strip()] if pfile.is_file() else []
+        if not unscanned:
+            print("annotate\t0 unscanned window proteins")
+            return 0
+        prof_arg = a.profile or os.environ.get("BIOBOX_PROFILE")
+        cmd_parts = [
+            "bio-box", "annotate", "round",
+            "--root", str(root), "--release", a.release,
+            "--library", ann_name, ann_ver, str(Path(ann_hmm).resolve()), ann_cutoff,
+            "--proteins", str(pfile.resolve()),
+        ]
+        if a.gene_call_version != GENE_CALL_VERSION:
+            cmd_parts += ["--gene-call-version", a.gene_call_version]
+        if prof_arg:
+            cmd_parts += ["--profile", str(prof_arg)]
+        if not _root_writable(root):
+            import shlex
+            cmd_str = " ".join(shlex.quote(x) for x in cmd_parts)
+            print(f"annotate: data root {root} is read-only; run as the build account:\n  {cmd_str}", file=sys.stderr)
+            print(f"annotate_command\t{cmd_str}")
+            return 0
+        ann_argv = cmd_parts[1:] + (["--cpus", str(limits.cpus)] if not prof_arg else ["--scan-cpus", str(limits.cpus)])
+        code = main(ann_argv)
+        if code != 0:
+            return code
+    return 0
+
+
 def _export(a) -> int:
     """`export proteins` (card W-05): the release's distinct proteins as FASTA named by protein uid."""
     root = Path(a.root)
@@ -1472,7 +1647,7 @@ def _seq(a) -> int:
     return 0
 
 
-def sql_connection(root: Path, release: str, *, runs=(), tmp: Path | None = None, threads: int = 4,
+def sql_connection(root: Path, release: str, *, runs=(), panels=(), tmp: Path | None = None, threads: int = 4,
                    memory_limit: str = "4GB"):
     """(a read-only connection to the release's catalog, its scratch directory) for `bio-box sql` (card W-23). The
     caller closes the connection and removes the scratch directory.
@@ -1519,6 +1694,14 @@ def sql_connection(root: Path, release: str, *, runs=(), tmp: Path | None = None
             for name in catalog.SEARCH_RUN_FILES.values():
                 if (Path(d) / name).is_file():
                     allowed |= {str(Path(d) / name), str((Path(d) / name).resolve())}
+        if panels:
+            from biobox.search import panel as panel_mod
+
+            for p in panel_mod.panel_parquet_paths(list(panels)):
+                allowed |= {str(p), str(p.resolve())}
+            panel_mod.register_panel_views(con, list(panels), release)
+            max_rg = max(catalog.row_groups_of(panel_mod.panel_parquet_paths(list(panels))), 1)
+            catalog.set_join_key_filter(con, max_rg)
         con.execute("SET autoinstall_known_extensions = false")
         con.execute("SET autoload_known_extensions = false")
         if allowed:
@@ -1612,7 +1795,12 @@ def _sql(a) -> int:
             print(got, file=sys.stderr)
             return 2
         runs, others = got
-        con, scratch = sql_connection(root, a.release, runs=runs, tmp=tmp, threads=a.threads,
+        panels = []
+        if getattr(a, "panel", None):
+            from biobox.search import panel as panel_mod
+
+            panels = [panel_mod.resolve_panel_mount(spec) for spec in a.panel]
+        con, scratch = sql_connection(root, a.release, runs=runs, panels=panels, tmp=tmp, threads=a.threads,
                                       memory_limit=a.memory_limit)
     except (ValueError, OSError) as e:
         return refuse(e)
@@ -2461,6 +2649,11 @@ def _main(argv: list[str] | None = None) -> int:
         ns.user_command = user_command
         code = _resolve_latest(ns, "search" if ns.release == catalog.LATEST else None)
         return code if code is not None else _search_hmm(ns)
+    if argv[:2] == ["search", "panel"]:  # card W-39: one-pass multi-HMM panel search
+        ns = _panel_parser().parse_args(argv[2:])
+        ns.user_command = user_command
+        code = _resolve_latest(ns, "search" if ns.release == catalog.LATEST else None)
+        return code if code is not None else _search_panel(ns)
     command: list[str] = []
     if argv[:1] == ["run-step"] and "--" in argv:  # everything after the first `--` is the step command
         i = argv.index("--")
@@ -2561,6 +2754,9 @@ def _main(argv: list[str] | None = None) -> int:
                                                                "...): run directories or runs directories; default "
                                                                "with a profile: its runs directory. Runs of other "
                                                                "releases are left out")
+    ql.add_argument("--panel", action="append", default=[], metavar="NAME=DIR",
+                    help="repeatable: mount a saved `search panel` directory as read-only views "
+                         "<NAME>_models, <NAME>_protein_hits, <NAME>_orf_hits, <NAME>_loci (card W-39)")
     ql.add_argument("--profile", help="host profile YAML (default: $BIOBOX_PROFILE): its tmp holds the scratch "
                                       "directory, and its runs directory is attached")
     ql.add_argument("--format", choices=["tsv", "json"], default="tsv", help="tsv: a table per statement; json: one "
