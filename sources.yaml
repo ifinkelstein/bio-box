@@ -856,3 +856,50 @@ sources:
       not on /stor. The 304 files are hard-linked into the staged inputs /tmp/if2453/s2/inputs/SPX1/assemblies/ on
       wilkcomp02 (objects.json names them there); their names under /tmp/if2453/c48e1/dl/ are removed after staging
     approved: under DEC-50 and DEC-58 (card C-48e part 1, 2026-11-20; the tranche's habitats and caps set by the orchestrator)
+  - name: metavr
+    what: >-
+      MetaVR (Fiamenghi et al. 2026, Nucleic Acids Res. 54:D801-D812, doi:10.1093/nar/gkaf1283): 24,435,662 uncultivated
+      viral genomes (UViGs; 12,705,385 vOTUs; 266.09 Gbp across 24,635,130 FASTA records), successor to IMG/VR v4;
+      already present on wilkcomp02 at /stor/scratch/Wilke/if2453/fragdef/db/metavr/; card C-62 (DEC-71), stage MV1
+    url: https://portal.nersc.gov/cfs/m342/METAVR/{file}
+    page: https://meta-virome.org
+    files:
+      - {file: METAVR_main_table.parquet, bytes: 1087432195, sha256: b1260bd415f0d09503e6e8c36c9f773b0c4411f53aecec449d6ed7db8e87dfb7}
+      - {file: METAVR.fna.bgz, bytes: 71552362108, sha256: 6a636c69865245eeac2b1157895b73b75c0e81e7bb030cec62f0b6a645f4d740}
+    not_taken: >-
+      METAVR.faa.bgz (49,996,313,962 B; we call our own genes with pyrodigal-gv), METAVR_protein_cluster.parquet
+      (12,596,149,158 B), METAVR.fna.bgz.ffx, METAVR.faa.bgz.ffx, METAVR_iphop_results.tsv.gz, IMG_full_metadata.tsv.gz
+    checksum: none published upstream; byte sizes and sha256 values measured on wilkcomp02 on 2026-11-23
+    records: >-
+      24,435,662 UViGs (24,635,130 FASTA records; 266,087,750,856 bp; 12,705,385 distinct vOTUs; 41,474 concatemers;
+      245,796 Complete, 722,889 High-quality, 1,155,403 Medium-quality, 19,298,613 Low-quality, 3,012,961 Not-determined;
+      measured from METAVR_main_table.parquet, wilkcomp02, 2026-11-23)
+    license: >-
+      Public HTTP download (no login); contains JGI IMG-derived sequences; cite Fiamenghi et al. 2026
+      (doi:10.1093/nar/gkaf1283) and JGI Data Utilization Policy
+    redistributable: false (contains JGI IMG-derived sequences; held local on wilkcomp02 under DEC-50, DEC-51, DEC-71)
+    fetched: >-
+      2026-10-23 (pre-existing on-pod archive under /stor/scratch/Wilke/if2453/fragdef/db/metavr/; 0 network fetch by
+      card C-62; server Last-Modified METAVR.fna.bgz 2026-08-26, METAVR_main_table.parquet 2026-06-24)
+    stored: /stor/scratch/Wilke/if2453/fragdef/db/metavr/ (read-only)
+    staged:
+      - stage: MV1
+        object: /stor/scratch/Wilke/if2453/bio-box-staging/MV1/metavr_mv1.fna
+        bytes: 40056908488
+        sha256: 1461321bb892aef9e5cfa03045dee22c603e9049957683b577e37655fef81394
+        metadata_dir: /tmp/if2453/c62/MV1/ (genomes.json sha256 a3627efddc5db7f0090a9eaba3e3635a75c43eacf60b6b83dae604094aefab65; pending /tmp >= 420 GiB free before moving into /tmp/if2453/s2/inputs/MV1/)
+        derived_from: >-
+          /stor/scratch/Wilke/if2453/fragdef/db/metavr/METAVR_main_table.parquet (sha256 b1260bd4…8e87dfb7) and
+          METAVR.fna.bgz (sha256 6a636c69…45f4d740)
+        rule: >-
+          scripts/stress/build_stage_pod/c62_metavr_inputs.py stage (DEC-65, DEC-71): exclude concatemers, pick one best
+          vOTU rep per vOTU, prioritize all >= 200 kb jumbo UViGs -> Complete/HQ reps (contam <= 10%) -> >= 30 kb MQ reps
+          -> < 30 kb MQ reps -> >= 30 kb LQ/ND reps within 3.0M contigs / 40.0 Gbp (1,016,604 UViGs, 1,012,013 distinct
+          genomes, 1,171,915 distinct contigs, 39.610 Gbp; 112,650 exact 20..1,000 bp DTRs trimmed by 13,081,042 bp;
+          126,506 circular; 874,355 contigs / 28.376 Gbp new after S1..SPX1, V2, PL2, PL3, CG1;
+          planning/measurements/2026-11-23_mv1_inputs.md)
+        left_for_later: >-
+          /stor/scratch/Wilke/if2453/bio-box-staging/MV1/MV1_left_for_later.tsv.gz (23,419,058 rows, 298,672,948 bytes,
+          sha256 d7389a9d1df966f4e73a34a514225855f25031d6b29e63a26702783edbad7f5c; includes 98,920 ordered MV2 spillover
+          UViGs / 3.909 Gbp); DEC-59, planning/CATALOG_GOAL.md
+    approved: under DEC-51 and DEC-71 (card C-62, 2026-11-23; on-pod archive, no network fetch)
