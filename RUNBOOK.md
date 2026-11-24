@@ -1237,6 +1237,17 @@ says so in a line that begins `note`. A run that ends other than `ok` exits 1 an
 `recipe.yaml` in `DIR`. When the release has no pack, the command exits 2 and prints the
 `pack build` command to run; it does not build the pack.
 
+**Multi-HMM panel search** (card W-39). `search panel` screens a multi-profile HMM panel (with optional
+`--decoy-hmm` / `--decoy-library`, `--cutoffs-tsv`, `--stages`, and incremental `--carry-from`) in one
+streaming pass per sub-step (`<= 200` CPU-min), writing `models.parquet`, `protein_hits.parquet`,
+`orf_hits.parquet`, `loci_summary.parquet`, `loci/*.tsv`, `controls.tsv`, `coverage.json`, and `RUN`.
+Saved panel directories mount read-only into `bio-box sql` via repeatable `--panel NAME=DIR`:
+
+```bash
+bash "$TREE/scripts/pod_run.sh" --profile "$PROFILE" --image "$IMAGE" --digest "$DIGEST" --bind /tmp/if2453 --env PYTHONPATH="$PYTHONPATH_POD" w39-panel search panel --root "$ROOT" --release latest --profile "$PROFILE" --hmm "$WORK/anchors.hmm" --cutoff gathering --positive "$POSITIVE" --min-models 2 --max-gap-genes 10 --out "$WORK/panel" --cpus 4
+bio-box sql --root "$ROOT" --release latest --profile "$PROFILE" --panel p="$WORK/panel" -e "SELECT count(*) FROM p_loci"
+```
+
 **Keep the results** (card W-28, DEC-33). The runs directory and every `--out` are on `/tmp`, which
 a reboot may clear. `results` keeps a closed run under the profile's `bulk` area (DEC-42, card W-33),
 in the results area `$DURABLE/results` (`$DURABLE` here is the profile's `bulk`; real:

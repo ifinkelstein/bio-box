@@ -387,6 +387,7 @@ SEARCH_DIRS = {
     ("search", "cancel"): [("--runs",)],
     ("search", "hits"): [("--runs",), ("--pack-dir",)],
     ("search", "hmm"): [("--pack-dir",), ("--runs",), ("--work",)],  # card W-07
+    ("search", "panel"): [("--pack-dir",), ("--runs",), ("--work",)],  # card W-39
     ("nbr", None): [("--runs",), ("--pack-dir",)],
 }
 

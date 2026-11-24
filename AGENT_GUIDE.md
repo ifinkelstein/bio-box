@@ -168,6 +168,12 @@ bash "$TREE/scripts/pod_run.sh" --profile "$TREE/profiles/wilkcomp02.yaml" --ima
 
 `--out` must be new or empty and outside the root; `--model NAME` picks one model of a multi-model file.
 
+For multi-HMM panels (`--hmm`, `--library`, `--decoy-hmm`, `--decoy-library`, `--cutoffs-tsv`, `--stages`, `--carry-from`, and circular-aware operon calling), use `search panel` (card W-39), and mount saved panel outputs in SQL with `bio-box sql --panel NAME=DIR` (`<NAME>_models`, `<NAME>_protein_hits`, `<NAME>_orf_hits`, `<NAME>_loci`):
+
+```bash
+bash "$TREE/scripts/pod_run.sh" --profile "$TREE/profiles/wilkcomp02.yaml" --image "$IMAGE" --digest "$DIGEST" --mem 32G --threads 4 --bind /tmp/if2453 --bind /tmp/if2453/r10:/tmp/if2453/r10:ro --env PYTHONPATH="$TREE/src" --log "$SCR/logs/panel-1.log" panel-1 search panel --root /tmp/if2453/r10/root --release latest --profile "$TREE/profiles/wilkcomp02.yaml" --hmm "$SCR/anchors.hmm" --cutoff gathering --positive NZ_AP026781.1:426340-427525 --min-models 2 --max-gap-genes 10 --out "$SCR/out/panel" --cpus 4
+```
+
 **5. Watch.** The log names the run id (`search run: <id> running; ...`) within about 10 s (measured, [T3]).
 
 ```bash

@@ -61,6 +61,110 @@ databases:
     # repository at src/biobox/l1/rfam_sets/Rfam-15.1.clanin, not on /stor (AGENTS 7.3). Approved by
     # the PI on 2026-11-11 for clan competition (DEC-28, card E-08)
     used_by: [O-SCAN (ncRNA)]
+  # --- Prokaryotic & ART-RT super-panel (`prok-rt`, PI-approved 2026-11-23, card W-39, DEC-71) ---
+  - name: lab_art_rt
+    version: "2026-10-25"
+    released: 2026-10-25
+    models: 15
+    local_paths:
+      - path: /stor/scratch/Wilke/if2453/fragdef/retrons-new/task14/s5b/both.hmm
+        sha256: f793ea97485a48af94d40a689f610eff6fc111daff88d11c67d16dd34d698d2a
+        bytes: 960750
+        models: 12  # NTERM, CTERM, PROXORF, DISTORF + 8 inline *_REV/*_PERM decoys
+      - path: /stor/scratch/Wilke/if2453/fragdef/retrons-new/task11/our_components.hmm
+        sha256: 0f02ebded4c818aaa0e2529791b81a14da384fb68213e2c0989fec2d8db6073a
+        bytes: 490358
+        models: 3   # DUF8567, PG_binding_1, DUF8549
+    license: unpublished (Finkelstein Lab)
+    redistributable: false
+    used_by: [W-39 (prok-rt)]
+  - name: spire_retrons_2026
+    version: "2026-mSystems"
+    released: 2026-10
+    models: 30
+    doi: 10.5281/zenodo.20409741
+    url: https://zenodo.org/records/20409741
+    local_paths:
+      - path: /stor/scratch/Wilke/if2453/fragdef/retrons-new/task20/toro_general.hmm
+        sha256: 790369febe47f4ad5981622251e354f58ef01ee8ac0f29740360fb2a2b0e6b0a
+        bytes: 98209
+        models: 1
+      - path: /stor/scratch/Wilke/if2453/fragdef/retrons-new/task20/toro_types.hmm
+        sha256: d155fefe0f395525b894161a265fa7885d0f869979498a65dc8a16885e2f0c70
+        bytes: 2865448
+        models: 29
+    license: MIT
+    redistributable: true
+    used_by: [W-39 (prok-rt)]
+  - name: toro_ug_abi_retrons
+    version: "zenodo-13257156"
+    released: 2024-08
+    doi: 10.5281/zenodo.13257156
+    url: https://zenodo.org/api/records/13257156/files/maxewilkinson/DRT2-analysis-v1.0.0.zip/content
+    file: DRT2-analysis-v1.0.0.zip
+    sha256: c98d18d85a250c88d060e69a11ad9b4b8d791d593f79b54699f79e665a4f2005
+    bytes: 46396287
+    license: CC BY 4.0
+    redistributable: true
+    used_by: [W-39 (prok-rt)]
+  - name: padloc_rt
+    version: "2.0.0"
+    released: 2023-10-16
+    url: https://github.com/padlocbio/padloc-db/archive/refs/tags/v2.0.0.tar.gz
+    file: padloc-db-v2.0.0.tar.gz
+    sha256: 29c3ada5f1fc2fd6dcfc2452ff6182aa461e04f08db93ceb81f01611cbb10e8d
+    bytes: 146125530
+    local_path: /stor/scratch/Wilke/if2453/fragdef/db/padloc-db/padloc-db-v2.0.0.tar.gz
+    license: MIT
+    redistributable: true
+    used_by: [W-39 (prok-rt)]
+  - name: defensefinder_rt
+    version: "3.1.0"
+    released: 2026-05-14
+    url: https://github.com/mdmparis/defense-finder-models/archive/refs/tags/v3.1.0.tar.gz
+    local_path: /stor/scratch/Wilke/if2453/fragdef/db/defense-finder/defense-finder-models
+    license: GPL-3.0 / CC BY-NC-SA 4.0
+    redistributable: false
+    used_by: [W-39 (prok-rt)]
+  - name: myrt
+    version: "2022-NAR"
+    released: 2022-03
+    models: 45
+    doi: 10.1093/nar/gkab1207
+    url: https://raw.githubusercontent.com/mgtools/myRT/master/RVT-All.hmm
+    file: RVT-All.hmm
+    sha256: 74556bd21fd92b947af2759878c3433361b442f2499a62492166a5416971e25e
+    bytes: 3892396
+    local_path: /stor/scratch/Wilke/if2453/fragdef/retrons-new/task20/rvtall.hmm
+    license: unlicensed (academic)
+    redistributable: false
+    used_by: [W-39 (prok-rt)]
+  - name: roux_dgr
+    version: "1.0"
+    released: 2021-05
+    models: 14
+    doi: 10.1038/s41467-021-23402-7
+    url: https://bitbucket.org/srouxjgi/dgr_scripts/get/master.tar.gz
+    file: dgr_scripts-v1.0.tar.gz
+    sha256: 634bbd804c12ca5e94a745ccea70623879d47a5acaceb9686dc405928235907c
+    bytes: 19339979
+    license: BSD-3-Clause-LBNL
+    redistributable: true
+    used_by: [W-39 (prok-rt)]
+  - name: vogdb_rt
+    version: "vog227"
+    released: 2024-11
+    models: 10
+    doi: 10.3390/v16081191
+    url: https://fileshare.csb.univie.ac.at/vog/vog227/vog.hmm.tar.gz
+    annotations_url: https://fileshare.csb.univie.ac.at/vog/vog227/vog.annotations.tsv.gz
+    file: vog.hmm.tar.gz
+    sha256: d3f9d2392327ef9d7b89bd673836aceafb036b1740c7599038d68151b54e4f69
+    bytes: 783556103
+    annotations_sha256: f7cc6c7776b08258d2d77dda11ce91f3e81d9a4b0d1b08bf195bebe7cdf65072
+    license: CC BY 4.0
+    redistributable: true
+    used_by: [W-39 (prok-rt)]
 pending:
   - name: phrogs
     note: >-

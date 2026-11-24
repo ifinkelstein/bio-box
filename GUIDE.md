@@ -126,6 +126,13 @@ nothing can write into it. After it, the search:
 | `--runs`, `--work`, `--pack-dir` | where runs and their scratch go, and where the pack is, if not where the profile says (section 2) |
 | `--cpu-min`, `--wall-s` | limits of the search itself (defaults 300 CPU-minutes, 6 hours) |
 
+For multi-HMM panels (multiple subunits, subtype profiles, outgroup decoys, and circular-aware co-occurring system calling), use `bio-box search panel` (card W-39) and mount its Parquet outputs in DuckDB with `bio-box sql --panel NAME=DIR`:
+
+```bash
+bash "$TREE/scripts/pod_run.sh" --profile "$PROFILE" --image "$IMAGE" --digest "$DIGEST" --mem 32G --threads 4 --bind /tmp/if2453 --bind /tmp/if2453/r10:/tmp/if2453/r10:ro --env PYTHONPATH="$PYTHONPATH_POD" pi-panel search panel --root "$ROOT" --release latest --profile "$PROFILE" --hmm "$WORK/anchors.hmm" --cutoff gathering --positive NZ_AP026781.1:426340-427525 --min-models 2 --max-gap-genes 10 --out "$WORK/panel_out" --cpus 4
+bio-box sql --root "$ROOT" --release latest --panel p="$WORK/panel_out" -e "SELECT contig_accession, models_ordered, span_bp FROM p_loci ORDER BY contig_accession"
+```
+
 The worked example is this exact search, kept as a directory that reruns it and checks its answer on every
 milestone release: `examples/rnap/` (card E-11; `examples/README.md` explains the examples). Its README holds the
 numbers this guide used to hold twice: how many proteins and genes it finds in phages and prokaryotes, the control's
