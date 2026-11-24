@@ -928,3 +928,51 @@ sources:
           sha256 d7389a9d1df966f4e73a34a514225855f25031d6b29e63a26702783edbad7f5c; includes 98,920 ordered MV2 spillover
           UViGs / 3.909 Gbp); DEC-59, planning/CATALOG_GOAL.md
     approved: under DEC-51 and DEC-71 (card C-62, 2026-11-23; on-pod archive, no network fetch)
+  - name: ena_longread_metagenome_assemblies
+    what: >-
+      Public long-read (PACBIO_SMRT, OXFORD_NANOPORE, hybrid) primary metagenome assemblies from ENA (analysis ERZ*
+      contig FASTAs) and NCBI GenBank WGS (GCA_* via ncbi_ftp_genome), selected and habitat-stratified for ART-RT
+      priority (soil/terrestrial, wastewater/sludge, freshwater/cyanobacterial, marine/sediment, host-associated);
+      card C-56 (DEC-69, DEC-70, DEC-71), tranche LR1
+    url: https://ftp.sra.ebi.ac.uk/vol1/sequence/{erz_prefix}/{analysis_accession}/{file}
+    url_submitted: https://ftp.sra.ebi.ac.uk/vol1/analysis/{erz_prefix}/{analysis_accession}/{file}
+    url_ncbi: https://ftp.ncbi.nlm.nih.gov/genomes/all/{GCA_or_GCF}/{nnn}/{nnn}/{nnn}/{assembly_dir}/{assembly_dir}_genomic.fna.gz
+    checksum: ENA generated_md5 / submitted_md5 verified per assembly on download; our sha256 recorded in fetch_log.jsonl
+    limits: >-
+      one connection; at most 2 requests per second (>= 0.6 s interval); User-Agent curl (no name, email, or project
+      detail); stop after 5 refusals in a row (HTTP 403, 429, 500, 502, 503, 504); temporary /tmp download buffer
+      strictly < 500 MB (files >= 500 MB buffered on /stor/scratch/Wilke/if2453/bio-box-staging/LR1/.tmp_dl/ and
+      unlinked immediately after filtering to >= 5,000 bp)
+    license: >-
+      EMBL-EBI terms of use (https://www.ebi.ac.uk/about/terms-of-use/) and INSDC (public)
+    redistributable: true
+    fetched: >-
+      2026-11-23 to 2026-11-24 UTC on wilkcomp02 by c56_longread_metagenomes.py (1 connection, >= 0.4-0.6 s interval,
+      User-Agent curl): 110 submitter-deposited long-read primary metagenome assemblies (84 NCBI WGS via ncbi_ftp_genome
+      + 26 ENA analysis ERZ via ftp.sra.ebi.ac.uk; 83 ONT, 25 PacBio, 2 PacBio+ONT; 0 EMG re-assemblies; 15 transient
+      ENA connection resets / unreachable records logged in fetch_log.jsonl and retained in LR1_left_for_later.tsv.gz);
+      each ENA file MD5-checked against generated_md5/submitted_md5 and filtered to >= 5,000 bp (DEC-57)
+    staged:
+      - stage: LR1
+        object: /stor/scratch/Wilke/if2453/bio-box-staging/LR1/lr1_longread_ge5kb.fna
+        bytes: 20931498312
+        sha256: 7164e7ed6ff7179ea62df5c39bd9fd99c10664337536867e319d15e8536d2543
+        metadata_dir: >-
+          /tmp/if2453/c56/LR1/ (genomes.json sha256 1b238cb8a06f5e76fdc580fbf9a4268885a6592d9e002e59e11b4fadb0474bbe,
+          objects.json sha256 47d9cc6d55d392af2e6ff1a338b4dbaa8d7764729cd867638ce894aee9400c23,
+          fetch_log.jsonl sha256 0898f1fe6da9b13bf007cd0b12ce01863b5d547e4d5a6c9d575c47205df2e76e;
+          pending B-67 merge + /tmp >= 420 GiB free before moving into /tmp/if2453/s2/inputs/LR1/)
+        rule: >-
+          scripts/stress/build_stage_pod/c56_longread_metagenomes.py (DEC-57, DEC-65, DEC-69, DEC-70, DEC-71):
+          submitter-first deduplication to one best assembly per biosample/run across 61,070 long-read runs, ART-RT
+          habitat stratification (50.3% soil_terrestrial), >= 5,000 bp filter -> 856,719 distinct contigs (20.630 Gbp;
+          24,100 contigs >= 100 kb = 7.014 Gbp), 94 contigs / 25.74 Mbp held by S1..SPX1, V2, PL2, PL3, CG1, MV1 ->
+          856,625 contigs / 20.604 Gbp net new; s2_check_inputs.py LR1 exit 0;
+          planning/measurements/2026-11-23_lr1_longread_metagenomes.md
+        left_for_later: >-
+          /tmp/if2453/c56/LR1/LR1_left_for_later.tsv.gz (940 open-access assemblies, 3.015 Tbp est., 60,636 bytes,
+          sha256 de77d44334d186525c6860c569ed31819d9fc3d49a1d7be589528079ddac0320) and
+          /tmp/if2453/c56/LR1/LR_jgi_batch.tsv.gz (532 JGI-only unrestricted IMG/M long-read assemblies, 257.48 Gbp,
+          18,846 bytes, sha256 02df650bdb58be67d0a0a8e8cd1d5a6b8fc206eaa1915619d3f05d442dfce32a); DEC-59,
+          planning/CATALOG_GOAL.md
+    approved: under DEC-50 (card C-56, 2026-11-23)
