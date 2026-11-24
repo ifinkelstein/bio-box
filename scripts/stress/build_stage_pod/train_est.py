@@ -47,6 +47,40 @@ STOP_ABOVE = 1.50  # DEC-64: a judged step whose reported (three-decimal) ratio 
 CALIBRATION_DEADBAND = 0.15  # Card B-64: within ±15% of current B-54 model, keep factor=1.0 instead of amplifying noise
 GENE_SCALED_STEPS = ("tokens", "postings", "dim", "manifest", "catalog")
 
+# Card B-68: stdlib-only model for shared-index `.cut` (`mmseqs createindex`, 18 threads) fitted across the
+# 5 measured records of r26.11.1, r26.11.2, and r26.11.3 (CPU-min per 10^9 residues at 10M targets).
+CREATEINDEX_T0 = 10_000_000
+CREATEINDEX_GROWTH = 0.48
+CREATEINDEX_RATE_BY_SENS: dict[str, float] = {"2": 11.80, "3": 15.75}
+SHARED_INDEX_PREFILTER_SENS: dict[str, str] = {
+    "cluster.nr50.15.prefilter": "2",
+    "cluster.nr50.19.prefilter": "3",
+}
+
+
+def createindex_cpu_min(residues: int, targets: int, sensitivity: str = "2") -> float:
+    """Estimated CPU-minutes for one shared-index `mmseqs createindex` `.cut` step (card B-68)."""
+    if residues <= 0 or targets <= 0:
+        return 0.0
+    s = str(sensitivity)
+    rate = CREATEINDEX_RATE_BY_SENS.get(s)
+    if rate is None:
+        try:
+            s_val = float(s)
+            rate = CREATEINDEX_RATE_BY_SENS["2"] * (s_val / 2.0) if s_val > 0 else CREATEINDEX_RATE_BY_SENS["2"]
+        except ValueError:
+            rate = CREATEINDEX_RATE_BY_SENS["2"]
+    return rate * 1e-9 * residues * (targets / CREATEINDEX_T0) ** CREATEINDEX_GROWTH
+
+
+def _cut_index_sens(name: str, cut_doc: dict) -> str:
+    """Extract `-s` sensitivity from `<call>.cut.json`'s `index.argv`, falling back by call name."""
+    argv = (cut_doc.get("index") or {}).get("argv") or ()
+    for i, tok in enumerate(argv):
+        if tok == "-s" and i + 1 < len(argv):
+            return str(argv[i + 1])
+    return "3" if ".19." in name else "2"
+
 
 class Accept(NamedTuple):
     """One record class the PI accepted over 20%: a release, a step pattern, the greatest ratio, the decision row."""
@@ -293,12 +327,15 @@ def before(a) -> int:
         rg = genes_all / genes_old
 
         budget = cut.get("part_cpu_min") if a.parts is None else None
+        projected_calls: dict[str, tuple[int, int, int, int]] = {}
         for c in calib["calls"]:
             name = c["call"]
             rows_ = calib["part_rows"][name]
             k_old = len(rows_)
             u_old = sum(x["units"] or 0 for x in rows_)
             t_old = sum(x["keys"] or 0 for x in rows_)
+            u_new = round(u_old * r)
+            t_new = round(t_old * r)
             o_old = c["overhead_estimate"] or 0.0
             p_old = n_old or calib.get("proteins")
             # Card B-64: recompute the earlier release's expected cost under the current B-54 model so a
@@ -308,7 +345,7 @@ def before(a) -> int:
             else:
                 m_old = c["estimate_sum"]
             if n_all and n_old and name in l2.CALL_FIT and u_old > 0:
-                work_new = l2.call_cpu_min(name, n_all, round(u_old * r), targets=round(t_old * r) if t_old else None)
+                work_new = l2.call_cpu_min(name, n_all, u_new, targets=t_new if t_old else None)
                 oh_new = o_old * r
                 if a.parts is not None:
                     k = a.parts
@@ -323,6 +360,7 @@ def before(a) -> int:
             else:
                 k = k_old if a.parts is None else a.parts
                 g = r
+            projected_calls[name] = (u_new, t_new, k, k_old)
             proj = c["measured_sum"] * g
             skew = (c["max_part_cpu_min"] / (c["measured_sum"] / k_old)) if (
                 c["max_part_cpu_min"] and c["measured_sum"] and k_old
@@ -346,16 +384,34 @@ def before(a) -> int:
                 "peak_rss_gb_projected": round((c["max_peak_rss_gb"] or 0) * r, 1),
             })
         for o in calib["others"]:
-            if o["step"] in GENE_SCALED_STEPS:
+            step = o["step"]
+            if step.endswith(".cut"):
+                call_name = step[:-len(".cut")]
+                if call_name in SHARED_INDEX_PREFILTER_SENS and call_name in projected_calls:
+                    u_new, t_new, k_new, k_old = projected_calls[call_name]
+                    if k_new > 1:
+                        steps[step] = round(
+                            createindex_cpu_min(u_new, t_new, SHARED_INDEX_PREFILTER_SENS[call_name]), 3
+                        )
+                    else:
+                        steps[step] = round(o["cpu_min"] * r, 3) if k_old == 1 else 1.0
+                    continue
+            if step in GENE_SCALED_STEPS:
                 scale = rg
-            elif o["step"].endswith(".kmermatcher") and o.get("threads") and a.cpus:
+            elif step.endswith(".kmermatcher") and o.get("threads") and a.cpus:
                 scale = r * (
                     l2.kmermatcher_cpu_min(10_000_000, threads=a.cpus)
                     / l2.kmermatcher_cpu_min(10_000_000, threads=o["threads"])
                 )
             else:
                 scale = r
-            steps[o["step"]] = round(o["cpu_min"] * scale, 3)
+            steps[step] = round(o["cpu_min"] * scale, 3)
+        for call_name, sens in SHARED_INDEX_PREFILTER_SENS.items():
+            cut_step = f"{call_name}.cut"
+            if cut_step not in steps and call_name in projected_calls:
+                u_new, t_new, k_new, _ = projected_calls[call_name]
+                if k_new > 1:
+                    steps[cut_step] = round(createindex_cpu_min(u_new, t_new, sens), 3)
 
     others_total = sum(v for k_, v in steps.items() if k_.startswith("cluster"))
     doc = {
@@ -430,6 +486,15 @@ def check_rates(root: Path, release: str, est_path: Path, *, out_path: Path | No
                 fac = factors.get(call) or 1.0
                 e = parts[int(part)]["cpu_min"] * fac
                 basis = f"cut estimate {parts[int(part)]['cpu_min']:.3f} x factor {fac}"
+        elif name.endswith(".cut"):
+            cut_doc = _load_json(plans / f"{name}.json") or {}
+            parts = cut_doc.get("parts") or ()
+            if ("index" in cut_doc or "index_cpu_min" in cut_doc) and len(parts) > 1:
+                s = _cut_index_sens(name, cut_doc)
+                residues = sum(p.get("units") or 0 for p in parts)
+                targets = sum(p.get("keys") or 0 for p in parts)
+                e = createindex_cpu_min(residues, targets, s)
+                basis = f"cut createindex (-s {s}, {targets:,} targets)"
         elif (plans / f"{name}.cut.json").is_file() and name not in cuts:
             cut = _load_json(plans / f"{name}.cut.json") or {}
             if len(cut.get("parts", [])) == 1:
