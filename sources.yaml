@@ -1368,3 +1368,100 @@ sources:
       2ccaf7a0386157dbba4df0337e5849adfe4378885975c9bd7090ced2551fd623; mirrored on
       tower:/mnt/user/research-bulk/bio-box/sources/O1/); planning/measurements/2026-11-24_o1_refseq_organelles.md
     approved: under DEC-50 (entry written by card C-59 on 2026-11-24 before any fetch)
+  - name: ncbi_prokaryote_assembly_summaries
+    what: >-
+      NCBI RefSeq and GenBank prokaryotic assembly_summary.txt tables (bacteria and archaea, metadata only, no
+      sequence), diffed against GTDB R226 (bac120 + ar53) and GlobDB r226 to identify CheckM-excluded < 1 Mbp
+      genome-reduced endosymbionts (SYM1) and post-R226 standard prokaryote species additions; card C-58 (DEC-69)
+    url: https://ftp.ncbi.nlm.nih.gov/genomes/{db}/{domain}/assembly_summary.txt
+    files:
+      - {file: refseq/bacteria/assembly_summary.txt, bytes: 245781616, last_modified: "2026-11-23T01:38:07Z"}
+      - {file: refseq/archaea/assembly_summary.txt, bytes: 1497905, last_modified: "2026-11-23T01:37:44Z"}
+      - {file: genbank/bacteria/assembly_summary.txt, bytes: 1631746343, last_modified: "2026-11-23T00:56:57Z"}
+      - {file: genbank/archaea/assembly_summary.txt, bytes: 25450321, last_modified: "2026-11-23T00:56:50Z"}
+    checksum: none published; exact Content-Length, Last-Modified, and our sha256 recorded at fetch
+    limits: one connection; at most 2 requests per second; User-Agent curl; stop after 5 refusals in a row
+    license: INSDC (public)
+    redistributable: true
+    fetched: >-
+      2026-11-24 on wilkcomp02 by c58_sags_symbionts_niche.py fetch-tables into /tmp/if2453/c58/tables/ (compressed
+      as .txt.gz): refseq/bacteria 245,781,616 B raw sha256
+      69851b5e09536b778ae9094efd6c43cd52a9aefa3a3132e7fa1c65ffad085e82; refseq/archaea 1,497,905 B raw sha256
+      52e97f905c9a3a0ef628fab36090ca999c67482d7520f74197c47b5bb4098ef5; genbank/bacteria 1,631,746,343 B raw sha256
+      c3623bd1ad56f6b4e1efcc0118eb30bb9db273a9e0a8026b1cfa0ae36e69a1ba; genbank/archaea 25,450,321 B raw sha256
+      111d7a17bf92a4f920819107117602ae854bb0daf9bb9bd5415d86bd60b3ac76 (4,177,635 total rows; 323 SYM1 species reps
+      + 49,640 post-R226 species reps in SYM1_post_r226_left_for_later.tsv.gz sha256
+      0e100f7562cc821a3f38e3a304db193928bf5955d356aaafc022adbd01e53af1)
+    approved: under DEC-50 (entry written by card C-58 on 2026-11-24 before any fetch)
+  - name: ncbi_datasets_c58_symbionts
+    what: >-
+      NCBI RefSeq/GenBank < 1 Mbp genome-reduced endosymbiont and obligate symbiont assemblies absent from GTDB R226
+      and GlobDB r226, fetched via NCBI Datasets v2 (batches of <= 20) or NCBI FTP genomic.fna.gz fallback; card C-58
+      (DEC-69), stage SYM1
+    url: https://api.ncbi.nlm.nih.gov/datasets/v2/genome/accession/{accessions}/download?include_annotation_type=GENOME_FASTA
+    url_ftp: https://ftp.ncbi.nlm.nih.gov/genomes/all/{GCA_or_GCF}/{nnn}/{nnn}/{nnn}/{assembly_dir}/{assembly_dir}_genomic.fna.gz
+    checksum: md5sum.txt inside the Datasets archive or md5checksums.txt on FTP; our sha256 recorded at fetch
+    limits: one connection; at most 2 requests per second; User-Agent curl; stop after 5 refusals in a row
+    license: INSDC (public)
+    redistributable: true
+    fetched: >-
+      2026-11-24 on wilkcomp02 by c58_sags_symbionts_niche.py fetch-sym1: 323 of 323 species representatives served
+      (0 not served; 229,862,011 bp, 2,722 distinct contigs; pyrodigal screened: 192 code 11, 131 code 4)
+    stage_inputs: >-
+      stage SYM1 (/tmp/if2453/s2/inputs/SYM1/, 323 genomes, 2,722 distinct contigs, 229.86 Mbp, 12 contigs held by
+      S1..ECE1 / 15 across S1..GART2; sym1_endosymbionts.fna.gz 68,618,115 B sha256
+      268dcde2ed88421d24c90916c776e5b5746c12860c79a906613009828eef68d7; genomes.json sha256
+      e649e4a45e38b4b24f0ec5438b7e10b4c7dd70faeba1f6e396e0499c21560527; objects.json sha256
+      fbcd27988f602867ba22c7f0daf238c7c59b3dd307a0b70fd44d6597af6d5635; mirrored 8/8 on
+      tower:/mnt/user/research-bulk/bio-box/sources/SYM1/); planning/measurements/2026-11-24_c58_sags_symbionts_niche.md
+    approved: under DEC-50 (entry written by card C-58 on 2026-11-24 before any fetch)
+  - name: gorg_tropics_osf
+    what: >-
+      GORG-Tropics v1 (Pachiadaki et al. 2019, Cell 179:1623-1635, doi:10.1016/j.cell.2019.11.017), 12,715 marine
+      single-amplified genomes (SAGs) nucleotide FASTA and per-SAG metadata table on OSF (pcwj9); card C-58 (DEC-69),
+      stage SAG1
+    url: https://osf.io/download/{osf_id}/
+    record: https://osf.io/pcwj9/ (OSF "Charting the complexity of the marine microbiome through single cell genomics (reference data)"; read 2026-11-24)
+    files:
+      - {file: GORG_v1.fasta.gz, osf_id: mqcj4, bytes: 1441099680, md5: b5c6ac429ed7207b3284b3593cda9a57, sha256: ef097ad1dbc4a8da84cc53a52ba828dea230a82445275732085ea2052bd47910}
+      - {file: GORG_v1.tsv.gz, osf_id: qja57, bytes: 228096346, md5: d7986fc77bf2b8ed9b6eef3348fd7b56, sha256: 299e7189b365203cf245d7b22e99e59bb6a4087d5c795177c41f6da77c22a5d5}
+      - {file: license.txt, osf_id: yef5u, bytes: 19349}
+    not_taken: GORG_v1_NCBI.faa.gz, GORG_v1_CREST.faa.gz, GORG_v1_CREST.fmi, GORG_v1_NCBI.fmi (we call our own genes)
+    checksum: OSF md5 and sha256 values above (read 2026-11-24 from api.osf.io/v2/nodes/pcwj9/)
+    limits: one connection; at most 2 requests per second; User-Agent curl; stop after 5 refusals in a row
+    license: >-
+      CC BY-NC 4.0 (Attribution-NonCommercial 4.0 International, license.txt in OSF pcwj9; read 2026-11-24). The
+      underlying 12,715 SAG assemblies are also deposited in ENA/INSDC under PRJEB33281
+    redistributable: false
+    fetched: >-
+      2026-11-24 on wilkcomp02 into /stor/scratch/Wilke/if2453/bio-box-staging/SAG1/dl/: GORG_v1.fasta.gz and
+      GORG_v1.tsv.gz both matched OSF published SHA-256 checksums byte-for-byte
+    staged:
+      - stage: SAG1
+        object: /stor/scratch/Wilke/if2453/bio-box-staging/SAG1/sag1_gorg.fna.gz
+        bytes: 1503486943
+        sha256: 42b500ab64bd734357935120b2c6eed4815d2864cd227cc2b08e7e928770413e
+        metadata_dir: >-
+          /tmp/if2453/c58/SAG1/ (5,537 SAGs, 236,398 distinct contigs, 4.942 Gbp, 100% code 11, 235,444 contigs /
+          4.924 Gbp net new after S1..GART2; genomes.json sha256
+          9667599059cddfd012bb437fa4ea87bfeeb81d8cb9f4cdeaccf4cc36fea908ad; objects.json sha256
+          e7977369f84893f3419c878226dc20eac3d0d4e48b5d6c6a27993f9de64b2234; s2_check_inputs.py SAG1 problems: [];
+          awaiting /tmp headroom after r26.11.3 before moving into /tmp/if2453/s2/inputs/SAG1/)
+    approved: under DEC-50 (entry written by card C-58 on 2026-11-24 before any fetch)
+  - name: ena_gorg_sag_tables
+    what: >-
+      ENA Portal API assembly metadata tables (TSV, no sequence) for GORG-Tropics (PRJEB33281, 12,715 assemblies) and
+      GORG-Dark (PRJNA1259050, 8,088 assemblies / 9,698 read runs), used for accession-level overlap against GTDB R226,
+      GlobDB r226, and IUIG; card C-58 (DEC-69)
+    url: https://www.ebi.ac.uk/ena/portal/api/search?result=assembly&query=study_accession=%22{bioproject}%22&fields=accession,assembly_name,base_count,scientific_name,tax_id,wgs_set,version&limit=0&format=tsv
+    bioprojects: [PRJEB33281, PRJNA1259050]
+    checksum: none published; row counts checked against ENA count endpoint and our sha256 recorded at fetch
+    limits: one connection; at most 2 requests per second; User-Agent curl; stop after 5 refusals in a row
+    license: EMBL-EBI terms of use (https://www.ebi.ac.uk/about/terms-of-use/) and INSDC (public)
+    redistributable: true
+    fetched: >-
+      2026-11-24 on wilkcomp02 into /tmp/if2453/c58/tables/: ena_PRJEB33281_assemblies.tsv 1,004,200 B sha256
+      dc9761d9c7d0cadd1e00eccfcdc973347f3912ec8ec89cf23a571d439a3f268a (12,715 assemblies, 9,505 novel vs GTDB/GlobDB/IUIG);
+      ena_PRJNA1259050_assemblies.tsv 676,035 B sha256 2866ceed6ef7e86fb6f60df2695713b8006faa04f83132c0b02c41c4ec6fefc2
+      (8,088 assemblies, 8,088 = 100.0% novel vs GTDB/GlobDB/IUIG)
+    approved: under DEC-50 (entry written by card C-58 on 2026-11-24 before any fetch)
