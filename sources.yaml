@@ -186,7 +186,9 @@ sources:
       settings. The README's content above was read through a web page reader, not fetched to the pod
     note: >-
       url_readme corrected by card C-39 on 2026-11-16: the datahub.pnnl.gov form redirects (302) to the site's front
-      page; the same path on data.pnnl.gov serves the README to a page reader, but answers 400 to curl from the pod
+      page; the same path on data.pnnl.gov serves the README to a page reader, but answers 400 to curl from the pod.
+      Re-checked on 2026-11-23 (card C-55, wilkcomp02, HEAD -A curl): archive URL now answers HTTP 200 OK with
+      Content-Length 960593920 bytes (916 MiB); remains unfetched by C-55 (recorded for a follow-up soil-virome stage)
     approved: by the PI on 2026-11-16 ("y to yaml")
   - name: vire_tables
     what: VIRE (EMBL, Fullam et al., NAR 2026, doi:10.1093/nar/gkaf1225) genome metadata of all samples, a table only, no sequence; card C-39 step 6 (what VIRE would add)
@@ -1053,3 +1055,111 @@ sources:
       MGE_tax_table_trim.txt 124470 B sha256 e9695d11cb64b9f692ea1f692a377cf314d4e832438bc4497ae0c1c6ef1d6aee
     stage_inputs: stage MGE1 (/tmp/if2453/s2/inputs/MGE1/parnanen_mges.fna, sha256 eadcee51f64cbdb80f6f572126156bc634af356588b5784a6e0c9bea1b07ca37)
     approved: under DEC-50 (entry written by card C-57 on 2026-11-23 before any fetch)
+  - name: inphared_9aug2025
+    what: >-
+      INPHARED bacteriophage genomes, release 9Aug2025 (Millard Lab S3), gzipped FASTA and metadata table; diffed
+      against S1 (14Apr2025) to capture post-14Apr2025 complete phage additions; card C-55 (DEC-69, DEC-71), stage SAT1
+    url: https://millardlab-inphared.s3.climb.ac.uk/{file}
+    page: https://millardlab.org/bacteriophage-genomics/ (and https://github.com/RyanCook94/inphared; read 2026-11-23)
+    files:
+      - {file: 9Aug2025_genomes.fa.gz, bytes: 684614643, sha256: 7a4503bbad1c0b08807d483f3d92758e7a34ef38330bffd65f69ff99d05d7f59}
+      - {file: 9Aug2025_data.tsv.gz, bytes: 2016642, sha256: 8a25826a724f02f800e3ec531cb6c20e7f30a7cfe72a7b8d973cb53625ea5f4f}
+    checksum: S3 ETag/Content-Length checked via HEAD on 2026-11-23; sha256 recorded at fetch
+    limits: one connection; at most 2 requests per second; User-Agent curl; stop after 5 refusals in a row
+    license: AGPL-3.0 for INPHARED scripts; sequences are INSDC (public)
+    redistributable: true
+    fetched: >-
+      2026-11-23 by card C-55 (c55-fetch-sat1, 0 refusals): 37,563 accessions vs S1 14Apr2025 (34,076) -> 3,487 delta
+      accessions extracted byte-identical into inphared_9aug2025_delta.fna (136,421,319 B, sha256
+      85387694b574660cc90f217111cef2d89b9d30b17ba50db96249f895b2dfa43d); raw 653 MB archive removed from /tmp after staging
+    stage_inputs: >-
+      stage SAT1 (/tmp/if2453/s2/inputs/SAT1/inphared_9aug2025_delta.fna, mirrored on
+      tower:/mnt/user/research-bulk/bio-box/sources/SAT1/); planning/measurements/2026-11-23_c55_sat1_v3_inputs.md
+    approved: under DEC-50 (entry written by card C-55 on 2026-11-23 before any fetch)
+  - name: ncbi_refseq_viral_r238
+    what: >-
+      NCBI RefSeq Viral release 238 (2026-11-13) complete GenBank flatfile (viral.1.genomic.gbff.gz) for extracting
+      DNA-only < 5 kb circular viruses (Cressdnaviricota, Microviridae, other circular DNA viruses), archaeal
+      extremophile viruses, and RefSeq phage satellites with exact LOCUS circularity; card C-55 (DEC-69), stage SAT1
+    url: https://ftp.ncbi.nlm.nih.gov/refseq/release/viral/{file}
+    page: https://ftp.ncbi.nlm.nih.gov/refseq/release/viral/ (read 2026-11-23; RELEASE_NUMBER 238)
+    files:
+      - {file: viral.1.genomic.gbff.gz, bytes: 455828405, sha256: c2a2f2cbc40add4a872c495ce1abdaa8f94f3db17a0cac5907aa8ea4bd4b5d57}
+    checksum: Content-Length checked via HEAD on 2026-11-23; sha256 recorded at fetch
+    limits: one connection; at most 2 requests per second; User-Agent curl; stop after 5 refusals in a row
+    license: INSDC / NCBI RefSeq (public domain)
+    redistributable: true
+    fetched: >-
+      2026-11-23 by card C-55 (c55-fetch-sat1, 0 refusals): extracted 2,457 small_circular_dna (2,269 circular),
+      163 archaeal_virus (63 circular), and 311 phage_satellite (280 circular) DNA-only records byte-identical as
+      deposited; raw 435 MB gbff.gz removed from /tmp after staging
+    stage_inputs: >-
+      stage SAT1 (/tmp/if2453/s2/inputs/SAT1/refseq_*.fna: refseq_small_circular_dna.fna sha256
+      851f97616fd458b9b73268eb0ccbba5730ee242efcb52c4522e29938ae052a0d, refseq_archaeal_virus.fna sha256
+      0f07c7ad96be701ca00e38a62e29409c0cda1c53babb6e8b5bfe4dd50d3519e4, refseq_phage_satellite.fna sha256
+      a46e383df78b423743223ff0a7b193ced910ac43ff10cf0b567d7ccae5f7d63f; mirrored on tower);
+      planning/measurements/2026-11-23_c55_sat1_v3_inputs.md
+    approved: under DEC-50 (entry written by card C-55 on 2026-11-23 before any fetch)
+  - name: ncbi_eutils_c55_delta
+    what: >-
+      NCBI GenBank nuccore records fetched via E-utilities (esearch + esummary + efetch, batches of <= 200) for:
+      (a) post-14Apr2025 complete bacteriophages (incl. jumbo-phage ART control PX530545, 2025/04/14..2026/12/31),
+      (b) curated phage satellites (PICIs, cf-PICIs, SaPIs, PLEs, P4-like satellites),
+      (c) < 5 kb circular DNA viruses (Tisza et al. 2020 PRJNA573942, Microviridae, Cressdnaviricota), and
+      (d) complete archaeal extremophile viruses; card C-55 (DEC-69, DEC-71), stage SAT1
+    url_esearch: https://eutils.ncbi.nlm.nih.gov/entrez/eutils/esearch.fcgi?db=nuccore&term={term}&retmax={retmax}&retstart={retstart}&retmode=json
+    url_esummary: https://eutils.ncbi.nlm.nih.gov/entrez/eutils/esummary.fcgi?db=nuccore&id={ids}&retmode=json
+    url_efetch: https://eutils.ncbi.nlm.nih.gov/entrez/eutils/efetch.fcgi?db=nuccore&id={ids}&rettype=fasta&retmode=text
+    checksum: none published; exact query terms, accession lists, byte sizes, and sha256 recorded at fetch
+    limits: one connection; at most 2 requests per second; User-Agent curl; stop after 5 refusals in a row
+    license: INSDC (public)
+    redistributable: true
+    fetched: >-
+      2026-11-23 by card C-55 (c55-fetch-sat1, 0 refusals): genbank_phage_delta 4,852 records (incl. PX530545.1,
+      374,974,826 B, sha256 f337fb5e90a6207c5e6faa163c8e2326655a84fc94db88269bcf1a03ae1c03b5),
+      genbank_phage_satellites 406 records (4,987,411 B, sha256 134247562bd1b23e813b321ef33b342a741ed2d7ee0fbc5ce69d004ae5bb36f4),
+      genbank_archaeal_viruses 222 records (6,420,253 B, sha256 71ee083ca9898f62f3850cc94614dac1a4f5850e659f4c2db1a4c618d8095111),
+      genbank_tisza_prjna573942 794 records (22,312,560 B, sha256 f98867f2311df768df8f5ce9ef8dd28a8c551cea88308f9b3944cdc77d8dc16c),
+      genbank_microviridae 7,883 records (40,556,175 B, sha256 b1173c751d3caa571ca50126a3bb90584d9c2dd55fbf5243936c56914dcc58d6),
+      genbank_cressdnaviricota_lt5k 26,087 records (62,338,287 B, sha256 50f3fb1af7d63aa73b0c6eae32f021354824b64cee175778bf24c9ac0d48533a)
+    stage_inputs: >-
+      stage SAT1 (card C-55, DEC-69, DEC-71, DEC-65): /tmp/if2453/s2/inputs/SAT1/ (46,662 records, 42,565 distinct
+      genomes/contigs, 627,690,698 bp, 32,496 circular, 30,412 < 5 kb, 37,660 contigs / 572.39 Mbp new after
+      S1..SPX1, V2, PL2, PL3, CG1, MGE1; genomes.json sha256 2ffcb60821b5e667755745c39e23b6f25856cbcd7ed8a28b60a7f3243c86e19c,
+      objects.json sha256 e08b4ef753016c48bd8e56bbbf414ce0c211b507d8dafcfe4b4c4ce6cb44d119; mirrored on
+      tower:/mnt/user/research-bulk/bio-box/sources/SAT1/); planning/measurements/2026-11-23_c55_sat1_v3_inputs.md
+    approved: under DEC-50 (entry written by card C-55 on 2026-11-23 before any fetch)
+  - name: vire_genomes
+    what: >-
+      EMBL VIRE (Fullam et al., NAR 2026, doi:10.1093/nar/gkaf1225) all-samples viral genome sequence archive
+      (all_samples_genomes.tar, 1,784,510 genomes across 101,623 metagenomes; streamed to extract 693,656 non-Riboviria
+      DNA vOTU species representatives onto /stor/scratch/Wilke/if2453/bio-box-staging/V3/); card C-55 (DEC-69), stage V3
+    url: https://swifter.embl.de/~fullam/vire/archives/{file}
+    page: https://spire.embl.de/vire/downloads and https://swifter.embl.de/~fullam/vire/archives/ (read 2026-11-23)
+    files:
+      - {file: all_samples_genomes.tar, bytes: 20650946560, sha256: fa60a3bbb718ce4c3eed38797c3c94dfb3c7b65769914903d67a3f7a132c2eb4}
+    checksum: Content-Length and ETag ("4cee47000-6498948bda800") checked via HEAD on 2026-11-23; stream sha256 recorded at fetch
+    limits: one connection; one streaming request; User-Agent curl; stop after 5 refusals in a row
+    license: CC BY-SA 4.0 (Fullam et al. NAR 2026; ShareAlike)
+    redistributable: true
+    fetched: >-
+      2026-11-23 by card C-55 (c55-stage-v3, 0 refusals): streamed all_samples_genomes.tar (20,650,946,560 B, 93,170
+      members seen, 62,088 read, sha256 fa60a3bbb718ce4c3eed38797c3c94dfb3c7b65769914903d67a3f7a132c2eb4) directly into
+      /stor/scratch/Wilke/if2453/bio-box-staging/V3/vire_v3_dna_votus.fna without storing the 19.2 GiB tar on /tmp
+    staged:
+      - stage: V3
+        object: /stor/scratch/Wilke/if2453/bio-box-staging/V3/vire_v3_dna_votus.fna
+        bytes: 26596538058
+        sha256: b6004f1e811491aca898cda95587073cb82b8e9f824d7f38367b9344d28a7d46
+        metadata_dir: /tmp/if2453/c55/V3/ (genomes.json sha256 9a1b0a11f9580a00d7170cf1308f95e8cd86d37da8ac3151c8db1eec344c3109; objects.json sha256 b727134c2ab6944fe8526eb8dfbe5f942668b3556c91c2307d04d0b6b27eaba1; pending /tmp headroom after r26.11.3 before moving into /tmp/if2453/s2/inputs/V3/)
+        rule: >-
+          scripts/stress/build_stage_pod/c55_vire_small_viruses.py stage-v3 (DEC-65, DEC-69): 1 best representative per
+          non-Riboviria species_cluster (693,741 selected; 691,723 extracted, 2,018 absent from archive; 26,146,357,334 bp;
+          12,719 < 5 kb; 161,727 exact 20..1,000 bp DTRs trimmed by 21,522,990 bp in trims.tsv, 161,727 circular, 2,072
+          partial/low_complexity linear untrimmed; 5,512 contigs held by S1..SPX1, V2, PL2, PL3, CG1, MGE1, MV1;
+          686,211 contigs / 25.947 Gbp new); planning/measurements/2026-11-23_c55_sat1_v3_inputs.md
+        left_for_later: >-
+          /tmp/if2453/c55/V3/V3_left_for_later.tsv.gz (1,090,769 rows, sha256
+          91dbcad2a93951e26365fed436f4ad4f4d5c4729947ab8378689342fe99646df: non-representative DNA genomes plus
+          Riboviria deferred to C-50); DEC-59, planning/CATALOG_GOAL.md
+    approved: under DEC-50 (entry written by card C-55 on 2026-11-23 before any fetch)
