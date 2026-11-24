@@ -1465,3 +1465,213 @@ sources:
       ena_PRJNA1259050_assemblies.tsv 676,035 B sha256 2866ceed6ef7e86fb6f60df2695713b8006faa04f83132c0b02c41c4ec6fefc2
       (8,088 assemblies, 8,088 = 100.0% novel vs GTDB/GlobDB/IUIG)
     approved: under DEC-50 (entry written by card C-58 on 2026-11-24 before any fetch)
+  - name: emerge_stordalen_2019_hifi
+    what: >-
+      EMERGE Stordalen Mire, Sweden (2019) long-read, short-read, and hybrid MAGs (733 MAGs) and metadata table;
+      card C-66 (DEC-69, DEC-71), stage LR2
+    url: https://zenodo.org/api/records/14207415/files/{file}/content
+    record: https://doi.org/10.5281/zenodo.14207415 (Zenodo, published 2024-11-22; read 2026-11-24)
+    files:
+      - {file: metadata_MAGs_2019_EMERGE.tsv, bytes: 704660, md5: 3573f1f6d5d6abd37bdfc61ea6bee355}
+      - {file: EMERGE_MAGs_2019_long-short-hybrid.tar.gz, bytes: 981258523, md5: ea59773052bf49cff0b043b927089eed}
+    checksum: Zenodo md5 values above (read 2026-11-24); our sha256 recorded at fetch
+    limits: one connection; at most 2 requests per second; User-Agent curl; stop after 5 refusals in a row
+    license: CC BY 4.0 (Zenodo record)
+    redistributable: true
+    fetched: >-
+      2026-11-24 on wilkcomp02 (all MD5s matched, 0 refusals): metadata_MAGs_2019_EMERGE.tsv 704,660 B sha256
+      a9469dcb612602ea306779ebca9b0f0c4ee48b206160def087f469c16deaec36; EMERGE_MAGs_2019_long-short-hybrid.tar.gz
+      981,258,523 B sha256 acb77d18cdd949c02422655cd0ed1ac5b1a5557a1db9e6571ab194d22e99a33f (733 MAGs)
+    approved: under DEC-50 (entry written by card C-66 on 2026-11-24 before any fetch)
+  - name: emerge_stordalen_v2_0_1
+    what: >-
+      EMERGE Stordalen Mire, Sweden MAGs v2.0.1 (36,419 permafrost peatland MAGs; metadata-filtered to
+      species-dereplicated novel reps; raw 11-22 TB zenodo.13984630 is never fetched); card C-66 (DEC-69, DEC-71),
+      stage LR2
+    url: https://zenodo.org/api/records/17468704/files/{file}/content
+    record: https://doi.org/10.5281/zenodo.17468704 (Zenodo, version MAGs_v2.0.1, published 2025-10-28; read 2026-11-24)
+    files:
+      - {file: metadata_MAGs_v2_EMERGE.tsv, bytes: 61080286, md5: 40d9603af528c8b78f264ea9f2c2c1ca}
+      - {file: Emerge_MAGs_v2.tar.gz, bytes: 41784272395, md5: caf267d46e1923909ddc1b8c01313599}
+    not_taken: Mapping_trimmed_mean.tsv (3.0 MB mapping table); zenodo.13984630 (11-22 TB raw reads/assemblies)
+    checksum: Zenodo md5 values above (read 2026-11-24); our sha256 recorded at fetch
+    limits: one connection; at most 2 requests per second; User-Agent curl; stop after 5 refusals in a row
+    license: CC BY 4.0 (Zenodo record)
+    redistributable: true
+    fetched: >-
+      2026-11-24 on wilkcomp02: metadata_MAGs_v2_EMERGE.tsv 61,080,286 B md5 matched sha256
+      705744063588af4baea9996a629705cbff318f9b12dddede190c9b19cfbd068a (36,419 rows; 16,099 novel MQ/HQ MAGs
+      absent from GTDB R226/GlobDB r226 recorded in EMERGE_v2_novel_for_LR3.tsv.gz sha256
+      7dbc55a5c8c7a414e9b2398d93b8b2ce4ce02f8843f6478021a03ff049826118; 41.8 GB Emerge_MAGs_v2.tar.gz deferred to LR3)
+    approved: under DEC-50 (entry written by card C-66 on 2026-11-24 before any fetch)
+  - name: singleton_2021_wwtp_ont
+    what: >-
+      Singleton et al. 2021 Danish WWTP ONT long-read activated-sludge MAGs (3,733 HQ and MQ MAGs incl. 1,083 HQ/cMAGs
+      from 23 Danish WWTPs); card C-66 (DEC-69, DEC-71), stage LR2
+    url: https://ndownloader.figshare.com/files/22534313
+    record: https://doi.org/10.6084/m9.figshare.12234704.v1 (collection https://doi.org/10.6084/m9.figshare.c.5277035.v1; read 2026-11-24)
+    files:
+      - {file: MQ_HQ_MAGs_20200502.tar.gz, bytes: 4559302199, md5: 1c9ded4bb40cecff87d816f109c2ece1}
+    not_taken: FISH_TIFF_images.zip (figshare 13317614, microscopy images)
+    checksum: Figshare computed_md5 above (read 2026-11-24); our sha256 recorded at fetch
+    limits: one connection; at most 2 requests per second; User-Agent curl; stop after 5 refusals in a row
+    license: CC BY 4.0 (Figshare record)
+    redistributable: true
+    fetched: >-
+      2026-11-24 on wilkcomp02 (MD5 matched, 0 refusals): MQ_HQ_MAGs_20200502.tar.gz 4,559,302,199 B sha256
+      0837e3805ab3aa28f44810c0197f474021eeed4d881de4f691994521635e7103 (3,733 ONT HQ/MQ MAGs)
+    approved: under DEC-50 (entry written by card C-66 on 2026-11-24 before any fetch)
+  - name: bickhart_2022_rumen_hifi
+    what: >-
+      Bickhart et al. 2022 sheep rumen PacBio HiFi cMAGs/bins and full metaFlye HiFi assembly (retaining unbinned
+      >= 5 kb HiFi contigs for phages/plasmids/DGRs); card C-66 (DEC-69, DEC-71), stage LR2
+    url: https://zenodo.org/api/records/5138306/files/{file}/content
+    record: https://doi.org/10.5281/zenodo.5138306 (concept zenodo.4729049, version 1.1, published 2021-05-03; read 2026-11-24)
+    files:
+      - {file: hifi_das.bin3c.bins.tar.gz, bytes: 608073174, md5: 9690202acb27e615b6ea247750a6cb28}
+      - {file: metaflye_hifi_asm.tar.gz, bytes: 3006400747, md5: 83f1e97fa089025228eea5c2389466e9}
+      - {file: hifi_total_mag_taxonomy.xlsx, bytes: 28491, md5: 2c77bb62c4f0eb0eb52684c3a4ea6130}
+    not_taken: clr1..3 assemblies/bins, rna_analysis.tar.gz, magphase_results.tar.gz, hifi_illumina_sub_reads.krona.html
+    checksum: Zenodo md5 values above (read 2026-11-24); our sha256 recorded at fetch
+    limits: one connection; at most 2 requests per second; User-Agent curl; stop after 5 refusals in a row
+    license: CC BY 4.0 (Zenodo record)
+    redistributable: true
+    fetched: >-
+      2026-11-24 on wilkcomp02 (all MD5s matched, 0 refusals): hifi_das.bin3c.bins.tar.gz 608,073,174 B sha256
+      bb82982f2caf51e26d2ffc17c85be658918d7c512ce66c1438ca53f4af1c25d8; metaflye_hifi_asm.tar.gz 3,006,400,747 B
+      sha256 8d4248776320ba6c3ebba5a488952b99e19dcaaf2787c255e5d9563da8471f15; hifi_total_mag_taxonomy.xlsx 28,491 B
+      sha256 062713d450f8ea85286bc22d0e450de8c5af7b760cd1977e8d8a098618db8c5b
+    staged:
+      - stage: LR2
+        object: /stor/scratch/Wilke/if2453/bio-box-staging/LR2/lr2_compendia.fna.gz
+        bytes: 6329546501
+        sha256: 89dba3ba4098796fd3042b132089b9ea5393949d48dc7bf2783912e0b1eef377
+        metadata_dir: >-
+          /tmp/if2453/c66/LR2/ (49,205 genomes: 5,108 MAGs [EMERGE 2019 733, Singleton 2021 WWTP ONT 3,733,
+          Bickhart 2022 Rumen HiFi 642] + 44,097 Bickhart unbinned >= 5 kb HiFi contigs; 555,301 distinct contigs,
+          21.672 Gbp, 1,863 circular with 20 DEC-65 DTR trims, 49,170 code 11 / 35 code 25, 59 contigs held by
+          S1..SAG1+NX1 -> 555,242 contigs / 21.549 Gbp = 99.43% net new; genomes.json sha256
+          22d9f1fe2e07ff0756f34806fed450f6592d9bea9f80b49eceb54066f2143061; objects.json sha256
+          fbe792620f011a9a7a6f842e5fe165946d2055a2b45dc0387e3eb4c516e9b3a8; s2_check_inputs.py LR2 problems: [];
+          awaiting /tmp headroom after r26.11.3 before moving into /tmp/if2453/s2/inputs/LR2/)
+    approved: under DEC-50 (entry written by card C-66 on 2026-11-24 before any fetch)
+  - name: microflora_danica_mags
+    what: >-
+      Microflora Danica (MFD) Danish soil/sludge/aquatic MAGs (zenodo.17162544 MFD.ilm_mag.tar.gz; zenodo.10695834
+      was unregistered 404 on 2026-11-24); card C-66 (DEC-69, DEC-71), stage LR2
+    url: https://zenodo.org/api/records/17162544/files/{file}/content
+    record: https://doi.org/10.5281/zenodo.17162544 (concept doi:10.5281/zenodo.12605768, published 2025-09-19; read 2026-11-24)
+    files:
+      - {file: MFD.ilm_mag.tar.gz, bytes: 19842326855, md5: a98d7a134236dccace45186792f14639}
+    not_taken: MFD.ilm_asm.tar.gz_partx00..09 (99 GB short-read contigs), 16S/18S tables, SingleM, reads
+    checksum: Zenodo md5 value above (read 2026-11-24); our sha256 recorded at fetch
+    limits: one connection; at most 2 requests per second; User-Agent curl; stop after 5 refusals in a row
+    license: CC BY 4.0 (Zenodo record)
+    redistributable: true
+    fetched: deferred to LR3 (19.8 GB archive verified on Zenodo 17162544; ENA PRJEB58634 MFD-LR 15,645 assemblies also indexed)
+    approved: under DEC-50 (entry written by card C-66 on 2026-11-24 before any fetch)
+  - name: ehomd_v11_03_genomes
+    what: >-
+      Expanded Human Oral Microbiome Database (eHOMD) v11.03 BAKTA genome metadata table (8,177 oral genomes/MAGs)
+      and per-genome nucleotide FASTA files for genomes absent from GTDB R226 and GlobDB r226; card C-66 (DEC-69,
+      DEC-71), stage NX1
+    url: https://www.homd.org/ftp/genomes/BAKTA/V11.03/{path}
+    page: https://www.homd.org/ftp/genomes/BAKTA/V11.03/ (read 2026-11-24)
+    files:
+      - {file: GCA_ID_info.txt}
+      - {file: "fna/{gca_id}.fna (for GCA_IDs absent from GTDB R226 and GlobDB r226)"}
+    checksum: none published; exact byte counts and our sha256 recorded at fetch
+    limits: one connection; at most 2 requests per second; User-Agent curl; stop after 5 refusals in a row
+    license: INSDC / eHOMD public reference genomes (NCBI GenBank GCA_ records)
+    redistributable: true
+    fetched: >-
+      2026-11-24 on wilkcomp02: GCA_ID_info.txt 1,376,261 B sha256
+      6a3fec6350909d3de39819eb06e3509d9ddeec8339374b3956e61d27f5c08fde (8,177 rows; 8,151 already in GTDB R226 /
+      GlobDB r226; 26 novel genomes fetched 26/26 via homd.org + NCBI Datasets v2 -> 20 after skani 96% ANI dedup
+      staged in NX1)
+    approved: under DEC-50 (entry written by card C-66 on 2026-11-24 before any fetch)
+  - name: lost_city_serpentinizing_mags
+    what: >-
+      Brazelton et al. 2022 Lost City Hydrothermal Field serpentinizing subsurface fluid MAGs (v1.2); card C-66
+      (DEC-69, DEC-71), stage NX1
+    url: https://zenodo.org/api/records/7004675/files/{file}/content
+    record: https://doi.org/10.5281/zenodo.7004675 (concept zenodo.5798015, version v1.2, published 2022-08-17; read 2026-11-24)
+    files:
+      - {file: Brazelton-Lab/Brazelton-2022-Lost-City-fluids-MAGs-v1.2.zip, bytes: 108269292, md5: 74b86fa0698e0571f77bac9484c9eafc}
+    checksum: Zenodo md5 value above (read 2026-11-24); our sha256 recorded at fetch
+    limits: one connection; at most 2 requests per second; User-Agent curl; stop after 5 refusals in a row
+    license: other-open (Zenodo record / GitHub Brazelton-Lab)
+    redistributable: true
+    fetched: >-
+      2026-11-24 on wilkcomp02 (MD5 matched, 0 refusals): Brazelton-2022-Lost-City-fluids-MAGs-v1.2.zip 108,269,292 B
+      sha256 1e6a437b8563f140f54ec1da9efdf99ae2b3d1d32ee1272921854996638405d9 (32 MAGs staged in NX1)
+    approved: under DEC-50 (entry written by card C-66 on 2026-11-24 before any fetch)
+  - name: polar_cyanobacteria_mats_mags
+    what: >-
+      Polar cyanobacteria MAGs from Arctic and Antarctic microbial mats (37 MAGs, 17 species; figshare.21932371
+      returned 404 EntityNotFound on 2026-11-24); card C-66 (DEC-69, DEC-71), stage NX1
+    url: https://ndownloader.figshare.com/files/39054878
+    record: https://doi.org/10.6084/m9.figshare.22003967.v1 (published 2023-02-03; read 2026-11-24)
+    files:
+      - {file: polar-cyanobacteria-MAGs.tar.gz, bytes: 42459494, md5: 48b5cd268993c4de42923b2786fb61f2}
+    checksum: Figshare computed_md5 above (read 2026-11-24); our sha256 recorded at fetch
+    limits: one connection; at most 2 requests per second; User-Agent curl; stop after 5 refusals in a row
+    license: CC BY 4.0 (Figshare record)
+    redistributable: true
+    fetched: >-
+      2026-11-24 on wilkcomp02 (MD5 matched, 0 refusals): polar-cyanobacteria-MAGs.tar.gz 42,459,494 B sha256
+      b77d65bcc916744cd89c2e086b947e31c79e7ffe72ec73cd493acac29d4faf5a (37 MAGs -> 20 after skani 96% ANI dedup
+      staged in NX1)
+    approved: under DEC-50 (entry written by card C-66 on 2026-11-24 before any fetch)
+  - name: rhizosphere_colombia_mags
+    what: >-
+      Genome-resolved metagenomics of rice straw degradation in Colombian fields (HQ and MQ rhizosphere/soil MAGs
+      and metadata, v1.2); card C-66 (DEC-69, DEC-71), stage NX1
+    url: https://zenodo.org/api/records/16947911/files/{file}/content
+    record: https://doi.org/10.5281/zenodo.16947911 (Zenodo, version v1.2, published 2025-08-26; read 2026-11-24)
+    files:
+      - {file: HQ_MAGs.tar.gz, bytes: 72467595, md5: aec92f18f40c7fa5172a78af6a7be39f}
+      - {file: MQ_MAGs.tar.gz, bytes: 104038041, md5: 75a86faa1e81808965d517122029192c}
+      - {file: metadata.tar.gz, bytes: 9599613, md5: 77f396b8b237f39f6a30292e29795550}
+    not_taken: outputs_software.tar.gz (3.13 GB), R_reproduc.tar.gz, mock_community.tar.gz, scripts.tar.gz, iTOL.tar.gz
+    checksum: Zenodo md5 values above (read 2026-11-24); our sha256 recorded at fetch
+    limits: one connection; at most 2 requests per second; User-Agent curl; stop after 5 refusals in a row
+    license: CC BY 4.0 (Zenodo record)
+    redistributable: true
+    fetched: >-
+      2026-11-24 on wilkcomp02 (all MD5s matched, 0 refusals): HQ_MAGs.tar.gz 72,467,595 B sha256
+      a1d48c834769372a10ad9ec90ab95b472f1d53ae8eb56c4c7b52284c4695ef5e (54 HQ MAGs); MQ_MAGs.tar.gz 104,038,041 B
+      sha256 5de95eb4b8f34d04ed0438aa02193ba167d436db2bbda42d020975e70dbcc704 (92 MQ MAGs); metadata.tar.gz 9,599,613 B
+      sha256 2322ecc0f6a4582ff789e7bfc51f82a130728c353cddd27c9be042d4c9364f2a (146 MAGs staged in NX1)
+    approved: under DEC-50 (entry written by card C-66 on 2026-11-24 before any fetch)
+  - name: ena_c66_nx1_holobiont_subsurface
+    what: >-
+      ENA/NCBI assembly metadata and nucleotide FASTAs (via NCBI Datasets v2) for Tagirdzhanova et al. 2024 global
+      lichen MAGs (PRJEB77567, 1,000 assemblies; figshare.27054937 holds only trees/scripts) and Samail Ophiolite
+      serpentinizing subsurface MAGs (PRJNA930444, PRJNA738530, 27 assemblies; zenodo.8108239 is an unrelated PDF),
+      filtered to assemblies absent from GTDB R226 and GlobDB r226; card C-66 (DEC-69, DEC-71), stage NX1
+    url: https://www.ebi.ac.uk/ena/portal/api/search?result=assembly&query=study_accession=%22{bioproject}%22&fields=accession,assembly_name,base_count,scientific_name,tax_id,wgs_set,version&limit=0&format=tsv
+    url_datasets: https://api.ncbi.nlm.nih.gov/datasets/v2/genome/accession/{accessions}/download?include_annotation_type=GENOME_FASTA
+    bioprojects: [PRJEB77567, PRJNA930444, PRJNA738530]
+    checksum: md5sum.txt inside each NCBI Datasets archive; our sha256 recorded at fetch
+    limits: one connection; at most 2 requests per second; User-Agent curl; stop after 5 refusals in a row
+    license: INSDC (public)
+    redistributable: true
+    fetched: >-
+      2026-11-24 on wilkcomp02 (0 refusals): ena_PRJEB77567.tsv 103,360 B sha256
+      fe3b1710347cff8de096752f69b9d5bd9bd773eff55c9ec1198ea14772babbc8 (1,000 novel vs GTDB/GlobDB -> 675 prokaryotic
+      fetched 675/675, 325 eukaryotic fungal/algal deferred to C-60); ena_PRJNA930444.tsv 1,039 B sha256
+      b0acc9eec2c02df49ae2aab328c1c909734cf9c0c521db271e4ffc0a9b3a500d (6/13 novel fetched 6/6); ena_PRJNA738530.tsv
+      1,306 B sha256 a85e83e0b982c3637f2465aba99ae462bf03dcb30539b30a6cffd4f4dab08c8d (0/14 novel)
+    staged:
+      - stage: NX1
+        object: /stor/scratch/Wilke/if2453/bio-box-staging/NX1/nx1_compendia.fna.gz
+        bytes: 1041939827
+        sha256: 9da4516e264df7125a845848658915706e7079f04bf01b2fdd7ec1bbb17e3863
+        metadata_dir: >-
+          /tmp/if2453/c66/NX1/ (896 distinct MAGs after 26 skani 96% ANI dedup, 391,103 distinct contigs, 3.398 Gbp,
+          889 code 11 / 6 code 25 / 1 code 4, 5 contigs held by S1..SAG1 -> 391,098 contigs / 3.398 Gbp = 99.999% net
+          new; genomes.json sha256 2ea62f7c05baccc7f685e25be9557f21e68a6cb0740e5186132970589176895a; objects.json sha256
+          d808af5f52d1b11d03194dee0dac911041243caa2b44b7ceeabba8e8a595f172; s2_check_inputs.py NX1 problems: [];
+          awaiting /tmp headroom after r26.11.3 before moving into /tmp/if2453/s2/inputs/NX1/)
+    approved: under DEC-50 (entry written by card C-66 on 2026-11-24 before any fetch)
