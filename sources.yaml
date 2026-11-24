@@ -1211,3 +1211,105 @@ sources:
           18,846 bytes, sha256 02df650bdb58be67d0a0a8e8cd1d5a6b8fc206eaa1915619d3f05d442dfce32a); DEC-59,
           planning/CATALOG_GOAL.md
     approved: under DEC-50 (card C-56, 2026-11-23)
+  - name: ncbi_eutils_c65_ece1
+    what: >-
+      NCBI GenBank/RefSeq nuccore records fetched via E-utilities (esearch + esummary + efetch, batches of <= 200) for
+      stage ECE1: (a) archaeal Methanoperedens Borg/mini-Borg ECEs (PRJNA850006, Methanoperedens plasmids, and archaeal
+      extrachromosomal elements), (b) Actinomycetia linear plasmids and megaplasmids (PRJNA747871 699 plasmids, all
+      complete linear Actinomycetota plasmids >= 10 kb, and bacterial linear plasmids >= 5 kb), and (c) curated
+      phage-plasmids (accessions from EpfeiferNutri/Phage-plasmids tyPPing tables plus nuccore phage-plasmid records)
+      and complete bacterial megaplasmids >= 100 kb; card C-65 (DEC-69, DEC-71), stage ECE1
+    url_esearch: https://eutils.ncbi.nlm.nih.gov/entrez/eutils/esearch.fcgi?db=nuccore&term={term}&retmax={retmax}&retstart={retstart}&retmode=json
+    url_esummary: https://eutils.ncbi.nlm.nih.gov/entrez/eutils/esummary.fcgi?db=nuccore&id={ids}&retmode=json
+    url_efetch: https://eutils.ncbi.nlm.nih.gov/entrez/eutils/efetch.fcgi?db=nuccore&id={ids}&rettype=fasta&retmode=text
+    checksum: none published; exact query terms, accession lists, byte sizes, and sha256 recorded at fetch
+    limits: one connection; at most 2 requests per second; User-Agent curl; stop after 5 refusals in a row
+    license: INSDC (public)
+    redistributable: true
+    fetched: >-
+      2026-11-24 by card C-65 (c65-fetch / c65-fetch2, 0 refusals):
+      ncbi_archaeal_borgs_eces.fna 4,132,068 B sha256 4271ccd5e3f09b935150ceed76c0449b4ffbccb6cb2df02c7166db554ff6cf6b (44 records);
+      prjna747871_actinomycetia_plasmids.fna 176,608,933 B sha256 1ce8a1398850c1b80e04232dd38440c254615a82af668333b248ecf927b25221 (699 records);
+      ncbi_actinomycetota_linear_plasmids.fna 402,237,958 B sha256 56b6244c05a6a11272eaef8c224ed34c1d13147823677280cea1e4b34dc585af (1,403 records);
+      pfeifer_phage_plasmids.fna 118,169,062 B sha256 681d3647892d9ba66d45bb499bc853db4e792aacf5704cede67dcd39159f8485 (1,310 records);
+      ncbi_bacterial_megaplasmids.fna 80,950,489 B sha256 e6987d563824d6efddda51310920a455fe5ad5a0c92e716309c3ea1a129d39c0 (65 records)
+    stage_inputs: >-
+      stage ECE1 (/tmp/if2453/s2/inputs/ECE1/, 13,780 distinct genomes/contigs, 1,359,615,708 bp, 2,739 contigs /
+      82.80 Mbp new after S1..SPX1, V2, PL2, PL3, CG1, MGE1, SAT1; genomes.json sha256
+      0f8cd5ca29ab8be69f72472467cafa52e65a935cfece84a41314c92a49048a29, objects.json sha256
+      21517e7f54f594c14ff74f7d9b25d3699e2cc8e4c3515c1f66d8d7e7c0a10830; mirrored on
+      tower:/mnt/user/research-bulk/bio-box/sources/ECE1/); planning/measurements/2026-11-24_ece1_inputs.md
+    approved: under DEC-50 (entry written by card C-65 on 2026-11-24 before any fetch)
+  - name: ncbi_datasets_c65_borg_hosts
+    what: >-
+      NCBI BioProject PRJNA866293 (Al-Shayeb et al. 2022, Nature 610:310-316) 13 Candidatus Methanoperedens / Borg
+      genome assemblies (GCA_027460385.1..GCA_027460615.1) via NCBI Datasets API; card C-65 (DEC-69, DEC-71), stage ECE1
+    url: https://api.ncbi.nlm.nih.gov/datasets/v2/genome/accession/{accessions}/download?include_annotation_type=GENOME_FASTA
+    checksum: md5sum.txt inside the returned archive; our sha256 recorded at fetch
+    limits: one connection; at most 2 requests per second; User-Agent curl; stop after 5 refusals in a row
+    license: INSDC (public)
+    redistributable: true
+    fetched: >-
+      2026-11-24 by card C-65 (c65-fetch, 0 refusals): prjna866293_datasets.zip 8,681,809 B, sha256
+      1ebf264d68406ab93add17c13522ce66e7602c6786bc6b3e9cbed6b09a6f9bd1 (2,547 records, 28,826,643 bp)
+    stage_inputs: stage ECE1 (/tmp/if2453/s2/inputs/ECE1/prjna866293_borgs.fna.gz, sha256 3f70dbef6b8de72af74a5578a492a2a58605553a831c11f2e741cd9a1d2d4440)
+    approved: under DEC-50 (entry written by card C-65 on 2026-11-24 before any fetch)
+  - name: zenodo_7816421_bgc_plasmids
+    what: >-
+      Global map of specialized metabolites encoded in prokaryotic plasmids (Zenodo 10.5281/zenodo.7816421): curated
+      prokaryotic plasmid FASTA collection enriched in Actinomycetia linear plasmids and megaplasmids; card C-65
+      (DEC-69, DEC-71), stage ECE1
+    url: https://zenodo.org/api/records/7816421/files/{file}/content
+    record: https://doi.org/10.5281/zenodo.7816421 (read 2026-11-24)
+    files:
+      - {file: plasmid_fasta_final_filtered.zip, bytes: 283200642, md5: e129115952c84b8a368857f954441791}
+    not_taken: BGCs_antismash.zip (44.6 MB, annotations), bigscape_output.zip (150.5 MB, clustering)
+    checksum: Zenodo md5 above (read 2026-11-24); our sha256 recorded at fetch
+    limits: one connection; at most 2 requests per second; User-Agent curl; stop after 5 refusals in a row
+    license: CC BY 4.0 (Zenodo record)
+    redistributable: true
+    fetched: >-
+      2026-11-24 by card C-65 (c65-fetch, md5 matched, 0 refusals): plasmid_fasta_final_filtered.zip 283,200,642 B,
+      sha256 6d1fa923c33f0073a68ebe1e03f22e6ceccbd2f96c1069c78234b8514069a785 (9,183 records, 917,405,881 bp)
+    stage_inputs: stage ECE1 (/tmp/if2453/s2/inputs/ECE1/zenodo_7816421_bgc_plasmids.fna.gz, sha256 fe73c92bad68846b2137ea073d5a198e103cf7d98e84aa06827432b6c5a30a83)
+    approved: under DEC-50 (entry written by card C-65 on 2026-11-24 before any fetch)
+  - name: pfeifer_phage_plasmids_github
+    what: >-
+      Pfeifer and Rocha curated phage-plasmid prediction tables (tyPPing; EpfeiferNutri/Phage-plasmids on GitHub,
+      pinned commit fb10c7fe5ba82da7faed0a2c0387f4e689f043f7): RefSeq/GenBank phage-plasmid accession lists used to
+      fetch complete phage-plasmid sequences via ncbi_eutils_c65_ece1; card C-65 (DEC-69, DEC-71), stage ECE1
+    url: https://raw.githubusercontent.com/EpfeiferNutri/Phage-plasmids/fb10c7fe5ba82da7faed0a2c0387f4e689f043f7/Publication_related_data/Supplementary_data/{file}
+    page: https://github.com/EpfeiferNutri/Phage-plasmids (commit fb10c7fe5ba82da7faed0a2c0387f4e689f043f7; read 2026-11-24)
+    files:
+      - {file: Final_prediction_table_0523_by_tyPPing.tsv, bytes: 105792}
+      - {file: Final_prediction_table_0321_by_tyPPing.tsv, bytes: 55940}
+    checksum: pinned by Git commit SHA fb10c7fe5ba82da7faed0a2c0387f4e689f043f7; our sha256 recorded at fetch
+    limits: one connection; at most 2 requests per second; User-Agent curl; stop after 5 refusals in a row
+    license: MIT (GitHub repository LICENSE); referenced sequences are INSDC (public)
+    redistributable: true
+    fetched: >-
+      2026-11-24 by card C-65 (c65-fetch, 0 refusals): Final_prediction_table_0523_by_tyPPing.tsv 105,792 B sha256
+      ac85cb9300da26793922da9088f8eae3e2131b14ac2ba76697ac65cdd70d1e48; Final_prediction_table_0321_by_tyPPing.tsv
+      55,940 B sha256 737c1924d31ad43baa6341b7cc6de36b2bf1202d38f2a4e52ae21a91b8fdc6fd
+    stage_inputs: stage ECE1 (/tmp/if2453/s2/inputs/ECE1/pfeifer_phage_plasmids.fna.gz, sha256 30e70c47cfb0eae4c102e016e84d9977694823263b1c1847be3d1225d40a9d36)
+    approved: under DEC-50 (entry written by card C-65 on 2026-11-24 before any fetch)
+  - name: pfeifer_phage_plasmids_zenodo
+    what: >-
+      Efficient detection and typing of phage-plasmids (Pfeifer and Rocha, Zenodo 10.5281/zenodo.16616313): complete
+      phage-plasmid assemblies archive (PPs_complete_assemblies.zip); card C-65 (DEC-69, DEC-71), stage ECE1
+    url: https://zenodo.org/api/records/16616313/files/{file}/content
+    record: https://doi.org/10.5281/zenodo.16616313 (read 2026-11-24)
+    files:
+      - {file: PPs_complete_assemblies.zip, bytes: 294470, md5: 0bba2fa3fcd214c36b9e7ba02c2cc0e5}
+    not_taken: >-
+      draft_genomes_analysis.zip, g2g_plot_tables.zip, tyPPing_signature_profiles.hmm, tyPPing_criteria_tables.zip,
+      models.zip, phage.hmm, Draft_genomes_long_reads.zip, Reads_PPs_MMC_induction.zip (HMMs/reads/tables)
+    checksum: Zenodo md5 above (read 2026-11-24); our sha256 recorded at fetch
+    limits: one connection; at most 2 requests per second; User-Agent curl; stop after 5 refusals in a row
+    license: CC BY 4.0 (Zenodo record)
+    redistributable: true
+    fetched: >-
+      2026-11-24 by card C-65 (c65-fetch2, md5 matched, 0 refusals): PPs_complete_assemblies.zip 294,470 B, sha256
+      0b9ba14de5479e9bd83adfaf25d469161f683ee6d4f2af3f62af97af4d31aff9 (11 records, 928,969 bp)
+    stage_inputs: stage ECE1 (/tmp/if2453/s2/inputs/ECE1/pfeifer_complete_assemblies.fna.gz, sha256 36b5f112bef5be0bd4b51698dc6929c706ac2963c424f6f576189ecac30005a6)
+    approved: under DEC-50 (entry written by card C-65 on 2026-11-24 before any fetch)
