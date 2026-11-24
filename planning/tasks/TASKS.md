@@ -787,7 +787,7 @@ Done 2026-11-19 (STATUS row C-38b): `catalog.annotated_stages_by_library`, `doma
 
 ### C-38c Linclust alone against our cascade, on `r26.11.1`'s proteins
 **M** · Pod: yes (read-only on the data root; scratch only; at most 16 threads, under the hour's cap) · Depends: C-35 (`r26.11.1` built) · Design: `planning/design/C-38_import_depths.md` §4.2, §4.3
-Files: `scripts/stress/c38c_*` (new), one measurement note with its directory
+Files: `scripts/stress/c38c_*` (new), `tests/r1/test_c38c_linclust_vs_cascade.py` (new), one measurement note with its directory
 Do: (1) In scratch, cluster `r26.11.1`'s distinct proteins with the linclust calls of `l2/cluster.workflow`'s redundancy phase alone, at NR90 and at NR50 over the NR90 representatives, with the release's parameters, in parts under the 300 CPU-minute budget (card B-41's cut). (2) Report against the release's clusters: clusters and singletons per level; for each cascade NR50 cluster, how many linclust clusters its members fall in; members the cascade joined and linclust did not, by identity band; CPU-minutes and peak RSS per call, against N19 and N20 of the design note; the memory per protein. (3) Run the two worked examples' neighbour summaries (`examples/`, the TniQ and RNA polymerase searches) at NR50 with each clustering and report what changes in their tables. (4) From (2), the CPU and memory at 350 million and at 1 billion proteins, labelled as extrapolations.
 Accept: the note; the 20% rule of AGENTS §6 applied to N19 and N20.
 
