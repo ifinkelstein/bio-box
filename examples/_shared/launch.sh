@@ -8,18 +8,37 @@
 # (the caller's scratch directory; `bb` writes OUT/logs/NAME.log and NAME.launch), TREE, PROFILE, IMAGE, DIGEST,
 # THREADS (threads of one launch), MEM (pod_run.sh --mem), BIND (the directory bound read-write into the image,
 # holding TREE, OUT, the pack directory and the image), UNIT (unit name prefix), CAP (optional: the account's thread
-# cap; default 40 Mon-Fri 08:00-20:00, else 56; AGENTS 7.2), PFAM_DIR (optional: a directory bound read-only into
-# `tool`, the Pfam file's) and ME (the name in messages; default run.sh). Nothing here writes under ROOT.
+# cap; default 40 Mon-Fri 08:00-20:00, else 80 when no other login user uses > 0.5 CPUs; AGENTS 7.2, DEC-74, C-28),
+# PFAM_DIR (optional: a directory bound read-only into `tool`, the Pfam file's) and ME (the name in messages; default
+# run.sh). Nothing here writes under ROOT.
 
 die() { echo "${ME:-run.sh}: $*" >&2; exit 2; }
 note() { echo "${ME:-run.sh}: $(date '+%F %T') $*" >&2; }  # stderr: stdout of `tool` may be an output file
 
-cap() {  # the account's thread cap of this hour (AGENTS 7.2)
+others_busy() {  # 0 (true) if other login users (uid > 999, != self) use > 0.5 CPUs (> 50% CPU) or ps fails (C-28)
+  local my_uid=${LAUNCH_UID:-$(id -u)} ps_out
+  if [ -n "${LAUNCH_PS_OUT+x}" ]; then
+    ps_out=$LAUNCH_PS_OUT
+  else
+    ps_out=$(ps -eo uid=,pcpu= 2>/dev/null) || return 0
+  fi
+  awk -v me="$my_uid" '
+    NF >= 2 && $1 ~ /^[0-9]+$/ && $1 + 0 > 999 && $1 + 0 != me + 0 { s += $2 + 0 }
+    END { exit (s > 50.0 ? 0 : 1) }
+  ' <<< "$ps_out"
+}
+
+cap() {  # the account's thread cap of this hour (AGENTS 7.2, DEC-74, C-28)
   if [ -n "${CAP:-}" ]; then echo "$CAP"; return; fi
-  local h d
-  h=$(date +%-H)
-  d=$(date +%u)
-  if [ "$d" -le 5 ] && [ "$h" -ge 8 ] && [ "$h" -lt 20 ]; then echo 40; else echo 56; fi
+  local h=${LAUNCH_HOUR:-$(date +%-H)}
+  local d=${LAUNCH_DOW:-$(date +%u)}
+  if [ "$d" -le 5 ] && [ "$h" -ge 8 ] && [ "$h" -lt 20 ]; then
+    echo 40
+  elif others_busy; then
+    echo 40
+  else
+    echo 80
+  fi
 }
 
 room() {  # wait until this account's CPU (ps %CPU, summed) plus THREADS fits under the cap

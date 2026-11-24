@@ -386,3 +386,252 @@ def test_train_check_writes_root_added_and_announcement(tmp_path):
     rc_bad = tc.run_check(root=root, before=before, after=after_bad, release="r26.11.2", stages=["S0", "S1"],
                           earlier="r26.11.1", out=tmp_path / "out_bad")
     assert rc_bad == 1
+
+
+# --- Card A-25: post-manifest parallelism (DEC-75, DEC-73, DEC-74, C-28) ------------------------------------
+
+
+def _a25_make_train_world(tmp_path: Path, *, mem_scope: str = "750G", max_day: int = 40,
+                          max_night: int = 80, live_allowance: str | None = None) -> tuple[Path, Path, Path, dict[str, str]]:
+    """Isolated stubbed release_train.sh environment capturing pod_run.sh and release_examples.sh args/env."""
+    import os
+
+    pod = tmp_path / "if2453"
+    fake = tmp_path / "fakebin"
+    bin_dir = tmp_path / "bin"
+    tree = tmp_path / "tree"
+    root = pod / "r10" / "root"
+    work = pod / "c46" / "train"
+    host_tmp = pod / "bio-box"
+    capture = tmp_path / "capture.log"
+    for d in (fake, bin_dir, tree / "scripts", tree / "profiles", root / "manifests", host_tmp):
+        d.mkdir(parents=True, exist_ok=True)
+    (root / "manifests" / "release=r26.11.1.json").write_text("{}\n")
+
+    plan = {
+        "release": "r26.11.2",
+        "stages": ["S1", "P1"],
+        "new_stages": ["P1"],
+        "latest_release": "r26.11.1",
+        "nothing_new": False,
+        "earlier_manifest_releases": ["r26.11.1"],
+        "last_stage": {
+            "stage": "P1", "depth": "called", "genomes": "g.json", "objects": "o.json", "crispr": False,
+        },
+    }
+    plan_file = tmp_path / "plan.json"
+    plan_file.write_text(json.dumps(plan))
+
+    prof = tree / "profiles" / "wilkcomp02.yaml"
+    prof.write_text(
+        f"max_threads_day: {max_day}\n"
+        f"max_threads_night: {max_night}\n"
+        f"mem_scope: {mem_scope}\n"
+        f"tmp: {host_tmp}\n"
+        f"day_start_hour: 8\n"
+        f"day_end_hour: 20\n"
+    )
+
+    runstep_out = "" if live_allowance is None else live_allowance
+    stubs = {
+        "systemd-run": (
+            '#!/bin/sh\nwhile [ $# -gt 0 ]; do\n'
+            '  case "$1" in --user|--scope|--quiet|--collect|--unit=*) shift ;; -p) shift 2 ;; *) break ;; esac\n'
+            'done\nexec "$@"\n'
+        ),
+        "nice": '#!/bin/sh\n[ "$1" = -n ] && shift 2\nexec "$@"\n',
+        "sleep": "#!/bin/sh\nexit 0\n",
+        "systemctl": (
+            '#!/bin/sh\ncase "$*" in\n  *is-active*) exit 3 ;;\n'
+            '  *show*-p*ActiveState*) echo inactive; exit 0 ;;\nesac\nexit 0\n'
+        ),
+        "singularity": (
+            '#!/bin/sh\ncase "$*" in\n'
+            '  *" release verify "*) echo "release R: verified, manifest hash abc123"; exit 0 ;;\n'
+            '  *"cli releases "*) echo "r26.11.2 listed"; exit 0 ;;\n'
+            '  *train_plan.py*--json*) cat "$FAKE_PLAN"; exit 0 ;;\n'
+            '  *train_plan.py*) echo "Action: cut"; exit 0 ;;\n'
+            '  *train_est.py*) echo "{}"; exit 0 ;;\n'
+            '  *" pack verify "*) echo "pack verified"; exit 0 ;;\n'
+            f'  *"biobox.runstep"*) echo "{runstep_out}"; exit 0 ;;\n'
+            'esac\necho "RESULT: fake"\nexit 0\n'
+        ),
+        "python3": (
+            '#!/bin/sh\ncase "${2:-}" in -c|-) exec "$REAL_PYTHON" "$@" ;; esac\n'
+            'case "$*" in\n  *train_check.py*)\n'
+            '    out=""; prev=""\n    for a in "$@"; do [ "$prev" = "--out" ] && out=$a; prev=$a; done\n'
+            '    mkdir -p "$out"\n'
+            '    printf "path\\tbytes\\tsha256\\nx\\t1\\tab\\n" > "$out/root_added.tsv"\n'
+            '    echo "# announcement" > "$out/announcement.md"\n    echo "check ok" ;;\n'
+            '  *) echo "{}" ;;\nesac\nexit 0\n'
+        ),
+    }
+    for name, body in stubs.items():
+        p = fake / name
+        p.write_text(body)
+        p.chmod(0o755)
+
+    (tree / "scripts" / "pod_run.sh").write_text(
+        '#!/bin/sh\nlog=""; unit=""; mem=""; threads=""\n'
+        'while [ $# -gt 0 ]; do\n  case "$1" in\n'
+        '    --log) log=$2; shift 2 ;;\n    --mem) mem=$2; shift 2 ;;\n'
+        '    --threads) threads=$2; shift 2 ;;\n    --*) shift 2 ;;\n'
+        '    *) unit=$1; shift; break ;;\n  esac\ndone\n'
+        'echo "pod_run unit=$unit mem=$mem threads=$threads cmd=$*" >> "$CAPTURE_LOG"\n'
+        'rel=""; prev=""\nfor a in "$@"; do [ "$prev" = "--release" ] && rel=$a; prev=$a; done\n'
+        'mkdir -p "$(dirname "$log")"\n'
+        '{\n'
+        '  [ "$1" = "build-stage" ] && echo "build-stage: stage P1 and release $rel: all 9 steps done"\n'
+        '  [ "$1" = "pack" ] && echo "pack 02dec8312fff239cfed68b255e02f60e built"\n'
+        '  echo "pod_run: $unit exited 0"\n'
+        '} >> "$log"\nexit 0\n'
+    )
+    (tree / "scripts" / "release_examples.sh").write_text(
+        '#!/bin/sh\necho "release_examples rel=$1 THREADS=${THREADS:-UNSET} MEM=${MEM:-UNSET}" >> "$CAPTURE_LOG"\nexit 0\n'
+    )
+
+    drv = bin_dir / "release_train.sh"
+    drv.write_text((POD_DIR / "release_train.sh").read_text().replace("/tmp/if2453", str(pod)))
+    for other in POD_DIR.iterdir():
+        link = bin_dir / other.name
+        if other.name != "release_train.sh" and not link.exists():
+            link.symlink_to(other)
+    capture.write_text("")
+
+    env = {
+        **{k: v for k, v in os.environ.items()
+           if k not in ("PACK_PARTS", "PACK_JOBS", "PACK_MEM", "EX_THREADS", "EX_MEM", "BIOBOX_TRAIN_NOW")},
+        "PATH": f"{fake}:{os.environ['PATH']}",
+        "CAPTURE_LOG": str(capture),
+        "FAKE_PLAN": str(plan_file),
+        "REAL_PYTHON": sys.executable,
+        "TREE": str(tree),
+        "ROOT": str(root),
+        "WORK": str(work),
+        "REAL_ROOT": str(tmp_path / "other_root"),
+        "START_MIN_GB": "0",
+        "TMP_MIN_GB": "0",
+    }
+    return drv, capture, work, env
+
+
+def _a25_parse_capture(capture: Path) -> tuple[str, str]:
+    lines = capture.read_text().splitlines()
+    pack_line = next(ln for ln in lines if "cmd=pack build " in ln)
+    ex_line = next(ln for ln in lines if ln.startswith("release_examples "))
+    return pack_line, ex_line
+
+
+@pytest.mark.covers("A-25", "C-46", "C-28")
+@pytest.mark.parametrize("now_iso,expected_threads", [
+    ("2026-11-24T14:00:00", 16),  # Tuesday day window: min(16, 40) = 16
+    ("2026-11-24T22:00:00", 24),  # Tuesday night window: min(24, 80) = 24
+    ("2026-11-28T14:00:00", 24),  # Saturday weekend window: min(24, 80) = 24
+])
+def test_a25_train_defaults_day_and_night_on_750g_profile(tmp_path, now_iso, expected_threads):
+    drv, capture, _, env = _a25_make_train_world(tmp_path, mem_scope="750G", max_day=40, max_night=80)
+    env["BIOBOX_TRAIN_NOW"] = now_iso
+    got = subprocess.run(["bash", str(drv), "run", "--no-live-cpu"], env=env, capture_output=True, text=True, timeout=60)
+    assert got.returncode == 0, got.stdout + got.stderr
+    pack_line, ex_line = _a25_parse_capture(capture)
+    assert f"mem=128G threads={expected_threads} " in pack_line, pack_line
+    assert f"--parts 24 --jobs {expected_threads}" in pack_line, pack_line
+    assert f"THREADS={expected_threads} MEM=64G" in ex_line, ex_line
+
+
+@pytest.mark.covers("A-25", "C-46", "C-28")
+@pytest.mark.parametrize("live_allowance,now_iso,expected_threads", [
+    ("10", "2026-11-24T22:00:00", 10),  # night, allowance 10 -> min(24, 10) = 10
+    ("0", "2026-11-24T14:00:00", 1),    # day, allowance 0 -> at least 1
+])
+def test_a25_train_defaults_respect_live_allowance(tmp_path, live_allowance, now_iso, expected_threads):
+    drv, capture, _, env = _a25_make_train_world(tmp_path, mem_scope="750G", live_allowance=live_allowance)
+    env["BIOBOX_TRAIN_NOW"] = now_iso
+    got = subprocess.run(["bash", str(drv), "run"], env=env, capture_output=True, text=True, timeout=60)
+    assert got.returncode == 0, got.stdout + got.stderr
+    pack_line, ex_line = _a25_parse_capture(capture)
+    assert f"mem=128G threads={expected_threads} " in pack_line, pack_line
+    assert f"--jobs {expected_threads}" in pack_line, pack_line
+    assert f"THREADS={expected_threads} MEM=64G" in ex_line, ex_line
+
+
+@pytest.mark.covers("A-25", "C-46")
+@pytest.mark.parametrize("mem_scope,expected_pack_mem,expected_ex_mem", [
+    ("48G", "48G", "48G"),
+    ("16G", "16G", "16G"),
+    ("80G", "80G", "64G"),
+])
+def test_a25_train_defaults_clamp_mem_to_profile_mem_scope(tmp_path, mem_scope, expected_pack_mem, expected_ex_mem):
+    drv, capture, _, env = _a25_make_train_world(tmp_path, mem_scope=mem_scope)
+    env["BIOBOX_TRAIN_NOW"] = "2026-11-24T14:00:00"
+    got = subprocess.run(["bash", str(drv), "run", "--no-live-cpu"], env=env, capture_output=True, text=True, timeout=60)
+    assert got.returncode == 0, got.stdout + got.stderr
+    pack_line, ex_line = _a25_parse_capture(capture)
+    assert f"mem={expected_pack_mem} " in pack_line, pack_line
+    assert f"MEM={expected_ex_mem}" in ex_line, ex_line
+
+
+@pytest.mark.covers("A-25", "C-46")
+def test_a25_train_explicit_overrides_take_precedence(tmp_path):
+    drv, capture, _, env = _a25_make_train_world(tmp_path, mem_scope="750G", max_day=40, max_night=80)
+    env.update({
+        "BIOBOX_TRAIN_NOW": "2026-11-24T22:00:00",
+        "PACK_PARTS": "2",
+        "PACK_JOBS": "2",
+        "PACK_MEM": "8G",
+        "EX_THREADS": "2",
+        "EX_MEM": "12G",
+    })
+    got = subprocess.run(["bash", str(drv), "run", "--no-live-cpu"], env=env, capture_output=True, text=True, timeout=60)
+    assert got.returncode == 0, got.stdout + got.stderr
+    pack_line, ex_line = _a25_parse_capture(capture)
+    assert "mem=8G threads=2 " in pack_line, pack_line
+    assert "--parts 2 --jobs 2" in pack_line, pack_line
+    assert "THREADS=2 MEM=12G" in ex_line, ex_line
+
+
+@pytest.mark.covers("A-25", "C-28")
+@pytest.mark.parametrize("env_extra,expected_cap", [
+    ({"LAUNCH_DOW": "2", "LAUNCH_HOUR": "14", "LAUNCH_UID": "1000", "LAUNCH_PS_OUT": ""}, "40"),
+    ({"LAUNCH_DOW": "2", "LAUNCH_HOUR": "22", "LAUNCH_UID": "1000", "LAUNCH_PS_OUT": ""}, "80"),
+    ({"LAUNCH_DOW": "6", "LAUNCH_HOUR": "14", "LAUNCH_UID": "1000", "LAUNCH_PS_OUT": ""}, "80"),
+    # root (>200%), own user (>3000%), and another login user at exactly 0.5 CPUs (50.0%) -> still 80
+    (
+        {
+            "LAUNCH_DOW": "2", "LAUNCH_HOUR": "22", "LAUNCH_UID": "1000",
+            "LAUNCH_PS_OUT": "0 200.0\n999 80.0\n1000 3000.0\n2000 50.0\n",
+        },
+        "80",
+    ),
+    # another login user > 0.5 CPUs (50.1%) at night -> drops to 40 (C-28)
+    (
+        {
+            "LAUNCH_DOW": "2", "LAUNCH_HOUR": "22", "LAUNCH_UID": "1000",
+            "LAUNCH_PS_OUT": "1000 100.0\n2000 50.1\n",
+        },
+        "40",
+    ),
+    # two other login users summing > 0.5 CPUs (55.0%) on weekend -> drops to 40 (C-28)
+    (
+        {
+            "LAUNCH_DOW": "7", "LAUNCH_HOUR": "12", "LAUNCH_UID": "1000",
+            "LAUNCH_PS_OUT": "2000 30.0\n2001 25.0\n",
+        },
+        "40",
+    ),
+    # explicit CAP override always wins
+    ({"CAP": "12", "LAUNCH_DOW": "2", "LAUNCH_HOUR": "22", "LAUNCH_UID": "1000", "LAUNCH_PS_OUT": ""}, "12"),
+])
+def test_a25_launch_cap_day_night_weekend_and_others_busy(env_extra, expected_cap):
+    import os
+
+    launch = REPO / "examples" / "_shared" / "launch.sh"
+    env = {k: v for k, v in os.environ.items()
+           if k not in ("CAP", "LAUNCH_DOW", "LAUNCH_HOUR", "LAUNCH_UID", "LAUNCH_PS_OUT")}
+    env.update(env_extra)
+    got = subprocess.run(
+        ["bash", "-c", f'. "{launch}" && cap'],
+        env=env, capture_output=True, text=True, timeout=30,
+    )
+    assert got.returncode == 0, got.stderr
+    assert got.stdout.strip() == expected_cap, f"got {got.stdout!r}, stderr={got.stderr!r}"
