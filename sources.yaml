@@ -856,3 +856,28 @@ sources:
       not on /stor. The 304 files are hard-linked into the staged inputs /tmp/if2453/s2/inputs/SPX1/assemblies/ on
       wilkcomp02 (objects.json names them there); their names under /tmp/if2453/c48e1/dl/ are removed after staging
     approved: under DEC-50 and DEC-58 (card C-48e part 1, 2026-11-20; the tranche's habitats and caps set by the orchestrator)
+  - name: cgvr
+    what: >-
+      Chinese Gut Viral Reference (CGVR; Wang et al. 2025, Microbiome 13:188, doi:10.1186/s40168-025-02185-9;
+      BioProject PRJCA031232, OMIX007646-01): 120,568 gut viral genomes (single-contig viral bins, 95% ANI
+      dereplicated); card C-61, stage CG1 (DEC-71)
+    url: https://download.cncb.ac.cn/OMIX/OMIX007646/OMIX007646-01.fa.gz
+    record: https://ngdc.cncb.ac.cn/omix/release/OMIX007646 (version OMIX007646-01, released 2024-10-24)
+    files:
+      - {file: cgvr_120568_viral_bins.fa.gz, bytes: 3090563050, sha256: 49472580f0dcd62d99ad1374f841713a80b4f4f12f0c8587a060b7a0123b68ae}
+    checksum: none published on OMIX; verified size vs Content-Length and gzip -t at fetch (2026-10-23) and sha256 measured on wilkcomp02 (2026-11-23, card C-61)
+    records: 120,568 single-contig viral bins, 10,732,696,361 bp (min 5,000, median 53,854, max 1,351,585 bp; measured, card C-61)
+    license: open access (NGDC CNCB OMIX007646, BioProject PRJCA031232; Wang et al. 2025 Microbiome 13:188 CC BY 4.0)
+    redistributable: true
+    fetched: 2026-10-23 into /stor/scratch/Wilke/if2453/fragdef/db/cgvr/cgvr_120568_viral_bins.fa.gz on wilkcomp02 (0 network fetch needed for C-61)
+    stored: /stor/scratch/Wilke/if2453/fragdef/db/cgvr/cgvr_120568_viral_bins.fa.gz (read-only)
+    stage_inputs: >-
+      stage CG1 (card C-61, DEC-71, DEC-65): /tmp/if2453/s2/inputs/CG1/ on wilkcomp02, made 2026-11-23 by
+      c61_cgvr_inputs.py stage (120,568 records, 120,428 distinct genomes/contigs after 140 DEC-27 repeated genomes,
+      10,727,099,394 bp, 6,534 exact 20..1,000 bp DTRs trimmed by 875,261 bp in trims.tsv, 6,509 circular genomes;
+      cgvr_120568_viral_bins.fna.gz 3,529,390,526 bytes sha256
+      3129e54ecdfd4c69b20fdd774a51c16dfd78fa19ccd07c59e2ae41590985b194; genomes.json sha256
+      6200dc927f5a5e9184dc5bcae78b4f7b15313183e4efb15fb38c427c4231187b; objects.json sha256
+      9a5307d70a19617d019e9a38549ddbd298593b17162da68e818e8b814e3adf6e); record
+      planning/measurements/2026-11-23_cg1_inputs.md
+    approved: under DEC-50 and DEC-71 (already verified on wilkcomp02)
