@@ -26,11 +26,11 @@ def _write(tmp_path: Path, data: dict) -> Path:
 def test_shipped_profile_loads():
     p = profile.load(SHIPPED)
     assert p.max_threads_day == 40
-    assert p.max_threads_night == 56
+    assert p.max_threads_night == 80
     assert p.mem_scope == "750G"
     assert p.tmp == "/tmp/if2453/bio-box"
     assert p.nice_monolithic == 19
-    assert p.nice_fanout == 15
+    assert p.nice_fanout == 19
     assert p.cpu_min_per_process == 300
     assert p.small_file_floor_bytes == 64 * 1024 * 1024
 
@@ -84,11 +84,13 @@ def test_require_mem_cap_must_be_a_bool(tmp_path, value):
         profile.load(_write(tmp_path, d))
 
 
-@pytest.mark.parametrize("hour,expected", [(7, 56), (8, 40), (19, 40), (20, 56)])
+@pytest.mark.covers("C-01", "A-23")
+@pytest.mark.parametrize("hour,expected", [(7, 80), (8, 40), (19, 40), (20, 80)])
 def test_threads_at(hour, expected):
     assert profile.load(SHIPPED).threads_at(hour) == expected
 
 
-@pytest.mark.parametrize("weekday,expected", [(4, 40), (5, 56), (6, 56)])
+@pytest.mark.covers("C-01", "A-23")
+@pytest.mark.parametrize("weekday,expected", [(4, 40), (5, 80), (6, 80)])
 def test_weekend_uses_the_night_cap_at_noon(weekday, expected):
     assert profile.load(SHIPPED).threads_at(12, weekday) == expected

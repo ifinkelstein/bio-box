@@ -22,10 +22,10 @@ Rules of `AGENTS.md` that bind you (read the sections named):
 - No compute on the laptop. Everything runs on the pod `wilkcomp02` (reach it with `ssh -o BatchMode=yes` and
   the host in `scripts/pod_pytest.sh`); `bio-box` and the tools run inside the image, in a memory-capped scope
   at nice 19. Read AGENTS §7 whole: it all applies.
-- Threads (AGENTS §7.2): 40 by day (08:00 to 20:00 Mon to Fri), 56 at night and weekends only when nothing
+- Threads (AGENTS §7.2): 40 by day (08:00 to 20:00 Mon to Fri), 80 at night and weekends only when nothing
   else computes. **The cap is a total over every process of this account**: builds, tests, other agents, you.
   Before a launch, count what runs (§3 step 0); yours plus theirs must stay under the cap of the hour.
-- Memory: every command in a scope with `MemoryMax` (200G at most) and `MemorySwapMax=0`; one process under
+- Memory: every command in a scope with `MemoryMax` (750G at most) and `MemorySwapMax=0`; one process under
   300 CPU-minutes. Units: a new name per launch with your own prefix (`qrnap-hmm-1`); never stop a unit you did
   not start. Scratch: `$SCR` = `/tmp/if2453/bio-box/q/<task>` (AGENTS §7.3); never delete outside it.
 - Data model (AGENTS §3): coordinates 0-based half-open; strand `+1`/`-1`; an ordinal is never a key and never

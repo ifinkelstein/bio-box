@@ -1,9 +1,9 @@
 # Host profile for the shared pod wilkcomp02 (C-01). Every key is required.
 # Sources are named per value; nothing here is invented.
 
-# DEPLOYMENT-AND-MALLEABILITY.md section 0.3 (line 56)
+# DEPLOYMENT-AND-MALLEABILITY.md section 0.3 (line 56); DEC-74 (112 logical CPUs on wilkcomp02)
 max_threads_day: 40
-max_threads_night: 56
+max_threads_night: 80
 # DEC-73 (amending DEC-16): 1.0 TiB (1,007.6 GiB) physical RAM on wilkcomp02 (measured, /proc/meminfo, 2026-11-23)
 mem_scope: 750G
 tmp: /tmp/if2453/bio-box
@@ -17,7 +17,8 @@ durable: /stor/work/Wilke/if2453/all-the-data
 # existed on the pod). The bulk directory is made by the PI; `flush` makes <bulk>/results.
 bulk: /stor/scratch/Wilke/if2453/all-the-data
 nice_monolithic: 19
-nice_fanout: 15
+# DEC-74: nice 19 across both monolithic and fan-out work
+nice_fanout: 19
 
 # Day window, local time, Monday to Friday, hours [day_start_hour, day_end_hour). ESTIMATE: the
 # footprint agreement (planning/footprint_request.md) says "by day" and "at night and weekends"

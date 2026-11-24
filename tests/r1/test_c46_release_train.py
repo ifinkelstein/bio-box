@@ -284,7 +284,7 @@ def test_dry_run_cli_prints_plan_and_writes_nothing(tmp_path):
     assert "r26.11.2" in res.stdout
     assert "S0,S1" in res.stdout
     assert "S2" in res.stdout
-    assert "40" in res.stdout and "56" in res.stdout  # thread plan by the hour
+    assert "40" in res.stdout and "80" in res.stdout  # thread plan by the hour (DEC-74)
     after = sorted(p.relative_to(tmp_path).as_posix() for p in tmp_path.rglob("*"))
     assert before == after  # dry-run writes nothing
 

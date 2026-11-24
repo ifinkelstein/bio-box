@@ -1837,15 +1837,16 @@ def test_4_a_rehearsal_marker_of_another_conf_is_redone_and_withdraws_what_rests
 
 # (5) the unit's quota: the profile's cap of the hour less the helpers', changed when the hour's cap changes
 
+@pytest.mark.covers("A-12", "A-23")
 def test_5_the_cap_of_the_hour_comes_from_the_profile_by_the_code_of_run_step():
     from datetime import datetime
 
     est = _module("stage_est")
     prof = REPO / "profiles" / "wilkcomp02.yaml"
-    assert est.cap_at(prof, datetime(2026, 11, 21, 3, 0)) == 56, "Saturday night"
-    assert est.cap_at(prof, datetime(2026, 11, 23, 7, 59)) == 56, "Monday before 08:00"
+    assert est.cap_at(prof, datetime(2026, 11, 21, 3, 0)) == 80, "Saturday night"
+    assert est.cap_at(prof, datetime(2026, 11, 23, 7, 59)) == 80, "Monday before 08:00"
     assert est.cap_at(prof, datetime(2026, 11, 23, 10, 0)) == 40, "Monday by day"
-    assert est.cap_at(prof, datetime(2026, 11, 23, 20, 0)) == 56, "Monday evening"
+    assert est.cap_at(prof, datetime(2026, 11, 23, 20, 0)) == 80, "Monday evening"
 
 
 def test_5_the_unit_quota_follows_the_hours_cap(tmp_path):
