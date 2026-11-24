@@ -165,6 +165,76 @@ databases:
     license: CC BY 4.0
     redistributable: true
     used_by: [W-39 (prok-rt)]
+  # --- Unified ssRNAP & single-polypeptide viral RNAP super-panel (`ssrnap`, card W-40, DEC-69) ---
+  - name: phrogs_rnap
+    version: "v4"
+    released: 2022-04
+    models: 6
+    doi: 10.5281/zenodo.23342382
+    url: https://zenodo.org/api/records/23342382/files/MSA_phrogs.tar.gz/content
+    annotations_url: https://zenodo.org/api/records/23342382/files/phrog_annot_v4.tsv/content
+    file: MSA_phrogs.tar.gz
+    upstream_md5: ba9f677b7d56c53b49e297405d34a921
+    sha256: 1ca216aa830ebb94c925d2733c14d5870d3922bbe7a6eddffc66122cfc945923
+    annotations_upstream_md5: 3f078c589efeef3352c5e60c1ced9a44
+    annotations_sha256: 502f96101597c21133bcce5711803e0b95e0c162cd4e86425c352549bd95e8c2
+    bytes: 54225574
+    annotations_bytes: 3831481
+    derived_hmm:
+      file: phrogs_rnap_palm_clean.hmm
+      sha256: 5a25ed171396f4e6a05fbe4698b154837010ce7c83aedc92f8a0cc022076a40f
+      bytes: 2608689
+      models: 6  # phrog_414, phrog_2051, phrog_2166, phrog_2206, phrog_20599, phrog_36028
+      build: "hmmbuild --seed 42"
+    license: CC BY 4.0
+    redistributable: true
+    # Archived PHROGs v4 MSAs hosted on Zenodo (Achilles Database v1.0, DEC-50/DEC-51); primary phrogs.lmge.uca.fr
+    # served an expired TLS certificate. HMM_phrog.tar.gz holds HHsearch .hhm files, so HMMER3 profiles for the
+    # 6 validated viral palm-fold RNAP PHROGs are built deterministically (`hmmbuild --seed 42`) from MSA_phrogs.tar.gz.
+    used_by: [W-40 (ssrnap)]
+  - name: vogdb_rnap
+    version: "vog227"
+    released: 2024-11
+    models: 7
+    doi: 10.3390/v16081191
+    url: https://fileshare.csb.univie.ac.at/vog/vog227/vog.hmm.tar.gz
+    annotations_url: https://fileshare.csb.univie.ac.at/vog/vog227/vog.annotations.tsv.gz
+    file: vog.hmm.tar.gz
+    sha256: d3f9d2392327ef9d7b89bd673836aceafb036b1740c7599038d68151b54e4f69
+    bytes: 783556103
+    annotations_sha256: f7cc6c7776b08258d2d77dda11ce91f3e81d9a4b0d1b08bf195bebe7cdf65072
+    derived_hmm:
+      file: vogdb_rnap_palm_clean.hmm
+      sha256: 69dacd8555b6d2bcb63f68bd692cce420a01d3bc85b60ddd5c41ef99c5b61c25
+      bytes: 5907002
+      models: 7  # VOG10353, VOG27844, VOG44798, VOG57737, VOG67840, VOG68249, VOG72184
+    license: CC BY 4.0
+    redistributable: true
+    used_by: [W-40 (ssrnap)]
+  - name: ssrnap_custom_seeds
+    version: "2026-11-24"
+    released: 2026-11-24
+    models: 9
+    derived_hmms:
+      - file: seeds_palm.hmm
+        namespace: palm
+        sha256: 81ade5eaf5599ee11fd8d550d717e34e7f9e87feb70beaee82221af555ff0055
+        bytes: 1242938
+        models: 5  # N4_RNAP2_gp15, N4_RNAP2_gp16, mito_invertron_rpo, psychro_autographi_rnap, basal_protist_rpot
+        build: "hmmbuild --seed 42"
+      - file: seeds_dpbb.hmm
+        namespace: dpbb_single
+        sha256: 4ff13b69ca22fe3c33b6a364fbbabca58bbfadd932a50992d2f751889530e8eb
+        bytes: 1911040
+        models: 4  # crass_vrnap_dpbb, yono_dpbb, pgkl2_orf6_dpbb, pgkl2_orf7_dpbb
+        build: "hmmbuild --seed 42"
+    cutoffs_tsv:
+      file: examples/rnap/ssrnap_cutoffs.tsv
+      sha256: 81e8fb0a605ce0d4b9fd50cb79eccc1165ad501064efbb3b48dba6fb51f3c7c6
+      bytes: 901
+    license: CC0 (built from public NCBI/RefSeq/INPHARED/Pfam-A.seed sequences)
+    redistributable: true
+    used_by: [W-40 (ssrnap)]
 pending:
   - name: phrogs
     note: >-
