@@ -292,7 +292,12 @@ def check_coordinates(con: duckdb.DuckDBPyConnection) -> list[str]:
         SELECT count(*) FROM cluster_member_aln a
         JOIN protein_seq m ON m.protein_uid = a.member_uid
         JOIN protein_seq r ON r.protein_uid = a.rep_uid
-        WHERE NOT (a.qstart < a.qend AND a.qend <= m.length AND a.tstart < a.tend AND a.tend <= r.length)
+        WHERE NOT (
+            (a.alnlen > 0 AND a.qstart < a.qend AND a.qend <= m.length
+             AND a.tstart < a.tend AND a.tend <= r.length AND octet_length(a.cigar) > 0)
+            OR (a.alnlen = 0 AND a.qstart = 0 AND a.qend = 0
+                AND a.tstart = 0 AND a.tend = 0 AND a.pident = 0 AND octet_length(a.cigar) = 0)
+        )
     """).fetchall()[0][0]
     if bad:
         problems.append(f"cluster_member_aln: {bad} rows outside sequence bounds")
