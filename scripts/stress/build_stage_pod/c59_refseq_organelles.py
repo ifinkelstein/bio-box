@@ -13,6 +13,9 @@ import random
 import re
 import shutil
 import sys
+import time
+import urllib.parse
+import urllib.request
 from collections import Counter, defaultdict
 from collections.abc import Iterable, Iterator
 from pathlib import Path
@@ -872,8 +875,669 @@ def _default_sources(raw_dir: Path) -> list[dict]:
     return specs
 
 
+# --------------------------------------------------------------------------------------------------------------
+# Card C-59a: Eukaryotic mitochondrial & cytoplasmic linear plasmids (LPL1) and multi-code organelles (O2)
+
+_COMP_STR = str.maketrans("ACGTURYKMSWBDHVNacgturykmswbdhvn", "TGCAAYRMKSWVHDBNtgcaayrmkswvhdbn")
+_COMP_BYTES = bytes.maketrans(b"ACGTURYKMSWBDHVNacgturykmswbdhvn", b"TGCAAYRMKSWVHDBNtgcaayrmkswvhdbn")
+
+O2_DEFAULT_TABLES = (1, 3, 4, 16, 22)
+
+LPL1_DEFAULT_QUERIES = [
+    "Eukaryota[Organism] AND plasmid[Filter] AND refseq[Filter]",
+    "Eukaryota[Organism] AND mitochondrion[Filter] AND plasmid[All Fields] AND 1500:100000[SLEN]",
+    "Eukaryota[Organism] AND plasmid[Filter] AND 1500:100000[SLEN] AND biomol_genomic[PROP] NOT patent[PROP]",
+    (
+        "Eukaryota[Organism] AND plasmid[Title] AND 1500:100000[SLEN] "
+        "NOT cloning[All Fields] NOT expression[Title] NOT vector[All Fields] NOT shuttle[Title]"
+    ),
+    (
+        'Eukaryota[Organism] AND ("mitochondrial plasmid"[All Fields] OR "linear plasmid"[All Fields] '
+        'OR "killer plasmid"[All Fields] OR kalilo[All Fields] OR maranhar[All Fields] OR pAL2-1[All Fields] '
+        'OR pClK1[All Fields] OR pGKL1[All Fields] OR pGKL2[All Fields] OR pSKL[All Fields] '
+        'OR pPac1-1[All Fields] OR pPac1-2[All Fields] OR pDH1A[All Fields] OR "mF plasmid"[All Fields] '
+        'OR ("Agaricus"[Organism] AND pEM[All Fields]) '
+        'OR ("Zea mays"[Organism] AND ("S-1"[Title] OR "S-2"[Title]) AND plasmid[All Fields]) '
+        'OR ("Physarum"[Organism] AND mF[Title])) AND 1500:100000[SLEN]'
+    ),
+    "X52106[Accn] OR M32799[Accn] OR X07776[Accn] OR X02447[Accn] OR M12302[Accn] OR AJ006745[Accn] OR NC_001781[Accn] OR NC_001782[Accn]",
+]
+
+_VECTOR_REJECT_RE = re.compile(
+    r"\b(?:cloning\s+vector|expression\s+vector|shuttle\s+vector|binary\s+vector|"
+    r"synthetic\s+construct|artificial\s+sequence|vector\s+p[A-Za-z0-9_-]+|"
+    r"plasmid\s+vector|reporter\s+plasmid|targeting\s+vector|crispr\s+vector)\b",
+    re.IGNORECASE,
+)
+_KILLER_DPBB_RE = re.compile(
+    r"(?:killer\s+plasmid|cytoplasmic\s+linear\s+plasmid|killer\s+toxin|"
+    r"\bp(?:gkl[12]?|skl|pac1-[12]|dh1[ab]|kle[12]|pe1[ab]|wr1[ab]|b42|klt|kl1|kl2)\b)",
+    re.IGNORECASE,
+)
+_MITO_INVERTRON_RE = re.compile(
+    r"(?:mitochondri|invertron|\bkalilo\b|\bmaranhar\b|\bpal2-1\b|\bpclk1\b|\bpem\b|"
+    r"\bpmlp\d*\b|\bpfoxc\d*\b|\bpla1\b|\bpai2\b|\bmauriceville\b|\bvarkud\b|"
+    r"\bmf\s+plasmid\b|\bs-[12]\s+plasmid\b|linear\s+plasmid\s+s-[12])",
+    re.IGNORECASE,
+)
+_RNAP_RE = re.compile(r"(?:rna\s+polymerase|\brpo\b|ssRNAP|rnap)", re.IGNORECASE)
+_POLB_RE = re.compile(r"(?:dna\s+polymerase|\bdpo\b|\bpolb\b|family\s*b\s+dna\s+pol)", re.IGNORECASE)
+_RT_RE = re.compile(r"(?:reverse\s+transcriptase|maturase|homing\s+endonuclease)", re.IGNORECASE)
+
+LPL1_RECORD_HEAD = [
+    "ordinal", "source", "plasmid_class", "compartment", "accession", "organism",
+    "contig_uid", "length", "circular", "tir_len", "transl_table", "has_rnap",
+    "has_polb", "has_rt", "owner_stage",
+]
+LPL1_META_HEAD = [
+    "stage", "source", "plasmid_class", "compartment", "genome_id", "contig_uid",
+    "accession", "organism", "taxonomy", "length", "circular", "tir_len",
+    "transl_table", "n_cds", "has_rnap", "has_polb", "has_rt", "owner_stage",
+]
+O2_LEFT_HEAD = O1_LEFT_HEAD
+
+
+def _revcomp(seq: str) -> str:
+    return seq.translate(_COMP_STR)[::-1]
+
+
+def detect_tir_len(seq: bytes, *, min_len: int = 20, max_len: int = 2000) -> int:
+    """Return length of the exact terminal inverted repeat (0 if < min_len). Never trims."""
+    n = len(seq)
+    m = min(max_len, n // 2)
+    if m < min_len:
+        return 0
+    left = seq[:m].upper()
+    right_rc = seq[n - m :].upper().translate(_COMP_BYTES)[::-1]
+    k = 0
+    while k < m and left[k] == right_rc[k]:
+        k += 1
+    return k if k >= min_len else 0
+
+
+def _check_pack_code(code: int) -> None:
+    from biobox.search import orfs
+    orfs.check_code(code)
+
+
+def classify_euk_plasmid(rec: dict, *, min_len: int = 1000, max_len: int = 150_000) -> dict:
+    """Filter and classify a GenBank record for LPL1 (mitochondrial invertron vs cytoplasmic DPBB killer vs other)."""
+    seq = rec.get("seq") or b""
+    length = len(seq)
+    defn = rec.get("definition") or ""
+    org = rec.get("organism") or ""
+    tax = rec.get("taxonomy") or ""
+    organelle = rec.get("organelle") or ""
+    moltype = (rec.get("moltype") or "").upper()
+
+    if not seq or not VALID_DNA_RE.match(seq):
+        return {"keep": False, "reason": "invalid_or_empty_seq"}
+    if length < min_len or length > max_len:
+        return {"keep": False, "reason": "length_out_of_range"}
+    if "RNA" in moltype:
+        return {"keep": False, "reason": "rna_moltype"}
+    if tax and "eukaryota" not in tax.lower():
+        return {"keep": False, "reason": "non_eukaryota"}
+    if _VECTOR_REJECT_RE.search(defn) or "synthetic" in org.lower() or "artificial" in org.lower():
+        return {"keep": False, "reason": "cloning_or_synthetic_vector"}
+
+    # Reject full organellar chromosomes that merely mention a plasmid in passing unless definition names a plasmid
+    defn_l = defn.lower()
+    if "complete genome" in defn_l and "plasmid" not in defn_l and not _KILLER_DPBB_RE.search(defn) and not _MITO_INVERTRON_RE.search(defn):
+        return {"keep": False, "reason": "non_plasmid_genome"}
+
+    cds_text = " ".join(f"{c.get('gene', '')} {c.get('product', '')}" for c in rec.get("cds", []))
+    has_rnap = bool(_RNAP_RE.search(cds_text) or _RNAP_RE.search(defn))
+    has_polb = bool(_POLB_RE.search(cds_text) or _POLB_RE.search(defn))
+    has_rt = bool(_RT_RE.search(cds_text) or _RT_RE.search(defn))
+
+    text = f"{organelle} {defn} {cds_text}"
+    tt = rec.get("transl_table")
+    is_mito = "mitochondri" in organelle.lower() or "mitochondri" in defn_l or tt in (3, 4, 16, 22)
+
+    if _KILLER_DPBB_RE.search(text) and not is_mito:
+        pclass = "cytoplasmic_killer_dpbb"
+        comp = "cytoplasmic_plasmid"
+    elif is_mito or _MITO_INVERTRON_RE.search(text) or (not rec.get("circular") and (has_rnap or has_polb)):
+        pclass = "mitochondrial_invertron"
+        comp = "mitochondrial_plasmid"
+    else:
+        pclass = "other_euk_plasmid"
+        comp = "eukaryotic_plasmid"
+
+    if tt is None:
+        tax_l = tax.lower()
+        if pclass == "mitochondrial_invertron" and any(k in tax_l for k in ("fungi", "stramenopiles", "amoebozoa", "alveolata")):
+            tt = 4
+        else:
+            tt = 1
+
+    # Verify code is supported by pack build (orfs.check_code)
+    _check_pack_code(tt)
+
+    return {
+        "keep": True,
+        "reason": "ok",
+        "plasmid_class": pclass,
+        "compartment": comp,
+        "transl_table": tt,
+        "tir_len": detect_tir_len(seq),
+        "has_rnap": has_rnap,
+        "has_polb": has_polb,
+        "has_rt": has_rt,
+    }
+
+
+def _eutils_get(url: str, *, min_interval: float = 0.55, last_call: list[float], max_retries: int = 5) -> bytes:
+    """Sequential rate-limited NCBI E-utilities GET (User-Agent: curl, <= 2 req/s, stop after 5 refusals)."""
+    refusals = 0
+    while True:
+        wait = min_interval - (time.monotonic() - last_call[0])
+        if wait > 0:
+            time.sleep(wait)
+        last_call[0] = time.monotonic()
+        req = urllib.request.Request(url, headers={"User-Agent": "curl"})
+        try:
+            with urllib.request.urlopen(req, timeout=60) as resp:
+                return resp.read()
+        except Exception as exc:
+            refusals += 1
+            if refusals >= max_retries:
+                raise RuntimeError(f"NCBI E-utilities failed {refusals} times in a row for {url}: {exc}") from exc
+            time.sleep(min(10.0, 1.5 * refusals))
+
+
+def fetch_lpl1_eutils(
+    out_gbff_gz: Path,
+    *,
+    queries: list[str] | None = None,
+    batch_size: int = 50,
+    min_interval: float = 0.55,
+) -> dict:
+    """Fetch eukaryotic mitochondrial & cytoplasmic linear plasmid GenBank flatfiles via NCBI E-utilities."""
+    queries = list(queries or LPL1_DEFAULT_QUERIES)
+    out_gbff_gz = Path(out_gbff_gz)
+    out_gbff_gz.parent.mkdir(parents=True, exist_ok=True)
+    last_call = [0.0]
+
+    all_ids: set[str] = set()
+    query_counts: dict[str, int] = {}
+    for q in queries:
+        params = urllib.parse.urlencode({
+            "db": "nuccore",
+            "retmode": "json",
+            "retmax": "10000",
+            "term": q,
+        })
+        raw = _eutils_get(
+            f"https://eutils.ncbi.nlm.nih.gov/entrez/eutils/esearch.fcgi?{params}",
+            min_interval=min_interval,
+            last_call=last_call,
+        )
+        data = json.loads(raw.decode("utf-8"))
+        idlist = data.get("esearchresult", {}).get("idlist", [])
+        query_counts[q] = len(idlist)
+        all_ids.update(idlist)
+
+    sorted_ids = sorted(all_ids, key=lambda x: int(x) if x.isdigit() else x)
+    tmp = out_gbff_gz.with_name(f"{out_gbff_gz.name}.tmp")
+    total_bytes_uncomp = 0
+    try:
+        with open(tmp, "wb") as raw_fh:
+            with gzip.GzipFile(filename="", mode="wb", fileobj=raw_fh, compresslevel=6, mtime=0) as gz:
+                for i in range(0, len(sorted_ids), batch_size):
+                    chunk = sorted_ids[i : i + batch_size]
+                    params = urllib.parse.urlencode({
+                        "db": "nuccore",
+                        "rettype": "gbwithparts",
+                        "retmode": "text",
+                        "id": ",".join(chunk),
+                    })
+                    body = _eutils_get(
+                        f"https://eutils.ncbi.nlm.nih.gov/entrez/eutils/efetch.fcgi?{params}",
+                        min_interval=min_interval,
+                        last_call=last_call,
+                    )
+                    gz.write(body)
+                    if body and not body.endswith(b"\n"):
+                        gz.write(b"\n")
+                    total_bytes_uncomp += len(body)
+        tmp.rename(out_gbff_gz)
+    except BaseException:
+        tmp.unlink(missing_ok=True)
+        raise
+
+    return {
+        "out": str(out_gbff_gz),
+        "bytes": out_gbff_gz.stat().st_size,
+        "uncompressed_bytes": total_bytes_uncomp,
+        "sha256": ids.sha256_file(out_gbff_gz).hex(),
+        "unique_ids": len(sorted_ids),
+        "query_counts": query_counts,
+    }
+
+
+def stage_lpl1(
+    sources_spec: list[dict],
+    out: Path,
+    *,
+    root: Path | None,
+    root_stages: Iterable[str],
+    owner_inputs: dict[str, Path],
+    retrieved: str,
+    genome_kind: str = "plasmid",
+    compress_fasta: bool = False,
+    final_dir: Path | None = None,
+) -> dict:
+    """Stage `LPL1` (eukaryotic mitochondrial & cytoplasmic linear plasmids), 0 TIR trims (DEC-65)."""
+    if genome_kind not in VALID_KINDS:
+        raise Refused(f"unsupported genome_kind {genome_kind!r}; expected one of {VALID_KINDS}")
+    out = Path(out)
+    if out.exists():
+        raise Refused(f"{out} exists")
+    if not sources_spec:
+        raise Refused("sources_spec is empty")
+    for spec in sources_spec:
+        p = Path(spec["path"])
+        if not p.is_file():
+            raise Refused(f"missing input gbff file: {p}")
+
+    work = out.with_name(f"{out.name}.tmp")
+    shutil.rmtree(work, ignore_errors=True)
+    work.mkdir(parents=True)
+    obj_dir = Path(final_dir) if final_dir is not None else out
+
+    try:
+        rep = _stage_lpl1(
+            sources_spec, obj_dir, work, root, list(root_stages),
+            owner_inputs, retrieved, genome_kind, compress_fasta,
+        )
+    except BaseException:
+        shutil.rmtree(work, ignore_errors=True)
+        raise
+    work.rename(out)
+    rep["sha256"] = {p.name: ids.sha256_file(p).hex() for p in sorted(out.iterdir()) if p.is_file()}
+    rep["bytes"] = {p.name: p.stat().st_size for p in sorted(out.iterdir()) if p.is_file()}
+    return rep
+
+
+def _stage_lpl1(
+    sources_spec: list[dict],
+    obj_dir: Path,
+    work: Path,
+    root: Path | None,
+    root_stages: list[str],
+    owner_inputs: dict[str, Path],
+    retrieved: str,
+    genome_kind: str,
+    compress_fasta: bool,
+) -> dict:
+    by_source: dict[str, list[dict]] = defaultdict(list)
+    source_order: list[str] = []
+    for spec in sources_spec:
+        sn = spec["source_name"]
+        if sn not in by_source:
+            source_order.append(sn)
+        by_source[sn].append(spec)
+
+    kept: list[tuple] = []
+    rejected_by_reason: Counter[str] = Counter()
+    by_class: Counter[str] = Counter()
+    by_table: Counter[str] = Counter()
+    objects: list[dict] = []
+    ext = ".fna.gz" if compress_fasta else ".fna"
+
+    for sn in source_order:
+        specs = by_source[sn]
+        src_rel = specs[0].get("source_release", "2026-11-24")
+        out_name = f"{sn}{ext}"
+        fa_dst = work / out_name
+        written = 0
+        raw_fh, w = _open_fasta_out(fa_dst, compress_fasta)
+        try:
+            for spec in specs:
+                with _open_text(Path(spec["path"])) as fh:
+                    for rec in parse_refseq_organelle_gbff(fh, keep_translations=False):
+                        cls = classify_euk_plasmid(rec)
+                        if not cls["keep"]:
+                            rejected_by_reason[cls["reason"]] += 1
+                            continue
+                        seq = rec["seq"]
+                        acc = rec["accession"]
+                        hdr = f"{acc} {rec['definition']}".strip().encode("ascii", errors="replace").decode("ascii")
+                        w.write(b"\n".join(fasta.format_record(hdr, seq, 70)) + b"\n")
+                        cu = ids.contig_uid(seq)
+                        kept.append((
+                            sn, cls["plasmid_class"], cls["compartment"], acc, rec["organism"],
+                            rec["taxonomy"], cu, rec["length"], bool(rec["circular"]),
+                            cls["tir_len"], cls["transl_table"], rec["n_cds"],
+                            cls["has_rnap"], cls["has_polb"], cls["has_rt"],
+                        ))
+                        written += 1
+        finally:
+            w.close()
+            if raw_fh is not None:
+                raw_fh.close()
+        if written == 0:
+            fa_dst.unlink(missing_ok=True)
+            continue
+        objects.append({
+            "path": str(obj_dir / out_name),
+            "source_name": sn,
+            "source_release": src_rel,
+            "license": "INSDC / NCBI GenBank & RefSeq (public domain)",
+            "redistributable": True,
+            "retrieved_at": retrieved,
+        })
+
+    if not kept:
+        raise Refused("no qualifying eukaryotic linear/mitochondrial plasmid records found for LPL1")
+
+    owners = v2.owners_of([r[6] for r in kept], root, root_stages, owner_inputs)
+    listing = make_inputs.Listing()
+    genomes: list[dict] = []
+    rec_rows: list[tuple] = []
+    meta_rows: list[tuple] = []
+    repeated: list[tuple] = []
+    shared: list[tuple] = []
+    first_of: dict[bytes, str] = {}
+    contig_len: dict[bytes, int] = {}
+
+    for ordinal, (sn, pclass, comp, acc, org, tax, cu, length, circ, tir_len, tt, n_cds, has_rnap, has_polb, has_rt) in enumerate(kept):
+        own = owners.get(cu, "")
+        rec_rows.append((
+            ordinal, sn, pclass, comp, acc, org, cu.hex(), length, str(circ).lower(),
+            tir_len, tt, str(has_rnap).lower(), str(has_polb).lower(), str(has_rt).lower(), own,
+        ))
+        if own:
+            shared.append((ordinal, acc, cu.hex(), own))
+        contig_len.setdefault(cu, length)
+        g = listing.add([cu], tt, genome_kind, "complete")
+        guid = ids.genome_uid([cu])
+        if g is None:
+            repeated.append((ordinal, acc, guid.hex(), first_of[guid]))
+            continue
+        g["circular"] = [cu.hex()] if circ else []
+        genomes.append(g)
+        first_of[guid] = acc
+        by_class[pclass] += 1
+        by_table[str(tt)] += 1
+        meta_rows.append((
+            "LPL1", sn, pclass, comp, guid.hex(), cu.hex(), acc, org, tax, length,
+            str(circ).lower(), tir_len, tt, n_cds,
+            str(has_rnap).lower(), str(has_polb).lower(), str(has_rt).lower(), own,
+        ))
+
+    meta_rows.sort(key=lambda t: (t[2], t[6], t[5]))
+    make_inputs._write_tsv(work / "records.tsv", LPL1_RECORD_HEAD, rec_rows)
+    make_inputs._write_tsv(work / "lpl1_metadata.tsv", LPL1_META_HEAD, meta_rows)
+    make_inputs._write_tsv(work / "repeated_records.tsv", ["ordinal", "accession", "genome_uid", "first_accession"], repeated)
+    make_inputs._write_tsv(work / "shared_records.tsv", ["ordinal", "accession", "contig_uid", "owner_stage"], shared)
+    (work / "objects.json").write_text(json.dumps(objects, indent=1))
+    (work / "genomes.json").write_text(json.dumps(genomes))
+
+    owner_contigs: Counter[str] = Counter()
+    owner_bases: Counter[str] = Counter()
+    for cu, n in contig_len.items():
+        if cu in owners:
+            st = owners[cu]
+            owner_contigs[st] += 1
+            owner_bases[st] += n
+    held_contigs = sum(owner_contigs.values())
+    held_bases = sum(owner_bases.values())
+
+    return {
+        "kept_records": len(kept),
+        "rejected_records": sum(rejected_by_reason.values()),
+        "rejected_by_reason": dict(sorted(rejected_by_reason.items())),
+        "by_class": dict(sorted(by_class.items())),
+        "by_transl_table": dict(sorted(by_table.items())),
+        "tir_detected": sum(1 for r in meta_rows if r[11] > 0),
+        "tir_trimmed": 0,
+        "genome_kind": genome_kind,
+        "genomes": len(genomes),
+        "contigs": len(contig_len),
+        "contig_bases": sum(contig_len.values()),
+        "circular_genomes": sum(1 for g in genomes if g["circular"]),
+        "repeated_genomes": len(repeated),
+        "shared_records": len(shared),
+        "owner_contigs": dict(sorted(owner_contigs.items())),
+        "owner_bases": dict(sorted(owner_bases.items())),
+        "held_contigs": held_contigs,
+        "held_bases": held_bases,
+        "new_contigs": len(contig_len) - held_contigs,
+        "new_bases": sum(contig_len.values()) - held_bases,
+        "root_stages": root_stages,
+        "owner_inputs": list(owner_inputs),
+        "build_order": [*root_stages, *owner_inputs, "LPL1"],
+        "objects": len(objects),
+        **listing.report(),
+    }
+
+
+def stage_o2(
+    sources_spec: list[dict],
+    out: Path,
+    *,
+    root: Path | None,
+    root_stages: Iterable[str],
+    owner_inputs: dict[str, Path],
+    retrieved: str,
+    allowed_tables: Iterable[int] = O2_DEFAULT_TABLES,
+    genome_kind: str = "prokaryote",
+    compress_fasta: bool = False,
+    final_dir: Path | None = None,
+) -> dict:
+    """Stage `O2` (multi-code RefSeq organelles: tables 1, 3, 4, 16, 22), leaving O1 untouched."""
+    if genome_kind not in VALID_KINDS:
+        raise Refused(f"unsupported genome_kind {genome_kind!r}; expected one of {VALID_KINDS}")
+    allowed = tuple(sorted(set(int(t) for t in allowed_tables)))
+    for t in allowed:
+        _check_pack_code(t)
+    out = Path(out)
+    if out.exists():
+        raise Refused(f"{out} exists")
+    if not sources_spec:
+        raise Refused("sources_spec is empty")
+    for spec in sources_spec:
+        p = Path(spec["path"])
+        if not p.is_file():
+            raise Refused(f"missing input gbff file: {p}")
+
+    work = out.with_name(f"{out.name}.tmp")
+    shutil.rmtree(work, ignore_errors=True)
+    work.mkdir(parents=True)
+    obj_dir = Path(final_dir) if final_dir is not None else out
+
+    try:
+        rep = _stage_o2(
+            sources_spec, obj_dir, work, root, list(root_stages),
+            owner_inputs, retrieved, set(allowed), genome_kind, compress_fasta,
+        )
+    except BaseException:
+        shutil.rmtree(work, ignore_errors=True)
+        raise
+    work.rename(out)
+    rep["sha256"] = {p.name: ids.sha256_file(p).hex() for p in sorted(out.iterdir()) if p.is_file()}
+    rep["bytes"] = {p.name: p.stat().st_size for p in sorted(out.iterdir()) if p.is_file()}
+    return rep
+
+
+def _stage_o2(
+    sources_spec: list[dict],
+    obj_dir: Path,
+    work: Path,
+    root: Path | None,
+    root_stages: list[str],
+    owner_inputs: dict[str, Path],
+    retrieved: str,
+    allowed_tables: set[int],
+    genome_kind: str,
+    compress_fasta: bool,
+) -> dict:
+    by_source: dict[str, list[dict]] = defaultdict(list)
+    source_order: list[str] = []
+    for spec in sources_spec:
+        sn = spec["source_name"]
+        if sn not in by_source:
+            source_order.append(sn)
+        by_source[sn].append(spec)
+
+    o2_records: list[tuple] = []
+    left_rows: list[tuple] = []
+    objects: list[dict] = []
+    by_reason_left: Counter[str] = Counter()
+    skipped_o1 = 0
+    ext = ".fna.gz" if compress_fasta else ".fna"
+
+    for sn in source_order:
+        specs = by_source[sn]
+        src_rel = specs[0].get("source_release", "238")
+        out_name = f"{sn}_o2{ext}"
+        fa_dst = work / out_name
+        written = 0
+        raw_fh, w = _open_fasta_out(fa_dst, compress_fasta)
+        try:
+            for spec in specs:
+                src_comp = spec["source_compartment"]
+                with _open_text(Path(spec["path"])) as fh:
+                    for rec in parse_refseq_organelle_gbff(fh, keep_translations=False):
+                        part = partition_organelle_record(rec, source_compartment=src_comp)
+                        comp = part["compartment"]
+                        if part["bucket"] == "O1":
+                            skipped_o1 += 1
+                            continue
+                        tt = rec["transl_table"]
+                        seq = rec["seq"]
+                        if not seq or not VALID_DNA_RE.match(seq) or tt not in allowed_tables:
+                            by_reason_left[part["reason"]] += 1
+                            left_rows.append((
+                                rec["accession"], sn, comp, rec["organism"], rec["taxonomy"],
+                                rec["length"], str(rec["circular"]).lower(),
+                                "" if tt is None else tt,
+                                ",".join(str(t) for t in rec["transl_tables"]),
+                                rec["n_cds"], rec["n_spliced_cds"], rec["n_introns"],
+                                rec["n_homing_rt"], part["reason"], part["needed_capability"],
+                            ))
+                            continue
+                        acc = rec["accession"]
+                        hdr = f"{acc} {rec['definition']}".strip().encode("ascii", errors="replace").decode("ascii")
+                        w.write(b"\n".join(fasta.format_record(hdr, seq, 70)) + b"\n")
+                        cu = ids.contig_uid(seq)
+                        o2_records.append((
+                            sn, comp, acc, rec["organism"], cu, rec["length"],
+                            bool(rec["circular"]), tt, rec["n_cds"], rec["n_spliced_cds"],
+                            rec["n_introns"], rec["n_homing_rt"],
+                        ))
+                        written += 1
+        finally:
+            w.close()
+            if raw_fh is not None:
+                raw_fh.close()
+        if written == 0:
+            fa_dst.unlink(missing_ok=True)
+            continue
+        objects.append({
+            "path": str(obj_dir / out_name),
+            "source_name": sn,
+            "source_release": src_rel,
+            "license": "INSDC / NCBI RefSeq (public domain)",
+            "redistributable": True,
+            "retrieved_at": retrieved,
+        })
+
+    if not o2_records:
+        raise Refused("no qualifying multi-code organellar records found for O2")
+
+    owners = v2.owners_of([r[4] for r in o2_records], root, root_stages, owner_inputs)
+    listing = make_inputs.Listing()
+    genomes: list[dict] = []
+    rec_rows: list[tuple] = []
+    meta_rows: list[tuple] = []
+    repeated: list[tuple] = []
+    shared: list[tuple] = []
+    first_of: dict[bytes, str] = {}
+    contig_len: dict[bytes, int] = {}
+    by_table: Counter[str] = Counter()
+
+    for ordinal, (sn, comp, acc, org, cu, length, circ, tt, n_cds, n_spl, n_int, n_hom) in enumerate(o2_records):
+        own = owners.get(cu, "")
+        rec_rows.append((
+            ordinal, sn, comp, acc, org, cu.hex(), length, str(circ).lower(),
+            tt, n_cds, n_spl, n_int, n_hom, own,
+        ))
+        if own:
+            shared.append((ordinal, acc, cu.hex(), own))
+        contig_len.setdefault(cu, length)
+        g = listing.add([cu], tt, genome_kind, "complete")
+        guid = ids.genome_uid([cu])
+        if g is None:
+            repeated.append((ordinal, acc, guid.hex(), first_of[guid]))
+            continue
+        g["circular"] = [cu.hex()] if circ else []
+        genomes.append(g)
+        first_of[guid] = acc
+        by_table[str(tt)] += 1
+        meta_rows.append((
+            "O2", sn, comp, guid.hex(), cu.hex(), acc, org, length,
+            str(circ).lower(), tt, n_cds, n_spl, n_int, n_hom, own,
+        ))
+
+    meta_rows.sort(key=lambda t: (t[2], t[1], t[5], t[4]))
+    left_rows.sort(key=lambda t: (t[13], t[2], t[0]))
+    make_inputs._write_tsv(work / "records.tsv", O1_RECORD_HEAD, rec_rows)
+    make_inputs._write_tsv(work / "o2_metadata.tsv", O1_META_HEAD, meta_rows)
+    make_inputs._write_tsv(work / "repeated_records.tsv", ["ordinal", "accession", "genome_uid", "first_accession"], repeated)
+    make_inputs._write_tsv(work / "shared_records.tsv", ["ordinal", "accession", "contig_uid", "owner_stage"], shared)
+
+    with open(work / "O2_left_for_later.tsv.gz", "wb") as raw_l:
+        with gzip.GzipFile(filename="", mode="wb", fileobj=raw_l, compresslevel=1, mtime=0) as gz:
+            gz.write(("\t".join(O2_LEFT_HEAD) + "\n").encode("utf-8"))
+            for row in left_rows:
+                gz.write(("\t".join(str(x) for x in row) + "\n").encode("utf-8"))
+
+    (work / "objects.json").write_text(json.dumps(objects, indent=1))
+    (work / "genomes.json").write_text(json.dumps(genomes))
+
+    owner_contigs: Counter[str] = Counter()
+    owner_bases: Counter[str] = Counter()
+    for cu, n in contig_len.items():
+        if cu in owners:
+            st = owners[cu]
+            owner_contigs[st] += 1
+            owner_bases[st] += n
+    held_contigs = sum(owner_contigs.values())
+    held_bases = sum(owner_bases.values())
+
+    return {
+        "o2_records": len(o2_records),
+        "skipped_o1_table11": skipped_o1,
+        "deferred_non_o2": len(left_rows),
+        "deferred_by_reason": dict(sorted(by_reason_left.items())),
+        "by_transl_table": dict(sorted(by_table.items())),
+        "genome_kind": genome_kind,
+        "genomes": len(genomes),
+        "contigs": len(contig_len),
+        "contig_bases": sum(contig_len.values()),
+        "circular_genomes": sum(1 for g in genomes if g["circular"]),
+        "repeated_genomes": len(repeated),
+        "shared_records": len(shared),
+        "owner_contigs": dict(sorted(owner_contigs.items())),
+        "owner_bases": dict(sorted(owner_bases.items())),
+        "held_contigs": held_contigs,
+        "held_bases": held_bases,
+        "new_contigs": len(contig_len) - held_contigs,
+        "new_bases": sum(contig_len.values()) - held_bases,
+        "root_stages": root_stages,
+        "owner_inputs": list(owner_inputs),
+        "build_order": [*root_stages, *owner_inputs, "O2"],
+        "objects": len(objects),
+        **listing.report(),
+    }
+
+
 def main(argv: list[str] | None = None) -> int:
-    ap = argparse.ArgumentParser(description="Card C-59: NCBI RefSeq Organellar genomes (O1)")
+    ap = argparse.ArgumentParser(description="Cards C-59 & C-59a: RefSeq Organelles (O1/O2) & Linear Plasmids (LPL1)")
     sub = ap.add_subparsers(dest="cmd", required=True)
 
     p_aud = sub.add_parser("audit", help="Audit transl_table/introns and benchmark pyrodigal recall")
@@ -893,25 +1557,71 @@ def main(argv: list[str] | None = None) -> int:
     p_st.add_argument("--compress-fasta", action="store_true")
     p_st.add_argument("--out-json", type=Path, default=None)
 
-    args = ap.parse_args(argv)
-    specs = _default_sources(args.raw_dir)
-    if not specs:
-        raise Refused(f"no RefSeq organelle .gbff.gz files found in {args.raw_dir}")
+    p_fl = sub.add_parser("fetch-lpl1", help="Fetch eukaryotic linear/mitochondrial plasmid GenBank records")
+    p_fl.add_argument("--out-gbff", type=Path, required=True)
+    p_fl.add_argument("--batch-size", type=int, default=50)
+    p_fl.add_argument("--out-json", type=Path, default=None)
 
-    if args.cmd == "audit":
-        rep = audit_gbff_files(specs, max_per_stratum=args.max_per_stratum, seed=args.seed)
-    else:
-        owner_inputs = _parse_owner_inputs(args.owner_inputs)
-        rep = stage_o1(
-            specs,
-            args.out,
-            root=args.root,
-            root_stages=args.root_stages,
-            owner_inputs=owner_inputs,
-            retrieved=args.retrieved,
-            genome_kind=args.genome_kind,
+    p_sl = sub.add_parser("stage-lpl1", help="Stage LPL1 inputs from fetched eukaryotic plasmid GenBank flatfiles")
+    p_sl.add_argument("--gbff", type=Path, nargs="+", required=True)
+    p_sl.add_argument("--source-name", default="ncbi_eutils_c59a_lpl1")
+    p_sl.add_argument("--source-release", default="2026-11-24")
+    p_sl.add_argument("--out", type=Path, required=True)
+    p_sl.add_argument("--root", type=Path, default=None)
+    p_sl.add_argument("--root-stages", nargs="*", default=[])
+    p_sl.add_argument("--owner-inputs", nargs="*", default=[])
+    p_sl.add_argument("--retrieved", required=True)
+    p_sl.add_argument("--genome-kind", choices=VALID_KINDS, default="plasmid")
+    p_sl.add_argument("--compress-fasta", action="store_true")
+    p_sl.add_argument("--out-json", type=Path, default=None)
+
+    p_o2 = sub.add_parser("stage-o2", help="Stage O2 multi-code organellar genomes (tables 1,3,4,16,22)")
+    p_o2.add_argument("--raw-dir", type=Path, required=True)
+    p_o2.add_argument("--out", type=Path, required=True)
+    p_o2.add_argument("--root", type=Path, default=None)
+    p_o2.add_argument("--root-stages", nargs="*", default=[])
+    p_o2.add_argument("--owner-inputs", nargs="*", default=[])
+    p_o2.add_argument("--retrieved", required=True)
+    p_o2.add_argument("--tables", type=int, nargs="+", default=list(O2_DEFAULT_TABLES))
+    p_o2.add_argument("--genome-kind", choices=VALID_KINDS, default="prokaryote")
+    p_o2.add_argument("--compress-fasta", action="store_true")
+    p_o2.add_argument("--out-json", type=Path, default=None)
+
+    args = ap.parse_args(argv)
+
+    if args.cmd == "fetch-lpl1":
+        rep = fetch_lpl1_eutils(args.out_gbff, batch_size=args.batch_size)
+    elif args.cmd == "stage-lpl1":
+        specs = [
+            {"path": str(p), "source_name": args.source_name, "source_release": args.source_release}
+            for p in args.gbff
+        ]
+        rep = stage_lpl1(
+            specs, args.out, root=args.root, root_stages=args.root_stages,
+            owner_inputs=_parse_owner_inputs(args.owner_inputs),
+            retrieved=args.retrieved, genome_kind=args.genome_kind,
             compress_fasta=args.compress_fasta,
         )
+    else:
+        specs = _default_sources(args.raw_dir)
+        if not specs:
+            raise Refused(f"no RefSeq organelle .gbff.gz files found in {args.raw_dir}")
+        if args.cmd == "audit":
+            rep = audit_gbff_files(specs, max_per_stratum=args.max_per_stratum, seed=args.seed)
+        elif args.cmd == "stage":
+            rep = stage_o1(
+                specs, args.out, root=args.root, root_stages=args.root_stages,
+                owner_inputs=_parse_owner_inputs(args.owner_inputs),
+                retrieved=args.retrieved, genome_kind=args.genome_kind,
+                compress_fasta=args.compress_fasta,
+            )
+        else:
+            rep = stage_o2(
+                specs, args.out, root=args.root, root_stages=args.root_stages,
+                owner_inputs=_parse_owner_inputs(args.owner_inputs),
+                retrieved=args.retrieved, allowed_tables=args.tables,
+                genome_kind=args.genome_kind, compress_fasta=args.compress_fasta,
+            )
 
     txt = json.dumps(rep, indent=2, sort_keys=True)
     if args.out_json is not None:

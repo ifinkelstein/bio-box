@@ -318,3 +318,187 @@ def test_benchmark_pyrodigal_organelles_recovers_table11_orf():
     assert bench["plastid:table_11"]["meta"]["homing_rt_total"] == 1
     assert bench["plastid:table_11"]["meta"]["cds_overlap_pct"] == 100.0
     assert bench["plastid:table_11"]["meta"]["homing_rt_overlap_pct"] == 100.0
+
+
+@pytest.mark.covers("C-59a")
+def test_classify_euk_plasmid_and_tir_detection():
+    m = _mod()
+    tir = "ACGTACGTCCGGTTAACCGGTTAACCGGAATT"  # 32 bp
+    rc_tir = m._revcomp(tir)
+    seq_kalilo = tir + "ATG" + ("GCTTTACTAAAATGA" * 80) + "TAA" + rc_tir
+
+    rec_kalilo = {
+        "accession": "X52106.1",
+        "circular": False,
+        "length": len(seq_kalilo),
+        "organelle": "mitochondrion",
+        "organism": "Neurospora intermedia",
+        "taxonomy": "Eukaryota; Fungi; Ascomycota; Sordariomycetes.",
+        "definition": "Neurospora intermedia mitochondrial linear plasmid kalilo, complete sequence.",
+        "transl_table": 4,
+        "cds": [{"gene": "rpo", "product": "RNA polymerase", "transl_table": 4}],
+        "seq": seq_kalilo.encode("ascii"),
+    }
+    rec_pgkl2 = {
+        "accession": "X07776.1",
+        "circular": False,
+        "length": len(seq_kalilo),
+        "organelle": "",
+        "organism": "Kluyveromyces lactis",
+        "taxonomy": "Eukaryota; Fungi; Ascomycota; Saccharomycetes.",
+        "definition": "Kluyveromyces lactis linear killer plasmid pGKL2, complete sequence.",
+        "transl_table": 1,
+        "cds": [{"gene": "ORF6", "product": "DNA-directed RNA polymerase", "transl_table": 1}],
+        "seq": seq_kalilo.encode("ascii"),
+    }
+    rec_vec = {
+        "accession": "AF999999.1",
+        "circular": True,
+        "length": 4000,
+        "organelle": "",
+        "organism": "Saccharomyces cerevisiae",
+        "taxonomy": "Eukaryota; Fungi; Ascomycota; Saccharomycetes.",
+        "definition": "Shuttle cloning vector pRS416, complete sequence.",
+        "transl_table": 1,
+        "cds": [],
+        "seq": ("A" * 4000).encode("ascii"),
+    }
+
+    assert m.detect_tir_len(seq_kalilo.encode("ascii")) == 32
+    c_kal = m.classify_euk_plasmid(rec_kalilo)
+    c_gkl = m.classify_euk_plasmid(rec_pgkl2)
+    c_vec = m.classify_euk_plasmid(rec_vec)
+
+    assert c_kal["keep"] is True and c_kal["plasmid_class"] == "mitochondrial_invertron"
+    assert c_kal["has_rnap"] is True and c_kal["transl_table"] == 4
+    assert c_gkl["keep"] is True and c_gkl["plasmid_class"] == "cytoplasmic_killer_dpbb"
+    assert c_gkl["has_rnap"] is True and c_gkl["transl_table"] == 1
+    assert c_vec["keep"] is False
+
+
+@pytest.mark.covers("C-59a")
+def test_table4_kalilo_rpo_intact_orf_recovery_and_pack_code_safety():
+    from biobox import ids
+    from biobox.l1 import genecall
+    from biobox.search import orfs
+
+    # Construct a ~4.5 kb linear Table 4 mitochondrial plasmid (kalilo/pAL2-1-like)
+    # whose rpo and polB ORFs carry internal TGA (Trp) codons; TTA/CTA encode Leu forward and TAA/TAG stops reverse.
+    tir = "ACGTACGTCCGGTTAACCGGTTAACCGGAATT"
+    spacer = "TAATAGTTACTA" * 15
+    orf_rpo = "AAGGAGGTGATATAATG" + ("GCTTTACTAAAATGA" * 80) + "TAA"
+    orf_polb = "AAGGAGGTGATATAATG" + ("GCTTTACTAAAATGA" * 70) + "TAA"
+    seq = (tir + spacer + orf_rpo + spacer + orf_polb + spacer + tir).encode("ascii")
+    cu = ids.contig_uid(seq)
+    g = genecall.GenomeInput(contig_uids=(cu,), genetic_code=4, kind="plasmid", circular=frozenset())
+
+    calls = genecall._call(g, {cu: seq.decode("ascii")})
+    t4_calls = [c for c in calls if c["genetic_code"] == 4 and len(c["aa"]) >= 350]
+    assert len(t4_calls) >= 2, f"expected intact Table 4 ORFs across internal TGA, got {calls}"
+    assert any("W" in c["aa"] for c in t4_calls)
+
+    # Every organellar/linear-plasmid translation table staged by O1/O2/LPL1 must pass pack build's orfs.check_code
+    for code in (1, 3, 4, 11, 16, 22):
+        orfs.check_code(code)
+        dark = orfs.dark_orfs(seq, False, [], code=code)
+        assert isinstance(dark, list)
+
+
+@pytest.mark.covers("C-59a")
+def test_stage_lpl1_preserves_tirs_byte_identically_and_writes_sidecar(tmp_path):
+    m = _mod()
+    tir = "ACGTACGTCCGGTTAACCGGTTAACCGGAATT"
+    rc_tir = m._revcomp(tir)
+    seq_kal = tir + "AAGGAGGTGATATAATG" + ("GCTTTACTAAAATGA" * 80) + "TAA" + rc_tir
+    seq_gkl = tir + "AAGGAGGTGATATAATG" + ("GCTTTACTAAAACTG" * 80) + "TAA" + rc_tir
+    seq_vec = "AAGGAGGTGATATAATG" + ("GCTTTACTAAAACTG" * 80) + "TAA"
+
+    gb_path = tmp_path / "lpl1.gbff.gz"
+    with gzip.open(gb_path, "wt", encoding="utf-8") as fh:
+        fh.write(_make_gbff_record(
+            acc="X52106.1", seq=seq_kal, circular=False, organelle="mitochondrion",
+            organism="Neurospora intermedia",
+            taxonomy="Eukaryota; Fungi; Ascomycota; Sordariomycetes.",
+            definition="Neurospora intermedia mitochondrial linear plasmid kalilo, complete sequence.",
+            cds_entries=[{"location": "45..960", "gene": "rpo", "transl_table": 4, "product": "RNA polymerase"}],
+        ))
+        fh.write(_make_gbff_record(
+            acc="X07776.1", seq=seq_gkl, circular=False, organelle="",
+            organism="Kluyveromyces lactis",
+            taxonomy="Eukaryota; Fungi; Ascomycota; Saccharomycetes.",
+            definition="Kluyveromyces lactis linear killer plasmid pGKL2, complete sequence.",
+            cds_entries=[{"location": "45..960", "gene": "ORF6", "transl_table": 1, "product": "RNA polymerase"}],
+        ))
+        fh.write(_make_gbff_record(
+            acc="AF999999.1", seq=seq_vec, circular=True, organelle="",
+            organism="Saccharomyces cerevisiae",
+            taxonomy="Eukaryota; Fungi; Ascomycota; Saccharomycetes.",
+            definition="Cloning vector pRS416, complete sequence.",
+            cds_entries=[{"location": "15..700", "transl_table": 1, "product": "URA3"}],
+        ))
+
+    specs = [{"path": str(gb_path), "source_name": "ncbi_eutils_c59a_lpl1", "source_release": "2026-11-24"}]
+    out1 = tmp_path / "LPL1_a"
+    out2 = tmp_path / "LPL1_b"
+    rep1 = m.stage_lpl1(specs, out1, root=None, root_stages=(), owner_inputs={}, retrieved="2026-11-24T00:00:00Z")
+    rep2 = m.stage_lpl1(specs, out2, root=None, root_stages=(), owner_inputs={}, retrieved="2026-11-24T00:00:00Z")
+
+    assert rep1["genomes"] == 2
+    assert rep1["rejected_records"] == 1
+    assert rep1["by_class"] == {"cytoplasmic_killer_dpbb": 1, "mitochondrial_invertron": 1}
+    assert rep1["tir_trimmed"] == 0
+    for fname in ("genomes.json", "lpl1_metadata.tsv", "records.tsv"):
+        assert (out1 / fname).read_bytes() == (out2 / fname).read_bytes()
+
+    genomes = json.loads((out1 / "genomes.json").read_text())
+    codes = sorted(g["genetic_code"] for g in genomes)
+    assert codes == [1, 4]
+    assert all(g["kind"] == "plasmid" and g["circular"] == [] for g in genomes)
+
+
+@pytest.mark.covers("C-59a")
+def test_stage_o2_routes_multicode_organelles_and_defers_animal_mtdnas(tmp_path):
+    m = _mod()
+    seq_t1 = _orf_dna(100)
+    seq_t4 = "AAGGAGGTGATATAATG" + ("GCTGAACTGAAATGA" * 60) + "TAA" + "ACGT" * 20
+    seq_t2 = _orf_dna(90)
+    seq_t11 = _orf_dna(110)
+
+    mito_gb = tmp_path / "mitochondrion.1.genomic.gbff.gz"
+    with gzip.open(mito_gb, "wt", encoding="utf-8") as fh:
+        fh.write(_make_gbff_record(
+            acc="NC_001.1", seq=seq_t1, circular=True, organelle="mitochondrion",
+            organism="Arabidopsis thaliana",
+            definition="Arabidopsis thaliana mitochondrion, complete genome.",
+            cds_entries=[{"location": "15..410", "transl_table": 1, "product": "maturase R"}],
+        ))
+        fh.write(_make_gbff_record(
+            acc="NC_004.1", seq=seq_t4, circular=True, organelle="mitochondrion",
+            organism="Neurospora crassa",
+            definition="Neurospora crassa mitochondrion, complete genome.",
+            cds_entries=[{"location": "15..915", "transl_table": 4, "product": "LAGLIDADG homing endonuclease"}],
+        ))
+        fh.write(_make_gbff_record(
+            acc="NC_002.1", seq=seq_t2, circular=True, organelle="mitochondrion",
+            organism="Homo sapiens",
+            definition="Homo sapiens mitochondrion, complete genome.",
+            cds_entries=[{"location": "15..350", "transl_table": 2, "product": "cytochrome c oxidase"}],
+        ))
+        fh.write(_make_gbff_record(
+            acc="NC_011.1", seq=seq_t11, circular=True, organelle="mitochondrion",
+            organism="Reclinomonas americana",
+            definition="Reclinomonas americana mitochondrion, complete genome.",
+            cds_entries=[{"location": "15..450", "transl_table": 11, "product": "nad1"}],
+        ))
+
+    specs = [{"path": str(mito_gb), "source_name": "ncbi_refseq_mitochondrion_r238", "source_release": "238", "source_compartment": "mitochondrion"}]
+    out = tmp_path / "O2"
+    rep = m.stage_o2(specs, out, root=None, root_stages=(), owner_inputs={}, retrieved="2026-11-24T00:00:00Z")
+
+    assert rep["genomes"] == 2
+    assert rep["by_transl_table"] == {"1": 1, "4": 1}
+    assert rep["deferred_non_o2"] == 1  # table 2 deferred; table 11 skipped as already in O1
+    genomes = json.loads((out / "genomes.json").read_text())
+    assert sorted(g["genetic_code"] for g in genomes) == [1, 4]
+    assert all(g["kind"] == "prokaryote" for g in genomes)
+
