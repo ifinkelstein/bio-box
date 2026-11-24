@@ -453,10 +453,12 @@ def test_pl2_and_pl3_confs_follow_dec63_and_dec65():
     est = _module("stage_est")
     c2 = est.read_conf(STAGES / "PL2.conf", "PL2", tree=REPO)
     assert c2.depth == "annotated" and c2.library == ("pfam", "38.2", "gathering") and c2.crispr
-    assert c2.min_contig_len is None and c2.after == ("G1", "SPX1", "V2", "GV1")
+    assert c2.min_contig_len is None and c2.after == ("G1", "SPX1", "V2")
+    assert "GV1" not in c2.expect
     c3 = est.read_conf(STAGES / "PL3.conf", "PL3", tree=REPO)
     assert c3.depth == "annotated" and c3.library == ("pfam", "38.2", "gathering") and c3.crispr
     assert c3.min_contig_len is None and c3.after == ("PL2",)
+    assert "GV1" not in c3.expect
 
 
 @pytest.mark.parametrize("path", _repo_confs(), ids=lambda p: p.stem)
@@ -479,10 +481,30 @@ def test_each_repository_conf_is_valid_and_its_sums_and_figures_are_its_notes(pa
 def test_gv1_comes_after_v2_judges_its_gene_calling_against_the_notes_figure_and_expects_v2s_contigs():
     est = _module("stage_est")
     c = est.read_conf(STAGES / "GV1.conf", "GV1", tree=REPO)
-    assert c.after == ("V2",)
+    assert c.after == ("V2", "PL3")
     assert c.judge["genecall"][0] == 236.0
     assert c.expect["V2"][0] == 17649
     assert c.expect["SPX1"][0] == 3
+    assert c.expect["PL3"][0] == 2
+
+
+@pytest.mark.covers("A-24")
+def test_a24_pl2_pl3_gv1_follow_dec71_build_order():
+    est = _module("stage_est")
+    c2 = est.read_conf(STAGES / "PL2.conf", "PL2", tree=REPO)
+    assert c2.after == ("G1", "SPX1", "V2")
+    assert "GV1" not in c2.after and "GV1" not in c2.expect
+    c3 = est.read_conf(STAGES / "PL3.conf", "PL3", tree=REPO)
+    assert c3.after == ("PL2",)
+    assert "GV1" not in c3.after and "GV1" not in c3.expect
+    assert sum(n for n, _ in c3.expect.values()) == 7746
+    cg = est.read_conf(STAGES / "GV1.conf", "GV1", tree=REPO)
+    assert cg.after == ("V2", "PL3")
+    assert cg.expect["H1"][0] == 6
+    assert cg.expect["SPX1"][0] == 3
+    assert cg.expect["V2"][0] == 17649
+    assert cg.expect["PL3"][0] == 2
+    assert sum(n for n, _ in cg.expect.values()) == 17660
 
 
 @pytest.mark.parametrize("extra,why", [
