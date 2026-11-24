@@ -195,7 +195,7 @@ import pyarrow.parquet as pq
 import yaml
 
 from biobox import catalog
-from biobox.l1.genecall import GENE_CALL_VERSION
+from biobox.l1.genecall import DEFAULT_GENECALL_MODE, GENECALL_MODES, GENE_CALL_VERSION
 from biobox.search import arrays, export, nbr, pack, runner
 from biobox.search.recipe import RecipeError
 
@@ -2143,7 +2143,8 @@ def _stage_step(a, root: Path, out: Path) -> dict:
 
         if a.action is None:
             return genecall.run(root, a.stage, version=a.gene_call_version, prefix_width=a.prefix_width, tmp=tmp,
-                                workers=a.workers, seq_stages=_csv(a.seq_stages), out=out, **mfb)
+                                workers=a.workers, seq_stages=_csv(a.seq_stages), out=out,
+                                genecall_mode=a.genecall_mode, **mfb)
         # in batches (card B-48): plan (writes the plan into --runs-tmp only), batch (writes only into the plan's work
         # directory), merge (the step's files, under --out or $BIOBOX_STAGING). Card B-50: `plan --plan P` publishes
         # the plan P as its record, and a batch writes its record, each under --out or $BIOBOX_STAGING only (a direct
@@ -2165,7 +2166,8 @@ def _stage_step(a, root: Path, out: Path) -> dict:
 
             ledger.check_scratch(a.runs_tmp, root)  # the plan's work directory is scratch, never under the root
             p = genecall.plan(root, a.stage, version=a.gene_call_version, seq_stages=_csv(a.seq_stages),
-                              batch_cpu_min=a.batch_cpu_min, batches=a.batches, tmp=tmp)
+                              batch_cpu_min=a.batch_cpu_min, batches=a.batches, tmp=tmp,
+                              genecall_mode=a.genecall_mode)
             path = genecall.write_plan(p, genecall.work_dir(Path(a.runs_tmp), root, a.stage, p))
             return {"plan": str(path), "batches": len(p["batches"]), "genomes": p["genomes"],
                     "genomes_not_called": p["genomes_not_called"], "bases": p["bases"],
@@ -2354,7 +2356,7 @@ def _build_stage(a) -> int:
                     gene_call_version=a.gene_call_version, scan_jobs=a.scan_jobs, scan_cpus=a.scan_cpus,
                     cluster_parts=a.cluster_parts, ncrna_cm=Path(a.ncrna_cm) if a.ncrna_cm else None,
                     ncrna_set=a.ncrna_set, crispr=a.crispr, reuse=not a.no_reuse, depth=a.depth,
-                    min_contig_len=a.min_contig_len)
+                    min_contig_len=a.min_contig_len, genecall_mode=a.genecall_mode)
     return stage.build_stage(profile.load(a.profile), b)
 
 
@@ -2731,6 +2733,9 @@ def _main(argv: list[str] | None = None) -> int:
                          "(card C-38d)")
     st.add_argument("--prefix-width", type=int, choices=[0, 1, 2], help="genecall: protein_seq bucket width")
     st.add_argument("--workers", type=int, default=1, help="genecall: genomes called at once")
+    st.add_argument("--genecall-mode", choices=GENECALL_MODES, default=DEFAULT_GENECALL_MODE,
+                    help="genecall: gene-calling mode (default: policy p2 by genome kind and length; "
+                         "gv-meta: pyrodigal-gv meta mode for every genome, card B-67, DEC-71)")
     st.add_argument("--seq-stages", help="genecall, ncrna, crispr: S0,S1: the stages whose sequences the genomes "
                                          "name (default: the stage itself); domains plan: the stages whose measured "
                                          "rows of this library are copied instead of scanning again (card B-47b)")
@@ -2806,6 +2811,9 @@ def _main(argv: list[str] | None = None) -> int:
     bs.add_argument("--min-contig-len", type=int,
                     help="ingest: drop FASTA records shorter than this many bases before the held-contig check "
                          "(card C-38d)")
+    bs.add_argument("--genecall-mode", choices=GENECALL_MODES, default=DEFAULT_GENECALL_MODE,
+                    help="genecall: gene-calling mode (default: policy p2; gv-meta: pyrodigal-gv meta mode "
+                         "for every genome, card B-67, DEC-71)")
     bs.add_argument("--library", nargs=4, action="append", default=[], metavar=("NAME", "VERSION", "HMM", "CUTOFF"),
                     help="a domain library to scan (repeatable; one step each, in the order given)")
     bs.add_argument("--tmp", help="scratch directory of the steps (default: <profile tmp>/scratch)")

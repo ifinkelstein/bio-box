@@ -185,10 +185,11 @@ read_conf() {  # the conf, checked by stage_est.py against the tree; its values 
     2> "$C/conf.err" || refuse "conf $CONF: $(tr '\n' ' ' < "$C/conf.err")"
   CONF_SHA=$(sha256sum "$CONF" | cut -c1-64)
   [[ "$CONF_SHA" =~ ^[0-9a-f]{64}$ ]] || refuse "could not hash $CONF"
-  IN="" DEPTH="" MINLEN="" LIBNAME="" LIBVER="" LIBCUT="" CRISPR="" AFTER="" NOTES=""
+  IN="" DEPTH="" MINLEN="" GENECALL_MODE="" LIBNAME="" LIBVER="" LIBCUT="" CRISPR="" AFTER="" NOTES=""
   while IFS='=' read -r k v; do
     case "$k" in
-      INPUTS) IN=$v ;; DEPTH) DEPTH=$v ;; MIN_CONTIG_LEN) MINLEN=$v ;; LIBNAME) LIBNAME=$v ;; LIBVER) LIBVER=$v ;;
+      INPUTS) IN=$v ;; DEPTH) DEPTH=$v ;; MIN_CONTIG_LEN) MINLEN=$v ;; GENECALL_MODE) GENECALL_MODE=$v ;;
+      LIBNAME) LIBNAME=$v ;; LIBVER) LIBVER=$v ;;
       LIBCUT) LIBCUT=$v ;; CRISPR) CRISPR=$v ;; AFTER) AFTER=$v ;; NOTES) NOTES=$v ;;
     esac
   done < "$C/conf.env"
@@ -200,6 +201,7 @@ read_conf() {  # the conf, checked by stage_est.py against the tree; its values 
   fi
   BUILD_ARGS=(--stage "$STAGE" --depth "$DEPTH")
   [ -n "$MINLEN" ] && BUILD_ARGS+=(--min-contig-len "$MINLEN")
+  [ -n "$GENECALL_MODE" ] && BUILD_ARGS+=(--genecall-mode "$GENECALL_MODE")
   BUILD_ARGS+=(--genomes "$IN/genomes.json" --objects "$IN/objects.json" "${LIBARGS[@]}")
   [ "$CRISPR" = yes ] && BUILD_ARGS+=(--crispr)
   return 0
@@ -741,6 +743,7 @@ rehearse() {  # the fixture, in scratch: E and a release over it, then the stage
     if [ -n "$LIBNAME" ]; then echo "LIBRARY=$LIBNAME $LIBVER $LIBCUT"; fi
     echo "CRISPR=$CRISPR"
     if [ -n "$MINLEN" ]; then echo "MIN_CONTIG_LEN=$MINLEN"; fi
+    if [ -n "$GENECALL_MODE" ]; then echo "GENECALL_MODE=$GENECALL_MODE"; fi
   } > "$rh/$rs.conf" || fail "could not write $rh/$rs.conf"
   for m in $CHAIN; do
     STAGE_ROOT="$rh/root" STAGE_DIR="$rh/drv" STAGE_CONF="$rh/$rs.conf" PROFILE="$rh/profile.yaml" \
@@ -753,6 +756,7 @@ rehearse() {  # the fixture, in scratch: E and a release over it, then the stage
   done
   args=(--stage "$rs" --depth "$DEPTH")
   [ -n "$MINLEN" ] && args+=(--min-contig-len "$MINLEN")
+  [ -n "$GENECALL_MODE" ] && args+=(--genecall-mode "$GENECALL_MODE")
   args+=(--genomes "$rh/inputs/R/genomes.json" --objects "$rh/inputs/R/objects.json" "${LIBARGS[@]}")
   [ "$CRISPR" = yes ] && args+=(--crispr)
   find "$rh/root" ! -type d ! -name STOP -printf '%P\t%s\t%T@\n' | LC_ALL=C sort > "$rh/again-before.tsv" \

@@ -158,13 +158,16 @@ from biobox.l0seq.lookup import KeyLookup
 from biobox.l0seq.store import OWNED_BY, ContigOwners, SeqStore, missing_contig, skipped_entry
 from biobox.registry.schemas import ARTIFACTS, table
 
-__all__ = ["GENE_CALL_VERSION", "GenomeInput", "call_genome", "merge", "plan", "publish_plan", "run", "run_batch"]
+__all__ = ["DEFAULT_GENECALL_MODE", "GENECALL_MODES", "GENE_CALL_VERSION", "GenomeInput", "call_genome", "merge",
+           "plan", "plan_genecall_mode", "publish_plan", "run", "run_batch"]
 
 PROTEIN_BYTES_PER_AA = 0.6  # zstd estimate (data_layer_and_tests.md §2A.4); sizes buckets only
 SINGLE_MODE_MIN_BP = 100_000  # Prodigal: below this, use anonymous/meta mode
 WRAP_FLANK = 50_000
 GENE_CALL_VERSION = f"pyrodigal-{pyrodigal.__version__}-gv-{pyrodigal_gv.__version__}-p2"
 KINDS = ("prokaryote", "virus", "plasmid")
+GENECALL_MODES = ("default", "gv-meta")  # card B-67 (DEC-71): default = policy p2; gv-meta = pyrodigal-gv meta for all
+DEFAULT_GENECALL_MODE = "default"
 SCRATCH_FLUSH_ROWS = 65_536  # rows a scratch writer buffers before it writes a row group
 # bases of consecutive genomes in one worker task (card B-32): chosen, not tuned. Derived: about 2.4 s
 # of meta-mode calling per task (one thread called 61.95 Mbp of short contigs in 146 s, measured on
@@ -246,19 +249,32 @@ _CONTIG_SCRATCH = pa.schema([("contig_uid", pa.binary(16))])  # every contig, al
 _SCRATCH_FILES = {"genes": "genes.parquet", "candidates": "candidates.parquet", "contigs": "contigs.parquet"}
 
 
-def mode_of(kind: str, bases: int) -> str:
-    """The mode a genome of `kind` and `bases` bases is called in (policy p2, module docstring)."""
+def _check_genecall_mode(genecall_mode: str) -> str:
+    if genecall_mode not in GENECALL_MODES:
+        raise ValueError(f"unknown genecall_mode {genecall_mode!r}; expected one of {', '.join(GENECALL_MODES)}")
+    return genecall_mode
+
+
+def plan_genecall_mode(plan_: dict) -> str:
+    """The `genecall_mode` of a plan dict: `"default"` when omitted (pre-B-67 and default plans)."""
+    return _check_genecall_mode(plan_.get("genecall_mode", DEFAULT_GENECALL_MODE))
+
+
+def mode_of(kind: str, bases: int, genecall_mode: str = DEFAULT_GENECALL_MODE) -> str:
+    """The mode a genome of `kind` and `bases` bases is called in (policy p2, module docstring; card B-67:
+    `genecall_mode='gv-meta'` calls every genome with `pyrodigal-gv` meta mode)."""
     if kind not in KINDS:
         raise ValueError(f"unknown genome kind {kind!r}")
-    if kind == "virus":
+    _check_genecall_mode(genecall_mode)
+    if genecall_mode == "gv-meta" or kind == "virus":
         return "gv-meta"
     if kind == "plasmid" or bases < SINGLE_MODE_MIN_BP:
         return "meta"
     return "single"
 
 
-def _finder(genome: GenomeInput, seqs: dict[bytes, str]):
-    mode = mode_of(genome.kind, sum(len(s) for s in seqs.values()))
+def _finder(genome: GenomeInput, seqs: dict[bytes, str], genecall_mode: str = DEFAULT_GENECALL_MODE):
+    mode = mode_of(genome.kind, sum(len(s) for s in seqs.values()), genecall_mode=genecall_mode)
     if mode == "gv-meta":
         return pyrodigal_gv.ViralGeneFinder(meta=True), "gv-meta"
     if mode == "meta":
@@ -291,8 +307,8 @@ def _sequences(store: SeqStore, genome: GenomeInput) -> dict[bytes, str]:
     return {cu: store.get(cu).upper().decode("ascii") for cu in genome.contig_uids}
 
 
-def _call(genome: GenomeInput, seqs: dict[bytes, str]) -> list[dict]:
-    finder, mode = _finder(genome, seqs)
+def _call(genome: GenomeInput, seqs: dict[bytes, str], genecall_mode: str = DEFAULT_GENECALL_MODE) -> list[dict]:
+    finder, mode = _finder(genome, seqs, genecall_mode=genecall_mode)
     calls: list[dict] = []
     for cu in sorted(seqs):
         seq = seqs[cu]
@@ -317,8 +333,8 @@ def _call(genome: GenomeInput, seqs: dict[bytes, str]) -> list[dict]:
     return calls
 
 
-def call_genome(store: SeqStore, genome: GenomeInput) -> list[dict]:
-    return _call(genome, _sequences(store, genome))
+def call_genome(store: SeqStore, genome: GenomeInput, genecall_mode: str = DEFAULT_GENECALL_MODE) -> list[dict]:
+    return _call(genome, _sequences(store, genome), genecall_mode=genecall_mode)
 
 
 def _rows(calls_per_genome: Iterable[tuple[bytes, list[dict]]]
@@ -356,21 +372,22 @@ def _guid(genome: GenomeInput) -> bytes:
     return ids.genome_uid(list(genome.contig_uids))
 
 
-def _call_batch(store: SeqStore, batch: list[GenomeInput]) -> tuple:
+def _call_batch(store: SeqStore, batch: list[GenomeInput], genecall_mode: str = DEFAULT_GENECALL_MODE) -> tuple:
     """`_rows` of a batch of genomes, called one genome at a time in input order. Runs in a worker
     process, or in the caller's when `workers` is 1."""
-    return _rows((_guid(g), call_genome(store, g)) for g in batch)
+    return _rows((_guid(g), call_genome(store, g, genecall_mode=genecall_mode)) for g in batch)
 
 
-def _call_read(genome: GenomeInput, seqs: dict[bytes, str]) -> tuple:
+def _call_read(genome: GenomeInput, seqs: dict[bytes, str], genecall_mode: str = DEFAULT_GENECALL_MODE) -> tuple:
     """`_rows` of one genome whose sequences the calling thread has read. Runs in a worker thread."""
-    return _rows([(_guid(genome), _call(genome, seqs))])
+    return _rows([(_guid(genome), _call(genome, seqs, genecall_mode=genecall_mode))])
 
 
-def _worker_main(root: str, stages: list[str]) -> None:
+def _worker_main(root: str, stages: list[str], genecall_mode: str = DEFAULT_GENECALL_MODE) -> None:
     """A worker process: open the store (for the caller's `stages`, card B-28) once, then read
     `(seq, batch)` pickles from stdin until it closes and answer each with `("ok", seq, result)` or
     `("error", seq, exception)` on stdout."""
+    _check_genecall_mode(genecall_mode)
     store = SeqStore(Path(root), stages)
     inp, out = sys.stdin.buffer, sys.stdout.buffer
     sys.stdout = sys.stderr  # a stray print must not corrupt the result stream
@@ -381,7 +398,7 @@ def _worker_main(root: str, stages: list[str]) -> None:
             except EOFError:
                 return
             try:
-                msg = ("ok", seq, _call_batch(store, batch))
+                msg = ("ok", seq, _call_batch(store, batch, genecall_mode=genecall_mode))
             except Exception as e:  # noqa: BLE001 - raised again in the parent
                 msg = ("error", seq, e)
             try:
@@ -403,10 +420,11 @@ class _Workers:
     reader thread per worker drains stdout into the shared queue `q` as `(i, message)`, so neither
     side can block on a full pipe."""
 
-    def __init__(self, n: int, root: Path, stages: list[str], q: queue.SimpleQueue):
+    def __init__(self, n: int, root: Path, stages: list[str], q: queue.SimpleQueue,
+                 genecall_mode: str = DEFAULT_GENECALL_MODE):
         src = str(Path(__file__).resolve().parents[2])  # the directory that holds this `biobox`
         self._boot = (f"import sys; sys.path.insert(0, {src!r}); from biobox.l1.genecall import _worker_main; "
-                      f"_worker_main({str(root)!r}, {[str(s) for s in stages]!r})")
+                      f"_worker_main({str(root)!r}, {[str(s) for s in stages]!r}, {genecall_mode!r})")
         self._n, self._q = n, q
         self._procs: list[subprocess.Popen] = []
         self._readers: list[threading.Thread] = []
@@ -531,8 +549,8 @@ def _batches(genomes: Iterable[GenomeInput], bases_of, batch_bases: int, thread_
         yield False, batch
 
 
-def _called(store: SeqStore, root: Path, batches: Iterable[tuple[bool, list[GenomeInput]]], workers: int
-            ) -> Iterator[tuple[list[GenomeInput], tuple]]:
+def _called(store: SeqStore, root: Path, batches: Iterable[tuple[bool, list[GenomeInput]]], workers: int,
+            genecall_mode: str = DEFAULT_GENECALL_MODE) -> Iterator[tuple[list[GenomeInput], tuple]]:
     """(batch, `_rows` result); at most `workers` batches are called at once, and batches are read
     from `batches` lazily, one for each that finishes.
 
@@ -547,10 +565,11 @@ def _called(store: SeqStore, root: Path, batches: Iterable[tuple[bool, list[Geno
     here; the processes are then killed and the threads finish their genome."""
     if workers <= 1:
         for _, b in batches:
-            yield b, _call_batch(store, b)
+            yield b, (_call_batch(store, b) if genecall_mode == DEFAULT_GENECALL_MODE
+                      else _call_batch(store, b, genecall_mode=genecall_mode))
         return
     q: queue.SimpleQueue = queue.SimpleQueue()  # (worker index, or None for a thread; message)
-    procs = _Workers(workers, root, store.stages, q)
+    procs = _Workers(workers, root, store.stages, q, genecall_mode=genecall_mode)
     threads: ThreadPoolExecutor | None = None
 
     def threaded(seq: int):
@@ -576,7 +595,9 @@ def _called(store: SeqStore, root: Path, batches: Iterable[tuple[bool, list[Geno
                 if long:
                     if threads is None:
                         threads = ThreadPoolExecutor(max_workers=workers, thread_name_prefix="genecall")
-                    threads.submit(_call_read, b[0], _sequences(store, b[0])).add_done_callback(threaded(n_sent))
+                    args = (b[0], _sequences(store, b[0])) if genecall_mode == DEFAULT_GENECALL_MODE else (
+                        b[0], _sequences(store, b[0]), genecall_mode)
+                    threads.submit(_call_read, *args).add_done_callback(threaded(n_sent))
                 else:
                     procs.send(n_sent, b)
                 sent[n_sent] = b
@@ -690,7 +711,7 @@ def _write_protein_seq(con, sql: str, base: Path, width: int, max_file_bytes: in
 def run(root: Path, stage: str, genomes: Iterable[GenomeInput] | None = None, version: str = GENE_CALL_VERSION,
         prefix_width: int | None = None, max_file_bytes: int = layout.MAX_FILE_BYTES, tmp=None,
         workers: int = 1, seq_stages: list[str] | None = None, out: Path | None = None,
-        batch_bases: int = BATCH_BASES) -> dict:
+        batch_bases: int = BATCH_BASES, genecall_mode: str = DEFAULT_GENECALL_MODE) -> dict:
     """Call genes and write the stage's tables. `prefix_width` (0, 1, 2) overrides the size rule.
 
     `out` (card C-08): the output root, default `root`. Sequences and `genome_input` are read from
@@ -724,6 +745,7 @@ def run(root: Path, stage: str, genomes: Iterable[GenomeInput] | None = None, ve
         raise ValueError(f"workers must be at least 1, got {workers}")
     if batch_bases < 1:
         raise ValueError(f"batch_bases must be at least 1, got {batch_bases}")
+    _check_genecall_mode(genecall_mode)
     ledger.check_scratch(tmp, root, out)
     _refuse_written(root, out, stage, version)
     stages = list(dict.fromkeys([stage, *([] if seq_stages is None else seq_stages)]))
@@ -732,7 +754,7 @@ def run(root: Path, stage: str, genomes: Iterable[GenomeInput] | None = None, ve
     try:
         genomes, shared = stage_genomes(root, stage, genomes, tmp=scratch)
         counts, skipped = _call_into(store, root, ContigOwners(root, stage, stages, shared), genomes, workers,
-                                     batch_bases, scratch)
+                                     batch_bases, scratch, genecall_mode=genecall_mode)
         files = {k: [scratch / name] for k, name in _SCRATCH_FILES.items()}
         n_prot = _publish(out, stage, version, files, scratch, prefix_width, max_file_bytes, skipped)
         return _result(counts, n_prot, skipped)
@@ -756,7 +778,8 @@ def _result(counts: dict, n_prot: int, skipped: dict[bytes, str]) -> dict:
 
 
 def _call_into(store: SeqStore, root: Path, owners: ContigOwners, genomes: Iterable[GenomeInput], workers: int,
-               batch_bases: int, scratch: Path) -> tuple[dict, dict[bytes, str]]:
+               batch_bases: int, scratch: Path,
+               genecall_mode: str = DEFAULT_GENECALL_MODE) -> tuple[dict, dict[bytes, str]]:
     """Call `genomes` and append their rows to the three unsorted scratch files in `scratch` (`_SCRATCH_FILES`);
     return the counts (genes, wrapping genes and modes of the rows written) and the skipped contigs with their owners.
     The calling loop of `run`, and of a batch (card B-48)."""
@@ -771,7 +794,7 @@ def _call_into(store: SeqStore, root: Path, owners: ContigOwners, genomes: Itera
     lengths = KeyLookup(store.index_files, "contig_uid", ["contig_len", "is_default_variant"])
     owned = _owned(genomes, owners, skipped, drop)
     batches = _batches(owned, lambda g: _genome_bases(store, lengths, g), batch_bases, THREAD_MIN_BASES)
-    calls_iter = _called(store, root, batches, workers)
+    calls_iter = _called(store, root, batches, workers, genecall_mode=genecall_mode)
     try:
         for batch, (genes, cands, batch_modes, batch_wrap, guids) in calls_iter:
             pairs = [(_guid(g), cu) for g in batch for cu in g.contig_uids]
@@ -902,10 +925,11 @@ def calls_cpu_s(mode: str, contigs: Iterable[tuple[int, bool]]) -> float:
     return total / 1e6
 
 
-def genome_cost_us(kind: str, contigs: Iterable[tuple[int, bool]]) -> int:
+def genome_cost_us(kind: str, contigs: Iterable[tuple[int, bool]],
+                   genecall_mode: str = DEFAULT_GENECALL_MODE) -> int:
     """The estimate of one genome in the step, in CPU-microseconds (rounded up): its calls times `STEP_OVERHEAD`."""
     contigs = list(contigs)
-    mode = mode_of(kind, sum(n for n, _ in contigs))
+    mode = mode_of(kind, sum(n for n, _ in contigs), genecall_mode=genecall_mode)
     return int(-(-STEP_OVERHEAD * calls_cpu_s(mode, contigs) * 1e6 // 1))
 
 
@@ -915,9 +939,9 @@ def one_process_cpu_min(called: dict[tuple[str, bool], int]) -> float:
     return (PROCESS_S + STEP_OVERHEAD * sum(CALL_S_PER_MBP[k] * b for k, b in called.items()) / 1e6) / 60
 
 
-def genome_genes(kind: str, bases: int) -> float:
+def genome_genes(kind: str, bases: int, genecall_mode: str = DEFAULT_GENECALL_MODE) -> float:
     """Genes a genome of `kind` and `bases` bases is expected to have (`GENES_PER_MBP`), for the merge's estimate."""
-    return GENES_PER_MBP[mode_of(kind, bases)] * bases / 1e6
+    return GENES_PER_MBP[mode_of(kind, bases, genecall_mode=genecall_mode)] * bases / 1e6
 
 
 def merge_cpu_min(genes: float) -> float:
@@ -929,7 +953,8 @@ def _sql_files(files: Iterable[Path]) -> str:
     return "[" + ", ".join(_sql_path(Path(f)) for f in files) + "]"
 
 
-def stage_items(root: Path, stage: str, stages: list[str], tmp: Path | None = None
+def stage_items(root: Path, stage: str, stages: list[str], tmp: Path | None = None,
+                genecall_mode: str = DEFAULT_GENECALL_MODE
                 ) -> Callable[[], Iterator[tuple[bytes, int, int, float, bool]]]:
     """A maker of the stage's genomes as the plan reads them, one pass each call: (genome_uid, cost in CPU-us, bases,
     expected genes, called) in genome_uid order (the order `iter_genome_input` streams them in, and so the order a
@@ -939,6 +964,7 @@ def stage_items(root: Path, stage: str, stages: list[str], tmp: Path | None = No
     in none of `stages` raises KeyError naming the stage on disk that owns it, as the step does."""
     from biobox.l0seq.store import INDEX_DIR
 
+    _check_genecall_mode(genecall_mode)
     root = Path(root)
     gi = io.part_files(root / table("genome_input").location / f"stage={stage}")
     if not gi:
@@ -970,11 +996,11 @@ def stage_items(root: Path, stage: str, stages: list[str], tmp: Path | None = No
                 for r in zip(*(b.column(i).to_pylist() for i in range(6))):
                     if r[0] != guid:
                         if rows:
-                            yield _item(root, stages, guid, rows)
+                            yield _item(root, stages, guid, rows, genecall_mode=genecall_mode)
                         guid, rows = r[0], []
                     rows.append(r)
             if rows:
-                yield _item(root, stages, guid, rows)
+                yield _item(root, stages, guid, rows, genecall_mode=genecall_mode)
         finally:
             con.close()
             shutil.rmtree(d, ignore_errors=True)
@@ -982,7 +1008,8 @@ def stage_items(root: Path, stage: str, stages: list[str], tmp: Path | None = No
     return items
 
 
-def _item(root: Path, stages: list[str], guid: bytes, rows: list[tuple]) -> tuple[bytes, int, int, float, bool]:
+def _item(root: Path, stages: list[str], guid: bytes, rows: list[tuple],
+          genecall_mode: str = DEFAULT_GENECALL_MODE) -> tuple[bytes, int, int, float, bool]:
     for _, cu, _, _, n, _ in rows:
         if n is None:
             raise KeyError(missing_contig(root, cu, stages))
@@ -990,9 +1017,10 @@ def _item(root: Path, stages: list[str], guid: bytes, rows: list[tuple]) -> tupl
     contigs = [(n, bool(c)) for _, _, c, _, n, _ in rows]
     bases = sum(n for n, _ in contigs)
     if not any(r[5] for r in rows):
-        mode_of(kind, bases)  # an unknown kind is refused here as in the step
+        mode_of(kind, bases, genecall_mode=genecall_mode)  # an unknown kind or mode is refused here as in the step
         return guid, 0, bases, 0.0, False
-    return guid, genome_cost_us(kind, contigs), bases, genome_genes(kind, bases), True
+    return (guid, genome_cost_us(kind, contigs, genecall_mode=genecall_mode), bases,
+            genome_genes(kind, bases, genecall_mode=genecall_mode), True)
 
 
 def cut_plan(items: Callable[[], Iterable[tuple[bytes, int, int, float, bool]]], batch_cpu_min: float,
@@ -1078,13 +1106,19 @@ def _cut(items, k: int, total: int) -> list[dict]:
 
 
 def plan(root: Path, stage: str, *, version: str = GENE_CALL_VERSION, seq_stages: list[str] | None = None,
-         batch_cpu_min: float, batches: int | None = None, tmp=None) -> dict:
+         batch_cpu_min: float, batches: int | None = None, tmp=None,
+         genecall_mode: str = DEFAULT_GENECALL_MODE) -> dict:
     """The estimate and the batches of the stage's gene calling (`cut_plan` over `stage_items`), with the stage, the
     gene-call version and the stages read (`seq_stages`, the stage first). Reads `genome_input` and `contig_index`
-    only; writes nothing (DuckDB spills under `tmp`)."""
+    only; writes nothing (DuckDB spills under `tmp`). Card B-67: `"genecall_mode"` is recorded only when non-default
+    (`"gv-meta"`), so existing `"default"` plan hashes stay byte-identical."""
+    _check_genecall_mode(genecall_mode)
     stages = list(dict.fromkeys([stage, *([] if seq_stages is None else seq_stages)]))
-    p = cut_plan(stage_items(Path(root), stage, stages, tmp), batch_cpu_min, batches)
-    return {"stage": stage, "gene_call_version": version, "seq_stages": stages, **p}
+    p = cut_plan(stage_items(Path(root), stage, stages, tmp, genecall_mode=genecall_mode), batch_cpu_min, batches)
+    out = {"stage": stage, "gene_call_version": version, "seq_stages": stages, **p}
+    if genecall_mode != DEFAULT_GENECALL_MODE:
+        out["genecall_mode"] = genecall_mode
+    return out
 
 
 def work_dir(scratch: Path, root: Path, stage: str, plan_: dict) -> Path:
@@ -1112,6 +1146,7 @@ def read_plan(path: Path) -> dict:
     p = json.loads(Path(path).read_text())
     if p.get("card") != "B-48" or not isinstance(p.get("batches"), list):
         raise ValueError(f"{path}: not a gene-call plan (card B-48)")
+    plan_genecall_mode(p)
     return p
 
 
@@ -1354,6 +1389,7 @@ def _run_batch(root: Path, stage: str, plan_path: Path, j: int, *, version: str,
         _log(f"batch {j}: its output is in {work / batch_name(j)}; not run again")
         return rec
     stages = p["seq_stages"]
+    gcmode = plan_genecall_mode(p)
     tmpd = work / f".{batch_name(j)}.tmp-{os.getpid()}-{os.urandom(4).hex()}"
     tmpd.mkdir()
     with _stop_on_signals():
@@ -1377,7 +1413,8 @@ def _run_batch(root: Path, stage: str, plan_path: Path, j: int, *, version: str,
             try:
                 owners = ContigOwners(root, stage, stages, shared)
                 counts, skipped = _call_into(store, root, owners, _slice(genomes, want["first"], want["genomes"],
-                                                                         blake3()), workers, batch_bases, tmpd)
+                                                                         blake3()), workers, batch_bases, tmpd,
+                                             genecall_mode=gcmode)
             finally:
                 genomes.close()  # the stream stopped after the batch's last genome: close its DuckDB connection
                 store.close()
