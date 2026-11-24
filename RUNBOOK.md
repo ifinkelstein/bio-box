@@ -29,7 +29,7 @@ export IMAGE="$HOME/bio-box/images/bio-box_faec1f4.sif"
 export DIGEST=sha256:d67300aa1321b571fa8da79e74dfccdd87a8dca2e56518f324902efa6b9f098a
 export PYTHONPATH_POD="$TREE/src"                    # the tree is newer than the image: its source is bound in (section 11)
 export PROFILE=/tmp/if2453/c06/profile.yaml          # real: "$TREE/profiles/wilkcomp02.yaml"
-export MEM=8G                                        # real: 200G (the profile's mem_scope)
+export MEM=8G                                        # real: 750G (the profile's mem_scope)
 export WORK=/tmp/if2453/c06                          # your scratch directory for inputs and outputs
 export BBTMP=/tmp/if2453/c06/tmp                     # the profile's tmp (real: /tmp/if2453/bio-box)
 export ROOT=/tmp/if2453/c06/root                     # the data root you build into
@@ -814,7 +814,7 @@ The modes, in the order `stage_queue.sh` runs them. Each exits with its own stat
 (holding the sha256 of the conf it was made for) only when it passed, after withdrawing its own marker and those of
 the modes after it, and refuses without the markers of the modes before it or with a marker made for another conf. A
 refusal writes `<mode>/REFUSED`, a failure `<mode>/FAILED`, a STOP file `<mode>/STOPPED` (exit 3). In the data root
-(compared after `realpath`) the conf is the tree's own `stages/<STAGE>.conf`, `MEM` is at most 200G, and `TMP_MIN_GB`,
+(compared after `realpath`) the conf is the tree's own `stages/<STAGE>.conf`, `MEM` is at most 750G, and `TMP_MIN_GB`,
 `START_MIN_GB` and `SCRATCH_MAX_GB` cannot be loosened.
 
 | Mode | What it runs | What it refuses or stops on |
@@ -1476,7 +1476,7 @@ a profile value is missing from this table.
 | Day window | 08:00 to 20:00, Monday to Friday | profile `day_start_hour` 8, `day_end_hour` 20. An estimate until the PI confirms it with the pod owner (AGENTS 7.2) |
 | "Other compute" | other users' processes (uid above 999 and not ours; root's and system accounts' are daemons, never counted) above 0.5 of a core together, over a 5 s window (two reads of every `/proc/<pid>/stat`); a failed reading counts as busy. Estimates: other login users together used 0.01 cores and root's daemons about 0.3 (ps, wilkcomp02, 2026-11-13, measured); one single-threaded job uses 1. The load average is reported, not used: our own scan holds it near 42 | `OTHERS_BUSY_CPUS`, `CPU_WINDOW_S`, `SYSTEM_UID_MAX`, `measure_cpu` in `src/biobox/runstep.py`; card C-28 |
 | Allowance of a launch | the cap (above) less ours elsewhere: this account's processes outside the build's unit (its cgroup) and process tree, to the nearest CPU, at least 0. At night a launch of T threads counts against the day cap when 300 / T minutes from now reach the day window | `allowance`, `launch_cap` in `src/biobox/runstep.py`; card C-28 |
-| Memory per process or unit | 200G, swap 0 | profile `mem_scope`; AGENTS 7.2; `MemorySwapMax=0` in `scripts/pod_run.sh` |
+| Memory per process or unit | 750G, swap 0 | profile `mem_scope`; DEC-73; AGENTS 7.2; `MemorySwapMax=0` in `scripts/pod_run.sh` |
 | Memory cap required | true: `run-step` and the search runner refuse to start uncapped | profile `require_mem_cap` |
 | Nice | 19 (one big process), 15 (many small ones) | profile `nice_monolithic`, `nice_fanout`; AGENTS 7.2 says 19 |
 | CPU-minutes per process | 300 | profile `cpu_min_per_process`; AGENTS 7.2 |

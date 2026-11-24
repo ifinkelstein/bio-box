@@ -1875,13 +1875,22 @@ def test_8_a_trailing_slash_does_not_make_the_data_root_a_scratch_root(tmp_path)
     assert got.returncode != 0 and "pod_run" not in w.calls()
 
 
-@pytest.mark.parametrize("env", [{"MEM": "300G"}, {"TMP_MIN_GB": "10"}, {"START_MIN_GB": "100"},
+@pytest.mark.covers("A-12", "A-23")
+@pytest.mark.parametrize("env", [{"MEM": "800G"}, {"TMP_MIN_GB": "10"}, {"START_MIN_GB": "100"},
                                  {"SCRATCH_MAX_GB": "500"}])
 def test_8_the_data_root_never_loosens_its_limits(tmp_path, env):
     w = World(tmp_path)
     _run_ready(w)
     got = w.drive("run", **env)
     assert got.returncode != 0 and "pod_run" not in w.calls()
+
+
+@pytest.mark.covers("A-23")
+def test_8_the_data_root_accepts_mem_750g(tmp_path):
+    w = World(tmp_path)
+    _run_ready(w)
+    _ok(w.drive("run", MEM="750G"))
+    assert "pod_run-opt --mem 750G" in w.calls()
 
 
 def test_8_in_the_data_root_the_conf_is_the_trees_own(tmp_path):

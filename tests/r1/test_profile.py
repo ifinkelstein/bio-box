@@ -22,11 +22,12 @@ def _write(tmp_path: Path, data: dict) -> Path:
     return p
 
 
+@pytest.mark.covers("C-01", "A-23")
 def test_shipped_profile_loads():
     p = profile.load(SHIPPED)
     assert p.max_threads_day == 40
     assert p.max_threads_night == 56
-    assert p.mem_scope == "200G"
+    assert p.mem_scope == "750G"
     assert p.tmp == "/tmp/if2453/bio-box"
     assert p.nice_monolithic == 19
     assert p.nice_fanout == 15

@@ -45,7 +45,7 @@
 # lower case>, override STAGE_DIR), STAGE_ROOT (the data root), STAGE_CONF (not in the data root), TREE, PROFILE,
 # IMAGE, DIGEST, BACKUP_DIR (/stor/work/Wilke/if2453/all-the-data/root_backups; the rehearsal sets its own scratch
 # one), T (6) and CPUS (4) (build-stage --threads and --scan-cpus, at most the profile's smaller cap), Q (lowers the
-# unit's quota), MEM (the profile's mem_scope, at most 200G in the data root), CPU_MAX (280, never above),
+# unit's quota), MEM (the profile's mem_scope, at most 750G in the data root), CPU_MAX (280, never above),
 # START_MIN_GB (205), TMP_MIN_GB (200) and SCRATCH_MAX_GB (100), which the data root never loosens.
 # Unit names: <stage in lower case>-<n> for the builds, <stage>-rh-* for the rehearsal, <stage>-queue for the queue.
 set -u
@@ -173,7 +173,7 @@ environment() {  # what the data root never allows
     n=${BASH_REMATCH[1]}
     u=${BASH_REMATCH[2]}
     case "$u" in K) v=$((n * 1024)) ;; M) v=$((n * 1024 ** 2)) ;; G) v=$((n * 1024 ** 3)) ;; T) v=$((n * 1024 ** 4)) ;; *) v=$n ;; esac
-    [ "$v" -le $((200 * 1024 ** 3)) ] || refuse "MEM=$MEM is above 200G"
+    [ "$v" -le $((750 * 1024 ** 3)) ] || refuse "MEM=$MEM is above 750G"
   fi
   return 0
 }
