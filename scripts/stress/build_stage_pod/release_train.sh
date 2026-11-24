@@ -30,7 +30,7 @@
 #   DIGEST      expected sha256: digest of IMAGE
 #   PFAMDIR     Pfam directory to bind read-only
 #   PFAM        Pfam-A.hmm.gz path for pack build
-#   T, J, CPUS, Q, PARTS, PACK_PARTS, PACK_JOBS, MEM, PACK_MEM
+#   T, J, CPUS, Q, PARTS, PACK_PARTS, PACK_JOBS, MEM, PACK_MEM, EX_THREADS, EX_MEM
 #   CPU_MAX (280), TMP_MIN_GB (150), SCRATCH_MAX_GB (250), START_MIN_GB (250)
 set -u
 
@@ -53,10 +53,11 @@ CPUS=${CPUS:-18}
 Q=${Q:-40}
 MEM=${MEM:-750G}
 PARTS=${PARTS:-}
-PACK_PARTS=${PACK_PARTS:-10}
-PACK_JOBS=${PACK_JOBS:-12}
-PACK_MEM=${PACK_MEM:-48G}
-EX_THREADS=${EX_THREADS:-2}
+PACK_PARTS=${PACK_PARTS:-}
+PACK_JOBS=${PACK_JOBS:-}
+PACK_MEM=${PACK_MEM:-}
+EX_THREADS=${EX_THREADS:-}
+EX_MEM=${EX_MEM:-}
 CPU_MAX=${CPU_MAX:-280}
 TMP_MIN_GB=${TMP_MIN_GB:-150}
 SCRATCH_MAX_GB=${SCRATCH_MAX_GB:-250}
@@ -144,6 +145,69 @@ try:
 except OSError:
     pass
 PY
+}
+
+profile_budget() {  # PROFILE DEFAULT_MEM [LIVE_ALLOWANCE]: print "<threads>\t<mem>" (card A-25, DEC-75)
+  python3 -I - "$1" "$2" "${3:-}" "${BIOBOX_TRAIN_NOW:-}" <<'PY'
+import re, sys
+from datetime import datetime
+from pathlib import Path
+
+prof_path, default_mem, live_raw, now_iso = sys.argv[1:5]
+kv = {}
+try:
+    for line in Path(prof_path).read_text().splitlines():
+        s = line.split("#", 1)[0].strip()
+        if ":" in s:
+            k, v = s.split(":", 1)
+            kv[k.strip()] = v.strip().strip("'\"")
+except OSError:
+    pass
+
+
+def _int(name, default):
+    try:
+        return int(kv[name])
+    except (KeyError, ValueError):
+        return default
+
+
+max_day = _int("max_threads_day", 40)
+max_night = _int("max_threads_night", max_day)
+day_start = _int("day_start_hour", 8)
+day_end = _int("day_end_hour", 20)
+mem_scope = kv.get("mem_scope", "")
+
+now = datetime.fromisoformat(now_iso) if now_iso else datetime.now().astimezone()
+is_day = now.weekday() < 5 and day_start <= now.hour < day_end
+window_cap = max_day if is_day else max_night
+cap_limit = 16 if is_day else 24
+
+allowance = int(live_raw) if (live_raw and re.fullmatch(r"[0-9]+", live_raw)) else window_cap
+threads = max(1, min(cap_limit, allowance))
+
+size_re = re.compile(r"^([0-9]+)([KMGTPE]?)$", re.IGNORECASE)
+
+
+def _bytes(spec):
+    m = size_re.fullmatch(spec.strip()) if spec else None
+    if not m:
+        return None
+    u = m.group(2).upper()
+    return int(m.group(1)) * (1024 ** (" KMGTPE".index(u) if u else 0))
+
+
+scope_b, def_b = _bytes(mem_scope), _bytes(default_mem)
+mem = mem_scope if (scope_b is not None and def_b is not None and scope_b < def_b) else default_mem
+print(f"{threads}\t{mem}")
+PY
+}
+
+live_allowance() {  # card A-25: C-28 thread allowance from biobox.runstep when live CPU checks are enabled
+  [ "$NO_LIVE_CPU" = 1 ] && return 0
+  local out
+  out=$(bb_ro py -m biobox.runstep --profile "$PROF_COPY" 2>> "$LOG" | tail -n 1 | tr -d '[:space:]')
+  [[ "$out" =~ ^[0-9]+$ ]] && echo "$out"
 }
 
 find_verified_pack() {  # PACKS_DIR REL: print 32-hex pack_id if a verified pack dir exists on disk, else empty
@@ -735,14 +799,23 @@ do_run() {
     fi
   fi
   if [ "$pack_reused" = 0 ]; then
+    local eff_pack_parts=${PACK_PARTS:-24} eff_pack_jobs=$PACK_JOBS eff_pack_mem=$PACK_MEM
+    if [ -z "$eff_pack_jobs" ] || [ -z "$eff_pack_mem" ]; then
+      local _pa="" _pj _pm
+      [ -z "$eff_pack_jobs" ] && _pa=$(live_allowance)
+      IFS=$'\t' read -r _pj _pm < <(profile_budget "$PROF_COPY" 128G "$_pa")
+      [ -z "$eff_pack_jobs" ] && eff_pack_jobs=$_pj
+      [ -z "$eff_pack_mem" ] && eff_pack_mem=$_pm
+    fi
+    log "pack: parts=$eff_pack_parts jobs=$eff_pack_jobs mem=$eff_pack_mem"
     local punit="${UNIT_PREFIX}-pack" pack_model=()
     [ "$RS_UNIT" = 1 ] || punit="${UNIT_PREFIX}-pack-$RS_UNIT"
     [ -e "$LOGS/$punit.log" ] && fail "$LOGS/$punit.log exists: another unit's exit line could be read as $punit's"
     [ -f "$PFAM" ] && pack_model=(--model "pfam-38.2=$PFAM")
-    bash "$TREE/scripts/pod_run.sh" --profile "$PROF_COPY" --image "$IMAGE" --digest "$DIGEST" --mem "$PACK_MEM" \
-      --threads "$PACK_JOBS" --bind /tmp/if2453 --bind "$ROOT:$ROOT:ro" "${ro_binds[@]}" --env "PYTHONPATH=$PYPATH" \
+    bash "$TREE/scripts/pod_run.sh" --profile "$PROF_COPY" --image "$IMAGE" --digest "$DIGEST" --mem "$eff_pack_mem" \
+      --threads "$eff_pack_jobs" --bind /tmp/if2453 --bind "$ROOT:$ROOT:ro" "${ro_binds[@]}" --env "PYTHONPATH=$PYPATH" \
       --log "$LOGS/$punit.log" "$punit" pack build --root "$ROOT" --release "$rel" "${pack_model[@]}" \
-      --profile "$PROF_COPY" --parts "$PACK_PARTS" --jobs "$PACK_JOBS" >> "$LOG" 2>&1
+      --profile "$PROF_COPY" --parts "$eff_pack_parts" --jobs "$eff_pack_jobs" >> "$LOG" 2>&1
     sleep 2
     while :; do  # the watch's rule (A-14): its own exit line or a real inactive answer ends the wait, a failed answer not
       unit_ended "$punit" "$LOGS"
@@ -787,9 +860,18 @@ do_run() {
   fi
 
   # 7. Worked examples release check
+  local eff_ex_threads=$EX_THREADS eff_ex_mem=$EX_MEM
+  if [ -z "$eff_ex_threads" ] || [ -z "$eff_ex_mem" ]; then
+    local _ea="" _et _em
+    [ -z "$eff_ex_threads" ] && _ea=$(live_allowance)
+    IFS=$'\t' read -r _et _em < <(profile_budget "$PROF_COPY" 64G "$_ea")
+    [ -z "$eff_ex_threads" ] && eff_ex_threads=$_et
+    [ -z "$eff_ex_mem" ] && eff_ex_mem=$_em
+  fi
+  log "examples: threads=$eff_ex_threads mem=$eff_ex_mem"
   rm -rf "$WORK/examples"
   TREE=$TREE PROFILE=$ex_prof IMAGE=$IMAGE DIGEST=$DIGEST ROOT=$ROOT OUT=$WORK/examples \
-    UNIT="${UNIT_PREFIX}-ex" THREADS=$EX_THREADS PFAM=$PFAM \
+    UNIT="${UNIT_PREFIX}-ex" THREADS=$eff_ex_threads MEM=$eff_ex_mem PFAM=$PFAM \
     bash "$TREE/scripts/release_examples.sh" "$rel" > "$WORK/examples.log" 2>&1
   rc=$?
   log "examples: release_examples.sh $rel exit $rc: $(tail -n 1 "$WORK/examples.log" | cut -c1-400)"
