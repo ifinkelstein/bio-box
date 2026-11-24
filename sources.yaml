@@ -1803,3 +1803,59 @@ sources:
           d808af5f52d1b11d03194dee0dac911041243caa2b44b7ceeabba8e8a595f172; s2_check_inputs.py NX1 problems: [];
           awaiting /tmp headroom after r26.11.3 before moving into /tmp/if2453/s2/inputs/NX1/)
     approved: under DEC-50 (entry written by card C-66 on 2026-11-24 before any fetch)
+  - name: logan50_nonhuman
+    what: >-
+      Logan v1 AWS Open Data public protein catalog (s3://logan-pub/p/, Chikhi et al. 2024,
+      doi:10.1101/2024.07.30.605881): MMseqs2-50%-clustered Prodigal non-human proteins
+      (logan50_c1.0_nonhuman_complete.fa.zst, 253 GiB published) and cluster-to-protein / bucket index objects,
+      streamed in-flight for rare ART-RT and prokaryotic RT baiting without storing the archive on /tmp; card C-64
+      (DEC-69, DEC-71), stage LGRT1
+    url: https://logan-pub.s3.amazonaws.com/{key}
+    url_list: https://logan-pub.s3.amazonaws.com/?list-type=2&prefix={prefix}&max-keys={max_keys}
+    record: https://registry.opendata.aws/logan/ (s3://logan-pub/, AWS Open Data, zero-egress --no-sign-request)
+    checksum: S3 ETag / Content-Length recorded on inspection; our sha256 recorded for any persisted index/output
+    limits: one or bounded connections (<= 4); User-Agent curl; stop after 5 refusals in a row (HTTP 403, 429, 503)
+    license: INSDC / AWS Open Data (public SRA assemblies; no additional Logan reuse restriction stated)
+    redistributable: true
+    fetched: >-
+      2026-11-24 on wilkcomp02 (0 refusals): S3 bucket listing verified p/logan50_c1.0_nonhuman_complete.fa.zst
+      (271,342,209,328 B, ETag 357cde7dd7847a6726500702e2e7125c-8087),
+      p/logan50_c1.0_nonhuman_complete_cluster-to-protein.tsv.zst (864,901,503,638 B, ETag
+      8bb179a8be0cf9ca06ffd107c11cee23-6445), and p/logan50_c1.0_nonhuman_complete_cluster-to-protein.index.tsv
+      (460,706 B, 13,956 seekable zstd frames, ETag b329406bf5ac2e9abab145b3220e2abf); streamed first 2,626,945,024 B
+      (0.9681%, 28,375,643 reps through ERR11530903_91159_3) in-flight through bait_rt12.hmm (47,260 proteins/s at 6
+      CPUs, 19.93 CPU-min, 0 bytes saved to /tmp) yielding 4,003 rare-RT hits across 1,361 clusters; fetched 100
+      seekable cluster-to-protein frames resolving 17,950 SRA runs (696,795 deferred members recorded in
+      LGRT1_deferred_members.tsv.gz sha256 32eac39b95c4bea26faaefb52403a079c113142ebef7fb4ff6b31cb4c1636bc8)
+    approved: under DEC-50 (entry written by card C-64 on 2026-11-24 before any fetch)
+  - name: logan_contigs_baited
+    what: >-
+      Logan v1 assembled SRA contigs (s3://logan-pub/c/{acc}/{acc}.contigs.fa.zst) pulled selectively for SRA runs
+      whose logan50 protein clusters match the C-64 ART-RT / rare prokaryotic RT bait HMM panel, retaining hit-bearing
+      contigs >= 2,000 bp (plus ENA Portal API read_run biome/library_source lookup for hit runs); card C-64
+      (DEC-69, DEC-71), stage LGRT1
+    url: https://logan-pub.s3.amazonaws.com/c/{acc}/{acc}.contigs.fa.zst
+    url_ena_run: https://www.ebi.ac.uk/ena/portal/api/search?result=read_run&query={query}&fields=run_accession,sample_accession,study_accession,scientific_name,tax_id,library_source,library_strategy,instrument_platform,base_count&limit=0&format=tsv
+    record: https://registry.opendata.aws/logan/ (s3://logan-pub/c/, AWS Open Data, --no-sign-request)
+    checksum: S3 ETag / Content-Length checked on fetch; staged consolidated .fna.gz sha256 recorded
+    limits: bounded connections (<= 4); User-Agent curl; stop after 5 refusals in a row (HTTP 403, 429, 503)
+    license: INSDC / AWS Open Data (public SRA assemblies)
+    redistributable: true
+    fetched: >-
+      2026-11-24 on wilkcomp02 (0 refusals, 0 failed runs): streamed 736 SRA runs (<= 100 MB compressed; 764 > 100 MB
+      runs deferred in LGRT1_deferred_large_runs.tsv sha256
+      d08a34e1fef746ea03537e5d43963aa031c8f3205307da09b83755129179566e) plus ENA Portal API biome metadata
+      (run_biomes.tsv sha256 ec4dbfa6983141a5b0f70d383f407fc92e33037cace1855e99aee019b549837a), extracting 378
+      distinct >= 2,000 bp RT-bearing contigs (3,026,010 bp; 1,737 < 2 kb dropped) across 310 SRA runs
+    staged:
+      - stage: LGRT1
+        object: /tmp/if2453/s2/inputs/LGRT1/lgrt1_baited.fna.gz
+        bytes: 944931
+        sha256: e1c6f3ebd3fbcf7a04c0dbc6f76b5abc43f4bd4a4b64b78a255b699e5a839fd9
+        metadata_dir: >-
+          /tmp/if2453/s2/inputs/LGRT1/ (378 distinct genomes/contigs >= 2,000 bp, 3,026,010 bp, 0 shared across
+          S1..NX1 = 100.0% net new; genomes.json sha256
+          17a4bf17b2292d1a671f4a5af19600c3ac0243b8cbc921b1f84347cddbe0f79b; objects.json sha256
+          b146639b9a45b7eb44afa0f01628c0397151c9eb787bc968d1eeb2e6c2888e73; s2_check_inputs.py LGRT1 problems: [];
+          kept on /tmp per AGENTS.md §7.3 64 MB /stor floor)
+    approved: under DEC-50 (entry written by card C-64 on 2026-11-24 before any fetch)
