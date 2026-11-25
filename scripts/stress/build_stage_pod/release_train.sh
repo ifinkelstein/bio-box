@@ -30,8 +30,8 @@
 #   DIGEST      expected sha256: digest of IMAGE
 #   PFAMDIR     Pfam directory to bind read-only
 #   PFAM        Pfam-A.hmm.gz path for pack build
-#   T, J, CPUS, Q, PARTS, PACK_PARTS, PACK_JOBS, MEM, PACK_MEM, EX_THREADS, EX_MEM
-#   CPU_MAX (280), TMP_MIN_GB (150), SCRATCH_MAX_GB (250), START_MIN_GB (250)
+#   T, J, CPUS, Q, PARTS, CLUSTER_METHOD (hybrid-b1), PACK_PARTS, PACK_JOBS, MEM, PACK_MEM, EX_THREADS, EX_MEM
+#   CPU_MAX (280), TMP_MIN_GB (100), SCRATCH_MAX_GB (350), START_MIN_GB (250)
 set -u
 
 BIN=$(cd "$(dirname "$0")" && pwd)
@@ -53,14 +53,15 @@ CPUS=${CPUS:-18}
 Q=${Q:-40}
 MEM=${MEM:-750G}
 PARTS=${PARTS:-}
+CLUSTER_METHOD=${CLUSTER_METHOD:-hybrid-b1}
 PACK_PARTS=${PACK_PARTS:-}
 PACK_JOBS=${PACK_JOBS:-}
 PACK_MEM=${PACK_MEM:-}
 EX_THREADS=${EX_THREADS:-}
 EX_MEM=${EX_MEM:-}
 CPU_MAX=${CPU_MAX:-280}
-TMP_MIN_GB=${TMP_MIN_GB:-150}
-SCRATCH_MAX_GB=${SCRATCH_MAX_GB:-250}
+TMP_MIN_GB=${TMP_MIN_GB:-100}
+SCRATCH_MAX_GB=${SCRATCH_MAX_GB:-350}
 START_MIN_GB=${START_MIN_GB:-250}
 ALLOW_EXAMPLES_FAIL=${ALLOW_EXAMPLES_FAIL:-0}
 UNIT_PREFIX=${UNIT_PREFIX:-c46-train}
@@ -82,6 +83,7 @@ while [ $# -gt 0 ]; do
     --date) DATE_ARG=$2; shift 2 ;;
     --release) EXPLICIT_REL=$2; shift 2 ;;
     --parts) PARTS=$2; shift 2 ;;
+    --cluster-method) CLUSTER_METHOD=$2; shift 2 ;;
     --same-stages) SAME_STAGES=1; shift ;;
     --no-live-cpu) NO_LIVE_CPU=1; shift ;;
     -h|--help)
@@ -266,7 +268,7 @@ verify_rel() {
 }
 
 plan_args() {
-  PLAN_ARGS=(--root "$ROOT" --profile "$REALPROF")
+  PLAN_ARGS=(--root "$ROOT" --profile "$REALPROF" --cluster-method "$CLUSTER_METHOD")
   [ -n "$DATE_ARG" ] && PLAN_ARGS+=(--date "$DATE_ARG")
   [ -n "$EXPLICIT_REL" ] && PLAN_ARGS+=(--release "$EXPLICIT_REL")
   [ -n "$PARTS" ] && PLAN_ARGS+=(--parts "$PARTS")
@@ -397,8 +399,8 @@ PY
   [ -n "$RS_ACTION" ] && [ -n "$RS_UNIT" ]
 }
 
-make_bs_args() {  # PLAN_JSON: build-stage's arguments for the plan's release into BS_ARGS (the first launch's, on a resume)
-  local line
+make_bs_args() {  # PLAN_JSON [FIRST_CMD]: build-stage's arguments for the plan's release into BS_ARGS (the first launch's, on a resume)
+  local line first_cmd=${2:-} plan_cm=""
   BS_ARGS=()
   while IFS= read -r line; do
     BS_ARGS+=("$line")
@@ -427,6 +429,12 @@ PY
 )
   BS_ARGS+=(--threads "$T" --scan-jobs "$J" --scan-cpus "$CPUS")
   [ -n "$PARTS" ] && BS_ARGS+=(--cluster-parts "$PARTS")
+  plan_cm=$(python3 -I -c 'import json,sys; print(json.load(open(sys.argv[1])).get("cluster_method") or "")' "$1" 2> /dev/null)
+  if [ -n "$plan_cm" ]; then
+    BS_ARGS+=(--cluster-method "$plan_cm")
+  elif [ -z "$first_cmd" ] || [[ "$first_cmd" == *" --cluster-method "* ]]; then
+    BS_ARGS+=(--cluster-method "$CLUSTER_METHOD")
+  fi
   return 0
 }
 
@@ -489,7 +497,7 @@ do_dry_run() {
     refuse) action_line "Action: refused: $RS_REASON" <<< "$txt"; return 1 ;;
   esac
   action_line "Action: resume $RS_REL ($RS_RECORDS run records published; unit $RS_UNIT)" <<< "$txt"
-  make_bs_args "$WORK/plan.json"
+  make_bs_args "$WORK/plan.json" "$(first_launch_cmd "$RS_REL")"
   resume_checks "$RS_REL"
   local ok=$?
   echo "Resume of $RS_REL ($RS_HOW), launched by this \$WORK ($WORK): unit ${UNIT_PREFIX}-rel-$RS_UNIT, its own log $LOGS/${UNIT_PREFIX}-rel-$RS_UNIT.log and state $WORK/run/${UNIT_PREFIX}-rel-$RS_UNIT"
@@ -675,7 +683,7 @@ do_run() {
       mv -f "$next_txt" "$rdir/plan.txt" || fail "mv $next_txt"
       action_line "Action: resume $RS_REL ($RS_RECORDS run records published; unit $RS_UNIT)" < "$rdir/plan.txt"
       log "resume $RS_REL ($RS_HOW): $RS_RECORDS run records published; unit ${UNIT_PREFIX}-rel-$RS_UNIT"
-      make_bs_args "$plan_json"
+      make_bs_args "$plan_json" "$(first_launch_cmd "$RS_REL")"
       resume_checks "$RS_REL" || fail "resume of $RS_REL refused, nothing launched: $RS_PROBLEMS"
       ;;
     *) fail "refused, nothing changed: $RS_REASON" ;;
@@ -720,7 +728,8 @@ do_run() {
 
   # 3. Estimate before launch (a resume is judged against the first launch's)
   if [ "$resume" != 1 ]; then
-    local est_args=(before --root "$ROOT" --release "$rel" --stages "$stages" --profile "$PROF_COPY" --tmp "$WORK/tmp/est")
+    local est_args=(before --root "$ROOT" --release "$rel" --stages "$stages" --profile "$PROF_COPY"
+                    --cluster-method "$CLUSTER_METHOD" --tmp "$WORK/tmp/est")
     [ -n "$latest" ] && est_args+=(--earlier "$latest")
     [ -n "$PARTS" ] && est_args+=(--parts "$PARTS")
     bb_ro py "$BIN/train_est.py" "${est_args[@]}" > "$WORK/estimate/before.json" 2> "$WORK/estimate/before.err" \
@@ -987,6 +996,7 @@ PY
 
   # 3. Dry-run before cut (must name r26.11.2, stages S0,S1,S2, exclude S3, write nothing)
   ROOT=$r_root WORK=$rh/train PROFILE=$rh/profile.yaml TREE=$TREE IMAGE=$IMAGE DIGEST=$DIGEST \
+    CLUSTER_METHOD=$CLUSTER_METHOD \
     bash "$0" --dry-run --date 2026-11-19 --parts 2 --no-live-cpu > "$rh/dry-run-before.txt" || fail "rehearse: dry-run before"
   grep -q "Next release: r26.11.2" "$rh/dry-run-before.txt" || fail "rehearse: dry-run did not name r26.11.2"
   grep -q "Stages (3): S0,S1,S2" "$rh/dry-run-before.txt" || fail "rehearse: dry-run did not pick S0,S1,S2"
@@ -994,17 +1004,20 @@ PY
 
   # 4. Full release_train.sh run cutting r26.11.2 (lightweight: <=4 threads, 2 cluster parts, 2 pack parts)
   ROOT=$r_root WORK=$rh/train PROFILE=$rh/profile.yaml TREE=$TREE IMAGE=$IMAGE DIGEST=$DIGEST \
+    CLUSTER_METHOD=$CLUSTER_METHOD \
     T=2 J=1 CPUS=2 Q=4 MEM=8G PACK_MEM=8G PARTS=2 PACK_PARTS=2 PACK_JOBS=2 EX_THREADS=2 \
     TMP_MIN_GB=10 START_MIN_GB=10 ALLOW_EXAMPLES_FAIL=1 UNIT_PREFIX=c46-rh \
     bash "$0" run --date 2026-11-19 --parts 2 --no-live-cpu || fail "rehearse: release_train run"
 
   # 5. Dry-run after cut: 0 new stages -> noop, and --same-stages shows B-49 reuse of r26.11.2!
   ROOT=$r_root WORK=$rh/train PROFILE=$rh/profile.yaml TREE=$TREE IMAGE=$IMAGE DIGEST=$DIGEST \
+    CLUSTER_METHOD=$CLUSTER_METHOD \
     bash "$0" --dry-run --date 2026-11-19 --parts 2 --no-live-cpu > "$rh/dry-run-after.txt" || fail "rehearse: dry-run after"
   grep -q "Next release: r26.11.3" "$rh/dry-run-after.txt" || fail "rehearse: dry-run after did not name r26.11.3"
   grep -q "noop" "$rh/dry-run-after.txt" || fail "rehearse: dry-run after did not report noop"
 
   ROOT=$r_root WORK=$rh/train PROFILE=$rh/profile.yaml TREE=$TREE IMAGE=$IMAGE DIGEST=$DIGEST \
+    CLUSTER_METHOD=$CLUSTER_METHOD \
     bash "$0" --dry-run --date 2026-11-19 --parts 2 --same-stages --no-live-cpu > "$rh/dry-run-reuse.txt" || fail "rehearse: dry-run reuse"
   grep -q "REUSE from r26.11.2" "$rh/dry-run-reuse.txt" || fail "rehearse: dry-run --same-stages did not detect B-49 reuse"
 

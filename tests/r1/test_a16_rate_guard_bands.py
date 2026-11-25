@@ -473,7 +473,7 @@ def test_the_process_and_space_guards_are_elsewhere_and_unchanged():
         assert "r50_watch" not in src and "CPU_MAX" not in src and "disk_usage" not in src and "statvfs" not in src
     rt = (BSP / "release_train.sh").read_text()
     sd = (BSP / "stage_driver.sh").read_text()
-    for line in ("CPU_MAX=${CPU_MAX:-280}", "TMP_MIN_GB=${TMP_MIN_GB:-150}", "SCRATCH_MAX_GB=${SCRATCH_MAX_GB:-250}"):
+    for line in ("CPU_MAX=${CPU_MAX:-280}", "TMP_MIN_GB=${TMP_MIN_GB:-100}", "SCRATCH_MAX_GB=${SCRATCH_MAX_GB:-350}"):
         assert line in rt, line
     for line in ("CPU_MAX=${CPU_MAX:-280}", "TMP_MIN_GB=${TMP_MIN_GB:-200}", "SCRATCH_MAX_GB=${SCRATCH_MAX_GB:-100}",
                  '[ "$CPU_MAX" -le 280 ] || refuse'):

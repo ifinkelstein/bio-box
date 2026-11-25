@@ -33,21 +33,32 @@ from pathlib import Path
 TICK = os.sysconf("SC_CLK_TCK")
 MODULES = ("biobox.l1.domains", "biobox.l0seq.store")
 DEC29_EXEMPT = "exempt: DEC-29"
+DEC77_EXEMPT = "exempt: DEC-77"
+SHARED_INDEX_CUT_STEPS = frozenset({
+    "cluster.nr50.15.prefilter.cut",
+    "cluster.nr50.19.prefilter.cut",
+})
+
+
+def _safe_segment(s: str) -> bool:
+    return bool(s) and "/" not in s and "\\" not in s and ".." not in s
+
+
+def _valid_cap(mx: object, default_cap: float) -> float:
+    if isinstance(mx, bool) or not isinstance(mx, (int, float)):
+        return default_cap
+    mx_f = float(mx)
+    return mx_f if math.isfinite(mx_f) and mx_f > default_cap else default_cap
 
 
 def dec29_cap(root: Path, release: str, call: str, default_cap: float) -> float:
     """Return DEC-29's one-process cap for a single clustering call from its cut record, else default_cap."""
     if (
-        not release
+        not _safe_segment(release)
+        or not _safe_segment(call)
         or not call.startswith("cluster.")
         or ".part-" in call
         or call.endswith(".cut")
-        or "/" in call
-        or "/" in release
-        or "\\" in call
-        or "\\" in release
-        or ".." in release
-        or ".." in call
     ):
         return default_cap
     cut_path = root / "l2" / "cluster_plan" / f"release={release}" / f"{call}.cut.json"
@@ -63,11 +74,48 @@ def dec29_cap(root: Path, release: str, call: str, default_cap: float) -> float:
         return default_cap
     if op.get("decision") != "DEC-29":
         return default_cap
-    mx = op.get("cpu_min_max")
-    if isinstance(mx, bool) or not isinstance(mx, (int, float)):
+    return _valid_cap(op.get("cpu_min_max"), default_cap)
+
+
+def dec77_cut_cap(root: Path, release: str, step: str, default_cap: float, *, live_proc: bool = False) -> float:
+    """Return DEC-77's one-process cap for a shared-index `.cut` (`createindex`) step, else default_cap.
+
+    For published run records (`live_proc=False`), `<step>.json` must exist under `l2/cluster_plan/release=<release>/`
+    with `len(parts) > 1` and `one_process.decision == "DEC-77"`. For a live `.cut` process (`live_proc=True`),
+    if `<step>.json` is not yet written on disk, falls back to `cluster.plan.json`'s `cut.one_process_cpu_min_max`
+    (when `cut.part_cpu_min` is set), strictly for `SHARED_INDEX_CUT_STEPS`.
+    """
+    if not _safe_segment(release) or not _safe_segment(step) or step not in SHARED_INDEX_CUT_STEPS:
         return default_cap
-    mx_f = float(mx)
-    return mx_f if math.isfinite(mx_f) and mx_f > default_cap else default_cap
+    pdir = root / "l2" / "cluster_plan" / f"release={release}"
+    cut_path = pdir / f"{step}.json"
+    if cut_path.exists():
+        try:
+            cut = json.loads(cut_path.read_text())
+        except (OSError, ValueError):
+            return default_cap
+        if not isinstance(cut, dict):
+            return default_cap
+        parts = cut.get("parts")
+        op = cut.get("one_process")
+        if not isinstance(parts, list) or len(parts) <= 1 or not isinstance(op, dict):
+            return default_cap
+        if op.get("decision") != "DEC-77":
+            return default_cap
+        return _valid_cap(op.get("cpu_min_max"), default_cap)
+    if not live_proc:
+        return default_cap
+    plan_path = pdir / "cluster.plan.json"
+    try:
+        plan = json.loads(plan_path.read_text())
+    except (OSError, ValueError):
+        return default_cap
+    if not isinstance(plan, dict):
+        return default_cap
+    plan_cut = plan.get("cut")
+    if not isinstance(plan_cut, dict) or plan_cut.get("part_cpu_min") is None:
+        return default_cap
+    return _valid_cap(plan_cut.get("one_process_cpu_min_max"), default_cap)
 
 
 def tree_bytes(d: Path) -> int:
@@ -205,8 +253,13 @@ def main() -> int:
             continue
         cm = r.get("cpu_min")
         cap = ccap if f.name.startswith("cluster") else a.cpu_max
-        if f.parent.name.startswith("stage=") and f.stem.startswith("cluster.") and r.get("cpu_budget_reason") == DEC29_EXEMPT:
-            cap = dec29_cap(Path(a.root), f.parent.name[len("stage="):], f.stem, ccap)
+        if f.parent.name.startswith("stage=") and f.stem.startswith("cluster."):
+            rel = f.parent.name[len("stage="):]
+            reason = r.get("cpu_budget_reason")
+            if reason == DEC29_EXEMPT:
+                cap = dec29_cap(Path(a.root), rel, f.stem, ccap)
+            elif reason == DEC77_EXEMPT:
+                cap = dec77_cut_cap(Path(a.root), rel, f.stem, ccap, live_proc=False)
         if cm is not None and cm > cap:
             reasons.append(f"run record {f.parent.name}/{f.name}: {cm:.1f} CPU-minutes, over {cap:g}")
         recs.append(cm or 0)
@@ -220,7 +273,10 @@ def main() -> int:
             kv = dict(tok.split("=", 1) for tok in step.split()[3:] if "=" in tok)
             rel, call = kv.get("release", ""), kv.get("name", "")
             if rel and call:
-                cap = dec29_cap(Path(a.root), rel, call, ccap)
+                if call.endswith(".cut"):
+                    cap = dec77_cut_cap(Path(a.root), rel, call, ccap, live_proc=True)
+                else:
+                    cap = dec29_cap(Path(a.root), rel, call, ccap)
         if r["cpu_min"] > cap:
             reasons.append(f"step {step} (pid {r['pid']}) has used {r['cpu_min']:.1f} CPU-minutes, over {cap:g}")
     out["reasons"] = reasons

@@ -278,14 +278,17 @@ def select_stages(root: Path) -> dict:
 
 
 def estimate_and_reuse(root: Path, release: str, stages: list[str], prof: bprofile.Profile,
-                       parts: int | None = None) -> dict:
+                       parts: int | None = None, *,
+                       cluster_method: str = l2.DEFAULT_CLUSTERING_MODE) -> dict:
     """Clustering estimate from protein count and B-49 reuse detection (read-only)."""
+    l2._check_mode(cluster_method)
     if not stages:
         return {
             "protein_seq_rows": 0,
             "cluster_cpu_min_one_process": 0.0,
             "clusters_in_parts": False,
             "cut": None,
+            "cluster_method": cluster_method,
             "reuse_source": None,
             "reuse_reasons": {},
             "label": "estimate: no stages",
@@ -301,7 +304,7 @@ def estimate_and_reuse(root: Path, release: str, stages: list[str], prof: bprofi
     plan_rels = l2._plan_releases(root)
     if plan_rels:
         try:
-            inputs = l2.plan_inputs(root, release, GCV, stages, cut)
+            inputs = l2.plan_inputs(root, release, GCV, stages, cut, mode=cluster_method)
             for src in plan_rels:
                 why = l2._source_problem(root, release, src, inputs)
                 reuse_reasons[src] = "qualifies" if why is None else why
@@ -317,6 +320,7 @@ def estimate_and_reuse(root: Path, release: str, stages: list[str], prof: bprofi
             "cluster_cpu_min_one_process": None,
             "clusters_in_parts": parts is not None,
             "cut": cut,
+            "cluster_method": cluster_method,
             "reuse_source": reuse_source,
             "reuse_reasons": reuse_reasons,
             "label": "estimate: protein_seq count unavailable (no genecall protein_seq outputs)",
@@ -329,6 +333,7 @@ def estimate_and_reuse(root: Path, release: str, stages: list[str], prof: bprofi
         "margin_cpu_min": round(bs.SHARD_MARGIN * prof.cpu_min_per_process, 2),
         "clusters_in_parts": split,
         "cut": cut,
+        "cluster_method": cluster_method,
         "reuse_source": reuse_source,
         "reuse_reasons": reuse_reasons,
         "label": "estimate: biobox.stage.cluster_cpu_min(protein_seq_rows)",
@@ -365,16 +370,18 @@ def thread_plan(prof: bprofile.Profile, *, check_live: bool = True) -> dict:
 
 def build_plan(root: Path, prof: bprofile.Profile, *, on_date: date | None = None,
                explicit_release: str | None = None, parts: int | None = None,
-               same_stages: bool = False, check_live: bool = True) -> dict:
+               same_stages: bool = False, check_live: bool = True,
+               cluster_method: str = l2.DEFAULT_CLUSTERING_MODE) -> dict:
     """Full dry-run plan for the release train."""
     rel = resolve_release_name(root, on_date, explicit=explicit_release)
     sel = select_stages(root)
-    est = estimate_and_reuse(root, rel, sel["stages"], prof, parts=parts)
+    est = estimate_and_reuse(root, rel, sel["stages"], prof, parts=parts, cluster_method=cluster_method)
     tplan = thread_plan(prof, check_live=check_live)
     return {
         "release": rel,
         "date": (date.today() if on_date is None else on_date).isoformat(),
         "same_stages": same_stages,
+        "cluster_method": cluster_method,
         "action": (
             "noop (0 new complete stages since latest release; pass --same-stages to cut anyway)"
             if (sel["nothing_new"] and not same_stages)
@@ -438,6 +445,8 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--date", default=None, help="YYYY-MM-DD (default: today on host)")
     ap.add_argument("--release", default=None, help="explicit release name (refused if existing or 'latest')")
     ap.add_argument("--parts", type=int, default=None, help="override --cluster-parts")
+    ap.add_argument("--cluster-method", choices=l2.CLUSTERING_MODES, default=l2.DEFAULT_CLUSTERING_MODE,
+                    help="clustering workflow mode (card B-71, DEC-77)")
     ap.add_argument("--same-stages", action="store_true", help="allow cutting a release with 0 new stages (DEC-52)")
     ap.add_argument("--json", action="store_true", dest="as_json", help="emit JSON instead of text")
     ap.add_argument("--no-live-cpu", action="store_true", help="skip live /proc CPU measurement")
@@ -454,6 +463,7 @@ def main(argv: list[str] | None = None) -> int:
             parts=a.parts,
             same_stages=a.same_stages,
             check_live=not a.no_live_cpu,
+            cluster_method=a.cluster_method,
         )
     except ReleaseTrainError as exc:
         print(str(exc), file=sys.stderr)
